@@ -28,19 +28,22 @@
   var workCaseDetail = document.getElementById('workCaseDetail');
   var workCaseFilterStatus = document.getElementById('workCaseFilterStatus');
 
-  var WORK_SEMOK_LABELS = { transfer: '양도', gift: '증여', inheritance: '상속', acquisition: '취득', objection: '불복' };
+  // [2026.09] 취득세는 독립된 세목으로 따로 관리하지 않는다 — 매매(양도)·증여·상속 등
+  // 기본 3세목 처리 과정에서 특수관계자간 거래 등과 함께 다뤄지는 성격이라, 사건 자체를
+  // "취득세 사건"으로 새로 만들지 않는다(세액계산 화면의 취득세 탭은 그대로 있음 — 다른
+  // 사건 처리 중 필요하면 거기서 계산만 한다).
+  var WORK_SEMOK_LABELS = { transfer: '양도', gift: '증여', inheritance: '상속', objection: '불복' };
   var WORK_STATUS_OPTIONS = ['진행', '보류', '완료'];
   var WORK_SUBTASK_STATUS_OPTIONS = ['대기', '진행', '보류', '완료'];
   var WORK_UPTYPE_OPTIONS_ = {
     transfer: ['신고', '상담'],
     gift: ['신고', '상담'],
     inheritance: ['신고', '상담'],
-    acquisition: ['신고', '상담'],
     objection: ['이의신청', '심사청구', '심판청구', '행정소송', '경정청구', '과세적부', '해명자료']
   };
   var WORK_MANUAL_DEADLINE_TYPES_ = ['상담', '해명자료'];
   // [2026.09] "기준일"이라는 추상 용어 대신 세목마다 실제로 부르는 이름을 그대로 쓴다.
-  var WORK_BASE_DATE_LABELS_ = { transfer: '양도일', gift: '증여일', inheritance: '상속일', acquisition: '취득일', objection: '처분일' };
+  var WORK_BASE_DATE_LABELS_ = { transfer: '양도일', gift: '증여일', inheritance: '상속일', objection: '처분일' };
 
   function workDeadlineFieldLabel_(upType){
     return WORK_MANUAL_DEADLINE_TYPES_.indexOf(upType) !== -1 ? '처리시한' : '법정일';

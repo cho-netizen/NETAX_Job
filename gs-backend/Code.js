@@ -16130,10 +16130,6 @@ const WORK_HEADERS = ['id', '고객ID', '고객명', '사건명', '세목', '업
 // 상담·해명자료는 정해진 법정기한이 없어 자동계산하지 않고 사용자가 직접 입력한 값을 쓴다.
 const WORK_DEADLINE_MONTHS_ = { transfer: 2, gift: 3, inheritance: 6 };
 const WORK_DEADLINE_DAYS_ = { 이의신청: 90, 심사청구: 90, 심판청구: 90, 행정소송: 90, 과세적부: 30 };
-// [2026.09] 취득세는 다른 3개 세목과 달리 "말일 기준 N개월"이 아니라 취득일로부터 며칠
-// 이내(지방세법 §20① 유상취득 원칙)라서 세목 단위로 별도 관리한다. 상속·증여로 인한 취득의
-// 특례기한은 다루지 않음(그 경우는 이미 상속/증여 세목으로 등록되므로).
-const WORK_DEADLINE_DAYS_BY_SEMOK_ = { acquisition: 60 };
 const WORK_DEADLINE_YEARS_ = { 경정청구: 5 };
 const WORK_MANUAL_DEADLINE_TYPES_ = ['상담', '해명자료'];
 
@@ -16145,36 +16141,83 @@ const WORK_MANUAL_DEADLINE_TYPES_ = ['상담', '해명자료'];
 // 쓸 수는 없다 — 그중 "거의 모든 사건에 공통으로 필요한 핵심 증빙"만 세무사가 직접 골라
 // 실제 증빙명으로 옮겨적은 것. 양도소득세로 먼저 파일럿하고 검증받은 뒤 증여세·상속세도
 // 같은 방식으로 추가(세부 갈래별 세분화는 사용자 피드백을 보고 다음 단계에서 조정).
+// [2026.09] 자산분류·사건분류를 세분화한 이유가 바로 이거다 — 세목 하나에 공통 증빙만
+// 있으면 "1세대1주택 비과세"든 "다주택중과"든 "부담부증여"든 같은 목록이 나가는데, 실제로는
+// 사건분류에 따라 필요한 증빙이 달라진다. 공통(모든 사건에 필요) + 사건분류별(그 분류일
+// 때만 추가) 두 층으로 나눈다. 사건개요서의 "사건분류" 필드값과 정확히 문자열이 일치해야
+// 매칭되므로, casehandling.html의 CH_CASE_OVERVIEW_FIELDS_ 옵션 문구를 바꾸면 여기도 같이
+// 맞춰야 한다.
 const WORK_EVIDENCE_TEMPLATES_ = {
-  transfer: [
-    '양도 매매계약서(양도가액·양도일)',
-    '취득 당시 매매계약서 또는 취득가액 증빙',
-    '등기부등본(취득일·소유권 이전 이력)',
-    '취득세 영수증',
-    '중개보수 등 필요경비 영수증',
-    '주민등록초본(전입·전출 이력, 거주기간 확인용)',
-    '가족관계증명서(세대원 구성 확인)',
-    '다른 주택 보유현황(1세대1주택 비과세 판정용)'
-  ],
-  gift: [
-    '증여계약서',
-    '가족관계증명서(증여자·수증자 관계 확인, 공제·세율 판정용)',
-    '증여재산 평가자료(부동산 등기부등본·감정가액, 비상장주식 평가자료 등)',
-    '수증자 계좌 이체내역(현금증여 입증)',
-    '채무인수 관련 자료(부담부증여인 경우 — 임대차계약서·대출계약서 등)',
-    '10년 이내 동일인 증여 내역(증여재산 합산과세 확인용)',
-    '수증자 신분증 사본'
-  ],
-  inheritance: [
-    '가족관계증명서·기본증명서(피상속인·상속인 확인)',
-    '제적등본(피상속인)',
-    '사망진단서 또는 사망사실이 기재된 가족관계증명서(사망일 확인)',
-    '상속재산 목록 및 평가자료(부동산 등기부등본, 예금잔액증명서, 주식평가자료 등)',
-    '피상속인 금융거래내역(사망 전 1~2년, 사전증여·인출 확인용)',
-    '채무증빙(대출잔액증명서, 임대보증금 반환채무 등)',
-    '장례비용 영수증',
-    '사전증여재산 내역(상속인 10년·비상속인 5년 이내 증여분)'
-  ]
+  transfer: {
+    공통: [
+      '양도 매매계약서(양도가액·양도일)',
+      '취득 당시 매매계약서 또는 취득가액 증빙',
+      '등기부등본(취득일·소유권 이전 이력)',
+      '취득세 영수증',
+      '중개보수 등 필요경비 영수증',
+      '주민등록초본(전입·전출 이력, 거주기간 확인용)',
+      '가족관계증명서(세대원 구성 확인)',
+      '다른 주택 보유현황(1세대1주택 비과세 판정용)'
+    ],
+    사건분류: {
+      '1세대1주택 비과세': ['전입세대열람내역(전체 거주이력)', '무주택확인서(다른 주택 미보유 확인)'],
+      '1세대1주택 고가주택(과세)': ['전입세대열람내역(전체 거주이력)', '무주택확인서(다른 주택 미보유 확인)'],
+      '일시적2주택 비과세': ['신규주택 취득 등기부등본', '종전주택 처분계약서(또는 처분계획)'],
+      '2주택 중과': ['보유주택 전체 등기부등본', '조정대상지역 지정 여부 확인자료'],
+      '3주택이상 중과': ['보유주택 전체 등기부등본', '조정대상지역 지정 여부 확인자료'],
+      '비사업용 토지(중과)': ['토지이용계획확인서', '농지원부 또는 실제 경작(사업) 여부 확인자료'],
+      '농지 등 감면(8년자경 등)': ['농지원부', '자경사실확인서', '농업경영체등록확인서'],
+      '수용 등 공익사업 비과세·감면': ['협의계약서 또는 수용재결서', '보상금 수령내역'],
+      '이월과세(배우자·직계존비속 증여 후 양도)': ['이전 증여계약서', '증여세 신고서'],
+      '특수관계자간 거래(부당행위계산부인·저가양도 증여의제)': ['거래상대방 가족관계증명서', '시가 산정자료(감정평가서 등)'],
+      '재건축·재개발(조합원입주권→신축주택 전환)': ['관리처분계획인가서', '종전자산(구건물) 취득 당시 매매계약서·등기부등본', '조합원 자격 확인서(조합원입주권 취득 경위)', '청산금 납부·환급 내역', '준공 후 신축건물 등기부등본(소유권보존등기)'],
+      '미등기양도': ['미등기 사유 확인자료(있는 경우)'],
+      '경매·공매': ['낙찰허가결정문(매각결정통지서)', '배당표'],
+      '부담부증여(전액)': ['증여계약서', '채무인수·대출승계 서류'],
+      '교환': ['교환계약서', '쌍방 자산 평가자료']
+    }
+  },
+  gift: {
+    공통: [
+      '증여계약서',
+      '가족관계증명서(증여자·수증자 관계 확인, 공제·세율 판정용)',
+      '증여재산 평가자료(부동산 등기부등본·감정가액, 비상장주식 평가자료 등)',
+      '수증자 계좌 이체내역(현금증여 입증)',
+      '채무인수 관련 자료(부담부증여인 경우 — 임대차계약서·대출계약서 등)',
+      '10년 이내 동일인 증여 내역(증여재산 합산과세 확인용)',
+      '수증자 신분증 사본'
+    ],
+    사건분류: {
+      '부담부증여(부분, 순수증여분만)': ['채무인수·대출승계 서류', '임대차계약서(전세보증금 승계 시)'],
+      '재차증여(10년내 합산)': ['과거 증여세 신고서'],
+      '세대생략증여(할증)': ['가족관계증명서(조부모-손자녀 관계 확인)'],
+      '명의신탁 증여의제': ['실제소유자 확인자료', '주식등변동상황명세서'],
+      '저가양수·고가양도 증여의제': ['매매계약서', '시가 산정자료(감정평가서 등)'],
+      '특정법인과의 거래 증여의제': ['법인 재무제표', '주주명부', '거래약정서'],
+      '창업자금·가업승계 특례증여': ['사업계획서', '법인 정관·주주명부']
+    }
+  },
+  inheritance: {
+    공통: [
+      '가족관계증명서·기본증명서(피상속인·상속인 확인)',
+      '제적등본(피상속인)',
+      '사망진단서 또는 사망사실이 기재된 가족관계증명서(사망일 확인)',
+      '상속재산 목록 및 평가자료(부동산 등기부등본, 예금잔액증명서, 주식평가자료 등)',
+      '피상속인 금융거래내역(사망 전 1~2년, 사전증여·인출 확인용)',
+      '채무증빙(대출잔액증명서, 임대보증금 반환채무 등)',
+      '장례비용 영수증',
+      '사전증여재산 내역(상속인 10년·비상속인 5년 이내 증여분)'
+    ],
+    사건분류: {
+      '배우자상속공제 해당': ['상속재산 분할협의서', '배우자 상속분 등기 관련 자료'],
+      '가업상속공제 해당': ['사업자등록증', '법인 정관·주주명부', '가업영위기간 증빙'],
+      '영농상속공제 해당': ['농지원부', '자경사실확인서'],
+      '동거주택상속공제 해당': ['동거 사실 확인 주민등록초본(10년 이상)'],
+      '사전증여재산 합산(10년내 상속인·5년내 비상속인)': ['과거 증여세 신고서'],
+      '상속포기·한정승인': ['상속포기·한정승인 심판문'],
+      '유증·사인증여': ['유언장 또는 사인증여계약서']
+    }
+  }
 };
 
 // 사건개요서 항목 정의(라벨·입력형식)는 casehandling.html의 CH_CASE_OVERVIEW_FIELDS_에
@@ -16183,12 +16226,16 @@ const WORK_EVIDENCE_TEMPLATES_ = {
 
 // 사건개요(사건개요서 양식)를 처음 저장할 때 증빙목록 초기값을 만든다 — "사건개요가 먼저
 // 정리돼야 필요증빙도 제대로 나온다"는 지적에 따라, 예전처럼 사건 "생성" 시점이 아니라
-// 사건개요를 처음 저장하는 시점(work_updateCase)에 적용한다. 템플릿이 있는 세목(현재
-// 양도소득세만)이고 업무유형이 '신고'(상담은 아직 본격적인 증빙 확보 단계가 아니므로 제외)
-// 일 때만 채우고, 그 외엔 기존과 동일하게 빈 배열로 둔다. 항목 형태는 casehandling.html의
-// chAddRequestedItem_이 만드는 것과 동일(source:'requested', status:'미확보').
-function work_buildEvidenceFromTemplate_(seMok, upType) {
-  const labels = (upType === '신고' && WORK_EVIDENCE_TEMPLATES_[seMok]) || [];
+// 사건개요를 처음 저장하는 시점(work_updateCase)에 적용한다. 업무유형이 '신고'(상담은
+// 아직 본격적인 증빙 확보 단계가 아니므로 제외)일 때만 채우고, 그 외엔 기존과 동일하게
+// 빈 배열로 둔다. caseClassification(사건개요의 "사건분류" 값)이 있으면 공통 목록에
+// 그 분류 전용 항목을 더한다 — 없거나 매칭 안 되면 공통 목록만 쓴다. 항목 형태는
+// casehandling.html의 chAddRequestedItem_이 만드는 것과 동일(source:'requested', status:'미확보').
+function work_buildEvidenceFromTemplate_(seMok, upType, caseClassification) {
+  const template = WORK_EVIDENCE_TEMPLATES_[seMok];
+  const labels = (upType === '신고' && template)
+    ? (template.공통 || []).concat((caseClassification && template.사건분류 && template.사건분류[caseClassification]) || [])
+    : [];
   const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   return labels.map(function (label, i) {
     return { id: 'ev_' + Date.now() + '_' + i, source: 'requested', label: label, note: '', status: '미확보', 요청일: today };
@@ -16249,13 +16296,6 @@ function work_calcDeadline_(seMok, upType, baseDateStr) {
     const d = new Date(base.getFullYear() + WORK_DEADLINE_YEARS_[upType], base.getMonth(), base.getDate());
     return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   }
-  // 취득세 — 말일 정렬 없이 취득일로부터 며칠(WORK_DEADLINE_DAYS_BY_SEMOK_) 그대로 더한다.
-  if (WORK_DEADLINE_DAYS_BY_SEMOK_[seMok] !== undefined) {
-    const d = new Date(base);
-    d.setDate(d.getDate() + WORK_DEADLINE_DAYS_BY_SEMOK_[seMok]);
-    return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  }
-
   const months = WORK_DEADLINE_MONTHS_[seMok];
   if (months === undefined) return '';
   const monthEnd = new Date(base.getFullYear(), base.getMonth() + 1, 0); // 기준일이 속한 달의 말일
@@ -16462,17 +16502,21 @@ function work_updateCase(params) {
       if (typeof overview === 'string') { try { overview = JSON.parse(overview); } catch (e) { overview = null; } }
       if (overview && typeof overview === 'object' && !Array.isArray(overview)) {
         // [2026.09] "사건개요(사실관계)가 먼저 정리돼야 필요증빙도 제대로 나온다"는 지적에
-        // 따라, 필요증빙 템플릿은 사건 생성 시점이 아니라 사건개요를 처음 저장하는 이 순간에
-        // 적용한다 — 이미 증빙목록이 뭔가 있으면(직접 추가했든 이전에 이미 채워졌든) 손대지
-        // 않고, 완전히 비어있을 때만 채운다.
+        // 따라, 필요증빙 템플릿은 사건 생성 시점이 아니라 사건개요를 저장하는 이 순간에
+        // 적용한다. 처음엔 사건분류를 아직 못 정했다가(공통 항목만 채워짐) 나중에 사건분류를
+        // 정해서 다시 저장하면 그때 사건분류 전용 항목이 새로 생겨야 하므로("예상가액 소급
+        // 정정"과 같은 원칙 — 나중에 확실해진 정보를 반영), "완전히 비어있을 때만"이 아니라
+        // 매번 템플릿을 계산해서 "라벨이 아직 없는 항목만" 추가한다. 이미 있는 항목(직접
+        // 추가했든 이전에 템플릿으로 들어왔든, 확보 상태까지)은 절대 건드리지 않는다.
         let currentEvidence = [];
         try { currentEvidence = JSON.parse(row[col.증빙목록] || '[]'); } catch (e) { currentEvidence = []; }
-        if (Array.isArray(currentEvidence) && currentEvidence.length === 0) {
-          const seMokForTemplate = params.세목 !== undefined ? String(params.세목).trim() : row[col.세목];
-          const upTypeForTemplate = params.업무유형 !== undefined ? String(params.업무유형).trim() : row[col.업무유형];
-          const template = work_buildEvidenceFromTemplate_(seMokForTemplate, upTypeForTemplate);
-          if (template.length) row[col.증빙목록] = JSON.stringify(template);
-        }
+        if (!Array.isArray(currentEvidence)) currentEvidence = [];
+        const seMokForTemplate = params.세목 !== undefined ? String(params.세목).trim() : row[col.세목];
+        const upTypeForTemplate = params.업무유형 !== undefined ? String(params.업무유형).trim() : row[col.업무유형];
+        const templateItems = work_buildEvidenceFromTemplate_(seMokForTemplate, upTypeForTemplate, overview.사건분류);
+        const existingLabels = currentEvidence.map(function (e) { return e.label; });
+        const newItems = templateItems.filter(function (item) { return existingLabels.indexOf(item.label) === -1; });
+        if (newItems.length) row[col.증빙목록] = JSON.stringify(currentEvidence.concat(newItems));
         row[col.사건개요] = JSON.stringify(overview);
       }
     }
