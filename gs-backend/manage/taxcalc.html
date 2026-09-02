@@ -6808,6 +6808,7 @@ function renderTcCaseBar_(){
     '<label style="font-size:12px; color:var(--sub);">🔗 사건연결</label>' +
     '<select id="tcCaseSelect" style="min-width:220px; max-width:360px;">' + options + '</select>' +
     '<button type="button" id="tcSaveBtn" class="save-btn"' + (tcSelectedId ? '' : ' disabled') + '>💾 이 사건에 저장</button>' +
+    '<button type="button" id="tcBackToCaseBtn" class="ghost-btn">↩ 처리개요로</button>' +
     '</div>' +
     (tcSelectedId ? '<div id="tcSavedList" style="display:flex; flex-direction:column; gap:6px;"></div>' : '');
 
@@ -6817,6 +6818,12 @@ function renderTcCaseBar_(){
     renderTcCaseBar_();
   });
   document.getElementById('tcSaveBtn').addEventListener('click', tcSaveCurrentResult_);
+  // [2026.09] 처리개요에서 넘어온 경우가 많은데 왼쪽 메뉴로 되돌아가야만 해서 불편하다는
+  // 지적 — 지금 고른 사건을 그대로 들고 처리개요로 돌아가는 버튼.
+  document.getElementById('tcBackToCaseBtn').addEventListener('click', function(){
+    if (typeof goToView_ === 'function') goToView_('casehandling');
+    if (tcSelectedId && typeof goToCaseHandling_ === 'function') goToCaseHandling_(tcSelectedId);
+  });
   if (tcSelectedId) renderTcSavedList_(tcCurrentCase ? (tcCurrentCase.세액계산결과 || []) : []);
 }
 

@@ -16,8 +16,7 @@
   #loginGate.hidden{ display:none; }
   .login-box{ background:var(--panel); border-radius:14px; padding:36px 32px; width:300px; text-align:center;
     box-shadow:0 12px 40px rgba(0,0,0,0.35); }
-  .login-box h1{ font-size:18px; margin:0 0 4px; color:var(--navy); }
-  .login-box p{ font-size:12px; color:var(--sub); margin:0 0 18px; }
+  .login-box h1{ font-size:18px; margin:0 0 20px; color:var(--navy); }
   .login-box input{ width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px;
     font-size:14px; margin-bottom:10px; text-align:center; }
   .login-box input:focus{ outline:none; border-color:var(--gold); box-shadow:0 0 0 1px var(--gold); }
@@ -31,17 +30,22 @@
   #appRoot.shown{ display:flex; }
 
   #sideMenu{ width:34px; flex-shrink:0; background:var(--navy); position:relative; transition:width .15s ease; z-index:50; cursor:pointer; overflow:hidden; }
-  #sideMenu.expanded{ width:min(210px, 80vw); cursor:default; }
-  #sideMenuInner{ position:absolute; inset:0; width:210px; overflow-y:auto; overflow-x:hidden; padding:14px 0; display:none; }
+  #sideMenu.expanded{ width:min(var(--side-expanded-w, 190px), 80vw); cursor:default; }
+  #sideMenuInner{ position:absolute; inset:0; width:var(--side-expanded-w, 190px); overflow-y:auto; overflow-x:hidden; padding:14px 0; display:none; }
   #sideMenu.expanded #sideMenuInner{ display:block; }
   /* [2026.09] 접힌 상태에서도 이모지 아이콘만 왼쪽에 붙여 보여줘서, 펼치지 않고 바로 그
      메뉴로 이동할 수 있게 한다(기존엔 접히면 아무것도 안 보여서 어떤 메뉴가 어디 있는지
      구별이 안 됐음) — 아이콘은 JS가 .menu-item 텍스트에서 그대로 뽑아서 만든다. */
-  #sideMenuIcons{ position:absolute; inset:0; overflow:hidden; padding-top:14px; }
+  #sideMenuIcons{ position:absolute; inset:0; overflow:hidden; padding-top:12px; }
   #sideMenu.expanded #sideMenuIcons{ display:none; }
-  .menu-icon{ font-size:15px; line-height:1; padding:9px 0 9px 8px; cursor:pointer; text-align:left; }
-  .menu-icon:hover{ background:rgba(255,255,255,0.08); }
+  /* [2026.09 버그수정] 접힌 상태 아이콘 중 일부(🗂 작업관리, 👤 고객관리 등)가 이모지 자체가
+     어두운 톤이라 남색 배경과 거의 구별이 안 됐다 — 이모지 색과 무관하게 항상 잘 보이도록
+     옅은 사각 배경("칩")을 모든 아이콘에 고정으로 깔아둔다. */
+  .menu-icon{ display:flex; align-items:center; justify-content:center; width:20px; height:20px;
+    margin:3px auto; border-radius:6px; background:rgba(255,255,255,0.14); font-size:13px; line-height:1; cursor:pointer; }
+  .menu-icon:hover{ background:rgba(255,255,255,0.3); }
   .menu-icon.soon{ opacity:.4; }
+  .menu-icon-divider{ height:1px; margin:6px 8px; background:rgba(255,255,255,0.14); }
   .menu-brand{ color:var(--gold-light); font-weight:800; font-size:15px; padding:0 16px 14px; letter-spacing:.5px; }
   .menu-group-label{ color:#8b93ad; font-size:11px; font-weight:700; padding:10px 16px 4px; letter-spacing:.5px; }
   .menu-item{ display:flex; align-items:center; gap:8px; padding:9px 16px; color:#dfe3ee; font-size:13px;
@@ -49,6 +53,10 @@
   .menu-item:hover{ background:rgba(255,255,255,0.06); }
   .menu-item.active{ background:rgba(200,162,68,0.15); border-left-color:var(--gold); color:var(--gold-light); font-weight:700; }
   .menu-item.soon{ opacity:.55; }
+  /* [2026.09 버그수정] 이모지 폭이 제각각이라(⚖️ vs 👤 vs 🧭) 그 뒤 글자 시작 위치가 항목마다
+     들쭉날쭉했다 — 아이콘 칸 폭을 고정해서 라벨이 항상 같은 위치에서 시작하게 한다. */
+  .menu-item .mi-icon{ display:inline-flex; align-items:center; justify-content:center; width:18px; flex-shrink:0; font-size:14px; }
+  .menu-item .mi-label{ flex:1; }
 
   #centerWork{ flex:1; min-width:0; height:100%; overflow:hidden; position:relative; background:var(--bg); }
   .view{ position:absolute; inset:0; overflow-y:auto; display:none; }
@@ -86,6 +94,12 @@
   /* ===== 공용 위젯 ===== */
   .card{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px; }
   .card h3{ margin:0 0 10px; font-size:14px; color:var(--navy); }
+  /* [2026.09] 사건처리 카드들 — 예전엔 "제목 텍스트" + 그 밑에 "~에서 열기" 버튼이 따로
+     있었는데, 제목 자체를 눌러서 바로 이동하도록 통합해 화면을 정리했다(사건처리화면). */
+  .ch-card-head-btn{ display:flex; align-items:center; gap:6px; width:100%; background:none; border:none;
+    padding:0; margin:0; font:inherit; font-size:12.5px; font-weight:700; color:var(--navy); cursor:pointer; text-align:left; }
+  .ch-card-head-btn:hover{ text-decoration:underline; }
+  .ch-card-head-arrow{ color:var(--sub); font-weight:400; }
   .empty-row{ color:var(--sub); font-size:13px; padding:10px 0; }
   .btn{ border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:7px;
     padding:6px 12px; font-size:12.5px; font-weight:600; }

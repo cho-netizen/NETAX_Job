@@ -34,13 +34,24 @@
       if (!cases.length){ box.innerHTML = '<div class="empty-row">마감이 임박한 작업이 없습니다.</div>'; return; }
       var html = '<table class="list-table"><tr><th>법정일</th><th>고객명</th><th>사건명</th><th>업무유형</th><th>상태</th></tr>';
       cases.forEach(function(c){
-        html += '<tr><td>' + esc(c.법정일) + '</td><td>' + esc(c.고객명) + '</td><td>' + esc(c.사건명) +
+        html += '<tr data-case-id="' + esc(c.id) + '" style="cursor:pointer;" title="눌러서 처리개요로 이동"><td>' + esc(c.법정일) + '</td><td>' + esc(c.고객명) + '</td><td>' + esc(c.사건명) +
           '</td><td>' + esc(c.업무유형||c.세목||'') + '</td><td>' + esc(c.상태) + '</td></tr>';
       });
       html += '</table>';
       box.innerHTML = html;
     }).catch(function(e){ document.getElementById('dashDeadlines').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
+
+  // [2026.09] 대시보드에서 마감임박 사건을 클릭하면 바로 그 사건의 처리 화면(사건처리 = 이
+  // 사건의 대시보드)으로 이동한다 — 예전엔 그냥 표만 보여주고 끝이라 다시 작업관리에서
+  // 이름으로 찾아야 했다.
+  document.getElementById('dashDeadlines').addEventListener('click', function(e){
+    var tr = e.target.closest('tr[data-case-id]');
+    if (!tr) return;
+    var caseId = tr.getAttribute('data-case-id');
+    if (typeof goToView_ === 'function') goToView_('casehandling');
+    if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(caseId);
+  });
 
   function loadDashBookings(){
     callGas('list_bookings', {}).then(function(res){

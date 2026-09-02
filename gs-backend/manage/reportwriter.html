@@ -34,6 +34,9 @@
   }
   #toolbar button:hover{background:#454e60;}
   #toolbar button.iconbtn{ padding:7px 11px; font-size:15px; }
+  #rwCaseBar button{ background:#333a48; color:#fff; border:1px solid #4a5268; border-radius:4px;
+    padding:4px 10px; font-size:12px; cursor:pointer; font-family:inherit; }
+  #rwCaseBar button:hover{ background:#454e60; }
   #toolbar button.stepper-btn{
     color:#fff; border:none; cursor:pointer; font-family:inherit; line-height:1;
     padding:7px 11px; font-size:15px;
@@ -381,6 +384,7 @@
     #rwRoot{ display:block !important; height:auto !important; }
 
     #toolbar{display:none !important;}
+    #rwCaseBar{display:none !important;}
     #workspace{height:auto; display:block;}
     #editorPane{display:none !important;}
     #paneDivider{display:none !important;}
@@ -949,6 +953,13 @@
 
 <div class="view" id="view-reportwriter">
 <div id="rwRoot">
+
+<div id="rwCaseBar" style="flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:8px 16px; background:#262b35; color:#e8e8ec; font-size:12.5px; border-bottom:1px solid #3a4152; flex-wrap:wrap;">
+  <span style="color:#a8afc0;">🔗 사건연결</span>
+  <select id="rwCaseSelect" style="min-width:200px; max-width:320px; background:#2b3040; color:#fff; border:1px solid #4a5268; border-radius:4px; padding:5px 8px; font-size:12.5px; font-family:inherit;"><option value="">사건 선택 안 함</option></select>
+  <button type="button" id="rwBackToCaseBtn">↩ 처리개요로</button>
+  <span id="rwCaseReports" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;"></span>
+</div>
 
 <div id="toolbar">
   <div id="docStepper" style="position:relative; display:flex; border:1px solid #4a5268; border-radius:4px; overflow:visible;">
@@ -3131,6 +3142,10 @@ var rwLoaded = false;
 function initReportWriter(){
   if (rwLoaded) return;
   rwLoaded = true;
+  // [2026.09 버그수정] "문서작성에서 처리개요로 버튼이 안 먹는다" — rwInitCaseBar_()를
+  // 맨 아래서 불렀더니, 그 앞의 에디터 초기화(IndexedDB 복원 등) 중 하나가 걸리면 사건연결
+  // 바 자체가 아예 안 만들어졌다. 에디터 상태와 무관하게 항상 먼저 실행되도록 맨 위로 옮김.
+  rwInitCaseBar_();
   hydrateDocsFromIdb_();
   refreshDocSelect();
   loadSelectedIntoEditor();
@@ -3141,6 +3156,71 @@ function initReportWriter(){
     setLayoutMode('preview');
   }
   updatePreviewControlsPosition();
+}
+
+// [2026.09] 법령조회·세액계산은 상단에 사건연결 드롭다운이 있어서 왼쪽 메뉴로 바로 들어와도
+// 사건을 골라 이어서 작업할 수 있는데, 이 화면은 그게 없어서 casehandling.html을 거쳐야만
+// 사건별 문서를 열 수 있었다 — 지적받아 추가. 목록·열기 로직은 casehandling.html의
+// chLoadMyReports_와 같은 방식(getCustomerRootPath_ 기반 "보고서" 하위폴더 조회)이다.
+var rwCases_ = [];
+var rwCasesLoadPromise_ = null; // goToReportWriter_가 드롭다운 값을 맞출 때 이 로딩이 끝나길 기다리는 용도
+function rwInitCaseBar_(){
+  var sel = document.getElementById('rwCaseSelect');
+  if (!sel || sel.dataset.inited) return rwCasesLoadPromise_;
+  sel.dataset.inited = '1';
+  rwCasesLoadPromise_ = callGas('work_get_cases', {}).then(function(res){
+    rwCases_ = res.cases || [];
+    sel.innerHTML = '<option value="">사건 선택 안 함</option>' +
+      rwCases_.slice().sort(function(a, b){ return (a.고객명 || '').localeCompare(b.고객명 || ''); }).map(function(c){
+        return '<option value="' + c.id + '">' + escapeHtml(c.고객명 || '') + ' · ' + escapeHtml(c.사건명 || '') + '</option>';
+      }).join('');
+    return rwCases_;
+  }).catch(function(){ return rwCases_; });
+  sel.addEventListener('change', function(){
+    rwRenderCaseReports_(sel.value);
+  });
+  // [2026.09] 다른 화면들처럼 이 화면도 처리개요로 바로 돌아가는 버튼이 있어야 한다는 지적.
+  document.getElementById('rwBackToCaseBtn').addEventListener('click', function(){
+    if (typeof goToView_ === 'function') goToView_('casehandling');
+    if (sel.value && typeof goToCaseHandling_ === 'function') goToCaseHandling_(sel.value);
+  });
+  return rwCasesLoadPromise_;
+}
+
+function rwRenderCaseReports_(caseId){
+  var box = document.getElementById('rwCaseReports');
+  if (!box) return;
+  if (!caseId){ box.innerHTML = ''; return; }
+  var c = rwCases_.filter(function(x){ return x.id === caseId; })[0];
+  if (!c){ box.innerHTML = ''; return; }
+  box.textContent = '불러오는 중…';
+  var folderName = (c.고객명 + ' ' + c.사건명).trim();
+  getCustomerRootPath_().then(function(basePath){
+    return callGas('listFolder', { path: basePath.concat([folderName, '보고서']) });
+  }).then(function(res){
+    if (!res || res.error){ box.textContent = (res && res.error) || '불러오지 못했습니다.'; return; }
+    var files = (res.files || []).filter(function(f){ return /\.html?$/i.test(f.name); });
+    box.innerHTML = '';
+    var newBtn = document.createElement('button');
+    newBtn.type = 'button';
+    newBtn.textContent = '✍ 새 문서';
+    newBtn.addEventListener('click', function(){ goToReportWriter_(caseId, { saveFolderId: res.folderId, saveFileName: folderName }); });
+    box.appendChild(newBtn);
+    files.forEach(function(f){
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = f.name;
+      btn.title = '이 문서 편집';
+      btn.addEventListener('click', function(){ goToReportWriter_(caseId, { fileId: f.id }); });
+      box.appendChild(btn);
+    });
+    if (!files.length){
+      var empty = document.createElement('span');
+      empty.style.color = '#a8afc0';
+      empty.textContent = '저장된 문서 없음';
+      box.appendChild(empty);
+    }
+  }).catch(function(){ box.textContent = '불러오지 못했습니다.'; });
 }
 
 // 사건처리 화면(casehandling.html)의 "✍ 새 문서 작성"/"✍ 편집" 버튼에서 호출하는 진입점 —
@@ -3157,6 +3237,15 @@ function goToReportWriter_(caseId, opts){
     pendingSaveFolderId = opts.saveFolderId;
     pendingSaveFolderName = opts.saveFileName || null;
     updateSaveToDriveButton();
+  }
+  // [2026.09] 사건연결 드롭다운도 같이 맞춰서, casehandling.html에서 바로 넘어와도
+  // "↩ 처리개요로" 버튼이 어느 사건인지 알 수 있게 한다(드롭다운 옵션이 아직 로딩 중일
+  // 수 있어 rwCasesLoadPromise_가 끝난 뒤에 값을 넣는다).
+  if (caseId) {
+    (rwCasesLoadPromise_ || rwInitCaseBar_() || Promise.resolve()).then(function(){
+      var sel = document.getElementById('rwCaseSelect');
+      if (sel) sel.value = caseId;
+    });
   }
 }
 </script>

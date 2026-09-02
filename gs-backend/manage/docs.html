@@ -13,6 +13,11 @@
 </style>
 
 <div class="view" id="view-docs">
+  <div style="display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--panel);">
+    <label style="font-size:12px; color:var(--sub);">🔗 사건연결</label>
+    <select id="docsCaseSelect" style="min-width:220px; max-width:360px;"><option value="">사건을 선택하면 그 사건 폴더로 바로 이동합니다</option></select>
+    <button type="button" id="docsBackToCaseBtn" class="ghost-btn">↩ 처리개요로</button>
+  </div>
   <div class="docs-toolbar">
     <button type="button" id="docsBtnUp" class="ghost-btn" title="상위 폴더">⬆ 상위</button>
     <div class="docs-breadcrumb" id="docsBreadcrumb"></div>
@@ -211,6 +216,7 @@
   var docsCurrentListing = null;
   var docsLoaded = false;
   var docsSelectedIds = {}; // { fileId: true } — 스캔/PDF관리로 한번에 여러 개 넘길 때 씀. 폴더 이동 시 비운다.
+  var docsSelectedCaseId_ = null; // "↩ 처리개요로" 버튼용 — 지금 보고 있는 폴더가 어느 사건인지(docsNavigate에서 갱신).
 
   // pdf.js는 실제 렌더링을 별도 워커에서 돌리므로, 워커 스크립트 위치를 지정해줘야 한다
   // (PDF 관리의 텍스트추출·서명 정밀배치 미리보기에 사용).
@@ -219,9 +225,66 @@
   }
 
   function initDocs(){
-    if (docsLoaded) return;
-    docsLoaded = true;
-    docsNavigate([]);
+    // [2026.09 버그수정] docsLoaded는 chEvOpenDocsBtn/chDocsWriterOpenBtn(casehandling.html)
+    // 이 레이스컨디션을 막으려고 여기 오기 전에 미리 true로 세팅해두는 경우가 있다 — 그래서
+    // "docsLoaded면 무조건 return"으로 짜여있으면 그 경로로 처음 들어올 때 아래
+    // docsInitCaseSelect_()(사건연결 드롭다운·뒤로가기 버튼 연결)가 전혀 실행되지 않는 버그가
+    // 있었다("증빙확보에서 처리개요로 버튼이 안 먹는다"). 최초 1회만 할 일(docsNavigate([]))과
+    // 매번 해도 되는 일(docsInitCaseSelect_, 자체적으로 중복실행 방지)을 분리한다.
+    if (!docsLoaded){
+      docsLoaded = true;
+      docsNavigate([]);
+    }
+    docsInitCaseSelect_();
+  }
+
+  // [2026.09] 법령조회·세액계산에는 상단에 "사건연결" 드롭다운이 있어서 사건을 바로 골라
+  // 들어갈 수 있는데, 증빙확보(왼쪽 메뉴로 바로 들어오면)는 그게 없어서 폴더를 일일이
+  // 찾아 들어가야 했다 — 지적받아 추가. docsGetAllCases_()로 이미 있는 사건 목록 캐시를
+  // 재사용하고, 고르면 chRenderEvidenceSummary_의 "증빙확보에서 열기"와 같은 방식으로
+  // 그 사건 폴더로 바로 이동한다.
+  function docsInitCaseSelect_(){
+    var sel = document.getElementById('docsCaseSelect');
+    if (!sel || sel.dataset.inited) return; // initDocs()가 여러 번 불려도 리스너가 중복 등록되지 않게
+    sel.dataset.inited = '1';
+    docsGetAllCases_().then(function(cases){
+      sel.innerHTML = '<option value="">사건을 선택하면 그 사건 폴더로 바로 이동합니다</option>' +
+        cases.slice().sort(function(a, b){ return (a.고객명 || '').localeCompare(b.고객명 || ''); }).map(function(c){
+          return '<option value="' + c.id + '">' + escapeHtml(c.고객명 || '') + ' · ' + escapeHtml(c.사건명 || '') + ' (' + escapeHtml(c.상태 || '') + ')</option>';
+        }).join('');
+    });
+    sel.addEventListener('change', function(){
+      var caseId = sel.value;
+      if (!caseId) return;
+      docsGetAllCases_().then(function(cases){
+        var c = cases.filter(function(x){ return x.id === caseId; })[0];
+        if (!c) return;
+        getCustomerRootPath_().then(function(basePath){
+          docsNavigate(basePath.concat([(c.고객명 + ' ' + c.사건명).trim()]));
+        });
+      });
+    });
+    document.getElementById('docsBackToCaseBtn').addEventListener('click', function(){
+      if (typeof goToView_ === 'function') goToView_('casehandling');
+      if (docsSelectedCaseId_ && typeof goToCaseHandling_ === 'function') goToCaseHandling_(docsSelectedCaseId_);
+    });
+  }
+
+  // [2026.09] "↩ 처리개요로" 버튼이 지금 보고 있는 폴더에 맞는 사건을 들고 돌아가려면, 폴더를
+  // 옮길 때마다 지금 위치가 어느 사건인지 다시 계산해둬야 한다. docsRenderCaseEvidencePanel_와
+  // 같은 방식(고객사건 루트 바로 밑 폴더명 = "고객명 사건명")으로 매칭하되, "보고서"·"제출자료"
+  // 처럼 사건 폴더 한 단계 안쪽까지 들어가 있어도 찾을 수 있게 부모 폴더도 같이 검사한다.
+  function docsSyncSelectedCase_(){
+    var sel = document.getElementById('docsCaseSelect');
+    getCustomerRootPath_().then(function(basePath){
+      var rel = docsPath.slice(basePath.length); // 고객사건 루트 밑으로 몇 단계 들어왔는지
+      if (rel.length < 1 || rel.length > 2){ docsSelectedCaseId_ = null; if (sel) sel.value = ''; return; }
+      docsGetAllCases_().then(function(cases){
+        var c = cases.filter(function(x){ return (x.고객명 + ' ' + x.사건명).trim() === rel[0]; })[0];
+        docsSelectedCaseId_ = c ? c.id : null;
+        if (sel) sel.value = c ? c.id : '';
+      });
+    });
   }
 
   function docsNavigate(path){
@@ -238,6 +301,7 @@
       renderDocsList();
       updateScanTargetFolderLabel_();
       docsRenderCaseEvidencePanel_();
+      docsSyncSelectedCase_();
     }).catch(function(){ listEl.innerHTML = '<div class="log-empty">불러오지 못했습니다.</div>'; });
   }
 
@@ -273,7 +337,11 @@
         basePath.every(function(seg, i){ return docsPath[i] === seg; });
       if (!isUnderBase){ panel.style.display = 'none'; panel.innerHTML = ''; return; }
       var folderName = docsPath[docsPath.length - 1];
-      docsGetAllCases_().then(function(cases){
+      // [2026.09 버그수정] "처리개요엔 요청자료 8건인데 증빙확보엔 하나도 없다" — 여기 캐시가
+      // docsInitCaseSelect_()가 맨 처음 채운 뒤로는 새로고침 없이 계속 재사용됐다(force 없이
+      // 호출), 그래서 사건 생성 이후(예: 필요증빙 템플릿 적용) 캐시가 낡은 채로 남아있었다.
+      // 폴더를 옮길 때마다(=이 함수가 불릴 때마다) 매번 새로 받아온다.
+      docsGetAllCases_(true).then(function(cases){
         if (docsPath !== pathAtCall) return;
         var c = cases.filter(function(x){ return (x.고객명 + ' ' + x.사건명).trim() === folderName; })[0];
         if (!c){ panel.style.display = 'none'; panel.innerHTML = ''; return; }

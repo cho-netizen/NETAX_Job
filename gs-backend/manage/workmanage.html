@@ -28,13 +28,14 @@
   var workCaseDetail = document.getElementById('workCaseDetail');
   var workCaseFilterStatus = document.getElementById('workCaseFilterStatus');
 
-  var WORK_SEMOK_LABELS = { transfer: '양도', gift: '증여', inheritance: '상속', objection: '불복' };
+  var WORK_SEMOK_LABELS = { transfer: '양도', gift: '증여', inheritance: '상속', acquisition: '취득', objection: '불복' };
   var WORK_STATUS_OPTIONS = ['진행', '보류', '완료'];
   var WORK_SUBTASK_STATUS_OPTIONS = ['대기', '진행', '보류', '완료'];
   var WORK_UPTYPE_OPTIONS_ = {
     transfer: ['신고', '상담'],
     gift: ['신고', '상담'],
     inheritance: ['신고', '상담'],
+    acquisition: ['신고', '상담'],
     objection: ['이의신청', '심사청구', '심판청구', '행정소송', '경정청구', '과세적부', '해명자료']
   };
   var WORK_MANUAL_DEADLINE_TYPES_ = ['상담', '해명자료'];

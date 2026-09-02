@@ -1,5 +1,5 @@
 <div class="view" id="view-casehandling">
-  <div class="view-head"><h2>🧭 사건처리</h2><p style="color:var(--sub); font-size:12.5px; margin:2px 0 0;">사건 하나를 골라 처리방향·처리대상을 정하고, 작업일지를 남깁니다. 증빙·법령관리·my.netax.kr 연동은 각 카드에서 요약만 보고 실제 작업은 해당 화면에서 합니다.</p></div>
+  <div class="view-head"><h2>🧭 처리개요</h2><p style="color:var(--sub); font-size:12.5px; margin:2px 0 0;">사건 하나를 골라 처리방향·처리대상을 정하고, 작업일지를 남깁니다. 법령조회·증빙확보·세액계산·문서작성·my.netax.kr 연동은 각 카드에서 요약만 보고 실제 작업은 해당 화면에서 합니다.</p></div>
   <div class="view-body">
     <div class="card">
       <label style="display:block; font-size:12px; color:var(--sub); margin-bottom:5px;">처리할 사건</label>
@@ -65,9 +65,6 @@
       return;
     }
     chBodyEl.innerHTML =
-      (c.폴더ID
-        ? '<div style="margin-bottom:10px;"><a href="https://drive.google.com/drive/folders/' + encodeURIComponent(c.폴더ID) + '" target="_blank" rel="noopener" class="ghost-btn" style="text-decoration:none; display:inline-block;">📁 이 사건 폴더 열기</a></div>'
-        : '') +
       '<div class="card">' +
       '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:8px;">📋 사건처리개시 — 처리대상 · 처리방향</div>' +
       '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">처리대상 <span style="font-weight:400;">(무엇을 처리하는지)</span></label>' +
@@ -77,28 +74,29 @@
       '<div style="margin-top:8px;"><button type="button" id="chSaveTarget" class="save-btn">저장</button></div>' +
       '</div>' +
       '<div class="card">' +
+      '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:10px;">🔗 my.netax.kr 고객포털</div>' +
+      '<div id="chMyPortalBody">불러오는 중…</div>' +
+      '</div>' +
+      '<div class="card">' +
       '<div id="chLogToggle" style="font-size:12.5px; color:var(--sub); margin-bottom:8px; cursor:pointer; width:fit-content;" title="눌러서 작업일지 추가">📓 작업일지 ' + (c.작업일지 || []).length + '건</div>' +
       '<div id="chNewLogFormWrap" style="display:none; gap:6px; margin-bottom:10px; flex-wrap:wrap;"></div>' +
       '<div id="chLogList"></div>' +
       '</div>' +
       '<div class="card">' +
-      '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:8px;">⚖️ 법령관리</div>' +
-      '<div style="font-size:13px; color:var(--sub); margin-bottom:10px;">' + ((c.법령예규판례 || []).length ? ('첨부된 자료 ' + (c.법령예규판례 || []).length + '건') : '아직 첨부된 자료가 없습니다.') + '</div>' +
-      '<button type="button" id="chLawOpenBtn" class="ghost-btn">⚖️ 법령관리에서 열기</button>' +
+      '<button type="button" id="chLawOpenBtn" class="ch-card-head-btn">⚖️ 법령조회 <span class="ch-card-head-arrow">›</span></button>' +
+      '<div style="font-size:13px; color:var(--sub); margin-top:6px;">' + ((c.법령예규판례 || []).length ? ('첨부된 자료 ' + (c.법령예규판례 || []).length + '건') : '아직 첨부된 자료가 없습니다.') + '</div>' +
       '</div>' +
       '<div class="card">' +
-      '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:8px;">🧮 세액계산</div>' +
-      '<div style="font-size:13px; color:var(--sub); margin-bottom:10px;">' + ((c.세액계산결과 || []).length ? ('저장된 계산 ' + (c.세액계산결과 || []).length + '건') : '아직 저장된 계산이 없습니다.') + '</div>' +
-      '<button type="button" id="chTaxCalcOpenBtn" class="ghost-btn">🧮 세액계산 열기</button>' +
+      '<button type="button" id="chEvOpenDocsBtn" class="ch-card-head-btn">📁 증빙확보 <span class="ch-card-head-arrow">›</span></button>' +
+      '<div id="chEvSummary" style="font-size:13px; color:var(--sub); margin-top:6px;"></div>' +
       '</div>' +
       '<div class="card">' +
-      '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:8px;">📁 증빙</div>' +
-      '<div id="chEvSummary" style="font-size:13px; color:var(--sub); margin-bottom:10px;"></div>' +
-      '<button type="button" id="chEvOpenDocsBtn" class="ghost-btn">📁 증빙관리에서 열기</button>' +
+      '<button type="button" id="chTaxCalcOpenBtn" class="ch-card-head-btn">🧮 세액계산 <span class="ch-card-head-arrow">›</span></button>' +
+      '<div id="chTaxCalcList" style="margin-top:6px;"></div>' +
       '</div>' +
       '<div class="card">' +
-      '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:10px;">🔗 my.netax.kr 고객포털</div>' +
-      '<div id="chMyPortalBody">불러오는 중…</div>' +
+      '<button type="button" id="chDocsWriterOpenBtn" class="ch-card-head-btn">✍ 문서작성 <span class="ch-card-head-arrow">›</span></button>' +
+      '<div id="chMyReports" style="margin-top:6px;"><div class="log-empty">불러오는 중…</div></div>' +
       '</div>';
 
     document.getElementById('chSaveTarget').addEventListener('click', function(){
@@ -121,8 +119,38 @@
     document.getElementById('chTaxCalcOpenBtn').addEventListener('click', function(){
       if (typeof goToTaxCalc_ === 'function') goToTaxCalc_(c.id);
     });
+    // [2026.09] 예전엔 카드 안 "📁 보고서 폴더 열기"가 구글드라이브를 새 탭으로 열었는데,
+    // 다른 카드들처럼 앱 밖으로 안 나가도록 증빙확보 화면 안에서 이 사건의 "보고서" 하위폴더로
+    // 바로 이동시킨다(chEvOpenDocsBtn과 같은 패턴, 경로만 '보고서' 한 단계 더 들어감).
+    document.getElementById('chDocsWriterOpenBtn').addEventListener('click', function(){
+      getCustomerRootPath_().then(function(basePath){
+        docsLoaded = true;
+        if (typeof goToView_ === 'function') goToView_('docs');
+        if (typeof docsNavigate === 'function') docsNavigate(basePath.concat([(c.고객명 + ' ' + c.사건명).trim(), '보고서']));
+      });
+    });
+    chRenderTaxCalcList_(c);
     chRenderEvidenceSummary_(c);
+    chLoadMyReports_(c);
     chInitMyPortal_(c);
+  }
+
+  // [2026.09] 세액계산 카드 — 예전엔 "저장된 계산 N건"만 보여줬는데, 사건처리가 이 사건의
+  // 대시보드 역할을 하려면 건수보다 실제 계산 결과값이 보여야 한다는 피드백에 따라 건별
+  // 요약(세목·구분·계산일 + 결과 미리보기)을 나열한다. taxcalc.html의 renderTcSavedList_와
+  // 같은 표시 방식이되, 여긴 여러 카드 중 하나라 미리보기 길이를 더 짧게 자른다.
+  function chRenderTaxCalcList_(c){
+    var el = document.getElementById('chTaxCalcList');
+    if (!el) return;
+    var list = c.세액계산결과 || [];
+    if (!list.length){ el.innerHTML = '<div class="log-empty">아직 저장된 계산이 없습니다.</div>'; return; }
+    el.innerHTML = list.slice().reverse().map(function(entry){
+      var preview = String(entry.요약 || '').replace(/\s+/g, ' ').trim();
+      if (preview.length > 120) preview = preview.slice(0, 120) + '…';
+      return '<div class="log-entry"><div class="log-date">' + escapeHtml(fmtDateShort_(entry.계산일) || entry.계산일 || '') + '</div>' +
+        '<div class="log-text"><b>' + escapeHtml(entry.세목 || '') + ' · ' + escapeHtml(entry.구분 || '') + '</b><br>' +
+        '<span style="color:var(--sub); font-size:12.5px;">' + escapeHtml(preview) + '</span></div></div>';
+    }).join('');
   }
 
   function chSaveLog_(caseId, newLog){
@@ -318,12 +346,7 @@
         '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:12px;">' +
         '<input type="text" id="chMyNewItem" placeholder="추가로 요청할 자료명" style="flex:1; min-width:140px;">' +
         '<button type="button" id="chMyAddItemBtn" class="save-btn">추가</button>' +
-        '</div>' +
-        '<div style="margin-top:16px; padding-top:12px; border-top:1px dashed var(--line);">' +
-        '<div style="font-size:12px; color:var(--sub); margin-bottom:6px;">보고서 열람 <span style="font-weight:400;">(고객이 my.netax.kr에서 이 폴더의 .html 파일을 봅니다)</span></div>' +
-        '<div id="chMyReports"><div class="log-empty">불러오는 중…</div></div>' +
         '</div>';
-      chLoadMyReports_(c);
 
       document.getElementById('chMyCopyLinkBtn').addEventListener('click', function(){
         if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function(){ showToast('링크를 복사했습니다.', 'success'); });
@@ -360,14 +383,14 @@
     return callGas('listFolder', { path: basePath.concat([folderName, '보고서']) }).then(function(res){
       if (res.error){ box.innerHTML = '<div class="log-empty">' + escapeHtml(res.error) + '</div>'; return; }
       var files = res.files || [];
-      var openLink = '<a href="https://drive.google.com/drive/folders/' + encodeURIComponent(res.folderId) + '" target="_blank" rel="noopener" class="ghost-btn" style="text-decoration:none; display:inline-block; font-size:12px; margin-bottom:8px;">📁 보고서 폴더 열기</a>';
-      // [2026.09] 작성관리(report-writer)가 work.netax.kr을 새 창으로 여는 링크가 아니라 이 앱
-      // 안의 네이티브 화면(reportwriter.html)으로 이식됐으므로, <a href> 대신 버튼 + goToReportWriter_
-      // 호출로 바꿨다. saveFolderId(이 폴더 ID)를 넘기면 작성관리가 처음 저장할 때 이 폴더 안에
-      // 파일을 새로 만들고, 그 다음부터는 그 파일을 덮어쓰기 저장한다.
-      var newDocLink = '<button type="button" id="chNewReportBtn" class="ghost-btn" style="font-size:12px; margin-bottom:8px; margin-left:6px;">✍ 새 문서 작성</button>';
+      // [2026.09] "📁 보고서 폴더 열기"(구글드라이브 새 탭) 링크는 카드 제목 버튼(chDocsWriterOpenBtn,
+      // 증빙확보 화면 안에서 이 폴더로 바로 이동)으로 흡수했으므로 여기선 뺀다 — 작성관리
+      // (report-writer)도 work.netax.kr이 아니라 이 앱 안의 네이티브 화면(reportwriter.html)이라
+      // <a href> 대신 버튼 + goToReportWriter_ 호출을 쓴다. saveFolderId(이 폴더 ID)를 넘기면
+      // 작성관리가 처음 저장할 때 이 폴더 안에 파일을 새로 만들고, 그 다음부터는 덮어쓰기 저장한다.
+      var newDocLink = '<button type="button" id="chNewReportBtn" class="ghost-btn" style="font-size:12px; margin-bottom:8px;">✍ 새 문서 작성</button>';
       if (!files.length){
-        box.innerHTML = openLink + newDocLink + '<div class="log-empty">아직 올린 보고서가 없습니다. 위 폴더에 .html 파일을 넣으면 고객이 my.netax.kr에서 봅니다.</div>';
+        box.innerHTML = newDocLink + '<div class="log-empty">아직 올린 보고서가 없습니다.</div>';
       } else {
         var htmlFiles = files.filter(function(f){ return /\.html?$/i.test(f.name); });
         var otherFiles = files.filter(function(f){ return !/\.html?$/i.test(f.name); });
@@ -376,7 +399,7 @@
             ' <button type="button" class="chEditReportBtn ghost-btn" data-file-id="' + escapeHtml(f.id) + '" style="font-size:11px; padding:1px 7px; margin-left:6px;">✍ 편집</button>' +
             '</div></div>';
         }).join('');
-        box.innerHTML = openLink + newDocLink + rows +
+        box.innerHTML = newDocLink + rows +
           (otherFiles.length ? '<div style="font-size:12px; color:var(--sub); margin-top:6px;">그 외 파일(.html 아님, 고객에게 안 보임) ' + otherFiles.length + '건: ' + escapeHtml(otherFiles.map(function(f){ return f.name; }).join(', ')) + '</div>' : '');
       }
       var newBtn = document.getElementById('chNewReportBtn');

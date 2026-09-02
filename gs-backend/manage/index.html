@@ -9,8 +9,7 @@
 
   <div id="loginGate">
     <div class="login-box">
-      <h1>NETAX 관리</h1>
-      <p>비밀번호를 입력하세요.</p>
+      <h1>NETAX</h1>
       <input type="password" id="loginPw" placeholder="비밀번호" autocomplete="off">
       <button type="button" id="loginBtn">입장</button>
       <div class="login-err" id="loginErr"></div>
@@ -21,20 +20,20 @@
     <nav id="sideMenu">
       <div id="sideMenuIcons"></div>
       <div id="sideMenuInner">
-        <div class="menu-brand">NETAX 관리</div>
+        <div class="menu-brand">NETAX</div>
 
         <div class="menu-group-label">관리</div>
         <div class="menu-item active" data-view="dashboard">📊 대시보드</div>
         <div class="menu-item" data-view="booking">📅 예약관리</div>
-        <div class="menu-item" data-view="workmanage">🗂 작업관리</div>
-        <div class="menu-item" data-view="clientmanage">👤 고객관리</div>
+        <div class="menu-item" data-view="workmanage">📌 작업관리</div>
+        <div class="menu-item" data-view="clientmanage">🙋 고객관리</div>
 
         <div class="menu-group-label">처리</div>
-        <div class="menu-item" data-view="casehandling">🧭 사건처리</div>
-        <div class="menu-item" data-view="lawsearch">⚖️ 법령관리</div>
-        <div class="menu-item" data-view="docs">📁 증빙관리</div>
+        <div class="menu-item" data-view="casehandling">🧭 처리개요</div>
+        <div class="menu-item" data-view="lawsearch">⚖️ 법령조회</div>
+        <div class="menu-item" data-view="docs">📁 증빙확보</div>
         <div class="menu-item" data-view="taxcalc">🧮 세액계산</div>
-        <div class="menu-item" data-view="reportwriter">✍ 작성관리</div>
+        <div class="menu-item" data-view="reportwriter">✍ 문서작성</div>
         <div class="menu-item" data-view="reports">📖 열람관리</div>
 
         <div class="menu-group-label">메모</div>
@@ -140,18 +139,64 @@
     // 고쳤다 — 각 .menu-item의 이모지만 뽑아 접힌 상태에서도 보이는 아이콘 목록을 따로 만들고,
     // 아이콘을 누르면 펼치지 않고 바로 그 메뉴로 이동한다(원래 항목의 클릭 로직을 그대로
     // item.click()으로 재사용 — initNav()가 나중에 리스너를 붙여도 순서 상관없이 동작함).
-    document.querySelectorAll('#sideMenuInner .menu-item').forEach(function(item){
-      var icon = (item.textContent || '').trim().split(/\s+/)[0] || '·';
+    // [2026.09] 펼쳤을 때 항목마다 줄이 안 맞던 문제 — 이모지+텍스트가 한 덩어리 텍스트라
+    // 이모지 폭이 제각각이면(⚖️ vs 👤 vs 🧭 등) 그 뒤 글자 시작 위치도 따라 흔들렸다. 이모지와
+    // 라벨을 별도 span으로 나눠 이모지 칸 폭을 고정한다(.mi-icon/.mi-label, style.html 참고).
+    // [2026.09] 접힌 상태에서 그룹(관리/처리/메모) 구분이 전혀 안 보이던 것 — .menu-item만
+    // 훑던 걸 #sideMenuInner의 모든 자식(그룹 라벨 포함)을 순서대로 훑도록 바꿔서, 그룹 라벨을
+    // 만날 때마다(첫 그룹 앞은 제외) 아이콘 목록에도 옅은 구분선을 하나 끼워 넣는다.
+    var iconsContainer = document.getElementById('sideMenuIcons');
+    Array.prototype.forEach.call(document.getElementById('sideMenuInner').children, function(child, idx){
+      if (child.classList.contains('menu-group-label')){
+        if (idx > 0){
+          var divider = document.createElement('div');
+          divider.className = 'menu-icon-divider';
+          iconsContainer.appendChild(divider);
+        }
+        return;
+      }
+      if (!child.classList.contains('menu-item')) return;
+      var item = child;
+      var fullText = (item.textContent || '').trim();
+      var parts = fullText.split(/\s+/);
+      var icon = parts[0] || '·';
+      var label = parts.slice(1).join(' ');
+      item.textContent = '';
+      var iconSpan = document.createElement('span');
+      iconSpan.className = 'mi-icon';
+      iconSpan.textContent = icon;
+      var labelSpan = document.createElement('span');
+      labelSpan.className = 'mi-label';
+      labelSpan.textContent = label;
+      item.appendChild(iconSpan);
+      item.appendChild(labelSpan);
+
+      // 접힌 상태에서도 이모지만 보이는 아이콘 목록(item.click()으로 원래 메뉴 클릭을 그대로 재사용).
       var btn = document.createElement('div');
       btn.className = 'menu-icon' + (item.classList.contains('soon') ? ' soon' : '');
       btn.textContent = icon;
-      btn.title = item.textContent.trim();
+      btn.title = fullText;
       btn.addEventListener('click', function(e){
         e.stopPropagation();
         item.click();
       });
-      document.getElementById('sideMenuIcons').appendChild(btn);
+      iconsContainer.appendChild(btn);
     });
+
+    // [2026.09] 펼친 폭이 210px로 고정이라 텍스트보다 쓸데없이 넓었던 것 — 가장 긴 항목의
+    // 실제 너비만큼만 펼쳐지도록, 잠깐 화면에 안 보이게 펼쳐서 폭을 재고 그 값을 CSS 변수로
+    // 적용한다(style.html의 --side-expanded-w 참고).
+    (function(){
+      var innerEl = document.getElementById('sideMenuInner');
+      var prevDisplay = innerEl.style.display, prevVisibility = innerEl.style.visibility;
+      innerEl.style.visibility = 'hidden';
+      innerEl.style.display = 'block';
+      var measured = innerEl.scrollWidth;
+      innerEl.style.display = prevDisplay;
+      innerEl.style.visibility = prevVisibility;
+      var fitWidth = Math.min(Math.max(measured + 2, 120), 260);
+      document.documentElement.style.setProperty('--side-expanded-w', fitWidth + 'px');
+    })();
   </script>
 
   <?!= include_('manage/script') ?>

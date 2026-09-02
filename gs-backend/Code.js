@@ -16123,8 +16123,45 @@ const WORK_HEADERS = ['id', '고객ID', '고객명', '사건명', '세목', '업
 // 상담·해명자료는 정해진 법정기한이 없어 자동계산하지 않고 사용자가 직접 입력한 값을 쓴다.
 const WORK_DEADLINE_MONTHS_ = { transfer: 2, gift: 3, inheritance: 6 };
 const WORK_DEADLINE_DAYS_ = { 이의신청: 90, 심사청구: 90, 심판청구: 90, 행정소송: 90, 과세적부: 30 };
+// [2026.09] 취득세는 다른 3개 세목과 달리 "말일 기준 N개월"이 아니라 취득일로부터 며칠
+// 이내(지방세법 §20① 유상취득 원칙)라서 세목 단위로 별도 관리한다. 상속·증여로 인한 취득의
+// 특례기한은 다루지 않음(그 경우는 이미 상속/증여 세목으로 등록되므로).
+const WORK_DEADLINE_DAYS_BY_SEMOK_ = { acquisition: 60 };
 const WORK_DEADLINE_YEARS_ = { 경정청구: 5 };
 const WORK_MANUAL_DEADLINE_TYPES_ = ['상담', '해명자료'];
+
+// [2026.09] 필요증빙 템플릿(1단계 파일럿, 양도소득세만) — "사건처리 시작 시 세목별로 늘
+// 필요한 증빙을 매번 손으로 입력하지 말고, 세액계산기가 이미 아는 노하우를 재사용해
+// 자동으로 깔아주자"는 요청에 따라 만듦. 세액계산기 AI 도구 스키마(calculate_transfer_tax
+// 등, toolCalculateBuildingStandardPrice 근처의 TAX_TOOL_CATEGORIES_ 참고)가 세목별로
+// 필요한 입력값을 가장 정확하게 알고 있지만, 그 스키마는 조문 근거 위주의 AI용 설명이라
+// 78개 항목을 그대로 고객용 체크리스트로 쓸 수는 없다 — 그중 "거의 모든 사건에 공통으로
+// 필요한 핵심 증빙"만 세무사가 직접 골라 실제 증빙명으로 옮겨적은 것. 세부 갈래(다주택·
+// 비과세 특례 등)별 세분화는 이 파일럿 결과를 보고 확장할지 결정한다.
+const WORK_EVIDENCE_TEMPLATES_ = {
+  transfer: [
+    '양도 매매계약서(양도가액·양도일)',
+    '취득 당시 매매계약서 또는 취득가액 증빙',
+    '등기부등본(취득일·소유권 이전 이력)',
+    '취득세 영수증',
+    '중개보수 등 필요경비 영수증',
+    '주민등록초본(전입·전출 이력, 거주기간 확인용)',
+    '가족관계증명서(세대원 구성 확인)',
+    '다른 주택 보유현황(1세대1주택 비과세 판정용)'
+  ]
+};
+
+// 사건 시작 시 증빙목록 초기값을 만든다 — 템플릿이 있는 세목(현재 양도소득세만)이고
+// 업무유형이 '신고'(상담은 아직 본격적인 증빙 확보 단계가 아니므로 제외)일 때만 채우고,
+// 그 외엔 기존과 동일하게 빈 배열로 시작한다. 항목 형태는 casehandling.html의
+// chAddRequestedItem_이 만드는 것과 동일(source:'requested', status:'미확보').
+function work_buildEvidenceFromTemplate_(seMok, upType) {
+  const labels = (upType === '신고' && WORK_EVIDENCE_TEMPLATES_[seMok]) || [];
+  const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  return labels.map(function (label, i) {
+    return { id: 'ev_' + Date.now() + '_' + i, source: 'requested', label: label, note: '', status: '미확보', 요청일: today };
+  });
+}
 
 // 시트를 열고, 처음 만드는 거면 헤더까지 써준다. 이미 있는 시트인데 WORK_HEADERS에 새 컬럼이
 // 추가된 상태(예: 고객ID 신규 도입)면, 기존 데이터는 그대로 두고 빠진 헤더만 뒤에 이어붙인다
@@ -16178,6 +16215,12 @@ function work_calcDeadline_(seMok, upType, baseDateStr) {
   // 경정청구 — 법정신고기한(기준일)으로부터 N년이 되는 날(같은 월/일).
   if (WORK_DEADLINE_YEARS_[upType] !== undefined) {
     const d = new Date(base.getFullYear() + WORK_DEADLINE_YEARS_[upType], base.getMonth(), base.getDate());
+    return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  // 취득세 — 말일 정렬 없이 취득일로부터 며칠(WORK_DEADLINE_DAYS_BY_SEMOK_) 그대로 더한다.
+  if (WORK_DEADLINE_DAYS_BY_SEMOK_[seMok] !== undefined) {
+    const d = new Date(base);
+    d.setDate(d.getDate() + WORK_DEADLINE_DAYS_BY_SEMOK_[seMok]);
     return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   }
 
@@ -16325,7 +16368,7 @@ function work_createCase(params) {
     newRow[col.하위업무] = '[]';
     newRow[col.작업일지] = '[]';
     newRow[col.법령예규판례] = '[]';
-    newRow[col.증빙목록] = '[]';
+    newRow[col.증빙목록] = JSON.stringify(work_buildEvidenceFromTemplate_(seMok, upType));
     newRow[col.세액계산결과] = '[]';
     newRow[col.폴더ID] = work_getOrCreateCaseFolder_(고객명, 사건명);
     newRow[col.생성일] = now;
