@@ -39,6 +39,8 @@
     objection: ['이의신청', '심사청구', '심판청구', '행정소송', '경정청구', '과세적부', '해명자료']
   };
   var WORK_MANUAL_DEADLINE_TYPES_ = ['상담', '해명자료'];
+  // [2026.09] "기준일"이라는 추상 용어 대신 세목마다 실제로 부르는 이름을 그대로 쓴다.
+  var WORK_BASE_DATE_LABELS_ = { transfer: '양도일', gift: '증여일', inheritance: '상속일', acquisition: '취득일', objection: '처분일' };
 
   function workDeadlineFieldLabel_(upType){
     return WORK_MANUAL_DEADLINE_TYPES_.indexOf(upType) !== -1 ? '처리시한' : '법정일';
@@ -167,7 +169,7 @@
       '<label>업무유형<br><select id="wcNewUptype" style="width:100%;"></select></label>' +
       '<label>담당자<br><input type="text" id="wcNewAssignee" style="width:100%;" placeholder="(선택)"></label>' +
       '<label>의뢰일<br><div style="display:flex; gap:6px;"><input type="date" id="wcNewRequestDate" style="flex:1;"><button type="button" id="wcNewRequestDateToday" class="ghost-btn" style="padding:4px 10px; font-size:12px; white-space:nowrap;">오늘</button></div></label>' +
-      '<label>기준일 <span id="wcNewBaseDateHint" style="color:var(--sub); font-weight:400;">(양도일·증여일·사망일 등)</span><br><input type="date" id="wcNewBaseDate" style="width:100%;"></label>' +
+      '<div id="wcNewBaseDateWrap"><label><span id="wcNewBaseDateLabel">기준일</span><br><input type="date" id="wcNewBaseDate" style="width:100%;"></label></div>' +
       '<label id="wcNewManualDeadlineLabel" style="display:none;"><span id="wcNewManualDeadlineText">처리시한</span><br><input type="date" id="wcNewManualDeadline" style="width:100%;"></label>' +
       '<label>진행메모<br><textarea id="wcNewOverview" style="width:100%; min-height:60px; font-family:inherit; box-sizing:border-box;" placeholder="어떻게 처리할 계획인지">' + escapeHtml(prefill.개요 || '') + '</textarea></label>' +
       '<div style="display:flex; gap:8px; margin-top:8px;">' +
@@ -185,7 +187,15 @@
     }
     function onNewUptypeChange(){
       var manual = WORK_MANUAL_DEADLINE_TYPES_.indexOf(newUptypeSel.value) !== -1;
-      document.getElementById('wcNewBaseDateHint').textContent = newSemokSel.value === 'objection' ? '(고지서 수령일 등 기산일)' : '(양도일·증여일·사망일 등)';
+      document.getElementById('wcNewBaseDateLabel').textContent = WORK_BASE_DATE_LABELS_[newSemokSel.value] || '기준일';
+      // [2026.09] "작업관리에서 기준일을 없애고 사건개요서에 넣으면 작업관리가 되느냐"는
+      // 질문에 대한 답 — 사건개요서 양식이 있는 세목(현재 양도소득세)은 이 입력칸을 여기서
+      // 안 보여주고 처리개요의 사건개요서(양도일 칸, 기준일과 같은 값)에서만 입력한다.
+      // work_createCase는 기준일이 비어있으면 법정일도 비워둔 채 사건을 만들고, 나중에
+      // 사건개요서를 처음 저장할 때 work_updateCase가 그 시점에 법정일을 계산한다(필요증빙
+      // 템플릿과 같은 타이밍) — 작업관리 자체는 이 입력칸이 하나 없어질 뿐 그대로 동작한다.
+      var hasOverviewTemplate = typeof CH_CASE_OVERVIEW_FIELDS_ !== 'undefined' && !!CH_CASE_OVERVIEW_FIELDS_[newSemokSel.value];
+      document.getElementById('wcNewBaseDateWrap').style.display = hasOverviewTemplate ? 'none' : '';
       var manualLabel = document.getElementById('wcNewManualDeadlineLabel');
       manualLabel.style.display = manual ? '' : 'none';
       if (manual){
@@ -251,7 +261,7 @@
       '<input type="text" id="wcEditCaseName" placeholder="사건명" value="' + escapeHtml(c.사건명 || '') + '" style="font-weight:700; font-size:15px; width:160px;">' +
       '</div>' +
       '<div style="display:flex; gap:6px;">' +
-      '<button type="button" id="wcGoToProcess" class="ghost-btn" title="처리방향·작업일지·법령예규판례는 여기서">🧭 이 사건 처리하기</button>' +
+      '<button type="button" id="wcGoToProcess" class="ghost-btn" title="처리방향·작업일지·법령예규판례는 여기서">🧭 처리개요</button>' +
       '<button type="button" id="wcDeleteCase" class="ghost-btn" title="삭제">🗑 삭제</button>' +
       '</div>' +
       '</div>' +
@@ -260,12 +270,11 @@
       '<select id="wcEditUptype"></select>' +
       '<input type="text" id="wcEditAssignee" placeholder="담당자" value="' + escapeHtml(c.담당자 || '') + '" style="width:100px;">' +
       '<label style="font-size:12px; color:var(--sub);">의뢰일 <input type="date" id="wcEditRequestDate" value="' + escapeHtml(c.의뢰일 || '') + '"> <button type="button" id="wcEditRequestDateToday" class="ghost-btn" style="padding:2px 8px; font-size:11px;">오늘</button></label>' +
-      '<label style="font-size:12px; color:var(--sub);">기준일 <input type="date" id="wcEditBaseDate" value="' + escapeHtml(c.기준일 || '') + '"></label>' +
+      '<label id="wcEditBaseDateWrap" style="font-size:12px; color:var(--sub);"><span id="wcEditBaseDateLabel">기준일</span> <input type="date" id="wcEditBaseDate" value="' + escapeHtml(c.기준일 || '') + '"></label>' +
       '<select id="wcEditStatus">' + WORK_STATUS_OPTIONS.map(function(s){ return '<option value="' + s + '"' + (s === c.상태 ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +
       '<button type="button" id="wcSaveCase" class="ghost-btn">저장</button>' +
       '</div>' +
       '<div style="margin-bottom:12px;">' +
-      '<span id="wcEditDeadlineAuto" style="display:' + (isManual ? 'none' : 'inline-block') + '; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 10px; font-size:12.5px; color:var(--sub);">' + workDeadlineFieldLabel_(c.업무유형) + ': <b style="color:var(--navy);">' + (c.법정일 ? escapeHtml(fmtDateShort_(c.법정일)) : '(기준일을 입력하면 자동 계산)') + '</b></span>' +
       '<label id="wcEditManualDeadlineLabel" style="display:' + (isManual ? 'inline-block' : 'none') + '; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 10px; font-size:12.5px; color:var(--sub);"><span id="wcEditManualDeadlineText">처리시한</span> <input type="date" id="wcEditManualDeadline" value="' + escapeHtml(c.법정일 || '') + '"></label>' +
       (workMyPortalBadgeText_(c) ? ' <span style="background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 10px; font-size:12.5px; color:var(--sub);">' + escapeHtml(workMyPortalBadgeText_(c).replace(/^ · /, '')) + '</span>' : '') +
       '</div>' +
@@ -319,8 +328,12 @@
       onEditUptypeChange();
     }
     function onEditUptypeChange(){
+      // [2026.09] 새 사건 폼과 같은 이유 — 사건개요서 양식이 있는 세목(현재 양도소득세)은
+      // 이 입력칸을 여기서 안 보여주고 처리개요의 사건개요서(양도일 칸)에서만 편집한다.
+      document.getElementById('wcEditBaseDateLabel').textContent = WORK_BASE_DATE_LABELS_[editSemokSel.value] || '기준일';
+      var hasOverviewTemplate = typeof CH_CASE_OVERVIEW_FIELDS_ !== 'undefined' && !!CH_CASE_OVERVIEW_FIELDS_[editSemokSel.value];
+      document.getElementById('wcEditBaseDateWrap').style.display = hasOverviewTemplate ? 'none' : 'inline-block';
       var manual = WORK_MANUAL_DEADLINE_TYPES_.indexOf(editUptypeSel.value) !== -1;
-      document.getElementById('wcEditDeadlineAuto').style.display = manual ? 'none' : 'inline-block';
       document.getElementById('wcEditManualDeadlineLabel').style.display = manual ? 'inline-block' : 'none';
       if (manual){
         document.getElementById('wcEditManualDeadlineText').textContent = workDeadlineFieldLabel_(editUptypeSel.value);

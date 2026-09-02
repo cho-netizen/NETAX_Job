@@ -112,6 +112,22 @@
     color:#fff; padding:10px 18px; border-radius:8px; font-size:13px; z-index:999; opacity:0; transition:opacity .2s; pointer-events:none; }
   .toast.shown{ opacity:1; }
 
+  /* [2026.09] "저장 버튼을 눌러도 아무 반응이 없어 답답하다" — 저장 버튼 하나하나를 고치는
+     대신, 서버에 요청을 보내는 동안(callGas, script.html) 화면 맨 위에 항상 뜨는 진행바
+     하나로 전부 해결한다. 실제로 안 움직이는 진행률 대신 좌우로 흐르는 애니메이션만 준다
+     (몇 %인지 알 수 없는 요청이 대부분이라 "진행 중"이라는 사실만 전달하면 충분). */
+  #globalProgressBar{ position:fixed; top:0; left:0; right:0; height:3px; z-index:10000;
+    background:transparent; pointer-events:none; overflow:hidden; }
+  #globalProgressBar.active::before{
+    content:''; position:absolute; top:0; left:0; height:100%; width:40%;
+    background:linear-gradient(90deg, transparent, var(--gold), transparent);
+    animation:globalProgressSlide 1s linear infinite;
+  }
+  @keyframes globalProgressSlide{
+    from{ transform:translateX(-100%); }
+    to{ transform:translateX(350%); }
+  }
+
   table.list-table{ width:100%; border-collapse:collapse; font-size:13px; }
   table.list-table th{ text-align:left; padding:8px 10px; color:var(--sub); font-weight:600; border-bottom:1px solid var(--line); font-size:12px; }
   table.list-table td{ padding:9px 10px; border-bottom:1px solid var(--line); }

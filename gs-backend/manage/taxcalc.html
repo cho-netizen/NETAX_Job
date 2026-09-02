@@ -6886,6 +6886,39 @@ function tcSaveCurrentResult_(){
   };
   var newList = (tcCurrentCase.세액계산결과 || []).concat([entry]);
   tcSaveList_(newList).then(function(ok){ if (ok) showToast('이 사건에 저장했습니다.', 'success'); });
+  tcSyncOverviewAmounts_(tab);
+}
+
+// [2026.09] "사건개요서의 양도가액·취득가액·증여가액·상속가액은 어차피 예상가액일 뿐이니,
+// 실제 세액계산에 쓴(더 확실한) 값이 나오면 사건개요서도 그 값으로 소급 정정해야 한다"는
+// 요청 — 계산 결과를 사건에 저장하는 시점에 실제로 입력된 금액을 사건개요에 덮어쓴다.
+// 양도소득세는 물건이 여러 개일 수 있지만 사건개요서는 "대표 물건" 하나만 다루므로
+// transferAssets[0](대표 물건)의 값만 반영한다.
+function tcSyncOverviewAmounts_(tab){
+  if (!tcCurrentCase) return;
+  var updates = null;
+  if (tab === 'transfer' && typeof transferAssets !== 'undefined' && transferAssets[0]){
+    var a = transferAssets[0];
+    if (a.transferPrice || a.acquisitionPrice){
+      updates = {};
+      if (a.transferPrice) updates.양도가액 = String(a.transferPrice);
+      if (a.acquisitionPrice) updates.취득가액 = String(a.acquisitionPrice);
+    }
+  } else if (tab === 'gift'){
+    var giftAmountEl = document.getElementById('giftAmount');
+    if (giftAmountEl && giftAmountEl.value) updates = { giftAmount: giftAmountEl.value };
+  } else if (tab === 'inheritance'){
+    var ihEstateEl = document.getElementById('ihEstate');
+    if (ihEstateEl && ihEstateEl.value) updates = { ihEstate: ihEstateEl.value };
+  }
+  if (!updates) return;
+  var overview = Object.assign({}, tcCurrentCase.사건개요 || {}, updates);
+  callGas('work_update_case', { id: tcCurrentCase.id, 사건개요: overview }).then(function(res){
+    if (res.success === false) return;
+    tcCurrentCase.사건개요 = overview;
+    var cached = tcCases.filter(function(c){ return c.id === tcCurrentCase.id; })[0];
+    if (cached) cached.사건개요 = overview;
+  }).catch(function(){});
 }
 
 // 사건처리 카드의 "🧮 세액계산 열기" 버튼에서 호출 — goToLawSearch_/goToCaseHandling_과 같은

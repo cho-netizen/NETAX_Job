@@ -16087,7 +16087,14 @@ function toolListConsultLogs(customerName) {
 // =========================================================
 const WORK_SHEET_ID = '1JtgBpcrlThAiYHU0m74wSxZmyZPxUtmSTspZzHycZX4';
 const WORK_SHEET_CASES = 'Cases';
-const WORK_HEADERS = ['id', '고객ID', '고객명', '사건명', '세목', '업무유형', '담당자', '의뢰일', '기준일', '법정일', '완료전법정일', '납세자', '상태', '개요', '하위업무', '생성일', '수정일', '처리방향', '처리대상', '작업일지', '법령예규판례', '증빙목록', 'my_report_id', '폴더ID', '세액계산결과'];
+const WORK_HEADERS = ['id', '고객ID', '고객명', '사건명', '세목', '업무유형', '담당자', '의뢰일', '기준일', '법정일', '완료전법정일', '납세자', '상태', '개요', '하위업무', '생성일', '수정일', '처리방향', '처리대상', '작업일지', '법령예규판례', '증빙목록', 'my_report_id', '폴더ID', '세액계산결과', '사건개요'];
+// [2026.09] 사건개요 — "사건개요서" 구조화 양식(1단계: 양도소득세만). 세목별로 정해진
+// 항목({양도물건, 양도가액, 취득일...} 등, WORK_CASE_OVERVIEW_FIELDS_ 참고)에 사실관계를
+// 채워넣는 JSON 객체(배열이 아니라 객체 — {필드key: 값}). 처리방향(어떻게 처리할지 판단)과는
+// 다른 것 — 사건개요는 "무슨 사실관계인지"를 먼저 정리해야 처리방향도, 필요증빙(work_
+// buildEvidenceFromTemplate_)도 제대로 나온다는 지적에 따라 분리했다. 세액계산기가 이미
+// 아는 "이 계산에 필요한 입력값"을 그대로 항목으로 재사용한 것이 핵심 — 별도의 체크리스트
+// 지식을 새로 만들지 않고 세액계산코드 하나에 노하우를 집중시킨다는 원칙을 따른다.
 // [2026.09] 6단계 — 세액계산결과: 세액계산(taxcalc.html) 화면에서 "이 사건에 저장" 누르면
 // {id, 세목, 구분, 요약, 계산일} 배열로 쌓인다. 세목은 양도소득세/증여세/상속세/취득세, 구분은
 // 간편계산/정밀계산, 요약은 계산 결과 화면의 텍스트 그대로. 작업일지·법령예규판례와 같은
@@ -16130,14 +16137,14 @@ const WORK_DEADLINE_DAYS_BY_SEMOK_ = { acquisition: 60 };
 const WORK_DEADLINE_YEARS_ = { 경정청구: 5 };
 const WORK_MANUAL_DEADLINE_TYPES_ = ['상담', '해명자료'];
 
-// [2026.09] 필요증빙 템플릿(1단계 파일럿, 양도소득세만) — "사건처리 시작 시 세목별로 늘
-// 필요한 증빙을 매번 손으로 입력하지 말고, 세액계산기가 이미 아는 노하우를 재사용해
-// 자동으로 깔아주자"는 요청에 따라 만듦. 세액계산기 AI 도구 스키마(calculate_transfer_tax
-// 등, toolCalculateBuildingStandardPrice 근처의 TAX_TOOL_CATEGORIES_ 참고)가 세목별로
-// 필요한 입력값을 가장 정확하게 알고 있지만, 그 스키마는 조문 근거 위주의 AI용 설명이라
-// 78개 항목을 그대로 고객용 체크리스트로 쓸 수는 없다 — 그중 "거의 모든 사건에 공통으로
-// 필요한 핵심 증빙"만 세무사가 직접 골라 실제 증빙명으로 옮겨적은 것. 세부 갈래(다주택·
-// 비과세 특례 등)별 세분화는 이 파일럿 결과를 보고 확장할지 결정한다.
+// [2026.09] 필요증빙 템플릿 — "사건처리 시작 시 세목별로 늘 필요한 증빙을 매번 손으로
+// 입력하지 말고, 세액계산기가 이미 아는 노하우를 재사용해 자동으로 깔아주자"는 요청에
+// 따라 만듦. 세액계산기 AI 도구 스키마(calculate_transfer_tax 등, toolCalculateBuildingStandardPrice
+// 근처의 TAX_TOOL_CATEGORIES_ 참고)가 세목별로 필요한 입력값을 가장 정확하게 알고 있지만,
+// 그 스키마는 조문 근거 위주의 AI용 설명이라 수십~80여 항목을 그대로 고객용 체크리스트로
+// 쓸 수는 없다 — 그중 "거의 모든 사건에 공통으로 필요한 핵심 증빙"만 세무사가 직접 골라
+// 실제 증빙명으로 옮겨적은 것. 양도소득세로 먼저 파일럿하고 검증받은 뒤 증여세·상속세도
+// 같은 방식으로 추가(세부 갈래별 세분화는 사용자 피드백을 보고 다음 단계에서 조정).
 const WORK_EVIDENCE_TEMPLATES_ = {
   transfer: [
     '양도 매매계약서(양도가액·양도일)',
@@ -16148,12 +16155,37 @@ const WORK_EVIDENCE_TEMPLATES_ = {
     '주민등록초본(전입·전출 이력, 거주기간 확인용)',
     '가족관계증명서(세대원 구성 확인)',
     '다른 주택 보유현황(1세대1주택 비과세 판정용)'
+  ],
+  gift: [
+    '증여계약서',
+    '가족관계증명서(증여자·수증자 관계 확인, 공제·세율 판정용)',
+    '증여재산 평가자료(부동산 등기부등본·감정가액, 비상장주식 평가자료 등)',
+    '수증자 계좌 이체내역(현금증여 입증)',
+    '채무인수 관련 자료(부담부증여인 경우 — 임대차계약서·대출계약서 등)',
+    '10년 이내 동일인 증여 내역(증여재산 합산과세 확인용)',
+    '수증자 신분증 사본'
+  ],
+  inheritance: [
+    '가족관계증명서·기본증명서(피상속인·상속인 확인)',
+    '제적등본(피상속인)',
+    '사망진단서 또는 사망사실이 기재된 가족관계증명서(사망일 확인)',
+    '상속재산 목록 및 평가자료(부동산 등기부등본, 예금잔액증명서, 주식평가자료 등)',
+    '피상속인 금융거래내역(사망 전 1~2년, 사전증여·인출 확인용)',
+    '채무증빙(대출잔액증명서, 임대보증금 반환채무 등)',
+    '장례비용 영수증',
+    '사전증여재산 내역(상속인 10년·비상속인 5년 이내 증여분)'
   ]
 };
 
-// 사건 시작 시 증빙목록 초기값을 만든다 — 템플릿이 있는 세목(현재 양도소득세만)이고
-// 업무유형이 '신고'(상담은 아직 본격적인 증빙 확보 단계가 아니므로 제외)일 때만 채우고,
-// 그 외엔 기존과 동일하게 빈 배열로 시작한다. 항목 형태는 casehandling.html의
+// 사건개요서 항목 정의(라벨·입력형식)는 casehandling.html의 CH_CASE_OVERVIEW_FIELDS_에
+// 있다(순수 화면 렌더링용 메타데이터라 서버는 어떤 필드가 있는지 몰라도 되고, 사건개요는
+// 그냥 {필드key: 값} 객체를 그대로 저장·반환하기만 한다).
+
+// 사건개요(사건개요서 양식)를 처음 저장할 때 증빙목록 초기값을 만든다 — "사건개요가 먼저
+// 정리돼야 필요증빙도 제대로 나온다"는 지적에 따라, 예전처럼 사건 "생성" 시점이 아니라
+// 사건개요를 처음 저장하는 시점(work_updateCase)에 적용한다. 템플릿이 있는 세목(현재
+// 양도소득세만)이고 업무유형이 '신고'(상담은 아직 본격적인 증빙 확보 단계가 아니므로 제외)
+// 일 때만 채우고, 그 외엔 기존과 동일하게 빈 배열로 둔다. 항목 형태는 casehandling.html의
 // chAddRequestedItem_이 만드는 것과 동일(source:'requested', status:'미확보').
 function work_buildEvidenceFromTemplate_(seMok, upType) {
   const labels = (upType === '신고' && WORK_EVIDENCE_TEMPLATES_[seMok]) || [];
@@ -16258,6 +16290,9 @@ function work_readRow_(col, rowValues) {
   let taxCalcResults = [];
   try { taxCalcResults = JSON.parse(rowValues[col.세액계산결과] || '[]'); } catch (e) { taxCalcResults = []; }
   if (!Array.isArray(taxCalcResults)) taxCalcResults = [];
+  let caseOverview = {};
+  try { caseOverview = JSON.parse(rowValues[col.사건개요] || '{}'); } catch (e) { caseOverview = {}; }
+  if (!caseOverview || typeof caseOverview !== 'object' || Array.isArray(caseOverview)) caseOverview = {};
   return {
     id: rowValues[col.id],
     고객ID: rowValues[col.고객ID],
@@ -16279,6 +16314,7 @@ function work_readRow_(col, rowValues) {
     법령예규판례: precedents,
     증빙목록: evidenceList,
     세액계산결과: taxCalcResults,
+    사건개요: caseOverview,
     my_report_id: rowValues[col.my_report_id],
     폴더ID: rowValues[col.폴더ID],
     생성일: rowValues[col.생성일],
@@ -16368,8 +16404,12 @@ function work_createCase(params) {
     newRow[col.하위업무] = '[]';
     newRow[col.작업일지] = '[]';
     newRow[col.법령예규판례] = '[]';
-    newRow[col.증빙목록] = JSON.stringify(work_buildEvidenceFromTemplate_(seMok, upType));
+    // [2026.09] "사건개요(사실관계)가 먼저 정리돼야 필요증빙도 제대로 나온다"는 지적에 따라
+    // 예전처럼 사건 생성 시점에 증빙목록 템플릿을 바로 채우지 않는다 — work_updateCase가
+    // 사건개요를 처음 저장할 때 채운다(work_buildEvidenceFromTemplate_ 주석 참고).
+    newRow[col.증빙목록] = '[]';
     newRow[col.세액계산결과] = '[]';
+    newRow[col.사건개요] = '{}';
     newRow[col.폴더ID] = work_getOrCreateCaseFolder_(고객명, 사건명);
     newRow[col.생성일] = now;
     newRow[col.수정일] = now;
@@ -16416,6 +16456,25 @@ function work_updateCase(params) {
       let taxCalcResults = params.세액계산결과;
       if (typeof taxCalcResults === 'string') { try { taxCalcResults = JSON.parse(taxCalcResults); } catch (e) { taxCalcResults = null; } }
       if (Array.isArray(taxCalcResults)) row[col.세액계산결과] = JSON.stringify(taxCalcResults);
+    }
+    if (params.사건개요 !== undefined) {
+      let overview = params.사건개요;
+      if (typeof overview === 'string') { try { overview = JSON.parse(overview); } catch (e) { overview = null; } }
+      if (overview && typeof overview === 'object' && !Array.isArray(overview)) {
+        // [2026.09] "사건개요(사실관계)가 먼저 정리돼야 필요증빙도 제대로 나온다"는 지적에
+        // 따라, 필요증빙 템플릿은 사건 생성 시점이 아니라 사건개요를 처음 저장하는 이 순간에
+        // 적용한다 — 이미 증빙목록이 뭔가 있으면(직접 추가했든 이전에 이미 채워졌든) 손대지
+        // 않고, 완전히 비어있을 때만 채운다.
+        let currentEvidence = [];
+        try { currentEvidence = JSON.parse(row[col.증빙목록] || '[]'); } catch (e) { currentEvidence = []; }
+        if (Array.isArray(currentEvidence) && currentEvidence.length === 0) {
+          const seMokForTemplate = params.세목 !== undefined ? String(params.세목).trim() : row[col.세목];
+          const upTypeForTemplate = params.업무유형 !== undefined ? String(params.업무유형).trim() : row[col.업무유형];
+          const template = work_buildEvidenceFromTemplate_(seMokForTemplate, upTypeForTemplate);
+          if (template.length) row[col.증빙목록] = JSON.stringify(template);
+        }
+        row[col.사건개요] = JSON.stringify(overview);
+      }
     }
     if (params.고객명 !== undefined) {
       row[col.고객ID] = params.고객명 ? client_findOrCreateByName_(row[col.고객명]).id : '';

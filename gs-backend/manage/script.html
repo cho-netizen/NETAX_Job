@@ -3,16 +3,32 @@
   // 공용 인프라 — google.script.run 래퍼, 로그인 게이트, 메뉴 라우팅
   // ============================================================
 
+  // [2026.09] "저장 버튼을 눌러도 반응이 없어 답답하다" — 버튼 하나하나에 로딩 상태를
+  // 넣는 대신, 서버 요청이 진행 중인 동안 항상 켜지는 전역 진행바(#globalProgressBar,
+  // style.html)로 한 번에 해결한다. 여러 요청이 동시에 나갈 수 있어 카운터로 관리 —
+  // 마지막 요청이 끝나야 꺼진다.
+  var callGasPending_ = 0;
+  function callGasProgress_(delta){
+    callGasPending_ = Math.max(0, callGasPending_ + delta);
+    var bar = document.getElementById('globalProgressBar');
+    if (bar) bar.classList.toggle('active', callGasPending_ > 0);
+  }
+
   // manageApp_call(action, payload)를 프라미스로 감싼다. 기존 앱의 callGas(action, payload)와
   // 시그니처를 맞춰서, work-manage.js/client-manage.js 등을 이식할 때 호출부 코드를 그대로 쓸 수 있게 한다.
   function callGas(action, payload){
+    callGasProgress_(1);
     return new Promise(function(resolve, reject){
       google.script.run
         .withSuccessHandler(function(res){
+          callGasProgress_(-1);
           if (res && res.error) reject(new Error(res.error));
           else resolve(res);
         })
-        .withFailureHandler(function(err){ reject(err); })
+        .withFailureHandler(function(err){
+          callGasProgress_(-1);
+          reject(err);
+        })
         .manageApp_call(action, payload || {});
     });
   }

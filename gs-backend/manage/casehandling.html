@@ -22,6 +22,229 @@
   var chCaseSelectEl = document.getElementById('chCaseSelect');
   var chBodyEl = document.getElementById('chBody');
 
+  // [2026.09] 사건개요서 — "처리방향(어떻게 처리할지)을 정하기 전에, 무슨 사실관계인지부터
+  // 세목별로 정해진 항목에 채워넣는 양식이 있어야 한다"는 지적에 따라, 자유텍스트였던
+  // "처리대상" 칸을 세목별 구조화 양식으로 바꿨다. 항목은 세액계산기가 이미 알고 있는
+  // "이 계산에 필요한 사실관계"를 그대로 재사용한 것(양도소득세: taxcalc-engine.html의
+  // 1세대1주택 판정 로직이 쓰는 값들과 동일) — 체크리스트를 따로 새로 만들지 않고 세액계산
+  // 코드 하나에 노하우를 집중시킨다는 원칙을 따른다. 1단계 파일럿이라 양도소득세만 있고,
+  // 나머지 세목은 검증 후 확장 — 템플릿이 없는 세목은 예전처럼 자유텍스트(처리대상)로 남는다.
+  // [2026.09 수정] 사용자 피드백 반영: (1) 양도물건을 자산종류·유형·소재지(동,호)로 세분화 —
+  // 증빙확보의 자동확보(주소검색·실거래가·공시가격 조회)가 동작하려면 대표필지 수준의 상세
+  // 소재지가 필요하다. (2) 필요경비는 개요 단계에서 불필요해 제거(세액계산 단계에서 다룸).
+  // (3) "사건분류"(일반/비과세/감면/1주택고가/다주택중과/부담부증여) 콤보박스 추가 — 이게
+  // 기존 "1세대1주택여부"보다 더 정확한 분류라 그 필드를 대체한다. 부담부증여는 전액부담부
+  // 증여만 해당(부분부담부증여는 증여세 사건으로 따로 분류됨) — 옵션 라벨에 명시.
+  // (4) 양도일만 제외하고 취득일·양도가액·취득가액·보유기간·거주기간·다른주택보유현황은
+  // 그대로 둔다 — "나중에 세액계산에서도 물어보니 여기선 빼자"는 건 순서가 거꾸로다.
+  // 사건개요서가 먼저 작성되고 세액계산은 그 뒤에 하므로, 여기서 이미 파악된 값이 있으면
+  // 나중에 세액계산 쪽을 자동으로 채워주는 방향이어야지 그 반대(세액계산 항목이라서 개요서에서
+  // 뺀다)는 성립하지 않는다는 지적. 양도일만 예외인 건 세액계산과 겹쳐서가 아니라, 이미 사건
+  // 자체의 "기준일"(법정기한 계산에 쓰는 값, 사건 생성 시 입력)과 완전히 같은 값이기 때문 —
+  // 이건 사건개요서보다도 먼저(사건 생성 시점) 파악되는, 같은 단계의 진짜 중복이라 뺀 것.
+  // [2026.09 수정 2] (1) 자산종류·유형은 taxcalc.html의 양도세 자산카드가 이미 쓰는 값을
+  // 그대로 재사용(assetType/assetKind, 옵션 문구까지 동일) — 나중에 세액계산 쪽에서 이
+  // 사건개요를 읽어 자동으로 채워줄 때 필드명이 같아야 그대로 옮겨꽂을 수 있다. (2) 소재지에
+  // taxcalc.html과 같은 주소검색(🔍, openAddressSearchModal_) 버튼을 달았고, 동·호는 처음엔
+  // 숨겨뒀다가 유형이 "건물"이거나 주소검색 결과에 동 목록이 있을 때만 보여준다(토지엔 동·호
+  // 개념이 없으므로). (3) 보유기간·거주기간·다른주택보유현황은 삭제(요청). 양도일은
+  // 사건의 "기준일"(법정기한 계산에 쓰는 값)과 완전히 같은 값이라 별도 저장하지 않고, 이
+  // 칸을 고치면 기준일 자체를 같이 업데이트한다 — 값을 두 곳에 따로 들고 있지 않아
+  // 작업관리의 법정일 계산과 절대 어긋나지 않는다.
+  var CH_ASSET_TYPE_OPTIONS_ = [
+    { value: 'other', label: '그 외 부동산' },
+    { value: 'house', label: '주택·조합원입주권' },
+    { value: 'presale_right', label: '분양권(§104①1호·2호·3호 — 1년미만 70%/1년이상 60% 단일세율, 장기보유특별공제·기본세율누진 배제)' }
+  ];
+  var CH_ASSET_KIND_OPTIONS_ = [
+    { value: 'land', label: '토지' },
+    { value: 'building', label: '건물(구분소유 건물·아파트 등 대지권 포함분도 건물면적만 입력)' },
+    { value: 'other', label: '기타' }
+  ];
+  var CH_CASE_OVERVIEW_FIELDS_ = {
+    transfer: [
+      { key: '양도가액', label: '양도가액', type: 'number' },
+      { key: '취득일', label: '취득일', type: 'date' },
+      { key: '취득가액', label: '취득가액', type: 'number' },
+      { key: '사건분류', label: '사건분류', type: 'select', options: ['', '일반과세', '1세대1주택 비과세', '1세대1주택 고가주택(과세)', '일시적2주택 비과세', '2주택 중과', '3주택이상 중과', '비사업용 토지(중과)', '농지 등 감면(8년자경 등)', '수용 등 공익사업 비과세·감면', '이월과세(배우자·직계존비속 증여 후 양도)', '미등기양도', '경매·공매', '부담부증여(전액)', '교환'] },
+      { key: '특이사항', label: '특이사항', type: 'textarea' }
+    ],
+    // [2026.09] 증여세·상속세 사건개요서 — 양도소득세와 같은 원칙(taxcalc.html의 실제 입력
+    // 필드명을 그대로 재사용). 증여: giftDoneeName/giftDonorName/giftRelation(taxcalc.html
+    // 2842~2860행과 옵션까지 동일)/giftAmount/giftDebtAssumed(부분부담부증여만 — 전액부담부는
+    // 양도세 사건으로 분류)/giftPriorAmount(10년내 동일인 기증여합산액). 상속: ihDeceasedName/
+    // ihEstate(taxcalc.html 4583~4601행과 동일).
+    gift: [
+      { key: 'giftDoneeName', label: '수증자 성명', type: 'text' },
+      { key: 'giftDonorName', label: '증여자 성명', type: 'text' },
+      { key: 'giftRelation', label: '관계(수증자 기준)', type: 'select', options: ['', '배우자', '직계존속(1촌, 부모 등→자녀)', '직계존속(2촌 이상, 조부모 등→손자녀·세대생략)', '직계비속(1촌, 자녀 등→부모)', '직계비속(2촌 이상, 손자녀 등→조부모·세대생략)', '기타친족', '기타(상속인 아닌 자 등)'] },
+      { key: 'giftAmount', label: '증여재산가액', type: 'number' },
+      { key: 'giftDebtAssumed', label: '인수채무액(부분부담부증여만, 없으면 비움)', type: 'number' },
+      { key: 'giftPriorAmount', label: '10년내 동일인 기증여합산액', type: 'number' },
+      { key: '사건분류', label: '사건분류', type: 'select', options: ['', '일반증여', '부담부증여(부분, 순수증여분만)', '재차증여(10년내 합산)', '세대생략증여(할증)', '명의신탁 증여의제', '저가양수·고가양도 증여의제', '특정법인과의 거래 증여의제', '창업자금·가업승계 특례증여'] },
+      { key: '특이사항', label: '특이사항', type: 'textarea' }
+    ],
+    inheritance: [
+      { key: 'ihDeceasedName', label: '피상속인 성명', type: 'text' },
+      { key: '상속인수', label: '상속인 수', type: 'number' },
+      { key: 'ihEstate', label: '상속세과세가액(예상)', type: 'number' },
+      { key: '사건분류', label: '사건분류', type: 'select', options: ['', '일반상속', '배우자상속공제 해당', '가업상속공제 해당', '영농상속공제 해당', '동거주택상속공제 해당', '사전증여재산 합산(10년내 상속인·5년내 비상속인)', '상속포기·한정승인', '유증·사인증여'] },
+      { key: '특이사항', label: '특이사항', type: 'textarea' }
+    ]
+  };
+
+  function chRenderOverviewFieldInput_(field, value){
+    var v = escapeHtml(value || '');
+    var common = 'id="chOv_' + field.key + '" data-key="' + field.key + '" style="width:100%; box-sizing:border-box;"';
+    if (field.type === 'select'){
+      return '<select ' + common + '>' + field.options.map(function(opt){
+        return '<option value="' + escapeHtml(opt) + '"' + (opt === (value || '') ? ' selected' : '') + '>' + (opt || '(선택 안 함)') + '</option>';
+      }).join('') + '</select>';
+    }
+    if (field.type === 'textarea'){
+      return '<textarea ' + common + ' style="width:100%; min-height:44px; font-family:inherit; font-size:13px; box-sizing:border-box;">' + v + '</textarea>';
+    }
+    return '<input type="' + field.type + '" ' + common + ' value="' + v + '">';
+  }
+
+  // 자산종류·유형·소재지·동·호·물건수·양도일 — taxcalc.html의 assetType/assetKind/assetLocation
+  // /assetDong/assetHo와 필드명을 맞춘 커스텀 블록(단순 select/input이 아니라 주소검색·동호
+  // 조건부 표시 같은 상호작용이 필요해 CH_CASE_OVERVIEW_FIELDS_의 일반 렌더러와 분리했다).
+  function chBuildTransferAssetBlockHtml_(overview, baseDate){
+    var showDongHo = overview.assetKind === 'building' || (Array.isArray(overview.assetDongList) && overview.assetDongList.length > 0);
+    var dongOptions = Array.isArray(overview.assetDongList) ? overview.assetDongList : [];
+    return '<div>' +
+      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">물건 수</label>' +
+      '<input type="number" id="chOvCount" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(overview.물건수 || '') + '">' +
+      '</div>' +
+      '<div>' +
+      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">자산종류(대표 물건)</label>' +
+      '<select id="chOvAssetType" style="width:100%; box-sizing:border-box;"><option value="">선택</option>' +
+      CH_ASSET_TYPE_OPTIONS_.map(function(o){ return '<option value="' + o.value + '"' + (o.value === overview.assetType ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('') +
+      '</select></div>' +
+      '<div>' +
+      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">유형</label>' +
+      '<select id="chOvAssetKind" style="width:100%; box-sizing:border-box;"><option value="">선택</option>' +
+      CH_ASSET_KIND_OPTIONS_.map(function(o){ return '<option value="' + o.value + '"' + (o.value === overview.assetKind ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('') +
+      '</select></div>' +
+      '<div style="grid-column:span 2;">' +
+      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">소재지</label>' +
+      '<div style="display:flex; gap:6px;">' +
+      '<input type="text" id="chOvAssetLocation" style="flex:1; box-sizing:border-box;" value="' + escapeHtml(overview.assetLocation || '') + '" placeholder="예: OO시 OO구 OO동 123-4">' +
+      '<button type="button" id="chOvAddrSearchBtn" class="ghost-btn" style="flex-shrink:0;" title="주소 검색">🔍</button>' +
+      '</div></div>' +
+      '<div id="chOvDongHoWrap" style="display:' + (showDongHo ? 'contents' : 'none') + ';">' +
+      '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">동</label>' +
+      '<select id="chOvAssetDong" style="width:100%; box-sizing:border-box;"><option value="">직접입력/해당없음</option>' +
+      dongOptions.map(function(d){ return '<option value="' + escapeHtml(d) + '"' + (overview.assetDong === d ? ' selected' : '') + '>' + escapeHtml(d) + '</option>'; }).join('') +
+      '</select></div>' +
+      '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">호</label>' +
+      '<input type="text" id="chOvAssetHo" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(overview.assetHo || '') + '">' +
+      '</div></div>' +
+      '<div>' +
+      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">양도일</label>' +
+      '<input type="date" id="chOvTransferDate" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
+      '</div>';
+  }
+
+  // 주소검색·유형변경(동·호 표시 여부) 상호작용을 연결한다 — chBodyEl.innerHTML 대입 뒤에 호출.
+  function chWireTransferAssetBlock_(overview){
+    var kindSel = document.getElementById('chOvAssetKind');
+    var wrap = document.getElementById('chOvDongHoWrap');
+    if (!kindSel || !wrap) return;
+    kindSel.addEventListener('change', function(){
+      wrap.style.display = kindSel.value === 'building' ? 'contents' : 'none';
+    });
+    document.getElementById('chOvAddrSearchBtn').addEventListener('click', function(){
+      if (typeof openAddressSearchModal_ !== 'function'){ showToast('주소 검색 기능을 불러오지 못했습니다.', 'error'); return; }
+      openAddressSearchModal_(function(picked){
+        document.getElementById('chOvAssetLocation').value = picked.roadAddr || picked.jibunAddr || '';
+        overview.assetDongList = picked.dongList || [];
+        overview.assetDong = '';
+        if ((overview.assetDongList.length > 0) && wrap.style.display === 'none') wrap.style.display = 'contents';
+        var dongSel = document.getElementById('chOvAssetDong');
+        if (dongSel){
+          dongSel.innerHTML = '<option value="">직접입력/해당없음</option>' +
+            overview.assetDongList.map(function(d){ return '<option value="' + escapeHtml(d) + '">' + escapeHtml(d) + '</option>'; }).join('');
+        }
+      });
+    });
+  }
+
+  // [2026.09] 증여·상속 사건개요서용 — 자산종류(assetType, 양도소득세 전용 개념) 없이
+  // 물건수·유형·소재지·동·호만 필요한 세목(증여·상속)이 재사용하는 부분. 필드 id는
+  // chBuildTransferAssetBlockHtml_와 완전히 같은 이름을 쓴다(한 번에 하나의 세목 양식만
+  // 화면에 있으므로 충돌 없음) — chWireTransferAssetBlock_(주소검색·동호 토글)와
+  // 저장 핸들러(chSaveTarget)를 그대로 재사용하기 위함.
+  function chBuildLocationFieldsHtml_(overview){
+    var showDongHo = overview.assetKind === 'building' || (Array.isArray(overview.assetDongList) && overview.assetDongList.length > 0);
+    var dongOptions = Array.isArray(overview.assetDongList) ? overview.assetDongList : [];
+    return '<div>' +
+      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">물건 수</label>' +
+      '<input type="number" id="chOvCount" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(overview.물건수 || '') + '">' +
+      '</div>' +
+      '<div>' +
+      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">유형</label>' +
+      '<select id="chOvAssetKind" style="width:100%; box-sizing:border-box;"><option value="">선택</option>' +
+      CH_ASSET_KIND_OPTIONS_.map(function(o){ return '<option value="' + o.value + '"' + (o.value === overview.assetKind ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('') +
+      '</select></div>' +
+      '<div style="grid-column:span 2;">' +
+      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">소재지</label>' +
+      '<div style="display:flex; gap:6px;">' +
+      '<input type="text" id="chOvAssetLocation" style="flex:1; box-sizing:border-box;" value="' + escapeHtml(overview.assetLocation || '') + '" placeholder="예: OO시 OO구 OO동 123-4">' +
+      '<button type="button" id="chOvAddrSearchBtn" class="ghost-btn" style="flex-shrink:0;" title="주소 검색">🔍</button>' +
+      '</div></div>' +
+      '<div id="chOvDongHoWrap" style="display:' + (showDongHo ? 'contents' : 'none') + ';">' +
+      '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">동</label>' +
+      '<select id="chOvAssetDong" style="width:100%; box-sizing:border-box;"><option value="">직접입력/해당없음</option>' +
+      dongOptions.map(function(d){ return '<option value="' + escapeHtml(d) + '"' + (overview.assetDong === d ? ' selected' : '') + '>' + escapeHtml(d) + '</option>'; }).join('') +
+      '</select></div>' +
+      '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">호</label>' +
+      '<input type="text" id="chOvAssetHo" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(overview.assetHo || '') + '">' +
+      '</div></div>';
+  }
+
+  function chBuildGiftBlockHtml_(overview, baseDate){
+    return chBuildLocationFieldsHtml_(overview) +
+      '<div>' +
+      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">증여일</label>' +
+      '<input type="date" id="chOvTransferDate" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
+      '</div>';
+  }
+
+  function chBuildInheritanceBlockHtml_(overview, baseDate){
+    return chBuildLocationFieldsHtml_(overview) +
+      '<div>' +
+      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">상속일</label>' +
+      '<input type="date" id="chOvTransferDate" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
+      '</div>';
+  }
+
+  // 세목별 템플릿이 있으면(현재 양도소득세만) 사건개요 구조화 양식을, 없으면 예전과 동일한
+  // 자유텍스트 "처리대상" 칸을 그려준다 — chSaveTarget 클릭 핸들러가 같은 조건으로 어느 쪽
+  // 값을 모아 저장할지 판단한다(CH_CASE_OVERVIEW_FIELDS_[c.세목] 존재 여부).
+  function chBuildOverviewCardHtml_(c){
+    var fields = CH_CASE_OVERVIEW_FIELDS_[c.세목];
+    if (!fields){
+      return '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:8px;">📋 사건처리개시 — 처리대상 · 처리방향</div>' +
+        '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">처리대상 <span style="font-weight:400;">(무엇을 처리하는지)</span></label>' +
+        '<input type="text" id="chEditTarget" placeholder="예: OO아파트 매각건의 양도소득세 신고" value="' + escapeHtml(c.처리대상 || '') + '" style="width:100%; max-width:600px; box-sizing:border-box;">';
+    }
+    var overview = c._chOverviewWorking = Object.assign({}, c.사건개요 || {});
+    var rows = fields.map(function(field){
+      return '<div>' +
+        '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">' + escapeHtml(field.label) + '</label>' +
+        chRenderOverviewFieldInput_(field, overview[field.key]) +
+        '</div>';
+    }).join('');
+    var semokLabel = (typeof WORK_SEMOK_LABELS !== 'undefined' && WORK_SEMOK_LABELS[c.세목]) || c.세목 || '';
+    var assetBlock = c.세목 === 'transfer' ? chBuildTransferAssetBlockHtml_(overview, c.기준일) :
+      c.세목 === 'gift' ? chBuildGiftBlockHtml_(overview, c.기준일) :
+      c.세목 === 'inheritance' ? chBuildInheritanceBlockHtml_(overview, c.기준일) : '';
+    return '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:8px;">📋 사건개요서 — ' + escapeHtml(semokLabel) + '</div>' +
+      '<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:8px 12px; max-width:760px;">' + assetBlock + rows + '</div>';
+  }
+
   function initCaseHandling(){
     loadChCases_();
   }
@@ -66,10 +289,8 @@
     }
     chBodyEl.innerHTML =
       '<div class="card">' +
-      '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:8px;">📋 사건처리개시 — 처리대상 · 처리방향</div>' +
-      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">처리대상 <span style="font-weight:400;">(무엇을 처리하는지)</span></label>' +
-      '<input type="text" id="chEditTarget" placeholder="예: OO아파트 매각건의 양도소득세 신고" value="' + escapeHtml(c.처리대상 || '') + '" style="width:100%; max-width:600px; box-sizing:border-box; margin-bottom:8px;">' +
-      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">처리방향 <span style="font-weight:400;">(법령·예규·판례를 검토해 어떻게 처리할지)</span></label>' +
+      chBuildOverviewCardHtml_(c) +
+      '<label style="font-size:12px; color:var(--sub); display:block; margin:10px 0 3px;">처리방향 <span style="font-weight:400;">(법령·예규·판례를 검토해 어떻게 처리할지)</span></label>' +
       '<textarea id="chEditDirection" placeholder="예: 1세대1주택 비과세 요건 충족 여부 검토 후 신고" style="width:100%; max-width:600px; min-height:50px; font-family:inherit; font-size:13px; box-sizing:border-box;">' + escapeHtml(c.처리방향 || '') + '</textarea>' +
       '<div style="margin-top:8px;"><button type="button" id="chSaveTarget" class="save-btn">저장</button></div>' +
       '</div>' +
@@ -99,12 +320,42 @@
       '<div id="chMyReports" style="margin-top:6px;"><div class="log-empty">불러오는 중…</div></div>' +
       '</div>';
 
+    if (c.세목 === 'transfer' || c.세목 === 'gift' || c.세목 === 'inheritance') chWireTransferAssetBlock_(c._chOverviewWorking || {});
+
     document.getElementById('chSaveTarget').addEventListener('click', function(){
-      callGas('work_update_case', {
-        id: c.id,
-        처리대상: document.getElementById('chEditTarget').value.trim(),
-        처리방향: document.getElementById('chEditDirection').value.trim()
-      }).then(function(res){
+      var payload = { id: c.id, 처리방향: document.getElementById('chEditDirection').value.trim() };
+      var fields = CH_CASE_OVERVIEW_FIELDS_[c.세목];
+      if (fields){
+        var overview = {};
+        fields.forEach(function(field){
+          var el = document.getElementById('chOv_' + field.key);
+          if (el) overview[field.key] = el.value.trim();
+        });
+        if (c.세목 === 'transfer' || c.세목 === 'gift' || c.세목 === 'inheritance'){
+          // [2026.09] 자산종류·유형·소재지·동·호·물건수는 CH_CASE_OVERVIEW_FIELDS_의 일반
+          // 렌더러가 아니라 chBuildTransferAssetBlockHtml_/chBuildGiftBlockHtml_/
+          // chBuildInheritanceBlockHtml_(chWireTransferAssetBlock_로 상호작용 연결)가 그린
+          // 커스텀 입력들이라 여기서 따로 모은다 — 세 세목이 같은 필드 id를 재사용하므로
+          // (한 번에 하나만 화면에 있음) 이 수집 코드도 공통이다. 자산종류(assetType)는
+          // 양도소득세 전용 필드라 증여·상속에서는 그 input 자체가 없어 빈 문자열로 남는다.
+          // 동 목록(assetDongList)은 주소검색 결과로 chWireTransferAssetBlock_가
+          // c._chOverviewWorking에 갱신해둔 값을 그대로 가져온다.
+          var working = c._chOverviewWorking || {};
+          overview.물건수 = (document.getElementById('chOvCount') || {}).value || '';
+          overview.assetType = (document.getElementById('chOvAssetType') || {}).value || '';
+          overview.assetKind = (document.getElementById('chOvAssetKind') || {}).value || '';
+          overview.assetLocation = (document.getElementById('chOvAssetLocation') || {}).value || '';
+          overview.assetDong = (document.getElementById('chOvAssetDong') || {}).value || '';
+          overview.assetHo = (document.getElementById('chOvAssetHo') || {}).value || '';
+          overview.assetDongList = working.assetDongList || [];
+          var transferDateEl = document.getElementById('chOvTransferDate');
+          if (transferDateEl) payload.기준일 = transferDateEl.value;
+        }
+        payload.사건개요 = overview;
+      } else {
+        payload.처리대상 = document.getElementById('chEditTarget').value.trim();
+      }
+      callGas('work_update_case', payload).then(function(res){
         if (res.success === false){ showToast(res.message || '저장 실패', 'error'); return; }
         showToast('저장했습니다.', 'success');
         loadChCases_();
