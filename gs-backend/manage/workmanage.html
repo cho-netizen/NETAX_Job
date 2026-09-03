@@ -154,6 +154,10 @@
     });
   }
 
+  // [2026.09] "사건명이 애매하다"는 지적에 따라 이 폼엔 사건명 입력칸이 없다 — 서버
+  // (work_createCase)가 "고객명(납세자) 세목 업무유형"으로 자동 생성한다(work_generateUniqueCaseName_,
+  // 같은 조합이 이미 있으면 뒤에 " 2" 등을 붙임). 필요하면 나중에 사건 상세(편집) 화면에서
+  // 직접 고칠 수 있다.
   function renderNewCaseForm(prefill){
     workShowingNewForm = true;
     workSelectedCaseId = null;
@@ -163,15 +167,13 @@
       '<h3 style="margin-top:0;">새 사건 등록</h3>' +
       (prefill.bookingRowIndex ? '<div style="font-size:12px; color:var(--sub); margin-bottom:8px;">🗂 예약에서 시작 — 저장하면 그 예약에 이 사건이 연결됩니다.</div>' : '') +
       '<div style="display:flex; flex-direction:column; gap:8px; max-width:420px;">' +
-      '<label>고객명(의뢰인)<br><input type="text" id="wcNewCustomer" list="clientNameOptions" value="' + escapeHtml(prefill.고객명 || '') + '" style="width:100%;" placeholder="고객명 (신규면 자동으로 고객관리에도 등록됩니다)"></label>' +
+      '<label>고객명(의뢰인)<br><input type="text" id="wcNewCustomer" list="clientNameOptions" value="' + escapeHtml(prefill.고객명 || '') + '" style="width:100%;" placeholder="고객명"></label>' +
       '<label>납세자 <span style="color:var(--sub); font-weight:400;">(의뢰인과 다른 경우만 입력)</span><br><input type="text" id="wcNewTaxpayer" value="' + escapeHtml(prefill.납세자 || '') + '" style="width:100%;" placeholder="(선택) 의뢰인과 같으면 비워두세요"></label>' +
-      '<label>사건명<br><input type="text" id="wcNewCase" style="width:100%;" placeholder="예: 2026년 양도소득세 신고"></label>' +
       '<label>세목<br><select id="wcNewSemok" style="width:100%;">' +
         Object.keys(WORK_SEMOK_LABELS).map(function(k){ return '<option value="' + k + '">' + WORK_SEMOK_LABELS[k] + '</option>'; }).join('') +
       '</select></label>' +
       '<label>업무유형<br><select id="wcNewUptype" style="width:100%;"></select></label>' +
-      '<label>담당자<br><input type="text" id="wcNewAssignee" style="width:100%;" placeholder="(선택)"></label>' +
-      '<label>의뢰일<br><div style="display:flex; gap:6px;"><input type="date" id="wcNewRequestDate" style="flex:1;"><button type="button" id="wcNewRequestDateToday" class="ghost-btn" style="padding:4px 10px; font-size:12px; white-space:nowrap;">오늘</button></div></label>' +
+      '<label>의뢰일<br><div style="display:flex; gap:6px;"><input type="date" id="wcNewRequestDate" style="flex:1;"><button type="button" id="wcNewRequestDateToday" class="ghost-btn" style="white-space:nowrap;">오늘</button></div></label>' +
       '<div id="wcNewBaseDateWrap"><label><span id="wcNewBaseDateLabel">기준일</span><br><input type="date" id="wcNewBaseDate" style="width:100%;"></label></div>' +
       '<label id="wcNewManualDeadlineLabel" style="display:none;"><span id="wcNewManualDeadlineText">처리시한</span><br><input type="date" id="wcNewManualDeadline" style="width:100%;"></label>' +
       '<label>진행메모<br><textarea id="wcNewOverview" style="width:100%; min-height:60px; font-family:inherit; box-sizing:border-box;" placeholder="어떻게 처리할 계획인지">' + escapeHtml(prefill.개요 || '') + '</textarea></label>' +
@@ -221,16 +223,14 @@
     });
     document.getElementById('wcNewSave').addEventListener('click', function(){
       var 고객명 = document.getElementById('wcNewCustomer').value.trim();
-      var 사건명 = document.getElementById('wcNewCase').value.trim();
-      if (!고객명 || !사건명){ showToast('고객명과 사건명을 입력해주세요.', 'warning'); return; }
+      if (!고객명){ showToast('고객명을 입력해주세요.', 'warning'); return; }
       var upType = newUptypeSel.value;
       var manual = WORK_MANUAL_DEADLINE_TYPES_.indexOf(upType) !== -1;
       var payload = {
-        고객명: 고객명, 사건명: 사건명,
+        고객명: 고객명,
         납세자: document.getElementById('wcNewTaxpayer').value.trim(),
         세목: newSemokSel.value,
         업무유형: upType,
-        담당자: document.getElementById('wcNewAssignee').value.trim(),
         의뢰일: document.getElementById('wcNewRequestDate').value,
         기준일: document.getElementById('wcNewBaseDate').value,
         개요: document.getElementById('wcNewOverview').value.trim()
@@ -261,21 +261,19 @@
       '<input type="text" id="wcEditCustomerName" placeholder="고객명" value="' + escapeHtml(c.고객명 || '') + '" style="font-weight:700; font-size:15px; width:120px;">' +
       '<button type="button" id="wcViewCustomer" class="ghost-btn" title="이 고객 정보 빠르게 보기·수정" style="padding:4px 8px;">👤</button>' +
       '<input type="text" id="wcEditTaxpayer" placeholder="납세자(의뢰인과 다르면 입력)" value="' + escapeHtml(c.납세자 || '') + '" style="width:140px;">' +
-      '<input type="text" id="wcEditCaseName" placeholder="사건명" value="' + escapeHtml(c.사건명 || '') + '" style="font-weight:700; font-size:15px; width:160px;">' +
       '</div>' +
-      '<div style="display:flex; gap:6px;">' +
-      '<button type="button" id="wcGoToProcess" class="ghost-btn" title="처리방향·작업일지·법령예규판례는 여기서">🧭 처리개요</button>' +
-      '<button type="button" id="wcDeleteCase" class="ghost-btn" title="삭제">🗑 삭제</button>' +
+      '<div class="tb-row" style="display:flex; gap:6px;">' +
+      '<button type="button" id="wcGoToProcess" class="ghost-btn" title="처리방향·작업일지·법령예규판례는 여기서"><span class="btn-ic">🧭</span><span class="btn-tx"> 처리개요</span></button>' +
+      '<button type="button" id="wcDeleteCase" class="ghost-btn" title="삭제"><span class="btn-ic">🗑</span><span class="btn-tx"> 삭제</span></button>' +
       '</div>' +
       '</div>' +
       '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; margin-top:8px;">' +
       '<select id="wcEditSemok">' + Object.keys(WORK_SEMOK_LABELS).map(function(k){ return '<option value="' + k + '"' + (k === c.세목 ? ' selected' : '') + '>' + WORK_SEMOK_LABELS[k] + '</option>'; }).join('') + '</select>' +
       '<select id="wcEditUptype"></select>' +
-      '<input type="text" id="wcEditAssignee" placeholder="담당자" value="' + escapeHtml(c.담당자 || '') + '" style="width:100px;">' +
-      '<label style="font-size:12px; color:var(--sub);">의뢰일 <input type="date" id="wcEditRequestDate" value="' + escapeHtml(c.의뢰일 || '') + '"> <button type="button" id="wcEditRequestDateToday" class="ghost-btn" style="padding:2px 8px; font-size:11px;">오늘</button></label>' +
+      '<label style="font-size:12px; color:var(--sub);">의뢰일 <input type="date" id="wcEditRequestDate" value="' + escapeHtml(c.의뢰일 || '') + '"> <button type="button" id="wcEditRequestDateToday" class="ghost-btn">오늘</button></label>' +
       '<label id="wcEditBaseDateWrap" style="font-size:12px; color:var(--sub);"><span id="wcEditBaseDateLabel">기준일</span> <input type="date" id="wcEditBaseDate" value="' + escapeHtml(c.기준일 || '') + '"></label>' +
       '<select id="wcEditStatus">' + WORK_STATUS_OPTIONS.map(function(s){ return '<option value="' + s + '"' + (s === c.상태 ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +
-      '<button type="button" id="wcSaveCase" class="ghost-btn">저장</button>' +
+      '<button type="button" id="wcSaveCase" class="save-btn">저장</button>' +
       '</div>' +
       '<div style="margin-bottom:12px;">' +
       '<label id="wcEditManualDeadlineLabel" style="display:' + (isManual ? 'inline-block' : 'none') + '; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 10px; font-size:12.5px; color:var(--sub);"><span id="wcEditManualDeadlineText">처리시한</span> <input type="date" id="wcEditManualDeadline" value="' + escapeHtml(c.법정일 || '') + '"></label>' +
@@ -353,26 +351,39 @@
       document.getElementById('wcEditRequestDate').value = new Date().toISOString().slice(0, 10);
     });
 
+    // [2026.09] "사건명이 고객명만큼 크고 편집 가능한 칸으로 화면에 노출돼 있는 게 왜냐"는
+    // 지적 — 사건명은 이제 서버가 "고객명(납세자) 세목 업무유형"으로 자동 만드는 내부 식별용
+    // 값(work_generateUniqueCaseName_)이라 여기서 편집하지 못하게 완전히 숨겼다. 사건 목록
+    // 드롭다운(같은 고객의 여러 사건 구분용)에는 계속 쓰이므로 컬럼 자체는 그대로 둔다 —
+    // 여기서 그냥 payload에 안 보내면(저장 안 하면) 서버가 만든 값이 그대로 유지된다.
     function saveCaseNow_(silent){
       var customerName = document.getElementById('wcEditCustomerName').value.trim();
-      var caseName = document.getElementById('wcEditCaseName').value.trim();
-      if (!customerName || !caseName){ showToast('고객명과 사건명은 비워둘 수 없습니다.', 'warning'); return; }
+      if (!customerName){ showToast('고객명은 비워둘 수 없습니다.', 'warning'); return; }
       var upType = editUptypeSel.value;
       var manual = WORK_MANUAL_DEADLINE_TYPES_.indexOf(upType) !== -1;
+      var 납세자 = document.getElementById('wcEditTaxpayer').value.trim();
       var payload = {
         id: c.id,
         고객명: customerName,
-        사건명: caseName,
-        납세자: document.getElementById('wcEditTaxpayer').value.trim(),
+        납세자: 납세자,
         세목: editSemokSel.value,
         업무유형: upType,
-        담당자: document.getElementById('wcEditAssignee').value.trim(),
         의뢰일: document.getElementById('wcEditRequestDate').value,
         기준일: document.getElementById('wcEditBaseDate').value,
         상태: document.getElementById('wcEditStatus').value,
         개요: document.getElementById('wcEditOverview').value.trim()
       };
       if (manual) payload.법정일 = document.getElementById('wcEditManualDeadline').value;
+      // [2026.09] 작업관리의 "납세자"와 사건개요서의 납세의무자 이름 필드(casehandling.html의
+      // TAXPAYER_NAME_FIELD_BY_SEMOK_)가 반드시 같은 값이어야 한다는 요청 — 여기서 납세자를
+      // 고치면 사건개요 쪽도 같이 맞춘다(반대 방향은 casehandling.html의 chSaveTarget이
+      // 담당). 납세자를 비워두면(원래 값 유지하려는 경우) 사건개요 쪽은 건드리지 않는다.
+      var taxpayerField = (typeof TAXPAYER_NAME_FIELD_BY_SEMOK_ !== 'undefined') ? TAXPAYER_NAME_FIELD_BY_SEMOK_[editSemokSel.value] : null;
+      if (taxpayerField && 납세자) {
+        var overviewPatch = {};
+        overviewPatch[taxpayerField] = 납세자;
+        payload.사건개요 = Object.assign({}, c.사건개요 || {}, overviewPatch);
+      }
       callGas('work_update_case', payload).then(function(res){
         if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); return; }
         if (!silent) showToast('저장했습니다.', 'success');
@@ -407,7 +418,6 @@
         '<div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px;">' +
         '<select class="wcNodeStatus" style="font-size:12px;">' + WORK_SUBTASK_STATUS_OPTIONS.map(function(s){ return '<option value="' + s + '"' + (s === node.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' +
         '<input type="text" class="wcNodeTitle" value="' + escapeHtml(node.title || '') + '" style="flex:1; min-width:120px; font-size:13px;">' +
-        '<input type="text" class="wcNodeAssignee" value="' + escapeHtml(node.assignee || '') + '" placeholder="담당자" style="width:70px; font-size:12px;">' +
         '<input type="date" class="wcNodeDue" value="' + escapeHtml(node.dueDate || '') + '" style="font-size:12px;' + (overdue ? ' color:#a83232;' : '') + '">' +
         '<button type="button" class="ghost-btn wcNodeAddChild" style="padding:3px 8px;">+ 하위</button>' +
         '<span class="log-del wcNodeDelete" title="삭제">✕</span>' +
@@ -418,12 +428,10 @@
 
       var statusSel = row.querySelector('.wcNodeStatus');
       var titleInput = row.querySelector('.wcNodeTitle');
-      var assigneeInput = row.querySelector('.wcNodeAssignee');
       var dueInput = row.querySelector('.wcNodeDue');
 
       statusSel.addEventListener('change', function(){ updateWorkSubtask(caseId, node.id, { status: statusSel.value }); });
       titleInput.addEventListener('change', function(){ updateWorkSubtask(caseId, node.id, { title: titleInput.value.trim() }); });
-      assigneeInput.addEventListener('change', function(){ updateWorkSubtask(caseId, node.id, { assignee: assigneeInput.value.trim() }); });
       dueInput.addEventListener('change', function(){ updateWorkSubtask(caseId, node.id, { dueDate: dueInput.value }); });
 
       row.querySelector('.wcNodeDelete').addEventListener('click', function(){

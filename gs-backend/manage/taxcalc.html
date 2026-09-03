@@ -6804,20 +6804,28 @@ function renderTcCaseBar_(){
       return '<option value="' + c.id + '"' + (c.id === tcSelectedId ? ' selected' : '') + '>' + escapeHtml(c.고객명 || '') + ' · ' + escapeHtml(c.사건명 || '') + ' (' + escapeHtml(c.상태 || '') + ')</option>';
     }).join('');
   tcCaseBarEl.innerHTML =
-    '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
-    '<label style="font-size:12px; color:var(--sub);">🔗 사건연결</label>' +
+    '<div class="tb-row" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
+    '<label style="font-size:12px; color:var(--sub);">사건</label>' +
     '<select id="tcCaseSelect" style="min-width:220px; max-width:360px;">' + options + '</select>' +
-    '<button type="button" id="tcSaveBtn" class="save-btn"' + (tcSelectedId ? '' : ' disabled') + '>💾 이 사건에 저장</button>' +
-    '<button type="button" id="tcBackToCaseBtn" class="ghost-btn">↩ 처리개요로</button>' +
+    '<button type="button" id="tcBackToCaseBtn" class="ghost-btn" style="margin-left:auto;"><span class="btn-ic">↩</span><span class="btn-tx"> 처리개요</span></button>' +
     '</div>' +
     (tcSelectedId ? '<div id="tcSavedList" style="display:flex; flex-direction:column; gap:6px;"></div>' : '');
+
+  // [2026.09] "이 사건에 저장" 버튼은 사건 선택 바가 아니라 실제로 세액을 계산하는
+  // taxcalc-body 맨 위에 있어야 한다는 지적 — 저장된 계산 목록이 길어지면 사건 선택 바가
+  // 늘어나면서 계산 영역과 멀어지기 때문. index.html의 taxcalc-body 맨 앞에 있는
+  // #taxCalcSaveBar에 매번 다시 그려 넣는다(사건이 바뀔 때마다 disabled 여부도 갱신).
+  var saveBar = document.getElementById('taxCalcSaveBar');
+  if (saveBar){
+    saveBar.innerHTML = '<button type="button" id="tcSaveBtn" class="save-btn"' + (tcSelectedId ? '' : ' disabled') + '>💾 이 사건에 저장</button>';
+    document.getElementById('tcSaveBtn').addEventListener('click', tcSaveCurrentResult_);
+  }
 
   document.getElementById('tcCaseSelect').addEventListener('change', function(){
     tcSelectedId = this.value || null;
     tcCurrentCase = tcSelectedId ? tcCases.filter(function(c){ return c.id === tcSelectedId; })[0] : null;
     renderTcCaseBar_();
   });
-  document.getElementById('tcSaveBtn').addEventListener('click', tcSaveCurrentResult_);
   // [2026.09] 처리개요에서 넘어온 경우가 많은데 왼쪽 메뉴로 되돌아가야만 해서 불편하다는
   // 지적 — 지금 고른 사건을 그대로 들고 처리개요로 돌아가는 버튼.
   document.getElementById('tcBackToCaseBtn').addEventListener('click', function(){
@@ -6835,16 +6843,30 @@ function renderTcSavedList_(list){
     return;
   }
   wrap.innerHTML = '';
+  // [2026.09] 저장된 계산이 여러 건 쌓이면(다른 납세자·재계산 등) 목록이 길어져서 사건
+  // 선택 바 전체가 늘어나므로, 기본은 한 줄로 접어두고 꺾쇠로 펼쳐볼 수 있게 한다.
   list.slice().reverse().forEach(function(entry){
     var preview = String(entry.요약 || '');
     if (preview.length > 300) preview = preview.slice(0, 300) + '…';
     var row = document.createElement('div');
     row.className = 'log-entry';
+    row.style.flexDirection = 'column';
+    row.style.alignItems = 'stretch';
     row.innerHTML =
-      '<div class="log-date">' + escapeHtml(fmtDateShort_(entry.계산일) || entry.계산일 || '') + '</div>' +
-      '<div class="log-text"><b>' + escapeHtml(entry.세목 || '') + ' · ' + escapeHtml(entry.구분 || '') + '</b><br>' +
-      '<span style="color:var(--sub); font-size:12.5px;">' + escapeHtml(preview) + '</span></div>' +
-      '<span class="log-del" title="삭제">✕</span>';
+      '<div style="display:flex; align-items:center; gap:8px;">' +
+      '<span class="tc-saved-toggle" style="cursor:pointer; color:var(--sub); font-size:11px; flex-shrink:0; width:14px;">▾</span>' +
+      '<div class="log-date" style="flex-shrink:0;">' + escapeHtml(fmtDateShort_(entry.계산일) || entry.계산일 || '') + '</div>' +
+      '<div class="log-text" style="flex:1;"><b>' + escapeHtml(entry.세목 || '') + ' · ' + escapeHtml(entry.구분 || '') + '</b></div>' +
+      '<span class="log-del" title="삭제">✕</span>' +
+      '</div>' +
+      '<div class="tc-saved-preview" style="display:none; color:var(--sub); font-size:12.5px; margin:6px 0 0 22px; white-space:pre-wrap;">' + escapeHtml(preview) + '</div>';
+    var toggle = row.querySelector('.tc-saved-toggle');
+    var previewEl = row.querySelector('.tc-saved-preview');
+    toggle.addEventListener('click', function(){
+      var open = previewEl.style.display !== 'none';
+      previewEl.style.display = open ? 'none' : 'block';
+      toggle.textContent = open ? '▾' : '▴';
+    });
     row.querySelector('.log-del').addEventListener('click', function(){
       var newList = (tcCurrentCase.세액계산결과 || []).filter(function(e){ return e.id !== entry.id; });
       tcSaveList_(newList);

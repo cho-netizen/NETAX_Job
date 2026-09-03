@@ -170,7 +170,7 @@
       '<input type="text" id="ccEditPhone" placeholder="전화번호" value="' + escapeHtml(c.전화번호 || '') + '" style="width:130px;">' +
       '<select id="ccEditType" style="width:100px;">' + CLIENT_TIER_OPTIONS_.map(function(t){ return '<option value="' + t + '"' + (t === (c.구분 || '보통') ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select>' +
       '<input type="text" id="ccEditBiz" placeholder="납세번호" value="' + escapeHtml(c.사업자번호 || '') + '" style="width:130px;">' +
-      '<button type="button" id="ccSaveClient" class="ghost-btn">저장</button>' +
+      '<button type="button" id="ccSaveClient" class="save-btn">저장</button>' +
       '</div>' +
       '<textarea id="ccEditMemo" placeholder="메모" style="width:100%; max-width:500px; min-height:50px; font-family:inherit; margin-bottom:16px;">' + escapeHtml(c.메모 || '') + '</textarea>' +
       '<h4 style="margin-bottom:6px;">서비스 이력</h4>' +

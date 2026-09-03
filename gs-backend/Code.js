@@ -3209,9 +3209,46 @@ function dispatchClientAction_(body) {
   return null;
 }
 
+// [2026.09] 1회성 설정용 — clasp run으로 딱 한 번 실행해서 KAKAO_WEBHOOK_KEY를 심어둔다.
+// 실행 후에는 이 함수 자체를 지워도 되지만, 나중에 키를 바꿔야 할 때 재사용할 수 있게 남겨둔다.
+function kakao_setupWebhookKey_(){
+  PropertiesService.getScriptProperties().setProperty('KAKAO_WEBHOOK_KEY', 'da4f125afee7684c71e0beeeaf2d3ad594fe1f24ad31ccd5');
+  return 'ok';
+}
+
+// [2026.09] 카카오 i 오픈빌더 챗봇의 "스킬 서버" 웹훅 — 카카오톡채널로 고객이 보내는 메시지를
+// 흡수하는 1단계(받기만). 오픈빌더는 우리 앱의 _key(API_SECRET)를 실어 보낼 수 없는 별도
+// 외부 서비스라, 그 검사 이전에 먼저 이 요청인지 가려낸다. 대신 URL 쿼리스트링에 별도의
+// 카카오 전용 비밀값(kakao_key)을 붙여서(오픈빌더 스킬 URL 설정 시 함께 등록), 아무나 이 모양의
+// JSON을 흉내 내 보내도 통과하지 못하게 막는다.
+// [V1 — 받기만] 지금은 실제로 이미지/파일이 딸린 메시지가 오픈빌더에서 정확히 어떤 JSON
+// 모양으로 오는지 확인이 안 된 상태라, 추측으로 파일저장 로직을 미리 짜지 않는다. 우선 무엇이
+// 오든 그대로 로그에 남기고(Stackdriver — clasp logs로 확인), 사용자에게는 "잘 받았습니다" 같은
+// 짧은 응답만 보낸다. 실제 사진 테스트 메시지의 로그를 보고 나서 2단계(Drive 저장)를 짠다.
+// [2026.09 버그수정] 처음엔 스프레드시트 기록 때문에 "타임아웃"(1001)이 났고, 그다음 CacheService
+// 기록으로 바꿨더니 이번엔 "에러 응답"(1002)이 났다 — 원인을 좁히기 위해 응답 외에는 아무것도
+// 안 하는 가장 단순한 형태로 되돌린다. 이게 안정적으로 성공하는 것부터 확인한 뒤에만 로그 기록을
+// 다시 (더 안전한 방식으로) 붙인다.
+function kakao_handleOpenBuilderSkill_(e, body) {
+  return jsonResponse({
+    version: '2.0',
+    template: { outputs: [{ simpleText: { text: '요청하신 내용을 담당 세무사에게 전달했습니다. 확인 후 답변드리겠습니다.' } }] }
+  });
+}
+
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
+
+    // 카카오 오픈빌더 스킬 요청인지 먼저 판별 — 이 앱 고유 요청(body._key)과는 별개 경로.
+    if (body.userRequest && body.bot) {
+      const expectedKakaoKey = PropertiesService.getScriptProperties().getProperty('KAKAO_WEBHOOK_KEY');
+      const gotKakaoKey = e.parameter && e.parameter.kakao_key;
+      if (expectedKakaoKey && gotKakaoKey === expectedKakaoKey) {
+        return kakao_handleOpenBuilderSkill_(e, body);
+      }
+      return jsonResponse({ error: '카카오 웹훅 인증 실패' });
+    }
 
     // [2026.08] 이 웹앱 배포가 "모든 사용자"(로그인 불필요) 접근으로 되어 있어서, URL만 알면
     // 누구나 파일 조회/업로드/삭제 등을 호출할 수 있는 상태였다. 프론트엔드(config.js)가 매 요청에
@@ -16088,6 +16125,12 @@ function toolListConsultLogs(customerName) {
 const WORK_SHEET_ID = '1JtgBpcrlThAiYHU0m74wSxZmyZPxUtmSTspZzHycZX4';
 const WORK_SHEET_CASES = 'Cases';
 const WORK_HEADERS = ['id', '고객ID', '고객명', '사건명', '세목', '업무유형', '담당자', '의뢰일', '기준일', '법정일', '완료전법정일', '납세자', '상태', '개요', '하위업무', '생성일', '수정일', '처리방향', '처리대상', '작업일지', '법령예규판례', '증빙목록', 'my_report_id', '폴더ID', '세액계산결과', '사건개요'];
+// [2026.09] "사건명"을 사람이 직접 안 적어도 되게, 사건 생성 시 "고객명(납세자) 세목 업무유형"
+// 형태로 자동으로 만든다(사용자 요청) — workmanage.html의 WORK_SEMOK_LABELS와 같은 값을
+// 서버에도 둔다(서버는 클라이언트 상수를 모르므로). 같은 고객이 같은 조합으로 사건을 또
+// 만들면(양도·증여는 실제로 있을 수 있음) work_generateUniqueCaseName_이 뒤에 " 2", " 3"…을
+// 붙여 Drive 폴더 이름이 겹쳐서 서로 다른 사건 자료가 한 폴더에 섞이는 걸 막는다.
+const WORK_SEMOK_LABELS_ = { transfer: '양도', gift: '증여', inheritance: '상속', objection: '불복' };
 // [2026.09] 사건개요 — "사건개요서" 구조화 양식(1단계: 양도소득세만). 세목별로 정해진
 // 항목({양도물건, 양도가액, 취득일...} 등, WORK_CASE_OVERVIEW_FIELDS_ 참고)에 사실관계를
 // 채워넣는 JSON 객체(배열이 아니라 객체 — {필드key: 값}). 처리방향(어떻게 처리할지 판단)과는
@@ -16405,6 +16448,21 @@ function work_getOrCreateCaseFolder_(고객명, 사건명) {
   }
 }
 
+// "고객명 세목 업무유형" 기본형에서, 같은 고객ID로 이미 같은 이름의 사건이 있으면 " 2", " 3"…
+// 을 붙여 유일하게 만든다(Drive 폴더 이름 충돌 방지 — work_getOrCreateCaseFolder_는 이름으로
+// find-or-create하므로, 이름이 겹치면 서로 다른 사건이 같은 폴더를 나눠 쓰게 된다).
+function work_generateUniqueCaseName_(sheet, col, 고객ID, nameBase) {
+  const data = sheet.getDataRange().getValues();
+  const taken = {};
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][col.고객ID] === 고객ID) taken[String(data[i][col.사건명] || '').trim()] = true;
+  }
+  if (!taken[nameBase]) return nameBase;
+  let n = 2;
+  while (taken[nameBase + ' ' + n]) n++;
+  return nameBase + ' ' + n;
+}
+
 function work_createCase(params) {
   return withLock_(8000, function () {
     const sheet = work_getSheet_();
@@ -16416,11 +16474,16 @@ function work_createCase(params) {
     const upType = String(params.업무유형 || '').trim();
     const 기준일 = String(params.기준일 || '').trim();
     const 고객명 = String(params.고객명 || '').trim();
+    const 납세자 = String(params.납세자 || '').trim();
     // 고객ID를 직접 안 주면(화면에서 이름만 입력한 경우) 같은 이름의 고객을 고객관리에서 찾고,
     // 없으면 그 자리에서 새 고객으로 등록해서 연결한다 — 사건 등록 흐름이 예전과 똑같이
     // 이름만 입력하면 되도록 유지하면서도 자동으로 고객관리 명단이 쌓이게 하기 위함.
     const 고객ID = String(params.고객ID || '').trim() || (고객명 ? client_findOrCreateByName_(고객명).id : '');
-    const 사건명 = String(params.사건명 || '').trim();
+    // [2026.09] "사건명이 애매하다"는 지적에 따라 사람이 직접 입력하지 않고 자동으로 만든다 —
+    // "고객명(납세자) 세목 업무유형" (납세자가 고객명과 다를 때만 괄호 표시), 예: "홍길동(이순신) 상속 신고".
+    const semokLabel = WORK_SEMOK_LABELS_[seMok] || seMok;
+    const nameBase = (고객명 + (납세자 && 납세자 !== 고객명 ? '(' + 납세자 + ')' : '') + ' ' + semokLabel + (upType ? ' ' + upType : '')).trim();
+    const 사건명 = work_generateUniqueCaseName_(sheet, col, 고객ID, nameBase);
 
     const newRow = [];
     newRow[col.id] = id;
@@ -16436,7 +16499,7 @@ function work_createCase(params) {
     newRow[col.법정일] = WORK_MANUAL_DEADLINE_TYPES_.indexOf(upType) !== -1
       ? String(params.법정일 || '').trim()
       : work_calcDeadline_(seMok, upType, 기준일);
-    newRow[col.납세자] = String(params.납세자 || '').trim();
+    newRow[col.납세자] = 납세자;
     newRow[col.상태] = params.상태 || '진행';
     newRow[col.개요] = String(params.개요 || '').trim();
     newRow[col.처리방향] = String(params.처리방향 || '').trim();
@@ -16761,7 +16824,7 @@ function work_sendMyPortalSms(params) {
   const found = work_findCaseRow_(sheet, col, caseId);
   if (!found) return { success: false, message: '사건을 찾을 수 없습니다.' };
   const caseObj = work_readRow_(col, found.row);
-  if (!caseObj.my_report_id) return { success: false, message: '아직 my.netax.kr에 연결되지 않았습니다.' };
+  if (!caseObj.my_report_id) return { success: false, message: '아직 고객포털에 연결되지 않았습니다.' };
 
   let phone = '';
   const 고객ID = String(caseObj.고객ID || '').trim();
@@ -16775,9 +16838,11 @@ function work_sendMyPortalSms(params) {
   }
   if (!phone) return { success: false, message: '연락처를 찾을 수 없습니다(고객관리에 전화번호를 등록해주세요).' };
 
-  // [2026.09] 링크에 report_id를 쿼리로 넣어두면 my.netax.kr(NETAX_My/index.html)이 열람번호
+  // [2026.09] 링크에 report_id를 쿼리로 넣어두면 고객포털(NETAX/my/index.html)이 열람번호
   // 입력칸을 자동으로 채워준다 — 고객이 직접 타이핑하지 않아도 됨.
-  const message = '이음세무컨설팅 고객포털을 안내드립니다.\nhttps://my.netax.kr/?report_id=' + caseObj.my_report_id;
+  // my.netax.kr을 홈페이지(netax.kr/my/)로 흡수 — 고객이 이미 아는 홈페이지 주소 하나로
+  // 안내하기 위함(전자명함·상담신청과 같은 nav 버튼으로도 들어올 수 있게 됨).
+  const message = '이음세무컨설팅 고객포털을 안내드립니다.\nhttps://netax.kr/my/?report_id=' + caseObj.my_report_id;
   booking_sendSMS(phone, message);
   return { success: true };
 }

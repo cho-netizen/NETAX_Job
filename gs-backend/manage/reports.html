@@ -1,5 +1,5 @@
 <div class="view" id="view-reports">
-  <div class="view-head"><h2>열람관리</h2><p style="color:var(--sub); font-size:12.5px; margin:2px 0 0;">rpt.netax.kr로 고객에게 보고서·자료를 열람 전용 링크로 제공합니다.</p></div>
+  <div class="view-head"><h2>열람관리</h2></div>
   <div class="view-body">
     <div class="card">
       <h3>새 보고서 등록</h3>
@@ -56,10 +56,12 @@
         html += '<tr><td>' + esc_(r.name) + '</td><td>' + esc_(r.title) + '</td><td><code>' + esc_(r.report_id) + '</code></td>' +
           '<td>' + esc_(fmtIssuedDate_(r.issued)) + '</td><td>' + esc_(fmtIssuedDate_(r.expiry)) + expiredBadge + '</td>' +
           '<td style="font-size:12px; color:var(--sub);">' + esc_(accessInfo) + '</td>' +
-          '<td><button type="button" class="btn" data-act="preview" data-id="' + esc_(r.report_id) + '" data-name="' + esc_(r.name) + '">👁 미리보기</button> ' +
-          '<button type="button" class="btn" data-act="copy" data-id="' + esc_(r.report_id) + '">🔗 링크복사</button> ' +
-          '<button type="button" class="btn" data-act="reset" data-id="' + esc_(r.report_id) + '">비번초기화</button> ' +
-          '<button type="button" class="btn danger" data-act="del" data-id="' + esc_(r.report_id) + '">삭제</button></td></tr>';
+          '<td><span class="tb-row" style="display:inline-flex; flex-wrap:wrap; gap:4px;">' +
+          '<button type="button" class="btn" data-act="preview" data-id="' + esc_(r.report_id) + '" data-name="' + esc_(r.name) + '"><span class="btn-ic">👁</span><span class="btn-tx"> 미리보기</span></button>' +
+          '<button type="button" class="btn" data-act="copy" data-id="' + esc_(r.report_id) + '"><span class="btn-ic">🔗</span><span class="btn-tx"> 링크복사</span></button>' +
+          '<button type="button" class="btn" data-act="reset" data-id="' + esc_(r.report_id) + '">비번초기화</button>' +
+          '<button type="button" class="btn danger" data-act="del" data-id="' + esc_(r.report_id) + '">삭제</button>' +
+          '</span></td></tr>';
       });
       html += '</table>';
       box.innerHTML = html;

@@ -954,11 +954,11 @@
 <div class="view" id="view-reportwriter">
 <div id="rwRoot">
 
-<div id="rwCaseBar" style="flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:8px 16px; background:#262b35; color:#e8e8ec; font-size:12.5px; border-bottom:1px solid #3a4152; flex-wrap:wrap;">
-  <span style="color:#a8afc0;">🔗 사건연결</span>
+<div id="rwCaseBar" class="tb-row" style="flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:8px 16px; background:#262b35; color:#e8e8ec; font-size:12.5px; border-bottom:1px solid #3a4152; flex-wrap:wrap;">
+  <span style="color:#a8afc0;">사건</span>
   <select id="rwCaseSelect" style="min-width:200px; max-width:320px; background:#2b3040; color:#fff; border:1px solid #4a5268; border-radius:4px; padding:5px 8px; font-size:12.5px; font-family:inherit;"><option value="">사건 선택 안 함</option></select>
-  <button type="button" id="rwBackToCaseBtn">↩ 처리개요로</button>
   <span id="rwCaseReports" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;"></span>
+  <button type="button" id="rwBackToCaseBtn" style="margin-left:auto;"><span class="btn-ic">↩</span><span class="btn-tx"> 처리개요</span></button>
 </div>
 
 <div id="toolbar">
@@ -3132,6 +3132,13 @@ function updatePreviewControlsPosition(){
 }
 window.addEventListener('resize', updatePreviewControlsPosition);
 document.addEventListener('fullscreenchange', updatePreviewControlsPosition);
+// [2026.09] window resize 이벤트는 브라우저 창 자체가 바뀔 때만 발생 — 이 앱의 오른쪽 AI
+// 사이드바를 열고 닫아서 툴바 실제 폭(따라서 줄바꿈 여부)이 바뀌는 경우는 window resize가
+// 아예 안 일어나 위 리스너가 못 잡는다("문서작성에서도 버튼이 2줄로 겹친다" 지적). 툴바
+// 자체의 렌더링 크기 변화를 직접 관찰하는 ResizeObserver로 그 경우까지 함께 잡는다.
+if (typeof ResizeObserver !== 'undefined'){
+  new ResizeObserver(updatePreviewControlsPosition).observe(document.getElementById('toolbar'));
+}
 
 // ---------- 화면 진입 초기화 ----------
 // script.html의 showView('reportwriter')가 이 화면을 처음 열 때 한 번만 호출한다
@@ -3239,12 +3246,15 @@ function goToReportWriter_(caseId, opts){
     updateSaveToDriveButton();
   }
   // [2026.09] 사건연결 드롭다운도 같이 맞춰서, casehandling.html에서 바로 넘어와도
-  // "↩ 처리개요로" 버튼이 어느 사건인지 알 수 있게 한다(드롭다운 옵션이 아직 로딩 중일
+  // "↩ 처리개요" 버튼이 어느 사건인지 알 수 있게 한다(드롭다운 옵션이 아직 로딩 중일
   // 수 있어 rwCasesLoadPromise_가 끝난 뒤에 값을 넣는다).
   if (caseId) {
     (rwCasesLoadPromise_ || rwInitCaseBar_() || Promise.resolve()).then(function(){
       var sel = document.getElementById('rwCaseSelect');
       if (sel) sel.value = caseId;
+      // [2026.09 버그수정] sel.value만 맞추고 change 이벤트는 안 나가서, 처리개요의 "✍ 문서작성"
+      // 카드 제목으로 바로 들어왔을 때 "✍ 새 문서"/기존 보고서 목록이 안 뜨는 문제 — 직접 호출.
+      rwRenderCaseReports_(caseId);
     });
   }
 }

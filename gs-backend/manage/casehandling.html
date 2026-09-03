@@ -1,9 +1,11 @@
 <div class="view" id="view-casehandling">
-  <div class="view-head"><h2>🧭 처리개요</h2><p style="color:var(--sub); font-size:12.5px; margin:2px 0 0;">사건 하나를 골라 처리방향·처리대상을 정하고, 작업일지를 남깁니다. 법령조회·증빙확보·세액계산·문서작성·my.netax.kr 연동은 각 카드에서 요약만 보고 실제 작업은 해당 화면에서 합니다.</p></div>
+  <div class="view-head"><h2>🧭 처리개요</h2></div>
   <div class="view-body">
     <div class="card">
-      <label style="display:block; font-size:12px; color:var(--sub); margin-bottom:5px;">처리할 사건</label>
-      <select id="chCaseSelect" style="width:100%; max-width:420px;"><option value="">사건을 선택하세요</option></select>
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <label style="font-size:12px; color:var(--sub);">사건</label>
+        <select id="chCaseSelect" style="min-width:220px; max-width:420px;"><option value="">사건을 선택하세요</option></select>
+      </div>
     </div>
     <div id="chBody"><div class="explorer-status">위에서 사건을 선택해주세요.</div></div>
   </div>
@@ -61,11 +63,19 @@
     { value: 'building', label: '건물(구분소유 건물·아파트 등 대지권 포함분도 건물면적만 입력)' },
     { value: 'other', label: '기타' }
   ];
+  // [2026.09] 세목별로 "납세의무자 이름" 역할을 하는 사건개요 필드 키 — 작업관리의 "납세자"와
+  // 반드시 같은 값이어야 한다는 요청에 따라, 이 키를 가진 필드가 채워지면 양쪽을 서로 맞춘다
+  // (casehandling.html의 chSaveTarget, workmanage.html의 saveCaseNow_, memo.html의 사건개요
+  // 초안 적용 3곳이 이 상수를 함께 참조한다). 양도소득세는 양도인(taxcalc.html의
+  // trTransferorName과 동일 키), 증여세는 수증자(납세의무자가 곧 수증자), 상속세는 대표
+  // 상속인(피상속인 본인은 납세의무자가 아니므로 ihDeceasedName이 아니라 별도 필드).
+  var TAXPAYER_NAME_FIELD_BY_SEMOK_ = { transfer: 'trTransferorName', gift: 'giftDoneeName', inheritance: '상속인성명' };
   var CH_CASE_OVERVIEW_FIELDS_ = {
     transfer: [
-      { key: '양도가액', label: '양도가액', type: 'number' },
+      { key: 'trTransferorName', label: '양도인 성명', type: 'text' },
+      { key: '양도가액', label: '양도가액', type: 'money' },
       { key: '취득일', label: '취득일', type: 'date' },
-      { key: '취득가액', label: '취득가액', type: 'number' },
+      { key: '취득가액', label: '취득가액', type: 'money' },
       { key: '사건분류', label: '사건분류', type: 'select', options: ['', '일반과세', '1세대1주택 비과세', '1세대1주택 고가주택(과세)', '일시적2주택 비과세', '2주택 중과', '3주택이상 중과', '비사업용 토지(중과)', '농지 등 감면(8년자경 등)', '수용 등 공익사업 비과세·감면', '이월과세(배우자·직계존비속 증여 후 양도)', '특수관계자간 거래(부당행위계산부인·저가양도 증여의제)', '재건축·재개발(조합원입주권→신축주택 전환)', '미등기양도', '경매·공매', '부담부증여(전액)', '교환'] },
       { key: '특이사항', label: '특이사항', type: 'textarea' }
     ],
@@ -78,20 +88,41 @@
       { key: 'giftDoneeName', label: '수증자 성명', type: 'text' },
       { key: 'giftDonorName', label: '증여자 성명', type: 'text' },
       { key: 'giftRelation', label: '관계(수증자 기준)', type: 'select', options: ['', '배우자', '직계존속(1촌, 부모 등→자녀)', '직계존속(2촌 이상, 조부모 등→손자녀·세대생략)', '직계비속(1촌, 자녀 등→부모)', '직계비속(2촌 이상, 손자녀 등→조부모·세대생략)', '기타친족', '기타(상속인 아닌 자 등)'] },
-      { key: 'giftAmount', label: '증여재산가액', type: 'number' },
-      { key: 'giftDebtAssumed', label: '인수채무액(부분부담부증여만, 없으면 비움)', type: 'number' },
-      { key: 'giftPriorAmount', label: '10년내 동일인 기증여합산액', type: 'number' },
+      { key: 'giftAmount', label: '증여재산가액', type: 'money' },
+      { key: 'giftDebtAssumed', label: '인수채무액', type: 'money' },
+      { key: 'giftPriorAmount', label: '10년내 동일인 기증여합산액', type: 'money' },
       { key: '사건분류', label: '사건분류', type: 'select', options: ['', '일반증여', '부담부증여(부분, 순수증여분만)', '재차증여(10년내 합산)', '세대생략증여(할증)', '명의신탁 증여의제', '저가양수·고가양도 증여의제', '특정법인과의 거래 증여의제', '창업자금·가업승계 특례증여'] },
       { key: '특이사항', label: '특이사항', type: 'textarea' }
     ],
     inheritance: [
       { key: 'ihDeceasedName', label: '피상속인 성명', type: 'text' },
+      { key: '상속인성명', label: '대표 상속인 성명', type: 'text' },
       { key: '상속인수', label: '상속인 수', type: 'number' },
-      { key: 'ihEstate', label: '상속세과세가액(예상)', type: 'number' },
+      { key: 'ihEstate', label: '상속세과세가액(예상)', type: 'money' },
       { key: '사건분류', label: '사건분류', type: 'select', options: ['', '일반상속', '배우자상속공제 해당', '가업상속공제 해당', '영농상속공제 해당', '동거주택상속공제 해당', '사전증여재산 합산(10년내 상속인·5년내 비상속인)', '상속포기·한정승인', '유증·사인증여'] },
       { key: '특이사항', label: '특이사항', type: 'textarea' }
     ]
   };
+
+  // [2026.09] "양도·상속·증여가액란은 자동으로 콤마 형식이 되어야" — 금액 필드(type:'money')는
+  // 실제로는 type="text"+inputmode="numeric"으로 그리고, 입력할 때마다 chOnMoneyInput_이
+  // 숫자만 남겨 천단위 콤마를 다시 채운다. 저장할 때(chSaveTarget 등 수집부)는 콤마를 뺀
+  // 순수 숫자 문자열로 되돌려야 하므로 chUnformatMoney_를 꼭 거칠 것 — memo.html도 사건개요
+  // 초안 폼에서 이 두 함수를 그대로 재사용한다(같은 페이지에 로드되어 전역으로 접근 가능).
+  function chFormatMoney_(raw){
+    var digits = String(raw == null ? '' : raw).replace(/[^0-9]/g, '');
+    if (!digits) return '';
+    return Number(digits).toLocaleString('ko-KR');
+  }
+  function chUnformatMoney_(formatted){
+    return String(formatted == null ? '' : formatted).replace(/[^0-9]/g, '');
+  }
+  function chOnMoneyInput_(el){
+    var caretFromEnd = el.value.length - el.selectionStart;
+    el.value = chFormatMoney_(el.value);
+    var pos = Math.max(0, el.value.length - caretFromEnd);
+    el.setSelectionRange(pos, pos);
+  }
 
   function chRenderOverviewFieldInput_(field, value){
     var v = escapeHtml(value || '');
@@ -103,6 +134,9 @@
     }
     if (field.type === 'textarea'){
       return '<textarea ' + common + ' style="width:100%; min-height:44px; font-family:inherit; font-size:13px; box-sizing:border-box;">' + v + '</textarea>';
+    }
+    if (field.type === 'money'){
+      return '<input type="text" inputmode="numeric" placeholder="원" ' + common + ' value="' + escapeHtml(chFormatMoney_(value)) + '" oninput="chOnMoneyInput_(this)">';
     }
     return '<input type="' + field.type + '" ' + common + ' value="' + v + '">';
   }
@@ -292,15 +326,15 @@
       chBuildOverviewCardHtml_(c) +
       '<label style="font-size:12px; color:var(--sub); display:block; margin:10px 0 3px;">처리방향 <span style="font-weight:400;">(법령·예규·판례를 검토해 어떻게 처리할지)</span></label>' +
       '<textarea id="chEditDirection" placeholder="예: 1세대1주택 비과세 요건 충족 여부 검토 후 신고" style="width:100%; max-width:600px; min-height:50px; font-family:inherit; font-size:13px; box-sizing:border-box;">' + escapeHtml(c.처리방향 || '') + '</textarea>' +
-      '<div style="margin-top:8px;"><button type="button" id="chSaveTarget" class="save-btn">저장</button></div>' +
+      '<div style="margin-top:8px; text-align:right;"><button type="button" id="chSaveTarget" class="save-btn">저장</button></div>' +
       '</div>' +
       '<div class="card">' +
-      '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:10px;">🔗 my.netax.kr 고객포털</div>' +
       '<div id="chMyPortalBody">불러오는 중…</div>' +
       '</div>' +
       '<div class="card">' +
-      '<div id="chLogToggle" style="font-size:12.5px; color:var(--sub); margin-bottom:8px; cursor:pointer; width:fit-content;" title="눌러서 작업일지 추가">📓 작업일지 ' + (c.작업일지 || []).length + '건</div>' +
-      '<div id="chNewLogFormWrap" style="display:none; gap:6px; margin-bottom:10px; flex-wrap:wrap;"></div>' +
+      '<button type="button" id="chLogToggle" class="ch-card-head-btn" title="눌러서 작업일지 추가">📓 작업일지 <span class="ch-card-head-arrow">›</span></button>' +
+      '<div style="font-size:13px; color:var(--sub); margin-top:6px;">' + (c.작업일지 || []).length + '건</div>' +
+      '<div id="chNewLogFormWrap" style="display:none; gap:6px; margin-bottom:10px; margin-top:8px; flex-wrap:wrap;"></div>' +
       '<div id="chLogList"></div>' +
       '</div>' +
       '<div class="card">' +
@@ -329,7 +363,8 @@
         var overview = {};
         fields.forEach(function(field){
           var el = document.getElementById('chOv_' + field.key);
-          if (el) overview[field.key] = el.value.trim();
+          if (!el) return;
+          overview[field.key] = field.type === 'money' ? chUnformatMoney_(el.value) : el.value.trim();
         });
         if (c.세목 === 'transfer' || c.세목 === 'gift' || c.세목 === 'inheritance'){
           // [2026.09] 자산종류·유형·소재지·동·호·물건수는 CH_CASE_OVERVIEW_FIELDS_의 일반
@@ -351,6 +386,14 @@
           var transferDateEl = document.getElementById('chOvTransferDate');
           if (transferDateEl) payload.기준일 = transferDateEl.value;
         }
+        // [2026.09] 작업관리의 "납세자"와 사건개요서의 납세의무자 이름 필드(TAXPAYER_NAME_FIELD_BY_SEMOK_)
+        // 가 반드시 같은 값이어야 한다는 요청 — 여기서 그 필드를 채우면 작업관리의 납세자도
+        // 같이 맞춘다(반대 방향은 workmanage.html의 saveCaseNow_가 담당). 비워두면(아직 안
+        // 채웠으면) 기존 납세자 값을 건드리지 않는다.
+        var taxpayerField = TAXPAYER_NAME_FIELD_BY_SEMOK_[c.세목];
+        if (taxpayerField && overview[taxpayerField]) {
+          payload.납세자 = overview[taxpayerField];
+        }
         payload.사건개요 = overview;
       } else {
         payload.처리대상 = document.getElementById('chEditTarget').value.trim();
@@ -371,14 +414,14 @@
       if (typeof goToTaxCalc_ === 'function') goToTaxCalc_(c.id);
     });
     // [2026.09] 예전엔 카드 안 "📁 보고서 폴더 열기"가 구글드라이브를 새 탭으로 열었는데,
-    // 다른 카드들처럼 앱 밖으로 안 나가도록 증빙확보 화면 안에서 이 사건의 "보고서" 하위폴더로
-    // 바로 이동시킨다(chEvOpenDocsBtn과 같은 패턴, 경로만 '보고서' 한 단계 더 들어감).
+    // [2026.09 버그수정] "문서작성은 일반문서가 아니라 보고서 작성인데, 카드 제목을 누르면
+    // 증빙확보(파일탐색기) 화면이 그대로 열린다"는 지적 — 예전엔 chEvOpenDocsBtn과 같은 패턴으로
+    // "보고서" 하위폴더를 증빙확보에서 탐색만 하게 했는데, 그러면 상위·새폴더·업로드·PDF관리·스캔
+    // 같은 증빙확보 전용 버튼이 그대로 보여서 "보고서를 작성"할 방법이 없었다. 실제로 새 보고서를
+    // 쓰거나 기존 보고서를 여는 곳(chNewReportBtn/chEditReportBtn)과 똑같이 reportwriter.html로
+    // 보낸다.
     document.getElementById('chDocsWriterOpenBtn').addEventListener('click', function(){
-      getCustomerRootPath_().then(function(basePath){
-        docsLoaded = true;
-        if (typeof goToView_ === 'function') goToView_('docs');
-        if (typeof docsNavigate === 'function') docsNavigate(basePath.concat([(c.고객명 + ' ' + c.사건명).trim(), '보고서']));
-      });
+      if (typeof goToReportWriter_ === 'function') goToReportWriter_(c.id);
     });
     chRenderTaxCalcList_(c);
     chRenderEvidenceSummary_(c);
@@ -546,12 +589,12 @@
 
     if (!c.my_report_id){
       box.innerHTML =
-        '<div style="font-size:12.5px; color:var(--sub); margin-bottom:8px;">아직 고객포털에 연결되지 않았습니다. 연결하면 위 "요청자료"가 고객 체크리스트로 자동 전달되고, 고객이 my.netax.kr로 들어와 직접 자료를 올리고 진행상황·결과보고서를 확인할 수 있습니다.</div>' +
+        '<div style="font-size:12.5px; color:var(--sub); margin-bottom:8px;">아직 고객포털에 연결되지 않았습니다. 연결하면 위 "요청자료"가 고객 체크리스트로 자동 전달되고, 고객이 고객포털로 들어와 직접 자료를 올리고 진행상황·결과보고서를 확인할 수 있습니다.</div>' +
         '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:8px;">보고서 다운로드 권한 ' +
         '<select id="chMyNewPermission" style="margin-left:4px;"><option value="허용">허용(다운로드 가능)</option><option value="차단">차단(다운로드 불가)</option></select></label>' +
-        '<button type="button" id="chMyConnectBtn" class="save-btn">🔗 고객포털 연결하기</button>';
+        '<button type="button" id="chMyConnectBtn" class="ch-card-head-btn">🔗 고객포털 연결하기 <span class="ch-card-head-arrow">›</span></button>';
       document.getElementById('chMyConnectBtn').addEventListener('click', function(){
-        if (!confirm(c.고객명 + '님을 위한 my.netax.kr 고객포털을 새로 만들까요?')) return;
+        if (!confirm(c.고객명 + '님을 위한 고객포털을 새로 만들까요?')) return;
         var requestedLabels = (c.증빙목록 || []).filter(function(e){ return e.source === 'requested'; }).map(function(e){ return e.label; });
         var permission = document.getElementById('chMyNewPermission').value;
         // 사건 시작 때 이미 만들어둔 폴더(c.폴더ID)를 그대로 넘겨서 my.netax.kr이 별도 폴더를
@@ -575,7 +618,7 @@
         return;
       }
       var mc = res.case;
-      var url = 'https://my.netax.kr/?report_id=' + mc.report_id;
+      var url = 'https://netax.kr/my/?report_id=' + mc.report_id;
       var checklist = mc.checklist || [];
       var status = mc.submission_status || {};
       var rows = checklist.map(function(item){
@@ -585,10 +628,11 @@
       }).join('');
       var extra = status._extra || [];
       box.innerHTML =
-        '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">' +
+        '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:10px;">🔗 고객포털</div>' +
+        '<div class="tb-row" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">' +
         '<code style="background:var(--panel); padding:3px 8px; border-radius:6px;">' + escapeHtml(mc.report_id) + '</code>' +
-        '<button type="button" id="chMyCopyLinkBtn" class="ghost-btn" style="font-size:12px;">🔗 링크복사</button>' +
-        '<button type="button" id="chMySendSmsBtn" class="ghost-btn" style="font-size:12px;">📱 문자로 전달</button>' +
+        '<button type="button" id="chMyCopyLinkBtn" class="ghost-btn" style="font-size:12px;"><span class="btn-ic">🔗</span><span class="btn-tx"> 링크복사</span></button>' +
+        '<button type="button" id="chMySendSmsBtn" class="ghost-btn" style="font-size:12px;"><span class="btn-ic">📱</span><span class="btn-tx"> 문자로 전달</span></button>' +
         (mc.has_password ? '' : '<span style="font-size:11px; color:var(--danger); border:1px solid var(--danger); border-radius:10px; padding:1px 7px;">비밀번호 미설정</span>') +
         '</div>' +
         '<div style="font-size:12px; color:var(--sub); margin-bottom:6px;">체크리스트 제출현황</div>' +
@@ -604,7 +648,7 @@
         else showToast(url, 'success');
       });
       document.getElementById('chMySendSmsBtn').addEventListener('click', function(){
-        if (!confirm(c.고객명 + '님께 my.netax.kr 주소와 접근번호를 문자로 보낼까요?')) return;
+        if (!confirm(c.고객명 + '님께 고객포털 주소와 접근번호를 문자로 보낼까요?')) return;
         var btn = document.getElementById('chMySendSmsBtn');
         btn.disabled = true; btn.textContent = '전송 중…';
         callGas('send_my_portal_sms', { caseId: c.id }).then(function(res){

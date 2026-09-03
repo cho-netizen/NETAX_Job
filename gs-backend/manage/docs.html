@@ -13,25 +13,25 @@
 </style>
 
 <div class="view" id="view-docs">
-  <div style="display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--panel);">
-    <label style="font-size:12px; color:var(--sub);">🔗 사건연결</label>
-    <select id="docsCaseSelect" style="min-width:220px; max-width:360px;"><option value="">사건을 선택하면 그 사건 폴더로 바로 이동합니다</option></select>
-    <button type="button" id="docsBackToCaseBtn" class="ghost-btn">↩ 처리개요로</button>
+  <div class="tb-row" style="display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; background:var(--panel);">
+    <label style="font-size:12px; color:var(--sub);">사건</label>
+    <select id="docsCaseSelect" style="min-width:220px; max-width:360px;"><option value="">사건 선택</option></select>
+    <button type="button" id="docsBackToCaseBtn" class="ghost-btn" style="margin-left:auto;"><span class="btn-ic">↩</span><span class="btn-tx"> 처리개요</span></button>
   </div>
-  <div class="docs-toolbar">
-    <button type="button" id="docsBtnUp" class="ghost-btn" title="상위 폴더">⬆ 상위</button>
+  <div class="docs-toolbar tb-row">
+    <button type="button" id="docsBtnUp" class="ghost-btn" title="상위 폴더"><span class="btn-ic">⬆</span><span class="btn-tx"> 상위</span></button>
     <div class="docs-breadcrumb" id="docsBreadcrumb"></div>
-    <button type="button" id="docsBtnNewFolder" class="ghost-btn">📁 새 폴더</button>
-    <button type="button" id="docsBtnUpload" class="ghost-btn">⬆ 업로드</button>
+    <button type="button" id="docsBtnNewFolder" class="ghost-btn"><span class="btn-ic">📁</span><span class="btn-tx"> 새 폴더</span></button>
+    <button type="button" id="docsBtnUpload" class="ghost-btn"><span class="btn-ic">⬆</span><span class="btn-tx"> 업로드</span></button>
     <input type="file" id="docsUploadInput" multiple style="display:none;">
-    <button type="button" id="docsBtnPdfManager" class="ghost-btn">📑 PDF관리</button>
-    <button type="button" id="docsBtnScan" class="save-btn">📷 스캔</button>
+    <button type="button" id="docsBtnPdfManager" class="ghost-btn"><span class="btn-ic">📑</span><span class="btn-tx"> PDF관리</span></button>
+    <button type="button" id="docsBtnScan" class="ghost-btn"><span class="btn-ic">📷</span><span class="btn-tx"> 스캔</span></button>
   </div>
   <div id="docsCaseEvidencePanel" style="display:none; flex:0 0 auto; border-bottom:1px solid var(--line); padding:10px 14px; overflow-y:auto; max-height:40vh;"></div>
-  <div id="docsSelectionBar" style="display:none; flex:0 0 auto; align-items:center; gap:10px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); font-size:12.5px;">
+  <div id="docsSelectionBar" class="tb-row" style="display:none; flex:0 0 auto; align-items:center; gap:10px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); font-size:12.5px;">
     <span id="docsSelectionCount"></span>
-    <button type="button" id="docsBtnScanSelected" class="ghost-btn" style="font-size:12px;">📷 스캔에 추가</button>
-    <button type="button" id="docsBtnPdfMgrSelected" class="ghost-btn" style="font-size:12px;">📑 PDF관리에 추가</button>
+    <button type="button" id="docsBtnScanSelected" class="ghost-btn" style="font-size:12px;"><span class="btn-ic">📷</span><span class="btn-tx"> 스캔에 추가</span></button>
+    <button type="button" id="docsBtnPdfMgrSelected" class="ghost-btn" style="font-size:12px;"><span class="btn-ic">📑</span><span class="btn-tx"> PDF관리에 추가</span></button>
     <button type="button" id="docsBtnClearSelection" class="ghost-btn" style="font-size:12px; margin-left:auto;">선택 해제</button>
   </div>
   <div class="docs-list" id="docsList" style="flex:1; overflow-y:auto;"><div class="spinner">불러오는 중…</div></div>
@@ -46,10 +46,10 @@
     <div class="scan-body">
       <div id="scanTargetFolderLabel" style="font-size:12px; color:var(--sub);"></div>
       <div class="scan-row">
-        <button type="button" id="btnScanCapture" class="ghost-btn">📷 촬영하기</button>
-        <button type="button" id="btnScanGallery" class="ghost-btn">🖼 갤러리에서 불러오기</button>
-        <button type="button" id="btnScanScreenCapture" class="ghost-btn">🖥 화면 캡처</button>
-        <button type="button" id="btnScanPdfInsert" class="ghost-btn">📄 기존 PDF 삽입</button>
+        <button type="button" id="btnScanCapture" class="ghost-btn"><span class="btn-ic">📷</span><span class="btn-tx"> 촬영하기</span></button>
+        <button type="button" id="btnScanGallery" class="ghost-btn"><span class="btn-ic">🖼</span><span class="btn-tx"> 갤러리에서 불러오기</span></button>
+        <button type="button" id="btnScanScreenCapture" class="ghost-btn"><span class="btn-ic">🖥</span><span class="btn-tx"> 화면 캡처</span></button>
+        <button type="button" id="btnScanPdfInsert" class="ghost-btn"><span class="btn-ic">📄</span><span class="btn-tx"> 기존 PDF 삽입</span></button>
         <button type="button" id="btnSkipScanFile" class="ghost-btn" style="display:none;">다음 파일로 건너뛰기</button>
       </div>
       <input type="file" id="scanFileInput" accept="image/*" capture="environment" style="display:none;">
@@ -68,7 +68,7 @@
           <div class="scan-handle" id="handle-bl" data-corner="bl"></div>
         </div>
         <div class="scan-row">
-          <button type="button" id="btnRotateScanSource" class="ghost-btn">↻ 회전</button>
+          <button type="button" id="btnRotateScanSource" class="ghost-btn"><span class="btn-ic">↻</span><span class="btn-tx"> 회전</span></button>
           <button type="button" id="btnAutoDetect" class="ghost-btn">자동 인식</button>
           <button type="button" id="btnUseWholeImage" class="ghost-btn">전체 사용</button>
           <label style="font-size:12px; color:var(--sub);"><input type="checkbox" id="scanGrayscale"> 흑백</label>
@@ -100,9 +100,9 @@
     <div class="scan-body">
       <input type="file" id="pdfMgrFileInput" accept="application/pdf" multiple style="display:none;">
       <div class="scan-row">
-        <button type="button" id="btnPdfMgrAdd" class="ghost-btn">📄 PDF 추가</button>
-        <button type="button" id="btnPdfMgrCheckAll" class="ghost-btn">☑ 전체선택</button>
-        <button type="button" id="btnPdfMgrOcr" class="ghost-btn" title="체크한 페이지에서 인쇄된 글자를 텍스트로 추출합니다(브라우저 안에서 바로 처리 — 서버로 전송되지 않음). 손글씨는 정확도가 낮을 수 있습니다.">🔤 텍스트 추출</button>
+        <button type="button" id="btnPdfMgrAdd" class="ghost-btn"><span class="btn-ic">📄</span><span class="btn-tx"> PDF 추가</span></button>
+        <button type="button" id="btnPdfMgrCheckAll" class="ghost-btn"><span class="btn-ic">☑</span><span class="btn-tx"> 전체선택</span></button>
+        <button type="button" id="btnPdfMgrOcr" class="ghost-btn" title="체크한 페이지에서 인쇄된 글자를 텍스트로 추출합니다(브라우저 안에서 바로 처리 — 서버로 전송되지 않음). 손글씨는 정확도가 낮을 수 있습니다."><span class="btn-ic">🔤</span><span class="btn-tx"> 텍스트 추출</span></button>
       </div>
       <div class="scan-row">
         <input type="text" id="pdfMgrWatermarkText" placeholder="워터마크 문구(영문 권장 — 한글은 깨질 수 있음)" style="flex:1; min-width:160px;">
@@ -144,10 +144,10 @@
           <img id="sigManagePreviewImg" style="max-width:100%; max-height:160px; display:none;">
           <span id="sigManageEmptyLabel" style="color:var(--sub); font-size:12.5px;">등록된 서명이 없습니다</span>
         </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
-          <button type="button" id="btnSigManageFromFile" class="ghost-btn">📁 파일에서 불러오기</button>
-          <button type="button" id="btnSigManageDraw" class="ghost-btn">✍ 직접 그리기</button>
-          <button type="button" id="btnSigManageDelete" class="ghost-btn">🗑 삭제</button>
+        <div class="tb-row" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
+          <button type="button" id="btnSigManageFromFile" class="ghost-btn"><span class="btn-ic">📁</span><span class="btn-tx"> 파일에서 불러오기</span></button>
+          <button type="button" id="btnSigManageDraw" class="ghost-btn"><span class="btn-ic">✍</span><span class="btn-tx"> 직접 그리기</span></button>
+          <button type="button" id="btnSigManageDelete" class="ghost-btn"><span class="btn-ic">🗑</span><span class="btn-tx"> 삭제</span></button>
         </div>
       </div>
       <div id="sigManageDrawWrap" style="display:none; flex-direction:column; gap:8px;">
@@ -196,7 +196,7 @@
     <div class="modal-body">
       <textarea id="ocrResultText" readonly></textarea>
       <div class="scan-row" style="margin-top:8px;">
-        <button type="button" id="btnOcrResultCopy" class="save-btn">📋 클립보드에 복사</button>
+        <button type="button" id="btnOcrResultCopy" class="ghost-btn">📋 클립보드에 복사</button>
       </div>
     </div>
   </div>
@@ -216,7 +216,7 @@
   var docsCurrentListing = null;
   var docsLoaded = false;
   var docsSelectedIds = {}; // { fileId: true } — 스캔/PDF관리로 한번에 여러 개 넘길 때 씀. 폴더 이동 시 비운다.
-  var docsSelectedCaseId_ = null; // "↩ 처리개요로" 버튼용 — 지금 보고 있는 폴더가 어느 사건인지(docsNavigate에서 갱신).
+  var docsSelectedCaseId_ = null; // "↩ 처리개요" 버튼용 — 지금 보고 있는 폴더가 어느 사건인지(docsNavigate에서 갱신).
 
   // pdf.js는 실제 렌더링을 별도 워커에서 돌리므로, 워커 스크립트 위치를 지정해줘야 한다
   // (PDF 관리의 텍스트추출·서명 정밀배치 미리보기에 사용).
@@ -248,7 +248,7 @@
     if (!sel || sel.dataset.inited) return; // initDocs()가 여러 번 불려도 리스너가 중복 등록되지 않게
     sel.dataset.inited = '1';
     docsGetAllCases_().then(function(cases){
-      sel.innerHTML = '<option value="">사건을 선택하면 그 사건 폴더로 바로 이동합니다</option>' +
+      sel.innerHTML = '<option value="">사건 선택</option>' +
         cases.slice().sort(function(a, b){ return (a.고객명 || '').localeCompare(b.고객명 || ''); }).map(function(c){
           return '<option value="' + c.id + '">' + escapeHtml(c.고객명 || '') + ' · ' + escapeHtml(c.사건명 || '') + ' (' + escapeHtml(c.상태 || '') + ')</option>';
         }).join('');
@@ -270,7 +270,7 @@
     });
   }
 
-  // [2026.09] "↩ 처리개요로" 버튼이 지금 보고 있는 폴더에 맞는 사건을 들고 돌아가려면, 폴더를
+  // [2026.09] "↩ 처리개요" 버튼이 지금 보고 있는 폴더에 맞는 사건을 들고 돌아가려면, 폴더를
   // 옮길 때마다 지금 위치가 어느 사건인지 다시 계산해둬야 한다. docsRenderCaseEvidencePanel_와
   // 같은 방식(고객사건 루트 바로 밑 폴더명 = "고객명 사건명")으로 매칭하되, "보고서"·"제출자료"
   // 처럼 사건 폴더 한 단계 안쪽까지 들어가 있어도 찾을 수 있게 부모 폴더도 같이 검사한다.
@@ -473,7 +473,7 @@
       '<div id="docsEvListManual"></div>' +
       '</div>' +
       '<div>' +
-      '<div style="font-size:12px; font-weight:600; color:var(--sub); margin-bottom:6px;">요청자료 <span style="font-weight:400;">(고객에게 요청 — my.netax.kr 연결돼 있으면 그 체크리스트에도 자동 반영)</span></div>' +
+      '<div style="font-size:12px; font-weight:600; color:var(--sub); margin-bottom:6px;">요청자료 <span style="font-weight:400;">(고객에게 요청 — 고객포털에 연결돼 있으면 그 체크리스트에도 자동 반영)</span></div>' +
       '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">' +
       '<input type="text" id="docsEvReqLabel" placeholder="요청할 자료명 (예: 매매계약서)" style="flex:1; min-width:140px;">' +
       '<input type="text" id="docsEvReqNote" placeholder="메모(선택)" style="flex:1; min-width:140px;">' +

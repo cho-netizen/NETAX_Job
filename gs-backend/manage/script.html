@@ -142,6 +142,7 @@
     if (!enterApp._inited){
       enterApp._inited = true;
       initNav();
+      tbCollapseInit_();
       showView('dashboard');
       if (typeof initDashboard === 'function') initDashboard();
       if (typeof initAiSidebar === 'function') initAiSidebar();
@@ -168,11 +169,68 @@
     });
   }
 
+  // [2026.09] "아이콘+버튼명" 툴바(.tb-row/.scan-row)가 좁아지면 1단계로 아이콘부터 숨기고
+  // 2단계로 글자까지 숨겨 자리를 줄이는 로직 — "폭 숫자" 기준(container query)으로 처음
+  // 시도했다가, flex-wrap:wrap 때문에 컨테이너 자체는 안 좁아지고 버튼만 2줄로 줄바꿈돼버려서
+  // 전혀 동작하지 않는 문제가 있었다("생략 단계로 안 넘어가고 바로 2줄") — 그래서 폭이 아니라
+  // "한 줄에 실제로 다 들어가는지"를 직접 재는 방식으로 바꿨다. flex-wrap을 잠깐 nowrap으로
+  // 바꿔서 줄바꿈 없이 필요한 실제 너비(scrollWidth)를 재고, 원래 값으로 되돌린다.
+  function tbFitsOneLine_(el){
+    var prevWrap = el.style.flexWrap;
+    el.style.flexWrap = 'nowrap';
+    var fits = el.scrollWidth <= el.clientWidth + 1;
+    el.style.flexWrap = prevWrap;
+    return fits;
+  }
+  function tbCollapseApply_(el){
+    el.classList.remove('tb-ic-off', 'tb-tx-off');
+    if (tbFitsOneLine_(el)) return;
+    el.classList.add('tb-ic-off');
+    if (tbFitsOneLine_(el)) return;
+    el.classList.add('tb-tx-off');
+  }
+  var _tbMutationObserver_ = null;
+  // tbCollapseApply_가 style(flex-wrap 측정용)·class(tb-ic-off 등)를 직접 건드리는데, 그
+  // 변화를 관찰 대상(#centerWork) 안에서 일으키므로 아무 조치 없이 두면 그 변화가 다시
+  // MutationObserver를 깨워 tbCollapseAll_을 또 부르는 무한루프가 된다 — 재는 동안만 관찰을
+  // 잠깐 꺼둔다.
+  function tbCollapseAll_(){
+    if (_tbMutationObserver_) _tbMutationObserver_.disconnect();
+    document.querySelectorAll('.tb-row, .scan-row').forEach(tbCollapseApply_);
+    if (_tbMutationObserver_) _tbMutationObserver_.observe(document.getElementById('centerWork'), { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+  }
+  var _tbCollapseTimer_ = null;
+  function tbCollapseAllDebounced_(){
+    clearTimeout(_tbCollapseTimer_);
+    _tbCollapseTimer_ = setTimeout(tbCollapseAll_, 30);
+  }
+  function tbCollapseInit_(){
+    if (tbCollapseInit_._done) return;
+    tbCollapseInit_._done = true;
+    window.addEventListener('resize', tbCollapseAllDebounced_);
+    // 창 크기 자체는 그대로여도 오른쪽 AI사이드바를 열고 닫으면 작업영역 폭이 바뀌는데,
+    // 이건 window resize가 아니라서 위 리스너로는 안 잡힌다 — #centerWork 자체의 렌더링
+    // 크기 변화를 직접 관찰한다.
+    if (typeof ResizeObserver !== 'undefined'){
+      new ResizeObserver(tbCollapseAllDebounced_).observe(document.getElementById('centerWork'));
+    }
+    // 각 화면의 렌더 함수가 innerHTML로 툴바를 새로 그릴 때마다(사건 전환, 목록 갱신 등)
+    // 마다 일일이 호출을 심는 대신, DOM 변화 자체를 관찰해서 한 곳에서 처리한다.
+    // childList(내용이 새로 그려짐)뿐 아니라 style/class 변화(예: 선택바가 display:none→
+    // flex로 나타나는 경우)도 같이 봐야, 처음엔 숨겨져 있다가 나중에 보이는 툴바도 놓치지 않는다.
+    if (typeof MutationObserver !== 'undefined'){
+      _tbMutationObserver_ = new MutationObserver(tbCollapseAllDebounced_);
+      _tbMutationObserver_.observe(document.getElementById('centerWork'), { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+    }
+    tbCollapseAll_();
+  }
+
   function showView(name){
     document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('active'); });
     var target = document.getElementById('view-' + name);
     if (target) target.classList.add('active');
     window._currentViewLabel = VIEW_LABELS_[name] || name;
+    tbCollapseAllDebounced_();
     if (name === 'booking' && typeof initBooking === 'function') initBooking();
     if (name === 'workmanage' && typeof initWorkManage === 'function') initWorkManage();
     if (name === 'casehandling' && typeof initCaseHandling === 'function') initCaseHandling();

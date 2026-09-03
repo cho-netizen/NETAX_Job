@@ -1,13 +1,43 @@
 <div class="view" id="view-memo-text">
-  <div class="memo-toolbar">
+  <div class="memo-toolbar tb-row">
     <div class="memo-search-wrap">
       <input type="text" id="memoSearch" placeholder="🔍 저장된 일반메모 검색·열기" autocomplete="off">
       <div class="memo-search-dropdown" id="memoSearchDropdown"></div>
     </div>
-    <button type="button" id="memoBtnNew" class="ghost-btn">🆕 새 메모</button>
-    <button type="button" id="memoBtnSave" class="save-btn">💾 저장</button>
+    <button type="button" id="memoBtnNew" class="ghost-btn"><span class="btn-ic">+</span><span class="btn-tx"> 새 메모</span></button>
+    <button type="button" id="memoBtnSave" class="save-btn"><span class="btn-ic">💾</span><span class="btn-tx"> 저장</span></button>
+    <button type="button" id="memoBtnOverview" class="ghost-btn"><span class="btn-ic">📋</span><span class="btn-tx"> 사건메모</span></button>
   </div>
   <textarea id="memoText" placeholder="통화하면서 바로 타이핑하세요…"></textarea>
+
+  <!-- [2026.09] "사건개요 초안" 모드 — 전화 받으면서 바로 세목별 구조화 항목(casehandling.html의
+       CH_CASE_OVERVIEW_FIELDS_를 읽기 전용으로 재사용)에 입력하고, 나중에 특정 사건을 골라 그
+       값을 그 사건의 사건개요서(사건개요 JSON 컬럼)에 그대로 반영하는 기능. 기존 자유텍스트
+       메모(#memoText)와는 완전히 별개 모드 — memoBtnOverview 클릭으로 서로 토글된다. -->
+  <div id="memoOvPanel">
+    <div id="memoOvSemokPick">
+      <label style="font-size:12px; color:var(--sub); display:block; margin-bottom:6px;">세목을 선택하세요</label>
+      <select id="memoOvSemokSelect" style="max-width:240px;">
+        <option value="">세목 선택</option>
+        <option value="transfer">양도소득세</option>
+        <option value="gift">증여세</option>
+        <option value="inheritance">상속세</option>
+      </select>
+    </div>
+    <div id="memoOvFormWrap" style="display:none;">
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+        <div id="memoOvSemokLabel" style="font-size:12.5px; font-weight:700; color:var(--navy);"></div>
+        <div class="tb-row" style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button type="button" id="memoOvChangeSemokBtn" class="ghost-btn">세목 변경</button>
+          <button type="button" id="memoOvSaveBtn" class="ghost-btn"><span class="btn-ic">💾</span><span class="btn-tx"> 초안 저장</span></button>
+          <button type="button" id="memoOvApplyBtn" class="save-btn"><span class="btn-ic">✅</span><span class="btn-tx"> 이 사건에 적용</span></button>
+        </div>
+      </div>
+      <div id="memoOvFields" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:8px 12px; max-width:760px; margin-bottom:20px;"></div>
+      <div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:8px;">📂 저장된 초안</div>
+      <div id="memoOvDraftList"></div>
+    </div>
+  </div>
 </div>
 
 <div class="view" id="view-memo-hand">
@@ -43,6 +73,29 @@
     <div style="display:flex; gap:8px; justify-content:flex-end;">
       <button type="button" id="memoSaveCancel" class="ghost-btn">취소</button>
       <button type="button" id="memoSaveConfirm" class="save-btn">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- [2026.09] 사건개요 초안을 기존 사건에 적용할 때 어느 사건인지 고르는 다이얼로그 —
+     memoOvApplyBtn 클릭으로 열리며, 지금 선택된 세목과 같은 세목의 사건만 나열한다. -->
+<div id="memoOvApplyStep">
+  <div class="box" style="width:min(440px, 92vw); position:relative;">
+    <span class="modal-close" id="memoOvApplyClose" title="닫기" style="position:absolute; top:10px; right:10px; color:var(--sub); background:var(--panel);">✕</span>
+    <div style="font-weight:700; color:var(--navy); font-size:14px; padding-right:24px;">🆕 새 사건으로 등록</div>
+    <div style="font-size:11.5px; color:var(--sub);">사건을 만들면서 지금 작성한 사건개요를 바로 반영합니다.</div>
+    <input type="text" id="memoOvNewCustomer" placeholder="고객명(의뢰인) — 필수">
+    <input type="text" id="memoOvNewTaxpayer" placeholder="납세자(의뢰인과 다른 경우만)">
+    <select id="memoOvNewUptype" style="width:100%; box-sizing:border-box;"></select>
+    <label style="font-size:12px; color:var(--sub);">의뢰일<br><input type="date" id="memoOvNewRequestDate" style="width:100%; box-sizing:border-box;"></label>
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button type="button" id="memoOvApplyCancel" class="ghost-btn">취소</button>
+      <button type="button" id="memoOvNewCaseConfirm" class="save-btn">등록하고 반영</button>
+    </div>
+    <div style="border-top:1px dashed var(--line); margin:6px 0 2px; padding-top:10px; font-weight:700; color:var(--navy); font-size:13px;">또는 — 이미 작업관리에 등록된 사건에 적용</div>
+    <select id="memoOvApplyCaseSelect" style="width:100%; box-sizing:border-box;"><option value="">사건을 선택하세요</option></select>
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button type="button" id="memoOvApplyConfirm" class="ghost-btn">기존 사건에 적용</button>
     </div>
   </div>
 </div>
@@ -325,6 +378,342 @@
     if (editingGeneralMemoFile){ saveOverExistingGeneralMemo_(); return; }
     if (!memoText.value.trim()){ toast('입력한 내용이 없습니다.'); return; }
     openSaveDialog(memoText.value.trim(), function(){ memoText.value = ''; });
+  });
+</script>
+
+<script>
+  // ============================================================
+  // 사건개요 초안 — casehandling.html의 "사건개요서" 구조화 입력을 전화 받는 순간부터 쓸 수
+  // 있게, 메모장 안에서 세목별 폼으로 미리 채워뒀다가 나중에 실제 사건을 골라 그대로 반영한다.
+  // casehandling.html(CH_CASE_OVERVIEW_FIELDS_/CH_ASSET_TYPE_OPTIONS_/CH_ASSET_KIND_OPTIONS_)과
+  // workmanage.html(WORK_BASE_DATE_LABELS_)의 전역 상수는 읽기 전용으로만 참조하고, 이 파일은
+  // 절대 건드리지 않는다 — 같은 페이지에 이식되어 전역으로 공유되므로(index.html이
+  // include_로 모든 화면을 한 페이지에 이어붙임) 별도 로드 없이 그냥 참조 가능하다.
+  // 모든 DOM id는 memoOv 접두사를 써서 casehandling.html의 chOv 계열과 절대 겹치지 않는다
+  // (사건처리 화면과 이 화면이 같은 DOM에 동시에 존재하기 때문).
+  // ============================================================
+
+  // casehandling.html의 chBuildTransferAssetBlockHtml_/chBuildLocationFieldsHtml_이 그리는
+  // "물건수·자산종류·유형·소재지·동·호" 커스텀 블록과 데이터 키를 맞춘 것 — 단, 여기선 전화
+  // 받으며 빠르게 입력하는 용도라 주소검색 버튼·동호 조건부표시 같은 상호작용 없이 전부 평범한
+  // select/text로 단순화한다(사용자 요청). assetType(자산종류)은 양도소득세 전용 개념이라
+  // transfer에만 있다.
+  var MEMO_OVERVIEW_EXTRA_FIELDS_ = {
+    transfer: [
+      { key: '물건수', label: '물건 수', type: 'number' },
+      { key: 'assetType', label: '자산종류(대표 물건)', type: 'select' },
+      { key: 'assetKind', label: '유형', type: 'select' },
+      { key: 'assetLocation', label: '소재지', type: 'text' },
+      { key: 'assetDong', label: '동', type: 'text' },
+      { key: 'assetHo', label: '호', type: 'text' }
+    ],
+    gift: [
+      { key: '물건수', label: '물건 수', type: 'number' },
+      { key: 'assetKind', label: '유형', type: 'select' },
+      { key: 'assetLocation', label: '소재지', type: 'text' },
+      { key: 'assetDong', label: '동', type: 'text' },
+      { key: 'assetHo', label: '호', type: 'text' }
+    ],
+    inheritance: [
+      { key: '물건수', label: '물건 수', type: 'number' },
+      { key: 'assetKind', label: '유형', type: 'select' },
+      { key: 'assetLocation', label: '소재지', type: 'text' },
+      { key: 'assetDong', label: '동', type: 'text' },
+      { key: 'assetHo', label: '호', type: 'text' }
+    ]
+  };
+  var MEMO_OVERVIEW_SEMOK_LABELS_ = { transfer: '양도소득세', gift: '증여세', inheritance: '상속세' };
+
+  var memoOvPanelEl = document.getElementById('memoOvPanel');
+  var memoOvSemokPickEl = document.getElementById('memoOvSemokPick');
+  var memoOvFormWrapEl = document.getElementById('memoOvFormWrap');
+  var memoOvFieldsEl = document.getElementById('memoOvFields');
+  var memoOvSemokSelectEl = document.getElementById('memoOvSemokSelect');
+  var memoOvApplyStepEl = document.getElementById('memoOvApplyStep');
+  var memoOvActive_ = false;
+  var memoOvInited_ = false;
+  var memoOvCurrentSemok_ = '';
+  var memoOvCurrentDraftName_ = null;
+  var memoOvDrafts_ = [];
+  var memoOvApplyCases_ = [];
+
+  // 세목별 입력요소 하나를 그린다 — casehandling.html의 chRenderOverviewFieldInput_과 같은
+  // 구조(select/textarea/그 외 input)이되, selectOptions는 문자열 배열(CH_CASE_OVERVIEW_FIELDS_
+  // 방식)과 {value,label} 객체 배열(CH_ASSET_TYPE_OPTIONS_/CH_ASSET_KIND_OPTIONS_ 방식) 둘 다 받는다.
+  function memoOvRenderField_(key, label, type, value, selectOptions){
+    var common = 'id="memoOv_' + key + '" data-key="' + key + '" style="width:100%; box-sizing:border-box;"';
+    var v = escapeHtml(value || '');
+    var inputHtml;
+    if (type === 'select'){
+      inputHtml = '<select ' + common + '><option value="">선택</option>' +
+        (selectOptions || []).map(function(opt){
+          var isObj = opt && typeof opt === 'object';
+          var optValue = isObj ? opt.value : opt;
+          var optLabel = isObj ? opt.label : (opt || '(선택 안 함)');
+          if (optValue === '') return ''; // 빈 옵션은 위의 공통 "선택" 하나로 충분
+          return '<option value="' + escapeHtml(optValue) + '"' + (String(optValue) === String(value || '') ? ' selected' : '') + '>' + escapeHtml(optLabel) + '</option>';
+        }).join('') + '</select>';
+    } else if (type === 'textarea'){
+      inputHtml = '<textarea ' + common + ' style="width:100%; min-height:44px; font-family:inherit; font-size:13px; box-sizing:border-box;">' + v + '</textarea>';
+    } else if (type === 'money'){
+      // casehandling.html의 chFormatMoney_/chOnMoneyInput_/chUnformatMoney_를 그대로 재사용
+      // (같은 페이지에 로드되어 전역으로 접근 가능) — 콤마 표시 방식을 두 화면이 똑같이 쓴다.
+      var formatted = (typeof chFormatMoney_ === 'function') ? chFormatMoney_(value) : v;
+      inputHtml = '<input type="text" inputmode="numeric" placeholder="원" ' + common + ' value="' + escapeHtml(formatted) + '" oninput="chOnMoneyInput_(this)">';
+    } else {
+      inputHtml = '<input type="' + type + '" ' + common + ' value="' + v + '">';
+    }
+    return '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">' + escapeHtml(label) + '</label>' + inputHtml + '</div>';
+  }
+
+  function memoOvBuildFormHtml_(semok, data){
+    data = data || {};
+    var html = '';
+    (MEMO_OVERVIEW_EXTRA_FIELDS_[semok] || []).forEach(function(f){
+      var opts = f.key === 'assetType' ? CH_ASSET_TYPE_OPTIONS_ : (f.key === 'assetKind' ? CH_ASSET_KIND_OPTIONS_ : null);
+      html += memoOvRenderField_(f.key, f.label, f.type, data[f.key], opts);
+    });
+    var baseDateLabel = (typeof WORK_BASE_DATE_LABELS_ !== 'undefined' && WORK_BASE_DATE_LABELS_[semok]) || '기준일';
+    html += memoOvRenderField_('_baseDate', baseDateLabel, 'date', data._baseDate, null);
+    (CH_CASE_OVERVIEW_FIELDS_[semok] || []).forEach(function(f){
+      html += memoOvRenderField_(f.key, f.label, f.type, data[f.key], f.options);
+    });
+    return html;
+  }
+
+  function memoOvCollectData_(semok){
+    var data = {};
+    (MEMO_OVERVIEW_EXTRA_FIELDS_[semok] || []).forEach(function(f){
+      var el = document.getElementById('memoOv_' + f.key);
+      if (el) data[f.key] = el.value.trim();
+    });
+    var baseEl = document.getElementById('memoOv__baseDate');
+    data._baseDate = baseEl ? baseEl.value.trim() : '';
+    (CH_CASE_OVERVIEW_FIELDS_[semok] || []).forEach(function(f){
+      var el = document.getElementById('memoOv_' + f.key);
+      if (!el) return;
+      data[f.key] = (f.type === 'money' && typeof chUnformatMoney_ === 'function') ? chUnformatMoney_(el.value) : el.value.trim();
+    });
+    return data;
+  }
+
+  // casehandling.html의 chSaveTarget 클릭 핸들러가 사건개요를 만드는 방식과 정확히 같은
+  // 키 이름·구조로 맞춘다(CH_CASE_OVERVIEW_FIELDS_ 선언적 필드값 + 물건수/assetType/assetKind/
+  // assetLocation/assetDong/assetHo/assetDongList) — 기준일(_baseDate)은 사건개요 안이 아니라
+  // work_update_case의 별도 최상위 파라미터 "기준일"로 간다(양도일=사건의 기준일과 완전히
+  // 같은 값이라는 casehandling.html 주석과 동일한 원칙).
+  function memoOvBuildOverviewPayload_(semok, data){
+    var overview = {};
+    (CH_CASE_OVERVIEW_FIELDS_[semok] || []).forEach(function(f){ overview[f.key] = data[f.key] || ''; });
+    overview.물건수 = data.물건수 || '';
+    overview.assetType = data.assetType || '';
+    overview.assetKind = data.assetKind || '';
+    overview.assetLocation = data.assetLocation || '';
+    overview.assetDong = data.assetDong || '';
+    overview.assetHo = data.assetHo || '';
+    overview.assetDongList = [];
+    return overview;
+  }
+
+  function memoOvOnSemokChange_(data){
+    memoOvCurrentSemok_ = data.세목;
+    memoOvSemokSelectEl.value = data.세목;
+    memoOvSemokPickEl.style.display = 'none';
+    memoOvFormWrapEl.style.display = 'block';
+    document.getElementById('memoOvSemokLabel').textContent = '📋 ' + (MEMO_OVERVIEW_SEMOK_LABELS_[data.세목] || data.세목) + ' 사건메모';
+    memoOvFieldsEl.innerHTML = memoOvBuildFormHtml_(data.세목, data);
+  }
+
+  memoOvSemokSelectEl.addEventListener('change', function(){
+    if (!this.value) return;
+    memoOvCurrentDraftName_ = null;
+    memoOvOnSemokChange_({ 세목: this.value });
+  });
+
+  document.getElementById('memoOvChangeSemokBtn').addEventListener('click', function(){
+    if (!confirm('세목을 변경하면 지금 입력한 내용이 사라집니다. 계속할까요?')) return;
+    memoOvCurrentSemok_ = '';
+    memoOvCurrentDraftName_ = null;
+    memoOvFormWrapEl.style.display = 'none';
+    memoOvSemokPickEl.style.display = 'block';
+    memoOvSemokSelectEl.value = '';
+  });
+
+  // ---- 초안 저장 (Drive "사건개요초안" 폴더에 JSON으로) ----
+  function memoOvDraftParentPath_(){
+    return generalMemoParentPath_(); // "0 NETAX" 루트 — 일반메모 폴더와 같은 기준점
+  }
+  function memoOvEnsureDraftFolder_(){
+    return memoOvDraftParentPath_().then(function(parentPath){
+      return callGas('listFolder', { path: parentPath }).then(function(listing){
+        var has = (listing.folders || []).some(function(f){ return f.name === '사건개요초안'; });
+        var p = has ? Promise.resolve() : callGas('createFolder', { path: parentPath, name: '사건개요초안' }).then(function(created){
+          if (created.error) throw new Error(created.error);
+        });
+        return p.then(function(){ return parentPath.concat(['사건개요초안']); });
+      });
+    });
+  }
+
+  document.getElementById('memoOvSaveBtn').addEventListener('click', function(){
+    if (!memoOvCurrentSemok_){ toast('세목을 먼저 선택하세요.'); return; }
+    var data = memoOvCollectData_(memoOvCurrentSemok_);
+    data.세목 = memoOvCurrentSemok_;
+    var nameRaw = prompt('이 초안의 이름을 입력하세요(예: 홍길동 상담)', memoOvCurrentDraftName_ || '');
+    if (!nameRaw || !nameRaw.trim()) return;
+    var name = nameRaw.trim();
+    var fileName = /\.json$/i.test(name) ? name : name + '.json';
+    var btn = document.getElementById('memoOvSaveBtn');
+    btn.disabled = true;
+    memoOvEnsureDraftFolder_().then(function(path){
+      return callGas('uploadFile', { path: path, name: fileName, mimeType: 'application/json', base64Data: utf8ToBase64(JSON.stringify(data, null, 2)) });
+    }).then(function(res){
+      if (res.error) throw new Error(res.error);
+      memoOvCurrentDraftName_ = fileName.replace(/\.json$/i, '');
+      toast('"' + memoOvCurrentDraftName_ + '" 초안을 저장했습니다.');
+      return memoOvRefreshDraftList_();
+    }).catch(function(err){
+      toast('저장 중 오류: ' + (err && err.message ? err.message : err));
+    }).finally(function(){ btn.disabled = false; });
+  });
+
+  // ---- 초안 목록/불러오기 ----
+  function memoOvRefreshDraftList_(){
+    var listEl = document.getElementById('memoOvDraftList');
+    if (listEl) listEl.innerHTML = '<div class="log-empty">불러오는 중…</div>';
+    return memoOvEnsureDraftFolder_().then(function(path){
+      return callGas('listFolder', { path: path });
+    }).then(function(listing){
+      memoOvDrafts_ = (listing.files || []).filter(function(f){ return /\.json$/i.test(f.name); });
+      memoOvRenderDraftList_();
+    }).catch(function(){
+      memoOvDrafts_ = [];
+      memoOvRenderDraftList_();
+    });
+  }
+  function memoOvRenderDraftList_(){
+    var listEl = document.getElementById('memoOvDraftList');
+    if (!listEl) return;
+    if (!memoOvDrafts_.length){ listEl.innerHTML = '<div class="log-empty">저장된 초안이 없습니다.</div>'; return; }
+    listEl.innerHTML = memoOvDrafts_.map(function(f, idx){
+      return '<div class="log-entry memoOvDraftRow" data-idx="' + idx + '" style="cursor:pointer; margin-bottom:6px;"><div class="log-text">📋 ' + escapeHtml(f.name.replace(/\.json$/i, '')) + '</div></div>';
+    }).join('');
+    Array.prototype.forEach.call(listEl.querySelectorAll('.memoOvDraftRow'), function(row){
+      row.addEventListener('click', function(){ memoOvLoadDraft_(memoOvDrafts_[Number(row.getAttribute('data-idx'))]); });
+    });
+  }
+  function memoOvLoadDraft_(file){
+    callGas('readFile', { fileId: file.id }).then(function(res){
+      if (res.error) throw new Error(res.error);
+      var data;
+      try { data = JSON.parse(res.content); } catch (e) { throw new Error('초안 파일 형식이 올바르지 않습니다.'); }
+      if (!data || !data.세목){ throw new Error('초안에 세목 정보가 없습니다.'); }
+      memoOvCurrentDraftName_ = file.name.replace(/\.json$/i, '');
+      memoOvOnSemokChange_(data);
+      toast('"' + memoOvCurrentDraftName_ + '" 초안을 불러왔습니다.');
+    }).catch(function(err){ toast('불러오기 실패: ' + (err && err.message ? err.message : err)); });
+  }
+
+  function memoOvInit_(){
+    if (memoOvInited_) return;
+    memoOvInited_ = true;
+    memoOvRefreshDraftList_();
+  }
+
+  // ---- 사건개요 초안 모드 진입/이탈 (기존 자유텍스트 메모와 토글) ----
+  document.getElementById('memoBtnOverview').addEventListener('click', function(){
+    memoOvActive_ = !memoOvActive_;
+    memoText.style.display = memoOvActive_ ? 'none' : '';
+    memoOvPanelEl.style.display = memoOvActive_ ? 'block' : 'none';
+    document.querySelector('.memo-search-wrap').style.display = memoOvActive_ ? 'none' : '';
+    document.getElementById('memoBtnNew').style.display = memoOvActive_ ? 'none' : '';
+    document.getElementById('memoBtnSave').style.display = memoOvActive_ ? 'none' : '';
+    this.textContent = memoOvActive_ ? '📝 텍스트 메모로' : '📋 사건메모';
+    if (memoOvActive_) memoOvInit_();
+  });
+
+  // ---- "사건에 반영" — 기본은 "새 사건으로 등록"(전화 받으며 초안부터 썼으니 작업관리에
+  // 아직 사건이 없는 게 보통), 이미 작업관리에 등록해둔 사건이 있으면 아래쪽 "기존 사건에
+  // 적용"도 그대로 쓸 수 있다. 두 경로 다 사건 목록 조회 없이 다이얼로그부터 열고, 새 사건
+  // 경로는 등록(work_create_case) 직후 바로 사건개요 반영(work_update_case)까지 한 번에
+  // 이어서 처리해 "작업관리에 먼저 만들고 여기 와서 또 적용"하는 이원화된 절차를 없앤다.
+  document.getElementById('memoOvApplyBtn').addEventListener('click', function(){
+    if (!memoOvCurrentSemok_){ toast('세목을 먼저 선택하세요.'); return; }
+    memoOvApplyCases_ = [];
+    document.getElementById('memoOvNewCustomer').value = '';
+    document.getElementById('memoOvNewTaxpayer').value = '';
+    document.getElementById('memoOvNewRequestDate').value = new Date().toISOString().slice(0, 10);
+    var uptypeSel = document.getElementById('memoOvNewUptype');
+    var uptypeOptions = (typeof WORK_UPTYPE_OPTIONS_ !== 'undefined' && WORK_UPTYPE_OPTIONS_[memoOvCurrentSemok_]) || ['신고', '상담'];
+    uptypeSel.innerHTML = uptypeOptions.map(function(u){ return '<option value="' + u + '">' + u + '</option>'; }).join('');
+    var applySel = document.getElementById('memoOvApplyCaseSelect');
+    applySel.innerHTML = '<option value="">사건을 선택하세요</option>';
+    callGas('work_get_cases', {}).then(function(res){
+      var cases = (res.cases || []).filter(function(c){ return c.세목 === memoOvCurrentSemok_; });
+      memoOvApplyCases_ = cases;
+      applySel.innerHTML += cases.map(function(c, idx){
+        return '<option value="' + idx + '">' + escapeHtml(c.고객명 || '') + ' · ' + escapeHtml(c.사건명 || '') + '</option>';
+      }).join('');
+    }).catch(function(){});
+    memoOvApplyStepEl.style.display = 'flex';
+  });
+  document.getElementById('memoOvApplyCancel').addEventListener('click', function(){ memoOvApplyStepEl.style.display = 'none'; });
+  document.getElementById('memoOvApplyClose').addEventListener('click', function(){ memoOvApplyStepEl.style.display = 'none'; });
+
+  document.getElementById('memoOvNewCaseConfirm').addEventListener('click', function(){
+    var 고객명 = document.getElementById('memoOvNewCustomer').value.trim();
+    if (!고객명){ toast('고객명을 입력해주세요.'); return; }
+    var data = memoOvCollectData_(memoOvCurrentSemok_);
+    // [2026.09] 작업관리 "납세자"와 사건개요서의 납세의무자 이름 필드가 반드시 같아야 하므로
+    // (casehandling.html의 TAXPAYER_NAME_FIELD_BY_SEMOK_와 같은 원칙), 사건개요 초안에 그
+    // 필드가 채워져 있으면 그 값을 납세자로 쓴다.
+    var taxpayerField_ = (typeof TAXPAYER_NAME_FIELD_BY_SEMOK_ !== 'undefined') ? TAXPAYER_NAME_FIELD_BY_SEMOK_[memoOvCurrentSemok_] : null;
+    var 납세자 = (taxpayerField_ && data[taxpayerField_]) ? data[taxpayerField_] : document.getElementById('memoOvNewTaxpayer').value.trim();
+    var createPayload = {
+      고객명: 고객명,
+      납세자: 납세자,
+      세목: memoOvCurrentSemok_,
+      업무유형: document.getElementById('memoOvNewUptype').value,
+      의뢰일: document.getElementById('memoOvNewRequestDate').value,
+      기준일: data._baseDate || ''
+    };
+    var btn = document.getElementById('memoOvNewCaseConfirm');
+    btn.disabled = true;
+    callGas('work_create_case', createPayload).then(function(res){
+      if (res.success === false || !res.case){ toast(res.message || '사건 등록 실패'); return null; }
+      var overviewPayload = { id: res.case.id, 사건개요: memoOvBuildOverviewPayload_(memoOvCurrentSemok_, data) };
+      if (data._baseDate) overviewPayload.기준일 = data._baseDate;
+      return callGas('work_update_case', overviewPayload).then(function(res2){
+        if (res2.success === false){ toast('사건은 등록됐지만 사건개요 반영에 실패했습니다: ' + (res2.message || '')); return; }
+        toast('"' + escapeHtml(res.case.고객명 || '') + ' · ' + escapeHtml(res.case.사건명 || '') + '" 사건을 등록하고 사건개요를 반영했습니다.');
+        memoOvApplyStepEl.style.display = 'none';
+        if (typeof loadWorkCases === 'function') loadWorkCases();
+      });
+    }).catch(function(err){
+      toast('등록 중 오류: ' + (err && err.message ? err.message : err));
+    }).finally(function(){ btn.disabled = false; });
+  });
+
+  document.getElementById('memoOvApplyConfirm').addEventListener('click', function(){
+    var sel = document.getElementById('memoOvApplyCaseSelect');
+    if (!sel.value){ toast('적용할 사건을 선택해주세요.'); return; }
+    var c = memoOvApplyCases_[Number(sel.value)];
+    if (!c) return;
+    if (c.사건개요 && Object.keys(c.사건개요).length && !confirm('"' + (c.고객명 || '') + ' · ' + (c.사건명 || '') + '" 사건에는 이미 사건개요가 있습니다. 덮어쓸까요?')) return;
+    var data = memoOvCollectData_(memoOvCurrentSemok_);
+    var payload = { id: c.id, 사건개요: memoOvBuildOverviewPayload_(memoOvCurrentSemok_, data) };
+    if (data._baseDate) payload.기준일 = data._baseDate;
+    var taxpayerFieldApply_ = (typeof TAXPAYER_NAME_FIELD_BY_SEMOK_ !== 'undefined') ? TAXPAYER_NAME_FIELD_BY_SEMOK_[memoOvCurrentSemok_] : null;
+    if (taxpayerFieldApply_ && data[taxpayerFieldApply_]) payload.납세자 = data[taxpayerFieldApply_];
+    var btn = document.getElementById('memoOvApplyConfirm');
+    btn.disabled = true;
+    callGas('work_update_case', payload).then(function(res){
+      if (res.success === false){ toast(res.message || '적용 실패'); return; }
+      toast('"' + (c.고객명 || '') + ' · ' + (c.사건명 || '') + '" 사건에 반영했습니다.');
+      memoOvApplyStepEl.style.display = 'none';
+    }).catch(function(err){
+      toast('적용 중 오류: ' + (err && err.message ? err.message : err));
+    }).finally(function(){ btn.disabled = false; });
   });
 </script>
 
