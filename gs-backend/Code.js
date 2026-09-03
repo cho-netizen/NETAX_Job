@@ -16517,6 +16517,29 @@ function work_createCase(params) {
     newRow[col.생성일] = now;
     newRow[col.수정일] = now;
 
+    // [2026.09] "고객창구 연결하기"를 세무사가 나중에 수동으로 눌러야만 접속코드가 생기다 보니,
+    // 그 전에 고객이 my페이지에 들어오면 안내할 코드가 아예 없어서 "상담 신청해달라"는 엉뚱한
+    // 안내만 보게 되는 문제 — 사건이 생성되는 즉시 자동으로 연결해서 접속코드를 바로 발급한다.
+    // 실패해도(드라이브 권한 등) 사건 생성 자체는 막지 않는다 — my_report_id가 빈 채로 저장될 뿐,
+    // 처리개요의 "고객창구 연결하기"로 나중에 수동 재시도 가능.
+    if (newRow[col.폴더ID]) {
+      try {
+        const myResult = my_handleAdminCreateCase({
+          admin_code: PropertiesService.getScriptProperties().getProperty('ADMIN_CODE'),
+          name: 고객명,
+          case_name: 사건명,
+          checklist: [],
+          permission: '허용',
+          folder_id: newRow[col.폴더ID]
+        });
+        if (myResult.success !== false && myResult.report_id) {
+          newRow[col.my_report_id] = myResult.report_id;
+        }
+      } catch (err) {
+        console.log('사건 생성 시 고객창구 자동연결 실패: ' + err.message);
+      }
+    }
+
     sheet.appendRow(newRow);
     SpreadsheetApp.flush();
 
@@ -16812,7 +16835,7 @@ function work_doPost(body) {
   }
 }
 
-// [2026.09] 5단계 — my.netax.kr 주소+열람번호를 고객 휴대폰으로 문자 발송. 전화번호는
+// [2026.09] 5단계 — my.netax.kr 주소+접속코드를 고객 휴대폰으로 문자 발송. 전화번호는
 // 클라이언트로 절대 내려주지 않고 서버 안에서만 조회·발송한다(work_ 사건엔 전화번호가 없어
 // 고객관리(client_)에서 고객ID로 찾는다).
 function work_sendMyPortalSms(params) {
@@ -16824,7 +16847,7 @@ function work_sendMyPortalSms(params) {
   const found = work_findCaseRow_(sheet, col, caseId);
   if (!found) return { success: false, message: '사건을 찾을 수 없습니다.' };
   const caseObj = work_readRow_(col, found.row);
-  if (!caseObj.my_report_id) return { success: false, message: '아직 고객포털에 연결되지 않았습니다.' };
+  if (!caseObj.my_report_id) return { success: false, message: '아직 고객창구에 연결되지 않았습니다.' };
 
   let phone = '';
   const 고객ID = String(caseObj.고객ID || '').trim();
@@ -16838,11 +16861,11 @@ function work_sendMyPortalSms(params) {
   }
   if (!phone) return { success: false, message: '연락처를 찾을 수 없습니다(고객관리에 전화번호를 등록해주세요).' };
 
-  // [2026.09] 링크에 report_id를 쿼리로 넣어두면 고객포털(NETAX/my/index.html)이 열람번호
+  // [2026.09] 링크에 report_id를 쿼리로 넣어두면 고객창구(NETAX/my/index.html)이 접속코드
   // 입력칸을 자동으로 채워준다 — 고객이 직접 타이핑하지 않아도 됨.
   // my.netax.kr을 홈페이지(netax.kr/my/)로 흡수 — 고객이 이미 아는 홈페이지 주소 하나로
   // 안내하기 위함(전자명함·상담신청과 같은 nav 버튼으로도 들어올 수 있게 됨).
-  const message = '이음세무컨설팅 고객포털을 안내드립니다.\nhttps://netax.kr/my/?report_id=' + caseObj.my_report_id;
+  const message = '이음세무컨설팅 고객창구을 안내드립니다.\nhttps://netax.kr/my/?report_id=' + caseObj.my_report_id;
   booking_sendSMS(phone, message);
   return { success: true };
 }
