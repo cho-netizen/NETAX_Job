@@ -977,6 +977,18 @@
   <button id="btnReloadFromDrive" class="iconbtn" title="드라이브에 저장된 최신 내용으로 다시 불러오기 (fileId로 연 문서일 때만 동작)">🔄</button>
   <button id="btnSaveToDrive" class="iconbtn" title="지금 이 내용을 드라이브 원본 파일에 바로 저장">💾</button>
   <span class="sep"></span>
+  <select id="docTypeSelect" title="문서유형 — 이 문서가 내부 검토용인지, 외부(고객・세무서・조세심판원 등)로 나가는 문서인지, 나간다면 어떤 종류인지">
+    <optgroup label="내부">
+      <option value="review">검토서</option>
+    </optgroup>
+    <optgroup label="외부">
+      <option value="advisory">자문보고서(고객)</option>
+      <option value="filing">신고보고서(고객)</option>
+      <option value="reference">참고보고서(세무서)</option>
+      <option value="progress">진행보고서(고객)</option>
+      <option value="appeal_petition">불복청구서(조세심판원 등)</option>
+    </optgroup>
+  </select>
   <select id="themeSelect">
     <option value="appeal">청구서</option>
     <option value="memo">검토서</option>
@@ -1248,6 +1260,12 @@ async function hydrateDocsFromIdb_(){
 // 실제 호출은 initReportWriter()(파일 아래쪽, script.html의 showView('reportwriter')가 처음
 // 한 번만 부름)에서 한다 — 여기서 바로 부르면 이 화면을 열기도 전에 IndexedDB를 뒤진다.
 
+// 문서유형별 짧은 표시용 라벨 — docSelect 드롭다운에서 한눈에 구분하기 위함
+// (toolbar의 docTypeSelect 전체 옵션 텍스트와는 별도로, 여기선 괄호 안에 짧게만 보여줌).
+const RW_DOC_TYPE_SHORT_LABELS_ = {
+  review: '검토서', advisory: '자문', filing: '신고', reference: '참고', progress: '진행', appeal_petition: '불복청구'
+};
+
 // ---------- 문서 선택 드롭다운 ----------
 function refreshDocSelect(){
   const sel = document.getElementById('docSelect');
@@ -1255,7 +1273,8 @@ function refreshDocSelect(){
   docs.forEach(d => {
     const opt = document.createElement('option');
     opt.value = d.id;
-    opt.textContent = d.name + (d.format === 'html' ? ' · HTML' : '');
+    const typeLabel = RW_DOC_TYPE_SHORT_LABELS_[d.docType || 'review'];
+    opt.textContent = '[' + typeLabel + '] ' + d.name + (d.format === 'html' ? ' · HTML' : '');
     if (d.id === selectedId) opt.selected = true;
     sel.appendChild(opt);
   });
@@ -1265,6 +1284,7 @@ function refreshDocSelect(){
   document.getElementById('btnDownload').disabled = !hasDocs;
   document.getElementById('btnNewWindow').disabled = !hasDocs;
   document.getElementById('themeSelect').disabled = !hasDocs;
+  document.getElementById('docTypeSelect').disabled = !hasDocs;
   document.getElementById('mdInput').disabled = !hasDocs;
 }
 
@@ -1272,9 +1292,12 @@ function loadSelectedIntoEditor(){
   const d = getSelected();
   const mdInput = document.getElementById('mdInput');
   const themeSelect = document.getElementById('themeSelect');
+  const docTypeSelect = document.getElementById('docTypeSelect');
   if (!d) { mdInput.value = ''; updateSaveToDriveButton(); return; }
   mdInput.value = d.md;
   themeSelect.value = d.theme;
+  // 문서유형 필드가 없는 예전 문서(2026.09 이전에 만든 것들)는 기본값을 "검토서"로 본다.
+  docTypeSelect.value = d.docType || 'review';
   updateSaveToDriveButton();
 }
 
@@ -1456,6 +1479,21 @@ function addFilesFromInput(fileList){
   });
 }
 
+// 새 문서를 만들 때 문서유형 기본값을 추측한다 — 상단에서 사건이 선택돼 있으면 그 사건의
+// 세목/업무유형을 보고 가장 그럴듯한 값을 고르고(사용자가 언제든 드롭다운으로 바꿀 수 있음),
+// 사건이 선택 안 돼 있으면 가장 무난한 "검토서"(내부)로 시작한다.
+function rwGuessDocType_(){
+  var sel = document.getElementById('rwCaseSelect');
+  var caseId = sel ? sel.value : '';
+  if (!caseId) return 'review';
+  var c = rwCases_.filter(function(x){ return x.id === caseId; })[0];
+  if (!c) return 'review';
+  if (c.세목 === 'objection') return 'appeal_petition';
+  if (c.업무유형 === '신고') return 'filing';
+  if (c.업무유형 === '상담') return 'advisory';
+  return 'review';
+}
+
 // kind: 'blank'(백지) 또는 'case'(사건개요서 상담메모 골격)
 async function createNewDoc(kind){
   const templates = {
@@ -1478,7 +1516,7 @@ async function createNewDoc(kind){
   const tpl = templates[kind] || templates.blank;
   const name = window.prompt('새 문서의 이름을 입력하세요.', tpl.promptDefault);
   if (name === null) return; // 취소
-  const newDoc = { id: uid(), name: name.trim() || tpl.fallbackName, theme: 'memo', format: 'md', md: tpl.md };
+  const newDoc = { id: uid(), name: name.trim() || tpl.fallbackName, theme: 'memo', format: 'md', md: tpl.md, docType: rwGuessDocType_() };
   docs.push(newDoc);
   selectedId = newDoc.id;
   const saved = await persist();
@@ -2440,6 +2478,13 @@ document.getElementById('themeSelect').addEventListener('change', () => {
   d.theme = document.getElementById('themeSelect').value;
   persist();
   render();
+});
+
+document.getElementById('docTypeSelect').addEventListener('change', () => {
+  const d = getSelected();
+  if (!d) return;
+  d.docType = document.getElementById('docTypeSelect').value;
+  persist();
 });
 
 let mdSaveTimer = null;
