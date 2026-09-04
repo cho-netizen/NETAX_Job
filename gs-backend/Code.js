@@ -14465,7 +14465,7 @@ function booking_getAvailability(dateStr) {
 
 // ===== 신청 생성 =====
 function booking_createApplication(body) {
-  const { date, time, name, phone, type, situation, statuses } = body;
+  const { date, time, name, phone, type, situation, statuses, field } = body;
   const cal = CalendarApp.getCalendarById(BOOKING_CALENDAR_ID);
   const start = new Date(`${date}T${time}:00+09:00`);
   const end = new Date(start.getTime() + BOOKING_CONSULT_DURATION_MIN * 60000);
@@ -14479,6 +14479,7 @@ function booking_createApplication(body) {
     `연락처: ${phone}`,
     `고객유형: ${type}`,
     `현재 세무처리: ${(statuses || []).join(', ') || '-'}`,
+    `관련 분야: ${field || '-'}`,
     `상황: ${situation}`,
     `출처: netax.kr 랜딩페이지`
   ].join('\n');
@@ -14490,11 +14491,12 @@ function booking_createApplication(body) {
   const sheet = ss.getSheetByName('Applications') || ss.insertSheet('Applications');
 
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['신청일시', '성함', '전화', '고객유형', '현재 세무처리', '상황', '예약일', '예약시간', '출처', '상태', '확정일', '이벤트ID']);
+    sheet.appendRow(['신청일시', '성함', '전화', '고객유형', '현재 세무처리', '상황', '예약일', '예약시간', '출처', '상태', '확정일', '이벤트ID', '연결사건ID', '관련분야']);
   }
   if (sheet.getRange(1, 12).getValue() === '') {
     sheet.getRange(1, 12).setValue('이벤트ID');
   }
+  if (sheet.getRange(1, 14).getValue() === '') sheet.getRange(1, 14).setValue('관련분야');
 
   // [2026.08 버그수정] 전화번호가 대시 없이 순수 숫자면 구글시트가 숫자로 인식해 앞자리 0을
   // 날려버리는 문제(client_createClient에서 실제로 겪은 것과 같은 문제)가 여기도 있었다 —
@@ -14502,7 +14504,7 @@ function booking_createApplication(body) {
   // 강제한다.
   const newRowIndex = sheet.getLastRow() + 1;
   sheet.getRange(newRowIndex, 3).setNumberFormat('@');
-  sheet.getRange(newRowIndex, 1, 1, 12).setValues([[new Date(), name, phone, type, (statuses || []).join(', '), situation, date, time, 'netax.kr', '신청', '', event.getId()]]);
+  sheet.getRange(newRowIndex, 1, 1, 14).setValues([[new Date(), name, phone, type, (statuses || []).join(', '), situation, date, time, 'netax.kr', '신청', '', event.getId(), '', field || '']]);
 
   const ownerMsg = `[새 상담신청] ${name} (${phone})\n${date} ${time}\n상황: ${situation}`;
   booking_sendSMS(BOOKING_OWNER_PHONE, ownerMsg);
@@ -14537,7 +14539,8 @@ function booking_getBookings() {
       status: data[i][9],
       approvedDate: data[i][10],
       eventId: data[i][11] || '',
-      caseId: data[i][12] || ''
+      caseId: data[i][12] || '',
+      field: data[i][13] || ''
     });
   }
 
@@ -14574,10 +14577,11 @@ function booking_adminCreate(body) {
   const ss = SpreadsheetApp.openById(BOOKING_SHEET_ID);
   const sheet = ss.getSheetByName('Applications') || ss.insertSheet('Applications');
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['신청일시', '성함', '전화', '고객유형', '현재 세무처리', '상황', '예약일', '예약시간', '출처', '상태', '확정일', '이벤트ID', '연결사건ID']);
+    sheet.appendRow(['신청일시', '성함', '전화', '고객유형', '현재 세무처리', '상황', '예약일', '예약시간', '출처', '상태', '확정일', '이벤트ID', '연결사건ID', '관련분야']);
   }
   if (sheet.getRange(1, 12).getValue() === '') sheet.getRange(1, 12).setValue('이벤트ID');
   if (sheet.getRange(1, 13).getValue() === '') sheet.getRange(1, 13).setValue('연결사건ID');
+  if (sheet.getRange(1, 14).getValue() === '') sheet.getRange(1, 14).setValue('관련분야');
 
   const newRowIndex = sheet.getLastRow() + 1;
   sheet.getRange(newRowIndex, 3).setNumberFormat('@');
@@ -15891,20 +15895,30 @@ function client_getClients(params) {
 
 // 이름으로 고객을 찾고, 없으면 그 자리에서 새로 만든다. work_ 모듈(사건 등록)과 자문내역 등록
 // 양쪽에서 "고객명만 입력해도 자동으로 고객관리 명단에 연결/등록"되게 하는 공용 함수.
-function client_findOrCreateByName_(name) {
+function client_findOrCreateByName_(name, phone) {
   const trimmed = String(name || '').trim();
+  const phoneTrimmed = String(phone || '').trim();
   return withLock_(8000, function () {
     const sheets = client_getSheets_();
     const data = sheets.clients.getDataRange().getValues();
     const col = client_colMap_(data[0], CLIENT_HEADERS);
     for (let i = 1; i < data.length; i++) {
-      if (String(data[i][col.성명] || '').trim() === trimmed) return { id: data[i][col.id], isNew: false };
+      if (String(data[i][col.성명] || '').trim() === trimmed) {
+        const rowIndex = i + 1;
+        // 기존 고객인데 전화번호가 비어있으면(과거엔 예약 정보가 전달 안 돼 빈 채로
+        // 생성됐을 수 있음) 이번에 받은 번호로 채워준다 — 이미 값이 있으면 덮어쓰지 않음.
+        if (phoneTrimmed && !String(data[i][col.전화번호] || '').trim()) {
+          sheets.clients.getRange(rowIndex, col.전화번호 + 1).setValue(phoneTrimmed);
+        }
+        return { id: data[i][col.id], isNew: false };
+      }
     }
     const id = Utilities.getUuid();
     const now = new Date();
     const newRow = [];
     newRow[col.id] = id;
     newRow[col.성명] = trimmed;
+    newRow[col.전화번호] = phoneTrimmed;
     newRow[col.등록일] = now;
     newRow[col.수정일] = now;
     sheets.clients.appendRow(newRow);
@@ -16448,6 +16462,20 @@ function work_getOrCreateCaseFolder_(고객명, 사건명) {
   }
 }
 
+// 상담신청(예약) 때 받은 고객유형/현재세무처리상황/관련분야를 개요(진행메모) 맨 앞에
+// "[예약 접수 정보]" 블록으로 얹어준다 — 해당 값이 하나도 없으면(직접 등록 등) 그냥
+// 원래 개요만 반환한다.
+function work_prependBookingInfo_(params) {
+  const 개요 = String(params.개요 || '').trim();
+  const lines = [];
+  if (params.고객유형) lines.push('고객유형: ' + String(params.고객유형).trim());
+  if (params.현재세무처리) lines.push('현재 세무처리: ' + String(params.현재세무처리).trim());
+  if (params.관련분야) lines.push('관련 분야: ' + String(params.관련분야).trim());
+  if (!lines.length) return 개요;
+  const infoBlock = '[예약 접수 정보]\n' + lines.join('\n');
+  return 개요 ? (infoBlock + '\n\n[상담 내용]\n' + 개요) : infoBlock;
+}
+
 // "고객명 세목 업무유형" 기본형에서, 같은 고객ID로 이미 같은 이름의 사건이 있으면 " 2", " 3"…
 // 을 붙여 유일하게 만든다(Drive 폴더 이름 충돌 방지 — work_getOrCreateCaseFolder_는 이름으로
 // find-or-create하므로, 이름이 겹치면 서로 다른 사건이 같은 폴더를 나눠 쓰게 된다).
@@ -16478,7 +16506,8 @@ function work_createCase(params) {
     // 고객ID를 직접 안 주면(화면에서 이름만 입력한 경우) 같은 이름의 고객을 고객관리에서 찾고,
     // 없으면 그 자리에서 새 고객으로 등록해서 연결한다 — 사건 등록 흐름이 예전과 똑같이
     // 이름만 입력하면 되도록 유지하면서도 자동으로 고객관리 명단이 쌓이게 하기 위함.
-    const 고객ID = String(params.고객ID || '').trim() || (고객명 ? client_findOrCreateByName_(고객명).id : '');
+    const 전화 = String(params.전화 || '').trim();
+    const 고객ID = String(params.고객ID || '').trim() || (고객명 ? client_findOrCreateByName_(고객명, 전화).id : '');
     // [2026.09] "사건명이 애매하다"는 지적에 따라 사람이 직접 입력하지 않고 자동으로 만든다 —
     // "고객명(납세자) 세목 업무유형" (납세자가 고객명과 다를 때만 괄호 표시), 예: "홍길동(이순신) 상속 신고".
     const semokLabel = WORK_SEMOK_LABELS_[seMok] || seMok;
@@ -16501,7 +16530,10 @@ function work_createCase(params) {
       : work_calcDeadline_(seMok, upType, 기준일);
     newRow[col.납세자] = 납세자;
     newRow[col.상태] = params.상태 || '진행';
-    newRow[col.개요] = String(params.개요 || '').trim();
+    // [2026.09] 상담신청(예약) 때 받은 고객유형/현재세무처리상황/관련분야가 "이 예약으로
+    // 사건 시작" 시 그동안 통째로 버려지고 있었다 — 사건 컬럼을 새로 늘리는 대신, 개요
+    // (진행메모) 맨 앞에 참고정보로 얹어서 최소한 사라지지 않고 눈에 보이게 한다.
+    newRow[col.개요] = work_prependBookingInfo_(params);
     newRow[col.처리방향] = String(params.처리방향 || '').trim();
     newRow[col.처리대상] = String(params.처리대상 || '').trim();
     newRow[col.하위업무] = '[]';

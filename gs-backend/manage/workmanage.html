@@ -236,6 +236,13 @@
         개요: document.getElementById('wcNewOverview').value.trim()
       };
       if (manual) payload.법정일 = document.getElementById('wcNewManualDeadline').value;
+      // 예약에서 시작한 경우 화면엔 입력칸이 따로 없지만, 예약 때 받은 전화·고객유형·
+      // 현재세무처리·관련분야를 그대로 실어 보낸다(work_createCase가 전화는 고객 레코드에,
+      // 나머지는 개요 앞부분에 반영한다) — 예전엔 여기서 다 버려지고 있었다.
+      if (prefill.전화) payload.전화 = prefill.전화;
+      if (prefill.고객유형) payload.고객유형 = prefill.고객유형;
+      if (prefill.현재세무처리) payload.현재세무처리 = prefill.현재세무처리;
+      if (prefill.관련분야) payload.관련분야 = prefill.관련분야;
       callGas('work_create_case', payload).then(function(res){
         if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); return; }
         showToast('사건을 등록했습니다.', 'success');

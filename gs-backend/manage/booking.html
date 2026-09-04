@@ -46,7 +46,7 @@
         return String(b.reservedDate+b.reservedTime).localeCompare(String(a.reservedDate+a.reservedTime));
       });
       if (!list.length){ box.innerHTML = '<div class="empty-row">신청 내역이 없습니다.</div>'; return; }
-      var html = '<table class="list-table"><tr><th>희망일시</th><th>이름</th><th>연락처</th><th>유형</th>' +
+      var html = '<table class="list-table"><tr><th>희망일시</th><th>이름</th><th>연락처</th><th>유형</th><th>관련분야</th>' +
         '<th>상황</th><th>상태</th><th>처리</th><th>사건</th></tr>';
       list.forEach(function(b){
         var badge = b.status === '신청' ? '🔴 신청' : (b.status === '확정' ? '🟢 확정' : (b.status === '거절' ? '⚪ 거절' : esc(b.status)));
@@ -62,7 +62,7 @@
           caseCell = '<button type="button" class="btn" onclick="bookingStartCase(' + b._rowIndex + ')">🗂 사건 시작</button>';
         }
         html += '<tr><td>' + esc(b.reservedDate) + ' ' + esc(b.reservedTime) + '</td><td>' + esc(b.name) +
-          '</td><td>' + esc(b.phone) + '</td><td>' + esc(b.type) + '</td><td style="max-width:260px;">' + esc(b.situation) +
+          '</td><td>' + esc(b.phone) + '</td><td>' + esc(b.type) + '</td><td>' + esc(b.field || '-') + '</td><td style="max-width:260px;">' + esc(b.situation) +
           '</td><td>' + badge + '</td><td>' + actions + '</td><td>' + caseCell + '</td></tr>';
       });
       html += '</table>';
@@ -125,12 +125,19 @@
   });
 
   // 예약의 "상황"(의뢰 내용)을 진행메모 초안으로 넘기면서 작업관리 새 사건 폼을 연다.
+  // [2026.09 버그수정] 전화·고객유형·현재세무처리·관련분야가 여기서 넘어가지 않아 사건 시작과
+  // 동시에 통째로 사라지고 있었다 — 전화는 고객 레코드에, 나머지는 개요(진행메모) 맨 앞에
+  // "[예약 접수 정보]" 블록으로 자동으로 얹히도록 work_createCase에서 처리한다(Code.js 참고).
   function bookingStartCase(rowIndex){
     var b = (window._bookingCache||[]).filter(function(x){ return x._rowIndex === rowIndex; })[0];
     if (!b) return;
     if (typeof goToView_ === 'function') goToView_('workmanage');
     if (typeof renderNewCaseForm === 'function'){
-      renderNewCaseForm({ 고객명: b.name, 개요: b.situation || '', bookingRowIndex: b._rowIndex });
+      renderNewCaseForm({
+        고객명: b.name, 전화: b.phone || '', 고객유형: b.type || '',
+        현재세무처리: b.statuses || '', 관련분야: b.field || '',
+        개요: b.situation || '', bookingRowIndex: b._rowIndex
+      });
     }
   }
 
