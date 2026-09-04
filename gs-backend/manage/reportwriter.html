@@ -198,7 +198,7 @@
   /* 화면에서 편집하며 보는 미리보기(#renderOut)는 폭 제한을 풀어 미리보기창을 꽉 채운다.
      다운로드・새창으로 내보낸 완성본은 clone에서 id를 지우므로 이 규칙이 적용되지 않고
      실제 인쇄물/고객화면 폭(210mm・720px)을 그대로 유지한다. */
-  #renderOut.doc-appeal, #renderOut.doc-memo, #renderOut.md-content, #renderOut.doc-translation{
+  #renderOut.doc-appeal, #renderOut.doc-memo, #renderOut.doc-translation, #renderOut.doc-advisory, #renderOut.doc-filing, #renderOut.doc-progress, #renderOut.doc-reference, #renderOut.doc-summary{
     max-width: none;
   }
   .doc-appeal{
@@ -288,6 +288,298 @@
   .doc-memo a{ color:#2c3e60; }
 
   /* =========================================================
+     테마 3 : 자문보고서 (고객 발송용 — 이음세무컨설팅 브랜드 서신형)
+     [2026.09] 6개 문서유형 중 외부 5종은 목적·수요자가 다 다르니 스타일도 각각 달라야
+     한다는 지적에 따라 새로 만듦. 고객이 직접 받아보는 문서라 netax.kr과 같은 브랜드
+     색(남색 #0D1B3D · 금색 #C8A244)을 입혀서 "회사가 보내는 공식 문서"임을 드러낸다.
+     ========================================================= */
+  .doc-advisory{
+    background:#fff; max-width:210mm; margin:0 auto; padding:0 18mm 15mm 18mm;
+    box-shadow:0 0 14px rgba(0,0,0,0.18);
+    font-family:'Noto Sans KR',sans-serif;
+    font-size:10.8pt; line-height:1.75; color:#22293A;
+    word-break:keep-all;
+  }
+  .doc-advisory .letterhead{
+    background:linear-gradient(135deg,#0D1B3D,#1A2B4D); border-bottom:3pt solid #C8A244;
+    color:#fff; padding:14mm 18mm 9mm 18mm; margin:0 -18mm 12mm -18mm;
+  }
+  .doc-advisory .letterhead .brand{
+    font-size:9pt; letter-spacing:0.25em; color:#C8A244; margin-bottom:4mm; font-weight:700;
+  }
+  .doc-advisory .letterhead h1{
+    font-family:'Noto Serif KR',serif; font-size:19pt; font-weight:700; color:#fff; margin:0;
+  }
+  .doc-advisory table.meta{ border-collapse:collapse; width:100%; margin:0 0 8mm 0; font-size:10pt; }
+  .doc-advisory table.meta td{ padding:1.8mm 0; border-bottom:0.75pt solid #E3DFD6; }
+  .doc-advisory table.meta td.k{ width:20mm; color:#8a8f99; font-weight:600; }
+  .doc-advisory h2{
+    font-family:'Noto Serif KR',serif; font-size:13.5pt; font-weight:700; color:#0D1B3D;
+    margin:9mm 0 4mm 0; padding-bottom:2mm; border-bottom:1.5pt solid #C8A244;
+  }
+  .doc-advisory h3{ font-size:11.5pt; font-weight:700; margin:5mm 0 2.5mm 0; color:#0D1B3D; }
+  .doc-advisory p{ margin:0 0 2.8mm 0; text-align:justify; }
+  .doc-advisory ul{ margin:0 0 2.8mm 0; padding-left:0; list-style:none; }
+  .doc-advisory ul li{ position:relative; padding-left:4mm; margin-bottom:1.4mm; text-indent:-4mm; text-align:justify; }
+  .doc-advisory ul li::before{ content:"·"; padding-right:2mm; color:#C8A244; font-weight:700; }
+  .doc-advisory table:not(.meta){ border-collapse:collapse; width:100%; margin:2.8mm 0 2mm 0; font-size:9.8pt; }
+  .doc-advisory table:not(.meta) th, .doc-advisory table:not(.meta) td{ border:0.75pt solid #E3DFD6; padding:1.6mm 2.2mm; overflow-wrap:break-word; }
+  .doc-advisory table:not(.meta) th{ background:#0D1B3D; color:#fff; font-weight:700; text-align:center; }
+  .doc-advisory table:not(.meta) tbody tr:nth-child(even){ background:#F8F6F2; }
+  .doc-advisory .highlight{
+    background:#F8F6F2; border:1px solid #C8A244; border-left:4pt solid #C8A244;
+    padding:4mm 5mm; margin:0 0 6mm 0; border-radius:2px;
+  }
+  .doc-advisory .highlight p:last-child{ margin-bottom:0; }
+  .doc-advisory hr{ border:none; border-top:0.75pt dashed #E3DFD6; margin:5mm 0; }
+  .doc-advisory a{ color:#0D1B3D; }
+  .doc-advisory .footer-note{ text-align:center; font-size:9pt; color:#8a8f99; margin-top:14mm; }
+
+  /* =========================================================
+     테마 3-2 : 신고보고서 (고객 발송용 — 자문보고서와 같은 브랜드지만, "결과보고"라
+     산출근거 표와 최종 세액을 중심으로 둔다. 자문보고서와 달리 표는 숫자 정렬이라
+     오른쪽정렬을, 합계행은 금색으로 강조한다.)
+     ========================================================= */
+  .doc-filing{
+    background:#fff; max-width:210mm; margin:0 auto; padding:0 18mm 15mm 18mm;
+    box-shadow:0 0 14px rgba(0,0,0,0.18);
+    font-family:'Noto Sans KR',sans-serif;
+    font-size:10.8pt; line-height:1.75; color:#22293A;
+    word-break:keep-all;
+  }
+  .doc-filing .letterhead{
+    background:linear-gradient(135deg,#0D1B3D,#1A2B4D); border-bottom:3pt solid #C8A244;
+    color:#fff; padding:14mm 18mm 9mm 18mm; margin:0 -18mm 12mm -18mm;
+  }
+  .doc-filing .letterhead .brand{
+    font-size:9pt; letter-spacing:0.25em; color:#C8A244; margin-bottom:4mm; font-weight:700;
+  }
+  .doc-filing .letterhead h1{
+    font-family:'Noto Serif KR',serif; font-size:19pt; font-weight:700; color:#fff; margin:0;
+  }
+  .doc-filing table.meta{ border-collapse:collapse; width:100%; margin:0 0 6mm 0; font-size:10pt; }
+  .doc-filing table.meta td{ padding:1.8mm 0; border-bottom:0.75pt solid #E3DFD6; }
+  .doc-filing table.meta td.k{ width:20mm; color:#8a8f99; font-weight:600; }
+  .doc-filing .amount-box{
+    background:#0D1B3D; color:#fff; border-radius:4px; padding:6mm 7mm; margin:0 0 8mm 0;
+    display:flex; justify-content:space-between; align-items:baseline;
+  }
+  .doc-filing .amount-box .label{ font-size:10pt; color:#C8A244; letter-spacing:0.08em; }
+  .doc-filing .amount-box .value{ font-family:'Noto Serif KR',serif; font-size:18pt; font-weight:700; }
+  .doc-filing h2{
+    font-family:'Noto Serif KR',serif; font-size:13.5pt; font-weight:700; color:#0D1B3D;
+    margin:9mm 0 4mm 0; padding-bottom:2mm; border-bottom:1.5pt solid #C8A244;
+  }
+  .doc-filing h3{ font-size:11.5pt; font-weight:700; margin:5mm 0 2.5mm 0; color:#0D1B3D; }
+  .doc-filing p{ margin:0 0 2.8mm 0; text-align:justify; }
+  .doc-filing ul{ margin:0 0 2.8mm 0; padding-left:0; list-style:none; }
+  .doc-filing ul li{ position:relative; padding-left:4mm; margin-bottom:1.4mm; text-indent:-4mm; text-align:justify; }
+  .doc-filing ul li::before{ content:"·"; padding-right:2mm; color:#C8A244; font-weight:700; }
+  .doc-filing table:not(.meta){ border-collapse:collapse; width:100%; margin:2.8mm 0 2mm 0; font-size:9.8pt; }
+  .doc-filing table:not(.meta) th, .doc-filing table:not(.meta) td{ border:0.75pt solid #E3DFD6; padding:1.6mm 2.2mm; overflow-wrap:break-word; text-align:right; }
+  .doc-filing table:not(.meta) th{ background:#0D1B3D; color:#fff; font-weight:700; text-align:center; }
+  .doc-filing table:not(.meta) td:first-child{ text-align:left; }
+  .doc-filing table:not(.meta) tbody tr:last-child td{ font-weight:700; background:#FBF3DD; border-top:1.5pt solid #C8A244; }
+  .doc-filing .highlight{
+    background:#F8F6F2; border:1px solid #C8A244; border-left:4pt solid #C8A244;
+    padding:4mm 5mm; margin:0 0 6mm 0; border-radius:2px;
+  }
+  .doc-filing .highlight p:last-child{ margin-bottom:0; }
+  .doc-filing hr{ border:none; border-top:0.75pt dashed #E3DFD6; margin:5mm 0; }
+  .doc-filing a{ color:#0D1B3D; }
+  .doc-filing .footer-note{ text-align:center; font-size:9pt; color:#8a8f99; margin-top:14mm; }
+
+  /* [2026.09] 용역서(md-content) 테마 흡수 — 순서도(Mermaid)・수식(KaTeX)・차트・타임라인・
+     비교막대・코드하이라이트・목차・조문링크는 전부 클래스명이 테마와 무관한 전역 요소라
+     자문/신고보고서에서도 손댈 것 없이 그대로 동작한다(render()에서 후처리 파이프라인만
+     이 두 테마에도 돌리면 됨). 다만 블록인용(콜아웃)・접고펼치기・표 가로스크롤은 원래
+     .md-content 안에서만 스타일이 있었으므로, 이 두 테마 전용으로 새로 옮겨왔다. */
+  .doc-advisory blockquote, .doc-filing blockquote{
+    margin:0 0 3mm 0; padding:3mm 4mm; background:#F5F1E8; border-left:3pt solid var(--gold);
+    color:#4A4A4A; font-size:9.8pt; line-height:1.6;
+  }
+  .doc-advisory blockquote p, .doc-filing blockquote p{ margin:0; }
+  .doc-advisory blockquote.callout-success, .doc-filing blockquote.callout-success{ background:#EAF7EE; border-color:#8FCB9F; }
+  .doc-advisory blockquote.callout-warning, .doc-filing blockquote.callout-warning{ background:#FFF6E0; border-color:#E8C363; }
+  .doc-advisory blockquote.callout-danger, .doc-filing blockquote.callout-danger{ background:#FCEBEB; border-color:#E29B9B; }
+  .doc-advisory blockquote.callout-info, .doc-filing blockquote.callout-info{ background:#E9F1FA; border-color:#9CC1E8; }
+  .doc-advisory details, .doc-filing details{ margin:0 0 3mm 0; border:0.75pt solid #E3DFD6; border-radius:3px; overflow:hidden; }
+  .doc-advisory summary, .doc-filing summary{
+    cursor:pointer; padding:3mm 4mm; background:#F5F1E8; font-weight:700; color:var(--navy); list-style:none;
+  }
+  .doc-advisory summary::-webkit-details-marker, .doc-filing summary::-webkit-details-marker{ display:none; }
+  .doc-advisory summary::before, .doc-filing summary::before{
+    content:"▶"; display:inline-block; margin-right:2mm; font-size:8pt; color:var(--gold); transition:transform .2s ease;
+  }
+  .doc-advisory details[open] summary::before, .doc-filing details[open] summary::before{ transform:rotate(90deg); }
+  .doc-advisory details > *:not(summary), .doc-filing details > *:not(summary){ padding:0 4mm; }
+  .doc-advisory details p:last-child, .doc-filing details p:last-child{ padding-bottom:4mm; }
+  .doc-advisory .table-scroll, .doc-filing .table-scroll{ position:relative; overflow-x:auto; margin:1.8mm 0 2mm 0; }
+  .doc-advisory .table-scroll.scrollable::after, .doc-advisory .table-scroll.scrollable::before,
+  .doc-filing .table-scroll.scrollable::after, .doc-filing .table-scroll.scrollable::before{
+    position:absolute; bottom:2pt; color:rgba(200,162,68,0.6); font-size:9pt; pointer-events:none;
+    text-shadow:-1px 0 3px rgba(255,255,255,0.9), 1px 0 3px rgba(255,255,255,0.9);
+    transition:opacity .15s ease; opacity:0;
+  }
+  .doc-advisory .table-scroll.scrollable::after, .doc-filing .table-scroll.scrollable::after{ content:'▸'; right:2pt; }
+  .doc-advisory .table-scroll.scrollable::before, .doc-filing .table-scroll.scrollable::before{ content:'◂'; left:2pt; }
+  .doc-advisory .table-scroll.scrollable.show-right::after, .doc-filing .table-scroll.scrollable.show-right::after{ opacity:1; }
+  .doc-advisory .table-scroll.scrollable.show-left::before, .doc-filing .table-scroll.scrollable.show-left::before{ opacity:1; }
+  .doc-advisory .katex-display, .doc-filing .katex-display{ overflow-x:auto; overflow-y:hidden; max-width:100%; }
+
+  /* =========================================================
+     테마 3-3 : 진행보고서 (고객 발송용 — 같은 브랜드지만, 정식 보고서라기보다 가벼운
+     상황 업데이트라 레터헤드를 더 작게, 목록은 타임라인(점+세로선)으로 단계감을 준다.)
+     ========================================================= */
+  .doc-progress{
+    background:#fff; max-width:210mm; margin:0 auto; padding:0 18mm 15mm 18mm;
+    box-shadow:0 0 14px rgba(0,0,0,0.18);
+    font-family:'Noto Sans KR',sans-serif;
+    font-size:10.8pt; line-height:1.75; color:#22293A;
+    word-break:keep-all;
+  }
+  .doc-progress .letterhead{
+    background:linear-gradient(135deg,#0D1B3D,#1A2B4D); border-bottom:3pt solid #C8A244;
+    color:#fff; padding:10mm 18mm 7mm 18mm; margin:0 -18mm 12mm -18mm;
+  }
+  .doc-progress .letterhead .brand{
+    font-size:9pt; letter-spacing:0.25em; color:#C8A244; margin-bottom:3mm; font-weight:700;
+  }
+  .doc-progress .letterhead h1{
+    font-family:'Noto Sans KR',sans-serif; font-size:16pt; font-weight:800; color:#fff; margin:0;
+  }
+  .doc-progress table.meta{ border-collapse:collapse; width:100%; margin:0 0 6mm 0; font-size:10pt; }
+  .doc-progress table.meta td{ padding:1.8mm 0; border-bottom:0.75pt solid #E3DFD6; }
+  .doc-progress table.meta td.k{ width:20mm; color:#8a8f99; font-weight:600; }
+  .doc-progress h2{
+    font-size:12.5pt; font-weight:800; margin:8mm 0 4mm 0;
+    padding-left:2.6mm; border-left:4.5pt solid #C8A244; color:#0D1B3D;
+  }
+  .doc-progress h3{ font-size:11.5pt; font-weight:700; margin:5mm 0 2.5mm 0; color:#0D1B3D; }
+  .doc-progress p{ margin:0 0 2.8mm 0; text-align:justify; }
+  /* 진행 경과/향후 계획을 점+세로선으로 이어서 "단계"처럼 보이게 한다 */
+  .doc-progress ul{ margin:0 0 4mm 0; padding-left:0; list-style:none; }
+  .doc-progress ul li{ position:relative; padding:0 0 4mm 7mm; margin:0; text-align:justify; }
+  .doc-progress ul li::before{
+    content:""; position:absolute; left:0; top:1.6mm; width:2.6mm; height:2.6mm;
+    border-radius:50%; background:#C8A244;
+  }
+  .doc-progress ul li:not(:last-child)::after{
+    content:""; position:absolute; left:1.15mm; top:4.6mm; bottom:0; width:0.5pt; background:#E3DFD6;
+  }
+  .doc-progress table{ border-collapse:collapse; width:100%; table-layout:auto; margin:2.8mm 0 2mm 0; font-size:9.8pt; }
+  .doc-progress table th, .doc-progress table td{ border:0.75pt solid #E3DFD6; padding:1.6mm 2.2mm; overflow-wrap:break-word; }
+  .doc-progress table th{ background:#0D1B3D; color:#fff; font-weight:700; text-align:center; }
+  .doc-progress .highlight{
+    background:#F8F6F2; border:1px solid #C8A244; border-left:4pt solid #C8A244;
+    padding:4mm 5mm; margin:0 0 6mm 0; border-radius:2px;
+  }
+  .doc-progress .highlight p:last-child{ margin-bottom:0; }
+  .doc-progress hr{ border:none; border-top:0.75pt dashed #E3DFD6; margin:5mm 0; }
+  .doc-progress a{ color:#0D1B3D; }
+  .doc-progress .footer-note{ text-align:center; font-size:9pt; color:#8a8f99; margin-top:14mm; }
+
+  /* =========================================================
+     테마 3-4 : 참고보고서 (세무서 제출용 — 고객용 3종과 달리 과세관청이 읽는 공문서다.
+     화려한 레터헤드 대신 회사명은 작게만 넣고, 본문은 격식 있는 공문 톤・번호 매긴
+     개조식으로 구성한다.)
+     ========================================================= */
+  .doc-reference{
+    background:#fff; max-width:210mm; margin:0 auto; padding:18mm 20mm 15mm 20mm;
+    box-shadow:0 0 14px rgba(0,0,0,0.18);
+    font-family:'Noto Serif KR','Batang',serif;
+    font-size:11pt; line-height:1.75; color:#111;
+    word-break:keep-all;
+  }
+  .doc-reference .letterhead{
+    display:flex; justify-content:space-between; align-items:baseline;
+    border-bottom:1pt solid #0D1B3D; padding-bottom:3mm; margin-bottom:10mm;
+    font-family:'Noto Sans KR',sans-serif;
+  }
+  .doc-reference .letterhead .brand{ font-size:9.5pt; color:#0D1B3D; font-weight:700; letter-spacing:0.05em; }
+  .doc-reference .letterhead .doc-date{ font-size:9pt; color:#666; }
+  .doc-reference h1{
+    text-align:center; font-size:18pt; font-weight:700;
+    letter-spacing:0.3em; text-indent:0.3em; margin:0 0 10mm 0;
+  }
+  .doc-reference table.meta{
+    border-collapse:collapse; width:100%; margin:0 0 8mm 0;
+    font-size:10.5pt; font-family:'Noto Sans KR',sans-serif;
+  }
+  .doc-reference table.meta td{ padding:1.6mm 0; border-bottom:0.75pt solid #ddd; }
+  .doc-reference table.meta td.k{ width:20mm; color:#555; font-weight:600; }
+  .doc-reference h2{
+    font-size:13pt; font-weight:700; margin:8mm 0 4mm 0;
+    padding-bottom:1.5mm; border-bottom:1pt solid #999;
+  }
+  .doc-reference h3{ font-size:11.5pt; font-weight:700; margin:5mm 0 2.5mm 0; }
+  .doc-reference p{ margin:0 0 3mm 0; text-align:justify; }
+  /* 공문 특유의 "1. 2. 3." 번호 매긴 개조식 — 딱딱한 공문 톤에 맞춤 */
+  .doc-reference ul{ margin:0 0 3mm 0; padding-left:0; list-style:none; counter-reset:refitem; }
+  .doc-reference ul li{
+    position:relative; padding-left:6mm; margin-bottom:2mm; text-align:justify; counter-increment:refitem;
+  }
+  .doc-reference ul li::before{ content:counter(refitem) "."; position:absolute; left:0; font-weight:700; }
+  .doc-reference table:not(.meta){
+    border-collapse:collapse; width:100%; margin:3mm 0 2mm 0;
+    font-size:10pt; font-family:'Noto Sans KR',sans-serif;
+  }
+  .doc-reference table:not(.meta) th, .doc-reference table:not(.meta) td{ border:0.75pt solid #666; padding:1.8mm 2.4mm; overflow-wrap:break-word; }
+  .doc-reference table:not(.meta) th{ background:#f0f0f0; font-weight:700; text-align:center; }
+  .doc-reference .signline{ text-align:right; margin-top:14mm; font-size:11.5pt; }
+  .doc-reference hr{ border:none; border-top:0.5pt solid #999; margin:6mm 0; }
+  .doc-reference a{ color:#0D1B3D; }
+
+  /* =========================================================
+     테마 3-5 : 요약보고서 (지금까지 작성한 모든 보고서를 한 장으로 요약, 원칙상 1페이지 —
+     그래서 다른 외부 테마보다 글자·여백을 눈에 띄게 줄였다. 기호 글머리(■ ◇ ● ♡ ＊)로
+     항목 층위를 구분한다: ■=대분류 제목, ◇=중분류 소제목, ●=항목, ♡=하위항목, ＊=세부메모.
+     ========================================================= */
+  .doc-summary{
+    background:#fff; max-width:210mm; margin:0 auto; padding:15mm 16mm 12mm 16mm;
+    box-shadow:0 0 14px rgba(0,0,0,0.18);
+    font-family:'Noto Sans KR',sans-serif;
+    font-size:10pt; line-height:1.55; color:#1a1a1a;
+    word-break:keep-all;
+  }
+  .doc-summary .letterhead{
+    display:flex; justify-content:space-between; align-items:baseline;
+    border-bottom:2pt solid #0D1B3D; padding-bottom:2.5mm; margin-bottom:5mm;
+  }
+  .doc-summary .letterhead .brand{ font-size:9pt; color:#0D1B3D; font-weight:700; letter-spacing:0.05em; }
+  .doc-summary .letterhead .doc-date{ font-size:8.5pt; color:#666; }
+  .doc-summary h1{
+    text-align:center; font-size:15pt; font-weight:800; color:#0D1B3D; margin:0 0 5mm 0;
+  }
+  .doc-summary table.meta{ border-collapse:collapse; width:100%; margin:0 0 4mm 0; font-size:9.5pt; }
+  .doc-summary table.meta td{ padding:1mm 0; border-bottom:0.5pt solid #ddd; }
+  .doc-summary table.meta td.k{ width:18mm; color:#666; font-weight:600; }
+  .doc-summary h2{
+    font-size:11.5pt; font-weight:800; margin:4mm 0 2mm 0; color:#0D1B3D;
+  }
+  .doc-summary h2::before{ content:"■ "; color:#C8A244; }
+  .doc-summary h3{ font-size:10.5pt; font-weight:700; margin:3mm 0 1.5mm 0; color:#0D1B3D; }
+  .doc-summary h3::before{ content:"◇ "; color:#0D1B3D; }
+  .doc-summary p{ margin:0 0 1.8mm 0; text-align:justify; }
+  .doc-summary ul{ margin:0 0 1.8mm 0; padding-left:0; list-style:none; }
+  /* 줄바꿈 시 2행의 첫 글자가 1행의 두 번째 글자(글머리 다음 첫 글자) 아래가 아니라
+     그 다음 글자 위치에 오도록, padding-left를 글자 한 칸(약 3.5mm)만큼 늘리고
+     text-indent로 1행만 그만큼 당겨서 원래 위치를 유지한다. */
+  .doc-summary ul li{ position:relative; padding-left:6.5mm; text-indent:-3.5mm; margin-bottom:0.9mm; text-align:justify; }
+  .doc-summary ul li::before{ content:"●"; position:absolute; left:0; font-size:7pt; top:1.3mm; color:#0D1B3D; }
+  /* [2026.09 버그수정] 중첩 목록에 좌측 여백이 없어서 기호(♡・＊)만 바뀌고 실제로는 밀려나지
+     않던 문제 — margin-left를 넣어 한 단계씩 들여쓰기가 누적되게 한다.
+     위 text-indent만큼 다시 당겨서, 하위 글머리가 상위 항목의 첫 글자 위치에 오게 한다. */
+  .doc-summary ul ul{ margin:0.6mm 0 0.6mm -3.5mm; }
+  .doc-summary ul ul li::before{ content:"♡"; font-size:7.5pt; color:#C8A244; }
+  .doc-summary ul ul ul li::before{ content:"＊"; font-size:8pt; color:#666; }
+  .doc-summary table:not(.meta){ border-collapse:collapse; width:100%; margin:1.8mm 0 1.5mm 0; font-size:9pt; }
+  .doc-summary table:not(.meta) th, .doc-summary table:not(.meta) td{ border:0.5pt solid #ccc; padding:1mm 1.6mm; overflow-wrap:break-word; }
+  .doc-summary table:not(.meta) th{ background:#0D1B3D; color:#fff; font-weight:700; text-align:center; }
+  .doc-summary hr{ border:none; border-top:0.5pt dashed #ccc; margin:3mm 0; }
+  .doc-summary a{ color:#0D1B3D; }
+
+  /* =========================================================
      테마 4 : 첨부서류 번역본 (계약서・정산서 등 원문 재현형)
      — 분석·설명용 장치(mermaid・차트・조문링크)를 쓰지 않고
        원본 서식(표・체크박스・서명란)을 그대로 재현하는 데 집중.
@@ -335,14 +627,19 @@
   .doc-translation a{ color:#0645AD; }
 
   /* ---------- 공통 : 페이지분리 ---------- */
-  .doc-appeal .doc-pagebreak, .doc-memo .doc-pagebreak, .doc-translation .doc-pagebreak{
+  .doc-appeal .doc-pagebreak, .doc-memo .doc-pagebreak, .doc-translation .doc-pagebreak, .doc-advisory .doc-pagebreak, .doc-filing .doc-pagebreak, .doc-progress .doc-pagebreak, .doc-reference .doc-pagebreak, .doc-summary .doc-pagebreak{
     break-before:page; page-break-before:always;
     display:flex; align-items:center; gap:3mm;
     margin:9mm 0; color:#999; font-size:8pt; letter-spacing:0.2em;
   }
   .doc-appeal .doc-pagebreak::before, .doc-appeal .doc-pagebreak::after,
   .doc-memo .doc-pagebreak::before, .doc-memo .doc-pagebreak::after,
-  .doc-translation .doc-pagebreak::before, .doc-translation .doc-pagebreak::after{
+  .doc-translation .doc-pagebreak::before, .doc-translation .doc-pagebreak::after,
+  .doc-advisory .doc-pagebreak::before, .doc-advisory .doc-pagebreak::after,
+  .doc-filing .doc-pagebreak::before, .doc-filing .doc-pagebreak::after,
+  .doc-progress .doc-pagebreak::before, .doc-progress .doc-pagebreak::after,
+  .doc-reference .doc-pagebreak::before, .doc-reference .doc-pagebreak::after,
+  .doc-summary .doc-pagebreak::before, .doc-summary .doc-pagebreak::after{
     content:""; flex:1; border-top:0.75pt solid #bbb;
   }
 
@@ -390,233 +687,25 @@
     #paneDivider{display:none !important;}
     #previewPane{padding:0; background:#fff; overflow:visible; direction:ltr;}
     #previewControls{display:none !important;}
-    .doc-appeal, .doc-memo, .doc-translation{box-shadow:none; margin:0; max-width:none; padding:0;}
-    .doc-appeal .doc-pagebreak, .doc-memo .doc-pagebreak, .doc-translation .doc-pagebreak{ margin:0; height:0; overflow:hidden; }
+    .doc-appeal, .doc-memo, .doc-translation, .doc-advisory, .doc-filing, .doc-progress, .doc-reference, .doc-summary{box-shadow:none; margin:0; max-width:none; padding:0;}
+    /* [2026.09] 레터헤드가 있는 테마(doc-advisory/doc-filing/doc-progress)는 화면 미리보기에서
+       부모의 좌우 padding(18mm)만큼 음수 마진으로 가장자리까지 채우는 방식인데, 인쇄 모드는
+       그 padding을 0으로 초기화하므로(실제 여백은 @page margin이 담당) 음수 마진 값도 같이
+       0으로 되돌려야 어긋나지 않는다. (doc-reference는 이 방식을 안 써서 해당 없음.) */
+    .doc-advisory .letterhead, .doc-filing .letterhead, .doc-progress .letterhead{ margin:0 0 12mm 0; }
+    .doc-appeal .doc-pagebreak, .doc-memo .doc-pagebreak, .doc-translation .doc-pagebreak, .doc-advisory .doc-pagebreak, .doc-filing .doc-pagebreak, .doc-progress .doc-pagebreak, .doc-reference .doc-pagebreak, .doc-summary .doc-pagebreak{ margin:0; height:0; overflow:hidden; }
     .doc-appeal .doc-pagebreak::before, .doc-appeal .doc-pagebreak::after,
     .doc-memo .doc-pagebreak::before, .doc-memo .doc-pagebreak::after,
-    .doc-translation .doc-pagebreak::before, .doc-translation .doc-pagebreak::after{ border-top:none; }
+    .doc-translation .doc-pagebreak::before, .doc-translation .doc-pagebreak::after,
+    .doc-advisory .doc-pagebreak::before, .doc-advisory .doc-pagebreak::after,
+    .doc-filing .doc-pagebreak::before, .doc-filing .doc-pagebreak::after,
+    .doc-progress .doc-pagebreak::before, .doc-progress .doc-pagebreak::after,
+    .doc-reference .doc-pagebreak::before, .doc-reference .doc-pagebreak::after,
+    .doc-summary .doc-pagebreak::before, .doc-summary .doc-pagebreak::after{ border-top:none; }
     @page{ size:A4; margin:30mm 25mm 25mm 25mm; } /* 위 30 우 25 아래 25 좌 25 - 인쇄 대화상자 "사용자 지정" 클릭시 이 값이 기본 입력되도록 함 */
   }
 
-  /* ===== 외부보고서(용역보고서) 테마용 CSS — rpt.netax.kr(index.html)에서 그대로 이식 (2026.07) ===== */
-  .md-content {
-    max-width: 720px;
-    margin: 0 auto;
-    padding: 40px 32px 80px;
-    font-family: 'Noto Sans KR', sans-serif;
-    color: #22303F;
-    line-height: 1.8;
-    font-size: 15.5px;
-    overflow-wrap: break-word;
-    word-break: keep-all;
-  }
-
-  .md-content h1 {
-    font-family: 'Noto Serif KR', serif;
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--navy);
-    text-align: left;
-    letter-spacing: normal;
-    margin: 0 0 8px;
-    padding-bottom: 14px;
-    border-bottom: 3px solid var(--gold);
-    max-width: 100%;
-    overflow-wrap: break-word;
-    word-break: keep-all;
-  }
-
-  .md-content h1::after { display: none; }
-
-  .md-content h2 {
-    font-family: 'Noto Serif KR', serif;
-    font-size: 19px;
-    font-weight: 700;
-    color: var(--navy);
-    margin: 34px 0 12px;
-    padding: 10px 14px;
-    background: linear-gradient(90deg, rgba(200,162,68,0.22), rgba(200,162,68,0.04));
-    border-left: 4px solid var(--gold);
-    border-bottom: 2px solid var(--gold);
-  }
-
-  .md-content h3 {
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--navy);
-    margin: 24px 0 10px;
-  }
-
-  .md-content p { margin: 0 0 14px; }
-
-  .md-content strong {
-    color: var(--navy);
-    background: linear-gradient(transparent 60%, rgba(200,162,68,0.28) 60%);
-    font-weight: 700;
-  }
-
-  .md-content ul, .md-content ol {
-    margin: 0 0 14px;
-    padding-left: 22px;
-  }
-
-  .md-content ul { list-style: none; }
-  .md-content ul li { position: relative; }
-  .md-content ul li::before {
-    content: '';
-    position: absolute;
-    left: -16px;
-    top: 9px;
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: var(--gold);
-  }
-
-  .md-content ol { list-style: decimal; }
-  .md-content ol li::marker { color: var(--gold); font-weight: 700; }
-
-  .md-content li { margin-bottom: 6px; }
-
-  .md-content li > ul,
-  .md-content li > ol {
-    margin-top: 6px;
-    margin-bottom: 0;
-  }
-
-  .md-content .table-scroll {
-    position: relative;
-    overflow-x: auto;
-    margin: 8px 0 24px;
-  }
-
-  /* 스크롤 힌트: 스크롤바가 위치하는 하단 모서리에 배치, 스크롤 위치에 따라 좌/우 독립적으로 표시 */
-  .md-content .table-scroll.scrollable::after,
-  .md-content .table-scroll.scrollable::before {
-    position: absolute;
-    bottom: 3px;
-    color: rgba(200, 162, 68, 0.6);
-    font-size: 13px;
-    pointer-events: none;
-    text-shadow: -1px 0 3px rgba(255,255,255,0.9), 1px 0 3px rgba(255,255,255,0.9);
-    transition: opacity 0.15s ease;
-    opacity: 0;
-  }
-  .md-content .table-scroll.scrollable::after { content: '▸'; right: 3px; }
-  .md-content .table-scroll.scrollable::before { content: '◂'; left: 3px; }
-  .md-content .table-scroll.scrollable.show-right::after { opacity: 1; }
-  .md-content .table-scroll.scrollable.show-left::before { opacity: 1; }
-
-  .md-content table {
-    width: max-content;
-    max-width: none;
-    border-collapse: collapse;
-    margin: 0;
-    font-size: 14px;
-  }
-
-  .md-content th {
-    background: #4A6080;
-    color: #F5F2EC;
-    padding: 10px 12px;
-    text-align: left;
-    font-weight: 600;
-  }
-
-  .md-content td {
-    padding: 9px 12px;
-    border-bottom: 1px solid #E4E0D8;
-  }
-
-  .md-content tr:nth-child(even) td { background: #FAF8F3; }
-
-  /* 10번: 체크/X 이모지 열은 중앙정렬 텍스트로만 — 이미지 글머리 남발 방지 */
-  .md-content td:only-child,
-  .md-content th:only-child { text-align: center; }
-
-  .md-content blockquote {
-    margin: 0 0 8px;
-    padding: 12px 16px;
-    background: #F5F1E8;
-    color: #4A4A4A;
-    word-break: keep-all;
-    overflow-wrap: break-word;
-  }
-  /* 7번: 화살표(→) 앞에서 줄넘김 허용 */
-  /* blockquote 안 p의 기본 하단 마진(14px) 제거 — padding과 중복되어 박스가 불필요하게 커지는 문제 방지 */
-  .md-content blockquote p {
-    white-space: normal;
-    margin: 0;
-  }
-
-  /* 5·6번: hanging indent 제거 — 줄넘김은 항목 앞에서 자연스럽게 */
-  .md-content p { text-indent: 0; padding-left: 0; }
-  .md-content td { text-indent: 0; padding-left: 12px; }
-
-  /* 금액 열 정렬: 추후 별도 지시에 따라 적용 */
-
-  /* 붙임 발췌 이미지(그림1~3 등) — 컨테이너 폭에 맞춰 반응형으로 축소·중앙정렬.
-     이 파일(report-writer)이 만든 HTML이 그대로 report_html로 저장되어 rpt.netax.kr의
-     iframe(srcdoc)에 표시되므로, 이미지 스타일은 반드시 여기(원본 생성기)에 있어야 실제로 반영됨 */
-  .md-content img {
-    display: block;
-    max-width: 100%;
-    height: auto;
-    margin: 4px auto 6px;
-    border: 1px solid #E4E0D8;
-    border-radius: 4px;
-  }
-
-  /* 그림/표 캡션 및 단위 표기 — 본문과 구분되는 보조 텍스트 스타일 */
-  .md-content .caption {
-    text-align: center;
-    font-size: 13px;
-    color: #8A7B5C;
-    margin: 18px 0 6px;
-    font-weight: 600;
-  }
-  .md-content .unit-note {
-    text-align: right;
-    font-size: 12.5px;
-    color: #8A8A8A;
-    margin: 0 0 4px;
-  }
-
-  /* ===== KaTeX 수식 — 모바일 화면 너비 초과 시 가로 스크롤 처리 ===== */
-  .md-content .katex-display {
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 4px 2px 8px;
-    margin: 8px 0 16px;
-    max-width: 100%;
-  }
-  .md-content .katex {
-    font-size: 1em;
-  }
-  @media (max-width: 480px) {
-    .md-content .katex-display {
-      font-size: 0.85em;
-    }
-    .md-content .katex-display > .katex {
-      white-space: normal;
-    }
-    /* 모바일 본문 행간·폰트 축소 — 넓은 행간으로 인한 스크롤 과다 방지 */
-    .md-content {
-      font-size: 14.5px;
-      line-height: 1.55;
-    }
-    .md-content p,
-    .md-content li,
-    .md-content td,
-    .md-content blockquote {
-      line-height: 1.5;
-    }
-    .md-content h2 {
-      line-height: 1.4;
-    }
-  }
-
-  /* ===== Chart.js 차트 ===== */
+  /* ===== Chart.js 차트 (자문・신고보고서 공용, 테마 무관 전역 클래스) ===== */
   .chart-wrapper {
     margin: 12px 0 24px;
     background: #FAFAF7;
@@ -681,9 +770,6 @@
     line-height: 1.6;
   }
 
-  /* 9번: blockquote 내 p 태그 앞 이모지 글머리 제거 — 이모지는 텍스트 그 자체로만 */
-  .md-content blockquote p { padding-left: 0; text-indent: 0; }
-
   /* ===== 목차 ===== */
   .toc {
     background: #F5F1E8;
@@ -713,24 +799,6 @@
     font-size: 13.5px;
   }
   .toc a:hover { text-decoration: underline; color: var(--navy); }
-
-  /* ===== 알림 상자 색상 구분 ===== */
-  .md-content blockquote.callout-success {
-    background: #EAF7EE;
-    border: 1px solid #8FCB9F;
-  }
-  .md-content blockquote.callout-warning {
-    background: #FFF6E0;
-    border: 1px solid #E8C363;
-  }
-  .md-content blockquote.callout-danger {
-    background: #FCEBEB;
-    border: 1px solid #E29B9B;
-  }
-  .md-content blockquote.callout-info {
-    background: #E9F1FA;
-    border: 1px solid #9CC1E8;
-  }
 
   /* ===== 숫자 비교 막대그래프 ===== */
   .compare-chart {
@@ -773,50 +841,6 @@
     color: var(--navy);
   }
 
-  /* ===== 접고 펼치기 (details/summary) ===== */
-  .md-content details {
-    margin: 0 0 8px;
-    border: 1px solid #E4E0D8;
-    border-radius: 6px;
-    overflow: hidden;
-  }
-  .md-content summary {
-    cursor: pointer;
-    padding: 12px 16px;
-    background: #F5F1E8;
-    font-weight: 700;
-    color: var(--navy);
-    list-style: none;
-    word-break: keep-all;
-    transition: background 0.15s ease;
-  }
-  .md-content summary:hover {
-    background: #EFE8D8;
-  }
-  /* 11번: 콜론 앞 스페이스 — summary 내 em dash나 콜론 앞 여백 자연스럽게 */
-  .md-content summary::after {
-    content: '';
-  }
-  .md-content summary::-webkit-details-marker { display: none; }
-  .md-content summary::before {
-    content: '▶';
-    display: inline-block;
-    margin-right: 8px;
-    font-size: 11px;
-    color: var(--gold);
-    transition: transform 0.2s ease;
-    transform: rotate(0deg);
-  }
-  .md-content details[open] summary::before {
-    transform: rotate(90deg);
-  }
-  .md-content details > *:not(summary) {
-    padding: 0 16px;
-  }
-  .md-content details p:last-child {
-    padding-bottom: 16px;
-  }
-
   .mermaid-diagram {
     margin: 16px 0 24px;
     padding: 16px;
@@ -844,12 +868,6 @@
   }
   .mermaid-diagram svg .label {
     font-size: 12.5px !important;
-  }
-
-  .md-content hr {
-    border: none;
-    border-top: 1px solid #E4E0D8;
-    margin: 28px 0;
   }
 
   .statute-link {
@@ -974,7 +992,8 @@
       <button id="addReferenceOpt">참고보고서 만들기</button>
       <button id="addProgressOpt">진행보고서 만들기</button>
       <button id="addAppealOpt">불복청구서 만들기</button>
-      <button id="addCaseMemoOpt">사건개요서 만들기</button>
+      <button id="addTranslationOpt">번역서 만들기</button>
+      <button id="addSummaryOpt">요약보고서 만들기</button>
       <button id="addBlankOpt">빈 문서 만들기</button>
     </div>
   </div>
@@ -982,25 +1001,6 @@
   <input type="file" id="fileInput" accept=".md,.txt,.html,.htm" multiple style="display:none;">
   <button id="btnReloadFromDrive" class="iconbtn" title="드라이브에 저장된 최신 내용으로 다시 불러오기 (fileId로 연 문서일 때만 동작)">🔄</button>
   <button id="btnSaveToDrive" class="iconbtn" title="지금 이 내용을 드라이브 원본 파일에 바로 저장">💾</button>
-  <span class="sep"></span>
-  <select id="docTypeSelect" title="문서유형 — 이 문서가 내부 검토용인지, 외부(고객・세무서・조세심판원 등)로 나가는 문서인지, 나간다면 어떤 종류인지">
-    <optgroup label="내부">
-      <option value="review">검토서</option>
-    </optgroup>
-    <optgroup label="외부">
-      <option value="advisory">자문보고서(고객)</option>
-      <option value="filing">신고보고서(고객)</option>
-      <option value="reference">참고보고서(세무서)</option>
-      <option value="progress">진행보고서(고객)</option>
-      <option value="appeal_petition">불복청구서(조세심판원 등)</option>
-    </optgroup>
-  </select>
-  <select id="themeSelect">
-    <option value="appeal">청구서</option>
-    <option value="memo">검토서</option>
-    <option value="external">용역서</option>
-    <option value="translation">번역본</option>
-  </select>
   <button id="btnRender" class="primary iconbtn" title="렌더링 (편집한 내용을 미리보기에 반영)">⟳</button>
   <button id="btnLayoutToggle" class="iconbtn" title="창보기: 클릭할 때마다 편집창→모아보기→미리보기 순으로 전환 (모아보기 상태에서 더블클릭하면 스크롤 동기화 켜기/끄기)">◫</button>
   <button id="btnNewWindow" class="iconbtn" title="완성된 문서만 새 창(탭)에서 보기 (편집 도구 없이)">↗</button>
@@ -1023,8 +1023,8 @@
       <button data-snip="bold" title="굵게 (Ctrl+B)">B</button>
       <button data-snip="list" title="목록">≡</button>
       <button data-snip="table" title="표">▦</button>
-      <button data-snip="mermaid" title="순서도(Mermaid, 용역서 테마 전용)">◇</button>
-      <button data-snip="footnote" title="각주(용역서 테마 전용)">¹</button>
+      <button data-snip="mermaid" title="순서도(Mermaid, 자문・신고보고서에서 사용 가능)">◇</button>
+      <button data-snip="footnote" title="각주">¹</button>
       <button data-snip="hr" title="구분선">―</button>
       <span style="flex:1"></span>
       <button id="btnFindOpen" title="찾기/바꾸기 (Ctrl+F)">🔍</button>
@@ -1109,7 +1109,7 @@ const MD_APPEAL = "# 청구취지 및 이유서\n\n*(사건번호: 동안양-이
 
 const MD_MEMO = "# 과세자료 해명 검토보고서 (샘플)\n\n*작성일: 2026-07-14 / 작성자: 조송원 세무사 / 유형: 내부검토용 (샘플 골격 — 실제 사건 내용으로 교체하여 사용)*\n\n<table class=\"memo-meta\">\n<tr><td class=\"k\">수 신</td><td>OO세무서장 (또는 \"본인 검토용\")</td></tr>\n<tr><td class=\"k\">제 목</td><td>OOO 관련 과세자료 해명의 건</td></tr>\n<tr><td class=\"k\">근거자료</td><td>과세자료 해명 안내문 (20XX. X. X.자)</td></tr>\n<tr><td class=\"k\">작성일자</td><td>2026년 X월 X일</td></tr>\n</table>\n\n<div class=\"conclusion-box\">\n\n**결론 (요약)**\n\n이 사안은 [핵심 쟁점 한 줄 요약]에 관한 것으로, [실제거래/정상거래 등 핵심 판단]에 해당하여 [필요경비 인정 / 매입세액 공제 등 결론]되어야 함. 상세 근거는 아래 2항 참조.\n\n</div>\n\n## 1. 검토 배경\n\n- 수신한 과세자료 해명 안내문의 요지: [안내문 핵심 내용 요약]\n- 관련 거래 개요: [거래상대방, 기간, 금액 등 핵심 사실관계]\n- 쟁점: [쟁점을 한 문장으로 명시]\n\n## 2. 사실관계 및 쟁점별 검토\n\n### <a id=\"sec-a\">가. [쟁점 A] — 방향을 정하는 데 필요한 핵심 판단</a>\n\n핵심 판단 내용을 문단으로 서술. 표 안에는 사실관계 설명 문장을 넣지 않고, 실제로 나열되는 병렬 항목에만 목록을 사용합니다.\n\n| 구분 | 금액(원) | 근거자료 |\n|:--|--:|:--|\n| 항목 1 | 000,000,000 | 자료명 |\n| 항목 2 | 000,000,000 | 자료명 |\n| **합계** | **000,000,000** | |\n\n### 나. [쟁점 B]\n\n- 판단에 필요한 핵심 사실 1\n- 판단에 필요한 핵심 사실 2\n\n관련 근거는 [가항](#sec-a) 참조.\n\n## 3. 실행 디테일 (부록)\n\n방향 판단에는 불필요하지만 실무 처리를 위해 남겨두는 세부 사항.\n\n- 제출 자료 목록: [자료1], [자료2]\n- 담당자 연락: [내부 메모]\n\n## 4. 결론 및 향후 조치\n\n- [최종 결론 재확인]\n- 다음 조치: [해명서 제출 / 추가자료 확보 / 불복 검토 등]\n\n[PAGEBREAK]\n\n## 붙임\n\n- 붙임1. [자료명]\n- 붙임2. [자료명]\n";
 
-const THEME_CLASS = { appeal: 'doc-appeal', memo: 'doc-memo', external: 'md-content', translation: 'doc-translation' };
+const THEME_CLASS = { appeal: 'doc-appeal', memo: 'doc-memo', translation: 'doc-translation', advisory: 'doc-advisory', filing: 'doc-filing', progress: 'doc-progress', reference: 'doc-reference', summary: 'doc-summary' };
 const STORAGE_KEY = 'nxReportRenderer.docs.v1';
 const SELECTED_KEY = 'nxReportRenderer.selected.v1';
 
@@ -1266,10 +1266,9 @@ async function hydrateDocsFromIdb_(){
 // 실제 호출은 initReportWriter()(파일 아래쪽, script.html의 showView('reportwriter')가 처음
 // 한 번만 부름)에서 한다 — 여기서 바로 부르면 이 화면을 열기도 전에 IndexedDB를 뒤진다.
 
-// 문서유형별 짧은 표시용 라벨 — docSelect 드롭다운에서 한눈에 구분하기 위함
-// (toolbar의 docTypeSelect 전체 옵션 텍스트와는 별도로, 여기선 괄호 안에 짧게만 보여줌).
+// 문서유형별 짧은 표시용 라벨 — docSelect 드롭다운에서 한눈에 구분하기 위함.
 const RW_DOC_TYPE_SHORT_LABELS_ = {
-  review: '검토서', advisory: '자문', filing: '신고', reference: '참고', progress: '진행', appeal_petition: '불복청구'
+  review: '검토서', advisory: '자문', filing: '신고', reference: '참고', progress: '진행', appeal_petition: '불복청구', summary: '요약', translation: '번역서'
 };
 
 // ---------- 문서 선택 드롭다운 ----------
@@ -1289,21 +1288,14 @@ function refreshDocSelect(){
   document.getElementById('btnRender').disabled = !hasDocs;
   document.getElementById('btnDownload').disabled = !hasDocs;
   document.getElementById('btnNewWindow').disabled = !hasDocs;
-  document.getElementById('themeSelect').disabled = !hasDocs;
-  document.getElementById('docTypeSelect').disabled = !hasDocs;
   document.getElementById('mdInput').disabled = !hasDocs;
 }
 
 function loadSelectedIntoEditor(){
   const d = getSelected();
   const mdInput = document.getElementById('mdInput');
-  const themeSelect = document.getElementById('themeSelect');
-  const docTypeSelect = document.getElementById('docTypeSelect');
   if (!d) { mdInput.value = ''; updateSaveToDriveButton(); return; }
   mdInput.value = d.md;
-  themeSelect.value = d.theme;
-  // 문서유형 필드가 없는 예전 문서(2026.09 이전에 만든 것들)는 기본값을 "검토서"로 본다.
-  docTypeSelect.value = d.docType || 'review';
   updateSaveToDriveButton();
 }
 
@@ -1388,6 +1380,33 @@ function showLoadErrorInEditor(fileId, message){
 // nx-set-content)은 report-writer가 별도 창(iframe/팝업)으로 열리던 시절의 기능이라 삭제했다 —
 // 이제는 이 앱 안의 화면 하나라서 그런 부모 창 자체가 없다.
 
+// [2026.09] 드라이브에서 파일을 열 때(예: 다른 화면에서 fileId로 바로 이 문서를 열었을 때)
+// 파일명으로 문서유형을 자동 추정한다 — 이 시스템이 만든 문서는 이름이 "자문보고서_홍길동"처럼
+// 유형 라벨로 시작하므로 대부분 여기서 바로 맞는다. 못 맞히면(옛날 파일 등) 사용자에게 직접 물어본다.
+function rwGuessDocTypeFromFilename_(name){
+  if (!name) return null;
+  if (name.includes('검토서')) return 'review';
+  if (name.includes('자문')) return 'advisory';
+  if (name.includes('신고') && name.includes('보고서')) return 'filing';
+  if (name.includes('참고') && name.includes('보고서')) return 'reference';
+  if (name.includes('진행') && name.includes('보고서')) return 'progress';
+  if (name.includes('요약') && name.includes('보고서')) return 'summary';
+  if (name.includes('번역서') || name.includes('번역본')) return 'translation';
+  if (name.includes('청구서') || name.includes('이의신청') || name.includes('심사청구') || name.includes('심판청구') || name.includes('불복')) return 'appeal_petition';
+  return null;
+}
+function rwAskDocTypeForFile_(fileName){
+  const order = ['review', 'advisory', 'filing', 'reference', 'progress', 'appeal_petition', 'translation', 'summary'];
+  const lines = order.map((k, i) => (i + 1) + ') ' + RW_DOC_TYPE_SHORT_LABELS_[k]);
+  const answer = window.prompt(
+    '"' + fileName + '" 파일의 문서유형을 파일명에서 알 수 없습니다.\n번호를 입력해 선택해주세요(취소하면 미분류로 둡니다):\n' + lines.join('\n')
+  );
+  if (answer === null) return null;
+  const idx = parseInt(answer, 10);
+  if (!idx || idx < 1 || idx > order.length) return null;
+  return order[idx - 1];
+}
+
 async function rwLoadFileById_(fileId){
   if (!fileId) return false;
   // hydrateDocsFromIdb_()의 IndexedDB 조회와 동시에 진행될 수 있어(둘 다 페이지/화면을 여는
@@ -1420,7 +1439,11 @@ async function rwLoadFileById_(fileId){
     doc.md = content;
     doc.format = isHtml ? 'html' : 'md';
   } else {
-    doc = { id: docId, name: name, theme: 'external', format: isHtml ? 'html' : 'md', md: content };
+    let docType = rwGuessDocTypeFromFilename_(name);
+    if (!docType) docType = rwAskDocTypeForFile_(rawName);
+    const theme = docType ? (RW_DOC_TYPE_THEME_[docType] || 'memo') : 'memo';
+    doc = { id: docId, name: name, theme: theme, format: isHtml ? 'html' : 'md', md: content };
+    if (docType) doc.docType = docType;
     docs.push(doc);
   }
   selectedId = docId;
@@ -1508,14 +1531,15 @@ function rwGetSelectedCase_(){
   return rwCases_.filter(function(x){ return x.id === caseId; })[0] || null;
 }
 
-// 문서유형별 기본 인쇄 테마 — 고객·세무서 등 외부로 나가는 문서는 격식 있는 "청구서"
-// 테마(doc-appeal, 서명란·중앙정렬 제목 등 정식 문서 형태)를, 내부 기록은 "검토서" 테마를 쓴다.
+// 문서유형별 기본 인쇄 테마 — 내부(검토서)는 모양이 하나로 통일돼도 되지만, 외부로 나가는
+// 5종은 목적·수요자가 다 다르므로 각각 별도 테마를 쓴다(2026.09, 하나씩 만드는 중 —
+// 아직 전용 테마가 없는 유형은 우선 기존 "청구서" 테마를 임시로 쓴다).
 const RW_DOC_TYPE_THEME_ = {
-  review: 'memo', advisory: 'appeal', filing: 'appeal',
-  reference: 'appeal', progress: 'appeal', appeal_petition: 'appeal'
+  review: 'memo', advisory: 'advisory', filing: 'filing',
+  reference: 'reference', progress: 'progress', appeal_petition: 'appeal', summary: 'summary', translation: 'translation'
 };
 
-// kind: 'blank'(백지) / 'case'(사건개요서 상담메모 골격) / 'review'(검토서 골격) / 'advisory'(자문보고서 골격)
+// kind: 'blank'(백지) / 'review'(검토서 골격) / 'advisory'(자문보고서 골격)
 async function createNewDoc(kind){
   const c = rwGetSelectedCase_();
   const semokLabel = c ? ((typeof WORK_SEMOK_LABELS !== 'undefined' && WORK_SEMOK_LABELS[c.세목]) || c.세목 || '') : '';
@@ -1526,19 +1550,10 @@ async function createNewDoc(kind){
       fallbackName: '새 문서',
       md: '# 새 문서\n\n내용을 입력하세요.\n'
     },
-    case: {
-      promptDefault: '사건개요서_',   // 커서가 뒤에 위치하므로 바로 이어서 타이핑 가능(지울 필요 없음)
-      fallbackName: '사건개요서',
-      md: '# 사건개요서 (상담메모)\n\n'
-        + '- 일시: \n'
-        + '- 고객: \n'
-        + '- 채널: (전화 / 방문 / 카톡・문자 등)\n\n'
-        + '## 상담 내용\n\n\n'
-        + '## 쟁점 메모\n\n'
-    },
     // [2026.09] 내부보고서(검토서) — 사건 처리를 위해 담당자가 내부적으로 정리하는 검토
-    // 문서. 상단에서 사건이 선택돼 있으면 고객명·세목·업무유형·담당자를 자동으로 채운다
-    // (기존 "사건개요서(상담메모)"는 통화/상담 접수 기록용이라 성격이 다름 — 그대로 둔다).
+    // 문서. 상단에서 사건이 선택돼 있으면 고객명·세목·업무유형·담당자를 자동으로 채운다.
+    // ("사건개요서 만들기"는 처리개요/메모의 구조화된 "사건개요" 데이터와 이름만 같고 실제로는
+    // 무관한 자유 텍스트 메모라 혼동을 없애기 위해 없앴다 — 그 용도는 검토서로 충분하다.)
     review: {
       promptDefault: '검토서_' + (c ? (c.고객명 || '') : ''),
       fallbackName: '검토서',
@@ -1558,11 +1573,16 @@ async function createNewDoc(kind){
     advisory: {
       promptDefault: '자문보고서_' + (c ? (c.고객명 || '') : ''),
       fallbackName: '자문보고서',
-      md: '# 자문보고서\n\n'
-        + '- 수신: ' + (c ? (c.고객명 || '') : '') + ' 님\n'
-        + '- 발신: 이음세무컨설팅\n'
-        + '- 작성일: ' + todayStr + '\n'
-        + '- 제목: ' + (c ? (c.사건명 || '') : '') + ' 관련 자문\n\n'
+      // [2026.09] doc-advisory 테마 전용 구조 — 남색 레터헤드(회사명)와 표 형태 수신/발신
+      // 정보로 시작한다. 일반 글머리표 대신 raw HTML을 그대로 써서 doc-advisory CSS의
+      // .letterhead/.meta 스타일이 그대로 먹는다(marked.js가 블록 단위 HTML을 그대로 통과시킴).
+      md: '<div class="letterhead"><div class="brand">이음세무컨설팅 NETAX</div><h1>자문보고서</h1></div>\n\n'
+        + '<table class="meta">\n'
+        + '<tr><td class="k">수신</td><td>' + escapeHtml(c ? (c.고객명 || '') : '') + ' 님</td></tr>\n'
+        + '<tr><td class="k">발신</td><td>이음세무컨설팅</td></tr>\n'
+        + '<tr><td class="k">작성일</td><td>' + todayStr + '</td></tr>\n'
+        + '<tr><td class="k">제목</td><td>' + escapeHtml(c ? (c.사건명 || '') : '') + ' 관련 자문</td></tr>\n'
+        + '</table>\n\n'
         + '## 상담 요청 사항\n\n\n'
         + '## 검토 결과 및 자문 의견\n\n\n'
         + '## 유의사항 및 향후 절차\n\n'
@@ -1572,11 +1592,16 @@ async function createNewDoc(kind){
     filing: {
       promptDefault: '신고보고서_' + (c ? (c.고객명 || '') : ''),
       fallbackName: '신고보고서',
-      md: '# 신고보고서\n\n'
-        + '- 수신: ' + (c ? (c.고객명 || '') : '') + ' 님\n'
-        + '- 발신: 이음세무컨설팅\n'
-        + '- 작성일: ' + todayStr + '\n'
-        + '- 제목: ' + (c ? (c.사건명 || '') : '') + ' 신고 결과 보고\n\n'
+      // [2026.09] doc-filing 테마 전용 구조 — 자문보고서와 같은 레터헤드를 쓰되, "결과보고"라는
+      // 성격에 맞춰 최종 신고세액을 강조 박스로 상단에 바로 보여준다(금액은 담당자가 직접 채움).
+      md: '<div class="letterhead"><div class="brand">이음세무컨설팅 NETAX</div><h1>신고보고서</h1></div>\n\n'
+        + '<table class="meta">\n'
+        + '<tr><td class="k">수신</td><td>' + escapeHtml(c ? (c.고객명 || '') : '') + ' 님</td></tr>\n'
+        + '<tr><td class="k">발신</td><td>이음세무컨설팅</td></tr>\n'
+        + '<tr><td class="k">작성일</td><td>' + todayStr + '</td></tr>\n'
+        + '<tr><td class="k">제목</td><td>' + escapeHtml(c ? (c.사건명 || '') : '') + ' 신고 결과 보고</td></tr>\n'
+        + '</table>\n\n'
+        + '<div class="amount-box"><span class="label">최종 신고세액</span><span class="value">원</span></div>\n\n'
         + '## 신고 개요\n\n\n'
         + '## 신고 세액 및 산출근거\n\n\n'
         + '## 향후 유의사항\n\n'
@@ -1586,27 +1611,40 @@ async function createNewDoc(kind){
     reference: {
       promptDefault: '참고보고서_' + (c ? (c.고객명 || '') : ''),
       fallbackName: '참고보고서',
-      md: '# 참고보고서\n\n'
-        + '- 수신: OOO세무서장 귀하\n'
-        + '- 발신: 이음세무컨설팅 (신고대리인)\n'
-        + '- 작성일: ' + todayStr + '\n'
-        + '- 제목: ' + (c ? (c.고객명 || '') : '') + ' ' + semokLabel + ' 신고 관련 참고사항 안내\n\n'
+      // [2026.09] doc-reference 테마 전용 구조 — 고객용 3종과 달리 과세관청이 읽는 공문서라
+      // 화려한 레터헤드 대신 회사명만 작게 넣고(<div class="letterhead">), 본문은 "1. 2. 3."
+      // 번호 매긴 개조식으로 구성한다(ul을 쓰면 doc-reference 테마가 자동으로 번호를 매김).
+      md: '<div class="letterhead"><span class="brand">이음세무컨설팅 NETAX</span><span class="doc-date">' + todayStr + '</span></div>\n\n'
+        + '# 참고보고서\n\n'
+        + '<table class="meta">\n'
+        + '<tr><td class="k">수신</td><td>OOO세무서장 귀하</td></tr>\n'
+        + '<tr><td class="k">발신</td><td>이음세무컨설팅 (신고대리인)</td></tr>\n'
+        + '<tr><td class="k">제목</td><td>' + escapeHtml(c ? (c.고객명 || '') : '') + ' ' + semokLabel + ' 신고 관련 참고사항 안내</td></tr>\n'
+        + '</table>\n\n'
         + '## 신고 개요\n\n\n'
         + '## 특정항목 설명\n\n'
-        + '(신고서를 처리하실 때 참고하실 사항을 항목별로 설명합니다.)\n\n'
+        + '(신고서를 처리하실 때 참고하실 사항을 항목별로 설명합니다. 아래처럼 목록으로 적으면 1. 2. 3.으로 자동 번호가 매겨집니다.)\n\n'
+        + '- \n\n'
     },
     // [2026.09] 외부보고서 4/5 — 진행보고서(불복 사건, 고객에게 전달). 불복은 처리기간이 길어
     // 중간중간 진행상황을 알려야 하므로, 지금까지 경과와 다음 일정을 중심으로 짠다.
     progress: {
       promptDefault: '진행보고서_' + (c ? (c.고객명 || '') : ''),
       fallbackName: '진행보고서',
-      md: '# 진행보고서\n\n'
-        + '- 수신: ' + (c ? (c.고객명 || '') : '') + ' 님\n'
-        + '- 발신: 이음세무컨설팅\n'
-        + '- 작성일: ' + todayStr + '\n'
-        + '- 제목: ' + (c ? (c.사건명 || '') : '') + ' 진행상황 보고\n\n'
-        + '## 현재까지 진행 경과\n\n\n'
+      // [2026.09] doc-progress 테마 전용 구조 — 레터헤드는 자문/신고보고서보다 작게(가벼운
+      // 업데이트 성격), 경과·계획은 글머리표(-)로 적으면 자동으로 점+세로선 타임라인으로
+      // 보인다(각 항목 앞에 "YYYY-MM-DD: " 형식으로 날짜를 적어주면 더 보기 좋음).
+      md: '<div class="letterhead"><div class="brand">이음세무컨설팅 NETAX</div><h1>진행보고서</h1></div>\n\n'
+        + '<table class="meta">\n'
+        + '<tr><td class="k">수신</td><td>' + escapeHtml(c ? (c.고객명 || '') : '') + ' 님</td></tr>\n'
+        + '<tr><td class="k">발신</td><td>이음세무컨설팅</td></tr>\n'
+        + '<tr><td class="k">작성일</td><td>' + todayStr + '</td></tr>\n'
+        + '<tr><td class="k">제목</td><td>' + escapeHtml(c ? (c.사건명 || '') : '') + ' 진행상황 보고</td></tr>\n'
+        + '</table>\n\n'
+        + '## 현재까지 진행 경과\n\n'
+        + '- \n\n'
         + '## 향후 진행 계획 및 예상 일정\n\n'
+        + '- \n\n'
     },
     // [2026.09] 외부보고서 5/5 — 불복청구서(불복 사건, 조세심판원 등 처분청/심판기관에 제출).
     // 앞의 4종과 달리 서사형 보고서가 아니라 정식 청구 서식 — 청구취지·청구이유가 핵심이다.
@@ -1623,15 +1661,56 @@ async function createNewDoc(kind){
         + '## 처분의 내용\n\n\n'
         + '## 청구이유\n\n\n'
         + '## 증거서류\n\n'
+    },
+    // [2026.09] 번역서(외부, 세무서 제출) — 영문 등 외국어 자료를 과세관청에 제출할 때 함께
+    // 내는 한국어 번역문. 기존 (구)용역서와 별개인 "첨부서류 번역본" 테마(doc-translation,
+    // 원본 서식 재현형 — 분석용 장치 없이 표・인용 위주)를 그대로 재사용한다.
+    translation: {
+      promptDefault: '번역서_' + (c ? (c.고객명 || '') : ''),
+      fallbackName: '번역서',
+      md: '<div class="translation-badge">본 문서는 원문(영문)을 한국어로 번역한 것입니다</div>\n\n'
+        + '# ' + (c ? (c.사건명 || '') : '') + ' 번역문\n\n'
+        + '- 제출처: OOO세무서장 귀하\n'
+        + '- 제출자: 이음세무컨설팅 (번역 및 신고대리인)\n'
+        + '- 원본 언어: 영어\n'
+        + '- 번역일: ' + todayStr + '\n\n'
+        + '## 원문\n\n'
+        + '> (원문 내용을 그대로 인용)\n\n'
+        + '## 번역문\n\n\n'
+        + '## 번역자 확인\n\n'
+        + '위 번역문은 원문의 내용과 다르지 않음을 확인합니다.\n\n'
+    },
+    // [2026.09] 요약보고서 — 지금까지 작성한 검토서·자문/신고/진행보고서 등을 한 장으로
+    // 요약한다. 원칙상 1페이지라 doc-summary 테마는 글자·여백을 다른 테마보다 작게 잡았고,
+    // 기호 글머리(■ 대분류 ◇ 소제목 ● 항목 ♡ 하위항목 ＊ 세부메모)로 층위를 구분한다.
+    // "- 항목" 아래 두 칸 들여쓴 "  - 하위항목"을 쓰면 ♡로, 그 아래 한 번 더 들여쓰면 ＊로
+    // 자동으로 바뀐다(마크다운 중첩 목록).
+    summary: {
+      promptDefault: '요약보고서_' + (c ? (c.고객명 || '') : ''),
+      fallbackName: '요약보고서',
+      md: '<div class="letterhead"><span class="brand">이음세무컨설팅 NETAX</span><span class="doc-date">' + todayStr + '</span></div>\n\n'
+        + '# 요약보고서\n\n'
+        + '<table class="meta">\n'
+        + '<tr><td class="k">고객명</td><td>' + escapeHtml(c ? (c.고객명 || '') : '') + '</td></tr>\n'
+        + '<tr><td class="k">사건명</td><td>' + escapeHtml(c ? (c.사건명 || '') : '') + '</td></tr>\n'
+        + '</table>\n\n'
+        + '## 사건 개요\n\n'
+        + '- \n\n'
+        + '## 주요 내용 요약\n\n'
+        + '- \n'
+        + '  - \n\n'
+        + '## 결론 및 향후 조치\n\n'
+        + '- \n\n'
+        + '## 첨부문서\n\n'
+        + '- \n\n'
     }
   };
   const tpl = templates[kind] || templates.blank;
   const name = window.prompt('새 문서의 이름을 입력하세요.', tpl.promptDefault);
   if (name === null) return; // 취소
-  // "사건개요서(상담메모)"와 "검토서"는 둘 다 내부용 기록이라 항상 검토서로 분류하고, 나머지
   // 정해진 kind는 그 유형으로 고정한다 — 사건유형별 자동추천(rwGuessDocType_)은 "빈 문서"처럼
   // 용도가 정해지지 않은 경우에만 쓴다.
-  const FIXED_DOC_TYPE_ = { review: 'review', case: 'review', advisory: 'advisory', filing: 'filing', reference: 'reference', progress: 'progress', appeal_petition: 'appeal_petition' };
+  const FIXED_DOC_TYPE_ = { review: 'review', advisory: 'advisory', filing: 'filing', reference: 'reference', progress: 'progress', appeal_petition: 'appeal_petition', translation: 'translation', summary: 'summary' };
   const docType = FIXED_DOC_TYPE_[kind] || rwGuessDocType_();
   const newDoc = { id: uid(), name: name.trim() || tpl.fallbackName, theme: RW_DOC_TYPE_THEME_[docType] || 'memo', format: 'md', md: tpl.md, docType: docType };
   docs.push(newDoc);
@@ -1644,13 +1723,14 @@ async function createNewDoc(kind){
 }
 
 function addBlankDoc(){ createNewDoc('blank'); }
-function addCaseMemoDoc(){ createNewDoc('case'); }
 function addReviewDoc(){ createNewDoc('review'); }
 function addAdvisoryDoc(){ createNewDoc('advisory'); }
 function addFilingDoc(){ createNewDoc('filing'); }
 function addReferenceDoc(){ createNewDoc('reference'); }
 function addProgressDoc(){ createNewDoc('progress'); }
 function addAppealDoc(){ createNewDoc('appeal_petition'); }
+function addTranslationDoc(){ createNewDoc('translation'); }
+function addSummaryDoc(){ createNewDoc('summary'); }
 
 async function deleteCurrentDoc(){
   const d = getSelected();
@@ -2164,13 +2244,13 @@ const MD_HELP_HTML = `
     <tr><td style="padding:4px 8px; border-bottom:1px solid #eee; font-family:monospace;">**굵게**</td><td style="padding:4px 8px; border-bottom:1px solid #eee;"><b>굵게</b> 표시</td></tr>
     <tr><td style="padding:4px 8px; border-bottom:1px solid #eee; font-family:monospace;">- 항목</td><td style="padding:4px 8px; border-bottom:1px solid #eee;">불릿 목록</td></tr>
     <tr><td style="padding:4px 8px; border-bottom:1px solid #eee; font-family:monospace;">1. 항목</td><td style="padding:4px 8px; border-bottom:1px solid #eee;">번호 목록</td></tr>
-    <tr><td style="padding:4px 8px; border-bottom:1px solid #eee; font-family:monospace;">&gt; 인용문</td><td style="padding:4px 8px; border-bottom:1px solid #eee;">인용/알림 박스(용역서 테마는 ✅⚠️❌ℹ️로 시작하면 색이 자동으로 입혀짐)</td></tr>
+    <tr><td style="padding:4px 8px; border-bottom:1px solid #eee; font-family:monospace;">&gt; 인용문</td><td style="padding:4px 8px; border-bottom:1px solid #eee;">인용/알림 박스(자문・신고보고서는 ✅⚠️❌ℹ️로 시작하면 색이 자동으로 입혀짐)</td></tr>
     <tr><td style="padding:4px 8px; border-bottom:1px solid #eee; font-family:monospace;">| 항목 | 값 |<br>|---|---|</td><td style="padding:4px 8px; border-bottom:1px solid #eee;">표(줄마다 | 로 칸을 나눔)</td></tr>
     <tr><td style="padding:4px 8px; border-bottom:1px solid #eee; font-family:monospace;">---</td><td style="padding:4px 8px; border-bottom:1px solid #eee;">가로 구분선</td></tr>
     <tr><td style="padding:4px 8px; font-family:monospace;">[링크 글자](주소)</td><td style="padding:4px 8px;">하이퍼링크</td></tr>
   </table>
 
-  <p style="font-weight:700; color:#0D1B3D; margin:16px 0 6px;">이 도구 전용 문법 (용역서 테마에서만 그림・효과로 렌더링됨)</p>
+  <p style="font-weight:700; color:#0D1B3D; margin:16px 0 6px;">이 도구 전용 문법 (자문・신고보고서 테마에서만 그림・효과로 렌더링됨)</p>
   <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
     <tr><td style="padding:4px 8px; border-bottom:1px solid #eee; font-family:monospace; white-space:nowrap;">\`\`\`mermaid ... \`\`\`</td><td style="padding:4px 8px; border-bottom:1px solid #eee;">순서도・플로우차트</td></tr>
     <tr><td style="padding:4px 8px; border-bottom:1px solid #eee; font-family:monospace;">\`\`\`compare<br>항목: 100<br>\`\`\`</td><td style="padding:4px 8px; border-bottom:1px solid #eee;">숫자 비교 막대그래프</td></tr>
@@ -2180,7 +2260,7 @@ const MD_HELP_HTML = `
     <tr><td style="padding:4px 8px; font-family:monospace;">조특법 §32</td><td style="padding:4px 8px;">등록된 조문은 자동으로 링크+요약 팝업 연결</td></tr>
   </table>
 
-  <p style="font-size:11px; color:#999; margin-top:14px;">위 표의 첫 6개(기본 문법)는 청구서・검토서・용역서 테마 모두에서 동작하고, "이 도구 전용" 항목은 용역서 테마를 선택했을 때만 실제로 그림・효과로 바뀝니다.</p>
+  <p style="font-size:11px; color:#999; margin-top:14px;">위 표의 첫 6개(기본 문법)는 모든 테마에서 동작하고, "이 도구 전용" 항목은 자문보고서・신고보고서를 선택했을 때만 실제로 그림・효과로 바뀝니다.</p>
 
   <p style="font-weight:700; color:#0D1B3D; margin:16px 0 6px;">편집 편의 기능</p>
   <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
@@ -2503,20 +2583,19 @@ async function render(){
   empty.style.display = 'none';
   const src = document.getElementById('mdInput').value;
   const format = d.format || 'md'; // 이전 버전에 저장된 문서는 format이 없으므로 md로 간주
-  const isExternal = d.theme === 'external' && format !== 'html';
+  // [2026.09] (구)용역서 테마 폐기 — 순서도/수식/차트/타임라인/비교막대/코드하이라이트/목차/
+  // 조문링크 같은 "고급 서식" 후처리는 자문·신고보고서 전용으로 흡수되어 그대로 쓸 수 있다.
+  const isRich = (d.theme === 'advisory' || d.theme === 'filing') && format !== 'html';
   let html;
   try {
     if (format === 'html') {
       // html 형식은 마크다운 파서 대신, 안전을 위해 매번 sanitize를 한 번 더 거쳐 원본 스타일/스크립트를 제거
       html = safeSanitizeHtml(src) ?? src;
-    } else if (isExternal) {
-      // 용역보고서(외부) 테마: rpt.netax.kr(index.html)과 완전히 동일한 전처리·렌더링 파이프라인 사용
-      // (2026.07: escapeLoneTildes가 빠져있어 "1~6번" 같은 홑물결표가 취소선으로 오인식되던 버그 수정)
-      const processedMd = escapeLoneTildes(preprocessBold(preprocessFootnotes(src)));
-      html = marked.parse(processedMd);
-      html = html.replace(/<table>/g, '<div class="table-scroll"><table>').replace(/<\/table>/g, '</table></div>');
     } else {
       html = marked.parse(preprocess(src), { breaks:false, gfm:true });
+    }
+    if (isRich) {
+      html = html.replace(/<table>/g, '<div class="table-scroll"><table>').replace(/<\/table>/g, '</table></div>');
     }
   } catch (err) {
     console.error('[렌더링 오류]', err);
@@ -2536,7 +2615,7 @@ async function render(){
     a.rel = 'noopener noreferrer';
   });
 
-  if (isExternal) {
+  if (isRich) {
     // rpt.netax.kr의 showResult()와 동일한 순서로 후처리 (mermaid는 비동기라 완료를 기다린 뒤 나머지 실행)
     try {
       await renderMermaidBlocks(out);
@@ -2553,7 +2632,7 @@ async function render(){
       requestAnimationFrame(() => markScrollableTables(out));
       setTimeout(() => markScrollableTables(out), 300);
     } catch (err) {
-      console.error('[외부보고서 렌더링 후처리 오류]', err);
+      console.error('[고급 서식 렌더링 후처리 오류]', err);
     }
   }
 }
@@ -2592,30 +2671,6 @@ document.getElementById('docSelect').addEventListener('change', (e) => {
   selectedId = e.target.value;
   persist();
   loadSelectedIntoEditor();
-  render();
-});
-
-document.getElementById('themeSelect').addEventListener('change', () => {
-  const d = getSelected();
-  if (!d) return;
-  d.theme = document.getElementById('themeSelect').value;
-  persist();
-  render();
-});
-
-document.getElementById('docTypeSelect').addEventListener('change', () => {
-  const d = getSelected();
-  if (!d) return;
-  d.docType = document.getElementById('docTypeSelect').value;
-  // 작성(문서유형)과 렌더링(테마)은 항상 짝이 맞아야 하는 것이라, 문서유형을 바꾸면 테마도
-  // 그 유형에 맞는 것으로 같이 바꾼다 — 새 문서를 만들 때 자동 매칭되는 것과 동일한 규칙.
-  // (번역본처럼 문서유형 체계 밖의 특수 테마를 쓰고 싶으면, 이후 테마 선택으로 다시 바꾸면 됨.)
-  const matchedTheme = RW_DOC_TYPE_THEME_[d.docType];
-  if (matchedTheme) {
-    d.theme = matchedTheme;
-    document.getElementById('themeSelect').value = matchedTheme;
-  }
-  persist();
   render();
 });
 
@@ -2771,9 +2826,13 @@ document.getElementById('addAppealOpt').addEventListener('click', () => {
   document.getElementById('addPopup').classList.remove('show');
   addAppealDoc();
 });
-document.getElementById('addCaseMemoOpt').addEventListener('click', () => {
+document.getElementById('addTranslationOpt').addEventListener('click', () => {
   document.getElementById('addPopup').classList.remove('show');
-  addCaseMemoDoc();
+  addTranslationDoc();
+});
+document.getElementById('addSummaryOpt').addEventListener('click', () => {
+  document.getElementById('addPopup').classList.remove('show');
+  addSummaryDoc();
 });
 document.getElementById('addBlankOpt').addEventListener('click', () => {
   document.getElementById('addPopup').classList.remove('show');
