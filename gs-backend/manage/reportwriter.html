@@ -968,6 +968,12 @@
     <button id="btnDocPlus" class="stepper-btn" title="문서 추가">＋</button>
     <div id="addPopup" class="popupMenu">
       <button id="addFromFile">파일에서 불러오기...</button>
+      <button id="addReviewOpt">검토서 만들기</button>
+      <button id="addAdvisoryOpt">자문보고서 만들기</button>
+      <button id="addFilingOpt">신고보고서 만들기</button>
+      <button id="addReferenceOpt">참고보고서 만들기</button>
+      <button id="addProgressOpt">진행보고서 만들기</button>
+      <button id="addAppealOpt">불복청구서 만들기</button>
       <button id="addCaseMemoOpt">사건개요서 만들기</button>
       <button id="addBlankOpt">빈 문서 만들기</button>
     </div>
@@ -1494,8 +1500,26 @@ function rwGuessDocType_(){
   return 'review';
 }
 
-// kind: 'blank'(백지) 또는 'case'(사건개요서 상담메모 골격)
+// 지금 상단에서 선택된 사건 정보를 가져온다(없으면 null) — 검토서 골격을 채우는 데 쓴다.
+function rwGetSelectedCase_(){
+  var sel = document.getElementById('rwCaseSelect');
+  var caseId = sel ? sel.value : '';
+  if (!caseId) return null;
+  return rwCases_.filter(function(x){ return x.id === caseId; })[0] || null;
+}
+
+// 문서유형별 기본 인쇄 테마 — 고객·세무서 등 외부로 나가는 문서는 격식 있는 "청구서"
+// 테마(doc-appeal, 서명란·중앙정렬 제목 등 정식 문서 형태)를, 내부 기록은 "검토서" 테마를 쓴다.
+const RW_DOC_TYPE_THEME_ = {
+  review: 'memo', advisory: 'appeal', filing: 'appeal',
+  reference: 'appeal', progress: 'appeal', appeal_petition: 'appeal'
+};
+
+// kind: 'blank'(백지) / 'case'(사건개요서 상담메모 골격) / 'review'(검토서 골격) / 'advisory'(자문보고서 골격)
 async function createNewDoc(kind){
+  const c = rwGetSelectedCase_();
+  const semokLabel = c ? ((typeof WORK_SEMOK_LABELS !== 'undefined' && WORK_SEMOK_LABELS[c.세목]) || c.세목 || '') : '';
+  const todayStr = new Date().toISOString().slice(0, 10);
   const templates = {
     blank: {
       promptDefault: '새 문서',
@@ -1511,12 +1535,105 @@ async function createNewDoc(kind){
         + '- 채널: (전화 / 방문 / 카톡・문자 등)\n\n'
         + '## 상담 내용\n\n\n'
         + '## 쟁점 메모\n\n'
+    },
+    // [2026.09] 내부보고서(검토서) — 사건 처리를 위해 담당자가 내부적으로 정리하는 검토
+    // 문서. 상단에서 사건이 선택돼 있으면 고객명·세목·업무유형·담당자를 자동으로 채운다
+    // (기존 "사건개요서(상담메모)"는 통화/상담 접수 기록용이라 성격이 다름 — 그대로 둔다).
+    review: {
+      promptDefault: '검토서_' + (c ? (c.고객명 || '') : ''),
+      fallbackName: '검토서',
+      md: '# ' + (c ? ((c.고객명 || '') + ' ' + semokLabel + ' 검토서') : '검토서') + '\n\n'
+        + '- 고객명: ' + (c ? (c.고객명 || '') : '') + '\n'
+        + '- 사건명: ' + (c ? (c.사건명 || '') : '') + '\n'
+        + '- 세목/업무유형: ' + (c ? (semokLabel + (c.업무유형 ? ' · ' + c.업무유형 : '')) : '') + '\n'
+        + '- 담당자: ' + (c ? (c.담당자 || '') : '') + '\n'
+        + '- 작성일: ' + todayStr + '\n\n'
+        + '## 사실관계\n\n\n'
+        + '## 쟁점사항\n\n\n'
+        + '## 검토내용\n\n\n'
+        + '## 처리방향(결론)\n\n'
+    },
+    // [2026.09] 외부보고서 1/5 — 자문보고서(상담 사건, 고객에게 전달). 검토서와 달리 고객이
+    // 직접 읽는 문서라 내부 검토 흔적(쟁점메모식 나열) 없이 결론과 안내 위주로 구성한다.
+    advisory: {
+      promptDefault: '자문보고서_' + (c ? (c.고객명 || '') : ''),
+      fallbackName: '자문보고서',
+      md: '# 자문보고서\n\n'
+        + '- 수신: ' + (c ? (c.고객명 || '') : '') + ' 님\n'
+        + '- 발신: 이음세무컨설팅\n'
+        + '- 작성일: ' + todayStr + '\n'
+        + '- 제목: ' + (c ? (c.사건명 || '') : '') + ' 관련 자문\n\n'
+        + '## 상담 요청 사항\n\n\n'
+        + '## 검토 결과 및 자문 의견\n\n\n'
+        + '## 유의사항 및 향후 절차\n\n'
+    },
+    // [2026.09] 외부보고서 2/5 — 신고보고서(신고 사건, 고객에게 전달). 이미 접수까지 끝난
+    // 신고 내용을 사후적으로 정리해서 알려주는 문서라 "산출근거"가 핵심이다.
+    filing: {
+      promptDefault: '신고보고서_' + (c ? (c.고객명 || '') : ''),
+      fallbackName: '신고보고서',
+      md: '# 신고보고서\n\n'
+        + '- 수신: ' + (c ? (c.고객명 || '') : '') + ' 님\n'
+        + '- 발신: 이음세무컨설팅\n'
+        + '- 작성일: ' + todayStr + '\n'
+        + '- 제목: ' + (c ? (c.사건명 || '') : '') + ' 신고 결과 보고\n\n'
+        + '## 신고 개요\n\n\n'
+        + '## 신고 세액 및 산출근거\n\n\n'
+        + '## 향후 유의사항\n\n'
+    },
+    // [2026.09] 외부보고서 3/5 — 참고보고서(신고 사건, 세무서 제출용). 고객이 아니라 과세관청이
+    // 읽는 문서 — 신고서 처리 시 재문의 없이 넘어가도록, 개요와 특정항목을 설명하는 용도.
+    reference: {
+      promptDefault: '참고보고서_' + (c ? (c.고객명 || '') : ''),
+      fallbackName: '참고보고서',
+      md: '# 참고보고서\n\n'
+        + '- 수신: OOO세무서장 귀하\n'
+        + '- 발신: 이음세무컨설팅 (신고대리인)\n'
+        + '- 작성일: ' + todayStr + '\n'
+        + '- 제목: ' + (c ? (c.고객명 || '') : '') + ' ' + semokLabel + ' 신고 관련 참고사항 안내\n\n'
+        + '## 신고 개요\n\n\n'
+        + '## 특정항목 설명\n\n'
+        + '(신고서를 처리하실 때 참고하실 사항을 항목별로 설명합니다.)\n\n'
+    },
+    // [2026.09] 외부보고서 4/5 — 진행보고서(불복 사건, 고객에게 전달). 불복은 처리기간이 길어
+    // 중간중간 진행상황을 알려야 하므로, 지금까지 경과와 다음 일정을 중심으로 짠다.
+    progress: {
+      promptDefault: '진행보고서_' + (c ? (c.고객명 || '') : ''),
+      fallbackName: '진행보고서',
+      md: '# 진행보고서\n\n'
+        + '- 수신: ' + (c ? (c.고객명 || '') : '') + ' 님\n'
+        + '- 발신: 이음세무컨설팅\n'
+        + '- 작성일: ' + todayStr + '\n'
+        + '- 제목: ' + (c ? (c.사건명 || '') : '') + ' 진행상황 보고\n\n'
+        + '## 현재까지 진행 경과\n\n\n'
+        + '## 향후 진행 계획 및 예상 일정\n\n'
+    },
+    // [2026.09] 외부보고서 5/5 — 불복청구서(불복 사건, 조세심판원 등 처분청/심판기관에 제출).
+    // 앞의 4종과 달리 서사형 보고서가 아니라 정식 청구 서식 — 청구취지·청구이유가 핵심이다.
+    // 실제 제출명(이의신청서/심사청구서/심판청구서 등)은 사건의 업무유형을 그대로 반영한다.
+    appeal_petition: {
+      promptDefault: (c && c.업무유형 ? c.업무유형 : '불복청구') + '서_' + (c ? (c.고객명 || '') : ''),
+      fallbackName: '불복청구서',
+      md: '# ' + (c && c.업무유형 ? c.업무유형 : '불복청구') + '서\n\n'
+        + '- 청구인: ' + (c ? (c.고객명 || '') : '') + '\n'
+        + '- 처분청: \n'
+        + '- 사건유형: ' + (c && c.업무유형 ? c.업무유형 : '') + '\n'
+        + '- 청구일자: ' + todayStr + '\n\n'
+        + '## 청구취지\n\n\n'
+        + '## 처분의 내용\n\n\n'
+        + '## 청구이유\n\n\n'
+        + '## 증거서류\n\n'
     }
   };
   const tpl = templates[kind] || templates.blank;
   const name = window.prompt('새 문서의 이름을 입력하세요.', tpl.promptDefault);
   if (name === null) return; // 취소
-  const newDoc = { id: uid(), name: name.trim() || tpl.fallbackName, theme: 'memo', format: 'md', md: tpl.md, docType: rwGuessDocType_() };
+  // "사건개요서(상담메모)"와 "검토서"는 둘 다 내부용 기록이라 항상 검토서로 분류하고, 나머지
+  // 정해진 kind는 그 유형으로 고정한다 — 사건유형별 자동추천(rwGuessDocType_)은 "빈 문서"처럼
+  // 용도가 정해지지 않은 경우에만 쓴다.
+  const FIXED_DOC_TYPE_ = { review: 'review', case: 'review', advisory: 'advisory', filing: 'filing', reference: 'reference', progress: 'progress', appeal_petition: 'appeal_petition' };
+  const docType = FIXED_DOC_TYPE_[kind] || rwGuessDocType_();
+  const newDoc = { id: uid(), name: name.trim() || tpl.fallbackName, theme: RW_DOC_TYPE_THEME_[docType] || 'memo', format: 'md', md: tpl.md, docType: docType };
   docs.push(newDoc);
   selectedId = newDoc.id;
   const saved = await persist();
@@ -1528,6 +1645,12 @@ async function createNewDoc(kind){
 
 function addBlankDoc(){ createNewDoc('blank'); }
 function addCaseMemoDoc(){ createNewDoc('case'); }
+function addReviewDoc(){ createNewDoc('review'); }
+function addAdvisoryDoc(){ createNewDoc('advisory'); }
+function addFilingDoc(){ createNewDoc('filing'); }
+function addReferenceDoc(){ createNewDoc('reference'); }
+function addProgressDoc(){ createNewDoc('progress'); }
+function addAppealDoc(){ createNewDoc('appeal_petition'); }
 
 async function deleteCurrentDoc(){
   const d = getSelected();
@@ -2614,6 +2737,30 @@ document.getElementById('btnDocPlus').addEventListener('click', (e) => {
 document.getElementById('addFromFile').addEventListener('click', () => {
   document.getElementById('addPopup').classList.remove('show');
   document.getElementById('fileInput').click();
+});
+document.getElementById('addReviewOpt').addEventListener('click', () => {
+  document.getElementById('addPopup').classList.remove('show');
+  addReviewDoc();
+});
+document.getElementById('addAdvisoryOpt').addEventListener('click', () => {
+  document.getElementById('addPopup').classList.remove('show');
+  addAdvisoryDoc();
+});
+document.getElementById('addFilingOpt').addEventListener('click', () => {
+  document.getElementById('addPopup').classList.remove('show');
+  addFilingDoc();
+});
+document.getElementById('addReferenceOpt').addEventListener('click', () => {
+  document.getElementById('addPopup').classList.remove('show');
+  addReferenceDoc();
+});
+document.getElementById('addProgressOpt').addEventListener('click', () => {
+  document.getElementById('addPopup').classList.remove('show');
+  addProgressDoc();
+});
+document.getElementById('addAppealOpt').addEventListener('click', () => {
+  document.getElementById('addPopup').classList.remove('show');
+  addAppealDoc();
 });
 document.getElementById('addCaseMemoOpt').addEventListener('click', () => {
   document.getElementById('addPopup').classList.remove('show');
