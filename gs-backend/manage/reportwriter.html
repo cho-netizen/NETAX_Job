@@ -2607,7 +2607,16 @@ document.getElementById('docTypeSelect').addEventListener('change', () => {
   const d = getSelected();
   if (!d) return;
   d.docType = document.getElementById('docTypeSelect').value;
+  // 작성(문서유형)과 렌더링(테마)은 항상 짝이 맞아야 하는 것이라, 문서유형을 바꾸면 테마도
+  // 그 유형에 맞는 것으로 같이 바꾼다 — 새 문서를 만들 때 자동 매칭되는 것과 동일한 규칙.
+  // (번역본처럼 문서유형 체계 밖의 특수 테마를 쓰고 싶으면, 이후 테마 선택으로 다시 바꾸면 됨.)
+  const matchedTheme = RW_DOC_TYPE_THEME_[d.docType];
+  if (matchedTheme) {
+    d.theme = matchedTheme;
+    document.getElementById('themeSelect').value = matchedTheme;
+  }
   persist();
+  render();
 });
 
 let mdSaveTimer = null;
