@@ -532,7 +532,10 @@
       if (typeof openAddressSearchModal_ !== 'function'){ showToast('주소검색 기능을 불러오지 못했습니다.', 'error'); return; }
       // [2026.09 버그수정] 사건개요(처리개요)에서 이미 입력해둔 소재지가 있으면 여기서 또
       // 처음부터 타이핑하지 않도록 검색어를 미리 채워준다.
-      var knownAddr = (c.사건개요 && c.사건개요.assetLocation) || '';
+      // [2026.09 재설계] 양도는 이제 물건이 여러 건이면 overview.물건목록 배열에 들어있다 —
+      // 첫 번째 물건 주소를 기본값으로 쓴다(옛 사건은 물건목록이 없을 수 있어 옛 flat 필드로 대체).
+      var ov = c.사건개요 || {};
+      var knownAddr = (Array.isArray(ov.물건목록) && ov.물건목록[0] && ov.물건목록[0].assetLocation) || ov.assetLocation || '';
       openAddressSearchModal_(function(picked){ docsRenderEvAutoPicked_(c, picked); }, knownAddr);
     });
     document.getElementById('docsEvManualAddBtn').addEventListener('click', function(){

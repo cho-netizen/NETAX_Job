@@ -763,6 +763,306 @@ function openAddressSearchModal_(onPick, defaultKeyword){
   if (defaultKeyword) runSearch();
 }
 
+// [2026.09 버그수정] "안분기준이 법령에 정확히 맞느냐"는 지적 — 처음엔 "상대가치 숫자를
+// 아무거나 입력"하는 식으로 대충 만들었었다. 소득세법 시행령§166④(하나의 계약으로 여러
+// 자산을 취득·양도했는데 개별 가액 구분이 불분명한 경우 기준시가 비율로 안분, 감정가액이
+// 있으면 감정가액 우선)이 실제 기준인데, 이 앱에 이미 있던 "토지·건물 안분계산기"
+// (renderAllocationTool/computeAllocationRowStandardPrice_, 토지=개별공시지가×면적,
+// 건물=건물기준시가계산기와 동일 로직, 직접입력=감정가액 등 이미 아는 금액)가 정확히 그
+// 기준으로 만들어져 있었다 — 그 계산 엔진을 그대로 재사용한다. 다른 점은 그 계산기는 "한
+// 거래를 토지분/건물분으로" 나누고, 이 계산기는 "한 취득계약을 물건(필지)별로" 나눈다는
+// 것뿐이라 timing을 항상 'Acquisition'(취득시)으로 고정해서 쓴다.
+let acqAllocRows_ = [];
+function acqAllocRowFieldsHtml_(row){
+  const type = row.componentType || 'land';
+  if (type === 'land'){
+    return '<div class="taxcalc-field"><label>개별공시지가(원/㎡, 취득시)</label><input type="number" data-acqfield="landPricePerSqmAcquisition" value="' + (row.landPricePerSqmAcquisition || '') + '"></div>' +
+      '<div class="taxcalc-field"><label>면적(㎡)</label><input type="number" data-acqfield="landArea" value="' + (row.landArea || '') + '"></div>';
+  }
+  if (type === 'building'){
+    const structureOptions = (window.BUILDING_STRUCTURE_TABLE || []).map(function(s){ return '<option value="' + s.name + '"' + (row.buildingStructure === s.name ? ' selected' : '') + '>' + s.name + '</option>'; }).join('');
+    const useOptions = (window.BUILDING_USE_TABLE || []).filter(function(u){ return u.index !== null; }).map(function(u){ return '<option value="' + u.no + '"' + (String(row.buildingUse) === String(u.no) ? ' selected' : '') + '>' + u.no + '. ' + u.desc + '</option>'; }).join('');
+    return '<div class="taxcalc-field"><label>구조</label><select data-acqfield="buildingStructure"><option value="">선택</option>' + structureOptions + '</select></div>' +
+      '<div class="taxcalc-field"><label>용도</label><select data-acqfield="buildingUse"><option value="">선택</option>' + useOptions + '</select></div>' +
+      '<div class="taxcalc-field"><label>신축(증축)연도</label><input type="number" data-acqfield="builtYear" value="' + (row.builtYear || '') + '" maxlength="4"></div>' +
+      '<div class="taxcalc-field"><label>건물면적(㎡)</label><input type="number" data-acqfield="buildingArea" value="' + (row.buildingArea || '') + '"></div>' +
+      '<div class="taxcalc-field"><label>부속토지 개별공시지가(원/㎡, 취득시)</label><input type="number" data-acqfield="buildingLandPricePerSqmAcquisition" value="' + (row.buildingLandPricePerSqmAcquisition || '') + '"></div>';
+  }
+  return '<div class="taxcalc-field"><label>기준시가·감정가액(취득시, 직접입력 — 알고 있으면 우선 사용)</label><input type="number" data-acqfield="standardPriceAcquisition" value="' + (row.standardPriceAcquisition || '') + '"></div>';
+}
+function renderAcquisitionAllocationRows_(){
+  return acqAllocRows_.map(function(row, i){
+    const componentType = row.componentType || 'land';
+    return '<div class="taxcalc-grid" data-acq-alloc-idx="' + i + '" style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--line);">' +
+      '<div class="taxcalc-field"><label>물건 설명</label><input type="text" data-acqfield="label" value="' + (row.label || '').replace(/"/g, '&quot;') + '"' + (row.fixed ? ' readonly' : ' placeholder="예: 필지2(미양도, 보유중)"') + '></div>' +
+      '<div class="taxcalc-field"><label>구성요소</label><select data-acqfield="componentType">' +
+        '<option value="land"' + (componentType === 'land' ? ' selected' : '') + '>토지(개별공시지가 입력 → 자동계산)</option>' +
+        '<option value="building"' + (componentType === 'building' ? ' selected' : '') + '>건물(구조·용도 등 입력 → 자동계산, 건물기준시가계산기와 동일)</option>' +
+        '<option value="direct"' + (componentType === 'direct' ? ' selected' : '') + '>직접입력(감정가액·실지거래가액 등 이미 아는 금액)</option>' +
+      '</select></div>' +
+      acqAllocRowFieldsHtml_(row) +
+      '<div class="taxcalc-field"><span class="taxcalc-result-note" data-acq-computed="1" style="margin:0;">기준시가(취득시) 자동계산 = ' + won(computeAllocationRowStandardPrice_(row, 'Acquisition')) + '</span></div>' +
+      (!row.fixed && acqAllocRows_.length > 2 ? '<button type="button" class="taxcalc-del-asset" data-action="del-acq-alloc-row" data-idx="' + i + '">✕ 삭제</button>' : '') +
+      '</div>';
+  }).join('');
+}
+function openAcquisitionAllocationModal_(idx){
+  const a = transferAssets[idx];
+  if (!a) return;
+  acqAllocRows_ = [{ label: '이 물건(현재 편집 중)' + (a.assetLocation ? ' — ' + a.assetLocation : ''), fixed: true, componentType: 'land' }, { label: '', componentType: 'land' }];
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.display = 'flex';
+  overlay.innerHTML =
+    '<div class="modal-panel" style="width:min(680px, 96vw);">' +
+      '<div class="modal-head"><span>취득가액·취득비용 안분계산</span><span class="modal-close" id="btnCloseAcqAlloc">✕</span></div>' +
+      '<div class="modal-body">' +
+        '<div class="taxcalc-result-note" style="margin-bottom:8px;">이 물건이 다른 물건과 함께 하나의 계약으로 취득됐다면, 계약 전체 금액을 소득세법 시행령§166④에 따라 물건별 기준시가 비율(모든 물건에 기준시가가 있을 때 우선 — 하나라도 없으면 감정가액 비율)로 나눠 이 물건 몫만 계산합니다. 물건마다 "토지/건물"(기준시가 자동계산)과 "직접입력"(감정가액)을 섞어 고르면 기준시가가 있는데도 안 쓰는 셈이 되니, 가능하면 모든 물건을 같은 방식으로 맞춰주세요. 안 파는 다른 물건은 이 사건에 저장되지 않고 계산에만 잠깐 쓰입니다.</div>' +
+        '<div class="taxcalc-grid" style="margin-bottom:8px;">' +
+          '<div class="taxcalc-field"><label>계약 전체 취득가액</label><input type="number" id="acqAllocTotalPrice" placeholder="원"></div>' +
+          '<div class="taxcalc-field"><label>계약 전체 취득비용(중개보수·법무비용·취득세 등 합계, 선택)</label><input type="number" id="acqAllocTotalExpense" placeholder="원"></div>' +
+        '</div>' +
+        '<div id="acqAllocRows">' + renderAcquisitionAllocationRows_() + '</div>' +
+        '<button type="button" class="taxcalc-add-asset" id="acqAllocAddRow" style="margin-top:8px;">+ 물건 추가</button>' +
+        '<button type="button" class="taxcalc-run-btn" id="acqAllocRunBtn">안분계산하기</button>' +
+        '<div id="acqAllocResult"></div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  function close(){ overlay.remove(); }
+  overlay.querySelector('#btnCloseAcqAlloc').onclick = close;
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+
+  function rerenderRows(){
+    overlay.querySelector('#acqAllocRows').innerHTML = renderAcquisitionAllocationRows_();
+    wireRows();
+    enhanceNumberInputs(overlay);
+  }
+  function wireRows(){
+    overlay.querySelectorAll('[data-acqfield]').forEach(function(el){
+      el.addEventListener((el.tagName === 'SELECT') ? 'change' : 'input', function(){
+        const i = numVal(el.closest('[data-acq-alloc-idx]').dataset.acqAllocIdx);
+        acqAllocRows_[i][el.dataset.acqfield] = el.value;
+        if (el.dataset.acqfield === 'componentType'){
+          rerenderRows(); // 구성요소가 바뀌면 입력칸 자체가 달라지므로 다시 그림
+        } else {
+          const row = el.closest('[data-acq-alloc-idx]');
+          const hint = row.querySelector('[data-acq-computed]');
+          if (hint) hint.textContent = '기준시가(취득시) 자동계산 = ' + won(computeAllocationRowStandardPrice_(acqAllocRows_[i], 'Acquisition'));
+        }
+      });
+    });
+    overlay.querySelectorAll('[data-action="del-acq-alloc-row"]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        acqAllocRows_.splice(numVal(btn.dataset.idx), 1);
+        rerenderRows();
+      });
+    });
+  }
+  wireRows();
+  enhanceNumberInputs(overlay);
+  overlay.querySelector('#acqAllocAddRow').addEventListener('click', function(){
+    acqAllocRows_.push({ label: '', componentType: 'land' });
+    rerenderRows();
+  });
+  overlay.querySelector('#acqAllocRunBtn').addEventListener('click', function(){
+    const totalPrice = numVal(document.getElementById('acqAllocTotalPrice').value);
+    const totalExpense = numVal(document.getElementById('acqAllocTotalExpense').value);
+    const resultBox = document.getElementById('acqAllocResult');
+    // [2026.09 버그수정] 위 안분계산기와 같은 이유 — 물건마다 다른 기준(기준시가 자동계산 vs
+    // 직접입력·감정가액)을 섞어 쓰면 안분비율이 법령과 다르게 나올 수 있어 미리 확인한다.
+    const hasDirect = acqAllocRows_.some(function(r){ return (r.componentType || 'land') === 'direct'; });
+    const hasComputedStandard = acqAllocRows_.some(function(r){ return (r.componentType || 'land') !== 'direct'; });
+    if (hasDirect && hasComputedStandard){
+      if (!confirm('일부 물건은 "직접입력"(감정가액 등)을, 일부는 "토지/건물"(기준시가 자동계산)을 쓰고 있습니다.\n법령상 기준시가가 모두 있으면 기준시가 비율이 우선이고, 감정가액은 하나라도 기준시가가 없을 때만 씁니다 — 서로 다른 기준을 섞으면 안분비율이 틀릴 수 있습니다.\n그래도 이대로 계산할까요?')) return;
+    }
+    const weights = acqAllocRows_.map(function(r){ return computeAllocationRowStandardPrice_(r, 'Acquisition') || 0; });
+    const sumWeight = weights.reduce(function(s, w){ return s + w; }, 0);
+    if (!totalPrice){ resultBox.innerHTML = '<div class="taxcalc-error">계약 전체 취득가액을 입력하세요.</div>'; return; }
+    if (!sumWeight){ resultBox.innerHTML = '<div class="taxcalc-error">물건별 기준시가(또는 직접입력 금액)를 확인하세요 — 모두 0이면 비율을 계산할 수 없습니다.</div>'; return; }
+    const myShare = weights[0] / sumWeight;
+    const myPrice = Math.round(totalPrice * myShare);
+    const myExpense = totalExpense ? Math.round(totalExpense * myShare) : 0;
+    let html = '<div class="taxcalc-result" style="margin-top:10px;">';
+    html += taxCalcResultRow('이 물건 안분비율(기준시가 비율)', (myShare * 100).toFixed(2) + '%');
+    html += taxCalcResultRow('이 물건 취득가액 안분액', won(myPrice), { total: true });
+    if (totalExpense) html += taxCalcResultRow('이 물건 취득비용 안분액', won(myExpense), { total: true });
+    html += '<button type="button" class="taxcalc-run-btn" id="acqAllocApplyBtn" style="margin-top:8px;">이 물건에 반영하기</button>';
+    html += '</div>';
+    resultBox.innerHTML = html;
+    resultBox.querySelector('#acqAllocApplyBtn').addEventListener('click', function(){
+      transferAssets[idx].acquisitionPrice = myPrice;
+      if (totalExpense){
+        if (!Array.isArray(transferAssets[idx].acquisitionExpenseItems)) transferAssets[idx].acquisitionExpenseItems = [];
+        transferAssets[idx].acquisitionExpenseItems = transferAssets[idx].acquisitionExpenseItems.filter(function(it){ return it.label || it.amount; });
+        transferAssets[idx].acquisitionExpenseItems.push({ label: '취득 관련 비용(계약 안분)', payee: '', receiptType: 'other', amount: myExpense });
+      }
+      close();
+      renderTransferPane();
+      showToast('안분계산 결과를 이 물건에 반영했습니다.', 'success');
+    });
+  });
+}
+
+// [2026.09 버그수정] "특수관계법인거래비율"은 특수관계법인이 여러 곳이어도 회사별로 각각
+// 계산해서 합산하는 게 아니라, 모든 특수관계법인의 매출액(과세제외매출액 차감 후)을 먼저
+// 다 더한 뒤 그 합계를 수혜법인 총매출액으로 나눈 "통합비율" 하나를 딱 한 번 계산해야 한다
+// (상증세법 시행령§34의3, 국세청 서면법규과-1487 — 회사별로 나눠 계산하면 안전거래비율이
+// 여러 번 차감돼 증여의제이익이 과소계산된다). 지금까지는 그 통합비율을 세무사가 직접
+// 암산/외부계산해서 한 칸에 타이핑해야 했는데, 여기서 매출액만 넣으면 계산해준다.
+let relatedPartyRatioRows_ = [{}, {}];
+function renderRelatedPartyRatioRows_(){
+  return relatedPartyRatioRows_.map(function(row, i){
+    return '<div class="taxcalc-grid" data-rpr-idx="' + i + '" style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--line);">' +
+      '<div class="taxcalc-field"><label>특수관계법인명</label><input type="text" data-rprfield="label" value="' + (row.label || '').replace(/"/g, '&quot;') + '" placeholder="예: A법인"></div>' +
+      '<div class="taxcalc-field"><label>매출액(과세제외매출액 차감 후)</label><input type="number" data-rprfield="sales" value="' + (row.sales || '') + '"></div>' +
+      (relatedPartyRatioRows_.length > 1 ? '<button type="button" class="taxcalc-del-asset" data-action="del-rpr-row" data-idx="' + i + '">✕ 삭제</button>' : '') +
+      '</div>';
+  }).join('');
+}
+function openRelatedPartyRatioHelperModal_(){
+  relatedPartyRatioRows_ = [{}, {}];
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.display = 'flex';
+  overlay.innerHTML =
+    '<div class="modal-panel" style="width:min(600px, 94vw);">' +
+      '<div class="modal-head"><span>특수관계법인거래비율 계산(다수 특수관계법인)</span><span class="modal-close" id="btnCloseRpr">✕</span></div>' +
+      '<div class="modal-body">' +
+        '<div class="taxcalc-result-note" style="margin-bottom:8px;">특수관계법인이 여러 곳이어도 회사별로 따로 계산해 더하면 안 됩니다(상증세법 시행령§34의3) — 모든 특수관계법인의 매출액을 먼저 합산한 뒤, 수혜법인 총매출액으로 한 번만 나눕니다.</div>' +
+        '<div class="taxcalc-grid" style="margin-bottom:8px;"><div class="taxcalc-field"><label>수혜법인 총매출액</label><input type="number" id="rprTotalSales" placeholder="원"></div></div>' +
+        '<div id="rprRows">' + renderRelatedPartyRatioRows_() + '</div>' +
+        '<button type="button" class="taxcalc-add-asset" id="rprAddRow" style="margin-top:8px;">+ 특수관계법인 추가</button>' +
+        '<button type="button" class="taxcalc-run-btn" id="rprRunBtn">비율 계산하기</button>' +
+        '<div id="rprResult"></div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  function close(){ overlay.remove(); }
+  overlay.querySelector('#btnCloseRpr').onclick = close;
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+  function rerenderRows(){
+    overlay.querySelector('#rprRows').innerHTML = renderRelatedPartyRatioRows_();
+    wireRows();
+    enhanceNumberInputs(overlay);
+  }
+  function wireRows(){
+    overlay.querySelectorAll('[data-rprfield]').forEach(function(el){
+      el.addEventListener('input', function(){
+        const i = numVal(el.closest('[data-rpr-idx]').dataset.rprIdx);
+        relatedPartyRatioRows_[i][el.dataset.rprfield] = el.value;
+      });
+    });
+    overlay.querySelectorAll('[data-action="del-rpr-row"]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        relatedPartyRatioRows_.splice(numVal(btn.dataset.idx), 1);
+        rerenderRows();
+      });
+    });
+  }
+  wireRows();
+  enhanceNumberInputs(overlay);
+  overlay.querySelector('#rprAddRow').addEventListener('click', function(){
+    relatedPartyRatioRows_.push({});
+    rerenderRows();
+  });
+  overlay.querySelector('#rprRunBtn').addEventListener('click', function(){
+    const totalSales = numVal(document.getElementById('rprTotalSales').value);
+    const sumRelated = relatedPartyRatioRows_.reduce(function(s, r){ return s + (numVal(r.sales) || 0); }, 0);
+    const resultBox = document.getElementById('rprResult');
+    if (!totalSales){ resultBox.innerHTML = '<div class="taxcalc-error">수혜법인 총매출액을 입력하세요.</div>'; return; }
+    const ratioPct = (sumRelated / totalSales) * 100;
+    let html = '<div class="taxcalc-result" style="margin-top:10px;">';
+    html += taxCalcResultRow('특수관계법인 매출 합계', won(sumRelated));
+    html += taxCalcResultRow('특수관계법인거래비율(통합)', ratioPct.toFixed(4) + '%', { total: true });
+    html += '<button type="button" class="taxcalc-run-btn" id="rprApplyBtn" style="margin-top:8px;">위 계산결과 반영하기</button>';
+    html += '</div>';
+    resultBox.innerHTML = html;
+    resultBox.querySelector('#rprApplyBtn').addEventListener('click', function(){
+      const target = document.getElementById('jmTradeRatio');
+      if (target) target.value = ratioPct.toFixed(4);
+      close();
+      showToast('특수관계법인거래비율을 반영했습니다.', 'success');
+    });
+  });
+}
+
+// [2026.09 버그수정] 1990.8.31 이전 취득분의 취득당시기준시가 환산(소득세법 시행령§164) —
+// 지금까지는 "직접 확인해서 입력하라"는 경고만 있고 계산해주지 않았다. 실제로는 결정론적
+// 공식이라(계산엔진의 calculatePre1990AcquisitionStandardPriceJS 참고) 세 시점의 과세시가표준액
+// (취득당시/1990.8.30/그 직전)만 있으면 계산할 수 있고, 그 과세시가표준액은 토지대장(또는
+// 재산세과세대장)에 기재된 "토지등급" 번호를 「토지등급가액표」에 대입한 원/㎡ 값이다. 등급 번호는
+// 지번별 사실관계라 자동조회 불가하지만(세무사가 토지대장에서 확인), 등급→원 환산표 자체는 전국
+// 공통 고정표이므로 lookupLandGradeValueJS로 자동 환산해준다(의제취득일 1985.1.1 이후만 다루면
+// 되므로 "84.7.1 이후" 계열 등급 1~300만 있으면 충분 — 계산엔진 주석 참고).
+function openPre1990StandardPriceModal_(idx){
+  const a = transferAssets[idx];
+  if (!a) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.display = 'flex';
+  function gradeFieldHtml(id, label){
+    return '<div class="taxcalc-field"><label>' + label + '</label>' +
+      '<input type="number" id="' + id + '" placeholder="등급(1~300)">' +
+      '<div class="taxcalc-result-note" id="' + id + 'Val" style="margin-top:2px;"></div>' +
+      '</div>';
+  }
+  overlay.innerHTML =
+    '<div class="modal-panel" style="width:min(560px, 94vw);">' +
+      '<div class="modal-head"><span>1990.8.31 이전 취득분 기준시가 환산</span><span class="modal-close" id="btnClosePre1990">✕</span></div>' +
+      '<div class="modal-body">' +
+        '<div class="taxcalc-result-note" style="margin-bottom:8px;">개별공시지가 제도는 1990.8.30에 처음 고시됐습니다 — 그 이전 취득분은 취득당시·1990.8.30·그 직전 3개 시점의 "토지등급"(토지대장 또는 재산세과세대장에서 지번으로 확인)을 입력하면 「토지등급가액표」로 자동 환산합니다. 300등급을 넘는 고가 토지는 표에 없으니 관할 구청 확인 후 별도 반영하세요.</div>' +
+        '<div class="taxcalc-grid" style="margin-bottom:8px;">' +
+          '<div class="taxcalc-field"><label>1990.1.1 기준 개별공시지가</label><input type="number" id="p90Price0101" placeholder="원"></div>' +
+          gradeFieldHtml('p90GradeAcq', '취득당시 토지등급') +
+          gradeFieldHtml('p90Grade0830', '1990.8.30 토지등급') +
+          gradeFieldHtml('p90GradeBefore', '그 직전(1989.12.31 등) 토지등급') +
+        '</div>' +
+        '<button type="button" class="taxcalc-run-btn" id="p90RunBtn">환산하기</button>' +
+        '<div id="p90Result"></div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  function close(){ overlay.remove(); }
+  overlay.querySelector('#btnClosePre1990').onclick = close;
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+  enhanceNumberInputs(overlay);
+  function wireGradeLookup(id){
+    const input = overlay.querySelector('#' + id);
+    const out = overlay.querySelector('#' + id + 'Val');
+    input.addEventListener('input', function(){
+      const v = lookupLandGradeValueJS(input.value);
+      out.textContent = input.value ? (v == null ? '표에 없는 등급입니다(1~300 범위 확인)' : (v.toLocaleString() + '원/㎡')) : '';
+    });
+  }
+  ['p90GradeAcq', 'p90Grade0830', 'p90GradeBefore'].forEach(wireGradeLookup);
+  overlay.querySelector('#p90RunBtn').addEventListener('click', function(){
+    const resultBox = document.getElementById('p90Result');
+    const stdAcq = lookupLandGradeValueJS(document.getElementById('p90GradeAcq').value);
+    const std0830 = lookupLandGradeValueJS(document.getElementById('p90Grade0830').value);
+    const stdBefore = lookupLandGradeValueJS(document.getElementById('p90GradeBefore').value);
+    if (stdAcq == null || std0830 == null || stdBefore == null){
+      resultBox.innerHTML = '<div class="taxcalc-error">세 시점의 토지등급을 모두 1~300 범위로 입력하세요(표에 없는 등급은 관할 구청 확인 필요).</div>';
+      return;
+    }
+    const r = calculatePre1990AcquisitionStandardPriceJS(
+      numVal(document.getElementById('p90Price0101').value),
+      stdAcq, std0830, stdBefore
+    );
+    if (r.error){ resultBox.innerHTML = '<div class="taxcalc-error">' + r.error + '</div>'; return; }
+    resultBox.innerHTML = '<div class="taxcalc-result" style="margin-top:10px;">' +
+      taxCalcResultRow('취득당시 기준시가(환산)', won(r.취득당시기준시가), { total: true }) +
+      '<button type="button" class="taxcalc-run-btn" id="p90ApplyBtn" style="margin-top:8px;">이 물건에 반영하기</button>' +
+      '</div>';
+    resultBox.querySelector('#p90ApplyBtn').addEventListener('click', function(){
+      transferAssets[idx].acquisitionStandardPriceForExpense = r.취득당시기준시가;
+      close();
+      renderTransferPane();
+      showToast('환산된 취득당시 기준시가를 반영했습니다.', 'success');
+    });
+  });
+}
+
 // 매매사례가액(아파트 실거래가) 참고조회 모달 — 계약년월(YYYYMM)로 그 지역 아파트 실거래 목록을
 // 받아와 사용자가 유사한 거래를 골라 평가액에 채울 수 있게 한다. 시가로 그대로 쓸지는 면적·층·거래
 // 시점의 유사성을 사용자가 직접 판단해야 하므로 자동으로 채우지 않고 "골라서 채우기"로만 동작한다.
@@ -952,6 +1252,15 @@ function runAiAutoFillInheritance(){
 let giftValuationAssets = [{}];
 let inheritanceValuationAssets = [{}];
 
+// [2026.09 버그수정] "임대 중인 부동산(임대료환산가액)"이 예전엔 독립된 평가방법이었다 — 그런데
+// 상증세법§61⑤은 임대료환산가액을 "그 자체로 쓰는 방법"이 아니라 "일반 평가방법(기준시가 등)과
+// 비교해서 더 큰 금액을 쓰라"는 하한선 규정이다. 아래 computeValuationAssetValue는 모든
+// 방법에 대해 이미 이 비교(Math.max(기준시가, 담보채권액, 임대료환산가액))를 자동으로 하는데,
+// "임대" 방법을 고르면 그 자체가 곧 비교대상 값이 되어 자기자신과 비교하는 무의미한 비교가
+// 되고, 진짜 기준시가는 입력칸조차 없어 세무사가 별도로 계산해서 비교하는 걸 깜빡하면
+// 신고가 과소평가(과소신고)될 위험이 있었다. 그래서 이 선택지 자체를 없앴다 — 임대 중이어도
+// 토지/주택/건물 등 실제 방법을 고르고, 임대차 내역은 그 아래(항상 표시됨) 별도로 입력하면
+// 자동으로 비교된다.
 const VALUATION_METHOD_LABELS = {
   direct: '직접입력(시가·감정가액·매매사례가액 등)',
   land: '토지(개별공시지가 × 면적)',
@@ -961,7 +1270,6 @@ const VALUATION_METHOD_LABELS = {
   building: '일반건물(고시가격 없음 — 구조·용도·신축연도 기준 자동계산)',
   listedStock: '상장주식(기준일 전후 2개월 종가평균 × 주식수)',
   unlistedStock: '비상장주식(순손익·순자산가치 가중평균)',
-  rental: '임대 중인 부동산(임대료환산가액)',
   goodwill: '영업권(§64, 초과이익의 5년 현재가치)',
   trustBenefit: '신탁의 이익을 받을 권리(§65, 시행령§61, 연3% 현재가치할인)',
   periodicPayment: '정기금을 받을 권리(§65, 시행령§62, 유기·무기·종신 구분, 연3% 현재가치할인)',
@@ -1010,11 +1318,6 @@ function computeValuationAssetValue(a){
         isMajorShareholder: a.lsMajorShareholder, isSmallBusiness: a.lsIsSmallBusiness, isMediumBusinessUnder500B: a.lsIsMediumUnder500B
       });
       value = (typeof r === 'number') ? r : r.상장주식가액;
-      break;
-    }
-    case 'rental': {
-      const t = computeRentalLeaseTotals_(a.rentalLeases);
-      value = calculateRentalConversionValueJS(t.annualRent, t.deposit);
       break;
     }
     case 'goodwill': value = calculateGoodwillValueJS(a.gwProfit1, a.gwProfit2, a.gwProfit3, a.gwSelfCapital); break;
@@ -1110,9 +1413,6 @@ function valuationAssetMethodFieldsHtml(m, a){
     '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="lsMajorShareholder" ' + (a.lsMajorShareholder ? 'checked' : '') + '><label>최대주주 등 할증(20%, §63③)</label></div>' +
     '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="lsIsSmallBusiness" ' + (a.lsIsSmallBusiness ? 'checked' : '') + '><label>중소기업이 발행한 주식(할증 배제)</label></div>' +
     '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="lsIsMediumUnder500B" ' + (a.lsIsMediumUnder500B ? 'checked' : '') + '><label>중견기업(직전3년 매출평균 5천억 미만)이 발행한 주식(할증 배제)</label></div>';
-  if (m === 'rental'){
-    return '<div class="taxcalc-field"><label style="color:var(--sub);">※ 아래 "임대차 내역"에서 자동 합산된 금액으로 환산가액을 계산합니다. 이 값과 별도로 계산한 기준시가 중 큰 금액을 실제 평가액으로 쓰세요</label></div>';
-  }
   if (m === 'unlistedStock') return '' +
     '<div class="taxcalc-field"><label>발행주식총수</label><input type="number" data-field="uTotalShares" value="' + (a.uTotalShares || '') + '"></div>' +
     '<div class="taxcalc-field"><label>평가대상 주식수</label><input type="number" data-field="uOwnedShares" value="' + (a.uOwnedShares || '') + '"></div>' +
@@ -1221,10 +1521,10 @@ function renderRentalLeasesSectionHtml_(a){
       (leases.length > 1 ? '<button type="button" class="taxcalc-del-asset" data-action="del-rental-lease" data-idx="' + lidx + '">✕ 삭제</button>' : '') +
     '</div>';
   }).join('');
-  return '<div class="taxcalc-asset-head" style="margin-top:10px;"><b>임대차 내역</b></div>' +
+  return '<div class="taxcalc-asset-head" style="margin-top:10px;"><b>임대차 내역 <span style="font-weight:400; color:var(--sub); font-size:12px;">(임대 중이면 입력 — 위 평가방법으로 계산한 금액과 자동으로 비교해 더 큰 쪽을 씁니다, §61⑤)</span></b></div>' +
     leaseRowsHtml +
     '<button type="button" class="taxcalc-add-asset" data-action="add-rental-lease" style="margin-top:6px;">+ 임대차 추가</button>' +
-    '<div class="taxcalc-result-note" data-rental-hint="1">보증금 합계 ' + won(totals.deposit) + ' · 연간임대료 합계 ' + won(totals.annualRent) + '</div>';
+    '<div class="taxcalc-result-note" data-rental-hint="1">보증금 합계 ' + won(totals.deposit) + ' · 연간임대료 합계 ' + won(totals.annualRent) + (totals.deposit || totals.annualRent ? ' · 임대료환산가액 ' + won(calculateRentalConversionValueJS(totals.annualRent, totals.deposit)) : '') + '</div>';
 }
 // 신탁의 이익을 받을 권리(상증세법시행령§61①2호나목) 평가는 "각 연도에 받을 수익의 이익"을 연도별로
 // 따로 현재가치할인해서 더해야 하므로, 임대차 내역처럼 연도별 행을 여러 개 입력받는다.
@@ -1395,11 +1695,11 @@ let transferBulkAiState = {}; // 증빙 일괄 자동입력(사건폴더 전체 
 let allocationAssets = [{}, {}];
 
 const ALLOCATION_METHOD_LABELS = {
-  standard_price: '양도가액 안분 (기준시가·감정가액 비율)',
+  standard_price: '양도가액 안분 (기준시가 우선, 없으면 감정가액)',
   standard_price_vat: '양도가액 안분(부가세 포함, 건물분 VAT 분리)',
   area: '면적 안분',
-  acq_expense_together: '취득/필요경비 함께 안분(양도시 비율 동일 적용)',
-  acq_expense_separate: '취득/필요경비 각각 안분(취득시 비율 별도 적용)'
+  acq_expense_together: '취득/필요경비도 양도시 비율로 함께 안분(근사 — 취득시기준시가 모를 때만)',
+  acq_expense_separate: '취득/필요경비 각각 안분(원칙 — 취득시 기준시가 별도 적용)'
 };
 
 // 안분계산 도구는 "기준시가를 이미 알고 있다"고 가정하고 그 숫자를 바로 입력받지 않는다 — 토지는
@@ -1671,15 +1971,17 @@ function renderTransferPane(){
           '<div class="taxcalc-field"><label>양도일</label><input type="date" data-field="transferDate" min="1900-01-01" max="2099-12-31"></div>' +
           '<div class="taxcalc-field"><label>양도가액</label><input type="number" data-field="transferPrice" placeholder="원"></div>' +
           '<div class="taxcalc-field"><label>취득일</label><input type="date" data-field="acquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
-          '<div class="taxcalc-field"><label>취득가액(실지거래가액)</label><input type="number" data-field="acquisitionPrice" placeholder="원 (모르면 비워두세요 — 아래 값들로 자동 산정합니다. 재건축·재개발 특례에 해당하면 무시됩니다)"></div>' +
+          '<div class="taxcalc-field"><label>취득가액(실지거래가액)</label><div class="taxcalc-field-inline"><input type="number" data-field="acquisitionPrice" placeholder="원 (모르면 비워두세요 — 아래 값들로 자동 산정합니다. 재건축·재개발 특례에 해당하면 무시됩니다)">' +
+            '<button type="button" class="taxcalc-ai-btn" data-action="open-acquisition-allocation" data-idx="' + idx + '" title="다른 물건과 같은 계약으로 함께 취득했으면, 계약 전체 금액을 물건별로 나눠 이 물건 몫만 계산합니다">🧮 계약 안분</button></div></div>' +
           '<div class="taxcalc-field"><label>[실지거래가액 모를 때] 매매사례가액</label><input type="number" data-field="comparableTransactionPrice" placeholder="원 (취득일 전후 3개월 이내 유사자산 매매사례, §176의2③1호 — 최우선 적용)"></div>' +
           '<div class="taxcalc-field"><label>[실지거래가액·매매사례가액 모를 때] 감정가액</label><input type="number" data-field="appraisalValue" placeholder="원 (§176의2③2호)"></div>' +
-          '<div class="taxcalc-field"><label>[그마저 모를 때] 취득당시 기준시가</label><input type="number" data-field="acquisitionStandardPriceForExpense" placeholder="원 (환산취득가액·개산공제 계산용)"></div>' +
-          '<div class="taxcalc-field"><label>[그마저 모를 때] 양도당시 기준시가</label><input type="number" data-field="transferStandardPriceForConversion" placeholder="원 (함께 입력하면 환산취득가액=양도가액×취득당시÷양도당시 기준시가 자동계산, 없으면 취득당시기준시가를 그대로 취득가액으로 사용)"></div>' +
+          '<div class="taxcalc-field"><label>[그마저 모를 때] 취득당시 기준시가</label><div class="taxcalc-field-inline"><input type="number" data-field="acquisitionStandardPriceForExpense" placeholder="원 (환산취득가액·개산공제 계산용)">' +
+            (transferAssets[idx].acquisitionDate && transferAssets[idx].acquisitionDate < '1990-08-31' ?
+              '<button type="button" class="taxcalc-ai-btn" data-action="open-pre1990-standard-price" data-idx="' + idx + '" title="1990.8.31 이전 취득분은 개별공시지가가 없어 별도 환산식이 필요합니다">🧮 1990년 이전 취득 환산</button>' : '') +
+            '</div></div>' +
+          '<div class="taxcalc-field"><label>[그마저 모를 때] 양도당시 기준시가</label><input type="number" data-field="transferStandardPriceForConversion" placeholder="원 (반드시 함께 입력 — 환산취득가액=양도가액×취득당시÷양도당시 기준시가. 양도당시 기준시가가 없으면 환산취득가액 자체를 계산할 수 없습니다, 시행령§176의2②2호)"></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="useEstimatedNecessaryExpense" id="estExp-' + idx + '"><label for="estExp-' + idx + '">취득가액은 알지만 필요경비 지출증빙이 없어 개산공제(3%, 미등기양도자산은 0.3%)만 사용(위 비용 내역을 입력하지 않았을 때만 적용)</label></div>' +
           '<div class="taxcalc-field"><label>사업용자산 감가상각비(필요경비 산입분)</label><input type="number" data-field="depreciationDeductedAsBusinessExpense" placeholder="원 (사업소득 계산시 감가상각비를 필요경비로 공제했다면 그 금액, §97③ — 취득가액에서 차감됩니다. 해당 없으면 비움)"></div>' +
-          (transferAssets[idx].acquisitionDate && transferAssets[idx].acquisitionDate < '1990-08-31' ?
-            '<div class="taxcalc-field"><span class="taxcalc-result-note">⚠ 1990.8.31. 이전 취득분은 개별공시지가가 없어 국세청 고시 배율표에 따른 별도 환산방법이 적용될 수 있습니다 — 이 계산기는 그 배율표를 반영하지 않으니 취득당시 기준시가를 직접 확인해서 입력하세요.</span></div>' : '') +
         '</div>' +
         renderCostItemsSectionHtml_(transferAssets[idx], 'transferExpenseItems', '양도비용 내역', '예: 중개보수') +
         renderCostItemsSectionHtml_(transferAssets[idx], 'acquisitionExpenseItems', '취득비용 내역', '예: 취득세') +
@@ -2274,36 +2576,16 @@ function updateOneHouseVisibility(card){
 
 function collectTransferInput(vals){
   const transferPrice = numVal(vals.transferPrice) || 0;
+  // [2026.09 버그수정] 취득가액 순차적용(매매사례가액→감정가액→환산취득가액→취득당시기준시가)을
+  // 예전엔 여기서 미리 계산해서 확정된 숫자만 엔진에 넘겼다 — 그런데 계산엔진
+  // (calculateTransferTaxSingleJS/transferAssetCore)도 완전히 같은 순차적용 로직을 독자적으로
+  // 갖고 있어서(§114의2 환산취득가액가산세 자동판정, 개산공제 자동적용까지 포함한 더 완전한
+  // 버전), 여기서 먼저 acquisitionPrice를 확정해버리면 엔진의 "!t.acquisitionPrice" 판정이
+  // 항상 거짓이 되어 엔진의 자체 판정이 통째로 죽은 코드가 됐다 — 그 결과 환산취득가액·
+  // 감정가액으로 취득가액을 정해도 환산취득가액가산세(5%)가 조용히 0으로 계산됐다. 이제 이
+  // 순차적용은 엔진 한 곳에서만 하도록, 원본 값을 그대로 넘긴다.
   let acquisitionPrice = numVal(vals.acquisitionPrice) || 0;
   let necessaryExpenses = computeCostItemsTotal_(vals.acquisitionExpenseItems) + computeCostItemsTotal_(vals.transferExpenseItems);
-  // 취득가액 자동산정 — 실지거래가액(위 직접입력)이 없으면 소득세법시행령§176의2③ 순차적용
-  // (1호 매매사례가액 → 2호 감정가액 → 3호 환산취득가액 → 4호 취득당시기준시가)으로 자동 결정한다.
-  // 환산취득가액·기준시가로 대체하는 경우에는 실제 필요경비 증빙도 없는 게 보통이므로, 그 경우에 한해
-  // 취득당시기준시가의 3%를 필요경비 개산공제로 함께 인정한다(매매사례가액·감정가액을 확인할 수 있는
-  // 경우는 실제 필요경비도 확인 가능한 게 보통이라 개산공제를 자동으로 얹지 않는다 — 필요하면
-  // "필요경비 지출증빙이 없어 개산공제만 사용" 체크박스를 별도로 쓰면 된다).
-  if (!acquisitionPrice){
-    const comparableTransactionPrice = numVal(vals.comparableTransactionPrice) || 0;
-    const appraisalValue = numVal(vals.appraisalValue) || 0;
-    const acqStd = numVal(vals.acquisitionStandardPriceForExpense) || 0;
-    const trStd = numVal(vals.transferStandardPriceForConversion) || 0;
-    if (comparableTransactionPrice > 0){
-      acquisitionPrice = comparableTransactionPrice;
-    } else if (appraisalValue > 0){
-      acquisitionPrice = appraisalValue;
-    } else if (acqStd > 0 && trStd > 0){
-      acquisitionPrice = Math.round(transferPrice * acqStd / trStd);
-      necessaryExpenses += Math.round(acqStd * 0.03);
-    } else if (acqStd > 0){
-      acquisitionPrice = acqStd;
-      necessaryExpenses += Math.round(acqStd * 0.03);
-    }
-  }
-  // §97③ — 보유기간 중 사업소득금액 계산시 감가상각비로 필요경비에 산입했거나 산입할 금액이 있으면
-  // 그 금액을 취득가액에서 공제한다(이중공제 방지). 실제 산입액은 과거 사업소득 신고내역에 따른
-  // 사실관계라 자동계산할 수 없으므로 직접 입력을 받는다.
-  const depreciationDeductedAsBusinessExpense = numVal(vals.depreciationDeductedAsBusinessExpense) || 0;
-  if (depreciationDeductedAsBusinessExpense > 0) acquisitionPrice = Math.max(0, acquisitionPrice - depreciationDeductedAsBusinessExpense);
   // 관리처분인가 이후 조합원입주권·신축주택 양도(소득세법시행령§166①②③) — 취득가액을 단순 대체하는
   // 대신, tax-calc.js의 transferAssetCore가 관리처분계획등인가전·인가후 양도차익을 나눠 각각 다른
   // 장기보유특별공제를 적용하도록 원시 데이터(권리가액·청산금·기존건물 관련 필드)를 그대로 넘긴다.
@@ -2328,6 +2610,12 @@ function collectTransferInput(vals){
     fairMarketValueForGiftCheck: numVal(vals.fairMarketValueForGiftCheck) || 0,
     useEstimatedNecessaryExpense: !!vals.useEstimatedNecessaryExpense,
     acquisitionStandardPriceForExpense: numVal(vals.acquisitionStandardPriceForExpense) || 0,
+    // [2026.09 버그수정] 엔진이 자체적으로 취득가액 순차적용을 하려면 이 세 원본 필드가
+    // 그대로 필요하다 — 예전엔 여기서 미리 계산만 하고 원본은 버려서 엔진에 전달되지 않았다.
+    comparableTransactionPrice: numVal(vals.comparableTransactionPrice) || 0,
+    appraisalValue: numVal(vals.appraisalValue) || 0,
+    transferStandardPriceForConversion: numVal(vals.transferStandardPriceForConversion) || 0,
+    depreciationDeductedAsBusinessExpense: numVal(vals.depreciationDeductedAsBusinessExpense) || 0,
     transferPrice: transferPrice,
     acquisitionPrice: acquisitionPrice,
     necessaryExpenses: necessaryExpenses,
@@ -3297,6 +3585,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>수혜법인 세후영업이익(중견·일반기업용, §45의3①2호나·다목)</label><input type="number" id="jmOperatingIncome" placeholder="원 (중소기업이면 비워도 됨)"></div>' +
         '<div class="taxcalc-field"><label>수혜법인 세후순이익(중소기업용, §45의3①2호가목)</label><input type="number" id="jmNetIncome" placeholder="원 (중소기업일 때만 사용)"></div>' +
         '<div class="taxcalc-field"><label>특수관계법인거래비율</label><input type="number" step="0.01" id="jmTradeRatio" placeholder="% (과세제외매출액 반영한 최종비율)"></div>' +
+        '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-related-party-ratio-helper">🧮 특수관계법인 여러 곳이면 매출 합산해서 계산</button></div>' +
         '<div class="taxcalc-field"><label>특수관계법인 매출액(일반기업 대체과세요건용)</label><input type="number" id="jmRelatedPartySales" placeholder="원 (일반기업이고 거래비율 20~30%일 때만 — §45의3①1호나목2)"></div>' +
         '<div class="taxcalc-field"><label>지배주주+친족 주식보유비율(직접 또는 간접, 출자관계별로 따로 계산)</label><input type="number" step="0.01" id="jmShareRatio" placeholder="%"></div>' +
         '<div class="taxcalc-field"><label>배당소득공제</label><input type="number" id="jmDividendDeduction" placeholder="원 (신고기한 내 받은 배당소득 공제액, 없으면 비움)"></div>' +
@@ -5418,6 +5707,12 @@ taxCalcView.addEventListener('click', function(e){
       const el = targetId ? document.getElementById(targetId) : null;
       if (el) el.value = picked.roadAddr || picked.jibunAddr || '';
     });
+  } else if (action === 'open-acquisition-allocation'){
+    openAcquisitionAllocationModal_(numVal(btn.dataset.idx));
+  } else if (action === 'open-related-party-ratio-helper'){
+    openRelatedPartyRatioHelperModal_();
+  } else if (action === 'open-pre1990-standard-price'){
+    openPre1990StandardPriceModal_(numVal(btn.dataset.idx));
   } else if (action === 'open-tax-office-guide'){
     // 특정 주소를 넣으면 관할세무서를 바로 알려주는 안정적인 공개 API가 확인되지 않아, 국세청 공식
     // 조회 페이지로 바로 연결 + 주소 클립보드 복사로 구현했다(완전 자동입력은 아니지만 실제로 동작함).
@@ -5522,6 +5817,16 @@ taxCalcView.addEventListener('click', function(e){
       toolBox.dataset.totalExpense = document.getElementById('allocTotalExpense').value;
       input.totalAcquisitionPrice = numVal(document.getElementById('allocTotalAcq').value) || 0;
       input.totalNecessaryExpenses = numVal(document.getElementById('allocTotalExpense').value) || 0;
+    }
+    // [2026.09 버그수정] 기준시가가 모두 있으면 기준시가가 우선인데(시행령§166④), 일부 물건만
+    // "직접입력"(감정가액)을 고르고 나머지는 토지/건물(기준시가 자동계산)을 고르면, 기준시가가
+    // 있는데도 자동으로 무시하고 서로 다른 기준을 섞어 안분하는 셈이 된다 — 계산 전에 확인한다.
+    if (method !== 'area'){
+      const hasDirect = allocationAssets.some(function(a){ return (a.componentType || 'land') === 'direct'; });
+      const hasComputedStandard = allocationAssets.some(function(a){ return (a.componentType || 'land') !== 'direct'; });
+      if (hasDirect && hasComputedStandard){
+        if (!confirm('일부 물건은 "직접입력"(감정가액 등)을, 일부는 "토지/건물"(기준시가 자동계산)을 쓰고 있습니다.\n법령상 기준시가가 모두 있으면 기준시가 비율이 우선이고, 감정가액은 하나라도 기준시가가 없을 때만 씁니다 — 서로 다른 기준을 섞으면 안분비율이 틀릴 수 있습니다.\n그래도 이대로 계산할까요?')) return;
+      }
     }
     const result = calculateProportionalAllocationJS(input);
     // 계산 즉시 자산별 결과를 거래 목록에 자동으로 추가한다 — "적용" 버튼을 따로 눌러 복사해오지
@@ -5923,30 +6228,52 @@ taxCalcView.addEventListener('click', function(e){
   } else if (action === 'send-settlement-to-new-transfer'){
     // 청산금 환급액(재건축·환지 공통)은 관리처분인가일(또는 환지처분공고일)에 종전자산 중 그 만큼을
     // 먼저 양도한 것으로 과세된다 — 종전 취득가액을 (환급액÷권리가액 또는 면적) 비율로 안분한다.
+    // [2026.09 버그수정] 국세청 공식 신고작성 사례(청산금을 지급받은 경우, 집행기준 100-166-6)를
+    // 확인한 결과 두 가지가 빠져 있었다 — (1) 취득가액만 안분하고 필요경비는 안분하지 않아서
+    // 청산금분 거래의 양도차익이 과대계상됐다. (2) 원본 자산(나중에 신축주택/조합원입주권을
+    // 팔 때 쓸 취득가액·필요경비·권리가액)을 청산금분만큼 줄이지 않아서, 나중에 최종 양도할 때
+    // 이미 청산금분 거래에서 쓴 취득원가를 또 한 번 공제받는 이중공제 위험이 있었다. 이제
+    // 필요경비도 같은 비율로 나누고, 원본 자산의 남은 몫도 그만큼 줄인다.
     const idx = numVal(btn.dataset.idx);
     const kind = btn.dataset.kind;
     const vals = transferAssets[idx];
     const origPrice = numVal(vals.originalAssetAcquisitionPrice) || 0;
+    const origExpense = numVal(vals.originalNecessaryExpenses) || 0;
     const newAsset = { acquisitionDate: vals.acquisitionDate || '' };
     if (kind === 'reconstruction'){
       const received = numVal(vals.settlementReceived) || 0;
       const rightsValue = numVal(vals.rightsValue) || 0;
       if (!received || !rightsValue) return;
+      const ratio = Math.min(1, received / rightsValue);
+      const splitPrice = Math.round(origPrice * ratio);
+      const splitExpense = Math.round(origExpense * ratio);
       newAsset.transferPrice = received;
       newAsset.transferDate = vals.managementDispositionDate || '';
-      newAsset.acquisitionPrice = Math.round(origPrice * Math.min(1, received / rightsValue));
+      newAsset.acquisitionPrice = splitPrice;
+      newAsset.acquisitionExpenseItems = splitExpense ? [{ label: '청산금 환급분 필요경비 안분', amount: splitExpense }] : [];
+      // 이미 청산금분으로 처리된 몫만큼 원본 자산(나중에 최종 신축주택을 팔 때 쓸 값)에서 뺀다.
+      vals.originalAssetAcquisitionPrice = String(Math.max(0, origPrice - splitPrice));
+      vals.originalNecessaryExpenses = String(Math.max(0, origExpense - splitExpense));
+      vals.rightsValue = String(Math.max(0, rightsValue - received));
     } else {
       const received = numVal(vals.replotmentSettlementReceived) || 0;
       const rightsArea = numVal(vals.rightsAreaSqm) || 0;
       const finalArea = numVal(vals.finalAreaSqm) || 0;
       if (!received || !rightsArea) return;
       const reducedRatio = Math.min(1, Math.max(0, (rightsArea - finalArea)) / rightsArea);
+      const splitPrice = Math.round(origPrice * reducedRatio);
+      const splitExpense = Math.round(origExpense * reducedRatio);
       newAsset.transferPrice = received;
       newAsset.transferDate = vals.replotmentDisposalDate || '';
-      newAsset.acquisitionPrice = Math.round(origPrice * reducedRatio);
+      newAsset.acquisitionPrice = splitPrice;
+      newAsset.acquisitionExpenseItems = splitExpense ? [{ label: '환지청산금 환급분 필요경비 안분', amount: splitExpense }] : [];
+      vals.originalAssetAcquisitionPrice = String(Math.max(0, origPrice - splitPrice));
+      vals.originalNecessaryExpenses = String(Math.max(0, origExpense - splitExpense));
+      vals.rightsAreaSqm = String(finalArea);
     }
     transferAssets.push(newAsset);
     renderTransferPane();
+    showToast('청산금 환급분을 별도 거래로 추가하고, 남은 원본 자산의 취득가액·필요경비·권리가액도 그만큼 줄였습니다.', 'success');
   } else if (action === 'run-gift'){
     const input = {
       giftAmount: numVal(document.getElementById('giftAmount').value) || 0,
@@ -6855,13 +7182,34 @@ function tcApplyOverviewToInputs_(caseObj){
     el.value = overview[key];
   });
 }
-// 양도는 물건이 여러 개일 수 있는 배열(transferAssets) 구조라 위처럼 id로 단순히 못 채우지만,
-// renderTransferPane()이 이미 "transferAssets[idx]의 모든 키를 각 입력칸에 다시 채워 넣는"
-// 구조(1638행 정의, 2200~2211행 하이드레이션 로직)라 그걸 그대로 활용한다 — transferAssets[0]
-// (대표 물건, 사건개요서도 대표 물건 하나만 다루는 것과 같은 원칙)에 값만 채우고 다시 그린다.
+// [2026.09 재설계] "물건이 여러 필지면 사건개요서 단계에서 전체 목록부터 파악해야 하는데,
+// 이 화면(세액계산)에서야 겨우 다 입력하게 되고 그나마도 대표 1건 말고는 저장조차 안 됐다"는
+// 지적 — 이제 사건개요서(casehandling.html)가 물건목록(overview.물건목록, 배열)의 주인이다.
+// 이 화면은 그 목록을 그대로 불러와서 시작하고, 물건별 세부 계산값(양도비용 내역 등 계산
+// 전용 필드)만 여기서 채운다. 이미 계산 작업이 진행 중(첫 로딩이 아님)이면 목록을 다시
+// 통째로 덮어쓰지 않고, 대표 물건만 기존 방식대로 보강한다(재계산 중 사용자 입력을 보호).
 function tcApplyOverviewToTransfer_(caseObj){
-  if (!caseObj || caseObj.세목 !== 'transfer' || typeof transferAssets === 'undefined' || !transferAssets[0]) return;
+  if (!caseObj || caseObj.세목 !== 'transfer' || typeof transferAssets === 'undefined') return;
   var overview = caseObj.사건개요 || {};
+  var list = Array.isArray(overview.물건목록) ? overview.물건목록 : null;
+  var firstIsEmpty = !transferAssets[0] || !(transferAssets[0].assetLocation || transferAssets[0].transferPrice || transferAssets[0].acquisitionPrice);
+  if (list && list.length && transferAssets.length <= 1 && firstIsEmpty) {
+    transferAssets = list.map(function(item){
+      return {
+        assetType: item.assetType || '', assetKind: item.assetKind || '', assetLocation: item.assetLocation || '',
+        assetDong: item.assetDong || '', assetHo: item.assetHo || '', assetDongList: item.assetDongList || [],
+        transferPrice: item.양도가액 || '', acquisitionPrice: item.취득가액 || '',
+        acquisitionDate: item.취득일 || '', transferDate: caseObj.기준일 || '',
+        // [2026.09] 중개비용·법무비용이 물건별이 아니라 취득/양도 "계약" 단위로 발생한다는
+        // 지적 — 사건개요서에서 물건끼리 묶어둔 계약 구분값을 그대로 이어받아야, 여기서
+        // 다시 저장(tcSyncOverviewAmounts_)해도 묶음 정보가 사라지지 않는다.
+        취득계약구분: item.취득계약구분 || '', 양도계약구분: item.양도계약구분 || ''
+      };
+    });
+    if (typeof renderTransferPane === 'function') renderTransferPane();
+    return;
+  }
+  if (!transferAssets[0]) return;
   var a = transferAssets[0];
   var changed = false;
   ['assetType', 'assetKind', 'assetLocation', 'assetDong', 'assetHo'].forEach(function(key){
@@ -7037,18 +7385,31 @@ function tcSaveCurrentResult_(){
 // [2026.09] "사건개요서의 양도가액·취득가액·증여가액·상속가액은 어차피 예상가액일 뿐이니,
 // 실제 세액계산에 쓴(더 확실한) 값이 나오면 사건개요서도 그 값으로 소급 정정해야 한다"는
 // 요청 — 계산 결과를 사건에 저장하는 시점에 실제로 입력된 금액을 사건개요에 덮어쓴다.
-// 양도소득세는 물건이 여러 개일 수 있지만 사건개요서는 "대표 물건" 하나만 다루므로
-// transferAssets[0](대표 물건)의 값만 반영한다.
+// [2026.09 재설계] 양도는 이제 사건개요서(overview.물건목록)가 물건 전체 목록의 주인이므로,
+// 대표 1건이 아니라 지금 화면의 transferAssets 전체(물건이 추가/삭제됐을 수도 있음)를
+// 통째로 다시 써서 목록을 항상 최신으로 유지한다 — 이게 없으면 여기서 추가한 2번째·3번째
+// 물건은 화면을 새로고침하는 순간 사라졌었다(실제로 그동안 저장이 아예 안 되고 있었음).
 function tcSyncOverviewAmounts_(tab){
   if (!tcCurrentCase) return;
   var updates = null;
-  if (tab === 'transfer' && typeof transferAssets !== 'undefined' && transferAssets[0]){
-    var a = transferAssets[0];
-    if (a.transferPrice || a.acquisitionPrice){
-      updates = {};
-      if (a.transferPrice) updates.양도가액 = String(a.transferPrice);
-      if (a.acquisitionPrice) updates.취득가액 = String(a.acquisitionPrice);
-    }
+  if (tab === 'transfer' && typeof transferAssets !== 'undefined' && transferAssets.length){
+    updates = {
+      물건목록: transferAssets.map(function(a){
+        return {
+          assetType: a.assetType || '', assetKind: a.assetKind || '', assetLocation: a.assetLocation || '',
+          assetDong: a.assetDong || '', assetHo: a.assetHo || '', assetDongList: a.assetDongList || [],
+          취득일: a.acquisitionDate || '', 양도가액: a.transferPrice || '', 취득가액: a.acquisitionPrice || '',
+          취득계약구분: a.취득계약구분 || '', 양도계약구분: a.양도계약구분 || ''
+        };
+      }),
+      물건수: String(transferAssets.length)
+    };
+    var first = transferAssets[0];
+    if (first) Object.assign(updates, {
+      assetType: first.assetType || '', assetKind: first.assetKind || '', assetLocation: first.assetLocation || '',
+      assetDong: first.assetDong || '', assetHo: first.assetHo || '', assetDongList: first.assetDongList || [],
+      양도가액: first.transferPrice || '', 취득가액: first.acquisitionPrice || ''
+    });
   } else if (tab === 'gift'){
     var giftAmountEl = document.getElementById('giftAmount');
     if (giftAmountEl && giftAmountEl.value) updates = { giftAmount: giftAmountEl.value };

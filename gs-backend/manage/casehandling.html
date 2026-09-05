@@ -144,105 +144,280 @@
   // 자산종류·유형·소재지·동·호·물건수·양도일 — taxcalc.html의 assetType/assetKind/assetLocation
   // /assetDong/assetHo와 필드명을 맞춘 커스텀 블록(단순 select/input이 아니라 주소검색·동호
   // 조건부 표시 같은 상호작용이 필요해 CH_CASE_OVERVIEW_FIELDS_의 일반 렌더러와 분리했다).
-  function chBuildTransferAssetBlockHtml_(overview, baseDate){
-    var showDongHo = overview.assetKind === 'building' || (Array.isArray(overview.assetDongList) && overview.assetDongList.length > 0);
-    var dongOptions = Array.isArray(overview.assetDongList) ? overview.assetDongList : [];
-    // [2026.09 버그수정] 물건이 2건 이상인데도 이 사건개요서와 세액계산 화면(taxcalc.html의
-    // transferAssets[0]) 둘 다 "대표 물건" 1건만 다루다 보니, 실제로는 여러 건인 양도가액·
-    // 취득가액이 대표 물건 1건의 금액만으로 보여서 헷갈릴 수 있었다 — 구조를 바꾸는 대신
-    // (위험도가 큼) 물건수가 2 이상일 때 눈에 띄게 안내한다.
-    var multiAssetNotice = Number(overview.물건수) > 1
-      ? '<div style="grid-column:1/-1; background:#fff4e5; border:1px solid #e8c37a; border-radius:6px; padding:6px 10px; font-size:12px; color:#8a5a00;">⚠ 물건이 ' + escapeHtml(overview.물건수) + '건입니다 — 아래 금액·소재지 등은 대표 물건 1건 기준이며, 전체 합계가 아닙니다. 물건별 상세 금액은 세액계산 화면에서 확인하세요.</div>'
-      : '';
-    return multiAssetNotice + '<div>' +
-      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">물건 수</label>' +
-      '<input type="number" id="chOvCount" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(overview.물건수 || '') + '">' +
-      '</div>' +
-      '<div>' +
-      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">자산종류(대표 물건)</label>' +
-      '<select id="chOvAssetType" style="width:100%; box-sizing:border-box;"><option value="">선택</option>' +
-      CH_ASSET_TYPE_OPTIONS_.map(function(o){ return '<option value="' + o.value + '"' + (o.value === overview.assetType ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('') +
+  // [2026.09 재설계] "양도 물건이 여러 필지일 때 전체 목록을 가장 먼저 파악해야 하는데,
+  // 이 시스템은 세액계산 단계에서야 겨우 다 입력하게 된다"는 지적 — 물건 목록의 주인을
+  // 세액계산(taxcalc.html의 transferAssets, 계산 편의용 임시 배열이라 실제로는 대표 1건
+  // 말고는 저장조차 안 되고 있었다)에서 사건개요서로 옮긴다. 사건을 열자마자(사실관계
+  // 파악 시점) 물건을 몇 개든 바로 추가할 수 있고, 세액계산 화면은 이 목록을 그대로
+  // 불러와 시작한다(자세한 내용은 taxcalc.html의 tcApplyOverviewToTransfer_ 참고).
+  // 옛 사건(대표 물건 1건을 overview에 바로 flat하게 저장하던 방식)은 첫 렌더링 때 1건짜리
+  // 물건목록으로 자동 이관한다 — 데이터 유실 없음.
+  function chGetAssetList_(overview){
+    if (Array.isArray(overview.물건목록) && overview.물건목록.length) return overview.물건목록;
+    if (overview.assetType || overview.assetLocation || overview.양도가액 || overview.취득가액) {
+      return [{
+        assetType: overview.assetType || '', assetKind: overview.assetKind || '',
+        assetLocation: overview.assetLocation || '', assetDong: overview.assetDong || '',
+        assetHo: overview.assetHo || '', assetDongList: overview.assetDongList || [],
+        취득일: overview.취득일 || '', 양도가액: overview.양도가액 || '', 취득가액: overview.취득가액 || '',
+        취득계약구분: '', 양도계약구분: ''
+      }];
+    }
+    return [{}];
+  }
+
+  function chBuildAssetCardHtml_(asset, idx, showDelete, hideAcqGroup, hideTransferGroup){
+    var showDongHo = asset.assetKind === 'building' || (Array.isArray(asset.assetDongList) && asset.assetDongList.length > 0);
+    var dongOptions = Array.isArray(asset.assetDongList) ? asset.assetDongList : [];
+    return '<div class="chAssetCard" data-idx="' + idx + '" style="grid-column:1/-1; border:1px solid var(--line); border-radius:8px; padding:10px; display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:8px 12px; position:relative;">' +
+      (showDelete ? '<button type="button" class="chAssetDelBtn ghost-btn" data-idx="' + idx + '" style="position:absolute; top:6px; right:6px; padding:1px 8px; font-size:11px;" title="이 물건 삭제">✕</button>' : '') +
+      '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">자산종류</label>' +
+      '<select class="chAssetField" data-field="assetType" style="width:100%; box-sizing:border-box;"><option value="">선택</option>' +
+      CH_ASSET_TYPE_OPTIONS_.map(function(o){ return '<option value="' + o.value + '"' + (o.value === asset.assetType ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('') +
       '</select></div>' +
-      '<div>' +
-      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">유형</label>' +
-      '<select id="chOvAssetKind" style="width:100%; box-sizing:border-box;"><option value="">선택</option>' +
-      CH_ASSET_KIND_OPTIONS_.map(function(o){ return '<option value="' + o.value + '"' + (o.value === overview.assetKind ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('') +
+      '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">유형</label>' +
+      '<select class="chAssetField chAssetKindSel" data-field="assetKind" style="width:100%; box-sizing:border-box;"><option value="">선택</option>' +
+      CH_ASSET_KIND_OPTIONS_.map(function(o){ return '<option value="' + o.value + '"' + (o.value === asset.assetKind ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('') +
       '</select></div>' +
-      '<div style="grid-column:span 2;">' +
-      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">소재지</label>' +
+      '<div style="grid-column:span 2;"><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">소재지</label>' +
       '<div style="display:flex; gap:6px;">' +
-      '<input type="text" id="chOvAssetLocation" style="flex:1; box-sizing:border-box;" value="' + escapeHtml(overview.assetLocation || '') + '" placeholder="예: OO시 OO구 OO동 123-4">' +
-      '<button type="button" id="chOvAddrSearchBtn" class="ghost-btn" style="flex-shrink:0;" title="주소 검색">🔍</button>' +
+      '<input type="text" class="chAssetField" data-field="assetLocation" style="flex:1; box-sizing:border-box;" value="' + escapeHtml(asset.assetLocation || '') + '" placeholder="예: OO시 OO구 OO동 123-4">' +
+      '<button type="button" class="chAssetAddrSearchBtn ghost-btn" data-idx="' + idx + '" style="flex-shrink:0;" title="주소 검색">🔍</button>' +
       '</div></div>' +
-      '<div id="chOvDongHoWrap" style="display:' + (showDongHo ? 'contents' : 'none') + ';">' +
+      '<div class="chAssetDongHoWrap" style="display:' + (showDongHo ? 'contents' : 'none') + ';">' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">동</label>' +
-      '<select id="chOvAssetDong" style="width:100%; box-sizing:border-box;"><option value="">직접입력/해당없음</option>' +
-      dongOptions.map(function(d){ return '<option value="' + escapeHtml(d) + '"' + (overview.assetDong === d ? ' selected' : '') + '>' + escapeHtml(d) + '</option>'; }).join('') +
+      '<select class="chAssetField" data-field="assetDong" style="width:100%; box-sizing:border-box;"><option value="">직접입력/해당없음</option>' +
+      dongOptions.map(function(d){ return '<option value="' + escapeHtml(d) + '"' + (asset.assetDong === d ? ' selected' : '') + '>' + escapeHtml(d) + '</option>'; }).join('') +
       '</select></div>' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">호</label>' +
-      '<input type="text" id="chOvAssetHo" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(overview.assetHo || '') + '">' +
-      '</div></div>' +
+      '<input type="text" class="chAssetField" data-field="assetHo" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(asset.assetHo || '') + '"></div></div>' +
+      '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">취득일(선택)</label>' +
+      '<input type="date" class="chAssetField" data-field="취득일" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(asset.취득일 || '') + '"></div>' +
+      // [2026.09 재설계] "양도가액은 물건별이 아니라 양도계약 단위로 정해지는 값"이라는 지적 —
+      // 물건 카드마다 따로 입력하던 것을 없애고, 아래 "양도계약별 금액"란(chBuildTransferGroupAmountsHtml_)
+      // 에서 계약(그룹) 하나당 한 번만 입력하도록 옮겼다. 취득가액은 사용자 판단에 따라
+      // "취득 쪽은 세액계산 단계에서 정확히 반영하면 된다"고 하여 예전처럼 물건별 개산값만 유지한다.
+      '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">취득가액(예상, 선택)</label>' +
+      '<input type="number" class="chAssetField" data-field="취득가액" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(asset.취득가액 || '') + '" placeholder="원"></div>' +
+      // [2026.09] "중개비용·법무비용은 물건별이 아니라 계약·등기별로 발생한다"는 지적 — 여러
+      // 물건을 같은 취득계약(또는 같은 양도계약)으로 한꺼번에 샀거나/판 경우, 같은 구분값을
+      // 적어두면 증빙확보에서 취득/양도 관련 서류(취득세·중개보수·계약서 등)를 물건 수만큼이
+      // 아니라 계약 수만큼만 요청한다. 물건이 1건뿐이거나, 위 "모두 같은 계약으로 묶기"
+      // 체크박스를 켰으면(제일 흔한 "통째로 한 세트로 사고팔았다" 경우) 이 칸 자체를 숨겨서
+      // 매번 똑같은 값을 일일이 타이핑할 필요가 없게 한다.
+      (hideAcqGroup ? '' :
+      '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">취득계약 구분(선택)</label>' +
+      '<input type="text" class="chAssetField" data-field="취득계약구분" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(asset.취득계약구분 || '') + '" placeholder="예: A계약(다른 물건과 같이 샀으면)"></div>') +
+      (hideTransferGroup ? '' :
+      '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">양도계약 구분(선택)</label>' +
+      '<input type="text" class="chAssetField" data-field="양도계약구분" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(asset.양도계약구분 || '') + '" placeholder="예: A계약(다른 물건과 같이 팔면)"></div>') +
+      '</div>';
+  }
+
+  // [2026.09] "1필이든 여러 필지든 무조건 몽땅 세트로 사고팔 때는 매번 같은 구분값을 물건마다
+  // 타이핑하지 않아도 간단히 처리돼야 한다"는 지적 — 물건 목록 위에 체크박스 한 번으로 "전체
+  // 묶기"를 켜면, 물건마다 취득계약/양도계약 구분을 따로 안 적어도 전체가 한 세트로 처리된다
+  // (구분값을 부분적으로만 묶고 싶은 복잡한 경우엔 체크박스를 끄고 카드별로 직접 적으면 된다).
+  function chMakeTransferCardBuilder_(overview){
+    return function(asset, idx, showDelete){
+      var list = overview._chAssetListWorking || [];
+      var hideAcq = list.length <= 1 || !!overview.취득계약일괄;
+      var hideTransfer = list.length <= 1 || !!overview.양도계약일괄;
+      return chBuildAssetCardHtml_(asset, idx, showDelete, hideAcq, hideTransfer);
+    };
+  }
+
+  function chBuildTransferAssetBlockHtml_(overview, baseDate){
+    var list = overview._chAssetListWorking || (overview._chAssetListWorking = chGetAssetList_(overview));
+    var cardBuilder = chMakeTransferCardBuilder_(overview);
+    var cardsHtml = list.map(function(asset, idx){ return cardBuilder(asset, idx, list.length > 1); }).join('');
+    // 물건이 2건 이상일 때만 "전체 묶기" 체크박스를 보여준다 — 1건이면 애초에 묶고 말고가 없다.
+    var bundleControls = list.length > 1
+      ? '<div style="grid-column:1/-1; display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--sub); background:var(--panel); border-radius:6px; padding:6px 10px;">' +
+        '<label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="chAcqBundleChk"' + (overview.취득계약일괄 ? ' checked' : '') + '> 물건 전체를 같은 취득계약(한 세트로 매입)으로 묶기</label>' +
+        '<label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="chTransferBundleChk"' + (overview.양도계약일괄 ? ' checked' : '') + '> 물건 전체를 같은 양도계약(한 세트로 매도)으로 묶기</label>' +
+        '</div>'
+      : '';
+    return bundleControls + '<div id="chAssetCardsHost" style="display:contents;">' + cardsHtml + '</div>' +
+      '<div style="grid-column:1/-1;"><button type="button" id="chAssetAddBtn" class="ghost-btn" style="font-size:12px;">+ 물건 추가</button>' +
+      (list.length > 1 ? ' <span style="color:var(--sub); font-size:12px;">물건 ' + list.length + '건 — 실제 사건개요서 목록입니다(대표 1건이 아닙니다).</span>' : '') +
+      '</div>' +
+      '<div id="chTransferGroupAmountsHost" style="display:contents;">' + chBuildTransferGroupAmountsHtml_(list, overview) + '</div>' +
       '<div>' +
       '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">양도일</label>' +
       '<input type="date" id="chOvTransferDate" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
       '</div>';
   }
 
-  // 주소검색·유형변경(동·호 표시 여부) 상호작용을 연결한다 — chBodyEl.innerHTML 대입 뒤에 호출.
-  function chWireTransferAssetBlock_(overview){
-    var kindSel = document.getElementById('chOvAssetKind');
-    var wrap = document.getElementById('chOvDongHoWrap');
-    if (!kindSel || !wrap) return;
-    kindSel.addEventListener('change', function(){
-      wrap.style.display = kindSel.value === 'building' ? 'contents' : 'none';
+  // [2026.09 재설계] "양도가액은 물건별이 아니라 양도계약 단위로 정해진다"는 지적 — 물건들을
+  // 양도계약구분(또는 전체묶기)으로 묶어서, 계약(그룹) 하나당 금액 입력칸을 딱 하나만 보여준다.
+  // 같은 그룹에 물건이 여러 개면 값을 그 물건들 모두의 양도가액 필드에 똑같이 써넣는다 —
+  // 배열 구조 자체는 그대로 두고(물건마다 양도가액 필드는 여전히 있음) 입력 UI만 계약 단위로
+  // 묶은 것이라, 세액계산(taxcalc.html)이나 증빙확보 쪽 코드는 그대로 호환된다.
+  function chComputeTransferGroups_(list, overview){
+    if (overview.양도계약일괄) return [{ tag: '', members: list.map(function(_, i){ return i; }) }];
+    var groups = [];
+    var byTag = {};
+    list.forEach(function(asset, idx){
+      var tag = String(asset.양도계약구분 || '').trim();
+      if (tag && byTag[tag]) { byTag[tag].members.push(idx); return; }
+      var group = { tag: tag, members: [idx] };
+      if (tag) byTag[tag] = group;
+      groups.push(group);
     });
-    document.getElementById('chOvAddrSearchBtn').addEventListener('click', function(){
-      if (typeof openAddressSearchModal_ !== 'function'){ showToast('주소 검색 기능을 불러오지 못했습니다.', 'error'); return; }
-      openAddressSearchModal_(function(picked){
-        document.getElementById('chOvAssetLocation').value = picked.roadAddr || picked.jibunAddr || '';
-        overview.assetDongList = picked.dongList || [];
-        overview.assetDong = '';
-        if ((overview.assetDongList.length > 0) && wrap.style.display === 'none') wrap.style.display = 'contents';
-        var dongSel = document.getElementById('chOvAssetDong');
-        if (dongSel){
-          dongSel.innerHTML = '<option value="">직접입력/해당없음</option>' +
-            overview.assetDongList.map(function(d){ return '<option value="' + escapeHtml(d) + '">' + escapeHtml(d) + '</option>'; }).join('');
-        }
-      });
+    return groups;
+  }
+  function chTransferGroupLabel_(group, list, gi){
+    if (group.tag) return group.tag;
+    if (group.members.length > 1) return '전체(' + group.members.length + '건)';
+    var only = list[group.members[0]];
+    return (only && only.assetLocation) ? only.assetLocation : ('물건' + (group.members[0] + 1));
+  }
+  function chBuildTransferGroupAmountsHtml_(list, overview){
+    // [2026.09 버그수정] 물건이 1건뿐이어도 양도가액을 입력할 곳 자체가 없어지면 안 된다 —
+    // 이 경우 그룹 계산이 자연스럽게 "물건 1개짜리 그룹 1개"가 되어 입력칸 1개만 뜬다.
+    var groups = chComputeTransferGroups_(list, overview);
+    return groups.map(function(group, gi){
+      var first = list[group.members[0]] || {};
+      var labelSuffix = groups.length > 1 ? ' — ' + escapeHtml(chTransferGroupLabel_(group, list, gi)) : '';
+      return '<div class="chTransferGroupRow" data-members="' + group.members.join(',') + '">' +
+        '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">양도가액' + labelSuffix + '(선택)</label>' +
+        '<input type="text" inputmode="numeric" class="chTransferGroupAmountInput" style="width:100%; box-sizing:border-box;" placeholder="원" value="' + escapeHtml(chFormatMoney_(first.양도가액)) + '" oninput="chOnMoneyInput_(this)"></div>';
+    }).join('');
+  }
+
+  // 물건카드 각각의 유형변경(동·호 표시)·주소검색·값 변경·추가·삭제를 이벤트 위임으로 연결한다.
+  // chBodyEl.innerHTML 대입 뒤에 호출. 양도(chBuildAssetCardHtml_)·증여·상속
+  // (chBuildLocationAssetCardHtml_) 모두 같은 class/data-* 관례(.chAssetCard/.chAssetField/
+  // .chAssetKindSel/.chAssetAddrSearchBtn/.chAssetDelBtn/#chAssetAddBtn/#chAssetCardsHost)를
+  // 쓰므로 카드를 실제로 그리는 함수만 cardBuilderFn으로 받아 세 세목이 공유한다. 양도만 쓰는
+  // "양도계약별 금액" 영역(#chTransferGroupAmountsHost)은 물건 구성이 바뀔 때마다 다시 그려야
+  // 해서, 그 갱신 함수를 onGroupsChanged로 따로 받는다(증여·상속은 안 넘기면 그만이라 무해함).
+  function chWireAssetListBlock_(overview, cardBuilderFn, onGroupsChanged){
+    var container = document.getElementById('chOverviewFieldsGrid');
+    if (!container || !overview._chAssetListWorking) return;
+    var list = overview._chAssetListWorking;
+
+    function rerender(){
+      // 카드 배열만 다시 그린다 — 나머지(처리방향 등)는 그대로 둔다.
+      var cardsHost = document.getElementById('chAssetCardsHost');
+      if (cardsHost) cardsHost.innerHTML = list.map(function(asset, idx){ return cardBuilderFn(asset, idx, list.length > 1); }).join('');
+      if (onGroupsChanged) onGroupsChanged();
+    }
+
+    container.addEventListener('input', function(e){
+      var field = e.target.closest('.chAssetField');
+      if (field){
+        var card = field.closest('.chAssetCard');
+        var idx = Number(card.dataset.idx);
+        var key = field.dataset.field;
+        list[idx][key] = field.value;
+        // 양도계약 구분을 고치면 그룹이 바뀔 수 있으니 금액란도 다시 그린다.
+        if (key === '양도계약구분' && onGroupsChanged) onGroupsChanged();
+        return;
+      }
+      var groupAmountInput = e.target.closest('.chTransferGroupAmountInput');
+      if (groupAmountInput){
+        var members = groupAmountInput.closest('.chTransferGroupRow').dataset.members.split(',').map(Number);
+        var amount = chUnformatMoney_(groupAmountInput.value);
+        members.forEach(function(mi){ list[mi].양도가액 = amount; });
+      }
+    });
+    container.addEventListener('change', function(e){
+      // select 요소는 브라우저에 따라 input 대신(또는 같이) change만 쏘는 경우가 있어 여기서도
+      // 값 동기화를 한 번 더 해둔다(idempotent라 두 번 실행돼도 문제 없음).
+      var field = e.target.closest('.chAssetField');
+      if (field){
+        var fCard = field.closest('.chAssetCard');
+        list[Number(fCard.dataset.idx)][field.dataset.field] = field.value;
+      }
+      if (e.target.classList.contains('chAssetKindSel')){
+        var card = e.target.closest('.chAssetCard');
+        var wrap = card.querySelector('.chAssetDongHoWrap');
+        if (wrap) wrap.style.display = e.target.value === 'building' ? 'contents' : 'none';
+      }
+      // [2026.09] "전체 묶기" 체크박스 — 양도(chBuildTransferAssetBlockHtml_)에만 존재하고
+      // 증여·상속 화면엔 이 id 자체가 없으니 여기 있어도 무해하다. 켜고 끌 때마다 카드를
+      // 다시 그려서 물건별 계약구분 칸을 숨기거나 다시 보여준다.
+      if (e.target.id === 'chAcqBundleChk'){ overview.취득계약일괄 = e.target.checked; rerender(); }
+      if (e.target.id === 'chTransferBundleChk'){ overview.양도계약일괄 = e.target.checked; rerender(); }
+    });
+    container.addEventListener('click', function(e){
+      var addrBtn = e.target.closest('.chAssetAddrSearchBtn');
+      if (addrBtn){
+        var idx = Number(addrBtn.dataset.idx);
+        if (typeof openAddressSearchModal_ !== 'function'){ showToast('주소 검색 기능을 불러오지 못했습니다.', 'error'); return; }
+        openAddressSearchModal_(function(picked){
+          list[idx].assetLocation = picked.roadAddr || picked.jibunAddr || '';
+          list[idx].assetDongList = picked.dongList || [];
+          list[idx].assetDong = '';
+          rerender();
+        });
+        return;
+      }
+      var delBtn = e.target.closest('.chAssetDelBtn');
+      if (delBtn){
+        var delIdx = Number(delBtn.dataset.idx);
+        if (!confirm('이 물건을 목록에서 삭제할까요?')) return;
+        list.splice(delIdx, 1);
+        rerender();
+        return;
+      }
+      if (e.target.id === 'chAssetAddBtn'){
+        list.push({});
+        rerender();
+      }
     });
   }
 
-  // [2026.09] 증여·상속 사건개요서용 — 자산종류(assetType, 양도소득세 전용 개념) 없이
-  // 물건수·유형·소재지·동·호만 필요한 세목(증여·상속)이 재사용하는 부분. 필드 id는
-  // chBuildTransferAssetBlockHtml_와 완전히 같은 이름을 쓴다(한 번에 하나의 세목 양식만
-  // 화면에 있으므로 충돌 없음) — chWireTransferAssetBlock_(주소검색·동호 토글)와
-  // 저장 핸들러(chSaveTarget)를 그대로 재사용하기 위함.
-  function chBuildLocationFieldsHtml_(overview){
-    var showDongHo = overview.assetKind === 'building' || (Array.isArray(overview.assetDongList) && overview.assetDongList.length > 0);
-    var dongOptions = Array.isArray(overview.assetDongList) ? overview.assetDongList : [];
-    return '<div>' +
-      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">물건 수</label>' +
-      '<input type="number" id="chOvCount" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(overview.물건수 || '') + '">' +
-      '</div>' +
-      '<div>' +
-      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">유형</label>' +
-      '<select id="chOvAssetKind" style="width:100%; box-sizing:border-box;"><option value="">선택</option>' +
-      CH_ASSET_KIND_OPTIONS_.map(function(o){ return '<option value="' + o.value + '"' + (o.value === overview.assetKind ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('') +
+  // [2026.09 재설계] 증여·상속도 양도와 같은 이유로 물건 목록을 사건개요서 단계에서 여러
+  // 건 바로 등록하게 한다. 다만 증여세·상속세는 실제로 "전체 과세가액 - 공제"로 세액을
+  // 한 번에 계산하지(물건별로 세액을 따로 계산하지 않음) 자산종류(assetType, 양도소득세
+  // 전용 개념)도 필요 없으므로, 물건별로는 "무엇이 어디에 있는지"만 관리하고 금액
+  // (증여재산가액/상속세과세가액)은 지금처럼 사건 전체 합계 1개로 유지한다 — taxcalc.html은
+  // 이번엔 손대지 않는다.
+  function chGetLocationAssetList_(overview){
+    if (Array.isArray(overview.물건목록) && overview.물건목록.length) return overview.물건목록;
+    if (overview.assetKind || overview.assetLocation) {
+      return [{
+        assetKind: overview.assetKind || '', assetLocation: overview.assetLocation || '',
+        assetDong: overview.assetDong || '', assetHo: overview.assetHo || '', assetDongList: overview.assetDongList || []
+      }];
+    }
+    return [{}];
+  }
+
+  function chBuildLocationAssetCardHtml_(asset, idx, showDelete){
+    var showDongHo = asset.assetKind === 'building' || (Array.isArray(asset.assetDongList) && asset.assetDongList.length > 0);
+    var dongOptions = Array.isArray(asset.assetDongList) ? asset.assetDongList : [];
+    return '<div class="chAssetCard" data-idx="' + idx + '" style="grid-column:1/-1; border:1px solid var(--line); border-radius:8px; padding:10px; display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:8px 12px; position:relative;">' +
+      (showDelete ? '<button type="button" class="chAssetDelBtn ghost-btn" data-idx="' + idx + '" style="position:absolute; top:6px; right:6px; padding:1px 8px; font-size:11px;" title="이 물건 삭제">✕</button>' : '') +
+      '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">유형</label>' +
+      '<select class="chAssetField chAssetKindSel" data-field="assetKind" style="width:100%; box-sizing:border-box;"><option value="">선택</option>' +
+      CH_ASSET_KIND_OPTIONS_.map(function(o){ return '<option value="' + o.value + '"' + (o.value === asset.assetKind ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('') +
       '</select></div>' +
-      '<div style="grid-column:span 2;">' +
-      '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">소재지</label>' +
+      '<div style="grid-column:span 2;"><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">소재지</label>' +
       '<div style="display:flex; gap:6px;">' +
-      '<input type="text" id="chOvAssetLocation" style="flex:1; box-sizing:border-box;" value="' + escapeHtml(overview.assetLocation || '') + '" placeholder="예: OO시 OO구 OO동 123-4">' +
-      '<button type="button" id="chOvAddrSearchBtn" class="ghost-btn" style="flex-shrink:0;" title="주소 검색">🔍</button>' +
+      '<input type="text" class="chAssetField" data-field="assetLocation" style="flex:1; box-sizing:border-box;" value="' + escapeHtml(asset.assetLocation || '') + '" placeholder="예: OO시 OO구 OO동 123-4">' +
+      '<button type="button" class="chAssetAddrSearchBtn ghost-btn" data-idx="' + idx + '" style="flex-shrink:0;" title="주소 검색">🔍</button>' +
       '</div></div>' +
-      '<div id="chOvDongHoWrap" style="display:' + (showDongHo ? 'contents' : 'none') + ';">' +
+      '<div class="chAssetDongHoWrap" style="display:' + (showDongHo ? 'contents' : 'none') + ';">' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">동</label>' +
-      '<select id="chOvAssetDong" style="width:100%; box-sizing:border-box;"><option value="">직접입력/해당없음</option>' +
-      dongOptions.map(function(d){ return '<option value="' + escapeHtml(d) + '"' + (overview.assetDong === d ? ' selected' : '') + '>' + escapeHtml(d) + '</option>'; }).join('') +
+      '<select class="chAssetField" data-field="assetDong" style="width:100%; box-sizing:border-box;"><option value="">직접입력/해당없음</option>' +
+      dongOptions.map(function(d){ return '<option value="' + escapeHtml(d) + '"' + (asset.assetDong === d ? ' selected' : '') + '>' + escapeHtml(d) + '</option>'; }).join('') +
       '</select></div>' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">호</label>' +
-      '<input type="text" id="chOvAssetHo" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(overview.assetHo || '') + '">' +
-      '</div></div>';
+      '<input type="text" class="chAssetField" data-field="assetHo" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(asset.assetHo || '') + '"></div></div>' +
+      '</div>';
+  }
+
+  function chBuildLocationFieldsHtml_(overview){
+    var list = overview._chAssetListWorking || (overview._chAssetListWorking = chGetLocationAssetList_(overview));
+    var cardsHtml = list.map(function(asset, idx){ return chBuildLocationAssetCardHtml_(asset, idx, list.length > 1); }).join('');
+    return '<div id="chAssetCardsHost" style="display:contents;">' + cardsHtml + '</div>' +
+      '<div style="grid-column:1/-1;"><button type="button" id="chAssetAddBtn" class="ghost-btn" style="font-size:12px;">+ 물건 추가</button>' +
+      (list.length > 1 ? ' <span style="color:var(--sub); font-size:12px;">물건 ' + list.length + '건 — 증여재산가액/상속세과세가액은 아래 사건 전체 합계 1개로 입력합니다.</span>' : '') +
+      '</div>';
   }
 
   function chBuildGiftBlockHtml_(overview, baseDate){
@@ -283,7 +458,7 @@
       c.세목 === 'gift' ? chBuildGiftBlockHtml_(overview, c.기준일) :
       c.세목 === 'inheritance' ? chBuildInheritanceBlockHtml_(overview, c.기준일) : '';
     return '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:8px;">📋 사건개요서 — ' + escapeHtml(semokLabel) + '</div>' +
-      '<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:8px 12px; max-width:760px;">' + assetBlock + rows + '</div>';
+      '<div id="chOverviewFieldsGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:8px 12px; max-width:760px;">' + assetBlock + rows + '</div>';
   }
 
   function initCaseHandling(){
@@ -364,7 +539,15 @@
       '<div id="chMyReports" style="margin-top:6px;"><div class="log-empty">불러오는 중…</div></div>' +
       '</div>';
 
-    if (c.세목 === 'transfer' || c.세목 === 'gift' || c.세목 === 'inheritance') chWireTransferAssetBlock_(c._chOverviewWorking || {});
+    // [2026.09 재설계] 양도는 물건 목록(여러 건)을 다루는 새 카드형 UI라 전용 배선 함수를 쓰고,
+    // 증여·상속은 아직 대표 1건짜리 옛 구조를 그대로 쓰므로 옛 배선 함수를 그대로 쓴다.
+    if (c.세목 === 'transfer'){
+      var ovForTransfer = c._chOverviewWorking || {};
+      chWireAssetListBlock_(ovForTransfer, chMakeTransferCardBuilder_(ovForTransfer), function(){
+        var groupHost = document.getElementById('chTransferGroupAmountsHost');
+        if (groupHost) groupHost.innerHTML = chBuildTransferGroupAmountsHtml_(ovForTransfer._chAssetListWorking || [], ovForTransfer);
+      });
+    } else if (c.세목 === 'gift' || c.세목 === 'inheritance') chWireAssetListBlock_(c._chOverviewWorking || {}, chBuildLocationAssetCardHtml_);
 
     document.getElementById('chSaveTarget').addEventListener('click', function(){
       // [2026.09 버그수정] 사건개요서(사건개요) 자체를 통째로 덮어쓰는 저장인데도 동시편집
@@ -380,25 +563,44 @@
           if (!el) return;
           overview[field.key] = field.type === 'money' ? chUnformatMoney_(el.value) : el.value.trim();
         });
-        if (c.세목 === 'transfer' || c.세목 === 'gift' || c.세목 === 'inheritance'){
-          // [2026.09] 자산종류·유형·소재지·동·호·물건수는 CH_CASE_OVERVIEW_FIELDS_의 일반
-          // 렌더러가 아니라 chBuildTransferAssetBlockHtml_/chBuildGiftBlockHtml_/
-          // chBuildInheritanceBlockHtml_(chWireTransferAssetBlock_로 상호작용 연결)가 그린
-          // 커스텀 입력들이라 여기서 따로 모은다 — 세 세목이 같은 필드 id를 재사용하므로
-          // (한 번에 하나만 화면에 있음) 이 수집 코드도 공통이다. 자산종류(assetType)는
-          // 양도소득세 전용 필드라 증여·상속에서는 그 input 자체가 없어 빈 문자열로 남는다.
-          // 동 목록(assetDongList)은 주소검색 결과로 chWireTransferAssetBlock_가
-          // c._chOverviewWorking에 갱신해둔 값을 그대로 가져온다.
-          var working = c._chOverviewWorking || {};
-          overview.물건수 = (document.getElementById('chOvCount') || {}).value || '';
-          overview.assetType = (document.getElementById('chOvAssetType') || {}).value || '';
-          overview.assetKind = (document.getElementById('chOvAssetKind') || {}).value || '';
-          overview.assetLocation = (document.getElementById('chOvAssetLocation') || {}).value || '';
-          overview.assetDong = (document.getElementById('chOvAssetDong') || {}).value || '';
-          overview.assetHo = (document.getElementById('chOvAssetHo') || {}).value || '';
-          overview.assetDongList = working.assetDongList || [];
+        var working = c._chOverviewWorking || {};
+        if (c.세목 === 'transfer'){
+          // [2026.09 재설계] 양도는 물건이 여러 건일 수 있어 "대표 1건" 방식 대신 실제 목록
+          // (chWireAssetListBlock_가 실시간으로 갱신해둔 working._chAssetListWorking)을
+          // 그대로 저장한다 — 세액계산 화면(taxcalc.html)이 이 목록을 그대로 불러와 시작한다.
+          var assetList = (working._chAssetListWorking || []).map(function(a){
+            return {
+              assetType: a.assetType || '', assetKind: a.assetKind || '', assetLocation: a.assetLocation || '',
+              assetDong: a.assetDong || '', assetHo: a.assetHo || '', assetDongList: a.assetDongList || [],
+              취득일: a.취득일 || '', 양도가액: a.양도가액 || '', 취득가액: a.취득가액 || '',
+              취득계약구분: a.취득계약구분 || '', 양도계약구분: a.양도계약구분 || ''
+            };
+          });
+          overview.물건목록 = assetList;
+          overview.물건수 = String(assetList.length);
+          // "전체 묶기" 체크박스 상태 — chWireAssetListBlock_가 실시간으로 working에 반영해둔
+          // 값을 그대로 가져온다. 증빙 자동요청(work_buildEvidenceFromTemplate_)이 이 값을
+          // 보고 물건별 계약구분을 무시하고 통째로 한 세트로 처리할지 결정한다.
+          overview.취득계약일괄 = !!working.취득계약일괄;
+          overview.양도계약일괄 = !!working.양도계약일괄;
+          // 대표 물건(첫 번째)의 정보는 옛 flat 필드에도 같이 남겨서, 아직 이 저장을 거치지
+          // 않은 다른 화면(예: 증빙확보의 주소 기본값)이 하위호환으로 계속 읽을 수 있게 한다.
+          if (assetList[0]) Object.assign(overview, assetList[0]);
           var transferDateEl = document.getElementById('chOvTransferDate');
           if (transferDateEl) payload.기준일 = transferDateEl.value;
+        } else if (c.세목 === 'gift' || c.세목 === 'inheritance'){
+          // [2026.09 재설계] 증여·상속도 물건이 여러 건일 수 있어 목록(working._chAssetListWorking,
+          // chWireAssetListBlock_가 실시간으로 갱신)을 그대로 저장한다. 증여재산가액/
+          // 상속세과세가액은 물건별이 아니라 사건 전체 합계 1개로 계속 관리한다(위
+          // CH_CASE_OVERVIEW_FIELDS_ 일반 렌더러가 이미 giftAmount/ihEstate로 수집함).
+          var locAssetList = (working._chAssetListWorking || []).map(function(a){
+            return { assetKind: a.assetKind || '', assetLocation: a.assetLocation || '', assetDong: a.assetDong || '', assetHo: a.assetHo || '', assetDongList: a.assetDongList || [] };
+          });
+          overview.물건목록 = locAssetList;
+          overview.물건수 = String(locAssetList.length);
+          if (locAssetList[0]) Object.assign(overview, locAssetList[0]);
+          var transferDateEl2 = document.getElementById('chOvTransferDate');
+          if (transferDateEl2) payload.기준일 = transferDateEl2.value;
         }
         // [2026.09] 작업관리의 "납세자"와 사건개요서의 납세의무자 이름 필드(TAXPAYER_NAME_FIELD_BY_SEMOK_)
         // 가 반드시 같은 값이어야 한다는 요청 — 여기서 그 필드를 채우면 작업관리의 납세자도

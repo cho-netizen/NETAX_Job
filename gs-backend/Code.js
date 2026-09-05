@@ -16573,6 +16573,58 @@ const WORK_CALENDAR_SEARCH_HORIZON_YEARS_ = Math.max(2, Object.keys(WORK_DEADLIN
 // 때만 추가) 두 층으로 나눈다. 사건개요서의 "사건분류" 필드값과 정확히 문자열이 일치해야
 // 매칭되므로, casehandling.html의 CH_CASE_OVERVIEW_FIELDS_ 옵션 문구를 바꾸면 여기도 같이
 // 맞춰야 한다.
+// [2026.09] "물건 목록을 사건개요서 단계에서 미리 파악하는 이유는 증빙확보에도 영향을
+// 주기 때문"이라는 지적 — 실제로는 필요증빙 템플릿(work_buildEvidenceFromTemplate_)이
+// 물건 개수를 전혀 몰라서, 물건이 3개여도 등기부등본 같은 서류가 여전히 1건만 요청됐다.
+// [2026.09 버그수정] 처음엔 "물건마다 하나씩"으로 전부 나눴는데, 사용자 지적대로 이건
+// 틀렸다 — 중개비용·법무비용(취득세 등)은 물건(필지) 단위가 아니라 "계약·등기" 단위로
+// 발생한다. 예: 물건 2개짜리 A계약과 물건 3개짜리 B계약 중 A의 1필지·B의 1필지만 이번에
+// 양도하면, 등기부등본은 물건마다(필지별 등기라 항상 그러함) 2건이 맞지만, 취득계약서·
+// 취득세·중개보수는 "A계약 1세트 + B계약 1세트"가 맞다(물건 2개라고 2세트가 아니다).
+// 그래서 세 그룹으로 나눈다:
+//  - 등기부등본: 부동산 개별 등기이므로 항상 물건(필지)별 — 계약 구분과 무관.
+//  - 취득 관련 서류(취득계약서·취득세·중개보수): 사건개요서에서 물건마다 적어둔 "취득계약
+//    구분"이 같으면 한 세트로 묶는다(안 적으면 물건마다 별도 계약으로 간주 — 흔한 경우라
+//    기본값 그대로 두면 예전과 동일하게 동작).
+//  - 양도 매매계약서: 같은 원리로 "양도계약 구분"이 같으면 한 세트로 묶는다.
+const WORK_EVIDENCE_PER_ASSET_LABELS_ = {
+  transfer: ['등기부등본(취득일·소유권 이전 이력)']
+};
+const WORK_EVIDENCE_PER_ACQUISITION_GROUP_LABELS_ = {
+  transfer: ['취득 당시 매매계약서 또는 취득가액 증빙', '취득세 영수증', '중개보수 등 필요경비 영수증']
+};
+const WORK_EVIDENCE_PER_TRANSFER_GROUP_LABELS_ = {
+  transfer: ['양도 매매계약서(양도가액·양도일)']
+};
+
+// 물건들을 groupField(취득계약구분/양도계약구분) 값이 같은 것끼리 묶는다 — 값이 비어있으면
+// (계약을 안 나눠 적었으면) 그 물건은 항상 자기 혼자만의 그룹이 된다(기본값 = 물건마다 별도
+// 계약, 예전 동작과 동일). bundleAll이 true면("전체 묶기" 체크박스) 물건별 구분값과 무관하게
+// 무조건 전부 한 그룹으로 묶는다 — "1필이든 여러 필지든 통째로 한 세트로 사고팔았다"는 가장
+// 흔한 경우에 물건마다 똑같은 구분값을 일일이 타이핑하지 않아도 되게 하기 위함.
+function work_groupAssetsForEvidence_(assets, groupField, bundleAll) {
+  if (bundleAll) return [{ tag: '', members: assets }];
+  const groups = [];
+  const byTag = {};
+  assets.forEach(function (asset) {
+    const tag = String((asset && asset[groupField]) || '').trim();
+    if (tag && byTag[tag]) { byTag[tag].members.push(asset); return; }
+    const group = { tag: tag, members: [asset] };
+    if (tag) byTag[tag] = group;
+    groups.push(group);
+  });
+  return groups;
+}
+// 그룹을 표시할 이름 — 사용자가 계약 구분값을 직접 적었으면 그 값을, 안 적었는데 물건이
+// 여럿이면("전체 묶기") "전체(N건)"을, 물건 혼자 있는 그룹이면 그 물건의 소재지를, 그것도
+// 없으면 순번을 쓴다.
+function work_evidenceGroupTag_(group, idx) {
+  if (group.tag) return group.tag;
+  if (group.members.length > 1) return '전체(' + group.members.length + '건)';
+  const only = group.members[0];
+  return (only && only.assetLocation) ? only.assetLocation : ('물건' + (idx + 1));
+}
+
 const WORK_EVIDENCE_TEMPLATES_ = {
   transfer: {
     공통: [
@@ -16657,13 +16709,44 @@ const WORK_EVIDENCE_TEMPLATES_ = {
 // 빈 배열로 둔다. caseClassification(사건개요의 "사건분류" 값)이 있으면 공통 목록에
 // 그 분류 전용 항목을 더한다 — 없거나 매칭 안 되면 공통 목록만 쓴다. 항목 형태는
 // casehandling.html의 chAddRequestedItem_이 만드는 것과 동일(source:'requested', status:'미확보').
-function work_buildEvidenceFromTemplate_(seMok, upType, caseClassification) {
+function work_buildEvidenceFromTemplate_(seMok, upType, caseClassification, assetList, acqBundleAll, transferBundleAll) {
   const template = WORK_EVIDENCE_TEMPLATES_[seMok];
   const labels = (upType === '신고' && template)
     ? (template.공통 || []).concat((caseClassification && template.사건분류 && template.사건분류[caseClassification]) || [])
     : [];
+  // [2026.09 버그수정] 물건이 여러 건이면 서류를 세 가지 기준 중 하나로 나눠 요청한다 —
+  // 등기부등본은 물건(필지)별로, 취득 관련 서류는 취득계약 구분별로, 양도계약서는 양도계약
+  // 구분별로(구분값을 안 적었으면 물건마다 별도 계약으로 간주 — 예전과 동일하게 동작).
+  const perAssetLabels = WORK_EVIDENCE_PER_ASSET_LABELS_[seMok] || [];
+  const perAcqGroupLabels = WORK_EVIDENCE_PER_ACQUISITION_GROUP_LABELS_[seMok] || [];
+  const perTransferGroupLabels = WORK_EVIDENCE_PER_TRANSFER_GROUP_LABELS_[seMok] || [];
+  const assets = Array.isArray(assetList) ? assetList : [];
+  let expandedLabels = labels;
+  if (assets.length > 1 && (perAssetLabels.length || perAcqGroupLabels.length || perTransferGroupLabels.length)) {
+    const acqGroups = work_groupAssetsForEvidence_(assets, '취득계약구분', !!acqBundleAll);
+    const transferGroups = work_groupAssetsForEvidence_(assets, '양도계약구분', !!transferBundleAll);
+    expandedLabels = [];
+    labels.forEach(function (label) {
+      if (perAssetLabels.indexOf(label) !== -1) {
+        assets.forEach(function (asset, idx) {
+          const tag = (asset && asset.assetLocation) ? asset.assetLocation : ('물건' + (idx + 1));
+          expandedLabels.push(label + '(' + tag + ')');
+        });
+        return;
+      }
+      if (perAcqGroupLabels.indexOf(label) !== -1) {
+        acqGroups.forEach(function (group, gi) { expandedLabels.push(label + '(' + work_evidenceGroupTag_(group, gi) + ')'); });
+        return;
+      }
+      if (perTransferGroupLabels.indexOf(label) !== -1) {
+        transferGroups.forEach(function (group, gi) { expandedLabels.push(label + '(' + work_evidenceGroupTag_(group, gi) + ')'); });
+        return;
+      }
+      expandedLabels.push(label);
+    });
+  }
   const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  return labels.map(function (label, i) {
+  return expandedLabels.map(function (label, i) {
     return { id: 'ev_' + Date.now() + '_' + i, source: 'requested', label: label, note: '', status: '미확보', 요청일: today };
   });
 }
@@ -17121,7 +17204,7 @@ function work_updateCase(params) {
         if (!Array.isArray(currentEvidence)) currentEvidence = [];
         const seMokForTemplate = params.세목 !== undefined ? String(params.세목).trim() : row[col.세목];
         const upTypeForTemplate = params.업무유형 !== undefined ? String(params.업무유형).trim() : row[col.업무유형];
-        const templateItems = work_buildEvidenceFromTemplate_(seMokForTemplate, upTypeForTemplate, overview.사건분류);
+        const templateItems = work_buildEvidenceFromTemplate_(seMokForTemplate, upTypeForTemplate, overview.사건분류, overview.물건목록, overview.취득계약일괄, overview.양도계약일괄);
         const existingLabels = currentEvidence.map(function (e) { return e.label; });
         const newItems = templateItems.filter(function (item) { return existingLabels.indexOf(item.label) === -1; });
         if (newItems.length) row[col.증빙목록] = JSON.stringify(currentEvidence.concat(newItems));
