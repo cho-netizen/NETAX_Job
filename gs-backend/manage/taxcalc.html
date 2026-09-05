@@ -6797,6 +6797,56 @@ function loadTcCases_(preselectId){
   });
 }
 
+// [2026.09 버그수정] 처리개요에서 사건개요서를 채워도 세액계산 화면은 늘 빈 칸이었다 — 사건을
+// 고르는 순간 세목 탭을 그 사건에 맞게 자동으로 바꾸고(엉뚱한 탭에 계산해서 저장하는 사고
+// 방지), 이미 입력해둔 값이 있으면 그대로 채워준다.
+function tcSwitchToTab_(semok){
+  var tab = document.querySelector('.taxcalc-tab[data-tab="' + semok + '"]');
+  if (!tab || tab.classList.contains('active')) return;
+  document.querySelectorAll('.taxcalc-tab').forEach(function(t){ t.classList.remove('active'); });
+  tab.classList.add('active');
+  updateTaxCalcPaneVisibility();
+}
+// 증여/상속은 사건개요 키가 이 화면의 실제 입력id와 원래 같게 설계돼 있다(casehandling.html
+// CH_CASE_OVERVIEW_FIELDS_ 주석 참고: "taxcalc.html의 실제 입력 필드명을 그대로 재사용") —
+// 그대로 넣으면 된다. 양도는 물건이 여러 개일 수 있는 배열(transferAssets) 구조라 단순
+// id 매칭이 안 통해서 여기서는 제외(별도 처리 필요, 우선 증여·상속부터).
+var TC_OVERVIEW_INPUT_KEYS_ = {
+  gift: ['giftDoneeName', 'giftDonorName', 'giftRelation', 'giftAmount', 'giftDebtAssumed', 'giftPriorAmount'],
+  inheritance: ['ihDeceasedName', 'ihEstate']
+};
+function tcApplyOverviewToInputs_(caseObj){
+  if (!caseObj) return;
+  var keys = TC_OVERVIEW_INPUT_KEYS_[caseObj.세목];
+  if (!keys) return;
+  var overview = caseObj.사건개요 || {};
+  keys.forEach(function(key){
+    var el = document.getElementById(key);
+    // 이미 값이 있는 입력칸(다른 사건 작업 중이던 값 등)은 덮어쓰지 않는다.
+    if (!el || el.value || overview[key] == null || overview[key] === '') return;
+    el.value = overview[key];
+  });
+}
+// 양도는 물건이 여러 개일 수 있는 배열(transferAssets) 구조라 위처럼 id로 단순히 못 채우지만,
+// renderTransferPane()이 이미 "transferAssets[idx]의 모든 키를 각 입력칸에 다시 채워 넣는"
+// 구조(1638행 정의, 2200~2211행 하이드레이션 로직)라 그걸 그대로 활용한다 — transferAssets[0]
+// (대표 물건, 사건개요서도 대표 물건 하나만 다루는 것과 같은 원칙)에 값만 채우고 다시 그린다.
+function tcApplyOverviewToTransfer_(caseObj){
+  if (!caseObj || caseObj.세목 !== 'transfer' || typeof transferAssets === 'undefined' || !transferAssets[0]) return;
+  var overview = caseObj.사건개요 || {};
+  var a = transferAssets[0];
+  var changed = false;
+  ['assetType', 'assetKind', 'assetLocation', 'assetDong', 'assetHo'].forEach(function(key){
+    if (!a[key] && overview[key]) { a[key] = overview[key]; changed = true; }
+  });
+  if (Array.isArray(overview.assetDongList) && !Array.isArray(a.assetDongList)) { a.assetDongList = overview.assetDongList; changed = true; }
+  if (!a.transferPrice && overview.양도가액) { a.transferPrice = overview.양도가액; changed = true; }
+  if (!a.acquisitionPrice && overview.취득가액) { a.acquisitionPrice = overview.취득가액; changed = true; }
+  if (!a.acquisitionDate && overview.취득일) { a.acquisitionDate = overview.취득일; changed = true; }
+  if (!a.transferDate && caseObj.기준일) { a.transferDate = caseObj.기준일; changed = true; }
+  if (changed && typeof renderTransferPane === 'function') renderTransferPane();
+}
+
 function renderTcCaseBar_(){
   if (!tcCaseBarEl) return;
   var options = '<option value="">사건 선택 안 함</option>' +
@@ -6833,6 +6883,11 @@ function renderTcCaseBar_(){
     if (tcSelectedId && typeof goToCaseHandling_ === 'function') goToCaseHandling_(tcSelectedId);
   });
   if (tcSelectedId) renderTcSavedList_(tcCurrentCase ? (tcCurrentCase.세액계산결과 || []) : []);
+  if (tcCurrentCase) {
+    tcSwitchToTab_(tcCurrentCase.세목);
+    tcApplyOverviewToInputs_(tcCurrentCase);
+    tcApplyOverviewToTransfer_(tcCurrentCase);
+  }
 }
 
 function renderTcSavedList_(list){
@@ -6895,6 +6950,15 @@ function tcSaveCurrentResult_(){
   if (!tcSelectedId || !tcCurrentCase){ showToast('먼저 사건을 선택해주세요.', 'warning'); return; }
   var activeTabEl = document.querySelector('.taxcalc-tab.active');
   var tab = activeTabEl ? activeTabEl.dataset.tab : 'transfer';
+  // [2026.09 버그수정] 사건의 세목과 지금 계산 탭이 다르면(예: 상속 사건을 골라놓고 양도 탭에
+  // 계산한 채 저장) 경고 없이 그대로 저장돼 엉뚱한 세목 결과가 그 사건에 섞여 들어갔다.
+  // 완전히 막지는 않는다(다른 세목 계산을 참고용으로 같이 저장하고 싶을 수도 있으므로) —
+  // 대신 명시적으로 한 번 더 확인한다.
+  if (tcCurrentCase.세목 && tab !== tcCurrentCase.세목 && TC_TAB_LABELS_[tcCurrentCase.세목]) {
+    var caseLabel = TC_TAB_LABELS_[tcCurrentCase.세목] || tcCurrentCase.세목;
+    var tabLabel = TC_TAB_LABELS_[tab] || tab;
+    if (!confirm('선택한 사건은 "' + caseLabel + '" 사건인데, 지금 "' + tabLabel + '" 탭의 계산결과를 저장하려고 합니다.\n정말 이대로 저장할까요?')) return;
+  }
   var boxId = TC_RESULT_BOX_IDS_[tab];
   var box = boxId ? document.getElementById(boxId) : null;
   var text = box ? box.innerText.trim() : '';

@@ -1000,7 +1000,8 @@
   <select id="docSelect"></select>
   <input type="file" id="fileInput" accept=".md,.txt,.html,.htm" multiple style="display:none;">
   <button id="btnReloadFromDrive" class="iconbtn" title="드라이브에 저장된 최신 내용으로 다시 불러오기 (fileId로 연 문서일 때만 동작)">🔄</button>
-  <button id="btnSaveToDrive" class="iconbtn" title="지금 이 내용을 드라이브 원본 파일에 바로 저장">💾</button>
+  <button id="btnSaveToDrive" class="iconbtn" title="지금 이 내용을 드라이브 원본(.md, 내부보고서 폴더)에 바로 저장">💾</button>
+  <button id="btnPublish" class="iconbtn" title="지금 화면의 완성본을 고객포털(my.netax.kr) 보고서함에 발행">📤</button>
   <button id="btnRender" class="primary iconbtn" title="렌더링 (편집한 내용을 미리보기에 반영)">⟳</button>
   <button id="btnLayoutToggle" class="iconbtn" title="창보기: 클릭할 때마다 편집창→모아보기→미리보기 순으로 전환 (모아보기 상태에서 더블클릭하면 스크롤 동기화 켜기/끄기)">◫</button>
   <button id="btnNewWindow" class="iconbtn" title="완성된 문서만 새 창(탭)에서 보기 (편집 도구 없이)">↗</button>
@@ -1224,6 +1225,11 @@ if (!docs.find(d => d.id === selectedId)) selectedId = docs.length ? docs[0].id 
 // 실제 업로드 방식(fileId 덮어쓰기 vs folderId 새로 만들기)을 판단한다.
 let pendingSaveFolderId = null;
 let pendingSaveFolderName = null;
+// [2026.09] "고객에게 발행"이 처음 저장될 때(아직 fileId가 없는 새 문서) 완성본을 넣을
+// "보고서" 폴더 ID — casehandling.html이 goToReportWriter_에 saveFolderId(내부보고서)와
+// 같이 넘겨준다. saveToDrive()가 첫 저장에 성공하면 이 값을 그 문서의 d.reportFolderId로
+// 옮겨 담아 이후에는 문서별로 기억한다.
+let pendingPublishFolderId = null;
 
 function getSelected(){ return docs.find(d => d.id === selectedId) || null; }
 
@@ -1294,9 +1300,10 @@ function refreshDocSelect(){
 function loadSelectedIntoEditor(){
   const d = getSelected();
   const mdInput = document.getElementById('mdInput');
-  if (!d) { mdInput.value = ''; updateSaveToDriveButton(); return; }
+  if (!d) { mdInput.value = ''; updateSaveToDriveButton(); updatePublishButton(); return; }
   mdInput.value = d.md;
   updateSaveToDriveButton();
+  updatePublishButton();
 }
 
 // ---------- 새 파일 불러오기 ----------
@@ -1438,12 +1445,25 @@ async function rwLoadFileById_(fileId){
     doc.name = name;
     doc.md = content;
     doc.format = isHtml ? 'html' : 'md';
+    if (!isHtml) {
+      doc.htmlFileId = data.publishedHtmlFileId || doc.htmlFileId;
+      doc.folderId = data.internalFolderId || doc.folderId;
+      doc.reportFolderId = data.reportFolderId || doc.reportFolderId;
+    }
   } else {
     let docType = rwGuessDocTypeFromFilename_(name);
     if (!docType) docType = rwAskDocTypeForFile_(rawName);
     const theme = docType ? (RW_DOC_TYPE_THEME_[docType] || 'memo') : 'memo';
     doc = { id: docId, name: name, theme: theme, format: isHtml ? 'html' : 'md', md: content };
     if (docType) doc.docType = docType;
+    // [2026.09] .md(원본, "내부보고서" 폴더)를 열었을 때, 그 폴더ID(doc.folderId — 다음
+    // 저장 때 같은 곳에 덮어쓰기 위함)와, 이미 고객에게 발행된 짝 .html이 있으면 그 파일ID
+    // (doc.htmlFileId)·그 .html이 들어갈 "보고서" 폴더ID(doc.reportFolderId)를 같이 알아둔다.
+    if (!isHtml) {
+      if (data.publishedHtmlFileId) doc.htmlFileId = data.publishedHtmlFileId;
+      if (data.internalFolderId) doc.folderId = data.internalFolderId;
+      if (data.reportFolderId) doc.reportFolderId = data.reportFolderId;
+    }
     docs.push(doc);
   }
   selectedId = docId;
@@ -2948,6 +2968,11 @@ function updateSaveToDriveButton(){
     : '드라이브에서 불러온 문서가 아니라 바로 저장할 원본 파일이 없습니다';
 }
 
+// [2026.09] 이 버튼은 이제 "내부보고서" 폴더에 원본(.md)만 저장한다 — 검토서든, 아직 고객에게
+// 안 낸 외부보고서 초안이든 전부 여기 있다가, "📤 고객에게 발행"을 눌러야만 그 순간의 완성본
+// (.html)이 고객이 보는 "보고서" 폴더로 나간다(publishToCustomer 참고). "파일에서 불러오기"로
+// 연 순수 HTML 문서(format:'html', 렌더링 구분이 없는 문서)는 예전처럼 파일 하나만 그대로
+// 덮어쓴다.
 async function saveToDrive(){
   const fileId = currentDriveFileId_();
   if (!fileId && !pendingSaveFolderId){
@@ -2955,34 +2980,28 @@ async function saveToDrive(){
     return;
   }
   const d = getSelected();
-  const content = document.getElementById('mdInput').value;
+  if (!d) return;
   const btn = document.getElementById('btnSaveToDrive');
   btn.disabled = true;
+  const isNew = !fileId;
+  const baseName = (isNew && pendingSaveFolderName) ? pendingSaveFolderName : (d.name || '문서');
+  const cleanBaseName = baseName.replace(/\.(md|html?|htm)$/i, '');
   try {
-    // [2026.09 이식] fetch(GAS_URL,...) 대신 이 앱 공용 callGas('uploadFile', payload)를 쓴다 —
-    // Code.js의 dispatchClientAction_가 이미 처리하는 액션이라 백엔드 수정 없이 그대로 재사용된다.
-    const body = {
-      // 새로 만드는 경우(폴더 저장) saveFileName이 있으면 그걸 우선 쓰고, 없으면 기존과
-      // 동일하게 지금 편집 중인 문서의 이름을 쓴다.
-      name: (!fileId && pendingSaveFolderName) ? pendingSaveFolderName : ((d && d.name) ? d.name : '문서'),
-      base64Data: utf8ToBase64_(content)
-    };
-    if (fileId) {
-      body.fileId = fileId;
-    } else {
-      body.folderId = pendingSaveFolderId;
-    }
+    const content = document.getElementById('mdInput').value;
+    const name = d.format === 'html' ? baseName : cleanBaseName + '.md';
+    const body = { name: name, base64Data: utf8ToBase64_(content) };
+    if (fileId) body.fileId = fileId; else body.folderId = pendingSaveFolderId;
     const data = await callGas('uploadFile', body);
+    if (data && data.error) throw new Error(data.error);
     flashSaveState('드라이브에 저장됨');
-    // 폴더에 새로 만든 첫 저장이었다면, 이 순간부터는 fileId로 열었던 문서와 완전히 동일하게
-    // 동작하도록(다음 저장부터는 덮어쓰기) 내부 상태를 갱신해둔다.
-    if (!fileId && data.id) {
-      const newFileId = data.id;
-      const newDocId = 'drive-' + newFileId;
-      if (d) d.id = newDocId;
+    if (isNew && data.id) {
+      const newDocId = 'drive-' + data.id;
+      d.id = newDocId;
       selectedId = newDocId;
+      if (d.format !== 'html' && pendingPublishFolderId) d.reportFolderId = pendingPublishFolderId;
       pendingSaveFolderId = null;
       pendingSaveFolderName = null;
+      pendingPublishFolderId = null;
       await persist();
       refreshDocSelect();
     }
@@ -2993,6 +3012,62 @@ async function saveToDrive(){
   }
 }
 document.getElementById('btnSaveToDrive').addEventListener('click', saveToDrive);
+
+// [2026.09] "고객에게 발행" — 지금 화면에 렌더링된 완성본(.html)을 사건의 "보고서" 폴더(고객이
+// my.netax.kr에서 보는 곳)에 만들거나 덮어쓴다. 검토서(내부문서)는 고객에게 나갈 일이 없으므로
+// 막는다. 아직 한 번도 저장 안 한 새 문서면 먼저 saveToDrive()로 "내부보고서"에 .md부터
+// 만들어(그래야 d.reportFolderId가 채워짐) 진행한다.
+async function publishToCustomer(){
+  const d0 = getSelected();
+  if (!d0) return;
+  if (d0.docType === 'review') {
+    flashSaveState('검토서는 내부 문서라 발행할 수 없습니다');
+    return;
+  }
+  if (d0.format === 'html') {
+    flashSaveState('이 문서는 발행 대상이 아닙니다');
+    return;
+  }
+  const btn = document.getElementById('btnPublish');
+  if (btn) btn.disabled = true;
+  try {
+    if (!currentDriveFileId_()) {
+      await saveToDrive();
+      if (!currentDriveFileId_()) throw new Error('저장에 실패해 발행할 수 없습니다');
+    }
+    const d = getSelected();
+    const reportFolderId = d.reportFolderId;
+    if (!d.htmlFileId && !reportFolderId) {
+      throw new Error('발행할 고객 폴더를 찾을 수 없습니다 — 문서를 다시 열어주세요');
+    }
+    await render(); // 저장 직전과 마찬가지로, 발행 직전에도 반드시 최신 내용으로 다시 렌더링
+    const finalHtml = buildStandaloneHtml(false);
+    const cleanBaseName = (d.name || '문서').replace(/\.(md|html?|htm)$/i, '');
+    const body = { name: cleanBaseName + '.html', base64Data: utf8ToBase64_(finalHtml) };
+    if (d.htmlFileId) body.fileId = d.htmlFileId; else body.folderId = reportFolderId;
+    const data = await callGas('uploadFile', body);
+    if (data && data.error) throw new Error(data.error);
+    if (data.id) d.htmlFileId = data.id;
+    await persist();
+    flashSaveState('고객에게 발행됨');
+  } catch (err) {
+    flashSaveState(err && err.message ? err.message : '발행 실패');
+  } finally {
+    updatePublishButton();
+  }
+}
+function updatePublishButton(){
+  const btn = document.getElementById('btnPublish');
+  if (!btn) return;
+  const d = getSelected();
+  const canPublish = !!d && d.docType !== 'review' && d.format !== 'html';
+  btn.disabled = !canPublish;
+  btn.style.opacity = canPublish ? '' : '0.4';
+  btn.title = canPublish
+    ? '지금 화면의 완성본을 고객포털(my.netax.kr) 보고서함에 발행'
+    : '검토서(내부문서)이거나 발행 대상이 아닌 문서입니다';
+}
+document.getElementById('btnPublish').addEventListener('click', publishToCustomer);
 
 // ---------- 편집창/미리보기 레이아웃 3단계 전환 (편집창만 / 둘 다 / 미리보기만) ----------
 // 예전엔 버튼 3개(◧◫◨)가 각자 하나의 모드를 담당했는데, 버튼 하나로 통합해서 누를 때마다
@@ -3482,7 +3557,10 @@ function rwRenderCaseReports_(caseId){
   var c = rwCases_.filter(function(x){ return x.id === caseId; })[0];
   if (!c){ box.innerHTML = ''; return; }
   box.textContent = '불러오는 중…';
-  var folderName = (c.고객명 + ' ' + c.사건명).trim();
+  // [2026.09] 폴더명 = 사건명 그 자체(work_generateUniqueCaseName_이 이미 "홍길동_양도_신고"
+  // 처럼 고객명까지 포함해서 만들어준 값) — 예전처럼 "고객명 + 사건명"을 다시 이어붙이면
+  // 이름이 두 번 들어가 실제 폴더를 못 찾는다.
+  var folderName = String(c.사건명 || '').trim();
   getCustomerRootPath_().then(function(basePath){
     return callGas('listFolder', { path: basePath.concat([folderName, '보고서']) });
   }).then(function(res){
@@ -3524,7 +3602,9 @@ function goToReportWriter_(caseId, opts){
   } else if (opts.saveFolderId) {
     pendingSaveFolderId = opts.saveFolderId;
     pendingSaveFolderName = opts.saveFileName || null;
+    pendingPublishFolderId = opts.publishFolderId || null;
     updateSaveToDriveButton();
+    updatePublishButton();
   }
   // [2026.09] 사건연결 드롭다운도 같이 맞춰서, casehandling.html에서 바로 넘어와도
   // "↩ 처리개요" 버튼이 어느 사건인지 알 수 있게 한다(드롭다운 옵션이 아직 로딩 중일

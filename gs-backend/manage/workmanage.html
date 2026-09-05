@@ -222,8 +222,15 @@
       workCaseDetail.innerHTML = '<div class="explorer-status">왼쪽에서 사건을 선택하거나 "+ 새 사건"을 눌러주세요.</div>';
     });
     document.getElementById('wcNewSave').addEventListener('click', function(){
+      // [2026.09 버그수정] 더블클릭(또는 네트워크가 느릴 때 급한 마음에 두 번 누름) 방지 —
+      // 막지 않으면 work_create_case가 두 번 호출돼 사건·폴더·my.netax.kr 접속코드가
+      // 각각 두 개씩 만들어지고, 예약에서 시작한 경우 예약엔 나중 응답의 사건ID만 남아
+      // 먼저 만들어진 사건이 예약과 연결 안 된 채 고아로 남는다.
+      var saveBtn = this;
+      if (saveBtn.disabled) return;
       var 고객명 = document.getElementById('wcNewCustomer').value.trim();
       if (!고객명){ showToast('고객명을 입력해주세요.', 'warning'); return; }
+      saveBtn.disabled = true;
       var upType = newUptypeSel.value;
       var manual = WORK_MANUAL_DEADLINE_TYPES_.indexOf(upType) !== -1;
       var payload = {
@@ -244,7 +251,7 @@
       if (prefill.현재세무처리) payload.현재세무처리 = prefill.현재세무처리;
       if (prefill.관련분야) payload.관련분야 = prefill.관련분야;
       callGas('work_create_case', payload).then(function(res){
-        if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); return; }
+        if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); saveBtn.disabled = false; return; }
         showToast('사건을 등록했습니다.', 'success');
         workShowingNewForm = false;
         workSelectedCaseId = res.case.id;
@@ -255,7 +262,7 @@
             .then(function(){ if (typeof loadBookingList === 'function') loadBookingList(); })
             .catch(function(){});
         }
-      }).catch(function(){ showToast('저장 중 오류가 발생했습니다.', 'error'); });
+      }).catch(function(){ showToast('저장 중 오류가 발생했습니다.', 'error'); saveBtn.disabled = false; });
     });
   }
 

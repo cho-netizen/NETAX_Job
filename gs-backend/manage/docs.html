@@ -211,8 +211,12 @@
       docsGetAllCases_().then(function(cases){
         var c = cases.filter(function(x){ return x.id === caseId; })[0];
         if (!c) return;
+        // [2026.09 버그수정] 폴더ID(한 번 만들어지면 안 바뀜)로 직접 연다 — 사건명(=폴더명)만
+        // 보고 경로를 다시 만들면, 나중에 고객명 등이 바뀌어 사건명이 달라진 사건은 실제
+        // Drive 폴더(이름은 그대로)를 못 찾는다. 폴더ID가 없는 옛날 사건만 이름으로 대체한다.
+        if (c.폴더ID) { docsNavigateById_(c.폴더ID); return; }
         getCustomerRootPath_().then(function(basePath){
-          docsNavigate(basePath.concat([(c.고객명 + ' ' + c.사건명).trim()]));
+          docsNavigate(basePath.concat([String(c.사건명 || '').trim()]));
         });
       });
     });
@@ -223,16 +227,24 @@
   }
 
   // [2026.09] "↩ 처리개요" 버튼이 지금 보고 있는 폴더에 맞는 사건을 들고 돌아가려면, 폴더를
-  // 옮길 때마다 지금 위치가 어느 사건인지 다시 계산해둬야 한다. docsRenderCaseEvidencePanel_와
-  // 같은 방식(고객사건 루트 바로 밑 폴더명 = "고객명 사건명")으로 매칭하되, "보고서"·"제출자료"
-  // 처럼 사건 폴더 한 단계 안쪽까지 들어가 있어도 찾을 수 있게 부모 폴더도 같이 검사한다.
+  // 옮길 때마다 지금 위치가 어느 사건인지 다시 계산해둬야 한다. "보고서"·"제출자료"처럼 사건
+  // 폴더 한 단계 안쪽까지 들어가 있어도 찾을 수 있게 부모 폴더도 같이 검사한다.
+  // [2026.09 버그수정] 사건명(=폴더명)만으로 매칭하면 담당자가 나중에 고객명·세목 등을 고쳐서
+  // 사건명이 바뀌는 순간 이 화면이 조용히 그 사건을 못 찾게 된다. 지금 보고 있는 폴더 바로
+  // 그 자체(rel.length===1)라면 listFolder가 돌려준 실제 폴더ID(docsCurrentListing.folderId)를
+  // 사건의 폴더ID와 직접 비교해서 이름이 바뀌어도 안 끊기게 한다 — 폴더ID가 없는 옛날 사건만
+  // 이름 매칭으로 대체한다.
   function docsSyncSelectedCase_(){
     var sel = document.getElementById('docsCaseSelect');
     getCustomerRootPath_().then(function(basePath){
       var rel = docsPath.slice(basePath.length); // 고객사건 루트 밑으로 몇 단계 들어왔는지
       if (rel.length < 1 || rel.length > 2){ docsSelectedCaseId_ = null; if (sel) sel.value = ''; return; }
+      var currentFolderId = (rel.length === 1 && docsCurrentListing) ? docsCurrentListing.folderId : null;
       docsGetAllCases_().then(function(cases){
-        var c = cases.filter(function(x){ return (x.고객명 + ' ' + x.사건명).trim() === rel[0]; })[0];
+        var c = currentFolderId
+          ? cases.filter(function(x){ return x.폴더ID && x.폴더ID === currentFolderId; })[0]
+          : null;
+        if (!c) c = cases.filter(function(x){ return String(x.사건명 || '').trim() === rel[0]; })[0];
         docsSelectedCaseId_ = c ? c.id : null;
         if (sel) sel.value = c ? c.id : '';
       });
@@ -248,6 +260,27 @@
     callGas('listFolder', { path: docsPath }).then(function(res){
       if (res.error){ listEl.innerHTML = '<div class="log-empty">' + escapeHtml(res.error) + '</div>'; return; }
       docsPath = res.path || docsPath;
+      docsCurrentListing = res;
+      renderDocsBreadcrumb();
+      renderDocsList();
+      docsRenderCaseEvidencePanel_();
+      docsSyncSelectedCase_();
+    }).catch(function(){ listEl.innerHTML = '<div class="log-empty">불러오지 못했습니다.</div>'; });
+  }
+
+  // [2026.09 버그수정] docsNavigate(path)는 이름을 절대 루트부터 따라 내려가는 방식이라, 사건
+  // 폴더가 만들어진 뒤 고객명 등이 바뀌어 사건명(=폴더명)이 달라지면(실제 Drive 폴더 이름은
+  // 그대로인데 DB의 사건명만 새 값으로 바뀜) 새 이름으로는 그 폴더를 절대 못 찾는다. 사건의
+  // 폴더ID(c.폴더ID, 한 번 만들어지면 절대 안 바뀜)를 이미 알고 있을 때는 이름과 무관하게
+  // 이 함수로 직접 열 것.
+  function docsNavigateById_(folderId){
+    docsSelectedIds = {};
+    updateDocsSelectionBar_();
+    var listEl = document.getElementById('docsList');
+    listEl.innerHTML = '<div class="spinner">불러오는 중…</div>';
+    callGas('listFolder', { folderId: folderId }).then(function(res){
+      if (res.error){ listEl.innerHTML = '<div class="log-empty">' + escapeHtml(res.error) + '</div>'; return; }
+      docsPath = res.path || [];
       docsCurrentListing = res;
       renderDocsBreadcrumb();
       renderDocsList();
@@ -288,13 +321,21 @@
         basePath.every(function(seg, i){ return docsPath[i] === seg; });
       if (!isUnderBase){ panel.style.display = 'none'; panel.innerHTML = ''; return; }
       var folderName = docsPath[docsPath.length - 1];
+      // [2026.09 버그수정] listFolder가 돌려준 이 폴더의 실제 ID(docsCurrentListing.folderId)를
+      // 사건의 폴더ID와 먼저 비교한다 — 이름(사건명)만으로 매칭하면 담당자가 나중에 고객명·
+      // 세목 등을 고쳐 사건명이 바뀌는 순간 이 패널이 조용히 사라졌다. 폴더ID가 없는 옛날
+      // 사건만 이름 매칭으로 대체한다.
+      var currentFolderId = docsCurrentListing ? docsCurrentListing.folderId : null;
       // [2026.09 버그수정] "처리개요엔 요청자료 8건인데 증빙확보엔 하나도 없다" — 여기 캐시가
       // docsInitCaseSelect_()가 맨 처음 채운 뒤로는 새로고침 없이 계속 재사용됐다(force 없이
       // 호출), 그래서 사건 생성 이후(예: 필요증빙 템플릿 적용) 캐시가 낡은 채로 남아있었다.
       // 폴더를 옮길 때마다(=이 함수가 불릴 때마다) 매번 새로 받아온다.
       docsGetAllCases_(true).then(function(cases){
         if (docsPath !== pathAtCall) return;
-        var c = cases.filter(function(x){ return (x.고객명 + ' ' + x.사건명).trim() === folderName; })[0];
+        var c = currentFolderId
+          ? cases.filter(function(x){ return x.폴더ID && x.폴더ID === currentFolderId; })[0]
+          : null;
+        if (!c) c = cases.filter(function(x){ return String(x.사건명 || '').trim() === folderName; })[0];
         if (!c){ panel.style.display = 'none'; panel.innerHTML = ''; return; }
         panel.style.display = 'block';
         docsRenderEvidenceUi_(panel, c);
@@ -318,7 +359,7 @@
     }
   }
 
-  function docsRenderEvidenceList_(c, source, containerId){
+  function docsRenderEvidenceList_(c, source, containerId, submissionStatus){
     var box = document.getElementById(containerId);
     if (!box) return;
     var entries = (c.증빙목록 || []).filter(function(e){ return e.source === source; });
@@ -328,20 +369,31 @@
       var row = document.createElement('div');
       row.className = 'log-entry';
       var got = entry.status === '확보됨';
+      // [2026.09 버그수정] my.netax.kr에서 고객이 이미 올렸는데 여기(증빙목록)엔 반영이
+      // 안 돼 "미확보"로 남아있는 경우를 놓치지 않도록 안내를 덧붙인다.
+      var sub = (!got && submissionStatus) ? submissionStatus[entry.label || ''] : null;
       row.innerHTML =
         '<div class="log-date" style="color:' + (got ? 'var(--navy)' : 'var(--sub)') + ';">' + escapeHtml(entry.status || '') + '</div>' +
         '<div class="log-text"><b>' + escapeHtml(entry.label || '') + '</b>' +
-        (entry.note ? '<br><span style="color:var(--sub); font-size:12.5px;">' + escapeHtml(entry.note) + '</span>' : '') + '</div>' +
+        (entry.note ? '<br><span style="color:var(--sub); font-size:12.5px;">' + escapeHtml(entry.note) + '</span>' : '') +
+        (sub && sub.submitted ? '<br><span style="color:#b8860b; font-size:12.5px; font-weight:600;">📤 고객이 이미 제출함(' + escapeHtml(sub.fileName || '') + (sub.uploadedAt ? ', ' + escapeHtml(String(sub.uploadedAt).slice(0, 10)) : '') + ') — 확인 후 확보완료로 표시하세요</span>' : '') +
+        '</div>' +
         (source !== 'auto' ? '<button type="button" class="ghost-btn docsEvToggleBtn" style="padding:3px 8px; font-size:12px;">' + (got ? '미확보로' : '확보완료') + '</button>' : '') +
         '<span class="log-del" title="삭제">✕</span>';
       if (source !== 'auto'){
         row.querySelector('.docsEvToggleBtn').addEventListener('click', function(){
+          var nowGot = entry.status !== '확보됨';
           var newList = (c.증빙목록 || []).map(function(e){
             if (e.id !== entry.id) return e;
-            var nowGot = e.status !== '확보됨';
             return Object.assign({}, e, { status: nowGot ? '확보됨' : '미확보', 확보일: nowGot ? new Date().toISOString().slice(0, 10) : e.확보일 });
           });
           docsSaveEvidence_(c.id, newList);
+          // [2026.09 버그수정] 요청자료를 회계사가 여기서 확보완료/미확보로 바꾸면, 고객이
+          // my.netax.kr에서 보는 체크리스트에도 같이 반영한다 — 안 그러면 회계사가 직접
+          // 구한 자료도 고객 화면엔 계속 "미제출"로 남아 고객이 괜히 또 챙겨 올릴 수 있다.
+          if (source === 'requested' && c.my_report_id && entry.label){
+            callGas('admin_set_checklist_status', { report_id: c.my_report_id, item: entry.label, submitted: nowGot }).catch(function(){});
+          }
         });
       }
       row.querySelector('.log-del').addEventListener('click', function(){
@@ -436,6 +488,19 @@
     docsRenderEvidenceList_(c, 'auto', 'docsEvListAuto');
     docsRenderEvidenceList_(c, 'manual', 'docsEvListManual');
     docsRenderEvidenceList_(c, 'requested', 'docsEvListRequested');
+    // [2026.09 버그수정] 증빙목록(여기, 회계사가 수동으로만 확보/미확보를 바꾸는 곳)과
+    // my.netax.kr의 제출상태(고객이 실제로 올렸는지, 완전히 다른 시트)가 서로 동기화되지
+    // 않아서, 고객이 이미 올렸는데도 여기선 계속 "미확보"로 남아있는 문제가 있었다. 두
+    // 저장소를 하나로 합치는 대신(위험도가 큼), "요청자료" 목록을 그릴 때 my포털 제출현황을
+    // 같이 조회해서 이미 제출된 항목에 안내를 띄우는 방식으로 최소 침습적으로 연결한다 —
+    // 확보 여부 확정은 여전히 회계사가 확인 버튼을 눌러야 한다(고객이 엉뚱한 파일을 올렸을
+    // 수도 있으므로 자동으로 확보됨 처리하지 않음).
+    if (c.my_report_id){
+      callGas('admin_get_case', { report_id: c.my_report_id }).then(function(res){
+        if (res.success === false) return;
+        docsRenderEvidenceList_(c, 'requested', 'docsEvListRequested', (res.case && res.case.submission_status) || {});
+      }).catch(function(){});
+    }
 
     document.getElementById('docsEvAutoAddrBtn').addEventListener('click', function(){
       if (typeof openAddressSearchModal_ !== 'function'){ showToast('주소검색 기능을 불러오지 못했습니다.', 'error'); return; }

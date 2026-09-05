@@ -25,16 +25,27 @@
     loadDashPayments();
   }
 
+  // [2026.09 버그수정] "가장 이른 8건"이 아니라 실제로 임박한 것만 골라서 보여준다 — 열린
+  // 사건이 8건보다 많아지면 진짜 이번 주 마감인 사건이 이 카드에서 밀려날 수 있었고, 반대로
+  // 8건이 채 안 되면 몇 달 뒤 마감인 사건까지 "마감임박"으로 표시됐다. 이미 지난 기한(overdue,
+  // workmanage.html과 같은 기준)은 항상 포함하고 강조 표시한다.
+  var DASH_DEADLINE_HORIZON_DAYS_ = 14;
   function loadDashDeadlines(){
     callGas('work_get_cases', {}).then(function(res){
-      var cases = (res.cases || []).filter(function(c){ return c.상태 !== '완료' && c.법정일; });
+      var todayStr = new Date().toISOString().slice(0, 10);
+      var horizon = new Date();
+      horizon.setDate(horizon.getDate() + DASH_DEADLINE_HORIZON_DAYS_);
+      var horizonStr = horizon.toISOString().slice(0, 10);
+      var cases = (res.cases || []).filter(function(c){
+        return c.상태 !== '완료' && c.법정일 && c.법정일 <= horizonStr;
+      });
       cases.sort(function(a,b){ return String(a.법정일).localeCompare(String(b.법정일)); });
-      cases = cases.slice(0, 8);
       var box = document.getElementById('dashDeadlines');
-      if (!cases.length){ box.innerHTML = '<div class="empty-row">마감이 임박한 작업이 없습니다.</div>'; return; }
+      if (!cases.length){ box.innerHTML = '<div class="empty-row">' + DASH_DEADLINE_HORIZON_DAYS_ + '일 이내 마감이 임박한 작업이 없습니다.</div>'; return; }
       var html = '<table class="list-table"><tr><th>법정일</th><th>고객명</th><th>사건명</th><th>업무유형</th><th>상태</th></tr>';
       cases.forEach(function(c){
-        html += '<tr data-case-id="' + esc(c.id) + '" style="cursor:pointer;" title="눌러서 처리개요로 이동"><td>' + esc(c.법정일) + '</td><td>' + esc(c.고객명) + '</td><td>' + esc(c.사건명) +
+        var overdue = c.법정일 < todayStr;
+        html += '<tr data-case-id="' + esc(c.id) + '" style="cursor:pointer;" title="눌러서 처리개요로 이동"><td' + (overdue ? ' style="color:#a83232; font-weight:700;"' : '') + '>' + (overdue ? '⏰ ' : '') + esc(c.법정일) + '</td><td>' + esc(c.고객명) + '</td><td>' + esc(c.사건명) +
           '</td><td>' + esc(c.업무유형||c.세목||'') + '</td><td>' + esc(c.상태) + '</td></tr>';
       });
       html += '</table>';

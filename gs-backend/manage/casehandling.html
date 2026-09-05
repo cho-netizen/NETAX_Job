@@ -554,18 +554,23 @@
       ? ('자동확보 ' + auto + '건 · 추가확보 ' + manual + '건 · 요청자료 ' + requested.length + '건(미확보 ' + reqPending + '건)')
       : '아직 등록된 증빙이 없습니다.';
     document.getElementById('chEvOpenDocsBtn').addEventListener('click', function(){
-      // listFolder는 path가 있으면 절대 루트부터 이름을 따라 내려가므로, "고객사건" 기본폴더
-      // 까지의 전체 경로(getCustomerRootPath_)를 먼저 구해서 사건명을 그 뒤에 붙여야 한다.
-      getCustomerRootPath_().then(function(basePath){
-        // [버그수정] 증빙관리를 이번 페이지에서 처음 여는 거면 goToView_('docs')가 내부적으로
-        // initDocs()를 불러 자기 나름의 기본 위치(고객사건 폴더 자체)로 또 이동시켜버린다 —
-        // 그게 우리가 지금 지정하는 사건 폴더 이동과 동시에 실행되면서 경쟁하다가, 매번
-        // "기본 위치"(=사건 폴더 바로 위)가 이겨서 그쪽으로 보였다. docsLoaded를 먼저 true로
-        // 표시해 initDocs()의 자체 이동을 막아둔다.
-        docsLoaded = true;
-        if (typeof goToView_ === 'function') goToView_('docs');
-        if (typeof docsNavigate === 'function') docsNavigate(basePath.concat([(c.고객명 + ' ' + c.사건명).trim()]));
-      });
+      // [버그수정] 증빙관리를 이번 페이지에서 처음 여는 거면 goToView_('docs')가 내부적으로
+      // initDocs()를 불러 자기 나름의 기본 위치(고객사건 폴더 자체)로 또 이동시켜버린다 —
+      // 그게 우리가 지금 지정하는 사건 폴더 이동과 동시에 실행되면서 경쟁하다가, 매번
+      // "기본 위치"(=사건 폴더 바로 위)가 이겨서 그쪽으로 보였다. docsLoaded를 먼저 true로
+      // 표시해 initDocs()의 자체 이동을 막아둔다.
+      docsLoaded = true;
+      if (typeof goToView_ === 'function') goToView_('docs');
+      // [2026.09 버그수정] 폴더ID(한 번 만들어지면 안 바뀜)로 직접 연다 — 사건명(=폴더명)만
+      // 보고 경로를 다시 만들면, 나중에 고객명 등이 바뀌어 사건명이 달라진 사건은 실제 Drive
+      // 폴더(이름은 그대로)를 못 찾는다. 폴더ID가 없는 옛날 사건만 이름으로 대체한다.
+      if (c.폴더ID && typeof docsNavigateById_ === 'function') {
+        docsNavigateById_(c.폴더ID);
+      } else {
+        getCustomerRootPath_().then(function(basePath){
+          if (typeof docsNavigate === 'function') docsNavigate(basePath.concat([String(c.사건명 || '').trim()]));
+        });
+      }
     });
   }
 
@@ -595,18 +600,24 @@
         '<button type="button" id="chMyConnectBtn" class="ch-card-head-btn">🔗 고객창구 연결하기 <span class="ch-card-head-arrow">›</span></button>';
       document.getElementById('chMyConnectBtn').addEventListener('click', function(){
         if (!confirm(c.고객명 + '님을 위한 고객창구을 새로 만들까요?')) return;
+        // [2026.09 버그수정] 더블클릭 방지 — admin_create_case는 멱등성이 없어서(호출할 때마다
+        // 무조건 새 접속코드를 발급) 막지 않으면 코드가 두 개 발급되고, 담당자가 먼저 뜬(이미
+        // 무효가 된) 코드를 실수로 고객에게 전달할 위험이 있다.
+        var btn = this;
+        if (btn.disabled) return;
+        btn.disabled = true;
         var requestedLabels = (c.증빙목록 || []).filter(function(e){ return e.source === 'requested'; }).map(function(e){ return e.label; });
         var permission = document.getElementById('chMyNewPermission').value;
         // 사건 시작 때 이미 만들어둔 폴더(c.폴더ID)를 그대로 넘겨서 my.netax.kr이 별도 폴더를
         // 새로 만들지 않고 재사용하게 한다 — 그래야 고객 업로드가 증빙관리와 같은 폴더에 쌓인다.
         callGas('admin_create_case', { name: c.고객명, case_name: c.사건명, checklist: requestedLabels, permission: permission, folder_id: c.폴더ID || '' }).then(function(res){
-          if (res.success === false){ showToast(res.message || '연결 실패', 'error'); return; }
+          if (res.success === false){ showToast(res.message || '연결 실패', 'error'); btn.disabled = false; return; }
           callGas('work_update_case', { id: c.id, my_report_id: res.report_id }).then(function(){
             showToast('고객창구을 연결했습니다 — 접속코드 ' + res.report_id, 'success');
             loadChCases_();
             if (typeof loadWorkCases === 'function') loadWorkCases();
           });
-        }).catch(function(err){ showToast('연결 중 오류: ' + (err && err.message ? err.message : err), 'error'); });
+        }).catch(function(err){ showToast('연결 중 오류: ' + (err && err.message ? err.message : err), 'error'); btn.disabled = false; });
       });
       return;
     }
@@ -665,42 +676,73 @@
     }).catch(function(err){ box.innerHTML = '<div class="log-empty">불러오는 중 오류: ' + escapeHtml(err && err.message ? err.message : '') + '</div>'; });
   }
 
-  // my.netax.kr 케이스 폴더 안 "보고서" 하위폴더(5-A에서 사건 폴더와 통합됨) 안의 파일 목록을
-  // 보여준다 — 여기 .html 파일을 넣어두면 고객이 my.netax.kr에서 바로 본다(my_handleGetReportList
-  // 가 .html/.htm만 필터링해서 보여줌). listFolder는 이미 있는 범용 Drive 탐색 액션을 그대로 씀.
+  // [2026.09] "내부보고서" 폴더(작성 원본, .md — 검토서 포함, 고객에게 절대 안 보임)와
+  // "보고서" 폴더(발행된 완성본, .html — my.netax.kr 보고서함이 여기만 봄)를 각각 조회해서
+  // 같은 이름끼리 묶어 한 줄로 보여준다. "편집"은 항상 내부보고서의 .md를 연다(예전 단일
+  // .html 문서처럼 .md가 없는 경우만 그 .html을 그대로 연다). listFolder는 이미 있는 범용
+  // Drive 탐색 액션을 그대로 씀.
   function chLoadMyReports_(c){
     var box = document.getElementById('chMyReports');
     if (!box) return;
-    var folderName = (c.고객명 + ' ' + c.사건명).trim();
-    // listFolder는 path가 있으면 절대 루트부터 이름을 따라 내려가므로 "고객사건" 기본폴더까지의
-    // 전체 경로가 필요하다(위 "증빙관리에서 열기"와 같은 이유).
-    getCustomerRootPath_().then(function(basePath){
-    return callGas('listFolder', { path: basePath.concat([folderName, '보고서']) }).then(function(res){
-      if (res.error){ box.innerHTML = '<div class="log-empty">' + escapeHtml(res.error) + '</div>'; return; }
-      var files = res.files || [];
+    var folderName = String(c.사건명 || '').trim();
+    // [2026.09] "내부보고서"/"보고서" 폴더ID를 이름 기반 경로탐색 대신 사건ID로 직접 얻는다
+    // (work_getCaseSubfolders — find-or-create라서 이 세션 이전에 만들어진 옛날 사건도
+    // 이 호출 한 번으로 자동으로 폴더가 생기고, 고객명이 나중에 바뀌어도 안 깨진다).
+    callGas('get_case_subfolders', { caseId: c.id }).then(function(sub){
+    if (sub.error){ box.innerHTML = '<div class="log-empty">' + escapeHtml(sub.error) + '</div>'; return; }
+    return Promise.all([
+      callGas('listFolder', { folderId: sub.internalFolderId }),
+      callGas('listFolder', { folderId: sub.reportFolderId })
+    ]).then(function(results){
+      var internalRes = results[0], reportRes = results[1];
+      internalRes.folderId = sub.internalFolderId;
+      reportRes.folderId = sub.reportFolderId;
+      if (internalRes.error){ box.innerHTML = '<div class="log-empty">' + escapeHtml(internalRes.error) + '</div>'; return; }
+      var internalFiles = internalRes.files || [];
+      var reportFiles = reportRes.error ? [] : (reportRes.files || []);
+      var publishedByBase = {};
+      reportFiles.forEach(function(f){
+        var m = f.name.match(/^(.*)\.html?$/i);
+        if (m) publishedByBase[m[1]] = f;
+      });
       // [2026.09] "📁 보고서 폴더 열기"(구글드라이브 새 탭) 링크는 카드 제목 버튼(chDocsWriterOpenBtn,
       // 증빙확보 화면 안에서 이 폴더로 바로 이동)으로 흡수했으므로 여기선 뺀다 — 작성관리
       // (report-writer)도 work.netax.kr이 아니라 이 앱 안의 네이티브 화면(reportwriter.html)이라
-      // <a href> 대신 버튼 + goToReportWriter_ 호출을 쓴다. saveFolderId(이 폴더 ID)를 넘기면
-      // 작성관리가 처음 저장할 때 이 폴더 안에 파일을 새로 만들고, 그 다음부터는 덮어쓰기 저장한다.
+      // <a href> 대신 버튼 + goToReportWriter_ 호출을 쓴다. saveFolderId(내부보고서 폴더ID)를
+      // 넘기면 작성관리가 처음 저장할 때 이 폴더 안에 .md를 새로 만들고, publishFolderId(보고서
+      // 폴더ID)는 "고객에게 발행"을 눌렀을 때 완성본(.html)이 처음 만들어질 곳을 알려준다.
       var newDocLink = '<button type="button" id="chNewReportBtn" class="ghost-btn" style="font-size:12px; margin-bottom:8px;">✍ 새 문서 작성</button>';
-      if (!files.length){
-        box.innerHTML = newDocLink + '<div class="log-empty">아직 올린 보고서가 없습니다.</div>';
-      } else {
-        var htmlFiles = files.filter(function(f){ return /\.html?$/i.test(f.name); });
-        var otherFiles = files.filter(function(f){ return !/\.html?$/i.test(f.name); });
-        var rows = htmlFiles.map(function(f){
-          return '<div class="log-entry"><div class="log-date" style="color:var(--navy);">열람가능</div><div class="log-text">' + escapeHtml(f.name) +
-            ' <button type="button" class="chEditReportBtn ghost-btn" data-file-id="' + escapeHtml(f.id) + '" style="font-size:11px; padding:1px 7px; margin-left:6px;">✍ 편집</button>' +
-            '</div></div>';
-        }).join('');
-        box.innerHTML = newDocLink + rows +
-          (otherFiles.length ? '<div style="font-size:12px; color:var(--sub); margin-top:6px;">그 외 파일(.html 아님, 고객에게 안 보임) ' + otherFiles.length + '건: ' + escapeHtml(otherFiles.map(function(f){ return f.name; }).join(', ')) + '</div>' : '');
-      }
+      var mdBases = {};
+      var rows = internalFiles.filter(function(f){ return /\.md$/i.test(f.name); }).map(function(f){
+        var base = f.name.replace(/\.md$/i, '');
+        mdBases[base] = true;
+        var published = publishedByBase[base];
+        var status = published ? '📤 발행됨' : '✏️ 작성중(미발행)';
+        return '<div class="log-entry"><div class="log-date" style="color:var(--navy);">' + status + '</div><div class="log-text">' + escapeHtml(base) +
+          ' <button type="button" class="chEditReportBtn ghost-btn" data-file-id="' + escapeHtml(f.id) + '" style="font-size:11px; padding:1px 7px; margin-left:6px;">✍ 편집</button>' +
+          '</div></div>';
+      });
+      // 옛날 방식(.md 없이 .html 단일 파일만 있던 시절)에 만들어진 보고서는 그 .html을 그대로 편집하게 둔다.
+      var legacyRows = reportFiles.filter(function(f){
+        var m = f.name.match(/^(.*)\.html?$/i);
+        return m && !mdBases[m[1]];
+      }).map(function(f){
+        return '<div class="log-entry"><div class="log-date" style="color:var(--navy);">📤 발행됨(구버전)</div><div class="log-text">' + escapeHtml(f.name.replace(/\.html?$/i, '')) +
+          ' <button type="button" class="chEditReportBtn ghost-btn" data-file-id="' + escapeHtml(f.id) + '" style="font-size:11px; padding:1px 7px; margin-left:6px;">✍ 편집</button>' +
+          '</div></div>';
+      });
+      var allRows = rows.concat(legacyRows);
+      box.innerHTML = newDocLink + (allRows.length ? allRows.join('') : '<div class="log-empty">아직 작성한 보고서가 없습니다.</div>');
       var newBtn = document.getElementById('chNewReportBtn');
       if (newBtn){
         newBtn.addEventListener('click', function(){
-          if (typeof goToReportWriter_ === 'function') goToReportWriter_(c.id, { saveFolderId: res.folderId, saveFileName: folderName });
+          if (typeof goToReportWriter_ === 'function') {
+            goToReportWriter_(c.id, {
+              saveFolderId: internalRes.folderId,
+              publishFolderId: reportRes.folderId,
+              saveFileName: folderName
+            });
+          }
         });
       }
       box.querySelectorAll('.chEditReportBtn').forEach(function(btn){

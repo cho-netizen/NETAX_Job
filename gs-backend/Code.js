@@ -3120,7 +3120,7 @@ function dispatchClientAction_(body) {
   }
 
   // [2026.08] work 모듈 — 작업관리(사건별 세부업무 트리 + 법정기한 자동계산 + 캘린더 연동) 신규
-  const WORK_ACTIONS = ['work_get_cases', 'work_create_case', 'work_update_case', 'work_delete_case', 'work_add_subtask', 'work_update_subtask', 'work_delete_subtask', 'send_my_portal_sms'];
+  const WORK_ACTIONS = ['work_get_cases', 'work_create_case', 'work_update_case', 'work_delete_case', 'work_add_subtask', 'work_update_subtask', 'work_delete_subtask', 'send_my_portal_sms', 'get_case_subfolders'];
   if (WORK_ACTIONS.indexOf(body.action) !== -1) {
     return jsonResponse(work_doPost(body));
   }
@@ -3485,7 +3485,16 @@ function handleListFolder(body) {
   let folder;
   let pathArr;
 
-  if (body.path === undefined || body.path === null) {
+  // [2026.09] folderId(실제 Drive 폴더ID)가 오면 이름 기반 경로탐색 없이 그대로 연다 — 사건
+  // 폴더의 서브폴더처럼 이름이 나중에 바뀔 수 있는 곳을 안정적으로 찾을 때 쓴다(work_getCaseSubfolders 참고).
+  if (body.folderId) {
+    try {
+      folder = DriveApp.getFolderById(body.folderId);
+    } catch (err) {
+      return { error: '폴더를 찾을 수 없습니다: ' + err.message };
+    }
+    pathArr = getPathFromRoot(folder);
+  } else if (body.path === undefined || body.path === null) {
     folder = getDefaultFolder();
     pathArr = getPathFromRoot(folder);
   } else {
@@ -4058,7 +4067,33 @@ function handleReadFile(body) {
     }
 
     const content = file.getBlob().getDataAsString('UTF-8');
-    return { name: file.getName(), mimeType: mimeType, content: content, kind: 'text' };
+    const result = { name: file.getName(), mimeType: mimeType, content: content, kind: 'text' };
+    // [2026.09] 작성관리(report-writer)는 이제 "내부보고서" 폴더에 .md(편집용 원본)를 두고,
+    // 고객에게 발행하면 그 완성본(.html)을 같은 사건의 "보고서" 폴더(고객이 my.netax.kr에서
+    // 보는 곳)에 별도로 만든다 — 두 파일이 같은 폴더가 아니라 사건 폴더 밑 서로 다른
+    // 서브폴더에 있으므로, .md를 읽을 때 부모(내부보고서)의 부모(사건 폴더) 밑 "보고서"
+    // 폴더를 찾아가 이미 발행된 짝 .html이 있는지, 그 폴더ID가 뭔지 같이 알려준다.
+    if (/\.md$/i.test(lowerName)) {
+      try {
+        const baseName = file.getName().replace(/\.md$/i, '');
+        const parents = file.getParents();
+        if (parents.hasNext()) {
+          const internalFolder = parents.next();
+          result.internalFolderId = internalFolder.getId();
+          const caseParents = internalFolder.getParents();
+          if (caseParents.hasNext()) {
+            const reportFolders = caseParents.next().getFoldersByName(MY_SUBFOLDER_REPORT);
+            if (reportFolders.hasNext()) {
+              const reportFolder = reportFolders.next();
+              result.reportFolderId = reportFolder.getId();
+              const published = reportFolder.getFilesByName(baseName + '.html');
+              if (published.hasNext()) result.publishedHtmlFileId = published.next().getId();
+            }
+          }
+        }
+      } catch (err) { /* 짝 파일 조회 실패는 무시 — 원본 읽기 자체는 계속 진행 */ }
+    }
+    return result;
   } catch (err) {
     return { error: '파일 내용을 읽는 중 오류: ' + err.message };
   }
@@ -14375,7 +14410,7 @@ const MANAGE_APP_RPT_ADMIN_ACTIONS_ = ['admin_list', 'clear_password', 'delete_r
 // [2026.09] my 모듈(my.netax.kr)의 관리자 전용 액션들 — report 모듈과 완전히 다른 스크립트
 // 속성(ADMIN_CODE, RPT_ADMIN_CODE와는 다른 값)을 쓴다. admin_list는 report/my 두 모듈이
 // action 이름을 공유하는 특이 케이스라(body.module로 구분) 아래서 따로 처리한다.
-const MANAGE_APP_MY_ADMIN_ACTIONS_ = ['admin_create_case', 'admin_add_checklist_item', 'admin_get_case'];
+const MANAGE_APP_MY_ADMIN_ACTIONS_ = ['admin_create_case', 'admin_add_checklist_item', 'admin_get_case', 'admin_set_checklist_status'];
 
 // [2026.09] manage 앱의 모든 화면이 fetch 대신 google.script.run으로 호출하는 단일 진입점.
 // doPost의 action-dispatch 로직(dispatchClientAction_)을 그대로 재사용 — 이 경로는 이미
@@ -15545,6 +15580,11 @@ function my_handleUploadFile(params, ctx) {
     logSheet.appendRow([params.report_id, fileName, checklistItem || '(기타제출)', new Date()]);
 
     return { success: true, submission_status: status };
+  } catch (err) {
+    // [2026.09 버그수정] 사건 폴더가 드라이브에서 지워지는 등 예상 못한 오류가 나면 예전엔
+    // 영어 기술 메시지가 그대로 고객 화면에 노출됐다 — 고객에게는 친절한 안내만 보여준다.
+    console.log('my_handleUploadFile 오류: ' + err.message);
+    return { success: false, message: '자료를 업로드하지 못했습니다. 잠시 후 다시 시도하시거나 담당 세무사에게 문의해주세요.' };
   } finally {
     lock.releaseLock();
   }
@@ -15554,20 +15594,27 @@ function my_handleGetReportList(params, ctx) {
   const folderId = ctx.row[ctx.col.폴더ID];
   if (!folderId) return { success: true, reports: [] };
 
-  const caseFolder = DriveApp.getFolderById(folderId);
-  const reportFolder = my_getOrCreateSubfolder_(caseFolder, MY_SUBFOLDER_REPORT);
+  // [2026.09 버그수정] 폴더가 드라이브에서 지워지는 등 예상 못한 오류가 나면 예전엔 영어
+  // 기술 메시지가 그대로 고객 화면에 노출됐다 — 고객에게는 친절한 안내만 보여준다.
+  try {
+    const caseFolder = DriveApp.getFolderById(folderId);
+    const reportFolder = my_getOrCreateSubfolder_(caseFolder, MY_SUBFOLDER_REPORT);
 
-  const reports = [];
-  const files = reportFolder.getFiles();
-  while (files.hasNext()) {
-    const f = files.next();
-    const name = f.getName().toLowerCase();
-    if (name.endsWith('.html') || name.endsWith('.htm')) {
-      reports.push({ id: f.getId(), name: f.getName(), updated: f.getLastUpdated().toISOString() });
+    const reports = [];
+    const files = reportFolder.getFiles();
+    while (files.hasNext()) {
+      const f = files.next();
+      const name = f.getName().toLowerCase();
+      if (name.endsWith('.html') || name.endsWith('.htm')) {
+        reports.push({ id: f.getId(), name: f.getName(), updated: f.getLastUpdated().toISOString() });
+      }
     }
+    reports.sort(function (a, b) { return new Date(b.updated) - new Date(a.updated); });
+    return { success: true, reports: reports };
+  } catch (err) {
+    console.log('my_handleGetReportList 오류: ' + err.message);
+    return { success: false, message: '보고서 목록을 불러오지 못했습니다. 담당 세무사에게 문의해주세요.' };
   }
-  reports.sort(function (a, b) { return new Date(b.updated) - new Date(a.updated); });
-  return { success: true, reports: reports };
 }
 
 function my_handleGetReportFile(params, ctx) {
@@ -15575,19 +15622,24 @@ function my_handleGetReportFile(params, ctx) {
   const fileId = String(params.file_id || '').trim();
   if (!folderId || !fileId) return { success: false, message: '파일 정보가 부족합니다.' };
 
-  const caseFolder = DriveApp.getFolderById(folderId);
-  const reportFolder = my_getOrCreateSubfolder_(caseFolder, MY_SUBFOLDER_REPORT);
+  try {
+    const caseFolder = DriveApp.getFolderById(folderId);
+    const reportFolder = my_getOrCreateSubfolder_(caseFolder, MY_SUBFOLDER_REPORT);
 
-  let belongs = false;
-  const files = reportFolder.getFiles();
-  while (files.hasNext()) {
-    if (files.next().getId() === fileId) { belongs = true; break; }
+    let belongs = false;
+    const files = reportFolder.getFiles();
+    while (files.hasNext()) {
+      if (files.next().getId() === fileId) { belongs = true; break; }
+    }
+    if (!belongs) return { success: false, message: '이 케이스에 속한 보고서가 아닙니다.' };
+
+    const file = DriveApp.getFileById(fileId);
+    const content = file.getBlob().getDataAsString('UTF-8');
+    return { success: true, html: content, name: file.getName() };
+  } catch (err) {
+    console.log('my_handleGetReportFile 오류: ' + err.message);
+    return { success: false, message: '보고서를 불러오지 못했습니다. 담당 세무사에게 문의해주세요.' };
   }
-  if (!belongs) return { success: false, message: '이 케이스에 속한 보고서가 아닙니다.' };
-
-  const file = DriveApp.getFileById(fileId);
-  const content = file.getBlob().getDataAsString('UTF-8');
-  return { success: true, html: content, name: file.getName() };
 }
 
 function my_handleAdminCreateCase(params) {
@@ -15648,13 +15700,35 @@ function my_handleAdminCreateCase(params) {
     const newRow = sheet.getLastRow() + 1;
     sheet.getRange(newRow, 1, 1, headers.length).setValues([rowValues]);
 
-    const issuedCellA1 = sheet.getRange(newRow, col.발급일 + 1).getA1Notation();
-    sheet.getRange(newRow, col.만료일 + 1).setFormula('=' + issuedCellA1 + '+30');
-
+    // [2026.09] 예전엔 "완성된 보고서 하나 열람"이 전부라 발급일+30일 고정이면 충분했지만,
+    // 이제는 사건이 시작되자마자(자문용역이 진행 중일 때부터) 연결되므로, 진행 중에는
+    // 만료를 두지 않는다(빈 값 — my_withAuth_/my_handleLogin은 만료일이 비어있으면
+    // Invalid Date로 비교돼 항상 "만료 안 됨"으로 취급함). 실제 만료일은 work_updateCase가
+    // 사건을 "완료" 처리하는 순간 완료일+30일로 확정한다(my_setExpiryByReportId_).
     SpreadsheetApp.flush();
     return { success: true, report_id: reportId, folder_url: caseFolder.getUrl() };
   } finally {
     lock.releaseLock();
+  }
+}
+
+// [2026.09] 사건이 "완료" 처리될 때(work_updateCase) my.netax.kr 이용기간을 확정한다 —
+// 완료일+30일로 설정하고, 완료가 취소되면(다시 진행/보류로) 만료를 없애 계속 쓸 수 있게
+// 되돌린다(expiryDate가 null이면 만료일 칸을 비운다). reportId에 해당하는 행이 없으면
+// (my.netax.kr에 연결 안 된 사건 등) 조용히 아무 것도 하지 않는다 — 실패해도 work_ 사건
+// 완료 처리 자체를 막아서는 안 되므로 호출부에서 try/catch로 감싼다.
+function my_setExpiryByReportId_(reportId, expiryDate) {
+  if (!reportId) return;
+  const ss = SpreadsheetApp.openById(MY_SHEET_ID);
+  const sheet = ss.getSheetByName(MY_SHEET_CASES);
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const col = my_colMap_(headers);
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][col.report_id]).trim() === String(reportId).trim()) {
+      sheet.getRange(i + 1, col.만료일 + 1).setValue(expiryDate || '');
+      return;
+    }
   }
 }
 
@@ -15771,6 +15845,50 @@ function my_handleAdminAddChecklistItem(params) {
   }
 }
 
+// [2026.09] 증빙확보(docs.html)에서 회계사가 요청자료를 "확보완료"로 표시하면 — 고객이
+// my.netax.kr로 올린 게 아니라 회계사가 직접 구했더라도(등기부등본 발급 등) — 고객이
+// 보는 체크리스트에도 완료로 반영해서, 이미 처리된 항목을 고객이 다시 챙겨 올리지 않게
+// 한다. 반대로 "미확보로" 되돌리면 여기서도 되돌린다. 파일은 실제로 없으므로(회계사가
+// 직접 구한 경우) fileName을 "(세무사 확인)"으로 표시해 고객 업로드와 구분한다.
+function my_handleAdminSetChecklistStatus(params) {
+  if (!my_isValidAdminCode(params.admin_code || '')) {
+    return { success: false, message: '관리자 코드가 올바르지 않습니다.' };
+  }
+  const reportId = String(params.report_id || '').trim();
+  const item = String(params.item || '').trim();
+  if (!reportId || !item) return { success: false, message: 'report_id와 item이 필요합니다.' };
+
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch (err) {
+    return { success: false, message: '처리가 지연되고 있습니다. 잠시 후 다시 시도해주세요.' };
+  }
+  try {
+    const ss = SpreadsheetApp.openById(MY_SHEET_ID);
+    const sheet = ss.getSheetByName(MY_SHEET_CASES);
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const col = my_colMap_(headers);
+    let rowIndex = -1, row = null;
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][col.report_id]).trim() === reportId) { row = data[i]; rowIndex = i + 1; break; }
+    }
+    if (!row) return { success: false, message: '존재하지 않는 report_id입니다.' };
+
+    let status = {};
+    try { status = JSON.parse(row[col.제출상태] || '{}'); } catch (e) { status = {}; }
+    if (params.submitted) {
+      status[item] = { submitted: true, fileName: '(세무사 확인)', uploadedAt: new Date().toISOString() };
+    } else {
+      delete status[item];
+    }
+    sheet.getRange(rowIndex, col.제출상태 + 1).setValue(JSON.stringify(status));
+    SpreadsheetApp.flush();
+    return { success: true, submission_status: status };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function my_getOrCreateSubfolder_(parentFolder, name) {
   const found = parentFolder.getFoldersByName(name);
   if (found.hasNext()) return found.next();
@@ -15803,6 +15921,7 @@ function my_doPost(body) {
     case 'get_report_file': return my_withAuth_(body, my_handleGetReportFile);
     case 'admin_add_checklist_item': return my_handleAdminAddChecklistItem(body);
     case 'admin_get_case': return my_handleAdminGetCase(body);
+    case 'admin_set_checklist_status': return my_handleAdminSetChecklistStatus(body);
     default: return { success: false, message: '알 수 없는 action: ' + body.action };
   }
 }
@@ -16337,24 +16456,37 @@ function work_addMonthsClamped_(date, months) {
 }
 
 function work_calcDeadline_(seMok, upType, baseDateStr) {
-  if (!baseDateStr) return '';
+  const hasDaysRule = WORK_DEADLINE_DAYS_[upType] !== undefined;
+  const hasYearsRule = WORK_DEADLINE_YEARS_[upType] !== undefined;
+  const hasMonthsRule = WORK_DEADLINE_MONTHS_[seMok] !== undefined;
+  if (!hasDaysRule && !hasYearsRule && !hasMonthsRule) return '';
+
+  // [2026.09] 기준일(양도일·증여일·사망일 등)을 아직 안 입력한 상태 — 계산할 원시데이터가
+  // 없을 뿐, 이 세목/업무유형엔 분명히 기한 규칙이 있으므로 빈 값으로 두지 않는다. 상담처럼
+  // "우선 오늘부터 1주일"을 임시 기본값으로 잡아, 사건이 목록·대시보드 마감임박 집계에서
+  // 조용히 누락되지 않게 한다. 기준일을 입력하면(사건개요서 저장 시 recalc) 그 즉시 이
+  // 임시값이 진짜 기한으로 다시 계산된다.
+  if (!baseDateStr) {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
   const base = new Date(baseDateStr + 'T00:00:00');
   if (isNaN(base.getTime())) return '';
 
   // 불복 세부유형(이의신청/심사청구/심판청구/행정소송/과세적부) — 기준일(기산일)로부터 며칠
   // 이내인지가 정해져 있으므로, 말일 정렬 없이 그 일수만큼 그대로 더한다.
-  if (WORK_DEADLINE_DAYS_[upType] !== undefined) {
+  if (hasDaysRule) {
     const d = new Date(base);
     d.setDate(d.getDate() + WORK_DEADLINE_DAYS_[upType]);
     return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   }
   // 경정청구 — 법정신고기한(기준일)으로부터 N년이 되는 날(같은 월/일).
-  if (WORK_DEADLINE_YEARS_[upType] !== undefined) {
+  if (hasYearsRule) {
     const d = new Date(base.getFullYear() + WORK_DEADLINE_YEARS_[upType], base.getMonth(), base.getDate());
     return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   }
   const months = WORK_DEADLINE_MONTHS_[seMok];
-  if (months === undefined) return '';
   const monthEnd = new Date(base.getFullYear(), base.getMonth() + 1, 0); // 기준일이 속한 달의 말일
   const rough = work_addMonthsClamped_(monthEnd, months);
   // [2026.08 버그수정] work_addMonthsClamped_는 day-of-month를 그대로 유지하며 개월수만 더하는
@@ -16447,15 +16579,24 @@ function work_getCases(params) {
 // (my_getOrCreateSubfolder_·MY_SUBFOLDER_UPLOAD/REPORT는 my_ 모듈이 이미 쓰던 것 그대로 재사용 —
 // 나중에 my.netax.kr에 연결해도 같은 이름이라 새로 안 만들고 이 폴더를 그대로 쓰게 된다).
 // 실패해도(Drive 권한 등) 사건 생성 자체는 막지 않는다 — 폴더ID가 빈 채로 저장될 뿐이다.
-function work_getOrCreateCaseFolder_(고객명, 사건명) {
+// [2026.09] 폴더명은 이제 사건명(work_generateUniqueCaseName_이 이미 "홍길동_양도_신고"처럼
+// 고객명까지 포함해 만들어준 값)을 그대로 쓴다 — 예전처럼 "고객명 + 사건명"을 다시 이어붙이면
+// 고객명이 두 번 들어가는(예: "홍길동 홍길동 상속 신고") 문제가 있었다.
+// [2026.09] "내부보고서" — 검토서(내부문서)와, 아직 고객에게 발행 안 한 외부보고서 초안(.md)을
+// 담는 폴더. "제출자료"/"보고서"와 같은 급으로 사건 폴더 안에 두되, my.netax.kr(my_ 모듈)은
+// 이 폴더의 존재 자체를 모른다 — 고객이 볼 수 있는 통로가 "보고서" 폴더 하나뿐이어야 하므로.
+const WORK_SUBFOLDER_INTERNAL_REPORT = '내부보고서';
+
+function work_getOrCreateCaseFolder_(사건명) {
   try {
-    const folderName = (고객명 + ' ' + 사건명).trim();
+    const folderName = String(사건명 || '').trim();
     if (!folderName) return '';
     const root = getDefaultFolder();
     const existing = root.getFoldersByName(folderName);
     const caseFolder = existing.hasNext() ? existing.next() : root.createFolder(folderName);
     my_getOrCreateSubfolder_(caseFolder, MY_SUBFOLDER_UPLOAD);
     my_getOrCreateSubfolder_(caseFolder, MY_SUBFOLDER_REPORT);
+    my_getOrCreateSubfolder_(caseFolder, WORK_SUBFOLDER_INTERNAL_REPORT);
     return caseFolder.getId();
   } catch (err) {
     return '';
@@ -16476,19 +16617,52 @@ function work_prependBookingInfo_(params) {
   return 개요 ? (infoBlock + '\n\n[상담 내용]\n' + 개요) : infoBlock;
 }
 
-// "고객명 세목 업무유형" 기본형에서, 같은 고객ID로 이미 같은 이름의 사건이 있으면 " 2", " 3"…
-// 을 붙여 유일하게 만든다(Drive 폴더 이름 충돌 방지 — work_getOrCreateCaseFolder_는 이름으로
-// find-or-create하므로, 이름이 겹치면 서로 다른 사건이 같은 폴더를 나눠 쓰게 된다).
-function work_generateUniqueCaseName_(sheet, col, 고객ID, nameBase) {
+// [2026.09] 사건명(= Drive 폴더명, work_getOrCreateCaseFolder_가 더 이상 "고객명 + 사건명"으로
+// 중복해서 붙이지 않고 이 값을 그대로 폴더명으로 쓴다) 생성 규칙 — "홍길동_양도_신고" 형식.
+// - 동명이인(다른 고객ID)이 이미 같은 이름을 쓰고 있으면 고객명 뒤에 번호(홍길동2)를 붙인다.
+//   이 번호는 그 고객ID의 기존 사건에서 이미 쓰인 적이 있으면 그대로 재사용한다(한 사람은
+//   항상 같은 번호로 불려야 헷갈리지 않으므로) — 그래야 동명이인끼리 폴더가 섞이지 않는다.
+// - 같은 고객이 정말 똑같은 조합(세목+업무유형, 동명이인 번호까지 같음)으로 사건을 또 만들면
+//   맨 뒤에 번호를 붙인다(홍길동_양도_신고2).
+function work_generateUniqueCaseName_(sheet, col, 고객ID, 고객명, seMok, upType, 납세자) {
   const data = sheet.getDataRange().getValues();
+  const semokLabel = WORK_SEMOK_LABELS_[seMok] || seMok;
+
+  const escaped = 고객명.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const prefixRe = new RegExp('^' + escaped + '(\\d*)_');
+  const custIdToNum = {};
+  const numsInUse = {};
+  for (let i = 1; i < data.length; i++) {
+    const m = String(data[i][col.사건명] || '').match(prefixRe);
+    if (!m) continue;
+    const num = m[1] || '';
+    const rid = data[i][col.고객ID];
+    numsInUse[num] = true;
+    if (rid && !Object.prototype.hasOwnProperty.call(custIdToNum, rid)) custIdToNum[rid] = num;
+  }
+
+  let nameNum;
+  if (고객ID && Object.prototype.hasOwnProperty.call(custIdToNum, 고객ID)) {
+    nameNum = custIdToNum[고객ID];
+  } else if (!numsInUse['']) {
+    nameNum = '';
+  } else {
+    let n = 2;
+    while (numsInUse[String(n)]) n++;
+    nameNum = String(n);
+  }
+
+  const taxpayerSuffix = (납세자 && 납세자 !== 고객명) ? '(' + 납세자 + ')' : '';
+  const base = 고객명 + nameNum + '_' + semokLabel + (upType ? '_' + upType : '') + taxpayerSuffix;
+
   const taken = {};
   for (let i = 1; i < data.length; i++) {
-    if (data[i][col.고객ID] === 고객ID) taken[String(data[i][col.사건명] || '').trim()] = true;
+    taken[String(data[i][col.사건명] || '').trim()] = true;
   }
-  if (!taken[nameBase]) return nameBase;
-  let n = 2;
-  while (taken[nameBase + ' ' + n]) n++;
-  return nameBase + ' ' + n;
+  if (!taken[base]) return base;
+  let n2 = 2;
+  while (taken[base + n2]) n2++;
+  return base + n2;
 }
 
 function work_createCase(params) {
@@ -16510,9 +16684,7 @@ function work_createCase(params) {
     const 고객ID = String(params.고객ID || '').trim() || (고객명 ? client_findOrCreateByName_(고객명, 전화).id : '');
     // [2026.09] "사건명이 애매하다"는 지적에 따라 사람이 직접 입력하지 않고 자동으로 만든다 —
     // "고객명(납세자) 세목 업무유형" (납세자가 고객명과 다를 때만 괄호 표시), 예: "홍길동(이순신) 상속 신고".
-    const semokLabel = WORK_SEMOK_LABELS_[seMok] || seMok;
-    const nameBase = (고객명 + (납세자 && 납세자 !== 고객명 ? '(' + 납세자 + ')' : '') + ' ' + semokLabel + (upType ? ' ' + upType : '')).trim();
-    const 사건명 = work_generateUniqueCaseName_(sheet, col, 고객ID, nameBase);
+    const 사건명 = work_generateUniqueCaseName_(sheet, col, 고객ID, 고객명, seMok, upType, 납세자);
 
     const newRow = [];
     newRow[col.id] = id;
@@ -16545,7 +16717,7 @@ function work_createCase(params) {
     newRow[col.증빙목록] = '[]';
     newRow[col.세액계산결과] = '[]';
     newRow[col.사건개요] = '{}';
-    newRow[col.폴더ID] = work_getOrCreateCaseFolder_(고객명, 사건명);
+    newRow[col.폴더ID] = work_getOrCreateCaseFolder_(사건명);
     newRow[col.생성일] = now;
     newRow[col.수정일] = now;
 
@@ -16615,9 +16787,21 @@ function work_updateCase(params) {
       if (typeof taxCalcResults === 'string') { try { taxCalcResults = JSON.parse(taxCalcResults); } catch (e) { taxCalcResults = null; } }
       if (Array.isArray(taxCalcResults)) row[col.세액계산결과] = JSON.stringify(taxCalcResults);
     }
-    if (params.사건개요 !== undefined) {
-      let overview = params.사건개요;
-      if (typeof overview === 'string') { try { overview = JSON.parse(overview); } catch (e) { overview = null; } }
+    // [2026.09 버그수정] 예전엔 params.사건개요가 이번 호출에 실제로 실려왔을 때만 필요증빙
+    // 템플릿을 재계산했다 — 그래서 작업관리에서 세목/업무유형만 바꾸고(예: "상담"→"신고")
+    // 사건개요서는 다시 저장 안 하면(흔한 흐름: 수임 확정되면 업무유형만 바꿈), 새 업무유형에
+    // 맞는 필요증빙이 하나도 안 채워졌다. 세목/업무유형이 바뀌는 모든 저장에서도 같이
+    // 재계산하도록 조건을 넓히고, 사건개요 자체가 이번에 안 왔으면 기존 저장값을 그대로
+    // 참고만 한다(overview를 새로 쓰지는 않음 — 사건개요 저장은 여전히 그 화면에서만).
+    if (params.사건개요 !== undefined || params.세목 !== undefined || params.업무유형 !== undefined) {
+      const overviewProvided = params.사건개요 !== undefined;
+      let overview;
+      if (overviewProvided) {
+        overview = params.사건개요;
+        if (typeof overview === 'string') { try { overview = JSON.parse(overview); } catch (e) { overview = null; } }
+      } else {
+        try { overview = JSON.parse(row[col.사건개요] || '{}'); } catch (e) { overview = {}; }
+      }
       if (overview && typeof overview === 'object' && !Array.isArray(overview)) {
         // [2026.09] "사건개요(사실관계)가 먼저 정리돼야 필요증빙도 제대로 나온다"는 지적에
         // 따라, 필요증빙 템플릿은 사건 생성 시점이 아니라 사건개요를 저장하는 이 순간에
@@ -16635,7 +16819,7 @@ function work_updateCase(params) {
         const existingLabels = currentEvidence.map(function (e) { return e.label; });
         const newItems = templateItems.filter(function (item) { return existingLabels.indexOf(item.label) === -1; });
         if (newItems.length) row[col.증빙목록] = JSON.stringify(currentEvidence.concat(newItems));
-        row[col.사건개요] = JSON.stringify(overview);
+        if (overviewProvided) row[col.사건개요] = JSON.stringify(overview);
       }
     }
     if (params.고객명 !== undefined) {
@@ -16662,9 +16846,25 @@ function work_updateCase(params) {
     if (params.상태 === '완료' && !wasCompleted) {
       row[col.완료전법정일] = row[col.법정일];
       row[col.법정일] = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      // [2026.09] my.netax.kr 이용기간도 이 시점(자문용역 종료일)+30일로 확정한다 — 예전엔
+      // 완성된 보고서 하나 열람이 전부라 발급일+30일 고정이었지만, 이제는 사건 시작부터
+      // 연결되므로 "진행 중엔 무제한, 종료되면 그 시점부터 30일"이 되어야 한다.
+      try {
+        const expiryDate = new Date();
+        expiryDate.setDate(expiryDate.getDate() + 30);
+        my_setExpiryByReportId_(row[col.my_report_id], expiryDate);
+      } catch (err) {
+        console.log('my.netax.kr 만료일 갱신 실패: ' + err.message);
+      }
     } else if (wasCompleted && params.상태 !== undefined && params.상태 !== '완료') {
       if (!recalc && row[col.완료전법정일]) row[col.법정일] = row[col.완료전법정일];
       row[col.완료전법정일] = '';
+      // [2026.09] 완료 취소 시 my.netax.kr 이용기간도 되돌린다 — 다시 진행 중이 되었으니 만료 없음.
+      try {
+        my_setExpiryByReportId_(row[col.my_report_id], null);
+      } catch (err) {
+        console.log('my.netax.kr 만료일 되돌리기 실패: ' + err.message);
+      }
     }
     row[col.수정일] = new Date();
 
@@ -16683,8 +16883,21 @@ function work_deleteCase(params) {
     const col = work_colMap_(sheet.getDataRange().getValues()[0]);
     const found = work_findCaseRow_(sheet, col, params.id);
     if (!found) return { success: false, message: '존재하지 않는 사건입니다.' };
+    // [2026.09] 사건을 지워도 my.netax.kr 쪽은 완전히 별개 시트라 그대로 살아있어서, 고객이
+    // 삭제된 줄 모르고 계속 로그인·자료 업로드를 할 수 있었다 — 사건 삭제 = 그 접속도 끝나야
+    // 하므로, 여기서도 만료일을 어제 날짜로 확정해 즉시 막는다(my_setExpiryByReportId_).
+    const myReportId = found.row[col.my_report_id];
     sheet.deleteRow(found.rowIndex);
     work_deleteCaseCalendarEvents_(params.id);
+    if (myReportId) {
+      try {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        my_setExpiryByReportId_(myReportId, yesterday);
+      } catch (err) {
+        console.log('사건 삭제 시 my.netax.kr 접속 차단 실패: ' + err.message);
+      }
+    }
     return { success: true };
   });
 }
@@ -16810,7 +17023,8 @@ function work_syncCaseCalendar_(caseObj) {
     const tag = '[NX:work:' + caseObj.id + ']';
     work_deleteEventsByTag_(cal, tag);
 
-    const label = (caseObj.고객명 || '') + ' ' + (caseObj.사건명 || '');
+    // [2026.09] 사건명 자체가 이미 고객명을 포함하므로("홍길동_양도_신고") 따로 붙이지 않는다.
+    const label = caseObj.사건명 || caseObj.고객명 || '';
     if (caseObj.법정일) {
       work_createAllDayEvent_(cal, '[NX] ' + label + ' — 법정기한', caseObj.법정일, tag);
     }
@@ -16863,7 +17077,33 @@ function work_doPost(body) {
     case 'work_update_subtask': return work_updateSubtask(body);
     case 'work_delete_subtask': return work_deleteSubtask(body);
     case 'send_my_portal_sms': return work_sendMyPortalSms(body);
+    case 'get_case_subfolders': return work_getCaseSubfolders(body);
     default: return { success: false, message: '알 수 없는 action: ' + body.action };
+  }
+}
+
+// [2026.09] "내부보고서"/"보고서" 폴더 ID를 이름 기반 경로탐색(listFolder) 없이 사건ID로
+// 직접·안전하게 얻는다 — 이 두 서브폴더는 find-or-create이므로, 이 세션 이전에 만들어진
+// 옛날 사건(아직 "내부보고서" 폴더가 없음)이어도 이 호출 한 번으로 자동으로 만들어지고,
+// 이름이 바뀌었거나 하는 것과 무관하게 항상 정확한 폴더를 가리킨다.
+function work_getCaseSubfolders(params) {
+  const caseId = String(params.caseId || '').trim();
+  if (!caseId) return { error: 'caseId가 없습니다.' };
+  const sheet = work_getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const col = work_colMap_(data[0]);
+  let folderId = '';
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][col.id] === caseId) { folderId = data[i][col.폴더ID]; break; }
+  }
+  if (!folderId) return { error: '이 사건의 드라이브 폴더를 찾을 수 없습니다.' };
+  try {
+    const caseFolder = DriveApp.getFolderById(folderId);
+    const internalFolder = my_getOrCreateSubfolder_(caseFolder, WORK_SUBFOLDER_INTERNAL_REPORT);
+    const reportFolder = my_getOrCreateSubfolder_(caseFolder, MY_SUBFOLDER_REPORT);
+    return { success: true, internalFolderId: internalFolder.getId(), reportFolderId: reportFolder.getId() };
+  } catch (err) {
+    return { error: '폴더 조회 중 오류: ' + err.message };
   }
 }
 
