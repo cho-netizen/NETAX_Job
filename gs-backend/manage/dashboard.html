@@ -42,11 +42,16 @@
       cases.sort(function(a,b){ return String(a.법정일).localeCompare(String(b.법정일)); });
       var box = document.getElementById('dashDeadlines');
       if (!cases.length){ box.innerHTML = '<div class="empty-row">' + DASH_DEADLINE_HORIZON_DAYS_ + '일 이내 마감이 임박한 작업이 없습니다.</div>'; return; }
+      // [2026.09 버그수정] "보류" 사건도 법정일이 임박하면 "진행" 사건과 똑같이 강조되어
+      // 섞여 있었다 — 마감 자체를 놓치면 안 되니 목록에서 빼지는 않되(보류라고 미뤄둔 사이
+      // 진짜 기한을 넘길 수 있으므로), 한눈에 "지금 당장 볼 건 아니다"를 알 수 있게 흐리게
+      // 표시하고 지각(overdue) 강조에서는 제외한다.
       var html = '<table class="list-table"><tr><th>법정일</th><th>고객명</th><th>사건명</th><th>업무유형</th><th>상태</th></tr>';
       cases.forEach(function(c){
-        var overdue = c.법정일 < todayStr;
-        html += '<tr data-case-id="' + esc(c.id) + '" style="cursor:pointer;" title="눌러서 처리개요로 이동"><td' + (overdue ? ' style="color:#a83232; font-weight:700;"' : '') + '>' + (overdue ? '⏰ ' : '') + esc(c.법정일) + '</td><td>' + esc(c.고객명) + '</td><td>' + esc(c.사건명) +
-          '</td><td>' + esc(c.업무유형||c.세목||'') + '</td><td>' + esc(c.상태) + '</td></tr>';
+        var isHold = c.상태 === '보류';
+        var overdue = !isHold && c.법정일 < todayStr;
+        html += '<tr data-case-id="' + esc(c.id) + '" style="cursor:pointer;' + (isHold ? ' opacity:0.55;' : '') + '" title="눌러서 처리개요로 이동"><td' + (overdue ? ' style="color:#a83232; font-weight:700;"' : '') + '>' + (overdue ? '⏰ ' : '') + esc(c.법정일) + '</td><td>' + esc(c.고객명) + '</td><td>' + esc(c.사건명) +
+          '</td><td>' + esc(c.업무유형||c.세목||'') + '</td><td>' + (isHold ? '⏸ ' : '') + esc(c.상태) + '</td></tr>';
       });
       html += '</table>';
       box.innerHTML = html;

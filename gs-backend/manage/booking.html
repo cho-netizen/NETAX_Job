@@ -7,6 +7,7 @@
         <label style="font-size:12px; color:var(--sub);">이름 *<br><input type="text" id="bkNewName" style="width:100%;" placeholder="예: 홍길동"></label>
         <label style="font-size:12px; color:var(--sub);">연락처<br><input type="text" id="bkNewPhone" style="width:100%;" placeholder="010-1234-5678"></label>
         <label style="font-size:12px; color:var(--sub);">유형<br><input type="text" id="bkNewType" style="width:100%;" placeholder="예: 양도소득세 상담"></label>
+        <label style="font-size:12px; color:var(--sub);">관련분야(선택)<br><input type="text" id="bkNewField" style="width:100%;" placeholder="예: 부동산"></label>
         <div style="display:flex; gap:8px;">
           <label style="font-size:12px; color:var(--sub); flex:1;">날짜<br><input type="date" id="bkNewDate" style="width:100%;"></label>
           <label style="font-size:12px; color:var(--sub); flex:1;">시간<br><input type="time" id="bkNewTime" style="width:100%;"></label>
@@ -29,7 +30,10 @@
     loadBookingList();
   }
 
-  var BOOKING_STATUS_ORDER = { '신청':0, '승인':1, '거절':2 };
+  // [2026.09 버그수정] 실제 확정 상태값은 '승인'이 아니라 '확정'이다(예전에 이름이 바뀌면서
+  // 이 정렬 기준만 안 맞춰져 있었음) — '확정'이 '거절'보다 아래로 밀려 죽은 신청(거절)이
+  // 살아있는 확정 예약보다 위에 뜨는 문제가 있었다.
+  var BOOKING_STATUS_ORDER = { '신청':0, '확정':1, '거절':2, '취소':3 };
 
   function loadBookingList(){
     var box = document.getElementById('bookingList');
@@ -49,11 +53,15 @@
       var html = '<table class="list-table"><tr><th>희망일시</th><th>이름</th><th>연락처</th><th>유형</th><th>관련분야</th>' +
         '<th>상황</th><th>상태</th><th>처리</th><th>사건</th></tr>';
       list.forEach(function(b){
-        var badge = b.status === '신청' ? '🔴 신청' : (b.status === '확정' ? '🟢 확정' : (b.status === '거절' ? '⚪ 거절' : esc(b.status)));
+        var badge = b.status === '신청' ? '🔴 신청' : (b.status === '확정' ? '🟢 확정' : (b.status === '거절' ? '⚪ 거절' : (b.status === '취소' ? '⚪ 취소' : esc(b.status))));
         var actions = '-';
         if (b.status === '신청'){
           actions = '<button type="button" class="btn success" onclick="bookingApprove(' + b._rowIndex + ')">승인</button> ' +
             '<button type="button" class="btn danger" onclick="bookingReject(' + b._rowIndex + ')">거절</button>';
+        } else if (b.status === '확정' && !b.caseId){
+          // [2026.09] 확정된 예약을 사건 시작 전에 취소할 방법이 아예 없었다 — 캘린더에서
+          // 수동으로 지우는 것 말고는 처리 수단이 없었던 것을 버튼으로 보완.
+          actions = '<button type="button" class="btn danger" onclick="bookingCancelConfirmed(' + b._rowIndex + ')">예약 취소</button>';
         }
         var caseCell = '-';
         if (b.caseId){
@@ -76,7 +84,10 @@
     if (!b) return;
     if (!confirm(b.name + '님의 신청을 승인할까요?')) return;
     callGas('approve', { rowIndex: rowIndex, eventId: b.eventId, phone: b.phone, reservedDate: b.reservedDate, reservedTime: b.reservedTime })
-      .then(function(){ toast('승인되었습니다.'); initBooking(true); if (typeof dashboardLoaded !== 'undefined') { dashboardLoaded = false; } })
+      .then(function(res){
+        if (res && res.success === false){ toast(res.message || '승인 실패'); return; }
+        toast('승인되었습니다.'); initBooking(true); if (typeof dashboardLoaded !== 'undefined') { dashboardLoaded = false; }
+      })
       .catch(function(e){ toast('오류: ' + e.message); });
   }
 
@@ -85,7 +96,24 @@
     if (!b) return;
     if (!confirm(b.name + '님의 신청을 거절할까요?')) return;
     callGas('reject', { rowIndex: rowIndex, phone: b.phone })
-      .then(function(){ toast('거절되었습니다.'); initBooking(true); })
+      .then(function(res){
+        if (res && res.success === false){ toast(res.message || '거절 실패'); return; }
+        toast('거절되었습니다.'); initBooking(true);
+      })
+      .catch(function(e){ toast('오류: ' + e.message); });
+  }
+
+  // [2026.09] 확정된 예약을 취소한다(사건으로 아직 안 연결된 경우만 — 연결된 예약은
+  // 서버가 막고 안내 메시지를 돌려준다).
+  function bookingCancelConfirmed(rowIndex){
+    var b = (window._bookingCache||[]).filter(function(x){ return x._rowIndex === rowIndex; })[0];
+    if (!b) return;
+    if (!confirm(b.name + '님의 확정된 예약을 취소할까요? 캘린더 일정도 같이 지워집니다.')) return;
+    callGas('cancel_confirmed_booking', { rowIndex: rowIndex })
+      .then(function(res){
+        if (res.success === false){ toast(res.message || '취소 실패'); return; }
+        toast('취소되었습니다.'); initBooking(true);
+      })
       .catch(function(e){ toast('오류: ' + e.message); });
   }
 
@@ -106,6 +134,7 @@
       name: name,
       phone: document.getElementById('bkNewPhone').value.trim(),
       type: document.getElementById('bkNewType').value.trim(),
+      field: document.getElementById('bkNewField').value.trim(),
       date: date, time: time,
       situation: document.getElementById('bkNewSituation').value.trim()
     };
@@ -118,6 +147,7 @@
       document.getElementById('bkNewName').value = '';
       document.getElementById('bkNewPhone').value = '';
       document.getElementById('bkNewType').value = '';
+      document.getElementById('bkNewField').value = '';
       document.getElementById('bkNewSituation').value = '';
       document.getElementById('bkAdminForm').style.display = 'none';
       initBooking(true);

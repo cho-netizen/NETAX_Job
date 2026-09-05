@@ -1560,10 +1560,26 @@ const RW_DOC_TYPE_THEME_ = {
 };
 
 // kind: 'blank'(백지) / 'review'(검토서 골격) / 'advisory'(자문보고서 골격)
+// [2026.09 버그수정] 세액계산(taxcalc.html)에서 산출한 세액이 보고서 본문에 전혀 반영되지
+// 않아, 세무사가 계산 결과를 보고서에 다시 손으로 옮겨 적어야 했다. taxcalc.html의
+// tcSaveCurrentResult_가 이제 계산결과 항목마다 숫자 필드(최종세액)를 같이 저장하므로, 가장
+// 최근 저장된 값을 여기서 가져와 새 문서 초안에 미리 채워 넣는다(어디까지나 초안 — 세무사가
+// 그대로 확인·수정해서 쓰는 것은 동일).
+function rwLatestTaxAmount_(c){
+  if (!c || !Array.isArray(c.세액계산결과) || !c.세액계산결과.length) return null;
+  const matches = c.세액계산결과.filter(function(e){ return e && Number.isFinite(e.최종세액); });
+  if (!matches.length) return null;
+  matches.sort(function(a, b){ return String(a.계산일).localeCompare(String(b.계산일)); });
+  return matches[matches.length - 1].최종세액;
+}
+
 async function createNewDoc(kind){
   const c = rwGetSelectedCase_();
   const semokLabel = c ? ((typeof WORK_SEMOK_LABELS !== 'undefined' && WORK_SEMOK_LABELS[c.세목]) || c.세목 || '') : '';
   const todayStr = new Date().toISOString().slice(0, 10);
+  const taxAmt = rwLatestTaxAmount_(c);
+  const taxAmtStr = taxAmt != null ? Number(taxAmt).toLocaleString('ko-KR') + '원' : '원';
+  const taxAmtLine = taxAmt != null ? '(세액계산 화면 최근 저장 기준) 최종세액 ' + taxAmtStr + '\n\n' : '';
   const templates = {
     blank: {
       promptDefault: '새 문서',
@@ -1592,7 +1608,7 @@ async function createNewDoc(kind){
         + '## 결론 (요약)\n\n\n'
         + '## 사실관계\n\n\n'
         + '## 쟁점사항 및 검토내용\n\n\n'
-        + '## 세액 계산 (해당하는 경우)\n\n\n'
+        + '## 세액 계산 (해당하는 경우)\n\n' + taxAmtLine + '\n'
         + '## 확인 필요 사항 (Action Items)\n\n\n'
         + '## 처리방향(결론) 및 다음 단계\n\n\n'
         + '---\n\n'
@@ -1614,15 +1630,17 @@ async function createNewDoc(kind){
         + '<table class="meta">\n'
         + '<tr><td class="k">수신</td><td>' + escapeHtml(c ? (c.고객명 || '') : '') + ' 님</td></tr>\n'
         + '<tr><td class="k">발신</td><td>이음세무컨설팅 조종호 세무사</td></tr>\n'
+        + '<tr><td class="k">담당자</td><td>' + escapeHtml(c ? (c.담당자 || '') : '') + '</td></tr>\n'
         + '<tr><td class="k">작성일</td><td>' + todayStr + '</td></tr>\n'
         + '<tr><td class="k">검토대상</td><td>' + escapeHtml(c ? (c.사건명 || '') : '') + '</td></tr>\n'
+        + (c && c.법정일 ? '<tr><td class="k">법정신고기한</td><td>' + escapeHtml(c.법정일) + '</td></tr>\n' : '')
         + '</table>\n\n'
         + '## 검토개요\n\n\n'
         + '## 핵심결론 (한눈에 보기)\n\n\n'
         + '## 사실관계\n\n\n'
         + '---\n\n'
         + '## 쟁점별 검토\n\n\n'
-        + '## 세액 계산 (해당하는 경우)\n\n\n'
+        + '## 세액 계산 (해당하는 경우)\n\n' + taxAmtLine + '\n'
         + '---\n\n'
         + '## 준비 및 확인 필요사항 (우선순위순)\n\n\n'
         + '## 다음 절차 / 실행 로드맵\n\n\n'
@@ -1639,10 +1657,11 @@ async function createNewDoc(kind){
         + '<table class="meta">\n'
         + '<tr><td class="k">수신</td><td>' + escapeHtml(c ? (c.고객명 || '') : '') + ' 님</td></tr>\n'
         + '<tr><td class="k">발신</td><td>이음세무컨설팅</td></tr>\n'
+        + '<tr><td class="k">담당자</td><td>' + escapeHtml(c ? (c.담당자 || '') : '') + '</td></tr>\n'
         + '<tr><td class="k">작성일</td><td>' + todayStr + '</td></tr>\n'
         + '<tr><td class="k">제목</td><td>' + escapeHtml(c ? (c.사건명 || '') : '') + ' 신고 결과 보고</td></tr>\n'
         + '</table>\n\n'
-        + '<div class="amount-box"><span class="label">최종 신고세액</span><span class="value">원</span></div>\n\n'
+        + '<div class="amount-box"><span class="label">최종 신고세액</span><span class="value">' + taxAmtStr + '</span></div>\n\n'
         + '## 신고 개요\n\n\n'
         + '## 신고 세액 및 산출근거\n\n\n'
         + '## 향후 유의사항\n\n'
@@ -1660,7 +1679,9 @@ async function createNewDoc(kind){
         + '<table class="meta">\n'
         + '<tr><td class="k">수신</td><td>OOO세무서장 귀하</td></tr>\n'
         + '<tr><td class="k">발신</td><td>이음세무컨설팅 (신고대리인)</td></tr>\n'
+        + '<tr><td class="k">담당자</td><td>' + escapeHtml(c ? (c.담당자 || '') : '') + '</td></tr>\n'
         + '<tr><td class="k">제목</td><td>' + escapeHtml(c ? (c.고객명 || '') : '') + ' ' + semokLabel + ' 신고 관련 참고사항 안내</td></tr>\n'
+        + (c && c.법정일 ? '<tr><td class="k">법정신고기한</td><td>' + escapeHtml(c.법정일) + '</td></tr>\n' : '')
         + '</table>\n\n'
         + '## 신고 개요\n\n\n'
         + '## 특정항목 설명\n\n'
@@ -1679,8 +1700,10 @@ async function createNewDoc(kind){
         + '<table class="meta">\n'
         + '<tr><td class="k">수신</td><td>' + escapeHtml(c ? (c.고객명 || '') : '') + ' 님</td></tr>\n'
         + '<tr><td class="k">발신</td><td>이음세무컨설팅</td></tr>\n'
+        + '<tr><td class="k">담당자</td><td>' + escapeHtml(c ? (c.담당자 || '') : '') + '</td></tr>\n'
         + '<tr><td class="k">작성일</td><td>' + todayStr + '</td></tr>\n'
         + '<tr><td class="k">제목</td><td>' + escapeHtml(c ? (c.사건명 || '') : '') + ' 진행상황 보고</td></tr>\n'
+        + (c && c.법정일 ? '<tr><td class="k">법정기한</td><td>' + escapeHtml(c.법정일) + '</td></tr>\n' : '')
         + '</table>\n\n'
         + '## 현재까지 진행 경과\n\n'
         + '- \n\n'
@@ -1697,7 +1720,9 @@ async function createNewDoc(kind){
         + '- 청구인: ' + (c ? (c.고객명 || '') : '') + '\n'
         + '- 처분청: \n'
         + '- 사건유형: ' + (c && c.업무유형 ? c.업무유형 : '') + '\n'
-        + '- 청구일자: ' + todayStr + '\n\n'
+        + '- 담당자: ' + (c ? (c.담당자 || '') : '') + '\n'
+        + '- 청구일자: ' + todayStr + '\n'
+        + (c && c.법정일 ? '- 청구기한: ' + c.법정일 + '\n' : '') + '\n'
         + '## 청구취지\n\n\n'
         + '## 처분의 내용\n\n\n'
         + '## 청구이유\n\n\n'
@@ -1713,6 +1738,7 @@ async function createNewDoc(kind){
         + '# ' + (c ? (c.사건명 || '') : '') + ' 번역문\n\n'
         + '- 제출처: OOO세무서장 귀하\n'
         + '- 제출자: 이음세무컨설팅 (번역 및 신고대리인)\n'
+        + '- 담당자: ' + (c ? (c.담당자 || '') : '') + '\n'
         + '- 원본 언어: 영어\n'
         + '- 번역일: ' + todayStr + '\n\n'
         + '## 원문\n\n'
@@ -1734,6 +1760,7 @@ async function createNewDoc(kind){
         + '<table class="meta">\n'
         + '<tr><td class="k">고객명</td><td>' + escapeHtml(c ? (c.고객명 || '') : '') + '</td></tr>\n'
         + '<tr><td class="k">사건명</td><td>' + escapeHtml(c ? (c.사건명 || '') : '') + '</td></tr>\n'
+        + '<tr><td class="k">담당자</td><td>' + escapeHtml(c ? (c.담당자 || '') : '') + '</td></tr>\n'
         + '</table>\n\n'
         + '## 사건 개요\n\n'
         + '- \n\n'
@@ -3041,10 +3068,19 @@ async function publishToCustomer(){
       throw new Error('발행할 고객 폴더를 찾을 수 없습니다 — 문서를 다시 열어주세요');
     }
     await render(); // 저장 직전과 마찬가지로, 발행 직전에도 반드시 최신 내용으로 다시 렌더링
+    // [2026.09 버그수정] 제목·표만 자동으로 채워진 빈 껍데기 상태(본문을 하나도 안 쓴 채)로도
+    // 그대로 발행할 수 있었다 — 실제로 작성한 분량이 너무 적으면 발행 전에 한 번 확인한다.
+    const plainLen = document.getElementById('mdInput').value.replace(/<[^>]*>/g, '').replace(/[#*_>\-\s]/g, '').length;
+    if (plainLen < 80 && !confirm('작성된 내용이 매우 적습니다(본문이 비어있을 수 있습니다). 이대로 고객에게 발행할까요?')) {
+      return;
+    }
     const finalHtml = buildStandaloneHtml(false);
     const cleanBaseName = (d.name || '문서').replace(/\.(md|html?|htm)$/i, '');
     const body = { name: cleanBaseName + '.html', base64Data: utf8ToBase64_(finalHtml) };
-    if (d.htmlFileId) body.fileId = d.htmlFileId; else body.folderId = reportFolderId;
+    // [2026.09 버그수정] 이미 발행된(=고객이 봤을 수 있는) 문서를 재발행하면 예전엔 그냥
+    // 덮어써서 이전 버전이 흔적도 없이 사라졌다 — 덮어쓰기 전에 서버가 "이전버전" 폴더에
+    // 타임스탬프를 붙여 백업해두도록 요청한다.
+    if (d.htmlFileId) { body.fileId = d.htmlFileId; body.backupBeforeOverwrite = true; } else { body.folderId = reportFolderId; }
     const data = await callGas('uploadFile', body);
     if (data && data.error) throw new Error(data.error);
     if (data.id) d.htmlFileId = data.id;
@@ -3533,10 +3569,7 @@ function rwInitCaseBar_(){
   sel.dataset.inited = '1';
   rwCasesLoadPromise_ = callGas('work_get_cases', {}).then(function(res){
     rwCases_ = res.cases || [];
-    sel.innerHTML = '<option value="">사건 선택 안 함</option>' +
-      rwCases_.slice().sort(function(a, b){ return (a.고객명 || '').localeCompare(b.고객명 || ''); }).map(function(c){
-        return '<option value="' + c.id + '">' + escapeHtml(c.고객명 || '') + ' · ' + escapeHtml(c.사건명 || '') + '</option>';
-      }).join('');
+    sel.innerHTML = buildCaseOptionsHtml_(rwCases_, { placeholder: '사건 선택 안 함', showStatus: false });
     return rwCases_;
   }).catch(function(){ return rwCases_; });
   sel.addEventListener('change', function(){

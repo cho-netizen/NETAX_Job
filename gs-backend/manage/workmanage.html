@@ -253,14 +253,30 @@
       callGas('work_create_case', payload).then(function(res){
         if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); saveBtn.disabled = false; return; }
         showToast('사건을 등록했습니다.', 'success');
+        // [2026.09 버그수정] 동명이인인데 전화번호가 달라 새 고객으로 등록된 경우, 서버가
+        // 알려주는 주의문구를 그냥 버리지 않고 보여준다 — 실제로 같은 사람이면 고객관리에서
+        // 직접 병합/정리해야 한다는 걸 바로 알 수 있게.
+        if (res.warning) showToast(res.warning, 'warning');
         workShowingNewForm = false;
         workSelectedCaseId = res.case.id;
         loadWorkCases();
         if (typeof loadClientsQuiet_ === 'function') loadClientsQuiet_();
         if (prefill.bookingRowIndex){
-          callGas('link_booking_case', { rowIndex: prefill.bookingRowIndex, caseId: res.case.id })
-            .then(function(){ if (typeof loadBookingList === 'function') loadBookingList(); })
-            .catch(function(){});
+          // [2026.09 버그수정] 예약↔사건 연결(link_booking_case)이 실패해도 그냥 조용히 넘어가서,
+          // 사건·폴더·my.netax.kr 접속코드는 이미 다 만들어졌는데 예약목록엔 "사건 시작" 버튼이
+          // 그대로 남아 다시 누르면 똑같은 사건이 중복으로 또 만들어질 위험이 있었다. 한 번
+          // 자동 재시도하고, 그래도 실패하면 눈에 띄게 경고해서 예약목록을 직접 확인하게 한다.
+          var linkBookingCase_ = function(retryLeft){
+            callGas('link_booking_case', { rowIndex: prefill.bookingRowIndex, caseId: res.case.id }).then(function(linkRes){
+              if (linkRes && linkRes.success === false){ throw new Error(linkRes.message || '연결 실패'); }
+              if (typeof loadBookingList === 'function') loadBookingList();
+            }).catch(function(err){
+              if (retryLeft > 0) { linkBookingCase_(retryLeft - 1); return; }
+              showToast('사건은 만들어졌지만 예약과 자동으로 연결하지 못했습니다. 예약관리에서 이 예약이 "사건 시작" 상태로 남아있는지 확인하고, 다시 누르지 말고 알려주세요(중복 사건이 생길 수 있습니다).', 'error');
+              console.error('link_booking_case 실패: ' + (err && err.message ? err.message : err));
+            });
+          };
+          linkBookingCase_(1);
         }
       }).catch(function(){ showToast('저장 중 오류가 발생했습니다.', 'error'); saveBtn.disabled = false; });
     });
@@ -290,7 +306,10 @@
       '<button type="button" id="wcSaveCase" class="save-btn">저장</button>' +
       '</div>' +
       '<div style="margin-bottom:12px;">' +
-      '<label id="wcEditManualDeadlineLabel" style="display:' + (isManual ? 'inline-block' : 'none') + '; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 10px; font-size:12.5px; color:var(--sub);"><span id="wcEditManualDeadlineText">처리시한</span> <input type="date" id="wcEditManualDeadline" value="' + escapeHtml(c.법정일 || '') + '"></label>' +
+      // [2026.09 버그수정] 완료 처리하면 법정일이 완료일(오늘)로 덮어써지는데, 이 칸이 항상
+      // c.법정일만 보여줘서 완료된 사건을 다시 열어보면 마치 "원래 처리시한이 오늘이었다"처럼
+      // 보였다 — 완료 상태에서는 백업해둔 원래 처리시한(완료전법정일)을 대신 보여준다.
+      '<label id="wcEditManualDeadlineLabel" style="display:' + (isManual ? 'inline-block' : 'none') + '; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 10px; font-size:12.5px; color:var(--sub);"><span id="wcEditManualDeadlineText">처리시한</span> <input type="date" id="wcEditManualDeadline" value="' + escapeHtml((c.상태 === '완료' && c.완료전법정일) ? c.완료전법정일 : (c.법정일 || '')) + '"></label>' +
       (workMyPortalBadgeText_(c) ? ' <span style="background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 10px; font-size:12.5px; color:var(--sub);">' + escapeHtml(workMyPortalBadgeText_(c).replace(/^ · /, '')) + '</span>' : '') +
       '</div>' +
       '<div style="margin-bottom:14px;">' +
@@ -370,6 +389,24 @@
     // 값(work_generateUniqueCaseName_)이라 여기서 편집하지 못하게 완전히 숨겼다. 사건 목록
     // 드롭다운(같은 고객의 여러 사건 구분용)에는 계속 쓰이므로 컬럼 자체는 그대로 둔다 —
     // 여기서 그냥 payload에 안 보내면(저장 안 하면) 서버가 만든 값이 그대로 유지된다.
+    // [2026.09] 완료 처리 직전에 "요청자료가 다 안 모였는데도/보고서를 발행하지 않았는데도
+    // 완료로 넘어가는" 실수를 막기 위한 가벼운 사전 점검. 저장을 막지는 않고(예외적으로 증빙·
+    // 보고서 없이도 완료해야 하는 사건이 있을 수 있으므로) 확인 메시지만 띄운다.
+    function checkCompletionReadiness_(c){
+      var warnings = [];
+      var unresolved = (c.증빙목록 || []).filter(function(e){ return e.source === 'requested' && e.status !== '확보됨'; });
+      if (unresolved.length) warnings.push('요청자료 중 ' + unresolved.length + '건이 아직 미확보 상태입니다.');
+      if (!c.폴더ID) return Promise.resolve(warnings);
+      return callGas('get_case_subfolders', { caseId: c.id }).then(function(sub){
+        if (sub.error || !sub.reportFolderId) return warnings;
+        return callGas('listFolder', { folderId: sub.reportFolderId }).then(function(res){
+          var hasHtml = !res.error && (res.files || []).some(function(f){ return /\.html?$/i.test(f.name); });
+          if (!hasHtml) warnings.push('고객에게 발행된 보고서(.html)가 아직 없습니다.');
+          return warnings;
+        });
+      }).catch(function(){ return warnings; });
+    }
+
     function saveCaseNow_(silent){
       var customerName = document.getElementById('wcEditCustomerName').value.trim();
       if (!customerName){ showToast('고객명은 비워둘 수 없습니다.', 'warning'); return; }
@@ -385,9 +422,17 @@
         의뢰일: document.getElementById('wcEditRequestDate').value,
         기준일: document.getElementById('wcEditBaseDate').value,
         상태: document.getElementById('wcEditStatus').value,
-        개요: document.getElementById('wcEditOverview').value.trim()
+        개요: document.getElementById('wcEditOverview').value.trim(),
+        // [2026.09 버그수정] 이 화면의 저장은 다른 화면들과 달리 동시편집 잠금이 아예 빠져
+        // 있었다 — 특히 사건개요를 통째로 patch하는 아래 taxpayerField 분기와, 상태(완료 등)를
+        // 바꾸는 유일한 경로라는 점에서 가장 챙겨야 할 곳이었다.
+        기대수정일: c.수정일
       };
-      if (manual) payload.법정일 = document.getElementById('wcEditManualDeadline').value;
+      // [2026.09 버그수정] 완료된 사건은 이 입력칸이 (완료일이 아니라) 백업해둔 원래 처리시한을
+      // 보여주도록 방금 고쳤는데, 그 값을 완료 상태 그대로 다시 저장해버리면 서버가 그걸 곧이곧대로
+      // 법정일에 다시 덮어써서 "완료 시 법정일=완료일" 규칙이 깨진다 — 완료 상태에서는 이 칸을
+      // 아예 안 보내고, 완료 취소/원래 진행 상태일 때만 실제 편집값을 보낸다.
+      if (manual && c.상태 !== '완료') payload.법정일 = document.getElementById('wcEditManualDeadline').value;
       // [2026.09] 작업관리의 "납세자"와 사건개요서의 납세의무자 이름 필드(casehandling.html의
       // TAXPAYER_NAME_FIELD_BY_SEMOK_)가 반드시 같은 값이어야 한다는 요청 — 여기서 납세자를
       // 고치면 사건개요 쪽도 같이 맞춘다(반대 방향은 casehandling.html의 chSaveTarget이
@@ -399,13 +444,32 @@
         payload.사건개요 = Object.assign({}, c.사건개요 || {}, overviewPatch);
       }
       callGas('work_update_case', payload).then(function(res){
+        if (res.conflict){ showToast(res.message || '충돌이 발생했습니다. 새로고침합니다.', 'warning'); loadWorkCases(); return; }
         if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); return; }
         if (!silent) showToast('저장했습니다.', 'success');
         loadWorkCases();
       }).catch(function(){ showToast('저장 중 오류가 발생했습니다.', 'error'); });
     }
     document.getElementById('wcSaveCase').addEventListener('click', function(){ saveCaseNow_(false); });
-    document.getElementById('wcEditStatus').addEventListener('change', function(){ saveCaseNow_(true); });
+    // [2026.09 버그수정] 증빙이 하나도 안 갖춰지고 보고서도 전혀 발행되지 않은 채로 "완료"로
+    // 바꿔도 아무 경고 없이 그냥 저장돼 버렸다 — 완료로 바꾸는 순간만 가볍게 확인한다(이미
+    // 완료 상태인데 다른 값으로 잠깐 바뀌었다가 도로 완료로 돌아오는 경우는 실제 "새로 완료
+    // 처리"가 아니므로 제외).
+    document.getElementById('wcEditStatus').addEventListener('change', function(){
+      var sel = this;
+      var newStatus = sel.value;
+      if (newStatus === '완료' && c.상태 !== '완료') {
+        checkCompletionReadiness_(c).then(function(warnings){
+          if (warnings.length && !confirm('완료 처리하기 전에 확인해주세요:\n\n- ' + warnings.join('\n- ') + '\n\n그래도 완료로 처리할까요?')) {
+            sel.value = c.상태;
+            return;
+          }
+          saveCaseNow_(true);
+        });
+      } else {
+        saveCaseNow_(true);
+      }
+    });
 
     document.getElementById('wcDeleteCase').addEventListener('click', function(){
       if (!confirm('"' + c.사건명 + '" 사건을 삭제할까요? 하위업무와 캘린더 일정도 함께 지워집니다.')) return;

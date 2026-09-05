@@ -200,10 +200,7 @@
     if (!sel || sel.dataset.inited) return; // initDocs()가 여러 번 불려도 리스너가 중복 등록되지 않게
     sel.dataset.inited = '1';
     docsGetAllCases_().then(function(cases){
-      sel.innerHTML = '<option value="">사건 선택</option>' +
-        cases.slice().sort(function(a, b){ return (a.고객명 || '').localeCompare(b.고객명 || ''); }).map(function(c){
-          return '<option value="' + c.id + '">' + escapeHtml(c.고객명 || '') + ' · ' + escapeHtml(c.사건명 || '') + ' (' + escapeHtml(c.상태 || '') + ')</option>';
-        }).join('');
+      sel.innerHTML = buildCaseOptionsHtml_(cases, { placeholder: '사건 선택' });
     });
     sel.addEventListener('change', function(){
       var caseId = sel.value;
@@ -343,8 +340,11 @@
     });
   }
 
-  function docsSaveEvidence_(caseId, newList){
-    callGas('work_update_case', { id: caseId, 증빙목록: newList }).then(function(res){
+  // [2026.09] 동시편집 낙관적 잠금 — c.수정일(마지막으로 읽었던 값)을 같이 보내 그 사이 다른
+  // 곳에서 먼저 저장됐으면(수정일이 달라졌으면) 덮어쓰지 않고 최신 내용으로 새로고침한다.
+  function docsSaveEvidence_(c, newList){
+    callGas('work_update_case', { id: c.id, 증빙목록: newList, 기대수정일: c.수정일 }).then(function(res){
+      if (res.conflict){ showToast(res.message || '충돌이 발생했습니다. 새로고침합니다.', 'warning'); docsGetAllCases_(true).then(function(){ docsRenderCaseEvidencePanel_(); }); return; }
       if (res.success === false){ showToast(res.message || '저장 실패', 'error'); return; }
       docsGetAllCases_(true).then(function(){ docsRenderCaseEvidencePanel_(); });
     }).catch(function(err){ showToast('저장 중 오류: ' + (err && err.message ? err.message : err), 'error'); });
@@ -353,7 +353,7 @@
   function docsAddEvidence_(c, entryPartial){
     var entry = Object.assign({ id: 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6) }, entryPartial);
     var newList = (c.증빙목록 || []).concat([entry]);
-    docsSaveEvidence_(c.id, newList);
+    docsSaveEvidence_(c, newList);
     if (entryPartial.source === 'requested' && c.my_report_id){
       callGas('admin_add_checklist_item', { report_id: c.my_report_id, item: entryPartial.label }).catch(function(){});
     }
@@ -379,6 +379,7 @@
         (sub && sub.submitted ? '<br><span style="color:#b8860b; font-size:12.5px; font-weight:600;">📤 고객이 이미 제출함(' + escapeHtml(sub.fileName || '') + (sub.uploadedAt ? ', ' + escapeHtml(String(sub.uploadedAt).slice(0, 10)) : '') + ') — 확인 후 확보완료로 표시하세요</span>' : '') +
         '</div>' +
         (source !== 'auto' ? '<button type="button" class="ghost-btn docsEvToggleBtn" style="padding:3px 8px; font-size:12px;">' + (got ? '미확보로' : '확보완료') + '</button>' : '') +
+        (source === 'requested' ? '<button type="button" class="ghost-btn docsEvRenameBtn" style="padding:3px 8px; font-size:12px;">이름변경</button>' : '') +
         '<span class="log-del" title="삭제">✕</span>';
       if (source !== 'auto'){
         row.querySelector('.docsEvToggleBtn').addEventListener('click', function(){
@@ -387,7 +388,7 @@
             if (e.id !== entry.id) return e;
             return Object.assign({}, e, { status: nowGot ? '확보됨' : '미확보', 확보일: nowGot ? new Date().toISOString().slice(0, 10) : e.확보일 });
           });
-          docsSaveEvidence_(c.id, newList);
+          docsSaveEvidence_(c, newList);
           // [2026.09 버그수정] 요청자료를 회계사가 여기서 확보완료/미확보로 바꾸면, 고객이
           // my.netax.kr에서 보는 체크리스트에도 같이 반영한다 — 안 그러면 회계사가 직접
           // 구한 자료도 고객 화면엔 계속 "미제출"로 남아 고객이 괜히 또 챙겨 올릴 수 있다.
@@ -396,9 +397,34 @@
           }
         });
       }
+      // [2026.09 버그수정] 요청자료 이름을 오타 등으로 고치고 싶을 때 지금까진 지우고
+      // 새로 추가하는 수밖에 없었는데, 그러면 고객이 이미 올린 파일의 제출상태(옛 이름으로
+      // 연결됨)와 연결이 끊겨 "이미 제출함" 안내가 조용히 사라졌다 — 제출상태까지 같이
+      // 옮겨주는 이름변경을 추가한다.
+      if (source === 'requested'){
+        row.querySelector('.docsEvRenameBtn').addEventListener('click', function(){
+          var newLabel = prompt('새 자료명을 입력하세요.', entry.label || '');
+          if (newLabel === null) return;
+          newLabel = newLabel.trim();
+          if (!newLabel || newLabel === entry.label) return;
+          var oldLabel = entry.label;
+          var newList = (c.증빙목록 || []).map(function(e){
+            return e.id === entry.id ? Object.assign({}, e, { label: newLabel }) : e;
+          });
+          docsSaveEvidence_(c, newList);
+          if (c.my_report_id && oldLabel){
+            callGas('admin_rename_checklist_item', { report_id: c.my_report_id, old_item: oldLabel, new_item: newLabel }).catch(function(){});
+          }
+        });
+      }
       row.querySelector('.log-del').addEventListener('click', function(){
         var newList = (c.증빙목록 || []).filter(function(e){ return e.id !== entry.id; });
-        docsSaveEvidence_(c.id, newList);
+        docsSaveEvidence_(c, newList);
+        // [2026.09 버그수정] 요청자료를 지워도 my.netax.kr 쪽 체크리스트엔 지저분한 옛 항목이
+        // 그대로 남아있었다 — 같이 지운다.
+        if (source === 'requested' && c.my_report_id && entry.label){
+          callGas('admin_remove_checklist_item', { report_id: c.my_report_id, item: entry.label }).catch(function(){});
+        }
       });
       box.appendChild(row);
     });
@@ -504,7 +530,10 @@
 
     document.getElementById('docsEvAutoAddrBtn').addEventListener('click', function(){
       if (typeof openAddressSearchModal_ !== 'function'){ showToast('주소검색 기능을 불러오지 못했습니다.', 'error'); return; }
-      openAddressSearchModal_(function(picked){ docsRenderEvAutoPicked_(c, picked); });
+      // [2026.09 버그수정] 사건개요(처리개요)에서 이미 입력해둔 소재지가 있으면 여기서 또
+      // 처음부터 타이핑하지 않도록 검색어를 미리 채워준다.
+      var knownAddr = (c.사건개요 && c.사건개요.assetLocation) || '';
+      openAddressSearchModal_(function(picked){ docsRenderEvAutoPicked_(c, picked); }, knownAddr);
     });
     document.getElementById('docsEvManualAddBtn').addEventListener('click', function(){
       var label = document.getElementById('docsEvManualLabel').value.trim();

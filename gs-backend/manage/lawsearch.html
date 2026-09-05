@@ -63,10 +63,7 @@
 
   function renderLsCaseSelect_(){
     var keepValue = lsCaseSelectEl.value;
-    lsCaseSelectEl.innerHTML = '<option value="">사건을 선택하세요</option>' +
-      lsCases.slice().sort(function(a, b){ return (a.고객명 || '').localeCompare(b.고객명 || ''); }).map(function(c){
-        return '<option value="' + c.id + '">' + escapeHtml(c.고객명 || '') + ' · ' + escapeHtml(c.사건명 || '') + ' (' + escapeHtml(c.상태 || '') + ')</option>';
-      }).join('');
+    lsCaseSelectEl.innerHTML = buildCaseOptionsHtml_(lsCases);
     if (keepValue) lsCaseSelectEl.value = keepValue;
   }
 
@@ -120,12 +117,16 @@
 
   // 서버 저장 + 로컬 상태(lsCurrentCase, 사건 목록 캐시) 갱신만 하고, 검색결과 화면은 건드리지
   // 않는다 — 다시 검색하기 전까지 결과 목록이 그대로 남아있어야 한다는 요청 반영.
+  // [2026.09] 동시편집 낙관적 잠금 — 마지막으로 읽은 수정일을 같이 보내고, 그 사이 다른 곳에서
+  // 먼저 저장돼 충돌났으면 덮어쓰지 않고 최신 내용으로 다시 불러온다.
   function lsSaveAttachments_(newList){
-    return callGas('work_update_case', { id: lsCurrentCase.id, 법령예규판례: newList }).then(function(res){
+    return callGas('work_update_case', { id: lsCurrentCase.id, 법령예규판례: newList, 기대수정일: lsCurrentCase.수정일 }).then(function(res){
+      if (res.conflict){ showToast(res.message || '충돌이 발생했습니다. 새로고침합니다.', 'warning'); if (typeof loadLsCases_ === 'function') loadLsCases_(lsCurrentCase.id); return false; }
       if (res.success === false){ showToast(res.message || '저장 실패', 'error'); return false; }
       lsCurrentCase.법령예규판례 = newList;
+      if (res.case && res.case.수정일) lsCurrentCase.수정일 = res.case.수정일;
       var cached = lsCases.filter(function(x){ return x.id === lsCurrentCase.id; })[0];
-      if (cached) cached.법령예규판례 = newList;
+      if (cached) { cached.법령예규판례 = newList; if (res.case && res.case.수정일) cached.수정일 = res.case.수정일; }
       renderLsAttached_(lsCurrentCase);
       if (typeof loadWorkCases === 'function') loadWorkCases();
       return true;
@@ -159,7 +160,10 @@
       '</div>' +
       '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">' +
       '<input type="text" id="lsExclude" placeholder="제외어(선택, 쉼표로 여러 개)" style="flex:1; min-width:140px; font-size:12.5px;">' +
-      '<input type="text" id="lsSemok" placeholder="세목(선택, 예: 양도소득세)" style="flex:1; min-width:120px; font-size:12.5px;">' +
+      // [2026.09 버그수정] 사건을 선택하면 그 사건의 세목이 뭔지 이미 알고 있는데도 이 칸을
+      // 매번 다시 손으로 입력해야 했다 — 선택된 사건의 세목으로 미리 채워둔다(직접 지우거나
+      // 다른 세목으로 바꿔서 검색하는 것은 여전히 자유롭게 가능).
+      '<input type="text" id="lsSemok" placeholder="세목(선택, 예: 양도소득세)" value="' + escapeHtml((typeof WORK_SEMOK_LABELS !== 'undefined' && WORK_SEMOK_LABELS[c.세목]) || c.세목 || '') + '" style="flex:1; min-width:120px; font-size:12.5px;">' +
       '<input type="text" id="lsAgency" placeholder="생산기관·법원(선택, 예: 국세청, 대법원)" style="flex:1; min-width:140px; font-size:12.5px;">' +
       '<input type="text" id="lsFormType" placeholder="서식종류(선택, 예: 서식, 별표)" style="flex:1; min-width:120px; font-size:12.5px;">' +
       '</div>' +

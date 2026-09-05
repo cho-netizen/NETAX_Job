@@ -50,6 +50,23 @@
     });
   }
 
+  // [2026.09 리팩토링] "사건 목록으로 <option> 만들기"가 lawsearch/casehandling/docs/taxcalc/
+  // reportwriter 5개 화면에 거의 똑같이(고객명순 정렬 + "고객명 · 사건명 (상태)") 복사돼 있어서,
+  // 표시 형식을 하나 바꾸려면 5곳을 다 찾아 고쳐야 했다 — 공용 함수로 통합. 동작(정렬 기준,
+  // 표시 문구)은 기존 그대로이고, 화면마다 달랐던 placeholder 문구·상태표시 여부·선택값만
+  // opts로 넘겨 예전과 똑같이 보이게 한다.
+  function buildCaseOptionsHtml_(cases, opts){
+    opts = opts || {};
+    var placeholder = opts.placeholder !== undefined ? opts.placeholder : '사건을 선택하세요';
+    var showStatus = opts.showStatus !== false;
+    var selectedId = opts.selectedId;
+    return '<option value="">' + escapeHtml(placeholder) + '</option>' +
+      (cases || []).slice().sort(function(a, b){ return (a.고객명 || '').localeCompare(b.고객명 || ''); }).map(function(c){
+        var label = escapeHtml(c.고객명 || '') + ' · ' + escapeHtml(c.사건명 || '') + (showStatus ? ' (' + escapeHtml(c.상태 || '') + ')' : '');
+        return '<option value="' + c.id + '"' + (selectedId !== undefined && c.id === selectedId ? ' selected' : '') + '>' + label + '</option>';
+      }).join('');
+  }
+
   // explorer.js의 짧은 날짜 표시(YYYY-MM-DD → YY-MM-DD) — 표시 전용, 저장값은 그대로 유지.
   function fmtDateShort_(dateStr){
     if (!dateStr) return '';
@@ -243,6 +260,14 @@
     if (name === 'reportwriter' && typeof initReportWriter === 'function') initReportWriter();
     if (name === 'reports' && typeof initReports === 'function') initReports();
     if (name === 'settings' && typeof initSettings === 'function') initSettings();
+    // [2026.09 버그수정] 대시보드(오늘의 현황)만 유일하게 목록에서 빠져 있어서, 로그인 직후
+    // 딱 한 번만 불러와지고 그 뒤로는 하루 종일 절대 갱신되지 않았다(예약 승인 때만 예외적으로
+    // dashboardLoaded를 초기화하는 코드가 있었지만 그걸로는 부족했다) — 다른 화면들처럼 이
+    // 화면으로 올 때마다 매번 새로 불러온다.
+    if (name === 'dashboard' && typeof initDashboard === 'function') {
+      if (typeof dashboardLoaded !== 'undefined') dashboardLoaded = false;
+      initDashboard();
+    }
   }
 
   // 다른 화면의 버튼에서 메뉴를 직접 클릭한 것처럼 화면을 전환할 때 씀(예: 작업관리 사건

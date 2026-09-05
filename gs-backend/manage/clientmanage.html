@@ -201,6 +201,18 @@
     document.getElementById('ccDeleteClient').addEventListener('click', function(){
       if (!confirm('"' + c.성명 + '" 고객을 삭제할까요? 수금 내역은 남아있지만 이 고객과의 연결은 끊어집니다.')) return;
       callGas('client_delete_client', { id: c.id }).then(function(res){
+        if (res.hasActiveCases) {
+          // [2026.09 버그수정] 진행 중인 사건이 있는 고객을 경고 없이 지우면 그 사건의
+          // 고객 연결이 끊겨 "빠른보기"가 에러를 냈다 — 한 번 더 명확히 확인받는다.
+          if (!confirm(res.message + '\n\n그래도 삭제할까요?')) return;
+          callGas('client_delete_client', { id: c.id, force: true }).then(function(res2){
+            if (res2.error || res2.success === false){ showToast(res2.error || res2.message || '삭제 실패', 'error'); return; }
+            selectedClientId = null;
+            showToast('삭제했습니다.', 'success');
+            loadClients();
+          }).catch(function(){ showToast('삭제 중 오류가 발생했습니다.', 'error'); });
+          return;
+        }
         if (res.error || res.success === false){ showToast(res.error || res.message || '삭제 실패', 'error'); return; }
         selectedClientId = null;
         showToast('삭제했습니다.', 'success');

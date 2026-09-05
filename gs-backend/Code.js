@@ -3094,6 +3094,9 @@ function dispatchClientAction_(body) {
   if (body.action === 'link_booking_case') {
     return jsonResponse(booking_linkCase(body));
   }
+  if (body.action === 'cancel_confirmed_booking') {
+    return jsonResponse(booking_cancelConfirmed(body));
+  }
   if (body.action === 'list_bookings') {
     // [2026.08] NX-Work 홈 대시보드의 "대기 중인 상담신청" 위젯용 — booking_getBookings()는
     // 이미 doGet에서도 쓰는 함수라 자체적으로 jsonResponse까지 반환하므로 그대로 리턴한다
@@ -3114,13 +3117,18 @@ function dispatchClientAction_(body) {
   }
 
   // [2026.08] my 모듈 — my.netax.kr(고객 통합 페이지) 이관
-  const MY_ACTIONS = ['admin_create_case', 'login', 'get_checklist_status', 'upload_file', 'get_report_list', 'get_report_file', 'admin_add_checklist_item', 'admin_get_case'];
+  // [2026.09 버그수정] admin_set_checklist_status가 이 whitelist에 빠져 있었다 — my_doPost의
+  // switch문엔 이미 등록돼 있었지만 정작 여기서 걸러져 dispatchClientAction_가 my_doPost까지
+  // 아예 넘겨주지 않아서, "증빙확보에서 확보완료로 표시하면 my.netax.kr 체크리스트에도 반영"
+  // 기능이 처음부터 한 번도 실제로 동작하지 않고 있었다(사건개요 관련 감사에서도 못 잡아낸
+  // 라우팅 누락 — 코드 교차 확인 중 발견). 이번에 새로 추가한 이름변경/삭제 액션도 같이 등록.
+  const MY_ACTIONS = ['admin_create_case', 'login', 'get_checklist_status', 'upload_file', 'get_report_list', 'get_report_file', 'admin_add_checklist_item', 'admin_get_case', 'admin_set_checklist_status', 'admin_rename_checklist_item', 'admin_remove_checklist_item'];
   if (MY_ACTIONS.indexOf(body.action) !== -1) {
     return jsonResponse(my_doPost(body));
   }
 
   // [2026.08] work 모듈 — 작업관리(사건별 세부업무 트리 + 법정기한 자동계산 + 캘린더 연동) 신규
-  const WORK_ACTIONS = ['work_get_cases', 'work_create_case', 'work_update_case', 'work_delete_case', 'work_add_subtask', 'work_update_subtask', 'work_delete_subtask', 'send_my_portal_sms', 'get_case_subfolders'];
+  const WORK_ACTIONS = ['work_get_cases', 'work_create_case', 'work_update_case', 'work_delete_case', 'work_add_subtask', 'work_update_subtask', 'work_delete_subtask', 'send_my_portal_sms', 'get_case_subfolders', 'ensure_case_folder'];
   if (WORK_ACTIONS.indexOf(body.action) !== -1) {
     return jsonResponse(work_doPost(body));
   }
@@ -4245,6 +4253,24 @@ function handleUploadFile(body) {
     return withLock_(8000, function () {
       try {
         const file = DriveApp.getFileById(body.fileId);
+        // [2026.09 버그수정] 발행(고객에게 보고서 재발행)이 기존 파일을 그냥 setContent로
+        // 덮어써서, 고객이 이미 열람한 버전이 흔적도 없이 사라졌다 — body.backupBeforeOverwrite가
+        // true면 덮어쓰기 전에 지금 내용을 같은 폴더의 "이전버전" 하위폴더에 타임스탬프를 붙여
+        // 복사해둔다(기본 동작이 아니라 명시적으로 요청한 호출만 — 다른 업로드 호출부는 영향 없음).
+        if (body.backupBeforeOverwrite) {
+          try {
+            const parent = file.getParents().hasNext() ? file.getParents().next() : null;
+            if (parent) {
+              const backupFolder = my_getOrCreateSubfolder_(parent, '이전버전');
+              const ts = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss');
+              const baseName = file.getName().replace(/(\.[^.]+)$/, '');
+              const ext = file.getName().slice(baseName.length);
+              file.makeCopy(baseName + '_' + ts + ext, backupFolder);
+            }
+          } catch (backupErr) {
+            console.log('발행 전 이전 버전 백업 실패: ' + backupErr.message);
+          }
+        }
         const bytes = Utilities.base64Decode(body.base64Data);
         const text = Utilities.newBlob(bytes).getDataAsString('UTF-8');
         file.setContent(text);
@@ -14410,7 +14436,7 @@ const MANAGE_APP_RPT_ADMIN_ACTIONS_ = ['admin_list', 'clear_password', 'delete_r
 // [2026.09] my 모듈(my.netax.kr)의 관리자 전용 액션들 — report 모듈과 완전히 다른 스크립트
 // 속성(ADMIN_CODE, RPT_ADMIN_CODE와는 다른 값)을 쓴다. admin_list는 report/my 두 모듈이
 // action 이름을 공유하는 특이 케이스라(body.module로 구분) 아래서 따로 처리한다.
-const MANAGE_APP_MY_ADMIN_ACTIONS_ = ['admin_create_case', 'admin_add_checklist_item', 'admin_get_case', 'admin_set_checklist_status'];
+const MANAGE_APP_MY_ADMIN_ACTIONS_ = ['admin_create_case', 'admin_add_checklist_item', 'admin_get_case', 'admin_set_checklist_status', 'admin_rename_checklist_item', 'admin_remove_checklist_item'];
 
 // [2026.09] manage 앱의 모든 화면이 fetch 대신 google.script.run으로 호출하는 단일 진입점.
 // doPost의 action-dispatch 로직(dispatchClientAction_)을 그대로 재사용 — 이 경로는 이미
@@ -14448,16 +14474,22 @@ const BOOKING_COLOR_PENDING = '11';    // 신청 대기 (토마토, 붉은 계�
 const BOOKING_COLOR_CONFIRMED = '9';   // 확정 처리 시 자동으로 지정할 색(블루베리)
 
 /** SOLAPI 발송 — 이 프로젝트에 이미 있는 sendSolapiSms_/스크립트 속성(SOLAPI_API_KEY 등)을 그대로 재사용. */
+// [2026.09 버그수정] 이 함수가 실패해도(전화번호 오류, SOLAPI 잔액 소진, 키 만료 등) 항상
+// 아무 값도 안 돌려줘서, 호출부는 "문자를 전송했습니다"라고 뜨는데 실제로는 고객이 못 받는
+// 상황이 계속 숨겨져 있었다. 반환값을 추가한다 — 기존 호출부들은 대부분 반환값을 안 쓰므로
+// (fire-and-forget) 그대로 동작하고, 실패 확인이 필요한 곳(work_sendMyPortalSms)만 확인한다.
 function booking_sendSMS(to, message) {
   const props = PropertiesService.getScriptProperties();
   const apiKey = props.getProperty('SOLAPI_API_KEY');
   const apiSecret = props.getProperty('SOLAPI_API_SECRET');
   const senderPhone = props.getProperty('SOLAPI_SENDER_PHONE');
-  if (!apiKey || !apiSecret || !senderPhone || !to) return;
+  if (!apiKey || !apiSecret || !senderPhone || !to) return { success: false, message: '문자 발송 설정이 없거나 연락처가 없습니다.' };
   try {
     sendSolapiSms_(apiKey, apiSecret, senderPhone.replace(/-/g, ''), String(to).replace(/-/g, ''), message);
+    return { success: true };
   } catch (err) {
     console.error('상담예약 SMS 발송 실패: ' + err.message);
+    return { success: false, message: err.message };
   }
 }
 
@@ -14586,7 +14618,7 @@ function booking_getBookings() {
 // 바로 "확정" 상태로 저장하고 캘린더 색상도 확정색으로 만든다(booking_createApplication +
 // booking_finalizeApproval을 합쳐서 승인 단계를 생략한 것과 같음).
 function booking_adminCreate(body) {
-  const { date, time, name, phone, type, situation } = body;
+  const { date, time, name, phone, type, situation, field } = body;
   if (!date || !time || !name) {
     return { success: false, error: '날짜·시간·이름은 필수입니다.' };
   }
@@ -14621,7 +14653,9 @@ function booking_adminCreate(body) {
   const newRowIndex = sheet.getLastRow() + 1;
   sheet.getRange(newRowIndex, 3).setNumberFormat('@');
   const now = new Date();
-  sheet.getRange(newRowIndex, 1, 1, 12).setValues([[now, name, phone || '', type || '', '', situation || '', date, time, '직권등록', '확정', now, event.getId()]]);
+  // [2026.09 버그수정] 직권등록 폼에 관련분야 입력칸이 아예 없어서(공개 신청폼과 달리), 이
+  // 예약으로 사건을 시작해도 "[예약 접수 정보]"에 관련분야가 항상 빈 채로 넘어갔다.
+  sheet.getRange(newRowIndex, 1, 1, 14).setValues([[now, name, phone || '', type || '', '', situation || '', date, time, '직권등록', '확정', now, event.getId(), '', field || '']]);
 
   if (phone) {
     booking_sendSMS(phone, `상담 예약이 등록되었습니다. ${date} ${time}`);
@@ -14640,7 +14674,24 @@ function booking_linkCase(body) {
   const sheet = ss.getSheetByName('Applications');
   if (sheet.getRange(1, 13).getValue() === '') sheet.getRange(1, 13).setValue('연결사건ID');
   sheet.getRange(rowIndex, 13).setValue(caseId);
+  // [2026.09 버그수정] 예약이 사건으로 전환되면 사건 쪽(work_syncCaseCalendar_)이 법정기한
+  // 일정을 새로 만들어주므로, 원래 예약 상담시간 일정은 지워서 캘린더에 중복으로 안 쌓이게 한다.
+  booking_deleteEventByRow_(sheet, rowIndex);
   return { success: true };
+}
+
+// [2026.09] work_deleteCase에서 호출 — 삭제되는 사건을 가리키는 연결사건ID가 있으면 풀어서
+// 예약목록의 "사건 시작" 버튼이 다시 뜨게 한다(안 그러면 죽은 링크가 영원히 남는다).
+function booking_clearCaseLink_(caseId) {
+  const ss = SpreadsheetApp.openById(BOOKING_SHEET_ID);
+  const sheet = ss.getSheetByName('Applications');
+  if (!sheet) return;
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][12] || '') === String(caseId)) {
+      sheet.getRange(i + 1, 13).setValue('');
+    }
+  }
 }
 
 // ===== 신청 승인 (공통 처리 로직) =====
@@ -14667,8 +14718,16 @@ function booking_finalizeApproval(rowIndex, eventId, phone, reservedDate, reserv
   booking_sendSMS(BOOKING_OWNER_PHONE, ownerMsg);
 }
 
+// [2026.09 버그수정] 승인/거절 둘 다 지금 시트에 저장된 실제 상태를 확인하지 않고 무조건
+// 덮어썼다 — 화면을 두 개 띄워놓고(또는 캐시가 낡은 채) 이미 사건으로 연결된(=처리가 끝난)
+// 예약을 거절하면, 사건은 멀쩡히 살아있는데 예약 상태만 "거절"로 바뀌어 화면이 서로 모순되게
+// 보이는 문제가 있었다(booking_cancelConfirmed에는 이미 있던 검사를 여기도 맞춘다).
 function booking_approveApplication(body) {
   const { rowIndex, eventId, phone, reservedDate, reservedTime } = body;
+  const ss = SpreadsheetApp.openById(BOOKING_SHEET_ID);
+  const sheet = ss.getSheetByName('Applications');
+  const row = sheet.getRange(rowIndex, 1, 1, 13).getValues()[0];
+  if (row[12]) return { success: false, message: '이미 사건으로 연결된 예약입니다.' };
   booking_finalizeApproval(rowIndex, eventId, phone, reservedDate, reservedTime);
   return { success: true, message: '승인되었습니다.' };
 }
@@ -14678,13 +14737,50 @@ function booking_rejectApplication(body) {
   const { rowIndex, phone } = body;
   const ss = SpreadsheetApp.openById(BOOKING_SHEET_ID);
   const sheet = ss.getSheetByName('Applications');
+  const row = sheet.getRange(rowIndex, 1, 1, 13).getValues()[0];
+  if (row[12]) return { success: false, message: '이미 사건으로 연결된 예약입니다 — 거절하려면 작업관리에서 그 사건을 먼저 정리해주세요.' };
 
   sheet.getRange(rowIndex, 10).setValue('거절');
+  // [2026.09 버그수정] 거절해도 캘린더 상담 일정이 안 지워져 죽은 일정이 계속 쌓였다.
+  booking_deleteEventByRow_(sheet, rowIndex);
 
   const message = '상담신청이 취소되었습니다. 다음 기회에 이용하여 주세요.';
   booking_sendSMS(phone, message);
 
   return { success: true, message: '거절되었습니다.' };
+}
+
+// [2026.09] 예약 행(Applications 시트, 12번째 컬럼 "이벤트ID")에 연결된 캘린더 일정을 지운다 —
+// 거절·취소·사건전환 세 곳에서 공용으로 쓴다. 이벤트가 이미 없거나 권한 문제가 나도 호출부의
+// 본 작업(상태 변경 등)은 계속 진행되어야 하므로 예외를 조용히 삼킨다.
+function booking_deleteEventByRow_(sheet, rowIndex) {
+  try {
+    const eventId = sheet.getRange(rowIndex, 12).getValue();
+    if (!eventId) return;
+    const cal = CalendarApp.getCalendarById(BOOKING_CALENDAR_ID);
+    const event = cal.getEventById(eventId);
+    if (event) event.deleteEvent();
+  } catch (err) { /* 무시 — 상태 변경 자체는 막지 않는다 */ }
+}
+
+// [2026.09] 확정된 예약을 사건 시작 전에 취소한다(고객 요청 등) — 이미 사건으로 연결된
+// 예약은 그 사건을 통해서만 정리하도록 막는다(예약만 지우면 사건 쪽 기록과 어긋나므로).
+function booking_cancelConfirmed(body) {
+  const rowIndex = Number(body.rowIndex);
+  if (!rowIndex) return { success: false, message: 'rowIndex가 필요합니다.' };
+  const ss = SpreadsheetApp.openById(BOOKING_SHEET_ID);
+  const sheet = ss.getSheetByName('Applications');
+  const row = sheet.getRange(rowIndex, 1, 1, 13).getValues()[0];
+  if (row[9] !== '확정') return { success: false, message: '확정된 예약만 취소할 수 있습니다.' };
+  if (row[12]) return { success: false, message: '이미 사건으로 연결된 예약입니다 — 취소하려면 작업관리에서 그 사건을 정리해주세요.' };
+
+  sheet.getRange(rowIndex, 10).setValue('취소');
+  booking_deleteEventByRow_(sheet, rowIndex);
+
+  const phone = row[2];
+  if (phone) booking_sendSMS(phone, '예약이 취소되었습니다. 문의사항은 연락 부탁드립니다.');
+
+  return { success: true, message: '취소되었습니다.' };
 }
 
 // =========================================================
@@ -15845,6 +15941,97 @@ function my_handleAdminAddChecklistItem(params) {
   }
 }
 
+// [2026.09 버그수정] 요청자료 항목명을 나중에 고치거나(오타 수정 등) 지울 방법이 이 체크리스트
+// 쪽엔 전혀 없었다 — docs.html에서 항목을 지워도 my.netax.kr의 체크리스트엔 지저분한 옛
+// 항목이 그대로 남고, 라벨을 고치면(사실상 삭제+새로추가) 이미 고객이 제출한 파일의 제출상태
+// (같은 문자열 키로 연결됨)와 연결이 끊겨서 "이미 제출함" 안내가 조용히 사라졌다. 이름을
+// 바꿀 때 제출상태도 같이 옮겨주는 전용 액션을 추가한다.
+function my_handleAdminRenameChecklistItem(params) {
+  if (!my_isValidAdminCode(params.admin_code || '')) {
+    return { success: false, message: '관리자 코드가 올바르지 않습니다.' };
+  }
+  const reportId = String(params.report_id || '').trim();
+  const oldItem = String(params.old_item || '').trim();
+  const newItem = String(params.new_item || '').trim();
+  if (!reportId || !oldItem || !newItem) {
+    return { success: false, message: 'report_id, old_item, new_item이 필요합니다.' };
+  }
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch (err) {
+    return { success: false, message: '처리가 지연되고 있습니다. 잠시 후 다시 시도해주세요.' };
+  }
+  try {
+    const ss = SpreadsheetApp.openById(MY_SHEET_ID);
+    const sheet = ss.getSheetByName(MY_SHEET_CASES);
+    const data = sheet.getDataRange().getValues();
+    const col = my_colMap_(data[0]);
+    let rowIndex = -1, row = null;
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][col.report_id]).trim() === reportId) { row = data[i]; rowIndex = i + 1; break; }
+    }
+    if (!row) return { success: false, message: '존재하지 않는 report_id입니다.' };
+
+    let checklist = [];
+    try { checklist = JSON.parse(row[col.체크리스트] || '[]'); } catch (e) { checklist = []; }
+    const idx = checklist.indexOf(oldItem);
+    if (idx !== -1) checklist[idx] = newItem;
+    else if (checklist.indexOf(newItem) === -1) checklist.push(newItem);
+    sheet.getRange(rowIndex, col.체크리스트 + 1).setValue(JSON.stringify(checklist));
+
+    let status = {};
+    try { status = JSON.parse(row[col.제출상태] || '{}'); } catch (e) { status = {}; }
+    if (status[oldItem] !== undefined) {
+      status[newItem] = status[oldItem];
+      delete status[oldItem];
+      sheet.getRange(rowIndex, col.제출상태 + 1).setValue(JSON.stringify(status));
+    }
+    SpreadsheetApp.flush();
+    return { success: true, checklist: checklist, submission_status: status };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function my_handleAdminRemoveChecklistItem(params) {
+  if (!my_isValidAdminCode(params.admin_code || '')) {
+    return { success: false, message: '관리자 코드가 올바르지 않습니다.' };
+  }
+  const reportId = String(params.report_id || '').trim();
+  const item = String(params.item || '').trim();
+  if (!reportId || !item) return { success: false, message: 'report_id와 item이 필요합니다.' };
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(10000); } catch (err) {
+    return { success: false, message: '처리가 지연되고 있습니다. 잠시 후 다시 시도해주세요.' };
+  }
+  try {
+    const ss = SpreadsheetApp.openById(MY_SHEET_ID);
+    const sheet = ss.getSheetByName(MY_SHEET_CASES);
+    const data = sheet.getDataRange().getValues();
+    const col = my_colMap_(data[0]);
+    let rowIndex = -1, row = null;
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][col.report_id]).trim() === reportId) { row = data[i]; rowIndex = i + 1; break; }
+    }
+    if (!row) return { success: false, message: '존재하지 않는 report_id입니다.' };
+
+    let checklist = [];
+    try { checklist = JSON.parse(row[col.체크리스트] || '[]'); } catch (e) { checklist = []; }
+    checklist = checklist.filter(function (x) { return x !== item; });
+    sheet.getRange(rowIndex, col.체크리스트 + 1).setValue(JSON.stringify(checklist));
+
+    let status = {};
+    try { status = JSON.parse(row[col.제출상태] || '{}'); } catch (e) { status = {}; }
+    if (status[item] !== undefined) {
+      delete status[item];
+      sheet.getRange(rowIndex, col.제출상태 + 1).setValue(JSON.stringify(status));
+    }
+    SpreadsheetApp.flush();
+    return { success: true, checklist: checklist, submission_status: status };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 // [2026.09] 증빙확보(docs.html)에서 회계사가 요청자료를 "확보완료"로 표시하면 — 고객이
 // my.netax.kr로 올린 게 아니라 회계사가 직접 구했더라도(등기부등본 발급 등) — 고객이
 // 보는 체크리스트에도 완료로 반영해서, 이미 처리된 항목을 고객이 다시 챙겨 올리지 않게
@@ -15922,6 +16109,8 @@ function my_doPost(body) {
     case 'admin_add_checklist_item': return my_handleAdminAddChecklistItem(body);
     case 'admin_get_case': return my_handleAdminGetCase(body);
     case 'admin_set_checklist_status': return my_handleAdminSetChecklistStatus(body);
+    case 'admin_rename_checklist_item': return my_handleAdminRenameChecklistItem(body);
+    case 'admin_remove_checklist_item': return my_handleAdminRemoveChecklistItem(body);
     default: return { success: false, message: '알 수 없는 action: ' + body.action };
   }
 }
@@ -16021,16 +16210,26 @@ function client_findOrCreateByName_(name, phone) {
     const sheets = client_getSheets_();
     const data = sheets.clients.getDataRange().getValues();
     const col = client_colMap_(data[0], CLIENT_HEADERS);
+    // [2026.09 버그수정] 동명이인 — 이름만 같으면 무조건 같은 고객으로 합쳐서, 실제로는 다른
+    // 사람(전화번호가 서로 다름)인데 기존 고객 레코드에 새 사건이 잘못 연결되고, 나중에 그
+    // 사건의 고객명을 고치면 엉뚱하게 기존 고객의 진짜 이름까지 바뀌어버리는 사고가 있었다.
+    // 전화번호가 둘 다 있고 서로 다르면 같은 사람으로 보지 않고 새 고객으로 등록한다(전화번호가
+    // 아예 없을 때는 예전처럼 이름만으로 매칭 — 하위호환 유지).
+    let nameConflict = false;
     for (let i = 1; i < data.length; i++) {
-      if (String(data[i][col.성명] || '').trim() === trimmed) {
-        const rowIndex = i + 1;
-        // 기존 고객인데 전화번호가 비어있으면(과거엔 예약 정보가 전달 안 돼 빈 채로
-        // 생성됐을 수 있음) 이번에 받은 번호로 채워준다 — 이미 값이 있으면 덮어쓰지 않음.
-        if (phoneTrimmed && !String(data[i][col.전화번호] || '').trim()) {
-          sheets.clients.getRange(rowIndex, col.전화번호 + 1).setValue(phoneTrimmed);
-        }
-        return { id: data[i][col.id], isNew: false };
+      if (String(data[i][col.성명] || '').trim() !== trimmed) continue;
+      const existingPhone = String(data[i][col.전화번호] || '').trim();
+      if (phoneTrimmed && existingPhone && existingPhone !== phoneTrimmed) {
+        nameConflict = true;
+        continue;
       }
+      const rowIndex = i + 1;
+      // 기존 고객인데 전화번호가 비어있으면(과거엔 예약 정보가 전달 안 돼 빈 채로
+      // 생성됐을 수 있음) 이번에 받은 번호로 채워준다 — 이미 값이 있으면 덮어쓰지 않음.
+      if (phoneTrimmed && !existingPhone) {
+        sheets.clients.getRange(rowIndex, col.전화번호 + 1).setValue(phoneTrimmed);
+      }
+      return { id: data[i][col.id], isNew: false };
     }
     const id = Utilities.getUuid();
     const now = new Date();
@@ -16042,7 +16241,7 @@ function client_findOrCreateByName_(name, phone) {
     newRow[col.수정일] = now;
     sheets.clients.appendRow(newRow);
     SpreadsheetApp.flush();
-    return { id: id, isNew: true };
+    return { id: id, isNew: true, nameConflict: nameConflict };
   });
 }
 
@@ -16082,6 +16281,7 @@ function client_updateClient(params) {
     const found = client_findRow_(sheets.clients, col, params.id);
     if (!found) return { success: false, message: '존재하지 않는 고객입니다.' };
     const row = found.row;
+    const oldName = String(row[col.성명] || '').trim();
     ['성명', '전화번호', '구분', '사업자번호', '메모'].forEach(function (key) {
       if (params[key] !== undefined) row[col[key]] = String(params[key]).trim();
     });
@@ -16091,16 +16291,59 @@ function client_updateClient(params) {
     sheets.clients.getRange(found.rowIndex, col.사업자번호 + 1).setNumberFormat('@');
     sheets.clients.getRange(found.rowIndex, 1, 1, row.length).setValues([row]);
     SpreadsheetApp.flush();
+    // [2026.09 버그수정] 사건 쪽에서 고객명을 고치면 연결된 고객 레코드 이름도 같이 바뀌도록
+    // 이미 고쳐뒀는데(work_updateCase), 반대 방향(고객관리에서 직접 개명)은 안 챙겨져 있었다 —
+    // 그대로 두면 고객관리엔 새 이름, 이미 등록된 사건·대시보드·Drive 폴더명엔 옛 이름이 남아
+    // 계속 따로 논다. 이 고객에게 연결된 모든 사건의 고객명을 같이 갱신한다(사건명·Drive
+    // 폴더명은 자동으로 안 바뀌는 기존 정책 그대로 유지 — 필요하면 사건별로 직접 재저장).
+    const newName = String(row[col.성명] || '').trim();
+    if (newName && newName !== oldName) {
+      try {
+        const workSheet = work_getSheet_();
+        const workData = workSheet.getDataRange().getValues();
+        const workCol = work_colMap_(workData[0]);
+        for (let i = 1; i < workData.length; i++) {
+          if (String(workData[i][workCol.고객ID] || '') === String(params.id)) {
+            workSheet.getRange(i + 1, workCol.고객명 + 1).setValue(newName);
+          }
+        }
+      } catch (err) {
+        console.log('고객 개명을 연결된 사건에 반영 실패: ' + err.message);
+      }
+    }
     return { success: true, client: client_readClient_(col, row) };
   });
 }
 
+// [2026.09 버그수정] 진행 중인 사건이 있는 고객을 지우면, 그 사건의 고객ID 연결이 끊겨
+// "👤 고객정보 빠른보기"가 에러를 냈다 — 경고 없이 지워지던 것을 막는다. 이미 끝난(완료)
+// 사건만 있으면(기록 보존 목적이므로) 그대로 삭제를 허용한다.
 function client_deleteClient(params) {
   return withLock_(8000, function () {
     const sheets = client_getSheets_();
     const col = client_colMap_(sheets.clients.getDataRange().getValues()[0], CLIENT_HEADERS);
     const found = client_findRow_(sheets.clients, col, params.id);
     if (!found) return { success: false, message: '존재하지 않는 고객입니다.' };
+
+    if (!params.force) {
+      const workSheet = work_getSheet_();
+      const workData = workSheet.getDataRange().getValues();
+      const workCol = work_colMap_(workData[0]);
+      const activeCases = [];
+      for (let i = 1; i < workData.length; i++) {
+        if (workData[i][workCol.고객ID] === params.id && workData[i][workCol.상태] !== '완료') {
+          activeCases.push(workData[i][workCol.사건명]);
+        }
+      }
+      if (activeCases.length) {
+        return {
+          success: false,
+          message: '진행 중인 사건이 있어 삭제할 수 없습니다: ' + activeCases.join(', ') + '. 그래도 삭제하려면 다시 시도해주세요.',
+          hasActiveCases: true
+        };
+      }
+    }
+
     sheets.clients.deleteRow(found.rowIndex);
     return { success: true };
   });
@@ -16308,6 +16551,13 @@ const WORK_DEADLINE_MONTHS_ = { transfer: 2, gift: 3, inheritance: 6 };
 const WORK_DEADLINE_DAYS_ = { 이의신청: 90, 심사청구: 90, 심판청구: 90, 행정소송: 90, 과세적부: 30 };
 const WORK_DEADLINE_YEARS_ = { 경정청구: 5 };
 const WORK_MANUAL_DEADLINE_TYPES_ = ['상담', '해명자료'];
+// [2026.09 버그수정] 캘린더 정리(work_deleteEventsByTag_)가 "오늘부터 +2년"까지만 검색해서
+// 지웠는데, 경정청구(5년)처럼 법정일이 그보다 먼 사건은 그 일정을 편집할 때마다(담당자만
+// 바꿔도 work_syncCaseCalendar_가 매번 통째로 지웠다 다시 만듦) 예전 일정을 못 찾아 못 지우고
+// 새 일정만 계속 추가돼 중복이 영원히 쌓였다 — 실제 최대 마감연수보다 넉넉하게 검색 범위를 잡는다.
+const WORK_CALENDAR_SEARCH_HORIZON_YEARS_ = Math.max(2, Object.keys(WORK_DEADLINE_YEARS_).reduce(function (max, k) {
+  return Math.max(max, WORK_DEADLINE_YEARS_[k]);
+}, 0) + 1);
 
 // [2026.09] 필요증빙 템플릿 — "사건처리 시작 시 세목별로 늘 필요한 증빙을 매번 손으로
 // 입력하지 말고, 세액계산기가 이미 아는 노하우를 재사용해 자동으로 깔아주자"는 요청에
@@ -16535,6 +16785,7 @@ function work_readRow_(col, rowValues) {
     법정일: work_dateStr_(rowValues[col.법정일]),
     납세자: rowValues[col.납세자],
     상태: rowValues[col.상태],
+    완료전법정일: work_dateStr_(rowValues[col.완료전법정일]),
     개요: rowValues[col.개요],
     처리방향: rowValues[col.처리방향],
     처리대상: rowValues[col.처리대상],
@@ -16601,6 +16852,28 @@ function work_getOrCreateCaseFolder_(사건명) {
   } catch (err) {
     return '';
   }
+}
+
+// [2026.09 버그수정] 사건 생성 당시 Drive 오류 등으로 폴더 생성이 실패했거나, 폴더ID 컬럼이
+// 생기기 전에 만들어진 옛날 사건은 c.폴더ID가 비어있다 — 이 상태로 "고객창구 연결하기"를
+// 누르면(casehandling.html) my_handleAdminCreateCase가 폴더ID 없음으로 판단해 완전히 다른
+// 곳(MY_ROOT_FOLDER_ID)에 새 폴더를 만들어버려서, 고객이 my.netax.kr에 올린 파일을 증빙관리·
+// 작성관리가 영영 찾지 못하는 문제가 있었다. 연결하기 전에 항상 이 함수로 올바른 위치의
+// 폴더(증빙관리와 같은 "고객사건" 루트 밑)를 먼저 확보하고 사건에 저장해둔다.
+function work_ensureCaseFolder(params) {
+  return withLock_(8000, function () {
+    const sheet = work_getSheet_();
+    const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+    const found = work_findCaseRow_(sheet, col, params.id);
+    if (!found) return { success: false, message: '존재하지 않는 사건입니다.' };
+    let folderId = found.row[col.폴더ID];
+    if (!folderId) {
+      folderId = work_getOrCreateCaseFolder_(found.row[col.사건명]);
+      if (!folderId) return { success: false, message: '드라이브 폴더를 만들지 못했습니다.' };
+      sheet.getRange(found.rowIndex, col.폴더ID + 1).setValue(folderId);
+    }
+    return { success: true, folderId: folderId };
+  });
 }
 
 // 상담신청(예약) 때 받은 고객유형/현재세무처리상황/관련분야를 개요(진행메모) 맨 앞에
@@ -16681,7 +16954,8 @@ function work_createCase(params) {
     // 없으면 그 자리에서 새 고객으로 등록해서 연결한다 — 사건 등록 흐름이 예전과 똑같이
     // 이름만 입력하면 되도록 유지하면서도 자동으로 고객관리 명단이 쌓이게 하기 위함.
     const 전화 = String(params.전화 || '').trim();
-    const 고객ID = String(params.고객ID || '').trim() || (고객명 ? client_findOrCreateByName_(고객명, 전화).id : '');
+    let clientMatch = null;
+    const 고객ID = String(params.고객ID || '').trim() || (고객명 ? (clientMatch = client_findOrCreateByName_(고객명, 전화)).id : '');
     // [2026.09] "사건명이 애매하다"는 지적에 따라 사람이 직접 입력하지 않고 자동으로 만든다 —
     // "고객명(납세자) 세목 업무유형" (납세자가 고객명과 다를 때만 괄호 표시), 예: "홍길동(이순신) 상속 신고".
     const 사건명 = work_generateUniqueCaseName_(sheet, col, 고객ID, 고객명, seMok, upType, 납세자);
@@ -16749,7 +17023,11 @@ function work_createCase(params) {
 
     const caseObj = work_readRow_(col, newRow);
     work_syncCaseCalendar_(caseObj);
-    return { success: true, case: caseObj };
+    const result = { success: true, case: caseObj };
+    if (clientMatch && clientMatch.nameConflict) {
+      result.warning = '"' + 고객명 + '" 이름의 고객이 이미 있지만 전화번호가 달라 다른 사람으로 보고 새 고객으로 등록했습니다. 동명이인이 맞는지 고객관리에서 확인해주세요.';
+    }
+    return result;
   });
 }
 
@@ -16761,7 +17039,26 @@ function work_updateCase(params) {
     if (!found) return { success: false, message: '존재하지 않는 사건입니다.' };
 
     const row = found.row;
+    // [2026.09 버그수정] 동시편집 낙관적 잠금 — 작업일지/증빙목록/법령예규판례/세액계산결과처럼
+    // "배열 전체를 읽어서 항목 하나 더하거나 지운 뒤 통째로 다시 저장"하는 화면들은, 두 사람이
+    // (또는 같은 사람이 다른 탭에서) 거의 동시에 저장하면 나중 저장이 먼저 저장을 통째로 덮어써
+    // 먼저 한 사람의 변경이 조용히 사라질 수 있다(실측 확인됨). 클라이언트가 자기가 마지막으로
+    // 읽었던 수정일(params.기대수정일)을 같이 보내오면, 그 사이 다른 저장이 있었는지(수정일이
+    // 달라졌는지) 확인해서 다르면 저장을 막고 최신 사건 데이터를 그대로 돌려준다 — 이 값을
+    // 안 보내는 기존 호출(단순 필드 편집 등)은 지금처럼 그대로 동작한다(하위호환).
+    if (params.기대수정일) {
+      const actualModified = row[col.수정일] instanceof Date ? row[col.수정일].getTime() : new Date(row[col.수정일] || 0).getTime();
+      const expectedModified = new Date(params.기대수정일).getTime();
+      if (Number.isFinite(actualModified) && Number.isFinite(expectedModified) && actualModified !== expectedModified) {
+        // [2026.09 버그수정] 충돌 시 화면을 새로고침해서 다른 사람의 저장을 지키는 것까지는
+        // 맞는데, 그 과정에서 지금 사용자가 막 입력하던 내용(예: 방금 추가하려던 작업일지 한
+        // 줄)도 같이 사라진다는 걸 안내하지 않아서 "분명히 입력했는데 없어졌다"는 당혹감을
+        // 줄 수 있었다 — 메시지에서 명확히 알려준다.
+        return { success: false, conflict: true, message: '다른 화면(또는 다른 사람)이 방금 먼저 저장해서, 지금 보고 있는 내용이 최신이 아닙니다. 화면을 최신 내용으로 새로고침했습니다 — 방금 입력하신 내용은 반영되지 않았을 수 있으니 확인 후 다시 시도해주세요.', case: work_readRow_(col, row) };
+      }
+    }
     const wasCompleted = row[col.상태] === '완료'; // 아래서 덮어쓰기 전에 미리 기억해둔다
+    const oldSemok = row[col.세목]; // 세목이 실제로 바뀌었는지 판단하려고 덮어쓰기 전에 기억해둔다
     ['고객명', '사건명', '담당자', '상태', '납세자', '개요', '처리방향', '처리대상', 'my_report_id'].forEach(function (key) {
       if (params[key] !== undefined) row[col[key]] = String(params[key]).trim();
     });
@@ -16795,10 +17092,19 @@ function work_updateCase(params) {
     // 참고만 한다(overview를 새로 쓰지는 않음 — 사건개요 저장은 여전히 그 화면에서만).
     if (params.사건개요 !== undefined || params.세목 !== undefined || params.업무유형 !== undefined) {
       const overviewProvided = params.사건개요 !== undefined;
+      // [2026.09 버그수정] 세목이 실제로 바뀌었는데(예: 증여→양도) 사건개요서를 이번에 새로
+      // 안 보내면, 예전엔 옛 세목 때 입력했던 필드(수증자·증여자 등)가 사건개요 안에 그대로
+      // 숨어있다가 나중에 세목을 다시 되돌리면(양도→증여) 마치 최신 값처럼 부활했다 — 세목
+      // 분류 자체가 바뀌는 건 다른 종류의 사건이 되는 것이므로, 새로 채워지는 사건개요를
+      // 명시적으로 같이 안 보낸 경우엔 옛 사건개요를 비우고 새로 시작한다.
+      const semokActuallyChanged = params.세목 !== undefined && String(params.세목).trim() !== String(oldSemok || '').trim();
+      const shouldWipeOverview = semokActuallyChanged && !overviewProvided;
       let overview;
       if (overviewProvided) {
         overview = params.사건개요;
         if (typeof overview === 'string') { try { overview = JSON.parse(overview); } catch (e) { overview = null; } }
+      } else if (shouldWipeOverview) {
+        overview = {};
       } else {
         try { overview = JSON.parse(row[col.사건개요] || '{}'); } catch (e) { overview = {}; }
       }
@@ -16819,16 +17125,44 @@ function work_updateCase(params) {
         const existingLabels = currentEvidence.map(function (e) { return e.label; });
         const newItems = templateItems.filter(function (item) { return existingLabels.indexOf(item.label) === -1; });
         if (newItems.length) row[col.증빙목록] = JSON.stringify(currentEvidence.concat(newItems));
-        if (overviewProvided) row[col.사건개요] = JSON.stringify(overview);
+        if (overviewProvided || shouldWipeOverview) row[col.사건개요] = JSON.stringify(overview);
       }
     }
     if (params.고객명 !== undefined) {
-      row[col.고객ID] = params.고객명 ? client_findOrCreateByName_(row[col.고객명]).id : '';
+      const newCustomerName = row[col.고객명]; // 위 forEach에서 이미 새 이름으로 덮어써진 상태
+      const linkedClientId = row[col.고객ID];
+      if (!newCustomerName) {
+        row[col.고객ID] = '';
+      } else if (linkedClientId) {
+        // [2026.09 버그수정] 이미 연결된 고객이 있는데 사건의 고객명만 고치면, 예전엔 새
+        // 이름으로 다시 "이름으로 찾기"를 해서 재연결했다 — 동명이인이 있으면 완전히 다른
+        // 사람의 고객 레코드로 잘못 연결될 위험이 있었다(오늘 밤 사건 폴더 이름에서 고친
+        // 것과 같은 종류의 위험). 대신 원래 연결된 고객 레코드의 이름 자체를 고쳐서(오타
+        // 정정 등) 같은 고객ID를 그대로 유지한다 — 고객관리 쪽 이름도 같이 맞춰진다.
+        client_updateClient({ id: linkedClientId, 성명: newCustomerName });
+      } else {
+        row[col.고객ID] = client_findOrCreateByName_(newCustomerName).id;
+      }
     }
+    // [2026.09 버그수정] "필드가 이번 요청에 실려왔다" ≠ "값이 실제로 바뀌었다"인데 이 셋을
+    // 혼동해서, 세목/업무유형/기준일을 매번 통째로 같이 보내는 화면(작업관리의 저장 폼)에서는
+    // 값이 하나도 안 바뀌었어도 recalc가 항상 true가 됐다 — 그 결과 아래 "완료 취소 시 원래
+    // 마감일 복원" 로직(!recalc가 조건)이 그 화면에서는 사실상 한 번도 작동하지 않아서,
+    // 상담·해명자료처럼 마감일을 직접 입력하는 사건을 완료했다가 재오픈하면 원래 처리시한이
+    // 영구히 사라지고 완료 처리한 날짜로 바뀌어버렸다. 실제로 값이 달라졌을 때만 recalc로 본다.
     let recalc = false;
-    if (params.세목 !== undefined) { row[col.세목] = String(params.세목).trim(); recalc = true; }
-    if (params.업무유형 !== undefined) { row[col.업무유형] = String(params.업무유형).trim(); recalc = true; }
-    if (params.기준일 !== undefined) { row[col.기준일] = String(params.기준일).trim(); recalc = true; }
+    if (params.세목 !== undefined) {
+      if (String(params.세목).trim() !== String(row[col.세목] || '').trim()) recalc = true;
+      row[col.세목] = String(params.세목).trim();
+    }
+    if (params.업무유형 !== undefined) {
+      if (String(params.업무유형).trim() !== String(row[col.업무유형] || '').trim()) recalc = true;
+      row[col.업무유형] = String(params.업무유형).trim();
+    }
+    if (params.기준일 !== undefined) {
+      if (String(params.기준일).trim() !== String(row[col.기준일] || '').trim()) recalc = true;
+      row[col.기준일] = String(params.기준일).trim();
+    }
     const upType = row[col.업무유형];
     if (WORK_MANUAL_DEADLINE_TYPES_.indexOf(upType) !== -1) {
       // 상담·해명자료는 서버가 계산하지 않고, 사용자가 입력해 보낸 처리시한만 그대로 반영한다
@@ -16889,6 +17223,15 @@ function work_deleteCase(params) {
     const myReportId = found.row[col.my_report_id];
     sheet.deleteRow(found.rowIndex);
     work_deleteCaseCalendarEvents_(params.id);
+    // [2026.09 버그수정] 예약에서 시작된 사건을 지워도 그 예약의 연결사건ID가 안 지워져서,
+    // 예약목록엔 죽은 사건을 가리키는 "🔗 사건 연결됨" 버튼이 영원히 남고, 눌러도 조용히
+    // 아무 반응이 없었다(사건을 못 찾아서). 사건 삭제 시 연결된 예약이 있으면 링크를 풀어서
+    // "🗂 사건 시작" 버튼이 다시 뜨게 한다.
+    try {
+      booking_clearCaseLink_(params.id);
+    } catch (err) {
+      console.log('사건 삭제 시 예약 연결 해제 실패: ' + err.message);
+    }
     if (myReportId) {
       try {
         const yesterday = new Date();
@@ -17024,7 +17367,11 @@ function work_syncCaseCalendar_(caseObj) {
     work_deleteEventsByTag_(cal, tag);
 
     // [2026.09] 사건명 자체가 이미 고객명을 포함하므로("홍길동_양도_신고") 따로 붙이지 않는다.
-    const label = caseObj.사건명 || caseObj.고객명 || '';
+    // [2026.09 버그수정] "보류" 상태 사건도 진행 사건과 똑같은 제목으로 캘린더에 떠서 구분이
+    // 안 됐다 — 완전히 지우지는 않는다(보류 중에도 진짜 법정기한은 그대로 다가오므로, 잊고
+    // 넘기면 더 위험함), 대신 제목에 [보류] 표시를 붙여 한눈에 구분되게 한다.
+    const holdPrefix = caseObj.상태 === '보류' ? '[보류] ' : '';
+    const label = holdPrefix + (caseObj.사건명 || caseObj.고객명 || '');
     if (caseObj.법정일) {
       work_createAllDayEvent_(cal, '[NX] ' + label + ' — 법정기한', caseObj.법정일, tag);
     }
@@ -17053,7 +17400,7 @@ function work_deleteCaseCalendarEvents_(caseId) {
 
 function work_deleteEventsByTag_(cal, tag) {
   const searchStart = new Date(); searchStart.setFullYear(searchStart.getFullYear() - 1);
-  const searchEnd = new Date(); searchEnd.setFullYear(searchEnd.getFullYear() + 2);
+  const searchEnd = new Date(); searchEnd.setFullYear(searchEnd.getFullYear() + WORK_CALENDAR_SEARCH_HORIZON_YEARS_);
   cal.getEvents(searchStart, searchEnd, { search: tag }).forEach(function (ev) {
     try { ev.deleteEvent(); } catch (e) { }
   });
@@ -17078,6 +17425,7 @@ function work_doPost(body) {
     case 'work_delete_subtask': return work_deleteSubtask(body);
     case 'send_my_portal_sms': return work_sendMyPortalSms(body);
     case 'get_case_subfolders': return work_getCaseSubfolders(body);
+    case 'ensure_case_folder': return work_ensureCaseFolder(body);
     default: return { success: false, message: '알 수 없는 action: ' + body.action };
   }
 }
@@ -17138,7 +17486,10 @@ function work_sendMyPortalSms(params) {
   // my.netax.kr을 홈페이지(netax.kr/my/)로 흡수 — 고객이 이미 아는 홈페이지 주소 하나로
   // 안내하기 위함(전자명함·상담신청과 같은 nav 버튼으로도 들어올 수 있게 됨).
   const message = '이음세무컨설팅 고객창구을 안내드립니다.\nhttps://netax.kr/my/?report_id=' + caseObj.my_report_id;
-  booking_sendSMS(phone, message);
+  const smsResult = booking_sendSMS(phone, message);
+  if (!smsResult || smsResult.success === false) {
+    return { success: false, message: '문자 발송에 실패했습니다' + (smsResult && smsResult.message ? ': ' + smsResult.message : '') + '. 고객이 안내를 못 받았을 수 있으니 직접 전달해주세요.' };
+  }
   return { success: true };
 }
 
