@@ -1863,7 +1863,7 @@ const DRIVE_TOOLS = [
   },
   {
     name: 'calculate_public_rental_housing_land_reduction',
-    description: '공공매입임대주택 건설을 목적으로 양도한 토지에 대한 양도소득세 과세특례(조특법§97의10, 2027.12.31까지 양도분, 현재 시행중)를 계산한다. 공공주택사업자와 공공매입임대주택을 건설·양도하기로 약정한 주택건설사업자에게 주택건설용 토지를 양도하면 그 양도소득세의 10%를 감면한다. 토지를 양도받은 날부터 3년 이내에 공공매입임대주택을 건설해 공공주택사업자에게 양도하지 않으면(인허가 지연 등 부득이한 사유 제외) 감면세액+이자상당액을 추징한다.',
+    description: '공공매입임대주택 건설을 목적으로 양도한 토지에 대한 양도소득세 과세특례(조특법§97의9, 2027.12.31까지 양도분, 현재 시행중)를 계산한다. 공공주택사업자와 공공매입임대주택을 건설·양도하기로 약정한 주택건설사업자에게 주택건설용 토지를 양도하면 그 양도소득세의 10%를 감면한다. 토지를 양도받은 날부터 3년 이내에 공공매입임대주택을 건설해 공공주택사업자에게 양도하지 않으면(인허가 지연 등 부득이한 사유 제외) 감면세액+이자상당액을 추징한다.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1871,7 +1871,7 @@ const DRIVE_TOOLS = [
         transferPrice: { type: 'number', description: '양도가액(원).' },
         acquisitionPrice: { type: 'number', description: '취득가액(원).' },
         necessaryExpenses: { type: 'number', description: '필요경비(원). 없으면 생략.' },
-        isNotBuiltWithin3Years: { type: 'boolean', description: '주택건설사업자가 토지를 양도받은 날(또는 인허가 지연 등 사유 해소일)부터 3년 이내에 공공매입임대주택을 건설해 공공주택사업자에게 양도하지 않았는지(§97의10③). true면 hasJustifiableDelayReason이 아닌 한 감면세액을 추징한다 — 이 경우 originalReductionAmount(이미 감면받은 세액)도 함께 넣어야 한다.' },
+        isNotBuiltWithin3Years: { type: 'boolean', description: '주택건설사업자가 토지를 양도받은 날(또는 인허가 지연 등 사유 해소일)부터 3년 이내에 공공매입임대주택을 건설해 공공주택사업자에게 양도하지 않았는지(§97의9③). true면 hasJustifiableDelayReason이 아닌 한 감면세액을 추징한다 — 이 경우 originalReductionAmount(이미 감면받은 세액)도 함께 넣어야 한다.' },
         hasJustifiableDelayReason: { type: 'boolean', description: 'isNotBuiltWithin3Years가 true일 때만 — 인허가 지연 등 대통령령으로 정하는 부득이한 사유가 있는지. true면 추징하지 않는다.' },
         originalReductionAmount: { type: 'number', description: 'isNotBuiltWithin3Years가 true일 때 — 애초에 이 특례로 감면받았던 세액(원). 추징액 산정에 쓰인다.' }
       },
@@ -3128,7 +3128,7 @@ function dispatchClientAction_(body) {
   }
 
   // [2026.08] work 모듈 — 작업관리(사건별 세부업무 트리 + 법정기한 자동계산 + 캘린더 연동) 신규
-  const WORK_ACTIONS = ['work_get_cases', 'work_create_case', 'work_update_case', 'work_delete_case', 'work_add_subtask', 'work_update_subtask', 'work_delete_subtask', 'send_my_portal_sms', 'get_case_subfolders', 'ensure_case_folder'];
+  const WORK_ACTIONS = ['work_get_cases', 'work_create_case', 'work_update_case', 'work_delete_case', 'work_add_subtask', 'work_update_subtask', 'work_delete_subtask', 'send_my_portal_sms', 'get_case_subfolders', 'ensure_case_folder', 'work_audit_case_folder_names'];
   if (WORK_ACTIONS.indexOf(body.action) !== -1) {
     return jsonResponse(work_doPost(body));
   }
@@ -3141,6 +3141,34 @@ function dispatchClientAction_(body) {
   }
   if (body.action === 'law_get_precedent_detail') {
     return jsonResponse(toolGetTaxPrecedentDetail(body.category, body.id));
+  }
+  if (body.action === 'law_lookup_article') {
+    return jsonResponse(toolLookupStatuteArticle(body.lawName, body.articleNo));
+  }
+
+  // [2026.09 버그수정] 실사용 감사 지적 — 종전 챗봇(work.netax.kr)에서는 "이거 메일로 보내줘",
+  // "이번주 일정 뭐있어", "안읽은 메일 있어?", "할일 뭐있어" 처럼 자연어로 자유롭게 쓰던
+  // 기능들이었는데, 신규 관리 앱에는 이 기능을 부르는 화면 버튼이 하나도 없었다(서버 함수
+  // 자체는 AI 도구로 이미 살아있어 aisidebar 채팅으로는 여전히 가능하지만, 비개발자 사용자
+  // 입장에서는 "화면에 버튼이 없으면 그 기능이 없어진 것"과 같다). 화면에서 바로 부를 수
+  // 있도록 액션을 추가한다.
+  if (body.action === 'send_email') {
+    return jsonResponse(toolSendEmail(body.to, body.subject, body.body));
+  }
+  if (body.action === 'get_calendar_events') {
+    return jsonResponse(toolLookupCalendarEvents(body.startDate, body.endDate));
+  }
+  if (body.action === 'search_emails') {
+    return jsonResponse(toolSearchEmails(body.query, body.maxResults));
+  }
+  if (body.action === 'get_google_tasks') {
+    return jsonResponse(toolLookupGoogleTasks(body.includeCompleted, body.taskListId));
+  }
+  if (body.action === 'add_google_task') {
+    return jsonResponse(toolAddGoogleTask(body.title, body.notes, body.dueDate, body.taskListId));
+  }
+  if (body.action === 'lookup_building_register') {
+    return jsonResponse(toolLookupBuildingRegister(body.ledgerType, body.sigunguCd, body.bjdongCd, body.platGbCd, body.bun, body.ji));
   }
 
   // [2026.08] client 모듈 — 고객관리(고객 명단 + 자문내역) 신규
@@ -4854,7 +4882,7 @@ function toolGetBuildingPriceIndexTables() {
     구조지수: STRUCTURE_TABLE.map(s => ({ 구조명: s.name, 지수: s.index })),
     용도지수: USE_TABLE.map(u => ({ 번호: u.no, 대상건물: u.desc, 지수: u.index })),
     조정률_상속증여전용: ADJUSTMENT_TABLE.map(a => ({ 번호: a.no, 적용대상: a.desc, 지수: a.index })),
-    안내: '구조·용도는 건축물대장 또는 등기부등본상 기재를 우선하되, 사실상 현황이 다르면 사실상 현황을 따른다. 조정률은 상속세및증여세법 적용시에만 사용하고 양도소득세에는 적용하지 않는다. (계수표 기준: 2026.1.1. 시행 국세청 고시 제2025-39호 — 매년 1월 갱신되므로 신고 시점에 최신 고시 여부를 확인할 것)'
+    안내: '구조·용도는 건축물대장 또는 등기부등본상 기재를 우선하되, 사실상 현황이 다르면 사실상 현황을 따른다. 조정률은 상속세및증여세법 적용시에만 사용하고 양도소득세에는 적용하지 않는다. (계수표 기준: 2026.1.1. 시행 국세청 고시 제2026-39호 — 매년 1월 갱신되므로 신고 시점에 최신 고시 여부를 확인할 것)'
   };
 }
 
@@ -4924,7 +4952,7 @@ function toolCalculateBuildingStandardPrice(structureName, useNo, officialLandPr
     '㎡당_금액': pricePerSqm,
     '건물면적_㎡': floorAreaSqm,
     건물기준시가: totalPrice,
-    안내: '이 값은 건물가격만 포함하며, 부속토지가격은 별도입니다. 2026.1.1. 시행 국세청 고시 기준(국세청 고시 제2025-39호)이며, 통상 매년 1월 새 고시로 갱신되므로 신고 시점의 최신 고시 여부를 반드시 확인하고 홈택스 공식 계산기로 검산하시길 권합니다.'
+    안내: '이 값은 건물가격만 포함하며, 부속토지가격은 별도입니다. 2026.1.1. 시행 국세청 고시 기준(국세청 고시 제2026-39호)이며, 통상 매년 1월 새 고시로 갱신되므로 신고 시점의 최신 고시 여부를 반드시 확인하고 홈택스 공식 계산기로 검산하시길 권합니다.'
   };
 }
 
@@ -11729,7 +11757,7 @@ function toolCalculateNationalForestLandReduction(p) {
   };
 }
 
-// 공공매입임대주택 건설을 목적으로 양도한 토지에 대한 과세특례 (조특법§97의10, 2027.12.31까지
+// 공공매입임대주택 건설을 목적으로 양도한 토지에 대한 과세특례 (조특법§97의9, 2027.12.31까지
 // 양도분, 현재 시행중) — 공공주택사업자와 공공매입임대주택을 건설·양도하기로 약정한 주택건설
 // 사업자에게 주택건설용 토지를 양도하면 그 양도소득세의 10%를 감면한다. 토지를 양도받은 날(인허가
 // 지연 등 부득이한 사유가 있으면 그 사유 해소일)부터 3년 이내에 공공매입임대주택을 건설해 공공
@@ -11739,13 +11767,13 @@ function toolCalculatePublicRentalHousingLandReduction(p) {
   const transferDate = p.transferDate;
   if (!transferDate) return { error: '양도일이 필요합니다.' };
   if (transferDate > '2027-12-31') {
-    return { 적용여부: false, 안내: '양도일이 2027.12.31을 초과하여 조특법§97의10의 적용대상이 아닙니다(적용기한 만료).' };
+    return { 적용여부: false, 안내: '양도일이 2027.12.31을 초과하여 조특법§97의9의 적용대상이 아닙니다(적용기한 만료).' };
   }
   if (p.isNotBuiltWithin3Years && !p.hasJustifiableDelayReason) {
     const originalReductionAmount = Number(p.originalReductionAmount) || 0;
     return {
       적용여부: false, 감면유지여부: false, 추징액: originalReductionAmount,
-      안내: '주택건설사업자가 토지를 양도받은 날부터 3년 이내에 공공매입임대주택을 건설하여 공공주택사업자에게 양도하지 않아(조특법§97의10③) 감면세액 ' + originalReductionAmount + '원을 이자상당액과 함께 추징합니다(제63조③ 준용). 이자상당액은 calculate_clawback_interest 도구로 별도 계산하세요.'
+      안내: '주택건설사업자가 토지를 양도받은 날부터 3년 이내에 공공매입임대주택을 건설하여 공공주택사업자에게 양도하지 않아(조특법§97의9③) 감면세액 ' + originalReductionAmount + '원을 이자상당액과 함께 추징합니다(제63조③ 준용). 이자상당액은 calculate_clawback_interest 도구로 별도 계산하세요.'
     };
   }
   const transferPrice = Number(p.transferPrice) || 0;
@@ -11756,7 +11784,7 @@ function toolCalculatePublicRentalHousingLandReduction(p) {
     적용여부: true,
     전체양도차익: Math.round(totalGain),
     세액감면율: 10,
-    안내: '조특법§97의10 — 공공매입임대주택을 건설할 주택건설사업자(공공주택사업자와 건설·양도 약정을 체결한 자)에게 2027.12.31까지 주택건설용 토지를 양도하면 그 양도소득세 산출세액의 100분의 10을 감면합니다. calculate_transfer_tax로 전체 양도차익 기준 세액을 계산한 뒤 그 산출세액에서 10%를 차감하세요. 감면신청(②)을 해야 하고, 토지를 양도받은 날부터 3년 이내에 공공매입임대주택을 건설해 공공주택사업자에게 양도하지 않으면(인허가 지연 등 부득이한 사유 제외) 감면세액과 이자상당액을 추징합니다(③④) — 추후 이 사유가 발생하면 isNotBuiltWithin3Years와 originalReductionAmount(이미 감면받은 세액)를 넣어 다시 호출하세요.'
+    안내: '조특법§97의9 — 공공매입임대주택을 건설할 주택건설사업자(공공주택사업자와 건설·양도 약정을 체결한 자)에게 2027.12.31까지 주택건설용 토지를 양도하면 그 양도소득세 산출세액의 100분의 10을 감면합니다. calculate_transfer_tax로 전체 양도차익 기준 세액을 계산한 뒤 그 산출세액에서 10%를 차감하세요. 감면신청(②)을 해야 하고, 토지를 양도받은 날부터 3년 이내에 공공매입임대주택을 건설해 공공주택사업자에게 양도하지 않으면(인허가 지연 등 부득이한 사유 제외) 감면세액과 이자상당액을 추징합니다(③④) — 추후 이 사유가 발생하면 isNotBuiltWithin3Years와 originalReductionAmount(이미 감면받은 세액)를 넣어 다시 호출하세요.'
   };
 }
 
@@ -14356,9 +14384,18 @@ function doGet(e) {
   // 이 GAS 프로젝트가 직접 HtmlService로 서빙하는 새 앱. ?app=manage로만 진입, 다른 쿼리스트링
   // 동작(booking 등)은 그대로 아래에 유지.
   if (e && e.parameter && e.parameter.app === 'manage') {
+    // [2026.09 버그수정] 실사용 지적 — "홈 화면에 추가" 아이콘이 계속 구글 기본 대체
+    // 아이콘("G")으로만 떴다. 원인은 앱스크립트 웹앱이 실제 화면을 별도의 숨겨진
+    // iframe(sandboxFrame, googleusercontent.com) 안에 띄우는 구조라서, manage/index.html
+    // <head>에 넣은 <link rel="manifest">/<link rel="icon"> 태그는 전부 그 iframe 안에만
+    // 적용되고, 정작 휴대폰이 "홈 화면 추가" 아이콘을 결정할 때 보는 바깥쪽 껍데기 문서에는
+    // 전혀 반영되지 않았다. 그 바깥쪽 문서는 구글이 통제하고, HtmlOutput이 공식으로 허용하는
+    // 건 제목·파비콘 정도뿐이라 setFaviconUrl로 대신 지정한다(매니페스트 자체는 이 구조에서
+    // 지정할 방법이 없음).
     return HtmlService.createTemplateFromFile('manage/index')
       .evaluate()
       .setTitle('NETAX 관리')
+      .setFaviconUrl('https://job.netax.kr/icon-512.png')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
@@ -14395,26 +14432,59 @@ function include_(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
+// [2026.09 보안수정] 이전에는 클라이언트가 sessionStorage에 "로그인했다"는 표시만 남기고,
+// 그 뒤 모든 데이터 호출(manageApp_call)이 그 표시를 서버에 전혀 보내지 않았다 — 즉 이
+// 웹앱 URL만 아는 익명 방문자가 브라우저 콘솔에서 google.script.run.manageApp_call(...)을
+// 직접 호출하면 비밀번호 없이 전체 사건·고객 데이터를 읽고 지울 수 있었다(URL은
+// ANYONE_ANONYMOUS로 배포되어 있어 구글 로그인조차 필요 없음). 비밀번호 확인 성공 시에만
+// 서버가 서명한 세션 토큰(만료시간 포함 HMAC)을 발급하고, 이후 모든 manageApp_* 호출은 이
+// 토큰을 검증해야만 통과하도록 바꾼다 — 토큰 자체는 서버만 아는 API_SECRET으로 서명되므로
+// 위조할 수 없고, 값을 안다고 해도(sessionStorage는 그 브라우저에서만 보임) API_SECRET 자체가
+// 노출되는 것은 아니다.
+const MANAGE_APP_SESSION_TTL_MS_ = 12 * 60 * 60 * 1000; // 12시간
+
+function manageApp_issueSessionToken_() {
+  const secret = PropertiesService.getScriptProperties().getProperty('API_SECRET') || '';
+  const expiresAt = String(Date.now() + MANAGE_APP_SESSION_TTL_MS_);
+  const sigBytes = Utilities.computeHmacSha256Signature(expiresAt, secret);
+  const sigHex = sigBytes.map(function (b) { return ((b < 0 ? b + 256 : b)).toString(16).padStart(2, '0'); }).join('');
+  return expiresAt + '.' + sigHex;
+}
+
+function manageApp_verifySessionToken_(token) {
+  if (!token || typeof token !== 'string') return false;
+  const parts = token.split('.');
+  if (parts.length !== 2) return false;
+  const expiresAt = Number(parts[0]);
+  if (!expiresAt || Date.now() > expiresAt) return false;
+  const secret = PropertiesService.getScriptProperties().getProperty('API_SECRET') || '';
+  const expectedBytes = Utilities.computeHmacSha256Signature(parts[0], secret);
+  const expectedHex = expectedBytes.map(function (b) { return ((b < 0 ? b + 256 : b)).toString(16).padStart(2, '0'); }).join('');
+  return expectedHex === parts[1];
+}
+
 // [2026.09] admin.netax.kr과 같은 패턴 — 계정 없이 공용 비밀번호 하나로 접근을 막는 얇은 게이트.
-// 스크립트 속성 MANAGE_APP_PASSWORD가 비어있으면(설정 전) 항상 거부한다.
+// 스크립트 속성 MANAGE_APP_PASSWORD가 비어있으면(설정 전) 항상 거부한다. 성공하면 위 세션
+// 토큰을 함께 발급한다(호환을 위해 이름은 그대로 두되 반환값을 boolean에서 객체로 바꿈).
 function manageApp_checkPassword(pw) {
   const expected = PropertiesService.getScriptProperties().getProperty('MANAGE_APP_PASSWORD');
-  return !!expected && pw === expected;
+  const ok = !!expected && pw === expected;
+  return { ok: ok, token: ok ? manageApp_issueSessionToken_() : '' };
 }
 
 // [2026.09] 자체 AI 사이드바 — doPost의 messages 분기(기존 채팅 프로토콜)를 그대로 fetch로
-// 호출하려면 _key(API_SECRET)가 필요하다. 이미 로그인 게이트를 통과한 뒤에만 호출되고,
-// 같은 값이 GitHub Pages의 공개 정적 파일(config.js)에도 평문으로 있어 새로운 노출이 아니다.
-function manageApp_getApiSecret() {
+// 호출하려면 _key(API_SECRET)가 필요하다. 로그인 시 발급된 세션 토큰을 검증한 뒤에만 내려준다.
+function manageApp_getApiSecret(token) {
+  if (!manageApp_verifySessionToken_(token)) return '';
   return PropertiesService.getScriptProperties().getProperty('API_SECRET') || '';
 }
 
 // [2026.09] 열람관리 "미리보기"용 — rpt.netax.kr은 고객용 페이지라 원래 비밀번호를 입력해야
 // 열리는데, admin.netax.kr(구 어드민)이 하던 것처럼 URL에 &admin=RPT_ADMIN_CODE를 붙이면
-// rpt.netax.kr 자체가 그 값을 보고 비밀번호 확인을 건너뛴다(관리자 직권 미리보기). 이 관리
-// 앱은 이미 자체 비밀번호로 로그인한 신뢰된 컨텍스트라 manageApp_getApiSecret과 같은 방식으로
-// 그대로 내려준다.
-function manageApp_getRptAdminCode() {
+// rpt.netax.kr 자체가 그 값을 보고 비밀번호 확인을 건너뛴다(관리자 직권 미리보기). 세션
+// 토큰을 검증한 뒤에만 내려준다(위와 동일한 이유).
+function manageApp_getRptAdminCode(token) {
+  if (!manageApp_verifySessionToken_(token)) return '';
   return PropertiesService.getScriptProperties().getProperty('RPT_ADMIN_CODE') || '';
 }
 
@@ -14439,10 +14509,16 @@ const MANAGE_APP_RPT_ADMIN_ACTIONS_ = ['admin_list', 'clear_password', 'delete_r
 const MANAGE_APP_MY_ADMIN_ACTIONS_ = ['admin_create_case', 'admin_add_checklist_item', 'admin_get_case', 'admin_set_checklist_status', 'admin_rename_checklist_item', 'admin_remove_checklist_item'];
 
 // [2026.09] manage 앱의 모든 화면이 fetch 대신 google.script.run으로 호출하는 단일 진입점.
-// doPost의 action-dispatch 로직(dispatchClientAction_)을 그대로 재사용 — 이 경로는 이미
-// 로그인된 Apps Script 실행 컨텍스트 안이라 doPost처럼 _key HMAC 검증이 필요 없다.
+// doPost의 action-dispatch 로직(dispatchClientAction_)을 그대로 재사용한다.
+// [2026.09 보안수정] "이미 로그인된 컨텍스트라 검증 불필요"라는 이전 전제가 틀렸다 —
+// google.script.run은 페이지가 로드된 이상 로그인 여부와 무관하게 누구나 브라우저 콘솔에서
+// 직접 호출할 수 있어, 실제로는 이 함수가 전체 사건·고객 데이터에 대한 무인증 진입점이었다.
+// 이제 로그인 성공 시 발급된 세션 토큰을 매 호출마다 검증한다.
 // 반환값은 google.script.run이 그대로 직렬화할 수 있도록 ContentService가 아닌 평범한 객체로 풀어서 준다.
-function manageApp_call(action, payload) {
+function manageApp_call(action, payload, sessionToken) {
+  if (!manageApp_verifySessionToken_(sessionToken)) {
+    return { error: 'AUTH_REQUIRED' };
+  }
   const body = Object.assign({}, payload || {}, { action: action });
   if (action === 'admin_list' && body.module === 'my') {
     body.admin_code = PropertiesService.getScriptProperties().getProperty('ADMIN_CODE');
@@ -14451,7 +14527,15 @@ function manageApp_call(action, payload) {
   } else if (MANAGE_APP_MY_ADMIN_ACTIONS_.indexOf(action) !== -1) {
     body.admin_code = PropertiesService.getScriptProperties().getProperty('ADMIN_CODE');
   }
-  const dispatched = dispatchClientAction_(body);
+  // [2026.09 버그수정] doPost는 전체를 try/catch로 감싸 어떤 예외든 안전한 {error:...}로
+  // 바꿔주는데, 이 진입점만 그 안전망이 없어 내부 예외가 다듬어지지 않은 채 그대로
+  // withFailureHandler로 넘어갔다 — doPost와 동일하게 감싼다.
+  let dispatched;
+  try {
+    dispatched = dispatchClientAction_(body);
+  } catch (err) {
+    return { error: '서버 처리 중 오류: ' + err.message };
+  }
   if (!dispatched) {
     return { error: '알 수 없는 작업: ' + action };
   }
@@ -14473,6 +14557,18 @@ const BOOKING_OWNER_PHONE = '01050419639';
 const BOOKING_COLOR_PENDING = '11';    // 신청 대기 (토마토, 붉은 계통)
 const BOOKING_COLOR_CONFIRMED = '9';   // 확정 처리 시 자동으로 지정할 색(블루베리)
 
+// [2026.09 버그수정/보안] booking_createApplication은 로그인 없이 누구나 접근하는 공개
+// 신청폼(netax.kr)에서 값을 받아 그대로 Sheets 셀에 setValues()로 쓴다. 셀 값이 "="로
+// 시작하면 구글시트가 실제 수식으로 해석하므로(예: =HYPERLINK(...)로 다른 셀 값을 외부로
+// 유출하거나 피싱링크를 여는 수식), 신청자가 이름/상황 등에 그런 값을 넣고 세무사님이
+// 나중에 원본 시트를 직접 열어보면 그 수식이 실행될 수 있다 — 앱 화면(esc() 처리)은
+// 안전하지만 시트 원본이 오염된다. 쓰기 전에 "=+-@"로 시작하는 값 앞에 작은따옴표를 붙여
+// 무력화한다.
+function sanitizeForSheetCell_(v) {
+  const s = String(v == null ? '' : v);
+  return /^[=+\-@]/.test(s) ? "'" + s : s;
+}
+
 /** SOLAPI 발송 — 이 프로젝트에 이미 있는 sendSolapiSms_/스크립트 속성(SOLAPI_API_KEY 등)을 그대로 재사용. */
 // [2026.09 버그수정] 이 함수가 실패해도(전화번호 오류, SOLAPI 잔액 소진, 키 만료 등) 항상
 // 아무 값도 안 돌려줘서, 호출부는 "문자를 전송했습니다"라고 뜨는데 실제로는 고객이 못 받는
@@ -14493,6 +14589,32 @@ function booking_sendSMS(to, message) {
   }
 }
 
+const BOOKING_ALLOWED_HOURS_ = [10, 11, 14, 15, 16];
+
+// [2026.09 버그수정] 가용시간 조회(getAvailability)와 실제 신청 접수(createApplication/
+// adminCreate)가 각자 따로 "이 시간대가 바쁜가"를 판정하고 있어서, 투명(공개 표시 안 함)
+// 캘린더 일정이 있는 시간대가 조회에서는 "빈 슬롯"으로 보이는데 정작 신청을 넣으면 거부되는
+// 불일치가 있었다. 판정 로직을 이 함수 하나로 통일한다.
+function booking_isSlotBusy_(cal, start, end) {
+  return cal.getEvents(start, end)
+    .some(ev => ev.getTransparency() !== CalendarApp.EventTransparency.TRANSPARENT);
+}
+
+// [2026.09 버그수정] 요일·영업시간·24시간 사전예약 규칙이 getAvailability(클라이언트가 보는
+// 달력)에만 있고 실제 접수 함수(createApplication)는 검사하지 않아서, 오래된 캐시나 API 직접
+// 호출로 주말·심야·당일 예약이 그대로 저장될 수 있었다. 두 곳에서 같은 규칙을 쓰도록 공용화.
+function booking_validateSlot_(dateStr, timeStr) {
+  const date = new Date(dateStr + 'T00:00:00+09:00');
+  const dow = date.getDay();
+  if (dow === 0 || dow === 6) return '주말은 예약할 수 없습니다.';
+  const hour = Number(String(timeStr).split(':')[0]);
+  if (BOOKING_ALLOWED_HOURS_.indexOf(hour) === -1) return '예약 가능한 시간이 아닙니다.';
+  const start = new Date(`${dateStr}T${timeStr}:00+09:00`);
+  const cutoff = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  if (start <= cutoff) return '예약은 최소 24시간 이전에 신청해야 합니다.';
+  return null;
+}
+
 // ===== 예약 가능 시간 조회 (신청 시점 기준 24시간 이후만 노출) =====
 function booking_getAvailability(dateStr) {
   const cal = CalendarApp.getCalendarById(BOOKING_CALENDAR_ID);
@@ -14500,29 +14622,14 @@ function booking_getAvailability(dateStr) {
   const dow = date.getDay();
   if (dow === 0 || dow === 6) return jsonResponse({ date: dateStr, slots: [] });
 
-  const allowedHours = [10, 11, 14, 15, 16];
-
-  const dayStart = new Date(date); dayStart.setHours(BOOKING_BUSINESS_HOURS.start, 0, 0, 0);
-  const dayEnd = new Date(date); dayEnd.setHours(BOOKING_BUSINESS_HOURS.end, 0, 0, 0);
-
-  const busy = cal.getEvents(dayStart, dayEnd)
-    .filter(ev => ev.getTransparency() !== CalendarApp.EventTransparency.TRANSPARENT)
-    .map(ev => {
-      if (ev.isAllDayEvent()) {
-        return { start: dayStart, end: dayEnd };
-      }
-      return { start: ev.getStartTime(), end: ev.getEndTime() };
-    });
-
   const slots = [];
   const now = new Date();
   const cutoff = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-  allowedHours.forEach(hour => {
+  BOOKING_ALLOWED_HOURS_.forEach(hour => {
     const cursor = new Date(date); cursor.setHours(hour, 0, 0, 0);
     const slotEnd = new Date(cursor.getTime() + BOOKING_CONSULT_DURATION_MIN * 60000);
-    const overlap = busy.some(b => cursor < b.end && slotEnd > b.start);
-    if (!overlap && cursor > cutoff) {
+    if (cursor > cutoff && !booking_isSlotBusy_(cal, cursor, slotEnd)) {
       slots.push(Utilities.formatDate(cursor, 'Asia/Seoul', 'HH:mm'));
     }
   });
@@ -14530,53 +14637,73 @@ function booking_getAvailability(dateStr) {
   return jsonResponse({ date: dateStr, slots });
 }
 
+// [2026.09] 휴대폰 번호 형식 검사 — 공개 신청폼·직권등록 둘 다에서 재사용.
+const BOOKING_PHONE_RE_ = /^01[0-9]-?\d{3,4}-?\d{4}$/;
+
 // ===== 신청 생성 =====
 function booking_createApplication(body) {
   const { date, time, name, phone, type, situation, statuses, field } = body;
-  const cal = CalendarApp.getCalendarById(BOOKING_CALENDAR_ID);
-  const start = new Date(`${date}T${time}:00+09:00`);
-  const end = new Date(start.getTime() + BOOKING_CONSULT_DURATION_MIN * 60000);
-
-  const conflict = cal.getEvents(start, end).length > 0;
-  if (conflict) {
-    return { success: false, error: '방금 다른 신청이 접수되어 마감된 시간입니다. 다시 선택해 주세요.' };
+  const phoneTrimmed = String(phone || '').trim();
+  if (!name || !String(name).trim()) return { success: false, error: '이름을 입력해 주세요.' };
+  if (!BOOKING_PHONE_RE_.test(phoneTrimmed)) {
+    return { success: false, error: '휴대폰 번호 형식이 올바르지 않습니다.' };
   }
+  // [2026.09 버그수정] 요일·영업시간·24시간 사전예약 규칙이 가용시간 조회(booking_getAvailability)
+  // 에만 있고 실제 접수 처리는 검사하지 않아, 캐시가 낡은 화면이나 API 직접 호출로 주말·심야·
+  // 당일 예약이 그대로 저장될 수 있었다. 접수 시점에도 같은 규칙을 다시 검사한다.
+  const slotError = booking_validateSlot_(date, time);
+  if (slotError) return { success: false, error: slotError };
 
-  const desc = [
-    `연락처: ${phone}`,
-    `고객유형: ${type}`,
-    `현재 세무처리: ${(statuses || []).join(', ') || '-'}`,
-    `관련 분야: ${field || '-'}`,
-    `상황: ${situation}`,
-    `출처: netax.kr 랜딩페이지`
-  ].join('\n');
+  // [2026.09 버그수정] 충돌검사와 이벤트 생성 사이에 락이 없어, 공개 랜딩페이지에서 같은
+  // 시간대로 거의 동시에 두 건이 접수되면 둘 다 충돌검사를 통과해 이중예약이 될 수 있었다.
+  return withLock_(8000, function () {
+    const cal = CalendarApp.getCalendarById(BOOKING_CALENDAR_ID);
+    const start = new Date(`${date}T${time}:00+09:00`);
+    const end = new Date(start.getTime() + BOOKING_CONSULT_DURATION_MIN * 60000);
 
-  const event = cal.createEvent(`${name}`, start, end, { description: desc });
-  event.setColor(BOOKING_COLOR_PENDING);
+    if (booking_isSlotBusy_(cal, start, end)) {
+      return { success: false, error: '방금 다른 신청이 접수되어 마감된 시간입니다. 다시 선택해 주세요.' };
+    }
 
-  const ss = SpreadsheetApp.openById(BOOKING_SHEET_ID);
-  const sheet = ss.getSheetByName('Applications') || ss.insertSheet('Applications');
+    const desc = [
+      `연락처: ${phoneTrimmed}`,
+      `고객유형: ${type}`,
+      `현재 세무처리: ${(statuses || []).join(', ') || '-'}`,
+      `관련 분야: ${field || '-'}`,
+      `상황: ${situation}`,
+      `출처: netax.kr 랜딩페이지`
+    ].join('\n');
 
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['신청일시', '성함', '전화', '고객유형', '현재 세무처리', '상황', '예약일', '예약시간', '출처', '상태', '확정일', '이벤트ID', '연결사건ID', '관련분야']);
-  }
-  if (sheet.getRange(1, 12).getValue() === '') {
-    sheet.getRange(1, 12).setValue('이벤트ID');
-  }
-  if (sheet.getRange(1, 14).getValue() === '') sheet.getRange(1, 14).setValue('관련분야');
+    const event = cal.createEvent(`${name}`, start, end, { description: desc });
+    event.setColor(BOOKING_COLOR_PENDING);
 
-  // [2026.08 버그수정] 전화번호가 대시 없이 순수 숫자면 구글시트가 숫자로 인식해 앞자리 0을
-  // 날려버리는 문제(client_createClient에서 실제로 겪은 것과 같은 문제)가 여기도 있었다 —
-  // 공개 신청폼(netax.kr)에서 들어오는 값이라 더 중요하다. 쓰기 전에 그 칸을 텍스트 서식으로
-  // 강제한다.
-  const newRowIndex = sheet.getLastRow() + 1;
-  sheet.getRange(newRowIndex, 3).setNumberFormat('@');
-  sheet.getRange(newRowIndex, 1, 1, 14).setValues([[new Date(), name, phone, type, (statuses || []).join(', '), situation, date, time, 'netax.kr', '신청', '', event.getId(), '', field || '']]);
+    const ss = SpreadsheetApp.openById(BOOKING_SHEET_ID);
+    const sheet = ss.getSheetByName('Applications') || ss.insertSheet('Applications');
 
-  const ownerMsg = `[새 상담신청] ${name} (${phone})\n${date} ${time}\n상황: ${situation}`;
-  booking_sendSMS(BOOKING_OWNER_PHONE, ownerMsg);
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(['신청일시', '성함', '전화', '고객유형', '현재 세무처리', '상황', '예약일', '예약시간', '출처', '상태', '확정일', '이벤트ID', '연결사건ID', '관련분야']);
+    }
+    if (sheet.getRange(1, 12).getValue() === '') {
+      sheet.getRange(1, 12).setValue('이벤트ID');
+    }
+    if (sheet.getRange(1, 13).getValue() === '') sheet.getRange(1, 13).setValue('연결사건ID');
+    if (sheet.getRange(1, 14).getValue() === '') sheet.getRange(1, 14).setValue('관련분야');
 
-  return { success: true, eventId: event.getId() };
+    // [2026.08 버그수정] 전화번호가 대시 없이 순수 숫자면 구글시트가 숫자로 인식해 앞자리 0을
+    // 날려버리는 문제(client_createClient에서 실제로 겪은 것과 같은 문제)가 여기도 있었다 —
+    // 공개 신청폼(netax.kr)에서 들어오는 값이라 더 중요하다. 쓰기 전에 그 칸을 텍스트 서식으로
+    // 강제한다.
+    const newRowIndex = sheet.getLastRow() + 1;
+    sheet.getRange(newRowIndex, 3).setNumberFormat('@');
+    // [보안] 이름/유형/상황/관련분야는 익명 방문자가 자유롭게 입력하는 값이므로, 수식
+    // 인젝션 방지를 위해 쓰기 전에 sanitizeForSheetCell_로 무력화한다.
+    sheet.getRange(newRowIndex, 1, 1, 14).setValues([[new Date(), sanitizeForSheetCell_(name), phoneTrimmed, sanitizeForSheetCell_(type), sanitizeForSheetCell_((statuses || []).join(', ')), sanitizeForSheetCell_(situation), date, time, 'netax.kr', '신청', '', event.getId(), '', sanitizeForSheetCell_(field || '')]]);
+
+    const ownerMsg = `[새 상담신청] ${name} (${phoneTrimmed})\n${date} ${time}\n상황: ${situation}`;
+    booking_sendSMS(BOOKING_OWNER_PHONE, ownerMsg);
+
+    return { success: true, eventId: event.getId() };
+  });
 }
 
 // ===== 신청 목록 조회 =====
@@ -14622,46 +14749,55 @@ function booking_adminCreate(body) {
   if (!date || !time || !name) {
     return { success: false, error: '날짜·시간·이름은 필수입니다.' };
   }
-  const cal = CalendarApp.getCalendarById(BOOKING_CALENDAR_ID);
-  const start = new Date(`${date}T${time}:00+09:00`);
-  const end = new Date(start.getTime() + BOOKING_CONSULT_DURATION_MIN * 60000);
-
-  const conflict = cal.getEvents(start, end).length > 0;
-  if (conflict) {
-    return { success: false, error: '그 시간에 이미 다른 일정이 있습니다.' };
+  const phoneTrimmed = String(phone || '').trim();
+  if (phoneTrimmed && !BOOKING_PHONE_RE_.test(phoneTrimmed)) {
+    return { success: false, error: '휴대폰 번호 형식이 올바르지 않습니다.' };
   }
 
-  const desc = [
-    `연락처: ${phone || '-'}`,
-    `고객유형: ${type || '-'}`,
-    `상황: ${situation || '-'}`,
-    `출처: 직권등록`
-  ].join('\n');
+  // [2026.09 버그수정] 충돌검사~이벤트생성 사이에 락이 없어 동시 등록 시 이중예약 가능성이
+  // 있었다(공개신청과 같은 문제). 직권등록은 영업시간·24시간 규칙은 의도적으로 재검증하지
+  // 않는다(운영자가 예외적으로 시간을 잡는 용도이므로) — 다만 캘린더 충돌만은 그대로 막는다.
+  return withLock_(8000, function () {
+    const cal = CalendarApp.getCalendarById(BOOKING_CALENDAR_ID);
+    const start = new Date(`${date}T${time}:00+09:00`);
+    const end = new Date(start.getTime() + BOOKING_CONSULT_DURATION_MIN * 60000);
 
-  const event = cal.createEvent(`${name}`, start, end, { description: desc });
-  event.setColor(BOOKING_COLOR_CONFIRMED);
+    if (booking_isSlotBusy_(cal, start, end)) {
+      return { success: false, error: '그 시간에 이미 다른 일정이 있습니다.' };
+    }
 
-  const ss = SpreadsheetApp.openById(BOOKING_SHEET_ID);
-  const sheet = ss.getSheetByName('Applications') || ss.insertSheet('Applications');
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['신청일시', '성함', '전화', '고객유형', '현재 세무처리', '상황', '예약일', '예약시간', '출처', '상태', '확정일', '이벤트ID', '연결사건ID', '관련분야']);
-  }
-  if (sheet.getRange(1, 12).getValue() === '') sheet.getRange(1, 12).setValue('이벤트ID');
-  if (sheet.getRange(1, 13).getValue() === '') sheet.getRange(1, 13).setValue('연결사건ID');
-  if (sheet.getRange(1, 14).getValue() === '') sheet.getRange(1, 14).setValue('관련분야');
+    const desc = [
+      `연락처: ${phoneTrimmed || '-'}`,
+      `고객유형: ${type || '-'}`,
+      `상황: ${situation || '-'}`,
+      `출처: 직권등록`
+    ].join('\n');
 
-  const newRowIndex = sheet.getLastRow() + 1;
-  sheet.getRange(newRowIndex, 3).setNumberFormat('@');
-  const now = new Date();
-  // [2026.09 버그수정] 직권등록 폼에 관련분야 입력칸이 아예 없어서(공개 신청폼과 달리), 이
-  // 예약으로 사건을 시작해도 "[예약 접수 정보]"에 관련분야가 항상 빈 채로 넘어갔다.
-  sheet.getRange(newRowIndex, 1, 1, 14).setValues([[now, name, phone || '', type || '', '', situation || '', date, time, '직권등록', '확정', now, event.getId(), '', field || '']]);
+    const event = cal.createEvent(`${name}`, start, end, { description: desc });
+    event.setColor(BOOKING_COLOR_CONFIRMED);
 
-  if (phone) {
-    booking_sendSMS(phone, `상담 예약이 등록되었습니다. ${date} ${time}`);
-  }
+    const ss = SpreadsheetApp.openById(BOOKING_SHEET_ID);
+    const sheet = ss.getSheetByName('Applications') || ss.insertSheet('Applications');
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(['신청일시', '성함', '전화', '고객유형', '현재 세무처리', '상황', '예약일', '예약시간', '출처', '상태', '확정일', '이벤트ID', '연결사건ID', '관련분야']);
+    }
+    if (sheet.getRange(1, 12).getValue() === '') sheet.getRange(1, 12).setValue('이벤트ID');
+    if (sheet.getRange(1, 13).getValue() === '') sheet.getRange(1, 13).setValue('연결사건ID');
+    if (sheet.getRange(1, 14).getValue() === '') sheet.getRange(1, 14).setValue('관련분야');
 
-  return { success: true, eventId: event.getId(), rowIndex: newRowIndex };
+    const newRowIndex = sheet.getLastRow() + 1;
+    sheet.getRange(newRowIndex, 3).setNumberFormat('@');
+    const now = new Date();
+    // [2026.09 버그수정] 직권등록 폼에 관련분야 입력칸이 아예 없어서(공개 신청폼과 달리), 이
+    // 예약으로 사건을 시작해도 "[예약 접수 정보]"에 관련분야가 항상 빈 채로 넘어갔다.
+    sheet.getRange(newRowIndex, 1, 1, 14).setValues([[now, name, phoneTrimmed, type || '', '', situation || '', date, time, '직권등록', '확정', now, event.getId(), '', field || '']]);
+
+    if (phoneTrimmed) {
+      booking_sendSMS(phoneTrimmed, `상담 예약이 등록되었습니다. ${date} ${time}`);
+    }
+
+    return { success: true, eventId: event.getId(), rowIndex: newRowIndex };
+  });
 }
 
 // [2026.09] 5단계 — "이 예약으로 사건 시작" 저장 후 그 예약 행에 새 사건 id를 적어둔다(같은
@@ -14670,14 +14806,23 @@ function booking_linkCase(body) {
   const rowIndex = Number(body.rowIndex);
   const caseId = String(body.caseId || '').trim();
   if (!rowIndex || !caseId) return { success: false, message: 'rowIndex와 caseId가 필요합니다.' };
-  const ss = SpreadsheetApp.openById(BOOKING_SHEET_ID);
-  const sheet = ss.getSheetByName('Applications');
-  if (sheet.getRange(1, 13).getValue() === '') sheet.getRange(1, 13).setValue('연결사건ID');
-  sheet.getRange(rowIndex, 13).setValue(caseId);
-  // [2026.09 버그수정] 예약이 사건으로 전환되면 사건 쪽(work_syncCaseCalendar_)이 법정기한
-  // 일정을 새로 만들어주므로, 원래 예약 상담시간 일정은 지워서 캘린더에 중복으로 안 쌓이게 한다.
-  booking_deleteEventByRow_(sheet, rowIndex);
-  return { success: true };
+  // [2026.09 버그수정] 검사~쓰기 사이 락이 없어, 같은 예약에 대해 "사건 시작"이 거의 동시에
+  // 두 번 호출되면(더블클릭, 두 탭) 나중 호출이 이전 caseId를 조용히 덮어써 먼저 만든 사건이
+  // 예약과의 연결이 끊긴 채 고아로 남을 수 있었다.
+  return withLock_(8000, function () {
+    const ss = SpreadsheetApp.openById(BOOKING_SHEET_ID);
+    const sheet = ss.getSheetByName('Applications');
+    const existing = String(sheet.getRange(rowIndex, 13).getValue() || '').trim();
+    if (existing && existing !== caseId) {
+      return { success: false, message: '이 예약은 이미 다른 사건에 연결되어 있습니다.' };
+    }
+    if (sheet.getRange(1, 13).getValue() === '') sheet.getRange(1, 13).setValue('연결사건ID');
+    sheet.getRange(rowIndex, 13).setValue(caseId);
+    // [2026.09 버그수정] 예약이 사건으로 전환되면 사건 쪽(work_syncCaseCalendar_)이 법정기한
+    // 일정을 새로 만들어주므로, 원래 예약 상담시간 일정은 지워서 캘린더에 중복으로 안 쌓이게 한다.
+    booking_deleteEventByRow_(sheet, rowIndex);
+    return { success: true };
+  });
 }
 
 // [2026.09] work_deleteCase에서 호출 — 삭제되는 사건을 가리키는 연결사건ID가 있으면 풀어서
@@ -16227,7 +16372,10 @@ function client_findOrCreateByName_(name, phone) {
       // 기존 고객인데 전화번호가 비어있으면(과거엔 예약 정보가 전달 안 돼 빈 채로
       // 생성됐을 수 있음) 이번에 받은 번호로 채워준다 — 이미 값이 있으면 덮어쓰지 않음.
       if (phoneTrimmed && !existingPhone) {
-        sheets.clients.getRange(rowIndex, col.전화번호 + 1).setValue(phoneTrimmed);
+        // [2026.09 버그수정] client_createClient/client_updateClient와 달리 여기는 텍스트
+        // 서식(@) 없이 그냥 setValue만 해서, 대시 없는 순수 숫자 전화번호(예약에서 넘어온 값)의
+        // 앞자리 0이 날아가는 문제가 있었다.
+        sheets.clients.getRange(rowIndex, col.전화번호 + 1).setNumberFormat('@').setValue(phoneTrimmed);
       }
       return { id: data[i][col.id], isNew: false };
     }
@@ -16239,7 +16387,10 @@ function client_findOrCreateByName_(name, phone) {
     newRow[col.전화번호] = phoneTrimmed;
     newRow[col.등록일] = now;
     newRow[col.수정일] = now;
-    sheets.clients.appendRow(newRow);
+    const newRowIndex = sheets.clients.getLastRow() + 1;
+    // 위와 같은 이유로, 신규 고객 자동등록 시에도 쓰기 전에 전화번호 칸을 텍스트 서식으로 고정한다.
+    sheets.clients.getRange(newRowIndex, col.전화번호 + 1).setNumberFormat('@');
+    sheets.clients.getRange(newRowIndex, 1, 1, newRow.length).setValues([newRow]);
     SpreadsheetApp.flush();
     return { id: id, isNew: true, nameConflict: nameConflict };
   });
@@ -16305,6 +16456,10 @@ function client_updateClient(params) {
         for (let i = 1; i < workData.length; i++) {
           if (String(workData[i][workCol.고객ID] || '') === String(params.id)) {
             workSheet.getRange(i + 1, workCol.고객명 + 1).setValue(newName);
+            // [2026.09 버그수정] 이름만 바꾸고 수정일을 안 올리면, 그 사건을 이미 열어둔 다른
+            // 화면(작업관리 등)의 기대수정일 낙관적 잠금이 이 변경을 못 알아채 그대로 통과되고,
+            // 그 화면이 저장될 때 방금 반영한 새 이름이 옛 이름으로 조용히 덮어써진다.
+            workSheet.getRange(i + 1, workCol.수정일 + 1).setValue(new Date());
           }
         }
       } catch (err) {
@@ -16719,9 +16874,15 @@ const WORK_EVIDENCE_TEMPLATES_ = {
 // casehandling.html의 chAddRequestedItem_이 만드는 것과 동일(source:'requested', status:'미확보').
 function work_buildEvidenceFromTemplate_(seMok, upType, caseClassification, assetList, acqBundleAll, transferBundleAll) {
   const template = WORK_EVIDENCE_TEMPLATES_[seMok];
-  const labels = (upType === '신고' && template)
-    ? (template.공통 || []).concat((caseClassification && template.사건분류 && template.사건분류[caseClassification]) || [])
-    : [];
+  const classificationOnlyLabels = (upType === '신고' && template && caseClassification && template.사건분류) ? (template.사건분류[caseClassification] || []) : [];
+  const labels = (upType === '신고' && template) ? (template.공통 || []).concat(classificationOnlyLabels) : [];
+  // [2026.09 버그수정] 사건분류를 나중에 바꿔도(예: "미등기양도"→"일반과세" 정정) 예전 분류
+  // 전용 항목이 증빙목록에 영원히 남아있던 문제 — 어느 라벨이 "이 사건분류 때문에" 생겼는지
+  // classificationOnlyLabels로 표시해두고, 아래 work_updateCase가 사건분류가 실제로 바뀌었을
+  // 때 그 표시가 붙은 항목 중 아직 미확보인 것만 자동으로 정리한다(이미 확보한 서류는 분류가
+  // 바뀌어도 실제로 받은 자료이므로 절대 건드리지 않는다).
+  const classificationLabelSet = {};
+  classificationOnlyLabels.forEach(function (l) { classificationLabelSet[l] = true; });
   // [2026.09 버그수정] 물건이 여러 건이면 서류를 세 가지 기준 중 하나로 나눠 요청한다 —
   // 등기부등본은 물건(필지)별로, 취득 관련 서류는 취득계약 구분별로, 양도계약서는 양도계약
   // 구분별로(구분값을 안 적었으면 물건마다 별도 계약으로 간주 — 예전과 동일하게 동작).
@@ -16729,33 +16890,40 @@ function work_buildEvidenceFromTemplate_(seMok, upType, caseClassification, asse
   const perAcqGroupLabels = WORK_EVIDENCE_PER_ACQUISITION_GROUP_LABELS_[seMok] || [];
   const perTransferGroupLabels = WORK_EVIDENCE_PER_TRANSFER_GROUP_LABELS_[seMok] || [];
   const assets = Array.isArray(assetList) ? assetList : [];
-  let expandedLabels = labels;
+  // [2026.09 버그수정] 물건별/계약그룹별 라벨에 소재지 문자열을 그대로 넣다 보니(예: "등기부
+  // 등본(서울시 강남구...)"), 그 소재지를 나중에 사건개요서에서 정정하면 예전 라벨과 문자열이
+  // 완전히 달라져 새 항목이 또 생기고 옛 라벨의 항목은 영원히 미확보 상태로 고아처럼 남는
+  // 문제가 있었다(실사용 감사 지적) — 물건 인덱스·그룹 번호처럼 안 바뀌는 slotKey를 따로
+  // 붙여서, 아래 work_updateCase가 라벨 문자열이 아니라 slotKey로 같은 슬롯을 알아보고
+  // 라벨만 최신으로 갱신하게 한다.
+  let expandedLabels = labels.map(function (label) { return { label: label, slotKey: label, fromClassification: classificationLabelSet[label] ? caseClassification : null }; });
   if (assets.length > 1 && (perAssetLabels.length || perAcqGroupLabels.length || perTransferGroupLabels.length)) {
     const acqGroups = work_groupAssetsForEvidence_(assets, '취득계약구분', !!acqBundleAll);
     const transferGroups = work_groupAssetsForEvidence_(assets, '양도계약구분', !!transferBundleAll);
     expandedLabels = [];
     labels.forEach(function (label) {
+      const fc = classificationLabelSet[label] ? caseClassification : null;
       if (perAssetLabels.indexOf(label) !== -1) {
         assets.forEach(function (asset, idx) {
           const tag = (asset && asset.assetLocation) ? asset.assetLocation : ('물건' + (idx + 1));
-          expandedLabels.push(label + '(' + tag + ')');
+          expandedLabels.push({ label: label + '(' + tag + ')', slotKey: label + '#asset' + idx, fromClassification: fc });
         });
         return;
       }
       if (perAcqGroupLabels.indexOf(label) !== -1) {
-        acqGroups.forEach(function (group, gi) { expandedLabels.push(label + '(' + work_evidenceGroupTag_(group, gi) + ')'); });
+        acqGroups.forEach(function (group, gi) { expandedLabels.push({ label: label + '(' + work_evidenceGroupTag_(group, gi) + ')', slotKey: label + '#acqgroup' + gi, fromClassification: fc }); });
         return;
       }
       if (perTransferGroupLabels.indexOf(label) !== -1) {
-        transferGroups.forEach(function (group, gi) { expandedLabels.push(label + '(' + work_evidenceGroupTag_(group, gi) + ')'); });
+        transferGroups.forEach(function (group, gi) { expandedLabels.push({ label: label + '(' + work_evidenceGroupTag_(group, gi) + ')', slotKey: label + '#trgroup' + gi, fromClassification: fc }); });
         return;
       }
-      expandedLabels.push(label);
+      expandedLabels.push({ label: label, slotKey: label, fromClassification: fc });
     });
   }
   const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  return expandedLabels.map(function (label, i) {
-    return { id: 'ev_' + Date.now() + '_' + i, source: 'requested', label: label, note: '', status: '미확보', 요청일: today };
+  return expandedLabels.map(function (entry, i) {
+    return { id: 'ev_' + Date.now() + '_' + i, source: 'requested', label: entry.label, slotKey: entry.slotKey, fromClassification: entry.fromClassification, note: '', status: '미확보', 요청일: today };
   });
 }
 
@@ -16903,6 +17071,19 @@ function work_findCaseRow_(sheet, col, caseId) {
   return null;
 }
 
+// [2026.09] "사건분류 목록이 casehandling.html과 Code.js(WORK_EVIDENCE_TEMPLATES_) 두 곳에
+// 따로 하드코딩돼 있어 한쪽만 고치면 조용히 어긋날 수 있다"는 지적 — 실제로 지금까지 어긋난
+// 적은 없었지만(직접 대조 확인됨), 근본적으로 없애려면 한 곳(여기, 필요증빙 템플릿이 있는
+// Code.js)만 진짜 목록을 갖고 화면은 그걸 그대로 받아쓰게 해야 한다. casehandling.html은
+// 이제 이 목록 앞에 빈 선택지와 "일반OO"만 붙여서 그대로 렌더링한다.
+function work_getEvidenceClassificationOptions_() {
+  const options = {};
+  Object.keys(WORK_EVIDENCE_TEMPLATES_).forEach(function (semok) {
+    options[semok] = Object.keys(WORK_EVIDENCE_TEMPLATES_[semok].사건분류 || {});
+  });
+  return options;
+}
+
 function work_getCases(params) {
   const sheet = work_getSheet_();
   const data = sheet.getDataRange().getValues();
@@ -16912,7 +17093,7 @@ function work_getCases(params) {
     if (!data[i][col.id]) continue;
     cases.push(work_readRow_(col, data[i]));
   }
-  return { success: true, cases: cases };
+  return { success: true, cases: cases, evidenceClassificationOptions: work_getEvidenceClassificationOptions_() };
 }
 
 // [2026.09] 5단계 — 사건 시작 시 증빙관리(getDefaultFolder(), "고객사건" 루트)에 자동으로 폴더를
@@ -17113,10 +17294,14 @@ function work_createCase(params) {
     SpreadsheetApp.flush();
 
     const caseObj = work_readRow_(col, newRow);
-    work_syncCaseCalendar_(caseObj);
+    const calendarOk = work_syncCaseCalendar_(caseObj);
     const result = { success: true, case: caseObj };
     if (clientMatch && clientMatch.nameConflict) {
       result.warning = '"' + 고객명 + '" 이름의 고객이 이미 있지만 전화번호가 달라 다른 사람으로 보고 새 고객으로 등록했습니다. 동명이인이 맞는지 고객관리에서 확인해주세요.';
+    }
+    if (!calendarOk) {
+      result.calendarSyncFailed = true;
+      result.warning = (result.warning ? result.warning + ' ' : '') + '캘린더 동기화에 실패했습니다 — 법정기한이 캘린더에 반영되지 않았을 수 있으니 수동으로 확인해주세요.';
     }
     return result;
   });
@@ -17190,6 +17375,8 @@ function work_updateCase(params) {
       // 명시적으로 같이 안 보낸 경우엔 옛 사건개요를 비우고 새로 시작한다.
       const semokActuallyChanged = params.세목 !== undefined && String(params.세목).trim() !== String(oldSemok || '').trim();
       const shouldWipeOverview = semokActuallyChanged && !overviewProvided;
+      let oldOverviewForClassification = {};
+      try { oldOverviewForClassification = JSON.parse(row[col.사건개요] || '{}'); } catch (e) { oldOverviewForClassification = {}; }
       let overview;
       if (overviewProvided) {
         overview = params.사건개요;
@@ -17213,9 +17400,24 @@ function work_updateCase(params) {
         const seMokForTemplate = params.세목 !== undefined ? String(params.세목).trim() : row[col.세목];
         const upTypeForTemplate = params.업무유형 !== undefined ? String(params.업무유형).trim() : row[col.업무유형];
         const templateItems = work_buildEvidenceFromTemplate_(seMokForTemplate, upTypeForTemplate, overview.사건분류, overview.물건목록, overview.취득계약일괄, overview.양도계약일괄);
+        // [2026.09 버그수정] slotKey(물건 인덱스·그룹 번호 등 안정적 식별자)가 있으면 그것으로
+        // 같은 슬롯을 알아보고 라벨만 최신으로 갱신한다(소재지 정정 등으로 라벨 문자열이 바뀌어도
+        // 중복 생성되지 않는다) — 확보상태·비고는 그대로 유지. slotKey가 없는 옛 항목(이 수정
+        // 이전에 저장됐거나 수동으로 추가한 항목)은 예전처럼 라벨 문자열로만 비교한다.
+        const existingBySlotKey = {};
+        currentEvidence.forEach(function (e) { if (e.slotKey) existingBySlotKey[e.slotKey] = e; });
         const existingLabels = currentEvidence.map(function (e) { return e.label; });
-        const newItems = templateItems.filter(function (item) { return existingLabels.indexOf(item.label) === -1; });
-        if (newItems.length) row[col.증빙목록] = JSON.stringify(currentEvidence.concat(newItems));
+        let labelsChanged = false;
+        const newItems = [];
+        templateItems.forEach(function (item) {
+          if (item.slotKey && existingBySlotKey[item.slotKey]) {
+            if (existingBySlotKey[item.slotKey].label !== item.label) { existingBySlotKey[item.slotKey].label = item.label; labelsChanged = true; }
+            return;
+          }
+          if (!item.slotKey && existingLabels.indexOf(item.label) !== -1) return;
+          newItems.push(item);
+        });
+        if (newItems.length || labelsChanged) row[col.증빙목록] = JSON.stringify(currentEvidence.concat(newItems));
         if (overviewProvided || shouldWipeOverview) row[col.사건개요] = JSON.stringify(overview);
       }
     }
@@ -17297,8 +17499,13 @@ function work_updateCase(params) {
     SpreadsheetApp.flush();
 
     const caseObj = work_readRow_(col, row);
-    work_syncCaseCalendar_(caseObj);
-    return { success: true, case: caseObj };
+    const calendarOk = work_syncCaseCalendar_(caseObj);
+    const result = { success: true, case: caseObj };
+    if (!calendarOk) {
+      result.calendarSyncFailed = true;
+      result.warning = '캘린더 동기화에 실패했습니다 — 법정기한이 캘린더에 반영되지 않았을 수 있으니 수동으로 확인해주세요.';
+    }
+    return result;
   });
 }
 
@@ -17394,8 +17601,13 @@ function work_addSubtask(params) {
 
     const updatedRow = work_saveTree_(sheet, found.rowIndex, col, tree);
     const caseObj = work_readRow_(col, updatedRow);
-    work_syncCaseCalendar_(caseObj);
-    return { success: true, case: caseObj };
+    const calendarOk = work_syncCaseCalendar_(caseObj);
+    const result = { success: true, case: caseObj };
+    if (!calendarOk) {
+      result.calendarSyncFailed = true;
+      result.warning = '캘린더 동기화에 실패했습니다 — 마감일이 캘린더에 반영되지 않았을 수 있으니 수동으로 확인해주세요.';
+    }
+    return result;
   });
 }
 
@@ -17419,8 +17631,13 @@ function work_updateSubtask(params) {
 
     const updatedRow = work_saveTree_(sheet, found.rowIndex, col, tree);
     const caseObj = work_readRow_(col, updatedRow);
-    work_syncCaseCalendar_(caseObj);
-    return { success: true, case: caseObj };
+    const calendarOk = work_syncCaseCalendar_(caseObj);
+    const result = { success: true, case: caseObj };
+    if (!calendarOk) {
+      result.calendarSyncFailed = true;
+      result.warning = '캘린더 동기화에 실패했습니다 — 마감일이 캘린더에 반영되지 않았을 수 있으니 수동으로 확인해주세요.';
+    }
+    return result;
   });
 }
 
@@ -17443,14 +17660,23 @@ function work_deleteSubtask(params) {
 
     const updatedRow = work_saveTree_(sheet, found.rowIndex, col, tree);
     const caseObj = work_readRow_(col, updatedRow);
-    work_syncCaseCalendar_(caseObj);
-    return { success: true, case: caseObj };
+    const calendarOk = work_syncCaseCalendar_(caseObj);
+    const result = { success: true, case: caseObj };
+    if (!calendarOk) {
+      result.calendarSyncFailed = true;
+      result.warning = '캘린더 동기화에 실패했습니다 — 마감일이 캘린더에 반영되지 않았을 수 있으니 수동으로 확인해주세요.';
+    }
+    return result;
   });
 }
 
 // ---- 구글캘린더 동기화 (syncCalendarForPath_ 패턴 응용, Code.js:3790 참고) ----
 // 이 사건 태그가 붙은 기존 일정을 전부 지우고, 법정일 + 마감일 있는 하위업무를 종일 일정으로
 // 다시 만든다. 매번 통째로 재생성하는 방식이라 항목을 지우거나 날짜를 바꿔도 항상 정확히 따라온다.
+// [2026.09 버그수정] 캘린더 권한이 취소되거나 일시 오류가 나도 이 함수가 예외를 조용히
+// 삼켜서, 사건은 "저장했습니다"로 뜨는데 법정기한이 캘린더에 하나도 안 올라가는 상황이
+// 화면 어디에도 안 보였다(이 앱의 핵심 가치가 "법정기한을 놓치지 않는 것"이라 위험도가
+// 크다) — 성공 여부를 반환해서 호출부가 사용자에게 경고할 수 있게 한다.
 function work_syncCaseCalendar_(caseObj) {
   try {
     const cal = CalendarApp.getDefaultCalendar();
@@ -17477,8 +17703,11 @@ function work_syncCaseCalendar_(caseObj) {
         work_createAllDayEvent_(cal, '[NX] ' + label + ' — 다음할일: ' + String(entry.text || '').slice(0, 50), entry.dueDate, tag);
       }
     });
+    return true;
   } catch (err) {
     // 캘린더 접근 권한이 없거나 오류가 나도 사건/하위업무 저장 자체는 계속 진행돼야 함
+    console.log('사건 캘린더 동기화 실패(' + (caseObj && caseObj.id) + '): ' + err.message);
+    return false;
   }
 }
 
@@ -17517,8 +17746,104 @@ function work_doPost(body) {
     case 'send_my_portal_sms': return work_sendMyPortalSms(body);
     case 'get_case_subfolders': return work_getCaseSubfolders(body);
     case 'ensure_case_folder': return work_ensureCaseFolder(body);
+    case 'work_audit_case_folder_names': return work_auditCaseFolderNames(body);
     default: return { success: false, message: '알 수 없는 action: ' + body.action };
   }
+}
+
+// [2026.09] "폴더명 규칙(work_generateUniqueCaseName_ 참고 — 고객명[동명이인번호]_세목_업무유형
+// [(납세자)])을 제대로 안 지키고 있는 것 같다"는 지적 — 실제로 사건명(=Drive 폴더명)은 사건
+// 생성 시점에 딱 한 번만 이 규칙대로 만들어지고, 그 뒤 고객명 정정·세목 변경 등이 있어도
+// "자동으로 안 바뀌는 기존 정책"(work_updateCase의 고객명 동기화 주석 참고) 때문에 사건명·
+// 폴더명은 예전 상태 그대로 남는다 — 시간이 지날수록 실제 규칙과 어긋나는 폴더가 쌓인다.
+// 전체 사건을 훑어 "지금 값 기준으로 새로 이름을 만들면 어떻게 되는지" 다시 계산해서 실제
+// 저장된 사건명과 다른 것만 골라낸다. 원래 규칙(work_generateUniqueCaseName_)은 "새 사건 하나"
+// 기준으로 즉석에서 번호를 매기는 함수라 그대로 재사용하면 전체를 훑을 때마다 서로 다른 번호가
+// 나올 수 있어(현재 사건명 자체가 이미 예전 번호를 차지하고 있으므로), 생성일 순으로 전체를
+// 다시 훑으며 번호를 처음부터 새로 배정한다(가장 먼저 만들어진 사건이 번호 없는 이름을
+// 차지하는 우선순위는 기존 정책과 동일하게 유지).
+function work_computeCanonicalCaseFolderNames_() {
+  const sheet = work_getSheet_();
+  const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+  const data = sheet.getDataRange().getValues();
+  const rows = [];
+  for (let i = 1; i < data.length; i++) rows.push({ rowIndex: i + 1, row: data[i] });
+  rows.sort(function (a, b) {
+    const da = a.row[col.생성일] ? new Date(a.row[col.생성일]).getTime() : 0;
+    const db = b.row[col.생성일] ? new Date(b.row[col.생성일]).getTime() : 0;
+    return da - db;
+  });
+  const custIdToNum = {};
+  const numsInUseByName = {};
+  const takenFullNames = {};
+  const results = [];
+  rows.forEach(function (r) {
+    const row = r.row;
+    const 고객명 = String(row[col.고객명] || '').trim();
+    if (!고객명) return; // 고객명이 아예 없는(테스트/불완전) 사건은 대상에서 제외
+    const 고객ID = row[col.고객ID];
+    const seMok = row[col.세목];
+    const upType = row[col.업무유형];
+    const 납세자 = String(row[col.납세자] || '').trim();
+    const semokLabel = WORK_SEMOK_LABELS_[seMok] || seMok;
+
+    if (!numsInUseByName[고객명]) numsInUseByName[고객명] = {};
+    let nameNum;
+    if (고객ID && Object.prototype.hasOwnProperty.call(custIdToNum, 고객ID)) {
+      nameNum = custIdToNum[고객ID];
+    } else if (!numsInUseByName[고객명]['']) {
+      nameNum = '';
+    } else {
+      let n = 2;
+      while (numsInUseByName[고객명][String(n)]) n++;
+      nameNum = String(n);
+    }
+    numsInUseByName[고객명][nameNum] = true;
+    if (고객ID) custIdToNum[고객ID] = nameNum;
+
+    const taxpayerSuffix = (납세자 && 납세자 !== 고객명) ? '(' + 납세자 + ')' : '';
+    const base = 고객명 + nameNum + '_' + semokLabel + (upType ? '_' + upType : '') + taxpayerSuffix;
+    let finalName = base;
+    if (takenFullNames[finalName]) {
+      let n2 = 2;
+      while (takenFullNames[base + n2]) n2++;
+      finalName = base + n2;
+    }
+    takenFullNames[finalName] = true;
+
+    const currentName = String(row[col.사건명] || '').trim();
+    if (currentName !== finalName) {
+      results.push({
+        rowIndex: r.rowIndex, id: row[col.id], 고객명: 고객명,
+        현재사건명: currentName, 제안사건명: finalName, 폴더ID: row[col.폴더ID] || ''
+      });
+    }
+  });
+  return results;
+}
+
+// dryRun(기본값)은 저장소를 전혀 건드리지 않고 무엇이 바뀔지만 보여준다. apply:true일 때만
+// 실제로 시트의 사건명과 Drive 폴더명을 함께 바꾼다(폴더ID가 없으면 사건명만 바꾸고 폴더는
+// 건드리지 않는다 — 옛 사건 중 폴더가 아예 없는 경우가 있을 수 있음).
+function work_auditCaseFolderNames(params) {
+  return withLock_(8000, function () {
+    const diffs = work_computeCanonicalCaseFolderNames_();
+    if (!params || !params.apply) {
+      return { success: true, dryRun: true, count: diffs.length, items: diffs };
+    }
+    const sheet = work_getSheet_();
+    const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+    const applied = [];
+    diffs.forEach(function (d) {
+      sheet.getRange(d.rowIndex, col.사건명 + 1).setValue(d.제안사건명);
+      let folderRenamed = false;
+      if (d.폴더ID) {
+        try { DriveApp.getFolderById(d.폴더ID).setName(d.제안사건명); folderRenamed = true; } catch (err) { /* 폴더가 이미 삭제됐거나 권한 문제 — 사건명은 그대로 반영, 폴더만 건너뜀 */ }
+      }
+      applied.push({ 고객명: d.고객명, 현재사건명: d.현재사건명, 제안사건명: d.제안사건명, 폴더수정됨: folderRenamed });
+    });
+    return { success: true, applied: applied.length, items: applied };
+  });
 }
 
 // [2026.09] "내부보고서"/"보고서" 폴더 ID를 이름 기반 경로탐색(listFolder) 없이 사건ID로
