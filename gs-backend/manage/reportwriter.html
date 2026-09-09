@@ -1088,6 +1088,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
+<!-- [2026.09] mermaid SVG는 사용자가 입력하거나 다른 사람이 만든 폴더를 통해 들어올 수 있어
+     DOMPurify로 한 번 더 거른다(아래 여러 곳의 typeof DOMPurify 체크가 실제로 동작하도록,
+     이전에는 스크립트 자체가 없어서 항상 건너뛰고 있었음). -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
@@ -1444,6 +1448,7 @@ async function rwLoadFileById_(fileId){
   if (doc) {
     doc.name = name;
     doc.md = content;
+    doc.rwDriveSaved_ = content; // 드라이브에서 방금 불러온 내용 = 이미 저장된 상태로 취급
     doc.format = isHtml ? 'html' : 'md';
     if (!isHtml) {
       doc.htmlFileId = data.publishedHtmlFileId || doc.htmlFileId;
@@ -1454,7 +1459,7 @@ async function rwLoadFileById_(fileId){
     let docType = rwGuessDocTypeFromFilename_(name);
     if (!docType) docType = rwAskDocTypeForFile_(rawName);
     const theme = docType ? (RW_DOC_TYPE_THEME_[docType] || 'memo') : 'memo';
-    doc = { id: docId, name: name, theme: theme, format: isHtml ? 'html' : 'md', md: content };
+    doc = { id: docId, name: name, theme: theme, format: isHtml ? 'html' : 'md', md: content, rwDriveSaved_: content };
     if (docType) doc.docType = docType;
     // [2026.09] .md(원본, "내부보고서" 폴더)를 열었을 때, 그 폴더ID(doc.folderId — 다음
     // 저장 때 같은 곳에 덮어쓰기 위함)와, 이미 고객에게 발행된 짝 .html이 있으면 그 파일ID
@@ -1586,8 +1591,9 @@ async function createNewDoc(kind){
       fallbackName: '새 문서',
       md: '# 새 문서\n\n내용을 입력하세요.\n'
     },
-    // [2026.09] 내부보고서(검토서) — 사건 처리를 위해 담당자가 내부적으로 정리하는 검토
-    // 문서. 상단에서 사건이 선택돼 있으면 고객명·세목·업무유형·담당자를 자동으로 채운다.
+    // [2026.09] 내부보고서(검토서) — 사건 처리를 위해 세무사가 내부적으로 정리하는 검토
+    // 문서. 상단에서 사건이 선택돼 있으면 고객명·세목·업무유형을 자동으로 채운다.
+    // (담당자 필드는 이 시스템에 담당자 개념이 없어 2026.09 제거함.)
     // ("사건개요서 만들기"는 처리개요/메모의 구조화된 "사건개요" 데이터와 이름만 같고 실제로는
     // 무관한 자유 텍스트 메모라 혼동을 없애기 위해 없앴다 — 그 용도는 검토서로 충분하다.)
     // [2026.09] 그동안 실제로 작성해온 검토서 16건을 검토해 골격을 보완했다 — 결론요약을
@@ -1601,7 +1607,6 @@ async function createNewDoc(kind){
         + '- 고객명: ' + (c ? (c.고객명 || '') : '') + '\n'
         + '- 사건명: ' + (c ? (c.사건명 || '') : '') + '\n'
         + '- 세목/업무유형: ' + (c ? (semokLabel + (c.업무유형 ? ' · ' + c.업무유형 : '')) : '') + '\n'
-        + '- 담당자: ' + (c ? (c.담당자 || '') : '') + '\n'
         + '- 작성일: ' + todayStr + '\n'
         + '- 법정신고기한: ' + (c ? (c.법정일 || '') : '') + '\n\n'
         + '---\n\n'
@@ -1630,7 +1635,6 @@ async function createNewDoc(kind){
         + '<table class="meta">\n'
         + '<tr><td class="k">수신</td><td>' + escapeHtml(c ? (c.고객명 || '') : '') + ' 님</td></tr>\n'
         + '<tr><td class="k">발신</td><td>이음세무컨설팅 조종호 세무사</td></tr>\n'
-        + '<tr><td class="k">담당자</td><td>' + escapeHtml(c ? (c.담당자 || '') : '') + '</td></tr>\n'
         + '<tr><td class="k">작성일</td><td>' + todayStr + '</td></tr>\n'
         + '<tr><td class="k">검토대상</td><td>' + escapeHtml(c ? (c.사건명 || '') : '') + '</td></tr>\n'
         + (c && c.법정일 ? '<tr><td class="k">법정신고기한</td><td>' + escapeHtml(c.법정일) + '</td></tr>\n' : '')
@@ -1657,7 +1661,6 @@ async function createNewDoc(kind){
         + '<table class="meta">\n'
         + '<tr><td class="k">수신</td><td>' + escapeHtml(c ? (c.고객명 || '') : '') + ' 님</td></tr>\n'
         + '<tr><td class="k">발신</td><td>이음세무컨설팅</td></tr>\n'
-        + '<tr><td class="k">담당자</td><td>' + escapeHtml(c ? (c.담당자 || '') : '') + '</td></tr>\n'
         + '<tr><td class="k">작성일</td><td>' + todayStr + '</td></tr>\n'
         + '<tr><td class="k">제목</td><td>' + escapeHtml(c ? (c.사건명 || '') : '') + ' 신고 결과 보고</td></tr>\n'
         + '</table>\n\n'
@@ -1679,7 +1682,6 @@ async function createNewDoc(kind){
         + '<table class="meta">\n'
         + '<tr><td class="k">수신</td><td>OOO세무서장 귀하</td></tr>\n'
         + '<tr><td class="k">발신</td><td>이음세무컨설팅 (신고대리인)</td></tr>\n'
-        + '<tr><td class="k">담당자</td><td>' + escapeHtml(c ? (c.담당자 || '') : '') + '</td></tr>\n'
         + '<tr><td class="k">제목</td><td>' + escapeHtml(c ? (c.고객명 || '') : '') + ' ' + semokLabel + ' 신고 관련 참고사항 안내</td></tr>\n'
         + (c && c.법정일 ? '<tr><td class="k">법정신고기한</td><td>' + escapeHtml(c.법정일) + '</td></tr>\n' : '')
         + '</table>\n\n'
@@ -1700,7 +1702,6 @@ async function createNewDoc(kind){
         + '<table class="meta">\n'
         + '<tr><td class="k">수신</td><td>' + escapeHtml(c ? (c.고객명 || '') : '') + ' 님</td></tr>\n'
         + '<tr><td class="k">발신</td><td>이음세무컨설팅</td></tr>\n'
-        + '<tr><td class="k">담당자</td><td>' + escapeHtml(c ? (c.담당자 || '') : '') + '</td></tr>\n'
         + '<tr><td class="k">작성일</td><td>' + todayStr + '</td></tr>\n'
         + '<tr><td class="k">제목</td><td>' + escapeHtml(c ? (c.사건명 || '') : '') + ' 진행상황 보고</td></tr>\n'
         + (c && c.법정일 ? '<tr><td class="k">법정기한</td><td>' + escapeHtml(c.법정일) + '</td></tr>\n' : '')
@@ -1720,7 +1721,6 @@ async function createNewDoc(kind){
         + '- 청구인: ' + (c ? (c.고객명 || '') : '') + '\n'
         + '- 처분청: \n'
         + '- 사건유형: ' + (c && c.업무유형 ? c.업무유형 : '') + '\n'
-        + '- 담당자: ' + (c ? (c.담당자 || '') : '') + '\n'
         + '- 청구일자: ' + todayStr + '\n'
         + (c && c.법정일 ? '- 청구기한: ' + c.법정일 + '\n' : '') + '\n'
         + '## 청구취지\n\n\n'
@@ -1738,7 +1738,6 @@ async function createNewDoc(kind){
         + '# ' + (c ? (c.사건명 || '') : '') + ' 번역문\n\n'
         + '- 제출처: OOO세무서장 귀하\n'
         + '- 제출자: 이음세무컨설팅 (번역 및 신고대리인)\n'
-        + '- 담당자: ' + (c ? (c.담당자 || '') : '') + '\n'
         + '- 원본 언어: 영어\n'
         + '- 번역일: ' + todayStr + '\n\n'
         + '## 원문\n\n'
@@ -1760,7 +1759,6 @@ async function createNewDoc(kind){
         + '<table class="meta">\n'
         + '<tr><td class="k">고객명</td><td>' + escapeHtml(c ? (c.고객명 || '') : '') + '</td></tr>\n'
         + '<tr><td class="k">사건명</td><td>' + escapeHtml(c ? (c.사건명 || '') : '') + '</td></tr>\n'
-        + '<tr><td class="k">담당자</td><td>' + escapeHtml(c ? (c.담당자 || '') : '') + '</td></tr>\n'
         + '</table>\n\n'
         + '## 사건 개요\n\n'
         + '- \n\n'
@@ -1776,11 +1774,21 @@ async function createNewDoc(kind){
   const tpl = templates[kind] || templates.blank;
   const name = window.prompt('새 문서의 이름을 입력하세요.', tpl.promptDefault);
   if (name === null) return; // 취소
+  // [2026.09 신규] "업무관리자/보고서템플릿" 폴더에 이 보고서 종류(fallbackName, 예: "검토서")와
+  // 이름이 같은 파일을 미리 넣어뒀으면, 코드에 내장된 기본 골격 대신 그 내용을 초안으로 쓴다.
+  // 없거나 조회에 실패해도 조용히 기본 골격을 그대로 쓴다(의뢰서템플릿과 같은 원칙).
+  let mdContent = tpl.md;
+  if (kind !== 'blank'){
+    try {
+      const tres = await callGas('getReportTemplate', { label: tpl.fallbackName });
+      if (tres && tres.found && tres.content) mdContent = tres.content;
+    } catch (err) { /* 조용히 기본 골격 사용 */ }
+  }
   // 정해진 kind는 그 유형으로 고정한다 — 사건유형별 자동추천(rwGuessDocType_)은 "빈 문서"처럼
   // 용도가 정해지지 않은 경우에만 쓴다.
   const FIXED_DOC_TYPE_ = { review: 'review', advisory: 'advisory', filing: 'filing', reference: 'reference', progress: 'progress', appeal_petition: 'appeal_petition', translation: 'translation', summary: 'summary' };
   const docType = FIXED_DOC_TYPE_[kind] || rwGuessDocType_();
-  const newDoc = { id: uid(), name: name.trim() || tpl.fallbackName, theme: RW_DOC_TYPE_THEME_[docType] || 'memo', format: 'md', md: tpl.md, docType: docType };
+  const newDoc = { id: uid(), name: name.trim() || tpl.fallbackName, theme: RW_DOC_TYPE_THEME_[docType] || 'memo', format: 'md', md: mdContent, docType: docType };
   docs.push(newDoc);
   selectedId = newDoc.id;
   const saved = await persist();
@@ -2982,6 +2990,29 @@ function currentDriveFileId_(){
   return (selectedId && selectedId.indexOf('drive-') === 0) ? selectedId.slice('drive-'.length) : null;
 }
 
+// [2026.09 신규] "작성관리를 벗어나거나(다른 메뉴 클릭) 탭/창을 닫으려는데, 드라이브에
+// 저장하지 않은 보고서 내용이 있는지" 확인용. mdInput.value가 아직 rwDriveSaved_(마지막으로
+// 실제 드라이브에 저장한 시점의 내용)와 다르면 "저장 안 한 변경"으로 본다 — persist()가
+// 매번 자동으로 채워주는 IndexedDB/localStorage 캐시는 브라우저를 벗어나면 사라질 수 있는
+// 임시 저장일 뿐이라 여기서는 진짜 저장(드라이브)만 기준으로 삼는다.
+function rwHasUnsavedDriveChanges_(){
+  const mdInputEl = document.getElementById('mdInput');
+  return docs.some(function(d){
+    const content = (d.id === selectedId && mdInputEl) ? mdInputEl.value : d.md;
+    return !!(content && content.trim()) && content !== d.rwDriveSaved_;
+  });
+}
+
+// 탭/창을 통째로 닫거나 새로고침하려는 경우 — 브라우저 표준 방식(returnValue 지정)으로
+// "정말 나가시겠습니까?" 확인창을 띄운다. 문구는 최신 브라우저에서 대부분 무시되고 자체
+// 안내문으로 대체되지만, 이벤트 자체를 막는 게 핵심이라 그대로 둔다.
+window.addEventListener('beforeunload', function(e){
+  if (document.getElementById('view-reportwriter') && document.getElementById('view-reportwriter').classList.contains('active') && rwHasUnsavedDriveChanges_()){
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
 function updateSaveToDriveButton(){
   const btn = document.getElementById('btnSaveToDrive');
   if (!btn) return;
@@ -3021,6 +3052,9 @@ async function saveToDrive(){
     const data = await callGas('uploadFile', body);
     if (data && data.error) throw new Error(data.error);
     flashSaveState('드라이브에 저장됨');
+    // [2026.09 신규] 방금 저장한 내용을 스냅샷으로 남겨둔다 — rwHasUnsavedDriveChanges_가
+    // "그 뒤로 또 고쳤는지"를 판단하는 기준이 된다(창 닫기/화면 이동 경고용).
+    d.rwDriveSaved_ = content;
     if (isNew && data.id) {
       const newDocId = 'drive-' + data.id;
       d.id = newDocId;

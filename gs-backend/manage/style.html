@@ -31,21 +31,26 @@
 
   #sideMenu{ width:34px; flex-shrink:0; background:var(--navy); position:relative; transition:width .15s ease; z-index:50; cursor:pointer; overflow:hidden; }
   #sideMenu.expanded{ width:min(var(--side-expanded-w, 190px), 80vw); cursor:default; }
-  #sideMenuInner{ position:absolute; inset:0; width:var(--side-expanded-w, 190px); overflow-y:auto; overflow-x:hidden; padding:14px 0; display:none; }
-  #sideMenu.expanded #sideMenuInner{ display:block; }
-  /* [2026.09] 접힌 상태에서도 이모지 아이콘만 왼쪽에 붙여 보여줘서, 펼치지 않고 바로 그
-     메뉴로 이동할 수 있게 한다(기존엔 접히면 아무것도 안 보여서 어떤 메뉴가 어디 있는지
-     구별이 안 됐음) — 아이콘은 JS가 .menu-item 텍스트에서 그대로 뽑아서 만든다. */
-  #sideMenuIcons{ position:absolute; inset:0; overflow:hidden; padding-top:12px; }
-  #sideMenu.expanded #sideMenuIcons{ display:none; }
-  /* [2026.09 버그수정] 접힌 상태 아이콘 중 일부(🗂 작업관리, 👤 고객관리 등)가 이모지 자체가
-     어두운 톤이라 남색 배경과 거의 구별이 안 됐다 — 이모지 색과 무관하게 항상 잘 보이도록
-     옅은 사각 배경("칩")을 모든 아이콘에 고정으로 깔아둔다. */
-  .menu-icon{ display:flex; align-items:center; justify-content:center; width:20px; height:20px;
-    margin:3px auto; border-radius:6px; background:rgba(255,255,255,0.14); font-size:13px; line-height:1; cursor:pointer; }
-  .menu-icon:hover{ background:rgba(255,255,255,0.3); }
-  .menu-icon.soon{ opacity:.4; }
-  .menu-icon-divider{ height:1px; margin:6px 8px; background:rgba(255,255,255,0.14); }
+  #sideMenuInner{ position:absolute; inset:0; overflow-y:auto; overflow-x:hidden; padding:14px 0; }
+  /* [2026.09 재설계] 접힌 상태에서 별도의 "아이콘 전용 목록"을 새로 그리는 대신, 펼쳤을 때와
+     완전히 같은 .menu-item/.menu-group-label 엘리먼트를 그대로 두고 라벨만 숨긴다 —
+     "사이드바가 열렸을 때 자리에 그대로 아이콘이 자리했으면 좋겠다"는 지적대로, 같은
+     엘리먼트라 세로 위치가 펼친 상태와 정확히 같다(예전엔 별도 목록이 margin:3px로 훨씬
+     촘촘하게 쌓여서 자리가 전혀 안 맞았음). */
+  /* [2026.09 버그수정] 처음엔 .menu-brand를 display:none으로, .menu-group-label을 height:1px로
+     줄여서 접었을 때 박스 크기 자체가 펼쳤을 때와 달라졌다 — 그러면 그 아래 모든 항목이
+     펼친 상태보다 위로 밀려 올라가서 "타이틀이 있다가 없어지니까" 자리가 도로 안 맞았다.
+     padding·margin·글자크기는 그대로 두어 박스 높이를 펼친 상태와 똑같이 유지하고, 글자만
+     안 보이게(color:transparent) 한다 — 그룹 구분선은 같은 자리에 얇은 선을 따로 그린다. */
+  #sideMenu:not(.expanded) .menu-brand{ color:transparent; }
+  #sideMenu:not(.expanded) .menu-group-label{ color:transparent; position:relative; }
+  #sideMenu:not(.expanded) .menu-group-label::after{ content:''; position:absolute; left:8px; right:8px; top:50%; height:1px; background:rgba(255,255,255,0.14); }
+  #sideMenu:not(.expanded) .menu-item{ padding:9px 0; justify-content:center; }
+  #sideMenu:not(.expanded) .menu-item .mi-label{ display:none; }
+  /* font-size는 펼친 상태와 반드시 똑같이 둔다 — 여기서 조금이라도 키우면 줄 높이가 늘어나서
+     항목마다 1px씩 어긋나고, 그게 쌓여 아래로 갈수록 펼친 상태와 자리가 벌어진다(실제로
+     15px로 키웠다가 발견함). */
+  #sideMenu:not(.expanded) .menu-item .mi-icon{ width:auto; }
   .menu-brand{ color:var(--gold-light); font-weight:800; font-size:15px; padding:0 16px 14px; letter-spacing:.5px; }
   .menu-group-label{ color:#8b93ad; font-size:11px; font-weight:700; padding:10px 16px 4px; letter-spacing:.5px; }
   .menu-item{ display:flex; align-items:center; gap:8px; padding:9px 16px; color:#dfe3ee; font-size:13px;
@@ -67,29 +72,42 @@
   .view-head h2{ margin:0; font-size:19px; color:var(--navy); }
   .view-body{ padding:0 22px 24px; }
 
-  #sideAI{ width:14px; flex-shrink:0; background:#f1f2f5; border-left:1px solid var(--line); position:relative; transition:width .15s ease; z-index:40; cursor:pointer; overflow:hidden; }
+  /* [2026.09 버그수정] 접힌 상태 배경이 #f1f2f5로 중앙 작업영역 배경(--bg:#e9eaee)과 거의
+     같은 밝기라 오른쪽 끝에 뭐가 있는지 전혀 안 보였다("도대체 보이지가 않는다") — 왼쪽
+     메뉴(#sideMenu)와 같은 남색으로 맞춰 접힌 상태에서도 눈에 띄게 한다. */
+  /* [2026.09 버그수정] 접힌 상태 배경이 중앙 작업영역과 거의 같은 밝기라 오른쪽 끝에 뭐가
+     있는지 안 보였다("도대체 보이지가 않는다") — 왼쪽 메뉴(#sideMenu)와 같은 남색으로
+     통일하고, 펼쳤을 때도 계속 남색을 유지한다(사용자 요청) — 그래서 아래 .ai-sb-* 들도
+     전부 밝은 배경 기준 색상에서 남색 배경에 맞는 밝은 글자색으로 다시 맞췄다. */
+  #sideAI{ width:14px; flex-shrink:0; background:var(--navy); border-left:1px solid var(--line); position:relative; transition:width .15s ease; z-index:40; cursor:pointer; overflow:hidden; }
   #sideAI.expanded{ width:min(320px, 88vw); cursor:default; }
   #sideAIInner{ position:absolute; inset:0; display:flex; flex-direction:column; min-width:0; }
+  /* [2026.09 버그수정] 접힌 상태(14px)에서도 #sideAIInner 내용(입력창 등 기본 흰 배경을 가진
+     요소들)이 그대로 그려져 overflow:hidden에 잘려나간 조각들이 남색 배경 중간중간에 흰
+     얼룩처럼 비쳐 보였다("흰색이 중간에 들어가 있다") — 왼쪽 메뉴가 접힌 상태에서 전용
+     아이콘 뷰(#sideMenuIcons)로 통째로 바꿔치기하는 것처럼, 여기서도 접혔을 땐 안의 내용을
+     아예 숨겨서 순수한 남색 막대만 보이게 한다. */
+  #sideAI:not(.expanded) #sideAIInner{ display:none; }
   .ai-sb-resize-handle{ position:absolute; left:0; top:0; bottom:0; width:6px; cursor:ew-resize; z-index:1; }
   .ai-sb-resize-handle:hover, .ai-sb-resize-handle.dragging{ background:rgba(200,162,68,0.35); }
   #sideAI:not(.expanded) .ai-sb-resize-handle{ display:none; }
 
-  /* ===== 자체 AI 사이드바 ===== */
-  .ai-sb-head{ display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line); flex-shrink:0; }
-  .ai-sb-head b{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; color:var(--navy); }
-  .ai-sb-collapse{ border:none; background:none; cursor:pointer; font-size:14px; color:var(--sub); padding:2px 6px; }
-  .ai-sb-collapse:hover{ color:var(--ink); }
+  /* ===== 자체 AI 사이드바 (남색 배경 기준 — 왼쪽 메뉴와 같은 톤) ===== */
+  .ai-sb-head{ display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid rgba(255,255,255,0.14); flex-shrink:0; }
+  .ai-sb-head b{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; color:var(--gold-light); }
+  .ai-sb-collapse{ border:none; background:none; cursor:pointer; font-size:14px; color:rgba(255,255,255,0.6); padding:2px 6px; }
+  .ai-sb-collapse:hover{ color:#fff; }
   .ai-sb-body{ flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:8px; }
   .ai-sb-msg{ width:100%; box-sizing:border-box; padding:9px 11px; border-radius:9px; font-size:13px; line-height:1.55; white-space:pre-wrap; word-break:break-word; }
   .ai-sb-msg.ai{ background:#f0f2f6; color:var(--ink); border-top-left-radius:2px; }
-  .ai-sb-msg.me{ background:var(--navy); color:#fff; border-top-left-radius:2px; }
-  .ai-sb-empty{ color:var(--sub); font-size:12.5px; text-align:center; margin-top:40px; line-height:1.7; }
-  .ai-sb-foot{ border-top:1px solid var(--line); padding:10px; flex-shrink:0; display:flex; gap:6px; align-items:flex-end; }
-  .ai-sb-foot textarea{ flex:1; resize:none; border:1px solid var(--line); border-radius:8px; padding:7px 9px; font-family:inherit; font-size:13px; max-height:100px; }
-  .ai-sb-foot button{ flex-shrink:0; border:none; border-radius:8px; background:var(--navy); color:#fff; width:34px; height:34px; cursor:pointer; font-size:14px; }
-  .ai-sb-foot button:hover{ background:var(--navy-deep); }
-  .ai-sb-foot button.stop{ background:var(--danger); }
-  .ai-soon{ color:var(--sub); font-size:13px; text-align:center; margin-top:60px; line-height:1.7; }
+  .ai-sb-msg.me{ background:rgba(200,162,68,0.22); color:#fff; border-top-left-radius:2px; }
+  .ai-sb-empty{ color:rgba(255,255,255,0.6); font-size:12.5px; text-align:center; margin-top:40px; line-height:1.7; }
+  .ai-sb-foot{ border-top:1px solid rgba(255,255,255,0.14); padding:10px; flex-shrink:0; display:flex; gap:6px; align-items:flex-end; }
+  .ai-sb-foot textarea{ flex:1; resize:none; border:1px solid rgba(255,255,255,0.2); border-radius:8px; padding:7px 9px; font-family:inherit; font-size:13px; max-height:100px; }
+  .ai-sb-foot button{ flex-shrink:0; border:none; border-radius:8px; background:var(--gold); color:var(--navy); width:34px; height:34px; cursor:pointer; font-size:14px; }
+  .ai-sb-foot button:hover{ background:var(--gold-light); }
+  .ai-sb-foot button.stop{ background:var(--danger); color:#fff; }
+  .ai-soon{ color:rgba(255,255,255,0.6); font-size:13px; text-align:center; margin-top:60px; line-height:1.7; }
 
   /* ===== 공용 위젯 ===== */
   .card{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px; }
@@ -257,6 +275,14 @@
   #memoOvPanel{ display:none; flex:1; width:100%; box-sizing:border-box; overflow-y:auto; padding:16px; background:#fff; }
   #memoOvApplyStep{ display:none; position:fixed; inset:0; background:rgba(13,27,61,0.55); z-index:300; align-items:center; justify-content:center; }
   #memoOvApplyStep .box{ background:#fff; border-radius:10px; padding:18px; width:min(92vw,360px); display:flex; flex-direction:column; gap:10px; box-shadow:0 12px 32px rgba(0,0,0,0.3); }
+
+  /* [2026.09 신규] 메모의 "의뢰서 작성" 모드 — 사건개요 초안 모드(#memoOvPanel)와 같은 자리에서
+     토글되는 세 번째 패널. work.netax.kr 메모장에 있던 "일반메모/사건개시템플릿" 콤보박스를
+     이 시스템 방식(폴더ID 기반, 새 사건 등록과 즉시 연결)으로 다시 만든 것. */
+  #memoReqPanel{ display:none; flex:1; width:100%; box-sizing:border-box; overflow-y:auto; padding:16px; background:#fff; flex-direction:column; gap:10px; }
+  #memoReqTextarea{ flex:1; min-height:300px; width:100%; box-sizing:border-box; font-family:Consolas,monospace; font-size:12.5px; line-height:1.6; padding:10px; border:1px solid var(--line); border-radius:8px; resize:vertical; }
+  #memoReqApplyStep{ display:none; position:fixed; inset:0; background:rgba(13,27,61,0.55); z-index:300; align-items:center; justify-content:center; }
+  #memoReqApplyStep .box{ background:#fff; border-radius:10px; padding:18px; width:min(92vw,380px); display:flex; flex-direction:column; gap:10px; box-shadow:0 12px 32px rgba(0,0,0,0.3); }
 
   /* ===== 세액계산 (tax-calculator.js 이식 — 원본 index.html의 .taxcalc-* 규칙 그대로) ===== */
   :root{

@@ -7,6 +7,7 @@
     <button type="button" id="memoBtnNew" class="ghost-btn"><span class="btn-ic">+</span><span class="btn-tx"> 새 메모</span></button>
     <button type="button" id="memoBtnSave" class="save-btn"><span class="btn-ic">💾</span><span class="btn-tx"> 저장</span></button>
     <button type="button" id="memoBtnOverview" class="ghost-btn"><span class="btn-ic">📋</span><span class="btn-tx"> 사건메모</span></button>
+    <button type="button" id="memoBtnRequest" class="ghost-btn"><span class="btn-ic">🗂</span><span class="btn-tx"> 의뢰서 작성</span></button>
   </div>
   <textarea id="memoText" placeholder="통화하면서 바로 타이핑하세요…"></textarea>
 
@@ -37,6 +38,20 @@
       <div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:8px;">📂 저장된 초안</div>
       <div id="memoOvDraftList"></div>
     </div>
+  </div>
+
+  <!-- [2026.09 신규] 의뢰서 작성 — work.netax.kr 메모장의 "일반메모/사건개시템플릿" 콤보박스를
+       다시 만든 것. 템플릿을 먼저 고르고, 화면에서 바로 채워 넣은 뒤, 새 사건으로 등록하거나
+       이미 있는 사건에 저장한다(자동 세목매칭 저장과 별개로, 언제든 원하는 템플릿을 골라
+       원하는 사건에 직접 붙일 수 있다). -->
+  <div id="memoReqPanel">
+    <div class="tb-row" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <label style="font-size:12px; color:var(--sub);">의뢰서 템플릿:</label>
+      <select id="memoReqTemplateSelect" style="min-width:220px;"><option value="">불러오는 중…</option></select>
+      <span style="margin-left:auto; font-size:11.5px; color:var(--sub);" id="memoReqNonTextNote"></span>
+      <button type="button" id="memoReqApplyBtn" class="save-btn"><span class="btn-ic">✅</span><span class="btn-tx"> 사건에 저장</span></button>
+    </div>
+    <textarea id="memoReqTextarea" placeholder="템플릿을 고르면 여기 내용이 채워집니다 — 통화하면서 바로 채워 넣으세요." disabled></textarea>
   </div>
 </div>
 
@@ -96,6 +111,37 @@
     <select id="memoOvApplyCaseSelect" style="width:100%; box-sizing:border-box;"><option value="">사건을 선택하세요</option></select>
     <div style="display:flex; gap:8px; justify-content:flex-end;">
       <button type="button" id="memoOvApplyConfirm" class="save-btn">기존 사건에 적용</button>
+    </div>
+  </div>
+</div>
+
+<!-- [2026.09 신규] 의뢰서 작성 — 고른 템플릿을 어느 사건에 저장할지 고르는 다이얼로그.
+     memoReqApplyBtn 클릭으로 열리며, 위 사건개요 다이얼로그와 같은 구조(새로 등록 / 기존
+     사건에 저장)를 쓰되 세목은 여기서 직접 고른다(템플릿 선택과 세목은 서로 독립적이라
+     자동으로 정해줄 수 없음 — 예: "불복.md"는 세목만 정해지고 업무유형은 여기서 고른다). -->
+<div id="memoReqApplyStep">
+  <div class="box" style="width:min(440px, 92vw); position:relative;">
+    <span class="modal-close" id="memoReqApplyClose" title="닫기" style="position:absolute; top:10px; right:10px; color:var(--sub); background:var(--panel);">✕</span>
+    <div style="font-weight:700; color:var(--navy); font-size:14px; padding-right:24px;">🗂 의뢰서를 사건에 저장(새로 등록 또는 기존 사건에 저장)</div>
+    <div style="font-size:11.5px; color:var(--sub);">지금 작성한 의뢰서 내용을 그 사건의 폴더에 파일로 저장합니다.</div>
+    <input type="text" id="memoReqNewCustomer" placeholder="고객명(의뢰인) — 필수">
+    <input type="text" id="memoReqNewTaxpayer" placeholder="납세자(의뢰인과 다른 경우만)">
+    <select id="memoReqNewSemok" style="width:100%; box-sizing:border-box;">
+      <option value="transfer">양도</option>
+      <option value="gift">증여</option>
+      <option value="inheritance">상속</option>
+      <option value="objection">불복</option>
+    </select>
+    <select id="memoReqNewUptype" style="width:100%; box-sizing:border-box;"></select>
+    <label style="font-size:12px; color:var(--sub);">의뢰일<br><input type="date" id="memoReqNewRequestDate" style="width:100%; box-sizing:border-box;"></label>
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button type="button" id="memoReqApplyCancel" class="ghost-btn">취소</button>
+      <button type="button" id="memoReqNewCaseConfirm" class="save-btn">등록하고 저장</button>
+    </div>
+    <div style="border-top:1px dashed var(--line); margin:6px 0 2px; padding-top:10px; font-weight:700; color:var(--navy); font-size:13px;">또는 — 이미 작업관리에 등록된 사건에 저장</div>
+    <select id="memoReqApplyCaseSelect" style="width:100%; box-sizing:border-box;"><option value="">사건을 선택하세요</option></select>
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button type="button" id="memoReqApplyConfirm" class="save-btn">기존 사건에 저장</button>
     </div>
   </div>
 </div>
@@ -1130,5 +1176,265 @@
       }
     });
   })();
+</script>
+
+<script>
+  // ============================================================
+  // [2026.09 신규] 의뢰서 작성 — work.netax.kr 메모장의 "일반메모/사건개시템플릿" 콤보박스를
+  // 다시 만든 것(사용자 요청: "사건시스템에서 의뢰서 작성을 클릭하면 템플릿 콤보박스가 열리고,
+  // 연결할 사건을 선택하면 그 사건 폴더에 저장되고, 아직 연결할 사건이 없으면 새사건으로
+  // 연결을 안내하면서 그 사건 폴더에 저장되는 형식"). 새 사건 생성 시 자동으로 붙는 템플릿
+  // (work_seedCaseTemplateIfAny_)과는 별개 경로 — 언제든 원하는 템플릿을 원하는 사건에 직접
+  // 붙일 수 있다. 저장 파일명은 "템플릿명_고객명"으로 만들어(자동으로 이미 들어간 빈 템플릿과
+  // 이름이 겹쳐 덮어써지지 않도록) 별도 파일로 남긴다.
+  // ============================================================
+  var memoReqPanelEl = document.getElementById('memoReqPanel');
+  var memoReqTemplateSelectEl = document.getElementById('memoReqTemplateSelect');
+  var memoReqTextareaEl = document.getElementById('memoReqTextarea');
+  var memoReqNonTextNoteEl = document.getElementById('memoReqNonTextNote');
+  var memoReqApplyStepEl = document.getElementById('memoReqApplyStep');
+  var memoReqActive_ = false;
+  var memoReqInited_ = false;
+  var memoReqTemplates_ = []; // listCaseTemplates 결과 그대로 보관
+  var memoReqSelectedTemplate_ = null;
+  var memoReqAllCases_ = [];
+
+  // 템플릿 이름만으로 세목/업무유형을 짐작해 새 사건 폼에 미리 채워준다(맞으면 좋고, 틀리면
+  // 사용자가 그냥 다시 고르면 됨 — 강제 아님). "양도신고"처럼 세목+업무유형이 합쳐진 이름,
+  // "세무조사"처럼 업무유형만으로 이미 고유한 이름, "양도"처럼 세목만인 이름 순으로 확인한다.
+  function memoReqGuessSemokUptype_(templateName){
+    var semokLabels = (typeof WORK_SEMOK_LABELS !== 'undefined') ? WORK_SEMOK_LABELS : { transfer:'양도', gift:'증여', inheritance:'상속', objection:'불복' };
+    var semokKeys = Object.keys(semokLabels);
+    for (var i = 0; i < semokKeys.length; i++){
+      var key = semokKeys[i], label = semokLabels[key];
+      if (templateName === label) return { semok: key, uptype: null };
+      if (templateName.indexOf(label) === 0){
+        var rest = templateName.slice(label.length);
+        var uptypeOptions = (typeof WORK_UPTYPE_OPTIONS_ !== 'undefined' && WORK_UPTYPE_OPTIONS_[key]) || [];
+        if (uptypeOptions.indexOf(rest) !== -1) return { semok: key, uptype: rest };
+      }
+    }
+    // 불복 세부유형(세목 접두어 없이 이름 자체가 업무유형인 경우) — 예: "세무조사", "경정청구".
+    var objUptypes = (typeof WORK_UPTYPE_OPTIONS_ !== 'undefined' && WORK_UPTYPE_OPTIONS_.objection) || [];
+    if (objUptypes.indexOf(templateName) !== -1) return { semok: 'objection', uptype: templateName };
+    return null;
+  }
+
+  function memoReqLoadTemplates_(){
+    memoReqTemplateSelectEl.innerHTML = '<option value="">불러오는 중…</option>';
+    callGas('listCaseTemplates', {}).then(function(res){
+      if (res.error){ memoReqTemplateSelectEl.innerHTML = '<option value="">' + escapeHtml(res.error) + '</option>'; return; }
+      memoReqTemplates_ = res.templates || [];
+      if (!memoReqTemplates_.length){
+        memoReqTemplateSelectEl.innerHTML = '<option value="">의뢰서템플릿 폴더에 파일이 없습니다</option>';
+        return;
+      }
+      memoReqTemplateSelectEl.innerHTML = '<option value="">템플릿을 선택하세요</option>' +
+        memoReqTemplates_.map(function(t){ return '<option value="' + t.id + '">' + escapeHtml(t.name) + '</option>'; }).join('');
+    }).catch(function(err){
+      memoReqTemplateSelectEl.innerHTML = '<option value="">불러오기 실패</option>';
+      toast('템플릿 목록을 불러오지 못했습니다: ' + (err && err.message ? err.message : err));
+    });
+  }
+
+  memoReqTemplateSelectEl.addEventListener('change', function(){
+    var tpl = memoReqTemplates_.filter(function(t){ return t.id === memoReqTemplateSelectEl.value; })[0];
+    memoReqSelectedTemplate_ = tpl || null;
+    if (!tpl){
+      memoReqTextareaEl.value = '';
+      memoReqTextareaEl.disabled = true;
+      memoReqNonTextNoteEl.textContent = '';
+      return;
+    }
+    if (!tpl.isText){
+      memoReqTextareaEl.value = '';
+      memoReqTextareaEl.disabled = true;
+      memoReqNonTextNoteEl.textContent = '이 형식(' + tpl.ext + ')은 미리보기 없이 사건 폴더에 그대로 복사됩니다.';
+      return;
+    }
+    memoReqNonTextNoteEl.textContent = '';
+    memoReqTextareaEl.disabled = false;
+    memoReqTextareaEl.value = '불러오는 중…';
+    callGas('getCaseTemplateContent', { fileId: tpl.id }).then(function(res){
+      if (res.error){ toast(res.error); memoReqTextareaEl.value = ''; return; }
+      memoReqTextareaEl.value = res.content || '';
+    }).catch(function(err){
+      toast('템플릿 내용을 불러오지 못했습니다: ' + (err && err.message ? err.message : err));
+      memoReqTextareaEl.value = '';
+    });
+  });
+
+  // ---- 텍스트메모/사건메모/의뢰서작성 3-way 토글 ----
+  document.getElementById('memoBtnRequest').addEventListener('click', function(){
+    memoReqActive_ = !memoReqActive_;
+    if (memoReqActive_ && memoOvActive_){
+      // 사건메모 모드가 켜져 있으면 먼저 끈다(memoOv 쪽 토글 버튼 텍스트도 원상복구).
+      memoOvActive_ = false;
+      memoOvPanelEl.style.display = 'none';
+      document.getElementById('memoBtnOverview').textContent = '📋 사건메모';
+    }
+    memoText.style.display = memoReqActive_ ? 'none' : '';
+    memoReqPanelEl.style.display = memoReqActive_ ? 'flex' : 'none';
+    document.querySelector('.memo-search-wrap').style.display = memoReqActive_ ? 'none' : '';
+    document.getElementById('memoBtnNew').style.display = memoReqActive_ ? 'none' : '';
+    document.getElementById('memoBtnSave').style.display = memoReqActive_ ? 'none' : '';
+    document.getElementById('memoBtnOverview').style.display = memoReqActive_ ? 'none' : '';
+    this.textContent = memoReqActive_ ? '📝 텍스트 메모로' : '🗂 의뢰서 작성';
+    if (memoReqActive_ && !memoReqInited_){ memoReqInited_ = true; memoReqLoadTemplates_(); }
+  });
+  // [2026.09] 사건메모 모드를 켤 때도 반대로 의뢰서 모드를 꺼준다(원본 memoBtnOverview
+  // 리스너는 그대로 두고, 이 리스너를 추가로 하나 더 건다 — 서로 독립된 파일 걱정 없이 안전).
+  document.getElementById('memoBtnOverview').addEventListener('click', function(){
+    if (memoReqActive_){
+      memoReqActive_ = false;
+      memoReqPanelEl.style.display = 'none';
+      document.getElementById('memoBtnRequest').textContent = '🗂 의뢰서 작성';
+      document.getElementById('memoBtnRequest').style.display = '';
+    }
+  });
+
+  document.getElementById('memoReqApplyBtn').addEventListener('click', function(){
+    if (!memoReqSelectedTemplate_){ toast('템플릿을 먼저 선택하세요.'); return; }
+    document.getElementById('memoReqNewCustomer').value = '';
+    document.getElementById('memoReqNewTaxpayer').value = '';
+    document.getElementById('memoReqNewRequestDate').value = new Date().toISOString().slice(0, 10);
+    var semokSel = document.getElementById('memoReqNewSemok');
+    var uptypeSel = document.getElementById('memoReqNewUptype');
+    function refreshUptypeOptions(){
+      var options = (typeof WORK_UPTYPE_OPTIONS_ !== 'undefined' && WORK_UPTYPE_OPTIONS_[semokSel.value]) || ['신고', '상담'];
+      uptypeSel.innerHTML = options.map(function(u){ return '<option value="' + u + '">' + u + '</option>'; }).join('');
+    }
+    var guess = memoReqGuessSemokUptype_(memoReqSelectedTemplate_.name);
+    semokSel.value = guess ? guess.semok : 'transfer';
+    semokSel.onchange = refreshUptypeOptions;
+    refreshUptypeOptions();
+    if (guess && guess.uptype) uptypeSel.value = guess.uptype;
+
+    var applySel = document.getElementById('memoReqApplyCaseSelect');
+    applySel.innerHTML = '<option value="">불러오는 중…</option>';
+    callGas('work_get_cases', {}).then(function(res){
+      memoReqAllCases_ = res.cases || [];
+      applySel.innerHTML = buildCaseOptionsHtml_(memoReqAllCases_, { placeholder: '사건을 선택하세요' });
+    }).catch(function(){ applySel.innerHTML = '<option value="">불러오기 실패</option>'; });
+
+    memoReqApplyStepEl.style.display = 'flex';
+  });
+  document.getElementById('memoReqApplyCancel').addEventListener('click', function(){ memoReqApplyStepEl.style.display = 'none'; });
+  document.getElementById('memoReqApplyClose').addEventListener('click', function(){ memoReqApplyStepEl.style.display = 'none'; });
+
+  // 실제 저장 실행 — folderId만 알면 새 사건이든 기존 사건이든 똑같이 처리한다.
+  function memoReqSaveToFolder_(folderId, 고객명){
+    var tpl = memoReqSelectedTemplate_;
+    var ext = tpl.ext || '.md';
+    var baseName = tpl.name + '_' + (고객명 || '').trim();
+    var payload = { folderId: folderId, fileName: baseName + ext };
+    if (tpl.isText) payload.editedContent = memoReqTextareaEl.value;
+    else payload.templateFileId = tpl.id;
+    return callGas('saveCaseFromTemplate', payload);
+  }
+
+  // [2026.09 신규] "겹치는 부분이 많을수록 좋다"는 요청 — 의뢰서 본문에서 이름 몇 개와
+  // 상담메모만 기계적으로(정규식으로) 뽑아 사건개요에 자동 반영한다. 양도가액·취득일 같은
+  // 숫자·물건 정보는 사건개요의 단일 필드가 아니라 여러 개 담는 "물건목록"에 들어가고,
+  // 자유 텍스트에서 이런 걸 안전하게 뽑아내려면 사실상 AI가 필요하다(문구가 조금만 달라도
+  // 오추출 위험) — 그 부분은 일부러 손대지 않고 AI 작업 재개 시로 미룬다. 라벨은 "핵심
+  // 단어"로 느슨하게 매칭해서, 신고용 템플릿처럼 "성명 및 사망일자"로 붙여 쓴 줄도 이름
+  // 부분만 잡아낸다(값에 쉼표가 있으면 첫 조각만 사용).
+  var MEMO_REQ_OVERVIEW_MAP_ = {
+    transfer: [ { test: /의뢰인\s*성명/, key: 'trTransferorName' } ],
+    gift: [
+      { test: /의뢰인\s*성명/, key: 'giftDoneeName' },
+      { test: /증여자\s*성명/, key: 'giftDonorName' }
+    ],
+    inheritance: [
+      { test: /의뢰인\s*성명/, key: '상속인성명' },
+      { test: /피상속인\s*성명/, key: 'ihDeceasedName' }
+    ]
+  };
+  function memoReqExtractOverview_(semok, content){
+    var rules = MEMO_REQ_OVERVIEW_MAP_[semok];
+    if (!rules) return null; // 불복 등 구조화 사건개요가 없는 세목
+    var overview = {};
+    (content || '').split('\n').forEach(function(line){
+      var m = line.match(/^\s*-\s*([^:：]+)[:：]\s*(.+?)\s*$/);
+      if (!m) return;
+      var label = m[1].trim();
+      var value = m[2].trim().split(/[,，]/)[0].trim();
+      if (!value) return;
+      rules.forEach(function(rule){ if (rule.test.test(label) && !overview[rule.key]) overview[rule.key] = value; });
+    });
+    var memoMatch = (content || '').match(/##\s*상담\s*메모\s*\n+([\s\S]*)$/);
+    if (memoMatch){
+      var noteText = memoMatch[1].replace(/^-\s*/, '').trim();
+      if (noteText) overview['특이사항'] = noteText;
+    }
+    return Object.keys(overview).length ? overview : null;
+  }
+
+  document.getElementById('memoReqNewCaseConfirm').addEventListener('click', function(){
+    var 고객명 = document.getElementById('memoReqNewCustomer').value.trim();
+    if (!고객명){ toast('고객명을 입력해주세요.'); return; }
+    var semok = document.getElementById('memoReqNewSemok').value;
+    var overview = memoReqExtractOverview_(semok, memoReqTextareaEl.value);
+    var taxpayerField_ = (typeof TAXPAYER_NAME_FIELD_BY_SEMOK_ !== 'undefined') ? TAXPAYER_NAME_FIELD_BY_SEMOK_[semok] : null;
+    var 납세자입력 = document.getElementById('memoReqNewTaxpayer').value.trim();
+    var 납세자 = 납세자입력 || ((taxpayerField_ && overview && overview[taxpayerField_]) ? overview[taxpayerField_] : '');
+    var createPayload = {
+      고객명: 고객명,
+      납세자: 납세자,
+      세목: semok,
+      업무유형: document.getElementById('memoReqNewUptype').value,
+      의뢰일: document.getElementById('memoReqNewRequestDate').value
+    };
+    var btn = document.getElementById('memoReqNewCaseConfirm');
+    btn.disabled = true;
+    callGas('work_create_case', createPayload).then(function(res){
+      if (res.success === false || !res.case){ toast(res.message || '사건 등록 실패'); return; }
+      return memoReqSaveToFolder_(res.case.폴더ID, res.case.고객명).then(function(saveRes){
+        if (saveRes.error){ toast('사건은 등록됐지만 의뢰서 저장에 실패했습니다: ' + saveRes.error); return; }
+        var afterSave = overview ? callGas('work_update_case', { id: res.case.id, 사건개요: overview }) : Promise.resolve();
+        return afterSave.then(function(){
+          toast('"' + escapeHtml(res.case.고객명 || '') + ' · ' + escapeHtml(res.case.사건명 || '') + '" 사건을 등록하고 의뢰서를 저장했습니다' + (overview ? ' (사건개요도 같이 채웠습니다)' : '') + '.');
+          memoReqApplyStepEl.style.display = 'none';
+          if (typeof loadWorkCases === 'function') loadWorkCases();
+        });
+      });
+    }).catch(function(err){
+      toast('등록 중 오류: ' + (err && err.message ? err.message : err));
+    }).finally(function(){ btn.disabled = false; });
+  });
+
+  document.getElementById('memoReqApplyConfirm').addEventListener('click', function(){
+    var sel = document.getElementById('memoReqApplyCaseSelect');
+    if (!sel.value){ toast('저장할 사건을 선택해주세요.'); return; }
+    var c = memoReqAllCases_.filter(function(x){ return x.id === sel.value; })[0];
+    if (!c) return;
+    var overview = memoReqExtractOverview_(c.세목, memoReqTextareaEl.value);
+    if (overview && c.사건개요 && Object.keys(c.사건개요).length &&
+      !confirm('"' + (c.고객명 || '') + ' · ' + (c.사건명 || '') + '" 사건에는 이미 사건개요가 있습니다. 의뢰서에서 뽑은 이름·메모로 덮어쓸까요?')) {
+      overview = null; // 파일 저장은 그대로 진행하되 사건개요 반영만 건너뜀
+    }
+    var btn = document.getElementById('memoReqApplyConfirm');
+    btn.disabled = true;
+    memoReqSaveToFolder_(c.폴더ID, c.고객명).then(function(saveRes){
+      if (saveRes.error){ toast('저장 실패: ' + saveRes.error); return; }
+      if (!overview){
+        toast('"' + escapeHtml(c.고객명 || '') + ' · ' + escapeHtml(c.사건명 || '') + '" 사건 폴더에 저장했습니다.');
+        memoReqApplyStepEl.style.display = 'none';
+        return;
+      }
+      var taxpayerField_ = (typeof TAXPAYER_NAME_FIELD_BY_SEMOK_ !== 'undefined') ? TAXPAYER_NAME_FIELD_BY_SEMOK_[c.세목] : null;
+      var payload = { id: c.id, 사건개요: Object.assign({}, c.사건개요 || {}, overview), 기대수정일: c.수정일 };
+      if (taxpayerField_ && overview[taxpayerField_]) payload.납세자 = overview[taxpayerField_];
+      return callGas('work_update_case', payload).then(function(res2){
+        if (res2.conflict){ toast(res2.message || '그 사이 다른 곳에서 이 사건이 바뀌었습니다. 파일은 저장됐지만 사건개요는 반영 못 했습니다.'); return; }
+        if (res2.success === false){ toast('파일은 저장됐지만 사건개요 반영에 실패했습니다: ' + (res2.message || '')); return; }
+        toast('"' + escapeHtml(c.고객명 || '') + ' · ' + escapeHtml(c.사건명 || '') + '" 사건 폴더에 저장하고 사건개요도 채웠습니다.');
+        memoReqApplyStepEl.style.display = 'none';
+      });
+    }).catch(function(err){
+      toast('저장 중 오류: ' + (err && err.message ? err.message : err));
+    }).finally(function(){ btn.disabled = false; });
+  });
 </script>
 

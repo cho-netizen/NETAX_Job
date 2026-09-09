@@ -1,6 +1,16 @@
 <div class="view" id="view-dashboard">
   <div class="view-head"><h2>오늘의 현황</h2></div>
   <div class="view-body">
+    <!-- [2026.09] 사용자 요청 — 할일을 대시보드 맨 위로. 마감일 입력·수정·삭제도 여기서
+         바로 되도록 카드를 다시 만듦(구글 태스크, get/add/update/delete_google_task). -->
+    <div class="card">
+      <h3>✅ 할일</h3>
+      <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
+        <input type="text" id="dashNewTaskTitle" placeholder="새 할일 입력 후 Enter" style="flex:1; min-width:160px;">
+        <input type="date" id="dashNewTaskDue" style="max-width:150px;">
+      </div>
+      <div id="dashTasks"><div class="spinner">불러오는 중…</div></div>
+    </div>
     <div class="card">
       <h3>⏰ 마감임박 작업</h3>
       <div id="dashDeadlines"><div class="spinner">불러오는 중…</div></div>
@@ -22,15 +32,24 @@
       <div id="dashCalendar"><div class="spinner">불러오는 중…</div></div>
     </div>
     <div class="card">
-      <h3>✅ 할일</h3>
-      <div style="display:flex; gap:6px; margin-bottom:8px;">
-        <input type="text" id="dashNewTaskTitle" placeholder="새 할일 입력 후 Enter" style="flex:1;">
-      </div>
-      <div id="dashTasks"><div class="spinner">불러오는 중…</div></div>
-    </div>
-    <div class="card">
       <h3>📧 안읽은 메일</h3>
       <div id="dashEmails"><div class="spinner">불러오는 중…</div></div>
+    </div>
+    <!-- [2026.09 신규] "매일 밤 자동으로 뭘 하는지 내가 어떻게 아느냐"는 지적에 따라 추가 —
+         야간 자동점검(시스템 자기점검/템플릿 점검/오늘의 요약)이 실제로 어젯밤 돌았는지,
+         결과가 뭐였는지를 대시보드에서 바로 확인한다. -->
+    <div class="card">
+      <h3>🌙 야간 자동점검 상태</h3>
+      <div id="dashNightlyStatus"><div class="spinner">불러오는 중…</div></div>
+    </div>
+    <!-- [2026.09 신규] 증빙관리에 폴더별 "경과지" 기록판을 새로 만들면서 발견한 빈틈 — 각
+         폴더 안에서만 볼 수 있고 전체를 모아 보는 곳이 없으면, 마감일 넣은 항목을 깜빡 잊고
+         지나칠 수 있다(work.netax.kr의 "현황판"이 원래 이 역할을 했음). 폴더를 하나하나
+         열어보지 않아도 여기서 기한 지난/오늘/다가오는 항목을 한눈에 보고 클릭해서 바로
+         그 폴더로 이동할 수 있게 한다. -->
+    <div class="card">
+      <h3>📋 사건 경과·마감 현황</h3>
+      <div id="dashCaseLog"><div class="spinner">불러오는 중…</div></div>
     </div>
   </div>
 </div>
@@ -45,6 +64,8 @@
     loadDashCalendar_();
     loadDashEmails_();
     loadDashTasks_();
+    loadDashCaseLog_();
+    loadDashNightlyStatus_();
   }
 
   // [2026.09 버그수정] "가장 이른 8건"이 아니라 실제로 임박한 것만 골라서 보여준다 — 열린
@@ -129,9 +150,14 @@
       if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
       var items = res.일정 || [];
       if (!items.length){ box.innerHTML = '<div class="empty-row">일정이 없습니다.</div>'; return; }
-      var html = '<table class="list-table"><tr><th>시작</th><th>제목</th></tr>';
+      var html = '<table class="list-table">';
+      var prevDate = null;
       items.forEach(function(ev){
-        html += '<tr><td>' + esc(ev.종일일정 ? String(ev.시작).slice(0, 10) + ' 종일' : ev.시작) + '</td><td>' + esc(ev.제목) + '</td></tr>';
+        var datePart = String(ev.시작).slice(0, 10);
+        var timePart = ev.종일일정 ? '종일' : String(ev.시작).slice(11);
+        var dateCell = (datePart === prevDate) ? '' : esc(datePart);
+        prevDate = datePart;
+        html += '<tr><td>' + dateCell + '</td><td>' + esc(timePart) + '</td><td>' + esc(ev.제목) + '</td></tr>';
       });
       html += '</table>';
       box.innerHTML = html;
@@ -146,46 +172,205 @@
       if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
       var items = res.메일 || [];
       if (!items.length){ box.innerHTML = '<div class="empty-row">안읽은 메일이 없습니다.</div>'; return; }
-      var html = '<table class="list-table"><tr><th>받은날짜</th><th>보낸사람</th><th>제목</th></tr>';
+      var html = '<table class="list-table">';
+      var prevDate = null;
       items.forEach(function(m){
-        html += '<tr><td>' + esc(m.받은날짜) + '</td><td>' + esc(m.보낸사람) + '</td><td>' + esc(m.제목) + '</td></tr>';
+        var datePart = String(m.받은날짜).slice(0, 10);
+        var timePart = String(m.받은날짜).slice(11);
+        var dateCell = (datePart === prevDate) ? '' : esc(datePart);
+        prevDate = datePart;
+        html += '<tr><td><input type="checkbox" class="dash-email-read-cb" data-id="' + esc(m.id || '') + '"></td><td>' + dateCell + '</td><td>' + esc(timePart) + '</td><td>' + esc(m.보낸사람) + '</td><td>' + esc(m.제목) + '</td></tr>';
       });
       html += '</table>';
       box.innerHTML = html;
     }).catch(function(e){ document.getElementById('dashEmails').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
 
+  document.getElementById('dashEmails').addEventListener('change', function(e){
+    var cb = e.target.closest('.dash-email-read-cb');
+    if (!cb) return;
+    var id = cb.getAttribute('data-id');
+    if (!id){ cb.checked = false; return; }
+    cb.disabled = true;
+    var row = cb.closest('tr');
+    callGas('mark_email_read', { threadId: id }).then(function(res){
+      if (res.error){ alert('읽음 처리 실패: ' + res.error); cb.disabled = false; cb.checked = false; return; }
+      if (row) row.style.opacity = '0.4';
+    }).catch(function(err){ alert('읽음 처리 실패: ' + err.message); cb.disabled = false; cb.checked = false; });
+  });
+
   // [2026.09 신규] 구글 태스크(할일) — 종전 챗봇의 "할일 뭐있어"/"할일 추가해줘" 기능을
   // 대시보드 카드로 옮김. Tasks API가 이 프로젝트에서 고급서비스로 켜져있지 않으면
   // toolLookupGoogleTasks가 안내 메시지가 담긴 error를 돌려준다(그대로 화면에 표시).
+  // [2026.09 개편] 마감일 입력·수정·삭제도 여기서 바로 하도록 다시 만듦 — 완료 체크박스,
+  // 제목 클릭 시 인라인 편집(제목+마감일), 삭제 버튼.
+  var dashTasksCache_ = [];
+  function dashTaskRowHtml_(t){
+    var overdue = t.마감일 && t.마감일 < new Date().toISOString().slice(0, 10) && t.상태 !== 'completed';
+    var done = t.상태 === 'completed';
+    return '<div class="log-entry" data-task-id="' + esc(t.id) + '" style="align-items:flex-start;">'
+      + '<div style="flex:0 0 auto; padding-top:2px;"><input type="checkbox" class="dashTaskDone" ' + (done ? 'checked' : '') + '></div>'
+      + '<div class="log-text" style="flex:1; cursor:pointer;" title="눌러서 수정">'
+      + '<span style="' + (done ? 'text-decoration:line-through; color:var(--sub);' : '') + '">' + esc(t.제목) + '</span>'
+      + (t.마감일 ? '<br><span style="font-size:11px; ' + (overdue ? 'color:#a83232; font-weight:700;' : 'color:var(--sub);') + '">📌 ' + esc(t.마감일) + '</span>' : '')
+      + '</div>'
+      + '<button type="button" class="log-del dashTaskDel" title="삭제">✕</button>'
+      + '</div>';
+  }
   function loadDashTasks_(){
     callGas('get_google_tasks', {}).then(function(res){
       var box = document.getElementById('dashTasks');
       if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
-      var items = res.할일 || [];
-      if (!items.length){ box.innerHTML = '<div class="empty-row">할일이 없습니다.</div>'; return; }
-      var html = '<table class="list-table"><tr><th>제목</th><th>마감일</th></tr>';
-      items.forEach(function(t){
-        html += '<tr><td>' + esc(t.제목) + (t.메모 ? '<br><span style="color:var(--sub); font-size:12px;">' + esc(t.메모) + '</span>' : '') + '</td><td>' + esc(t.마감일) + '</td></tr>';
-      });
-      html += '</table>';
-      box.innerHTML = html;
+      dashTasksCache_ = res.할일 || [];
+      if (!dashTasksCache_.length){ box.innerHTML = '<div class="empty-row">할일이 없습니다.</div>'; return; }
+      box.innerHTML = dashTasksCache_.map(dashTaskRowHtml_).join('');
     }).catch(function(e){ document.getElementById('dashTasks').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
+  }
+  function dashAddTask_(){
+    var titleEl = document.getElementById('dashNewTaskTitle');
+    var dueEl = document.getElementById('dashNewTaskDue');
+    var title = titleEl.value.trim();
+    if (!title) return;
+    titleEl.disabled = true; dueEl.disabled = true;
+    var payload = { title: title };
+    if (dueEl.value) payload.dueDate = dueEl.value;
+    callGas('add_google_task', payload).then(function(res){
+      titleEl.disabled = false; dueEl.disabled = false;
+      if (res.error){ toast('추가 실패: ' + res.error); return; }
+      titleEl.value = ''; dueEl.value = '';
+      loadDashTasks_();
+    }).catch(function(e){ titleEl.disabled = false; dueEl.disabled = false; toast('추가 중 오류: ' + e.message); });
   }
   // [2026.09 버그수정] 로그인 화면과 같은 원인(e.key가 일부 환경에서 Enter로 안 잡힘) — keyCode도 같이 확인.
   document.getElementById('dashNewTaskTitle').addEventListener('keydown', function(e){
     if (e.key !== 'Enter' && e.keyCode !== 13) return;
-    var title = this.value.trim();
-    if (!title) return;
-    var input = this;
-    input.disabled = true;
-    callGas('add_google_task', { title: title }).then(function(res){
-      input.disabled = false;
-      if (res.error){ toast('추가 실패: ' + res.error); return; }
-      input.value = '';
-      loadDashTasks_();
-    }).catch(function(e){ input.disabled = false; toast('추가 중 오류: ' + e.message); });
+    dashAddTask_();
   });
+
+  document.getElementById('dashTasks').addEventListener('click', function(e){
+    var row = e.target.closest('.log-entry[data-task-id]');
+    if (!row) return;
+    var taskId = row.dataset.taskId;
+    var t = dashTasksCache_.filter(function(x){ return x.id === taskId; })[0];
+    if (!t) return;
+
+    if (e.target.classList.contains('dashTaskDone')){
+      var checkbox = e.target;
+      checkbox.disabled = true;
+      callGas('update_google_task', { taskId: taskId, completed: checkbox.checked }).then(function(res){
+        if (res.error){ toast('수정 실패: ' + res.error); checkbox.checked = !checkbox.checked; checkbox.disabled = false; return; }
+        loadDashTasks_();
+      }).catch(function(err){ toast('수정 중 오류: ' + err.message); checkbox.disabled = false; });
+      return;
+    }
+    if (e.target.classList.contains('dashTaskDel')){
+      if (!confirm('"' + t.제목 + '" 할일을 삭제할까요?')) return;
+      callGas('delete_google_task', { taskId: taskId }).then(function(res){
+        if (res.error){ toast('삭제 실패: ' + res.error); return; }
+        loadDashTasks_();
+      }).catch(function(err){ toast('삭제 중 오류: ' + err.message); });
+      return;
+    }
+    if (e.target.closest('.log-text')){
+      // 인라인 편집으로 전환 — 제목 입력칸 + 마감일 입력칸 + 저장/취소.
+      var textDiv = row.querySelector('.log-text');
+      textDiv.innerHTML = '<input type="text" class="dashTaskEditTitle" value="' + esc(t.제목) + '" style="width:100%; box-sizing:border-box; margin-bottom:4px;">'
+        + '<div style="display:flex; gap:6px; align-items:center;">'
+        + '<input type="date" class="dashTaskEditDue" value="' + esc(t.마감일 || '') + '" style="max-width:150px;">'
+        + '<button type="button" class="save-btn dashTaskEditSave" style="padding:3px 10px; font-size:11.5px;">저장</button>'
+        + '<button type="button" class="ghost-btn dashTaskEditCancel" style="padding:3px 10px; font-size:11.5px;">취소</button>'
+        + '</div>';
+      textDiv.querySelector('.dashTaskEditTitle').focus();
+    }
+  });
+  // 저장/취소 버튼은 매번 새로 그려지므로 이벤트 위임으로 한 번만 건다.
+  document.getElementById('dashTasks').addEventListener('click', function(e){
+    if (e.target.classList.contains('dashTaskEditCancel')){ loadDashTasks_(); return; }
+    if (e.target.classList.contains('dashTaskEditSave')){
+      var row = e.target.closest('.log-entry[data-task-id]');
+      var taskId = row.dataset.taskId;
+      var newTitle = row.querySelector('.dashTaskEditTitle').value.trim();
+      var newDue = row.querySelector('.dashTaskEditDue').value;
+      if (!newTitle){ toast('제목을 입력해주세요.'); return; }
+      var btn = e.target;
+      btn.disabled = true;
+      callGas('update_google_task', { taskId: taskId, title: newTitle, dueDate: newDue }).then(function(res){
+        if (res.error){ toast('수정 실패: ' + res.error); btn.disabled = false; return; }
+        loadDashTasks_();
+      }).catch(function(err){ toast('수정 중 오류: ' + err.message); btn.disabled = false; });
+    }
+  });
+
+  // [2026.09 신규] 증빙관리(docs.html)의 폴더별 "경과지" 기록을 전부 모아 기한 지남/오늘/
+  // 다가오는 순으로 보여준다. syncGlobalLog(경과지 저장 시마다 자동 호출)가 쌓아둔 중앙
+  // 인덱스를 getGlobalLog로 그대로 읽는다 — 폴더를 하나하나 열어볼 필요가 없다.
+  function loadDashCaseLog_(){
+    callGas('getGlobalLog', {}).then(function(res){
+      var box = document.getElementById('dashCaseLog');
+      if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
+      var entries = res.entries || [];
+      if (!entries.length){ box.innerHTML = '<div class="empty-row">아직 어느 사건 폴더에도 경과지 기록이 없습니다.</div>'; return; }
+      var todayStr = new Date().toISOString().slice(0, 10);
+      var withDue = entries.filter(function(e){ return e.dueDate; });
+      var overdue = withDue.filter(function(e){ return e.dueDate < todayStr; }).sort(function(a,b){ return a.dueDate.localeCompare(b.dueDate); });
+      var dueToday = withDue.filter(function(e){ return e.dueDate === todayStr; });
+      var upcoming = withDue.filter(function(e){ return e.dueDate > todayStr; }).sort(function(a,b){ return a.dueDate.localeCompare(b.dueDate); }).slice(0, 8);
+
+      function rowHtml(e, showDue){
+        var due = (showDue && e.dueDate) ? ' <span style="color:#a83232; font-weight:600;">(📌 ' + esc(e.dueDate) + ')</span>' : '';
+        var pathStr = (e.path || []).join(' / ');
+        return '<tr data-path=\'' + esc(JSON.stringify(e.path || [])) + '\' style="cursor:pointer;" title="눌러서 증빙관리로 이동">'
+          + '<td>' + esc(e.date) + due + '</td>'
+          + '<td><span style="color:var(--sub); font-size:11.5px;">' + esc(pathStr) + '</span><br>' + esc(e.text) + '</td></tr>';
+      }
+
+      var sections = [];
+      if (overdue.length) sections.push('<div style="font-weight:700; color:#a83232; margin:6px 0 2px;">⏰ 기한 지남 (' + overdue.length + ')</div><table class="list-table">' + overdue.map(function(e){ return rowHtml(e, false); }).join('') + '</table>');
+      if (dueToday.length) sections.push('<div style="font-weight:700; margin:6px 0 2px;">📌 오늘 마감 (' + dueToday.length + ')</div><table class="list-table">' + dueToday.map(function(e){ return rowHtml(e, false); }).join('') + '</table>');
+      if (upcoming.length) sections.push('<div style="font-weight:700; margin:6px 0 2px;">다가오는 마감</div><table class="list-table">' + upcoming.map(function(e){ return rowHtml(e, true); }).join('') + '</table>');
+      if (!sections.length){
+        sections.push('<div class="empty-row">기한이 지났거나 다가오는 항목은 없습니다.</div>');
+      }
+      var recent = entries.slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); }).slice(0, 5);
+      sections.push('<div style="font-weight:700; margin:10px 0 2px;">최근 기록</div><table class="list-table">' + recent.map(function(e){ return rowHtml(e, true); }).join('') + '</table>');
+      box.innerHTML = sections.join('');
+    }).catch(function(e){ document.getElementById('dashCaseLog').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
+  }
+  document.getElementById('dashCaseLog').addEventListener('click', function(e){
+    var tr = e.target.closest('tr[data-path]');
+    if (!tr) return;
+    var path;
+    try { path = JSON.parse(tr.getAttribute('data-path')); } catch(err){ return; }
+    if (typeof goToView_ === 'function') goToView_('docs');
+    if (typeof docsNavigate === 'function') docsNavigate(path);
+  });
+
+  // [2026.09 신규] 야간 자동점검(시스템 자기점검/템플릿 점검/오늘의 요약)이 어젯밤 실제로
+  // 돌았는지 확인 — 트리거 자체가 통째로 실패하면 오늘 날짜 파일이 하나도 안 생기므로,
+  // 그 사실만으로도 "어젯밤 안 돌았다"를 알 수 있다(구글 Apps Script 트리거 화면까지 직접
+  // 안 들어가도 여기서 바로 보임).
+  function loadDashNightlyStatus_(){
+    callGas('getNightlyStatus', {}).then(function(res){
+      var box = document.getElementById('dashNightlyStatus');
+      if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
+      var items = res.items || [];
+      if (!items.length){ box.innerHTML = '<div class="empty-row">확인할 항목이 없습니다.</div>'; return; }
+      var html = '';
+      items.forEach(function(it){
+        var badge = it.ok ? '<span style="color:var(--success); font-weight:700;">✅ 정상</span>' : '<span style="color:#a83232; font-weight:700;">⚠ 실행 안 됨</span>';
+        html += '<div style="padding:8px 0; border-bottom:1px solid var(--line);">'
+          + '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">'
+          + '<b style="font-size:13px;">' + esc(it.label) + '</b>' + badge
+          + '</div>'
+          + '<div style="font-size:11.5px; color:var(--sub); margin-top:3px; white-space:pre-wrap;">' + esc(it.message) + '</div>'
+          + '</div>';
+      });
+      if (!res.allOk){
+        html = '<div class="empty-row" style="color:#a83232; margin-bottom:6px;">⚠ 일부 항목이 실행되지 않았습니다 — Apps Script 편집기의 "실행" 기록에서 오류 내용을 확인해주세요.</div>' + html;
+      }
+      box.innerHTML = html;
+    }).catch(function(e){ document.getElementById('dashNightlyStatus').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
+  }
 
   function esc(s){
     if (s === undefined || s === null) return '';

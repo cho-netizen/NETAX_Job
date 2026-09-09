@@ -3161,11 +3161,20 @@ function dispatchClientAction_(body) {
   if (body.action === 'search_emails') {
     return jsonResponse(toolSearchEmails(body.query, body.maxResults));
   }
+  if (body.action === 'mark_email_read') {
+    return jsonResponse(toolMarkEmailRead(body.threadId));
+  }
   if (body.action === 'get_google_tasks') {
     return jsonResponse(toolLookupGoogleTasks(body.includeCompleted, body.taskListId));
   }
   if (body.action === 'add_google_task') {
     return jsonResponse(toolAddGoogleTask(body.title, body.notes, body.dueDate, body.taskListId));
+  }
+  if (body.action === 'update_google_task') {
+    return jsonResponse(toolUpdateGoogleTask(body.taskId, body, body.taskListId));
+  }
+  if (body.action === 'delete_google_task') {
+    return jsonResponse(toolDeleteGoogleTask(body.taskId, body.taskListId));
   }
   if (body.action === 'lookup_building_register') {
     return jsonResponse(toolLookupBuildingRegister(body.ledgerType, body.sigunguCd, body.bjdongCd, body.platGbCd, body.bun, body.ji));
@@ -3201,6 +3210,9 @@ function dispatchClientAction_(body) {
   if (body.action === 'createFolder') {
     return jsonResponse(handleCreateFolder(body));
   }
+  if (body.action === 'createBlankDoc') {
+    return jsonResponse(handleCreateBlankDoc(body));
+  }
   if (body.action === 'listTrash') {
     return jsonResponse(handleListTrash(body));
   }
@@ -3216,6 +3228,14 @@ function dispatchClientAction_(body) {
   if (body.action === 'searchFiles') {
     return jsonResponse(handleSearchFiles(body));
   }
+  // [2026.09 신규] 증빙확보 탐색기 우클릭 메뉴(이동/공유) — 종전 work.netax.kr의 explorer.js에
+  // 있던 기능인데 job.netax.kr에는 화면이 없었다(뒷단도 이 두 개는 아예 없었음).
+  if (body.action === 'moveItem') {
+    return jsonResponse(handleMoveItem(body));
+  }
+  if (body.action === 'shareItem') {
+    return jsonResponse(handleShareItem(body));
+  }
   if (body.action === 'listCaseTemplates') {
     return jsonResponse(handleListCaseTemplates(body));
   }
@@ -3224,6 +3244,12 @@ function dispatchClientAction_(body) {
   }
   if (body.action === 'saveCaseFromTemplate') {
     return jsonResponse(handleSaveCaseFromTemplate(body));
+  }
+  if (body.action === 'getReportTemplate') {
+    return jsonResponse(handleGetReportTemplate(body));
+  }
+  if (body.action === 'getNightlyStatus') {
+    return jsonResponse(handleGetNightlyStatus(body));
   }
   if (body.action === 'searchAddress') {
     return jsonResponse(handleSearchAddress(body));
@@ -4382,6 +4408,32 @@ function handleCreateFolder(body) {
 }
 
 /**
+ * 빈 새 구글독스를 만들어 지정한 폴더에 넣는다(탐색기 빈 곳 우클릭 "새 문서" — work.netax.kr
+ * explorer.js에 있던 기능). toolExportToGoogleDoc은 내용이 있어야만 동작해서 빈 문서용으로는
+ * 못 쓰고, 이 함수를 따로 둔다.
+ */
+function handleCreateBlankDoc(body) {
+  if (!body.name || !body.name.trim()) return { error: '문서 이름이 없습니다.' };
+  return withLock_(8000, function () {
+    let folder;
+    try {
+      folder = body.folderId ? DriveApp.getFolderById(body.folderId) : resolveFolderByPath(body.path);
+    } catch (err) {
+      return { error: err.message };
+    }
+    try {
+      const doc = DocumentApp.create(body.name.trim());
+      doc.saveAndClose();
+      const file = DriveApp.getFileById(doc.getId());
+      file.moveTo(folder);
+      return { id: doc.getId(), name: file.getName(), url: doc.getUrl() };
+    } catch (err) {
+      return { error: '문서 만들기 중 오류: ' + err.message };
+    }
+  });
+}
+
+/**
  * 휴지통 복원 기능. 지정한 폴더(path) 바로 아래에 있는, 휴지통으로 이동된
  * 파일·폴더 목록을 보여준다. Drive 고급서비스(Drive API)의 파일 목록 쿼리를 사용한다
  * (이미 MS오피스 읽기 기능 때문에 켜져 있어야 하는 서비스와 동일).
@@ -4389,7 +4441,8 @@ function handleCreateFolder(body) {
 function handleListTrash(body) {
   let folder;
   try {
-    folder = (body.path === undefined || body.path === null) ? getDefaultFolder() : resolveFolderByPath(body.path);
+    folder = body.folderId ? DriveApp.getFolderById(body.folderId)
+      : (body.path === undefined || body.path === null) ? getDefaultFolder() : resolveFolderByPath(body.path);
   } catch (err) {
     return { error: err.message };
   }
@@ -4429,6 +4482,47 @@ function handleRestoreItem(body) {
       return { error: '복원 중 오류: ' + err.message };
     }
   });
+}
+
+/**
+ * 파일·폴더를 다른 폴더로 이동한다(work.netax.kr explorer.js에 있던 기능 — job.netax.kr
+ * 증빙확보 탐색기에는 화면이 없었을 뿐 아니라 뒷단도 아예 없었음). 대상 폴더는 destFolderId로
+ * 직접 지정하거나(탐색기에서 폴더를 골라 이동), destPath(이름 경로)로 지정할 수 있다.
+ */
+function handleMoveItem(body) {
+  if (!body.id) return { error: 'id가 없습니다.' };
+  if (!body.destFolderId && !body.destPath) return { error: '이동할 폴더를 지정해주세요.' };
+  return withLock_(8000, function () {
+    try {
+      const destFolder = body.destFolderId ? DriveApp.getFolderById(body.destFolderId) : resolveFolderByPath(body.destPath);
+      if (body.type === 'folder') {
+        const folder = DriveApp.getFolderById(body.id);
+        if (folder.getId() === destFolder.getId()) return { error: '같은 폴더로는 이동할 수 없습니다.' };
+        folder.moveTo(destFolder);
+      } else {
+        DriveApp.getFileById(body.id).moveTo(destFolder);
+      }
+      return { success: true };
+    } catch (err) {
+      return { error: '이동 중 오류: ' + err.message };
+    }
+  });
+}
+
+/**
+ * 파일·폴더를 "링크가 있는 모든 사용자 · 보기 가능"으로 공유설정하고 공유 링크를 돌려준다.
+ * ensureLinkShareable_와 같은 방식(멱등 — 이미 공유돼 있어도 다시 걸어도 무방)이지만, 그건
+ * 이미 URL을 알고 있을 때(열람관리 발행용)이고 이건 탐색기에서 id로 바로 호출하는 범용 버전.
+ */
+function handleShareItem(body) {
+  if (!body.id) return { error: 'id가 없습니다.' };
+  try {
+    const item = body.type === 'folder' ? DriveApp.getFolderById(body.id) : DriveApp.getFileById(body.id);
+    item.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return { success: true, url: item.getUrl() };
+  } catch (err) {
+    return { error: '공유설정 중 오류: ' + err.message };
+  }
 }
 
 const GLOBAL_LOG_INDEX_NAME = '_NX_전체일지.json';
@@ -11981,6 +12075,7 @@ function toolSearchEmails(query, maxResults) {
       const msgs = thread.getMessages();
       const last = msgs[msgs.length - 1];
       return {
+        id: thread.getId(), // [2026.09 신규] 대시보드에서 "읽음 표시" 체크박스가 이 id로 toolMarkEmailRead를 부른다.
         제목: thread.getFirstMessageSubject(),
         보낸사람: last.getFrom(),
         받은날짜: Utilities.formatDate(last.getDate(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'),
@@ -11991,6 +12086,16 @@ function toolSearchEmails(query, maxResults) {
     return { 검색어: query || '(받은편지함 최근순)', 결과개수: items.length, 메일: items };
   } catch (err) {
     return { error: '이메일 검색 중 오류: ' + err.message };
+  }
+}
+
+function toolMarkEmailRead(threadId) {
+  try {
+    if (!threadId) return { error: 'threadId가 없습니다.' };
+    GmailApp.getThreadById(threadId).markRead();
+    return { ok: true };
+  } catch (err) {
+    return { error: '읽음 처리 중 오류: ' + err.message };
   }
 }
 
@@ -12033,6 +12138,46 @@ function toolAddGoogleTask(title, notes, dueDate, taskListId) {
     return { success: true, id: created.id, 제목: created.title, 마감일: created.due || '' };
   } catch (err) {
     return { error: '구글 태스크 추가 중 오류(Tasks API 고급서비스가 켜져 있는지 확인하세요 — Apps Script 편집기 왼쪽 "서비스" 옆 + 클릭 → Tasks API 추가): ' + err.message };
+  }
+}
+
+/**
+ * [2026.09 신규] 대시보드 "할일" 카드에서 제목·마감일·완료여부를 직접 고칠 수 있게 추가.
+ * updates에 넘어온 키만 부분수정(patch)한다 — 안 넘어온 필드는 그대로 둔다. dueDate를
+ * 빈 문자열로 명시적으로 보내면 마감일을 지운다(Tasks API는 그 필드 자체를 아예 안 보내면
+ * 기존 값을 그대로 유지하고, null을 보내야 지워지므로 이 둘을 구분해서 처리한다).
+ */
+function toolUpdateGoogleTask(taskId, updates, taskListId) {
+  if (!taskId) return { error: '할일 id가 없습니다.' };
+  try {
+    const listId = taskListId || '@default';
+    const patch = {};
+    if (updates.title !== undefined) patch.title = String(updates.title).trim();
+    if (updates.notes !== undefined) patch.notes = String(updates.notes || '');
+    if (updates.dueDate !== undefined) {
+      if (updates.dueDate) {
+        const d = new Date(updates.dueDate + 'T00:00:00');
+        patch.due = isNaN(d.getTime()) ? null : d.toISOString();
+      } else {
+        patch.due = null;
+      }
+    }
+    if (updates.completed !== undefined) patch.status = updates.completed ? 'completed' : 'needsAction';
+    const updated = Tasks.Tasks.patch(patch, listId, taskId);
+    return { success: true, id: updated.id, 제목: updated.title, 마감일: updated.due || '', 상태: updated.status };
+  } catch (err) {
+    return { error: '구글 태스크 수정 중 오류: ' + err.message };
+  }
+}
+
+function toolDeleteGoogleTask(taskId, taskListId) {
+  if (!taskId) return { error: '할일 id가 없습니다.' };
+  try {
+    const listId = taskListId || '@default';
+    Tasks.Tasks.remove(listId, taskId);
+    return { success: true };
+  } catch (err) {
+    return { error: '구글 태스크 삭제 중 오류: ' + err.message };
   }
 }
 
@@ -12200,18 +12345,21 @@ function getOrCreateSubfolder_(parent, name) {
   return iter.hasNext() ? iter.next() : parent.createFolder(name);
 }
 
-// ===== 사건개시 템플릿(2026.07 추가) =====
-// 업무관리자 폴더 안의 "사건개시템플릿" 하위폴더에 사건유형별(양도·상속·증여 등) 템플릿
-// 파일(엑셀 또는 텍스트/마크다운)을 미리 넣어두면, 화면의 "🗂 사건개시" 버튼에서 그 목록을
-// 그대로 골라 쓸 수 있다. 텍스트/마크다운 템플릿은 화면에서 바로 내용을 채워 넣고, 엑셀처럼
-// 미리보기·편집이 안 되는 형식은 그대로 복사만 해서 새 사건 폴더에 넣는다.
-const CASE_TEMPLATE_SUBFOLDER_NAME = '사건개시템플릿';
+// ===== 의뢰서 템플릿(2026.07 추가, 2026.09 "사건개시템플릿"에서 이름 변경) =====
+// 업무관리자 폴더 안의 "의뢰서템플릿" 하위폴더에 세목·업무유형별(양도·증여·상속·불복·
+// 세무조사·해명자료·자금출처소명·경정청구 등) 상담 의뢰서 템플릿 파일(엑셀 또는
+// 텍스트/마크다운)을 미리 넣어두면, 새 사건을 만들 때 이름이 맞는 파일을 자동으로 그 사건
+// 폴더에 복사해 넣는다(work_seedCaseTemplateIfAny_). 텍스트/마크다운 템플릿은 내용 그대로
+// 복사되어 증빙관리 파일뷰어에서 바로 채워 쓸 수 있고, 엑셀처럼 미리보기·편집이 안 되는
+// 형식은 파일째로 복사된다.
+const CASE_TEMPLATE_SUBFOLDER_NAME = '의뢰서템플릿';
 const TEXT_TEMPLATE_EXT_REGEX_ = /\.(md|txt)$/i;
 
 /**
- * 사건개시템플릿 폴더 = 업무관리자 폴더(getBusinessManagerFolder_) 안의 "사건개시템플릿"
- * 하위폴더. getBusinessManagerFolder_ 자체가 이제 "0 NETAX vs 업무관리자" 한 단계 보정을
- * 전담하므로, 여기서는 그 결과를 그대로 믿고 하위폴더만 하나 더 내려가면 된다.
+ * 의뢰서템플릿 폴더 = 업무관리자 폴더(getBusinessManagerFolder_) 안의 "의뢰서템플릿"
+ * 하위폴더(2026.09 이전 이름: "사건개시템플릿"). getBusinessManagerFolder_ 자체가 이제
+ * "0 NETAX vs 업무관리자" 한 단계 보정을 전담하므로, 여기서는 그 결과를 그대로 믿고
+ * 하위폴더만 하나 더 내려가면 된다.
  * (2026-08-01: 예전에 이 함수 안에서 같은 보정을 중복으로 하다가 여러 번 고치면서 서로
  * 모순되는 주석 세 겹이 쌓였던 걸 정리 — 보정 로직은 getBusinessManagerFolder_ 한 곳에만
  * 있고, 이 함수는 그걸 그대로 쓰기만 한다.)
@@ -12225,7 +12373,7 @@ function getCaseTemplateFolder_() {
   return getOrCreateSubfolder_(folder, CASE_TEMPLATE_SUBFOLDER_NAME);
 }
 
-/** 사건개시템플릿 폴더 안의 파일 목록을, 화면에서 바로 고를 수 있게 정리해서 돌려준다. */
+/** 의뢰서템플릿 폴더 안의 파일 목록을, 화면에서 바로 고를 수 있게 정리해서 돌려준다. */
 function handleListCaseTemplates(body) {
   const folder = getCaseTemplateFolder_();
   if (!folder) {
@@ -12257,7 +12405,7 @@ function handleListCaseTemplates(body) {
     // (이 값이 바뀌지 않으면 Apps Script 배포가 아직 최신 코드로 갱신되지 않은 것).
     return { templates: templates, folderPath: folderPathText, codeVersion: 'caseTemplate-v5-2026-08-01-nested-confirmed' };
   } catch (err) {
-    return { error: '사건개시템플릿 목록 조회 중 오류: ' + err.message };
+    return { error: '의뢰서템플릿 목록 조회 중 오류: ' + err.message };
   }
 }
 
@@ -12276,20 +12424,24 @@ function handleGetCaseTemplateContent(body) {
 }
 
 /**
- * 새 사건 폴더를 만들고(이미 있으면 그대로 재사용), 그 안에 템플릿에서 시작한 파일을 저장한다.
- * editedContent가 문자열로 오면(텍스트/마크다운 템플릿을 화면에서 채워 넣은 경우) 그 내용으로
- * 새 텍스트 파일을 만들고, 없으면(엑셀처럼 미리보기·편집이 안 되는 템플릿) 원본 템플릿
- * 파일(templateFileId)을 그대로 복사해서 새 사건 폴더에 넣는다. targetPath는 최상위(고객사건
- * 최상위)부터 새 폴더명까지의 경로 배열이며, 중간 폴더가 없어도 자동으로 만들어진다.
+ * 사건 폴더에 템플릿에서 시작한 파일을 저장한다. editedContent가 문자열로 오면(텍스트/마크다운
+ * 템플릿을 화면에서 채워 넣은 경우) 그 내용으로 새 텍스트 파일을 만들고(같은 이름 파일이 이미
+ * 있으면 — 예: 사건 생성 시 work_seedCaseTemplateIfAny_가 이미 자동으로 복사해둔 경우 —
+ * 덮어쓴다), 없으면(엑셀처럼 미리보기·편집이 안 되는 템플릿) 원본 템플릿 파일(templateFileId)을
+ * 그대로 복사해서 사건 폴더에 넣는다.
+ * 대상 폴더는 folderId(사건의 안정적인 폴더ID, 권장) 또는 targetPath(최상위부터 폴더명까지의
+ * 경로 배열, 중간 폴더가 없으면 자동 생성 — 예전 방식, 폴더ID를 모를 때만 대체용) 중 하나로 지정한다.
  */
 function handleSaveCaseFromTemplate(body) {
   if (!body.fileName || !String(body.fileName).trim()) return { error: '파일명이 없습니다.' };
-  if (!Array.isArray(body.targetPath) || !body.targetPath.length) return { error: '저장할 폴더 경로가 없습니다.' };
+  if (!body.folderId && (!Array.isArray(body.targetPath) || !body.targetPath.length)) {
+    return { error: '저장할 폴더가 지정되지 않았습니다.' };
+  }
 
   return withLock_(15000, function () {
     let folder;
     try {
-      folder = resolveOrCreateFolderByPath_(body.targetPath);
+      folder = body.folderId ? DriveApp.getFolderById(body.folderId) : resolveOrCreateFolderByPath_(body.targetPath);
     } catch (err) {
       return { error: err.message };
     }
@@ -12307,17 +12459,107 @@ function handleSaveCaseFromTemplate(body) {
         } else {
           file = folder.createFile(Utilities.newBlob(body.editedContent, mimeType, fileName));
         }
-        return { id: file.getId(), name: file.getName(), url: file.getUrl(), folderPath: body.targetPath };
+        return { id: file.getId(), name: file.getName(), url: file.getUrl(), folderId: folder.getId() };
       }
 
       if (!body.templateFileId) return { error: '복사할 템플릿 파일이 지정되지 않았습니다.' };
       const templateFile = DriveApp.getFileById(body.templateFileId);
       const copied = templateFile.makeCopy(fileName, folder);
-      return { id: copied.getId(), name: copied.getName(), url: copied.getUrl(), folderPath: body.targetPath };
+      return { id: copied.getId(), name: copied.getName(), url: copied.getUrl(), folderId: folder.getId() };
     } catch (err) {
       return { error: '사건 파일 저장 중 오류: ' + err.message };
     }
   });
+}
+
+/**
+ * [2026.09 신규, 09 확장] 새 사건이 만들어질 때, "의뢰서템플릿" 폴더에서 이름이 맞는
+ * 템플릿을 찾아 그 사건 폴더 안에 자동으로 복사해 넣는다 — 예전엔 메모 화면에서 "🗂 사건개시"로
+ * 템플릿을 직접 골라야 했는데(work.netax.kr), 이 앱은 "새 사건" 등록 자체가 그 역할을 하도록
+ * 설계를 단순화했으므로(memo.html 주석 참고) 템플릿 적용도 새 사건 등록 시점에 자동으로
+ * 이뤄지는 게 맞다. 텍스트/마크다운 템플릿은 내용 그대로 복사해서 사건 폴더에 넣고(증빙관리의
+ * 파일뷰어에서 바로 열어보고 고쳐 쓸 수 있음), 엑셀 등은 파일 그대로 복사한다. 템플릿이
+ * 없거나 오류가 나도 사건 생성 자체는 막지 않는다(있으면 좋은 것).
+ *
+ * [2026.09 확장] 후보 이름을 여러 개(candidateNames) 받아 앞에서부터 순서대로 찾는다 —
+ * "세무조사"·"자금출처소명"·"경정청구"·"해명자료"처럼 세목이 아니라 업무유형에 따라
+ * 갈리는 템플릿이 생겨서, 업무유형 이름을 세목 이름보다 먼저(더 구체적인 것 우선) 확인한다.
+ */
+function work_seedCaseTemplateIfAny_(caseFolder, candidateNames) {
+  const names = (candidateNames || []).filter(function (n) { return n; });
+  if (!caseFolder || !names.length) return;
+  try {
+    const templateFolder = getCaseTemplateFolder_();
+    if (!templateFolder) return;
+    const filesByName = {};
+    const iter = templateFolder.getFiles();
+    while (iter.hasNext()) {
+      const f = iter.next();
+      const rawName = f.getName();
+      const extMatch = rawName.match(/\.[a-zA-Z0-9]+$/);
+      const ext = extMatch ? extMatch[0] : '';
+      const nameWithoutExt = ext ? rawName.slice(0, -ext.length) : rawName;
+      if (!(nameWithoutExt in filesByName)) filesByName[nameWithoutExt] = f; // 이름이 같은 파일이 여러 개면 먼저 찾은 것 하나만
+    }
+    let f = null;
+    for (let i = 0; i < names.length; i++) {
+      if (filesByName[names[i]]) { f = filesByName[names[i]]; break; }
+    }
+    if (f) {
+      const rawName = f.getName();
+      if (TEXT_TEMPLATE_EXT_REGEX_.test(rawName)) {
+        const content = f.getBlob().getDataAsString('UTF-8');
+        const mimeType = /\.md$/i.test(rawName) ? 'text/markdown' : 'text/plain';
+        caseFolder.createFile(Utilities.newBlob(content, mimeType, rawName));
+      } else {
+        f.makeCopy(rawName, caseFolder);
+      }
+    }
+  } catch (err) {
+    console.log('의뢰서템플릿 자동 적용 실패(사건 생성은 계속 진행): ' + err.message);
+  }
+}
+
+// ===== 보고서 템플릿(2026.09 신규) =====
+// 의뢰서템플릿과 같은 방식이지만 대상이 다르다 — "업무관리자/보고서템플릿" 폴더에 보고서
+// 종류(검토서/자문보고서/신고보고서/참고보고서/진행보고서/불복청구서/번역서/요약보고서)
+// 이름과 같은 .md/.txt 파일을 넣어두면, 작성관리(reportwriter.html)에서 그 종류의 새 문서를
+// 만들 때 코드에 내장된 기본 골격 대신 그 파일 내용을 그대로 초안으로 쓴다. 파일이 없으면
+// 조용히 기존 기본 골격을 그대로 쓴다(있으면 좋은 것 — 의뢰서템플릿과 동일한 원칙).
+// 의뢰서템플릿과 달리 "새 사건 생성" 같은 자동 트리거가 없고, 보고서를 새로 만드는 그
+// 순간에 화면이 직접 물어보는 구조라 목록 조회 없이 종류 이름 하나로 바로 찾는다.
+const REPORT_TEMPLATE_SUBFOLDER_NAME = '보고서템플릿';
+
+function getReportTemplateFolder_() {
+  const folder = getBusinessManagerFolder_();
+  if (!folder) return null;
+  return getOrCreateSubfolder_(folder, REPORT_TEMPLATE_SUBFOLDER_NAME);
+}
+
+/** label(보고서 종류 이름, 예: "검토서")과 파일명(확장자 제외)이 정확히 같은 템플릿을 찾아 내용을 돌려준다. */
+function handleGetReportTemplate(body) {
+  const label = String(body.label || '').trim();
+  if (!label) return { found: false };
+  try {
+    const folder = getReportTemplateFolder_();
+    if (!folder) return { found: false };
+    const iter = folder.getFiles();
+    while (iter.hasNext()) {
+      const f = iter.next();
+      const rawName = f.getName();
+      const extMatch = rawName.match(/\.[a-zA-Z0-9]+$/);
+      const ext = extMatch ? extMatch[0] : '';
+      const nameWithoutExt = ext ? rawName.slice(0, -ext.length) : rawName;
+      if (nameWithoutExt !== label) continue;
+      if (!TEXT_TEMPLATE_EXT_REGEX_.test(rawName)) {
+        return { found: false, error: '보고서 템플릿은 .md 또는 .txt 파일만 지원합니다: ' + rawName };
+      }
+      return { found: true, content: f.getBlob().getDataAsString('UTF-8') };
+    }
+    return { found: false };
+  } catch (err) {
+    return { found: false, error: '보고서 템플릿 조회 중 오류: ' + err.message };
+  }
 }
 
 // 도로명주소 검색(행정안전부 juso.go.kr 도로명주소 API) — 건물명(아파트명 등)으로 검색하면 도로명·지번
@@ -14158,7 +14400,11 @@ function runNightlySystemAudit() {
       + '(B)에서 새 업무관리자가 필요하다고 판단되면, 보고 마지막에 정확히 아래 형식으로 제안을 하나 추가하라 '
       + '(필요 없으면 이 블록 자체를 아예 쓰지 마라. 여러 개 필요하면 블록을 여러 번 반복해라):\n'
       + '---PROPOSAL_START---\n이름: (업무관리자 이름, 예: 상속증여)\n내용:\n(다른 업무관리자 파일들과 같은 형식의 마크다운 전체 내용, 절차·체크리스트 형태로 충실하게)\n---PROPOSAL_END---\n\n'
-      + '=== (A) 마스터 프로필 + 업무관리자 + 체크리스트 ===\n' + auditData.전체내용
+      // [2026.09 방어코드] 업무관리자 파일이 계속 늘어나면 이 프롬프트도 한없이 커질 수
+      // 있다 — 실제로 2026-09-07 새벽 실행이 "INTERNAL"이라는 원인불명 오류로 실패한 적이
+      // 있어(구글이 자세한 이유를 안 알려주는 종류의 오류), 혹시 너무 큰 문자열 처리가
+      // 원인일 가능성에 대비해 상한선을 둔다. 정상적인 크기에서는 이 상한에 안 걸린다.
+      + '=== (A) 마스터 프로필 + 업무관리자 + 체크리스트 ===\n' + String(auditData.전체내용 || '').slice(0, 150000)
       + recentSection;
 
     const response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
@@ -14181,7 +14427,8 @@ function runNightlySystemAudit() {
     const proposalRegex = /---PROPOSAL_START---\s*이름:\s*(.+?)\s*\n\s*내용:\s*([\s\S]*?)---PROPOSAL_END---/g;
     const proposedNames = [];
     let match;
-    while ((match = proposalRegex.exec(text)) !== null) {
+    let guard = 0; // [2026.09 방어코드] 응답 형식이 예상과 어긋나 무한루프에 빠지는 걸 막는 안전장치
+    while ((match = proposalRegex.exec(text)) !== null && guard++ < 20) {
       const proposedName = match[1].trim();
       const proposedContent = match[2].trim();
       const saveResult = toolProposeNewBusinessManager(proposedName, proposedContent);
@@ -14205,6 +14452,137 @@ function runNightlySystemAudit() {
     saveReport(body);
   } catch (err) {
     saveReport('# 점검리포트 ' + today + '\n\n점검 중 오류 발생: ' + err.message);
+  }
+}
+
+/**
+ * [2026.09 신규, 매일 실행으로 변경] 매일 새벽 실행된다(처음엔 매달 1일에만 하려 했으나
+ * "한 달은 너무 길다"는 요청으로 매일로 변경). "의뢰서템플릿"/"보고서템플릿" 폴더의 각
+ * 원본과, 실제 사건에서 최근 40일 이내에 만들어지거나 고쳐진 같은 이름의 사본들을 비교해서
+ * "실무에서 반복적으로 추가되거나 바뀌는 항목"이 있는지 Claude에게 판단을 맡기고, 그 결과를
+ * 총괄관리자 폴더의 "_템플릿점검" 하위폴더에 파일로 남긴다. 템플릿 자체는 절대 자동으로
+ * 고치지 않는다 — 세무사가 직접 검토·반영해야 할 제안만 남긴다(사건개시템플릿을 만들 때와
+ * 같은 원칙: 자동화는 있으면 좋은 것을 준비해줄 뿐, 실제 반영은 사람이 결정한다).
+ * 비교할 새 사본이 하루도 없으면(아래 sections.length 체크) API를 아예 호출하지 않고 짧은
+ * "비교 대상 없음" 리포트만 남기므로, 활동이 없는 날은 비용이 들지 않는다.
+ */
+function runTemplateReview_() {
+  const apiKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
+  if (!apiKey) return;
+
+  const caseFolder = getCaseTemplateFolder_();
+  const reportFolder = getReportTemplateFolder_();
+  if (!caseFolder && !reportFolder) return;
+
+  const chiefFolder = getChiefManagerFolder_();
+  if (!chiefFolder) return;
+
+  const todayStr = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
+  const cutoffStr = Utilities.formatDate(new Date(Date.now() - 40 * 86400000), 'Asia/Seoul', "yyyy-MM-dd'T'HH:mm:ss");
+
+  // 템플릿 폴더 하나에서 텍스트(.md/.txt) 파일 전부를 { 이름(확장자 제외): 내용 } 형태로 읽어온다.
+  function readAllTemplates(folder) {
+    const out = {};
+    if (!folder) return out;
+    const iter = folder.getFiles();
+    while (iter.hasNext()) {
+      const f = iter.next();
+      if (!TEXT_TEMPLATE_EXT_REGEX_.test(f.getName())) continue;
+      const nameNoExt = f.getName().replace(/\.[a-zA-Z0-9]+$/, '');
+      try { out[nameNoExt] = f.getBlob().getDataAsString('UTF-8'); } catch (e) { }
+    }
+    return out;
+  }
+
+  // 같은 이름(.md)의 파일을 드라이브 전체에서 최근 수정분 위주로 찾되, 템플릿 폴더 자체(원본)는 제외한다.
+  function findRecentCopies(nameNoExt, excludeFolderId) {
+    try {
+      const safe = nameNoExt.replace(/'/g, "\\'");
+      const res = Drive.Files.list({
+        q: "name = '" + safe + ".md' and trashed = false and modifiedTime > '" + cutoffStr + "'",
+        fields: 'files(id,name,parents,modifiedTime)',
+        pageSize: 10,
+        orderBy: 'modifiedTime desc'
+      });
+      return (res.files || [])
+        .filter(function (f) { return (f.parents || []).indexOf(excludeFolderId) === -1; })
+        .slice(0, 5);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  const caseTemplates = readAllTemplates(caseFolder);
+  const reportTemplates = readAllTemplates(reportFolder);
+  if (!Object.keys(caseTemplates).length && !Object.keys(reportTemplates).length) return;
+
+  // 각 템플릿별로 "원본 + 최근 실제 사본들"을 하나의 섹션으로 묶어 프롬프트에 넣는다.
+  // 사본이 하나도 없는 템플릿은 비교할 게 없으니 프롬프트에서 아예 뺀다.
+  const sections = [];
+  let comparedCount = 0;
+
+  function addSections(templates, excludeFolderId, kindLabel) {
+    Object.keys(templates).forEach(function (name) {
+      const copies = findRecentCopies(name, excludeFolderId);
+      if (!copies.length) return;
+      comparedCount++;
+      const copyTexts = copies.map(function (f, i) {
+        try {
+          return '  [사본 ' + (i + 1) + ', 수정일 ' + f.modifiedTime.slice(0, 10) + ']\n' +
+            DriveApp.getFileById(f.id).getBlob().getDataAsString('UTF-8').slice(0, 3000);
+        } catch (e) { return null; }
+      }).filter(function (t) { return t; });
+      if (!copyTexts.length) return;
+      sections.push('### [' + kindLabel + '] ' + name + '\n\n원본 템플릿:\n' + templates[name].slice(0, 3000) +
+        '\n\n실제 사용된 사본들:\n' + copyTexts.join('\n\n'));
+    });
+  }
+  addSections(caseTemplates, caseFolder ? caseFolder.getId() : null, '의뢰서');
+  addSections(reportTemplates, reportFolder ? reportFolder.getId() : null, '보고서');
+
+  const outputFolder = getOrCreateSubfolder_(chiefFolder, '_템플릿점검');
+  if (!sections.length) {
+    writeFileOverwrite_(outputFolder, '템플릿점검_' + todayStr + '.md',
+      '# 템플릿 점검 ' + todayStr + '\n\n최근 40일 이내에 만들어지거나 고쳐진 사본이 있는 템플릿이 없어 비교할 대상이 없었습니다.',
+      'text/markdown');
+    return;
+  }
+
+  try {
+    const prompt = '너는 세무사 사무실의 문서 템플릿을 관리하는 담당자다. 아래는 "의뢰서"(사건 시작 시 쓰는 상담/신고 체크리스트)와 '
+      + '"보고서"(검토서·자문보고서 등) 원본 템플릿들과, 실제 사건에서 그 템플릿을 복사해 쓴 사본들이다. 각 템플릿마다:\n'
+      + '1) 여러 사본에서 공통으로 추가되었지만 원본엔 없는 항목·문장이 있는지 찾아라.\n'
+      + '2) 원본엔 있지만 사본들에서 거의 항상 비어있는(아무도 안 채우는) 항목이 있는지 찾아라.\n'
+      + '3) 여러 사본에서 비슷하게 고쳐 쓰인 표현(원본 문구가 실무와 안 맞아서 다들 고치는 것으로 보이는 경우)이 있는지 찾아라.\n\n'
+      + '사본이 1~2개뿐이라 패턴이라고 보기 어려우면 그 템플릿은 "근거 부족"이라고만 짧게 적고 넘어가라. 억지로 뭔가를 지어내지 마라.\n'
+      + '전부 문제/패턴이 없으면 정확히 이 한 단어만 답하라: NO_ISSUES\n\n'
+      + '템플릿 이름별로 "## 템플릿이름" 제목 아래 발견한 내용과, 원본에 구체적으로 어떤 줄을 어떻게 바꾸면 좋을지 제안을 적어라. '
+      + '코드 용어나 함수 이름은 쓰지 말고, 실제 문서에 쓰인 항목 이름과 문장으로만 설명해라(이 메모를 읽는 사람은 개발자가 아니라 세무사다).\n\n'
+      + sections.join('\n\n---\n\n');
+
+    const response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      payload: JSON.stringify({ model: DEFAULT_MODEL, max_tokens: 6000, messages: [{ role: 'user', content: prompt }] }),
+      muteHttpExceptions: true
+    });
+
+    let body;
+    if (response.getResponseCode() !== 200) {
+      body = '# 템플릿 점검 ' + todayStr + '\n\nClaude API 오류 (status ' + response.getResponseCode() + ')\n\n' + response.getContentText().slice(0, 1000);
+    } else {
+      const result = JSON.parse(response.getContentText());
+      const text = (result.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('\n').trim();
+      body = '# 템플릿 점검 ' + todayStr + '\n\n비교한 템플릿 수: ' + comparedCount + '\n\n'
+        + ((!text || text === 'NO_ISSUES')
+          ? '## 결과: 특별히 반영할 점 없음\n\n최근 사용된 사본들을 봐도 원본 템플릿을 바꿀 만한 뚜렷한 패턴은 발견되지 않았습니다.'
+          : '## 결과: 검토 제안 있음\n\n' + text);
+    }
+    writeFileOverwrite_(outputFolder, '템플릿점검_' + todayStr + '.md', body, 'text/markdown');
+  } catch (err) {
+    writeFileOverwrite_(outputFolder, '템플릿점검_' + todayStr + '.md',
+      '# 템플릿 점검 ' + todayStr + '\n\n점검 중 오류 발생: ' + err.message, 'text/markdown');
   }
 }
 
@@ -14363,7 +14741,78 @@ function generateDailyBriefing_() {
 function runNightlyChiefManager() {
   try { runNightlySystemAudit(); } catch (err) { console.error('야간 점검 실패: ' + err.message); }
   try { processImprovementRequests(); } catch (err) { console.error('개선요구사항 처리 실패: ' + err.message); }
+  // [2026.09 신규] 매일 실행 — 비교할 새 사본이 없는 날은 API 호출 없이 짧은 리포트만 남긴다.
+  try { runTemplateReview_(); } catch (err) { console.error('템플릿 점검 실패: ' + err.message); }
   try { generateDailyBriefing_(); } catch (err) { console.error('오늘의 요약 생성 실패: ' + err.message); }
+}
+
+/**
+ * [2026.09 신규] "매일 밤 뭘 하고 있는지 내가 알 수가 없다"는 지적에 따라 추가 — 대시보드에서
+ * 이 액션을 호출해 어젯밤 야간작업이 실제로 돌았는지, 결과 파일이 오늘/어제 날짜로 남아있는지
+ * 확인한다. 트리거 자체가 통째로 실패하면(예: 2026-09-07의 원인불명 "INTERNAL" 오류처럼)
+ * 이 함수들 중 하나도 실행되지 못해 오늘 날짜 파일이 아예 안 생기므로, "파일이 없다" 자체가
+ * "어젯밤 실패했다"는 신호가 된다.
+ */
+function handleGetNightlyStatus(body) {
+  const todayStr = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
+  const yesterdayStr = Utilities.formatDate(new Date(Date.now() - 86400000), 'Asia/Seoul', 'yyyy-MM-dd');
+  const items = [];
+
+  const chiefFolder = getChiefManagerFolder_();
+  if (!chiefFolder) {
+    items.push({ label: '야간 자동점검', ok: false, message: '총괄관리자 폴더가 설정되어 있지 않습니다(CHIEF_MANAGER_FOLDER_ID).' });
+    return { items: items, allOk: false };
+  }
+
+  function latestOf(subfolderName, filePrefix) {
+    try {
+      const folder = getOrCreateSubfolder_(chiefFolder, subfolderName);
+      const todayContent = readFileIfExists_(folder, filePrefix + todayStr + '.md');
+      if (todayContent) return { date: todayStr, content: todayContent };
+      const yesterdayContent = readFileIfExists_(folder, filePrefix + yesterdayStr + '.md');
+      if (yesterdayContent) return { date: yesterdayStr, content: yesterdayContent };
+      return null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  const audit = latestOf('_점검리포트', '점검리포트_');
+  items.push({
+    label: '시스템 자기점검',
+    ok: !!audit,
+    date: audit ? audit.date : null,
+    message: audit ? audit.content.slice(0, 300) : '오늘·어제 리포트를 찾지 못했습니다 — 야간 작업이 실행되지 않았을 수 있습니다.'
+  });
+
+  const tpl = latestOf('_템플릿점검', '템플릿점검_');
+  items.push({
+    label: '템플릿 점검',
+    ok: !!tpl,
+    date: tpl ? tpl.date : null,
+    message: tpl ? tpl.content.slice(0, 300) : '오늘·어제 리포트를 찾지 못했습니다.'
+  });
+
+  let briefingOk = false, briefingMsg = '파일이 아직 없습니다.', briefingDate = null;
+  try {
+    const defaultFolder = getDefaultFolder();
+    if (defaultFolder) {
+      const iter = defaultFolder.getFilesByName('오늘의 요약.md');
+      if (iter.hasNext()) {
+        const f = iter.next();
+        briefingDate = Utilities.formatDate(f.getLastUpdated(), 'Asia/Seoul', 'yyyy-MM-dd');
+        briefingOk = (briefingDate === todayStr);
+        briefingMsg = briefingOk
+          ? f.getBlob().getDataAsString('UTF-8').slice(0, 300)
+          : ('마지막 갱신일: ' + briefingDate + ' (오늘 아직 안 바뀜)');
+      }
+    }
+  } catch (err) {
+    briefingMsg = '확인 중 오류: ' + err.message;
+  }
+  items.push({ label: '오늘의 요약', ok: briefingOk, date: briefingDate, message: briefingMsg });
+
+  return { items: items, allOk: items.every(function (i) { return i.ok; }) };
 }
 
 /**
@@ -16705,7 +17154,9 @@ const WORK_SEMOK_LABELS_ = { transfer: '양도', gift: '증여', inheritance: '�
 const WORK_DEADLINE_MONTHS_ = { transfer: 2, gift: 3, inheritance: 6 };
 const WORK_DEADLINE_DAYS_ = { 이의신청: 90, 심사청구: 90, 심판청구: 90, 행정소송: 90, 과세적부: 30 };
 const WORK_DEADLINE_YEARS_ = { 경정청구: 5 };
-const WORK_MANUAL_DEADLINE_TYPES_ = ['상담', '해명자료'];
+// [2026.09] 세무조사 대리·자금출처소명도 상담·해명자료와 같은 이유(법정기한 없이 과세관청과
+// 협의된 처리시한)로 자동계산 대상에서 빼고 사용자가 직접 입력한 값을 쓴다.
+const WORK_MANUAL_DEADLINE_TYPES_ = ['상담', '해명자료', '세무조사', '자금출처소명'];
 // [2026.09 버그수정] 캘린더 정리(work_deleteEventsByTag_)가 "오늘부터 +2년"까지만 검색해서
 // 지웠는데, 경정청구(5년)처럼 법정일이 그보다 먼 사건은 그 일정을 편집할 때마다(담당자만
 // 바꿔도 work_syncCaseCalendar_가 매번 통째로 지웠다 다시 만듦) 예전 일정을 못 찾아 못 지우고
@@ -17266,6 +17717,19 @@ function work_createCase(params) {
     newRow[col.폴더ID] = work_getOrCreateCaseFolder_(사건명);
     newRow[col.생성일] = now;
     newRow[col.수정일] = now;
+
+    // [2026.09] 의뢰서템플릿 자동 적용 — 아래 my.netax.kr 자동연결과 마찬가지로 실패해도
+    // 사건 생성 자체는 막지 않는다.
+    if (newRow[col.폴더ID]) {
+      try {
+        const semokLabel_ = WORK_SEMOK_LABELS_[seMok] || seMok;
+        // 우선순위: "양도신고"처럼 세목+업무유형을 합친 이름(가장 구체적) → "세무조사"처럼
+        // 업무유형만으로 이미 고유한 이름(불복 세부유형) → 세목 이름만(마지막 안전망).
+        work_seedCaseTemplateIfAny_(DriveApp.getFolderById(newRow[col.폴더ID]), [semokLabel_ + upType, upType, semokLabel_]);
+      } catch (err) {
+        console.log('의뢰서템플릿 적용 중 오류(사건 생성은 계속 진행): ' + err.message);
+      }
+    }
 
     // [2026.09] "고객창구 연결하기"를 세무사가 나중에 수동으로 눌러야만 접속코드가 생기다 보니,
     // 그 전에 고객이 my페이지에 들어오면 안내할 코드가 아예 없어서 "상담 신청해달라"는 엉뚱한

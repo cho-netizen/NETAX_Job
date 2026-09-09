@@ -10,6 +10,33 @@
   #sigPlaceStage{ position:relative; }
   #sigPlaceSigImg{ position:absolute; touch-action:none; cursor:grab; }
   #ocrResultText{ width:100%; min-height:260px; font-family:inherit; font-size:12.5px; resize:vertical; box-sizing:border-box; }
+
+  /* [2026.09 이식] work.netax.kr explorer.js의 우클릭 메뉴·검색·휴지통·이동 — 실사용 지적으로
+     추가. 탐색기 행의 hover-only 아이콘(.docs-actions)은 터치기기에서 못 써서, 항상 보이는
+     "⋮" 버튼 + 우클릭(데스크톱)/길게 눌러도 되는 컨텍스트 메뉴로 대체한다. */
+  .docs-row .docs-kebab{ flex-shrink:0; padding:2px 6px; border-radius:4px; color:var(--sub); cursor:pointer; }
+  .docs-row .docs-kebab:hover{ background:#e5e7eb; color:var(--ink); }
+  .docs-ctx-menu{ position:fixed; z-index:400; background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.18); min-width:150px; padding:4px; font-size:13px; }
+  .docs-ctx-menu-item{ padding:8px 12px; border-radius:6px; cursor:pointer; white-space:nowrap; }
+  .docs-ctx-menu-item:hover{ background:#f3f4f7; }
+  .docs-ctx-menu-item.danger{ color:var(--danger, #b3261e); }
+  .docs-ctx-sep{ height:1px; background:var(--line); margin:4px 2px; }
+  .docs-fab{ position:absolute; right:18px; bottom:18px; width:48px; height:48px; border-radius:50%; background:var(--navy);
+    color:#fff; font-size:26px; line-height:46px; text-align:center; cursor:pointer; box-shadow:0 4px 14px rgba(0,0,0,0.28); z-index:60; user-select:none; }
+  .docs-fab:hover{ background:var(--navy-deep); }
+  .docs-view-choice{ position:fixed; z-index:400; background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.18); padding:4px; font-size:13px; min-width:140px; }
+  .docs-search-result{ display:flex; flex-direction:column; gap:2px; padding:9px 10px; border-radius:6px; cursor:pointer; }
+  .docs-search-result:hover{ background:#f3f4f7; }
+  .docs-search-result .p{ font-size:11.5px; color:var(--sub); }
+  .docs-trash-row{ display:flex; align-items:center; gap:10px; padding:9px 8px; border-radius:6px; font-size:13px; }
+  /* [2026.09 이식] 텍스트류 파일보기(메모장 느낌) + 엑셀/CSV 표보기(excel-viewer.html 이식). */
+  #docsViewerBody pre.docs-text-view{ white-space:pre-wrap; word-break:break-all; font-family:'Consolas',monospace; font-size:12.5px; line-height:1.6; margin:0; }
+  #docsViewerBody table{ border-collapse:collapse; font-size:12.5px; }
+  #docsViewerBody table td, #docsViewerBody table th{ border:1px solid var(--line); padding:4px 8px; white-space:nowrap; }
+  #docsViewerBody table th{ background:var(--bg); position:sticky; top:0; }
+  .docs-viewer-fallback{ text-align:center; padding:30px; color:var(--sub); font-size:13px; }
 </style>
 
 <div class="view" id="view-docs">
@@ -29,13 +56,104 @@
     <button type="button" id="docsBtnFolderNameAudit" class="ghost-btn" title="모든 사건의 폴더명이 명명규칙(고객명_세목_업무유형)대로인지 전수조사"><span class="btn-ic">🏷</span><span class="btn-tx"> 폴더명 점검</span></button>
   </div>
   <div id="docsCaseEvidencePanel" style="display:none; flex:0 0 auto; border-bottom:1px solid var(--line); padding:10px 14px; overflow-y:auto; max-height:40vh;"></div>
-  <div id="docsSelectionBar" class="tb-row" style="display:none; flex:0 0 auto; align-items:center; gap:10px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); font-size:12.5px;">
+  <div id="docsSelectionBar" class="tb-row" style="display:none; flex:0 0 auto; align-items:center; gap:8px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); font-size:12.5px; flex-wrap:wrap;">
     <span id="docsSelectionCount"></span>
     <button type="button" id="docsBtnScanSelected" class="ghost-btn" style="font-size:12px;"><span class="btn-ic">📷</span><span class="btn-tx"> 스캔에 추가</span></button>
     <button type="button" id="docsBtnPdfMgrSelected" class="ghost-btn" style="font-size:12px;"><span class="btn-ic">📑</span><span class="btn-tx"> PDF관리에 추가</span></button>
+    <!-- [2026.09 이식] work.netax.kr 참고화면과 같은 방식 — 체크한 항목에 바로 쓸 수 있는
+         이름변경·공유·삭제·이동. 이름변경은 한 번에 하나만 뜻이 있어 1개 선택했을 때만 보인다. -->
+    <button type="button" id="docsBtnRenameSelected" class="ghost-btn" style="font-size:12px;"><span class="btn-ic">✏️</span><span class="btn-tx"> 이름변경</span></button>
+    <button type="button" id="docsBtnShareSelected" class="ghost-btn" style="font-size:12px;"><span class="btn-ic">🔗</span><span class="btn-tx"> 공유</span></button>
+    <button type="button" id="docsBtnMoveSelected" class="ghost-btn" style="font-size:12px;"><span class="btn-ic">📂</span><span class="btn-tx"> 이동</span></button>
+    <button type="button" id="docsBtnDeleteSelected" class="btn danger" style="font-size:12px;"><span class="btn-ic">🗑</span><span class="btn-tx"> 삭제</span></button>
     <button type="button" id="docsBtnClearSelection" class="ghost-btn" style="font-size:12px; margin-left:auto;">선택 해제</button>
   </div>
-  <div class="docs-list" id="docsList" style="flex:1; overflow-y:auto;"><div class="spinner">불러오는 중…</div></div>
+  <div style="position:relative; flex:1; min-height:0; display:flex;">
+    <div class="docs-list" id="docsList" style="flex:1; overflow-y:auto;"><div class="spinner">불러오는 중…</div></div>
+    <!-- [2026.09 이식] 화면이 파일로 꽉 차서 빈 곳이 없을 때를 대비한 + 버튼 — 빈 곳 우클릭과
+         똑같은 메뉴(새 폴더/새 문서/업로드/검색/제출현황/휴지통/새로고침)를 띄운다. -->
+    <div class="docs-fab" id="docsFab" title="더보기">+</div>
+  </div>
+</div>
+
+<!-- 우클릭/⋮ 컨텍스트 메뉴 — 파일·폴더 행, 빈 목록 공간, + 버튼이 전부 이걸 공유해서 쓴다. -->
+<div class="docs-ctx-menu" id="docsCtxMenu" style="display:none;"></div>
+<!-- 파일 좌클릭 시 "파일보기/파일관리" 선택 팝업(PDF·이미지만 — 더블클릭하면 이거 없이 바로 파일보기). -->
+<div class="docs-view-choice" id="docsViewChoice" style="display:none;"></div>
+
+<!-- [2026.09 이식] 파일보기 — md/이미지/pdf/html만 다루던 것을 넓혀서, 텍스트류는 메모장처럼
+     바로 읽고, 엑셀/CSV는 표로 바로 보여준다(work.netax.kr의 excel-viewer.html 이식). 그 외
+     형식(워드·파워포인트 등)은 구글드라이브 자체 미리보기로, 한글(HWP)은 구글이 아예 못 열어서
+     다운로드 안내로 대체한다. -->
+<div class="modal-overlay" id="docsViewerOverlay" style="display:none;">
+  <div class="modal-panel" style="max-width:900px; width:96vw;">
+    <div class="modal-head">
+      <span id="docsViewerTitle">파일보기</span>
+      <span class="modal-close" id="btnCloseDocsViewer" title="닫기">✕</span>
+    </div>
+    <div class="modal-body" style="max-height:75vh; overflow:auto;">
+      <div id="docsViewerToolbar" style="display:none; margin-bottom:10px; align-items:center; gap:8px;">
+        <select id="docsViewerSheetSelect" style="display:none;"></select>
+        <span style="font-size:11.5px; color:var(--sub);">표에서 범위를 드래그해 복사할 수 있습니다.</span>
+      </div>
+      <!-- [2026.09 신규] 텍스트/md 파일 — 사건개시템플릿이 자동으로 만들어주는 체크리스트 등을
+           내려받지 않고 바로 여기서 고쳐 쓸 수 있게, "보기 전용"에 편집 모드를 추가한다. -->
+      <div id="docsTextEditBar" style="display:none; margin-bottom:10px; gap:8px;">
+        <button type="button" id="btnDocsTextEdit" class="ghost-btn">✏ 편집</button>
+        <button type="button" id="btnDocsTextSave" class="save-btn" style="display:none;">💾 저장</button>
+        <button type="button" id="btnDocsTextCancel" class="ghost-btn" style="display:none;">취소</button>
+        <span id="docsTextSaveStatus" style="font-size:11.5px; color:var(--sub);"></span>
+      </div>
+      <div id="docsViewerBody"><div class="spinner">불러오는 중…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- 파일검색 — 폴더를 안 거치고 드라이브 전체에서 이름으로 바로 찾는다. -->
+<div class="modal-overlay" id="docsSearchOverlay" style="display:none;">
+  <div class="modal-panel" style="max-width:520px;">
+    <div class="modal-head">
+      <span>🔍 파일 검색</span>
+      <span class="modal-close" id="btnCloseDocsSearch" title="닫기">✕</span>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex; gap:8px; margin-bottom:10px;">
+        <input type="text" id="docsSearchInput" placeholder="파일·폴더 이름으로 검색" style="flex:1;">
+        <button type="button" id="docsSearchRunBtn" class="save-btn">검색</button>
+      </div>
+      <div id="docsSearchResults"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 휴지통 — 지금 보고 있는 폴더 바로 아래에서 삭제된 항목만 보여주고 복원한다. -->
+<div class="modal-overlay" id="docsTrashOverlay" style="display:none;">
+  <div class="modal-panel" style="max-width:480px;">
+    <div class="modal-head">
+      <span>🗑 휴지통 — <span id="docsTrashFolderName"></span></span>
+      <span class="modal-close" id="btnCloseDocsTrash" title="닫기">✕</span>
+    </div>
+    <div class="modal-body">
+      <div id="docsTrashList"><div class="spinner">불러오는 중…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- 이동 — 대상 폴더를 직접 찾아 들어가서 고른다(지금 보고 있는 목록과 같은 방식으로 탐색). -->
+<div class="modal-overlay" id="docsMoveOverlay" style="display:none;">
+  <div class="modal-panel" style="max-width:480px;">
+    <div class="modal-head">
+      <span>📂 이동할 위치 선택 — <span id="docsMoveItemName"></span></span>
+      <span class="modal-close" id="btnCloseDocsMove" title="닫기">✕</span>
+    </div>
+    <div class="modal-body">
+      <div class="docs-breadcrumb" id="docsMoveBreadcrumb" style="margin-bottom:8px;"></div>
+      <div id="docsMoveList" style="max-height:300px; overflow-y:auto;"></div>
+      <div style="margin-top:14px; display:flex; justify-content:flex-end;">
+        <button type="button" id="docsMoveConfirmBtn" class="save-btn">여기로 이동</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- PDF 관리 — 이미 저장된 PDF들을 페이지 단위로 불러와서 합치기·발췌·순서변경·서명·워터마크.
@@ -152,12 +270,117 @@
   </div>
 </div>
 
+<!-- 계산기 — 사건 폴더별 임시 세액 개산 워크시트. [1][2]처럼 대괄호+숫자로 앞 행을 참조해
+     계산하고, 누진세·장특공제율 등 세율표가 필요한 계산은 자주 쓰는 템플릿으로 바로 불러온다.
+     폴더 안에 "계산기.json"으로 저장되어 이 폴더를 다시 열 때마다 이어서 쓸 수 있다.
+     [2026.09 이식] work.netax.kr explorer.js의 계산기 워크시트를 그대로 가져왔다 —
+     세율 함수(resolveCalcTaxFunctions)는 taxcalc-engine.html에 이미 있는 것을 그대로 쓴다. -->
+<div class="modal-overlay" id="docsCalcOverlay" style="display:none;">
+  <div class="scan-modal-panel">
+    <div class="modal-head">
+      <span>🧮 계산기 — <span id="docsCalcFolderLabel"></span></span>
+      <span class="modal-close" id="btnCloseDocsCalc" title="닫기">✕</span>
+    </div>
+    <div class="scan-body">
+      <div class="scan-row" style="align-items:center;">
+        <button type="button" id="docsBtnCalcTemplate" class="ghost-btn">📋 세무 템플릿</button>
+        <span style="font-size:11px; color:var(--sub);">세율·공제는 자동 계산되지만, 보유기간·관계 등 사안별 값은 행의 계산식을 직접 고쳐 넣으세요.</span>
+        <span id="docsCalcSaveStatus" style="margin-left:auto; font-size:11.5px; color:var(--sub); white-space:nowrap;"></span>
+      </div>
+      <div class="scan-row" style="align-items:center; flex-wrap:wrap;">
+        <span style="font-size:12px; color:var(--sub);">📅 신고기한:</span>
+        <input type="date" id="docsCalcDeadlineBaseDate" style="max-width:150px;">
+        <select id="docsCalcDeadlineType" style="max-width:220px;">
+          <option value="transfer">양도소득세(말일+2개월)</option>
+          <option value="gift">증여세(말일+3개월)</option>
+          <option value="inheritance">상속세(말일+6개월)</option>
+          <option value="inheritance_overseas">상속세-피상속인 해외거주(말일+9개월)</option>
+        </select>
+        <button type="button" id="docsBtnCalcDeadlineRun" class="ghost-btn">계산</button>
+        <span id="docsCalcDeadlineResult" style="font-size:12.5px; font-weight:600;"></span>
+      </div>
+      <table style="width:100%; border-collapse:collapse; font-size:13px;">
+        <thead>
+          <tr style="text-align:left; border-bottom:1px solid var(--line);">
+            <th style="padding:4px 6px; width:34px;">#</th>
+            <th style="padding:4px 6px;">항목명</th>
+            <th style="padding:4px 6px;">계산식/값</th>
+            <th style="padding:4px 6px; width:120px;">결과</th>
+            <th style="padding:4px 6px; width:30px;"></th>
+          </tr>
+        </thead>
+        <tbody id="docsCalcRowsBody"></tbody>
+      </table>
+      <div class="scan-row">
+        <button type="button" id="docsBtnCalcAddRow" class="ghost-btn">+ 행 추가</button>
+        <button type="button" id="docsBtnCalcCopyTable" class="ghost-btn">📋 표 복사(보고서에 붙여넣기용)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 관계도 — mermaid 문법으로 가계도·지분관계·조직도를 그려 폴더별로 저장(관계도.mmd).
+     [2026.09 이식] work.netax.kr explorer.js의 관계도 캔버스를 그대로 가져왔다 — mermaid는
+     reportwriter.html에서 이미 로드하므로 별도 스크립트 태그가 필요 없다. -->
+<div class="modal-overlay" id="docsDiagramOverlay" style="display:none;">
+  <div class="scan-modal-panel">
+    <div class="modal-head">
+      <span>🗺 관계도 — <span id="docsDiagramFolderLabel"></span></span>
+      <span class="modal-close" id="btnCloseDocsDiagram" title="닫기">✕</span>
+    </div>
+    <div class="scan-body" style="display:flex; gap:12px; flex-wrap:wrap; align-items:stretch;">
+      <textarea id="docsDiagramInput" style="flex:1 1 260px; min-height:340px; font-family:monospace; font-size:13px; padding:8px; border:1px solid var(--line); border-radius:8px;" placeholder="graph TD&#10;  A[아버지] --&gt; B[자녀1]&#10;  A --&gt; C[자녀2]"></textarea>
+      <div id="docsDiagramPreview" style="flex:1 1 260px; min-height:340px; border:1px solid var(--line); border-radius:8px; padding:8px; overflow:auto; background:#fff;"></div>
+    </div>
+    <div class="scan-row" style="padding:0 16px 16px; justify-content:flex-end;">
+      <button type="button" id="btnDocsDiagramCopy" class="ghost-btn">📋 mermaid 코드 복사(보고서용)</button>
+      <button type="button" id="btnDocsDiagramSave" class="save-btn">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 경과지 — 사건 폴더별 진행 경과 기록 보드. 마감일을 넣으면 서버가 구글캘린더에도 자동으로
+     반영한다(syncGlobalLog가 이미 처리 — 이 화면은 UI만 추가). 폴더 안에 "경과지.json"으로 저장된다.
+     [2026.09 이식] work.netax.kr explorer.js의 경과지 보드를 그대로 가져왔다. -->
+<div class="modal-overlay" id="docsLogOverlay" style="display:none;">
+  <div class="modal-panel" style="max-width:560px;">
+    <div class="modal-head">
+      <span>📋 경과지 — <span id="docsLogFolderLabel"></span></span>
+      <span class="modal-close" id="btnCloseDocsLog" title="닫기">✕</span>
+    </div>
+    <div class="modal-body">
+      <div class="scan-row" style="align-items:flex-end; flex-wrap:wrap;">
+        <div style="display:flex; flex-direction:column; gap:3px;">
+          <label style="font-size:11px; color:var(--sub);">날짜</label>
+          <input type="date" id="docsLogDateInput">
+        </div>
+        <div style="display:flex; flex-direction:column; gap:3px; flex:1; min-width:160px;">
+          <label style="font-size:11px; color:var(--sub);">내용</label>
+          <input type="text" id="docsLogTextInput" placeholder="예: 등기부등본 요청함">
+        </div>
+        <div style="display:flex; flex-direction:column; gap:3px;">
+          <label style="font-size:11px; color:var(--sub);">마감일(선택, 캘린더 등록)</label>
+          <input type="date" id="docsLogDueInput">
+        </div>
+        <button type="button" id="btnDocsLogAdd" class="save-btn">+ 추가</button>
+        <span id="docsLogSaveStatus" style="margin-left:auto; font-size:11.5px; color:var(--sub); white-space:nowrap;"></span>
+      </div>
+      <div id="docsLogList" style="display:flex; flex-direction:column; gap:8px; margin-top:12px; max-height:50vh; overflow-y:auto;"></div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <!-- 스캔(원근보정·자동인식·문서구분) 공용 도구 — my.netax.kr 고객창구의 자료제출함과 동일한
      코드를 netax.kr에서 그대로 불러 쓴다(중복 이식 대신 공용 모듈로 분리, 2026.09). -->
 <script src="https://netax.kr/shared/scan-tool.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js"></script>
+<!-- [2026.09 이식] work.netax.kr excel-viewer.html이 쓰던 것과 같은 버전 — 엑셀/CSV를
+     새 탭으로 안 나가고 바로 표로 보여준다. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- [2026.09 이식] 계산기의 "신고기한 계산" 기능용 — work.netax.kr index.html과 같은 버전. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/date-fns/2.30.0/date_fns.min.js"></script>
 <script>
   // ============================================================
   // 증빙관리 — 탐색창(폴더 이동)+보기창(구글드라이브 뷰어로 새 탭에서 열기)+스캔창.
@@ -698,41 +921,30 @@
     if (!folders.length && !files.length){ listEl.innerHTML = '<div class="log-empty">빈 폴더입니다.</div>'; return; }
     var html = '';
     folders.forEach(function(f){
+      // [2026.09 이식] 폴더도 체크해서 선택바(이름변경·공유·삭제·이동)를 쓸 수 있게 한다
+      // (work.netax.kr 참고화면처럼 파일·폴더 구분 없이 전부 체크 가능).
       html += '<div class="docs-row" data-type="folder" data-id="' + escapeHtml(f.id) + '" data-name="' + escapeHtml(f.name) + '">' +
+        '<input type="checkbox" class="docsSelectChk" style="margin-right:6px;"' + (docsSelectedIds[f.id] ? ' checked' : '') + '>' +
         '<span class="docs-icon">📁</span><span class="docs-name">' + escapeHtml(f.name) + '</span>' +
-        '<span class="docs-actions"><span data-act="rename" title="이름변경">✏️</span><span data-act="delete" title="삭제">🗑</span></span>' +
+        '<span class="docs-kebab" data-act="ctx" title="더보기">⋮</span>' +
         '</div>';
     });
     files.forEach(function(f){
       // [2026.09 이식] 폴더에 이미 있는 파일을 그대로 스캔 도구/PDF관리로 불러오는 길 — PDF는
       // "PDF관리로 열기", 이미지는 "스캔으로 열기" 아이콘을 추가로 보여준다.
-      var isPdf = f.mimeType === 'application/pdf';
-      var isImage = f.mimeType && f.mimeType.indexOf('image/') === 0;
-      var extraActs = '';
-      if (isPdf) extraActs += '<span data-act="pdfmgr" title="PDF관리로 열기">📑</span>';
-      else if (isImage) extraActs += '<span data-act="scan" title="스캔으로 열기">📷</span>';
-      // 스캔/PDF관리로 여러 개를 한번에 넘길 수 있게, 대상 파일(PDF·이미지)에만 체크박스를 둔다.
-      var chkHtml = (isPdf || isImage)
-        ? '<input type="checkbox" class="docsSelectChk" style="margin-right:6px;"' + (docsSelectedIds[f.id] ? ' checked' : '') + '>'
-        : '<span style="display:inline-block; width:22px;"></span>';
-      html += '<div class="docs-row" data-type="file" data-id="' + escapeHtml(f.id) + '" data-url="' + escapeHtml(f.url || '') + '">' +
-        chkHtml +
+      html += '<div class="docs-row" data-type="file" data-id="' + escapeHtml(f.id) + '" data-url="' + escapeHtml(f.url || '') + '" data-name="' + escapeHtml(f.name) + '" data-mime="' + escapeHtml(f.mimeType || '') + '">' +
+        '<input type="checkbox" class="docsSelectChk" style="margin-right:6px;"' + (docsSelectedIds[f.id] ? ' checked' : '') + '>' +
         '<span class="docs-icon">' + docsIconFor(f.mimeType, f.name) + '</span><span class="docs-name">' + escapeHtml(f.name) + '</span>' +
         '<span class="docs-meta">' + escapeHtml(f.modifiedDate || '') + (f.sizeBytes ? ' · ' + formatFileSize(f.sizeBytes) : '') + '</span>' +
-        '<span class="docs-actions">' + extraActs + '<span data-act="rename" title="이름변경">✏️</span><span data-act="delete" title="삭제">🗑</span></span>' +
+        '<span class="docs-kebab" data-act="ctx" title="더보기">⋮</span>' +
         '</div>';
     });
     listEl.innerHTML = html;
 
+    // [2026.09 이식] 좌클릭(파일보기/파일관리 선택) vs 좌더블클릭(바로 파일보기)을 구분해야 해서,
+    // 단일클릭은 살짝 늦춰(dblclick이 뒤따라오면 취소) 처리한다 — 표준적인 클릭/더블클릭 구분법.
+    var docsRowClickTimer_ = null;
     listEl.querySelectorAll('.docs-row').forEach(function(row){
-      row.addEventListener('click', function(e){
-        if (e.target.closest('.docs-actions') || e.target.classList.contains('docsSelectChk')) return;
-        if (row.dataset.type === 'folder'){
-          docsNavigate(docsPath.concat([row.dataset.name]));
-        } else if (row.dataset.url){
-          window.open(row.dataset.url, '_blank');
-        }
-      });
       var chk = row.querySelector('.docsSelectChk');
       if (chk){
         chk.addEventListener('click', function(e){ e.stopPropagation(); });
@@ -742,42 +954,516 @@
           updateDocsSelectionBar_();
         });
       }
-      row.querySelectorAll('.docs-actions span').forEach(function(actEl){
-        actEl.addEventListener('click', function(e){
-          e.stopPropagation();
-          var act = actEl.dataset.act;
-          var id = row.dataset.id, type = row.dataset.type;
-          var label = row.querySelector('.docs-name').textContent;
-          if (act === 'delete'){
-            if (!confirm('"' + label + '"을(를) 삭제할까요? (휴지통으로 이동)')) return;
-            callGas('deleteItem', { id: id, type: type }).then(function(res){
-              if (res.error){ toast('삭제 실패: ' + res.error); return; }
-              toast('삭제했습니다.');
-              docsNavigate(docsPath);
-            });
-          } else if (act === 'rename'){
-            var newName = prompt('새 이름을 입력하세요:', label);
-            if (!newName || !newName.trim() || newName.trim() === label) return;
-            callGas('renameItem', { id: id, type: type, newName: newName.trim() }).then(function(res){
-              if (res.error){ toast('이름변경 실패: ' + res.error); return; }
-              toast('이름을 변경했습니다.');
-              docsNavigate(docsPath);
-            });
-          } else if (act === 'pdfmgr' || act === 'scan'){
-            // 체크해둔 항목이 있으면(이 줄이 체크돼 있든 아니든) 그 선택 전체를 대상으로 하고,
-            // 아무것도 안 체크했으면 이 줄 파일 하나만 대상으로 한다 — 체크박스로 여러 개
-            // 골라두고 아무 줄의 아이콘이나 눌러도 선택 전체가 처리되게(헷갈리지 않도록).
-            var selectedIds = Object.keys(docsSelectedIds);
-            if (selectedIds.length){
-              if (act === 'pdfmgr') docsPdfMgrSelected_(docsSelectedFileObjs_().filter(function(f){ return f.mimeType === 'application/pdf'; }));
-              else docsScanSelected_(docsSelectedFileObjs_().filter(function(f){ return f.mimeType && f.mimeType.indexOf('image/') === 0; }));
-              return;
-            }
-            var fileObj = (data.files || []).filter(function(x){ return x.id === id; })[0];
-            if (!fileObj) return;
-            if (act === 'pdfmgr') openExistingFileInPdfManager(fileObj);
-            else openExistingFileInScan(fileObj);
+      row.querySelector('.docs-kebab').addEventListener('click', function(e){
+        e.stopPropagation();
+        var r = e.target.getBoundingClientRect();
+        docsShowCtxMenu_(r.left, r.bottom, docsBuildRowCtxItems_(row));
+      });
+      row.addEventListener('contextmenu', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        docsShowCtxMenu_(e.clientX, e.clientY, docsBuildRowCtxItems_(row));
+      });
+      row.addEventListener('click', function(e){
+        if (e.target.closest('.docs-kebab') || e.target.classList.contains('docsSelectChk')) return;
+        if (row.dataset.type === 'folder'){
+          docsNavigate(docsPath.concat([row.dataset.name]));
+          return;
+        }
+        // 파일: PDF·이미지는 "파일보기/파일관리" 중 고르게 하고, 그 외 형식은 곧바로 파일보기를
+        // 연다(엑셀·텍스트류는 docsOpenFileViewer_ 안에서 형식에 맞게 알아서 표시해준다).
+        if (!docsManageKind_(row.dataset.mime)){
+          var fo = docsFileObjFromRow_(row);
+          if (fo) docsOpenFileViewer_(fo);
+          return;
+        }
+        if (docsRowClickTimer_){ clearTimeout(docsRowClickTimer_); docsRowClickTimer_ = null; return; }
+        var cx = e.clientX, cy = e.clientY;
+        docsRowClickTimer_ = setTimeout(function(){
+          docsRowClickTimer_ = null;
+          docsShowViewChoice_(cx, cy, row);
+        }, 240);
+      });
+      row.addEventListener('dblclick', function(e){
+        if (row.dataset.type === 'folder') return; // 폴더는 원래 클릭 한 번으로 들어가짐
+        if (docsRowClickTimer_){ clearTimeout(docsRowClickTimer_); docsRowClickTimer_ = null; }
+        var fo2 = docsFileObjFromRow_(row);
+        if (fo2) docsOpenFileViewer_(fo2);
+      });
+    });
+  }
+
+  // ============================================================
+  // [2026.09 이식] work.netax.kr explorer.js의 우클릭 메뉴·검색·휴지통·이동 —
+  // "탐색기가 너무 단순해서 실제 업무를 못 하겠다"는 지적에 따라 추가.
+  // ============================================================
+
+  function docsManageKind_(mime){
+    if (mime === 'application/pdf') return 'pdf';
+    if (mime && mime.indexOf('image/') === 0) return 'image';
+    return null;
+  }
+
+  // ============================================================
+  // [2026.09 이식] 파일보기 — "md·이미지·pdf·html만 다룬다"는 전제를 버리고, 지원 가능한
+  // 형식은 최대한 앱 안에서 바로 보여준다:
+  //   - 엑셀·CSV → 표로 바로 렌더링(work.netax.kr excel-viewer.html의 SheetJS 방식 이식)
+  //   - 텍스트류(md·txt·json·csv 아닌 것들·html 소스 등) → 메모장처럼 원문 그대로 표시
+  //   - 이미지·PDF → 기존처럼 새 탭(구글드라이브 자체 뷰어가 이미 훌륭함)
+  //   - 한글(HWP) → 구글이 아예 못 열므로, 다운로드 + 한컴독스 안내로 대체
+  //   - 그 외(워드·파워포인트 등) → 구글드라이브 자체 미리보기(새 탭)로 대체
+  // ============================================================
+  var DOCS_EXCEL_EXT_RE_ = /\.(xlsx|xls|csv)$/i;
+  var DOCS_TEXT_EXT_RE_ = /\.(md|txt|json|log|html?|css|js|xml|csv\.txt|ya?ml|ini|conf)$/i;
+  var DOCS_HWP_EXT_RE_ = /\.(hwp|hwpx)$/i;
+  function docsViewKind_(f){
+    var name = (f.name || '').toLowerCase();
+    if (f.mimeType === 'application/pdf') return 'pdf';
+    if (f.mimeType && f.mimeType.indexOf('image/') === 0) return 'image';
+    if (DOCS_HWP_EXT_RE_.test(name) || (f.mimeType || '').indexOf('hwp') !== -1) return 'hwp';
+    if (DOCS_EXCEL_EXT_RE_.test(name) || f.mimeType === 'application/vnd.ms-excel' ||
+        f.mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        f.mimeType === MimeTypeGoogleSheets_) return 'excel';
+    if (DOCS_TEXT_EXT_RE_.test(name) || (f.mimeType || '').indexOf('text/') === 0) return 'text';
+    return 'other'; // 워드·파워포인트 등 — 드라이브 자체 미리보기로 대체
+  }
+  var MimeTypeGoogleSheets_ = 'application/vnd.google-apps.spreadsheet';
+
+  function docsOpenFileViewer_(f){
+    var kind = docsViewKind_(f);
+    if (kind === 'image' || kind === 'pdf'){
+      if (f.url) window.open(f.url, '_blank');
+      return;
+    }
+    var overlay = document.getElementById('docsViewerOverlay');
+    var titleEl = document.getElementById('docsViewerTitle');
+    var bodyEl = document.getElementById('docsViewerBody');
+    var toolbarEl = document.getElementById('docsViewerToolbar');
+    var sheetSelect = document.getElementById('docsViewerSheetSelect');
+    titleEl.textContent = '👁 ' + f.name;
+    toolbarEl.style.display = 'none';
+    sheetSelect.style.display = 'none';
+    sheetSelect.innerHTML = '';
+    document.getElementById('docsTextEditBar').style.display = 'none';
+    document.getElementById('btnDocsTextSave').style.display = 'none';
+    document.getElementById('btnDocsTextCancel').style.display = 'none';
+    document.getElementById('btnDocsTextEdit').style.display = '';
+    document.getElementById('docsTextSaveStatus').textContent = '';
+    bodyEl.innerHTML = '<div class="spinner">불러오는 중…</div>';
+    overlay.style.display = 'flex';
+
+    if (kind === 'hwp'){
+      bodyEl.innerHTML = '<div class="docs-viewer-fallback">' +
+        '한글(HWP) 파일은 구글이 직접 미리보기를 지원하지 않습니다.<br><br>' +
+        (f.url ? '<a href="' + escapeHtml(f.url) + '" target="_blank" class="save-btn" style="text-decoration:none; display:inline-block; margin:4px;">⬇ 다운로드</a>' : '') +
+        '<a href="https://www.hancomdocs.com/" target="_blank" class="ghost-btn" style="text-decoration:none; display:inline-block; margin:4px;">🔗 한컴독스에서 열기</a>' +
+        '<div style="font-size:11.5px; margin-top:8px;">한컴독스는 새 탭에서 열리며, 다운로드한 파일을 직접 올려서 봐야 합니다.</div>' +
+        '</div>';
+      return;
+    }
+
+    if (kind === 'excel'){
+      if (typeof XLSX === 'undefined'){
+        bodyEl.innerHTML = '<div class="docs-viewer-fallback">엑셀 처리 라이브러리를 불러오지 못했습니다. ' +
+          (f.url ? '<a href="' + escapeHtml(f.url) + '" target="_blank">새 탭에서 열기</a>' : '') + '</div>';
+        return;
+      }
+      callGas('readFileBinary', { fileId: f.id }).then(function(res){
+        if (res.error){ bodyEl.innerHTML = '<div class="docs-viewer-fallback">' + escapeHtml(res.error) + '</div>'; return; }
+        if (!res.base64){ bodyEl.innerHTML = '<div class="docs-viewer-fallback">파일 내용을 받지 못했습니다.</div>'; return; }
+        try {
+          var binary = atob(res.base64);
+          var bytes = new Uint8Array(binary.length);
+          for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          var wb = XLSX.read(bytes, { type: 'array' });
+          function renderSheet(name){
+            var ws = wb.Sheets[name];
+            if (!ws){ bodyEl.innerHTML = '<div class="docs-viewer-fallback">시트를 찾을 수 없습니다.</div>'; return; }
+            // [2026.09 버그수정] sheet_to_html 기본값은 <title>SheetJS Table Export</title>가 든
+            // 완전한 HTML 문서 문자열을 돌려줘서, innerHTML로 넣으면 이 앱 탭의 제목이 바뀌어버렸다
+            // — header/footer를 비워서 순수 <table> 조각만 받는다.
+            bodyEl.innerHTML = XLSX.utils.sheet_to_html(ws, { header: '', footer: '' });
           }
+          wb.SheetNames.forEach(function(name){
+            var opt = document.createElement('option');
+            opt.value = name; opt.textContent = name;
+            sheetSelect.appendChild(opt);
+          });
+          if (wb.SheetNames.length > 1){
+            sheetSelect.style.display = '';
+            toolbarEl.style.display = 'flex';
+            sheetSelect.onchange = function(){ renderSheet(sheetSelect.value); };
+          } else {
+            toolbarEl.style.display = 'flex';
+          }
+          renderSheet(wb.SheetNames[0]);
+        } catch (err) {
+          bodyEl.innerHTML = '<div class="docs-viewer-fallback">엑셀 파일을 여는 데 실패했습니다: ' + escapeHtml(err.message || String(err)) + '</div>';
+        }
+      });
+      return;
+    }
+
+    if (kind === 'text'){
+      callGas('readFile', { fileId: f.id }).then(function(res){
+        if (res.error){ bodyEl.innerHTML = '<div class="docs-viewer-fallback">' + escapeHtml(res.error) + '</div>'; return; }
+        if (res.kind === 'binary' || res.base64){
+          bodyEl.innerHTML = '<div class="docs-viewer-fallback">이 파일은 텍스트로 표시할 수 없습니다. ' +
+            (f.url ? '<a href="' + escapeHtml(f.url) + '" target="_blank">새 탭에서 열기</a>' : '') + '</div>';
+          return;
+        }
+        var originalContent = res.content || '';
+        bodyEl.innerHTML = '<pre class="docs-text-view">' + escapeHtml(originalContent || '(내용 없음)') + '</pre>';
+        document.getElementById('docsTextEditBar').style.display = 'flex';
+
+        var editBtn = document.getElementById('btnDocsTextEdit');
+        var saveBtn = document.getElementById('btnDocsTextSave');
+        var cancelBtn = document.getElementById('btnDocsTextCancel');
+        var statusEl = document.getElementById('docsTextSaveStatus');
+
+        function enterEditMode(){
+          bodyEl.innerHTML = '<textarea id="docsTextEditArea" style="width:100%; box-sizing:border-box; min-height:50vh; font-family:Consolas,monospace; font-size:12.5px; line-height:1.6; padding:8px; border:1px solid var(--line); border-radius:8px;"></textarea>';
+          document.getElementById('docsTextEditArea').value = originalContent;
+          editBtn.style.display = 'none';
+          saveBtn.style.display = '';
+          cancelBtn.style.display = '';
+          statusEl.textContent = '';
+        }
+        function exitViewMode(content){
+          bodyEl.innerHTML = '<pre class="docs-text-view">' + escapeHtml(content || '(내용 없음)') + '</pre>';
+          editBtn.style.display = '';
+          saveBtn.style.display = 'none';
+          cancelBtn.style.display = 'none';
+        }
+        editBtn.onclick = enterEditMode;
+        cancelBtn.onclick = function(){ exitViewMode(originalContent); statusEl.textContent = ''; };
+        saveBtn.onclick = function(){
+          var newContent = document.getElementById('docsTextEditArea').value;
+          statusEl.textContent = '저장 중…';
+          saveBtn.disabled = true;
+          callGas('uploadFile', { fileId: f.id, base64Data: utf8ToBase64(newContent) }).then(function(res2){
+            saveBtn.disabled = false;
+            if (res2.error){ statusEl.textContent = ''; toast('저장 실패: ' + res2.error); return; }
+            originalContent = newContent;
+            exitViewMode(originalContent);
+            statusEl.textContent = '저장됨 ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+          }).catch(function(err){
+            saveBtn.disabled = false;
+            statusEl.textContent = '';
+            toast('저장 중 오류: ' + (err && err.message ? err.message : err));
+          });
+        };
+      });
+      return;
+    }
+
+    // kind === 'other' (워드·파워포인트 등) — 구글드라이브 자체 미리보기로 대체.
+    overlay.style.display = 'none';
+    if (f.url) window.open(f.url, '_blank');
+    else toast('이 파일은 미리보기 링크가 없습니다.', 'warning');
+  }
+  document.getElementById('btnCloseDocsViewer').addEventListener('click', function(){
+    document.getElementById('docsViewerOverlay').style.display = 'none';
+  });
+
+  // ---- 공용 컨텍스트 메뉴 ----
+  var docsCtxMenuEl_ = document.getElementById('docsCtxMenu');
+  var docsViewChoiceEl_ = document.getElementById('docsViewChoice');
+  function docsHideCtxMenu_(){ docsCtxMenuEl_.style.display = 'none'; docsViewChoiceEl_.style.display = 'none'; }
+  document.addEventListener('click', docsHideCtxMenu_);
+  document.addEventListener('scroll', docsHideCtxMenu_, true);
+  window.addEventListener('keydown', function(e){ if (e.key === 'Escape') docsHideCtxMenu_(); });
+
+  function docsPositionFloating_(el, x, y){
+    el.style.display = 'block';
+    // 화면 오른쪽/아래로 넘치면 반대쪽으로 붙인다.
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var w = el.offsetWidth || 160, h = el.offsetHeight || 120;
+    el.style.left = Math.min(x, vw - w - 8) + 'px';
+    el.style.top = Math.min(y, vh - h - 8) + 'px';
+  }
+
+  function docsShowCtxMenu_(x, y, items){
+    docsCtxMenuEl_.innerHTML = items.map(function(it, i){
+      if (it.sep) return '<div class="docs-ctx-sep"></div>';
+      return '<div class="docs-ctx-menu-item' + (it.danger ? ' danger' : '') + '" data-i="' + i + '">' + escapeHtml(it.label) + '</div>';
+    }).join('');
+    docsCtxMenuEl_.querySelectorAll('.docs-ctx-menu-item').forEach(function(el){
+      el.addEventListener('click', function(e){
+        e.stopPropagation();
+        docsHideCtxMenu_();
+        var it = items[Number(el.dataset.i)];
+        if (it && it.onClick) it.onClick();
+      });
+    });
+    docsPositionFloating_(docsCtxMenuEl_, x, y);
+  }
+
+  // 파일이 지금 목록(docsCurrentListing.files)에 있으면 그 원본 객체를 찾아준다 — 파일보기 등이
+  // url뿐 아니라 id·mimeType 등 전체 정보가 필요해서 row의 data-* 대신 이걸로 통일해 쓴다.
+  function docsFileObjFromRow_(row){
+    return (docsCurrentListing.files || []).filter(function(x){ return x.id === row.dataset.id; })[0] || null;
+  }
+
+  // 파일(PDF·이미지) 좌클릭 시 "파일보기/파일관리" 선택 팝업.
+  function docsShowViewChoice_(x, y, row){
+    var kind = docsManageKind_(row.dataset.mime);
+    var manageLabel = kind === 'pdf' ? '📑 파일관리(PDF관리로 열기)' : '📷 파일관리(스캔으로 열기)';
+    var items = [
+      { label: '👁 파일보기', onClick: function(){ var fo = docsFileObjFromRow_(row); if (fo) docsOpenFileViewer_(fo); } },
+      { label: manageLabel, onClick: function(){
+        var fileObj = docsFileObjFromRow_(row);
+        if (!fileObj) return;
+        if (kind === 'pdf') openExistingFileInPdfManager(fileObj);
+        else openExistingFileInScan(fileObj);
+      } }
+    ];
+    docsViewChoiceEl_.innerHTML = items.map(function(it, i){
+      return '<div class="docs-ctx-menu-item" data-i="' + i + '">' + escapeHtml(it.label) + '</div>';
+    }).join('');
+    docsViewChoiceEl_.querySelectorAll('.docs-ctx-menu-item').forEach(function(el){
+      el.addEventListener('click', function(e){
+        e.stopPropagation();
+        docsHideCtxMenu_();
+        items[Number(el.dataset.i)].onClick();
+      });
+    });
+    docsPositionFloating_(docsViewChoiceEl_, x, y);
+  }
+
+  // 파일·폴더 행의 우클릭/⋮ 메뉴 — 이름변경·공유·이동·삭제(+PDF·이미지는 관리도구 바로가기).
+  function docsBuildRowCtxItems_(row){
+    var id = row.dataset.id, type = row.dataset.type;
+    var label = row.dataset.name || row.querySelector('.docs-name').textContent;
+    var items = [];
+    var kind = type === 'file' ? docsManageKind_(row.dataset.mime) : null;
+    if (kind === 'pdf') items.push({ label: '📑 PDF관리로 열기', onClick: function(){
+      var fileObj = (docsCurrentListing.files || []).filter(function(x){ return x.id === id; })[0];
+      if (fileObj) openExistingFileInPdfManager(fileObj);
+    } });
+    if (kind === 'image') items.push({ label: '📷 스캔으로 열기', onClick: function(){
+      var fileObj = (docsCurrentListing.files || []).filter(function(x){ return x.id === id; })[0];
+      if (fileObj) openExistingFileInScan(fileObj);
+    } });
+    if (items.length) items.push({ sep: true });
+    items.push({ label: '✏️ 이름변경', onClick: function(){
+      var newName = prompt('새 이름을 입력하세요:', label);
+      if (!newName || !newName.trim() || newName.trim() === label) return;
+      callGas('renameItem', { id: id, type: type, newName: newName.trim() }).then(function(res){
+        if (res.error){ toast('이름변경 실패: ' + res.error); return; }
+        toast('이름을 변경했습니다.');
+        docsNavigate(docsPath);
+      });
+    } });
+    items.push({ label: '🔗 공유', onClick: function(){ docsShareItem_(id, type, label); } });
+    items.push({ label: '📂 이동', onClick: function(){ docsOpenMoveModal_(id, type, label); } });
+    items.push({ sep: true });
+    items.push({ label: '🗑 삭제', danger: true, onClick: function(){
+      if (!confirm('"' + label + '"을(를) 삭제할까요? (휴지통으로 이동)')) return;
+      callGas('deleteItem', { id: id, type: type }).then(function(res){
+        if (res.error){ toast('삭제 실패: ' + res.error); return; }
+        toast('삭제했습니다.');
+        docsNavigate(docsPath);
+      });
+    } });
+    return items;
+  }
+
+  // 빈 목록 공간(또는 + 버튼) 우클릭 메뉴.
+  function docsBuildEmptyCtxItems_(){
+    return [
+      { label: '📁 새 폴더', onClick: function(){ document.getElementById('docsBtnNewFolder').click(); } },
+      { label: '📝 새 문서', onClick: docsCreateBlankDoc_ },
+      { label: '📤 파일 업로드', onClick: function(){ document.getElementById('docsBtnUpload').click(); } },
+      { sep: true },
+      { label: '📋 경과지', onClick: docsOpenLogModal_ },
+      { label: '🧮 계산기', onClick: docsOpenCalcModal_ },
+      { label: '🗺 관계도', onClick: docsOpenDiagramModal_ },
+      { sep: true },
+      { label: '🔍 파일 검색', onClick: docsOpenSearchModal_ },
+      { label: '🔗 제출현황', onClick: function(){
+        if (!docsSelectedCaseId_){ toast('먼저 사건을 선택해주세요(위 "사건" 드롭다운).', 'warning'); return; }
+        if (typeof goToView_ === 'function') goToView_('casehandling');
+        if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(docsSelectedCaseId_);
+      } },
+      { label: '🗑 휴지통', onClick: docsOpenTrashModal_ },
+      { sep: true },
+      { label: '🔄 새로고침', onClick: function(){ docsNavigate(docsPath); } }
+    ];
+  }
+  document.getElementById('docsList').addEventListener('contextmenu', function(e){
+    if (e.target.closest('.docs-row')) return; // 행 자체는 위에서 따로 처리됨
+    e.preventDefault();
+    docsShowCtxMenu_(e.clientX, e.clientY, docsBuildEmptyCtxItems_());
+  });
+  document.getElementById('docsFab').addEventListener('click', function(e){
+    e.stopPropagation();
+    var r = e.target.getBoundingClientRect();
+    docsShowCtxMenu_(r.left - 150, r.top - 8, docsBuildEmptyCtxItems_());
+  });
+
+  // ---- 새 문서 ----
+  function docsCreateBlankDoc_(){
+    var name = prompt('새 문서 이름을 입력하세요:', '새 문서');
+    if (!name || !name.trim()) return;
+    callGas('createBlankDoc', { folderId: docsCurrentListing.folderId, name: name.trim() }).then(function(res){
+      if (res.error){ toast('문서 만들기 실패: ' + res.error); return; }
+      toast('문서를 만들었습니다.');
+      docsNavigate(docsPath);
+      if (res.url) window.open(res.url, '_blank');
+    });
+  }
+
+  // ---- 공유 ----
+  function docsShareItem_(id, type, label){
+    callGas('shareItem', { id: id, type: type }).then(function(res){
+      if (res.error){ toast('공유 실패: ' + res.error); return; }
+      var url = res.url;
+      var copied = false;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url);
+          copied = true;
+        }
+      } catch (e) {}
+      if (copied) toast('"' + label + '" 공유 링크를 복사했습니다(링크가 있는 모든 사용자·보기 가능).');
+      else prompt('아래 링크가 복사되도록 공유설정을 바꿨습니다(직접 복사해주세요):', url);
+    });
+  }
+
+  // ---- 이동 ---- (여러 개를 한번에 이동할 수 있게 대상을 배열로 들고 있는다 — 선택바에서
+  // 여러 항목을 체크하고 "이동"을 눌러도, 우클릭 메뉴에서 항목 하나만 이동해도 같은 코드를 쓴다.)
+  var docsMoveTargets_ = []; // [{id, type}]
+  var docsMoveBrowsePath_ = [];
+  var docsMoveBrowseFolderId_ = null;
+  function docsOpenMoveModal_(id, type, label){
+    docsOpenMoveModalMulti_([{ id: id, type: type }], label);
+  }
+  function docsOpenMoveModalMulti_(targets, label){
+    docsMoveTargets_ = targets;
+    docsMoveBrowsePath_ = docsPath.slice(); // 지금 보고 있는 폴더에서 시작
+    document.getElementById('docsMoveItemName').textContent = label;
+    document.getElementById('docsMoveOverlay').style.display = 'flex';
+    docsMoveNavigate_(docsMoveBrowsePath_);
+  }
+  function docsMoveNavigate_(path){
+    docsMoveBrowsePath_ = path;
+    var listEl = document.getElementById('docsMoveList');
+    listEl.innerHTML = '<div class="spinner">불러오는 중…</div>';
+    callGas('listFolder', { path: path }).then(function(res){
+      if (res.error){ listEl.innerHTML = '<div class="log-empty">' + escapeHtml(res.error) + '</div>'; return; }
+      docsMoveBrowsePath_ = res.path || path;
+      docsMoveBrowseFolderId_ = res.folderId;
+      var bc = document.getElementById('docsMoveBreadcrumb');
+      bc.innerHTML = docsMoveBrowsePath_.map(function(seg, i){
+        return '<span data-i="' + i + '">' + escapeHtml(seg) + '</span>';
+      }).join(' / ');
+      bc.querySelectorAll('span').forEach(function(el){
+        el.addEventListener('click', function(){ docsMoveNavigate_(docsMoveBrowsePath_.slice(0, Number(el.dataset.i) + 1)); });
+      });
+      var folders = res.folders || [];
+      if (!folders.length){ listEl.innerHTML = '<div class="log-empty">하위 폴더가 없습니다.</div>'; return; }
+      listEl.innerHTML = folders.map(function(f){
+        return '<div class="docs-row" data-name="' + escapeHtml(f.name) + '"><span class="docs-icon">📁</span><span class="docs-name">' + escapeHtml(f.name) + '</span></div>';
+      }).join('');
+      listEl.querySelectorAll('.docs-row').forEach(function(row){
+        row.addEventListener('click', function(){ docsMoveNavigate_(docsMoveBrowsePath_.concat([row.dataset.name])); });
+      });
+    });
+  }
+  document.getElementById('btnCloseDocsMove').addEventListener('click', function(){
+    document.getElementById('docsMoveOverlay').style.display = 'none';
+  });
+  document.getElementById('docsMoveConfirmBtn').addEventListener('click', function(){
+    if (!docsMoveBrowseFolderId_){ toast('이동할 위치를 확인하지 못했습니다.', 'error'); return; }
+    var blocked = docsMoveTargets_.some(function(t){ return t.type === 'folder' && t.id === docsMoveBrowseFolderId_; });
+    if (blocked){ toast('같은 폴더로는 이동할 수 없습니다.', 'warning'); return; }
+    Promise.all(docsMoveTargets_.map(function(t){
+      return callGas('moveItem', { id: t.id, type: t.type, destFolderId: docsMoveBrowseFolderId_ });
+    })).then(function(results){
+      var failed = results.filter(function(r){ return r.error; });
+      if (failed.length) toast('일부 이동 실패(' + failed.length + '건): ' + failed[0].error, 'error');
+      else toast('이동했습니다.');
+      docsSelectedIds = {};
+      document.getElementById('docsMoveOverlay').style.display = 'none';
+      docsNavigate(docsPath);
+    });
+  });
+
+  // ---- 파일 검색 ----
+  function docsOpenSearchModal_(){
+    document.getElementById('docsSearchOverlay').style.display = 'flex';
+    document.getElementById('docsSearchResults').innerHTML = '';
+    var input = document.getElementById('docsSearchInput');
+    input.value = '';
+    setTimeout(function(){ input.focus(); }, 50);
+  }
+  document.getElementById('btnCloseDocsSearch').addEventListener('click', function(){
+    document.getElementById('docsSearchOverlay').style.display = 'none';
+  });
+  function docsRunSearch_(){
+    var q = document.getElementById('docsSearchInput').value.trim();
+    if (!q) return;
+    var resultsEl = document.getElementById('docsSearchResults');
+    resultsEl.innerHTML = '<div class="spinner">검색 중…</div>';
+    callGas('searchFiles', { query: q }).then(function(res){
+      if (res.error){ resultsEl.innerHTML = '<div class="log-empty">' + escapeHtml(res.error) + '</div>'; return; }
+      var items = res.items || [];
+      if (!items.length){ resultsEl.innerHTML = '<div class="log-empty">검색 결과가 없습니다.</div>'; return; }
+      resultsEl.innerHTML = items.map(function(it, i){
+        var icon = it.type === 'folder' ? '📁' : docsIconFor(it.mimeType, it.name);
+        return '<div class="docs-search-result" data-i="' + i + '">' +
+          '<div>' + icon + ' ' + escapeHtml(it.name) + '</div>' +
+          '<div class="p">' + escapeHtml((it.path || []).join(' / ') || '(최상위)') + '</div>' +
+          '</div>';
+      }).join('');
+      resultsEl.querySelectorAll('.docs-search-result').forEach(function(el){
+        el.addEventListener('click', function(){
+          var it = items[Number(el.dataset.i)];
+          document.getElementById('docsSearchOverlay').style.display = 'none';
+          // 파일이면 부모 폴더로, 폴더면 그 폴더 자체로 이동한다(검색결과엔 파일 url이 없어서
+          // 미리보기 대신 "어디 있는지 찾아가서 직접 열기"로 안내).
+          var targetPath = it.type === 'folder' ? (it.path || []).concat([it.name]) : (it.path || []);
+          docsNavigate(targetPath);
+        });
+      });
+    });
+  }
+  document.getElementById('docsSearchRunBtn').addEventListener('click', docsRunSearch_);
+  document.getElementById('docsSearchInput').addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.keyCode === 13) docsRunSearch_(); });
+
+  // ---- 휴지통 ----
+  function docsOpenTrashModal_(){
+    document.getElementById('docsTrashFolderName').textContent = docsPath.length ? docsPath[docsPath.length - 1] : '고객사건';
+    document.getElementById('docsTrashOverlay').style.display = 'flex';
+    docsLoadTrash_();
+  }
+  document.getElementById('btnCloseDocsTrash').addEventListener('click', function(){
+    document.getElementById('docsTrashOverlay').style.display = 'none';
+  });
+  function docsLoadTrash_(){
+    var listEl = document.getElementById('docsTrashList');
+    listEl.innerHTML = '<div class="spinner">불러오는 중…</div>';
+    callGas('listTrash', { folderId: docsCurrentListing.folderId }).then(function(res){
+      if (res.error){ listEl.innerHTML = '<div class="log-empty">' + escapeHtml(res.error) + '</div>'; return; }
+      var items = res.items || [];
+      if (!items.length){ listEl.innerHTML = '<div class="log-empty">이 폴더에는 삭제된 항목이 없습니다.</div>'; return; }
+      listEl.innerHTML = items.map(function(it, i){
+        return '<div class="docs-trash-row" data-i="' + i + '">' +
+          '<span class="docs-icon">' + (it.type === 'folder' ? '📁' : '📄') + '</span>' +
+          '<span class="docs-name" style="flex:1;">' + escapeHtml(it.name) + '</span>' +
+          '<button type="button" class="ghost-btn" data-act="restore" style="font-size:12px;">↩ 복원</button>' +
+          '</div>';
+      }).join('');
+      listEl.querySelectorAll('[data-act="restore"]').forEach(function(btn, idx){
+        btn.addEventListener('click', function(){
+          var it = items[idx];
+          callGas('restoreItem', { id: it.id, type: it.type }).then(function(res2){
+            if (res2.error){ toast('복원 실패: ' + res2.error); return; }
+            toast('"' + it.name + '"을(를) 복원했습니다.');
+            docsLoadTrash_();
+            docsNavigate(docsPath);
+          });
         });
       });
     });
@@ -792,6 +1478,8 @@
     if (!ids.length){ bar.style.display = 'none'; return; }
     bar.style.display = 'flex';
     document.getElementById('docsSelectionCount').textContent = ids.length + '개 선택됨';
+    // 이름변경은 한 번에 하나에만 의미가 있다.
+    document.getElementById('docsBtnRenameSelected').style.display = (ids.length === 1) ? '' : 'none';
   }
 
   function docsSelectedFileObjs_(){
@@ -799,6 +1487,58 @@
     var files = (docsCurrentListing && docsCurrentListing.files) || [];
     return ids.map(function(id){ return files.filter(function(f){ return f.id === id; })[0]; }).filter(Boolean);
   }
+
+  // 파일·폴더 구분 없이 선택된 항목을 { id, name, type } 형태로 돌려준다 — 선택바의
+  // 이름변경/공유/삭제/이동은 폴더도 대상이 될 수 있어서 docsSelectedFileObjs_(파일 전용)와 별도로 둔다.
+  function docsSelectedItemObjs_(){
+    var ids = Object.keys(docsSelectedIds);
+    var files = (docsCurrentListing && docsCurrentListing.files) || [];
+    var folders = (docsCurrentListing && docsCurrentListing.folders) || [];
+    return ids.map(function(id){
+      var f = files.filter(function(x){ return x.id === id; })[0];
+      if (f) return { id: f.id, name: f.name, type: 'file' };
+      var d = folders.filter(function(x){ return x.id === id; })[0];
+      if (d) return { id: d.id, name: d.name, type: 'folder' };
+      return null;
+    }).filter(Boolean);
+  }
+
+  document.getElementById('docsBtnRenameSelected').addEventListener('click', function(){
+    var items = docsSelectedItemObjs_();
+    if (items.length !== 1) return;
+    var it = items[0];
+    var newName = prompt('새 이름을 입력하세요:', it.name);
+    if (!newName || !newName.trim() || newName.trim() === it.name) return;
+    callGas('renameItem', { id: it.id, type: it.type, newName: newName.trim() }).then(function(res){
+      if (res.error){ toast('이름변경 실패: ' + res.error); return; }
+      toast('이름을 변경했습니다.');
+      docsSelectedIds = {};
+      docsNavigate(docsPath);
+    });
+  });
+  document.getElementById('docsBtnShareSelected').addEventListener('click', function(){
+    var items = docsSelectedItemObjs_();
+    items.forEach(function(it){ docsShareItem_(it.id, it.type, it.name); });
+  });
+  document.getElementById('docsBtnDeleteSelected').addEventListener('click', function(){
+    var items = docsSelectedItemObjs_();
+    if (!items.length) return;
+    var label = items.length === 1 ? ('"' + items[0].name + '"') : (items.length + '개 항목');
+    if (!confirm(label + '을(를) 삭제할까요? (휴지통으로 이동)')) return;
+    Promise.all(items.map(function(it){ return callGas('deleteItem', { id: it.id, type: it.type }); })).then(function(results){
+      var failed = results.filter(function(r){ return r.error; });
+      if (failed.length) toast('일부 삭제 실패(' + failed.length + '건): ' + failed[0].error, 'error');
+      else toast('삭제했습니다.');
+      docsSelectedIds = {};
+      docsNavigate(docsPath);
+    });
+  });
+  document.getElementById('docsBtnMoveSelected').addEventListener('click', function(){
+    var items = docsSelectedItemObjs_();
+    if (!items.length) return;
+    var label = items.length === 1 ? items[0].name : (items.length + '개 항목');
+    docsOpenMoveModalMulti_(items, label);
+  });
 
   document.getElementById('docsBtnClearSelection').addEventListener('click', function(){
     docsSelectedIds = {};
@@ -1532,4 +2272,539 @@
       });
     }catch(e){ document.execCommand('copy'); toast('클립보드에 복사했습니다.'); }
   });
+
+  // ============================================================
+  // [2026.09 이식] 계산기 — 사건 폴더별 임시 세액 개산 워크시트 (work.netax.kr explorer.js 이식).
+  // [n] 참조 문법으로 앞 행을 계산에 쓰고, 누진세(...)·장특공제율(...) 등 세무 함수는
+  // taxcalc-engine.html이 이미 정의해둔 window.resolveCalcTaxFunctions를 그대로 쓴다.
+  // ============================================================
+  var DOCS_CALC_FILE_NAME_ = '계산기.json';
+  var docsCalcFolderId_ = null;
+  var docsCalcFileId_ = null;
+  var docsCalcRows_ = [];
+  var docsCalcSaveTimer_ = null;
+
+  function docsEvalCalcRows_(){
+    var results = {};
+    docsCalcRows_.forEach(function(row, idx){
+      var ref = String(idx + 1);
+      var raw = (row.formula || '').trim();
+      var val = NaN;
+      if (raw.indexOf('=') === 0){
+        var expr = raw.slice(1).replace(/\[(\d+)\]/g, function(m, n){ return (n in results) ? String(results[n]) : '0'; });
+        if (typeof resolveCalcTaxFunctions === 'function') expr = resolveCalcTaxFunctions(expr);
+        expr = expr.replace(/%/g, '/100');
+        if (/^[0-9+\-*/().\s]+$/.test(expr) && expr.trim()){
+          try { val = Function('"use strict"; return (' + expr + ')')(); } catch(err){ val = NaN; }
+        }
+      } else if (raw !== ''){
+        var n = Number(raw.replace(/,/g, ''));
+        val = Number.isFinite(n) ? n : NaN;
+      }
+      results[ref] = Number.isFinite(val) ? val : 0;
+      row.result = val;
+    });
+  }
+
+  function docsRenderCalcRows_(){
+    docsEvalCalcRows_();
+    var body = document.getElementById('docsCalcRowsBody');
+    body.innerHTML = '';
+    docsCalcRows_.forEach(function(row, idx){
+      var ref = '[' + (idx + 1) + ']';
+      var tr = document.createElement('tr');
+      tr.dataset.rowId = row.id;
+
+      var tdRef = document.createElement('td');
+      tdRef.style.cssText = 'padding:4px 6px; color:var(--sub); font-family:monospace;';
+      tdRef.textContent = ref;
+
+      var tdLabel = document.createElement('td');
+      tdLabel.style.padding = '4px 6px';
+      var labelInput = document.createElement('input');
+      labelInput.type = 'text';
+      labelInput.placeholder = '항목명';
+      labelInput.value = row.label || '';
+      labelInput.style.width = '100%';
+      labelInput.addEventListener('input', function(){ row.label = labelInput.value; });
+      labelInput.addEventListener('change', docsSaveCalc_);
+      labelInput.addEventListener('keydown', function(e){ if (e.key === 'Enter'){ e.preventDefault(); docsInsertCalcRowAfter_(row.id, 'label'); } });
+      tdLabel.appendChild(labelInput);
+
+      var tdFormula = document.createElement('td');
+      tdFormula.style.padding = '4px 6px';
+      var formulaInput = document.createElement('input');
+      formulaInput.type = 'text';
+      formulaInput.placeholder = '예: 500000000 또는 =[1]*0.06';
+      formulaInput.value = row.formula || '';
+      formulaInput.style.width = '100%';
+      formulaInput.addEventListener('input', function(){ row.formula = formulaInput.value; docsUpdateCalcResults_(); });
+      formulaInput.addEventListener('change', docsSaveCalc_);
+      formulaInput.addEventListener('keydown', function(e){ if (e.key === 'Enter'){ e.preventDefault(); docsInsertCalcRowAfter_(row.id, 'formula'); } });
+      tdFormula.appendChild(formulaInput);
+
+      var tdResult = document.createElement('td');
+      tdResult.style.cssText = 'padding:4px 6px; text-align:right; font-weight:600;' + (Number.isFinite(row.result) ? '' : 'color:#c0392b;');
+      tdResult.textContent = Number.isFinite(row.result) ? row.result.toLocaleString('ko-KR') : '오류';
+
+      var tdDel = document.createElement('td');
+      tdDel.style.padding = '4px 6px';
+      var delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.textContent = '✕';
+      delBtn.title = '이 행 삭제';
+      delBtn.style.cssText = 'border:none; background:none; color:var(--sub); cursor:pointer; font-size:13px;';
+      delBtn.addEventListener('click', function(){
+        docsCalcRows_ = docsCalcRows_.filter(function(r){ return r.id !== row.id; });
+        docsRenderCalcRows_();
+        docsSaveCalc_();
+      });
+      tdDel.appendChild(delBtn);
+
+      tr.appendChild(tdRef); tr.appendChild(tdLabel); tr.appendChild(tdFormula); tr.appendChild(tdResult); tr.appendChild(tdDel);
+      body.appendChild(tr);
+    });
+  }
+
+  // 행 구조(입력창)는 그대로 두고 결과 칸만 갱신 — 타이핑 중 커서가 날아가지 않도록.
+  function docsUpdateCalcResults_(){
+    docsEvalCalcRows_();
+    docsCalcRows_.forEach(function(row){
+      var tr = document.querySelector('#docsCalcRowsBody tr[data-row-id="' + row.id + '"]');
+      if (!tr) return;
+      var tdResult = tr.children[3];
+      tdResult.style.color = Number.isFinite(row.result) ? '' : '#c0392b';
+      tdResult.textContent = Number.isFinite(row.result) ? row.result.toLocaleString('ko-KR') : '오류';
+    });
+  }
+
+  function docsInsertCalcRowAfter_(afterRowId, field){
+    var idx = docsCalcRows_.findIndex(function(r){ return r.id === afterRowId; });
+    var newRow = { id: 'c' + Date.now() + Math.random().toString(36).slice(2, 6), label: '', formula: '' };
+    docsCalcRows_.splice(idx + 1, 0, newRow);
+    docsRenderCalcRows_();
+    docsSaveCalc_();
+    requestAnimationFrame(function(){
+      var newTr = document.querySelector('#docsCalcRowsBody tr[data-row-id="' + newRow.id + '"]');
+      if (!newTr) return;
+      var targetTd = field === 'formula' ? newTr.children[2] : newTr.children[1];
+      var targetInput = targetTd && targetTd.querySelector('input');
+      if (targetInput) targetInput.focus();
+    });
+  }
+
+  function docsAddCalcRow_(){
+    docsCalcRows_.push({ id: 'c' + Date.now() + Math.random().toString(36).slice(2, 6), label: '', formula: '' });
+    docsRenderCalcRows_();
+  }
+
+  function docsSaveCalcNow_(){
+    var statusEl = document.getElementById('docsCalcSaveStatus');
+    statusEl.textContent = '저장 중…';
+    var payload = {
+      folderId: docsCalcFolderId_,
+      name: DOCS_CALC_FILE_NAME_,
+      mimeType: 'application/json',
+      base64Data: utf8ToBase64(JSON.stringify(docsCalcRows_.map(function(r){ return { id: r.id, label: r.label, formula: r.formula }; })))
+    };
+    if (docsCalcFileId_) payload.fileId = docsCalcFileId_;
+    return callGas('uploadFile', payload).then(function(res){
+      if (res.error){ statusEl.textContent = '저장 실패'; toast('계산기 저장 실패: ' + res.error); return; }
+      if (!docsCalcFileId_) docsCalcFileId_ = res.id;
+      statusEl.textContent = '저장됨 ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+    }).catch(function(err){
+      statusEl.textContent = '저장 실패';
+      toast('계산기 저장 중 오류: ' + (err && err.message ? err.message : err));
+    });
+  }
+
+  function docsSaveCalc_(){
+    document.getElementById('docsCalcSaveStatus').textContent = '저장 대기…';
+    clearTimeout(docsCalcSaveTimer_);
+    docsCalcSaveTimer_ = setTimeout(docsSaveCalcNow_, 600);
+  }
+
+  function docsOpenCalcModal_(){
+    if (!docsCurrentListing || !docsCurrentListing.folderId){ toast('먼저 폴더를 열어주세요.'); return; }
+    docsCalcFolderId_ = docsCurrentListing.folderId;
+    document.getElementById('docsCalcFolderLabel').textContent = docsPath.join(' / ');
+    document.getElementById('docsCalcOverlay').style.display = 'flex';
+    document.getElementById('docsCalcRowsBody').innerHTML = '<tr><td colspan="5" style="padding:10px; color:var(--sub);">불러오는 중…</td></tr>';
+    var existing = (docsCurrentListing.files || []).find(function(f){ return f.name === DOCS_CALC_FILE_NAME_; });
+    var loadPromise;
+    if (existing){
+      docsCalcFileId_ = existing.id;
+      loadPromise = callGas('readFile', { fileId: existing.id }).then(function(fileData){
+        docsCalcRows_ = fileData.content ? JSON.parse(fileData.content) : [];
+      });
+    } else {
+      docsCalcFileId_ = null;
+      docsCalcRows_ = [];
+      loadPromise = Promise.resolve();
+    }
+    loadPromise.catch(function(){ docsCalcFileId_ = null; docsCalcRows_ = []; }).then(function(){
+      if (!docsCalcRows_.length) docsAddCalcRow_();
+      docsRenderCalcRows_();
+    });
+  }
+
+  function docsCloseCalcModal_(){
+    var pending = docsCalcSaveTimer_ ? (clearTimeout(docsCalcSaveTimer_), docsCalcSaveTimer_ = null, docsSaveCalcNow_()) : Promise.resolve();
+    document.getElementById('docsCalcOverlay').style.display = 'none';
+    pending.then(function(){ docsNavigate(docsPath); }); // 방금 저장한 계산기.json이 목록에 바로 보이도록
+  }
+
+  // ---- 계산기 템플릿 — 자주 쓰는 세무 계산 패턴(work.netax.kr explorer.js CALC_TEMPLATES 그대로) ----
+  var DOCS_CALC_TEMPLATES_ = [
+    { name: '양도소득세 개산(기본, 2년 이상 보유)', rows: [
+      { label: '양도가액', formula: '' }, { label: '취득가액', formula: '' }, { label: '필요경비', formula: '' },
+      { label: '양도차익', formula: '=[1]-[2]-[3]' }, { label: '보유연수(만 단위, 직접 입력)', formula: '' },
+      { label: '장기보유특별공제율(일반)', formula: '=장특공제율([5])' }, { label: '장기보유특별공제액', formula: '=[4]*[6]' },
+      { label: '양도소득금액', formula: '=[4]-[7]' }, { label: '기본공제', formula: '2500000' },
+      { label: '과세표준(0 미만이면 0)', formula: '=최댓값([8]-[9],0)' }, { label: '산출세액(기본세율)', formula: "=누진세([10],'양도')" },
+      { label: '지방소득세(10%)', formula: '=[11]*0.1' }, { label: '납부세액 합계', formula: '=[11]+[12]' }
+    ] },
+    { name: '양도소득세 개산(1세대1주택, 12억 초과분)', rows: [
+      { label: '양도가액', formula: '' }, { label: '취득가액', formula: '' }, { label: '필요경비', formula: '' },
+      { label: '양도차익', formula: '=[1]-[2]-[3]' },
+      { label: '과세대상양도차익(12억 초과분 안분, 12억 이하면 전액 비과세이므로 이 템플릿 불필요)', formula: '=[4]*([1]-1200000000)/[1]' },
+      { label: '보유연수(만 단위, 직접 입력)', formula: '' }, { label: '거주연수(만 단위, 직접 입력)', formula: '' },
+      { label: '장기보유특별공제율(1세대1주택 특례)', formula: '=장특공제율1주택([6],[7])' }, { label: '장기보유특별공제액', formula: '=[5]*[8]' },
+      { label: '양도소득금액', formula: '=[5]-[9]' }, { label: '기본공제', formula: '2500000' },
+      { label: '과세표준(0 미만이면 0)', formula: '=최댓값([10]-[11],0)' }, { label: '산출세액(기본세율)', formula: "=누진세([12],'양도')" },
+      { label: '지방소득세(10%)', formula: '=[13]*0.1' }, { label: '납부세액 합계', formula: '=[13]+[14]' }
+    ] },
+    { name: '양도소득세 개산(다주택자 중과, 조정대상지역 2주택 이상)', rows: [
+      { label: '양도가액', formula: '' }, { label: '취득가액', formula: '' }, { label: '필요경비', formula: '' },
+      { label: '양도차익(중과대상은 장기보유특별공제가 배제되므로 이 값이 곧 양도소득금액)', formula: '=[1]-[2]-[3]' },
+      { label: '기본공제', formula: '2500000' }, { label: '과세표준(0 미만이면 0)', formula: '=최댓값([4]-[5],0)' },
+      { label: '산출세액(기본세율)', formula: "=누진세([6],'양도')" },
+      { label: '중과가산율(조정대상지역 2주택이면 0.2, 3주택 이상이면 0.3 — 조정대상지역 지정·한시배제 여부는 신고 시점 기준으로 반드시 재확인)', formula: '0.2' },
+      { label: '중과가산액', formula: '=[6]*[8]' }, { label: '산출세액(중과 후)', formula: '=[7]+[9]' },
+      { label: '지방소득세(10%)', formula: '=[10]*0.1' }, { label: '납부세액 합계', formula: '=[10]+[11]' }
+    ] },
+    { name: '양도소득세 개산(비사업용토지, 기본세율+10%p)', rows: [
+      { label: '양도가액', formula: '' }, { label: '취득가액', formula: '' }, { label: '필요경비', formula: '' },
+      { label: '양도차익', formula: '=[1]-[2]-[3]' }, { label: '보유연수(만 단위, 직접 입력)', formula: '' },
+      { label: '장기보유특별공제율(일반)', formula: '=장특공제율([5])' }, { label: '장기보유특별공제액', formula: '=[4]*[6]' },
+      { label: '양도소득금액', formula: '=[4]-[7]' }, { label: '기본공제', formula: '2500000' },
+      { label: '과세표준(0 미만이면 0)', formula: '=최댓값([8]-[9],0)' }, { label: '산출세액(기본세율)', formula: "=누진세([10],'양도')" },
+      { label: '비사업용토지 가산액(+10%p)', formula: '=[10]*0.1' }, { label: '산출세액(가산 후)', formula: '=[11]+[12]' },
+      { label: '지방소득세(10%)', formula: '=[13]*0.1' }, { label: '납부세액 합계', formula: '=[13]+[14]' }
+    ] },
+    { name: '양도소득세 개산(미등기양도자산, 70% 단일세율)', rows: [
+      { label: '양도가액', formula: '' }, { label: '취득가액', formula: '' }, { label: '필요경비', formula: '' },
+      { label: '양도차익(장기보유특별공제·기본공제 전부 배제)', formula: '=[1]-[2]-[3]' },
+      { label: '산출세액(70% 단일세율, 0 미만이면 0)', formula: '=최댓값([4]*0.7,0)' }, { label: '지방소득세(10%)', formula: '=[5]*0.1' },
+      { label: '납부세액 합계', formula: '=[5]+[6]' }
+    ] },
+    { name: '양도소득세 개산(8년 자경농지 감면)', rows: [
+      { label: '양도가액', formula: '' }, { label: '취득가액', formula: '' }, { label: '필요경비', formula: '' },
+      { label: '양도차익', formula: '=[1]-[2]-[3]' }, { label: '보유연수(만 단위, 직접 입력)', formula: '' },
+      { label: '장기보유특별공제율(일반)', formula: '=장특공제율([5])' }, { label: '장기보유특별공제액', formula: '=[4]*[6]' },
+      { label: '양도소득금액', formula: '=[4]-[7]' }, { label: '기본공제', formula: '2500000' },
+      { label: '과세표준(0 미만이면 0)', formula: '=최댓값([8]-[9],0)' }, { label: '산출세액(감면 전)', formula: "=누진세([10],'양도')" },
+      { label: '자경농지감면액(연 1억 한도 — 5년 합산 2억 한도는 다른 감면 이력과 별도로 직접 확인)', formula: '=자경농지감면([11])' },
+      { label: '산출세액(감면 후)', formula: '=[11]-[12]' }, { label: '지방소득세(10%)', formula: '=[13]*0.1' },
+      { label: '납부세액 합계', formula: '=[13]+[14]' }
+    ] },
+    { name: '취득세 개산(기본, 4주택 미만 기준율 예시)', rows: [
+      { label: '취득가액(과세표준)', formula: '' }, { label: '취득세율(%, 예: 1~3 또는 8/12 등 사안별 확인)', formula: '' },
+      { label: '취득세', formula: '=[1]*([2]%)' }, { label: '지방교육세(취득세의 10%, 통상)', formula: '=[3]*0.1' },
+      { label: '농어촌특별세(해당 시)', formula: '' }, { label: '합계', formula: '=[3]+[4]+[5]' }
+    ] },
+    { name: '증여세 개산(자동계산, 부담부증여 포함)', rows: [
+      { label: '증여재산가액', formula: '' },
+      { label: '인수채무액(부담부증여, 없으면 0 — 이 금액만큼은 증여자에게 별도로 양도소득세가 과세되니 위 양도소득세 템플릿으로 따로 계산할 것)', formula: '0' },
+      { label: '순수증여재산가액', formula: '=[1]-[2]' },
+      { label: '증여재산공제 (괄호 안 관계를 배우자/직계존속/직계비속/기타친족/기타 중 실제로 바꾸고, 미성년자면 뒤 숫자를 1로)', formula: '=증여공제(직계존속,0)' },
+      { label: '과세표준(0 미만이면 0)', formula: '=최댓값([3]-[4],0)' }, { label: '산출세액(할증 전)', formula: "=누진세([5],'증여상속')" },
+      { label: '세대생략할증률(해당 없으면 0, 손자녀 등 세대생략이면 0.3, 미성년자+20억 초과면 0.4)', formula: '0' },
+      { label: '산출세액(할증 후)', formula: '=[6]+[6]*[7]' },
+      { label: '기납부세액공제(10년 이내 동일인 기증여분에 이미 낸 세액, 없으면 0)', formula: '0' },
+      { label: '기납부세액공제 차감 후(0 미만이면 0)', formula: '=최댓값([8]-[9],0)' },
+      { label: '신고세액공제(3%)', formula: '=[10]*0.03' }, { label: '납부세액', formula: '=[10]-[11]' }
+    ] },
+    { name: '상속세 개산(자동계산, 금융재산·동거주택·감정평가공제 포함)', rows: [
+      { label: '상속세과세가액(총상속재산가액-공과금·장례비용·채무+10년내 사전증여 등 반영 후)', formula: '' },
+      { label: '인적공제 합계(자녀 5천만×인원 + 미성년 1천만×잔여연수 + 연로자 5천만×인원 + 장애인 1천만×잔여연수, 직접 계산해 입력)', formula: '' },
+      { label: '기초+인적공제 vs 일괄공제(5억) 중 큰 값', formula: '=일괄공제비교([2])' },
+      { label: '배우자공제 (괄호 안을 실제상속액,법정상속분으로 바꾸기 — 배우자가 없으면 이 행 전체를 0으로)', formula: '=배우자공제(0,0)' },
+      { label: '순금융재산가액(금융재산-금융채무, 없으면 0)', formula: '0' }, { label: '금융재산상속공제', formula: '=금융재산공제([5])' },
+      { label: '동거주택가액(10년 이상 동거·무주택 등 요건 충족 시만, 없으면 0)', formula: '0' },
+      { label: '동거주택상속공제(6억 한도)', formula: '=최소값([7],600000000)' },
+      { label: '감정평가수수료(부동산 감정평가 등, 없으면 0)', formula: '0' },
+      { label: '감정평가수수료공제(500만원 한도)', formula: '=최소값([9],5000000)' },
+      { label: '상속공제 합계', formula: '=[3]+[4]+[6]+[8]+[10]' }, { label: '과세표준(0 미만이면 0)', formula: '=최댓값([1]-[11],0)' },
+      { label: '산출세액', formula: "=누진세([12],'증여상속')" },
+      { label: '기납부증여세액공제(10년내 사전증여분에 이미 낸 증여세, 없으면 0)', formula: '0' },
+      { label: '기납부증여세액공제 차감 후(0 미만이면 0)', formula: '=최댓값([13]-[14],0)' },
+      { label: '신고세액공제(3%)', formula: '=[15]*0.03' }, { label: '납부세액', formula: '=[15]-[16]' }
+    ] }
+  ];
+
+  document.getElementById('docsBtnCalcTemplate').addEventListener('click', function(e){
+    e.stopPropagation();
+    var r = e.currentTarget.getBoundingClientRect();
+    var items = DOCS_CALC_TEMPLATES_.map(function(tpl){
+      return { label: tpl.name, onClick: function(){
+        var hasContent = docsCalcRows_.some(function(rr){ return (rr.label && rr.label.trim()) || (rr.formula && rr.formula.trim()); });
+        if (hasContent){
+          if (confirm('기존 계산기 내용이 있습니다.\n확인 = 지우고 이 템플릿으로 새로 시작\n취소 = 기존 행 뒤에 이어붙이기')){
+            docsCalcRows_ = [];
+          }
+        }
+        var offset = docsCalcRows_.length;
+        tpl.rows.forEach(function(rr){
+          var shiftedFormula = (rr.formula || '').replace(/\[(\d+)\]/g, function(m, n){ return '[' + (Number(n) + offset) + ']'; });
+          docsCalcRows_.push({ id: 'c' + Date.now() + Math.random().toString(36).slice(2, 6), label: rr.label, formula: shiftedFormula });
+        });
+        docsRenderCalcRows_();
+        docsSaveCalc_();
+      } };
+    });
+    docsShowCtxMenu_(r.left, r.bottom + 4, items);
+  });
+
+  document.getElementById('docsBtnCalcAddRow').addEventListener('click', function(){ docsAddCalcRow_(); docsSaveCalc_(); });
+
+  document.getElementById('docsBtnCalcCopyTable').addEventListener('click', function(){
+    docsEvalCalcRows_();
+    var header = '| 항목 | 값/계산식 | 결과 |\n|---|---|---|';
+    var lines = docsCalcRows_.map(function(r){
+      var result = Number.isFinite(r.result) ? r.result.toLocaleString('ko-KR') : '오류';
+      return '| ' + (r.label || '') + ' | ' + (r.formula || '') + ' | ' + result + ' |';
+    });
+    var md = [header].concat(lines).join('\n');
+    navigator.clipboard.writeText(md).then(function(){ toast('마크다운 표를 클립보드에 복사했습니다.'); }).catch(function(){ toast('복사에 실패했습니다.'); });
+  });
+
+  // ---- 📅 세법 기한계산 — date-fns로 "그 달 말일부터 N개월" 신고기한을 계산 (참고용) ----
+  document.getElementById('docsBtnCalcDeadlineRun').addEventListener('click', function(){
+    var baseVal = document.getElementById('docsCalcDeadlineBaseDate').value;
+    if (!baseVal){ toast('기준일을 먼저 선택하세요.'); return; }
+    if (typeof dateFns === 'undefined'){ toast('날짜 계산 라이브러리를 불러오지 못했습니다.'); return; }
+    var months = { transfer: 2, gift: 3, inheritance: 6, inheritance_overseas: 9 }[document.getElementById('docsCalcDeadlineType').value] || 0;
+    var base = new Date(baseVal + 'T00:00:00');
+    var monthEnd = dateFns.endOfMonth(base);
+    var rough = dateFns.addMonths(monthEnd, months);
+    // addMonths는 day-of-month를 유지하며 더하므로 도착한 달이 더 길면 말일이 아닐 수 있다 — 한 번 더 말일로 보정.
+    var deadline = dateFns.endOfMonth(rough);
+    var weekdayKo = ['일','월','화','수','목','금','토'][deadline.getDay()];
+    document.getElementById('docsCalcDeadlineResult').textContent = '신고기한: ' + dateFns.format(deadline, 'yyyy-MM-dd') + ' (' + weekdayKo + ')';
+  });
+
+  document.getElementById('btnCloseDocsCalc').addEventListener('click', docsCloseCalcModal_);
+
+  // ============================================================
+  // [2026.09 이식] 관계도 — mermaid 문법으로 그리는 가계도·지분관계·조직도 (explorer.js 이식).
+  // mermaid 라이브러리 자체와 NETAX 브랜드 테마 초기화는 reportwriter.html이 이미 해둔 것을 그대로 쓴다.
+  // ============================================================
+  var DOCS_DIAGRAM_FILE_NAME_ = '관계도.mmd';
+  var DOCS_DIAGRAM_DEFAULT_ = 'graph TD\n  A[아버지] --> B[자녀1]\n  A --> C[자녀2]';
+  var docsDiagramFolderId_ = null;
+  var docsDiagramFileId_ = null;
+  var docsDiagramRenderTimer_ = null;
+  var docsDiagramRenderSeq_ = 0;
+
+  function docsRenderDiagramPreview_(){
+    var code = document.getElementById('docsDiagramInput').value.trim();
+    var preview = document.getElementById('docsDiagramPreview');
+    if (!code){
+      preview.innerHTML = '<div style="color:var(--sub); font-size:12.5px;">왼쪽에 mermaid 문법으로 입력하면 여기에 그려집니다.</div>';
+      return;
+    }
+    if (!window.mermaid){
+      preview.innerHTML = '<div style="color:#c0392b; font-size:12.5px;">mermaid 라이브러리를 불러오지 못했습니다.</div>';
+      return;
+    }
+    var id = 'docsDiagram' + (docsDiagramRenderSeq_++);
+    mermaid.render(id, code).then(function(res){
+      // [2026.09 버그수정] DOMPurify의 svg 프로필은 기본적으로 <foreignObject>를 허용하지 않는데,
+      // mermaid의 flowchart 노드 라벨(htmlLabels:true, reportwriter.html의 전역 설정)은 그
+      // foreignObject 안에 들어있어 — 그대로 두면 도형만 그려지고 글자(한글 라벨)가 통째로
+      // 사라진다. ADD_TAGS로 foreignObject만 허용을 추가하고, 그 안 내용은 DOMPurify가 여전히
+      // 정상적으로 한 번 더 걸러준다.
+      preview.innerHTML = (typeof DOMPurify !== 'undefined')
+        ? DOMPurify.sanitize(res.svg, { USE_PROFILES: { svg: true, svgFilters: true }, ADD_TAGS: ['foreignObject'] })
+        : res.svg;
+    }).catch(function(err){
+      preview.innerHTML = '<div style="color:#c0392b; font-size:12.5px; white-space:pre-wrap;">문법 오류:\n' + escapeHtml(err && err.message ? err.message : String(err)) + '</div>';
+    });
+  }
+
+  document.getElementById('docsDiagramInput').addEventListener('input', function(){
+    clearTimeout(docsDiagramRenderTimer_);
+    docsDiagramRenderTimer_ = setTimeout(docsRenderDiagramPreview_, 500);
+  });
+
+  function docsSaveDiagram_(){
+    var payload = {
+      folderId: docsDiagramFolderId_,
+      name: DOCS_DIAGRAM_FILE_NAME_,
+      mimeType: 'text/plain',
+      base64Data: utf8ToBase64(document.getElementById('docsDiagramInput').value)
+    };
+    if (docsDiagramFileId_) payload.fileId = docsDiagramFileId_;
+    return callGas('uploadFile', payload).then(function(res){
+      if (res.error){ toast('관계도 저장 실패: ' + res.error); return; }
+      if (!docsDiagramFileId_) docsDiagramFileId_ = res.id;
+      var btn = document.getElementById('btnDocsDiagramSave');
+      btn.textContent = '✓ 저장됨';
+      clearTimeout(btn._flashTimer);
+      btn._flashTimer = setTimeout(function(){ btn.textContent = '저장'; }, 1200);
+    }).catch(function(err){
+      toast('관계도 저장 중 오류: ' + (err && err.message ? err.message : err));
+    });
+  }
+
+  function docsOpenDiagramModal_(){
+    if (!docsCurrentListing || !docsCurrentListing.folderId){ toast('먼저 폴더를 열어주세요.'); return; }
+    docsDiagramFolderId_ = docsCurrentListing.folderId;
+    document.getElementById('docsDiagramFolderLabel').textContent = docsPath.join(' / ');
+    document.getElementById('docsDiagramOverlay').style.display = 'flex';
+    var existing = (docsCurrentListing.files || []).find(function(f){ return f.name === DOCS_DIAGRAM_FILE_NAME_; });
+    var input = document.getElementById('docsDiagramInput');
+    var loadPromise;
+    if (existing){
+      docsDiagramFileId_ = existing.id;
+      loadPromise = callGas('readFile', { fileId: existing.id }).then(function(fileData){ input.value = fileData.content || ''; });
+    } else {
+      docsDiagramFileId_ = null;
+      input.value = DOCS_DIAGRAM_DEFAULT_;
+      loadPromise = Promise.resolve();
+    }
+    loadPromise.catch(function(){ docsDiagramFileId_ = null; input.value = DOCS_DIAGRAM_DEFAULT_; }).then(docsRenderDiagramPreview_);
+  }
+
+  function docsCloseDiagramModal_(){
+    document.getElementById('docsDiagramOverlay').style.display = 'none';
+    docsNavigate(docsPath); // 방금 저장한 관계도.mmd가 목록에 바로 보이도록 새로고침
+  }
+
+  // 보고서(reportwriter.html)는 이미 ```mermaid 코드블록을 도식으로 렌더링하므로, 여기서
+  // 만든 관계도를 그 문법 그대로 복사해서 보고서 편집창에 붙여넣기만 하면 된다.
+  document.getElementById('btnDocsDiagramCopy').addEventListener('click', function(){
+    var code = document.getElementById('docsDiagramInput').value;
+    var md = '```mermaid\n' + code + '\n```';
+    navigator.clipboard.writeText(md).then(function(){ toast('mermaid 코드를 클립보드에 복사했습니다 — 보고서 편집창에 붙여넣으면 도식으로 표시됩니다.'); }).catch(function(){ toast('복사에 실패했습니다.'); });
+  });
+  document.getElementById('btnDocsDiagramSave').addEventListener('click', docsSaveDiagram_);
+  document.getElementById('btnCloseDocsDiagram').addEventListener('click', function(){
+    docsSaveDiagram_().then(docsCloseDiagramModal_);
+  });
+
+  // ============================================================
+  // [2026.09 이식] 경과지 — 사건 폴더별 진행 경과 기록 보드 (explorer.js 이식).
+  // 마감일이 있는 항목은 저장할 때 syncGlobalLog로 중앙 인덱스+구글캘린더에도 자동 반영된다
+  // (handleSyncGlobalLog/syncCalendarForPath_는 Code.js에 이미 있음 — 여기선 UI만 새로 만든다).
+  // ============================================================
+  var DOCS_LOG_FILE_NAME_ = '경과지.json';
+  var docsLogFolderId_ = null;
+  var docsLogPath_ = [];
+  var docsLogFileId_ = null;
+  var docsLogEntries_ = [];
+
+  function docsRenderLogList_(){
+    var list = document.getElementById('docsLogList');
+    list.innerHTML = '';
+    if (!docsLogEntries_.length){
+      list.innerHTML = '<div class="log-empty">아직 기록이 없습니다. 위에서 첫 항목을 추가해보세요.</div>';
+      return;
+    }
+    var todayStr = new Date().toISOString().slice(0, 10);
+    var sorted = docsLogEntries_.slice().sort(function(a, b){ return (b.date||'').localeCompare(a.date||''); });
+    sorted.forEach(function(entry){
+      var row = document.createElement('div');
+      row.className = 'log-entry';
+      var dueBadge = '';
+      if (entry.dueDate){
+        var overdue = entry.dueDate < todayStr;
+        var dueToday = entry.dueDate === todayStr;
+        var badgeColor = overdue ? '#c0392b' : (dueToday ? '#b8860b' : 'var(--sub)');
+        dueBadge = '<span style="display:inline-block; margin-top:2px; font-size:10.5px; color:' + badgeColor + ';">📌 ' + escapeHtml(fmtDateShort_(entry.dueDate)) + '</span>';
+      }
+      row.innerHTML = '<div class="log-date">' + escapeHtml(fmtDateShort_(entry.date)) + dueBadge + '</div>'
+        + '<div class="log-text">' + escapeHtml(entry.text || '') + '</div>'
+        + '<button type="button" class="log-del" title="삭제">✕</button>';
+      row.querySelector('.log-del').addEventListener('click', function(){
+        docsLogEntries_ = docsLogEntries_.filter(function(e){ return e.id !== entry.id; });
+        docsRenderLogList_();
+        docsSaveLog_();
+      });
+      list.appendChild(row);
+    });
+  }
+
+  function docsSaveLog_(){
+    var statusEl = document.getElementById('docsLogSaveStatus');
+    statusEl.textContent = '저장 중…';
+    var payload = {
+      folderId: docsLogFolderId_,
+      name: DOCS_LOG_FILE_NAME_,
+      mimeType: 'application/json',
+      base64Data: utf8ToBase64(JSON.stringify(docsLogEntries_))
+    };
+    if (docsLogFileId_) payload.fileId = docsLogFileId_;
+    return callGas('uploadFile', payload).then(function(res){
+      if (res.error){ statusEl.textContent = '저장 실패'; toast('경과지 저장 실패: ' + res.error); return; }
+      if (!docsLogFileId_) docsLogFileId_ = res.id;
+      statusEl.textContent = '저장됨 ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+      // 현황판 등에서 폴더를 일일이 뒤지지 않고 모아볼 수 있는 중앙 인덱스+캘린더 동기화 —
+      // 실패해도 이 폴더 저장 자체는 이미 끝났으므로 조용히 무시(다음 저장 때 다시 시도됨).
+      callGas('syncGlobalLog', { path: docsLogPath_, entries: docsLogEntries_ }).catch(function(){});
+    }).catch(function(err){
+      statusEl.textContent = '저장 실패';
+      toast('경과지 저장 중 오류: ' + (err && err.message ? err.message : err));
+    });
+  }
+
+  function docsOpenLogModal_(){
+    if (!docsCurrentListing || !docsCurrentListing.folderId){ toast('먼저 폴더를 열어주세요.'); return; }
+    docsLogFolderId_ = docsCurrentListing.folderId;
+    docsLogPath_ = docsPath.slice();
+    document.getElementById('docsLogFolderLabel').textContent = docsPath.join(' / ');
+    document.getElementById('docsLogOverlay').style.display = 'flex';
+    document.getElementById('docsLogDateInput').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('docsLogTextInput').value = '';
+    document.getElementById('docsLogDueInput').value = '';
+    document.getElementById('docsLogList').innerHTML = '<div class="log-empty">불러오는 중…</div>';
+    var existing = (docsCurrentListing.files || []).find(function(f){ return f.name === DOCS_LOG_FILE_NAME_; });
+    var loadPromise;
+    if (existing){
+      docsLogFileId_ = existing.id;
+      loadPromise = callGas('readFile', { fileId: existing.id }).then(function(fileData){
+        docsLogEntries_ = fileData.content ? JSON.parse(fileData.content) : [];
+      });
+    } else {
+      docsLogFileId_ = null;
+      docsLogEntries_ = [];
+      loadPromise = Promise.resolve();
+    }
+    loadPromise.catch(function(){ docsLogFileId_ = null; docsLogEntries_ = []; }).then(docsRenderLogList_);
+  }
+
+  function docsCloseLogModal_(){
+    document.getElementById('docsLogOverlay').style.display = 'none';
+    docsNavigate(docsPath); // 방금 저장한 경과지.json이 목록에 바로 보이도록
+  }
+
+  document.getElementById('btnDocsLogAdd').addEventListener('click', function(){
+    var text = document.getElementById('docsLogTextInput').value.trim();
+    if (!text) return;
+    docsLogEntries_.push({
+      id: 'e' + Date.now() + Math.random().toString(36).slice(2, 6),
+      date: document.getElementById('docsLogDateInput').value || new Date().toISOString().slice(0, 10),
+      text: text,
+      dueDate: document.getElementById('docsLogDueInput').value || ''
+    });
+    document.getElementById('docsLogTextInput').value = '';
+    document.getElementById('docsLogDueInput').value = '';
+    docsRenderLogList_();
+    docsSaveLog_();
+  });
+  document.getElementById('docsLogTextInput').addEventListener('keydown', function(e){
+    if (e.key === 'Enter'){ e.preventDefault(); document.getElementById('btnDocsLogAdd').click(); }
+  });
+  document.getElementById('btnCloseDocsLog').addEventListener('click', docsCloseLogModal_);
 </script>

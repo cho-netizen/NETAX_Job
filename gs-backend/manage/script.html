@@ -273,6 +273,15 @@
   }
 
   function showView(name){
+    // [2026.09 신규] 작성관리(보고서)를 보고 있다가 드라이브에 저장하지 않은 내용을 남긴 채
+    // 다른 메뉴로 넘어가려 하면 한 번 확인한다 — rwHasUnsavedDriveChanges_()는
+    // reportwriter.html이 정의해두며, 그 화면이 아직 한 번도 안 열렸으면 없을 수 있어 존재
+    // 여부부터 확인한다.
+    var reportwriterEl = document.getElementById('view-reportwriter');
+    if (name !== 'reportwriter' && reportwriterEl && reportwriterEl.classList.contains('active')
+      && typeof rwHasUnsavedDriveChanges_ === 'function' && rwHasUnsavedDriveChanges_()){
+      if (!confirm('작성관리에 드라이브로 저장하지 않은 보고서 내용이 있습니다. 저장하지 않고 나가시겠습니까?')) return;
+    }
     document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('active'); });
     var target = document.getElementById('view-' + name);
     if (target) target.classList.add('active');
