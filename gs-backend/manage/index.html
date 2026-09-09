@@ -3,9 +3,22 @@
 <head>
   <base target="_top">
   <meta charset="utf-8">
+  <!-- [2026.09 버그수정] 실사용 지적 — 이 태그가 아예 없어서 휴대폰에서 열면 브라우저가
+       데스크톱 너비(약 980px)로 그린 화면을 통째로 축소해 보여줬다 — 글씨·버튼이 너무 작아
+       사실상 못 쓰는 수준이라 "안 열린다"고 느껴졌을 것. 이 태그를 넣어야 휴대폰이 자기
+       화면 너비 그대로 렌더링한다. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <!-- [2026.09] 이 화면(HtmlService)엔 파비콘이 아예 없어서, PWA로 "설치"하면 브라우저가
        고른 범용 아이콘이 붙었다 — netax.kr 홈페이지와 같은 남색바탕+금색 N 아이콘으로 맞춘다. -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231b2a41'/%3E%3Ctext x='32' y='45' font-family='Georgia,serif' font-size='34' font-weight='700' fill='%23c9a227' text-anchor='middle'%3EN%3C/text%3E%3C/svg%3E">
+  <!-- [2026.09 버그수정] 실사용 지적 — "홈 화면에 추가"로 만든 아이콘이 제대로 안 잡혔다.
+       위 favicon(데이터 URL SVG)만으로는 안드로이드 크롬의 "홈 화면에 추가"가 인식을 못 하고
+       기본(범용) 아이콘으로 대체하는 경우가 많다 — 실제 아이콘 파일과 매니페스트가 있어야
+       한다. job.netax.kr(이 저장소가 그대로 깃허브 페이지로도 서빙됨)에 실제 아이콘
+       파일(icon.svg)과 manifest.json을 올려두고 여기서 참조한다. -->
+  <link rel="manifest" href="https://job.netax.kr/manifest.json">
+  <link rel="icon" type="image/svg+xml" href="https://job.netax.kr/icon.svg">
+  <meta name="theme-color" content="#0D1B3D">
   <?!= include_('manage/style') ?>
 </head>
 <body>
@@ -13,8 +26,15 @@
   <div id="loginGate">
     <div class="login-box">
       <h1>NETAX</h1>
-      <input type="password" id="loginPw" placeholder="비밀번호" autocomplete="off">
-      <button type="button" id="loginBtn">입장</button>
+      <!-- [2026.09 버그수정] 실사용 지적 — 비밀번호 입력 후 Enter가 안 먹고 <입장> 버튼을
+           직접 눌러야만 했다. keydown으로 Enter 키를 직접 잡는 방식은 모바일 가상키보드의
+           "완료/이동" 키나 IME 조합 상태에서 e.key가 기대한 값으로 안 들어오는 경우가 있어
+           불안정하다 — <form>으로 감싸서 브라우저·키보드가 알아서 처리하는 표준 제출
+           이벤트(submit)를 추가로 잡는다(기존 keydown 처리는 그대로 두어 이중 안전장치). -->
+      <form id="loginForm">
+        <input type="password" id="loginPw" placeholder="비밀번호" autocomplete="off">
+        <button type="submit" id="loginBtn">입장</button>
+      </form>
       <div class="login-err" id="loginErr"></div>
     </div>
   </div>
