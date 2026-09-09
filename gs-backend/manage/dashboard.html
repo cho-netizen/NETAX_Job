@@ -13,6 +13,25 @@
       <h3>💰 최근 수금내역</h3>
       <div id="dashPayments"><div class="spinner">불러오는 중…</div></div>
     </div>
+    <!-- [2026.09 신규] 실사용 감사 지적 — 종전 챗봇(work.netax.kr)에서 "이번주 일정",
+         "메일 왔어?", "할일 뭐있어"로 매번 자유롭게 물어보던 것들이, 신규 관리 앱에는 화면을
+         켜면 바로 보이는 곳이 없어져서 매번 AI사이드바에 다시 물어야 했다 — 종전처럼 대시보드
+         진입 시 바로 보이도록 카드 3개를 추가한다. -->
+    <div class="card">
+      <h3>📅 오늘~7일 일정</h3>
+      <div id="dashCalendar"><div class="spinner">불러오는 중…</div></div>
+    </div>
+    <div class="card">
+      <h3>✅ 할일</h3>
+      <div style="display:flex; gap:6px; margin-bottom:8px;">
+        <input type="text" id="dashNewTaskTitle" placeholder="새 할일 입력 후 Enter" style="flex:1;">
+      </div>
+      <div id="dashTasks"><div class="spinner">불러오는 중…</div></div>
+    </div>
+    <div class="card">
+      <h3>📧 안읽은 메일</h3>
+      <div id="dashEmails"><div class="spinner">불러오는 중…</div></div>
+    </div>
   </div>
 </div>
 <script>
@@ -23,6 +42,9 @@
     loadDashDeadlines();
     loadDashBookings();
     loadDashPayments();
+    loadDashCalendar_();
+    loadDashEmails_();
+    loadDashTasks_();
   }
 
   // [2026.09 버그수정] "가장 이른 8건"이 아니라 실제로 임박한 것만 골라서 보여준다 — 열린
@@ -98,6 +120,72 @@
       box.innerHTML = html;
     }).catch(function(e){ document.getElementById('dashPayments').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
+
+  // [2026.09 신규] 구글 캘린더 오늘~7일 일정 — 종전 챗봇의 "이번주 일정" 기능을 대시보드
+  // 카드로 옮김(get_calendar_events → toolLookupCalendarEvents 그대로 재사용).
+  function loadDashCalendar_(){
+    callGas('get_calendar_events', {}).then(function(res){
+      var box = document.getElementById('dashCalendar');
+      if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
+      var items = res.일정 || [];
+      if (!items.length){ box.innerHTML = '<div class="empty-row">일정이 없습니다.</div>'; return; }
+      var html = '<table class="list-table"><tr><th>시작</th><th>제목</th></tr>';
+      items.forEach(function(ev){
+        html += '<tr><td>' + esc(ev.종일일정 ? String(ev.시작).slice(0, 10) + ' 종일' : ev.시작) + '</td><td>' + esc(ev.제목) + '</td></tr>';
+      });
+      html += '</table>';
+      box.innerHTML = html;
+    }).catch(function(e){ document.getElementById('dashCalendar').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
+  }
+
+  // [2026.09 신규] Gmail 안읽은 메일 — 종전 챗봇의 "메일 왔어?" 기능을 대시보드 카드로 옮김.
+  // 처음 실제로 호출될 때 Gmail 접근권한 재승인 화면이 뜰 수 있다(코드 주석 참고).
+  function loadDashEmails_(){
+    callGas('search_emails', { query: 'in:inbox is:unread', maxResults: 8 }).then(function(res){
+      var box = document.getElementById('dashEmails');
+      if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
+      var items = res.메일 || [];
+      if (!items.length){ box.innerHTML = '<div class="empty-row">안읽은 메일이 없습니다.</div>'; return; }
+      var html = '<table class="list-table"><tr><th>받은날짜</th><th>보낸사람</th><th>제목</th></tr>';
+      items.forEach(function(m){
+        html += '<tr><td>' + esc(m.받은날짜) + '</td><td>' + esc(m.보낸사람) + '</td><td>' + esc(m.제목) + '</td></tr>';
+      });
+      html += '</table>';
+      box.innerHTML = html;
+    }).catch(function(e){ document.getElementById('dashEmails').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
+  }
+
+  // [2026.09 신규] 구글 태스크(할일) — 종전 챗봇의 "할일 뭐있어"/"할일 추가해줘" 기능을
+  // 대시보드 카드로 옮김. Tasks API가 이 프로젝트에서 고급서비스로 켜져있지 않으면
+  // toolLookupGoogleTasks가 안내 메시지가 담긴 error를 돌려준다(그대로 화면에 표시).
+  function loadDashTasks_(){
+    callGas('get_google_tasks', {}).then(function(res){
+      var box = document.getElementById('dashTasks');
+      if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
+      var items = res.할일 || [];
+      if (!items.length){ box.innerHTML = '<div class="empty-row">할일이 없습니다.</div>'; return; }
+      var html = '<table class="list-table"><tr><th>제목</th><th>마감일</th></tr>';
+      items.forEach(function(t){
+        html += '<tr><td>' + esc(t.제목) + (t.메모 ? '<br><span style="color:var(--sub); font-size:12px;">' + esc(t.메모) + '</span>' : '') + '</td><td>' + esc(t.마감일) + '</td></tr>';
+      });
+      html += '</table>';
+      box.innerHTML = html;
+    }).catch(function(e){ document.getElementById('dashTasks').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
+  }
+  // [2026.09 버그수정] 로그인 화면과 같은 원인(e.key가 일부 환경에서 Enter로 안 잡힘) — keyCode도 같이 확인.
+  document.getElementById('dashNewTaskTitle').addEventListener('keydown', function(e){
+    if (e.key !== 'Enter' && e.keyCode !== 13) return;
+    var title = this.value.trim();
+    if (!title) return;
+    var input = this;
+    input.disabled = true;
+    callGas('add_google_task', { title: title }).then(function(res){
+      input.disabled = false;
+      if (res.error){ toast('추가 실패: ' + res.error); return; }
+      input.value = '';
+      loadDashTasks_();
+    }).catch(function(e){ input.disabled = false; toast('추가 중 오류: ' + e.message); });
+  });
 
   function esc(s){
     if (s === undefined || s === null) return '';

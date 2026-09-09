@@ -146,7 +146,12 @@
       var dateStyle = c.상태 === '완료' ? ' style="color:var(--sub);"' : '';
       row.innerHTML =
         '<div class="log-date"' + dateStyle + '>' + (overdue ? '<span style="color:#a83232;">⏰</span> ' : '') + escapeHtml(c.법정일 ? fmtDateShort_(c.법정일) : noDeadlineText) + '</div>' +
-        '<div class="log-text"><b>' + escapeHtml(c.고객명 || '(고객명 없음)') + '</b> · ' + escapeHtml(c.사건명 || '') +
+        // [2026.09 버그수정] 실사용 감사 지적 — 사건명 자체가 이미 "고객명_세목_업무유형" 형식으로
+        // 자동생성되는데, 바로 아래 줄에서 세목·업무유형을 또 보여줘서 좁은 목록 한 줄에 같은
+        // 정보가 두 번 들어가 있었다. 고객명은 굵게 강조하고, 사건명은 (동명이인 번호·납세자
+        // 표기 등 구분에 필요할 수 있어 정보 자체는 유지하되) 옅은 글씨로 낮춰서 반복처럼
+        // 보이지 않게 한다.
+        '<div class="log-text"><b>' + escapeHtml(c.고객명 || '(고객명 없음)') + '</b> <span style="color:var(--sub);">· ' + escapeHtml(c.사건명 || '') + '</span>' +
         '<br><span style="color:var(--sub); font-size:12px;">' + escapeHtml(WORK_SEMOK_LABELS[c.세목] || c.세목 || '') + (c.업무유형 ? ' · ' + escapeHtml(c.업무유형) : '') + ' · ' + escapeHtml(c.상태 || '') +
         (prog.total ? (' · 하위업무 ' + prog.done + '/' + prog.total) : '') + workMyPortalBadgeText_(c) + '</span></div>';
       row.addEventListener('click', function(){ workShowingNewForm = false; workSelectedCaseId = c.id; renderWorkCaseList(); renderWorkCaseDetail(c); });
@@ -167,7 +172,7 @@
       '<h3 style="margin-top:0;">새 사건 등록</h3>' +
       (prefill.bookingRowIndex ? '<div style="font-size:12px; color:var(--sub); margin-bottom:8px;">🗂 예약에서 시작 — 저장하면 그 예약에 이 사건이 연결됩니다.</div>' : '') +
       '<div style="display:flex; flex-direction:column; gap:8px; max-width:420px;">' +
-      '<label>고객명(의뢰인)<br><input type="text" id="wcNewCustomer" list="clientNameOptions" value="' + escapeHtml(prefill.고객명 || '') + '" style="width:100%;" placeholder="고객명"></label>' +
+      '<label>고객명(의뢰인) *<br><input type="text" id="wcNewCustomer" list="clientNameOptions" value="' + escapeHtml(prefill.고객명 || '') + '" style="width:100%;" placeholder="고객명"></label>' +
       '<label>납세자 <span style="color:var(--sub); font-weight:400;">(의뢰인과 다른 경우만 입력)</span><br><input type="text" id="wcNewTaxpayer" value="' + escapeHtml(prefill.납세자 || '') + '" style="width:100%;" placeholder="(선택) 의뢰인과 같으면 비워두세요"></label>' +
       '<label>세목<br><select id="wcNewSemok" style="width:100%;">' +
         Object.keys(WORK_SEMOK_LABELS).map(function(k){ return '<option value="' + k + '">' + WORK_SEMOK_LABELS[k] + '</option>'; }).join('') +
@@ -181,6 +186,11 @@
       '<button type="button" id="wcNewSave" class="save-btn">저장</button>' +
       '<button type="button" id="wcNewCancel" class="ghost-btn">취소</button>' +
       '</div></div>';
+
+    // [2026.09 버그수정] 실사용 지적(사건개요서의 취득일과 같은 문제) — 네이티브 달력 위젯은
+    // 값이 비어있으면 항상 "오늘"부터 시작해 과거 날짜(의뢰일·기준일 등)로 넘어가기 번거롭다 —
+    // taxcalc.html의 enhanceDateInputs로 통일해 직접 타이핑 가능하게 한다.
+    if (typeof enhanceDateInputs === 'function') enhanceDateInputs(workCaseDetail);
 
     var newSemokSel = document.getElementById('wcNewSemok');
     var newUptypeSel = document.getElementById('wcNewUptype');
@@ -294,7 +304,7 @@
       '</div>' +
       '<div class="tb-row" style="display:flex; gap:6px;">' +
       '<button type="button" id="wcGoToProcess" class="ghost-btn" title="처리방향·작업일지·법령예규판례는 여기서"><span class="btn-ic">🧭</span><span class="btn-tx"> 처리개요</span></button>' +
-      '<button type="button" id="wcDeleteCase" class="ghost-btn" title="삭제"><span class="btn-ic">🗑</span><span class="btn-tx"> 삭제</span></button>' +
+      '<button type="button" id="wcDeleteCase" class="btn danger" title="삭제"><span class="btn-ic">🗑</span><span class="btn-tx"> 삭제</span></button>' +
       '</div>' +
       '</div>' +
       '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; margin-top:8px;">' +
@@ -321,6 +331,7 @@
       '<div id="wcTree"></div>';
 
     renderWorkTree(c.하위업무 || [], document.getElementById('wcTree'), c.id, 0);
+    if (typeof enhanceDateInputs === 'function') enhanceDateInputs(workCaseDetail);
 
     document.getElementById('wcGoToProcess').addEventListener('click', function(){
       if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(c.id);
@@ -339,7 +350,10 @@
         document.getElementById('wcAddRoot').addEventListener('click', function(){
           var t = document.getElementById('wcNewRootTitle').value.trim();
           if (!t){ showToast('항목 이름을 입력해주세요.', 'warning'); return; }
-          addWorkSubtask(c.id, null, t, document.getElementById('wcNewRootDue').value);
+          addWorkSubtask(c.id, null, t, document.getElementById('wcNewRootDue').value, function(){
+            newRootFormWrap.style.display = 'none';
+            newRootFormWrap.innerHTML = '';
+          });
         });
       } else {
         newRootFormWrap.style.display = 'none';
@@ -413,6 +427,12 @@
       var upType = editUptypeSel.value;
       var manual = WORK_MANUAL_DEADLINE_TYPES_.indexOf(upType) !== -1;
       var 납세자 = document.getElementById('wcEditTaxpayer').value.trim();
+      // [2026.09 버그수정] 실사용 감사 지적 — 사건개요서 양식이 있는 세목(양도·증여·상속)은
+      // 이 화면에서 기준일 입력칸을 숨기기만 하고 DOM에는 그대로 남겨둬서, 화면에 안 보이는
+      // 값이 저장 시 같이 전송되고 있었다(처리개요 쪽에서 매번 목록을 새로고침해줘서 실제
+      // 사고로 이어진 적은 없지만 구조적으로 위험). 이 세목은 아예 payload에서 빼서
+      // 사건개요서가 기준일의 유일한 출처가 되게 한다.
+      var hasOverviewTemplateForSave = typeof CH_CASE_OVERVIEW_FIELDS_ !== 'undefined' && !!CH_CASE_OVERVIEW_FIELDS_[editSemokSel.value];
       var payload = {
         id: c.id,
         고객명: customerName,
@@ -420,7 +440,6 @@
         세목: editSemokSel.value,
         업무유형: upType,
         의뢰일: document.getElementById('wcEditRequestDate').value,
-        기준일: document.getElementById('wcEditBaseDate').value,
         상태: document.getElementById('wcEditStatus').value,
         개요: document.getElementById('wcEditOverview').value.trim(),
         // [2026.09 버그수정] 이 화면의 저장은 다른 화면들과 달리 동시편집 잠금이 아예 빠져
@@ -428,6 +447,7 @@
         // 바꾸는 유일한 경로라는 점에서 가장 챙겨야 할 곳이었다.
         기대수정일: c.수정일
       };
+      if (!hasOverviewTemplateForSave) payload.기준일 = document.getElementById('wcEditBaseDate').value;
       // [2026.09 버그수정] 완료된 사건은 이 입력칸이 (완료일이 아니라) 백업해둔 원래 처리시한을
       // 보여주도록 방금 고쳤는데, 그 값을 완료 상태 그대로 다시 저장해버리면 서버가 그걸 곧이곧대로
       // 법정일에 다시 덮어써서 "완료 시 법정일=완료일" 규칙이 깨진다 — 완료 상태에서는 이 칸을
@@ -447,6 +467,7 @@
         if (res.conflict){ showToast(res.message || '충돌이 발생했습니다. 새로고침합니다.', 'warning'); loadWorkCases(); return; }
         if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); return; }
         if (!silent) showToast('저장했습니다.', 'success');
+        if (res.warning) showToast(res.warning, 'warning');
         loadWorkCases();
       }).catch(function(){ showToast('저장 중 오류가 발생했습니다.', 'error'); });
     }
@@ -551,25 +572,46 @@
     renderWorkCaseDetail(caseObj);
   }
 
-  function addWorkSubtask(caseId, parentId, title, dueDate){
+  // [2026.09 버그수정] 하위업무 추가/수정/삭제 후 이 함수(카드 전체 재구성)를 썼더니, 그 사이
+  // 입력 중이던(아직 "저장" 안 누른) 상단 폼(고객명·납세자·진행메모 등)이 통째로 날아갔다
+  // (실사용 감사에서 확인된 데이터유실 버그) — 상단 폼은 그대로 두고 하위업무 트리와 진행률
+  // 배지만 갱신한다. 기존 case 객체를 새 객체로 통째로 교체하면 renderWorkCaseDetail이 각
+  // 핸들러(저장 버튼 등)에 캡처해둔 c 참조가 낡은 채로 남아, 다음 "저장" 클릭 시 기대수정일이
+  // 옛 값이라 가짜 충돌로 뜰 수 있으므로 — 그 자리에서 필드만 덮어써 참조를 그대로 유지한다.
+  function applySubtaskUpdate_(caseObj, warning){
+    var existing = workCases.filter(function(c){ return c.id === caseObj.id; })[0];
+    if (existing) Object.assign(existing, caseObj); else { existing = caseObj; workCases.push(existing); }
+    renderWorkCaseList();
+    var tree = document.getElementById('wcTree');
+    if (tree) { renderWorkTree(existing.하위업무 || [], tree, existing.id, 0); if (typeof enhanceDateInputs === 'function') enhanceDateInputs(tree); }
+    var toggle = document.getElementById('wcAddRootToggle');
+    if (toggle) toggle.textContent = '➕ 하위업무 ' + workProgress(existing).done + ' / ' + workProgress(existing).total;
+    if (warning) showToast(warning, 'warning');
+  }
+
+  // [2026.09 버그수정] 실사용 시뮬레이션 중 발견 — applySubtaskUpdate_로 바꾸면서(카드 전체
+  // 재구성 대신 트리만 갱신) "새 하위업무" 입력폼이 예전엔 전체 재구성 때 자동으로 닫히던
+  // 것이 이제 안 닫히고 방금 넣은 값 그대로 계속 열려 있었다 — 성공 콜백으로 직접 닫아준다.
+  function addWorkSubtask(caseId, parentId, title, dueDate, onSuccess){
     if (!title){ showToast('항목 이름을 입력해주세요.', 'warning'); return; }
     callGas('work_add_subtask', { id: caseId, parentId: parentId, title: title, dueDate: dueDate }).then(function(res){
       if (res.error || res.success === false){ showToast(res.error || res.message || '추가 실패', 'error'); return; }
-      applyUpdatedCase(res.case);
+      applySubtaskUpdate_(res.case, res.warning);
+      if (typeof onSuccess === 'function') onSuccess();
     }).catch(function(){ showToast('추가 중 오류가 발생했습니다.', 'error'); });
   }
 
   function updateWorkSubtask(caseId, nodeId, fields){
     callGas('work_update_subtask', Object.assign({ id: caseId, nodeId: nodeId }, fields)).then(function(res){
       if (res.error || res.success === false){ showToast(res.error || res.message || '수정 실패', 'error'); return; }
-      applyUpdatedCase(res.case);
+      applySubtaskUpdate_(res.case, res.warning);
     }).catch(function(){ showToast('수정 중 오류가 발생했습니다.', 'error'); });
   }
 
   function deleteWorkSubtask(caseId, nodeId){
     callGas('work_delete_subtask', { id: caseId, nodeId: nodeId }).then(function(res){
       if (res.error || res.success === false){ showToast(res.error || res.message || '삭제 실패', 'error'); return; }
-      applyUpdatedCase(res.case);
+      applySubtaskUpdate_(res.case, res.warning);
     }).catch(function(){ showToast('삭제 중 오류가 발생했습니다.', 'error'); });
   }
 

@@ -3433,6 +3433,40 @@
     return Math.round((((value * 2 / 300000000) - 3) / 100) * 10000) / 10000;
   }
 
+  // [2026.09 신규] 취득세 무신고·과소신고·납부지연가산세(지방세기본법§53~§55) — 실사용 감사
+  // 지적: 양도·증여·상속세 계산기는 전부 가산세·신고기한을 계산하는데 취득세만 이 기능
+  // 자체가 완전히 빠져 있었다(유일하게 완성도가 떨어지는 세목). 국세기본법 대응 함수
+  // (giftFilingPenalties)와 구조는 같되, 지방세 고유 세율(WebSearch로 국가법령정보센터·
+  // LBOX 원문 확인)을 쓴다 — §53 무신고 20%/40%(부정), §54 과소신고 10%/40%(부정),
+  // §55 납부지연 = 1호(일 10만분의22, 시행령) + 1의2호(고지 후 매월 1만분의66, 세목별
+  // 45만원 미만 제외, 60개월 상한) + 3호(고지서 지정납부기한까지 미납액의 3% 정액).
+  // 국세와 달리 "역외거래 60%" 같은 특칙은 없다.
+  function acquisitionTaxFilingPenalties_(taxAfterCredit, filingStatus, isFraudulent, underreportedTaxAmount, fraudulentUnderreportedTaxAmount, unpaidDays, monthsAfterDesignatedDueDate, unpaidTaxAtDesignatedDueDate) {
+    let unreportedPenalty = 0, underreportedPenalty = 0;
+    if (filingStatus === 'unreported') {
+      unreportedPenalty = Math.round(taxAfterCredit * (isFraudulent ? 0.40 : 0.20));
+    } else if (filingStatus === 'underreported') {
+      const total = Number(underreportedTaxAmount) || 0;
+      if (isFraudulent) {
+        const fraudPortion = fraudulentUnderreportedTaxAmount != null ? Math.min(Number(fraudulentUnderreportedTaxAmount) || 0, total) : total;
+        const nonFraudPortion = total - fraudPortion;
+        underreportedPenalty = Math.round(fraudPortion * 0.40) + Math.round(nonFraudPortion * 0.10);
+      } else {
+        underreportedPenalty = Math.round(total * 0.10);
+      }
+    }
+    const dailyInterestPenalty = Math.round(taxAfterCredit * (Number(unpaidDays) || 0) * 0.00022);
+    const unpaidAtDesignated = Number(unpaidTaxAtDesignatedDueDate) || 0;
+    const cappedMonths = Math.min(Number(monthsAfterDesignatedDueDate) || 0, 60);
+    const monthlyInterestPenalty = (unpaidAtDesignated >= 450000 && cappedMonths > 0) ? Math.round(unpaidAtDesignated * cappedMonths * 0.0066) : 0;
+    const designatedDueDatePenalty = unpaidAtDesignated > 0 ? Math.round(unpaidAtDesignated * 0.03) : 0;
+    const latePenalty = dailyInterestPenalty + monthlyInterestPenalty + designatedDueDatePenalty;
+    return {
+      unreportedPenalty: unreportedPenalty, underreportedPenalty: underreportedPenalty, latePenalty: latePenalty,
+      납부지연가산세_상세: { 사전이자분_1호: dailyInterestPenalty, 고지후월할이자분_1의2호: monthlyInterestPenalty, 고지후정액3퍼센트분_3호: designatedDueDatePenalty }
+    };
+  }
+
   // 취득세(지방세법 — 부동산) — Code.js toolCalculateAcquisitionTax와 동일 로직.
   window.calculateAcquisitionTaxJS = function (p) {
     p = p || {};
@@ -3450,20 +3484,32 @@
     if (acquisitionType === 'gift' && Number(p.debtAssumedAmount) > 0) {
       const debtAmount = Math.min(Number(p.debtAssumedAmount), acquisitionValue);
       const giftAmount = acquisitionValue - debtAmount;
-      const paidPortionInput = Object.assign({}, p, { acquisitionType: 'paid', acquisitionValue: debtAmount, isFirstTimeHomeBuyer: false, debtAssumedAmount: undefined });
+      // [2026.09] 가산세 관련 값은 채무액분·증여분 두 하위계산에 각각 넘기지 않는다 — 넘기면
+      // 신고불성실가산세는 (20%×채무액분세액)+(20%×증여분세액)=20%×전체세액이라 문제없지만,
+      // 납부지연가산세의 "지정납부기한 경과 미납액"류는 절대금액이라 두 번 반영되어 이중계산된다.
+      // 대신 아래에서 합산 후의 세액을 기준으로 딱 한 번만 계산한다.
+      const penaltyKeys = ['filingStatus', 'isFraudulent', 'underreportedTaxAmount', 'fraudulentUnderreportedTaxAmount', 'unpaidDays', 'monthsAfterDesignatedDueDate', 'unpaidTaxAtDesignatedDueDate'];
+      const stripPenalty = function (obj) { const o = Object.assign({}, obj); penaltyKeys.forEach(function (k) { o[k] = undefined; }); return o; };
+      const paidPortionInput = stripPenalty(Object.assign({}, p, { acquisitionType: 'paid', acquisitionValue: debtAmount, isFirstTimeHomeBuyer: false, debtAssumedAmount: undefined }));
       const paidResult = debtAmount > 0 ? window.calculateAcquisitionTaxJS(paidPortionInput) : null;
-      const giftPortionInput = Object.assign({}, p, { acquisitionType: 'gift', acquisitionValue: giftAmount, isFirstTimeHomeBuyer: false, debtAssumedAmount: undefined });
+      const giftPortionInput = stripPenalty(Object.assign({}, p, { acquisitionType: 'gift', acquisitionValue: giftAmount, isFirstTimeHomeBuyer: false, debtAssumedAmount: undefined }));
       const giftResult = giftAmount > 0 ? window.calculateAcquisitionTaxJS(giftPortionInput) : null;
       if ((paidResult && paidResult.error) || (giftResult && giftResult.error)) {
         return (paidResult && paidResult.error) ? paidResult : giftResult;
       }
       const sum = function (key) { return (paidResult ? (Number(paidResult[key]) || 0) : 0) + (giftResult ? (Number(giftResult[key]) || 0) : 0); };
+      const combinedTaxBeforePenalty = sum('납부세액_합계');
+      const penalties = acquisitionTaxFilingPenalties_(combinedTaxBeforePenalty, p.filingStatus, p.isFraudulent, p.underreportedTaxAmount, p.fraudulentUnderreportedTaxAmount, p.unpaidDays, p.monthsAfterDesignatedDueDate, p.unpaidTaxAtDesignatedDueDate);
+      const penaltyTotal = penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty;
       return {
         부담부증여_채무액분: debtAmount, 부담부증여_증여분: giftAmount,
         채무액분_계산결과: paidResult, 증여분_계산결과: giftResult,
         과세표준: acquisitionValue, 산출세액: sum('산출세액'),
-        지방교육세: sum('지방교육세'), 농어촌특별세: sum('농어촌특별세'), 납부세액_합계: sum('납부세액_합계'),
-        안내: '§7⑫(부담부증여)에 따라 채무액(' + debtAmount + '원)에 상당하는 부분은 유상취득으로, 나머지(' + giftAmount + '원)는 무상취득(증여)으로 각각 계산해 합산했습니다. §36의3(생애최초 주택 구입 감면)은 "부담부증여는 제외한다"고 법에 명시되어 있어 채무액분에도 적용하지 않았습니다. 배우자·직계존비속 간 부담부증여는 채무액분도 §7⑪이 그대로 적용되어(isSpouseOrLinealRelativeTransaction로 판정) 대가지급 증명 게이트를 통과하지 못하면 그 부분도 증여로 재분류될 수 있습니다.'
+        지방교육세: sum('지방교육세'), 농어촌특별세: sum('농어촌특별세'),
+        무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
+        납부지연가산세_상세: penalties.납부지연가산세_상세,
+        납부세액_합계: combinedTaxBeforePenalty + penaltyTotal,
+        안내: '§7⑫(부담부증여)에 따라 채무액(' + debtAmount + '원)에 상당하는 부분은 유상취득으로, 나머지(' + giftAmount + '원)는 무상취득(증여)으로 각각 계산해 합산했습니다. §36의3(생애최초 주택 구입 감면)은 "부담부증여는 제외한다"고 법에 명시되어 있어 채무액분에도 적용하지 않았습니다. 배우자·직계존비속 간 부담부증여는 채무액분도 §7⑪이 그대로 적용되어(isSpouseOrLinealRelativeTransaction로 판정) 대가지급 증명 게이트를 통과하지 못하면 그 부분도 증여로 재분류될 수 있습니다. 취득일로부터 60일 이내(상속은 상속개시일이 속하는 달의 말일부터 6개월, 외국거주 상속인은 9개월) 신고납부해야 하며, 무신고·과소신고·납부지연가산세는 채무액분·증여분을 합산한 전체 납부세액 기준으로 한 번만 계산했습니다.'
       };
     }
 
@@ -3724,17 +3770,31 @@
       if (candidates.length > 1) reliefNote += ' §180(중복 특례의 배제) — 둘 이상의 감면 요건에 동시에 해당해, 그중 총 납부세액이 가장 작아지는 감면 하나만 적용했습니다.';
     }
 
+    const prePenaltyTaxTotal = finalTax + finalEduTax + finalNaTax;
+    // [2026.09 신규] 신고기한(§20① — 취득일로부터 60일 이내, 상속은 상속개시일이 속하는 달의
+    // 말일부터 6개월/외국거주 상속인 9개월, §20의2 무상취득 중 증여는 취득일이 속하는 달의
+    // 말일부터 3개월)과 가산세(§53~§55)를 계산한다 — 값을 넘기지 않으면(filingStatus 없음)
+    // 전부 0으로 계산되어 기존 동작과 동일하다(하위호환).
+    const filingDeadlineNote = acquisitionType === 'inheritance'
+      ? '§20① 단서 — 상속으로 인한 취득은 상속개시일이 속하는 달의 말일부터 6개월(상속인 전원이 외국에 주소를 둔 경우 9개월) 이내에 신고납부해야 합니다.'
+      : (acquisitionType === 'gift' ? '§20의2 — 증여 등 무상취득은 취득일이 속하는 달의 말일부터 3개월 이내에 신고납부해야 합니다.'
+        : '§20① 본문 — 취득일부터 60일 이내에 신고납부해야 합니다(다만 취득 후 해당 재산이 중과세 대상이 되는 등 §20②의 사유는 그 사유발생일부터 60일 이내).');
+    const penalties = acquisitionTaxFilingPenalties_(prePenaltyTaxTotal, p.filingStatus, p.isFraudulent, p.underreportedTaxAmount, p.fraudulentUnderreportedTaxAmount, p.unpaidDays, p.monthsAfterDesignatedDueDate, p.unpaidTaxAtDesignatedDueDate);
+    const penaltyTotal = penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty;
+
     const result = {
       적용세율: Math.round(rate * 100000) / 1000, 적용근거: basis + luxuryNote,
       과세표준: acquisitionValue, 산출세액: tax,
-      지방교육세: finalEduTax, 농어촌특별세: finalNaTax, 납부세액_합계: finalTax + finalEduTax + finalNaTax,
-      안내: '지방교육세(§151①1호 — 취득 유형별로 세율이 갈립니다: 일반취득은 표준세율에서 중과기준세율 2%를 뺀 세율×20%, §13의2 법인·다주택 중과는 항상 (4%-2%)×20%=0.4% 고정, §11①8호 일반 주택 유상취득은 적용세율(사치성 가산 전)×50%×20%)와 농어촌특별세(§5①6호 — 취득세 과세표준×2%×10%=0.2%, 지방세법§15①1~3호 특례(1가구1주택 상속 등)는 §4 10호의4로 비과세)를 함께 계산했습니다.' + relatedPartyGateNote + ' 사치성재산(§13⑤) 가산분(+8%p)은 지방교육세 근거조문(§151①1호 가·나목)이 §13②③⑥⑦·§13의2만 지정하고 있어 이 계산에는 반영하지 않았습니다.' + reliefNote + ' 위 아홉 감면(§36의3·§6①·§29①·§36의5·§36의4①·§33②·§74④⑤·§92①·§73①) 외 지방세특례제한법상 다른 감면은 이 도구가 아직 다루지 않습니다 — 다자녀·전기차·경형자동차·장애인용·국가유공자용 자동차 감면은 자동차 취득세만 해당해 부동산과 무관하고, 인구감소지역주택·빈집정비·개발제한구역주택개량 등은 아직 미반영입니다(주택연금·농지연금은 각각 calculate_registration_license_tax·calculate_property_tax에서 반영됨). 재산세 도시지역분과 마찬가지로 지방자치단체 조례로 세율의 100분의 50 범위에서 가감될 수 있고(§14), 취득 후 5년 이내 본점·주사무소 사업용 부동산·공장 신설증설용 부동산·고급주택·골프장·고급오락장 등으로 용도가 바뀌면 관청이 추징하며(§16), 다주택 여부 등 취득 당시에는 몰랐던 사유로 §13의2① 중과세율 적용대상이 된 경우에는 그 사유가 발생한 날부터 60일 이내에 납세자가 스스로 차액을 신고·납부해야 합니다(§20②).'
+      지방교육세: finalEduTax, 농어촌특별세: finalNaTax,
+      무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
+      납부지연가산세_상세: penalties.납부지연가산세_상세,
+      납부세액_합계: prePenaltyTaxTotal + penaltyTotal,
+      안내: '지방교육세(§151①1호 — 취득 유형별로 세율이 갈립니다: 일반취득은 표준세율에서 중과기준세율 2%를 뺀 세율×20%, §13의2 법인·다주택 중과는 항상 (4%-2%)×20%=0.4% 고정, §11①8호 일반 주택 유상취득은 적용세율(사치성 가산 전)×50%×20%)와 농어촌특별세(§5①6호 — 취득세 과세표준×2%×10%=0.2%, 지방세법§15①1~3호 특례(1가구1주택 상속 등)는 §4 10호의4로 비과세)를 함께 계산했습니다.' + relatedPartyGateNote + ' 사치성재산(§13⑤) 가산분(+8%p)은 지방교육세 근거조문(§151①1호 가·나목)이 §13②③⑥⑦·§13의2만 지정하고 있어 이 계산에는 반영하지 않았습니다.' + reliefNote + ' ' + filingDeadlineNote + ' 무신고·과소신고가산세(지방세기본법§53·§54, 각 20%·10%, 부정행위 40%)와 납부지연가산세(§55, 1일 10만분의22 + 고지 후 매월 1만분의66(세목별 45만원 미만 제외, 60개월 상한) + 고지서 지정납부기한까지 미납액의 3% 정액)를 함께 계산했습니다 — filingStatus 등을 넣지 않으면 0으로 계산됩니다. 위 아홉 감면(§36의3·§6①·§29①·§36의5·§36의4①·§33②·§74④⑤·§92①·§73①) 외 지방세특례제한법상 다른 감면은 이 도구가 아직 다루지 않습니다 — 다자녀·전기차·경형자동차·장애인용·국가유공자용 자동차 감면은 자동차 취득세만 해당해 부동산과 무관하고, 인구감소지역주택·빈집정비·개발제한구역주택개량 등은 아직 미반영입니다(주택연금·농지연금은 각각 calculate_registration_license_tax·calculate_property_tax에서 반영됨). 재산세 도시지역분과 마찬가지로 지방자치단체 조례로 세율의 100분의 50 범위에서 가감될 수 있고(§14), 취득 후 5년 이내 본점·주사무소 사업용 부동산·공장 신설증설용 부동산·고급주택·골프장·고급오락장 등으로 용도가 바뀌면 관청이 추징하며(§16), 다주택 여부 등 취득 당시에는 몰랐던 사유로 §13의2① 중과세율 적용대상이 된 경우에는 그 사유가 발생한 날부터 60일 이내에 납세자가 스스로 차액을 신고·납부해야 합니다(§20②).'
     };
     if (finalTax !== tax) {
       result.감면전_취득세_산출세액 = tax;
       result.취득세_감면세액 = tax - finalTax;
       result.취득세_최종납부액 = finalTax;
-      result.납부세액_합계 = finalTax + finalEduTax + finalNaTax;
     }
     if (acquisitionType !== p.acquisitionType || acquisitionValue !== Number(p.acquisitionValue)) {
       result.재분류적용여부 = true;
@@ -5525,20 +5585,20 @@
     };
   };
 
-  // 공공매입임대주택 건설을 목적으로 양도한 토지에 대한 과세특례 (조특법§97의10, 2027.12.31까지
+  // 공공매입임대주택 건설을 목적으로 양도한 토지에 대한 과세특례 (조특법§97의9, 2027.12.31까지
   // 양도분) — Code.js toolCalculatePublicRentalHousingLandReduction와 1:1 대응.
   window.calculatePublicRentalHousingLandReductionJS = function (p) {
     p = p || {};
     const transferDate = p.transferDate;
     if (!transferDate) return { error: '양도일이 필요합니다.' };
     if (transferDate > '2027-12-31') {
-      return { 적용여부: false, 안내: '양도일이 2027.12.31을 초과하여 조특법§97의10의 적용대상이 아닙니다(적용기한 만료).' };
+      return { 적용여부: false, 안내: '양도일이 2027.12.31을 초과하여 조특법§97의9의 적용대상이 아닙니다(적용기한 만료).' };
     }
     if (p.isNotBuiltWithin3Years && !p.hasJustifiableDelayReason) {
       const originalReductionAmount = Number(p.originalReductionAmount) || 0;
       return {
         적용여부: false, 감면유지여부: false, 추징액: originalReductionAmount,
-        안내: '주택건설사업자가 토지를 양도받은 날부터 3년 이내에 공공매입임대주택을 건설하여 공공주택사업자에게 양도하지 않아(조특법§97의10③) 감면세액 ' + originalReductionAmount + '원을 이자상당액과 함께 추징합니다(제63조③ 준용).'
+        안내: '주택건설사업자가 토지를 양도받은 날부터 3년 이내에 공공매입임대주택을 건설하여 공공주택사업자에게 양도하지 않아(조특법§97의9③) 감면세액 ' + originalReductionAmount + '원을 이자상당액과 함께 추징합니다(제63조③ 준용).'
       };
     }
     const transferPrice = Number(p.transferPrice) || 0;
@@ -5549,7 +5609,7 @@
       적용여부: true,
       전체양도차익: Math.round(totalGain),
       세액감면율: 10,
-      안내: '조특법§97의10 — 공공매입임대주택을 건설할 주택건설사업자(공공주택사업자와 건설·양도 약정을 체결한 자)에게 2027.12.31까지 주택건설용 토지를 양도하면 그 양도소득세 산출세액의 100분의 10을 감면합니다. 위 일반 양도세 계산기로 전체 양도차익 기준 세액을 계산한 뒤 그 산출세액에서 10%를 차감하세요. 토지를 양도받은 날부터 3년 이내에 공공매입임대주택을 건설해 공공주택사업자에게 양도하지 않으면(인허가 지연 등 부득이한 사유 제외) 감면세액과 이자상당액을 추징합니다.'
+      안내: '조특법§97의9 — 공공매입임대주택을 건설할 주택건설사업자(공공주택사업자와 건설·양도 약정을 체결한 자)에게 2027.12.31까지 주택건설용 토지를 양도하면 그 양도소득세 산출세액의 100분의 10을 감면합니다. 위 일반 양도세 계산기로 전체 양도차익 기준 세액을 계산한 뒤 그 산출세액에서 10%를 차감하세요. 토지를 양도받은 날부터 3년 이내에 공공매입임대주택을 건설해 공공주택사업자에게 양도하지 않으면(인허가 지연 등 부득이한 사유 제외) 감면세액과 이자상당액을 추징합니다.'
     };
   };
 

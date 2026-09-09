@@ -3583,6 +3583,13 @@ function rwInitCaseBar_(){
   return rwCasesLoadPromise_;
 }
 
+// [2026.09 버그수정] 예전엔 이름 기반 경로로 "보고서"(고객 발행용 .html 완성본) 폴더 하나만
+// 조회해서, 그 .html 완성본을 마치 편집 대상 초안인 것처럼 목록에 올렸다 — 그걸 열어
+// "💾 저장"(발행이 아니라!)을 누르면 이미 고객에게 나간 최종본을 백업 없이 그대로 덮어썼고,
+// "새 문서" 버튼도 저장 폴더로 이 "보고서" 폴더를 넘겨 내부 초안(.md)이 고객 노출용 폴더에
+// 생성됐다. casehandling.html의 "✍ 문서작성" 카드(chLoadMyReports_)는 처음부터 폴더ID
+// 기반으로 내부보고서(.md 초안)/보고서(.html 발행본)를 정확히 분리해서 쓰고 있었으므로 —
+// 여기도 같은 방식(get_case_subfolders)으로 맞춘다.
 function rwRenderCaseReports_(caseId){
   var box = document.getElementById('rwCaseReports');
   if (!box) return;
@@ -3590,35 +3597,59 @@ function rwRenderCaseReports_(caseId){
   var c = rwCases_.filter(function(x){ return x.id === caseId; })[0];
   if (!c){ box.innerHTML = ''; return; }
   box.textContent = '불러오는 중…';
-  // [2026.09] 폴더명 = 사건명 그 자체(work_generateUniqueCaseName_이 이미 "홍길동_양도_신고"
-  // 처럼 고객명까지 포함해서 만들어준 값) — 예전처럼 "고객명 + 사건명"을 다시 이어붙이면
-  // 이름이 두 번 들어가 실제 폴더를 못 찾는다.
-  var folderName = String(c.사건명 || '').trim();
-  getCustomerRootPath_().then(function(basePath){
-    return callGas('listFolder', { path: basePath.concat([folderName, '보고서']) });
-  }).then(function(res){
-    if (!res || res.error){ box.textContent = (res && res.error) || '불러오지 못했습니다.'; return; }
-    var files = (res.files || []).filter(function(f){ return /\.html?$/i.test(f.name); });
-    box.innerHTML = '';
-    var newBtn = document.createElement('button');
-    newBtn.type = 'button';
-    newBtn.textContent = '✍ 새 문서';
-    newBtn.addEventListener('click', function(){ goToReportWriter_(caseId, { saveFolderId: res.folderId, saveFileName: folderName }); });
-    box.appendChild(newBtn);
-    files.forEach(function(f){
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.textContent = f.name;
-      btn.title = '이 문서 편집';
-      btn.addEventListener('click', function(){ goToReportWriter_(caseId, { fileId: f.id }); });
-      box.appendChild(btn);
+  callGas('get_case_subfolders', { caseId: caseId }).then(function(sub){
+    if (sub.error){ box.textContent = sub.error; return; }
+    return Promise.all([
+      callGas('listFolder', { folderId: sub.internalFolderId }),
+      callGas('listFolder', { folderId: sub.reportFolderId })
+    ]).then(function(results){
+      var internalRes = results[0], reportRes = results[1];
+      if (internalRes.error){ box.textContent = internalRes.error; return; }
+      var internalFiles = internalRes.files || [];
+      var reportFiles = reportRes.error ? [] : (reportRes.files || []);
+      var publishedByBase = {};
+      reportFiles.forEach(function(f){
+        var m = f.name.match(/^(.*)\.html?$/i);
+        if (m) publishedByBase[m[1]] = f;
+      });
+      box.innerHTML = '';
+      var newBtn = document.createElement('button');
+      newBtn.type = 'button';
+      newBtn.textContent = '✍ 새 문서';
+      newBtn.addEventListener('click', function(){
+        goToReportWriter_(caseId, { saveFolderId: sub.internalFolderId, publishFolderId: sub.reportFolderId, saveFileName: String(c.사건명 || '').trim() });
+      });
+      box.appendChild(newBtn);
+      var mdBases = {};
+      internalFiles.filter(function(f){ return /\.md$/i.test(f.name); }).forEach(function(f){
+        var base = f.name.replace(/\.md$/i, '');
+        mdBases[base] = true;
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = (publishedByBase[base] ? '📤 ' : '✏️ ') + base;
+        btn.title = publishedByBase[base] ? '발행됨 — 이 원본(.md)을 편집' : '작성중(미발행) — 편집';
+        btn.addEventListener('click', function(){ goToReportWriter_(caseId, { fileId: f.id }); });
+        box.appendChild(btn);
+      });
+      // 옛 방식(.md 없이 .html 단일 파일만 있던 시절) 보고서는 그 .html을 그대로 편집하게 둔다.
+      reportFiles.filter(function(f){
+        var m = f.name.match(/^(.*)\.html?$/i);
+        return m && !mdBases[m[1]];
+      }).forEach(function(f){
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = '📤(구버전) ' + f.name.replace(/\.html?$/i, '');
+        btn.title = '이 문서 편집';
+        btn.addEventListener('click', function(){ goToReportWriter_(caseId, { fileId: f.id }); });
+        box.appendChild(btn);
+      });
+      if (!box.querySelector('button:nth-child(2)')){
+        var empty = document.createElement('span');
+        empty.style.color = '#a8afc0';
+        empty.textContent = '저장된 문서 없음';
+        box.appendChild(empty);
+      }
     });
-    if (!files.length){
-      var empty = document.createElement('span');
-      empty.style.color = '#a8afc0';
-      empty.textContent = '저장된 문서 없음';
-      box.appendChild(empty);
-    }
   }).catch(function(){ box.textContent = '불러오지 못했습니다.'; });
 }
 
@@ -3630,6 +3661,7 @@ function rwRenderCaseReports_(caseId){
 function goToReportWriter_(caseId, opts){
   if (typeof goToView_ === 'function') goToView_('reportwriter');
   opts = opts || {};
+  var shouldCreateNew = false;
   if (opts.fileId) {
     rwLoadFileById_(opts.fileId);
   } else if (opts.saveFolderId) {
@@ -3638,10 +3670,21 @@ function goToReportWriter_(caseId, opts){
     pendingPublishFolderId = opts.publishFolderId || null;
     updateSaveToDriveButton();
     updatePublishButton();
+    // [2026.09 버그수정] 예전엔 여기서 저장할 폴더만 지정해두고 끝냈다 — 그러면 에디터에는
+    // 직전에 열려있던(전혀 다른 사건일 수 있는) 문서가 그대로 남아있어서, "✍ 새 문서 작성"
+    // 이라는 버튼을 눌렀는데도 실제로는 새 문서가 만들어지지 않았다. 그 상태에서 "💾 저장"을
+    // 누르면 currentDriveFileId_()가 그 이전 문서의 것이라 isNew 판정이 거짓이 되어, 지금
+    // 지정한 폴더가 아니라 그 이전 문서의 원래 파일을 그대로 덮어써버렸다(다른 사건 문서를
+    // 덮어쓰는 사고로 이어질 수 있음). 버튼 이름대로 즉시 새 문서를 만들어 에디터를 전환한다
+    // — 방금 지정한 pendingSaveFolderId/pendingPublishFolderId는 새 문서를 실제로 드라이브에
+    // 처음 저장하는 순간에 그대로 쓰인다.
+    shouldCreateNew = true;
   }
   // [2026.09] 사건연결 드롭다운도 같이 맞춰서, casehandling.html에서 바로 넘어와도
   // "↩ 처리개요" 버튼이 어느 사건인지 알 수 있게 한다(드롭다운 옵션이 아직 로딩 중일
-  // 수 있어 rwCasesLoadPromise_가 끝난 뒤에 값을 넣는다).
+  // 수 있어 rwCasesLoadPromise_가 끝난 뒤에 값을 넣는다). 새 문서 생성도 이 시점 이후로
+  // 미룬다 — rwGetSelectedCase_()가 이 드롭다운 값으로 사건을 찾아 문서 이름 기본값을
+  // 채우므로, sel.value를 먼저 맞춰둬야 "고객명_..." 형태로 제대로 제안된다.
   if (caseId) {
     (rwCasesLoadPromise_ || rwInitCaseBar_() || Promise.resolve()).then(function(){
       var sel = document.getElementById('rwCaseSelect');
@@ -3649,7 +3692,10 @@ function goToReportWriter_(caseId, opts){
       // [2026.09 버그수정] sel.value만 맞추고 change 이벤트는 안 나가서, 처리개요의 "✍ 문서작성"
       // 카드 제목으로 바로 들어왔을 때 "✍ 새 문서"/기존 보고서 목록이 안 뜨는 문제 — 직접 호출.
       rwRenderCaseReports_(caseId);
+      if (shouldCreateNew && typeof createNewDoc === 'function') createNewDoc('blank');
     });
+  } else if (shouldCreateNew && typeof createNewDoc === 'function') {
+    createNewDoc('blank');
   }
 }
 </script>

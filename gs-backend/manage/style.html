@@ -290,7 +290,19 @@
   .taxcalc-field input::placeholder{ color:var(--taxcalc-hint); opacity:0.85; }
   .taxcalc-field input:focus, .taxcalc-field select:focus{ outline:none; border-color:var(--gold); box-shadow:0 0 0 1px var(--gold); }
   .taxcalc-field input[readonly]{ background:var(--taxcalc-hint-bg, rgba(128,128,128,0.12)); color:var(--taxcalc-hint); cursor:default; }
-  .taxcalc-field.checkbox{ flex-direction:row; align-items:center; gap:6px; }
+  /* [2026.09 신규] 실사용 지적 — 라벨에 조건설명을 그대로 박아넣거나(예: "[실지거래가액
+     모를 때] 매매사례가액") placeholder/설명 문구가 항상 화면에 보여서 화면이 지저분하다는
+     지적. 라벨은 짧게 두고, 자세한 설명(.taxcalc-field-help)은 그 입력칸에 포커스가 가 있는
+     동안에만 보이게 한다 — 값을 넣을 때만 필요한 설명이 나타났다가, 다른 칸으로 넘어가면
+     다시 숨어서 화면이 평소엔 훨씬 단순해 보인다. (:focus-within이라 input뿐 아니라 그
+     칸 안의 버튼 등 무엇에 포커스가 가도 같이 나타난다.) */
+  .taxcalc-field-help{ display:none; font-size:11.5px; color:var(--taxcalc-hint); line-height:1.5; margin-top:2px; }
+  .taxcalc-field:focus-within .taxcalc-field-help{ display:block; }
+  /* [2026.09 버그수정] 실사용 감사 지적 — 체크박스 라벨(특히 상속공제 요건 등 조문을 그대로
+     풀어쓴 것)이 100자 넘는 경우가 많은데, 지금까지는 다른 짧은 입력칸과 똑같이 180px 남짓한
+     grid 칸 하나에 갇혀 여러 줄로 심하게 줄바꿈됐다 — 체크박스는 항상 grid 전체 폭을 쓰게 한다
+     (짧은 라벨도 폭이 넓어질 뿐 가독성엔 문제 없음). */
+  .taxcalc-field.checkbox{ flex-direction:row; align-items:center; gap:6px; grid-column:1/-1; }
   .taxcalc-field.checkbox label{ font-size:12.5px; font-weight:600; color:var(--ink); }
   .taxcalc-field.checkbox input{ width:15px; height:15px; accent-color:var(--gold); }
   .taxcalc-del-asset{

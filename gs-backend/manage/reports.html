@@ -105,7 +105,7 @@
     return new Promise(function(resolve){
       google.script.run.withSuccessHandler(function(code){ _reportsRptAdminCodeCache = code || ''; resolve(_reportsRptAdminCodeCache); })
         .withFailureHandler(function(){ _reportsRptAdminCodeCache = ''; resolve(''); })
-        .manageApp_getRptAdminCode();
+        .manageApp_getRptAdminCode(typeof manageAppSessionToken_ !== 'undefined' ? manageAppSessionToken_ : null);
     });
   }
 

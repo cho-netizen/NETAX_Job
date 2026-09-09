@@ -22,10 +22,11 @@
     <button type="button" id="docsBtnUp" class="ghost-btn" title="상위 폴더"><span class="btn-ic">⬆</span><span class="btn-tx"> 상위</span></button>
     <div class="docs-breadcrumb" id="docsBreadcrumb"></div>
     <button type="button" id="docsBtnNewFolder" class="ghost-btn"><span class="btn-ic">📁</span><span class="btn-tx"> 새 폴더</span></button>
-    <button type="button" id="docsBtnUpload" class="ghost-btn"><span class="btn-ic">⬆</span><span class="btn-tx"> 업로드</span></button>
+    <button type="button" id="docsBtnUpload" class="ghost-btn"><span class="btn-ic">📤</span><span class="btn-tx"> 업로드</span></button>
     <input type="file" id="docsUploadInput" multiple style="display:none;">
     <button type="button" id="docsBtnPdfManager" class="ghost-btn"><span class="btn-ic">📑</span><span class="btn-tx"> PDF관리</span></button>
     <button type="button" id="docsBtnScan" class="ghost-btn"><span class="btn-ic">📷</span><span class="btn-tx"> 스캔</span></button>
+    <button type="button" id="docsBtnFolderNameAudit" class="ghost-btn" title="모든 사건의 폴더명이 명명규칙(고객명_세목_업무유형)대로인지 전수조사"><span class="btn-ic">🏷</span><span class="btn-tx"> 폴더명 점검</span></button>
   </div>
   <div id="docsCaseEvidencePanel" style="display:none; flex:0 0 auto; border-bottom:1px solid var(--line); padding:10px 14px; overflow-y:auto; max-height:40vh;"></div>
   <div id="docsSelectionBar" class="tb-row" style="display:none; flex:0 0 auto; align-items:center; gap:10px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); font-size:12.5px;">
@@ -96,7 +97,7 @@
         <div class="tb-row" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
           <button type="button" id="btnSigManageFromFile" class="ghost-btn"><span class="btn-ic">📁</span><span class="btn-tx"> 파일에서 불러오기</span></button>
           <button type="button" id="btnSigManageDraw" class="ghost-btn"><span class="btn-ic">✍</span><span class="btn-tx"> 직접 그리기</span></button>
-          <button type="button" id="btnSigManageDelete" class="ghost-btn"><span class="btn-ic">🗑</span><span class="btn-tx"> 삭제</span></button>
+          <button type="button" id="btnSigManageDelete" class="btn danger"><span class="btn-ic">🗑</span><span class="btn-tx"> 삭제</span></button>
         </div>
       </div>
       <div id="sigManageDrawWrap" style="display:none; flex-direction:column; gap:8px;">
@@ -188,6 +189,72 @@
       docsNavigate([]);
     }
     docsInitCaseSelect_();
+    var auditBtn = document.getElementById('docsBtnFolderNameAudit');
+    if (auditBtn && !auditBtn.dataset.inited){
+      auditBtn.dataset.inited = '1';
+      auditBtn.addEventListener('click', docsOpenFolderNameAuditModal_);
+    }
+  }
+
+  // [2026.09] "폴더명 작성규칙(고객명_세목_업무유형, work_generateUniqueCaseName_ 참고)을
+  // 제대로 안 지키고 있는 것 같다"는 지적 — 고객명 정정·세목 변경 등이 있어도 사건명(=폴더명)은
+  // 자동으로 안 바뀌는 기존 정책 때문에 시간이 지날수록 실제 규칙과 어긋나는 폴더가 쌓일 수
+  // 있다. 실제 Drive 폴더와 시트를 동시에 바꾸는 위험한 작업이라, 먼저 무엇이 바뀔지 전부
+  // 보여주고(dryRun) 확인 후에만 실제로 적용한다 — 자동으로 조용히 바꾸지 않는다.
+  function docsOpenFolderNameAuditModal_(){
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.innerHTML =
+      '<div class="modal-panel" style="width:min(760px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
+        '<div class="modal-head"><span>🏷 폴더명 규칙 전수조사</span><span class="modal-close" id="docsFnaClose">✕</span></div>' +
+        '<div class="modal-body" style="overflow-y:auto;">' +
+          '<div id="docsFnaBody">확인 중…</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    function close(){ overlay.remove(); }
+    overlay.querySelector('#docsFnaClose').onclick = close;
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+
+    function renderList(items){
+      var body = overlay.querySelector('#docsFnaBody');
+      if (!items.length){ body.innerHTML = '<div class="log-empty">규칙과 어긋나는 사건명(폴더명)이 없습니다. 전부 규칙대로입니다.</div>'; return; }
+      var rows = items.map(function(it){
+        return '<tr>' +
+          '<td style="padding:4px 8px;">' + escapeHtml(it.고객명) + '</td>' +
+          '<td style="padding:4px 8px; color:#b23;">' + escapeHtml(it.현재사건명 || '(빈 값)') + '</td>' +
+          '<td style="padding:4px 8px; color:#2a7a4f;">' + escapeHtml(it.제안사건명) + '</td>' +
+          '<td style="padding:4px 8px;">' + (it.폴더ID ? '있음' : '없음(사건명만 수정)') + '</td>' +
+        '</tr>';
+      }).join('');
+      body.innerHTML =
+        '<div class="taxcalc-result-note" style="margin-bottom:8px;">아래 ' + items.length + '건은 지금 규칙대로 다시 만들면 이름이 달라집니다. "일괄 적용"을 누르면 시트의 사건명과 실제 Drive 폴더명을 함께 바꿉니다(폴더가 있는 경우만). 확보한 자료·하위 폴더 구조는 그대로 유지됩니다(이름만 바뀜).</div>' +
+        '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">고객명</th><th style="padding:4px 8px;">현재 사건명(폴더명)</th><th style="padding:4px 8px;">규칙대로면</th><th style="padding:4px 8px;">Drive 폴더</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<button type="button" id="docsFnaApplyBtn" class="btn danger" style="margin-top:10px;">⚠ 위 ' + items.length + '건 일괄 적용(되돌리기 어려움)</button>';
+      body.querySelector('#docsFnaApplyBtn').addEventListener('click', function(){
+        if (!confirm(items.length + '건의 사건명과 Drive 폴더명을 실제로 바꿉니다. 계속할까요?')) return;
+        body.innerHTML = '적용 중…';
+        callGas('work_audit_case_folder_names', { apply: true }).then(function(res){
+          if (res.success === false){ body.innerHTML = '<div class="taxcalc-error">' + (res.message || '적용 실패') + '</div>'; return; }
+          body.innerHTML = '<div class="taxcalc-result-note">' + res.applied + '건 적용했습니다.</div>';
+          showToast(res.applied + '건의 폴더명을 규칙대로 수정했습니다.', 'success');
+          // [2026.09 버그수정] 사건명이 바뀌었는데 이 화면의 사건 선택 드롭다운·작업관리 목록
+          // 캐시는 그대로라 옛 이름이 계속 보였다 — 즉시 새로고침한다.
+          docsGetAllCases_(true);
+          if (typeof loadWorkCases === 'function') loadWorkCases();
+        }).catch(function(err){
+          body.innerHTML = '<div class="taxcalc-error">적용 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+        });
+      });
+    }
+
+    callGas('work_audit_case_folder_names', {}).then(function(res){
+      if (res.success === false){ overlay.querySelector('#docsFnaBody').innerHTML = '<div class="taxcalc-error">' + (res.message || '조회 실패') + '</div>'; return; }
+      renderList(res.items || []);
+    }).catch(function(err){
+      overlay.querySelector('#docsFnaBody').innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+    });
   }
 
   // [2026.09] 법령조회·세액계산에는 상단에 "사건연결" 드롭다운이 있어서 사건을 바로 골라
@@ -342,21 +409,41 @@
 
   // [2026.09] 동시편집 낙관적 잠금 — c.수정일(마지막으로 읽었던 값)을 같이 보내 그 사이 다른
   // 곳에서 먼저 저장됐으면(수정일이 달라졌으면) 덮어쓰지 않고 최신 내용으로 새로고침한다.
+  // [2026.09 버그수정] 예전엔 성공 시에도 docsGetAllCases_(true)로 사건 목록을 통째로 다시
+  // 받아 docsRenderCaseEvidencePanel_()로 패널 전체(주소검색 입력칸·수동/요청자료 추가란
+  // 포함)를 다시 그렸다 — 그 사이 입력해두고 아직 "추가"를 안 누른 라벨·메모 텍스트가
+  // 그대로 날아갔다(실사용 감사 지적). c 객체와 캐시를 그 자리에서 갱신하고, 증빙 목록
+  // 3칸(자동/추가/요청)만 다시 그린다.
   function docsSaveEvidence_(c, newList){
-    callGas('work_update_case', { id: c.id, 증빙목록: newList, 기대수정일: c.수정일 }).then(function(res){
-      if (res.conflict){ showToast(res.message || '충돌이 발생했습니다. 새로고침합니다.', 'warning'); docsGetAllCases_(true).then(function(){ docsRenderCaseEvidencePanel_(); }); return; }
-      if (res.success === false){ showToast(res.message || '저장 실패', 'error'); return; }
-      docsGetAllCases_(true).then(function(){ docsRenderCaseEvidencePanel_(); });
-    }).catch(function(err){ showToast('저장 중 오류: ' + (err && err.message ? err.message : err), 'error'); });
+    return callGas('work_update_case', { id: c.id, 증빙목록: newList, 기대수정일: c.수정일 }).then(function(res){
+      if (res.conflict){ showToast(res.message || '충돌이 발생했습니다. 새로고침합니다.', 'warning'); docsGetAllCases_(true).then(function(){ docsRenderCaseEvidencePanel_(); }); return res; }
+      if (res.success === false){ showToast(res.message || '저장 실패', 'error'); return res; }
+      if (res.case) Object.assign(c, res.case); else c.증빙목록 = newList;
+      if (docsAllCasesCache_){
+        var cached = docsAllCasesCache_.filter(function(x){ return x.id === c.id; })[0];
+        if (cached) Object.assign(cached, c);
+      }
+      docsRenderEvidenceList_(c, 'auto', 'docsEvListAuto');
+      docsRenderEvidenceList_(c, 'manual', 'docsEvListManual');
+      docsRenderEvidenceList_(c, 'requested', 'docsEvListRequested');
+      if (c.my_report_id){
+        callGas('admin_get_case', { report_id: c.my_report_id }).then(function(res2){
+          if (res2.success === false) return;
+          docsRenderEvidenceList_(c, 'requested', 'docsEvListRequested', (res2.case && res2.case.submission_status) || {});
+        }).catch(function(){});
+      }
+      return res;
+    }).catch(function(err){ showToast('저장 중 오류: ' + (err && err.message ? err.message : err), 'error'); throw err; });
   }
 
   function docsAddEvidence_(c, entryPartial){
     var entry = Object.assign({ id: 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6) }, entryPartial);
     var newList = (c.증빙목록 || []).concat([entry]);
-    docsSaveEvidence_(c, newList);
+    var saved = docsSaveEvidence_(c, newList);
     if (entryPartial.source === 'requested' && c.my_report_id){
       callGas('admin_add_checklist_item', { report_id: c.my_report_id, item: entryPartial.label }).catch(function(){});
     }
+    return saved;
   }
 
   function docsRenderEvidenceList_(c, source, containerId, submissionStatus){
@@ -484,10 +571,21 @@
   }
 
   function docsRenderEvidenceUi_(panel, c){
+    // [2026.09 버그수정] 실사용 감사 지적 — 물건이 여러 건인 사건에서 이 버튼은 항상
+    // 물건목록[0]의 주소로만 검색어를 채워서, 두 번째·세 번째 물건은 매번 주소를 처음부터
+    // 다시 타이핑해야 했다. 물건이 2건 이상이면 어느 물건을 조회할지 먼저 고르게 한다.
+    var ovForAddrList = c.사건개요 || {};
+    var addrAssetList = Array.isArray(ovForAddrList.물건목록) ? ovForAddrList.물건목록 : [];
+    var addrPickerHtml = addrAssetList.length > 1
+      ? '<select id="docsEvAutoAddrSelect" style="margin-bottom:6px; max-width:100%;">' +
+        addrAssetList.map(function(a, i){ return '<option value="' + i + '">' + escapeHtml(a.assetLocation || ('물건' + (i + 1))) + '</option>'; }).join('') +
+        '</select><br>'
+      : '';
     panel.innerHTML =
       '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:8px;">📋 ' + escapeHtml(c.고객명) + ' · ' + escapeHtml(c.사건명) + ' — 증빙</div>' +
       '<div style="margin-bottom:14px;">' +
       '<div style="font-size:12px; font-weight:600; color:var(--sub); margin-bottom:6px;">자동확보</div>' +
+      addrPickerHtml +
       '<button type="button" id="docsEvAutoAddrBtn" class="ghost-btn" style="margin-bottom:8px;">🏠 주소로 자동조회(실거래가·공시가격)</button>' +
       '<div id="docsEvAutoPicked"></div>' +
       '<div id="docsEvListAuto"></div>' +
@@ -533,22 +631,38 @@
       // [2026.09 버그수정] 사건개요(처리개요)에서 이미 입력해둔 소재지가 있으면 여기서 또
       // 처음부터 타이핑하지 않도록 검색어를 미리 채워준다.
       // [2026.09 재설계] 양도는 이제 물건이 여러 건이면 overview.물건목록 배열에 들어있다 —
-      // 첫 번째 물건 주소를 기본값으로 쓴다(옛 사건은 물건목록이 없을 수 있어 옛 flat 필드로 대체).
+      // 위에서 고른 물건(2건 이상일 때만 선택칸이 뜬다) 주소를 기본값으로 쓴다(옛 사건은
+      // 물건목록이 없을 수 있어 옛 flat 필드로 대체).
       var ov = c.사건개요 || {};
-      var knownAddr = (Array.isArray(ov.물건목록) && ov.물건목록[0] && ov.물건목록[0].assetLocation) || ov.assetLocation || '';
+      var addrList = Array.isArray(ov.물건목록) ? ov.물건목록 : [];
+      var addrSelectEl = document.getElementById('docsEvAutoAddrSelect');
+      var pickedAsset = addrSelectEl ? addrList[Number(addrSelectEl.value)] : addrList[0];
+      var knownAddr = (pickedAsset && pickedAsset.assetLocation) || ov.assetLocation || '';
       openAddressSearchModal_(function(picked){ docsRenderEvAutoPicked_(c, picked); }, knownAddr);
     });
     document.getElementById('docsEvManualAddBtn').addEventListener('click', function(){
       var label = document.getElementById('docsEvManualLabel').value.trim();
       if (!label){ showToast('자료명을 입력해주세요.', 'warning'); return; }
       var note = document.getElementById('docsEvManualNote').value.trim();
-      docsAddEvidence_(c, { source: 'manual', label: label, note: note, status: '확보됨', 확보일: new Date().toISOString().slice(0, 10) });
+      // [2026.09 버그수정] 저장이 이제 패널 전체를 다시 그리지 않으므로(위 docsSaveEvidence_
+      // 참고), 예전엔 그 재구성이 자동으로 비워주던 이 입력칸들을 성공 시 직접 비운다.
+      docsAddEvidence_(c, { source: 'manual', label: label, note: note, status: '확보됨', 확보일: new Date().toISOString().slice(0, 10) }).then(function(res){
+        if (res && res.success !== false && !res.conflict){
+          document.getElementById('docsEvManualLabel').value = '';
+          document.getElementById('docsEvManualNote').value = '';
+        }
+      });
     });
     document.getElementById('docsEvReqAddBtn').addEventListener('click', function(){
       var label = document.getElementById('docsEvReqLabel').value.trim();
       if (!label){ showToast('요청할 자료명을 입력해주세요.', 'warning'); return; }
       var note = document.getElementById('docsEvReqNote').value.trim();
-      docsAddEvidence_(c, { source: 'requested', label: label, note: note, status: '미확보', 요청일: new Date().toISOString().slice(0, 10) });
+      docsAddEvidence_(c, { source: 'requested', label: label, note: note, status: '미확보', 요청일: new Date().toISOString().slice(0, 10) }).then(function(res){
+        if (res && res.success !== false && !res.conflict){
+          document.getElementById('docsEvReqLabel').value = '';
+          document.getElementById('docsEvReqNote').value = '';
+        }
+      });
     });
   }
 

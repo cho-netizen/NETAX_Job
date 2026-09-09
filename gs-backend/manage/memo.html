@@ -82,7 +82,7 @@
 <div id="memoOvApplyStep">
   <div class="box" style="width:min(440px, 92vw); position:relative;">
     <span class="modal-close" id="memoOvApplyClose" title="닫기" style="position:absolute; top:10px; right:10px; color:var(--sub); background:var(--panel);">✕</span>
-    <div style="font-weight:700; color:var(--navy); font-size:14px; padding-right:24px;">🆕 새 사건으로 등록</div>
+    <div style="font-weight:700; color:var(--navy); font-size:14px; padding-right:24px;">📋 사건에 반영(새로 등록 또는 기존 사건에 적용)</div>
     <div style="font-size:11.5px; color:var(--sub);">사건을 만들면서 지금 작성한 사건개요를 바로 반영합니다.</div>
     <input type="text" id="memoOvNewCustomer" placeholder="고객명(의뢰인) — 필수">
     <input type="text" id="memoOvNewTaxpayer" placeholder="납세자(의뢰인과 다른 경우만)">
@@ -95,7 +95,7 @@
     <div style="border-top:1px dashed var(--line); margin:6px 0 2px; padding-top:10px; font-weight:700; color:var(--navy); font-size:13px;">또는 — 이미 작업관리에 등록된 사건에 적용</div>
     <select id="memoOvApplyCaseSelect" style="width:100%; box-sizing:border-box;"><option value="">사건을 선택하세요</option></select>
     <div style="display:flex; gap:8px; justify-content:flex-end;">
-      <button type="button" id="memoOvApplyConfirm" class="ghost-btn">기존 사건에 적용</button>
+      <button type="button" id="memoOvApplyConfirm" class="save-btn">기존 사건에 적용</button>
     </div>
   </div>
 </div>
@@ -133,9 +133,16 @@
     return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
 
+  // [2026.09 버그수정] 실사용 시뮬레이션 중 발견 — work_generateUniqueCaseName_(Code.js)이
+  // 만드는 실제 사건 폴더명은 "고객명(동명이인 구분 숫자)_세목_업무유형"인데, 이 매칭은
+  // "고객명(숫자)" 뒤에 공백이나 끝만 허용해서 사건 폴더를 전혀 못 찾았다 — 이미 사건이 있는
+  // 고객과 통화하며 메모를 저장하면, 그 사건 폴더를 놔두고 이름만 같은 새 폴더가 따로 만들어져
+  // 메모가 실제 사건 자료와 분리된 채 조용히 엉뚱한 곳에 저장되고 있었다. "_"도 경계문자로
+  // 인정해서 사건 폴더를 같은 고객으로 인식하게 한다(뒤에 여러 개 걸리면 기존처럼 목록에서
+  // 정확한 폴더를 고르게 한다).
   function findCustomerFolderMatches_(folders, customerName){
     var nameEscaped = customerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    var re = new RegExp('^' + nameEscaped + '(\\d*)(?:\\s|$)');
+    var re = new RegExp('^' + nameEscaped + '(\\d*)(?:\\s|_|$)');
     var matches = [];
     folders.forEach(function(f){
       var m = f.name.match(re);
@@ -324,6 +331,13 @@
         callGas('deleteItem', { id: entry.file.id, type: 'file' }).then(function(res){
           if (res && res.error) throw new Error(res.error);
           toast('삭제했습니다.');
+          // [2026.09 버그수정] 지금 편집 중인 메모를 검색창에서 삭제(휴지통 이동)해도
+          // editingGeneralMemoFile이 그대로 남아있어서, 이어서 "저장"을 누르면 휴지통에 있는
+          // 파일에 조용히 다시 쓰였다("저장했습니다" 토스트까지 뜨지만 목록엔 안 보임 —
+          // 사실상 내용 유실). 지금 편집 중인 파일이 삭제된 것이면 새 메모 상태로 되돌린다.
+          if (editingGeneralMemoFile && editingGeneralMemoFile.id === entry.file.id) {
+            editingGeneralMemoFile = null;
+          }
           return refreshGeneralMemoList();
         }).then(function(){ memoSearch.dispatchEvent(new Event('input')); })
           .catch(function(err){ toast('삭제 실패: ' + (err && err.message ? err.message : err)); });
@@ -480,9 +494,31 @@
     var baseDateLabel = (typeof WORK_BASE_DATE_LABELS_ !== 'undefined' && WORK_BASE_DATE_LABELS_[semok]) || '기준일';
     html += memoOvRenderField_('_baseDate', baseDateLabel, 'date', data._baseDate, null);
     (CH_CASE_OVERVIEW_FIELDS_[semok] || []).forEach(function(f){
-      html += memoOvRenderField_(f.key, f.label, f.type, data[f.key], f.options);
+      // [2026.09 버그수정] 사건분류 필드는 casehandling.html이 서버 목록(dynamicClassification,
+      // chCaseClassificationOptions_)으로 바뀌면서 여기 f.options가 통째로 사라져(undefined),
+      // 이 화면의 사건분류 드롭다운이 완전히 빈 채로 뜨고 있었다 — "기존 사건에 적용"하면
+      // 빈 값이 그대로 덮어써 이미 지정해둔 사건분류가 조용히 지워지는 실제 데이터 유실
+      // 버그였다. casehandling.html과 똑같은 방식(전역 chCaseClassificationOptions_ +
+      // CH_CLASSIFICATION_DEFAULT_LABEL_)으로 옵션을 만든다.
+      var opts = f.dynamicClassification
+        ? [(typeof CH_CLASSIFICATION_DEFAULT_LABEL_ !== 'undefined' && CH_CLASSIFICATION_DEFAULT_LABEL_[semok]) || '일반'].concat((typeof chCaseClassificationOptions_ !== 'undefined' && chCaseClassificationOptions_[semok]) || [])
+        : f.options;
+      html += memoOvRenderField_(f.key, f.label, f.type, data[f.key], opts);
     });
     return html;
+  }
+  // [2026.09 버그수정] 위 사건분류 옵션의 출처(chCaseClassificationOptions_)는 casehandling.html
+  // (처리개요) 화면을 이번 세션에 한 번이라도 열어야 채워진다 — 메모 화면만 단독으로 먼저
+  // 열면 여전히 빈 목록이 될 수 있어, 여기서도 독자적으로 한 번 받아온다(이미 받아왔으면
+  // 다시 부르지 않음). 폼을 먼저 그려서 사용자가 바로 다른 칸에 입력할 수 있게 하고, 목록이
+  // 도착하면 그 사이 입력한 값을 보존한 채로 사건분류 select만 실제로 채워 다시 그린다.
+  var memoOvClassificationOptionsLoaded_ = typeof chCaseClassificationOptions_ !== 'undefined' && Object.keys(chCaseClassificationOptions_ || {}).length > 0;
+  function memoOvEnsureClassificationOptions_(){
+    if (memoOvClassificationOptionsLoaded_) return Promise.resolve();
+    return callGas('work_get_cases', {}).then(function(res){
+      if (res && res.evidenceClassificationOptions) chCaseClassificationOptions_ = res.evidenceClassificationOptions;
+      memoOvClassificationOptionsLoaded_ = true;
+    }).catch(function(){});
   }
 
   function memoOvCollectData_(semok){
@@ -526,6 +562,9 @@
     memoOvFormWrapEl.style.display = 'block';
     document.getElementById('memoOvSemokLabel').textContent = '📋 ' + (MEMO_OVERVIEW_SEMOK_LABELS_[data.세목] || data.세목) + ' 사건메모';
     memoOvFieldsEl.innerHTML = memoOvBuildFormHtml_(data.세목, data);
+    memoOvEnsureClassificationOptions_().then(function(){
+      memoOvFieldsEl.innerHTML = memoOvBuildFormHtml_(data.세목, memoOvCollectData_(data.세목));
+    });
   }
 
   memoOvSemokSelectEl.addEventListener('change', function(){
@@ -724,13 +763,21 @@
     if (!c) return;
     if (c.사건개요 && Object.keys(c.사건개요).length && !confirm('"' + (c.고객명 || '') + ' · ' + (c.사건명 || '') + '" 사건에는 이미 사건개요가 있습니다. 덮어쓸까요?')) return;
     var data = memoOvCollectData_(memoOvCurrentSemok_);
-    var payload = { id: c.id, 사건개요: memoOvBuildOverviewPayload_(memoOvCurrentSemok_, data) };
+    // [2026.09 버그수정] 실사용 감사 지적 — 메모 초안은 물건목록(여러 필지) 개념이 없어서,
+    // 이 draft를 그대로 overview 전체로 치환하면 사건처리 화면에서 이미 등록해둔 물건목록이
+    // 통째로 사라졌다. 기존 사건개요 위에 이 draft의 필드만 얹어(병합) 저장한다.
+    // [2026.09 버그수정] 실사용 감사 지적 — 사건개요를 통째로 읽어서 병합한 뒤 다시 저장하는
+    // 이 화면만 유독 동시편집 낙관적 잠금(기대수정일)이 빠져 있었다 — 이 모달을 열어두고
+    // 입력하는 동안 다른 화면에서 같은 사건의 사건개요를 먼저 저장하면 그 변경을 경고 없이
+    // 덮어쓸 수 있었다.
+    var payload = { id: c.id, 사건개요: Object.assign({}, c.사건개요 || {}, memoOvBuildOverviewPayload_(memoOvCurrentSemok_, data)), 기대수정일: c.수정일 };
     if (data._baseDate) payload.기준일 = data._baseDate;
     var taxpayerFieldApply_ = (typeof TAXPAYER_NAME_FIELD_BY_SEMOK_ !== 'undefined') ? TAXPAYER_NAME_FIELD_BY_SEMOK_[memoOvCurrentSemok_] : null;
     if (taxpayerFieldApply_ && data[taxpayerFieldApply_]) payload.납세자 = data[taxpayerFieldApply_];
     var btn = document.getElementById('memoOvApplyConfirm');
     btn.disabled = true;
     callGas('work_update_case', payload).then(function(res){
+      if (res.conflict){ toast(res.message || '그 사이 다른 곳에서 이 사건이 바뀌었습니다. 다시 시도해주세요.'); return; }
       if (res.success === false){ toast(res.message || '적용 실패'); return; }
       toast('"' + (c.고객명 || '') + ' · ' + (c.사건명 || '') + '" 사건에 반영했습니다.');
       memoOvApplyStepEl.style.display = 'none';

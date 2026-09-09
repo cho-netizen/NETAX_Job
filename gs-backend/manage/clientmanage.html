@@ -19,7 +19,7 @@
       <span>👤 고객정보 빠른보기</span>
       <span class="modal-close" id="btnCloseClientQuickView" title="닫기">✕</span>
     </div>
-    <div class="modal-body" id="clientQuickViewMount"></div>
+    <div class="modal-body" id="clientQuickViewMount"><div id="clientQuickViewDetail"></div></div>
   </div>
 </div>
 
@@ -37,6 +37,12 @@
   var selectedClientId = null;
   var clientShowingNewForm = false;
   var clientManageLoaded = false;
+  // 메인 패널(왼쪽 목록에서 선택한 고객)의 "마지막으로 저장된 상태" 기준선. loadClients()는
+  // 빠른보기 저장/삭제 등 메인 패널과 무관한 이유로도 수시로 호출되는데, 그때마다 메인 패널을
+  // 서버 최신값으로 무조건 다시 그리면 지금 메인 패널에 입력 중인(아직 저장 안 한) 내용이
+  // 조용히 사라진다 — 이 기준선과 현재 입력값이 다르면(=저장 안 한 수정이 있으면) 그 무조건
+  // 재렌더링을 건너뛴다.
+  var clientMainPanelBaseline_ = null;
 
   var CLIENT_TIER_OPTIONS_ = ['로얄', '우수', '보통', '영세'];
 
@@ -70,12 +76,22 @@
       clients = res.clients || [];
       renderClientList();
       updateClientNameOptions_();
+      // [2026.09 리팩터] 빠른보기 모달은 이제 #clientDetail을 옮겨 쓰지 않고 완전히 별도인
+      // #clientQuickViewDetail에 그린다 — 그래서 여기서 메인 패널을 다시 그려도 모달 내용에는
+      // 전혀 영향이 없다. inQuickView 분기 자체가 더 이상 필요 없다.
       if (selectedClientId){
         var still = clients.filter(function(c){ return c.id === selectedClientId; })[0];
-        if (still) { renderClientDetail(still); return; }
+        if (still){
+          // [2026.09 버그수정] 실사용 시뮬레이션 중 발견 — 빠른보기에서 저장/삭제해도 이
+          // loadClients()가 불려서, 메인 패널에 입력 중이던(저장 안 한) 내용이 그때마다
+          // 서버 최신값으로 덮어써져 사라졌다. 메인 패널에 저장 안 한 수정이 있으면 이번
+          // 재렌더링은 건너뛴다(왼쪽 목록 텍스트만 최신화되고, 메인 패널 입력값은 보존됨).
+          var mainHasUnsavedEdits_ = clientMainPanelBaseline_ !== null && clientDetail.querySelector('#ccEditName') && quickViewCurrentSignature_(clientDetail) !== clientMainPanelBaseline_;
+          if (!mainHasUnsavedEdits_) renderClientDetail(still);
+          return;
+        }
       }
-      var inQuickView = clientDetail && clientDetail.parentElement && clientDetail.parentElement.id === 'clientQuickViewMount';
-      if (!clientShowingNewForm && clientDetail && !inQuickView){
+      if (!clientShowingNewForm && clientDetail){
         clientDetail.innerHTML = '<div class="explorer-status">왼쪽에서 고객을 선택하거나 "+ 새 고객"을 눌러주세요.</div>';
       }
     }).catch(function(){
@@ -126,7 +142,7 @@
     clientDetail.innerHTML =
       '<h3 style="margin-top:0;">새 고객 등록</h3>' +
       '<div style="display:flex; flex-direction:column; gap:8px; max-width:380px;">' +
-      '<label>성명<br><input type="text" id="ccNewName" style="width:100%;" placeholder="고객 성명"></label>' +
+      '<label>성명 *<br><input type="text" id="ccNewName" style="width:100%;" placeholder="고객 성명"></label>' +
       '<label>전화번호<br><input type="text" id="ccNewPhone" style="width:100%;" placeholder="(선택)"></label>' +
       '<label>구분<br><select id="ccNewType" style="width:100%;">' + CLIENT_TIER_OPTIONS_.map(function(t){ return '<option value="' + t + '"' + (t === '보통' ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></label>' +
       '<label>납세번호<br><input type="text" id="ccNewBiz" style="width:100%;" placeholder="(선택)"></label>' +
@@ -160,11 +176,20 @@
     });
   }
 
-  function renderClientDetail(c){
-    clientDetail.innerHTML =
+  // [2026.09 리팩터] 실사용 시뮬레이션 도중, 빠른보기 모달에서 확인창을 눌러 "그래도 볼까요?"를
+  // 선택하면 확인창이 뜨고도 결국 메인 화면의 저장 안 한 내용이 사라지는 것을 재확인했다 —
+  // 경고만으로는 부족하고(미봉책), 애초에 메인 패널과 빠른보기 모달이 같은 DOM 노드(#clientDetail)를
+  // 옮겨써서 공유하는 구조 자체가 원인이다. 그래서 이 함수가 그릴 대상 컨테이너를 인자로 받게
+  // 바꾸고, 내부 조회도 전부 전역 document.getElementById 대신 그 컨테이너 안으로 한정해서
+  // 찾도록(container.querySelector) 고쳤다 — 메인 패널(#clientDetail)과 빠른보기
+  // (#clientQuickViewDetail)가 이제 완전히 독립된 DOM이라 한쪽 수정이 다른 쪽을 덮어쓸 방법이
+  // 아예 없다.
+  function renderClientDetail(c, container){
+    container = container || clientDetail;
+    container.innerHTML =
       '<div style="display:flex; justify-content:space-between; align-items:flex-start;">' +
       '<input type="text" id="ccEditName" placeholder="성명" value="' + escapeHtml(c.성명 || '') + '" style="font-weight:700; font-size:15px; flex:1; min-width:0; margin-right:8px;">' +
-      '<button type="button" id="ccDeleteClient" class="ghost-btn" title="삭제">🗑 삭제</button>' +
+      '<button type="button" id="ccDeleteClient" class="btn danger" title="삭제">🗑 삭제</button>' +
       '</div>' +
       '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:14px;">' +
       '<input type="text" id="ccEditPhone" placeholder="전화번호" value="' + escapeHtml(c.전화번호 || '') + '" style="width:130px;">' +
@@ -179,27 +204,47 @@
       '<div id="ccPaymentList" class="log-list"><div class="log-empty">불러오는 중…</div></div>' +
       '<div id="ccNewPaymentFormWrap" style="display:none; margin-top:10px; gap:6px; flex-wrap:wrap; align-items:center;"></div>';
 
-    document.getElementById('ccEditPhone').addEventListener('input', function(e){ e.target.value = formatPhoneInput_(e.target.value); });
+    container.querySelector('#ccEditPhone').addEventListener('input', function(e){ e.target.value = formatPhoneInput_(e.target.value); });
 
-    document.getElementById('ccSaveClient').addEventListener('click', function(){
-      var name = document.getElementById('ccEditName').value.trim();
+    container.querySelector('#ccSaveClient').addEventListener('click', function(){
+      var name = container.querySelector('#ccEditName').value.trim();
       if (!name){ showToast('성명은 비워둘 수 없습니다.', 'warning'); return; }
       callGas('client_update_client', {
         id: c.id, 성명: name,
-        전화번호: document.getElementById('ccEditPhone').value.trim(),
-        구분: document.getElementById('ccEditType').value.trim(),
-        사업자번호: document.getElementById('ccEditBiz').value.trim(),
-        메모: document.getElementById('ccEditMemo').value.trim()
+        전화번호: container.querySelector('#ccEditPhone').value.trim(),
+        구분: container.querySelector('#ccEditType').value.trim(),
+        사업자번호: container.querySelector('#ccEditBiz').value.trim(),
+        메모: container.querySelector('#ccEditMemo').value.trim()
       }).then(function(res){
         if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); return; }
         showToast('저장했습니다.', 'success');
-        loadClients();
-        if (quickViewSnapshot_ !== null) quickViewSnapshot_ = quickViewCurrentSignature_();
+        if (container === clientDetail){
+          // 방금 저장한 값으로 기준선을 먼저 맞춰둔다 — 그래야 뒤이은 loadClients()의
+          // "저장 안 한 수정이 있으면 재렌더링 건너뛰기" 판단이 지금 막 저장한 값을 "수정
+          // 안 한 것"으로 보고 정상적으로 최신값(서버 확정값)을 다시 그려준다.
+          clientMainPanelBaseline_ = quickViewCurrentSignature_(container);
+          loadClients();
+        } else {
+          // 빠른보기 안에서 저장한 것이므로 메인 패널은 그대로 두고, 이 모달만의 "저장됨"
+          // 기준선을 갱신한다. 왼쪽 목록의 이름/전화번호 표시만 최신화한다.
+          quickViewSnapshot_ = quickViewCurrentSignature_(container);
+          callGas('client_get_clients', {}).then(function(r2){ clients = r2.clients || []; renderClientList(); updateClientNameOptions_(); }).catch(function(){});
+        }
       }).catch(function(){ showToast('저장 중 오류가 발생했습니다.', 'error'); });
     });
 
-    document.getElementById('ccDeleteClient').addEventListener('click', function(){
+    container.querySelector('#ccDeleteClient').addEventListener('click', function(){
       if (!confirm('"' + c.성명 + '" 고객을 삭제할까요? 수금 내역은 남아있지만 이 고객과의 연결은 끊어집니다.')) return;
+      function afterDelete_(){
+        showToast('삭제했습니다.', 'success');
+        if (container === clientDetail){
+          selectedClientId = null;
+          loadClients();
+        } else {
+          loadClients();
+          closeClientQuickView_(true);
+        }
+      }
       callGas('client_delete_client', { id: c.id }).then(function(res){
         if (res.hasActiveCases) {
           // [2026.09 버그수정] 진행 중인 사건이 있는 고객을 경고 없이 지우면 그 사건의
@@ -207,21 +252,17 @@
           if (!confirm(res.message + '\n\n그래도 삭제할까요?')) return;
           callGas('client_delete_client', { id: c.id, force: true }).then(function(res2){
             if (res2.error || res2.success === false){ showToast(res2.error || res2.message || '삭제 실패', 'error'); return; }
-            selectedClientId = null;
-            showToast('삭제했습니다.', 'success');
-            loadClients();
+            afterDelete_();
           }).catch(function(){ showToast('삭제 중 오류가 발생했습니다.', 'error'); });
           return;
         }
         if (res.error || res.success === false){ showToast(res.error || res.message || '삭제 실패', 'error'); return; }
-        selectedClientId = null;
-        showToast('삭제했습니다.', 'success');
-        loadClients();
+        afterDelete_();
       }).catch(function(){ showToast('삭제 중 오류가 발생했습니다.', 'error'); });
     });
 
-    var newPaymentFormWrap = document.getElementById('ccNewPaymentFormWrap');
-    document.getElementById('ccPaymentToggle').addEventListener('click', function(){
+    var newPaymentFormWrap = container.querySelector('#ccNewPaymentFormWrap');
+    container.querySelector('#ccPaymentToggle').addEventListener('click', function(){
       if (newPaymentFormWrap.style.display === 'none'){
         newPaymentFormWrap.style.display = 'flex';
         newPaymentFormWrap.innerHTML =
@@ -235,21 +276,21 @@
           '</select>' +
           '<button type="button" id="ccAddPayment" class="save-btn">추가</button>' +
           '<button type="button" id="ccAddPaymentCancel" class="ghost-btn">취소</button>';
-        document.getElementById('ccAddPaymentCancel').addEventListener('click', function(){ newPaymentFormWrap.style.display = 'none'; newPaymentFormWrap.innerHTML = ''; });
-        document.getElementById('ccAddPayment').addEventListener('click', function(){
-          var amount = document.getElementById('ccNewPayAmount').value;
+        newPaymentFormWrap.querySelector('#ccAddPaymentCancel').addEventListener('click', function(){ newPaymentFormWrap.style.display = 'none'; newPaymentFormWrap.innerHTML = ''; });
+        newPaymentFormWrap.querySelector('#ccAddPayment').addEventListener('click', function(){
+          var amount = newPaymentFormWrap.querySelector('#ccNewPayAmount').value;
           if (!amount){ showToast('금액을 입력해주세요.', 'warning'); return; }
           callGas('client_add_consult_log', {
             고객ID: c.id, 고객명: c.성명,
-            날짜: document.getElementById('ccNewPayDate').value,
+            날짜: newPaymentFormWrap.querySelector('#ccNewPayDate').value,
             금액: amount,
-            수취증빙: document.getElementById('ccNewPayReceipt').value
+            수취증빙: newPaymentFormWrap.querySelector('#ccNewPayReceipt').value
           }).then(function(res){
             if (res.error || res.success === false){ showToast(res.error || res.message || '추가 실패', 'error'); return; }
             showToast('수금 내역을 추가했습니다.', 'success');
             newPaymentFormWrap.style.display = 'none';
             newPaymentFormWrap.innerHTML = '';
-            loadClientPayments_(c);
+            loadClientPayments_(c, container);
           }).catch(function(){ showToast('추가 중 오류가 발생했습니다.', 'error'); });
         });
       } else {
@@ -258,12 +299,15 @@
       }
     });
 
-    loadClientLogs_(c);
-    loadClientPayments_(c);
+    loadClientLogs_(c, container);
+    loadClientPayments_(c, container);
+
+    if (container === clientDetail) clientMainPanelBaseline_ = quickViewCurrentSignature_(container);
   }
 
-  function loadClientLogs_(c){
-    var listEl = document.getElementById('ccLogList');
+  function loadClientLogs_(c, container){
+    container = container || clientDetail;
+    var listEl = container.querySelector('#ccLogList');
     if (!listEl) return;
     callGas('work_get_cases', {}).then(function(res){
       if (res.error || res.success === false){
@@ -300,8 +344,9 @@
       '</div>';
   }
 
-  function loadClientPayments_(c){
-    var listEl = document.getElementById('ccPaymentList');
+  function loadClientPayments_(c, container){
+    container = container || clientDetail;
+    var listEl = container.querySelector('#ccPaymentList');
     if (!listEl) return;
     callGas('client_get_consult_logs', { 고객ID: c.id }).then(function(res){
       if (res.error || res.success === false){
@@ -317,7 +362,7 @@
       payments.forEach(function(pay){
         var row = document.createElement('div');
         row.className = 'log-entry';
-        renderPaymentRowView_(row, c, pay);
+        renderPaymentRowView_(row, c, pay, container);
         listEl.appendChild(row);
       });
     }).catch(function(){
@@ -325,24 +370,24 @@
     });
   }
 
-  function renderPaymentRowView_(row, c, pay){
+  function renderPaymentRowView_(row, c, pay, container){
     var amountText = pay.금액 ? Number(pay.금액).toLocaleString('ko-KR') + '원' : '';
     row.innerHTML =
       '<div class="log-date">' + escapeHtml(fmtDateShort_(pay.날짜)) + '</div>' +
       '<div class="log-text">' + escapeHtml(amountText) + (pay.수취증빙 ? ' · ' + escapeHtml(pay.수취증빙) : '') + '</div>' +
       '<span class="log-edit" title="수정" style="cursor:pointer; margin-right:6px;">✏️</span>' +
       '<span class="log-del" title="삭제">✕</span>';
-    row.querySelector('.log-edit').addEventListener('click', function(){ renderPaymentRowEdit_(row, c, pay); });
+    row.querySelector('.log-edit').addEventListener('click', function(){ renderPaymentRowEdit_(row, c, pay, container); });
     row.querySelector('.log-del').addEventListener('click', function(){
       if (!confirm('이 수금 내역을 삭제할까요?')) return;
       callGas('client_delete_consult_log', { id: pay.id }).then(function(delRes){
         if (delRes.error || delRes.success === false){ showToast(delRes.error || delRes.message || '삭제 실패', 'error'); return; }
-        loadClientPayments_(c);
+        loadClientPayments_(c, container);
       }).catch(function(){ showToast('삭제 중 오류가 발생했습니다.', 'error'); });
     });
   }
 
-  function renderPaymentRowEdit_(row, c, pay){
+  function renderPaymentRowEdit_(row, c, pay, container){
     var receiptOptions = ['', '현금영수증', '세금계산서', '신용카드'];
     row.innerHTML =
       '<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; width:100%;">' +
@@ -354,7 +399,7 @@
       '<button type="button" class="save-btn payEditSave" style="padding:3px 8px;">저장</button>' +
       '<button type="button" class="ghost-btn payEditCancel" style="padding:3px 8px;">취소</button>' +
       '</div>';
-    row.querySelector('.payEditCancel').addEventListener('click', function(){ renderPaymentRowView_(row, c, pay); });
+    row.querySelector('.payEditCancel').addEventListener('click', function(){ renderPaymentRowView_(row, c, pay, container); });
     row.querySelector('.payEditSave').addEventListener('click', function(){
       var amount = row.querySelector('.payEditAmount').value;
       if (!amount){ showToast('금액을 입력해주세요.', 'warning'); return; }
@@ -366,7 +411,7 @@
       }).then(function(res){
         if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); return; }
         showToast('저장했습니다.', 'success');
-        loadClientPayments_(c);
+        loadClientPayments_(c, container);
       }).catch(function(){ showToast('저장 중 오류가 발생했습니다.', 'error'); });
     });
   }
@@ -375,39 +420,51 @@
   clientSearchInput.addEventListener('input', function(){ loadClients(); });
 
   // ---- 고객정보 빠른보기 팝업 (작업관리 사건 상세의 👤 버튼에서 호출) ----
+  // [2026.09 리팩터] 예전엔 별도 DOM 없이 메인 목록의 #clientDetail 노드를 그대로 모달 안으로
+  // 옮겼다가 닫을 때 되돌리는 방식이라, 메인 목록에 저장 안 한 수정 내용이 있는 상태에서 이
+  // 팝업으로 다른 고객을 열면 노드가 통째로 덮어써져 조용히 사라졌다(실사용 감사 지적, 심각도
+  // 상). confirm() 경고만 추가했던 임시 조치는 "확인하고 진행"을 누르면 결국 똑같이 사라지는
+  // 것으로 재확인돼 미봉책이었다 — 이제 빠른보기는 메인 패널과 완전히 분리된 자기 DOM
+  // (#clientQuickViewDetail)에 그려서, 어느 쪽에서 무엇을 하든 다른 쪽 데이터를 건드릴 방법이
+  // 구조적으로 없다.
   var quickViewSnapshot_ = null;
-  function quickViewCurrentSignature_(){
+  function quickViewCurrentSignature_(container){
+    container = container || clientDetail;
     var ids = ['ccEditName', 'ccEditPhone', 'ccEditType', 'ccEditBiz', 'ccEditMemo'];
-    return ids.map(function(id){ var el = document.getElementById(id); return el ? el.value : ''; }).join('');
+    return ids.map(function(id){ var el = container.querySelector('#' + id); return el ? el.value : ''; }).join('');
   }
 
   function openClientQuickView_(clientId){
     if (!clientId){ showToast('이 사건에 연결된 고객 정보가 없습니다.', 'warning'); return; }
+    var qvContainer = document.getElementById('clientQuickViewDetail');
+    var overlay = document.getElementById('clientQuickViewOverlay');
+    var alreadyOpen = overlay.style.display !== 'none';
+    if (alreadyOpen && quickViewSnapshot_ !== null && quickViewCurrentSignature_(qvContainer) !== quickViewSnapshot_){
+      if (!confirm('빠른보기에 저장하지 않은 수정 내용이 있습니다. 저장하지 않고 다른 고객을 볼까요?')) return;
+    }
     var found = clients.filter(function(c){ return c.id === clientId; })[0];
     var p = found ? Promise.resolve(found) : callGas('client_get_clients', {}).then(function(res){
       return (res.clients || []).filter(function(c){ return c.id === clientId; })[0];
     }).catch(function(){ return null; });
     p.then(function(f){
       if (!f){ showToast('연결된 고객 정보를 찾을 수 없습니다.', 'error'); return; }
-      var overlay = document.getElementById('clientQuickViewOverlay');
-      document.getElementById('clientQuickViewMount').appendChild(clientDetail);
       overlay.style.display = 'flex';
-      renderClientDetail(f);
-      quickViewSnapshot_ = quickViewCurrentSignature_();
+      renderClientDetail(f, qvContainer);
+      quickViewSnapshot_ = quickViewCurrentSignature_(qvContainer);
     });
   }
 
-  function closeClientQuickView_(){
-    if (quickViewSnapshot_ !== null && quickViewCurrentSignature_() !== quickViewSnapshot_){
+  function closeClientQuickView_(force){
+    var qvContainer = document.getElementById('clientQuickViewDetail');
+    if (!force && quickViewSnapshot_ !== null && quickViewCurrentSignature_(qvContainer) !== quickViewSnapshot_){
       if (!confirm('저장하지 않은 수정 내용이 있습니다. 저장하지 않고 닫을까요?')) return;
     }
     quickViewSnapshot_ = null;
     document.getElementById('clientQuickViewOverlay').style.display = 'none';
-    var clientDetailCol = document.getElementById('clientDetailCol');
-    if (clientDetailCol) clientDetailCol.appendChild(clientDetail);
+    qvContainer.innerHTML = '';
   }
 
-  document.getElementById('btnCloseClientQuickView').addEventListener('click', closeClientQuickView_);
+  document.getElementById('btnCloseClientQuickView').addEventListener('click', function(){ closeClientQuickView_(); });
   document.getElementById('clientQuickViewOverlay').addEventListener('click', function(e){
     if (e.target === document.getElementById('clientQuickViewOverlay')) closeClientQuickView_();
   });

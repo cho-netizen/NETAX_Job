@@ -43,20 +43,26 @@
         b._rowIndex = idx + 2; // 시트 1행=헤더, 배열 0번째 = 2행
         return b;
       });
+      // [2026.09 버그수정] 같은 상태 그룹 안에서 날짜 내림차순(가장 먼 미래가 위)으로 정렬돼
+      // 있어서, 당장 처리해야 할 임박한 신청·확정 건이 그 그룹 맨 아래로 밀려 놓치기 쉬웠다 —
+      // 오름차순(임박한 것이 먼저)으로 바꾼다.
       list.sort(function(a,b){
         var oa = BOOKING_STATUS_ORDER[a.status]!==undefined ? BOOKING_STATUS_ORDER[a.status] : 9;
         var ob = BOOKING_STATUS_ORDER[b.status]!==undefined ? BOOKING_STATUS_ORDER[b.status] : 9;
         if (oa !== ob) return oa - ob;
-        return String(b.reservedDate+b.reservedTime).localeCompare(String(a.reservedDate+a.reservedTime));
+        return String(a.reservedDate+a.reservedTime).localeCompare(String(b.reservedDate+b.reservedTime));
       });
       if (!list.length){ box.innerHTML = '<div class="empty-row">신청 내역이 없습니다.</div>'; return; }
       var html = '<table class="list-table"><tr><th>희망일시</th><th>이름</th><th>연락처</th><th>유형</th><th>관련분야</th>' +
         '<th>상황</th><th>상태</th><th>처리</th><th>사건</th></tr>';
       list.forEach(function(b){
-        var badge = b.status === '신청' ? '🔴 신청' : (b.status === '확정' ? '🟢 확정' : (b.status === '거절' ? '⚪ 거절' : (b.status === '취소' ? '⚪ 취소' : esc(b.status))));
+        // [2026.09 버그수정] 거절·취소가 둘 다 같은 회색 원이라 텍스트를 안 읽으면 구분이
+        // 안 됐다(실사용 감사 지적) — 거절(세무사 쪽 판단으로 안 받음)은 신청과 같은 계열의
+        // 경고색으로, 취소(고객 요청 등)는 중립 회색으로 구분한다.
+        var badge = b.status === '신청' ? '🔴 신청' : (b.status === '확정' ? '🟢 확정' : (b.status === '거절' ? '🚫 거절' : (b.status === '취소' ? '⚪ 취소' : esc(b.status))));
         var actions = '-';
         if (b.status === '신청'){
-          actions = '<button type="button" class="btn success" onclick="bookingApprove(' + b._rowIndex + ')">승인</button> ' +
+          actions = '<button type="button" class="save-btn" onclick="bookingApprove(' + b._rowIndex + ')">승인</button> ' +
             '<button type="button" class="btn danger" onclick="bookingReject(' + b._rowIndex + ')">거절</button>';
         } else if (b.status === '확정' && !b.caseId){
           // [2026.09] 확정된 예약을 사건 시작 전에 취소할 방법이 아예 없었다 — 캘린더에서
@@ -149,6 +155,10 @@
       document.getElementById('bkNewType').value = '';
       document.getElementById('bkNewField').value = '';
       document.getElementById('bkNewSituation').value = '';
+      // [2026.09 버그수정] 날짜·시간 칸이 리셋 목록에서 빠져 있어서, 다음에 폼을 다시 열면
+      // 이전 예약의 날짜·시간이 그대로 남아있었다 — 확인 없이 등록하면 엉뚱한 날짜로 잡힐 위험.
+      document.getElementById('bkNewDate').value = '';
+      document.getElementById('bkNewTime').value = '';
       document.getElementById('bkAdminForm').style.display = 'none';
       initBooking(true);
     }).catch(function(e){ btn.disabled = false; btn.textContent = '등록'; toast('오류: ' + e.message); });

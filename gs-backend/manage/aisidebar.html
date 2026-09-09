@@ -37,7 +37,7 @@
     if (aiSbApiSecret !== null) return;
     google.script.run.withSuccessHandler(function(secret){ aiSbApiSecret = secret || ''; })
       .withFailureHandler(function(){ aiSbApiSecret = ''; })
-      .manageApp_getApiSecret();
+      .manageApp_getApiSecret(typeof manageAppSessionToken_ !== 'undefined' ? manageAppSessionToken_ : null);
   }
 
   function aiSbAppendBubble_(role, text){
@@ -150,8 +150,11 @@
     if (aiSbBusy){ if (aiSbAbortController) aiSbAbortController.abort(); return; }
     aiSbSend_();
   });
+  // [2026.09 버그수정] 로그인 화면 Enter 문제와 같은 원인 — 일부 환경에서 Enter 키 이벤트의
+  // e.key가 기대한 값으로 안 들어와 눌러도 반응이 없을 수 있다(전송 버튼은 있지만 채팅에서
+  // Enter가 하나도 안 먹으면 매번 마우스로 눌러야 해 불편함이 크다) — keyCode(13)도 같이 확인.
   document.getElementById('aiSbInput').addEventListener('keydown', function(e){
-    if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); if (!aiSbBusy) aiSbSend_(); }
+    if ((e.key === 'Enter' || e.keyCode === 13) && !e.shiftKey){ e.preventDefault(); if (!aiSbBusy) aiSbSend_(); }
   });
   document.getElementById('aiSbInput').addEventListener('input', function(e){
     e.target.style.height = 'auto';
