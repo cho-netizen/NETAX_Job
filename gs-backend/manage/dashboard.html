@@ -89,14 +89,18 @@
       // 섞여 있었다 — 마감 자체를 놓치면 안 되니 목록에서 빼지는 않되(보류라고 미뤄둔 사이
       // 진짜 기한을 넘길 수 있으므로), 한눈에 "지금 당장 볼 건 아니다"를 알 수 있게 흐리게
       // 표시하고 지각(overdue) 강조에서는 제외한다.
-      var html = '<table class="list-table"><tr><th>법정일</th><th>고객명</th><th>사건명</th><th>업무유형</th><th>상태</th></tr>';
+      var nowrap = 'white-space:nowrap; overflow:hidden;';
+      var ellipsis = nowrap + ' text-overflow:ellipsis;';
+      var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; min-width:480px;"><colgroup>'
+        + '<col style="width:104px"><col style="width:80px"><col><col style="width:90px"><col style="width:64px">'
+        + '</colgroup><tr><th>법정일</th><th>고객명</th><th>사건명</th><th>업무유형</th><th>상태</th></tr>';
       cases.forEach(function(c){
         var isHold = c.상태 === '보류';
         var overdue = !isHold && c.법정일 < todayStr;
-        html += '<tr data-case-id="' + esc(c.id) + '" style="cursor:pointer;' + (isHold ? ' opacity:0.55;' : '') + '" title="눌러서 처리개요로 이동"><td' + (overdue ? ' style="color:#a83232; font-weight:700;"' : '') + '>' + (overdue ? '⏰ ' : '') + esc(c.법정일) + '</td><td>' + esc(c.고객명) + '</td><td>' + esc(c.사건명) +
-          '</td><td>' + esc(c.업무유형||c.세목||'') + '</td><td>' + (isHold ? '⏸ ' : '') + esc(c.상태) + '</td></tr>';
+        html += '<tr data-case-id="' + esc(c.id) + '" style="cursor:pointer;' + (isHold ? ' opacity:0.55;' : '') + '" title="눌러서 처리개요로 이동"><td style="' + nowrap + (overdue ? ' color:#a83232; font-weight:700;' : '') + '">' + (overdue ? '⏰ ' : '') + esc(c.법정일) + '</td><td style="' + ellipsis + '" title="' + esc(c.고객명) + '">' + esc(c.고객명) + '</td><td style="' + ellipsis + '" title="' + esc(c.사건명) + '">' + esc(c.사건명) +
+          '</td><td style="' + ellipsis + '">' + esc(c.업무유형||c.세목||'') + '</td><td style="' + nowrap + '">' + (isHold ? '⏸ ' : '') + esc(c.상태) + '</td></tr>';
       });
-      html += '</table>';
+      html += '</table></div>';
       box.innerHTML = html;
     }).catch(function(e){ document.getElementById('dashDeadlines').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
@@ -132,12 +136,16 @@
       var logs = (res.logs || []).slice(0, 8);
       var box = document.getElementById('dashPayments');
       if (!logs.length){ box.innerHTML = '<div class="empty-row">수금 내역이 없습니다.</div>'; return; }
-      var html = '<table class="list-table"><tr><th>날짜</th><th>고객명</th><th>금액</th><th>수취증빙</th></tr>';
+      var nowrap = 'white-space:nowrap; overflow:hidden;';
+      var ellipsis = nowrap + ' text-overflow:ellipsis;';
+      var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; min-width:400px;"><colgroup>'
+        + '<col style="width:92px"><col style="width:84px"><col style="width:100px"><col>'
+        + '</colgroup><tr><th>날짜</th><th>고객명</th><th>금액</th><th>수취증빙</th></tr>';
       logs.forEach(function(l){
-        html += '<tr><td>' + esc(l.날짜) + '</td><td>' + esc(l.고객명) + '</td><td>' +
-          (l.금액 ? Number(l.금액).toLocaleString() : '') + '</td><td>' + esc(l.수취증빙) + '</td></tr>';
+        html += '<tr><td style="' + nowrap + '">' + esc(l.날짜) + '</td><td style="' + ellipsis + '" title="' + esc(l.고객명) + '">' + esc(l.고객명) + '</td><td style="' + nowrap + '">' +
+          (l.금액 ? Number(l.금액).toLocaleString() : '') + '</td><td style="' + ellipsis + '" title="' + esc(l.수취증빙) + '">' + esc(l.수취증빙) + '</td></tr>';
       });
-      html += '</table>';
+      html += '</table></div>';
       box.innerHTML = html;
     }).catch(function(e){ document.getElementById('dashPayments').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
@@ -150,38 +158,62 @@
       if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
       var items = res.일정 || [];
       if (!items.length){ box.innerHTML = '<div class="empty-row">일정이 없습니다.</div>'; return; }
-      var html = '<table class="list-table">';
+      var nowrap = 'white-space:nowrap; overflow:hidden;';
+      var ellipsis = nowrap + ' text-overflow:ellipsis;';
+      var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; min-width:300px;"><colgroup>'
+        + '<col style="width:92px"><col style="width:54px"><col>'
+        + '</colgroup>';
       var prevDate = null;
       items.forEach(function(ev){
         var datePart = String(ev.시작).slice(0, 10);
         var timePart = ev.종일일정 ? '종일' : String(ev.시작).slice(11);
         var dateCell = (datePart === prevDate) ? '' : esc(datePart);
         prevDate = datePart;
-        html += '<tr><td>' + dateCell + '</td><td>' + esc(timePart) + '</td><td>' + esc(ev.제목) + '</td></tr>';
+        html += '<tr><td style="' + nowrap + '">' + dateCell + '</td><td style="' + nowrap + '">' + esc(timePart) + '</td><td style="' + ellipsis + '" title="' + esc(ev.제목) + '">' + esc(ev.제목) + '</td></tr>';
       });
-      html += '</table>';
+      html += '</table></div>';
       box.innerHTML = html;
     }).catch(function(e){ document.getElementById('dashCalendar').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
 
   // [2026.09 신규] Gmail 안읽은 메일 — 종전 챗봇의 "메일 왔어?" 기능을 대시보드 카드로 옮김.
   // 처음 실제로 호출될 때 Gmail 접근권한 재승인 화면이 뜰 수 있다(코드 주석 참고).
+  // [2026.09] 보낸사람 헤더는 흔히 `"홍길동" <hong@ex.com>` 형식 — 주소는 빼고 이름만 보여준다.
+  // 이름 표시가 아예 없는 형식(주소만 온 경우)은 @ 앞부분만 이름 대신 쓴다.
+  function dashEmailSenderName_(raw){
+    var s = String(raw || '').trim();
+    var m = s.match(/^"?([^"<]+?)"?\s*<[^>]+>$/);
+    if (m) return m[1].trim();
+    return s.split('@')[0];
+  }
   function loadDashEmails_(){
     callGas('search_emails', { query: 'in:inbox is:unread', maxResults: 8 }).then(function(res){
       var box = document.getElementById('dashEmails');
       if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
       var items = res.메일 || [];
       if (!items.length){ box.innerHTML = '<div class="empty-row">안읽은 메일이 없습니다.</div>'; return; }
-      var html = '<table class="list-table">';
+      // 한 줄에 다 들어오도록 table-layout:fixed + 고정폭 열(체크박스/날짜/시간/보낸사람) + 제목만 남은
+      // 폭을 전부 쓰되 ellipsis로 잘라 보여준다(줄바꿈 없이).
+      var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; min-width:380px;"><colgroup>'
+        + '<col style="width:26px"><col style="width:76px"><col style="width:46px"><col style="width:92px"><col>'
+        + '</colgroup>';
       var prevDate = null;
       items.forEach(function(m){
         var datePart = String(m.받은날짜).slice(0, 10);
         var timePart = String(m.받은날짜).slice(11);
         var dateCell = (datePart === prevDate) ? '' : esc(datePart);
         prevDate = datePart;
-        html += '<tr><td><input type="checkbox" class="dash-email-read-cb" data-id="' + esc(m.id || '') + '"></td><td>' + dateCell + '</td><td>' + esc(timePart) + '</td><td>' + esc(m.보낸사람) + '</td><td>' + esc(m.제목) + '</td></tr>';
+        var nowrap = 'white-space:nowrap; overflow:hidden;';
+        var ellipsis = nowrap + ' text-overflow:ellipsis;';
+        html += '<tr>'
+          + '<td><input type="checkbox" class="dash-email-read-cb" data-id="' + esc(m.id || '') + '"></td>'
+          + '<td style="' + nowrap + '">' + dateCell + '</td>'
+          + '<td style="' + nowrap + '">' + esc(timePart) + '</td>'
+          + '<td style="' + ellipsis + '" title="' + esc(m.보낸사람) + '">' + esc(dashEmailSenderName_(m.보낸사람)) + '</td>'
+          + '<td style="' + ellipsis + '" title="' + esc(m.제목) + '">' + esc(m.제목) + '</td>'
+          + '</tr>';
       });
-      html += '</table>';
+      html += '</table></div>';
       box.innerHTML = html;
     }).catch(function(e){ document.getElementById('dashEmails').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
@@ -210,9 +242,9 @@
     var done = t.상태 === 'completed';
     return '<div class="log-entry" data-task-id="' + esc(t.id) + '" style="align-items:flex-start;">'
       + '<div style="flex:0 0 auto; padding-top:2px;"><input type="checkbox" class="dashTaskDone" ' + (done ? 'checked' : '') + '></div>'
-      + '<div class="log-text" style="flex:1; cursor:pointer;" title="눌러서 수정">'
+      + '<div class="log-text" style="flex:1; cursor:pointer; display:flex; flex-wrap:wrap; align-items:baseline; gap:0 8px;" title="눌러서 수정">'
       + '<span style="' + (done ? 'text-decoration:line-through; color:var(--sub);' : '') + '">' + esc(t.제목) + '</span>'
-      + (t.마감일 ? '<br><span style="font-size:11px; ' + (overdue ? 'color:#a83232; font-weight:700;' : 'color:var(--sub);') + '">📌 ' + esc(t.마감일) + '</span>' : '')
+      + (t.마감일 ? '<span style="font-size:11px; white-space:nowrap; ' + (overdue ? 'color:#a83232; font-weight:700;' : 'color:var(--sub);') + '">📌 ' + esc(t.마감일) + '</span>' : '')
       + '</div>'
       + '<button type="button" class="log-del dashTaskDel" title="삭제">✕</button>'
       + '</div>';

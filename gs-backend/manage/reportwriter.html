@@ -1002,6 +1002,7 @@
   <button id="btnReloadFromDrive" class="iconbtn" title="드라이브에 저장된 최신 내용으로 다시 불러오기 (fileId로 연 문서일 때만 동작)">🔄</button>
   <button id="btnSaveToDrive" class="iconbtn" title="지금 이 내용을 드라이브 원본(.md, 내부보고서 폴더)에 바로 저장">💾</button>
   <button id="btnPublish" class="iconbtn" title="지금 화면의 완성본을 고객포털(my.netax.kr) 보고서함에 발행">📤</button>
+  <button id="btnMakeSlide" class="iconbtn" title="이 문서를 구글 슬라이드로도 만들기(파워포인트 다운로드 가능) — 자문보고서만 지원(시험 단계)">🖥</button>
   <button id="btnRender" class="primary iconbtn" title="렌더링 (편집한 내용을 미리보기에 반영)">⟳</button>
   <button id="btnLayoutToggle" class="iconbtn" title="창보기: 클릭할 때마다 편집창→모아보기→미리보기 순으로 전환 (모아보기 상태에서 더블클릭하면 스크롤 동기화 켜기/끄기)">◫</button>
   <button id="btnNewWindow" class="iconbtn" title="완성된 문서만 새 창(탭)에서 보기 (편집 도구 없이)">↗</button>
@@ -1304,10 +1305,11 @@ function refreshDocSelect(){
 function loadSelectedIntoEditor(){
   const d = getSelected();
   const mdInput = document.getElementById('mdInput');
-  if (!d) { mdInput.value = ''; updateSaveToDriveButton(); updatePublishButton(); return; }
+  if (!d) { mdInput.value = ''; updateSaveToDriveButton(); updatePublishButton(); updateMakeSlideButton_(); return; }
   mdInput.value = d.md;
   updateSaveToDriveButton();
   updatePublishButton();
+  updateMakeSlideButton_();
 }
 
 // ---------- 새 파일 불러오기 ----------
@@ -3139,6 +3141,65 @@ function updatePublishButton(){
 }
 document.getElementById('btnPublish').addEventListener('click', publishToCustomer);
 
+// [2026.09 신규, 시험단계] 자문보고서를 구글 슬라이드로도 만든다 — publishToCustomer와 같은
+// 방식으로 d.reportFolderId(사건의 "보고서" 폴더)를 재사용한다. 파워포인트로 받고 싶으면
+// 새로 열린 구글 슬라이드에서 "파일 > 다운로드 > Microsoft PowerPoint"를 누르면 된다.
+async function createAdvisorySlideFromTemplate(){
+  const d = getSelected();
+  if (!d || d.docType !== 'advisory') return;
+  const btn = document.getElementById('btnMakeSlide');
+  if (btn) btn.disabled = true;
+  try {
+    if (!d.reportFolderId) {
+      await saveToDrive();
+      if (!d.reportFolderId) throw new Error('저장에 실패해 슬라이드를 만들 수 없습니다 — 문서를 다시 열어주세요');
+    }
+    const c = rwGetSelectedCase_();
+    const data = await callGas('create_advisory_slide_report', {
+      folderId: d.reportFolderId,
+      고객명: c ? (c.고객명 || '') : '',
+      사건명: c ? (c.사건명 || '') : '',
+      법정일: c ? (c.법정일 || '') : ''
+    });
+    if (data && data.error) throw new Error(data.error);
+    // [2026.09 버그수정] 저장(await) 뒤에 여는 window.open은 브라우저 팝업차단에 걸려 조용히
+    // 무시되는 경우가 실제로 있었다("만들었다는 안내는 나왔는데 새 탭이 안 열림") — 새 탭
+    // 열기는 시도하되, 팝업이 막혀도 놓치지 않도록 화면에 클릭 가능한 링크를 계속 남겨둔다.
+    if (data.url) { try { window.open(data.url, '_blank'); } catch (e) {} }
+    showSlideLink_(data.url, data.pptxUrl);
+  } catch (err) {
+    flashSaveState(err && err.message ? err.message : '슬라이드 생성 실패');
+  } finally {
+    updateMakeSlideButton_();
+  }
+}
+function showSlideLink_(url, pptxUrl){
+  const el = document.getElementById('saveState');
+  if (!el) return;
+  clearTimeout(saveTimer);
+  el.innerHTML = '';
+  el.style.minWidth = 'auto';
+  const a = document.createElement('a');
+  a.href = url; a.target = '_blank'; a.textContent = '슬라이드 열기';
+  a.style.cssText = 'color:#8fb98f; text-decoration:underline; margin-right:8px;';
+  el.appendChild(a);
+  if (pptxUrl) {
+    const p = document.createElement('a');
+    p.href = pptxUrl; p.target = '_blank'; p.textContent = 'PPTX 다운로드';
+    p.style.cssText = 'color:#8fb98f; text-decoration:underline;';
+    el.appendChild(p);
+  }
+}
+function updateMakeSlideButton_(){
+  const btn = document.getElementById('btnMakeSlide');
+  if (!btn) return;
+  const d = getSelected();
+  const canMake = !!d && d.docType === 'advisory';
+  btn.disabled = !canMake;
+  btn.style.opacity = canMake ? '' : '0.4';
+}
+document.getElementById('btnMakeSlide').addEventListener('click', createAdvisorySlideFromTemplate);
+
 // ---------- 편집창/미리보기 레이아웃 3단계 전환 (편집창만 / 둘 다 / 미리보기만) ----------
 // 예전엔 버튼 3개(◧◫◨)가 각자 하나의 모드를 담당했는데, 버튼 하나로 통합해서 누를 때마다
 // editor → both → preview → editor 순서로 순환하도록 바꿨다. 아이콘 자체가 지금 모드를 보여준다.
@@ -3704,6 +3765,7 @@ function goToReportWriter_(caseId, opts){
     pendingPublishFolderId = opts.publishFolderId || null;
     updateSaveToDriveButton();
     updatePublishButton();
+    updateMakeSlideButton_();
     // [2026.09 버그수정] 예전엔 여기서 저장할 폴더만 지정해두고 끝냈다 — 그러면 에디터에는
     // 직전에 열려있던(전혀 다른 사건일 수 있는) 문서가 그대로 남아있어서, "✍ 새 문서 작성"
     // 이라는 버튼을 눌렀는데도 실제로는 새 문서가 만들어지지 않았다. 그 상태에서 "💾 저장"을

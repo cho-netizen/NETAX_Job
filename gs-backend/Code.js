@@ -3248,6 +3248,9 @@ function dispatchClientAction_(body) {
   if (body.action === 'getReportTemplate') {
     return jsonResponse(handleGetReportTemplate(body));
   }
+  if (body.action === 'create_advisory_slide_report') {
+    return jsonResponse(handleCreateAdvisorySlideReport(body));
+  }
   if (body.action === 'getNightlyStatus') {
     return jsonResponse(handleGetNightlyStatus(body));
   }
@@ -12560,6 +12563,117 @@ function handleGetReportTemplate(body) {
   } catch (err) {
     return { found: false, error: '보고서 템플릿 조회 중 오류: ' + err.message };
   }
+}
+
+// ===== 슬라이드 템플릿(2026.09 신규, 시험단계) =====
+// 보고서템플릿과 같은 자리("업무관리자/슬라이드템플릿")에, 이번엔 텍스트가 아니라 구글
+// 슬라이드 파일 자체를 템플릿으로 둔다. 작성관리(reportwriter.html)에서 "슬라이드로 만들기"를
+// 누르면 이 템플릿을 사건 폴더로 복사하고, {{고객명}} 같은 표시를 실제 값으로 채워 넣는다.
+// 구글 슬라이드 화면에서 "파일 > 다운로드 > Microsoft PowerPoint"로 받으면 .pptx도 그대로
+// 나온다(별도 변환 코드 불필요) — pptxUrl도 같은 효과의 바로가기 주소를 같이 돌려준다.
+// 우선 "자문보고서" 한 종류만 시험 삼아 만든다(2026-09-10, 세무사님 확인 후 진행).
+const SLIDE_TEMPLATE_SUBFOLDER_NAME = '슬라이드템플릿';
+
+function getSlideTemplateFolder_() {
+  const folder = getBusinessManagerFolder_();
+  if (!folder) return null;
+  return getOrCreateSubfolder_(folder, SLIDE_TEMPLATE_SUBFOLDER_NAME);
+}
+
+/** 슬라이드 한 장(제목+본문 텍스트박스)을 덧붙이는 내부 도우미. */
+function slideTemplateAddContentSlide_(pres, titleText, bodyText) {
+  const slide = pres.appendSlide(SlidesApp.PredefinedLayout.BLANK);
+  const w = pres.getPageWidth(), h = pres.getPageHeight();
+  const titleBox = slide.insertTextBox(titleText, 36, 30, w - 72, 50);
+  titleBox.getText().getTextStyle().setFontSize(24).setBold(true).setForegroundColor('#1a2a4a');
+  const bodyBox = slide.insertTextBox(bodyText, 36, 100, w - 72, h - 140);
+  bodyBox.getText().getTextStyle().setFontSize(16).setForegroundColor('#333333');
+  return slide;
+}
+
+/**
+ * "자문보고서" 슬라이드 템플릿을 딱 한 번 만들어 슬라이드템플릿 폴더에 넣어둔다. 이미 있으면
+ * 아무것도 안 하고 조용히 끝낸다(중복 생성 방지). Apps Script 편집기에서 이 함수 이름을 골라
+ * ▶ 실행 버튼으로 한 번만 실행하면 된다(다른 신규 트리거 설치 함수들과 같은 방식).
+ * 식별 정보(고객명/사건명/작성일/법정신고기한)만 자동으로 채워지고, 나머지 본문(검토개요·
+ * 쟁점별 검토 등)은 markdown 보고서템플릿과 마찬가지로 빈 골격이라 세무사가 직접 채워야 한다.
+ */
+function setupAdvisorySlideTemplate_() {
+  const folder = getSlideTemplateFolder_();
+  if (!folder) {
+    const msg = '"업무관리자" 폴더를 찾을 수 없어 슬라이드 템플릿을 만들지 못했습니다.';
+    console.log(msg);
+    return msg;
+  }
+  const existing = folder.getFilesByName('자문보고서');
+  if (existing.hasNext()) {
+    const msg = '이미 "자문보고서" 슬라이드 템플릿이 있습니다: ' + existing.next().getUrl();
+    console.log(msg);
+    return msg;
+  }
+
+  const pres = SlidesApp.create('자문보고서');
+  // 새로 만든 슬라이드 파일은 기본적으로 내 드라이브 최상위에 생기므로, 템플릿 폴더로 옮긴다.
+  const file = DriveApp.getFileById(pres.getId());
+  folder.addFile(file);
+  DriveApp.getRootFolder().removeFile(file);
+
+  const w = pres.getPageWidth(), h = pres.getPageHeight();
+  const cover = pres.getSlides()[0];
+  cover.getShapes().forEach(function (s) { s.remove(); }); // 기본 레이아웃 틀 대신 직접 배치
+  const brand = cover.insertTextBox('이음세무컨설팅 NETAX', 60, 60, w - 120, 30);
+  brand.getText().getTextStyle().setFontSize(14).setForegroundColor('#a8863f');
+  const title = cover.insertTextBox('자문보고서', 60, 100, w - 120, 60);
+  title.getText().getTextStyle().setFontSize(40).setBold(true).setForegroundColor('#1a2a4a');
+  const meta = cover.insertTextBox(
+    '수신: {{고객명}} 님\n검토대상: {{사건명}}\n작성일: {{작성일}}\n법정신고기한: {{법정신고기한}}',
+    60, 190, w - 120, 140
+  );
+  meta.getText().getTextStyle().setFontSize(16).setForegroundColor('#333333');
+
+  slideTemplateAddContentSlide_(pres, '검토개요 / 핵심결론', '[검토개요를 입력하세요]\n\n[핵심결론을 한눈에 보이도록 정리하세요]');
+  slideTemplateAddContentSlide_(pres, '사실관계', '[사실관계를 정리하세요]');
+  slideTemplateAddContentSlide_(pres, '쟁점별 검토', '[쟁점과 결론을 항목별로 정리하세요]');
+  slideTemplateAddContentSlide_(pres, '세액 계산 (해당하는 경우)', '[산출근거와 최종세액을 정리하세요]');
+  slideTemplateAddContentSlide_(pres, '준비 및 확인 필요사항', '[고객이 준비·확인해야 할 사항을 우선순위순으로 정리하세요]');
+  const last = slideTemplateAddContentSlide_(pres, '다음 절차 / 실행 로드맵', '[다음 절차를 정리하세요]');
+  const note = last.insertTextBox('본 보고서는 제시된 사실관계를 기초로 작성된 세무 자문 의견입니다. 확인 필요사항이 확정되는 대로 재검토가 필요합니다.', 36, h - 60, w - 72, 40);
+  note.getText().getTextStyle().setFontSize(10).setItalic(true).setForegroundColor('#888888');
+
+  pres.saveAndClose();
+  const doneMsg = '자문보고서 슬라이드 템플릿을 만들었습니다: ' + DriveApp.getFileById(pres.getId()).getUrl();
+  console.log(doneMsg);
+  return doneMsg;
+}
+
+/** 슬라이드템플릿 폴더의 "자문보고서"를 사건 폴더로 복사하고, 식별 정보를 채워 넣는다. */
+function handleCreateAdvisorySlideReport(body) {
+  if (!body.folderId) return { error: '저장할 폴더가 지정되지 않았습니다.' };
+  return withLock_(15000, function () {
+    try {
+      const templateFolder = getSlideTemplateFolder_();
+      if (!templateFolder) return { error: '"업무관리자" 폴더를 찾을 수 없습니다.' };
+      const iter = templateFolder.getFilesByName('자문보고서');
+      if (!iter.hasNext()) return { error: '슬라이드템플릿 폴더에 "자문보고서" 템플릿이 아직 없습니다. setupAdvisorySlideTemplate_ 함수를 먼저 한 번 실행해주세요.' };
+      const templateFile = iter.next();
+      const folder = DriveApp.getFolderById(body.folderId);
+      const 고객명 = String(body.고객명 || '');
+      const fileName = '자문보고서_' + (고객명 || '고객') + '_슬라이드';
+      const copied = templateFile.makeCopy(fileName, folder);
+      const pres = SlidesApp.openById(copied.getId());
+      pres.replaceAllText('{{고객명}}', 고객명);
+      pres.replaceAllText('{{사건명}}', String(body.사건명 || ''));
+      pres.replaceAllText('{{작성일}}', Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd'));
+      pres.replaceAllText('{{법정신고기한}}', String(body.법정일 || '(해당없음)'));
+      pres.saveAndClose();
+      return {
+        id: copied.getId(), name: copied.getName(), url: copied.getUrl(),
+        pptxUrl: 'https://docs.google.com/presentation/d/' + copied.getId() + '/export/pptx'
+      };
+    } catch (err) {
+      return { error: '슬라이드 보고서 생성 중 오류: ' + err.message };
+    }
+  });
 }
 
 // 도로명주소 검색(행정안전부 juso.go.kr 도로명주소 API) — 건물명(아파트명 등)으로 검색하면 도로명·지번
