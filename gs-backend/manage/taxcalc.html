@@ -2309,6 +2309,58 @@ function renderTransferPane(){
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isBondPledgeBreached" id="bondBreach-' + idx + '"><label for="bondBreach-' + idx + '">채권 만기보유 특약 위반(§77④, 3년·5년만기특약 선택시만 해당 — 즉시 차액 추징)</label></div>' +
           '<div class="taxcalc-field"><label>다운계약서 등 계약서·실거래 차액</label><input type="number" data-field="downContractPriceDifference" placeholder="원"><span class="taxcalc-field-help">소득세법§91② 비과세·감면 배제 추징용, 해당 시만</span></div>' +
         '</div>' +
+        '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>이월과세(소득세법§97의2) — 배우자·직계존속에게 증여받은 자산을 증여일로부터 10년 이내에 양도할 때. 요건 미충족·비과세전환·세액비교로 배제되면 자동으로 수증자 본인 기준으로 계산됩니다(§97의2②)</b></div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field"><label>증여자와의 관계</label><select data-field="donorRelation"><option value="">해당없음(증여받은 자산 아님)</option><option value="spouse">배우자</option><option value="lineal">직계존속·직계비속</option></select></div>' +
+          '<div class="taxcalc-field"><label>증여받은 날</label><input type="date" data-field="giftReceivedDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">위에서 관계 선택시</span></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isEminentDomainExcludedFromCarryover" id="coEmDomain-' + idx + '"><label for="coEmDomain-' + idx + '">사업인정고시일로부터 소급 2년 이전 증여 + 수용·협의매수됨(이월과세 제외, §97의2②1호)</label></div>' +
+          '<div class="taxcalc-field"><label>증여자(원소유자)의 취득가액</label><input type="number" data-field="donorAcquisitionPrice" placeholder="원"><span class="taxcalc-field-help">이월과세 적용시 이 값을 취득가액으로 씀</span></div>' +
+          '<div class="taxcalc-field"><label>증여자의 취득일</label><input type="date" data-field="donorAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field"><label>증여자가 지출한 필요경비</label><input type="number" data-field="donorNecessaryExpenses" placeholder="원"><span class="taxcalc-field-help">취득세 등</span></div>' +
+          '<div class="taxcalc-field"><label>증여 당시 평가액(수증자의 취득가액)</label><input type="number" data-field="doneeOwnAcquisitionPrice" placeholder="원"><span class="taxcalc-field-help">이 자산의 증여세 과세가액 — 이월과세 배제시 대신 취득가액으로 씀</span></div>' +
+          '<div class="taxcalc-field"><label>수증자가 증여받은 후 지출한 필요경비</label><input type="number" data-field="doneeOwnNecessaryExpenses" placeholder="원"><span class="taxcalc-field-help">이월과세 배제시만, 없으면 0</span></div>' +
+          '<div class="taxcalc-field"><label>수증자가 낸 이 자산분 증여세 산출세액</label><input type="number" data-field="giftTaxPaid" placeholder="원"><span class="taxcalc-field-help">이월과세 적용시 필요경비에 가산(시행령§163의2②)</span></div>' +
+          '<div class="taxcalc-field"><label>수증자의 전체 증여세 과세가액</label><input type="number" data-field="giftTaxableValue" placeholder="원"><span class="taxcalc-field-help">이 자산만 증여받았으면 위 평가액과 동일</span></div>' +
+        '</div>' +
+        '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>신축주택·미분양주택 취득자 감면(조특법§99/§99의2/§99의3) — 취득기간이 정해진 특정 신축주택·미분양주택을 5년 이내(또는 그 이후) 양도할 때. 위 양도가액·취득가액·취득일·양도일을 그대로 쓰며, 해당하면 양도소득금액에서 자동으로 감면분을 뺍니다</b></div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field"><label>적용 조문</label><select data-field="newHouseReductionProvision">' +
+            '<option value="">해당없음</option>' +
+            '<option value="sect99">§99(1998.5.22~1999.6.30 취득, 국민주택은 ~1999.12.31)</option>' +
+            '<option value="sect99_2">§99의2(2013.4.1~2013.12.31 취득, 6억원 또는 85㎡ 이하)</option>' +
+            '<option value="sect99_3">§99의3(2001.5.23~2003.6.30 취득)</option>' +
+          '</select></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="nhIsHighPriceHouseExcluded" id="nhHigh-' + idx + '"><label for="nhHigh-' + idx + '">고가주택(소득세법§89①3호 비과세 제외 대상)에 해당함(체크시 이 감면 적용배제)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="nhIsPriceOrAreaQualified" id="nhQual-' + idx + '"><label for="nhQual-' + idx + '">[§99의2만] 취득가액 6억원 이하 또는 전용면적 85㎡ 이하 요건 충족</label></div>' +
+          '<div class="taxcalc-field"><label>취득일로부터 5년 시점 평가액(5년 초과보유, 근사치용)</label><input type="number" data-field="nhFiveYearMarkValue" placeholder="원"><span class="taxcalc-field-help">아래 기준시가 3종이 없을 때만 사용</span></div>' +
+          '<div class="taxcalc-field"><label>취득 당시 기준시가(5년 초과보유, 정확한 계산용)</label><input type="number" data-field="nhAcquisitionStandardPrice" placeholder="원"></div>' +
+          '<div class="taxcalc-field"><label>5년 시점 기준시가</label><input type="number" data-field="nhFiveYearStandardPrice" placeholder="원"></div>' +
+          '<div class="taxcalc-field"><label>양도 당시 기준시가</label><input type="number" data-field="nhTransferStandardPrice" placeholder="원"></div>' +
+        '</div>' +
+        '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>미분양주택 취득자 특례(조특법§98의3·§98의4·§98의5·§98의6·§98의7·§98의8) — 위 양도가액·취득가액·취득일·양도일을 그대로 쓰며, 해당하면 자동으로 감면분을 반영합니다(§98의4는 소득금액이 아니라 세액 10%를 감면 — 장기보유(2년 이상) 거래에만 자동 반영됩니다)</b></div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field"><label>적용 조문</label><select data-field="unsoldHouseReductionProvision">' +
+            '<option value="">해당없음</option>' +
+            '<option value="sect98_3">§98의3(100%, 수도권과밀억제권역은 60%)</option>' +
+            '<option value="sect98_4">§98의4(비거주자, 2009.3.16~2010.2.11 취득, 세액 10% 감면)</option>' +
+            '<option value="sect98_5">§98의5(분양가인하율에 따라 60/80/100%)</option>' +
+            '<option value="sect98_6">§98의6(50%)</option>' +
+            '<option value="sect98_7">§98의7(100%, 취득가액 9억원 초과시 배제)</option>' +
+            '<option value="sect98_8">§98의8(50%, 5년이상 임대 요건 전제, 취득가액 6억·연면적 135㎡ 초과시 배제)</option>' +
+          '</select></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="uhIsOverconcentrationZone" id="uhOvz-' + idx + '"><label for="uhOvz-' + idx + '">[§98의3만] 수도권과밀억제권역 소재(감면율 60%로 낮아짐)</label></div>' +
+          '<div class="taxcalc-field"><label>[§98의5만] 분양가인하율(%)</label><input type="number" data-field="uhPriceDiscountRate" placeholder="10 이하=60%, 20 이하=80%, 초과=100%"></div>' +
+          '<div class="taxcalc-field"><label>[§98의6만] 유형</label><select data-field="uhSect986ItemType"><option value="">1호(2011.12.31까지 임대계약+2년이상임대)</option><option value="item2">2호(5년이상 임대유형)</option></select></div>' +
+          '<div class="taxcalc-field"><label>[§98의8만] 전용면적(㎡)</label><input type="number" data-field="uhExclusiveAreaSqm" placeholder="135 초과시 배제"></div>' +
+          '<div class="taxcalc-field"><label>취득일로부터 5년 시점 평가액(5년 초과보유, 근사치용)</label><input type="number" data-field="uhFiveYearMarkValue" placeholder="원"><span class="taxcalc-field-help">아래 기준시가 3종이 없을 때만 사용</span></div>' +
+          '<div class="taxcalc-field"><label>취득 당시 기준시가</label><input type="number" data-field="uhAcquisitionStandardPrice" placeholder="원"></div>' +
+          '<div class="taxcalc-field"><label>5년 시점 기준시가</label><input type="number" data-field="uhFiveYearStandardPrice" placeholder="원"></div>' +
+          '<div class="taxcalc-field"><label>양도 당시 기준시가</label><input type="number" data-field="uhTransferStandardPrice" placeholder="원"></div>' +
+        '</div>' +
+        '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>공공매입임대주택 건설목적 토지양도 감면(조특법§97의9, 2027.12.31까지 양도분) — 공공주택사업자와 건설·양도 약정을 맺은 주택건설사업자에게 토지를 양도할 때 산출세액의 10%를 자동으로 감면합니다(장기보유(2년 이상) 거래에만 자동 반영됩니다)</b></div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isPublicRentalHousingLand" id="prLand-' + idx + '"><label for="prLand-' + idx + '">이 토지 양도가 §97의9 감면대상임(공공주택사업자와 건설·양도 약정을 맺은 주택건설사업자에게 양도)</label></div>' +
+        '</div>' +
       '</div>';
   }).join('');
 
@@ -2397,7 +2449,7 @@ function renderTransferPane(){
       '<div id="taxCalcBusinessTransferCarryoverResult"></div>' +
     '</div>' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>부담부증여시 양도로 보는 부분의 취득가액·양도가액(소득세법시행령§159) — 수증자가 인수한 채무액에 상당하는 부분은 양도로 봅니다. 결과의 양도가액·취득가액·필요경비를 위 일반 양도세 계산기에 그대로 넣어 나머지 세액을 계산하세요</b></div>' +
+      '<div class="taxcalc-asset-head"><b>부담부증여시 양도로 보는 부분의 취득가액·양도가액(소득세법시행령§159) — 수증자가 인수한 채무액에 상당하는 부분은 양도로 봅니다. 계산하면 그 결과가 위 거래 목록에 새 거래로 자동 추가되니, 위 "세액 계산하기"로 이어서 계산하세요</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>자산 취득가액</label><input type="number" id="bgAcquisitionPrice" placeholder="원"><span class="taxcalc-field-help">실지거래가액</span></div>' +
         '<div class="taxcalc-field"><label>자산 증여재산가액</label><input type="number" id="bgGiftValue" placeholder="원"><span class="taxcalc-field-help">상증세법상 평가액, 부담부증여 전체 자산가액</span></div>' +
@@ -2907,7 +2959,41 @@ function collectTransferInput(vals){
     approvalDateStandardPrice: numVal(vals.approvalDateStandardPrice) || 0,
     businessSuccessionDeductionRatio: numVal(vals.businessSuccessionDeductionRatio) || 0,
     decedentAcquisitionValue: vals.decedentAcquisitionValue !== '' && vals.decedentAcquisitionValue != null ? numVal(vals.decedentAcquisitionValue) : null,
-    decedentAcquisitionDate: vals.decedentAcquisitionDate || ''
+    decedentAcquisitionDate: vals.decedentAcquisitionDate || '',
+    // [2026.09 신규] 이월과세(§97의2) — 예전엔 별도 계산기에서 결과를 손으로 옮겨 입력해야
+    // 했는데, 이제 이 필드들을 채워두면 calculateTransferTaxMultiJS가 합산 계산 전에 이 거래
+    // 단독 기준으로 적용여부를 자동 판정해 취득가액·취득일·필요경비에 반영한다.
+    donorRelation: vals.donorRelation || '',
+    giftReceivedDate: vals.giftReceivedDate || '',
+    isEminentDomainExcludedFromCarryover: !!vals.isEminentDomainExcludedFromCarryover,
+    donorAcquisitionPrice: numVal(vals.donorAcquisitionPrice) || 0,
+    donorAcquisitionDate: vals.donorAcquisitionDate || '',
+    donorNecessaryExpenses: numVal(vals.donorNecessaryExpenses) || 0,
+    doneeOwnAcquisitionPrice: numVal(vals.doneeOwnAcquisitionPrice) || 0,
+    doneeOwnNecessaryExpenses: numVal(vals.doneeOwnNecessaryExpenses) || 0,
+    giftTaxPaid: numVal(vals.giftTaxPaid) || 0,
+    giftTaxableValue: numVal(vals.giftTaxableValue) || 0,
+    // [2026.09 신규] 신축주택·미분양주택 감면(조특법§99 계열) — 이 필드가 채워지면
+    // calculateTransferTaxMultiJS가 합산 계산 전에 감면분을 자동으로 양도소득금액에서 뺀다.
+    newHouseReductionProvision: vals.newHouseReductionProvision || '',
+    nhIsHighPriceHouseExcluded: !!vals.nhIsHighPriceHouseExcluded,
+    nhIsPriceOrAreaQualified: !!vals.nhIsPriceOrAreaQualified,
+    nhFiveYearMarkValue: numVal(vals.nhFiveYearMarkValue) || 0,
+    nhAcquisitionStandardPrice: numVal(vals.nhAcquisitionStandardPrice) || 0,
+    nhFiveYearStandardPrice: numVal(vals.nhFiveYearStandardPrice) || 0,
+    nhTransferStandardPrice: numVal(vals.nhTransferStandardPrice) || 0,
+    // [2026.09 신규] 미분양주택 취득자 특례(조특법§98의3~8)
+    unsoldHouseReductionProvision: vals.unsoldHouseReductionProvision || '',
+    uhIsOverconcentrationZone: !!vals.uhIsOverconcentrationZone,
+    uhPriceDiscountRate: numVal(vals.uhPriceDiscountRate) || 0,
+    uhSect986ItemType: vals.uhSect986ItemType || '',
+    uhExclusiveAreaSqm: vals.uhExclusiveAreaSqm === '' || vals.uhExclusiveAreaSqm == null ? '' : numVal(vals.uhExclusiveAreaSqm),
+    uhFiveYearMarkValue: numVal(vals.uhFiveYearMarkValue) || 0,
+    uhAcquisitionStandardPrice: numVal(vals.uhAcquisitionStandardPrice) || 0,
+    uhFiveYearStandardPrice: numVal(vals.uhFiveYearStandardPrice) || 0,
+    uhTransferStandardPrice: numVal(vals.uhTransferStandardPrice) || 0,
+    // [2026.09 신규] 공공매입임대주택 건설목적 토지양도 감면(조특법§97의9) — 세액 10% 감면
+    isPublicRentalHousingLand: !!vals.isPublicRentalHousingLand
   };
 }
 
@@ -3032,6 +3118,29 @@ function renderTransferResult(r){
     '<div class="taxcalc-calcbasis-line">납부세액 합계 = ' + won(r.납부세액_합계) + '</div>' +
     '<div class="taxcalc-calcbasis-line" style="margin-top:6px;color:var(--sub);">각 거래별 세부 산출과정은 위 거래 카드의 🧮 계산근거 버튼을 눌러 확인하세요.</div>' +
   '</div>';
+  if (Array.isArray(r.자산별_내역) && r.자산별_내역.length){
+    html += '<div class="taxcalc-result-note" style="margin-top:6px;">';
+    r.자산별_내역.forEach(function(n){
+      const label = (n.idx + 1) + '번째 거래';
+      if (n.구분 === '이월과세(§97의2)'){
+        html += '<div>' + label + ' — 이월과세(§97의2) ' + (n.적용여부 ? '<b>적용됨</b>' : '미적용(' + (n.사유 || '') + ')')
+          + (n.비교 ? ' [적용시 ' + won(n.비교.적용시_세액) + ' / 미적용시 ' + won(n.비교.미적용시_세액) + ']' : '') + '</div>';
+      } else if (n.구분 === '신축주택등감면(조특법§99계열)'){
+        html += '<div>' + label + ' — 신축주택등감면(§99계열) ' + (n.적용여부 ? ('<b>적용됨</b>(양도소득금액에서 ' + won(n.제외소득금액) + ' 제외)') : '미적용(' + (n.사유 || '') + ')') + '</div>';
+      } else if (n.구분 === '미분양주택감면(조특법§98계열)'){
+        html += '<div>' + label + ' — 미분양주택감면(§98계열) ' + (n.적용여부 ? ('<b>적용됨</b>(양도소득금액에서 ' + won(n.제외소득금액) + ' 제외)') : '미적용(' + (n.사유 || '') + ')') + '</div>';
+      } else if (n.구분 === '취득가액산정'){
+        html += '<div>' + label + ' — ' + n.특례 + '</div>';
+      } else {
+        const parts = [];
+        if (n.특례) parts.push(n.특례);
+        if (n.감면액) parts.push('감면 ' + won(n.감면액));
+        if (n.추징액) parts.push('추징 ' + won(n.추징액));
+        html += '<div>' + label + ' (' + n.구분 + ') — ' + parts.join(', ') + '</div>';
+      }
+    });
+    html += '</div>';
+  }
   html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   html += '<div class="taxcalc-result-note">이 결과는 참고용 개산이며, 실제 신고 전 홈택스 모의계산으로 재검증하세요.</div>';
   html += '</div>';
@@ -5776,7 +5885,7 @@ function renderHeirResult(r){
 
 function renderAcquisitionPane(){
   taxCalcAcquisitionPane.innerHTML =
-    '<div class="taxcalc-hint">지방세법상 취득세(부동산)만 계산합니다. 지방교육세·농어촌특별세는 별도로 부과되며 이 계산기에 포함되지 않습니다(관련 법령 파일 확보 전까지 결과는 취득세 본세 기준입니다). 취득원인·부동산종류를 먼저 선택한 뒤, 그 조합에 해당하는 항목만 채우면 됩니다.</div>' +
+    '<div class="taxcalc-hint">취득세 본세뿐 아니라 지방교육세·농어촌특별세까지 함께 계산해 "납부세액 합계"에 반영합니다. 취득원인·부동산종류를 먼저 선택한 뒤, 그 조합에 해당하는 항목만 채우면 됩니다.</div>' +
     '<div class="taxcalc-asset">' +
       '<div class="taxcalc-asset-head"><b>기본 정보</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -5796,6 +5905,8 @@ function renderAcquisitionPane(){
         '<div class="taxcalc-field"><label>취득세 과세표준(취득당시가액)</label><input type="number" id="atValue" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>1년 이내 인접 토지·건축물 취득가액</label><input type="number" id="atPriorAdjacentValue" placeholder="원 (§17②, 면세점 판정시 합산 — 분할취득 방지)"><span class="taxcalc-field-help">해당시만</span></div>' +
         '<div class="taxcalc-field"><label>취득일</label><input type="date" id="atAcquisitionDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-result-note" id="atDeadlineHint" style="margin:2px 0 0;"></span></div>' +
+        '<div class="taxcalc-field"><label>전용면적(㎡)</label><input type="number" id="atExclusiveArea" placeholder="원"><span class="taxcalc-field-help">[주택·일반세율(1~3%)만] 국민주택규모(85㎡, 읍·면은 100㎡) 이하면 농어촌특별세 비과세 — 모르면 비워두세요(과세 쪽으로 계산됩니다)</span></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="atEupMyeonArea"><label for="atEupMyeonArea">[위 입력시만] 읍·면 지역 소재(국민주택규모 기준 100㎡)</label></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>[유상취득만] 특수관계인 간 저가거래 게이트(§7⑪·법§10조의3②·시행령§18의2)</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -6318,7 +6429,18 @@ taxCalcView.addEventListener('click', function(e){
       otherAssetsGiftValueSum: numVal(document.getElementById('bgOtherAssetsValue').value) || 0,
       necessaryExpenses: numVal(document.getElementById('bgNecessaryExpenses').value) || 0
     };
-    renderBurdenedGiftTransferResult(calculateBurdenedGiftTransferJS(input));
+    const bgResult = calculateBurdenedGiftTransferJS(input);
+    // [2026.09 신규] 계산 즉시 "양도로 보는 부분"을 거래 목록에 자동으로 추가한다(건물기준시가
+    // 계산기와 같은 패턴) — 예전엔 이 결과(양도가액·취득가액·필요경비)를 손으로 다시 입력해야 했다.
+    if (bgResult && !bgResult.error){
+      transferAssets.push({
+        transferPrice: bgResult.양도로보는부분_양도가액 != null ? bgResult.양도로보는부분_양도가액 : bgResult.안분채무액,
+        acquisitionPrice: bgResult.양도로보는부분_취득가액,
+        acquisitionExpenseItems: bgResult.필요경비 ? [{ label: '부담부증여 안분(§159)', amount: bgResult.필요경비 }] : []
+      });
+      renderTransferPane();
+    }
+    renderBurdenedGiftTransferResult(bgResult);
   } else if (action === 'run-donor-direct-transfer'){
     const input = {
       isSpouseOrLinealCarryoverApplies: document.getElementById('ddSpouseLineal').checked,
@@ -6473,7 +6595,9 @@ taxCalcView.addEventListener('click', function(e){
       underreportedTaxAmount: numVal(document.getElementById('atUnderreportedTax').value) || 0,
       unpaidDays: numVal(document.getElementById('atUnpaidDays').value) || 0,
       monthsAfterDesignatedDueDate: numVal(document.getElementById('atMonthsAfterDesignated').value) || 0,
-      unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('atUnpaidAtDesignated').value) || 0
+      unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('atUnpaidAtDesignated').value) || 0,
+      exclusiveAreaSqm: numVal(document.getElementById('atExclusiveArea').value) || 0,
+      isEupMyeonArea: document.getElementById('atEupMyeonArea').checked
     };
     renderAcquisitionTaxResult(calculateAcquisitionTaxJS(input));
   } else if (action === 'run-industrial-complex-lot'){

@@ -153,6 +153,16 @@
 
   .spinner{ color:var(--sub); font-size:13px; padding:20px; text-align:center; }
 
+  /* [2026.09 신규] 사용자메뉴얼 — ❓ 버튼으로 특정 항목으로 이동했을 때 어디로 왔는지
+     한눈에 보이도록 잠깐 배경을 강조했다가 원래대로 돌아간다. */
+  #help-toc a{ color:var(--navy); text-decoration:none; }
+  #help-toc a:hover{ text-decoration:underline; }
+  .help-flash{ animation:helpFlash_ 1.6s ease-out; }
+  @keyframes helpFlash_{
+    0%{ background:rgba(200,162,68,0.28); }
+    100%{ background:transparent; }
+  }
+
   /* ===== 버튼 색상 체계 (2026.09 정리) =====
      "버튼인지 구분이 안 된다" + "일관된 기준이 있어야" — 이 앱 팔레트의 두 축(남색=주,
      금색=포인트)을 그대로 버튼 위계에 쓴다.

@@ -677,7 +677,15 @@
     // 시행령§168①3호 — 조특법§69①(8년자경농지)·§70①(농지대토) 감면 대상 토지는 미등기양도자산의
     // 가혹한 취급(70% 단일세율·공제 전부 배제)에서 제외된다.
     const isUnregistered = !!t.isUnregisteredTransfer && !(t.isEightYearFarmland || t.isFarmlandSubstitutionExempt);
-    const gainBeforeDeduction = transferPrice - acquisitionPrice - necessaryExpenses;
+    // [2026.09 신규] 신축주택·미분양주택 감면(조특법§99 계열)처럼 "양도소득금액에서 일정액을
+    // 뺀다"는 특례를 위한 오버라이드 지점 — 취득가액 판정(매매사례가액/감정가액/환산취득가액
+    // 순차적용)과 개산공제 자동적용은 원본 t 그대로 다시 계산해 그 판정에 딸린 다른 효과
+    // (§114의2 환산취득가액가산세 등)를 그대로 유지하면서, 최종 양도차익 금액만 바꿔치기한다.
+    // (t.necessaryExpenses·t.acquisitionPrice를 직접 조작하면 위 판정 게이트가 깨질 수 있어
+    // 이 방식을 씀 — 호출부는 resolveNewHouseReductionAdjustment_ 참고.)
+    const gainBeforeDeduction = (t._externalGainOverride != null)
+      ? Number(t._externalGainOverride)
+      : (transferPrice - acquisitionPrice - necessaryExpenses);
 
     if (isUnregistered) {
       return { holdingYears, isUnregistered: true, gainBeforeDeduction, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t };
@@ -1099,31 +1107,30 @@
   //   쓰는 것을 막는다 — 결과적으로 "적용/미적용 중 세액이 더 큰 쪽"이 채택된다)
   // 관계·기간 요건은 giftReceivedDate·donorRelation으로 직접 판정하고(요건 미충족이면 이월과세
   // 자체를 적용하지 않고 수증자 본인 값으로만 계산), 수용 특례(§97의2②1호)는 별도 입력으로 받는다.
-  window.calculateTransferTaxWithCarryoverJS = function (t) {
-    t = t || {};
+  // [2026.09 리팩터] 판정 로직(이월과세 적용여부 + 적용할 취득가액/취득일/필요경비 확정)을
+  // 별도 함수로 뽑아냈다 — 이 판정을 단건 계산기(calculateTransferTaxWithCarryoverJS, 기존
+  // 그대로 유지)뿐 아니라 다건 합산 계산기(calculateTransferTaxMultiJS)에서도 "거래 카드에
+  // 증여받은 자산이라고 체크만 하면" 자동으로 재사용하기 위함 — 예전엔 이 특례를 별도 계산기에서
+  // 계산해 그 결과 금액을 메인 계산기에 손으로 옮겨 입력해야 했는데, 이제는 거래 카드 자체에
+  // 이월과세 판정 정보를 입력하면 메인 "세액 계산하기"가 알아서 적용 여부를 판정해 반영한다.
+  function resolveCarryoverAcquisitionBasis_(t) {
     const giftReceivedDate = t.giftReceivedDate;
     const donorRelation = t.donorRelation; // 'spouse' | 'lineal'
     const isEligibleRelation = donorRelation === 'spouse' || donorRelation === 'lineal';
-    const yearsSinceGift = (giftReceivedDate && t.transferDate) ? fullYearsElapsed(giftReceivedDate, t.transferDate) : Infinity;
+    const doneeAcquisitionPrice = Number(t.doneeOwnAcquisitionPrice) || 0;
+    const doneeNecessaryExpenses = Number(t.doneeOwnNecessaryExpenses) || 0;
+    // 수증자 본인 값(이월과세 미적용 시나리오) — 증여 당시 평가액을 취득가액, 증여일을 취득일로
+    // 삼는다(증여로 취득한 자산의 취득가액은 상증세법상 평가액이므로).
+    const withoutBasis = { acquisitionPrice: doneeAcquisitionPrice, acquisitionDate: giftReceivedDate, necessaryExpenses: doneeNecessaryExpenses };
+
+    if (!giftReceivedDate || !isEligibleRelation) {
+      return Object.assign({ applied: false, reason: giftReceivedDate ? '배우자·직계존비속으로부터의 증여가 아님' : undefined }, withoutBasis);
+    }
+    const yearsSinceGift = t.transferDate ? fullYearsElapsed(giftReceivedDate, t.transferDate) : Infinity;
     const isWithinWindow = yearsSinceGift < 10 || (yearsSinceGift === 10 && giftReceivedDate === t.transferDate);
     const isEminentDomainExcluded = !!t.isEminentDomainExcludedFromCarryover; // §97의2②1호
-
-    // 수증자 본인 값으로 계산(이월과세 미적용 시나리오) — 증여 당시 평가액을 취득가액, 증여일을
-    // 취득일로 삼는다(증여로 취득한 자산의 취득가액은 상증세법상 평가액이므로).
-    const withoutCarryoverParams = Object.assign({}, t, {
-      acquisitionPrice: Number(t.doneeOwnAcquisitionPrice) || 0,
-      acquisitionDate: giftReceivedDate,
-      necessaryExpenses: Number(t.doneeOwnNecessaryExpenses) || 0
-    });
-    const withoutResult = window.calculateTransferTaxSingleJS(withoutCarryoverParams);
-
-    if (!isEligibleRelation || !isWithinWindow || isEminentDomainExcluded) {
-      if (withoutResult && !withoutResult.error) withoutResult.이월과세_적용여부 = false;
-      if (withoutResult && !withoutResult.error) {
-        withoutResult.이월과세_미적용사유 = !isEligibleRelation ? '배우자·직계존비속으로부터의 증여가 아님'
-          : (!isWithinWindow ? '증여일로부터 10년 경과' : '수용 특례(§97의2②1호) 해당');
-      }
-      return withoutResult;
+    if (!isWithinWindow || isEminentDomainExcluded) {
+      return Object.assign({ applied: false, reason: !isWithinWindow ? '증여일로부터 10년 경과' : '수용 특례(§97의2②1호) 해당' }, withoutBasis);
     }
 
     // 증여세 상당액(시행령§163의2②) = 증여세산출세액 × 해당자산 증여세과세가액/전체 증여세과세가액,
@@ -1132,37 +1139,115 @@
     const donorNecessaryExpenses = Number(t.donorNecessaryExpenses) || 0;
     const giftTaxPaid = Number(t.giftTaxPaid) || 0;
     const giftTaxableValue = Number(t.giftTaxableValue) || 0;
-    const assetGiftTaxableValue = Number(t.doneeOwnAcquisitionPrice) || 0; // 이 자산의 증여세 과세가액(=증여 당시 평가액)
-    const giftTaxEquivalent = giftTaxableValue > 0 ? Math.round(giftTaxPaid * assetGiftTaxableValue / giftTaxableValue) : 0;
+    const giftTaxEquivalent = giftTaxableValue > 0 ? Math.round(giftTaxPaid * doneeAcquisitionPrice / giftTaxableValue) : 0;
     const necessaryExpenseCap = Math.max(0, (Number(t.transferPrice) || 0) - donorAcqPrice - donorNecessaryExpenses);
     const cappedGiftTaxEquivalent = Math.min(giftTaxEquivalent, necessaryExpenseCap);
+    const withBasis = { acquisitionPrice: donorAcqPrice, acquisitionDate: t.donorAcquisitionDate, necessaryExpenses: donorNecessaryExpenses + cappedGiftTaxEquivalent };
 
-    const withCarryoverParams = Object.assign({}, t, {
-      acquisitionPrice: donorAcqPrice,
-      acquisitionDate: t.donorAcquisitionDate,
-      necessaryExpenses: donorNecessaryExpenses + cappedGiftTaxEquivalent
-    });
-    const withResult = window.calculateTransferTaxSingleJS(withCarryoverParams);
+    const withoutResult = window.calculateTransferTaxSingleJS(Object.assign({}, t, withoutBasis));
+    const withResult = window.calculateTransferTaxSingleJS(Object.assign({}, t, withBasis));
 
     // §97의2②2호 — 이월과세를 적용하면 §89①3호 비과세(1세대1주택 등)에 해당하게 되는 경우는 배제.
-    const withBecomesExempt = !!(withResult && withResult.비과세여부);
-    if (withBecomesExempt) {
-      if (withoutResult && !withoutResult.error) { withoutResult.이월과세_적용여부 = false; withoutResult.이월과세_미적용사유 = '§97의2②2호 — 이월과세 적용시 1세대1주택 등 비과세 대상이 되어 배제'; }
-      return withoutResult;
+    if (withResult && withResult.비과세여부) {
+      return Object.assign({ applied: false, reason: '§97의2②2호 — 이월과세 적용시 1세대1주택 등 비과세 대상이 되어 배제' }, withoutBasis);
     }
-
     const withTax = (withResult && typeof withResult.납부세액_합계 === 'number') ? withResult.납부세액_합계 : (withResult && withResult.비과세여부 ? 0 : Infinity);
     const withoutTax = (withoutResult && typeof withoutResult.납부세액_합계 === 'number') ? withoutResult.납부세액_합계 : (withoutResult && withoutResult.비과세여부 ? 0 : Infinity);
 
     // §97의2②3호 — 적용시 세액이 미적용시 세액보다 적으면 미적용(둘 중 세액이 더 큰 쪽 채택).
-    const chosen = withTax < withoutTax ? withoutResult : withResult;
-    if (chosen && !chosen.error) {
-      chosen.이월과세_적용여부 = chosen === withResult;
-      if (chosen !== withResult) chosen.이월과세_미적용사유 = '§97의2②3호 — 이월과세를 적용한 세액(' + withTax + '원)이 미적용시 세액(' + withoutTax + '원)보다 적어 미적용';
-      chosen.이월과세_비교 = { 적용시_세액: withTax, 미적용시_세액: withoutTax, 증여세상당액_필요경비산입: cappedGiftTaxEquivalent };
+    if (withTax < withoutTax) {
+      return Object.assign({ applied: false, reason: '§97의2②3호 — 이월과세를 적용한 세액(' + withTax + '원)이 미적용시 세액(' + withoutTax + '원)보다 적어 미적용', comparison: { 적용시_세액: withTax, 미적용시_세액: withoutTax } }, withoutBasis);
     }
-    return chosen;
+    return Object.assign({ applied: true, comparison: { 적용시_세액: withTax, 미적용시_세액: withoutTax, 증여세상당액_필요경비산입: cappedGiftTaxEquivalent } }, withBasis);
+  }
+
+  window.calculateTransferTaxWithCarryoverJS = function (t) {
+    t = t || {};
+    const basis = resolveCarryoverAcquisitionBasis_(t);
+    const result = window.calculateTransferTaxSingleJS(Object.assign({}, t, {
+      acquisitionPrice: basis.acquisitionPrice, acquisitionDate: basis.acquisitionDate, necessaryExpenses: basis.necessaryExpenses
+    }));
+    if (result && !result.error) {
+      result.이월과세_적용여부 = basis.applied;
+      if (!basis.applied && basis.reason) result.이월과세_미적용사유 = basis.reason;
+      if (basis.comparison) result.이월과세_비교 = basis.comparison;
+    }
+    return result;
   };
+
+  // [2026.09 신규] 신축주택·미분양주택 취득자 감면(조특법§99/§99의2/§99의3) — 예전엔 별도
+  // 계산기에서 "과세대상양도소득금액"을 계산해 그 숫자를 메인 계산기에 손으로 옮겨 입력해야
+  // 했다. 이제 거래 카드에 조문만 선택해두면 자동 반영된다. 취득가액 판정(순차적용)·개산공제
+  // 자동적용은 원본 그대로 한 번 계산해서 얻은 뒤(baseCore), 그 판정에 딸린 다른 효과를 유지한
+  // 채 최종 양도차익 금액만 감면분만큼 줄이는 오버라이드(t._externalGainOverride, 위
+  // transferAssetCore 참고)를 쓴다 — 취득가액을 손으로 다시 넣는 방식보다 안전하다(환산취득가액
+  // 가산세 같은 연쇄효과가 취득가액 재판정 과정에서 누락되지 않음).
+  function resolveNewHouseReductionAdjustment_(t) {
+    if (!t.newHouseReductionProvision) return t;
+    const baseCore = transferAssetCore(t);
+    if (baseCore.error) return t; // 계산 자체가 안 되면 그대로 둬서 원래 오류가 나게 한다
+    const reduction = window.calculateNewHouseAcquisitionReductionJS({
+      provision: t.newHouseReductionProvision,
+      isHighPriceHouseExcluded: !!t.nhIsHighPriceHouseExcluded,
+      isPriceOrAreaQualified: !!t.nhIsPriceOrAreaQualified,
+      acquisitionDate: t.acquisitionDate, transferDate: t.transferDate,
+      transferPrice: Number(t.transferPrice) || 0,
+      acquisitionPrice: baseCore.acquisitionPrice, necessaryExpenses: baseCore.necessaryExpenses,
+      fiveYearMarkValue: Number(t.nhFiveYearMarkValue) || 0,
+      acquisitionStandardPrice: Number(t.nhAcquisitionStandardPrice) || 0,
+      fiveYearStandardPrice: Number(t.nhFiveYearStandardPrice) || 0,
+      transferStandardPrice: Number(t.nhTransferStandardPrice) || 0
+    });
+    if (!reduction || reduction.error || !reduction.적용여부) {
+      return Object.assign({}, t, {
+        _신축주택감면_적용여부: false,
+        _신축주택감면_사유: (reduction && (reduction.error || reduction.안내)) || undefined
+      });
+    }
+    return Object.assign({}, t, {
+      _externalGainOverride: baseCore.gainBeforeDeduction - reduction.감면_비과세대상_양도소득금액,
+      _신축주택감면_적용여부: true,
+      _신축주택감면_제외소득금액: reduction.감면_비과세대상_양도소득금액,
+      _신축주택감면_안내: reduction.안내
+    });
+  }
+
+  // [2026.09 신규] 미분양주택 취득자 특례(조특법§98의3·§98의5·§98의6·§98의7·§98의8) — §99와
+  // 같은 "소득금액에서 감면분을 뺀다" 구조라 같은 오버라이드 방식을 쓴다. §98의4(비거주자, 산출
+  // 세액의 10%를 그대로 깎음)는 소득금액이 아니라 세액 자체를 깎는 구조라 여기서 다루지 않고
+  // calculateTransferTaxMultiJS의 합산 단계에서 자경농지감면과 같은 방식(세액 비례배분 후 차감)으로
+  // 별도 처리한다.
+  function resolveUnsoldHouseReductionAdjustment_(t) {
+    if (!t.unsoldHouseReductionProvision || t.unsoldHouseReductionProvision === 'sect98_4') return t;
+    const baseCore = transferAssetCore(t);
+    if (baseCore.error) return t;
+    const reduction = window.calculateUnsoldHouseAcquisitionReductionJS({
+      provision: t.unsoldHouseReductionProvision,
+      isOverconcentrationZone: !!t.uhIsOverconcentrationZone,
+      priceDiscountRate: Number(t.uhPriceDiscountRate) || 0,
+      sect98_6ItemType: t.uhSect986ItemType || '',
+      exclusiveAreaSqm: t.uhExclusiveAreaSqm === '' || t.uhExclusiveAreaSqm == null ? null : Number(t.uhExclusiveAreaSqm),
+      acquisitionDate: t.acquisitionDate, transferDate: t.transferDate,
+      transferPrice: Number(t.transferPrice) || 0,
+      acquisitionPrice: baseCore.acquisitionPrice, necessaryExpenses: baseCore.necessaryExpenses,
+      fiveYearMarkValue: Number(t.uhFiveYearMarkValue) || 0,
+      acquisitionStandardPrice: Number(t.uhAcquisitionStandardPrice) || 0,
+      fiveYearStandardPrice: Number(t.uhFiveYearStandardPrice) || 0,
+      transferStandardPrice: Number(t.uhTransferStandardPrice) || 0
+    });
+    if (!reduction || reduction.error || !reduction.적용여부) {
+      return Object.assign({}, t, {
+        _미분양주택감면_적용여부: false,
+        _미분양주택감면_사유: (reduction && (reduction.error || reduction.안내)) || undefined
+      });
+    }
+    return Object.assign({}, t, {
+      _externalGainOverride: baseCore.gainBeforeDeduction - reduction.감면_비과세대상_양도소득금액,
+      _미분양주택감면_적용여부: true,
+      _미분양주택감면_제외소득금액: reduction.감면_비과세대상_양도소득금액,
+      _미분양주택감면_안내: reduction.안내
+    });
+  }
 
   // 다건 양도소득세 합산(확정신고 개념) — 2년 이상 보유·미등기 아님 거래끼리는 소득금액을 합산해서
   // 기본공제 250만원을 "전체 중 1회만" 적용하고 하나의 과세표준에 누진세율을 적용한다.
@@ -1174,7 +1259,27 @@
   window.calculateTransferTaxMultiJS = function (transactions, filingParams) {
     if (!Array.isArray(transactions) || !transactions.length) return { error: '거래를 1건 이상 입력하세요.' };
     filingParams = filingParams || {};
-    const cores = transactions.map(function (t, idx) {
+    // 이월과세(§97의2) — 거래 카드에 "배우자·직계존속에게 증여받음"을 체크해뒀으면, 합산 계산에
+    // 넣기 전에 이 거래 단독 기준으로 적용여부를 먼저 판정해 취득가액·취득일·필요경비를 확정한다.
+    // (예전엔 별도 계산기에서 계산한 결과를 손으로 옮겨 입력해야 했다 — 이제는 자동 반영된다.)
+    const transactionsResolved = transactions.map(function (t) {
+      let resolved = t;
+      if (resolved.giftReceivedDate) {
+        const basis = resolveCarryoverAcquisitionBasis_(resolved);
+        resolved = Object.assign({}, resolved, {
+          acquisitionPrice: basis.acquisitionPrice, acquisitionDate: basis.acquisitionDate, necessaryExpenses: basis.necessaryExpenses,
+          _이월과세_적용여부: basis.applied, _이월과세_미적용사유: basis.reason, _이월과세_비교: basis.comparison
+        });
+      }
+      if (resolved.newHouseReductionProvision) {
+        resolved = resolveNewHouseReductionAdjustment_(resolved);
+      }
+      if (resolved.unsoldHouseReductionProvision && resolved.unsoldHouseReductionProvision !== 'sect98_4') {
+        resolved = resolveUnsoldHouseReductionAdjustment_(resolved);
+      }
+      return resolved;
+    });
+    const cores = transactionsResolved.map(function (t, idx) {
       const c = transferAssetCore(t);
       c.idx = idx;
       return c;
@@ -1197,6 +1302,15 @@
     const assetNotes = [];
     cores.forEach(function (c) {
       if (c.acquisitionPriceMethodNote) assetNotes.push({ idx: c.idx, 구분: '취득가액산정', 특례: c.acquisitionPriceMethodNote });
+      if (c.raw._이월과세_적용여부 !== undefined) {
+        assetNotes.push({ idx: c.idx, 구분: '이월과세(§97의2)', 적용여부: c.raw._이월과세_적용여부, 사유: c.raw._이월과세_미적용사유, 비교: c.raw._이월과세_비교 });
+      }
+      if (c.raw._신축주택감면_적용여부 !== undefined) {
+        assetNotes.push({ idx: c.idx, 구분: '신축주택등감면(조특법§99계열)', 적용여부: c.raw._신축주택감면_적용여부, 제외소득금액: c.raw._신축주택감면_제외소득금액, 사유: c.raw._신축주택감면_사유 || c.raw._신축주택감면_안내 });
+      }
+      if (c.raw._미분양주택감면_적용여부 !== undefined) {
+        assetNotes.push({ idx: c.idx, 구분: '미분양주택감면(조특법§98계열)', 적용여부: c.raw._미분양주택감면_적용여부, 제외소득금액: c.raw._미분양주택감면_제외소득금액, 사유: c.raw._미분양주택감면_사유 || c.raw._미분양주택감면_안내 });
+      }
     });
     pooled.forEach(function (c) {
       let rate = 0; const notes = [];
@@ -1252,6 +1366,29 @@
     // reductionByIdx_는 이 캡 전 값을 유지한다).
     farmlandReductionTotal = Math.min(farmlandReductionTotal, 100000000);
     poolTaxWithSurcharge = Math.max(0, poolTaxWithSurcharge - farmlandReductionTotal + farmlandClawbackTotal);
+
+    // [2026.09 신규] 미분양주택 특례 중 §98의4(비거주자, 2009.3.16~2010.2.11 취득)만 예외적으로
+    // 소득금액이 아니라 산출세액 자체의 10%를 그대로 감면한다 — 위 자경농지감면과 같은 방식(세액을
+    // 소득금액 비중으로 배분한 뒤 그 배분액의 10%를 차감)으로 처리한다. 이 특례는 법령상 보유기간
+    // 요건이 없어 단기양도에도 적용될 수 있으나, 이 도구는 장기보유(합산 그룹) 거래에만 자동 반영한다
+    // — 단기양도인 경우는 아직 자동화하지 않았으니 별도 계산기로 직접 확인해야 한다.
+    // [2026.09 신규] 공공매입임대주택 건설목적 토지양도 감면(조특법§97의9)도 §98의4와 같은
+    // "산출세액의 10%를 그대로 감면"구조라 같은 방식으로 함께 처리한다. 3년 이내 미건설시
+    // 추징(§97의9③)은 별도 과세기간(나중)에 발생하는 사후관리라 이 계산에는 반영하지 않는다
+    // — 추징 여부는 독립 계산기(공공매입임대주택 카드)로 별도 확인해야 한다.
+    let tenPercentTaxReductionTotal = 0;
+    pooled.forEach(function (c) {
+      const label = c.raw.unsoldHouseReductionProvision === 'sect98_4' ? '미분양주택특례(조특법§98의4, 세액 10% 감면)'
+        : c.raw.isPublicRentalHousingLand ? '공공매입임대주택 건설목적 토지양도 감면(조특법§97의9, 세액 10% 감면)' : null;
+      if (label && poolIncomeSum > 0) {
+        const share = Math.round(poolTaxWithSurcharge * (c.incomeAmount / poolIncomeSum));
+        const reduction = Math.round(share * 0.10);
+        tenPercentTaxReductionTotal += reduction;
+        reductionByIdx_[c.idx] = (reductionByIdx_[c.idx] || 0) + reduction;
+        assetNotes.push({ idx: c.idx, 구분: '합산(장기)', 소득금액: Math.round(c.incomeAmount), 특례: label, 감면액: reduction });
+      }
+    });
+    poolTaxWithSurcharge = Math.max(0, poolTaxWithSurcharge - tenPercentTaxReductionTotal);
 
     // 공익사업용 토지 등 수용감면(조특법§77①·§77의2·§77의3, 안분) — 소득금액 비중으로 배분한 세액에
     // 보상유형별 비율을 곱한다. §133②(2025.3.14 신설)에 따라 건별 감면액은 과세기간별 2억원을 한도로
@@ -3650,16 +3787,31 @@
 
     const tax = Math.round(acquisitionValue * rate);
 
-    let eduRate;
+    let eduRate, naRate;
     if (eduMode === 'naMok') {
       eduRate = 0.004;
+      // 농어촌특별세법§5①6호 — "표준세율을 2%로 하여 산출한 세액을 초과하는 세액의 10%".
+      // naMok(법인·다주택 중과)는 지방교육세와 같은 논리로 중과 전 표준세율을 4%로 보아
+      // (4%-2%)×10%=0.2% 고정(기존 값과 동일, 세율에 따라 달라지지 않음 — 확정).
+      naRate = 0.002;
     } else if (eduMode === 'house118') {
       eduRate = houseRateBeforeLuxury * 0.10;
+      // 농어촌특별세법§4 10호 — 지방세법§11①8호에 따라 부과되는 취득세 중 국민주택규모
+      // (읍·면지역은 100㎡, 그 외는 85㎡) 이하인 주택에 대한 취득세는 비과세. 전용면적을
+      // 입력하지 않으면(모르면) 과세 쪽(0.2%)으로 안전하게 계산한다.
+      const nationalHousingLimit = p.isEupMyeonArea ? 100 : 85;
+      const exclusiveArea = Number(p.exclusiveAreaSqm) || 0;
+      naRate = (exclusiveArea > 0 && exclusiveArea <= nationalHousingLimit) ? 0 : 0.002;
     } else {
       eduRate = Math.max(0, eduStandardRate - 0.02) * 0.2;
+      // 농어촌특별세법§5①6호 — 표준세율을 2%로 하여 산출한 세액을 초과하는 세액의 10%.
+      // 지방교육세(위 20%)와 같은 기준(표준세율-2%)에 절반 배율(10%)을 적용 — 농지·상속·
+      // 원시취득·분할·이혼분할·일반증여 등 표준세율이 4%가 아닌 경우 더 이상 0.2% 고정이
+      // 아니라 세율에 비례해 정확히 계산된다.
+      naRate = Math.max(0, eduStandardRate - 0.02) * 0.1;
     }
     const eduTax = Math.round(acquisitionValue * eduRate);
-    const naTax = naTaxExempt ? 0 : Math.round(acquisitionValue * 0.002);
+    const naTax = naTaxExempt ? 0 : Math.round(acquisitionValue * naRate);
 
     const candidates = [];
     if (acquisitionType === 'paid' && propertyType === 'house' && p.isFirstTimeHomeBuyer && eduMode === 'house118') {
@@ -3789,7 +3941,7 @@
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부지연가산세_상세: penalties.납부지연가산세_상세,
       납부세액_합계: prePenaltyTaxTotal + penaltyTotal,
-      안내: '지방교육세(§151①1호 — 취득 유형별로 세율이 갈립니다: 일반취득은 표준세율에서 중과기준세율 2%를 뺀 세율×20%, §13의2 법인·다주택 중과는 항상 (4%-2%)×20%=0.4% 고정, §11①8호 일반 주택 유상취득은 적용세율(사치성 가산 전)×50%×20%)와 농어촌특별세(§5①6호 — 취득세 과세표준×2%×10%=0.2%, 지방세법§15①1~3호 특례(1가구1주택 상속 등)는 §4 10호의4로 비과세)를 함께 계산했습니다.' + relatedPartyGateNote + ' 사치성재산(§13⑤) 가산분(+8%p)은 지방교육세 근거조문(§151①1호 가·나목)이 §13②③⑥⑦·§13의2만 지정하고 있어 이 계산에는 반영하지 않았습니다.' + reliefNote + ' ' + filingDeadlineNote + ' 무신고·과소신고가산세(지방세기본법§53·§54, 각 20%·10%, 부정행위 40%)와 납부지연가산세(§55, 1일 10만분의22 + 고지 후 매월 1만분의66(세목별 45만원 미만 제외, 60개월 상한) + 고지서 지정납부기한까지 미납액의 3% 정액)를 함께 계산했습니다 — filingStatus 등을 넣지 않으면 0으로 계산됩니다. 위 아홉 감면(§36의3·§6①·§29①·§36의5·§36의4①·§33②·§74④⑤·§92①·§73①) 외 지방세특례제한법상 다른 감면은 이 도구가 아직 다루지 않습니다 — 다자녀·전기차·경형자동차·장애인용·국가유공자용 자동차 감면은 자동차 취득세만 해당해 부동산과 무관하고, 인구감소지역주택·빈집정비·개발제한구역주택개량 등은 아직 미반영입니다(주택연금·농지연금은 각각 calculate_registration_license_tax·calculate_property_tax에서 반영됨). 재산세 도시지역분과 마찬가지로 지방자치단체 조례로 세율의 100분의 50 범위에서 가감될 수 있고(§14), 취득 후 5년 이내 본점·주사무소 사업용 부동산·공장 신설증설용 부동산·고급주택·골프장·고급오락장 등으로 용도가 바뀌면 관청이 추징하며(§16), 다주택 여부 등 취득 당시에는 몰랐던 사유로 §13의2① 중과세율 적용대상이 된 경우에는 그 사유가 발생한 날부터 60일 이내에 납세자가 스스로 차액을 신고·납부해야 합니다(§20②).'
+      안내: '지방교육세(§151①1호 — 취득 유형별로 세율이 갈립니다: 일반취득은 표준세율에서 중과기준세율 2%를 뺀 세율×20%, §13의2 법인·다주택 중과는 항상 (4%-2%)×20%=0.4% 고정, §11①8호 일반 주택 유상취득은 적용세율(사치성 가산 전)×50%×20%)와 농어촌특별세(§5①6호 — 표준세율을 2%로 하여 산출한 세액을 초과하는 세액의 10%. 일반취득은 (표준세율-2%)×10%로 세율에 비례해 계산하고, 법인·다주택 중과는 지방교육세와 같은 기준으로 (4%-2%)×10%=0.2% 고정입니다. §11①8호 주택은 국민주택규모(85㎡, 읍·면지역은 100㎡) 이하이면 비과세입니다(§4 10호 — 전용면적을 입력하지 않으면 과세 쪽으로 안전하게 0.2%를 적용합니다). 지방세법§15①1~3호 특례(1가구1주택 상속 등)는 §4 10호의4로 비과세)를 함께 계산했습니다.' + relatedPartyGateNote + ' 사치성재산(§13⑤) 가산분(+8%p)은 지방교육세 근거조문(§151①1호 가·나목)이 §13②③⑥⑦·§13의2만 지정하고 있어 이 계산에는 반영하지 않았습니다.' + reliefNote + ' ' + filingDeadlineNote + ' 무신고·과소신고가산세(지방세기본법§53·§54, 각 20%·10%, 부정행위 40%)와 납부지연가산세(§55, 1일 10만분의22 + 고지 후 매월 1만분의66(세목별 45만원 미만 제외, 60개월 상한) + 고지서 지정납부기한까지 미납액의 3% 정액)를 함께 계산했습니다 — filingStatus 등을 넣지 않으면 0으로 계산됩니다. 위 아홉 감면(§36의3·§6①·§29①·§36의5·§36의4①·§33②·§74④⑤·§92①·§73①) 외 지방세특례제한법상 다른 감면은 이 도구가 아직 다루지 않습니다 — 다자녀·전기차·경형자동차·장애인용·국가유공자용 자동차 감면은 자동차 취득세만 해당해 부동산과 무관하고, 인구감소지역주택·빈집정비·개발제한구역주택개량 등은 아직 미반영입니다(주택연금·농지연금은 각각 calculate_registration_license_tax·calculate_property_tax에서 반영됨). 재산세 도시지역분과 마찬가지로 지방자치단체 조례로 세율의 100분의 50 범위에서 가감될 수 있고(§14), 취득 후 5년 이내 본점·주사무소 사업용 부동산·공장 신설증설용 부동산·고급주택·골프장·고급오락장 등으로 용도가 바뀌면 관청이 추징하며(§16), 다주택 여부 등 취득 당시에는 몰랐던 사유로 §13의2① 중과세율 적용대상이 된 경우에는 그 사유가 발생한 날부터 60일 이내에 납세자가 스스로 차액을 신고·납부해야 합니다(§20②).'
     };
     if (finalTax !== tax) {
       result.감면전_취득세_산출세액 = tax;

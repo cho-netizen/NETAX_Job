@@ -3251,6 +3251,9 @@ function dispatchClientAction_(body) {
   if (body.action === 'create_advisory_slide_report') {
     return jsonResponse(handleCreateAdvisorySlideReport(body));
   }
+  if (body.action === 'export_user_manual') {
+    return jsonResponse(handleExportUserManual(body));
+  }
   if (body.action === 'getNightlyStatus') {
     return jsonResponse(handleGetNightlyStatus(body));
   }
@@ -9110,16 +9113,29 @@ function toolCalculateAcquisitionTax(p) {
 
   const tax = Math.round(acquisitionValue * rate);
 
-  let eduRate;
+  let eduRate, naRate;
   if (eduMode === 'naMok') {
     eduRate = 0.004;
+    // 농어촌특별세법§5①6호(표준세율을 2%로 계산한 세액을 초과하는 세액의 10%) — 법인·다주택
+    // 중과는 지방교육세와 같은 기준(중과 전 표준세율 4%)으로 (4%-2%)×10%=0.2% 고정(확정).
+    naRate = 0.002;
   } else if (eduMode === 'house118') {
     eduRate = houseRateBeforeLuxury * 0.10;
+    // 농어촌특별세법§4 10호 — 지방세법§11①8호에 따라 부과되는 취득세 중 국민주택규모
+    // (읍·면지역은 100㎡, 그 외는 85㎡) 이하인 주택에 대한 취득세는 비과세. 전용면적을
+    // 입력하지 않으면(모르면) 과세 쪽(0.2%)으로 안전하게 계산한다.
+    const nationalHousingLimit = p.isEupMyeonArea ? 100 : 85;
+    const exclusiveArea = Number(p.exclusiveAreaSqm) || 0;
+    naRate = (exclusiveArea > 0 && exclusiveArea <= nationalHousingLimit) ? 0 : 0.002;
   } else {
     eduRate = Math.max(0, eduStandardRate - 0.02) * 0.2;
+    // 농어촌특별세법§5①6호 — 표준세율을 2%로 하여 산출한 세액을 초과하는 세액의 10%.
+    // 지방교육세(위 20%)와 같은 기준(표준세율-2%)에 절반 배율(10%) 적용 — 농지·상속·원시취득·
+    // 분할·이혼분할·일반증여 등 표준세율이 4%가 아닌 경우 세율에 비례해 정확히 계산된다.
+    naRate = Math.max(0, eduStandardRate - 0.02) * 0.1;
   }
   const eduTax = Math.round(acquisitionValue * eduRate);
-  const naTax = naTaxExempt ? 0 : Math.round(acquisitionValue * 0.002);
+  const naTax = naTaxExempt ? 0 : Math.round(acquisitionValue * naRate);
 
   // 지방세특례제한법상 감면 — §36의3(생애최초 주택 구입)·§6①(자경농민 농지)·§29①(국가유공자). 지방세법
   // §151①1호다목1)에 따라 지방교육세도 같은 감면율만큼 함께 감면된다. 농특세는 자경농민만 농특세법§4
@@ -9244,7 +9260,7 @@ function toolCalculateAcquisitionTax(p) {
     적용세율: Math.round(rate * 100000) / 1000, 적용근거: basis + luxuryNote,
     과세표준: acquisitionValue, 산출세액: tax,
     지방교육세: finalEduTax, 농어촌특별세: finalNaTax, 납부세액_합계: finalTax + finalEduTax + finalNaTax,
-    안내: '지방교육세(§151①1호 — 취득 유형별로 세율이 갈립니다: 일반취득은 표준세율에서 중과기준세율 2%를 뺀 세율×20%, §13의2 법인·다주택 중과는 항상 (4%-2%)×20%=0.4% 고정, §11①8호 일반 주택 유상취득은 적용세율(사치성 가산 전)×50%×20%)와 농어촌특별세(§5①6호 — 취득세 과세표준×2%×10%=0.2%, 지방세법§15①1~3호 특례(1가구1주택 상속 등)는 §4 10호의4로 비과세)를 함께 계산했습니다.' + relatedPartyGateNote + ' 사치성재산(§13⑤) 가산분(+8%p)은 지방교육세 근거조문(§151①1호 가·나목)이 §13②③⑥⑦·§13의2만 지정하고 있어 이 계산에는 반영하지 않았습니다.' + reliefNote + ' 위 아홉 감면(§36의3·§6①·§29①·§36의5·§36의4①·§33②·§74④⑤·§92①·§73①) 외 지방세특례제한법상 다른 감면은 이 도구가 아직 다루지 않습니다 — 다자녀·전기차·경형자동차·장애인용·국가유공자용 자동차 감면은 자동차 취득세만 해당해 부동산과 무관하고, 인구감소지역주택·빈집정비·개발제한구역주택개량 등은 아직 미반영입니다(주택연금·농지연금은 각각 calculate_registration_license_tax·calculate_property_tax에서 반영됨). 재산세 도시지역분과 마찬가지로 지방자치단체 조례로 세율의 100분의 50 범위에서 가감될 수 있고(§14), 취득 후 5년 이내 본점·주사무소 사업용 부동산·공장 신설증설용 부동산·고급주택·골프장·고급오락장 등으로 용도가 바뀌면 관청이 추징하며(§16), 다주택 여부 등 취득 당시에는 몰랐던 사유로 §13의2① 중과세율 적용대상이 된 경우에는 그 사유가 발생한 날부터 60일 이내에 납세자가 스스로 차액을 신고·납부해야 합니다(§20②).'
+    안내: '지방교육세(§151①1호 — 취득 유형별로 세율이 갈립니다: 일반취득은 표준세율에서 중과기준세율 2%를 뺀 세율×20%, §13의2 법인·다주택 중과는 항상 (4%-2%)×20%=0.4% 고정, §11①8호 일반 주택 유상취득은 적용세율(사치성 가산 전)×50%×20%)와 농어촌특별세(§5①6호 — 표준세율을 2%로 하여 산출한 세액을 초과하는 세액의 10%. 일반취득은 (표준세율-2%)×10%로 세율에 비례해 계산하고, 법인·다주택 중과는 지방교육세와 같은 기준으로 (4%-2%)×10%=0.2% 고정입니다. §11①8호 주택은 국민주택규모(85㎡, 읍·면지역은 100㎡) 이하이면 비과세입니다(§4 10호 — 전용면적을 입력하지 않으면 과세 쪽으로 안전하게 0.2%를 적용합니다). 지방세법§15①1~3호 특례(1가구1주택 상속 등)는 §4 10호의4로 비과세)를 함께 계산했습니다.' + relatedPartyGateNote + ' 사치성재산(§13⑤) 가산분(+8%p)은 지방교육세 근거조문(§151①1호 가·나목)이 §13②③⑥⑦·§13의2만 지정하고 있어 이 계산에는 반영하지 않았습니다.' + reliefNote + ' 위 아홉 감면(§36의3·§6①·§29①·§36의5·§36의4①·§33②·§74④⑤·§92①·§73①) 외 지방세특례제한법상 다른 감면은 이 도구가 아직 다루지 않습니다 — 다자녀·전기차·경형자동차·장애인용·국가유공자용 자동차 감면은 자동차 취득세만 해당해 부동산과 무관하고, 인구감소지역주택·빈집정비·개발제한구역주택개량 등은 아직 미반영입니다(주택연금·농지연금은 각각 calculate_registration_license_tax·calculate_property_tax에서 반영됨). 재산세 도시지역분과 마찬가지로 지방자치단체 조례로 세율의 100분의 50 범위에서 가감될 수 있고(§14), 취득 후 5년 이내 본점·주사무소 사업용 부동산·공장 신설증설용 부동산·고급주택·골프장·고급오락장 등으로 용도가 바뀌면 관청이 추징하며(§16), 다주택 여부 등 취득 당시에는 몰랐던 사유로 §13의2① 중과세율 적용대상이 된 경우에는 그 사유가 발생한 날부터 60일 이내에 납세자가 스스로 차액을 신고·납부해야 합니다(§20②).'
   };
   if (acquisitionType !== p.acquisitionType || acquisitionValue !== Number(p.acquisitionValue)) {
     result.재분류적용여부 = true;
@@ -12674,6 +12690,24 @@ function handleCreateAdvisorySlideReport(body) {
       return { error: '슬라이드 보고서 생성 중 오류: ' + err.message };
     }
   });
+}
+
+/**
+ * [2026.09 신규] 사용자메뉴얼(manual.html) 화면 내용을 그대로 "업무관리자" 폴더에 파일로
+ * 남긴다. 메뉴얼의 원본은 화면(manual.html)이고, 이 함수는 그 시점의 스냅샷을 저장할 뿐이라
+ * 화면 내용이 바뀌면 다시 눌러야 최신 내용으로 덮어써진다(내용을 여기 따로 유지하지 않음).
+ */
+function handleExportUserManual(body) {
+  const content = String(body.content || '').trim();
+  if (!content) return { error: '저장할 내용이 없습니다.' };
+  try {
+    const folder = getBusinessManagerFolder_();
+    if (!folder) return { error: '"업무관리자" 폴더를 찾을 수 없습니다.' };
+    const file = writeFileOverwrite_(folder, '사용자메뉴얼.md', content, 'text/markdown');
+    return { id: file.getId(), url: file.getUrl() };
+  } catch (err) {
+    return { error: '사용자메뉴얼 저장 중 오류: ' + err.message };
+  }
 }
 
 // 도로명주소 검색(행정안전부 juso.go.kr 도로명주소 API) — 건물명(아파트명 등)으로 검색하면 도로명·지번

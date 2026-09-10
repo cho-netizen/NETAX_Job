@@ -119,7 +119,7 @@
   var VIEW_LABELS_ = {
     dashboard: '대시보드', booking: '예약관리', workmanage: '작업관리', casehandling: '처리개요', lawsearch: '법령조회', clientmanage: '고객관리',
     docs: '증빙확보', taxcalc: '세액계산', reportwriter: '문서작성', reports: '열람관리',
-    'memo-text': '일반메모', 'memo-hand': '필기메모', settings: '설정'
+    'memo-text': '일반메모', 'memo-hand': '필기메모', settings: '설정', manual: '사용자메뉴얼'
   };
 
   // ---- 로그인 게이트 ----
@@ -316,6 +316,36 @@
     showView(name);
     document.querySelectorAll('.menu-item[data-view]').forEach(function(i){
       i.classList.toggle('active', i.getAttribute('data-view') === name);
+    });
+  }
+
+  // [2026.09 신규] 사용자메뉴얼 — 화면 오른쪽 아래 ❓ 버튼을 누르면 "지금 보고 있던 화면"에
+  // 해당하는 설명으로 바로 이동한다. 화면마다 따로 버튼을 붙이지 않고 하나의 전역 버튼이
+  // 현재 활성 메뉴(data-view)를 보고 알아서 섹션을 고르는 방식이라, 새 화면이 생겨도 이 표에
+  // 한 줄만 추가하면 된다.
+  var HELP_SECTION_BY_VIEW_ = {
+    dashboard: 'help-dashboard', booking: 'help-booking', workmanage: 'help-workmanage',
+    casehandling: 'help-casehandling', lawsearch: 'help-lawsearch', clientmanage: 'help-clientmanage',
+    docs: 'help-docs', taxcalc: 'help-taxcalc', reportwriter: 'help-reportwriter', reports: 'help-reports',
+    'memo-text': 'help-memo-text', 'memo-hand': 'help-memo-hand', settings: 'help-settings', manual: 'help-toc'
+  };
+  function goToHelp_(sectionId){
+    goToView_('manual');
+    requestAnimationFrame(function(){
+      var el = document.getElementById(sectionId);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      el.classList.add('help-flash');
+      setTimeout(function(){ el.classList.remove('help-flash'); }, 1600);
+    });
+  }
+  var globalHelpBtn_ = document.getElementById('globalHelpBtn');
+  if (globalHelpBtn_) {
+    globalHelpBtn_.addEventListener('click', function(){
+      var activeItem = document.querySelector('.menu-item[data-view].active');
+      var viewName = activeItem ? activeItem.getAttribute('data-view') : null;
+      var sectionId = (viewName && HELP_SECTION_BY_VIEW_[viewName]) || 'help-toc';
+      goToHelp_(sectionId);
     });
   }
 </script>
