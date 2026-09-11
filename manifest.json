@@ -1,13 +1,22 @@
 {
   "name": "NETAX 관리",
   "short_name": "NETAX",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "https://script.google.com/macros/s/AKfycbyFbvXiV6rSzCvhtc_T2WrzNF5ZxhOFWtSSsgzSavzPbjv4LBGhjXhu_Q2_8m-PDj8s/exec?app=manage",
   "display": "standalone",
   "background_color": "#081226",
   "theme_color": "#0D1B3D",
   "icons": [
-    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+    {
+      "src": "https://job.netax.kr/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://job.netax.kr/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
   ]
 }
