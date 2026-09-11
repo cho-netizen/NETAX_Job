@@ -1,8 +1,7 @@
 {
   "name": "NETAX 관리",
   "short_name": "NETAX",
-  "start_url": "https://job.netax.kr/",
-  "scope": "https://job.netax.kr/",
+  "start_url": "https://script.google.com/macros/s/AKfycbyFbvXiV6rSzCvhtc_T2WrzNF5ZxhOFWtSSsgzSavzPbjv4LBGhjXhu_Q2_8m-PDj8s/exec?app=manage",
   "display": "standalone",
   "background_color": "#081226",
   "theme_color": "#0D1B3D",
