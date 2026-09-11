@@ -2,11 +2,30 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="0; url=https://script.google.com/macros/s/AKfycbyFbvXiV6rSzCvhtc_T2WrzNF5ZxhOFWtSSsgzSavzPbjv4LBGhjXhu_Q2_8m-PDj8s/exec?app=manage">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>NETAX 관리</title>
-<script>location.replace('https://script.google.com/macros/s/AKfycbyFbvXiV6rSzCvhtc_T2WrzNF5ZxhOFWtSSsgzSavzPbjv4LBGhjXhu_Q2_8m-PDj8s/exec?app=manage');</script>
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="apple-touch-icon" href="/icon-512.png">
+<meta name="theme-color" content="#0D1B3D">
+<style>
+  html,body{ margin:0; padding:0; height:100%; background:#081226; }
+  #app-frame{ position:fixed; inset:0; width:100%; height:100%; border:none; }
+  #fallback{ display:none; font-family:sans-serif; color:#fff; padding:24px; }
+</style>
 </head>
 <body>
-<p>이동 중입니다… 자동으로 안 넘어가면 <a href="https://script.google.com/macros/s/AKfycbyFbvXiV6rSzCvhtc_T2WrzNF5ZxhOFWtSSsgzSavzPbjv4LBGhjXhu_Q2_8m-PDj8s/exec?app=manage">여기</a>를 눌러주세요.</p>
+<!-- job.netax.kr 자체를 최상위 문서로 유지하고, 실제 관리 앱(앱스스크립트)은 iframe으로 감싼다.
+     예전에는 이 페이지가 script.google.com으로 바로 리다이렉트했는데, 그러면 최상위 문서가
+     script.google.com이 되어버려서 이 페이지의 manifest/서비스워커가 브라우저의 "설치 가능"
+     판정에 아예 반영되지 않았다(굿락 CocktailBar 목록에 안 뜨는 원인). gs-backend 쪽 코드는
+     전혀 바뀌지 않았다 — 이 파일만 리다이렉트에서 iframe 방식으로 바뀐 것. -->
+<iframe id="app-frame" src="https://script.google.com/macros/s/AKfycbyFbvXiV6rSzCvhtc_T2WrzNF5ZxhOFWtSSsgzSavzPbjv4LBGhjXhu_Q2_8m-PDj8s/exec?app=manage"></iframe>
+<p id="fallback">이동 중입니다… 자동으로 안 넘어가면 <a href="https://script.google.com/macros/s/AKfycbyFbvXiV6rSzCvhtc_T2WrzNF5ZxhOFWtSSsgzSavzPbjv4LBGhjXhu_Q2_8m-PDj8s/exec?app=manage">여기</a>를 눌러주세요.</p>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(function(){});
+  }
+</script>
 </body>
 </html>
