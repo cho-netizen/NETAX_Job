@@ -3,51 +3,70 @@
   <div class="view-body">
     <div class="card" style="max-width:360px;">
       <h3>비밀번호 변경</h3>
-      <div style="display:flex; flex-direction:column; gap:8px;">
-        <div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">현재 비밀번호</label>
-          <input type="password" id="setCurPw" style="width:100%;" autocomplete="off"></div>
-        <div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">새 비밀번호</label>
-          <input type="password" id="setNewPw" style="width:100%;" autocomplete="off"></div>
-        <div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">새 비밀번호 확인</label>
-          <input type="password" id="setNewPw2" style="width:100%;" autocomplete="off"></div>
-        <button type="button" id="setBtnChangePw" class="save-btn" style="align-self:flex-start;">변경</button>
-        <div id="setPwMsg" style="font-size:12px; min-height:16px;"></div>
-      </div>
+      <div id="settingsPwBody"></div>
     </div>
   </div>
 </div>
 
 <script>
-  function initSettings(){}
-
-  document.getElementById('setBtnChangePw').addEventListener('click', function(){
-    var cur = document.getElementById('setCurPw').value;
-    var next = document.getElementById('setNewPw').value;
-    var next2 = document.getElementById('setNewPw2').value;
-    var msg = document.getElementById('setPwMsg');
-    msg.style.color = 'var(--danger)';
-    if (!cur){ msg.textContent = '현재 비밀번호를 입력해주세요.'; return; }
-    if (!next || next.length < 4){ msg.textContent = '새 비밀번호는 4자 이상이어야 합니다.'; return; }
-    if (next !== next2){ msg.textContent = '새 비밀번호 확인이 일치하지 않습니다.'; return; }
-    var btn = document.getElementById('setBtnChangePw');
-    btn.disabled = true;
-    google.script.run
-      .withSuccessHandler(function(res){
-        btn.disabled = false;
-        if (res && res.success){
-          msg.style.color = 'var(--success)';
-          msg.textContent = '변경했습니다.';
-          document.getElementById('setCurPw').value = '';
-          document.getElementById('setNewPw').value = '';
-          document.getElementById('setNewPw2').value = '';
-        } else {
-          msg.textContent = (res && res.message) || '변경 실패';
-        }
-      })
-      .withFailureHandler(function(err){
-        btn.disabled = false;
-        msg.textContent = '오류: ' + (err && err.message ? err.message : err);
-      })
-      .manageApp_changePassword(cur, next);
-  });
+  // [2026.09.16 버그수정] 세무사님 지적 — 대시보드 등 이 화면과 전혀 무관한 곳에서 입력칸을
+  // 누르면 크롬이 "비밀번호 관리" 관련 팝업(자동완성·저장 제안)을 뜬금없이 띄우는 증상이
+  // 여러 곳에서 있었다. 원인은 이 앱이 모든 화면을 한 페이지에 한꺼번에 그려두고 CSS로만
+  // 숨기는 구조(SPA)라서, <input type="password"> 3개(비밀번호 변경 칸)가 설정 화면을 한
+  // 번도 안 열었어도 항상 DOM에 존재했던 것 — 크롬은 "지금 보이는 화면"이 아니라 "페이지
+  // 전체"를 훑어서 비밀번호칸이 있는지 보고 자동완성 UI를 띄운다. 로그인칸(index.html의
+  // loginPw)도 로그인 후 CSS로 숨기기만 해서 같은 문제가 있었다(script.html에서 같이 수정).
+  // 해결: 비밀번호칸을 정적 마크업으로 항상 두지 않고, 설정 화면을 실제로 열 때만 JS로
+  // 만들어 넣고, 다른 화면으로 나가면 바로 지운다(showView가 나갈 때 호출하는
+  // settingsTeardown_ 참고) — 그래야 비밀번호칸이 "지금 설정 화면을 보고 있을 때"만
+  // DOM에 존재한다.
+  function settingsRenderPwForm_(){
+    document.getElementById('settingsPwBody').innerHTML =
+      '<div style="display:flex; flex-direction:column; gap:8px;">' +
+      '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">현재 비밀번호</label>' +
+      '<input type="password" id="setCurPw" style="width:100%;" autocomplete="off"></div>' +
+      '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">새 비밀번호</label>' +
+      '<input type="password" id="setNewPw" style="width:100%;" autocomplete="off"></div>' +
+      '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">새 비밀번호 확인</label>' +
+      '<input type="password" id="setNewPw2" style="width:100%;" autocomplete="off"></div>' +
+      '<button type="button" id="setBtnChangePw" class="save-btn" style="align-self:flex-start;">변경</button>' +
+      '<div id="setPwMsg" style="font-size:12px; min-height:16px;"></div>' +
+      '</div>';
+    document.getElementById('setBtnChangePw').addEventListener('click', function(){
+      var cur = document.getElementById('setCurPw').value;
+      var next = document.getElementById('setNewPw').value;
+      var next2 = document.getElementById('setNewPw2').value;
+      var msg = document.getElementById('setPwMsg');
+      msg.style.color = 'var(--danger)';
+      if (!cur){ msg.textContent = '현재 비밀번호를 입력해주세요.'; return; }
+      if (!next || next.length < 4){ msg.textContent = '새 비밀번호는 4자 이상이어야 합니다.'; return; }
+      if (next !== next2){ msg.textContent = '새 비밀번호 확인이 일치하지 않습니다.'; return; }
+      var btn = document.getElementById('setBtnChangePw');
+      btn.disabled = true;
+      google.script.run
+        .withSuccessHandler(function(res){
+          btn.disabled = false;
+          if (res && res.success){
+            msg.style.color = 'var(--success)';
+            msg.textContent = '변경했습니다.';
+            document.getElementById('setCurPw').value = '';
+            document.getElementById('setNewPw').value = '';
+            document.getElementById('setNewPw2').value = '';
+          } else {
+            msg.textContent = (res && res.message) || '변경 실패';
+          }
+        })
+        .withFailureHandler(function(err){
+          btn.disabled = false;
+          msg.textContent = '오류: ' + (err && err.message ? err.message : err);
+        })
+        .manageApp_changePassword(cur, next);
+    });
+  }
+  function initSettings(){ settingsRenderPwForm_(); }
+  // showView(script.html)가 설정 화면을 벗어날 때 호출 — 비밀번호칸을 DOM에서 완전히 제거한다.
+  function settingsTeardown_(){
+    var body = document.getElementById('settingsPwBody');
+    if (body) body.innerHTML = '';
+  }
 </script>

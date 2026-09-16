@@ -78,17 +78,21 @@
             if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function(){ toast('열람 링크를 복사했습니다: ' + url); });
             else toast(url);
           } else if (act === 'reset'){
-            if (!confirm('이 보고서의 비밀번호를 초기화할까요? 고객이 다음 접속 시 새로 설정합니다.')) return;
-            callGas('clear_password', { report_id: id }).then(function(res){
-              if (res.error || res.success === false){ toast(res.message || res.error || '초기화 실패'); return; }
-              toast('비밀번호를 초기화했습니다.');
+            nxConfirm_('이 보고서의 비밀번호를 초기화할까요? 고객이 다음 접속 시 새로 설정합니다.').then(function(ok){
+              if (!ok) return;
+              callGas('clear_password', { report_id: id }).then(function(res){
+                if (res.error || res.success === false){ toast(res.message || res.error || '초기화 실패'); return; }
+                toast('비밀번호를 초기화했습니다.');
+              });
             });
           } else if (act === 'del'){
-            if (!confirm('이 보고서 등록을 삭제할까요? 열람번호가 즉시 무효화됩니다.')) return;
-            callGas('delete_report', { report_id: id }).then(function(res){
-              if (res.error || res.success === false){ toast(res.message || res.error || '삭제 실패'); return; }
-              toast('삭제했습니다.');
-              loadReportList();
+            nxConfirm_('이 보고서 등록을 삭제할까요? 열람번호가 즉시 무효화됩니다.').then(function(ok){
+              if (!ok) return;
+              callGas('delete_report', { report_id: id }).then(function(res){
+                if (res.error || res.success === false){ toast(res.message || res.error || '삭제 실패'); return; }
+                toast('삭제했습니다.');
+                loadReportList();
+              });
             });
           }
         });

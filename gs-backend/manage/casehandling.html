@@ -3,11 +3,10 @@
   <div class="view-body">
     <div class="card">
       <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-        <label style="font-size:12px; color:var(--sub);">사건</label>
         <select id="chCaseSelect" style="min-width:220px; max-width:420px;"><option value="">사건을 선택하세요</option></select>
       </div>
     </div>
-    <div id="chBody"><div class="explorer-status">위에서 사건을 선택해주세요.</div></div>
+    <div id="chBody"></div>
   </div>
 </div>
 
@@ -74,9 +73,12 @@
   // 반드시 같은 값이어야 한다는 요청에 따라, 이 키를 가진 필드가 채워지면 양쪽을 서로 맞춘다
   // (casehandling.html의 chSaveTarget, workmanage.html의 saveCaseNow_, memo.html의 사건개요
   // 초안 적용 3곳이 이 상수를 함께 참조한다). 양도소득세는 양도인(taxcalc.html의
-  // trTransferorName과 동일 키), 증여세는 수증자(납세의무자가 곧 수증자), 상속세는 대표
-  // 상속인(피상속인 본인은 납세의무자가 아니므로 ihDeceasedName이 아니라 별도 필드).
-  var TAXPAYER_NAME_FIELD_BY_SEMOK_ = { transfer: 'trTransferorName', gift: 'giftDoneeName', inheritance: '상속인성명' };
+  // trTransferorName과 동일 키), 증여세는 수증자(납세의무자가 곧 수증자).
+  // [2026.09.15 변경] 상속세는 원래 법적 납세의무자인 대표 상속인(상속인성명)과 동기화했으나,
+  // 세무사님 지시로 사건 식별에 실무상 더 유용한 피상속인(ihDeceasedName)과 동기화하도록
+  // 변경 — 작업관리의 "납세자"란에 피상속인 이름을 적으면 이제 처리개요의 "피상속인 성명"란도
+  // 같이 채워진다(반대 방향도 동일).
+  var TAXPAYER_NAME_FIELD_BY_SEMOK_ = { transfer: 'trTransferorName', gift: 'giftDoneeName', inheritance: 'ihDeceasedName' };
   var CH_CASE_OVERVIEW_FIELDS_ = {
     // [2026.09 버그수정] 실사용 감사 지적 — '양도가액'/'취득일'/'취득가액' 세 필드는 물건목록
     // 재설계 이전(대표 1건만 다루던 시절)의 유물이었다. 물건목록 카드에도 취득일·취득가액이
@@ -136,7 +138,8 @@
 
   function chRenderOverviewFieldInput_(field, value, semok){
     var v = escapeHtml(value || '');
-    var common = 'id="chOv_' + field.key + '" data-key="' + field.key + '" style="width:100%; box-sizing:border-box;"';
+    var idAttr = 'id="chOv_' + field.key + '" data-key="' + field.key + '"';
+    var common = idAttr + ' style="width:100%; box-sizing:border-box;"';
     if (field.type === 'select'){
       // [2026.09] 사건분류만 서버가 내려준 실제 목록(chCaseClassificationOptions_)으로 그린다 —
       // 빈 선택지 + "일반OO" + 서버 목록 순서. 나머지 select 필드(관계 등)는 그대로 고정 옵션.
@@ -158,7 +161,18 @@
     if (field.type === 'money'){
       return '<input type="text" inputmode="numeric" placeholder="원" ' + common + ' value="' + escapeHtml(chFormatMoney_(value)) + '" oninput="chOnMoneyInput_(this)">';
     }
-    return '<input type="' + field.type + '" ' + common + ' value="' + v + '">';
+    // [2026.09.16 버그수정] 세무사님 지적 — 성명(2~6자)·날짜(10자)·인원수(1~2자)처럼 대체로
+    // 아주 짧은 값인데, 그리드 칸(180px)을 꽉 채우는 width:100%를 그대로 써서 빈 칸이 크게
+    // 남아 보였다. 그리드 칸 자체 크기는 그대로 두고(다른 칸과 줄이 맞아야 하므로) 입력창만
+    // 실제 데이터 길이에 맞춰 좁혀 왼쪽으로 붙인다.
+    if (field.type === 'date'){
+      return '<input type="date" ' + idAttr + ' style="width:95px; box-sizing:border-box;" value="' + v + '">';
+    }
+    if (field.type === 'number'){
+      return '<input type="number" ' + idAttr + ' style="width:70px; box-sizing:border-box;" value="' + v + '">';
+    }
+    var sizeAttr = Math.max(String(value || '').length, 6) + 2;
+    return '<input type="' + field.type + '" ' + idAttr + ' size="' + sizeAttr + '" style="box-sizing:border-box;" value="' + v + '">';
   }
 
   // 자산종류·유형·소재지·동·호·물건수·양도일 — taxcalc.html의 assetType/assetKind/assetLocation
@@ -210,9 +224,9 @@
       dongOptions.map(function(d){ return '<option value="' + escapeHtml(d) + '"' + (asset.assetDong === d ? ' selected' : '') + '>' + escapeHtml(d) + '</option>'; }).join('') +
       '</select></div>' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">호</label>' +
-      '<input type="text" class="chAssetField" data-field="assetHo" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(asset.assetHo || '') + '"></div></div>' +
+      '<input type="text" class="chAssetField" data-field="assetHo" size="6" style="box-sizing:border-box;" value="' + escapeHtml(asset.assetHo || '') + '"></div></div>' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">취득일(선택)</label>' +
-      '<input type="date" class="chAssetField" data-field="취득일" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(asset.취득일 || '') + '"></div>' +
+      '<input type="date" class="chAssetField" data-field="취득일" style="width:95px; box-sizing:border-box;" value="' + escapeHtml(asset.취득일 || '') + '"></div>' +
       // [2026.09 재설계] "양도가액은 물건별이 아니라 양도계약 단위로 정해지는 값"이라는 지적 —
       // 물건 카드마다 따로 입력하던 것을 없애고, 아래 "양도계약별 금액"란(chBuildTransferGroupAmountsHtml_)
       // 에서 계약(그룹) 하나당 한 번만 입력하도록 옮겼다. 취득가액은 사용자 판단에 따라
@@ -264,7 +278,7 @@
     return bundleControls +
       '<div>' +
       '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">양도일</label>' +
-      '<input type="date" id="chOvTransferDate" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
+      '<input type="date" id="chOvTransferDate" style="width:95px; box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
       '</div>' +
       '<div id="chTransferGroupAmountsHost" style="display:contents;">' + chBuildTransferGroupAmountsHtml_(list, overview) + '</div>' +
       '<div id="chAssetCardsHost" style="display:contents;">' + cardsHtml + '</div>' +
@@ -382,8 +396,11 @@
         if (e.target.checked) {
           var amounts = list.map(function(a){ return chUnformatMoney_(a.양도가액); }).filter(function(v){ return v; });
           var distinct = amounts.filter(function(v, i){ return amounts.indexOf(v) === i; });
-          if (distinct.length > 1 && !confirm('물건마다 이미 다른 양도가액이 입력돼 있습니다.\n"전체 묶기"를 켜면 아래 금액란에 첫 번째 물건 값만 보이고, 저장 시 그 값이 전체 계약금액으로 모든 물건에 적용됩니다.\n계속할까요?')) {
-            e.target.checked = false;
+          if (distinct.length > 1){
+            nxConfirm_('물건마다 이미 다른 양도가액이 입력돼 있습니다.\n"전체 묶기"를 켜면 아래 금액란에 첫 번째 물건 값만 보이고, 저장 시 그 값이 전체 계약금액으로 모든 물건에 적용됩니다.\n계속할까요?').then(function(ok){
+              if (!ok){ e.target.checked = false; return; }
+              overview.양도계약일괄 = e.target.checked; rerender();
+            });
             return;
           }
         }
@@ -406,9 +423,11 @@
       var delBtn = e.target.closest('.chAssetDelBtn');
       if (delBtn){
         var delIdx = Number(delBtn.dataset.idx);
-        if (!confirm('이 물건을 목록에서 삭제할까요?')) return;
-        list.splice(delIdx, 1);
-        rerender();
+        nxConfirm_('이 물건을 목록에서 삭제할까요?').then(function(ok){
+          if (!ok) return;
+          list.splice(delIdx, 1);
+          rerender();
+        });
         return;
       }
       if (e.target.id === 'chAssetAddBtn'){
@@ -455,7 +474,7 @@
       dongOptions.map(function(d){ return '<option value="' + escapeHtml(d) + '"' + (asset.assetDong === d ? ' selected' : '') + '>' + escapeHtml(d) + '</option>'; }).join('') +
       '</select></div>' +
       '<div><label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">호</label>' +
-      '<input type="text" class="chAssetField" data-field="assetHo" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(asset.assetHo || '') + '"></div></div>' +
+      '<input type="text" class="chAssetField" data-field="assetHo" size="6" style="box-sizing:border-box;" value="' + escapeHtml(asset.assetHo || '') + '"></div></div>' +
       '</div>';
   }
 
@@ -472,7 +491,7 @@
     return chBuildLocationFieldsHtml_(overview) +
       '<div>' +
       '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">증여일</label>' +
-      '<input type="date" id="chOvTransferDate" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
+      '<input type="date" id="chOvTransferDate" style="width:95px; box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
       '</div>';
   }
 
@@ -480,7 +499,7 @@
     return chBuildLocationFieldsHtml_(overview) +
       '<div>' +
       '<label style="font-size:12px; color:var(--sub); display:block; margin-bottom:3px;">상속개시일</label>' +
-      '<input type="date" id="chOvTransferDate" style="width:100%; box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
+      '<input type="date" id="chOvTransferDate" style="width:95px; box-sizing:border-box;" value="' + escapeHtml(baseDate || '') + '">' +
       '</div>';
   }
 
@@ -585,6 +604,12 @@
       '<div id="chLogCount" style="font-size:13px; color:var(--sub); margin-top:6px;">' + (c.작업일지 || []).length + '건</div>' +
       '<div id="chNewLogFormWrap" style="display:none; gap:6px; margin-bottom:10px; margin-top:8px; flex-wrap:wrap;"></div>' +
       '<div id="chLogList"></div>' +
+      '</div>' +
+      '<div class="card">' +
+      '<button type="button" id="chPaymentToggle" class="ch-card-head-btn" title="눌러서 이 사건의 수금 내역 추가">💰 수금 내역 <span class="ch-card-head-arrow">›</span></button>' +
+      '<div id="chPaymentCount" style="font-size:13px; color:var(--sub); margin-top:6px;">불러오는 중…</div>' +
+      '<div id="chNewPaymentFormWrap" style="display:none; gap:6px; margin-bottom:10px; margin-top:8px; flex-wrap:wrap;"></div>' +
+      '<div id="chPaymentList"></div>' +
       '</div>' +
       '<div class="card">' +
       '<button type="button" id="chLawOpenBtn" class="ch-card-head-btn">⚖️ 법령조회 <span class="ch-card-head-arrow">›</span></button>' +
@@ -697,6 +722,7 @@
     });
 
     chRenderLog_(c);
+    chRenderPayments_(c);
     document.getElementById('chLawOpenBtn').addEventListener('click', function(){
       if (typeof goToLawSearch_ === 'function') goToLawSearch_(c.id);
     });
@@ -802,9 +828,9 @@
         newLogFormWrap.style.display = 'flex';
         var todayStr = new Date().toISOString().slice(0, 10);
         newLogFormWrap.innerHTML =
-          '<input type="date" id="chNewLogDate" value="' + todayStr + '" style="width:130px;">' +
+          '<input type="date" id="chNewLogDate" value="' + todayStr + '" style="width:95px;">' +
           '<input type="text" id="chNewLogText" placeholder="진행 내용 · 다음 할일" style="flex:1; min-width:160px;">' +
-          '<input type="date" id="chNewLogDue" title="다음 일정(선택) — 입력하면 캘린더에 등록됩니다">' +
+          '<input type="date" id="chNewLogDue" title="다음 일정(선택) — 입력하면 캘린더에 등록됩니다" style="width:95px;">' +
           '<button type="button" id="chAddLog" class="save-btn">추가</button>' +
           '<button type="button" id="chAddLogCancel" class="ghost-btn">취소</button>';
         document.getElementById('chAddLogCancel').addEventListener('click', function(){ newLogFormWrap.style.display = 'none'; newLogFormWrap.innerHTML = ''; });
@@ -825,6 +851,82 @@
       } else {
         newLogFormWrap.style.display = 'none';
         newLogFormWrap.innerHTML = '';
+      }
+    });
+  }
+
+  // [2026.09.15 신규] 세무사님 지적 — "수금내역은 고객과 사건 모두에 연결되어야 한다." 이
+  // 사건에 연결된 수금 내역(client_get_consult_logs를 사건ID로 필터)을 여기서 바로 보고
+  // 추가할 수 있게 한다 — 수금관리(전체 고객 기준)·고객관리(그 고객의 전체 사건 기준)와
+  // 같은 원천 데이터를 사건 기준으로만 필터링해서 보여준다(작업일지 카드와 같은 패턴).
+  function chRenderPayments_(c){
+    var list = document.getElementById('chPaymentList');
+    if (!list) return;
+    callGas('client_get_consult_logs', { 사건ID: c.id }).then(function(res){
+      var payments = res.logs || [];
+      var countEl = document.getElementById('chPaymentCount');
+      if (countEl) countEl.textContent = payments.length ? (payments.length + '건 · 합계 ' + payments.reduce(function(s, p){ return s + (Number(p.금액) || 0); }, 0).toLocaleString('ko-KR') + '원') : '아직 수금 내역이 없습니다.';
+      list.innerHTML = '';
+      payments.forEach(function(pay){
+        var row = document.createElement('div');
+        row.className = 'log-entry';
+        var amountText = pay.금액 ? Number(pay.금액).toLocaleString('ko-KR') + '원' : '';
+        row.innerHTML =
+          '<div class="log-date">' + escapeHtml(fmtDateShort_(pay.날짜)) + '</div>' +
+          '<div class="log-text">' + escapeHtml(amountText) + (pay.수취증빙 ? ' · ' + escapeHtml(pay.수취증빙) : '') + '</div>' +
+          '<span class="log-del" title="삭제">✕</span>';
+        row.querySelector('.log-del').addEventListener('click', function(){
+          nxConfirm_('이 수금 내역을 삭제할까요?').then(function(ok){
+            if (!ok) return;
+            callGas('client_delete_consult_log', { id: pay.id }).then(function(delRes){
+              if (delRes.error || delRes.success === false){ showToast(delRes.error || delRes.message || '삭제 실패', 'error'); return; }
+              chRenderPayments_(c);
+            }).catch(function(){ showToast('삭제 중 오류가 발생했습니다.', 'error'); });
+          });
+        });
+        list.appendChild(row);
+      });
+    }).catch(function(){ list.innerHTML = '<div class="log-empty">불러오지 못했습니다.</div>'; });
+
+    var newPaymentFormWrap = document.getElementById('chNewPaymentFormWrap');
+    var paymentToggleBtn = document.getElementById('chPaymentToggle');
+    // chRenderLog_의 chLogToggle과 같은 이유(재호출 시 핸들러 중복 방지) — 최초 1회만 연결.
+    if (paymentToggleBtn.dataset.wired) return;
+    paymentToggleBtn.dataset.wired = '1';
+    paymentToggleBtn.addEventListener('click', function(){
+      if (newPaymentFormWrap.style.display === 'none'){
+        newPaymentFormWrap.style.display = 'flex';
+        newPaymentFormWrap.innerHTML =
+          '<input type="date" id="chNewPayDate" title="날짜(생략하면 오늘)" style="width:95px;">' +
+          '<input type="number" id="chNewPayAmount" placeholder="금액" size="8">' +
+          '<select id="chNewPayReceipt">' +
+          '<option value="">수취증빙 선택</option>' +
+          '<option value="현금영수증">현금영수증</option>' +
+          '<option value="세금계산서">세금계산서</option>' +
+          '<option value="신용카드">신용카드</option>' +
+          '</select>' +
+          '<button type="button" id="chAddPayment" class="save-btn">추가</button>' +
+          '<button type="button" id="chAddPaymentCancel" class="ghost-btn">취소</button>';
+        document.getElementById('chAddPaymentCancel').addEventListener('click', function(){ newPaymentFormWrap.style.display = 'none'; newPaymentFormWrap.innerHTML = ''; });
+        document.getElementById('chAddPayment').addEventListener('click', function(){
+          var amount = document.getElementById('chNewPayAmount').value;
+          if (!amount){ showToast('금액을 입력해주세요.', 'warning'); return; }
+          callGas('client_add_consult_log', {
+            고객ID: c.고객ID, 고객명: c.고객명, 사건ID: c.id,
+            날짜: document.getElementById('chNewPayDate').value,
+            금액: amount,
+            수취증빙: document.getElementById('chNewPayReceipt').value
+          }).then(function(res){
+            if (res.error || res.success === false){ showToast(res.error || res.message || '추가 실패', 'error'); return; }
+            showToast('수금 내역을 추가했습니다.', 'success');
+            newPaymentFormWrap.style.display = 'none';
+            newPaymentFormWrap.innerHTML = '';
+            chRenderPayments_(c);
+          }).catch(function(){ showToast('추가 중 오류가 발생했습니다.', 'error'); });
+        });
+      } else {
+        newPaymentFormWrap.style.display = 'none';
+        newPaymentFormWrap.innerHTML = '';
       }
     });
   }
@@ -940,35 +1042,38 @@
         '<div style="font-size:12.5px; color:var(--sub); margin-bottom:8px;">아직 고객창구에 연결되지 않았습니다. 연결하면 위 "요청자료"가 고객 체크리스트로 자동 전달되고, 고객이 고객창구로 들어와 직접 자료를 올리고 진행상황·결과보고서를 확인할 수 있습니다.</div>' +
         '<button type="button" id="chMyConnectBtn" class="ch-card-head-btn">🔗 고객창구 연결하기 <span class="ch-card-head-arrow">›</span></button>';
       document.getElementById('chMyConnectBtn').addEventListener('click', function(){
-        if (!confirm(c.고객명 + '님을 위한 고객창구을 새로 만들까요?')) return;
-        // [2026.09 버그수정] 더블클릭 방지 — admin_create_case는 멱등성이 없어서(호출할 때마다
-        // 무조건 새 접속코드를 발급) 막지 않으면 코드가 두 개 발급되고, 담당자가 먼저 뜬(이미
-        // 무효가 된) 코드를 실수로 고객에게 전달할 위험이 있다.
-        var btn = this;
-        if (btn.disabled) return;
-        btn.disabled = true;
-        var requestedLabels = (c.증빙목록 || []).filter(function(e){ return e.source === 'requested'; }).map(function(e){ return e.label; });
-        var permission = '허용';
-        // [2026.09 버그수정] c.폴더ID가 비어있는 채로(옛날 사건, 또는 사건 생성 시 드라이브
-        // 오류로 폴더 생성이 실패한 경우) 그대로 넘기면, my.netax.kr 쪽이 완전히 다른 위치에
-        // 새 폴더를 만들어버려서 고객 업로드 파일을 증빙관리·작성관리에서 영영 못 찾게 됐다 —
-        // 연결하기 전에 항상 올바른 위치의 폴더를 먼저 확보(없으면 새로 생성)하고 사건에 저장한다.
-        (c.폴더ID ? Promise.resolve({ success: true, folderId: c.폴더ID }) : callGas('ensure_case_folder', { id: c.id })).then(function(folderRes){
-          if (folderRes.success === false){ showToast(folderRes.message || '사건 폴더를 준비하지 못했습니다.', 'error'); btn.disabled = false; return; }
-          c.폴더ID = folderRes.folderId;
-          return callGas('admin_create_case', { name: c.고객명, case_name: c.사건명, checklist: requestedLabels, permission: permission, folder_id: folderRes.folderId }).then(function(res){
-            if (res.success === false){ showToast(res.message || '연결 실패', 'error'); btn.disabled = false; return; }
-            return callGas('work_update_case', { id: c.id, my_report_id: res.report_id }).then(function(updRes){
-              showToast('고객창구을 연결했습니다 — 접속코드 ' + res.report_id, 'success');
-              // [2026.09 버그수정] 연결 성공 후 loadChCases_()로 카드 전체를 다시 그리면 그 사이
-              // 입력 중이던 다른 폼이 날아갔다 — c에 새 report_id만 반영하고 my포털 카드만 다시
-              // 그린다(이제 "연결됨" 상태이므로 chInitMyPortal_이 알아서 체크리스트 화면으로 바뀐다).
-              if (updRes && updRes.case) Object.assign(c, updRes.case); else c.my_report_id = res.report_id;
-              chInitMyPortal_(c);
-              if (typeof loadWorkCases === 'function') loadWorkCases();
+        var connectBtn = this;
+        nxConfirm_(c.고객명 + '님을 위한 고객창구을 새로 만들까요?').then(function(ok){
+          if (!ok) return;
+          // [2026.09 버그수정] 더블클릭 방지 — admin_create_case는 멱등성이 없어서(호출할 때마다
+          // 무조건 새 접속코드를 발급) 막지 않으면 코드가 두 개 발급되고, 담당자가 먼저 뜬(이미
+          // 무효가 된) 코드를 실수로 고객에게 전달할 위험이 있다.
+          var btn = connectBtn;
+          if (btn.disabled) return;
+          btn.disabled = true;
+          var requestedLabels = (c.증빙목록 || []).filter(function(e){ return e.source === 'requested'; }).map(function(e){ return e.label; });
+          var permission = '허용';
+          // [2026.09 버그수정] c.폴더ID가 비어있는 채로(옛날 사건, 또는 사건 생성 시 드라이브
+          // 오류로 폴더 생성이 실패한 경우) 그대로 넘기면, my.netax.kr 쪽이 완전히 다른 위치에
+          // 새 폴더를 만들어버려서 고객 업로드 파일을 증빙관리·작성관리에서 영영 못 찾게 됐다 —
+          // 연결하기 전에 항상 올바른 위치의 폴더를 먼저 확보(없으면 새로 생성)하고 사건에 저장한다.
+          (c.폴더ID ? Promise.resolve({ success: true, folderId: c.폴더ID }) : callGas('ensure_case_folder', { id: c.id })).then(function(folderRes){
+            if (folderRes.success === false){ showToast(folderRes.message || '사건 폴더를 준비하지 못했습니다.', 'error'); btn.disabled = false; return; }
+            c.폴더ID = folderRes.folderId;
+            return callGas('admin_create_case', { name: c.고객명, case_name: c.사건명, checklist: requestedLabels, permission: permission, folder_id: folderRes.folderId }).then(function(res){
+              if (res.success === false){ showToast(res.message || '연결 실패', 'error'); btn.disabled = false; return; }
+              return callGas('work_update_case', { id: c.id, my_report_id: res.report_id }).then(function(updRes){
+                showToast('고객창구을 연결했습니다 — 접속코드 ' + res.report_id, 'success');
+                // [2026.09 버그수정] 연결 성공 후 loadChCases_()로 카드 전체를 다시 그리면 그 사이
+                // 입력 중이던 다른 폼이 날아갔다 — c에 새 report_id만 반영하고 my포털 카드만 다시
+                // 그린다(이제 "연결됨" 상태이므로 chInitMyPortal_이 알아서 체크리스트 화면으로 바뀐다).
+                if (updRes && updRes.case) Object.assign(c, updRes.case); else c.my_report_id = res.report_id;
+                chInitMyPortal_(c);
+                if (typeof loadWorkCases === 'function') loadWorkCases();
+              });
             });
-          });
-        }).catch(function(err){ showToast('연결 중 오류: ' + (err && err.message ? err.message : err), 'error'); btn.disabled = false; });
+          }).catch(function(err){ showToast('연결 중 오류: ' + (err && err.message ? err.message : err), 'error'); btn.disabled = false; });
+        });
       });
       return;
     }
@@ -1010,14 +1115,16 @@
         else showToast(url, 'success');
       });
       document.getElementById('chMySendSmsBtn').addEventListener('click', function(){
-        if (!confirm(c.고객명 + '님께 고객창구 주소와 접근번호를 문자로 보낼까요?')) return;
-        var btn = document.getElementById('chMySendSmsBtn');
-        btn.disabled = true; btn.textContent = '전송 중…';
-        callGas('send_my_portal_sms', { caseId: c.id }).then(function(res){
-          btn.disabled = false; btn.textContent = '📱 문자로 전달';
-          if (res.success === false){ showToast(res.message || '전송 실패', 'error'); return; }
-          showToast('문자를 전송했습니다.', 'success');
-        }).catch(function(err){ btn.disabled = false; btn.textContent = '📱 문자로 전달'; showToast('전송 중 오류: ' + (err && err.message ? err.message : err), 'error'); });
+        nxConfirm_(c.고객명 + '님께 고객창구 주소와 접근번호를 문자로 보낼까요?').then(function(ok){
+          if (!ok) return;
+          var btn = document.getElementById('chMySendSmsBtn');
+          btn.disabled = true; btn.textContent = '전송 중…';
+          callGas('send_my_portal_sms', { caseId: c.id }).then(function(res){
+            btn.disabled = false; btn.textContent = '📱 문자로 전달';
+            if (res.success === false){ showToast(res.message || '전송 실패', 'error'); return; }
+            showToast('문자를 전송했습니다.', 'success');
+          }).catch(function(err){ btn.disabled = false; btn.textContent = '📱 문자로 전달'; showToast('전송 중 오류: ' + (err && err.message ? err.message : err), 'error'); });
+        });
       });
       document.getElementById('chMyAddItemBtn').addEventListener('click', function(){
         var label = document.getElementById('chMyNewItem').value.trim();

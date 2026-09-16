@@ -5,8 +5,13 @@
     --danger:#b3261e; --danger-bg:#fbe7e5; --success:#1f7a4d; --success-bg:#e4f3ea;
   }
   *{ box-sizing:border-box; }
+  /* [2026.09.16] "Pretendard"를 폰트스택에서 시도했다가(실제로 불러온 적 없는 죽은 이름이라
+     의미 없었음) 대신 구글폰트(Noto Sans KR)를 외부에서 불러오게 했더니, 그 요청이 느리거나
+     막힌 네트워크에서 로그인 후 화면 전체가 멈춰버리는 훨씬 심각한 문제가 생겨 즉시 되돌렸다
+     — 원래대로 시스템 기본 폰트만 쓴다(표 줄바꿈 문제의 실제 해결책은 booking.html의 말줄임
+     처리이지 폰트가 아니다). */
   html,body{ margin:0; padding:0; height:100%; background:var(--bg); color:var(--ink);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Pretendard,Roboto,sans-serif; overflow:hidden; }
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; overflow:hidden; }
   button{ font-family:inherit; cursor:pointer; }
   input,select,textarea{ font-family:inherit; }
 
@@ -67,7 +72,13 @@
   .view{ position:absolute; inset:0; overflow-y:auto; display:none; }
   .view.active{ display:block; }
   #view-workmanage.active, #view-clientmanage.active, #view-docs.active,
-  #view-memo-text.active, #view-memo-hand.active, #view-taxcalc.active{ display:flex; flex-direction:column; overflow:hidden; }
+  #view-memo-text.active, #view-memo-hand.active, #view-taxcalc.active, #view-reporthub.active{ display:flex; flex-direction:column; overflow:hidden; }
+
+  /* [2026.09 신규] 보고서 모음 화면 */
+  .rh-subtab-btn{ background:#f2f3f6; border:1px solid var(--line); border-radius:6px; padding:6px 12px;
+    font-size:12.5px; font-family:inherit; cursor:pointer; color:var(--sub); }
+  .rh-subtab-btn.active{ background:var(--navy); color:#fff; border-color:var(--navy); font-weight:600; }
+  .rh-pane{ flex:1; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
   .view-head{ padding:16px 22px 10px; }
   .view-head h2{ margin:0; font-size:19px; color:var(--navy); }
   .view-body{ padding:0 22px 24px; }
@@ -119,8 +130,14 @@
   .ch-card-head-btn:hover{ text-decoration:underline; }
   .ch-card-head-arrow{ color:var(--sub); font-weight:400; }
   .empty-row{ color:var(--sub); font-size:13px; padding:10px 0; }
+  /* [2026.09.16 버그수정] 실사용 지적 — "저장"(.save-btn) 옆에 놓인 "🗑 삭제"(.btn.danger)의
+     높이가 눈에 띄게 달랐다. 원인 두 가지: ① .btn의 패딩(6px 12px)이 .save-btn/.ghost-btn
+     (7px 14px)과 애초에 달랐다. ② 그걸 맞춰도, 이모지(🗑) 글리프가 순한글 텍스트보다 폰트
+     자체의 줄높이가 커서 line-height를 명시하지 않으면 브라우저가 그 버튼만 더 늘려 그린다
+     — 세 버튼 클래스 모두에 같은 line-height를 명시해야 내용이 이모지든 순텍스트든 버튼
+     높이가 항상 같아진다. */
   .btn{ border:1px solid var(--gold); background:rgba(200,162,68,0.10); color:var(--navy); border-radius:7px;
-    padding:6px 12px; font-size:12.5px; font-weight:600; }
+    padding:7px 14px; font-size:12.5px; font-weight:600; line-height:1.2; display:inline-block; box-sizing:border-box; vertical-align:middle; font-family:inherit; cursor:pointer; }
   .btn:hover{ background:rgba(200,162,68,0.22); }
   .btn.primary{ background:var(--navy); color:#fff; border-color:var(--navy); }
   .btn.primary:hover{ background:var(--navy-deep); }
@@ -171,11 +188,13 @@
      - 빨강/초록(.btn.danger/.success)은 원래대로 위험·성공 의미 전용으로 유지
      한 클래스만 고치면 앱 전체 화면에 한번에 반영된다(모든 화면이 이 style.html 하나를 공유). */
   .ghost-btn{ font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer; border-radius:6px; padding:7px 14px;
-    border:1px solid var(--gold); background:rgba(200,162,68,0.10); color:var(--navy); }
+    border:1px solid var(--gold); background:rgba(200,162,68,0.10); color:var(--navy); line-height:1.2; box-sizing:border-box; display:inline-block; vertical-align:middle; }
   .ghost-btn:hover{ background:rgba(200,162,68,0.22); }
   .ghost-btn:active{ background:rgba(200,162,68,0.32); }
+  /* border:none이면 .ghost-btn/.btn(둘 다 1px 테두리)과 border-box 계산이 달라져 미세하게
+     낮이가 어긋난다 — 안 보이는 투명 테두리를 같은 두께로 둬서 셋 다 같은 박스모델을 쓴다. */
   .save-btn{ font-family:inherit; font-size:12.5px; font-weight:700; cursor:pointer; border-radius:6px; padding:7px 14px;
-    border:none; background:var(--navy); color:#fff; box-shadow:0 1px 2px rgba(16,24,40,0.12); }
+    border:1px solid transparent; background:var(--navy); color:#fff; box-shadow:0 1px 2px rgba(16,24,40,0.12); line-height:1.2; box-sizing:border-box; display:inline-block; vertical-align:middle; }
   .save-btn:hover{ background:var(--navy-deep); }
 
   /* [2026.09] "아이콘+버튼명" 툴바가 화면 폭이 좁아지면(특히 오른쪽 AI사이드바가 열려서
@@ -191,13 +210,23 @@
   .tb-row.tb-tx-off .btn-tx, .scan-row.tb-tx-off .btn-tx{ display:none; }
 
   .explorer-status{ padding:16px 14px; font-size:13px; color:var(--sub); }
-  .editor-toolbar{ display:flex; align-items:center; gap:10px; height:44px; padding:0 12px;
-    border-bottom:1px solid var(--line); flex-shrink:0; background:#f9fafb; }
-  .editor-filename{ font-size:12.5px; color:var(--sub); font-weight:600; }
+  /* [2026.09.16 버그수정] 예약관리(booking.html)와 같은 종류의 문제 — 화면이 좁아져 버튼·
+     라벨이 다 안 들어가면, 고정 height(44px)+flex-wrap 기본값(nowrap) 때문에 줄바꿈은 안
+     되고 버튼 박스 자체가 눌려 찌그러지면서 그 안의 글자가 한 글자씩 세로로 쌓여 보였다
+     (수금관리 상단 메뉴행에서 실제로 재현됨). height를 min-height로 바꾸고 flex-wrap:wrap을
+     걸어 안 들어가는 버튼은 다음 줄로 통째로 넘어가게 하고, 버튼/라벨 글자 자체에도
+     white-space:nowrap을 걸어(.btn/.ghost-btn/.save-btn 참고) 안에서 잘리지 않게 한다. */
+  .editor-toolbar{ display:flex; align-items:center; gap:10px; min-height:44px; padding:8px 12px;
+    border-bottom:1px solid var(--line); flex-shrink:0; background:#f9fafb; flex-wrap:wrap; }
+  .editor-filename{ font-size:12.5px; color:var(--sub); font-weight:600; white-space:nowrap; }
   .spacer{ flex:1; }
   .log-list{ flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px; box-sizing:border-box; }
   .log-entry{ display:flex; gap:12px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; position:relative; }
-  .log-entry .log-date{ flex:0 0 84px; font-size:11.5px; font-weight:700; color:var(--gold); white-space:nowrap; display:flex; flex-direction:column; gap:4px; }
+  /* [2026.09 버그수정] 고정 폭(84px→66px로 줄였다가도 여전히 지적받음)은 결국 "가장 긴 경우"
+     기준으로 정해야 해서 대부분의 행(완료·짧은 날짜)에는 항상 빈 공간이 남는다 — 애초에
+     고정폭 자체가 원인이었다. flex:0 0 auto로 바꿔 각 행이 자기 글자 수만큼만 차지하게 한다
+     (실측: "26-09-16" 약 49px, "⏰ 26-09-16" 약 68px — 행마다 실제 필요한 만큼만 차지). */
+  .log-entry .log-date{ flex:0 0 auto; font-size:11.5px; font-weight:700; color:var(--gold); white-space:nowrap; display:flex; flex-direction:column; gap:4px; }
   .log-entry .log-text{ flex:1; font-size:13px; color:var(--ink); line-height:1.5; white-space:pre-wrap; }
   .log-entry .log-del{ flex:0 0 auto; background:none; border:none; color:var(--sub); cursor:pointer; font-size:16px; font-weight:800; padding:0 4px; }
   .log-entry .log-del:hover{ color:var(--danger); }
@@ -209,6 +238,13 @@
     font-family:inherit; font-size:13px; padding:6px 8px; border:1px solid var(--line); border-radius:6px; color:var(--ink); background:#fff; }
   input:focus, select:focus, textarea:focus{ outline:none; border-color:var(--gold); box-shadow:0 0 0 1px var(--gold); }
   input[type=number], input[inputmode=numeric], input[inputmode=decimal]{ text-align:right; }
+  /* [2026.09.16] 세무사님 지시 — 날짜칸이 좁아진 상태에서 글자가 왼쪽에 붙어있으면 남는
+     여백이 오른쪽으로만 몰려 어색해 보인다는 지적. 모든 날짜칸에 가운데정렬을 적용.
+     [주의] 순수 <input type=date>뿐 아니라, enhanceDateInputs(taxcalc.html)가 렌더링 직후
+     type을 text로 바꾸고 inputmode="numeric"을 붙이는 .taxcalc-date도 같이 잡아야 한다 —
+     안 그러면 바로 위 숫자칸 우측정렬 규칙(input[inputmode=numeric])에 걸려 그쪽이 이긴다
+     (실제로 처음엔 .taxcalc-date를 빠뜨려서 작업관리 등 날짜칸이 하나도 안 먹혔었다). */
+  input[type=date], input.taxcalc-date{ text-align:center; }
   label{ font-size:12.5px; color:var(--sub); }
 
   .modal-overlay{ position:fixed; inset:0; background:rgba(13,27,61,0.55); display:flex; align-items:center;
@@ -260,6 +296,57 @@
   .memo-search-row:hover{ background:#f3f4f7; }
   #memoText{ flex:1; width:100%; box-sizing:border-box; border:none; outline:none; resize:none; padding:16px;
     font-family:inherit; font-size:14px; line-height:1.6; background:#fff; color:var(--ink); }
+
+  /* [2026.09 신규] 마크다운 미리보기 — #memoText와 같은 자리에서 토글(JS가 display 전환) */
+  #memoPreview{ display:none; flex:1; width:100%; box-sizing:border-box; overflow-y:auto; padding:16px;
+    font-size:14px; line-height:1.65; background:#fff; color:var(--ink); }
+  #memoPreview h1,#memoPreview h2,#memoPreview h3{ margin:0.7em 0 0.3em; line-height:1.3; }
+  #memoPreview p{ margin:0.5em 0; }
+  #memoPreview code{ background:#f1f2f5; padding:1px 5px; border-radius:4px; font-size:0.92em; }
+  #memoPreview pre{ background:#f1f2f5; padding:10px 12px; border-radius:8px; overflow-x:auto; }
+  #memoPreview ul.contains-task-list{ list-style:none; padding-left:2px; margin:0.4em 0; }
+  #memoPreview li.task-list-item{ display:flex; align-items:flex-start; gap:7px; margin:2px 0; }
+  #memoPreview li.task-list-item input[type="checkbox"]{ margin-top:4px; width:15px; height:15px; cursor:pointer; flex-shrink:0; }
+
+  .memo-search-row-label{ display:flex; flex-direction:column; gap:1px; min-width:0; flex:1; }
+  .memo-search-row-title{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .memo-search-row-preview{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; color:var(--sub); }
+
+  .memo-tag-chip{ font-size:11.5px; padding:3px 9px; border-radius:12px; border:1px solid var(--taxcalc-border-strong, #d8dce3);
+    background:var(--taxcalc-chip-bg, #f3f4f7); color:var(--sub); cursor:pointer; white-space:nowrap; }
+  .memo-tag-chip.active{ background:var(--navy); color:#fff; border-color:var(--navy); }
+
+  /* [2026.09 신규] 서식 빠른삽입 툴바 + 마크다운 도움말 — reportwriter.html(작성관리)의
+     #mdHelpBar/floating-panel과 같은 모양으로 맞춘 것(일치시키기), id/클래스는 memo 전용. */
+  #memoMdHelpBar{ display:flex; align-items:center; gap:2px; padding:5px 8px; background:#f7f8fa; border-bottom:1px solid var(--line); flex-shrink:0; }
+  #memoMdHelpBar button{ background:#dde3ee; border:1px solid #8b93a3; color:#1c2333; box-shadow:0 1px 2px rgba(20,25,40,0.10);
+    font-size:12.5px; font-weight:700; padding:3px 9px; border-radius:4px; font-family:inherit; cursor:pointer; }
+  #memoMdHelpBar button:hover{ background:#c7d0e0; border-color:#5b6b8c; }
+  #memoMdHelpBar #memoBtnMdHelp{ font-weight:400; }
+
+  #memoFindReplaceBar{ display:flex; align-items:center; gap:5px; padding:6px 8px; background:#eef0f4; border-bottom:1px solid var(--line); flex-shrink:0; }
+  #memoFindReplaceBar input{ border:1px solid #c5ccd6; border-radius:4px; padding:4px 8px; font-size:12.5px; font-family:inherit; width:95px; }
+  #memoFindReplaceBar input:focus{ outline:none; border-color:#7686ab; }
+  #memoFindReplaceBar button{ background:#fff; border:1px solid #c5ccd6; color:#444; cursor:pointer; font-size:12px; padding:4px 8px; border-radius:4px; font-family:inherit; }
+  #memoFindReplaceBar button:hover{ background:#e8eaee; }
+  #memoFindStatus{ font-size:11px; color:#777; min-width:38px; text-align:center; }
+
+  #view-memo-text:fullscreen{ background:#fff; }
+
+  .memo-floating-panel{ display:none; position:fixed; top:110px; left:50%; margin-left:-270px;
+    width:540px; max-width:calc(100vw - 32px); background:#FFFDF8; border-top:4px solid var(--gold); border-radius:8px;
+    box-shadow:0 12px 40px rgba(0,0,0,0.3); z-index:600; }
+  .memo-floating-panel.show{ display:block; }
+  .memo-floating-panel-handle{ cursor:move; user-select:none; padding:14px 16px; font-family:'Noto Serif KR', serif;
+    font-weight:700; font-size:14.5px; color:var(--navy); border-bottom:1px solid #eee; }
+  .memo-floating-panel-handle span{ float:right; cursor:pointer; color:#999; font-weight:400; font-size:15px; }
+  .memo-floating-panel-handle span:hover{ color:#333; }
+  .memo-floating-panel-body{ padding:16px 20px 20px; max-height:60vh; overflow-y:auto; text-align:left; }
+  .memo-floating-panel-body table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  .memo-floating-panel-body td{ padding:4px 8px; border-bottom:1px solid #eee; }
+  .memo-floating-panel-body td:first-child{ font-family:monospace; white-space:nowrap; }
+  .memo-floating-panel-body p.memo-help-section{ font-weight:700; color:var(--navy); margin:16px 0 6px; }
+  .memo-floating-panel-body p.memo-help-section:first-child{ margin-top:0; }
 
   .note-tb{ display:flex; align-items:center; gap:5px; height:44px; padding:0 10px; background:var(--navy); flex-shrink:0; flex-wrap:wrap; }
   .note-tb-btn{ flex:0 0 auto; width:30px; height:30px; border:none; border-radius:6px; background:rgba(255,255,255,0.14);
@@ -323,6 +410,25 @@
     border:1px solid var(--taxcalc-border); border-radius:6px; padding:6px 8px; font-family:inherit;
     font-size:13px; box-sizing:border-box; background:var(--panel); color:var(--ink);
   }
+  /* [2026.09.16 버그수정] 세무사님 전체 재검토 지시 — .taxcalc-field가 flex-column
+     기본값(align-items:stretch)이라, 날짜(10자)·숫자(면적·연도 등 대개 몇 자리) 입력칸까지
+     그리드 칸(180px 이상) 전체 폭으로 늘어나 데이터 길이에 비해 항상 크게 남아 보였다.
+     .taxcalc-field-inline(소재지 등 일부러 넓게 쓰는 칸)의 입력창은 한 단계 더 안쪽
+     자손이라 직계자손(>) 선택자에 안 걸려 영향 없음 — 날짜·숫자칸만 안전하게 좁힌다.
+     [주의] enhanceDateInputs(taxcalc.html)가 렌더링 직후 모든 type="date"를
+     type="text"+class="taxcalc-date"(직접 입력용 커스텀 포맷)로 바꿔버려서, 처음에
+     input[type="date"] 선택자로 걸었더니 실제로는 하나도 안 먹었다 — 바뀐 뒤의
+     실제 상태(.taxcalc-date 클래스)를 기준으로 다시 걸었다. */
+  .taxcalc-field > input[type="date"]{ align-self:flex-start; width:auto; }
+  .taxcalc-field > input.taxcalc-date{ align-self:flex-start; width:95px; }
+  .taxcalc-field > input[type="number"]{ align-self:flex-start; width:auto; }
+  /* data-nameonly는 이미 JS(enhanceNameOnlyInputs)가 "이 칸은 사람 이름만 들어간다"는
+     표시로 쓰고 있던 기존 속성 — 같은 의미를 폭에도 그대로 활용, 성명(2~6자)칸을 좁힌다. */
+  .taxcalc-field > input[data-nameonly]{ align-self:flex-start; width:95px; }
+  /* data-regno(주민등록번호 등 "000000-0000000" 고정형식)·호·지분비율도 같은 이유로 좁힌다. */
+  .taxcalc-field > input[data-regno]{ align-self:flex-start; width:150px; }
+  .taxcalc-field > input[data-field="assetHo"]{ align-self:flex-start; width:95px; }
+  .taxcalc-field > input[data-field="ownershipRatio"]{ align-self:flex-start; width:80px; }
   .taxcalc-field input::placeholder{ color:var(--taxcalc-hint); opacity:0.85; }
   .taxcalc-field input:focus, .taxcalc-field select:focus{ outline:none; border-color:var(--gold); box-shadow:0 0 0 1px var(--gold); }
   .taxcalc-field input[readonly]{ background:var(--taxcalc-hint-bg, rgba(128,128,128,0.12)); color:var(--taxcalc-hint); cursor:default; }
@@ -363,6 +469,16 @@
     color:var(--ink); font-family:inherit; font-size:13px; font-weight:600; cursor:pointer; margin-bottom:14px;
   }
   .taxcalc-add-asset:hover{ border-color:var(--gold); background:var(--taxcalc-chip-bg-hover); color:var(--navy); }
+  /* [2026.09 버그수정] 세무사님 지적 — "+ 계약 추가"/"+ 항목 추가"처럼 제목행(.taxcalc-asset-head)
+     안에서 "🧮 계산근거"·"✕ 삭제" 같은 작은 칩 버튼과 나란히 놓이는 추가버튼은, 목록 아래에
+     혼자 크게 놓이는 표준 .taxcalc-add-asset(카드 하나를 통째로 새로 만드는 CTA)과 똑같이
+     width:100%·큰 패딩을 써서 같은 줄의 다른 버튼보다 훨씬 커 보였다 — 제목행용 작은 버전을
+     따로 둔다(점선 테두리는 "추가" 의미를 유지하되 크기만 이웃 버튼들과 맞춤). */
+  .taxcalc-add-asset-inline{
+    background:var(--taxcalc-chip-bg); border:1px dashed var(--taxcalc-border-strong); border-radius:6px;
+    color:var(--ink); cursor:pointer; font-size:12px; font-weight:600; padding:4px 8px; width:auto; margin-bottom:0;
+  }
+  .taxcalc-add-asset-inline:hover{ border-color:var(--gold); background:var(--taxcalc-chip-bg-hover); color:var(--navy); }
   .taxcalc-run-btn{
     width:100%; padding:11px; border:none; border-radius:8px; background:var(--navy); color:#fff;
     font-family:inherit; font-size:13.5px; font-weight:700; cursor:pointer; margin-bottom:14px;

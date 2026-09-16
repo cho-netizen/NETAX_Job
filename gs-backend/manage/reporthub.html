@@ -1,0 +1,417 @@
+<!-- [2026.09 신규] 보고서 모음 — 모든 사건 폴더의 보고서를 한곳에서 모아보고(모아보기),
+     실제 쓰인 보고서들을 AI로 분석해 템플릿을 다듬고(템플릿다듬기), 보고서 하나를 골라
+     블로그/소식글용 글감 초안을 만드는(글감만들기) 3개 하위 화면으로 구성된다.
+     실제 네이버 블로그·구글 등록/업로드는 별도 프로젝트로 미뤄뒀고, 여기서는 "복사해서
+     붙여넣을 수 있는 초안"까지만 만든다. -->
+<div class="view" id="view-reporthub">
+  <div class="view-head" style="padding-bottom:0;"><h2>📚 보고서 모음</h2></div>
+  <div class="memo-toolbar tb-row">
+    <button type="button" class="rh-subtab-btn active" data-rhtab="collect"><span class="btn-tx">📚 모아보기</span></button>
+    <button type="button" class="rh-subtab-btn" data-rhtab="template"><span class="btn-tx">🛠 템플릿다듬기</span></button>
+    <button type="button" class="rh-subtab-btn" data-rhtab="content"><span class="btn-tx">✏ 글감만들기</span></button>
+  </div>
+
+  <!-- 모아보기 -->
+  <div id="rhPaneCollect" class="rh-pane">
+    <div class="memo-toolbar tb-row" style="border-top:none;">
+      <input type="text" id="rhSearchInput" placeholder="🔍 고객명·사건명·파일명으로 찾기" style="flex:1; min-width:160px; padding:7px 10px; border:1px solid var(--line); border-radius:6px;">
+      <button type="button" id="rhRefreshBtn" class="ghost-btn"><span class="btn-tx">🔄 새로고침</span></button>
+    </div>
+    <div id="rhFileListWrap" style="flex:1; overflow-y:auto; padding:0 4px;">
+      <div class="spinner">불러오는 중…</div>
+    </div>
+  </div>
+
+  <!-- 템플릿다듬기 -->
+  <div id="rhPaneTemplate" class="rh-pane" style="display:none;">
+    <div class="memo-toolbar tb-row" style="border-top:none;">
+      <span style="font-size:12.5px; color:var(--sub); flex:1;">매일 밤 자동으로 도는 템플릿 점검 결과입니다. 실제 사건에서 쓰인 보고서 사본들을 원본 템플릿과 비교해 공통으로 추가된 항목·안 채워지는 항목을 찾아줍니다.</span>
+      <button type="button" id="rhRunTemplateBtn" class="ghost-btn"><span class="btn-tx">🛠 지금 다시 점검하기</span></button>
+    </div>
+    <div id="rhTemplateResult" style="flex:1; overflow-y:auto; padding:16px; white-space:pre-wrap; font-size:13.5px; line-height:1.6;">
+      <div class="spinner">불러오는 중…</div>
+    </div>
+  </div>
+
+  <!-- 글감만들기 -->
+  <div id="rhPaneContent" class="rh-pane" style="display:none;">
+    <div class="memo-toolbar tb-row" style="border-top:none;">
+      <select id="rhContentSourceSelect" style="flex:1; min-width:160px;"><option value="">먼저 "모아보기"에서 보고서를 확인한 뒤 여기서 골라주세요</option></select>
+      <select id="rhContentStyleSelect" style="min-width:170px;">
+        <option value="naver_blog">네이버 블로그(긴 글)</option>
+        <option value="naver_news">네이버 소식(플레이스, 짧게)</option>
+        <option value="google_blog">구글 블로그(긴 글)</option>
+        <option value="google_news">구글 비즈니스 소식(짧게)</option>
+      </select>
+      <button type="button" id="rhGenerateContentBtn" class="save-btn"><span class="btn-tx">✏ 글감 만들기</span></button>
+    </div>
+    <div id="rhContentResultWrap" style="flex:1; overflow-y:auto; padding:16px; display:none;">
+      <div style="display:flex; justify-content:flex-end; gap:6px; margin-bottom:8px;">
+        <button type="button" id="rhNaverConnectBtn" class="ghost-btn" style="display:none;"><span class="btn-tx">🔗 네이버 연동하기</span></button>
+        <button type="button" id="rhNaverPostBtn" class="ghost-btn" style="display:none;"><span class="btn-tx">📤 네이버 블로그에 올리기</span></button>
+        <button type="button" id="rhGoogleConnectBtn" class="ghost-btn" style="display:none;"><span class="btn-tx">🔗 구글 블로그 연동하기</span></button>
+        <button type="button" id="rhGooglePostBtn" class="ghost-btn" style="display:none;"><span class="btn-tx">📤 구글 블로그에 올리기</span></button>
+        <button type="button" id="rhGoogleBizConnectBtn" class="ghost-btn" style="display:none;"><span class="btn-tx">🔗 구글 비즈니스 연동하기</span></button>
+        <button type="button" id="rhGoogleBizPostBtn" class="ghost-btn" style="display:none;"><span class="btn-tx">📤 구글 비즈니스에 올리기</span></button>
+        <button type="button" id="rhCopyContentBtn" class="ghost-btn"><span class="btn-tx">📋 복사</span></button>
+      </div>
+      <div id="rhTitleCardWrap" style="display:none; margin-bottom:14px; padding:12px; border:1px solid var(--line); border-radius:8px; background:var(--panel-2, #f7f7f8);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="font-size:12.5px; color:var(--sub);">🖼 대표이미지(자동 생성) — 블로그에 올릴 때 함께 등록됩니다</span>
+          <button type="button" id="rhTitleCardRegenBtn" class="ghost-btn"><span class="btn-tx">🔄 다시 만들기</span></button>
+        </div>
+        <div id="rhTitleCardImgBox" style="display:flex; justify-content:center;">
+          <img id="rhTitleCardImg" style="max-width:280px; width:100%; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,.2);">
+        </div>
+      </div>
+      <div id="rhContentResult" style="white-space:pre-wrap; font-size:13.5px; line-height:1.7;"></div>
+    </div>
+    <div id="rhContentEmpty" style="flex:1; display:flex; align-items:center; justify-content:center; color:var(--sub); font-size:13px;">
+      보고서를 고르고 "글감 만들기"를 누르면, AI가 개인정보를 빼고 일반 독자용 블로그 글 초안으로 다시 써줍니다.<br>
+      실제 네이버 블로그·구글 등록은 여기서 만든 글을 복사해서 직접 올려주셔야 합니다.
+    </div>
+  </div>
+</div>
+
+<script>
+  (function(){
+    var rhAllFiles_ = [];
+
+    function rhPad2_(n){ n = String(n); return n.length < 2 ? '0' + n : n; }
+    function rhFormatDate_(ms){
+      var d = new Date(ms);
+      return d.getFullYear() + '-' + rhPad2_(d.getMonth()+1) + '-' + rhPad2_(d.getDate());
+    }
+
+    // ---- 하위 탭 전환 ----
+    document.querySelectorAll('.rh-subtab-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        document.querySelectorAll('.rh-subtab-btn').forEach(function(b){ b.classList.remove('active'); });
+        btn.classList.add('active');
+        var target = btn.dataset.rhtab;
+        ['collect','template','content'].forEach(function(name){
+          document.getElementById('rhPane' + name.charAt(0).toUpperCase() + name.slice(1)).style.display = (name === target) ? 'flex' : 'none';
+        });
+        if (target === 'template' && !rhTemplateLoaded_) { rhTemplateLoaded_ = true; rhLoadTemplateReview_(); }
+      });
+    });
+
+    // ---- 모아보기 ----
+    var rhCollectLoaded_ = false;
+    function rhRenderFileList_(files){
+      var wrap = document.getElementById('rhFileListWrap');
+      if (!files.length){ wrap.innerHTML = '<div class="empty-row">보고서가 없습니다.</div>'; return; }
+      var html = '<table class="list-table"><tr><th>수정일</th><th>고객명</th><th>사건명</th><th>파일명</th><th>구분</th></tr>';
+      files.forEach(function(f){
+        html += '<tr style="cursor:pointer;" data-case-id="' + f.caseId + '" data-file-id="' + f.id + '">' +
+          '<td style="white-space:nowrap;">' + rhFormatDate_(f.modifiedDate) + '</td>' +
+          '<td>' + esc(f.고객명 || '') + '</td>' +
+          '<td>' + esc(f.사건명 || '') + '</td>' +
+          '<td>' + esc(f.name) + '</td>' +
+          '<td style="color:var(--sub); font-size:12px;">' + (f.kind === '보고서' ? '📤 발행' : '✏️ 초안') + '</td>' +
+          '</tr>';
+      });
+      html += '</table>';
+      wrap.innerHTML = html;
+      wrap.querySelectorAll('tr[data-file-id]').forEach(function(tr){
+        tr.addEventListener('click', function(){
+          if (typeof goToView_ === 'function') goToView_('reportwriter');
+          if (typeof goToReportWriter_ === 'function') goToReportWriter_(tr.dataset.caseId, { fileId: tr.dataset.fileId });
+        });
+      });
+    }
+    function rhLoadFiles_(){
+      document.getElementById('rhFileListWrap').innerHTML = '<div class="spinner">불러오는 중…</div>';
+      return callGas('list_all_reports', {}).then(function(res){
+        rhAllFiles_ = res.files || [];
+        rhRenderFileList_(rhAllFiles_);
+        rhRefreshContentSourceOptions_();
+      }).catch(function(e){
+        document.getElementById('rhFileListWrap').innerHTML = '<div class="empty-row">오류: ' + esc(e.message) + '</div>';
+      });
+    }
+    document.getElementById('rhRefreshBtn').addEventListener('click', rhLoadFiles_);
+    document.getElementById('rhSearchInput').addEventListener('input', function(e){
+      var q = e.target.value.trim().toLowerCase();
+      if (!q){ rhRenderFileList_(rhAllFiles_); return; }
+      rhRenderFileList_(rhAllFiles_.filter(function(f){
+        return (f.고객명||'').toLowerCase().indexOf(q) !== -1 ||
+               (f.사건명||'').toLowerCase().indexOf(q) !== -1 ||
+               (f.name||'').toLowerCase().indexOf(q) !== -1;
+      }));
+    });
+
+    // ---- 템플릿다듬기 ----
+    var rhTemplateLoaded_ = false;
+    function rhLoadTemplateReview_(){
+      document.getElementById('rhTemplateResult').innerHTML = '<div class="spinner">불러오는 중…</div>';
+      callGas('get_latest_template_review', {}).then(function(res){
+        document.getElementById('rhTemplateResult').textContent = res.error || res.content || '결과가 없습니다.';
+      }).catch(function(e){
+        document.getElementById('rhTemplateResult').textContent = '오류: ' + (e && e.message ? e.message : e);
+      });
+    }
+    document.getElementById('rhRunTemplateBtn').addEventListener('click', function(){
+      var btn = document.getElementById('rhRunTemplateBtn');
+      btn.disabled = true;
+      document.getElementById('rhTemplateResult').innerHTML = '<div class="spinner">AI가 점검 중입니다… (사본이 많으면 시간이 걸릴 수 있습니다)</div>';
+      callGas('run_template_review_now', {}).then(function(res){
+        document.getElementById('rhTemplateResult').textContent = res.error || res.content || '결과가 없습니다.';
+      }).catch(function(e){
+        document.getElementById('rhTemplateResult').textContent = '오류: ' + (e && e.message ? e.message : e);
+      }).finally(function(){ btn.disabled = false; });
+    });
+
+    // ---- 글감만들기 ----
+    function rhRefreshContentSourceOptions_(){
+      var sel = document.getElementById('rhContentSourceSelect');
+      sel.innerHTML = '<option value="">보고서를 선택하세요</option>';
+      rhAllFiles_.forEach(function(f){
+        var opt = document.createElement('option');
+        opt.value = f.id;
+        opt.textContent = (f.고객명 ? f.고객명 + ' · ' : '') + f.name;
+        sel.appendChild(opt);
+      });
+    }
+    // 네이버 블로그/소식(플레이스), 구글 블로그(Blogger), 구글 비즈니스 프로필(소식)까지
+    // 4개 모두 자동 올리기 코드는 연동되어 있다 — 다만 구글 비즈니스 프로필은 API 접근이
+    // 아직 구글 승인 대기중이라(케이스 2-0454000041520), 연동은 되어도 실제 게시는 승인
+    // 후에나 성공한다(승인 전 실패 시 오류 메시지에 안내가 뜬다).
+    var NAVER_STYLES_ = { naver_blog: true, naver_news: true };
+    var GOOGLE_STYLES_ = { google_blog: true };
+    var GOOGLE_BIZ_STYLES_ = { google_news: true };
+    var CARD_STYLES_ = { naver_blog: true, naver_news: true, google_blog: true, google_news: true }; // 타이틀카드 생성 대상
+    var rhNaverPollTimer_ = null;
+    var rhGooglePollTimer_ = null;
+    var rhGoogleBizPollTimer_ = null;
+    var rhTitleCardBase64_ = null;
+    function rhStopNaverPoll_(){ if (rhNaverPollTimer_){ clearInterval(rhNaverPollTimer_); rhNaverPollTimer_ = null; } }
+    function rhStopGooglePoll_(){ if (rhGooglePollTimer_){ clearInterval(rhGooglePollTimer_); rhGooglePollTimer_ = null; } }
+    function rhStopGoogleBizPoll_(){ if (rhGoogleBizPollTimer_){ clearInterval(rhGoogleBizPollTimer_); rhGoogleBizPollTimer_ = null; } }
+
+    // AI 글감 첫 줄이 "# 제목" 형태면 그걸 제목으로, 나머지를 본문으로 나눈다(백엔드의
+    // naver_splitTitleAndBody_와 동일한 규칙 — 카드 문구 생성용 제목을 뽑기 위함).
+    function rhSplitTitleAndBody_(raw){
+      var text = String(raw || '').trim();
+      var lines = text.split('\n');
+      var title = '';
+      var bodyLines = lines;
+      if (lines.length && /^#\s+/.test(lines[0])){
+        title = lines[0].replace(/^#\s+/, '').trim();
+        bodyLines = lines.slice(1);
+      }
+      return { title: title || text.slice(0, 30), body: bodyLines.join('\n').trim() };
+    }
+    function rhResetTitleCard_(){
+      rhTitleCardBase64_ = null;
+      document.getElementById('rhTitleCardWrap').style.display = 'none';
+      document.getElementById('rhTitleCardImg').src = '';
+    }
+    function rhGenerateTitleCard_(){
+      var style = document.getElementById('rhContentStyleSelect').value;
+      if (!CARD_STYLES_[style]) { rhResetTitleCard_(); return; }
+      var parts = rhSplitTitleAndBody_(document.getElementById('rhContentResult').textContent);
+      var wrap = document.getElementById('rhTitleCardWrap');
+      var img = document.getElementById('rhTitleCardImg');
+      var regenBtn = document.getElementById('rhTitleCardRegenBtn');
+      wrap.style.display = 'block';
+      regenBtn.disabled = true;
+      img.style.opacity = '0.4';
+      callGas('naver_generate_title_card', { title: parts.title, body: parts.body }).then(function(res){
+        if (res.error){ toast('타이틀카드 생성 실패: ' + res.error); wrap.style.display = 'none'; return; }
+        rhTitleCardBase64_ = res.imageBase64;
+        img.src = 'data:image/png;base64,' + res.imageBase64;
+        img.style.opacity = '1';
+      }).catch(function(e){
+        toast('타이틀카드 생성 중 오류: ' + (e && e.message ? e.message : e));
+        wrap.style.display = 'none';
+      }).finally(function(){ regenBtn.disabled = false; });
+    }
+    document.getElementById('rhTitleCardRegenBtn').addEventListener('click', rhGenerateTitleCard_);
+    function rhUpdateNaverButtons_(){
+      var style = document.getElementById('rhContentStyleSelect').value;
+      var connectBtn = document.getElementById('rhNaverConnectBtn');
+      var postBtn = document.getElementById('rhNaverPostBtn');
+      if (!NAVER_STYLES_[style]){
+        connectBtn.style.display = 'none';
+        postBtn.style.display = 'none';
+        rhStopNaverPoll_();
+        return;
+      }
+      callGas('naver_check_connected', {}).then(function(res){
+        connectBtn.style.display = res.connected ? 'none' : '';
+        postBtn.style.display = res.connected ? '' : 'none';
+      }).catch(function(){ /* 확인 실패 시 그냥 두 버튼 다 숨긴 채로 둔다 */ });
+    }
+    function rhUpdateGoogleButtons_(){
+      var style = document.getElementById('rhContentStyleSelect').value;
+      var connectBtn = document.getElementById('rhGoogleConnectBtn');
+      var postBtn = document.getElementById('rhGooglePostBtn');
+      if (!GOOGLE_STYLES_[style]){
+        connectBtn.style.display = 'none';
+        postBtn.style.display = 'none';
+        rhStopGooglePoll_();
+        return;
+      }
+      callGas('google_blog_check_connected', {}).then(function(res){
+        connectBtn.style.display = res.connected ? 'none' : '';
+        postBtn.style.display = res.connected ? '' : 'none';
+      }).catch(function(){});
+    }
+    function rhUpdateGoogleBizButtons_(){
+      var style = document.getElementById('rhContentStyleSelect').value;
+      var connectBtn = document.getElementById('rhGoogleBizConnectBtn');
+      var postBtn = document.getElementById('rhGoogleBizPostBtn');
+      if (!GOOGLE_BIZ_STYLES_[style]){
+        connectBtn.style.display = 'none';
+        postBtn.style.display = 'none';
+        rhStopGoogleBizPoll_();
+        return;
+      }
+      callGas('google_biz_check_connected', {}).then(function(res){
+        connectBtn.style.display = res.connected ? 'none' : '';
+        postBtn.style.display = res.connected ? '' : 'none';
+      }).catch(function(){});
+    }
+    function rhUpdatePublishButtons_(){ rhUpdateNaverButtons_(); rhUpdateGoogleButtons_(); rhUpdateGoogleBizButtons_(); }
+    document.getElementById('rhGenerateContentBtn').addEventListener('click', function(){
+      var fileId = document.getElementById('rhContentSourceSelect').value;
+      if (!fileId){ toast('먼저 보고서를 골라주세요.'); return; }
+      var btn = document.getElementById('rhGenerateContentBtn');
+      btn.disabled = true;
+      document.getElementById('rhContentEmpty').style.display = 'flex';
+      document.getElementById('rhContentEmpty').textContent = 'AI가 글감을 만드는 중입니다…';
+      document.getElementById('rhContentResultWrap').style.display = 'none';
+      var style = document.getElementById('rhContentStyleSelect').value;
+      callGas('generate_report_content', { fileId: fileId, style: style }).then(function(res){
+        if (res.error){ toast(res.error); document.getElementById('rhContentEmpty').textContent = res.error; return; }
+        document.getElementById('rhContentEmpty').style.display = 'none';
+        document.getElementById('rhContentResultWrap').style.display = 'block';
+        document.getElementById('rhContentResult').textContent = res.content;
+        rhResetTitleCard_();
+        rhUpdatePublishButtons_();
+        rhGenerateTitleCard_();
+      }).catch(function(e){
+        document.getElementById('rhContentEmpty').textContent = '오류: ' + (e && e.message ? e.message : e);
+      }).finally(function(){ btn.disabled = false; });
+    });
+    document.getElementById('rhCopyContentBtn').addEventListener('click', function(){
+      var text = document.getElementById('rhContentResult').textContent;
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(function(){ toast('복사했습니다.'); }).catch(function(){ toast('복사에 실패했습니다.'); });
+      } else {
+        toast('이 브라우저에서는 자동 복사가 지원되지 않습니다.');
+      }
+    });
+    document.getElementById('rhNaverConnectBtn').addEventListener('click', function(){
+      callGas('naver_get_auth_url', {}).then(function(res){
+        if (res.error){ toast(res.error); return; }
+        window.open(res.url, 'naverAuth', 'width=480,height=680');
+        toast('새 창에서 네이버 로그인/동의를 완료해 주세요.');
+        rhStopNaverPoll_();
+        var tries = 0;
+        rhNaverPollTimer_ = setInterval(function(){
+          tries++;
+          if (tries > 40) { rhStopNaverPoll_(); return; } // 최대 약 2분간 확인
+          callGas('naver_check_connected', {}).then(function(r2){
+            if (r2.connected){ rhStopNaverPoll_(); rhUpdateNaverButtons_(); toast('네이버 연동이 확인되었습니다.'); }
+          }).catch(function(){});
+        }, 3000);
+      }).catch(function(e){ toast('오류: ' + (e && e.message ? e.message : e)); });
+    });
+    document.getElementById('rhGoogleConnectBtn').addEventListener('click', function(){
+      callGas('google_blog_get_auth_url', {}).then(function(res){
+        if (res.error){ toast(res.error); return; }
+        window.open(res.url, 'googleBlogAuth', 'width=480,height=680');
+        toast('새 창에서 구글 로그인/동의를 완료해 주세요.');
+        rhStopGooglePoll_();
+        var tries = 0;
+        rhGooglePollTimer_ = setInterval(function(){
+          tries++;
+          if (tries > 40) { rhStopGooglePoll_(); return; }
+          callGas('google_blog_check_connected', {}).then(function(r2){
+            if (r2.connected){ rhStopGooglePoll_(); rhUpdateGoogleButtons_(); toast('구글 블로그 연동이 확인되었습니다.'); }
+          }).catch(function(){});
+        }, 3000);
+      }).catch(function(e){ toast('오류: ' + (e && e.message ? e.message : e)); });
+    });
+    document.getElementById('rhGoogleBizConnectBtn').addEventListener('click', function(){
+      callGas('google_biz_get_auth_url', {}).then(function(res){
+        if (res.error){ toast(res.error); return; }
+        window.open(res.url, 'googleBizAuth', 'width=480,height=680');
+        toast('새 창에서 구글 로그인/동의를 완료해 주세요. (API 접근 승인 대기중이라 연동은 되어도 실제 게시는 승인 후 가능합니다.)');
+        rhStopGoogleBizPoll_();
+        var tries = 0;
+        rhGoogleBizPollTimer_ = setInterval(function(){
+          tries++;
+          if (tries > 40) { rhStopGoogleBizPoll_(); return; }
+          callGas('google_biz_check_connected', {}).then(function(r2){
+            if (r2.connected){ rhStopGoogleBizPoll_(); rhUpdateGoogleBizButtons_(); toast('구글 비즈니스 프로필 연동이 확인되었습니다.'); }
+          }).catch(function(){});
+        }, 3000);
+      }).catch(function(e){ toast('오류: ' + (e && e.message ? e.message : e)); });
+    });
+    document.getElementById('rhNaverPostBtn').addEventListener('click', function(){
+      nxConfirm_('지금 화면의 글을 네이버 블로그에 바로 올릴까요? (올린 뒤에는 네이버 블로그에서 직접 수정해야 합니다)').then(function(ok){
+      if (!ok) return;
+      var btn = document.getElementById('rhNaverPostBtn');
+      btn.disabled = true;
+      var text = document.getElementById('rhContentResult').textContent;
+      callGas('post_to_naver_blog', { content: text, imageBase64: rhTitleCardBase64_ || undefined }).then(function(res){
+        if (res.error){ toast('올리기 실패: ' + res.error); return; }
+        toast('네이버 블로그에 올렸습니다!');
+        if (res.postUrl) window.open(res.postUrl, '_blank');
+      }).catch(function(e){
+        toast('오류: ' + (e && e.message ? e.message : e));
+      }).finally(function(){ btn.disabled = false; });
+      });
+    });
+    document.getElementById('rhGooglePostBtn').addEventListener('click', function(){
+      nxConfirm_('지금 화면의 글을 구글 블로그에 바로 올릴까요? (올린 뒤에는 Blogger에서 직접 수정해야 합니다)').then(function(ok){
+      if (!ok) return;
+      var btn = document.getElementById('rhGooglePostBtn');
+      btn.disabled = true;
+      var text = document.getElementById('rhContentResult').textContent;
+      callGas('post_to_google_blog', { content: text, imageBase64: rhTitleCardBase64_ || undefined }).then(function(res){
+        if (res.error){ toast('올리기 실패: ' + res.error); return; }
+        toast('구글 블로그에 올렸습니다!');
+        if (res.postUrl) window.open(res.postUrl, '_blank');
+      }).catch(function(e){
+        toast('오류: ' + (e && e.message ? e.message : e));
+      }).finally(function(){ btn.disabled = false; });
+      });
+    });
+    document.getElementById('rhGoogleBizPostBtn').addEventListener('click', function(){
+      nxConfirm_('지금 화면의 글을 구글 비즈니스 프로필(소식)에 바로 올릴까요?').then(function(ok){
+      if (!ok) return;
+      var btn = document.getElementById('rhGoogleBizPostBtn');
+      btn.disabled = true;
+      var text = document.getElementById('rhContentResult').textContent;
+      callGas('post_to_google_biz', { content: text, imageBase64: rhTitleCardBase64_ || undefined }).then(function(res){
+        if (res.error){ toast('올리기 실패: ' + res.error); return; }
+        toast('구글 비즈니스 프로필에 올렸습니다!');
+        if (res.postUrl) window.open(res.postUrl, '_blank');
+      }).catch(function(e){
+        toast('오류: ' + (e && e.message ? e.message : e));
+      }).finally(function(){ btn.disabled = false; });
+      });
+    });
+    document.getElementById('rhContentStyleSelect').addEventListener('change', function(){
+      if (document.getElementById('rhContentResultWrap').style.display === 'none') return;
+      rhUpdatePublishButtons_();
+      if (CARD_STYLES_[document.getElementById('rhContentStyleSelect').value]){
+        if (!rhTitleCardBase64_) rhGenerateTitleCard_();
+      } else {
+        rhResetTitleCard_();
+      }
+    });
+
+    // 화면이 처음 보일 때 한 번만 모아보기 목록을 불러온다.
+    var rhInited_ = false;
+    window.initReportHub = function(){
+      if (rhInited_) return;
+      rhInited_ = true;
+      rhLoadFiles_();
+    };
+  })();
+</script>

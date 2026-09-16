@@ -3274,6 +3274,57 @@ function dispatchClientAction_(body) {
   if (body.action === 'report_register') {
     return jsonResponse(toolRegisterReportToRpt(body.name, body.title, body.type, body.link, body.permission));
   }
+  if (body.action === 'listGeneralMemos') {
+    return jsonResponse(handleListGeneralMemos(body));
+  }
+  if (body.action === 'scan_cash_receipts') {
+    return jsonResponse(handleScanCashReceipts(body));
+  }
+  if (body.action === 'import_hometax_receipts') {
+    return jsonResponse(handleImportHometaxReceipts(body));
+  }
+  if (body.action === 'list_all_reports') {
+    return jsonResponse(handleListAllReports(body));
+  }
+  if (body.action === 'get_latest_template_review') {
+    return jsonResponse(handleGetLatestTemplateReview(body));
+  }
+  if (body.action === 'run_template_review_now') {
+    return jsonResponse(handleRunTemplateReviewNow(body));
+  }
+  if (body.action === 'generate_report_content') {
+    return jsonResponse(handleGenerateReportContent(body));
+  }
+  if (body.action === 'naver_get_auth_url') {
+    return jsonResponse(handleNaverGetAuthUrl(body));
+  }
+  if (body.action === 'naver_check_connected') {
+    return jsonResponse(handleNaverCheckConnected(body));
+  }
+  if (body.action === 'naver_generate_title_card') {
+    return jsonResponse(handleNaverGenerateTitleCard(body));
+  }
+  if (body.action === 'post_to_naver_blog') {
+    return jsonResponse(handlePostToNaverBlog(body));
+  }
+  if (body.action === 'google_blog_get_auth_url') {
+    return jsonResponse(handleGoogleBlogGetAuthUrl(body));
+  }
+  if (body.action === 'google_blog_check_connected') {
+    return jsonResponse(handleGoogleBlogCheckConnected(body));
+  }
+  if (body.action === 'post_to_google_blog') {
+    return jsonResponse(handlePostToGoogleBlog(body));
+  }
+  if (body.action === 'google_biz_get_auth_url') {
+    return jsonResponse(handleGoogleBizGetAuthUrl(body));
+  }
+  if (body.action === 'google_biz_check_connected') {
+    return jsonResponse(handleGoogleBizCheckConnected(body));
+  }
+  if (body.action === 'post_to_google_biz') {
+    return jsonResponse(handlePostToGoogleBiz(body));
+  }
   return null;
 }
 
@@ -3603,6 +3654,47 @@ function handleListFolder(body) {
   files.sort(function (a, b) { return a.name.localeCompare(b.name, 'ko'); });
 
   return { path: pathArr, folderId: folder.getId(), folders: folders, files: files };
+}
+
+// [2026.09 신규] 일반메모 본문검색+노트북(하위폴더) — 파일명·내용 검색과 태그 필터를 노트북이
+// 늘어나도 전체를 한꺼번에 훑을 수 있어야 해서, "일반메모" 폴더 전체를 하위폴더까지 재귀적으로
+// 한 번에 읽어 반환한다(개인용 메모함이라 파일 수가 많지 않다는 전제 — 수백 건 이상으로 늘면
+// 별도 색인 방식으로 바꿔야 함). notebooks는 조플린 노트북처럼 쓸 수 있는 하위폴더 목록(경로
+// 배열), files 각각의 notebookPath로 어느 노트북 소속인지 알 수 있다.
+function handleListGeneralMemos(body) {
+  let rootFolder;
+  try {
+    rootFolder = resolveFolderByPath(body.path);
+  } catch (err) {
+    return { files: [], notebooks: [] }; // 폴더가 아직 없으면 빈 목록(첫 메모 저장 전 정상 상태)
+  }
+  const files = [];
+  const notebooks = [];
+  function walk(folder, relPath) {
+    const fileIter = folder.getFiles();
+    while (fileIter.hasNext()) {
+      const f = fileIter.next();
+      let content = '';
+      try { content = f.getBlob().getDataAsString('UTF-8'); } catch (err) { content = ''; }
+      files.push({
+        id: f.getId(),
+        name: f.getName(),
+        modifiedDate: f.getLastUpdated().getTime(),
+        content: content,
+        notebookPath: relPath.slice()
+      });
+    }
+    const subIter = folder.getFolders();
+    while (subIter.hasNext()) {
+      const sub = subIter.next();
+      const subPath = relPath.concat([sub.getName()]);
+      notebooks.push(subPath);
+      walk(sub, subPath);
+    }
+  }
+  walk(rootFolder, []);
+  files.sort(function (a, b) { return b.modifiedDate - a.modifiedDate; });
+  return { files: files, notebooks: notebooks };
 }
 
 function resolveFolderByPath(pathArr) {
@@ -14892,6 +14984,11 @@ function runNightlyChiefManager() {
   // [2026.09 신규] 매일 실행 — 비교할 새 사본이 없는 날은 API 호출 없이 짧은 리포트만 남긴다.
   try { runTemplateReview_(); } catch (err) { console.error('템플릿 점검 실패: ' + err.message); }
   try { generateDailyBriefing_(); } catch (err) { console.error('오늘의 요약 생성 실패: ' + err.message); }
+  // [2026.09 신규] 사건 폴더 안의 현금영수증 파일을 매일 밤 훑어 자문내역에 자동 기록.
+  try { runCashReceiptScan_(); } catch (err) { console.error('현금영수증 자동 인식 실패: ' + err.message); }
+  // [2026.09.15 신규] 홈택스 매출내역 엑셀(0_NX_0 폴더)도 매일 밤 같이 확인 — 세무사님이
+  // 새 파일을 올려두면 다음날 밤 자동으로 반영된다(수동 버튼도 별도로 있음).
+  try { receipt_importHometaxExports_(); } catch (err) { console.error('홈택스 수금 가져오기 실패: ' + err.message); }
 }
 
 /**
@@ -14977,6 +15074,20 @@ function installNightlySystemAuditTrigger() {
 }
 
 function doGet(e) {
+  // [2026.09] 네이버 로그인 OAuth 콜백 — 네이버 개발자센터에 등록한 Callback URL이
+  // "...exec?app=manage&naver_callback=1"이라 app===manage 분기보다 먼저 가로채야 한다.
+  // (등록된 Service URL은 job.netax.kr이지만 실제 Callback URL은 배포 exec 주소 그대로다.)
+  if (e && e.parameter && e.parameter.naver_callback === '1') {
+    return naver_handleCallback_(e);
+  }
+  // [2026.09] 구글 블로그(Blogger) OAuth 콜백 — 네이버와 같은 이유로 app===manage 분기보다 먼저.
+  if (e && e.parameter && e.parameter.google_blog_callback === '1') {
+    return googleBlog_handleCallback_(e);
+  }
+  // [2026.09] 구글 비즈니스 프로필 OAuth 콜백(API 접근 승인 대기중, 코드만 미리 준비).
+  if (e && e.parameter && e.parameter.google_biz_callback === '1') {
+    return googleBiz_handleCallback_(e);
+  }
   // [2026.09] my.netax.kr 신규 관리 앱 — 기존 index.html(GitHub Pages 채팅앱)과 완전히 별개로,
   // 이 GAS 프로젝트가 직접 HtmlService로 서빙하는 새 앱. ?app=manage로만 진입, 다른 쿼리스트링
   // 동작(booking 등)은 그대로 아래에 유지.
@@ -16259,7 +16370,7 @@ const MY_SHEET_CASES = 'Cases';
 const MY_SHEET_SUB_LOG = 'SubmissionLog';
 const MY_ROOT_FOLDER_ID = '1y1Wf0Dra6RQ0Nm5HA2Rm_DYwPl9LpiYc';
 const MY_SUBFOLDER_UPLOAD = '제출자료';
-const MY_SUBFOLDER_REPORT = '보고서';
+const MY_SUBFOLDER_REPORT = '보고서_외부'; // [2026.09.16 변경] 예전 이름 '보고서' → 개명(WORK_SUBFOLDER_INTERNAL_REPORT 주석 참고)
 const MY_REPORT_ID_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const MY_REPORT_ID_LENGTH = 4;
 
@@ -16866,8 +16977,8 @@ function my_doPost(body) {
 const CLIENT_SHEET_ID = '1nHf4PK1F1-Ao5jZ-s43PB1A3eF85YVRcI7T1kK_ooBI';
 const CLIENT_SHEET_CLIENTS = 'Clients';
 const CLIENT_SHEET_LOG = 'ConsultLog';
-const CLIENT_HEADERS = ['id', '성명', '전화번호', '구분', '사업자번호', '메모', '등록일', '수정일'];
-const CONSULT_HEADERS = ['id', '고객ID', '고객명', '날짜', '담당자', '유형', '내용', '관계', '금액', '수취증빙', '리뷰', '생성일'];
+const CLIENT_HEADERS = ['id', '성명', '전화번호', '구분', '사업자번호', '메모', '등록일', '수정일', '추가연락처'];
+const CONSULT_HEADERS = ['id', '고객ID', '고객명', '날짜', '담당자', '유형', '내용', '관계', '금액', '수취증빙', '리뷰', '생성일', '승인번호', '사건ID'];
 
 function client_getSheets_() {
   const ss = SpreadsheetApp.openById(CLIENT_SHEET_ID);
@@ -16912,12 +17023,51 @@ function client_findRow_(sheet, col, id) {
   return null;
 }
 
+// [2026.09.16] 추가연락처는 "전화번호만 있으면 누구 건지 모른다"는 지적에 따라 자유텍스트
+// 문자열이 아니라 {이름, 전화번호} 목록(JSON)으로 저장한다. 이 기능이 배포된 지 얼마 안 돼
+// 실제 데이터가 있을 가능성은 낮지만, 혹시 그 사이 입력된 옛 문자열 형식("010-1,010-2")도
+// 이름 없이(전화번호만이라도) 안 잃어버리게 최대한 살려서 배열로 바꿔준다.
+// 화면에서 배열([{이름,전화번호},...])로 보내오면 그대로 직렬화하고, 혹시 문자열이 오면
+// (하위호환) 그대로 저장한다 — client_parseExtraContacts_가 읽을 때 다시 풀어준다.
+function client_serializeExtraContacts_(input) {
+  if (Array.isArray(input)) {
+    return JSON.stringify(input.filter(function (c) { return c && String(c.전화번호 || '').trim(); })
+      .map(function (c) { return { 이름: String(c.이름 || '').trim(), 전화번호: String(c.전화번호 || '').trim() }; }));
+  }
+  return String(input || '');
+}
+
+function client_parseExtraContacts_(raw) {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.filter(function (p) { return p && p.전화번호; }).map(function (p) { return { 이름: String(p.이름 || ''), 전화번호: String(p.전화번호 || '') }; });
+  } catch (e) { /* 아래 옛 형식(콤마구분 전화번호) 처리로 진행 */ }
+  return client_splitPhoneNumbers_(raw).map(function (phone) { return { 이름: '', 전화번호: phone }; });
+}
+
 function client_readClient_(col, row) {
+  // [2026.09.16 버그수정] 구글 시트는 "3733"처럼 숫자로만 된 값을 실제 숫자 타입으로 저장해버린다
+  // — 이미 work_readRow_(WORK_CASES의 고객명/납세자)에서 같은 문제를 겪고 고쳤는데, 고객관리의
+  // 성명에서도 똑같이 터졌다(화면에서 .localeCompare is not a function으로 확인). 문자열로
+  // 강제하지 않으면 이 값을 문자열 메서드로 다루는 곳(정렬 등)에서 예외가 나서 고객관리 탭
+  // 전체가 조용히 멈춘다.
   return {
-    id: row[col.id], 성명: row[col.성명], 전화번호: row[col.전화번호], 구분: row[col.구분],
-    사업자번호: row[col.사업자번호], 메모: row[col.메모],
-    등록일: client_dateStr_(row[col.등록일]), 수정일: client_dateStr_(row[col.수정일])
+    id: row[col.id], 성명: String(row[col.성명] || ''), 전화번호: String(row[col.전화번호] || ''), 구분: row[col.구분],
+    사업자번호: String(row[col.사업자번호] || ''), 메모: row[col.메모],
+    등록일: client_dateStr_(row[col.등록일]), 수정일: client_dateStr_(row[col.수정일]),
+    추가연락처: client_parseExtraContacts_(row[col.추가연락처])
   };
+}
+
+// "010-1234-5678, 010-9999-8888" 같은 자유 입력에서 번호별로 숫자만 남긴 목록을 뽑는다.
+// 쉼표/줄바꿈으로만 번호를 나누고, 그 안의 하이픈·공백은 한 번호에 속한 것으로 보고 전부
+// 붙여서 숫자만 남긴다 — 하이픈 기준으로 통째로 쪼개면 "010-1111-2222"의 가운데 토막
+// "1111"이 마치 별도 번호의 뒷4자리인 것처럼 잘못 매칭될 수 있다.
+function client_splitPhoneNumbers_(raw) {
+  return String(raw || '').split(/[,\n]+/)
+    .map(function (s) { return s.replace(/[^0-9]/g, ''); })
+    .filter(function (s) { return s.length >= 4; });
 }
 
 function client_readLog_(col, row) {
@@ -16925,7 +17075,7 @@ function client_readLog_(col, row) {
     id: row[col.id], 고객ID: row[col.고객ID], 고객명: row[col.고객명],
     날짜: client_dateStr_(row[col.날짜]), 담당자: row[col.담당자], 유형: row[col.유형],
     내용: row[col.내용], 관계: row[col.관계], 금액: row[col.금액], 수취증빙: row[col.수취증빙], 리뷰: row[col.리뷰],
-    생성일: row[col.생성일]
+    생성일: row[col.생성일], 승인번호: row[col.승인번호], 사건ID: row[col.사건ID]
   };
 }
 
@@ -17010,12 +17160,14 @@ function client_createClient(params) {
     newRow[col.메모] = String(params.메모 || '').trim();
     newRow[col.등록일] = now;
     newRow[col.수정일] = now;
+    newRow[col.추가연락처] = client_serializeExtraContacts_(params.추가연락처);
     const rowIndex = sheets.clients.getLastRow() + 1;
     // [2026.08 버그수정] 전화번호·납세번호를 대시 없이 순수 숫자로 입력하면 구글시트가
     // 그 값을 숫자로 인식해 앞자리 0을 날려버리는 문제가 실제로 있었다(사용자가 직접 겪음)
     // — 쓰기 전에 그 두 칸을 강제로 텍스트 서식("@")으로 잡아두면 숫자로 오인되지 않는다.
     sheets.clients.getRange(rowIndex, col.전화번호 + 1).setNumberFormat('@');
     sheets.clients.getRange(rowIndex, col.사업자번호 + 1).setNumberFormat('@');
+    sheets.clients.getRange(rowIndex, col.추가연락처 + 1).setNumberFormat('@');
     sheets.clients.getRange(rowIndex, 1, 1, newRow.length).setValues([newRow]);
     SpreadsheetApp.flush();
     return { success: true, client: client_readClient_(col, newRow) };
@@ -17033,10 +17185,14 @@ function client_updateClient(params) {
     ['성명', '전화번호', '구분', '사업자번호', '메모'].forEach(function (key) {
       if (params[key] !== undefined) row[col[key]] = String(params[key]).trim();
     });
+    // 추가연락처는 배열({이름,전화번호} 목록)로 오므로 다른 필드처럼 그냥 String()하면
+    // "[object Object]"가 되어버린다 — 전용 직렬화 함수를 거친다.
+    if (params.추가연락처 !== undefined) row[col.추가연락처] = client_serializeExtraContacts_(params.추가연락처);
     row[col.수정일] = new Date();
     // 전화번호·납세번호 칸은 저장할 때마다 텍스트 서식으로 다시 잡아둔다(create와 같은 이유).
     sheets.clients.getRange(found.rowIndex, col.전화번호 + 1).setNumberFormat('@');
     sheets.clients.getRange(found.rowIndex, col.사업자번호 + 1).setNumberFormat('@');
+    sheets.clients.getRange(found.rowIndex, col.추가연락처 + 1).setNumberFormat('@');
     sheets.clients.getRange(found.rowIndex, 1, 1, row.length).setValues([row]);
     SpreadsheetApp.flush();
     // [2026.09 버그수정] 사건 쪽에서 고객명을 고치면 연결된 고객 레코드 이름도 같이 바뀌도록
@@ -17106,11 +17262,13 @@ function client_getConsultLogs(params) {
   const data = sheets.log.getDataRange().getValues();
   const col = client_colMap_(data[0], CONSULT_HEADERS);
   const clientId = String((params && params.고객ID) || '').trim();
+  const caseId = String((params && params.사건ID) || '').trim();
   const q = String((params && params.search) || '').trim();
   const logs = [];
   for (let i = 1; i < data.length; i++) {
     if (!data[i][col.id]) continue;
     if (clientId && String(data[i][col.고객ID] || '').trim() !== clientId) continue;
+    if (caseId && String(data[i][col.사건ID] || '').trim() !== caseId) continue;
     if (q && String(data[i][col.고객명] || '').indexOf(q) === -1) continue;
     logs.push(client_readLog_(col, data[i]));
   }
@@ -17142,10 +17300,1529 @@ function client_addConsultLog(params) {
     newRow[col.수취증빙] = String(params.수취증빙 || '').trim();
     newRow[col.리뷰] = String(params.리뷰 || '').trim();
     newRow[col.생성일] = now;
+    newRow[col.승인번호] = String(params.승인번호 || '').trim();
+    newRow[col.사건ID] = String(params.사건ID || '').trim();
     sheets.log.appendRow(newRow);
     SpreadsheetApp.flush();
     return { success: true, log: client_readLog_(col, newRow) };
   });
+}
+
+// ============================================================
+// [2026.09 신규] 현금영수증 자동 인식 — 사건 폴더 안에 파일명에 "현금영수증"이 들어간
+// 파일이 있으면, AI가 그 안의 금액을 읽어서 자문내역(수금내역)에 자동으로 기록한다.
+// 대시보드의 "최근 수금내역"/고객관리 카드는 자문내역을 그대로 읽어 보여주므로, 이렇게
+// 자동 기록만 해두면 화면 쪽은 손댈 필요가 없다(기존 loadDashPayments/고객관리 화면 재사용).
+// 이미 처리한 파일은 Drive appProperties에 표시를 남겨 다시 스캔해도 중복 기록/중복 AI
+// 호출이 안 되게 한다.
+// ============================================================
+
+// 파일ID에서 부모 폴더를 최대 6단계까지 거슬러 올라가며, 사건관리 시트의 "폴더ID" 열과
+// 일치하는 폴더를 찾는다 — 그 사건의 고객명을 알아내기 위함.
+function findCaseForFile_(fileId) {
+  const sheet = work_getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const col = work_colMap_(data[0]);
+  const caseByFolderId = {};
+  for (let i = 1; i < data.length; i++) {
+    const fid = data[i][col.폴더ID];
+    if (fid) caseByFolderId[fid] = { 고객명: data[i][col.고객명], caseId: data[i][col.id] };
+  }
+  try {
+    let parents = DriveApp.getFileById(fileId).getParents();
+    let depth = 0;
+    while (depth < 6) {
+      if (!parents.hasNext()) return null;
+      const parent = parents.next();
+      const pid = parent.getId();
+      if (caseByFolderId[pid]) return caseByFolderId[pid];
+      parents = parent.getParents();
+      depth++;
+    }
+  } catch (err) { /* 폴더 조회 실패 시 그냥 못 찾은 것으로 처리 */ }
+  return null;
+}
+
+// Claude API로 영수증 이미지/PDF 하나를 읽어서 금액·발급일자를 뽑아낸다. 이미 프로젝트
+// 전역에 있는 ANTHROPIC_API_KEY/DEFAULT_MODEL을 그대로 재사용(다른 AI 호출들과 동일한 방식).
+function extractReceiptAmountViaAI_(fileId, mimeType, apiKey) {
+  const blob = DriveApp.getFileById(fileId).getBlob();
+  const base64 = Utilities.base64Encode(blob.getBytes());
+  const isPdf = /pdf/i.test(mimeType || '');
+  const block = isPdf
+    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
+    : { type: 'image', source: { type: 'base64', media_type: mimeType || 'image/jpeg', data: base64 } };
+  const prompt = '이 파일은 현금영수증 사진 또는 PDF다. 영수증에 적힌 결제금액(원)과 발급일자를 찾아서, ' +
+    '다른 설명 없이 정확히 이 형식의 JSON 하나만 답하라: {"amount": 숫자또는null, "date": "YYYY-MM-DD"또는null}. ' +
+    '금액을 못 찾으면 amount는 반드시 null로 답하라(추측해서 아무 숫자나 넣지 마라).';
+  const response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    payload: JSON.stringify({
+      model: DEFAULT_MODEL, max_tokens: 300,
+      messages: [{ role: 'user', content: [block, { type: 'text', text: prompt }] }]
+    }),
+    muteHttpExceptions: true
+  });
+  const json = JSON.parse(response.getContentText());
+  if (json.error) throw new Error(json.error.message || 'AI 호출 실패');
+  const text = (json.content && json.content[0] && json.content[0].text) || '';
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('AI 응답에서 금액을 읽지 못했습니다: ' + text.slice(0, 100));
+  const parsed = JSON.parse(match[0]);
+  return { amount: parsed.amount, date: parsed.date };
+}
+
+// 실제 스캔 본체 — 대시보드의 "지금 확인" 버튼(handleScanCashReceipts)과 야간 자동작업
+// (runNightlyChiefManager) 양쪽에서 그대로 호출한다.
+function runCashReceiptScan_() {
+  const result = { scanned: 0, added: 0, skipped: 0, errors: [] };
+  const apiKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
+  if (!apiKey) { result.errors.push('ANTHROPIC_API_KEY가 설정되어 있지 않습니다.'); return result; }
+
+  let files;
+  try {
+    const res = Drive.Files.list({
+      q: "name contains '현금영수증' and trashed = false",
+      fields: 'files(id,name,mimeType,modifiedTime,appProperties)',
+      pageSize: 200
+    });
+    files = res.files || [];
+  } catch (err) {
+    result.errors.push('드라이브 검색 실패: ' + err.message);
+    return result;
+  }
+  result.scanned = files.length;
+
+  // [2026.09 버그수정] 같은 영수증이 jpg/pdf 등 여러 형식으로 같이 저장된 경우(예:
+  // "현금영수증_지영주.jpg"와 "현금영수증_지영주.pdf") 예전엔 파일마다 각각 수금내역을
+  // 만들어 같은 거래가 두 번 기록됐다 — 같은 사건 안에서 확장자를 뺀 파일명이 같으면
+  // 하나의 거래로 보고 한 번만 기록한다.
+  const groups = {};
+  files.forEach(function (f) {
+    if (f.appProperties && f.appProperties.netax_receipt_logged === 'true') { result.skipped++; return; }
+    const caseInfo = findCaseForFile_(f.id);
+    if (!caseInfo) { result.skipped++; return; } // 사건 폴더 밖의 파일이면 건너뜀
+    const baseName = f.name.replace(/\.[^.]+$/, '');
+    const key = caseInfo.caseId + '::' + baseName;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push({ file: f, caseInfo: caseInfo });
+  });
+
+  Object.keys(groups).forEach(function (key) {
+    const group = groups[key];
+    const primary = group[0];
+    let succeeded = false;
+    try {
+      const extracted = extractReceiptAmountViaAI_(primary.file.id, primary.file.mimeType, apiKey);
+      client_addConsultLog({
+        고객명: primary.caseInfo.고객명,
+        날짜: extracted.date || Utilities.formatDate(new Date(primary.file.modifiedTime), 'Asia/Seoul', 'yyyy-MM-dd'),
+        유형: '수금',
+        내용: '현금영수증 파일 자동 인식(' + primary.file.name + ')',
+        금액: extracted.amount,
+        수취증빙: '현금영수증'
+      });
+      result.added++;
+      succeeded = true;
+    } catch (err) {
+      result.errors.push(primary.file.name + ': ' + err.message);
+    }
+    if (succeeded) {
+      group.forEach(function (item) {
+        try { Drive.Files.update({ appProperties: { netax_receipt_logged: 'true' } }, item.file.id); } catch (err) { /* 표시 실패해도 치명적이지 않음 */ }
+      });
+    }
+  });
+
+  return result;
+}
+
+// [2026.09 신규] 대시보드의 "지금 확인" 버튼에서 호출 — 스캔을 즉시 실행하고 결과를 그대로
+// 돌려줘서(몇 건 새로 인식했는지) 화면에 토스트로 보여줄 수 있게 한다.
+function handleScanCashReceipts(body) {
+  return runCashReceiptScan_();
+}
+
+// ============================================================
+// [2026.09.15 신규] 홈택스 "현금영수증 발행내역(매출내역)" 엑셀 가져오기 — 위 스캔(개별
+// 사건폴더에 저장된 현금영수증 사진/PDF를 AI로 읽는 방식)과는 완전히 다른 원천이다. 세무사님이
+// 홈택스에서 분기별로 직접 다운로드해 "고객사건/0_NX_0"(사건별로 안 나뉜 공용 임시보관함)에
+// 넣어두는 매출내역 엑셀(.xls, 옛 바이너리 형식) 5개가 "지금까지의 전체 현금영수증 발행내역"
+// 원장이므로, 그 파일들을 통째로 읽어 수금관리(자문내역) 데이터로 흡수한다. 앞으로도 계속
+// 다운로드해서 검증할 것이라고 하셨으므로 재실행해도 안전해야 한다 — 승인번호(홈택스가 매기는
+// 전역 고유값)를 기준으로 이미 들여온 건은 건너뛰고, 새 분기 파일이나 갱신된 파일에서 처음
+// 보이는 건만 새로 추가한다(파일 단위가 아니라 승인번호 단위 dedup — 진행 중인 분기 파일은
+// 다운받을 때마다 행이 계속 늘어나기 때문).
+//
+// 자동 연결: 파일에 있는 정보는 "신분확인뒷4자리"(발급에 쓴 전화번호 등의 뒤 4자리)뿐이라,
+// 고객관리의 전화번호 뒤 4자리와 정확히 1명만 일치하면 그 고객으로 자동 연결하고, 0명이거나
+// 2명 이상 겹치면(오match 위험) 고객명을 비워두고 유형에 "(미연결)"을 남겨 수금관리 화면에서
+// 사람이 직접 골라 연결하게 한다(추측으로 잘못 연결하지 않는다).
+// ============================================================
+const RECEIPT_IMPORT_FOLDER_NAME_ = '0_NX_0';
+const RECEIPT_IMPORT_FILE_PREFIX_ = '매출내역';
+
+function receipt_findHometaxExportFiles_() {
+  const root = getDefaultFolder();
+  const subFolders = root.getFoldersByName(RECEIPT_IMPORT_FOLDER_NAME_);
+  if (!subFolders.hasNext()) return [];
+  const folder = subFolders.next();
+  const files = [];
+  const it = folder.getFiles();
+  while (it.hasNext()) {
+    const f = it.next();
+    if (f.getName().indexOf(RECEIPT_IMPORT_FILE_PREFIX_) === 0) files.push(f);
+  }
+  return files;
+}
+
+// 옛 바이너리 .xls(신규 .xlsx도 같은 mimeType 매핑으로 처리됨)를 구글 시트로 임시 변환해서
+// 읽는다 — convertAndExtractOfficeFile과 같은 검증된 방식(Drive.Files.copy로 mimeType만
+// 스프레드시트로 바꿔 복사하면 드라이브가 알아서 내용을 변환해준다).
+function receipt_readExcelRows_(file) {
+  const targetMime = OFFICE_MIME_TO_GOOGLE[file.getMimeType()] || 'application/vnd.google-apps.spreadsheet';
+  let tempFileId = null;
+  try {
+    const copied = Drive.Files.copy({ mimeType: targetMime, name: 'nx_temp_receipt_' + Date.now() }, file.getId());
+    tempFileId = copied.id;
+    const ss = SpreadsheetApp.openById(tempFileId);
+    return ss.getSheets()[0].getDataRange().getValues();
+  } finally {
+    if (tempFileId) { try { DriveApp.getFileById(tempFileId).setTrashed(true); } catch (e) { } }
+  }
+}
+
+// 요약행("총 사용금액 : ...")이 몇 번째 줄에 있든 상관없이 "승인번호" 헤더가 있는 실제 헤더행을
+// 찾아서 그 아래부터 데이터로 읽는다 — 홈택스가 조회 조건에 따라 앞줄 구성을 바꿀 수 있어서다.
+function receipt_parseHometaxRows_(rows) {
+  let headerIdx = -1;
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].indexOf('승인번호') !== -1) { headerIdx = i; break; }
+  }
+  if (headerIdx === -1) return { records: [], error: '헤더행("승인번호")을 찾지 못했습니다.' };
+  const headers = rows[headerIdx];
+  const idx = {};
+  headers.forEach(function (h, i) { idx[String(h).trim()] = i; });
+  const required = ['매출일시', '총금액', '승인번호', '신분확인뒷4자리', '거래구분'];
+  const missing = required.filter(function (h) { return idx[h] === undefined; });
+  if (missing.length) return { records: [], error: '필요한 열이 없습니다: ' + missing.join(', ') };
+  const records = [];
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const r = rows[i];
+    const 승인번호 = String(r[idx['승인번호']] || '').trim();
+    if (!승인번호) continue; // 빈 행(합계행 등) 건너뜀
+    const rawDate = r[idx['매출일시']];
+    const dateStr = rawDate instanceof Date
+      ? Utilities.formatDate(rawDate, 'Asia/Seoul', 'yyyy-MM-dd')
+      : String(rawDate || '').slice(0, 10);
+    records.push({
+      승인번호: 승인번호,
+      날짜: dateStr,
+      금액: Number(r[idx['총금액']]) || 0,
+      신분확인뒷4자리: String(r[idx['신분확인뒷4자리']] || '').trim(),
+      거래구분: String(r[idx['거래구분']] || '').trim(),
+      용도구분: idx['용도구분'] !== undefined ? String(r[idx['용도구분']] || '').trim() : '',
+      isCancelled: /취소/.test(String(r[idx['거래구분']] || ''))
+    });
+  }
+  return { records: records, error: null };
+}
+
+// [2026.09.15 개선, 2026.09.16 수정] 세무사님 설명 — "신분확인뒷4자리와 고객 전화번호 뒷4자리가
+// 원칙상 같아야 하지만, 복수의뢰인(공동상속인·부부 등) 사건에서 대표 의뢰인이 아닌 사람 명의로
+// 현금영수증이 발행되는 경우가 있다." 그래서 고객관리의 "추가연락처"(이름+전화번호 목록, JSON —
+// 전화번호만 있으면 누구 건지 알 수 없다는 지적에 따라 이름을 같이 받게 바뀌었다)도 대표
+// 전화번호와 동등하게 매칭 대상에 포함한다 — 대표번호든 추가연락처든 어느 번호로 일치하든 그
+// 고객으로 본다(단, 그렇게 해서도 일치하는 고객이 2명 이상이면 오match 위험이 있으니 여전히
+// 미연결로 남겨 사람이 확인하게 한다).
+function receipt_matchClientByPhoneLast4_(last4, clientRows, ccol) {
+  if (!last4 || last4.length !== 4) return null;
+  const matches = clientRows.filter(function (row) {
+    const extraNumbers = client_parseExtraContacts_(row[ccol.추가연락처]).map(function (c) { return c.전화번호; });
+    const numbers = client_splitPhoneNumbers_(row[ccol.전화번호]).concat(client_splitPhoneNumbers_(extraNumbers.join(',')));
+    return numbers.some(function (digits) { return digits.slice(-4) === last4; });
+  });
+  return matches.length === 1 ? matches[0] : null;
+}
+
+// 대시보드(수동 "지금 확인")와 야간 자동작업(runNightlyChiefManager) 양쪽에서 호출하는 본체.
+function receipt_importHometaxExports_() {
+  const result = { filesScanned: 0, rowsSeen: 0, imported: 0, autoLinked: 0, unlinked: 0, cancelledRemoved: 0, alreadyImported: 0, errors: [] };
+  let files;
+  try {
+    files = receipt_findHometaxExportFiles_();
+  } catch (err) {
+    result.errors.push('"' + RECEIPT_IMPORT_FOLDER_NAME_ + '" 폴더 조회 실패: ' + err.message);
+    return result;
+  }
+  result.filesScanned = files.length;
+  if (!files.length) return result;
+
+  return withLock_(30000, function () {
+    const clientSheets = client_getSheets_();
+    const clientData = clientSheets.clients.getDataRange().getValues();
+    const ccol = client_colMap_(clientData[0], CLIENT_HEADERS);
+    const clientRows = clientData.slice(1);
+
+    const logSheet = clientSheets.log;
+    const logData = logSheet.getDataRange().getValues();
+    const lcol = client_colMap_(logData[0], CONSULT_HEADERS);
+    const existingByApproval = {}; // 승인번호 → 시트상 행번호(1-based)
+    for (let i = 1; i < logData.length; i++) {
+      const 승인번호 = String(logData[i][lcol.승인번호] || '').trim();
+      if (승인번호) existingByApproval[승인번호] = i + 1;
+    }
+
+    const cancelledApprovals = {};
+    const newRecords = [];
+    files.forEach(function (file) {
+      let rows;
+      try { rows = receipt_readExcelRows_(file); } catch (err) {
+        result.errors.push(file.getName() + ' 변환/읽기 실패: ' + err.message);
+        return;
+      }
+      const parsed = receipt_parseHometaxRows_(rows);
+      if (parsed.error) { result.errors.push(file.getName() + ': ' + parsed.error); return; }
+      result.rowsSeen += parsed.records.length;
+      parsed.records.forEach(function (rec) {
+        if (rec.isCancelled) { cancelledApprovals[rec.승인번호] = true; return; }
+        if (existingByApproval[rec.승인번호]) { result.alreadyImported++; return; }
+        newRecords.push(rec);
+      });
+    });
+
+    // 취소된 승인번호가 이미 예전에 정상 건으로 들어와 있었으면 그 행을 지운다(뒤에서부터
+    // 지워야 앞 행 번호가 안 밀린다).
+    const rowsToDelete = Object.keys(cancelledApprovals)
+      .map(function (a) { return existingByApproval[a]; })
+      .filter(function (r) { return !!r; })
+      .sort(function (a, b) { return b - a; });
+    rowsToDelete.forEach(function (rowNum) { logSheet.deleteRow(rowNum); result.cancelledRemoved++; });
+
+    // [2026.09.16 버그수정] 실사용 지적 — 최은진님 등 몇 건이 "중복"으로 확인됐다. 원인:
+    // 이 가져오기 기능이 생기기 전부터 이미 수동으로(또는 예전 현금영수증 파일스캔으로) 같은
+    // 날짜·금액의 현금영수증이 기록돼 있었는데, 그 옛 행에는 승인번호가 없어서(이 필드 자체가
+    // 그때는 없었음) 승인번호 기준 중복확인을 통과 못 하고 매번 새 행으로 또 쌓였다. 이제는
+    // 승인번호가 없는 기존 행 중에서 (고객명·날짜·금액·수취증빙=현금영수증)이 정확히 같은
+    // 것을 찾아 새 행을 만드는 대신 그 행에 승인번호만 채워 넣는다(기존 행이 이미 있다는
+    // 확실한 신호이므로) — 고객이 매칭된 건에만 적용한다(미연결 건은 어느 고객 것인지 몰라
+    // 비교 자체가 불가능).
+    const freshLogDataForDedup = logSheet.getDataRange().getValues();
+    const manualEntryByKey = {}; // "고객명::날짜::금액" → 시트상 행번호(승인번호 없는 현금영수증 행만)
+    for (let i = 1; i < freshLogDataForDedup.length; i++) {
+      if (String(freshLogDataForDedup[i][lcol.수취증빙] || '') !== '현금영수증') continue;
+      if (String(freshLogDataForDedup[i][lcol.승인번호] || '').trim()) continue;
+      const key = [String(freshLogDataForDedup[i][lcol.고객명] || '').trim(), client_dateStr_(freshLogDataForDedup[i][lcol.날짜]), String(freshLogDataForDedup[i][lcol.금액] || '')].join('::');
+      manualEntryByKey[key] = i + 1;
+    }
+
+    const now = new Date();
+    result.backfilled = 0;
+    const rowsToAppend = [];
+    newRecords
+      .filter(function (rec) { return !cancelledApprovals[rec.승인번호]; }) // 같은 파일 안에서 승인 후 바로 취소된 건 제외
+      .forEach(function (rec) {
+        const client = receipt_matchClientByPhoneLast4_(rec.신분확인뒷4자리, clientRows, ccol);
+        if (client) result.autoLinked++; else result.unlinked++;
+        const dedupKey = client ? [String(client[ccol.성명] || '').trim(), rec.날짜, String(rec.금액)].join('::') : null;
+        const existingManualRow = dedupKey ? manualEntryByKey[dedupKey] : null;
+        if (existingManualRow) {
+          logSheet.getRange(existingManualRow, lcol.승인번호 + 1).setValue(rec.승인번호);
+          const existingContent = String(logSheet.getRange(existingManualRow, lcol.내용 + 1).getValue() || '').trim();
+          if (!existingContent) {
+            logSheet.getRange(existingManualRow, lcol.내용 + 1).setValue('홈택스 현금영수증 자동수입 · 신분확인 ' + rec.신분확인뒷4자리 + (rec.용도구분 ? ' · ' + rec.용도구분 : ''));
+          }
+          delete manualEntryByKey[dedupKey]; // 같은 행을 두 번 재사용하지 않도록
+          result.backfilled++;
+          return;
+        }
+        const newRow = new Array(CONSULT_HEADERS.length).fill('');
+        newRow[lcol.id] = Utilities.getUuid();
+        newRow[lcol.고객ID] = client ? client[ccol.id] : '';
+        newRow[lcol.고객명] = client ? client[ccol.성명] : '';
+        newRow[lcol.날짜] = rec.날짜;
+        newRow[lcol.유형] = client ? '수금' : '수금(미연결)';
+        newRow[lcol.내용] = '홈택스 현금영수증 자동수입 · 신분확인 ' + rec.신분확인뒷4자리 + (rec.용도구분 ? ' · ' + rec.용도구분 : '');
+        newRow[lcol.금액] = rec.금액;
+        newRow[lcol.수취증빙] = '현금영수증';
+        newRow[lcol.생성일] = now;
+        newRow[lcol.승인번호] = rec.승인번호;
+        rowsToAppend.push(newRow);
+      });
+    if (rowsToAppend.length) {
+      logSheet.getRange(logSheet.getLastRow() + 1, 1, rowsToAppend.length, CONSULT_HEADERS.length).setValues(rowsToAppend);
+    }
+    SpreadsheetApp.flush();
+    result.imported = rowsToAppend.length;
+
+    // [2026.09.15 신규] 예전에 미연결로 남았던 건도 이번에 다시 시도한다 — 세무사님이 고객관리에
+    // "추가연락처"(가족·공동의뢰인 번호)를 새로 등록해두면, 다음 가져오기 버튼 클릭만으로 그
+    // 미연결 건들이 자동으로 연결되게 하기 위함(신분확인뒷4자리는 저장 당시 내용란에 남겨뒀다).
+    result.reMatched = 0;
+    const freshLogData = logSheet.getDataRange().getValues();
+    for (let i = 1; i < freshLogData.length; i++) {
+      if (freshLogData[i][lcol.고객ID]) continue; // 이미 연결됨
+      const m = String(freshLogData[i][lcol.내용] || '').match(/신분확인\s*(\d{4})/);
+      if (!m) continue; // 홈택스 수입 건이 아니거나 형식이 다름
+      const client = receipt_matchClientByPhoneLast4_(m[1], clientRows, ccol);
+      if (!client) continue;
+      logSheet.getRange(i + 1, lcol.고객ID + 1).setValue(client[ccol.id]);
+      logSheet.getRange(i + 1, lcol.고객명 + 1).setValue(client[ccol.성명]);
+      logSheet.getRange(i + 1, lcol.유형 + 1).setValue('수금');
+      result.reMatched++;
+    }
+    if (result.reMatched) SpreadsheetApp.flush();
+
+    const reportText = '스캔한 파일: ' + result.filesScanned + '건\n' + files.map(function (f) { return '- ' + f.getName(); }).join('\n') + '\n\n' +
+      '전체 데이터행: ' + result.rowsSeen + '건\n' +
+      '신규 반영: ' + result.imported + '건(자동연결 ' + result.autoLinked + '건 / 미연결 ' + result.unlinked + '건)\n' +
+      '기존 수동입력 행에 승인번호만 채움(중복 생성 방지): ' + result.backfilled + '건\n' +
+      '이미 반영되어 건너뜀: ' + result.alreadyImported + '건\n' +
+      '취소 확인되어 삭제: ' + result.cancelledRemoved + '건\n' +
+      '기존 미연결 중 새로 연결됨: ' + result.reMatched + '건\n' +
+      (result.errors.length ? '\n오류:\n' + result.errors.join('\n') : '');
+    try {
+      const chiefFolder = getChiefManagerFolder_();
+      if (chiefFolder) {
+        const auditFolder = getOrCreateSubfolder_(chiefFolder, '_사건폴더감사');
+        writeFileOverwrite_(auditFolder, '홈택스수금가져오기_' + Utilities.formatDate(now, 'Asia/Seoul', 'yyyy-MM-dd_HHmm') + '.md', reportText, MimeType.PLAIN_TEXT);
+      }
+    } catch (err) { /* 리포트 저장 실패해도 반환값으로 확인 가능 */ }
+
+    return result;
+  });
+}
+
+// [2026.09.16 임시, 1회성] 오늘 홈택스 가져오기 이전에 이미 수동으로(또는 예전 파일스캔으로)
+// 기록된 현금영수증과, 오늘 새로 들어온 홈택스 행이 중복된 것들을 정리한다(위
+// receipt_importHometaxExports_의 백필 로직이 앞으로는 막아주지만, 오늘 이미 만들어진
+// 중복은 남아있으므로 한 번은 직접 청소해야 한다). 같은 (고객명·날짜·금액) 조합에 승인번호
+// 있는 행과 없는 행이 섞여 있으면 승인번호 없는 쪽을 지운다(승인번호 있는 쪽이 더 정확한
+// 출처 정보를 갖고 있으므로).
+function cleanupHometaxDuplicates_() {
+  return withLock_(30000, function () {
+    const sheets = client_getSheets_();
+    const logSheet = sheets.log;
+    const data = logSheet.getDataRange().getValues();
+    const col = client_colMap_(data[0], CONSULT_HEADERS);
+    const groups = {};
+    for (let i = 1; i < data.length; i++) {
+      if (!data[i][col.id]) continue;
+      if (String(data[i][col.수취증빙] || '') !== '현금영수증') continue;
+      const key = [String(data[i][col.고객명] || '').trim(), client_dateStr_(data[i][col.날짜]), String(data[i][col.금액] || '')].join('::');
+      (groups[key] = groups[key] || []).push(i);
+    }
+    const rowsToDelete = [];
+    const log = [];
+    Object.keys(groups).forEach(function (key) {
+      const idxs = groups[key];
+      if (idxs.length < 2) return;
+      const withApproval = idxs.filter(function (i) { return String(data[i][col.승인번호] || '').trim(); });
+      const withoutApproval = idxs.filter(function (i) { return !String(data[i][col.승인번호] || '').trim(); });
+      if (!withApproval.length || !withoutApproval.length) return; // 섞여있을 때만 처리(둘 다 승인번호 있으면 진짜 별개 거래일 수 있어 손대지 않음)
+      withoutApproval.forEach(function (i) {
+        rowsToDelete.push(i);
+        log.push(key + ' — 승인번호 없는 중복행 삭제(원본은 승인번호 ' + String(data[withApproval[0]][col.승인번호]) + ')');
+      });
+    });
+    rowsToDelete.sort(function (a, b) { return b - a; }).forEach(function (i) { logSheet.deleteRow(i + 1); });
+    const reportText = '삭제된 중복행: ' + rowsToDelete.length + '건\n' + log.join('\n');
+    let fileUrl = '';
+    try {
+      const chiefFolder = getChiefManagerFolder_();
+      if (chiefFolder) {
+        const auditFolder = getOrCreateSubfolder_(chiefFolder, '_사건폴더감사');
+        const file = writeFileOverwrite_(auditFolder, '홈택스중복정리_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd_HHmm') + '.md', reportText, MimeType.PLAIN_TEXT);
+        fileUrl = file.getUrl();
+      }
+    } catch (err) { /* 무시 */ }
+    return { deleted: rowsToDelete.length, log: log, fileUrl: fileUrl };
+  });
+}
+
+// [2026.09.16 임시, 읽기전용] 세무사님 지시 — "중복이 있는지 모두 점검을 다시 해봐." 홈택스
+// 가져오기-수동입력 간 중복(수취증빙=현금영수증, 승인번호 유무로 구분)만 고쳤으니, 이번엔
+// 원인을 가리지 않고 전체 수금 내역(자문내역) 전체를 대상으로 넓게 다시 훑는다 — 아무것도
+// 지우지 않고 의심되는 건만 목록으로 남긴다(같은 날짜·금액이 우연히 겹치는 정상 케이스도
+// 있을 수 있어 자동삭제는 위험하다고 판단, 사람이 보고 결정).
+function auditAllConsultLogDuplicates_() {
+  const sheets = client_getSheets_();
+  const data = sheets.log.getDataRange().getValues();
+  const col = client_colMap_(data[0], CONSULT_HEADERS);
+  const rows = [];
+  for (let i = 1; i < data.length; i++) {
+    if (!data[i][col.id]) continue;
+    rows.push({
+      idx: i, id: data[i][col.id], 고객명: String(data[i][col.고객명] || '').trim(),
+      날짜: client_dateStr_(data[i][col.날짜]), 금액: String(data[i][col.금액] || ''),
+      수취증빙: String(data[i][col.수취증빙] || ''), 유형: String(data[i][col.유형] || ''),
+      내용: String(data[i][col.내용] || ''), 승인번호: String(data[i][col.승인번호] || ''),
+      생성일: data[i][col.생성일]
+    });
+  }
+  // ① 완전일치 중복(고객명·날짜·금액·수취증빙·내용까지 전부 같음) — 가장 확실한 진짜 중복.
+  const exactGroups = {};
+  rows.forEach(function (r) { const k = [r.고객명, r.날짜, r.금액, r.수취증빙, r.내용].join('::'); (exactGroups[k] = exactGroups[k] || []).push(r); });
+  const exactDupes = Object.keys(exactGroups).filter(function (k) { return exactGroups[k].length > 1; }).map(function (k) { return exactGroups[k]; });
+  // ② 고객명·날짜·금액만 같음(수취증빙/내용은 다를 수 있음) — 진짜 중복일 수도, 우연의 일치일
+  // 수도 있어 사람이 봐야 한다.
+  const looseGroups = {};
+  rows.forEach(function (r) { const k = [r.고객명, r.날짜, r.금액].join('::'); (looseGroups[k] = looseGroups[k] || []).push(r); });
+  const looseDupes = Object.keys(looseGroups).filter(function (k) { return looseGroups[k].length > 1; }).map(function (k) { return looseGroups[k]; });
+  // ③ 승인번호가 2건 이상에 붙어있음(있으면 안 되는 상태 — 로직 버그 신호).
+  const approvalGroups = {};
+  rows.forEach(function (r) { if (r.승인번호) (approvalGroups[r.승인번호] = approvalGroups[r.승인번호] || []).push(r); });
+  const approvalDupes = Object.keys(approvalGroups).filter(function (k) { return approvalGroups[k].length > 1; }).map(function (k) { return approvalGroups[k]; });
+
+  const fmt = function (groups, label) {
+    return label + '(' + groups.length + '건)\n' + groups.map(function (g) {
+      return '- ' + g.map(function (r) { return r.고객명 + '/' + r.날짜 + '/' + r.금액 + '원/' + r.수취증빙 + '/유형:' + r.유형 + '/승인번호:' + (r.승인번호 || '없음') + '/내용:' + (r.내용 || '(없음)'); }).join('  |  ');
+    }).join('\n');
+  };
+  const reportText = fmt(exactDupes, '① 완전일치 중복') + '\n\n' + fmt(looseDupes, '② 고객명·날짜·금액만 같음(수취증빙/내용 다를 수 있음)') + '\n\n' + fmt(approvalDupes, '③ 승인번호 중복(로직버그 신호, 있으면 안 됨)');
+  let fileUrl = '';
+  try {
+    const chiefFolder = getChiefManagerFolder_();
+    if (chiefFolder) {
+      const auditFolder = getOrCreateSubfolder_(chiefFolder, '_사건폴더감사');
+      const file = writeFileOverwrite_(auditFolder, '전체수금중복점검_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd_HHmm') + '.md', reportText, MimeType.PLAIN_TEXT);
+      fileUrl = file.getUrl();
+    }
+  } catch (err) { /* 무시 */ }
+  return { exactCount: exactDupes.length, looseCount: looseDupes.length, approvalDupeCount: approvalDupes.length, fileUrl: fileUrl };
+}
+
+function handleImportHometaxReceipts(body) {
+  return receipt_importHometaxExports_();
+}
+
+// [2026.09.15 임시, 1회성] "수금내역은 고객과 사건 모두에 연결되어야 한다"는 지시에 따라
+// 사건ID 필드를 새로 만들었는데, 그 전에 이미 쌓여있던 수금 내역은 전부 사건 연결이 비어있다.
+// 고객은 이미 연결돼 있으므로(고객ID), 그 고객 이름으로 등록된 사건이 정확히 1건뿐이면
+// 애매할 게 없으니 자동으로 그 사건에 연결한다. 사건이 2건 이상인 고객은 어느 수금이 어느
+// 사건 건인지 알 방법이 없어(날짜만으로 추측하면 틀릴 위험이 크다) 추측하지 않고 명단만
+// 보고해서 세무사님이 직접 고르시게 한다.
+function linkPastPaymentsToCases_() {
+  return withLock_(30000, function () {
+    const clientSheets = client_getSheets_();
+    const logSheet = clientSheets.log;
+    const logData = logSheet.getDataRange().getValues();
+    const lcol = client_colMap_(logData[0], CONSULT_HEADERS);
+
+    const workSheet = work_getSheet_();
+    const workData = workSheet.getDataRange().getValues();
+    const wcol = work_colMap_(workData[0]);
+    const casesByClientId = {};
+    for (let i = 1; i < workData.length; i++) {
+      const cid = String(workData[i][wcol.고객ID] || '').trim();
+      if (!cid) continue;
+      (casesByClientId[cid] = casesByClientId[cid] || []).push({ id: workData[i][wcol.id], 사건명: workData[i][wcol.사건명] });
+    }
+
+    let linked = 0, noCases = 0, alreadyLinked = 0, noClient = 0;
+    const ambiguous = {}; // 고객명 → {count, 사건명목록}
+    for (let i = 1; i < logData.length; i++) {
+      if (!logData[i][lcol.id]) continue;
+      if (String(logData[i][lcol.사건ID] || '').trim()) { alreadyLinked++; continue; }
+      const clientId = String(logData[i][lcol.고객ID] || '').trim();
+      if (!clientId) { noClient++; continue; } // 고객 자체가 미연결이면 사건도 알 수 없음
+      const cases = casesByClientId[clientId] || [];
+      if (!cases.length) { noCases++; continue; }
+      if (cases.length === 1) {
+        logSheet.getRange(i + 1, lcol.사건ID + 1).setValue(cases[0].id);
+        linked++;
+        continue;
+      }
+      const 고객명 = String(logData[i][lcol.고객명] || '');
+      if (!ambiguous[고객명]) ambiguous[고객명] = { count: 0, 사건들: cases.map(function (c) { return c.사건명; }) };
+      ambiguous[고객명].count++;
+    }
+    if (linked) SpreadsheetApp.flush();
+
+    const ambiguousLines = Object.keys(ambiguous).map(function (name) {
+      return name + ' — 수금 ' + ambiguous[name].count + '건, 후보 사건: ' + ambiguous[name].사건들.join(' / ');
+    });
+    const reportText = '자동 연결(사건 1건뿐인 고객): ' + linked + '건\n' +
+      '이미 연결되어 건너뜀: ' + alreadyLinked + '건\n' +
+      '고객 자체가 미연결이라 건너뜀: ' + noClient + '건\n' +
+      '그 고객 명의의 사건이 없어 건너뜀: ' + noCases + '건\n' +
+      '사건이 여러 건이라 사람이 골라야 함(' + ambiguousLines.length + '명):\n' + ambiguousLines.join('\n');
+    let fileUrl = '';
+    try {
+      const chiefFolder = getChiefManagerFolder_();
+      if (chiefFolder) {
+        const auditFolder = getOrCreateSubfolder_(chiefFolder, '_사건폴더감사');
+        const file = writeFileOverwrite_(auditFolder, '과거수금사건연결_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd_HHmm') + '.md', reportText, MimeType.PLAIN_TEXT);
+        fileUrl = file.getUrl();
+      }
+    } catch (err) { /* 리포트 저장 실패해도 반환값으로 확인 가능 */ }
+    return { linked: linked, alreadyLinked: alreadyLinked, noClient: noClient, noCases: noCases, ambiguousClients: Object.keys(ambiguous).length, ambiguousLines: ambiguousLines, fileUrl: fileUrl };
+  });
+}
+
+// [2026.09.15 임시, 읽기전용] 세무사님이 지적한 5명(최은진·구본경·양성용·박길서·송호식)의
+// 중복/명명규칙 불일치 사건을 실제로 병합·재명명하기 전에, 각 사건의 실제 내용(작업일지·
+// 증빙목록·폴더ID 등)을 먼저 확인해야 한다 — 어느 쪽이 "진짜" 데이터가 쌓인 사건인지 추측하지
+// 않기 위함(병합은 한쪽을 지우는 되돌리기 어려운 작업).
+function dumpDuplicateCaseCandidates_() {
+  const names = ['최은진', '구본경', '양성용', '박길서', '송호식'];
+  const sheet = work_getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const col = work_colMap_(data[0]);
+  const matches = [];
+  for (let i = 1; i < data.length; i++) {
+    if (names.indexOf(String(data[i][col.고객명] || '').trim()) !== -1) {
+      matches.push(work_readRow_(col, data[i]));
+    }
+  }
+  let fileUrl = '';
+  try {
+    const chiefFolder = getChiefManagerFolder_();
+    if (chiefFolder) {
+      const auditFolder = getOrCreateSubfolder_(chiefFolder, '_사건폴더감사');
+      const file = writeFileOverwrite_(auditFolder, '중복사건조사_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd_HHmm') + '.json', JSON.stringify(matches, null, 2), MimeType.PLAIN_TEXT);
+      fileUrl = file.getUrl();
+    }
+  } catch (err) { /* 무시 — 반환값으로도 확인 가능 */ }
+  return { count: matches.length, fileUrl: fileUrl, cases: matches };
+}
+
+// [2026.09.15 임시, 1회성] 세무사님이 직접 확인해준 5명(최은진·구본경·양성용·박길서·송호식)
+// 사건 정리 — dumpDuplicateCaseCandidates_로 실제 데이터를 확인한 결과, 최은진·구본경·양성용·
+// 박길서 4명은 "_상담"/"_신고" 업무유형이 붙고 폴더가 아예 없는 사건(caseA, 예전에 개별적으로
+// 등록됐던 것)과, 나중에 미등록 폴더 흡수 때 폴더까지 갖춰져 새로 만들어진 사건(caseB, 이미
+// 명명규칙에 맞음)이 같은 고객 밑에 중복으로 남아있던 것 — caseA는 작업일지·증빙목록이 전부
+// 비어있어 잃을 데이터가 없으므로 caseB로 통합(caseA 삭제)한다. 송호식은 진짜로 서로 다른
+// 사건 2건(과세자료/증여)이 맞고, 그중 과세자료 사건만 이름이 규칙(고객명(납세자)_세목_업무유형,
+// 괄호가 고객명 바로 뒤)에 어긋나 있어(사건명 끝에 괄호) 이름만 바로잡는다. 이 사건들에 연결
+// 못 하고 남아있던 수금 내역도 같이 이어준다.
+function fixDuplicateCasesAndRelinkPayments_() {
+  return withLock_(30000, function () {
+    const log = [];
+    const MERGES = [
+      { name: '최은진', caseAId: '23895017-d746-498d-97a2-1e74bac9a385', caseBId: 'c44379cc-7cda-46e4-bc7c-afbffdce3ed8' },
+      { name: '구본경', caseAId: 'ae2c23e5-c287-4632-9a72-732344d2186d', caseBId: '3ab4ba9b-b47d-4f8a-aac1-fcc977400585' },
+      { name: '양성용', caseAId: 'b708600e-0208-483d-86f1-0fea81c64072', caseBId: '8464652a-014a-4085-9091-5332d96ee2c1' },
+      { name: '박길서', caseAId: 'faf47b97-16bb-4de9-96ca-813372b1bc8d', caseBId: '789fc2dc-fbd1-47db-a8b7-053a82e9432b' }
+    ];
+
+    const clientSheets = client_getSheets_();
+    const logSheet = clientSheets.log;
+    const lcol = client_colMap_(logSheet.getDataRange().getValues()[0], CONSULT_HEADERS);
+
+    MERGES.forEach(function (m) {
+      // 1) 이 사건(caseA/caseB 어느 쪽으로도 연결 안 됐던, 고객명만 일치해 보류됐던 수금)을
+      // 전부 caseB로 연결한다.
+      const logData = logSheet.getDataRange().getValues();
+      let relinked = 0;
+      for (let i = 1; i < logData.length; i++) {
+        if (String(logData[i][lcol.고객명] || '').trim() !== m.name) continue;
+        if (String(logData[i][lcol.사건ID] || '').trim()) continue; // 이미 연결된 건 건드리지 않음
+        logSheet.getRange(i + 1, lcol.사건ID + 1).setValue(m.caseBId);
+        relinked++;
+      }
+      // 2) 빈 사건(caseA) 삭제 — work_deleteCase를 그대로 부르면 그 함수 내부의 withLock_이
+      // 지금 이미 잡고 있는 락을 도중에 풀어버리므로(같은 락 객체), 여기서는 그 함수의 핵심
+      // 동작(행 삭제+캘린더 정리+예약 연결 해제)만 락 재진입 없이 직접 수행한다.
+      const workSheet = work_getSheet_();
+      const workCol = work_colMap_(workSheet.getDataRange().getValues()[0]);
+      const found = work_findCaseRow_(workSheet, workCol, m.caseAId);
+      let deleted = false;
+      if (found) {
+        workSheet.deleteRow(found.rowIndex);
+        try { work_deleteCaseCalendarEvents_(m.caseAId); } catch (err) { log.push(m.name + ' 캘린더 정리 실패: ' + err.message); }
+        try { booking_clearCaseLink_(m.caseAId); } catch (err) { /* 무시 */ }
+        deleted = true;
+      }
+      log.push(m.name + ': 수금 ' + relinked + '건 → 사건 재연결, 중복 사건 삭제 ' + (deleted ? '성공' : '실패(못 찾음)'));
+    });
+
+    // 송호식 — 병합이 아니라 이름만 규칙에 맞게 수정(괄호를 고객명 바로 뒤로) + 수금 1건 연결.
+    const songId = '3956bbe4-2ac8-4a69-805d-9635758a0272';
+    const songNewName = '송호식(최은진)_과세자료';
+    const sheet = work_getSheet_();
+    const data = sheet.getDataRange().getValues();
+    const col = work_colMap_(data[0]);
+    const songRow = work_findCaseRow_(sheet, col, songId);
+    if (songRow) {
+      const oldName = songRow.row[col.사건명];
+      sheet.getRange(songRow.rowIndex, col.사건명 + 1).setValue(songNewName);
+      const fid = String(songRow.row[col.폴더ID] || '').trim();
+      let folderRenamed = false;
+      if (fid) { try { DriveApp.getFolderById(fid).setName(songNewName); folderRenamed = true; } catch (err) { log.push('송호식 폴더명변경 실패: ' + err.message); } }
+      log.push('송호식: 사건명 "' + oldName + '" → "' + songNewName + '"' + (folderRenamed ? ' (폴더명도 변경)' : ''));
+    } else {
+      log.push('송호식: 과세자료 사건(' + songId + ')을 찾지 못함');
+    }
+    const songLogData = logSheet.getDataRange().getValues();
+    let songRelinked = 0;
+    for (let i = 1; i < songLogData.length; i++) {
+      if (String(songLogData[i][lcol.고객명] || '').trim() !== '송호식') continue;
+      if (String(songLogData[i][lcol.사건ID] || '').trim()) continue;
+      logSheet.getRange(i + 1, lcol.사건ID + 1).setValue(songId);
+      songRelinked++;
+    }
+    log.push('송호식: 수금 ' + songRelinked + '건 → 과세자료 사건에 연결');
+
+    SpreadsheetApp.flush();
+    const reportText = log.join('\n');
+    let fileUrl = '';
+    try {
+      const chiefFolder = getChiefManagerFolder_();
+      if (chiefFolder) {
+        const auditFolder = getOrCreateSubfolder_(chiefFolder, '_사건폴더감사');
+        const file = writeFileOverwrite_(auditFolder, '중복사건정리_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd_HHmm') + '.md', reportText, MimeType.PLAIN_TEXT);
+        fileUrl = file.getUrl();
+      }
+    } catch (err) { /* 무시 */ }
+    return { log: log, fileUrl: fileUrl };
+  });
+}
+
+// ============================================================
+// [2026.09 신규] "보고서 모음" 화면 — 모아보기 / 템플릿다듬기 / 글감만들기
+// ============================================================
+
+// [2026.09.16 재설계] 실사용 지적 — "왜 일부 문서만 보이나, PDF는 왜 보이나, 사건폴더 내
+// 모든 파일이 다 조회돼야 하는 거 아닌가." 원래는 딱 두 하위폴더 이름("내부보고서"/"보고서")
+// 바로 안만 보고, 그 안에 있는 파일이면 확장자 상관없이 다 보여줬다 — 그래서 그 두 폴더 밖에
+// 저장된 진짜 보고서는 안 보이고, 반대로 그 폴더 안에 실수로 들어간 PDF 등은 보였다. 이제는
+// 위치가 아니라 "파일 형식"으로 판단한다 — 사건 폴더 전체(하위폴더 전부 재귀 탐색)에서
+// 실제로 보고서 형식인 파일(.md/.html·구글문서, .ppt·구글슬라이드)만 골라낸다.
+const RH_REPORT_EXT_RE_ = /\.(md|markdown|html?|pptx?)$/i;
+const RH_REPORT_MIME_ALLOW_ = {
+  'application/vnd.google-apps.presentation': true // 구글 슬라이드(확장자 없음) = PPT 취급
+};
+function rh_isReportFile_(name, mimeType) {
+  if (RH_REPORT_MIME_ALLOW_[mimeType]) return true;
+  return RH_REPORT_EXT_RE_.test(name);
+}
+// 사건 폴더 하나를 하위폴더까지 전부 재귀적으로 훑어 보고서 형식 파일만 모은다. 폴더 깊이가
+// 무한정 깊어질 일은 없는 구조(사건 폴더 안엔 몇 단계 하위폴더뿐)라 별도 깊이제한은 안 둔다.
+function rh_collectReportFilesInFolder_(folder, out, caseId, 고객명, 사건명) {
+  const fIter = folder.getFiles();
+  while (fIter.hasNext()) {
+    const f = fIter.next();
+    if (!rh_isReportFile_(f.getName(), f.getMimeType())) continue;
+    out.push({
+      id: f.getId(), name: f.getName(), mimeType: f.getMimeType(),
+      modifiedDate: f.getLastUpdated().getTime(), caseId: caseId, 고객명: 고객명, 사건명: 사건명,
+      kind: folder.getName()
+    });
+  }
+  const subIter = folder.getFolders();
+  while (subIter.hasNext()) {
+    rh_collectReportFilesInFolder_(subIter.next(), out, caseId, 고객명, 사건명);
+  }
+}
+// 모아보기: 모든 사건 폴더 전체(하위폴더 포함)에서 보고서 형식 파일을 모아 돌려준다(폴더가
+// 없는 사건은 그냥 건너뜀 — 목록만 보는 용도라 사건마다 빈 폴더가 새로 생기면 안 되므로).
+function handleListAllReports(body) {
+  const sheet = work_getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const col = work_colMap_(data[0]);
+  const files = [];
+  for (let i = 1; i < data.length; i++) {
+    const caseId = data[i][col.id];
+    const folderId = data[i][col.폴더ID];
+    if (!caseId || !folderId) continue;
+    let caseFolder;
+    try { caseFolder = DriveApp.getFolderById(folderId); } catch (err) { continue; }
+    rh_collectReportFilesInFolder_(caseFolder, files, caseId, data[i][col.고객명], data[i][col.사건명]);
+  }
+  files.sort(function (a, b) { return b.modifiedDate - a.modifiedDate; });
+  return { files: files };
+}
+
+// [2026.09.16 임시, 1회성] "내부보고서"/"보고서" 폴더를 "보고서_내부"/"보고서_외부"로 개명하고,
+// 그 안의 옛 보고서 파일("사건명.md"/"사건명.html"만 있고 문서유형이 파일명에 없던 것들)을
+// "사건명_문서유형" 규칙으로 맞춘다. 문서유형은 파일명만으로는 알 수 없으므로(그게 바로
+// 이번에 고친 문제) 파일 내용 앞부분에서 유형을 나타내는 단어를 찾아 추정한다 — 확신이 서는
+// 경우만 이름을 바꾸고, 못 찾으면 그대로 두고 목록에 남겨 직접 확인하시게 한다(추측으로
+// 잘못된 유형 이름을 붙이지 않기 위함).
+const RW_DOCTYPE_FILENAME_LABELS_BY_CODE_ = {
+  review: '검토서', advisory: '자문보고서', filing: '신고보고서', reference: '참고보고서',
+  progress: '진행보고서', appeal_petition: '불복청구서', summary: '요약보고서', translation: '번역서'
+};
+function rw_guessDocTypeFromContent_(content) {
+  const head = String(content || '').slice(0, 800);
+  if (head.indexOf('검토서') !== -1) return 'review';
+  if (head.indexOf('불복') !== -1 || head.indexOf('이의신청') !== -1 || head.indexOf('심사청구') !== -1 || head.indexOf('심판청구') !== -1) return 'appeal_petition';
+  if (head.indexOf('번역') !== -1) return 'translation';
+  if (head.indexOf('신고') !== -1 && head.indexOf('보고서') !== -1) return 'filing';
+  if (head.indexOf('참고') !== -1 && head.indexOf('보고서') !== -1) return 'reference';
+  if (head.indexOf('진행') !== -1 && head.indexOf('보고서') !== -1) return 'progress';
+  if (head.indexOf('요약') !== -1 && head.indexOf('보고서') !== -1) return 'summary';
+  if (head.indexOf('자문') !== -1) return 'advisory';
+  return null;
+}
+function migrateReportFoldersAndFilenames_() {
+  const sheet = work_getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const col = work_colMap_(data[0]);
+  const log = [];
+  let foldersRenamed = 0, filesRenamed = 0, filesUnclear = 0;
+  const RENAME_PAIRS = [['내부보고서', WORK_SUBFOLDER_INTERNAL_REPORT], ['보고서', MY_SUBFOLDER_REPORT]];
+  for (let i = 1; i < data.length; i++) {
+    const caseId = data[i][col.id];
+    const folderId = data[i][col.폴더ID];
+    if (!caseId || !folderId) continue;
+    let caseFolder;
+    try { caseFolder = DriveApp.getFolderById(folderId); } catch (err) { continue; }
+    const 사건명 = String(data[i][col.사건명] || '').trim();
+    RENAME_PAIRS.forEach(function (pair) {
+      const oldName = pair[0], newName = pair[1];
+      const it = caseFolder.getFoldersByName(oldName);
+      while (it.hasNext()) {
+        const sub = it.next();
+        if (sub.getName() !== newName) {
+          sub.setName(newName);
+          foldersRenamed++;
+          log.push(사건명 + ': 폴더 "' + oldName + '" → "' + newName + '"');
+        }
+        const fIter = sub.getFiles();
+        while (fIter.hasNext()) {
+          const f = fIter.next();
+          const m = f.getName().match(/\.(md|html?|htm)$/i);
+          if (!m) continue;
+          const ext = m[0];
+          const base = f.getName().slice(0, -ext.length);
+          if (base !== 사건명) continue; // 이미 규칙대로 바뀌었거나 사람이 따로 지은 이름 — 손대지 않음
+          let content = '';
+          try { content = f.getBlob().getDataAsString('UTF-8'); } catch (err) { /* 읽기 실패해도 계속 진행 */ }
+          const guessedType = rw_guessDocTypeFromContent_(content);
+          const label = guessedType && RW_DOCTYPE_FILENAME_LABELS_BY_CODE_[guessedType];
+          if (label) {
+            const newFileName = base + '_' + label + ext;
+            f.setName(newFileName);
+            filesRenamed++;
+            log.push('  · "' + f.getName() + '" ← 파일명 변경(추정 유형: ' + label + ')');
+          } else {
+            filesUnclear++;
+            log.push('  · "' + f.getName() + '" — 문서유형을 못 알아내 이름 그대로 둠(직접 확인 필요)');
+          }
+        }
+      }
+    });
+  }
+  const reportText = '폴더 개명: ' + foldersRenamed + '건\n파일명 변경: ' + filesRenamed + '건\n유형 추정 실패(수동 확인 필요): ' + filesUnclear + '건\n\n' + log.join('\n');
+  let fileUrl = '';
+  try {
+    const chiefFolder = getChiefManagerFolder_();
+    if (chiefFolder) {
+      const auditFolder = getOrCreateSubfolder_(chiefFolder, '_사건폴더감사');
+      const file = writeFileOverwrite_(auditFolder, '보고서폴더파일개명_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd_HHmm') + '.md', reportText, MimeType.PLAIN_TEXT);
+      fileUrl = file.getUrl();
+    }
+  } catch (err) { /* 무시 */ }
+  return { foldersRenamed: foldersRenamed, filesRenamed: filesRenamed, filesUnclear: filesUnclear, fileUrl: fileUrl };
+}
+
+// 템플릿다듬기: 이미 매일 밤 도는 runTemplateReview_()의 결과 파일을 그대로 읽어 보여준다
+// (새 점검 로직을 또 만들지 않고 기존 야간작업을 재사용) + "지금 다시 점검" 버튼용 즉시실행.
+function handleGetLatestTemplateReview(body) {
+  const chiefFolder = getChiefManagerFolder_();
+  if (!chiefFolder) return { error: '총괄관리자 폴더가 설정되어 있지 않습니다.' };
+  const folder = getOrCreateSubfolder_(chiefFolder, '_템플릿점검');
+  const todayStr = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
+  for (let back = 0; back < 35; back++) {
+    const d = new Date(Date.now() - back * 86400000);
+    const dateStr = Utilities.formatDate(d, 'Asia/Seoul', 'yyyy-MM-dd');
+    const content = readFileIfExists_(folder, '템플릿점검_' + dateStr + '.md');
+    if (content) return { date: dateStr, content: content };
+  }
+  return { date: null, content: '아직 점검 결과가 없습니다 — "지금 다시 점검하기"를 눌러 새로 만들 수 있습니다.' };
+}
+function handleRunTemplateReviewNow(body) {
+  try { runTemplateReview_(); } catch (err) { return { error: '점검 실패: ' + err.message }; }
+  return handleGetLatestTemplateReview(body);
+}
+
+// 글감만들기: 골라둔 보고서 파일 하나를 읽어, AI로 블로그/소식글용 글감(초안)으로 다시 쓴다.
+// 실제 네이버 블로그·구글 등록/업로드는 별도 프로젝트로 미뤄뒀고, 여기서는 "복사해서 붙여넣을
+// 수 있는 초안 글"까지만 만든다.
+// [2026.09 신규] 올릴 곳에 따라 길이·말투가 크게 다르다 — 블로그(네이버/구글)는 길게 자세히,
+// 소식글(네이버 플레이스/구글 비즈니스 프로필)은 짧고 캐주얼한 공지문 형태로 써야 한다.
+const RH_CONTENT_STYLES_ = {
+  naver_blog: { label: '네이버 블로그', guide: '네이버 블로그에 올릴 글이다. 제목 1개, 부제 없이 본문만, 800~1200자 내외로 자세히 설명하는 블로그 톤으로 써라.' },
+  naver_news: { label: '네이버 소식(플레이스)', guide: '네이버 플레이스의 "소식" 게시글이다. 제목 없이 본문만, 200~350자 내외로 짧고 친근하게, 필요하면 이모지도 1~2개 섞어서 안내문처럼 써라.' },
+  google_blog: { label: '구글 블로그(Blogger)', guide: '구글 블로그(Blogger)에 올릴 글이다. 제목 1개, 부제 없이 본문만, 800~1200자 내외로 자세히 설명하는 블로그 톤으로 써라.' },
+  google_news: { label: '구글 비즈니스 프로필 게시물', guide: '구글 비즈니스 프로필(지도・검색)에 올릴 짧은 게시물이다. 제목 없이 본문만, 150~300자 내외로 아주 간결하게 핵심만 안내하듯 써라.' }
+};
+
+function handleGenerateReportContent(body) {
+  const fileId = String((body && body.fileId) || '').trim();
+  if (!fileId) return { error: '변환할 보고서를 먼저 골라주세요.' };
+  const styleKey = RH_CONTENT_STYLES_[body && body.style] ? body.style : 'naver_blog';
+  const style = RH_CONTENT_STYLES_[styleKey];
+  const apiKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
+  if (!apiKey) return { error: 'ANTHROPIC_API_KEY가 설정되어 있지 않습니다.' };
+
+  let content;
+  try {
+    const file = DriveApp.getFileById(fileId);
+    content = file.getBlob().getDataAsString('UTF-8');
+  } catch (err) {
+    return { error: '파일을 읽지 못했습니다: ' + err.message };
+  }
+  if (!content || !content.trim()) return { error: '보고서 내용이 비어 있습니다.' };
+
+  const prompt = '너는 세무 사무소의 블로그/소식글 콘텐츠 작가다. 아래는 실제 세무 보고서(검토서·자문보고서 등) 내용이다. ' +
+    '이 내용을 바탕으로, 고객의 이름·회사명·주민등록번호 등 개인을 특정할 수 있는 정보는 전부 빼거나 일반화하고, ' +
+    '일반 독자(예비 고객)가 이해할 수 있는 글 한 편의 초안을 써라. ' + style.guide + ' 그 밖의 조건:\n' +
+    '- 세무 실무 사례를 소개하되, 실제 사건을 그대로 옮기지 말고 "이런 상황에서는 이런 점을 주의해야 한다"는 교훈 중심으로 재구성\n' +
+    '- 마크다운으로 작성(제목이 있는 경우 #, 소제목은 ##)\n' +
+    '- 끝에 "※ 개별 상황에 따라 결과가 달라질 수 있으니 반드시 전문가와 상담하세요."라는 문구로 마무리\n\n' +
+    '=== 원본 보고서 내용 ===\n' + content.slice(0, 8000);
+
+  try {
+    const response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      payload: JSON.stringify({ model: DEFAULT_MODEL, max_tokens: 3000, messages: [{ role: 'user', content: prompt }] }),
+      muteHttpExceptions: true
+    });
+    const json = JSON.parse(response.getContentText());
+    if (json.error) return { error: json.error.message || 'AI 호출 실패' };
+    const text = (json.content && json.content[0] && json.content[0].text) || '';
+    if (!text) return { error: 'AI가 빈 응답을 반환했습니다.' };
+    return { content: text };
+  } catch (err) {
+    return { error: 'AI 호출 중 오류: ' + err.message };
+  }
+}
+
+// ===== 네이버 블로그 자동 올리기 (2026.09 신규) =====
+// 흐름: (1) 프론트에서 naver_get_auth_url로 인증 URL을 받아 새 창으로 연다 →
+// (2) 사용자가 네이버 로그인/동의 → (3) 네이버가 이 배포 URL의 naver_callback=1로
+// code를 돌려준다(doGet에서 가로챔) → (4) 여기서 토큰 교환 후 Script Properties에
+// 저장 → (5) 이후 "네이버 블로그에 올리기"는 저장된 토큰으로 자동 호출한다.
+// 등록된 Callback URL과 반드시 한 글자도 다르지 않아야 하므로 상수로 고정한다.
+const NAVER_REDIRECT_URI_ = 'https://script.google.com/macros/s/AKfycbyFbvXiV6rSzCvhtc_T2WrzNF5ZxhOFWtSSsgzSavzPbjv4LBGhjXhu_Q2_8m-PDj8s/exec?app=manage&naver_callback=1';
+
+function naver_getAuthUrl_() {
+  const clientId = PropertiesService.getScriptProperties().getProperty('NAVER_CLIENT_ID');
+  if (!clientId) return null;
+  const state = Utilities.getUuid();
+  CacheService.getScriptCache().put('NAVER_OAUTH_STATE', state, 600); // 10분간 유효
+  return 'https://nid.naver.com/oauth2.0/authorize?response_type=code' +
+    '&client_id=' + encodeURIComponent(clientId) +
+    '&redirect_uri=' + encodeURIComponent(NAVER_REDIRECT_URI_) +
+    '&state=' + encodeURIComponent(state);
+}
+
+function naver_resultPage_(title, message) {
+  return HtmlService.createHtmlOutput(
+    '<html><body style="font-family:sans-serif; text-align:center; padding:60px 20px;">' +
+    '<h2>' + title + '</h2><p>' + message + '</p>' +
+    '<p>이 창을 닫고 원래 화면으로 돌아가 주세요.</p>' +
+    '<script>setTimeout(function(){ window.close(); }, 2500);</script>' +
+    '</body></html>'
+  );
+}
+
+function naver_handleCallback_(e) {
+  const params = e.parameter || {};
+  if (params.error) {
+    return naver_resultPage_('❌ 네이버 연동 실패', params.error_description || params.error);
+  }
+  const expectedState = CacheService.getScriptCache().get('NAVER_OAUTH_STATE');
+  if (!expectedState || expectedState !== params.state) {
+    return naver_resultPage_('❌ 네이버 연동 실패', '인증 상태 확인에 실패했습니다(state 불일치). 다시 시도해 주세요.');
+  }
+  const props = PropertiesService.getScriptProperties();
+  const clientId = props.getProperty('NAVER_CLIENT_ID');
+  const clientSecret = props.getProperty('NAVER_CLIENT_SECRET');
+  const tokenUrl = 'https://nid.naver.com/oauth2.0/token?grant_type=authorization_code' +
+    '&client_id=' + encodeURIComponent(clientId) +
+    '&client_secret=' + encodeURIComponent(clientSecret) +
+    '&redirect_uri=' + encodeURIComponent(NAVER_REDIRECT_URI_) +
+    '&code=' + encodeURIComponent(params.code || '') +
+    '&state=' + encodeURIComponent(params.state || '');
+  let json;
+  try {
+    const res = UrlFetchApp.fetch(tokenUrl, { muteHttpExceptions: true });
+    json = JSON.parse(res.getContentText());
+  } catch (err) {
+    return naver_resultPage_('❌ 네이버 연동 실패', '토큰 교환 중 오류: ' + err.message);
+  }
+  if (!json.access_token) {
+    return naver_resultPage_('❌ 네이버 연동 실패', json.error_description || json.error || '알 수 없는 오류');
+  }
+  props.setProperty('NAVER_ACCESS_TOKEN', json.access_token);
+  if (json.refresh_token) props.setProperty('NAVER_REFRESH_TOKEN', json.refresh_token);
+  props.setProperty('NAVER_TOKEN_EXPIRES_AT', String(Date.now() + (Number(json.expires_in || 3600) * 1000)));
+  return naver_resultPage_('✅ 네이버 블로그 연동 완료', '이제 "글감만들기"에서 바로 네이버 블로그에 올릴 수 있습니다.');
+}
+
+// 액세스 토큰 유효기간이 얼마 안 남았으면 미리 갱신한다(포스팅 도중 만료로 실패하는 것 방지).
+function naver_getValidAccessToken_() {
+  const props = PropertiesService.getScriptProperties();
+  const token = props.getProperty('NAVER_ACCESS_TOKEN');
+  if (!token) return null;
+  const expiresAt = Number(props.getProperty('NAVER_TOKEN_EXPIRES_AT') || 0);
+  if (Date.now() < expiresAt - 5 * 60 * 1000) return token;
+  const refreshToken = props.getProperty('NAVER_REFRESH_TOKEN');
+  const clientId = props.getProperty('NAVER_CLIENT_ID');
+  const clientSecret = props.getProperty('NAVER_CLIENT_SECRET');
+  if (!refreshToken || !clientId || !clientSecret) return token;
+  const url = 'https://nid.naver.com/oauth2.0/token?grant_type=refresh_token' +
+    '&client_id=' + encodeURIComponent(clientId) +
+    '&client_secret=' + encodeURIComponent(clientSecret) +
+    '&refresh_token=' + encodeURIComponent(refreshToken);
+  try {
+    const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    const json = JSON.parse(res.getContentText());
+    if (json.access_token) {
+      props.setProperty('NAVER_ACCESS_TOKEN', json.access_token);
+      props.setProperty('NAVER_TOKEN_EXPIRES_AT', String(Date.now() + (Number(json.expires_in || 3600) * 1000)));
+      return json.access_token;
+    }
+  } catch (err) { /* 갱신 실패 시 기존 토큰으로 시도(만료됐으면 writePost 쪽에서 에러가 남) */ }
+  return token;
+}
+
+function naver_isConnected_() {
+  return !!PropertiesService.getScriptProperties().getProperty('NAVER_ACCESS_TOKEN');
+}
+
+function handleNaverGetAuthUrl(body) {
+  const url = naver_getAuthUrl_();
+  if (!url) return { error: 'NAVER_CLIENT_ID가 설정되어 있지 않습니다.' };
+  return { url: url };
+}
+
+function handleNaverCheckConnected(body) {
+  return { connected: naver_isConnected_() };
+}
+
+// ===== 타이틀카드 이미지 자동 생성 (2026.09 신규) =====
+// 세무사님이 캔바로 직접 만들어 붙이던 블로그 대표이미지(어두운 배경+노란 강조선+
+// 세로 경력소개+가운데 큰 제목+하단 문구)를 구글 슬라이드로 대신 만든다. 캔바
+// Autofill API는 Enterprise 요금제가 있어야 실사용이 가능해(개발 중 체험판만 무료)
+// 지금 요금제로는 못 쓴다고 확인되어, 이미 이 프로젝트가 쓰고 있는(자문보고서 슬라이드
+// 템플릿) SlidesApp으로 같은 느낌의 디자인을 직접 그린다.
+function naver_generateTitleCardLines_(title, bodyPreview, apiKey) {
+  const prompt = '너는 세무 블로그의 썸네일(대표이미지) 카피라이터다. 아래 글의 제목과 본문을 보고, ' +
+    '정사각형 대표이미지에 큼직하게 들어갈 문구를 2~3줄로 짧게 끊어서 만들어라. ' +
+    '예시 스타일: ["어느날 갑자기", "비정기조사를 받게 되는", "가장 큰 이유는?"] 처럼 호기심을 ' +
+    '유발하는 질문형/후킹형 문장이 좋다. 각 줄은 15자 이내로 아주 짧게. ' +
+    '반드시 JSON 배열만 응답하라(다른 설명 금지). 예: ["줄1","줄2","줄3"]\n\n' +
+    '=== 글 제목 ===\n' + title + '\n\n=== 본문 일부 ===\n' + String(bodyPreview || '').slice(0, 1500);
+  const response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    payload: JSON.stringify({ model: DEFAULT_MODEL, max_tokens: 300, messages: [{ role: 'user', content: prompt }] }),
+    muteHttpExceptions: true
+  });
+  const json = JSON.parse(response.getContentText());
+  if (json.error) throw new Error(json.error.message || 'AI 호출 실패');
+  const text = (json.content && json.content[0] && json.content[0].text) || '';
+  const match = text.match(/\[[\s\S]*\]/);
+  if (!match) throw new Error('AI가 카드 문구를 만들지 못했습니다: ' + text.slice(0, 200));
+  const lines = JSON.parse(match[0]);
+  if (!Array.isArray(lines) || !lines.length) throw new Error('AI 응답이 비어 있습니다.');
+  return lines.slice(0, 3).map(String);
+}
+
+// 지금 화면 사용자의 프로필 정보(측면 세로 문구/하단 문구)는 사람마다 다를 수 있으니
+// Script Properties에서 읽되, 설정이 없으면 세무사님이 실제 쓰던 문구를 기본값으로 둔다.
+function naver_titleCardBrandTexts_() {
+  const props = PropertiesService.getScriptProperties();
+  return {
+    side: props.getProperty('NAVER_CARD_SIDE_TEXT') || '국세청 경력 37년 ㅡ 세무조사 24년 동안 양도세무서 장출신',
+    footer: props.getProperty('NAVER_CARD_FOOTER_TEXT') || '상속세 증여세 양도소득세 전문  |  이음세무컨설팅 조종호 세무사'
+  };
+}
+
+function naver_buildTitleCardImage_(lines) {
+  const SIZE = 720;
+  const YELLOW = '#f2c744';
+  const brand = naver_titleCardBrandTexts_();
+  const pres = SlidesApp.create('_titlecard_tmp_' + Utilities.getUuid());
+  const file = DriveApp.getFileById(pres.getId());
+  try {
+    pres.setPageSize(SIZE, SIZE);
+    const slide = pres.getSlides()[0];
+    slide.getShapes().forEach(function (s) { s.remove(); });
+    slide.getBackground().setSolidFill('#1c1c1e');
+
+    // 상단 가로선 + 우측 세로선 — 우상단을 감싸는 꺾쇠 장식
+    const hLine = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, SIZE * 0.09, SIZE * 0.055, SIZE * 0.82, 3);
+    hLine.getBorder().setTransparent();
+    hLine.getFill().setSolidFill(YELLOW);
+    const vLine = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, SIZE * 0.90, SIZE * 0.055, 3, SIZE * 0.84);
+    vLine.getBorder().setTransparent();
+    vLine.getFill().setSolidFill(YELLOW);
+
+    // 좌측 세로 문구(경력 소개) — 가로 텍스트박스를 시계방향 90도 회전해 위→아래로 읽히게 한다.
+    const sideBox = slide.insertTextBox(brand.side, -SIZE * 0.28, SIZE * 0.42, SIZE * 0.56, SIZE * 0.09);
+    sideBox.setRotation(90);
+    const sideStyle = sideBox.getText().getTextStyle();
+    sideStyle.setFontSize(9).setForegroundColor('#8a8a8a').setFontFamily('Noto Sans KR');
+
+    // 가운데 큰 제목(2~3줄)
+    const titleBox = slide.insertTextBox(lines.join('\n'), SIZE * 0.15, SIZE * 0.28, SIZE * 0.70, SIZE * 0.42);
+    const tRange = titleBox.getText();
+    tRange.getTextStyle().setFontSize(34).setBold(true).setForegroundColor('#ffffff').setFontFamily('Noto Sans KR');
+    tRange.getParagraphStyle().setParagraphAlignment(SlidesApp.ParagraphAlignment.CENTER).setLineSpacing(130);
+    titleBox.setContentAlignment(SlidesApp.ContentAlignment.MIDDLE);
+
+    // 하단 문구
+    const footerBox = slide.insertTextBox(brand.footer, SIZE * 0.09, SIZE * 0.905, SIZE * 0.82, SIZE * 0.06);
+    footerBox.getText().getTextStyle().setFontSize(11).setForegroundColor('#cfcfcf').setFontFamily('Noto Sans KR');
+
+    pres.saveAndClose();
+
+    const presId = pres.getId();
+    const pageId = SlidesApp.openById(presId).getSlides()[0].getObjectId();
+    const token = ScriptApp.getOAuthToken();
+    const thumbRes = UrlFetchApp.fetch(
+      'https://slides.googleapis.com/v1/presentations/' + presId + '/pages/' + pageId +
+      '/thumbnail?thumbnailProperties.mimeType=PNG&thumbnailProperties.thumbnailSize=LARGE',
+      { headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true }
+    );
+    const thumbJson = JSON.parse(thumbRes.getContentText());
+    if (!thumbJson.contentUrl) throw new Error('썸네일 생성 실패: ' + thumbRes.getContentText().slice(0, 300));
+    const imgRes = UrlFetchApp.fetch(thumbJson.contentUrl, { muteHttpExceptions: true });
+    return imgRes.getBlob().setName('title-card.png');
+  } finally {
+    try { file.setTrashed(true); } catch (err) { /* 임시파일 정리 실패는 무시(생성 결과에 영향 없음) */ }
+  }
+}
+
+function handleNaverGenerateTitleCard(body) {
+  const title = String((body && body.title) || '').trim();
+  if (!title) return { error: '카드에 쓸 제목이 없습니다.' };
+  const apiKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
+  if (!apiKey) return { error: 'ANTHROPIC_API_KEY가 설정되어 있지 않습니다.' };
+  try {
+    const lines = naver_generateTitleCardLines_(title, body && body.body, apiKey);
+    const blob = naver_buildTitleCardImage_(lines);
+    return { lines: lines, imageBase64: Utilities.base64Encode(blob.getBytes()) };
+  } catch (err) {
+    return { error: '타이틀카드 생성 중 오류: ' + err.message };
+  }
+}
+
+// AI가 만들어준 글감(마크다운, 첫 줄이 "# 제목")을 제목과 본문으로 나눈다.
+function naver_splitTitleAndBody_(raw) {
+  const text = String(raw || '').trim();
+  const lines = text.split('\n');
+  let title = '';
+  let bodyLines = lines;
+  if (lines.length && /^#\s+/.test(lines[0])) {
+    title = lines[0].replace(/^#\s+/, '').trim();
+    bodyLines = lines.slice(1);
+  }
+  const body = bodyLines.join('\n').replace(/^\n+/, '').trim();
+  return { title: title || '제목 없음', body: body || text };
+}
+
+// 마크다운을 네이버 블로그 본문에 붙였을 때 그나마 자연스럽도록 아주 단순하게 HTML로 바꾼다
+// (마크다운 렌더러를 새로 붙이기엔 과함 — # 제목/굵게/줄바꿈 정도만 처리).
+function naver_markdownToSimpleHtml_(md) {
+  let html = String(md || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/^###\s+(.*)$/gm, '<h4>$1</h4>')
+    .replace(/^##\s+(.*)$/gm, '<h3>$1</h3>')
+    .replace(/^#\s+(.*)$/gm, '<h2>$1</h2>')
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .split(/\n{2,}/).map(function (para) {
+      return '<p>' + para.replace(/\n/g, '<br>') + '</p>';
+    }).join('');
+  return html;
+}
+
+// 네이버 오픈API(구형 XML API 계열)는 계정/앱 설정에 따라 JSON 대신 XML로 응답하는 경우가
+// 있어, 실제로 뭐가 오는지 확신할 수 없다 — 두 형식 모두 시도해서 값을 뽑아낸다.
+function naver_parseWritePostResponse_(text) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return { ok: false, error: '빈 응답' };
+  if (trimmed[0] === '{') {
+    let json;
+    try { json = JSON.parse(trimmed); } catch (err) { return { ok: false, error: '응답 파싱 실패: ' + err.message, raw: trimmed }; }
+    const result = json.message && json.message.result;
+    if (result && (result.postUrl || (result.blogId && result.logNo))) {
+      return { ok: true, postUrl: result.postUrl || ('https://blog.naver.com/' + result.blogId + '/' + result.logNo) };
+    }
+    return { ok: false, error: (json.message && (json.message.error || json.message.resultmessage)) || JSON.stringify(json), raw: trimmed };
+  }
+  // XML 응답
+  const blogIdMatch = trimmed.match(/<blogId>([^<]*)<\/blogId>/);
+  const logNoMatch = trimmed.match(/<logNo>([^<]*)<\/logNo>/);
+  if (blogIdMatch && logNoMatch && blogIdMatch[1] && logNoMatch[1]) {
+    return { ok: true, postUrl: 'https://blog.naver.com/' + blogIdMatch[1] + '/' + logNoMatch[1] };
+  }
+  const msgMatch = trimmed.match(/<resultmessage>([^<]*)<\/resultmessage>/) || trimmed.match(/<message>([^<]*)<\/message>/);
+  return { ok: false, error: (msgMatch && msgMatch[1]) || '네이버 블로그 등록에 실패했습니다.', raw: trimmed };
+}
+
+function handlePostToNaverBlog(body) {
+  const accessToken = naver_getValidAccessToken_();
+  if (!accessToken) return { error: '네이버 블로그가 아직 연동되어 있지 않습니다. 먼저 "네이버 연동하기"를 눌러주세요.' };
+  const raw = String((body && body.content) || '').trim();
+  if (!raw) return { error: '올릴 글 내용이 없습니다.' };
+  const parts = naver_splitTitleAndBody_(raw);
+  const html = naver_markdownToSimpleHtml_(parts.body);
+  const payload = {
+    title: parts.title,
+    contents: html,
+    'options.openType': '0' // 공개
+  };
+  // 화면에서 미리 만들어 보여준 타이틀카드 이미지가 있으면 대표이미지로 함께 올린다.
+  const imageBase64 = body && body.imageBase64;
+  if (imageBase64) {
+    try {
+      payload.image = Utilities.newBlob(Utilities.base64Decode(imageBase64), 'image/png', 'title-card.png');
+    } catch (err) { /* 이미지 첨부만 실패하면 글이라도 올라가도록, 이미지 없이 계속 진행 */ }
+  }
+  try {
+    const res = UrlFetchApp.fetch('https://openapi.naver.com/blog/writePost', {
+      method: 'post',
+      headers: { 'Authorization': 'Bearer ' + accessToken },
+      payload: payload,
+      muteHttpExceptions: true
+    });
+    const parsed = naver_parseWritePostResponse_(res.getContentText());
+    if (parsed.ok) return { success: true, postUrl: parsed.postUrl };
+    return { error: parsed.error, raw: parsed.raw };
+  } catch (err) {
+    return { error: '네이버 블로그 등록 중 오류: ' + err.message };
+  }
+}
+
+// ===== 구글 블로그(Blogger) 자동 올리기 (2026.09 신규) =====
+// 네이버와 같은 3단계 OAuth2 흐름(인증→콜백→토큰교환)이지만, 이번엔 순수 구글 계정
+// 로그인이라 별도 "네이버 개발자센터" 같은 앱 등록 화면은 없고, 구글 클라우드 콘솔에서
+// OAuth 클라이언트(웹앱)를 한 번 만들어 클라이언트ID/시크릿만 발급받으면 된다.
+// [주의] 이 앱스스크립트 프로젝트 자체의 실행권한(ScriptApp.getOAuthToken())을 재사용하는
+// 방법도 검토했으나, appsscript.json에 oauthScopes를 명시하는 순간 지금까지 자동으로
+// 감지되던 다른 모든 권한(Gmail/Calendar/Drive/Sheets/Docs/Slides 등, work/dev 등 다른
+// 배포와 공유하는 같은 프로젝트)을 전부 손으로 다시 나열해야 해서, 하나라도 빠지면 야간
+// 자동작업을 포함한 전체 서비스가 한꺼번에 깨질 위험이 있다 — 그래서 네이버와 완전히
+// 같은, 독립적인 OAuth 클라이언트 방식으로 안전하게 간다.
+const GOOGLE_BLOG_REDIRECT_URI_ = 'https://script.google.com/macros/s/AKfycbyFbvXiV6rSzCvhtc_T2WrzNF5ZxhOFWtSSsgzSavzPbjv4LBGhjXhu_Q2_8m-PDj8s/exec?app=manage&google_blog_callback=1';
+
+function googleBlog_getAuthUrl_() {
+  const clientId = PropertiesService.getScriptProperties().getProperty('GOOGLE_BLOG_CLIENT_ID');
+  if (!clientId) return null;
+  const state = Utilities.getUuid();
+  CacheService.getScriptCache().put('GOOGLE_BLOG_OAUTH_STATE', state, 600);
+  return 'https://accounts.google.com/o/oauth2/v2/auth' +
+    '?response_type=code' +
+    '&client_id=' + encodeURIComponent(clientId) +
+    '&redirect_uri=' + encodeURIComponent(GOOGLE_BLOG_REDIRECT_URI_) +
+    '&scope=' + encodeURIComponent('https://www.googleapis.com/auth/blogger') +
+    '&access_type=offline&prompt=consent' + // 리프레시 토큰을 확실히 받기 위해 매번 동의 화면을 강제
+    '&state=' + encodeURIComponent(state);
+}
+
+function googleBlog_handleCallback_(e) {
+  const params = e.parameter || {};
+  if (params.error) {
+    return naver_resultPage_('❌ 구글 블로그 연동 실패', params.error_description || params.error);
+  }
+  const expectedState = CacheService.getScriptCache().get('GOOGLE_BLOG_OAUTH_STATE');
+  if (!expectedState || expectedState !== params.state) {
+    return naver_resultPage_('❌ 구글 블로그 연동 실패', '인증 상태 확인에 실패했습니다(state 불일치). 다시 시도해 주세요.');
+  }
+  const props = PropertiesService.getScriptProperties();
+  const clientId = props.getProperty('GOOGLE_BLOG_CLIENT_ID');
+  const clientSecret = props.getProperty('GOOGLE_BLOG_CLIENT_SECRET');
+  let json;
+  try {
+    const res = UrlFetchApp.fetch('https://oauth2.googleapis.com/token', {
+      method: 'post',
+      payload: {
+        code: params.code || '',
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: GOOGLE_BLOG_REDIRECT_URI_,
+        grant_type: 'authorization_code'
+      },
+      muteHttpExceptions: true
+    });
+    json = JSON.parse(res.getContentText());
+  } catch (err) {
+    return naver_resultPage_('❌ 구글 블로그 연동 실패', '토큰 교환 중 오류: ' + err.message);
+  }
+  if (!json.access_token) {
+    return naver_resultPage_('❌ 구글 블로그 연동 실패', json.error_description || json.error || '알 수 없는 오류');
+  }
+  props.setProperty('GOOGLE_BLOG_ACCESS_TOKEN', json.access_token);
+  if (json.refresh_token) props.setProperty('GOOGLE_BLOG_REFRESH_TOKEN', json.refresh_token);
+  props.setProperty('GOOGLE_BLOG_TOKEN_EXPIRES_AT', String(Date.now() + (Number(json.expires_in || 3600) * 1000)));
+
+  // 연동 직후 이 계정의 블로그 목록을 조회해, 첫 번째 블로그를 자동으로 연결해둔다
+  // (블로그를 여러 개 운영하는 경우는 나중에 필요해지면 선택 기능을 추가하면 된다).
+  try {
+    const blogsRes = UrlFetchApp.fetch('https://www.googleapis.com/blogger/v3/users/self/blogs', {
+      headers: { Authorization: 'Bearer ' + json.access_token }, muteHttpExceptions: true
+    });
+    const blogsJson = JSON.parse(blogsRes.getContentText());
+    const blog = blogsJson.items && blogsJson.items[0];
+    if (blog) {
+      props.setProperty('GOOGLE_BLOG_ID', blog.id);
+      return naver_resultPage_('✅ 구글 블로그 연동 완료', '"' + blog.name + '"(' + blog.url + ') 블로그로 자동 연결되었습니다.');
+    }
+    return naver_resultPage_('⚠ 구글 로그인은 완료됐지만', '이 계정에 연결된 블로그가 없습니다. blogger.com에서 블로그를 먼저 만든 뒤 다시 연동해 주세요.');
+  } catch (err) {
+    return naver_resultPage_('⚠ 구글 로그인은 완료됐지만', '블로그 목록 조회 중 오류: ' + err.message);
+  }
+}
+
+function googleBlog_getValidAccessToken_() {
+  const props = PropertiesService.getScriptProperties();
+  const token = props.getProperty('GOOGLE_BLOG_ACCESS_TOKEN');
+  if (!token) return null;
+  const expiresAt = Number(props.getProperty('GOOGLE_BLOG_TOKEN_EXPIRES_AT') || 0);
+  if (Date.now() < expiresAt - 5 * 60 * 1000) return token;
+  const refreshToken = props.getProperty('GOOGLE_BLOG_REFRESH_TOKEN');
+  const clientId = props.getProperty('GOOGLE_BLOG_CLIENT_ID');
+  const clientSecret = props.getProperty('GOOGLE_BLOG_CLIENT_SECRET');
+  if (!refreshToken || !clientId || !clientSecret) return token;
+  try {
+    const res = UrlFetchApp.fetch('https://oauth2.googleapis.com/token', {
+      method: 'post',
+      payload: { refresh_token: refreshToken, client_id: clientId, client_secret: clientSecret, grant_type: 'refresh_token' },
+      muteHttpExceptions: true
+    });
+    const json = JSON.parse(res.getContentText());
+    if (json.access_token) {
+      props.setProperty('GOOGLE_BLOG_ACCESS_TOKEN', json.access_token);
+      props.setProperty('GOOGLE_BLOG_TOKEN_EXPIRES_AT', String(Date.now() + (Number(json.expires_in || 3600) * 1000)));
+      return json.access_token;
+    }
+  } catch (err) { /* 갱신 실패 시 기존 토큰으로 시도 */ }
+  return token;
+}
+
+function googleBlog_isConnected_() {
+  const props = PropertiesService.getScriptProperties();
+  return !!(props.getProperty('GOOGLE_BLOG_ACCESS_TOKEN') && props.getProperty('GOOGLE_BLOG_ID'));
+}
+
+function handleGoogleBlogGetAuthUrl(body) {
+  const url = googleBlog_getAuthUrl_();
+  if (!url) return { error: 'GOOGLE_BLOG_CLIENT_ID가 설정되어 있지 않습니다.' };
+  return { url: url };
+}
+
+function handleGoogleBlogCheckConnected(body) {
+  return { connected: googleBlog_isConnected_() };
+}
+
+// 타이틀카드 이미지를 Blogger 글 본문 맨 위에 넣으려면 어딘가에 업로드된 URL이 필요하다
+// (네이버처럼 API가 파일첨부를 직접 받지 않고, Blogger는 본문 HTML 안에 <img src> 형태로만
+// 넣을 수 있음) — 업무관리자 폴더 밑에 전용 폴더를 만들어 올리고 링크공유를 켠다.
+function googleBlog_uploadTitleCardImage_(imageBase64) {
+  const bizFolder = getBusinessManagerFolder_();
+  if (!bizFolder) return null;
+  const folder = getOrCreateSubfolder_(bizFolder, '_블로그이미지');
+  const blob = Utilities.newBlob(Utilities.base64Decode(imageBase64), 'image/png', 'title-card-' + Date.now() + '.png');
+  const file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return 'https://drive.google.com/uc?export=view&id=' + file.getId();
+}
+
+function handlePostToGoogleBlog(body) {
+  const accessToken = googleBlog_getValidAccessToken_();
+  const blogId = PropertiesService.getScriptProperties().getProperty('GOOGLE_BLOG_ID');
+  if (!accessToken || !blogId) return { error: '구글 블로그가 아직 연동되어 있지 않습니다. 먼저 "구글 블로그 연동하기"를 눌러주세요.' };
+  const raw = String((body && body.content) || '').trim();
+  if (!raw) return { error: '올릴 글 내용이 없습니다.' };
+  const parts = naver_splitTitleAndBody_(raw); // 형식이 같아 그대로 재사용
+  let html = naver_markdownToSimpleHtml_(parts.body);
+  const imageBase64 = body && body.imageBase64;
+  if (imageBase64) {
+    try {
+      const imgUrl = googleBlog_uploadTitleCardImage_(imageBase64);
+      if (imgUrl) html = '<img src="' + imgUrl + '" style="max-width:100%; margin-bottom:16px;"><br>' + html;
+    } catch (err) { /* 이미지 업로드만 실패하면 글이라도 올라가도록 계속 진행 */ }
+  }
+  try {
+    const res = UrlFetchApp.fetch('https://www.googleapis.com/blogger/v3/blogs/' + blogId + '/posts', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + accessToken },
+      payload: JSON.stringify({ title: parts.title, content: html }),
+      muteHttpExceptions: true
+    });
+    const json = JSON.parse(res.getContentText());
+    if (json.url) return { success: true, postUrl: json.url };
+    return { error: (json.error && json.error.message) || '구글 블로그 등록에 실패했습니다.', raw: res.getContentText().slice(0, 500) };
+  } catch (err) {
+    return { error: '구글 블로그 등록 중 오류: ' + err.message };
+  }
+}
+
+// ===== 구글 비즈니스 프로필(소식/게시물) 자동 올리기 (2026.09 신규, API 접근 승인 대기중) =====
+// 2026-09-12에 Google Business Profile API 접근을 신청함(케이스 2-0454000041520, 검토
+// 영업일 7~10일). 승인 전에는 OAuth 연동 자체는 되지만 실제 게시물 등록 호출은
+// "PERMISSION_DENIED"류 오류가 날 수 있다 — 미리 만들어두고 승인되면 바로 쓴다.
+// 구글 블로그와 같은 OAuth 클라이언트(GOOGLE_BLOG_CLIENT_ID/SECRET)를 재사용하고,
+// 리다이렉트 URI만 하나 더(&google_biz_callback=1) 등록해뒀다.
+const GOOGLE_BIZ_REDIRECT_URI_ = 'https://script.google.com/macros/s/AKfycbyFbvXiV6rSzCvhtc_T2WrzNF5ZxhOFWtSSsgzSavzPbjv4LBGhjXhu_Q2_8m-PDj8s/exec?app=manage&google_biz_callback=1';
+
+function googleBiz_getAuthUrl_() {
+  const clientId = PropertiesService.getScriptProperties().getProperty('GOOGLE_BLOG_CLIENT_ID');
+  if (!clientId) return null;
+  const state = Utilities.getUuid();
+  CacheService.getScriptCache().put('GOOGLE_BIZ_OAUTH_STATE', state, 600);
+  return 'https://accounts.google.com/o/oauth2/v2/auth' +
+    '?response_type=code' +
+    '&client_id=' + encodeURIComponent(clientId) +
+    '&redirect_uri=' + encodeURIComponent(GOOGLE_BIZ_REDIRECT_URI_) +
+    '&scope=' + encodeURIComponent('https://www.googleapis.com/auth/business.manage') +
+    '&access_type=offline&prompt=consent' +
+    '&state=' + encodeURIComponent(state);
+}
+
+function googleBiz_handleCallback_(e) {
+  const params = e.parameter || {};
+  if (params.error) {
+    return naver_resultPage_('❌ 구글 비즈니스 프로필 연동 실패', params.error_description || params.error);
+  }
+  const expectedState = CacheService.getScriptCache().get('GOOGLE_BIZ_OAUTH_STATE');
+  if (!expectedState || expectedState !== params.state) {
+    return naver_resultPage_('❌ 구글 비즈니스 프로필 연동 실패', '인증 상태 확인에 실패했습니다(state 불일치). 다시 시도해 주세요.');
+  }
+  const props = PropertiesService.getScriptProperties();
+  const clientId = props.getProperty('GOOGLE_BLOG_CLIENT_ID');
+  const clientSecret = props.getProperty('GOOGLE_BLOG_CLIENT_SECRET');
+  let json;
+  try {
+    const res = UrlFetchApp.fetch('https://oauth2.googleapis.com/token', {
+      method: 'post',
+      payload: {
+        code: params.code || '',
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: GOOGLE_BIZ_REDIRECT_URI_,
+        grant_type: 'authorization_code'
+      },
+      muteHttpExceptions: true
+    });
+    json = JSON.parse(res.getContentText());
+  } catch (err) {
+    return naver_resultPage_('❌ 구글 비즈니스 프로필 연동 실패', '토큰 교환 중 오류: ' + err.message);
+  }
+  if (!json.access_token) {
+    return naver_resultPage_('❌ 구글 비즈니스 프로필 연동 실패', json.error_description || json.error || '알 수 없는 오류');
+  }
+  props.setProperty('GOOGLE_BIZ_ACCESS_TOKEN', json.access_token);
+  if (json.refresh_token) props.setProperty('GOOGLE_BIZ_REFRESH_TOKEN', json.refresh_token);
+  props.setProperty('GOOGLE_BIZ_TOKEN_EXPIRES_AT', String(Date.now() + (Number(json.expires_in || 3600) * 1000)));
+
+  // 연동 직후 계정/위치를 조회해 자동 연결 — API 접근이 아직 승인 전이면 여기서 권한 오류가
+  // 날 수 있는데, 그 경우에도 토큰 자체는 이미 저장했으니 승인된 뒤 재연동 없이 자동으로
+  // 붙게 하려면 이 조회만 다시 시도하면 된다(별도 재시도 버튼은 아직 없음 — 필요해지면 추가).
+  try {
+    const acctRes = UrlFetchApp.fetch('https://mybusinessaccountmanagement.googleapis.com/v1/accounts', {
+      headers: { Authorization: 'Bearer ' + json.access_token }, muteHttpExceptions: true
+    });
+    const acctJson = JSON.parse(acctRes.getContentText());
+    const account = acctJson.accounts && acctJson.accounts[0];
+    if (!account) return naver_resultPage_('⚠ 구글 로그인은 완료됐지만', '연결된 비즈니스 계정을 찾지 못했습니다: ' + acctRes.getContentText().slice(0, 300));
+    props.setProperty('GOOGLE_BIZ_ACCOUNT_NAME', account.name);
+    const locRes = UrlFetchApp.fetch(
+      'https://mybusinessbusinessinformation.googleapis.com/v1/' + account.name + '/locations?readMask=name,title&pageSize=10',
+      { headers: { Authorization: 'Bearer ' + json.access_token }, muteHttpExceptions: true }
+    );
+    const locJson = JSON.parse(locRes.getContentText());
+    const location = locJson.locations && locJson.locations[0];
+    if (!location) return naver_resultPage_('⚠ 구글 로그인은 완료됐지만', '연결된 매장(위치)을 찾지 못했습니다: ' + locRes.getContentText().slice(0, 300));
+    props.setProperty('GOOGLE_BIZ_LOCATION_NAME', location.name);
+    return naver_resultPage_('✅ 구글 비즈니스 프로필 연동 완료', '"' + (location.title || location.name) + '"로 자동 연결되었습니다. (API 접근 승인 전이면 실제 게시물 등록은 승인 후부터 가능합니다.)');
+  } catch (err) {
+    return naver_resultPage_('⚠ 구글 로그인은 완료됐지만', '계정/매장 조회 중 오류(API 접근 승인 대기중이면 정상일 수 있음): ' + err.message);
+  }
+}
+
+function googleBiz_getValidAccessToken_() {
+  const props = PropertiesService.getScriptProperties();
+  const token = props.getProperty('GOOGLE_BIZ_ACCESS_TOKEN');
+  if (!token) return null;
+  const expiresAt = Number(props.getProperty('GOOGLE_BIZ_TOKEN_EXPIRES_AT') || 0);
+  if (Date.now() < expiresAt - 5 * 60 * 1000) return token;
+  const refreshToken = props.getProperty('GOOGLE_BIZ_REFRESH_TOKEN');
+  const clientId = props.getProperty('GOOGLE_BLOG_CLIENT_ID');
+  const clientSecret = props.getProperty('GOOGLE_BLOG_CLIENT_SECRET');
+  if (!refreshToken || !clientId || !clientSecret) return token;
+  try {
+    const res = UrlFetchApp.fetch('https://oauth2.googleapis.com/token', {
+      method: 'post',
+      payload: { refresh_token: refreshToken, client_id: clientId, client_secret: clientSecret, grant_type: 'refresh_token' },
+      muteHttpExceptions: true
+    });
+    const json = JSON.parse(res.getContentText());
+    if (json.access_token) {
+      props.setProperty('GOOGLE_BIZ_ACCESS_TOKEN', json.access_token);
+      props.setProperty('GOOGLE_BIZ_TOKEN_EXPIRES_AT', String(Date.now() + (Number(json.expires_in || 3600) * 1000)));
+      return json.access_token;
+    }
+  } catch (err) { /* 갱신 실패 시 기존 토큰으로 시도 */ }
+  return token;
+}
+
+function googleBiz_isConnected_() {
+  const props = PropertiesService.getScriptProperties();
+  return !!(props.getProperty('GOOGLE_BIZ_ACCESS_TOKEN') && props.getProperty('GOOGLE_BIZ_LOCATION_NAME'));
+}
+
+function handleGoogleBizGetAuthUrl(body) {
+  const url = googleBiz_getAuthUrl_();
+  if (!url) return { error: 'GOOGLE_BLOG_CLIENT_ID가 설정되어 있지 않습니다.' };
+  return { url: url };
+}
+
+function handleGoogleBizCheckConnected(body) {
+  return { connected: googleBiz_isConnected_() };
+}
+
+// 마크다운 기호(#, **)만 제거한 순수 텍스트로 — 구글 비즈니스 게시물은 HTML/마크다운을
+// 렌더링하지 않고 그대로 보여준다.
+function googleBiz_stripMarkdown_(md) {
+  return String(md || '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .trim();
+}
+
+function handlePostToGoogleBiz(body) {
+  const accessToken = googleBiz_getValidAccessToken_();
+  const locationName = PropertiesService.getScriptProperties().getProperty('GOOGLE_BIZ_LOCATION_NAME');
+  if (!accessToken || !locationName) return { error: '구글 비즈니스 프로필이 아직 연동되어 있지 않습니다. 먼저 "구글 비즈니스 연동하기"를 눌러주세요.' };
+  const raw = String((body && body.content) || '').trim();
+  if (!raw) return { error: '올릴 글 내용이 없습니다.' };
+  const summary = googleBiz_stripMarkdown_(raw).slice(0, 1500); // 구글 소식 글자수 제한 여유있게 컷
+  const payload = { languageCode: 'ko', summary: summary, topicType: 'STANDARD' };
+  const imageBase64 = body && body.imageBase64;
+  if (imageBase64) {
+    try {
+      const imgUrl = googleBlog_uploadTitleCardImage_(imageBase64); // 구글 블로그용과 동일한 업로드 헬퍼 재사용
+      if (imgUrl) payload.media = [{ mediaFormat: 'PHOTO', sourceUrl: imgUrl }];
+    } catch (err) { /* 이미지 업로드만 실패하면 글이라도 올라가도록 계속 진행 */ }
+  }
+  try {
+    const res = UrlFetchApp.fetch('https://mybusiness.googleapis.com/v4/' + locationName + '/localPosts', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + accessToken },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+    const json = JSON.parse(res.getContentText());
+    if (json.name) return { success: true, postUrl: json.searchUrl || '' };
+    return { error: (json.error && json.error.message) || '구글 비즈니스 프로필 게시 실패', raw: res.getContentText().slice(0, 500) };
+  } catch (err) {
+    return { error: '구글 비즈니스 프로필 게시 중 오류: ' + err.message };
+  }
 }
 
 function client_updateConsultLog(params) {
@@ -17155,10 +18832,18 @@ function client_updateConsultLog(params) {
     const found = client_findRow_(sheets.log, col, params.id);
     if (!found) return { success: false, message: '존재하지 않는 자문내역입니다.' };
     const row = found.row;
-    ['날짜', '담당자', '유형', '내용', '관계', '수취증빙', '리뷰'].forEach(function (key) {
+    ['날짜', '담당자', '유형', '내용', '관계', '수취증빙', '리뷰', '사건ID'].forEach(function (key) {
       if (params[key] !== undefined) row[col[key]] = String(params[key]).trim();
     });
     if (params.금액 !== undefined) row[col.금액] = params.금액 !== '' ? Number(params.금액) || 0 : '';
+    // [2026.09.15 버그수정] 고객명을 바꿔도(예: 수금관리의 홈택스 미연결 건을 수동으로 고객
+    // 연결) 아무 반응이 없었다 — 이 필드가 아예 목록에 없어서 조용히 무시되고 있었다.
+    // client_addConsultLog와 같은 방식으로 이름으로 찾거나 새로 등록한다.
+    if (params.고객명 !== undefined) {
+      const newName = String(params.고객명).trim();
+      row[col.고객명] = newName;
+      row[col.고객ID] = newName ? client_findOrCreateByName_(newName).id : '';
+    }
     sheets.log.getRange(found.rowIndex, 1, 1, row.length).setValues([row]);
     SpreadsheetApp.flush();
     return { success: true, log: client_readLog_(col, row) };
@@ -17259,6 +18944,12 @@ const WORK_HEADERS = ['id', '고객ID', '고객명', '사건명', '세목', '업
 // 만들면(양도·증여는 실제로 있을 수 있음) work_generateUniqueCaseName_이 뒤에 " 2", " 3"…을
 // 붙여 Drive 폴더 이름이 겹쳐서 서로 다른 사건 자료가 한 폴더에 섞이는 걸 막는다.
 const WORK_SEMOK_LABELS_ = { transfer: '양도', gift: '증여', inheritance: '상속', objection: '불복' };
+// [2026.09.16 신규] casehandling.html의 TAXPAYER_NAME_FIELD_BY_SEMOK_(클라이언트 쪽 상수)와
+// 반드시 같은 값을 유지해야 하는 서버쪽 짝 — work_createCase가 새 사건을 만들 때도 납세자를
+// 사건개요의 납세의무자 이름 필드에 미리 채워 넣기 위해 서버(Code.js)에서도 이 매핑이
+// 필요하다(클라이언트 JS 상수는 서버 코드에서 참조할 수 없음). 한쪽만 고치고 잊어버리기
+// 쉬우니 casehandling.html의 원본을 고칠 때 여기도 같이 고칠 것.
+const WORK_TAXPAYER_FIELD_BY_SEMOK_ = { transfer: 'trTransferorName', gift: 'giftDoneeName', inheritance: 'ihDeceasedName' };
 // [2026.09] 사건개요 — "사건개요서" 구조화 양식(1단계: 양도소득세만). 세목별로 정해진
 // 항목({양도물건, 양도가액, 취득일...} 등, WORK_CASE_OVERVIEW_FIELDS_ 참고)에 사실관계를
 // 채워넣는 JSON 객체(배열이 아니라 객체 — {필드key: 값}). 처리방향(어떻게 처리할지 판단)과는
@@ -17552,6 +19243,492 @@ function work_colMap_(headers) {
   return map;
 }
 
+// [2026.09 신규] 사건폴더 흡수 조사 — 이 시스템으로 사건등록하지 않고 예전부터 있었거나
+// 수동으로 만든 "고객사건" 폴더는 WORK_CASES 시트에 폴더ID가 없어서, 현금영수증 자동인식
+// (runCashReceiptScan_→findCaseForFile_)이나 보고서 모음(handleListAllReports)이 전혀
+// 찾지 못한다. 읽기 전용 — 아무것도 쓰지 않고 "고객사건" 바로 아래 폴더 중 시트에 없는
+// 것만 뽑아 보여준다(실제 흡수/등록은 이 결과를 보고 방식을 정한 뒤 별도로 진행).
+function auditUnregisteredCaseFolders_() {
+  const root = getDefaultFolder();
+  const sheet = work_getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const col = work_colMap_(data[0]);
+  const registered = {};
+  for (let i = 1; i < data.length; i++) {
+    const fid = String(data[i][col.폴더ID] || '').trim();
+    if (fid) registered[fid] = true;
+  }
+  const iter = root.getFolders();
+  let total = 0;
+  const unregistered = [];
+  while (iter.hasNext()) {
+    const f = iter.next();
+    total++;
+    if (registered[f.getId()]) continue;
+    let hasReportStructure = false;
+    try {
+      hasReportStructure = f.getFoldersByName(WORK_SUBFOLDER_INTERNAL_REPORT).hasNext() || f.getFoldersByName(MY_SUBFOLDER_REPORT).hasNext();
+    } catch (err) { /* 하위폴더 조회 실패해도 조사 자체는 계속 */ }
+    unregistered.push({
+      id: f.getId(),
+      name: f.getName(),
+      createdDate: Utilities.formatDate(f.getDateCreated(), 'Asia/Seoul', 'yyyy-MM-dd'),
+      hasReportStructure: hasReportStructure
+    });
+  }
+  let reportText = '# 사건폴더 흡수 조사 결과 (' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') + ')\n\n';
+  reportText += '- 고객사건 폴더 바로 아래 전체: ' + total + '개\n';
+  reportText += '- 시트(WORK_CASES)에 등록된 폴더: ' + (total - unregistered.length) + '개\n';
+  reportText += '- **미등록 폴더: ' + unregistered.length + '개**\n\n';
+  reportText += '| 폴더명 | 생성일 | 보고서구조있음 | 폴더ID |\n|---|---|---|---|\n';
+  unregistered.forEach(function (u) {
+    reportText += '| ' + u.name + ' | ' + u.createdDate + ' | ' + (u.hasReportStructure ? 'O' : '-') + ' | ' + u.id + ' |\n';
+  });
+  let fileUrl = '';
+  try {
+    const chiefFolder = getChiefManagerFolder_();
+    if (chiefFolder) {
+      const auditFolder = getOrCreateSubfolder_(chiefFolder, '_사건폴더감사');
+      const fileName = '사건폴더감사_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd_HHmm') + '.md';
+      const file = writeFileOverwrite_(auditFolder, fileName, reportText, MimeType.PLAIN_TEXT);
+      fileUrl = file.getUrl();
+    }
+  } catch (err) { /* 파일 저장 실패해도 아래 Logger.log로는 확인 가능 */ }
+  const summary = {
+    총폴더수: total,
+    등록된폴더수: total - unregistered.length,
+    미등록폴더수: unregistered.length,
+    결과파일: fileUrl,
+    미등록목록: unregistered
+  };
+  Logger.log(JSON.stringify(summary, null, 2));
+  return summary;
+}
+
+// [2026.09 신규] 위 조사에서 찾은 미등록 사건폴더를 실제로 WORK_CASES 시트에 등록해
+// "흡수"한다 — 세무사님 확인: 목록 중 "나성은..."만 실제 데이터고 나머지 테스트로 보이는
+// 몇 개는 흡수 뒤에 직접 삭제/수정하겠다고 하여, 필터링 없이 미등록 폴더 전부를 등록한다.
+// 폴더명에서 고객명(첫 단어)·세목(양도/증여/상속/불복 키워드)을 최대한 추정하되, 못 맞추면
+// 빈 값으로 두고 나중에 workmanage.html에서 직접 고치면 된다(자동 생성 폴더가 아니라 이미
+// 있는 실제 폴더를 연결만 하는 것이므로 work_getOrCreateCaseFolder_처럼 새 폴더를 만들지
+// 않고 기존 폴더ID를 그대로 쓴다).
+function absorbLegacyCaseFolders_() {
+  return withLock_(20000, function () {
+    const root = getDefaultFolder();
+    const sheet = work_getSheet_();
+    const data = sheet.getDataRange().getValues();
+    const col = work_colMap_(data[0]);
+    const registered = {};
+    for (let i = 1; i < data.length; i++) {
+      const fid = String(data[i][col.폴더ID] || '').trim();
+      if (fid) registered[fid] = true;
+    }
+    const SEMOK_KEYWORDS_ = [
+      { kw: '양도', semok: 'transfer' },
+      { kw: '증여', semok: 'gift' },
+      { kw: '상속', semok: 'inheritance' },
+      { kw: '불복', semok: 'objection' }
+    ];
+    function guessSemok_(name) {
+      for (let i = 0; i < SEMOK_KEYWORDS_.length; i++) {
+        if (name.indexOf(SEMOK_KEYWORDS_[i].kw) !== -1) return SEMOK_KEYWORDS_[i].semok;
+      }
+      return '';
+    }
+    function guessCustomerName_(name) {
+      const m = String(name || '').trim().match(/^([^\s]+)/);
+      return m ? m[1] : name;
+    }
+    const iter = root.getFolders();
+    const now = new Date();
+    const rowsToAppend = [];
+    const resultList = [];
+    while (iter.hasNext()) {
+      const f = iter.next();
+      const fid = f.getId();
+      if (registered[fid]) continue;
+      const folderName = f.getName();
+      if (folderName === '0_NX_0') continue; // 사건이 아니라 고객별로 안 나뉜 현금영수증 임시보관함 — 따로 처리
+      const 고객명 = guessCustomerName_(folderName);
+      const 세목 = guessSemok_(folderName);
+      const clientMatch = client_findOrCreateByName_(고객명, '');
+      const row = new Array(WORK_HEADERS.length).fill('');
+      row[col.id] = Utilities.getUuid();
+      row[col.고객ID] = clientMatch.id;
+      row[col.고객명] = 고객명;
+      row[col.사건명] = folderName;
+      row[col.세목] = 세목;
+      row[col.납세자] = 고객명;
+      row[col.상태] = '완료';
+      row[col.하위업무] = '[]';
+      row[col.작업일지] = '[]';
+      row[col.법령예규판례] = '[]';
+      row[col.증빙목록] = '[]';
+      row[col.세액계산결과] = '[]';
+      row[col.사건개요] = '{}';
+      row[col.폴더ID] = fid;
+      row[col.생성일] = now;
+      row[col.수정일] = now;
+      rowsToAppend.push(row);
+      resultList.push(folderName + (세목 ? ' (' + WORK_SEMOK_LABELS_[세목] + ')' : ' (세목 미확인 — 직접 지정 필요)'));
+    }
+    if (rowsToAppend.length) {
+      sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, WORK_HEADERS.length).setValues(rowsToAppend);
+    }
+    const msg = '흡수 완료: ' + rowsToAppend.length + '건 등록\n' + resultList.join('\n');
+    Logger.log(msg);
+    return { added: rowsToAppend.length, list: resultList };
+  });
+}
+
+// [2026.09 임시, 1회성] 흡수된 사건들의 사건명/폴더명을 시스템 명명규칙(work_generateUniqueCaseName_)
+// 그대로 재작성하고 Drive 폴더명도 동기화한다. 먼저 "고객명(납세자)"가 흡수 당시 통째로
+// 고객명 하나로 잘못 들어간 것들(이우석(장미숙)과 같은 패턴)을 고객명/납세자로 분리한 뒤,
+// 세목이 있는 모든 사건의 사건명을 규칙대로 다시 만든다. 세목이 아직 없는 사건은 규칙을
+// 적용할 수 없어 건너뛰고 목록만 남긴다.
+function normalizeAllCaseNamesAndClients_() {
+  return withLock_(30000, function () {
+    const sheet = work_getSheet_();
+    const log = [];
+    let data = sheet.getDataRange().getValues();
+    const col = work_colMap_(data[0]);
+
+    // 1단계: 고객명 필드에 "이름(다른이름)"이 통째로 들어간 것 분리
+    const parenPattern = /^(.+?)\(([^()]+)\)$/;
+    for (let i = 1; i < data.length; i++) {
+      const rawName = String(data[i][col.고객명] || '').trim();
+      const m = rawName.match(parenPattern);
+      if (!m) continue;
+      const currentTaxpayer = String(data[i][col.납세자] || '').trim();
+      if (currentTaxpayer && currentTaxpayer !== rawName) continue; // 이미 제대로 분리되어 있으면 건너뜀
+      const realCust = m[1].trim();
+      const taxpayer = m[2].trim();
+      const rowNum = i + 1;
+      const newClientMatch = client_findOrCreateByName_(realCust, '');
+      sheet.getRange(rowNum, col.고객ID + 1).setValue(newClientMatch.id);
+      sheet.getRange(rowNum, col.고객명 + 1).setValue(realCust);
+      sheet.getRange(rowNum, col.납세자 + 1).setValue(taxpayer);
+      log.push('고객명 분리: "' + rawName + '" → 고객명=' + realCust + ', 납세자=' + taxpayer);
+      try {
+        const sheets = client_getSheets_();
+        const cdata = sheets.clients.getDataRange().getValues();
+        const ccol = client_colMap_(cdata[0], CLIENT_HEADERS);
+        for (let k = cdata.length - 1; k >= 1; k--) {
+          if (String(cdata[k][ccol.성명] || '').trim() === rawName) {
+            sheets.clients.deleteRow(k + 1);
+            log.push('잘못된 고객레코드 삭제: ' + rawName);
+          }
+        }
+      } catch (err) { log.push('고객레코드 정리 실패(' + rawName + '): ' + err.message); }
+    }
+
+    data = sheet.getDataRange().getValues();
+
+    // 2단계: 세목이 있는 모든 사건의 사건명을 규칙대로 재작성 + 폴더명 동기화
+    for (let i = 1; i < data.length; i++) {
+      const rowNum = i + 1;
+      const seMok = String(data[i][col.세목] || '').trim();
+      const 고객명 = String(data[i][col.고객명] || '').trim();
+      if (!고객명 || !seMok) continue;
+      const 고객ID = data[i][col.고객ID];
+      const upType = String(data[i][col.업무유형] || '').trim();
+      const 납세자 = String(data[i][col.납세자] || '').trim() || 고객명;
+      const oldName = String(data[i][col.사건명] || '').trim();
+      sheet.getRange(rowNum, col.사건명 + 1).setValue(''); // 자기 자신과 충돌 방지
+      const newName = work_generateUniqueCaseName_(sheet, col, 고객ID, 고객명, seMok, upType, 납세자);
+      sheet.getRange(rowNum, col.사건명 + 1).setValue(newName);
+      if (newName !== oldName) {
+        const fid = String(data[i][col.폴더ID] || '').trim();
+        if (fid) {
+          try { DriveApp.getFolderById(fid).setName(newName); } catch (err) { log.push('폴더명변경 실패(' + oldName + '): ' + err.message); }
+        }
+        log.push(oldName + ' → ' + newName);
+      }
+    }
+
+    data = sheet.getDataRange().getValues();
+    const noSemok = [];
+    for (let i = 1; i < data.length; i++) {
+      if (!String(data[i][col.세목] || '').trim()) {
+        noSemok.push(String(data[i][col.사건명] || '') + ' (고객명:' + data[i][col.고객명] + ')');
+      }
+    }
+
+    const reportText = '=== 이름변경 (' + log.length + '건) ===\n' + log.join('\n') + '\n\n=== 세목 없어 규칙 적용 못한 것 (' + noSemok.length + '건) ===\n' + noSemok.join('\n');
+    let fileUrl = '';
+    try {
+      const chiefFolder = getChiefManagerFolder_();
+      if (chiefFolder) {
+        const auditFolder = getOrCreateSubfolder_(chiefFolder, '_사건폴더감사');
+        const file = writeFileOverwrite_(auditFolder, '이름규칙정리_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd_HHmm') + '.md', reportText, MimeType.PLAIN_TEXT);
+        fileUrl = file.getUrl();
+      }
+    } catch (err) { /* 파일 저장 실패해도 Logger.log로 일부는 확인 가능 */ }
+    Logger.log('결과파일: ' + fileUrl + '\n\n' + reportText);
+    return { fileUrl: fileUrl, renameLog: log, noSemokList: noSemok };
+  });
+}
+
+// [2026.09.15 임시, 1회성] 상속세 사건의 "납세자" 동기화 대상을 대표 상속인(상속인성명)에서
+// 피상속인(ihDeceasedName)으로 바꾼 규칙 변경 — 앞으로 저장되는 사건은 자동으로 맞춰지지만,
+// 이미 등록된 지난 상속세 사건들은 납세자란에 옛 값(대표 상속인 이름, 또는 아예 고객명과
+// 동일)이 남아있다. 그 사건들을 찾아 사건개요.ihDeceasedName으로 납세자를 맞추고,
+// normalizeAllCaseNamesAndClients_를 이어 실행해 사건명/폴더명까지 새 납세자 기준으로
+// 재생성한다(고객명(납세자)_세목_업무유형 규칙).
+function syncInheritanceTaxpayerToDecedent_() {
+  return withLock_(30000, function () {
+    const sheet = work_getSheet_();
+    const data = sheet.getDataRange().getValues();
+    const col = work_colMap_(data[0]);
+    const log = [];
+    const skippedNoDecedent = []; // 피상속인 성명이 아직 입력 안 된 상속세 사건(수동으로 채워야 함)
+    let inheritanceCount = 0;
+    for (let i = 1; i < data.length; i++) {
+      const seMok = String(data[i][col.세목] || '').trim();
+      if (seMok !== 'inheritance') continue;
+      inheritanceCount++;
+      let overview = {};
+      try { overview = JSON.parse(data[i][col.사건개요] || '{}'); } catch (e) { overview = {}; }
+      const decedent = String((overview && overview.ihDeceasedName) || '').trim();
+      if (!decedent) { skippedNoDecedent.push(String(data[i][col.사건명] || '(사건명 없음)')); continue; }
+      const currentTaxpayer = String(data[i][col.납세자] || '').trim();
+      if (currentTaxpayer === decedent) continue;
+      const rowNum = i + 1;
+      sheet.getRange(rowNum, col.납세자 + 1).setValue(decedent);
+      log.push((data[i][col.사건명] || '(사건명 없음)') + ' — 납세자: "' + currentTaxpayer + '" → "' + decedent + '"');
+    }
+    let renameResult = null;
+    if (log.length) {
+      SpreadsheetApp.flush();
+      renameResult = normalizeAllCaseNamesAndClients_();
+    }
+    const reportText = '전체 상속세 사건: ' + inheritanceCount + '건\n' +
+      '납세자 변경: ' + log.length + '건\n' + log.join('\n') + '\n\n' +
+      '피상속인 성명 미입력(건너뜀): ' + skippedNoDecedent.length + '건\n' + skippedNoDecedent.join('\n') + '\n\n' +
+      '사건명/폴더명 재생성 로그:\n' + (renameResult ? JSON.stringify(renameResult.renameLog || [], null, 2) : '(대상 없어 실행 안 함)');
+    let fileUrl = '';
+    try {
+      const chiefFolder = getChiefManagerFolder_();
+      if (chiefFolder) {
+        const auditFolder = getOrCreateSubfolder_(chiefFolder, '_사건폴더감사');
+        const file = writeFileOverwrite_(auditFolder, '상속납세자동기화_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd_HHmm') + '.md', reportText, MimeType.PLAIN_TEXT);
+        fileUrl = file.getUrl();
+      }
+    } catch (err) { /* 파일 저장 실패해도 반환값으로는 확인 가능 */ }
+    return { inheritanceCount: inheritanceCount, updated: log.length, log: log, skippedNoDecedent: skippedNoDecedent, renameResult: renameResult, fileUrl: fileUrl };
+  });
+}
+
+// [2026.09 임시, 1회성] runCashReceiptScan_이 jpg/pdf 중복 처리 버그로 이미 만들어버린
+// 중복 수금내역(고객명/날짜/금액/내용/수취증빙이 완전히 같은 행)을 찾아 하나만 남기고 지운다.
+function removeDuplicateConsultLogs_() {
+  return withLock_(15000, function () {
+    const sheets = client_getSheets_();
+    const data = sheets.log.getDataRange().getValues();
+    const col = client_colMap_(data[0], CONSULT_HEADERS);
+    const seen = {};
+    const rowsToDelete = [];
+    const log = [];
+    for (let i = 1; i < data.length; i++) {
+      const content = String(data[i][col.내용] || '');
+      const 수취증빙 = String(data[i][col.수취증빙] || '');
+      // 현금영수증 항목은 (1) 파일명만 다른 자동인식 중복("...지영주.jpg" vs "...지영주.pdf")과
+      // (2) 세무사님이 이미 수동으로 입력해둔 것을 자동스캔이 또 기록한 경우(내용이 비어있는
+      // 수동입력 vs "현금영수증 파일 자동 인식(...)") 두 가지 다 있어서, 이 유형은 내용을 아예
+      // 안 보고 고객명/날짜/금액만으로 비교한다. 그 밖의 상담유형은 예전처럼 내용까지 완전일치
+      // 해야만 중복으로 본다(서로 다른 실제 상담을 잘못 지우지 않기 위함).
+      const contentKey = 수취증빙 === '현금영수증' ? '' : content;
+      const key = [
+        data[i][col.고객명], data[i][col.날짜], data[i][col.금액], contentKey, 수취증빙
+      ].join('||');
+      if (seen[key]) {
+        rowsToDelete.push(i);
+        log.push('중복 삭제: ' + data[i][col.고객명] + ' / ' + data[i][col.날짜] + ' / ' + data[i][col.금액]);
+      } else {
+        seen[key] = true;
+      }
+    }
+    rowsToDelete.sort(function (a, b) { return b - a; }).forEach(function (idx) {
+      sheets.log.deleteRow(idx + 1);
+    });
+    Logger.log(log.join('\n'));
+    return { removed: rowsToDelete.length, log: log };
+  });
+}
+
+// [2026.09 임시] 예약관리 점검 — (1) 이름에 깨진문자(스팸성)가 있는 신청을 찾고,
+// (2) 오늘 삭제한 테스트사건("임직권 상생임대")에 연결된 예약이 있는지 확인한다. 읽기전용.
+function inspectBookingIssues_() {
+  const ss = SpreadsheetApp.openById(BOOKING_SHEET_ID);
+  const sheet = ss.getSheetByName('Applications');
+  const data = sheet.getDataRange().getValues();
+  const workSheet = work_getSheet_();
+  const wdata = workSheet.getDataRange().getValues();
+  const wcol = work_colMap_(wdata[0]);
+  const validCaseIds = {};
+  for (let i = 1; i < wdata.length; i++) { if (wdata[i][wcol.id]) validCaseIds[wdata[i][wcol.id]] = true; }
+
+  const garbled = [];
+  const orphanCase = [];
+  for (let i = 1; i < data.length; i++) {
+    const name = String(data[i][1] || '');
+    const rowNum = i + 1;
+    if (/[�]/.test(name) || /^\[.*\]/.test(name)) {
+      garbled.push({ rowNum: rowNum, name: name, phone: data[i][2], type: data[i][3] });
+    }
+    const caseId = data[i][12];
+    if (caseId && !validCaseIds[caseId]) {
+      orphanCase.push({ rowNum: rowNum, name: name, caseId: caseId });
+    }
+  }
+  Logger.log('깨진문자 의심: ' + JSON.stringify(garbled, null, 2) + '\n\n연결된 사건이 없어진 예약: ' + JSON.stringify(orphanCase, null, 2));
+  return { garbled: garbled, orphanCase: orphanCase };
+}
+
+// [2026.09 임시, 1회성] 예약관리의 테스트/스팸성 예약 3건(2026-09-23 임직권, 2026-10-15,
+// 2026-10-16 깨진문자 스팸) 삭제 — 연결된 구글캘린더 일정이 있으면 그것도 같이 지운다.
+function removeTestBookings_() {
+  const ss = SpreadsheetApp.openById(BOOKING_SHEET_ID);
+  const sheet = ss.getSheetByName('Applications');
+  const data = sheet.getDataRange().getValues();
+  const targetDates = ['2026-09-23', '2026-10-15', '2026-10-16'];
+  const log = [];
+  const rowsToDelete = [];
+  for (let i = 1; i < data.length; i++) {
+    const reservedDate = data[i][6] ? Utilities.formatDate(new Date(data[i][6]), 'Asia/Seoul', 'yyyy-MM-dd') : '';
+    if (targetDates.indexOf(reservedDate) === -1) continue;
+    const eventId = data[i][11];
+    if (eventId) {
+      try {
+        const ev = CalendarApp.getEventById(eventId);
+        if (ev) { ev.deleteEvent(); log.push('캘린더 일정 삭제: ' + eventId); }
+      } catch (err) { log.push('캘린더 일정 삭제 실패(' + eventId + '): ' + err.message); }
+    }
+    rowsToDelete.push(i);
+    log.push('예약 삭제: ' + reservedDate + ' / ' + data[i][1]);
+  }
+  rowsToDelete.sort(function (a, b) { return b - a; }).forEach(function (idx) { sheet.deleteRow(idx + 1); });
+  Logger.log(log.join('\n'));
+  return { removed: rowsToDelete.length, log: log };
+}
+
+// [2026.09 임시] 세무사님이 "고객관리~사건처리 연결이 다 끊어졌다"고 지적 — 오늘 작업 중
+// 고객ID를 많이 바꿔서 그런지 확인한다. 모든 사건의 고객ID가 실제 고객관리 명단에 있는지,
+// 고객ID 자체가 비어있는 사건은 없는지 점검한다. 읽기전용.
+function inspectClientCaseLinkIntegrity_() {
+  const sheet = work_getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const col = work_colMap_(data[0]);
+  const sheets = client_getSheets_();
+  const cdata = sheets.clients.getDataRange().getValues();
+  const ccol = client_colMap_(cdata[0], CLIENT_HEADERS);
+  const validClientIds = {};
+  for (let i = 1; i < cdata.length; i++) { if (cdata[i][ccol.id]) validClientIds[cdata[i][ccol.id]] = true; }
+
+  const missingClientId = [];
+  const brokenClientId = [];
+  for (let i = 1; i < data.length; i++) {
+    const cid = data[i][col.고객ID];
+    const caseName = data[i][col.사건명];
+    if (!cid) { missingClientId.push(caseName); continue; }
+    if (!validClientIds[cid]) { brokenClientId.push({ 사건명: caseName, 고객ID: cid }); }
+  }
+  const result = {
+    총사건수: data.length - 1,
+    총고객수: cdata.length - 1,
+    고객ID없는사건: missingClientId,
+    고객ID가유효하지않은사건: brokenClientId
+  };
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+// [2026.09 임시] 실제 사건 행의 원본 값을 그대로 덤프 — work_get_cases가 클라이언트에 보내는
+// 것과 같은 가공(work_readRow_) 전/후를 모두 확인해서, 화면에서 클릭해도 안 뜨는 원인을 찾는다.
+function inspectCaseRawData_(caseNameContains) {
+  const sheet = work_getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const col = work_colMap_(data[0]);
+  const matches = [];
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][col.사건명] || '').indexOf(caseNameContains) !== -1) {
+      const raw = {};
+      WORK_HEADERS.forEach(function (h) { raw[h] = data[i][col[h]]; });
+      let parsed = null;
+      let parseError = null;
+      try { parsed = work_readRow_(col, data[i]); } catch (err) { parseError = err.message; }
+      matches.push({ rowNum: i + 1, raw: raw, parsedOk: !parseError, parseError: parseError, parsed: parsed });
+    }
+  }
+  Logger.log(JSON.stringify(matches, null, 2));
+  return matches;
+}
+
+// [2026.09 임시] work_get_cases의 실제 전체 응답을 그대로 파일로 저장 — 화면(하네스)에 그대로
+// 넣어서 재현해보기 위함. 91건이라 로그창에 다 안 보일 수 있어 파일로 남긴다.
+function dumpAllCasesToFile_() {
+  const result = work_getCases({});
+  let fileUrl = '';
+  try {
+    const chiefFolder = getChiefManagerFolder_();
+    if (chiefFolder) {
+      const auditFolder = getOrCreateSubfolder_(chiefFolder, '_사건폴더감사');
+      const file = writeFileOverwrite_(auditFolder, '전체사건덤프_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd_HHmm') + '.json', JSON.stringify(result), MimeType.PLAIN_TEXT);
+      fileUrl = file.getUrl();
+    }
+  } catch (err) { /* 무시 */ }
+  Logger.log('결과파일: ' + fileUrl);
+  return { fileUrl: fileUrl, caseCount: (result.cases || []).length };
+}
+
+// [2026.09 임시, 근본원인 수정] "3733"/"6958"/"1520"처럼 숫자로만 된 고객명·납세자가 구글
+// 시트에 진짜 숫자로 저장되어 있었다 — 클라이언트 코드가 문자열 메서드(.replace 등)를
+// 호출하면 예외가 나서 작업관리 사건 목록을 다시 그릴 때마다(=클릭할 때마다) 그 지점에서
+// 멈춰 사건 상세보기가 아예 실행되지 않는 심각한 문제로 이어졌다. 셀 서식을 텍스트로
+// 바꾸고 문자열로 다시 써서 앞으로도 숫자로 재해석되지 않게 한다.
+function fixNumericCustomerNames_() {
+  const sheet = work_getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const col = work_colMap_(data[0]);
+  const log = [];
+  for (let i = 1; i < data.length; i++) {
+    const rowNum = i + 1;
+    ['고객명', '납세자'].forEach(function (field) {
+      const v = data[i][col[field]];
+      if (typeof v === 'number') {
+        const range = sheet.getRange(rowNum, col[field] + 1);
+        range.setNumberFormat('@').setValue(String(v));
+        log.push('행 ' + rowNum + ' ' + field + ': ' + v + ' → 텍스트로 변환');
+      }
+    });
+  }
+  Logger.log(log.join('\n') || '숫자로 저장된 고객명/납세자 없음');
+  return { fixedCount: log.length, log: log };
+}
+
+// [2026.09.16 임시, 1회성] 위와 같은 버그가 고객관리(Clients 시트)의 성명에서도 발생 —
+// "3733"처럼 숫자로만 된 성명이 구글시트에 실제 숫자로 저장되어, 화면의 정렬
+// ((a.성명||'').localeCompare)이 예외를 내며 고객관리 탭 전체가 멈췄다. 같은 방식으로
+// 성명·전화번호·사업자번호·추가연락처(전부 숫자로만 될 수 있는 필드)를 텍스트로 되돌린다.
+function fixNumericClientFields_() {
+  const sheets = client_getSheets_();
+  const data = sheets.clients.getDataRange().getValues();
+  const col = client_colMap_(data[0], CLIENT_HEADERS);
+  const log = [];
+  for (let i = 1; i < data.length; i++) {
+    const rowNum = i + 1;
+    ['성명', '전화번호', '사업자번호', '추가연락처'].forEach(function (field) {
+      const v = data[i][col[field]];
+      if (typeof v === 'number') {
+        sheets.clients.getRange(rowNum, col[field] + 1).setNumberFormat('@').setValue(String(v));
+        log.push('행 ' + rowNum + ' ' + field + ': ' + v + ' → 텍스트로 변환');
+      }
+    });
+  }
+  Logger.log(log.join('\n') || '숫자로 저장된 고객 필드 없음');
+  return { fixedCount: log.length, log: log };
+}
+
 // dateFns.addMonths와 동일하게 동작: 같은 일(day)을 유지하되, 그 달에 없는 날짜면 그 달의
 // 말일로 맞춘다(롤오버시키지 않음). explorer.js 기한계산 팝업과 계산 결과를 일치시키기 위함.
 function work_addMonthsClamped_(date, months) {
@@ -17633,7 +19810,11 @@ function work_readRow_(col, rowValues) {
   return {
     id: rowValues[col.id],
     고객ID: rowValues[col.고객ID],
-    고객명: rowValues[col.고객명],
+    // [2026.09 버그수정] "3733"처럼 숫자로만 된 고객명/납세자는 구글시트가 진짜 숫자로 저장
+    // 해버릴 수 있다 — 문자열로 강제하지 않으면 화면 쪽에서 .replace() 등 문자열 메서드를
+    // 호출할 때 예외가 나서, 그 사건이 목록에 섞여있는 것만으로 화면 전체(목록 재렌더링→
+    // 상세보기)가 조용히 멈추는 심각한 문제로 이어졌다.
+    고객명: String(rowValues[col.고객명] || ''),
     사건명: rowValues[col.사건명],
     세목: rowValues[col.세목],
     업무유형: rowValues[col.업무유형],
@@ -17641,7 +19822,7 @@ function work_readRow_(col, rowValues) {
     의뢰일: work_dateStr_(rowValues[col.의뢰일]),
     기준일: work_dateStr_(rowValues[col.기준일]),
     법정일: work_dateStr_(rowValues[col.법정일]),
-    납세자: rowValues[col.납세자],
+    납세자: String(rowValues[col.납세자] || ''),
     상태: rowValues[col.상태],
     완료전법정일: work_dateStr_(rowValues[col.완료전법정일]),
     개요: rowValues[col.개요],
@@ -17707,7 +19888,10 @@ function work_getCases(params) {
 // [2026.09] "내부보고서" — 검토서(내부문서)와, 아직 고객에게 발행 안 한 외부보고서 초안(.md)을
 // 담는 폴더. "제출자료"/"보고서"와 같은 급으로 사건 폴더 안에 두되, my.netax.kr(my_ 모듈)은
 // 이 폴더의 존재 자체를 모른다 — 고객이 볼 수 있는 통로가 "보고서" 폴더 하나뿐이어야 하므로.
-const WORK_SUBFOLDER_INTERNAL_REPORT = '내부보고서';
+// [2026.09.16 변경] 세무사님 지시로 "내부보고서"/"보고서" → "보고서_내부"/"보고서_외부"로
+// 개명(가나다 정렬에서도 "보고서_내부"/"보고서_외부"가 나란히 붙어 더 명확함). 기존에 이미
+// 만들어져 있던 폴더들은 migrateReportFoldersAndFilenames_로 일괄 개명했다.
+const WORK_SUBFOLDER_INTERNAL_REPORT = '보고서_내부';
 
 function work_getOrCreateCaseFolder_(사건명) {
   try {
@@ -17773,7 +19957,7 @@ function work_generateUniqueCaseName_(sheet, col, 고객ID, 고객명, seMok, up
   const semokLabel = WORK_SEMOK_LABELS_[seMok] || seMok;
 
   const escaped = 고객명.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const prefixRe = new RegExp('^' + escaped + '(\\d*)_');
+  const prefixRe = new RegExp('^' + escaped + '(\\d*)\\(');
   const custIdToNum = {};
   const numsInUse = {};
   for (let i = 1; i < data.length; i++) {
@@ -17796,8 +19980,11 @@ function work_generateUniqueCaseName_(sheet, col, 고객ID, 고객명, seMok, up
     nameNum = String(n);
   }
 
-  const taxpayerSuffix = (납세자 && 납세자 !== 고객명) ? '(' + 납세자 + ')' : '';
-  const base = 고객명 + nameNum + '_' + semokLabel + (upType ? '_' + upType : '') + taxpayerSuffix;
+  // [2026.09 규칙변경] 세무사님 지시: 납세자가 고객명과 같아도 생략하지 않고 항상 표시해야
+  // 이름 형태가 일관되어 폴더를 직접 열어보지 않고도 목록만으로 사건을 관리할 수 있다.
+  // "고객명(납세자)_세목_업무유형" 순서로 통일(이전엔 납세자가 같으면 생략하고 맨 끝에 붙였음).
+  const taxpayerDisplay = 납세자 || 고객명;
+  const base = 고객명 + nameNum + '(' + taxpayerDisplay + ')' + '_' + semokLabel + (upType ? '_' + upType : '');
 
   const taken = {};
   for (let i = 1; i < data.length; i++) {
@@ -17861,7 +20048,13 @@ function work_createCase(params) {
     // 사건개요를 처음 저장할 때 채운다(work_buildEvidenceFromTemplate_ 주석 참고).
     newRow[col.증빙목록] = '[]';
     newRow[col.세액계산결과] = '[]';
-    newRow[col.사건개요] = '{}';
+    // [2026.09.16 버그수정] 실사용 지적 — 새 사건을 등록하면서 납세자를 입력했는데, 처음
+    // 처리개요를 열어보면 수증자(또는 양도인·피상속인 등) 성명란이 비어있었다. 이 필드는
+    // work_updateCase(사건을 "수정"할 때)만 납세자↔사건개요 양방향 동기화를 해줬는데,
+    // 생성 시점엔 사건개요를 통째로 빈 객체로 시작해서 그 동기화가 아예 한 번도 안 걸렸다 —
+    // 생성 시점에도 WORK_TAXPAYER_FIELD_BY_SEMOK_과 같은 규칙으로 미리 채워 넣는다.
+    const taxpayerFieldForCreate_ = 납세자 && WORK_TAXPAYER_FIELD_BY_SEMOK_[seMok];
+    newRow[col.사건개요] = taxpayerFieldForCreate_ ? JSON.stringify((function () { const o = {}; o[taxpayerFieldForCreate_] = 납세자; return o; })()) : '{}';
     newRow[col.폴더ID] = work_getOrCreateCaseFolder_(사건명);
     newRow[col.생성일] = now;
     newRow[col.수정일] = now;
@@ -18477,7 +20670,11 @@ function work_getCaseSubfolders(params) {
     const caseFolder = DriveApp.getFolderById(folderId);
     const internalFolder = my_getOrCreateSubfolder_(caseFolder, WORK_SUBFOLDER_INTERNAL_REPORT);
     const reportFolder = my_getOrCreateSubfolder_(caseFolder, MY_SUBFOLDER_REPORT);
-    return { success: true, internalFolderId: internalFolder.getId(), reportFolderId: reportFolder.getId() };
+    // [2026.09 신규] 사건 폴더 "루트" 자체의 id도 같이 내려준다 — memo.html의 고객폴더 저장
+    // 기능(writeMemoEntry_)이 만드는 "OOO사건.md" 등은 내부보고서/보고서 하위폴더가 아니라
+    // 이 루트에 바로 생기는데, 지금까지 문서작성 화면이 이 루트를 전혀 훑지 않아서 이미
+    // 존재하는 그 파일들을 열 방법이 없었다(rwRenderCaseReports_에서 이 값으로 루트도 같이 조회).
+    return { success: true, internalFolderId: internalFolder.getId(), reportFolderId: reportFolder.getId(), caseFolderId: folderId };
   } catch (err) {
     return { error: '폴더 조회 중 오류: ' + err.message };
   }

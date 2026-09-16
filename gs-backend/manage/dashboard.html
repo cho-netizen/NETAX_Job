@@ -4,12 +4,29 @@
     <!-- [2026.09] 사용자 요청 — 할일을 대시보드 맨 위로. 마감일 입력·수정·삭제도 여기서
          바로 되도록 카드를 다시 만듦(구글 태스크, get/add/update/delete_google_task). -->
     <div class="card">
-      <h3>✅ 할일</h3>
-      <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
+      <h3>✅ 할일
+        <a href="https://tasks.google.com/tasks/" target="_blank" rel="noopener" class="ghost-btn" style="float:right; font-size:11px; padding:2px 8px; text-decoration:none;">🔗 구글 태스크 열기</a>
+      </h3>
+      <!-- [2026.09.16 버그수정] 실사용 지적 — 날짜칸이 항상 보여서 마감일 없는 대부분의
+           할일에도 매번 빈 칸이 따라다녔다. 날짜가 필요할 때만 "일정" 버튼으로 펼치게 한다. -->
+      <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center;">
+        <button type="button" id="dashNewTaskDueToggle" class="ghost-btn" title="마감일을 정하려면 눌러주세요">📅 일정</button>
+        <input type="date" id="dashNewTaskDue" style="display:none; width:95px;">
         <input type="text" id="dashNewTaskTitle" placeholder="새 할일 입력 후 Enter" style="flex:1; min-width:160px;">
-        <input type="date" id="dashNewTaskDue" style="max-width:150px;">
       </div>
       <div id="dashTasks"><div class="spinner">불러오는 중…</div></div>
+    </div>
+    <!-- [2026.09.16] 세무사님 요청 — 할일 바로 다음으로 순서 이동, 타이틀 "오늘~7일 일정"을
+         그냥 "일정"으로 줄이고, 구글캘린더로 바로 가는 링크와 조회기간(전/후 며칠)을
+         직접 지정하는 기능을 추가한다. 기본값은 전 0일·후 7일(기존과 동일한 범위). -->
+    <div class="card">
+      <h3>📅 일정
+        <a href="https://calendar.google.com/calendar/" target="_blank" rel="noopener" class="ghost-btn" style="float:right; font-size:11px; padding:2px 8px; text-decoration:none;">🔗 구글 캘린더 열기</a>
+      </h3>
+      <div style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; align-items:center; font-size:12px; color:var(--sub);">
+        전<input type="number" id="dashCalRangeBefore" min="0" value="0" style="width:50px; text-align:right;">일 ~ 후<input type="number" id="dashCalRangeAfter" min="0" value="7" style="width:50px; text-align:right;">일
+      </div>
+      <div id="dashCalendar"><div class="spinner">불러오는 중…</div></div>
     </div>
     <div class="card">
       <h3>⏰ 마감임박 작업</h3>
@@ -20,7 +37,9 @@
       <div id="dashBookings"><div class="spinner">불러오는 중…</div></div>
     </div>
     <div class="card">
-      <h3>💰 최근 수금내역</h3>
+      <h3>💰 최근 수금내역
+        <button type="button" id="dashScanReceiptsBtn" title="사건 폴더의 현금영수증 파일을 지금 확인해서 자동으로 기록합니다" style="float:right; font-size:11px; padding:2px 8px; border-radius:5px; border:1px solid var(--line); background:#f3f4f7; cursor:pointer;">🧾 지금 확인</button>
+      </h3>
       <div id="dashPayments"><div class="spinner">불러오는 중…</div></div>
     </div>
     <!-- [2026.09 신규] 실사용 감사 지적 — 종전 챗봇(work.netax.kr)에서 "이번주 일정",
@@ -28,11 +47,9 @@
          켜면 바로 보이는 곳이 없어져서 매번 AI사이드바에 다시 물어야 했다 — 종전처럼 대시보드
          진입 시 바로 보이도록 카드 3개를 추가한다. -->
     <div class="card">
-      <h3>📅 오늘~7일 일정</h3>
-      <div id="dashCalendar"><div class="spinner">불러오는 중…</div></div>
-    </div>
-    <div class="card">
-      <h3>📧 안읽은 메일</h3>
+      <h3>📧 안읽은 메일
+        <a href="https://mail.google.com/mail/" target="_blank" rel="noopener" class="ghost-btn" style="float:right; font-size:11px; padding:2px 8px; text-decoration:none;">🔗 구글 메일 열기</a>
+      </h3>
       <div id="dashEmails"><div class="spinner">불러오는 중…</div></div>
     </div>
     <!-- [2026.09 신규] "매일 밤 자동으로 뭘 하는지 내가 어떻게 아느냐"는 지적에 따라 추가 —
@@ -91,13 +108,31 @@
       // 표시하고 지각(overdue) 강조에서는 제외한다.
       var nowrap = 'white-space:nowrap; overflow:hidden;';
       var ellipsis = nowrap + ' text-overflow:ellipsis;';
-      var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; min-width:480px;"><colgroup>'
-        + '<col style="width:104px"><col style="width:80px"><col><col style="width:90px"><col style="width:64px">'
-        + '</colgroup><tr><th>법정일</th><th>고객명</th><th>사건명</th><th>업무유형</th><th>상태</th></tr>';
+      // [2026.09 버그수정] 사건명 열에 폭을 안 주면 table-layout:fixed가 나머지 공간을 전부
+      // 그 열에 몰아줘서, 사건명 뒤로 업무유형·상태가 화면 끝까지 밀려나 보였다(사건명이 길어진
+      // 이후 특히 눈에 띔). 사건명에 적정 폭을 주고 표 자체도 width:auto로 데이터만큼만 차지하게 한다.
+      // [2026.09.16 버그수정] 예약관리(booking.html)에서 겪은 것과 같은 종류의 문제 —
+      // table-layout:fixed로 폭을 고정해두고 <td>에만 줄바꿈 방지를 걸고 <th>(제목행)엔
+      // 안 걸어서, 혹시라도 폰트·환경에 따라 제목 글자가 정해진 폭보다 넓게 렌더되면 그
+      // 제목만 세로로 쌓여 보일 수 있는 비대칭 상태였다 — 전수조사로 발견, td와 똑같이 맞춘다.
+      var thNowrap = ' style="' + ellipsis + '"';
+      // [2026.09.16 버그수정] 세무사님 지적 — 사건명이 이미 "고객명(납세자)_세목_업무유형"
+      // 규칙대로 고객명을 포함하고 있으니, 고객명을 별도 열로 또 보여줄 필요가 없다. 열을
+      // 없애고 그만큼 확보된 폭은 사건명 열에 몰아준다.
+      var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; width:auto; min-width:480px;"><colgroup>'
+        + '<col style="width:104px"><col style="width:370px"><col style="width:90px"><col style="width:64px">'
+        + '</colgroup><tr><th' + thNowrap + '>법정일</th><th' + thNowrap + '>사건명</th><th' + thNowrap + '>업무유형</th><th' + thNowrap + '>상태</th></tr>';
+      // [2026.09.16 버그수정] 세무사님 지적 — 캘린더·메일 카드는 윗행과 날짜가 같으면 날짜를
+      // 비워서 보여주는데(같은 날짜가 반복되면 안 보여줘도 헷갈리지 않음), 마감임박 작업·
+      // 최근 수금내역엔 이 처리가 없어서 같은 날짜가 행마다 계속 반복 표시되고 있었다 —
+      // 같은 원칙을 여기도 적용한다.
+      var prevDeadlineDate = null;
       cases.forEach(function(c){
         var isHold = c.상태 === '보류';
         var overdue = !isHold && c.법정일 < todayStr;
-        html += '<tr data-case-id="' + esc(c.id) + '" style="cursor:pointer;' + (isHold ? ' opacity:0.55;' : '') + '" title="눌러서 처리개요로 이동"><td style="' + nowrap + (overdue ? ' color:#a83232; font-weight:700;' : '') + '">' + (overdue ? '⏰ ' : '') + esc(c.법정일) + '</td><td style="' + ellipsis + '" title="' + esc(c.고객명) + '">' + esc(c.고객명) + '</td><td style="' + ellipsis + '" title="' + esc(c.사건명) + '">' + esc(c.사건명) +
+        var dateCell = (c.법정일 === prevDeadlineDate) ? '' : ((overdue ? '⏰ ' : '') + esc(c.법정일));
+        prevDeadlineDate = c.법정일;
+        html += '<tr data-case-id="' + esc(c.id) + '" style="cursor:pointer;' + (isHold ? ' opacity:0.55;' : '') + '" title="눌러서 처리개요로 이동"><td style="' + nowrap + (overdue ? ' color:#a83232; font-weight:700;' : '') + '">' + dateCell + '</td><td style="' + ellipsis + '" title="' + esc(c.사건명) + '">' + esc(c.사건명) +
           '</td><td style="' + ellipsis + '">' + esc(c.업무유형||c.세목||'') + '</td><td style="' + nowrap + '">' + (isHold ? '⏸ ' : '') + esc(c.상태) + '</td></tr>';
       });
       html += '</table></div>';
@@ -138,11 +173,16 @@
       if (!logs.length){ box.innerHTML = '<div class="empty-row">수금 내역이 없습니다.</div>'; return; }
       var nowrap = 'white-space:nowrap; overflow:hidden;';
       var ellipsis = nowrap + ' text-overflow:ellipsis;';
+      var thNowrap2 = ' style="' + ellipsis + '"';
       var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; min-width:400px;"><colgroup>'
         + '<col style="width:92px"><col style="width:84px"><col style="width:100px"><col>'
-        + '</colgroup><tr><th>날짜</th><th>고객명</th><th>금액</th><th>수취증빙</th></tr>';
+        + '</colgroup><tr><th' + thNowrap2 + '>날짜</th><th' + thNowrap2 + '>고객명</th><th' + thNowrap2 + '>금액</th><th' + thNowrap2 + '>수취증빙</th></tr>';
+      // [2026.09.16 버그수정] 캘린더·메일 카드와 같은 원칙 — 윗행과 날짜가 같으면 비워서 보여준다.
+      var prevPayDate = null;
       logs.forEach(function(l){
-        html += '<tr><td style="' + nowrap + '">' + esc(l.날짜) + '</td><td style="' + ellipsis + '" title="' + esc(l.고객명) + '">' + esc(l.고객명) + '</td><td style="' + nowrap + '">' +
+        var dateCell = (l.날짜 === prevPayDate) ? '' : esc(l.날짜);
+        prevPayDate = l.날짜;
+        html += '<tr><td style="' + nowrap + '">' + dateCell + '</td><td style="' + ellipsis + '" title="' + esc(l.고객명) + '">' + esc(l.고객명) + '</td><td style="' + nowrap + '">' +
           (l.금액 ? Number(l.금액).toLocaleString() : '') + '</td><td style="' + ellipsis + '" title="' + esc(l.수취증빙) + '">' + esc(l.수취증빙) + '</td></tr>';
       });
       html += '</table></div>';
@@ -150,10 +190,44 @@
     }).catch(function(e){ document.getElementById('dashPayments').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
 
+  // [2026.09 신규] 사건 폴더에 "현금영수증"이 든 파일명이 있으면 AI가 금액을 읽어 자문내역에
+  // 자동 기록한다(매일 밤에도 자동으로 도는데, 방금 넣은 파일을 바로 확인하고 싶을 때 씀).
+  var dashScanReceiptsBtn = document.getElementById('dashScanReceiptsBtn');
+  if (dashScanReceiptsBtn){
+    dashScanReceiptsBtn.addEventListener('click', function(){
+      dashScanReceiptsBtn.disabled = true;
+      dashScanReceiptsBtn.textContent = '확인 중…';
+      callGas('scan_cash_receipts', {}).then(function(res){
+        var msg = (res.errors && res.errors.length)
+          ? (res.added + '건 새로 기록, 오류 ' + res.errors.length + '건: ' + res.errors[0])
+          : (res.added ? res.added + '건 새로 기록했습니다.' : '새로 인식된 현금영수증이 없습니다.');
+        toast(msg);
+        if (res.added) loadDashPayments();
+      }).catch(function(e){
+        toast('확인 실패: ' + (e && e.message ? e.message : e));
+      }).finally(function(){
+        dashScanReceiptsBtn.disabled = false;
+        dashScanReceiptsBtn.textContent = '🧾 지금 확인';
+      });
+    });
+  }
+
   // [2026.09 신규] 구글 캘린더 오늘~7일 일정 — 종전 챗봇의 "이번주 일정" 기능을 대시보드
   // 카드로 옮김(get_calendar_events → toolLookupCalendarEvents 그대로 재사용).
+  // [2026.09.16] 세무사님 요청 — 조회범위(오늘 기준 전/후 며칠)를 직접 지정할 수 있게
+  // 확장. toolLookupCalendarEvents(Code.js)가 이미 startDate/endDate를 받으므로(안 주면
+  // 오늘~+7일이 기본값 — 지금 요청한 "전 0일·후 7일" 기본값과 정확히 같다) 서버는 그대로 두고
+  // 화면에서 그 값을 날짜로 계산해 넘기기만 하면 된다.
+  function dashCalRangeDates_(){
+    var before = Math.max(0, parseInt(document.getElementById('dashCalRangeBefore').value, 10) || 0);
+    var after = Math.max(0, parseInt(document.getElementById('dashCalRangeAfter').value, 10) || 0);
+    var toStr = function(d){ return d.toISOString().slice(0, 10); };
+    var start = new Date(); start.setDate(start.getDate() - before);
+    var end = new Date(); end.setDate(end.getDate() + after);
+    return { startDate: toStr(start), endDate: toStr(end) };
+  }
   function loadDashCalendar_(){
-    callGas('get_calendar_events', {}).then(function(res){
+    callGas('get_calendar_events', dashCalRangeDates_()).then(function(res){
       var box = document.getElementById('dashCalendar');
       if (res.error){ box.innerHTML = '<div class="empty-row">오류: ' + esc(res.error) + '</div>'; return; }
       var items = res.일정 || [];
@@ -164,17 +238,25 @@
         + '<col style="width:92px"><col style="width:54px"><col>'
         + '</colgroup>';
       var prevDate = null;
+      // [2026.09.16] 세무사님 지적 — 전/후 범위를 넓히면 과거·오늘·미래 일정이 한 표에
+      // 섞여 나오는데, 오늘 일정이 어느 것인지 구분이 안 됐다. 오늘 날짜인 행만 굵게+남색으로
+      // 강조한다(지각 강조에 쓰는 빨강과는 다른 색 — 여긴 경고가 아니라 "지금"이라는 표시).
+      var todayStr = new Date().toISOString().slice(0, 10);
       items.forEach(function(ev){
         var datePart = String(ev.시작).slice(0, 10);
         var timePart = ev.종일일정 ? '종일' : String(ev.시작).slice(11);
         var dateCell = (datePart === prevDate) ? '' : esc(datePart);
         prevDate = datePart;
-        html += '<tr><td style="' + nowrap + '">' + dateCell + '</td><td style="' + nowrap + '">' + esc(timePart) + '</td><td style="' + ellipsis + '" title="' + esc(ev.제목) + '">' + esc(ev.제목) + '</td></tr>';
+        var isToday = datePart === todayStr;
+        var todayStyle = isToday ? ' color:var(--navy); font-weight:700;' : '';
+        html += '<tr><td style="' + nowrap + todayStyle + '">' + dateCell + '</td><td style="' + nowrap + todayStyle + '">' + esc(timePart) + '</td><td style="' + ellipsis + todayStyle + '" title="' + esc(ev.제목) + '">' + esc(ev.제목) + '</td></tr>';
       });
       html += '</table></div>';
       box.innerHTML = html;
     }).catch(function(e){ document.getElementById('dashCalendar').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
+  document.getElementById('dashCalRangeBefore').addEventListener('change', loadDashCalendar_);
+  document.getElementById('dashCalRangeAfter').addEventListener('change', loadDashCalendar_);
 
   // [2026.09 신규] Gmail 안읽은 메일 — 종전 챗봇의 "메일 왔어?" 기능을 대시보드 카드로 옮김.
   // 처음 실제로 호출될 때 Gmail 접근권한 재승인 화면이 뜰 수 있다(코드 주석 참고).
@@ -226,9 +308,9 @@
     cb.disabled = true;
     var row = cb.closest('tr');
     callGas('mark_email_read', { threadId: id }).then(function(res){
-      if (res.error){ alert('읽음 처리 실패: ' + res.error); cb.disabled = false; cb.checked = false; return; }
+      if (res.error){ nxAlert_('읽음 처리 실패: ' + res.error); cb.disabled = false; cb.checked = false; return; }
       if (row) row.style.opacity = '0.4';
-    }).catch(function(err){ alert('읽음 처리 실패: ' + err.message); cb.disabled = false; cb.checked = false; });
+    }).catch(function(err){ nxAlert_('읽음 처리 실패: ' + err.message); cb.disabled = false; cb.checked = false; });
   });
 
   // [2026.09 신규] 구글 태스크(할일) — 종전 챗봇의 "할일 뭐있어"/"할일 추가해줘" 기능을
@@ -240,9 +322,13 @@
   function dashTaskRowHtml_(t){
     var overdue = t.마감일 && t.마감일 < new Date().toISOString().slice(0, 10) && t.상태 !== 'completed';
     var done = t.상태 === 'completed';
+    // [2026.09.16 버그수정] 실사용 지적 — "할일은 왜 플렉스인가?" .log-text가 클래스 기본값
+    // (flex:1)을 그대로 써서 짧은 할일 제목도 남는 공간을 전부 차지해버려, 삭제(✕) 버튼이
+    // 텍스트 바로 옆이 아니라 카드 맨 오른쪽 끝까지 밀려나 보였다 — 인라인으로 flex:1을
+    // flex:0 1 auto로 덮어써서 내용 길이만큼만 차지하게 한다(삭제 버튼이 바로 옆에 붙음).
     return '<div class="log-entry" data-task-id="' + esc(t.id) + '" style="align-items:flex-start;">'
       + '<div style="flex:0 0 auto; padding-top:2px;"><input type="checkbox" class="dashTaskDone" ' + (done ? 'checked' : '') + '></div>'
-      + '<div class="log-text" style="flex:1; cursor:pointer; display:flex; flex-wrap:wrap; align-items:baseline; gap:0 8px;" title="눌러서 수정">'
+      + '<div class="log-text" style="flex:0 1 auto; cursor:pointer; display:flex; flex-wrap:wrap; align-items:baseline; gap:0 8px;" title="눌러서 수정">'
       + '<span style="' + (done ? 'text-decoration:line-through; color:var(--sub);' : '') + '">' + esc(t.제목) + '</span>'
       + (t.마감일 ? '<span style="font-size:11px; white-space:nowrap; ' + (overdue ? 'color:#a83232; font-weight:700;' : 'color:var(--sub);') + '">📌 ' + esc(t.마감일) + '</span>' : '')
       + '</div>'
@@ -270,9 +356,16 @@
       titleEl.disabled = false; dueEl.disabled = false;
       if (res.error){ toast('추가 실패: ' + res.error); return; }
       titleEl.value = ''; dueEl.value = '';
+      dueEl.style.display = 'none'; // 다음 할일은 다시 "일정" 버튼을 눌러야 나오게 초기화
       loadDashTasks_();
     }).catch(function(e){ titleEl.disabled = false; dueEl.disabled = false; toast('추가 중 오류: ' + e.message); });
   }
+  document.getElementById('dashNewTaskDueToggle').addEventListener('click', function(){
+    var dueEl = document.getElementById('dashNewTaskDue');
+    var showing = dueEl.style.display !== 'none';
+    dueEl.style.display = showing ? 'none' : 'inline-block';
+    if (showing) dueEl.value = ''; else dueEl.focus();
+  });
   // [2026.09 버그수정] 로그인 화면과 같은 원인(e.key가 일부 환경에서 Enter로 안 잡힘) — keyCode도 같이 확인.
   document.getElementById('dashNewTaskTitle').addEventListener('keydown', function(e){
     if (e.key !== 'Enter' && e.keyCode !== 13) return;
@@ -296,14 +389,24 @@
       return;
     }
     if (e.target.classList.contains('dashTaskDel')){
-      if (!confirm('"' + t.제목 + '" 할일을 삭제할까요?')) return;
-      callGas('delete_google_task', { taskId: taskId }).then(function(res){
-        if (res.error){ toast('삭제 실패: ' + res.error); return; }
-        loadDashTasks_();
-      }).catch(function(err){ toast('삭제 중 오류: ' + err.message); });
+      nxConfirm_('"' + t.제목 + '" 할일을 삭제할까요?').then(function(ok){
+        if (!ok) return;
+        callGas('delete_google_task', { taskId: taskId }).then(function(res){
+          if (res.error){ toast('삭제 실패: ' + res.error); return; }
+          loadDashTasks_();
+        }).catch(function(err){ toast('삭제 중 오류: ' + err.message); });
+      });
       return;
     }
-    if (e.target.closest('.log-text')){
+    // [2026.09.16 버그수정] 심각한 기존 버그 발견 — 편집칸(제목입력·날짜·저장·취소)을
+    // ".log-text" 안에 그대로 그려넣고 있어서, 저장/취소 버튼이나 날짜칸을 누르면 그 클릭도
+    // ".log-text 클릭"으로 다시 잡혀 이 편집모드 진입 블록이 또 실행됐다 — 편집칸을 매번
+    // 새로 덮어써서 입력하던 내용이 사라지고, 그 과정에서 원래 클릭된 저장 버튼은 DOM에서
+    // 떨어져나가(innerHTML 재할당은 기존 자손을 먼저 다 떼어냄) row를 못 찾아 "Cannot read
+    // properties of null (reading 'dataset')" 오류로 죽었다 — 즉 저장 버튼은 클릭해도 실제로
+    // 저장이 된 적이 없었다(콘솔 오류로만 조용히 실패). 이미 편집 중이면(.dashTaskEditTitle이
+    // 이 행 안에 있으면) 다시 진입하지 않도록 막는다.
+    if (e.target.closest('.log-text') && !row.querySelector('.dashTaskEditTitle')){
       // 인라인 편집으로 전환 — 제목 입력칸 + 마감일 입력칸 + 저장/취소.
       var textDiv = row.querySelector('.log-text');
       textDiv.innerHTML = '<input type="text" class="dashTaskEditTitle" value="' + esc(t.제목) + '" style="width:100%; box-sizing:border-box; margin-bottom:4px;">'
@@ -315,6 +418,16 @@
       textDiv.querySelector('.dashTaskEditTitle').focus();
     }
   });
+  // [2026.09.16] 세무사님 요청 — 인라인 수정칸을 열어놓고 "취소"를 안 눌러도, 다른 곳을
+  // 클릭하면 자동으로 수정모드가 풀리게 한다. 캡처 단계(document, capture:true)에 걸어서
+  // #dashTasks 자체의 클릭 처리(버블 단계, 아래)보다 먼저 실행되게 한다 — 그래야 다른
+  // 할일을 바로 클릭해 갈아타는 경우에도 먼저 열려있던 수정칸부터 확실히 닫힌다.
+  document.addEventListener('click', function(e){
+    var openInput = document.querySelector('.dashTaskEditTitle');
+    if (!openInput) return;
+    var editingRow = openInput.closest('.log-entry[data-task-id]');
+    if (editingRow && !editingRow.contains(e.target)) loadDashTasks_();
+  }, true);
   // 저장/취소 버튼은 매번 새로 그려지므로 이벤트 위임으로 한 번만 건다.
   document.getElementById('dashTasks').addEventListener('click', function(e){
     if (e.target.classList.contains('dashTaskEditCancel')){ loadDashTasks_(); return; }
@@ -351,8 +464,10 @@
       function rowHtml(e, showDue){
         var due = (showDue && e.dueDate) ? ' <span style="color:#a83232; font-weight:600;">(📌 ' + esc(e.dueDate) + ')</span>' : '';
         var pathStr = (e.path || []).join(' / ');
+        // [2026.09 버그수정] 날짜 열에 줄바꿈 방지가 없어서 표 폭이 좁아지면 "2026-08-07"이
+        // "2026-08-\n07"처럼 하이픈에서 그냥 잘려 두 줄로 쪼개져 보였다 — 날짜만 한 줄 고정.
         return '<tr data-path=\'' + esc(JSON.stringify(e.path || [])) + '\' style="cursor:pointer;" title="눌러서 증빙관리로 이동">'
-          + '<td>' + esc(e.date) + due + '</td>'
+          + '<td style="white-space:nowrap;">' + esc(e.date) + due + '</td>'
           + '<td><span style="color:var(--sub); font-size:11.5px;">' + esc(pathStr) + '</span><br>' + esc(e.text) + '</td></tr>';
       }
 

@@ -1,7 +1,7 @@
 <div class="view" id="view-clientmanage">
   <div class="editor-toolbar">
     <button type="button" id="btnClientNew" class="save-btn">+ 새 고객</button>
-    <span class="editor-filename">👤 고객 명단 · 서비스 이력 · 수금관리</span>
+    <span class="editor-filename">👤 고객 명단 · 서비스 이력</span>
     <div class="spacer"></div>
     <input type="text" id="clientSearchInput" placeholder="이름으로 검색…">
   </div>
@@ -73,29 +73,38 @@
         clientList.innerHTML = '<div class="log-empty">' + escapeHtml(res.error || res.message || '불러오지 못했습니다.') + '</div>';
         return;
       }
-      clients = res.clients || [];
-      renderClientList();
-      updateClientNameOptions_();
-      // [2026.09 리팩터] 빠른보기 모달은 이제 #clientDetail을 옮겨 쓰지 않고 완전히 별도인
-      // #clientQuickViewDetail에 그린다 — 그래서 여기서 메인 패널을 다시 그려도 모달 내용에는
-      // 전혀 영향이 없다. inQuickView 분기 자체가 더 이상 필요 없다.
-      if (selectedClientId){
-        var still = clients.filter(function(c){ return c.id === selectedClientId; })[0];
-        if (still){
-          // [2026.09 버그수정] 실사용 시뮬레이션 중 발견 — 빠른보기에서 저장/삭제해도 이
-          // loadClients()가 불려서, 메인 패널에 입력 중이던(저장 안 한) 내용이 그때마다
-          // 서버 최신값으로 덮어써져 사라졌다. 메인 패널에 저장 안 한 수정이 있으면 이번
-          // 재렌더링은 건너뛴다(왼쪽 목록 텍스트만 최신화되고, 메인 패널 입력값은 보존됨).
-          var mainHasUnsavedEdits_ = clientMainPanelBaseline_ !== null && clientDetail.querySelector('#ccEditName') && quickViewCurrentSignature_(clientDetail) !== clientMainPanelBaseline_;
-          if (!mainHasUnsavedEdits_) renderClientDetail(still);
-          return;
+      // [2026.09.16 버그수정] "고객관리 탭이 안 뜬다"는 반복 지적 — 원인을 못 찾은 채 이전에
+      // 한 번 고친 걸로는 재현이 안 됐다. 렌더링 단계(아래)에서 실제로 무슨 예외가 나는지
+      // 화면에 그대로 보이게 해서, 다음에 또 재현되면 바로 원인을 알 수 있게 한다(예전엔 이
+      // try/catch가 없어서, 여기서 뭐가 터지든 바깥 .catch()가 "불러오지 못했습니다"로
+      // 뭉개버려 원인을 알 방법이 없었다).
+      try {
+        clients = res.clients || [];
+        renderClientList();
+        updateClientNameOptions_();
+        // [2026.09 리팩터] 빠른보기 모달은 이제 #clientDetail을 옮겨 쓰지 않고 완전히 별도인
+        // #clientQuickViewDetail에 그린다 — 그래서 여기서 메인 패널을 다시 그려도 모달 내용에는
+        // 전혀 영향이 없다. inQuickView 분기 자체가 더 이상 필요 없다.
+        if (selectedClientId){
+          var still = clients.filter(function(c){ return c.id === selectedClientId; })[0];
+          if (still){
+            // [2026.09 버그수정] 실사용 시뮬레이션 중 발견 — 빠른보기에서 저장/삭제해도 이
+            // loadClients()가 불려서, 메인 패널에 입력 중이던(저장 안 한) 내용이 그때마다
+            // 서버 최신값으로 덮어써져 사라졌다. 메인 패널에 저장 안 한 수정이 있으면 이번
+            // 재렌더링은 건너뛴다(왼쪽 목록 텍스트만 최신화되고, 메인 패널 입력값은 보존됨).
+            var mainHasUnsavedEdits_ = clientMainPanelBaseline_ !== null && clientDetail.querySelector('#ccEditName') && quickViewCurrentSignature_(clientDetail) !== clientMainPanelBaseline_;
+            if (!mainHasUnsavedEdits_) renderClientDetail(still);
+            return;
+          }
         }
+        if (!clientShowingNewForm && clientDetail){
+          clientDetail.innerHTML = '<div class="explorer-status">왼쪽에서 고객을 선택하거나 "+ 새 고객"을 눌러주세요.</div>';
+        }
+      } catch (renderErr) {
+        clientList.innerHTML = '<div class="log-empty">화면을 그리는 중 오류: ' + escapeHtml(renderErr && renderErr.message ? renderErr.message : String(renderErr)) + '</div>';
       }
-      if (!clientShowingNewForm && clientDetail){
-        clientDetail.innerHTML = '<div class="explorer-status">왼쪽에서 고객을 선택하거나 "+ 새 고객"을 눌러주세요.</div>';
-      }
-    }).catch(function(){
-      clientList.innerHTML = '<div class="log-empty">불러오지 못했습니다.</div>';
+    }).catch(function(err){
+      clientList.innerHTML = '<div class="log-empty">불러오지 못했습니다' + (err && err.message ? (': ' + escapeHtml(err.message)) : '') + '</div>';
     });
   }
 
@@ -120,7 +129,7 @@
       clientList.innerHTML = '<div class="log-empty">등록된 고객이 없습니다.</div>';
       return;
     }
-    clients.slice().sort(function(a, b){ return (a.성명 || '').localeCompare(b.성명 || '', 'ko'); }).forEach(function(c){
+    clients.slice().sort(function(a, b){ return String(a.성명 || '').localeCompare(String(b.성명 || ''), 'ko'); }).forEach(function(c){
       var row = document.createElement('div');
       row.className = 'log-entry';
       row.style.cursor = 'pointer';
@@ -135,6 +144,68 @@
     });
   }
 
+  // [2026.09.16 재설계] 세무사님 지적 — "추가연락처를 전화번호만 입력하면 어떡하나, 이름도
+  // 같이 입력해야 누구 건지 안다." 자유텍스트(쉼표구분 전화번호만) 대신 "+ 의뢰인 추가"
+  // 버튼으로 이름+전화번호를 한 쌍씩 등록하는 목록형 UI로 바꾼다. 새 고객 등록/고객 상세
+  // 양쪽에서 재사용한다 — id 접두사만 다르게 받아 같은 화면에 두 벌이 동시에 있어도 안 겹친다.
+  function ccExtraContactsBlockHtml_(idPrefix){
+    return '<div class="cc-extra-list" id="' + idPrefix + '-list" style="font-size:12.5px; margin-bottom:4px;"></div>' +
+      '<div id="' + idPrefix + '-form" style="display:none; gap:6px; flex-wrap:wrap; margin-bottom:6px;"></div>' +
+      '<button type="button" class="ghost-btn" id="' + idPrefix + '-addbtn" style="padding:4px 10px; font-size:12px;">+ 의뢰인</button>';
+  }
+  // 반환한 listEl에 ._contacts로 현재 목록이 계속 유지된다 — 저장 시 이걸 그대로 읽어 보낸다.
+  // [주의] 메인 패널(#clientDetail)과 빠른보기(#clientQuickViewDetail)가 같은 id 접두사로
+  // 동시에 열려있을 수 있어(위 renderClientDetail의 container 인자와 같은 이유), 반드시
+  // container 범위 안에서만 찾는다 — 전역 document.getElementById를 쓰면 두 패널이 동시에
+  // 열렸을 때 엉뚱한 패널의 엘리먼트를 잡을 수 있다.
+  function ccWireExtraContacts_(idPrefix, initialContacts, container){
+    container = container || document;
+    var listEl = container.querySelector('#' + idPrefix + '-list');
+    var formEl = container.querySelector('#' + idPrefix + '-form');
+    var addBtn = container.querySelector('#' + idPrefix + '-addbtn');
+    listEl._contacts = (initialContacts || []).slice();
+
+    function renderList(){
+      if (!listEl._contacts.length){ listEl.innerHTML = '<span style="color:var(--sub);">등록된 의뢰인이 없습니다.</span>'; return; }
+      listEl.innerHTML = listEl._contacts.map(function(p, i){
+        return '<div style="display:flex; align-items:center; gap:6px; padding:2px 0;">' +
+          '<span>' + escapeHtml(p.이름 || '(이름없음)') + ' · ' + escapeHtml(p.전화번호) + '</span>' +
+          '<span class="cc-extra-del" data-idx="' + i + '" style="cursor:pointer; color:var(--sub);" title="삭제">✕</span>' +
+          '</div>';
+      }).join('');
+      listEl.querySelectorAll('.cc-extra-del').forEach(function(el){
+        el.addEventListener('click', function(){
+          listEl._contacts.splice(Number(el.getAttribute('data-idx')), 1);
+          renderList();
+        });
+      });
+    }
+    renderList();
+
+    addBtn.addEventListener('click', function(){
+      formEl.style.display = 'flex';
+      formEl.innerHTML =
+        '<input type="text" class="cc-extra-name" placeholder="이름" size="5" style="font-size:12px;">' +
+        '<input type="text" class="cc-extra-phone" placeholder="전화번호" size="13" style="font-size:12px;">' +
+        '<button type="button" class="save-btn cc-extra-confirm" style="padding:3px 8px;">추가</button>' +
+        '<button type="button" class="ghost-btn cc-extra-cancel" style="padding:3px 8px;">취소</button>';
+      formEl.querySelector('.cc-extra-phone').addEventListener('input', function(e){ e.target.value = formatPhoneInput_(e.target.value); });
+      formEl.querySelector('.cc-extra-cancel').addEventListener('click', function(){ formEl.style.display = 'none'; formEl.innerHTML = ''; });
+      formEl.querySelector('.cc-extra-confirm').addEventListener('click', function(){
+        var name = formEl.querySelector('.cc-extra-name').value.trim();
+        var phone = formEl.querySelector('.cc-extra-phone').value.trim();
+        if (!name){ showToast('이름을 입력해주세요.', 'warning'); return; }
+        if (!phone){ showToast('전화번호를 입력해주세요.', 'warning'); return; }
+        listEl._contacts.push({ 이름: name, 전화번호: phone });
+        renderList();
+        formEl.style.display = 'none';
+        formEl.innerHTML = '';
+      });
+    });
+
+    return listEl;
+  }
+
   function renderNewClientForm(){
     clientShowingNewForm = true;
     selectedClientId = null;
@@ -142,10 +213,12 @@
     clientDetail.innerHTML =
       '<h3 style="margin-top:0;">새 고객 등록</h3>' +
       '<div style="display:flex; flex-direction:column; gap:8px; max-width:380px;">' +
-      '<label>성명 *<br><input type="text" id="ccNewName" style="width:100%;" placeholder="고객 성명"></label>' +
-      '<label>전화번호<br><input type="text" id="ccNewPhone" style="width:100%;" placeholder="(선택)"></label>' +
+      '<label>성명 *<br><input type="text" id="ccNewName" size="10" placeholder="고객 성명"></label>' +
+      '<label>전화번호<br><input type="text" id="ccNewPhone" size="14" placeholder="(선택)"></label>' +
+      '<label>추가 연락처(공동의뢰인·가족 — 현금영수증 자동연결에 쓰입니다)</label>' +
+      ccExtraContactsBlockHtml_('ccNewExtra') +
       '<label>구분<br><select id="ccNewType" style="width:100%;">' + CLIENT_TIER_OPTIONS_.map(function(t){ return '<option value="' + t + '"' + (t === '보통' ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></label>' +
-      '<label>납세번호<br><input type="text" id="ccNewBiz" style="width:100%;" placeholder="(선택)"></label>' +
+      '<label>납세번호<br><input type="text" id="ccNewBiz" size="14" placeholder="(선택)"></label>' +
       '<label>메모<br><textarea id="ccNewMemo" style="width:100%; min-height:60px; font-family:inherit;" placeholder="(선택)"></textarea></label>' +
       '<div style="display:flex; gap:8px; margin-top:8px;">' +
       '<button type="button" id="ccNewSave" class="save-btn">저장</button>' +
@@ -153,6 +226,7 @@
       '</div></div>';
 
     document.getElementById('ccNewPhone').addEventListener('input', function(e){ e.target.value = formatPhoneInput_(e.target.value); });
+    var ccNewExtraList = ccWireExtraContacts_('ccNewExtra', []);
 
     document.getElementById('ccNewCancel').addEventListener('click', function(){
       clientShowingNewForm = false;
@@ -163,6 +237,7 @@
       if (!성명){ showToast('성명을 입력해주세요.', 'warning'); return; }
       callGas('client_create_client', {
         성명: 성명, 전화번호: document.getElementById('ccNewPhone').value.trim(),
+        추가연락처: ccNewExtraList._contacts,
         구분: document.getElementById('ccNewType').value.trim(),
         사업자번호: document.getElementById('ccNewBiz').value.trim(),
         메모: document.getElementById('ccNewMemo').value.trim()
@@ -187,16 +262,21 @@
   function renderClientDetail(c, container){
     container = container || clientDetail;
     container.innerHTML =
-      '<div style="display:flex; justify-content:space-between; align-items:flex-start;">' +
-      '<input type="text" id="ccEditName" placeholder="성명" value="' + escapeHtml(c.성명 || '') + '" style="font-weight:700; font-size:15px; flex:1; min-width:0; margin-right:8px;">' +
-      '<button type="button" id="ccDeleteClient" class="btn danger" title="삭제">🗑 삭제</button>' +
+      '<div style="margin-bottom:8px;">' +
+      '<input type="text" id="ccEditName" placeholder="성명" value="' + escapeHtml(c.성명 || '') + '" size="' + Math.max(6, String(c.성명 || '').length + 2) + '" style="font-weight:700; font-size:15px;">' +
       '</div>' +
+      // [2026.09.16 버그수정] 실사용 지적 — 삭제 버튼이 성명 줄 맨 끝에 혼자 떨어져 있어서
+      // 저장(확정동작)과 삭제(확정동작)가 서로 다른 줄에 따로 놀았다. 두 확정동작 버튼은
+      // 나란히 붙여서 저장 바로 옆(오른쪽)에 삭제를 둔다.
       '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:14px;">' +
-      '<input type="text" id="ccEditPhone" placeholder="전화번호" value="' + escapeHtml(c.전화번호 || '') + '" style="width:130px;">' +
-      '<select id="ccEditType" style="width:100px;">' + CLIENT_TIER_OPTIONS_.map(function(t){ return '<option value="' + t + '"' + (t === (c.구분 || '보통') ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select>' +
-      '<input type="text" id="ccEditBiz" placeholder="납세번호" value="' + escapeHtml(c.사업자번호 || '') + '" style="width:130px;">' +
+      '<input type="text" id="ccEditPhone" placeholder="전화번호" value="' + escapeHtml(c.전화번호 || '') + '" size="13">' +
+      '<select id="ccEditType">' + CLIENT_TIER_OPTIONS_.map(function(t){ return '<option value="' + t + '"' + (t === (c.구분 || '보통') ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select>' +
+      '<input type="text" id="ccEditBiz" placeholder="납세번호" value="' + escapeHtml(c.사업자번호 || '') + '" size="12">' +
       '<button type="button" id="ccSaveClient" class="save-btn">저장</button>' +
+      '<button type="button" id="ccDeleteClient" class="btn danger" title="삭제">삭제</button>' +
       '</div>' +
+      '<div style="margin-bottom:14px;"><label style="font-size:12px; color:var(--sub);">추가 연락처(공동의뢰인·가족 — 현금영수증 자동연결에도 쓰입니다)</label><br>' +
+      ccExtraContactsBlockHtml_('ccEditExtra') + '</div>' +
       '<textarea id="ccEditMemo" placeholder="메모" style="width:100%; max-width:500px; min-height:50px; font-family:inherit; margin-bottom:16px;">' + escapeHtml(c.메모 || '') + '</textarea>' +
       '<h4 style="margin-bottom:6px;">서비스 이력</h4>' +
       '<div id="ccLogList" class="log-list"><div class="log-empty">불러오는 중…</div></div>' +
@@ -205,6 +285,7 @@
       '<div id="ccNewPaymentFormWrap" style="display:none; margin-top:10px; gap:6px; flex-wrap:wrap; align-items:center;"></div>';
 
     container.querySelector('#ccEditPhone').addEventListener('input', function(e){ e.target.value = formatPhoneInput_(e.target.value); });
+    var ccEditExtraList = ccWireExtraContacts_('ccEditExtra', c.추가연락처, container);
 
     container.querySelector('#ccSaveClient').addEventListener('click', function(){
       var name = container.querySelector('#ccEditName').value.trim();
@@ -212,6 +293,7 @@
       callGas('client_update_client', {
         id: c.id, 성명: name,
         전화번호: container.querySelector('#ccEditPhone').value.trim(),
+        추가연락처: ccEditExtraList._contacts,
         구분: container.querySelector('#ccEditType').value.trim(),
         사업자번호: container.querySelector('#ccEditBiz').value.trim(),
         메모: container.querySelector('#ccEditMemo').value.trim()
@@ -234,7 +316,8 @@
     });
 
     container.querySelector('#ccDeleteClient').addEventListener('click', function(){
-      if (!confirm('"' + c.성명 + '" 고객을 삭제할까요? 수금 내역은 남아있지만 이 고객과의 연결은 끊어집니다.')) return;
+      nxConfirm_('"' + c.성명 + '" 고객을 삭제할까요? 수금 내역은 남아있지만 이 고객과의 연결은 끊어집니다.').then(function(ok){
+      if (!ok) return;
       function afterDelete_(){
         showToast('삭제했습니다.', 'success');
         if (container === clientDetail){
@@ -249,16 +332,19 @@
         if (res.hasActiveCases) {
           // [2026.09 버그수정] 진행 중인 사건이 있는 고객을 경고 없이 지우면 그 사건의
           // 고객 연결이 끊겨 "빠른보기"가 에러를 냈다 — 한 번 더 명확히 확인받는다.
-          if (!confirm(res.message + '\n\n그래도 삭제할까요?')) return;
-          callGas('client_delete_client', { id: c.id, force: true }).then(function(res2){
-            if (res2.error || res2.success === false){ showToast(res2.error || res2.message || '삭제 실패', 'error'); return; }
-            afterDelete_();
-          }).catch(function(){ showToast('삭제 중 오류가 발생했습니다.', 'error'); });
+          nxConfirm_(res.message + '\n\n그래도 삭제할까요?').then(function(ok2){
+            if (!ok2) return;
+            callGas('client_delete_client', { id: c.id, force: true }).then(function(res2){
+              if (res2.error || res2.success === false){ showToast(res2.error || res2.message || '삭제 실패', 'error'); return; }
+              afterDelete_();
+            }).catch(function(){ showToast('삭제 중 오류가 발생했습니다.', 'error'); });
+          });
           return;
         }
         if (res.error || res.success === false){ showToast(res.error || res.message || '삭제 실패', 'error'); return; }
         afterDelete_();
       }).catch(function(){ showToast('삭제 중 오류가 발생했습니다.', 'error'); });
+      });
     });
 
     var newPaymentFormWrap = container.querySelector('#ccNewPaymentFormWrap');
@@ -266,16 +352,22 @@
       if (newPaymentFormWrap.style.display === 'none'){
         newPaymentFormWrap.style.display = 'flex';
         newPaymentFormWrap.innerHTML =
-          '<input type="date" id="ccNewPayDate" title="날짜(생략하면 오늘)">' +
-          '<input type="number" id="ccNewPayAmount" placeholder="금액" style="width:110px;">' +
+          '<input type="date" id="ccNewPayDate" title="날짜(생략하면 오늘)" style="width:95px;">' +
+          '<input type="number" id="ccNewPayAmount" placeholder="금액" size="8">' +
           '<select id="ccNewPayReceipt">' +
           '<option value="">수취증빙 선택</option>' +
           '<option value="현금영수증">현금영수증</option>' +
           '<option value="세금계산서">세금계산서</option>' +
           '<option value="신용카드">신용카드</option>' +
           '</select>' +
+          '<select id="ccNewPayCase"><option value="">사건 선택 안 함</option></select>' +
           '<button type="button" id="ccAddPayment" class="save-btn">추가</button>' +
           '<button type="button" id="ccAddPaymentCancel" class="ghost-btn">취소</button>';
+        callGas('work_get_cases', {}).then(function(res){
+          var mine = (res.cases || []).filter(function(wc){ return wc.고객ID === c.id; });
+          var sel = newPaymentFormWrap.querySelector('#ccNewPayCase');
+          if (sel) sel.innerHTML = '<option value="">사건 선택 안 함</option>' + mine.map(function(wc){ return '<option value="' + wc.id + '">' + escapeHtml(wc.사건명 || '') + '</option>'; }).join('');
+        }).catch(function(){});
         newPaymentFormWrap.querySelector('#ccAddPaymentCancel').addEventListener('click', function(){ newPaymentFormWrap.style.display = 'none'; newPaymentFormWrap.innerHTML = ''; });
         newPaymentFormWrap.querySelector('#ccAddPayment').addEventListener('click', function(){
           var amount = newPaymentFormWrap.querySelector('#ccNewPayAmount').value;
@@ -284,7 +376,8 @@
             고객ID: c.id, 고객명: c.성명,
             날짜: newPaymentFormWrap.querySelector('#ccNewPayDate').value,
             금액: amount,
-            수취증빙: newPaymentFormWrap.querySelector('#ccNewPayReceipt').value
+            수취증빙: newPaymentFormWrap.querySelector('#ccNewPayReceipt').value,
+            사건ID: newPaymentFormWrap.querySelector('#ccNewPayCase').value
           }).then(function(res){
             if (res.error || res.success === false){ showToast(res.error || res.message || '추가 실패', 'error'); return; }
             showToast('수금 내역을 추가했습니다.', 'success');
@@ -348,12 +441,20 @@
     container = container || clientDetail;
     var listEl = container.querySelector('#ccPaymentList');
     if (!listEl) return;
-    callGas('client_get_consult_logs', { 고객ID: c.id }).then(function(res){
+    // [2026.09.15 신규] 수금 내역-사건 연결 드롭다운을 채우려면 이 고객의 사건 목록이 필요하다
+    // (work_get_cases를 loadClientLogs_와 별도로 한 번 더 부르는 편이, 두 함수의 서로 다른
+    // 타이밍에 의존하는 공유 캐시를 만드는 것보다 단순하고 안전하다).
+    Promise.all([
+      callGas('client_get_consult_logs', { 고객ID: c.id }),
+      callGas('work_get_cases', {})
+    ]).then(function(results){
+      var res = results[0], casesRes = results[1];
       if (res.error || res.success === false){
         listEl.innerHTML = '<div class="log-empty">' + escapeHtml(res.error || res.message || '불러오지 못했습니다.') + '</div>';
         return;
       }
       var payments = res.logs || [];
+      var cases = (casesRes.cases || []).filter(function(wc){ return wc.고객ID === c.id; });
       if (!payments.length){
         listEl.innerHTML = '<div class="log-empty">아직 수금 내역이 없습니다.</div>';
         return;
@@ -362,7 +463,7 @@
       payments.forEach(function(pay){
         var row = document.createElement('div');
         row.className = 'log-entry';
-        renderPaymentRowView_(row, c, pay, container);
+        renderPaymentRowView_(row, c, pay, container, cases);
         listEl.appendChild(row);
       });
     }).catch(function(){
@@ -370,36 +471,48 @@
     });
   }
 
-  function renderPaymentRowView_(row, c, pay, container){
+  function ccCaseName_(cases, caseId){
+    if (!caseId) return '';
+    var found = (cases || []).filter(function(x){ return x.id === caseId; })[0];
+    return found ? found.사건명 : '';
+  }
+
+  function renderPaymentRowView_(row, c, pay, container, cases){
     var amountText = pay.금액 ? Number(pay.금액).toLocaleString('ko-KR') + '원' : '';
+    var caseName = ccCaseName_(cases, pay.사건ID);
     row.innerHTML =
       '<div class="log-date">' + escapeHtml(fmtDateShort_(pay.날짜)) + '</div>' +
-      '<div class="log-text">' + escapeHtml(amountText) + (pay.수취증빙 ? ' · ' + escapeHtml(pay.수취증빙) : '') + '</div>' +
+      '<div class="log-text">' + escapeHtml(amountText) + (pay.수취증빙 ? ' · ' + escapeHtml(pay.수취증빙) : '') + (caseName ? ' · 🗂 ' + escapeHtml(caseName) : '') + '</div>' +
       '<span class="log-edit" title="수정" style="cursor:pointer; margin-right:6px;">✏️</span>' +
       '<span class="log-del" title="삭제">✕</span>';
-    row.querySelector('.log-edit').addEventListener('click', function(){ renderPaymentRowEdit_(row, c, pay, container); });
+    row.querySelector('.log-edit').addEventListener('click', function(){ renderPaymentRowEdit_(row, c, pay, container, cases); });
     row.querySelector('.log-del').addEventListener('click', function(){
-      if (!confirm('이 수금 내역을 삭제할까요?')) return;
-      callGas('client_delete_consult_log', { id: pay.id }).then(function(delRes){
-        if (delRes.error || delRes.success === false){ showToast(delRes.error || delRes.message || '삭제 실패', 'error'); return; }
-        loadClientPayments_(c, container);
-      }).catch(function(){ showToast('삭제 중 오류가 발생했습니다.', 'error'); });
+      nxConfirm_('이 수금 내역을 삭제할까요?').then(function(ok){
+        if (!ok) return;
+        callGas('client_delete_consult_log', { id: pay.id }).then(function(delRes){
+          if (delRes.error || delRes.success === false){ showToast(delRes.error || delRes.message || '삭제 실패', 'error'); return; }
+          loadClientPayments_(c, container);
+        }).catch(function(){ showToast('삭제 중 오류가 발생했습니다.', 'error'); });
+      });
     });
   }
 
-  function renderPaymentRowEdit_(row, c, pay, container){
+  function renderPaymentRowEdit_(row, c, pay, container, cases){
     var receiptOptions = ['', '현금영수증', '세금계산서', '신용카드'];
     row.innerHTML =
       '<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; width:100%;">' +
-      '<input type="date" class="payEditDate" value="' + escapeHtml(pay.날짜 || '') + '" style="font-size:12px;">' +
-      '<input type="number" class="payEditAmount" placeholder="금액" value="' + (pay.금액 || '') + '" style="width:110px; font-size:12px;">' +
+      '<input type="date" class="payEditDate" value="' + escapeHtml(pay.날짜 || '') + '" style="font-size:12px; width:95px;">' +
+      '<input type="number" class="payEditAmount" placeholder="금액" value="' + (pay.금액 || '') + '" size="' + Math.max(5, String(pay.금액 || '').length + 1) + '" style="font-size:12px;">' +
       '<select class="payEditReceipt" style="font-size:12px;">' +
       receiptOptions.map(function(o){ return '<option value="' + o + '"' + (o === (pay.수취증빙 || '') ? ' selected' : '') + '>' + (o || '수취증빙 선택') + '</option>'; }).join('') +
+      '</select>' +
+      '<select class="payEditCase" style="font-size:12px;"><option value="">사건 선택 안 함</option>' +
+      (cases || []).map(function(wc){ return '<option value="' + wc.id + '"' + (wc.id === pay.사건ID ? ' selected' : '') + '>' + escapeHtml(wc.사건명 || '') + '</option>'; }).join('') +
       '</select>' +
       '<button type="button" class="save-btn payEditSave" style="padding:3px 8px;">저장</button>' +
       '<button type="button" class="ghost-btn payEditCancel" style="padding:3px 8px;">취소</button>' +
       '</div>';
-    row.querySelector('.payEditCancel').addEventListener('click', function(){ renderPaymentRowView_(row, c, pay, container); });
+    row.querySelector('.payEditCancel').addEventListener('click', function(){ renderPaymentRowView_(row, c, pay, container, cases); });
     row.querySelector('.payEditSave').addEventListener('click', function(){
       var amount = row.querySelector('.payEditAmount').value;
       if (!amount){ showToast('금액을 입력해주세요.', 'warning'); return; }
@@ -407,13 +520,23 @@
         id: pay.id,
         날짜: row.querySelector('.payEditDate').value,
         금액: amount,
-        수취증빙: row.querySelector('.payEditReceipt').value
+        수취증빙: row.querySelector('.payEditReceipt').value,
+        사건ID: row.querySelector('.payEditCase').value
       }).then(function(res){
         if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); return; }
         showToast('저장했습니다.', 'success');
         loadClientPayments_(c, container);
       }).catch(function(){ showToast('저장 중 오류가 발생했습니다.', 'error'); });
     });
+  }
+
+  // [2026.09.15 신규] 수금관리 등 다른 화면에서 고객명을 눌러 고객관리로 바로 이동할 때 씀
+  // (casehandling.html의 goToCaseHandling_과 같은 패턴).
+  function goToClientManage_(clientId){
+    if (typeof goToView_ === 'function') goToView_('clientmanage');
+    clientShowingNewForm = false;
+    selectedClientId = clientId;
+    loadClients();
   }
 
   document.getElementById('btnClientNew').addEventListener('click', renderNewClientForm);
@@ -439,29 +562,41 @@
     var qvContainer = document.getElementById('clientQuickViewDetail');
     var overlay = document.getElementById('clientQuickViewOverlay');
     var alreadyOpen = overlay.style.display !== 'none';
+    var proceedOpen_ = function(){
+      var found = clients.filter(function(c){ return c.id === clientId; })[0];
+      var p = found ? Promise.resolve(found) : callGas('client_get_clients', {}).then(function(res){
+        return (res.clients || []).filter(function(c){ return c.id === clientId; })[0];
+      }).catch(function(){ return null; });
+      p.then(function(f){
+        if (!f){ showToast('연결된 고객 정보를 찾을 수 없습니다.', 'error'); return; }
+        overlay.style.display = 'flex';
+        renderClientDetail(f, qvContainer);
+        quickViewSnapshot_ = quickViewCurrentSignature_(qvContainer);
+      });
+    };
     if (alreadyOpen && quickViewSnapshot_ !== null && quickViewCurrentSignature_(qvContainer) !== quickViewSnapshot_){
-      if (!confirm('빠른보기에 저장하지 않은 수정 내용이 있습니다. 저장하지 않고 다른 고객을 볼까요?')) return;
+      nxConfirm_('빠른보기에 저장하지 않은 수정 내용이 있습니다. 저장하지 않고 다른 고객을 볼까요?').then(function(ok){
+        if (ok) proceedOpen_();
+      });
+    } else {
+      proceedOpen_();
     }
-    var found = clients.filter(function(c){ return c.id === clientId; })[0];
-    var p = found ? Promise.resolve(found) : callGas('client_get_clients', {}).then(function(res){
-      return (res.clients || []).filter(function(c){ return c.id === clientId; })[0];
-    }).catch(function(){ return null; });
-    p.then(function(f){
-      if (!f){ showToast('연결된 고객 정보를 찾을 수 없습니다.', 'error'); return; }
-      overlay.style.display = 'flex';
-      renderClientDetail(f, qvContainer);
-      quickViewSnapshot_ = quickViewCurrentSignature_(qvContainer);
-    });
   }
 
   function closeClientQuickView_(force){
     var qvContainer = document.getElementById('clientQuickViewDetail');
+    var proceedClose_ = function(){
+      quickViewSnapshot_ = null;
+      document.getElementById('clientQuickViewOverlay').style.display = 'none';
+      qvContainer.innerHTML = '';
+    };
     if (!force && quickViewSnapshot_ !== null && quickViewCurrentSignature_(qvContainer) !== quickViewSnapshot_){
-      if (!confirm('저장하지 않은 수정 내용이 있습니다. 저장하지 않고 닫을까요?')) return;
+      nxConfirm_('저장하지 않은 수정 내용이 있습니다. 저장하지 않고 닫을까요?').then(function(ok){
+        if (ok) proceedClose_();
+      });
+    } else {
+      proceedClose_();
     }
-    quickViewSnapshot_ = null;
-    document.getElementById('clientQuickViewOverlay').style.display = 'none';
-    qvContainer.innerHTML = '';
   }
 
   document.getElementById('btnCloseClientQuickView').addEventListener('click', function(){ closeClientQuickView_(); });

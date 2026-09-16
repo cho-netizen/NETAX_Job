@@ -19,6 +19,12 @@
   <link rel="manifest" href="https://job.netax.kr/manifest.json">
   <link rel="icon" type="image/svg+xml" href="https://job.netax.kr/icon.svg">
   <meta name="theme-color" content="#0D1B3D">
+  <!-- [2026.09.16 되돌림] 위 폰트 불러오기(Noto Sans KR)를 넣었다가 바로 되돌렸다 — 배포
+       직후 "로그인 후 화면이 완전히 먹통"이라는 심각한 신고가 들어왔다. 외부 도메인
+       (fonts.googleapis.com) stylesheet <link>는 기본적으로 렌더링을 막는데, 회사·기관
+       네트워크에서 그 도메인 접근이 느리거나 막혀 있으면 앱 전체가 응답 없이 멈춰버릴 수
+       있다 — 폰트 불일치보다 훨씬 심각한 문제라 즉시 제거. 표 줄바꿈 문제의 진짜 해결책은
+       booking.html에 추가한 말줄임(ellipsis) 처리라 외부 폰트가 없어도 문제없다. -->
   <?!= include_('manage/style') ?>
 </head>
 <body>
@@ -51,6 +57,7 @@
         <div class="menu-item" data-view="booking">📅 예약관리</div>
         <div class="menu-item" data-view="workmanage">📌 작업관리</div>
         <div class="menu-item" data-view="clientmanage">🙋 고객관리</div>
+        <div class="menu-item" data-view="collections">💰 수금관리</div>
 
         <div class="menu-group-label">처리</div>
         <div class="menu-item" data-view="casehandling">🧭 처리개요</div>
@@ -63,6 +70,7 @@
         <div class="menu-group-label">메모</div>
         <div class="menu-item" data-view="memo-text">📝 일반메모</div>
         <div class="menu-item" data-view="memo-hand">✍ 필기메모</div>
+        <div class="menu-item" data-view="reporthub">📚 보고서 모음</div>
 
         <div class="menu-group-label">&nbsp;</div>
         <div class="menu-item" data-view="manual">❓ 사용자메뉴얼</div>
@@ -77,13 +85,14 @@
       <?!= include_('manage/casehandling') ?>
       <?!= include_('manage/lawsearch') ?>
       <?!= include_('manage/clientmanage') ?>
+      <?!= include_('manage/collections') ?>
 
       <?!= include_('manage/docs') ?>
 
       <div class="view" id="view-taxcalc">
         <div id="taxCalcView" style="flex:1; display:flex; flex-direction:column; min-height:0;">
           <div class="editor-toolbar">
-            <span class="editor-filename">🧮 세액계산 (양도·증여·상속·취득세)</span>
+            <h2 style="margin:0; font-size:19px; color:var(--navy); font-weight:700;">🧮 세액계산</h2>
             <div class="spacer"></div>
             <div class="taxcalc-tier-tabs" id="taxCalcTierTabs">
               <button type="button" class="tier-on" data-tier="simple">간편계산</button>
@@ -95,6 +104,8 @@
             <button type="button" class="taxcalc-tab" data-tab="gift">증여세</button>
             <button type="button" class="taxcalc-tab" data-tab="inheritance">상속세</button>
             <button type="button" class="taxcalc-tab" data-tab="acquisition">취득세</button>
+            <button type="button" class="taxcalc-tab" data-tab="registrationlicense">등록면허세</button>
+            <button type="button" class="taxcalc-tab" data-tab="standardprice">건물기준시가</button>
           </div>
           <div id="taxCalcCaseBar" style="display:flex; flex-direction:column; gap:8px; padding:10px 14px; border-bottom:1px solid var(--taxcalc-border); flex-shrink:0;"></div>
           <div class="taxcalc-body">
@@ -103,6 +114,8 @@
             <div id="taxCalcGiftPane" class="taxcalc-pane" style="display:none;"></div>
             <div id="taxCalcInheritancePane" class="taxcalc-pane" style="display:none;"></div>
             <div id="taxCalcAcquisitionPane" class="taxcalc-pane" style="display:none;"></div>
+            <div id="taxCalcRegistrationLicensePane" class="taxcalc-pane" style="display:none;"></div>
+            <div id="taxCalcStandardPricePane" class="taxcalc-pane" style="display:none;"></div>
           </div>
         </div>
       </div>
@@ -113,6 +126,7 @@
 
       <?!= include_('manage/reports') ?>
       <?!= include_('manage/memo') ?>
+      <?!= include_('manage/reporthub') ?>
 
       <?!= include_('manage/settings') ?>
       <?!= include_('manage/manual') ?>

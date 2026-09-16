@@ -1,0 +1,409 @@
+<div class="view" id="view-collections">
+  <div class="editor-toolbar">
+    <button type="button" id="btnColNew" class="save-btn">+ 수금 추가</button>
+    <button type="button" id="btnColImportHometax" class="ghost-btn" title="고객사건/0_NX_0 폴더의 홈택스 매출내역 엑셀을 읽어 새로 추가된 현금영수증만 반영합니다">🧾 홈택스 매출내역 가져오기</button>
+    <span class="editor-filename">💰 전체 고객 수금 내역(자문내역 중 수금 기록)</span>
+    <div class="spacer"></div>
+    <input type="text" id="colSearchInput" list="clientNameOptions" placeholder="고객명으로 검색…" size="10">
+    <input type="date" id="colFromDate" title="시작일" style="width:95px;">
+    <span style="color:var(--sub); font-size:12px;">~</span>
+    <input type="date" id="colToDate" title="종료일" style="width:95px;">
+    <label style="display:flex; align-items:center; gap:4px; font-size:12.5px; color:var(--sub); white-space:nowrap;">
+      <input type="checkbox" id="colUnlinkedOnly"> 미연결만
+    </label>
+  </div>
+  <div class="view-body">
+    <div class="card" id="colNewFormCard" style="display:none;">
+      <h3>새 수금 추가</h3>
+      <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+        <input type="text" id="colNewCustomer" list="clientNameOptions" placeholder="고객명" size="6" style="flex:0 0 auto;">
+        <select id="colNewCase"><option value="">사건 선택 안 함</option></select>
+        <input type="date" id="colNewDate" title="날짜(생략하면 오늘)" style="width:95px;">
+        <input type="number" id="colNewAmount" placeholder="금액" size="7" style="flex:0 0 auto;">
+        <select id="colNewReceipt">
+          <option value="">수취증빙 선택</option>
+          <option value="현금영수증">현금영수증</option>
+          <option value="세금계산서">세금계산서</option>
+          <option value="신용카드">신용카드</option>
+        </select>
+        <input type="text" id="colNewMemo" placeholder="비고(선택)" style="flex:1; min-width:120px;">
+        <button type="button" id="colNewSave" class="save-btn">저장</button>
+        <button type="button" id="colNewCancel" class="ghost-btn">취소</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>📊 기간별 통계
+        <select id="colStatPeriod" style="float:right; font-size:12.5px;">
+          <option value="" selected>없음</option>
+          <option value="month">월별</option>
+          <option value="quarter">분기별</option>
+          <option value="half">반기별</option>
+          <option value="year">연도별</option>
+        </select>
+      </h3>
+      <div id="colStats"></div>
+    </div>
+    <div class="card">
+      <h3>수금 내역<span id="colSummary" style="float:right; font-weight:600; color:var(--sub); font-size:12.5px;"></span></h3>
+      <div id="colList"><div class="spinner">불러오는 중…</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="colDetailOverlay" style="display:none;">
+  <div class="modal-panel" style="max-width:480px;">
+    <div class="modal-head">
+      <span>💰 수금 상세</span>
+      <span class="modal-close" id="colDetailClose" title="닫기">✕</span>
+    </div>
+    <div class="modal-body" id="colDetailBody"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="colCaseNavOverlay" style="display:none;">
+  <div class="modal-panel" style="max-width:340px;">
+    <div class="modal-head">
+      <span>🗂 사건으로 이동</span>
+      <span class="modal-close" id="colCaseNavClose" title="닫기">✕</span>
+    </div>
+    <div class="modal-body" style="gap:8px;">
+      <button type="button" id="colCaseNavToWork" class="ghost-btn" style="width:100%;">📌 작업관리에서 보기</button>
+      <button type="button" id="colCaseNavToHandling" class="ghost-btn" style="width:100%;">🧭 처리개요에서 보기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ============================================================
+  // [2026.09.15 신규] 수금관리 — 고객관리 안에서만 고객 하나씩 열어야 보이던 수금 내역(자문내역
+  // 중 client_get_consult_logs가 반환하는 기록)을 전체 고객 기준으로 한 화면에서 검색·조회·
+  // 추가·수정·삭제한다. 데이터 자체는 새로 만들지 않고 client_get_consult_logs/
+  // client_add_consult_log/client_update_consult_log/client_delete_consult_log를 그대로
+  // 재사용한다(고객관리·대시보드와 완전히 같은 원천 데이터).
+  //
+  // [화면구성 4원칙 적용] "돌대가리냐 1줄로 보여주라고 했더니…" 지적 이후의 표준 원칙을
+  // 처음부터 반영해서 만든다 — ① 필드폭은 데이터 길이만큼만(고정폭 badge형 log-date는
+  // style.html의 flex:0 0 auto로 이미 데이터 길이에 맞게 자동조절됨), ② 비고처럼 길어질 수
+  // 있는 텍스트는 한 줄로 말줄임(...) 처리하고 클릭하면 모달 팝업으로 전체를 보여주며(아래
+  // colShowDetail_), ③ .log-entry는 flex-wrap 기반이라 화면폭이 좁아지면 자연스럽게 다음
+  // 줄로 넘어가는 반응형이고, ④ 그래도 꼭 보여야 하는 날짜·금액은 줄바꿈 없이(nowrap) 유지해
+  // 최소 가독성을 지킨다.
+  // ============================================================
+  var colList = document.getElementById('colList');
+  var colLoaded = false;
+  var colLogsCache_ = [];
+  var colAllCasesCache_ = []; // [2026.09.15 신규] 수금-사건 연결용 — 사건 선택 드롭다운을 채우는 데 씀
+
+  function initCollections(){
+    if (colLoaded) return;
+    colLoaded = true;
+    // [2026.09.15 버그수정] 실사용 지적 — 사건과 연결했는데도 목록에 사건명이 안 보였다.
+    // loadCollections_()(수금 목록)와 work_get_cases(사건명 사전)를 각자 따로 불러서,
+    // 사건 목록이 늦게 도착하면 이미 그려진 화면에는 사건명이 반영 안 된 채로 남아있었다
+    // (colCaseName_이 그 시점엔 비어있는 colAllCasesCache_에서 못 찾으니 빈 문자열을 반환).
+    // 사건 목록을 먼저 채운 뒤 수금 목록을 그려서 첫 렌더링부터 항상 맞게 나오게 한다.
+    callGas('work_get_cases', {}).then(function(res){
+      colAllCasesCache_ = res.cases || [];
+    }).catch(function(){}).then(loadCollections_);
+  }
+
+  function colAmountText_(n){ return n ? Number(n).toLocaleString('ko-KR') + '원' : ''; }
+  function colCaseName_(caseId){
+    if (!caseId) return '';
+    var c = colAllCasesCache_.filter(function(x){ return x.id === caseId; })[0];
+    return c ? c.사건명 : '';
+  }
+  // 고객명이 정확히 일치하는 그 고객의 사건만 골라 드롭다운에 채운다(원칙①: 관련 없는 사건까지
+  // 다 보여주면 오히려 고르기 힘들어진다). selectEl의 현재 값(caseId)이 새 목록에도 있으면
+  // 선택 상태를 유지한다.
+  function colPopulateCaseSelect_(selectEl, customerName, keepCaseId){
+    var cases = customerName ? colAllCasesCache_.filter(function(c){ return c.고객명 === customerName; }) : [];
+    selectEl.innerHTML = '<option value="">사건 선택 안 함</option>' +
+      cases.map(function(c){ return '<option value="' + c.id + '"' + (c.id === keepCaseId ? ' selected' : '') + '>' + escapeHtml(c.사건명 || '') + '</option>'; }).join('');
+  }
+
+  function loadCollections_(){
+    colList.innerHTML = '<div class="spinner">불러오는 중…</div>';
+    var search = document.getElementById('colSearchInput').value.trim();
+    callGas('client_get_consult_logs', search ? { search: search } : {}).then(function(res){
+      if (res.error || res.success === false){
+        colList.innerHTML = '<div class="empty-row">' + escapeHtml(res.error || res.message || '불러오지 못했습니다.') + '</div>';
+        return;
+      }
+      colLogsCache_ = res.logs || [];
+      colRenderList_();
+    }).catch(function(){ colList.innerHTML = '<div class="empty-row">불러오지 못했습니다.</div>'; });
+  }
+
+  function colRenderList_(){
+    var from = document.getElementById('colFromDate').value;
+    var to = document.getElementById('colToDate').value;
+    var unlinkedOnly = document.getElementById('colUnlinkedOnly').checked;
+    var logs = colLogsCache_.filter(function(l){
+      if (from && String(l.날짜 || '') < from) return false;
+      if (to && String(l.날짜 || '') > to) return false;
+      if (unlinkedOnly && l.고객ID) return false;
+      return true;
+    });
+    var summaryEl = document.getElementById('colSummary');
+    colRenderStats_(logs);
+    if (!logs.length){
+      colList.innerHTML = '<div class="empty-row">조건에 맞는 수금 내역이 없습니다.</div>';
+      summaryEl.textContent = '';
+      return;
+    }
+    var total = logs.reduce(function(s, l){ return s + (Number(l.금액) || 0); }, 0);
+    var unlinkedCount = colLogsCache_.filter(function(l){ return !l.고객ID; }).length;
+    summaryEl.textContent = logs.length + '건 · 합계 ' + colAmountText_(total) + (unlinkedCount ? ' · 미연결 ' + unlinkedCount + '건' : '');
+    colList.innerHTML = '';
+    logs.forEach(function(l){
+      var row = document.createElement('div');
+      row.className = 'log-entry';
+      colRenderRowView_(row, l);
+      colList.appendChild(row);
+    });
+  }
+
+  // [2026.09.15 신규] 세무사님 요청 — 월별/분기별/반기별/연도별 통계. 지금 목록에 걸려있는
+  // 필터(고객명 검색·기간·미연결만)를 그대로 반영한 결과를 기간 단위로 묶어 합계·건수를 보여준다
+  // (목록과 통계가 서로 다른 조건을 보면 헷갈리므로 항상 같은 필터를 공유).
+  function colPeriodKey_(dateStr, period){
+    var year = String(dateStr || '').slice(0, 4);
+    var month = parseInt(String(dateStr || '').slice(5, 7), 10) || 0;
+    if (!year) return '(날짜 없음)';
+    if (period === 'year') return year + '년';
+    if (period === 'half') return year + '년 ' + (month <= 6 ? '상반기' : '하반기');
+    if (period === 'quarter') return year + '년 ' + (Math.ceil(month / 3) || '') + '분기';
+    return year + '-' + (month < 10 ? '0' + month : month);
+  }
+  function colRenderStats_(logs){
+    var period = document.getElementById('colStatPeriod').value;
+    var box = document.getElementById('colStats');
+    if (!period){ box.innerHTML = ''; return; } // "없음"(기본값) — 평소엔 통계 카드를 접어둔다
+    if (!logs.length){ box.innerHTML = '<div class="empty-row">통계를 낼 데이터가 없습니다.</div>'; return; }
+    var groups = {};
+    var order = [];
+    logs.forEach(function(l){
+      var key = colPeriodKey_(l.날짜, period);
+      if (!groups[key]){ groups[key] = { count: 0, total: 0 }; order.push(key); }
+      groups[key].count++;
+      groups[key].total += Number(l.금액) || 0;
+    });
+    order.sort().reverse(); // 최신 기간이 위로
+    var grandTotal = logs.reduce(function(s, l){ return s + (Number(l.금액) || 0); }, 0);
+    var html = '<div style="overflow-x:auto;"><table class="list-table" style="width:auto;"><tr><th>기간</th><th>건수</th><th>합계</th></tr>';
+    order.forEach(function(key){
+      html += '<tr><td style="white-space:nowrap;">' + escapeHtml(key) + '</td><td style="white-space:nowrap;">' + groups[key].count + '건</td><td style="white-space:nowrap;">' + escapeHtml(colAmountText_(groups[key].total)) + '</td></tr>';
+    });
+    html += '<tr style="font-weight:700;"><td>전체</td><td>' + logs.length + '건</td><td>' + escapeHtml(colAmountText_(grandTotal)) + '</td></tr>';
+    html += '</table></div>';
+    box.innerHTML = html;
+  }
+
+  function colRenderRowView_(row, l){
+    var memo = String(l.내용 || '');
+    var unlinked = !l.고객ID;
+    // 비고는 한 줄만 보여주고 나머지는 ...으로 줄이며, 전체는 클릭해서 모달로 본다(원칙②).
+    var memoHtml = memo
+      ? '<span class="col-memo" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px;" title="클릭해서 전체 보기">' + escapeHtml(memo) + '</span>'
+      : '';
+    // [2026.09.15 신규] 고객명을 누르면 고객관리로, 사건명을 누르면 작업관리/처리개요 중
+    // 고를 수 있게 — 세무사님 지적: "사건과 연결했다면서 어디로도 못 가면 무슨 소용이냐."
+    var nameHtml = unlinked
+      ? '<b style="color:#a83232;">⚠ 미연결</b>'
+      : '<b class="col-goto-client" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px;" title="클릭하면 고객관리로 이동">' + escapeHtml(l.고객명 || '') + '</b>';
+    var caseName = colCaseName_(l.사건ID);
+    // [2026.09.16 신규] 세무사님 지적 — "사건명이 왜 안 보이나, 연결여부는 어떻게 아나?"
+    // 사건이 연결 안 됐을 땐 그냥 아무것도 안 보여서 "원래 이런 화면인지 고장인지" 구분이
+    // 안 됐다. 연결 안 된 경우에도 회색 "사건 미연결"을 항상 표시하고, 눌러서 바로 사건을
+    // 고를 수 있게 한다(미연결 고객처럼 굳이 빨간 경고까지는 아니고 — 사건 연결은 선택사항).
+    var caseHtml = caseName
+      ? ' · <span class="col-goto-case" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px;" title="클릭하면 작업관리·처리개요로 이동">🗂 ' + escapeHtml(caseName) + '</span>'
+      : (unlinked ? '' : ' · <span class="col-link-case" style="cursor:pointer; color:var(--sub); text-decoration:underline dotted; text-underline-offset:2px;" title="클릭해서 사건 연결">사건 미연결</span>');
+    row.style.borderColor = unlinked ? '#e3b3b3' : '';
+    row.innerHTML =
+      '<div class="log-date">' + escapeHtml(fmtDateShort_(l.날짜)) + '</div>' +
+      '<div class="log-text" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' +
+      nameHtml + ' · ' + escapeHtml(colAmountText_(l.금액)) +
+      (l.수취증빙 ? ' · ' + escapeHtml(l.수취증빙) : '') +
+      caseHtml +
+      (memoHtml ? ' · ' + memoHtml : '') +
+      '</div>' +
+      (unlinked ? '<button type="button" class="ghost-btn col-link-btn" style="flex:0 0 auto; padding:3px 8px; font-size:11.5px;">고객 연결</button>' : '') +
+      '<span class="log-edit" title="수정" style="cursor:pointer; margin-right:6px; margin-left:6px; flex:0 0 auto;">✏️</span>' +
+      '<span class="log-del" title="삭제" style="flex:0 0 auto;">✕</span>';
+    var linkBtn = row.querySelector('.col-link-btn');
+    if (linkBtn) linkBtn.addEventListener('click', function(){ colRenderRowEdit_(row, l); });
+    var memoEl = row.querySelector('.col-memo');
+    if (memoEl) memoEl.addEventListener('click', function(){ colShowDetail_(l); });
+    var gotoClientEl = row.querySelector('.col-goto-client');
+    if (gotoClientEl) gotoClientEl.addEventListener('click', function(){ if (typeof goToClientManage_ === 'function') goToClientManage_(l.고객ID); });
+    var gotoCaseEl = row.querySelector('.col-goto-case');
+    if (gotoCaseEl) gotoCaseEl.addEventListener('click', function(){ colShowCaseNav_(l.사건ID); });
+    var linkCaseEl = row.querySelector('.col-link-case');
+    if (linkCaseEl) linkCaseEl.addEventListener('click', function(){ colRenderRowEdit_(row, l); });
+    row.querySelector('.log-edit').addEventListener('click', function(){ colRenderRowEdit_(row, l); });
+    row.querySelector('.log-del').addEventListener('click', function(){
+      nxConfirm_(l.고객명 + '님의 ' + colAmountText_(l.금액) + ' 수금 내역을 삭제할까요?').then(function(ok){
+        if (!ok) return;
+        callGas('client_delete_consult_log', { id: l.id }).then(function(res){
+          if (res.error || res.success === false){ showToast(res.error || res.message || '삭제 실패', 'error'); return; }
+          loadCollections_();
+        }).catch(function(){ showToast('삭제 중 오류가 발생했습니다.', 'error'); });
+      });
+    });
+    // [2026.09.16 버그수정] 세무사님 지적 — "좁은 화면에서는 오히려 상세보기가 더 잘 돼야
+    // 하는데 거꾸로 안 된다." 원인: .log-text 한 줄 전체가 white-space:nowrap+ellipsis라서,
+    // 화면이 좁아져 내용이 다 안 들어가면 맨 뒤에 있는 .col-memo(상세보기 진입점)부터
+    // 잘려나가 클릭할 대상 자체가 사라졌다. 개별 링크(고객명/사건명/메모/수정/삭제)는 그대로
+    // 각자 동작하게 두고, 그 외 행 아무 곳이나 눌러도 상세 모달이 뜨도록 행 전체에 폴백을
+    // 건다 — 좁을수록 개별 링크가 먼저 잘리므로, 좁을수록 이 폴백이 더 유용해진다.
+    row.style.cursor = 'pointer';
+    row.addEventListener('click', function(e){
+      if (e.target.closest('.col-goto-client, .col-goto-case, .col-link-case, .col-memo, .log-edit, .log-del, .col-link-btn')) return;
+      colShowDetail_(l);
+    });
+  }
+
+  // 원칙②의 "클릭하면 팝업으로" — title 속성이나 alert()이 아니라 기존 고객관리·처리개요와
+  // 같은 .modal-overlay/.modal-panel 컴포넌트를 그대로 재사용한다.
+  function colShowDetail_(l){
+    document.getElementById('colDetailBody').innerHTML =
+      '<div style="display:flex; flex-direction:column; gap:8px; font-size:13px;">' +
+      '<div><b>고객명</b> · ' + escapeHtml(l.고객명 || '') + '</div>' +
+      '<div><b>날짜</b> · ' + escapeHtml(fmtDateShort_(l.날짜)) + '</div>' +
+      '<div><b>금액</b> · ' + escapeHtml(colAmountText_(l.금액)) + '</div>' +
+      (l.수취증빙 ? '<div><b>수취증빙</b> · ' + escapeHtml(l.수취증빙) + '</div>' : '') +
+      (colCaseName_(l.사건ID) ? '<div><b>연결된 사건</b> · 🗂 ' + escapeHtml(colCaseName_(l.사건ID)) + '</div>' : '') +
+      '<div style="white-space:pre-wrap; border-top:1px solid var(--line); padding-top:8px;">' + escapeHtml(l.내용 || '') + '</div>' +
+      '</div>';
+    document.getElementById('colDetailOverlay').style.display = 'flex';
+  }
+  document.getElementById('colDetailClose').addEventListener('click', function(){
+    document.getElementById('colDetailOverlay').style.display = 'none';
+  });
+
+  // 사건명 클릭 — 작업관리(현황 중심)와 처리개요(실제 처리 작업대) 중 어디로 갈지 물어본다
+  // (한쪽으로 고정하면 다른 목적으로 온 사람이 또 한 번 이동해야 함).
+  var colCaseNavTargetId_ = null;
+  function colShowCaseNav_(caseId){
+    colCaseNavTargetId_ = caseId;
+    document.getElementById('colCaseNavOverlay').style.display = 'flex';
+  }
+  document.getElementById('colCaseNavClose').addEventListener('click', function(){
+    document.getElementById('colCaseNavOverlay').style.display = 'none';
+  });
+  document.getElementById('colCaseNavToWork').addEventListener('click', function(){
+    document.getElementById('colCaseNavOverlay').style.display = 'none';
+    if (typeof goToWorkManage_ === 'function') goToWorkManage_(colCaseNavTargetId_);
+  });
+  document.getElementById('colCaseNavToHandling').addEventListener('click', function(){
+    document.getElementById('colCaseNavOverlay').style.display = 'none';
+    if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(colCaseNavTargetId_);
+  });
+
+  function colRenderRowEdit_(row, l){
+    var receiptOptions = ['', '현금영수증', '세금계산서', '신용카드'];
+    row.innerHTML =
+      '<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; width:100%;">' +
+      '<input type="text" class="colEditCustomer" list="clientNameOptions" placeholder="고객명" value="' + escapeHtml(l.고객명 || '') + '" size="' + Math.max(4, String(l.고객명 || '').length) + '" style="font-size:12px;">' +
+      '<select class="colEditCase" style="font-size:12px;"><option value="">사건 선택 안 함</option></select>' +
+      '<input type="date" class="colEditDate" value="' + escapeHtml(l.날짜 || '') + '" style="font-size:12px; width:95px;">' +
+      '<input type="number" class="colEditAmount" placeholder="금액" value="' + (l.금액 || '') + '" size="' + Math.max(5, String(l.금액 || '').length + 1) + '" style="font-size:12px;">' +
+      '<select class="colEditReceipt" style="font-size:12px;">' +
+      receiptOptions.map(function(o){ return '<option value="' + o + '"' + (o === (l.수취증빙 || '') ? ' selected' : '') + '>' + (o || '수취증빙 선택') + '</option>'; }).join('') +
+      '</select>' +
+      '<input type="text" class="colEditMemo" placeholder="비고" value="' + escapeHtml(l.내용 || '') + '" style="flex:1; min-width:100px; font-size:12px;">' +
+      '<button type="button" class="save-btn colEditSave" style="padding:3px 8px;">저장</button>' +
+      '<button type="button" class="ghost-btn colEditCancel" style="padding:3px 8px;">취소</button>' +
+      '</div>';
+    var editCaseSelect = row.querySelector('.colEditCase');
+    colPopulateCaseSelect_(editCaseSelect, l.고객명, l.사건ID);
+    // 고객명을 바꾸면(예: 미연결 건을 다른 고객으로 연결) 그 고객의 사건 목록으로 다시 채운다 —
+    // 이전 고객의 사건이 실수로 그대로 남아있지 않도록 사건 선택은 초기화한다.
+    row.querySelector('.colEditCustomer').addEventListener('input', function(e){
+      colPopulateCaseSelect_(editCaseSelect, e.target.value.trim(), '');
+    });
+    row.querySelector('.colEditCancel').addEventListener('click', function(){ colRenderRowView_(row, l); });
+    row.querySelector('.colEditSave').addEventListener('click', function(){
+      var amount = row.querySelector('.colEditAmount').value;
+      var 고객명 = row.querySelector('.colEditCustomer').value.trim();
+      if (!amount){ showToast('금액을 입력해주세요.', 'warning'); return; }
+      if (!고객명){ showToast('고객명을 입력해주세요.', 'warning'); return; }
+      callGas('client_update_consult_log', {
+        id: l.id,
+        고객명: 고객명,
+        유형: '수금', // 홈택스 미연결 건을 여기서 고객 연결하면 정상 수금 건으로 전환
+        날짜: row.querySelector('.colEditDate').value,
+        금액: amount,
+        수취증빙: row.querySelector('.colEditReceipt').value,
+        내용: row.querySelector('.colEditMemo').value.trim(),
+        사건ID: editCaseSelect.value
+      }).then(function(res){
+        if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); return; }
+        showToast('저장했습니다.', 'success');
+        loadCollections_();
+      }).catch(function(){ showToast('저장 중 오류가 발생했습니다.', 'error'); });
+    });
+  }
+
+  var colNewFormCard = document.getElementById('colNewFormCard');
+  document.getElementById('btnColNew').addEventListener('click', function(){
+    colNewFormCard.style.display = colNewFormCard.style.display === 'none' ? 'block' : 'none';
+    if (colNewFormCard.style.display === 'block') document.getElementById('colNewCustomer').focus();
+  });
+  document.getElementById('colNewCustomer').addEventListener('input', function(e){
+    colPopulateCaseSelect_(document.getElementById('colNewCase'), e.target.value.trim(), '');
+  });
+  document.getElementById('colNewCancel').addEventListener('click', function(){
+    colNewFormCard.style.display = 'none';
+    ['colNewCustomer','colNewDate','colNewAmount','colNewReceipt','colNewMemo'].forEach(function(id){ document.getElementById(id).value = ''; });
+    colPopulateCaseSelect_(document.getElementById('colNewCase'), '', '');
+  });
+  document.getElementById('colNewSave').addEventListener('click', function(){
+    var 고객명 = document.getElementById('colNewCustomer').value.trim();
+    var amount = document.getElementById('colNewAmount').value;
+    if (!고객명){ showToast('고객명을 입력해주세요.', 'warning'); return; }
+    if (!amount){ showToast('금액을 입력해주세요.', 'warning'); return; }
+    callGas('client_add_consult_log', {
+      고객명: 고객명,
+      날짜: document.getElementById('colNewDate').value,
+      금액: amount,
+      수취증빙: document.getElementById('colNewReceipt').value,
+      내용: document.getElementById('colNewMemo').value.trim(),
+      사건ID: document.getElementById('colNewCase').value
+    }).then(function(res){
+      if (res.error || res.success === false){ showToast(res.error || res.message || '추가 실패', 'error'); return; }
+      showToast('수금 내역을 추가했습니다.', 'success');
+      document.getElementById('colNewCancel').click();
+      loadCollections_();
+    }).catch(function(){ showToast('추가 중 오류가 발생했습니다.', 'error'); });
+  });
+
+  document.getElementById('colSearchInput').addEventListener('input', loadCollections_);
+  document.getElementById('colFromDate').addEventListener('change', colRenderList_);
+  document.getElementById('colToDate').addEventListener('change', colRenderList_);
+  document.getElementById('colUnlinkedOnly').addEventListener('change', colRenderList_);
+  document.getElementById('colStatPeriod').addEventListener('change', colRenderList_);
+
+  // [2026.09.15 신규] 고객사건/0_NX_0의 홈택스 매출내역 엑셀을 지금 바로 반영 — 세무사님이
+  // 새로 다운로드한 뒤 바로 확인하고 싶을 때 쓴다(야간에도 자동으로 한 번 더 돈다).
+  var btnColImportHometax = document.getElementById('btnColImportHometax');
+  btnColImportHometax.addEventListener('click', function(){
+    btnColImportHometax.disabled = true;
+    var originalText = btnColImportHometax.textContent;
+    btnColImportHometax.textContent = '가져오는 중…';
+    callGas('import_hometax_receipts', {}).then(function(res){
+      btnColImportHometax.disabled = false;
+      btnColImportHometax.textContent = originalText;
+      if (res.error){ showToast(res.error, 'error'); return; }
+      if (res.errors && res.errors.length){ showToast('일부 오류: ' + res.errors.join(' / '), 'warning'); }
+      showToast('파일 ' + res.filesScanned + '개 확인 · 신규 ' + res.imported + '건(자동연결 ' + res.autoLinked + ' / 미연결 ' + res.unlinked + ') · 이미반영 ' + res.alreadyImported + '건' + (res.backfilled ? ' · 중복방지(승인번호만 채움) ' + res.backfilled + '건' : '') + (res.cancelledRemoved ? ' · 취소반영 ' + res.cancelledRemoved + '건' : '') + (res.reMatched ? ' · 기존 미연결 중 ' + res.reMatched + '건 새로 연결됨' : ''), 'success');
+      loadCollections_();
+    }).catch(function(){
+      btnColImportHometax.disabled = false;
+      btnColImportHometax.textContent = originalText;
+      showToast('가져오는 중 오류가 발생했습니다.', 'error');
+    });
+  });
+</script>

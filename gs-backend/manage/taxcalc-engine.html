@@ -1637,6 +1637,37 @@
     };
   };
 
+  // [2026.09 신규] calculateProportionalAllocationJS는 양도가액이 항상 있어야 하는 구조
+  // (총양도가액 없으면 무조건 에러, 양도시점 기준시가가 항상 주된 가중치)라 "아직 팔리지
+  // 않았거나 이번 계약과 다른 계약으로 팔릴 취득물건들 사이에서 취득가액만 안분"하는 경우엔
+  // 못 쓴다 — 계약 단위 안분을 취득계약 쪽에서도 쓰기 위한 대칭 버전(양도가액 없이 취득가액·
+  // 취득비용만 취득시점 기준시가 비율로 안분).
+  window.calculateAcquisitionAllocationJS = function (input) {
+    input = input || {};
+    const assets = Array.isArray(input.assets) ? input.assets : [];
+    if (assets.length < 2) return { error: '안분계산은 2개 이상의 자산을 입력해야 합니다.' };
+    const totalAcquisitionPrice = Number(input.totalAcquisitionPrice) || 0;
+    if (totalAcquisitionPrice <= 0) return { error: '계약 전체 취득가액이 필요합니다.' };
+    const totalAcquisitionExpense = Number(input.totalAcquisitionExpense) || 0;
+    const weights = assets.map(function (a) { return Number(a.standardPriceAcquisition) || 0; });
+    const weightSum = weights.reduce(function (s, w) { return s + w; }, 0);
+    if (weightSum <= 0) return { error: '취득시점 기준시가(또는 감정가액)를 자산마다 입력해야 합니다.' };
+    const results = assets.map(function (a, i) {
+      const ratio = weights[i] / weightSum;
+      return {
+        label: a.label || ('자산' + (i + 1)),
+        안분비율: ratio,
+        취득가액_안분액: Math.round(totalAcquisitionPrice * ratio),
+        취득비용_안분액: totalAcquisitionExpense ? Math.round(totalAcquisitionExpense * ratio) : 0
+      };
+    });
+    return {
+      총취득가액: totalAcquisitionPrice,
+      자산별_안분결과: results,
+      안내: '소득세법 시행령§166④에 따라 취득시점 기준시가 비율(모두 있으면 우선, 하나라도 없으면 감정가액 비율)로 계약 전체 취득가액·취득비용을 물건별로 안분합니다.'
+    };
+  };
+
   // ============================================================
   // 건물 기준시가 (2026.1.1. 시행 국세청 고시 제2025-39호) — gs-backend/Code.js의
   // toolCalculateBuildingStandardPrice와 동일한 표·계산식. 매년 1월 새 고시로 갱신되므로

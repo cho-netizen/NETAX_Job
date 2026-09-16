@@ -1,23 +1,23 @@
 <div class="view" id="view-booking">
   <div class="view-head"><h2>예약관리</h2></div>
   <div class="view-body">
+    <!-- [2026.09.16 버그수정] 실사용 지적 — "+직권등록" 버튼만 있는 카드가 한 줄을 통째로
+         차지해서 화면을 위아래로 불필요하게 길게 만들었다 — "상담신청 목록" 제목 줄에
+         같이 붙여서 카드 하나로 합친다(행 수 절감). -->
     <div class="card">
-      <button type="button" id="bkAdminToggle" class="ghost-btn">+ 직권등록</button>
-      <div id="bkAdminForm" style="display:none; flex-direction:column; gap:8px; max-width:420px; margin-top:12px;">
-        <label style="font-size:12px; color:var(--sub);">이름 *<br><input type="text" id="bkNewName" style="width:100%;" placeholder="예: 홍길동"></label>
-        <label style="font-size:12px; color:var(--sub);">연락처<br><input type="text" id="bkNewPhone" style="width:100%;" placeholder="010-1234-5678"></label>
-        <label style="font-size:12px; color:var(--sub);">유형<br><input type="text" id="bkNewType" style="width:100%;" placeholder="예: 양도소득세 상담"></label>
-        <label style="font-size:12px; color:var(--sub);">관련분야(선택)<br><input type="text" id="bkNewField" style="width:100%;" placeholder="예: 부동산"></label>
+      <h3>상담신청 목록<button type="button" id="bkAdminToggle" class="ghost-btn" style="float:right; font-size:12px; padding:4px 10px;">+ 직권등록</button></h3>
+      <div id="bkAdminForm" style="display:none; flex-direction:column; gap:8px; max-width:420px; margin:12px 0;">
+        <label style="font-size:12px; color:var(--sub);">이름 *<br><input type="text" id="bkNewName" size="10" placeholder="예: 홍길동"></label>
+        <label style="font-size:12px; color:var(--sub);">연락처<br><input type="text" id="bkNewPhone" size="14" placeholder="010-1234-5678"></label>
+        <label style="font-size:12px; color:var(--sub);">유형<br><input type="text" id="bkNewType" size="16" placeholder="예: 양도소득세 상담"></label>
+        <label style="font-size:12px; color:var(--sub);">관련분야(선택)<br><input type="text" id="bkNewField" size="10" placeholder="예: 부동산"></label>
         <div style="display:flex; gap:8px;">
-          <label style="font-size:12px; color:var(--sub); flex:1;">날짜<br><input type="date" id="bkNewDate" style="width:100%;"></label>
-          <label style="font-size:12px; color:var(--sub); flex:1;">시간<br><input type="time" id="bkNewTime" style="width:100%;"></label>
+          <label style="font-size:12px; color:var(--sub);">날짜<br><input type="date" id="bkNewDate" style="width:95px;"></label>
+          <label style="font-size:12px; color:var(--sub);">시간<br><input type="time" id="bkNewTime" style="width:100px;"></label>
         </div>
         <label style="font-size:12px; color:var(--sub);">상황(의뢰 내용)<br><textarea id="bkNewSituation" rows="3" style="width:100%; font-family:inherit; box-sizing:border-box;" placeholder="상담 내용을 적어두면 사건 시작 시 그대로 넘어갑니다"></textarea></label>
         <div><button type="button" id="bkNewSubmit" class="save-btn">등록</button></div>
       </div>
-    </div>
-    <div class="card">
-      <h3>상담신청 목록</h3>
       <div id="bookingList"><div class="spinner">불러오는 중…</div></div>
     </div>
   </div>
@@ -53,60 +53,120 @@
         return String(a.reservedDate+a.reservedTime).localeCompare(String(b.reservedDate+b.reservedTime));
       });
       if (!list.length){ box.innerHTML = '<div class="empty-row">신청 내역이 없습니다.</div>'; return; }
-      var html = '<table class="list-table"><tr><th>희망일시</th><th>이름</th><th>연락처</th><th>유형</th><th>관련분야</th>' +
-        '<th>상황</th><th>상태</th><th>처리</th><th>사건</th></tr>';
-      list.forEach(function(b){
+      // [2026.09 버그수정] 폭 지정이 하나도 없어서(상황만 max-width) 브라우저가 남는 공간을
+      // 이름·연락처처럼 원래 짧은 열에도 나눠줘 이름 칸이 쓸데없이 넓어지고, 정작 긴 텍스트가
+      // 들어가는 상황 칸은 좁게 눌려 있었다 — 데이터 길이에 맞춰 각 열 폭을 지정한다.
+      // [2026.09.16 버그수정] <td>에만 줄바꿈 금지를 걸고 <th>(제목행)에는 안 걸어서
+      // "관련분야" 제목만 글자 단위로 쌓여 보였다 — 제목칸에도 똑같이 적용. "처리"/"사건"은
+      // 각각 "예약처리"/"사건처리"로 이름을 더 명확히 바꾼다.
+      var th = function(px){ return 'style="max-width:' + px + 'px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"'; };
+      // [2026.09.16] 세무사님 지시 — "유형은 개인/법인처럼 앞글자만 보이면 된다"는 실사용
+      // 판단에 따라 유형 칸을 150→80px로 줄이고, 그만큼 확보된 폭은 정작 중요한 "상황"
+      // 칸(380→450px)에 몰아준다.
+      var html = '<div style="overflow-x:auto;"><table class="list-table" style="table-layout:fixed; width:auto; min-width:930px;"><colgroup>'
+        + '<col style="width:140px"><col style="width:70px"><col style="width:95px"><col style="width:80px"><col style="width:70px">'
+        + '<col style="width:450px"><col style="width:70px"><col style="width:150px"><col style="width:120px">'
+        + '</colgroup><tr><th ' + th(140) + '>희망일시</th><th ' + th(70) + '>이름</th><th ' + th(110) + '>연락처</th><th ' + th(80) + '>유형</th><th ' + th(70) + '>관련분야</th>' +
+        '<th ' + th(450) + '>상황</th><th ' + th(70) + '>상태</th><th ' + th(150) + '>예약처리</th><th ' + th(120) + '>사건처리</th></tr>';
+      list.forEach(function(b, idx){
         // [2026.09 버그수정] 거절·취소가 둘 다 같은 회색 원이라 텍스트를 안 읽으면 구분이
         // 안 됐다(실사용 감사 지적) — 거절(세무사 쪽 판단으로 안 받음)은 신청과 같은 계열의
         // 경고색으로, 취소(고객 요청 등)는 중립 회색으로 구분한다.
+        // [2026.09.16 버그수정] "확정" 배지·"예약취소"/"사건시작" 버튼 글자까지 세로로
+        // 쌓여 보였다 — 표 칸(td)의 white-space는 그 안의 <button>/배지 자체의 줄바꿈까지는
+        // 막지 못한다(버튼은 독립된 서식 맥락이라 부모 td 속성을 안 물려받음). 배지·버튼
+        // 글자 자체에 직접 줄바꿈 금지를 건다.
+        var nowrapSpan = 'style="white-space:nowrap;"';
         var badge = b.status === '신청' ? '🔴 신청' : (b.status === '확정' ? '🟢 확정' : (b.status === '거절' ? '🚫 거절' : (b.status === '취소' ? '⚪ 취소' : esc(b.status))));
+        badge = '<span ' + nowrapSpan + '>' + badge + '</span>';
         var actions = '-';
         if (b.status === '신청'){
-          actions = '<button type="button" class="save-btn" onclick="bookingApprove(' + b._rowIndex + ')">승인</button> ' +
-            '<button type="button" class="btn danger" onclick="bookingReject(' + b._rowIndex + ')">거절</button>';
+          actions = '<button type="button" class="save-btn" style="white-space:nowrap;" onclick="bookingApprove(' + b._rowIndex + ')">승인</button> ' +
+            '<button type="button" class="btn danger" style="white-space:nowrap;" onclick="bookingReject(' + b._rowIndex + ')">거절</button>';
         } else if (b.status === '확정' && !b.caseId){
           // [2026.09] 확정된 예약을 사건 시작 전에 취소할 방법이 아예 없었다 — 캘린더에서
           // 수동으로 지우는 것 말고는 처리 수단이 없었던 것을 버튼으로 보완.
-          actions = '<button type="button" class="btn danger" onclick="bookingCancelConfirmed(' + b._rowIndex + ')">예약 취소</button>';
+          actions = '<button type="button" class="btn danger" style="white-space:nowrap;" onclick="bookingCancelConfirmed(' + b._rowIndex + ')">예약 취소</button>';
         }
         var caseCell = '-';
         if (b.caseId){
-          caseCell = '<button type="button" class="btn" onclick="bookingGoToCase(\'' + esc(b.caseId) + '\')">🔗 사건 연결됨</button>';
+          caseCell = '<button type="button" class="btn" style="white-space:nowrap;" onclick="bookingGoToCase(\'' + esc(b.caseId) + '\')">🔗 사건 연결됨</button>';
         } else if (b.status === '확정'){
-          caseCell = '<button type="button" class="btn" onclick="bookingStartCase(' + b._rowIndex + ')">🗂 사건 시작</button>';
+          caseCell = '<button type="button" class="btn" style="white-space:nowrap;" onclick="bookingStartCase(' + b._rowIndex + ')">사건 시작</button>';
         }
-        html += '<tr><td>' + esc(b.reservedDate) + ' ' + esc(b.reservedTime) + '</td><td>' + esc(b.name) +
-          '</td><td>' + esc(b.phone) + '</td><td>' + esc(b.type) + '</td><td>' + esc(b.field || '-') + '</td><td style="max-width:260px;">' + esc(b.situation) +
-          '</td><td>' + badge + '</td><td>' + actions + '</td><td>' + caseCell + '</td></tr>';
+        // [2026.09 버그수정] 상황 칸에 title 툴팁으로 전체 텍스트를 다 박아두는 것도 "관리화면에
+        // 다 적어두는" 것과 다를 게 없다는 지적 — 목록에는 요약만 한 줄로 보여주고, 클릭하면
+        // 그때 전체 내용을 보여주는 방식(목록=요약, 상세=클릭 시)으로 바꾼다.
+        // [2026.09.16 버그수정] 이름/연락처/유형/관련분야 칸에 줄바꿈 방지가 전혀 없어서,
+        // 폰트가 예상보다 넓게 렌더되는 기기(Pretendard 미적용 — 위 index.html 수정 참고)에서
+        // 조금만 폭이 부족해도 한글이 한 글자씩 세로로 쌓여 보였다. 폰트를 고쳐도 만약을
+        // 대비해 모든 짧은값 칸에 말줄임을 걸어둔다 — 넘치면 줄바꿈이 아니라 "..."로 줄고,
+        // 유형·관련분야는 길어질 수 있어 클릭하면 전체를 볼 수 있게 한다.
+        // [2026.09.16 버그수정(2차)] max-width:0 실수를 걷어낸 뒤에도 상황 칸이 여러 줄로
+        // 풀어져 보이고 상태·처리·사건 칸 안 배지·버튼 글자가 세로로 쌓이는 문제가 여전히
+        // 보고됐다 — table-layout:fixed + colgroup만으로는 이 환경에서 셀 폭이 확실히
+        // 고정되지 않는 것으로 보여, 아예 각 <td>에 실제 폭(px)을 직접 못박는다(표
+        // 레이아웃 알고리즘의 불확실성에 기대지 않는, colgroup과 별개인 이중 안전장치).
+        var td = function(px, extra){ return 'style="max-width:' + px + 'px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;' + (extra || '') + '"'; };
+        html += '<tr>' +
+          '<td ' + td(140) + '>' + esc(b.reservedDate) + ' ' + esc(b.reservedTime) + '</td>' +
+          '<td ' + td(70) + '>' + esc(b.name) + '</td>' +
+          '<td ' + td(110) + '>' + esc(b.phone) + '</td>' +
+          '<td ' + td(80, ' cursor:pointer;') + ' onclick="bookingShowSituation_(' + idx + ', \'type\')">' + esc(b.type) + '</td>' +
+          '<td ' + td(70, ' cursor:pointer;') + ' onclick="bookingShowSituation_(' + idx + ', \'field\')">' + esc(b.field || '-') + '</td>' +
+          '<td ' + td(450, ' cursor:pointer;') + ' onclick="bookingShowSituation_(' + idx + ', \'situation\')">' + esc(b.situation) + '</td>' +
+          '<td ' + td(70) + '>' + badge + '</td>' +
+          '<td style="white-space:nowrap;">' + actions + '</td>' +
+          '<td style="white-space:nowrap;">' + caseCell + '</td>' +
+          '</tr>';
       });
-      html += '</table>';
+      html += '</table></div>';
       box.innerHTML = html;
       window._bookingCache = list;
     }).catch(function(e){ box.innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
 
+  // [2026.09 신규] 목록은 요약만, 전체 상황 내용은 클릭했을 때만 보여준다.
+  // [2026.09.16 버그수정] 고객명/유형/상황 텍스트를 그대로 onclick="..." 속성 안에 작은따옴표로
+  // 감싸 박아 넣고 있었다 — 상황란은 여러 줄 textarea 입력이라 줄바꿈이나 작은따옴표(')가
+  // 하나라도 들어가면 그 지점에서 onclick의 JS 문자열이 깨져 인라인 핸들러 전체가 구문
+  // 오류가 나고, 브라우저는 이를 조용히 무시한다(커서는 pointer로 바뀌지만 클릭해도 아무
+  // 반응이 없던 증상의 원인). 텍스트를 속성에 직접 넣지 않고, 행 번호만 넘겨 캐시에서
+  // 조회하도록 바꾼다.
+  function bookingShowSituation_(idx, field){
+    var b = (window._bookingCache||[])[idx];
+    if (!b) return;
+    var label = field === 'type' ? '유형' : (field === 'field' ? '관련분야' : '상황');
+    var value = field === 'type' ? b.type : (field === 'field' ? (b.field || '-') : b.situation);
+    nxAlert_(b.name + '님 ' + label + '\n\n' + value);
+  }
+
   function bookingApprove(rowIndex){
     var b = (window._bookingCache||[]).filter(function(x){ return x._rowIndex === rowIndex; })[0];
     if (!b) return;
-    if (!confirm(b.name + '님의 신청을 승인할까요?')) return;
-    callGas('approve', { rowIndex: rowIndex, eventId: b.eventId, phone: b.phone, reservedDate: b.reservedDate, reservedTime: b.reservedTime })
-      .then(function(res){
-        if (res && res.success === false){ toast(res.message || '승인 실패'); return; }
-        toast('승인되었습니다.'); initBooking(true); if (typeof dashboardLoaded !== 'undefined') { dashboardLoaded = false; }
-      })
-      .catch(function(e){ toast('오류: ' + e.message); });
+    nxConfirm_(b.name + '님의 신청을 승인할까요?').then(function(ok){
+      if (!ok) return;
+      callGas('approve', { rowIndex: rowIndex, eventId: b.eventId, phone: b.phone, reservedDate: b.reservedDate, reservedTime: b.reservedTime })
+        .then(function(res){
+          if (res && res.success === false){ toast(res.message || '승인 실패'); return; }
+          toast('승인되었습니다.'); initBooking(true); if (typeof dashboardLoaded !== 'undefined') { dashboardLoaded = false; }
+        })
+        .catch(function(e){ toast('오류: ' + e.message); });
+    });
   }
 
   function bookingReject(rowIndex){
     var b = (window._bookingCache||[]).filter(function(x){ return x._rowIndex === rowIndex; })[0];
     if (!b) return;
-    if (!confirm(b.name + '님의 신청을 거절할까요?')) return;
-    callGas('reject', { rowIndex: rowIndex, phone: b.phone })
-      .then(function(res){
-        if (res && res.success === false){ toast(res.message || '거절 실패'); return; }
-        toast('거절되었습니다.'); initBooking(true);
-      })
-      .catch(function(e){ toast('오류: ' + e.message); });
+    nxConfirm_(b.name + '님의 신청을 거절할까요?').then(function(ok){
+      if (!ok) return;
+      callGas('reject', { rowIndex: rowIndex, phone: b.phone })
+        .then(function(res){
+          if (res && res.success === false){ toast(res.message || '거절 실패'); return; }
+          toast('거절되었습니다.'); initBooking(true);
+        })
+        .catch(function(e){ toast('오류: ' + e.message); });
+    });
   }
 
   // [2026.09] 확정된 예약을 취소한다(사건으로 아직 안 연결된 경우만 — 연결된 예약은
@@ -114,13 +174,15 @@
   function bookingCancelConfirmed(rowIndex){
     var b = (window._bookingCache||[]).filter(function(x){ return x._rowIndex === rowIndex; })[0];
     if (!b) return;
-    if (!confirm(b.name + '님의 확정된 예약을 취소할까요? 캘린더 일정도 같이 지워집니다.')) return;
-    callGas('cancel_confirmed_booking', { rowIndex: rowIndex })
-      .then(function(res){
-        if (res.success === false){ toast(res.message || '취소 실패'); return; }
-        toast('취소되었습니다.'); initBooking(true);
-      })
-      .catch(function(e){ toast('오류: ' + e.message); });
+    nxConfirm_(b.name + '님의 확정된 예약을 취소할까요? 캘린더 일정도 같이 지워집니다.').then(function(ok){
+      if (!ok) return;
+      callGas('cancel_confirmed_booking', { rowIndex: rowIndex })
+        .then(function(res){
+          if (res.success === false){ toast(res.message || '취소 실패'); return; }
+          toast('취소되었습니다.'); initBooking(true);
+        })
+        .catch(function(e){ toast('오류: ' + e.message); });
+    });
   }
 
   // ============================================================
