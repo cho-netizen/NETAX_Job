@@ -231,6 +231,16 @@
   .log-entry .log-del{ flex:0 0 auto; background:none; border:none; color:var(--sub); cursor:pointer; font-size:16px; font-weight:800; padding:0 4px; }
   .log-entry .log-del:hover{ color:var(--danger); }
   .log-empty{ padding:16px 14px; font-size:12.5px; color:var(--sub); }
+  /* [2026.09.16 신규] "고객관리 좌측 목록의 필드길이를 줄이자, 휴대폰번호가 끝나는 지점에
+     맞춰라" — 위 .log-date와 같은 원인(고정폭 컨테이너가 가장 긴 이름 기준으로 정해져 있어
+     "1"/"2"처럼 짧은 이름도 항상 넓은 빈 칸을 남김)이라, 컨테이너 폭이 아니라 각 행 자체를
+     내용 길이만큼만 차지하게 한다(고객관리 목록에만 적용 — .log-entry는 작업관리 등 다른
+     화면에서도 널리 쓰여 전체를 바꾸면 그쪽 레이아웃이 깨진다). */
+  #clientList .log-entry{ align-self:flex-start; width:fit-content; max-width:100%; }
+  /* 행뿐 아니라 패널 자체도 280px 고정이라, 좁아진 행 오른쪽에 빈 공간과 엉뚱한 위치의
+     스크롤바가 남았다("좌측목록영역의 크기문제") — 패널도 내용에 맞춰 줄이되, 이름 하나 없이
+     너무 좁아지거나(빈 목록) 유난히 긴 이름 하나 때문에 과하게 넓어지는 것만 막는다. */
+  #clientSplitList{ width:fit-content; max-width:360px; }
   .manage-split{ flex:1; display:flex; flex-direction:row; min-height:0; height:calc(100% - 44px); }
   .manage-split-list{ width:280px; min-width:220px; border-right:1px solid var(--line); overflow-y:auto; box-sizing:border-box; }
   .manage-split-detail{ flex:1; overflow-y:auto; padding:16px; box-sizing:border-box; }

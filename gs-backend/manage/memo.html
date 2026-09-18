@@ -106,6 +106,7 @@
     <div class="tb-row" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
       <label style="font-size:12px; color:var(--sub);">의뢰서 템플릿:</label>
       <select id="memoReqTemplateSelect" style="min-width:220px;"><option value="">불러오는 중…</option></select>
+      <button type="button" id="memoReqTplNameFixBtn" class="ghost-btn" title="의뢰서템플릿 폴더의 파일명에 '의뢰서_' 접두어를 일괄로 붙입니다">🏷 템플릿 이름정리</button>
       <span style="margin-left:auto; font-size:11.5px; color:var(--sub);" id="memoReqNonTextNote"></span>
       <button type="button" id="memoReqApplyBtn" class="save-btn"><span class="btn-ic">✅</span><span class="btn-tx"> 사건에 저장</span></button>
     </div>
@@ -190,6 +191,7 @@
       <option value="gift">증여</option>
       <option value="inheritance">상속</option>
       <option value="objection">불복</option>
+      <option value="business">사업</option>
     </select>
     <select id="memoReqNewUptype" style="width:100%; box-sizing:border-box;"></select>
     <label style="font-size:12px; color:var(--sub); align-self:flex-start;">의뢰일<br><input type="date" id="memoReqNewRequestDate" style="width:95px; box-sizing:border-box;"></label>
@@ -1505,7 +1507,7 @@
     document.getElementById('memoOvNewTaxpayer').value = '';
     document.getElementById('memoOvNewRequestDate').value = new Date().toISOString().slice(0, 10);
     var uptypeSel = document.getElementById('memoOvNewUptype');
-    var uptypeOptions = (typeof WORK_UPTYPE_OPTIONS_ !== 'undefined' && WORK_UPTYPE_OPTIONS_[memoOvCurrentSemok_]) || ['신고', '상담'];
+    var uptypeOptions = (typeof WORK_UPTYPE_OPTIONS_ !== 'undefined' && WORK_UPTYPE_OPTIONS_[memoOvCurrentSemok_]) || ['신고', '자문', '상담'];
     uptypeSel.innerHTML = uptypeOptions.map(function(u){ return '<option value="' + u + '">' + u + '</option>'; }).join('');
     var applySel = document.getElementById('memoOvApplyCaseSelect');
     applySel.innerHTML = '<option value="">사건을 선택하세요</option>';
@@ -1513,7 +1515,7 @@
       var cases = (res.cases || []).filter(function(c){ return c.세목 === memoOvCurrentSemok_; });
       memoOvApplyCases_ = cases;
       applySel.innerHTML += cases.map(function(c, idx){
-        return '<option value="' + idx + '">' + escapeHtml(c.고객명 || '') + ' · ' + escapeHtml(c.사건명 || '') + '</option>';
+        return '<option value="' + idx + '">' + escapeHtml(c.사건명 || '') + '</option>';
       }).join('');
     }).catch(function(){});
     memoOvApplyStepEl.style.display = 'flex';
@@ -1560,7 +1562,7 @@
       if (data._baseDate) overviewPayload.기준일 = data._baseDate;
       return callGas('work_update_case', overviewPayload).then(function(res2){
         if (res2.success === false){ toast('사건은 등록됐지만 사건개요 반영에 실패했습니다: ' + (res2.message || '')); return; }
-        toast('"' + escapeHtml(res.case.고객명 || '') + ' · ' + escapeHtml(res.case.사건명 || '') + '" 사건을 등록하고 사건개요를 반영했습니다.');
+        toast('"' + escapeHtml(res.case.사건명 || '') + '" 사건을 등록하고 사건개요를 반영했습니다.');
         memoOvApplyStepEl.style.display = 'none';
         if (typeof loadWorkCases === 'function') loadWorkCases();
         memoOvDeleteAppliedDraft_();
@@ -1593,7 +1595,7 @@
     callGas('work_update_case', payload).then(function(res){
       if (res.conflict){ toast(res.message || '그 사이 다른 곳에서 이 사건이 바뀌었습니다. 다시 시도해주세요.'); return; }
       if (res.success === false){ toast(res.message || '적용 실패'); return; }
-      toast('"' + (c.고객명 || '') + ' · ' + (c.사건명 || '') + '" 사건에 반영했습니다.');
+      toast('"' + (c.사건명 || '') + '" 사건에 반영했습니다.');
       memoOvApplyStepEl.style.display = 'none';
       memoOvDeleteAppliedDraft_();
     }).catch(function(err){
@@ -1601,7 +1603,7 @@
     }).finally(function(){ btn.disabled = false; });
     };
     if (c.사건개요 && Object.keys(c.사건개요).length){
-      nxConfirm_('"' + (c.고객명 || '') + ' · ' + (c.사건명 || '') + '" 사건에는 이미 사건개요가 있습니다. 덮어쓸까요?').then(function(ok){
+      nxConfirm_('"' + (c.사건명 || '') + '" 사건에는 이미 사건개요가 있습니다. 덮어쓸까요?').then(function(ok){
         if (ok) proceedApplyOverview_();
       });
     } else {
@@ -1981,7 +1983,10 @@
   // 사용자가 그냥 다시 고르면 됨 — 강제 아님). "양도신고"처럼 세목+업무유형이 합쳐진 이름,
   // "세무조사"처럼 업무유형만으로 이미 고유한 이름, "양도"처럼 세목만인 이름 순으로 확인한다.
   function memoReqGuessSemokUptype_(templateName){
-    var semokLabels = (typeof WORK_SEMOK_LABELS !== 'undefined') ? WORK_SEMOK_LABELS : { transfer:'양도', gift:'증여', inheritance:'상속', objection:'불복' };
+    // [2026.09.17] 의뢰서템플릿 파일명이 전부 "의뢰서_" 접두어를 쓰는 규칙으로 바뀌어서,
+    // 세목/업무유형을 짐작할 땐 그 접두어를 뗀 나머지로 비교해야 한다.
+    if (templateName.indexOf('의뢰서_') === 0) templateName = templateName.slice('의뢰서_'.length);
+    var semokLabels = (typeof WORK_SEMOK_LABELS !== 'undefined') ? WORK_SEMOK_LABELS : { transfer:'양도', gift:'증여', inheritance:'상속', objection:'불복', business:'사업' };
     var semokKeys = Object.keys(semokLabels);
     for (var i = 0; i < semokKeys.length; i++){
       var key = semokKeys[i], label = semokLabels[key];
@@ -2015,6 +2020,18 @@
     });
   }
 
+  // [2026.09.17 신규] "증여신고" 등 옛 이름 그대로인 템플릿 파일에 "의뢰서_" 접두어를 일괄로
+  // 붙인다 — 이름변경뿐이라 파괴적이지 않으므로 dry-run 없이 바로 실행하고 결과만 보여준다
+  // (보고서템플릿 정리 버튼과 동일 원칙).
+  document.getElementById('memoReqTplNameFixBtn').addEventListener('click', function(){
+    callGas('migrate_case_template_names', {}).then(function(res){
+      if (res.success === false){ nxAlert_(res.message || '실패했습니다.', '템플릿 이름정리'); return; }
+      nxAlert_(res.log.join('\n'), '템플릿 이름정리 결과');
+      memoReqLoadTemplates_();
+    }).catch(function(err){
+      nxAlert_('오류: ' + (err && err.message ? err.message : err), '템플릿 이름정리');
+    });
+  });
   memoReqTemplateSelectEl.addEventListener('change', function(){
     var tpl = memoReqTemplates_.filter(function(t){ return t.id === memoReqTemplateSelectEl.value; })[0];
     memoReqSelectedTemplate_ = tpl || null;
@@ -2079,7 +2096,7 @@
     var semokSel = document.getElementById('memoReqNewSemok');
     var uptypeSel = document.getElementById('memoReqNewUptype');
     function refreshUptypeOptions(){
-      var options = (typeof WORK_UPTYPE_OPTIONS_ !== 'undefined' && WORK_UPTYPE_OPTIONS_[semokSel.value]) || ['신고', '상담'];
+      var options = (typeof WORK_UPTYPE_OPTIONS_ !== 'undefined' && WORK_UPTYPE_OPTIONS_[semokSel.value]) || ['신고', '자문', '상담'];
       uptypeSel.innerHTML = options.map(function(u){ return '<option value="' + u + '">' + u + '</option>'; }).join('');
     }
     var guess = memoReqGuessSemokUptype_(memoReqSelectedTemplate_.name);
@@ -2172,7 +2189,7 @@
         if (saveRes.error){ toast('사건은 등록됐지만 의뢰서 저장에 실패했습니다: ' + saveRes.error); return; }
         var afterSave = overview ? callGas('work_update_case', { id: res.case.id, 사건개요: overview }) : Promise.resolve();
         return afterSave.then(function(){
-          toast('"' + escapeHtml(res.case.고객명 || '') + ' · ' + escapeHtml(res.case.사건명 || '') + '" 사건을 등록하고 의뢰서를 저장했습니다' + (overview ? ' (사건개요도 같이 채웠습니다)' : '') + '.');
+          toast('"' + escapeHtml(res.case.사건명 || '') + '" 사건을 등록하고 의뢰서를 저장했습니다' + (overview ? ' (사건개요도 같이 채웠습니다)' : '') + '.');
           memoReqApplyStepEl.style.display = 'none';
           if (typeof loadWorkCases === 'function') loadWorkCases();
         });
@@ -2194,7 +2211,7 @@
     memoReqSaveToFolder_(c.폴더ID, c.고객명).then(function(saveRes){
       if (saveRes.error){ toast('저장 실패: ' + saveRes.error); return; }
       if (!overview){
-        toast('"' + escapeHtml(c.고객명 || '') + ' · ' + escapeHtml(c.사건명 || '') + '" 사건 폴더에 저장했습니다.');
+        toast('"' + escapeHtml(c.사건명 || '') + '" 사건 폴더에 저장했습니다.');
         memoReqApplyStepEl.style.display = 'none';
         return;
       }
@@ -2204,7 +2221,7 @@
       return callGas('work_update_case', payload).then(function(res2){
         if (res2.conflict){ toast(res2.message || '그 사이 다른 곳에서 이 사건이 바뀌었습니다. 파일은 저장됐지만 사건개요는 반영 못 했습니다.'); return; }
         if (res2.success === false){ toast('파일은 저장됐지만 사건개요 반영에 실패했습니다: ' + (res2.message || '')); return; }
-        toast('"' + escapeHtml(c.고객명 || '') + ' · ' + escapeHtml(c.사건명 || '') + '" 사건 폴더에 저장하고 사건개요도 채웠습니다.');
+        toast('"' + escapeHtml(c.사건명 || '') + '" 사건 폴더에 저장하고 사건개요도 채웠습니다.');
         memoReqApplyStepEl.style.display = 'none';
       });
     }).catch(function(err){
@@ -2212,7 +2229,7 @@
     }).finally(function(){ btn.disabled = false; });
     };
     if (overview && c.사건개요 && Object.keys(c.사건개요).length){
-      nxConfirm_('"' + (c.고객명 || '') + ' · ' + (c.사건명 || '') + '" 사건에는 이미 사건개요가 있습니다. 의뢰서에서 뽑은 이름·메모로 덮어쓸까요?').then(function(ok){
+      nxConfirm_('"' + (c.사건명 || '') + '" 사건에는 이미 사건개요가 있습니다. 의뢰서에서 뽑은 이름·메모로 덮어쓸까요?').then(function(ok){
         proceedApplyRequest_(ok ? overview : null);
       });
     } else {

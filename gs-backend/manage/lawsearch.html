@@ -170,7 +170,7 @@
     lsCurrentCase = c;
     lsBodyEl.innerHTML =
       '<div class="card">' +
-      '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:10px;">' + escapeHtml(c.고객명) + ' · ' + escapeHtml(c.사건명) + '</div>' +
+      '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:10px;">' + escapeHtml(c.사건명) + '</div>' +
       '<div style="display:flex; gap:6px 16px; flex-wrap:wrap; margin-bottom:10px; font-size:12.5px;">' +
       LS_ALL_SOURCES_.map(function(s){
         return '<label style="display:flex; align-items:center; gap:4px; cursor:pointer; white-space:nowrap;"><input type="checkbox" class="lsSourceChk" data-key="' + s.key + '"' + (s.on ? ' checked' : '') + '>' + escapeHtml(s.label) + '</label>';

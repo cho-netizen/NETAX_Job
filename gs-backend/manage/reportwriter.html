@@ -4,8 +4,11 @@
      #appRoot는 이 앱의 최상위 래퍼 id(index.html의 <div id="appRoot">)와 겹치므로 #rwRoot로 개명. -->
 <style>
   /* --navy/--gold 계열은 style.html의 :root와 완전히 동일한 값(이 앱 전체 팔레트의 원본이 바로 이
-     report-writer였음) — 중복 선언이지만 그대로 둬도 무해하고, 원본과 값이 달라질 걱정이 없다. */
-  :root{ --bar-bg:#20242c; --bar-fg:#e8e8ec; --accent:#5b6b8c; --navy:#0D1B3D; --navy-deep:#081226; --gold:#C8A244; --gold-light:#DCC17E; }
+     report-writer였음) — 중복 선언이지만 그대로 둬도 무해하고, 원본과 값이 달라질 걱정이 없다.
+     [2026.09.16 버그수정] 세무사님 지적 — 이 화면만 독립 프로그램 시절의 어두운 툴바 색상
+     (짙은 회색 배경+흰 글자)을 그대로 쓰고 있어서 다른 화면(밝은 배경+남색/골드)과 확연히
+     달라 보였다 — 전부 이 앱의 공용 라이트 테마로 다시 입힌다. */
+  :root{ --bar-bg:#f9fafb; --bar-fg:var(--navy); --accent:var(--gold); --navy:#0D1B3D; --navy-deep:#081226; --gold:#C8A244; --gold-light:#DCC17E; }
   *{box-sizing:border-box;}
   /* 원래는 html,body 전체를 이 페이지 전용으로 깔았지만, 이제 이 앱의 다른 화면들과 함께 있으므로
      전역 html/body는 건드리지 않고 #view-reportwriter/#rwRoot 안에서만 같은 효과를 낸다. */
@@ -22,73 +25,72 @@
     background:var(--bar-bg); color:var(--bar-fg);
     padding:10px 16px; display:flex; gap:8px; align-items:center;
     font-size:13px; flex-wrap:wrap;
+    border-bottom:1px solid var(--line);
   }
   #toolbar b{font-weight:700; margin-right:8px; font-size:14px; letter-spacing:0.02em;}
-  #toolbar select{
-    background:#2b3040; color:#fff; border:1px solid #4a5268; border-radius:4px;
-    padding:6px 10px; font-size:13px; font-family:inherit;
-  }
+  #toolbar select{ font-size:13px; }
   #toolbar button{
-    background:#333a48; color:#fff; border:1px solid #4a5268; border-radius:4px;
+    background:rgba(200,162,68,0.10); color:var(--navy); border:1px solid var(--gold); border-radius:6px;
     padding:7px 14px; font-size:13px; cursor:pointer; font-family:inherit;
   }
-  #toolbar button:hover{background:#454e60;}
+  #toolbar button:hover{background:rgba(200,162,68,0.22);}
   #toolbar button.iconbtn{ padding:7px 11px; font-size:15px; }
-  #rwCaseBar button{ background:#333a48; color:#fff; border:1px solid #4a5268; border-radius:4px;
+  #rwCaseBar button{ background:rgba(200,162,68,0.10); color:var(--navy); border:1px solid var(--gold); border-radius:6px;
     padding:4px 10px; font-size:12px; cursor:pointer; font-family:inherit; }
-  #rwCaseBar button:hover{ background:#454e60; }
+  #rwCaseBar button:hover{ background:rgba(200,162,68,0.22); }
   #toolbar button.stepper-btn{
-    color:#fff; border:none; cursor:pointer; font-family:inherit; line-height:1;
+    border:none; cursor:pointer; font-family:inherit; line-height:1;
     padding:7px 11px; font-size:15px;
   }
-  #btnDocMinus{ background:#5c2b2b; border-radius:4px 0 0 4px; }
-  #btnDocMinus:hover{ background:#763838; }
-  #btnDocPlus{ background:#333a48; border-radius:0 4px 4px 0; }
-  #btnDocPlus:hover{ background:#454e60; }
-  #toolbar button.primary{background:var(--accent); border-color:#7686ab;}
-  #toolbar button.primary:hover{background:#6b7ba0;}
+  #btnDocMinus{ background:var(--danger-bg); color:var(--danger); border-radius:4px 0 0 4px; }
+  #btnDocMinus:hover{ background:#f5d4d1; }
+  #btnDocPlus{ background:rgba(200,162,68,0.10); color:var(--navy); border-radius:0 4px 4px 0; }
+  #btnDocPlus:hover{ background:rgba(200,162,68,0.22); }
+  #toolbar button.primary{background:var(--navy); color:#fff; border-color:var(--navy);}
+  #toolbar button.primary:hover{background:var(--navy-deep);}
   #toolbar button.layout-btn{
-    padding:7px 11px; font-size:15px; border-radius:0; border-right:1px solid #4a5268;
-    background:#333a48;
+    padding:7px 11px; font-size:15px; border-radius:0; border-right:1px solid var(--gold);
+    background:rgba(200,162,68,0.10); color:var(--navy);
   }
   #toolbar button.layout-btn:first-child{ border-radius:4px 0 0 4px; }
   #toolbar button.layout-btn:last-child{ border-radius:0 4px 4px 0; border-right:none; }
-  #toolbar button.layout-btn:hover{ background:#454e60; }
+  #toolbar button.layout-btn:hover{ background:rgba(200,162,68,0.22); }
   #toolbar button.layout-btn.active{
-    background:#20242c; border-color:var(--accent);
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.55);
-    color:#9fb0e6;
+    background:var(--navy); border-color:var(--navy);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.25);
+    color:#fff;
   }
-  /* "모아보기" 재클릭으로 스크롤 동기화를 꺼둔 상태 — 파란 계열(켜짐)과 확실히 구분되는 호박색 톤으로 전환 */
+  /* "모아보기" 재클릭으로 스크롤 동기화를 꺼둔 상태 — 남색(켜짐)과 확실히 구분되는 호박색 톤으로 전환 */
   #toolbar #layoutBoth.sync-off{
-    background:#4a3a1a; border-color:#a67c2e;
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.55);
-    color:#e2a03f;
+    background:#fdf1dc; border-color:#e0a936;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.08);
+    color:#8a5a0a;
   }
-  #toolbar .hint{font-size:11.5px; color:#a7acb8; margin-left:auto;}
-  #toolbar .sep{width:1px; align-self:stretch; background:#454e60; margin:0 2px;}
-  #toolbar button.danger{background:#5c2b2b; border-color:#7a3a3a;}
-  #toolbar button.danger:hover{background:#763838;}
+  #toolbar .hint{font-size:11.5px; color:var(--sub); margin-left:auto;}
+  #toolbar .sep{width:1px; align-self:stretch; background:var(--line); margin:0 2px;}
+  #toolbar button.danger{background:var(--danger-bg); color:var(--danger); border-color:var(--danger);}
+  #toolbar button.danger:hover{background:#f5d4d1;}
   #toolbar button:disabled{opacity:0.4; cursor:not-allowed;}
   #toolbar select:disabled{opacity:0.4;}
   #docSelect{max-width:220px;}
   .popupMenu{
     position:absolute; top:110%; right:0; z-index:100;
-    background:#2b3040; border:1px solid #4a5268; border-radius:4px;
+    background:#fff; border:1px solid var(--line); border-radius:6px;
     display:none; flex-direction:column; min-width:170px;
-    box-shadow:0 4px 10px rgba(0,0,0,0.3);
+    box-shadow:0 4px 14px rgba(0,0,0,0.18);
   }
   .popupMenu.show{display:flex;}
   /* addPopup은 툴바 맨 앞(왼쪽 끝)에 있어서, 공용규칙(right:0, 왼쪽으로 펼침)대로 두면
      화면 밖으로 나가버림 — 왼쪽 끝에 맞춰 오른쪽으로 펼쳐지도록 개별 재정의 */
   #addPopup{ left:0; right:auto; }
-  .popupMenu button{
-    background:none; border:none; color:#e8e8ec; text-align:left;
+  #toolbar .popupMenu button{
+    background:none; border:none; color:var(--ink); text-align:left;
     padding:8px 12px; font-size:12.5px; cursor:pointer; font-family:inherit;
+    border-radius:0;
   }
-  .popupMenu button:hover{background:#3a4152;}
-  .popupMenu button + button{border-top:1px solid #3a4152;}
-  #saveState{font-size:11px; color:#8fb98f; min-width:56px;}
+  #toolbar .popupMenu button:hover{background:#f3f4f7;}
+  #toolbar .popupMenu button + button{border-top:1px solid var(--line);}
+  #saveState{font-size:11px; color:var(--success); min-width:56px;}
   #emptyState{
     background:#fff; max-width:600px; margin:40px auto; padding:24px 28px;
     border-radius:6px; box-shadow:0 0 14px rgba(0,0,0,0.18);
@@ -170,17 +172,17 @@
   #previewControls{
     position:fixed; top:58px; right:24px; z-index:80;
     display:flex; align-items:center; gap:2px;
-    background:rgba(32,36,44,0.88); border:1px solid #454e60; border-radius:20px;
-    padding:5px 8px; box-shadow:0 2px 10px rgba(0,0,0,0.25);
+    background:#fff; border:1px solid var(--line); border-radius:20px;
+    padding:5px 8px; box-shadow:0 2px 10px rgba(0,0,0,0.18);
   }
   #previewControls button{
-    background:none; border:none; color:#e8e8ec; cursor:pointer;
+    background:none; border:none; color:var(--ink); cursor:pointer;
     font-size:14px; padding:0 8px; height:26px; border-radius:14px;
     display:inline-flex; align-items:center; justify-content:center;
   }
-  #previewControls button:hover{ background:rgba(255,255,255,0.14); }
-  #previewControls #zoomLabel{ font-size:11.5px; color:#c7cad4; min-width:34px; height:26px; display:inline-flex; align-items:center; justify-content:center; }
-  #previewControls .sep-v{ width:1px; height:16px; background:#454e60; margin:0 4px; }
+  #previewControls button:hover{ background:#f3f4f7; }
+  #previewControls #zoomLabel{ font-size:11.5px; color:var(--sub); min-width:34px; height:26px; display:inline-flex; align-items:center; justify-content:center; }
+  #previewControls .sep-v{ width:1px; height:16px; background:var(--line); margin:0 4px; }
 
   /* ---------- 전체화면: rwRoot 전체를 전체화면으로 만들고, 클래스로 편집창/미리보기 중 하나만 노출 ----------
      (모달이 전체화면 뒤에 숨는 문제를 막기 위해 previewPane/editorPane 개별이 아니라 rwRoot를 전체화면 대상으로 삼음) */
@@ -975,20 +977,22 @@
 <div class="view" id="view-reportwriter">
 <div id="rwRoot">
 
-<div id="rwCaseBar" class="tb-row" style="flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:8px 16px; background:#262b35; color:#e8e8ec; font-size:12.5px; border-bottom:1px solid #3a4152; flex-wrap:wrap;">
-  <select id="rwCaseSelect" style="min-width:200px; max-width:320px; background:#2b3040; color:#fff; border:1px solid #4a5268; border-radius:4px; padding:5px 8px; font-size:12.5px; font-family:inherit;"><option value="">사건을 선택하세요</option></select>
+<div class="view-head" style="padding-bottom:0;"><h2>✍ 문서작성</h2></div>
+<div id="rwCaseBar" class="tb-row" style="flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:8px 16px; background:var(--bar-bg); color:var(--ink); font-size:12.5px; border-bottom:1px solid var(--line); flex-wrap:wrap;">
+  <select id="rwCaseSelect" style="min-width:200px; max-width:320px; font-size:12.5px;"><option value="">사건을 선택하세요</option></select>
   <span id="rwCaseReports" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;"></span>
   <button type="button" id="rwBackToCaseBtn" style="margin-left:auto;"><span class="btn-ic">↩</span><span class="btn-tx"> 처리개요</span></button>
 </div>
 
 <div id="toolbar">
-  <div id="docStepper" style="position:relative; display:flex; border:1px solid #4a5268; border-radius:4px; overflow:visible;">
+  <div id="docStepper" style="position:relative; display:flex; border:1px solid var(--gold); border-radius:4px; overflow:visible;">
     <button id="btnDocMinus" class="stepper-btn" title="현재 문서 삭제">−</button>
-    <span style="width:1px; background:#4a5268;"></span>
+    <span style="width:1px; background:var(--gold);"></span>
     <button id="btnDocPlus" class="stepper-btn" title="문서 추가">＋</button>
     <div id="addPopup" class="popupMenu">
       <button id="addFromFile">파일에서 불러오기...</button>
-      <button id="addReviewOpt">검토서 만들기</button>
+      <button id="addReviewOpt">종합검토서 만들기</button>
+      <button id="addReviewSpecificOpt">개별검토서 만들기</button>
       <button id="addAdvisoryOpt">자문보고서 만들기</button>
       <button id="addFilingOpt">신고보고서 만들기</button>
       <button id="addReferenceOpt">참고보고서 만들기</button>
@@ -1302,13 +1306,16 @@ async function hydrateDocsFromIdb_(){
 
 // 문서유형별 짧은 표시용 라벨 — docSelect 드롭다운에서 한눈에 구분하기 위함.
 const RW_DOC_TYPE_SHORT_LABELS_ = {
-  review: '검토서', advisory: '자문', filing: '신고', reference: '참고', progress: '진행', appeal_petition: '불복청구', summary: '요약', translation: '번역서'
+  review: '종합검토서', review_specific: '개별검토서', advisory: '자문', filing: '신고', reference: '참고', progress: '진행', appeal_petition: '불복청구', summary: '요약', translation: '번역서'
 };
 // [2026.09.16 신규] 저장 파일명에 붙이는 전체 라벨 — rwGuessDocTypeFromFilename_이 파일명만
 // 보고 문서유형을 되짚어 추정할 때 기대하는 단어(예: filing은 "신고"+"보고서" 둘 다 있어야
 // 인식)를 그대로 만족하도록 짧은 표시라벨과 다르게 "보고서"까지 붙여 완전한 단어로 둔다.
+// [2026.09.17 재설계] "검토서"를 둘로 나눔 — <종합검토서>는 사건 전반에 대한 검토(사건당
+// 보통 1개), <개별검토서_세부명칭>은 특정 쟁점 하나에 국한된 검토(세부명칭이 이름의 필수
+// 구성요소 — saveToDrive에서 review_specific은 항상 세부명칭을 물어봄).
 const RW_DOC_TYPE_FILENAME_LABELS_ = {
-  review: '검토서', advisory: '자문보고서', filing: '신고보고서', reference: '참고보고서',
+  review: '종합검토서', review_specific: '개별검토서', advisory: '자문보고서', filing: '신고보고서', reference: '참고보고서',
   progress: '진행보고서', appeal_petition: '불복청구서', summary: '요약보고서', translation: '번역서'
 };
 
@@ -1456,7 +1463,12 @@ function showLoadErrorInEditor(fileId, message){
 // 유형 라벨로 시작하므로 대부분 여기서 바로 맞는다. 못 맞히면(옛날 파일 등) 사용자에게 직접 물어본다.
 function rwGuessDocTypeFromFilename_(name){
   if (!name) return null;
-  if (name.includes('검토서')) return 'review';
+  // [2026.09.17 재설계] "검토서"만으로는 종합/개별 중 어느 쪽인지 알 수 없어졌다 — 이름에
+  // 명확히 "종합검토서"/"개별검토서"라고 돼 있을 때만 자동 추정하고, 옛날식으로 그냥
+  // "검토서"만 있으면 사람이 rwAskDocTypeForFile_에서 직접 고르게 null을 돌려준다.
+  if (name.includes('종합검토서')) return 'review';
+  if (name.includes('개별검토서')) return 'review_specific';
+  if (name.includes('검토서')) return null;
   if (name.includes('자문')) return 'advisory';
   if (name.includes('신고') && name.includes('보고서')) return 'filing';
   if (name.includes('참고') && name.includes('보고서')) return 'reference';
@@ -1470,7 +1482,7 @@ function rwGuessDocTypeFromFilename_(name){
 // 고를 수 있는 작은 팝업으로 바꾼다(#rwDocTypeModal, .floating-panel과 같은 모양 재사용).
 // 프라미스를 돌려주므로 호출부(rwLoadFileById_, 이미 async 함수)에서 await로 받는다.
 function rwAskDocTypeForFile_(fileName){
-  const order = ['review', 'advisory', 'filing', 'reference', 'progress', 'appeal_petition', 'translation', 'summary'];
+  const order = ['review', 'review_specific', 'advisory', 'filing', 'reference', 'progress', 'appeal_petition', 'translation', 'summary'];
   return new Promise(function(resolve){
     const modal = document.getElementById('rwDocTypeModal');
     const body = document.getElementById('rwDocTypeBody');
@@ -1622,7 +1634,10 @@ function rwGuessDocType_(){
   if (!c) return 'review';
   if (c.세목 === 'objection') return 'appeal_petition';
   if (c.업무유형 === '신고') return 'filing';
-  if (c.업무유형 === '상담') return 'advisory';
+  // [2026.09.18 신규] "상담을 자문과 상담으로 세분" — 검토서·보고서가 실제로 작성되는 쪽은
+  // 새로 생긴 "자문"이다(상담은 이제 파일이 아예 없는 사건). 예전 데이터(이 분리 이전에
+  // 업무유형이 "상담"으로 저장된, 실제로는 문서가 있는 사건) 호환을 위해 상담도 그대로 둔다.
+  if (c.업무유형 === '자문' || c.업무유형 === '상담') return 'advisory';
   return 'review';
 }
 
@@ -1638,7 +1653,7 @@ function rwGetSelectedCase_(){
 // 5종은 목적·수요자가 다 다르므로 각각 별도 테마를 쓴다(2026.09, 하나씩 만드는 중 —
 // 아직 전용 테마가 없는 유형은 우선 기존 "청구서" 테마를 임시로 쓴다).
 const RW_DOC_TYPE_THEME_ = {
-  review: 'memo', advisory: 'advisory', filing: 'filing',
+  review: 'memo', review_specific: 'memo', advisory: 'advisory', filing: 'filing',
   reference: 'reference', progress: 'progress', appeal_petition: 'appeal', summary: 'summary', translation: 'translation'
 };
 
@@ -1678,10 +1693,12 @@ async function createNewDoc(kind){
     // 맨 앞에 두고 실행디테일(조문원문 등)은 부록으로 분리하는 것은 이 사무소가 이미 쓰고
     // 있던 내부 작성지침(신규사건_검토서_자동관리.md)이었는데 템플릿에는 반영이 안 돼 있었음.
     // "확인 필요 사항(Action Items)"은 검토서 16건 전부에 공통으로 있던 유일한 요소.
+    // [2026.09.17 재설계] "검토서"를 사건 전반용(종합검토서)과 특정 쟁점용(개별검토서)으로
+    // 나눔 — 세무사님 지시: 사건검토서/종합검토서 중 "종합검토서"로 확정.
     review: {
-      promptDefault: '검토서_' + (c ? (c.고객명 || '') : ''),
-      fallbackName: '검토서',
-      md: '# ' + (c ? ((c.고객명 || '') + ' ' + semokLabel + ' 검토서') : '검토서') + '\n\n'
+      promptDefault: '종합검토서_' + (c ? (c.고객명 || '') : ''),
+      fallbackName: '종합검토서',
+      md: '# ' + (c ? ((c.고객명 || '') + ' ' + semokLabel + ' 종합검토서') : '종합검토서') + '\n\n'
         + '- 고객명: ' + (c ? (c.고객명 || '') : '') + '\n'
         + '- 사건명: ' + (c ? (c.사건명 || '') : '') + '\n'
         + '- 세목/업무유형: ' + (c ? (semokLabel + (c.업무유형 ? ' · ' + c.업무유형 : '')) : '') + '\n'
@@ -1696,6 +1713,21 @@ async function createNewDoc(kind){
         + '## 처리방향(결론) 및 다음 단계\n\n\n'
         + '---\n\n'
         + '## 부록 — 적용 조문·예규 / 실행 디테일\n\n'
+    },
+    // [2026.09.17 신규] 개별검토서 — 사건 전체가 아니라 특정 쟁점 하나에 국한된 검토. 이름
+    // 자체에 그 쟁점(세부명칭)이 항상 들어가야 의미가 있으므로(saveToDrive에서 항상 물어봄),
+    // 골격도 그 쟁점 하나에 집중하도록 종합검토서보다 단순하게 구성한다.
+    review_specific: {
+      promptDefault: '개별검토서_' + (c ? (c.고객명 || '') : ''),
+      fallbackName: '개별검토서',
+      md: '# ' + (c ? ((c.고객명 || '') + ' ' + semokLabel + ' 개별검토서') : '개별검토서') + ' (쟁점: )\n\n'
+        + '- 고객명: ' + (c ? (c.고객명 || '') : '') + '\n'
+        + '- 사건명: ' + (c ? (c.사건명 || '') : '') + '\n'
+        + '- 작성일: ' + todayStr + '\n\n'
+        + '---\n\n'
+        + '## 쟁점\n\n\n'
+        + '## 검토 내용\n\n\n'
+        + '## 결론\n\n\n'
     },
     // [2026.09] 외부보고서 1/5 — 자문보고서(상담 사건, 고객에게 전달). 검토서와 달리 고객이
     // 직접 읽는 문서라 내부 검토 흔적(쟁점메모식 나열) 없이 결론과 안내 위주로 구성한다.
@@ -1889,6 +1921,7 @@ async function createNewDoc(kind){
 
 function addBlankDoc(){ createNewDoc('blank'); }
 function addReviewDoc(){ createNewDoc('review'); }
+function addReviewSpecificDoc(){ createNewDoc('review_specific'); }
 function addAdvisoryDoc(){ createNewDoc('advisory'); }
 function addFilingDoc(){ createNewDoc('filing'); }
 function addReferenceDoc(){ createNewDoc('reference'); }
@@ -3084,6 +3117,10 @@ document.getElementById('addReviewOpt').addEventListener('click', () => {
   document.getElementById('addPopup').classList.remove('show');
   addReviewDoc();
 });
+document.getElementById('addReviewSpecificOpt').addEventListener('click', () => {
+  document.getElementById('addPopup').classList.remove('show');
+  addReviewSpecificDoc();
+});
 document.getElementById('addAdvisoryOpt').addEventListener('click', () => {
   document.getElementById('addPopup').classList.remove('show');
   addAdvisoryDoc();
@@ -3248,20 +3285,56 @@ async function saveToDrive(){
   const isNew = !fileId;
   const baseName = (isNew && pendingSaveFolderName) ? pendingSaveFolderName : (d.name || '문서');
   let cleanBaseName = baseName.replace(/\.(md|html?|htm)$/i, '');
-  // [2026.09.16 버그수정] 실사용 지적 — 새 문서를 처음 저장할 때 사건명만 파일명으로 썼더니,
-  // 같은 사건에 검토서·자문보고서처럼 문서를 여러 개 만들면 전부 "사건명.md"라는 똑같은
-  // 이름으로 저장돼(구글드라이브는 동명 파일도 그냥 다 만들어버림) 드라이브에서도 보고서
-  // 모음에서도 이름만으론 어느 게 어느 문서인지 구분이 안 됐다 — 문서유형 라벨을 붙인다
-  // (이미 저장된 기존 파일을 다시 저장할 때는 원래 이름을 그대로 유지 — isNew일 때만 적용).
+  // [2026.09.16 버그수정 → 2026.09.17 재설계] "파일명에서 사건명은 제거하고 시스템 고유의
+  // <보고서명칭_세부명칭>으로 통일하자, 세부명칭은 필요한 경우에만" — 사건명은 이미 파일이
+  // 들어있는 폴더(그 사건 자체)로 알 수 있어 파일명에 또 넣는 게 중복이었다. 문서유형 라벨
+  // (검토서/자문보고서/... — RW_DOC_TYPE_FILENAME_LABELS_)만 파일명으로 쓰고, 같은 사건
+  // 안에 이미 같은 유형 문서가 있을 때만(세무사님 지시 — "같은 유형이 여러 개일 리 없다,
+  // 있다면 내용이 다른 것이니 사람이 직접 세부명칭을 정해야 한다") 구분용 세부명칭을 직접
+  // 입력받는다. 이미 저장된 기존 파일을 다시 저장할 때는 원래 이름을 그대로 유지(isNew일
+  // 때만 적용).
   if (isNew && pendingSaveFolderName) {
     const typeLabel = RW_DOC_TYPE_FILENAME_LABELS_[d.docType];
-    if (typeLabel) cleanBaseName = cleanBaseName + '_' + typeLabel;
+    if (typeLabel) {
+      cleanBaseName = typeLabel;
+      // [2026.09.17 재설계] 개별검토서는 "특정 쟁점 하나에 국한된 검토"라는 정의 자체가
+      // 세부명칭 없이는 성립하지 않으므로(종합검토서와 달리), 충돌 여부와 상관없이 저장할
+      // 때마다 항상 쟁점(세부명칭)을 물어본다.
+      const alwaysNeedsDetail = d.docType === 'review_specific';
+      try {
+        const listRes = await callGas('listFolder', { folderId: pendingSaveFolderId });
+        const existingBaseNames = (listRes.files || []).map(function(f){ return f.name.replace(/\.(md|html?|htm)$/i, ''); });
+        if (alwaysNeedsDetail) {
+          let candidate = null;
+          while (!candidate || existingBaseNames.indexOf(candidate) !== -1) {
+            const detail = await nxPrompt_(candidate ? ('"' + candidate + '"은 이미 있습니다. 다른 세부명칭을 입력해주세요 — 취소하면 저장하지 않습니다.') : '개별검토서는 어떤 쟁점에 대한 것인지 세부명칭이 필요합니다(예: 비과세검토) — 취소하면 저장하지 않습니다.', '');
+            if (!detail || !detail.trim()) { flashSaveState('저장이 취소되었습니다'); btn.disabled = false; return; }
+            candidate = typeLabel + '_' + detail.trim();
+          }
+          cleanBaseName = candidate;
+        } else {
+          // [2026.09.17 버그수정] "검토서는 한 사건에 여러 번(세부명칭이 계속 붙어) 쌓일 수
+          // 있는데 고려했나"는 지적 — 처음엔 이름 하나가 이미 있는지만 확인해서, 세부명칭까지
+          // 붙여 저장한 이름과 우연히 또 겹치는 경우를 못 잡았다. 후보 이름이 실제로 비어있을
+          // 때까지 계속 물어본다(취소하면 저장 중단).
+          while (existingBaseNames.indexOf(cleanBaseName) !== -1) {
+            const detail = await nxPrompt_('"' + cleanBaseName + '" 이름은 이미 이 사건에 있습니다. 서로 다른 문서라면 구분할 세부명칭을 입력해주세요(예: 비과세검토) — 취소하면 저장하지 않습니다.', '');
+            if (!detail || !detail.trim()) { flashSaveState('저장이 취소되었습니다'); btn.disabled = false; return; }
+            cleanBaseName = typeLabel + '_' + detail.trim();
+          }
+        }
+      } catch (err) { /* 목록 조회 실패해도 저장 자체는 막지 않음(기본 이름 그대로 진행) */ }
+    }
   }
   try {
     const content = document.getElementById('mdInput').value;
     const name = d.format === 'html' ? cleanBaseName + '.html' : cleanBaseName + '.md';
     const body = { name: name, base64Data: utf8ToBase64_(content) };
     if (fileId) body.fileId = fileId; else body.folderId = pendingSaveFolderId;
+    // [2026.09.16 신규] "보고서 모음"이 이제 매번 드라이브를 새로 훑지 않고 미리 만들어둔
+    // 인덱스만 읽으므로, 저장하는 이 순간 그 인덱스에도 바로 반영되도록 사건 정보를 같이 보낸다.
+    var rwIdxCase_ = rwGetSelectedCase_();
+    if (rwIdxCase_) body.reportMeta = { caseId: rwIdxCase_.id, 고객명: rwIdxCase_.고객명, 사건명: rwIdxCase_.사건명, published: false };
     const data = await callGas('uploadFile', body);
     if (data && data.error) throw new Error(data.error);
     flashSaveState('드라이브에 저장됨');
@@ -3300,8 +3373,8 @@ document.getElementById('btnSaveToDrive').addEventListener('click', saveToDrive)
 async function publishToCustomer(){
   const d0 = getSelected();
   if (!d0) return;
-  if (d0.docType === 'review') {
-    flashSaveState('검토서는 내부 문서라 발행할 수 없습니다');
+  if (d0.docType === 'review' || d0.docType === 'review_specific') {
+    flashSaveState('검토서(종합/개별)는 내부 문서라 발행할 수 없습니다');
     return;
   }
   if (d0.format === 'html') {
@@ -3334,6 +3407,9 @@ async function publishToCustomer(){
     // 덮어써서 이전 버전이 흔적도 없이 사라졌다 — 덮어쓰기 전에 서버가 "이전버전" 폴더에
     // 타임스탬프를 붙여 백업해두도록 요청한다.
     if (d.htmlFileId) { body.fileId = d.htmlFileId; body.backupBeforeOverwrite = true; } else { body.folderId = reportFolderId; }
+    // [2026.09.16 신규] saveToDrive()와 같은 이유 — 발행 즉시 "보고서 모음" 인덱스에 반영.
+    var rwIdxPubCase_ = rwGetSelectedCase_();
+    if (rwIdxPubCase_) body.reportMeta = { caseId: rwIdxPubCase_.id, 고객명: rwIdxPubCase_.고객명, 사건명: rwIdxPubCase_.사건명, published: true };
     const data = await callGas('uploadFile', body);
     if (data && data.error) throw new Error(data.error);
     if (data.id) d.htmlFileId = data.id;
@@ -3349,7 +3425,7 @@ function updatePublishButton(){
   const btn = document.getElementById('btnPublish');
   if (!btn) return;
   const d = getSelected();
-  const canPublish = !!d && d.docType !== 'review' && d.format !== 'html';
+  const canPublish = !!d && d.docType !== 'review' && d.docType !== 'review_specific' && d.format !== 'html';
   btn.disabled = !canPublish;
   btn.style.opacity = canPublish ? '' : '0.4';
   btn.title = canPublish

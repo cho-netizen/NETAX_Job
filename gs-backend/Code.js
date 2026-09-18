@@ -2848,7 +2848,7 @@ const DRIVE_TOOLS = [
       properties: {
         customerName: { type: 'string', description: '고객명(생략하면 현재 보고 있는 폴더의 고객명)' },
         caseName: { type: 'string', description: '사건명(생략하면 현재 보고 있는 폴더의 사건명)' },
-        taxType: { type: 'string', enum: ['transfer', 'gift', 'inheritance', 'objection'], description: 'transfer=양도, gift=증여, inheritance=상속, objection=불복' },
+        taxType: { type: 'string', enum: ['transfer', 'gift', 'inheritance', 'objection', 'business'], description: 'transfer=양도, gift=증여, inheritance=상속, objection=불복, business=사업' },
         assignee: { type: 'string', description: '담당자(선택)' },
         requestDate: { type: 'string', description: '의뢰일 YYYY-MM-DD(선택)' },
         baseDate: { type: 'string', description: '기준일 YYYY-MM-DD(양도일·증여일·사망일 등, 법정기한 자동계산에 쓰임, 선택)' }
@@ -3128,7 +3128,7 @@ function dispatchClientAction_(body) {
   }
 
   // [2026.08] work 모듈 — 작업관리(사건별 세부업무 트리 + 법정기한 자동계산 + 캘린더 연동) 신규
-  const WORK_ACTIONS = ['work_get_cases', 'work_create_case', 'work_update_case', 'work_delete_case', 'work_add_subtask', 'work_update_subtask', 'work_delete_subtask', 'send_my_portal_sms', 'get_case_subfolders', 'ensure_case_folder', 'work_audit_case_folder_names'];
+  const WORK_ACTIONS = ['work_get_cases', 'work_create_case', 'work_update_case', 'work_delete_case', 'work_add_subtask', 'work_update_subtask', 'work_delete_subtask', 'send_my_portal_sms', 'get_case_subfolders', 'ensure_case_folder', 'work_audit_case_folder_names', 'work_audit_unlinked_case_folders', 'work_link_case_folder', 'work_reassign_case_folder', 'work_bulk_fix_completion_dates', 'work_fix_completion_after_receipt', 'work_backfill_receipt_case_links', 'work_plan_report_filename_cleanup', 'work_apply_report_filename_cleanup', 'migrate_report_template_names', 'work_fix_completion_by_report_date', 'work_apply_filing_file_dates', 'work_resync_all_calendars', 'work_apply_receipt_only_case_cleanup'];
   if (WORK_ACTIONS.indexOf(body.action) !== -1) {
     return jsonResponse(work_doPost(body));
   }
@@ -3181,7 +3181,7 @@ function dispatchClientAction_(body) {
   }
 
   // [2026.08] client 모듈 — 고객관리(고객 명단 + 자문내역) 신규
-  const CLIENT_ACTIONS = ['client_get_clients', 'client_create_client', 'client_update_client', 'client_delete_client', 'client_get_consult_logs', 'client_add_consult_log', 'client_update_consult_log', 'client_delete_consult_log'];
+  const CLIENT_ACTIONS = ['client_get_clients', 'client_create_client', 'client_update_client', 'client_delete_client', 'client_get_consult_logs', 'client_add_consult_log', 'client_update_consult_log', 'client_delete_consult_log', 'client_audit_duplicates', 'client_merge_clients', 'client_send_sms'];
   if (CLIENT_ACTIONS.indexOf(body.action) !== -1) {
     return jsonResponse(client_doPost(body));
   }
@@ -3245,6 +3245,9 @@ function dispatchClientAction_(body) {
   if (body.action === 'saveCaseFromTemplate') {
     return jsonResponse(handleSaveCaseFromTemplate(body));
   }
+  if (body.action === 'migrate_case_template_names') {
+    return jsonResponse(handleMigrateCaseTemplateNames_(body));
+  }
   if (body.action === 'getReportTemplate') {
     return jsonResponse(handleGetReportTemplate(body));
   }
@@ -3285,6 +3288,12 @@ function dispatchClientAction_(body) {
   }
   if (body.action === 'list_all_reports') {
     return jsonResponse(handleListAllReports(body));
+  }
+  if (body.action === 'rename_report_file') {
+    return jsonResponse(handleRenameReportFile(body));
+  }
+  if (body.action === 'delete_report_file') {
+    return jsonResponse(handleDeleteReportFile(body));
   }
   if (body.action === 'get_latest_template_review') {
     return jsonResponse(handleGetLatestTemplateReview(body));
@@ -4397,6 +4406,23 @@ function withLock_(waitMs, fn) {
   }
 }
 
+// [2026.09.16 신규] 작성관리(reportwriter.html)가 문서를 저장/발행할 때만 body.reportMeta를
+// 실어 보낸다 — 이 필드가 없으면(증빙 업로드, 메모 첨부 등 이 함수의 다른 모든 호출부) 아무
+// 영향이 없다. 실패해도(락 경합 등) 조용히 넘어가고 실제 업로드 자체는 항상 그대로 성공한다.
+function rh_maybeUpdateReportIndexForUpload_(body, file) {
+  if (!body.reportMeta) return;
+  try {
+    rh_upsertReportIndexEntry_({
+      id: file.getId(), name: file.getName(), mimeType: file.getMimeType(),
+      modifiedDate: Date.now(),
+      caseId: body.reportMeta.caseId, 고객명: body.reportMeta.고객명, 사건명: body.reportMeta.사건명,
+      kind: body.reportMeta.published ? MY_SUBFOLDER_REPORT : WORK_SUBFOLDER_INTERNAL_REPORT,
+      published: !!body.reportMeta.published
+    });
+  } catch (idxErr) {
+    console.error('보고서 인덱스 갱신 실패: ' + idxErr.message);
+  }
+}
 function handleUploadFile(body) {
   if (!body.name) return { error: '파일명이 없습니다.' };
   if (!body.base64Data) return { error: '업로드할 파일 내용이 없습니다.' };
@@ -4426,6 +4452,7 @@ function handleUploadFile(body) {
         const bytes = Utilities.base64Decode(body.base64Data);
         const text = Utilities.newBlob(bytes).getDataAsString('UTF-8');
         file.setContent(text);
+        rh_maybeUpdateReportIndexForUpload_(body, file);
         return { id: file.getId(), name: file.getName(), url: file.getUrl(), updated: true };
       } catch (err) {
         return { error: '파일 갱신 중 오류: ' + err.message };
@@ -4449,6 +4476,7 @@ function handleUploadFile(body) {
     const bytes = Utilities.base64Decode(body.base64Data);
     const blob = Utilities.newBlob(bytes, mimeType, body.name);
     const file = folder.createFile(blob);
+    rh_maybeUpdateReportIndexForUpload_(body, file);
     return { id: file.getId(), name: file.getName(), url: file.getUrl() };
   } catch (err) {
     return { error: '파일 업로드 중 오류: ' + err.message };
@@ -12465,6 +12493,9 @@ function getOrCreateSubfolder_(parent, name) {
 // 형식은 파일째로 복사된다.
 const CASE_TEMPLATE_SUBFOLDER_NAME = '의뢰서템플릿';
 const TEXT_TEMPLATE_EXT_REGEX_ = /\.(md|txt)$/i;
+// [2026.09.17] 의뢰서템플릿 폴더의 파일은 전부 "의뢰서_" 접두어를 붙이는 이름규칙으로 통일함
+// (예: "증여신고.md" → "의뢰서_증여신고.md").
+const CASE_TEMPLATE_NAME_PREFIX_ = '의뢰서_';
 
 /**
  * 의뢰서템플릿 폴더 = 업무관리자 폴더(getBusinessManagerFolder_) 안의 "의뢰서템플릿"
@@ -12631,6 +12662,30 @@ function work_seedCaseTemplateIfAny_(caseFolder, candidateNames) {
   }
 }
 
+// [2026.09.17 신규, 1회성] 의뢰서템플릿 폴더의 기존 파일들("증여신고.md" 등, 세목+업무유형만
+// 있던 옛 이름)에 전부 "의뢰서_" 접두어를 붙인다 — 이미 접두어가 있는 파일은 건드리지 않는다.
+// 이름변경뿐이라 파괴적이지 않으므로 dry-run 없이 바로 실행한다(보고서템플릿 정리와 동일 원칙).
+function migrateCaseTemplateNamesToPrefixed_() {
+  const folder = getCaseTemplateFolder_();
+  if (!folder) return { success: false, message: '"0 NETAX" 폴더를 찾을 수 없습니다.' };
+  const log = [];
+  const iter = folder.getFiles();
+  const files = [];
+  while (iter.hasNext()) files.push(iter.next());
+  files.forEach(function (f) {
+    const rawName = f.getName();
+    if (rawName.indexOf(CASE_TEMPLATE_NAME_PREFIX_) === 0) return;
+    const newName = CASE_TEMPLATE_NAME_PREFIX_ + rawName;
+    f.setName(newName);
+    log.push('"' + rawName + '" → "' + newName + '"로 이름 변경');
+  });
+  if (!log.length) log.push('이미 모두 규칙에 맞게 있어서 바꿀 게 없었습니다.');
+  return { success: true, log: log };
+}
+function handleMigrateCaseTemplateNames_(body) {
+  return migrateCaseTemplateNamesToPrefixed_();
+}
+
 // ===== 보고서 템플릿(2026.09 신규) =====
 // 의뢰서템플릿과 같은 방식이지만 대상이 다르다 — "업무관리자/보고서템플릿" 폴더에 보고서
 // 종류(검토서/자문보고서/신고보고서/참고보고서/진행보고서/불복청구서/번역서/요약보고서)
@@ -12671,6 +12726,52 @@ function handleGetReportTemplate(body) {
   } catch (err) {
     return { found: false, error: '보고서 템플릿 조회 중 오류: ' + err.message };
   }
+}
+
+// [2026.09.17 임시, 1회성] "검토서를 종합검토서/개별검토서로 나눴으니 보고서템플릿도 바꾸거나
+// 없는 것은 새로 만들어서 일치시켜라" — handleGetReportTemplate이 이제 "종합검토서"/
+// "개별검토서" 라는 이름으로 찾으므로, 기존에 "검토서"로 만들어뒀던 커스텀 템플릿이 있다면
+// (그건 사건 전반을 다루던 것이었을 테니) 종합검토서 것으로 이름을 바꾸고, 그 결과로도
+// "개별검토서" 쪽이 여전히 없으면 기본 골격으로 새로 만든다("종합검토서"가 원래부터 없었을
+// 경우도 마찬가지).
+function migrateReportTemplateNamesForReviewSplit_() {
+  const folder = getReportTemplateFolder_();
+  if (!folder) return { success: false, message: '업무관리자 폴더가 설정되어 있지 않습니다.' };
+  const log = [];
+  let comprehensiveExists = false, specificExists = false;
+  const iter = folder.getFiles();
+  const files = [];
+  while (iter.hasNext()) files.push(iter.next());
+  files.forEach(function (f) {
+    const rawName = f.getName();
+    const extMatch = rawName.match(/\.[a-zA-Z0-9]+$/);
+    const ext = extMatch ? extMatch[0] : '';
+    const base = ext ? rawName.slice(0, -ext.length) : rawName;
+    if (base === '검토서') {
+      f.setName('종합검토서' + ext);
+      comprehensiveExists = true;
+      log.push('"' + rawName + '" → "종합검토서' + ext + '"로 이름 변경');
+    } else if (base === '종합검토서') {
+      comprehensiveExists = true;
+    } else if (base === '개별검토서') {
+      specificExists = true;
+    }
+  });
+  const DEFAULT_COMPREHENSIVE_MD_ = '# 종합검토서\n\n- 고객명: \n- 사건명: \n- 작성일: \n\n---\n\n## 결론 (요약)\n\n\n## 사실관계\n\n\n## 쟁점사항 및 검토내용\n\n\n## 확인 필요 사항 (Action Items)\n\n\n## 처리방향(결론) 및 다음 단계\n\n';
+  const DEFAULT_SPECIFIC_MD_ = '# 개별검토서 (쟁점: )\n\n- 고객명: \n- 사건명: \n- 작성일: \n\n---\n\n## 쟁점\n\n\n## 검토 내용\n\n\n## 결론\n\n';
+  if (!comprehensiveExists) {
+    folder.createFile(Utilities.newBlob(DEFAULT_COMPREHENSIVE_MD_, 'text/markdown', '종합검토서.md'));
+    log.push('"종합검토서.md" 새로 만듦(기본 골격)');
+  }
+  if (!specificExists) {
+    folder.createFile(Utilities.newBlob(DEFAULT_SPECIFIC_MD_, 'text/markdown', '개별검토서.md'));
+    log.push('"개별검토서.md" 새로 만듦(기본 골격)');
+  }
+  if (!log.length) log.push('이미 둘 다 규칙에 맞게 있어서 바꿀 게 없었습니다.');
+  return { success: true, log: log };
+}
+function handleMigrateReportTemplateNames_(body) {
+  return migrateReportTemplateNamesForReviewSplit_();
 }
 
 // ===== 슬라이드 템플릿(2026.09 신규, 시험단계) =====
@@ -14989,6 +15090,10 @@ function runNightlyChiefManager() {
   // [2026.09.15 신규] 홈택스 매출내역 엑셀(0_NX_0 폴더)도 매일 밤 같이 확인 — 세무사님이
   // 새 파일을 올려두면 다음날 밤 자동으로 반영된다(수동 버튼도 별도로 있음).
   try { receipt_importHometaxExports_(); } catch (err) { console.error('홈택스 수금 가져오기 실패: ' + err.message); }
+  // [2026.09.16 신규] 보고서 모음(모아보기)이 매번 실시간 재스캔하지 않고 인덱스 파일만 읽도록
+  // 바꿨다 — 저장/발행 시점에 그 건만 즉시 반영되지만, 혹시 놓친 변경(수동 삭제 등)이 있어도
+  // 매일 밤 전체를 다시 훑어 인덱스를 바로잡는 안전망.
+  try { rh_rebuildReportIndexFull_(); } catch (err) { console.error('보고서 인덱스 재구성 실패: ' + err.message); }
 }
 
 /**
@@ -17093,6 +17198,140 @@ function client_getClients(params) {
   return { success: true, clients: clients };
 }
 
+// [2026.09.16 신규] "한 고객이 2개 이상의 사건에 관여하면 고객관리를 합쳐야 하지 않나?" —
+// 이미 설계상 새 사건은 이름(+전화번호)으로 기존 고객을 찾아 같은 고객ID를 재사용하지만
+// (client_findOrCreateByName_), 이름이 오타·표기차이로 다르게 들어가면 매칭에 실패해 같은
+// 사람이 고객 두 명으로 쪼개질 수 있다. 이름이 같거나(공백 제거 후 완전일치) 전화번호가
+// 같은데 고객ID가 다른 경우를 찾아 묶어준다(연쇄적으로 겹치는 경우까지 한 그룹으로 묶기
+// 위해 union-find 사용 — 예: A·B가 이름이 같고 B·C가 전화번호가 같으면 A·B·C를 한 그룹으로).
+function client_auditDuplicates_() {
+  const sheets = client_getSheets_();
+  const data = sheets.clients.getDataRange().getValues();
+  const col = client_colMap_(data[0], CLIENT_HEADERS);
+  const workSheet = work_getSheet_();
+  const wdata = workSheet.getDataRange().getValues();
+  const wcol = work_colMap_(wdata[0]);
+  const caseCountByClientId = {};
+  for (let i = 1; i < wdata.length; i++) {
+    const cid = String(wdata[i][wcol.고객ID] || '').trim();
+    if (cid) caseCountByClientId[cid] = (caseCountByClientId[cid] || 0) + 1;
+  }
+  const rows = [];
+  for (let i = 1; i < data.length; i++) {
+    const id = String(data[i][col.id] || '').trim();
+    if (!id) continue;
+    rows.push({
+      id: id,
+      성명: String(data[i][col.성명] || '').trim(),
+      전화번호: String(data[i][col.전화번호] || '').trim(),
+      구분: data[i][col.구분] || '',
+      등록일: work_dateStr_(data[i][col.등록일]),
+      사건수: caseCountByClientId[id] || 0
+    });
+  }
+  const parent = {};
+  function find(x) { while (parent[x] && parent[x] !== x) x = parent[x]; return x; }
+  function union(a, b) { const ra = find(a), rb = find(b); if (ra !== rb) parent[ra] = rb; }
+  rows.forEach(function (r) { parent[r.id] = r.id; });
+  const byName = {}, byPhone = {};
+  rows.forEach(function (r) {
+    if (r.성명) {
+      const k = r.성명.replace(/\s+/g, '');
+      if (byName[k]) union(r.id, byName[k]); else byName[k] = r.id;
+    }
+    if (r.전화번호) {
+      const k = r.전화번호.replace(/[^0-9]/g, '');
+      if (k) { if (byPhone[k]) union(r.id, byPhone[k]); else byPhone[k] = r.id; }
+    }
+  });
+  const clusters = {};
+  rows.forEach(function (r) { const root = find(r.id); (clusters[root] = clusters[root] || []).push(r); });
+  const result = [];
+  Object.keys(clusters).forEach(function (root) {
+    const members = clusters[root];
+    if (members.length < 2) return;
+    result.push({ members: members });
+  });
+  result.sort(function (a, b) { return b.members.length - a.members.length; });
+  return result;
+}
+function client_auditDuplicatesAction_(body) {
+  const groups = client_auditDuplicates_();
+  return { success: true, count: groups.length, groups: groups };
+}
+// 세무사님이 고른 "유지할 고객" 하나로 "합칠 고객들"의 사건·자문내역을 전부 재연결하고,
+// 관련된 my.netax.kr 표시용 고객명도 맞춘 뒤, 합쳐진 고객 레코드는 삭제한다.
+// [2026.09.17 확장] "자문내역, MY페이지도 합쳐야지" — 처음엔 사건(WORK_CASES)만 옮겼는데,
+// 확인해보니 자문내역(CONSULT_LOGS)도 WORK_CASES와 똑같이 고객ID 컬럼을 직접 갖고 있어서
+// 그대로 두면 자문내역 조회 시 병합 전 고객ID로는 안 잡히는 내역이 남는다 — 사건과 동일하게
+// 재배정한다. my.netax.kr(MY_SHEET_CASES)은 반대로 고객ID 자체가 없고 report_id 단위로
+// 독립된 행마다 "고객명" 텍스트만 따로 들고 있어(고객ID로 병합할 대상이 없음) — 대신 이번에
+// 옮겨진 사건들의 report_id를 찾아 그 표시용 고객명만 남긴 고객의 성명으로 맞춰준다.
+function client_mergeClients(params) {
+  return withLock_(15000, function () {
+    const keepId = String(params.keepId || '').trim();
+    const mergeIds = (Array.isArray(params.mergeIds) ? params.mergeIds : []).map(String).filter(function (x) { return x && x !== keepId; });
+    if (!keepId || !mergeIds.length) return { success: false, message: 'keepId 또는 mergeIds가 없습니다.' };
+    const sheets = client_getSheets_();
+    const cdata = sheets.clients.getDataRange().getValues();
+    const ccol = client_colMap_(cdata[0], CLIENT_HEADERS);
+    let keepName = '';
+    for (let i = 1; i < cdata.length; i++) { if (String(cdata[i][ccol.id]) === keepId) { keepName = String(cdata[i][ccol.성명] || '').trim(); break; } }
+    if (!keepName) return { success: false, message: '유지할 고객을 찾을 수 없습니다.' };
+
+    const workSheet = work_getSheet_();
+    const wdata = workSheet.getDataRange().getValues();
+    const wcol = work_colMap_(wdata[0]);
+    let movedCases = 0;
+    const movedReportIds = [];
+    for (let i = 1; i < wdata.length; i++) {
+      if (mergeIds.indexOf(String(wdata[i][wcol.고객ID] || '').trim()) !== -1) {
+        workSheet.getRange(i + 1, wcol.고객ID + 1).setValue(keepId);
+        movedCases++;
+        const rid = String(wdata[i][wcol.my_report_id] || '').trim();
+        if (rid) movedReportIds.push(rid);
+      }
+    }
+
+    const logSheet = sheets.log;
+    const ldata = logSheet.getDataRange().getValues();
+    const lcol = client_colMap_(ldata[0], CONSULT_HEADERS);
+    let movedLogs = 0;
+    for (let i = 1; i < ldata.length; i++) {
+      if (mergeIds.indexOf(String(ldata[i][lcol.고객ID] || '').trim()) !== -1) {
+        logSheet.getRange(i + 1, lcol.고객ID + 1).setValue(keepId);
+        movedLogs++;
+      }
+    }
+
+    let movedMyPages = 0;
+    if (movedReportIds.length) {
+      try {
+        const myCasesSheet = SpreadsheetApp.openById(MY_SHEET_ID).getSheetByName(MY_SHEET_CASES);
+        if (myCasesSheet) {
+          const mdata = myCasesSheet.getDataRange().getValues();
+          const mcol = my_colMap_(mdata[0]);
+          for (let i = 1; i < mdata.length; i++) {
+            if (movedReportIds.indexOf(String(mdata[i][mcol.report_id] || '').trim()) !== -1) {
+              myCasesSheet.getRange(i + 1, mcol.고객명 + 1).setValue(keepName);
+              movedMyPages++;
+            }
+          }
+        }
+      } catch (err) {
+        console.log('my.netax.kr 고객명 동기화 실패: ' + err.message);
+      }
+    }
+
+    const rowsToDelete = [];
+    for (let i = 1; i < cdata.length; i++) {
+      if (mergeIds.indexOf(String(cdata[i][ccol.id])) !== -1) rowsToDelete.push(i + 1);
+    }
+    rowsToDelete.sort(function (a, b) { return b - a; }).forEach(function (rowNum) { sheets.clients.deleteRow(rowNum); });
+    return { success: true, movedCases: movedCases, movedLogs: movedLogs, movedMyPages: movedMyPages, deletedClients: rowsToDelete.length };
+  });
+}
+
 // 이름으로 고객을 찾고, 없으면 그 자리에서 새로 만든다. work_ 모듈(사건 등록)과 자문내역 등록
 // 양쪽에서 "고객명만 입력해도 자동으로 고객관리 명단에 연결/등록"되게 하는 공용 함수.
 function client_findOrCreateByName_(name, phone) {
@@ -17132,6 +17371,12 @@ function client_findOrCreateByName_(name, phone) {
     newRow[col.id] = id;
     newRow[col.성명] = trimmed;
     newRow[col.전화번호] = phoneTrimmed;
+    // [2026.09.16 버그수정] "전화번호가 있으면 고객분류가 표시되고 없으면 표시 안 된다"는
+    // 지적 — 원인은 전화번호 유무가 아니라, 이 함수(사건 생성 등에서 이름만으로 고객을
+    // 자동등록할 때 씀)가 구분(로얄/우수/보통/영세)을 아예 안 채워서였다. "+ 새 고객" 폼은
+    // 항상 "보통"이 기본 선택이고(clientmanage.html CLIENT_TIER_OPTIONS_), 수정 화면도 구분이
+    // 비어있으면 "보통"으로 간주하므로(`c.구분 || '보통'`), 자동등록 때도 같은 기본값을 명시적으로 써서 맞춘다.
+    newRow[col.구분] = '보통';
     newRow[col.등록일] = now;
     newRow[col.수정일] = now;
     const newRowIndex = sheets.clients.getLastRow() + 1;
@@ -17257,6 +17502,29 @@ function client_deleteClient(params) {
   });
 }
 
+// [2026.09.18 신규] "현금영수증 파일을 보내줘야 하는데 보낼 방법이 없다" — 고객관리에서 그
+// 고객에게 바로 문자를 보낼 수 있게 한다. work_sendMyPortalSms(포털 안내 문자)와 같은
+// SOLAPI 발송(booking_sendSMS)을 그대로 재사용 — 파일 자체를 문자에 첨부할 방법은 없으므로
+// (SOLAPI 문자는 텍스트만 지원), 파일을 보낼 땐 증빙관리에서 공유링크를 복사해 메시지에
+// 붙여넣는 방식으로 안내한다(자유 텍스트라 링크든 뭐든 그대로 보낼 수 있음).
+function client_sendSms(params) {
+  const clientId = String(params.고객ID || '').trim();
+  const message = String(params.message || '').trim();
+  if (!clientId) return { success: false, message: '고객ID가 필요합니다.' };
+  if (!message) return { success: false, message: '메시지를 입력해주세요.' };
+  const sheets = client_getSheets_();
+  const col = client_colMap_(sheets.clients.getDataRange().getValues()[0], CLIENT_HEADERS);
+  const found = client_findRow_(sheets.clients, col, clientId);
+  if (!found) return { success: false, message: '존재하지 않는 고객입니다.' };
+  const phone = String(found.row[col.전화번호] || '').trim();
+  if (!phone) return { success: false, message: '이 고객의 전화번호가 등록되어 있지 않습니다.' };
+  const smsResult = booking_sendSMS(phone, message);
+  if (!smsResult || smsResult.success === false) {
+    return { success: false, message: '문자 발송에 실패했습니다' + (smsResult && smsResult.message ? ': ' + smsResult.message : '') + '.' };
+  }
+  return { success: true };
+}
+
 function client_getConsultLogs(params) {
   const sheets = client_getSheets_();
   const data = sheets.log.getDataRange().getValues();
@@ -17319,6 +17587,34 @@ function client_addConsultLog(params) {
 
 // 파일ID에서 부모 폴더를 최대 6단계까지 거슬러 올라가며, 사건관리 시트의 "폴더ID" 열과
 // 일치하는 폴더를 찾는다 — 그 사건의 고객명을 알아내기 위함.
+// [2026.09.18 신규] 상담 사건은 개별 Drive 폴더가 없으므로("상담을 자문과 상담으로 세분"),
+// 그 상담과 관련된 현금영수증은 사건 폴더 대신 "고객사건" 바로 밑의 공용 폴더 하나에
+// "<고객명>_현금영수증"으로 모아둔다.
+const WORK_CONSULT_SHARED_FOLDER_NAME_ = '상담사건';
+function getConsultSharedFolder_() {
+  const root = getDefaultFolder();
+  if (!root) return null;
+  return getOrCreateSubfolder_(root, WORK_CONSULT_SHARED_FOLDER_NAME_);
+}
+// "<고객명>_현금영수증.ext" 파일명에서 고객명을 뽑아, 그 이름과 정확히 같은 고객명을 가진
+// 상담(업무유형) 사건 중 가장 최근(의뢰일, 없으면 생성일) 것 하나를 찾는다 — 같은 고객이
+// 상담 사건을 여러 번 가진 경우 어느 것인지 사람이 매번 고르게 하기보다(세무사님 확인),
+// 자동으로 최근 것 하나에 붙인다. 못 찾으면 null.
+function findConsultCaseByFileName_(fileName, data, col) {
+  const m = String(fileName || '').match(/^(.+?)_현금영수증/);
+  if (!m) return null;
+  const name = m[1].trim();
+  let best = null;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][col.고객명] || '').trim() !== name) continue;
+    if (data[i][col.업무유형] !== '상담') continue;
+    const sortKey = String(data[i][col.의뢰일] || '') || work_dateStr_(data[i][col.생성일]);
+    if (!best || sortKey > best.sortKey) {
+      best = { 고객명: data[i][col.고객명], 고객ID: data[i][col.고객ID], caseId: data[i][col.id], sortKey: sortKey };
+    }
+  }
+  return best;
+}
 function findCaseForFile_(fileId) {
   const sheet = work_getSheet_();
   const data = sheet.getDataRange().getValues();
@@ -17326,16 +17622,20 @@ function findCaseForFile_(fileId) {
   const caseByFolderId = {};
   for (let i = 1; i < data.length; i++) {
     const fid = data[i][col.폴더ID];
-    if (fid) caseByFolderId[fid] = { 고객명: data[i][col.고객명], caseId: data[i][col.id] };
+    if (fid) caseByFolderId[fid] = { 고객명: data[i][col.고객명], 고객ID: data[i][col.고객ID], caseId: data[i][col.id] };
   }
+  let consultFolderId = '';
+  try { const cf = getConsultSharedFolder_(); if (cf) consultFolderId = cf.getId(); } catch (err) { /* 조회 실패해도 폴더 기준 매칭은 계속 시도 */ }
   try {
-    let parents = DriveApp.getFileById(fileId).getParents();
+    const file = DriveApp.getFileById(fileId);
+    let parents = file.getParents();
     let depth = 0;
     while (depth < 6) {
       if (!parents.hasNext()) return null;
       const parent = parents.next();
       const pid = parent.getId();
       if (caseByFolderId[pid]) return caseByFolderId[pid];
+      if (consultFolderId && pid === consultFolderId) return findConsultCaseByFileName_(file.getName(), data, col);
       parents = parent.getParents();
       depth++;
     }
@@ -17416,8 +17716,15 @@ function runCashReceiptScan_() {
     let succeeded = false;
     try {
       const extracted = extractReceiptAmountViaAI_(primary.file.id, primary.file.mimeType, apiKey);
+      // [2026.09.17 버그수정] "현금영수증이 고객에만 연결되다니 말이 안 된다 — 사건에 먼저
+      // 연결되고 나서 고객에 연결되어야 한다" — findCaseForFile_가 파일의 부모 폴더를 거슬러
+      // 올라가 정확히 어느 사건 폴더 안에 있는지 이미 알아내고 있었는데(caseInfo.caseId), 이
+      // 호출부가 그 값을 안 쓰고 고객명만 넘겨서 결국 이름 기반으로만 고객과 연결되고
+      // 있었다 — 이미 알고 있는 사건ID·고객ID를 그대로 넘긴다.
       client_addConsultLog({
+        고객ID: primary.caseInfo.고객ID,
         고객명: primary.caseInfo.고객명,
+        사건ID: primary.caseInfo.caseId,
         날짜: extracted.date || Utilities.formatDate(new Date(primary.file.modifiedTime), 'Asia/Seoul', 'yyyy-MM-dd'),
         유형: '수금',
         내용: '현금영수증 파일 자동 인식(' + primary.file.name + ')',
@@ -17995,21 +18302,68 @@ const RH_REPORT_EXT_RE_ = /\.(md|markdown|html?|pptx?)$/i;
 const RH_REPORT_MIME_ALLOW_ = {
   'application/vnd.google-apps.presentation': true // 구글 슬라이드(확장자 없음) = PPT 취급
 };
+// [2026.09.17 신규] "의뢰내용류 파일은 보고서 모음에 띄우지 말라" — 사건 생성 시 의뢰서템플릿
+// 폴더에서 그대로 복사돼 들어오는 "OOO_의뢰내용.md" 같은 파일은 실제 보고서가 아니라 상담
+// 접수 당시 원문(사건의뢰서)이라, 확장자만으로는 걸러지던 기존 규칙에서 명시적으로 제외한다.
+const RW_INTAKE_FILENAME_PATTERN_ = /의뢰내용/;
+const RW_INTAKE_CANONICAL_NAME_ = '사건의뢰서';
+// [2026.09.18 버그수정] 세무사님 지적 — "의뢰서정비를 했는데도 왜 파일명에 증여신고·상속신고
+// 같은 이름이 계속 보이나?" 실제 원인: work_seedCaseTemplateIfAny_(새 사건 생성 시 의뢰서템플릿
+// 자동복사)는 위의 "OOO_의뢰내용.md" 패턴이 아니라 템플릿 파일명을 그대로("증여신고.md" 등)
+// 복사해 넣는다 — 이건 이 관리 앱 전용의 더 최근 메커니즘이라 위 정규식이 애초에 이 경우를
+// 고려하지 못했다. "의뢰서템플릿" 폴더에 실제로 있는(또는 접두어 도입 전 있었던) 파일명과
+// 정확히 같은 이름의 사건 폴더 파일은 전부 의뢰서 원문으로 간주해 같은 방식으로 제외한다.
+let rh_intakeTemplateBaseNamesCache_ = null;
+function rh_getIntakeTemplateBaseNames_() {
+  if (rh_intakeTemplateBaseNamesCache_) return rh_intakeTemplateBaseNamesCache_;
+  const names = {};
+  try {
+    const folder = getCaseTemplateFolder_();
+    if (folder) {
+      const iter = folder.getFiles();
+      while (iter.hasNext()) {
+        const raw = iter.next().getName();
+        const base = raw.replace(/\.[a-zA-Z0-9]+$/, '');
+        names[base] = true;
+        // "의뢰서_증여신고" 템플릿이 있으면, 접두어 도입 전에 이미 사건 폴더에 복사돼 있던
+        // 옛 이름("증여신고") 사본도 같은 것으로 인식해야 한다.
+        if (base.indexOf(CASE_TEMPLATE_NAME_PREFIX_) === 0) names[base.slice(CASE_TEMPLATE_NAME_PREFIX_.length)] = true;
+      }
+    }
+  } catch (err) {
+    // 템플릿 폴더 조회가 실패해도 나머지 판정(의뢰내용 패턴 등)은 그대로 동작해야 한다.
+  }
+  rh_intakeTemplateBaseNamesCache_ = names;
+  return names;
+}
+function rh_isIntakeLikeFile_(name) {
+  const n = String(name || '');
+  if (RW_INTAKE_FILENAME_PATTERN_.test(n)) return true;
+  const base = n.replace(/\.[a-zA-Z0-9]+$/, '');
+  if (base === RW_INTAKE_CANONICAL_NAME_) return true;
+  return !!rh_getIntakeTemplateBaseNames_()[base];
+}
 function rh_isReportFile_(name, mimeType) {
+  if (rh_isIntakeLikeFile_(name)) return false;
   if (RH_REPORT_MIME_ALLOW_[mimeType]) return true;
   return RH_REPORT_EXT_RE_.test(name);
 }
 // 사건 폴더 하나를 하위폴더까지 전부 재귀적으로 훑어 보고서 형식 파일만 모은다. 폴더 깊이가
 // 무한정 깊어질 일은 없는 구조(사건 폴더 안엔 몇 단계 하위폴더뿐)라 별도 깊이제한은 안 둔다.
+// [2026.09.16 버그수정] kind에 folder.getName()을 그대로 넣고 화면(reporthub.html)에서
+// "kind === '보고서'"로 발행 여부를 판단했는데, 그 사이 실제 폴더명이 '보고서'→'보고서_외부'로
+// 바뀌면서(MY_SUBFOLDER_REPORT) 문자열이 어긋나 발행된 보고서도 전부 "초안"으로 잘못 표시되고
+// 있었다 — 지금 시점의 실제 상수와 직접 비교한 published를 별도로 내려준다.
 function rh_collectReportFilesInFolder_(folder, out, caseId, 고객명, 사건명) {
   const fIter = folder.getFiles();
+  const folderName = folder.getName();
   while (fIter.hasNext()) {
     const f = fIter.next();
     if (!rh_isReportFile_(f.getName(), f.getMimeType())) continue;
     out.push({
       id: f.getId(), name: f.getName(), mimeType: f.getMimeType(),
       modifiedDate: f.getLastUpdated().getTime(), caseId: caseId, 고객명: 고객명, 사건명: 사건명,
-      kind: folder.getName()
+      kind: folderName, published: (folderName === MY_SUBFOLDER_REPORT)
     });
   }
   const subIter = folder.getFolders();
@@ -18017,9 +18371,143 @@ function rh_collectReportFilesInFolder_(folder, out, caseId, 고객명, 사건�
     rh_collectReportFilesInFolder_(subIter.next(), out, caseId, 고객명, 사건명);
   }
 }
-// 모아보기: 모든 사건 폴더 전체(하위폴더 포함)에서 보고서 형식 파일을 모아 돌려준다(폴더가
-// 없는 사건은 그냥 건너뜀 — 목록만 보는 용도라 사건마다 빈 폴더가 새로 생기면 안 되므로).
-function handleListAllReports(body) {
+
+// [2026.09.17 신규] "보고서 모음 대정비" — (1) 의뢰내용류 파일은 <사건의뢰서>로 통일(위
+// rh_isReportFile_에서 이미 보고서 모음 노출 자체는 제외해뒀음), (2) 나머지 보고서 파일명에서
+// 사건명을 떼고 시스템 고유 명칭(검토서/자문보고서/.../번역서)만 남긴다. 세무사님 지시 —
+// "같은 사건에 같은 유형 보고서가 여러 개일 리 없다, 그런 경우가 보이면 진짜 같은 것인지
+// 반드시 확인해야 하고 내용이 다르면 사람이 직접 세부명칭을 정해야 한다": 자동으로 번호를
+// 붙이거나 추측하지 않고, 같은 사건 안에서 같은 새 이름으로 겹치는 경우는 "충돌"로만 보고하고
+// 건드리지 않는다. rh_isReportFile_로는 의뢰내용류가 걸러지므로, 이 스캔은 그 필터를 타지
+// 않는 별도의 재귀 탐색을 쓴다(의뢰내용류도 봐야 이름을 바꿔줄 수 있음).
+function rh_collectAllCandidateFilesInFolder_(folder, out) {
+  const fIter = folder.getFiles();
+  while (fIter.hasNext()) {
+    const f = fIter.next();
+    const name = f.getName();
+    const mimeType = f.getMimeType();
+    if (!rh_isIntakeLikeFile_(name) && !(RH_REPORT_MIME_ALLOW_[mimeType] || RH_REPORT_EXT_RE_.test(name))) continue;
+    out.push({ id: f.getId(), name: name, mimeType: mimeType });
+  }
+  const subIter = folder.getFolders();
+  while (subIter.hasNext()) {
+    rh_collectAllCandidateFilesInFolder_(subIter.next(), out);
+  }
+}
+function rh_guessReportTypeLabelFromName_(base) {
+  let found = null;
+  Object.keys(RW_DOCTYPE_FILENAME_LABELS_BY_CODE_).forEach(function (code) {
+    const label = RW_DOCTYPE_FILENAME_LABELS_BY_CODE_[code];
+    if (found) return;
+    if (base === label || base.slice(-(label.length + 1)) === ('_' + label)) found = label;
+  });
+  return found;
+}
+function work_planReportFilenameCleanup_() {
+  const sheet = work_getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const col = work_colMap_(data[0]);
+  const renamePlan = [], collisions = [], unclear = [];
+
+  for (let i = 1; i < data.length; i++) {
+    const caseId = data[i][col.id];
+    const folderId = data[i][col.폴더ID];
+    if (!caseId || !folderId) continue;
+    let caseFolder;
+    try { caseFolder = DriveApp.getFolderById(folderId); } catch (err) { continue; }
+    const 사건명 = String(data[i][col.사건명] || '').trim();
+    const 고객명 = String(data[i][col.고객명] || '').trim();
+    const files = [];
+    rh_collectAllCandidateFilesInFolder_(caseFolder, files);
+
+    const proposalsByName = {};
+    files.forEach(function (f) {
+      const extMatch = f.name.match(/\.[a-zA-Z0-9]+$/);
+      const ext = extMatch ? extMatch[0] : '';
+      const base = ext ? f.name.slice(0, -ext.length) : f.name;
+
+      if (rh_isIntakeLikeFile_(f.name)) {
+        const newName = RW_INTAKE_CANONICAL_NAME_ + ext;
+        if (f.name === newName) return;
+        if (!proposalsByName[newName]) proposalsByName[newName] = [];
+        proposalsByName[newName].push({ fileId: f.id, oldName: f.name });
+        return;
+      }
+      // [2026.09.17 신규] 이미 <종합검토서> 또는 <개별검토서_세부명칭> 규칙을 따르는 파일은
+      // 자동추정 맵에 없어 "판단불가"로 잘못 걸릴 뻔했다 — 이미 규칙에 맞으면 건드리지 않는다.
+      if (base === '종합검토서' || /^개별검토서_.+/.test(base)) return;
+      let label = rh_guessReportTypeLabelFromName_(base);
+      if (!label) {
+        try {
+          const content = DriveApp.getFileById(f.id).getBlob().getDataAsString('UTF-8');
+          const guessed = rw_guessDocTypeFromContent_(content);
+          if (guessed) label = RW_DOCTYPE_FILENAME_LABELS_BY_CODE_[guessed];
+        } catch (err) { /* 읽기 실패 — 아래에서 판단불가로 처리 */ }
+      }
+      if (!label) {
+        unclear.push({ caseId: caseId, 고객명: 고객명, 사건명: 사건명, fileId: f.id, oldName: f.name });
+        return;
+      }
+      const newName2 = label + ext;
+      if (f.name === newName2) return;
+      if (!proposalsByName[newName2]) proposalsByName[newName2] = [];
+      proposalsByName[newName2].push({ fileId: f.id, oldName: f.name });
+    });
+
+    Object.keys(proposalsByName).forEach(function (newName3) {
+      const arr = proposalsByName[newName3];
+      if (arr.length === 1) {
+        renamePlan.push({ caseId: caseId, 고객명: 고객명, 사건명: 사건명, fileId: arr[0].fileId, oldName: arr[0].oldName, newName: newName3 });
+      } else {
+        collisions.push({ caseId: caseId, 고객명: 고객명, 사건명: 사건명, proposedName: newName3, files: arr });
+      }
+    });
+  }
+  return { renamePlan: renamePlan, collisions: collisions, unclear: unclear };
+}
+function work_reportFilenameCleanupAction_(body) {
+  const plan = work_planReportFilenameCleanup_();
+  return { success: true, dryRun: true, renamePlan: plan.renamePlan, collisions: plan.collisions, unclear: plan.unclear };
+}
+function work_applyReportFilenameCleanup(params) {
+  return withLock_(60000, function () {
+    const plan = work_planReportFilenameCleanup_();
+    const fileIds = Array.isArray(params.fileIds) ? params.fileIds : null;
+    let applied = 0, failed = 0;
+    plan.renamePlan.forEach(function (item) {
+      if (fileIds && fileIds.indexOf(item.fileId) === -1) return;
+      try { DriveApp.getFileById(item.fileId).setName(item.newName); applied++; } catch (err) { failed++; }
+    });
+    return { success: true, applied: applied, failed: failed };
+  });
+}
+
+// [2026.09.16 재설계] 모아보기를 열 때마다 사건 전체를 실시간으로 재스캔해(사건마다 드라이브
+// 폴더를 하위폴더까지 재귀 탐색) 사건이 쌓일수록 매번 점점 느려지던 문제 — "_보고서인덱스"
+// 폴더(총괄관리자 폴더 하위)에 미리 만들어둔 index.json을 읽기만 하는 방식으로 바꾼다.
+// 인덱스 자체는 (1) 문서를 저장/발행할 때 그 건만 즉시 갱신되고(handleUploadFile의
+// reportMeta 처리 참고), (2) 혹시 놓친 변경(수동 삭제 등)이 있어도 매일 밤(runNightlyChiefManager)
+// 전체 재구성으로 스스로 바로잡는다. 총괄관리자 폴더가 아예 설정 안 돼 있거나 인덱스 파일이
+// 아직 한 번도 안 만들어졌으면(최초 1회) 예전처럼 전체 스캔으로 채운다 — 그 결과가 그대로
+// 인덱스로도 저장되므로 다음 호출부터는 빨라진다.
+function rh_indexFolder_() {
+  const chief = getChiefManagerFolder_();
+  if (!chief) return null;
+  return getOrCreateSubfolder_(chief, '_보고서인덱스');
+}
+function rh_loadReportIndex_() {
+  const folder = rh_indexFolder_();
+  if (!folder) return null;
+  const raw = readFileIfExists_(folder, 'index.json');
+  if (raw === null) return null;
+  try { return JSON.parse(raw); } catch (err) { return null; }
+}
+function rh_saveReportIndex_(list) {
+  const folder = rh_indexFolder_();
+  if (!folder) return;
+  writeFileOverwrite_(folder, 'index.json', JSON.stringify(list), 'application/json');
+}
+function rh_rebuildReportIndexFull_() {
   const sheet = work_getSheet_();
   const data = sheet.getDataRange().getValues();
   const col = work_colMap_(data[0]);
@@ -18032,8 +18520,89 @@ function handleListAllReports(body) {
     try { caseFolder = DriveApp.getFolderById(folderId); } catch (err) { continue; }
     rh_collectReportFilesInFolder_(caseFolder, files, caseId, data[i][col.고객명], data[i][col.사건명]);
   }
+  rh_saveReportIndex_(files);
+  return files;
+}
+// 문서 저장/발행 시점에 그 파일 하나만 인덱스에 즉시 반영 — 실패해도(락 경합 등) 조용히
+// 넘어간다(다음 야간 재구성이 바로잡아줌). 실제 저장/발행 자체는 이 함수와 무관하게 항상 그대로
+// 성공한다(handleUploadFile에서 try/catch로 감싸 호출).
+function rh_upsertReportIndexEntry_(entry) {
+  if (!rh_indexFolder_()) return;
+  withLock_(5000, function () {
+    let list = rh_loadReportIndex_();
+    if (!list) list = [];
+    const idx = list.findIndex(function (x) { return x.id === entry.id; });
+    if (idx >= 0) list[idx] = entry; else list.push(entry);
+    rh_saveReportIndex_(list);
+    return null;
+  });
+}
+function handleListAllReports(body) {
+  // [2026.09.18] body.forceRebuild가 true면 캐시를 그냥 읽지 않고 사건 폴더 전체를 다시 훑는다 —
+  // rh_isReportFile_/rh_isIntakeLikeFile_ 판정 로직 자체가 바뀐 직후처럼, 기존에 이미 캐시에
+  // 잘못 들어간 항목(예: 의뢰서 원문인데 보고서로 잘못 분류된 옛 항목)을 다음 야간 재구성까지
+  // 기다리지 않고 바로 걷어내야 할 때 쓴다.
+  let files = (body && body.forceRebuild) ? null : rh_loadReportIndex_();
+  if (files === null) files = rh_rebuildReportIndexFull_();
   files.sort(function (a, b) { return b.modifiedDate - a.modifiedDate; });
   return { files: files };
+}
+
+// [2026.09.17 신규] 자동 일괄정비(work_apply_report_filename_cleanup)가 판단을 잘못 내리거나
+// 목록이 너무 많아 화면에서 검토하기 어렵다는 지적에 따라, 세무사님이 "보고서 모음" 목록에서
+// 파일 하나씩 직접 이름을 바꿀 수 있게 하는 별도 경로. 실제 이름변경은 handleRenameItem과
+// 동일하게 DriveApp으로 하되, 그 결과를 인덱스 캐시(_보고서인덱스/index.json)에도 바로
+// 반영해야 "모아보기" 목록에 새 이름이 즉시 보인다(인덱스는 실시간 스캔이 아니므로).
+function handleRenameReportFile(body) {
+  const fileId = String(body.fileId || '').trim();
+  const newName = String(body.newName || '').trim();
+  if (!fileId || !newName) return { success: false, message: '파일 또는 새 이름이 없습니다.' };
+  return withLock_(8000, function () {
+    try {
+      DriveApp.getFileById(fileId).setName(newName);
+    } catch (err) {
+      return { success: false, message: '이름 변경 중 오류: ' + err.message };
+    }
+    try {
+      let list = rh_loadReportIndex_();
+      if (list) {
+        const idx = list.findIndex(function (x) { return x.id === fileId; });
+        if (idx >= 0) {
+          list[idx] = Object.assign({}, list[idx], { name: newName, modifiedDate: Date.now() });
+          rh_saveReportIndex_(list);
+        }
+      }
+    } catch (err) {
+      // 인덱스 갱신 실패해도 실제 파일명 변경은 이미 끝났다 — 다음 야간 재구성이 바로잡아준다.
+    }
+    return { success: true, name: newName };
+  });
+}
+
+// [2026.09.17 신규] 이름수정과 같은 이유(자동 일괄정비만으로는 부족, 파일 하나씩 직접 처리해야
+// 하는 경우가 많음) — "보고서 모음" 목록에서 파일을 직접 지울 수 있게 한다. 완전삭제가 아니라
+// 휴지통행(handleDeleteItem과 동일한 setTrashed(true))이라 잘못 지워도 휴지통 화면에서 복원할
+// 수 있다. 이름수정과 마찬가지로 인덱스 캐시에서도 그 항목을 바로 빼야 목록에서 즉시 사라진다.
+function handleDeleteReportFile(body) {
+  const fileId = String(body.fileId || '').trim();
+  if (!fileId) return { success: false, message: '파일이 없습니다.' };
+  return withLock_(8000, function () {
+    try {
+      DriveApp.getFileById(fileId).setTrashed(true);
+    } catch (err) {
+      return { success: false, message: '삭제 중 오류: ' + err.message };
+    }
+    try {
+      let list = rh_loadReportIndex_();
+      if (list) {
+        const next = list.filter(function (x) { return x.id !== fileId; });
+        if (next.length !== list.length) rh_saveReportIndex_(next);
+      }
+    } catch (err) {
+      // 인덱스 갱신 실패해도 실제 삭제(휴지통 이동)는 이미 끝났다 — 다음 야간 재구성이 바로잡아준다.
+    }
+    return { success: true };
+  });
 }
 
 // [2026.09.16 임시, 1회성] "내부보고서"/"보고서" 폴더를 "보고서_내부"/"보고서_외부"로 개명하고,
@@ -18042,13 +18611,16 @@ function handleListAllReports(body) {
 // 이번에 고친 문제) 파일 내용 앞부분에서 유형을 나타내는 단어를 찾아 추정한다 — 확신이 서는
 // 경우만 이름을 바꾸고, 못 찾으면 그대로 두고 목록에 남겨 직접 확인하시게 한다(추측으로
 // 잘못된 유형 이름을 붙이지 않기 위함).
+// [2026.09.17 버그수정] "검토서"를 <종합검토서>(사건 전반)/<개별검토서_세부명칭>(특정 쟁점
+// 국한)로 나누기로 하면서, 파일명이나 내용에 "검토서"라는 단어가 있다는 것만으로는 둘 중
+// 어느 쪽인지 기계가 판단할 수 없게 됐다 — review는 이 자동추정 맵에서 아예 빼서, 해당하는
+// 옛 파일은 전부 "판단불가"(사람이 직접 종합/개별 중 골라 이름을 정해야 함)로 넘어가게 한다.
 const RW_DOCTYPE_FILENAME_LABELS_BY_CODE_ = {
-  review: '검토서', advisory: '자문보고서', filing: '신고보고서', reference: '참고보고서',
+  advisory: '자문보고서', filing: '신고보고서', reference: '참고보고서',
   progress: '진행보고서', appeal_petition: '불복청구서', summary: '요약보고서', translation: '번역서'
 };
 function rw_guessDocTypeFromContent_(content) {
   const head = String(content || '').slice(0, 800);
-  if (head.indexOf('검토서') !== -1) return 'review';
   if (head.indexOf('불복') !== -1 || head.indexOf('이의신청') !== -1 || head.indexOf('심사청구') !== -1 || head.indexOf('심판청구') !== -1) return 'appeal_petition';
   if (head.indexOf('번역') !== -1) return 'translation';
   if (head.indexOf('신고') !== -1 && head.indexOf('보고서') !== -1) return 'filing';
@@ -18842,7 +19414,14 @@ function client_updateConsultLog(params) {
     if (params.고객명 !== undefined) {
       const newName = String(params.고객명).trim();
       row[col.고객명] = newName;
-      row[col.고객ID] = newName ? client_findOrCreateByName_(newName).id : '';
+      // [2026.09.18 버그수정] "수금관리 고객명이 불규칙하다" — 예전엔 여기서 항상 이름으로 다시
+      // 찾거나 새로 만들었는데(client_findOrCreateByName_), 화면 쪽이 이미 실제 고객ID를
+      // 알고 있는 경우(자동완성으로 기존 고객을 고른 경우)에도 그 정보를 안 보내서 매번 이름
+      // 문자열만으로 재매칭했다 — 오타·띄어쓰기·납세자 이름이 섞여 들어가는 등 조금이라도
+      // 다르면 진짜 존재하는 고객인데도 못 찾고 새 고객으로 만들어버릴 위험이 있었다. 화면이
+      // 이미 정확한 고객ID를 알려주면 그대로 믿고 쓰고, 모를 때만(진짜 신규 고객 입력) 이름
+      // 기반 찾기/생성으로 넘어간다.
+      row[col.고객ID] = params.고객ID !== undefined ? String(params.고객ID).trim() : (newName ? client_findOrCreateByName_(newName).id : '');
     }
     sheets.log.getRange(found.rowIndex, 1, 1, row.length).setValues([row]);
     SpreadsheetApp.flush();
@@ -18871,6 +19450,9 @@ function client_doPost(body) {
     case 'client_add_consult_log': return client_addConsultLog(body);
     case 'client_update_consult_log': return client_updateConsultLog(body);
     case 'client_delete_consult_log': return client_deleteConsultLog(body);
+    case 'client_audit_duplicates': return client_auditDuplicatesAction_(body);
+    case 'client_merge_clients': return client_mergeClients(body);
+    case 'client_send_sms': return client_sendSms(body);
     default: return { success: false, message: '알 수 없는 action: ' + body.action };
   }
 }
@@ -18943,7 +19525,13 @@ const WORK_HEADERS = ['id', '고객ID', '고객명', '사건명', '세목', '업
 // 서버에도 둔다(서버는 클라이언트 상수를 모르므로). 같은 고객이 같은 조합으로 사건을 또
 // 만들면(양도·증여는 실제로 있을 수 있음) work_generateUniqueCaseName_이 뒤에 " 2", " 3"…을
 // 붙여 Drive 폴더 이름이 겹쳐서 서로 다른 사건 자료가 한 폴더에 섞이는 걸 막는다.
-const WORK_SEMOK_LABELS_ = { transfer: '양도', gift: '증여', inheritance: '상속', objection: '불복' };
+// [2026.09.18 신규] "사업" 세목 추가 — 세무사님 확인: 업무유형은 신고/상담만(다른 세목과 동일),
+// 법정기한은 상담처럼 직접입력(종합소득세·부가세 등 마감규칙이 제각각이라 자동계산 안 함 —
+// WORK_DEADLINE_MONTHS_에 business를 안 넣어두면 work_calcDeadline_이 저절로 빈 값을 돌려줘서
+// 직접입력만 가능해짐, 별도 분기 불필요), 사건개요서·필요증빙 템플릿·세액계산 탭은 당장 필요
+// 없음(불복과 똑같이 자유텍스트 처리대상으로 충분) — 그래서 이 파일 안에서 손댈 곳은 딱
+// 여기(이름표시용 라벨)와 AI 도구 taxType enum 뿐이다.
+const WORK_SEMOK_LABELS_ = { transfer: '양도', gift: '증여', inheritance: '상속', objection: '불복', business: '사업' };
 // [2026.09.16 신규] casehandling.html의 TAXPAYER_NAME_FIELD_BY_SEMOK_(클라이언트 쪽 상수)와
 // 반드시 같은 값을 유지해야 하는 서버쪽 짝 — work_createCase가 새 사건을 만들 때도 납세자를
 // 사건개요의 납세의무자 이름 필드에 미리 채워 넣기 위해 서버(Code.js)에서도 이 매핑이
@@ -18995,7 +19583,9 @@ const WORK_DEADLINE_DAYS_ = { 이의신청: 90, 심사청구: 90, 심판청구: 
 const WORK_DEADLINE_YEARS_ = { 경정청구: 5 };
 // [2026.09] 세무조사 대리·자금출처소명도 상담·해명자료와 같은 이유(법정기한 없이 과세관청과
 // 협의된 처리시한)로 자동계산 대상에서 빼고 사용자가 직접 입력한 값을 쓴다.
-const WORK_MANUAL_DEADLINE_TYPES_ = ['상담', '해명자료', '세무조사', '자금출처소명'];
+// [2026.09.18 신규] "상담을 자문과 상담으로 세분" — 자문도 정해진 법정기한이 없는 유형이라
+// 같은 자리에 둔다(workmanage.html의 WORK_MANUAL_DEADLINE_TYPES_와 반드시 같은 값 유지).
+const WORK_MANUAL_DEADLINE_TYPES_ = ['자문', '상담', '해명자료', '세무조사', '자금출처소명'];
 // [2026.09 버그수정] 캘린더 정리(work_deleteEventsByTag_)가 "오늘부터 +2년"까지만 검색해서
 // 지웠는데, 경정청구(5년)처럼 법정일이 그보다 먼 사건은 그 일정을 편집할 때마다(담당자만
 // 바꿔도 work_syncCaseCalendar_가 매번 통째로 지웠다 다시 만듦) 예전 일정을 못 찾아 못 지우고
@@ -20055,7 +20645,12 @@ function work_createCase(params) {
     // 생성 시점에도 WORK_TAXPAYER_FIELD_BY_SEMOK_과 같은 규칙으로 미리 채워 넣는다.
     const taxpayerFieldForCreate_ = 납세자 && WORK_TAXPAYER_FIELD_BY_SEMOK_[seMok];
     newRow[col.사건개요] = taxpayerFieldForCreate_ ? JSON.stringify((function () { const o = {}; o[taxpayerFieldForCreate_] = 납세자; return o; })()) : '{}';
-    newRow[col.폴더ID] = work_getOrCreateCaseFolder_(사건명);
+    // [2026.09.18 신규] "상담을 자문과 상담으로 세분 — 파일이 작성 안 돼 폴더가 필요 없는
+    // 사건은 상담, 검토서·보고서가 작성되는 사건은 자문으로" — 상담 사건은 개별 Drive 폴더를
+    // 만들지 않는다(폴더ID 빈 값). 이 값이 비어있으면 위쪽의 의뢰서템플릿 자동적용·아래쪽의
+    // my.netax.kr 자동연결이 이미 조용히 건너뛰도록 되어 있어(둘 다 `if (newRow[col.폴더ID])`
+    // 로 감싸져 있음) 별도로 더 손댈 곳이 없다 — 애초에 파일이 없는 사건이니 자연스럽다.
+    newRow[col.폴더ID] = (upType === '상담') ? '' : work_getOrCreateCaseFolder_(사건명);
     newRow[col.생성일] = now;
     newRow[col.수정일] = now;
 
@@ -20066,7 +20661,9 @@ function work_createCase(params) {
         const semokLabel_ = WORK_SEMOK_LABELS_[seMok] || seMok;
         // 우선순위: "양도신고"처럼 세목+업무유형을 합친 이름(가장 구체적) → "세무조사"처럼
         // 업무유형만으로 이미 고유한 이름(불복 세부유형) → 세목 이름만(마지막 안전망).
-        work_seedCaseTemplateIfAny_(DriveApp.getFolderById(newRow[col.폴더ID]), [semokLabel_ + upType, upType, semokLabel_]);
+        // [2026.09.17] 의뢰서템플릿 파일명이 전부 "의뢰서_" 접두어를 쓰는 규칙으로 바뀌어
+        // 후보 이름에도 똑같이 접두어를 붙여야 찾을 수 있다.
+        work_seedCaseTemplateIfAny_(DriveApp.getFolderById(newRow[col.폴더ID]), [semokLabel_ + upType, upType, semokLabel_].map(function (n) { return CASE_TEMPLATE_NAME_PREFIX_ + n; }));
       } catch (err) {
         console.log('의뢰서템플릿 적용 중 오류(사건 생성은 계속 진행): ' + err.message);
       }
@@ -20262,11 +20859,15 @@ function work_updateCase(params) {
       row[col.기준일] = String(params.기준일).trim();
     }
     const upType = row[col.업무유형];
-    if (WORK_MANUAL_DEADLINE_TYPES_.indexOf(upType) !== -1) {
-      // 상담·해명자료는 서버가 계산하지 않고, 사용자가 입력해 보낸 처리시한만 그대로 반영한다
-      // (업무유형만 바뀌고 값을 안 보냈으면 기존 값을 억지로 비우지 않는다).
-      if (params.법정일 !== undefined) row[col.법정일] = String(params.법정일).trim();
-    } else if (recalc) {
+    // [2026.09.18 버그수정] "법정일이 이상한 날짜인데 고칠 방법이 없다"는 지적 — 예전엔 신고 등
+    // 자동계산 유형은 params.법정일을 아예 무시하고 항상 기준일 기반 재계산 결과만 반영해서,
+    // 기준일 자체가 잘못됐거나 계산이 어긋난 경우 직접 고칠 길이 없었다. 상담·해명자료(원래도
+    // 직접입력)와 같은 원칙으로 확장 — params.법정일이 명시적으로 왔으면(=화면에서 사용자가
+    // 그 칸을 실제로 고쳤을 때만 보냄, workmanage.html의 dirty-check 참고) 자동계산보다 항상
+    // 우선한다. 안 보냈으면(평소 저장) 기존처럼 기준일이 바뀌었을 때만 자동계산한다.
+    if (params.법정일 !== undefined) {
+      row[col.법정일] = String(params.법정일).trim();
+    } else if (WORK_MANUAL_DEADLINE_TYPES_.indexOf(upType) === -1 && recalc) {
       row[col.법정일] = work_calcDeadline_(row[col.세목], upType, row[col.기준일]);
     }
     // [2026.08] 완료 처리하는 순간(진행/보류→완료로 바뀔 때만, 이미 완료인 걸 다시 저장할
@@ -20277,12 +20878,18 @@ function work_updateCase(params) {
     // 그 새 계산값이 우선(사용자가 그 요청에서 다른 것도 같이 바꾼 거라 더 최신 정보).
     if (params.상태 === '완료' && !wasCompleted) {
       row[col.완료전법정일] = row[col.법정일];
-      row[col.법정일] = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      // [2026.09.16 버그수정] "시스템 개통 전에 이미 끝난 사건을 지금 완료 처리했더니 완료일이
+      // 오늘(개통일 무렵) 날짜로 찍혀버린다"는 지적 — 예전엔 무조건 오늘 날짜로만 덮어써서,
+      // 지난 사건을 뒤늦게 기록할 방법이 없었다. 클라이언트가 실제 완료일(params.완료일)을
+      // 명시적으로 보내면 그 값을 쓰고, 안 보내면(다른 호출부와의 하위호환) 예전처럼 오늘로.
+      const completionDateStr = params.완료일 ? String(params.완료일).trim() : Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      row[col.법정일] = completionDateStr;
       // [2026.09] my.netax.kr 이용기간도 이 시점(자문용역 종료일)+30일로 확정한다 — 예전엔
       // 완성된 보고서 하나 열람이 전부라 발급일+30일 고정이었지만, 이제는 사건 시작부터
       // 연결되므로 "진행 중엔 무제한, 종료되면 그 시점부터 30일"이 되어야 한다.
       try {
-        const expiryDate = new Date();
+        const expiryBase = new Date(completionDateStr + 'T00:00:00');
+        const expiryDate = isNaN(expiryBase.getTime()) ? new Date() : expiryBase;
         expiryDate.setDate(expiryDate.getDate() + 30);
         my_setExpiryByReportId_(row[col.my_report_id], expiryDate);
       } catch (err) {
@@ -20298,6 +20905,41 @@ function work_updateCase(params) {
         console.log('my.netax.kr 만료일 되돌리기 실패: ' + err.message);
       }
     }
+    // [2026.09.16 신규] "그냥 즉시 연동되도록 하자" — 예전엔 고객명/납세자/세목/업무유형을
+    // 고쳐도 사건명(=Drive 폴더명)은 그대로 남아있어서, 증빙확보의 "🏷 사건명 점검"을 따로 열어
+    // 수동으로 "일괄 적용"해야만 반영됐다(그래서 작업관리 목록의 고객명(납세자) 배지 — 이건
+    // 항상 실시간 필드를 보여줌 — 와 실제 사건명 문자열이 서로 다른 값을 보여주는 혼란이
+    // 있었다). 이 네 필드 중 하나라도 이번 저장에 실려왔으면 사건명도 이 저장 안에서 바로
+    // 다시 계산해 같이 맞춘다. work_generateUniqueCaseName_은 "새 사건 하나"를 기준으로 즉석
+    // 번호를 매기는 함수라, 자기 자신의 옛 이름과 충돌하지 않도록 시트의 사건명 칸을 먼저
+    // 비워두고 계산한다(normalizeAllCaseNamesAndClients_에서 쓴 것과 같은 방식). "🏷 사건명
+    // 점검"은 이 경로를 안 타는 다른 방식으로 데이터가 바뀐 경우를 위한 안전망으로 그대로 둔다.
+    let folderRenameFailed = false;
+    if (params.고객명 !== undefined || params.납세자 !== undefined || params.세목 !== undefined || params.업무유형 !== undefined) {
+      const oldCaseName = row[col.사건명];
+      sheet.getRange(found.rowIndex, col.사건명 + 1).setValue('');
+      const newCaseName = work_generateUniqueCaseName_(sheet, col, row[col.고객ID], row[col.고객명], row[col.세목], upType, row[col.납세자]);
+      row[col.사건명] = newCaseName;
+      if (newCaseName !== oldCaseName && row[col.폴더ID]) {
+        // [2026.09.18 버그수정] "고객명·납세자를 바로잡아 저장했는데 폴더명은 자동수정이 안 됐다"
+        // — 예전엔 실패해도 console.log로만 남겨서(Apps Script 실행 로그는 세무사님이 볼 수
+        // 없음) 화면상으로는 아무 문제 없이 저장된 것처럼 보였다. 실패하면 화면에도 경고로
+        // 보이게 한다(증빙확보의 "🏷 사건명 점검"으로 나중에 다시 잡아낼 수도 있지만, 저장하는
+        // 그 순간 바로 알려주는 게 맞다).
+        try { DriveApp.getFolderById(row[col.폴더ID]).setName(newCaseName); } catch (err) {
+          console.log('사건명 변경 시 폴더명 동기화 실패: ' + err.message);
+          folderRenameFailed = true;
+        }
+      }
+    }
+    // [2026.09.18 신규] "상담 사건이 나중에 자문/신고로 발전하면 그 시점에 개별 폴더를 만들자"
+    // — 상담일 때는 폴더ID가 비어있었는데, 업무유형이 자문·신고로 바뀌면(검토서·보고서를 쓰게
+    // 되면) 그 순간 개별 Drive 폴더를 새로 만든다. 반대 방향(자문·신고→상담)은 이미 파일이
+    // 쌓여있을 수 있어 폴더를 지우지 않는다 — 그대로 둔다.
+    if (upType !== '상담' && !row[col.폴더ID] && row[col.사건명]) {
+      const newFolderId = work_getOrCreateCaseFolder_(row[col.사건명]);
+      if (newFolderId) row[col.폴더ID] = newFolderId;
+    }
     row[col.수정일] = new Date();
 
     sheet.getRange(found.rowIndex, 1, 1, row.length).setValues([row]);
@@ -20306,9 +20948,12 @@ function work_updateCase(params) {
     const caseObj = work_readRow_(col, row);
     const calendarOk = work_syncCaseCalendar_(caseObj);
     const result = { success: true, case: caseObj };
-    if (!calendarOk) {
-      result.calendarSyncFailed = true;
-      result.warning = '캘린더 동기화에 실패했습니다 — 법정기한이 캘린더에 반영되지 않았을 수 있으니 수동으로 확인해주세요.';
+    const warnings = [];
+    if (!calendarOk) warnings.push('캘린더 동기화에 실패했습니다 — 법정기한이 캘린더에 반영되지 않았을 수 있으니 수동으로 확인해주세요.');
+    if (folderRenameFailed) warnings.push('사건명은 바뀌었지만 실제 Drive 폴더 이름은 자동으로 바꾸지 못했습니다 — 증빙확보의 "🏷 사건명 점검"에서 다시 확인해주세요.');
+    if (warnings.length) {
+      result.calendarSyncFailed = !calendarOk;
+      result.warning = warnings.join(' ');
     }
     return result;
   });
@@ -20552,12 +21197,25 @@ function work_doPost(body) {
     case 'get_case_subfolders': return work_getCaseSubfolders(body);
     case 'ensure_case_folder': return work_ensureCaseFolder(body);
     case 'work_audit_case_folder_names': return work_auditCaseFolderNames(body);
+    case 'work_audit_unlinked_case_folders': return work_auditUnlinkedCaseFoldersAction_(body);
+    case 'work_link_case_folder': return work_linkCaseFolder(body);
+    case 'work_reassign_case_folder': return work_reassignCaseFolder(body);
+    case 'work_bulk_fix_completion_dates': return work_bulkFixCompletionDates(body);
+    case 'work_fix_completion_after_receipt': return work_fixCompletionAfterReceipt(body);
+    case 'work_backfill_receipt_case_links': return work_backfillReceiptCaseLinksAction_(body);
+    case 'work_plan_report_filename_cleanup': return work_reportFilenameCleanupAction_(body);
+    case 'work_apply_report_filename_cleanup': return work_applyReportFilenameCleanup(body);
+    case 'migrate_report_template_names': return handleMigrateReportTemplateNames_(body);
+    case 'work_fix_completion_by_report_date': return work_fixCompletionByReportDate(body);
+    case 'work_apply_filing_file_dates': return work_applyFilingFileDates(body);
+    case 'work_resync_all_calendars': return work_resyncAllCalendars();
+    case 'work_apply_receipt_only_case_cleanup': return work_applyReceiptOnlyCaseCleanup(body);
     default: return { success: false, message: '알 수 없는 action: ' + body.action };
   }
 }
 
-// [2026.09] "폴더명 규칙(work_generateUniqueCaseName_ 참고 — 고객명[동명이인번호]_세목_업무유형
-// [(납세자)])을 제대로 안 지키고 있는 것 같다"는 지적 — 실제로 사건명(=Drive 폴더명)은 사건
+// [2026.09] "폴더명 규칙(work_generateUniqueCaseName_ 참고 — 고객명[동명이인번호](납세자)_세목
+// _업무유형)을 제대로 안 지키고 있는 것 같다"는 지적 — 실제로 사건명(=Drive 폴더명)은 사건
 // 생성 시점에 딱 한 번만 이 규칙대로 만들어지고, 그 뒤 고객명 정정·세목 변경 등이 있어도
 // "자동으로 안 바뀌는 기존 정책"(work_updateCase의 고객명 동기화 주석 참고) 때문에 사건명·
 // 폴더명은 예전 상태 그대로 남는다 — 시간이 지날수록 실제 규칙과 어긋나는 폴더가 쌓인다.
@@ -20606,8 +21264,14 @@ function work_computeCanonicalCaseFolderNames_() {
     numsInUseByName[고객명][nameNum] = true;
     if (고객ID) custIdToNum[고객ID] = nameNum;
 
-    const taxpayerSuffix = (납세자 && 납세자 !== 고객명) ? '(' + 납세자 + ')' : '';
-    const base = 고객명 + nameNum + '_' + semokLabel + (upType ? '_' + upType : '') + taxpayerSuffix;
+    // [2026.09.16 버그수정] 이 함수가 2026.09 초에 만들어진 뒤 명명규칙이 "납세자가 고객명과
+    // 같으면 괄호 생략, 맨 끝에 붙임"(고객명_세목_업무유형(납세자))에서 "항상 표시, 고객명 바로
+    // 뒤"(고객명(납세자)_세목_업무유형)로 바뀌었는데(work_generateUniqueCaseName_ 참고) 이 함수는
+    // 갱신이 안 돼 옛 규칙으로 "제안"을 계산하고 있었다 — 그대로 "일괄 적용"했다면 이미 규칙대로
+    // 된 사건까지 옛 형식으로 되돌리는 대형 오류가 날 뻔했다. work_generateUniqueCaseName_과
+    // 완전히 같은 공식으로 맞춘다.
+    const taxpayerDisplay = 납세자 || 고객명;
+    const base = 고객명 + nameNum + '(' + taxpayerDisplay + ')' + '_' + semokLabel + (upType ? '_' + upType : '');
     let finalName = base;
     if (takenFullNames[finalName]) {
       let n2 = 2;
@@ -20617,10 +21281,24 @@ function work_computeCanonicalCaseFolderNames_() {
     takenFullNames[finalName] = true;
 
     const currentName = String(row[col.사건명] || '').trim();
-    if (currentName !== finalName) {
+    // [2026.09.18 버그수정] "고객명·납세자를 고쳐서 저장했는데 폴더명은 자동수정이 안 됐다" —
+    // 이 함수는 원래 시트에 저장된 사건명 문자열끼리만 비교해서, 사건명은 이미 규칙대로인데
+    // 실제 Drive 폴더 이름만 따로 뒤처진 경우(work_updateCase의 자동동기화가 폴더 이름변경만
+    // 조용히 실패했을 때 등)는 전혀 잡아내지 못하는 사각지대가 있었다. 폴더가 연결돼 있으면
+    // 그 폴더의 실제 이름도 같이 확인해서, 시트 문자열은 맞아도 폴더만 어긋난 경우까지 잡는다.
+    const 폴더ID = String(row[col.폴더ID] || '').trim();
+    let liveFolderMismatch = false;
+    if (폴더ID) {
+      try {
+        if (DriveApp.getFolderById(폴더ID).getName() !== finalName) liveFolderMismatch = true;
+      } catch (err) {
+        // 폴더를 못 찾으면(삭제됨·권한 문제 등) 이 검사는 건너뛰고 사건명 문자열 비교만 본다.
+      }
+    }
+    if (currentName !== finalName || liveFolderMismatch) {
       results.push({
         rowIndex: r.rowIndex, id: row[col.id], 고객명: 고객명,
-        현재사건명: currentName, 제안사건명: finalName, 폴더ID: row[col.폴더ID] || ''
+        현재사건명: currentName, 제안사건명: finalName, 폴더ID: 폴더ID
       });
     }
   });
@@ -20648,6 +21326,542 @@ function work_auditCaseFolderNames(params) {
       applied.push({ 고객명: d.고객명, 현재사건명: d.현재사건명, 제안사건명: d.제안사건명, 폴더수정됨: folderRenamed });
     });
     return { success: true, applied: applied.length, items: applied };
+  });
+}
+
+// [2026.09.17 신규] "완료사건인데 완료일이 없는 것은 모두 2026-06-30으로 일괄 적용해달라" +
+// "완료일이 9.21/9.22/9.23인 것도 26.6.30으로 바꿔달라" — 시스템 개통(9월 하순) 전에 이미
+// 끝난 사건들을 완료 처리하면서, 그때는 아직 완료일 직접입력 기능이 없어(어제 배포로 고침)
+// 전부 개통 무렵 오늘 날짜로 찍혀버린 것들을 한 번에 바로잡는 일회성 일괄 보정 도구.
+const WORK_SUSPECT_AUTO_COMPLETION_DATES_ = ['2026-09-21', '2026-09-22', '2026-09-23'];
+function work_findMissingCompletionDates_() {
+  const sheet = work_getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const col = work_colMap_(data[0]);
+  const items = [];
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][col.상태] || '').trim() !== '완료') continue;
+    const cur = work_dateStr_(data[i][col.법정일]);
+    if (!cur || WORK_SUSPECT_AUTO_COMPLETION_DATES_.indexOf(cur) !== -1) {
+      items.push({ rowIndex: i + 1, id: data[i][col.id], 고객명: data[i][col.고객명], 사건명: data[i][col.사건명], 현재완료일: cur || '(없음)' });
+    }
+  }
+  return items;
+}
+// [2026.09.18 버그수정] "일정에 [NX] 표시가 붙은 데이터가 왜곡된 것으로 보인다" — 이 파일의
+// 완료일 일괄보정 도구 네 개가 전부 work_updateCase를 거치지 않고 시트 셀을 직접 덮어써서,
+// work_updateCase 안에만 있던 캘린더 동기화(work_syncCaseCalendar_)가 한 번도 안 걸렸다.
+// 사건 데이터(법정일)는 고쳐졌는데 구글 캘린더의 "[NX] ... — 법정기한" 일정은 옛날 값 그대로
+// 남아있었던 것 — 데이터와 캘린더가 서로 어긋나 보인 진짜 원인. 네 도구 모두 적용 직후 이
+// 헬퍼로 영향받은 행만 다시 동기화한다.
+function work_resyncCalendarForRows_(rowIndices) {
+  if (!rowIndices || !rowIndices.length) return;
+  const sheet = work_getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const col = work_colMap_(data[0]);
+  rowIndices.forEach(function (rowIndex) {
+    const rowValues = data[rowIndex - 1];
+    if (!rowValues) return;
+    try { work_syncCaseCalendar_(work_readRow_(col, rowValues)); } catch (err) { /* 캘린더 동기화 실패해도 사건 자체 수정은 이미 끝났다 */ }
+  });
+}
+// [2026.09.18 신규] 위 버그가 고쳐지기 전(오늘 이 배포 이전)에 이미 네 도구로 완료일을
+// 고쳤던 사건들은, 시트 값은 맞는데 캘린더만 옛날 값으로 남아있다 — 그리고 각 도구는 이제
+// "현재값===새값이면 다시 안 보여줌"이므로, 이미 시트가 맞아버린 그 사건들은 도구를 다시
+// 눌러도 더 이상 목록에 안 나와 자동으로는 재동기화가 안 된다. 오늘 하루의 잔여 왜곡을
+// 한 번에 바로잡는 전체 재동기화 도구.
+function work_resyncAllCalendars() {
+  return withLock_(30000, function () {
+    const sheet = work_getSheet_();
+    const data = sheet.getDataRange().getValues();
+    const col = work_colMap_(data[0]);
+    let synced = 0, failed = 0;
+    for (let i = 1; i < data.length; i++) {
+      if (!data[i][col.id]) continue;
+      try {
+        if (work_syncCaseCalendar_(work_readRow_(col, data[i]))) synced++; else failed++;
+      } catch (err) { failed++; }
+    }
+    return { success: true, synced: synced, failed: failed };
+  });
+}
+
+// [2026.09.18 신규, 1회성] "상담을 자문/상담으로 세분"한 뒤 — 기존 사건 중에도 알고 보면
+// "파일이 현금영수증 하나뿐이라 사실은 상담이었어야 했던" 사건들이 있다는 지적. 사건 폴더를
+// 전수조사해서, 폴더 안(하위폴더 포함)에 "현금영수증"이 들어간 파일만 있고 다른 파일이 전혀
+// 없는 경우를 찾아 그 파일을 "<고객명>_현금영수증"으로 이름 바꿔 "상담사건" 공용 폴더로
+// 옮기고, 그 사건 폴더는 휴지통으로 보낸 뒤(완전삭제 아님, 되돌릴 수 있음) 그 사건 자체도
+// 업무유형을 '상담'으로 맞춘다(사건명도 새 업무유형 기준으로 다시 계산). "상담사건" 폴더에
+// 이미 같은 이름의 파일이 있으면(같은 고객이 상담을 여러 번 한 경우 등) 자동으로 겹쳐쓰지
+// 않고 "확인 필요" 목록으로만 보여준다. 폴더 안에 관련파일이 아예 0개(현금영수증조차 없는
+// 완전히 빈 폴더)인 사건도 같은 이유(작성된 서류가 없다=상담)로 대상에 포함 — 이 경우 옮길
+// 파일이 없으므로 폴더만 휴지통으로 보내고 업무유형만 상담으로 정리한다.
+function work_collectAllFilesRecursive_(folder, out) {
+  const fi = folder.getFiles();
+  while (fi.hasNext()) out.push(fi.next());
+  const si = folder.getFolders();
+  while (si.hasNext()) work_collectAllFilesRecursive_(si.next(), out);
+}
+function work_findReceiptOnlyCaseFolders_() {
+  const sheet = work_getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const col = work_colMap_(data[0]);
+  const ready = [], needsReview = [];
+  let consultFolder = null;
+  try { consultFolder = getConsultSharedFolder_(); } catch (err) { /* 아래서 폴더 없이도 이름충돌 검사만 건너뛰고 계속 진행 */ }
+  const takenNames = {};
+  if (consultFolder) {
+    const it = consultFolder.getFiles();
+    while (it.hasNext()) takenNames[it.next().getName()] = true;
+  }
+  for (let i = 1; i < data.length; i++) {
+    const folderId = String(data[i][col.폴더ID] || '').trim();
+    if (!folderId) continue;
+    let folder;
+    try { folder = DriveApp.getFolderById(folderId); } catch (err) { continue; }
+    const allFiles = [];
+    try { work_collectAllFilesRecursive_(folder, allFiles); } catch (err) { continue; }
+    const receiptFiles = allFiles.filter(function (f) { return f.getName().indexOf('현금영수증') !== -1; });
+    const otherFiles = allFiles.filter(function (f) { return f.getName().indexOf('현금영수증') === -1; });
+    if (allFiles.length && (!receiptFiles.length || otherFiles.length)) continue; // 파일이 있는데 현금영수증뿐이 아니면 대상 아님
+    // 완전히 빈 폴더(관련파일 0건)는 '완료' 상태인 사건만 대상 — 아직 서류 작성 전인
+    // 진행중 신규 사건까지 휩쓸려 폴더가 휴지통으로 가는 것을 막기 위한 안전장치.
+    if (!allFiles.length && String(data[i][col.상태] || '') !== '완료') continue;
+    const 고객명 = String(data[i][col.고객명] || '').trim();
+    const fileMoves = [];
+    let hasCollision = false;
+    receiptFiles.forEach(function (f, idx) {
+      const extMatch = f.getName().match(/\.[a-zA-Z0-9]+$/);
+      const ext = extMatch ? extMatch[0] : '';
+      const newName = 고객명 + '_현금영수증' + (receiptFiles.length > 1 ? '_' + (idx + 1) : '') + ext;
+      if (takenNames[newName]) hasCollision = true;
+      fileMoves.push({ fileId: f.getId(), oldName: f.getName(), newName: newName });
+    });
+    const rec = { rowIndex: i + 1, caseId: data[i][col.id], 고객명: 고객명, 사건명: data[i][col.사건명], 업무유형현재: data[i][col.업무유형], folderId: folderId, fileMoves: fileMoves, emptyFolder: allFiles.length === 0 };
+    if (hasCollision) {
+      needsReview.push(rec);
+    } else {
+      fileMoves.forEach(function (fm) { takenNames[fm.newName] = true; }); // 같은 배치 안에서도 중복 방지
+      ready.push(rec);
+    }
+  }
+  return { ready: ready, needsReview: needsReview };
+}
+function work_applyReceiptOnlyCaseCleanup(params) {
+  return withLock_(60000, function () {
+    const found = work_findReceiptOnlyCaseFolders_();
+    if (!params.apply) return { success: true, dryRun: true, ready: found.ready, needsReview: found.needsReview };
+    const consultFolder = getConsultSharedFolder_();
+    if (!consultFolder) return { success: false, message: '"상담사건" 폴더를 만들 수 없습니다.' };
+    const sheet = work_getSheet_();
+    const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+    let applied = 0, failed = 0;
+    const log = [];
+    found.ready.forEach(function (rec) {
+      try {
+        rec.fileMoves.forEach(function (fm) {
+          const f = DriveApp.getFileById(fm.fileId);
+          f.setName(fm.newName);
+          consultFolder.addFile(f);
+          const parents = f.getParents();
+          while (parents.hasNext()) {
+            const p = parents.next();
+            if (p.getId() !== consultFolder.getId()) p.removeFile(f);
+          }
+        });
+        try { DriveApp.getFolderById(rec.folderId).setTrashed(true); } catch (err) { /* 이미 없어졌을 수 있음 — 무시 */ }
+        const row = sheet.getRange(rec.rowIndex, 1, 1, sheet.getLastColumn()).getValues()[0];
+        row[col.폴더ID] = '';
+        row[col.업무유형] = '상담';
+        sheet.getRange(rec.rowIndex, col.사건명 + 1).setValue(''); // 자기 자신의 옛 이름과 안 겹치게 먼저 비움
+        const newCaseName = work_generateUniqueCaseName_(sheet, col, row[col.고객ID], row[col.고객명], row[col.세목], '상담', row[col.납세자]);
+        row[col.사건명] = newCaseName;
+        row[col.수정일] = new Date();
+        sheet.getRange(rec.rowIndex, 1, 1, row.length).setValues([row]);
+        applied++;
+        log.push('"' + rec.사건명 + '" → 상담으로 정리' + (rec.fileMoves.length ? (', 현금영수증 ' + rec.fileMoves.length + '건을 상담사건 폴더로 이동') : ' (관련파일 0건, 빈 폴더만 정리)'));
+      } catch (err) {
+        failed++;
+        log.push('"' + rec.사건명 + '" 처리 실패: ' + err.message);
+      }
+    });
+    SpreadsheetApp.flush();
+    work_resyncCalendarForRows_(found.ready.map(function (r) { return r.rowIndex; }));
+    return { success: true, applied: applied, failed: failed, log: log };
+  });
+}
+
+function work_bulkFixCompletionDates(params) {
+  return withLock_(15000, function () {
+    const targetDate = String(params.targetDate || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) return { success: false, message: '날짜 형식이 올바르지 않습니다(YYYY-MM-DD).' };
+    const items = work_findMissingCompletionDates_();
+    if (!params.apply) return { success: true, dryRun: true, count: items.length, items: items };
+    const sheet = work_getSheet_();
+    const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+    items.forEach(function (it) {
+      sheet.getRange(it.rowIndex, col.법정일 + 1).setValue(targetDate);
+    });
+    work_resyncCalendarForRows_(items.map(function (it) { return it.rowIndex; }));
+    return { success: true, applied: items.length };
+  });
+}
+
+// [2026.09.18 신규, 2026.09.18 수정] "보고서를 먼저 정비하려고 한 이유가, 26.06.30으로
+// 임시 지정해둔 완료일을 보고서 작성일 기준으로 실제 완료일에 더 가깝게 재조정하려던
+// 것이었다" — 26.06.30이 찍힌 완료 사건 중, 그 사건 폴더에 실제로 작성된 보고서가 있으면
+// 완료일을 그 보고서 기준으로 다시 맞춘다.
+// [2026.09.18 버그수정] 처음엔 "보고서 모음" 인덱스에 캐시된 modifiedDate(최종 수정일)를
+// 썼는데, 세무사님 지적 — "파일명을 수정한 최근날짜로 기재되어 있네." 나중에 파일명을
+// 고치거나 내용을 살짝 열어본 것만으로도 수정일이 바뀌어버려서, 실제로 그 보고서를 처음
+// "썼던" 시점과 전혀 무관해질 수 있다 — 완료 시점 근사치로 쓰기엔 너무 불안정하다. 대신
+// 나중에 손대도 안 바뀌는 Drive의 생성일(getDateCreated)을 직접 조회하도록 바꾼다 — 이
+// 값은 캐시(인덱스)에 없으므로, 대상 사건(26.06.30인 완료 사건, 보통 소수)만 그때그때
+// 폴더를 직접 스캔한다(전체 사건을 매번 다시 스캔하는 게 아니라 이 좁은 대상만 스캔하므로
+// 성능 부담이 크지 않다).
+const WORK_TEMP_COMPLETION_DATE_ = '2026-06-30';
+function work_collectReportCreatedDatesInFolder_(folder, out) {
+  const fIter = folder.getFiles();
+  while (fIter.hasNext()) {
+    const f = fIter.next();
+    if (!rh_isReportFile_(f.getName(), f.getMimeType())) continue;
+    out.push({ name: f.getName(), createdDate: f.getDateCreated().getTime() });
+  }
+  const subIter = folder.getFolders();
+  while (subIter.hasNext()) work_collectReportCreatedDatesInFolder_(subIter.next(), out);
+}
+function work_findCompletionByReportDate_() {
+  const sheet = work_getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const col = work_colMap_(data[0]);
+  const items = [], noReport = [];
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][col.상태] || '').trim() !== '완료') continue;
+    const cur = work_dateStr_(data[i][col.법정일]);
+    if (cur !== WORK_TEMP_COMPLETION_DATE_) continue;
+    const caseId = data[i][col.id];
+    const 고객명 = data[i][col.고객명], 사건명 = data[i][col.사건명];
+    const folderId = String(data[i][col.폴더ID] || '').trim();
+    let files = [];
+    if (folderId) {
+      try { work_collectReportCreatedDatesInFolder_(DriveApp.getFolderById(folderId), files); } catch (err) { /* 폴더 조회 실패 — 아래에서 noReport로 처리 */ }
+    }
+    if (!files.length) { noReport.push({ id: caseId, 고객명: 고객명, 사건명: 사건명, 현재완료일: cur }); continue; }
+    files.sort(function (a, b) { return b.createdDate - a.createdDate; });
+    const latest = files[0];
+    const newDate = Utilities.formatDate(new Date(latest.createdDate), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    // [2026.09.18 버그수정] "현재완료일과 새완료일이 같은데 왜 계속 띄워주나" — 이미 정확한
+    // 값이면 보여줄 이유가 없다(바꿀 게 없는 항목까지 매번 다시 나오면 이미 처리한 건지
+    // 헷갈리기만 함).
+    if (newDate === cur) continue;
+    items.push({ rowIndex: i + 1, id: caseId, 고객명: 고객명, 사건명: 사건명, 현재완료일: cur, 새완료일: newDate, 근거파일명: latest.name });
+  }
+  return { items: items, noReport: noReport };
+}
+function work_fixCompletionByReportDate(params) {
+  return withLock_(15000, function () {
+    const found = work_findCompletionByReportDate_();
+    if (!params.apply) return { success: true, dryRun: true, count: found.items.length, items: found.items, noReportCount: found.noReport.length, noReport: found.noReport };
+    const sheet = work_getSheet_();
+    const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+    found.items.forEach(function (it) {
+      sheet.getRange(it.rowIndex, col.법정일 + 1).setValue(it.새완료일);
+    });
+    work_resyncCalendarForRows_(found.items.map(function (it) { return it.rowIndex; }));
+    return { success: true, applied: found.items.length };
+  });
+}
+
+// [2026.09.18] 세무사님이 양도코리아(신고 프로그램) 파일 목록을 제공 — 처음엔 파일명에 박힌
+// 날짜를 신고일로 보고 그걸로 완료일을 지정해달라고 하셨다가, "그 날짜는 신고일이 아니라
+// 원인일(양도일·증여일 등)이었다 — 반영하면 안 된다"고 정정, 이어서 "완료일이 되어야 하는
+// 건 파일명의 날짜가 아니라 그 파일 자체의 작성일(수정일)"이라고 다시 확정하셨다. 탐색기
+// 화면 캡처로 받은 "이름+세목+파일 작성일" 조합을 그대로 코드에 넣어(일회성 수기 입력이라
+// 반복 기능으로 일반화하지 않음) 이름+세목으로 사건을 찾아 완료일을 그 값으로 지정한다.
+const WORK_FILING_FILE_DATE_BATCH_ = [
+  { 세목: 'inheritance', 이름: '윤경숙', 완료일: '2026-09-11' },
+  { 세목: 'inheritance', 이름: '조용녀', 완료일: '2026-08-02' },
+  { 세목: 'transfer', 이름: 'KOUNG SOON JOE', 완료일: '2026-07-28' },
+  { 세목: 'transfer', 이름: '김기범', 완료일: '2026-06-29' },
+  { 세목: 'transfer', 이름: '노오섭', 완료일: '2026-06-30' },
+  { 세목: 'transfer', 이름: '이우석', 완료일: '2026-06-25' },
+  { 세목: 'transfer', 이름: '이혜숙', 완료일: '2026-05-22' },
+  { 세목: 'gift', 이름: '강정화', 완료일: '2026-09-02' },
+  { 세목: 'gift', 이름: '김서연', 완료일: '2026-06-25' },
+  { 세목: 'gift', 이름: '김세정', 완료일: '2026-06-25' },
+  { 세목: 'gift', 이름: '김정자', 완료일: '2026-06-17' },
+  { 세목: 'gift', 이름: '양지현', 완료일: '2026-08-21' },
+  { 세목: 'gift', 이름: '양지호', 완료일: '2026-08-21' },
+  { 세목: 'gift', 이름: '임세택', 완료일: '2026-07-23' }
+];
+function work_findCompletionByFilingFileDates_() {
+  const sheet = work_getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const col = work_colMap_(data[0]);
+  const matched = [], unmatched = [], ambiguous = [];
+  WORK_FILING_FILE_DATE_BATCH_.forEach(function (entry) {
+    const allMatches = [], completedMatches = [];
+    for (let i = 1; i < data.length; i++) {
+      const rowName = String(data[i][col.고객명] || '').trim();
+      // [2026.09.18 버그수정] "사건명이 고객명(납세자) 구조이고, 상속은 납세자=피상속인 —
+      // 신고데이터의 이름도 납세자 기준으로 적혀있으니 매치가 안 될 리 없다"는 지적. 그동안
+      // 고객명(의뢰인)으로만 비교해서, 납세자가 의뢰인과 다른 사건(상속의 피상속인, 대리신고
+      // 등)은 매칭이 전부 실패하고 있었다 — 사건명 규칙과 똑같이 "납세자, 없으면 고객명"을
+      // 기준으로 비교해야 한다.
+      const rowTaxpayer = String(data[i][col.납세자] || '').trim() || rowName;
+      const rowSemok = data[i][col.세목];
+      if (rowTaxpayer === entry.이름 && rowSemok === entry.세목) {
+        const rec = { rowIndex: i + 1, 고객명: rowName, 납세자: rowTaxpayer, 사건명: data[i][col.사건명], 현재완료일: work_dateStr_(data[i][col.법정일]), 상태: data[i][col.상태] };
+        allMatches.push(rec);
+        if (String(data[i][col.상태] || '').trim() === '완료') completedMatches.push(rec);
+      }
+    }
+    if (completedMatches.length === 1) {
+      // [2026.09.18 버그수정] "현재완료일과 새완료일이 같은데 왜 계속 띄워주나" — 이미 이
+      // 값으로 맞춰진 사건(예: 이 도구를 이미 한 번 적용한 사건)은 다시 보여줄 필요가 없다.
+      if (completedMatches[0].현재완료일 !== entry.완료일) {
+        matched.push(Object.assign({}, completedMatches[0], { 새완료일: entry.완료일 }));
+      }
+    } else if (allMatches.length === 0) {
+      unmatched.push({ 이름: entry.이름, 세목: entry.세목, 새완료일: entry.완료일 });
+    } else {
+      // 완료 상태가 아니거나(진행 중인데 이미 신고파일은 작성된 경우 등) 이름이 겹쳐 여러 건인
+      // 경우는 자동 적용하지 않고 사람이 직접 확인하도록 후보 전부를 보여준다.
+      ambiguous.push({ 이름: entry.이름, 세목: entry.세목, 새완료일: entry.완료일, candidates: allMatches });
+    }
+  });
+  return { matched: matched, unmatched: unmatched, ambiguous: ambiguous };
+}
+function work_applyFilingFileDates(params) {
+  return withLock_(15000, function () {
+    const found = work_findCompletionByFilingFileDates_();
+    if (!params.apply) return { success: true, dryRun: true, matched: found.matched, unmatched: found.unmatched, ambiguous: found.ambiguous };
+    const sheet = work_getSheet_();
+    const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+    found.matched.forEach(function (it) {
+      sheet.getRange(it.rowIndex, col.법정일 + 1).setValue(it.새완료일);
+    });
+    work_resyncCalendarForRows_(found.matched.map(function (it) { return it.rowIndex; }));
+    return { success: true, applied: found.matched.length };
+  });
+}
+
+// [2026.09.17 재설계] "현금영수증이 고객에만 연결되다니 말이 안 된다 — 사건에 먼저 연결되고
+// 나서 고객에 연결되어야 한다"는 지적으로 findCaseForFile_/runCashReceiptScan_의 실제 버그를
+// 발견·수정(이미 알고 있던 사건ID를 그냥 안 넘기고 있었을 뿐, 애초에 특정 불가능한 게
+// 아니었다) — 이제부터 새로 스캔되는 현금영수증은 사건ID가 정확히 채워진다. 이 함수는
+// **사건ID로 직접 연결된 영수증을 최우선**으로 쓰고, 사건ID가 아직 없는 옛 기록(위 수정
+// 이전 것, 또는 사건ID가 없는 홈택스 매출내역 가져오기 등)만 "그 고객이 사건을 하나뿐
+// 가진 경우"에 한해 보완적으로 쓴다(여러 사건 가진 고객의 사건ID 없는 영수증은 여전히
+// 어느 사건 것인지 특정 불가 — "확인 필요" 목록으로).
+function work_findCompletionAfterReceipt_() {
+  const workSheet = work_getSheet_();
+  const wdata = workSheet.getDataRange().getValues();
+  const wcol = work_colMap_(wdata[0]);
+  const sheets = client_getSheets_();
+  const ldata = sheets.log.getDataRange().getValues();
+  const lcol = client_colMap_(ldata[0], CONSULT_HEADERS);
+
+  const caseCountByClient = {};
+  for (let i = 1; i < wdata.length; i++) {
+    const cid = String(wdata[i][wcol.고객ID] || '').trim();
+    if (cid) caseCountByClient[cid] = (caseCountByClient[cid] || 0) + 1;
+  }
+  const latestReceiptByCase = {};
+  const latestReceiptByClient = {};
+  for (let i = 1; i < ldata.length; i++) {
+    if (String(ldata[i][lcol.수취증빙] || '').trim() !== '현금영수증') continue;
+    const d = work_dateStr_(ldata[i][lcol.날짜]);
+    if (!d) continue;
+    const caseId = String(ldata[i][lcol.사건ID] || '').trim();
+    if (caseId) {
+      if (!latestReceiptByCase[caseId] || d > latestReceiptByCase[caseId]) latestReceiptByCase[caseId] = d;
+      continue;
+    }
+    const cid = String(ldata[i][lcol.고객ID] || '').trim();
+    if (!cid) continue;
+    if (!latestReceiptByClient[cid] || d > latestReceiptByClient[cid]) latestReceiptByClient[cid] = d;
+  }
+
+  const items = [], ambiguous = [];
+  for (let i = 1; i < wdata.length; i++) {
+    if (String(wdata[i][wcol.상태] || '').trim() !== '완료') continue;
+    const caseId = String(wdata[i][wcol.id] || '').trim();
+    const cid = String(wdata[i][wcol.고객ID] || '').trim();
+    const curDate = work_dateStr_(wdata[i][wcol.법정일]);
+    if (!curDate) continue;
+    let receiptDate = latestReceiptByCase[caseId];
+    let viaCase = true;
+    if (!receiptDate) {
+      viaCase = false;
+      if (cid && caseCountByClient[cid] === 1) receiptDate = latestReceiptByClient[cid];
+    }
+    if (!receiptDate || curDate <= receiptDate) continue;
+    const row = { rowIndex: i + 1, id: wdata[i][wcol.id], 고객명: wdata[i][wcol.고객명], 사건명: wdata[i][wcol.사건명], 현재완료일: curDate, 영수증발행일: receiptDate };
+    if (viaCase || caseCountByClient[cid] === 1) items.push(row); else ambiguous.push(row);
+  }
+  return { items: items, ambiguous: ambiguous };
+}
+// [2026.09.17 신규] runCashReceiptScan_ 수정 이전에 이미 쌓인 기존 자문내역 중, "현금영수증
+// 파일 자동 인식(파일명)" 형태로 기록됐지만 사건ID가 비어있는 것들을 찾아, 내용에 남아있는
+// 파일명으로 그 파일을 다시 찾아(findCaseForFile_) 사건ID·고객ID를 뒤늦게 채운다. 수동으로
+// 입력한 기록(이 문구가 없는 것)은 건드리지 않는다.
+function work_backfillReceiptCaseLinks_() {
+  const sheets = client_getSheets_();
+  const logSheet = sheets.log;
+  const ldata = logSheet.getDataRange().getValues();
+  const lcol = client_colMap_(ldata[0], CONSULT_HEADERS);
+  let updated = 0, notFound = 0;
+  for (let i = 1; i < ldata.length; i++) {
+    if (String(ldata[i][lcol.사건ID] || '').trim()) continue;
+    const content = String(ldata[i][lcol.내용] || '');
+    const m = content.match(/현금영수증 파일 자동 인식\(([^)]+)\)/);
+    if (!m) continue;
+    const fileName = m[1];
+    try {
+      const iter = DriveApp.getFilesByName(fileName);
+      let matched = null;
+      while (iter.hasNext()) {
+        const f = iter.next();
+        const caseInfo = findCaseForFile_(f.getId());
+        if (caseInfo) { matched = caseInfo; break; }
+      }
+      if (matched) {
+        logSheet.getRange(i + 1, lcol.사건ID + 1).setValue(matched.caseId);
+        if (matched.고객ID && !String(ldata[i][lcol.고객ID] || '').trim()) {
+          logSheet.getRange(i + 1, lcol.고객ID + 1).setValue(matched.고객ID);
+        }
+        updated++;
+      } else {
+        notFound++;
+      }
+    } catch (err) {
+      notFound++;
+    }
+  }
+  return { updated: updated, notFound: notFound };
+}
+function work_backfillReceiptCaseLinksAction_(body) {
+  return work_backfillReceiptCaseLinks_();
+}
+function work_fixCompletionAfterReceipt(params) {
+  return withLock_(15000, function () {
+    const found = work_findCompletionAfterReceipt_();
+    if (!params.apply) return { success: true, dryRun: true, count: found.items.length, items: found.items, ambiguousCount: found.ambiguous.length, ambiguous: found.ambiguous };
+    const sheet = work_getSheet_();
+    const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+    found.items.forEach(function (it) {
+      sheet.getRange(it.rowIndex, col.법정일 + 1).setValue(it.영수증발행일);
+    });
+    work_resyncCalendarForRows_(found.items.map(function (it) { return it.rowIndex; }));
+    return { success: true, applied: found.items.length };
+  });
+}
+
+// [2026.09.16 신규] "박영수(홍순자)_상속_상담 사건은 폴더가 있는데 연결되지 않아서 없는 것으로
+// 나온다"는 지적으로 발견 — 폴더ID가 비어있는 사건은 work_auditCaseFolderNames에서 "폴더 없음
+// (사건명만 수정)"으로만 표시되는데, 실제로는 폴더 자체는 있고 시트에 연결(폴더ID)만 안 된
+// 경우가 섞여있다(2026-09-12 흡수 작업 때 빠졌거나, 상담 단계로 폴더 없이 등록된 사건에
+// 나중에 누군가 수동으로 폴더를 만든 경우 등). work_getOrCreateCaseFolder_처럼 "현재 사건명과
+// 정확히 같은 이름의 폴더"만 찾으면, 이름 규칙이 여러 번 바뀌는 동안 폴더 자체는 옛 이름
+// 그대로일 수 있어 못 찾고 새 빈 폴더를 만들어버릴 위험이 있다(실제 자료가 있는 폴더와
+// 분리됨) — 그래서 고객명 기준 느슨한 매칭으로 "후보"만 찾아 사람이 확인 후 연결하게 한다.
+function work_auditUnlinkedCaseFolders_() {
+  const root = getDefaultFolder();
+  const sheet = work_getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const col = work_colMap_(data[0]);
+  const registered = {};
+  for (let i = 1; i < data.length; i++) {
+    const fid = String(data[i][col.폴더ID] || '').trim();
+    if (fid) registered[fid] = true;
+  }
+  const unlinkedRows = [];
+  for (let i = 1; i < data.length; i++) {
+    const 사건명 = String(data[i][col.사건명] || '').trim();
+    const 고객명 = String(data[i][col.고객명] || '').trim();
+    const 폴더ID = String(data[i][col.폴더ID] || '').trim();
+    if (!사건명 || 폴더ID) continue;
+    unlinkedRows.push({ id: data[i][col.id], 사건명: 사건명, 고객명: 고객명 });
+  }
+  if (!unlinkedRows.length) return { count: 0, items: [] };
+
+  const candidateFolders = []; // 이미 등록되지 않은 폴더만 후보가 될 수 있음
+  const iter = root.getFolders();
+  while (iter.hasNext()) {
+    const f = iter.next();
+    if (registered[f.getId()]) continue;
+    if (f.getName() === '0_NX_0') continue;
+    candidateFolders.push({ id: f.getId(), name: f.getName(), createdDate: Utilities.formatDate(f.getDateCreated(), 'Asia/Seoul', 'yyyy-MM-dd') });
+  }
+
+  const items = unlinkedRows.map(function (row) {
+    const candidates = row.고객명
+      ? candidateFolders.filter(function (f) { return f.name.indexOf(row.고객명) !== -1; })
+      : [];
+    return { id: row.id, 사건명: row.사건명, 고객명: row.고객명, candidates: candidates };
+  });
+  return { count: items.length, items: items };
+}
+function work_auditUnlinkedCaseFoldersAction_(body) {
+  const result = work_auditUnlinkedCaseFolders_();
+  return { success: true, dryRun: true, count: result.count, items: result.items };
+}
+// 후보 목록에서 세무사님이 직접 고른 폴더 하나를 그 사건에 연결한다(폴더/사건명 자체는 안
+// 바꾸고 폴더ID만 채움 — 이름이 다르면 위 "🏷 폴더명 점검"으로 별도 정리).
+function work_linkCaseFolder(params) {
+  return withLock_(8000, function () {
+    const caseId = String(params.caseId || '').trim();
+    // [2026.09.16 신규] 자동 후보 검색(work_auditUnlinkedCaseFolders_, 최상위 폴더+고객명
+    // 부분일치만 봄)이 못 찾는 경우 — 하위 폴더에 있거나 이름이 다른 경우 — 를 위해, 폴더
+    // 링크나 ID를 사람이 직접 붙여넣어도 연결되도록 sanitizeDriveId_로 정규화한다.
+    const folderId = sanitizeDriveId_(String(params.folderId || '').trim());
+    if (!caseId || !folderId) return { success: false, message: 'caseId 또는 folderId가 없습니다.' };
+    const sheet = work_getSheet_();
+    const data = sheet.getDataRange().getValues();
+    const col = work_colMap_(data[0]);
+    const found = work_findCaseRow_(sheet, col, caseId);
+    if (!found) return { success: false, message: '존재하지 않는 사건입니다.' };
+    if (String(found.row[col.폴더ID] || '').trim()) return { success: false, message: '이미 폴더가 연결된 사건입니다.' };
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][col.폴더ID] || '').trim() === folderId) {
+        // [2026.09.16 신규] "잘못 부여된 사건명" 중복 등록(고객명·납세자가 뒤바뀌었거나 정정
+        // 전 이름 그대로 남은 옛 사건이 진짜 폴더를 이미 차지한 경우)을 화면에서 바로 정리할
+        // 수 있게, 어느 사건과 충돌하는지 id도 같이 내려준다(work_reassignCaseFolder에서 사용).
+        return { success: false, message: '이 폴더는 이미 다른 사건(' + data[i][col.사건명] + ')에 연결되어 있습니다.', conflictCaseId: data[i][col.id], conflictCaseName: data[i][col.사건명] };
+      }
+    }
+    try { DriveApp.getFolderById(folderId); } catch (err) { return { success: false, message: '폴더를 찾을 수 없습니다: ' + err.message }; }
+    sheet.getRange(found.rowIndex, col.폴더ID + 1).setValue(folderId);
+    return { success: true };
+  });
+}
+
+// [2026.09.16 신규] "나성은(나성은)/홍순자(박영수)는 잘못 부여된 사건명이니까 수정된 사건명으로
+// 연결해주고 잘못된 사건명은 삭제해달라" — 옛날에 정정 전 이름(또는 고객명·납세자가 뒤바뀐
+// 이름)으로 등록된 사건이 실제 Drive 폴더를 이미 차지하고 있고, 정정된 사건명의 새 사건 행은
+// 폴더가 없는 상태로 따로 존재하는 경우를 한 번에 정리한다: 폴더를 옛 사건에서 떼어 새 사건에
+// 옮기고, 옛 사건 행 자체를 삭제한다. 고객명 자체를 고쳐 재사용하지 않는 이유 — 옛 사건의
+// 고객ID가 실제로 다른 진짜 고객 레코드를 가리키고 있을 수 있어(예: "홍순자"가 별도 실존
+// 고객일 가능성), 고객명을 덮어쓰면 그 고객 레코드까지 오염될 위험이 있다. 행을 통째로
+// 지우면 CLIENTS 시트는 전혀 건드리지 않아 안전하다.
+function work_reassignCaseFolder(params) {
+  return withLock_(10000, function () {
+    const fromCaseId = String(params.fromCaseId || '').trim();
+    const toCaseId = String(params.toCaseId || '').trim();
+    if (!fromCaseId || !toCaseId) return { success: false, message: 'fromCaseId 또는 toCaseId가 없습니다.' };
+    const sheet = work_getSheet_();
+    const data = sheet.getDataRange().getValues();
+    const col = work_colMap_(data[0]);
+    const fromFound = work_findCaseRow_(sheet, col, fromCaseId);
+    const toFound = work_findCaseRow_(sheet, col, toCaseId);
+    if (!fromFound || !toFound) return { success: false, message: '사건을 찾을 수 없습니다.' };
+    const folderId = String(fromFound.row[col.폴더ID] || '').trim();
+    if (!folderId) return { success: false, message: '옛 사건에 연결된 폴더가 없습니다.' };
+    if (String(toFound.row[col.폴더ID] || '').trim()) return { success: false, message: '새 사건에는 이미 폴더가 연결되어 있습니다.' };
+    sheet.getRange(toFound.rowIndex, col.폴더ID + 1).setValue(folderId);
+    sheet.deleteRow(fromFound.rowIndex);
+    return { success: true, folderId: folderId };
   });
 }
 

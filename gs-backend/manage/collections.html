@@ -90,21 +90,25 @@
   // 최소 가독성을 지킨다.
   // ============================================================
   var colList = document.getElementById('colList');
-  var colLoaded = false;
   var colLogsCache_ = [];
   var colAllCasesCache_ = []; // [2026.09.15 신규] 수금-사건 연결용 — 사건 선택 드롭다운을 채우는 데 씀
 
   function initCollections(){
-    if (colLoaded) return;
-    colLoaded = true;
-    // [2026.09.15 버그수정] 실사용 지적 — 사건과 연결했는데도 목록에 사건명이 안 보였다.
-    // loadCollections_()(수금 목록)와 work_get_cases(사건명 사전)를 각자 따로 불러서,
-    // 사건 목록이 늦게 도착하면 이미 그려진 화면에는 사건명이 반영 안 된 채로 남아있었다
-    // (colCaseName_이 그 시점엔 비어있는 colAllCasesCache_에서 못 찾으니 빈 문자열을 반환).
-    // 사건 목록을 먼저 채운 뒤 수금 목록을 그려서 첫 렌더링부터 항상 맞게 나오게 한다.
+    // [2026.09.18 버그수정] "작업관리에는 수정이 되어 있는데 수금관리에만 잘못 표시된다 —
+    // 탭간에 연동이 안 되나?" — 정확한 지적이었다. 예전엔 이 함수가 딱 한 번만 실제로
+    // 데이터를 불러오고(colLoaded 가드), 그 뒤로 이 탭을 몇 번을 다시 열어도 아무것도 다시
+    // 안 불러왔다 — 그래서 다른 화면(작업관리·고객관리)에서 사건이나 고객 정보를 고친 뒤
+    // 수금관리로 돌아오면 방문 이전 시점의 캐시가 계속 남아있었다. 이 화면엔 딱히 한 번만
+    // 걸어둬야 하는 이벤트 리스너가 없으므로(전부 스크립트 로드 시 이미 한 번 걸림), 탭을
+    // 열 때마다 사건·고객·수금 내역을 매번 다시 불러온다.
     callGas('work_get_cases', {}).then(function(res){
       colAllCasesCache_ = res.cases || [];
-    }).catch(function(){}).then(loadCollections_);
+    }).catch(function(){}).then(function(){
+      return callGas('client_get_clients', {}).then(function(r){
+        clients = r.clients || [];
+        if (typeof updateClientNameOptions_ === 'function') updateClientNameOptions_();
+      }).catch(function(){});
+    }).then(loadCollections_);
   }
 
   function colAmountText_(n){ return n ? Number(n).toLocaleString('ko-KR') + '원' : ''; }
@@ -116,10 +120,24 @@
   // 고객명이 정확히 일치하는 그 고객의 사건만 골라 드롭다운에 채운다(원칙①: 관련 없는 사건까지
   // 다 보여주면 오히려 고르기 힘들어진다). selectEl의 현재 값(caseId)이 새 목록에도 있으면
   // 선택 상태를 유지한다.
-  function colPopulateCaseSelect_(selectEl, customerName, keepCaseId){
-    var cases = customerName ? colAllCasesCache_.filter(function(c){ return c.고객명 === customerName; }) : [];
+  // [2026.09.18 버그수정] "사건은 클릭을 해도 연결할 사건목록이 뜨지 않는다" — 원래 고객명
+  // 문자열이 완전히 똑같아야만("김철수" === "김철수") 사건을 찾았다. 홈택스 미연결 건은
+  // 고객명 자체가 비어있어 아예 매칭 대상이 없었고, 이름이 있는 건도 앞뒤 공백 등 사소한
+  // 차이만 있어도 조용히 빈 목록이 됐다 — 고객ID가 있으면 그걸로 먼저 매칭하고(공백 등에
+  // 영향받지 않는 안정적인 기준), 없을 때만 고객명 문자열로 보완한다.
+  function colPopulateCaseSelect_(selectEl, customerName, keepCaseId, clientId){
+    var cases;
+    if (clientId) cases = colAllCasesCache_.filter(function(c){ return c.고객ID === clientId; });
+    else if (customerName) cases = colAllCasesCache_.filter(function(c){ return c.고객명 === customerName; });
+    else cases = [];
     selectEl.innerHTML = '<option value="">사건 선택 안 함</option>' +
       cases.map(function(c){ return '<option value="' + c.id + '"' + (c.id === keepCaseId ? ' selected' : '') + '>' + escapeHtml(c.사건명 || '') + '</option>'; }).join('');
+  }
+  // 고객명 입력칸에 방금 타이핑/자동완성된 이름과 정확히 일치하는 실제 고객의 ID를 찾는다
+  // (전역 clients 배열은 clientmanage.html이 이미 불러다 둔 것을 그대로 재사용).
+  function colFindClientIdByName_(name){
+    var found = (typeof clients !== 'undefined' ? clients : []).filter(function(c){ return c.성명 === name; })[0];
+    return found ? found.id : '';
   }
 
   function loadCollections_(){
@@ -200,8 +218,33 @@
     box.innerHTML = html;
   }
 
+  // [2026.09.18 신규] "수금관리의 고객명이 불규칙하다" / "고객명은 의뢰인이 되어야 하는 거
+  // 아닌가?" — 수금 기록의 고객명은 만들어진 시점의 문자열이 그대로 얼어붙어 있어서(예:
+  // 사건명에 붙는 납세자 이름을 잘못 옮겨 적었거나, 나중에 고객관리에서 이름을 정정해도
+  // 옛 수금기록엔 반영이 안 됨), 화면마다 표시가 제각각으로 보일 수 있었다. 고객ID가 있으면
+  // 항상 고객관리(의뢰인 등록부)의 현재 성명을 그 자리에서 다시 찾아 보여준다 — 저장된
+  // 문자열을 고치는 게 아니라, 표시 시점에 "지금 기준 의뢰인명"으로 항상 다시 계산한다.
+  function colClientDisplayName_(l){
+    if (l.고객ID && typeof clients !== 'undefined'){
+      var found = clients.filter(function(c){ return c.id === l.고객ID; })[0];
+      if (found && found.성명) return found.성명;
+    }
+    return l.고객명 || '';
+  }
+
+  // [2026.09.18 신규] "사건에 연결된 건은 파일자동인식 문구를 없애야지" — 현금영수증 파일
+  // 자동인식/홈택스 자동수입 문구는 아직 사람이 확인 안 된 원시 기록임을 알리는 표시였는데,
+  // 사건에 이미 연결됐다면(=확인·정리가 끝났다는 뜻) 더는 보여줄 이유가 없다. 저장된 값을
+  // 지우는 게 아니라(원본 기록은 그대로 두고), 사건 연결된 건만 표시에서 걸러낸다.
+  var CONSULT_AUTO_MEMO_PATTERNS_ = [/현금영수증 파일 자동 인식\(/, /홈택스 현금영수증 자동수입/];
+  function colDisplayMemo_(l){
+    var raw = String(l.내용 || '');
+    if (l.사건ID && CONSULT_AUTO_MEMO_PATTERNS_.some(function(re){ return re.test(raw); })) return '';
+    return raw;
+  }
+
   function colRenderRowView_(row, l){
-    var memo = String(l.내용 || '');
+    var memo = colDisplayMemo_(l);
     var unlinked = !l.고객ID;
     // 비고는 한 줄만 보여주고 나머지는 ...으로 줄이며, 전체는 클릭해서 모달로 본다(원칙②).
     var memoHtml = memo
@@ -211,7 +254,7 @@
     // 고를 수 있게 — 세무사님 지적: "사건과 연결했다면서 어디로도 못 가면 무슨 소용이냐."
     var nameHtml = unlinked
       ? '<b style="color:#a83232;">⚠ 미연결</b>'
-      : '<b class="col-goto-client" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px;" title="클릭하면 고객관리로 이동">' + escapeHtml(l.고객명 || '') + '</b>';
+      : '<b class="col-goto-client" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px;" title="클릭하면 고객관리로 이동">' + escapeHtml(colClientDisplayName_(l)) + '</b>';
     var caseName = colCaseName_(l.사건ID);
     // [2026.09.16 신규] 세무사님 지적 — "사건명이 왜 안 보이나, 연결여부는 어떻게 아나?"
     // 사건이 연결 안 됐을 땐 그냥 아무것도 안 보여서 "원래 이런 화면인지 고장인지" 구분이
@@ -270,12 +313,12 @@
   function colShowDetail_(l){
     document.getElementById('colDetailBody').innerHTML =
       '<div style="display:flex; flex-direction:column; gap:8px; font-size:13px;">' +
-      '<div><b>고객명</b> · ' + escapeHtml(l.고객명 || '') + '</div>' +
+      '<div><b>고객명</b> · ' + escapeHtml(colClientDisplayName_(l)) + '</div>' +
       '<div><b>날짜</b> · ' + escapeHtml(fmtDateShort_(l.날짜)) + '</div>' +
       '<div><b>금액</b> · ' + escapeHtml(colAmountText_(l.금액)) + '</div>' +
       (l.수취증빙 ? '<div><b>수취증빙</b> · ' + escapeHtml(l.수취증빙) + '</div>' : '') +
       (colCaseName_(l.사건ID) ? '<div><b>연결된 사건</b> · 🗂 ' + escapeHtml(colCaseName_(l.사건ID)) + '</div>' : '') +
-      '<div style="white-space:pre-wrap; border-top:1px solid var(--line); padding-top:8px;">' + escapeHtml(l.내용 || '') + '</div>' +
+      '<div style="white-space:pre-wrap; border-top:1px solid var(--line); padding-top:8px;">' + escapeHtml(colDisplayMemo_(l)) + '</div>' +
       '</div>';
     document.getElementById('colDetailOverlay').style.display = 'flex';
   }
@@ -306,7 +349,7 @@
     var receiptOptions = ['', '현금영수증', '세금계산서', '신용카드'];
     row.innerHTML =
       '<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; width:100%;">' +
-      '<input type="text" class="colEditCustomer" list="clientNameOptions" placeholder="고객명" value="' + escapeHtml(l.고객명 || '') + '" size="' + Math.max(4, String(l.고객명 || '').length) + '" style="font-size:12px;">' +
+      '<input type="text" class="colEditCustomer" list="clientNameOptions" placeholder="고객명" value="' + escapeHtml(colClientDisplayName_(l)) + '" size="' + Math.max(4, String(colClientDisplayName_(l)).length) + '" style="font-size:12px;">' +
       '<select class="colEditCase" style="font-size:12px;"><option value="">사건 선택 안 함</option></select>' +
       '<input type="date" class="colEditDate" value="' + escapeHtml(l.날짜 || '') + '" style="font-size:12px; width:95px;">' +
       '<input type="number" class="colEditAmount" placeholder="금액" value="' + (l.금액 || '') + '" size="' + Math.max(5, String(l.금액 || '').length + 1) + '" style="font-size:12px;">' +
@@ -318,11 +361,12 @@
       '<button type="button" class="ghost-btn colEditCancel" style="padding:3px 8px;">취소</button>' +
       '</div>';
     var editCaseSelect = row.querySelector('.colEditCase');
-    colPopulateCaseSelect_(editCaseSelect, l.고객명, l.사건ID);
+    colPopulateCaseSelect_(editCaseSelect, l.고객명, l.사건ID, l.고객ID);
     // 고객명을 바꾸면(예: 미연결 건을 다른 고객으로 연결) 그 고객의 사건 목록으로 다시 채운다 —
     // 이전 고객의 사건이 실수로 그대로 남아있지 않도록 사건 선택은 초기화한다.
     row.querySelector('.colEditCustomer').addEventListener('input', function(e){
-      colPopulateCaseSelect_(editCaseSelect, e.target.value.trim(), '');
+      var typedName = e.target.value.trim();
+      colPopulateCaseSelect_(editCaseSelect, typedName, '', colFindClientIdByName_(typedName));
     });
     row.querySelector('.colEditCancel').addEventListener('click', function(){ colRenderRowView_(row, l); });
     row.querySelector('.colEditSave').addEventListener('click', function(){
@@ -330,7 +374,7 @@
       var 고객명 = row.querySelector('.colEditCustomer').value.trim();
       if (!amount){ showToast('금액을 입력해주세요.', 'warning'); return; }
       if (!고객명){ showToast('고객명을 입력해주세요.', 'warning'); return; }
-      callGas('client_update_consult_log', {
+      var editPayload = {
         id: l.id,
         고객명: 고객명,
         유형: '수금', // 홈택스 미연결 건을 여기서 고객 연결하면 정상 수금 건으로 전환
@@ -339,7 +383,13 @@
         수취증빙: row.querySelector('.colEditReceipt').value,
         내용: row.querySelector('.colEditMemo').value.trim(),
         사건ID: editCaseSelect.value
-      }).then(function(res){
+      };
+      // [2026.09.18] 이미 등록된 고객이면 그 고객ID를 그대로 실어보내 서버가 이름만으로 다시
+      // 찾거나(자칫 새 고객을 만들어버릴 위험) 하지 않게 한다 — 진짜 신규 고객명일 때만 비워서
+      // 서버의 이름 기반 찾기/생성 경로를 그대로 탄다.
+      var matchedClientId_ = colFindClientIdByName_(고객명);
+      if (matchedClientId_) editPayload.고객ID = matchedClientId_;
+      callGas('client_update_consult_log', editPayload).then(function(res){
         if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); return; }
         showToast('저장했습니다.', 'success');
         loadCollections_();
@@ -353,7 +403,8 @@
     if (colNewFormCard.style.display === 'block') document.getElementById('colNewCustomer').focus();
   });
   document.getElementById('colNewCustomer').addEventListener('input', function(e){
-    colPopulateCaseSelect_(document.getElementById('colNewCase'), e.target.value.trim(), '');
+    var typedName = e.target.value.trim();
+    colPopulateCaseSelect_(document.getElementById('colNewCase'), typedName, '', colFindClientIdByName_(typedName));
   });
   document.getElementById('colNewCancel').addEventListener('click', function(){
     colNewFormCard.style.display = 'none';
@@ -365,14 +416,19 @@
     var amount = document.getElementById('colNewAmount').value;
     if (!고객명){ showToast('고객명을 입력해주세요.', 'warning'); return; }
     if (!amount){ showToast('금액을 입력해주세요.', 'warning'); return; }
-    callGas('client_add_consult_log', {
+    var newPayload = {
       고객명: 고객명,
       날짜: document.getElementById('colNewDate').value,
       금액: amount,
       수취증빙: document.getElementById('colNewReceipt').value,
       내용: document.getElementById('colNewMemo').value.trim(),
       사건ID: document.getElementById('colNewCase').value
-    }).then(function(res){
+    };
+    // [2026.09.18] 이미 등록된 고객이면 그 고객ID를 그대로 실어보낸다(진짜 신규 고객명일 때만
+    // 비워서 서버의 이름 기반 찾기/생성 경로를 그대로 탄다) — colEditSave와 같은 원칙.
+    var matchedNewClientId_ = colFindClientIdByName_(고객명);
+    if (matchedNewClientId_) newPayload.고객ID = matchedNewClientId_;
+    callGas('client_add_consult_log', newPayload).then(function(res){
       if (res.error || res.success === false){ showToast(res.error || res.message || '추가 실패', 'error'); return; }
       showToast('수금 내역을 추가했습니다.', 'success');
       document.getElementById('colNewCancel').click();

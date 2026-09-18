@@ -15,7 +15,10 @@
   <div id="rhPaneCollect" class="rh-pane">
     <div class="memo-toolbar tb-row" style="border-top:none;">
       <input type="text" id="rhSearchInput" placeholder="🔍 고객명·사건명·파일명으로 찾기" style="flex:1; min-width:160px; padding:7px 10px; border:1px solid var(--line); border-radius:6px;">
+      <button type="button" id="rhBtnFilenameCleanup" class="ghost-btn" title="의뢰내용류 파일을 사건의뢰서로 통일하고, 나머지 보고서 파일명에서 사건명을 떼어 정리"><span class="btn-tx">🧹 파일명 정비</span></button>
+      <button type="button" id="rhBtnTemplateNameFix" class="ghost-btn" title="업무관리자/보고서템플릿 폴더의 '검토서' 템플릿을 종합검토서/개별검토서로 정리"><span class="btn-tx">📋 보고서템플릿 정리</span></button>
       <button type="button" id="rhRefreshBtn" class="ghost-btn"><span class="btn-tx">🔄 새로고침</span></button>
+      <button type="button" id="rhForceRescanBtn" class="ghost-btn" title="캐시를 쓰지 않고 모든 사건 폴더를 처음부터 다시 훑습니다(느림) — 의뢰서 원문 판정 등 분류 규칙이 바뀐 직후 한 번씩만 쓰세요"><span class="btn-tx">🔄 전체 재스캔</span></button>
     </div>
     <div id="rhFileListWrap" style="flex:1; overflow-y:auto; padding:0 4px;">
       <div class="spinner">불러오는 중…</div>
@@ -101,22 +104,72 @@
     function rhRenderFileList_(files){
       var wrap = document.getElementById('rhFileListWrap');
       if (!files.length){ wrap.innerHTML = '<div class="empty-row">보고서가 없습니다.</div>'; return; }
-      var html = '<table class="list-table"><tr><th>수정일</th><th>고객명</th><th>사건명</th><th>파일명</th><th>구분</th></tr>';
+      // [2026.09.16 버그수정] 세무사님 지적 — 사건명이 이미 "고객명(납세자)_세목_업무유형"
+      // 규칙대로 고객명을 포함하니 별도 고객명 열이 중복이다(전수조사로 발견된 같은 문제를
+      // 이 화면에서만 빠뜨렸었음).
+      var html = '<table class="list-table"><tr><th>수정일</th><th>사건명</th><th>파일명</th><th>구분</th><th></th></tr>';
       files.forEach(function(f){
-        html += '<tr style="cursor:pointer;" data-case-id="' + f.caseId + '" data-file-id="' + f.id + '">' +
-          '<td style="white-space:nowrap;">' + rhFormatDate_(f.modifiedDate) + '</td>' +
-          '<td>' + esc(f.고객명 || '') + '</td>' +
-          '<td>' + esc(f.사건명 || '') + '</td>' +
-          '<td>' + esc(f.name) + '</td>' +
-          '<td style="color:var(--sub); font-size:12px;">' + (f.kind === '보고서' ? '📤 발행' : '✏️ 초안') + '</td>' +
+        html += '<tr data-case-id="' + f.caseId + '" data-file-id="' + f.id + '">' +
+          '<td style="white-space:nowrap; cursor:pointer;">' + rhFormatDate_(f.modifiedDate) + '</td>' +
+          '<td style="cursor:pointer;">' + esc(f.사건명 || '') + '</td>' +
+          '<td style="cursor:pointer;">' + esc(f.name) + '</td>' +
+          '<td style="color:var(--sub); font-size:12px; white-space:nowrap; cursor:pointer;">' + (f.published ? '📤 발행' : '✏️ 초안') + '</td>' +
+          '<td style="white-space:nowrap;"><button type="button" class="rhRenameBtn" data-file-id="' + f.id + '" title="파일명 직접 수정">✏️ 이름수정</button> ' +
+          '<button type="button" class="rhDeleteBtn" data-file-id="' + f.id + '" title="이 파일을 휴지통으로 보냅니다">🗑 삭제</button></td>' +
           '</tr>';
       });
       html += '</table>';
       wrap.innerHTML = html;
-      wrap.querySelectorAll('tr[data-file-id]').forEach(function(tr){
-        tr.addEventListener('click', function(){
+      wrap.querySelectorAll('tr[data-file-id] td[style*="cursor:pointer"]').forEach(function(td){
+        td.addEventListener('click', function(){
+          var tr = td.closest('tr');
           if (typeof goToView_ === 'function') goToView_('reportwriter');
           if (typeof goToReportWriter_ === 'function') goToReportWriter_(tr.dataset.caseId, { fileId: tr.dataset.fileId });
+        });
+      });
+      // [2026.09.17 신규] 자동 일괄정비의 판단이 다 맞지 않고 목록이 너무 많아 검토하기 어렵다는
+      // 지적에 따라, 파일 하나씩 직접 이름을 고칠 수 있는 길을 열어둔다 — 자동 정비 도구와
+      // 독립적으로 언제든 쓸 수 있다.
+      wrap.querySelectorAll('.rhRenameBtn').forEach(function(btn){
+        btn.addEventListener('click', function(e){
+          e.stopPropagation();
+          var fileId = btn.dataset.fileId;
+          var f = rhAllFiles_.filter(function(x){ return x.id === fileId; })[0];
+          if (!f) return;
+          nxPrompt_('새 파일명을 입력해주세요(확장자 포함).', f.name, '파일명 수정').then(function(newName){
+            if (!newName || !newName.trim() || newName.trim() === f.name) return;
+            newName = newName.trim();
+            callGas('rename_report_file', { fileId: fileId, newName: newName }).then(function(res){
+              if (res.success === false){ nxAlert_(res.message || '이름 변경에 실패했습니다.', '파일명 수정'); return; }
+              f.name = newName;
+              rhRenderFileList_(rhAllFiles_);
+              showToast('파일명을 변경했습니다.', 'success');
+            }).catch(function(err){
+              nxAlert_('오류: ' + (err && err.message ? err.message : err), '파일명 수정');
+            });
+          });
+        });
+      });
+      // [2026.09.18 신규] "자동 일괄정비만으로는 아직 적용할 수 없는 수준" — 이름수정처럼
+      // 파일 하나씩 직접 지울 수 있는 길도 열어둔다. 완전삭제가 아니라 휴지통행이라 잘못 지워도
+      // 휴지통 화면(증빙관리)에서 복원할 수 있다.
+      wrap.querySelectorAll('.rhDeleteBtn').forEach(function(btn){
+        btn.addEventListener('click', function(e){
+          e.stopPropagation();
+          var fileId = btn.dataset.fileId;
+          var f = rhAllFiles_.filter(function(x){ return x.id === fileId; })[0];
+          if (!f) return;
+          nxConfirm_('"' + f.name + '" 파일을 휴지통으로 보냅니다. 계속할까요?').then(function(ok){
+            if (!ok) return;
+            callGas('delete_report_file', { fileId: fileId }).then(function(res){
+              if (res.success === false){ nxAlert_(res.message || '삭제에 실패했습니다.', '파일 삭제'); return; }
+              rhAllFiles_ = rhAllFiles_.filter(function(x){ return x.id !== fileId; });
+              rhRenderFileList_(rhAllFiles_);
+              showToast('휴지통으로 보냈습니다.', 'success');
+            }).catch(function(err){
+              nxAlert_('오류: ' + (err && err.message ? err.message : err), '파일 삭제');
+            });
+          });
         });
       });
     }
@@ -131,6 +184,109 @@
       });
     }
     document.getElementById('rhRefreshBtn').addEventListener('click', rhLoadFiles_);
+    document.getElementById('rhForceRescanBtn').addEventListener('click', function(){
+      document.getElementById('rhFileListWrap').innerHTML = '<div class="spinner">전체 재스캔 중… (사건이 많으면 시간이 걸릴 수 있습니다)</div>';
+      callGas('list_all_reports', { forceRebuild: true }).then(function(res){
+        rhAllFiles_ = res.files || [];
+        rhRenderFileList_(rhAllFiles_);
+        rhRefreshContentSourceOptions_();
+        showToast('전체 재스캔을 완료했습니다.', 'success');
+      }).catch(function(e){
+        document.getElementById('rhFileListWrap').innerHTML = '<div class="empty-row">오류: ' + esc(e.message) + '</div>';
+      });
+    });
+
+    // [2026.09.17 신규] "보고서 모음 정비" — (1) 의뢰내용류 파일을 <사건의뢰서>로 통일(이미
+    // rh_isReportFile_에서 노출 자체는 제외됨), (2) 나머지 보고서 파일명에서 사건명을 떼고
+    // 시스템 고유 명칭(검토서/자문보고서/.../번역서)만 남긴다. 같은 사건에 같은 새 이름으로
+    // 겹치는 경우(원래는 있을 수 없다는 전제)는 자동 판단하지 않고 "확인 필요"로만 보여준다 —
+    // 세무사님 지시: 내용이 다르면 사람이 직접 세부명칭을 정해야 한다.
+    function rhOpenFilenameCleanupModal_(){
+      var overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.style.display = 'flex';
+      overlay.innerHTML =
+        '<div class="modal-panel" style="width:min(820px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
+          '<div class="modal-head"><span>🧹 보고서 파일명 정비</span><span class="modal-close" id="rhfcClose">✕</span></div>' +
+          '<div class="modal-body" style="overflow-y:auto;">' +
+            '<div id="rhfcBody">확인 중… (파일이 많으면 시간이 걸릴 수 있습니다)</div>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(overlay);
+      function close(){ overlay.remove(); }
+      overlay.querySelector('#rhfcClose').onclick = close;
+      overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+
+      function render(res){
+        var body = overlay.querySelector('#rhfcBody');
+        var html = '';
+        if (res.renamePlan.length){
+          var rows = res.renamePlan.map(function(it){
+            return '<tr><td style="padding:4px 8px;">' + esc(it.고객명) + '</td>' +
+              '<td style="padding:4px 8px;">' + esc(it.사건명) + '</td>' +
+              '<td style="padding:4px 8px; color:#b23;">' + esc(it.oldName) + '</td>' +
+              '<td style="padding:4px 8px; color:#2a7a4f;">' + esc(it.newName) + '</td></tr>';
+          }).join('');
+          html += '<div class="taxcalc-result-note" style="margin-bottom:8px;">자동으로 이름을 바꿀 수 있는 파일 ' + res.renamePlan.length + '건입니다.</div>' +
+            '<div style="overflow-x:auto; max-height:260px; overflow-y:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">고객명</th><th style="padding:4px 8px;">사건명</th><th style="padding:4px 8px;">현재 파일명</th><th style="padding:4px 8px;">새 파일명</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+            '<button type="button" id="rhfcApplyBtn" class="btn danger" style="margin:10px 0;">⚠ 위 ' + res.renamePlan.length + '건 일괄 적용(되돌리기 어려움)</button>';
+        } else {
+          html += '<div class="log-empty">자동으로 정리할 파일이 없습니다.</div>';
+        }
+        if (res.collisions.length){
+          html += '<div class="taxcalc-result-note" style="margin:14px 0 8px; color:var(--sub);">아래 ' + res.collisions.length + '건은 같은 사건 안에 같은 유형 보고서가 여러 개 있어(원래는 있을 수 없는 경우) 자동으로 이름을 못 바꿉니다 — 정말 같은 문서인지, 내용이 다르다면 파일명 뒤에 어떤 세부명칭을 붙일지 직접 확인해주세요(증빙확보에서 각 파일을 열어보고 이름을 바꿀 수 있습니다).</div>';
+          html += res.collisions.map(function(c){
+            var fnames = c.files.map(function(f){ return '<li>' + esc(f.oldName) + '</li>'; }).join('');
+            return '<div style="border:1px solid var(--line); border-radius:6px; padding:8px 10px; margin-bottom:8px; font-size:12.5px;">' +
+              '<b>' + esc(c.고객명) + '</b> · ' + esc(c.사건명) + ' → 제안된 이름 <b>' + esc(c.proposedName) + '</b>' +
+              '<ul style="margin:6px 0 0 18px;">' + fnames + '</ul></div>';
+          }).join('');
+        }
+        if (res.unclear.length){
+          html += '<div class="taxcalc-result-note" style="margin:14px 0 8px; color:var(--sub);">아래 ' + res.unclear.length + '건은 문서유형을 자동으로 못 알아내 이름을 못 바꿨습니다 — 직접 확인해주세요.</div>';
+          var urows = res.unclear.map(function(it){
+            return '<tr><td style="padding:4px 8px;">' + esc(it.고객명) + '</td><td style="padding:4px 8px;">' + esc(it.사건명) + '</td><td style="padding:4px 8px;">' + esc(it.oldName) + '</td></tr>';
+          }).join('');
+          html += '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">고객명</th><th style="padding:4px 8px;">사건명</th><th style="padding:4px 8px;">파일명</th></tr></thead><tbody>' + urows + '</tbody></table></div>';
+        }
+        body.innerHTML = html;
+        var applyBtn = body.querySelector('#rhfcApplyBtn');
+        if (applyBtn) applyBtn.addEventListener('click', function(){
+          nxConfirm_(res.renamePlan.length + '건의 파일명을 일괄 변경합니다. 계속할까요?').then(function(ok){
+            if (!ok) return;
+            body.innerHTML = '적용 중… (시간이 걸릴 수 있습니다)';
+            callGas('work_apply_report_filename_cleanup', {}).then(function(res2){
+              if (res2.success === false){ body.innerHTML = '<div class="taxcalc-error">' + (res2.message || '적용 실패') + '</div>'; return; }
+              body.innerHTML = '<div class="taxcalc-result-note">' + res2.applied + '건 적용했습니다' + (res2.failed ? ' (' + res2.failed + '건 실패)' : '') + '.</div>';
+              showToast(res2.applied + '건의 파일명을 정비했습니다.', 'success');
+              rhLoadFiles_();
+            }).catch(function(err){
+              body.innerHTML = '<div class="taxcalc-error">적용 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+            });
+          });
+        });
+      }
+
+      callGas('work_plan_report_filename_cleanup', {}).then(function(res){
+        if (res.success === false){ overlay.querySelector('#rhfcBody').innerHTML = '<div class="taxcalc-error">' + (res.message || '조회 실패') + '</div>'; return; }
+        render(res);
+      }).catch(function(err){
+        overlay.querySelector('#rhfcBody').innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+      });
+    }
+    document.getElementById('rhBtnFilenameCleanup').addEventListener('click', rhOpenFilenameCleanupModal_);
+    // [2026.09.17 신규] "보고서템플릿도 바꾸거나 없는 것은 새로 만들어서 일치시켜라" — 옛
+    // "검토서" 커스텀 템플릿이 있으면 "종합검토서"로 이름을 바꾸고, 둘 중 없는 쪽은 기본
+    // 골격으로 새로 만든다. 이름 변경/새 파일 추가만 하는 안전한 작업이라 dry-run 없이 바로
+    // 실행하고 결과만 보여준다.
+    document.getElementById('rhBtnTemplateNameFix').addEventListener('click', function(){
+      callGas('migrate_report_template_names', {}).then(function(res){
+        if (res.success === false){ nxAlert_(res.message || '실패했습니다.', '보고서템플릿 정리'); return; }
+        nxAlert_(res.log.join('\n'), '보고서템플릿 정리 결과');
+      }).catch(function(err){
+        nxAlert_('오류: ' + (err && err.message ? err.message : err), '보고서템플릿 정리');
+      });
+    });
     document.getElementById('rhSearchInput').addEventListener('input', function(e){
       var q = e.target.value.trim().toLowerCase();
       if (!q){ rhRenderFileList_(rhAllFiles_); return; }

@@ -53,7 +53,8 @@
     <input type="file" id="docsUploadInput" multiple style="display:none;">
     <button type="button" id="docsBtnPdfManager" class="ghost-btn"><span class="btn-ic">📑</span><span class="btn-tx"> PDF관리</span></button>
     <button type="button" id="docsBtnScan" class="ghost-btn"><span class="btn-ic">📷</span><span class="btn-tx"> 스캔</span></button>
-    <button type="button" id="docsBtnFolderNameAudit" class="ghost-btn" title="모든 사건의 폴더명이 명명규칙(고객명_세목_업무유형)대로인지 전수조사"><span class="btn-ic">🏷</span><span class="btn-tx"> 폴더명 점검</span></button>
+    <button type="button" id="docsBtnFolderNameAudit" class="ghost-btn" title="모든 사건명이 명명규칙(고객명(납세자)_세목_업무유형)대로인지 전수조사 — 적용하면 실제 Drive 폴더명도 같이 맞춰짐"><span class="btn-ic">🏷</span><span class="btn-tx"> 사건명 점검</span></button>
+    <button type="button" id="docsBtnUnlinkedFolderAudit" class="ghost-btn" title="폴더는 있는데 사건에 연결(폴더ID)이 안 된 경우를 찾아 연결"><span class="btn-ic">🔗</span><span class="btn-tx"> 미연결 폴더 찾기</span></button>
   </div>
   <div id="docsCaseEvidencePanel" style="display:none; flex:0 0 auto; border-bottom:1px solid var(--line); padding:10px 14px; overflow-y:auto; max-height:40vh;"></div>
   <div id="docsSelectionBar" class="tb-row" style="display:none; flex:0 0 auto; align-items:center; gap:8px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); font-size:12.5px; flex-wrap:wrap;">
@@ -417,6 +418,11 @@
       auditBtn.dataset.inited = '1';
       auditBtn.addEventListener('click', docsOpenFolderNameAuditModal_);
     }
+    var unlinkedBtn = document.getElementById('docsBtnUnlinkedFolderAudit');
+    if (unlinkedBtn && !unlinkedBtn.dataset.inited){
+      unlinkedBtn.dataset.inited = '1';
+      unlinkedBtn.addEventListener('click', docsOpenUnlinkedFolderAuditModal_);
+    }
   }
 
   // [2026.09] "폴더명 작성규칙(고객명_세목_업무유형, work_generateUniqueCaseName_ 참고)을
@@ -430,7 +436,7 @@
     overlay.style.display = 'flex';
     overlay.innerHTML =
       '<div class="modal-panel" style="width:min(760px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
-        '<div class="modal-head"><span>🏷 폴더명 규칙 전수조사</span><span class="modal-close" id="docsFnaClose">✕</span></div>' +
+        '<div class="modal-head"><span>🏷 사건명 규칙 전수조사</span><span class="modal-close" id="docsFnaClose">✕</span></div>' +
         '<div class="modal-body" style="overflow-y:auto;">' +
           '<div id="docsFnaBody">확인 중…</div>' +
         '</div>' +
@@ -463,9 +469,11 @@
           if (res.success === false){ body.innerHTML = '<div class="taxcalc-error">' + (res.message || '적용 실패') + '</div>'; return; }
           body.innerHTML = '<div class="taxcalc-result-note">' + res.applied + '건 적용했습니다.</div>';
           showToast(res.applied + '건의 폴더명을 규칙대로 수정했습니다.', 'success');
-          // [2026.09 버그수정] 사건명이 바뀌었는데 이 화면의 사건 선택 드롭다운·작업관리 목록
-          // 캐시는 그대로라 옛 이름이 계속 보였다 — 즉시 새로고침한다.
-          docsGetAllCases_(true);
+          // [2026.09.16 버그수정] 여기서 docsGetAllCases_(true)만 부르면 내부 캐시만 새로
+          // 받아올 뿐 이미 그려진 <select id="docsCaseSelect">의 <option> 텍스트는 그대로
+          // 남아있어서(docsInitCaseSelect_가 페이지당 딱 한 번만 그림), 사건명을 고쳐도
+          // 드롭다운엔 옛 이름이 계속 보였다 — docsRefreshCaseSelect_로 드롭다운 자체를 다시 그린다.
+          docsRefreshCaseSelect_();
           if (typeof loadWorkCases === 'function') loadWorkCases();
         }).catch(function(err){
           body.innerHTML = '<div class="taxcalc-error">적용 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
@@ -480,6 +488,141 @@
     }).catch(function(err){
       overlay.querySelector('#docsFnaBody').innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
     });
+  }
+
+  // [2026.09.16 신규] "박영수(홍순자)_상속_상담은 폴더가 있는데 연결이 안 돼 없는 것처럼 나온다"는
+  // 지적으로 추가 — 위 "사건명 점검"은 이름이 어긋난 것만 잡고, 폴더ID 자체가 비어있는 사건은
+  // "폴더 없음"으로만 보여줄 뿐 실제로 있을 수도 있는 폴더를 찾아주지 않는다. 고객명으로 느슨하게
+  // 후보를 찾아 보여주고, 사람이 맞는 것 하나를 골라 "연결"만 누르면 된다(이름/폴더는 안 바뀜).
+  function docsOpenUnlinkedFolderAuditModal_(){
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.innerHTML =
+      '<div class="modal-panel" style="width:min(760px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
+        '<div class="modal-head"><span>🔗 미연결 폴더 찾기</span><span class="modal-close" id="docsUfaClose">✕</span></div>' +
+        '<div class="modal-body" style="overflow-y:auto;">' +
+          '<div id="docsUfaBody">확인 중…</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    function close(){ overlay.remove(); }
+    overlay.querySelector('#docsUfaClose').onclick = close;
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+
+    function renderList(items){
+      var body = overlay.querySelector('#docsUfaBody');
+      if (!items.length){ body.innerHTML = '<div class="log-empty">폴더가 연결되지 않은 사건이 없습니다.</div>'; return; }
+      var rows = items.map(function(it){
+        var candHtml = '';
+        if (it.candidates.length){
+          candHtml += it.candidates.map(function(c){
+            return '<div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">' +
+              '<span>' + escapeHtml(c.name) + '</span><span style="color:var(--sub); font-size:12px;">(' + c.createdDate + ' 생성)</span>' +
+              '<button type="button" class="ghost-btn docsUfaLinkBtn" data-case-id="' + it.id + '" data-folder-id="' + c.id + '" style="margin-left:auto;">🔗 이 폴더로 연결</button>' +
+              '</div>';
+          }).join('');
+        } else {
+          candHtml += '<div style="color:var(--sub); margin-bottom:4px;">자동으로는 일치하는 폴더 후보를 못 찾았습니다(하위 폴더 안에 있거나 이름이 달라서일 수 있습니다).</div>';
+        }
+        // [2026.09.16 신규] "그럼 이 사건은 폴더와 영원히 연결 못 하는가?" — 자동 후보검색은
+        // 최상위 폴더+고객명 부분일치만 보므로 한계가 있다. Drive에서 실제 폴더를 찾아 링크나
+        // ID를 직접 붙여넣어도 연결할 수 있게 항상 이 수동 입력줄을 같이 보여준다.
+        candHtml +=
+          '<div style="display:flex; align-items:center; gap:6px; margin-top:6px;">' +
+            '<input type="text" class="docsUfaManualInput" placeholder="또는 Drive 폴더 링크·ID 붙여넣기" style="flex:1; min-width:160px; padding:5px 8px; border:1px solid var(--line); border-radius:6px; font-size:12px;">' +
+            '<button type="button" class="ghost-btn docsUfaLinkBtn" data-case-id="' + it.id + '" data-manual="1">🔗 이 링크로 연결</button>' +
+          '</div>';
+        return '<tr>' +
+          '<td style="padding:6px 8px; vertical-align:top;">' + escapeHtml(it.고객명) + '</td>' +
+          '<td style="padding:6px 8px; vertical-align:top;">' + escapeHtml(it.사건명) + '</td>' +
+          '<td style="padding:6px 8px; vertical-align:top;">' + candHtml + '</td>' +
+          '</tr>';
+      }).join('');
+      body.innerHTML =
+        '<div class="taxcalc-result-note" style="margin-bottom:8px;">폴더ID가 비어있는 사건 ' + items.length + '건입니다. 고객명이 폴더명에 들어간 것만 자동 후보로 보여줍니다 — 못 찾으면 Drive에서 직접 찾아 링크를 붙여넣어도 됩니다. "연결"을 누르면 사건명·폴더명은 그대로 두고 연결(폴더ID)만 채웁니다.</div>' +
+        '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:6px 8px;">고객명</th><th style="padding:6px 8px;">사건명</th><th style="padding:6px 8px;">후보 폴더</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+      body.querySelectorAll('.docsUfaLinkBtn').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          var caseId = btn.dataset.caseId, folderId;
+          var rowWrap = btn.parentElement;
+          // [2026.09.16 버그수정] "이미 다른 사건에 연결됨" 같은 실패 사유를 토스트로만 보여줬더니
+          // 몇 초 만에 사라져서 세무사님이 캡처할 수도 없었다 — 화면에 계속 남는 문구로 바꾼다.
+          var oldErr = rowWrap.parentElement.querySelector('.docsUfaErr');
+          if (oldErr) oldErr.remove();
+          if (btn.dataset.manual){
+            var input = rowWrap.querySelector('.docsUfaManualInput');
+            folderId = input ? input.value.trim() : '';
+            if (!folderId){ showToast('폴더 링크나 ID를 입력해주세요.', 'warning'); return; }
+          } else {
+            folderId = btn.dataset.folderId;
+          }
+          btn.disabled = true;
+          callGas('work_link_case_folder', { caseId: caseId, folderId: folderId }).then(function(res){
+            if (res.success === false){
+              var errDiv = document.createElement('div');
+              errDiv.className = 'docsUfaErr';
+              errDiv.style.cssText = 'color:#b23; font-size:12px; margin-top:4px;';
+              errDiv.textContent = '⚠ ' + (res.message || '연결 실패');
+              // [2026.09.16 신규] "나성은(나성은)/홍순자(박영수)는 잘못 부여된 사건명이니까
+              // 수정된 사건명으로 연결해주고 잘못된 사건명은 삭제해달라" — 충돌 사유가 "다른
+              // 사건이 이미 이 폴더를 차지함"일 때는, 그 옛 사건이 정정 전 이름(또는 고객명·
+              // 납세자가 뒤바뀐) 채로 남아있는 경우가 많다. 재입력 없이 그 자리에서 바로
+              // "옮기고 옛 것 삭제"까지 할 수 있게 버튼을 같이 보여준다.
+              if (res.conflictCaseId){
+                var moveBtn = document.createElement('button');
+                moveBtn.type = 'button';
+                moveBtn.className = 'ghost-btn';
+                moveBtn.style.cssText = 'margin-left:8px; font-size:12px;';
+                moveBtn.textContent = '🔁 "' + (res.conflictCaseName || '옛 사건') + '"에서 옮기고 그 사건 삭제';
+                moveBtn.addEventListener('click', function(){
+                  nxConfirm_('"' + res.conflictCaseName + '" 사건에서 이 폴더를 떼어 지금 사건에 연결하고, "' + res.conflictCaseName + '" 사건 자체는 삭제합니다.\n(하위업무·메모 등 그 사건에 기록된 내용도 함께 사라집니다 — 되돌릴 수 없습니다.) 계속할까요?').then(function(ok){
+                    if (!ok) return;
+                    moveBtn.disabled = true;
+                    callGas('work_reassign_case_folder', { fromCaseId: res.conflictCaseId, toCaseId: caseId }).then(function(res2){
+                      if (res2.success === false){ errDiv.textContent = '⚠ ' + (res2.message || '이관 실패'); moveBtn.disabled = false; return; }
+                      showToast('폴더를 옮기고 옛 사건을 삭제했습니다.', 'success');
+                      docsRefreshCaseSelect_();
+                      if (typeof loadWorkCases === 'function') loadWorkCases();
+                      load();
+                    }).catch(function(err3){
+                      errDiv.textContent = '⚠ 이관 중 오류: ' + (err3 && err3.message ? err3.message : err3);
+                      moveBtn.disabled = false;
+                    });
+                  });
+                });
+                errDiv.appendChild(moveBtn);
+              }
+              rowWrap.insertAdjacentElement('afterend', errDiv);
+              btn.disabled = false;
+              return;
+            }
+            showToast('연결했습니다.', 'success');
+            docsRefreshCaseSelect_();
+            if (typeof loadWorkCases === 'function') loadWorkCases();
+            load(); // 방금 연결한 사건을 목록에서 빼고 다시 그림
+          }).catch(function(err){
+            var errDiv2 = document.createElement('div');
+            errDiv2.className = 'docsUfaErr';
+            errDiv2.style.cssText = 'color:#b23; font-size:12px; margin-top:4px;';
+            errDiv2.textContent = '⚠ 연결 중 오류: ' + (err && err.message ? err.message : err);
+            rowWrap.insertAdjacentElement('afterend', errDiv2);
+            btn.disabled = false;
+          });
+        });
+      });
+    }
+
+    function load(){
+      overlay.querySelector('#docsUfaBody').innerHTML = '확인 중…';
+      callGas('work_audit_unlinked_case_folders', {}).then(function(res){
+        if (res.success === false){ overlay.querySelector('#docsUfaBody').innerHTML = '<div class="taxcalc-error">' + (res.message || '조회 실패') + '</div>'; return; }
+        renderList(res.items || []);
+      }).catch(function(err){
+        overlay.querySelector('#docsUfaBody').innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+      });
+    }
+    load();
   }
 
   // [2026.09] 법령조회·세액계산에는 상단에 "사건연결" 드롭다운이 있어서 사건을 바로 골라
@@ -593,6 +736,21 @@
       docsAllCasesCache_ = res.cases || [];
       return docsAllCasesCache_;
     }).catch(function(){ return docsAllCasesCache_ || []; });
+  }
+
+  // [2026.09.16 버그수정] "사건명 점검"으로 사건명을 고쳐도 이 화면 상단 사건선택 드롭다운이
+  // 옛 이름 그대로 보였다 — docsGetAllCases_(true)는 내부 캐시(docsAllCasesCache_)만 새로
+  // 받아올 뿐, docsInitCaseSelect_()가 페이지 열릴 때 딱 한 번만 그려둔 <select>의 실제
+  // <option> 목록은 그 뒤로 다시 그려주는 코드가 없었다(같은 문제가 "미연결 폴더 찾기"의
+  // 연결 성공 후에도 있었음). 사건명/폴더연결처럼 목록에 영향을 주는 저장 뒤에는 항상 이
+  // 함수로 드롭다운 자체를 다시 그린다 — 지금 선택돼 있던 사건은 새 이름으로 그대로 유지.
+  function docsRefreshCaseSelect_(){
+    var sel = document.getElementById('docsCaseSelect');
+    var keepId = sel ? sel.value : '';
+    return docsGetAllCases_(true).then(function(cases){
+      if (sel) sel.innerHTML = buildCaseOptionsHtml_(cases, { selectedId: keepId });
+      return cases;
+    });
   }
 
   function docsRenderCaseEvidencePanel_(){
@@ -808,7 +966,7 @@
         '</select><br>'
       : '';
     panel.innerHTML =
-      '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:8px;">📋 ' + escapeHtml(c.고객명) + ' · ' + escapeHtml(c.사건명) + ' — 증빙</div>' +
+      '<div style="font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:8px;">📋 ' + escapeHtml(c.사건명) + ' — 증빙</div>' +
       '<div style="margin-bottom:14px;">' +
       '<div style="font-size:12px; font-weight:600; color:var(--sub); margin-bottom:6px;">자동확보</div>' +
       addrPickerHtml +

@@ -2,11 +2,12 @@
   <div class="editor-toolbar">
     <button type="button" id="btnClientNew" class="save-btn">+ 새 고객</button>
     <span class="editor-filename">👤 고객 명단 · 서비스 이력</span>
+    <button type="button" id="btnClientDupAudit" class="ghost-btn" title="이름이 같거나 전화번호가 같은데 고객이 두 명 이상으로 나뉘어 있는지 점검">🔁 중복 고객 점검</button>
     <div class="spacer"></div>
     <input type="text" id="clientSearchInput" placeholder="이름으로 검색…">
   </div>
   <div class="manage-split">
-    <div class="manage-split-list"><div id="clientList" class="log-list"></div></div>
+    <div class="manage-split-list" id="clientSplitList"><div id="clientList" class="log-list"></div></div>
     <div class="manage-split-detail" id="clientDetailCol">
       <div id="clientDetail"><div class="explorer-status">왼쪽에서 고객을 선택하거나 "+ 새 고객"을 눌러주세요.</div></div>
     </div>
@@ -113,6 +114,9 @@
     var p = (clientSearchInput && clientSearchInput.value.trim()) ? callGas('client_get_clients', {}) : Promise.resolve({ clients: clients });
     p.then(function(res){
       var all = res.clients || [];
+      // [2026.09.18 버그수정] "수금내역에서 고객이 가나다순으로 뜨지 않는다" — 원래 순서 그대로
+      // (시트 행 순서, 대개 등록순) 자동완성 목록에 넣어서, 이름을 알아도 찾기 어려웠다.
+      all = all.slice().sort(function(a, b){ return String(a.성명 || '').localeCompare(String(b.성명 || ''), 'ko'); });
       clientNameOptions.innerHTML = '';
       all.forEach(function(c){
         if (!c.성명) return;
@@ -134,10 +138,15 @@
       row.className = 'log-entry';
       row.style.cursor = 'pointer';
       if (c.id === selectedClientId) row.style.outline = '2px solid var(--navy)';
+      // [2026.09.16 버그수정] "관리화면 취지에 맞게 이름·전화번호·분류가 모두 한 줄에 표시되게
+      // 하라" — 구분(로얄/우수/보통/영세)이 줄바꿈되어 아래줄에 따로 나오던 것을 한 줄로 합친다.
       row.innerHTML =
         '<div class="log-text"><b>' + escapeHtml(c.성명 || '') + '</b>' +
         (c.전화번호 ? ' · ' + escapeHtml(c.전화번호) : '') +
-        (c.구분 ? '<br><span style="color:var(--sub); font-size:12px;">' + escapeHtml(c.구분) + '</span>' : '') +
+        // 수정화면이 구분 빈값을 이미 "보통"으로 간주해왔다(ccEditType의 `c.구분 || '보통'`) —
+        // 목록도 같은 기본값을 보여줘야, 예전에 자동등록만 되고 구분을 한 번도 안 고친 고객도
+        // 새로 만든 고객과 똑같이 일관되게 보인다.
+        ' · <span style="color:var(--sub); font-size:12px;">' + escapeHtml(c.구분 || '보통') + '</span>' +
         '</div>';
       row.addEventListener('click', function(){ clientShowingNewForm = false; selectedClientId = c.id; renderClientList(); renderClientDetail(c); });
       clientList.appendChild(row);
@@ -273,6 +282,7 @@
       '<select id="ccEditType">' + CLIENT_TIER_OPTIONS_.map(function(t){ return '<option value="' + t + '"' + (t === (c.구분 || '보통') ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select>' +
       '<input type="text" id="ccEditBiz" placeholder="납세번호" value="' + escapeHtml(c.사업자번호 || '') + '" size="12">' +
       '<button type="button" id="ccSaveClient" class="save-btn">저장</button>' +
+      '<button type="button" id="ccSendSms" class="ghost-btn" title="이 고객에게 문자를 보냅니다(현금영수증 등 파일 링크를 메시지에 붙여넣어 같이 보낼 수 있습니다)">📱 문자</button>' +
       '<button type="button" id="ccDeleteClient" class="btn danger" title="삭제">삭제</button>' +
       '</div>' +
       '<div style="margin-bottom:14px;"><label style="font-size:12px; color:var(--sub);">추가 연락처(공동의뢰인·가족 — 현금영수증 자동연결에도 쓰입니다)</label><br>' +
@@ -313,6 +323,10 @@
           callGas('client_get_clients', {}).then(function(r2){ clients = r2.clients || []; renderClientList(); updateClientNameOptions_(); }).catch(function(){});
         }
       }).catch(function(){ showToast('저장 중 오류가 발생했습니다.', 'error'); });
+    });
+
+    container.querySelector('#ccSendSms').addEventListener('click', function(){
+      openClientSmsModal_(c);
     });
 
     container.querySelector('#ccDeleteClient').addEventListener('click', function(){
@@ -396,6 +410,48 @@
     loadClientPayments_(c, container);
 
     if (container === clientDetail) clientMainPanelBaseline_ = quickViewCurrentSignature_(container);
+  }
+
+  // [2026.09.18 신규] "현금영수증 파일을 보내줘야 하는데 보낼 방법이 없다" — 고객관리에서
+  // 바로 문자를 보낸다. 문자(SOLAPI)는 텍스트만 지원해서 파일을 그대로 첨부할 수는 없으므로,
+  // 증빙관리에서 그 파일의 공유링크를 복사해 메시지 안에 붙여넣는 방식을 안내한다.
+  function openClientSmsModal_(c){
+    if (!c.전화번호){ showToast('이 고객의 전화번호가 등록되어 있지 않습니다.', 'warning'); return; }
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.innerHTML =
+      '<div class="modal-panel" style="width:min(420px, 92vw);">' +
+        '<div class="modal-head"><span>📱 문자 보내기 — ' + escapeHtml(c.성명 || '') + '</span><span class="modal-close" id="csClose">✕</span></div>' +
+        '<div class="modal-body">' +
+          '<div style="font-size:12.5px; color:var(--sub); margin-bottom:8px;">받는 번호: ' + escapeHtml(c.전화번호) + '</div>' +
+          '<div style="font-size:12px; color:var(--sub); margin-bottom:8px;">파일(현금영수증 등)을 같이 보내려면, 증빙관리에서 그 파일의 공유링크를 복사해 아래 메시지에 붙여넣으세요.</div>' +
+          '<textarea id="csMessage" placeholder="메시지 내용을 입력하세요" style="width:100%; min-height:110px; box-sizing:border-box; font-family:inherit; font-size:13px; padding:8px;"></textarea>' +
+          '<div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;">' +
+            '<button type="button" id="csSendBtn" class="save-btn">보내기</button>' +
+            '<button type="button" id="csCancelBtn" class="ghost-btn">취소</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    function close(){ overlay.remove(); }
+    overlay.querySelector('#csClose').onclick = close;
+    overlay.querySelector('#csCancelBtn').onclick = close;
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+    overlay.querySelector('#csSendBtn').addEventListener('click', function(){
+      var message = overlay.querySelector('#csMessage').value.trim();
+      if (!message){ showToast('메시지를 입력해주세요.', 'warning'); return; }
+      var btn = overlay.querySelector('#csSendBtn');
+      btn.disabled = true;
+      callGas('client_send_sms', { 고객ID: c.id, message: message }).then(function(res){
+        if (res.success === false){ showToast(res.message || '문자 발송에 실패했습니다.', 'error'); btn.disabled = false; return; }
+        showToast('문자를 보냈습니다.', 'success');
+        close();
+      }).catch(function(err){
+        showToast('발송 중 오류: ' + (err && err.message ? err.message : err), 'error');
+        btn.disabled = false;
+      });
+    });
   }
 
   function loadClientLogs_(c, container){
@@ -541,6 +597,79 @@
 
   document.getElementById('btnClientNew').addEventListener('click', renderNewClientForm);
   clientSearchInput.addEventListener('input', function(){ loadClients(); });
+
+  // [2026.09.16 신규] "한 고객이 2개 이상의 사건에 관여하면 고객관리를 합쳐야 하지 않나?" —
+  // 이름 오타·표기차이로 매칭에 실패하면 같은 사람이 고객 두 명으로 쪼개질 수 있다. 이름 또는
+  // 전화번호가 겹치는데 고객ID가 다른 그룹을 찾아 보여주고, 하나를 골라 나머지를 합칠 수 있게 한다.
+  function openClientDupAuditModal_(){
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.innerHTML =
+      '<div class="modal-panel" style="width:min(760px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
+        '<div class="modal-head"><span>🔁 중복 고객 점검</span><span class="modal-close" id="cdaClose">✕</span></div>' +
+        '<div class="modal-body" style="overflow-y:auto;">' +
+          '<div id="cdaBody">확인 중…</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    function close(){ overlay.remove(); }
+    overlay.querySelector('#cdaClose').onclick = close;
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+
+    function renderGroups(groups){
+      var body = overlay.querySelector('#cdaBody');
+      if (!groups.length){ body.innerHTML = '<div class="log-empty">이름·전화번호가 겹치는 중복 고객이 없습니다.</div>'; return; }
+      var html = '<div class="taxcalc-result-note" style="margin-bottom:8px;">이름 또는 전화번호가 겹치는 고객 ' + groups.length + '개 그룹입니다. 실제로 같은 사람이 맞으면, 남길 고객을 고르고(라디오) "합치기"를 누르세요 — 나머지 고객에 연결된 사건·자문내역이 전부 남긴 고객으로 옮겨지고(my.netax.kr에 보이는 고객명도 같이 정리) 나머지 고객 레코드는 삭제됩니다.</div>';
+      groups.forEach(function(g, gi){
+        html += '<div style="border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:10px;">';
+        g.members.forEach(function(m, mi){
+          html += '<label style="display:flex; align-items:center; gap:8px; padding:4px 0; cursor:pointer;">' +
+            '<input type="radio" name="cdaKeep' + gi + '" value="' + m.id + '"' + (mi === 0 ? ' checked' : '') + '>' +
+            '<b>' + escapeHtml(m.성명 || '(이름없음)') + '</b>' +
+            '<span style="color:var(--sub); font-size:12px;">' + escapeHtml(m.전화번호 || '전화번호 없음') + ' · ' + escapeHtml(m.구분 || '보통') + ' · 사건 ' + m.사건수 + '건 · 등록일 ' + escapeHtml(m.등록일 || '') + '</span>' +
+            '</label>';
+        });
+        html += '<div style="display:flex; justify-content:flex-end; margin-top:6px;">' +
+          '<button type="button" class="ghost-btn cdaMergeBtn" data-group="' + gi + '">🔁 합치기</button>' +
+          '</div></div>';
+      });
+      body.innerHTML = html;
+      groups.forEach(function(g, gi){
+        body.querySelector('.cdaMergeBtn[data-group="' + gi + '"]').addEventListener('click', function(){
+          var btn = this;
+          var keepId = body.querySelector('input[name="cdaKeep' + gi + '"]:checked').value;
+          var mergeIds = g.members.map(function(m){ return m.id; }).filter(function(id){ return id !== keepId; });
+          var keepMember = g.members.filter(function(m){ return m.id === keepId; })[0];
+          nxConfirm_('"' + keepMember.성명 + '" 하나만 남기고 나머지 ' + mergeIds.length + '명의 사건을 전부 옮긴 뒤 그 고객 레코드를 삭제합니다.\n(되돌릴 수 없습니다.) 계속할까요?').then(function(ok){
+            if (!ok) return;
+            btn.disabled = true;
+            callGas('client_merge_clients', { keepId: keepId, mergeIds: mergeIds }).then(function(res){
+              if (res.success === false){ showToast(res.message || '합치기 실패', 'error'); btn.disabled = false; return; }
+              showToast('사건 ' + res.movedCases + '건, 자문내역 ' + res.movedLogs + '건을 옮기고(my.netax.kr ' + res.movedMyPages + '건 표시명도 정리) 고객 ' + res.deletedClients + '명을 합쳤습니다.', 'success');
+              loadClients();
+              load();
+            }).catch(function(err){
+              showToast('합치기 중 오류: ' + (err && err.message ? err.message : err), 'error');
+              btn.disabled = false;
+            });
+          });
+        });
+      });
+    }
+
+    function load(){
+      overlay.querySelector('#cdaBody').innerHTML = '확인 중…';
+      callGas('client_audit_duplicates', {}).then(function(res){
+        if (res.success === false){ overlay.querySelector('#cdaBody').innerHTML = '<div class="taxcalc-error">' + (res.message || '조회 실패') + '</div>'; return; }
+        renderGroups(res.groups || []);
+      }).catch(function(err){
+        overlay.querySelector('#cdaBody').innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+      });
+    }
+    load();
+  }
+  document.getElementById('btnClientDupAudit').addEventListener('click', openClientDupAuditModal_);
 
   // ---- 고객정보 빠른보기 팝업 (작업관리 사건 상세의 👤 버튼에서 호출) ----
   // [2026.09 리팩터] 예전엔 별도 DOM 없이 메인 목록의 #clientDetail 노드를 그대로 모달 안으로

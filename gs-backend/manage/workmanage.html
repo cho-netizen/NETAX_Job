@@ -1,7 +1,30 @@
+<style>
+  #workToolsMenu.show{ display:flex !important; }
+  #workToolsMenu .wt-item{
+    background:none; border:none; color:var(--ink); text-align:left;
+    padding:8px 12px; font-size:12.5px; cursor:pointer; font-family:inherit; white-space:nowrap;
+  }
+  #workToolsMenu .wt-item:hover{ background:#f3f4f7; }
+  #workToolsMenu .wt-item + .wt-item{ border-top:1px solid var(--line); }
+</style>
 <div class="view" id="view-workmanage">
   <div class="editor-toolbar">
     <button type="button" id="btnWorkCaseNew" class="save-btn">+ 새 사건</button>
-    <span class="editor-filename">🗂 사건별 세부업무 · 법정기한</span>
+    <input type="text" id="workCaseSearchInput" placeholder="🔍 의뢰인·납세자·완료일로 찾기" style="width:180px; padding:5px 8px; border:1px solid var(--line); border-radius:6px;">
+    <!-- [2026.09.18] 완료일 정비용 일회성 도구 5개가 툴바에 나란히 늘어서 있어서 "검색창이
+         어디 있는지도 모르겠다"/"재동기화 버튼을 어디다 숨겨놓았나" 같은 지적이 반복됐다 —
+         자주 쓰는 게 아닌 정비도구는 드롭다운 하나로 묶어서 툴바를 정리한다. -->
+    <div id="workToolsWrap" style="position:relative;">
+      <button type="button" id="btnWorkTools" class="ghost-btn">🛠 정비도구 ▾</button>
+      <div id="workToolsMenu" style="display:none; position:absolute; top:110%; left:0; z-index:100; background:#fff; border:1px solid var(--line); border-radius:6px; min-width:220px; box-shadow:0 4px 14px rgba(0,0,0,0.18); flex-direction:column;">
+        <button type="button" id="btnFixCompletionDates" class="wt-item" title="시스템 개통 전 완료 사건 중 완료일이 없거나 개통 무렵 날짜로 잘못 찍힌 것을 한 번에 보정">🗓 완료일 일괄 보정</button>
+        <button type="button" id="btnFixCompletionAfterReceipt" class="wt-item" title="완료일이 그 고객의 현금영수증 발행일보다 늦은 경우, 발행일로 보정">💰 완료일-영수증일 보정</button>
+        <button type="button" id="btnFixCompletionByReportDate" class="wt-item" title="완료일이 26.06.30 임시값인 사건을, 그 사건에 실제로 작성된 보고서가 처음 만들어진 날짜(생성일)로 보정">📄 완료일-보고서작성일 보정</button>
+        <button type="button" id="btnApplyFilingFileDates" class="wt-item" title="양도코리아 신고파일 목록(이름+세목+파일 작성일)으로 해당 사건의 완료일을 지정">📥 신고파일 작성일 반영</button>
+        <button type="button" id="btnResyncCalendars" class="wt-item" title="완료일 보정 도구들이 시트값만 고치고 캘린더는 안 고쳤던 문제 — 모든 사건의 [NX] 캘린더 일정을 지금 값 기준으로 다시 맞춥니다">📅 캘린더 재동기화</button>
+        <button type="button" id="btnReceiptOnlyCleanup" class="wt-item" title="사건 폴더 안에 현금영수증 파일만 있거나 관련파일이 아예 없는(빈 폴더) 사건을 찾아, 현금영수증은 상담사건 폴더로 옮기고(고객명_현금영수증으로 개명) 사건 폴더는 휴지통으로 보낸 뒤 업무유형을 상담으로 정리">🧾 서류 없는 사건 정리(상담으로)</button>
+      </div>
+    </div>
     <div class="spacer"></div>
     <select id="workCaseFilterStatus" title="상태로 필터">
       <option value="">전체</option>
@@ -27,25 +50,38 @@
   var workCaseList = document.getElementById('workCaseList');
   var workCaseDetail = document.getElementById('workCaseDetail');
   var workCaseFilterStatus = document.getElementById('workCaseFilterStatus');
+  var workCaseSearchInput = document.getElementById('workCaseSearchInput');
 
   // [2026.09] 취득세는 독립된 세목으로 따로 관리하지 않는다 — 매매(양도)·증여·상속 등
   // 기본 3세목 처리 과정에서 특수관계자간 거래 등과 함께 다뤄지는 성격이라, 사건 자체를
   // "취득세 사건"으로 새로 만들지 않는다(세액계산 화면의 취득세 탭은 그대로 있음 — 다른
   // 사건 처리 중 필요하면 거기서 계산만 한다).
-  var WORK_SEMOK_LABELS = { transfer: '양도', gift: '증여', inheritance: '상속', objection: '불복' };
+  // [2026.09.18 신규] "사업" 세목 추가 — 업무유형은 신고/상담만(다른 세목과 동일), 법정기한은
+  // 상담처럼 직접입력(종합소득세·부가세 등 세부 마감규칙이 제각각이라 자동계산 규칙을 안 둠 —
+  // WORK_DEADLINE_MONTHS_에 business가 없으면 work_calcDeadline_이 빈 값을 돌려줘 자동으로
+  // 직접입력만 가능해진다), 사건개요서·필요증빙 템플릿은 당장 없음(불복과 동일하게 자유텍스트
+  // 처리대상으로 충분 — CH_CASE_OVERVIEW_FIELDS_에 business를 안 넣어두면 casehandling.html이
+  // 자동으로 그 화면을 보여준다).
+  var WORK_SEMOK_LABELS = { transfer: '양도', gift: '증여', inheritance: '상속', objection: '불복', business: '사업' };
   var WORK_STATUS_OPTIONS = ['진행', '보류', '완료'];
   var WORK_SUBTASK_STATUS_OPTIONS = ['대기', '진행', '보류', '완료'];
+  // [2026.09.18 신규] "상담을 자문과 상담으로 세분 — 검토서·보고서가 작성되는 사건은 자문,
+  // 파일이 작성되지 않아 폴더가 필요 없는 사건은 상담으로." 신고/자문/상담 셋 다 법정신고
+  // 유형(신고)만 자동계산 대상이고, 자문·상담은 상담이 원래 그랬듯 직접입력(아래
+  // WORK_MANUAL_DEADLINE_TYPES_ 참고) — 자문(검토·의견)도 신고처럼 정해진 법정기한이 있는
+  // 게 아니기 때문에 같은 자리에 둔다.
   var WORK_UPTYPE_OPTIONS_ = {
-    transfer: ['신고', '상담'],
-    gift: ['신고', '상담'],
-    inheritance: ['신고', '상담'],
+    transfer: ['신고', '자문', '상담'],
+    gift: ['신고', '자문', '상담'],
+    inheritance: ['신고', '자문', '상담'],
+    business: ['신고', '자문', '상담'],
     // [2026.09] 세무조사 대리·자금출처소명은 형식상 "불복"(처분에 대한 다툼)은 아니지만,
     // 정식 신고·상담과도 달라서 기존에 해명자료를 넣어둔 것과 같은 자리(objection)에 둔다.
     objection: ['이의신청', '심사청구', '심판청구', '행정소송', '경정청구', '과세적부', '해명자료', '세무조사', '자금출처소명']
   };
-  // 상담·해명자료·세무조사·자금출처소명은 법정기한이 없어(과세관청과 협의해 정해지는
+  // 자문·상담·해명자료·세무조사·자금출처소명은 법정기한이 없어(과세관청과 협의해 정해지는
   // 처리시한) 자동계산 대신 사용자가 직접 입력한다.
-  var WORK_MANUAL_DEADLINE_TYPES_ = ['상담', '해명자료', '세무조사', '자금출처소명'];
+  var WORK_MANUAL_DEADLINE_TYPES_ = ['자문', '상담', '해명자료', '세무조사', '자금출처소명'];
   // [2026.09] "기준일"이라는 추상 용어 대신 세목마다 실제로 부르는 이름을 그대로 쓴다.
   var WORK_BASE_DATE_LABELS_ = { transfer: '양도일', gift: '증여일', inheritance: '상속일', objection: '처분일' };
 
@@ -73,6 +109,441 @@
     if (workManageLoaded) return;
     workManageLoaded = true;
     loadWorkCases();
+    var fixBtn = document.getElementById('btnFixCompletionDates');
+    if (fixBtn && !fixBtn.dataset.inited){
+      fixBtn.dataset.inited = '1';
+      fixBtn.addEventListener('click', openFixCompletionDatesModal_);
+    }
+    var fixReceiptBtn = document.getElementById('btnFixCompletionAfterReceipt');
+    if (fixReceiptBtn && !fixReceiptBtn.dataset.inited){
+      fixReceiptBtn.dataset.inited = '1';
+      fixReceiptBtn.addEventListener('click', openFixCompletionAfterReceiptModal_);
+    }
+    var fixReportDateBtn = document.getElementById('btnFixCompletionByReportDate');
+    if (fixReportDateBtn && !fixReportDateBtn.dataset.inited){
+      fixReportDateBtn.dataset.inited = '1';
+      fixReportDateBtn.addEventListener('click', openFixCompletionByReportDateModal_);
+    }
+    var applyFilingFileBtn = document.getElementById('btnApplyFilingFileDates');
+    if (applyFilingFileBtn && !applyFilingFileBtn.dataset.inited){
+      applyFilingFileBtn.dataset.inited = '1';
+      applyFilingFileBtn.addEventListener('click', openApplyFilingFileDatesModal_);
+    }
+    // [2026.09.18 신규] 완료일 보정 도구들이 시트값만 고치고 캘린더 동기화를 안 걸었던 문제를
+    // 고친 뒤, 오늘 이미 그 도구들로 고쳐진 사건들의 캘린더는 여전히 옛날 값으로 남아있다 —
+    // 이름/날짜를 다시 바꾸는 게 아니라 지금 값 기준으로 캘린더만 다시 맞추는 안전한 작업이라
+    // 확인창만 거치고 dry-run 없이 바로 실행한다.
+    var resyncBtn = document.getElementById('btnResyncCalendars');
+    if (resyncBtn && !resyncBtn.dataset.inited){
+      resyncBtn.dataset.inited = '1';
+      resyncBtn.addEventListener('click', function(){
+        nxConfirm_('모든 사건의 [NX] 캘린더 일정을 지금 저장된 값 기준으로 다시 맞춥니다. 계속할까요?').then(function(ok){
+          if (!ok) return;
+          resyncBtn.disabled = true;
+          callGas('work_resync_all_calendars', {}).then(function(res){
+            resyncBtn.disabled = false;
+            if (res.success === false){ showToast(res.message || '재동기화 실패', 'error'); return; }
+            showToast('캘린더 재동기화 완료 — ' + res.synced + '건 성공' + (res.failed ? ', ' + res.failed + '건 실패' : '') + '.', 'success');
+          }).catch(function(err){
+            resyncBtn.disabled = false;
+            showToast('재동기화 중 오류: ' + (err && err.message ? err.message : err), 'error');
+          });
+        });
+      });
+    }
+    var receiptCleanupBtn = document.getElementById('btnReceiptOnlyCleanup');
+    if (receiptCleanupBtn && !receiptCleanupBtn.dataset.inited){
+      receiptCleanupBtn.dataset.inited = '1';
+      receiptCleanupBtn.addEventListener('click', openReceiptOnlyCleanupModal_);
+    }
+    // [2026.09.18 신규] 완료일 정비도구 5개를 드롭다운 하나로 묶음 — 버튼을 누르면 열고,
+    // 메뉴 안의 도구를 하나 고르면(또는 바깥을 클릭하면) 닫는다.
+    var toolsBtn = document.getElementById('btnWorkTools');
+    var toolsMenu = document.getElementById('workToolsMenu');
+    if (toolsBtn && !toolsBtn.dataset.inited){
+      toolsBtn.dataset.inited = '1';
+      toolsBtn.addEventListener('click', function(e){
+        e.stopPropagation();
+        toolsMenu.classList.toggle('show');
+      });
+      toolsMenu.addEventListener('click', function(e){
+        if (e.target.classList.contains('wt-item')) toolsMenu.classList.remove('show');
+      });
+      document.addEventListener('click', function(e){
+        if (toolsMenu.classList.contains('show') && !toolsMenu.contains(e.target) && e.target !== toolsBtn){
+          toolsMenu.classList.remove('show');
+        }
+      });
+    }
+  }
+
+  // [2026.09.17 신규] "완료일이 현금영수증발행일보다 늦은 경우 모두 발행일로 변경" — 한 고객이
+  // 사건을 하나만 가진 경우만 자동 적용 대상(그 고객의 최신 현금영수증 발행일 = 그 사건 것이
+  // 확실함)이고, 사건을 여러 개 가진 고객은 어느 영수증이 어느 사건 것인지 특정 못 해 "확인
+  // 필요" 목록으로만 따로 보여준다(자동 적용 안 함).
+  function openFixCompletionAfterReceiptModal_(){
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.innerHTML =
+      '<div class="modal-panel" style="width:min(760px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
+        '<div class="modal-head"><span>💰 완료일-영수증일 보정</span><span class="modal-close" id="wfrClose">✕</span></div>' +
+        '<div class="modal-body" style="overflow-y:auto;">' +
+          '<div id="wfrBody">확인 중…</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    function close(){ overlay.remove(); }
+    overlay.querySelector('#wfrClose').onclick = close;
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+
+    function tableHtml(items){
+      var rows = items.map(function(it){
+        return '<tr><td style="padding:4px 8px;">' + escapeHtml(it.고객명) + '</td>' +
+          '<td style="padding:4px 8px;">' + escapeHtml(it.사건명) + '</td>' +
+          '<td style="padding:4px 8px; color:#b23;">' + escapeHtml(it.현재완료일) + '</td>' +
+          '<td style="padding:4px 8px; color:#2a7a4f;">' + escapeHtml(it.영수증발행일) + '</td></tr>';
+      }).join('');
+      return '<table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">고객명</th><th style="padding:4px 8px;">사건명</th><th style="padding:4px 8px;">현재 완료일</th><th style="padding:4px 8px;">영수증 발행일</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    }
+
+    function renderResult(res){
+      var body = overlay.querySelector('#wfrBody');
+      var html = '';
+      if (!res.count && !res.ambiguousCount){
+        html = '<div class="log-empty">완료일이 현금영수증 발행일보다 늦은 사건이 없습니다.</div>';
+        body.innerHTML = html;
+        return;
+      }
+      if (res.count){
+        html += '<div class="taxcalc-result-note" style="margin-bottom:8px;">완료일이 그 고객의 현금영수증 발행일보다 늦은 사건 ' + res.count + '건입니다(한 고객에 사건이 하나뿐이라 확실한 경우만). "일괄 적용"을 누르면 완료일을 영수증 발행일로 바꿉니다.</div>' +
+          '<div style="overflow-x:auto;">' + tableHtml(res.items) + '</div>' +
+          '<button type="button" id="wfrApplyBtn" class="btn danger" style="margin:10px 0;">⚠ 위 ' + res.count + '건 일괄 적용(되돌리기 어려움)</button>';
+      }
+      if (res.ambiguousCount){
+        html += '<div class="taxcalc-result-note" style="margin:14px 0 8px; color:var(--sub);">아래 ' + res.ambiguousCount + '건은 같은 고객이 사건을 2개 이상 가지고 있어 어느 영수증이 어느 사건 것인지 자동으로 특정할 수 없습니다 — 직접 확인 후 필요하면 개별적으로 완료일을 다시 지정해주세요(완료→진행→완료 다시 전환하면 새 완료일을 입력할 수 있습니다).</div>' +
+          '<div style="overflow-x:auto;">' + tableHtml(res.ambiguous) + '</div>';
+      }
+      body.innerHTML = html;
+      var applyBtn = body.querySelector('#wfrApplyBtn');
+      if (applyBtn) applyBtn.addEventListener('click', function(){
+        nxConfirm_(res.count + '건의 완료일을 각 사건의 현금영수증 발행일로 일괄 적용합니다. 계속할까요?').then(function(ok){
+          if (!ok) return;
+          body.innerHTML = '적용 중…';
+          callGas('work_fix_completion_after_receipt', { apply: true }).then(function(res2){
+            if (res2.success === false){ body.innerHTML = '<div class="taxcalc-error">' + (res2.message || '적용 실패') + '</div>'; return; }
+            body.innerHTML = '<div class="taxcalc-result-note">' + res2.applied + '건 적용했습니다.</div>';
+            showToast(res2.applied + '건의 완료일을 영수증 발행일로 맞췄습니다.', 'success');
+            loadWorkCases();
+          }).catch(function(err){
+            body.innerHTML = '<div class="taxcalc-error">적용 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+          });
+        });
+      });
+    }
+
+    // [2026.09.17 신규] "현금영수증이 사건에 먼저 연결돼야 한다"는 지적으로 근본 원인(스캔이
+    // 이미 알고 있던 사건ID를 안 넘기던 버그)을 고쳤다 — 여기서는 그 수정 이전에 이미 쌓인
+    // 기존 기록에 사건ID를 뒤늦게 채우는 보정을 먼저 한 번 실행한 뒤(파일명으로 재검색이라
+    // 몇 초 걸릴 수 있음) 목록을 불러온다.
+    overlay.querySelector('#wfrBody').innerHTML = '기존 영수증 기록에 사건 연결 정보를 보정하는 중…';
+    callGas('work_backfill_receipt_case_links', {}).then(function(backfillRes){
+      if (backfillRes && backfillRes.updated) showToast('기존 영수증 ' + backfillRes.updated + '건에 사건 연결 정보를 채웠습니다.', 'success');
+      return callGas('work_fix_completion_after_receipt', {});
+    }).then(function(res){
+      if (res.success === false){ overlay.querySelector('#wfrBody').innerHTML = '<div class="taxcalc-error">' + (res.message || '조회 실패') + '</div>'; return; }
+      renderResult(res);
+    }).catch(function(err){
+      overlay.querySelector('#wfrBody').innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+    });
+  }
+
+  // [2026.09.17 신규] "완료사건인데 완료일이 없는 것은 26.6.30으로 일괄 적용" + "9.21/9.22/9.23인
+  // 것도 26.6.30으로" — 완료일 직접입력 기능(wcPromptCompletionDate_)이 생기기 전에 완료
+  // 처리된 사건들은 완료일이 비어있거나 개통 무렵 날짜로 잘못 찍혀있다. 대상 목록을 먼저
+  // 보여주고 확인 후에만 실제로 바꾼다.
+  function openFixCompletionDatesModal_(){
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.innerHTML =
+      '<div class="modal-panel" style="width:min(700px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
+        '<div class="modal-head"><span>🗓 완료일 일괄 보정</span><span class="modal-close" id="wfcClose">✕</span></div>' +
+        '<div class="modal-body" style="overflow-y:auto;">' +
+          '<div id="wfcBody">확인 중…</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    function close(){ overlay.remove(); }
+    overlay.querySelector('#wfcClose').onclick = close;
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+
+    function renderList(items){
+      var body = overlay.querySelector('#wfcBody');
+      if (!items.length){ body.innerHTML = '<div class="log-empty">완료일이 비어있거나 의심스러운 완료 사건이 없습니다.</div>'; return; }
+      var rows = items.map(function(it){
+        return '<tr><td style="padding:4px 8px;">' + escapeHtml(it.고객명) + '</td>' +
+          '<td style="padding:4px 8px;">' + escapeHtml(it.사건명) + '</td>' +
+          '<td style="padding:4px 8px; color:#b23;">' + escapeHtml(it.현재완료일) + '</td></tr>';
+      }).join('');
+      body.innerHTML =
+        '<div class="taxcalc-result-note" style="margin-bottom:8px;">완료 상태인데 완료일이 없거나(빈값) 시스템 개통 무렵 날짜(9/21·9/22·9/23)로 찍힌 사건 ' + items.length + '건입니다.</div>' +
+        '<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">' +
+          '<label>바꿀 완료일 <input type="date" id="wfcTargetDate" value="2026-06-30"></label>' +
+        '</div>' +
+        '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">고객명</th><th style="padding:4px 8px;">사건명</th><th style="padding:4px 8px;">현재 완료일</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<button type="button" id="wfcApplyBtn" class="btn danger" style="margin-top:10px;">⚠ 위 ' + items.length + '건 일괄 적용(되돌리기 어려움)</button>';
+      body.querySelector('#wfcApplyBtn').addEventListener('click', function(){
+        var targetDate = document.getElementById('wfcTargetDate').value;
+        if (!targetDate){ showToast('날짜를 입력해주세요.', 'warning'); return; }
+        nxConfirm_(items.length + '건의 완료일을 ' + targetDate + '로 일괄 적용합니다. 계속할까요?').then(function(ok){
+          if (!ok) return;
+          body.innerHTML = '적용 중…';
+          callGas('work_bulk_fix_completion_dates', { apply: true, targetDate: targetDate }).then(function(res){
+            if (res.success === false){ body.innerHTML = '<div class="taxcalc-error">' + (res.message || '적용 실패') + '</div>'; return; }
+            body.innerHTML = '<div class="taxcalc-result-note">' + res.applied + '건 적용했습니다.</div>';
+            showToast(res.applied + '건의 완료일을 ' + targetDate + '로 맞췄습니다.', 'success');
+            loadWorkCases();
+          }).catch(function(err){
+            body.innerHTML = '<div class="taxcalc-error">적용 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+          });
+        });
+      });
+    }
+
+    callGas('work_bulk_fix_completion_dates', { targetDate: '2026-06-30' }).then(function(res){
+      if (res.success === false){ overlay.querySelector('#wfcBody').innerHTML = '<div class="taxcalc-error">' + (res.message || '조회 실패') + '</div>'; return; }
+      renderList(res.items || []);
+    }).catch(function(err){
+      overlay.querySelector('#wfcBody').innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+    });
+  }
+
+  // [2026.09.18 신규] "26.06.30으로 임시 지정했던 완료일을, 그 사건에 실제로 작성된 보고서의
+  // 작성일 기준으로 실제 완료일에 더 가깝게 재조정해달라" — 그 사건 폴더의 보고서 중 가장
+  // 최근에 쓰인 것의 수정일을 완료일 후보로 제안한다(보고서가 없으면 "확인 필요"로만 표시,
+  // 자동 적용 안 함).
+  function openFixCompletionByReportDateModal_(){
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.innerHTML =
+      '<div class="modal-panel" style="width:min(760px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
+        '<div class="modal-head"><span>📄 완료일-보고서작성일 보정</span><span class="modal-close" id="wfdClose">✕</span></div>' +
+        '<div class="modal-body" style="overflow-y:auto;">' +
+          '<div id="wfdBody">확인 중…</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    function close(){ overlay.remove(); }
+    overlay.querySelector('#wfdClose').onclick = close;
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+
+    function renderResult(res){
+      var body = overlay.querySelector('#wfdBody');
+      var html = '';
+      if (!res.count && !res.noReportCount){
+        body.innerHTML = '<div class="log-empty">완료일이 26.06.30(임시값)인 사건이 없습니다.</div>';
+        return;
+      }
+      if (res.count){
+        var rows = res.items.map(function(it){
+          return '<tr><td style="padding:4px 8px;">' + escapeHtml(it.고객명) + '</td>' +
+            '<td style="padding:4px 8px;">' + escapeHtml(it.사건명) + '</td>' +
+            '<td style="padding:4px 8px; color:#b23;">' + escapeHtml(it.현재완료일) + '</td>' +
+            '<td style="padding:4px 8px; color:#2a7a4f;">' + escapeHtml(it.새완료일) + '</td>' +
+            '<td style="padding:4px 8px; color:var(--sub); font-size:12px;">' + escapeHtml(it.근거파일명) + '</td></tr>';
+        }).join('');
+        html += '<div class="taxcalc-result-note" style="margin-bottom:8px;">완료일이 26.06.30(임시값)이고 실제 작성된 보고서가 있는 사건 ' + res.count + '건입니다. "일괄 적용"을 누르면 완료일을 그 사건의 가장 최근 보고서 작성일로 바꿉니다.</div>' +
+          '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">고객명</th><th style="padding:4px 8px;">사건명</th><th style="padding:4px 8px;">현재 완료일</th><th style="padding:4px 8px;">새 완료일(보고서 작성일)</th><th style="padding:4px 8px;">근거 파일</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+          '<button type="button" id="wfdApplyBtn" class="btn danger" style="margin:10px 0;">⚠ 위 ' + res.count + '건 일괄 적용(되돌리기 어려움)</button>';
+      }
+      if (res.noReportCount){
+        var nrows = res.noReport.map(function(it){
+          return '<tr><td style="padding:4px 8px;">' + escapeHtml(it.고객명) + '</td><td style="padding:4px 8px;">' + escapeHtml(it.사건명) + '</td></tr>';
+        }).join('');
+        html += '<div class="taxcalc-result-note" style="margin:14px 0 8px; color:var(--sub);">아래 ' + res.noReportCount + '건은 완료일이 26.06.30(임시값)이지만 그 사건 폴더에서 보고서를 찾지 못해 자동으로 바꾸지 못합니다 — 직접 확인해주세요.</div>' +
+          '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">고객명</th><th style="padding:4px 8px;">사건명</th></tr></thead><tbody>' + nrows + '</tbody></table></div>';
+      }
+      body.innerHTML = html;
+      var applyBtn = body.querySelector('#wfdApplyBtn');
+      if (applyBtn) applyBtn.addEventListener('click', function(){
+        nxConfirm_(res.count + '건의 완료일을 각 사건의 최근 보고서 작성일로 일괄 적용합니다. 계속할까요?').then(function(ok){
+          if (!ok) return;
+          body.innerHTML = '적용 중…';
+          callGas('work_fix_completion_by_report_date', { apply: true }).then(function(res2){
+            if (res2.success === false){ body.innerHTML = '<div class="taxcalc-error">' + (res2.message || '적용 실패') + '</div>'; return; }
+            body.innerHTML = '<div class="taxcalc-result-note">' + res2.applied + '건 적용했습니다.</div>';
+            showToast(res2.applied + '건의 완료일을 보고서 작성일로 맞췄습니다.', 'success');
+            loadWorkCases();
+          }).catch(function(err){
+            body.innerHTML = '<div class="taxcalc-error">적용 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+          });
+        });
+      });
+    }
+
+    callGas('work_fix_completion_by_report_date', {}).then(function(res){
+      if (res.success === false){ overlay.querySelector('#wfdBody').innerHTML = '<div class="taxcalc-error">' + (res.message || '조회 실패') + '</div>'; return; }
+      renderResult(res);
+    }).catch(function(err){
+      overlay.querySelector('#wfdBody').innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+    });
+  }
+
+  // [2026.09.18 신규] 세무사님이 양도코리아 신고파일 목록(탐색기 화면 캡처, 이름+세목+파일
+  // 작성일)을 직접 제공 — 이름+세목으로 사건을 찾아 완료일을 그 파일 작성일로 지정한다.
+  // 이미 완료 상태인 사건이 정확히 하나 매칭될 때만 자동 적용 대상, 그 외(못 찾음/완료 아님/
+  // 이름이 겹침)는 "확인 필요" 목록으로만 보여준다.
+  function openApplyFilingFileDatesModal_(){
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.innerHTML =
+      '<div class="modal-panel" style="width:min(780px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
+        '<div class="modal-head"><span>📥 신고파일 작성일 반영</span><span class="modal-close" id="wfsClose">✕</span></div>' +
+        '<div class="modal-body" style="overflow-y:auto;">' +
+          '<div id="wfsBody">확인 중…</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    function close(){ overlay.remove(); }
+    overlay.querySelector('#wfsClose').onclick = close;
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+
+    function renderResult(res){
+      var body = overlay.querySelector('#wfsBody');
+      var html = '';
+      var matched = res.matched || [], unmatched = res.unmatched || [], ambiguous = res.ambiguous || [];
+      if (matched.length){
+        var rows = matched.map(function(it){
+          return '<tr><td style="padding:4px 8px;">' + escapeHtml(it.고객명) + '</td>' +
+            '<td style="padding:4px 8px;">' + escapeHtml(it.사건명) + '</td>' +
+            '<td style="padding:4px 8px; color:#b23;">' + escapeHtml(it.현재완료일) + '</td>' +
+            '<td style="padding:4px 8px; color:#2a7a4f;">' + escapeHtml(it.새완료일) + '</td></tr>';
+        }).join('');
+        html += '<div class="taxcalc-result-note" style="margin-bottom:8px;">이름·세목으로 완료 사건을 정확히 하나씩 찾은 ' + matched.length + '건입니다. "일괄 적용"을 누르면 완료일을 신고파일 작성일로 바꿉니다.</div>' +
+          '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">고객명</th><th style="padding:4px 8px;">사건명</th><th style="padding:4px 8px;">현재 완료일</th><th style="padding:4px 8px;">새 완료일(신고파일 작성일)</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+          '<button type="button" id="wfsApplyBtn" class="btn danger" style="margin:10px 0;">⚠ 위 ' + matched.length + '건 일괄 적용(되돌리기 어려움)</button>';
+      } else {
+        html += '<div class="log-empty">자동으로 적용할 수 있는 항목이 없습니다.</div>';
+      }
+      if (ambiguous.length){
+        html += '<div class="taxcalc-result-note" style="margin:14px 0 8px; color:var(--sub);">아래 ' + ambiguous.length + '건은 이름+세목으로 찾은 사건이 없거나(완료 상태 아님) 여러 건이라 자동으로 적용하지 못합니다 — 직접 확인해주세요.</div>' +
+          ambiguous.map(function(a){
+            var crows = a.candidates.map(function(c){ return '<li>' + escapeHtml(c.사건명) + ' (상태: ' + escapeHtml(c.상태) + ', 현재완료일: ' + escapeHtml(c.현재완료일 || '없음') + ')</li>'; }).join('');
+            return '<div style="border:1px solid var(--line); border-radius:6px; padding:8px 10px; margin-bottom:8px; font-size:12.5px;">' +
+              '<b>' + escapeHtml(a.이름) + '</b>(' + escapeHtml(WORK_SEMOK_LABELS[a.세목] || a.세목) + ') → 신고파일 작성일 <b>' + escapeHtml(a.새완료일) + '</b>' +
+              '<ul style="margin:6px 0 0 18px;">' + crows + '</ul></div>';
+          }).join('');
+      }
+      if (unmatched.length){
+        html += '<div class="taxcalc-result-note" style="margin:14px 0 8px; color:var(--sub);">아래 ' + unmatched.length + '건은 이름+세목이 정확히 일치하는 사건을 찾지 못했습니다 — 고객명 표기가 다르거나(예: 영문명) 사건이 없는 경우입니다.</div>' +
+          '<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">이름</th><th style="padding:4px 8px;">세목</th><th style="padding:4px 8px;">신고파일 작성일</th></tr></thead><tbody>' +
+          unmatched.map(function(u){ return '<tr><td style="padding:4px 8px;">' + escapeHtml(u.이름) + '</td><td style="padding:4px 8px;">' + escapeHtml(WORK_SEMOK_LABELS[u.세목] || u.세목) + '</td><td style="padding:4px 8px;">' + escapeHtml(u.새완료일) + '</td></tr>'; }).join('') +
+          '</tbody></table></div>';
+      }
+      body.innerHTML = html;
+      var applyBtn = body.querySelector('#wfsApplyBtn');
+      if (applyBtn) applyBtn.addEventListener('click', function(){
+        nxConfirm_(matched.length + '건의 완료일을 신고파일 작성일로 일괄 적용합니다. 계속할까요?').then(function(ok){
+          if (!ok) return;
+          body.innerHTML = '적용 중…';
+          callGas('work_apply_filing_file_dates', { apply: true }).then(function(res2){
+            if (res2.success === false){ body.innerHTML = '<div class="taxcalc-error">' + (res2.message || '적용 실패') + '</div>'; return; }
+            body.innerHTML = '<div class="taxcalc-result-note">' + res2.applied + '건 적용했습니다.</div>';
+            showToast(res2.applied + '건의 완료일을 신고파일 작성일로 맞췄습니다.', 'success');
+            loadWorkCases();
+          }).catch(function(err){
+            body.innerHTML = '<div class="taxcalc-error">적용 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+          });
+        });
+      });
+    }
+
+    callGas('work_apply_filing_file_dates', {}).then(function(res){
+      if (res.success === false){ overlay.querySelector('#wfsBody').innerHTML = '<div class="taxcalc-error">' + (res.message || '조회 실패') + '</div>'; return; }
+      renderResult(res);
+    }).catch(function(err){
+      overlay.querySelector('#wfsBody').innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+    });
+  }
+
+  // [2026.09.18 신규] "현재 사건을 전수조사해서 현금영수증만 있는 폴더는 상담사건 폴더로
+  // 옮기고 그 사건 폴더는 삭제하자" — 사건 폴더 안에 현금영수증 파일만 있고 다른 파일이 전혀
+  // 없는 사건을 찾아, 그 파일을 "고객명_현금영수증"으로 개명해 상담사건 공용 폴더로 옮기고
+  // 사건 폴더는 휴지통으로 보낸 뒤 업무유형을 상담으로 정리한다. 상담사건 폴더에 이미 같은
+  // 이름의 파일이 있으면(같은 고객이 상담을 여러 번 한 경우) 자동 적용하지 않고 "확인 필요"로만
+  // 보여준다.
+  function openReceiptOnlyCleanupModal_(){
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.innerHTML =
+      '<div class="modal-panel" style="width:min(760px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
+        '<div class="modal-head"><span>🧾 서류 없는 사건 정리(상담으로)</span><span class="modal-close" id="rocClose">✕</span></div>' +
+        '<div class="modal-body" style="overflow-y:auto;">' +
+          '<div id="rocBody">확인 중… (사건이 많으면 시간이 걸릴 수 있습니다)</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    function close(){ overlay.remove(); }
+    overlay.querySelector('#rocClose').onclick = close;
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+
+    function renderResult(res){
+      var body = overlay.querySelector('#rocBody');
+      var html = '';
+      var ready = res.ready || [], needsReview = res.needsReview || [];
+      if (ready.length){
+        var rows = ready.map(function(r){
+          var files = r.fileMoves.length
+            ? r.fileMoves.map(function(fm){ return escapeHtml(fm.oldName) + ' → ' + escapeHtml(fm.newName); }).join('<br>')
+            : '<span style="color:var(--sub);">(관련파일 0건 — 빈 폴더)</span>';
+          return '<tr><td style="padding:4px 8px;">' + escapeHtml(r.고객명) + '</td>' +
+            '<td style="padding:4px 8px;">' + escapeHtml(r.사건명) + '</td>' +
+            '<td style="padding:4px 8px;">' + escapeHtml(r.업무유형현재) + '</td>' +
+            '<td style="padding:4px 8px; font-size:12px;">' + files + '</td></tr>';
+        }).join('');
+        html += '<div class="taxcalc-result-note" style="margin-bottom:8px;">현금영수증 파일만 있거나 관련파일이 아예 없는(빈 폴더) 사건 ' + ready.length + '건입니다. "일괄 적용"을 누르면 현금영수증 파일은 상담사건 폴더로 옮기고, 사건 폴더는 휴지통으로 보낸 뒤 업무유형을 상담으로 정리합니다.</div>' +
+          '<div style="overflow-x:auto; max-height:280px; overflow-y:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;"><thead><tr style="text-align:left; border-bottom:1px solid var(--line);"><th style="padding:4px 8px;">고객명</th><th style="padding:4px 8px;">현재 사건명</th><th style="padding:4px 8px;">현재 업무유형</th><th style="padding:4px 8px;">파일 이동</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+          '<button type="button" id="rocApplyBtn" class="btn danger" style="margin:10px 0;">⚠ 위 ' + ready.length + '건 일괄 적용(되돌리기 어려움 — 폴더는 휴지통으로 이동)</button>';
+      } else {
+        html += '<div class="log-empty">현금영수증 파일만 있거나 빈 폴더인 사건이 없습니다.</div>';
+      }
+      if (needsReview.length){
+        html += '<div class="taxcalc-result-note" style="margin:14px 0 8px; color:var(--sub);">아래 ' + needsReview.length + '건은 상담사건 폴더에 이미 같은 이름의 파일이 있어(같은 고객이 상담을 여러 번 한 경우 등) 자동으로 적용하지 못합니다 — 직접 확인해주세요.</div>' +
+          needsReview.map(function(r){
+            var files = r.fileMoves.map(function(fm){ return '<li>' + escapeHtml(fm.oldName) + ' → ' + escapeHtml(fm.newName) + '</li>'; }).join('');
+            return '<div style="border:1px solid var(--line); border-radius:6px; padding:8px 10px; margin-bottom:8px; font-size:12.5px;">' +
+              '<b>' + escapeHtml(r.고객명) + '</b> · ' + escapeHtml(r.사건명) +
+              '<ul style="margin:6px 0 0 18px;">' + files + '</ul></div>';
+          }).join('');
+      }
+      body.innerHTML = html;
+      var applyBtn = body.querySelector('#rocApplyBtn');
+      if (applyBtn) applyBtn.addEventListener('click', function(){
+        nxConfirm_(ready.length + '건을 상담사건으로 정리합니다(사건 폴더는 휴지통으로 이동). 계속할까요?').then(function(ok){
+          if (!ok) return;
+          body.innerHTML = '적용 중… (시간이 걸릴 수 있습니다)';
+          callGas('work_apply_receipt_only_case_cleanup', { apply: true }).then(function(res2){
+            if (res2.success === false){ body.innerHTML = '<div class="taxcalc-error">' + (res2.message || '적용 실패') + '</div>'; return; }
+            body.innerHTML = '<div class="taxcalc-result-note">' + res2.applied + '건 정리했습니다' + (res2.failed ? ' (' + res2.failed + '건 실패)' : '') + '.</div><div style="white-space:pre-wrap; font-size:12px; color:var(--sub); margin-top:8px;">' + escapeHtml((res2.log || []).join('\n')) + '</div>';
+            showToast(res2.applied + '건을 상담사건으로 정리했습니다.', 'success');
+            loadWorkCases();
+          }).catch(function(err){
+            body.innerHTML = '<div class="taxcalc-error">적용 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+          });
+        });
+      });
+    }
+
+    callGas('work_apply_receipt_only_case_cleanup', {}).then(function(res){
+      if (res.success === false){ overlay.querySelector('#rocBody').innerHTML = '<div class="taxcalc-error">' + (res.message || '조회 실패') + '</div>'; return; }
+      renderResult(res);
+    }).catch(function(err){
+      overlay.querySelector('#rocBody').innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+    });
   }
 
   function loadWorkCases(){
@@ -135,10 +606,24 @@
 
   function renderWorkCaseList(){
     var filter = workCaseFilterStatus.value;
-    var filtered = workCases.filter(function(c){ return !filter || c.상태 === filter; });
+    // [2026.09.18 신규] "일일이 스크롤해서 찾는 것이 너무 힘들다" — 사건 수가 늘어나면서
+    // 왼쪽 목록을 눈으로 훑어 찾기 힘들어졌다는 지적. 의뢰인(고객명)뿐 아니라 납세자로도
+    // 찾을 수 있어야 한다(상속은 의뢰인=상속인, 납세자=피상속인이 다른 게 정상이라 둘 중
+    // 아무 이름으로나 찾을 수 있어야 실제로 쓸모가 있다).
+    var q = (workCaseSearchInput && workCaseSearchInput.value.trim().toLowerCase()) || '';
+    var filtered = workCases.filter(function(c){
+      if (filter && c.상태 !== filter) return false;
+      if (!q) return true;
+      // [2026.09.18 신규] 완료일로도 찾을 수 있게 — 법정일 문자열("2026-06-30")은 짧은
+      // 표시형("26-06-30", fmtDateShort_ 참고)이 그 안에 그대로 포함되는 구조라, 부분일치
+      // 검색만으로 "2026-06-30"/"26-06-30"/"06-30" 등 어떤 식으로 입력해도 찾아진다.
+      return String(c.고객명 || '').toLowerCase().indexOf(q) !== -1 ||
+        String(c.납세자 || '').toLowerCase().indexOf(q) !== -1 ||
+        String(c.법정일 || '').indexOf(q) !== -1;
+    });
     workCaseList.innerHTML = '';
     if (!filtered.length){
-      workCaseList.innerHTML = '<div class="log-empty">등록된 사건이 없습니다.</div>';
+      workCaseList.innerHTML = '<div class="log-empty">' + (q ? '검색 결과가 없습니다.' : '등록된 사건이 없습니다.') + '</div>';
       return;
     }
     var todayStr = new Date().toISOString().slice(0, 10);
@@ -154,7 +639,12 @@
       // [2026.09 버그수정] 사건명 명명규칙이 "고객명(납세자)_세목_업무유형"으로 바뀌면서(납세자가
       // 고객명과 같아도 항상 표시) 사건명 자체가 길어져, 바로 아래 줄에 세목·업무유형이 또
       // 나오는 것과 겹쳐 좁은 목록에서 두 줄로 줄바꿈되곤 했다 — 사건명 전체를 또 보여주는 대신,
-      // 그 안에서 실제로 새 정보인 동명이인 번호와(고객명과 다를 때만) 납세자만 뽑아서 짧게 붙인다.
+      // 동명이인 번호와 납세자만 뽑아서 짧게 붙인다.
+      // [2026.09.16 버그수정] "작업관리가 사건명 규칙과 다르게 명명돼 보인다"는 지적 — 이 배지가
+      // 납세자가 고객명과 같으면(=대부분 비어있는 경우) 괄호를 아예 숨겨서, 사건명은 항상
+      // "고객명(납세자)"인데 목록만 "고객명"만 보여 규칙이 안 지켜지는 것처럼 보였다. 사건명과
+      // 완전히 같은 규칙(항상 표시, 비어있으면 고객명 그대로)으로 맞춘다 — 부수 효과로 "박영수
+      // (박영수)"처럼 납세자가 아직 안 채워진 사건도 목록만 보고 바로 알아볼 수 있게 된다.
       // [2026.09 버그수정] 구글시트가 "3733" 같은 숫자로만 된 고객명을 문자열이 아니라 진짜
       // 숫자로 읽어들이는 경우가 있다 — String()으로 강제하지 않으면 .replace() 호출에서
       // "custName.replace is not a function" 오류가 나서 이 목록을 다시 그릴 때마다(클릭할
@@ -164,7 +654,7 @@
       var numMatch = custName ? String(c.사건명 || '').match(new RegExp('^' + custName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(\\d+)')) : null;
       var subBits = [];
       if (numMatch) subBits.push('#' + numMatch[1]);
-      if (taxpayerName && taxpayerName !== custName) subBits.push('(' + escapeHtml(taxpayerName) + ')');
+      if (custName) subBits.push('(' + escapeHtml(taxpayerName || custName) + ')');
       // [2026.09 버그수정] 부가정보 줄(세목·업무유형·상태·포털뱃지)이 좁은 사이드바에서
       // 넘치면 줄바꿈되어 카드 높이가 들쭉날쭉해졌다 — 줄바꿈 대신 한 줄로 자르고 "..."로
       // 표시한다(요약 목록이니 전체는 클릭해서 상세보기에서 확인).
@@ -314,6 +804,18 @@
   function renderWorkCaseDetail(c){
     var prog = workProgress(c);
     var isManual = WORK_MANUAL_DEADLINE_TYPES_.indexOf(c.업무유형) !== -1;
+    var isCompleted = c.상태 === '완료';
+    // [2026.09.18] 법정일 직접수정 칸이 이제 모든 유형에서 항상 보인다 — 저장할 때 이 값을
+    // 항상 그대로 보내버리면, 자동계산 유형에서 기준일만 바꾸고 이 칸은 안 건드린 "평소 저장"
+    // 때마다 옛 화면에 떠 있던 값이 그대로 override로 다시 보내져서, 서버의 기준일 기반
+    // 자동계산(work_calcDeadline_)이 매번 무시돼버린다 — 렌더링 당시 값을 기억해뒀다가
+    // saveCaseNow_에서 "사용자가 실제로 이 칸을 고쳤을 때만" 명시적 override로 보낸다.
+    // [2026.09.18 재수정] "완료일을 직접 입력할 수 있게 해달라, 하나씩 찾아서 정확한 날짜를
+    // 넣겠다" — 완료 사건은 예전엔 이 칸이 완료전법정일(완료 처리 전 원래 마감일)을 대신
+    // 보여줘서 완료일 자체를 여기서 못 봤다·못 고쳤다. 이제 완료 사건은 이 칸이 곧 완료일이다
+    // (라벨도 "완료일"로 바뀜, 아래 라벨 렌더링·onEditUptypeChange 참고) — 값도 완료전법정일이
+    // 아니라 실제 법정일(=완료일)을 그대로 보여준다.
+    var wcEditDeadlineOriginal_ = c.법정일 || '';
     workCaseDetail.innerHTML =
       // [2026.09.16 버그수정] 실사용 지적 — 삭제 버튼이 저장 버튼과 다른 줄에 따로 떨어져
       // 있어서 두 확정동작 버튼이 한눈에 안 들어왔다(고객관리와 같은 이유로 같이 고침) →
@@ -344,7 +846,16 @@
       // [2026.09 버그수정] 완료 처리하면 법정일이 완료일(오늘)로 덮어써지는데, 이 칸이 항상
       // c.법정일만 보여줘서 완료된 사건을 다시 열어보면 마치 "원래 처리시한이 오늘이었다"처럼
       // 보였다 — 완료 상태에서는 백업해둔 원래 처리시한(완료전법정일)을 대신 보여준다.
-      '<label id="wcEditManualDeadlineLabel" style="display:' + (isManual ? 'inline-block' : 'none') + '; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 10px; font-size:12.5px; color:var(--sub);"><span id="wcEditManualDeadlineText">처리시한</span> <input type="date" id="wcEditManualDeadline" value="' + escapeHtml((c.상태 === '완료' && c.완료전법정일) ? c.완료전법정일 : (c.법정일 || '')) + '" style="width:95px;"></label>' +
+      // [2026.09.18 버그수정] 세무사님 지적 — "법정일이 이상한 옛날 날짜(예: 20-07-23)로
+      // 나오는데 왜 그런지도 모르겠고 고칠 방법도 없다." 원인: 신고 등 법정기한 유형은 여기
+      // 입력칸 자체가 항상 숨겨져 있었다(법정일=기준일로 서버가 자동계산하는 유형이라 직접
+      // 입력받을 필요가 없다고 봤음) — 그런데 그 자동계산의 바탕이 되는 기준일이 잘못
+      // 입력됐거나 계산 자체가 어긋난 경우, 고칠 방법이 정말 하나도 없었다. 상담·해명자료
+      // (처리시한, 원래도 직접입력)와 똑같이 이 칸을 모든 유형에서 항상 보이게 해서, 이상하게
+      // 나온 값을 직접 고칠 수 있게 한다 — 다만 자동계산 유형에서 이 칸을 건드리지 않고
+      // 저장하면(대부분의 평소 저장) 기존처럼 기준일 기반 자동계산이 그대로 적용된다
+      // (saveCaseNow_의 dirty-check 참고).
+      '<label id="wcEditManualDeadlineLabel" style="display:inline-block; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 10px; font-size:12.5px; color:var(--sub);"><span id="wcEditManualDeadlineText">' + escapeHtml(isCompleted ? '완료일' : workDeadlineFieldLabel_(c.업무유형)) + '</span> <input type="date" id="wcEditManualDeadline" value="' + escapeHtml(c.법정일 || '') + '" style="width:95px;"></label>' +
       (workMyPortalBadgeText_(c) ? ' <span style="background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 10px; font-size:12.5px; color:var(--sub);">' + escapeHtml(workMyPortalBadgeText_(c).replace(/^ · /, '')) + '</span>' : '') +
       '</div>' +
       '<div style="margin-bottom:14px;">' +
@@ -407,9 +918,13 @@
       var hasOverviewTemplate = typeof CH_CASE_OVERVIEW_FIELDS_ !== 'undefined' && !!CH_CASE_OVERVIEW_FIELDS_[editSemokSel.value];
       document.getElementById('wcEditBaseDateWrap').style.display = hasOverviewTemplate ? 'none' : 'inline-block';
       var manual = WORK_MANUAL_DEADLINE_TYPES_.indexOf(editUptypeSel.value) !== -1;
-      document.getElementById('wcEditManualDeadlineLabel').style.display = manual ? 'inline-block' : 'none';
-      if (manual){
-        document.getElementById('wcEditManualDeadlineText').textContent = workDeadlineFieldLabel_(editUptypeSel.value);
+      // [2026.09.18] 자동계산 유형에서도 법정일을 직접 고칠 수 있어야 하므로 이 칸은 이제
+      // 유형과 상관없이 항상 보인다 — 라벨 문구만 유형에 맞게 "법정일"/"처리시한"으로 바뀐다.
+      // 완료된 사건은 업무유형이 뭐든 이 칸이 곧 "완료일"이므로 라벨을 그대로 유지한다.
+      document.getElementById('wcEditManualDeadlineText').textContent = isCompleted ? '완료일' : workDeadlineFieldLabel_(editUptypeSel.value);
+      // [2026.09.18] 완료된 사건은 이미 실제 완료일 값이 들어있으므로, 업무유형을 바꿔도
+      // "오늘+7일" 같은 신규 입력용 기본값으로 덮어쓰면 안 된다.
+      if (manual && !isCompleted){
         var deadlineInput = document.getElementById('wcEditManualDeadline');
         if (!editUptypePrevWasManual || !deadlineInput.value) deadlineInput.value = workDefaultManualDeadline_(document.getElementById('wcEditRequestDate').value);
       }
@@ -425,9 +940,11 @@
 
     // [2026.09] "사건명이 고객명만큼 크고 편집 가능한 칸으로 화면에 노출돼 있는 게 왜냐"는
     // 지적 — 사건명은 이제 서버가 "고객명(납세자) 세목 업무유형"으로 자동 만드는 내부 식별용
-    // 값(work_generateUniqueCaseName_)이라 여기서 편집하지 못하게 완전히 숨겼다. 사건 목록
-    // 드롭다운(같은 고객의 여러 사건 구분용)에는 계속 쓰이므로 컬럼 자체는 그대로 둔다 —
-    // 여기서 그냥 payload에 안 보내면(저장 안 하면) 서버가 만든 값이 그대로 유지된다.
+    // 값(work_generateUniqueCaseName_)이라 여기서 편집하지 못하게 완전히 숨겼다. 여기서 굳이
+    // payload에 안 넣어도 된다 — [2026.09.16 변경] 예전엔 그러면 서버가 만든 옛 값이 그대로
+    // 유지됐지만, 이제 work_updateCase가 고객명/납세자/세목/업무유형이 실려올 때마다 사건명을
+    // 자동으로 다시 계산해 같이 저장하므로("즉시 연동" 요청), 이 폼에서 그 네 칸 중 하나라도
+    // 바꿔 저장하면 사건명(과 연결된 Drive 폴더명)도 그 즉시 새 값으로 맞춰진다.
     // [2026.09] 완료 처리 직전에 "요청자료가 다 안 모였는데도/보고서를 발행하지 않았는데도
     // 완료로 넘어가는" 실수를 막기 위한 가벼운 사전 점검. 저장을 막지는 않고(예외적으로 증빙·
     // 보고서 없이도 완료해야 하는 사건이 있을 수 있으므로) 확인 메시지만 띄운다.
@@ -446,7 +963,41 @@
       }).catch(function(){ return warnings; });
     }
 
-    function saveCaseNow_(silent){
+    // [2026.09.16 신규] "시스템 개통 전에 이미 완료된 사건을 지금 완료 처리하니 완료일이
+    // 오늘(9/22, 9/23)로 찍혀버린다"는 지적 — work_updateCase가 완료 전환 시 항상 오늘 날짜로
+    // 법정일을 덮어써서, 실제 완료일을 입력할 방법 자체가 없었다. 완료로 바꿀 때마다 실제
+    // 완료일(기본값 오늘)을 확인받아, 지난 사건을 지금 기록할 때는 그 날짜를 직접 넣을 수
+    // 있게 한다.
+    function wcPromptCompletionDate_(){
+      return new Promise(function(resolve){
+        var old = document.getElementById('nxDialogOverlay');
+        if (old) old.remove();
+        var overlay = document.createElement('div');
+        overlay.id = 'nxDialogOverlay';
+        overlay.className = 'modal-overlay';
+        overlay.style.zIndex = '9999';
+        var todayStr = new Date().toISOString().slice(0, 10);
+        overlay.innerHTML =
+          '<div class="modal-panel" style="width:min(360px, 92vw);">' +
+            '<div class="modal-head"><span>완료 처리</span></div>' +
+            '<div class="modal-body">' +
+              '<div style="font-size:13.5px; line-height:1.5; margin-bottom:8px;">실제로 완료된 날짜를 입력해주세요(시스템 개통 전에 이미 끝난 사건을 지금 기록하는 경우, 오늘이 아닌 실제 날짜를 넣으면 됩니다).</div>' +
+              '<input type="date" id="wcCompletionDateInput" value="' + todayStr + '" style="width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid var(--line); border-radius:6px;">' +
+              '<div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">' +
+                '<button type="button" class="save-btn" data-val="ok">확인</button>' +
+                '<button type="button" class="ghost-btn" data-val="cancel">취소</button>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+        document.body.appendChild(overlay);
+        var input = overlay.querySelector('#wcCompletionDateInput');
+        function finish(val){ overlay.remove(); resolve(val); }
+        overlay.querySelector('[data-val="ok"]').addEventListener('click', function(){ finish(input.value || todayStr); });
+        overlay.querySelector('[data-val="cancel"]').addEventListener('click', function(){ finish(null); });
+        overlay.addEventListener('click', function(e){ if (e.target === overlay) finish(null); });
+      });
+    }
+    function saveCaseNow_(silent, completionDateOverride){
       var customerName = document.getElementById('wcEditCustomerName').value.trim();
       if (!customerName){ showToast('고객명은 비워둘 수 없습니다.', 'warning'); return; }
       var upType = editUptypeSel.value;
@@ -472,12 +1023,15 @@
         // 바꾸는 유일한 경로라는 점에서 가장 챙겨야 할 곳이었다.
         기대수정일: c.수정일
       };
+      if (completionDateOverride) payload.완료일 = completionDateOverride;
       if (!hasOverviewTemplateForSave) payload.기준일 = document.getElementById('wcEditBaseDate').value;
-      // [2026.09 버그수정] 완료된 사건은 이 입력칸이 (완료일이 아니라) 백업해둔 원래 처리시한을
-      // 보여주도록 방금 고쳤는데, 그 값을 완료 상태 그대로 다시 저장해버리면 서버가 그걸 곧이곧대로
-      // 법정일에 다시 덮어써서 "완료 시 법정일=완료일" 규칙이 깨진다 — 완료 상태에서는 이 칸을
-      // 아예 안 보내고, 완료 취소/원래 진행 상태일 때만 실제 편집값을 보낸다.
-      if (manual && c.상태 !== '완료') payload.법정일 = document.getElementById('wcEditManualDeadline').value;
+      // [2026.09.18] "완료일을 직접 입력할 수 있게 해달라" — 완료된 사건은 이 칸이 곧 완료일
+      // 이므로 언제나 그대로 보낸다(수동유형=처리시한도 원래부터 자동계산이 없어 항상 그대로
+      // 보내는 게 안전했음, 같은 원칙). 자동계산 유형이면서 아직 완료 전인 사건만, 사용자가
+      // 이 칸을 실제로 고쳤을 때(렌더링 당시 값과 달라졌을 때)만 명시적 override로 보낸다 —
+      // 안 건드렸으면 서버의 기준일 기반 자동계산이 평소처럼 그대로 적용돼야 한다.
+      var deadlineInputVal_ = document.getElementById('wcEditManualDeadline').value;
+      if (manual || c.상태 === '완료' || deadlineInputVal_ !== wcEditDeadlineOriginal_) payload.법정일 = deadlineInputVal_;
       // [2026.09] 작업관리의 "납세자"와 사건개요서의 납세의무자 이름 필드(casehandling.html의
       // TAXPAYER_NAME_FIELD_BY_SEMOK_)가 반드시 같은 값이어야 한다는 요청 — 여기서 납세자를
       // 고치면 사건개요 쪽도 같이 맞춘다(반대 방향은 casehandling.html의 chSaveTarget이
@@ -505,15 +1059,21 @@
       var sel = this;
       var newStatus = sel.value;
       if (newStatus === '완료' && c.상태 !== '완료') {
+        function askDateThenSave_(){
+          wcPromptCompletionDate_().then(function(dateVal){
+            if (!dateVal){ sel.value = c.상태; return; }
+            saveCaseNow_(true, dateVal);
+          });
+        }
         checkCompletionReadiness_(c).then(function(warnings){
           if (warnings.length){
             nxConfirm_('완료 처리하기 전에 확인해주세요:\n\n- ' + warnings.join('\n- ') + '\n\n그래도 완료로 처리할까요?').then(function(ok){
               if (!ok){ sel.value = c.상태; return; }
-              saveCaseNow_(true);
+              askDateThenSave_();
             });
             return;
           }
-          saveCaseNow_(true);
+          askDateThenSave_();
         });
       } else {
         saveCaseNow_(true);
@@ -658,4 +1218,5 @@
 
   document.getElementById('btnWorkCaseNew').addEventListener('click', renderNewCaseForm);
   workCaseFilterStatus.addEventListener('change', renderWorkCaseList);
+  workCaseSearchInput.addEventListener('input', renderWorkCaseList);
 </script>
