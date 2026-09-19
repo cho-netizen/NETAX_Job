@@ -3128,7 +3128,7 @@ function dispatchClientAction_(body) {
   }
 
   // [2026.08] work 모듈 — 작업관리(사건별 세부업무 트리 + 법정기한 자동계산 + 캘린더 연동) 신규
-  const WORK_ACTIONS = ['work_get_cases', 'work_create_case', 'work_update_case', 'work_delete_case', 'work_add_subtask', 'work_update_subtask', 'work_delete_subtask', 'send_my_portal_sms', 'get_case_subfolders', 'ensure_case_folder', 'work_audit_case_folder_names', 'work_audit_unlinked_case_folders', 'work_link_case_folder', 'work_reassign_case_folder', 'work_bulk_fix_completion_dates', 'work_fix_completion_after_receipt', 'work_backfill_receipt_case_links', 'work_plan_report_filename_cleanup', 'work_apply_report_filename_cleanup', 'migrate_report_template_names', 'work_fix_completion_by_report_date', 'work_apply_filing_file_dates', 'work_resync_all_calendars', 'work_apply_receipt_only_case_cleanup'];
+  const WORK_ACTIONS = ['work_get_cases', 'work_create_case', 'work_update_case', 'work_delete_case', 'work_add_subtask', 'work_update_subtask', 'work_delete_subtask', 'send_my_portal_sms', 'get_case_subfolders', 'ensure_case_folder', 'work_audit_case_folder_names', 'work_audit_unlinked_case_folders', 'work_link_case_folder', 'work_reassign_case_folder', 'work_bulk_fix_completion_dates', 'work_fix_completion_after_receipt', 'work_backfill_receipt_case_links', 'work_plan_report_filename_cleanup', 'work_apply_report_filename_cleanup', 'migrate_report_template_names', 'work_fix_completion_by_report_date', 'work_apply_filing_file_dates', 'work_resync_all_calendars', 'work_apply_receipt_only_case_cleanup', 'work_backfill_party_client_ids'];
   if (WORK_ACTIONS.indexOf(body.action) !== -1) {
     return jsonResponse(work_doPost(body));
   }
@@ -3181,7 +3181,7 @@ function dispatchClientAction_(body) {
   }
 
   // [2026.08] client 모듈 — 고객관리(고객 명단 + 자문내역) 신규
-  const CLIENT_ACTIONS = ['client_get_clients', 'client_create_client', 'client_update_client', 'client_delete_client', 'client_get_consult_logs', 'client_add_consult_log', 'client_update_consult_log', 'client_delete_consult_log', 'client_audit_duplicates', 'client_merge_clients', 'client_send_sms'];
+  const CLIENT_ACTIONS = ['client_get_clients', 'client_create_client', 'client_update_client', 'client_delete_client', 'client_get_consult_logs', 'client_add_consult_log', 'client_update_consult_log', 'client_delete_consult_log', 'client_audit_duplicates', 'client_merge_clients', 'client_send_sms', 'client_undo_dedup_log', 'client_fix_dedup_priority', 'client_get_rrn', 'client_migrate_rrn_from_biz_field', 'client_scan_case_files_for_names', 'client_apply_scanned_names'];
   if (CLIENT_ACTIONS.indexOf(body.action) !== -1) {
     return jsonResponse(client_doPost(body));
   }
@@ -17082,8 +17082,446 @@ function my_doPost(body) {
 const CLIENT_SHEET_ID = '1nHf4PK1F1-Ao5jZ-s43PB1A3eF85YVRcI7T1kK_ooBI';
 const CLIENT_SHEET_CLIENTS = 'Clients';
 const CLIENT_SHEET_LOG = 'ConsultLog';
-const CLIENT_HEADERS = ['id', '성명', '전화번호', '구분', '사업자번호', '메모', '등록일', '수정일', '추가연락처'];
-const CONSULT_HEADERS = ['id', '고객ID', '고객명', '날짜', '담당자', '유형', '내용', '관계', '금액', '수취증빙', '리뷰', '생성일', '승인번호', '사건ID'];
+const CLIENT_HEADERS = ['id', '성명', '전화번호', '구분', '사업자번호', '메모', '등록일', '수정일', '추가연락처', '주소', '주민등록번호암호화'];
+// [2026.09.19 신규] "고객관리할 정보가 전화번호·납세번호가 끝인가?" → "납세번호는 주민등록번호를
+// 염두에 둔 표현" → "개인정보보호가 고민" → "그렇게 하자"(암호화 저장 확정)까지 확인받고
+// 추가한 주민등록번호 저장 체계. 구글시트는 셀 단위 암호화 기능이 없어 평문으로 두면 시트
+// 접근 권한이나 스크립트가 뚫렸을 때 전체 고객의 주민번호가 그대로 노출된다 — 스크립트
+// 속성에 대칭키를 하나 두고 XOR 스트림 암호(+SHA-256으로 키를 32바이트로 정규화)로
+// 암호화한 뒤 Base64로 인코딩해 시트에는 그 암호문만 저장한다. 완벽한 강암호는 아니지만
+// (같은 코드베이스에 복호화 로직이 있으므로 스크립트 자체가 털리면 무력화됨), "시트를 그냥
+// 열어보면 그대로 보인다"는 가장 현실적인 위험은 막는다. 목록 조회(client_getClients)에서는
+// 절대 값 자체를 안 내려주고(암호문조차) 등록 여부(불리언)만 알려주며, 실제 값은
+// client_get_rrn을 명시적으로 호출했을 때만 그 자리에서 복호화해 1건만 내려준다.
+function client_getRRNEncKey_() {
+  const props = PropertiesService.getScriptProperties();
+  let key = props.getProperty('CLIENT_RRN_ENC_KEY');
+  if (!key) {
+    key = Utilities.getUuid() + Utilities.getUuid(); // 최초 사용 시 자동 생성 — 사람이 따로 설정할 필요 없음
+    props.setProperty('CLIENT_RRN_ENC_KEY', key);
+  }
+  return key;
+}
+function client_xorWithKey_(bytes, keyBytes) {
+  return bytes.map(function (b, i) {
+    const r = (b & 0xFF) ^ (keyBytes[i % keyBytes.length] & 0xFF);
+    return r > 127 ? r - 256 : r; // Apps Script 바이트 배열은 부호 있는 -128~127 범위
+  });
+}
+function client_encryptRRN_(plain) {
+  const trimmed = String(plain || '').trim();
+  if (!trimmed) return '';
+  const keyBytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, client_getRRNEncKey_());
+  const plainBytes = Utilities.newBlob(trimmed).getBytes();
+  return Utilities.base64Encode(client_xorWithKey_(plainBytes, keyBytes));
+}
+function client_decryptRRN_(encoded) {
+  const trimmed = String(encoded || '').trim();
+  if (!trimmed) return '';
+  try {
+    const keyBytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, client_getRRNEncKey_());
+    const cipherBytes = Utilities.base64Decode(trimmed);
+    return Utilities.newBlob(client_xorWithKey_(cipherBytes, keyBytes)).getDataAsString();
+  } catch (err) {
+    return ''; // 복호화 실패(키 변경 등) — 빈 값으로 안전하게 처리
+  }
+}
+// 특정 고객 1명의 주민등록번호만 그 자리에서 복호화해 내려준다 — 목록 조회에는 절대
+// 포함하지 않는 값이라 화면에서 "보기" 버튼을 눌렀을 때만 이 액션을 호출한다.
+function client_getRRN(params) {
+  const sheets = client_getSheets_();
+  const col = client_colMap_(sheets.clients.getDataRange().getValues()[0], CLIENT_HEADERS);
+  const found = client_findRow_(sheets.clients, col, params.id);
+  if (!found) return { success: false, message: '존재하지 않는 고객입니다.' };
+  return { success: true, 주민등록번호: client_decryptRRN_(found.row[col.주민등록번호암호화]) };
+}
+
+// [2026.09.19 신규] "납세번호는 처음부터 주민등록번호를 의미하는거였다" — 위 암호화 필드가
+// 생기기 전에는 "납세번호"(내부 필드명 사업자번호) 칸 하나에 개인 고객은 주민등록번호를,
+// 사업자 고객은 사업자등록번호를 섞어서 평문으로 적어왔다는 걸 확인받았다. 두 번호는 자릿수
+// 형식이 다르므로(주민등록번호 6-7자리 / 사업자등록번호 3-2-5자리) 정규식으로 구분해,
+// 주민등록번호처럼 생긴 값만 암호화 필드로 옮기고 원래 칸은 비운다 — 사업자등록번호 형식은
+// 그대로 둔다(원래도 맞는 자리였으므로 건드리지 않음).
+const CLIENT_RRN_LIKE_PATTERN_ = /^\d{6}-?\d{7}$/;
+
+function client_findRrnInBizField_(data, col) {
+  const rows = [];
+  for (let i = 1; i < data.length; i++) {
+    const bizVal = String(data[i][col.사업자번호] || '').trim();
+    if (bizVal && CLIENT_RRN_LIKE_PATTERN_.test(bizVal)) rows.push({ rowIndex: i + 1, 성명: data[i][col.성명], value: bizVal });
+  }
+  return rows;
+}
+
+function client_migrateRrnFromBizField(params) {
+  return withLock_(60000, function () {
+    const sheets = client_getSheets_();
+    const data = sheets.clients.getDataRange().getValues();
+    const col = client_colMap_(data[0], CLIENT_HEADERS);
+    const rows = client_findRrnInBizField_(data, col);
+    if (!params || !params.apply) return { success: true, dryRun: true, count: rows.length };
+    rows.forEach(function (r) {
+      sheets.clients.getRange(r.rowIndex, col.주민등록번호암호화 + 1).setValue(client_encryptRRN_(r.value));
+      sheets.clients.getRange(r.rowIndex, col.사업자번호 + 1).setValue('');
+      sheets.clients.getRange(r.rowIndex, col.수정일 + 1).setValue(new Date());
+    });
+    if (rows.length) SpreadsheetApp.flush();
+    return { success: true, applied: rows.length };
+  });
+}
+
+// [2026.09.19 신규, 같은 날 두 차례 수정] "고객사건 밑 사건폴더 안의 모든 파일을 전수조사해서
+// 모든 고객을 일괄등록해달라" — 사건개요(구조화된 필드, work_linkPartyClientIds_)에는 없지만
+// 실제 사건 폴더에 올라온 파일에만 등장하는 관계자를 찾으려는 목적.
+// [수정 이력] 처음엔 파일 "이름"만 보고 등록도 이름만 했는데, "이름만 찾지 말고 상세정보도
+// 수집하라고 했는데 왜 축소했냐"는 지적으로 파일 "내용"까지 열어 전화번호·주소·주민등록번호도
+// 같이 찾도록 확장했다. 다만 파일마다 여는 건 비용·시간이 커서, 먼저 파일명만으로 사람이름·관계
+// 후보를 싸게 골라낸 뒤(1차, 사건당 API 호출 1번), 후보로 뽑힌 이름이 들어간 파일 중 실제로 열어볼
+// 수 있는 것(PDF·이미지)만 그 사람 몫으로 한 번 더 열어(2차, 후보당 API 호출 1번) 상세정보를 찾는다.
+// 사건 수가 많으면 Apps Script 6분 실행 제한을 넘을 수 있어 진행상황을 캐시에 저장해두고
+// done:true가 나올 때까지 반복 호출한다 — 실제로 시간이 걸리는 작업이라는 걸 화면에 그대로 보여준다.
+// AI가 잘못 짚을 수 있으므로 곧바로 등록하지 않고, 사람이 검토화면에서 골라 체크한 것만 등록한다.
+const CLIENT_NAME_SCAN_PROP_ = 'CLIENT_NAME_SCAN_PROGRESS';
+const CLIENT_NAME_SCAN_TIME_BUDGET_MS_ = 4 * 60 * 1000;
+const CLIENT_NAME_SCAN_MAX_FILES_PER_CASE_ = 300; // 파일이 극단적으로 많은 사건에 대비한 폭주 방지
+
+// [2026.09.19 버그수정] "하위 폴더를 모두 봐야지" — 처음엔 "고객사건" 바로 밑 폴더만 사건으로
+// 봤는데, 실제로는 연도별·유형별 등 몇 단계 더 들어가야 진짜 사건 폴더가 나오는 구조였다.
+// 이제 트리 전체를 훑되, 이미 아는(시트에 폴더ID로 연결된) 사건 폴더를 만나면 거기서 멈추고
+// (그 밑의 "증빙"·"계약서" 같은 하위폴더는 같은 사건의 일부일 뿐 별도 사건이 아니므로 더
+// 들어가지 않는다) 그 사건 전체를 한 단위로 처리한다. 모르는 폴더는 그 폴더 자체를 하나의
+// "고아 사건 후보" 단위로 등록하면서 계속 더 들어간다 — 그래야 몇 단계든 안 놓친다.
+// [2026.09.19 버그수정] 재귀 함수 하나로 트리 전체를 한 번에 다 훑게 만들었더니, 폴더가 많은
+// 실사용 환경에서 이 "찾는 단계" 자체가 Apps Script의 6분 실행 제한을 넘겨서 매 호출이 조용히
+// 실패했다("돌다가 멈추고 아무일도 일어나지 않았다"). 재귀 대신 큐(queue) 기반으로 한 겹씩만
+// 확장하도록 바꿔서, 스캔 단계와 똑같이 시간예산을 걸고 여러 번에 나눠 이어갈 수 있게 한다.
+// 반환값 done=false면 queue에 아직 더 확장할 폴더가 남아있다는 뜻 — 호출한 쪽이 계속 불러야 한다.
+function client_expandScanUnitsStep_(queue, units, knownFolderIds, startTime, timeBudgetMs) {
+  while (queue.length) {
+    if (Date.now() - startTime > timeBudgetMs) return { done: false };
+    const fid = queue.shift();
+    if (knownFolderIds[fid]) {
+      units.push({ folderId: fid, known: true });
+      continue; // 이미 아는 사건은 하위폴더를 더 들어가지 않는다
+    }
+    units.push({ folderId: fid, known: false });
+    let folder;
+    try { folder = DriveApp.getFolderById(fid); } catch (err) { continue; } // 삭제되었거나 접근 불가한 폴더는 건너뜀
+    const subfolders = folder.getFolders();
+    while (subfolders.hasNext()) queue.push(subfolders.next().getId());
+  }
+  return { done: true };
+}
+
+function client_listFilesRecursive_(folder, depth, maxFiles, out) {
+  if (out.length >= maxFiles || depth > 4) return;
+  const files = folder.getFiles();
+  while (files.hasNext() && out.length < maxFiles) {
+    const f = files.next();
+    out.push({ id: f.getId(), name: f.getName(), mimeType: f.getMimeType() });
+  }
+  const subfolders = folder.getFolders();
+  while (subfolders.hasNext() && out.length < maxFiles) {
+    client_listFilesRecursive_(subfolders.next(), depth + 1, maxFiles, out);
+  }
+}
+
+// [2026.09.19] "부동산중개인·임차인 같은 순수 서비스 제공자도 후보에 넣을 거냐"는 질문에
+// "잠재 고객이 될 관계만" 남기기로 확정 — 매수인·매도인·공동상속인·배우자처럼 나중에 직접
+// 고객이 될 수 있는 거래당사자·가족만 뽑고, 중개인·법무사·세무사·임차인 등은 프롬프트에서
+// 명시적으로 제외한다.
+function client_extractNamesFromFilenames_(caseLabel, knownNames, fileObjs, apiKey) {
+  if (!fileObjs.length) return [];
+  const filenames = fileObjs.map(function (f) { return f.name; });
+  const prompt = '아래는 세무사 사무실의 사건(' + caseLabel + ') 폴더 안에 있는 파일 이름 목록이다. ' +
+    '이미 알려진 당사자(등록 대상 아님): ' + (knownNames.join(', ') || '없음') + '. ' +
+    '이 파일 이름들 중에 사람 이름으로 보이면서, 앞으로 이 세무사 사무실의 잠재 고객이 될 수 있는 ' +
+    '거래당사자·관계인(예: 양도인/양수인/매수인/매도인/증여인/수증인/공동상속인/배우자/가족/동업자 등)만 골라라. ' +
+    '부동산중개인·법무사·세무사·은행담당자·임차인처럼 이 거래의 서비스 제공자이거나 잠재 고객이 될 ' +
+    '가능성이 낮은 사람은 절대 포함하지 마라. 확실하지 않으면 포함하지 마라(파일 종류·번호 등은 이름이 아니다). ' +
+    '다른 설명 없이 정확히 이 형식의 JSON만 답하라: ' +
+    '{"items": [{"성명": "이름", "관계": "추정 관계(예: 공동상속인)"}]}. ' +
+    '해당하는 사람이 없으면 {"items": []}로 답하라.\n\n파일 목록:\n' + filenames.join('\n');
+  const response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    payload: JSON.stringify({
+      model: DEFAULT_MODEL, max_tokens: 500,
+      messages: [{ role: 'user', content: prompt }]
+    }),
+    muteHttpExceptions: true
+  });
+  const json = JSON.parse(response.getContentText());
+  if (json.error) throw new Error(json.error.message || 'AI 호출 실패');
+  const text = (json.content && json.content[0] && json.content[0].text) || '';
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) return [];
+  try {
+    const parsed = JSON.parse(match[0]);
+    if (!Array.isArray(parsed.items)) return [];
+    return parsed.items
+      .filter(function (it) { return it && String(it.성명 || '').trim(); })
+      .map(function (it) { return { 성명: String(it.성명).trim(), 관계: String(it.관계 || '').trim() }; });
+  } catch (e) { return []; }
+}
+
+// [2026.09.19 신규] "이름외의 정보는 아예 찾지 않은 것인가?"라는 지적으로 추가 — 이름 후보가
+// 나온 파일 중 실제로 열어볼 수 있는 것(PDF·이미지, 계약서·등본 등)을 그 사람 몫으로 한 번
+// 더 열어 전화번호·주소·주민등록번호가 보이면 찾는다. 문서 하나에 여러 사람이 나올 수 있어
+// 반드시 지정한 이름 본인 것만 답하도록 못박는다. 문서 종류가 다양해 다 나오리라 기대하지
+// 않고, 찾은 것만 채운다(전부 null이면 그냥 이름·관계만 등록됨).
+function client_extractPersonDetailFromFile_(fileId, mimeType, personName, apiKey) {
+  const isPdf = /pdf/i.test(mimeType || '');
+  const isImage = /^image\//i.test(mimeType || '');
+  if (!isPdf && !isImage) return {};
+  let blob;
+  try { blob = DriveApp.getFileById(fileId).getBlob(); } catch (err) { return {}; }
+  const base64 = Utilities.base64Encode(blob.getBytes());
+  const block = isPdf
+    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
+    : { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } };
+  const prompt = '이 파일에서 "' + personName + '" 본인의 전화번호, 주소, 주민등록번호가 보이면 찾아라. ' +
+    '이 파일에 여러 사람의 정보가 섞여 있으면 반드시 "' + personName + '" 본인 것만 답하고 다른 사람 것은 답하지 마라. ' +
+    '없거나 확실하지 않으면 그 항목은 null로 답하라. 다른 설명 없이 정확히 이 형식의 JSON만 답하라: ' +
+    '{"전화번호": 문자열또는null, "주소": 문자열또는null, "주민등록번호": 문자열또는null}.';
+  const response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    payload: JSON.stringify({
+      model: DEFAULT_MODEL, max_tokens: 300,
+      messages: [{ role: 'user', content: [block, { type: 'text', text: prompt }] }]
+    }),
+    muteHttpExceptions: true
+  });
+  const json = JSON.parse(response.getContentText());
+  if (json.error) return {};
+  const text = (json.content && json.content[0] && json.content[0].text) || '';
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) return {};
+  try {
+    const parsed = JSON.parse(match[0]);
+    const out = {};
+    if (parsed.전화번호) out.전화번호 = String(parsed.전화번호).trim();
+    if (parsed.주소) out.주소 = String(parsed.주소).trim();
+    if (parsed.주민등록번호) out.주민등록번호 = String(parsed.주민등록번호).trim();
+    return out;
+  } catch (e) { return {}; }
+}
+
+// 사건 폴더 이름 규칙("고객명[동명이인번호](납세자)_세목_업무유형", work_generateUniqueCaseName_
+// 참고)을 그대로 파싱한다 — 작업관리 시트에 연결이 안 된(고아) 폴더라도 이 규칙만으로 고객명·
+// 납세자(상속이면 곧 피상속인)를 최대한 복원해서, AI가 이미 아는 당사자로 제외할 수 있게 한다.
+function client_parseCaseFolderName_(folderName) {
+  const name = String(folderName || '');
+  const match = name.match(/^([^(_]+?)\d*\(([^)]+)\)/);
+  if (match) return { 고객명: match[1].trim(), 납세자: match[2].trim() };
+  const simple = name.split('_')[0].replace(/\d+$/, '').trim();
+  return { 고객명: simple, 납세자: '' };
+}
+
+// [2026.09.19 버그수정] 처음엔 작업관리 시트에 폴더ID로 이미 연결된 사건만 훑었는데, "몇 건
+// 되지 않는다"는 지적으로 확인해보니 시트에 안 잡힌(또는 폴더ID 연결이 빠진) 사건 폴더가
+// Drive에 더 있어서 애초에 조사 대상에서 빠지고 있었다. 시트를 신뢰하지 않고 "고객사건"
+// 루트(getDefaultFolder()) 바로 밑의 실제 폴더 전부를 훑는 방식으로 바꾼다 — 이게 세무사님이
+// 처음부터 말한 "고객사건아래 고객폴더"의 진짜 전수조사다. 시트에 그 폴더ID로 연결된 사건이
+// 있으면 고객명·납세자를 "이미 아는 이름"으로 AI에 알려주고, 없으면(레거시 미연결 폴더)
+// 폴더 이름 자체를 사건명으로 쓰고 이미 아는 이름 없이 AI에게 맡긴다.
+function client_scanCaseFilesForNames(params) {
+  const apiKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
+  if (!apiKey) return { success: false, message: 'ANTHROPIC_API_KEY가 설정되어 있지 않습니다.' };
+
+  // [2026.09.19] 진행상태(사건 전체 목록 포함)는 스크립트 속성이 아니라 캐시서비스에 둔다 —
+  // 스크립트 속성은 값 하나에 9KB 한도가 있어 사건이 조금만 많아도 곧바로 넘치지만, 캐시는
+  // 값 하나에 100KB까지 허용해 이 정도 규모의 임시 작업 상태를 두기에 더 맞다. 6시간 지나면
+  // 자동으로 사라지므로 스캔을 마치지 않고 오래 방치해도 계속 남아있지 않는다.
+  const cache = CacheService.getScriptCache();
+  let progress = null;
+  if (!params || !params.reset) {
+    try { progress = JSON.parse(cache.get(CLIENT_NAME_SCAN_PROP_) || 'null'); } catch (e) { progress = null; }
+  }
+
+  // [2026.09.19] 진행상태에는 폴더ID만 담는다(사건명·고객명 등은 매 호출 때 시트에서 다시
+  // 찾는다) — 사건 폴더가 수백~수천 개면 그 메타데이터까지 통째로 캐시에 넣었을 때 캐시서비스의
+  // 값 하나당 100KB 한도도 넘을 수 있어, 가장 작은 단위(폴더ID+known 여부)만 들고 있는다.
+  const sheet = work_getSheet_();
+  const sheetData = sheet.getDataRange().getValues();
+  const sheetCol = work_colMap_(sheetData[0]);
+  const caseByFolderId = {};
+  for (let i = 1; i < sheetData.length; i++) {
+    const 폴더ID = String(sheetData[i][sheetCol.폴더ID] || '').trim();
+    if (!폴더ID) continue;
+    caseByFolderId[폴더ID] = {
+      id: sheetData[i][sheetCol.id], 사건명: String(sheetData[i][sheetCol.사건명] || ''),
+      고객명: String(sheetData[i][sheetCol.고객명] || ''), 납세자: String(sheetData[i][sheetCol.납세자] || '')
+    };
+  }
+
+  if (!progress) {
+    const rootFolder = getDefaultFolder();
+    const queue = [];
+    const subfolders = rootFolder.getFolders();
+    while (subfolders.hasNext()) queue.push(subfolders.next().getId());
+    progress = { phase: 'discover', queue: queue, units: [], nextIndex: 0, candidates: [], scannedCases: 0 };
+  }
+
+  const startTime = Date.now();
+
+  // [2026.09.19 버그수정] "폴더 찾는 단계" 자체도 폴더가 많으면 시간이 걸려 6분 제한을 넘길 수
+  // 있어, 스캔 단계와 똑같이 시간예산을 걸고 여러 번에 나눠 이어간다. 이 단계가 안 끝났으면
+  // 아직 스캔을 시작하지도 못한 것이므로 화면에는 "폴더 확인 중"으로 보여준다.
+  if (progress.phase === 'discover') {
+    const expandResult = client_expandScanUnitsStep_(progress.queue, progress.units, caseByFolderId, startTime, CLIENT_NAME_SCAN_TIME_BUDGET_MS_);
+    if (expandResult.done) {
+      progress.phase = 'scan';
+    } else {
+      try {
+        cache.put(CLIENT_NAME_SCAN_PROP_, JSON.stringify(progress), 21600);
+      } catch (err) {
+        return { success: false, message: '사건 폴더 구조가 너무 커서 조사를 이어갈 수 없습니다(캐시 용량 초과).' };
+      }
+      return {
+        success: true, done: false, discovering: true,
+        scannedCases: 0, totalCases: progress.units.length, candidateCountSoFar: 0
+      };
+    }
+  }
+
+  const units = progress.units;
+  while (progress.nextIndex < units.length) {
+    if (Date.now() - startTime > CLIENT_NAME_SCAN_TIME_BUDGET_MS_) break;
+    const unit = units[progress.nextIndex];
+    progress.nextIndex++;
+    progress.scannedCases++;
+    let folder;
+    try { folder = DriveApp.getFolderById(unit.folderId); } catch (err) { continue; } // 삭제되었거나 접근 불가한 폴더는 건너뜀
+    const matched = caseByFolderId[unit.folderId];
+    // 시트에 연결 안 된(고아) 폴더는 폴더 이름 규칙을 파싱해서 고객명·납세자(상속이면 피상속인)를
+    // 최대한 복원한다 — 그래야 이런 폴더에서도 이미 아는 당사자가 "새 이름"으로 잘못 뽑히지 않는다.
+    const c = matched || Object.assign({ id: '', 사건명: folder.getName() }, client_parseCaseFolderName_(folder.getName()));
+    const fileObjs = [];
+    if (unit.known) {
+      // 이미 아는 사건 폴더는 "증빙"·"계약서" 같은 하위폴더까지 전부 그 사건의 파일로 본다
+      // (하위폴더는 client_expandScanUnitsStep_가 별도 단위로 만들지 않았으므로 여기서 재귀로 챙긴다).
+      client_listFilesRecursive_(folder, 0, CLIENT_NAME_SCAN_MAX_FILES_PER_CASE_, fileObjs);
+    } else {
+      // 모르는 폴더는 그 폴더 "자신"의 파일만 본다 — 하위 폴더는 이미 별도 단위로 등록돼 있어
+      // 여기서 재귀로 또 훑으면 같은 파일을 두 번 세게 된다.
+      const files = folder.getFiles();
+      while (files.hasNext() && fileObjs.length < CLIENT_NAME_SCAN_MAX_FILES_PER_CASE_) {
+        const f = files.next();
+        fileObjs.push({ id: f.getId(), name: f.getName(), mimeType: f.getMimeType() });
+      }
+    }
+    if (!fileObjs.length) continue;
+    const knownNames = [c.고객명, c.납세자].filter(function (n) { return n; });
+    let items;
+    try { items = client_extractNamesFromFilenames_(c.사건명, knownNames, fileObjs, apiKey); } catch (err) { continue; }
+    items.forEach(function (item) {
+      // 이름이 나온 파일 중 실제로 열어볼 수 있는 걸 그 사람 몫으로 한 번 더 열어 상세정보를
+      // 찾는다 — 파일명에 그 이름이 들어간 첫 번째 파일만 시도한다(여러 개면 비용만 커짐).
+      const matchingFile = fileObjs.filter(function (f) { return f.name.indexOf(item.성명) !== -1; })[0];
+      let detail = {};
+      if (matchingFile) {
+        try { detail = client_extractPersonDetailFromFile_(matchingFile.id, matchingFile.mimeType, item.성명, apiKey); } catch (err) { /* 상세정보 못 찾아도 이름·관계는 남긴다 */ }
+      }
+      progress.candidates.push(Object.assign({ 사건ID: c.id, 사건명: c.사건명, 성명: item.성명, 관계: item.관계 }, detail));
+    });
+  }
+
+  const done = progress.nextIndex >= units.length;
+  if (done) {
+    cache.remove(CLIENT_NAME_SCAN_PROP_);
+  } else {
+    try {
+      cache.put(CLIENT_NAME_SCAN_PROP_, JSON.stringify(progress), 21600); // 최대 6시간
+    } catch (err) {
+      // 사건 폴더나 후보가 지나치게 많아 캐시 값 한도(100KB)를 넘으면, 지금까지 찾은 후보만
+      // 결과로 돌려주고 이어서 진행은 포기한다 — 조용히 무한반복되는 것보다 낫다.
+      return {
+        success: true, done: true, truncated: true,
+        scannedCases: progress.scannedCases, totalCases: units.length,
+        candidates: progress.candidates, candidateCountSoFar: progress.candidates.length
+      };
+    }
+  }
+
+  return {
+    success: true, done: done,
+    scannedCases: progress.scannedCases, totalCases: units.length,
+    candidates: done ? progress.candidates : undefined,
+    candidateCountSoFar: progress.candidates.length
+  };
+}
+
+// [2026.09.19] "고객을 찾아도 관련사건을 매치하지 못하는거 아니냐"는 지적으로 추가 —
+// 메모에 사건명을 문구로만 남기던 것과 별개로, 사건ID가 있는(=작업관리 시트에 실제로 연결된)
+// 경우는 그 사건의 사건개요 "고객추가ID목록"(work_linkPartyClientIds_/WORK_ALWAYS_PARTY_FIELDS_
+// 와 같은 공동의뢰인 공용 칸)에 이 고객ID를 추가해, 고객관리 화면의 사건별 역할 배지
+// (clientRolesInCase_)에도 실제로 "의뢰인"으로 잡히게 만든다. AI가 구체적으로 추정한 관계
+// (예: "공동상속인")까지 세목별 전용 필드(상속인추가ID목록 등)에 정확히 넣지는 않는다 — 잘못
+// 짚었을 때 엉뚱한 역할로 오염시키는 것보다, 일단 "이 사건과 관계있다"는 것만 공용 칸에
+// 안전하게 남기고 구체적 관계는 메모의 문구로만 남긴다. 고아 폴더(사건ID 없음)는 애초에
+// 연결할 사건 자체가 시트에 없어 이 연결을 만들 수 없다 — 그런 경우는 메모만 남는다.
+function client_linkClientToCaseOverview_(caseId, clientId) {
+  if (!caseId || !clientId) return;
+  const sheet = work_getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const col = work_colMap_(data[0]);
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][col.id]) !== String(caseId)) continue;
+    let overview;
+    try { overview = JSON.parse(data[i][col.사건개요] || '{}'); } catch (e) { overview = {}; }
+    if (!overview || typeof overview !== 'object' || Array.isArray(overview)) overview = {};
+    const ids = Array.isArray(overview['고객추가ID목록']) ? overview['고객추가ID목록'] : [];
+    if (ids.indexOf(clientId) === -1) {
+      ids.push(clientId);
+      overview['고객추가ID목록'] = ids;
+      sheet.getRange(i + 1, col.사건개요 + 1).setValue(JSON.stringify(overview));
+    }
+    return;
+  }
+}
+
+// [2026.09.19] "등록할 때 관계나 출처를 어떻게 기록할 거냐" → 메모에 사건·추정관계를 남기고,
+// 이어서 "이름외의 정보는 아예 안 찾은 거냐"는 지적으로 파일 내용에서 찾은 전화번호·주소·
+// 주민등록번호(있는 경우만)도 같이 저장하도록 확장했다. 상세정보는 전부 새로 만들어지는
+// 고객에 한해서만 채운다(이미 있던 고객은 기존 값을 덮어쓰지 않음 — 잘못 읽었을 위험이 있는
+// AI 추출값으로 기존의 신뢰할 수 있는 데이터를 손상시키지 않기 위함). 사건 연결(위 함수)은
+// 새 고객이든 기존 고객이든 상관없이 항상 시도한다.
+function client_applyScannedNames(params) {
+  return withLock_(60000, function () {
+    const items = (params && params.items) || [];
+    let registered = 0;
+    items.forEach(function (item) {
+      const name = String(item.성명 || '').trim();
+      if (!name) return;
+      try {
+        const result = client_findOrCreateByName_(name, item.전화번호);
+        registered++;
+        if (item.사건ID) client_linkClientToCaseOverview_(item.사건ID, result.id);
+        if (result.isNew) {
+          const note = '[AI 전수조사] 사건: ' + (item.사건명 || '(미상)') + (item.관계 ? ' · 추정관계: ' + item.관계 : '');
+          const sheets = client_getSheets_();
+          const col = client_colMap_(sheets.clients.getDataRange().getValues()[0], CLIENT_HEADERS);
+          const found = client_findRow_(sheets.clients, col, result.id);
+          if (found) {
+            sheets.clients.getRange(found.rowIndex, col.메모 + 1).setValue(note);
+            if (item.주소) sheets.clients.getRange(found.rowIndex, col.주소 + 1).setValue(String(item.주소));
+            if (item.주민등록번호) {
+              sheets.clients.getRange(found.rowIndex, col.주민등록번호암호화 + 1)
+                .setNumberFormat('@').setValue(client_encryptRRN_(item.주민등록번호));
+            }
+          }
+        }
+      } catch (err) { /* 개별 실패는 건너뛰고 계속 진행 */ }
+    });
+    return { success: true, registered: registered };
+  });
+}
+
+const CONSULT_HEADERS = ['id', '고객ID', '고객명', '날짜', '담당자', '유형', '내용', '관계', '금액', '수취증빙', '리뷰', '생성일', '승인번호', '사건ID', '중복정리'];
 
 function client_getSheets_() {
   const ss = SpreadsheetApp.openById(CLIENT_SHEET_ID);
@@ -17161,7 +17599,11 @@ function client_readClient_(col, row) {
     id: row[col.id], 성명: String(row[col.성명] || ''), 전화번호: String(row[col.전화번호] || ''), 구분: row[col.구분],
     사업자번호: String(row[col.사업자번호] || ''), 메모: row[col.메모],
     등록일: client_dateStr_(row[col.등록일]), 수정일: client_dateStr_(row[col.수정일]),
-    추가연락처: client_parseExtraContacts_(row[col.추가연락처])
+    추가연락처: client_parseExtraContacts_(row[col.추가연락처]),
+    주소: String(row[col.주소] || ''),
+    // [2026.09.19 신규] 주민등록번호는 암호문조차 목록 조회에 안 실어보낸다 — 등록 여부만
+    // 알려주고, 실제 값은 client_getRRN을 따로 호출했을 때만(화면의 "보기" 버튼) 내려준다.
+    주민번호등록됨: !!String(row[col.주민등록번호암호화] || '').trim()
   };
 }
 
@@ -17180,7 +17622,8 @@ function client_readLog_(col, row) {
     id: row[col.id], 고객ID: row[col.고객ID], 고객명: row[col.고객명],
     날짜: client_dateStr_(row[col.날짜]), 담당자: row[col.담당자], 유형: row[col.유형],
     내용: row[col.내용], 관계: row[col.관계], 금액: row[col.금액], 수취증빙: row[col.수취증빙], 리뷰: row[col.리뷰],
-    생성일: row[col.생성일], 승인번호: row[col.승인번호], 사건ID: row[col.사건ID]
+    생성일: row[col.생성일], 승인번호: row[col.승인번호], 사건ID: row[col.사건ID],
+    중복정리: row[col.중복정리] || ''
   };
 }
 
@@ -17406,6 +17849,8 @@ function client_createClient(params) {
     newRow[col.등록일] = now;
     newRow[col.수정일] = now;
     newRow[col.추가연락처] = client_serializeExtraContacts_(params.추가연락처);
+    newRow[col.주소] = String(params.주소 || '').trim();
+    newRow[col.주민등록번호암호화] = client_encryptRRN_(params.주민등록번호);
     const rowIndex = sheets.clients.getLastRow() + 1;
     // [2026.08 버그수정] 전화번호·납세번호를 대시 없이 순수 숫자로 입력하면 구글시트가
     // 그 값을 숫자로 인식해 앞자리 0을 날려버리는 문제가 실제로 있었다(사용자가 직접 겪음)
@@ -17413,6 +17858,7 @@ function client_createClient(params) {
     sheets.clients.getRange(rowIndex, col.전화번호 + 1).setNumberFormat('@');
     sheets.clients.getRange(rowIndex, col.사업자번호 + 1).setNumberFormat('@');
     sheets.clients.getRange(rowIndex, col.추가연락처 + 1).setNumberFormat('@');
+    sheets.clients.getRange(rowIndex, col.주민등록번호암호화 + 1).setNumberFormat('@');
     sheets.clients.getRange(rowIndex, 1, 1, newRow.length).setValues([newRow]);
     SpreadsheetApp.flush();
     return { success: true, client: client_readClient_(col, newRow) };
@@ -17427,17 +17873,24 @@ function client_updateClient(params) {
     if (!found) return { success: false, message: '존재하지 않는 고객입니다.' };
     const row = found.row;
     const oldName = String(row[col.성명] || '').trim();
-    ['성명', '전화번호', '구분', '사업자번호', '메모'].forEach(function (key) {
+    ['성명', '전화번호', '구분', '사업자번호', '메모', '주소'].forEach(function (key) {
       if (params[key] !== undefined) row[col[key]] = String(params[key]).trim();
     });
     // 추가연락처는 배열({이름,전화번호} 목록)로 오므로 다른 필드처럼 그냥 String()하면
     // "[object Object]"가 되어버린다 — 전용 직렬화 함수를 거친다.
     if (params.추가연락처 !== undefined) row[col.추가연락처] = client_serializeExtraContacts_(params.추가연락처);
+    // [2026.09.19 신규] 주민등록번호는 화면이 "변경할 때만" 값을 채워 보낸다(평소엔 비워둠 —
+    // 목록 조회에 값 자체를 안 내려주므로 "기존 값을 그대로 되돌려보내는" 방식 자체가
+    // 불가능하기도 하다). 값이 왔을 때만 암호화해서 덮어쓰고, 안 왔으면 기존 암호문을 그대로 둔다.
+    if (params.주민등록번호 !== undefined && String(params.주민등록번호).trim()) {
+      row[col.주민등록번호암호화] = client_encryptRRN_(params.주민등록번호);
+    }
     row[col.수정일] = new Date();
     // 전화번호·납세번호 칸은 저장할 때마다 텍스트 서식으로 다시 잡아둔다(create와 같은 이유).
     sheets.clients.getRange(found.rowIndex, col.전화번호 + 1).setNumberFormat('@');
     sheets.clients.getRange(found.rowIndex, col.사업자번호 + 1).setNumberFormat('@');
     sheets.clients.getRange(found.rowIndex, col.추가연락처 + 1).setNumberFormat('@');
+    sheets.clients.getRange(found.rowIndex, col.주민등록번호암호화 + 1).setNumberFormat('@');
     sheets.clients.getRange(found.rowIndex, 1, 1, row.length).setValues([row]);
     SpreadsheetApp.flush();
     // [2026.09 버그수정] 사건 쪽에서 고객명을 고치면 연결된 고객 레코드 이름도 같이 바뀌도록
@@ -17532,9 +17985,14 @@ function client_getConsultLogs(params) {
   const clientId = String((params && params.고객ID) || '').trim();
   const caseId = String((params && params.사건ID) || '').trim();
   const q = String((params && params.search) || '').trim();
+  // [2026.09.19 신규] 중복으로 자동 정리된 기록은 대시보드·고객관리·처리개요 등 이 함수를
+  // 그대로 쓰는 다른 화면에서는 항상 안 보이는 게 맞다(집계에 안 잡혀야 함) — 수금관리
+  // 화면만 "흐리게 표시"를 위해 명시적으로 includeMerged:true를 넘겨 같이 받아간다.
+  const includeMerged = !!(params && params.includeMerged);
   const logs = [];
   for (let i = 1; i < data.length; i++) {
     if (!data[i][col.id]) continue;
+    if (!includeMerged && String(data[i][col.중복정리] || '').trim()) continue;
     if (clientId && String(data[i][col.고객ID] || '').trim() !== clientId) continue;
     if (caseId && String(data[i][col.사건ID] || '').trim() !== caseId) continue;
     if (q && String(data[i][col.고객명] || '').indexOf(q) === -1) continue;
@@ -17572,7 +18030,11 @@ function client_addConsultLog(params) {
     newRow[col.사건ID] = String(params.사건ID || '').trim();
     sheets.log.appendRow(newRow);
     SpreadsheetApp.flush();
-    return { success: true, log: client_readLog_(col, newRow) };
+    // 새로 추가된 기록이 이미 같은 고객·같은 날짜·같은 금액의 현금영수증 기록과 겹치면
+    // (사건폴더 파일스캔이 홈택스 가져오기와 같은 거래를 뒤늦게 또 기록하는 경우 등) 즉시
+    // 걸러낸다 — [[client_dedupCashReceiptLogs_]] 참고.
+    const dedupRemoved = 고객ID ? client_dedupCashReceiptLogs_(sheets.log, col, 고객ID) : 0;
+    return { success: true, log: client_readLog_(col, newRow), dedupRemoved: dedupRemoved };
   });
 }
 
@@ -17908,43 +18370,22 @@ function receipt_importHometaxExports_() {
       .sort(function (a, b) { return b - a; });
     rowsToDelete.forEach(function (rowNum) { logSheet.deleteRow(rowNum); result.cancelledRemoved++; });
 
-    // [2026.09.16 버그수정] 실사용 지적 — 최은진님 등 몇 건이 "중복"으로 확인됐다. 원인:
-    // 이 가져오기 기능이 생기기 전부터 이미 수동으로(또는 예전 현금영수증 파일스캔으로) 같은
-    // 날짜·금액의 현금영수증이 기록돼 있었는데, 그 옛 행에는 승인번호가 없어서(이 필드 자체가
-    // 그때는 없었음) 승인번호 기준 중복확인을 통과 못 하고 매번 새 행으로 또 쌓였다. 이제는
-    // 승인번호가 없는 기존 행 중에서 (고객명·날짜·금액·수취증빙=현금영수증)이 정확히 같은
-    // 것을 찾아 새 행을 만드는 대신 그 행에 승인번호만 채워 넣는다(기존 행이 이미 있다는
-    // 확실한 신호이므로) — 고객이 매칭된 건에만 적용한다(미연결 건은 어느 고객 것인지 몰라
-    // 비교 자체가 불가능).
-    const freshLogDataForDedup = logSheet.getDataRange().getValues();
-    const manualEntryByKey = {}; // "고객명::날짜::금액" → 시트상 행번호(승인번호 없는 현금영수증 행만)
-    for (let i = 1; i < freshLogDataForDedup.length; i++) {
-      if (String(freshLogDataForDedup[i][lcol.수취증빙] || '') !== '현금영수증') continue;
-      if (String(freshLogDataForDedup[i][lcol.승인번호] || '').trim()) continue;
-      const key = [String(freshLogDataForDedup[i][lcol.고객명] || '').trim(), client_dateStr_(freshLogDataForDedup[i][lcol.날짜]), String(freshLogDataForDedup[i][lcol.금액] || '')].join('::');
-      manualEntryByKey[key] = i + 1;
-    }
-
+    // [2026.09.16 버그수정, 2026.09.19 재수정] 예전엔 여기서 승인번호 없는 기존 행을 찾아
+    // 새 행을 만드는 대신 그 행에 승인번호만 조용히 채워 넣었다("백필") — 같은 거래가 두 번
+    // 쌓이는 걸 막으려는 의도였지만, 그 결과 "다운자료"라는 독립된 행 자체가 아예 생기지
+    // 않고 기존 발행자료 행에 흡수돼버려, 나중에 사건에 연결해도 흐리게 처리할 대상(다운자료
+    // 자신의 행)이 애초에 존재하지 않는 문제가 생겼다("다운자료를 독립적으로 사건에 연결하고
+    // 흐리게 처리하라"는 요구와 정면으로 충돌). 이제는 항상 새 독립된 다운자료 행을 만들고,
+    // 같은 거래인지 판단은 아래 client_dedupCashReceiptLogs_(날짜·금액 정확히 일치)에게
+    // 전적으로 맡긴다 — 중복이면 소프트 삭제(흐리게+되돌리기)로 처리되므로 데이터가 두 번
+    // 쌓이는 것 자체는 문제가 아니다.
     const now = new Date();
-    result.backfilled = 0;
     const rowsToAppend = [];
     newRecords
       .filter(function (rec) { return !cancelledApprovals[rec.승인번호]; }) // 같은 파일 안에서 승인 후 바로 취소된 건 제외
       .forEach(function (rec) {
         const client = receipt_matchClientByPhoneLast4_(rec.신분확인뒷4자리, clientRows, ccol);
         if (client) result.autoLinked++; else result.unlinked++;
-        const dedupKey = client ? [String(client[ccol.성명] || '').trim(), rec.날짜, String(rec.금액)].join('::') : null;
-        const existingManualRow = dedupKey ? manualEntryByKey[dedupKey] : null;
-        if (existingManualRow) {
-          logSheet.getRange(existingManualRow, lcol.승인번호 + 1).setValue(rec.승인번호);
-          const existingContent = String(logSheet.getRange(existingManualRow, lcol.내용 + 1).getValue() || '').trim();
-          if (!existingContent) {
-            logSheet.getRange(existingManualRow, lcol.내용 + 1).setValue('홈택스 현금영수증 자동수입 · 신분확인 ' + rec.신분확인뒷4자리 + (rec.용도구분 ? ' · ' + rec.용도구분 : ''));
-          }
-          delete manualEntryByKey[dedupKey]; // 같은 행을 두 번 재사용하지 않도록
-          result.backfilled++;
-          return;
-        }
         const newRow = new Array(CONSULT_HEADERS.length).fill('');
         newRow[lcol.id] = Utilities.getUuid();
         newRow[lcol.고객ID] = client ? client[ccol.id] : '';
@@ -17982,13 +18423,18 @@ function receipt_importHometaxExports_() {
     }
     if (result.reMatched) SpreadsheetApp.flush();
 
+    // [2026.09.19 신규] 이번 가져오기로 새로 고객ID가 채워진 건(신규 반영·재매칭)이 이미
+    // 있던 다른 경로(사건폴더 파일스캔·수동입력) 기록과 같은 거래로 겹칠 수 있다 — 전체
+    // 고객을 대상으로 한 번에 정리한다. [[client_dedupCashReceiptLogs_]] 참고.
+    result.dedupRemoved = client_dedupCashReceiptLogs_(logSheet, lcol);
+
     const reportText = '스캔한 파일: ' + result.filesScanned + '건\n' + files.map(function (f) { return '- ' + f.getName(); }).join('\n') + '\n\n' +
       '전체 데이터행: ' + result.rowsSeen + '건\n' +
       '신규 반영: ' + result.imported + '건(자동연결 ' + result.autoLinked + '건 / 미연결 ' + result.unlinked + '건)\n' +
-      '기존 수동입력 행에 승인번호만 채움(중복 생성 방지): ' + result.backfilled + '건\n' +
       '이미 반영되어 건너뜀: ' + result.alreadyImported + '건\n' +
       '취소 확인되어 삭제: ' + result.cancelledRemoved + '건\n' +
       '기존 미연결 중 새로 연결됨: ' + result.reMatched + '건\n' +
+      '다른 경로 기록과 겹쳐 자동 정리됨: ' + result.dedupRemoved + '건\n' +
       (result.errors.length ? '\n오류:\n' + result.errors.join('\n') : '');
     try {
       const chiefFolder = getChiefManagerFolder_();
@@ -19397,6 +19843,124 @@ function handlePostToGoogleBiz(body) {
   }
 }
 
+// [2026.09.19 신규] "수금관리에서 중복 삭제했는데 다시 살아난다"는 지적 — 원인은
+// receipt_importHometaxExports_가 "이 승인번호가 지금 시트에 있는지"만 보고 신규 여부를
+// 판단해서, 사람이 승인번호 있는 행을 지우면 다음 가져오기 때 그 승인번호가 사라진 것으로
+// 보고 다시 만들어버렸기 때문이었다. "삭제가 아니라, 고객 연결이 이루어지는 시점에 같은
+// 데이터를 내부적으로 걸러주는 기능이 필요하다"는 지적에 따라, 같은 거래가 서로 다른 경로
+// (사건폴더 파일스캔·홈택스 매출내역 가져오기·수동입력)로 각각 기록되는 상황 자체를 막는다.
+// [2026.09.19 수정] "착오로 연결한 것일 수도 있는데 흔적도 없이 사라지면 어떡하나"는 지적에
+// 따라 실제 삭제 대신 소프트 삭제로 변경 — 중복이라고 판단된 쪽의 '중복정리' 칸에 살아남은
+// 쪽의 id를 적어두기만 한다. client_getConsultLogs는 기본적으로 이 값이 있는 행을 안
+// 보여주고(집계에서 자동 제외), 수금관리 화면만 흐리게 표시 + "되돌리기" 버튼
+// (client_undoDedupConsultLog)을 제공한다.
+// [2026.09.19 재수정] "발행자료를 흐리게 한다고? 다운자료를 흐리게 해야지" — 우선순위가
+// 거꾸로였다. 사건에 이미 등록되어 있던 발행자료(수동입력·파일스캔 등, 승인번호 없음)가
+// 1차 기록이고, 홈택스 매출내역에서 나중에 대조 목적으로 가져온 다운자료(승인번호 있음)는
+// 그 발행자료가 이미 존재한다는 게 확인되면 중복정리 대상이 되어야 한다 — 승인번호가
+// "없는" 쪽을 보존하고, 승인번호가 "있는" 쪽을 정리한다.
+// 이미 정리된(중복정리 값이 있는) 행은 그룹에서 아예 빼서 매번 다시 처리하거나 엉뚱하게
+// 재배정되지 않게 한다. clientIdFilter를 생략하면 시트 전체를 고객별로 묶어서 검사한다
+// (홈택스 가져오기처럼 여러 고객이 한 번에 영향받을 때 사용).
+function client_dedupCashReceiptLogs_(logSheet, col, clientIdFilter) {
+  const data = logSheet.getDataRange().getValues();
+  const groups = {};
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][col.중복정리] || '').trim()) continue; // 이미 정리된 행은 다시 묶지 않음
+    const 고객ID = String(data[i][col.고객ID] || '').trim();
+    if (!고객ID) continue;
+    if (clientIdFilter && 고객ID !== clientIdFilter) continue;
+    if (String(data[i][col.수취증빙] || '') !== '현금영수증') continue;
+    const key = 고객ID + '::' + client_dateStr_(data[i][col.날짜]) + '::' + String(data[i][col.금액] || '');
+    (groups[key] = groups[key] || []).push(i);
+  }
+  let mergedCount = 0;
+  Object.keys(groups).forEach(function (key) {
+    const idxs = groups[key];
+    if (idxs.length < 2) return;
+    idxs.sort(function (a, b) {
+      const aApproval = !!String(data[a][col.승인번호] || '').trim();
+      const bApproval = !!String(data[b][col.승인번호] || '').trim();
+      if (aApproval !== bApproval) return aApproval ? 1 : -1; // 승인번호 "없는"(기존 발행자료) 쪽을 앞으로(보존)
+      const aTime = data[a][col.생성일] ? new Date(data[a][col.생성일]).getTime() : 0;
+      const bTime = data[b][col.생성일] ? new Date(data[b][col.생성일]).getTime() : 0;
+      return aTime - bTime; // 먼저 생성된 쪽을 앞으로(보존)
+    });
+    const survivorId = String(data[idxs[0]][col.id] || '');
+    idxs.slice(1).forEach(function (i) {
+      logSheet.getRange(i + 1, col.중복정리 + 1).setValue(survivorId);
+      mergedCount++;
+    });
+  });
+  if (mergedCount) SpreadsheetApp.flush();
+  return mergedCount;
+}
+
+// [2026.09.19 신규, 1회성] "발행자료를 흐리게 한다고? 다운자료를 흐리게 해야지" 지적으로
+// 보존 우선순위를 뒤집었지만(위 client_dedupCashReceiptLogs_), 그 수정 전에 이미 잘못된
+// 방향(승인번호 없는 발행자료가 정리되고, 승인번호 있는 다운자료가 살아남은 상태)으로
+// 처리된 건이 세무사님 확인상 전체의 99%나 됐다 — 하나씩 "되돌리기"로는 감당이 안 되므로
+// 일괄 정정 도구가 필요하다. 승인번호 없는(발행자료) 쪽이 정리되어 있고 그 살아남은 쪽이
+// 승인번호 있는(다운자료) 경우만 골라 방향을 뒤집는다(발행자료를 복구하고 다운자료를 정리
+// 대상으로). 동률(둘 다 승인번호 있음/없음)이던 쌍은 애초에 이 버그의 영향을 안 받았으므로
+// (생성일로만 갈렸음) 손대지 않는다.
+function client_findDedupDirectionMistakes_() {
+  const sheets = client_getSheets_();
+  const data = sheets.log.getDataRange().getValues();
+  const col = client_colMap_(data[0], CONSULT_HEADERS);
+  const byId = {};
+  for (let i = 1; i < data.length; i++) {
+    const id = String(data[i][col.id] || '').trim();
+    if (id) byId[id] = i;
+  }
+  const mistakes = [];
+  for (let i = 1; i < data.length; i++) {
+    const loserId = String(data[i][col.id] || '').trim();
+    const survivorId = String(data[i][col.중복정리] || '').trim();
+    if (!loserId || !survivorId) continue;
+    if (String(data[i][col.승인번호] || '').trim()) continue; // 정리된 쪽(진 쪽)이 이미 승인번호 있음 = 방향 맞음
+    const survivorRowIdx = byId[survivorId];
+    if (survivorRowIdx === undefined) continue; // 살아남은 쪽을 못 찾으면(그 사이 삭제 등) 건너뜀
+    if (!String(data[survivorRowIdx][col.승인번호] || '').trim()) continue; // 산 쪽도 승인번호 없으면 방향 문제 아님
+    mistakes.push({
+      loserRowIndex: i + 1, loserId: loserId,
+      survivorRowIndex: survivorRowIdx + 1, survivorId: survivorId,
+      고객명: data[i][col.고객명], 날짜: client_dateStr_(data[i][col.날짜]), 금액: data[i][col.금액]
+    });
+  }
+  return mistakes;
+}
+
+function client_fixDedupPriorityDirection(params) {
+  return withLock_(60000, function () {
+    const mistakes = client_findDedupDirectionMistakes_();
+    if (!params.apply) return { success: true, dryRun: true, count: mistakes.length, items: mistakes };
+    const sheets = client_getSheets_();
+    const col = client_colMap_(sheets.log.getDataRange().getValues()[0], CONSULT_HEADERS);
+    mistakes.forEach(function (m) {
+      sheets.log.getRange(m.loserRowIndex, col.중복정리 + 1).setValue(''); // 발행자료 복구
+      sheets.log.getRange(m.survivorRowIndex, col.중복정리 + 1).setValue(m.loserId); // 다운자료를 정리 대상으로
+    });
+    SpreadsheetApp.flush();
+    return { success: true, applied: mistakes.length };
+  });
+}
+
+// [2026.09.19 신규] 위 자동 정리가 착오였을 때(서로 다른 거래가 우연히 날짜·금액이 같아서
+// 잘못 겹쳐진 경우) 되돌리는 버튼의 서버쪽 짝 — '중복정리' 표시만 지워서 다시 정상 수금
+// 내역으로 되돌린다. 원본 데이터는 애초에 지운 적이 없으므로 복구할 것도 없다.
+function client_undoDedupConsultLog(params) {
+  return withLock_(8000, function () {
+    const sheets = client_getSheets_();
+    const col = client_colMap_(sheets.log.getDataRange().getValues()[0], CONSULT_HEADERS);
+    const found = client_findRow_(sheets.log, col, params.id);
+    if (!found) return { success: false, message: '존재하지 않는 자문내역입니다.' };
+    sheets.log.getRange(found.rowIndex, col.중복정리 + 1).setValue('');
+    SpreadsheetApp.flush();
+    return { success: true };
+  });
+}
+
 function client_updateConsultLog(params) {
   return withLock_(8000, function () {
     const sheets = client_getSheets_();
@@ -19425,7 +19989,13 @@ function client_updateConsultLog(params) {
     }
     sheets.log.getRange(found.rowIndex, 1, 1, row.length).setValues([row]);
     SpreadsheetApp.flush();
-    return { success: true, log: client_readLog_(col, row) };
+    // 고객 연결(또는 변경)이 이루어진 시점 — 그 고객 안에 같은 거래로 보이는 중복이 있으면
+    // 바로 걸러낸다. 방금 수정한 이 행 자체가 "지울 쪽"으로 판정될 수도 있다(예: 승인번호
+    // 없는 파일스캔 기록을 지금 막 고객 연결했는데, 이미 승인번호 있는 홈택스 기록이 같은
+    // 고객에 있던 경우) — 그래도 안전하다, 화면은 저장 후 항상 목록을 다시 불러온다.
+    const 고객ID = String(row[col.고객ID] || '').trim();
+    const dedupRemoved = 고객ID ? client_dedupCashReceiptLogs_(sheets.log, col, 고객ID) : 0;
+    return { success: true, log: client_readLog_(col, row), dedupRemoved: dedupRemoved };
   });
 }
 
@@ -19453,6 +20023,12 @@ function client_doPost(body) {
     case 'client_audit_duplicates': return client_auditDuplicatesAction_(body);
     case 'client_merge_clients': return client_mergeClients(body);
     case 'client_send_sms': return client_sendSms(body);
+    case 'client_get_rrn': return client_getRRN(body);
+    case 'client_migrate_rrn_from_biz_field': return client_migrateRrnFromBizField(body);
+    case 'client_scan_case_files_for_names': return client_scanCaseFilesForNames(body);
+    case 'client_apply_scanned_names': return client_applyScannedNames(body);
+    case 'client_undo_dedup_log': return client_undoDedupConsultLog(body);
+    case 'client_fix_dedup_priority': return client_fixDedupPriorityDirection(body);
     default: return { success: false, message: '알 수 없는 action: ' + body.action };
   }
 }
@@ -19538,6 +20114,133 @@ const WORK_SEMOK_LABELS_ = { transfer: '양도', gift: '증여', inheritance: '�
 // 필요하다(클라이언트 JS 상수는 서버 코드에서 참조할 수 없음). 한쪽만 고치고 잊어버리기
 // 쉬우니 casehandling.html의 원본을 고칠 때 여기도 같이 고칠 것.
 const WORK_TAXPAYER_FIELD_BY_SEMOK_ = { transfer: 'trTransferorName', gift: 'giftDoneeName', inheritance: 'ihDeceasedName' };
+// [2026.09.19 신규] "특정 사건에서는 의뢰인·납세자일 뿐이지, 모든 사람은 최대한 고객으로
+// 확보해야 한다" — 사건개요 안에 실제 살아있는 관계자(양도인/증여인·수증인/상속인/사업
+// 납세자·임직원) 성명이 채워지면 그 이름으로 고객관리에 자동 등록(이미 있으면 그 고객과
+// 연결)한다. 피상속인(망자)은 제외 — "망자를 무슨 고객관리를 하냐"는 지적대로, 관리할
+// 대상이 아니라 사건 식별용 이름표일 뿐이라 이 매핑에 넣지 않는다.
+// [2026.09.19 확장] "의뢰인·양도인·증여인·수증인·상속인도 모두 여러 명일 수 있다"는 지적 —
+// 다만 기존 단일 이름 필드(trTransferorName 등)는 세액계산·보고서·사건명 생성이 이미
+// "대표 1명"을 전제로 쓰고 있어(taxcalc.html 등과 필드명 공유) 그대로 다중값으로 바꾸면
+// 회귀 위험이 크다. 그래서 기존 필드는 손대지 않고, 대표 외 나머지 인원은 세목별 새
+// "추가 명단" 필드(쉼표로 구분한 텍스트)에 따로 받아 배열로 등록/연결한다. 공동의뢰인도
+// 같은 방식으로 세목과 무관하게 공용 필드 하나로 받는다.
+// nameField/idField=단일 성명 1건, namesField/idsField=쉼표구분 여러 명(각각 등록해 id 배열로 저장).
+const WORK_PARTY_NAME_TO_ID_FIELDS_ = {
+  transfer: [
+    { nameField: 'trTransferorName', idField: 'trTransferorId' },
+    { namesField: 'trTransferorExtraNames', idsField: 'trTransferorExtraIds' }
+  ],
+  gift: [
+    { nameField: 'giftDonorName', idField: 'giftDonorId' },
+    { namesField: 'giftDonorExtraNames', idsField: 'giftDonorExtraIds' },
+    { nameField: 'giftDoneeName', idField: 'giftDoneeId' },
+    { namesField: 'giftDoneeExtraNames', idsField: 'giftDoneeExtraIds' }
+  ],
+  inheritance: [
+    { nameField: '상속인성명', idField: '상속인ID' },
+    { namesField: '상속인추가명단', idsField: '상속인추가ID목록' }
+  ],
+  // [2026.09.19 신규] 사업 사건개요 자체가 아직 없어서(구조화된 사건개요 없이 최소 구현으로
+  // 시작한 세목) 여기서 처음 생김 — 납세자(대표 1명) + 공동납세자·임직원(여러 명, 쉼표구분).
+  business: [
+    { nameField: 'bizTaxpayerName', idField: 'bizTaxpayerId' },
+    { namesField: 'bizTaxpayerExtraNames', idsField: 'bizTaxpayerExtraIds' },
+    { namesField: 'bizEmployeeNames', idsField: 'bizEmployeeIds' }
+  ]
+};
+// 세목과 무관하게 항상 확인하는 공용 필드 — 공동의뢰인(대표 의뢰인은 이미 고객ID로 관리되고
+// 있으므로, 그 외 추가 인원만 여기로 받는다).
+const WORK_ALWAYS_PARTY_FIELDS_ = [
+  { namesField: '고객추가명단', idsField: '고객추가ID목록' }
+];
+// 이름이 있는 필드만 골라 client_findOrCreateByName_(전화번호 없이 이름만)로 고객관리에
+// 등록/연결한다 — overview 객체를 그대로 변형(mutate)해서 돌려준다. 등록 실패해도(락 경합
+// 등) 사건 저장 자체를 막지 않도록 에러를 삼킨다. namesField는 쉼표로 나눠 각각 등록하고
+// id 배열을 idsField에 저장한다.
+function work_linkPartyClientIds_(overview, seMok) {
+  if (!overview || typeof overview !== 'object' || Array.isArray(overview)) return overview;
+  const fields = (WORK_PARTY_NAME_TO_ID_FIELDS_[seMok] || []).concat(WORK_ALWAYS_PARTY_FIELDS_);
+  fields.forEach(function (f) {
+    if (f.namesField) {
+      const raw = String(overview[f.namesField] || '').trim();
+      if (!raw) return;
+      const names = raw.split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+      const ids = [];
+      names.forEach(function (name) {
+        try { ids.push(client_findOrCreateByName_(name).id); } catch (err) { /* 이 이름만 건너뜀 */ }
+      });
+      if (ids.length) overview[f.idsField] = ids;
+      return;
+    }
+    const name = String(overview[f.nameField] || '').trim();
+    if (!name) return;
+    try {
+      overview[f.idField] = client_findOrCreateByName_(name).id;
+    } catch (err) { /* 등록 실패해도 치명적이지 않음 — 다음 저장 때 다시 시도됨 */ }
+  });
+  return overview;
+}
+
+// [2026.09.19 신규, 1회성] 위 자동 연결은 "이번에 저장되는" 사건에만 적용되므로, 이미 등록된
+// 수백 건의 기존 사건 안에 있는 관계자 이름(양도인/증여인·수증인/상속인)은 그대로 남아있다 —
+// 전수조사해서 한꺼번에 고객관리에 등록/연결한다(이미 연결된 필드는 건너뜀, 되돌릴 필요가
+// 없는 순수 추가 작업이라 삭제·덮어쓰기 없음).
+function work_backfillPartyClientIds(params) {
+  return withLock_(120000, function () {
+    const sheet = work_getSheet_();
+    const data = sheet.getDataRange().getValues();
+    const col = work_colMap_(data[0]);
+    const pending = [];
+    for (let i = 1; i < data.length; i++) {
+      const fields = (WORK_PARTY_NAME_TO_ID_FIELDS_[String(data[i][col.세목] || '').trim()] || []).concat(WORK_ALWAYS_PARTY_FIELDS_);
+      let overview;
+      try { overview = JSON.parse(data[i][col.사건개요] || '{}'); } catch (e) { continue; }
+      if (!overview || typeof overview !== 'object' || Array.isArray(overview)) continue;
+      fields.forEach(function (f) {
+        if (f.namesField) {
+          const raw = String(overview[f.namesField] || '').trim();
+          if (!raw || overview[f.idsField]) return; // 쉼표목록은 한 번 채워지면 다시 안 건드림(재입력 시 저장 훅이 처리)
+          pending.push({ rowIndex: i + 1, namesField: f.namesField, idsField: f.idsField, raw: raw });
+          return;
+        }
+        const name = String(overview[f.nameField] || '').trim();
+        if (!name || overview[f.idField]) return;
+        pending.push({ rowIndex: i + 1, idField: f.idField, name: name });
+      });
+    }
+    if (!params || !params.apply) return { success: true, dryRun: true, count: pending.length };
+    let registered = 0;
+    const overviewByRow = {};
+    pending.forEach(function (p) {
+      if (!overviewByRow[p.rowIndex]) {
+        try { overviewByRow[p.rowIndex] = JSON.parse(sheet.getRange(p.rowIndex, col.사건개요 + 1).getValue() || '{}'); } catch (e) { overviewByRow[p.rowIndex] = {}; }
+      }
+      const ov = overviewByRow[p.rowIndex];
+      if (p.namesField) {
+        if (ov[p.idsField]) return;
+        const names = p.raw.split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+        const ids = [];
+        names.forEach(function (name) {
+          const result = client_findOrCreateByName_(name);
+          if (result.isNew) registered++;
+          ids.push(result.id);
+        });
+        if (ids.length) ov[p.idsField] = ids;
+        return;
+      }
+      if (ov[p.idField]) return; // 이번 실행 안에서 이미 처리됨
+      const result = client_findOrCreateByName_(p.name);
+      if (result.isNew) registered++;
+      ov[p.idField] = result.id;
+    });
+    Object.keys(overviewByRow).forEach(function (rowIndex) {
+      sheet.getRange(Number(rowIndex), col.사건개요 + 1).setValue(JSON.stringify(overviewByRow[rowIndex]));
+    });
+    if (Object.keys(overviewByRow).length) SpreadsheetApp.flush();
+    return { success: true, applied: pending.length, casesUpdated: Object.keys(overviewByRow).length, clientsRegistered: registered };
+  });
+}
 // [2026.09] 사건개요 — "사건개요서" 구조화 양식(1단계: 양도소득세만). 세목별로 정해진
 // 항목({양도물건, 양도가액, 취득일...} 등, WORK_CASE_OVERVIEW_FIELDS_ 참고)에 사실관계를
 // 채워넣는 JSON 객체(배열이 아니라 객체 — {필드key: 값}). 처리방향(어떻게 처리할지 판단)과는
@@ -20644,7 +21347,9 @@ function work_createCase(params) {
     // 생성 시점엔 사건개요를 통째로 빈 객체로 시작해서 그 동기화가 아예 한 번도 안 걸렸다 —
     // 생성 시점에도 WORK_TAXPAYER_FIELD_BY_SEMOK_과 같은 규칙으로 미리 채워 넣는다.
     const taxpayerFieldForCreate_ = 납세자 && WORK_TAXPAYER_FIELD_BY_SEMOK_[seMok];
-    newRow[col.사건개요] = taxpayerFieldForCreate_ ? JSON.stringify((function () { const o = {}; o[taxpayerFieldForCreate_] = 납세자; return o; })()) : '{}';
+    const initialOverview_ = taxpayerFieldForCreate_ ? (function () { const o = {}; o[taxpayerFieldForCreate_] = 납세자; return o; })() : {};
+    work_linkPartyClientIds_(initialOverview_, seMok);
+    newRow[col.사건개요] = JSON.stringify(initialOverview_);
     // [2026.09.18 신규] "상담을 자문과 상담으로 세분 — 파일이 작성 안 돼 폴더가 필요 없는
     // 사건은 상담, 검토서·보고서가 작성되는 사건은 자문으로" — 상담 사건은 개별 Drive 폴더를
     // 만들지 않는다(폴더ID 빈 값). 이 값이 비어있으면 위쪽의 의뢰서템플릿 자동적용·아래쪽의
@@ -20820,7 +21525,10 @@ function work_updateCase(params) {
           newItems.push(item);
         });
         if (newItems.length || labelsChanged) row[col.증빙목록] = JSON.stringify(currentEvidence.concat(newItems));
-        if (overviewProvided || shouldWipeOverview) row[col.사건개요] = JSON.stringify(overview);
+        if (overviewProvided || shouldWipeOverview) {
+          work_linkPartyClientIds_(overview, seMokForTemplate);
+          row[col.사건개요] = JSON.stringify(overview);
+        }
       }
     }
     if (params.고객명 !== undefined) {
@@ -21210,6 +21918,7 @@ function work_doPost(body) {
     case 'work_apply_filing_file_dates': return work_applyFilingFileDates(body);
     case 'work_resync_all_calendars': return work_resyncAllCalendars();
     case 'work_apply_receipt_only_case_cleanup': return work_applyReceiptOnlyCaseCleanup(body);
+    case 'work_backfill_party_client_ids': return work_backfillPartyClientIds(body);
     default: return { success: false, message: '알 수 없는 action: ' + body.action };
   }
 }

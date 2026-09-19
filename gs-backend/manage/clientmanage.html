@@ -3,6 +3,8 @@
     <button type="button" id="btnClientNew" class="save-btn">+ 새 고객</button>
     <span class="editor-filename">👤 고객 명단 · 서비스 이력</span>
     <button type="button" id="btnClientDupAudit" class="ghost-btn" title="이름이 같거나 전화번호가 같은데 고객이 두 명 이상으로 나뉘어 있는지 점검">🔁 중복 고객 점검</button>
+    <button type="button" id="btnClientMigrateRrn" class="ghost-btn" title="예전에 '납세번호' 칸에 적어둔 개인 주민등록번호를 찾아 암호화된 주민등록번호 칸으로 옮기고, 원래 칸은 비웁니다(사업자등록번호 형식은 그대로 둡니다)">🔐 주민번호 이관</button>
+    <button type="button" id="btnClientScanCaseFiles" class="ghost-btn" title="모든 사건 폴더(하위 폴더 포함)를 AI로 전수조사해서, 사건개요에는 없지만 파일에 등장하는 관계자 이름·전화번호·주소·주민등록번호를 찾아 고객으로 등록할 수 있게 보여줍니다(사건·파일이 많으면 시간이 걸립니다)">🗂 사건폴더 전수조사</button>
     <div class="spacer"></div>
     <input type="text" id="clientSearchInput" placeholder="이름으로 검색…">
   </div>
@@ -227,7 +229,8 @@
       '<label>추가 연락처(공동의뢰인·가족 — 현금영수증 자동연결에 쓰입니다)</label>' +
       ccExtraContactsBlockHtml_('ccNewExtra') +
       '<label>구분<br><select id="ccNewType" style="width:100%;">' + CLIENT_TIER_OPTIONS_.map(function(t){ return '<option value="' + t + '"' + (t === '보통' ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></label>' +
-      '<label>납세번호<br><input type="text" id="ccNewBiz" size="14" placeholder="(선택)"></label>' +
+      '<label>주소<br><input type="text" id="ccNewAddr" size="14" placeholder="(선택)"></label>' +
+      '<label>주민등록번호<br><input type="text" id="ccNewRrn" size="14" placeholder="(선택, 암호화되어 저장됩니다)"></label>' +
       '<label>메모<br><textarea id="ccNewMemo" style="width:100%; min-height:60px; font-family:inherit;" placeholder="(선택)"></textarea></label>' +
       '<div style="display:flex; gap:8px; margin-top:8px;">' +
       '<button type="button" id="ccNewSave" class="save-btn">저장</button>' +
@@ -248,7 +251,8 @@
         성명: 성명, 전화번호: document.getElementById('ccNewPhone').value.trim(),
         추가연락처: ccNewExtraList._contacts,
         구분: document.getElementById('ccNewType').value.trim(),
-        사업자번호: document.getElementById('ccNewBiz').value.trim(),
+        주소: document.getElementById('ccNewAddr').value.trim(),
+        주민등록번호: document.getElementById('ccNewRrn').value.trim(),
         메모: document.getElementById('ccNewMemo').value.trim()
       }).then(function(res){
         if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); return; }
@@ -280,10 +284,15 @@
       '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:14px;">' +
       '<input type="text" id="ccEditPhone" placeholder="전화번호" value="' + escapeHtml(c.전화번호 || '') + '" size="13">' +
       '<select id="ccEditType">' + CLIENT_TIER_OPTIONS_.map(function(t){ return '<option value="' + t + '"' + (t === (c.구분 || '보통') ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select>' +
-      '<input type="text" id="ccEditBiz" placeholder="납세번호" value="' + escapeHtml(c.사업자번호 || '') + '" size="12">' +
+      '<input type="text" id="ccEditAddr" placeholder="주소" value="' + escapeHtml(c.주소 || '') + '" size="20">' +
       '<button type="button" id="ccSaveClient" class="save-btn">저장</button>' +
       '<button type="button" id="ccSendSms" class="ghost-btn" title="이 고객에게 문자를 보냅니다(현금영수증 등 파일 링크를 메시지에 붙여넣어 같이 보낼 수 있습니다)">📱 문자</button>' +
       '<button type="button" id="ccDeleteClient" class="btn danger" title="삭제">삭제</button>' +
+      '</div>' +
+      '<div style="margin-bottom:14px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">' +
+      '<label style="font-size:12px; color:var(--sub);">주민등록번호(' + (c.주민번호등록됨 ? '등록됨' : '미등록') + ')</label>' +
+      (c.주민번호등록됨 ? '<button type="button" id="ccRevealRrn" class="ghost-btn" style="padding:2px 8px; font-size:12px;">👁 보기</button><span id="ccRrnValue" style="font-size:12px; color:var(--ink); display:none;"></span>' : '') +
+      '<input type="text" id="ccEditRrn" placeholder="변경 시에만 입력(암호화 저장)" size="18" style="font-size:12px;">' +
       '</div>' +
       '<div style="margin-bottom:14px;"><label style="font-size:12px; color:var(--sub);">추가 연락처(공동의뢰인·가족 — 현금영수증 자동연결에도 쓰입니다)</label><br>' +
       ccExtraContactsBlockHtml_('ccEditExtra') + '</div>' +
@@ -297,6 +306,24 @@
     container.querySelector('#ccEditPhone').addEventListener('input', function(e){ e.target.value = formatPhoneInput_(e.target.value); });
     var ccEditExtraList = ccWireExtraContacts_('ccEditExtra', c.추가연락처, container);
 
+    var ccRevealRrnBtn = container.querySelector('#ccRevealRrn');
+    if (ccRevealRrnBtn){
+      ccRevealRrnBtn.addEventListener('click', function(){
+        var valueSpan = container.querySelector('#ccRrnValue');
+        if (valueSpan.style.display !== 'none' && valueSpan.textContent){
+          valueSpan.style.display = 'none';
+          ccRevealRrnBtn.textContent = '👁 보기';
+          return;
+        }
+        callGas('client_get_rrn', { id: c.id }).then(function(res){
+          if (res.error || res.success === false){ showToast(res.error || res.message || '조회 실패', 'error'); return; }
+          valueSpan.textContent = res.주민등록번호 || '(값 없음)';
+          valueSpan.style.display = '';
+          ccRevealRrnBtn.textContent = '숨기기';
+        }).catch(function(){ showToast('조회 중 오류가 발생했습니다.', 'error'); });
+      });
+    }
+
     container.querySelector('#ccSaveClient').addEventListener('click', function(){
       var name = container.querySelector('#ccEditName').value.trim();
       if (!name){ showToast('성명은 비워둘 수 없습니다.', 'warning'); return; }
@@ -305,7 +332,8 @@
         전화번호: container.querySelector('#ccEditPhone').value.trim(),
         추가연락처: ccEditExtraList._contacts,
         구분: container.querySelector('#ccEditType').value.trim(),
-        사업자번호: container.querySelector('#ccEditBiz').value.trim(),
+        주소: container.querySelector('#ccEditAddr').value.trim(),
+        주민등록번호: container.querySelector('#ccEditRrn').value.trim(),
         메모: container.querySelector('#ccEditMemo').value.trim()
       }).then(function(res){
         if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); return; }
@@ -454,6 +482,34 @@
     });
   }
 
+  // [2026.09.19 신규] "고객이 어떤 사건에서의 관계가 확인되지 않잖아 — 의뢰인·양도인·
+  // 증여인·수증인·상속인 구분이 되어야 한다" — 이 고객이 그 사건에 고객ID(의뢰인)로만
+  // 연결된 게 아니라, 사건개요 안의 관계자ID(양도인/증여인·수증인/상속인)로만 연결된
+  // 경우도 있다(예: 증여자는 의뢰인이 아닐 수 있음). 한 사건 안에서 여러 역할을 동시에
+  // 가질 수도 있으므로(의뢰인이면서 양도인인 경우 등) 배열로 전부 모아 표시한다.
+  // [2026.09.19 확장] "의뢰인·양도인·증여인·수증인·상속인도 모두 여러 명일 수 있다" — 대표
+  // 1명은 기존처럼 단일 ID 필드, 그 외 인원은 "…ExtraIds"류 배열 필드에 담긴다(공동의뢰인은
+  // 세목과 무관한 공용 필드). 배열 쪽은 포함 여부(indexOf)로 확인.
+  function clientRolesInCase_(wc, clientId){
+    var roles = [];
+    if (wc.고객ID === clientId) roles.push('의뢰인');
+    var ov = wc.사건개요 || {};
+    if (Array.isArray(ov['고객추가ID목록']) && ov['고객추가ID목록'].indexOf(clientId) !== -1) roles.push('의뢰인');
+    if (ov.trTransferorId === clientId) roles.push('양도인');
+    if (Array.isArray(ov.trTransferorExtraIds) && ov.trTransferorExtraIds.indexOf(clientId) !== -1) roles.push('양도인');
+    if (ov.giftDonorId === clientId) roles.push('증여인');
+    if (Array.isArray(ov.giftDonorExtraIds) && ov.giftDonorExtraIds.indexOf(clientId) !== -1) roles.push('증여인');
+    if (ov.giftDoneeId === clientId) roles.push('수증인');
+    if (Array.isArray(ov.giftDoneeExtraIds) && ov.giftDoneeExtraIds.indexOf(clientId) !== -1) roles.push('수증인');
+    if (ov['상속인ID'] === clientId) roles.push('상속인');
+    if (Array.isArray(ov['상속인추가ID목록']) && ov['상속인추가ID목록'].indexOf(clientId) !== -1) roles.push('상속인');
+    if (ov.bizTaxpayerId === clientId) roles.push('납세자');
+    if (Array.isArray(ov.bizTaxpayerExtraIds) && ov.bizTaxpayerExtraIds.indexOf(clientId) !== -1) roles.push('납세자');
+    if (Array.isArray(ov.bizEmployeeIds) && ov.bizEmployeeIds.indexOf(clientId) !== -1) roles.push('임직원');
+    // 대표 필드와 추가명단 양쪽에 같은 사람이 실수로 겹쳐 들어간 경우, 배지가 중복 표시되지 않게 정리.
+    return roles.filter(function(r, i){ return roles.indexOf(r) === i; });
+  }
+
   function loadClientLogs_(c, container){
     container = container || clientDetail;
     var listEl = container.querySelector('#ccLogList');
@@ -463,7 +519,7 @@
         listEl.innerHTML = '<div class="log-empty">' + escapeHtml(res.error || res.message || '불러오지 못했습니다.') + '</div>';
         return;
       }
-      var cases = (res.cases || []).filter(function(wc){ return wc.고객ID === c.id; });
+      var cases = (res.cases || []).filter(function(wc){ return clientRolesInCase_(wc, c.id).length > 0; });
       if (!cases.length){
         listEl.innerHTML = '<div class="log-empty">아직 이력이 없습니다.</div>';
         return;
@@ -473,7 +529,7 @@
       cases.forEach(function(wc){
         var row = document.createElement('div');
         row.className = 'log-entry';
-        renderCaseHistoryRow_(row, wc);
+        renderCaseHistoryRow_(row, wc, clientRolesInCase_(wc, c.id));
         listEl.appendChild(row);
       });
     }).catch(function(){
@@ -481,14 +537,18 @@
     });
   }
 
-  function renderCaseHistoryRow_(row, wc){
+  function renderCaseHistoryRow_(row, wc, roles){
     var semokLabel = (typeof WORK_SEMOK_LABELS !== 'undefined' && WORK_SEMOK_LABELS[wc.세목]) || wc.세목 || '';
     var deadlineLabel = typeof workDeadlineFieldLabel_ === 'function' ? workDeadlineFieldLabel_(wc.업무유형) : '법정일';
+    var rolesHtml = (roles && roles.length)
+      ? ' · ' + roles.map(function(r){ return '<span style="background:var(--gold-light); color:var(--navy-deep); border-radius:4px; padding:1px 6px; font-size:11px; font-weight:700;">' + escapeHtml(r) + '</span>'; }).join(' ')
+      : '';
     row.innerHTML =
       '<div class="log-date">' + escapeHtml(wc.의뢰일 ? fmtDateShort_(wc.의뢰일) : '') + '</div>' +
       '<div class="log-text">' +
       '🗂 <b>' + escapeHtml(wc.사건명 || '') + '</b> · ' + escapeHtml(semokLabel) + (wc.업무유형 ? ' · ' + escapeHtml(wc.업무유형) : '') +
       ' · <span style="color:' + (wc.상태 === '완료' ? '#16a34a' : 'var(--sub)') + ';">' + escapeHtml(wc.상태 || '') + '</span>' +
+      rolesHtml +
       (wc.법정일 ? '<br>' + escapeHtml(deadlineLabel) + ': ' + escapeHtml(fmtDateShort_(wc.법정일)) : '') +
       '</div>';
   }
@@ -671,6 +731,162 @@
   }
   document.getElementById('btnClientDupAudit').addEventListener('click', openClientDupAuditModal_);
 
+  // [2026.09.19 신규] "납세번호는 처음부터 주민등록번호를 의미하는거였다" — 암호화 필드가
+  // 생기기 전까지 개인 고객 주민등록번호가 평문으로 이 칸에 섞여 있었다는 걸 확인받고 만든
+  // 1회성 이관 도구. 위 중복정리 방향 정정 버튼과 동일한 dry-run(count 확인) → 확인창 →
+  // apply 패턴.
+  var btnClientMigrateRrn = document.getElementById('btnClientMigrateRrn');
+  btnClientMigrateRrn.addEventListener('click', function(){
+    btnClientMigrateRrn.disabled = true;
+    var originalMigrateText = btnClientMigrateRrn.textContent;
+    btnClientMigrateRrn.textContent = '확인 중…';
+    callGas('client_migrate_rrn_from_biz_field', {}).then(function(res){
+      btnClientMigrateRrn.textContent = originalMigrateText;
+      if (res.error || res.success === false){ btnClientMigrateRrn.disabled = false; showToast(res.error || res.message || '확인 실패', 'error'); return; }
+      if (!res.count){
+        btnClientMigrateRrn.disabled = false;
+        showToast('납세번호 칸에 남아있는 주민등록번호 형식의 값이 없습니다.', 'success');
+        return;
+      }
+      nxConfirm_('납세번호 칸에 주민등록번호로 보이는 값이 ' + res.count + '건 있습니다. 지금 암호화된 주민등록번호 칸으로 옮기고 납세번호 칸은 비울까요?').then(function(ok){
+        if (!ok){ btnClientMigrateRrn.disabled = false; return; }
+        btnClientMigrateRrn.textContent = '이관 중…';
+        callGas('client_migrate_rrn_from_biz_field', { apply: true }).then(function(applyRes){
+          btnClientMigrateRrn.disabled = false;
+          btnClientMigrateRrn.textContent = originalMigrateText;
+          if (applyRes.error || applyRes.success === false){ showToast(applyRes.error || applyRes.message || '이관 실패', 'error'); return; }
+          showToast(applyRes.applied + '건을 이관했습니다.', 'success');
+          loadClients();
+        }).catch(function(){
+          btnClientMigrateRrn.disabled = false;
+          btnClientMigrateRrn.textContent = originalMigrateText;
+          showToast('이관 중 오류가 발생했습니다.', 'error');
+        });
+      });
+    }).catch(function(){
+      btnClientMigrateRrn.disabled = false;
+      btnClientMigrateRrn.textContent = originalMigrateText;
+      showToast('확인 중 오류가 발생했습니다.', 'error');
+    });
+  });
+
+  // [2026.09.19 신규] "고객사건 밑 사건폴더의 모든 파일을 전수조사해서 모든 고객을 일괄등록해달라"
+  // — 사건개요(구조화된 필드)에는 없지만 실제 사건 폴더에 올라온 파일 이름에만 등장하는 관계자를
+  // 찾기 위해, 서버가 사건 폴더들을 훑어 AI로 파일명에서 사람 이름을 뽑아낸다. 사건 수가 많으면
+  // Apps Script 6분 실행 제한 때문에 한 번에 안 끝날 수 있어(client_scan_case_files_for_names가
+  // done:true를 줄 때까지) 반복 호출한다 — 화면에 "N/전체 사건 확인 중"으로 진행상황을 보여준다.
+  // AI가 이름을 잘못 짚을 수 있으므로 곧바로 등록하지 않고, 전부 모은 뒤 사람이 체크박스로
+  // 골라 선택한 것만 등록한다.
+  // "공동상속인" + "로"가 아니라 "공동상속인" + "으로"가 맞다(받침 있는 글자 뒤는 "으로") —
+  // 유니코드 한글 음절 코드로 마지막 글자의 받침 유무를 계산해 조사를 고른다.
+  function csrRoParticle_(word){
+    var last = String(word || '').trim().slice(-1);
+    var code = last.charCodeAt(0) - 0xAC00;
+    if (code < 0 || code > 11171) return '로'; // 한글 음절이 아니면(영문 등) 기본값
+    return (code % 28 === 0) ? '로' : '으로';
+  }
+
+  // [2026.09.19] "겨우 2건 찾았다"는 반응에 정작 몇 개 폴더를 확인했는지(scannedCases)를
+  // 물어보니 세무사님도 기억 못 하셨다 — 진행 중에만 잠깐 버튼 글자로 보이고 사라지는 정보라
+  // 화면에 안 남았던 것. 결과 창 제목에 "확인한 폴더 수"를 같이 남겨서 "많이 훑었는데 후보가
+  // 적게 나온 것"(파일명이 단서가 될 만큼 정보를 안 담고 있다는 뜻)과 "애초에 폴더를 얼마
+  // 못 훑은 것"(탐색 자체가 문제)을 다음부터는 한눈에 구분할 수 있게 한다.
+  function openClientScanReviewModal_(candidates, scannedCases){
+    var scanNote = (typeof scannedCases === 'number') ? ('사건 폴더 ' + scannedCases + '개를 확인했습니다. ') : '';
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+    if (!candidates.length){
+      overlay.innerHTML =
+        '<div class="modal-panel" style="width:min(600px, 96vw);">' +
+          '<div class="modal-head"><span>🗂 사건폴더 전수조사 결과</span><span class="modal-close" id="csrClose">✕</span></div>' +
+          '<div class="modal-body"><div class="log-empty">' + scanNote + '사건개요에 없는 새 이름을 파일명에서 찾지 못했습니다.</div></div>' +
+        '</div>';
+      document.body.appendChild(overlay);
+      overlay.querySelector('#csrClose').onclick = function(){ overlay.remove(); };
+      overlay.addEventListener('click', function(e){ if (e.target === overlay) overlay.remove(); });
+      return;
+    }
+    var html = '<div class="modal-panel" style="width:min(760px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
+      '<div class="modal-head"><span>🗂 사건폴더 전수조사 결과(' + candidates.length + '건)</span><span class="modal-close" id="csrClose">✕</span></div>' +
+      '<div class="modal-body" style="overflow-y:auto;">' +
+      '<div class="taxcalc-result-note" style="margin-bottom:8px;">' + scanNote + '그 중 사건 폴더 안 파일 이름에서 AI가 찾아낸 이름은 아래와 같습니다. 실제 관계자가 맞는 것만 체크하고 "선택 등록"을 누르세요 — 틀리게 찾은 항목은 체크를 풀면 등록되지 않습니다.</div>' +
+      candidates.map(function(c, i){
+        var detailParts = [];
+        if (c.전화번호) detailParts.push('📞 ' + escapeHtml(c.전화번호));
+        if (c.주소) detailParts.push('🏠 ' + escapeHtml(c.주소));
+        if (c.주민등록번호) detailParts.push('🪪 주민등록번호 발견');
+        return '<div style="padding:5px 0; border-bottom:1px solid var(--line);">' +
+          '<label style="display:flex; align-items:center; gap:8px; cursor:pointer; flex-wrap:wrap;">' +
+          '<input type="checkbox" class="csrItem" data-idx="' + i + '" checked>' +
+          '<b>' + escapeHtml(c.성명) + '</b>' +
+          (c.관계 ? '<span style="color:var(--navy); font-size:12px;">(' + escapeHtml(c.관계) + csrRoParticle_(c.관계) + ' 추정)</span>' : '') +
+          '<span style="color:var(--sub); font-size:12px;">사건: ' + escapeHtml(c.사건명 || '(이름없음)') + (c.사건ID ? '' : ' (작업관리에 연결 안 된 폴더 — 사건 연결 없이 고객만 등록됨)') + '</span>' +
+          '</label>' +
+          (detailParts.length ? '<div style="margin-left:26px; font-size:12px; color:var(--ink);">' + detailParts.join(' · ') + '</div>' : '') +
+          '</div>';
+      }).join('') +
+      '</div>' +
+      '<div style="display:flex; justify-content:flex-end; gap:8px; margin-top:10px;">' +
+      '<button type="button" class="save-btn" id="csrApply">선택 등록</button>' +
+      '</div>' +
+      '</div>';
+    overlay.innerHTML = html;
+    document.body.appendChild(overlay);
+    function close(){ overlay.remove(); }
+    overlay.querySelector('#csrClose').onclick = close;
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+    overlay.querySelector('#csrApply').addEventListener('click', function(){
+      var btn = this;
+      var checked = Array.prototype.slice.call(overlay.querySelectorAll('.csrItem:checked'))
+        .map(function(el){ return candidates[Number(el.getAttribute('data-idx'))]; });
+      if (!checked.length){ showToast('선택된 항목이 없습니다.', 'warning'); return; }
+      btn.disabled = true;
+      btn.textContent = '등록 중…';
+      callGas('client_apply_scanned_names', { items: checked }).then(function(res){
+        if (res.error || res.success === false){ showToast(res.error || res.message || '등록 실패', 'error'); btn.disabled = false; btn.textContent = '선택 등록'; return; }
+        showToast(res.registered + '명을 고객으로 등록했습니다.', 'success');
+        loadClients();
+        close();
+      }).catch(function(){ showToast('등록 중 오류가 발생했습니다.', 'error'); btn.disabled = false; btn.textContent = '선택 등록'; });
+    });
+  }
+
+  var btnClientScanCaseFiles = document.getElementById('btnClientScanCaseFiles');
+  btnClientScanCaseFiles.addEventListener('click', function(){
+    nxConfirm_('모든 사건 폴더(하위 폴더 포함)를 AI로 훑어 새 관계자 이름을 찾고, 해당 파일을 열어 전화번호·주소·주민등록번호도 같이 찾습니다. 사건·파일이 많으면 시간이 꽤 걸릴 수 있습니다. 시작할까요?').then(function(ok){
+      if (!ok) return;
+      btnClientScanCaseFiles.disabled = true;
+      var originalScanText = btnClientScanCaseFiles.textContent;
+      function step(){
+        callGas('client_scan_case_files_for_names', {}).then(function(res){
+          if (res.error || res.success === false){
+            btnClientScanCaseFiles.disabled = false;
+            btnClientScanCaseFiles.textContent = originalScanText;
+            showToast(res.error || res.message || '조사 실패', 'error');
+            return;
+          }
+          btnClientScanCaseFiles.textContent = res.discovering
+            ? '폴더 확인 중… (' + res.totalCases + '개 발견)'
+            : '조사 중… ' + res.scannedCases + '/' + res.totalCases + '건 (후보 ' + res.candidateCountSoFar + '명)';
+          if (res.done){
+            btnClientScanCaseFiles.disabled = false;
+            btnClientScanCaseFiles.textContent = originalScanText;
+            if (res.truncated){ showToast('사건·후보가 너무 많아 여기까지만 조사하고 중단했습니다. 아래 결과를 먼저 등록한 뒤 다시 실행해주세요.', 'warning'); }
+            openClientScanReviewModal_(res.candidates || [], res.totalCases);
+            return;
+          }
+          step();
+        }).catch(function(){
+          btnClientScanCaseFiles.disabled = false;
+          btnClientScanCaseFiles.textContent = originalScanText;
+          showToast('조사 중 오류가 발생했습니다.', 'error');
+        });
+      }
+      step();
+    });
+  });
+
   // ---- 고객정보 빠른보기 팝업 (작업관리 사건 상세의 👤 버튼에서 호출) ----
   // [2026.09 리팩터] 예전엔 별도 DOM 없이 메인 목록의 #clientDetail 노드를 그대로 모달 안으로
   // 옮겼다가 닫을 때 되돌리는 방식이라, 메인 목록에 저장 안 한 수정 내용이 있는 상태에서 이
@@ -682,7 +898,7 @@
   var quickViewSnapshot_ = null;
   function quickViewCurrentSignature_(container){
     container = container || clientDetail;
-    var ids = ['ccEditName', 'ccEditPhone', 'ccEditType', 'ccEditBiz', 'ccEditMemo'];
+    var ids = ['ccEditName', 'ccEditPhone', 'ccEditType', 'ccEditMemo'];
     return ids.map(function(id){ var el = container.querySelector('#' + id); return el ? el.value : ''; }).join('');
   }
 

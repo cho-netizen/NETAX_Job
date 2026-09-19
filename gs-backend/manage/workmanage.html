@@ -23,6 +23,7 @@
         <button type="button" id="btnApplyFilingFileDates" class="wt-item" title="양도코리아 신고파일 목록(이름+세목+파일 작성일)으로 해당 사건의 완료일을 지정">📥 신고파일 작성일 반영</button>
         <button type="button" id="btnResyncCalendars" class="wt-item" title="완료일 보정 도구들이 시트값만 고치고 캘린더는 안 고쳤던 문제 — 모든 사건의 [NX] 캘린더 일정을 지금 값 기준으로 다시 맞춥니다">📅 캘린더 재동기화</button>
         <button type="button" id="btnReceiptOnlyCleanup" class="wt-item" title="사건 폴더 안에 현금영수증 파일만 있거나 관련파일이 아예 없는(빈 폴더) 사건을 찾아, 현금영수증은 상담사건 폴더로 옮기고(고객명_현금영수증으로 개명) 사건 폴더는 휴지통으로 보낸 뒤 업무유형을 상담으로 정리">🧾 서류 없는 사건 정리(상담으로)</button>
+        <button type="button" id="btnBackfillPartyClients" class="wt-item" title="사건개요 안의 양도인·증여인·수증인·상속인 이름을 전수조사해서 고객관리에 없으면 새로 등록하고, 있으면 연결합니다(피상속인은 대상 아님). 이미 연결된 건 건너뜁니다">👥 관계자 고객등록 일괄 반영</button>
       </div>
     </div>
     <div class="spacer"></div>
@@ -155,6 +156,46 @@
     if (receiptCleanupBtn && !receiptCleanupBtn.dataset.inited){
       receiptCleanupBtn.dataset.inited = '1';
       receiptCleanupBtn.addEventListener('click', openReceiptOnlyCleanupModal_);
+    }
+    // [2026.09.19 신규, 1회성] "모든 고객은 최대한 확보해야 한다" — 이미 등록된 사건들의
+    // 사건개요 안 관계자 이름(양도인/증여인·수증인/상속인)을 전수조사해서 고객관리에
+    // 등록/연결한다. 순수 추가 작업(기존 값 삭제·덮어쓰기 없음)이라 "중복정리 방향 일괄
+    // 정정"과 같은 가벼운 확인 한 번 + 즉시 적용 패턴을 그대로 쓴다.
+    var backfillPartyBtn = document.getElementById('btnBackfillPartyClients');
+    if (backfillPartyBtn && !backfillPartyBtn.dataset.inited){
+      backfillPartyBtn.dataset.inited = '1';
+      backfillPartyBtn.addEventListener('click', function(){
+        backfillPartyBtn.disabled = true;
+        var originalText = backfillPartyBtn.textContent;
+        backfillPartyBtn.textContent = '확인 중…';
+        callGas('work_backfill_party_client_ids', {}).then(function(res){
+          backfillPartyBtn.textContent = originalText;
+          if (res.error || res.success === false){ backfillPartyBtn.disabled = false; showToast(res.error || res.message || '확인 실패', 'error'); return; }
+          if (!res.count){
+            backfillPartyBtn.disabled = false;
+            showToast('새로 등록/연결할 관계자가 없습니다.', 'success');
+            return;
+          }
+          nxConfirm_('관계자 이름 ' + res.count + '건을 고객관리에 등록/연결합니다(이미 있는 고객이면 그 고객과 연결). 계속할까요?').then(function(ok){
+            if (!ok){ backfillPartyBtn.disabled = false; return; }
+            backfillPartyBtn.textContent = '반영 중…';
+            callGas('work_backfill_party_client_ids', { apply: true }).then(function(applyRes){
+              backfillPartyBtn.disabled = false;
+              backfillPartyBtn.textContent = originalText;
+              if (applyRes.error || applyRes.success === false){ showToast(applyRes.error || applyRes.message || '반영 실패', 'error'); return; }
+              showToast('사건 ' + applyRes.casesUpdated + '건에서 관계자 ' + applyRes.applied + '건을 연결했습니다(신규 고객 등록 ' + applyRes.clientsRegistered + '명).', 'success');
+            }).catch(function(){
+              backfillPartyBtn.disabled = false;
+              backfillPartyBtn.textContent = originalText;
+              showToast('반영 중 오류가 발생했습니다.', 'error');
+            });
+          });
+        }).catch(function(){
+          backfillPartyBtn.disabled = false;
+          backfillPartyBtn.textContent = originalText;
+          showToast('확인 중 오류가 발생했습니다.', 'error');
+        });
+      });
     }
     // [2026.09.18 신규] 완료일 정비도구 5개를 드롭다운 하나로 묶음 — 버튼을 누르면 열고,
     // 메뉴 안의 도구를 하나 고르면(또는 바깥을 클릭하면) 닫는다.

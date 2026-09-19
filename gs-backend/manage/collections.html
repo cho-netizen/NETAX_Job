@@ -1,7 +1,13 @@
+<style>
+  /* 세무사님 지적 — "날짜색상을 검정으로, 가독성이 떨어진다." .log-date는 여러 화면이
+     같이 쓰는 공용 클래스(작업일지 등)라 여기서는 수금관리 화면 안에서만 덮어쓴다. */
+  #view-collections .log-date{ color:var(--ink); }
+</style>
 <div class="view" id="view-collections">
   <div class="editor-toolbar">
     <button type="button" id="btnColNew" class="save-btn">+ 수금 추가</button>
     <button type="button" id="btnColImportHometax" class="ghost-btn" title="고객사건/0_NX_0 폴더의 홈택스 매출내역 엑셀을 읽어 새로 추가된 현금영수증만 반영합니다">🧾 홈택스 매출내역 가져오기</button>
+    <button type="button" id="btnColFixDedupDirection" class="ghost-btn" title="예전에는 다운자료(홈택스)를 남기고 발행자료를 흐리게 정리하는 반대 방향으로 처리됐습니다. 이 버튼 한 번으로 그렇게 잘못 정리된 건을 전부 찾아 한꺼번에 바로잡습니다 — 하나씩 되돌릴 필요 없습니다(1회성 정비도구)">🔀 중복정리 방향 일괄 정정</button>
     <span class="editor-filename">💰 전체 고객 수금 내역(자문내역 중 수금 기록)</span>
     <div class="spacer"></div>
     <input type="text" id="colSearchInput" list="clientNameOptions" placeholder="고객명으로 검색…" size="10">
@@ -11,6 +17,11 @@
     <label style="display:flex; align-items:center; gap:4px; font-size:12.5px; color:var(--sub); white-space:nowrap;">
       <input type="checkbox" id="colUnlinkedOnly"> 미연결만
     </label>
+    <select id="colSourceFilter" title="발행자료(승인번호 없음)와 다운자료(홈택스, 승인번호 있음)를 나눠 볼 수 있습니다 — 사건 하나에 이론상 발행자료 1건+다운자료 1건, 총 2건이 있어야 합니다">
+      <option value="" selected>전체</option>
+      <option value="issued">발행자료만</option>
+      <option value="download">다운자료만</option>
+    </select>
   </div>
   <div class="view-body">
     <div class="card" id="colNewFormCard" style="display:none;">
@@ -92,6 +103,12 @@
   var colList = document.getElementById('colList');
   var colLogsCache_ = [];
   var colAllCasesCache_ = []; // [2026.09.15 신규] 수금-사건 연결용 — 사건 선택 드롭다운을 채우는 데 씀
+  // [2026.09.19 신규] "연결한 것도 제대로 연결됐는지 확인이 안 되니 화면에 계속 남겨두자" —
+  // "미연결만" 필터를 켜놓고 하나씩 연결해 나가는 도중에는, 방금 연결한 항목이 그 자리에서
+  // 바로 사라지지 않고 남아있어야 눈으로 확인할 수 있다. 이번 방문(또는 필터를 직접 다시
+  // 켤 때까지) 동안 저장한 항목의 id를 여기 기록해두고, "미연결만" 필터가 이 id들만은
+  // 예외로 계속 보여주게 한다.
+  var colJustEditedIds_ = {};
 
   function initCollections(){
     // [2026.09.18 버그수정] "작업관리에는 수정이 되어 있는데 수금관리에만 잘못 표시된다 —
@@ -101,6 +118,7 @@
     // 수금관리로 돌아오면 방문 이전 시점의 캐시가 계속 남아있었다. 이 화면엔 딱히 한 번만
     // 걸어둬야 하는 이벤트 리스너가 없으므로(전부 스크립트 로드 시 이미 한 번 걸림), 탭을
     // 열 때마다 사건·고객·수금 내역을 매번 다시 불러온다.
+    colJustEditedIds_ = {}; // 탭을 새로 방문하면 "방금 연결한 것 계속 보여주기" 예외도 초기화
     callGas('work_get_cases', {}).then(function(res){
       colAllCasesCache_ = res.cases || [];
     }).catch(function(){}).then(function(){
@@ -143,7 +161,12 @@
   function loadCollections_(){
     colList.innerHTML = '<div class="spinner">불러오는 중…</div>';
     var search = document.getElementById('colSearchInput').value.trim();
-    callGas('client_get_consult_logs', search ? { search: search } : {}).then(function(res){
+    var fetchPayload = search ? { search: search } : {};
+    // 중복으로 자동 정리된 기록도 이 화면에서만은 같이 받아온다(흐리게 표시 + 되돌리기
+    // 위해) — 다른 화면(대시보드·고객관리·처리개요)은 이 옵션 없이 그대로 호출하므로
+    // 자동으로 안 보이고 집계에도 안 잡힌다.
+    fetchPayload.includeMerged = true;
+    callGas('client_get_consult_logs', fetchPayload).then(function(res){
       if (res.error || res.success === false){
         colList.innerHTML = '<div class="empty-row">' + escapeHtml(res.error || res.message || '불러오지 못했습니다.') + '</div>';
         return;
@@ -157,22 +180,44 @@
     var from = document.getElementById('colFromDate').value;
     var to = document.getElementById('colToDate').value;
     var unlinkedOnly = document.getElementById('colUnlinkedOnly').checked;
+    var sourceFilter = document.getElementById('colSourceFilter').value;
     var logs = colLogsCache_.filter(function(l){
       if (from && String(l.날짜 || '') < from) return false;
       if (to && String(l.날짜 || '') > to) return false;
-      if (unlinkedOnly && l.고객ID) return false;
+      // 사건 하나에 이론상 발행자료 1건+다운자료(승인번호 있음) 1건, 총 2건이 있어야 한다 —
+      // 실제로 그런지 나눠서 확인할 수 있게 종류별로 거른다.
+      if (sourceFilter === 'issued' && l.승인번호) return false;
+      if (sourceFilter === 'download' && !l.승인번호) return false;
+      // [2026.09.19 버그수정] 중복정리(소프트삭제)된 기록은 방금 내가 직접 저장한 행이 아니라
+      // "그 저장 때문에 옆에서 같이 정리된 다른 기존 행"인 경우가 대부분이라 colJustEditedIds_
+      // 예외에 안 걸린다 — "미연결만" 필터가 켜져 있으면 이 기록까지 같이 숨어버려서, 착오로
+      // 합쳐진 걸 확인해야 하는 원래 목적 자체가 무력화됐다. 중복정리된 기록은 어떤 필터
+      // 상태에서도 항상 보여야 한다.
+      if (unlinkedOnly && l.고객ID && !l.중복정리 && !colJustEditedIds_[l.id]) return false;
       return true;
     });
     var summaryEl = document.getElementById('colSummary');
-    colRenderStats_(logs);
+    // [2026.09.19] 중복으로 자동 정리된 기록은 목록엔 흐리게 남기지만, 합계·통계·미연결
+    // 건수 집계에서는 항상 뺀다 — 실제로 처리해야 할 금액이 아니기 때문.
+    var activeLogs = logs.filter(function(l){ return !l.중복정리; });
+    colRenderStats_(activeLogs);
     if (!logs.length){
-      colList.innerHTML = '<div class="empty-row">조건에 맞는 수금 내역이 없습니다.</div>';
+      // [2026.09.19] "1건도 안 보인다"는 신고를 화면 새로고침 없이도 바로 원인 파악할 수
+      // 있게, 지금 걸려있는 종류 필터와 무관하게 전체 데이터 안에 실제로 승인번호 있는
+      // 기록(다운자료)이 몇 건인지 항상 같이 보여준다 — 0건이면 진짜로 그 화면엔 없는
+      // 것이고, 0건이 아닌데 목록에 안 뜬다면 필터/렌더링 쪽 문제로 좁혀진다.
+      var totalDownloadCount = colLogsCache_.filter(function(l){ return l.승인번호; }).length;
+      colList.innerHTML = '<div class="empty-row">조건에 맞는 수금 내역이 없습니다. (참고: 전체 ' + colLogsCache_.length + '건 중 승인번호 있는 다운자료 ' + totalDownloadCount + '건)</div>';
       summaryEl.textContent = '';
       return;
     }
-    var total = logs.reduce(function(s, l){ return s + (Number(l.금액) || 0); }, 0);
-    var unlinkedCount = colLogsCache_.filter(function(l){ return !l.고객ID; }).length;
-    summaryEl.textContent = logs.length + '건 · 합계 ' + colAmountText_(total) + (unlinkedCount ? ' · 미연결 ' + unlinkedCount + '건' : '');
+    var total = activeLogs.reduce(function(s, l){ return s + (Number(l.금액) || 0); }, 0);
+    var unlinkedCount = colLogsCache_.filter(function(l){ return !l.고객ID && !l.중복정리; }).length;
+    // [2026.09.19] 지금 어떤 필터가 걸려있든, 전체 데이터 안에 승인번호 있는(다운자료) 기록이
+    // 몇 건인지 항상 같이 보여준다 — "다운자료가 안 보인다"는 신고가 오면 이 숫자만으로도
+    // "애초에 이 화면이 아는 다운자료가 0건인지" vs "있는데 화면에 안 뜨는지"를 바로 구분한다.
+    var totalDownloadCount = colLogsCache_.filter(function(l){ return l.승인번호; }).length;
+    summaryEl.textContent = activeLogs.length + '건 · 합계 ' + colAmountText_(total) + (unlinkedCount ? ' · 미연결 ' + unlinkedCount + '건' : '') + ' · 전체 다운자료 ' + totalDownloadCount + '건';
     colList.innerHTML = '';
     logs.forEach(function(l){
       var row = document.createElement('div');
@@ -243,7 +288,35 @@
     return raw;
   }
 
+  // [2026.09.19 신규] "고객연결하면 흔적도 없이 사라지는데, 착오로 연결한 것도 있을 수
+  // 있는데 어떡하나" — 중복으로 자동 정리된 기록을 실제로 지우지 않고(client_dedupCashReceiptLogs_
+  // 참고) 흐리게 남겨서, 착오였다면 여기서 바로 되돌릴 수 있게 한다.
+  function colRenderRowMerged_(row, l){
+    row.style.opacity = '0.55';
+    row.style.cursor = 'default';
+    row.style.borderColor = '';
+    row.innerHTML =
+      '<div class="log-date">' + escapeHtml(fmtDateShort_(l.날짜)) + '</div>' +
+      '<div class="log-text" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' +
+      escapeHtml(colClientDisplayName_(l)) + ' · ' + escapeHtml(colAmountText_(l.금액)) +
+      (l.수취증빙 ? ' · ' + escapeHtml(l.수취증빙) : '') +
+      ' · <span>🔗 다른 기록과 중복으로 판단되어 자동 정리됨(집계 제외)</span>' +
+      '</div>' +
+      '<button type="button" class="ghost-btn col-undo-dedup-btn" style="flex:0 0 auto; padding:3px 8px; font-size:11.5px;">되돌리기</button>';
+    row.querySelector('.col-undo-dedup-btn').addEventListener('click', function(){
+      nxConfirm_('이 기록을 다시 정상 수금 내역으로 되돌릴까요? (중복이 아니라 착오로 정리된 경우에 사용)').then(function(ok){
+        if (!ok) return;
+        callGas('client_undo_dedup_log', { id: l.id }).then(function(res){
+          if (res.error || res.success === false){ showToast(res.error || res.message || '되돌리기 실패', 'error'); return; }
+          showToast('되돌렸습니다.', 'success');
+          loadCollections_();
+        }).catch(function(){ showToast('되돌리기 중 오류가 발생했습니다.', 'error'); });
+      });
+    });
+  }
+
   function colRenderRowView_(row, l){
+    if (l.중복정리){ colRenderRowMerged_(row, l); return; }
     var memo = colDisplayMemo_(l);
     var unlinked = !l.고객ID;
     // 비고는 한 줄만 보여주고 나머지는 ...으로 줄이며, 전체는 클릭해서 모달로 본다(원칙②).
@@ -303,6 +376,13 @@
     // 건다 — 좁을수록 개별 링크가 먼저 잘리므로, 좁을수록 이 폴백이 더 유용해진다.
     row.style.cursor = 'pointer';
     row.addEventListener('click', function(e){
+      // [2026.09.19 버그수정] "고객연결하려고 하면 수금상세 팝업이 떠서 막는다" — 이 리스너는
+      // row 엘리먼트 자체에 붙어서, colRenderRowEdit_가 row.innerHTML을 편집 폼으로 통째로
+      // 바꿔도(같은 row 엘리먼트를 재사용) 그대로 살아있었다. 편집 폼 안의 입력칸·드롭다운은
+      // 여기 나열된 보기모드 전용 클래스 어디에도 안 걸려서, 편집 폼을 클릭할 때마다 이 폴백이
+      // 걸려 상세 팝업이 뜨며 연결 작업을 방해했다. 지금 편집 폼이 떠 있는지(저장 버튼 존재로
+      // 판단)부터 먼저 확인해서, 편집 중에는 이 폴백 자체를 완전히 건너뛴다.
+      if (row.querySelector('.colEditSave')) return;
       if (e.target.closest('.col-goto-client, .col-goto-case, .col-link-case, .col-memo, .log-edit, .log-del, .col-link-btn')) return;
       colShowDetail_(l);
     });
@@ -391,7 +471,10 @@
       if (matchedClientId_) editPayload.고객ID = matchedClientId_;
       callGas('client_update_consult_log', editPayload).then(function(res){
         if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); return; }
-        showToast('저장했습니다.', 'success');
+        showToast('저장했습니다.' + (res.dedupRemoved ? ' (다른 경로로 이미 있던 중복 기록 ' + res.dedupRemoved + '건 자동 정리됨)' : ''), 'success');
+        // "미연결만" 필터를 켜둔 채로 방금 연결한 항목도, 제대로 연결됐는지 바로 눈으로
+        // 확인할 수 있도록 이번 방문 동안은 그 필터에서 예외로 계속 보여준다.
+        colJustEditedIds_[l.id] = true;
         loadCollections_();
       }).catch(function(){ showToast('저장 중 오류가 발생했습니다.', 'error'); });
     });
@@ -430,7 +513,7 @@
     if (matchedNewClientId_) newPayload.고객ID = matchedNewClientId_;
     callGas('client_add_consult_log', newPayload).then(function(res){
       if (res.error || res.success === false){ showToast(res.error || res.message || '추가 실패', 'error'); return; }
-      showToast('수금 내역을 추가했습니다.', 'success');
+      showToast('수금 내역을 추가했습니다.' + (res.dedupRemoved ? ' (다른 경로로 이미 있던 중복 기록 ' + res.dedupRemoved + '건 자동 정리됨)' : ''), 'success');
       document.getElementById('colNewCancel').click();
       loadCollections_();
     }).catch(function(){ showToast('추가 중 오류가 발생했습니다.', 'error'); });
@@ -439,7 +522,11 @@
   document.getElementById('colSearchInput').addEventListener('input', loadCollections_);
   document.getElementById('colFromDate').addEventListener('change', colRenderList_);
   document.getElementById('colToDate').addEventListener('change', colRenderList_);
-  document.getElementById('colUnlinkedOnly').addEventListener('change', colRenderList_);
+  document.getElementById('colUnlinkedOnly').addEventListener('change', function(){
+    colJustEditedIds_ = {}; // 필터를 직접 다시 켜고 끄면, 그 사이 연결한 항목 예외도 초기화하고 필터 원칙대로 다시 적용
+    colRenderList_();
+  });
+  document.getElementById('colSourceFilter').addEventListener('change', colRenderList_);
   document.getElementById('colStatPeriod').addEventListener('change', colRenderList_);
 
   // [2026.09.15 신규] 고객사건/0_NX_0의 홈택스 매출내역 엑셀을 지금 바로 반영 — 세무사님이
@@ -454,12 +541,52 @@
       btnColImportHometax.textContent = originalText;
       if (res.error){ showToast(res.error, 'error'); return; }
       if (res.errors && res.errors.length){ showToast('일부 오류: ' + res.errors.join(' / '), 'warning'); }
-      showToast('파일 ' + res.filesScanned + '개 확인 · 신규 ' + res.imported + '건(자동연결 ' + res.autoLinked + ' / 미연결 ' + res.unlinked + ') · 이미반영 ' + res.alreadyImported + '건' + (res.backfilled ? ' · 중복방지(승인번호만 채움) ' + res.backfilled + '건' : '') + (res.cancelledRemoved ? ' · 취소반영 ' + res.cancelledRemoved + '건' : '') + (res.reMatched ? ' · 기존 미연결 중 ' + res.reMatched + '건 새로 연결됨' : ''), 'success');
+      showToast('파일 ' + res.filesScanned + '개 확인 · 신규 ' + res.imported + '건(자동연결 ' + res.autoLinked + ' / 미연결 ' + res.unlinked + ') · 이미반영 ' + res.alreadyImported + '건' + (res.cancelledRemoved ? ' · 취소반영 ' + res.cancelledRemoved + '건' : '') + (res.reMatched ? ' · 기존 미연결 중 ' + res.reMatched + '건 새로 연결됨' : '') + (res.dedupRemoved ? ' · 다른 경로 기록과 겹쳐 자동 정리 ' + res.dedupRemoved + '건' : ''), 'success');
       loadCollections_();
     }).catch(function(){
       btnColImportHometax.disabled = false;
       btnColImportHometax.textContent = originalText;
       showToast('가져오는 중 오류가 발생했습니다.', 'error');
+    });
+  });
+
+  // [2026.09.19 신규, 1회성] "발행자료를 흐리게 한다고? 다운자료를 흐리게 해야지" — 보존
+  // 우선순위를 뒤집기 전에 이미 반대 방향으로 정리된 건이 세무사님 확인상 전체의 99%.
+  // 하나씩 "되돌리기" 누를 양이 아니므로, 버튼 한 번으로 전부 찾아 한꺼번에 방향을 바로
+  // 잡는다(승인번호 없는 발행자료가 정리되어 있고 승인번호 있는 다운자료가 살아남은 쌍만
+  // 골라 뒤집음 — 그 외 쌍은 애초에 이 버그의 영향을 안 받았으므로 손대지 않음).
+  var btnColFixDedupDirection = document.getElementById('btnColFixDedupDirection');
+  btnColFixDedupDirection.addEventListener('click', function(){
+    btnColFixDedupDirection.disabled = true;
+    var originalFixText = btnColFixDedupDirection.textContent;
+    btnColFixDedupDirection.textContent = '확인 중…';
+    callGas('client_fix_dedup_priority', {}).then(function(res){
+      btnColFixDedupDirection.textContent = originalFixText;
+      if (res.error || res.success === false){ btnColFixDedupDirection.disabled = false; showToast(res.error || res.message || '확인 실패', 'error'); return; }
+      if (!res.count){
+        btnColFixDedupDirection.disabled = false;
+        showToast('방향이 잘못 정리된 건이 없습니다.', 'success');
+        return;
+      }
+      nxConfirm_('방향이 반대로 정리된 건이 ' + res.count + '건 있습니다. 지금 한꺼번에 바로잡을까요? (발행자료를 정상으로, 다운자료를 흐리게)').then(function(ok){
+        if (!ok){ btnColFixDedupDirection.disabled = false; return; }
+        btnColFixDedupDirection.textContent = '정정 중…';
+        callGas('client_fix_dedup_priority', { apply: true }).then(function(applyRes){
+          btnColFixDedupDirection.disabled = false;
+          btnColFixDedupDirection.textContent = originalFixText;
+          if (applyRes.error || applyRes.success === false){ showToast(applyRes.error || applyRes.message || '정정 실패', 'error'); return; }
+          showToast(applyRes.applied + '건을 바로잡았습니다.', 'success');
+          loadCollections_();
+        }).catch(function(){
+          btnColFixDedupDirection.disabled = false;
+          btnColFixDedupDirection.textContent = originalFixText;
+          showToast('정정 중 오류가 발생했습니다.', 'error');
+        });
+      });
+    }).catch(function(){
+      btnColFixDedupDirection.disabled = false;
+      btnColFixDedupDirection.textContent = originalFixText;
+      showToast('확인 중 오류가 발생했습니다.', 'error');
     });
   });
 </script>

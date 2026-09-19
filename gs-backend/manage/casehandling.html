@@ -88,6 +88,8 @@
     // 값은 애초에 저장되지도 않았다.
     transfer: [
       { key: 'trTransferorName', label: '양도인 성명', type: 'text', beforeAsset: true },
+      { key: 'trTransferorExtraNames', label: '공동양도인(대표 외, 쉼표로 구분)', type: 'text', beforeAsset: true },
+      { key: '고객추가명단', label: '공동의뢰인(대표 외, 쉼표로 구분)', type: 'text', beforeAsset: true },
       { key: '사건분류', label: '사건분류', type: 'select', dynamicClassification: true },
       { key: '특이사항', label: '특이사항', type: 'textarea' }
     ],
@@ -96,9 +98,15 @@
     // 2842~2860행과 옵션까지 동일)/giftAmount/giftDebtAssumed(부분부담부증여만 — 전액부담부는
     // 양도세 사건으로 분류)/giftPriorAmount(10년내 동일인 기증여합산액). 상속: ihDeceasedName/
     // ihEstate(taxcalc.html 4583~4601행과 동일).
+    // [2026.09.19 추가] "의뢰인·양도인·증여인·수증인·상속인도 모두 여러 명일 수 있다" —
+    // 대표 1명은 기존 필드(세액계산·사건명 생성이 이미 이 필드명을 쓰고 있어 그대로 둠) 그대로,
+    // 그 외 인원은 "…ExtraNames"(쉼표구분)에 추가로 받아 고객관리 등록/연결에만 쓴다.
     gift: [
       { key: 'giftDoneeName', label: '수증자 성명', type: 'text', beforeAsset: true },
+      { key: 'giftDoneeExtraNames', label: '공동수증인(대표 외, 쉼표로 구분)', type: 'text', beforeAsset: true },
       { key: 'giftDonorName', label: '증여자 성명', type: 'text', beforeAsset: true },
+      { key: 'giftDonorExtraNames', label: '공동증여인(대표 외, 쉼표로 구분)', type: 'text', beforeAsset: true },
+      { key: '고객추가명단', label: '공동의뢰인(대표 외, 쉼표로 구분)', type: 'text', beforeAsset: true },
       { key: 'giftRelation', label: '관계(수증자 기준)', type: 'select', options: ['', '배우자', '직계존속(1촌, 부모 등→자녀)', '직계존속(2촌 이상, 조부모 등→손자녀·세대생략)', '직계비속(1촌, 자녀 등→부모)', '직계비속(2촌 이상, 손자녀 등→조부모·세대생략)', '기타친족', '기타(상속인 아닌 자 등)'] },
       { key: 'giftAmount', label: '증여재산가액(전체, 채무 차감 전)', type: 'money' },
       { key: 'giftDebtAssumed', label: '인수채무액(부담부증여, 없으면 비움)', type: 'money' },
@@ -109,9 +117,22 @@
     inheritance: [
       { key: 'ihDeceasedName', label: '피상속인 성명', type: 'text', beforeAsset: true },
       { key: '상속인성명', label: '대표 상속인 성명', type: 'text' },
+      { key: '상속인추가명단', label: '그 외 상속인(대표 외, 쉼표로 구분)', type: 'text' },
+      { key: '고객추가명단', label: '공동의뢰인(쉼표로 구분)', type: 'text' },
       { key: '상속인수', label: '상속인 수', type: 'number' },
       { key: 'ihEstate', label: '상속세과세가액(예상)', type: 'money' },
       { key: '사건분류', label: '사건분류', type: 'select', dynamicClassification: true },
+      { key: '특이사항', label: '특이사항', type: 'textarea' }
+    ],
+    // [2026.09.19 신규] 사업 사건은 구조화된 사건개요가 아직 없었다("사업 세목 추가" 당시
+    // 최소범위로 시작) — 관계자(납세자·임직원)를 고객관리에 등록/연결하려면 최소한 이름을
+    // 받을 자리가 필요해서 여기서 처음 만든다. 세액계산·사건명 생성 등 다른 로직은 이 세목에
+    // 아직 의존하지 않으므로 필드명을 자유롭게 정해도 안전하다.
+    business: [
+      { key: 'bizTaxpayerName', label: '납세자(대표) 성명', type: 'text', beforeAsset: true },
+      { key: 'bizTaxpayerExtraNames', label: '공동납세자(대표 외, 쉼표로 구분)', type: 'text', beforeAsset: true },
+      { key: '고객추가명단', label: '공동의뢰인(쉼표로 구분)', type: 'text', beforeAsset: true },
+      { key: 'bizEmployeeNames', label: '임직원(여러 명이면 쉼표로 구분)', type: 'text' },
       { key: '특이사항', label: '특이사항', type: 'textarea' }
     ]
   };
