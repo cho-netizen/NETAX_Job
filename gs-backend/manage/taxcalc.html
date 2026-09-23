@@ -3444,6 +3444,18 @@ function renderTransferPane(){
         '<div class="taxcalc-field"><label>낸 증여세 산출세액</label><input type="number" id="stGiftTaxPaid" placeholder="원"><span class="taxcalc-field-help">이 자산분</span></div>' +
         '<div class="taxcalc-field"><label>전체 증여세 과세가액</label><input type="number" id="stGiftTaxableValue" placeholder="원"><span class="taxcalc-field-help">이 자산만 증여받았으면 위 취득가액(수증자 기준)과 동일</span></div>' +
       '</div>' +
+      // [2026.09.23 신규] 법인전환 이월과세 사후관리(조특법§31·§32) 흡수 — 이번에 처분하는
+      // 주식이 법인전환·중소기업간통합으로 승계받은 이월과세 대상 주식이고, 이번 처분이
+      // 바로 그 "50% 이상 처분" 사후관리 위반 사유라면 여기서 추징세액을 같이 계산한다
+      // (독립 계산기 bt는 삭제 — 세무사님 지시 "나머지 부속계산기도 흡수하라"). 사업폐지
+      // 사유는 이 주식 처분과 무관한 별개 사건이라 여기 흡수 대상이 아니다.
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>법인전환 이월과세 사후관리(조특법§31·§32, 해당 없으면 비워두세요) — 이번 처분이 승계주식 50% 이상 처분에 해당하는 경우만</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>적용 조문</label><select id="stBtProvision"><option value="">해당없음</option><option value="sect31">§31(중소기업간 통합)</option><option value="sect32">§32(법인전환)</option></select></div>' +
+        '<div class="taxcalc-field"><label>이월과세액</label><input type="number" id="stBtDeferredTax" placeholder="원"><span class="taxcalc-field-help">법인전환 당시 별도 계산해둔 이월과세액</span></div>' +
+        '<div class="taxcalc-field"><label>양도일(§31)/설립등기일(§32)부터 경과연수</label><input type="number" id="stBtYearsSince" placeholder="년" maxlength="2"></div>' +
+        '<div class="taxcalc-field"><label>법인이 이미 납부한 세액</label><input type="number" id="stBtAlreadyPaid" placeholder="원"><span class="taxcalc-field-help">없으면 0</span></div>' +
+      '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-stock-transfer">세액 계산하기</button>' +
       '<div id="taxCalcStockTransferResult"></div>' +
     '</div>' +
@@ -4141,8 +4153,10 @@ function renderStockTransferResult(r){
   if (r.납부지연가산세) html += taxCalcResultRow('납부지연가산세', '+' + won(r.납부지연가산세));
   if (r.기장불성실가산세) html += taxCalcResultRow('기장불성실가산세(§115)', '+' + won(r.기장불성실가산세));
   html += taxCalcResultRow('지방소득세(10%)', won(r.지방소득세));
+  if (r.법인전환이월과세_사후관리) html += taxCalcResultRow('법인전환 이월과세 사후관리 추징(§31·§32)', '+' + won(r.법인전환이월과세_사후관리.납부세액));
   html += taxCalcResultRow('납부세액 합계', won(r.납부세액_합계), { total: true });
   html += '<div class="taxcalc-result-note">' + (r.안내 || '') + '</div>';
+  if (r.법인전환이월과세_사후관리 && r.법인전환이월과세_사후관리.안내) html += '<div class="taxcalc-result-note">' + r.법인전환이월과세_사후관리.안내 + '</div>';
   html += '</div>';
   box.innerHTML = html;
 }
@@ -8176,6 +8190,24 @@ taxCalcView.addEventListener('click', function(e){
       }));
     } else {
       stResult = calculateStockTransferTaxJS(input);
+    }
+    // [2026.09.23 신규] 법인전환 이월과세 사후관리(§31·§32) 흡수 — 이번 처분이 승계주식 50%
+    // 이상 처분 사유에 해당하면 그 추징세액을 이 주식양도세 결과에 별도 항목으로 더한다
+    // (독립 계산기 bt 삭제). 사업폐지 사유는 이 주식 처분 자체와 무관해 여기서 다루지 않는다
+    // — 그 경우는 세무사님이 직접 별도로 확인해야 한다.
+    const stBtProvision = document.getElementById('stBtProvision').value;
+    if (stBtProvision && stResult && !stResult.error){
+      const btResult = calculateBusinessTransferCarryoverJS({
+        provision: stBtProvision,
+        deferredTaxAmount: numVal(document.getElementById('stBtDeferredTax').value) || 0,
+        triggerEvent: 'shares_disposed_50pct_plus',
+        yearsSinceTransfer: numVal(document.getElementById('stBtYearsSince').value) || 0,
+        alreadyPaidByCorp: numVal(document.getElementById('stBtAlreadyPaid').value) || 0
+      });
+      if (btResult && !btResult.error){
+        stResult.법인전환이월과세_사후관리 = btResult;
+        stResult.납부세액_합계 = (stResult.납부세액_합계 || 0) + (btResult.납부세액 || 0);
+      }
     }
     renderStockTransferResult(stResult);
   } else if (action === 'run-overseas-asset-transfer'){
