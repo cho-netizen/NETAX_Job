@@ -2904,10 +2904,13 @@ function renderSellerAllocationSectionHtml_(idx){
     rowsHtml;
 }
 
-// [2026.09.23 신규] renderGiftDonorRegistry()와 완전히 같은 큰카드 패턴 — 양도인 개인 사정
-// (다주택수·거주구분·비거주자특례·신고상태·가산세·전자신고여부)만 카드로 승격한다. 주소·
-// 관할세무서 등 순수 연락처 정보는 세액계산에 안 쓰이므로 대표 1명 몫(기존 "양도인 정보"
-// 카드)에 그대로 남겨둔다.
+// [2026.09.23 신규, 같은 날 정정] renderGiftDonorRegistry()와 완전히 같은 큰카드 패턴.
+// 처음엔 "주소·관할세무서는 세액계산에 안 쓰이니 대표 1명 몫에만 남겨둔다"고 설계했는데,
+// 세무사님 지적 — "양도인 연락처라는 정보는 개별 양도인 속에 있지 않고 별도로 자리하고
+// 있네? 이건 아니지 개별 양도인 정보 속으로 반영해야지" / "양도인마다 주소를 넣어야 한다고"
+// (공동양도인은 각자 주소·납세지가 다를 수 있음) — renderGiftDoneeRegistry()의 주소 블록과
+// 완전히 같은 구조(주소/동/호/관할세무서, open-address-search-seller 액션)로 각 양도인
+// 카드 안에 옮겼다.
 function renderSellerRegistry(){
   const container = document.getElementById('sellerRegistry');
   if (!container) return;
@@ -2927,6 +2930,12 @@ function renderSellerRegistry(){
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>성명</label><input type="text" data-slfield="name"' + idOf('trTransferorName') + ' data-nameonly="1" value="' + (s.name || '').replace(/"/g, '&quot;') + '"></div>' +
         '<div class="taxcalc-field"><label>주민등록번호</label><input type="text" data-slfield="regNo"' + idOf('trTransferorRegNo') + ' data-regno="1" placeholder="000000-0000000" value="' + (s.regNo || '').replace(/"/g, '&quot;') + '"></div>' +
+        '<div class="taxcalc-field" style="flex:0 1 340px;"><label>주소(납세지)</label><div class="taxcalc-field-inline"><input type="text" data-slfield="address" id="trTransferorAddress' + suf + '" value="' + (s.address || '').replace(/"/g, '&quot;') + '" placeholder="예: OO시 OO구 OO동 123-4 (검색 또는 직접입력)"><button type="button" class="taxcalc-ai-btn" data-action="open-address-search-seller" data-idx="' + idx + '" title="주소 검색">🔍</button></div></div>' +
+        '<div class="taxcalc-field"><label>동</label><select data-slfield="addressDong"' + idOf('trTransferorDong') + '><option value="">직접입력/해당없음</option>' +
+          (Array.isArray(s.addressDongList) ? s.addressDongList : []).map(function(dd){ return '<option value="' + dd + '"' + (s.addressDong === dd ? ' selected' : '') + '>' + dd + '</option>'; }).join('') +
+        '</select></div>' +
+        '<div class="taxcalc-field"><label>호</label><input type="text" data-slfield="addressHo"' + idOf('trTransferorHo') + ' value="' + (s.addressHo || '').replace(/"/g, '&quot;') + '" placeholder="예: 1502호"></div>' +
+        '<div class="taxcalc-field"><label style="visibility:hidden;">관할세무서</label><input type="hidden" data-slfield="taxOffice" id="trTransferorTaxOffice' + suf + '" value="' + (s.taxOffice || '').replace(/"/g, '&quot;') + '"><button type="button" class="taxcalc-ai-btn" data-action="open-tax-office-guide" data-address-input="trTransferorAddress' + suf + '" data-office-input="trTransferorTaxOffice' + suf + '">관할세무서</button></div>' +
         '<div class="taxcalc-field"><label>다주택중과 판정용 주택수</label><select data-slfield="multiHouseCount"' + idOf('trMultiHouseCount') + '><option value="0"' + (s.multiHouseCount === '0' || !s.multiHouseCount ? ' selected' : '') + '>해당없음/1주택</option><option value="2"' + (s.multiHouseCount === '2' ? ' selected' : '') + '>2주택</option><option value="3"' + (s.multiHouseCount === '3' ? ' selected' : '') + '>3주택 이상</option></select></div>' +
         '<div class="taxcalc-field"><label>거주구분</label><select data-slfield="isTransferorResident"' + idOf('trResident') + '><option value="resident"' + (!isNonResident ? ' selected' : '') + '>거주자</option><option value="nonresident"' + (isNonResident ? ' selected' : '') + '>비거주자</option></select><span class="taxcalc-field-help">1세대1주택 비과세·고가주택 12억 초과분 과세(§89①3호·§95③)는 거주자만 적용</span></div>' +
         (isNonResident ? '<div class="taxcalc-field checkbox"><input type="checkbox" data-slfield="isNonResidentTwoYearException"' + idOf('trNonResidentTwoYearException') + (s.isNonResidentTwoYearException ? ' checked' : '') + '><label>출국일 당시 1주택 보유 + 출국 후 2년 이내 양도(시행령§155① 특례)</label></div>' : '') +
@@ -2970,20 +2979,18 @@ function renderTransferPane(){
   const standaloneIdxs = transferAssets.map(function(_, i){ return i; }).filter(function(i){ return !transferAssets[i].transferContractId; });
   const cardsHtml = standaloneIdxs.map(function(idx){ return renderPropertyCardHtml_(idx, { nested: false }); }).join('');
   taxCalcTransferPane.innerHTML =
-    '<div class="taxcalc-asset"><div class="taxcalc-asset-head"><b>양도인 연락처(대표)</b>' +
-        '<span><button type="button" class="taxcalc-ai-btn" data-action="open-evidence-transfer">📄 증빙에서 자동 입력(사건폴더 전체)</button></span>' +
-      '</div>' +
+    // [2026.09.23 정정] 세무사님 지적 — "양도인 연락처라는 정보는 개별 양도인 속에 있지 않고
+    // 별도로 자리하고 있네? 개별 양도인 정보 속으로 반영해야지" / "양도인마다 주소를 넣어야
+    // 한다고"(공동양도인은 각자 주소가 다를 수 있음). 주소·동·호·관할세무서를 각 양도인
+    // 카드(renderSellerRegistry) 안으로 옮기고, 여기엔 사건 전체 단위 증빙 자동입력
+    // 버튼·상태만 남긴다.
+    '<div class="taxcalc-asset-head"><span style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
+        '<b>양도인</b>' +
+        '<button type="button" class="taxcalc-ai-btn" data-action="open-evidence-transfer">📄 증빙에서 자동 입력(사건폴더 전체)</button>' +
+      '</span></div>' +
       '<div class="taxcalc-ai-status" id="aiStatus-transfer-bulk">' + renderAiStatusHtml(transferBulkAiState) + '</div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field" style="flex:0 1 340px;"><label>주소(납세지)</label><div class="taxcalc-field-inline"><input type="text" id="trTransferorAddress" placeholder="예: OO시 OO구 OO동 123-4 (검색 또는 직접입력)"><button type="button" class="taxcalc-ai-btn" data-action="open-address-search-simple" data-target-input="trTransferorAddress" data-target-dong="trTransferorDong" data-target-ho="trTransferorHo" title="주소 검색">🔍</button></div>' +
-        '</div>' +
-        '<div class="taxcalc-field"><label>동</label><select id="trTransferorDong"><option value="">직접입력/해당없음</option></select></div>' +
-        '<div class="taxcalc-field"><label>호</label><input type="text" id="trTransferorHo" placeholder="예: 1502호"><span class="taxcalc-field-help">동은 검색결과 목록에서 고르지만, 호는 목록이 제공되지 않아 직접 입력합니다</span></div>' +
-        '<div class="taxcalc-field"><label style="visibility:hidden;">관할세무서</label><input type="hidden" id="trTransferorTaxOffice" value=""><button type="button" class="taxcalc-ai-btn" data-action="open-tax-office-guide" data-address-input="trTransferorAddress" data-office-input="trTransferorTaxOffice" id="trTransferorTaxOfficeBtn">관할세무서</button></div>' +
-      '</div>' +
-    '</div>' +
-    // [2026.09.23 신규] 공동양도인(부부 공동명의 등) 지원 — 다주택수·거주구분·신고상태·가산세
-    // 등 양도인 개인 사정만 카드로 승격(주소 등 순수 연락처는 위 대표 1명 몫 그대로).
+    // [2026.09.23 신규] 공동양도인(부부 공동명의 등) 지원 — 다주택수·거주구분·신고상태·가산세·
+    // 주소(납세지)·관할세무서까지 양도인 개인별로 카드에 담는다(renderSellerRegistry() 참고).
     '<div id="sellerRegistry"></div>' +
     // [2026.09.20 배치 재설계] 세무사님 지시 — "필요할 때 필요한 곳에서 안내를 하자." 이
     // 안내(합산신고 개념)는 자산이 2건 이상일 때만 실제로 의미가 있는데, 예전엔 자산이
@@ -3569,6 +3576,10 @@ function renderTransferPane(){
   // recomputeTransferUnpaidDays(idx)를 호출) — 여기서 옛 flat id를 또 배선하면 idx 0에 리스너가
   // 두 번 붙는다.
   renderSellerRegistry();
+  // [2026.09.23 버그수정] 관할세무서 버튼(양도인 주소칸과 함께 renderSellerRegistry()로 이동됨)이
+  // 위 tcSyncTaxOfficeButtons_(3413번째 줄) 호출 시점엔 아직 DOM에 없었으므로(#sellerRegistry가
+  // 그 뒤에야 채워짐), 여기서 한 번 더 불러줘야 저장된 관할세무서 이름이 버튼 글자에 반영된다.
+  tcSyncTaxOfficeButtons_(taxCalcTransferPane);
   const stTransferDateEl = document.getElementById('stTransferDate');
   const stPaidDateEl = document.getElementById('stPaidDate');
   if (stTransferDateEl) stTransferDateEl.addEventListener('input', recomputeStockUnpaidDays);
@@ -7654,6 +7665,14 @@ taxCalcView.addEventListener('click', function(e){
       giftDonees[idx].addressDongList = picked.dongList || [];
       giftDonees[idx].addressDong = '';
       renderGiftDoneeRegistry();
+    });
+  } else if (action === 'open-address-search-seller'){
+    const idx = numVal(btn.dataset.idx);
+    openAddressSearchModal_(function(picked){
+      transferSellers[idx].address = picked.roadAddr || picked.jibunAddr || '';
+      transferSellers[idx].addressDongList = picked.dongList || [];
+      transferSellers[idx].addressDong = '';
+      renderSellerRegistry();
     });
   } else if (action === 'open-related-party-ratio-helper'){
     openRelatedPartyRatioHelperModal_();
