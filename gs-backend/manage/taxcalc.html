@@ -2171,7 +2171,8 @@ const VALUATION_METHOD_LABELS = {
   interestFreeLoan: '금전 무상대출 등에 따른 이익의 증여의제(§41의4)',
   mergerBenefit: '합병에 따른 이익의 증여(§38)',
   propertyUseService: '재산사용·용역제공 등에 따른 이익의 증여(§42)',
-  orgChangeBenefit: '법인의 조직 변경 등에 따른 이익의 증여(§42의2)'
+  orgChangeBenefit: '법인의 조직 변경 등에 따른 이익의 증여(§42의2)',
+  spousePropertyTransfer: '배우자 등에게 양도한 재산의 증여 추정(§44)'
 };
 // 지분은 평가방법과 무관하게 모든 자산에 공통으로 적용되는 별도 항목이다(예: 확인된 시가가 그 자체로
 // 100% 평가액인 자산도 있고, 매매실례가액 등에 피상속인 지분을 곱해야 하는 자산도 있다 — 그 구분은
@@ -2179,7 +2180,7 @@ const VALUATION_METHOD_LABELS = {
 // 주식류(listedStock/unlistedStock)는 보유수량·보유주식수 자체가 이미 지분을 반영하므로 별도로 곱하지 않는다.
 const VALUATION_RATIO_EXEMPT_METHODS = ['listedStock', 'unlistedStock',
   'debtForgiveness', 'freePropertyUse', 'insuranceProceeds', 'trustIncome', 'lowPriceTransfer', 'interestFreeLoan',
-  'mergerBenefit', 'propertyUseService', 'orgChangeBenefit'];
+  'mergerBenefit', 'propertyUseService', 'orgChangeBenefit', 'spousePropertyTransfer'];
 // 임대료환산가액(상증세법§61⑤)은 개별 임대차(호실별 보증금·월세)를 전부 더한 합계로 계산해야 한다 —
 // 집계된 금액을 손으로 입력받지 말고, 임대차 건을 하나씩 입력받아 시스템이 자동으로 합산한다.
 function computeRentalLeaseTotals_(leases){
@@ -2358,6 +2359,14 @@ function computeValuationAssetValue(a){
         beforeValue: a.ocBeforeValue, afterValue: a.ocAfterValue
       });
       value = (r && !r.error && r.과세대상여부 !== false) ? (r.이익 || 0) : 0;
+      break;
+    }
+    case 'spousePropertyTransfer': {
+      const r = window.calculateSpousePropertyTransferGiftTaxJS({
+        isExcluded: !!a.spExcluded, transferType: a.spTransferType || 'direct', assetValue: a.spAssetValue,
+        priorTaxesSum: a.spPriorTaxesSum, comparisonGiftTax: a.spComparisonGiftTax
+      });
+      value = (r && !r.error && r.과세대상여부 !== false) ? (r.증여추정재산가액 || 0) : 0;
       break;
     }
     default: value = numVal(a.directValue) || 0;
@@ -2634,6 +2643,15 @@ function valuationAssetMethodFieldsHtml(m, a){
     '<div class="taxcalc-field"><label>변동 전 재산가액(게이트용)</label><input type="number" data-field="ocBeforePropertyValue" placeholder="원" value="' + (a.ocBeforePropertyValue || '') + '"><span class="taxcalc-field-help">없으면 변동전지분×변동후1주당가액으로 대체, 지분변동만</span></div>' +
     '<div class="taxcalc-field"><label>변동 전 가액</label><input type="number" data-field="ocBeforeValue" placeholder="원" value="' + (a.ocBeforeValue || '') + '"><span class="taxcalc-field-help">평가액변동만</span></div>' +
     '<div class="taxcalc-field"><label>변동 후 가액</label><input type="number" data-field="ocAfterValue" placeholder="원" value="' + (a.ocAfterValue || '') + '"><span class="taxcalc-field-help">평가액변동만</span></div>';
+  if (m === 'spousePropertyTransfer') return '' +
+    '<div class="taxcalc-field"><label>구분</label><select data-field="spTransferType">' +
+      '<option value="direct"' + (a.spTransferType !== 'bypass' ? ' selected' : '') + '>배우자·직계존비속에게 직접 양도(§44①)</option>' +
+      '<option value="bypass"' + (a.spTransferType === 'bypass' ? ' selected' : '') + '>특수관계인 경유 후 3년 이내 재양도(§44②)</option>' +
+    '</select></div>' +
+    '<div class="taxcalc-field"><label>증여추정 대상 재산가액</label><input type="number" data-field="spAssetValue" placeholder="원" value="' + (a.spAssetValue || '') + '"><span class="taxcalc-field-help">직접양도는 양도가액, 재양도는 재양도 당시 재산가액</span></div>' +
+    '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="spExcluded"' + (a.spExcluded ? ' checked' : '') + '><label>적용배제 사유 해당(§44③ — 경매·파산선고·공매·증권시장처분·대가받고 양도한 사실이 명백히 인정)</label></div>' +
+    '<div class="taxcalc-field"><label>당초양도자·양수자 소득세 결정세액 합계(재양도일 때만)</label><input type="number" data-field="spPriorTaxesSum" placeholder="원" value="' + (a.spPriorTaxesSum || '') + '"></div>' +
+    '<div class="taxcalc-field"><label>재양도가액 증여추정시 증여세액 직접입력</label><input type="number" data-field="spComparisonGiftTax" placeholder="원" value="' + (a.spComparisonGiftTax || '') + '"><span class="taxcalc-field-help">선택, 재양도일 때만 — 비워두면 자동계산</span></div>';
   return '<div class="taxcalc-field"><label>평가액</label><input type="number" data-field="directValue" placeholder="원" value="' + (a.directValue || '') + '"><button type="button" class="taxcalc-ai-btn" data-action="lookup-real-price" style="margin-top:4px;">🔍 아파트 실거래가 조회(참고)</button></div>';
 }
 
@@ -4932,35 +4950,8 @@ function renderGiftPane(){
     '</div>' +
     // [2026.09.23 흡수] 부동산무상사용·담보이용이익(§37) 독립계산기는 giftValuationAssets의
     // 평가방법 "freePropertyUse"로 흡수 — 아래 삭제.
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>배우자 등에게 양도한 재산의 증여 추정(§44) — 배우자·직계존비속에게 양도한 재산, 또는 특수관계인을 거쳐 3년 이내 재양도한 재산</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>구분</label><select id="spTransferType">' +
-          '<option value="direct">배우자·직계존비속에게 직접 양도(§44①)</option><option value="bypass">특수관계인 경유 후 3년 이내 재양도(§44②)</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>증여추정 대상 재산가액</label><input type="number" id="spAssetValue" placeholder="원"><span class="taxcalc-field-help">직접양도는 양도가액, 재양도는 재양도 당시 재산가액</span></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="spExcluded"><label for="spExcluded">적용배제 사유 해당(§44③ — 경매·파산선고·공매·증권시장처분·대가받고 양도한 사실이 명백히 인정)</label></div>' +
-        '<div class="taxcalc-field"><label>당초양도자·양수자 소득세 결정세액 합계(재양도일 때만)</label><input type="number" id="spPriorTaxesSum" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>재양도가액 증여추정시 증여세액 직접입력</label><input type="number" id="spComparisonGiftTax" placeholder="원"><span class="taxcalc-field-help">선택, 재양도일 때만 — 비워두면 아래 재산가액·공제로 자동계산</span></div>' +
-        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="spRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="spAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>신고 상태</label><select id="spFilingStatus">' +
-          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="spFraudulent"><label for="spFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
-        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="spUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
-        '<div class="taxcalc-field"><label>증여일(양도일)</label><input type="text" class="taxcalc-date" id="spGiftDate" placeholder="YYYY-MM-DD"></div>' +
-        '<div class="taxcalc-field"><label>실제 납부일</label><input type="text" class="taxcalc-date" id="spPaidDate" placeholder="YYYY-MM-DD"></div>' +
-        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="spUnpaidDays" placeholder="0" readonly></div>' +
-        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="spMonthsAfterDesignated" placeholder="0"></div>' +
-        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="spUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('sp') + '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-spouse-property-transfer">증여세 계산하기</button>' +
-      '<div id="taxCalcSpousePropertyTransferResult"></div>' +
-    '</div>' +
+    // [2026.09.23 흡수] 배우자등 양도재산 증여추정(§44) 독립계산기는 giftValuationAssets의
+    // 평가방법 "spousePropertyTransfer"로 흡수 — 아래 삭제.
     // [2026.09.23 흡수] 보험금증여(§34)·신탁이익증여(§33) 독립계산기는 giftValuationAssets의
     // 평가방법 "insuranceProceeds"/"trustIncome"으로 흡수 — 아래 삭제.
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
@@ -5754,11 +5745,6 @@ function renderNontaxableInheritanceResult(r){
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   html += '</div>';
   box.innerHTML = html;
-}
-function renderSpousePropertyTransferResult(r){
-  renderDeemedGiftGenericResult_(document.getElementById('taxCalcSpousePropertyTransferResult'), r, [
-    { key: '증여추정재산가액', label: '증여추정재산가액' }
-  ]);
 }
 
 function renderSpecialRateGiftResult(r){
@@ -8647,24 +8633,6 @@ taxCalcView.addEventListener('click', function(e){
       amount: numVal(document.getElementById('niAmount').value) || 0
     };
     renderNontaxableInheritanceResult(calculateNontaxableInheritancePropertyJS(input));
-  } else if (action === 'run-spouse-property-transfer'){
-    const input = {
-      transferType: document.getElementById('spTransferType').value,
-      assetValue: numVal(document.getElementById('spAssetValue').value) || 0,
-      isExcluded: document.getElementById('spExcluded').checked,
-      priorTaxesSum: numVal(document.getElementById('spPriorTaxesSum').value) || 0,
-      comparisonGiftTax: numVal(document.getElementById('spComparisonGiftTax').value) || 0,
-      relationDeductionLimit: numVal(document.getElementById('spRelationDeduction').value) || 0,
-      appraisalFeeAmount: numVal(document.getElementById('spAppraisalFee').value) || 0,
-      filingStatus: document.getElementById('spFilingStatus').value,
-      isFraudulent: document.getElementById('spFraudulent').checked,
-      underreportedTaxAmount: numVal(document.getElementById('spUnderreportedTax').value) || 0,
-      unpaidDays: numVal(document.getElementById('spUnpaidDays').value) || 0,
-      monthsAfterDesignatedDueDate: numVal(document.getElementById('spMonthsAfterDesignated').value) || 0,
-      unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('spUnpaidAtDesignated').value) || 0
-    };
-    Object.assign(input, taxCalcGiftAggregationInput_('sp'));
-    renderSpousePropertyTransferResult(calculateSpousePropertyTransferGiftTaxJS(input));
   } else if (action === 'run-specific-corp-gift'){
     const input = {
       benefitToCorpAmount: numVal(document.getElementById('scBenefitToCorp').value) || 0,
