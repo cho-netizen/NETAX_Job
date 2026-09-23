@@ -5848,6 +5848,11 @@ function renderCharityDonationExclusionResult(r){
   html += taxCalcResultRow('과세가액불산입액', won(r.과세가액불산입액));
   html += taxCalcResultRow('과세가액산입액', won(r.과세가액산입액), { total: true });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  if (r.과세가액불산입액){
+    const cdTaxType = document.getElementById('cdTaxType').value;
+    const targetField = cdTaxType === 'inheritance' ? 'ihPublicOrg' : 'giftPublicOrg';
+    html += '<button type="button" class="taxcalc-run-btn" data-action="accumulate-into-field" data-target-field="' + targetField + '" data-target-label="공익법인등출연재산가액" data-amount="' + r.과세가액불산입액 + '">이 금액을 공익법인등출연재산가액에 더하기</button>';
+  }
   html += '</div>';
   box.innerHTML = html;
 }
@@ -5858,6 +5863,7 @@ function renderPublicInterestOrgPenaltyResult(r){
   let html = '<div class="taxcalc-result">';
   html += taxCalcResultRow('가산세액', won(r.가산세액), { total: true });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  if (r.가산세액) html += '<button type="button" class="taxcalc-run-btn" data-action="accumulate-into-field" data-target-field="giftPublicOrgPenalty" data-target-label="공익법인등 관련 가산세" data-amount="' + r.가산세액 + '">이 금액을 공익법인등 관련 가산세에 더하기</button>';
   html += '</div>';
   box.innerHTML = html;
 }
@@ -5881,6 +5887,7 @@ function renderDisabledTrustExclusionResult(r){
     html += taxCalcResultRow('이번한도잔액', won(r.이번한도잔액));
     html += taxCalcResultRow('과세가액불산입액', won(r.과세가액불산입액));
     html += taxCalcResultRow('과세가액산입액', won(r.과세가액산입액), { total: true });
+    if (r.과세가액불산입액) html += '<button type="button" class="taxcalc-run-btn" data-action="accumulate-into-field" data-target-field="giftDisabledTrust" data-target-label="장애인신탁재산가액" data-amount="' + r.과세가액불산입액 + '">이 금액을 장애인신탁재산가액에 더하기</button>';
   }
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   html += '</div>';
@@ -5961,6 +5968,11 @@ function renderBusinessSuccessionDeferralAmountResult(r){
   let html = '<div class="taxcalc-result">';
   html += taxCalcResultRow('납부유예금액', won(r.납부유예금액), { total: true });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  if (r.납부유예금액){
+    const bdProvision = document.getElementById('bdProvision').value;
+    const targetField = bdProvision === 'gift' ? 'giftBizSuccessionDeferred' : 'ihBizInheritDeferred';
+    html += '<button type="button" class="taxcalc-run-btn" data-action="accumulate-into-field" data-target-field="' + targetField + '" data-target-label="가업승계 납부유예세액" data-amount="' + r.납부유예금액 + '">이 금액을 납부유예세액에 더하기</button>';
+  }
   html += '</div>';
   box.innerHTML = html;
 }
@@ -6009,6 +6021,11 @@ function renderCulturalHeritageTaxDeferralResult(r){
   html += taxCalcResultRow('징수유예세액', won(r.징수유예세액));
   html += taxCalcResultRow('납부세액', won(r.납부세액), { total: true });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  if (r.징수유예세액){
+    const chTaxType = document.getElementById('chTaxType').value;
+    const targetField = chTaxType === 'gift' ? 'giftMuseumDeferred' : 'ihCulturalDeferred';
+    html += '<button type="button" class="taxcalc-run-btn" data-action="accumulate-into-field" data-target-field="' + targetField + '" data-target-label="문화재등 징수유예세액" data-amount="' + r.징수유예세액 + '">이 금액을 징수유예세액에 더하기</button>';
+  }
   html += '</div>';
   box.innerHTML = html;
 }
@@ -7750,6 +7767,19 @@ taxCalcView.addEventListener('click', function(e){
     const targetId = action === 'apply-clawback-to-gift' ? 'giftInterest' : 'ihInterest';
     const targetEl = document.getElementById(targetId);
     if (targetEl){ targetEl.value = String(total); targetEl.dispatchEvent(new Event('input', { bubbles: true })); }
+  } else if (action === 'accumulate-into-field'){
+    // [2026.09.24 신규] 공익법인출연·장애인신탁·가업승계납부유예·문화재징수유예처럼 "판정 결과를
+    // 기존 입력칸에 손으로 옮겨 적어야 했던" 도구들에 공통으로 붙이는 범용 반영 버튼 — 버튼
+    // 자체에 목표 필드 id와 금액을 담아두고, 그 필드의 기존 값에 더한다(같은 유형 항목이
+    // 여러 건일 수 있어 덮어쓰지 않음, ihNonTaxable 가져오기와 같은 방식).
+    const targetEl = document.getElementById(btn.dataset.targetField);
+    const amount = numVal(btn.dataset.amount) || 0;
+    if (targetEl && amount){
+      const current = numVal(targetEl.value) || 0;
+      targetEl.value = String(current + amount);
+      targetEl.dispatchEvent(new Event('input', { bubbles: true }));
+      showToast((btn.dataset.targetLabel || '입력칸') + '에 ' + won(amount) + '을 더했습니다.', 'success');
+    }
   } else if (action === 'apply-nontaxable-inheritance-amount'){
     // [2026.09.23 신규] 이 판정 도구는 항목별로 여러 번 눌러 쓸 수 있으므로(예: 국가유증+금양임야
     // 둘 다 있는 경우), 값을 덮어쓰지 않고 이미 입력된 비과세재산가액에 더한다.
