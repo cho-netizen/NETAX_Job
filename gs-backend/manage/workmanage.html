@@ -130,6 +130,8 @@
           btn.textContent = originalText;
           if (applyRes.error || applyRes.success === false){ showToast(applyRes.error || applyRes.message || '반영 실패', 'error'); return; }
           showToast('사건 ' + applyRes.casesUpdated + '건에서 관계자 ' + applyRes.applied + '건을 연결했습니다(신규 고객 등록 ' + applyRes.clientsRegistered + '명).', 'success');
+          loadWorkCases();
+          if (typeof loadClients === 'function') loadClients();
         }).catch(function(){
           btn.disabled = false;
           btn.textContent = originalText;

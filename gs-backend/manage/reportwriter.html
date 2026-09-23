@@ -1935,7 +1935,7 @@ async function createNewDoc(kind){
   }
   // 정해진 kind는 그 유형으로 고정한다 — 사건유형별 자동추천(rwGuessDocType_)은 "빈 문서"처럼
   // 용도가 정해지지 않은 경우에만 쓴다.
-  const FIXED_DOC_TYPE_ = { review: 'review', advisory: 'advisory', filing: 'filing', reference: 'reference', progress: 'progress', appeal_petition: 'appeal_petition', translation: 'translation', summary: 'summary' };
+  const FIXED_DOC_TYPE_ = { review: 'review', review_specific: 'review_specific', advisory: 'advisory', filing: 'filing', reference: 'reference', progress: 'progress', appeal_petition: 'appeal_petition', translation: 'translation', summary: 'summary' };
   const docType = FIXED_DOC_TYPE_[kind] || rwGuessDocType_();
   const newDoc = { id: uid(), name: name.trim() || tpl.fallbackName, theme: RW_DOC_TYPE_THEME_[docType] || 'memo', format: 'md', md: mdContent, docType: docType };
   docs.push(newDoc);
@@ -4004,8 +4004,18 @@ function rwInitCaseBar_(){
   });
   // [2026.09] 다른 화면들처럼 이 화면도 처리개요로 바로 돌아가는 버튼이 있어야 한다는 지적.
   document.getElementById('rwBackToCaseBtn').addEventListener('click', function(){
-    if (typeof goToView_ === 'function') goToView_('casehandling');
-    if (sel.value && typeof goToCaseHandling_ === 'function') goToCaseHandling_(sel.value);
+    function proceed(){
+      if (typeof goToView_ === 'function') goToView_('casehandling');
+      if (sel.value && typeof goToCaseHandling_ === 'function') goToCaseHandling_(sel.value);
+    }
+    // [2026.09 버그수정] beforeunload 경고는 이 화면(#view-reportwriter)이 active일 때만
+    // 걸리는데, 이 버튼으로 처리개요로 넘어가는 순간 active가 풀려버려 정작 가장 흔한
+    // "다 썼으니 나간다" 경로에서는 드라이브 미저장 경고가 한 번도 못 뜬다 — 여기서 먼저 확인.
+    if (rwHasUnsavedDriveChanges_()){
+      nxConfirm_('드라이브에 저장하지 않은 내용이 있습니다. 그래도 처리개요로 이동할까요?').then(function(ok){ if (ok) proceed(); });
+    } else {
+      proceed();
+    }
   });
   return rwCasesLoadPromise_;
 }

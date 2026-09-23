@@ -706,6 +706,7 @@
               showToast('사건 ' + res.movedCases + '건, 자문내역 ' + res.movedLogs + '건, 사건별 관계자 등록 ' + (res.movedPartyLinks || 0) + '건을 옮기고(my.netax.kr ' + res.movedMyPages + '건 표시명도 정리) 고객 ' + res.deletedClients + '명을 합쳤습니다.', 'success');
               loadClients();
               load();
+              if (typeof loadWorkCases === 'function') loadWorkCases();
             }).catch(function(err){
               showToast('합치기 중 오류: ' + (err && err.message ? err.message : err), 'error');
               btn.disabled = false;

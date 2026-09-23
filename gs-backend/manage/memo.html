@@ -1486,11 +1486,13 @@
   // ---- 사건개요 초안 모드 진입/이탈 (기존 자유텍스트 메모와 토글) ----
   document.getElementById('memoBtnOverview').addEventListener('click', function(){
     memoOvActive_ = !memoOvActive_;
+    if (memoOvActive_) exitMemoPreview_();
     memoText.style.display = memoOvActive_ ? 'none' : '';
     memoOvPanelEl.style.display = memoOvActive_ ? 'block' : 'none';
     document.querySelector('.memo-search-wrap').style.display = memoOvActive_ ? 'none' : '';
     document.getElementById('memoBtnNew').style.display = memoOvActive_ ? 'none' : '';
     document.getElementById('memoBtnSave').style.display = memoOvActive_ ? 'none' : '';
+    document.getElementById('memoBtnPreview').style.display = memoOvActive_ ? 'none' : '';
     this.textContent = memoOvActive_ ? '📝 텍스트 메모로' : '📋 사건메모';
     if (memoOvActive_) memoOvInit_();
   });
@@ -1597,6 +1599,7 @@
       if (res.success === false){ toast(res.message || '적용 실패'); return; }
       toast('"' + (c.사건명 || '') + '" 사건에 반영했습니다.');
       memoOvApplyStepEl.style.display = 'none';
+      if (typeof loadWorkCases === 'function') loadWorkCases();
       memoOvDeleteAppliedDraft_();
     }).catch(function(err){
       toast('적용 중 오류: ' + (err && err.message ? err.message : err));
@@ -2068,12 +2071,14 @@
       memoOvPanelEl.style.display = 'none';
       document.getElementById('memoBtnOverview').textContent = '📋 사건메모';
     }
+    if (memoReqActive_) exitMemoPreview_();
     memoText.style.display = memoReqActive_ ? 'none' : '';
     memoReqPanelEl.style.display = memoReqActive_ ? 'flex' : 'none';
     document.querySelector('.memo-search-wrap').style.display = memoReqActive_ ? 'none' : '';
     document.getElementById('memoBtnNew').style.display = memoReqActive_ ? 'none' : '';
     document.getElementById('memoBtnSave').style.display = memoReqActive_ ? 'none' : '';
     document.getElementById('memoBtnOverview').style.display = memoReqActive_ ? 'none' : '';
+    document.getElementById('memoBtnPreview').style.display = memoReqActive_ ? 'none' : '';
     this.textContent = memoReqActive_ ? '📝 텍스트 메모로' : '🗂 의뢰서 작성';
     if (memoReqActive_ && !memoReqInited_){ memoReqInited_ = true; memoReqLoadTemplates_(); }
   });
@@ -2223,6 +2228,7 @@
         if (res2.success === false){ toast('파일은 저장됐지만 사건개요 반영에 실패했습니다: ' + (res2.message || '')); return; }
         toast('"' + escapeHtml(c.사건명 || '') + '" 사건 폴더에 저장하고 사건개요도 채웠습니다.');
         memoReqApplyStepEl.style.display = 'none';
+        if (typeof loadWorkCases === 'function') loadWorkCases();
       });
     }).catch(function(err){
       toast('저장 중 오류: ' + (err && err.message ? err.message : err));
