@@ -2947,7 +2947,7 @@
       statusEl.textContent = '저장됨 ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
       // 현황판 등에서 폴더를 일일이 뒤지지 않고 모아볼 수 있는 중앙 인덱스+캘린더 동기화 —
       // 실패해도 이 폴더 저장 자체는 이미 끝났으므로 조용히 무시(다음 저장 때 다시 시도됨).
-      callGas('syncGlobalLog', { path: docsLogPath_, entries: docsLogEntries_ }).catch(function(){});
+      callGas('syncGlobalLog', { path: docsLogPath_, folderId: docsLogFolderId_, entries: docsLogEntries_ }).catch(function(){});
     }).catch(function(err){
       statusEl.textContent = '저장 실패';
       toast('경과지 저장 중 오류: ' + (err && err.message ? err.message : err));

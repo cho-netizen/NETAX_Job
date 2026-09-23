@@ -4688,10 +4688,10 @@ function readGlobalLogEntries_() {
  * 다시 만드는" 방식이라 — 항목을 지우거나 날짜를 바꿔도 캘린더가 항상 정확히 따라온다.
  * 캘린더 권한 문제 등으로 실패해도 처리일지 저장 자체에는 영향 주지 않도록 조용히 무시한다.
  */
-function syncCalendarForPath_(pathKey, entries) {
+function syncCalendarForPath_(tagKey, pathLabel, entries) {
   try {
     const cal = CalendarApp.getDefaultCalendar();
-    const tag = '[NX:' + pathKey + ']';
+    const tag = '[NX:' + tagKey + ']';
     const searchStart = new Date(); searchStart.setFullYear(searchStart.getFullYear() - 1);
     const searchEnd = new Date(); searchEnd.setFullYear(searchEnd.getFullYear() + 2);
     cal.getEvents(searchStart, searchEnd, { search: tag }).forEach(function (ev) {
@@ -4702,7 +4702,7 @@ function syncCalendarForPath_(pathKey, entries) {
         const d = new Date(e.dueDate + 'T00:00:00');
         if (isNaN(d.getTime())) return;
         cal.createAllDayEvent(
-          '[NX] ' + pathKey + ' — ' + String(e.text || '').slice(0, 60),
+          '[NX] ' + pathLabel + ' — ' + String(e.text || '').slice(0, 60),
           d,
           { description: tag + '\n' + (e.text || '') }
         );
@@ -4713,9 +4713,17 @@ function syncCalendarForPath_(pathKey, entries) {
   }
 }
 
+/**
+ * [2026.09 버그수정] 예전엔 폴더 경로 문자열(pathKey)로 기존 항목을 찾아 교체했는데,
+ * 사건명/세목이 바뀌면 work_updateCase가 Drive 폴더명을 자동으로 바꾸는 기능이 있어서
+ * (Code.js work_updateCase 참고) pathKey가 달라져 예전 기록이 새 기록과 별개 항목처럼
+ * 쌓이고(중복), 대시보드의 "눌러서 이동"도 사라진 옛 경로라 실패했다. 폴더ID(안정적,
+ * 이름이 바뀌어도 안 바뀜)를 우선 키로 쓰고, 폴더ID가 없는 옛 데이터만 pathKey로 폴백.
+ */
 function handleSyncGlobalLog(body) {
   const pathArr = Array.isArray(body.path) ? body.path.map(String) : [];
   const pathKey = pathArr.join(' / ');
+  const folderId = body.folderId ? String(body.folderId) : '';
   const entries = Array.isArray(body.entries) ? body.entries : [];
 
   return withLock_(8000, function () {
@@ -4725,16 +4733,18 @@ function handleSyncGlobalLog(body) {
       try { all = JSON.parse(file.getBlob().getDataAsString('UTF-8') || '[]'); } catch (e) { all = []; }
       if (!Array.isArray(all)) all = [];
 
-      const kept = all.filter(function (e) { return (e.pathKey || '') !== pathKey; });
+      const kept = all.filter(function (e) {
+        return folderId ? (e.folderId || '') !== folderId : (e.pathKey || '') !== pathKey;
+      });
       const added = entries.map(function (e) {
         return {
           id: e.id, date: e.date || '', text: e.text || '', dueDate: e.dueDate || '',
-          path: pathArr, pathKey: pathKey
+          path: pathArr, pathKey: pathKey, folderId: folderId
         };
       });
       const merged = kept.concat(added);
       file.setContent(JSON.stringify(merged));
-      syncCalendarForPath_(pathKey, entries); // 마감일이 있는 항목을 실제 구글캘린더 일정으로 반영
+      syncCalendarForPath_(folderId || pathKey, pathKey, entries); // 마감일이 있는 항목을 실제 구글캘린더 일정으로 반영
       return { success: true };
     } catch (err) {
       return { error: '전체일지 동기화 중 오류: ' + err.message };
