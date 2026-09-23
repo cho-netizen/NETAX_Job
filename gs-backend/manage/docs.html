@@ -1874,6 +1874,19 @@
   var pdfMgrEntries = []; // { id, doc(PDFLib 문서객체), pdfjsDoc, sourceName, pageIndex, checked, rotation }
   var pdfMgrIdSeq = 1;
   var pdfMgrSignatureBytes = null; // 도장처럼 찍을 서명 이미지(선택 안 하면 null)
+  // [2026.09.23 버그수정] 실사용 전수조사에서 발견 — pdfMgrEntries가 폴더/사건과 무관한
+  // 순수 인메모리 작업대라, A사건 폴더에서 페이지를 담아둔 채 B사건 폴더로 넘어가 더 담고
+  // "💾 전체 저장"을 누르면 두 사건의 서류가 한 파일로 섞여서 그 순간의 폴더(docsPath)에
+  // 저장된다 — 세무대리인 업무 특성상 다른 고객 서류가 섞이는 심각한 오류로 이어질 수
+  // 있다. 목록에 처음 담을 때의 사건 id를 기억해뒀다가, 다른 사건에서 추가·저장을
+  // 시도하면 미리 경고한다(강제 차단은 아님 — 의도적으로 여러 사건 서류를 합칠 수도
+  // 있으므로 확인만 받는다).
+  var pdfMgrCaseId_ = null;
+  function pdfMgrCheckCaseMismatch_(actionLabel){
+    if (!pdfMgrEntries.length){ pdfMgrCaseId_ = docsSelectedCaseId_; return Promise.resolve(true); }
+    if (!pdfMgrCaseId_ || !docsSelectedCaseId_ || pdfMgrCaseId_ === docsSelectedCaseId_) return Promise.resolve(true);
+    return nxConfirm_('PDF관리 목록에 이미 다른 사건의 페이지가 담겨 있습니다. 지금 폴더는 그 사건과 다릅니다 — 이대로 ' + actionLabel + '하면 서로 다른 사건 서류가 한 파일로 섞일 수 있습니다.\n\n계속할까요?');
+  }
 
   function openPdfManager(){ pdfMgrOverlay.style.display = 'flex'; }
   function closePdfManager(){ pdfMgrOverlay.style.display = 'none'; }
@@ -1884,6 +1897,7 @@
   // 액션(원본 바이트 그대로 반환)으로 받아와서, 로컬 업로드와 완전히 같은 방식(PDFLib+pdf.js로
   // 파싱해서 페이지 단위로 등록)으로 처리한다.
   async function openExistingFileInPdfManager(file){
+    if (!(await pdfMgrCheckCaseMismatch_('추가'))) return;
     toast(file.name + ' 불러오는 중입니다…');
     try{
       var res = await callGas('readFileBinary', { fileId: file.id });
@@ -1910,6 +1924,7 @@
   pdfMgrFileInput.addEventListener('change', async function(e){
     var files = Array.from(e.target.files || []);
     pdfMgrFileInput.value = '';
+    if (!(await pdfMgrCheckCaseMismatch_('추가'))) return;
     for (var f = 0; f < files.length; f++){
       var file = files[f];
       try{
@@ -1931,6 +1946,9 @@
   });
 
   function renderPdfMgrList(){
+    // [2026.09.23] 목록이 완전히 비면 사건 잠금도 같이 풀어준다 — 다음에 담기 시작할 때
+    // 새 폴더를 기준으로 다시 잡히게 한다(pdfMgrCheckCaseMismatch_ 참고).
+    if (!pdfMgrEntries.length) pdfMgrCaseId_ = null;
     pdfMgrList.innerHTML = '';
     pdfMgrEntries.forEach(function(entry, idx){
       var row = document.createElement('div');
@@ -2088,6 +2106,7 @@
   document.getElementById('btnPdfMgrExtract').addEventListener('click', async function(){
     var checked = pdfMgrEntries.filter(function(en){ return en.checked; });
     if (!checked.length){ toast('추출할 페이지를 먼저 체크하세요.'); return; }
+    if (!(await pdfMgrCheckCaseMismatch_('이 폴더에 추출·저장'))) return;
     var name = (pdfMgrExtractName.value.trim() || '추출') + '.pdf';
     var btn = document.getElementById('btnPdfMgrExtract');
     btn.disabled = true; btn.textContent = '처리 중…';
@@ -2111,6 +2130,7 @@
 
   document.getElementById('btnPdfMgrSaveAll').addEventListener('click', async function(){
     if (!pdfMgrEntries.length){ toast('목록이 비어 있습니다.'); return; }
+    if (!(await pdfMgrCheckCaseMismatch_('이 폴더에 저장'))) return;
     var name = (pdfMgrSaveName.value.trim() || '문서') + '.pdf';
     var btn = document.getElementById('btnPdfMgrSaveAll');
     btn.disabled = true; btn.textContent = '처리 중…';
