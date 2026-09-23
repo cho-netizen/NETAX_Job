@@ -1869,6 +1869,60 @@ function openOneHouseSpecialCaseModal_(idx){
   });
 }
 
+// [2026.09.23 신규] 산업단지 이주택지 세율특례(조특법§104의20, 2012.12.31 만료) 흡수 —
+// 독립 계산기(ic)는 세액을 계산하지 않고 "위 일반 양도세 계산기에서 조정대상지역 체크
+// 해제·주택수 0으로 계산하세요"라고 안내만 했다 — 조정대상지역 체크박스가 바로 옆에
+// 있으니(isAdjustedArea) 판정 통과시 그 체크박스만 대신 꺼준다(다주택수는 양도인 카드
+// 소속이라 여기서 건드리지 않고 안내로만 알려준다).
+function openIndustrialComplexLotModal_(idx){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.display = 'flex';
+  overlay.innerHTML =
+    '<div class="modal-panel" style="width:min(480px, 94vw);">' +
+      '<div class="modal-head"><span>산업단지 이주택지 세율특례 판정(조특법§104의20)</span><span class="modal-close" id="btnCloseIc">✕</span></div>' +
+      '<div class="modal-body">' +
+        '<div class="taxcalc-grid" style="margin-bottom:8px;">' +
+          '<div class="taxcalc-field"><label>양도일</label><input type="date" id="icMTransferDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field"><label>이주택지 분양가격</label><input type="number" id="icMSalePrice" placeholder="원"><span class="taxcalc-field-help">1억원 이하</span></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="icMWasResident"><label for="icMWasResident">실시계획승인일부터 소급 2년이상 그 사업 제공 주거용건축물에 거주</label></div>' +
+        '</div>' +
+        '<button type="button" class="taxcalc-run-btn" id="icMRunBtn">적용 가능 여부 확인하기</button>' +
+        '<div id="icMResult"></div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  function close(){ overlay.remove(); }
+  overlay.querySelector('#btnCloseIc').onclick = close;
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+  enhanceNumberInputs(overlay);
+  enhanceDateInputs(overlay);
+  overlay.querySelector('#icMRunBtn').addEventListener('click', function(){
+    const r = calculateIndustrialComplexRelocationLotRateJS({
+      transferDate: document.getElementById('icMTransferDate').value,
+      salePrice: numVal(document.getElementById('icMSalePrice').value) || 0,
+      wasResidentForTwoYears: document.getElementById('icMWasResident').checked
+    });
+    const resultBox = document.getElementById('icMResult');
+    if (!r || r.error){ resultBox.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
+    let html = '<div class="taxcalc-result" style="margin-top:10px;">';
+    html += taxCalcResultRow('적용 여부', r.적용여부 ? '적용 가능' : '적용 안 됨', { total: true });
+    html += '<div class="taxcalc-result-note">' + (r.안내 || '') + '</div>';
+    if (r.적용여부) html += '<button type="button" class="taxcalc-run-btn" id="icMApplyBtn" style="margin-top:8px;">이 자산의 "조정대상지역" 체크 해제하기</button>';
+    html += '</div>';
+    resultBox.innerHTML = html;
+    const applyBtn = resultBox.querySelector('#icMApplyBtn');
+    if (applyBtn){
+      applyBtn.addEventListener('click', function(){
+        transferAssets[idx].isAdjustedArea = false;
+        close();
+        renderTransferPane();
+        showToast('조정대상지역 체크를 해제했습니다 — 양도인 카드의 "다주택중과 판정용 주택수"도 0(해당없음)으로 직접 바꿔주세요.', 'success');
+      });
+    }
+  });
+}
+
 // 매매사례가액(아파트 실거래가) 참고조회 모달 — 계약년월(YYYYMM)로 그 지역 아파트 실거래 목록을
 // 받아와 사용자가 유사한 거래를 골라 평가액에 채울 수 있게 한다. 시가로 그대로 쓸지는 면적·층·거래
 // 시점의 유사성을 사용자가 직접 판단해야 하므로 자동으로 채우지 않고 "골라서 채우기"로만 동작한다.
@@ -3059,6 +3113,7 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-one-house-special-modal" data-idx="' + idx + '" title="특정주택(수도권밖미분양·인구감소지역·농어촌주택)은 주택수에서 제외될 수 있습니다">🔍 특정주택 제외 판정</button></div>' +
           '<div class="taxcalc-field" data-show-if="isOneHouseOneFamily" style="display:none;"><label>거주연수</label><input type="number" data-field="residenceYears" placeholder="년" maxlength="2"></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isAdjustedArea" id="adj-' + idx + '"><label for="adj-' + idx + '">조정대상지역(2026.5.9까지 양도분은 시행령§167조의3①12호의2 등에 따라 중과 한시배제 자동 적용, 이후 재연장 여부는 별도 확인)</label></div>' +
+          '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-industrial-complex-lot-modal" data-idx="' + idx + '" title="산업단지 조성으로 이주한 이주택지를 분양받아 양도하는 경우, 다주택중과 배제 대상인지 판정합니다(조특법§104의20, 2012.12.31까지 양도분만)">🔍 산업단지 이주택지 중과배제 판정</button></div>' +
           (transferAssets[idx].transferContractId ? '<div class="taxcalc-field"><span class="taxcalc-field-help">매매계약체결일·토지거래허가 관련 항목은 양도계약에서 가져옵니다 — 계약 카드에서 수정하세요</span></div>' :
           '<div class="taxcalc-field"><label>매매계약체결일</label><input type="date" data-field="saleContractDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">중과배제 연장 — 양도일이 2026.5.9 이후여도 이 날짜 기준 중과배제 연장특례(나목·다목) 판정용</span></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isLandTransactionPermitArea" id="ltpa-' + idx + '"><label for="ltpa-' + idx + '">[연장특례] 토지거래허가구역 내 주택(나목 — 미체크시 다목 적용)</label></div>' +
@@ -3431,16 +3486,9 @@ function renderTransferPane(){
       '<button type="button" class="taxcalc-run-btn" data-action="run-public-rental-housing-land">감면대상 양도소득금액 계산하기</button>' +
       '<div id="taxCalcPublicRentalHousingLandResult"></div>' +
     '</div>' +
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>산업단지 이주택지 세율특례(조특법§104의20, 2012.12.31 적용기한 만료 — 과거 거래용) — 세액은 계산하지 않고 적용 가능 여부만 판정합니다</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>양도일</label><input type="date" id="icTransferDate" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>이주택지 분양가격</label><input type="number" id="icSalePrice" placeholder="원"><span class="taxcalc-field-help">1억원 이하</span></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="icWasResident"><label for="icWasResident">실시계획승인일부터 소급 2년이상 그 사업 제공 주거용건축물에 거주</label></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-industrial-complex-lot">적용 가능 여부 확인하기</button>' +
-      '<div id="taxCalcIndustrialComplexLotResult"></div>' +
-    '</div>' +
+    // [2026.09.23 삭제] 산업단지 이주택지 세율특례(ic) 독립 계산기도 삭제 — 위 자산카드의
+    // "조정대상지역" 체크박스 옆 "🔍 산업단지 이주택지 중과배제 판정" 인라인 모달로 흡수했다
+    // (판정 통과시 그 체크박스를 대신 꺼준다).
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>박물관등 이전 양도세 분할납부(조특법§83, 2022.12.31 적용기한 만료 — 과거 거래용) — 신고기한 종료일+3년부터 5년간 균분납부 스케줄</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -4118,16 +4166,6 @@ function renderPublicRentalHousingLandResult(r){
     html += taxCalcResultRow('전체 양도차익', won(r.전체양도차익));
     html += taxCalcResultRow('세액감면율', r.세액감면율 + '%', { total: true });
   }
-  if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
-  html += '</div>';
-  box.innerHTML = html;
-}
-
-function renderIndustrialComplexLotResult(r){
-  const box = document.getElementById('taxCalcIndustrialComplexLotResult');
-  if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
-  let html = '<div class="taxcalc-result">';
-  html += taxCalcResultRow('적용 여부', r.적용여부 ? '적용 가능' : '적용 안 됨', { total: true });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   html += '</div>';
   box.innerHTML = html;
@@ -8197,13 +8235,6 @@ taxCalcView.addEventListener('click', function(e){
     }
     renderTransferPane();
     showToast('등록면허세 ' + won(total) + '을 취득비용 내역에 추가했습니다.', 'success');
-  } else if (action === 'run-industrial-complex-lot'){
-    const input = {
-      transferDate: document.getElementById('icTransferDate').value,
-      salePrice: numVal(document.getElementById('icSalePrice').value) || 0,
-      wasResidentForTwoYears: document.getElementById('icWasResident').checked
-    };
-    renderIndustrialComplexLotResult(calculateIndustrialComplexRelocationLotRateJS(input));
   } else if (action === 'import-transfer-total-tax-to-mr'){
     // [2026.09.23 신규] 위에서 방금 계산한 납부세액 합계를 손으로 옮겨 적지 않게 그대로
     // 가져온다 — 세무사님 지시("나머지 부속계산기도 흡수하라")에 따른 최소 통합.
@@ -8310,6 +8341,8 @@ taxCalcView.addEventListener('click', function(e){
     });
   } else if (action === 'open-one-house-special-modal'){
     openOneHouseSpecialCaseModal_(numVal(btn.dataset.idx));
+  } else if (action === 'open-industrial-complex-lot-modal'){
+    openIndustrialComplexLotModal_(numVal(btn.dataset.idx));
   } else if (action === 'send-debt-to-transfer'){
     // 부담부증여의 인수채무액 상당분은 증여자가 그 지분만큼 대가(채무인수)를 받고 양도한 것으로
     // 과세된다(소득세법§88①). 취득가액·양도가액·필요경비 안분은 이제 독립 "부담부증여시 양도로
