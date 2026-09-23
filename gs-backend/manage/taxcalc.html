@@ -2175,7 +2175,8 @@ const VALUATION_METHOD_LABELS = {
   spousePropertyTransfer: '배우자 등에게 양도한 재산의 증여 추정(§44)',
   capitalIncreaseBenefit: '증자에 따른 이익의 증여(§39)',
   capitalReductionBenefit: '감자에 따른 이익의 증여(§39의2)',
-  inKindContributionBenefit: '현물출자에 따른 이익의 증여(§39의3)'
+  inKindContributionBenefit: '현물출자에 따른 이익의 증여(§39의3)',
+  deemedInheritanceItem: '간주상속재산(보험금·신탁재산·퇴직금 등, §8·§9·§10)'
 };
 // 지분은 평가방법과 무관하게 모든 자산에 공통으로 적용되는 별도 항목이다(예: 확인된 시가가 그 자체로
 // 100% 평가액인 자산도 있고, 매매실례가액 등에 피상속인 지분을 곱해야 하는 자산도 있다 — 그 구분은
@@ -2184,7 +2185,15 @@ const VALUATION_METHOD_LABELS = {
 const VALUATION_RATIO_EXEMPT_METHODS = ['listedStock', 'unlistedStock',
   'debtForgiveness', 'freePropertyUse', 'insuranceProceeds', 'trustIncome', 'lowPriceTransfer', 'interestFreeLoan',
   'mergerBenefit', 'propertyUseService', 'orgChangeBenefit', 'spousePropertyTransfer',
-  'capitalIncreaseBenefit', 'capitalReductionBenefit', 'inKindContributionBenefit'];
+  'capitalIncreaseBenefit', 'capitalReductionBenefit', 'inKindContributionBenefit', 'deemedInheritanceItem'];
+// [2026.09.23 버그수정] 위 흡수 작업으로 추가한 증여세 전용 평가방법(§33~§45 등)이 상속재산
+// 평가목록 드롭다운에도 그대로 노출되고 있었다 — 증여세법 조문은 상속(사망)에는 적용되지
+// 않으므로 세목별로 분리해서 보여줘야 한다. 상속 전용(간주상속재산 등)도 마찬가지로 반대쪽엔
+// 안 보이게 분리한다.
+const GIFT_ONLY_VALUATION_METHODS = ['debtForgiveness', 'freePropertyUse', 'insuranceProceeds', 'trustIncome',
+  'lowPriceTransfer', 'interestFreeLoan', 'mergerBenefit', 'propertyUseService', 'orgChangeBenefit',
+  'spousePropertyTransfer', 'capitalIncreaseBenefit', 'capitalReductionBenefit', 'inKindContributionBenefit'];
+const INHERITANCE_ONLY_VALUATION_METHODS = ['deemedInheritanceItem'];
 // 임대료환산가액(상증세법§61⑤)은 개별 임대차(호실별 보증금·월세)를 전부 더한 합계로 계산해야 한다 —
 // 집계된 금액을 손으로 입력받지 말고, 임대차 건을 하나씩 입력받아 시스템이 자동으로 합산한다.
 function computeRentalLeaseTotals_(leases){
@@ -2404,6 +2413,15 @@ function computeValuationAssetValue(a){
         priorBenefitsWithinOneYear: (numVal(a.icfPriorBenefitsSum) > 0 ? [numVal(a.icfPriorBenefitsSum)] : [])
       });
       value = (r && !r.error && r.과세대상여부 !== false) ? (r.증여의제이익 || 0) : 0;
+      break;
+    }
+    case 'deemedInheritanceItem': {
+      const r = window.calculateDeemedInheritancePropertyJS({
+        itemType: a.diItemType || 'insurance', amount: a.diAmount, wasPolicyholderDecedent: !!a.diPolicyholderDecedent,
+        premiumPaidByDecedentRatio: a.diPremiumRatio, isAlreadyGiftTaxedUnder33_1: !!a.diAlreadyGiftTaxed,
+        isExcludedSurvivorPension: !!a.diExcludedPension
+      });
+      value = (r && !r.error) ? (r.간주상속재산포함액 || 0) : 0;
       break;
     }
     default: value = numVal(a.directValue) || 0;
@@ -2736,6 +2754,19 @@ function valuationAssetMethodFieldsHtml(m, a){
     '<div class="taxcalc-field"><label>현물출자자가 인수한 신주수</label><input type="number" data-field="icfAcquiredShares" placeholder="주" value="' + (a.icfAcquiredShares || '') + '"><span class="taxcalc-field-help">고가발행만</span></div>' +
     '<div class="taxcalc-field"><label>현물출자자 외 특수관계인주주등의 지분비율</label><input type="number" step="0.01" min="0" max="1" data-field="icfRelatedRatio" placeholder="0~1" value="' + (a.icfRelatedRatio || '') + '"><span class="taxcalc-field-help">고가발행만</span></div>' +
     '<div class="taxcalc-field"><label>1년 이내 동일유형 이전거래 이익 합계(§43②)</label><input type="number" data-field="icfPriorBenefitsSum" placeholder="원" value="' + (a.icfPriorBenefitsSum || '') + '"><span class="taxcalc-field-help">없으면 비움</span></div>';
+  if (m === 'deemedInheritanceItem') return '' +
+    '<div class="taxcalc-field"><label>항목 구분</label><select data-field="diItemType">' +
+      '<option value="insurance"' + (a.diItemType === 'insurance' || !a.diItemType ? ' selected' : '') + '>보험금(§8)</option>' +
+      '<option value="trust_settled"' + (a.diItemType === 'trust_settled' ? ' selected' : '') + '>피상속인이 신탁한 재산(§9①)</option>' +
+      '<option value="trust_benefit_from_others"' + (a.diItemType === 'trust_benefit_from_others' ? ' selected' : '') + '>피상속인이 타인신탁의 수익권 보유(§9②)</option>' +
+      '<option value="successive_trust_beneficiary"' + (a.diItemType === 'successive_trust_beneficiary' ? ' selected' : '') + '>수익자연속신탁의 수익자(피상속인) 사망(§9③)</option>' +
+      '<option value="retirement"' + (a.diItemType === 'retirement' ? ' selected' : '') + '>퇴직금·퇴직수당·공로금·연금 등(§10)</option>' +
+    '</select></div>' +
+    '<div class="taxcalc-field"><label>금액</label><input type="number" data-field="diAmount" placeholder="원" value="' + (a.diAmount || '') + '"></div>' +
+    '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="diPolicyholderDecedent"' + (a.diPolicyholderDecedent ? ' checked' : '') + '><label>[보험금만] 피상속인이 보험계약자였음</label></div>' +
+    '<div class="taxcalc-field"><label>피상속인 실질보험료부담비율</label><input type="number" step="0.01" min="0" max="1" data-field="diPremiumRatio" placeholder="0~1" value="' + (a.diPremiumRatio || '') + '"><span class="taxcalc-field-help">보험금만, 계약자가 다를 때</span></div>' +
+    '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="diAlreadyGiftTaxed"' + (a.diAlreadyGiftTaxed ? ' checked' : '') + '><label>[피상속인이 신탁한 재산만] 이미 §33①로 증여재산가액 처리됨</label></div>' +
+    '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="diExcludedPension"' + (a.diExcludedPension ? ' checked' : '') + '><label>[퇴직금등만] 국민연금법 등 열거된 유족연금·유족보상금류에 해당</label></div>';
   return '<div class="taxcalc-field"><label>평가액</label><input type="number" data-field="directValue" placeholder="원" value="' + (a.directValue || '') + '"><button type="button" class="taxcalc-ai-btn" data-action="lookup-real-price" style="margin-top:4px;">🔍 아파트 실거래가 조회(참고)</button></div>';
 }
 
@@ -2874,7 +2905,9 @@ function renderValuationAssetRow(a, idx, isInheritance){
       '<div class="taxcalc-grid">' +
         assetLocationFieldsHtml_(a) +
         '<div class="taxcalc-field"><label>평가방법</label><select data-field="method">' +
-          Object.keys(VALUATION_METHOD_LABELS).map(function (k) { return '<option value="' + k + '"' + (method === k ? ' selected' : '') + '>' + VALUATION_METHOD_LABELS[k] + '</option>'; }).join('') +
+          Object.keys(VALUATION_METHOD_LABELS).filter(function (k) {
+            return isInheritance ? GIFT_ONLY_VALUATION_METHODS.indexOf(k) === -1 : INHERITANCE_ONLY_VALUATION_METHODS.indexOf(k) === -1;
+          }).map(function (k) { return '<option value="' + k + '"' + (method === k ? ' selected' : '') + '>' + VALUATION_METHOD_LABELS[k] + '</option>'; }).join('') +
         '</select></div>' +
         (VALUATION_RATIO_EXEMPT_METHODS.indexOf(method) === -1 ?
           '<div class="taxcalc-field"><label>피상속인(증여자) 지분</label><input type="text" data-field="ownershipRatio" placeholder="1/1" value="' + (a.ownershipRatio || '').replace(/"/g, '&quot;') + '"></div>' : '') +
@@ -5707,8 +5740,10 @@ function renderNontaxableInheritanceResult(r){
   html += taxCalcResultRow('근거호', r.근거호);
   html += taxCalcResultRow('비과세금액', won(r.비과세금액), { total: true });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  html += '<button type="button" class="taxcalc-run-btn" data-action="apply-nontaxable-inheritance-amount">이 금액을 비과세재산가액에 더하기</button>';
   html += '</div>';
   box.innerHTML = html;
+  box.dataset.lastAmount = r.비과세금액;
 }
 
 function renderSpecialRateGiftResult(r){
@@ -5901,16 +5936,6 @@ function renderInstallmentResult(r, boxId){
   box.innerHTML = html;
 }
 
-function renderDeemedInheritanceResult(r){
-  const box = document.getElementById('taxCalcDeemedInheritanceResult');
-  if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
-  let html = '<div class="taxcalc-result">';
-  html += taxCalcResultRow('원금액', won(r.원금액));
-  html += taxCalcResultRow('간주상속재산포함액', won(r.간주상속재산포함액), { total: true });
-  if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
-  html += '</div>';
-  box.innerHTML = html;
-}
 
 function renderClawbackResult(r){
   const box = document.getElementById('taxCalcClawbackResult');
@@ -6203,26 +6228,11 @@ function renderInheritancePane(){
       '<button type="button" class="taxcalc-run-btn" data-action="run-installment-inheritance">연부연납 계산하기</button>' +
       '<div id="taxCalcInstallmentInheritanceResult"></div>' +
     '</div>' +
+    // [2026.09.23 흡수] 간주상속재산(§8·§9·§10) 독립계산기는 상속재산 평가목록의 평가방법
+    // "deemedInheritanceItem"으로 흡수 — 아래 삭제. "결과를 위 상속재산가액에 합산해 넣으세요"
+    // 라는 수동 안내문 자체가 이제 필요없다(자산 목록에 항목으로 추가하면 자동 합산됨).
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>상속재산으로 보는 보험금·신탁재산·퇴직금 등(간주상속재산, §8,§9,§10) — 결과의 "간주상속재산포함액"을 위 상속재산가액에 합산해 넣으세요</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>항목 구분</label><select id="diItemType">' +
-          '<option value="insurance">보험금(§8)</option>' +
-          '<option value="trust_settled">피상속인이 신탁한 재산(§9①)</option>' +
-          '<option value="trust_benefit_from_others">피상속인이 타인신탁의 수익권 보유(§9②)</option>' +
-          '<option value="retirement">퇴직금·퇴직수당·공로금·연금 등(§10)</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>금액</label><input type="number" id="diAmount" placeholder="원"></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="diPolicyholderDecedent"><label for="diPolicyholderDecedent">[보험금만] 피상속인이 보험계약자였음</label></div>' +
-        '<div class="taxcalc-field"><label>피상속인 실질보험료부담비율</label><input type="number" step="0.01" min="0" max="1" id="diPremiumRatio" placeholder="0~1"><span class="taxcalc-field-help">보험금만, 계약자가 다를 때</span></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="diAlreadyGiftTaxed"><label for="diAlreadyGiftTaxed">[피상속인이 신탁한 재산만] 이미 §33①로 증여재산가액 처리됨</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="diExcludedPension"><label for="diExcludedPension">[퇴직금등만] 국민연금법 등 열거된 유족연금·유족보상금류에 해당</label></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-deemed-inheritance">포함 여부·포함액 판정하기</button>' +
-      '<div id="taxCalcDeemedInheritanceResult"></div>' +
-    '</div>' +
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>비과세되는 상속재산(§12) — 국가·지자체·공공단체 유증등, 민법§1008의3 제사용재산, 정당 유증등, 사내근로복지기금 등 유증등, 이재구호금품·치료비 등</b></div>' +
+      '<div class="taxcalc-asset-head"><b>비과세되는 상속재산(§12) — 국가·지자체·공공단체 유증등, 민법§1008의3 제사용재산, 정당 유증등, 사내근로복지기금 등 유증등, 이재구호금품·치료비 등. 계산 결과는 위 "비과세재산가액" 칸에 바로 더할 수 있습니다</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>항목 구분</label><select id="niItemType">' +
           '<option value="government">국가·지자체·공공단체 유증등(1호)</option>' +
@@ -6231,7 +6241,9 @@ function renderInheritancePane(){
           '<option value="labor_welfare_fund">사내근로복지기금 등 유증등(5호)</option>' +
           '<option value="disaster_relief">이재구호금품·치료비 등(6호)</option>' +
         '</select></div>' +
-        '<div class="taxcalc-field"><label>금액</label><input type="number" id="niAmount" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>금액</label><input type="number" id="niAmount" placeholder="원"><span class="taxcalc-field-help">3호(제사용재산) 외 나머지 항목만</span></div>' +
+        '<div class="taxcalc-field"><label>금양임야·묘토인농지 금액</label><input type="number" id="niGraveyardAmount" placeholder="원"><span class="taxcalc-field-help">3호만 — 합계 2억원 한도</span></div>' +
+        '<div class="taxcalc-field"><label>족보·제구 금액</label><input type="number" id="niGenealogyAmount" placeholder="원"><span class="taxcalc-field-help">3호만 — 별도로 1천만원 한도</span></div>' +
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-nontaxable-inheritance">비과세 여부 확인하기</button>' +
       '<div id="taxCalcNontaxableInheritanceResult"></div>' +
@@ -7738,6 +7750,18 @@ taxCalcView.addEventListener('click', function(e){
     const targetId = action === 'apply-clawback-to-gift' ? 'giftInterest' : 'ihInterest';
     const targetEl = document.getElementById(targetId);
     if (targetEl){ targetEl.value = String(total); targetEl.dispatchEvent(new Event('input', { bubbles: true })); }
+  } else if (action === 'apply-nontaxable-inheritance-amount'){
+    // [2026.09.23 신규] 이 판정 도구는 항목별로 여러 번 눌러 쓸 수 있으므로(예: 국가유증+금양임야
+    // 둘 다 있는 경우), 값을 덮어쓰지 않고 이미 입력된 비과세재산가액에 더한다.
+    const resultBox = document.getElementById('taxCalcNontaxableInheritanceResult');
+    const amount = numVal(resultBox.dataset.lastAmount) || 0;
+    const targetEl = document.getElementById('ihNonTaxable');
+    if (targetEl){
+      const current = numVal(targetEl.value) || 0;
+      targetEl.value = String(current + amount);
+      targetEl.dispatchEvent(new Event('input', { bubbles: true }));
+      showToast('비과세재산가액에 ' + won(amount) + '을 더했습니다.', 'success');
+    }
   } else if (action === 'run-transfer'){
     // [2026.09.23 신규] 국외자산(§118의2~8)은 국내자산 양도세와 완전히 별도 세목이라, 국내
     // 합산 계산(계약·공동양도인·다주택중과 등 전부 국내 전용 개념)에서 반드시 제외해야 한다.
@@ -8524,7 +8548,9 @@ taxCalcView.addEventListener('click', function(e){
   } else if (action === 'run-nontaxable-inheritance'){
     const input = {
       itemType: document.getElementById('niItemType').value,
-      amount: numVal(document.getElementById('niAmount').value) || 0
+      amount: numVal(document.getElementById('niAmount').value) || 0,
+      graveyardForestAndPaddyAmount: numVal(document.getElementById('niGraveyardAmount').value) || 0,
+      genealogyAndRitualToolsAmount: numVal(document.getElementById('niGenealogyAmount').value) || 0
     };
     renderNontaxableInheritanceResult(calculateNontaxableInheritancePropertyJS(input));
   } else if (action === 'run-specific-corp-gift'){
@@ -8757,16 +8783,6 @@ taxCalcView.addEventListener('click', function(e){
       annualInterestRatePercent: numVal(document.getElementById('ipIhRate').value)
     };
     renderInstallmentResult(calculateInstallmentPaymentScheduleJS(input), 'taxCalcInstallmentInheritanceResult');
-  } else if (action === 'run-deemed-inheritance'){
-    const input = {
-      itemType: document.getElementById('diItemType').value,
-      amount: numVal(document.getElementById('diAmount').value) || 0,
-      wasPolicyholderDecedent: document.getElementById('diPolicyholderDecedent').checked,
-      premiumPaidByDecedentRatio: numVal(document.getElementById('diPremiumRatio').value) || 0,
-      isAlreadyGiftTaxedUnder33_1: document.getElementById('diAlreadyGiftTaxed').checked,
-      isExcludedSurvivorPension: document.getElementById('diExcludedPension').checked
-    };
-    renderDeemedInheritanceResult(calculateDeemedInheritancePropertyJS(input));
   } else if (action === 'run-inheritance'){
     const disposalPresumptionItems = inheritanceDisposalItems.map(function(item){
       return {
