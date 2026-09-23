@@ -1754,6 +1754,115 @@ function openFairMarketValueRecognitionModal_(onApplyAppraisal){
   });
 }
 
+// [2026.09.23 신규] "특정주택은 1세대1주택 판정시 주택수에서 제외" 특례 3개(수도권밖 준공후
+// 미분양§98의9, 인구감소지역§71의2, 농어촌주택등§99의4)를 하나의 판정 모달로 흡수 — 세무사님
+// 지시("나머지 부속계산기도 흡수하라")에 따라 독립 계산기 3개(u9/pd/rh)를 삭제하고, "1세대1주택
+// 비과세 전제" 체크박스 옆 버튼 하나로 통합한다. 셋 다 "세액은 계산 안 하고 적용 가능 여부만
+// 판정"하는 구조라 세액 계산과는 다르게, 판정 통과시 그 체크박스를 대신 체크해주는 것으로 반영한다.
+function openOneHouseSpecialCaseModal_(idx){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.display = 'flex';
+  overlay.innerHTML =
+    '<div class="modal-panel" style="width:min(560px, 94vw);">' +
+      '<div class="modal-head"><span>특정주택 제외 판정(1세대1주택 비과세용)</span><span class="modal-close" id="btnCloseOhs">✕</span></div>' +
+      '<div class="modal-body">' +
+        '<div class="taxcalc-field" style="margin-bottom:8px;"><label>적용 조문</label><select id="ohsProvision">' +
+          '<option value="u9">수도권 밖 준공후미분양주택(조특법§98의9, 2024.1.10~2026.12.31 취득)</option>' +
+          '<option value="pd">인구감소지역 주택(조특법§71의2, 2024.1.4~2026.12.31 취득)</option>' +
+          '<option value="rh">농어촌주택등(조특법§99의4, 2003.8.1~2028.12.31 취득)</option>' +
+        '</select></div>' +
+        '<div id="ohsU9" class="taxcalc-grid">' +
+          '<div class="taxcalc-field"><label>준공후미분양주택 취득일</label><input type="date" id="u9AcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="u9OutsideMetro"><label for="u9OutsideMetro">수도권 밖의 지역에 소재</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="u9WasOneHouse"><label for="u9WasOneHouse">취득 전 1주택을 보유한 1세대였음</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="u9AreaPriceOk"><label for="u9AreaPriceOk">전용면적·취득가액 등 시행령 요건 충족(별도 확인)</label></div>' +
+        '</div>' +
+        '<div id="ohsPd" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-field"><label>인구감소지역주택 취득일</label><input type="date" id="pdAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="pdPopulationDeclineArea"><label for="pdPopulationDeclineArea">인구감소지역 또는 수도권 밖 인구감소관심지역에 소재</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="pdWasOneOrFewer"><label for="pdWasOneOrFewer">취득 전 주택·조합원입주권·분양권 중 1채(1개)를 보유한 1세대였음</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="pdAreaPriceOk"><label for="pdAreaPriceOk">주택 소재지·가액 등 시행령 요건 충족(별도 확인)</label></div>' +
+        '</div>' +
+        '<div id="ohsRh" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-field"><label>구분</label><select id="rhHouseType">' +
+            '<option value="rural">농어촌주택(2003.8.1~)</option><option value="hometown">고향주택(2009.1.1~)</option>' +
+          '</select></div>' +
+          '<div class="taxcalc-field"><label>농어촌주택등 취득일</label><input type="date" id="rhAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rhLocationPriceOk"><label for="rhLocationPriceOk">소재지·가액(3억원, 한옥은 4억원) 등 시행령 요건 충족(별도 확인)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rhSameDistrict"><label for="rhSameDistrict">농어촌주택등과 일반주택이 같은(연접) 읍·면·동(고향주택은 시)에 소재(체크시 적용배제)</label></div>' +
+          '<div class="taxcalc-field"><label>농어촌주택등 보유기간</label><input type="number" id="rhHoldingYears" placeholder="년"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rhPendingHolding"><label for="rhPendingHolding">3년 보유요건 충족 전 일반주택을 먼저 양도하는 경우임</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rhClawback"><label for="rhClawback">특례 적용 후 농어촌주택등을 3년 이상 보유하지 않게 된 사후관리 위반이 발생함</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rhExempted"><label for="rhExempted">[사후관리 위반일 때만] 수용 등 부득이한 사유에 해당(추징 예외)</label></div>' +
+        '</div>' +
+        '<button type="button" class="taxcalc-run-btn" id="ohsRunBtn" style="margin-top:8px;">적용 가능 여부 판정하기</button>' +
+        '<div id="ohsResult"></div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  function close(){ overlay.remove(); }
+  overlay.querySelector('#btnCloseOhs').onclick = close;
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+  enhanceNumberInputs(overlay);
+  enhanceDateInputs(overlay);
+  const provisionSel = overlay.querySelector('#ohsProvision');
+  provisionSel.addEventListener('change', function(){
+    ['ohsU9', 'ohsPd', 'ohsRh'].forEach(function(id){
+      overlay.querySelector('#' + id).style.display = (id === 'ohs' + provisionSel.value.charAt(0).toUpperCase() + provisionSel.value.slice(1)) ? '' : 'none';
+    });
+  });
+  overlay.querySelector('#ohsRunBtn').addEventListener('click', function(){
+    const provision = provisionSel.value;
+    let r;
+    if (provision === 'u9'){
+      r = calculateUnsoldHouseOneHouseExclusionJS({
+        acquisitionDate: document.getElementById('u9AcquisitionDate').value,
+        isOutsideMetropolitanArea: document.getElementById('u9OutsideMetro').checked,
+        wasOneHouseBeforeAcquisition: document.getElementById('u9WasOneHouse').checked,
+        meetsAreaAndPriceRequirements: document.getElementById('u9AreaPriceOk').checked
+      });
+    } else if (provision === 'pd'){
+      r = calculatePopulationDeclineAreaHouseExclusionJS({
+        acquisitionDate: document.getElementById('pdAcquisitionDate').value,
+        isPopulationDeclineArea: document.getElementById('pdPopulationDeclineArea').checked,
+        wasOneOrFewerBeforeAcquisition: document.getElementById('pdWasOneOrFewer').checked,
+        meetsAreaAndPriceRequirements: document.getElementById('pdAreaPriceOk').checked
+      });
+    } else {
+      r = calculateRuralHouseOneHouseExclusionJS({
+        houseType: document.getElementById('rhHouseType').value,
+        acquisitionDate: document.getElementById('rhAcquisitionDate').value,
+        meetsLocationAndPriceRequirements: document.getElementById('rhLocationPriceOk').checked,
+        isSameOrAdjacentDistrict: document.getElementById('rhSameDistrict').checked,
+        holdingYears: numVal(document.getElementById('rhHoldingYears').value) || 0,
+        isPendingHoldingPeriod: document.getElementById('rhPendingHolding').checked,
+        triggerClawback: document.getElementById('rhClawback').checked,
+        isExemptedReason: document.getElementById('rhExempted').checked
+      });
+    }
+    const resultBox = document.getElementById('ohsResult');
+    if (!r || r.error){ resultBox.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
+    let html = '<div class="taxcalc-result" style="margin-top:10px;">';
+    html += taxCalcResultRow('적용 여부', r.적용여부 ? '적용 가능' : '적용 안 됨', { total: true });
+    html += '<div class="taxcalc-result-note">' + (r.안내 || '') + '</div>';
+    if (r.적용여부){
+      html += '<button type="button" class="taxcalc-run-btn" id="ohsApplyBtn" style="margin-top:8px;">1세대1주택 비과세로 체크하기</button>';
+    }
+    html += '</div>';
+    resultBox.innerHTML = html;
+    const applyBtn = resultBox.querySelector('#ohsApplyBtn');
+    if (applyBtn){
+      applyBtn.addEventListener('click', function(){
+        transferAssets[idx].isOneHouseOneFamily = true;
+        close();
+        renderTransferPane();
+        showToast('1세대1주택 비과세 전제를 체크했습니다.', 'success');
+      });
+    }
+  });
+}
+
 // 매매사례가액(아파트 실거래가) 참고조회 모달 — 계약년월(YYYYMM)로 그 지역 아파트 실거래 목록을
 // 받아와 사용자가 유사한 거래를 골라 평가액에 채울 수 있게 한다. 시가로 그대로 쓸지는 면적·층·거래
 // 시점의 유사성을 사용자가 직접 판단해야 하므로 자동으로 채우지 않고 "골라서 채우기"로만 동작한다.
@@ -2891,6 +3000,7 @@ function renderPropertyCardHtml_(idx, opts){
         '</div>' +
         '<div class="taxcalc-grid" style="margin-top:8px;">' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isOneHouseOneFamily" id="oneHouse-' + idx + '"><label for="oneHouse-' + idx + '">1세대1주택 비과세 전제</label></div>' +
+          '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-one-house-special-modal" data-idx="' + idx + '" title="특정주택(수도권밖미분양·인구감소지역·농어촌주택)은 주택수에서 제외될 수 있습니다">🔍 특정주택 제외 판정</button></div>' +
           '<div class="taxcalc-field" data-show-if="isOneHouseOneFamily" style="display:none;"><label>거주연수</label><input type="number" data-field="residenceYears" placeholder="년" maxlength="2"></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isAdjustedArea" id="adj-' + idx + '"><label for="adj-' + idx + '">조정대상지역(2026.5.9까지 양도분은 시행령§167조의3①12호의2 등에 따라 중과 한시배제 자동 적용, 이후 재연장 여부는 별도 확인)</label></div>' +
           (transferAssets[idx].transferContractId ? '<div class="taxcalc-field"><span class="taxcalc-field-help">매매계약체결일·토지거래허가 관련 항목은 양도계약에서 가져옵니다 — 계약 카드에서 수정하세요</span></div>' :
@@ -3235,17 +3345,10 @@ function renderTransferPane(){
     // unsoldHouseReductionProvision, 위 2861번째 줄 근처), 메인 계산에서 자동으로 감면분을
     // 뺀다. 독립 계산기는 결과를 "위 일반 양도세 계산기에 양도차익으로 대신 입력하세요"라고
     // 안내할 뿐 자동 반영이 안 되는 구식 구조였다.
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>수도권 밖 준공후미분양주택 1세대1주택 비과세 특례(조특법§98의9, 2024.1.10~2026.12.31 취득분, 현재 시행중) — 세액은 계산하지 않고 적용 가능 여부만 판정합니다</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>준공후미분양주택 취득일</label><input type="date" id="u9AcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="u9OutsideMetro"><label for="u9OutsideMetro">수도권 밖의 지역에 소재</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="u9WasOneHouse"><label for="u9WasOneHouse">취득 전 1주택을 보유한 1세대였음</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="u9AreaPriceOk"><label for="u9AreaPriceOk">전용면적·취득가액 등 시행령 요건 충족(별도 확인)</label></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-unsold-house-one-house">적용 가능 여부 판정하기</button>' +
-      '<div id="taxCalcUnsoldHouseOneHouseResult"></div>' +
-    '</div>' +
+    // [2026.09.23 삭제] 수도권밖미분양(u9)·인구감소지역(pd)·농어촌주택(rh) 1세대1주택 특례
+    // 독립 계산기 3개도 삭제 — 위 "1세대1주택 비과세 전제" 체크박스 옆 "🔍 특정주택 제외 판정"
+    // 인라인 모달(openOneHouseSpecialCaseModal_)로 흡수했다. 통과하면 그 체크박스를 대신
+    // 체크해준다(세액계산 자체는 원래도 안 하던 순수 판정 도구라 이 방식이 자연스럽다).
     // [2026.09.23 삭제] 구조조정대상부동산(§43)·장기임대주택등(§97계열)·국가양도산지(§85의10)
     // 독립 계산기 3개도 삭제 — 세무사님 지시("나머지 부속계산기도 전부 전수조사해서 중복부분을
     // 제거하고 남은 부분도 가급적 본 계산기로 흡수하라")에 따라 각 양도자산 카드에 완전히
@@ -3253,34 +3356,6 @@ function renderTransferPane(){
     // isNationalForestLandReduction, 위 2879번째 줄 근처). 5년이내(§43)·§97기본형처럼 소득금액이
     // 아니라 산출세액 자체를 감면하는 방식은 calculateTransferTaxMultiJS의 합산 단계에서
     // (기존 §98의4·§97의9 10%감면과 같은 방식으로) 처리한다.
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>인구감소지역 주택 1세대1주택 비과세 특례(조특법§71의2, 2024.1.4~2026.12.31 취득분, 현재 시행중) — 세액은 계산하지 않고 적용 가능 여부만 판정합니다</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>인구감소지역주택 취득일</label><input type="date" id="pdAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="pdPopulationDeclineArea"><label for="pdPopulationDeclineArea">인구감소지역 또는 수도권 밖 인구감소관심지역에 소재</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="pdWasOneOrFewer"><label for="pdWasOneOrFewer">취득 전 주택·조합원입주권·분양권 중 1채(1개)를 보유한 1세대였음</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="pdAreaPriceOk"><label for="pdAreaPriceOk">주택 소재지·가액 등 시행령 요건 충족(별도 확인)</label></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-population-decline-house">적용 가능 여부 판정하기</button>' +
-      '<div id="taxCalcPopulationDeclineHouseResult"></div>' +
-    '</div>' +
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>농어촌주택등 취득자 1세대1주택 특례(조특법§99의4, 2003.8.1~2028.12.31 취득분, 현재 시행중) — 세액은 계산하지 않고 적용 가능 여부·사후관리 추징대상 여부만 판정합니다</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>구분</label><select id="rhHouseType">' +
-          '<option value="rural">농어촌주택(2003.8.1~)</option><option value="hometown">고향주택(2009.1.1~)</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>농어촌주택등 취득일</label><input type="date" id="rhAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="rhLocationPriceOk"><label for="rhLocationPriceOk">소재지·가액(3억원, 한옥은 4억원) 등 시행령 요건 충족(별도 확인)</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="rhSameDistrict"><label for="rhSameDistrict">농어촌주택등과 일반주택이 같은(연접) 읍·면·동(고향주택은 시)에 소재(체크시 적용배제)</label></div>' +
-        '<div class="taxcalc-field"><label>농어촌주택등 보유기간</label><input type="number" id="rhHoldingYears" placeholder="년"></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="rhPendingHolding"><label for="rhPendingHolding">3년 보유요건 충족 전 일반주택을 먼저 양도하는 경우임</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="rhClawback"><label for="rhClawback">특례 적용 후 농어촌주택등을 3년 이상 보유하지 않게 된 사후관리 위반이 발생함</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="rhExempted"><label for="rhExempted">[사후관리 위반일 때만] 수용 등 부득이한 사유에 해당(추징 예외)</label></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-rural-house-exclusion">적용 가능 여부 판정하기</button>' +
-      '<div id="taxCalcRuralHouseExclusionResult"></div>' +
-    '</div>' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>공공매입임대주택 건설목적 토지양도 감면(조특법§97의9, 2027.12.31까지 양도분, 현재 시행중) — 공공주택사업자와 건설·양도 약정을 맺은 주택건설사업자에게 토지를 양도할 때 10% 세액감면</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -3982,26 +4057,6 @@ function renderDonorDirectTransferResult(r){
   if (r.수증자부담세액합계 !== undefined) html += taxCalcResultRow('수증자 부담세액 합계(증여세+양도세)', won(r.수증자부담세액합계));
   if (r.증여자직접양도시양도세 !== undefined) html += taxCalcResultRow('증여자 직접양도시 양도소득세', won(r.증여자직접양도시양도세));
   if (r.납부세액 !== undefined) html += taxCalcResultRow('실제 부담할 세액', won(r.납부세액), { total: true });
-  if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
-  html += '</div>';
-  box.innerHTML = html;
-}
-
-function renderUnsoldHouseOneHouseResult(r){
-  const box = document.getElementById('taxCalcUnsoldHouseOneHouseResult');
-  if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
-  let html = '<div class="taxcalc-result">';
-  html += taxCalcResultRow('적용 여부', r.적용여부 ? '적용 가능' : '적용 안 됨', { total: true });
-  if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
-  html += '</div>';
-  box.innerHTML = html;
-}
-
-function renderPopulationDeclineHouseResult(r){
-  const box = document.getElementById('taxCalcPopulationDeclineHouseResult');
-  if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
-  let html = '<div class="taxcalc-result">';
-  html += taxCalcResultRow('적용 여부', r.적용여부 ? '적용 가능' : '적용 안 됨', { total: true });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   html += '</div>';
   box.innerHTML = html;
@@ -5645,16 +5700,6 @@ function renderNontaxableInheritanceResult(r){
   let html = '<div class="taxcalc-result">';
   html += taxCalcResultRow('근거호', r.근거호);
   html += taxCalcResultRow('비과세금액', won(r.비과세금액), { total: true });
-  if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
-  html += '</div>';
-  box.innerHTML = html;
-}
-function renderRuralHouseExclusionResult(r){
-  const box = document.getElementById('taxCalcRuralHouseExclusionResult');
-  if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
-  let html = '<div class="taxcalc-result">';
-  html += taxCalcResultRow('적용 여부', r.적용여부 ? '적용 가능' : '적용 안 됨', { total: true });
-  if (r.사후관리추징대상 !== undefined) html += taxCalcResultRow('사후관리 추징대상', r.사후관리추징대상 ? '예' : '아니오');
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   html += '</div>';
   box.innerHTML = html;
@@ -7835,22 +7880,6 @@ taxCalcView.addEventListener('click', function(e){
       donorDirectTransferTax: numVal(document.getElementById('ddDonorTax').value) || 0
     };
     renderDonorDirectTransferResult(calculateDonorDirectTransferDeemedJS(input));
-  } else if (action === 'run-unsold-house-one-house'){
-    const input = {
-      acquisitionDate: document.getElementById('u9AcquisitionDate').value,
-      isOutsideMetropolitanArea: document.getElementById('u9OutsideMetro').checked,
-      wasOneHouseBeforeAcquisition: document.getElementById('u9WasOneHouse').checked,
-      meetsAreaAndPriceRequirements: document.getElementById('u9AreaPriceOk').checked
-    };
-    renderUnsoldHouseOneHouseResult(calculateUnsoldHouseOneHouseExclusionJS(input));
-  } else if (action === 'run-population-decline-house'){
-    const input = {
-      acquisitionDate: document.getElementById('pdAcquisitionDate').value,
-      isPopulationDeclineArea: document.getElementById('pdPopulationDeclineArea').checked,
-      wasOneOrFewerBeforeAcquisition: document.getElementById('pdWasOneOrFewer').checked,
-      meetsAreaAndPriceRequirements: document.getElementById('pdAreaPriceOk').checked
-    };
-    renderPopulationDeclineHouseResult(calculatePopulationDeclineAreaHouseExclusionJS(input));
   } else if (action === 'run-public-rental-housing-land'){
     const input = {
       transferDate: document.getElementById('prTransferDate').value,
@@ -8187,6 +8216,8 @@ taxCalcView.addEventListener('click', function(e){
       transferAssets[idx].appraisalValue = appraisalValue;
       renderTransferPane();
     });
+  } else if (action === 'open-one-house-special-modal'){
+    openOneHouseSpecialCaseModal_(numVal(btn.dataset.idx));
   } else if (action === 'send-debt-to-transfer'){
     // 부담부증여의 인수채무액 상당분은 증여자가 그 지분만큼 대가(채무인수)를 받고 양도한 것으로
     // 과세된다(소득세법§88①). 취득가액·양도가액·필요경비 안분은 이제 독립 "부담부증여시 양도로
@@ -8619,18 +8650,6 @@ taxCalcView.addEventListener('click', function(e){
       amount: numVal(document.getElementById('niAmount').value) || 0
     };
     renderNontaxableInheritanceResult(calculateNontaxableInheritancePropertyJS(input));
-  } else if (action === 'run-rural-house-exclusion'){
-    const input = {
-      houseType: document.getElementById('rhHouseType').value,
-      acquisitionDate: document.getElementById('rhAcquisitionDate').value,
-      meetsLocationAndPriceRequirements: document.getElementById('rhLocationPriceOk').checked,
-      isSameOrAdjacentDistrict: document.getElementById('rhSameDistrict').checked,
-      holdingYears: numVal(document.getElementById('rhHoldingYears').value) || 0,
-      isPendingHoldingPeriod: document.getElementById('rhPendingHolding').checked,
-      triggerClawback: document.getElementById('rhClawback').checked,
-      isExemptedReason: document.getElementById('rhExempted').checked
-    };
-    renderRuralHouseExclusionResult(calculateRuralHouseOneHouseExclusionJS(input));
   } else if (action === 'run-free-property-use'){
     const input = {
       useType: document.getElementById('fuUseType').value,
