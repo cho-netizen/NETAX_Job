@@ -165,13 +165,17 @@ function recomputeStockUnpaidDays(){
   const deadline = new Date(y + 1, 4, 31); // 확정신고기한: 양도일 속한 해의 다음해 5.31
   setUnpaidDaysField_('stUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
 }
-function recomputeOverseasAssetUnpaidDays(){
-  const transferDate = document.getElementById('oaTransferDate');
-  const paidDate = document.getElementById('oaPaidDate');
-  if (!transferDate || !transferDate.value){ setUnpaidDaysField_('oaUnpaidDays', 0); return; }
-  const y = Number(transferDate.value.slice(0, 4));
+// [2026.09.23 재설계] 국외자산이 자산 카드 배열(transferAssets)로 흡수되면서 여러 건일 수
+// 있게 됐다 — 자산마다 양도일이 다를 수 있으므로 idx별로 계산한다(양도인 여러 명일 때의
+// recomputeTransferUnpaidDays와 같은 패턴).
+function recomputeOverseasAssetUnpaidDays(idx){
+  const a = transferAssets[idx];
+  if (!a || !a.transferDate){ setUnpaidDaysField_('oaUnpaidDays-' + idx, 0); a.oaUnpaidDays = 0; return; }
+  const y = Number(a.transferDate.slice(0, 4));
   const deadline = new Date(y + 1, 4, 31); // 확정신고기한: 양도일 속한 해의 다음해 5.31
-  setUnpaidDaysField_('oaUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
+  const days = taxCalcDaysLate_(deadline, a.oaPaidDate || '');
+  a.oaUnpaidDays = days;
+  setUnpaidDaysField_('oaUnpaidDays-' + idx, days);
 }
 function recomputeSrGiftUnpaidDays(){
   const giftDate = document.getElementById('srGiftDate');
@@ -899,7 +903,9 @@ function contractFkKey_(kind){ return kind === 'acquisition' ? 'acquisitionContr
 function contractPropertyMembers_(contractId, kind){
   const key = contractFkKey_(kind);
   const idxs = [];
-  transferAssets.forEach(function(a, i){ if (a[key] === contractId) idxs.push(i); });
+  // [2026.09.23] 국외자산은 계약 안분 대상에서 제외한다 — 국외자산은 계약의 "계약 전체
+  // 가액"을 이 자산들 몫으로 나누는 개념 자체가 없다(국내자산과 완전히 별도 세목).
+  transferAssets.forEach(function(a, i){ if (a[key] === contractId && !a.isOverseasAsset) idxs.push(i); });
   return idxs;
 }
 // 계약 구성원 총수(이 사건에 있는 자산 + "이 사건에 없는 자산" 외부행) — 1건이면 안분 비율
@@ -2908,8 +2914,55 @@ function tcSyncTaxOfficeButtons_(paneEl){
 // 카드 "안에" 그려지는 중이라는 뜻이라 양도 정보(양도일·양수인·양도가액 등, 이미 계약
 // 카드에 있음)를 다시 묻지 않는다 — 단독 자산(계약 없음)일 때만 양도 정보 섹션 전체를
 // 그린다.
+// [2026.09.23 신규] 국외자산 양도소득세(§118의2~8) 흡수 — 세무사님 지시("소재지구분으로
+// 흡수할 수 없나")에 따라, 자산 카드 맨 위에 "이 자산은 국외 소재" 체크박스를 두고 체크시
+// 이 짧은 전용 카드로 완전히 교체한다. 국외자산은 국내자산과 "완전히 별도 세목"이라
+// (장기보유특별공제 미적용·별도 기본공제·국내자산과 합산 절대 금지) 계약·특례 등 국내
+// 전용 로직을 하나도 안 거치게 하는 게 legally 안전하다 — run-transfer 핸들러에서 이
+// 카드들은 calculateOverseasAssetTransferTaxJS로 자산별 독립 계산 후, 국내 합산과는
+// 별도로 "국외자산 양도소득세(별도 세목)" 결과로만 보여준다(국내 납부세액에 합산 안 함).
+function renderOverseasPropertyCardHtml_(idx){
+  const a = transferAssets[idx];
+  return '<div class="taxcalc-asset" data-idx="' + idx + '">' +
+      '<div class="taxcalc-asset-head"><span style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
+        '<b>양도자산 ' + tcPad2_(idx + 1) + ' — 국외자산</b>' +
+        (idx > 0 ? '<button type="button" class="taxcalc-del-asset" data-action="del-asset" data-idx="' + idx + '">✕ 자산 삭제</button>' : '') +
+      '</span></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field checkbox" style="flex-basis:100%; max-width:none;"><input type="checkbox" data-field="isOverseasAsset" id="oaAsset-' + idx + '" checked><label for="oaAsset-' + idx + '">이 자산은 국외 소재(소득세법§118의2~8 — 국내자산 양도세와 완전히 별도 세목으로, 국내 합산 없이 별도 계산·별도 표시됩니다)</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="oaResident5yr" id="oaRes5-' + idx + '"' + (a.oaResident5yr ? ' checked' : '') + '><label for="oaRes5-' + idx + '">양도일까지 계속 5년 이상 국내에 주소·거소를 둔 거주자</label></div>' +
+        '<div class="taxcalc-field"><label>양도일</label><input type="date" data-field="transferDate" value="' + (a.transferDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
+        '<div class="taxcalc-field"><label>양도가액</label><input type="number" data-field="transferPrice" placeholder="원" value="' + (a.transferPrice || '') + '"><span class="taxcalc-field-help">원칙 실지거래가액</span></div>' +
+        '<div class="taxcalc-field"><label>취득일</label><input type="date" data-field="acquisitionDate" value="' + (a.acquisitionDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
+        '<div class="taxcalc-field"><label>취득가액</label><input type="number" data-field="acquisitionPrice" placeholder="원" value="' + (a.acquisitionPrice || '') + '"><span class="taxcalc-field-help">원칙 실지거래가액</span></div>' +
+        '<div class="taxcalc-field"><label>자본적지출액</label><input type="number" data-field="oaCapitalExpenditure" placeholder="원" value="' + (a.oaCapitalExpenditure || '') + '"><span class="taxcalc-field-help">없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>양도비</label><input type="number" data-field="oaTransferExpenses" placeholder="원" value="' + (a.oaTransferExpenses || '') + '"><span class="taxcalc-field-help">없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>외국납부세액 처리방법</label><select data-field="oaForeignTaxMethod">' +
+          '<option value="credit"' + (a.oaForeignTaxMethod !== 'expense' ? ' selected' : '') + '>외국납부세액공제(세액공제, 산출세액 한도)</option>' +
+          '<option value="expense"' + (a.oaForeignTaxMethod === 'expense' ? ' selected' : '') + '>필요경비산입방법(위 취득가액 등에 이미 포함해 입력)</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field"><label>외국에 납부한 세액</label><input type="number" data-field="oaForeignTaxPaid" placeholder="원" value="' + (a.oaForeignTaxPaid || '') + '"><span class="taxcalc-field-help">없으면 0, 세액공제방법만</span></div>' +
+        '<div class="taxcalc-field"><label>같은 과세기간 국외자산 양도소득금액(있으면)</label><input type="number" data-field="oaDomesticIncome" placeholder="원" value="' + (a.oaDomesticIncome || '') + '"><span class="taxcalc-field-help">없으면 이 자산만 있다고 보아 공제한도=산출세액</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:10px;"><b>신고 상태 · 가산세(이 국외자산 몫)</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>신고 상태</label><select data-field="oaFilingStatus">' +
+          '<option value="ontime"' + (a.oaFilingStatus !== 'unreported' && a.oaFilingStatus !== 'underreported' ? ' selected' : '') + '>정상(기한내) 신고</option>' +
+          '<option value="unreported"' + (a.oaFilingStatus === 'unreported' ? ' selected' : '') + '>무신고</option>' +
+          '<option value="underreported"' + (a.oaFilingStatus === 'underreported' ? ' selected' : '') + '>과소신고</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="oaFraudulent" id="oaFraud-' + idx + '"' + (a.oaFraudulent ? ' checked' : '') + '><label for="oaFraud-' + idx + '">부정행위(가산세율 40%로 상향)</label></div>' +
+        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" data-field="oaUnderreportedTax" placeholder="원" value="' + (a.oaUnderreportedTax || '') + '"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
+        '<div class="taxcalc-field"><label>실제 납부일</label><input type="date" data-field="oaPaidDate" id="oaPaidDate-' + idx + '" value="' + (a.oaPaidDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
+        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="oaUnpaidDays-' + idx + '" placeholder="0" value="' + (a.oaUnpaidDays || '') + '" readonly><span class="taxcalc-field-help">확정신고기한 다음해 5.31 대비</span></div>' +
+        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" data-field="oaMonthsAfterDesignated" placeholder="0" value="' + (a.oaMonthsAfterDesignated || '') + '"></div>' +
+        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" data-field="oaUnpaidAtDesignated" placeholder="0" value="' + (a.oaUnpaidAtDesignated || '') + '"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
+      '</div>' +
+    '</div>';
+}
 function renderPropertyCardHtml_(idx, opts){
   opts = opts || {};
+  if (transferAssets[idx].isOverseasAsset) return renderOverseasPropertyCardHtml_(idx);
   return '' +
     '<div class="taxcalc-asset" data-idx="' + idx + '">' +
       // [2026.09.20 배치 재설계] "+ 자산 추가"를 이 카드 자신의 제목 옆(삭제 버튼 옆)에도
@@ -2931,6 +2984,9 @@ function renderPropertyCardHtml_(idx, opts){
         '</div>' +
         '<div class="taxcalc-ai-status" id="aiStatus-' + idx + '">' + renderAiStatusHtml(transferAssets[idx]) + '</div>' +
         '<div class="taxcalc-calcbasis" id="calcBasis-' + idx + '" style="display:none;"></div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field checkbox" style="flex-basis:100%; max-width:none;"><input type="checkbox" data-field="isOverseasAsset" id="oaAsset-' + idx + '"><label for="oaAsset-' + idx + '">이 자산은 국외 소재(소득세법§118의2~8 — 국내자산 양도세와 완전히 별도 세목, 체크하면 이 카드가 국외자산 전용으로 바뀝니다)</label></div>' +
+        '</div>' +
         '<div class="taxcalc-grid">' +
           // [2026.09 버그수정] 세무사님 재점검 지시 — 바로 아래 assetDetailFieldsHtml_()가 만드는
           // "유형"(토지/건물/기타, 기준시가 안분용 물리적 구분)과 이 select가 이름이 너무 비슷해서
@@ -3257,8 +3313,12 @@ function renderTransferPane(){
   recomputeAllContracts_();
   const flatFieldValues_ = tcCaptureFlatFieldValues_(taxCalcTransferPane);
   const contractSectionHtml = renderContractSectionHtml_('transfer') + renderContractSectionHtml_('acquisition');
-  const standaloneIdxs = transferAssets.map(function(_, i){ return i; }).filter(function(i){ return !transferAssets[i].transferContractId; });
+  // [2026.09.23] 국외자산은 "계약이 지정 안 된 고아 자산" 경고 대상이 아니다 — 애초에
+  // 계약(안분) 개념이 없는 별도 세목이라 항상 정상적으로 자기 몫의 전용 섹션에 나타난다.
+  const standaloneIdxs = transferAssets.map(function(_, i){ return i; }).filter(function(i){ return !transferAssets[i].transferContractId && !transferAssets[i].isOverseasAsset; });
   const cardsHtml = standaloneIdxs.map(function(idx){ return renderPropertyCardHtml_(idx, { nested: false }); }).join('');
+  const overseasIdxs = transferAssets.map(function(_, i){ return i; }).filter(function(i){ return transferAssets[i].isOverseasAsset; });
+  const overseasCardsHtml = overseasIdxs.map(function(idx){ return renderPropertyCardHtml_(idx, { nested: false }); }).join('');
   taxCalcTransferPane.innerHTML =
     // [2026.09.23 정정] 세무사님 지적 — "양도인 연락처라는 정보는 개별 양도인 속에 있지 않고
     // 별도로 자리하고 있네? 개별 양도인 정보 속으로 반영해야지" / "양도인마다 주소를 넣어야
@@ -3287,6 +3347,13 @@ function renderTransferPane(){
     (cardsHtml ? '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>⚠ 계약이 지정되지 않은 자산(계약이 삭제됐거나 아직 안 골랐음 — 위에서 계약을 선택하세요)</b></div><div id="taxCalcTransferCards">' + cardsHtml + '</div>' : '') +
     '<button type="button" class="taxcalc-run-btn" data-action="run-transfer">세액 계산하기</button>' +
     '<div id="taxCalcTransferResult"></div>' +
+    // [2026.09.23 신규] 국외자산 양도소득세(§118의2~8) — "국내자산 양도세와 완전히 별도
+    // 세목"이라 위 "세액 계산하기"를 누르면 이 목록도 함께 계산되지만, 결과는 국내
+    // 합산과 절대 섞이지 않고 여기 별도 박스에만 표시된다. 자산카드 위 체크박스로 만들
+    // 수도 있고, 여기 전용 버튼으로 바로 만들 수도 있다.
+    '<div class="taxcalc-asset-head" style="margin-top:20px;"><span style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;"><b>국외자산 양도소득세(§118의2~§118의8, 국내자산 양도세와 완전히 별도 세목)</b><button type="button" class="taxcalc-add-asset-inline" data-action="add-overseas-asset">+ 국외자산 추가</button></span></div>' +
+    (overseasCardsHtml || '<div class="taxcalc-result-note">국외 소재 부동산·부동산에관한권리·기타자산을 양도했다면 위 버튼으로 추가하거나, 위 양도자산 카드에서 "이 자산은 국외 소재"를 체크하세요.</div>') +
+    '<div id="taxCalcOverseasAssetTransferResult"></div>' +
     // [2026.09 삭제] "토지·건물 안분계산기"(자산 하나를 토지분/건물분 2건으로 쪼개 거래
     // 목록에 새 거래를 만드는 도구)는 삭제한다 — 세무사님 지시("모든 안분계산은 수동입력 없이
     // 시스템에서 자동계산되어야 한다")대로, 그 기능은 이제 계약 시스템으로 완전히 대체된다:
@@ -3457,36 +3524,11 @@ function renderTransferPane(){
     // run-stock-transfer-carryover)도 부동산과 같은 이유로 삭제 — 위 주식 양도세 계산기에
     // 완전히 흡수했다(증여자와의 관계를 선택하면 같은 엔진 calculateStockTransferTaxWithCarryoverJS로
     // 자동 계산).
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>국외자산 양도소득세(소득세법§118의2~§118의8) — 국내자산 양도세와 완전히 별도 세목. 양도일까지 계속 5년이상 국내거주자가 국외 토지·건물·부동산에관한권리·기타자산을 양도할 때</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="oaResident5yr"><label for="oaResident5yr">양도일까지 계속 5년 이상 국내에 주소·거소를 둔 거주자</label></div>' +
-        '<div class="taxcalc-field"><label>양도일</label><input type="date" id="oaTransferDate" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>양도가액</label><input type="number" id="oaTransferPrice" placeholder="원"><span class="taxcalc-field-help">원칙 실지거래가액</span></div>' +
-        '<div class="taxcalc-field"><label>취득가액</label><input type="number" id="oaAcquisitionPrice" placeholder="원"><span class="taxcalc-field-help">원칙 실지거래가액</span></div>' +
-        '<div class="taxcalc-field"><label>자본적지출액</label><input type="number" id="oaCapitalExpenditure" placeholder="원"><span class="taxcalc-field-help">없으면 0</span></div>' +
-        '<div class="taxcalc-field"><label>양도비</label><input type="number" id="oaTransferExpenses" placeholder="원"><span class="taxcalc-field-help">없으면 0</span></div>' +
-        '<div class="taxcalc-field"><label>외국납부세액 처리방법</label><select id="oaForeignTaxMethod">' +
-          '<option value="credit">외국납부세액공제(세액공제, 산출세액 한도)</option>' +
-          '<option value="expense">필요경비산입방법(위 취득가액 등에 이미 포함해 입력)</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>외국에 납부한 세액</label><input type="number" id="oaForeignTaxPaid" placeholder="원"><span class="taxcalc-field-help">없으면 0, 세액공제방법만</span></div>' +
-        '<div class="taxcalc-field"><label>같은 과세기간 국내자산 양도소득금액(있으면)</label><input type="number" id="oaDomesticIncome" placeholder="원"><span class="taxcalc-field-help">없으면 국외자산만 있다고 보아 공제한도=산출세액</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>신고 상태</label><select id="oaFilingStatus">' +
-          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="oaFraudulent"><label for="oaFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
-        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="oaUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
-        '<div class="taxcalc-field"><label>실제 납부일</label><input type="date" id="oaPaidDate" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="oaUnpaidDays" placeholder="0" readonly><span class="taxcalc-field-help">확정신고기한 다음해 5.31 대비</span></div>' +
-        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="oaMonthsAfterDesignated" placeholder="0"></div>' +
-        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="oaUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-overseas-asset-transfer">세액 계산하기</button>' +
-      '<div id="taxCalcOverseasAssetTransferResult"></div>' +
-    '</div>' +
+    // [2026.09.23 삭제] 국외자산 양도소득세(oa) 독립 계산기도 삭제 — 세무사님 지시("소재지
+    // 구분으로 흡수할 수 없나")에 따라 각 양도자산 카드 위 "이 자산은 국외 소재" 체크박스로
+    // 흡수했다(renderOverseasPropertyCardHtml_). 여러 건 지원되고, 위쪽 "국외자산 양도소득세"
+    // 섹션(overseasIdxs)에 모여서 나타나며, "세액 계산하기"를 누르면 국내와 함께 계산되지만
+    // 국내 합산에는 절대 섞이지 않고 별도 결과 박스에만 표시된다.
     // [2026.09.23 삭제] 특수관계인 시가재계산(rpa)·시가 인정범위 판정(tfv) 독립 계산기도
     // 삭제 — 각 계약 카드("계약 전체 가액" 옆)와 자산 카드(취득가액·감정가액 옆)에 인라인
     // 모달 버튼(openRelatedPartyAdjustmentModal_/openFairMarketValueRecognitionModal_)으로
@@ -3537,6 +3579,9 @@ function renderTransferPane(){
         transferAssets[idx][key] = el.type === 'checkbox' ? el.checked : el.value;
         updatePropertyCardConditionalVisibility_(card, idx);
         if (key === 'transferDate') transferSellers.forEach(function(_, si){ recomputeTransferUnpaidDays(si); });
+        // [2026.09.23] 국외자산은 양도인 개념이 없고 자산 자체가 납세자 단위라 이 자산의
+        // 양도일·실제납부일이 바뀔 때마다 이 자산 자신의 납부지연일수만 다시 계산한다.
+        if (transferAssets[idx].isOverseasAsset && (key === 'transferDate' || key === 'oaPaidDate')) recomputeOverseasAssetUnpaidDays(idx);
       });
       el.addEventListener('change', function(){
         const key = el.dataset.field;
@@ -3566,6 +3611,7 @@ function renderTransferPane(){
         }
         updatePropertyCardConditionalVisibility_(card, idx);
         if (key === 'assetKind' || key === 'hasMultipleBuildingSections') renderTransferPane(); // 지목(토지)↔층수·용도(건물), 단일↔층별입력으로 입력요소 자체가 바뀌므로 다시 그림
+        if (key === 'isOverseasAsset') renderTransferPane(); // 국내↔국외 카드 전체가 완전히 다른 템플릿이라 다시 그림
         if (key === 'buyerRelation') renderTransferPane(); // 특수관계 여부에 따라 시가 입력란·§35 연결버튼 표시가 바뀌므로 다시 그림
         if (key === 'isReconstructionRights' || key === 'isLandReplotment' || key === 'useConvertedRightsBaseAcquisitionPrice' || key === 'isCompletedNewHousing') renderTransferPane(); // 청산금 안내·버튼·환산가액 입력란·1세대1조합원입주권 체크박스 표시 여부가 바뀌므로 다시 그림
         // [2026.09 재설계] 계약 연결·계약 안분용 기준시가가 바뀌면 이 계약에 속한 "다른" 자산
@@ -3671,11 +3717,8 @@ function renderTransferPane(){
   if (stTransferDateEl) stTransferDateEl.addEventListener('input', recomputeStockUnpaidDays);
   if (stPaidDateEl) stPaidDateEl.addEventListener('input', recomputeStockUnpaidDays);
   recomputeStockUnpaidDays();
-  const oaTransferDateEl = document.getElementById('oaTransferDate');
-  const oaPaidDateEl = document.getElementById('oaPaidDate');
-  if (oaTransferDateEl) oaTransferDateEl.addEventListener('input', recomputeOverseasAssetUnpaidDays);
-  if (oaPaidDateEl) oaPaidDateEl.addEventListener('input', recomputeOverseasAssetUnpaidDays);
-  recomputeOverseasAssetUnpaidDays();
+  // [2026.09.23] 국외자산은 이제 자산카드 배열이라 자산마다 계산한다.
+  transferAssets.forEach(function(a, i){ if (a.isOverseasAsset) recomputeOverseasAssetUnpaidDays(i); });
   wireMoneyCapHint_('stBasicDeductionUsed', 'stBasicDeductionUsedHint', 2500000);
   enhanceNumberInputs(taxCalcTransferPane);
   enhanceDateInputs(taxCalcTransferPane);
@@ -4151,16 +4194,13 @@ function renderStockTransferResult(r){
   box.innerHTML = html;
 }
 
-function renderOverseasAssetTransferResult(r){
-  const box = document.getElementById('taxCalcOverseasAssetTransferResult');
-  if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
-  let html = '<div class="taxcalc-result">';
+function renderOneOverseasResultHtml_(r, label){
+  let html = '<div class="taxcalc-result">' + (label ? '<div class="taxcalc-result-row total"><span>' + label + '</span><span></span></div>' : '');
+  if (!r || r.error){ return html + '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div></div>'; }
   if (r.적용여부 === false){
     html += taxCalcResultRow('적용 여부', '적용 안 됨', { total: true });
     if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
-    html += '</div>';
-    box.innerHTML = html;
-    return;
+    return html + '</div>';
   }
   html += taxCalcResultRow('양도차익', won(r.양도차익));
   html += taxCalcResultRow('기본공제', won(r.기본공제));
@@ -4175,6 +4215,23 @@ function renderOverseasAssetTransferResult(r){
   html += taxCalcResultRow('납부세액 합계', won(r.납부세액_합계), { total: true });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   html += '</div>';
+  return html;
+}
+// [2026.09.23 재설계] 국외자산이 자산카드 배열로 흡수되면서 여러 건일 수 있게 됐다 —
+// 부동산 공동양도인(renderTransferResult)과 같은 패턴으로 항목별 결과 + 합계를 보여준다.
+// 단, 이 합계는 국내 납부세액과 절대 합산하지 않는다(별도 세목).
+function renderOverseasAssetTransferResult(results){
+  const box = document.getElementById('taxCalcOverseasAssetTransferResult');
+  if (!box) return;
+  if (!Array.isArray(results) || !results.length){ box.innerHTML = ''; return; }
+  let html = results.map(function(item){
+    const label = results.length > 1 ? ('국외자산 ' + tcPad2_(item.idx + 1)) : '';
+    return renderOneOverseasResultHtml_(item.result, label);
+  }).join('');
+  if (results.length > 1 && results.every(function(item){ return item.result && !item.result.error && item.result.적용여부 !== false; })){
+    const grandTotal = results.reduce(function(s, item){ return s + (numVal(item.result.납부세액_합계) || 0); }, 0);
+    html += '<div class="taxcalc-result" style="margin-top:10px;">' + taxCalcResultRow('국외자산 전체 합계 납부세액', won(grandTotal), { total: true }) + '</div>';
+  }
   box.innerHTML = html;
 }
 
@@ -7805,6 +7862,11 @@ taxCalcView.addEventListener('click', function(e){
     const targetEl = document.getElementById(targetId);
     if (targetEl){ targetEl.value = String(total); targetEl.dispatchEvent(new Event('input', { bubbles: true })); }
   } else if (action === 'run-transfer'){
+    // [2026.09.23 신규] 국외자산(§118의2~8)은 국내자산 양도세와 완전히 별도 세목이라, 국내
+    // 합산 계산(계약·공동양도인·다주택중과 등 전부 국내 전용 개념)에서 반드시 제외해야 한다.
+    // "세액 계산하기" 버튼 하나로 국내·국외 양쪽을 다 계산하되, 결과는 서로 절대 합산하지
+    // 않고 각자의 결과 박스에만 표시한다.
+    const domesticAssets = transferAssets.filter(function(a){ return !a.isOverseasAsset; });
     if (transferSellers.length <= 1){
       // [2026.09 버그수정] 다주택중과 판정용 주택수는 양도인(납세자) 한 사람 단위 값이라 자산
       // 카드에서 지워졌다 — 계산 직전에 이 값을 모든 자산에 동일하게 채워 넣는다(엔진은 여전히
@@ -7814,12 +7876,12 @@ taxCalcView.addEventListener('click', function(e){
       const sharedMultiHouseCount = document.getElementById('trMultiHouseCount').value;
       const sharedIsResident = document.getElementById('trResident').value !== 'nonresident';
       const sharedNonResidentException = !!(document.getElementById('trNonResidentTwoYearException') && document.getElementById('trNonResidentTwoYearException').checked);
-      transferAssets.forEach(function(a){
+      domesticAssets.forEach(function(a){
         a.multiHouseCount = sharedMultiHouseCount;
         a.isTransferorResident = sharedIsResident;
         a.isNonResidentTwoYearException = sharedNonResidentException;
       });
-      const inputs = transferAssets.map(collectTransferInput);
+      const inputs = domesticAssets.map(collectTransferInput);
       const filingParams = {
         transferorName: document.getElementById('trTransferorName').value,
         transferorRegNo: document.getElementById('trTransferorRegNo').value,
@@ -7831,15 +7893,16 @@ taxCalcView.addEventListener('click', function(e){
         unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('trUnpaidAtDesignated').value) || 0,
         isSelfElectronicFiling: document.getElementById('trSelfEfiling').checked
       };
-      const result = calculateTransferTaxMultiJS(inputs, filingParams);
-      renderTransferResult(result);
+      const result = inputs.length ? calculateTransferTaxMultiJS(inputs, filingParams) : null;
+      if (result) renderTransferResult(result);
+      else document.getElementById('taxCalcTransferResult').innerHTML = '';
     } else {
       // [2026.09.23 신규] 공동양도인 — 증여세 증여자와 같은 부류로, 양도인마다 완전히 독립적으로
       // calculateTransferTaxMultiJS를 호출한다(그래야 각자 기본공제 250만원·자기 세율구간이
       // 제대로 적용된다 — 엔진이 배열 전체를 한 사람 것으로 보고 하나의 기본공제/세율구간으로
       // 합산하므로, 공동소유 자산을 그냥 나눠 담으면 안 됨).
       const results = transferSellers.map(function(seller, sellerIdx){
-        const sellerAssets = transferAssets.map(function(a){
+        const sellerAssets = domesticAssets.map(function(a){
           const allocations = (Array.isArray(a.sellerAllocations) && a.sellerAllocations.length) ? a.sellerAllocations : [{ sellerIdx: '0', ratio: '1' }];
           const ratio = allocations.reduce(function(s, al){ return String(al.sellerIdx) === String(sellerIdx) ? s + (parseShareFraction_(al.ratio) || 0) : s; }, 0);
           if (!ratio) return null;
@@ -7864,7 +7927,30 @@ taxCalcView.addEventListener('click', function(e){
       }).filter(Boolean);
       renderTransferResult(results);
     }
-    transferAssets.forEach(function(_, idx){ populateTransferCalcBasis_(idx); }); // 산출내역을 토글 없이 한꺼번에 보여준다
+    // [2026.09.23 신규] 국외자산은 계약·양도인·다주택중과 등 국내 전용 개념이 전혀 없어
+    // 자산 하나하나를 완전히 독립적으로 계산한다(계약 안분·합산신고 대상 아님).
+    const overseasResults = transferAssets.map(function(a, idx){
+      if (!a.isOverseasAsset) return null;
+      const result = calculateOverseasAssetTransferTaxJS({
+        wasResidentFiveYearsContinuously: !!a.oaResident5yr,
+        transferPrice: numVal(a.transferPrice) || 0,
+        acquisitionPrice: numVal(a.acquisitionPrice) || 0,
+        capitalExpenditure: numVal(a.oaCapitalExpenditure) || 0,
+        transferExpenses: numVal(a.oaTransferExpenses) || 0,
+        foreignTaxCreditMethod: a.oaForeignTaxMethod || 'credit',
+        foreignTaxPaidAmount: numVal(a.oaForeignTaxPaid) || 0,
+        domesticTransferIncomeAmount: numVal(a.oaDomesticIncome) || 0,
+        filingStatus: a.oaFilingStatus || 'ontime',
+        isFraudulent: !!a.oaFraudulent,
+        underreportedTaxAmount: numVal(a.oaUnderreportedTax) || 0,
+        unpaidDays: numVal(a.oaUnpaidDays) || 0,
+        monthsAfterDesignatedDueDate: numVal(a.oaMonthsAfterDesignated) || 0,
+        unpaidTaxAtDesignatedDueDate: numVal(a.oaUnpaidAtDesignated) || 0
+      });
+      return { idx: idx, result: result };
+    }).filter(Boolean);
+    renderOverseasAssetTransferResult(overseasResults);
+    transferAssets.forEach(function(a, idx){ if (!a.isOverseasAsset) populateTransferCalcBasis_(idx); }); // 산출내역을 토글 없이 한꺼번에 보여준다
   } else if (action === 'run-business-transfer-carryover'){
     const input = {
       provision: document.getElementById('btProvision').value,
@@ -8197,24 +8283,11 @@ taxCalcView.addEventListener('click', function(e){
       }
     }
     renderStockTransferResult(stResult);
-  } else if (action === 'run-overseas-asset-transfer'){
-    const input = {
-      wasResidentFiveYearsContinuously: document.getElementById('oaResident5yr').checked,
-      transferPrice: numVal(document.getElementById('oaTransferPrice').value) || 0,
-      acquisitionPrice: numVal(document.getElementById('oaAcquisitionPrice').value) || 0,
-      capitalExpenditure: numVal(document.getElementById('oaCapitalExpenditure').value) || 0,
-      transferExpenses: numVal(document.getElementById('oaTransferExpenses').value) || 0,
-      foreignTaxCreditMethod: document.getElementById('oaForeignTaxMethod').value,
-      foreignTaxPaidAmount: numVal(document.getElementById('oaForeignTaxPaid').value) || 0,
-      domesticTransferIncomeAmount: numVal(document.getElementById('oaDomesticIncome').value) || 0,
-      filingStatus: document.getElementById('oaFilingStatus').value,
-      isFraudulent: document.getElementById('oaFraudulent').checked,
-      underreportedTaxAmount: numVal(document.getElementById('oaUnderreportedTax').value) || 0,
-      unpaidDays: numVal(document.getElementById('oaUnpaidDays').value) || 0,
-      monthsAfterDesignatedDueDate: numVal(document.getElementById('oaMonthsAfterDesignated').value) || 0,
-      unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('oaUnpaidAtDesignated').value) || 0
-    };
-    renderOverseasAssetTransferResult(calculateOverseasAssetTransferTaxJS(input));
+  } else if (action === 'add-overseas-asset'){
+    // [2026.09.23 신규] 국외자산은 계약(안분) 개념이 없으므로 계약 없이 바로 만든다 —
+    // "계약을 거치지 않고는 자산을 만들 수 없다"는 국내 원칙의 명시적 예외.
+    transferAssets.push({ isOverseasAsset: true });
+    renderTransferPane();
   } else if (action === 'open-rpa-modal-contract'){
     const contract = contractList_(btn.dataset.contractKind).find(function(c){ return c.id === btn.dataset.contractId; });
     if (!contract) return;
