@@ -1271,6 +1271,66 @@
     });
   }
 
+  // [2026.09.23 신규] 구조조정대상 부동산(§43) — 예전엔 별도 계산기에서 결과를 손으로 옮겨
+  // 입력해야 했다. 5년 이내 양도는 "세액감면방식"(소득금액이 아니라 산출세액 자체의 50%를
+  // 깎음 — 위 신축주택 방식으로는 처리 못 함, calculateTransferTaxMultiJS의 합산 단계에서
+  // 별도 처리)이고, 5년 초과는 신축주택과 같은 소득금액공제 방식이라 같은 오버라이드를 쓴다.
+  function resolveRestructuringPropertyReductionAdjustment_(t) {
+    if (!t.isRestructuringPropertyReduction) return t;
+    const baseCore = transferAssetCore(t);
+    if (baseCore.error) return t;
+    const reduction = window.calculateRestructuringPropertyReductionJS({
+      acquisitionDate: t.acquisitionDate, transferDate: t.transferDate,
+      transferPrice: Number(t.transferPrice) || 0,
+      acquisitionPrice: baseCore.acquisitionPrice, necessaryExpenses: baseCore.necessaryExpenses,
+      fiveYearMarkValue: Number(t.rpFiveYearMarkValue) || 0,
+      acquisitionStandardPrice: Number(t.rpAcquisitionStandardPrice) || 0,
+      fiveYearStandardPrice: Number(t.rpFiveYearStandardPrice) || 0,
+      transferStandardPrice: Number(t.rpTransferStandardPrice) || 0
+    });
+    if (!reduction || reduction.error || !reduction.적용여부) {
+      return Object.assign({}, t, { _구조조정감면_적용여부: false, _구조조정감면_사유: (reduction && (reduction.error || reduction.안내)) || undefined });
+    }
+    if (reduction.세액감면방식) {
+      return Object.assign({}, t, { _구조조정감면_적용여부: true, _구조조정감면_세액감면율: reduction.적용감면율, _구조조정감면_안내: reduction.안내 });
+    }
+    return Object.assign({}, t, {
+      _externalGainOverride: baseCore.gainBeforeDeduction - reduction.감면_비과세대상_양도소득금액,
+      _구조조정감면_적용여부: true,
+      _구조조정감면_제외소득금액: reduction.감면_비과세대상_양도소득금액,
+      _구조조정감면_안내: reduction.안내
+    });
+  }
+
+  // [2026.09.23 신규] 장기임대주택 등(§97·§97의2·§97의5) — §97 기본(50% 세액감면)만 세액감면
+  // 방식이고 나머지(전액면제 100%)는 소득금액공제 방식과 결과가 같아(0=0) 오버라이드로 처리한다.
+  function resolveLongTermRentalHouseReductionAdjustment_(t) {
+    if (!t.longTermRentalHouseProvision) return t;
+    const baseCore = transferAssetCore(t);
+    if (baseCore.error) return t;
+    const reduction = window.calculateLongTermRentalHouseReductionJS({
+      provision: t.longTermRentalHouseProvision, subType: t.lrSubType,
+      transferPrice: Number(t.transferPrice) || 0,
+      acquisitionPrice: baseCore.acquisitionPrice, necessaryExpenses: baseCore.necessaryExpenses,
+      registrationDateValue: Number(t.lrRegistrationValue) || 0,
+      acquisitionStandardPrice: Number(t.lrAcquisitionStandardPrice) || 0,
+      registrationStandardPrice: Number(t.lrRegistrationStandardPrice) || 0,
+      transferStandardPrice: Number(t.lrTransferStandardPrice) || 0
+    });
+    if (!reduction || reduction.error || !reduction.적용여부) {
+      return Object.assign({}, t, { _장기임대감면_적용여부: false, _장기임대감면_사유: (reduction && (reduction.error || reduction.안내)) || undefined });
+    }
+    if (reduction.세액감면방식) {
+      return Object.assign({}, t, { _장기임대감면_적용여부: true, _장기임대감면_세액감면율: reduction.적용감면율, _장기임대감면_안내: reduction.안내 });
+    }
+    return Object.assign({}, t, {
+      _externalGainOverride: baseCore.gainBeforeDeduction - reduction.감면대상_양도소득금액,
+      _장기임대감면_적용여부: true,
+      _장기임대감면_제외소득금액: reduction.감면대상_양도소득금액,
+      _장기임대감면_안내: reduction.안내
+    });
+  }
+
   // 다건 양도소득세 합산(확정신고 개념) — 2년 이상 보유·미등기 아님 거래끼리는 소득금액을 합산해서
   // 기본공제 250만원을 "전체 중 1회만" 적용하고 하나의 과세표준에 누진세율을 적용한다.
   // 단기양도(2년 미만)·미등기양도는 성격상 합산 누진세 대상이 아니므로 건별로 따로 계산해서 더한다.
@@ -1298,6 +1358,12 @@
       }
       if (resolved.unsoldHouseReductionProvision && resolved.unsoldHouseReductionProvision !== 'sect98_4') {
         resolved = resolveUnsoldHouseReductionAdjustment_(resolved);
+      }
+      if (resolved.isRestructuringPropertyReduction) {
+        resolved = resolveRestructuringPropertyReductionAdjustment_(resolved);
+      }
+      if (resolved.longTermRentalHouseProvision) {
+        resolved = resolveLongTermRentalHouseReductionAdjustment_(resolved);
       }
       return resolved;
     });
@@ -1332,6 +1398,15 @@
       }
       if (c.raw._미분양주택감면_적용여부 !== undefined) {
         assetNotes.push({ idx: c.idx, 구분: '미분양주택감면(조특법§98계열)', 적용여부: c.raw._미분양주택감면_적용여부, 제외소득금액: c.raw._미분양주택감면_제외소득금액, 사유: c.raw._미분양주택감면_사유 || c.raw._미분양주택감면_안내 });
+      }
+      // [2026.09.23 신규] 구조조정대상부동산·장기임대주택 — 세액감면방식(5년이내/§97기본형)은
+      // 아래 percentTaxReductionTotal 루프에서 별도로 안내되므로, 여기서는 소득금액공제방식
+      // 결과(또는 아예 미적용)만 기록해 중복 안내를 피한다.
+      if (c.raw._구조조정감면_적용여부 !== undefined && c.raw._구조조정감면_세액감면율 === undefined) {
+        assetNotes.push({ idx: c.idx, 구분: '구조조정대상부동산감면(조특법§43)', 적용여부: c.raw._구조조정감면_적용여부, 제외소득금액: c.raw._구조조정감면_제외소득금액, 사유: c.raw._구조조정감면_사유 || c.raw._구조조정감면_안내 });
+      }
+      if (c.raw._장기임대감면_적용여부 !== undefined && c.raw._장기임대감면_세액감면율 === undefined) {
+        assetNotes.push({ idx: c.idx, 구분: '장기임대주택등감면(조특법§97계열)', 적용여부: c.raw._장기임대감면_적용여부, 제외소득금액: c.raw._장기임대감면_제외소득금액, 사유: c.raw._장기임대감면_사유 || c.raw._장기임대감면_안내 });
       }
     });
     pooled.forEach(function (c) {
@@ -1389,28 +1464,38 @@
     farmlandReductionTotal = Math.min(farmlandReductionTotal, 100000000);
     poolTaxWithSurcharge = Math.max(0, poolTaxWithSurcharge - farmlandReductionTotal + farmlandClawbackTotal);
 
-    // [2026.09 신규] 미분양주택 특례 중 §98의4(비거주자, 2009.3.16~2010.2.11 취득)만 예외적으로
-    // 소득금액이 아니라 산출세액 자체의 10%를 그대로 감면한다 — 위 자경농지감면과 같은 방식(세액을
-    // 소득금액 비중으로 배분한 뒤 그 배분액의 10%를 차감)으로 처리한다. 이 특례는 법령상 보유기간
-    // 요건이 없어 단기양도에도 적용될 수 있으나, 이 도구는 장기보유(합산 그룹) 거래에만 자동 반영한다
-    // — 단기양도인 경우는 아직 자동화하지 않았으니 별도 계산기로 직접 확인해야 한다.
-    // [2026.09 신규] 공공매입임대주택 건설목적 토지양도 감면(조특법§97의9)도 §98의4와 같은
-    // "산출세액의 10%를 그대로 감면"구조라 같은 방식으로 함께 처리한다. 3년 이내 미건설시
-    // 추징(§97의9③)은 별도 과세기간(나중)에 발생하는 사후관리라 이 계산에는 반영하지 않는다
-    // — 추징 여부는 독립 계산기(공공매입임대주택 카드)로 별도 확인해야 한다.
-    let tenPercentTaxReductionTotal = 0;
+    // [2026.09 신규, 2026.09.23 일반화] 소득금액이 아니라 산출세액 자체를 일정 비율 그대로
+    // 감면하는 특례들 — 위 자경농지감면과 같은 방식(세액을 소득금액 비중으로 배분한 뒤 그
+    // 배분액에 비율을 곱해 차감)으로 한 번에 처리한다. §98의4(미분양주택 비거주자 특례, 10%)·
+    // §97의9(공공매입임대주택, 10%) 두 개뿐이었는데, §85의10(국가양도산지, 10%)·§43(구조조정
+    // 대상부동산, 5년이내분 50%)·§97(장기임대주택 기본형, 50%)까지 같은 방식이라 여기 합쳤다.
+    // 이 특례들은 법령상 보유기간 요건이 없거나(§98의4) 이 도구가 장기보유(합산 그룹) 거래에만
+    // 자동 반영한다 — 단기양도인 경우는 자동화하지 않았으니 별도로 직접 확인해야 한다. 사후관리
+    // 추징(§97의9③ 등)은 별도 과세기간(나중)에 발생하는 것이라 이 계산에는 반영하지 않는다.
+    let percentTaxReductionTotal = 0;
     pooled.forEach(function (c) {
-      const label = c.raw.unsoldHouseReductionProvision === 'sect98_4' ? '미분양주택특례(조특법§98의4, 세액 10% 감면)'
-        : c.raw.isPublicRentalHousingLand ? '공공매입임대주택 건설목적 토지양도 감면(조특법§97의9, 세액 10% 감면)' : null;
-      if (label && poolIncomeSum > 0) {
+      let label = null, rate = 0;
+      if (c.raw.unsoldHouseReductionProvision === 'sect98_4') { label = '미분양주택특례(조특법§98의4, 세액 10% 감면)'; rate = 0.10; }
+      else if (c.raw.isPublicRentalHousingLand) { label = '공공매입임대주택 건설목적 토지양도 감면(조특법§97의9, 세액 10% 감면)'; rate = 0.10; }
+      else if (c.raw.isNationalForestLandReduction) {
+        const acqTime = new Date(c.raw.acquisitionDate).getTime();
+        const trfTime = new Date(c.raw.transferDate).getTime();
+        const yearsHeld = (acqTime && trfTime && trfTime > acqTime) ? (trfTime - acqTime) / (365.25 * 24 * 3600 * 1000) : 0;
+        const nfCheck = window.calculateNationalForestLandReductionJS({ transferDate: c.raw.transferDate, holdingYears: yearsHeld, isUrbanArea: !!c.raw.nfIsUrbanArea });
+        if (nfCheck && nfCheck.적용여부) { label = '국가양도산지 감면(조특법§85의10, 세액 10% 감면)'; rate = 0.10; }
+        else { assetNotes.push({ idx: c.idx, 구분: '국가양도산지감면(§85의10)', 적용여부: false, 사유: (nfCheck && (nfCheck.error || nfCheck.안내)) || undefined }); }
+      }
+      else if (c.raw._구조조정감면_세액감면율) { label = '구조조정대상 부동산 감면(조특법§43, 세액 ' + c.raw._구조조정감면_세액감면율 + '% 감면)'; rate = c.raw._구조조정감면_세액감면율 / 100; }
+      else if (c.raw._장기임대감면_세액감면율) { label = '장기임대주택 등 감면(조특법§97, 세액 ' + c.raw._장기임대감면_세액감면율 + '% 감면)'; rate = c.raw._장기임대감면_세액감면율 / 100; }
+      if (label && rate > 0 && poolIncomeSum > 0) {
         const share = Math.round(poolTaxWithSurcharge * (c.incomeAmount / poolIncomeSum));
-        const reduction = Math.round(share * 0.10);
-        tenPercentTaxReductionTotal += reduction;
+        const reduction = Math.round(share * rate);
+        percentTaxReductionTotal += reduction;
         reductionByIdx_[c.idx] = (reductionByIdx_[c.idx] || 0) + reduction;
         assetNotes.push({ idx: c.idx, 구분: '합산(장기)', 소득금액: Math.round(c.incomeAmount), 특례: label, 감면액: reduction });
       }
     });
-    poolTaxWithSurcharge = Math.max(0, poolTaxWithSurcharge - tenPercentTaxReductionTotal);
+    poolTaxWithSurcharge = Math.max(0, poolTaxWithSurcharge - percentTaxReductionTotal);
 
     // 공익사업용 토지 등 수용감면(조특법§77①·§77의2·§77의3, 안분) — 소득금액 비중으로 배분한 세액에
     // 보상유형별 비율을 곱한다. §133②(2025.3.14 신설)에 따라 건별 감면액은 과세기간별 2억원을 한도로

@@ -2878,6 +2878,41 @@ function renderPropertyCardHtml_(idx, opts){
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isPublicRentalHousingLand" id="prLand-' + idx + '"><label for="prLand-' + idx + '">이 토지 양도가 §97의9 감면대상임(공공주택사업자와 건설·양도 약정을 맺은 주택건설사업자에게 양도)</label></div>' +
         '</div>' +
+        // [2026.09.23 신규] 국가양도산지·구조조정대상부동산·장기임대주택 감면(예전엔 별도
+        // 계산기였음, 세무사님 지시로 흡수) — 위 공공매입임대주택과 같은 방식으로 자산 카드
+        // 필드만 채우면 자동 반영된다(장기보유 합산 그룹에만 자동 반영되는 것도 동일한 제약).
+        '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>국가양도산지 감면(조특법§85의10, 2022.12.31 신청기한 만료 — 과거 거래용) — 2년 이상 보유한 산지(도시지역 소재 제외)를 국가에 양도할 때 산출세액의 10%를 자동으로 감면합니다(장기보유 거래에만 자동 반영됩니다)</b></div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isNationalForestLandReduction" id="nfLand-' + idx + '"><label for="nfLand-' + idx + '">이 산지 양도가 §85의10 감면대상임(국유림의 경영 및 관리에 관한 법률§18에 따라 국가에 양도)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="nfIsUrbanArea" id="nfUrban-' + idx + '"><label for="nfUrban-' + idx + '">국토계획법상 도시지역에 소재(감면대상 제외)</label></div>' +
+        '</div>' +
+        '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>구조조정대상 부동산 취득자 양도세 감면(조특법§43, 1999.12.31 이전 취득분만)</b></div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isRestructuringPropertyReduction" id="rpChk-' + idx + '"><label for="rpChk-' + idx + '">이 자산이 §43 구조조정대상 부동산 감면대상임(취득일 5년 이내 양도는 세액 50% 감면, 5년 초과는 소득금액 일부 감면)</label></div>' +
+          '<div class="taxcalc-field" data-show-if="isRestructuringPropertyReduction" style="display:none;"><label>[5년 초과보유시만] 취득일로부터 5년 시점 평가액</label><input type="number" data-field="rpFiveYearMarkValue" placeholder="원"><span class="taxcalc-field-help">근사치 계산용 — 아래 기준시가 3종이 없을 때만 사용</span></div>' +
+          '<div class="taxcalc-field" data-show-if="isRestructuringPropertyReduction" style="display:none;"><label>취득 당시 기준시가</label><input type="number" data-field="rpAcquisitionStandardPrice" placeholder="원"></div>' +
+          '<div class="taxcalc-field" data-show-if="isRestructuringPropertyReduction" style="display:none;"><label>5년 시점 기준시가</label><input type="number" data-field="rpFiveYearStandardPrice" placeholder="원"></div>' +
+          '<div class="taxcalc-field" data-show-if="isRestructuringPropertyReduction" style="display:none;"><label>양도 당시 기준시가</label><input type="number" data-field="rpTransferStandardPrice" placeholder="원"></div>' +
+        '</div>' +
+        '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>장기임대주택 등 양도세 감면(조특법§97/§97의2/§97의5, §97의4와 별개)</b></div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field"><label>적용 조문(선택하면 아래 세부사항 입력)</label><select data-field="longTermRentalHouseProvision">' +
+            '<option value="">해당없음</option>' +
+            '<option value="sect97">§97(2000.12.31 이전 임대개시 국민주택)</option>' +
+            '<option value="sect97_2">§97의2(1999.8.20~2001.12.31 신축임대주택)</option>' +
+            '<option value="sect97_5">§97의5(2018.12.31까지 취득+3개월내 등록, 10년이상 계속임대)</option>' +
+          '</select></div>' +
+          '<div class="taxcalc-field" data-show-if="longTermRentalHouseProvision" style="display:none;"><label>[§97만] 세부 유형</label><select data-field="lrSubType">' +
+            '<option value="baseline">그 외 5년이상 임대(세액 50% 감면)</option>' +
+            '<option value="construction_5yr">건설임대주택 5년이상(전액 면제)</option>' +
+            '<option value="purchase_5yr_novacancy">매입임대주택(1995.1.1이후취득·무입주) 5년이상(전액 면제)</option>' +
+            '<option value="rental_10yr">10년이상 임대(전액 면제)</option>' +
+          '</select></div>' +
+          '<div class="taxcalc-field" data-show-if="longTermRentalHouseProvision" style="display:none;"><label>[§97의5만] 등록일 현재 평가액</label><input type="number" data-field="lrRegistrationValue" placeholder="원"><span class="taxcalc-field-help">근사치용 — 아래 기준시가 3종이 없을 때만 사용</span></div>' +
+          '<div class="taxcalc-field" data-show-if="longTermRentalHouseProvision" style="display:none;"><label>[§97의5만] 취득 당시 기준시가</label><input type="number" data-field="lrAcquisitionStandardPrice" placeholder="원"></div>' +
+          '<div class="taxcalc-field" data-show-if="longTermRentalHouseProvision" style="display:none;"><label>[§97의5만] 등록일 당시 기준시가</label><input type="number" data-field="lrRegistrationStandardPrice" placeholder="원"></div>' +
+          '<div class="taxcalc-field" data-show-if="longTermRentalHouseProvision" style="display:none;"><label>[§97의5만] 양도 당시 기준시가</label><input type="number" data-field="lrTransferStandardPrice" placeholder="원"></div>' +
+        '</div>' +
         renderSellerAllocationSectionHtml_(idx) +
       '</div>';
 }
@@ -3083,22 +3118,13 @@ function renderTransferPane(){
       '<button type="button" class="taxcalc-run-btn" data-action="run-unsold-house-one-house">적용 가능 여부 판정하기</button>' +
       '<div id="taxCalcUnsoldHouseOneHouseResult"></div>' +
     '</div>' +
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>구조조정대상 부동산 취득자 양도세 감면(조특법§43) — 1999.12.31 이전 취득분만 적용. 결과의 "과세대상양도소득금액"을 위 일반 양도세 계산기에 양도차익으로 대신 입력하세요</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>취득일</label><input type="date" id="rpAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>양도일</label><input type="date" id="rpTransferDate" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>취득가액</label><input type="number" id="rpAcquisitionPrice" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>양도가액</label><input type="number" id="rpTransferPrice" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>필요경비</label><input type="number" id="rpNecessaryExpenses" placeholder="원"><span class="taxcalc-field-help">없으면 0</span></div>' +
-        '<div class="taxcalc-field"><label>취득일로부터 5년 시점 평가액</label><input type="number" id="rpFiveYearMarkValue" placeholder="원"><span class="taxcalc-field-help">5년 초과보유시 근사치 계산용 — 아래 기준시가 3종이 없을 때만 사용</span></div>' +
-        '<div class="taxcalc-field"><label>취득 당시 기준시가</label><input type="number" id="rpAcquisitionStandardPrice" placeholder="원"><span class="taxcalc-field-help">5년 초과보유시 정확한 계산용</span></div>' +
-        '<div class="taxcalc-field"><label>5년 시점 기준시가</label><input type="number" id="rpFiveYearStandardPrice" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>양도 당시 기준시가</label><input type="number" id="rpTransferStandardPrice" placeholder="원"></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-restructuring-property-reduction">감면대상 양도소득금액 계산하기</button>' +
-      '<div id="taxCalcRestructuringPropertyReductionResult"></div>' +
-    '</div>' +
+    // [2026.09.23 삭제] 구조조정대상부동산(§43)·장기임대주택등(§97계열)·국가양도산지(§85의10)
+    // 독립 계산기 3개도 삭제 — 세무사님 지시("나머지 부속계산기도 전부 전수조사해서 중복부분을
+    // 제거하고 남은 부분도 가급적 본 계산기로 흡수하라")에 따라 각 양도자산 카드에 완전히
+    // 통합했다(isRestructuringPropertyReduction/longTermRentalHouseProvision/
+    // isNationalForestLandReduction, 위 2879번째 줄 근처). 5년이내(§43)·§97기본형처럼 소득금액이
+    // 아니라 산출세액 자체를 감면하는 방식은 calculateTransferTaxMultiJS의 합산 단계에서
+    // (기존 §98의4·§97의9 10%감면과 같은 방식으로) 처리한다.
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>인구감소지역 주택 1세대1주택 비과세 특례(조특법§71의2, 2024.1.4~2026.12.31 취득분, 현재 시행중) — 세액은 계산하지 않고 적용 가능 여부만 판정합니다</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -3126,43 +3152,6 @@ function renderTransferPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-rural-house-exclusion">적용 가능 여부 판정하기</button>' +
       '<div id="taxCalcRuralHouseExclusionResult"></div>' +
-    '</div>' +
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>장기임대주택 등 양도세 감면(조특법§97·§97의2·§97의5, §97의4와 별개) — 결과의 "과세대상양도소득금액"을 위 일반 양도세 계산기에 양도차익으로 대신 입력하세요</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>적용 조문</label><select id="lrProvision">' +
-          '<option value="sect97">§97(2000.12.31 이전 임대개시 국민주택)</option>' +
-          '<option value="sect97_2">§97의2(1999.8.20~2001.12.31 신축임대주택)</option>' +
-          '<option value="sect97_5">§97의5(2018.12.31까지 취득+3개월내 등록, 10년이상 계속임대)</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>세부 유형</label><select id="lrSubType">' +
-          '<option value="baseline">그 외 5년이상 임대(50%)</option>' +
-          '<option value="construction_5yr">건설임대주택 5년이상(100%)</option>' +
-          '<option value="purchase_5yr_novacancy">매입임대주택(1995.1.1이후취득·무입주) 5년이상(100%)</option>' +
-          '<option value="rental_10yr">10년이상 임대(100%)</option>' +
-        '</select><span class="taxcalc-field-help">§97만</span></div>' +
-        '<div class="taxcalc-field"><label>양도가액</label><input type="number" id="lrTransferPrice" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>취득가액</label><input type="number" id="lrAcquisitionPrice" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>필요경비</label><input type="number" id="lrNecessaryExpenses" placeholder="원"><span class="taxcalc-field-help">없으면 0</span></div>' +
-        '<div class="taxcalc-field"><label>등록일 현재 평가액</label><input type="number" id="lrRegistrationValue" placeholder="원"><span class="taxcalc-field-help">§97의5만 · 근사치용 — 아래 기준시가 3종이 없을 때만 사용</span></div>' +
-        '<div class="taxcalc-field"><label>취득 당시 기준시가</label><input type="number" id="lrAcquisitionStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의5만 · 정확한 계산용</span></div>' +
-        '<div class="taxcalc-field"><label>등록일 당시 기준시가</label><input type="number" id="lrRegistrationStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의5만</span></div>' +
-        '<div class="taxcalc-field"><label>양도 당시 기준시가</label><input type="number" id="lrTransferStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의5만</span></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-long-term-rental-house">감면대상 양도소득금액 계산하기</button>' +
-      '<div id="taxCalcLongTermRentalHouseResult"></div>' +
-    '</div>' +
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>국가양도산지 감면(조특법§85의10, 2022.12.31 신청기한 만료 — 과거 거래용) — 2년이상 보유한 산지를 국가에 양도할 때 10% 세액감면</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>양도일</label><input type="date" id="nfTransferDate" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>보유기간</label><input type="number" id="nfHoldingYears" placeholder="년"></div>' +
-        '<div class="taxcalc-field"><label>양도가액</label><input type="number" id="nfTransferPrice" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>취득가액</label><input type="number" id="nfAcquisitionPrice" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>필요경비</label><input type="number" id="nfNecessaryExpenses" placeholder="원"><span class="taxcalc-field-help">없으면 0</span></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-national-forest-land">적용 가능 여부 확인하기</button>' +
-      '<div id="taxCalcNationalForestLandResult"></div>' +
     '</div>' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>공공매입임대주택 건설목적 토지양도 감면(조특법§97의9, 2027.12.31까지 양도분, 현재 시행중) — 공공주택사업자와 건설·양도 약정을 맺은 주택건설사업자에게 토지를 양도할 때 10% 세액감면</b></div>' +
@@ -3694,7 +3683,24 @@ function collectTransferInput(vals){
     uhFiveYearStandardPrice: numVal(vals.uhFiveYearStandardPrice) || 0,
     uhTransferStandardPrice: numVal(vals.uhTransferStandardPrice) || 0,
     // [2026.09 신규] 공공매입임대주택 건설목적 토지양도 감면(조특법§97의9) — 세액 10% 감면
-    isPublicRentalHousingLand: !!vals.isPublicRentalHousingLand
+    isPublicRentalHousingLand: !!vals.isPublicRentalHousingLand,
+    // [2026.09.23 신규] 국가양도산지(§85의10, 세액 10% 감면) — 예전 별도 계산기(nf) 흡수.
+    isNationalForestLandReduction: !!vals.isNationalForestLandReduction,
+    nfIsUrbanArea: !!vals.nfIsUrbanArea,
+    // [2026.09.23 신규] 구조조정대상 부동산(§43) — 예전 별도 계산기(rp) 흡수. 5년이내=세액
+    // 50%감면, 5년초과=소득금액 일부감면(공통 감면분기는 아래 뒷단에서 처리).
+    isRestructuringPropertyReduction: !!vals.isRestructuringPropertyReduction,
+    rpFiveYearMarkValue: numVal(vals.rpFiveYearMarkValue) || 0,
+    rpAcquisitionStandardPrice: numVal(vals.rpAcquisitionStandardPrice) || 0,
+    rpFiveYearStandardPrice: numVal(vals.rpFiveYearStandardPrice) || 0,
+    rpTransferStandardPrice: numVal(vals.rpTransferStandardPrice) || 0,
+    // [2026.09.23 신규] 장기임대주택 등(§97/§97의2/§97의5) — 예전 별도 계산기(lr) 흡수.
+    longTermRentalHouseProvision: vals.longTermRentalHouseProvision || '',
+    lrSubType: vals.lrSubType || '',
+    lrRegistrationValue: numVal(vals.lrRegistrationValue) || 0,
+    lrAcquisitionStandardPrice: numVal(vals.lrAcquisitionStandardPrice) || 0,
+    lrRegistrationStandardPrice: numVal(vals.lrRegistrationStandardPrice) || 0,
+    lrTransferStandardPrice: numVal(vals.lrTransferStandardPrice) || 0
   };
 }
 
@@ -3827,6 +3833,12 @@ function renderOneTransferResultHtml_(r, label, sellerIdx){
         html += '<div>' + label + ' — 신축주택등감면(§99계열) ' + (n.적용여부 ? ('<b>적용됨</b>(양도소득금액에서 ' + won(n.제외소득금액) + ' 제외)') : '미적용(' + (n.사유 || '') + ')') + '</div>';
       } else if (n.구분 === '미분양주택감면(조특법§98계열)'){
         html += '<div>' + label + ' — 미분양주택감면(§98계열) ' + (n.적용여부 ? ('<b>적용됨</b>(양도소득금액에서 ' + won(n.제외소득금액) + ' 제외)') : '미적용(' + (n.사유 || '') + ')') + '</div>';
+      } else if (n.구분 === '구조조정대상부동산감면(조특법§43)'){
+        html += '<div>' + label + ' — 구조조정대상부동산감면(§43) ' + (n.적용여부 ? ('<b>적용됨</b>(양도소득금액에서 ' + won(n.제외소득금액) + ' 제외)') : '미적용(' + (n.사유 || '') + ')') + '</div>';
+      } else if (n.구분 === '장기임대주택등감면(조특법§97계열)'){
+        html += '<div>' + label + ' — 장기임대주택등감면(§97계열) ' + (n.적용여부 ? ('<b>적용됨</b>(양도소득금액에서 ' + won(n.제외소득금액) + ' 제외)') : '미적용(' + (n.사유 || '') + ')') + '</div>';
+      } else if (n.구분 === '국가양도산지감면(§85의10)'){
+        html += '<div>' + label + ' — 국가양도산지감면(§85의10) 미적용(' + (n.사유 || '') + ')</div>';
       } else if (n.구분 === '취득가액산정'){
         html += '<div>' + label + ' — ' + n.특례 + '</div>';
       } else {
@@ -3899,52 +3911,11 @@ function renderUnsoldHouseOneHouseResult(r){
   box.innerHTML = html;
 }
 
-function renderRestructuringPropertyReductionResult(r){
-  const box = document.getElementById('taxCalcRestructuringPropertyReductionResult');
-  if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
-  let html = '<div class="taxcalc-result">';
-  html += taxCalcResultRow('보유기간', r.보유기간_년 + '년');
-  html += taxCalcResultRow('전체 양도차익', won(r.전체양도차익));
-  html += taxCalcResultRow('감면·비과세대상 양도소득금액', '-' + won(r.감면_비과세대상_양도소득금액));
-  html += taxCalcResultRow('과세대상양도소득금액', won(r.과세대상양도소득금액), { total: true });
-  if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
-  html += '</div>';
-  box.innerHTML = html;
-}
-
 function renderPopulationDeclineHouseResult(r){
   const box = document.getElementById('taxCalcPopulationDeclineHouseResult');
   if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
   let html = '<div class="taxcalc-result">';
   html += taxCalcResultRow('적용 여부', r.적용여부 ? '적용 가능' : '적용 안 됨', { total: true });
-  if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
-  html += '</div>';
-  box.innerHTML = html;
-}
-
-function renderLongTermRentalHouseResult(r){
-  const box = document.getElementById('taxCalcLongTermRentalHouseResult');
-  if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
-  let html = '<div class="taxcalc-result">';
-  html += taxCalcResultRow('적용감면율', r.적용감면율 + '%');
-  html += taxCalcResultRow('전체 양도차익', won(r.전체양도차익));
-  html += taxCalcResultRow('감면대상 양도소득금액', '-' + won(r.감면대상_양도소득금액));
-  html += taxCalcResultRow('과세대상양도소득금액', won(r.과세대상양도소득금액), { total: true });
-  if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
-  html += '</div>';
-  box.innerHTML = html;
-}
-
-function renderNationalForestLandResult(r){
-  const box = document.getElementById('taxCalcNationalForestLandResult');
-  if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
-  let html = '<div class="taxcalc-result">';
-  if (r.적용여부 === false){
-    html += taxCalcResultRow('적용 여부', '적용 안 됨', { total: true });
-  } else {
-    html += taxCalcResultRow('전체 양도차익', won(r.전체양도차익));
-    html += taxCalcResultRow('세액감면율', r.세액감면율 + '%', { total: true });
-  }
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   html += '</div>';
   box.innerHTML = html;
@@ -7838,19 +7809,6 @@ taxCalcView.addEventListener('click', function(e){
       meetsAreaAndPriceRequirements: document.getElementById('u9AreaPriceOk').checked
     };
     renderUnsoldHouseOneHouseResult(calculateUnsoldHouseOneHouseExclusionJS(input));
-  } else if (action === 'run-restructuring-property-reduction'){
-    const input = {
-      acquisitionDate: document.getElementById('rpAcquisitionDate').value,
-      transferDate: document.getElementById('rpTransferDate').value,
-      acquisitionPrice: numVal(document.getElementById('rpAcquisitionPrice').value) || 0,
-      transferPrice: numVal(document.getElementById('rpTransferPrice').value) || 0,
-      necessaryExpenses: numVal(document.getElementById('rpNecessaryExpenses').value) || 0,
-      fiveYearMarkValue: numVal(document.getElementById('rpFiveYearMarkValue').value) || 0,
-      acquisitionStandardPrice: numVal(document.getElementById('rpAcquisitionStandardPrice').value) || 0,
-      fiveYearStandardPrice: numVal(document.getElementById('rpFiveYearStandardPrice').value) || 0,
-      transferStandardPrice: numVal(document.getElementById('rpTransferStandardPrice').value) || 0
-    };
-    renderRestructuringPropertyReductionResult(calculateRestructuringPropertyReductionJS(input));
   } else if (action === 'run-population-decline-house'){
     const input = {
       acquisitionDate: document.getElementById('pdAcquisitionDate').value,
@@ -7859,28 +7817,6 @@ taxCalcView.addEventListener('click', function(e){
       meetsAreaAndPriceRequirements: document.getElementById('pdAreaPriceOk').checked
     };
     renderPopulationDeclineHouseResult(calculatePopulationDeclineAreaHouseExclusionJS(input));
-  } else if (action === 'run-long-term-rental-house'){
-    const input = {
-      provision: document.getElementById('lrProvision').value,
-      subType: document.getElementById('lrSubType').value,
-      transferPrice: numVal(document.getElementById('lrTransferPrice').value) || 0,
-      acquisitionPrice: numVal(document.getElementById('lrAcquisitionPrice').value) || 0,
-      necessaryExpenses: numVal(document.getElementById('lrNecessaryExpenses').value) || 0,
-      registrationDateValue: numVal(document.getElementById('lrRegistrationValue').value) || 0,
-      acquisitionStandardPrice: numVal(document.getElementById('lrAcquisitionStandardPrice').value) || 0,
-      registrationStandardPrice: numVal(document.getElementById('lrRegistrationStandardPrice').value) || 0,
-      transferStandardPrice: numVal(document.getElementById('lrTransferStandardPrice').value) || 0
-    };
-    renderLongTermRentalHouseResult(calculateLongTermRentalHouseReductionJS(input));
-  } else if (action === 'run-national-forest-land'){
-    const input = {
-      transferDate: document.getElementById('nfTransferDate').value,
-      holdingYears: numVal(document.getElementById('nfHoldingYears').value) || 0,
-      transferPrice: numVal(document.getElementById('nfTransferPrice').value) || 0,
-      acquisitionPrice: numVal(document.getElementById('nfAcquisitionPrice').value) || 0,
-      necessaryExpenses: numVal(document.getElementById('nfNecessaryExpenses').value) || 0
-    };
-    renderNationalForestLandResult(calculateNationalForestLandReductionJS(input));
   } else if (action === 'run-public-rental-housing-land'){
     const input = {
       transferDate: document.getElementById('prTransferDate').value,
