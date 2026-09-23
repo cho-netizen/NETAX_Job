@@ -3128,7 +3128,7 @@ function dispatchClientAction_(body) {
   }
 
   // [2026.08] work 모듈 — 작업관리(사건별 세부업무 트리 + 법정기한 자동계산 + 캘린더 연동) 신규
-  const WORK_ACTIONS = ['work_get_cases', 'work_create_case', 'work_update_case', 'work_delete_case', 'work_add_subtask', 'work_update_subtask', 'work_delete_subtask', 'send_my_portal_sms', 'get_case_subfolders', 'ensure_case_folder', 'work_audit_case_folder_names', 'work_audit_unlinked_case_folders', 'work_link_case_folder', 'work_reassign_case_folder', 'work_bulk_fix_completion_dates', 'work_fix_completion_after_receipt', 'work_backfill_receipt_case_links', 'work_plan_report_filename_cleanup', 'work_apply_report_filename_cleanup', 'migrate_report_template_names', 'work_fix_completion_by_report_date', 'work_apply_filing_file_dates', 'work_resync_all_calendars', 'work_apply_receipt_only_case_cleanup', 'work_backfill_party_client_ids'];
+  const WORK_ACTIONS = ['work_get_cases', 'work_create_case', 'work_update_case', 'work_delete_case', 'work_add_subtask', 'work_update_subtask', 'work_delete_subtask', 'send_my_portal_sms', 'get_case_subfolders', 'ensure_case_folder', 'work_audit_case_folder_names', 'work_audit_unlinked_case_folders', 'work_link_case_folder', 'work_reassign_case_folder', 'work_fix_completion_after_receipt', 'work_backfill_receipt_case_links', 'work_plan_report_filename_cleanup', 'work_apply_report_filename_cleanup', 'migrate_report_template_names', 'work_resync_all_calendars', 'work_apply_receipt_only_case_cleanup', 'work_backfill_party_client_ids'];
   if (WORK_ACTIONS.indexOf(body.action) !== -1) {
     return jsonResponse(work_doPost(body));
   }
@@ -3181,7 +3181,7 @@ function dispatchClientAction_(body) {
   }
 
   // [2026.08] client 모듈 — 고객관리(고객 명단 + 자문내역) 신규
-  const CLIENT_ACTIONS = ['client_get_clients', 'client_create_client', 'client_update_client', 'client_delete_client', 'client_get_consult_logs', 'client_add_consult_log', 'client_update_consult_log', 'client_delete_consult_log', 'client_audit_duplicates', 'client_merge_clients', 'client_send_sms', 'client_undo_dedup_log', 'client_fix_dedup_priority', 'client_get_rrn', 'client_migrate_rrn_from_biz_field', 'client_scan_case_files_for_names', 'client_apply_scanned_names'];
+  const CLIENT_ACTIONS = ['client_get_clients', 'client_create_client', 'client_update_client', 'client_delete_client', 'client_get_consult_logs', 'client_add_consult_log', 'client_update_consult_log', 'client_delete_consult_log', 'client_audit_duplicates', 'client_merge_clients', 'client_send_sms', 'client_undo_dedup_log', 'client_get_rrn', 'client_scan_case_files_for_names', 'client_apply_scanned_names', 'client_delete_numeric_name_clients'];
   if (CLIENT_ACTIONS.indexOf(body.action) !== -1) {
     return jsonResponse(client_doPost(body));
   }
@@ -17136,39 +17136,9 @@ function client_getRRN(params) {
   return { success: true, 주민등록번호: client_decryptRRN_(found.row[col.주민등록번호암호화]) };
 }
 
-// [2026.09.19 신규] "납세번호는 처음부터 주민등록번호를 의미하는거였다" — 위 암호화 필드가
-// 생기기 전에는 "납세번호"(내부 필드명 사업자번호) 칸 하나에 개인 고객은 주민등록번호를,
-// 사업자 고객은 사업자등록번호를 섞어서 평문으로 적어왔다는 걸 확인받았다. 두 번호는 자릿수
-// 형식이 다르므로(주민등록번호 6-7자리 / 사업자등록번호 3-2-5자리) 정규식으로 구분해,
-// 주민등록번호처럼 생긴 값만 암호화 필드로 옮기고 원래 칸은 비운다 — 사업자등록번호 형식은
-// 그대로 둔다(원래도 맞는 자리였으므로 건드리지 않음).
-const CLIENT_RRN_LIKE_PATTERN_ = /^\d{6}-?\d{7}$/;
-
-function client_findRrnInBizField_(data, col) {
-  const rows = [];
-  for (let i = 1; i < data.length; i++) {
-    const bizVal = String(data[i][col.사업자번호] || '').trim();
-    if (bizVal && CLIENT_RRN_LIKE_PATTERN_.test(bizVal)) rows.push({ rowIndex: i + 1, 성명: data[i][col.성명], value: bizVal });
-  }
-  return rows;
-}
-
-function client_migrateRrnFromBizField(params) {
-  return withLock_(60000, function () {
-    const sheets = client_getSheets_();
-    const data = sheets.clients.getDataRange().getValues();
-    const col = client_colMap_(data[0], CLIENT_HEADERS);
-    const rows = client_findRrnInBizField_(data, col);
-    if (!params || !params.apply) return { success: true, dryRun: true, count: rows.length };
-    rows.forEach(function (r) {
-      sheets.clients.getRange(r.rowIndex, col.주민등록번호암호화 + 1).setValue(client_encryptRRN_(r.value));
-      sheets.clients.getRange(r.rowIndex, col.사업자번호 + 1).setValue('');
-      sheets.clients.getRange(r.rowIndex, col.수정일 + 1).setValue(new Date());
-    });
-    if (rows.length) SpreadsheetApp.flush();
-    return { success: true, applied: rows.length };
-  });
-}
+// [2026.09.19 정비도구 재정비] "주민번호 이관" 도구(옛 "납세번호" 칸에 평문으로 섞여있던
+// 주민등록번호를 암호화 필드로 옮기던 1회성 마이그레이션)는 세무사님이 이미 실행 완료했다고
+// 확인해주셔서 삭제했다 — 다시 눌러도 영원히 "해당 없음"만 나오는 상태였다.
 
 // [2026.09.19 신규, 같은 날 두 차례 수정] "고객사건 밑 사건폴더 안의 모든 파일을 전수조사해서
 // 모든 고객을 일괄등록해달라" — 사건개요(구조화된 필드, work_linkPartyClientIds_)에는 없지만
@@ -17521,6 +17491,50 @@ function client_applyScannedNames(params) {
   });
 }
 
+// [2026.09.19 신규, 1회성] "고객명단에서 실명이 아닌 숫자와 같은 이름은 삭제해달라" — 구글
+// 시트가 "3733"처럼 숫자로만 된 값을 실제 숫자 타입으로 저장해버리는 옛 버그(client_readClient_
+// 등에서 이미 String() 강제로 고쳤음) 때문에 생긴 것으로 보이는, 성명이 순수 숫자인 고객
+// 레코드를 찾아 정리한다. 진행 중인 사건이 연결된 고객은 실수로 지우면 안 되므로 건너뛰고
+// 별도로 세어 보여준다(다른 1회성 정비도구와 같은 미리보기 후 적용 원칙).
+function client_findNumericNameClients_() {
+  const sheets = client_getSheets_();
+  const data = sheets.clients.getDataRange().getValues();
+  const col = client_colMap_(data[0], CLIENT_HEADERS);
+  const results = [];
+  for (let i = 1; i < data.length; i++) {
+    const name = String(data[i][col.성명] || '').trim();
+    if (name && /^\d+$/.test(name)) {
+      results.push({ rowIndex: i + 1, id: String(data[i][col.id]), 성명: name });
+    }
+  }
+  return results;
+}
+
+function client_deleteNumericNameClients(params) {
+  return withLock_(60000, function () {
+    const matches = client_findNumericNameClients_();
+    if (!params || !params.apply) return { success: true, dryRun: true, count: matches.length, items: matches };
+
+    const workSheet = work_getSheet_();
+    const workData = workSheet.getDataRange().getValues();
+    const workCol = work_colMap_(workData[0]);
+    const activeClientIds = {};
+    for (let i = 1; i < workData.length; i++) {
+      if (String(workData[i][workCol.상태] || '') !== '완료') activeClientIds[String(workData[i][workCol.고객ID])] = true;
+    }
+
+    const sheets = client_getSheets_();
+    let deleted = 0, skipped = 0;
+    // 뒤에서부터 지워야 앞쪽 남은 행들의 인덱스가 안 밀린다.
+    matches.slice().reverse().forEach(function (m) {
+      if (activeClientIds[m.id]) { skipped++; return; }
+      sheets.clients.deleteRow(m.rowIndex);
+      deleted++;
+    });
+    return { success: true, applied: deleted, skipped: skipped };
+  });
+}
+
 const CONSULT_HEADERS = ['id', '고객ID', '고객명', '날짜', '담당자', '유형', '내용', '관계', '금액', '수취증빙', '리뷰', '생성일', '승인번호', '사건ID', '중복정리'];
 
 function client_getSheets_() {
@@ -17702,6 +17716,43 @@ function client_auditDuplicatesAction_(body) {
   const groups = client_auditDuplicates_();
   return { success: true, count: groups.length, groups: groups };
 }
+// [2026.09.19 버그수정] "남은 기능도 재검토하라"는 지적으로 발견 — 이 병합 도구는 Thread C
+// (사건개요의 공동의뢰인·양도인·증여인·수증인·상속인·납세자·임직원 ID 배열, work_linkPartyClientIds_
+// 참고)와 Thread D(주소·주민등록번호암호화·메모) 필드가 생기기 전에 만들어져서 그 둘을 전혀
+// 모른다. 그대로 두면 (1) 합쳐져서 삭제되는 고객의 ID가 어느 사건의 사건개요 안에 공동
+// 관계자로 박혀 있었다면, 그 참조는 삭제된 고객ID를 가리킨 채 고아로 남아 역할 배지가
+// 조용히 사라지고 (2) 병합돼 사라지는 고객 쪽에만 주소·주민등록번호·메모가 채워져 있었다면
+// 그 값이 통째로 유실된다. 사건개요 안의 모든 ID/ID배열 필드에서 합쳐지는 고객ID를 남는
+// 고객ID로 바꿔주고, 남는 고객의 해당 칸이 비어있으면 병합되는 고객 쪽 값으로 채운 뒤에
+// 삭제한다.
+function client_remapPartyIdsInOverview_(overview, mergeIds, keepId) {
+  if (!overview || typeof overview !== 'object' || Array.isArray(overview)) return false;
+  let changed = false;
+  const allFieldDefs = Object.keys(WORK_PARTY_NAME_TO_ID_FIELDS_)
+    .reduce(function (acc, seMok) { return acc.concat(WORK_PARTY_NAME_TO_ID_FIELDS_[seMok]); }, [])
+    .concat(WORK_ALWAYS_PARTY_FIELDS_);
+  allFieldDefs.forEach(function (f) {
+    if (f.idField) {
+      if (mergeIds.indexOf(String(overview[f.idField] || '')) !== -1) {
+        overview[f.idField] = keepId;
+        changed = true;
+      }
+    } else if (f.idsField && Array.isArray(overview[f.idsField])) {
+      const ids = overview[f.idsField].map(String);
+      let touched = false;
+      const remapped = ids.map(function (id) {
+        if (mergeIds.indexOf(id) !== -1) { touched = true; return keepId; }
+        return id;
+      }).filter(function (id, idx, arr) { return arr.indexOf(id) === idx; }); // 중복 제거(병합 전에 이미 둘 다 있었을 경우)
+      if (touched) {
+        overview[f.idsField] = remapped;
+        changed = true;
+      }
+    }
+  });
+  return changed;
+}
+
 // 세무사님이 고른 "유지할 고객" 하나로 "합칠 고객들"의 사건·자문내역을 전부 재연결하고,
 // 관련된 my.netax.kr 표시용 고객명도 맞춘 뒤, 합쳐진 고객 레코드는 삭제한다.
 // [2026.09.17 확장] "자문내역, MY페이지도 합쳐야지" — 처음엔 사건(WORK_CASES)만 옮겼는데,
@@ -17736,6 +17787,22 @@ function client_mergeClients(params) {
       }
     }
 
+    // [2026.09.19 버그수정] 위는 사건의 "주" 고객ID(의뢰인)만 옮긴다 — 합쳐지는 고객이 어느
+    // 사건에 공동상속인·양도인 등 "관계자"로만 등장했다면(사건의 주 고객ID가 아닌 사건개요
+    // 안의 참조), 그 사건은 위 루프에 안 걸린다. 사건개요를 가진 모든 사건을 훑어 그 안의
+    // 모든 관계자 ID/ID배열에서도 병합되는 고객ID를 남는 고객ID로 바꿔준다.
+    let movedPartyLinks = 0;
+    for (let i = 1; i < wdata.length; i++) {
+      const raw = wdata[i][wcol.사건개요];
+      if (!raw) continue;
+      let overview;
+      try { overview = JSON.parse(raw); } catch (e) { continue; }
+      if (client_remapPartyIdsInOverview_(overview, mergeIds, keepId)) {
+        workSheet.getRange(i + 1, wcol.사건개요 + 1).setValue(JSON.stringify(overview));
+        movedPartyLinks++;
+      }
+    }
+
     const logSheet = sheets.log;
     const ldata = logSheet.getDataRange().getValues();
     const lcol = client_colMap_(ldata[0], CONSULT_HEADERS);
@@ -17766,12 +17833,33 @@ function client_mergeClients(params) {
       }
     }
 
+    // [2026.09.19 버그수정] 남는 고객의 주소·주민등록번호(암호화된 값 그대로 복사 — 같은 키를
+    // 쓰므로 복호화 없이 옮겨도 그대로 유효)·메모가 비어있는데 합쳐져서 사라지는 고객 쪽에
+    // 값이 있으면, 지우기 전에 남는 고객 쪽으로 옮겨준다 — 안 그러면 "둘 중 하나만 입력해둔
+    // 정보"가 병합 한 번에 영구히 사라진다.
+    let keepRowIndex = -1;
+    for (let i = 1; i < cdata.length; i++) { if (String(cdata[i][ccol.id]) === keepId) { keepRowIndex = i + 1; break; } }
+    if (keepRowIndex !== -1) {
+      const keepRow = cdata[keepRowIndex - 1];
+      ['주소', '주민등록번호암호화', '메모'].forEach(function (field) {
+        if (String(keepRow[ccol[field]] || '').trim()) return; // 남는 쪽에 이미 값이 있으면 안 건드림
+        for (let i = 1; i < cdata.length; i++) {
+          if (mergeIds.indexOf(String(cdata[i][ccol.id])) === -1) continue;
+          const donorVal = cdata[i][ccol[field]];
+          if (String(donorVal || '').trim()) {
+            sheets.clients.getRange(keepRowIndex, ccol[field] + 1).setValue(donorVal);
+            break;
+          }
+        }
+      });
+    }
+
     const rowsToDelete = [];
     for (let i = 1; i < cdata.length; i++) {
       if (mergeIds.indexOf(String(cdata[i][ccol.id])) !== -1) rowsToDelete.push(i + 1);
     }
     rowsToDelete.sort(function (a, b) { return b - a; }).forEach(function (rowNum) { sheets.clients.deleteRow(rowNum); });
-    return { success: true, movedCases: movedCases, movedLogs: movedLogs, movedMyPages: movedMyPages, deletedClients: rowsToDelete.length };
+    return { success: true, movedCases: movedCases, movedLogs: movedLogs, movedMyPages: movedMyPages, movedPartyLinks: movedPartyLinks, deletedClients: rowsToDelete.length };
   });
 }
 
@@ -18049,10 +18137,16 @@ function client_addConsultLog(params) {
 
 // 파일ID에서 부모 폴더를 최대 6단계까지 거슬러 올라가며, 사건관리 시트의 "폴더ID" 열과
 // 일치하는 폴더를 찾는다 — 그 사건의 고객명을 알아내기 위함.
-// [2026.09.18 신규] 상담 사건은 개별 Drive 폴더가 없으므로("상담을 자문과 상담으로 세분"),
-// 그 상담과 관련된 현금영수증은 사건 폴더 대신 "고객사건" 바로 밑의 공용 폴더 하나에
-// "<고객명>_현금영수증"으로 모아둔다.
-const WORK_CONSULT_SHARED_FOLDER_NAME_ = '상담사건';
+// [2026.09.18 신규, 2026.09.23 수정] 상담 사건은 개별 Drive 폴더가 없으므로("상담을 자문과
+// 상담으로 세분"), 그 상담과 관련된 현금영수증은 사건 폴더 대신 공용 폴더 하나에
+// "<고객명>_현금영수증"으로 모아둔다. [2026.09.23] 세무사님이 두 번 재지적 — 처음엔 "0_NX_0"
+// (홈택스 매출내역 엑셀 임시보관함, RECEIPT_IMPORT_FOLDER_NAME_)과 아예 같은 폴더로 합쳤다가
+// "파일만 섞이면 구분이 안 된다"는 지적으로 "0_NX_0/상담사건/"(그 안의 하위폴더)으로 옮겼는데,
+// 다시 "0_NX_0과 상담사건은 서로 무관한 별개 용도인데 굳이 하나를 다른 하나 안에 넣을 필요
+// 없다"는 지적으로 최종 확정 — "고객사건" 바로 밑에 0_NX_0과 나란한 형제 폴더로 두되,
+// 이름 앞에 "1 "을 붙여(0_NX_0의 "0_"과 같은 원리) 진짜 사건 폴더들(고객명으로 시작)보다
+// 위쪽에 정렬되게 한다.
+const WORK_CONSULT_SHARED_FOLDER_NAME_ = '1 상담사건';
 function getConsultSharedFolder_() {
   const root = getDefaultFolder();
   if (!root) return null;
@@ -19896,55 +19990,8 @@ function client_dedupCashReceiptLogs_(logSheet, col, clientIdFilter) {
   return mergedCount;
 }
 
-// [2026.09.19 신규, 1회성] "발행자료를 흐리게 한다고? 다운자료를 흐리게 해야지" 지적으로
-// 보존 우선순위를 뒤집었지만(위 client_dedupCashReceiptLogs_), 그 수정 전에 이미 잘못된
-// 방향(승인번호 없는 발행자료가 정리되고, 승인번호 있는 다운자료가 살아남은 상태)으로
-// 처리된 건이 세무사님 확인상 전체의 99%나 됐다 — 하나씩 "되돌리기"로는 감당이 안 되므로
-// 일괄 정정 도구가 필요하다. 승인번호 없는(발행자료) 쪽이 정리되어 있고 그 살아남은 쪽이
-// 승인번호 있는(다운자료) 경우만 골라 방향을 뒤집는다(발행자료를 복구하고 다운자료를 정리
-// 대상으로). 동률(둘 다 승인번호 있음/없음)이던 쌍은 애초에 이 버그의 영향을 안 받았으므로
-// (생성일로만 갈렸음) 손대지 않는다.
-function client_findDedupDirectionMistakes_() {
-  const sheets = client_getSheets_();
-  const data = sheets.log.getDataRange().getValues();
-  const col = client_colMap_(data[0], CONSULT_HEADERS);
-  const byId = {};
-  for (let i = 1; i < data.length; i++) {
-    const id = String(data[i][col.id] || '').trim();
-    if (id) byId[id] = i;
-  }
-  const mistakes = [];
-  for (let i = 1; i < data.length; i++) {
-    const loserId = String(data[i][col.id] || '').trim();
-    const survivorId = String(data[i][col.중복정리] || '').trim();
-    if (!loserId || !survivorId) continue;
-    if (String(data[i][col.승인번호] || '').trim()) continue; // 정리된 쪽(진 쪽)이 이미 승인번호 있음 = 방향 맞음
-    const survivorRowIdx = byId[survivorId];
-    if (survivorRowIdx === undefined) continue; // 살아남은 쪽을 못 찾으면(그 사이 삭제 등) 건너뜀
-    if (!String(data[survivorRowIdx][col.승인번호] || '').trim()) continue; // 산 쪽도 승인번호 없으면 방향 문제 아님
-    mistakes.push({
-      loserRowIndex: i + 1, loserId: loserId,
-      survivorRowIndex: survivorRowIdx + 1, survivorId: survivorId,
-      고객명: data[i][col.고객명], 날짜: client_dateStr_(data[i][col.날짜]), 금액: data[i][col.금액]
-    });
-  }
-  return mistakes;
-}
-
-function client_fixDedupPriorityDirection(params) {
-  return withLock_(60000, function () {
-    const mistakes = client_findDedupDirectionMistakes_();
-    if (!params.apply) return { success: true, dryRun: true, count: mistakes.length, items: mistakes };
-    const sheets = client_getSheets_();
-    const col = client_colMap_(sheets.log.getDataRange().getValues()[0], CONSULT_HEADERS);
-    mistakes.forEach(function (m) {
-      sheets.log.getRange(m.loserRowIndex, col.중복정리 + 1).setValue(''); // 발행자료 복구
-      sheets.log.getRange(m.survivorRowIndex, col.중복정리 + 1).setValue(m.loserId); // 다운자료를 정리 대상으로
-    });
-    SpreadsheetApp.flush();
-    return { success: true, applied: mistakes.length };
-  });
-}
+// [2026.09.19 정비도구 재정비] "중복정리 방향 일괄 정정" 도구(승인번호 우선순위가 뒤바뀌던
+// 옛 버그의 정리 작업)는 그 버그 자체가 근본 수정돼 다시 생길 수 없는 상태라 삭제했다.
 
 // [2026.09.19 신규] 위 자동 정리가 착오였을 때(서로 다른 거래가 우연히 날짜·금액이 같아서
 // 잘못 겹쳐진 경우) 되돌리는 버튼의 서버쪽 짝 — '중복정리' 표시만 지워서 다시 정상 수금
@@ -20024,11 +20071,10 @@ function client_doPost(body) {
     case 'client_merge_clients': return client_mergeClients(body);
     case 'client_send_sms': return client_sendSms(body);
     case 'client_get_rrn': return client_getRRN(body);
-    case 'client_migrate_rrn_from_biz_field': return client_migrateRrnFromBizField(body);
     case 'client_scan_case_files_for_names': return client_scanCaseFilesForNames(body);
     case 'client_apply_scanned_names': return client_applyScannedNames(body);
+    case 'client_delete_numeric_name_clients': return client_deleteNumericNameClients(body);
     case 'client_undo_dedup_log': return client_undoDedupConsultLog(body);
-    case 'client_fix_dedup_priority': return client_fixDedupPriorityDirection(body);
     default: return { success: false, message: '알 수 없는 action: ' + body.action };
   }
 }
@@ -20113,7 +20159,11 @@ const WORK_SEMOK_LABELS_ = { transfer: '양도', gift: '증여', inheritance: '�
 // 사건개요의 납세의무자 이름 필드에 미리 채워 넣기 위해 서버(Code.js)에서도 이 매핑이
 // 필요하다(클라이언트 JS 상수는 서버 코드에서 참조할 수 없음). 한쪽만 고치고 잊어버리기
 // 쉬우니 casehandling.html의 원본을 고칠 때 여기도 같이 고칠 것.
-const WORK_TAXPAYER_FIELD_BY_SEMOK_ = { transfer: 'trTransferorName', gift: 'giftDoneeName', inheritance: 'ihDeceasedName' };
+// [2026.09.23 버그수정] '사업' 세목의 사건개요(CH_CASE_OVERVIEW_FIELDS_.business)가 나중에
+// (2026.09.19) 새로 생기면서 이 매핑에 business를 추가하는 걸 놓쳤다 — 그래서 사업 사건은
+// 작업관리 납세자를 아무리 입력해도 처리개요의 "납세자(대표) 성명"(bizTaxpayerName)에
+// 전혀 반영되지 않았다. casehandling.html의 TAXPAYER_NAME_FIELD_BY_SEMOK_도 같이 고칠 것.
+const WORK_TAXPAYER_FIELD_BY_SEMOK_ = { transfer: 'trTransferorName', gift: 'giftDoneeName', inheritance: 'ihDeceasedName', business: 'bizTaxpayerName' };
 // [2026.09.19 신규] "특정 사건에서는 의뢰인·납세자일 뿐이지, 모든 사람은 최대한 고객으로
 // 확보해야 한다" — 사건개요 안에 실제 살아있는 관계자(양도인/증여인·수증인/상속인/사업
 // 납세자·임직원) 성명이 채워지면 그 이름으로 고객관리에 자동 등록(이미 있으면 그 고객과
@@ -20175,9 +20225,24 @@ function work_linkPartyClientIds_(overview, seMok) {
     }
     const name = String(overview[f.nameField] || '').trim();
     if (!name) return;
+    // [2026.09.23 버그수정, "전수조사" 지시] 이미 이 역할(예: giftDoneeId)로 연결된 고객이
+    // 있는데 이름만 오탈자 정정 등으로 살짝 바뀌면, 예전엔 새 이름으로 다시 찾아서(못 찾으면
+    // 새로 만들어서) idField를 갈아끼웠다 — 옛 고객 레코드는 링크가 끊긴 채 고아로 남고 중복
+    // 고객이 쌓였다. client_updateClient가 "고객명"(대표 의뢰인) 쪽엔 이미 이 문제를 안 겪게
+    // (연결 유지, 레코드만 개명) 처리해뒀는데 역할별 필드엔 그 보호가 없었다 — 같은 방식으로
+    // 맞춘다: 이미 연결돼 있으면 그 고객 레코드를 개명하고, 링크가 없거나(신규) 그 고객이
+    // 이미 삭제돼 개명이 실패하면 그때만 이름으로 새로 찾거나 만든다.
+    const existingId = overview[f.idField];
     try {
-      overview[f.idField] = client_findOrCreateByName_(name).id;
-    } catch (err) { /* 등록 실패해도 치명적이지 않음 — 다음 저장 때 다시 시도됨 */ }
+      if (existingId) {
+        const renameRes = client_updateClient({ id: existingId, 성명: name });
+        if (!renameRes || renameRes.success === false) throw new Error('연결된 고객을 찾을 수 없음');
+      } else {
+        overview[f.idField] = client_findOrCreateByName_(name).id;
+      }
+    } catch (err) {
+      try { overview[f.idField] = client_findOrCreateByName_(name).id; } catch (err2) { /* 등록 실패해도 치명적이지 않음 — 다음 저장 때 다시 시도됨 */ }
+    }
   });
   return overview;
 }
@@ -21081,6 +21146,21 @@ function work_dateStr_(v) {
   return String(v).slice(0, 10);
 }
 
+// [2026.09.23 신규] work_readRow_와 work_computeCanonicalCaseFolderNames_(폴더명 점검 도구)가
+// 똑같이 필요로 하던 "납세자↔사건개요 중 비어있는 쪽을 채운다" 로직을 한 곳으로 뽑았다 —
+// 두 곳에 따로 복사해두면 한쪽만 고치고 잊어버리는 사고가 재발하기 쉽다(이번에 실제로 그런
+// 사고가 날 뻔해서 여기로 합침). caseOverview는 그 자리에서 직접 고쳐 쓰고(mutate), 반환값은
+// 화면에 보여줄 최종 납세자 문자열이다.
+function work_resolveTaxpayer_(seMok, rawTaxpayer, caseOverview) {
+  const taxpayerField = WORK_TAXPAYER_FIELD_BY_SEMOK_[seMok];
+  let taxpayer = String(rawTaxpayer || '').trim();
+  if (taxpayerField && caseOverview && typeof caseOverview === 'object') {
+    const overviewVal = String(caseOverview[taxpayerField] || '').trim();
+    if (!overviewVal && taxpayer) caseOverview[taxpayerField] = taxpayer;
+    else if (overviewVal && !taxpayer) taxpayer = overviewVal;
+  }
+  return taxpayer;
+}
 function work_readRow_(col, rowValues) {
   let subtasks = [];
   try { subtasks = JSON.parse(rowValues[col.하위업무] || '[]'); } catch (e) { subtasks = []; }
@@ -21100,6 +21180,23 @@ function work_readRow_(col, rowValues) {
   let caseOverview = {};
   try { caseOverview = JSON.parse(rowValues[col.사건개요] || '{}'); } catch (e) { caseOverview = {}; }
   if (!caseOverview || typeof caseOverview !== 'object' || Array.isArray(caseOverview)) caseOverview = {};
+  // [2026.09.23 버그수정] 세무사님 지적 — 작업관리에 이미 입력된 납세자가 처리개요(사건개요)의
+  // 납세의무자 이름 필드에 반영 안 되는 사건들이 있었다. 기존 동기화(work_updateCase 저장
+  // 시점에 클라이언트가 양쪽을 맞춤)는 "그 이후에 다시 저장"해야만 걸리는 저장-트리거 방식이라,
+  // 이미 등록된 사건은 재저장 전까지 계속 빈칸으로 남는다(게다가 '사업' 세목은 매핑 자체가
+  // 최근까지 빠져 있어 저장해도 안 걸렸다 — 위 WORK_TAXPAYER_FIELD_BY_SEMOK_ 수정 참고).
+  // 이 함수는 모든 화면(작업관리·처리개요·메모·세액계산·AI도구)이 사건을 읽을 때 항상 거치므로,
+  // 여기서 한 번만 "둘 중 비어있는 쪽을 채워서 돌려준다"를 적용하면 과거 사건도 재저장 없이
+  // 즉시 반영된다(시트 자체를 고쳐쓰지는 않음 — 다음 실제 저장 때 정식 반영).
+  // [2026.09.23 추가] "전수조사" 지시로 재점검 — 처음엔 사건개요→납세자 방향만 채웠는데,
+  // 반대(사건개요는 비어있고 납세자에만 값이 있는 경우)도 똑같이 안 채워지는 건 대칭이 아니다.
+  // 상속처럼 "의뢰인=상속인, 납세자=피상속인"이 원래 다른 게 정상인 세목도 있으므로(workmanage.html
+  // 주석 참고), 둘 다 값이 있는데 서로 다르면 절대 손대지 않는다 — 오직 한쪽이 완전히 빈 경우만 채운다.
+  // [2026.09.23 재수정] 이 자기치유 로직을 work_computeCanonicalCaseFolderNames_(폴더명 점검
+  // 도구)가 그대로 베껴 쓰지 않고 시트 원본만 읽고 있어서, 그 도구가 제안하는 사건명이 다른
+  // 화면들이 보여주는 납세자와 어긋날 뻔했다 — work_resolveTaxpayer_로 뽑아내 두 곳이 항상
+  // 같은 로직을 쓰게 한다(따로 복사해두면 또 갈라질 위험이 있으므로).
+  const taxpayerForRead_ = work_resolveTaxpayer_(rowValues[col.세목], rowValues[col.납세자], caseOverview);
   return {
     id: rowValues[col.id],
     고객ID: rowValues[col.고객ID],
@@ -21115,7 +21212,7 @@ function work_readRow_(col, rowValues) {
     의뢰일: work_dateStr_(rowValues[col.의뢰일]),
     기준일: work_dateStr_(rowValues[col.기준일]),
     법정일: work_dateStr_(rowValues[col.법정일]),
-    납세자: String(rowValues[col.납세자] || ''),
+    납세자: taxpayerForRead_,
     상태: rowValues[col.상태],
     완료전법정일: work_dateStr_(rowValues[col.완료전법정일]),
     개요: rowValues[col.개요],
@@ -21908,14 +22005,11 @@ function work_doPost(body) {
     case 'work_audit_unlinked_case_folders': return work_auditUnlinkedCaseFoldersAction_(body);
     case 'work_link_case_folder': return work_linkCaseFolder(body);
     case 'work_reassign_case_folder': return work_reassignCaseFolder(body);
-    case 'work_bulk_fix_completion_dates': return work_bulkFixCompletionDates(body);
     case 'work_fix_completion_after_receipt': return work_fixCompletionAfterReceipt(body);
     case 'work_backfill_receipt_case_links': return work_backfillReceiptCaseLinksAction_(body);
     case 'work_plan_report_filename_cleanup': return work_reportFilenameCleanupAction_(body);
     case 'work_apply_report_filename_cleanup': return work_applyReportFilenameCleanup(body);
     case 'migrate_report_template_names': return handleMigrateReportTemplateNames_(body);
-    case 'work_fix_completion_by_report_date': return work_fixCompletionByReportDate(body);
-    case 'work_apply_filing_file_dates': return work_applyFilingFileDates(body);
     case 'work_resync_all_calendars': return work_resyncAllCalendars();
     case 'work_apply_receipt_only_case_cleanup': return work_applyReceiptOnlyCaseCleanup(body);
     case 'work_backfill_party_client_ids': return work_backfillPartyClientIds(body);
@@ -21956,7 +22050,13 @@ function work_computeCanonicalCaseFolderNames_() {
     const 고객ID = row[col.고객ID];
     const seMok = row[col.세목];
     const upType = row[col.업무유형];
-    const 납세자 = String(row[col.납세자] || '').trim();
+    // [2026.09.23 버그수정] 시트의 납세자 칸만 보면 work_readRow_의 자기치유(사건개요에만
+    // 값이 있고 납세자 칸은 비어있는 경우)를 놓쳐서, 이 도구가 제안하는 사건명이 다른 화면이
+    // 보여주는 납세자와 어긋날 수 있었다 — work_resolveTaxpayer_로 동일하게 판정.
+    let caseOverviewForName_ = {};
+    try { caseOverviewForName_ = JSON.parse(row[col.사건개요] || '{}'); } catch (e) { caseOverviewForName_ = {}; }
+    if (!caseOverviewForName_ || typeof caseOverviewForName_ !== 'object' || Array.isArray(caseOverviewForName_)) caseOverviewForName_ = {};
+    const 납세자 = work_resolveTaxpayer_(seMok, row[col.납세자], caseOverviewForName_);
     const semokLabel = WORK_SEMOK_LABELS_[seMok] || seMok;
 
     if (!numsInUseByName[고객명]) numsInUseByName[고객명] = {};
@@ -22007,7 +22107,10 @@ function work_computeCanonicalCaseFolderNames_() {
     if (currentName !== finalName || liveFolderMismatch) {
       results.push({
         rowIndex: r.rowIndex, id: row[col.id], 고객명: 고객명,
-        현재사건명: currentName, 제안사건명: finalName, 폴더ID: 폴더ID
+        현재사건명: currentName, 제안사건명: finalName, 폴더ID: 폴더ID,
+        // [2026.09.23 신규] apply 단계가 work_updateCase를 그대로 태우려면 이 두 값이 필요하다
+        // (낙관적 잠금용 수정일, 재계산을 트리거할 납세자 — 아래 work_auditCaseFolderNames 참고).
+        납세자: 납세자, 수정일: row[col.수정일]
       });
     }
   });
@@ -22015,48 +22118,37 @@ function work_computeCanonicalCaseFolderNames_() {
 }
 
 // dryRun(기본값)은 저장소를 전혀 건드리지 않고 무엇이 바뀔지만 보여준다. apply:true일 때만
-// 실제로 시트의 사건명과 Drive 폴더명을 함께 바꾼다(폴더ID가 없으면 사건명만 바꾸고 폴더는
-// 건드리지 않는다 — 옛 사건 중 폴더가 아예 없는 경우가 있을 수 있음).
+// 실제로 사건명을 바꾼다.
+// [2026.09.23 버그수정, "전수조사" 지시로 발견] 예전엔 시트 셀과 Drive 폴더명을 여기서 직접
+// setValue/setName으로 고쳤다 — work_updateCase를 거치지 않아 (1) 낙관적 잠금 검사가 전혀
+// 없어 다른 화면에서 동시에 저장 중이던 내용을 조용히 덮어쓸 수 있었고, (2) work_syncCaseCalendar_
+// 가 안 불려서 일괄변경 후 구글 캘린더의 "[NX] 옛 사건명" 이벤트가 안 갱신된 채 남을 수 있었다.
+// work_updateCase는 이미 "고객명/납세자/세목/업무유형 중 하나라도 들어오면 사건명 재계산+
+// 폴더명 동기화+캘린더 동기화를 한 번에 다 해주므로(2026.09.16 로직, 위 함수 근처 주석 참고)
+// 그 경로를 그대로 태운다 — 이 함수 자신은 lock을 잡지 않는다(work_updateCase가 매 건마다
+// 자기 lock을 잡으므로, 여기서 또 감싸면 같은 실행 안에서 lock을 중첩 요청하게 된다).
 function work_auditCaseFolderNames(params) {
-  return withLock_(8000, function () {
-    const diffs = work_computeCanonicalCaseFolderNames_();
-    if (!params || !params.apply) {
-      return { success: true, dryRun: true, count: diffs.length, items: diffs };
+  const diffs = work_computeCanonicalCaseFolderNames_();
+  if (!params || !params.apply) {
+    return { success: true, dryRun: true, count: diffs.length, items: diffs };
+  }
+  const applied = [];
+  const failed = [];
+  diffs.forEach(function (d) {
+    const res = work_updateCase({ id: d.id, 납세자: d.납세자, 기대수정일: d.수정일 });
+    if (res && res.success) {
+      applied.push({ 고객명: d.고객명, 현재사건명: d.현재사건명, 제안사건명: (res.case && res.case.사건명) || d.제안사건명, 폴더수정됨: !(res.warning && res.warning.indexOf('폴더') !== -1) });
+    } else {
+      failed.push({ 고객명: d.고객명, 현재사건명: d.현재사건명, 사유: (res && (res.message || res.error)) || '알 수 없는 오류' });
     }
-    const sheet = work_getSheet_();
-    const col = work_colMap_(sheet.getDataRange().getValues()[0]);
-    const applied = [];
-    diffs.forEach(function (d) {
-      sheet.getRange(d.rowIndex, col.사건명 + 1).setValue(d.제안사건명);
-      let folderRenamed = false;
-      if (d.폴더ID) {
-        try { DriveApp.getFolderById(d.폴더ID).setName(d.제안사건명); folderRenamed = true; } catch (err) { /* 폴더가 이미 삭제됐거나 권한 문제 — 사건명은 그대로 반영, 폴더만 건너뜀 */ }
-      }
-      applied.push({ 고객명: d.고객명, 현재사건명: d.현재사건명, 제안사건명: d.제안사건명, 폴더수정됨: folderRenamed });
-    });
-    return { success: true, applied: applied.length, items: applied };
   });
+  return { success: true, applied: applied.length, items: applied, failed: failed };
 }
 
-// [2026.09.17 신규] "완료사건인데 완료일이 없는 것은 모두 2026-06-30으로 일괄 적용해달라" +
-// "완료일이 9.21/9.22/9.23인 것도 26.6.30으로 바꿔달라" — 시스템 개통(9월 하순) 전에 이미
-// 끝난 사건들을 완료 처리하면서, 그때는 아직 완료일 직접입력 기능이 없어(어제 배포로 고침)
-// 전부 개통 무렵 오늘 날짜로 찍혀버린 것들을 한 번에 바로잡는 일회성 일괄 보정 도구.
-const WORK_SUSPECT_AUTO_COMPLETION_DATES_ = ['2026-09-21', '2026-09-22', '2026-09-23'];
-function work_findMissingCompletionDates_() {
-  const sheet = work_getSheet_();
-  const data = sheet.getDataRange().getValues();
-  const col = work_colMap_(data[0]);
-  const items = [];
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][col.상태] || '').trim() !== '완료') continue;
-    const cur = work_dateStr_(data[i][col.법정일]);
-    if (!cur || WORK_SUSPECT_AUTO_COMPLETION_DATES_.indexOf(cur) !== -1) {
-      items.push({ rowIndex: i + 1, id: data[i][col.id], 고객명: data[i][col.고객명], 사건명: data[i][col.사건명], 현재완료일: cur || '(없음)' });
-    }
-  }
-  return items;
-}
+// [2026.09.19 정비도구 재정비] "완료일 일괄 보정"(시스템 개통 무렵 잘못 찍힌 완료일 보정)
+// 도구는 그 개통 시점이 다시 올 수 없어 영구적으로 대상이 없는 상태라 삭제했다. 다만 그
+// 도구가 남긴 캘린더 재동기화 헬퍼(work_resyncCalendarForRows_)는 다른 완료일 보정 도구
+// (완료일-영수증일 보정)가 계속 쓰므로 그대로 둔다.
 // [2026.09.18 버그수정] "일정에 [NX] 표시가 붙은 데이터가 왜곡된 것으로 보인다" — 이 파일의
 // 완료일 일괄보정 도구 네 개가 전부 work_updateCase를 거치지 않고 시트 셀을 직접 덮어써서,
 // work_updateCase 안에만 있던 캘린더 동기화(work_syncCaseCalendar_)가 한 번도 안 걸렸다.
@@ -22200,160 +22292,11 @@ function work_applyReceiptOnlyCaseCleanup(params) {
   });
 }
 
-function work_bulkFixCompletionDates(params) {
-  return withLock_(15000, function () {
-    const targetDate = String(params.targetDate || '').trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) return { success: false, message: '날짜 형식이 올바르지 않습니다(YYYY-MM-DD).' };
-    const items = work_findMissingCompletionDates_();
-    if (!params.apply) return { success: true, dryRun: true, count: items.length, items: items };
-    const sheet = work_getSheet_();
-    const col = work_colMap_(sheet.getDataRange().getValues()[0]);
-    items.forEach(function (it) {
-      sheet.getRange(it.rowIndex, col.법정일 + 1).setValue(targetDate);
-    });
-    work_resyncCalendarForRows_(items.map(function (it) { return it.rowIndex; }));
-    return { success: true, applied: items.length };
-  });
-}
-
-// [2026.09.18 신규, 2026.09.18 수정] "보고서를 먼저 정비하려고 한 이유가, 26.06.30으로
-// 임시 지정해둔 완료일을 보고서 작성일 기준으로 실제 완료일에 더 가깝게 재조정하려던
-// 것이었다" — 26.06.30이 찍힌 완료 사건 중, 그 사건 폴더에 실제로 작성된 보고서가 있으면
-// 완료일을 그 보고서 기준으로 다시 맞춘다.
-// [2026.09.18 버그수정] 처음엔 "보고서 모음" 인덱스에 캐시된 modifiedDate(최종 수정일)를
-// 썼는데, 세무사님 지적 — "파일명을 수정한 최근날짜로 기재되어 있네." 나중에 파일명을
-// 고치거나 내용을 살짝 열어본 것만으로도 수정일이 바뀌어버려서, 실제로 그 보고서를 처음
-// "썼던" 시점과 전혀 무관해질 수 있다 — 완료 시점 근사치로 쓰기엔 너무 불안정하다. 대신
-// 나중에 손대도 안 바뀌는 Drive의 생성일(getDateCreated)을 직접 조회하도록 바꾼다 — 이
-// 값은 캐시(인덱스)에 없으므로, 대상 사건(26.06.30인 완료 사건, 보통 소수)만 그때그때
-// 폴더를 직접 스캔한다(전체 사건을 매번 다시 스캔하는 게 아니라 이 좁은 대상만 스캔하므로
-// 성능 부담이 크지 않다).
-const WORK_TEMP_COMPLETION_DATE_ = '2026-06-30';
-function work_collectReportCreatedDatesInFolder_(folder, out) {
-  const fIter = folder.getFiles();
-  while (fIter.hasNext()) {
-    const f = fIter.next();
-    if (!rh_isReportFile_(f.getName(), f.getMimeType())) continue;
-    out.push({ name: f.getName(), createdDate: f.getDateCreated().getTime() });
-  }
-  const subIter = folder.getFolders();
-  while (subIter.hasNext()) work_collectReportCreatedDatesInFolder_(subIter.next(), out);
-}
-function work_findCompletionByReportDate_() {
-  const sheet = work_getSheet_();
-  const data = sheet.getDataRange().getValues();
-  const col = work_colMap_(data[0]);
-  const items = [], noReport = [];
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][col.상태] || '').trim() !== '완료') continue;
-    const cur = work_dateStr_(data[i][col.법정일]);
-    if (cur !== WORK_TEMP_COMPLETION_DATE_) continue;
-    const caseId = data[i][col.id];
-    const 고객명 = data[i][col.고객명], 사건명 = data[i][col.사건명];
-    const folderId = String(data[i][col.폴더ID] || '').trim();
-    let files = [];
-    if (folderId) {
-      try { work_collectReportCreatedDatesInFolder_(DriveApp.getFolderById(folderId), files); } catch (err) { /* 폴더 조회 실패 — 아래에서 noReport로 처리 */ }
-    }
-    if (!files.length) { noReport.push({ id: caseId, 고객명: 고객명, 사건명: 사건명, 현재완료일: cur }); continue; }
-    files.sort(function (a, b) { return b.createdDate - a.createdDate; });
-    const latest = files[0];
-    const newDate = Utilities.formatDate(new Date(latest.createdDate), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    // [2026.09.18 버그수정] "현재완료일과 새완료일이 같은데 왜 계속 띄워주나" — 이미 정확한
-    // 값이면 보여줄 이유가 없다(바꿀 게 없는 항목까지 매번 다시 나오면 이미 처리한 건지
-    // 헷갈리기만 함).
-    if (newDate === cur) continue;
-    items.push({ rowIndex: i + 1, id: caseId, 고객명: 고객명, 사건명: 사건명, 현재완료일: cur, 새완료일: newDate, 근거파일명: latest.name });
-  }
-  return { items: items, noReport: noReport };
-}
-function work_fixCompletionByReportDate(params) {
-  return withLock_(15000, function () {
-    const found = work_findCompletionByReportDate_();
-    if (!params.apply) return { success: true, dryRun: true, count: found.items.length, items: found.items, noReportCount: found.noReport.length, noReport: found.noReport };
-    const sheet = work_getSheet_();
-    const col = work_colMap_(sheet.getDataRange().getValues()[0]);
-    found.items.forEach(function (it) {
-      sheet.getRange(it.rowIndex, col.법정일 + 1).setValue(it.새완료일);
-    });
-    work_resyncCalendarForRows_(found.items.map(function (it) { return it.rowIndex; }));
-    return { success: true, applied: found.items.length };
-  });
-}
-
-// [2026.09.18] 세무사님이 양도코리아(신고 프로그램) 파일 목록을 제공 — 처음엔 파일명에 박힌
-// 날짜를 신고일로 보고 그걸로 완료일을 지정해달라고 하셨다가, "그 날짜는 신고일이 아니라
-// 원인일(양도일·증여일 등)이었다 — 반영하면 안 된다"고 정정, 이어서 "완료일이 되어야 하는
-// 건 파일명의 날짜가 아니라 그 파일 자체의 작성일(수정일)"이라고 다시 확정하셨다. 탐색기
-// 화면 캡처로 받은 "이름+세목+파일 작성일" 조합을 그대로 코드에 넣어(일회성 수기 입력이라
-// 반복 기능으로 일반화하지 않음) 이름+세목으로 사건을 찾아 완료일을 그 값으로 지정한다.
-const WORK_FILING_FILE_DATE_BATCH_ = [
-  { 세목: 'inheritance', 이름: '윤경숙', 완료일: '2026-09-11' },
-  { 세목: 'inheritance', 이름: '조용녀', 완료일: '2026-08-02' },
-  { 세목: 'transfer', 이름: 'KOUNG SOON JOE', 완료일: '2026-07-28' },
-  { 세목: 'transfer', 이름: '김기범', 완료일: '2026-06-29' },
-  { 세목: 'transfer', 이름: '노오섭', 완료일: '2026-06-30' },
-  { 세목: 'transfer', 이름: '이우석', 완료일: '2026-06-25' },
-  { 세목: 'transfer', 이름: '이혜숙', 완료일: '2026-05-22' },
-  { 세목: 'gift', 이름: '강정화', 완료일: '2026-09-02' },
-  { 세목: 'gift', 이름: '김서연', 완료일: '2026-06-25' },
-  { 세목: 'gift', 이름: '김세정', 완료일: '2026-06-25' },
-  { 세목: 'gift', 이름: '김정자', 완료일: '2026-06-17' },
-  { 세목: 'gift', 이름: '양지현', 완료일: '2026-08-21' },
-  { 세목: 'gift', 이름: '양지호', 완료일: '2026-08-21' },
-  { 세목: 'gift', 이름: '임세택', 완료일: '2026-07-23' }
-];
-function work_findCompletionByFilingFileDates_() {
-  const sheet = work_getSheet_();
-  const data = sheet.getDataRange().getValues();
-  const col = work_colMap_(data[0]);
-  const matched = [], unmatched = [], ambiguous = [];
-  WORK_FILING_FILE_DATE_BATCH_.forEach(function (entry) {
-    const allMatches = [], completedMatches = [];
-    for (let i = 1; i < data.length; i++) {
-      const rowName = String(data[i][col.고객명] || '').trim();
-      // [2026.09.18 버그수정] "사건명이 고객명(납세자) 구조이고, 상속은 납세자=피상속인 —
-      // 신고데이터의 이름도 납세자 기준으로 적혀있으니 매치가 안 될 리 없다"는 지적. 그동안
-      // 고객명(의뢰인)으로만 비교해서, 납세자가 의뢰인과 다른 사건(상속의 피상속인, 대리신고
-      // 등)은 매칭이 전부 실패하고 있었다 — 사건명 규칙과 똑같이 "납세자, 없으면 고객명"을
-      // 기준으로 비교해야 한다.
-      const rowTaxpayer = String(data[i][col.납세자] || '').trim() || rowName;
-      const rowSemok = data[i][col.세목];
-      if (rowTaxpayer === entry.이름 && rowSemok === entry.세목) {
-        const rec = { rowIndex: i + 1, 고객명: rowName, 납세자: rowTaxpayer, 사건명: data[i][col.사건명], 현재완료일: work_dateStr_(data[i][col.법정일]), 상태: data[i][col.상태] };
-        allMatches.push(rec);
-        if (String(data[i][col.상태] || '').trim() === '완료') completedMatches.push(rec);
-      }
-    }
-    if (completedMatches.length === 1) {
-      // [2026.09.18 버그수정] "현재완료일과 새완료일이 같은데 왜 계속 띄워주나" — 이미 이
-      // 값으로 맞춰진 사건(예: 이 도구를 이미 한 번 적용한 사건)은 다시 보여줄 필요가 없다.
-      if (completedMatches[0].현재완료일 !== entry.완료일) {
-        matched.push(Object.assign({}, completedMatches[0], { 새완료일: entry.완료일 }));
-      }
-    } else if (allMatches.length === 0) {
-      unmatched.push({ 이름: entry.이름, 세목: entry.세목, 새완료일: entry.완료일 });
-    } else {
-      // 완료 상태가 아니거나(진행 중인데 이미 신고파일은 작성된 경우 등) 이름이 겹쳐 여러 건인
-      // 경우는 자동 적용하지 않고 사람이 직접 확인하도록 후보 전부를 보여준다.
-      ambiguous.push({ 이름: entry.이름, 세목: entry.세목, 새완료일: entry.완료일, candidates: allMatches });
-    }
-  });
-  return { matched: matched, unmatched: unmatched, ambiguous: ambiguous };
-}
-function work_applyFilingFileDates(params) {
-  return withLock_(15000, function () {
-    const found = work_findCompletionByFilingFileDates_();
-    if (!params.apply) return { success: true, dryRun: true, matched: found.matched, unmatched: found.unmatched, ambiguous: found.ambiguous };
-    const sheet = work_getSheet_();
-    const col = work_colMap_(sheet.getDataRange().getValues()[0]);
-    found.matched.forEach(function (it) {
-      sheet.getRange(it.rowIndex, col.법정일 + 1).setValue(it.새완료일);
-    });
-    work_resyncCalendarForRows_(found.matched.map(function (it) { return it.rowIndex; }));
-    return { success: true, applied: found.matched.length };
-  });
-}
+// [2026.09.19 정비도구 재정비] "완료일-보고서작성일 보정"과 "신고파일 작성일 반영" 도구는
+// 전부 삭제했다 — 전자는 위(이미 삭제된) "완료일 일괄 보정"이 임시로 찍어둔 2026-06-30을
+// 재조정하는 후속 작업이라 짝이 없어지면서 같이 끝난 일이고, 후자는 2026.09.18에 세무사님이
+// 딱 한 번 화면 캡처로 알려준 실제 고객 14명의 이름+날짜가 코드에 그대로 박혀 있던
+// 일회성 수기 반영 도구였다(개인정보를 코드에 남겨둘 이유가 없어 완전히 제거).
 
 // [2026.09.17 재설계] "현금영수증이 고객에만 연결되다니 말이 안 된다 — 사건에 먼저 연결되고
 // 나서 고객에 연결되어야 한다"는 지적으로 findCaseForFile_/runCashReceiptScan_의 실제 버그를

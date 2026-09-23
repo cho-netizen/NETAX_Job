@@ -413,13 +413,33 @@
   .taxcalc-asset{ border:1px solid var(--taxcalc-border); border-radius:10px; padding:12px; margin-bottom:12px; background:var(--panel); }
   .taxcalc-asset-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
   .taxcalc-asset-head b{ font-size:13px; font-weight:800; color:var(--ink); }
-  .taxcalc-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:8px 10px; }
-  .taxcalc-field{ display:flex; flex-direction:column; gap:3px; }
+  /* [2026.09.20 필드 간격 정비, 최최종] auto-fill/1fr(그리드) 방식은 "공유 트랙" 구조상
+     한 트랙의 최소폭(160px) 밑으로는 절대 못 내려가서, 성명처럼 95px면 충분한 필드도 항상
+     60~90px가 남아 세무사님이 보기엔 여전히 "떨어져 보였다"(실측: 캡쳐 확인 후 grid 방식은
+     한계로 판단). 그리드를 통째로 flex로 바꿔 각 필드가 "자기 라벨/입력칸 크기만큼만" 차지하고
+     남는 폭은 그냥 다음 줄로 넘기게 한다 — 공유 트랙이 없으니 옆 필드 폭과 무관하게 각자
+     내용물 크기로 정렬된다(좌측정렬 그 자체). 체크박스·전체폭 note는 flex-basis:100%로,
+     주소처럼 넓게 써야 하는 칸은 flex-basis 고정값으로 대체(아래 grid-column:1/-1·span 2
+     전부 치환, taxcalc.html 쪽도 함께 수정함). */
+  .taxcalc-grid{ display:flex; flex-wrap:wrap; gap:8px 10px; }
+  /* [2026.09.20 flex 전환 후 자체 점검 2] 라벨 옆 .taxcalc-field-help·.taxcalc-result-note에
+     법조문 설명처럼 긴 문장이 붙은 필드는, flex가 "줄바꿈 없이 한 줄에 다 담을 수 있는
+     폭"으로 필드 전체를 늘려버려서(거주구분 select 자체는 짧은데 옆의 긴 안내문장 때문에
+     필드 전체가 통째로 넓어짐) 셀렉트와 똑같은 문제가 났다. 필드 자체에 상한을 둬서
+     긴 문장은 필드 폭 안에서 줄바꿈되게 한다(주소 등 flex-basis:340px 지정 필드는
+     그대로 340px 유지, 상한보다 작으므로 영향 없음). */
+  .taxcalc-field{ display:flex; flex-direction:column; gap:3px; flex:0 1 auto; max-width:360px; position:relative; }
   .taxcalc-field label{ font-size:12px; font-weight:600; color:var(--ink); }
   .taxcalc-field input, .taxcalc-field select{
     border:1px solid var(--taxcalc-border); border-radius:6px; padding:6px 8px; font-family:inherit;
     font-size:13px; box-sizing:border-box; background:var(--panel); color:var(--ink);
   }
+  /* [2026.09.20 flex 전환 후 자체 점검] select는 브라우저가 "가장 긴 option 글자수"로
+     자기 폭을 잡는다 — 지금 고른 값이 "그 외 부동산"(6자)이어도 같은 select 안에
+     "분양권(§104①1호·2호·3호 — ...)"처럼 긴 옵션이 하나만 있으면 그 옵션 길이만큼
+     통째로 넓어져 있었다(실측 607px). 셀렉트만 상한을 둬서 긴 옵션은 그 옵션이 실제
+     선택됐을 때만 말줄임(...)되게 한다. */
+  .taxcalc-field select{ max-width:280px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
   /* [2026.09.16 버그수정] 세무사님 전체 재검토 지시 — .taxcalc-field가 flex-column
      기본값(align-items:stretch)이라, 날짜(10자)·숫자(면적·연도 등 대개 몇 자리) 입력칸까지
      그리드 칸(180px 이상) 전체 폭으로 늘어나 데이터 길이에 비해 항상 크게 남아 보였다.
@@ -432,6 +452,11 @@
   .taxcalc-field > input[type="date"]{ align-self:flex-start; width:auto; }
   .taxcalc-field > input.taxcalc-date{ align-self:flex-start; width:95px; }
   .taxcalc-field > input[type="number"]{ align-self:flex-start; width:auto; }
+  /* [2026.09.20 자체 점검] 금액(원) 입력칸은 enhanceNumberInputs가 렌더 직후 type="number"를
+     type="text"+class="taxcalc-money"로 바꿔버려서 위 규칙이 실제로는 적용된 적이 없었다
+     (브라우저 기본폭 ~165px에 우연히 맡겨져 있었음) — 같은 종류의 데이터는 폭도 똑같아야
+     하므로 명시적으로 통일한다. */
+  .taxcalc-field > input.taxcalc-money, .taxcalc-field-inline > input.taxcalc-money{ align-self:flex-start; width:150px; }
   /* data-nameonly는 이미 JS(enhanceNameOnlyInputs)가 "이 칸은 사람 이름만 들어간다"는
      표시로 쓰고 있던 기존 속성 — 같은 의미를 폭에도 그대로 활용, 성명(2~6자)칸을 좁힌다. */
   .taxcalc-field > input[data-nameonly]{ align-self:flex-start; width:95px; }
@@ -439,6 +464,16 @@
   .taxcalc-field > input[data-regno]{ align-self:flex-start; width:150px; }
   .taxcalc-field > input[data-field="assetHo"]{ align-self:flex-start; width:95px; }
   .taxcalc-field > input[data-field="ownershipRatio"]{ align-self:flex-start; width:80px; }
+  /* [2026.09.20 필드길이 정비] 위와 같은 이유로 좁혀야 하는데 기존 선택자에 안 걸리던
+     짧은 고정형식 입력칸들 — 호실("101호"), 배분비율("1/2"), 계약년월("202601", 6자리),
+     사업자번호("123-45-67890")·임대차 임차인번호(사업자/주민 겸용이라 더 긴 주민번호 기준). */
+  .taxcalc-field > input[data-lfield="unitLabel"]{ align-self:flex-start; width:95px; }
+  .taxcalc-field > input[data-hafield="ratio"]{ align-self:flex-start; width:80px; }
+  .taxcalc-field > input#realPriceYm{ align-self:flex-start; width:95px; }
+  .taxcalc-field > input[data-ffield="bizNo"]{ align-self:flex-start; width:130px; }
+  .taxcalc-field > input[data-lfield="tenantBizNo"]{ align-self:flex-start; width:150px; }
+  .taxcalc-field > input[data-cfield="name"]{ align-self:flex-start; width:140px; }
+  .taxcalc-field > input#ihReporterRelation{ align-self:flex-start; width:95px; }
   .taxcalc-field input::placeholder{ color:var(--taxcalc-hint); opacity:0.85; }
   .taxcalc-field input:focus, .taxcalc-field select:focus{ outline:none; border-color:var(--gold); box-shadow:0 0 0 1px var(--gold); }
   .taxcalc-field input[readonly]{ background:var(--taxcalc-hint-bg, rgba(128,128,128,0.12)); color:var(--taxcalc-hint); cursor:default; }
@@ -448,13 +483,24 @@
      동안에만 보이게 한다 — 값을 넣을 때만 필요한 설명이 나타났다가, 다른 칸으로 넘어가면
      다시 숨어서 화면이 평소엔 훨씬 단순해 보인다. (:focus-within이라 input뿐 아니라 그
      칸 안의 버튼 등 무엇에 포커스가 가도 같이 나타난다.) */
-  .taxcalc-field-help{ display:none; font-size:11.5px; color:var(--taxcalc-hint); line-height:1.5; margin-top:2px; }
+  /* [2026.09.20 flex 전환 후 자체 점검 3] flex는 폭을 "지금 보이는 자식 내용"에 맞춰
+     계산하는데, 이 도움말은 포커스 전엔 display:none이라 폭 계산에서 빠져 있다가
+     포커스가 가는 순간(:focus-within) display:block이 되면서 그 순간 필드 폭이
+     도움말 문장 길이만큼 갑자기 넓어져 보였다(타이핑하려는 순간 칸이 늘어나는 원인).
+     position:absolute로 레이아웃 흐름에서 아예 빼서, 보이든 안 보이든 필드 자체의
+     폭 계산에 전혀 영향을 못 주게 한다(입력칸 바로 아래에 살짝 뜨는 방식으로 표시). */
+  .taxcalc-field-help{
+    display:none; position:absolute; top:100%; left:0; margin-top:2px; z-index:20;
+    width:max-content; max-width:260px; padding:3px 6px; border-radius:5px;
+    background:var(--panel); border:1px solid var(--taxcalc-border); box-shadow:0 2px 6px rgba(0,0,0,0.12);
+    font-size:11.5px; color:var(--taxcalc-hint); line-height:1.5;
+  }
   .taxcalc-field:focus-within .taxcalc-field-help{ display:block; }
   /* [2026.09 버그수정] 실사용 감사 지적 — 체크박스 라벨(특히 상속공제 요건 등 조문을 그대로
      풀어쓴 것)이 100자 넘는 경우가 많은데, 지금까지는 다른 짧은 입력칸과 똑같이 180px 남짓한
      grid 칸 하나에 갇혀 여러 줄로 심하게 줄바꿈됐다 — 체크박스는 항상 grid 전체 폭을 쓰게 한다
      (짧은 라벨도 폭이 넓어질 뿐 가독성엔 문제 없음). */
-  .taxcalc-field.checkbox{ flex-direction:row; align-items:center; gap:6px; grid-column:1/-1; }
+  .taxcalc-field.checkbox{ flex-direction:row; align-items:center; gap:6px; flex-basis:100%; max-width:none; }
   .taxcalc-field.checkbox label{ font-size:12.5px; font-weight:600; color:var(--ink); }
   .taxcalc-field.checkbox input{ width:15px; height:15px; accent-color:var(--gold); }
   .taxcalc-del-asset{
@@ -516,6 +562,12 @@
     background:var(--taxcalc-info-bg); border:1px solid var(--taxcalc-info); border-radius:6px;
     color:var(--taxcalc-info); cursor:pointer; font-size:12px; font-weight:700; padding:4px 8px;
   }
+  /* [2026.09.20 자체 점검] .taxcalc-field(flex-column, align-items 기본값 stretch)의 직계
+     자식으로 들어간 버튼(예: 관할세무서 확인)은 부모 폭 전체(예: 주소칸 340px)로 늘어나
+     불필요하게 커 보였다 — .taxcalc-ai-btn 전체에 걸면 .taxcalc-asset-head(가로 flex,
+     align-items:center)의 세로 중앙정렬까지 깨지므로, .taxcalc-field의 직계 자식인
+     경우로만 좁혀서 적용한다. */
+  .taxcalc-field > .taxcalc-ai-btn{ align-self:flex-start; }
   .taxcalc-ai-btn:hover{ background:var(--taxcalc-info); color:#fff; }
   .taxcalc-ai-btn[disabled]{ opacity:0.5; cursor:not-allowed; }
   .taxcalc-field-inline{ display:flex; gap:4px; align-items:stretch; }
@@ -555,6 +607,6 @@
     .taxcalc-tier-tabs button{ flex:1; text-align:center; }
     .taxcalc-asset-head{ flex-wrap:wrap; row-gap:6px; }
     .taxcalc-asset-head span{ flex-wrap:wrap; }
-    .taxcalc-grid{ grid-template-columns:1fr; }
+    .taxcalc-grid > .taxcalc-field{ flex-basis:100% !important; }
   }
 </style>

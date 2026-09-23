@@ -53,8 +53,6 @@
     <input type="file" id="docsUploadInput" multiple style="display:none;">
     <button type="button" id="docsBtnPdfManager" class="ghost-btn"><span class="btn-ic">📑</span><span class="btn-tx"> PDF관리</span></button>
     <button type="button" id="docsBtnScan" class="ghost-btn"><span class="btn-ic">📷</span><span class="btn-tx"> 스캔</span></button>
-    <button type="button" id="docsBtnFolderNameAudit" class="ghost-btn" title="모든 사건명이 명명규칙(고객명(납세자)_세목_업무유형)대로인지 전수조사 — 적용하면 실제 Drive 폴더명도 같이 맞춰짐"><span class="btn-ic">🏷</span><span class="btn-tx"> 사건명 점검</span></button>
-    <button type="button" id="docsBtnUnlinkedFolderAudit" class="ghost-btn" title="폴더는 있는데 사건에 연결(폴더ID)이 안 된 경우를 찾아 연결"><span class="btn-ic">🔗</span><span class="btn-tx"> 미연결 폴더 찾기</span></button>
   </div>
   <div id="docsCaseEvidencePanel" style="display:none; flex:0 0 auto; border-bottom:1px solid var(--line); padding:10px 14px; overflow-y:auto; max-height:40vh;"></div>
   <div id="docsSelectionBar" class="tb-row" style="display:none; flex:0 0 auto; align-items:center; gap:8px; padding:8px 14px; background:var(--panel); border-bottom:1px solid var(--line); font-size:12.5px; flex-wrap:wrap;">
@@ -413,16 +411,6 @@
       docsNavigate([]);
     }
     docsInitCaseSelect_();
-    var auditBtn = document.getElementById('docsBtnFolderNameAudit');
-    if (auditBtn && !auditBtn.dataset.inited){
-      auditBtn.dataset.inited = '1';
-      auditBtn.addEventListener('click', docsOpenFolderNameAuditModal_);
-    }
-    var unlinkedBtn = document.getElementById('docsBtnUnlinkedFolderAudit');
-    if (unlinkedBtn && !unlinkedBtn.dataset.inited){
-      unlinkedBtn.dataset.inited = '1';
-      unlinkedBtn.addEventListener('click', docsOpenUnlinkedFolderAuditModal_);
-    }
   }
 
   // [2026.09] "폴더명 작성규칙(고객명_세목_업무유형, work_generateUniqueCaseName_ 참고)을
@@ -467,8 +455,13 @@
         body.innerHTML = '적용 중…';
         callGas('work_audit_case_folder_names', { apply: true }).then(function(res){
           if (res.success === false){ body.innerHTML = '<div class="taxcalc-error">' + (res.message || '적용 실패') + '</div>'; return; }
-          body.innerHTML = '<div class="taxcalc-result-note">' + res.applied + '건 적용했습니다.</div>';
-          showToast(res.applied + '건의 폴더명을 규칙대로 수정했습니다.', 'success');
+          // [2026.09.23 버그수정] 이제 work_updateCase를 거치므로(낙관적 잠금 포함) 일부 건이
+          // 다른 화면에서 동시 저장돼 충돌로 실패할 수 있다 — 조용히 무시하지 않고 몇 건이
+          // 실패했는지, 왜 실패했는지 보여준다.
+          var failedList = res.failed || [];
+          body.innerHTML = '<div class="taxcalc-result-note">' + res.applied + '건 적용했습니다.' +
+            (failedList.length ? ' (' + failedList.length + '건 실패 — ' + failedList.map(function(f){ return escapeHtml(f.고객명 || '') + ': ' + escapeHtml(f.사유 || ''); }).join(', ') + ')' : '') + '</div>';
+          showToast(res.applied + '건의 폴더명을 규칙대로 수정했습니다.' + (failedList.length ? ' (' + failedList.length + '건 실패, 다시 시도해주세요)' : ''), failedList.length ? 'warning' : 'success');
           // [2026.09.16 버그수정] 여기서 docsGetAllCases_(true)만 부르면 내부 캐시만 새로
           // 받아올 뿐 이미 그려진 <select id="docsCaseSelect">의 <option> 텍스트는 그대로
           // 남아있어서(docsInitCaseSelect_가 페이지당 딱 한 번만 그림), 사건명을 고쳐도
@@ -632,29 +625,37 @@
   // 그 사건 폴더로 바로 이동한다.
   function docsInitCaseSelect_(){
     var sel = document.getElementById('docsCaseSelect');
-    if (!sel || sel.dataset.inited) return; // initDocs()가 여러 번 불려도 리스너가 중복 등록되지 않게
-    sel.dataset.inited = '1';
-    docsGetAllCases_().then(function(cases){
-      sel.innerHTML = buildCaseOptionsHtml_(cases);
-    });
-    sel.addEventListener('change', function(){
-      var caseId = sel.value;
-      if (!caseId) return;
-      docsGetAllCases_().then(function(cases){
-        var c = cases.filter(function(x){ return x.id === caseId; })[0];
-        if (!c) return;
-        // [2026.09 버그수정] 폴더ID(한 번 만들어지면 안 바뀜)로 직접 연다 — 사건명(=폴더명)만
-        // 보고 경로를 다시 만들면, 나중에 고객명 등이 바뀌어 사건명이 달라진 사건은 실제
-        // Drive 폴더(이름은 그대로)를 못 찾는다. 폴더ID가 없는 옛날 사건만 이름으로 대체한다.
-        if (c.폴더ID) { docsNavigateById_(c.폴더ID); return; }
-        getCustomerRootPath_().then(function(basePath){
-          docsNavigate(basePath.concat([String(c.사건명 || '').trim()]));
+    if (!sel) return;
+    // [2026.09.23 버그수정, "전수조사" 지시로 발견] 리스너 중복 등록 방지 가드(dataset.inited)가
+    // 드롭다운 옵션 채우기까지 같이 막아버려서, 다른 탭(작업관리·처리개요)에서 사건명·고객명을
+    // 고친 뒤 증빙확보로 돌아와도 이 드롭다운엔 이 화면을 처음 열었을 때의 옛 이름이 계속
+    // 남아있었다(사건관리는 사건이 몇 개인지에 따라서만 서버를 재조회했으므로 캐시도 안 갈렸음).
+    // 리스너 등록은 한 번만, 옵션 목록 갱신은 이 함수가 불릴 때마다(=이 화면에 올 때마다) 한다.
+    if (!sel.dataset.inited){
+      sel.dataset.inited = '1';
+      sel.addEventListener('change', function(){
+        var caseId = sel.value;
+        if (!caseId) return;
+        docsGetAllCases_().then(function(cases){
+          var c = cases.filter(function(x){ return x.id === caseId; })[0];
+          if (!c) return;
+          // [2026.09 버그수정] 폴더ID(한 번 만들어지면 안 바뀜)로 직접 연다 — 사건명(=폴더명)만
+          // 보고 경로를 다시 만들면, 나중에 고객명 등이 바뀌어 사건명이 달라진 사건은 실제
+          // Drive 폴더(이름은 그대로)를 못 찾는다. 폴더ID가 없는 옛날 사건만 이름으로 대체한다.
+          if (c.폴더ID) { docsNavigateById_(c.폴더ID); return; }
+          getCustomerRootPath_().then(function(basePath){
+            docsNavigate(basePath.concat([String(c.사건명 || '').trim()]));
+          });
         });
       });
-    });
-    document.getElementById('docsBackToCaseBtn').addEventListener('click', function(){
-      if (typeof goToView_ === 'function') goToView_('casehandling');
-      if (docsSelectedCaseId_ && typeof goToCaseHandling_ === 'function') goToCaseHandling_(docsSelectedCaseId_);
+      document.getElementById('docsBackToCaseBtn').addEventListener('click', function(){
+        if (typeof goToView_ === 'function') goToView_('casehandling');
+        if (docsSelectedCaseId_ && typeof goToCaseHandling_ === 'function') goToCaseHandling_(docsSelectedCaseId_);
+      });
+    }
+    docsGetAllCases_(true).then(function(cases){
+      sel.innerHTML = buildCaseOptionsHtml_(cases);
+      if (docsSelectedCaseId_) sel.value = docsSelectedCaseId_;
     });
   }
 

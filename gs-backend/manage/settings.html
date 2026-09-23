@@ -1,9 +1,71 @@
+<style>
+  /* [2026.09.19] 사건관리·고객관리·수금관리·증빙관리에 흩어져 있던 1회성 정비도구를 전부
+     여기 한 군데로 모았다("정비도구들을 검토하고 재정비하여 한군데로 모아서 설정탭으로
+     옮기자") — 각 화면 툴바는 실제로 자주 쓰는 기능만 남기고, 가끔 쓰는 일괄 보정·점검류는
+     여기서 찾는다. */
+  #view-settings .settings-tools-group{ margin-bottom:18px; }
+  #view-settings .settings-tools-group h4{ margin:0 0 8px; font-size:13px; color:var(--sub); }
+  /* [2026.09.19] "언뜻 이해되지 않는데, 설명이 필요하지 않나?" — 마우스를 올려야만 보이는
+     title 툴팁만으로는 부족하다는 지적으로, 버튼 밑에 쉬운 말 설명을 항상 화면에 보이게
+     한 줄씩 둔다. */
+  #view-settings .settings-tool-item{ margin-bottom:12px; max-width:640px; }
+  #view-settings .settings-tool-desc{ font-size:12.5px; color:var(--sub); margin:4px 0 0 2px; line-height:1.4; }
+</style>
 <div class="view" id="view-settings">
   <div class="view-head"><h2>설정</h2></div>
   <div class="view-body">
     <div class="card" style="max-width:360px;">
       <h3>비밀번호 변경</h3>
       <div id="settingsPwBody"></div>
+    </div>
+    <div class="card" style="max-width:720px;">
+      <h3>🛠 정비도구</h3>
+      <div class="settings-tools-group">
+        <h4>사건관리</h4>
+        <div class="settings-tool-item">
+          <button type="button" id="stBtnFixCompletionAfterReceipt" class="ghost-btn">💰 완료일-영수증일 보정</button>
+          <div class="settings-tool-desc">사건이 "완료"로 처리됐는데 완료일보다 나중 날짜의 현금영수증이 그 고객 앞으로 찍혀있으면(완료 처리를 너무 일찍 한 경우), 완료일을 그 영수증 날짜로 고쳐줍니다. 고객이 사건을 하나만 가진 경우에만 자동으로 고치고, 여러 개면 "확인 필요"로만 알려줍니다.</div>
+        </div>
+        <div class="settings-tool-item">
+          <button type="button" id="stBtnResyncCalendars" class="ghost-btn">📅 캘린더 재동기화</button>
+          <div class="settings-tool-desc">사건의 법정기한·완료일과 구글 캘린더 일정이 어긋나 보일 때, 지금 저장된 값 기준으로 캘린더 표시만 다시 맞춥니다. 데이터 자체는 안 바꾸는 가장 안전한 도구입니다.</div>
+        </div>
+        <div class="settings-tool-item">
+          <button type="button" id="stBtnReceiptOnlyCleanup" class="ghost-btn">🧾 서류 없는 사건 정리(상담으로)</button>
+          <div class="settings-tool-desc">사건 폴더를 열어봤는데 현금영수증 파일 하나뿐이거나 아무 파일도 없으면(=서류 작업 없이 상담만 하고 끝난 경우), 영수증은 상담용 공용 폴더로 옮기고 사건 종류를 "상담"으로 바꿉니다. 원래 폴더는 완전삭제가 아니라 휴지통으로만 보냅니다.</div>
+        </div>
+        <div class="settings-tool-item">
+          <button type="button" id="stBtnBackfillPartyClients" class="ghost-btn">👥 관계자 고객등록 일괄 반영</button>
+          <div class="settings-tool-desc">사건에 "양도인 OOO", "공동상속인 OOO"처럼 이름만 적혀있고 아직 고객명단에 정식 등록 안 된 사람들을 찾아 한꺼번에 고객으로 등록·연결합니다.</div>
+        </div>
+      </div>
+      <div class="settings-tools-group">
+        <h4>고객관리</h4>
+        <div class="settings-tool-item">
+          <button type="button" id="stBtnClientDupAudit" class="ghost-btn">🔁 중복 고객 점검</button>
+          <div class="settings-tool-desc">이름이나 전화번호가 같은데 고객이 두 명으로 따로 등록된 경우(오타 등)를 찾아 보여줍니다. 진짜 같은 사람이면 하나를 골라 합칠 수 있습니다.</div>
+        </div>
+        <div class="settings-tool-item">
+          <button type="button" id="stBtnClientScanCaseFiles" class="ghost-btn">🗂 사건폴더 전수조사</button>
+          <div class="settings-tool-desc">사건 폴더(하위 폴더 포함) 안 파일들을 AI로 훑어서, 사건에는 기록 안 됐지만 서류에 등장하는 사람(공동상속인 등)의 이름·전화번호·주소·주민등록번호를 찾아 고객으로 등록할 수 있게 보여줍니다. 사건·파일이 많으면 시간이 꽤 걸릴 수 있습니다.</div>
+        </div>
+        <div class="settings-tool-item">
+          <button type="button" id="stBtnClientDeleteNumericNames" class="ghost-btn">🔢 숫자 이름 고객 정리</button>
+          <div class="settings-tool-desc">이름 칸에 "3733"처럼 실명이 아니라 숫자만 적힌, 옛날 오류로 생긴 이상한 고객 기록을 찾아 정리합니다.</div>
+        </div>
+      </div>
+      <div class="settings-tools-group">
+        <h4>증빙관리</h4>
+        <div class="settings-tool-item">
+          <button type="button" id="stBtnDocsFolderNameAudit" class="ghost-btn">🏷 사건명 점검</button>
+          <div class="settings-tool-desc">사건 이름이 정해진 규칙("고객명(납세자)_세목_업무유형")과 다르게 붙어있는 경우를 찾아 규칙대로 고쳐줍니다(실제 드라이브 폴더 이름도 같이 바뀝니다).</div>
+        </div>
+        <div class="settings-tool-item">
+          <button type="button" id="stBtnDocsUnlinkedFolderAudit" class="ghost-btn">🔗 미연결 폴더 찾기</button>
+          <div class="settings-tool-desc">구글 드라이브에는 폴더가 있는데 시스템(사건 목록)에는 연결이 안 된 경우를 찾아, 어느 사건 것인지 연결할 수 있게 도와줍니다.</div>
+        </div>
+      </div>
+      <div class="taxcalc-result-note" style="margin-top:6px;">공통: 전부 누르자마자 바뀌는 게 아니라, 몇 건이 있는지 먼저 보여주고 확인해야 실제로 적용됩니다.</div>
     </div>
   </div>
 </div>
@@ -63,7 +125,35 @@
         .manageApp_changePassword(cur, next);
     });
   }
-  function initSettings(){ settingsRenderPwForm_(); }
+  function initSettings(){ settingsRenderPwForm_(); settingsWireMaintenanceTools_(); }
+
+  // [2026.09.19 신규] 사건관리·고객관리·수금관리·증빙관리 각 화면 툴바에 흩어져 있던 1회성
+  // 정비도구를 여기 한 군데로 모았다. 실제 로직(모달·함수)은 각 도구가 다루는 데이터와
+  // 가까운 원래 파일(workmanage.html/clientmanage.html/collections.html/docs.html)에 그대로
+  // 남아있다 — 이 앱은 모든 화면의 HTML+스크립트를 한 페이지에 같이 그려두는 구조라 그
+  // 함수들을 여기서도 이름으로 그대로 호출할 수 있다(고객관리의 👤 빠른보기가 사건관리에서
+  // 호출되는 것과 같은 방식). 버튼마다 한 번씩만 연결한다(dataset.inited 가드).
+  function settingsWireMaintenanceTools_(){
+    function wire(id, handler){
+      var btn = document.getElementById(id);
+      if (btn && !btn.dataset.inited){
+        btn.dataset.inited = '1';
+        btn.addEventListener('click', function(){ handler(btn); });
+      }
+    }
+    // 사건관리
+    wire('stBtnFixCompletionAfterReceipt', function(){ openFixCompletionAfterReceiptModal_(); });
+    wire('stBtnResyncCalendars', runResyncCalendars_);
+    wire('stBtnReceiptOnlyCleanup', function(){ openReceiptOnlyCleanupModal_(); });
+    wire('stBtnBackfillPartyClients', runBackfillPartyClients_);
+    // 고객관리
+    wire('stBtnClientDupAudit', function(){ openClientDupAuditModal_(); });
+    wire('stBtnClientScanCaseFiles', runClientScanCaseFiles_);
+    wire('stBtnClientDeleteNumericNames', function(){ openClientDeleteNumericNamesModal_(); });
+    // 증빙관리
+    wire('stBtnDocsFolderNameAudit', function(){ docsOpenFolderNameAuditModal_(); });
+    wire('stBtnDocsUnlinkedFolderAudit', function(){ docsOpenUnlinkedFolderAuditModal_(); });
+  }
   // showView(script.html)가 설정 화면을 벗어날 때 호출 — 비밀번호칸을 DOM에서 완전히 제거한다.
   function settingsTeardown_(){
     var body = document.getElementById('settingsPwBody');

@@ -2,9 +2,6 @@
   <div class="editor-toolbar">
     <button type="button" id="btnClientNew" class="save-btn">+ 새 고객</button>
     <span class="editor-filename">👤 고객 명단 · 서비스 이력</span>
-    <button type="button" id="btnClientDupAudit" class="ghost-btn" title="이름이 같거나 전화번호가 같은데 고객이 두 명 이상으로 나뉘어 있는지 점검">🔁 중복 고객 점검</button>
-    <button type="button" id="btnClientMigrateRrn" class="ghost-btn" title="예전에 '납세번호' 칸에 적어둔 개인 주민등록번호를 찾아 암호화된 주민등록번호 칸으로 옮기고, 원래 칸은 비웁니다(사업자등록번호 형식은 그대로 둡니다)">🔐 주민번호 이관</button>
-    <button type="button" id="btnClientScanCaseFiles" class="ghost-btn" title="모든 사건 폴더(하위 폴더 포함)를 AI로 전수조사해서, 사건개요에는 없지만 파일에 등장하는 관계자 이름·전화번호·주소·주민등록번호를 찾아 고객으로 등록할 수 있게 보여줍니다(사건·파일이 많으면 시간이 걸립니다)">🗂 사건폴더 전수조사</button>
     <div class="spacer"></div>
     <input type="text" id="clientSearchInput" placeholder="이름으로 검색…">
   </div>
@@ -680,7 +677,7 @@
     function renderGroups(groups){
       var body = overlay.querySelector('#cdaBody');
       if (!groups.length){ body.innerHTML = '<div class="log-empty">이름·전화번호가 겹치는 중복 고객이 없습니다.</div>'; return; }
-      var html = '<div class="taxcalc-result-note" style="margin-bottom:8px;">이름 또는 전화번호가 겹치는 고객 ' + groups.length + '개 그룹입니다. 실제로 같은 사람이 맞으면, 남길 고객을 고르고(라디오) "합치기"를 누르세요 — 나머지 고객에 연결된 사건·자문내역이 전부 남긴 고객으로 옮겨지고(my.netax.kr에 보이는 고객명도 같이 정리) 나머지 고객 레코드는 삭제됩니다.</div>';
+      var html = '<div class="taxcalc-result-note" style="margin-bottom:8px;">이름 또는 전화번호가 겹치는 고객 ' + groups.length + '개 그룹입니다. 실제로 같은 사람이 맞으면, 남길 고객을 고르고(라디오) "합치기"를 누르세요 — 나머지 고객에 연결된 사건·자문내역·사건별 관계자 등록이 전부 남긴 고객으로 옮겨지고(my.netax.kr에 보이는 고객명도 같이 정리, 주소·주민등록번호·메모는 남긴 쪽이 비어있으면 합쳐지는 쪽 값으로 채움) 나머지 고객 레코드는 삭제됩니다.</div>';
       groups.forEach(function(g, gi){
         html += '<div style="border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:10px;">';
         g.members.forEach(function(m, mi){
@@ -706,7 +703,7 @@
             btn.disabled = true;
             callGas('client_merge_clients', { keepId: keepId, mergeIds: mergeIds }).then(function(res){
               if (res.success === false){ showToast(res.message || '합치기 실패', 'error'); btn.disabled = false; return; }
-              showToast('사건 ' + res.movedCases + '건, 자문내역 ' + res.movedLogs + '건을 옮기고(my.netax.kr ' + res.movedMyPages + '건 표시명도 정리) 고객 ' + res.deletedClients + '명을 합쳤습니다.', 'success');
+              showToast('사건 ' + res.movedCases + '건, 자문내역 ' + res.movedLogs + '건, 사건별 관계자 등록 ' + (res.movedPartyLinks || 0) + '건을 옮기고(my.netax.kr ' + res.movedMyPages + '건 표시명도 정리) 고객 ' + res.deletedClients + '명을 합쳤습니다.', 'success');
               loadClients();
               load();
             }).catch(function(err){
@@ -729,46 +726,61 @@
     }
     load();
   }
-  document.getElementById('btnClientDupAudit').addEventListener('click', openClientDupAuditModal_);
+  // [2026.09.19 정비도구 재정비] 중복 고객 점검·사건폴더 전수조사 버튼은 설정 화면으로
+  // 옮겼다 — 로직(모달·함수)은 고객 데이터를 다루는 코드라 그대로 이 파일에 남긴다
+  // (openClientDupAuditModal_은 이미 이름 붙은 함수라 그대로 재사용). "주민번호 이관" 도구는
+  // 이미 실행 완료했다고 확인받아 완전히 삭제했다(다시 눌러도 영원히 "해당 없음"만 나오는
+  // 상태였음).
 
-  // [2026.09.19 신규] "납세번호는 처음부터 주민등록번호를 의미하는거였다" — 암호화 필드가
-  // 생기기 전까지 개인 고객 주민등록번호가 평문으로 이 칸에 섞여 있었다는 걸 확인받고 만든
-  // 1회성 이관 도구. 위 중복정리 방향 정정 버튼과 동일한 dry-run(count 확인) → 확인창 →
-  // apply 패턴.
-  var btnClientMigrateRrn = document.getElementById('btnClientMigrateRrn');
-  btnClientMigrateRrn.addEventListener('click', function(){
-    btnClientMigrateRrn.disabled = true;
-    var originalMigrateText = btnClientMigrateRrn.textContent;
-    btnClientMigrateRrn.textContent = '확인 중…';
-    callGas('client_migrate_rrn_from_biz_field', {}).then(function(res){
-      btnClientMigrateRrn.textContent = originalMigrateText;
-      if (res.error || res.success === false){ btnClientMigrateRrn.disabled = false; showToast(res.error || res.message || '확인 실패', 'error'); return; }
-      if (!res.count){
-        btnClientMigrateRrn.disabled = false;
-        showToast('납세번호 칸에 남아있는 주민등록번호 형식의 값이 없습니다.', 'success');
-        return;
-      }
-      nxConfirm_('납세번호 칸에 주민등록번호로 보이는 값이 ' + res.count + '건 있습니다. 지금 암호화된 주민등록번호 칸으로 옮기고 납세번호 칸은 비울까요?').then(function(ok){
-        if (!ok){ btnClientMigrateRrn.disabled = false; return; }
-        btnClientMigrateRrn.textContent = '이관 중…';
-        callGas('client_migrate_rrn_from_biz_field', { apply: true }).then(function(applyRes){
-          btnClientMigrateRrn.disabled = false;
-          btnClientMigrateRrn.textContent = originalMigrateText;
-          if (applyRes.error || applyRes.success === false){ showToast(applyRes.error || applyRes.message || '이관 실패', 'error'); return; }
-          showToast(applyRes.applied + '건을 이관했습니다.', 'success');
-          loadClients();
-        }).catch(function(){
-          btnClientMigrateRrn.disabled = false;
-          btnClientMigrateRrn.textContent = originalMigrateText;
-          showToast('이관 중 오류가 발생했습니다.', 'error');
+  // [2026.09.19 신규, 1회성] "고객명단에서 실명이 아닌 숫자와 같은 이름은 이제 삭제해달라" —
+  // 옛 구글시트 숫자자동변환 버그로 생긴 것으로 보이는 순수 숫자 이름 고객을 정리한다.
+  // 삭제는 되돌리기 어려우므로 목록을 먼저 보여주고 확인 후에만 지운다. 진행 중인 사건이
+  // 연결된 고객은 서버가 자동으로 건너뛰고 결과에 별도로 알려준다.
+  function openClientDeleteNumericNamesModal_(){
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.innerHTML =
+      '<div class="modal-panel" style="width:min(520px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
+        '<div class="modal-head"><span>🔢 숫자 이름 고객 정리</span><span class="modal-close" id="cdnClose">✕</span></div>' +
+        '<div class="modal-body" style="overflow-y:auto;"><div id="cdnBody">확인 중…</div></div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    function close(){ overlay.remove(); }
+    overlay.querySelector('#cdnClose').onclick = close;
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+
+    function renderList(items){
+      var body = overlay.querySelector('#cdnBody');
+      if (!items.length){ body.innerHTML = '<div class="log-empty">이름이 숫자로만 된 고객이 없습니다.</div>'; return; }
+      var rows = items.map(function(it){ return '<li>' + escapeHtml(it.성명) + '</li>'; }).join('');
+      body.innerHTML =
+        '<div class="taxcalc-result-note" style="margin-bottom:8px;">이름이 숫자로만 된 고객 ' + items.length + '명입니다(진행 중인 사건이 연결된 고객은 자동으로 건너뜁니다).</div>' +
+        '<ul style="margin:0 0 10px; padding-left:20px; font-size:13px;">' + rows + '</ul>' +
+        '<button type="button" id="cdnApplyBtn" class="btn danger">⚠ 위 ' + items.length + '명 삭제(되돌리기 어려움)</button>';
+      body.querySelector('#cdnApplyBtn').addEventListener('click', function(){
+        nxConfirm_(items.length + '명을 고객명단에서 삭제합니다. 계속할까요?').then(function(ok){
+          if (!ok) return;
+          body.innerHTML = '삭제 중…';
+          callGas('client_delete_numeric_name_clients', { apply: true }).then(function(res){
+            if (res.success === false){ body.innerHTML = '<div class="taxcalc-error">' + (res.message || '삭제 실패') + '</div>'; return; }
+            body.innerHTML = '<div class="taxcalc-result-note">' + res.applied + '명을 삭제했습니다' + (res.skipped ? ' (진행 중인 사건이 있어 ' + res.skipped + '명은 건너뜀)' : '') + '.</div>';
+            showToast(res.applied + '명을 삭제했습니다.' + (res.skipped ? ' ' + res.skipped + '명은 진행 중인 사건이 있어 건너뛰었습니다.' : ''), 'success');
+            loadClients();
+          }).catch(function(err){
+            body.innerHTML = '<div class="taxcalc-error">삭제 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
+          });
         });
       });
-    }).catch(function(){
-      btnClientMigrateRrn.disabled = false;
-      btnClientMigrateRrn.textContent = originalMigrateText;
-      showToast('확인 중 오류가 발생했습니다.', 'error');
+    }
+
+    callGas('client_delete_numeric_name_clients', {}).then(function(res){
+      if (res.success === false){ overlay.querySelector('#cdnBody').innerHTML = '<div class="taxcalc-error">' + (res.message || '조회 실패') + '</div>'; return; }
+      renderList(res.items || []);
+    }).catch(function(err){
+      overlay.querySelector('#cdnBody').innerHTML = '<div class="taxcalc-error">조회 중 오류: ' + (err && err.message ? err.message : err) + '</div>';
     });
-  });
+  }
 
   // [2026.09.19 신규] "고객사건 밑 사건폴더의 모든 파일을 전수조사해서 모든 고객을 일괄등록해달라"
   // — 사건개요(구조화된 필드)에는 없지만 실제 사건 폴더에 올라온 파일 이름에만 등장하는 관계자를
@@ -852,40 +864,39 @@
     });
   }
 
-  var btnClientScanCaseFiles = document.getElementById('btnClientScanCaseFiles');
-  btnClientScanCaseFiles.addEventListener('click', function(){
+  function runClientScanCaseFiles_(btn){
     nxConfirm_('모든 사건 폴더(하위 폴더 포함)를 AI로 훑어 새 관계자 이름을 찾고, 해당 파일을 열어 전화번호·주소·주민등록번호도 같이 찾습니다. 사건·파일이 많으면 시간이 꽤 걸릴 수 있습니다. 시작할까요?').then(function(ok){
       if (!ok) return;
-      btnClientScanCaseFiles.disabled = true;
-      var originalScanText = btnClientScanCaseFiles.textContent;
+      btn.disabled = true;
+      var originalScanText = btn.textContent;
       function step(){
         callGas('client_scan_case_files_for_names', {}).then(function(res){
           if (res.error || res.success === false){
-            btnClientScanCaseFiles.disabled = false;
-            btnClientScanCaseFiles.textContent = originalScanText;
+            btn.disabled = false;
+            btn.textContent = originalScanText;
             showToast(res.error || res.message || '조사 실패', 'error');
             return;
           }
-          btnClientScanCaseFiles.textContent = res.discovering
+          btn.textContent = res.discovering
             ? '폴더 확인 중… (' + res.totalCases + '개 발견)'
             : '조사 중… ' + res.scannedCases + '/' + res.totalCases + '건 (후보 ' + res.candidateCountSoFar + '명)';
           if (res.done){
-            btnClientScanCaseFiles.disabled = false;
-            btnClientScanCaseFiles.textContent = originalScanText;
+            btn.disabled = false;
+            btn.textContent = originalScanText;
             if (res.truncated){ showToast('사건·후보가 너무 많아 여기까지만 조사하고 중단했습니다. 아래 결과를 먼저 등록한 뒤 다시 실행해주세요.', 'warning'); }
             openClientScanReviewModal_(res.candidates || [], res.totalCases);
             return;
           }
           step();
         }).catch(function(){
-          btnClientScanCaseFiles.disabled = false;
-          btnClientScanCaseFiles.textContent = originalScanText;
+          btn.disabled = false;
+          btn.textContent = originalScanText;
           showToast('조사 중 오류가 발생했습니다.', 'error');
         });
       }
       step();
     });
-  });
+  }
 
   // ---- 고객정보 빠른보기 팝업 (작업관리 사건 상세의 👤 버튼에서 호출) ----
   // [2026.09 리팩터] 예전엔 별도 DOM 없이 메인 목록의 #clientDetail 노드를 그대로 모달 안으로

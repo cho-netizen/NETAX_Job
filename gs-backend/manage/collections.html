@@ -7,7 +7,6 @@
   <div class="editor-toolbar">
     <button type="button" id="btnColNew" class="save-btn">+ 수금 추가</button>
     <button type="button" id="btnColImportHometax" class="ghost-btn" title="고객사건/0_NX_0 폴더의 홈택스 매출내역 엑셀을 읽어 새로 추가된 현금영수증만 반영합니다">🧾 홈택스 매출내역 가져오기</button>
-    <button type="button" id="btnColFixDedupDirection" class="ghost-btn" title="예전에는 다운자료(홈택스)를 남기고 발행자료를 흐리게 정리하는 반대 방향으로 처리됐습니다. 이 버튼 한 번으로 그렇게 잘못 정리된 건을 전부 찾아 한꺼번에 바로잡습니다 — 하나씩 되돌릴 필요 없습니다(1회성 정비도구)">🔀 중복정리 방향 일괄 정정</button>
     <span class="editor-filename">💰 전체 고객 수금 내역(자문내역 중 수금 기록)</span>
     <div class="spacer"></div>
     <input type="text" id="colSearchInput" list="clientNameOptions" placeholder="고객명으로 검색…" size="10">
@@ -550,43 +549,6 @@
     });
   });
 
-  // [2026.09.19 신규, 1회성] "발행자료를 흐리게 한다고? 다운자료를 흐리게 해야지" — 보존
-  // 우선순위를 뒤집기 전에 이미 반대 방향으로 정리된 건이 세무사님 확인상 전체의 99%.
-  // 하나씩 "되돌리기" 누를 양이 아니므로, 버튼 한 번으로 전부 찾아 한꺼번에 방향을 바로
-  // 잡는다(승인번호 없는 발행자료가 정리되어 있고 승인번호 있는 다운자료가 살아남은 쌍만
-  // 골라 뒤집음 — 그 외 쌍은 애초에 이 버그의 영향을 안 받았으므로 손대지 않음).
-  var btnColFixDedupDirection = document.getElementById('btnColFixDedupDirection');
-  btnColFixDedupDirection.addEventListener('click', function(){
-    btnColFixDedupDirection.disabled = true;
-    var originalFixText = btnColFixDedupDirection.textContent;
-    btnColFixDedupDirection.textContent = '확인 중…';
-    callGas('client_fix_dedup_priority', {}).then(function(res){
-      btnColFixDedupDirection.textContent = originalFixText;
-      if (res.error || res.success === false){ btnColFixDedupDirection.disabled = false; showToast(res.error || res.message || '확인 실패', 'error'); return; }
-      if (!res.count){
-        btnColFixDedupDirection.disabled = false;
-        showToast('방향이 잘못 정리된 건이 없습니다.', 'success');
-        return;
-      }
-      nxConfirm_('방향이 반대로 정리된 건이 ' + res.count + '건 있습니다. 지금 한꺼번에 바로잡을까요? (발행자료를 정상으로, 다운자료를 흐리게)').then(function(ok){
-        if (!ok){ btnColFixDedupDirection.disabled = false; return; }
-        btnColFixDedupDirection.textContent = '정정 중…';
-        callGas('client_fix_dedup_priority', { apply: true }).then(function(applyRes){
-          btnColFixDedupDirection.disabled = false;
-          btnColFixDedupDirection.textContent = originalFixText;
-          if (applyRes.error || applyRes.success === false){ showToast(applyRes.error || applyRes.message || '정정 실패', 'error'); return; }
-          showToast(applyRes.applied + '건을 바로잡았습니다.', 'success');
-          loadCollections_();
-        }).catch(function(){
-          btnColFixDedupDirection.disabled = false;
-          btnColFixDedupDirection.textContent = originalFixText;
-          showToast('정정 중 오류가 발생했습니다.', 'error');
-        });
-      });
-    }).catch(function(){
-      btnColFixDedupDirection.disabled = false;
-      btnColFixDedupDirection.textContent = originalFixText;
-      showToast('확인 중 오류가 발생했습니다.', 'error');
-    });
-  });
+  // [2026.09.19 정비도구 재정비] "중복정리 방향 일괄 정정" 도구는 그 버그(승인번호 우선순위가
+  // 뒤바뀌던 문제) 자체가 근본 수정돼 다시 생길 수 없는 상태라 완전히 삭제했다.
 </script>

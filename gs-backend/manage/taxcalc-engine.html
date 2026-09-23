@@ -664,7 +664,17 @@
     // (isReconstructionRights)도 자동으로 'house'로 취급한다.
     const assetType = (t.assetType === 'house' || isReconstruction) ? 'house' : (t.assetType === 'presale_right' ? 'presale_right' : 'other');
     const isPresaleRight = assetType === 'presale_right';
-    const isOneHouse = !isPresaleRight && !isReconstruction && !!t.isOneHouseOneFamily;
+    // [2026.09 신규] 세무사님 지시 — 소득세법§89①3호(1세대1주택 비과세)·§95③(고가주택 12억
+    // 초과분만 과세, 향상된 장기보유특별공제표)는 문언상 "거주자"에 한정된다. 비거주자는 원칙적으로
+    // 이 혜택을 받을 수 없고, 예외적으로 출국일 현재 1주택을 보유한 채 출국 후 2년 이내 양도하면
+    // 거주자와 동일하게 인정한다(시행령§155① 특례 — 정확한 항·호는 세무사님 확인 필요). isOneHouse·
+    // isOneMemberRightOnly 자체를 이 조건으로 게이트해서, 아래 비과세 판정(694·697행 부근)과
+    // 12억 초과분 안분 계산(789행 부근) 양쪽에 자동으로 반영되게 한다 — 다만 다주택중과 판정
+    // (813행 부근 isMultiHouseSurcharge)은 실제 보유주택수(multiHouseCount)로 별도 판정하므로
+    // 영향 없다(비거주자라서 "세제혜택 대상 1주택"이 아니게 돼도, 실제로 1채만 있으면
+    // multiHouseCount가 0이라 다주택중과 대상이 되지 않는다).
+    const isResidentBenefitEligible = t.isTransferorResident !== false || !!t.isNonResidentTwoYearException;
+    const isOneHouse = !isPresaleRight && !isReconstruction && !!t.isOneHouseOneFamily && isResidentBenefitEligible;
     // 소득세법§95③은 §89①3호 단서의 고가주택뿐 아니라 §89①4호 각목외 단서의 "고가조합원입주권"
     // (1세대가 1조합원입주권만 보유하는 등 원래는 전액 비과세 요건을 충족하나 양도가액이 12억원을 초과하는
     // 경우)도 함께 "대통령령으로 정하는 바에 따라 계산"하도록 위임한다. 소득세법시행령§160①②는 문언상
@@ -673,7 +683,7 @@
     // 조합원입주권 자체 양도, 즉 아래 §166①1호 분기에만 해당 — 준공 후 신축주택은 이미 "주택" 자체이므로
     // §160① 문언 그대로 적용된다). 다른 비과세 요건 없이 무조건 적용하면 정책 취지에 반하므로, 원래
     // §89①4호 요건(1세대1조합원입주권)을 충족한다는 전제가 있을 때만(isOneMemberRightOneFamily) 적용한다.
-    const isOneMemberRightOnly = isReconstruction && !t.isCompletedNewHousing && !!t.isOneMemberRightOneFamily;
+    const isOneMemberRightOnly = isReconstruction && !t.isCompletedNewHousing && !!t.isOneMemberRightOneFamily && isResidentBenefitEligible;
     // 시행령§168①3호 — 조특법§69①(8년자경농지)·§70①(농지대토) 감면 대상 토지는 미등기양도자산의
     // 가혹한 취급(70% 단일세율·공제 전부 배제)에서 제외된다.
     const isUnregistered = !!t.isUnregisteredTransfer && !(t.isEightYearFarmland || t.isFarmlandSubstitutionExempt);
@@ -695,6 +705,15 @@
       return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t };
     }
     if (isOneMemberRightOnly && transferPrice <= 1200000000) {
+      return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t };
+    }
+    // [2026.09 버그수정] 세무사님 "완전무결" 지시로 재점검 중 발견 — 준공된 신축주택(재건축·재개발
+    // §166②1호) 양도는 그 자체로 "주택"이므로 §89①3호 비과세(12억 이하 전액 비과세) 대상인데,
+    // 이 계산기는 그 경로가 아예 없어서(아래 isReconstruction 분기가 항상 과세로만 계산) 12억
+    // 이하인데도 전액 과세되고 있었다. 일반 주택과 같은 기준(isOneHouseOneFamily 체크·거주자
+    // 요건)으로 게이트해서 exempt 처리한다.
+    const isCompletedHouseOneFamily = isReconstruction && !!t.isCompletedNewHousing && !!t.isOneHouseOneFamily && isResidentBenefitEligible;
+    if (isCompletedHouseOneFamily && transferPrice <= 1200000000) {
       return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t };
     }
 
@@ -769,11 +788,14 @@
           구분: '신축주택(준공후) 양도 — §166②1호', 청산금납부분양도차익: Math.round(settlementPortionGain), 기존건물분양도차익: Math.round(existingPortionGain),
           청산금분_보유기간_년: holdingYearsSinceApproval, 청산금분_장특공제율: ltRateSettlement, 기존건물분_보유기간_년: holdingYears, 기존건물분_장특공제율: ltRateExisting
         };
-        // §95③·시행령§160① — 신축주택은 문언상 "주택"이므로 고가주택(12억 초과)이면 §95①에 따른
-        // 양도차익·§95②에 따른 장기보유특별공제액 모두에 "(양도가액-12억)/양도가액" 비율을 곱해
-        // 12억 초과분에 해당하는 부분만 과세한다. 조합원입주권 자체(준공 전, 위 ①분기)의 고가조합원입주권
-        // 특례는 위 466번째 줄 부근(isOneMemberRightOnly 분기)에서 별도로 적용했다.
-        if (transferPrice > 1200000000) {
+        // §95③·시행령§160① — 신축주택이 12억 초과 고가주택이면 §95①에 따른 양도차익·§95②에 따른
+        // 장기보유특별공제액 모두에 "(양도가액-12억)/양도가액" 비율을 곱해 12억 초과분에 해당하는
+        // 부분만 과세한다. 조합원입주권 자체(준공 전, 위 ①분기)의 고가조합원입주권 특례는 위
+        // isOneMemberRightOnly 분기에서 별도로 적용했다. [2026.09 버그수정] §95③은 문언상
+        // "제89조제1항제3호... 단서에 해당하는 고가주택"에 한정되므로, 이 12억 안분도 원래
+        // 1세대1주택 비과세 요건(및 거주자 요건)을 충족할 때만 적용해야 한다 — 무조건 적용이면
+        // 다주택자·비거주자의 신축주택도 부당하게 12억 이하분 혜택을 받게 된다.
+        if (isCompletedHouseOneFamily && transferPrice > 1200000000) {
           const highValueRatio = (transferPrice - 1200000000) / transferPrice;
           taxableGain = taxableGain * highValueRatio;
           longTermDeductionAmount = Math.round(longTermDeductionAmount * highValueRatio);

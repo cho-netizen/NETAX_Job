@@ -226,19 +226,45 @@
     }).catch(function(e){ btn.disabled = false; btn.textContent = '등록'; toast('오류: ' + e.message); });
   });
 
+  // [2026.09.23 신규, "전수조사" 지시로 발견] 예약의 "유형"(관리자 직권등록 자유텍스트)·
+  // "관련분야"·"상황"에 세목을 짐작할 만한 낱말이 있으면 미리 추정해서 세목·업무유형
+  // 드롭다운에 채워둔다 — 100% 정확할 수 없는 추측이므로(예약은 세목을 구조화된 필드로
+  // 안 받는다) 어디까지나 "매번 처음부터 고르지 않아도 되는" 편의용 기본값일 뿐, 그대로
+  // 두면 틀릴 수 있어 화면에서 바로 눈에 띄게 그대로 드롭다운이라 쉽게 바꿀 수 있다.
+  function bookingGuessSemok_(text){
+    var t = String(text || '');
+    if (/양도|매매|부동산\s*양도|주택\s*매도/.test(t)) return 'transfer';
+    if (/증여/.test(t)) return 'gift';
+    if (/상속/.test(t)) return 'inheritance';
+    if (/불복|이의신청|심판|심사청구|경정청구|과세적부/.test(t)) return 'objection';
+    if (/사업자|법인|종합소득|부가가치세|부가세/.test(t)) return 'business';
+    return '';
+  }
+
   // 예약의 "상황"(의뢰 내용)을 진행메모 초안으로 넘기면서 작업관리 새 사건 폼을 연다.
   // [2026.09 버그수정] 전화·고객유형·현재세무처리·관련분야가 여기서 넘어가지 않아 사건 시작과
   // 동시에 통째로 사라지고 있었다 — 전화는 고객 레코드에, 나머지는 개요(진행메모) 맨 앞에
   // "[예약 접수 정보]" 블록으로 자동으로 얹히도록 work_createCase에서 처리한다(Code.js 참고).
+  // [2026.09.23 버그수정, "전수조사" 지시로 발견] 예약의 희망일시(reservedDate)가 아예
+  // 전달되지 않아서, 이미 예약 시점에 정해져 있던 날짜를 사건 등록 화면에서 또 골라야 했다
+  // — 의뢰일 기본값으로 넘긴다(그대로 둬도 되고, 실제 상담이 늦춰지면 직접 고치면 됨).
+  // 세목·업무유형도 위 추정 함수로 짐작해 미리 채운다(확신 없으면 빈 채로 둬서 예전처럼
+  // 첫 옵션이 그대로 선택되게 한다).
   function bookingStartCase(rowIndex){
     var b = (window._bookingCache||[]).filter(function(x){ return x._rowIndex === rowIndex; })[0];
     if (!b) return;
     if (typeof goToView_ === 'function') goToView_('workmanage');
+    var guessedSemok = bookingGuessSemok_([b.type, b.field, b.situation].filter(Boolean).join(' '));
     if (typeof renderNewCaseForm === 'function'){
       renderNewCaseForm({
         고객명: b.name, 전화: b.phone || '', 고객유형: b.type || '',
         현재세무처리: b.statuses || '', 관련분야: b.field || '',
-        개요: b.situation || '', bookingRowIndex: b._rowIndex
+        개요: b.situation || '', bookingRowIndex: b._rowIndex,
+        의뢰일: b.reservedDate || '',
+        세목: guessedSemok,
+        // 예약은 정의상 아직 정식 수임 전 첫 상담이므로, 불복(별도 세부유형 체계라 "상담"이
+        // 없음)이 아닌 한 업무유형은 "상담"으로 미리 맞춰둔다.
+        업무유형: (guessedSemok && guessedSemok !== 'objection') ? '상담' : ''
       });
     }
   }
