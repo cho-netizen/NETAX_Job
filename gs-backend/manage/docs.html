@@ -810,6 +810,10 @@
       docsRenderEvidenceList_(c, 'auto', 'docsEvListAuto');
       docsRenderEvidenceList_(c, 'manual', 'docsEvListManual');
       docsRenderEvidenceList_(c, 'requested', 'docsEvListRequested');
+      // [2026.09 버그수정] 여기 docsAllCasesCache_만 갱신하고 workmanage.html의 별도 캐시
+      // (loadWorkCases가 채우는 workCases)는 갱신되지 않아, 증빙관리에서 증빙을 추가해도
+      // 작업관리의 완료조건 판정(checkCompletionReadiness_)이 옛 증빙목록으로 판단했다.
+      if (typeof loadWorkCases === 'function') loadWorkCases();
       if (c.my_report_id){
         callGas('admin_get_case', { report_id: c.my_report_id }).then(function(res2){
           if (res2.success === false) return;
