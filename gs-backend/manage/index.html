@@ -116,6 +116,10 @@
             <div id="taxCalcTransferPane" class="taxcalc-pane"></div>
             <div id="taxCalcGiftPane" class="taxcalc-pane" style="display:none;"></div>
             <div id="taxCalcInheritancePane" class="taxcalc-pane" style="display:none;"></div>
+            <!-- [2026.09.24] 증여세·상속세 어느 쪽에서도 계산 가능한 도구(연부연납·이자상당액·
+                 공익법인출연·가업승계납부유예·물납 등)를 화면 하나로 합친 공유 패널 — 두 탭
+                 어느 쪽이 활성화돼도 이 패널이 같이 보인다(updateTaxCalcPaneVisibility 참고). -->
+            <div id="taxCalcGiftInheritanceSharedPane" class="taxcalc-pane" style="display:none;"></div>
             <div id="taxCalcAcquisitionPane" class="taxcalc-pane" style="display:none;"></div>
             <div id="taxCalcRegistrationLicensePane" class="taxcalc-pane" style="display:none;"></div>
             <div id="taxCalcStandardPricePane" class="taxcalc-pane" style="display:none;"></div>
