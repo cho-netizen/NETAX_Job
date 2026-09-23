@@ -2172,7 +2172,10 @@ const VALUATION_METHOD_LABELS = {
   mergerBenefit: '합병에 따른 이익의 증여(§38)',
   propertyUseService: '재산사용·용역제공 등에 따른 이익의 증여(§42)',
   orgChangeBenefit: '법인의 조직 변경 등에 따른 이익의 증여(§42의2)',
-  spousePropertyTransfer: '배우자 등에게 양도한 재산의 증여 추정(§44)'
+  spousePropertyTransfer: '배우자 등에게 양도한 재산의 증여 추정(§44)',
+  capitalIncreaseBenefit: '증자에 따른 이익의 증여(§39)',
+  capitalReductionBenefit: '감자에 따른 이익의 증여(§39의2)',
+  inKindContributionBenefit: '현물출자에 따른 이익의 증여(§39의3)'
 };
 // 지분은 평가방법과 무관하게 모든 자산에 공통으로 적용되는 별도 항목이다(예: 확인된 시가가 그 자체로
 // 100% 평가액인 자산도 있고, 매매실례가액 등에 피상속인 지분을 곱해야 하는 자산도 있다 — 그 구분은
@@ -2180,7 +2183,8 @@ const VALUATION_METHOD_LABELS = {
 // 주식류(listedStock/unlistedStock)는 보유수량·보유주식수 자체가 이미 지분을 반영하므로 별도로 곱하지 않는다.
 const VALUATION_RATIO_EXEMPT_METHODS = ['listedStock', 'unlistedStock',
   'debtForgiveness', 'freePropertyUse', 'insuranceProceeds', 'trustIncome', 'lowPriceTransfer', 'interestFreeLoan',
-  'mergerBenefit', 'propertyUseService', 'orgChangeBenefit', 'spousePropertyTransfer'];
+  'mergerBenefit', 'propertyUseService', 'orgChangeBenefit', 'spousePropertyTransfer',
+  'capitalIncreaseBenefit', 'capitalReductionBenefit', 'inKindContributionBenefit'];
 // 임대료환산가액(상증세법§61⑤)은 개별 임대차(호실별 보증금·월세)를 전부 더한 합계로 계산해야 한다 —
 // 집계된 금액을 손으로 입력받지 말고, 임대차 건을 하나씩 입력받아 시스템이 자동으로 합산한다.
 function computeRentalLeaseTotals_(leases){
@@ -2367,6 +2371,39 @@ function computeValuationAssetValue(a){
         priorTaxesSum: a.spPriorTaxesSum, comparisonGiftTax: a.spComparisonGiftTax
       });
       value = (r && !r.error && r.과세대상여부 !== false) ? (r.증여추정재산가액 || 0) : 0;
+      break;
+    }
+    case 'capitalIncreaseBenefit': {
+      const r = window.calculateCapitalIncreaseGiftTaxJS({
+        caseType: a.ciCaseType || 'low_allocated', preValuePerShare: a.ciPreValue, preShares: a.ciPreShares,
+        issuePricePerShare: a.ciIssuePrice, increasedShares: a.ciIncreasedShares, allocatedShares: a.ciAllocatedShares,
+        equalIncreaseShares: a.ciEqualIncreaseShares, deemedAllocatedShares: a.ciDeemedAllocatedShares,
+        forfeitedShares: a.ciForfeitedShares, relatedAcquiredShares: a.ciRelatedAcquiredShares,
+        equalIncreaseTotalShares: a.ciEqualIncreaseTotalShares, underAllocatedShares: a.ciUnderAllocatedShares,
+        nonShareholderAndExcessTotalShares: a.ciNonShareholderTotalShares,
+        priorBenefitsWithinOneYear: (numVal(a.ciPriorBenefitsSum) > 0 ? [numVal(a.ciPriorBenefitsSum)] : [])
+      });
+      value = (r && !r.error && r.과세대상여부 !== false) ? (r.증여의제이익 || 0) : 0;
+      break;
+    }
+    case 'capitalReductionBenefit': {
+      const r = window.calculateCapitalReductionGiftTaxJS({
+        caseType: a.crCaseType || 'low_price', valuePerShare: a.crValuePerShare, paymentPerShare: a.crPaymentPerShare,
+        totalReducedShares: a.crTotalReducedShares, postReductionOwnershipRatio: a.crPostRatio,
+        relatedReducedShares: a.crRelatedShares, ownReducedShares: a.crOwnShares, faceValuePerShare: a.crFaceValue,
+        priorBenefitsWithinOneYear: (numVal(a.crPriorBenefitsSum) > 0 ? [numVal(a.crPriorBenefitsSum)] : [])
+      });
+      value = (r && !r.error && r.과세대상여부 !== false) ? (r.증여의제이익 || 0) : 0;
+      break;
+    }
+    case 'inKindContributionBenefit': {
+      const r = window.calculateInKindContributionGiftTaxJS({
+        caseType: a.icfCaseType || 'low_price', preValuePerShare: a.icfPreValue, preShares: a.icfPreShares,
+        issuePricePerShare: a.icfIssuePrice, increasedShares: a.icfIncreasedShares, allocatedShares: a.icfAllocatedShares,
+        acquiredShares: a.icfAcquiredShares, relatedShareholderRatio: a.icfRelatedRatio,
+        priorBenefitsWithinOneYear: (numVal(a.icfPriorBenefitsSum) > 0 ? [numVal(a.icfPriorBenefitsSum)] : [])
+      });
+      value = (r && !r.error && r.과세대상여부 !== false) ? (r.증여의제이익 || 0) : 0;
       break;
     }
     default: value = numVal(a.directValue) || 0;
@@ -2652,6 +2689,53 @@ function valuationAssetMethodFieldsHtml(m, a){
     '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="spExcluded"' + (a.spExcluded ? ' checked' : '') + '><label>적용배제 사유 해당(§44③ — 경매·파산선고·공매·증권시장처분·대가받고 양도한 사실이 명백히 인정)</label></div>' +
     '<div class="taxcalc-field"><label>당초양도자·양수자 소득세 결정세액 합계(재양도일 때만)</label><input type="number" data-field="spPriorTaxesSum" placeholder="원" value="' + (a.spPriorTaxesSum || '') + '"></div>' +
     '<div class="taxcalc-field"><label>재양도가액 증여추정시 증여세액 직접입력</label><input type="number" data-field="spComparisonGiftTax" placeholder="원" value="' + (a.spComparisonGiftTax || '') + '"><span class="taxcalc-field-help">선택, 재양도일 때만 — 비워두면 자동계산</span></div>';
+  if (m === 'capitalIncreaseBenefit') return '' +
+    '<div class="taxcalc-field"><label>케이스 구분</label><select data-field="ciCaseType">' +
+      '<option value="low_allocated"' + (a.ciCaseType === 'low_allocated' || !a.ciCaseType ? ' selected' : '') + '>저가발행 - 실권주 배정(또는 비주주직접배정·균등초과배정)</option>' +
+      '<option value="low_unallocated"' + (a.ciCaseType === 'low_unallocated' ? ' selected' : '') + '>저가발행 - 실권주 미배정(특수관계인이 신주인수)</option>' +
+      '<option value="high_allocated"' + (a.ciCaseType === 'high_allocated' ? ' selected' : '') + '>고가발행 - 실권주 배정</option>' +
+      '<option value="high_unallocated"' + (a.ciCaseType === 'high_unallocated' ? ' selected' : '') + '>고가발행 - 실권주 미배정</option>' +
+      '<option value="high_nonshareholder"' + (a.ciCaseType === 'high_nonshareholder' ? ' selected' : '') + '>고가발행 - 비주주직접배정 또는 균등초과배정</option>' +
+    '</select></div>' +
+    '<div class="taxcalc-field"><label>증자전 1주당 평가가액</label><input type="number" data-field="ciPreValue" placeholder="원" value="' + (a.ciPreValue || '') + '"></div>' +
+    '<div class="taxcalc-field"><label>증자전 발행주식총수</label><input type="number" data-field="ciPreShares" placeholder="주" value="' + (a.ciPreShares || '') + '"></div>' +
+    '<div class="taxcalc-field"><label>신주 1주당 인수가액</label><input type="number" data-field="ciIssuePrice" placeholder="원" value="' + (a.ciIssuePrice || '') + '"></div>' +
+    '<div class="taxcalc-field"><label>증자로 실제 증가한 주식수</label><input type="number" data-field="ciIncreasedShares" placeholder="주" value="' + (a.ciIncreasedShares || '') + '"><span class="taxcalc-field-help">저가배정·고가배정·고가미배정·고가비주주</span></div>' +
+    '<div class="taxcalc-field"><label>배정받은 실권주수(또는 신주수)</label><input type="number" data-field="ciAllocatedShares" placeholder="주" value="' + (a.ciAllocatedShares || '') + '"><span class="taxcalc-field-help">저가배정·고가배정만</span></div>' +
+    '<div class="taxcalc-field"><label>균등증자시 증가주식수</label><input type="number" data-field="ciEqualIncreaseShares" placeholder="주" value="' + (a.ciEqualIncreaseShares || '') + '"><span class="taxcalc-field-help">저가미배정만</span></div>' +
+    '<div class="taxcalc-field"><label>배정간주실권주수(실권주총수×증자후지분비율×특수관계인실권주비율)</label><input type="number" data-field="ciDeemedAllocatedShares" placeholder="주" value="' + (a.ciDeemedAllocatedShares || '') + '"><span class="taxcalc-field-help">저가미배정만</span></div>' +
+    '<div class="taxcalc-field"><label>포기주주의 실권주수</label><input type="number" data-field="ciForfeitedShares" placeholder="주" value="' + (a.ciForfeitedShares || '') + '"><span class="taxcalc-field-help">고가미배정만</span></div>' +
+    '<div class="taxcalc-field"><label>특수관계인이 인수한 신주수(실권주수)</label><input type="number" data-field="ciRelatedAcquiredShares" placeholder="주" value="' + (a.ciRelatedAcquiredShares || '') + '"><span class="taxcalc-field-help">고가미배정·고가비주주</span></div>' +
+    '<div class="taxcalc-field"><label>균등증자시 주식총수</label><input type="number" data-field="ciEqualIncreaseTotalShares" placeholder="주" value="' + (a.ciEqualIncreaseTotalShares || '') + '"><span class="taxcalc-field-help">고가미배정만</span></div>' +
+    '<div class="taxcalc-field"><label>미달배정 주주의 그 신주수</label><input type="number" data-field="ciUnderAllocatedShares" placeholder="주" value="' + (a.ciUnderAllocatedShares || '') + '"><span class="taxcalc-field-help">고가비주주만</span></div>' +
+    '<div class="taxcalc-field"><label>비주주배정+균등초과인수 신주 총수</label><input type="number" data-field="ciNonShareholderTotalShares" placeholder="주" value="' + (a.ciNonShareholderTotalShares || '') + '"><span class="taxcalc-field-help">고가비주주만</span></div>' +
+    '<div class="taxcalc-field"><label>1년 이내 동일유형 이전거래 이익 합계(§43②)</label><input type="number" data-field="ciPriorBenefitsSum" placeholder="원" value="' + (a.ciPriorBenefitsSum || '') + '"><span class="taxcalc-field-help">없으면 비움</span></div>';
+  if (m === 'capitalReductionBenefit') return '' +
+    '<div class="taxcalc-field"><label>케이스 구분</label><select data-field="crCaseType">' +
+      '<option value="low_price"' + (a.crCaseType !== 'high_price' ? ' selected' : '') + '>저가소각(시가보다 낮은 대가로 소각 — 다른 대주주등이 이익)</option>' +
+      '<option value="high_price"' + (a.crCaseType === 'high_price' ? ' selected' : '') + '>고가소각(시가보다 높은 대가로 소각, 1주당평가액이 액면가 미달일 때 — 소각된 주주 본인이 이익)</option>' +
+    '</select></div>' +
+    '<div class="taxcalc-field"><label>감자한 주식등의 1주당 평가액</label><input type="number" data-field="crValuePerShare" placeholder="원" value="' + (a.crValuePerShare || '') + '"></div>' +
+    '<div class="taxcalc-field"><label>소각시 지급한 1주당 금액</label><input type="number" data-field="crPaymentPerShare" placeholder="원" value="' + (a.crPaymentPerShare || '') + '"></div>' +
+    '<div class="taxcalc-field"><label>총 감자 주식등의 수</label><input type="number" data-field="crTotalReducedShares" placeholder="주" value="' + (a.crTotalReducedShares || '') + '"><span class="taxcalc-field-help">저가소각만</span></div>' +
+    '<div class="taxcalc-field"><label>대주주등의 감자후 지분비율</label><input type="number" step="0.01" min="0" max="1" data-field="crPostRatio" placeholder="0~1" value="' + (a.crPostRatio || '') + '"><span class="taxcalc-field-help">저가소각만</span></div>' +
+    '<div class="taxcalc-field"><label>대주주등과 특수관계인의 감자 주식등의 수</label><input type="number" data-field="crRelatedShares" placeholder="주" value="' + (a.crRelatedShares || '') + '"><span class="taxcalc-field-help">저가소각만</span></div>' +
+    '<div class="taxcalc-field"><label>해당 주주등의 감자한 주식등의 수</label><input type="number" data-field="crOwnShares" placeholder="주" value="' + (a.crOwnShares || '') + '"><span class="taxcalc-field-help">고가소각만</span></div>' +
+    '<div class="taxcalc-field"><label>액면가액(1주당)</label><input type="number" data-field="crFaceValue" placeholder="원" value="' + (a.crFaceValue || '') + '"><span class="taxcalc-field-help">고가소각만 — 1주당평가액이 액면가(대가가 액면가 미만이면 그 대가) 미달일 때만 과세(시행령§29의2①2호)</span></div>' +
+    '<div class="taxcalc-field"><label>1년 이내 동일유형 이전거래 이익 합계(§43②)</label><input type="number" data-field="crPriorBenefitsSum" placeholder="원" value="' + (a.crPriorBenefitsSum || '') + '"><span class="taxcalc-field-help">없으면 비움</span></div>';
+  if (m === 'inKindContributionBenefit') return '' +
+    '<div class="taxcalc-field"><label>케이스 구분</label><select data-field="icfCaseType">' +
+      '<option value="low_price"' + (a.icfCaseType !== 'high_price' ? ' selected' : '') + '>저가발행(1호)</option>' +
+      '<option value="high_price"' + (a.icfCaseType === 'high_price' ? ' selected' : '') + '>고가발행(2호)</option>' +
+    '</select></div>' +
+    '<div class="taxcalc-field"><label>현물출자전 1주당 평가가액</label><input type="number" data-field="icfPreValue" placeholder="원" value="' + (a.icfPreValue || '') + '"></div>' +
+    '<div class="taxcalc-field"><label>현물출자전 발행주식총수</label><input type="number" data-field="icfPreShares" placeholder="주" value="' + (a.icfPreShares || '') + '"></div>' +
+    '<div class="taxcalc-field"><label>신주 1주당 인수가액</label><input type="number" data-field="icfIssuePrice" placeholder="원" value="' + (a.icfIssuePrice || '') + '"></div>' +
+    '<div class="taxcalc-field"><label>현물출자로 증가한 주식수(전체)</label><input type="number" data-field="icfIncreasedShares" placeholder="주" value="' + (a.icfIncreasedShares || '') + '"></div>' +
+    '<div class="taxcalc-field"><label>현물출자자가 배정받은 신주수</label><input type="number" data-field="icfAllocatedShares" placeholder="주" value="' + (a.icfAllocatedShares || '') + '"><span class="taxcalc-field-help">저가발행만</span></div>' +
+    '<div class="taxcalc-field"><label>현물출자자가 인수한 신주수</label><input type="number" data-field="icfAcquiredShares" placeholder="주" value="' + (a.icfAcquiredShares || '') + '"><span class="taxcalc-field-help">고가발행만</span></div>' +
+    '<div class="taxcalc-field"><label>현물출자자 외 특수관계인주주등의 지분비율</label><input type="number" step="0.01" min="0" max="1" data-field="icfRelatedRatio" placeholder="0~1" value="' + (a.icfRelatedRatio || '') + '"><span class="taxcalc-field-help">고가발행만</span></div>' +
+    '<div class="taxcalc-field"><label>1년 이내 동일유형 이전거래 이익 합계(§43②)</label><input type="number" data-field="icfPriorBenefitsSum" placeholder="원" value="' + (a.icfPriorBenefitsSum || '') + '"><span class="taxcalc-field-help">없으면 비움</span></div>';
   return '<div class="taxcalc-field"><label>평가액</label><input type="number" data-field="directValue" placeholder="원" value="' + (a.directValue || '') + '"><button type="button" class="taxcalc-ai-btn" data-action="lookup-real-price" style="margin-top:4px;">🔍 아파트 실거래가 조회(참고)</button></div>';
 }
 
@@ -4797,114 +4881,11 @@ function renderGiftPane(){
     '</div>' +
     // [2026.09.23 흡수] 채무면제이익(§36) 독립계산기는 giftValuationAssets의 평가방법
     // "debtForgiveness"로 흡수 — 아래 삭제.
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>증자에 따른 이익의 증여(§39) — 신주를 시가보다 낮거나 높은 가액으로 발행할 때. 실권주 배정여부·저가/고가여부에 따라 5가지 케이스로 나뉩니다</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>케이스 구분</label><select id="ciCaseType">' +
-          '<option value="low_allocated">저가발행 - 실권주 배정(또는 비주주직접배정·균등초과배정)</option>' +
-          '<option value="low_unallocated">저가발행 - 실권주 미배정(특수관계인이 신주인수)</option>' +
-          '<option value="high_allocated">고가발행 - 실권주 배정</option>' +
-          '<option value="high_unallocated">고가발행 - 실권주 미배정</option>' +
-          '<option value="high_nonshareholder">고가발행 - 비주주직접배정 또는 균등초과배정</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>증자전 1주당 평가가액</label><input type="number" id="ciPreValue" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>증자전 발행주식총수</label><input type="number" id="ciPreShares" placeholder="주"></div>' +
-        '<div class="taxcalc-field"><label>신주 1주당 인수가액</label><input type="number" id="ciIssuePrice" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>증자로 실제 증가한 주식수</label><input type="number" id="ciIncreasedShares" placeholder="주"><span class="taxcalc-field-help">저가배정·고가배정·고가미배정·고가비주주</span></div>' +
-        '<div class="taxcalc-field"><label>배정받은 실권주수(또는 신주수)</label><input type="number" id="ciAllocatedShares" placeholder="주"><span class="taxcalc-field-help">저가배정·고가배정만</span></div>' +
-        '<div class="taxcalc-field"><label>균등증자시 증가주식수</label><input type="number" id="ciEqualIncreaseShares" placeholder="주"><span class="taxcalc-field-help">저가미배정만</span></div>' +
-        '<div class="taxcalc-field"><label>배정간주실권주수(실권주총수×증자후지분비율×특수관계인실권주비율)</label><input type="number" id="ciDeemedAllocatedShares" placeholder="주"><span class="taxcalc-field-help">저가미배정만</span></div>' +
-        '<div class="taxcalc-field"><label>포기주주의 실권주수</label><input type="number" id="ciForfeitedShares" placeholder="주"><span class="taxcalc-field-help">고가미배정만</span></div>' +
-        '<div class="taxcalc-field"><label>특수관계인이 인수한 신주수(실권주수)</label><input type="number" id="ciRelatedAcquiredShares" placeholder="주"><span class="taxcalc-field-help">고가미배정·고가비주주</span></div>' +
-        '<div class="taxcalc-field"><label>균등증자시 주식총수</label><input type="number" id="ciEqualIncreaseTotalShares" placeholder="주"><span class="taxcalc-field-help">고가미배정만</span></div>' +
-        '<div class="taxcalc-field"><label>미달배정 주주의 그 신주수</label><input type="number" id="ciUnderAllocatedShares" placeholder="주"><span class="taxcalc-field-help">고가비주주만</span></div>' +
-        '<div class="taxcalc-field"><label>비주주배정+균등초과인수 신주 총수</label><input type="number" id="ciNonShareholderTotalShares" placeholder="주"><span class="taxcalc-field-help">고가비주주만</span></div>' +
-        '<div class="taxcalc-field"><label>1년 이내 동일유형(케이스) 이전거래 이익 합계(§43②)</label><input type="number" id="ciPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="ciRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="ciAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>신고 상태</label><select id="ciFilingStatus">' +
-          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ciFraudulent"><label for="ciFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
-        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="ciUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
-        '<div class="taxcalc-field"><label>증여일</label><input type="text" class="taxcalc-date" id="ciGiftDate" placeholder="YYYY-MM-DD"><span class="taxcalc-field-help">주식대금 납입일 등</span></div>' +
-        '<div class="taxcalc-field"><label>실제 납부일</label><input type="text" class="taxcalc-date" id="ciPaidDate" placeholder="YYYY-MM-DD"></div>' +
-        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="ciUnpaidDays" placeholder="0" readonly></div>' +
-        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="ciMonthsAfterDesignated" placeholder="0"></div>' +
-        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="ciUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('ci') + '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-capital-increase-gift">증여세 계산하기</button>' +
-      '<div id="taxCalcCapitalIncreaseGiftResult"></div>' +
-    '</div>' +
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>감자에 따른 이익의 증여(§39의2) — 주식등을 시가보다 낮거나 높은 대가로 소각(감자)할 때</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>케이스 구분</label><select id="crCaseType">' +
-          '<option value="low_price">저가소각(시가보다 낮은 대가로 소각 — 다른 대주주등이 이익)</option>' +
-          '<option value="high_price">고가소각(시가보다 높은 대가로 소각, 1주당평가액이 액면가 미달일 때 — 소각된 주주 본인이 이익)</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>감자한 주식등의 1주당 평가액</label><input type="number" id="crValuePerShare" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>소각시 지급한 1주당 금액</label><input type="number" id="crPaymentPerShare" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>총 감자 주식등의 수</label><input type="number" id="crTotalReducedShares" placeholder="주"><span class="taxcalc-field-help">저가소각만</span></div>' +
-        '<div class="taxcalc-field"><label>대주주등의 감자후 지분비율</label><input type="number" step="0.01" min="0" max="1" id="crPostRatio" placeholder="0~1"><span class="taxcalc-field-help">저가소각만</span></div>' +
-        '<div class="taxcalc-field"><label>대주주등과 특수관계인의 감자 주식등의 수</label><input type="number" id="crRelatedShares" placeholder="주"><span class="taxcalc-field-help">저가소각만</span></div>' +
-        '<div class="taxcalc-field"><label>해당 주주등의 감자한 주식등의 수</label><input type="number" id="crOwnShares" placeholder="주"><span class="taxcalc-field-help">고가소각만</span></div>' +
-        '<div class="taxcalc-field"><label>1년 이내 동일유형(케이스) 이전거래 이익 합계(§43②)</label><input type="number" id="crPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="crRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="crAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>신고 상태</label><select id="crFilingStatus">' +
-          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="crFraudulent"><label for="crFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
-        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="crUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
-        '<div class="taxcalc-field"><label>증여일</label><input type="text" class="taxcalc-date" id="crGiftDate" placeholder="YYYY-MM-DD"><span class="taxcalc-field-help">주주총회결의일 등</span></div>' +
-        '<div class="taxcalc-field"><label>실제 납부일</label><input type="text" class="taxcalc-date" id="crPaidDate" placeholder="YYYY-MM-DD"></div>' +
-        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="crUnpaidDays" placeholder="0" readonly></div>' +
-        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="crMonthsAfterDesignated" placeholder="0"></div>' +
-        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="crUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('cr') + '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-capital-reduction-gift">증여세 계산하기</button>' +
-      '<div id="taxCalcCapitalReductionGiftResult"></div>' +
-    '</div>' +
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>현물출자에 따른 이익의 증여(§39의3) — §39(증자)와 계산구조가 같습니다(증자→현물출자로 치환)</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>케이스 구분</label><select id="icfCaseType">' +
-          '<option value="low_price">저가발행(1호)</option><option value="high_price">고가발행(2호)</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>현물출자전 1주당 평가가액</label><input type="number" id="icfPreValue" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>현물출자전 발행주식총수</label><input type="number" id="icfPreShares" placeholder="주"></div>' +
-        '<div class="taxcalc-field"><label>신주 1주당 인수가액</label><input type="number" id="icfIssuePrice" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>현물출자로 증가한 주식수(전체)</label><input type="number" id="icfIncreasedShares" placeholder="주"></div>' +
-        '<div class="taxcalc-field"><label>현물출자자가 배정받은 신주수</label><input type="number" id="icfAllocatedShares" placeholder="주"><span class="taxcalc-field-help">저가발행만</span></div>' +
-        '<div class="taxcalc-field"><label>현물출자자가 인수한 신주수</label><input type="number" id="icfAcquiredShares" placeholder="주"><span class="taxcalc-field-help">고가발행만</span></div>' +
-        '<div class="taxcalc-field"><label>현물출자자 외 특수관계인주주등의 지분비율</label><input type="number" step="0.01" min="0" max="1" id="icfRelatedRatio" placeholder="0~1"><span class="taxcalc-field-help">고가발행만</span></div>' +
-        '<div class="taxcalc-field"><label>1년 이내 동일유형(케이스) 이전거래 이익 합계(§43②)</label><input type="number" id="icfPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="icfRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="icfAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>신고 상태</label><select id="icfFilingStatus">' +
-          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="icfFraudulent"><label for="icfFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
-        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="icfUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
-        '<div class="taxcalc-field"><label>증여일</label><input type="text" class="taxcalc-date" id="icfGiftDate" placeholder="YYYY-MM-DD"><span class="taxcalc-field-help">현물출자 납입일 등</span></div>' +
-        '<div class="taxcalc-field"><label>실제 납부일</label><input type="text" class="taxcalc-date" id="icfPaidDate" placeholder="YYYY-MM-DD"></div>' +
-        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="icfUnpaidDays" placeholder="0" readonly></div>' +
-        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="icfMonthsAfterDesignated" placeholder="0"></div>' +
-        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="icfUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('icf') + '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-in-kind-contribution-gift">증여세 계산하기</button>' +
-      '<div id="taxCalcInKindContributionGiftResult"></div>' +
-    '</div>' +
+    // [2026.09.23 흡수] 증자이익(§39)·감자이익(§39의2)·현물출자이익(§39의3) 독립계산기는
+    // giftValuationAssets의 평가방법 "capitalIncreaseBenefit"/"capitalReductionBenefit"/
+    // "inKindContributionBenefit"으로 흡수 — 아래 삭제. 감자(고가소각) 케이스는 원래
+    // 액면가액(faceValuePerShare) 입력칸 자체가 빠져 있어 계산이 항상 에러로 막혀있던 것을
+    // 이번에 새 필드(crFaceValue)로 같이 고쳤다.
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>전환사채등의 주식전환등에 따른 이익의 증여(§40) — 전환사채·신주인수권부사채 등을 인수·취득·양도하거나 주식전환등을 할 때</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -5701,23 +5682,6 @@ function renderDeemedGiftGenericResult_(box, r, fields){
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   html += '</div>';
   box.innerHTML = html;
-}
-function renderCapitalIncreaseGiftResult(r){
-  renderDeemedGiftGenericResult_(document.getElementById('taxCalcCapitalIncreaseGiftResult'), r, [
-    { key: '증자후1주당평가액', label: '증자후 1주당 평가액' },
-    { key: '증여의제이익', label: '증여의제이익' }
-  ]);
-}
-function renderCapitalReductionGiftResult(r){
-  renderDeemedGiftGenericResult_(document.getElementById('taxCalcCapitalReductionGiftResult'), r, [
-    { key: '증여의제이익', label: '증여의제이익' }
-  ]);
-}
-function renderInKindContributionGiftResult(r){
-  renderDeemedGiftGenericResult_(document.getElementById('taxCalcInKindContributionGiftResult'), r, [
-    { key: '현물출자후1주당평가액', label: '현물출자후 1주당 평가액' },
-    { key: '증여의제이익', label: '증여의제이익' }
-  ]);
 }
 function renderConvertibleBondGiftResult(r){
   renderDeemedGiftGenericResult_(document.getElementById('taxCalcConvertibleBondGiftResult'), r, [
@@ -8491,76 +8455,6 @@ taxCalcView.addEventListener('click', function(e){
       unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('afUnpaidAtDesignated').value) || 0
     };
     renderPropertyFundsResult(calculatePropertyAcquisitionFundsGiftTaxJS(input));
-  } else if (action === 'run-capital-increase-gift'){
-    const input = {
-      caseType: document.getElementById('ciCaseType').value,
-      preValuePerShare: numVal(document.getElementById('ciPreValue').value) || 0,
-      preShares: numVal(document.getElementById('ciPreShares').value) || 0,
-      issuePricePerShare: numVal(document.getElementById('ciIssuePrice').value) || 0,
-      increasedShares: numVal(document.getElementById('ciIncreasedShares').value) || 0,
-      allocatedShares: numVal(document.getElementById('ciAllocatedShares').value) || 0,
-      equalIncreaseShares: numVal(document.getElementById('ciEqualIncreaseShares').value) || 0,
-      deemedAllocatedShares: numVal(document.getElementById('ciDeemedAllocatedShares').value) || 0,
-      forfeitedShares: numVal(document.getElementById('ciForfeitedShares').value) || 0,
-      relatedAcquiredShares: numVal(document.getElementById('ciRelatedAcquiredShares').value) || 0,
-      equalIncreaseTotalShares: numVal(document.getElementById('ciEqualIncreaseTotalShares').value) || 0,
-      underAllocatedShares: numVal(document.getElementById('ciUnderAllocatedShares').value) || 0,
-      nonShareholderAndExcessTotalShares: numVal(document.getElementById('ciNonShareholderTotalShares').value) || 0,
-      priorBenefitsWithinOneYear: priorBenefitsArray_('ciPriorBenefitsSum'),
-      relationDeductionLimit: numVal(document.getElementById('ciRelationDeduction').value) || 0,
-      appraisalFeeAmount: numVal(document.getElementById('ciAppraisalFee').value) || 0,
-      filingStatus: document.getElementById('ciFilingStatus').value,
-      isFraudulent: document.getElementById('ciFraudulent').checked,
-      underreportedTaxAmount: numVal(document.getElementById('ciUnderreportedTax').value) || 0,
-      unpaidDays: numVal(document.getElementById('ciUnpaidDays').value) || 0,
-      monthsAfterDesignatedDueDate: numVal(document.getElementById('ciMonthsAfterDesignated').value) || 0,
-      unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('ciUnpaidAtDesignated').value) || 0
-    };
-    Object.assign(input, taxCalcGiftAggregationInput_('ci'));
-    renderCapitalIncreaseGiftResult(calculateCapitalIncreaseGiftTaxJS(input));
-  } else if (action === 'run-capital-reduction-gift'){
-    const input = {
-      caseType: document.getElementById('crCaseType').value,
-      valuePerShare: numVal(document.getElementById('crValuePerShare').value) || 0,
-      paymentPerShare: numVal(document.getElementById('crPaymentPerShare').value) || 0,
-      totalReducedShares: numVal(document.getElementById('crTotalReducedShares').value) || 0,
-      postReductionOwnershipRatio: numVal(document.getElementById('crPostRatio').value) || 0,
-      relatedReducedShares: numVal(document.getElementById('crRelatedShares').value) || 0,
-      ownReducedShares: numVal(document.getElementById('crOwnShares').value) || 0,
-      priorBenefitsWithinOneYear: priorBenefitsArray_('crPriorBenefitsSum'),
-      relationDeductionLimit: numVal(document.getElementById('crRelationDeduction').value) || 0,
-      appraisalFeeAmount: numVal(document.getElementById('crAppraisalFee').value) || 0,
-      filingStatus: document.getElementById('crFilingStatus').value,
-      isFraudulent: document.getElementById('crFraudulent').checked,
-      underreportedTaxAmount: numVal(document.getElementById('crUnderreportedTax').value) || 0,
-      unpaidDays: numVal(document.getElementById('crUnpaidDays').value) || 0,
-      monthsAfterDesignatedDueDate: numVal(document.getElementById('crMonthsAfterDesignated').value) || 0,
-      unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('crUnpaidAtDesignated').value) || 0
-    };
-    Object.assign(input, taxCalcGiftAggregationInput_('cr'));
-    renderCapitalReductionGiftResult(calculateCapitalReductionGiftTaxJS(input));
-  } else if (action === 'run-in-kind-contribution-gift'){
-    const input = {
-      caseType: document.getElementById('icfCaseType').value,
-      preValuePerShare: numVal(document.getElementById('icfPreValue').value) || 0,
-      preShares: numVal(document.getElementById('icfPreShares').value) || 0,
-      issuePricePerShare: numVal(document.getElementById('icfIssuePrice').value) || 0,
-      increasedShares: numVal(document.getElementById('icfIncreasedShares').value) || 0,
-      allocatedShares: numVal(document.getElementById('icfAllocatedShares').value) || 0,
-      acquiredShares: numVal(document.getElementById('icfAcquiredShares').value) || 0,
-      relatedShareholderRatio: numVal(document.getElementById('icfRelatedRatio').value) || 0,
-      priorBenefitsWithinOneYear: priorBenefitsArray_('icfPriorBenefitsSum'),
-      relationDeductionLimit: numVal(document.getElementById('icfRelationDeduction').value) || 0,
-      appraisalFeeAmount: numVal(document.getElementById('icfAppraisalFee').value) || 0,
-      filingStatus: document.getElementById('icfFilingStatus').value,
-      isFraudulent: document.getElementById('icfFraudulent').checked,
-      underreportedTaxAmount: numVal(document.getElementById('icfUnderreportedTax').value) || 0,
-      unpaidDays: numVal(document.getElementById('icfUnpaidDays').value) || 0,
-      monthsAfterDesignatedDueDate: numVal(document.getElementById('icfMonthsAfterDesignated').value) || 0,
-      unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('icfUnpaidAtDesignated').value) || 0
-    };
-    Object.assign(input, taxCalcGiftAggregationInput_('icf'));
-    renderInKindContributionGiftResult(calculateInKindContributionGiftTaxJS(input));
   } else if (action === 'run-convertible-bond-gift'){
     const input = {
       caseType: document.getElementById('cbCaseType').value,
