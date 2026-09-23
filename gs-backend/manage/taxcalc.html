@@ -1353,9 +1353,16 @@ function renderContractCardHtml_(contract, kind, idx){
     :
       '<div class="taxcalc-asset-head" style="margin-top:8px;"><b>이 계약에 속한 자산(' + totalCount + '건)</b></div>' +
       (totalCount > 1 ? '<div class="taxcalc-result-note">취득 후 분할된 필지 중 일부만 양도하는 경우도 이렇게(분할된 필지를 전부 자산으로 나눠) 입력하세요 — 이 취득계약의 총 취득가액이 자산별로 자동 안분됩니다.</div>' : '') +
-      (memberRowsHtml || '<div class="taxcalc-result-note">아직 이 계약을 쓰는 자산이 없습니다 — 바로 아래 추가 버튼으로 만드세요.</div>') +
+      // [2026.09.23 버그수정] 세무사님 지적 — "취득계약내 자산추가를 클릭하니까 양도자산 02가
+      // 뜨네? 맞는 것인가?" 확인해보니 진짜 버그였다: 이 버튼(add-property-to-contract)이
+      // 만드는 새 자산은 acquisitionContractId만 채워지고 transferContractId는 비어있어서,
+      // 정작 화면 맨 아래 "⚠ 계약이 지정되지 않은 자산" 경고 목록에 고아처럼 떨어져 나타났다
+      // (바로 위 안내문 "바로 아래 추가 버튼으로 만드세요"는 거짓 약속이었던 셈). 취득계약에
+      // 자산을 붙이는 올바른 경로는 이미 따로 있다 — 각 양도자산 카드의 "취득 정보 → 취득계약"
+      // 드롭다운에서 이 계약을 고르는 것(그러면 이 목록에 자동으로 나타남). 버튼을 없애고
+      // 안내문을 그 경로로 바꾼다.
+      (memberRowsHtml || '<div class="taxcalc-result-note">아직 이 계약을 쓰는 자산이 없습니다 — 각 양도자산 카드의 "취득 정보 → 취득계약" 드롭다운에서 이 계약(' + escapeHtml(contract.name || '') + ')을 선택하세요.</div>') +
       externalRowsHtml +
-      '<button type="button" class="taxcalc-add-asset" data-action="add-property-to-contract" data-contract-id="' + contract.id + '" data-contract-kind="' + kind + '" style="margin-top:6px;">+ 이 취득계약 내 자산 추가</button>' +
       '<button type="button" class="taxcalc-add-asset" data-action="add-contract-external" data-contract-id="' + contract.id + '" data-contract-kind="' + kind + '" style="margin-top:6px;">+ 안분 비율 계산에만 참여(이 사건에 없는 자산)</button>'
     ) +
   '</div>';
