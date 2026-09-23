@@ -3058,9 +3058,11 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field checkbox" data-show-if="compensationType" style="display:none;"><input type="checkbox" data-field="isBondPledgeBreached" id="bondBreach-' + idx + '"><label for="bondBreach-' + idx + '">채권 만기보유 특약 위반(§77④, 3년·5년만기특약 선택시만 해당 — 즉시 차액 추징)</label></div>' +
           '<div class="taxcalc-field" data-show-if="compensationType" style="display:none;"><label>다운계약서 등 계약서·실거래 차액</label><input type="number" data-field="downContractPriceDifference" placeholder="원"><span class="taxcalc-field-help">소득세법§91② 비과세·감면 배제 추징용, 해당 시만</span></div>' +
         '</div>' +
-        '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>이월과세(소득세법§97의2) — 배우자·직계존속에게 증여받은 자산을 증여일로부터 10년 이내에 양도할 때. 요건 미충족·비과세전환·세액비교로 배제되면 자동으로 수증자 본인 기준으로 계산됩니다(§97의2②)</b></div>' +
+        '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>이월과세(§97의2)·우회양도 부인(§101②) — 특수관계인에게 증여받은 자산을 증여일로부터 10년(§101②) 이내에 양도할 때. 배우자·직계존속이면 이월과세(요건 미충족·비과세전환·세액비교로 배제시 자동으로 수증자 본인 기준), 그 밖의 특수관계인(형제자매 등)이면 우회양도 부인 여부를 안내로 판정합니다</b></div>' +
         '<div class="taxcalc-grid">' +
-          '<div class="taxcalc-field"><label>증여자와의 관계</label><select data-field="donorRelation"><option value="">해당없음(증여받은 자산 아님)</option><option value="spouse">배우자</option><option value="lineal">직계존속·직계비속</option></select><span class="taxcalc-field-help">체크하면 아래 세부사항 입력</span></div>' +
+          '<div class="taxcalc-field"><label>증여자와의 관계</label><select data-field="donorRelation"><option value="">해당없음(증여받은 자산 아님)</option><option value="spouse">배우자</option><option value="lineal">직계존속·직계비속</option><option value="other_related">그 밖의 특수관계인(형제자매 등, §101② 판정용)</option></select><span class="taxcalc-field-help">체크하면 아래 세부사항 입력</span></div>' +
+          '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>[형제자매 등만] 수증자가 부담한 증여세 산출세액</label><input type="number" data-field="dd_doneeGiftTax" placeholder="원"><span class="taxcalc-field-help">§101② 판정용 — 배우자·직계존속이면 비워두세요</span></div>' +
+          '<div class="taxcalc-field checkbox" data-show-if="donorRelation" style="display:none;"><input type="checkbox" data-field="dd_isGainAttributedToDonee" id="ddAttr-' + idx + '"><label for="ddAttr-' + idx + '">[형제자매 등만] 양도소득이 수증자에게 실질적으로 귀속됨이 명백함(§101②단서, 체크시 적용배제)</label></div>' +
           '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>증여받은 날</label><input type="date" data-field="giftReceivedDate" min="1900-01-01" max="2099-12-31"></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="donorRelation" style="display:none;"><input type="checkbox" data-field="isEminentDomainExcludedFromCarryover" id="coEmDomain-' + idx + '"><label for="coEmDomain-' + idx + '">사업인정고시일로부터 소급 2년 이전 증여 + 수용·협의매수됨(이월과세 제외, §97의2②1호)</label></div>' +
         '</div>' +
@@ -3326,19 +3328,11 @@ function renderTransferPane(){
     // 같은 엔진(calculateBurdenedGiftTransferJS)으로 §159②(다른 재산과 함께 부담부증여시
     // 채무 안분)까지 처리하도록 확장됐다 — 증여세 탭에 이미 입력한 값을 그대로 재사용해
     // 손으로 다시 입력할 필요가 없어졌다.
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>양도소득의 부당행위계산 - 증여 후 우회양도 부인(소득세법§101②) — 배우자·직계존비속이 아닌 특수관계인(형제자매 등)에게 증여 후 수증자가 10년 이내 재양도할 때. 증여세·양도세는 각각 별도로 계산한 뒤 그 결과를 아래에 입력해 비교합니다</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ddSpouseLineal"><label for="ddSpouseLineal">배우자·직계존비속으로서 이월과세(§97의2) 적용대상임(체크시 §101②는 적용대상 제외)</label></div>' +
-        '<div class="taxcalc-field"><label>증여일로부터 재양도일까지 경과연수</label><input type="number" id="ddYearsSinceGift" placeholder="년" maxlength="2"></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ddGainToDonee"><label for="ddGainToDonee">양도소득이 수증자에게 실질적으로 귀속됨이 명백함(§101②단서, 체크시 적용배제)</label></div>' +
-        '<div class="taxcalc-field"><label>수증자가 부담한 증여세(결정세액)</label><input type="number" id="ddDoneeGiftTax" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>수증자가 부담하는 양도소득세</label><input type="number" id="ddDoneeTransferTax" placeholder="원"><span class="taxcalc-field-help">수증자 취득가액 기준, 결정세액 — 위 이월과세 계산기의 미적용시 세액 등으로 별도 계산</span></div>' +
-        '<div class="taxcalc-field"><label>증여자가 직접 양도했다고 볼 경우의 양도소득세</label><input type="number" id="ddDonorTax" placeholder="원"><span class="taxcalc-field-help">증여자의 원취득가액 기준, 위 일반 양도세 계산기로 별도 계산</span></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-donor-direct-transfer">우회양도 부인 여부 판정하기</button>' +
-      '<div id="taxCalcDonorDirectTransferResult"></div>' +
-    '</div>' +
+    // [2026.09.23 삭제] 우회양도부인(§101②) 독립 계산기(dd)도 삭제 — 위 양도자산 카드의
+    // "이월과세·우회양도부인" 절에서 증여자와의 관계로 "그 밖의 특수관계인"을 고르면 이
+    // 자산의 실제 데이터(수증자 취득정보·증여자 취득정보)만으로 수증자 양도세·증여자
+    // 직접양도시 양도세를 자동 계산해 판정한다(resolveRelatedPartyGiftTransferAdjustment_) —
+    // 수증자가 부담한 증여세만 별도 입력받는다.
     // [2026.09.23 삭제] 신축주택·미분양주택 취득자 감면(§99/§99의2/§99의3, §98의3~8) 독립
     // 계산기 2개(run-new-house-reduction/run-unsold-house-reduction)도 이월과세와 같은 이유로
     // 삭제 — 각 양도자산 카드에 완전히 같은 선택지로 이미 통합되어 있고(newHouseReductionProvision/
@@ -3836,6 +3830,10 @@ function collectTransferInput(vals){
     doneeOwnNecessaryExpenses: numVal(vals.doneeOwnNecessaryExpenses) || 0,
     giftTaxPaid: numVal(vals.giftTaxPaid) || 0,
     giftTaxableValue: numVal(vals.giftTaxableValue) || 0,
+    // [2026.09.23 신규] 우회양도 부인(§101②) — 예전 별도 계산기(dd) 흡수. donorRelation이
+    // 'other_related'일 때만 쓰인다(spouse/lineal은 위 이월과세로 별도 처리).
+    dd_doneeGiftTax: numVal(vals.dd_doneeGiftTax) || 0,
+    dd_isGainAttributedToDonee: !!vals.dd_isGainAttributedToDonee,
     // [2026.09 신규] 신축주택·미분양주택 감면(조특법§99 계열) — 이 필드가 채워지면
     // calculateTransferTaxMultiJS가 합산 계산 전에 감면분을 자동으로 양도소득금액에서 뺀다.
     newHouseReductionProvision: vals.newHouseReductionProvision || '',
@@ -4012,6 +4010,11 @@ function renderOneTransferResultHtml_(r, label, sellerIdx){
         html += '<div>' + label + ' — 장기임대주택등감면(§97계열) ' + (n.적용여부 ? ('<b>적용됨</b>(양도소득금액에서 ' + won(n.제외소득금액) + ' 제외)') : '미적용(' + (n.사유 || '') + ')') + '</div>';
       } else if (n.구분 === '국가양도산지감면(§85의10)'){
         html += '<div>' + label + ' — 국가양도산지감면(§85의10) 미적용(' + (n.사유 || '') + ')</div>';
+      } else if (n.구분 === '우회양도부인(§101②)'){
+        const dd = n.판정 || {};
+        html += '<div>' + label + ' — 우회양도부인(§101②) ' + (dd.적용여부 ? '<b>적용됨</b>(증여자에게 양도세 재부과, 수증자 증여세 없음)' : '미적용') +
+          (dd.수증자부담세액합계 !== undefined ? ' [수증자부담(증여세+양도세) ' + won(dd.수증자부담세액합계) + ' vs 증여자직접양도시 ' + won(dd.증여자직접양도시양도세) + ']' : '') +
+          '</div><div class="taxcalc-result-note">' + (dd.안내 || '') + '</div>';
       } else if (n.구분 === '취득가액산정'){
         html += '<div>' + label + ' — ' + n.특례 + '</div>';
       } else {
@@ -4056,23 +4059,6 @@ function renderBusinessTransferCarryoverResult(r){
   html += taxCalcResultRow('이월과세액', won(r.이월과세액));
   if (r.법인기납부세액 !== undefined) html += taxCalcResultRow('법인 기납부세액', '-' + won(r.법인기납부세액));
   html += taxCalcResultRow('납부세액', won(r.납부세액), { total: true });
-  if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
-  html += '</div>';
-  box.innerHTML = html;
-}
-
-function renderDonorDirectTransferResult(r){
-  const box = document.getElementById('taxCalcDonorDirectTransferResult');
-  if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
-  let html = '<div class="taxcalc-result">';
-  if (r.적용여부 === true){
-    html += '<div class="taxcalc-result-note">✅ 증여자 직접양도로 의제됩니다(소득세법§101②) — 증여세는 부과되지 않고, 증여자에게 양도소득세가 과세됩니다.</div>';
-  } else {
-    html += '<div class="taxcalc-result-note">⛔ §101②을 적용하지 않습니다 — 수증자에게 증여세·양도소득세가 각각 그대로 부과됩니다.</div>';
-  }
-  if (r.수증자부담세액합계 !== undefined) html += taxCalcResultRow('수증자 부담세액 합계(증여세+양도세)', won(r.수증자부담세액합계));
-  if (r.증여자직접양도시양도세 !== undefined) html += taxCalcResultRow('증여자 직접양도시 양도소득세', won(r.증여자직접양도시양도세));
-  if (r.납부세액 !== undefined) html += taxCalcResultRow('실제 부담할 세액', won(r.납부세액), { total: true });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   html += '</div>';
   box.innerHTML = html;
@@ -7888,16 +7874,6 @@ taxCalcView.addEventListener('click', function(e){
       alreadyPaidByCorp: numVal(document.getElementById('btAlreadyPaid').value) || 0
     };
     renderBusinessTransferCarryoverResult(calculateBusinessTransferCarryoverJS(input));
-  } else if (action === 'run-donor-direct-transfer'){
-    const input = {
-      isSpouseOrLinealCarryoverApplies: document.getElementById('ddSpouseLineal').checked,
-      yearsSinceGift: numVal(document.getElementById('ddYearsSinceGift').value) || 0,
-      isGainActuallyAttributedToDonee: document.getElementById('ddGainToDonee').checked,
-      doneeGiftTax: numVal(document.getElementById('ddDoneeGiftTax').value) || 0,
-      doneeTransferTax: numVal(document.getElementById('ddDoneeTransferTax').value) || 0,
-      donorDirectTransferTax: numVal(document.getElementById('ddDonorTax').value) || 0
-    };
-    renderDonorDirectTransferResult(calculateDonorDirectTransferDeemedJS(input));
   } else if (action === 'run-public-rental-housing-land'){
     const input = {
       transferDate: document.getElementById('prTransferDate').value,

@@ -1183,6 +1183,35 @@
     return Object.assign({ applied: true, comparison: { 적용시_세액: withTax, 미적용시_세액: withoutTax, 증여세상당액_필요경비산입: cappedGiftTaxEquivalent } }, withBasis);
   }
 
+  // [2026.09.23 신규] 우회양도 부인(소득세법§101②③④) — 예전엔 별도 계산기에서 수증자
+  // 증여세·수증자 양도세·증여자 직접양도시 양도세 3개를 손으로 각각 계산해 옮겨 입력해야
+  // 했다. donorRelation이 'other_related'(형제자매 등 §97의2 비적용 특수관계인)이면, 이
+  // 자산의 실제 데이터만으로 뒤 두 개(수증자 양도세=수증자 본인 취득가액 기준 정상계산,
+  // 증여자 직접양도시 양도세=증여자 취득가액 기준 가정계산)를 위 이월과세와 같은 방식으로
+  // 자동 계산한다 — 수증자가 부담한 증여세만 직접 입력받는다. 세액 재배정(증여자에게 실제로
+  // 옮겨 부과)까지는 자동 반영하지 않고 판정 결과만 안내한다(다른 사람에게 납세의무를
+  // 재배정하는 것은 이 도구의 "한 거래 세액 계산" 모델 밖이라 손으로 신고서에 반영해야 함).
+  function resolveRelatedPartyGiftTransferAdjustment_(t) {
+    if (t.donorRelation !== 'other_related' || !t.giftReceivedDate) return t;
+    const yearsSinceGift = t.transferDate ? fullYearsElapsed(t.giftReceivedDate, t.transferDate) : Infinity;
+    const doneeBasis = { acquisitionPrice: Number(t.doneeOwnAcquisitionPrice) || 0, acquisitionDate: t.giftReceivedDate, necessaryExpenses: Number(t.doneeOwnNecessaryExpenses) || 0 };
+    const donorBasis = { acquisitionPrice: Number(t.donorAcquisitionPrice) || 0, acquisitionDate: t.donorAcquisitionDate, necessaryExpenses: Number(t.donorNecessaryExpenses) || 0 };
+    const doneeResult = window.calculateTransferTaxSingleJS(Object.assign({}, t, doneeBasis));
+    const donorResult = window.calculateTransferTaxSingleJS(Object.assign({}, t, donorBasis));
+    const doneeTax = (doneeResult && typeof doneeResult.납부세액_합계 === 'number') ? doneeResult.납부세액_합계 : (doneeResult && doneeResult.비과세여부 ? 0 : null);
+    const donorTax = (donorResult && typeof donorResult.납부세액_합계 === 'number') ? donorResult.납부세액_합계 : (donorResult && donorResult.비과세여부 ? 0 : null);
+    if (doneeTax == null || donorTax == null) return Object.assign({}, t, doneeBasis);
+    const dd = window.calculateDonorDirectTransferDeemedJS({
+      isSpouseOrLinealCarryoverApplies: false, yearsSinceGift: yearsSinceGift,
+      isGainActuallyAttributedToDonee: !!t.dd_isGainAttributedToDonee,
+      doneeGiftTax: Number(t.dd_doneeGiftTax) || 0, doneeTransferTax: doneeTax, donorDirectTransferTax: donorTax
+    });
+    // 이 판정은 "누가 납세의무를 지는가"를 바꾸는 것이라(§101③ 증여자에게 재부과, 수증자
+    // 증여세는 안 물림) 이 거래 자체의 납부세액을 자동으로 바꾸지 않는다 — 수증자 본인
+    // 기준(doneeBasis) 세액을 그대로 표시하고, 판정 결과는 안내로만 보여준다.
+    return Object.assign({}, t, doneeBasis, { _우회양도부인_판정: dd });
+  }
+
   window.calculateTransferTaxWithCarryoverJS = function (t) {
     t = t || {};
     const basis = resolveCarryoverAcquisitionBasis_(t);
@@ -1365,6 +1394,9 @@
       if (resolved.longTermRentalHouseProvision) {
         resolved = resolveLongTermRentalHouseReductionAdjustment_(resolved);
       }
+      if (resolved.donorRelation === 'other_related') {
+        resolved = resolveRelatedPartyGiftTransferAdjustment_(resolved);
+      }
       return resolved;
     });
     const cores = transactionsResolved.map(function (t, idx) {
@@ -1407,6 +1439,9 @@
       }
       if (c.raw._장기임대감면_적용여부 !== undefined && c.raw._장기임대감면_세액감면율 === undefined) {
         assetNotes.push({ idx: c.idx, 구분: '장기임대주택등감면(조특법§97계열)', 적용여부: c.raw._장기임대감면_적용여부, 제외소득금액: c.raw._장기임대감면_제외소득금액, 사유: c.raw._장기임대감면_사유 || c.raw._장기임대감면_안내 });
+      }
+      if (c.raw._우회양도부인_판정) {
+        assetNotes.push({ idx: c.idx, 구분: '우회양도부인(§101②)', 판정: c.raw._우회양도부인_판정 });
       }
     });
     pooled.forEach(function (c) {
