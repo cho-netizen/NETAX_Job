@@ -1327,7 +1327,7 @@ function renderContractCardHtml_(contract, kind, idx){
           '<option value="expropriation"' + (contract.transferCause === 'expropriation' ? ' selected' : '') + '>수용·협의취득</option>' +
           '<option value="auction"' + (contract.transferCause === 'auction' ? ' selected' : '') + '>공매·경매</option>' +
         '</select></div>' +
-        (contract.transferCause === 'burdened_gift' ? '<div class="taxcalc-field" style="flex-basis:100%; max-width:none"><span class="taxcalc-field-help">부담부증여는 자산 카드 하단의 "부담부증여시 양도로 보는 부분의 취득가액·양도가액" 계산기로 양도가액·취득가액을 먼저 산정한 뒤, 그 결과를 위 계약 전체 양도가액에 반영하세요.</span></div>' : '') +
+        (contract.transferCause === 'burdened_gift' ? '<div class="taxcalc-field" style="flex-basis:100%; max-width:none"><span class="taxcalc-field-help">부담부증여는 증여세 탭의 해당 증여자 카드에서 "인수채무분을 양도세 거래로 보내기"를 누르면 양도가액·취득가액이 자동 계산되어 이 탭 거래 목록에 추가됩니다.</span></div>' : '') +
         (contract.transferCause === 'expropriation' ? '<div class="taxcalc-field" style="flex-basis:100%; max-width:none"><span class="taxcalc-field-help">수용·협의취득은 각 자산 카드의 "공익사업용토지 수용감면" 항목에서 보상 유형(현금·채권·대토 등)을 선택하세요.</span></div>' : '') +
         (contract.transferCause === 'in_kind_contribution' ? '<div class="taxcalc-field" style="flex-basis:100%; max-width:none"><span class="taxcalc-field-help">법인 설립·전환을 위한 현물출자라면 아래 "법인전환 이월과세" 별도 계산기를 확인하세요(이월과세 요건 충족 시 과세이연).</span></div>' : '') +
         // [2026.09 버그수정] 세무사님 재점검("손과 눈으로 수동으로") 중 발견 — 매매계약체결일과
@@ -2346,25 +2346,6 @@ function recomputeBusinessAssetTotal_(containerId, assets){
 function computeTotalRentalDepositDebt_(assets){
   return assets.reduce(function(s, a){ return s + computeRentalLeaseTotals_(a.rentalLeases).deposit; }, 0);
 }
-// [2026.09 신규] 세무사님 지시로 찾은 빈틈 — 부담부증여(양도세 bgGiftValue)의 "자산 증여재산가액"은
-// 증여세 탭 재산평가에서 이미 계산해둔 값(computeValuationAssetValue)과 같은 숫자인데 손으로 다시
-// 입력받고 있었다. 재산평가 자산 목록에서 골라 그대로 가져올 수 있게 한다.
-function taxCalcValuationAssetImportHtml_(targetInputId){
-  const rows = giftValuationAssets.map(function(a, i){ return { kind: 'gift', idx: i, label: '증여세 재산평가 — 자산' + (i + 1), value: computeValuationAssetValue(a) }; })
-    .concat(inheritanceValuationAssets.map(function(a, i){ return { kind: 'inheritance', idx: i, label: '상속세 재산평가 — 자산' + (i + 1), value: computeValuationAssetValue(a) }; }));
-  if (!rows.length) return '';
-  const options = rows.map(function(row){ return '<option value="' + row.kind + ':' + row.idx + '">' + row.label + '(' + won(row.value) + ')</option>'; }).join('');
-  return '<div class="taxcalc-field-inline" style="margin-top:4px;"><select data-import-sel="' + targetInputId + '"><option value="">재산평가에서 가져오기…</option>' + options + '</select>' +
-    '<button type="button" class="taxcalc-ai-btn" data-action="import-valuation-asset-value" data-target-input="' + targetInputId + '">가져오기</button></div>';
-}
-// [2026.09 신규] 부담부증여(양도세 bgDebtAmount)·증여세(giftDebtAssumed)의 "인수채무액"도 증여세
-// 재산평가 목록에 이미 임대차 내역을 입력해뒀다면 그 임대보증금반환채무 합계와 같은 경우가 많은데,
-// 그 자동집계값을 재사용하지 않고 손으로 다시 입력받고 있었다.
-function taxCalcRentalDebtImportHtml_(targetInputId){
-  const total = computeTotalRentalDepositDebt_(giftValuationAssets);
-  if (!total) return '';
-  return '<button type="button" class="taxcalc-ai-btn" data-action="import-rental-deposit-debt" data-target-input="' + targetInputId + '" style="margin-top:4px;">증여세 재산평가의 임대보증금반환채무 합계(' + won(total) + ') 가져오기</button>';
-}
 function renderValuationAssetList(containerId, assets){
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -3066,18 +3047,12 @@ function renderTransferPane(){
       '<button type="button" class="taxcalc-run-btn" data-action="run-business-transfer-carryover">이월과세·사후관리 판정하기</button>' +
       '<div id="taxCalcBusinessTransferCarryoverResult"></div>' +
     '</div>' +
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>부담부증여시 양도로 보는 부분의 취득가액·양도가액(소득세법시행령§159) — 수증자가 인수한 채무액에 상당하는 부분은 양도로 봅니다. 계산하면 그 결과가 위 거래 목록에 새 거래로 자동 추가되니, 위 "세액 계산하기"로 이어서 계산하세요</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>자산 취득가액</label><input type="number" id="bgAcquisitionPrice" placeholder="원"><span class="taxcalc-field-help">실지거래가액</span></div>' +
-        '<div class="taxcalc-field"><label>자산 증여재산가액</label><input type="number" id="bgGiftValue" placeholder="원">' + taxCalcValuationAssetImportHtml_('bgGiftValue') + '<span class="taxcalc-field-help">상증세법상 평가액, 부담부증여 전체 자산가액 — 증여세 탭 재산평가에서 이미 계산해뒀다면 위에서 가져올 수 있습니다</span></div>' +
-        '<div class="taxcalc-field"><label>수증자가 인수한 채무액</label><input type="number" id="bgDebtAmount" placeholder="원">' + taxCalcRentalDebtImportHtml_('bgDebtAmount') + '</div>' +
-        '<div class="taxcalc-field"><label>함께 증여한 다른 재산의 증여재산가액 합계</label><input type="number" id="bgOtherAssetsValue" placeholder="원"><span class="taxcalc-field-help">양도세 비과세대상 재산과 함께 부담부증여한 경우만, §159②</span></div>' +
-        '<div class="taxcalc-field"><label>필요경비</label><input type="number" id="bgNecessaryExpenses" placeholder="원"><span class="taxcalc-field-help">자본적지출액·양도비 등, 없으면 0</span></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-burdened-gift-transfer">양도가액·취득가액 계산하기</button>' +
-      '<div id="taxCalcBurdenedGiftTransferResult"></div>' +
-    '</div>' +
+    // [2026.09.23 삭제] 부담부증여시 양도로 보는 부분 계산기(bgGiftValue 등, run-burdened-gift-
+    // transfer)도 삭제 — 세무사님 지적("중복부분은 정리하라") 확인 결과, 증여세 탭 각 증여자
+    // 카드의 "인수채무분을 양도세 거래로 보내기" 버튼(send-debt-to-transfer)이 이제 완전히
+    // 같은 엔진(calculateBurdenedGiftTransferJS)으로 §159②(다른 재산과 함께 부담부증여시
+    // 채무 안분)까지 처리하도록 확장됐다 — 증여세 탭에 이미 입력한 값을 그대로 재사용해
+    // 손으로 다시 입력할 필요가 없어졌다.
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>양도소득의 부당행위계산 - 증여 후 우회양도 부인(소득세법§101②) — 배우자·직계존비속이 아닌 특수관계인(형제자매 등)에게 증여 후 수증자가 10년 이내 재양도할 때. 증여세·양도세는 각각 별도로 계산한 뒤 그 결과를 아래에 입력해 비교합니다</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -3897,21 +3872,6 @@ function renderBusinessTransferCarryoverResult(r){
   box.innerHTML = html;
 }
 
-function renderBurdenedGiftTransferResult(r){
-  const box = document.getElementById('taxCalcBurdenedGiftTransferResult');
-  if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
-  let html = '<div class="taxcalc-result">';
-  html += taxCalcResultRow('안분채무액(=양도가액)', won(r.안분채무액));
-  html += taxCalcResultRow('채무액비율', (r.채무액비율 * 100).toFixed(2) + '%');
-  html += taxCalcResultRow('양도로보는부분 양도가액', won(r.양도로보는부분_양도가액));
-  html += taxCalcResultRow('양도로보는부분 취득가액', won(r.양도로보는부분_취득가액));
-  html += taxCalcResultRow('필요경비', won(r.필요경비));
-  html += taxCalcResultRow('양도차익', won(r.양도차익), { total: true });
-  if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
-  html += '</div>';
-  box.innerHTML = html;
-}
-
 function renderDonorDirectTransferResult(r){
   const box = document.getElementById('taxCalcDonorDirectTransferResult');
   if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
@@ -4217,6 +4177,7 @@ function renderGiftDonorRegistry(){
         '<div class="taxcalc-field"><label>증여자 취득일</label><input type="date" data-dfield="acqDate" value="' + (d.acqDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
         '<div class="taxcalc-field"><label>증여자 취득가액(이 증여자 몫 전체 기준)</label><input type="number" data-dfield="acqPrice" placeholder="원" value="' + (d.acqPrice || '') + '"></div>' +
         '<div class="taxcalc-field"><label>증여자 필요경비(이 증여자 몫 전체 기준)</label><input type="number" data-dfield="acqExpense" placeholder="원" value="' + (d.acqExpense || '') + '"><span class="taxcalc-field-help">없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>함께 증여한 다른 재산의 증여재산가액 합계</label><input type="number" data-dfield="otherAssetsGiftValueSum" placeholder="원" value="' + (d.otherAssetsGiftValueSum || '') + '"><span class="taxcalc-field-help">양도세 비과세대상 재산과 함께 부담부증여한 경우만(§159②), 없으면 0</span></div>' +
         '<div class="taxcalc-field"><button type="button" class="taxcalc-run-btn" data-action="send-debt-to-transfer" data-idx="' + idx + '">인수채무분을 양도세 거래로 보내기</button></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:10px;"><b>신고 상태 · 가산세(이 증여자 몫)</b></div>' +
@@ -7447,22 +7408,6 @@ taxCalcView.addEventListener('click', function(e){
       document.getElementById('giftAmount').value = net;
     }
     else document.getElementById('ihEstate').value = net;
-  } else if (action === 'import-valuation-asset-value'){
-    const targetInputId = btn.dataset.targetInput;
-    const sel = document.querySelector('[data-import-sel="' + targetInputId + '"]');
-    const val = sel ? sel.value : '';
-    if (!val){ nxAlert_('가져올 재산평가 자산을 선택하세요.'); return; }
-    const parts = val.split(':');
-    const assets = parts[0] === 'gift' ? giftValuationAssets : inheritanceValuationAssets;
-    const a = assets[numVal(parts[1])];
-    const targetEl = document.getElementById(targetInputId);
-    // [2026.09.20 버그수정] 대상이 giftAmount/giftDebtAssumed 등 증여자 카드(data-dfield)와
-    // 연결된 필드일 수 있다 — value만 바꾸면 배열이 안 갱신되므로 input을 직접 쏴서 동기화한다.
-    if (a && targetEl) { targetEl.value = String(Math.round(computeValuationAssetValue(a))); targetEl.dispatchEvent(new Event('input', { bubbles: true })); }
-  } else if (action === 'import-rental-deposit-debt'){
-    const targetEl = document.getElementById(btn.dataset.targetInput);
-    const total = computeTotalRentalDepositDebt_(giftValuationAssets);
-    if (targetEl) { targetEl.value = String(Math.round(total)); targetEl.dispatchEvent(new Event('input', { bubbles: true })); }
   } else if (action === 'open-address-search'){
     // 이 버튼이 어느 자산 목록(양도세 거래카드/증여·상속 재산평가 자산행) 안에 있는지 DOM으로
     // 찾아서, 검색결과를 그 자산의 소재지·동·면적 관련 상태에 바로 채운다.
@@ -7875,26 +7820,6 @@ taxCalcView.addEventListener('click', function(e){
       alreadyPaidByCorp: numVal(document.getElementById('btAlreadyPaid').value) || 0
     };
     renderBusinessTransferCarryoverResult(calculateBusinessTransferCarryoverJS(input));
-  } else if (action === 'run-burdened-gift-transfer'){
-    const input = {
-      assetAcquisitionPrice: numVal(document.getElementById('bgAcquisitionPrice').value) || 0,
-      assetGiftValue: numVal(document.getElementById('bgGiftValue').value) || 0,
-      totalDebtAmount: numVal(document.getElementById('bgDebtAmount').value) || 0,
-      otherAssetsGiftValueSum: numVal(document.getElementById('bgOtherAssetsValue').value) || 0,
-      necessaryExpenses: numVal(document.getElementById('bgNecessaryExpenses').value) || 0
-    };
-    const bgResult = calculateBurdenedGiftTransferJS(input);
-    // [2026.09 신규] 계산 즉시 "양도로 보는 부분"을 거래 목록에 자동으로 추가한다(건물기준시가
-    // 계산기와 같은 패턴) — 예전엔 이 결과(양도가액·취득가액·필요경비)를 손으로 다시 입력해야 했다.
-    if (bgResult && !bgResult.error){
-      transferAssets.push({
-        transferPrice: bgResult.양도로보는부분_양도가액 != null ? bgResult.양도로보는부분_양도가액 : bgResult.안분채무액,
-        acquisitionPrice: bgResult.양도로보는부분_취득가액,
-        acquisitionExpenseItems: bgResult.필요경비 ? [{ label: '부담부증여 안분(§159)', amount: bgResult.필요경비 }] : []
-      });
-      renderTransferPane();
-    }
-    renderBurdenedGiftTransferResult(bgResult);
   } else if (action === 'run-donor-direct-transfer'){
     const input = {
       isSpouseOrLinealCarryoverApplies: document.getElementById('ddSpouseLineal').checked,
@@ -8292,8 +8217,14 @@ taxCalcView.addEventListener('click', function(e){
     renderTransferFmvResult(checkFairMarketValueRecognitionJS(input));
   } else if (action === 'send-debt-to-transfer'){
     // 부담부증여의 인수채무액 상당분은 증여자가 그 지분만큼 대가(채무인수)를 받고 양도한 것으로
-    // 과세된다(소득세법§88①). 양도가액=인수채무액, 취득가액·필요경비는 증여자의 전체 재산 기준
-    // 취득정보에 (인수채무액÷증여재산가액) 비율을 곱해 안분한다.
+    // 과세된다(소득세법§88①). 취득가액·양도가액·필요경비 안분은 이제 독립 "부담부증여시 양도로
+    // 보는 부분" 계산기(calculateBurdenedGiftTransferJS)와 같은 엔진을 그대로 재사용한다
+    // — [2026.09.23 정정] 예전엔 이 버튼이 자체적으로 (인수채무액÷증여재산가액) 단순비율만
+    // 곱하는 별도 로직을 갖고 있어서, §159②(다른 재산과 함께 부담부증여시 채무 안분)를 처리
+    // 못하는 부분만 빼면 저 독립 계산기와 완전히 중복이었다(세무사님 지적: "중복부분은
+    // 정리하라"). 이제 이 버튼이 그 §159②까지 포함해 전부 처리하므로 독립 계산기 자체를
+    // 삭제했다 — 증여세 탭에 이미 입력된 값(증여재산가액·인수채무액·취득가액 등)을 그대로
+    // 재사용해 손으로 다시 입력할 필요가 없다.
     // [2026.09.20] 증여자가 여러 명일 수 있어 어느 증여자 카드에서 눌렀는지(data-idx)로
     // giftDonors[idx]에서 직접 읽는다(예전 flat id 대신).
     const donorIdx = numVal(btn.dataset.idx);
@@ -8305,14 +8236,21 @@ taxCalcView.addEventListener('click', function(e){
     if (!giftAmount || !debtAmount) return;
     const closeRelation = ['배우자', '직계존속', '직계비속'].indexOf(donor.relation) !== -1;
     const proceedSendDebtToTransfer_ = function(){
-      const ratio = Math.min(1, debtAmount / giftAmount);
       const donorAcqPrice = numVal(donor.acqPrice) || 0;
       const donorAcqExpense = numVal(donor.acqExpense) || 0;
       const donorAcqDate = donor.acqDate;
       const giftDate = document.getElementById('giftDate').value;
+      const bg = calculateBurdenedGiftTransferJS({
+        assetAcquisitionPrice: donorAcqPrice,
+        assetGiftValue: giftAmount,
+        totalDebtAmount: debtAmount,
+        otherAssetsGiftValueSum: numVal(donor.otherAssetsGiftValueSum) || 0,
+        necessaryExpenses: 0
+      });
+      if (bg.error){ nxAlert_(bg.error); return; }
       const newAsset = {
-        transferPrice: debtAmount,
-        acquisitionPrice: Math.round(donorAcqPrice * ratio),
+        transferPrice: bg.양도로보는부분_양도가액,
+        acquisitionPrice: bg.양도로보는부분_취득가액,
         acquisitionDate: donorAcqDate,
         transferDate: giftDate,
         // [2026.09.23] 수증인이 여러 명이어도 이 채무인수분의 "매수인"은 편의상 수증인 01로
@@ -8322,7 +8260,7 @@ taxCalcView.addEventListener('click', function(e){
         buyerRegNo: (giftDonees[0] && giftDonees[0].regNo) || '',
         buyerRelation: 'lineal'
       };
-      if (donorAcqExpense > 0) newAsset.acquisitionExpenseItems = [{ label: '부담부증여 안분(증여자 필요경비)', amount: Math.round(donorAcqExpense * ratio) }];
+      if (donorAcqExpense > 0) newAsset.acquisitionExpenseItems = [{ label: '부담부증여 안분(증여자 필요경비)', amount: Math.round(donorAcqExpense * bg.채무액비율) }];
       transferAssets.push(newAsset);
       renderTransferPane();
       const btns2 = Array.from(document.querySelectorAll('.taxcalc-tab'));
@@ -9925,7 +9863,7 @@ function tcSaveList_(newList){
 }
 
 // 지금 활성화된 메인 탭(양도/증여/상속/취득)의 메인 결과 박스 텍스트를 그대로 캡처한다. 각
-// 탭 안에는 부담부증여·우회양도부인 등 부속 계산기가 여러 개 더 있지만(각각 별도 id), 신고서
+// 탭 안에는 우회양도부인 등 부속 계산기가 여러 개 더 있지만(각각 별도 id), 신고서
 // 자체의 최종 세액은 항상 이 4개 메인 박스(taxCalcTransferResult 등)에 표시되므로 이것만
 // 캡처한다 — 부속 계산기 결과까지 다 모으면 요약이 아니라 화면 전체 덤프가 된다.
 function tcSaveCurrentResult_(){
