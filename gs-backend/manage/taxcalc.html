@@ -336,6 +336,14 @@ function parseShareFraction_(raw){
   const n = Number(s.replace(/,/g, ''));
   return isNaN(n) ? null : n;
 }
+// [2026.09.24 신규] 법정상속지분 자동계산(민법§1009)용 — 정수 분자/분모를 최대공약수로
+// 약분해 "3/9" 대신 "1/3"처럼 깔끔한 분수 문자열로 만든다.
+function reduceFraction_(num, den){
+  if (!den) return '';
+  const gcd = function(a, b){ return b ? gcd(b, a % b) : a; };
+  const g = gcd(num, den) || 1;
+  return (num / g) + '/' + (den / g);
+}
 // 실제상속재산가액(협의분할·유언 등에 따른 실제 귀속)은 상속인 명부 입력 시점에는 알 수 없다 —
 // 재산평가 자산목록에서 각 자산을 어느 상속인이 받는지 배분해야 비로소 정해지는 값이기 때문이다.
 // 그래서 상속인 명부에서 지분을 직접 입력받지 않고, 각 자산행의 "상속인별 배분"(heirAllocations)을
@@ -488,6 +496,32 @@ function recomputeHeirDerivedFields(){
   taxCalcHeirRegistryHasSpouse = hasSpouse;
   taxCalcHeirRegistryIsSpouseOnly = isSpouseOnlyHeir;
   taxCalcHeirRegistryHasCohabit = cohabitAmount > 0;
+  // [2026.09.24 신규] 세무사님 지적 — "법정지분은 입력이 아니라 자동으로 반영되어야 한다."
+  // 민법§1009(배우자 1.5 : 그 외 각 1)를 상속인 명부 구성(배우자 유무·공동상속인 수, 위
+  // childHeirs/otherHeirsCount와 같은 기준)으로 자동 계산해 각 상속인 카드에 반영한다.
+  // 대습상속·상속포기 등 예외는 이 자동값으로는 못 잡으므로, 그런 경우엔 세무사가 아래
+  // 실제상속지분에서 직접 조정하도록 안내만 한다(법정지분 자체는 항상 §1009 원칙값).
+  const countedCoHeirs = childHeirs.length > 0 ? childHeirs : heirs.filter(function(h){ return (h.relation || '').indexOf('부모') !== -1; });
+  const totalWeight = (hasSpouse ? 3 : 0) + countedCoHeirs.length * 2; // 1.5:1 비율을 정수(3:2)로 스케일
+  heirs.forEach(function(h, hidx){
+    let statutory = '';
+    if (totalWeight > 0){
+      if (h.relation === '배우자') statutory = reduceFraction_(3, totalWeight);
+      else if (countedCoHeirs.indexOf(h) !== -1) statutory = reduceFraction_(2, totalWeight);
+    }
+    const wasSynced = (h.actualShareRatio || '') === (h.statutoryShareRatio || '');
+    h.statutoryShareRatio = statutory;
+    if (wasSynced) h.actualShareRatio = statutory;
+    const row = document.querySelector('[data-heir-idx="' + hidx + '"]');
+    if (row){
+      const statEl = row.querySelector('[data-hfield="statutoryShareRatio"]');
+      if (statEl) statEl.value = statutory;
+      if (wasSynced){
+        const actEl = row.querySelector('[data-hfield="actualShareRatio"]');
+        if (actEl) actEl.value = statutory;
+      }
+    }
+  });
   recomputeSpouseRatio();
   recomputeGenSkipRatio();
   wireMoneyCapHint_('ihCohabitValue', 'ihCohabitValueHint', 600000000);
@@ -6846,7 +6880,10 @@ function renderHeirRegistry(){
       // 배우자1.5:그 외1)은 참고용으로 직접 입력 — 대습상속·상속포기 등 예외가 있어 자동계산
       // 대신 세무사가 직접 판단해 적는다. 실제상속지분은 법정상속지분을 고치면 같이 따라가되,
       // 한번 직접 고치면(협의분할 등으로 달라지면) 그 뒤로는 따로 논다.
-      '<div class="taxcalc-field"><label>법정상속지분(민법§1009, 참고용)</label><input type="text" data-hfield="statutoryShareRatio" placeholder="1/2" value="' + (h.statutoryShareRatio || '').replace(/"/g,'&quot;') + '"><span class="taxcalc-field-help">배우자는 다른 상속인의 1.5배 — 대습상속·상속포기 등이 있으면 직접 계산해 입력</span></div>' +
+      // [2026.09.24 재수정] 세무사님 지적 — "법정지분은 입력이 아니라 자동으로 반영되어야
+      // 한다." 상속인 명부(배우자 유무·공동상속인 수)로부터 recomputeHeirDerivedFields()가
+      // 자동 계산해 채우는 읽기전용 칸으로 바꾼다(민법§1009 — 배우자 1.5 : 그 외 각 1).
+      '<div class="taxcalc-field"><label>법정상속지분(민법§1009, 자동계산)</label><input type="text" data-hfield="statutoryShareRatio" value="' + (h.statutoryShareRatio || '').replace(/"/g,'&quot;') + '" readonly><span class="taxcalc-field-help">배우자 1.5 : 그 외 상속인 각 1 — 대습상속·상속포기 등 예외가 있으면 아래 실제상속지분에서 직접 조정하세요</span></div>' +
       '<div class="taxcalc-field"><label>실제상속지분(기본값)</label><input type="text" data-hfield="actualShareRatio" placeholder="1/2" value="' + (h.actualShareRatio || '').replace(/"/g,'&quot;') + '"><span class="taxcalc-field-help">협의분할·유언 등으로 확정된 실제 몫 — 자산별 배분에서 기본으로 채워집니다(자산마다 다르면 그 배분 행에서 직접 고치세요)</span></div>' +
       '<div class="taxcalc-field" style="flex-basis:100%; max-width:none;"><span class="taxcalc-result-note" data-heir-computed="actual" style="margin:0;">실제상속재산가액(자동) = ' + won(computeHeirActualValue_(idx)) + ' — 아래 재산평가 자산목록의 "상속인별 배분"에서 정해집니다</span></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="hasPriorGift" id="hPriorGift-' + idx + '"' + (h.hasPriorGift ? ' checked' : '') + '><label for="hPriorGift-' + idx + '">10년 이내 이 상속인에게 사전증여 있음(§13 가산대상)</label></div>' +
@@ -6865,17 +6902,10 @@ function renderHeirRegistry(){
       const row = el.closest('[data-heir-idx]');
       const idx = numVal(row.dataset.heirIdx);
       const key = el.dataset.hfield;
-      // [2026.09.24 신규] 실제상속지분은 법정상속지분을 따라가다가, 세무사가 실제상속지분을
-      // 직접 고치는 순간부터는 따로 논다(협의분할이 법정지분과 달라진 것으로 봄) — 그래서
-      // "따라갈지"는 지금 두 값이 아직 같은지로 판단해야 하니, 덮어쓰기 전에 먼저 확인한다.
-      const h = inheritanceHeirs[idx];
-      const shouldSyncActual = key === 'statutoryShareRatio' && (h.actualShareRatio || '') === (h.statutoryShareRatio || '');
+      // [2026.09.24 재수정] 법정상속지분은 이제 readonly 자동계산 필드라 사용자 입력으로
+      // 안 들어온다(recomputeHeirDerivedFields()가 직접 반영·동기화) — 여기선 실제상속지분
+      // 같은 일반 필드만 그대로 저장한다.
       inheritanceHeirs[idx][key] = el.type === 'checkbox' ? el.checked : el.value;
-      if (shouldSyncActual){
-        h.actualShareRatio = h.statutoryShareRatio;
-        const actualEl = row.querySelector('[data-hfield="actualShareRatio"]');
-        if (actualEl) actualEl.value = h.statutoryShareRatio;
-      }
       if (key === 'isCohabitHouse' || key === 'hasPriorGift'){
         row.querySelectorAll('[data-show-if-heir="' + key + '"]').forEach(function(field){
           field.style.display = el.checked ? 'flex' : 'none';
