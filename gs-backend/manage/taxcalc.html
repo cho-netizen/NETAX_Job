@@ -3356,9 +3356,13 @@ let giftActiveSubtab_ = 'general';
 // 것이 맞잖아." 독립 최상위 탭이었던 재산평가를, 같은 "증여·상속 공통" 성격이라는 이유로
 // 이 하위탭 목록의 첫 자리로 옮긴다(기본 진입 탭도 'val'로).
 let giftInheritanceSharedActiveSubtab_ = 'val';
+// [2026.09.24 재정렬, 재검토74] val(재산평가, §60~66 전반)이 맨 앞, 나머지는 상증세법
+// 조문번호 오름차순(§16→§74·75). ck(사후관리 추징이자)는 특정 조문이 없는 공통 이자산식이라
+// 그 결과를 이어 쓰는 bc(납부유예 사후관리) 바로 뒤에 둔다.
 const GIFT_INHERITANCE_SHARED_SUBTAB_LABELS = {
-  val: '재산평가', cd: '공익법인출연재산 불산입', ip: '연부연납', ck: '사후관리 추징이자', bd: '납부유예 금액계산',
-  bc: '납부유예 사후관리', ik: '물납 적격판정', sv: '물납 수납가액', ch: '문화유산 징수유예', fmv: '시가인정범위'
+  val: '재산평가', cd: '공익법인출연재산 불산입', fmv: '시가인정범위', ip: '연부연납',
+  bd: '납부유예 금액계산', bc: '납부유예 사후관리', ck: '사후관리 추징이자', ik: '물납 적격판정',
+  sv: '물납 수납가액', ch: '문화유산 징수유예'
 };
 
 // 아래 두 함수는 "이 사건에 없는 자산"(취득계약 externalMembers, 자산유형 개념이 없음) 전용
@@ -5162,7 +5166,7 @@ function renderGiftInheritanceSharedPane_(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="cd" style="' + (giftInheritanceSharedActiveSubtab_ === 'cd' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>공익법인 출연재산 과세가액 불산입(§16 상속세·§48① 증여세) — 원칙 전액 불산입, 내국법인 주식등은 합산주식수가 한도비율(10/20/5%) 초과시 그 초과분만 과세가액 산입</b></div>' +
+      '<div class="taxcalc-asset-head"><b>(§16 상속세·§48① 증여세) — 원칙 전액 불산입, 내국법인 주식등은 합산주식수가 한도비율(10/20/5%) 초과시 그 초과분만 과세가액 산입</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>세목</label><select id="cdTaxType"><option value="gift">증여세(§48①)</option><option value="inheritance">상속세(§16)</option></select></div>' +
         '<div class="taxcalc-field"><label>출연재산 구분</label><select id="cdAssetType"><option value="general">일반재산</option><option value="stock">내국법인 의결권있는 주식등</option></select></div>' +
@@ -5183,7 +5187,7 @@ function renderGiftInheritanceSharedPane_(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="ip" style="' + (giftInheritanceSharedActiveSubtab_ === 'ip' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>[별지 제11호서식] 연부연납(다년 분할납부) 계산 — 신고 후 매년 나눠 낼 회차별 세액을 계산합니다</b></div>' +
+      '<div class="taxcalc-asset-head"><b>[별지 제11호서식] (§71) — 신고 후 매년 나눠 낼 회차별 세액을 계산합니다</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>세목</label><select id="ipIhTaxType"><option value="inheritance" selected>상속세</option><option value="gift">증여세</option></select></div>' +
         '<div class="taxcalc-field"><label>총 납부세액</label><input type="number" id="ipIhTotal" placeholder="원"><span class="taxcalc-result-note" id="ipIhTotalHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">2천만원 초과해야 신청 가능</span></div>' +
@@ -5197,7 +5201,7 @@ function renderGiftInheritanceSharedPane_(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="ck" style="' + (giftInheritanceSharedActiveSubtab_ === 'ck' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>사후관리 위반 추징 이자상당액 계산 — 영농자녀 증여농지 감면·창업자금 특례·가업승계 주식등 특례 등 사후관리 위반으로 추징될 때 공통으로 씁니다</b></div>' +
+      '<div class="taxcalc-asset-head"><b>영농자녀 증여농지 감면·창업자금 특례·가업승계 주식등 특례 등 사후관리 위반으로 추징될 때 공통으로 씁니다</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>추징세액(당초 감면·특례로 줄었던 세액)</label><input type="number" id="ckAmount" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>이자 기산일</label><input type="date" id="ckStartDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">당초 신고기한 다음날 등</span></div>' +
@@ -5209,7 +5213,7 @@ function renderGiftInheritanceSharedPane_(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="bd" style="' + (giftInheritanceSharedActiveSubtab_ === 'bd' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>가업상속납부유예(§72의2)·가업승계증여세납부유예(조특법§30의7) 납부유예금액 계산 — 얼마까지 유예받을 수 있는지 계산합니다</b></div>' +
+      '<div class="taxcalc-asset-head"><b>(§72의2·조특법§30의7) — 얼마까지 유예받을 수 있는지 계산합니다</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>적용 조문</label><select id="bdProvision">' +
           '<option value="inheritance">§72의2(가업상속납부유예)</option>' +
@@ -5225,7 +5229,7 @@ function renderGiftInheritanceSharedPane_(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="bc" style="' + (giftInheritanceSharedActiveSubtab_ === 'bc' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>가업상속납부유예(§72의2)·가업승계증여세납부유예(조특법§30의7) 사후관리 추징 판정 — 추징세액이 나오면 위 "사후관리 위반 추징 이자상당액 계산"에 이 추징세액과 납부유예 허가일·사유발생일을 넣어 이자상당액을 마저 계산하세요</b></div>' +
+      '<div class="taxcalc-asset-head"><b>(§72의2·조특법§30의7) — 추징세액이 나오면 옆 "사후관리 추징이자" 탭에 이 추징세액과 납부유예 허가일·사유발생일을 넣어 이자상당액을 마저 계산하세요</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>적용 조문</label><select id="bcProvision">' +
           '<option value="inheritance">§72의2(가업상속납부유예)</option>' +
@@ -5253,7 +5257,7 @@ function renderGiftInheritanceSharedPane_(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="ik" style="' + (giftInheritanceSharedActiveSubtab_ === 'ik' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>물납 적용 가능 여부 판정(상증세법§73 일반물납·§73의2 문화유산등물납) — 요건 충족 여부만 판정하며, 물납충당재산의 구체적 범위·수납가액 산정(시행령 사항)은 다루지 않습니다. 상속세 전용입니다(증여세는 현행법상 물납 대상이 아닙니다)</b></div>' +
+      '<div class="taxcalc-asset-head"><b>(상증세법§73 일반물납·§73의2 문화유산등물납) — 요건 충족 여부만 판정하며, 물납충당재산의 구체적 범위·수납가액 산정(시행령 사항)은 다루지 않습니다. 상속세 전용입니다(증여세는 현행법상 물납 대상이 아닙니다)</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>물납 종류</label><select id="ikProvision">' +
           '<option value="general">§73(일반물납)</option>' +
@@ -5272,7 +5276,7 @@ function renderGiftInheritanceSharedPane_(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="sv" style="' + (giftInheritanceSharedActiveSubtab_ === 'sv' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>물납충당재산(주식) 수납가액 계산(시행규칙§20의2) — 상속개시일부터 물납수납일까지 신주발행·감자가 있었던 경우에만 씁니다(그 외에는 수납가액=상속재산의 가액). 상속세 전용입니다</b></div>' +
+      '<div class="taxcalc-asset-head"><b>(시행규칙§20의2) — 상속개시일부터 물납수납일까지 신주발행·감자가 있었던 경우에만 씁니다(그 외에는 수납가액=상속재산의 가액). 상속세 전용입니다</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>구분</label><select id="svChangeType">' +
           '<option value="free_increase">무상증자</option>' +
@@ -5292,7 +5296,7 @@ function renderGiftInheritanceSharedPane_(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="ch" style="' + (giftInheritanceSharedActiveSubtab_ === 'ch' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>지정문화유산 등에 대한 상속세·증여세 징수유예(상증세법§74·§75) — 문화유산자료등·박물관자료등·국가지정문화유산등·천연기념물등에 상당하는 세액의 징수를 유예합니다</b></div>' +
+      '<div class="taxcalc-asset-head"><b>(상증세법§74·§75) — 문화유산자료등·박물관자료등·국가지정문화유산등·천연기념물등에 상당하는 세액의 징수를 유예합니다</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>세목</label><select id="chTaxType"><option value="inheritance">상속세(§74)</option><option value="gift">증여세(§75, 박물관자료등만 가능)</option></select></div>' +
         '<div class="taxcalc-field"><label>재산 종류</label><select id="chItemType">' +
@@ -5318,7 +5322,7 @@ function renderGiftInheritanceSharedPane_(){
     // 추가분), 시가인정범위판정 카드가 문화유산징수유예 카드 "안에" 중첩되어 그려지고 있었다.
     '<div class="taxcalc-subpane" data-subpane="fmv" style="' + (giftInheritanceSharedActiveSubtab_ === 'fmv' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>시가 인정범위 판정(§60②, 시행령§49) — 매매·감정·수용·경매·공매 증거가액을 다른 계산기의 "시가"로 쓰기 전에, 평가기간·특수관계인거래·비상장주식 최소요건·감정가액 기준금액을 확인합니다(상속·증여 공통)</b></div>' +
+      '<div class="taxcalc-asset-head"><b>(§60②, 시행령§49) — 매매·감정·수용·경매·공매 증거가액을 다른 계산기의 "시가"로 쓰기 전에, 평가기간·특수관계인거래·비상장주식 최소요건·감정가액 기준금액을 확인합니다(상속·증여 공통)</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>세목</label><select id="fmvTaxType">' +
           '<option value="gift">증여(평가기준일 전 6개월~후 3개월)</option>' +
@@ -6219,10 +6223,13 @@ function renderValuationPane(){
     '<div id="giftValuationList"></div>';
   renderValuationAssetList('giftValuationList', giftValuationAssets_());
 }
+// [2026.09.24 재정렬, 재검토74] 세무사님 지시 — "탭 순서를 법령순서 오름차순으로 배치."
+// general(전체 개관)이 맨 앞, 나머지는 상증세법 조문번호 오름차순(§40→§45의5), 상증세법이
+// 아닌 조특법 특례(sr)는 맨 뒤.
 const GIFT_SUBTAB_LABELS = {
-  general: '일반 증여세', nt: '명의신탁 증여의제', pf: '재산취득자금 증여추정', jm: '일감몰아주기',
-  jt: '일감떼어주기', sl: '상장·합병이익', pv: '재산가치증가이익', cb: '전환사채등 이익',
-  sc: '특정법인 거래', ed: '초과배당이익', sr: '특례세율(창업·가업승계)'
+  general: '일반 증여세', cb: '전환사채등 이익', ed: '초과배당이익', sl: '상장·합병이익',
+  pv: '재산가치증가이익', pf: '재산취득자금 증여추정', nt: '명의신탁 증여의제', jm: '일감몰아주기',
+  jt: '일감떼어주기', sc: '특정법인 거래', sr: '특례세율(창업·가업승계)'
 };
 function renderGiftPane(){
   taxCalcGiftPane.innerHTML =
@@ -6284,7 +6291,7 @@ function renderGiftPane(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="sr" style="' + (giftActiveSubtab_ === 'sr' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>[별지 제10호의2서식] 조특법§30의5·§30의6 증여세 과세특례(창업자금·가업승계주식) — 해당하는 경우에만 별도로 계산합니다. 일반 증여세와는 세율·공제·한도가 전혀 다릅니다.</b></div>' +
+      '<div class="taxcalc-asset-head"><b>[별지 제10호의2서식] (조특법§30의5·§30의6) — 해당하는 경우에만 별도로 계산합니다. 일반 증여세와는 세율·공제·한도가 전혀 다릅니다.</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>특례 종류</label><select id="srGiftType">' +
           '<option value="startup">창업자금(§30의5)</option><option value="business_succession">가업승계 주식등(§30의6)</option>' +
@@ -6337,7 +6344,7 @@ function renderGiftPane(){
     // 국외자산과 같은 패턴으로 6개를 각각 독립된 하위탭으로 분리한다.
     '<div class="taxcalc-subpane" data-subpane="nt" style="' + (giftActiveSubtab_ === 'nt' ? '' : 'display:none;') + '">' +
       '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>명의신탁재산의 증여 의제(§45의2) — 등기·등록·명의개서가 필요한 재산(주식등, 토지·건물 제외)의 실제소유자와 명의자가 다를 때. 증여재산공제 없이 재산가액 전액이 과세표준입니다</b></div>' +
+      '<div class="taxcalc-asset-head"><b>(§45의2) — 등기·등록·명의개서가 필요한 재산(주식등, 토지·건물 제외)의 실제소유자와 명의자가 다를 때. 증여재산공제 없이 재산가액 전액이 과세표준입니다</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>명의신탁재산의 가액</label><input type="number" id="ntPropertyValue" placeholder="원"><span class="taxcalc-field-help">명의개서일 또는 소유권취득일이 속한 해의 다음 해 말일의 다음 날 현재 평가액</span></div>' +
         '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="ntAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
@@ -6375,7 +6382,7 @@ function renderGiftPane(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="pf" style="' + (giftActiveSubtab_ === 'pf' ? '' : 'display:none;') + '">' +
       '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>재산 취득자금 등의 증여 추정(§45) — 자력취득 능력이 부족한 사람이 재산을 취득(또는 채무를 상환)했는데 그 자금출처를 입증하지 못하면, 미입증금액을 증여받은 것으로 추정합니다(자금출처조사)</b></div>' +
+      '<div class="taxcalc-asset-head"><b>(§45) — 자력취득 능력이 부족한 사람이 재산을 취득(또는 채무를 상환)했는데 그 자금출처를 입증하지 못하면, 미입증금액을 증여받은 것으로 추정합니다(자금출처조사)</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>취득재산의 가액(또는 채무 상환금액)</label><input type="number" id="afTotalValue" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>자금출처로 입증된 금액 합계</label><input type="number" id="afProvenAmount" placeholder="원"><span class="taxcalc-field-help">신고·과세된 소득·상속·수증재산가액, 재산처분대가 등 — 없으면 0</span></div>' +
@@ -6399,7 +6406,7 @@ function renderGiftPane(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="jm" style="' + (giftActiveSubtab_ === 'jm' ? '' : 'display:none;') + '">' +
       '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>[별지 제10호의3서식] 일감몰아주기 증여의제(§45의3) — 지배주주+친족이 지분을 가진 법인이 특수관계법인과 매출비중이 높고 지분율도 높을 때 과세</b></div>' +
+      '<div class="taxcalc-asset-head"><b>[별지 제10호의3서식] (§45의3) — 지배주주+친족이 지분을 가진 법인이 특수관계법인과 매출비중이 높고 지분율도 높을 때 과세</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>수혜법인 기업규모</label><select id="jmCompanySize">' +
           '<option value="general">일반(중견·중소 아님)</option><option value="medium">중견기업</option><option value="small">중소기업</option>' +
@@ -6432,7 +6439,7 @@ function renderGiftPane(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="jt" style="' + (giftActiveSubtab_ === 'jt' ? '' : 'display:none;') + '">' +
       '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>[별지 제10호의4서식] 일감떼어주기 증여의제(§45의4) — 특수관계법인의 사업기회를 지분 30% 이상 보유한 법인에 제공했을 때 과세. 개시사업연도에 잠정신고 후 2년 경과 시 정산사업연도로 반드시 재계산</b></div>' +
+      '<div class="taxcalc-asset-head"><b>[별지 제10호의4서식] (§45의4) — 특수관계법인의 사업기회를 지분 30% 이상 보유한 법인에 제공했을 때 과세. 개시사업연도에 잠정신고 후 2년 경과 시 정산사업연도로 반드시 재계산</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>신고 단계</label><select id="jtPhase">' +
           '<option value="initial">개시사업연도(잠정)</option><option value="settlement">정산사업연도(2년 경과, 확정)</option>' +
@@ -6465,7 +6472,7 @@ function renderGiftPane(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="sl" style="' + (giftActiveSubtab_ === 'sl' ? '' : 'display:none;') + '">' +
       '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>주식등 상장·합병에 따른 이익의 증여(§41의3·§41의5) — 최대주주등의 특수관계인이 증여·유상취득한 주식이 5년 이내 상장되거나 특수관계 상장법인과 합병되어 가치가 증가했을 때</b></div>' +
+      '<div class="taxcalc-asset-head"><b>(§41의3·§41의5) — 최대주주등의 특수관계인이 증여·유상취득한 주식이 5년 이내 상장되거나 특수관계 상장법인과 합병되어 가치가 증가했을 때</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>구분</label><select id="slProvision">' +
           '<option value="listing">주식등의 상장(§41의3)</option><option value="merger">합병에 따른 상장(§41의5)</option>' +
@@ -6496,7 +6503,7 @@ function renderGiftPane(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="pv" style="' + (giftActiveSubtab_ === 'pv' ? '' : 'display:none;') + '">' +
       '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>재산 취득 후 재산가치 증가에 따른 이익의 증여(§42의3) — 자력없는 자가 특수관계인으로부터 증여·차입 등으로 재산을 취득한 후 5년 이내 개발사업·형질변경 등으로 재산가치가 증가한 경우</b></div>' +
+      '<div class="taxcalc-asset-head"><b>(§42의3) — 자력없는 자가 특수관계인으로부터 증여·차입 등으로 재산을 취득한 후 5년 이내 개발사업·형질변경 등으로 재산가치가 증가한 경우</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>재산가치증가사유 발생일 현재 재산가액</label><input type="number" id="pvEventValue" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>취득가액</label><input type="number" id="pvAcquisitionCost" placeholder="원"><span class="taxcalc-field-help">증여받은 재산이면 그 증여세 과세가액</span></div>' +
@@ -6529,7 +6536,7 @@ function renderGiftPane(){
     // 이번에 새 필드(crFaceValue)로 같이 고쳤다.
     '<div class="taxcalc-subpane" data-subpane="cb" style="' + (giftActiveSubtab_ === 'cb' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>전환사채등의 주식전환등에 따른 이익의 증여(§40) — 전환사채·신주인수권부사채 등을 인수·취득·양도하거나 주식전환등을 할 때</b></div>' +
+      '<div class="taxcalc-asset-head"><b>(§40) — 전환사채·신주인수권부사채 등을 인수·취득·양도하거나 주식전환등을 할 때</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>케이스 구분</label><select id="cbCaseType">' +
           '<option value="acquisition">취득시(법1호 — 저가취득)</option>' +
@@ -6590,7 +6597,7 @@ function renderGiftPane(){
     // 판단해야 한다는 안내는 각 탭 카드 제목에 그대로 남긴다.
     '<div class="taxcalc-subpane" data-subpane="sc" style="' + (giftActiveSubtab_ === 'sc' ? '' : 'display:none;') + '">' +
       '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>⚠ 특정법인과의 거래를 통한 이익의 증여의제(§45의5, 지배주주 지분 30%이상 법인이 지배주주의 특수관계인과 무상제공·저가양도·고가양수·불균등 자본거래 등을 할 때) — 합산이 필요하지만 이 도구가 자동 합산하지 못합니다. 계산 후 위 일반 증여세의 증여재산가액에 반영할지 직접 판단하세요.</b></div>' +
+      '<div class="taxcalc-asset-head"><b>⚠ (§45의5, 지배주주 지분 30%이상 법인이 지배주주의 특수관계인과 무상제공·저가양도·고가양수·불균등 자본거래 등을 할 때) — 합산이 필요하지만 이 도구가 자동 합산하지 못합니다. 계산 후 위 일반 증여세의 증여재산가액에 반영할지 직접 판단하세요.</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>특정법인이 얻는 이익</label><input type="number" id="scBenefitToCorp" placeholder="원"><span class="taxcalc-field-help">증여재산가액·채무면제이익·자본거래이익·시가차액 등, 별도 계산</span></div>' +
         '<div class="taxcalc-field"><label>특정법인의 법인세 산출세액(공제·감면 차감후)</label><input type="number" id="scCorpTax" placeholder="원"></div>' +
@@ -6620,7 +6627,7 @@ function renderGiftPane(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="ed" style="' + (giftActiveSubtab_ === 'ed' ? '' : 'display:none;') + '">' +
       '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>⚠ 초과배당에 따른 이익의 증여(§41의2, 최대주주등이 배당을 포기하거나 불균등 조건으로 배당받아 그 특수관계인이 본인 지분보다 많은 배당을 받았을 때) — 합산이 필요하지만 이 도구가 자동 합산하지 못합니다. 계산 후 위 일반 증여세의 증여재산가액에 반영할지 직접 판단하세요.</b></div>' +
+      '<div class="taxcalc-asset-head"><b>⚠ (§41의2, 최대주주등이 배당을 포기하거나 불균등 조건으로 배당받아 그 특수관계인이 본인 지분보다 많은 배당을 받았을 때) — 합산이 필요하지만 이 도구가 자동 합산하지 못합니다. 계산 후 위 일반 증여세의 증여재산가액에 반영할지 직접 판단하세요.</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" id="edFinalSettlement"><label for="edFinalSettlement">정산 신고임(실제소득세액 기준, 체크 안 하면 최초 신고=추정소득세상당액 기준)</label></div>' +
         '<div class="taxcalc-field"><label>특수관계인이 실제 받은 배당등의 금액</label><input type="number" id="edBaseAmount" placeholder="원"></div>' +
