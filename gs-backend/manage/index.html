@@ -108,7 +108,6 @@
             <button type="button" class="taxcalc-tab" data-tab="gift">증여세</button>
             <button type="button" class="taxcalc-tab" data-tab="inheritance">상속세</button>
             <button type="button" class="taxcalc-tab" data-tab="giftinheritanceshared">증여·상속 공통</button>
-            <button type="button" class="taxcalc-tab" data-tab="valuation">재산평가</button>
             <button type="button" class="taxcalc-tab" data-tab="acquisition">취득세</button>
             <button type="button" class="taxcalc-tab" data-tab="registrationlicense">등록면허세</button>
             <button type="button" class="taxcalc-tab" data-tab="standardprice">건물기준시가</button>
@@ -118,13 +117,14 @@
             <div id="taxCalcTransferPane" class="taxcalc-pane"></div>
             <div id="taxCalcGiftPane" class="taxcalc-pane" style="display:none;"></div>
             <div id="taxCalcInheritancePane" class="taxcalc-pane" style="display:none;"></div>
-            <!-- [2026.09.24 재구성, 재검토70] 증여세·상속세 어느 쪽에서도 계산 가능한 도구
-                 (연부연납·이자상당액·공익법인출연·가업승계납부유예·물납 등) 9개 — 두 세목
-                 화면에 중복으로 뜨던 것을, 양도세·취득세와 같은 레벨의 독립 탭으로 분리하고
-                 그 안에서 9개를 다시 하위탭으로 나눴다(renderGiftInheritanceSharedPane_). -->
+            <!-- [2026.09.24 재구성, 재검토70·71] "증여·상속 공통" — 증여세·상속세 어느 쪽에서도
+                 쓰는 도구들을 모은 독립 탭. 재산평가(상증세법§60~66, 증여재산·상속재산 선행
+                 입력·평가 — 배분은 증여세·상속세 각 탭에서 함)도 "공통"이라는 같은 이유로
+                 재검토71에서 별도 최상위 탭에서 이 안의 첫 하위탭으로 옮겨왔다. taxCalcValuationPane은
+                 이 컨테이너의 innerHTML 재생성에 안 휩쓸리도록 형제 요소로 남기고, 표시 여부만
+                 giftInheritanceSharedActiveSubtab_==='val'에 연동한다(renderGiftInheritanceSharedPane_
+                 참고). 나머지 9개 도구 하위탭은 그 안에서 직접 렌더링. -->
             <div id="taxCalcGiftInheritanceSharedPane" class="taxcalc-pane" style="display:none;"></div>
-            <!-- [2026.09.24 신규] 재산평가(상증세법§60~66) 독립 탭 — 증여재산·상속재산을 여기서
-                 선행 입력·평가하고, 증여세·상속세 탭에서는 배분(누구 몫인지)만 한다. -->
             <div id="taxCalcValuationPane" class="taxcalc-pane" style="display:none;"></div>
             <div id="taxCalcAcquisitionPane" class="taxcalc-pane" style="display:none;"></div>
             <div id="taxCalcRegistrationLicensePane" class="taxcalc-pane" style="display:none;"></div>

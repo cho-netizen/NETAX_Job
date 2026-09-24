@@ -3235,9 +3235,12 @@ let giftActiveSubtab_ = 'general';
 // 증여·상속 어느 탭에서도 보이는 공유패널 방식에서, 아예 독립된 최상위 탭(양도세/취득세와
 // 같은 레벨) + 그 안에서 9개를 각각 하위탭으로 분리하는 방식으로 재구성 — 두 탭에 중복 노출되는
 // 문제와, 한 화면에 다 늘어놓아 안 읽히던 문제를 동시에 해결한다.
-let giftInheritanceSharedActiveSubtab_ = 'cd';
+// [2026.09.24 신규, 재검토71] 세무사님 지적 — "재산평가도 공통이니까 공통 속으로 들어가는
+// 것이 맞잖아." 독립 최상위 탭이었던 재산평가를, 같은 "증여·상속 공통" 성격이라는 이유로
+// 이 하위탭 목록의 첫 자리로 옮긴다(기본 진입 탭도 'val'로).
+let giftInheritanceSharedActiveSubtab_ = 'val';
 const GIFT_INHERITANCE_SHARED_SUBTAB_LABELS = {
-  cd: '공익법인출연재산 불산입', ip: '연부연납', ck: '사후관리 추징이자', bd: '납부유예 금액계산',
+  val: '재산평가', cd: '공익법인출연재산 불산입', ip: '연부연납', ck: '사후관리 추징이자', bd: '납부유예 금액계산',
   bc: '납부유예 사후관리', ik: '물납 적격판정', sv: '물납 수납가액', ch: '문화유산 징수유예', fmv: '시가인정범위'
 };
 
@@ -7628,7 +7631,10 @@ function updateTaxCalcPaneVisibility(){
   // 같이 보이던 공유패널을, 양도세·취득세와 같은 레벨의 독립된 최상위 탭으로 분리했다
   // (그 안에서 9개는 다시 하위탭으로 나뉜다 — renderGiftInheritanceSharedPane_() 참고).
   taxCalcGiftInheritanceSharedPane.style.display = which === 'giftinheritanceshared' ? 'block' : 'none';
-  taxCalcValuationPane.style.display = which === 'valuation' ? 'block' : 'none';
+  // [2026.09.24 신규, 재검토71] 재산평가를 "증여·상속 공통" 탭의 첫 하위탭으로 옮겼다 — 이
+  // 요소는 taxCalcGiftInheritanceSharedPane의 형제(innerHTML 재생성에 안 휩쓸리도록 그대로
+  // 둠)라서, 표시 조건도 최상위 탭 자체가 아니라 "그 탭이면서 하위탭이 재산평가일 때"로 건다.
+  taxCalcValuationPane.style.display = (which === 'giftinheritanceshared' && giftInheritanceSharedActiveSubtab_ === 'val') ? 'block' : 'none';
   taxCalcAcquisitionPane.style.display = which === 'acquisition' ? 'block' : 'none';
   taxCalcRegistrationLicensePane.style.display = which === 'registrationlicense' ? 'block' : 'none';
   taxCalcStandardPricePane.style.display = which === 'standardprice' ? 'block' : 'none';
@@ -7700,10 +7706,12 @@ taxCalcView.addEventListener('click', function(e){
     taxCalcGiftPane.querySelectorAll('.taxcalc-subtab').forEach(function(t){ t.classList.toggle('active', t.dataset.subtab === giftActiveSubtab_); });
     taxCalcGiftPane.querySelectorAll('[data-subpane]').forEach(function(p){ p.style.display = (p.dataset.subpane === giftActiveSubtab_) ? '' : 'none'; });
   } else if (action === 'switch-gift-inheritance-shared-subtab'){
-    // [2026.09.24 신규, 재검토70] 증여·상속 공유도구 9개도 같은 하위탭 전환 패턴.
+    // [2026.09.24 신규, 재검토70·71] 증여·상속 공유도구 9개+재산평가도 같은 하위탭 전환
+    // 패턴. 재산평가(taxCalcValuationPane)만 이 컨테이너 밖의 형제 요소라 따로 토글한다.
     giftInheritanceSharedActiveSubtab_ = btn.dataset.subtab;
     taxCalcGiftInheritanceSharedPane.querySelectorAll('.taxcalc-subtab').forEach(function(t){ t.classList.toggle('active', t.dataset.subtab === giftInheritanceSharedActiveSubtab_); });
     taxCalcGiftInheritanceSharedPane.querySelectorAll('[data-subpane]').forEach(function(p){ p.style.display = (p.dataset.subpane === giftInheritanceSharedActiveSubtab_) ? '' : 'none'; });
+    taxCalcValuationPane.style.display = giftInheritanceSharedActiveSubtab_ === 'val' ? 'block' : 'none';
   } else if (action === 'del-asset'){
     const idx = numVal(btn.dataset.idx);
     transferAssets.splice(idx, 1);
@@ -7812,10 +7820,15 @@ taxCalcView.addEventListener('click', function(e){
       setTimeout(function(){ card.classList.remove('help-flash'); }, 1600);
     }
   } else if (action === 'jump-to-valuation-tab'){
-    // [2026.09.24 신규] 증여세·상속세 탭에서 "재산평가 탭에서 하세요" 안내 링크 — 실제로
-    // 그 탭으로 전환까지 해줘야 실행 가능한 안내가 된다(재검토58~59 기준).
+    // [2026.09.24 신규, 재검토71 갱신] 증여세·상속세 탭에서 "재산평가 탭에서 하세요" 안내
+    // 링크 — 실제로 그 탭으로 전환까지 해줘야 실행 가능한 안내가 된다(재검토58~59 기준).
+    // 재산평가가 "증여·상속 공통" 탭의 하위탭으로 옮겨져, 최상위 탭 전환과 하위탭 전환을
+    // 둘 다 해줘야 한다.
     e.preventDefault();
-    document.querySelectorAll('.taxcalc-tab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab === 'valuation'); });
+    document.querySelectorAll('.taxcalc-tab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab === 'giftinheritanceshared'); });
+    giftInheritanceSharedActiveSubtab_ = 'val';
+    taxCalcGiftInheritanceSharedPane.querySelectorAll('.taxcalc-subtab').forEach(function(t){ t.classList.toggle('active', t.dataset.subtab === 'val'); });
+    taxCalcGiftInheritanceSharedPane.querySelectorAll('[data-subpane]').forEach(function(p){ p.style.display = 'none'; });
     updateTaxCalcPaneVisibility();
     const sectionHead = btn.dataset.jumpTaxtype === 'inheritance'
       ? Array.from(taxCalcValuationPane.querySelectorAll('.taxcalc-asset-head')).find(function(h){ return h.textContent === '상속재산'; })
