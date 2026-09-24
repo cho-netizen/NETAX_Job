@@ -2327,6 +2327,9 @@ let giftDonors = [{}];
 // 같은 패턴(카드 목록)이나, 계산은 증여자 단위가 아니라 "증여자×수증인 쌍" 단위로 이뤄진다
 // (아래 donorAllocations의 doneeIdx 확장 및 run-gift 참고).
 let giftDonees = [{}];
+// [2026.09.25 신규, 재검토77] 전자신고파일 생성용 — run-gift가 마지막으로 계산한 (증여자×수증인)
+// 쌍별 결과 배열을 보관해둔다(상속세의 lastInheritanceResult와 같은 역할).
+let lastGiftResults_ = null;
 
 // [2026.09 버그수정] "임대 중인 부동산(임대료환산가액)"이 예전엔 독립된 평가방법이었다 — 그런데
 // 상증세법§61⑤은 임대료환산가액을 "그 자체로 쓰는 방법"이 아니라 "일반 평가방법(기준시가 등)과
@@ -5120,6 +5123,11 @@ function renderGiftDoneeRegistry(){
         '</select></div>' +
         '<div class="taxcalc-field"><label>호</label><input type="text" data-dnfield="addressHo"' + idOf('giftDoneeHo') + ' value="' + (dn.addressHo || '').replace(/"/g, '&quot;') + '" placeholder="예: 1502호"></div>' +
         '<div class="taxcalc-field"><label style="visibility:hidden;">관할세무서</label><input type="hidden" data-dnfield="taxOffice" id="giftDoneeTaxOffice' + suf + '" value="' + (dn.taxOffice || '').replace(/"/g, '&quot;') + '"><button type="button" class="taxcalc-ai-btn" data-action="open-tax-office-guide" data-address-input="giftDoneeAddress' + suf + '" data-office-input="giftDoneeTaxOffice' + suf + '">관할세무서</button></div>' +
+        // [2026.09.25 신규, 재검토77] 전자신고파일(기본사항 레코드)의 "수증자_전화번호"는
+        // Not Null 필수항목인데 여태 입력칸이 없었다.
+        '<div class="taxcalc-field"><label>전화번호</label><input type="text" data-dnfield="phone" value="' + (dn.phone || '').replace(/"/g, '&quot;') + '" placeholder="02 1234 5678"><span class="taxcalc-field-help">전자신고파일용</span></div>' +
+        '<input type="hidden" data-dnfield="admCd" value="' + (dn.admCd || '').replace(/"/g, '&quot;') + '"><input type="hidden" data-dnfield="mtYn" value="' + (dn.mtYn || '0') + '">' +
+        '<input type="hidden" data-dnfield="lnbrMnnm" value="' + (dn.lnbrMnnm || '') + '"><input type="hidden" data-dnfield="lnbrSlno" value="' + (dn.lnbrSlno || '') + '">' +
         '<div class="taxcalc-field"><label>거주구분</label><select data-dnfield="resident"' + idOf('giftDoneeResident') + '><option value="resident"' + (dn.resident !== 'nonresident' ? ' selected' : '') + '>거주자</option><option value="nonresident"' + (dn.resident === 'nonresident' ? ' selected' : '') + '>비거주자</option></select><span class="taxcalc-field-help">국내에 주소를 두거나 183일 이상 거소를 둔 사람=거주자. 비거주자면 증여재산공제(§53)·혼인출산증여재산공제(§53의2)를 받을 수 없습니다</span></div>' +
         '<div class="taxcalc-field"><span class="taxcalc-result-note" data-donee-minor-hint="1" style="margin:0;"></span></div>' +
         // [2026.09.24 신규] 증여자 카드의 "증여지분(기본값)"과 같은 패턴 — 수증인이 여러 명일 때
@@ -6550,6 +6558,13 @@ function renderGiftPane(){
     '</div>' +
     '<button type="button" class="taxcalc-run-btn" data-action="run-gift">세액 계산하기</button>' +
     '<div id="taxCalcGiftResult"></div>' +
+    // [2026.09.25 신규, 재검토77] 서식·전자신고 — 상속세와 같은 1단계(신고서 본체만).
+    '<div class="taxcalc-asset" style="margin-top:20px;">' +
+      '<div class="taxcalc-asset-head"><b>서식·전자신고 — 증여세과세표준신고 및 자진납부계산서(G101500)</b></div>' +
+      '<div class="taxcalc-result-note">위에서 "세액 계산하기"를 먼저 실행한 뒤 이용하세요. 증여자·수증인 조합마다 별도 신고서로 만들어 한 파일에 이어붙입니다 — 증여재산및평가명세서 등 첨부서식은 아직 포함되지 않습니다.</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="check-gf-efile" style="margin-top:8px;">전자신고파일 작성하기</button>' +
+      '<div id="taxCalcGfEfileResult" style="margin-top:8px;"></div>' +
+    '</div>' +
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="sr" style="' + (giftActiveSubtab_ === 'sr' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
@@ -7047,6 +7062,187 @@ function renderGiftPane(){
       '</div>' +
     '</div>' +
     '</div>' ;
+}
+
+// ============================================================
+// [2026.09.25 신규, 재검토77] 증여세 전자신고파일 생성 — 상속세(재검토76)와 같은 1단계
+// 구현(신고서 본체만, 국세청 "홈택스 증여세 전자신고 파일제출 설명서" 2025.10 규격, 서식코드
+// G101500). 인코딩·패딩 유틸(ihPadChar_ 등)은 세목 전용이 아니라 공용이라 그대로 재사용한다.
+// 증여세는 상속세와 달리 "증여자×수증인" 조합마다 별도 신고서가 필요해(각자 관계별공제·세율
+// 누진이 독립적), run-gift가 계산한 lastGiftResults_ 배열의 각 항목마다 HEAD+기본사항+세액계산
+// 3개 레코드를 만들어 한 파일에 이어붙인다.
+// ============================================================
+const GF_EFILE_FORM_CODE_ = 'G101500';
+
+function gfHeadRecord_(doneeRegNo, giftDate){
+  const ym = giftDate ? giftDate.slice(0, 4) + giftDate.slice(5, 7) : '';
+  const now = new Date();
+  const submitYm = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0');
+  let b = [];
+  b = b.concat(ihPadChar_('01', 2));               // 1 자료구분
+  b = b.concat(ihPadChar_(GF_EFILE_FORM_CODE_, 7)); // 2 서식코드
+  b = b.concat(ihPadChar_(ihOnlyDigits_(doneeRegNo), 13)); // 3 납세자ID(수증자 주민번호)
+  b = b.concat(ihPadChar_('33', 2));               // 4 세목코드(증여세)
+  b = b.concat(ihPadChar_('01', 2));               // 5 신고구분코드(정기)
+  b = b.concat(ihPadChar_('01', 2));               // 6 신고구분상세코드(정기신고)
+  b = b.concat(ihPadChar_('D21', 3));              // 7 신고서종류코드(증여세 기본세율)
+  b = b.concat(ihPadChar_('1', 1));                // 8 납세자구분(정상)
+  b = b.concat(ihPadChar_(ym, 6));                 // 9 과세기간_년월(증여년월)
+  b = b.concat(ihPadChar_('', 20));                // 10 사용자ID
+  b = b.concat(ihPadChar_('', 30));                // 11 세무대리인성명
+  b = b.concat(ihPadChar_('', 6));                 // 12 세무대리인관리번호
+  b = b.concat(ihPadChar_('', 14));                // 13 세무대리인전화번호
+  b = b.concat(ihPadChar_('', 10));                // 14 세무대리인사업자번호
+  b = b.concat(ihPadChar_('9000', 4));             // 15 세무프로그램코드
+  b = b.concat(ihPadChar_(submitYm, 6));           // 16 제출년월
+  b = b.concat(ihPadChar_(ym, 6));                 // 17 지급년월
+  b = b.concat(ihPadChar_('FD021', 5));            // 18 민원종류코드(증여세 기본세율신고서)
+  b = b.concat(ihPadChar_('', 61));                // 19 공란
+  return b;
+}
+
+function gfBasicRecord_(donee, donor, giftDate, doneeIdx){
+  let b = [];
+  b = b.concat(ihPadChar_('02', 2));                          // 1 자료구분
+  b = b.concat(ihPadChar_(GF_EFILE_FORM_CODE_, 7));            // 2 서식코드
+  b = b.concat(ihPadChar_(ihOnlyDigits_(donee.regNo), 13));    // 3 수증자_주민등록번호
+  b = b.concat(ihPadChar_(donee.name, 30));                    // 4 수증자_성명
+  b = b.concat(ihPadChar_(donee.admCd, 10));                   // 5 수증자_법정동코드
+  b = b.concat(ihPadChar_('', 60));                            // 6 수증자_법정동명
+  b = b.concat(ihPadChar_(donee.mtYn === '1' ? '산' : '', 4)); // 7 수증자_산번지
+  b = b.concat(ihPadNum_(donee.lnbrMnnm, 4));                  // 8 수증자_번지
+  b = b.concat(ihPadNum_(donee.lnbrSlno, 4));                  // 9 수증자_호
+  b = b.concat(ihPadChar_('', 20));                            // 10 수증자_블록
+  b = b.concat(ihPadChar_(donee.addressDong, 4));              // 11 수증자_아파트동
+  b = b.concat(ihPadChar_(donee.addressHo, 4));                // 12 수증자_아파트호
+  b = b.concat(ihPadNum_(0, 4));                               // 13 수증자_통
+  b = b.concat(ihPadNum_(0, 4));                               // 14 수증자_반
+  b = b.concat(ihPadChar_('', 70));                            // 15 수증자_이메일
+  b = b.concat(ihPadChar_(donee.phone, 14));                   // 16 수증자_전화번호
+  b = b.concat(ihPadChar_(ihOnlyDigits_(donor.regNo), 13));    // 17 증여자_주민등록번호
+  b = b.concat(ihPadChar_(donor.name, 30));                    // 18 증여자_성명
+  b = b.concat(ihPadChar_(donor.address, 70));                 // 19 증여자_주소
+  b = b.concat(ihPadChar_(donor.phone, 14));                   // 20 증여자_전화번호
+  b = b.concat(ihDateField_(giftDate));                        // 21 증여일자
+  b = b.concat(ihPadChar_('', 2));                             // 22 증여자와의 관계(코드표 필요 — 다음 단계, 잠정 공란)
+  b = b.concat(ihPadChar_(taxCalcGiftDoneeIsMinor(doneeIdx || 0) ? 'Y' : 'N', 1)); // 23 미성년자 구분
+  b = b.concat(ihPadChar_('N', 1));                            // 24 세대를 건너뛴 구분(잠정 N — genSkip 반영은 다음 단계)
+  b = b.concat(ihPadChar_(donee.resident === 'nonresident' ? 'Y' : 'N', 1)); // 25 비거주자구분
+  b = b.concat(ihPadChar_('', 10));                            // 26 수증자_법정동코드(행안부, 공란)
+  b = b.concat(ihPadChar_('', 196));                           // 27~34 도로명주소 계열(생략, 12+50+1+5+5+22+12+2=109) + 35 공란(87) = 196
+  return b;
+}
+
+function gfTaxCalcRecord_(item){
+  const r = item.result || {};
+  const giftAmount = numVal(item.amount) || 0;
+  const priorGiftAdd = numVal(item.priorGiftAmount) || 0; // §47② 재차증여 가산액
+  const taxable = (numVal(r.순수증여재산가액) || 0) + priorGiftAdd; // 증여세과세가액
+  const taxBase = numVal(r.과세표준) || 0;
+  const preSurcharge = numVal(r.산출세액_할증전) || 0;
+  const surcharge = numVal(r.세대생략할증액) || 0;
+  const calcTotal = preSurcharge + surcharge;
+  let b = [];
+  b = b.concat(ihPadChar_('03', 2));                        // 1 자료구분
+  b = b.concat(ihPadChar_(GF_EFILE_FORM_CODE_, 7));         // 2 서식코드
+  b = b.concat(ihPadNum_(giftAmount, 13));                  // 3 증여재산가액
+  b = b.concat(ihPadNum_(priorGiftAdd, 13));                // 4 증여재산가산액
+  b = b.concat(ihPadNum_(r.비과세재산가액, 13));            // 5 비과세재산가액
+  b = b.concat(ihPadNum_(r.공익법인출연재산가액, 13));      // 6 과세가액불산입_공익법인출연재산가액
+  b = b.concat(ihPadNum_(r.공익신탁재산가액, 13));          // 7 과세가액불산입_공익신탁재산가액
+  b = b.concat(ihPadNum_(r.장애인신탁재산가액, 13));        // 8 과세가액불산입_장애인신탁재산가액
+  b = b.concat(ihPadNum_(r.인수채무액, 13));                // 9 채무액
+  b = b.concat(ihPadNum_(taxable, 13));                     // 10 증여세과세가액
+  const relDed = numVal(r.증여재산공제) || 0;
+  b = b.concat(ihPadNum_(0, 13));                           // 11 증여재산공제_배우자(관계코드 세분화 전이라 잠정 0)
+  b = b.concat(ihPadNum_(0, 13));                           // 12 증여재산공제_직계존비속(잠정 0)
+  b = b.concat(ihPadNum_(relDed, 13));                      // 13 증여재산공제_그밖의친족(관계별 세분화 전까지 여기로 몰아 합계는 맞춘다)
+  b = b.concat(ihPadNum_(r.재해손실공제, 13));              // 14 재해손실공제
+  b = b.concat(ihPadNum_(r.감정평가수수료공제, 13));        // 15 감정평가수수료
+  b = b.concat(ihPadNum_(taxBase, 13));                     // 16 과세표준
+  b = b.concat(ihPadDec_(ihRateForBase_(taxBase) * 100, 5, 2)); // 17 세율
+  b = b.concat(ihPadNum_(preSurcharge, 13));                // 18 산출세액
+  b = b.concat(ihPadNum_(surcharge, 13));                   // 19 세대생략가산액
+  b = b.concat(ihPadNum_(calcTotal, 13));                   // 20 산출세액계
+  b = b.concat(ihPadNum_(r.박물관자료등징수유예세액, 13));  // 21 박물관자료등징수유예세액
+  const creditSum = (numVal(r.기납부세액공제) || 0) + (numVal(r.외국납부세액공제) || 0) + (numVal(r.신고세액공제) || 0) + (numVal(r.그밖의공제감면세액) || 0);
+  b = b.concat(ihPadNum_(creditSum, 13));                   // 22 세액공제_세액공제합계
+  b = b.concat(ihPadNum_(r.기납부세액공제, 13));            // 23 세액공제_기납부세액
+  b = b.concat(ihPadNum_(r.외국납부세액공제, 13));          // 24 세액공제_외국납부세액공제
+  b = b.concat(ihPadNum_(r.신고세액공제, 13));              // 25 세액공제_신고세액공제
+  b = b.concat(ihPadNum_(r.그밖의공제감면세액, 13));        // 26 세액공제_그밖의공제.감면세액
+  b = b.concat(ihPadNum_(0, 13));                           // 27 세액공제_전자신고세액(규격상 0 고정)
+  b = b.concat(ihPadNum_(0, 13));                           // 28 신고불성실가산세(규격상 0 고정)
+  b = b.concat(ihPadNum_(0, 13));                           // 29 납부지연가산세(규격상 0 고정)
+  b = b.concat(ihPadNum_(r.공익법인등관련가산세, 13));      // 30 공익법인 등 관련가산세
+  b = b.concat(ihPadNum_(r.납부세액, 13));                  // 31 자진납부할세액(합계액) — 엔진 계산값 신뢰
+  b = b.concat(ihPadChar_('', 8));                          // 32 납부방법_연부연납_일자
+  b = b.concat(ihPadNum_(0, 13));                           // 33 납부방법_연부연납_금액
+  b = b.concat(ihPadChar_('', 8));                          // 34 납부방법_물납_일자
+  b = b.concat(ihPadNum_(0, 13));                           // 35 납부방법_물납_금액
+  b = b.concat(ihPadChar_('', 8));                          // 36 현금_분납_일자
+  b = b.concat(ihPadNum_(0, 13));                           // 37 현금_분납_금액
+  b = b.concat(ihPadChar_('', 8));                          // 38 현금_신고납부_일자
+  b = b.concat(ihPadNum_(r.납부세액, 13));                  // 39 현금_신고납부_금액(분납·연부연납·물납 미신청 가정)
+  b = b.concat(ihPadNum_(0, 13));                           // 40 세액공제_영농자녀수증농지감면(잠정 0)
+  b = b.concat(ihPadNum_(0, 13));                           // 41 세액공제_초과배당에대한소득세상당액(잠정 0)
+  b = b.concat(ihPadNum_(r.혼인출산증여재산공제, 13));      // 42+43 증여재산공제_혼인출산(혼인·출산 구분 세분화 전까지 42에 합산)
+  b = b.concat(ihPadNum_(0, 13));                           // 43 증여재산공제_출산(위 42에 합산했으므로 0)
+  b = b.concat(ihPadNum_(0, 13));                           // 44 가업승계 납부유예세액(잠정 0)
+  b = b.concat(ihPadNum_(r.합산배제증여재산공제, 13));      // 45 합산배제증여재산공제
+  b = b.concat(ihPadChar_('', 10));                         // 46 공란
+  return b;
+}
+
+function gfValidateEfileInputs_(){
+  const errs = [];
+  if (!lastGiftResults_ || !lastGiftResults_.length) errs.push('먼저 위에서 "세액 계산하기"를 눌러 계산을 완료하세요.');
+  giftDonees.forEach(function(dn, i){
+    if (!dn.name) return;
+    if (!ihOnlyDigits_(dn.regNo)) errs.push('수증인 ' + (i + 1) + '의 주민등록번호를 입력하세요.');
+    if (!dn.phone) errs.push('수증인 ' + (i + 1) + '의 전화번호를 입력하세요.');
+    if (!dn.admCd) errs.push('수증인 ' + (i + 1) + '의 주소를 "🔍 주소 검색"으로 다시 선택하세요(법정동코드 필요).');
+  });
+  giftDonors.forEach(function(d, i){
+    if (!d.name) return;
+    if (!ihOnlyDigits_(d.regNo)) errs.push('증여자 ' + (i + 1) + '의 주민등록번호를 입력하세요.');
+  });
+  if (!document.getElementById('giftDate').value) errs.push('증여일자를 입력하세요.');
+  return errs;
+}
+
+function gfBuildEfileBytes_(){
+  const giftDate = document.getElementById('giftDate').value;
+  const CRLF = [0x0D, 0x0A];
+  let all = [];
+  (lastGiftResults_ || []).forEach(function(item){
+    if (item.result.error) return;
+    const donee = giftDonees[item.doneeIdx] || {};
+    const donor = giftDonors[item.donorIdxs[0]] || {};
+    all = all.concat(gfHeadRecord_(donee.regNo, giftDate), CRLF, gfBasicRecord_(donee, donor, giftDate, item.doneeIdx), CRLF, gfTaxCalcRecord_(item), CRLF);
+  });
+  return new Uint8Array(all);
+}
+
+function gfEfileFileName_(){
+  const now = new Date();
+  const yyyymmdd = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
+  return yyyymmdd + GF_EFILE_FORM_CODE_ + '.01';
+}
+
+function renderGfEfileResult_(){
+  const box = document.getElementById('taxCalcGfEfileResult');
+  if (!box) return;
+  const errs = gfValidateEfileInputs_();
+  if (errs.length){
+    box.innerHTML = '<div class="taxcalc-error">전자신고파일을 만들 수 없습니다:<br>' + errs.map(function(e){ return '· ' + escapeHtml(e); }).join('<br>') + '</div>';
+    return;
+  }
+  const fileName = gfEfileFileName_();
+  const pairCount = (lastGiftResults_ || []).filter(function(item){ return !item.result.error; }).length;
+  box.innerHTML = '<div class="taxcalc-result-note">✅ 검증 통과 — 신고서 본체 ' + pairCount + '건(증여자×수증인 조합별) 준비됨. 파일명: <b>' + fileName + '</b></div>' +
+    '<div class="taxcalc-result-note" style="color:#b00;">⚠ 아직 증여재산및평가명세서 등 첨부서식은 포함되지 않은 1단계 버전이고, 증여재산공제(배우자/직계존비속/기타친족 구분)·세대생략·혼인출산공제 세부항목도 관계코드 세분화 전까지 근사치입니다 — 실제 제출 전 홈택스 전자신고 변환프로그램으로 반드시 재검증하세요.</div>' +
+    '<button type="button" class="taxcalc-run-btn" data-action="download-gf-efile" style="margin-top:8px;">💾 전자신고파일 다운로드(' + fileName + ')</button>';
 }
 
 let lastInheritanceResult = null;
@@ -8261,6 +8457,12 @@ taxCalcView.addEventListener('click', function(e){
       giftDonees[idx].address = picked.roadAddr || picked.jibunAddr || '';
       giftDonees[idx].addressDongList = picked.dongList || [];
       giftDonees[idx].addressDong = '';
+      // [2026.09.25 신규, 재검토77] 전자신고파일의 "수증자_법정동코드"는 Not Null 필수항목이라
+      // 상속세 피상속인 주소와 같은 패턴으로 admCd 등을 버리지 않고 저장한다.
+      giftDonees[idx].admCd = picked.admCd || '';
+      giftDonees[idx].mtYn = picked.mtYn || '0';
+      giftDonees[idx].lnbrMnnm = picked.lnbrMnnm || '';
+      giftDonees[idx].lnbrSlno = picked.lnbrSlno || '';
       renderGiftDoneeRegistry();
     });
   } else if (action === 'open-address-search-seller'){
@@ -9122,8 +9324,9 @@ taxCalcView.addEventListener('click', function(e){
         unpaidTaxAtDesignatedDueDate: numVal(d.unpaidAtDesignated) || 0,
         reportedInTime: d.reportedInTime !== false
       });
-      return { donorIdxs: g.donorIdxs, doneeIdx: g.doneeIdx, result: calculateGiftTaxJS(input) };
+      return { donorIdxs: g.donorIdxs, doneeIdx: g.doneeIdx, amount: g.amount, priorGiftAmount: input.priorGiftAmount, result: calculateGiftTaxJS(input) };
     });
+    lastGiftResults_ = results; // [2026.09.25, 재검토77] 전자신고파일 생성용으로 보관.
     renderGiftResult(results);
   } else if (action === 'run-special-rate-gift'){
     const input = {
@@ -9272,6 +9475,21 @@ taxCalcView.addEventListener('click', function(e){
     const a = document.createElement('a');
     a.href = url;
     a.download = ihEfileFileName_();
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  } else if (action === 'check-gf-efile'){
+    renderGfEfileResult_();
+  } else if (action === 'download-gf-efile'){
+    const errs = gfValidateEfileInputs_();
+    if (errs.length){ renderGfEfileResult_(); return; }
+    const bytes = gfBuildEfileBytes_();
+    const blob = new Blob([bytes], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = gfEfileFileName_();
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
