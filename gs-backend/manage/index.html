@@ -107,6 +107,7 @@
             <button type="button" class="taxcalc-tab active" data-tab="transfer">양도소득세</button>
             <button type="button" class="taxcalc-tab" data-tab="gift">증여세</button>
             <button type="button" class="taxcalc-tab" data-tab="inheritance">상속세</button>
+            <button type="button" class="taxcalc-tab" data-tab="giftinheritanceshared">증여·상속 공통</button>
             <button type="button" class="taxcalc-tab" data-tab="valuation">재산평가</button>
             <button type="button" class="taxcalc-tab" data-tab="acquisition">취득세</button>
             <button type="button" class="taxcalc-tab" data-tab="registrationlicense">등록면허세</button>
@@ -117,9 +118,10 @@
             <div id="taxCalcTransferPane" class="taxcalc-pane"></div>
             <div id="taxCalcGiftPane" class="taxcalc-pane" style="display:none;"></div>
             <div id="taxCalcInheritancePane" class="taxcalc-pane" style="display:none;"></div>
-            <!-- [2026.09.24] 증여세·상속세 어느 쪽에서도 계산 가능한 도구(연부연납·이자상당액·
-                 공익법인출연·가업승계납부유예·물납 등)를 화면 하나로 합친 공유 패널 — 두 탭
-                 어느 쪽이 활성화돼도 이 패널이 같이 보인다(updateTaxCalcPaneVisibility 참고). -->
+            <!-- [2026.09.24 재구성, 재검토70] 증여세·상속세 어느 쪽에서도 계산 가능한 도구
+                 (연부연납·이자상당액·공익법인출연·가업승계납부유예·물납 등) 9개 — 두 세목
+                 화면에 중복으로 뜨던 것을, 양도세·취득세와 같은 레벨의 독립 탭으로 분리하고
+                 그 안에서 9개를 다시 하위탭으로 나눴다(renderGiftInheritanceSharedPane_). -->
             <div id="taxCalcGiftInheritanceSharedPane" class="taxcalc-pane" style="display:none;"></div>
             <!-- [2026.09.24 신규] 재산평가(상증세법§60~66) 독립 탭 — 증여재산·상속재산을 여기서
                  선행 입력·평가하고, 증여세·상속세 탭에서는 배분(누구 몫인지)만 한다. -->

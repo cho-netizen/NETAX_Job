@@ -3230,6 +3230,16 @@ let trActiveSubtab_ = 'realestate';
 // [2026.09.24 신규, 재검토68] 증여세도 같은 이유(합산 불가능한 별도 계산)로 하위 탭 분리 —
 // 세무사님 지시: "합칠 수 없는 것이라면 양도소득세처럼 증여세 아래 각각 하위탭을 만들어라."
 let giftActiveSubtab_ = 'general';
+// [2026.09.24 신규, 재검토70] 세무사님 지적 — "증여세·상속세 화면 양쪽에 똑같이 뜨는 것도
+// 마음에 안 들고, 본 계산 아래에 가독성 없이 쭉 붙여놓은 것도 마음에 안 든다." 9개 공유도구를
+// 증여·상속 어느 탭에서도 보이는 공유패널 방식에서, 아예 독립된 최상위 탭(양도세/취득세와
+// 같은 레벨) + 그 안에서 9개를 각각 하위탭으로 분리하는 방식으로 재구성 — 두 탭에 중복 노출되는
+// 문제와, 한 화면에 다 늘어놓아 안 읽히던 문제를 동시에 해결한다.
+let giftInheritanceSharedActiveSubtab_ = 'cd';
+const GIFT_INHERITANCE_SHARED_SUBTAB_LABELS = {
+  cd: '공익법인출연재산 불산입', ip: '연부연납', ck: '사후관리 추징이자', bd: '납부유예 금액계산',
+  bc: '납부유예 사후관리', ik: '물납 적격판정', sv: '물납 수납가액', ch: '문화유산 징수유예', fmv: '시가인정범위'
+};
 
 // 아래 두 함수는 "이 사건에 없는 자산"(취득계약 externalMembers, 자산유형 개념이 없음) 전용
 // 계산 헬퍼다 — 예전에는 별도의 "토지·건물 안분계산기" 도구(renderAllocationTool)도 같이
@@ -5023,7 +5033,13 @@ function renderGiftDoneeRegistry(){
 // 전체에 걸려있어 위치를 옮겨도 액션 핸들러는 그대로 동작한다).
 function renderGiftInheritanceSharedPane_(){
   taxCalcGiftInheritanceSharedPane.innerHTML =
-    '<div class="taxcalc-result-note" style="margin-bottom:10px;">아래는 증여세·상속세 어느 쪽이든 계산할 수 있는 도구입니다 — 각 도구의 "세목/적용 조문"에서 골라 쓰세요. 결과는 위 증여세·상속세 계산의 해당 입력칸에 바로 반영할 수 있습니다.</div>' +
+    '<div class="taxcalc-result-note" style="margin-bottom:10px;">아래는 증여세·상속세 어느 쪽이든 계산할 수 있는 도구입니다(물납 2개는 상속세 전용) — 각 도구의 "세목/적용 조문"에서 골라 쓰세요. 결과는 증여세·상속세 계산의 해당 입력칸에 바로 반영할 수 있습니다.</div>' +
+    '<div class="taxcalc-subtabs">' +
+      Object.keys(GIFT_INHERITANCE_SHARED_SUBTAB_LABELS).map(function(key){
+        return '<button type="button" class="taxcalc-subtab' + (giftInheritanceSharedActiveSubtab_ === key ? ' active' : '') + '" data-action="switch-gift-inheritance-shared-subtab" data-subtab="' + key + '">' + GIFT_INHERITANCE_SHARED_SUBTAB_LABELS[key] + '</button>';
+      }).join('') +
+    '</div>' +
+    '<div class="taxcalc-subpane" data-subpane="cd" style="' + (giftInheritanceSharedActiveSubtab_ === 'cd' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>공익법인 출연재산 과세가액 불산입(§16 상속세·§48① 증여세) — 원칙 전액 불산입, 내국법인 주식등은 합산주식수가 한도비율(10/20/5%) 초과시 그 초과분만 과세가액 산입</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -5043,6 +5059,8 @@ function renderGiftInheritanceSharedPane_(){
       '<button type="button" class="taxcalc-run-btn" data-action="run-charity-donation-exclusion">과세가액 산입액 계산하기</button>' +
       '<div id="taxCalcCharityDonationExclusionResult"></div>' +
     '</div>' +
+    '</div>' +
+    '<div class="taxcalc-subpane" data-subpane="ip" style="' + (giftInheritanceSharedActiveSubtab_ === 'ip' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>[별지 제11호서식] 연부연납(다년 분할납부) 계산 — 신고 후 매년 나눠 낼 회차별 세액을 계산합니다</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -5055,6 +5073,8 @@ function renderGiftInheritanceSharedPane_(){
       '<button type="button" class="taxcalc-run-btn" data-action="run-installment-inheritance">연부연납 계산하기</button>' +
       '<div id="taxCalcInstallmentInheritanceResult"></div>' +
     '</div>' +
+    '</div>' +
+    '<div class="taxcalc-subpane" data-subpane="ck" style="' + (giftInheritanceSharedActiveSubtab_ === 'ck' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>사후관리 위반 추징 이자상당액 계산 — 영농자녀 증여농지 감면·창업자금 특례·가업승계 주식등 특례 등 사후관리 위반으로 추징될 때 공통으로 씁니다</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -5065,6 +5085,8 @@ function renderGiftInheritanceSharedPane_(){
       '<button type="button" class="taxcalc-run-btn" data-action="run-clawback-interest">이자상당액 계산하기</button>' +
       '<div id="taxCalcClawbackResult"></div>' +
     '</div>' +
+    '</div>' +
+    '<div class="taxcalc-subpane" data-subpane="bd" style="' + (giftInheritanceSharedActiveSubtab_ === 'bd' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>가업상속납부유예(§72의2)·가업승계증여세납부유예(조특법§30의7) 납부유예금액 계산 — 얼마까지 유예받을 수 있는지 계산합니다</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -5079,6 +5101,8 @@ function renderGiftInheritanceSharedPane_(){
       '<button type="button" class="taxcalc-run-btn" data-action="run-business-succession-deferral-amount">납부유예금액 계산하기</button>' +
       '<div id="taxCalcBusinessSuccessionDeferralAmountResult"></div>' +
     '</div>' +
+    '</div>' +
+    '<div class="taxcalc-subpane" data-subpane="bc" style="' + (giftInheritanceSharedActiveSubtab_ === 'bc' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>가업상속납부유예(§72의2)·가업승계증여세납부유예(조특법§30의7) 사후관리 추징 판정 — 추징세액이 나오면 위 "사후관리 위반 추징 이자상당액 계산"에 이 추징세액과 납부유예 허가일·사유발생일을 넣어 이자상당액을 마저 계산하세요</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -5105,7 +5129,9 @@ function renderGiftInheritanceSharedPane_(){
       '<button type="button" class="taxcalc-run-btn" data-action="run-business-succession-deferral-clawback">추징세액 판정하기</button>' +
       '<div id="taxCalcBusinessSuccessionDeferralClawbackResult"></div>' +
     '</div>' +
-    '<div class="taxcalc-asset" data-only-for="inheritance" style="margin-top:20px;">' +
+    '</div>' +
+    '<div class="taxcalc-subpane" data-subpane="ik" style="' + (giftInheritanceSharedActiveSubtab_ === 'ik' ? '' : 'display:none;') + '">' +
+    '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>물납 적용 가능 여부 판정(상증세법§73 일반물납·§73의2 문화유산등물납) — 요건 충족 여부만 판정하며, 물납충당재산의 구체적 범위·수납가액 산정(시행령 사항)은 다루지 않습니다. 상속세 전용입니다(증여세는 현행법상 물납 대상이 아닙니다)</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>물납 종류</label><select id="ikProvision">' +
@@ -5122,7 +5148,9 @@ function renderGiftInheritanceSharedPane_(){
       '<button type="button" class="taxcalc-run-btn" data-action="run-property-in-kind-payment-eligibility">적용 가능 여부 판정하기</button>' +
       '<div id="taxCalcPropertyInKindPaymentResult"></div>' +
     '</div>' +
-    '<div class="taxcalc-asset" data-only-for="inheritance" style="margin-top:20px;">' +
+    '</div>' +
+    '<div class="taxcalc-subpane" data-subpane="sv" style="' + (giftInheritanceSharedActiveSubtab_ === 'sv' ? '' : 'display:none;') + '">' +
+    '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>물납충당재산(주식) 수납가액 계산(시행규칙§20의2) — 상속개시일부터 물납수납일까지 신주발행·감자가 있었던 경우에만 씁니다(그 외에는 수납가액=상속재산의 가액). 상속세 전용입니다</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>구분</label><select id="svChangeType">' +
@@ -5140,6 +5168,8 @@ function renderGiftInheritanceSharedPane_(){
       '<button type="button" class="taxcalc-run-btn" data-action="run-property-in-kind-stock-receipt-value">수납가액 계산하기</button>' +
       '<div id="taxCalcPropertyInKindStockReceiptResult"></div>' +
     '</div>' +
+    '</div>' +
+    '<div class="taxcalc-subpane" data-subpane="ch" style="' + (giftInheritanceSharedActiveSubtab_ === 'ch' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>지정문화유산 등에 대한 상속세·증여세 징수유예(상증세법§74·§75) — 문화유산자료등·박물관자료등·국가지정문화유산등·천연기념물등에 상당하는 세액의 징수를 유예합니다</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -5161,7 +5191,11 @@ function renderGiftInheritanceSharedPane_(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-cultural-heritage-tax-deferral">징수유예세액 계산하기</button>' +
       '<div id="taxCalcCulturalHeritageTaxDeferralResult"></div>' +
-
+    '</div>' +
+    '</div>' +
+    // [2026.09.24 발견, 재검토70] 이 카드의 닫는 '</div>'가 원래 여기 빠져있어서(위 두 줄
+    // 추가분), 시가인정범위판정 카드가 문화유산징수유예 카드 "안에" 중첩되어 그려지고 있었다.
+    '<div class="taxcalc-subpane" data-subpane="fmv" style="' + (giftInheritanceSharedActiveSubtab_ === 'fmv' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>시가 인정범위 판정(§60②, 시행령§49) — 매매·감정·수용·경매·공매 증거가액을 다른 계산기의 "시가"로 쓰기 전에, 평가기간·특수관계인거래·비상장주식 최소요건·감정가액 기준금액을 확인합니다(상속·증여 공통)</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -5186,6 +5220,7 @@ function renderGiftInheritanceSharedPane_(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-fair-market-value-recognition">시가 인정 여부 판정하기</button>' +
       '<div id="taxCalcFmvRecognitionResult"></div>' +
+    '</div>' +
     '</div>';
   renderGiftDoneeRegistry();
   renderGiftDonorRegistry();
@@ -7588,16 +7623,11 @@ function updateTaxCalcPaneVisibility(){
   taxCalcTransferPane.style.display = which === 'transfer' ? 'block' : 'none';
   taxCalcGiftPane.style.display = which === 'gift' ? 'block' : 'none';
   taxCalcInheritancePane.style.display = which === 'inheritance' ? 'block' : 'none';
-  // [2026.09.24] 증여·상속 공유 도구 패널 — 둘 중 어느 탭이 활성화돼도 같이 보인다.
-  taxCalcGiftInheritanceSharedPane.style.display = (which === 'gift' || which === 'inheritance') ? 'block' : 'none';
-  // [2026.09.24 신규, 재검토69] 세무사님 지시 — "코드중복도 화면중복도 피하고 싶다." 물납
-  // 2종은 상속세 전용(증여세 미해당)인데 이 공유패널엔 그대로 남아있어, 증여세 탭을 볼 때도
-  // "해당없음" 카드가 화면에 떠 있었다 — 카드를 상속세·증여세용으로 복제하지 않고(코드중복
-  // 방지) 한 벌만 둔 채 data-only-for로 표시해, 지금 활성 탭이 아니면 그 카드만 숨긴다
-  // (화면중복 방지). 나머지 7개(연부연납 등, data-only-for 없음)는 그대로 항상 같이 보인다.
-  taxCalcGiftInheritanceSharedPane.querySelectorAll('[data-only-for]').forEach(function(el){
-    el.style.display = (el.dataset.onlyFor === which) ? '' : 'none';
-  });
+  // [2026.09.24 재구성, 재검토70] 세무사님 지적 — "증여·상속 양쪽 화면에 똑같이 뜨는 것도
+  // 마음에 안 들고, 본 계산 아래 줄세워 붙여놓은 것도 안 읽힌다." 증여·상속 어느 탭에서든
+  // 같이 보이던 공유패널을, 양도세·취득세와 같은 레벨의 독립된 최상위 탭으로 분리했다
+  // (그 안에서 9개는 다시 하위탭으로 나뉜다 — renderGiftInheritanceSharedPane_() 참고).
+  taxCalcGiftInheritanceSharedPane.style.display = which === 'giftinheritanceshared' ? 'block' : 'none';
   taxCalcValuationPane.style.display = which === 'valuation' ? 'block' : 'none';
   taxCalcAcquisitionPane.style.display = which === 'acquisition' ? 'block' : 'none';
   taxCalcRegistrationLicensePane.style.display = which === 'registrationlicense' ? 'block' : 'none';
@@ -7669,6 +7699,11 @@ taxCalcView.addEventListener('click', function(e){
     giftActiveSubtab_ = btn.dataset.subtab;
     taxCalcGiftPane.querySelectorAll('.taxcalc-subtab').forEach(function(t){ t.classList.toggle('active', t.dataset.subtab === giftActiveSubtab_); });
     taxCalcGiftPane.querySelectorAll('[data-subpane]').forEach(function(p){ p.style.display = (p.dataset.subpane === giftActiveSubtab_) ? '' : 'none'; });
+  } else if (action === 'switch-gift-inheritance-shared-subtab'){
+    // [2026.09.24 신규, 재검토70] 증여·상속 공유도구 9개도 같은 하위탭 전환 패턴.
+    giftInheritanceSharedActiveSubtab_ = btn.dataset.subtab;
+    taxCalcGiftInheritanceSharedPane.querySelectorAll('.taxcalc-subtab').forEach(function(t){ t.classList.toggle('active', t.dataset.subtab === giftInheritanceSharedActiveSubtab_); });
+    taxCalcGiftInheritanceSharedPane.querySelectorAll('[data-subpane]').forEach(function(p){ p.style.display = (p.dataset.subpane === giftInheritanceSharedActiveSubtab_) ? '' : 'none'; });
   } else if (action === 'del-asset'){
     const idx = numVal(btn.dataset.idx);
     transferAssets.splice(idx, 1);
