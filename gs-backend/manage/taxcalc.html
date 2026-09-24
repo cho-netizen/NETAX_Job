@@ -17,7 +17,6 @@ const taxCalcGiftInheritanceSharedPane = document.getElementById('taxCalcGiftInh
 const taxCalcValuationPane = document.getElementById('taxCalcValuationPane');
 const taxCalcAcquisitionPane = document.getElementById('taxCalcAcquisitionPane');
 const taxCalcRegistrationLicensePane = document.getElementById('taxCalcRegistrationLicensePane');
-const taxCalcStandardPricePane = document.getElementById('taxCalcStandardPricePane');
 
 function won(n){
   return Number.isFinite(n) ? Math.round(n).toLocaleString('ko-KR') + '원' : '-';
@@ -1185,10 +1184,13 @@ function renderAcquisitionInfoSectionHtml_(idx){
       '<div class="taxcalc-field"><label>감정가액</label><div class="taxcalc-field-inline"><input type="number" data-field="appraisalValue" placeholder="원">' +
         '<button type="button" class="taxcalc-ai-btn" data-action="open-tfv-modal-asset" data-idx="' + idx + '" title="이 감정가액·매매사례가액이 시가로 인정되는지 확인">🔍 시가 인정여부 확인</button></div><span class="taxcalc-field-help">실지거래가액·매매사례가액을 모를 때(§176의2③2호)</span></div>' +
       '<div class="taxcalc-field"><label>취득당시 기준시가</label><div class="taxcalc-field-inline"><input type="number" data-field="acquisitionStandardPriceForExpense" placeholder="원">' +
+        '<button type="button" class="taxcalc-ai-btn" data-action="open-building-standard-price-acq" data-idx="' + idx + '" title="건물이라 고시가격이 없으면 구조·용도·신축연도로 계산">🧮 건물기준시가 계산</button>' +
         (a.acquisitionDate && a.acquisitionDate < '1990-08-31' ?
           '<button type="button" class="taxcalc-ai-btn" data-action="open-pre1990-standard-price" data-idx="' + idx + '" title="1990.8.31 이전 취득분은 개별공시지가가 없어 별도 환산식이 필요합니다">🧮 1990년 이전 취득 환산</button>' : '') +
         '</div><span class="taxcalc-field-help">그마저 모를 때 — 환산취득가액·개산공제 계산용</span></div>' +
-      '<div class="taxcalc-field"><label>양도당시 기준시가</label><input type="number" data-field="transferStandardPriceForConversion" placeholder="원"><span class="taxcalc-field-help">그마저 모를 때 — 반드시 위 취득당시 기준시가와 함께 입력하세요(환산취득가액=양도가액×취득당시÷양도당시 기준시가). 이 값이 없으면 환산취득가액 자체를 계산할 수 없습니다(시행령§176의2②2호)</span></div>' +
+      '<div class="taxcalc-field"><label>양도당시 기준시가</label><div class="taxcalc-field-inline"><input type="number" data-field="transferStandardPriceForConversion" placeholder="원">' +
+        '<button type="button" class="taxcalc-ai-btn" data-action="open-building-standard-price-transfer" data-idx="' + idx + '" title="건물이라 고시가격이 없으면 구조·용도·신축연도로 계산">🧮 건물기준시가 계산</button>' +
+        '</div><span class="taxcalc-field-help">그마저 모를 때 — 반드시 위 취득당시 기준시가와 함께 입력하세요(환산취득가액=양도가액×취득당시÷양도당시 기준시가). 이 값이 없으면 환산취득가액 자체를 계산할 수 없습니다(시행령§176의2②2호)</span></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="useEstimatedNecessaryExpense" id="estExp-' + idx + '"><label for="estExp-' + idx + '">취득가액은 알지만 필요경비 지출증빙이 없어 개산공제(3%, 미등기양도자산은 0.3%)만 사용(위 비용 내역을 입력하지 않았을 때만 적용)</label></div>';
   }
   html += '<div class="taxcalc-field"><label>사업용자산 감가상각비</label><input type="number" data-field="depreciationDeductedAsBusinessExpense" placeholder="원"><span class="taxcalc-field-help">필요경비 산입분 — 사업소득 계산시 감가상각비를 필요경비로 공제했다면 그 금액(§97③, 취득가액에서 차감됩니다). 해당 없으면 비움</span></div>';
@@ -1828,6 +1830,121 @@ function openFairMarketValueRecognitionModal_(onApplyAppraisal){
       });
     }
   });
+}
+
+// [2026.09.24 신규, 재검토72] 세무사님 지적 — 독립 "건물기준시가계산기" 탭은 재산평가·양도세
+// 자산 카드 양쪽 다 이미 같은 엔진으로 인라인 계산을 갖추고 있어(계약 안분용 취득시/양도시는
+// computePropertyStandardPriceForAllocation_) 사실상 중복이었다 — 다만 "환산취득가액용
+// 취득당시/양도당시 기준시가"(순수 숫자 입력칸, transferStandardPriceForConversion 등) 2곳만은
+// 인라인 계산이 없어서 그 계산기의 "적용" 기능이 유일한 통로였다. 탭 자체는 삭제하고, 그 2곳
+// 바로 옆에 이 모달(같은 계산 엔진)을 붙여 "필요한 곳에서 바로 계산+적용"으로 대체한다.
+function openBuildingStandardPriceModal_(onApply){
+  let rows = [{}];
+  let multi = false;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.display = 'flex';
+  overlay.innerHTML =
+    '<div class="modal-panel" style="width:min(620px, 94vw);">' +
+      '<div class="modal-head"><span>건물기준시가 계산(구조·용도·신축연도 기준)</span><span class="modal-close" id="btnCloseBsp">✕</span></div>' +
+      '<div class="modal-body"></div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  function close(){ overlay.remove(); }
+  overlay.querySelector('#btnCloseBsp').onclick = close;
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+
+  function rowsHtml_(){
+    return rows.map(function(r, i){
+      const structureOptions = (window.BUILDING_STRUCTURE_TABLE || []).map(function(s){ return '<option value="' + s.name + '"' + (r.structureName === s.name ? ' selected' : '') + '>' + s.name + '</option>'; }).join('');
+      const useOptions = (window.BUILDING_USE_TABLE || []).filter(function(u){ return u.index !== null; }).map(function(u){ return '<option value="' + u.no + '"' + (String(r.useNo) === String(u.no) ? ' selected' : '') + '>' + u.no + '. ' + u.desc + '</option>'; }).join('');
+      return '<div class="taxcalc-asset-head" style="flex-basis:100%; margin-top:6px;"><span style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
+          '<b>층 ' + tcPad2_(i + 1) + '</b>' +
+          (i > 0 ? '<button type="button" class="taxcalc-del-asset" data-bsp-del-row="' + i + '">✕ 층 삭제</button>' : '') +
+          '<button type="button" class="taxcalc-add-asset-inline" data-bsp-add-row="1">+ 층 추가</button>' +
+        '</span></div>' +
+        '<div class="taxcalc-grid" style="flex-basis:100%; max-width:none; padding-top:6px; border-top:1px dashed var(--line);">' +
+          '<div class="taxcalc-field"><label>구분</label><input type="text" data-bspfield="label" data-row="' + i + '" value="' + (r.label || '').replace(/"/g, '&quot;') + '" placeholder="예: 1층"></div>' +
+          '<div class="taxcalc-field"><label>구조</label><select data-bspfield="structureName" data-row="' + i + '"><option value="">선택</option>' + structureOptions + '</select></div>' +
+          '<div class="taxcalc-field"><label>용도</label><select data-bspfield="useNo" data-row="' + i + '"><option value="">선택</option>' + useOptions + '</select></div>' +
+          '<div class="taxcalc-field"><label>신축(증축)연도</label><input type="number" data-bspfield="builtYear" data-row="' + i + '" value="' + (r.builtYear || '') + '" maxlength="4"></div>' +
+          '<div class="taxcalc-field"><label>면적(㎡)</label><input type="number" data-bspfield="floorAreaSqm" data-row="' + i + '" value="' + (r.floorAreaSqm || '') + '"></div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function render(){
+    const structureOptions = (window.BUILDING_STRUCTURE_TABLE || []).map(function(s){ return '<option value="' + s.name + '"' + (rows[0].structureName === s.name ? ' selected' : '') + '>' + s.name + '</option>'; }).join('');
+    const useOptions = (window.BUILDING_USE_TABLE || []).filter(function(u){ return u.index !== null; }).map(function(u){ return '<option value="' + u.no + '"' + (String(rows[0].useNo) === String(u.no) ? ' selected' : '') + '>' + u.no + '. ' + u.desc + '</option>'; }).join('');
+    overlay.querySelector('.modal-body').innerHTML =
+      '<div class="taxcalc-grid" style="margin-bottom:8px;">' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="bspMulti"' + (multi ? ' checked' : '') + '><label for="bspMulti">층·부속시설마다 구조·용도·신축연도가 다름(따로 입력해 합산)</label></div>' +
+      '</div>' +
+      (multi ?
+        '<div class="taxcalc-grid" id="bspRows">' + rowsHtml_() + '</div>'
+        :
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field"><label>구조</label><select id="bspStructure"><option value="">선택</option>' + structureOptions + '</select></div>' +
+          '<div class="taxcalc-field"><label>용도</label><select id="bspUse"><option value="">선택</option>' + useOptions + '</select></div>' +
+          '<div class="taxcalc-field"><label>신축(증축)연도</label><input type="number" id="bspBuiltYear" value="' + (rows[0].builtYear || '') + '" maxlength="4"></div>' +
+          '<div class="taxcalc-field"><label>면적(㎡)</label><input type="number" id="bspArea" value="' + (rows[0].floorAreaSqm || '') + '"></div>' +
+        '</div>') +
+      '<div class="taxcalc-grid" style="margin-top:8px;"><div class="taxcalc-field"><label>부속토지 개별공시지가(원/㎡)</label><input type="number" id="bspLandPrice" placeholder="원"></div></div>' +
+      '<button type="button" class="taxcalc-run-btn" id="bspRunBtn" style="margin-top:8px;">계산하기</button>' +
+      '<div id="bspResult"></div>';
+    wire();
+  }
+
+  function wire(){
+    const body = overlay.querySelector('.modal-body');
+    enhanceNumberInputs(body);
+    const multiEl = body.querySelector('#bspMulti');
+    multiEl.addEventListener('change', function(){ multi = multiEl.checked; render(); });
+    if (multi){
+      body.querySelectorAll('[data-bspfield]').forEach(function(el){
+        el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', function(){
+          const i = numVal(el.dataset.row);
+          rows[i][el.dataset.bspfield] = el.value;
+        });
+      });
+      body.querySelectorAll('[data-bsp-add-row]').forEach(function(el){
+        el.addEventListener('click', function(){ rows.push({}); render(); });
+      });
+      body.querySelectorAll('[data-bsp-del-row]').forEach(function(el){
+        el.addEventListener('click', function(){ rows.splice(numVal(el.dataset.bspDelRow), 1); render(); });
+      });
+    } else {
+      body.querySelector('#bspStructure').addEventListener('change', function(e){ rows[0].structureName = e.target.value; });
+      body.querySelector('#bspUse').addEventListener('change', function(e){ rows[0].useNo = e.target.value; });
+      body.querySelector('#bspBuiltYear').addEventListener('input', function(e){ rows[0].builtYear = e.target.value; });
+      body.querySelector('#bspArea').addEventListener('input', function(e){ rows[0].floorAreaSqm = e.target.value; });
+    }
+    body.querySelector('#bspRunBtn').addEventListener('click', function(){
+      const landPrice = numVal(body.querySelector('#bspLandPrice').value) || 0;
+      let r;
+      if (multi){
+        const cleanRows = rows.map(function(row){
+          return { label: row.label, structureName: row.structureName, useNo: numVal(row.useNo) || 0, builtYear: numVal(row.builtYear) || 0, floorAreaSqm: numVal(row.floorAreaSqm) || 0 };
+        });
+        const rr = calculateBuildingStandardPriceMultiJS(cleanRows, landPrice, 'transfer');
+        r = rr && !rr.error ? { value: rr.건물기준시가_합계, error: null } : { value: 0, error: (rr && rr.error) || '계산할 수 없습니다.' };
+      } else {
+        const rr = calculateBuildingStandardPriceJS(rows[0].structureName, numVal(rows[0].useNo), landPrice, numVal(rows[0].builtYear), numVal(rows[0].floorAreaSqm), 'transfer', []);
+        r = rr && !rr.error ? { value: rr.건물기준시가, error: null } : { value: 0, error: (rr && rr.error) || '계산할 수 없습니다.' };
+      }
+      const resultBox = body.querySelector('#bspResult');
+      if (r.error){ resultBox.innerHTML = '<div class="taxcalc-error">' + r.error + '</div>'; return; }
+      resultBox.innerHTML = '<div class="taxcalc-result" style="margin-top:10px;">' +
+        taxCalcResultRow('건물기준시가', won(r.value), { total: true }) +
+        '</div><button type="button" class="taxcalc-run-btn" id="bspApplyBtn" style="margin-top:8px;">이 값을 반영하기</button>';
+      resultBox.querySelector('#bspApplyBtn').addEventListener('click', function(){
+        onApply(r.value);
+        close();
+        showToast('건물기준시가를 반영했습니다.', 'success');
+      });
+    });
+  }
+  render();
 }
 
 // [2026.09.23 신규] "특정주택은 1세대1주택 판정시 주택수에서 제외" 특례 3개(수도권밖 준공후
@@ -3336,10 +3453,11 @@ function allocationRowComponentFieldsHtml_(a, showAcqStd){
     (showAcqStd ? '<div class="taxcalc-field"><label>기준시가(취득시)</label><input type="number" data-afield="standardPriceAcquisition" placeholder="원" value="' + (a.standardPriceAcquisition || '') + '"></div>' : '');
 }
 // [2026.09 삭제] "건물기준시가계산기"(층별 입력→합산, transfer/gift 세목선택)는 삭제한다 —
-// 세무사님 지시("따로 있어야 하냐, 본 시스템 안으로 들어와야 하지 않냐")대로 새 "기준시가계산기"
-// 탭(renderStandardPricePane, 위 recomputeAtUnpaidDays 뒤)으로 완전히 흡수했다. 그 탭은 토지·
-// 주택·공동주택·오피스텔·건물(단일/층별)을 전부 다루고, "적용" 버튼으로 양도세 자산·증여·상속
-// 재산평가 어디로든 결과를 바로 반영한다 — 이 옛 도구처럼 결과를 손으로 옮겨적을 필요가 없다.
+// 세무사님 지시("따로 있어야 하냐, 본 시스템 안으로 들어와야 하지 않냐")대로 당시엔 별도
+// "기준시가계산기" 탭으로 흡수했었다. [2026.09.24 재삭제, 재검토72] 그 탭조차 결국 양도세
+// 자산 카드(computePropertyStandardPriceForAllocation_)와 재산평가 "일반건물" 방법의 인라인
+// 계산과 중복이라 다시 삭제 — 유일하게 빠져있던 "환산취득가액용 기준시가" 2칸만
+// openBuildingStandardPriceModal_ 모달로 대체했다.
 
 // ============================================================
 // 간편계산 / 정밀계산 — 두 화면을 따로 만들지 않는다. 국세청 간편신고서([별지 제84호의4서식] 등)를
@@ -7401,130 +7519,12 @@ function renderRegistrationLicenseResult(r){
   box.dataset.lastTotal = total || 0;
 }
 
-// ---- 기준시가계산기(공용, 6번째 탭) ----
-// [2026.09 신규] 세무사님 지시 — "기준시가계산기(양도/상증)를 취득세계산기 다음에 별도 탭으로
-// 만들어두고 가져다 쓰는 방법은 없나?" 옛날엔 이 계산이 세 군데 따로 있었다: (1) 양도세 자산
-// 카드의 "계약 안분용 기준시가" 인라인 입력, (2) 증여·상속 재산평가 자산의 토지/주택/건물
-// 평가방법 인라인 입력, (3) 이제 삭제하는 별도 "건물기준시가계산기" 도구. 이 탭 하나로 토지·
-// 단독주택·공동주택·오피스텔·건물(단일 또는 층별 다중입력) 기준시가를 계산하고, "적용" 버튼으로
-// 양도세 자산(안분용 취득시/양도시, 환산취득가액용 취득당시/양도당시)이나 증여·상속 재산평가
-// 자산 어디로든 결과를 밀어넣는다 — 취득세계산기가 이미 쓰는 것과 같은 "계산→적용" 패턴이다.
-let scTool = {};
-
-function renderScBuildingFloorRowsHtml_(){
-  const rows = Array.isArray(scTool.buildingFloorRows) && scTool.buildingFloorRows.length ? scTool.buildingFloorRows : [{}];
-  const rowsHtml = rows.map(function(r, ridx){
-    const structureOptions = (window.BUILDING_STRUCTURE_TABLE || []).map(function(s){ return '<option value="' + s.name + '"' + (r.structureName === s.name ? ' selected' : '') + '>' + s.name + '</option>'; }).join('');
-    const useOptions = (window.BUILDING_USE_TABLE || []).filter(function(u){ return u.index !== null; }).map(function(u){ return '<option value="' + u.no + '"' + (String(r.useNo) === String(u.no) ? ' selected' : '') + '>' + u.no + '. ' + u.desc + '</option>'; }).join('');
-    return '<div class="taxcalc-asset-head" style="flex-basis:100%; margin-top:6px;"><span style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
-        '<b>층 ' + tcPad2_(ridx + 1) + '</b>' +
-        (ridx > 0 ? '<button type="button" class="taxcalc-del-asset" data-action="sc-del-building-floor-row" data-floor-idx="' + ridx + '">✕ 층 삭제</button>' : '') +
-        '<button type="button" class="taxcalc-add-asset-inline" data-action="sc-add-building-floor-row">+ 층 추가</button>' +
-      '</span></div>' +
-    '<div class="taxcalc-grid" data-floor-idx="' + ridx + '" style="flex-basis:100%; max-width:none;padding-top:6px;border-top:1px dashed var(--line);">' +
-      '<div class="taxcalc-field"><label>구분</label><input type="text" data-scffield="label" value="' + (r.label || '').replace(/"/g, '&quot;') + '" placeholder="예: 1층 / 지하주차장"></div>' +
-      '<div class="taxcalc-field"><label>구조</label><select data-scffield="structureName"><option value="">선택</option>' + structureOptions + '</select></div>' +
-      '<div class="taxcalc-field"><label>용도</label><select data-scffield="useNo"><option value="">선택</option>' + useOptions + '</select></div>' +
-      '<div class="taxcalc-field"><label>신축(증축)연도</label><input type="number" data-scffield="builtYear" value="' + (r.builtYear || '') + '" maxlength="4"></div>' +
-      '<div class="taxcalc-field"><label>면적(㎡)</label><input type="number" data-scffield="floorAreaSqm" value="' + (r.floorAreaSqm || '') + '"></div>' +
-    '</div>';
-  }).join('');
-  return '<div class="taxcalc-field" style="flex-basis:100%; max-width:none"><span class="taxcalc-result-note">부속토지 개별공시지가는 아래 한 번만 입력하면 모든 층·부속시설에 공통 적용됩니다.</span></div>' +
-    rowsHtml;
-}
-
-// [2026.09 재설계] 세무사님 지시 — 토지·단독주택·공동주택·오피스텔은 이미 양도세 자산 카드와
-// 증여·상속 재산평가 자산 각자에 "🔍 공시가격 자동조회" 버튼이 인라인으로 있어서(정부 API로
-// 바로 조회), 이 탭에서 또 같은 4가지를 물어보는 건 중복이었다 — 이 탭에 남는 유일한 진짜
-// 가치는 "건물기준시가"(구조·용도·신축연도로 직접 계산, 고시가격이 없어 자동조회가 안 되는
-// 유형, 층·부속시설별 다중입력까지) 하나뿐이므로 탭 이름과 범위를 그것으로 좁힌다. 독립적으로
-// 계산만 해볼 수도 있고(적용 대상을 안 고르면 그만), 계산 결과를 "적용"으로 양도세 자산이나
-// 증여·상속 재산평가(=사건)에 바로 연결할 수도 있다 — 이 두 가지만 되면 충분하다.
-function renderStandardPricePane(){
-  const t = scTool;
-  let methodFields = '<div class="taxcalc-field"><label>세목</label><select data-scfield="buildingTaxType">' +
-      '<option value="transfer"' + ((t.buildingTaxType || 'transfer') === 'transfer' ? ' selected' : '') + '>양도소득세(조정률 미적용)</option>' +
-      '<option value="inheritance_gift"' + (t.buildingTaxType === 'inheritance_gift' ? ' selected' : '') + '>상속세·증여세</option>' +
-    '</select></div>' +
-    (t.buildingTaxType === 'inheritance_gift' ? '<div class="taxcalc-field"><label>사치성재산 가감산율 조정번호(콤마 구분)</label><input type="text" data-scfield="buildingAdjustmentNos" value="' + (t.buildingAdjustmentNos || '').replace(/"/g, '&quot;') + '"></div>' : '') +
-    '<div class="taxcalc-field checkbox"><input type="checkbox" data-scfield="hasMultipleBuildingSections" id="scMultiBldg"' + (t.hasMultipleBuildingSections ? ' checked' : '') + '><label for="scMultiBldg">층·부속시설마다 구조·용도·신축연도가 다름(따로 입력해 합산)</label></div>';
-  if (t.hasMultipleBuildingSections){
-    methodFields += renderScBuildingFloorRowsHtml_();
-  } else {
-    const structureOptions = (window.BUILDING_STRUCTURE_TABLE || []).map(function(s){ return '<option value="' + s.name + '"' + (t.buildingStructure === s.name ? ' selected' : '') + '>' + s.name + '</option>'; }).join('');
-    const useOptions = (window.BUILDING_USE_TABLE || []).filter(function(u){ return u.index !== null; }).map(function(u){ return '<option value="' + u.no + '"' + (String(t.buildingUse) === String(u.no) ? ' selected' : '') + '>' + u.no + '. ' + u.desc + '</option>'; }).join('');
-    methodFields += '<div class="taxcalc-field"><label>구조</label><select data-scfield="buildingStructure"><option value="">선택</option>' + structureOptions + '</select></div>';
-    methodFields += '<div class="taxcalc-field"><label>용도</label><select data-scfield="buildingUse"><option value="">선택</option>' + useOptions + '</select></div>';
-    methodFields += '<div class="taxcalc-field"><label>신축(증축)연도</label><input type="number" data-scfield="builtYear" value="' + (t.builtYear || '') + '" maxlength="4"></div>';
-    methodFields += '<div class="taxcalc-field"><label>면적(㎡)</label><input type="number" data-scfield="buildingArea" value="' + (t.buildingArea || '') + '"></div>';
-  }
-  methodFields += '<div class="taxcalc-field"><label>부속토지 개별공시지가(원/㎡)</label><input type="number" data-scfield="buildingLandPricePerSqm" value="' + (t.buildingLandPricePerSqm || '') + '">' +
-    '<button type="button" class="taxcalc-ai-btn" data-action="sc-lookup-official-price" data-price-kind="land" style="margin-top:4px;">🔍 공시지가 자동조회</button></div>';
-
-  taxCalcStandardPricePane.innerHTML =
-    '<div class="taxcalc-hint">건물기준시가(구조·용도·신축연도 기준, 고시가격이 없는 일반건물용)를 계산해, 양도세 자산이나 증여·상속 재산평가 어디로든 "적용" 버튼으로 바로 반영합니다 — 계산만 해보고 적용하지 않아도 됩니다. 토지·단독주택·공동주택·오피스텔은 자산 카드·재산평가 자산에 이미 있는 "🔍 자동조회" 버튼을 쓰세요(고시가격을 정부 API로 바로 조회, 여기서 또 입력할 필요 없음).</div>' +
-    '<div class="taxcalc-asset">' +
-      '<div class="taxcalc-asset-head"><b>소재지 · 기준일</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field" style="flex:0 1 340px;"><label>소재지</label><div class="taxcalc-field-inline"><input type="text" data-scfield="assetLocation" value="' + (t.assetLocation || '').replace(/"/g, '&quot;') + '" placeholder="예: OO시 OO구 OO동 123-4 (검색 또는 직접입력)"><button type="button" class="taxcalc-ai-btn" data-action="sc-open-address-search" title="주소 검색">🔍</button></div></div>' +
-        '<div class="taxcalc-field"><label>기준일</label><input type="date" data-scfield="baseDate" value="' + (t.baseDate || '') + '" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">부속토지 공시지가 조회 연도 및 적용 시점</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid" style="margin-top:8px;">' + methodFields + '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="sc-calculate">계산하기</button>' +
-      '<div id="taxCalcStandardPriceResult"></div>' +
-    '</div>';
-  wireStandardPricePane_();
-}
-
-function wireStandardPricePane_(){
-  taxCalcStandardPricePane.querySelectorAll('[data-scfield]').forEach(function(el){
-    el.addEventListener((el.tagName === 'SELECT' || el.type === 'checkbox') ? 'change' : 'input', function(){
-      const key = el.dataset.scfield;
-      scTool[key] = el.type === 'checkbox' ? el.checked : el.value;
-      if (key === 'hasMultipleBuildingSections' || key === 'buildingTaxType') renderStandardPricePane();
-    });
-  });
-  taxCalcStandardPricePane.querySelectorAll('[data-scffield]').forEach(function(el){
-    el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', function(){
-      const ridx = numVal(el.closest('[data-floor-idx]').dataset.floorIdx);
-      if (!Array.isArray(scTool.buildingFloorRows)) scTool.buildingFloorRows = [{}];
-      scTool.buildingFloorRows[ridx][el.dataset.scffield] = el.value;
-    });
-  });
-  enhanceNumberInputs(taxCalcStandardPricePane);
-}
-
-function scApplyTargetOptionsHtml_(){
-  let opts = '';
-  transferAssets.forEach(function(a, i){
-    const label = escapeHtml(a.assetLocation || ('자산' + (i + 1)));
-    opts += '<option value="transfer:' + i + ':acq">양도세 — ' + label + ' — 취득시(안분용)</option>';
-    opts += '<option value="transfer:' + i + ':trf">양도세 — ' + label + ' — 양도시(안분용)</option>';
-    opts += '<option value="transfer:' + i + ':acqconv">양도세 — ' + label + ' — 환산취득가액용 취득당시 기준시가</option>';
-    opts += '<option value="transfer:' + i + ':trfconv">양도세 — ' + label + ' — 환산취득가액용 양도당시 기준시가</option>';
-  });
-  giftValuationAssets_().forEach(function(a, i){
-    opts += '<option value="gift:' + i + '">증여세 재산평가 — 자산' + (i + 1) + '</option>';
-  });
-  inheritanceValuationAssets_().forEach(function(a, i){
-    opts += '<option value="inheritance:' + i + '">상속세 재산평가 — 자산' + (i + 1) + '</option>';
-  });
-  return opts;
-}
-
-function renderStandardPriceResult_(r){
-  const box = document.getElementById('taxCalcStandardPriceResult');
-  if (!box) return;
-  let html = '<div class="taxcalc-result" style="margin-top:10px;">';
-  html += taxCalcResultRow('건물기준시가(총액)', won(r.total), { total: true });
-  html += '</div>';
-  const hasTargets = transferAssets.length || giftValuationAssets_().length || inheritanceValuationAssets_().length;
-  html += hasTargets ?
-    '<div class="taxcalc-field" style="margin-top:8px;"><label>적용 대상</label><select id="scApplyTarget">' + scApplyTargetOptionsHtml_() + '</select></div>' +
-    '<div class="taxcalc-field"><button type="button" class="taxcalc-run-btn" data-action="sc-apply">→ 적용</button></div>'
-    : '<div class="taxcalc-result-note">적용할 자산이 아직 없습니다 — 먼저 양도세 자산이나 증여·상속 재산평가 자산을 하나 이상 만드세요.</div>';
-  box.innerHTML = html;
-}
+// [2026.09.24 삭제, 재검토72] "건물기준시가계산기" 독립 탭(scTool 등)은 삭제한다 — 양도세
+// 자산 카드(computePropertyStandardPriceForAllocation_, 안분용 취득시/양도시)와 재산평가
+// 자산의 "일반건물" 평가방법(computeValuationAssetValue)이 이미 같은 엔진으로 인라인 계산을
+// 갖추고 있어 중복이었다. 유일하게 인라인 계산이 없던 "환산취득가액용 취득당시/양도당시
+// 기준시가"(순수 숫자 입력칸) 2곳은 openBuildingStandardPriceModal_ 모달(위, openFairMarketValueRecognitionModal_
+// 옆)로 대체했다 — 그 두 필드 옆 "🧮 건물기준시가 계산" 버튼 참고.
 
 // [2026.09 신규] 세무사님 지적 — 취득세도 취득내역(취득가액 등)이 입력되면 취득비용 내역에
 // 자동으로 채워져야 하는 것 아니냐는 질문. 취득세는 다주택 중과·조정대상지역·각종 감면 등
@@ -7614,7 +7614,6 @@ function initTaxCalcOnce_(){
   renderValuationPane();
   renderAcquisitionPane();
   renderRegistrationLicensePane();
-  renderStandardPricePane();
   updateTaxCalcPaneVisibility();
 }
 
@@ -7637,7 +7636,6 @@ function updateTaxCalcPaneVisibility(){
   taxCalcValuationPane.style.display = (which === 'giftinheritanceshared' && giftInheritanceSharedActiveSubtab_ === 'val') ? 'block' : 'none';
   taxCalcAcquisitionPane.style.display = which === 'acquisition' ? 'block' : 'none';
   taxCalcRegistrationLicensePane.style.display = which === 'registrationlicense' ? 'block' : 'none';
-  taxCalcStandardPricePane.style.display = which === 'standardprice' ? 'block' : 'none';
   taxCalcView.classList.toggle('taxcalc-view-tier-simple', taxCalcTier === 'simple');
 }
 
@@ -8098,128 +8096,6 @@ taxCalcView.addEventListener('click', function(e){
     const a = transferAssets[idx];
     if (Array.isArray(a.buildingFloorRows)) a.buildingFloorRows.splice(ridx, 1);
     renderTransferPane();
-  } else if (action === 'sc-open-address-search'){
-    openAddressSearchModal_(function(picked){
-      scTool.assetLocation = picked.roadAddr || picked.jibunAddr || '';
-      scTool.assetDongList = picked.dongList || [];
-      scTool.dong = '';
-      scTool.assetZipNo = picked.zipNo || '';
-      scTool.assetAdmCd = picked.admCd || '';
-      scTool.assetMtYn = picked.mtYn || '0';
-      scTool.assetLnbrMnnm = picked.lnbrMnnm || '';
-      scTool.assetLnbrSlno = picked.lnbrSlno || '';
-      renderStandardPricePane();
-    });
-  } else if (action === 'sc-lookup-official-price'){
-    const pnu = buildPnu_(scTool);
-    if (!pnu){ nxAlert_('먼저 "🔍 주소 검색"으로 소재지(지번)를 선택해야 공시가격을 자동조회할 수 있습니다.'); return; }
-    const stdrYear = (scTool.baseDate || '').slice(0, 4);
-    if (!/^\d{4}$/.test(stdrYear)){ nxAlert_('개별공시지가·공시가격은 매년 1.1. 기준으로 고시되어 연도가 필요합니다 — 먼저 기준일을 입력하세요.'); return; }
-    callGas('lookupOfficialPrice', { pnu: pnu, priceKind: 'land', stdrYear: stdrYear }).then(function(data){
-      if (data.error){ nxAlert_(data.error); return; }
-      scTool.buildingLandPricePerSqm = data.price;
-      renderStandardPricePane();
-    }).catch(function(err){ nxAlert_('공시가격 조회 실패: ' + (err && err.message || err)); });
-  } else if (action === 'sc-add-building-floor-row'){
-    if (!Array.isArray(scTool.buildingFloorRows)) scTool.buildingFloorRows = [{}];
-    scTool.buildingFloorRows.push({});
-    renderStandardPricePane();
-  } else if (action === 'sc-del-building-floor-row'){
-    if (Array.isArray(scTool.buildingFloorRows)) scTool.buildingFloorRows.splice(numVal(btn.dataset.floorIdx), 1);
-    renderStandardPricePane();
-  } else if (action === 'sc-calculate'){
-    const t = scTool;
-    const result = { method: 'building', perSqm: null, total: null };
-    const landPrice = numVal(t.buildingLandPricePerSqm) || 0;
-    if (!landPrice){ nxAlert_('부속토지 개별공시지가를 입력하거나 자동조회하세요.'); return; }
-    const taxType = t.buildingTaxType || 'transfer';
-    const adjustmentNos = String(t.buildingAdjustmentNos || '').split(',').map(function(s){ return parseInt(s.trim(), 10); }).filter(function(n){ return Number.isFinite(n); });
-    if (t.hasMultipleBuildingSections){
-      const rows = (Array.isArray(t.buildingFloorRows) ? t.buildingFloorRows : []).map(function(r){
-        return { label: r.label, structureName: r.structureName, useNo: numVal(r.useNo) || 0, builtYear: numVal(r.builtYear) || 0, floorAreaSqm: numVal(r.floorAreaSqm) || 0 };
-      });
-      const rr = calculateBuildingStandardPriceMultiJS(rows, landPrice, taxType);
-      if (rr.error){ nxAlert_(rr.error); return; }
-      result.total = rr.건물기준시가_합계;
-      result.hasMultipleBuildingSections = true;
-      result.buildingFloorRows = rows;
-    } else {
-      if (!t.buildingStructure || !t.buildingUse || !t.builtYear || !t.buildingArea){ nxAlert_('구조·용도·신축연도·면적을 모두 입력하세요.'); return; }
-      const rr = calculateBuildingStandardPriceJS(t.buildingStructure, numVal(t.buildingUse), landPrice, numVal(t.builtYear), numVal(t.buildingArea), taxType, adjustmentNos);
-      if (rr.error){ nxAlert_(rr.error); return; }
-      result.total = rr.건물기준시가;
-      result.hasMultipleBuildingSections = false;
-      result.buildingStructure = t.buildingStructure;
-      result.buildingUse = t.buildingUse;
-      result.builtYear = t.builtYear;
-    }
-    result.buildingLandPricePerSqm = landPrice;
-    scTool.lastResult = result;
-    renderStandardPriceResult_(result);
-  } else if (action === 'sc-apply'){
-    const r = scTool.lastResult;
-    if (!r){ nxAlert_('먼저 "계산하기"를 눌러 계산하세요.'); return; }
-    const sel = document.getElementById('scApplyTarget');
-    const val = sel ? sel.value : '';
-    if (!val){ nxAlert_('적용할 대상을 선택하세요.'); return; }
-    const parts = val.split(':');
-    const kind = parts[0];
-    if (kind === 'transfer'){
-      const idx = numVal(parts[1]);
-      const slot = parts[2];
-      const a = transferAssets[idx];
-      if (!a){ nxAlert_('자산을 찾을 수 없습니다.'); return; }
-      if (slot === 'acqconv' || slot === 'trfconv'){
-        if (r.total == null){ nxAlert_('총액이 계산되지 않았습니다.'); return; }
-        if (slot === 'acqconv') a.acquisitionStandardPriceForExpense = r.total; else a.transferStandardPriceForConversion = r.total;
-      } else {
-        const timing = slot === 'acq' ? 'Acquisition' : 'Transfer';
-        // [2026.09 버그수정] 세무사님 재점검("손과 눈으로 수동으로") 중 실제로 재현됨 — 자산
-        // 카드의 assetKind는 값이 없으면 어디서나 'land'로 취급하는데(예: computePropertyStandardPriceForAllocation_의
-        // const kind = a.assetKind || 'land'), 여기서는 엄격 비교(=== 'building')만 해서 assetKind가
-        // 아직 한 번도 안 건드려진(=토지가 기본값인) 자산에 적용하면 "종류가 다르다"고 잘못
-        // 판단해 반응형 필드 대신 직접입력(총액)으로 떨어질 수 있었다 — 나머지 화면과 같은 기본값 규칙을 쓴다.
-        const effectiveAssetKind = a.assetKind || 'land';
-        if (effectiveAssetKind === 'building'){
-          if (r.hasMultipleBuildingSections){
-            a.hasMultipleBuildingSections = true;
-            a.buildingFloorRows = JSON.parse(JSON.stringify(r.buildingFloorRows || []));
-          } else {
-            a.hasMultipleBuildingSections = false;
-            a.buildingStructure = r.buildingStructure;
-            a.buildingUse = r.buildingUse;
-            a.builtYear = r.builtYear;
-          }
-          a['buildingLandPricePerSqm' + timing] = r.buildingLandPricePerSqm;
-        } else {
-          if (r.total == null){ nxAlert_('이 자산의 자산구분이 건물이 아니라 총액(직접입력)으로만 적용할 수 있는데, 총액이 계산되지 않았습니다.'); return; }
-          a.useDirectStandardPrice = true;
-          a['standardPrice' + timing] = r.total;
-        }
-      }
-      renderTransferPane();
-    } else {
-      const assets = kind === 'gift' ? giftValuationAssets_() : inheritanceValuationAssets_();
-      const idx = numVal(parts[1]);
-      const a = assets[idx];
-      if (!a){ nxAlert_('자산을 찾을 수 없습니다.'); return; }
-      // [2026.09 재설계] "건물기준시가" 결과는 재산평가 자산의 "일반건물" 방법으로 그대로
-      // 옮겨(구조·용도·신축연도·층별입력까지) 나중에 면적 등이 바뀌어도 그 자산 자체에서 다시
-      // 계산되게 한다 — 예전처럼 무조건 "직접입력"(고정 총액)으로 떨어뜨리지 않는다.
-      a.method = 'building';
-      if (r.hasMultipleBuildingSections){
-        a.hasMultipleBuildingSections = true;
-        a.buildingFloorRows = JSON.parse(JSON.stringify(r.buildingFloorRows || []));
-      } else {
-        a.hasMultipleBuildingSections = false;
-        a.buildingStructure = r.buildingStructure;
-        a.buildingUse = r.buildingUse;
-        a.builtYear = r.builtYear;
-      }
-      a.landPriceForBuilding = r.buildingLandPricePerSqm;
-      renderValuationAssetList(kind === 'gift' ? 'giftValuationList' : 'inheritanceValuationList', assets);
-    }
-    showToast('기준시가를 적용했습니다.', 'success');
   } else if (action === 'lookup-real-price'){
     const card = btn.closest('.taxcalc-asset');
     const idx = numVal(card.dataset.idx);
@@ -8740,6 +8616,18 @@ taxCalcView.addEventListener('click', function(e){
     const idx = numVal(btn.dataset.idx);
     openFairMarketValueRecognitionModal_(function(appraisalValue){
       transferAssets[idx].appraisalValue = appraisalValue;
+      renderTransferPane();
+    });
+  } else if (action === 'open-building-standard-price-acq'){
+    const idx = numVal(btn.dataset.idx);
+    openBuildingStandardPriceModal_(function(value){
+      transferAssets[idx].acquisitionStandardPriceForExpense = value;
+      renderTransferPane();
+    });
+  } else if (action === 'open-building-standard-price-transfer'){
+    const idx = numVal(btn.dataset.idx);
+    openBuildingStandardPriceModal_(function(value){
+      transferAssets[idx].transferStandardPriceForConversion = value;
       renderTransferPane();
     });
   } else if (action === 'open-one-house-special-modal'){
