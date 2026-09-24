@@ -3227,6 +3227,9 @@ let oaSharedFilingState = {};
 // [2026.09.24 신규] 양도소득세 탭 안의 부동산/주식등/국외자산 하위 탭 — 계산은 절대 못
 // 합치지만 화면은 "구분 선택 → 해당 화면만 표시"로 한 번에 하나씩 보여준다(재검토60).
 let trActiveSubtab_ = 'realestate';
+// [2026.09.24 신규, 재검토68] 증여세도 같은 이유(합산 불가능한 별도 계산)로 하위 탭 분리 —
+// 세무사님 지시: "합칠 수 없는 것이라면 양도소득세처럼 증여세 아래 각각 하위탭을 만들어라."
+let giftActiveSubtab_ = 'general';
 
 // 아래 두 함수는 "이 사건에 없는 자산"(취득계약 externalMembers, 자산유형 개념이 없음) 전용
 // 계산 헬퍼다 — 예전에는 별도의 "토지·건물 안분계산기" 도구(renderAllocationTool)도 같이
@@ -6060,8 +6063,19 @@ function renderValuationPane(){
     '<div id="giftValuationList"></div>';
   renderValuationAssetList('giftValuationList', giftValuationAssets_());
 }
+const GIFT_SUBTAB_LABELS = {
+  general: '일반 증여세', nt: '명의신탁 증여의제', pf: '재산취득자금 증여추정', jm: '일감몰아주기',
+  jt: '일감떼어주기', sl: '상장·합병이익', pv: '재산가치증가이익', cb: '전환사채등 이익',
+  sc: '특정법인 거래', ed: '초과배당이익', sr: '특례세율(창업·가업승계)'
+};
 function renderGiftPane(){
   taxCalcGiftPane.innerHTML =
+    '<div class="taxcalc-subtabs">' +
+      Object.keys(GIFT_SUBTAB_LABELS).map(function(key){
+        return '<button type="button" class="taxcalc-subtab' + (giftActiveSubtab_ === key ? ' active' : '') + '" data-action="switch-gift-subtab" data-subtab="' + key + '">' + GIFT_SUBTAB_LABELS[key] + '</button>';
+      }).join('') +
+    '</div>' +
+    '<div class="taxcalc-subpane" data-subpane="general" style="' + (giftActiveSubtab_ === 'general' ? '' : 'display:none;') + '">' +
     '<div id="tcGiftCaseFactsBanner"></div>' +
     '<div class="taxcalc-asset">' +
       '<div class="taxcalc-asset-head"><b>증여 기본정보</b>' +
@@ -6111,6 +6125,8 @@ function renderGiftPane(){
     '</div>' +
     '<button type="button" class="taxcalc-run-btn" data-action="run-gift">세액 계산하기</button>' +
     '<div id="taxCalcGiftResult"></div>' +
+    '</div>' +
+    '<div class="taxcalc-subpane" data-subpane="sr" style="' + (giftActiveSubtab_ === 'sr' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>[별지 제10호의2서식] 조특법§30의5·§30의6 증여세 과세특례(창업자금·가업승계주식) — 해당하는 경우에만 별도로 계산합니다. 일반 증여세와는 세율·공제·한도가 전혀 다릅니다.</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -6156,24 +6172,15 @@ function renderGiftPane(){
       '<button type="button" class="taxcalc-run-btn" data-action="run-special-rate-gift">특례세율 증여세 계산하기</button>' +
       '<div id="taxCalcSpecialRateGiftResult"></div>' +
     '</div>' +
-        // [2026.09.24 재구성] 명의신탁·재산취득자금·일감몰아주기·일감떼어주기·상장이익·재산가치
-    // 증가이익 6개는 전부 §47①·§55①에 열거된 법정 합산배제 증여재산(또는 그와 같은 성격)이라
-    // 위 giftValuationAssets_() 흡수 대상이 아니다 — 각자 완결적으로 과세표준부터 납부세액까지
-    // 계산해야 한다. 다만 세무사님 지시("화면 하나로 합치라")대로, 서로 계산은 다르지만
-    // "법정 합산배제 증여"라는 같은 성격이므로 카드 하나에 "구분" 선택지로 묶는다.
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>법정 합산배제 증여 계산 — 위 일반 증여세 계산과 절대 합산하지 않고 각자 별도로 신고합니다(§47①·§55① 등)</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>구분</label><select id="giftSpecialCaseType" data-action="switch-gift-special-case">' +
-          '<option value="nt">명의신탁재산의 증여의제(§45의2)</option>' +
-          '<option value="pf">재산 취득자금 등의 증여 추정(§45, 자금출처조사)</option>' +
-          '<option value="jm">일감몰아주기 증여의제(§45의3)</option>' +
-          '<option value="jt">일감떼어주기 증여의제(§45의4)</option>' +
-          '<option value="sl">주식등 상장·합병에 따른 이익의 증여(§41의3·§41의5)</option>' +
-          '<option value="pv">재산 취득 후 재산가치 증가에 따른 이익의 증여(§42의3)</option>' + +
-        '</select></div>' +
-      '</div>' +
-      '<div id="giftSpecialCase-nt">' +
+    '</div>' +
+    // [2026.09.24 재구성, 재검토68] 명의신탁·재산취득자금·일감몰아주기·일감떼어주기·상장이익·
+    // 재산가치증가이익 6개는 전부 §47①·§55①에 열거된 법정 합산배제 증여재산(또는 그와 같은
+    // 성격)이라 위 giftValuationAssets_() 흡수 대상이 아니다 — 각자 완결적으로 과세표준부터
+    // 납부세액까지 계산해야 한다. 예전엔 카드 하나에 "구분" 드롭다운으로 묶었었는데, 세무사님
+    // 재지적("합칠 수 없는 것이라면 양도소득세처럼 하위탭을 만들어라") — 양도세 부동산/주식등/
+    // 국외자산과 같은 패턴으로 6개를 각각 독립된 하위탭으로 분리한다.
+    '<div class="taxcalc-subpane" data-subpane="nt" style="' + (giftActiveSubtab_ === 'nt' ? '' : 'display:none;') + '">' +
+      '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>명의신탁재산의 증여 의제(§45의2) — 등기·등록·명의개서가 필요한 재산(주식등, 토지·건물 제외)의 실제소유자와 명의자가 다를 때. 증여재산공제 없이 재산가액 전액이 과세표준입니다</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>명의신탁재산의 가액</label><input type="number" id="ntPropertyValue" placeholder="원"><span class="taxcalc-field-help">명의개서일 또는 소유권취득일이 속한 해의 다음 해 말일의 다음 날 현재 평가액</span></div>' +
@@ -6208,9 +6215,10 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-nominee-trust">증여세 계산하기</button>' +
       '<div id="taxCalcNomineeTrustResult"></div>' +
-    
       '</div>' +
-      '<div id="giftSpecialCase-pf" style="display:none;">' +
+    '</div>' +
+    '<div class="taxcalc-subpane" data-subpane="pf" style="' + (giftActiveSubtab_ === 'pf' ? '' : 'display:none;') + '">' +
+      '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>재산 취득자금 등의 증여 추정(§45) — 자력취득 능력이 부족한 사람이 재산을 취득(또는 채무를 상환)했는데 그 자금출처를 입증하지 못하면, 미입증금액을 증여받은 것으로 추정합니다(자금출처조사)</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>취득재산의 가액(또는 채무 상환금액)</label><input type="number" id="afTotalValue" placeholder="원"></div>' +
@@ -6231,9 +6239,10 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-property-funds">증여세 계산하기</button>' +
       '<div id="taxCalcPropertyFundsResult"></div>' +
-    
       '</div>' +
-      '<div id="giftSpecialCase-jm" style="display:none;">' +
+    '</div>' +
+    '<div class="taxcalc-subpane" data-subpane="jm" style="' + (giftActiveSubtab_ === 'jm' ? '' : 'display:none;') + '">' +
+      '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>[별지 제10호의3서식] 일감몰아주기 증여의제(§45의3) — 지배주주+친족이 지분을 가진 법인이 특수관계법인과 매출비중이 높고 지분율도 높을 때 과세</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>수혜법인 기업규모</label><select id="jmCompanySize">' +
@@ -6263,9 +6272,10 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-related-party-gift">일감몰아주기 증여세 계산하기</button>' +
       '<div id="taxCalcRelatedPartyGiftResult"></div>' +
-    
       '</div>' +
-      '<div id="giftSpecialCase-jt" style="display:none;">' +
+    '</div>' +
+    '<div class="taxcalc-subpane" data-subpane="jt" style="' + (giftActiveSubtab_ === 'jt' ? '' : 'display:none;') + '">' +
+      '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>[별지 제10호의4서식] 일감떼어주기 증여의제(§45의4) — 특수관계법인의 사업기회를 지분 30% 이상 보유한 법인에 제공했을 때 과세. 개시사업연도에 잠정신고 후 2년 경과 시 정산사업연도로 반드시 재계산</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>신고 단계</label><select id="jtPhase">' +
@@ -6295,9 +6305,10 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-business-opportunity-gift">일감떼어주기 증여세 계산하기</button>' +
       '<div id="taxCalcBusinessOpportunityGiftResult"></div>' +
-    
       '</div>' +
-      '<div id="giftSpecialCase-sl" style="display:none;">' +
+    '</div>' +
+    '<div class="taxcalc-subpane" data-subpane="sl" style="' + (giftActiveSubtab_ === 'sl' ? '' : 'display:none;') + '">' +
+      '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>주식등 상장·합병에 따른 이익의 증여(§41의3·§41의5) — 최대주주등의 특수관계인이 증여·유상취득한 주식이 5년 이내 상장되거나 특수관계 상장법인과 합병되어 가치가 증가했을 때</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>구분</label><select id="slProvision">' +
@@ -6325,9 +6336,10 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-stock-listing-gift">증여세 계산하기</button>' +
       '<div id="taxCalcStockListingGiftResult"></div>' +
-    
       '</div>' +
-      '<div id="giftSpecialCase-pv" style="display:none;">' +
+    '</div>' +
+    '<div class="taxcalc-subpane" data-subpane="pv" style="' + (giftActiveSubtab_ === 'pv' ? '' : 'display:none;') + '">' +
+      '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>재산 취득 후 재산가치 증가에 따른 이익의 증여(§42의3) — 자력없는 자가 특수관계인으로부터 증여·차입 등으로 재산을 취득한 후 5년 이내 개발사업·형질변경 등으로 재산가치가 증가한 경우</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>재산가치증가사유 발생일 현재 재산가액</label><input type="number" id="pvEventValue" placeholder="원"></div>' +
@@ -6350,11 +6362,8 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-property-value-increase-gift">증여세 계산하기</button>' +
       '<div id="taxCalcPropertyValueIncreaseGiftResult"></div>' +
-    
       '</div>' +
     '</div>' +
-    
-    
     // [2026.09.23 흡수] 채무면제이익(§36) 독립계산기는 giftValuationAssets_()의 평가방법
     // "debtForgiveness"로 흡수 — 아래 삭제.
     // [2026.09.23 흡수] 증자이익(§39)·감자이익(§39의2)·현물출자이익(§39의3) 독립계산기는
@@ -6362,6 +6371,7 @@ function renderGiftPane(){
     // "inKindContributionBenefit"으로 흡수 — 아래 삭제. 감자(고가소각) 케이스는 원래
     // 액면가액(faceValuePerShare) 입력칸 자체가 빠져 있어 계산이 항상 에러로 막혀있던 것을
     // 이번에 새 필드(crFaceValue)로 같이 고쳤다.
+    '<div class="taxcalc-subpane" data-subpane="cb" style="' + (giftActiveSubtab_ === 'cb' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>전환사채등의 주식전환등에 따른 이익의 증여(§40) — 전환사채·신주인수권부사채 등을 인수·취득·양도하거나 주식전환등을 할 때</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -6405,6 +6415,7 @@ function renderGiftPane(){
       '<button type="button" class="taxcalc-run-btn" data-action="run-convertible-bond-gift">증여세 계산하기</button>' +
       '<div id="taxCalcConvertibleBondGiftResult"></div>' +
     '</div>' +
+    '</div>' +
     // [2026.09.23 흡수] 부동산무상사용·담보이용이익(§37) 독립계산기는 giftValuationAssets_()의
     // 평가방법 "freePropertyUse"로 흡수 — 아래 삭제.
     // [2026.09.23 흡수] 배우자등 양도재산 증여추정(§44) 독립계산기는 giftValuationAssets_()의
@@ -6418,17 +6429,12 @@ function renderGiftPane(){
     // 따로 계산해 비교해야 하고, ed는 최초신고(추정)·정산신고(확정)가 서로 다른 과세연도에
     // 걸쳐 있어, 지금 구조로는 자동 합산이 불가능해 별도 계산기로 남겼다(재검토51 참고) —
     // 계산된 금액은 실제 신고시 위 일반 증여세 계산의 증여재산가액에 반영할지 직접 판단해야
-    // 한다. 그래도 화면은 세무사님 지시대로 카드 하나로 묶는다.
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>⚠ 합산은 필요하지만 이 도구가 자동 합산하지 못하는 증여 — 계산 후 위 증여재산가액에 반영할지 직접 판단하세요</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>구분</label><select id="giftAggUnmergeableType" data-action="switch-gift-agg-unmergeable">' +
-          '<option value="sc">특정법인과의 거래를 통한 이익의 증여의제(§45의5)</option>' +
-          '<option value="ed">초과배당에 따른 이익의 증여(§41의2)</option>' + +
-        '</select></div>' +
-      '</div>' +
-      '<div id="giftAggUnmergeableType-sc">' +
-      '<div class="taxcalc-asset-head"><b>특정법인과의 거래를 통한 이익의 증여의제(§45의5) — 지배주주 지분 30%이상 법인이 지배주주의 특수관계인과 무상제공·저가양도·고가양수·불균등 자본거래 등을 할 때</b></div>' +
+    // 한다. [2026.09.24 재구성, 재검토68] 세무사님 지시대로 카드 하나(구분 드롭다운)에서
+    // 나머지와 같은 방식으로 각각 독립 하위탭으로 분리한다 — 값을 어디에 반영할지 직접
+    // 판단해야 한다는 안내는 각 탭 카드 제목에 그대로 남긴다.
+    '<div class="taxcalc-subpane" data-subpane="sc" style="' + (giftActiveSubtab_ === 'sc' ? '' : 'display:none;') + '">' +
+      '<div class="taxcalc-asset" style="margin-top:20px;">' +
+      '<div class="taxcalc-asset-head"><b>⚠ 특정법인과의 거래를 통한 이익의 증여의제(§45의5, 지배주주 지분 30%이상 법인이 지배주주의 특수관계인과 무상제공·저가양도·고가양수·불균등 자본거래 등을 할 때) — 합산이 필요하지만 이 도구가 자동 합산하지 못합니다. 계산 후 위 일반 증여세의 증여재산가액에 반영할지 직접 판단하세요.</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>특정법인이 얻는 이익</label><input type="number" id="scBenefitToCorp" placeholder="원"><span class="taxcalc-field-help">증여재산가액·채무면제이익·자본거래이익·시가차액 등, 별도 계산</span></div>' +
         '<div class="taxcalc-field"><label>특정법인의 법인세 산출세액(공제·감면 차감후)</label><input type="number" id="scCorpTax" placeholder="원"></div>' +
@@ -6454,10 +6460,11 @@ function renderGiftPane(){
       '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('sc') + '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-specific-corp-gift">증여세 계산하기</button>' +
       '<div id="taxCalcSpecificCorpGiftResult"></div>' +
-    
       '</div>' +
-      '<div id="giftAggUnmergeableType-ed" style="display:none;">' +
-      '<div class="taxcalc-asset-head"><b>초과배당에 따른 이익의 증여(§41의2) — 최대주주등이 배당을 포기하거나 불균등 조건으로 배당받아 그 특수관계인이 본인 지분보다 많은 배당을 받았을 때</b></div>' +
+    '</div>' +
+    '<div class="taxcalc-subpane" data-subpane="ed" style="' + (giftActiveSubtab_ === 'ed' ? '' : 'display:none;') + '">' +
+      '<div class="taxcalc-asset" style="margin-top:20px;">' +
+      '<div class="taxcalc-asset-head"><b>⚠ 초과배당에 따른 이익의 증여(§41의2, 최대주주등이 배당을 포기하거나 불균등 조건으로 배당받아 그 특수관계인이 본인 지분보다 많은 배당을 받았을 때) — 합산이 필요하지만 이 도구가 자동 합산하지 못합니다. 계산 후 위 일반 증여세의 증여재산가액에 반영할지 직접 판단하세요.</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" id="edFinalSettlement"><label for="edFinalSettlement">정산 신고임(실제소득세액 기준, 체크 안 하면 최초 신고=추정소득세상당액 기준)</label></div>' +
         '<div class="taxcalc-field"><label>특수관계인이 실제 받은 배당등의 금액</label><input type="number" id="edBaseAmount" placeholder="원"></div>' +
@@ -6484,11 +6491,12 @@ function renderGiftPane(){
       '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('ed') + '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-excess-dividend-gift">증여세 계산하기</button>' +
       '<div id="taxCalcExcessDividendGiftResult"></div>' +
-    
       '</div>' +
     '</div>' +
     // [2026.09.24 재구성] 비과세판정·공익법인가산세·장애인신탁·중복적용배제 4개는 증여세
     // 계산 자체가 아니라 판정·가산세·과세특례 선택 등 부가 확인 도구라 카드 하나로 묶는다.
+    // 별도 세목이 아니라 "일반 증여세" 계산을 보조하는 도구라 그 하위탭에 그대로 둔다.
+    '<div class="taxcalc-subpane" data-subpane="general" style="' + (giftActiveSubtab_ === 'general' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>증여세 판정·부가 확인 도구</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -6496,7 +6504,7 @@ function renderGiftPane(){
           '<option value="ntg">비과세되는 증여재산(§46)</option>' +
           '<option value="po">공익법인등에 대한 가산세(§78)</option>' +
           '<option value="dt">장애인이 증여받은 재산의 과세가액 불산입(§52의2)</option>' +
-          '<option value="gsp">증여세 과세특례 조문 중복적용 배제(§43①)</option>' + +
+          '<option value="gsp">증여세 과세특례 조문 중복적용 배제(§43①)</option>' +
         '</select></div>' +
       '</div>' +
       '<div id="giftUtilityToolType-ntg">' +
@@ -6611,8 +6619,8 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-gift-special-provision-overlap">중복적용 배제 판정하기</button>' +
       '<div id="taxCalcGiftOverlapResult"></div>' +
-    
       '</div>' +
+    '</div>' +
     '</div>' ;
 }
 
@@ -7617,20 +7625,6 @@ taxCalcView.addEventListener('change', function(e){
     });
     return;
   }
-  if (e.target.id === 'giftSpecialCaseType'){
-    ['nt', 'pf', 'jm', 'jt', 'sl', 'pv'].forEach(function(key){
-      const el = document.getElementById('giftSpecialCase-' + key);
-      if (el) el.style.display = (key === e.target.value) ? '' : 'none';
-    });
-    return;
-  }
-  if (e.target.id === 'giftAggUnmergeableType'){
-    ['sc', 'ed'].forEach(function(key){
-      const el = document.getElementById('giftAggUnmergeableType-' + key);
-      if (el) el.style.display = (key === e.target.value) ? '' : 'none';
-    });
-    return;
-  }
   if (e.target.id === 'giftUtilityToolType'){
     ['ntg', 'po', 'dt', 'gsp'].forEach(function(key){
       const el = document.getElementById('giftUtilityToolType-' + key);
@@ -7659,6 +7653,14 @@ taxCalcView.addEventListener('click', function(e){
     trActiveSubtab_ = btn.dataset.subtab;
     taxCalcTransferPane.querySelectorAll('.taxcalc-subtab').forEach(function(t){ t.classList.toggle('active', t.dataset.subtab === trActiveSubtab_); });
     taxCalcTransferPane.querySelectorAll('[data-subpane]').forEach(function(p){ p.style.display = (p.dataset.subpane === trActiveSubtab_) ? '' : 'none'; });
+  } else if (action === 'switch-gift-subtab'){
+    // [2026.09.24 신규, 재검토68] 증여세도 양도세와 같은 패턴 — 전체 재렌더 없이 CSS만 토글
+    // (여러 개별 하위탭에 입력해둔 값이 날아가지 않게). "general" 하위탭은 카드가 2군데
+    // (기본정보~공제 부분 + 판정·부가 확인 도구 부분)로 나뉘어 있어 같은 data-subpane 값을
+    // 가진 요소가 2개인데, querySelectorAll이 둘 다 잡아서 함께 토글되므로 문제없다.
+    giftActiveSubtab_ = btn.dataset.subtab;
+    taxCalcGiftPane.querySelectorAll('.taxcalc-subtab').forEach(function(t){ t.classList.toggle('active', t.dataset.subtab === giftActiveSubtab_); });
+    taxCalcGiftPane.querySelectorAll('[data-subpane]').forEach(function(p){ p.style.display = (p.dataset.subpane === giftActiveSubtab_) ? '' : 'none'; });
   } else if (action === 'del-asset'){
     const idx = numVal(btn.dataset.idx);
     transferAssets.splice(idx, 1);

@@ -410,7 +410,9 @@
   .taxcalc-tab.active{ color:var(--navy); opacity:1; border-bottom-color:var(--gold); }
   /* [2026.09.24] 양도소득세 탭 안의 부동산/주식등/국외자산 — 서로 계산을 절대 합칠 수 없는
      별도 세목이라 한 화면에 늘어놓지 않고 위 탭과 같은 모양의 하위 탭으로 완전히 분리한다. */
-  .taxcalc-subtabs{ display:flex; gap:0; border-bottom:1px solid var(--taxcalc-border); margin-bottom:14px; }
+  /* [2026.09.24 재검토68] 증여세는 11개까지 늘어나 한 줄에 다 안 들어간다 — flex-wrap으로
+     넓을 땐 한 줄, 좁을 때만 자동 줄바꿈([[feedback_responsive_line_wrap]] 원칙). */
+  .taxcalc-subtabs{ display:flex; flex-wrap:wrap; gap:0; border-bottom:1px solid var(--taxcalc-border); margin-bottom:14px; }
   .taxcalc-subtab{
     background:none; border:none; border-bottom:2px solid transparent; padding:8px 12px;
     font-family:inherit; font-size:13px; font-weight:700; color:var(--ink); opacity:0.6; cursor:pointer;
