@@ -4171,7 +4171,7 @@ function renderTransferPane(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="stock" style="' + (trActiveSubtab_ === 'stock' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>[별지 제62호서식 등] 주식등 양도소득세 — 부동산과 완전히 별도 세목입니다(장기보유특별공제 없음, 대주주/소액주주·국내/국외·중소기업 여부로 세율 결정)</b></div>' +
+      '<div class="taxcalc-asset-head"><b>주식등 양도소득세 — 부동산과 완전히 별도 세목입니다(장기보유특별공제 없음, 대주주/소액주주·국내/국외·중소기업 여부로 세율 결정)</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>자산구분</label><select id="stAssetCategory">' +
           '<option value="domestic_stock">국내주식등</option><option value="foreign_stock">국외주식등</option>' +
@@ -5187,7 +5187,7 @@ function renderGiftInheritanceSharedPane_(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="ip" style="' + (giftInheritanceSharedActiveSubtab_ === 'ip' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>[별지 제11호서식] (§71) — 신고 후 매년 나눠 낼 회차별 세액을 계산합니다</b></div>' +
+      '<div class="taxcalc-asset-head"><b>(§71) — 신고 후 매년 나눠 낼 회차별 세액을 계산합니다</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>세목</label><select id="ipIhTaxType"><option value="inheritance" selected>상속세</option><option value="gift">증여세</option></select></div>' +
         '<div class="taxcalc-field"><label>총 납부세액</label><input type="number" id="ipIhTotal" placeholder="원"><span class="taxcalc-result-note" id="ipIhTotalHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">2천만원 초과해야 신청 가능</span></div>' +
@@ -6059,7 +6059,7 @@ function renderInheritancePane(){
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>장례비용 내역(§14①3호) — 지급처별로 입력하면 일반분·봉안시설분을 자동 구분·합산합니다(일반분 없으면 자동 500만원 공제, 봉안시설분은 별도 500만원 한도)</b></div>' +
       '<div id="ihFuneralItemsList"></div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>가업상속공제(§18의2, [별지 제1호서식]) — 아래 상세내역을 채우면 자동계산됩니다. 모르면 최종 공제액만 직접 입력하세요.</b></div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>가업상속공제(§18의2) — 아래 상세내역을 채우면 자동계산됩니다. 모르면 최종 공제액만 직접 입력하세요.</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>최종 공제액(직접 입력, 상세내역 없을 때만)</label><input type="number" id="ihBusinessDeduction" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>가업영위기간</label><input type="number" id="ihBusinessYears" placeholder="년" maxlength="2"><span class="taxcalc-field-help">10년 미만이면 공제 불가</span></div>' +
@@ -6088,7 +6088,7 @@ function renderInheritancePane(){
         '<div class="taxcalc-field"><label>가업상속인의 가업상속재산 외 상속재산가액</label><input type="number" id="ihBusinessHeirNonBizAsset" placeholder="원"><span class="taxcalc-field-help">시행령§15⑥ — 그 상속인이 받는 상속재산-부담채무-가업상속재산</span></div>' +
         '<div class="taxcalc-field"><label>가업상속공제 미적용시 그 상속인 납부세액</label><input type="number" id="ihBusinessHeirTaxWithoutDeduction" placeholder="원"><span class="taxcalc-field-help">§3조의2①②에 따라 계산, 별도 계산 필요</span></div>' +
       '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>영농상속공제(§18의3, [별지 제2호서식], 30억 고정한도) — 마찬가지로 상세내역을 채우면 자동계산됩니다.</b></div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>영농상속공제(§18의3, 30억 고정한도) — 마찬가지로 상세내역을 채우면 자동계산됩니다.</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>최종 공제액(직접 입력, 상세내역 없을 때만)</label><input type="number" id="ihFarmingDeduction" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>영농재산가액 합계</label><input type="number" id="ihFarmingIndividualAsset" placeholder="원"><span class="taxcalc-field-help">농지·초지·산림지·어선 등, 별지2호 ①합계, 개인</span></div>' +
@@ -6291,7 +6291,7 @@ function renderGiftPane(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="sr" style="' + (giftActiveSubtab_ === 'sr' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>[별지 제10호의2서식] (조특법§30의5·§30의6) — 해당하는 경우에만 별도로 계산합니다. 일반 증여세와는 세율·공제·한도가 전혀 다릅니다.</b></div>' +
+      '<div class="taxcalc-asset-head"><b>(조특법§30의5·§30의6) — 해당하는 경우에만 별도로 계산합니다. 일반 증여세와는 세율·공제·한도가 전혀 다릅니다.</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>특례 종류</label><select id="srGiftType">' +
           '<option value="startup">창업자금(§30의5)</option><option value="business_succession">가업승계 주식등(§30의6)</option>' +
@@ -6406,7 +6406,7 @@ function renderGiftPane(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="jm" style="' + (giftActiveSubtab_ === 'jm' ? '' : 'display:none;') + '">' +
       '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>[별지 제10호의3서식] (§45의3) — 지배주주+친족이 지분을 가진 법인이 특수관계법인과 매출비중이 높고 지분율도 높을 때 과세</b></div>' +
+      '<div class="taxcalc-asset-head"><b>(§45의3) — 지배주주+친족이 지분을 가진 법인이 특수관계법인과 매출비중이 높고 지분율도 높을 때 과세</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>수혜법인 기업규모</label><select id="jmCompanySize">' +
           '<option value="general">일반(중견·중소 아님)</option><option value="medium">중견기업</option><option value="small">중소기업</option>' +
@@ -6439,7 +6439,7 @@ function renderGiftPane(){
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="jt" style="' + (giftActiveSubtab_ === 'jt' ? '' : 'display:none;') + '">' +
       '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>[별지 제10호의4서식] (§45의4) — 특수관계법인의 사업기회를 지분 30% 이상 보유한 법인에 제공했을 때 과세. 개시사업연도에 잠정신고 후 2년 경과 시 정산사업연도로 반드시 재계산</b></div>' +
+      '<div class="taxcalc-asset-head"><b>(§45의4) — 특수관계법인의 사업기회를 지분 30% 이상 보유한 법인에 제공했을 때 과세. 개시사업연도에 잠정신고 후 2년 경과 시 정산사업연도로 반드시 재계산</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>신고 단계</label><select id="jtPhase">' +
           '<option value="initial">개시사업연도(잠정)</option><option value="settlement">정산사업연도(2년 경과, 확정)</option>' +
