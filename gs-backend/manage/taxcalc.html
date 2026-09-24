@@ -14,6 +14,7 @@ const taxCalcTransferPane = document.getElementById('taxCalcTransferPane');
 const taxCalcGiftPane = document.getElementById('taxCalcGiftPane');
 const taxCalcInheritancePane = document.getElementById('taxCalcInheritancePane');
 const taxCalcGiftInheritanceSharedPane = document.getElementById('taxCalcGiftInheritanceSharedPane');
+const taxCalcValuationPane = document.getElementById('taxCalcValuationPane');
 const taxCalcAcquisitionPane = document.getElementById('taxCalcAcquisitionPane');
 const taxCalcRegistrationLicensePane = document.getElementById('taxCalcRegistrationLicensePane');
 const taxCalcStandardPricePane = document.getElementById('taxCalcStandardPricePane');
@@ -341,7 +342,7 @@ function parseShareFraction_(raw){
 // 전부 훑어 이 상속인에게 배분된 몫만 합산한다. 법정상속지분(민법§1009, 배우자공제 한도용)은
 // 이것과 별개로 recomputeSpouseRatio()가 공동상속인 수만으로 자동계산한다.
 function computeHeirActualValue_(heirIdx){
-  return Math.round((inheritanceValuationAssets || []).reduce(function(sum, a){
+  return Math.round((inheritanceValuationAssets_() || []).reduce(function(sum, a){
     const value = computeValuationAssetValue(a);
     const allocations = Array.isArray(a.heirAllocations) ? a.heirAllocations : [];
     const heirRatio = allocations.reduce(function(s, al){
@@ -356,7 +357,7 @@ function computeHeirActualValue_(heirIdx){
 // 배분한 이 증여자 몫의 가액. 상속과 달리 이 값은 사후 분배용이 아니라 이 증여자의 독립된
 // calculateGiftTaxJS 입력(giftAmount)으로 바로 쓰인다.
 function computeDonorActualValue_(donorIdx){
-  return Math.round((giftValuationAssets || []).reduce(function(sum, a){
+  return Math.round((giftValuationAssets_() || []).reduce(function(sum, a){
     const value = computeValuationAssetValue(a);
     const allocations = Array.isArray(a.donorAllocations) ? a.donorAllocations : [];
     const donorRatio = allocations.reduce(function(s, al){
@@ -370,7 +371,7 @@ function computeDonorActualValue_(donorIdx){
 // computeDonorActualValue_의 수증인 버전 — 배분행의 doneeIdx가 비어있으면(수증인이 1명뿐이라
 // 화면에 선택칸이 없는 경우) 수증인 0번(유일한 수증인) 몫으로 간주한다.
 function computeDoneeActualValue_(doneeIdx){
-  return Math.round((giftValuationAssets || []).reduce(function(sum, a){
+  return Math.round((giftValuationAssets_() || []).reduce(function(sum, a){
     const value = computeValuationAssetValue(a);
     const allocations = Array.isArray(a.donorAllocations) ? a.donorAllocations : [];
     const doneeRatio = allocations.reduce(function(s, al){
@@ -385,7 +386,7 @@ function computeDoneeActualValue_(doneeIdx){
 // computeDonorActualValue_/computeDoneeActualValue_의 (증여자,수증인) 쌍 버전 — 이 특정 쌍으로
 // 흐르는 몫만 뽑아낸다. 수증인이 2명 이상일 때 run-gift가 실제 계산 입력(giftAmount)으로 쓴다.
 function computePairActualValue_(donorIdx, doneeIdx){
-  return Math.round((giftValuationAssets || []).reduce(function(sum, a){
+  return Math.round((giftValuationAssets_() || []).reduce(function(sum, a){
     const value = computeValuationAssetValue(a);
     const allocations = Array.isArray(a.donorAllocations) ? a.donorAllocations : [];
     const ratio = allocations.reduce(function(s, al){
@@ -2126,12 +2127,21 @@ function runAiAutoFillInheritance(){
 // "자산을 하나씩 나열해서 합산"하는 구조를 그대로 반영한다. 평가방법 자체(상증세법 §60~66
 // 보충적평가방법)는 토지·주택·상장주식·비상장주식만 계산해주고, 그 외(시가·감정가액 등)는
 // 이미 알고 있는 금액을 직접 입력하게 한다.
-let giftValuationAssets = [{}];
-let inheritanceValuationAssets = [{}];
+// [2026.09.24 재구성] 세무사님 지시 — 증여재산·상속재산 평가는 상증세법 하나의 법령이고
+// 실제로 평가방법(§60~64) 계산 코드도 이미 100% 공유되고 있었는데, 배열만 증여세/상속세
+// 화면에 각각 따로(giftValuationAssets/inheritanceValuationAssets) 있어서 "배분" 레이어가
+// 어쩔 수 없이 두 벌로 중복됐었다(재산평가 공유 점검 검토서 참고) — 배열 자체를 하나로
+// 합치고 자산마다 "세목"(taxType) 하나로만 구분한다. 기존 두 이름은 완전히 지우는 대신
+// 아래 얇은 필터 함수로 남겨(45곳 넘는 기존 호출부를 로직 변경 없이 그대로 재사용하기
+// 위함 — 위험을 "새 로직 작성"이 아니라 "기계적 치환"으로 국한). 빈 배열로 시작(둘 다
+// "+자산 추가" 버튼으로 시작 — 양도계약/취득계약 목록과 같은 빈 목록 UX 패턴).
+let valuationAssets = [];
+function giftValuationAssets_(){ return valuationAssets.filter(function(a){ return a.taxType !== 'inheritance'; }); }
+function inheritanceValuationAssets_(){ return valuationAssets.filter(function(a){ return a.taxType === 'inheritance'; }); }
 // [2026.09.20 신규] 세무사님 지시 — "수증자산의 소유자가 여러명이라서 발생하는 케이스" —
 // 공동소유 자산 하나를 여러 증여자가 지분만큼 나눠 증여하면 증여자마다 관계·10년합산·세율
 // 누진이 전부 별도로 계산돼야 한다(상증세법상 "동일인" 합산은 직계존속+그 배우자 사이에서만
-// 성립). 자산 목록(giftValuationAssets)은 물리적으로 하나라 중복 등록하지 않고, 상속세의
+// 성립). 자산 목록(giftValuationAssets_())은 물리적으로 하나라 중복 등록하지 않고, 상속세의
 // inheritanceHeirs+heirAllocations 패턴을 그대로 이식해 "증여자 목록"+"자산별 지분 배분"으로
 // 처리한다 — 단 상속은 배분이 "이미 계산된 세액 하나"를 사후에 나누는 것과 달리, 증여는
 // 배분된 지분가액으로 증여자마다 별도로 calculateGiftTaxJS를 호출해야 한다는 게 다르다.
@@ -5041,7 +5051,7 @@ function renderGiftInheritanceSharedPane_(){
     '</div>';
   renderGiftDoneeRegistry();
   renderGiftDonorRegistry();
-  renderValuationAssetList('giftValuationList', giftValuationAssets);
+  renderValuationAssetList('giftValuationList', giftValuationAssets_());
   const giftDateEl = document.getElementById('giftDate');
   // [2026.09.20] 납부지연일수는 이제 증여자마다 따로 계산된다(신고 상태·가산세가 증여자별
   // 카드로 옮겨감) — 각 증여자의 실제 납부일 입력 자체는 renderGiftDonorRegistry()가 배선하고,
@@ -5689,6 +5699,22 @@ function renderInheritancePane(){
   wireMinThresholdHint_('ipIhTotal', 'ipIhTotalHint', 20000000);
   wireRangeClamp_('ipIhRate', 0, 30);
 }
+// [2026.09.24 신규] 재산평가(상증세법§60~66) 독립 탭 — 재검토61. 증여재산·상속재산을 여기서
+// 선행 등록·평가하고, 각 자산의 "세목" 선택에 따라 그 아래 배분(증여자/수증인 또는 상속인)
+// 섹션이 renderValuationAssetRow 안에서 자동으로 바뀐다(이미 있던 로직 그대로, isInheritance
+// 플래그가 이제 컨테이너 대신 이 탭 안의 두 목록 각각에서 여전히 똑같이 동작). 목록 자체는
+// giftValuationAssets_()/inheritanceValuationAssets_()로 걸러 각자 컨테이너에 그대로 렌더 —
+// renderValuationAssetList 등 기존 함수는 전혀 손대지 않았다(컨테이너 위치만 이 탭으로 이동).
+function renderValuationPane(){
+  taxCalcValuationPane.innerHTML =
+    '<div class="taxcalc-hint">증여재산·상속재산 평가(상증세법§60~66)를 여기서 한 번에 등록·평가합니다 — 각 자산의 "세목"에 따라 배분(증여자·수증인 또는 상속인) 섹션이 바뀌고, 배분 결과는 증여세·상속세 탭의 해당 사람 카드에 자동으로 반영됩니다.</div>' +
+    '<div class="taxcalc-asset-head"><b>증여재산</b></div>' +
+    '<div id="giftValuationList"></div>' +
+    '<div class="taxcalc-asset-head" style="margin-top:20px;"><b>상속재산</b></div>' +
+    '<div id="inheritanceValuationList"></div>';
+  renderValuationAssetList('giftValuationList', giftValuationAssets_());
+  renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets_());
+}
 function renderGiftPane(){
   taxCalcGiftPane.innerHTML =
     '<div id="tcGiftCaseFactsBanner"></div>' +
@@ -5703,7 +5729,10 @@ function renderGiftPane(){
     '</div>' +
     '<div id="giftDoneeRegistry"></div>' +
     '<div id="giftDonorRegistry"></div>' +
-    '<div id="giftValuationList"></div>' +
+    // [2026.09.24 재구성] 재산평가(자산 등록+평가)는 "재산평가" 독립 탭으로 옮겼다(재검토61,
+    // 세무사님 지시 — 같은 상증세법 재산평가를 증여·상속 화면에 각각 따로 두지 않기 위함).
+    // 여기는 이동 안내 + 배분 합계 요약만 남긴다. 실제 목록은 taxCalcValuationPane이 그린다.
+    '<div class="taxcalc-result-note" style="margin-top:10px;">재산평가(자산 등록·평가·배분)는 <a href="#" data-action="jump-to-valuation-tab" data-jump-taxtype="gift">"재산평가" 탭에서</a> 합니다 — 여기서는 배분된 증여재산가액만 각 증여자 카드에 자동 반영됩니다.</div>' +
     '<div class="taxcalc-asset">' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>㉙㉚ 혼인·출산 증여재산공제 (혼인+출산 평생통산 1억원 한도, 위 증여일자를 기준으로 자동 판정)</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -5784,7 +5813,7 @@ function renderGiftPane(){
     '</div>' +
         // [2026.09.24 재구성] 명의신탁·재산취득자금·일감몰아주기·일감떼어주기·상장이익·재산가치
     // 증가이익 6개는 전부 §47①·§55①에 열거된 법정 합산배제 증여재산(또는 그와 같은 성격)이라
-    // 위 giftValuationAssets 흡수 대상이 아니다 — 각자 완결적으로 과세표준부터 납부세액까지
+    // 위 giftValuationAssets_() 흡수 대상이 아니다 — 각자 완결적으로 과세표준부터 납부세액까지
     // 계산해야 한다. 다만 세무사님 지시("화면 하나로 합치라")대로, 서로 계산은 다르지만
     // "법정 합산배제 증여"라는 같은 성격이므로 카드 하나에 "구분" 선택지로 묶는다.
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
@@ -5981,10 +6010,10 @@ function renderGiftPane(){
     '</div>' +
     
     
-    // [2026.09.23 흡수] 채무면제이익(§36) 독립계산기는 giftValuationAssets의 평가방법
+    // [2026.09.23 흡수] 채무면제이익(§36) 독립계산기는 giftValuationAssets_()의 평가방법
     // "debtForgiveness"로 흡수 — 아래 삭제.
     // [2026.09.23 흡수] 증자이익(§39)·감자이익(§39의2)·현물출자이익(§39의3) 독립계산기는
-    // giftValuationAssets의 평가방법 "capitalIncreaseBenefit"/"capitalReductionBenefit"/
+    // giftValuationAssets_()의 평가방법 "capitalIncreaseBenefit"/"capitalReductionBenefit"/
     // "inKindContributionBenefit"으로 흡수 — 아래 삭제. 감자(고가소각) 케이스는 원래
     // 액면가액(faceValuePerShare) 입력칸 자체가 빠져 있어 계산이 항상 에러로 막혀있던 것을
     // 이번에 새 필드(crFaceValue)로 같이 고쳤다.
@@ -6031,11 +6060,11 @@ function renderGiftPane(){
       '<button type="button" class="taxcalc-run-btn" data-action="run-convertible-bond-gift">증여세 계산하기</button>' +
       '<div id="taxCalcConvertibleBondGiftResult"></div>' +
     '</div>' +
-    // [2026.09.23 흡수] 부동산무상사용·담보이용이익(§37) 독립계산기는 giftValuationAssets의
+    // [2026.09.23 흡수] 부동산무상사용·담보이용이익(§37) 독립계산기는 giftValuationAssets_()의
     // 평가방법 "freePropertyUse"로 흡수 — 아래 삭제.
-    // [2026.09.23 흡수] 배우자등 양도재산 증여추정(§44) 독립계산기는 giftValuationAssets의
+    // [2026.09.23 흡수] 배우자등 양도재산 증여추정(§44) 독립계산기는 giftValuationAssets_()의
     // 평가방법 "spousePropertyTransfer"로 흡수 — 아래 삭제.
-    // [2026.09.23 흡수] 보험금증여(§34)·신탁이익증여(§33) 독립계산기는 giftValuationAssets의
+    // [2026.09.23 흡수] 보험금증여(§34)·신탁이익증여(§33) 독립계산기는 giftValuationAssets_()의
     // 평가방법 "insuranceProceeds"/"trustIncome"으로 흡수 — 아래 삭제.
     
     
@@ -6249,7 +6278,7 @@ function renderGiftPane(){
     
     
     // [2026.09.23 흡수] 합병이익(§38)·재산사용용역이익(§42)·조직변경이익(§42의2) 독립계산기는
-    // giftValuationAssets의 평가방법 "mergerBenefit"/"propertyUseService"/"orgChangeBenefit"로
+    // giftValuationAssets_()의 평가방법 "mergerBenefit"/"propertyUseService"/"orgChangeBenefit"로
     // 흡수 — 아래 삭제.
     
     // [2026.09.24 재구성] 연부연납(증여쪽 중복이었던 이 블록은 상속쪽의 taxType선택형으로
@@ -6258,7 +6287,7 @@ function renderGiftPane(){
     // renderGiftInheritanceSharedPane_()의 공유 패널로 옮겼다 — 아래 전부 삭제.
     // [2026.09.23 흡수] 저가양수도이익(§35)·무상대출이익(§41의4) 독립계산기는 이미 화면
     // 안내문구 자체가 "계산된 금액을 위 일반 증여세 계산기의 증여재산가액에 넣으세요"였다 —
-    // giftValuationAssets의 평가방법 "lowPriceTransfer"/"interestFreeLoan"으로 흡수해 그
+    // giftValuationAssets_()의 평가방법 "lowPriceTransfer"/"interestFreeLoan"으로 흡수해 그
     // 수동 입력 단계 자체를 없앤다. 아래 삭제.
     
     
@@ -6279,7 +6308,9 @@ function renderGiftPane(){
     '</div>' +
     '<div class="taxcalc-result-note" style="margin-top:14px;">여기 입력한 관계·생년월일·상속재산가액으로 아래 인적공제·배우자공제·동거주택공제·세대생략비율·신고인 정보가 전부 자동으로 채워집니다</div>' +
     '<div id="ihHeirRegistry"></div>' +
-    '<div id="inheritanceValuationList"></div>' +
+    // [2026.09.24 재구성] 재산평가는 "재산평가" 독립 탭으로 옮겼다(재검토61) — 여기는 이동
+    // 안내만 남긴다.
+    '<div class="taxcalc-result-note" style="margin-top:10px;">재산평가(자산 등록·평가·배분)는 <a href="#" data-action="jump-to-valuation-tab" data-jump-taxtype="inheritance">"재산평가" 탭에서</a> 합니다 — 여기서는 배분된 실제상속재산가액만 각 상속인 카드에 자동 반영됩니다.</div>' +
     '<div class="taxcalc-asset-head"><b>[부표4] 상속개시전 처분재산 등 산입액(§15) — 상속개시 전 1년 이내 재산종류별 2억원 이상(2년 이내 5억원 이상) 처분·인출·채무부담인데 용도가 불분명하면 자동으로 과세가액에 가산됩니다. 해당 없으면 비워두세요.</b></div>' +
     '<div id="ihDisposalItems"></div>' +
     '<div class="taxcalc-asset">' +
@@ -6451,7 +6482,7 @@ function renderGiftPane(){
       '<button type="button" class="taxcalc-run-btn" data-action="run-nontaxable-inheritance">비과세 여부 확인하기</button>' +
       '<div id="taxCalcNontaxableInheritanceResult"></div>' +
     '</div>';
-  renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets);
+  renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets_());
   renderDisposalItemsList();
   renderFuneralItemsList();
   renderHeirTool();
@@ -7304,10 +7335,10 @@ function scApplyTargetOptionsHtml_(){
     opts += '<option value="transfer:' + i + ':acqconv">양도세 — ' + label + ' — 환산취득가액용 취득당시 기준시가</option>';
     opts += '<option value="transfer:' + i + ':trfconv">양도세 — ' + label + ' — 환산취득가액용 양도당시 기준시가</option>';
   });
-  giftValuationAssets.forEach(function(a, i){
+  giftValuationAssets_().forEach(function(a, i){
     opts += '<option value="gift:' + i + '">증여세 재산평가 — 자산' + (i + 1) + '</option>';
   });
-  inheritanceValuationAssets.forEach(function(a, i){
+  inheritanceValuationAssets_().forEach(function(a, i){
     opts += '<option value="inheritance:' + i + '">상속세 재산평가 — 자산' + (i + 1) + '</option>';
   });
   return opts;
@@ -7319,7 +7350,7 @@ function renderStandardPriceResult_(r){
   let html = '<div class="taxcalc-result" style="margin-top:10px;">';
   html += taxCalcResultRow('건물기준시가(총액)', won(r.total), { total: true });
   html += '</div>';
-  const hasTargets = transferAssets.length || giftValuationAssets.length || inheritanceValuationAssets.length;
+  const hasTargets = transferAssets.length || giftValuationAssets_().length || inheritanceValuationAssets_().length;
   html += hasTargets ?
     '<div class="taxcalc-field" style="margin-top:8px;"><label>적용 대상</label><select id="scApplyTarget">' + scApplyTargetOptionsHtml_() + '</select></div>' +
     '<div class="taxcalc-field"><button type="button" class="taxcalc-run-btn" data-action="sc-apply">→ 적용</button></div>'
@@ -7412,6 +7443,7 @@ function initTaxCalcOnce_(){
   renderGiftPane();
   renderInheritancePane();
   renderGiftInheritanceSharedPane_();
+  renderValuationPane();
   renderAcquisitionPane();
   renderRegistrationLicensePane();
   renderStandardPricePane();
@@ -7428,6 +7460,7 @@ function updateTaxCalcPaneVisibility(){
   taxCalcInheritancePane.style.display = which === 'inheritance' ? 'block' : 'none';
   // [2026.09.24] 증여·상속 공유 도구 패널 — 둘 중 어느 탭이 활성화돼도 같이 보인다.
   taxCalcGiftInheritanceSharedPane.style.display = (which === 'gift' || which === 'inheritance') ? 'block' : 'none';
+  taxCalcValuationPane.style.display = which === 'valuation' ? 'block' : 'none';
   taxCalcAcquisitionPane.style.display = which === 'acquisition' ? 'block' : 'none';
   taxCalcRegistrationLicensePane.style.display = which === 'registrationlicense' ? 'block' : 'none';
   taxCalcStandardPricePane.style.display = which === 'standardprice' ? 'block' : 'none';
@@ -7611,19 +7644,40 @@ taxCalcView.addEventListener('click', function(e){
       card.classList.add('help-flash');
       setTimeout(function(){ card.classList.remove('help-flash'); }, 1600);
     }
+  } else if (action === 'jump-to-valuation-tab'){
+    // [2026.09.24 신규] 증여세·상속세 탭에서 "재산평가 탭에서 하세요" 안내 링크 — 실제로
+    // 그 탭으로 전환까지 해줘야 실행 가능한 안내가 된다(재검토58~59 기준).
+    e.preventDefault();
+    document.querySelectorAll('.taxcalc-tab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab === 'valuation'); });
+    updateTaxCalcPaneVisibility();
+    const sectionHead = btn.dataset.jumpTaxtype === 'inheritance'
+      ? Array.from(taxCalcValuationPane.querySelectorAll('.taxcalc-asset-head')).find(function(h){ return h.textContent === '상속재산'; })
+      : Array.from(taxCalcValuationPane.querySelectorAll('.taxcalc-asset-head')).find(function(h){ return h.textContent === '증여재산'; });
+    if (sectionHead){
+      sectionHead.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      sectionHead.classList.add('help-flash');
+      setTimeout(function(){ sectionHead.classList.remove('help-flash'); }, 1600);
+    }
   } else if (action === 'add-valuation-asset'){
+    // [2026.09.24 재구성] valuationAssets가 이제 증여·상속 공용 단일 배열이라, 필터로 얻은
+    // 임시 배열에 push해봐야 진짜 배열엔 반영되지 않는다 — 반드시 valuationAssets에 직접
+    // taxType 태그를 붙여 push한다.
     const target = btn.dataset.target;
-    const assets = target === 'giftValuationList' ? giftValuationAssets : inheritanceValuationAssets;
-    assets.push({ method: 'direct' });
-    renderValuationAssetList(target, assets);
+    valuationAssets.push({ method: 'direct', taxType: target === 'giftValuationList' ? 'gift' : 'inheritance' });
+    renderValuationAssetList(target, target === 'giftValuationList' ? giftValuationAssets_() : inheritanceValuationAssets_());
   } else if (action === 'del-valuation-asset'){
+    // [2026.09.24 재구성] btn.dataset.idx는 화면에 렌더된 필터목록 안에서의 순서다 — 그
+    // 객체를 필터목록에서 찾은 뒤 valuationAssets 안의 진짜 위치를 찾아 지운다(filter는
+    // 객체 참조를 그대로 넘기므로 동일 객체를 indexOf로 정확히 찾을 수 있다).
     const containerId = btn.closest('[id="giftValuationList"], [id="inheritanceValuationList"]').id;
-    const assets = containerId === 'giftValuationList' ? giftValuationAssets : inheritanceValuationAssets;
-    assets.splice(numVal(btn.dataset.idx), 1);
-    renderValuationAssetList(containerId, assets);
+    const filtered = containerId === 'giftValuationList' ? giftValuationAssets_() : inheritanceValuationAssets_();
+    const item = filtered[numVal(btn.dataset.idx)];
+    const realIdx = valuationAssets.indexOf(item);
+    if (realIdx !== -1) valuationAssets.splice(realIdx, 1);
+    renderValuationAssetList(containerId, containerId === 'giftValuationList' ? giftValuationAssets_() : inheritanceValuationAssets_());
   } else if (action === 'add-valuation-building-row' || action === 'del-valuation-building-row'){
     const containerId = btn.closest('[id="giftValuationList"], [id="inheritanceValuationList"]').id;
-    const assets = containerId === 'giftValuationList' ? giftValuationAssets : inheritanceValuationAssets;
+    const assets = containerId === 'giftValuationList' ? giftValuationAssets_() : inheritanceValuationAssets_();
     const assetIdx = numVal(btn.closest('.taxcalc-asset').dataset.idx);
     if (!Array.isArray(assets[assetIdx].buildingFloorRows)) assets[assetIdx].buildingFloorRows = [{}];
     if (action === 'add-valuation-building-row') assets[assetIdx].buildingFloorRows.push({});
@@ -7631,7 +7685,7 @@ taxCalcView.addEventListener('click', function(e){
     renderValuationAssetList(containerId, assets);
   } else if (action === 'add-rental-lease' || action === 'del-rental-lease'){
     const containerId = btn.closest('[id="giftValuationList"], [id="inheritanceValuationList"]').id;
-    const assets = containerId === 'giftValuationList' ? giftValuationAssets : inheritanceValuationAssets;
+    const assets = containerId === 'giftValuationList' ? giftValuationAssets_() : inheritanceValuationAssets_();
     const assetIdx = numVal(btn.closest('.taxcalc-asset').dataset.idx);
     if (!Array.isArray(assets[assetIdx].rentalLeases)) assets[assetIdx].rentalLeases = [{}];
     if (action === 'add-rental-lease') assets[assetIdx].rentalLeases.push({});
@@ -7639,14 +7693,14 @@ taxCalcView.addEventListener('click', function(e){
     renderValuationAssetList(containerId, assets);
   } else if (action === 'add-trust-benefit' || action === 'del-trust-benefit'){
     const containerId = btn.closest('[id="giftValuationList"], [id="inheritanceValuationList"]').id;
-    const assets = containerId === 'giftValuationList' ? giftValuationAssets : inheritanceValuationAssets;
+    const assets = containerId === 'giftValuationList' ? giftValuationAssets_() : inheritanceValuationAssets_();
     const assetIdx = numVal(btn.closest('.taxcalc-asset').dataset.idx);
     if (!Array.isArray(assets[assetIdx].trustAnnualBenefits)) assets[assetIdx].trustAnnualBenefits = [{}];
     if (action === 'add-trust-benefit') assets[assetIdx].trustAnnualBenefits.push({});
     else assets[assetIdx].trustAnnualBenefits.splice(numVal(btn.dataset.idx), 1);
     renderValuationAssetList(containerId, assets);
   } else if (action === 'add-heir-alloc' || action === 'del-heir-alloc'){
-    const assets = inheritanceValuationAssets;
+    const assets = inheritanceValuationAssets_();
     const assetIdx = numVal(btn.closest('.taxcalc-asset').dataset.idx);
     if (!Array.isArray(assets[assetIdx].heirAllocations)) assets[assetIdx].heirAllocations = [{}];
     if (action === 'add-heir-alloc') assets[assetIdx].heirAllocations.push({});
@@ -7654,7 +7708,7 @@ taxCalcView.addEventListener('click', function(e){
     renderValuationAssetList('inheritanceValuationList', assets);
     updateHeirActualValueHints();
   } else if (action === 'add-donor-alloc' || action === 'del-donor-alloc'){
-    const assets = giftValuationAssets;
+    const assets = giftValuationAssets_();
     const assetIdx = numVal(btn.closest('.taxcalc-asset').dataset.idx);
     if (!Array.isArray(assets[assetIdx].donorAllocations)) assets[assetIdx].donorAllocations = [{}];
     if (action === 'add-donor-alloc') assets[assetIdx].donorAllocations.push({});
@@ -7672,7 +7726,7 @@ taxCalcView.addEventListener('click', function(e){
     if (el) el.value = value;
   } else if (action === 'apply-valuation-total'){
     const target = btn.dataset.target;
-    const assets = target === 'giftValuationList' ? giftValuationAssets : inheritanceValuationAssets;
+    const assets = target === 'giftValuationList' ? giftValuationAssets_() : inheritanceValuationAssets_();
     const total = assets.reduce(function (s, a) { return s + computeValuationAssetValue(a); }, 0);
     const net = Math.max(0, total - computeTotalRentalDepositDebt_(assets));
     if (target === 'giftValuationList') {
@@ -7690,7 +7744,7 @@ taxCalcView.addEventListener('click', function(e){
     const idx = numVal(card.dataset.idx);
     const giftListEl = card.closest('#giftValuationList');
     const ihListEl = card.closest('#inheritanceValuationList');
-    const assets = giftListEl ? giftValuationAssets : (ihListEl ? inheritanceValuationAssets : transferAssets);
+    const assets = giftListEl ? giftValuationAssets_() : (ihListEl ? inheritanceValuationAssets_() : transferAssets);
     openAddressSearchModal_(function(picked){
       assets[idx].assetLocation = picked.roadAddr || picked.jibunAddr || '';
       assets[idx].assetDongList = picked.dongList || [];
@@ -7702,8 +7756,8 @@ taxCalcView.addEventListener('click', function(e){
       assets[idx].assetMtYn = picked.mtYn || '0';
       assets[idx].assetLnbrMnnm = picked.lnbrMnnm || '';
       assets[idx].assetLnbrSlno = picked.lnbrSlno || '';
-      if (giftListEl) renderValuationAssetList('giftValuationList', giftValuationAssets);
-      else if (ihListEl) renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets);
+      if (giftListEl) renderValuationAssetList('giftValuationList', giftValuationAssets_());
+      else if (ihListEl) renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets_());
       else renderTransferPane();
     });
   } else if (action === 'open-address-search-simple'){
@@ -7818,7 +7872,7 @@ taxCalcView.addEventListener('click', function(e){
     const idx = numVal(card.dataset.idx);
     const giftListEl = card.closest('#giftValuationList');
     const ihListEl = card.closest('#inheritanceValuationList');
-    const assets = giftListEl ? giftValuationAssets : (ihListEl ? inheritanceValuationAssets : transferAssets);
+    const assets = giftListEl ? giftValuationAssets_() : (ihListEl ? inheritanceValuationAssets_() : transferAssets);
     const a = assets[idx];
     const pnu = buildPnu_(a);
     if (!pnu){ nxAlert_('먼저 "🔍 주소 검색"으로 소재지(지번)를 선택해야 공시가격을 자동조회할 수 있습니다.'); return; }
@@ -7842,14 +7896,14 @@ taxCalcView.addEventListener('click', function(e){
       if (data.error){ nxAlert_(data.error); return; }
       if (targetField){
         a[targetField] = data.price;
-        if (giftListEl) renderValuationAssetList('giftValuationList', giftValuationAssets);
-        else if (ihListEl) renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets);
+        if (giftListEl) renderValuationAssetList('giftValuationList', giftValuationAssets_());
+        else if (ihListEl) renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets_());
         else renderTransferPane();
         return;
       }
       if (priceKind === 'apartment' || priceKind === 'house') a.housePrice = data.price; else a.landPrice = data.price;
-      if (giftListEl) renderValuationAssetList('giftValuationList', giftValuationAssets);
-      else if (ihListEl) renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets);
+      if (giftListEl) renderValuationAssetList('giftValuationList', giftValuationAssets_());
+      else if (ihListEl) renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets_());
       else renderTransferPane();
     }).catch(function(err){ nxAlert_('공시가격 조회 실패: ' + (err && err.message || err)); });
   } else if (action === 'add-building-floor-row'){
@@ -7965,7 +8019,7 @@ taxCalcView.addEventListener('click', function(e){
       }
       renderTransferPane();
     } else {
-      const assets = kind === 'gift' ? giftValuationAssets : inheritanceValuationAssets;
+      const assets = kind === 'gift' ? giftValuationAssets_() : inheritanceValuationAssets_();
       const idx = numVal(parts[1]);
       const a = assets[idx];
       if (!a){ nxAlert_('자산을 찾을 수 없습니다.'); return; }
@@ -7991,14 +8045,14 @@ taxCalcView.addEventListener('click', function(e){
     const idx = numVal(card.dataset.idx);
     const giftListEl = card.closest('#giftValuationList');
     const ihListEl = card.closest('#inheritanceValuationList');
-    const assets = giftListEl ? giftValuationAssets : (ihListEl ? inheritanceValuationAssets : transferAssets);
+    const assets = giftListEl ? giftValuationAssets_() : (ihListEl ? inheritanceValuationAssets_() : transferAssets);
     const a = assets[idx];
     const lawdCd = (a.assetAdmCd || '').slice(0, 5);
     if (!/^\d{5}$/.test(lawdCd)){ nxAlert_('먼저 "🔍 주소 검색"으로 소재지를 선택해야 실거래가를 조회할 수 있습니다.'); return; }
     openRealPriceModal_(lawdCd, function(picked){
       a.directValue = picked.dealAmount;
-      if (giftListEl) renderValuationAssetList('giftValuationList', giftValuationAssets);
-      else if (ihListEl) renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets);
+      if (giftListEl) renderValuationAssetList('giftValuationList', giftValuationAssets_());
+      else if (ihListEl) renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets_());
       else renderTransferPane();
     });
   } else if (action === 'open-evidence-transfer' || action === 'open-evidence-gift' || action === 'open-evidence-inheritance'){
@@ -9225,13 +9279,13 @@ taxCalcView.addEventListener('click', function(e){
     inheritanceHeirs.push({});
     renderHeirRegistry();
     renderHeirTool();
-    renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets);
+    renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets_());
   } else if (action === 'del-heir-row'){
     const deletedIdx = numVal(btn.dataset.idx);
     inheritanceHeirs.splice(deletedIdx, 1);
     // 상속인 행이 삭제되면 뒤 상속인들의 인덱스가 한 칸씩 당겨지므로, 자산별 "상속인별 배분"에
     // 저장된 heirIdx도 같이 보정한다(삭제된 인덱스를 가리키던 배분은 제거).
-    inheritanceValuationAssets.forEach(function(a){
+    inheritanceValuationAssets_().forEach(function(a){
       if (!Array.isArray(a.heirAllocations)) return;
       a.heirAllocations = a.heirAllocations.filter(function(al){ return String(al.heirIdx) !== String(deletedIdx); }).map(function(al){
         const hi = Number(al.heirIdx);
@@ -9241,17 +9295,17 @@ taxCalcView.addEventListener('click', function(e){
     });
     renderHeirRegistry();
     renderHeirTool();
-    renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets);
+    renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets_());
   } else if (action === 'add-donor-row'){
     giftDonors.push({});
     renderGiftDonorRegistry();
-    renderValuationAssetList('giftValuationList', giftValuationAssets);
+    renderValuationAssetList('giftValuationList', giftValuationAssets_());
   } else if (action === 'del-donor-row'){
     const deletedIdx = numVal(btn.dataset.idx);
     giftDonors.splice(deletedIdx, 1);
     // 증여자 행이 삭제되면 뒤 증여자들의 인덱스가 한 칸씩 당겨지므로, 자산별 "증여자별 배분"에
     // 저장된 donorIdx도 같이 보정한다(상속인 삭제와 같은 패턴).
-    giftValuationAssets.forEach(function(a){
+    giftValuationAssets_().forEach(function(a){
       if (!Array.isArray(a.donorAllocations)) return;
       a.donorAllocations = a.donorAllocations.filter(function(al){ return String(al.donorIdx) !== String(deletedIdx); }).map(function(al){
         const di = Number(al.donorIdx);
@@ -9260,7 +9314,7 @@ taxCalcView.addEventListener('click', function(e){
       });
     });
     renderGiftDonorRegistry();
-    renderValuationAssetList('giftValuationList', giftValuationAssets);
+    renderValuationAssetList('giftValuationList', giftValuationAssets_());
   } else if (action === 'add-seller-row'){
     transferSellers.push({});
     renderTransferPane();
@@ -9281,13 +9335,13 @@ taxCalcView.addEventListener('click', function(e){
   } else if (action === 'add-donee-row'){
     giftDonees.push({});
     renderGiftDoneeRegistry();
-    renderValuationAssetList('giftValuationList', giftValuationAssets);
+    renderValuationAssetList('giftValuationList', giftValuationAssets_());
   } else if (action === 'del-donee-row'){
     const deletedIdx = numVal(btn.dataset.idx);
     giftDonees.splice(deletedIdx, 1);
     // 수증인 삭제 시 자산별 배분(donorAllocations)에 저장된 doneeIdx도 같이 보정(증여자
     // 삭제와 같은 패턴). doneeIdx가 비어있는 행(수증인 1명뿐이라 0번 취급되던 행)은 그대로 둔다.
-    giftValuationAssets.forEach(function(a){
+    giftValuationAssets_().forEach(function(a){
       if (!Array.isArray(a.donorAllocations)) return;
       a.donorAllocations = a.donorAllocations.filter(function(al){
         const di = (al.doneeIdx === undefined || al.doneeIdx === null || al.doneeIdx === '') ? '0' : String(al.doneeIdx);
@@ -9300,7 +9354,7 @@ taxCalcView.addEventListener('click', function(e){
       });
     });
     renderGiftDoneeRegistry();
-    renderValuationAssetList('giftValuationList', giftValuationAssets);
+    renderValuationAssetList('giftValuationList', giftValuationAssets_());
   } else if (action === 'run-heir-allocation'){
     const heirs = inheritanceHeirs.map(function(h, idx){
       return { name: h.name, relation: h.relation, actualInheritedValue: computeHeirActualValue_(idx) };
@@ -9459,13 +9513,13 @@ function tcResetOverviewInputsForNewCase_(){
     acquisitionAcquirers = [];
     if (typeof renderAcquirerExtraRegistry === 'function') renderAcquirerExtraRegistry();
   }
-  if (typeof giftValuationAssets !== 'undefined') {
-    giftValuationAssets = [{}];
-    if (typeof renderValuationAssetList === 'function') renderValuationAssetList('giftValuationList', giftValuationAssets);
-  }
-  if (typeof inheritanceValuationAssets !== 'undefined') {
-    inheritanceValuationAssets = [{}];
-    if (typeof renderValuationAssetList === 'function') renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets);
+  // [2026.09.24 재구성] 증여·상속 재산평가가 이제 공용 단일 배열이라 한 번만 초기화한다.
+  if (typeof valuationAssets !== 'undefined') {
+    valuationAssets = [];
+    if (typeof renderValuationAssetList === 'function'){
+      renderValuationAssetList('giftValuationList', giftValuationAssets_());
+      renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets_());
+    }
   }
   if (typeof inheritanceHeirs !== 'undefined') {
     inheritanceHeirs = [{}, {}];
@@ -9510,27 +9564,31 @@ function tcApplyOverviewToInputs_(caseObj){
   });
 }
 // [2026.09 버그수정] 실사용 감사 지적 — 양도는 tcApplyOverviewToTransfer_가 사건개요서의
-// 물건목록(소재지 등)을 그대로 이어받는데, 증여·상속의 재산평가 목록(giftValuationAssets/
-// inheritanceValuationAssets)은 이 연결이 아예 없어서 사건개요서에 필지를 여러 건 등록해도
+// 물건목록(소재지 등)을 그대로 이어받는데, 증여·상속의 재산평가 목록(giftValuationAssets_()/
+// inheritanceValuationAssets_())은 이 연결이 아예 없어서 사건개요서에 필지를 여러 건 등록해도
 // 세액계산 화면은 항상 빈 카드 1개로 시작했다. 평가방법·금액 등 계산 전용 값은 원래 취지대로
 // 이 화면에서 채우고, 사건개요서가 이미 파악해둔 소재지 정보만 최초 1회 프리필한다.
 function tcApplyOverviewToValuationAssets_(caseObj){
   if (!caseObj) return;
   var isGift = caseObj.세목 === 'gift', isInheritance = caseObj.세목 === 'inheritance';
   if (!isGift && !isInheritance) return;
-  var assetsVar = isGift ? giftValuationAssets : inheritanceValuationAssets;
-  if (typeof assetsVar === 'undefined') return;
+  if (typeof valuationAssets === 'undefined') return;
+  // [2026.09.24 재구성] valuationAssets가 증여·상속 공용 단일 배열이 된 뒤에도, 이 세목의
+  // 몫만 비어있을 때만 채운다(다른 세목 자산이 이미 들어있어도 안 건드림) — 필터 헬퍼로
+  // "이 세목 몫"만 골라 빈 상태를 판정한다.
+  var assetsVar = isGift ? giftValuationAssets_() : inheritanceValuationAssets_();
   var overview = caseObj.사건개요 || {};
   var list = Array.isArray(overview.물건목록) ? overview.물건목록 : null;
   if (!list || !list.length) return;
   var firstIsEmpty = !assetsVar[0] || !assetsVar[0].assetLocation;
   if (assetsVar.length > 1 || !firstIsEmpty) return;
   var mapped = list.map(function(item){
-    return { assetKind: item.assetKind || '', assetLocation: item.assetLocation || '', assetDong: item.assetDong || '', assetHo: item.assetHo || '', assetDongList: item.assetDongList || [] };
+    return { taxType: isGift ? 'gift' : 'inheritance', assetKind: item.assetKind || '', assetLocation: item.assetLocation || '', assetDong: item.assetDong || '', assetHo: item.assetHo || '', assetDongList: item.assetDongList || [] };
   });
+  // 이 세목 몫(길이 0 또는 1개짜리 빈칸)을 걷어내고 새로 채운 것으로 교체 — 다른 세목 항목은 그대로 둔다.
+  valuationAssets = valuationAssets.filter(function(a){ return isGift ? a.taxType === 'inheritance' : a.taxType !== 'inheritance'; }).concat(mapped);
   var containerId = isGift ? 'giftValuationList' : 'inheritanceValuationList';
-  if (isGift) giftValuationAssets = mapped; else inheritanceValuationAssets = mapped;
-  if (typeof renderValuationAssetList === 'function') renderValuationAssetList(containerId, isGift ? giftValuationAssets : inheritanceValuationAssets);
+  if (typeof renderValuationAssetList === 'function') renderValuationAssetList(containerId, isGift ? giftValuationAssets_() : inheritanceValuationAssets_());
 }
 // [2026.09 버그수정] 상속인 명부가 사건에 저장되지 않던 문제의 짝 — tcSyncOverviewAmounts_가
 // 저장해둔 overview.상속인목록을 사건을 다시 열 때 불러온다. 계산 전용 값이 아니라 사실관계
