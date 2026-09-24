@@ -2128,16 +2128,18 @@ function runAiAutoFillInheritance(){
 // 보충적평가방법)는 토지·주택·상장주식·비상장주식만 계산해주고, 그 외(시가·감정가액 등)는
 // 이미 알고 있는 금액을 직접 입력하게 한다.
 // [2026.09.24 재구성] 세무사님 지시 — 증여재산·상속재산 평가는 상증세법 하나의 법령이고
-// 실제로 평가방법(§60~64) 계산 코드도 이미 100% 공유되고 있었는데, 배열만 증여세/상속세
-// 화면에 각각 따로(giftValuationAssets/inheritanceValuationAssets) 있어서 "배분" 레이어가
-// 어쩔 수 없이 두 벌로 중복됐었다(재산평가 공유 점검 검토서 참고) — 배열 자체를 하나로
-// 합치고 자산마다 "세목"(taxType) 하나로만 구분한다. 기존 두 이름은 완전히 지우는 대신
-// 아래 얇은 필터 함수로 남겨(45곳 넘는 기존 호출부를 로직 변경 없이 그대로 재사용하기
-// 위함 — 위험을 "새 로직 작성"이 아니라 "기계적 치환"으로 국한). 빈 배열로 시작(둘 다
-// "+자산 추가" 버튼으로 시작 — 양도계약/취득계약 목록과 같은 빈 목록 UX 패턴).
+// 평가방법(§60~64) 계산 코드는 이미 100% 공유되고 있었다 — 배열만 증여세/상속세 화면에
+// 각각 따로(giftValuationAssets/inheritanceValuationAssets) 있어서 "배분" 레이어가 두 벌로
+// 중복됐었다(재산평가 공유 점검 검토서 참고). 배열을 valuationAssets 하나로 합친다.
+// [2026.09.24 재수정] 세무사님 지적 — "사건이 이미 증여/상속으로 나뉘는데 재산평가에서
+// 또 세목을 구분하냐"가 맞는 지적이라, 자산에 taxType을 붙이는 방식을 취소했다. 재산평가는
+// 순수하게 등록·평가만 하고(세목 구분 없음), "배분"(누구 몫인지)은 증여세·상속세 각 탭이
+// 이 목록을 그대로 가져와서 자기 쪽 화면(증여자/수증인 또는 상속인 카드)에서 한다 — 그래서
+// 아래 두 함수는 이제 단순히 같은 배열을 그대로 돌려준다(필터 없음). 기존 45곳 넘는 호출부
+// 이름은 그대로 두고 구현만 이렇게 단순화해 위험을 줄인다.
 let valuationAssets = [];
-function giftValuationAssets_(){ return valuationAssets.filter(function(a){ return a.taxType !== 'inheritance'; }); }
-function inheritanceValuationAssets_(){ return valuationAssets.filter(function(a){ return a.taxType === 'inheritance'; }); }
+function giftValuationAssets_(){ return valuationAssets; }
+function inheritanceValuationAssets_(){ return valuationAssets; }
 // [2026.09.20 신규] 세무사님 지시 — "수증자산의 소유자가 여러명이라서 발생하는 케이스" —
 // 공동소유 자산 하나를 여러 증여자가 지분만큼 나눠 증여하면 증여자마다 관계·10년합산·세율
 // 누진이 전부 별도로 계산돼야 한다(상증세법상 "동일인" 합산은 직계존속+그 배우자 사이에서만
@@ -2848,11 +2850,39 @@ function renderTrustBenefitsSectionHtml_(a){
   // 목록 끝 "+연도 추가"(행의 것과 완전히 같은 동작·같은 문구) 둘 다 순수 중복이라 제거.
   return rowsHtml;
 }
-// 상속인별 실제상속재산가액은 상속인 명부에서 지분을 미리 적어 넣는 게 아니라, 협의분할·유언에
-// 따라 "이 자산을 누가 받는지"를 자산별로 배분해야 정해지는 값이다(법정상속지분은 이것과 별개로
-// recomputeSpouseRatio()가 배우자공제 한도용으로 자동계산). 자산 하나를 여러 상속인이 나눠 받을 수도
-// 있으므로 임대차 내역처럼 행을 여러 개 추가할 수 있게 한다.
-function renderHeirAllocationSectionHtml_(a){
+// [2026.09.24 재구성, 재검토63] 세무사님 지적 두 번 — (1) "재산평가 하는데 왜 증여·상속을
+// 구분하나" (2) "배분은 재산평가가 아니라 증여세·상속세 탭에서, 그 탭이 재산평가 목록을
+// 가져오면서 해야 하는 거 아니냐, 사건이 이미 증여/상속으로 나뉘는데" — 둘 다 맞는 지적이다.
+// 재산평가 탭(위 renderValuationAssetRow)에는 배분 UI를 아예 안 두고, 아래 두 함수를
+// 증여세·상속세 각 탭이 직접 불러써서 "재산평가 목록을 가져와 배분"한다. 사건이 이미
+// 세목 하나로 고정되므로 자산 자체엔 세목 표시가 필요 없다 — donorAllocations/heirAllocations
+// 필드를 그대로 자산 객체에 둔다(어차피 한 사건에서는 둘 중 하나만 쓰임).
+function renderGiftAssetAllocationSectionHtml_(a){
+  if (!giftDonors.length) return '';
+  const multiDonee = giftDonees.length > 1;
+  const allocations = (Array.isArray(a.donorAllocations) && a.donorAllocations.length) ? a.donorAllocations : [{}];
+  const rowsHtml = allocations.map(function(al, alidx){
+    const donorOptionsHtml = giftDonors.map(function(d, didx){
+      return '<option value="' + didx + '"' + (String(al.donorIdx) === String(didx) ? ' selected' : '') + '>' + (d.name || ('증여자' + (didx + 1))) + (d.relation ? ' (' + d.relation + ')' : '') + '</option>';
+    }).join('');
+    const doneeOptionsHtml = multiDonee ? giftDonees.map(function(dn, dnidx){
+      return '<option value="' + dnidx + '"' + (String(al.doneeIdx || '0') === String(dnidx) ? ' selected' : '') + '>' + (dn.name || ('수증인' + (dnidx + 1))) + '</option>';
+    }).join('') : '';
+    return '<div class="taxcalc-asset-head" style="margin-top:4px;"><span style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
+        '<b>배분 ' + tcPad2_(alidx + 1) + '</b>' +
+        (alidx > 0 ? '<button type="button" class="taxcalc-del-asset" data-action="del-donor-alloc" data-idx="' + alidx + '">✕ 배분 삭제</button>' : '') +
+        '<button type="button" class="taxcalc-add-asset-inline" data-action="add-donor-alloc">+ 배분 추가</button>' +
+      '</span></div>' +
+    '<div class="taxcalc-grid" data-dalloc-idx="' + alidx + '" style="padding-top:4px;border-top:1px dashed var(--line);">' +
+      '<div class="taxcalc-field"><label>증여하는 증여자</label><select data-dafield="donorIdx"><option value="">선택</option>' + donorOptionsHtml + '</select></div>' +
+      (multiDonee ? '<div class="taxcalc-field"><label>받는 수증인</label><select data-dafield="doneeIdx"><option value="">선택</option>' + doneeOptionsHtml + '</select></div>' : '') +
+      '<div class="taxcalc-field"><label>지분</label><input type="text" data-dafield="ratio" placeholder="1/1" value="' + (al.ratio || '').replace(/"/g, '&quot;') + '"><span class="taxcalc-field-help">분수로 입력, 예: 1/2 · 단독소유면 1/1</span></div>' +
+    '</div>';
+  }).join('');
+  return '<div class="taxcalc-result-note" style="margin-top:6px;">비워두면 이 자산은 어느 증여자에게도 반영되지 않습니다' + (multiDonee ? ' (수증인도 2명 이상이라 받는 수증인도 함께 선택하세요)' : '') + '</div>' +
+    rowsHtml;
+}
+function renderInheritanceAssetAllocationSectionHtml_(a){
   if (!inheritanceHeirs.length) return '';
   const allocations = (Array.isArray(a.heirAllocations) && a.heirAllocations.length) ? a.heirAllocations : [{}];
   const rowsHtml = allocations.map(function(al, alidx){
@@ -2865,71 +2895,88 @@ function renderHeirAllocationSectionHtml_(a){
         '<button type="button" class="taxcalc-add-asset-inline" data-action="add-heir-alloc">+ 배분 추가</button>' +
       '</span></div>' +
     '<div class="taxcalc-grid" data-alloc-idx="' + alidx + '" style="padding-top:4px;border-top:1px dashed var(--line);">' +
-      '<div class="taxcalc-field"><label>받는 상속인</label><select data-hafield="heirIdx"><option value="">선택</option>' +
-        heirOptionsHtml +
-      '</select></div>' +
+      '<div class="taxcalc-field"><label>받는 상속인</label><select data-hafield="heirIdx"><option value="">선택</option>' + heirOptionsHtml + '</select></div>' +
       '<div class="taxcalc-field"><label>배분</label><input type="text" data-hafield="ratio" placeholder="1/1" value="' + (al.ratio || '').replace(/"/g, '&quot;') + '"><span class="taxcalc-field-help">분수로 입력, 예: 1/2 · 기본 전부</span></div>' +
     '</div>';
   }).join('');
-  // [2026.09.20] "배분 01" 헤더 제목("상속인별 배분")은 중복이라 빼고, 실질 경고("비워두면
-  // 계산에서 빠진다")만 남긴다. 목록 끝 "+배분 추가"(행의 것과 동일 동작)도 제거.
-  return '<div class="taxcalc-result-note" style="margin-top:10px;">비워두면 이 자산은 실제상속재산가액 계산에서 빠집니다(협의분할·유언 등 실제 귀속)</div>' +
+  return '<div class="taxcalc-result-note" style="margin-top:6px;">비워두면 이 자산은 실제상속재산가액 계산에서 빠집니다(협의분할·유언 등 실제 귀속)</div>' +
     rowsHtml;
 }
-// renderHeirAllocationSectionHtml_의 증여세 버전 — inheritanceHeirs/heirAllocations 대신
-// giftDonors/donorAllocations를 쓴다. 비워두면(배분 없음) 이 자산은 어느 증여자에게도
-// 반영되지 않는다(상속처럼 "계산에서 빠진다"가 아니라, 증여자별 계산 자체가 이 배분에서
-// giftAmount를 가져오므로 배분이 없으면 그 자산은 아무 증여자의 세액에도 안 잡힌다).
-function renderDonorAllocationSectionHtml_(a){
-  if (!giftDonors.length) return '';
-  const multiDonee = giftDonees.length > 1;
-  const allocations = (Array.isArray(a.donorAllocations) && a.donorAllocations.length) ? a.donorAllocations : [{}];
-  const rowsHtml = allocations.map(function(al, alidx){
-    const donorOptionsHtml = giftDonors.map(function(d, didx){
-      return '<option value="' + didx + '"' + (String(al.donorIdx) === String(didx) ? ' selected' : '') + '>' + (d.name || ('증여자' + (didx + 1))) + (d.relation ? ' (' + d.relation + ')' : '') + '</option>';
-    }).join('');
-    // [2026.09.23] 수증인이 2명 이상일 때만 수증인 선택칸을 보여준다 — 1명뿐이면 doneeIdx를
-    // 화면에 안 보이게 항상 0으로 고정해 기존 화면·동작을 그대로 유지한다(computeDoneeActualValue_
-    // 도 doneeIdx 미기재를 0번으로 취급).
-    const doneeOptionsHtml = multiDonee ? giftDonees.map(function(dn, dnidx){
-      return '<option value="' + dnidx + '"' + (String(al.doneeIdx || '0') === String(dnidx) ? ' selected' : '') + '>' + (dn.name || ('수증인' + (dnidx + 1))) + '</option>';
-    }).join('') : '';
-    return '<div class="taxcalc-asset-head" style="margin-top:4px;"><span style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
-        '<b>배분 ' + tcPad2_(alidx + 1) + '</b>' +
-        (alidx > 0 ? '<button type="button" class="taxcalc-del-asset" data-action="del-donor-alloc" data-idx="' + alidx + '">✕ 배분 삭제</button>' : '') +
-        '<button type="button" class="taxcalc-add-asset-inline" data-action="add-donor-alloc">+ 배분 추가</button>' +
-      '</span></div>' +
-    '<div class="taxcalc-grid" data-dalloc-idx="' + alidx + '" style="padding-top:4px;border-top:1px dashed var(--line);">' +
-      '<div class="taxcalc-field"><label>증여하는 증여자</label><select data-dafield="donorIdx"><option value="">선택</option>' +
-        donorOptionsHtml +
-      '</select></div>' +
-      (multiDonee ? '<div class="taxcalc-field"><label>받는 수증인</label><select data-dafield="doneeIdx"><option value="">선택</option>' + doneeOptionsHtml + '</select></div>' : '') +
-      '<div class="taxcalc-field"><label>지분</label><input type="text" data-dafield="ratio" placeholder="1/1" value="' + (al.ratio || '').replace(/"/g, '&quot;') + '"><span class="taxcalc-field-help">분수로 입력, 예: 1/2 · 단독소유면 1/1</span></div>' +
+// 증여세 탭에서 "재산평가" 탭의 목록을 그대로 가져와 자산별로 배분 UI만 붙여 보여준다 —
+// 자산 자체의 소재지·평가방법 등은 재산평가 탭에서만 고친다(여기선 요약 표시만).
+function renderGiftAssetAllocationListHtml_(){
+  if (!valuationAssets.length){
+    return '<div class="taxcalc-result-note">먼저 <a href="#" data-action="jump-to-valuation-tab">"재산평가" 탭</a>에서 자산을 등록·평가하세요.</div>';
+  }
+  return valuationAssets.map(function(a, idx){
+    return '<div class="taxcalc-asset" data-idx="' + idx + '">' +
+      '<div class="taxcalc-asset-head"><b>' + escapeHtml(a.assetLocation || ('자산 ' + tcPad2_(idx + 1))) + '</b> <span class="taxcalc-field-help">평가액 ' + won(computeValuationAssetValue(a)) + ' — <a href="#" data-action="jump-to-valuation-tab">재산평가에서 수정</a></span></div>' +
+      renderGiftAssetAllocationSectionHtml_(a) +
     '</div>';
   }).join('');
-  return '<div class="taxcalc-result-note" style="margin-top:10px;">공동소유 자산이면 증여자별로 지분을 나눠 입력하세요 — 각 증여자 카드의 증여재산가액에 이 배분이 반영됩니다' + (multiDonee ? ' (수증인도 2명 이상이라 받는 수증인도 함께 선택하세요)' : '') + '</div>' +
-    rowsHtml;
 }
-function renderValuationAssetRow(a, idx, isInheritance){
+function renderInheritanceAssetAllocationListHtml_(){
+  if (!valuationAssets.length){
+    return '<div class="taxcalc-result-note">먼저 <a href="#" data-action="jump-to-valuation-tab">"재산평가" 탭</a>에서 자산을 등록·평가하세요.</div>';
+  }
+  return valuationAssets.map(function(a, idx){
+    return '<div class="taxcalc-asset" data-idx="' + idx + '">' +
+      '<div class="taxcalc-asset-head"><b>' + escapeHtml(a.assetLocation || ('자산 ' + tcPad2_(idx + 1))) + '</b> <span class="taxcalc-field-help">평가액 ' + won(computeValuationAssetValue(a)) + ' — <a href="#" data-action="jump-to-valuation-tab">재산평가에서 수정</a></span></div>' +
+      renderInheritanceAssetAllocationSectionHtml_(a) +
+    '</div>';
+  }).join('');
+}
+// [2026.09.24 신규] 위 두 목록(증여자·상속인별 배분)의 다시그리기+입력칸 배선을 한 함수로 묶는다
+// — renderValuationAssetList 안의 [data-dafield]/[data-hafield] 배선과 완전히 같은 패턴이다.
+function refreshGiftAssetAllocationList_(){
+  const container = document.getElementById('giftAssetAllocationList');
+  if (!container) return;
+  container.innerHTML = renderGiftAssetAllocationListHtml_();
+  container.querySelectorAll('[data-dafield]').forEach(function(el){
+    el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', function(){
+      const assetIdx = numVal(el.closest('.taxcalc-asset').dataset.idx);
+      const allocIdx = numVal(el.closest('[data-dalloc-idx]').dataset.dallocIdx);
+      const key = el.dataset.dafield;
+      if (!Array.isArray(valuationAssets[assetIdx].donorAllocations)) valuationAssets[assetIdx].donorAllocations = [{}];
+      valuationAssets[assetIdx].donorAllocations[allocIdx][key] = el.value;
+      updateDonorActualValueHints();
+      updateDoneeActualValueHints();
+    });
+  });
+}
+function refreshInheritanceAssetAllocationList_(){
+  const container = document.getElementById('inheritanceAssetAllocationList');
+  if (!container) return;
+  container.innerHTML = renderInheritanceAssetAllocationListHtml_();
+  container.querySelectorAll('[data-hafield]').forEach(function(el){
+    el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', function(){
+      const assetIdx = numVal(el.closest('.taxcalc-asset').dataset.idx);
+      const allocIdx = numVal(el.closest('[data-alloc-idx]').dataset.allocIdx);
+      const key = el.dataset.hafield;
+      if (!Array.isArray(valuationAssets[assetIdx].heirAllocations)) valuationAssets[assetIdx].heirAllocations = [{}];
+      valuationAssets[assetIdx].heirAllocations[allocIdx][key] = el.value;
+      updateHeirActualValueHints();
+    });
+  });
+}
+function renderValuationAssetRow(a, idx){
   const method = a.method || 'direct';
   const value = computeValuationAssetValue(a);
-  // [2026.09.20 배치 재설계] 양도소득세 계약·자산 카드에서 정립한 원칙(제목 옆에 삭제·추가
-  // 버튼을 바로 붙이고, 번호는 01 형식으로 통일)을 같은 헬퍼 클래스(taxcalc-add-asset 등)를
-  // 쓰는 증여·상속 재산평가 자산 카드에도 그대로 적용한다.
-  const targetId = isInheritance ? 'inheritanceValuationList' : 'giftValuationList';
+  // [2026.09.24 재구성] 재산평가는 세목과 무관하다(재검토63) — 목록도 하나, 평가방법도
+  // 항상 전부 노출한다(13개 증여전용·1개 상속전용은 라벨 자체에 "...의 증여(§36)"/"간주상속재산"
+  // 처럼 성격이 이미 적혀있어 구분 드롭다운 없이도 세무사가 헷갈릴 일이 없다). 이 자산이
+  // 실제로 증여인지 상속인지는 아래 배분 행에서만 결정된다.
   return '' +
     '<div class="taxcalc-asset" data-idx="' + idx + '">' +
       '<div class="taxcalc-asset-head"><span style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
         '<b>자산 ' + tcPad2_(idx + 1) + '</b>' +
         (idx > 0 ? '<button type="button" class="taxcalc-del-asset" data-action="del-valuation-asset" data-idx="' + idx + '">✕ 자산 삭제</button>' : '') +
-        '<button type="button" class="taxcalc-add-asset-inline" data-action="add-valuation-asset" data-target="' + targetId + '">+ 자산 추가</button>' +
+        '<button type="button" class="taxcalc-add-asset-inline" data-action="add-valuation-asset">+ 자산 추가</button>' +
       '</span></div>' +
       '<div class="taxcalc-grid">' +
         assetLocationFieldsHtml_(a) +
         '<div class="taxcalc-field"><label>평가방법</label><select data-field="method">' +
-          Object.keys(VALUATION_METHOD_LABELS).filter(function (k) {
-            return isInheritance ? GIFT_ONLY_VALUATION_METHODS.indexOf(k) === -1 : INHERITANCE_ONLY_VALUATION_METHODS.indexOf(k) === -1;
-          }).map(function (k) { return '<option value="' + k + '"' + (method === k ? ' selected' : '') + '>' + VALUATION_METHOD_LABELS[k] + '</option>'; }).join('') +
+          Object.keys(VALUATION_METHOD_LABELS).map(function (k) { return '<option value="' + k + '"' + (method === k ? ' selected' : '') + '>' + VALUATION_METHOD_LABELS[k] + '</option>'; }).join('') +
         '</select></div>' +
         (VALUATION_RATIO_EXEMPT_METHODS.indexOf(method) === -1 ?
           '<div class="taxcalc-field"><label>피상속인(증여자) 지분</label><input type="text" data-field="ownershipRatio" placeholder="1/1" value="' + (a.ownershipRatio || '').replace(/"/g, '&quot;') + '"></div>' : '') +
@@ -2939,7 +2986,6 @@ function renderValuationAssetRow(a, idx, isInheritance){
       '<div class="taxcalc-grid" style="margin-top:6px;">' + valuationAssetMethodFieldsHtml(method, a) + '</div>' +
       renderRentalLeasesSectionHtml_(a) +
       (method === 'trustBenefit' && !a.tbSameBeneficiary ? renderTrustBenefitsSectionHtml_(a) : '') +
-      (isInheritance ? renderHeirAllocationSectionHtml_(a) : renderDonorAllocationSectionHtml_(a)) +
       '<div class="taxcalc-result-row"><span>평가액</span><span class="v">' + won(value) + '</span></div>' +
     '</div>';
 }
@@ -2947,7 +2993,10 @@ function renderValuationAssetRow(a, idx, isInheritance){
 // 가업상속공제(§18의2, 개인사업)는 "사업용자산 순액"이 있어야 계산되는데, 이걸 손으로 다시 더해
 // 입력하게 하지 않고 위 상속재산 명세에서 "사업용자산" 체크된 항목들의 평가액을 자동으로 합산한다.
 function recomputeBusinessAssetTotal_(containerId, assets){
-  if (containerId !== 'inheritanceValuationList') return;
+  // [2026.09.24 재구성] 재산평가 목록이 이제 컨테이너 하나뿐이라(사건이 이미 증여/상속으로
+  // 나뉘어 있어 구분 불필요) containerId로 상속 여부를 가릴 수 없다 — 대상 필드
+  // (ihBusinessIndividualNet)가 없으면 그냥 조용히 빠지는 아래 가드로 충분하다(상속탭이
+  // 아니면 그 필드 자체가 화면에 없음).
   const el = document.getElementById('ihBusinessIndividualNet');
   if (!el) return;
   const total = assets.filter(function(a){ return a.isBusinessAsset; }).reduce(function(s, a){ return s + computeValuationAssetValue(a); }, 0);
@@ -5691,29 +5740,239 @@ function renderInheritancePane(){
     '<div class="taxcalc-asset">' +
       '<div class="taxcalc-asset-head"><b>피상속인 정보</b>' +
         '<span><button type="button" class="taxcalc-ai-btn" data-action="open-evidence-inheritance">📄 증빙에서 자동 입력</button></span>' +
-      
+      '<div class="taxcalc-ai-status" id="aiStatus-inheritance"></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>성명</label><input type="text" id="ihDeceasedName" data-nameonly="1"></div>' +
+        '<div class="taxcalc-field"><label>주민등록번호</label><input type="text" id="ihDeceasedRegNo" placeholder="000000-0000000" data-regno="1"></div>' +
+        '<div class="taxcalc-field" style="flex:0 1 340px;"><label>주소(사망 당시 주소지=납세지)</label><div class="taxcalc-field-inline"><input type="text" id="ihDeceasedAddress" placeholder="예: OO시 OO구 OO동 123-4 (검색 또는 직접입력)"><button type="button" class="taxcalc-ai-btn" data-action="open-address-search-simple" data-target-input="ihDeceasedAddress" data-target-dong="ihDeceasedDong" data-target-ho="ihDeceasedHo" title="주소 검색">🔍</button></div>' +
+        '</div>' +
+        '<div class="taxcalc-field"><label>동</label><select id="ihDeceasedDong"><option value="">직접입력/해당없음</option></select></div>' +
+        '<div class="taxcalc-field"><label>호</label><input type="text" id="ihDeceasedHo" placeholder="예: 1502호"><span class="taxcalc-field-help">동은 검색결과 목록에서 고르지만, 호는 목록이 제공되지 않아 직접 입력합니다</span></div>' +
+        '<div class="taxcalc-field"><label style="visibility:hidden;">관할세무서</label><input type="hidden" id="ihDeceasedTaxOffice" value=""><button type="button" class="taxcalc-ai-btn" data-action="open-tax-office-guide" data-address-input="ihDeceasedAddress" data-office-input="ihDeceasedTaxOffice" id="ihDeceasedTaxOfficeBtn">관할세무서</button></div>' +
+        '<div class="taxcalc-field"><label>거주구분</label><select id="ihDecedentResident"><option value="resident" selected>거주자</option><option value="nonresident">비거주자</option></select><span class="taxcalc-field-help">국내에 주소를 두거나 183일 이상 거소를 둔 사람=거주자</span><span class="taxcalc-result-note" style="margin:2px 0 0;">비거주자면 기초공제(2억원)만 적용되고 배우자공제·일괄공제·인적공제·금융재산공제·동거주택공제·장례비용공제·가업/영농상속공제는 적용되지 않습니다(§14②·§18~§23의2).</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-grid" style="margin-top:10px;">' +
+        '<div class="taxcalc-field"><label>상속개시일</label><input type="date" id="ihDeathDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-result-note" id="ihDeathDateDeadlineHint" style="margin:2px 0 0;"></span></div>' +
+      '</div>' +
     '</div>' +
+    '<div class="taxcalc-result-note" style="margin-top:14px;">여기 입력한 관계·생년월일·상속재산가액으로 아래 인적공제·배우자공제·동거주택공제·세대생략비율·신고인 정보가 전부 자동으로 채워집니다</div>' +
+    '<div id="ihHeirRegistry"></div>' +
+    // [2026.09.24 재구성, 재검토63] 자산 등록·평가는 "재산평가" 독립 탭에서 — 여기서는 그
+    // 목록을 그대로 가져와 "배분"(어느 상속인 몫인지)만 한다.
+    '<div class="taxcalc-asset-head"><b>재산평가 자산 배분 — 자산 등록·평가는 "재산평가" 탭에서 하고, 여기서는 배분만 합니다</b></div>' +
+    '<div id="inheritanceAssetAllocationList">' + renderInheritanceAssetAllocationListHtml_() + '</div>' +
+    '<div class="taxcalc-asset-head"><b>[부표4] 상속개시전 처분재산 등 산입액(§15) — 상속개시 전 1년 이내 재산종류별 2억원 이상(2년 이내 5억원 이상) 처분·인출·채무부담인데 용도가 불분명하면 자동으로 과세가액에 가산됩니다. 해당 없으면 비워두세요.</b></div>' +
+    '<div id="ihDisposalItems"></div>' +
+    '<div class="taxcalc-asset">' +
+      '<div class="taxcalc-asset-head"><b>과세가액 · 인적공제(자녀 수·미성년·65세이상은 위 상속인 명부에서 자동 산출)</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>상속세과세가액</label><input type="number" id="ihEstate" placeholder="원"><span class="taxcalc-field-help">총상속재산가액에서 공과금·채무를 빼고 10년 이내 사전증여재산을 가산해 이미 계산된 값 — ⚠ 장례비용은 여기서 미리 빼지 마세요(아래 "장례비용" 섹션에 입력하면 상속공제 단계(§14①3호)에서 자동 반영됩니다. 미리 빼고 아래에도 입력하면 이중공제)</span></div>' +
+        '<div class="taxcalc-field"><label>비과세재산가액(§12)</label><input type="number" id="ihNonTaxable" placeholder="원"><span class="taxcalc-field-help">국가등 유증·금양임야 등, 없으면 비움</span></div>' +
+        // [2026.09 버그수정] §11(전사자 등에 대한 상속세 비과세, 전쟁 등 국가를 위한 직무 수행
+        // 중 사망) 게이트가 계산엔진엔 있는데 이 체크박스가 없어 켤 방법이 없었다.
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihWarOrDutyDeath"><label for="ihWarOrDutyDeath">전사자 등 상속세 비과세 대상(전쟁 또는 이에 준하는 비상사태로 인한 사망 등, §11 — 체크시 상속세 전액 비과세)</label></div>' +
+        '<div class="taxcalc-field"><label>공익법인출연재산가액(§16)</label><input type="number" id="ihPublicOrg" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>공익신탁재산가액(§17)</label><input type="number" id="ihPublicTrust" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>자녀 수(자동, 1인당 5천만원)</label><input type="number" id="ihChildCount" placeholder="0" readonly></div>' +
+        '<div class="taxcalc-field"><label>미성년 상속인 19세까지 잔여연수 합(자동, 1년당 1천만원)</label><input type="number" id="ihMinorYears" placeholder="0" readonly></div>' +
+        '<div class="taxcalc-field"><label>65세 이상 상속인 수(자동, 1인당 5천만원)</label><input type="number" id="ihElderlyCount" placeholder="0" readonly></div>' +
+        '<div class="taxcalc-field"><label>장애인 상속인 기대여명 잔여연수 합</label><input type="number" id="ihDisabledYears" placeholder="년" maxlength="3"><span class="taxcalc-result-note" id="ihDisabledCountHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">1년당 1천만원</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>배우자상속공제 (부표3의2 한도액 계산)</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>배우자 실제 상속액(자동, 명부의 배우자 행 기준)</label><input type="number" id="ihSpouseActual" placeholder="0" readonly><span class="taxcalc-field-help">5억 미만/미입력이면 최소 5억 자동 적용</span></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isSpousePropertyDivided" id="ihSpouseDivided" checked><label for="ihSpouseDivided">배우자상속재산분할기한(신고기한 다음날부터 9개월)까지 배우자 상속재산을 분할·등기하고 신고함 (§19②③ — 체크 해제시 실제상속액과 무관하게 최소 5억원만 공제)</label></div>' +
+        '<div class="taxcalc-field"><label>배우자 외 같은 순위 공동상속인 수</label><input type="number" id="ihOtherHeirsCount" placeholder="0" readonly><span class="taxcalc-field-help">자동, 명부에 자녀·손자녀가 있으면 그 수, 없으면 부모 수</span></div>' +
+        '<div class="taxcalc-field"><label>배우자 법정상속분 비율</label><input type="number" step="0.0001" id="ihSpouseRatio" placeholder="0" readonly><span class="taxcalc-field-help">자동계산: 위 공동상속인 수 기준, 민법§1009②</span><span class="taxcalc-result-note" id="ihSpouseRatioHint" style="margin:2px 0 0;"></span></div>' +
+        '<div class="taxcalc-field"><label>상속인 아닌 자 유증재산가액</label><input type="number" id="ihNonHeirBequest" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>10년내 상속인에게 증여한 재산가액</label><input type="number" id="ihGiftToHeirs" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>과세가액에 가산된 사전증여재산 원본액</label><input type="number" id="ihPriorGiftedIncluded" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>배우자 사전증여분 증여세 과세표준</label><input type="number" id="ihSpouseGiftBase" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        // [2026.09 버그수정] §13①2호(상속인이 아닌 자 — 예: 손자녀·제3자 — 에 대한 사전증여)
+        // 가 있으면 ①공제적용종합한도(§24 3호) 차감액과 ②증여세액공제(§28) 정밀계산이 모두
+        // 이 값을 반영해야 하는데, 입력칸 자체가 없어 항상 0으로 계산되고 있었다(상속인이
+        // 아닌 자에 대한 사전증여 사건에서 상속공제 한도가 과다산정되는 방향으로 작용).
+        '<div class="taxcalc-field"><label>10년내 상속인 아닌 자에게 증여한 재산가액 합계(§13①2호)</label><input type="number" id="ihNonHeirPriorGiftAmount" placeholder="원"><span class="taxcalc-field-help">손자녀·제3자 등, 없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>위 사전증여분 증여세 과세표준 합계</label><input type="number" id="ihNonHeirPriorGiftBase" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>그 밖의 상속공제</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>순금융재산가액(금융재산-금융채무)</label><input type="number" id="ihNetFinancial" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>동거주택가액</label><input type="number" id="ihCohabitValue" placeholder="0" readonly><span class="taxcalc-field-help">자동, 명부에서 "동거주택 상속" 체크된 행 합계, 6억 한도</span><span class="taxcalc-result-note" id="ihCohabitValueHint" style="margin:2px 0 0;"></span></div>' +
+        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="ihAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="ihAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">500만원 한도</span></div>' +
+        '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="ihDisasterLoss" placeholder="원"><span class="taxcalc-field-help">신고기한 내 재난 멸실분</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>동거주택상속공제 자격요건(§23의2①) — ※ 아래 항목은 모두 기본적으로 충족(체크)된 상태로 시작합니다. 동거주택가액을 입력했다면, 실제와 달라 하나라도 체크 해제하면 이 공제가 전액 배제됩니다.</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="tenYearCohabitationRequirementMet" id="ihCohabitReq1" checked><label for="ihCohabitReq1">상속개시일부터 소급 10년 이상(상속인 미성년자기간 제외) 계속 한 주택에서 동거(1호)</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="tenYearOneHouseholdRequirementMet" id="ihCohabitReq2" checked><label for="ihCohabitReq2">10년 이상 계속 1세대를 구성하며 1세대1주택 해당(무주택기간 포함)(2호)</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="noHouseOrJointHeirRequirementMet" id="ihCohabitReq3" checked><label for="ihCohabitReq3">상속개시일 현재 무주택자이거나 피상속인과 공동1주택 보유한 동거상속인이 상속받은 주택(3호)</label></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>장례비용 내역(§14①3호) — 지급처별로 입력하면 일반분·봉안시설분을 자동 구분·합산합니다(일반분 없으면 자동 500만원 공제, 봉안시설분은 별도 500만원 한도)</b></div>' +
+      '<div id="ihFuneralItemsList"></div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>가업상속공제(§18의2, [별지 제1호서식]) — 아래 상세내역을 채우면 자동계산됩니다. 모르면 최종 공제액만 직접 입력하세요.</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>최종 공제액(직접 입력, 상세내역 없을 때만)</label><input type="number" id="ihBusinessDeduction" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>가업영위기간</label><input type="number" id="ihBusinessYears" placeholder="년" maxlength="2"><span class="taxcalc-field-help">10년 미만이면 공제 불가</span></div>' +
+        '<div class="taxcalc-field"><label>사업용자산 순액 합계</label><input type="number" id="ihBusinessIndividualNet" placeholder="원"><span class="taxcalc-field-help">자동, 위 상속재산명세의 "사업용자산" 체크분 합계 — 담보채무가 있으면 직접 차감해 수정, 개인사업</span></div>' +
+        '<div class="taxcalc-field"><label>상속개시일 현재 주식등 가액</label><input type="number" id="ihBusinessStockValue" placeholder="원"><span class="taxcalc-field-help">가업법인 주식가액, 법인</span></div>' +
+        '<div class="taxcalc-field"><label>총자산가액</label><input type="number" id="ihBusinessTotalAsset" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
+        '<div class="taxcalc-field"><label>사업무관자산 - §55의2</label><input type="number" id="ihBusinessNonBiz55" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
+        '<div class="taxcalc-field"><label>사업무관자산 - 시행령§49</label><input type="number" id="ihBusinessNonBiz49" placeholder="원"><span class="taxcalc-field-help">임대용부동산 포함, 법인</span></div>' +
+        '<div class="taxcalc-field"><label>사업무관자산 - 시행령§61①2호</label><input type="number" id="ihBusinessNonBiz61" placeholder="원"><span class="taxcalc-field-help">대여금, 법인</span></div>' +
+        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="ihBusinessExcessCash" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
+        '<div class="taxcalc-field"><label>영업무관 주식·채권·금융상품</label><input type="number" id="ihBusinessNonBizStock" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
+        '<div class="taxcalc-field"><label>총 상속재산가액(가업상속납부유예 참고계산용)</label><input type="number" id="ihTotalGrossEstate" placeholder="원"><span class="taxcalc-field-help">§72의2 납부유예 가능세액을 참고로 보려면 입력</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>가업상속공제 자격요건(시행령§15③) — ※ 아래 항목은 모두 기본적으로 충족(체크)된 상태로 시작합니다. 실제와 달라 하나라도 체크 해제하면 가업상속공제가 전액 배제됩니다. 반드시 확인 후 체크하세요.</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="decedentOwnershipRequirementMet" id="ihBizReqOwnership" checked><label for="ihBizReqOwnership">피상속인+특수관계인 지분이 40%(상장 20%) 이상을 10년 이상 계속 보유(③1호가목)</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="decedentCeoTenureRequirementMet" id="ihBizReqCeoTenure" checked><label for="ihBizReqCeoTenure">피상속인 대표이사 재직요건 충족(가업영위기간 50%이상, 또는 10년이상 승계재직, 또는 소급10년중5년이상)(③1호나목)</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="heirAge18OrOlder" id="ihBizReqAge18" checked><label for="ihBizReqAge18">상속인이 상속개시일 현재 18세 이상(③2호가목)</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="heirEngagedInBusiness2YearsOrExempt" id="ihBizReqEngaged" checked><label for="ihBizReqEngaged">상속인 2년 이상 직접 가업종사(또는 피상속인 65세이전사망 등으로 면제)(③2호나목)</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="heirBecameOfficerByFilingDeadline" id="ihBizReqOfficer" checked><label for="ihBizReqOfficer">상속인 신고기한까지 임원 취임(③2호다목)</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="heirBecameCeoWithin2Years" id="ihBizReqCeo2yr" checked><label for="ihBizReqCeo2yr">상속인 신고기한부터 2년 이내 대표이사등 취임(③2호라목)</label></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>중견기업 게이트(§18의2②, 시행령§15⑥⑦) — 가업이 중견기업일 때만 해당. 가업상속인의 "가업상속재산 외 상속재산가액"이 "가업상속공제 미적용시 그 상속인 납부세액×200%"를 초과하면 공제가 전액 배제됩니다. 두 금액 모두 전체 상속세 계산 이후에나 확정되는 값이라 직접 계산해서 입력해야 합니다.</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihBusinessMediumSized"><label for="ihBusinessMediumSized">가업이 중견기업에 해당</label></div>' +
+        '<div class="taxcalc-field"><label>가업상속인의 가업상속재산 외 상속재산가액</label><input type="number" id="ihBusinessHeirNonBizAsset" placeholder="원"><span class="taxcalc-field-help">시행령§15⑥ — 그 상속인이 받는 상속재산-부담채무-가업상속재산</span></div>' +
+        '<div class="taxcalc-field"><label>가업상속공제 미적용시 그 상속인 납부세액</label><input type="number" id="ihBusinessHeirTaxWithoutDeduction" placeholder="원"><span class="taxcalc-field-help">§3조의2①②에 따라 계산, 별도 계산 필요</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>영농상속공제(§18의3, [별지 제2호서식], 30억 고정한도) — 마찬가지로 상세내역을 채우면 자동계산됩니다.</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>최종 공제액(직접 입력, 상세내역 없을 때만)</label><input type="number" id="ihFarmingDeduction" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>영농재산가액 합계</label><input type="number" id="ihFarmingIndividualAsset" placeholder="원"><span class="taxcalc-field-help">농지·초지·산림지·어선 등, 별지2호 ①합계, 개인</span></div>' +
+        '<div class="taxcalc-field"><label>상속개시일 현재 주식등 가액</label><input type="number" id="ihFarmingStockValue" placeholder="원"><span class="taxcalc-field-help">영농법인 주식가액, 법인</span></div>' +
+        '<div class="taxcalc-field"><label>총자산가액</label><input type="number" id="ihFarmingTotalAsset" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
+        '<div class="taxcalc-field"><label>사업무관자산 - §55의2</label><input type="number" id="ihFarmingNonBiz55" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
+        '<div class="taxcalc-field"><label>사업무관자산 - 시행령§49</label><input type="number" id="ihFarmingNonBiz49" placeholder="원"><span class="taxcalc-field-help">임대용부동산 포함, 법인</span></div>' +
+        '<div class="taxcalc-field"><label>사업무관자산 - 시행령§61①2호</label><input type="number" id="ihFarmingNonBiz61" placeholder="원"><span class="taxcalc-field-help">대여금, 법인</span></div>' +
+        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="ihFarmingExcessCash" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
+        '<div class="taxcalc-field"><label>영업무관 주식·채권·금융상품</label><input type="number" id="ihFarmingNonBizStock" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>영농상속공제 자격요건(시행령§16②③) — ※ 아래 항목은 모두 기본적으로 충족(체크)된 상태로 시작합니다. 실제와 달라 하나라도 체크 해제하면 영농상속공제가 전액 배제됩니다.</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="decedentFarmingRequirementMet" id="ihFarmReqDecedent" checked><label for="ihFarmReqDecedent">피상속인 8년 이상 계속 직접 영농종사(+거주요건), 또는 법인영농이면 8년경영+지분50%이상(②)</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="heirFarmingRequirementMet" id="ihFarmReqHeir" checked><label for="ihFarmReqHeir">상속인 18세이상+2년이상 영농종사(+거주요건, 또는 부득이한사유로 면제) 또는 영농·영어·임업후계자(③)</label></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>상속공제 종합한도(§24) · 세대생략가산액(§27)</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><span class="taxcalc-result-note" style="margin:0;">사전증여재산 과세표준 합계는 위 상속인 명부의 "10년 이내 사전증여" 입력에서 자동 집계됩니다</span></div>' +
+        '<div class="taxcalc-field"><label>상속포기로 다음순위가 받은 재산가액</label><input type="number" id="ihDisclaimedRedistributed" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>세대생략 상속인이 받는 재산가액</label><input type="number" id="ihGenSkipAmount" placeholder="0" readonly><span class="taxcalc-field-help">자동, 명부에서 "세대생략" 체크된 행 합계</span></div>' +
+        '<div class="taxcalc-field"><label>세대생략 상속인이 받는 재산 비율</label><input type="number" step="0.0001" id="ihGenSkipRatio" placeholder="0" readonly><span class="taxcalc-field-help">자동계산: 위 금액÷총상속재산가액</span><span class="taxcalc-result-note" id="ihGenSkipRatioHint" style="margin:2px 0 0;"></span></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihGenSkipOver2B"><label for="ihGenSkipOver2B">세대생략 상속재산가액 20억 초과</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihGenSkipMinorHeir"><label for="ihGenSkipMinorHeir">세대생략 상속인·수유자(자녀 제외 직계비속)가 미성년자(위 둘 다 충족해야 할증 40%, 아니면 30%)</label></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>세액공제</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><span class="taxcalc-result-note" style="margin:0;">기납부증여세액공제(§28)는 위 상속인 명부의 "10년 이내 사전증여" 입력에서 상속인별로 자동 계산됩니다(과세가액 5억원 이하면 배제)</span></div>' +
+        '<div class="taxcalc-field"><label>외국납부세액</label><input type="number" id="ihForeignTax" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>단기재상속공제(§30②) — 전의 상속세 산출세액</label><input type="number" id="ihPriorInheritanceTax" placeholder="원"><span class="taxcalc-field-help">재상속인 경우만, 없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>단기재상속공제 — 재상속분의 재산가액</label><input type="number" id="ihReinheritedPropertyValue" placeholder="원"><span class="taxcalc-field-help">전의 상속재산 중 이번에 다시 상속되는 부분</span></div>' +
+        '<div class="taxcalc-field"><label>단기재상속공제 — 전의 상속재산가액</label><input type="number" id="ihPriorInheritanceTotalPropertyValue" placeholder="원"><span class="taxcalc-field-help">전의 상속 전체 재산가액</span></div>' +
+        '<div class="taxcalc-field"><label>단기재상속공제 — 전의 상속세 과세가액</label><input type="number" id="ihPriorInheritanceTaxableBase" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>전 상속개시일로부터 경과연수</label><input type="number" id="ihYearsSincePrior" placeholder="1~10년" maxlength="2"><span class="taxcalc-field-help">재상속인 경우만</span></div>' +
+        '<div class="taxcalc-field"><label>조특법§30의5·6 특례증여세액공제</label><input type="number" id="ihSpecialGiftCredit" placeholder="원"><span class="taxcalc-field-help">별도 계산 후 입력</span></div>' +
+        '<div class="taxcalc-field"><label>그 밖의 공제</label><input type="number" id="ihOtherCredits" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>이자상당액 · 영리법인 상속세 면제(§3의2) · 징수유예</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>이자상당액</label><input type="number" id="ihInterest" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>영리법인 유증재산가액</label><input type="number" id="ihForProfitBequest" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>영리법인 면제세액</label><input type="number" id="ihForProfitExempted" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>상속인 등의 지분 상당 비율</label><input type="number" step="0.01" id="ihForProfitRatio" placeholder="0~1"><span class="taxcalc-field-help">없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>문화재등 징수유예세액</label><input type="number" id="ihCulturalDeferred" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>가업상속 납부유예세액</label><input type="number" id="ihBizInheritDeferred" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>신고인 정보(위 상속인 명부에서 "신고인" 체크된 행 기준 자동 표시)</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>성명(상속인)</label><input type="text" id="ihReporterName" data-nameonly="1" readonly></div>' +
+        '<div class="taxcalc-field"><label>주민등록번호</label><input type="text" id="ihReporterRegNo" data-regno="1" readonly></div>' +
+        '<div class="taxcalc-field"><label>피상속인과의 관계</label><input type="text" id="ihReporterRelation" readonly></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>신고 상태 · 가산세</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>신고 상태</label><select id="ihFilingStatus">' +
+          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihReportedInTime" checked><label for="ihReportedInTime">(정상신고일 때) 법정신고기한 내 — 신고세액공제 3%</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihFraudulent"><label for="ihFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
+        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="ihUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
+        '<div class="taxcalc-field"><label>실제 납부일</label><input type="date" id="ihPaidDate" min="1900-01-01" max="2099-12-31"></div>' +
+        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="ihUnpaidDays" placeholder="0" readonly><span class="taxcalc-field-help">상속개시일+6개월 신고기한 대비</span></div>' +
+        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="ihMonthsAfterDesignated" placeholder="0"></div>' +
+        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="ihUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
+      '</div>' +
+    '</div>' +
+    '<button type="button" class="taxcalc-run-btn" data-action="run-inheritance">세액 계산하기</button>' +
+    '<div id="taxCalcInheritanceResult"></div>' +
+    '<button type="button" class="taxcalc-calcbasis-btn" data-action="toggle-heir-tool" style="margin-bottom:10px;">👪 상속인별 세액 안분(상증세법§3조의2①, 실제상속재산가액 비율 근사)</button>' +
+    '<div id="taxCalcHeirTool"></div>' +
+    // [2026.09.24 재구성] 연부연납은 증여쪽과 완전히 중복이던 도구라(이 taxType 선택형
+    // 판 하나만) renderGiftInheritanceSharedPane_() 공유 패널로 옮겼다 — 아래 삭제.
+    // [2026.09.23 흡수] 간주상속재산(§8·§9·§10) 독립계산기는 상속재산 평가목록의 평가방법
+    // "deemedInheritanceItem"으로 흡수 — 아래 삭제. "결과를 위 상속재산가액에 합산해 넣으세요"
+    // 라는 수동 안내문 자체가 이제 필요없다(자산 목록에 항목으로 추가하면 자동 합산됨).
+    '<div class="taxcalc-asset" style="margin-top:20px;">' +
+      '<div class="taxcalc-asset-head"><b>비과세되는 상속재산(§12) — 국가·지자체·공공단체 유증등, 민법§1008의3 제사용재산, 정당 유증등, 사내근로복지기금 등 유증등, 이재구호금품·치료비 등. 계산 결과는 위 "비과세재산가액" 칸에 바로 더할 수 있습니다</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>항목 구분</label><select id="niItemType">' +
+          '<option value="government">국가·지자체·공공단체 유증등(1호)</option>' +
+          '<option value="ancestral_property">민법§1008의3 제사용재산(3호, 금양임야·묘토·족보·제구 등)</option>' +
+          '<option value="political_party">정당 유증등(4호)</option>' +
+          '<option value="labor_welfare_fund">사내근로복지기금 등 유증등(5호)</option>' +
+          '<option value="disaster_relief">이재구호금품·치료비 등(6호)</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field"><label>금액</label><input type="number" id="niAmount" placeholder="원"><span class="taxcalc-field-help">3호(제사용재산) 외 나머지 항목만</span></div>' +
+        '<div class="taxcalc-field"><label>금양임야·묘토인농지 금액</label><input type="number" id="niGraveyardAmount" placeholder="원"><span class="taxcalc-field-help">3호만 — 합계 2억원 한도</span></div>' +
+        '<div class="taxcalc-field"><label>족보·제구 금액</label><input type="number" id="niGenealogyAmount" placeholder="원"><span class="taxcalc-field-help">3호만 — 별도로 1천만원 한도</span></div>' +
+      '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-nontaxable-inheritance">비과세 여부 확인하기</button>' +
+      '<div id="taxCalcNontaxableInheritanceResult"></div>' +
     '</div>';
-  enhanceNumberInputs(taxCalcGiftInheritanceSharedPane);
-  enhanceDateInputs(taxCalcGiftInheritanceSharedPane);
-  wireMinThresholdHint_('ipIhTotal', 'ipIhTotalHint', 20000000);
-  wireRangeClamp_('ipIhRate', 0, 30);
+  renderDisposalItemsList();
+  renderFuneralItemsList();
+  renderHeirTool();
+  const ihDeathDateEl = document.getElementById('ihDeathDate');
+  const ihPaidDateEl = document.getElementById('ihPaidDate');
+  if (ihDeathDateEl) ihDeathDateEl.addEventListener('input', recomputeInheritanceUnpaidDays);
+  if (ihPaidDateEl) ihPaidDateEl.addEventListener('input', recomputeInheritanceUnpaidDays);
+  recomputeInheritanceUnpaidDays();
+  wireMoneyCapHint_('ihAppraisalFee', 'ihAppraisalFeeHint', 5000000);
+  wireMoneyCapHint_('ihCohabitValue', 'ihCohabitValueHint', 600000000);
+  wireRangeClamp_('ihGenSkipRatio', 0, 1);
+  wireRangeClamp_('ihYearsSincePrior', 0, 10);
+  wireRangeClamp_('ihOtherHeirsCount', 0, 20);
+  wireRangeClamp_('ihForProfitRatio', 0, 1);
+  const ihTotalGrossEstateEl = document.getElementById('ihTotalGrossEstate');
+  const ihEstateEl = document.getElementById('ihEstate');
+  if (ihTotalGrossEstateEl) ihTotalGrossEstateEl.addEventListener('input', recomputeGenSkipRatio);
+  if (ihEstateEl) ihEstateEl.addEventListener('input', function(){
+    recomputeGenSkipRatio();
+    updateHeirActualValueHints();
+    recomputeHeirDerivedFields();
+  });
+  renderHeirRegistry();
+  recomputeHeirDerivedFields();
+  if (ihDeathDateEl) ihDeathDateEl.addEventListener('input', renderHeirRegistry);
+  enhanceNumberInputs(taxCalcInheritancePane);
+  enhanceDateInputs(taxCalcInheritancePane);
+  enhanceRegNoInputs(taxCalcInheritancePane);
+  enhanceNameOnlyInputs(taxCalcInheritancePane);
+  tcSyncTaxOfficeButtons_(taxCalcInheritancePane);
 }
-// [2026.09.24 신규] 재산평가(상증세법§60~66) 독립 탭 — 재검토61. 증여재산·상속재산을 여기서
-// 선행 등록·평가하고, 각 자산의 "세목" 선택에 따라 그 아래 배분(증여자/수증인 또는 상속인)
-// 섹션이 renderValuationAssetRow 안에서 자동으로 바뀐다(이미 있던 로직 그대로, isInheritance
-// 플래그가 이제 컨테이너 대신 이 탭 안의 두 목록 각각에서 여전히 똑같이 동작). 목록 자체는
-// giftValuationAssets_()/inheritanceValuationAssets_()로 걸러 각자 컨테이너에 그대로 렌더 —
-// renderValuationAssetList 등 기존 함수는 전혀 손대지 않았다(컨테이너 위치만 이 탭으로 이동).
+// [2026.09.24 재구성] 재산평가(상증세법§60~66) 독립 탭 — 재검토63. 세무사님 지적("사건이
+// 이미 증여·상속으로 나뉘는데 재산평가에서 또 세목을 구분하냐") 반영 — 이 탭은 순수하게
+// 자산 등록·평가만 한다(세목 구분·배분 UI 전혀 없음). 목록은 하나뿐이고, "배분"(누구
+// 몫인지)은 증여세·상속세 각 탭이 이 목록을 그대로 가져와 자기 화면에서 한다
+// (renderGiftAssetAllocationSectionHtml_/renderInheritanceAssetAllocationSectionHtml_ 참고).
 function renderValuationPane(){
   taxCalcValuationPane.innerHTML =
-    '<div class="taxcalc-hint">증여재산·상속재산 평가(상증세법§60~66)를 여기서 한 번에 등록·평가합니다 — 각 자산의 "세목"에 따라 배분(증여자·수증인 또는 상속인) 섹션이 바뀌고, 배분 결과는 증여세·상속세 탭의 해당 사람 카드에 자동으로 반영됩니다.</div>' +
-    '<div class="taxcalc-asset-head"><b>증여재산</b></div>' +
-    '<div id="giftValuationList"></div>' +
-    '<div class="taxcalc-asset-head" style="margin-top:20px;"><b>상속재산</b></div>' +
-    '<div id="inheritanceValuationList"></div>';
+    '<div class="taxcalc-hint">여기서는 자산 등록·평가만 합니다(세목 구분 없음) — "이 자산, 누구 몫인가"(배분)는 증여세·상속세 탭에서 이 목록을 그대로 가져와 각각 처리합니다.</div>' +
+    '<div id="giftValuationList"></div>';
   renderValuationAssetList('giftValuationList', giftValuationAssets_());
-  renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets_());
 }
 function renderGiftPane(){
   taxCalcGiftPane.innerHTML =
@@ -5729,10 +5988,10 @@ function renderGiftPane(){
     '</div>' +
     '<div id="giftDoneeRegistry"></div>' +
     '<div id="giftDonorRegistry"></div>' +
-    // [2026.09.24 재구성] 재산평가(자산 등록+평가)는 "재산평가" 독립 탭으로 옮겼다(재검토61,
-    // 세무사님 지시 — 같은 상증세법 재산평가를 증여·상속 화면에 각각 따로 두지 않기 위함).
-    // 여기는 이동 안내 + 배분 합계 요약만 남긴다. 실제 목록은 taxCalcValuationPane이 그린다.
-    '<div class="taxcalc-result-note" style="margin-top:10px;">재산평가(자산 등록·평가·배분)는 <a href="#" data-action="jump-to-valuation-tab" data-jump-taxtype="gift">"재산평가" 탭에서</a> 합니다 — 여기서는 배분된 증여재산가액만 각 증여자 카드에 자동 반영됩니다.</div>' +
+    // [2026.09.24 재구성, 재검토63] 자산 등록·평가 자체는 "재산평가" 독립 탭으로 옮겼다 —
+    // 여기서는 그 목록을 그대로 가져와 "배분"(어느 증여자·수증인 몫인지)만 한다.
+    '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>재산평가 자산 배분 — 자산 등록·평가는 "재산평가" 탭에서 하고, 여기서는 배분만 합니다</b></div>' +
+    '<div id="giftAssetAllocationList">' + renderGiftAssetAllocationListHtml_() + '</div>' +
     '<div class="taxcalc-asset">' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>㉙㉚ 혼인·출산 증여재산공제 (혼인+출산 평생통산 1억원 한도, 위 증여일자를 기준으로 자동 판정)</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -6268,251 +6527,7 @@ function renderGiftPane(){
       '<div id="taxCalcGiftOverlapResult"></div>' +
     
       '</div>' +
-    '</div>' +
-    
-    
-    
-    
-    // [2026.09.24 재구성] 공익법인출연(§16·§48①)은 증여·상속 어느 쪽이든 계산 가능해
-    // renderGiftInheritanceSharedPane_()의 공유 패널로 옮겼다 — 아래 삭제.
-    
-    
-    // [2026.09.23 흡수] 합병이익(§38)·재산사용용역이익(§42)·조직변경이익(§42의2) 독립계산기는
-    // giftValuationAssets_()의 평가방법 "mergerBenefit"/"propertyUseService"/"orgChangeBenefit"로
-    // 흡수 — 아래 삭제.
-    
-    // [2026.09.24 재구성] 연부연납(증여쪽 중복이었던 이 블록은 상속쪽의 taxType선택형으로
-    // 통합)·이자상당액·가업승계납부유예·가업승계사후관리추징·물납가능여부(상속전용인데 여기
-    // 있었음)·물납수납가액·문화재징수유예는 증여·상속 어느 쪽이든 계산 가능해
-    // renderGiftInheritanceSharedPane_()의 공유 패널로 옮겼다 — 아래 전부 삭제.
-    // [2026.09.23 흡수] 저가양수도이익(§35)·무상대출이익(§41의4) 독립계산기는 이미 화면
-    // 안내문구 자체가 "계산된 금액을 위 일반 증여세 계산기의 증여재산가액에 넣으세요"였다 —
-    // giftValuationAssets_()의 평가방법 "lowPriceTransfer"/"interestFreeLoan"으로 흡수해 그
-    // 수동 입력 단계 자체를 없앤다. 아래 삭제.
-    
-    
-      '<div class="taxcalc-ai-status" id="aiStatus-inheritance"></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>성명</label><input type="text" id="ihDeceasedName" data-nameonly="1"></div>' +
-        '<div class="taxcalc-field"><label>주민등록번호</label><input type="text" id="ihDeceasedRegNo" placeholder="000000-0000000" data-regno="1"></div>' +
-        '<div class="taxcalc-field" style="flex:0 1 340px;"><label>주소(사망 당시 주소지=납세지)</label><div class="taxcalc-field-inline"><input type="text" id="ihDeceasedAddress" placeholder="예: OO시 OO구 OO동 123-4 (검색 또는 직접입력)"><button type="button" class="taxcalc-ai-btn" data-action="open-address-search-simple" data-target-input="ihDeceasedAddress" data-target-dong="ihDeceasedDong" data-target-ho="ihDeceasedHo" title="주소 검색">🔍</button></div>' +
-        '</div>' +
-        '<div class="taxcalc-field"><label>동</label><select id="ihDeceasedDong"><option value="">직접입력/해당없음</option></select></div>' +
-        '<div class="taxcalc-field"><label>호</label><input type="text" id="ihDeceasedHo" placeholder="예: 1502호"><span class="taxcalc-field-help">동은 검색결과 목록에서 고르지만, 호는 목록이 제공되지 않아 직접 입력합니다</span></div>' +
-        '<div class="taxcalc-field"><label style="visibility:hidden;">관할세무서</label><input type="hidden" id="ihDeceasedTaxOffice" value=""><button type="button" class="taxcalc-ai-btn" data-action="open-tax-office-guide" data-address-input="ihDeceasedAddress" data-office-input="ihDeceasedTaxOffice" id="ihDeceasedTaxOfficeBtn">관할세무서</button></div>' +
-        '<div class="taxcalc-field"><label>거주구분</label><select id="ihDecedentResident"><option value="resident" selected>거주자</option><option value="nonresident">비거주자</option></select><span class="taxcalc-field-help">국내에 주소를 두거나 183일 이상 거소를 둔 사람=거주자</span><span class="taxcalc-result-note" style="margin:2px 0 0;">비거주자면 기초공제(2억원)만 적용되고 배우자공제·일괄공제·인적공제·금융재산공제·동거주택공제·장례비용공제·가업/영농상속공제는 적용되지 않습니다(§14②·§18~§23의2).</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid" style="margin-top:10px;">' +
-        '<div class="taxcalc-field"><label>상속개시일</label><input type="date" id="ihDeathDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-result-note" id="ihDeathDateDeadlineHint" style="margin:2px 0 0;"></span></div>' +
-      '</div>' +
-    '</div>' +
-    '<div class="taxcalc-result-note" style="margin-top:14px;">여기 입력한 관계·생년월일·상속재산가액으로 아래 인적공제·배우자공제·동거주택공제·세대생략비율·신고인 정보가 전부 자동으로 채워집니다</div>' +
-    '<div id="ihHeirRegistry"></div>' +
-    // [2026.09.24 재구성] 재산평가는 "재산평가" 독립 탭으로 옮겼다(재검토61) — 여기는 이동
-    // 안내만 남긴다.
-    '<div class="taxcalc-result-note" style="margin-top:10px;">재산평가(자산 등록·평가·배분)는 <a href="#" data-action="jump-to-valuation-tab" data-jump-taxtype="inheritance">"재산평가" 탭에서</a> 합니다 — 여기서는 배분된 실제상속재산가액만 각 상속인 카드에 자동 반영됩니다.</div>' +
-    '<div class="taxcalc-asset-head"><b>[부표4] 상속개시전 처분재산 등 산입액(§15) — 상속개시 전 1년 이내 재산종류별 2억원 이상(2년 이내 5억원 이상) 처분·인출·채무부담인데 용도가 불분명하면 자동으로 과세가액에 가산됩니다. 해당 없으면 비워두세요.</b></div>' +
-    '<div id="ihDisposalItems"></div>' +
-    '<div class="taxcalc-asset">' +
-      '<div class="taxcalc-asset-head"><b>과세가액 · 인적공제(자녀 수·미성년·65세이상은 위 상속인 명부에서 자동 산출)</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>상속세과세가액</label><input type="number" id="ihEstate" placeholder="원"><span class="taxcalc-field-help">총상속재산가액에서 공과금·채무를 빼고 10년 이내 사전증여재산을 가산해 이미 계산된 값 — ⚠ 장례비용은 여기서 미리 빼지 마세요(아래 "장례비용" 섹션에 입력하면 상속공제 단계(§14①3호)에서 자동 반영됩니다. 미리 빼고 아래에도 입력하면 이중공제)</span></div>' +
-        '<div class="taxcalc-field"><label>비과세재산가액(§12)</label><input type="number" id="ihNonTaxable" placeholder="원"><span class="taxcalc-field-help">국가등 유증·금양임야 등, 없으면 비움</span></div>' +
-        // [2026.09 버그수정] §11(전사자 등에 대한 상속세 비과세, 전쟁 등 국가를 위한 직무 수행
-        // 중 사망) 게이트가 계산엔진엔 있는데 이 체크박스가 없어 켤 방법이 없었다.
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihWarOrDutyDeath"><label for="ihWarOrDutyDeath">전사자 등 상속세 비과세 대상(전쟁 또는 이에 준하는 비상사태로 인한 사망 등, §11 — 체크시 상속세 전액 비과세)</label></div>' +
-        '<div class="taxcalc-field"><label>공익법인출연재산가액(§16)</label><input type="number" id="ihPublicOrg" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>공익신탁재산가액(§17)</label><input type="number" id="ihPublicTrust" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>자녀 수(자동, 1인당 5천만원)</label><input type="number" id="ihChildCount" placeholder="0" readonly></div>' +
-        '<div class="taxcalc-field"><label>미성년 상속인 19세까지 잔여연수 합(자동, 1년당 1천만원)</label><input type="number" id="ihMinorYears" placeholder="0" readonly></div>' +
-        '<div class="taxcalc-field"><label>65세 이상 상속인 수(자동, 1인당 5천만원)</label><input type="number" id="ihElderlyCount" placeholder="0" readonly></div>' +
-        '<div class="taxcalc-field"><label>장애인 상속인 기대여명 잔여연수 합</label><input type="number" id="ihDisabledYears" placeholder="년" maxlength="3"><span class="taxcalc-result-note" id="ihDisabledCountHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">1년당 1천만원</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>배우자상속공제 (부표3의2 한도액 계산)</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>배우자 실제 상속액(자동, 명부의 배우자 행 기준)</label><input type="number" id="ihSpouseActual" placeholder="0" readonly><span class="taxcalc-field-help">5억 미만/미입력이면 최소 5억 자동 적용</span></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isSpousePropertyDivided" id="ihSpouseDivided" checked><label for="ihSpouseDivided">배우자상속재산분할기한(신고기한 다음날부터 9개월)까지 배우자 상속재산을 분할·등기하고 신고함 (§19②③ — 체크 해제시 실제상속액과 무관하게 최소 5억원만 공제)</label></div>' +
-        '<div class="taxcalc-field"><label>배우자 외 같은 순위 공동상속인 수</label><input type="number" id="ihOtherHeirsCount" placeholder="0" readonly><span class="taxcalc-field-help">자동, 명부에 자녀·손자녀가 있으면 그 수, 없으면 부모 수</span></div>' +
-        '<div class="taxcalc-field"><label>배우자 법정상속분 비율</label><input type="number" step="0.0001" id="ihSpouseRatio" placeholder="0" readonly><span class="taxcalc-field-help">자동계산: 위 공동상속인 수 기준, 민법§1009②</span><span class="taxcalc-result-note" id="ihSpouseRatioHint" style="margin:2px 0 0;"></span></div>' +
-        '<div class="taxcalc-field"><label>상속인 아닌 자 유증재산가액</label><input type="number" id="ihNonHeirBequest" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>10년내 상속인에게 증여한 재산가액</label><input type="number" id="ihGiftToHeirs" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>과세가액에 가산된 사전증여재산 원본액</label><input type="number" id="ihPriorGiftedIncluded" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>배우자 사전증여분 증여세 과세표준</label><input type="number" id="ihSpouseGiftBase" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        // [2026.09 버그수정] §13①2호(상속인이 아닌 자 — 예: 손자녀·제3자 — 에 대한 사전증여)
-        // 가 있으면 ①공제적용종합한도(§24 3호) 차감액과 ②증여세액공제(§28) 정밀계산이 모두
-        // 이 값을 반영해야 하는데, 입력칸 자체가 없어 항상 0으로 계산되고 있었다(상속인이
-        // 아닌 자에 대한 사전증여 사건에서 상속공제 한도가 과다산정되는 방향으로 작용).
-        '<div class="taxcalc-field"><label>10년내 상속인 아닌 자에게 증여한 재산가액 합계(§13①2호)</label><input type="number" id="ihNonHeirPriorGiftAmount" placeholder="원"><span class="taxcalc-field-help">손자녀·제3자 등, 없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>위 사전증여분 증여세 과세표준 합계</label><input type="number" id="ihNonHeirPriorGiftBase" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>그 밖의 상속공제</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>순금융재산가액(금융재산-금융채무)</label><input type="number" id="ihNetFinancial" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>동거주택가액</label><input type="number" id="ihCohabitValue" placeholder="0" readonly><span class="taxcalc-field-help">자동, 명부에서 "동거주택 상속" 체크된 행 합계, 6억 한도</span><span class="taxcalc-result-note" id="ihCohabitValueHint" style="margin:2px 0 0;"></span></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="ihAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="ihAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">500만원 한도</span></div>' +
-        '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="ihDisasterLoss" placeholder="원"><span class="taxcalc-field-help">신고기한 내 재난 멸실분</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>동거주택상속공제 자격요건(§23의2①) — ※ 아래 항목은 모두 기본적으로 충족(체크)된 상태로 시작합니다. 동거주택가액을 입력했다면, 실제와 달라 하나라도 체크 해제하면 이 공제가 전액 배제됩니다.</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="tenYearCohabitationRequirementMet" id="ihCohabitReq1" checked><label for="ihCohabitReq1">상속개시일부터 소급 10년 이상(상속인 미성년자기간 제외) 계속 한 주택에서 동거(1호)</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="tenYearOneHouseholdRequirementMet" id="ihCohabitReq2" checked><label for="ihCohabitReq2">10년 이상 계속 1세대를 구성하며 1세대1주택 해당(무주택기간 포함)(2호)</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="noHouseOrJointHeirRequirementMet" id="ihCohabitReq3" checked><label for="ihCohabitReq3">상속개시일 현재 무주택자이거나 피상속인과 공동1주택 보유한 동거상속인이 상속받은 주택(3호)</label></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>장례비용 내역(§14①3호) — 지급처별로 입력하면 일반분·봉안시설분을 자동 구분·합산합니다(일반분 없으면 자동 500만원 공제, 봉안시설분은 별도 500만원 한도)</b></div>' +
-      '<div id="ihFuneralItemsList"></div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>가업상속공제(§18의2, [별지 제1호서식]) — 아래 상세내역을 채우면 자동계산됩니다. 모르면 최종 공제액만 직접 입력하세요.</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>최종 공제액(직접 입력, 상세내역 없을 때만)</label><input type="number" id="ihBusinessDeduction" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>가업영위기간</label><input type="number" id="ihBusinessYears" placeholder="년" maxlength="2"><span class="taxcalc-field-help">10년 미만이면 공제 불가</span></div>' +
-        '<div class="taxcalc-field"><label>사업용자산 순액 합계</label><input type="number" id="ihBusinessIndividualNet" placeholder="원"><span class="taxcalc-field-help">자동, 위 상속재산명세의 "사업용자산" 체크분 합계 — 담보채무가 있으면 직접 차감해 수정, 개인사업</span></div>' +
-        '<div class="taxcalc-field"><label>상속개시일 현재 주식등 가액</label><input type="number" id="ihBusinessStockValue" placeholder="원"><span class="taxcalc-field-help">가업법인 주식가액, 법인</span></div>' +
-        '<div class="taxcalc-field"><label>총자산가액</label><input type="number" id="ihBusinessTotalAsset" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
-        '<div class="taxcalc-field"><label>사업무관자산 - §55의2</label><input type="number" id="ihBusinessNonBiz55" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
-        '<div class="taxcalc-field"><label>사업무관자산 - 시행령§49</label><input type="number" id="ihBusinessNonBiz49" placeholder="원"><span class="taxcalc-field-help">임대용부동산 포함, 법인</span></div>' +
-        '<div class="taxcalc-field"><label>사업무관자산 - 시행령§61①2호</label><input type="number" id="ihBusinessNonBiz61" placeholder="원"><span class="taxcalc-field-help">대여금, 법인</span></div>' +
-        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="ihBusinessExcessCash" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
-        '<div class="taxcalc-field"><label>영업무관 주식·채권·금융상품</label><input type="number" id="ihBusinessNonBizStock" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
-        '<div class="taxcalc-field"><label>총 상속재산가액(가업상속납부유예 참고계산용)</label><input type="number" id="ihTotalGrossEstate" placeholder="원"><span class="taxcalc-field-help">§72의2 납부유예 가능세액을 참고로 보려면 입력</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>가업상속공제 자격요건(시행령§15③) — ※ 아래 항목은 모두 기본적으로 충족(체크)된 상태로 시작합니다. 실제와 달라 하나라도 체크 해제하면 가업상속공제가 전액 배제됩니다. 반드시 확인 후 체크하세요.</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="decedentOwnershipRequirementMet" id="ihBizReqOwnership" checked><label for="ihBizReqOwnership">피상속인+특수관계인 지분이 40%(상장 20%) 이상을 10년 이상 계속 보유(③1호가목)</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="decedentCeoTenureRequirementMet" id="ihBizReqCeoTenure" checked><label for="ihBizReqCeoTenure">피상속인 대표이사 재직요건 충족(가업영위기간 50%이상, 또는 10년이상 승계재직, 또는 소급10년중5년이상)(③1호나목)</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="heirAge18OrOlder" id="ihBizReqAge18" checked><label for="ihBizReqAge18">상속인이 상속개시일 현재 18세 이상(③2호가목)</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="heirEngagedInBusiness2YearsOrExempt" id="ihBizReqEngaged" checked><label for="ihBizReqEngaged">상속인 2년 이상 직접 가업종사(또는 피상속인 65세이전사망 등으로 면제)(③2호나목)</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="heirBecameOfficerByFilingDeadline" id="ihBizReqOfficer" checked><label for="ihBizReqOfficer">상속인 신고기한까지 임원 취임(③2호다목)</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="heirBecameCeoWithin2Years" id="ihBizReqCeo2yr" checked><label for="ihBizReqCeo2yr">상속인 신고기한부터 2년 이내 대표이사등 취임(③2호라목)</label></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>중견기업 게이트(§18의2②, 시행령§15⑥⑦) — 가업이 중견기업일 때만 해당. 가업상속인의 "가업상속재산 외 상속재산가액"이 "가업상속공제 미적용시 그 상속인 납부세액×200%"를 초과하면 공제가 전액 배제됩니다. 두 금액 모두 전체 상속세 계산 이후에나 확정되는 값이라 직접 계산해서 입력해야 합니다.</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihBusinessMediumSized"><label for="ihBusinessMediumSized">가업이 중견기업에 해당</label></div>' +
-        '<div class="taxcalc-field"><label>가업상속인의 가업상속재산 외 상속재산가액</label><input type="number" id="ihBusinessHeirNonBizAsset" placeholder="원"><span class="taxcalc-field-help">시행령§15⑥ — 그 상속인이 받는 상속재산-부담채무-가업상속재산</span></div>' +
-        '<div class="taxcalc-field"><label>가업상속공제 미적용시 그 상속인 납부세액</label><input type="number" id="ihBusinessHeirTaxWithoutDeduction" placeholder="원"><span class="taxcalc-field-help">§3조의2①②에 따라 계산, 별도 계산 필요</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>영농상속공제(§18의3, [별지 제2호서식], 30억 고정한도) — 마찬가지로 상세내역을 채우면 자동계산됩니다.</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>최종 공제액(직접 입력, 상세내역 없을 때만)</label><input type="number" id="ihFarmingDeduction" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>영농재산가액 합계</label><input type="number" id="ihFarmingIndividualAsset" placeholder="원"><span class="taxcalc-field-help">농지·초지·산림지·어선 등, 별지2호 ①합계, 개인</span></div>' +
-        '<div class="taxcalc-field"><label>상속개시일 현재 주식등 가액</label><input type="number" id="ihFarmingStockValue" placeholder="원"><span class="taxcalc-field-help">영농법인 주식가액, 법인</span></div>' +
-        '<div class="taxcalc-field"><label>총자산가액</label><input type="number" id="ihFarmingTotalAsset" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
-        '<div class="taxcalc-field"><label>사업무관자산 - §55의2</label><input type="number" id="ihFarmingNonBiz55" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
-        '<div class="taxcalc-field"><label>사업무관자산 - 시행령§49</label><input type="number" id="ihFarmingNonBiz49" placeholder="원"><span class="taxcalc-field-help">임대용부동산 포함, 법인</span></div>' +
-        '<div class="taxcalc-field"><label>사업무관자산 - 시행령§61①2호</label><input type="number" id="ihFarmingNonBiz61" placeholder="원"><span class="taxcalc-field-help">대여금, 법인</span></div>' +
-        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="ihFarmingExcessCash" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
-        '<div class="taxcalc-field"><label>영업무관 주식·채권·금융상품</label><input type="number" id="ihFarmingNonBizStock" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>영농상속공제 자격요건(시행령§16②③) — ※ 아래 항목은 모두 기본적으로 충족(체크)된 상태로 시작합니다. 실제와 달라 하나라도 체크 해제하면 영농상속공제가 전액 배제됩니다.</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="decedentFarmingRequirementMet" id="ihFarmReqDecedent" checked><label for="ihFarmReqDecedent">피상속인 8년 이상 계속 직접 영농종사(+거주요건), 또는 법인영농이면 8년경영+지분50%이상(②)</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="heirFarmingRequirementMet" id="ihFarmReqHeir" checked><label for="ihFarmReqHeir">상속인 18세이상+2년이상 영농종사(+거주요건, 또는 부득이한사유로 면제) 또는 영농·영어·임업후계자(③)</label></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>상속공제 종합한도(§24) · 세대생략가산액(§27)</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><span class="taxcalc-result-note" style="margin:0;">사전증여재산 과세표준 합계는 위 상속인 명부의 "10년 이내 사전증여" 입력에서 자동 집계됩니다</span></div>' +
-        '<div class="taxcalc-field"><label>상속포기로 다음순위가 받은 재산가액</label><input type="number" id="ihDisclaimedRedistributed" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>세대생략 상속인이 받는 재산가액</label><input type="number" id="ihGenSkipAmount" placeholder="0" readonly><span class="taxcalc-field-help">자동, 명부에서 "세대생략" 체크된 행 합계</span></div>' +
-        '<div class="taxcalc-field"><label>세대생략 상속인이 받는 재산 비율</label><input type="number" step="0.0001" id="ihGenSkipRatio" placeholder="0" readonly><span class="taxcalc-field-help">자동계산: 위 금액÷총상속재산가액</span><span class="taxcalc-result-note" id="ihGenSkipRatioHint" style="margin:2px 0 0;"></span></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihGenSkipOver2B"><label for="ihGenSkipOver2B">세대생략 상속재산가액 20억 초과</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihGenSkipMinorHeir"><label for="ihGenSkipMinorHeir">세대생략 상속인·수유자(자녀 제외 직계비속)가 미성년자(위 둘 다 충족해야 할증 40%, 아니면 30%)</label></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>세액공제</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><span class="taxcalc-result-note" style="margin:0;">기납부증여세액공제(§28)는 위 상속인 명부의 "10년 이내 사전증여" 입력에서 상속인별로 자동 계산됩니다(과세가액 5억원 이하면 배제)</span></div>' +
-        '<div class="taxcalc-field"><label>외국납부세액</label><input type="number" id="ihForeignTax" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>단기재상속공제(§30②) — 전의 상속세 산출세액</label><input type="number" id="ihPriorInheritanceTax" placeholder="원"><span class="taxcalc-field-help">재상속인 경우만, 없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>단기재상속공제 — 재상속분의 재산가액</label><input type="number" id="ihReinheritedPropertyValue" placeholder="원"><span class="taxcalc-field-help">전의 상속재산 중 이번에 다시 상속되는 부분</span></div>' +
-        '<div class="taxcalc-field"><label>단기재상속공제 — 전의 상속재산가액</label><input type="number" id="ihPriorInheritanceTotalPropertyValue" placeholder="원"><span class="taxcalc-field-help">전의 상속 전체 재산가액</span></div>' +
-        '<div class="taxcalc-field"><label>단기재상속공제 — 전의 상속세 과세가액</label><input type="number" id="ihPriorInheritanceTaxableBase" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>전 상속개시일로부터 경과연수</label><input type="number" id="ihYearsSincePrior" placeholder="1~10년" maxlength="2"><span class="taxcalc-field-help">재상속인 경우만</span></div>' +
-        '<div class="taxcalc-field"><label>조특법§30의5·6 특례증여세액공제</label><input type="number" id="ihSpecialGiftCredit" placeholder="원"><span class="taxcalc-field-help">별도 계산 후 입력</span></div>' +
-        '<div class="taxcalc-field"><label>그 밖의 공제</label><input type="number" id="ihOtherCredits" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>이자상당액 · 영리법인 상속세 면제(§3의2) · 징수유예</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>이자상당액</label><input type="number" id="ihInterest" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>영리법인 유증재산가액</label><input type="number" id="ihForProfitBequest" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>영리법인 면제세액</label><input type="number" id="ihForProfitExempted" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>상속인 등의 지분 상당 비율</label><input type="number" step="0.01" id="ihForProfitRatio" placeholder="0~1"><span class="taxcalc-field-help">없으면 0</span></div>' +
-        '<div class="taxcalc-field"><label>문화재등 징수유예세액</label><input type="number" id="ihCulturalDeferred" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>가업상속 납부유예세액</label><input type="number" id="ihBizInheritDeferred" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>신고인 정보(위 상속인 명부에서 "신고인" 체크된 행 기준 자동 표시)</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>성명(상속인)</label><input type="text" id="ihReporterName" data-nameonly="1" readonly></div>' +
-        '<div class="taxcalc-field"><label>주민등록번호</label><input type="text" id="ihReporterRegNo" data-regno="1" readonly></div>' +
-        '<div class="taxcalc-field"><label>피상속인과의 관계</label><input type="text" id="ihReporterRelation" readonly></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>신고 상태 · 가산세</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>신고 상태</label><select id="ihFilingStatus">' +
-          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihReportedInTime" checked><label for="ihReportedInTime">(정상신고일 때) 법정신고기한 내 — 신고세액공제 3%</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihFraudulent"><label for="ihFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
-        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="ihUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
-        '<div class="taxcalc-field"><label>실제 납부일</label><input type="date" id="ihPaidDate" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="ihUnpaidDays" placeholder="0" readonly><span class="taxcalc-field-help">상속개시일+6개월 신고기한 대비</span></div>' +
-        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="ihMonthsAfterDesignated" placeholder="0"></div>' +
-        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="ihUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
-      '</div>' +
-    '</div>' +
-    '<button type="button" class="taxcalc-run-btn" data-action="run-inheritance">세액 계산하기</button>' +
-    '<div id="taxCalcInheritanceResult"></div>' +
-    '<button type="button" class="taxcalc-calcbasis-btn" data-action="toggle-heir-tool" style="margin-bottom:10px;">👪 상속인별 세액 안분(상증세법§3조의2①, 실제상속재산가액 비율 근사)</button>' +
-    '<div id="taxCalcHeirTool"></div>' +
-    // [2026.09.24 재구성] 연부연납은 증여쪽과 완전히 중복이던 도구라(이 taxType 선택형
-    // 판 하나만) renderGiftInheritanceSharedPane_() 공유 패널로 옮겼다 — 아래 삭제.
-    // [2026.09.23 흡수] 간주상속재산(§8·§9·§10) 독립계산기는 상속재산 평가목록의 평가방법
-    // "deemedInheritanceItem"으로 흡수 — 아래 삭제. "결과를 위 상속재산가액에 합산해 넣으세요"
-    // 라는 수동 안내문 자체가 이제 필요없다(자산 목록에 항목으로 추가하면 자동 합산됨).
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>비과세되는 상속재산(§12) — 국가·지자체·공공단체 유증등, 민법§1008의3 제사용재산, 정당 유증등, 사내근로복지기금 등 유증등, 이재구호금품·치료비 등. 계산 결과는 위 "비과세재산가액" 칸에 바로 더할 수 있습니다</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>항목 구분</label><select id="niItemType">' +
-          '<option value="government">국가·지자체·공공단체 유증등(1호)</option>' +
-          '<option value="ancestral_property">민법§1008의3 제사용재산(3호, 금양임야·묘토·족보·제구 등)</option>' +
-          '<option value="political_party">정당 유증등(4호)</option>' +
-          '<option value="labor_welfare_fund">사내근로복지기금 등 유증등(5호)</option>' +
-          '<option value="disaster_relief">이재구호금품·치료비 등(6호)</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>금액</label><input type="number" id="niAmount" placeholder="원"><span class="taxcalc-field-help">3호(제사용재산) 외 나머지 항목만</span></div>' +
-        '<div class="taxcalc-field"><label>금양임야·묘토인농지 금액</label><input type="number" id="niGraveyardAmount" placeholder="원"><span class="taxcalc-field-help">3호만 — 합계 2억원 한도</span></div>' +
-        '<div class="taxcalc-field"><label>족보·제구 금액</label><input type="number" id="niGenealogyAmount" placeholder="원"><span class="taxcalc-field-help">3호만 — 별도로 1천만원 한도</span></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-nontaxable-inheritance">비과세 여부 확인하기</button>' +
-      '<div id="taxCalcNontaxableInheritanceResult"></div>' +
-    '</div>';
-  renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets_());
-  renderDisposalItemsList();
-  renderFuneralItemsList();
-  renderHeirTool();
-  const ihDeathDateEl = document.getElementById('ihDeathDate');
-  const ihPaidDateEl = document.getElementById('ihPaidDate');
-  if (ihDeathDateEl) ihDeathDateEl.addEventListener('input', recomputeInheritanceUnpaidDays);
-  if (ihPaidDateEl) ihPaidDateEl.addEventListener('input', recomputeInheritanceUnpaidDays);
-  recomputeInheritanceUnpaidDays();
-  wireMoneyCapHint_('ihAppraisalFee', 'ihAppraisalFeeHint', 5000000);
-  wireMoneyCapHint_('ihCohabitValue', 'ihCohabitValueHint', 600000000);
-  wireRangeClamp_('ihGenSkipRatio', 0, 1);
-  wireRangeClamp_('ihYearsSincePrior', 0, 10);
-  wireRangeClamp_('ihOtherHeirsCount', 0, 20);
-  wireRangeClamp_('ihForProfitRatio', 0, 1);
-  const ihTotalGrossEstateEl = document.getElementById('ihTotalGrossEstate');
-  const ihEstateEl = document.getElementById('ihEstate');
-  if (ihTotalGrossEstateEl) ihTotalGrossEstateEl.addEventListener('input', recomputeGenSkipRatio);
-  if (ihEstateEl) ihEstateEl.addEventListener('input', function(){
-    recomputeGenSkipRatio();
-    updateHeirActualValueHints();
-    recomputeHeirDerivedFields();
-  });
-  renderHeirRegistry();
-  recomputeHeirDerivedFields();
-  if (ihDeathDateEl) ihDeathDateEl.addEventListener('input', renderHeirRegistry);
-  enhanceNumberInputs(taxCalcInheritancePane);
-  enhanceDateInputs(taxCalcInheritancePane);
-  enhanceRegNoInputs(taxCalcInheritancePane);
-  enhanceNameOnlyInputs(taxCalcInheritancePane);
-  tcSyncTaxOfficeButtons_(taxCalcInheritancePane);
+    '</div>' ;
 }
 
 let lastInheritanceResult = null;
