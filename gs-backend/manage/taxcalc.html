@@ -5994,6 +5994,12 @@ function renderInheritancePane(){
         '<div class="taxcalc-field"><label>성명</label><input type="text" id="ihDeceasedName" data-nameonly="1"></div>' +
         '<div class="taxcalc-field"><label>주민등록번호</label><input type="text" id="ihDeceasedRegNo" placeholder="000000-0000000" data-regno="1"></div>' +
         '<div class="taxcalc-field" style="flex:0 1 340px;"><label>주소(사망 당시 주소지=납세지)</label><div class="taxcalc-field-inline"><input type="text" id="ihDeceasedAddress" placeholder="예: OO시 OO구 OO동 123-4 (검색 또는 직접입력)"><button type="button" class="taxcalc-ai-btn" data-action="open-address-search-simple" data-target-input="ihDeceasedAddress" data-target-dong="ihDeceasedDong" data-target-ho="ihDeceasedHo" title="주소 검색">🔍</button></div>' +
+        // [2026.09.24 신규, 재검토76] 전자신고파일(기본사항 레코드)의 "피상속인_법정동코드"는
+        // Not Null 필수항목이라 검색결과의 admCd(행정동코드=법정동코드)·mtYn(산여부)·
+        // lnbrMnnm/lnbrSlno(지번 본번/부번)를 버리지 않고 숨은칸에 저장해둔다(양도자산의
+        // PNU 저장과 같은 패턴).
+        '<input type="hidden" id="ihDeceasedAdmCd" value=""><input type="hidden" id="ihDeceasedMtYn" value="0">' +
+        '<input type="hidden" id="ihDeceasedLnbrMnnm" value=""><input type="hidden" id="ihDeceasedLnbrSlno" value="">' +
         '</div>' +
         '<div class="taxcalc-field"><label>동</label><select id="ihDeceasedDong"><option value="">직접입력/해당없음</option></select></div>' +
         '<div class="taxcalc-field"><label>호</label><input type="text" id="ihDeceasedHo" placeholder="예: 1502호"><span class="taxcalc-field-help">동은 검색결과 목록에서 고르지만, 호는 목록이 제공되지 않아 직접 입력합니다</span></div>' +
@@ -6140,6 +6146,10 @@ function renderInheritancePane(){
         '<div class="taxcalc-field"><label>성명(상속인)</label><input type="text" id="ihReporterName" data-nameonly="1" readonly></div>' +
         '<div class="taxcalc-field"><label>주민등록번호</label><input type="text" id="ihReporterRegNo" data-regno="1" readonly></div>' +
         '<div class="taxcalc-field"><label>피상속인과의 관계</label><input type="text" id="ihReporterRelation" readonly></div>' +
+        // [2026.09.24 신규, 재검토76] 전자신고파일(기본사항 레코드)의 "신고인_전화번호"는
+        // Not Null 필수항목인데 여태 입력칸 자체가 없었다 — 신고인 요약 자리에 새로 추가.
+        '<div class="taxcalc-field"><label>신고인 전화번호</label><input type="text" id="ihReporterPhone" placeholder="02 1234 5678"><span class="taxcalc-field-help">전자신고파일용 — 없으면 전자신고파일을 만들 수 없습니다</span></div>' +
+        '<div class="taxcalc-field"><label>신고인 이메일</label><input type="text" id="ihReporterEmail" placeholder="선택"></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>신고 상태 · 가산세</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -6180,6 +6190,13 @@ function renderInheritancePane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-nontaxable-inheritance">비과세 여부 확인하기</button>' +
       '<div id="taxCalcNontaxableInheritanceResult"></div>' +
+    '</div>' +
+    // [2026.09.24 신규, 재검토76] 서식·전자신고 — 1단계는 신고서 본체(HEAD·기본사항·세액계산)만.
+    '<div class="taxcalc-asset" style="margin-top:20px;">' +
+      '<div class="taxcalc-asset-head"><b>서식·전자신고 — 상속세과세표준신고 및 자진납부계산서(G101000)</b></div>' +
+      '<div class="taxcalc-result-note">위에서 "세액 계산하기"를 먼저 실행한 뒤 이용하세요. 아래 버튼은 국세청 홈택스 "파일변환신고" 규격(2026.02)에 맞춘 신고서 본체 전자신고파일을 만듭니다 — 재산명세·공제명세 등 26개 첨부서식은 아직 포함되지 않습니다.</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="check-ih-efile" style="margin-top:8px;">전자신고파일 작성하기</button>' +
+      '<div id="taxCalcIhEfileResult" style="margin-top:8px;"></div>' +
     '</div>';
   renderDisposalItemsList();
   renderFuneralItemsList();
@@ -6212,6 +6229,251 @@ function renderInheritancePane(){
   enhanceNameOnlyInputs(taxCalcInheritancePane);
   tcSyncTaxOfficeButtons_(taxCalcInheritancePane);
 }
+
+// ============================================================
+// [2026.09.24 신규, 재검토76] 상속세 전자신고파일 생성 — 세무사님 지시("서식별로 전자신고파일을
+// 작성·관리하는 화면부터 만들자")에 따른 1단계 구현. 국세청 "홈택스 상속세 전자신고 파일제출
+// 설명서"(2026.02)의 규격을 그대로 따른다. 우선 신고서 본체 3개 레코드(HEAD·기본사항·세액계산,
+// 서식코드 G101000)만 만들고, 26개 첨부서식(재산명세·공제명세 등)은 다음 단계로 미룬다.
+// 파일 자체는 LINE SEQUENTIAL(레코드마다 CR/LF)·고정길이·2Byte완성형(KSC-5601, 실무상 CP949와
+// 상위호환) 텍스트다. 국세청 규격에 정해진 확장자는 없고(파일명은 "일자8+서식코드7.신고구분2"),
+// '18.11.14부터 암호화 없는 평문파일도 허용되므로 암호화는 구현하지 않는다.
+// ============================================================
+
+// EUC-KR/CP949 인코딩 테이블 — 손으로 옮겨적은 표는 오타 위험이 커서, 브라우저 자체의
+// TextDecoder('euc-kr')(WHATWG 표준, CP949와 동일 범위)로 모든 2바이트 조합을 시험 삭제하여
+// "글자→바이트쌍" 역방향 표를 직접 만든다. 최초 1회만 계산하고 캐시한다.
+let _ihEucKrEncodeTable_ = null;
+function ihGetEucKrEncodeTable_(){
+  if (_ihEucKrEncodeTable_) return _ihEucKrEncodeTable_;
+  const map = {};
+  const decoder = new TextDecoder('euc-kr');
+  for (let lead = 0x81; lead <= 0xFE; lead++){
+    for (let trail = 0x41; trail <= 0xFE; trail++){
+      const s = decoder.decode(new Uint8Array([lead, trail]));
+      if (s && s.length === 1 && s.charCodeAt(0) !== 0xFFFD && !(s in map)) map[s] = [lead, trail];
+    }
+  }
+  _ihEucKrEncodeTable_ = map;
+  return map;
+}
+function ihEncodeEucKrBytes_(str){
+  const table = ihGetEucKrEncodeTable_();
+  const bytes = [];
+  const s = String(str == null ? '' : str);
+  for (let i = 0; i < s.length; i++){
+    const ch = s[i];
+    const code = s.charCodeAt(i);
+    if (code < 0x80) bytes.push(code);
+    else if (table[ch]) { bytes.push(table[ch][0], table[ch][1]); }
+    else bytes.push(0x3F); // 표현 불가 문자는 '?'로(발생하면 사실상 버그이므로 검증 단계에서 걸러야 함)
+  }
+  return bytes;
+}
+// CHAR 필드: 왼쪽 정렬, 남는 자리는 스페이스(0x20) — 길이는 "바이트" 기준(한글은 2바이트)이라
+// EUC-KR로 인코딩한 뒤에 패딩해야 한다(문자수 기준으로 패딩하면 길이가 틀어짐).
+function ihPadChar_(str, byteLen){
+  const bytes = ihEncodeEucKrBytes_(str).slice(0, byteLen);
+  while (bytes.length < byteLen) bytes.push(0x20);
+  return bytes;
+}
+// 숫자 필드(BIGINT): 오른쪽 정렬, 남는 자리는 '0' — 음수는 맨 앞에 '-' 포함한 길이.
+function ihPadNum_(num, len){
+  const n = Math.round(numVal(num) || 0);
+  const neg = n < 0;
+  const digits = Math.abs(n).toString().padStart(len - (neg ? 1 : 0), '0');
+  const str = (neg ? '-' : '') + digits;
+  return str.split('').map(function(c){ return c.charCodeAt(0); });
+}
+// DEC 필드(예: 세율 5,2 → 전체 5자리 중 소수 2자리, 소수점 문자 없이): 10%→"01000".
+function ihPadDec_(num, totalLen, decimals){
+  return ihPadNum_(Math.round((numVal(num) || 0) * Math.pow(10, decimals)), totalLen);
+}
+// 날짜 필드(YYYYMMDD, 8자리) — 없으면 스페이스 8칸(주민등록번호 등과 달리 날짜는 숫자 0으로
+// 채우면 "00000000"이 유효한 날짜처럼 보여 오해의 소지가 있어 CHAR 규칙(스페이스)을 따른다).
+function ihDateField_(dateStr){
+  return ihPadChar_(String(dateStr || '').replace(/-/g, ''), 8);
+}
+function ihOnlyDigits_(v){ return String(v == null ? '' : v).replace(/\D/g, ''); }
+
+// 상속세 세율표(§26) — 법정 초과누진세율, 신설 이래 안 바뀐 안정된 값.
+const IH_EFILE_RATE_BRACKETS_ = [
+  { limit: 100000000, rate: 0.10, deduction: 0 },
+  { limit: 500000000, rate: 0.20, deduction: 10000000 },
+  { limit: 1000000000, rate: 0.30, deduction: 60000000 },
+  { limit: 3000000000, rate: 0.40, deduction: 160000000 },
+  { limit: Infinity, rate: 0.50, deduction: 460000000 }
+];
+function ihRateForBase_(base){
+  const b = Math.max(0, numVal(base) || 0);
+  for (let i = 0; i < IH_EFILE_RATE_BRACKETS_.length; i++){
+    if (b <= IH_EFILE_RATE_BRACKETS_[i].limit) return IH_EFILE_RATE_BRACKETS_[i].rate;
+  }
+  return 0.50;
+}
+
+const IH_EFILE_FORM_CODE_ = 'G101000';
+
+// 신고서 Head 레코드(200바이트) — 국세청 규격 "1) 신고서 Head 레코드" 그대로.
+function buildIhHeadRecord_(){
+  const reporterRegNo = ihOnlyDigits_(document.getElementById('ihReporterRegNo').value);
+  const deathDate = document.getElementById('ihDeathDate').value || '';
+  const ym = deathDate ? deathDate.slice(0, 4) + deathDate.slice(5, 7) : '';
+  const now = new Date();
+  const submitYm = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0');
+  let b = [];
+  b = b.concat(ihPadChar_('01', 2));               // 1 자료구분
+  b = b.concat(ihPadChar_(IH_EFILE_FORM_CODE_, 7)); // 2 서식코드
+  b = b.concat(ihPadChar_(reporterRegNo, 13));      // 3 납세자ID(신고인 주민번호)
+  b = b.concat(ihPadChar_('32', 2));                // 4 세목코드(상속세)
+  b = b.concat(ihPadChar_('01', 2));                // 5 신고구분코드(정기)
+  b = b.concat(ihPadChar_('01', 2));                // 6 신고구분상세코드(정기신고)
+  b = b.concat(ihPadChar_('D11', 3));               // 7 신고서종류코드
+  b = b.concat(ihPadChar_('1', 1));                 // 8 납세자구분(정상)
+  b = b.concat(ihPadChar_(ym, 6));                  // 9 과세기간_년월(상속개시일의 년월)
+  b = b.concat(ihPadChar_('', 20));                 // 10 사용자ID
+  b = b.concat(ihPadChar_('', 30));                 // 11 세무대리인성명
+  b = b.concat(ihPadChar_('', 6));                  // 12 세무대리인관리번호
+  b = b.concat(ihPadChar_('', 14));                 // 13 세무대리인전화번호
+  b = b.concat(ihPadChar_('', 10));                 // 14 세무대리인사업자번호
+  b = b.concat(ihPadChar_('9000', 4));              // 15 세무프로그램코드(미등록업체=기타)
+  b = b.concat(ihPadChar_(submitYm, 6));            // 16 제출년월
+  b = b.concat(ihPadChar_(ym, 6));                  // 17 지급년월(=과세기간_년월)
+  b = b.concat(ihPadChar_('FD011', 5));             // 18 민원종류코드
+  b = b.concat(ihPadChar_('N', 1));                 // 19 비거주자여부(신고인 기준)
+  b = b.concat(ihPadChar_('N', 1));                 // 20 상속인비거주자여부
+  b = b.concat(ihPadChar_('', 59));                 // 21 공란
+  return b;
+}
+
+// 상속세 과세표준신고 및 자진납부계산서_기본사항 레코드(700바이트).
+function buildIhBasicRecord_(){
+  const reporter = inheritanceHeirs.find(function(h){ return h.isReporter; }) || {};
+  const deathDate = document.getElementById('ihDeathDate').value || '';
+  const g_ = function(id){ const el = document.getElementById(id); return el ? el.value : ''; };
+  let b = [];
+  b = b.concat(ihPadChar_('02', 2));                          // 1 자료구분
+  b = b.concat(ihPadChar_(IH_EFILE_FORM_CODE_, 7));            // 2 서식코드
+  b = b.concat(ihPadChar_(reporter.name, 30));                 // 3 신고인_성명
+  b = b.concat(ihPadChar_(ihOnlyDigits_(reporter.regNo), 13)); // 4 신고인_주민등록번호
+  b = b.concat(ihPadChar_(g_('ihReporterEmail'), 70));         // 5 신고인_이메일
+  b = b.concat(ihPadChar_(reporter.address, 70));              // 6 신고인_주소
+  b = b.concat(ihPadChar_('', 2));                             // 7 피상속인과의관계(재산인적관계코드, 별도 코드표 필요 — 다음 단계)
+  b = b.concat(ihPadChar_(g_('ihReporterPhone'), 14));         // 8 신고인_전화번호
+  b = b.concat(ihPadChar_('N', 1));                            // 9 사후관리위반신고여부
+  b = b.concat(ihPadChar_(g_('ihDeceasedName'), 30));          // 10 피상속인_성명
+  b = b.concat(ihPadChar_(ihOnlyDigits_(g_('ihDeceasedRegNo')), 13)); // 11 피상속인_주민등록번호
+  b = b.concat(ihPadChar_(g_('ihDeceasedAdmCd'), 10));         // 12 피상속인_법정동코드
+  b = b.concat(ihPadChar_('', 60));                            // 13 피상속인_법정동명(코드로 대체, 생략 가능)
+  b = b.concat(ihPadChar_(g_('ihDeceasedMtYn') === '1' ? '산' : '', 1)); // 14 피상속인_산번지
+  b = b.concat(ihPadNum_(g_('ihDeceasedLnbrMnnm'), 4));        // 15 피상속인_번지
+  b = b.concat(ihPadNum_(g_('ihDeceasedLnbrSlno'), 4));        // 16 피상속인_호
+  b = b.concat(ihPadChar_('', 20));                            // 17 피상속인_블록
+  b = b.concat(ihPadChar_(g_('ihDeceasedDong'), 4));           // 18 피상속인_아파트동
+  b = b.concat(ihPadChar_(g_('ihDeceasedHo'), 4));             // 19 피상속인_아파트호
+  b = b.concat(ihPadNum_(0, 4));                               // 20 피상속인_통
+  b = b.concat(ihPadNum_(0, 4));                               // 21 피상속인_반
+  b = b.concat(ihPadChar_('99', 2));                           // 22 상속원인코드(별도 코드표, 잠정 '99'=기타)
+  b = b.concat(ihDateField_(deathDate));                       // 23 상속개시일
+  // 24~31 도로명주소 계열(지번주소로 대체해 생략, 12+50+1+5+5+22+12+2=109) + 32 공란(214) = 323
+  b = b.concat(ihPadChar_('', 323));
+  return b;
+}
+
+// 상속세 과세표준신고 및 자진납부계산서_세액계산 레코드(700바이트).
+function buildIhTaxCalcRecord_(){
+  const r = lastInheritanceResult || {};
+  const g_ = function(id){ return numVal(document.getElementById(id) ? document.getElementById(id).value : 0) || 0; };
+  const taxBase = numVal(r.과세표준) || 0;
+  const genSkip = numVal(r.세대생략가산액) || 0;
+  const calcTaxTotal = numVal(r.산출세액) || 0;   // 세대생략가산액 포함된 값(엔진 기준)
+  const calcTaxBase = Math.max(0, calcTaxTotal - genSkip); // (22) 세대생략 제외 산출세액
+  const giftCredit28 = r.증여세액공제_5억이하배제 ? 0 : (numVal(r.기납부증여세액공제) || 0);
+  const giftCredit305 = numVal(r.특례증여세액공제) || 0;
+  const creditSum = giftCredit28 + giftCredit305 + (numVal(r.외국납부세액공제) || 0) + (numVal(r.단기재상속세액공제) || 0) + (numVal(r.신고세액공제) || 0) + (numVal(r.그밖의공제) || 0);
+  let b = [];
+  b = b.concat(ihPadChar_('03', 2));                    // 1 자료구분
+  b = b.concat(ihPadChar_(IH_EFILE_FORM_CODE_, 7));      // 2 서식코드
+  b = b.concat(ihPadNum_(r.상속세과세가액_적용값, 14));   // 3 상속세과세가액
+  b = b.concat(ihPadNum_(r.상속공제_합계, 14));           // 4 상속공제액
+  b = b.concat(ihPadNum_(g_('ihAppraisalFee'), 14));      // 5 감정평가수수료
+  b = b.concat(ihPadNum_(taxBase, 14));                   // 6 과세표준
+  b = b.concat(ihPadDec_(ihRateForBase_(taxBase) * 100, 5, 2)); // 7 세율
+  b = b.concat(ihPadNum_(calcTaxBase, 14));               // 8 산출세액(세대생략 제외)
+  b = b.concat(ihPadNum_(genSkip, 14));                   // 9 세대생략가산액
+  b = b.concat(ihPadNum_(calcTaxTotal, 14));              // 10 산출세액(22)+(23)
+  b = b.concat(ihPadNum_(r.이자상당액, 14));              // 11 이자상당액
+  b = b.concat(ihPadNum_(r.문화재등징수유예세액, 14));    // 12 문화재 등 징수유예세액
+  b = b.concat(ihPadNum_(creditSum, 14));                 // 13 세액공제_계
+  b = b.concat(ihPadNum_(giftCredit28 + giftCredit305, 14)); // 14 증여세액공제_소계
+  b = b.concat(ihPadNum_(giftCredit28, 14));              // 15 증여세액공제_상증세법28조
+  b = b.concat(ihPadNum_(giftCredit305, 14));             // 16 증여세액공제_조특법30의5·30의6
+  b = b.concat(ihPadNum_(r.외국납부세액공제, 14));        // 17 외국납부세액공제
+  b = b.concat(ihPadNum_(r.단기재상속세액공제, 14));      // 18 단기세액공제
+  b = b.concat(ihPadNum_(r.신고세액공제, 14));            // 19 신고세액공제
+  b = b.concat(ihPadNum_(r.그밖의공제, 14));              // 20 그 밖의 공제
+  b = b.concat(ihPadNum_(g_('ihForProfitBequest'), 14));  // 21 유증 등 재산가액
+  b = b.concat(ihPadNum_(g_('ihForProfitExempted'), 14)); // 22 면제세액
+  b = b.concat(ihPadNum_(r.영리법인면제분납부세액, 14));  // 23 면제분 납부세액(합계액)
+  b = b.concat(ihPadNum_(0, 14));                         // 24 신고불성실가산세(규격상 0 고정)
+  b = b.concat(ihPadNum_(0, 14));                         // 25 납부지연가산세(규격상 0 고정)
+  b = b.concat(ihPadNum_(r.납부세액, 14));                // 26 납부할 세액(합계액) — 엔진 계산값 그대로 신뢰
+  b = b.concat(ihPadChar_('', 8));                        // 27 납부방법_연부연납_일자
+  b = b.concat(ihPadNum_(0, 14));                         // 28 납부방법_연부연납_금액
+  b = b.concat(ihPadChar_('', 8));                        // 29 납부방법_물납_일자
+  b = b.concat(ihPadNum_(0, 14));                         // 30 납부방법_물납_금액
+  b = b.concat(ihPadChar_('', 8));                        // 31 현금_분납_일자
+  b = b.concat(ihPadNum_(0, 14));                         // 32 현금_분납_금액
+  b = b.concat(ihPadChar_('', 8));                        // 33 현금_신고납부_일자
+  b = b.concat(ihPadNum_(r.납부세액, 14));                // 34 현금_신고납부_금액(분납·연부연납·물납 미신청 가정)
+  b = b.concat(ihPadNum_(g_('ihBizInheritDeferred'), 14)); // 35 가업상속 납부유예 세액
+  b = b.concat(ihPadChar_('', 262));                      // 36 공란
+  return b;
+}
+
+// 검증 — 국세청 규격의 "Not Null" 항목이 비어있으면 파일 자체가 반려되므로 미리 걸러낸다.
+function ihValidateEfileInputs_(){
+  const errs = [];
+  const reporter = inheritanceHeirs.find(function(h){ return h.isReporter; });
+  if (!reporter || !reporter.name) errs.push('상속인 명부에서 "신고인"으로 체크된 사람이 있어야 합니다.');
+  if (reporter && !ihOnlyDigits_(reporter.regNo)) errs.push('신고인의 주민등록번호를 입력하세요.');
+  if (!document.getElementById('ihReporterPhone').value.trim()) errs.push('신고인 전화번호를 입력하세요.');
+  if (!document.getElementById('ihDeceasedName').value.trim()) errs.push('피상속인 성명을 입력하세요.');
+  if (!ihOnlyDigits_(document.getElementById('ihDeceasedRegNo').value)) errs.push('피상속인 주민등록번호를 입력하세요.');
+  if (!document.getElementById('ihDeceasedAdmCd').value) errs.push('피상속인 주소를 "🔍 주소 검색"으로 다시 선택하세요(직접 타이핑한 주소는 법정동코드가 없어 전자신고파일을 만들 수 없습니다).');
+  if (!document.getElementById('ihDeathDate').value) errs.push('상속개시일을 입력하세요.');
+  if (!lastInheritanceResult) errs.push('먼저 위에서 "세액 계산하기"를 눌러 계산을 완료하세요.');
+  return errs;
+}
+
+function ihBuildEfileBytes_(){
+  const head = buildIhHeadRecord_();
+  const basic = buildIhBasicRecord_();
+  const calc = buildIhTaxCalcRecord_();
+  const CRLF = [0x0D, 0x0A];
+  return new Uint8Array(head.concat(CRLF, basic, CRLF, calc, CRLF));
+}
+
+function ihEfileFileName_(){
+  const now = new Date();
+  const yyyymmdd = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
+  return yyyymmdd + IH_EFILE_FORM_CODE_ + '.01';
+}
+
+function renderIhEfileResult_(){
+  const box = document.getElementById('taxCalcIhEfileResult');
+  if (!box) return;
+  const errs = ihValidateEfileInputs_();
+  if (errs.length){
+    box.innerHTML = '<div class="taxcalc-error">전자신고파일을 만들 수 없습니다:<br>' + errs.map(function(e){ return '· ' + escapeHtml(e); }).join('<br>') + '</div>';
+    return;
+  }
+  const fileName = ihEfileFileName_();
+  box.innerHTML = '<div class="taxcalc-result-note">✅ 검증 통과 — 신고서 본체 3개 레코드(HEAD·기본사항·세액계산) 준비됨. 파일명: <b>' + fileName + '</b></div>' +
+    '<div class="taxcalc-result-note" style="color:#b00;">⚠ 아직 26개 첨부서식(재산명세·공제명세 등)은 포함되지 않은 1단계 버전입니다 — 실제 제출 전 홈택스 전자신고 변환프로그램으로 반드시 재검증하세요.</div>' +
+    '<button type="button" class="taxcalc-run-btn" data-action="download-ih-efile" style="margin-top:8px;">💾 전자신고파일 다운로드(' + fileName + ')</button>';
+}
+
 // [2026.09.24 재구성] 재산평가(상증세법§60~66) 독립 탭 — 재검토63. 세무사님 지적("사건이
 // 이미 증여·상속으로 나뉘는데 재산평가에서 또 세목을 구분하냐") 반영 — 이 탭은 순수하게
 // 자산 등록·평가만 한다(세목 구분·배분 UI 전혀 없음). 목록은 하나뿐이고, "배분"(누구
@@ -7949,8 +8211,10 @@ taxCalcView.addEventListener('click', function(e){
     // 자산목록이 아니라 단일 텍스트 입력칸(양도인/피상속인 주소 등)에 바로 채우는 단순 버전.
     // [2026.09 버그수정] 세무사님 지적 — 소재지 검색과 같은 API를 쓰면서 동 목록(dongList)을
     // 받아오고도 그냥 버렸다. 아파트 등 공동주택이면 사람 주소도 동/호가 있어야 완전한
-    // 주소이므로, data-target-dong·data-target-ho가 지정된 경우 동 선택칸·호 입력칸도 같이 채운다
-    // (기준시가 조회용 PNU는 필요 없어 assetLocationFieldsHtml_처럼 admCd 등은 저장하지 않는다).
+    // 주소이므로, data-target-dong·data-target-ho가 지정된 경우 동 선택칸·호 입력칸도 같이 채운다.
+    // [2026.09.24 갱신, 재검토76] 전자신고파일용으로 admCd(법정동코드)·mtYn·지번(본번/부번)도
+    // 이제 data-target-admcd 등이 지정된 경우(현재는 ihDeceased*) 숨은칸에 같이 저장한다 —
+    // 옛 주석("기준시가 조회용 PNU는 필요 없어 저장 안 함")은 더 이상 사실이 아니다.
     const targetId = btn.dataset.targetInput;
     const targetDongId = btn.dataset.targetDong;
     const targetHoId = btn.dataset.targetHo;
@@ -7965,6 +8229,13 @@ taxCalcView.addEventListener('click', function(e){
       }
       const hoEl = targetHoId ? document.getElementById(targetHoId) : null;
       if (hoEl) hoEl.value = '';
+      if (targetId === 'ihDeceasedAddress'){
+        const set_ = function(id, v){ const e = document.getElementById(id); if (e) e.value = v || ''; };
+        set_('ihDeceasedAdmCd', picked.admCd);
+        set_('ihDeceasedMtYn', picked.mtYn || '0');
+        set_('ihDeceasedLnbrMnnm', picked.lnbrMnnm);
+        set_('ihDeceasedLnbrSlno', picked.lnbrSlno);
+      }
     });
   } else if (action === 'open-address-search-heir'){
     // 상속인 명부 행 — 배열 상태(inheritanceHeirs)에 직접 반영 후 다시 그린다(단일 텍스트칸이
@@ -8990,6 +9261,21 @@ taxCalcView.addEventListener('click', function(e){
       genealogyAndRitualToolsAmount: numVal(document.getElementById('niGenealogyAmount').value) || 0
     };
     renderNontaxableInheritanceResult(calculateNontaxableInheritancePropertyJS(input));
+  } else if (action === 'check-ih-efile'){
+    renderIhEfileResult_();
+  } else if (action === 'download-ih-efile'){
+    const errs = ihValidateEfileInputs_();
+    if (errs.length){ renderIhEfileResult_(); return; }
+    const bytes = ihBuildEfileBytes_();
+    const blob = new Blob([bytes], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = ihEfileFileName_();
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
   } else if (action === 'run-specific-corp-gift'){
     const input = {
       benefitToCorpAmount: numVal(document.getElementById('scBenefitToCorp').value) || 0,
