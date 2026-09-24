@@ -3737,12 +3737,13 @@ function renderTransferPane(){
         '</select></div>' +
       '</div>' +
       '<div id="trSpecialCase-bt">' +
-        '<div class="taxcalc-result-note" style="margin:6px 0;">사업용고정자산을 통합법인에 양도하거나 현물출자·사업양수도로 법인전환할 때. 이월과세액은 위 일반 양도세 계산기로 별도 계산해 입력하세요</div>' +
+        '<div class="taxcalc-result-note" style="margin:6px 0;">사업용고정자산을 통합법인에 양도하거나 현물출자·사업양수도로 법인전환할 때. 여기 입력하면 별도 버튼 없이 위 "세액 계산하기"를 누를 때 사후관리 추징세액까지 자동으로 함께 계산됩니다(주식등 양도소득세 카드와 같은 방식)</div>' +
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field"><label>적용 조문</label><select id="btProvision">' +
+            '<option value="">해당없음</option>' +
             '<option value="sect31">§31(중소기업간 통합)</option><option value="sect32">§32(법인전환)</option>' +
           '</select></div>' +
-          '<div class="taxcalc-field"><label>이월과세액</label><input type="number" id="btDeferredTax" placeholder="원"><span class="taxcalc-field-help">일반 양도세 계산기로 별도 계산</span></div>' +
+          '<div class="taxcalc-field"><label>이월과세액</label><input type="number" id="btDeferredTax" placeholder="원"><span class="taxcalc-field-help">법인전환 당시 별도 계산해둔 이월과세액</span></div>' +
           '<div class="taxcalc-field"><label>사후관리 위반 사유</label><select id="btTriggerEvent">' +
             '<option value="none">없음(이월과세 계속 유지)</option>' +
             '<option value="business_discontinued">승계받은 사업 폐지</option>' +
@@ -3751,8 +3752,6 @@ function renderTransferPane(){
           '<div class="taxcalc-field"><label>양도일(§31)/설립등기일(§32)부터 경과연수</label><input type="number" id="btYearsSince" placeholder="년" maxlength="2"></div>' +
           '<div class="taxcalc-field"><label>법인이 이미 납부한 세액</label><input type="number" id="btAlreadyPaid" placeholder="원"><span class="taxcalc-field-help">없으면 0</span></div>' +
         '</div>' +
-        '<button type="button" class="taxcalc-run-btn" data-action="run-business-transfer-carryover">이월과세·사후관리 판정하기</button>' +
-        '<div id="taxCalcBusinessTransferCarryoverResult"></div>' +
       '</div>' +
     '</div>' +
     // [2026.09.23 삭제] 부담부증여시 양도로 보는 부분 계산기(bgGiftValue 등, run-burdened-gift-
@@ -4376,7 +4375,9 @@ function renderOneTransferResultHtml_(r, label, sellerIdx){
   if (r.과소신고가산세) html += taxCalcResultRow('과소신고가산세', '+' + won(r.과소신고가산세));
   if (r.납부지연가산세) html += taxCalcResultRow('납부지연가산세', '+' + won(r.납부지연가산세));
   html += taxCalcResultRow('지방소득세(10%)', won(r.지방소득세));
+  if (r.법인전환이월과세_사후관리) html += taxCalcResultRow('법인전환 이월과세 사후관리 추징(§31·§32)', '+' + won(r.법인전환이월과세_사후관리.납부세액));
   html += taxCalcResultRow('납부세액 합계', won(r.납부세액_합계), { total: true });
+  if (r.법인전환이월과세_사후관리 && r.법인전환이월과세_사후관리.안내) html += '<div class="taxcalc-result-note">' + r.법인전환이월과세_사후관리.안내 + '</div>';
   html += '<button type="button" class="taxcalc-calcbasis-btn" data-action="show-agg-calc-basis" data-idx="' + sellerIdx + '" style="margin-top:8px;">🧮 합산 산출과정 보기</button>';
   html += '<div class="taxcalc-calcbasis" id="calcBasisAgg-' + sellerIdx + '" style="display:none;">' +
     '<div class="taxcalc-calcbasis-title">합산(장기) 그룹 산출과정</div>' +
@@ -4456,18 +4457,6 @@ function renderTransferResult(results){
     const grandTotal = window.__lastTransferTotalTax;
     html += '<div class="taxcalc-result" style="margin-top:10px;">' + taxCalcResultRow('양도인 전체 합계 납부세액', won(grandTotal), { total: true }) + '</div>';
   }
-  box.innerHTML = html;
-}
-
-function renderBusinessTransferCarryoverResult(r){
-  const box = document.getElementById('taxCalcBusinessTransferCarryoverResult');
-  if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
-  let html = '<div class="taxcalc-result">';
-  html += taxCalcResultRow('이월과세액', won(r.이월과세액));
-  if (r.법인기납부세액 !== undefined) html += taxCalcResultRow('법인 기납부세액', '-' + won(r.법인기납부세액));
-  html += taxCalcResultRow('납부세액', won(r.납부세액), { total: true });
-  if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
-  html += '</div>';
   box.innerHTML = html;
 }
 
@@ -7962,6 +7951,24 @@ taxCalcView.addEventListener('click', function(e){
         isSelfElectronicFiling: document.getElementById('trSelfEfiling').checked
       };
       const result = inputs.length ? calculateTransferTaxMultiJS(inputs, filingParams) : null;
+      // [2026.09.24 재구성] 법인전환 이월과세 사후관리(§31·§32) — 주식등 양도소득세 카드의
+      // stBtProvision과 완전히 같은 방식(같은 엔진 함수)으로, 별도 "판정하기" 버튼 없이
+      // 여기서 바로 계산해 추징세액을 납부세액 합계에 더한다. 세무사님이 "왜 이것만 별도
+      // 카드로 남아있냐"고 지적(재검토54 이어서) — 부동산도 주식과 똑같이 자동 반영되게 통일.
+      const btProvision = document.getElementById('btProvision').value;
+      if (btProvision && result && !result.error){
+        const btResult = calculateBusinessTransferCarryoverJS({
+          provision: btProvision,
+          deferredTaxAmount: numVal(document.getElementById('btDeferredTax').value) || 0,
+          triggerEvent: document.getElementById('btTriggerEvent').value,
+          yearsSinceTransfer: numVal(document.getElementById('btYearsSince').value) || 0,
+          alreadyPaidByCorp: numVal(document.getElementById('btAlreadyPaid').value) || 0
+        });
+        if (btResult && !btResult.error){
+          result.법인전환이월과세_사후관리 = btResult;
+          result.납부세액_합계 = (result.납부세액_합계 || 0) + (btResult.납부세액 || 0);
+        }
+      }
       if (result) renderTransferResult(result);
       else document.getElementById('taxCalcTransferResult').innerHTML = '';
     } else {
@@ -8019,15 +8026,6 @@ taxCalcView.addEventListener('click', function(e){
     }).filter(Boolean);
     renderOverseasAssetTransferResult(overseasResults);
     transferAssets.forEach(function(a, idx){ if (!a.isOverseasAsset) populateTransferCalcBasis_(idx); }); // 산출내역을 토글 없이 한꺼번에 보여준다
-  } else if (action === 'run-business-transfer-carryover'){
-    const input = {
-      provision: document.getElementById('btProvision').value,
-      deferredTaxAmount: numVal(document.getElementById('btDeferredTax').value) || 0,
-      triggerEvent: document.getElementById('btTriggerEvent').value,
-      yearsSinceTransfer: numVal(document.getElementById('btYearsSince').value) || 0,
-      alreadyPaidByCorp: numVal(document.getElementById('btAlreadyPaid').value) || 0
-    };
-    renderBusinessTransferCarryoverResult(calculateBusinessTransferCarryoverJS(input));
   } else if (action === 'run-public-rental-housing-land'){
     const input = {
       transferDate: document.getElementById('prTransferDate').value,
