@@ -3720,23 +3720,40 @@ function renderTransferPane(){
     // 입력해야 했는데, 이제 이 필드들을 채워두면 자동 판정해 반영한다")으로 이미 완전히
     // 대체된 옛날 잔재였다 — 실행해도 그 결과가 메인 양도세 계산과 연결되지 않고 손으로
     // 옮겨 입력해야 하는 구식 구조 그대로였다.
+    // [2026.09.24 재구성] 세무사님 지적 — "다 합쳤다는데 왜 이리 많이 남았나?" 아래 4개(이월
+    // 과세 사후관리·공공매입임대주택 사후관리·박물관분할납부·농지재취득환급)는 서로 계산
+    // 내용은 완전히 다르지만(하나로 합칠 수 있는 값이 아님) 전부 "이 거래, 사후관리나 특수한
+    // 사정이 있나요?"라는 같은 성격의 부가 확인이라 — 세무사님이 정한 원칙(식별정보 선택 →
+    // 해당 입력만 표시)대로 카드 하나에 "구분" 선택지로 묶는다. 필드·버튼·결과박스 id는
+    // 그대로 유지해 액션 핸들러 코드는 손대지 않는다.
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>중소기업간 통합·법인전환 양도소득세 이월과세(조특법§31·§32) — 사업용고정자산을 통합법인에 양도하거나 현물출자·사업양수도로 법인전환할 때. 이월과세액은 위 일반 양도세 계산기로 별도 계산해 입력하세요</b></div>' +
+      '<div class="taxcalc-asset-head"><b>사후관리·특수사안 확인 — 위 거래에 해당하는 사후관리·환급·분할납부 사안이 있으면 구분을 골라 확인하세요</b></div>' +
       '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>적용 조문</label><select id="btProvision">' +
-          '<option value="sect31">§31(중소기업간 통합)</option><option value="sect32">§32(법인전환)</option>' +
+        '<div class="taxcalc-field"><label>구분</label><select id="trSpecialCaseType" data-action="switch-transfer-special-case">' +
+          '<option value="bt">중소기업간 통합·법인전환 이월과세 사후관리(조특법§31·§32)</option>' +
+          '<option value="pr">공공매입임대주택 건설목적 토지양도 감면 사후관리(조특법§97의9③)</option>' +
+          '<option value="mr">박물관등 이전 양도세 분할납부(조특법§83, 적용기한 만료 — 과거 거래용)</option>' +
+          '<option value="fr">경영회생 지원 농지 매매 환급(조특법§70의2)</option>' +
         '</select></div>' +
-        '<div class="taxcalc-field"><label>이월과세액</label><input type="number" id="btDeferredTax" placeholder="원"><span class="taxcalc-field-help">일반 양도세 계산기로 별도 계산</span></div>' +
-        '<div class="taxcalc-field"><label>사후관리 위반 사유</label><select id="btTriggerEvent">' +
-          '<option value="none">없음(이월과세 계속 유지)</option>' +
-          '<option value="business_discontinued">승계받은 사업 폐지</option>' +
-          '<option value="shares_disposed_50pct_plus">취득주식·출자지분 50%이상 처분</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>양도일(§31)/설립등기일(§32)부터 경과연수</label><input type="number" id="btYearsSince" placeholder="년" maxlength="2"></div>' +
-        '<div class="taxcalc-field"><label>법인이 이미 납부한 세액</label><input type="number" id="btAlreadyPaid" placeholder="원"><span class="taxcalc-field-help">없으면 0</span></div>' +
       '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-business-transfer-carryover">이월과세·사후관리 판정하기</button>' +
-      '<div id="taxCalcBusinessTransferCarryoverResult"></div>' +
+      '<div id="trSpecialCase-bt">' +
+        '<div class="taxcalc-result-note" style="margin:6px 0;">사업용고정자산을 통합법인에 양도하거나 현물출자·사업양수도로 법인전환할 때. 이월과세액은 위 일반 양도세 계산기로 별도 계산해 입력하세요</div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field"><label>적용 조문</label><select id="btProvision">' +
+            '<option value="sect31">§31(중소기업간 통합)</option><option value="sect32">§32(법인전환)</option>' +
+          '</select></div>' +
+          '<div class="taxcalc-field"><label>이월과세액</label><input type="number" id="btDeferredTax" placeholder="원"><span class="taxcalc-field-help">일반 양도세 계산기로 별도 계산</span></div>' +
+          '<div class="taxcalc-field"><label>사후관리 위반 사유</label><select id="btTriggerEvent">' +
+            '<option value="none">없음(이월과세 계속 유지)</option>' +
+            '<option value="business_discontinued">승계받은 사업 폐지</option>' +
+            '<option value="shares_disposed_50pct_plus">취득주식·출자지분 50%이상 처분</option>' +
+          '</select></div>' +
+          '<div class="taxcalc-field"><label>양도일(§31)/설립등기일(§32)부터 경과연수</label><input type="number" id="btYearsSince" placeholder="년" maxlength="2"></div>' +
+          '<div class="taxcalc-field"><label>법인이 이미 납부한 세액</label><input type="number" id="btAlreadyPaid" placeholder="원"><span class="taxcalc-field-help">없으면 0</span></div>' +
+        '</div>' +
+        '<button type="button" class="taxcalc-run-btn" data-action="run-business-transfer-carryover">이월과세·사후관리 판정하기</button>' +
+        '<div id="taxCalcBusinessTransferCarryoverResult"></div>' +
+      '</div>' +
     '</div>' +
     // [2026.09.23 삭제] 부담부증여시 양도로 보는 부분 계산기(bgGiftValue 등, run-burdened-gift-
     // transfer)도 삭제 — 세무사님 지적("중복부분은 정리하라") 확인 결과, 증여세 탭 각 증여자
@@ -3773,37 +3790,38 @@ function renderTransferPane(){
     // 안 지운 실수, 재검토49에서 세무사님이 직접 지적) — 삭제. 다만 3년 내 미건설시 감면을
     // 취소하고 이자상당액과 함께 추징하는 사후관리(§97의9③)는 나중(다른 과세기간)에
     // 벌어지는 별개 판정이라 위 체크박스로는 다룰 수 없다 — 이 부분만 남긴다.
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>공공매입임대주택 건설목적 토지양도 감면 사후관리(조특법§97의9③) — 정상 계산은 위 양도자산 카드 체크박스로 자동 반영됩니다. 이 도구는 3년 내 미건설로 감면을 취소·추징해야 하는지만 확인합니다</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>양도일</label><input type="date" id="prTransferDate" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>이미 감면받은 세액</label><input type="number" id="prOriginalReduction" placeholder="원"></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="prNotBuilt"><label for="prNotBuilt">양도받은 날부터 3년 이내 공공매입임대주택을 건설해 공공주택사업자에게 양도하지 않음(§97의9③, 추징대상)</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="prJustifiable"><label for="prJustifiable">[위 체크시만] 인허가 지연 등 부득이한 사유 있음(추징 예외)</label></div>' +
+      '<div id="trSpecialCase-pr" style="display:none;">' +
+        '<div class="taxcalc-result-note" style="margin:6px 0;">정상 계산은 위 양도자산 카드 체크박스로 자동 반영됩니다. 이 도구는 3년 내 미건설로 감면을 취소·추징해야 하는지만 확인합니다</div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field"><label>양도일</label><input type="date" id="prTransferDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field"><label>이미 감면받은 세액</label><input type="number" id="prOriginalReduction" placeholder="원"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="prNotBuilt"><label for="prNotBuilt">양도받은 날부터 3년 이내 공공매입임대주택을 건설해 공공주택사업자에게 양도하지 않음(§97의9③, 추징대상)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="prJustifiable"><label for="prJustifiable">[위 체크시만] 인허가 지연 등 부득이한 사유 있음(추징 예외)</label></div>' +
+        '</div>' +
+        '<button type="button" class="taxcalc-run-btn" data-action="run-public-rental-housing-land">사후관리(추징) 판정하기</button>' +
+        '<div id="taxCalcPublicRentalHousingLandResult"></div>' +
       '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-public-rental-housing-land">사후관리(추징) 판정하기</button>' +
-      '<div id="taxCalcPublicRentalHousingLandResult"></div>' +
-    '</div>' +
     // [2026.09.23 삭제] 산업단지 이주택지 세율특례(ic) 독립 계산기도 삭제 — 위 자산카드의
     // "조정대상지역" 체크박스 옆 "🔍 산업단지 이주택지 중과배제 판정" 인라인 모달로 흡수했다
     // (판정 통과시 그 체크박스를 대신 꺼준다).
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>박물관등 이전 양도세 분할납부(조특법§83, 2022.12.31 적용기한 만료 — 과거 거래용) — 신고기한 종료일+3년부터 5년간 균분납부 스케줄</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>종전시설 양도일</label><input type="date" id="mrTransferDate" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>분할납부할 양도소득세액</label><div class="taxcalc-field-inline"><input type="number" id="mrTotalTax" placeholder="원"><button type="button" class="taxcalc-ai-btn" data-action="import-transfer-total-tax-to-mr" title="위에서 방금 계산한 납부세액 합계를 그대로 가져옵니다">위 계산결과 가져오기</button></div><span class="taxcalc-field-help">종전시설 양도차익에 대한 산출세액</span></div>' +
+      '<div id="trSpecialCase-mr" style="display:none;">' +
+        '<div class="taxcalc-result-note" style="margin:6px 0;">2022.12.31 적용기한 만료 — 과거 거래용. 신고기한 종료일+3년부터 5년간 균분납부 스케줄</div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field"><label>종전시설 양도일</label><input type="date" id="mrTransferDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field"><label>분할납부할 양도소득세액</label><div class="taxcalc-field-inline"><input type="number" id="mrTotalTax" placeholder="원"><button type="button" class="taxcalc-ai-btn" data-action="import-transfer-total-tax-to-mr" title="위에서 방금 계산한 납부세액 합계를 그대로 가져옵니다">위 계산결과 가져오기</button></div><span class="taxcalc-field-help">종전시설 양도차익에 대한 산출세액</span></div>' +
+        '</div>' +
+        '<button type="button" class="taxcalc-run-btn" data-action="run-museum-relocation">분할납부 스케줄 계산하기</button>' +
+        '<div id="taxCalcMuseumRelocationResult"></div>' +
       '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-museum-relocation">분할납부 스케줄 계산하기</button>' +
-      '<div id="taxCalcMuseumRelocationResult"></div>' +
-    '</div>' +
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>경영회생 지원 농지 매매 환급(조특법§70의2) — 한국농어촌공사에 양도한 농지등을 임차기간 내 환매했을 때</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="frWithinLeaseTerm"><label for="frWithinLeaseTerm">한국농어촌공사와의 임차기간 내에 환매함</label></div>' +
-        '<div class="taxcalc-field"><label>한국농어촌공사 양도 당시 납부한 양도소득세</label><input type="number" id="frOriginalTax" placeholder="원"><span class="taxcalc-field-help">환급대상액</span></div>' +
+      '<div id="trSpecialCase-fr" style="display:none;">' +
+        '<div class="taxcalc-result-note" style="margin:6px 0;">한국농어촌공사에 양도한 농지등을 임차기간 내 환매했을 때</div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="frWithinLeaseTerm"><label for="frWithinLeaseTerm">한국농어촌공사와의 임차기간 내에 환매함</label></div>' +
+          '<div class="taxcalc-field"><label>한국농어촌공사 양도 당시 납부한 양도소득세</label><input type="number" id="frOriginalTax" placeholder="원"><span class="taxcalc-field-help">환급대상액</span></div>' +
+        '</div>' +
+        '<button type="button" class="taxcalc-run-btn" data-action="run-farmland-repurchase">환급 가능 여부 확인하기</button>' +
+        '<div id="taxCalcFarmlandRepurchaseResult"></div>' +
       '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-farmland-repurchase">환급 가능 여부 확인하기</button>' +
-      '<div id="taxCalcFarmlandRepurchaseResult"></div>' +
     '</div>' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>[별지 제62호서식 등] 주식등 양도소득세 — 부동산과 완전히 별도 세목입니다(장기보유특별공제 없음, 대주주/소액주주·국내/국외·중소기업 여부로 세율 결정)</b></div>' +
@@ -7273,6 +7291,17 @@ document.querySelectorAll('#taxCalcTierTabs [data-tier]').forEach(function(tab){
     tab.classList.add('tier-on');
     taxCalcTier = tab.dataset.tier;
     updateTaxCalcPaneVisibility();
+  });
+});
+
+// [2026.09.24 신규] 양도세 "사후관리·특수사안 확인" 통합카드의 구분 선택 — 값이 바뀌면
+// 해당 사안의 입력·버튼·결과 영역만 보여주고 나머지는 숨긴다(다른 사안에 입력해둔 값은
+// 그대로 유지 — 카드를 다시 그리지 않고 표시만 전환).
+taxCalcView.addEventListener('change', function(e){
+  if (e.target.id !== 'trSpecialCaseType') return;
+  ['bt', 'pr', 'mr', 'fr'].forEach(function(key){
+    const el = document.getElementById('trSpecialCase-' + key);
+    if (el) el.style.display = (key === e.target.value) ? '' : 'none';
   });
 });
 
