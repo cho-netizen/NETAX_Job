@@ -441,12 +441,28 @@ function recomputeHeirDerivedFields(){
   const deathDate = deathDateEl ? deathDateEl.value : '';
   const heirs = inheritanceHeirs;
 
-  // [2026.09 버그수정] 실사용 감사 지적 — "손자녀"라는 글자만 보고 대습상속·세대생략을
-  // 구분 없이 전부 공동상속인(1순위)에 포함시키고 있었다. 세대생략(부모 생존, 유증 등으로
-  // 받는 경우)은 민법상 법정상속인이 아니므로 배우자 법정상속분 비율 계산의 "공동상속인 수"
-  // 에 넣으면 안 되고, 대습상속(부모가 먼저 사망·결격)만 포함해야 한다.
-  const childHeirs = heirs.filter(function(h){ return h.relation === '자녀' || (h.relation || '').indexOf('손자녀(대습상속') !== -1; });
-  const childCount = heirs.filter(function(h){ return h.relation === '자녀'; }).length;
+  // [2026.09.24 재구성] 세무사님 지적 — "법정상속지분을 완벽하게 산출해야 한다, 배우자상속공제
+  // 한도액(§19, 부표3의2)이 이 비율에 직접 좌우된다(spouseLegalShareRatio → spouseDeduction,
+  // taxcalc-engine.html:2240)." 예전엔 "손자녀(대습상속)"을 전부 자녀와 똑같이 1명씩 세서,
+  // 사망한 자녀 1명의 대습자가 2명 이상이면(예: 손자녀 2명) 실제로는 그 자녀 몫 하나를
+  // 둘이 나눠 갖는데도 자녀 2명 몫으로 잘못 계산되고 있었다(공동상속인 수 과다→배우자
+  // 법정상속분 과소→배우자공제 과소). 상속포기(§1043 — 처음부터 상속인이 아니었던 것으로
+  // 간주, 대습상속과 달리 그 직계비속에게 승계되지 않고 같은 순위 다른 상속인에게 귀속)도
+  // 반영이 전혀 없었다. 아래에서 "포기자 제외 + 대습그룹별 묶음"으로 정확히 센다.
+  const activeHeirs = heirs.filter(function(h){ return !h.hasRenounced; });
+  const livingChildHeirs = activeHeirs.filter(function(h){ return h.relation === '자녀'; });
+  const substituteHeirs = activeHeirs.filter(function(h){ return (h.relation || '').indexOf('손자녀(대습상속') !== -1; });
+  // 대습그룹(같은 피대습자=사망한 자녀 1명을 함께 대습하는 손자녀들)별로 묶는다 — 그룹을
+  // 안 적었으면 "이 대습자 혼자 그 피대습자를 전부 대습"으로 보아 자기 자신만의 그룹으로 취급.
+  const substituteGroupMap = {};
+  substituteHeirs.forEach(function(h){
+    const key = (h.substitutionGroup || '').trim() || ('__solo_' + heirs.indexOf(h));
+    (substituteGroupMap[key] = substituteGroupMap[key] || []).push(h);
+  });
+  const substituteGroupKeys = Object.keys(substituteGroupMap);
+  const childUnitCount = livingChildHeirs.length + substituteGroupKeys.length; // 1순위 "몫" 단위 개수(사람 수 아님)
+  const childHeirs = livingChildHeirs.concat(substituteHeirs); // 기존 호출부 호환용(포기자는 이미 activeHeirs에서 제외됨)
+  const childCount = heirs.filter(function(h){ return h.relation === '자녀' && !h.hasRenounced; }).length;
   // §20①2호·3호 — 미성년자공제·연로자공제는 "상속인(배우자는 제외한다) 및 동거가족"만 대상이다.
   // 4호(장애인공제)는 배우자 제외 문구가 없으므로 disabledCount는 배우자를 포함해 그대로 센다.
   let minorYears = 0, elderlyCount = 0;
@@ -457,7 +473,7 @@ function recomputeHeirDerivedFields(){
     if (age < 19) minorYears += (19 - age);
     if (age >= 65) elderlyCount += 1;
   });
-  const spouseHeirs = heirs.filter(function(h){ return h.relation === '배우자'; });
+  const spouseHeirs = activeHeirs.filter(function(h){ return h.relation === '배우자'; });
   const hasSpouse = spouseHeirs.length > 0;
   // [2026.09 버그수정] 실사용 감사 지적 — 배우자 단독상속(일괄공제 5억 대신 기초+인적공제만
   // 적용) 여부를 판정하는 isSpouseOnlyHeir가 지금까지 계산 입력값에 전혀 채워지지 않아
@@ -470,7 +486,7 @@ function recomputeHeirDerivedFields(){
     if (h.relation === '배우자') spouseActual += computeHeirActualValue_(hidx);
     if ((h.relation || '').indexOf('세대생략') !== -1) genSkipAmount += computeHeirActualValue_(hidx);
   });
-  const otherHeirsCount = childHeirs.length > 0 ? childHeirs.length : heirs.filter(function(h){ return (h.relation || '').indexOf('부모') !== -1; }).length;
+  const otherHeirsCount = childUnitCount > 0 ? childUnitCount : activeHeirs.filter(function(h){ return (h.relation || '').indexOf('부모') !== -1; }).length;
   // [2026.09 버그수정] §23의2 — 동거주택가액은 담보채무를 뺀 순액이어야 한다(음수는 0으로).
   const cohabitAmount = heirs.filter(function(h){ return h.isCohabitHouse; }).reduce(function(s, h){ return s + Math.max(0, (numVal(h.cohabitHouseValue) || 0) - (numVal(h.cohabitHouseDebt) || 0)); }, 0);
   const reporter = heirs.find(function(h){ return h.isReporter; });
@@ -496,18 +512,25 @@ function recomputeHeirDerivedFields(){
   taxCalcHeirRegistryHasSpouse = hasSpouse;
   taxCalcHeirRegistryIsSpouseOnly = isSpouseOnlyHeir;
   taxCalcHeirRegistryHasCohabit = cohabitAmount > 0;
-  // [2026.09.24 신규] 세무사님 지적 — "법정지분은 입력이 아니라 자동으로 반영되어야 한다."
-  // 민법§1009(배우자 1.5 : 그 외 각 1)를 상속인 명부 구성(배우자 유무·공동상속인 수, 위
-  // childHeirs/otherHeirsCount와 같은 기준)으로 자동 계산해 각 상속인 카드에 반영한다.
-  // 대습상속·상속포기 등 예외는 이 자동값으로는 못 잡으므로, 그런 경우엔 세무사가 아래
-  // 실제상속지분에서 직접 조정하도록 안내만 한다(법정지분 자체는 항상 §1009 원칙값).
-  const countedCoHeirs = childHeirs.length > 0 ? childHeirs : heirs.filter(function(h){ return (h.relation || '').indexOf('부모') !== -1; });
-  const totalWeight = (hasSpouse ? 3 : 0) + countedCoHeirs.length * 2; // 1.5:1 비율을 정수(3:2)로 스케일
+  // [2026.09.24 재구성] 세무사님 지적 — "법정지분은 완벽하게 산출해야 한다, 배우자상속공제
+  // 한도액이 이 비율에 직접 좌우된다 — 실제상속지분 입력에 의지하지 마라." 위에서 정리한
+  // activeHeirs(포기자 제외)·substituteGroupMap(대습그룹별 묶음)을 그대로 써서, 대습손자
+  // 여러 명이 같은 피대습자(사망한 부모) 그룹이면 그 몫(가중치 2)을 인원수로 정확히 나눈다.
+  const parentHeirsForRatio = childUnitCount > 0 ? [] : activeHeirs.filter(function(h){ return (h.relation || '').indexOf('부모') !== -1; });
+  const totalWeight = (hasSpouse ? 3 : 0) + childUnitCount * 2 + parentHeirsForRatio.length * 2; // 1.5:1을 정수(3:2)로 스케일
   heirs.forEach(function(h, hidx){
     let statutory = '';
-    if (totalWeight > 0){
+    if (h.hasRenounced){
+      statutory = '0'; // §1043 — 포기자는 처음부터 상속인이 아니었던 것으로 간주, 몫 없음
+    } else if (totalWeight > 0){
       if (h.relation === '배우자') statutory = reduceFraction_(3, totalWeight);
-      else if (countedCoHeirs.indexOf(h) !== -1) statutory = reduceFraction_(2, totalWeight);
+      else if (h.relation === '자녀') statutory = reduceFraction_(2, totalWeight);
+      else if (parentHeirsForRatio.indexOf(h) !== -1) statutory = reduceFraction_(2, totalWeight);
+      else {
+        const groupKey = (h.substitutionGroup || '').trim() || ('__solo_' + hidx);
+        const group = substituteGroupMap[groupKey];
+        if (group) statutory = reduceFraction_(2, group.length * totalWeight); // 그 그룹(피대습자 1명) 몫을 그룹 인원수로 균분
+      }
     }
     const wasSynced = (h.actualShareRatio || '') === (h.statutoryShareRatio || '');
     h.statutoryShareRatio = statutory;
@@ -6859,6 +6882,7 @@ function renderHeirRegistry(){
       '<div class="taxcalc-field"><label>성명</label><input type="text" data-hfield="name" data-nameonly="1" value="' + (h.name || '').replace(/"/g,'&quot;') + '"></div>' +
       '<div class="taxcalc-field"><label>주민등록번호</label><input type="text" data-hfield="regNo" data-regno="1" placeholder="000000-0000000" value="' + (h.regNo || '').replace(/"/g,'&quot;') + '"></div>' +
       '<div class="taxcalc-field"><label>관계</label><select data-hfield="relation"><option value="">선택</option>' + relationOptions + '</select></div>' +
+      '<div class="taxcalc-field" data-show-if-heir-relation="1" style="' + (h.relation === '손자녀(대습상속 — 부모가 먼저 사망·결격)' ? '' : 'display:none;') + '"><label>대습그룹</label><input type="text" data-hfield="substitutionGroup" placeholder="예: 장남대습" value="' + (h.substitutionGroup || '').replace(/"/g,'&quot;') + '"><span class="taxcalc-field-help">한 자녀(피대습자)가 먼저 사망하여 그 몫을 손자녀 여러 명이 함께 대습상속받는 경우, 같은 그룹명을 입력하면 그 자녀 1인 몫(민법§1001)을 인원수로 나눠 법정상속지분을 자동 계산합니다</span></div>' +
       '<div class="taxcalc-field" style="flex:0 1 340px;"><label>주소</label><div class="taxcalc-field-inline"><input type="text" data-hfield="address" value="' + (h.address || '').replace(/"/g,'&quot;') + '" placeholder="예: OO시 OO구 OO동 123-4 (검색 또는 직접입력)"><button type="button" class="taxcalc-ai-btn" data-action="open-address-search-heir" data-idx="' + idx + '" title="주소 검색">🔍</button></div></div>' +
       '<div class="taxcalc-field"><label>동</label><select data-hfield="addressDong"><option value="">직접입력/해당없음</option>' +
         (Array.isArray(h.addressDongList) ? h.addressDongList : []).map(function(d){ return '<option value="' + d + '"' + (h.addressDong === d ? ' selected' : '') + '>' + d + '</option>'; }).join('') +
@@ -6867,6 +6891,7 @@ function renderHeirRegistry(){
       '<div class="taxcalc-field"><span class="taxcalc-result-note" style="margin:0;">나이' + (age !== null ? ' — 만 ' + age + '세(주민등록번호로 자동 계산)' : ' — 주민등록번호를 입력하면 자동 계산됩니다') + '</span></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="isDisabled" id="hDisabled-' + idx + '"' + (h.isDisabled ? ' checked' : '') + '><label for="hDisabled-' + idx + '">장애인</label></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="isReporter" id="hReporter-' + idx + '"' + (h.isReporter ? ' checked' : '') + '><label for="hReporter-' + idx + '">신고인</label></div>' +
+      '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="hasRenounced" id="hRenounced-' + idx + '"' + (h.hasRenounced ? ' checked' : '') + '><label for="hRenounced-' + idx + '">상속포기(민법§1043 — 처음부터 상속인 아니었던 것으로 봄)</label></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="isCohabitHouse" id="hCohabit-' + idx + '"' + (h.isCohabitHouse ? ' checked' : '') + '><label for="hCohabit-' + idx + '">동거주택 상속(10년이상 동거·무주택 등)</label></div>' +
       '<div class="taxcalc-field" data-show-if-heir="isCohabitHouse" style="' + (h.isCohabitHouse ? '' : 'display:none;') + '"><label>동거주택가액</label><input type="number" data-hfield="cohabitHouseValue" placeholder="원" value="' + (h.cohabitHouseValue || '') + '"></div>' +
       // [2026.09 버그수정] 상증세법§23의2는 "상속개시일 현재 그 주택에 담보된 피상속인의
@@ -6909,6 +6934,11 @@ function renderHeirRegistry(){
       if (key === 'isCohabitHouse' || key === 'hasPriorGift'){
         row.querySelectorAll('[data-show-if-heir="' + key + '"]').forEach(function(field){
           field.style.display = el.checked ? 'flex' : 'none';
+        });
+      }
+      if (key === 'relation'){
+        row.querySelectorAll('[data-show-if-heir-relation]').forEach(function(field){
+          field.style.display = (el.value === '손자녀(대습상속 — 부모가 먼저 사망·결격)') ? 'flex' : 'none';
         });
       }
       recomputeHeirDerivedFields();
