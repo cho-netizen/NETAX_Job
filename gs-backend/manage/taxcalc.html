@@ -1418,11 +1418,18 @@ function renderContractSectionHtml_(kind){
   // [2026.09.20 중복제거] 세무사님 지적 — "<양도계약 목록>이라는 문구도 이젠 필요없지 않나?"
   // 맞다: 계약 카드마다 이미 자기 이름("양도계약 01")이 굵게 붙어있고, 전체가 네이비 테두리
   // 박스로 한눈에 묶여 보이므로 그 위에 또 "목록"이라는 제목을 달 필요가 없었다 — 제거.
+  // [2026.09.24 재정리] 세무사님 지적 — 취득계약은 여기 목록 자리에 "+추가" 버튼이 없어서
+  // (위 주석대로 반드시 자산 카드 드롭다운을 거쳐야 함) 이 안내문구를 봐도 그 자리에서
+  // 할 수 있는 게 아무것도 없다 — "필요할 때 필요한 곳에서 안내하자"는 원칙(바로 위 여러 건
+  // 합산신고 안내와 같은 원칙, renderTransferPane 참고)에 어긋나게, 계약이 없는(=거의 항상의)
+  // 기본 상태에서 화면 맨 위에 늘 떠 있는 사용법 설명이 되어 있었다. 실제 안내는 이미 각
+  // 자산 카드의 드롭다운 옵션("+ 새 계약 만들기(다른 자산과 같은 계약이면)")에 그 자리에서
+  // 붙어있으므로, 여기 목록은 실제로 계약이 하나라도 생겼을 때만(=할 일이 있을 때만) 나타나면
+  // 된다 — 양도계약은 반대로 여기 "+ 양도계약 추가" 버튼이 실제로 있어서(endAddBtn) 안내가
+  // 곧바로 실행 가능하므로 그대로 둔다.
   if (!list.length){
-    const emptyHint = kind === 'transfer'
-      ? '<div class="taxcalc-result-note" style="margin-top:14px;">먼저 아래 "+ 양도계약 추가"로 양도계약을 만드세요(자산이 1건뿐이어도 마찬가지입니다) — 계약 전체 양도가액·양도비용을 한 번만 입력하고, 그 계약 카드 안에서 자산을 추가합니다.</div>'
-      : '<div class="taxcalc-result-note" style="margin-top:14px;">여러 자산을 하나의 취득계약으로 거래했을 때만 필요합니다 — 그 자산 카드의 "취득 정보 → 취득계약" 드롭다운에서 "+새 계약 만들기"를 선택하면 여기에 나타납니다. 자산마다 취득가액을 이미 알면 그냥 각 자산의 "취득 정보"에서 직접 입력하세요.</div>';
-    return emptyHint + endAddBtn;
+    if (kind !== 'transfer') return '';
+    return '<div class="taxcalc-result-note" style="margin-top:14px;">먼저 아래 "+ 양도계약 추가"로 양도계약을 만드세요(자산이 1건뿐이어도 마찬가지입니다) — 계약 전체 양도가액·양도비용을 한 번만 입력하고, 그 계약 카드 안에서 자산을 추가합니다.</div>' + endAddBtn;
   }
   if (kind !== 'transfer'){
     return '<div style="margin-top:14px;">' + list.map(function(c, i){ return renderContractCardHtml_(c, kind, i); }).join('') + '</div>' + endAddBtn;
