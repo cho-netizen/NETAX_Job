@@ -4929,514 +4929,7 @@ function renderGiftInheritanceSharedPane_(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-cultural-heritage-tax-deferral">징수유예세액 계산하기</button>' +
       '<div id="taxCalcCulturalHeritageTaxDeferralResult"></div>' +
-    '</div>';
-  enhanceNumberInputs(taxCalcGiftInheritanceSharedPane);
-  enhanceDateInputs(taxCalcGiftInheritanceSharedPane);
-  wireMinThresholdHint_('ipIhTotal', 'ipIhTotalHint', 20000000);
-  wireRangeClamp_('ipIhRate', 0, 30);
-}
-function renderGiftPane(){
-  taxCalcGiftPane.innerHTML =
-    '<div id="tcGiftCaseFactsBanner"></div>' +
-    '<div class="taxcalc-asset">' +
-      '<div class="taxcalc-asset-head"><b>증여 기본정보</b>' +
-        '<span><button type="button" class="taxcalc-ai-btn" data-action="open-evidence-gift">📄 증빙에서 자동 입력</button></span>' +
-      '</div>' +
-      '<div class="taxcalc-ai-status" id="aiStatus-gift"></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>증여일자</label><input type="date" id="giftDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-result-note" id="giftDateDeadlineHint" style="margin:2px 0 0;"></span></div>' +
-      '</div>' +
-    '</div>' +
-    '<div id="giftDoneeRegistry"></div>' +
-    '<div id="giftDonorRegistry"></div>' +
-    '<div id="giftValuationList"></div>' +
-    '<div class="taxcalc-asset">' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>㉙㉚ 혼인·출산 증여재산공제 (혼인+출산 평생통산 1억원 한도, 위 증여일자를 기준으로 자동 판정)</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>혼인일</label><input type="date" id="giftMarriageDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">비어있으면 미해당</span><span class="taxcalc-result-note" id="giftMarriageHint" style="margin:2px 0 0;"></span></div>' +
-        '<div class="taxcalc-field"><label>출생일·입양일</label><input type="date" id="giftBirthDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">비어있으면 미해당</span><span class="taxcalc-result-note" id="giftBirthHint" style="margin:2px 0 0;"></span></div>' +
-        '<div class="taxcalc-field"><label>과거에 이미 받은 혼인·출산공제 누적액</label><input type="number" id="giftPriorMarriageBirth" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>㉜㉝ 그 밖의 공제</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="giftExcludedAgg"><label for="giftExcludedAgg">상증세법 §55①3호 합산배제증여재산(3천만원 고정공제)</label></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="giftAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="giftAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">500만원 한도</span></div>' +
-        '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="giftDisasterLoss" placeholder="원"><span class="taxcalc-field-help">신고기한 내 재난 멸실분</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>비과세·과세가액 불산입(§46·§48·§52·§52의2)</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>비과세재산가액</label><input type="number" id="giftNonTaxable" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>공익법인등출연재산가액</label><input type="number" id="giftPublicOrg" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>공익신탁재산가액</label><input type="number" id="giftPublicTrust" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>장애인신탁재산가액</label><input type="number" id="giftDisabledTrust" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>기타 세액공제·가산세·유예 (해당 사안일 때만 별도로 계산하여 입력)</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>외국납부세액공제</label><input type="number" id="giftForeignTax" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>그 밖의 공제·감면세액</label><input type="number" id="giftOtherCredits" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>이자상당액</label><input type="number" id="giftInterest" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>공익법인등 관련 가산세</label><input type="number" id="giftPublicOrgPenalty" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>박물관자료등 징수유예세액</label><input type="number" id="giftMuseumDeferred" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>가업승계 납부유예세액</label><input type="number" id="giftBizSuccessionDeferred" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>영농자녀 증여농지 세액감면(조특법§71)</label><input type="number" id="giftFarmlandExemption" placeholder="원"><span class="taxcalc-field-help">감면요건·한도는 별도 확인 후 입력</span></div>' +
-      '</div>' +
-    '</div>' +
-    '<button type="button" class="taxcalc-run-btn" data-action="run-gift">세액 계산하기</button>' +
-    '<div id="taxCalcGiftResult"></div>' +
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>[별지 제10호의2서식] 조특법§30의5·§30의6 증여세 과세특례(창업자금·가업승계주식) — 해당하는 경우에만 별도로 계산합니다. 일반 증여세와는 세율·공제·한도가 전혀 다릅니다.</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>특례 종류</label><select id="srGiftType">' +
-          '<option value="startup">창업자금(§30의5)</option><option value="business_succession">가업승계 주식등(§30의6)</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>해당 증여재산가액</label><input type="number" id="srGiftAmount" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>증여일자</label><input type="date" id="srGiftDate" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>수증자 나이(만)</label><input type="number" id="srDoneeAge" placeholder="세" maxlength="3"><span class="taxcalc-field-help">18세 이상만 대상</span></div>' +
-        '<div class="taxcalc-field"><label>증여자(부모) 나이(만)</label><input type="number" id="srDonorAge" placeholder="세" maxlength="3"><span class="taxcalc-field-help">60세 이상만 대상</span></div>' +
-        '<div class="taxcalc-field"><label>인수채무액(부담부증여, 창업자금만)</label><input type="number" id="srDebtAssumed" placeholder="원"><span class="taxcalc-field-help">없으면 0</span></div>' +
-        '<div class="taxcalc-field"><label>기 과세특례적용분 증여세과세가액</label><input type="number" id="srPriorSpecialGift" placeholder="원"><span class="taxcalc-field-help">동일특례 재차증여, 없으면 비움</span></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="srJobsCreated10Plus"><label for="srJobsCreated10Plus">(창업자금) 창업으로 10명 이상 신규고용 — 한도 100억(아니면 50억)</label></div>' +
-        '<div class="taxcalc-field"><label>(창업자금) 사용명세 미제출·불분명 금액</label><input type="number" id="srUnclearUsage" placeholder="원"><span class="taxcalc-field-help">§30의5⑤, 0.3% 가산세 — 없으면 0</span></div>' +
-        '<div class="taxcalc-field"><label>(가업승계) 증여자(부모)의 가업영위기간</label><input type="number" id="srBusinessYears" placeholder="년" maxlength="2"><span class="taxcalc-field-help">20미만 300억/20~30 400억/30이상 600억</span></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="srReSuccession"><label for="srReSuccession">(가업승계) §30의6①단서 — 승계 당시 최대주주등(당초 증여자·수증자 제외)으로부터 재증여</label></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>(가업승계 주식등만) 사업관련자산가액 비율 — 비워두면 주식가액 전체를 가업자산으로 간주</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>총자산가액</label><input type="number" id="srTotalAsset" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>사업무관자산 - §55의2</label><input type="number" id="srNonBiz55" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>사업무관자산 - 시행령§49</label><input type="number" id="srNonBiz49" placeholder="원"><span class="taxcalc-field-help">임대용부동산 포함</span></div>' +
-        '<div class="taxcalc-field"><label>사업무관자산 - 시행령§61①2호</label><input type="number" id="srNonBiz61" placeholder="원"><span class="taxcalc-field-help">대여금</span></div>' +
-        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="srExcessCash" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>영업무관 주식·채권·금융상품</label><input type="number" id="srNonBizStock" placeholder="원"></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>공제 · 세액공제 · 신고 상태</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="srDisasterLoss" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="srAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="srAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">500만원 한도</span></div>' +
-        '<div class="taxcalc-field"><label>이전 특례증여분 기납부세액(조특법§30의5①후단)</label><input type="number" id="srPriorPaidTax" placeholder="원"><span class="taxcalc-field-help">같은 특례를 2회 이상 받은 경우 그 이전분에 낸 산출세액 — 상증세법§58과 무관</span></div>' +
-        '<div class="taxcalc-field"><label>외국납부세액공제(§59)</label><input type="number" id="srForeignTax" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>신고 상태</label><select id="srFilingStatus">' +
-          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="srFraudulent"><label for="srFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
-        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="srUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
-        '<div class="taxcalc-field"><label>실제 납부일</label><input type="date" id="srPaidDate" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="srUnpaidDays" placeholder="0" readonly><span class="taxcalc-field-help">증여일+3개월 신고기한 대비</span></div>' +
-        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="srMonthsAfterDesignated" placeholder="0"></div>' +
-        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="srUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-special-rate-gift">특례세율 증여세 계산하기</button>' +
-      '<div id="taxCalcSpecialRateGiftResult"></div>' +
-    '</div>' +
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>명의신탁재산의 증여 의제(§45의2) — 등기·등록·명의개서가 필요한 재산(주식등, 토지·건물 제외)의 실제소유자와 명의자가 다를 때. 증여재산공제 없이 재산가액 전액이 과세표준입니다</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>명의신탁재산의 가액</label><input type="number" id="ntPropertyValue" placeholder="원"><span class="taxcalc-field-help">명의개서일 또는 소유권취득일이 속한 해의 다음 해 말일의 다음 날 현재 평가액</span></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="ntAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ntNoAvoidancePurpose"><label for="ntNoAvoidancePurpose">조세회피 목적 없음(§45의2①1호 — 적용배제)</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ntTrustPropertyReg"><label for="ntTrustPropertyReg">자본시장법상 신탁재산 등기(§45의2①3호 — 적용배제)</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ntNonResidentAgentReg"><label for="ntNonResidentAgentReg">비거주자 법정대리인·재산관리인 명의 등기(§45의2①4호 — 적용배제)</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ntNameChangeNeglect"><label for="ntNameChangeNeglect">실제소유자 명의로 명의개서를 하지 않은 경우(§45의2③ — 조세회피목적 추정, 아래 세이프하버 확인)</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ntSaleWithTransferReport"><label for="ntSaleWithTransferReport">[명의개서해태만] 매매취득 + 종전소유자 양도소득세(증권거래세)신고시 소유권변경신고(세이프하버)</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ntInheritanceWithEstateReport"><label for="ntInheritanceWithEstateReport">[명의개서해태만] 상속취득 + 상속세신고에 포함(세이프하버)</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ntLateAmendedAfterAudit"><label for="ntLateAmendedAfterAudit">[상속세이프하버만] 결정·경정 알고 한 수정신고·기한후신고(세이프하버 무효화)</label></div>' +
-      '</div>' +
-      // [2026.09 버그수정] 실사용 감사 지적 — 다른 증여세 특례 계산기(재산취득자금 증여추정·
-      // 채무면제 등)는 전부 있는 "신고 상태" 그리드가 명의신탁만 빠져 있어서, 무신고·과소신고
-      // 상태를 입력할 방법이 아예 없었다. 그 결과 엔진(calculateNomineeTrustGiftTaxJS)이
-      // p.filingStatus를 못 받아 항상 'ontime'(정상신고)으로 계산해, 세무조사로 뒤늦게
-      // 적발되는(=무신고인 경우가 흔한) 명의신탁 증여의제 특성상 흔히 발생하는 무신고가산세
-      // (최대 40%)가 누락될 수 있었다. 명의신탁은 "증여일"에 해당하는 고정된 기준일 개념이
-      // 없어(명의개서일 기준으로 사안마다 다름) 다른 탭처럼 날짜로 자동계산하지 않고, 납부
-      // 지연일수를 직접 입력받는다.
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>신고 상태</label><select id="ntFilingStatus">' +
-          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ntFraudulent"><label for="ntFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
-        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="ntUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
-        '<div class="taxcalc-field"><label>납부지연일수</label><input type="number" id="ntUnpaidDays" placeholder="0"><span class="taxcalc-field-help">명의개서일 등 기준일로부터 실제 납부일까지</span></div>' +
-        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="ntMonthsAfterDesignated" placeholder="0"></div>' +
-        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="ntUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-nominee-trust">증여세 계산하기</button>' +
-      '<div id="taxCalcNomineeTrustResult"></div>' +
-    '</div>' +
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>재산 취득자금 등의 증여 추정(§45) — 자력취득 능력이 부족한 사람이 재산을 취득(또는 채무를 상환)했는데 그 자금출처를 입증하지 못하면, 미입증금액을 증여받은 것으로 추정합니다(자금출처조사)</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>취득재산의 가액(또는 채무 상환금액)</label><input type="number" id="afTotalValue" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>자금출처로 입증된 금액 합계</label><input type="number" id="afProvenAmount" placeholder="원"><span class="taxcalc-field-help">신고·과세된 소득·상속·수증재산가액, 재산처분대가 등 — 없으면 0</span></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="afAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>신고 상태</label><select id="afFilingStatus">' +
-          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="afFraudulent"><label for="afFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
-        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="afUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
-        '<div class="taxcalc-field"><label>증여일</label><input type="text" class="taxcalc-date" id="afGiftDate" placeholder="YYYY-MM-DD"><span class="taxcalc-field-help">자금출처가 된 재산 취득일 또는 채무 상환일</span></div>' +
-        '<div class="taxcalc-field"><label>실제 납부일</label><input type="text" class="taxcalc-date" id="afPaidDate" placeholder="YYYY-MM-DD"></div>' +
-        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="afUnpaidDays" placeholder="0" readonly><span class="taxcalc-field-help">증여일+3개월 신고기한 대비</span></div>' +
-        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="afMonthsAfterDesignated" placeholder="0"></div>' +
-        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="afUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-property-funds">증여세 계산하기</button>' +
-      '<div id="taxCalcPropertyFundsResult"></div>' +
-    '</div>' +
-    // [2026.09.23 흡수] 채무면제이익(§36) 독립계산기는 giftValuationAssets의 평가방법
-    // "debtForgiveness"로 흡수 — 아래 삭제.
-    // [2026.09.23 흡수] 증자이익(§39)·감자이익(§39의2)·현물출자이익(§39의3) 독립계산기는
-    // giftValuationAssets의 평가방법 "capitalIncreaseBenefit"/"capitalReductionBenefit"/
-    // "inKindContributionBenefit"으로 흡수 — 아래 삭제. 감자(고가소각) 케이스는 원래
-    // 액면가액(faceValuePerShare) 입력칸 자체가 빠져 있어 계산이 항상 에러로 막혀있던 것을
-    // 이번에 새 필드(crFaceValue)로 같이 고쳤다.
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>전환사채등의 주식전환등에 따른 이익의 증여(§40) — 전환사채·신주인수권부사채 등을 인수·취득·양도하거나 주식전환등을 할 때</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>케이스 구분</label><select id="cbCaseType">' +
-          '<option value="acquisition">취득시(법1호 — 저가취득)</option>' +
-          '<option value="conversion">전환시(법2호가~다목 — 교부주식가액이 전환가액등 초과)</option>' +
-          '<option value="conversion_reverse">전환시 반대편(법2호라목 — 특수관계인이 얻은 이익)</option>' +
-          '<option value="transfer">양도시(법3호 — 특수관계인에게 고가양도)</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>전환사채등의 시가</label><input type="number" id="cbFairValue" placeholder="원"><span class="taxcalc-field-help">취득·양도시만</span></div>' +
-        '<div class="taxcalc-field"><label>인수·취득가액</label><input type="number" id="cbAcquisitionCost" placeholder="원"><span class="taxcalc-field-help">취득시만</span></div>' +
-        '<div class="taxcalc-field"><label>양도가액</label><input type="number" id="cbTransferPrice" placeholder="원"><span class="taxcalc-field-help">양도시만</span></div>' +
-        '<div class="taxcalc-field"><label>전환등 전 1주당 평가가액</label><input type="number" id="cbPreValue" placeholder="원"><span class="taxcalc-field-help">전환시만</span></div>' +
-        '<div class="taxcalc-field"><label>전환등 전 발행주식총수</label><input type="number" id="cbPreShares" placeholder="주"><span class="taxcalc-field-help">전환시만</span></div>' +
-        '<div class="taxcalc-field"><label>전환가액등(1주당 전환·교환·인수가액)</label><input type="number" id="cbConversionPrice" placeholder="원"><span class="taxcalc-field-help">전환시만</span></div>' +
-        '<div class="taxcalc-field"><label>전환등으로 증가한(교부받은) 주식수</label><input type="number" id="cbIncreasedShares" placeholder="주"><span class="taxcalc-field-help">전환시만</span></div>' +
-        '<div class="taxcalc-field"><label>이자손실분 직접입력(선택)</label><input type="number" id="cbInterestLoss" placeholder="원"><span class="taxcalc-field-help">비워두면 아래 3개 필드로 자동계산, 전환시(정방향)만</span></div>' +
-        '<div class="taxcalc-field"><label>전환사채등 만기상환금액</label><input type="number" id="cbFaceValueAtMaturity" placeholder="원"><span class="taxcalc-field-help">전환시(정방향)만</span></div>' +
-        '<div class="taxcalc-field"><label>사채발행이율</label><input type="number" step="0.001" id="cbIssueRate" placeholder="연 이자율(소수, 예: 2%는 0.02)"><span class="taxcalc-field-help">전환시(정방향)만</span></div>' +
-        '<div class="taxcalc-field"><label>취득일부터 만기까지 기간</label><input type="number" step="0.1" id="cbYearsToMaturity" placeholder="년"><span class="taxcalc-field-help">전환시(정방향)만</span></div>' +
-        '<div class="taxcalc-field"><label>기과세된 취득시 이익</label><input type="number" id="cbPriorAcquisitionGift" placeholder="원"><span class="taxcalc-field-help">같은 건 법1호로 이미 과세된 금액, 없으면 0, 전환시(정방향)만</span></div>' +
-        '<div class="taxcalc-field"><label>그 특수관계인의 전환등전 보유지분비율</label><input type="number" step="0.01" min="0" max="1" id="cbRelatedRatio" placeholder="0~1"><span class="taxcalc-field-help">전환시 반대편만</span></div>' +
-        '<div class="taxcalc-field"><label>1년 이내 동일유형(케이스) 이전거래 이익 합계(§43②)</label><input type="number" id="cbPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액(취득시만)</label><input type="number" id="cbRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="cbAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>신고 상태</label><select id="cbFilingStatus">' +
-          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="cbFraudulent"><label for="cbFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
-        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="cbUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
-        '<div class="taxcalc-field"><label>증여일</label><input type="text" class="taxcalc-date" id="cbGiftDate" placeholder="YYYY-MM-DD"></div>' +
-        '<div class="taxcalc-field"><label>실제 납부일</label><input type="text" class="taxcalc-date" id="cbPaidDate" placeholder="YYYY-MM-DD"></div>' +
-        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="cbUnpaidDays" placeholder="0" readonly></div>' +
-        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="cbMonthsAfterDesignated" placeholder="0"></div>' +
-        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="cbUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-field" style="font-size:11.5px; color:var(--sub);">아래 5칸은 "취득시(caseType=acquisition)"에만 적용됩니다 — 전환·양도분은 §47①에 따라 합산배제이므로 무시됩니다.</div>' +
-      '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('cb') + '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-convertible-bond-gift">증여세 계산하기</button>' +
-      '<div id="taxCalcConvertibleBondGiftResult"></div>' +
-    '</div>' +
-    // [2026.09.23 흡수] 부동산무상사용·담보이용이익(§37) 독립계산기는 giftValuationAssets의
-    // 평가방법 "freePropertyUse"로 흡수 — 아래 삭제.
-    // [2026.09.23 흡수] 배우자등 양도재산 증여추정(§44) 독립계산기는 giftValuationAssets의
-    // 평가방법 "spousePropertyTransfer"로 흡수 — 아래 삭제.
-    // [2026.09.23 흡수] 보험금증여(§34)·신탁이익증여(§33) 독립계산기는 giftValuationAssets의
-    // 평가방법 "insuranceProceeds"/"trustIncome"으로 흡수 — 아래 삭제.
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>[별지 제10호의3서식] 일감몰아주기 증여의제(§45의3) — 지배주주+친족이 지분을 가진 법인이 특수관계법인과 매출비중이 높고 지분율도 높을 때 과세</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>수혜법인 기업규모</label><select id="jmCompanySize">' +
-          '<option value="general">일반(중견·중소 아님)</option><option value="medium">중견기업</option><option value="small">중소기업</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>수혜법인 세후영업이익(중견·일반기업용, §45의3①2호나·다목)</label><input type="number" id="jmOperatingIncome" placeholder="원"><span class="taxcalc-field-help">중소기업이면 비워도 됨</span></div>' +
-        '<div class="taxcalc-field"><label>수혜법인 세후순이익(중소기업용, §45의3①2호가목)</label><input type="number" id="jmNetIncome" placeholder="원"><span class="taxcalc-field-help">중소기업일 때만 사용</span></div>' +
-        '<div class="taxcalc-field"><label>특수관계법인거래비율</label><input type="number" step="0.01" id="jmTradeRatio" placeholder="%"><span class="taxcalc-field-help">과세제외매출액 반영한 최종비율</span></div>' +
-        '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-related-party-ratio-helper">🧮 특수관계법인 여러 곳이면 매출 합산해서 계산</button></div>' +
-        '<div class="taxcalc-field"><label>특수관계법인 매출액(일반기업 대체과세요건용)</label><input type="number" id="jmRelatedPartySales" placeholder="원"><span class="taxcalc-field-help">일반기업이고 거래비율 20~30%일 때만 — §45의3①1호나목2</span></div>' +
-        '<div class="taxcalc-field"><label>지배주주+친족 주식보유비율</label><input type="number" step="0.01" id="jmShareRatio" placeholder="%"><span class="taxcalc-field-help">직접 또는 간접, 출자관계별로 따로 계산</span></div>' +
-        '<div class="taxcalc-field"><label>배당소득공제</label><input type="number" id="jmDividendDeduction" placeholder="원"><span class="taxcalc-field-help">신고기한 내 받은 배당소득 공제액, 없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>수혜법인 사업연도 종료일</label><input type="date" id="jmFiscalYearEnd" min="1900-01-01" max="2099-12-31"></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>신고 상태 · 가산세</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>신고 상태</label><select id="jmFilingStatus">' +
-          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="jmReportedInTime" checked><label for="jmReportedInTime">(정상신고일 때) 법정신고기한 내 — 신고세액공제 3%</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="jmFraudulent"><label for="jmFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
-        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="jmUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
-        '<div class="taxcalc-field"><label>실제 납부일</label><input type="date" id="jmPaidDate" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="jmUnpaidDays" placeholder="0" readonly><span class="taxcalc-field-help">사업연도종료일+3개월 신고기한 대비</span></div>' +
-        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="jmMonthsAfterDesignated" placeholder="0"></div>' +
-        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="jmUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-related-party-gift">일감몰아주기 증여세 계산하기</button>' +
-      '<div id="taxCalcRelatedPartyGiftResult"></div>' +
-    '</div>' +
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>[별지 제10호의4서식] 일감떼어주기 증여의제(§45의4) — 특수관계법인의 사업기회를 지분 30% 이상 보유한 법인에 제공했을 때 과세. 개시사업연도에 잠정신고 후 2년 경과 시 정산사업연도로 반드시 재계산</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>신고 단계</label><select id="jtPhase">' +
-          '<option value="initial">개시사업연도(잠정)</option><option value="settlement">정산사업연도(2년 경과, 확정)</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>사업기회로 인한 수혜법인 이익</label><input type="number" id="jtProfit" placeholder="원"><span class="taxcalc-field-help">개시: 해당연도분 / 정산: 누적 합계</span></div>' +
-        '<div class="taxcalc-field"><label>지배주주+친족 주식보유비율</label><input type="number" step="0.01" id="jtShareRatio" placeholder="%"><span class="taxcalc-field-help">30% 이상이어야 과세</span></div>' +
-        '<div class="taxcalc-field"><label>법인세 납부세액 중 상당액</label><input type="number" id="jtCorporateTax" placeholder="원"><span class="taxcalc-field-help">직접 입력시 아래 자동계산값보다 우선 — 개시: 해당연도분 / 정산: 누적 합계, 비우면 자동계산</span></div>' +
-        '<div class="taxcalc-field"><label>수혜법인의 법인세 산출세액(공제·감면 차감후)</label><input type="number" id="jtCorpTaxAfterCredit" placeholder="원"><span class="taxcalc-field-help">법인세 납부세액 중 상당액 자동계산용</span></div>' +
-        '<div class="taxcalc-field"><label>수혜법인의 해당 사업연도 소득금액</label><input type="number" id="jtCorpTaxableIncome" placeholder="원"><span class="taxcalc-field-help">법인세법§14, 자동계산용</span></div>' +
-        '<div class="taxcalc-field"><label>(개시사업연도만) 개시사업연도 월수</label><input type="number" id="jtMonths" placeholder="보통 12" maxlength="2"></div>' +
-        '<div class="taxcalc-field"><label>(정산사업연도만) 배당소득공제액</label><input type="number" id="jtDividendDeduction" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>해당 사업연도 종료일</label><input type="date" id="jtFiscalYearEnd" min="1900-01-01" max="2099-12-31"></div>' +
-      '</div>' +
-      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>신고 상태 · 가산세</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>신고 상태</label><select id="jtFilingStatus">' +
-          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="jtReportedInTime" checked><label for="jtReportedInTime">(정상신고일 때) 법정신고기한 내 — 신고세액공제 3%</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="jtFraudulent"><label for="jtFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
-        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="jtUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
-        '<div class="taxcalc-field"><label>실제 납부일</label><input type="date" id="jtPaidDate" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="jtUnpaidDays" placeholder="0" readonly><span class="taxcalc-field-help">사업연도종료일+3개월 신고기한 대비</span></div>' +
-        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="jtMonthsAfterDesignated" placeholder="0"></div>' +
-        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="jtUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-business-opportunity-gift">일감떼어주기 증여세 계산하기</button>' +
-      '<div id="taxCalcBusinessOpportunityGiftResult"></div>' +
-    '</div>' +
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>특정법인과의 거래를 통한 이익의 증여의제(§45의5) — 지배주주 지분 30%이상 법인이 지배주주의 특수관계인과 무상제공·저가양도·고가양수·불균등 자본거래 등을 할 때</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>특정법인이 얻는 이익</label><input type="number" id="scBenefitToCorp" placeholder="원"><span class="taxcalc-field-help">증여재산가액·채무면제이익·자본거래이익·시가차액 등, 별도 계산</span></div>' +
-        '<div class="taxcalc-field"><label>특정법인의 법인세 산출세액(공제·감면 차감후)</label><input type="number" id="scCorpTax" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>특정법인의 해당 사업연도 소득금액</label><input type="number" id="scCorpIncome" placeholder="원"><span class="taxcalc-field-help">법인세법§14</span></div>' +
-        '<div class="taxcalc-field"><label>지배주주등의 주식보유비율</label><input type="number" step="0.01" min="0" max="1" id="scShareRatio" placeholder="0~1"></div>' +
-        '<div class="taxcalc-field"><label>직접증여시 증여세상당액(§45의5② 한도용)</label><input type="number" id="scDirectGiftTax" placeholder="원"><span class="taxcalc-field-help">관계별공제 반영해 별도 계산, 없으면 한도 미적용</span></div>' +
-        '<div class="taxcalc-field"><label>1년 이내 같은 특정법인과의 이전거래 이익 합계(§43②)</label><input type="number" id="scPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="scRelationDeduction" placeholder="원"><span class="taxcalc-field-help">증여자가 법인이므로 통상 0</span></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="scAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>신고 상태</label><select id="scFilingStatus">' +
-          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="scFraudulent"><label for="scFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
-        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="scUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
-        '<div class="taxcalc-field"><label>특정법인 사업연도 종료일</label><input type="date" id="scFiscalYearEnd" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>실제 납부일</label><input type="text" class="taxcalc-date" id="scPaidDate" placeholder="YYYY-MM-DD"></div>' +
-        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="scUnpaidDays" placeholder="0" readonly><span class="taxcalc-field-help">사업연도종료일+3개월 신고기한 대비</span></div>' +
-        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="scMonthsAfterDesignated" placeholder="0"></div>' +
-        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="scUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('sc') + '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-specific-corp-gift">증여세 계산하기</button>' +
-      '<div id="taxCalcSpecificCorpGiftResult"></div>' +
-    '</div>' +
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>초과배당에 따른 이익의 증여(§41의2) — 최대주주등이 배당을 포기하거나 불균등 조건으로 배당받아 그 특수관계인이 본인 지분보다 많은 배당을 받았을 때</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="edFinalSettlement"><label for="edFinalSettlement">정산 신고임(실제소득세액 기준, 체크 안 하면 최초 신고=추정소득세상당액 기준)</label></div>' +
-        '<div class="taxcalc-field"><label>특수관계인이 실제 받은 배당등의 금액</label><input type="number" id="edBaseAmount" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>최대주주등의 과소배당금액이 차지하는 비율</label><input type="number" step="0.01" min="0" max="1" id="edShortfallRatio" placeholder="0~1"><span class="taxcalc-field-help">시행령§31의2②2호</span></div>' +
-        '<div class="taxcalc-field"><label>추정 소득세상당액(선택)</label><input type="number" id="edEstimatedTax" placeholder="원"><span class="taxcalc-field-help">비워두면 시행규칙§10의3① 추정율표로 자동계산, 최초신고만</span></div>' +
-        '<div class="taxcalc-field"><label>종합소득과세표준</label><input type="number" id="edComprehensiveBase" placeholder="원"><span class="taxcalc-field-help">초과배당금액발생연도, 초과배당금액 포함된 값 — 입력시 자동계산, 정산신고·종합과세만</span></div>' +
-        '<div class="taxcalc-field"><label>실제 소득세액 직접입력</label><input type="number" id="edActualTax" placeholder="원"><span class="taxcalc-field-help">종합과세면 위 종합소득과세표준을 입력하세요, 정산신고·비과세/분리과세만</span></div>' +
-        '<div class="taxcalc-field"><label>1년 이내 동일 최대주주등의 이전 초과배당금액 합계(§43②)</label><input type="number" id="edPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="edRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="edAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>신고 상태</label><select id="edFilingStatus">' +
-          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="edFraudulent"><label for="edFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
-        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="edUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
-        '<div class="taxcalc-field"><label>증여일(배당지급일)</label><input type="text" class="taxcalc-date" id="edGiftDate" placeholder="YYYY-MM-DD"></div>' +
-        '<div class="taxcalc-field"><label>실제 납부일</label><input type="text" class="taxcalc-date" id="edPaidDate" placeholder="YYYY-MM-DD"></div>' +
-        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="edUnpaidDays" placeholder="0" readonly></div>' +
-        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="edMonthsAfterDesignated" placeholder="0"></div>' +
-        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="edUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('ed') + '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-excess-dividend-gift">증여세 계산하기</button>' +
-      '<div id="taxCalcExcessDividendGiftResult"></div>' +
-    '</div>' +
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>주식등 상장·합병에 따른 이익의 증여(§41의3·§41의5) — 최대주주등의 특수관계인이 증여·유상취득한 주식이 5년 이내 상장되거나 특수관계 상장법인과 합병되어 가치가 증가했을 때</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>구분</label><select id="slProvision">' +
-          '<option value="listing">주식등의 상장(§41의3)</option><option value="merger">합병에 따른 상장(§41의5)</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>정산기준일 1주당 평가가액</label><input type="number" id="slSettlementValue" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>증여받은날(취득일) 1주당 과세가액(취득가액)</label><input type="number" id="slOriginalValue" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>1주당 기업가치의 실질적인 증가로 인한 이익</label><input type="number" id="slRealIncrease" placeholder="원"><span class="taxcalc-field-help">시행령§31의3⑤, 없으면 0</span></div>' +
-        '<div class="taxcalc-field"><label>당초 납부한 증여세액</label><input type="number" id="slOriginalGiftTaxPaid" placeholder="원"><span class="taxcalc-field-help">정산기준일 가액이 당초보다 기준금액 이상 낮아졌을 때 환급액 계산용, 가액 하락시만</span></div>' +
-        '<div class="taxcalc-field"><label>증여받거나 유상취득한 주식수</label><input type="number" id="slShares" placeholder="주"></div>' +
-        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="slRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="slAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>신고 상태</label><select id="slFilingStatus">' +
-          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="slFraudulent"><label for="slFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
-        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="slUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
-        '<div class="taxcalc-field"><label>증여일(정산기준일)</label><input type="text" class="taxcalc-date" id="slGiftDate" placeholder="YYYY-MM-DD"></div>' +
-        '<div class="taxcalc-field"><label>실제 납부일</label><input type="text" class="taxcalc-date" id="slPaidDate" placeholder="YYYY-MM-DD"></div>' +
-        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="slUnpaidDays" placeholder="0" readonly></div>' +
-        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="slMonthsAfterDesignated" placeholder="0"></div>' +
-        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="slUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-stock-listing-gift">증여세 계산하기</button>' +
-      '<div id="taxCalcStockListingGiftResult"></div>' +
-    '</div>' +
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>비과세되는 증여재산(§46) — 국가·지자체 증여, 우리사주조합 취득이익, 정당·사내근로복지기금 등 단체 증여, 이재구호금품·치료비·생활비·교육비, 장애인 보험금, 국가유공자 유족 성금, 비영리법인 승계재산 등</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>항목 구분</label><select id="ntItemType">' +
-          '<option value="government">국가·지방자치단체 증여(1호)</option>' +
-          '<option value="esop">우리사주조합 취득이익(2호)</option>' +
-          '<option value="political_party">정당 증여(3호)</option>' +
-          '<option value="labor_welfare_fund">사내근로복지기금 등(4호)</option>' +
-          '<option value="disaster_relief">이재구호금품·치료비·생활비·교육비(5호)</option>' +
-          '<option value="credit_guarantee_fund">신용보증기금 등(6호)</option>' +
-          '<option value="public_entity">국가·지자체·공공단체(7호)</option>' +
-          '<option value="disabled_insurance">장애인 보험금(8호)</option>' +
-          '<option value="veteran_bereaved">국가유공자·의사자 유족 성금(9호)</option>' +
-          '<option value="npo_succession">비영리법인 승계재산(10호)</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>금액</label><input type="number" id="ntAmount" placeholder="원"></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-nontaxable-gift">비과세 여부 확인하기</button>' +
-      '<div id="taxCalcNontaxableGiftResult"></div>' +
-    '</div>' +
-    // [2026.09.24 재구성] 공익법인출연(§16·§48①)은 증여·상속 어느 쪽이든 계산 가능해
-    // renderGiftInheritanceSharedPane_()의 공유 패널로 옮겼다 — 아래 삭제.
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>공익법인등에 대한 가산세(§78) — 유형을 고른 뒤 해당하는 입력란만 채우세요</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>가산세 유형</label><select id="poPenaltyType">' +
-          '<option value="report_not_filed">§78③ 출연재산 사용계획보고서 미제출·불분명</option>' +
-          '<option value="stock_holding_exceeded_5pct">§78④(§49①) 주식등 5%보유기준 초과</option>' +
-          '<option value="management_violation">§78⑤ 세무확인·장부작성비치·회계감사 의무 불이행</option>' +
-          '<option value="director_excess">§78⑥ 이사정원(5분의1) 초과</option>' +
-          '<option value="stock_holding_exceeded_related">§78⑦(§48⑨) 특수관계법인주식 30%/50%한도 초과</option>' +
-          '<option value="advertising">§78⑧(§48⑩) 특수관계법인 무상 광고·홍보</option>' +
-          '<option value="income_underused">§78⑨(§48②5·7호) 운용소득·매각대금·기준금액 미달사용</option>' +
-          '<option value="dedicated_account_not_opened">§78⑩2호 전용계좌 개설·신고 미이행</option>' +
-          '<option value="dedicated_account_unused">§78⑩1호 전용계좌 미사용</option>' +
-          '<option value="disclosure_violation">§78⑪ 결산서류등 공시의무 위반</option>' +
-          '<option value="report_not_filed_5pct">§78⑭(§48⑬) 의무이행여부 신고 미이행</option>' +
-          '<option value="cultural_heritage_status_not_filed">§78⑮1호(§74⑤⑥) 문화유산 보유현황자료 미제출</option>' +
-          '<option value="cultural_heritage_transfer_not_filed">§78⑮2호(§74⑤⑦) 문화유산 양도사실 미신고</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>상당 상속세·증여세액</label><input type="number" id="poBaseTaxAmount" placeholder="원"><span class="taxcalc-field-help">보고서미제출만</span></div>' +
-        '<div class="taxcalc-field"><label>징수유예 받은 상속세액</label><input type="number" id="poDeferredTaxAmount" placeholder="원"><span class="taxcalc-field-help">문화유산자료미제출·미신고만</span></div>' +
-        '<div class="taxcalc-field"><label>초과주식 시가</label><input type="number" id="poExcessStockValue" placeholder="원"><span class="taxcalc-field-help">5%보유초과만</span></div>' +
-        '<div class="taxcalc-field"><label>수입금액+출연재산가액</label><input type="number" id="poRevenueAndDonation" placeholder="원"><span class="taxcalc-field-help">해당 과세기간·사업연도, 세무확인등만</span></div>' +
-        '<div class="taxcalc-field"><label>위반 세부유형</label><select id="poViolationSubType">' +
-          '<option value="tax_confirmation">세무확인 보고의무 불이행(최소100만원)</option>' +
-          '<option value="bookkeeping">장부작성·비치의무 불이행</option>' +
-          '<option value="audit">회계감사의무 불이행</option>' +
-        '</select><span class="taxcalc-field-help">세무확인등만</span></div>' +
-        '<div class="taxcalc-field"><label>관련 직접·간접경비</label><input type="number" id="poRelatedExpense" placeholder="원"><span class="taxcalc-field-help">이사초과만</span></div>' +
-        '<div class="taxcalc-field"><label>보유 중인 특수관계법인 주식가액</label><input type="number" id="poStockValue" placeholder="원"><span class="taxcalc-field-help">30/50%초과만</span></div>' +
-        '<div class="taxcalc-field"><label>총재산가액(자산총액)</label><input type="number" id="poTotalAssetValue" placeholder="원"><span class="taxcalc-field-help">30/50%초과·공시위반·미신고만</span></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="poMeetsCompliance"><label for="poMeetsCompliance">[30/50%초과만] 회계감사·전용계좌·결산공시 의무 모두 이행(한도 50%)</label></div>' +
-        '<div class="taxcalc-field"><label>직접 지출경비</label><input type="number" id="poDirectExpense" placeholder="원"><span class="taxcalc-field-help">광고홍보만</span></div>' +
-        '<div class="taxcalc-field"><label>기준금액 미달사용액(직접입력, §48②5호)</label><input type="number" id="poUnderusedAmount" placeholder="원"><span class="taxcalc-field-help">§48②7호는 아래 4개 필드로 자동계산 가능, 미달사용만</span></div>' +
-        '<div class="taxcalc-field"><label>부채가액</label><input type="number" id="poLiabilityValue" placeholder="원"><span class="taxcalc-field-help">직전 과세기간·사업연도 종료일 재무상태표, 미달사용·§48②7호만</span></div>' +
-        '<div class="taxcalc-field"><label>당기순이익</label><input type="number" id="poNetIncomeValue" placeholder="원"><span class="taxcalc-field-help">같은 기준일 운영성과표, 미달사용·§48②7호만</span></div>' +
-        '<div class="taxcalc-field"><label>실제 직접공익목적사업 사용액</label><input type="number" id="poActualDirectUseAmount" placeholder="원"><span class="taxcalc-field-help">없으면 0, 미달사용·§48②7호만</span></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="poUseAssessedValueBasis"><label for="poUseAssessedValueBasis">[미달사용·§48②7호만] 위 총재산가액이 상증세법상 평가액 기준(재무상태표 자산가액이 평가액의 70%이하인 경우)</label></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="poHighHoldingType"><label for="poHighHoldingType">[미달사용만] §48②7호가목 유형(10%초과보유, 가산율 200%)</label></div>' +
-        '<div class="taxcalc-field"><label>매각대금</label><input type="number" id="poSaleProceedsAmount" placeholder="원"><span class="taxcalc-field-help">기본재산 매각대금, 미달사용·§48②5호매각대금만</span></div>' +
-        '<div class="taxcalc-field"><label>확인시점</label><select id="poSaleCheckpointYear">' +
-          '<option value="">선택</option>' +
-          '<option value="1">매각일로부터 1년(30%기준)</option>' +
-          '<option value="2">매각일로부터 2년(60%기준)</option>' +
-        '</select><span class="taxcalc-field-help">미달사용·§48②5호매각대금만</span></div>' +
-        '<div class="taxcalc-field"><label>누적 실제사용액</label><input type="number" id="poCumulativeActualUsedAmount" placeholder="원"><span class="taxcalc-field-help">매각일부터 확인시점까지, 미달사용·§48②5호매각대금만</span></div>' +
-        '<div class="taxcalc-field"><label>수익사업 소득금액등 합계</label><input type="number" id="poOperatingIncomeAmount" placeholder="원"><span class="taxcalc-field-help">시행령§38⑤1호, 미달사용·§48②5호운용소득만</span></div>' +
-        '<div class="taxcalc-field"><label>법인세등 및 이월결손금</label><input type="number" id="poTaxAndCarryforwardLossAmount" placeholder="원"><span class="taxcalc-field-help">시행령§38⑤2호, 미달사용·§48②5호운용소득만</span></div>' +
-        '<div class="taxcalc-field"><label>실제 사용액</label><input type="number" id="poActualOperatingIncomeUsedAmount" placeholder="원"><span class="taxcalc-field-help">없으면 0, 미달사용·§48②5호운용소득만</span></div>' +
-        '<div class="taxcalc-field"><label>미사용 거래금액</label><input type="number" id="poUnusedTransaction" placeholder="원"><span class="taxcalc-field-help">전용계좌미사용만</span></div>' +
-        '<div class="taxcalc-field"><label>직접 공익목적사업 관련 수입금액 총액</label><input type="number" id="poDirectBusinessRevenueAmount" placeholder="원"><span class="taxcalc-field-help">전용계좌미개설·가목만</span></div>' +
-        '<div class="taxcalc-field"><label>미개설·미신고 일수</label><input type="number" id="poUnregisteredDays" placeholder="일"><span class="taxcalc-field-help">신고기한 다음날~신고일 전날, 전용계좌미개설·가목만</span></div>' +
-        '<div class="taxcalc-field"><label>해당 과세기간(사업연도) 총 일수</label><input type="number" id="poTotalPeriodDays" placeholder="일"><span class="taxcalc-field-help">전용계좌미개설·가목만</span></div>' +
-        '<div class="taxcalc-field"><label>§50의2①1~4호 거래금액 합계</label><input type="number" id="poTotalRelevantTransactionAmount" placeholder="원"><span class="taxcalc-field-help">전용계좌미개설·나목만</span></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-public-interest-org-penalty">가산세액 계산하기</button>' +
-      '<div id="taxCalcPublicInterestOrgPenaltyResult"></div>' +
-    '</div>' +
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>장애인이 증여받은 재산의 과세가액 불산입(§52의2) — 장애인 본인 수익 자익신탁 또는 타인이 장애인 수익으로 설정한 타익신탁, 생애 5억원 한도</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="dtMeetsRequirements"><label for="dtMeetsRequirements">신탁업자 신탁·장애인 전부수익자 등 §52의2①·②요건 충족</label></div>' +
-        '<div class="taxcalc-field"><label>증여받은 재산가액(자익) 또는 신탁원본가액(타익)</label><input type="number" id="dtAmount" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>기존 누적 활용액(생애)</label><input type="number" id="dtPriorCumulative" placeholder="원"><span class="taxcalc-field-help">없으면 0</span></div>' +
-        '<div class="taxcalc-field"><label>사후관리 위반 사유</label><select id="dtTriggerEvent">' +
-          '<option value="none">없음</option>' +
-          '<option value="terminated_not_rejoined">해지·만료(1개월내 재가입 안함)</option>' +
-          '<option value="beneficiary_changed">수익자 변경</option>' +
-          '<option value="benefit_diverted">이익이 타인에게 귀속</option>' +
-          '<option value="principal_decreased">신탁원본 감소</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="dtExempted"><label for="dtExempted">부득이한 사유 또는 의료비 등 정해진 용도의 인출임(즉시과세 예외)</label></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-disabled-trust-exclusion">과세가액 산입액 계산하기</button>' +
-      '<div id="taxCalcDisabledTrustExclusionResult"></div>' +
-    '</div>' +
-    // [2026.09.23 흡수] 합병이익(§38)·재산사용용역이익(§42)·조직변경이익(§42의2) 독립계산기는
-    // giftValuationAssets의 평가방법 "mergerBenefit"/"propertyUseService"/"orgChangeBenefit"로
-    // 흡수 — 아래 삭제.
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>재산 취득 후 재산가치 증가에 따른 이익의 증여(§42의3) — 자력없는 자가 특수관계인으로부터 증여·차입 등으로 재산을 취득한 후 5년 이내 개발사업·형질변경 등으로 재산가치가 증가한 경우</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>재산가치증가사유 발생일 현재 재산가액</label><input type="number" id="pvEventValue" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>취득가액</label><input type="number" id="pvAcquisitionCost" placeholder="원"><span class="taxcalc-field-help">증여받은 재산이면 그 증여세 과세가액</span></div>' +
-        '<div class="taxcalc-field"><label>통상적인 가치상승분</label><input type="number" id="pvNormalAppreciation" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>가치상승기여분</label><input type="number" id="pvContribution" placeholder="원"><span class="taxcalc-field-help">개발·형질변경 등 자본적지출액</span></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="pvAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-      '</div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>신고 상태</label><select id="pvFilingStatus">' +
-          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
-        '</select></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" id="pvFraudulent"><label for="pvFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
-        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="pvUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
-        '<div class="taxcalc-field"><label>증여일</label><input type="text" class="taxcalc-date" id="pvGiftDate" placeholder="YYYY-MM-DD"><span class="taxcalc-field-help">재산가치증가사유 발생일</span></div>' +
-        '<div class="taxcalc-field"><label>실제 납부일</label><input type="text" class="taxcalc-date" id="pvPaidDate" placeholder="YYYY-MM-DD"></div>' +
-        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="pvUnpaidDays" placeholder="0" readonly></div>' +
-        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="pvMonthsAfterDesignated" placeholder="0"></div>' +
-        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="pvUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-property-value-increase-gift">증여세 계산하기</button>' +
-      '<div id="taxCalcPropertyValueIncreaseGiftResult"></div>' +
-    '</div>' +
-    // [2026.09.24 재구성] 연부연납(증여쪽 중복이었던 이 블록은 상속쪽의 taxType선택형으로
-    // 통합)·이자상당액·가업승계납부유예·가업승계사후관리추징·물납가능여부(상속전용인데 여기
-    // 있었음)·물납수납가액·문화재징수유예는 증여·상속 어느 쪽이든 계산 가능해
-    // renderGiftInheritanceSharedPane_()의 공유 패널로 옮겼다 — 아래 전부 삭제.
-    // [2026.09.23 흡수] 저가양수도이익(§35)·무상대출이익(§41의4) 독립계산기는 이미 화면
-    // 안내문구 자체가 "계산된 금액을 위 일반 증여세 계산기의 증여재산가액에 넣으세요"였다 —
-    // giftValuationAssets의 평가방법 "lowPriceTransfer"/"interestFreeLoan"으로 흡수해 그
-    // 수동 입력 단계 자체를 없앤다. 아래 삭제.
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>증여세 과세특례 — 조문 중복적용 배제(§43①) — 하나의 증여에 §33~39·39의2·39의3·40·41의2~41의5·42·42의2·42의3·44·45·45의3~45의5 중 둘 이상의 증여의제·증여추정 규정이 동시에 적용될 수 있을 때, 각 조문별로 계산한 증여재산가액을 아래에 입력하면 이익이 가장 많은 것 하나만 골라줍니다(나머지는 적용하지 않음)</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>후보1 조문</label><input type="text" id="gspArticle1" placeholder="예: §35 저가양수"></div>' +
-        '<div class="taxcalc-field"><label>후보1 증여재산가액</label><input type="number" id="gspAmount1" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>후보2 조문</label><input type="text" id="gspArticle2" placeholder="예: §42 재산사용이익"></div>' +
-        '<div class="taxcalc-field"><label>후보2 증여재산가액</label><input type="number" id="gspAmount2" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>후보3 조문(선택)</label><input type="text" id="gspArticle3" placeholder=""></div>' +
-        '<div class="taxcalc-field"><label>후보3 증여재산가액(선택)</label><input type="number" id="gspAmount3" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>후보4 조문(선택)</label><input type="text" id="gspArticle4" placeholder=""></div>' +
-        '<div class="taxcalc-field"><label>후보4 증여재산가액(선택)</label><input type="number" id="gspAmount4" placeholder="원"></div>' +
-      '</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="run-gift-special-provision-overlap">중복적용 배제 판정하기</button>' +
-      '<div id="taxCalcGiftOverlapResult"></div>' +
-    '</div>' +
+
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>시가 인정범위 판정(§60②, 시행령§49) — 매매·감정·수용·경매·공매 증거가액을 다른 계산기의 "시가"로 쓰기 전에, 평가기간·특수관계인거래·비상장주식 최소요건·감정가액 기준금액을 확인합니다(상속·증여 공통)</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -6104,7 +5597,587 @@ function renderInheritancePane(){
     '<div class="taxcalc-asset">' +
       '<div class="taxcalc-asset-head"><b>피상속인 정보</b>' +
         '<span><button type="button" class="taxcalc-ai-btn" data-action="open-evidence-inheritance">📄 증빙에서 자동 입력</button></span>' +
+      
+    '</div>' +
+    '</div>';
+  enhanceNumberInputs(taxCalcGiftInheritanceSharedPane);
+  enhanceDateInputs(taxCalcGiftInheritanceSharedPane);
+  wireMinThresholdHint_('ipIhTotal', 'ipIhTotalHint', 20000000);
+  wireRangeClamp_('ipIhRate', 0, 30);
+}
+function renderGiftPane(){
+  taxCalcGiftPane.innerHTML =
+    '<div id="tcGiftCaseFactsBanner"></div>' +
+    '<div class="taxcalc-asset">' +
+      '<div class="taxcalc-asset-head"><b>증여 기본정보</b>' +
+        '<span><button type="button" class="taxcalc-ai-btn" data-action="open-evidence-gift">📄 증빙에서 자동 입력</button></span>' +
       '</div>' +
+      '<div class="taxcalc-ai-status" id="aiStatus-gift"></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>증여일자</label><input type="date" id="giftDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-result-note" id="giftDateDeadlineHint" style="margin:2px 0 0;"></span></div>' +
+      '</div>' +
+    '</div>' +
+    '<div id="giftDoneeRegistry"></div>' +
+    '<div id="giftDonorRegistry"></div>' +
+    '<div id="giftValuationList"></div>' +
+    '<div class="taxcalc-asset">' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>㉙㉚ 혼인·출산 증여재산공제 (혼인+출산 평생통산 1억원 한도, 위 증여일자를 기준으로 자동 판정)</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>혼인일</label><input type="date" id="giftMarriageDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">비어있으면 미해당</span><span class="taxcalc-result-note" id="giftMarriageHint" style="margin:2px 0 0;"></span></div>' +
+        '<div class="taxcalc-field"><label>출생일·입양일</label><input type="date" id="giftBirthDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">비어있으면 미해당</span><span class="taxcalc-result-note" id="giftBirthHint" style="margin:2px 0 0;"></span></div>' +
+        '<div class="taxcalc-field"><label>과거에 이미 받은 혼인·출산공제 누적액</label><input type="number" id="giftPriorMarriageBirth" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>㉜㉝ 그 밖의 공제</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="giftExcludedAgg"><label for="giftExcludedAgg">상증세법 §55①3호 합산배제증여재산(3천만원 고정공제)</label></div>' +
+        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="giftAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="giftAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">500만원 한도</span></div>' +
+        '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="giftDisasterLoss" placeholder="원"><span class="taxcalc-field-help">신고기한 내 재난 멸실분</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>비과세·과세가액 불산입(§46·§48·§52·§52의2)</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>비과세재산가액</label><input type="number" id="giftNonTaxable" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>공익법인등출연재산가액</label><input type="number" id="giftPublicOrg" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>공익신탁재산가액</label><input type="number" id="giftPublicTrust" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>장애인신탁재산가액</label><input type="number" id="giftDisabledTrust" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>기타 세액공제·가산세·유예 (해당 사안일 때만 별도로 계산하여 입력)</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>외국납부세액공제</label><input type="number" id="giftForeignTax" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>그 밖의 공제·감면세액</label><input type="number" id="giftOtherCredits" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>이자상당액</label><input type="number" id="giftInterest" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>공익법인등 관련 가산세</label><input type="number" id="giftPublicOrgPenalty" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>박물관자료등 징수유예세액</label><input type="number" id="giftMuseumDeferred" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>가업승계 납부유예세액</label><input type="number" id="giftBizSuccessionDeferred" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>영농자녀 증여농지 세액감면(조특법§71)</label><input type="number" id="giftFarmlandExemption" placeholder="원"><span class="taxcalc-field-help">감면요건·한도는 별도 확인 후 입력</span></div>' +
+      '</div>' +
+    '</div>' +
+    '<button type="button" class="taxcalc-run-btn" data-action="run-gift">세액 계산하기</button>' +
+    '<div id="taxCalcGiftResult"></div>' +
+    '<div class="taxcalc-asset" style="margin-top:20px;">' +
+      '<div class="taxcalc-asset-head"><b>[별지 제10호의2서식] 조특법§30의5·§30의6 증여세 과세특례(창업자금·가업승계주식) — 해당하는 경우에만 별도로 계산합니다. 일반 증여세와는 세율·공제·한도가 전혀 다릅니다.</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>특례 종류</label><select id="srGiftType">' +
+          '<option value="startup">창업자금(§30의5)</option><option value="business_succession">가업승계 주식등(§30의6)</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field"><label>해당 증여재산가액</label><input type="number" id="srGiftAmount" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>증여일자</label><input type="date" id="srGiftDate" min="1900-01-01" max="2099-12-31"></div>' +
+        '<div class="taxcalc-field"><label>수증자 나이(만)</label><input type="number" id="srDoneeAge" placeholder="세" maxlength="3"><span class="taxcalc-field-help">18세 이상만 대상</span></div>' +
+        '<div class="taxcalc-field"><label>증여자(부모) 나이(만)</label><input type="number" id="srDonorAge" placeholder="세" maxlength="3"><span class="taxcalc-field-help">60세 이상만 대상</span></div>' +
+        '<div class="taxcalc-field"><label>인수채무액(부담부증여, 창업자금만)</label><input type="number" id="srDebtAssumed" placeholder="원"><span class="taxcalc-field-help">없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>기 과세특례적용분 증여세과세가액</label><input type="number" id="srPriorSpecialGift" placeholder="원"><span class="taxcalc-field-help">동일특례 재차증여, 없으면 비움</span></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="srJobsCreated10Plus"><label for="srJobsCreated10Plus">(창업자금) 창업으로 10명 이상 신규고용 — 한도 100억(아니면 50억)</label></div>' +
+        '<div class="taxcalc-field"><label>(창업자금) 사용명세 미제출·불분명 금액</label><input type="number" id="srUnclearUsage" placeholder="원"><span class="taxcalc-field-help">§30의5⑤, 0.3% 가산세 — 없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>(가업승계) 증여자(부모)의 가업영위기간</label><input type="number" id="srBusinessYears" placeholder="년" maxlength="2"><span class="taxcalc-field-help">20미만 300억/20~30 400억/30이상 600억</span></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="srReSuccession"><label for="srReSuccession">(가업승계) §30의6①단서 — 승계 당시 최대주주등(당초 증여자·수증자 제외)으로부터 재증여</label></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>(가업승계 주식등만) 사업관련자산가액 비율 — 비워두면 주식가액 전체를 가업자산으로 간주</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>총자산가액</label><input type="number" id="srTotalAsset" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>사업무관자산 - §55의2</label><input type="number" id="srNonBiz55" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>사업무관자산 - 시행령§49</label><input type="number" id="srNonBiz49" placeholder="원"><span class="taxcalc-field-help">임대용부동산 포함</span></div>' +
+        '<div class="taxcalc-field"><label>사업무관자산 - 시행령§61①2호</label><input type="number" id="srNonBiz61" placeholder="원"><span class="taxcalc-field-help">대여금</span></div>' +
+        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="srExcessCash" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>영업무관 주식·채권·금융상품</label><input type="number" id="srNonBizStock" placeholder="원"></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>공제 · 세액공제 · 신고 상태</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="srDisasterLoss" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="srAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="srAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">500만원 한도</span></div>' +
+        '<div class="taxcalc-field"><label>이전 특례증여분 기납부세액(조특법§30의5①후단)</label><input type="number" id="srPriorPaidTax" placeholder="원"><span class="taxcalc-field-help">같은 특례를 2회 이상 받은 경우 그 이전분에 낸 산출세액 — 상증세법§58과 무관</span></div>' +
+        '<div class="taxcalc-field"><label>외국납부세액공제(§59)</label><input type="number" id="srForeignTax" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>신고 상태</label><select id="srFilingStatus">' +
+          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="srFraudulent"><label for="srFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
+        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="srUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
+        '<div class="taxcalc-field"><label>실제 납부일</label><input type="date" id="srPaidDate" min="1900-01-01" max="2099-12-31"></div>' +
+        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="srUnpaidDays" placeholder="0" readonly><span class="taxcalc-field-help">증여일+3개월 신고기한 대비</span></div>' +
+        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="srMonthsAfterDesignated" placeholder="0"></div>' +
+        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="srUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
+      '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-special-rate-gift">특례세율 증여세 계산하기</button>' +
+      '<div id="taxCalcSpecialRateGiftResult"></div>' +
+    '</div>' +
+        // [2026.09.24 재구성] 명의신탁·재산취득자금·일감몰아주기·일감떼어주기·상장이익·재산가치
+    // 증가이익 6개는 전부 §47①·§55①에 열거된 법정 합산배제 증여재산(또는 그와 같은 성격)이라
+    // 위 giftValuationAssets 흡수 대상이 아니다 — 각자 완결적으로 과세표준부터 납부세액까지
+    // 계산해야 한다. 다만 세무사님 지시("화면 하나로 합치라")대로, 서로 계산은 다르지만
+    // "법정 합산배제 증여"라는 같은 성격이므로 카드 하나에 "구분" 선택지로 묶는다.
+    '<div class="taxcalc-asset" style="margin-top:20px;">' +
+      '<div class="taxcalc-asset-head"><b>법정 합산배제 증여 계산 — 위 일반 증여세 계산과 절대 합산하지 않고 각자 별도로 신고합니다(§47①·§55① 등)</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>구분</label><select id="giftSpecialCaseType" data-action="switch-gift-special-case">' +
+          '<option value="nt">명의신탁재산의 증여의제(§45의2)</option>' +
+          '<option value="pf">재산 취득자금 등의 증여 추정(§45, 자금출처조사)</option>' +
+          '<option value="jm">일감몰아주기 증여의제(§45의3)</option>' +
+          '<option value="jt">일감떼어주기 증여의제(§45의4)</option>' +
+          '<option value="sl">주식등 상장·합병에 따른 이익의 증여(§41의3·§41의5)</option>' +
+          '<option value="pv">재산 취득 후 재산가치 증가에 따른 이익의 증여(§42의3)</option>' + +
+        '</select></div>' +
+      '</div>' +
+      '<div id="giftSpecialCase-nt">' +
+      '<div class="taxcalc-asset-head"><b>명의신탁재산의 증여 의제(§45의2) — 등기·등록·명의개서가 필요한 재산(주식등, 토지·건물 제외)의 실제소유자와 명의자가 다를 때. 증여재산공제 없이 재산가액 전액이 과세표준입니다</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>명의신탁재산의 가액</label><input type="number" id="ntPropertyValue" placeholder="원"><span class="taxcalc-field-help">명의개서일 또는 소유권취득일이 속한 해의 다음 해 말일의 다음 날 현재 평가액</span></div>' +
+        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="ntAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ntNoAvoidancePurpose"><label for="ntNoAvoidancePurpose">조세회피 목적 없음(§45의2①1호 — 적용배제)</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ntTrustPropertyReg"><label for="ntTrustPropertyReg">자본시장법상 신탁재산 등기(§45의2①3호 — 적용배제)</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ntNonResidentAgentReg"><label for="ntNonResidentAgentReg">비거주자 법정대리인·재산관리인 명의 등기(§45의2①4호 — 적용배제)</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ntNameChangeNeglect"><label for="ntNameChangeNeglect">실제소유자 명의로 명의개서를 하지 않은 경우(§45의2③ — 조세회피목적 추정, 아래 세이프하버 확인)</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ntSaleWithTransferReport"><label for="ntSaleWithTransferReport">[명의개서해태만] 매매취득 + 종전소유자 양도소득세(증권거래세)신고시 소유권변경신고(세이프하버)</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ntInheritanceWithEstateReport"><label for="ntInheritanceWithEstateReport">[명의개서해태만] 상속취득 + 상속세신고에 포함(세이프하버)</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ntLateAmendedAfterAudit"><label for="ntLateAmendedAfterAudit">[상속세이프하버만] 결정·경정 알고 한 수정신고·기한후신고(세이프하버 무효화)</label></div>' +
+      '</div>' +
+      // [2026.09 버그수정] 실사용 감사 지적 — 다른 증여세 특례 계산기(재산취득자금 증여추정·
+      // 채무면제 등)는 전부 있는 "신고 상태" 그리드가 명의신탁만 빠져 있어서, 무신고·과소신고
+      // 상태를 입력할 방법이 아예 없었다. 그 결과 엔진(calculateNomineeTrustGiftTaxJS)이
+      // p.filingStatus를 못 받아 항상 'ontime'(정상신고)으로 계산해, 세무조사로 뒤늦게
+      // 적발되는(=무신고인 경우가 흔한) 명의신탁 증여의제 특성상 흔히 발생하는 무신고가산세
+      // (최대 40%)가 누락될 수 있었다. 명의신탁은 "증여일"에 해당하는 고정된 기준일 개념이
+      // 없어(명의개서일 기준으로 사안마다 다름) 다른 탭처럼 날짜로 자동계산하지 않고, 납부
+      // 지연일수를 직접 입력받는다.
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>신고 상태</label><select id="ntFilingStatus">' +
+          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ntFraudulent"><label for="ntFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
+        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="ntUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
+        '<div class="taxcalc-field"><label>납부지연일수</label><input type="number" id="ntUnpaidDays" placeholder="0"><span class="taxcalc-field-help">명의개서일 등 기준일로부터 실제 납부일까지</span></div>' +
+        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="ntMonthsAfterDesignated" placeholder="0"></div>' +
+        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="ntUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
+      '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-nominee-trust">증여세 계산하기</button>' +
+      '<div id="taxCalcNomineeTrustResult"></div>' +
+    
+      '</div>' +
+      '<div id="giftSpecialCase-pf" style="display:none;">' +
+      '<div class="taxcalc-asset-head"><b>재산 취득자금 등의 증여 추정(§45) — 자력취득 능력이 부족한 사람이 재산을 취득(또는 채무를 상환)했는데 그 자금출처를 입증하지 못하면, 미입증금액을 증여받은 것으로 추정합니다(자금출처조사)</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>취득재산의 가액(또는 채무 상환금액)</label><input type="number" id="afTotalValue" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>자금출처로 입증된 금액 합계</label><input type="number" id="afProvenAmount" placeholder="원"><span class="taxcalc-field-help">신고·과세된 소득·상속·수증재산가액, 재산처분대가 등 — 없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="afAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>신고 상태</label><select id="afFilingStatus">' +
+          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="afFraudulent"><label for="afFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
+        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="afUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
+        '<div class="taxcalc-field"><label>증여일</label><input type="text" class="taxcalc-date" id="afGiftDate" placeholder="YYYY-MM-DD"><span class="taxcalc-field-help">자금출처가 된 재산 취득일 또는 채무 상환일</span></div>' +
+        '<div class="taxcalc-field"><label>실제 납부일</label><input type="text" class="taxcalc-date" id="afPaidDate" placeholder="YYYY-MM-DD"></div>' +
+        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="afUnpaidDays" placeholder="0" readonly><span class="taxcalc-field-help">증여일+3개월 신고기한 대비</span></div>' +
+        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="afMonthsAfterDesignated" placeholder="0"></div>' +
+        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="afUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
+      '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-property-funds">증여세 계산하기</button>' +
+      '<div id="taxCalcPropertyFundsResult"></div>' +
+    
+      '</div>' +
+      '<div id="giftSpecialCase-jm" style="display:none;">' +
+      '<div class="taxcalc-asset-head"><b>[별지 제10호의3서식] 일감몰아주기 증여의제(§45의3) — 지배주주+친족이 지분을 가진 법인이 특수관계법인과 매출비중이 높고 지분율도 높을 때 과세</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>수혜법인 기업규모</label><select id="jmCompanySize">' +
+          '<option value="general">일반(중견·중소 아님)</option><option value="medium">중견기업</option><option value="small">중소기업</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field"><label>수혜법인 세후영업이익(중견·일반기업용, §45의3①2호나·다목)</label><input type="number" id="jmOperatingIncome" placeholder="원"><span class="taxcalc-field-help">중소기업이면 비워도 됨</span></div>' +
+        '<div class="taxcalc-field"><label>수혜법인 세후순이익(중소기업용, §45의3①2호가목)</label><input type="number" id="jmNetIncome" placeholder="원"><span class="taxcalc-field-help">중소기업일 때만 사용</span></div>' +
+        '<div class="taxcalc-field"><label>특수관계법인거래비율</label><input type="number" step="0.01" id="jmTradeRatio" placeholder="%"><span class="taxcalc-field-help">과세제외매출액 반영한 최종비율</span></div>' +
+        '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-related-party-ratio-helper">🧮 특수관계법인 여러 곳이면 매출 합산해서 계산</button></div>' +
+        '<div class="taxcalc-field"><label>특수관계법인 매출액(일반기업 대체과세요건용)</label><input type="number" id="jmRelatedPartySales" placeholder="원"><span class="taxcalc-field-help">일반기업이고 거래비율 20~30%일 때만 — §45의3①1호나목2</span></div>' +
+        '<div class="taxcalc-field"><label>지배주주+친족 주식보유비율</label><input type="number" step="0.01" id="jmShareRatio" placeholder="%"><span class="taxcalc-field-help">직접 또는 간접, 출자관계별로 따로 계산</span></div>' +
+        '<div class="taxcalc-field"><label>배당소득공제</label><input type="number" id="jmDividendDeduction" placeholder="원"><span class="taxcalc-field-help">신고기한 내 받은 배당소득 공제액, 없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>수혜법인 사업연도 종료일</label><input type="date" id="jmFiscalYearEnd" min="1900-01-01" max="2099-12-31"></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>신고 상태 · 가산세</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>신고 상태</label><select id="jmFilingStatus">' +
+          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="jmReportedInTime" checked><label for="jmReportedInTime">(정상신고일 때) 법정신고기한 내 — 신고세액공제 3%</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="jmFraudulent"><label for="jmFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
+        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="jmUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
+        '<div class="taxcalc-field"><label>실제 납부일</label><input type="date" id="jmPaidDate" min="1900-01-01" max="2099-12-31"></div>' +
+        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="jmUnpaidDays" placeholder="0" readonly><span class="taxcalc-field-help">사업연도종료일+3개월 신고기한 대비</span></div>' +
+        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="jmMonthsAfterDesignated" placeholder="0"></div>' +
+        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="jmUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
+      '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-related-party-gift">일감몰아주기 증여세 계산하기</button>' +
+      '<div id="taxCalcRelatedPartyGiftResult"></div>' +
+    
+      '</div>' +
+      '<div id="giftSpecialCase-jt" style="display:none;">' +
+      '<div class="taxcalc-asset-head"><b>[별지 제10호의4서식] 일감떼어주기 증여의제(§45의4) — 특수관계법인의 사업기회를 지분 30% 이상 보유한 법인에 제공했을 때 과세. 개시사업연도에 잠정신고 후 2년 경과 시 정산사업연도로 반드시 재계산</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>신고 단계</label><select id="jtPhase">' +
+          '<option value="initial">개시사업연도(잠정)</option><option value="settlement">정산사업연도(2년 경과, 확정)</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field"><label>사업기회로 인한 수혜법인 이익</label><input type="number" id="jtProfit" placeholder="원"><span class="taxcalc-field-help">개시: 해당연도분 / 정산: 누적 합계</span></div>' +
+        '<div class="taxcalc-field"><label>지배주주+친족 주식보유비율</label><input type="number" step="0.01" id="jtShareRatio" placeholder="%"><span class="taxcalc-field-help">30% 이상이어야 과세</span></div>' +
+        '<div class="taxcalc-field"><label>법인세 납부세액 중 상당액</label><input type="number" id="jtCorporateTax" placeholder="원"><span class="taxcalc-field-help">직접 입력시 아래 자동계산값보다 우선 — 개시: 해당연도분 / 정산: 누적 합계, 비우면 자동계산</span></div>' +
+        '<div class="taxcalc-field"><label>수혜법인의 법인세 산출세액(공제·감면 차감후)</label><input type="number" id="jtCorpTaxAfterCredit" placeholder="원"><span class="taxcalc-field-help">법인세 납부세액 중 상당액 자동계산용</span></div>' +
+        '<div class="taxcalc-field"><label>수혜법인의 해당 사업연도 소득금액</label><input type="number" id="jtCorpTaxableIncome" placeholder="원"><span class="taxcalc-field-help">법인세법§14, 자동계산용</span></div>' +
+        '<div class="taxcalc-field"><label>(개시사업연도만) 개시사업연도 월수</label><input type="number" id="jtMonths" placeholder="보통 12" maxlength="2"></div>' +
+        '<div class="taxcalc-field"><label>(정산사업연도만) 배당소득공제액</label><input type="number" id="jtDividendDeduction" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>해당 사업연도 종료일</label><input type="date" id="jtFiscalYearEnd" min="1900-01-01" max="2099-12-31"></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>신고 상태 · 가산세</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>신고 상태</label><select id="jtFilingStatus">' +
+          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="jtReportedInTime" checked><label for="jtReportedInTime">(정상신고일 때) 법정신고기한 내 — 신고세액공제 3%</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="jtFraudulent"><label for="jtFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
+        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="jtUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
+        '<div class="taxcalc-field"><label>실제 납부일</label><input type="date" id="jtPaidDate" min="1900-01-01" max="2099-12-31"></div>' +
+        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="jtUnpaidDays" placeholder="0" readonly><span class="taxcalc-field-help">사업연도종료일+3개월 신고기한 대비</span></div>' +
+        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="jtMonthsAfterDesignated" placeholder="0"></div>' +
+        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="jtUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
+      '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-business-opportunity-gift">일감떼어주기 증여세 계산하기</button>' +
+      '<div id="taxCalcBusinessOpportunityGiftResult"></div>' +
+    
+      '</div>' +
+      '<div id="giftSpecialCase-sl" style="display:none;">' +
+      '<div class="taxcalc-asset-head"><b>주식등 상장·합병에 따른 이익의 증여(§41의3·§41의5) — 최대주주등의 특수관계인이 증여·유상취득한 주식이 5년 이내 상장되거나 특수관계 상장법인과 합병되어 가치가 증가했을 때</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>구분</label><select id="slProvision">' +
+          '<option value="listing">주식등의 상장(§41의3)</option><option value="merger">합병에 따른 상장(§41의5)</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field"><label>정산기준일 1주당 평가가액</label><input type="number" id="slSettlementValue" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>증여받은날(취득일) 1주당 과세가액(취득가액)</label><input type="number" id="slOriginalValue" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>1주당 기업가치의 실질적인 증가로 인한 이익</label><input type="number" id="slRealIncrease" placeholder="원"><span class="taxcalc-field-help">시행령§31의3⑤, 없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>당초 납부한 증여세액</label><input type="number" id="slOriginalGiftTaxPaid" placeholder="원"><span class="taxcalc-field-help">정산기준일 가액이 당초보다 기준금액 이상 낮아졌을 때 환급액 계산용, 가액 하락시만</span></div>' +
+        '<div class="taxcalc-field"><label>증여받거나 유상취득한 주식수</label><input type="number" id="slShares" placeholder="주"></div>' +
+        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="slRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="slAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>신고 상태</label><select id="slFilingStatus">' +
+          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="slFraudulent"><label for="slFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
+        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="slUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
+        '<div class="taxcalc-field"><label>증여일(정산기준일)</label><input type="text" class="taxcalc-date" id="slGiftDate" placeholder="YYYY-MM-DD"></div>' +
+        '<div class="taxcalc-field"><label>실제 납부일</label><input type="text" class="taxcalc-date" id="slPaidDate" placeholder="YYYY-MM-DD"></div>' +
+        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="slUnpaidDays" placeholder="0" readonly></div>' +
+        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="slMonthsAfterDesignated" placeholder="0"></div>' +
+        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="slUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
+      '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-stock-listing-gift">증여세 계산하기</button>' +
+      '<div id="taxCalcStockListingGiftResult"></div>' +
+    
+      '</div>' +
+      '<div id="giftSpecialCase-pv" style="display:none;">' +
+      '<div class="taxcalc-asset-head"><b>재산 취득 후 재산가치 증가에 따른 이익의 증여(§42의3) — 자력없는 자가 특수관계인으로부터 증여·차입 등으로 재산을 취득한 후 5년 이내 개발사업·형질변경 등으로 재산가치가 증가한 경우</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>재산가치증가사유 발생일 현재 재산가액</label><input type="number" id="pvEventValue" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>취득가액</label><input type="number" id="pvAcquisitionCost" placeholder="원"><span class="taxcalc-field-help">증여받은 재산이면 그 증여세 과세가액</span></div>' +
+        '<div class="taxcalc-field"><label>통상적인 가치상승분</label><input type="number" id="pvNormalAppreciation" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>가치상승기여분</label><input type="number" id="pvContribution" placeholder="원"><span class="taxcalc-field-help">개발·형질변경 등 자본적지출액</span></div>' +
+        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="pvAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>신고 상태</label><select id="pvFilingStatus">' +
+          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="pvFraudulent"><label for="pvFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
+        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="pvUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
+        '<div class="taxcalc-field"><label>증여일</label><input type="text" class="taxcalc-date" id="pvGiftDate" placeholder="YYYY-MM-DD"><span class="taxcalc-field-help">재산가치증가사유 발생일</span></div>' +
+        '<div class="taxcalc-field"><label>실제 납부일</label><input type="text" class="taxcalc-date" id="pvPaidDate" placeholder="YYYY-MM-DD"></div>' +
+        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="pvUnpaidDays" placeholder="0" readonly></div>' +
+        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="pvMonthsAfterDesignated" placeholder="0"></div>' +
+        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="pvUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
+      '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-property-value-increase-gift">증여세 계산하기</button>' +
+      '<div id="taxCalcPropertyValueIncreaseGiftResult"></div>' +
+    
+      '</div>' +
+    '</div>' +
+    
+    
+    // [2026.09.23 흡수] 채무면제이익(§36) 독립계산기는 giftValuationAssets의 평가방법
+    // "debtForgiveness"로 흡수 — 아래 삭제.
+    // [2026.09.23 흡수] 증자이익(§39)·감자이익(§39의2)·현물출자이익(§39의3) 독립계산기는
+    // giftValuationAssets의 평가방법 "capitalIncreaseBenefit"/"capitalReductionBenefit"/
+    // "inKindContributionBenefit"으로 흡수 — 아래 삭제. 감자(고가소각) 케이스는 원래
+    // 액면가액(faceValuePerShare) 입력칸 자체가 빠져 있어 계산이 항상 에러로 막혀있던 것을
+    // 이번에 새 필드(crFaceValue)로 같이 고쳤다.
+    '<div class="taxcalc-asset" style="margin-top:20px;">' +
+      '<div class="taxcalc-asset-head"><b>전환사채등의 주식전환등에 따른 이익의 증여(§40) — 전환사채·신주인수권부사채 등을 인수·취득·양도하거나 주식전환등을 할 때</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>케이스 구분</label><select id="cbCaseType">' +
+          '<option value="acquisition">취득시(법1호 — 저가취득)</option>' +
+          '<option value="conversion">전환시(법2호가~다목 — 교부주식가액이 전환가액등 초과)</option>' +
+          '<option value="conversion_reverse">전환시 반대편(법2호라목 — 특수관계인이 얻은 이익)</option>' +
+          '<option value="transfer">양도시(법3호 — 특수관계인에게 고가양도)</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field"><label>전환사채등의 시가</label><input type="number" id="cbFairValue" placeholder="원"><span class="taxcalc-field-help">취득·양도시만</span></div>' +
+        '<div class="taxcalc-field"><label>인수·취득가액</label><input type="number" id="cbAcquisitionCost" placeholder="원"><span class="taxcalc-field-help">취득시만</span></div>' +
+        '<div class="taxcalc-field"><label>양도가액</label><input type="number" id="cbTransferPrice" placeholder="원"><span class="taxcalc-field-help">양도시만</span></div>' +
+        '<div class="taxcalc-field"><label>전환등 전 1주당 평가가액</label><input type="number" id="cbPreValue" placeholder="원"><span class="taxcalc-field-help">전환시만</span></div>' +
+        '<div class="taxcalc-field"><label>전환등 전 발행주식총수</label><input type="number" id="cbPreShares" placeholder="주"><span class="taxcalc-field-help">전환시만</span></div>' +
+        '<div class="taxcalc-field"><label>전환가액등(1주당 전환·교환·인수가액)</label><input type="number" id="cbConversionPrice" placeholder="원"><span class="taxcalc-field-help">전환시만</span></div>' +
+        '<div class="taxcalc-field"><label>전환등으로 증가한(교부받은) 주식수</label><input type="number" id="cbIncreasedShares" placeholder="주"><span class="taxcalc-field-help">전환시만</span></div>' +
+        '<div class="taxcalc-field"><label>이자손실분 직접입력(선택)</label><input type="number" id="cbInterestLoss" placeholder="원"><span class="taxcalc-field-help">비워두면 아래 3개 필드로 자동계산, 전환시(정방향)만</span></div>' +
+        '<div class="taxcalc-field"><label>전환사채등 만기상환금액</label><input type="number" id="cbFaceValueAtMaturity" placeholder="원"><span class="taxcalc-field-help">전환시(정방향)만</span></div>' +
+        '<div class="taxcalc-field"><label>사채발행이율</label><input type="number" step="0.001" id="cbIssueRate" placeholder="연 이자율(소수, 예: 2%는 0.02)"><span class="taxcalc-field-help">전환시(정방향)만</span></div>' +
+        '<div class="taxcalc-field"><label>취득일부터 만기까지 기간</label><input type="number" step="0.1" id="cbYearsToMaturity" placeholder="년"><span class="taxcalc-field-help">전환시(정방향)만</span></div>' +
+        '<div class="taxcalc-field"><label>기과세된 취득시 이익</label><input type="number" id="cbPriorAcquisitionGift" placeholder="원"><span class="taxcalc-field-help">같은 건 법1호로 이미 과세된 금액, 없으면 0, 전환시(정방향)만</span></div>' +
+        '<div class="taxcalc-field"><label>그 특수관계인의 전환등전 보유지분비율</label><input type="number" step="0.01" min="0" max="1" id="cbRelatedRatio" placeholder="0~1"><span class="taxcalc-field-help">전환시 반대편만</span></div>' +
+        '<div class="taxcalc-field"><label>1년 이내 동일유형(케이스) 이전거래 이익 합계(§43②)</label><input type="number" id="cbPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액(취득시만)</label><input type="number" id="cbRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="cbAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>신고 상태</label><select id="cbFilingStatus">' +
+          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="cbFraudulent"><label for="cbFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
+        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="cbUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
+        '<div class="taxcalc-field"><label>증여일</label><input type="text" class="taxcalc-date" id="cbGiftDate" placeholder="YYYY-MM-DD"></div>' +
+        '<div class="taxcalc-field"><label>실제 납부일</label><input type="text" class="taxcalc-date" id="cbPaidDate" placeholder="YYYY-MM-DD"></div>' +
+        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="cbUnpaidDays" placeholder="0" readonly></div>' +
+        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="cbMonthsAfterDesignated" placeholder="0"></div>' +
+        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="cbUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-field" style="font-size:11.5px; color:var(--sub);">아래 5칸은 "취득시(caseType=acquisition)"에만 적용됩니다 — 전환·양도분은 §47①에 따라 합산배제이므로 무시됩니다.</div>' +
+      '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('cb') + '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-convertible-bond-gift">증여세 계산하기</button>' +
+      '<div id="taxCalcConvertibleBondGiftResult"></div>' +
+    '</div>' +
+    // [2026.09.23 흡수] 부동산무상사용·담보이용이익(§37) 독립계산기는 giftValuationAssets의
+    // 평가방법 "freePropertyUse"로 흡수 — 아래 삭제.
+    // [2026.09.23 흡수] 배우자등 양도재산 증여추정(§44) 독립계산기는 giftValuationAssets의
+    // 평가방법 "spousePropertyTransfer"로 흡수 — 아래 삭제.
+    // [2026.09.23 흡수] 보험금증여(§34)·신탁이익증여(§33) 독립계산기는 giftValuationAssets의
+    // 평가방법 "insuranceProceeds"/"trustIncome"으로 흡수 — 아래 삭제.
+    
+    
+        // [2026.09.24 재구성] 특정법인거래이익(§45의5)·초과배당(§41의2)은 원래 일반 증여재산과
+    // 합산해야 하지만, sc는 §45의5②의 '직접증여시 증여세상당액' 캡을 이 항목만의 산출세액으로
+    // 따로 계산해 비교해야 하고, ed는 최초신고(추정)·정산신고(확정)가 서로 다른 과세연도에
+    // 걸쳐 있어, 지금 구조로는 자동 합산이 불가능해 별도 계산기로 남겼다(재검토51 참고) —
+    // 계산된 금액은 실제 신고시 위 일반 증여세 계산의 증여재산가액에 반영할지 직접 판단해야
+    // 한다. 그래도 화면은 세무사님 지시대로 카드 하나로 묶는다.
+    '<div class="taxcalc-asset" style="margin-top:20px;">' +
+      '<div class="taxcalc-asset-head"><b>⚠ 합산은 필요하지만 이 도구가 자동 합산하지 못하는 증여 — 계산 후 위 증여재산가액에 반영할지 직접 판단하세요</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>구분</label><select id="giftAggUnmergeableType" data-action="switch-gift-agg-unmergeable">' +
+          '<option value="sc">특정법인과의 거래를 통한 이익의 증여의제(§45의5)</option>' +
+          '<option value="ed">초과배당에 따른 이익의 증여(§41의2)</option>' + +
+        '</select></div>' +
+      '</div>' +
+      '<div id="giftAggUnmergeableType-sc">' +
+      '<div class="taxcalc-asset-head"><b>특정법인과의 거래를 통한 이익의 증여의제(§45의5) — 지배주주 지분 30%이상 법인이 지배주주의 특수관계인과 무상제공·저가양도·고가양수·불균등 자본거래 등을 할 때</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>특정법인이 얻는 이익</label><input type="number" id="scBenefitToCorp" placeholder="원"><span class="taxcalc-field-help">증여재산가액·채무면제이익·자본거래이익·시가차액 등, 별도 계산</span></div>' +
+        '<div class="taxcalc-field"><label>특정법인의 법인세 산출세액(공제·감면 차감후)</label><input type="number" id="scCorpTax" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>특정법인의 해당 사업연도 소득금액</label><input type="number" id="scCorpIncome" placeholder="원"><span class="taxcalc-field-help">법인세법§14</span></div>' +
+        '<div class="taxcalc-field"><label>지배주주등의 주식보유비율</label><input type="number" step="0.01" min="0" max="1" id="scShareRatio" placeholder="0~1"></div>' +
+        '<div class="taxcalc-field"><label>직접증여시 증여세상당액(§45의5② 한도용)</label><input type="number" id="scDirectGiftTax" placeholder="원"><span class="taxcalc-field-help">관계별공제 반영해 별도 계산, 없으면 한도 미적용</span></div>' +
+        '<div class="taxcalc-field"><label>1년 이내 같은 특정법인과의 이전거래 이익 합계(§43②)</label><input type="number" id="scPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="scRelationDeduction" placeholder="원"><span class="taxcalc-field-help">증여자가 법인이므로 통상 0</span></div>' +
+        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="scAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>신고 상태</label><select id="scFilingStatus">' +
+          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="scFraudulent"><label for="scFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
+        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="scUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
+        '<div class="taxcalc-field"><label>특정법인 사업연도 종료일</label><input type="date" id="scFiscalYearEnd" min="1900-01-01" max="2099-12-31"></div>' +
+        '<div class="taxcalc-field"><label>실제 납부일</label><input type="text" class="taxcalc-date" id="scPaidDate" placeholder="YYYY-MM-DD"></div>' +
+        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="scUnpaidDays" placeholder="0" readonly><span class="taxcalc-field-help">사업연도종료일+3개월 신고기한 대비</span></div>' +
+        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="scMonthsAfterDesignated" placeholder="0"></div>' +
+        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="scUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('sc') + '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-specific-corp-gift">증여세 계산하기</button>' +
+      '<div id="taxCalcSpecificCorpGiftResult"></div>' +
+    
+      '</div>' +
+      '<div id="giftAggUnmergeableType-ed" style="display:none;">' +
+      '<div class="taxcalc-asset-head"><b>초과배당에 따른 이익의 증여(§41의2) — 최대주주등이 배당을 포기하거나 불균등 조건으로 배당받아 그 특수관계인이 본인 지분보다 많은 배당을 받았을 때</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="edFinalSettlement"><label for="edFinalSettlement">정산 신고임(실제소득세액 기준, 체크 안 하면 최초 신고=추정소득세상당액 기준)</label></div>' +
+        '<div class="taxcalc-field"><label>특수관계인이 실제 받은 배당등의 금액</label><input type="number" id="edBaseAmount" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>최대주주등의 과소배당금액이 차지하는 비율</label><input type="number" step="0.01" min="0" max="1" id="edShortfallRatio" placeholder="0~1"><span class="taxcalc-field-help">시행령§31의2②2호</span></div>' +
+        '<div class="taxcalc-field"><label>추정 소득세상당액(선택)</label><input type="number" id="edEstimatedTax" placeholder="원"><span class="taxcalc-field-help">비워두면 시행규칙§10의3① 추정율표로 자동계산, 최초신고만</span></div>' +
+        '<div class="taxcalc-field"><label>종합소득과세표준</label><input type="number" id="edComprehensiveBase" placeholder="원"><span class="taxcalc-field-help">초과배당금액발생연도, 초과배당금액 포함된 값 — 입력시 자동계산, 정산신고·종합과세만</span></div>' +
+        '<div class="taxcalc-field"><label>실제 소득세액 직접입력</label><input type="number" id="edActualTax" placeholder="원"><span class="taxcalc-field-help">종합과세면 위 종합소득과세표준을 입력하세요, 정산신고·비과세/분리과세만</span></div>' +
+        '<div class="taxcalc-field"><label>1년 이내 동일 최대주주등의 이전 초과배당금액 합계(§43②)</label><input type="number" id="edPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="edRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="edAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>신고 상태</label><select id="edFilingStatus">' +
+          '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="edFraudulent"><label for="edFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
+        '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="edUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
+        '<div class="taxcalc-field"><label>증여일(배당지급일)</label><input type="text" class="taxcalc-date" id="edGiftDate" placeholder="YYYY-MM-DD"></div>' +
+        '<div class="taxcalc-field"><label>실제 납부일</label><input type="text" class="taxcalc-date" id="edPaidDate" placeholder="YYYY-MM-DD"></div>' +
+        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="edUnpaidDays" placeholder="0" readonly></div>' +
+        '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="edMonthsAfterDesignated" placeholder="0"></div>' +
+        '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="edUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('ed') + '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-excess-dividend-gift">증여세 계산하기</button>' +
+      '<div id="taxCalcExcessDividendGiftResult"></div>' +
+    
+      '</div>' +
+    '</div>' +
+    // [2026.09.24 재구성] 비과세판정·공익법인가산세·장애인신탁·중복적용배제 4개는 증여세
+    // 계산 자체가 아니라 판정·가산세·과세특례 선택 등 부가 확인 도구라 카드 하나로 묶는다.
+    '<div class="taxcalc-asset" style="margin-top:20px;">' +
+      '<div class="taxcalc-asset-head"><b>증여세 판정·부가 확인 도구</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>구분</label><select id="giftUtilityToolType" data-action="switch-gift-utility-tool">' +
+          '<option value="ntg">비과세되는 증여재산(§46)</option>' +
+          '<option value="po">공익법인등에 대한 가산세(§78)</option>' +
+          '<option value="dt">장애인이 증여받은 재산의 과세가액 불산입(§52의2)</option>' +
+          '<option value="gsp">증여세 과세특례 조문 중복적용 배제(§43①)</option>' + +
+        '</select></div>' +
+      '</div>' +
+      '<div id="giftUtilityToolType-ntg">' +
+      '<div class="taxcalc-asset-head"><b>비과세되는 증여재산(§46) — 국가·지자체 증여, 우리사주조합 취득이익, 정당·사내근로복지기금 등 단체 증여, 이재구호금품·치료비·생활비·교육비, 장애인 보험금, 국가유공자 유족 성금, 비영리법인 승계재산 등</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>항목 구분</label><select id="ntItemType">' +
+          '<option value="government">국가·지방자치단체 증여(1호)</option>' +
+          '<option value="esop">우리사주조합 취득이익(2호)</option>' +
+          '<option value="political_party">정당 증여(3호)</option>' +
+          '<option value="labor_welfare_fund">사내근로복지기금 등(4호)</option>' +
+          '<option value="disaster_relief">이재구호금품·치료비·생활비·교육비(5호)</option>' +
+          '<option value="credit_guarantee_fund">신용보증기금 등(6호)</option>' +
+          '<option value="public_entity">국가·지자체·공공단체(7호)</option>' +
+          '<option value="disabled_insurance">장애인 보험금(8호)</option>' +
+          '<option value="veteran_bereaved">국가유공자·의사자 유족 성금(9호)</option>' +
+          '<option value="npo_succession">비영리법인 승계재산(10호)</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field"><label>금액</label><input type="number" id="ntAmount" placeholder="원"></div>' +
+      '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-nontaxable-gift">비과세 여부 확인하기</button>' +
+      '<div id="taxCalcNontaxableGiftResult"></div>' +
+    
+      '</div>' +
+      '<div id="giftUtilityToolType-po" style="display:none;">' +
+      '<div class="taxcalc-asset-head"><b>공익법인등에 대한 가산세(§78) — 유형을 고른 뒤 해당하는 입력란만 채우세요</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>가산세 유형</label><select id="poPenaltyType">' +
+          '<option value="report_not_filed">§78③ 출연재산 사용계획보고서 미제출·불분명</option>' +
+          '<option value="stock_holding_exceeded_5pct">§78④(§49①) 주식등 5%보유기준 초과</option>' +
+          '<option value="management_violation">§78⑤ 세무확인·장부작성비치·회계감사 의무 불이행</option>' +
+          '<option value="director_excess">§78⑥ 이사정원(5분의1) 초과</option>' +
+          '<option value="stock_holding_exceeded_related">§78⑦(§48⑨) 특수관계법인주식 30%/50%한도 초과</option>' +
+          '<option value="advertising">§78⑧(§48⑩) 특수관계법인 무상 광고·홍보</option>' +
+          '<option value="income_underused">§78⑨(§48②5·7호) 운용소득·매각대금·기준금액 미달사용</option>' +
+          '<option value="dedicated_account_not_opened">§78⑩2호 전용계좌 개설·신고 미이행</option>' +
+          '<option value="dedicated_account_unused">§78⑩1호 전용계좌 미사용</option>' +
+          '<option value="disclosure_violation">§78⑪ 결산서류등 공시의무 위반</option>' +
+          '<option value="report_not_filed_5pct">§78⑭(§48⑬) 의무이행여부 신고 미이행</option>' +
+          '<option value="cultural_heritage_status_not_filed">§78⑮1호(§74⑤⑥) 문화유산 보유현황자료 미제출</option>' +
+          '<option value="cultural_heritage_transfer_not_filed">§78⑮2호(§74⑤⑦) 문화유산 양도사실 미신고</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field"><label>상당 상속세·증여세액</label><input type="number" id="poBaseTaxAmount" placeholder="원"><span class="taxcalc-field-help">보고서미제출만</span></div>' +
+        '<div class="taxcalc-field"><label>징수유예 받은 상속세액</label><input type="number" id="poDeferredTaxAmount" placeholder="원"><span class="taxcalc-field-help">문화유산자료미제출·미신고만</span></div>' +
+        '<div class="taxcalc-field"><label>초과주식 시가</label><input type="number" id="poExcessStockValue" placeholder="원"><span class="taxcalc-field-help">5%보유초과만</span></div>' +
+        '<div class="taxcalc-field"><label>수입금액+출연재산가액</label><input type="number" id="poRevenueAndDonation" placeholder="원"><span class="taxcalc-field-help">해당 과세기간·사업연도, 세무확인등만</span></div>' +
+        '<div class="taxcalc-field"><label>위반 세부유형</label><select id="poViolationSubType">' +
+          '<option value="tax_confirmation">세무확인 보고의무 불이행(최소100만원)</option>' +
+          '<option value="bookkeeping">장부작성·비치의무 불이행</option>' +
+          '<option value="audit">회계감사의무 불이행</option>' +
+        '</select><span class="taxcalc-field-help">세무확인등만</span></div>' +
+        '<div class="taxcalc-field"><label>관련 직접·간접경비</label><input type="number" id="poRelatedExpense" placeholder="원"><span class="taxcalc-field-help">이사초과만</span></div>' +
+        '<div class="taxcalc-field"><label>보유 중인 특수관계법인 주식가액</label><input type="number" id="poStockValue" placeholder="원"><span class="taxcalc-field-help">30/50%초과만</span></div>' +
+        '<div class="taxcalc-field"><label>총재산가액(자산총액)</label><input type="number" id="poTotalAssetValue" placeholder="원"><span class="taxcalc-field-help">30/50%초과·공시위반·미신고만</span></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="poMeetsCompliance"><label for="poMeetsCompliance">[30/50%초과만] 회계감사·전용계좌·결산공시 의무 모두 이행(한도 50%)</label></div>' +
+        '<div class="taxcalc-field"><label>직접 지출경비</label><input type="number" id="poDirectExpense" placeholder="원"><span class="taxcalc-field-help">광고홍보만</span></div>' +
+        '<div class="taxcalc-field"><label>기준금액 미달사용액(직접입력, §48②5호)</label><input type="number" id="poUnderusedAmount" placeholder="원"><span class="taxcalc-field-help">§48②7호는 아래 4개 필드로 자동계산 가능, 미달사용만</span></div>' +
+        '<div class="taxcalc-field"><label>부채가액</label><input type="number" id="poLiabilityValue" placeholder="원"><span class="taxcalc-field-help">직전 과세기간·사업연도 종료일 재무상태표, 미달사용·§48②7호만</span></div>' +
+        '<div class="taxcalc-field"><label>당기순이익</label><input type="number" id="poNetIncomeValue" placeholder="원"><span class="taxcalc-field-help">같은 기준일 운영성과표, 미달사용·§48②7호만</span></div>' +
+        '<div class="taxcalc-field"><label>실제 직접공익목적사업 사용액</label><input type="number" id="poActualDirectUseAmount" placeholder="원"><span class="taxcalc-field-help">없으면 0, 미달사용·§48②7호만</span></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="poUseAssessedValueBasis"><label for="poUseAssessedValueBasis">[미달사용·§48②7호만] 위 총재산가액이 상증세법상 평가액 기준(재무상태표 자산가액이 평가액의 70%이하인 경우)</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="poHighHoldingType"><label for="poHighHoldingType">[미달사용만] §48②7호가목 유형(10%초과보유, 가산율 200%)</label></div>' +
+        '<div class="taxcalc-field"><label>매각대금</label><input type="number" id="poSaleProceedsAmount" placeholder="원"><span class="taxcalc-field-help">기본재산 매각대금, 미달사용·§48②5호매각대금만</span></div>' +
+        '<div class="taxcalc-field"><label>확인시점</label><select id="poSaleCheckpointYear">' +
+          '<option value="">선택</option>' +
+          '<option value="1">매각일로부터 1년(30%기준)</option>' +
+          '<option value="2">매각일로부터 2년(60%기준)</option>' +
+        '</select><span class="taxcalc-field-help">미달사용·§48②5호매각대금만</span></div>' +
+        '<div class="taxcalc-field"><label>누적 실제사용액</label><input type="number" id="poCumulativeActualUsedAmount" placeholder="원"><span class="taxcalc-field-help">매각일부터 확인시점까지, 미달사용·§48②5호매각대금만</span></div>' +
+        '<div class="taxcalc-field"><label>수익사업 소득금액등 합계</label><input type="number" id="poOperatingIncomeAmount" placeholder="원"><span class="taxcalc-field-help">시행령§38⑤1호, 미달사용·§48②5호운용소득만</span></div>' +
+        '<div class="taxcalc-field"><label>법인세등 및 이월결손금</label><input type="number" id="poTaxAndCarryforwardLossAmount" placeholder="원"><span class="taxcalc-field-help">시행령§38⑤2호, 미달사용·§48②5호운용소득만</span></div>' +
+        '<div class="taxcalc-field"><label>실제 사용액</label><input type="number" id="poActualOperatingIncomeUsedAmount" placeholder="원"><span class="taxcalc-field-help">없으면 0, 미달사용·§48②5호운용소득만</span></div>' +
+        '<div class="taxcalc-field"><label>미사용 거래금액</label><input type="number" id="poUnusedTransaction" placeholder="원"><span class="taxcalc-field-help">전용계좌미사용만</span></div>' +
+        '<div class="taxcalc-field"><label>직접 공익목적사업 관련 수입금액 총액</label><input type="number" id="poDirectBusinessRevenueAmount" placeholder="원"><span class="taxcalc-field-help">전용계좌미개설·가목만</span></div>' +
+        '<div class="taxcalc-field"><label>미개설·미신고 일수</label><input type="number" id="poUnregisteredDays" placeholder="일"><span class="taxcalc-field-help">신고기한 다음날~신고일 전날, 전용계좌미개설·가목만</span></div>' +
+        '<div class="taxcalc-field"><label>해당 과세기간(사업연도) 총 일수</label><input type="number" id="poTotalPeriodDays" placeholder="일"><span class="taxcalc-field-help">전용계좌미개설·가목만</span></div>' +
+        '<div class="taxcalc-field"><label>§50의2①1~4호 거래금액 합계</label><input type="number" id="poTotalRelevantTransactionAmount" placeholder="원"><span class="taxcalc-field-help">전용계좌미개설·나목만</span></div>' +
+      '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-public-interest-org-penalty">가산세액 계산하기</button>' +
+      '<div id="taxCalcPublicInterestOrgPenaltyResult"></div>' +
+    
+      '</div>' +
+      '<div id="giftUtilityToolType-dt" style="display:none;">' +
+      '<div class="taxcalc-asset-head"><b>장애인이 증여받은 재산의 과세가액 불산입(§52의2) — 장애인 본인 수익 자익신탁 또는 타인이 장애인 수익으로 설정한 타익신탁, 생애 5억원 한도</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="dtMeetsRequirements"><label for="dtMeetsRequirements">신탁업자 신탁·장애인 전부수익자 등 §52의2①·②요건 충족</label></div>' +
+        '<div class="taxcalc-field"><label>증여받은 재산가액(자익) 또는 신탁원본가액(타익)</label><input type="number" id="dtAmount" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>기존 누적 활용액(생애)</label><input type="number" id="dtPriorCumulative" placeholder="원"><span class="taxcalc-field-help">없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>사후관리 위반 사유</label><select id="dtTriggerEvent">' +
+          '<option value="none">없음</option>' +
+          '<option value="terminated_not_rejoined">해지·만료(1개월내 재가입 안함)</option>' +
+          '<option value="beneficiary_changed">수익자 변경</option>' +
+          '<option value="benefit_diverted">이익이 타인에게 귀속</option>' +
+          '<option value="principal_decreased">신탁원본 감소</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="dtExempted"><label for="dtExempted">부득이한 사유 또는 의료비 등 정해진 용도의 인출임(즉시과세 예외)</label></div>' +
+      '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-disabled-trust-exclusion">과세가액 산입액 계산하기</button>' +
+      '<div id="taxCalcDisabledTrustExclusionResult"></div>' +
+    
+      '</div>' +
+      '<div id="giftUtilityToolType-gsp" style="display:none;">' +
+      '<div class="taxcalc-asset-head"><b>증여세 과세특례 — 조문 중복적용 배제(§43①) — 하나의 증여에 §33~39·39의2·39의3·40·41의2~41의5·42·42의2·42의3·44·45·45의3~45의5 중 둘 이상의 증여의제·증여추정 규정이 동시에 적용될 수 있을 때, 각 조문별로 계산한 증여재산가액을 아래에 입력하면 이익이 가장 많은 것 하나만 골라줍니다(나머지는 적용하지 않음)</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>후보1 조문</label><input type="text" id="gspArticle1" placeholder="예: §35 저가양수"></div>' +
+        '<div class="taxcalc-field"><label>후보1 증여재산가액</label><input type="number" id="gspAmount1" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>후보2 조문</label><input type="text" id="gspArticle2" placeholder="예: §42 재산사용이익"></div>' +
+        '<div class="taxcalc-field"><label>후보2 증여재산가액</label><input type="number" id="gspAmount2" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>후보3 조문(선택)</label><input type="text" id="gspArticle3" placeholder=""></div>' +
+        '<div class="taxcalc-field"><label>후보3 증여재산가액(선택)</label><input type="number" id="gspAmount3" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>후보4 조문(선택)</label><input type="text" id="gspArticle4" placeholder=""></div>' +
+        '<div class="taxcalc-field"><label>후보4 증여재산가액(선택)</label><input type="number" id="gspAmount4" placeholder="원"></div>' +
+      '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-gift-special-provision-overlap">중복적용 배제 판정하기</button>' +
+      '<div id="taxCalcGiftOverlapResult"></div>' +
+    
+      '</div>' +
+    '</div>' +
+    
+    
+    
+    
+    // [2026.09.24 재구성] 공익법인출연(§16·§48①)은 증여·상속 어느 쪽이든 계산 가능해
+    // renderGiftInheritanceSharedPane_()의 공유 패널로 옮겼다 — 아래 삭제.
+    
+    
+    // [2026.09.23 흡수] 합병이익(§38)·재산사용용역이익(§42)·조직변경이익(§42의2) 독립계산기는
+    // giftValuationAssets의 평가방법 "mergerBenefit"/"propertyUseService"/"orgChangeBenefit"로
+    // 흡수 — 아래 삭제.
+    
+    // [2026.09.24 재구성] 연부연납(증여쪽 중복이었던 이 블록은 상속쪽의 taxType선택형으로
+    // 통합)·이자상당액·가업승계납부유예·가업승계사후관리추징·물납가능여부(상속전용인데 여기
+    // 있었음)·물납수납가액·문화재징수유예는 증여·상속 어느 쪽이든 계산 가능해
+    // renderGiftInheritanceSharedPane_()의 공유 패널로 옮겼다 — 아래 전부 삭제.
+    // [2026.09.23 흡수] 저가양수도이익(§35)·무상대출이익(§41의4) 독립계산기는 이미 화면
+    // 안내문구 자체가 "계산된 금액을 위 일반 증여세 계산기의 증여재산가액에 넣으세요"였다 —
+    // giftValuationAssets의 평가방법 "lowPriceTransfer"/"interestFreeLoan"으로 흡수해 그
+    // 수동 입력 단계 자체를 없앤다. 아래 삭제.
+    
+    
       '<div class="taxcalc-ai-status" id="aiStatus-inheritance"></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>성명</label><input type="text" id="ihDeceasedName" data-nameonly="1"></div>' +
@@ -7298,11 +7371,34 @@ document.querySelectorAll('#taxCalcTierTabs [data-tier]').forEach(function(tab){
 // 해당 사안의 입력·버튼·결과 영역만 보여주고 나머지는 숨긴다(다른 사안에 입력해둔 값은
 // 그대로 유지 — 카드를 다시 그리지 않고 표시만 전환).
 taxCalcView.addEventListener('change', function(e){
-  if (e.target.id !== 'trSpecialCaseType') return;
-  ['bt', 'pr', 'mr', 'fr'].forEach(function(key){
-    const el = document.getElementById('trSpecialCase-' + key);
-    if (el) el.style.display = (key === e.target.value) ? '' : 'none';
-  });
+  if (e.target.id === 'trSpecialCaseType'){
+    ['bt', 'pr', 'mr', 'fr'].forEach(function(key){
+      const el = document.getElementById('trSpecialCase-' + key);
+      if (el) el.style.display = (key === e.target.value) ? '' : 'none';
+    });
+    return;
+  }
+  if (e.target.id === 'giftSpecialCaseType'){
+    ['nt', 'pf', 'jm', 'jt', 'sl', 'pv'].forEach(function(key){
+      const el = document.getElementById('giftSpecialCase-' + key);
+      if (el) el.style.display = (key === e.target.value) ? '' : 'none';
+    });
+    return;
+  }
+  if (e.target.id === 'giftAggUnmergeableType'){
+    ['sc', 'ed'].forEach(function(key){
+      const el = document.getElementById('giftAggUnmergeableType-' + key);
+      if (el) el.style.display = (key === e.target.value) ? '' : 'none';
+    });
+    return;
+  }
+  if (e.target.id === 'giftUtilityToolType'){
+    ['ntg', 'po', 'dt', 'gsp'].forEach(function(key){
+      const el = document.getElementById('giftUtilityToolType-' + key);
+      if (el) el.style.display = (key === e.target.value) ? '' : 'none';
+    });
+    return;
+  }
 });
 
 // 클릭 위임 — 거래추가/삭제/계산 버튼들은 매번 다시 그려지므로(renderTransferPane) 위임 방식이 안전하다.
