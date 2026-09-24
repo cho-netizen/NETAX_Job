@@ -4122,7 +4122,12 @@ var TR_MONEY_FIELDS_TO_SCALE_ = [
   'donorAcquisitionPrice', 'donorNecessaryExpenses', 'doneeOwnAcquisitionPrice', 'doneeOwnNecessaryExpenses',
   'giftTaxPaid', 'giftTaxableValue', 'nhFiveYearMarkValue', 'nhAcquisitionStandardPrice', 'nhFiveYearStandardPrice',
   'nhTransferStandardPrice', 'uhFiveYearMarkValue', 'uhAcquisitionStandardPrice', 'uhFiveYearStandardPrice',
-  'uhTransferStandardPrice', 'pensionAccountContribution', 'decedentAcquisitionValue'
+  'uhTransferStandardPrice', 'pensionAccountContribution',
+  // [2026.09.24 버그수정] 구조조정대상 부동산(rp, §43)·장기임대주택 §97의5(lr) 감면도 nh/uh와
+  // 완전히 같은 fiveYearMarkGain() 근사식(절대금액－취득가액)을 쓰는데, 처음 목록을 만들 때
+  // 이 두 세목의 절대금액 필드가 빠져 있었다 — 공동양도인 지분만큼 취득가액은 줄어드는데 이
+  // 절대금액은 그대로라 지분율이 큰 사람일수록 감면대상소득이 부풀려지는 오류였다.
+  'rpFiveYearMarkValue', 'lrRegistrationValue'
 ];
 function collectTransferInput(vals){
   const transferPrice = numVal(vals.transferPrice) || 0;
@@ -7986,7 +7991,12 @@ taxCalcView.addEventListener('click', function(e){
             isTransferorResident: seller.isTransferorResident !== false,
             isNonResidentTwoYearException: !!seller.isNonResidentTwoYearException
           }));
+          // [2026.09.24 버그수정] decedentAcquisitionValue는 "입력 안 함(null)"과 "0원(숫자)"이
+          // 서로 다른 의미(가업승계 조정 자체를 켤지 여부)라, 아래 forEach가 null도 0으로
+          // 바꿔버리기 전에 미리 null 여부를 기억해뒀다가 스케일 후 다시 null로 되돌린다.
+          const decedentValueWasNull = resolved.decedentAcquisitionValue == null;
           TR_MONEY_FIELDS_TO_SCALE_.forEach(function(k){ resolved[k] = Math.round((resolved[k] || 0) * ratio); });
+          if (decedentValueWasNull) resolved.decedentAcquisitionValue = null;
           return resolved;
         }).filter(Boolean);
         if (!sellerAssets.length) return null;
