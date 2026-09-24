@@ -2938,7 +2938,19 @@ function refreshGiftAssetAllocationList_(){
       const allocIdx = numVal(el.closest('[data-dalloc-idx]').dataset.dallocIdx);
       const key = el.dataset.dafield;
       if (!Array.isArray(valuationAssets[assetIdx].donorAllocations)) valuationAssets[assetIdx].donorAllocations = [{}];
-      valuationAssets[assetIdx].donorAllocations[allocIdx][key] = el.value;
+      const alloc = valuationAssets[assetIdx].donorAllocations[allocIdx];
+      alloc[key] = el.value;
+      // [2026.09.24 신규] "증여자를 고르면 그 증여자의 기본 증여지분을 우선 채우고, 필요하면
+      // 이 자산에서만 직접 고치게" — 지분칸이 아직 비어있을 때만 기본값을 채운다(이미 이
+      // 자산에서 직접 지분을 적어놨으면 절대 덮어쓰지 않음).
+      if (key === 'donorIdx' && !alloc.ratio){
+        const donor = giftDonors[numVal(el.value)];
+        if (donor && donor.giftShareRatio){
+          alloc.ratio = donor.giftShareRatio;
+          const ratioEl = el.closest('[data-dalloc-idx]').querySelector('[data-dafield="ratio"]');
+          if (ratioEl) ratioEl.value = donor.giftShareRatio;
+        }
+      }
       updateDonorActualValueHints();
       updateDoneeActualValueHints();
     });
@@ -2954,7 +2966,17 @@ function refreshInheritanceAssetAllocationList_(){
       const allocIdx = numVal(el.closest('[data-alloc-idx]').dataset.allocIdx);
       const key = el.dataset.hafield;
       if (!Array.isArray(valuationAssets[assetIdx].heirAllocations)) valuationAssets[assetIdx].heirAllocations = [{}];
-      valuationAssets[assetIdx].heirAllocations[allocIdx][key] = el.value;
+      const alloc = valuationAssets[assetIdx].heirAllocations[allocIdx];
+      alloc[key] = el.value;
+      // 상속인 버전 — 위 증여자 버전과 같은 패턴, 실제상속지분을 기본값으로 우선 채운다.
+      if (key === 'heirIdx' && !alloc.ratio){
+        const heir = inheritanceHeirs[numVal(el.value)];
+        if (heir && heir.actualShareRatio){
+          alloc.ratio = heir.actualShareRatio;
+          const ratioEl = el.closest('[data-alloc-idx]').querySelector('[data-hafield="ratio"]');
+          if (ratioEl) ratioEl.value = heir.actualShareRatio;
+        }
+      }
       updateHeirActualValueHints();
     });
   });
@@ -4804,6 +4826,10 @@ function renderGiftDonorRegistry(){
         // 증여자가 2명 이상이고 관계가 직계존속일 때만 노출 — 같은 값을 적은 증여자들끼리
         // (같은 수증인 대상 한정) run-gift에서 하나로 묶어 계산한다.
         (giftDonors.length > 1 && giftDonorEffectiveRelation_(d) === '직계존속' ? '<div class="taxcalc-field"><label>동일인 그룹(§47②)</label><input type="text" data-dfield="sameAsGroup" placeholder="예: 부부" value="' + (d.sameAsGroup || '').replace(/"/g, '&quot;') + '"><span class="taxcalc-field-help">배우자와 같은 증여로 합산할 경우 같은 값을 입력(같은 수증인 대상만 합산됩니다). 비워두면 이 증여자 혼자 독립 계산</span></div>' : '') +
+        // [2026.09.24 신규] 세무사님 지시 — 증여자별 기본 지분을 분수로 미리 받아두면, 재산평가
+        // 자산목록에서 이 증여자를 배분할 때마다 매번 지분을 새로 타이핑하지 않고 이 값이
+        // 우선 채워진다(개별 자산에서 다르게 배분해야 하면 그 자리에서 직접 고치면 됨).
+        (giftDonors.length > 1 ? '<div class="taxcalc-field"><label>증여지분(기본값)</label><input type="text" data-dfield="giftShareRatio" placeholder="1/2" value="' + (d.giftShareRatio || '').replace(/"/g, '&quot;') + '"><span class="taxcalc-field-help">여러 자산을 배분할 때 기본으로 채워질 지분 — 자산별로 다르면 그 자산의 배분 행에서 직접 고치세요</span></div>' : '') +
       '</div>' +
       (giftDonorGroupPrimaryIdx_(idx) !== idx ? '<div class="taxcalc-result-note" style="margin-top:6px;">⚠ 동일인 그룹 대표는 증여자 ' + tcPad2_(giftDonorGroupPrimaryIdx_(idx) + 1) + '입니다 — 아래 인수채무·10년합산·신고상태 입력은 계산에 반영되지 않고 대표 카드의 값만 쓰입니다(증여재산가액만 이 카드 몫으로 합산됨)</div>' : '') +
       '<div class="taxcalc-asset-head" style="margin-top:10px;"><b>증여재산가액 · 부담부증여(이 증여자 몫)</b></div>' +
@@ -4901,6 +4927,9 @@ function renderGiftDoneeRegistry(){
         '<div class="taxcalc-field"><label style="visibility:hidden;">관할세무서</label><input type="hidden" data-dnfield="taxOffice" id="giftDoneeTaxOffice' + suf + '" value="' + (dn.taxOffice || '').replace(/"/g, '&quot;') + '"><button type="button" class="taxcalc-ai-btn" data-action="open-tax-office-guide" data-address-input="giftDoneeAddress' + suf + '" data-office-input="giftDoneeTaxOffice' + suf + '">관할세무서</button></div>' +
         '<div class="taxcalc-field"><label>거주구분</label><select data-dnfield="resident"' + idOf('giftDoneeResident') + '><option value="resident"' + (dn.resident !== 'nonresident' ? ' selected' : '') + '>거주자</option><option value="nonresident"' + (dn.resident === 'nonresident' ? ' selected' : '') + '>비거주자</option></select><span class="taxcalc-field-help">국내에 주소를 두거나 183일 이상 거소를 둔 사람=거주자. 비거주자면 증여재산공제(§53)·혼인출산증여재산공제(§53의2)를 받을 수 없습니다</span></div>' +
         '<div class="taxcalc-field"><span class="taxcalc-result-note" data-donee-minor-hint="1" style="margin:0;"></span></div>' +
+        // [2026.09.24 신규] 증여자 카드의 "증여지분(기본값)"과 같은 패턴 — 수증인이 여러 명일 때
+        // 자산별 배분에서 기본으로 채워질 지분.
+        (giftDonees.length > 1 ? '<div class="taxcalc-field"><label>수증지분(기본값)</label><input type="text" data-dnfield="doneeShareRatio" placeholder="1/2" value="' + (dn.doneeShareRatio || '').replace(/"/g, '&quot;') + '"><span class="taxcalc-field-help">여러 자산을 배분할 때 기본으로 채워질 지분 — 자산별로 다르면 그 자산의 배분 행에서 직접 고치세요</span></div>' : '') +
       '</div>' +
       (giftDonees.length > 1 ? '<div class="taxcalc-result-note" data-donee-computed="actual" style="margin-top:4px;">위 재산평가 자산의 배분 합계(이 수증인 몫) = ' + won(computeDoneeActualValue_(idx)) + '</div>' : '') +
     '</div>';
@@ -6811,6 +6840,14 @@ function renderHeirRegistry(){
       // 동거주택가액 총액을 그대로 공제액 계산에 넣고 있었다(6억 한도에 걸리는 사건은 결과에
       // 영향 없지만, 그 미만인 사건은 공제가 과다계산될 수 있었다).
       '<div class="taxcalc-field" data-show-if-heir="isCohabitHouse" style="' + (h.isCohabitHouse ? '' : 'display:none;') + '"><label>위 주택에 담보된 피상속인 채무액</label><input type="number" data-hfield="cohabitHouseDebt" placeholder="원" value="' + (h.cohabitHouseDebt || '') + '"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+      // [2026.09.24 신규] 세무사님 지시 — 법정상속지분·실제상속지분을 분수로 먼저 받아두면,
+      // 재산평가 자산목록에서 이 상속인을 배분할 때마다 이 값이 우선 채워진다(협의분할로 특정
+      // 자산만 다르게 나눴으면 그 자산의 배분 행에서 직접 고치면 된다). 법정상속지분(민법§1009,
+      // 배우자1.5:그 외1)은 참고용으로 직접 입력 — 대습상속·상속포기 등 예외가 있어 자동계산
+      // 대신 세무사가 직접 판단해 적는다. 실제상속지분은 법정상속지분을 고치면 같이 따라가되,
+      // 한번 직접 고치면(협의분할 등으로 달라지면) 그 뒤로는 따로 논다.
+      '<div class="taxcalc-field"><label>법정상속지분(민법§1009, 참고용)</label><input type="text" data-hfield="statutoryShareRatio" placeholder="1/2" value="' + (h.statutoryShareRatio || '').replace(/"/g,'&quot;') + '"><span class="taxcalc-field-help">배우자는 다른 상속인의 1.5배 — 대습상속·상속포기 등이 있으면 직접 계산해 입력</span></div>' +
+      '<div class="taxcalc-field"><label>실제상속지분(기본값)</label><input type="text" data-hfield="actualShareRatio" placeholder="1/2" value="' + (h.actualShareRatio || '').replace(/"/g,'&quot;') + '"><span class="taxcalc-field-help">협의분할·유언 등으로 확정된 실제 몫 — 자산별 배분에서 기본으로 채워집니다(자산마다 다르면 그 배분 행에서 직접 고치세요)</span></div>' +
       '<div class="taxcalc-field" style="flex-basis:100%; max-width:none;"><span class="taxcalc-result-note" data-heir-computed="actual" style="margin:0;">실제상속재산가액(자동) = ' + won(computeHeirActualValue_(idx)) + ' — 아래 재산평가 자산목록의 "상속인별 배분"에서 정해집니다</span></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="hasPriorGift" id="hPriorGift-' + idx + '"' + (h.hasPriorGift ? ' checked' : '') + '><label for="hPriorGift-' + idx + '">10년 이내 이 상속인에게 사전증여 있음(§13 가산대상)</label></div>' +
       '<div class="taxcalc-field" data-show-if-heir="hasPriorGift" style="' + (h.hasPriorGift ? '' : 'display:none;') + '"><label>사전증여재산가액(증여 당시 원본가액)</label><input type="number" data-hfield="priorGiftAmount" placeholder="원" value="' + (h.priorGiftAmount || '') + '"></div>' +
@@ -6828,7 +6865,17 @@ function renderHeirRegistry(){
       const row = el.closest('[data-heir-idx]');
       const idx = numVal(row.dataset.heirIdx);
       const key = el.dataset.hfield;
+      // [2026.09.24 신규] 실제상속지분은 법정상속지분을 따라가다가, 세무사가 실제상속지분을
+      // 직접 고치는 순간부터는 따로 논다(협의분할이 법정지분과 달라진 것으로 봄) — 그래서
+      // "따라갈지"는 지금 두 값이 아직 같은지로 판단해야 하니, 덮어쓰기 전에 먼저 확인한다.
+      const h = inheritanceHeirs[idx];
+      const shouldSyncActual = key === 'statutoryShareRatio' && (h.actualShareRatio || '') === (h.statutoryShareRatio || '');
       inheritanceHeirs[idx][key] = el.type === 'checkbox' ? el.checked : el.value;
+      if (shouldSyncActual){
+        h.actualShareRatio = h.statutoryShareRatio;
+        const actualEl = row.querySelector('[data-hfield="actualShareRatio"]');
+        if (actualEl) actualEl.value = h.statutoryShareRatio;
+      }
       if (key === 'isCohabitHouse' || key === 'hasPriorGift'){
         row.querySelectorAll('[data-show-if-heir="' + key + '"]').forEach(function(field){
           field.style.display = el.checked ? 'flex' : 'none';
