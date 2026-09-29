@@ -4173,12 +4173,16 @@ function renderTransferPane(){
         '<div id="taxCalcFarmlandRepurchaseResult"></div>' +
       '</div>' +
     '</div>' +
-    '<div class="taxcalc-asset-head" style="margin-top:20px;"><b>서식·전자신고 — 양도소득세과세표준신고 및 자진납부계산서(C116300)</b></div>' +
-    '<div class="taxcalc-result-note" style="margin:2px 0 8px;">국내 부동산·부동산에관한권리·기타자산(§94①1·2·4호) 양도분 기준입니다. 주식등·국외자산 양도는 이 파일에 포함되지 않습니다(별도 서식). ⚠ 위택스(wetax.go.kr)에 개인지방소득세(양도소득분)를 <b>별도로 신고해야 합니다</b> — 이 홈택스 파일에 포함되지 않으며, 위택스는 파일 업로드가 아닌 웹사이트 직접입력 방식이라 아래 "위택스 신고 참고자료" 버튼으로 옮겨 적을 값만 확인하세요. 양수인과의 관계 코드는 국세청 별지 코드표를 확보하지 못해 임시값(99)으로 채웠습니다.</div>' +
+    '<div class="taxcalc-asset-head" style="margin-top:20px;"><b>서식·전자신고 — 양도소득세과세표준신고 및 자진납부계산서(C116300, 국세청 홈택스)</b></div>' +
+    '<div class="taxcalc-result-note" style="margin:2px 0 8px;">국내 부동산·부동산에관한권리·기타자산(§94①1·2·4호) 양도분 기준입니다. 주식등·국외자산 양도는 이 파일에 포함되지 않습니다(별도 서식). 양수인과의 관계 코드는 국세청 별지 코드표를 확보하지 못해 임시값(99)으로 채웠습니다.</div>' +
     '<button type="button" class="taxcalc-run-btn" data-action="check-tr-efile">전자신고파일 작성하기</button>' +
     '<button type="button" class="taxcalc-run-btn" data-action="print-tr-form">🖨 인쇄용 서식 보기</button>' +
-    '<button type="button" class="taxcalc-run-btn" data-action="print-tr-wetax-form">🖨 위택스 신고 참고자료</button>' +
     '<div id="taxCalcTrEfileResult"></div>' +
+    '<div class="taxcalc-asset-head" style="margin-top:20px;"><b>서식·전자신고 — 개인지방소득세(양도소득) 과세표준 신고 및 납부계산서(C116300, 위택스)</b></div>' +
+    '<div class="taxcalc-result-note" style="margin:2px 0 8px;">⚠ 홈택스 파일과는 <b>완전히 별도로 위택스(wetax.go.kr)에 신고해야 합니다.</b> 위택스 공식 규격("개인지방소득세(양도소득) 파일레이아웃 VER 1.2.7", 행정안전부, 2026.6.30)에 맞춰 생성합니다 — 암호화는 필요 없습니다(평문 텍스트). 다만 <b>납세지 시도·시군구·법정동코드는 이 앱이 아직 수집하지 않아 빈칸으로 남습니다</b> — 위택스 업로드 전 직접 채워 넣으세요. 감면·가산세·세액공제는 국세 계산결과의 10% 근사치입니다.</div>' +
+    '<button type="button" class="taxcalc-run-btn" data-action="check-wt-efile">위택스 전자신고파일 작성하기</button>' +
+    '<button type="button" class="taxcalc-run-btn" data-action="print-tr-wetax-form">🖨 위택스 신고 참고자료</button>' +
+    '<div id="taxCalcWtEfileResult"></div>' +
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="stock" style="' + (trActiveSubtab_ === 'stock' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
@@ -6319,6 +6323,167 @@ function trWetaxPrintFormBodyHtml_(){
   const buyers = trCollectBuyers_();
   return (lastTransferResults_ || []).filter(function(item){ return item.result && !item.result.error; })
     .map(function(item){ return trWetaxPrintFormPageHtml_(item.seller || {}, item.result, buyers); }).join('');
+}
+
+// [2026.09.29 신규, 재검토81] 위택스 개인지방소득세(양도소득) 전자신고파일 — 세무사님이 직접
+// 위택스 지방세자료실(기타자료실)에서 받아주신 공식 규격서("개인지방소득세(양도소득)
+// 파일레이아웃 VER 1.2.7", 행정안전부, 2026.6.30 최종수정)를 그대로 구현한다. 이 규격서로
+// 확인된 핵심 사실(구글드라이브의 실제 위택스 업로드 파일이 암호화돼 있던 것과는 달리):
+// **암호화가 전혀 필요 없다** — LINE SEQUENTIAL, EUC-KR(2Byte완성형), CR/LF 구분의 평문
+// 텍스트로 국세청 파일과 완전히 같은 인코딩 방식이다(양도코리아의 .enc/.Y11/.Y13 파일이
+// 암호화된 건 위택스 요구사항이 아니라 그 회사 자체 선택으로 보인다).
+const WT_TR_FORM_CODE_ = 'C116300'; // 국세청 파일과 서식코드가 우연히 같음(위택스 자체 규격)
+
+function wtHeadRecord_(seller){
+  let b = [];
+  b = b.concat(ihPadChar_('01', 2));                          // 1 자료구분(HEADER)
+  b = b.concat(ihPadChar_(WT_TR_FORM_CODE_, 7));              // 2 서식코드
+  b = b.concat(ihPadChar_('140002', 6));                      // 3 세목구분코드(고정)
+  b = b.concat(ihPadChar_('B4011', 5));                       // 4 신고서식코드(별지 40호의11, 고정)
+  b = b.concat(ihPadChar_('9000', 4));                        // 5 세무프로그램코드(국세코드 준용, 9000=기타)
+  b = b.concat(ihPadChar_('', 13));                           // 6 세무대리인주민등록번호
+  b = b.concat(ihPadChar_('', 80));                           // 7 세무대리인성명
+  b = b.concat(ihPadChar_('', 10));                           // 8 세무대리인사업자등록번호
+  b = b.concat(ihPadChar_('', 16));                           // 9 세무대리인연락처
+  b = b.concat(ihPadChar_('', 8));                            // 10 납부기한(비우면 자동납기 처리)
+  b = b.concat(ihPadChar_('V2020.1.01', 10));                 // 11 적용서식(고정)
+  return b;
+}
+
+function wtBasicRecord_(seller, buyer){
+  const latest = trLatestTransferDate_();
+  const year = latest ? latest.slice(0, 4) : '';
+  const isNonResident = seller.isTransferorResident === false;
+  const share = trParseShareRatioParts_(buyer && buyer.shareRatio);
+  let b = [];
+  b = b.concat(ihPadChar_('02', 2));                          // 1 자료구분(기본정보)
+  b = b.concat(ihPadChar_(WT_TR_FORM_CODE_, 7));              // 2 서식코드
+  b = b.concat(ihPadChar_(ihOnlyDigits_(seller.regNo), 13));  // 3 납세자주민등록번호
+  b = b.concat(ihPadChar_(seller.name || '', 80));            // 4 납세자성명
+  b = b.concat(ihPadChar_('', 6));                            // 5 납세자우편번호(현재주소)
+  b = b.concat(ihPadChar_(seller.address || '', 200));        // 6 납세자주소(현재주소)
+  b = b.concat(ihPadChar_('', 6));                            // 7 납세지우편번호
+  b = b.concat(ihPadChar_(seller.address || '', 200));        // 8 납세지주소(현재주소와 동일 가정)
+  b = b.concat(ihPadChar_('', 2));                            // 9 납세지시도코드(코드표 미확보 — 위택스에서 직접 확인 필요)
+  b = b.concat(ihPadChar_('', 3));                            // 10 납세지시군구코드
+  b = b.concat(ihPadChar_('', 5));                            // 11 납세지법정동코드
+  b = b.concat(ihPadChar_('01', 2));                          // 12 납세자구분(01 내국인)
+  b = b.concat(ihPadChar_('11', 2));                          // 13 신고구분(11 확정신고)
+  b = b.concat(ihPadChar_('5', 1));                           // 14 신고유형(5 확정-국내/국외 주식이외자산)
+  b = b.concat(ihPadChar_(year, 4));                          // 15 귀속년도
+  b = b.concat(ihPadChar_(year ? year + '12' : '', 6));       // 16 양도소득년월(확정신고=귀속년도+12)
+  b = b.concat(ihPadChar_(ihOnlyDigits_(seller.phone), 16));  // 17 전화번호
+  b = b.concat(ihPadChar_('', 16));                           // 18 휴대전화
+  b = b.concat(ihPadChar_('', 100));                          // 19 전자우편번호
+  b = b.concat(ihPadChar_(isNonResident ? '2' : '1', 1));     // 20 거주구분(1 거주자, 2 비거주자)
+  b = b.concat(ihPadChar_('KR', 2));                          // 21 거주지국코드
+  b = b.concat(ihPadChar_(buyer ? ihOnlyDigits_(buyer.regNo) : '', 13)); // 22 양수인주민등록번호
+  b = b.concat(ihPadChar_(buyer ? (buyer.name || '') : '', 80)); // 23 양수인성명
+  b = b.concat(ihPadDec_(share.num, 11, 3));                  // 24 양수인분자지분율
+  b = b.concat(ihPadDec_(share.den, 11, 3));                  // 25 양수인분모지분율
+  b = b.concat(ihPadChar_(buyer ? trRelationCode_(buyer.relation) : '', 2)); // 26 양도인과의관계코드(임시값, 위 참고)
+  b = b.concat(ihPadChar_('ZZ', 2));                          // 27 양도자산종류코드(해당없음 — 다자산 합산이라 단일코드 미지정)
+  b = b.concat(ihDateField_(latest));                         // 28 양도일자
+  b = b.concat(ihPadChar_('', 6));                            // 29 양도물건지(대표) 우편번호
+  b = b.concat(ihPadChar_('', 130));                          // 30 양도물건지(대표) 주소
+  b = b.concat(ihPadChar_('', 3));                            // 31 은행코드(지방세환급금)
+  b = b.concat(ihPadChar_('', 20));                           // 32 계좌번호(지방세환급금)
+  b = b.concat(ihPadChar_('KR', 2));                          // 33 국적코드
+  return b;
+}
+
+function wtRateDetailRecord_(r){
+  const localTax = r.지방소득세 || 0; // 국세 산출세액_합계의 10%(엔진이 이미 계산)
+  const nationalReduction = (r.합산자경감면액 || 0) + (r.합산수용감면액 || 0);
+  const localReduction = Math.round(nationalReduction * 0.1);           // 9 감면세액
+  const nationalForeignCredit = 0;                                       // 국내자산만 다루므로 외국납부세액공제 없음
+  const nationalPenalty = (r.무신고가산세 || 0) + (r.과소신고가산세 || 0) + (r.납부지연가산세 || 0);
+  const localPenalty = Math.round(nationalPenalty * 0.1);                // 18 기타가산세(기장불성실)
+  const localEfileCredit = Math.min(2000, Math.round((r.전자신고세액공제 || 0) * 0.1)); // 24, 2000원 한도
+  const localPensionCredit = Math.round((r.연금계좌세액공제_합계 || 0) * 0.1);          // 25
+  const taxBase = r.합산과세표준 || 0;
+  // 23. 납부(환급)할 총세액 = 산출세액 - 감면세액 - 외국납부세액공제 - 전자신고세액공제 - 연금계좌세액공제 + 가산세(합계) - 기신고·결정·경정세액
+  const payable = localTax - localReduction - nationalForeignCredit - localEfileCredit - localPensionCredit + localPenalty - 0;
+
+  let b = [];
+  b = b.concat(ihPadChar_('03', 2));                          // 1 자료구분(세율별내역)
+  b = b.concat(ihPadChar_(WT_TR_FORM_CODE_, 7));              // 2 서식코드
+  b = b.concat(ihPadChar_('1', 1));                           // 3 자료구분(1 신고합계)
+  b = b.concat(ihPadChar_('1', 1));                           // 4 국내외구분코드(1 국내)
+  b = b.concat(ihPadChar_('00', 2));                          // 5 세율구분코드(합계는 00)
+  b = b.concat(ihPadNum_(taxBase, 14));                       // 6 과세표준
+  b = b.concat(ihPadDec_(0, 4, 3));                           // 7 세율(신고합계행은 국세 파일과 동일하게 0 고정 — 자산별 세율구분 상세행은 미구현)
+  b = b.concat(ihPadNum_(localTax, 14));                      // 8 산출세액
+  b = b.concat(ihPadNum_(localReduction, 14));                // 9 감면세액
+  b = b.concat(ihPadNum_(nationalForeignCredit, 14));         // 10 외국납부세액공제
+  b = b.concat(ihPadNum_(0, 14));                             // 11 예정신고납부세액공제(0 고정)
+  b = b.concat(ihPadNum_(0, 14));                             // 12 특별징수세액공제(비거주자 아니므로 0)
+  b = b.concat(ihPadChar_('', 2));                            // 13 신고불성실가산구분
+  b = b.concat(ihPadChar_('', 2));                            // 14 부정신고사유
+  b = b.concat(ihPadNum_(0, 5));                              // 15 신고불성실가산적용세율
+  b = b.concat(ihPadNum_(0, 14));                             // 16 부정신고적용과표
+  b = b.concat(ihPadNum_(0, 14));                             // 17 무(과소)신고가산세(0, 파일신고시 기한후신고 없음)
+  b = b.concat(ihPadNum_(localPenalty, 14));                  // 18 기타가산세(기장불성실, 국세가산세의 10%)
+  b = b.concat(ihPadNum_(0, 14));                             // 19 납부불성실가산세(0)
+  b = b.concat(ihPadNum_(0, 14));                             // 20 납부지연일수(0)
+  b = b.concat(ihPadNum_(localPenalty, 14));                  // 21 가산세(합계, 18번과 일치)
+  b = b.concat(ihPadNum_(0, 14));                             // 22 기신고·결정·경정세액,조정공제
+  b = b.concat(ihPadNum_(payable, 14));                       // 23 납부(환급)할 총세액
+  b = b.concat(ihPadNum_(localEfileCredit, 14));              // 24 전자신고세액공제(최대 2000원)
+  b = b.concat(ihPadNum_(localPensionCredit, 14));            // 25 연금계좌세액공제
+  return b;
+}
+
+function wtValidateEfileInputs_(){
+  const errs = [];
+  if (!lastTransferResults_ || !lastTransferResults_.length){
+    errs.push('먼저 위에서 "세액 계산하기"로 양도소득세를 계산하세요.');
+    return errs;
+  }
+  (lastTransferResults_ || []).filter(function(item){ return item.result && !item.result.error; }).forEach(function(item, i){
+    const s = item.seller || {};
+    const label = '양도인' + (lastTransferResults_.length > 1 ? (i + 1) + '번' : '');
+    if (!s.name) errs.push(label + ' 성명이 없습니다.');
+    if (!ihOnlyDigits_(s.regNo)) errs.push(label + ' 주민등록번호가 없습니다.');
+    if (!ihOnlyDigits_(s.phone)) errs.push(label + ' 전화번호가 없습니다.');
+  });
+  if (!trLatestTransferDate_()) errs.push('양도일자가 없습니다.');
+  return errs;
+}
+
+function wtBuildEfileBytes_(){
+  const buyers = trCollectBuyers_();
+  const buyer = buyers[0] || null; // 위택스 기본정보 레코드는 양수인 1명만 담을 수 있음(대표 양수인)
+  const rows = [];
+  (lastTransferResults_ || []).forEach(function(item){
+    if (!item.result || item.result.error) return;
+    rows.push(wtHeadRecord_(item.seller));
+    rows.push(wtBasicRecord_(item.seller, buyer));
+    rows.push(wtRateDetailRecord_(item.result));
+  });
+  const CRLF = [0x0D, 0x0A];
+  let all = [];
+  rows.forEach(function(r){ all = all.concat(r, CRLF); });
+  return new Uint8Array(all);
+}
+
+function wtEfileFileName_(){
+  const first = ((lastTransferResults_ || [])[0] || {}).seller || {};
+  const d = new Date();
+  const ymd = d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+  return '지방세_' + (first.name || '양도소득') + '_' + ymd + '.Y11';
+}
+
+function renderWtEfileResult_(){
+  const box = document.getElementById('taxCalcWtEfileResult');
+  if (!box) return;
+  const errs = wtValidateEfileInputs_();
+  if (errs.length){
+    box.innerHTML = '<div class="taxcalc-error">위택스 전자신고파일을 만들 수 없습니다:<br>' + errs.map(function(e){ return '· ' + escapeHtml(e); }).join('<br>') + '</div>';
+    return;
+  }
+  box.innerHTML = '<div class="taxcalc-result-note">✅ 확인 완료 — 파일명: ' + wtEfileFileName_() +
+    '</div><button type="button" class="taxcalc-run-btn" data-action="download-wt-efile" style="margin-top:8px;">💾 위택스 전자신고파일 다운로드(' + wtEfileFileName_() + ')</button>';
 }
 
 function renderTrEfileResult_(){
@@ -10037,6 +10202,21 @@ taxCalcView.addEventListener('click', function(e){
   } else if (action === 'print-tr-wetax-form'){
     if (!lastTransferResults_ || !lastTransferResults_.length){ nxAlert_('먼저 위에서 "세액 계산하기"를 눌러 계산을 완료하세요.'); return; }
     openPrintFormWindow_('위택스 개인지방소득세 신고 참고자료', trWetaxPrintFormBodyHtml_());
+  } else if (action === 'check-wt-efile'){
+    renderWtEfileResult_();
+  } else if (action === 'download-wt-efile'){
+    const errs = wtValidateEfileInputs_();
+    if (errs.length){ renderWtEfileResult_(); return; }
+    const bytes = wtBuildEfileBytes_();
+    const blob = new Blob([bytes], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = wtEfileFileName_();
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
   } else if (action === 'download-tr-efile'){
     const errs = trValidateEfileInputs_();
     if (errs.length){ renderTrEfileResult_(); return; }
