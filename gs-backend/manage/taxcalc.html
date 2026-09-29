@@ -4179,7 +4179,7 @@ function renderTransferPane(){
     '<button type="button" class="taxcalc-run-btn" data-action="print-tr-form">🖨 인쇄용 서식 보기</button>' +
     '<div id="taxCalcTrEfileResult"></div>' +
     '<div class="taxcalc-asset-head" style="margin-top:20px;"><b>서식·전자신고 — 개인지방소득세(양도소득) 과세표준 신고 및 납부계산서(C116300, 위택스)</b></div>' +
-    '<div class="taxcalc-result-note" style="margin:2px 0 8px;">⚠ 홈택스 파일과는 <b>완전히 별도로 위택스(wetax.go.kr)에 신고해야 합니다.</b> 위택스 공식 규격("개인지방소득세(양도소득) 파일레이아웃 VER 1.2.7", 행정안전부, 2026.6.30)에 맞춰 생성합니다 — 암호화는 필요 없습니다(평문 텍스트). 다만 <b>납세지 시도·시군구·법정동코드는 이 앱이 아직 수집하지 않아 빈칸으로 남습니다</b> — 위택스 업로드 전 직접 채워 넣으세요. 감면·가산세·세액공제는 국세 계산결과의 10% 근사치입니다.</div>' +
+    '<div class="taxcalc-result-note" style="margin:2px 0 8px;">⚠ 홈택스 파일과는 <b>완전히 별도로 위택스(wetax.go.kr)에 신고해야 합니다.</b> 위택스 공식 규격("개인지방소득세(양도소득) 파일레이아웃 VER 1.2.7", 행정안전부, 2026.6.30)에 맞춰 생성합니다 — 암호화는 필요 없습니다(평문 텍스트). 납세지 시도·시군구·법정동코드는 양도인 주소검색 결과에서 자동으로 채웁니다(출장소 관할 자치단체는 다를 수 있어 위택스에서 한 번 확인 권장). 감면·가산세·세액공제는 국세 계산결과의 10% 근사치입니다.</div>' +
     '<button type="button" class="taxcalc-run-btn" data-action="check-wt-efile">위택스 전자신고파일 작성하기</button>' +
     '<button type="button" class="taxcalc-run-btn" data-action="print-tr-wetax-form">🖨 위택스 신고 참고자료</button>' +
     '<div id="taxCalcWtEfileResult"></div>' +
@@ -6350,11 +6350,22 @@ function wtHeadRecord_(seller){
   return b;
 }
 
+// 국토부법정동코드(10자리: 시도2+시군구3+읍면동3+리2)에서 위택스가 요구하는 시도(2)·시군구(3)·
+// 법정동(5=읍면동+리) 세 필드를 잘라낸다. 출장소가 있는 자치단체(평택시·화성시 등)는 시군구코드가
+// 이 단순 절단과 다를 수 있다고 규격서에 명시돼 있으나, 그 예외 코드표까지는 확보하지 못해
+// 절대다수의 일반 케이스에 맞는 이 근사로 채운다(틀린 경우 위택스에서 직접 정정 필요).
+function wtSplitAdmCd_(admCd){
+  const s = ihOnlyDigits_(admCd);
+  if (s.length < 10) return { sido: '', sgg: '', ldong: '' };
+  return { sido: s.slice(0, 2), sgg: s.slice(2, 5), ldong: s.slice(5, 10) };
+}
+
 function wtBasicRecord_(seller, buyer){
   const latest = trLatestTransferDate_();
   const year = latest ? latest.slice(0, 4) : '';
   const isNonResident = seller.isTransferorResident === false;
   const share = trParseShareRatioParts_(buyer && buyer.shareRatio);
+  const loc = wtSplitAdmCd_(seller.admCd);
   let b = [];
   b = b.concat(ihPadChar_('02', 2));                          // 1 자료구분(기본정보)
   b = b.concat(ihPadChar_(WT_TR_FORM_CODE_, 7));              // 2 서식코드
@@ -6364,9 +6375,9 @@ function wtBasicRecord_(seller, buyer){
   b = b.concat(ihPadChar_(seller.address || '', 200));        // 6 납세자주소(현재주소)
   b = b.concat(ihPadChar_('', 6));                            // 7 납세지우편번호
   b = b.concat(ihPadChar_(seller.address || '', 200));        // 8 납세지주소(현재주소와 동일 가정)
-  b = b.concat(ihPadChar_('', 2));                            // 9 납세지시도코드(코드표 미확보 — 위택스에서 직접 확인 필요)
-  b = b.concat(ihPadChar_('', 3));                            // 10 납세지시군구코드
-  b = b.concat(ihPadChar_('', 5));                            // 11 납세지법정동코드
+  b = b.concat(ihPadChar_(loc.sido, 2));                      // 9 납세지시도코드(주소검색 법정동코드에서 자동추출)
+  b = b.concat(ihPadChar_(loc.sgg, 3));                       // 10 납세지시군구코드(근사 — 출장소 관할 자치단체는 다를 수 있음)
+  b = b.concat(ihPadChar_(loc.ldong, 5));                     // 11 납세지법정동코드(읍면동+리 5자리)
   b = b.concat(ihPadChar_('01', 2));                          // 12 납세자구분(01 내국인)
   b = b.concat(ihPadChar_('11', 2));                          // 13 신고구분(11 확정신고)
   b = b.concat(ihPadChar_('5', 1));                           // 14 신고유형(5 확정-국내/국외 주식이외자산)
@@ -6446,6 +6457,7 @@ function wtValidateEfileInputs_(){
     if (!s.name) errs.push(label + ' 성명이 없습니다.');
     if (!ihOnlyDigits_(s.regNo)) errs.push(label + ' 주민등록번호가 없습니다.');
     if (!ihOnlyDigits_(s.phone)) errs.push(label + ' 전화번호가 없습니다.');
+    if (!s.admCd) errs.push(label + ' 주소를 🔍 검색으로 다시 선택하세요(납세지 시도·시군구·법정동코드 자동입력에 필요).');
   });
   if (!trLatestTransferDate_()) errs.push('양도일자가 없습니다.');
   return errs;
