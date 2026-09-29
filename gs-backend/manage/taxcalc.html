@@ -3341,6 +3341,13 @@ tcSeedDefaultTransferState_();
 // 단독(1양도인) 사용시는 idOf() 레거시id 트릭으로 화면·동작이 기존과 100% 동일하게 유지된다.
 let transferSellers = [{}];
 let lastTransferResults_ = null; // [2026.09.25 신규, 재검토78] 양도세 전자신고파일용 — {seller, result} 배열(양도인별)
+// [2026.09.30 신규, 재검토85] 세무사님 지적 — "개별 신고서식을 전자신고나 인쇄신고하지 못하는
+// 부분이 있으면 세액계산기를 고쳐라." 주식등·국외자산 양도세는 계산 버튼을 눌러도 결과가
+// 화면 표시(renderStockTransferResult/renderOverseasAssetTransferResult)에만 쓰이고 어디에도
+// 저장되지 않아, 전자신고·인쇄 서식이 그 결과를 참조할 방법이 아예 없었다 — 부동산(run-transfer)이
+// lastTransferResults_에 저장하는 것과 같은 방식으로 이 둘도 저장한다.
+let lastStockTransferResult_ = null;
+let lastOverseasTransferResult_ = null;
 let transferBulkAiState = {}; // 증빙 일괄 자동입력(사건폴더 전체 스캔) 진행상태 — 거래행이 아직 없을 때도 보여줄 상단 배지용
 // [2026.09.24 신규] 국외자산 확정신고는 그 과세기간 전체에 대해 1번뿐이라(자산별로 따로
 // 신고하는 게 아님) 신고상태·가산세·국내소득금액은 자산카드가 아니라 여기 공유 상태 하나로 둔다.
@@ -4174,7 +4181,7 @@ function renderTransferPane(){
       '</div>' +
     '</div>' +
     '<div class="taxcalc-asset-head" style="margin-top:20px;"><b>서식·전자신고 — 양도소득세과세표준신고 및 자진납부계산서(C116300, 국세청 홈택스)</b></div>' +
-    '<div class="taxcalc-result-note" style="margin:2px 0 8px;">국내 부동산·부동산에관한권리·기타자산(§94①1·2·4호) 양도분 기준입니다. 주식등·국외자산 양도는 이 파일에 포함되지 않습니다(별도 서식). 양수인과의 관계 코드는 국세청 별지 코드표를 확보하지 못해 임시값(99)으로 채웠습니다.</div>' +
+    '<div class="taxcalc-result-note" style="margin:2px 0 8px;">부동산(국내)·주식등·국외자산 중 "세액 계산하기"를 실행한 탭이 있으면 그 결과를 모두 이 파일 하나에 담습니다(같은 서식코드 C116300, 신고유형으로 구분). 양수인과의 관계 코드는 국세청 별지 코드표를 확보하지 못해 임시값(99)으로 채웠습니다.</div>' +
     '<button type="button" class="taxcalc-run-btn" data-action="check-tr-efile">전자신고파일 작성하기</button>' +
     '<button type="button" class="taxcalc-run-btn" data-action="print-tr-form">🖨 인쇄용 서식 보기</button>' +
     '<div id="taxCalcTrEfileResult"></div>' +
@@ -6048,7 +6055,7 @@ function trParseShareRatioParts_(raw){
 // 쓴다 — 실제 제출 전 국세청 별지 코드표로 교체해야 한다(화면에도 안내 문구로 표시함).
 function trRelationCode_(relation){ return '99'; }
 
-function trHeadRecord_(seller){
+function trHeadRecord_(seller, filingType){
   const latest = trLatestTransferDate_();
   const year = latest ? latest.slice(0, 4) : '';
   const now = new Date();
@@ -6060,7 +6067,7 @@ function trHeadRecord_(seller){
   b = b.concat(ihPadChar_('01', 2));                          // 4 납세자구분(01 정상)
   b = b.concat(ihPadChar_('22', 2));                          // 5 세목코드(양도소득세)
   b = b.concat(ihPadChar_('01', 2));                          // 6 신고구분코드(01 확정신고)
-  b = b.concat(ihPadChar_('5', 1));                           // 7 신고유형(5=확정-국내/국외 주식이외자산)
+  b = b.concat(ihPadChar_(filingType || '5', 1));             // 7 신고유형(5=국내/국외 주식이외자산, 6=국내주식, 7=국외주식, 8=파생상품)
   b = b.concat(ihPadChar_(year ? year + '01' : '', 6));       // 8 과세기간(양도년도+'01')
   b = b.concat(ihPadChar_('01', 2));                          // 9 신고구분상세코드
   b = b.concat(ihPadChar_('D01', 3));                         // 10 신고서종류코드(D01 확정신고서)
@@ -6167,6 +6174,122 @@ function trRateDetailRecord_(rateClass, r){ // rateClass: '00'(국세 합계) �
   return b;
 }
 
+// [2026.09.30 신규, 재검토85] 주식등 양도세(신고유형 6/7/8) — calculateStockTransferTaxJS의
+// 단건 결과를 같은 세율별내역 레코드 구조(36필드, 400B)에 담는다. 부동산과 필드 의미가 조금
+// 다르므로(엔진이 소득금액/기본공제/과세표준/산출세액/외국납부세액공제/가산세를 이미
+// 다 노출) 부동산처럼 근사할 필요 없이 실제 값을 그대로 쓴다.
+function trStockRateDetailRecord_(rateClass, r){
+  const isLocal = rateClass === '98';
+  const localTax = r.지방소득세 || 0;
+  const 양도소득금액 = isLocal ? 0 : (r.손익통산_적용후_소득금액 || 0);
+  const 기본공제 = isLocal ? 0 : (r.기본공제 || 0);
+  const 과세표준 = r.과세표준 || 0;
+  const 산출세액 = isLocal ? localTax : (r.산출세액 || 0);
+  const 국세감면세액 = 0;
+  const 감면세액 = isLocal ? 0 : 국세감면세액;
+  const 국세외국납부 = r.외국납부세액공제 || 0;
+  const 외국납부세액공제 = isLocal ? Math.round(국세외국납부 * 0.1) : 국세외국납부;
+  const 국세가산세_신고 = (r.무신고가산세 || 0) + (r.과소신고가산세 || 0);
+  const 국세가산세_납부 = r.납부지연가산세 || 0;
+  const 가산세_신고 = isLocal ? Math.round(국세가산세_신고 * 0.1) : 국세가산세_신고;
+  const 가산세_납부 = isLocal ? Math.round(국세가산세_납부 * 0.1) : 국세가산세_납부;
+  const 가산세_계 = 가산세_신고 + 가산세_납부;
+  const 기장불성실 = r.기장불성실가산세 || 0;
+  const 자진납부할세액 = isLocal ? localTax : Math.max(0, (r.납부세액_합계 || 0) - localTax);
+  let b = [];
+  b = b.concat(ihPadChar_('03', 2));
+  b = b.concat(ihPadChar_(TR_EFILE_FORM_CODE_, 7));
+  b = b.concat(ihPadChar_('Z', 1));
+  b = b.concat(ihPadChar_(rateClass, 2));
+  b = b.concat(ihPadNum_(양도소득금액, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(기본공제, 13));
+  b = b.concat(ihPadNum_(과세표준, 13));
+  b = b.concat(ihPadNum_(0, 5));
+  b = b.concat(ihPadNum_(산출세액, 13));
+  b = b.concat(ihPadNum_(감면세액, 13));
+  b = b.concat(ihPadNum_(외국납부세액공제, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(가산세_신고, 13));
+  b = b.concat(ihPadNum_(가산세_납부, 13));
+  b = b.concat(ihPadNum_(가산세_계, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(자진납부할세액, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(자진납부할세액, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(0, 5));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(isLocal ? 0 : localTax, 13));
+  b = b.concat(ihPadNum_(0, 5));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(isLocal ? 0 : 기장불성실, 13));
+  b = b.concat(ihPadChar_('', 9));
+  return b;
+}
+// [2026.09.30 신규, 재검토85] 국외자산 양도세 — 신고유형은 부동산과 같은 '5'(국내/국외
+// 주식이외자산)를 쓰되, 세율별내역에서 국내외분을 '9'(국외)로 구분한 별도 행을 추가한다
+// (양도세 스펙 자체가 "지방소득세의 경우는 'Z'"라고만 예외를 두고, 국내='1'/국외='9'로
+// 명시). calculateOverseasAssetTransferTaxMultiJS 결과를 그대로 사용.
+function trOverseasRateDetailRecord_(r){
+  const 소득금액 = r.합산양도차익 || 0;
+  const 기본공제 = r.기본공제 || 0;
+  const 과세표준 = r.과세표준 || 0;
+  const 산출세액 = r.산출세액 || 0;
+  const 외국납부세액공제 = r.외국납부세액공제 || 0;
+  const 가산세_신고 = (r.무신고가산세 || 0) + (r.과소신고가산세 || 0);
+  const 가산세_납부 = r.납부지연가산세 || 0;
+  const 가산세_계 = 가산세_신고 + 가산세_납부;
+  const localTax = r.지방소득세 || 0;
+  const 자진납부할세액 = Math.max(0, (r.납부세액_합계 || 0) - localTax);
+  let b = [];
+  b = b.concat(ihPadChar_('03', 2));
+  b = b.concat(ihPadChar_(TR_EFILE_FORM_CODE_, 7));
+  b = b.concat(ihPadChar_('9', 1));                     // 국내외분: 국외
+  b = b.concat(ihPadChar_('00', 2));
+  b = b.concat(ihPadNum_(소득금액, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(기본공제, 13));
+  b = b.concat(ihPadNum_(과세표준, 13));
+  b = b.concat(ihPadNum_(0, 5));
+  b = b.concat(ihPadNum_(산출세액, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(외국납부세액공제, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(가산세_신고, 13));
+  b = b.concat(ihPadNum_(가산세_납부, 13));
+  b = b.concat(ihPadNum_(가산세_계, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(자진납부할세액, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(자진납부할세액, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(0, 5));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(localTax, 13));                // 주민세_소득세자진납부할세액(참고표기)
+  b = b.concat(ihPadNum_(0, 5));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadNum_(0, 13));
+  b = b.concat(ihPadChar_('', 9));
+  return b;
+}
+
 function trBuyerRecord_(buyer, seq){
   const share = trParseShareRatioParts_(buyer.shareRatio);
   let b = [];
@@ -6187,12 +6310,12 @@ function trBuyerRecord_(buyer, seq){
 
 function trValidateEfileInputs_(){
   const errs = [];
-  if (!lastTransferResults_ || !lastTransferResults_.length){
-    errs.push('먼저 위 "세액 계산하기"로 양도소득세를 계산하세요.');
+  const validItems = (lastTransferResults_ || []).filter(function(item){ return item.result && !item.result.error; });
+  const hasAny = validItems.length || lastStockTransferResult_ || lastOverseasTransferResult_;
+  if (!hasAny){
+    errs.push('먼저 부동산·주식등·국외자산 중 하나라도 "세액 계산하기"로 계산하세요.');
     return errs;
   }
-  const validItems = lastTransferResults_.filter(function(item){ return item.result && !item.result.error; });
-  if (!validItems.length) errs.push('유효한 계산 결과가 없습니다.');
   validItems.forEach(function(item, i){
     const s = item.seller || {};
     const label = '양도인' + (lastTransferResults_.length > 1 ? (i + 1) + '번' : '');
@@ -6201,21 +6324,47 @@ function trValidateEfileInputs_(){
     if (!s.admCd) errs.push(label + ' 주소를 🔍 검색으로 등록해야 합니다(법정동코드 필수).');
     if (!ihOnlyDigits_(s.phone)) errs.push(label + ' 전화번호가 없습니다.');
   });
-  if (!trLatestTransferDate_()) errs.push('양도일자가 없습니다.');
+  if ((lastStockTransferResult_ || lastOverseasTransferResult_) && !validItems.length){
+    const s = (transferSellers && transferSellers[0]) || {};
+    if (!s.name) errs.push('양도인 성명이 없습니다.');
+    if (!ihOnlyDigits_(s.regNo)) errs.push('양도인 주민등록번호가 없습니다.');
+    if (!s.admCd) errs.push('양도인 주소를 🔍 검색으로 등록해야 합니다(법정동코드 필수).');
+    if (!ihOnlyDigits_(s.phone)) errs.push('양도인 전화번호가 없습니다.');
+  }
+  if (validItems.length && !trLatestTransferDate_()) errs.push('양도일자가 없습니다.');
   return errs;
 }
 
+const TR_STOCK_FILING_TYPE_ = { domestic_stock: '6', foreign_stock: '7', derivative: '8', other_asset: '5', trust_beneficiary: '5' };
 function trBuildEfileBytes_(){
   const buyers = trCollectBuyers_();
+  const primarySeller = (transferSellers && transferSellers[0]) || {};
   const rows = [];
-  (lastTransferResults_ || []).forEach(function(item){
+  (lastTransferResults_ || []).forEach(function(item, idx){
     if (!item.result || item.result.error) return;
     rows.push(trHeadRecord_(item.seller));
     rows.push(trBasicRecord_(item.seller));
     rows.push(trRateDetailRecord_('00', item.result));
     rows.push(trRateDetailRecord_('98', item.result));
+    if (idx === 0 && lastOverseasTransferResult_) rows.push(trOverseasRateDetailRecord_(lastOverseasTransferResult_)); // 대표 양도인의 신고서에 국외분 행 추가
     buyers.forEach(function(buyer, i){ rows.push(trBuyerRecord_(buyer, i + 1)); });
   });
+  // 주식등 양도세(신고유형 6/7/8) — 부동산과 완전히 별도 세목이라 그 자체로 독립된 HEAD+기본정보+세율별내역
+  // 세트를 만든다. 부동산 신고서가 하나도 없어도(주식만 있는 사건) 독립적으로 생성된다.
+  if (lastStockTransferResult_){
+    const filingType = TR_STOCK_FILING_TYPE_[lastStockTransferResult_.assetCategory] || '5';
+    rows.push(trHeadRecord_(primarySeller, filingType));
+    rows.push(trBasicRecord_(primarySeller));
+    rows.push(trStockRateDetailRecord_('00', lastStockTransferResult_.result));
+    rows.push(trStockRateDetailRecord_('98', lastStockTransferResult_.result));
+  }
+  // 부동산·주식 어느 쪽도 없이 국외자산만 있는 경우를 대비해, 대표 양도인의 신고서가 하나도
+  // 없으면 국외자산 전용 신고서 세트를 별도로 만든다(위에서 이미 부동산 신고서에 얹었으면 중복 생성 안 함).
+  if (lastOverseasTransferResult_ && !(lastTransferResults_ && lastTransferResults_.some(function(i){ return i.result && !i.result.error; }))){
+    rows.push(trHeadRecord_(primarySeller));
+    rows.push(trBasicRecord_(primarySeller));
+    rows.push(trOverseasRateDetailRecord_(lastOverseasTransferResult_));
+  }
   const CRLF = [0x0D, 0x0A];
   let all = [];
   rows.forEach(function(r){ all = all.concat(r, CRLF); });
@@ -6270,8 +6419,57 @@ function trPrintFormPageHtml_(seller, r, buyers){
 }
 function trPrintFormBodyHtml_(){
   const buyers = trCollectBuyers_();
-  return (lastTransferResults_ || []).filter(function(item){ return item.result && !item.result.error; })
+  let html = (lastTransferResults_ || []).filter(function(item){ return item.result && !item.result.error; })
     .map(function(item){ return trPrintFormPageHtml_(item.seller || {}, item.result, buyers); }).join('');
+  const seller = (transferSellers && transferSellers[0]) || {};
+  if (lastStockTransferResult_) html += trStockPrintPageHtml_(seller, lastStockTransferResult_);
+  if (lastOverseasTransferResult_) html += trOverseasPrintPageHtml_(seller, lastOverseasTransferResult_);
+  return html;
+}
+// [2026.09.30 신규, 재검토85] 주식등·국외자산도 부동산과 같은 페이지 형식으로 인쇄에 포함한다.
+function trStockPrintPageHtml_(seller, stock){
+  const r = stock.result;
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">소득세법 시행규칙 [별지 제84호서식]</div>' +
+    '<div class="pf-title">양도소득세 과세표준신고 및 납부계산서 — 주식등</div>' +
+    '<div class="pf-section-head">신고인(양도인)</div>' +
+    '<table class="pf-table">' + pfRow_(0, '성명', seller.name) + pfRow_(0, '주민등록번호', seller.regNo) + '</table>' +
+    '<div class="pf-section-head">세액 계산(국세)</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '양도차익', won(r.양도차익)) +
+      pfRow_(++n, '손익통산 적용 후 소득금액', won(r.손익통산_적용후_소득금액)) +
+      pfRow_(++n, '기본공제', won(r.기본공제)) +
+      pfRow_(++n, '과세표준', won(r.과세표준)) +
+      pfRow_(++n, '적용세율', r.적용세율_설명 || '') +
+      pfRow_(++n, '산출세액', won(r.산출세액)) +
+      pfRow_(++n, '외국납부세액공제', won(r.외국납부세액공제)) +
+      pfRow_(++n, '가산세(신고불성실+납부지연+기장불성실)', won((r.무신고가산세 || 0) + (r.과소신고가산세 || 0) + (r.납부지연가산세 || 0) + (r.기장불성실가산세 || 0))) +
+      pfRow_(++n, '자진납부할 세액(국세, 지방소득세 제외)', won(Math.max(0, (r.납부세액_합계 || 0) - (r.지방소득세 || 0)))) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 주식등양도소득금액계산명세서(부표2) 등 첨부서식은 별도로 작성해야 합니다.</div>' +
+  '</div>';
+}
+function trOverseasPrintPageHtml_(seller, r){
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">소득세법 시행규칙 [별지 제84호서식]</div>' +
+    '<div class="pf-title">양도소득세 과세표준신고 및 납부계산서 — 국외자산</div>' +
+    '<div class="pf-section-head">신고인(양도인)</div>' +
+    '<table class="pf-table">' + pfRow_(0, '성명', seller.name) + pfRow_(0, '주민등록번호', seller.regNo) + '</table>' +
+    '<div class="pf-section-head">세액 계산(국세)</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '거래건수', String(r.거래건수 || 0)) +
+      pfRow_(++n, '합산양도차익', won(r.합산양도차익)) +
+      pfRow_(++n, '기본공제', won(r.기본공제)) +
+      pfRow_(++n, '과세표준', won(r.과세표준)) +
+      pfRow_(++n, '산출세액', won(r.산출세액)) +
+      pfRow_(++n, '외국납부세액공제', won(r.외국납부세액공제)) +
+      pfRow_(++n, '가산세(신고불성실+납부지연)', won((r.무신고가산세 || 0) + (r.과소신고가산세 || 0) + (r.납부지연가산세 || 0))) +
+      pfRow_(++n, '자진납부할 세액(국세, 지방소득세 제외)', won(Math.max(0, (r.납부세액_합계 || 0) - (r.지방소득세 || 0)))) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다.</div>' +
+  '</div>';
 }
 
 // [2026.09.29 신규, 재검토80] 위택스(개인지방소득세 양도소득분) — 세무사님 확인: "위택스도
@@ -10047,6 +10245,7 @@ taxCalcView.addEventListener('click', function(e){
     };
     const overseasResult = transactions.length ? calculateOverseasAssetTransferTaxMultiJS(transactions, oaFilingParams) : null;
     renderOverseasAssetTransferResult(overseasResult);
+    lastOverseasTransferResult_ = (overseasResult && !overseasResult.error) ? overseasResult : null; // 재검토85: 전자신고·인쇄용 저장
   } else if (action === 'run-public-rental-housing-land'){
     const input = {
       transferDate: document.getElementById('prTransferDate').value,
@@ -10362,6 +10561,7 @@ taxCalcView.addEventListener('click', function(e){
       }
     }
     renderStockTransferResult(stResult);
+    lastStockTransferResult_ = (stResult && !stResult.error) ? { assetCategory: input.assetCategory, result: stResult } : null; // 재검토85: 전자신고·인쇄용 저장
   } else if (action === 'add-overseas-asset'){
     // [2026.09.23 신규] 국외자산은 계약(안분) 개념이 없으므로 계약 없이 바로 만든다 —
     // "계약을 거치지 않고는 자산을 만들 수 없다"는 국내 원칙의 명시적 예외.
