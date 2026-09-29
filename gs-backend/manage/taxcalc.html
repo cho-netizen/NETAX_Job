@@ -2330,6 +2330,17 @@ let giftDonees = [{}];
 // [2026.09.25 신규, 재검토77] 전자신고파일 생성용 — run-gift가 마지막으로 계산한 (증여자×수증인)
 // 쌍별 결과 배열을 보관해둔다(상속세의 lastInheritanceResult와 같은 역할).
 let lastGiftResults_ = null;
+// [2026.09.30 신규, 재검토86] 세무사님 지적 계속 — 특례세율(sr)·일감몰아주기(jm)·일감떼어주기(jt)·
+// 초과배당(ed)·특정법인거래(sc) 5개 탭도 계산 결과가 화면표시에만 쓰이고 저장되지 않아 인쇄
+// 서식이 참조할 수 없었다(양도세 주식등·국외자산과 같은 결함, 재검토85). 조사 결과 이 5개
+// 서식(별지10호의2~6)은 홈택스 자체가 "파일변환신고"(전자신고파일 업로드)를 기본세율(10호)
+// 서식에만 제공하고 이 5개에는 제공하지 않아(홈택스 자체 안내문서로 확인) 전자신고파일은
+// 만들 수 없다 — 인쇄서식만 만든다.
+let lastSpecialRateGiftResult_ = null;   // sr, 특례세율(창업자금·가업승계)
+let lastRelatedPartyGiftResult_ = null;  // jm, 일감몰아주기
+let lastBusinessOpportunityGiftResult_ = null; // jt, 일감떼어주기
+let lastExcessDividendGiftResult_ = null; // ed, 초과배당
+let lastSpecificCorpGiftResult_ = null;   // sc, 특정법인거래
 
 // [2026.09 버그수정] "임대 중인 부동산(임대료환산가액)"이 예전엔 독립된 평가방법이었다 — 그런데
 // 상증세법§61⑤은 임대료환산가액을 "그 자체로 쓰는 방법"이 아니라 "일반 평가방법(기준시가 등)과
@@ -7865,6 +7876,8 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-special-rate-gift">특례세율 증여세 계산하기</button>' +
       '<div id="taxCalcSpecialRateGiftResult"></div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="print-special-rate-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
+      '<div class="taxcalc-result-note">이 서식은 홈택스 "파일변환신고"(전자신고) 대상이 아닙니다(국세청은 기본세율 증여세신고서만 파일변환신고를 지원) — 인쇄해서 홈택스 화면입력으로 직접 신고하세요.</div>' +
     '</div>' +
     '</div>' +
     // [2026.09.24 재구성, 재검토68] 명의신탁·재산취득자금·일감몰아주기·일감떼어주기·상장이익·
@@ -7966,6 +7979,8 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-related-party-gift">일감몰아주기 증여세 계산하기</button>' +
       '<div id="taxCalcRelatedPartyGiftResult"></div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="print-related-party-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
+      '<div class="taxcalc-result-note">이 서식은 홈택스 "파일변환신고"(전자신고) 대상이 아닙니다(국세청은 기본세율 증여세신고서만 파일변환신고를 지원) — 인쇄해서 홈택스 화면입력으로 직접 신고하세요.</div>' +
       '</div>' +
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="jt" style="' + (giftActiveSubtab_ === 'jt' ? '' : 'display:none;') + '">' +
@@ -7999,6 +8014,8 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-business-opportunity-gift">일감떼어주기 증여세 계산하기</button>' +
       '<div id="taxCalcBusinessOpportunityGiftResult"></div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="print-business-opportunity-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
+      '<div class="taxcalc-result-note">이 서식은 홈택스 "파일변환신고"(전자신고) 대상이 아닙니다(국세청은 기본세율 증여세신고서만 파일변환신고를 지원) — 인쇄해서 홈택스 화면입력으로 직접 신고하세요.</div>' +
       '</div>' +
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="sl" style="' + (giftActiveSubtab_ === 'sl' ? '' : 'display:none;') + '">' +
@@ -8154,6 +8171,8 @@ function renderGiftPane(){
       '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('sc') + '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-specific-corp-gift">증여세 계산하기</button>' +
       '<div id="taxCalcSpecificCorpGiftResult"></div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="print-specific-corp-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
+      '<div class="taxcalc-result-note">이 서식은 홈택스 "파일변환신고"(전자신고) 대상이 아닙니다(국세청은 기본세율 증여세신고서만 파일변환신고를 지원) — 인쇄해서 홈택스 화면입력으로 직접 신고하세요.</div>' +
       '</div>' +
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="ed" style="' + (giftActiveSubtab_ === 'ed' ? '' : 'display:none;') + '">' +
@@ -8185,6 +8204,8 @@ function renderGiftPane(){
       '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('ed') + '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-excess-dividend-gift">증여세 계산하기</button>' +
       '<div id="taxCalcExcessDividendGiftResult"></div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="print-excess-dividend-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
+      '<div class="taxcalc-result-note">이 서식은 홈택스 "파일변환신고"(전자신고) 대상이 아닙니다(국세청은 기본세율 증여세신고서만 파일변환신고를 지원) — 인쇄해서 홈택스 화면입력으로 직접 신고하세요.</div>' +
       '</div>' +
     '</div>' +
     // [2026.09.24 재구성] 비과세판정·공익법인가산세·장애인신탁·중복적용배제 4개는 증여세
@@ -8637,6 +8658,204 @@ function gfPrintFormBodyHtml_(){
   const giftDate = document.getElementById('giftDate').value;
   return (lastGiftResults_ || []).filter(function(item){ return item.result && !item.result.error; })
     .map(function(item){ return gfPrintFormPageHtml_(item, giftDate); }).join('');
+}
+
+// [2026.09.30 신규, 재검토86] 증여세 5개 특례서식(별지 10호의2~6) — 국세청 공식 확인 결과
+// 홈택스 "파일변환신고"(전자신고)는 기본세율(별지10호) 서식만 지원하고 이 5개는 대상이
+// 아니므로(화면입력 신고만 가능), 전자신고파일이 아니라 인쇄용 서식만 제공한다. 수증자·
+// 증여자 신원은 이 5개 탭 자체에 입력칸이 없으므로 "일반" 탭의 giftDonees[0]/giftDonors[0]을
+// 그대로 가져다 쓴다(같은 사건의 같은 당사자이므로).
+function gfPrintIdentityRows_(){
+  const donee = giftDonees[0] || {};
+  const donor = giftDonors[0] || {};
+  let n = 0;
+  return '<div class="pf-section-head">수증자</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '성명', donee.name) + pfRow_(++n, '주민등록번호', donee.regNo) +
+      pfRow_(++n, '전화번호', donee.phone) + pfRow_(++n, '주소', donee.address) +
+    '</table>' +
+    '<div class="pf-section-head">증여자</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '성명', donor.name) + pfRow_(++n, '주민등록번호', donor.regNo) +
+      pfRow_(++n, '주소', donor.address) +
+    '</table>';
+}
+function gfPrintFormNote_(){
+  return '<div class="pf-note">이 서식은 홈택스 "파일변환신고"(전자신고) 대상이 아닙니다(국세청은 기본세율 증여세신고서만 파일변환신고를 지원) — 이 인쇄물을 참고해 홈택스 화면입력으로 직접 신고하세요. NETAX 계산 결과를 기준으로 자동 생성되었습니다.</div>';
+}
+function srPrintFormPageHtml_(){
+  const r = lastSpecialRateGiftResult_;
+  if (!r) return '';
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의2서식]</div>' +
+    '<div class="pf-title">증여세 과세표준신고 및 자진납부계산서(창업자금·가업승계 특례세율)</div>' +
+    gfPrintIdentityRows_() +
+    '<div class="pf-section-head">세액 계산</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '특례 종류', r.특례종류) +
+      (r.가업자산상당액 != null ? pfRow_(++n, '가업자산상당액', won(r.가업자산상당액) + (r.사업관련자산가액비율 != null ? ' (사업관련자산비율 ' + (r.사업관련자산가액비율 * 100).toFixed(1) + '%)' : '')) : '') +
+      (r.인수채무액 ? pfRow_(++n, '인수채무액', won(r.인수채무액)) : '') +
+      pfRow_(++n, '과세특례 적용전 과세가액 계', won(r.과세특례적용전_증여세과세가액_계)) +
+      pfRow_(++n, '총한도액', won(r.총한도액)) +
+      pfRow_(++n, '과세특례 적용대상 과세가액', won(r.과세특례적용대상_증여세과세가액)) +
+      (r.기본세율적용대상_증여재산가액 ? pfRow_(++n, '기본세율 적용대상 증여재산가액(한도초과분)', won(r.기본세율적용대상_증여재산가액)) : '') +
+      pfRow_(++n, '증여재산공제', won(r.증여재산공제)) +
+      (r.재해손실공제 ? pfRow_(++n, '재해손실공제', won(r.재해손실공제)) : '') +
+      (r.감정평가수수료공제 ? pfRow_(++n, '감정평가수수료공제', won(r.감정평가수수료공제)) : '') +
+      pfRow_(++n, '과세표준', won(r.과세표준)) +
+      pfRow_(++n, '세율', r.세율) +
+      pfRow_(++n, '산출세액', won(r.산출세액)) +
+      (r.납부세액공제 ? pfRow_(++n, '이전 특례증여분 기납부세액공제', won(r.납부세액공제)) : '') +
+      (r.외국납부세액공제 ? pfRow_(++n, '외국납부세액공제', won(r.외국납부세액공제)) : '') +
+      (r.무신고가산세 ? pfRow_(++n, '무신고가산세', won(r.무신고가산세)) : '') +
+      (r.과소신고가산세 ? pfRow_(++n, '과소신고가산세', won(r.과소신고가산세)) : '') +
+      (r.납부지연가산세 ? pfRow_(++n, '납부지연가산세', won(r.납부지연가산세)) : '') +
+      (r.창업자금사용명세미제출가산세 ? pfRow_(++n, '창업자금 사용명세 미제출가산세', won(r.창업자금사용명세미제출가산세)) : '') +
+      pfRow_(++n, '자진납부할 세액(합계액)', won(r.납부세액)) +
+    '</table>' +
+    gfPrintFormNote_() +
+    '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
+      new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
+      '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+  '</div>';
+}
+function jmPrintFormPageHtml_(){
+  const r = lastRelatedPartyGiftResult_;
+  if (!r) return '';
+  let n = 0;
+  if (!r.과세대상여부){
+    return '<div class="pf-page">' +
+      '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의3서식]</div>' +
+      '<div class="pf-title">특수관계법인과의 거래를 통한 이익의 증여의제 신고서(일감몰아주기)</div>' +
+      gfPrintIdentityRows_() +
+      '<table class="pf-table">' + pfRow_(0, '과세대상 여부', '적용 안 됨(' + (r.안내 || '') + ')') + '</table>' +
+      gfPrintFormNote_() +
+    '</div>';
+  }
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의3서식]</div>' +
+    '<div class="pf-title">특수관계법인과의 거래를 통한 이익의 증여의제 신고서(일감몰아주기)</div>' +
+    gfPrintIdentityRows_() +
+    '<div class="pf-section-head">세액 계산</div>' +
+    '<table class="pf-table">' +
+      (r.배당소득공제 ? pfRow_(++n, '배당소득공제', won(r.배당소득공제)) : '') +
+      pfRow_(++n, '증여의제이익', won(r.증여의제이익)) +
+      pfRow_(++n, '과세표준(증여재산공제 없음)', won(r.과세표준)) +
+      pfRow_(++n, '산출세액', won(r.산출세액)) +
+      pfRow_(++n, '신고세액공제(3%)', won(r.신고세액공제)) +
+      (r.무신고가산세 ? pfRow_(++n, '무신고가산세', won(r.무신고가산세)) : '') +
+      (r.과소신고가산세 ? pfRow_(++n, '과소신고가산세', won(r.과소신고가산세)) : '') +
+      (r.납부지연가산세 ? pfRow_(++n, '납부지연가산세', won(r.납부지연가산세)) : '') +
+      pfRow_(++n, '자진납부할 세액(합계액)', won(r.납부세액)) +
+    '</table>' +
+    gfPrintFormNote_() +
+    '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
+      new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
+      '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+  '</div>';
+}
+function jtPrintFormPageHtml_(){
+  const r = lastBusinessOpportunityGiftResult_;
+  if (!r) return '';
+  let n = 0;
+  if (!r.과세대상여부){
+    return '<div class="pf-page">' +
+      '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의4서식]</div>' +
+      '<div class="pf-title">특수관계법인으로부터 제공받은 사업기회로 발생한 이익의 증여의제 신고서(일감떼어주기)</div>' +
+      gfPrintIdentityRows_() +
+      '<table class="pf-table">' + pfRow_(0, '과세대상 여부', '적용 안 됨(' + (r.안내 || '') + ')') + '</table>' +
+      gfPrintFormNote_() +
+    '</div>';
+  }
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의4서식]</div>' +
+    '<div class="pf-title">특수관계법인으로부터 제공받은 사업기회로 발생한 이익의 증여의제 신고서(일감떼어주기)</div>' +
+    gfPrintIdentityRows_() +
+    '<div class="pf-section-head">세액 계산</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '증여의제이익', won(r.증여의제이익)) +
+      pfRow_(++n, '과세표준(증여재산공제 없음)', won(r.과세표준)) +
+      pfRow_(++n, '산출세액', won(r.산출세액)) +
+      pfRow_(++n, '신고세액공제(3%)', won(r.신고세액공제)) +
+      (r.무신고가산세 ? pfRow_(++n, '무신고가산세', won(r.무신고가산세)) : '') +
+      (r.과소신고가산세 ? pfRow_(++n, '과소신고가산세', won(r.과소신고가산세)) : '') +
+      (r.납부지연가산세 ? pfRow_(++n, '납부지연가산세', won(r.납부지연가산세)) : '') +
+      pfRow_(++n, '자진납부할 세액(합계액)', won(r.납부세액)) +
+    '</table>' +
+    gfPrintFormNote_() +
+    '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
+      new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
+      '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+  '</div>';
+}
+function gfDeemedGiftPrintRows_(r, extraFields){
+  let n = 0;
+  let rows = '';
+  extraFields.forEach(function(f){ if (r[f.key] !== undefined && r[f.key] !== null) rows += pfRow_(++n, f.label, won(r[f.key])); });
+  if (r.과세대상여부 === false){
+    if (r.환급대상여부){
+      rows += pfRow_(++n, '가액하락액', won(r.가액하락액));
+      rows += pfRow_(++n, '환급세액', won(r.환급세액));
+    } else {
+      rows += pfRow_(++n, '과세대상 여부', '적용 안 됨');
+    }
+    return rows;
+  }
+  if (r.증여재산공제) rows += pfRow_(++n, '증여재산공제', won(r.증여재산공제));
+  if (r.혼인출산공제) rows += pfRow_(++n, '혼인출산공제', won(r.혼인출산공제));
+  if (r.감정평가수수료공제) rows += pfRow_(++n, '감정평가수수료공제', won(r.감정평가수수료공제));
+  if (r.재해손실공제) rows += pfRow_(++n, '재해손실공제', won(r.재해손실공제));
+  if (r.과세표준 !== undefined) rows += pfRow_(++n, '과세표준', won(r.과세표준));
+  if (r.산출세액 !== undefined) rows += pfRow_(++n, '산출세액', won(r.산출세액));
+  if (r.신고세액공제) rows += pfRow_(++n, '신고세액공제', won(r.신고세액공제));
+  if (r.무신고가산세) rows += pfRow_(++n, '무신고가산세', won(r.무신고가산세));
+  if (r.과소신고가산세) rows += pfRow_(++n, '과소신고가산세', won(r.과소신고가산세));
+  if (r.납부지연가산세) rows += pfRow_(++n, '납부지연가산세', won(r.납부지연가산세));
+  rows += pfRow_(++n, '자진납부할 세액(합계액)', won(r.납부세액));
+  return rows;
+}
+function edPrintFormPageHtml_(){
+  const r = lastExcessDividendGiftResult_;
+  if (!r) return '';
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의5서식]</div>' +
+    '<div class="pf-title">초과배당에 따른 이익의 증여의제 신고서</div>' +
+    gfPrintIdentityRows_() +
+    '<div class="pf-section-head">세액 계산</div>' +
+    '<table class="pf-table">' +
+      gfDeemedGiftPrintRows_(r, [
+        { key: '초과배당금액', label: '초과배당금액' },
+        { key: '소득세상당액', label: '소득세상당액' },
+        { key: '증여의제이익', label: '증여의제이익' }
+      ]) +
+    '</table>' +
+    gfPrintFormNote_() +
+    '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
+      new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
+      '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+  '</div>';
+}
+function scPrintFormPageHtml_(){
+  const r = lastSpecificCorpGiftResult_;
+  if (!r) return '';
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의6서식]</div>' +
+    '<div class="pf-title">특정법인과의 거래를 통한 이익의 증여의제 신고서</div>' +
+    gfPrintIdentityRows_() +
+    '<div class="pf-section-head">세액 계산</div>' +
+    '<table class="pf-table">' +
+      gfDeemedGiftPrintRows_(r, [
+        { key: '특정법인의이익', label: '특정법인의 이익(법인세상당액 차감후)' },
+        { key: '법인세상당액_전체', label: '법인세상당액(전체)' },
+        { key: '증여의제이익', label: '증여의제이익' }
+      ]) +
+    '</table>' +
+    gfPrintFormNote_() +
+    '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
+      new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
+      '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+  '</div>';
 }
 
 function renderGfEfileResult_(){
@@ -10846,7 +11065,9 @@ taxCalcView.addEventListener('click', function(e){
       monthsAfterDesignatedDueDate: numVal(document.getElementById('srMonthsAfterDesignated').value) || 0,
       unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('srUnpaidAtDesignated').value) || 0
     };
-    renderSpecialRateGiftResult(calculateSpecialRateGiftTaxJS(input));
+    const srResult = calculateSpecialRateGiftTaxJS(input);
+    renderSpecialRateGiftResult(srResult);
+    lastSpecialRateGiftResult_ = (srResult && !srResult.error) ? srResult : null;
   } else if (action === 'run-nominee-trust'){
     const input = {
       nomineeTrustPropertyValue: numVal(document.getElementById('ntPropertyValue').value) || 0,
@@ -10926,7 +11147,9 @@ taxCalcView.addEventListener('click', function(e){
       unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('edUnpaidAtDesignated').value) || 0
     };
     Object.assign(input, taxCalcGiftAggregationInput_('ed'));
-    renderExcessDividendGiftResult(calculateExcessDividendGiftTaxJS(input));
+    const edResult = calculateExcessDividendGiftTaxJS(input);
+    renderExcessDividendGiftResult(edResult);
+    lastExcessDividendGiftResult_ = (edResult && !edResult.error) ? edResult : null;
   } else if (action === 'run-stock-listing-gift'){
     const input = {
       provision: document.getElementById('slProvision').value,
@@ -10976,6 +11199,21 @@ taxCalcView.addEventListener('click', function(e){
   } else if (action === 'print-gf-form'){
     if (!lastGiftResults_ || !lastGiftResults_.length){ nxAlert_('먼저 위에서 "세액 계산하기"를 눌러 계산을 완료하세요.'); return; }
     openPrintFormWindow_('증여세 과세표준신고서', gfPrintFormBodyHtml_());
+  } else if (action === 'print-special-rate-gift'){
+    if (!lastSpecialRateGiftResult_){ nxAlert_('먼저 위에서 "특례세율 증여세 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('증여세 과세표준신고서(특례세율)', srPrintFormPageHtml_());
+  } else if (action === 'print-related-party-gift'){
+    if (!lastRelatedPartyGiftResult_){ nxAlert_('먼저 위에서 "일감몰아주기 증여세 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('일감몰아주기 증여의제 신고서', jmPrintFormPageHtml_());
+  } else if (action === 'print-business-opportunity-gift'){
+    if (!lastBusinessOpportunityGiftResult_){ nxAlert_('먼저 위에서 "일감떼어주기 증여세 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('일감떼어주기 증여의제 신고서', jtPrintFormPageHtml_());
+  } else if (action === 'print-specific-corp-gift'){
+    if (!lastSpecificCorpGiftResult_){ nxAlert_('먼저 위에서 "증여세 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('특정법인 거래이익 증여의제 신고서', scPrintFormPageHtml_());
+  } else if (action === 'print-excess-dividend-gift'){
+    if (!lastExcessDividendGiftResult_){ nxAlert_('먼저 위에서 "증여세 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('초과배당 증여의제 신고서', edPrintFormPageHtml_());
   } else if (action === 'download-gf-efile'){
     const errs = gfValidateEfileInputs_();
     if (errs.length){ renderGfEfileResult_(); return; }
@@ -11043,7 +11281,9 @@ taxCalcView.addEventListener('click', function(e){
       unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('scUnpaidAtDesignated').value) || 0
     };
     Object.assign(input, taxCalcGiftAggregationInput_('sc'));
-    renderSpecificCorpGiftResult(calculateSpecificCorporationGiftTaxJS(input));
+    const scResult = calculateSpecificCorporationGiftTaxJS(input);
+    renderSpecificCorpGiftResult(scResult);
+    lastSpecificCorpGiftResult_ = (scResult && !scResult.error) ? scResult : null;
   } else if (action === 'run-nontaxable-gift'){
     const input = {
       itemType: document.getElementById('ntItemType').value,
@@ -11134,7 +11374,9 @@ taxCalcView.addEventListener('click', function(e){
       unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('jmUnpaidAtDesignated').value) || 0,
       reportedInTime: document.getElementById('jmReportedInTime').checked
     };
-    renderRelatedPartyGiftResult(calculateRelatedPartyTransactionGiftTaxJS(input));
+    const jmResult = calculateRelatedPartyTransactionGiftTaxJS(input);
+    renderRelatedPartyGiftResult(jmResult);
+    lastRelatedPartyGiftResult_ = (jmResult && !jmResult.error) ? jmResult : null;
   } else if (action === 'run-business-opportunity-gift'){
     const input = {
       phase: document.getElementById('jtPhase').value,
@@ -11153,7 +11395,9 @@ taxCalcView.addEventListener('click', function(e){
       unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('jtUnpaidAtDesignated').value) || 0,
       reportedInTime: document.getElementById('jtReportedInTime').checked
     };
-    renderBusinessOpportunityGiftResult(calculateBusinessOpportunityGiftTaxJS(input));
+    const jtResult = calculateBusinessOpportunityGiftTaxJS(input);
+    renderBusinessOpportunityGiftResult(jtResult);
+    lastBusinessOpportunityGiftResult_ = (jtResult && !jtResult.error) ? jtResult : null;
   } else if (action === 'run-clawback-interest'){
     const input = {
       clawedBackTaxAmount: numVal(document.getElementById('ckAmount').value) || 0,
