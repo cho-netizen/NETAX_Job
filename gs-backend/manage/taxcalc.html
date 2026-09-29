@@ -7022,12 +7022,275 @@ function ihValidateEfileInputs_(){
   return errs;
 }
 
+// ---- 상속세 첨부서식(부표1~3) 전자신고 레코드 ----
+// [2026.09.30 신규, 재검토82] 세무사님 지적 — "부표서식은 본표와 세트로 움직이는 것인데 이것을
+// 구현하지 않고 전자신고를 구현했다고 말하는 것 자체가 언어도단이다." 양도코리아 화면에서도
+// 부표1~3은 "필수적 신고서식+전자신고대상"으로 표시되고(부표4·5는 처분재산·영리법인 등 특수한
+// 경우에만 해당하는 임의 서식이라 그 소프트웨어도 상시 필수로 취급하지 않음), 그 범위에 맞춰
+// 부표1(과세가액계산·재산명세)·부표2(상속인별 상속현황·재산관계)·부표3(장례비용·상속공제)를
+// 구현한다. 채무·공과금은 이 앱이 항목별로 입력받지 않고 "상속세과세가액"(이미 순액) 하나로만
+// 받아왔기 때문에(재검토 이전부터의 설계), 정확한 항목별 채무/공과금 내역은 낼 수 없다 —
+// 대신 총상속재산가액과 상속세과세가액의 차액에서 장례비용(항목별로 실제 입력받음)을 뺀
+// 나머지를 "채무" 한 줄로 뭉쳐 넣어 합계만은 어긋나지 않게 한다(공과금은 0으로 둠, 명백한 근사).
+const IH_ATTACH1_FORM_CODE_ = 'G101100'; // 상속세과세가액계산명세서
+const IH_ATTACH2_FORM_CODE_ = 'G101200'; // 상속인별 상속재산 및 평가명세서
+const IH_ATTACH3_FORM_CODE_ = 'G101300'; // 채무·공과금·장례비용 및 상속공제명세서
+
+const IH_ASSET_TYPE_CODE_MAP_ = { // 재산평가 "방법"(VALUATION_METHOD_LABELS) → 상속증여재산분류코드
+  direct: '12', land: '02', house: '04', apartment: '05', officetel: '06', building: '07',
+  listedStock: '09', unlistedStock: '10', memberRight: '08',
+  goodwill: '12', trustBenefit: '12', periodicPayment: '12', conditionalRight: '12',
+  otherTangible: '12', groundRight: '12', patentRight: '12', miningRight: '12',
+  deemedInheritanceItem: '11'
+};
+function ihAssetTypeCode_(method){ return IH_ASSET_TYPE_CODE_MAP_[method] || '12'; }
+function ihAssetValuationBasisCode_(method){ return method === 'direct' ? '01' : '08'; } // 01 매매거래가액, 08 기준시가 등 보충적평가
+// TODO: 재산인적관계코드·상속대상자구분코드 별첨 코드표를 확보하지 못해 임시값을 쓴다(상속세·
+// 증여세 e-file 전체에서 반복돼 온 한계와 동일) — 실제 제출 전 국세청 코드표로 교체 필요.
+function ihHeirRelationCode_(relation){
+  if (relation === '배우자') return '01';
+  if (relation === '자녀') return '02';
+  return '99';
+}
+function ihValuationAssetsGrossTotal_(){
+  return (inheritanceValuationAssets_() || []).reduce(function(s, a){ return s + computeValuationAssetValue(a); }, 0);
+}
+function ihParseFraction_(str){
+  const m = String(str || '').match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);
+  if (m && Number(m[2])) return { num: Number(m[1]), den: Number(m[2]) };
+  return { num: 0, den: 1 };
+}
+
+// 부표1 — 상속세과세가액계산명세서_상속세 과세가액계산(자료구분04, 500B)
+function ihAttach1CalcRecord_(){
+  const r = lastInheritanceResult || {};
+  const g_ = function(id){ const el = document.getElementById(id); return el ? numVal(el.value) : 0; };
+  const grossEstate = g_('ihTotalGrossEstate');
+  const disposalIncluded = numVal(r.상속개시전처분재산_추정합계) || 0;
+  const grossTotal = grossEstate + disposalIncluded;
+  const nonTaxable = numVal(r.비과세재산가액) || 0;
+  const nonIncluded = (numVal(r.공익법인출연재산가액) || 0) + (numVal(r.공익신탁재산가액) || 0);
+  const priorGiftAdded = 0; // TODO: 상증법§13/조특법§30의5·6 가산 증여재산 — 이 앱이 상속세 쪽엔 별도 입력칸이 없어 0(주로 발생하지 않는 사례에 한정)
+  const taxableEstate = numVal(r.상속세과세가액_적용값) || 0;
+  // 공제금액_계를 "상속세과세가액 = 총상속재산가액합계 - 비과세 - 불산입 - 공제금액계 + 가산증여" 식을 역산해서 구한다.
+  const totalDeduction = Math.max(0, grossTotal - nonTaxable - nonIncluded + priorGiftAdded - taxableEstate);
+  const funeralTotal = numVal(r.장례비용공제) || 0;
+  const debtLump = Math.max(0, totalDeduction - funeralTotal); // 채무+공과금을 구분 못해 전부 "채무"로 뭉침(근사)
+  let b = [];
+  b = b.concat(ihPadChar_('04', 2));
+  b = b.concat(ihPadChar_(IH_ATTACH1_FORM_CODE_, 7));
+  b = b.concat(ihPadNum_(grossEstate, 14));
+  b = b.concat(ihPadNum_(disposalIncluded, 14));
+  b = b.concat(ihPadNum_(grossTotal, 14));
+  b = b.concat(ihPadNum_(nonTaxable, 14));
+  b = b.concat(ihPadNum_(0, 14));  // 비과세재산가액_금양임야등가액(세부미수집)
+  b = b.concat(ihPadNum_(0, 14));  // 비과세재산가액_문화재가액(세부미수집)
+  b = b.concat(ihPadNum_(nonTaxable, 14)); // 비과세재산가액_기타(세부구분 없어 전액 기타로)
+  b = b.concat(ihPadNum_(nonIncluded, 14));
+  b = b.concat(ihPadNum_(numVal(document.getElementById('ihPublicOrg') ? document.getElementById('ihPublicOrg').value : 0), 14));
+  b = b.concat(ihPadNum_(numVal(document.getElementById('ihPublicTrust') ? document.getElementById('ihPublicTrust').value : 0), 14));
+  b = b.concat(ihPadNum_(0, 14)); // 과세가액불산입액_기타
+  b = b.concat(ihPadNum_(totalDeduction, 14));
+  b = b.concat(ihPadNum_(0, 14));  // 공제금액_공과금(미수집, 0)
+  b = b.concat(ihPadNum_(funeralTotal, 14));
+  b = b.concat(ihPadNum_(debtLump, 14)); // 공제금액_채무(근사, 위 주석 참고)
+  b = b.concat(ihPadNum_(priorGiftAdded, 14));
+  b = b.concat(ihPadNum_(0, 14)); // 가산하는증여재산가액_상증법13조
+  b = b.concat(ihPadNum_(0, 14)); // 가산하는증여재산가액_조특법30의5
+  b = b.concat(ihPadNum_(0, 14)); // 가산하는증여재산가액_조특법30의6
+  b = b.concat(ihPadNum_(taxableEstate, 14));
+  b = b.concat(ihPadChar_('', 211));
+  return b;
+}
+
+// 부표1 — 상속세과세가액계산명세서_상속받은 총재산명세(자료구분05, 900B) × 자산 1건
+function ihAttach1AssetRecord_(a, seq){
+  let b = [];
+  b = b.concat(ihPadChar_('05', 2));
+  b = b.concat(ihPadChar_(IH_ATTACH1_FORM_CODE_, 7));
+  b = b.concat(ihPadNum_(seq, 6));
+  b = b.concat(ihPadChar_('A11', 3));                       // 재산구분코드(본래의 상속재산-상속인, 고정)
+  b = b.concat(ihPadChar_(ihAssetTypeCode_(a.method), 2));  // 재산종류코드
+  b = b.concat(ihPadChar_(ihAssetValuationBasisCode_(a.method), 2)); // 평가기준코드
+  b = b.concat(ihPadNum_(Math.round(computeValuationAssetValue(a)), 14)); // 평가가액
+  b = b.concat(ihPadDec_(numVal(a.assetArea) || 0, 18, 3)); // 수량
+  b = b.concat(ihPadDec_(numVal(a.assetArea) || 0, 18, 3)); // 면적
+  b = b.concat(ihPadNum_(0, 14));                           // 단가(미수집)
+  b = b.concat(ihPadChar_(a.admCd || '', 10));              // 부동산소재지_법정동코드
+  b = b.concat(ihPadChar_('', 60));                         // 부동산소재지_법정동명
+  b = b.concat(ihPadChar_('Z', 1));                         // 부동산소재지_산번지(미수집, Z 기본값)
+  b = b.concat(ihPadNum_(0, 4));                            // 부동산소재지_번지
+  b = b.concat(ihPadNum_(0, 4));                            // 부동산소재지_호
+  b = b.concat(ihPadChar_('', 20));                         // 건물블록
+  b = b.concat(ihPadChar_('', 4));                          // 건물동
+  b = b.concat(ihPadChar_('', 4));                          // 건물호
+  b = b.concat(ihPadChar_('', 14));                         // 부동산고유번호
+  b = b.concat(ihPadDec_(100, 10, 3));                      // 지분율(100%, 개별 지분 미수집)
+  b = b.concat(ihPadChar_('N', 1));                         // 국외자산여부
+  b = b.concat(ihPadChar_('ZZ', 2));                        // 국외자산국가코드
+  b = b.concat(ihPadChar_('', 100));                        // 국외재산부동산소재지명
+  b = b.concat(ihPadChar_('', 10));                         // 주식발행사업자번호
+  b = b.concat(ihPadChar_('ZZ', 2));                        // 유가증권구분코드
+  b = b.concat(ihPadChar_('ZZZ', 3));                       // 은행코드
+  b = b.concat(ihPadChar_('', 13));                         // 예금주_주민등록번호
+  b = b.concat(ihPadChar_('', 20));                         // 계좌번호
+  b = b.concat(ihPadChar_((a.assetLocation || ''), 300));   // 재산내용
+  b = b.concat(ihPadChar_('ZZ', 2));                        // 간주상속재산유형코드
+  b = b.concat(ihPadChar_('ZZZZZZ', 6));                    // 가상자산종류코드
+  b = b.concat(ihPadDec_(0, 19, 4));                        // 가상자산_수량
+  b = b.concat(ihPadDec_(0, 22, 4));                        // 가상자산_단가
+  b = b.concat(ihPadChar_('', 183));
+  return b;
+}
+
+// 부표2 — 상속인별 상속재산 및 평가명세서_상속현황(자료구분06, 600B) × 상속인 1명
+function ihAttach2HeirRecord_(h, seq){
+  const legal = ihParseFraction_(h.statutoryShareRatio);
+  const actualAmount = Math.round(computeHeirActualValue_(seq - 1));
+  const grossTotal = ihValuationAssetsGrossTotal_();
+  const legalAmount = (legal.den ? Math.round(grossTotal * legal.num / legal.den) : 0);
+  const isNonResident = document.getElementById('ihDecedentResident') && document.getElementById('ihDecedentResident').value === 'nonresident';
+  let b = [];
+  b = b.concat(ihPadChar_('06', 2));
+  b = b.concat(ihPadChar_(IH_ATTACH2_FORM_CODE_, 7));
+  b = b.concat(ihPadNum_(seq, 6));
+  b = b.concat(ihPadChar_(ihHeirRelationCode_(h.relation), 2));
+  b = b.concat(ihPadChar_(h.name || '', 30));
+  b = b.concat(ihPadChar_(ihOnlyDigits_(h.regNo), 13));
+  b = b.concat(ihPadChar_(ihOnlyDigits_(h.phone), 14));
+  b = b.concat(ihPadNum_(legal.num, 4));
+  b = b.concat(ihPadNum_(legal.den || 1, 4));
+  b = b.concat(ihPadNum_(legalAmount, 14));
+  b = b.concat(ihPadNum_(legal.num, 4));   // 실제상속지분(분자) — 배분(heirAllocations) 기준 정확한 분수 미보존, 법정지분으로 근사
+  b = b.concat(ihPadNum_(legal.den || 1, 4)); // 실제상속지분(분모) 근사
+  b = b.concat(ihPadNum_(actualAmount, 14));
+  b = b.concat(ihPadDec_(legal.den ? (legal.num / legal.den * 100) : 0, 8, 5)); // 상속지분율(%)
+  b = b.concat(ihPadNum_(actualAmount, 14));       // 상속재산가액(그 상속인의 실제 귀속액)
+  b = b.concat(ihPadNum_(0, 14));                  // 상속개시전처분재산등산입액(상속인별 배분 미수집, 0)
+  b = b.concat(ihPadNum_(0, 14));                  // 비과세재산가액_금양임야등
+  b = b.concat(ihPadNum_(0, 14));                  // 비과세재산가액_문화재
+  b = b.concat(ihPadNum_(0, 14));                  // 비과세재산가액_기타
+  b = b.concat(ihPadNum_(0, 14));                  // 과세가액불산입_공익법인
+  b = b.concat(ihPadNum_(0, 14));                  // 과세가액불산입_공익신탁
+  b = b.concat(ihPadNum_(0, 14));                  // 과세가액불산입_기타
+  b = b.concat(ihPadNum_(0, 14));                  // 가산하는증여재산가액_상증법13조
+  b = b.concat(ihPadNum_(0, 14));                  // 가산하는증여재산가액_조특법30의5
+  b = b.concat(ihPadNum_(0, 14));                  // 가산하는증여재산가액_조특법30의6
+  b = b.concat(ihPadNum_(actualAmount, 14));       // 상속인별 합계
+  b = b.concat(ihPadChar_('N', 1));                // 영농상속인여부
+  b = b.concat(ihPadChar_('99', 2));               // 상속대상자구분코드(임시값)
+  b = b.concat(ihPadChar_('N', 1));                // 장애인여부(미수집)
+  b = b.concat(ihPadChar_('N', 1));                // 동거여부(미수집)
+  b = b.concat(ihPadNum_(0, 3));                   // 기대여명
+  b = b.concat(ihPadNum_(0, 14));                  // 채무공제금액(상속인별 배분 미수집)
+  b = b.concat(ihPadNum_(0, 14));                  // 공과금공제금액(상속인별 배분 미수집)
+  b = b.concat(ihPadNum_(0, 14));                  // 장례비용공제금액(상속인별 배분 미수집)
+  b = b.concat(ihPadChar_('', 256));
+  return b;
+}
+
+// 부표2 — 상속인별 상속재산 및 평가명세서_상속재산관계(자료구분07, 300B) × (자산×상속인) 배분 1건
+function ihAttach2RelationRecord_(assetSeq, heirSeq, share){
+  let b = [];
+  b = b.concat(ihPadChar_('07', 2));
+  b = b.concat(ihPadChar_(IH_ATTACH2_FORM_CODE_, 7));
+  b = b.concat(ihPadNum_(assetSeq, 6));
+  b = b.concat(ihPadNum_(heirSeq, 6));
+  b = b.concat(ihPadDec_(share.num, 18, 3));
+  b = b.concat(ihPadDec_(share.den || 1, 18, 3));
+  b = b.concat(ihPadDec_(0, 18, 3));               // 수량(면적) — 데이터 길이 변경으로 미사용(스펙 안내)
+  b = b.concat(ihPadNum_(0, 14));                  // 평가가액(상속인별 배분액 — 아래 호출부에서 채움)
+  b = b.concat(ihPadDec_(0, 19, 4));
+  b = b.concat(ihPadChar_('', 192));
+  return b;
+}
+
+// 부표3 — 채무·공과금·장례비용 및 상속공제명세서_장례비용(자료구분10, 800B) × 항목 1건
+function ihAttach3FuneralRecord_(item, seq){
+  let b = [];
+  b = b.concat(ihPadChar_('10', 2));
+  b = b.concat(ihPadChar_(IH_ATTACH3_FORM_CODE_, 7));
+  b = b.concat(ihPadNum_(seq, 6));
+  b = b.concat(ihPadChar_(item.category === 'niche' ? '2' : '1', 1));
+  b = b.concat(ihPadChar_(ihOnlyDigits_(item.bizNo), 13));
+  b = b.concat(ihPadChar_(item.payee || '', 30));
+  b = b.concat(ihPadChar_('', 500));               // 지급내역(세부 미수집)
+  b = b.concat(ihPadNum_(numVal(item.amount) || 0, 14));
+  b = b.concat(ihPadNum_(numVal(item.amount) || 0, 14)); // 장례비용_계(1건당 자기 금액)
+  b = b.concat(ihPadChar_('', 213));
+  return b;
+}
+
+// 부표3 — 채무·공과금·장례비용 및 상속공제명세서_상속공제(자료구분11, 500B)
+function ihAttach3DeductionRecord_(){
+  const r = lastInheritanceResult || {};
+  const g_ = function(id){ const el = document.getElementById(id); return el ? numVal(el.value) : 0; };
+  const isNonResident = document.getElementById('ihDecedentResident') && document.getElementById('ihDecedentResident').value === 'nonresident';
+  const basic = isNonResident ? 0 : 200000000;
+  const childD = isNonResident ? 0 : g_('ihChildCount') * 50000000;
+  const minorD = isNonResident ? 0 : g_('ihMinorYears') * 10000000;
+  const elderlyD = isNonResident ? 0 : g_('ihElderlyCount') * 50000000;
+  const disabledD = isNonResident ? 0 : g_('ihDisabledYears') * 10000000;
+  const lumpSum = isNonResident ? 0 : 500000000;
+  const business = numVal(r.가업상속공제) || 0;
+  const farming = numVal(r.영농상속공제) || 0;
+  const spouse = numVal(r.배우자공제) || 0;
+  const financial = numVal(r.금융재산상속공제) || 0;
+  const disaster = numVal(r.재해손실공제) || 0;
+  const cohabit = numVal(r.동거주택상속공제) || 0;
+  const limit = Math.max(0, numVal(r.상속세과세가액_적용값) - business - farming - spouse - financial - disaster - cohabit);
+  const total = numVal(r.상속공제_합계);
+  let b = [];
+  b = b.concat(ihPadChar_('11', 2));
+  b = b.concat(ihPadChar_(IH_ATTACH3_FORM_CODE_, 7));
+  b = b.concat(ihPadNum_(basic, 14));
+  b = b.concat(ihPadNum_(childD, 14));
+  b = b.concat(ihPadNum_(minorD, 14));
+  b = b.concat(ihPadNum_(elderlyD, 14));
+  b = b.concat(ihPadNum_(disabledD, 14));
+  b = b.concat(ihPadNum_(lumpSum, 14));
+  b = b.concat(ihPadNum_(business, 14));
+  b = b.concat(ihPadNum_(farming, 14));
+  b = b.concat(ihPadNum_(spouse, 14));
+  b = b.concat(ihPadNum_(financial, 14));
+  b = b.concat(ihPadNum_(disaster, 14));
+  b = b.concat(ihPadNum_(cohabit, 14));
+  b = b.concat(ihPadNum_(limit, 14));
+  b = b.concat(ihPadNum_(numVal(total) || 0, 14));
+  b = b.concat(ihPadNum_(0, 14)); // 상속인제외유증재산가액(미수집)
+  b = b.concat(ihPadNum_(0, 14)); // 상속포기이후상속재산가액(미수집)
+  b = b.concat(ihPadNum_(0, 14)); // 과세가액가산증여재산가액(미수집)
+  b = b.concat(ihPadChar_('', 253));
+  return b;
+}
+
+function ihBuildAttachmentRecords_(){
+  const rows = [];
+  rows.push(ihAttach1CalcRecord_());
+  const assets = inheritanceValuationAssets_();
+  assets.forEach(function(a, i){ rows.push(ihAttach1AssetRecord_(a, i + 1)); });
+  inheritanceHeirs.forEach(function(h, i){ rows.push(ihAttach2HeirRecord_(h, i + 1)); });
+  assets.forEach(function(a, aIdx){
+    (Array.isArray(a.heirAllocations) ? a.heirAllocations : []).forEach(function(al){
+      if (al.heirIdx === undefined || al.heirIdx === null || al.heirIdx === '') return;
+      rows.push(ihAttach2RelationRecord_(aIdx + 1, Number(al.heirIdx) + 1, ihParseFraction_(al.ratio) || { num: 1, den: 1 }));
+    });
+  });
+  inheritanceFuneralItems.forEach(function(item, i){
+    if (numVal(item.amount) > 0) rows.push(ihAttach3FuneralRecord_(item, i + 1));
+  });
+  rows.push(ihAttach3DeductionRecord_());
+  return rows;
+}
+
 function ihBuildEfileBytes_(){
   const head = buildIhHeadRecord_();
   const basic = buildIhBasicRecord_();
   const calc = buildIhTaxCalcRecord_();
   const CRLF = [0x0D, 0x0A];
-  return new Uint8Array(head.concat(CRLF, basic, CRLF, calc, CRLF));
+  let all = head.concat(CRLF, basic, CRLF, calc, CRLF);
+  ihBuildAttachmentRecords_().forEach(function(r){ all = all.concat(r, CRLF); });
+  return new Uint8Array(all);
 }
 
 function ihEfileFileName_(){
@@ -7090,11 +7353,96 @@ function ihPrintFormBodyHtml_(){
       pfRow_(++n, '납부지연가산세', won(0)) +
       pfRow_(++n, '납부할 세액(합계액)', won(r.납부세액)) +
     '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 첨부서류(부표1~5)는 별도로 작성해야 합니다.</div>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 부표1~3은 뒤에 이어집니다. 부표4(상속개시전 처분재산)·부표5(영리법인 면제)는 해당 사실관계가 있는 사건에서만 필요해 아직 포함되지 않습니다.</div>' +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml(reporter.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+  '</div>' + ihAttachPrintPagesHtml_();
+}
+
+// 부표1(과세가액계산명세서)·부표2(상속인별 상속재산 및 평가명세서)·부표3(채무·공과금·
+// 장례비용 및 상속공제명세서) 인쇄 페이지 — 항목이 많아 자산·상속인별로 표를 나눠 보여준다.
+function ihAttachPrintPagesHtml_(){
+  const r = lastInheritanceResult || {};
+  const g_ = function(id){ const el = document.getElementById(id); return el ? numVal(el.value) : 0; };
+  const grossEstate = g_('ihTotalGrossEstate');
+  const assets = inheritanceValuationAssets_();
+  const isNonResident = document.getElementById('ihDecedentResident') && document.getElementById('ihDecedentResident').value === 'nonresident';
+  let n = 0;
+  let html = '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제9호서식 부표1]</div>' +
+    '<div class="pf-title">상속세과세가액계산명세서</div>' +
+    '<div class="pf-section-head">가. 상속받은 총재산명세</div>' +
+    '<table class="pf-table">' +
+      assets.map(function(a, i){ return pfRow_(0, (i + 1) + '. ' + (a.assetLocation || VALUATION_METHOD_LABELS[a.method] || '자산'), won(Math.round(computeValuationAssetValue(a)))); }).join('') +
+      pfRow_(0, '계', won(Math.round(ihValuationAssetsGrossTotal_()))) +
+    '</table>' +
+    '<div class="pf-section-head">나. 상속세 과세가액 계산</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '총상속재산가액', won(grossEstate)) +
+      pfRow_(++n, '상속개시 전 처분재산등 산입액', won(r.상속개시전처분재산_추정합계)) +
+      pfRow_(++n, '비과세재산가액', won(r.비과세재산가액)) +
+      pfRow_(++n, '과세가액불산입액(공익법인·공익신탁)', won((numVal(r.공익법인출연재산가액) || 0) + (numVal(r.공익신탁재산가액) || 0))) +
+      pfRow_(++n, '장례비용공제', won(r.장례비용공제)) +
+      pfRow_(++n, '상속세과세가액', won(r.상속세과세가액_적용값)) +
+    '</table>' +
+    '<div class="pf-note">채무·공과금은 항목별로 따로 입력받지 않아 위 계산에 뭉쳐 반영돼 있습니다 — 실제 채무·공과금 내역은 별도로 정리해 제출하세요.</div>' +
   '</div>';
+
+  html += '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제9호서식 부표2]</div>' +
+    '<div class="pf-title">상속인별 상속재산 및 평가명세서</div>' +
+    '<div class="pf-section-head">가. 상속인별 상속현황</div>' +
+    '<table class="pf-table">' +
+      '<tr><th>상속인</th><th>관계</th><th>법정상속지분</th><th>실제상속재산가액</th></tr>' +
+      inheritanceHeirs.map(function(h, i){
+        return '<tr><td>' + escapeHtml(h.name || ('상속인' + (i + 1))) + '</td><td class="pf-right">' + escapeHtml(h.relation || '') + '</td>' +
+          '<td class="pf-right">' + escapeHtml(h.statutoryShareRatio || '') + '</td><td class="pf-right">' + won(Math.round(computeHeirActualValue_(i))) + '</td></tr>';
+      }).join('') +
+    '</table>' +
+    '<div class="pf-section-head">나. 상속인별 상속재산 배분</div>' +
+    '<table class="pf-table">' +
+      '<tr><th>자산</th><th>받는 상속인</th><th>배분</th></tr>' +
+      assets.map(function(a, aIdx){
+        return (Array.isArray(a.heirAllocations) ? a.heirAllocations : []).map(function(al){
+          if (al.heirIdx === undefined || al.heirIdx === null || al.heirIdx === '') return '';
+          const h = inheritanceHeirs[Number(al.heirIdx)] || {};
+          return '<tr><td>' + escapeHtml(a.assetLocation || ('자산' + (aIdx + 1))) + '</td><td>' + escapeHtml(h.name || '') + '</td><td class="pf-right">' + escapeHtml(al.ratio || '') + '</td></tr>';
+        }).join('');
+      }).join('') +
+    '</table>' +
+  '</div>';
+
+  const funeralRows = inheritanceFuneralItems.filter(function(it){ return numVal(it.amount) > 0; });
+  html += '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제9호서식 부표3]</div>' +
+    '<div class="pf-title">채무·공과금·장례비용 및 상속공제명세서</div>' +
+    '<div class="pf-section-head">다. 장례비용</div>' +
+    '<table class="pf-table">' +
+      (funeralRows.length ? funeralRows.map(function(it){
+        return pfRow_(0, (it.category === 'niche' ? '봉안시설·자연장지' : '일반장례') + ' — ' + (it.payee || ''), won(numVal(it.amount)));
+      }).join('') : pfRow_(0, '장례비용', '입력 없음')) +
+      pfRow_(0, '계', won(numVal(r.장례비용공제))) +
+    '</table>' +
+    '<div class="pf-section-head">라. 상속공제</div>' +
+    '<table class="pf-table">' +
+      pfRow_(0, '기초공제', won(isNonResident ? 0 : 200000000)) +
+      pfRow_(0, '자녀공제', won(isNonResident ? 0 : g_('ihChildCount') * 50000000)) +
+      pfRow_(0, '미성년자공제', won(isNonResident ? 0 : g_('ihMinorYears') * 10000000)) +
+      pfRow_(0, '연로자공제', won(isNonResident ? 0 : g_('ihElderlyCount') * 50000000)) +
+      pfRow_(0, '장애인공제', won(isNonResident ? 0 : g_('ihDisabledYears') * 10000000)) +
+      pfRow_(0, '일괄공제(선택시)', won(isNonResident ? 0 : 500000000)) +
+      pfRow_(0, '가업상속공제', won(r.가업상속공제)) +
+      pfRow_(0, '영농상속공제', won(r.영농상속공제)) +
+      pfRow_(0, '배우자상속공제', won(r.배우자공제)) +
+      pfRow_(0, '금융재산상속공제', won(r.금융재산상속공제)) +
+      pfRow_(0, '재해손실공제', won(r.재해손실공제)) +
+      pfRow_(0, '동거주택상속공제', won(r.동거주택상속공제)) +
+      pfRow_(0, '상속공제금액 합계', won(r.상속공제_합계)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다.</div>' +
+  '</div>';
+  return html;
 }
 
 function renderIhEfileResult_(){
