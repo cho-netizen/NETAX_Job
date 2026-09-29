@@ -4174,9 +4174,10 @@ function renderTransferPane(){
       '</div>' +
     '</div>' +
     '<div class="taxcalc-asset-head" style="margin-top:20px;"><b>서식·전자신고 — 양도소득세과세표준신고 및 자진납부계산서(C116300)</b></div>' +
-    '<div class="taxcalc-result-note" style="margin:2px 0 8px;">국내 부동산·부동산에관한권리·기타자산(§94①1·2·4호) 양도분 기준입니다. 주식등·국외자산 양도는 이 파일에 포함되지 않습니다(별도 서식). 지방소득세(세율구분98)는 2016년 규격의 안내대로 국세 산출세액의 10%로 근사 산출했습니다 — 위택스 개인지방소득세 신고가 별도로 필요한지는 실무로 다시 확인하세요. 양수인과의 관계 코드는 국세청 별지 코드표를 확보하지 못해 임시값(99)으로 채웠습니다.</div>' +
+    '<div class="taxcalc-result-note" style="margin:2px 0 8px;">국내 부동산·부동산에관한권리·기타자산(§94①1·2·4호) 양도분 기준입니다. 주식등·국외자산 양도는 이 파일에 포함되지 않습니다(별도 서식). ⚠ 위택스(wetax.go.kr)에 개인지방소득세(양도소득분)를 <b>별도로 신고해야 합니다</b> — 이 홈택스 파일에 포함되지 않으며, 위택스는 파일 업로드가 아닌 웹사이트 직접입력 방식이라 아래 "위택스 신고 참고자료" 버튼으로 옮겨 적을 값만 확인하세요. 양수인과의 관계 코드는 국세청 별지 코드표를 확보하지 못해 임시값(99)으로 채웠습니다.</div>' +
     '<button type="button" class="taxcalc-run-btn" data-action="check-tr-efile">전자신고파일 작성하기</button>' +
     '<button type="button" class="taxcalc-run-btn" data-action="print-tr-form">🖨 인쇄용 서식 보기</button>' +
+    '<button type="button" class="taxcalc-run-btn" data-action="print-tr-wetax-form">🖨 위택스 신고 참고자료</button>' +
     '<div id="taxCalcTrEfileResult"></div>' +
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="stock" style="' + (trActiveSubtab_ === 'stock' ? '' : 'display:none;') + '">' +
@@ -6267,6 +6268,57 @@ function trPrintFormBodyHtml_(){
   const buyers = trCollectBuyers_();
   return (lastTransferResults_ || []).filter(function(item){ return item.result && !item.result.error; })
     .map(function(item){ return trPrintFormPageHtml_(item.seller || {}, item.result, buyers); }).join('');
+}
+
+// [2026.09.29 신규, 재검토80] 위택스(개인지방소득세 양도소득분) — 세무사님 확인: "위택스도
+// 전자신고가 있다." 실제로 위택스 신고(신고>지방소득세>양도소득분신고)는 홈택스처럼 파일을
+// 업로드하는 방식이 아니라 위택스 웹사이트에서 직접 입력하는 방식이고(세무회계프로그램용
+// 파일레이아웃 규격은 법인분만 공개돼 있고 개인분은 없음 — 위택스 고객센터에 별도 문의 필요),
+// 그래서 이 앱이 대신 파일을 만들어줄 수는 없다. 대신 위택스 입력화면에 그대로 옮겨 적을 수
+// 있도록 지방세법 시행규칙 [별지 제40호의11서식](양도소득에 대한 개인지방소득세 과세표준신고
+// 및 납부계산서)과 같은 항목으로 참고자료를 인쇄해준다 — 값은 국세 계산 결과의 10%
+// 근사치(지방소득세 = 국세 산출세액×10%가 원칙)를 그대로 쓴다.
+function trWetaxPrintFormPageHtml_(seller, r, buyers){
+  const localTax = r.지방소득세 || 0; // 이미 자경감면 등이 반영된 순액(국세 산출세액_합계의 10%)
+  const localPenalty = Math.round(((r.무신고가산세 || 0) + (r.과소신고가산세 || 0) + (r.납부지연가산세 || 0)) * 0.1);
+  const localPayable = localTax + localPenalty;
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">지방세법 시행규칙 [별지 제40호의11서식]</div>' +
+    '<div class="pf-title">양도소득에 대한 개인지방소득세 과세표준신고 및 납부계산서</div>' +
+    '<div class="pf-check">[ ] 예정신고 &nbsp;&nbsp; [ ] 확정신고 &nbsp;&nbsp; [ ] 수정신고 &nbsp;&nbsp; [ ] 기한 후 신고</div>' +
+    '<div class="pf-section-head">① 신고인(양도인)</div>' +
+    '<table class="pf-table">' +
+      pfRow_(0, '성명', seller.name) + pfRow_(0, '주민등록번호', seller.regNo) +
+      pfRow_(0, '전화번호', seller.phone) + pfRow_(0, '거주구분', seller.isTransferorResident === false ? '비거주자' : '거주자') +
+      pfRow_(0, '주소', seller.address) +
+    '</table>' +
+    '<div class="pf-section-head">② 신고기본정보</div>' +
+    '<table class="pf-table">' + pfRow_(0, '양도일자', trLatestTransferDate_()) + '</table>' +
+    '<div class="pf-section-head">③ 양수인</div>' +
+    '<table class="pf-table">' +
+      (buyers.length ? buyers.map(function(b, i){ return pfRow_(0, '양수인 ' + (i + 1), (b.name || '') + (b.regNo ? ' (' + b.regNo + ')' : '')); }).join('') : pfRow_(0, '양수인', '(등록된 양수인 없음)')) +
+    '</table>' +
+    '<div class="pf-section-head">세액 계산(참고용, 국세의 10% 근사)</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '과세표준', won(r.합산과세표준)) +
+      pfRow_(++n, '산출세액', won(localTax)) +
+      pfRow_(++n, '감면세액', '이미 산출세액에 반영됨') +
+      pfRow_(++n, '외국납부세액공제', won(0)) +
+      pfRow_(++n, '특별징수세액공제', won(0)) +
+      pfRow_(++n, '연금계좌세액공제', won(0)) +
+      pfRow_(++n, '전자신고세액공제', won(0)) +
+      pfRow_(++n, '가산세(참고용 근사)', won(localPenalty)) +
+      pfRow_(++n, '기신고·결정·경정세액', won(0)) +
+      pfRow_(++n, '납부(환급)할 총세액', won(localPayable)) +
+    '</table>' +
+    '<div class="pf-note">⚠ 이 자료는 위택스(wetax.go.kr) 신고 화면에 옮겨 적기 위한 참고용입니다 — 위택스는 파일 업로드가 아니라 웹사이트 직접입력 방식이라 이 앱이 신고서 파일 자체를 만들어줄 수 없습니다. 정확한 세율·감면·가산세는 위택스 화면에서 반드시 다시 확인하세요.</div>' +
+  '</div>';
+}
+function trWetaxPrintFormBodyHtml_(){
+  const buyers = trCollectBuyers_();
+  return (lastTransferResults_ || []).filter(function(item){ return item.result && !item.result.error; })
+    .map(function(item){ return trWetaxPrintFormPageHtml_(item.seller || {}, item.result, buyers); }).join('');
 }
 
 function renderTrEfileResult_(){
@@ -9982,6 +10034,9 @@ taxCalcView.addEventListener('click', function(e){
   } else if (action === 'print-tr-form'){
     if (!lastTransferResults_ || !lastTransferResults_.length){ nxAlert_('먼저 위에서 "세액 계산하기"를 눌러 계산을 완료하세요.'); return; }
     openPrintFormWindow_('양도소득세 과세표준신고서', trPrintFormBodyHtml_());
+  } else if (action === 'print-tr-wetax-form'){
+    if (!lastTransferResults_ || !lastTransferResults_.length){ nxAlert_('먼저 위에서 "세액 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('위택스 개인지방소득세 신고 참고자료', trWetaxPrintFormBodyHtml_());
   } else if (action === 'download-tr-efile'){
     const errs = trValidateEfileInputs_();
     if (errs.length){ renderTrEfileResult_(); return; }
