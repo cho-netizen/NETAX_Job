@@ -8267,6 +8267,72 @@ function gfValidateEfileInputs_(){
   return errs;
 }
 
+// 부표1 — 증여재산 및 평가명세서(자료구분05, G101600, 600B) × (증여자,수증인) 쌍으로 흐르는 자산 1건
+// [2026.09.30 신규, 재검토84] 상속세 부표1과 같은 원칙 — "재산평가" 탭 자산목록(giftValuationAssets_)과
+// 이미 있는 배분(a.donorAllocations)을 그대로 재사용한다. 필드5(재산종류)는 2020년 서식개정으로
+// 미사용이 돼 'ZZ' 고정, 실제 재산유형은 필드35(재산분류)에 담는다(스펙 자체의 안내).
+function gfAttach1AssetRecord_(a, allocRatio, seq){
+  const value = Math.round(computeValuationAssetValue(a) * allocRatio);
+  let b = [];
+  b = b.concat(ihPadChar_('05', 2));
+  b = b.concat(ihPadChar_('G101600', 7));
+  b = b.concat(ihPadNum_(seq, 6));
+  b = b.concat(ihPadChar_('A11', 3));                        // 재산구분코드(본래의 증여재산, 고정)
+  b = b.concat(ihPadChar_('ZZ', 2));                         // 재산종류(서식개정으로 미사용)
+  b = b.concat(ihPadChar_(ihAssetValuationBasisCode_(a.method), 2));
+  b = b.concat(ihPadNum_(value, 13));
+  b = b.concat(ihPadDec_(numVal(a.assetArea) || 0, 18, 3));  // 면적
+  b = b.concat(ihPadDec_(numVal(a.assetArea) || 0, 18, 3));  // 수량
+  b = b.concat(ihPadNum_(0, 13));                            // 단가(미수집)
+  b = b.concat(ihPadChar_(a.admCd || '', 10));
+  b = b.concat(ihPadChar_('', 60));
+  b = b.concat(ihPadChar_('Z', 1));
+  b = b.concat(ihPadNum_(0, 4));
+  b = b.concat(ihPadNum_(0, 4));
+  b = b.concat(ihPadChar_('', 20));
+  b = b.concat(ihPadChar_('', 4));
+  b = b.concat(ihPadChar_('', 4));
+  b = b.concat(ihPadChar_('', 14));                          // 부동산고유번호
+  b = b.concat(ihPadChar_('ZZ', 2));                         // 지목(고정)
+  b = b.concat(ihPadChar_('N', 1));                          // 국외자산여부
+  b = b.concat(ihPadChar_('ZZ', 2));                         // 국외자산국가코드
+  b = b.concat(ihPadChar_('', 100));                         // 국외재산부동산소재지명
+  b = b.concat(ihPadChar_('', 10));                          // 주식발행사업자번호
+  b = b.concat(ihPadChar_('ZZ', 2));                         // 유가증권구분
+  b = b.concat(ihPadChar_('ZZ', 2));                         // 특정시설물이용권
+  b = b.concat(ihPadChar_('ZZZ', 3));                        // 회원권종류
+  b = b.concat(ihPadChar_('', 20));                          // 회원권번호
+  b = b.concat(ihPadChar_('ZZZZZZZZ', 8));                   // 특정시설물
+  b = b.concat(ihPadChar_('ZZZ', 3));                        // 은행코드
+  b = b.concat(ihPadChar_('', 13));                          // 예금주_주민등록번호
+  b = b.concat(ihPadChar_('', 20));                          // 계좌번호
+  b = b.concat(ihPadChar_('', 10));                          // 공익법인사업자번호
+  b = b.concat(ihPadChar_(a.assetLocation || '', 100));      // 재산내용
+  b = b.concat(ihPadChar_(ihAssetTypeCode_(a.method), 2));   // 재산분류(실제 코드는 여기)
+  b = b.concat(ihPadDec_(100, 10, 3));                       // 지분율(개별 지분 미수집, 100%)
+  b = b.concat(ihPadChar_('ZZZZZZ', 6));                     // 가상자산종류코드
+  b = b.concat(ihPadDec_(0, 19, 4));
+  b = b.concat(ihPadDec_(0, 22, 4));
+  b = b.concat(ihPadChar_('', 40));
+  return b;
+}
+function gfAttach1AssetRecordsForPair_(donorIdx, doneeIdx){
+  const rows = [];
+  let seq = 0;
+  giftValuationAssets_().forEach(function(a){
+    const allocations = Array.isArray(a.donorAllocations) ? a.donorAllocations : [];
+    const ratio = allocations.reduce(function(s, al){
+      if (String(al.donorIdx) !== String(donorIdx)) return s;
+      const al_doneeIdx = (al.doneeIdx === undefined || al.doneeIdx === null || al.doneeIdx === '') ? '0' : String(al.doneeIdx);
+      if (al_doneeIdx !== String(doneeIdx)) return s;
+      const r = parseShareFraction_(al.ratio);
+      return s + (r === null ? 0 : r);
+    }, 0);
+    if (ratio > 0) rows.push(gfAttach1AssetRecord_(a, ratio, ++seq));
+  });
+  return rows;
+}
+
 function gfBuildEfileBytes_(){
   const giftDate = document.getElementById('giftDate').value;
   const CRLF = [0x0D, 0x0A];
@@ -8276,6 +8342,7 @@ function gfBuildEfileBytes_(){
     const donee = giftDonees[item.doneeIdx] || {};
     const donor = giftDonors[item.donorIdxs[0]] || {};
     all = all.concat(gfHeadRecord_(donee.regNo, giftDate), CRLF, gfBasicRecord_(donee, donor, giftDate, item.doneeIdx), CRLF, gfTaxCalcRecord_(item), CRLF);
+    gfAttach1AssetRecordsForPair_(item.donorIdxs[0], item.doneeIdx).forEach(function(r){ all = all.concat(r, CRLF); });
   });
   return new Uint8Array(all);
 }
@@ -8340,10 +8407,32 @@ function gfPrintFormPageHtml_(item, giftDate){
       pfRow_(++n, '납부지연가산세', won(0)) +
       pfRow_(++n, '자진납부할 세액(합계액)', won(r.납부세액)) +
     '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 증여재산 및 평가명세서(부표1) 등 첨부서식은 별도로 작성해야 합니다.</div>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 부표1(증여재산 및 평가명세서)은 뒤에 이어집니다. 외국납부세액공제·영농특례 등 조건부 서식은 해당 사실관계가 있을 때만 필요해 포함되지 않았습니다.</div>' +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml(donee.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+  '</div>' + gfAttach1PrintPageHtml_(item.donorIdxs[0], item.doneeIdx);
+}
+function gfAttach1PrintPageHtml_(donorIdx, doneeIdx){
+  const rows = [];
+  giftValuationAssets_().forEach(function(a){
+    const allocations = Array.isArray(a.donorAllocations) ? a.donorAllocations : [];
+    const ratio = allocations.reduce(function(s, al){
+      if (String(al.donorIdx) !== String(donorIdx)) return s;
+      const al_doneeIdx = (al.doneeIdx === undefined || al.doneeIdx === null || al.doneeIdx === '') ? '0' : String(al.doneeIdx);
+      if (al_doneeIdx !== String(doneeIdx)) return s;
+      const r = parseShareFraction_(al.ratio);
+      return s + (r === null ? 0 : r);
+    }, 0);
+    if (ratio > 0) rows.push({ a: a, value: Math.round(computeValuationAssetValue(a) * ratio) });
+  });
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호서식 부표1]</div>' +
+    '<div class="pf-title">증여재산 및 평가명세서</div>' +
+    '<table class="pf-table">' +
+      (rows.length ? rows.map(function(row, i){ return pfRow_(0, (i + 1) + '. ' + (row.a.assetLocation || VALUATION_METHOD_LABELS[row.a.method] || '자산'), won(row.value)); }).join('') : pfRow_(0, '증여재산', '입력 없음')) +
+      pfRow_(0, '계', won(rows.reduce(function(s, row){ return s + row.value; }, 0))) +
+    '</table>' +
   '</div>';
 }
 function gfPrintFormBodyHtml_(){
