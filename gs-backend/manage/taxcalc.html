@@ -4176,6 +4176,7 @@ function renderTransferPane(){
     '<div class="taxcalc-asset-head" style="margin-top:20px;"><b>서식·전자신고 — 양도소득세과세표준신고 및 자진납부계산서(C116300)</b></div>' +
     '<div class="taxcalc-result-note" style="margin:2px 0 8px;">국내 부동산·부동산에관한권리·기타자산(§94①1·2·4호) 양도분 기준입니다. 주식등·국외자산 양도는 이 파일에 포함되지 않습니다(별도 서식). 지방소득세(세율구분98)는 2016년 규격의 안내대로 국세 산출세액의 10%로 근사 산출했습니다 — 위택스 개인지방소득세 신고가 별도로 필요한지는 실무로 다시 확인하세요. 양수인과의 관계 코드는 국세청 별지 코드표를 확보하지 못해 임시값(99)으로 채웠습니다.</div>' +
     '<button type="button" class="taxcalc-run-btn" data-action="check-tr-efile">전자신고파일 작성하기</button>' +
+    '<button type="button" class="taxcalc-run-btn" data-action="print-tr-form">🖨 인쇄용 서식 보기</button>' +
     '<div id="taxCalcTrEfileResult"></div>' +
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="stock" style="' + (trActiveSubtab_ === 'stock' ? '' : 'display:none;') + '">' +
@@ -6222,6 +6223,52 @@ function trEfileFileName_(){
   return ymd + TR_EFILE_FORM_CODE_ + '.01';
 }
 
+// 양도소득세과세표준신고 및 납부계산서(별지 제84호서식) — 양도인(신고인)마다 한 페이지.
+function trPrintFormPageHtml_(seller, r, buyers){
+  const localTax = r.지방소득세 || 0;
+  const nationalReduction = (r.합산자경감면액 || 0) + (r.합산수용감면액 || 0);
+  const reportPenalty = (r.무신고가산세 || 0) + (r.과소신고가산세 || 0);
+  const latePenalty = r.납부지연가산세 || 0;
+  const nationalPayable = Math.max(0, (r.납부세액_합계 || 0) - localTax);
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">소득세법 시행규칙 [별지 제84호서식]</div>' +
+    '<div class="pf-title">양도소득세 과세표준신고 및 납부계산서</div>' +
+    '<div class="pf-check">[ ] 예정신고 &nbsp;&nbsp; [ ] 확정신고 &nbsp;&nbsp; [ ] 수정신고 &nbsp;&nbsp; [ ] 기한 후 신고</div>' +
+    '<div class="pf-section-head">신고인(양도인)</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '성명', seller.name) + pfRow_(++n, '주민등록번호', seller.regNo) +
+      pfRow_(++n, '전화번호', seller.phone) + pfRow_(++n, '주소', seller.address) +
+    '</table>' +
+    '<div class="pf-section-head">양수인</div>' +
+    '<table class="pf-table">' +
+      (buyers.length ? buyers.map(function(b, i){ return pfRow_(0, '양수인 ' + (i + 1), (b.name || '') + (b.regNo ? ' (' + b.regNo + ')' : '')); }).join('') : pfRow_(0, '양수인', '(등록된 양수인 없음)')) +
+    '</table>' +
+    '<div class="pf-section-head">세액 계산(국세)</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '양도소득금액', won(r.합산소득금액)) +
+      pfRow_(++n, '양도소득기본공제', won(r.기본공제)) +
+      pfRow_(++n, '과세표준', won(r.합산과세표준)) +
+      pfRow_(++n, '산출세액', won(r.산출세액_합계)) +
+      pfRow_(++n, '감면세액', won(nationalReduction)) +
+      pfRow_(++n, '신고불성실가산세', won(r.무신고가산세 || r.과소신고가산세 ? reportPenalty : 0)) +
+      pfRow_(++n, '납부지연가산세', won(latePenalty)) +
+      pfRow_(++n, '자진납부할 세액(국세)', won(nationalPayable)) +
+    '</table>' +
+    '<div class="pf-section-head">개인지방소득세(참고, 세율구분 98)</div>' +
+    '<table class="pf-table">' + pfRow_(0, '지방소득세(국세의 10% 근사)', won(localTax)) + '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 지방소득세는 위택스 별도신고 필요 여부를 실무로 확인하세요. 양도소득금액계산명세서 등 첨부서식은 별도로 작성해야 합니다.</div>' +
+    '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
+      new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
+      '신고인 &nbsp;' + escapeHtml(seller.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+  '</div>';
+}
+function trPrintFormBodyHtml_(){
+  const buyers = trCollectBuyers_();
+  return (lastTransferResults_ || []).filter(function(item){ return item.result && !item.result.error; })
+    .map(function(item){ return trPrintFormPageHtml_(item.seller || {}, item.result, buyers); }).join('');
+}
+
 function renderTrEfileResult_(){
   const box = document.getElementById('taxCalcTrEfileResult');
   if (!box) return;
@@ -6448,6 +6495,7 @@ function renderInheritancePane(){
       '<div class="taxcalc-asset-head"><b>서식·전자신고 — 상속세과세표준신고 및 자진납부계산서(G101000)</b></div>' +
       '<div class="taxcalc-result-note">위에서 "세액 계산하기"를 먼저 실행한 뒤 이용하세요. 아래 버튼은 국세청 홈택스 "파일변환신고" 규격(2026.02)에 맞춘 신고서 본체 전자신고파일을 만듭니다 — 재산명세·공제명세 등 26개 첨부서식은 아직 포함되지 않습니다.</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="check-ih-efile" style="margin-top:8px;">전자신고파일 작성하기</button>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="print-ih-form" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
       '<div id="taxCalcIhEfileResult" style="margin-top:8px;"></div>' +
     '</div>';
   renderDisposalItemsList();
@@ -6547,6 +6595,53 @@ function ihDateField_(dateStr){
   return ihPadChar_(String(dateStr || '').replace(/-/g, ''), 8);
 }
 function ihOnlyDigits_(v){ return String(v == null ? '' : v).replace(/\D/g, ''); }
+
+// ---- 서식 인쇄(PDF) 공용 인프라 ----
+// [2026.09.25 신규, 재검토79] "모든 서식에 내용을 입력한 출력기능"(세무사님 장기목표 (1)번) —
+// 전자신고파일과 달리 여기서는 국세청 공식 별지서식(상속세 별지9호·증여세 별지10호·양도세
+// 별지84호)과 같은 항목 순서·라벨로 화면에 그려서 브라우저 인쇄(=PDF로 저장)로 출력한다.
+// 정부 서식의 칸 좌표를 픽셀 단위로 복제하지는 않는다(시행규칙 개정마다 깨질 위험) — 대신
+// 매 항목에 원본 서식과 같은 동그라미 번호·라벨을 붙여 신고서 대용으로 바로 쓸 수 있게 한다.
+function circledNum_(n){
+  if (n >= 1 && n <= 20) return String.fromCodePoint(0x2460 + (n - 1));
+  if (n >= 21 && n <= 35) return String.fromCodePoint(0x3251 + (n - 21));
+  if (n >= 36 && n <= 50) return String.fromCodePoint(0x32B1 + (n - 36));
+  return '(' + n + ')';
+}
+function pfRow_(n, label, value, opts){
+  opts = opts || {};
+  const style = 'width:34%;' + (opts.indent ? ' padding-left:16px;' : '');
+  return '<tr><th style="' + style + '">' + (n ? circledNum_(n) + ' ' : '') + escapeHtml(label) + '</th>' +
+    '<td class="pf-right">' + escapeHtml(value == null ? '' : String(value)) + '</td></tr>';
+}
+function openPrintFormWindow_(title, bodyHtml){
+  const win = window.open('', '_blank');
+  if (!win){ nxAlert_('팝업이 차단되었습니다. 브라우저의 팝업 차단을 해제한 뒤 다시 시도하세요.'); return; }
+  win.document.write(
+    '<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>' + escapeHtml(title) + '</title>' +
+    '<style>' +
+    'body{font-family:"Malgun Gothic","맑은 고딕",sans-serif; font-size:12px; color:#000; margin:0; padding:16px; background:#e9eaee;}' +
+    '.pf-page{background:#fff; width:210mm; min-height:297mm; margin:0 auto 16px; padding:14mm 12mm; box-sizing:border-box; box-shadow:0 0 6px rgba(0,0,0,0.2);}' +
+    '.pf-toolbar{max-width:210mm; margin:0 auto 8px; text-align:right;}' +
+    '.pf-toolbar button{padding:8px 16px; font-size:14px; cursor:pointer;}' +
+    '.pf-formno{text-align:right; font-size:10px; color:#333; margin:0;}' +
+    '.pf-check{text-align:center; font-size:11px; margin:4px 0 8px;}' +
+    '.pf-title{text-align:center; font-size:17px; font-weight:bold; margin:2px 0 8px;}' +
+    'table.pf-table{width:100%; border-collapse:collapse; margin-bottom:10px; table-layout:fixed;}' +
+    'table.pf-table th, table.pf-table td{border:1px solid #333; padding:4px 6px; font-size:11px; vertical-align:middle; word-break:break-word;}' +
+    'table.pf-table th{background:#f2f2f2; font-weight:normal; text-align:left;}' +
+    '.pf-section-head{background:#444; color:#fff; font-weight:bold; text-align:center; padding:4px; font-size:12px; margin-top:14px; border-radius:2px;}' +
+    '.pf-right{text-align:right;}' +
+    '.pf-note{font-size:10px; color:#666; margin:2px 0 10px;}' +
+    '.pf-sign{margin-top:18px; text-align:right; font-size:12px; line-height:2.1;}' +
+    '@media print{ body{background:#fff; padding:0;} .pf-toolbar{display:none;} .pf-page{box-shadow:none; margin:0 auto; width:auto; min-height:auto; page-break-after:always;} .pf-page:last-child{page-break-after:auto;} }' +
+    '</style></head><body>' +
+    '<div class="pf-toolbar"><button onclick="window.print()">🖨 인쇄 / PDF로 저장</button></div>' +
+    bodyHtml +
+    '</body></html>'
+  );
+  win.document.close();
+}
 
 // 상속세 세율표(§26) — 법정 초과누진세율, 신설 이래 안 바뀐 안정된 값.
 const IH_EFILE_RATE_BRACKETS_ = [
@@ -6712,6 +6807,67 @@ function ihEfileFileName_(){
   return yyyymmdd + IH_EFILE_FORM_CODE_ + '.01';
 }
 
+// 상속세과세표준신고 및 자진납부계산서(별지 제9호서식) 앞쪽 — 국세청 실제 서식과 같은 항목
+// 순서·라벨로 구성하되, 번호는 이 화면에서 자체적으로 순서대로 매긴다(정부 서식의 정확한
+// 동그라미 번호는 개정마다 바뀔 수 있어 그대로 베끼지 않음 — 라벨과 값의 정확성이 핵심).
+function ihPrintFormBodyHtml_(){
+  const reporter = inheritanceHeirs.find(function(h){ return h.isReporter; }) || {};
+  const g_ = function(id){ const el = document.getElementById(id); return el ? el.value : ''; };
+  const r = lastInheritanceResult || {};
+  const taxBase = numVal(r.과세표준) || 0;
+  const genSkip = numVal(r.세대생략가산액) || 0;
+  const calcTaxTotal = numVal(r.산출세액) || 0;
+  const calcTaxBase = Math.max(0, calcTaxTotal - genSkip);
+  const giftCredit28 = r.증여세액공제_5억이하배제 ? 0 : (numVal(r.기납부증여세액공제) || 0);
+  const giftCredit305 = numVal(r.특례증여세액공제) || 0;
+  const creditSum = giftCredit28 + giftCredit305 + (numVal(r.외국납부세액공제) || 0) + (numVal(r.단기재상속세액공제) || 0) + (numVal(r.신고세액공제) || 0) + (numVal(r.그밖의공제) || 0);
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제9호서식]</div>' +
+    '<div class="pf-title">상속세 과세표준신고 및 자진납부계산서</div>' +
+    '<div class="pf-check">[ ] 기한 내 신고&nbsp;&nbsp; [ ] 수정신고 &nbsp;&nbsp; [ ] 기한 후 신고</div>' +
+    '<div class="pf-section-head">신고인</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '성명', reporter.name) + pfRow_(++n, '주민등록번호', reporter.regNo) +
+      pfRow_(++n, '전화번호', g_('ihReporterPhone')) + pfRow_(++n, '전자우편주소', g_('ihReporterEmail')) +
+      pfRow_(++n, '주소', reporter.address) +
+    '</table>' +
+    '<div class="pf-section-head">피상속인</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '성명', g_('ihDeceasedName')) + pfRow_(++n, '주민등록번호', g_('ihDeceasedRegNo')) +
+      pfRow_(++n, '주소(사망 당시 주소지)', g_('ihDeceasedAddress')) + pfRow_(++n, '상속개시일', g_('ihDeathDate')) +
+    '</table>' +
+    '<div class="pf-section-head">세액 계산</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '상속세과세가액', won(r.상속세과세가액_적용값)) +
+      pfRow_(++n, '상속공제액', won(r.상속공제_합계)) +
+      pfRow_(++n, '감정평가수수료', won(numVal(g_('ihAppraisalFee')))) +
+      pfRow_(++n, '과세표준', won(taxBase)) +
+      pfRow_(++n, '세율', (ihRateForBase_(taxBase) * 100).toFixed(0) + '%') +
+      pfRow_(++n, '산출세액(세대생략가산 제외)', won(calcTaxBase)) +
+      pfRow_(++n, '세대생략가산액', won(genSkip)) +
+      pfRow_(++n, '산출세액 계', won(calcTaxTotal)) +
+      pfRow_(++n, '이자상당액', won(r.이자상당액)) +
+      pfRow_(++n, '문화재 등 징수유예세액', won(r.문화재등징수유예세액)) +
+      pfRow_(++n, '세액공제 계', won(creditSum)) +
+      pfRow_(++n, '증여세액공제(§28)', won(giftCredit28), { indent: true }) +
+      pfRow_(++n, '증여세액공제(조특법§30의5·6)', won(giftCredit305), { indent: true }) +
+      pfRow_(++n, '외국납부세액공제', won(r.외국납부세액공제)) +
+      pfRow_(++n, '단기재상속세액공제', won(r.단기재상속세액공제)) +
+      pfRow_(++n, '신고세액공제', won(r.신고세액공제)) +
+      pfRow_(++n, '그 밖의 공제', won(r.그밖의공제)) +
+      pfRow_(++n, '가업상속 납부유예세액', won(numVal(g_('ihBizInheritDeferred')))) +
+      pfRow_(++n, '신고불성실가산세', won(0)) +
+      pfRow_(++n, '납부지연가산세', won(0)) +
+      pfRow_(++n, '납부할 세액(합계액)', won(r.납부세액)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 첨부서류(부표1~5)는 별도로 작성해야 합니다.</div>' +
+    '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
+      new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
+      '신고인 &nbsp;' + escapeHtml(reporter.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+  '</div>';
+}
+
 function renderIhEfileResult_(){
   const box = document.getElementById('taxCalcIhEfileResult');
   if (!box) return;
@@ -6807,6 +6963,7 @@ function renderGiftPane(){
       '<div class="taxcalc-asset-head"><b>서식·전자신고 — 증여세과세표준신고 및 자진납부계산서(G101500)</b></div>' +
       '<div class="taxcalc-result-note">위에서 "세액 계산하기"를 먼저 실행한 뒤 이용하세요. 증여자·수증인 조합마다 별도 신고서로 만들어 한 파일에 이어붙입니다 — 증여재산및평가명세서 등 첨부서식은 아직 포함되지 않습니다.</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="check-gf-efile" style="margin-top:8px;">전자신고파일 작성하기</button>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="print-gf-form" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
       '<div id="taxCalcGfEfileResult" style="margin-top:8px;"></div>' +
     '</div>' +
     '</div>' +
@@ -7472,6 +7629,72 @@ function gfEfileFileName_(){
   const now = new Date();
   const yyyymmdd = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
   return yyyymmdd + GF_EFILE_FORM_CODE_ + '.01';
+}
+
+// 증여세과세표준신고 및 자진납부계산서(별지 제10호서식) — (증여자×수증인) 쌍마다 한 페이지.
+function gfPrintFormPageHtml_(item, giftDate){
+  const donee = giftDonees[item.doneeIdx] || {};
+  const donor = giftDonors[item.donorIdxs[0]] || {};
+  const r = item.result || {};
+  const giftAmount = numVal(item.amount) || 0;
+  const priorGiftAdd = numVal(item.priorGiftAmount) || 0;
+  const taxable = (numVal(r.순수증여재산가액) || 0) + priorGiftAdd;
+  const taxBase = numVal(r.과세표준) || 0;
+  const preSurcharge = numVal(r.산출세액_할증전) || 0;
+  const surcharge = numVal(r.세대생략할증액) || 0;
+  const calcTotal = preSurcharge + surcharge;
+  const creditSum = (numVal(r.기납부세액공제) || 0) + (numVal(r.외국납부세액공제) || 0) + (numVal(r.신고세액공제) || 0) + (numVal(r.그밖의공제감면세액) || 0);
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호서식]</div>' +
+    '<div class="pf-title">증여세 과세표준신고 및 자진납부계산서</div>' +
+    '<div class="pf-check">[ ] 기한 내 신고&nbsp;&nbsp; [ ] 수정신고 &nbsp;&nbsp; [ ] 기한 후 신고</div>' +
+    '<div class="pf-section-head">수증자</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '성명', donee.name) + pfRow_(++n, '주민등록번호', donee.regNo) +
+      pfRow_(++n, '전화번호', donee.phone) + pfRow_(++n, '주소', donee.address) +
+    '</table>' +
+    '<div class="pf-section-head">증여자</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '성명', donor.name) + pfRow_(++n, '주민등록번호', donor.regNo) +
+      pfRow_(++n, '주소', donor.address) + pfRow_(++n, '증여일자', giftDate) +
+    '</table>' +
+    '<div class="pf-section-head">세액 계산</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '증여재산가액', won(giftAmount)) +
+      pfRow_(++n, '증여재산가산액(§47②)', won(priorGiftAdd)) +
+      pfRow_(++n, '비과세재산가액', won(r.비과세재산가액)) +
+      pfRow_(++n, '채무액', won(r.인수채무액)) +
+      pfRow_(++n, '증여세과세가액', won(taxable)) +
+      pfRow_(++n, '증여재산공제', won(r.증여재산공제)) +
+      pfRow_(++n, '재해손실공제', won(r.재해손실공제)) +
+      pfRow_(++n, '감정평가수수료', won(r.감정평가수수료공제)) +
+      pfRow_(++n, '과세표준', won(taxBase)) +
+      pfRow_(++n, '세율', (ihRateForBase_(taxBase) * 100).toFixed(0) + '%') +
+      pfRow_(++n, '산출세액', won(preSurcharge)) +
+      pfRow_(++n, '세대생략가산액(§57)', won(surcharge)) +
+      pfRow_(++n, '산출세액 계', won(calcTotal)) +
+      pfRow_(++n, '박물관자료 등 징수유예세액', won(r.박물관자료등징수유예세액)) +
+      pfRow_(++n, '세액공제 합계', won(creditSum)) +
+      pfRow_(++n, '기납부세액공제', won(r.기납부세액공제), { indent: true }) +
+      pfRow_(++n, '외국납부세액공제', won(r.외국납부세액공제), { indent: true }) +
+      pfRow_(++n, '신고세액공제', won(r.신고세액공제), { indent: true }) +
+      pfRow_(++n, '그 밖의 공제·감면세액', won(r.그밖의공제감면세액), { indent: true }) +
+      pfRow_(++n, '공익법인 등 관련 가산세', won(r.공익법인등관련가산세)) +
+      pfRow_(++n, '신고불성실가산세', won(0)) +
+      pfRow_(++n, '납부지연가산세', won(0)) +
+      pfRow_(++n, '자진납부할 세액(합계액)', won(r.납부세액)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 증여재산 및 평가명세서(부표1) 등 첨부서식은 별도로 작성해야 합니다.</div>' +
+    '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
+      new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
+      '신고인 &nbsp;' + escapeHtml(donee.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+  '</div>';
+}
+function gfPrintFormBodyHtml_(){
+  const giftDate = document.getElementById('giftDate').value;
+  return (lastGiftResults_ || []).filter(function(item){ return item.result && !item.result.error; })
+    .map(function(item){ return gfPrintFormPageHtml_(item, giftDate); }).join('');
 }
 
 function renderGfEfileResult_(){
@@ -9720,6 +9943,9 @@ taxCalcView.addEventListener('click', function(e){
     renderNontaxableInheritanceResult(calculateNontaxableInheritancePropertyJS(input));
   } else if (action === 'check-ih-efile'){
     renderIhEfileResult_();
+  } else if (action === 'print-ih-form'){
+    if (!lastInheritanceResult){ nxAlert_('먼저 위에서 "세액 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('상속세 과세표준신고서', ihPrintFormBodyHtml_());
   } else if (action === 'download-ih-efile'){
     const errs = ihValidateEfileInputs_();
     if (errs.length){ renderIhEfileResult_(); return; }
@@ -9735,6 +9961,9 @@ taxCalcView.addEventListener('click', function(e){
     setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
   } else if (action === 'check-gf-efile'){
     renderGfEfileResult_();
+  } else if (action === 'print-gf-form'){
+    if (!lastGiftResults_ || !lastGiftResults_.length){ nxAlert_('먼저 위에서 "세액 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('증여세 과세표준신고서', gfPrintFormBodyHtml_());
   } else if (action === 'download-gf-efile'){
     const errs = gfValidateEfileInputs_();
     if (errs.length){ renderGfEfileResult_(); return; }
@@ -9750,6 +9979,9 @@ taxCalcView.addEventListener('click', function(e){
     setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
   } else if (action === 'check-tr-efile'){
     renderTrEfileResult_();
+  } else if (action === 'print-tr-form'){
+    if (!lastTransferResults_ || !lastTransferResults_.length){ nxAlert_('먼저 위에서 "세액 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('양도소득세 과세표준신고서', trPrintFormBodyHtml_());
   } else if (action === 'download-tr-efile'){
     const errs = trValidateEfileInputs_();
     if (errs.length){ renderTrEfileResult_(); return; }
