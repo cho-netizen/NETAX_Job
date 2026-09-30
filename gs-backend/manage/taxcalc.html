@@ -3515,6 +3515,8 @@ function renderCostItemsSectionHtml_(a, listKey, title, placeholderExample){
     return '<div class="taxcalc-grid" data-cost-idx="' + iidx + '" style="margin-top:4px;padding-top:4px;border-top:1px dashed var(--line);">' +
       '<div class="taxcalc-field"><label>항목</label><input type="text" data-costfield="label" value="' + (it.label || '').replace(/"/g, '&quot;') + '" placeholder="' + placeholderExample + '"></div>' +
       '<div class="taxcalc-field"><label>지급처</label><input type="text" data-costfield="payee" value="' + (it.payee || '').replace(/"/g, '&quot;') + '" placeholder="예: OO공인중개사"></div>' +
+      '<div class="taxcalc-field"><label>지급처 사업자등록번호</label><input type="text" data-costfield="payeeBizRegNo" value="' + (it.payeeBizRegNo || '').replace(/"/g, '&quot;') + '" placeholder="취득가액및필요경비계산상세명세서용, 없으면 비움"></div>' +
+      '<div class="taxcalc-field"><label>지급일자</label><input type="date" data-costfield="payDate" value="' + (it.payDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
       '<div class="taxcalc-field"><label>증빙종류</label><select data-costfield="receiptType">' +
         '<option value="taxinvoice"' + (it.receiptType === 'taxinvoice' ? ' selected' : '') + '>세금계산서</option>' +
         '<option value="invoice"' + (it.receiptType === 'invoice' ? ' selected' : '') + '>계산서</option>' +
@@ -4220,9 +4222,17 @@ function renderTransferPane(){
           '<option value="derivative">파생상품등</option><option value="other_asset">기타자산(특정주식·부동산과다보유법인)</option>' +
           '<option value="trust_beneficiary">신탁 수익권(§94①6호)</option>' +
         '</select></div>' +
+        '<div class="taxcalc-field"><label>종목명(발행법인명)</label><input type="text" id="stCompanyName" placeholder="주식양도소득금액계산명세서용"></div>' +
+        '<div class="taxcalc-field"><label>발행법인 사업자등록번호</label><input type="text" id="stBizRegNo" placeholder="없으면 비움"></div>' +
         '<div class="taxcalc-field"><label>양도가액</label><input type="number" id="stTransferPrice" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>양도일</label><input type="date" id="stTransferDate" min="1900-01-01" max="2099-12-31"></div>' +
         '<div class="taxcalc-field"><label>취득가액</label><input type="number" id="stAcquisitionPrice" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>취득일</label><input type="date" id="stAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
+        '<div class="taxcalc-field"><label>취득유형</label><select id="stAcquisitionType">' +
+          '<option value="01">매매</option><option value="02">공모</option><option value="03">유상증자</option>' +
+          '<option value="04">무상증자</option><option value="05">지식배당</option><option value="06">합병</option>' +
+          '<option value="07">증여</option><option value="08">상속</option><option value="10">출자</option><option value="09">기타</option>' +
+        '</select></div>' +
         '<div class="taxcalc-field"><label>양도비용</label><input type="number" id="stTransferExpenses" placeholder="원"><span class="taxcalc-field-help">증권거래세 등, 없으면 0</span></div>' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" id="stMajorityNonBizLand"><label for="stMajorityNonBizLand">[기타자산만] 발행법인 자산의 50%이상이 비사업용토지(§104①9호, 기본세율+10%p 가산)</label></div>' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" id="stIsDaejuju"><label for="stIsDaejuju">대주주(국내주식만 해당, 지분율·시가총액 기준은 별도 확인)</label></div>' +
@@ -6328,6 +6338,270 @@ function trBuyerRecord_(buyer, seq){
   return b;
 }
 
+// [2026.09.30 신규, 재검토88] 양도소득세 부표1~3 — 국세청 양도소득세전자신고파일설명서(V4.7)의
+// 필수+전자신고대상 항목인데(양도코리아 화면 대조로 확인) 본표(C116300)만 있고 빠져 있었다
+// (상속세 부표와 같은 결함). 부표1(양도소득금액계산명세서,05,C116400,700B)=국내 부동산·기타자산
+// 자산별 명세, 부표2(주식양도소득금액계산명세서,06,C116500,300B)=주식등 명세,
+// 부표3(취득가액및필요경비계산상세명세서,07,C116600,200B)=취득비용·자본적지출 항목별 상세.
+// 국외자산은 엔진이 다건 국외자산의 개별 명세를 노출하지 않아(합산결과만 노출) 이 부표들에
+// 포함하지 못한다 — 화면 안내문으로 밝힌다.
+function trHoldingYearsSimple_(acqDate, transDate){
+  if (!acqDate || !transDate) return 0;
+  const a = new Date(acqDate), t = new Date(transDate);
+  if (isNaN(a) || isNaN(t)) return 0;
+  let years = t.getFullYear() - a.getFullYear();
+  if (t.getMonth() < a.getMonth() || (t.getMonth() === a.getMonth() && t.getDate() < a.getDate())) years -= 1;
+  return Math.max(0, years);
+}
+function trAssetTypeCode1_(asset){
+  if (asset.assetType === 'house') return (Number(asset.transferPrice) || 0) > 1200000000 ? '02' : '03';
+  if (asset.assetType === 'presale_right' || asset.isReconstructionRights) return '08';
+  return (asset.assetKind === 'building') ? '04' : '01'; // assetKind 기본값이 land이므로 그 외에는 토지로 본다
+}
+function trRateClassCode1_(asset, taxBaseApprox){
+  const years = trHoldingYearsSimple_(asset.acquisitionDate, asset.transferDate);
+  if (asset.isUnregisteredTransfer) return '30';
+  if (asset.isNonBusinessLand){
+    if (years >= 2) return '11';
+    if (years >= 1) return (Number(taxBaseApprox) || 0) > 242500000 ? '12' : '35';
+    return '36';
+  }
+  if (years >= 2) return '10';
+  if (years >= 1) return '15';
+  return '20';
+}
+function trLongTermDeductionRate_(years, isOneHouse){
+  if (years < 3) return 0;
+  const table = isOneHouse ? [0.24, 0.32, 0.40, 0.48, 0.56, 0.64, 0.72, 0.80] : [0.10, 0.12, 0.15, 0.18, 0.21, 0.24, 0.27, 0.30];
+  return table[Math.min(years - 3, 7)];
+}
+function trExpenseCategoryCode_(item, kind){
+  if (kind === 'transfer') return '29001'; // 양도시 중개수수료 등 직접지출비용
+  const label = String(item.label || '');
+  if (/취득세/.test(label)) return '11201';
+  if (/등록세/.test(label)) return '11301';
+  if (/법무사/.test(label)) return '11401';
+  if (/중개|수수료/.test(label)) return '11501';
+  return '11601'; // 기타 부대비용
+}
+const TR_EXPENSE_CODE_NEEDS_DETAIL_ = { '11401': 1, '11501': 1, '12001': 1, '13101': 1, '26001': 1, '26002': 1, '26003': 1, '26004': 1, '26005': 1, '27101': 1, '28001': 1, '28002': 1, '28003': 1, '29001': 1 };
+function trReceiptTypeCode_(receiptType){
+  return { cashreceipt: '01', card: '02', taxinvoice: '03', invoice: '04' }[receiptType] || '10';
+}
+// 부표1/부표2가 공유하는 "필요경비신고자료일련번호"(자산의 일련번호와 동일)로 부표3 항목을 묶는다.
+function trAttach3ExpenseRecords_(asset, feeSeq){
+  const rows = [];
+  const groups = {};
+  (Array.isArray(asset.acquisitionExpenseItems) ? asset.acquisitionExpenseItems : []).forEach(function(it){
+    if (!numVal(it.amount)) return;
+    const code = trExpenseCategoryCode_(it, 'acquisition');
+    groups[code] = groups[code] || [];
+    groups[code].push(it);
+  });
+  (Array.isArray(asset.transferExpenseItems) ? asset.transferExpenseItems : []).forEach(function(it){
+    if (!numVal(it.amount)) return;
+    const code = trExpenseCategoryCode_(it, 'transfer');
+    groups[code] = groups[code] || [];
+    groups[code].push(it);
+  });
+  Object.keys(groups).forEach(function(code){
+    groups[code].forEach(function(it, detailIdx){
+      const needsDetail = !!TR_EXPENSE_CODE_NEEDS_DETAIL_[code];
+      let b = [];
+      b = b.concat(ihPadChar_('07', 2));                                       // 1 자료구분
+      b = b.concat(ihPadChar_('C116600', 7));                                  // 2 서식코드
+      b = b.concat(ihPadNum_(feeSeq, 6));                                      // 3 필요경비신고자료일련번호
+      b = b.concat(ihPadChar_(code, 5));                                       // 4 구분코드
+      b = b.concat(ihPadNum_(detailIdx + 1, 6));                               // 5 상세일련번호
+      b = b.concat(ihPadChar_(it.payee || '', 60));                            // 6 상호
+      b = b.concat(needsDetail ? ihPadChar_(ihOnlyDigits_(it.payeeBizRegNo), 10) : ihPadChar_('', 10)); // 7 사업자등록번호
+      b = b.concat(needsDetail ? ihDateField_(it.payDate) : ihPadChar_('', 8)); // 8 지급일자
+      b = b.concat(ihPadNum_(numVal(it.amount) || 0, 13));                     // 9 지급금액
+      b = b.concat(needsDetail ? ihPadChar_(trReceiptTypeCode_(it.receiptType), 2) : ihPadChar_('ZZ', 2)); // 10 증빙종류코드
+      b = b.concat(ihPadChar_('', 81));                                        // 11 공란
+      rows.push(b);
+    });
+  });
+  return rows;
+}
+// 부표1(양도소득금액계산명세서, 자료구분05, C116400, 700B) — 국내 부동산·부동산에관한권리·기타자산.
+function trAttach1AssetRecord_(asset, seq){
+  const transferPrice = Number(asset.transferPrice) || 0;
+  const acquisitionPrice = Number(asset.acquisitionPrice) || 0;
+  const necessaryExpenses = Number(asset.necessaryExpenses) || 0;
+  const grossGain = transferPrice - acquisitionPrice - necessaryExpenses;
+  const years = trHoldingYearsSimple_(asset.acquisitionDate, asset.transferDate);
+  const isOneHouse = !!asset.isOneHouseOneFamily;
+  const eligibleForLtDeduction = years >= 3 && !asset.isUnregisteredTransfer && !asset.isNonBusinessLand;
+  const ltRate = eligibleForLtDeduction ? trLongTermDeductionRate_(years, isOneHouse) : 0;
+  const ltDeduction = Math.round(Math.max(0, grossGain) * ltRate);
+  const incomeAmount = grossGain - ltDeduction;
+  const rateClass = trRateClassCode1_(asset, incomeAmount);
+  let b = [];
+  b = b.concat(ihPadChar_('05', 2));                          // 1 자료구분
+  b = b.concat(ihPadChar_('C116400', 7));                     // 2 서식코드
+  b = b.concat(ihPadNum_(seq, 6));                            // 3 일련번호
+  b = b.concat(ihPadChar_('ZZ', 2));                          // 4 과세구분(해당없음=일반과세)
+  b = b.concat(ihPadChar_('1', 1));                           // 5 국내외분(소재지) — 국내
+  b = b.concat(ihPadChar_(rateClass, 2));                     // 6 세율구분
+  b = b.concat(ihPadChar_(trAssetTypeCode1_(asset), 2));      // 7 자산의종류
+  b = b.concat(ihPadChar_(asset.assetAdmCd || '', 10));       // 8 소재지_법정동코드
+  b = b.concat(ihPadChar_(asset.assetMtYn === '1' ? '1' : '0', 1)); // 9 소재지_특수지코드
+  b = b.concat(ihPadNum_(numVal(asset.assetLnbrMnnm) || 0, 4)); // 10 소재지_번지
+  b = b.concat(ihPadNum_(numVal(asset.assetLnbrSlno) || 0, 4)); // 11 소재지_호
+  b = b.concat(ihPadChar_('', 40));                           // 12 소재지_아파트명
+  b = b.concat(ihPadChar_('', 12));                           // 13 소재지_아파트동
+  b = b.concat(ihPadChar_('', 12));                           // 14 소재지_아파트호
+  b = b.concat(ihPadChar_('', 4));                            // 15 소재지_통
+  b = b.concat(ihPadChar_('', 4));                            // 16 소재지_반
+  b = b.concat(ihDateField_(asset.transferDate));             // 17 거래일자_양도일자
+  b = b.concat(ihPadChar_('A1ZZCZ', 6));                      // 18 거래일자_양도등기목적(소유권이전, 기본값)
+  b = b.concat(ihPadChar_('0055', 4));                        // 19 거래일자_양도등기원인(매매, 기본값)
+  b = b.concat(ihDateField_(asset.acquisitionDate));          // 20 거래일자_취득일자
+  b = b.concat(ihPadChar_('A1ZZCZ', 6));                      // 21 거래일자_취득등기목적(소유권이전, 기본값)
+  b = b.concat(ihPadChar_('0055', 4));                        // 22 거래일자_취득등기원인(매매, 기본값)
+  b = b.concat(ihPadDec_(0, 11, 3));                          // 23 거래자산면적_총면적_토지_면적(미수집)
+  b = b.concat(ihPadDec_(0, 11, 3));                          // 24 거래자산면적_총면적_토지_지분(분자)
+  b = b.concat(ihPadDec_(0, 11, 3));                          // 25 거래자산면적_총면적_토지_지분(분모)
+  b = b.concat(ihPadDec_(0, 11, 3));                          // 26 거래자산면적_총면적_건물_면적(미수집)
+  b = b.concat(ihPadDec_(0, 11, 3));                          // 27 거래자산면적_총면적_건물_지분(분자)
+  b = b.concat(ihPadDec_(0, 11, 3));                          // 28 거래자산면적_총면적_건물_지분(분모)
+  b = b.concat(ihPadDec_(0, 11, 3));                          // 29 거래자산면적_양도면적_토지_면적(미수집)
+  b = b.concat(ihPadDec_(0, 11, 3));                          // 30 거래자산면적_양도면적_건물_면적(미수집)
+  b = b.concat(ihPadDec_(0, 11, 3));                          // 31 거래자산면적_취득면적_토지_면적(미수집)
+  b = b.concat(ihPadDec_(0, 11, 3));                          // 32 거래자산면적_취득면적_건물_면적(미수집)
+  b = b.concat(ihPadNum_(transferPrice, 13));                 // 33 거래금액_양도가액
+  b = b.concat(ihPadNum_(acquisitionPrice, 13));              // 34 거래금액_취득가액
+  b = b.concat(ihPadChar_('01', 2));                          // 35 취득가액종류(01 실지거래가액 — 이 앱은 실지거래가액만 지원)
+  b = b.concat(ihPadNum_(0, 13));                             // 36 기납부토지초과이득세
+  b = b.concat(ihPadNum_(necessaryExpenses, 13));             // 37 기타필요경비
+  b = b.concat(ihPadNum_(Math.round(grossGain), 13));         // 38 양도차익_전체양도차익
+  b = b.concat(ihPadNum_(0, 13));                             // 39 양도차익_비과세양도차익
+  b = b.concat(ihPadNum_(Math.round(grossGain), 13));         // 40 양도차익_과세대상양도차익
+  b = b.concat(ihPadNum_(ltDeduction, 13));                   // 41 장기보유특별공제
+  b = b.concat(ihPadNum_(Math.round(incomeAmount), 13));      // 42 양도소득금액
+  b = b.concat(ihPadNum_(0, 13));                             // 43 감면소득금액(감면 미적용 기본값)
+  b = b.concat(ihPadChar_('ZZZ', 3));                         // 44 감면종류
+  b = b.concat(ihPadNum_(0, 5));                              // 45 감면율
+  b = b.concat(ihPadNum_(0, 13));                             // 46 양도시기준시가_건물_일반건물(환산가액 아님=0)
+  b = b.concat(ihPadNum_(0, 13));                             // 47 양도시기준시가_건물_오피스텔상업용
+  b = b.concat(ihPadNum_(0, 13));                             // 48 양도시기준시가_건물_개별공동주택
+  b = b.concat(ihPadNum_(0, 13));                             // 49 양도시기준시가_토지
+  b = b.concat(ihPadNum_(0, 13));                             // 50 양도시기준시가_합계
+  b = b.concat(ihPadNum_(0, 13));                             // 51 취득시기준시가_건물_일반건물
+  b = b.concat(ihPadNum_(0, 13));                             // 52 취득시기준시가_건물_오피스텔상업용
+  b = b.concat(ihPadNum_(0, 13));                             // 53 취득시기준시가_건물_개별공동주택
+  b = b.concat(ihPadNum_(0, 13));                             // 54 취득시기준시가_토지
+  b = b.concat(ihPadNum_(0, 13));                             // 55 취득시기준시가_합계
+  b = b.concat(ihPadChar_('1', 1));                           // 56 자동계산불러오기구분값(1 수기)
+  b = b.concat(ihPadChar_('KR ', 3));                         // 57 소재지국
+  b = b.concat(ihPadChar_('한국', 40));                        // 58 소재지국명
+  b = b.concat(ihPadChar_('', 60));                           // 59 소재지(국내는 공란)
+  b = b.concat(ihPadNum_(0, 13));                             // 60 소득금액감면대상
+  const hasItemizedExpense_ = trAttach3ExpenseRecords_(asset, seq).length > 0;
+  b = b.concat(ihPadNum_(hasItemizedExpense_ ? seq : 0, 6));  // 61 필요경비신고자료일련번호(항목별 상세가 있을 때만 자산 일련번호와 동일)
+  b = b.concat(ihPadChar_('', 48));                           // 62 공란
+  return b;
+}
+// 부표2(주식양도소득금액계산명세서, 자료구분06, C116500, 300B) — lastStockTransferResult_ 1건.
+function trAttach2StockRecord_(stock, seq){
+  const input = stock.input || {};
+  const transferPrice = Number(input.transferPrice) || 0;
+  const acquisitionPrice = Number(input.acquisitionPrice) || 0;
+  const necessaryExpenses = Number(input.transferExpenses) || 0;
+  const gain = transferPrice - acquisitionPrice - necessaryExpenses;
+  let b = [];
+  b = b.concat(ihPadChar_('06', 2));                          // 1 자료구분
+  b = b.concat(ihPadChar_('C116500', 7));                     // 2 서식코드
+  b = b.concat(ihPadNum_(seq, 6));                            // 3 일련번호
+  b = b.concat(ihPadChar_('ZZ', 2));                          // 4 과세구분
+  b = b.concat(ihPadChar_(input.companyName || '', 30));      // 5 주식종목명
+  b = b.concat(ihPadChar_(ihOnlyDigits_(input.bizRegNo), 10)); // 6 사업자등록번호
+  b = b.concat(ihPadChar_(input.assetCategory === 'other_asset' ? '14' : '62', 2)); // 7 자산의종류(특정주식=14, 그 외=중소기업 일반주식62 근사)
+  b = b.concat(ihPadChar_('62', 2));                          // 8 주식종류코드(상장 중소기업 일반, 근사치)
+  b = b.concat(ihPadChar_(input.acquisitionType || '01', 2)); // 9 취득유형
+  b = b.concat(ihPadNum_(0, 13));                             // 10 취득유형별양도주식수(미수집)
+  b = b.concat(ihDateField_(input.transferDate));             // 11 양도일자
+  b = b.concat(ihPadNum_(0, 13));                             // 12 주당양도가액(미수집 — 총액만 수집)
+  b = b.concat(ihPadNum_(transferPrice, 13));                 // 13 양도가액
+  b = b.concat(ihDateField_(input.acquisitionDate));          // 14 취득일자
+  b = b.concat(ihPadNum_(0, 13));                             // 15 주당취득가액(미수집)
+  b = b.concat(ihPadNum_(acquisitionPrice, 13));              // 16 취득가액
+  b = b.concat(ihPadNum_(necessaryExpenses, 13));             // 17 필요경비
+  b = b.concat(ihPadNum_(Math.round(gain), 13));              // 18 양도소득금액
+  b = b.concat(ihPadNum_(0, 13));                             // 19 감면소득금액
+  b = b.concat(ihPadChar_('ZZZ', 3));                         // 20 감면종류
+  b = b.concat(ihPadNum_(0, 5));                              // 21 감면율
+  b = b.concat(ihPadChar_('1', 1));                           // 22 자동계산불러오기구분값(1 수기)
+  b = b.concat(ihPadChar_(input.assetCategory === 'foreign_stock' ? '2' : '1', 1)); // 23 국내외구분
+  b = b.concat(ihPadChar_(input.assetCategory === 'foreign_stock' ? 'US ' : '', 3)); // 24 소재지국(국외만, 미수집이라 미국 임시값)
+  b = b.concat(ihPadChar_(input.assetCategory === 'foreign_stock' ? '미국' : '', 40)); // 25 소재지국명
+  b = b.concat(ihPadChar_('', 15));                           // 26 ISIN코드
+  b = b.concat(ihPadChar_(input.assetCategory === 'foreign_stock' ? 'C' : '', 3)); // 27 ISIN코드구분
+  b = b.concat(ihPadNum_(0, 6));                              // 28 필요경비신고자료일련번호(항목별 상세 미수집)
+  b = b.concat(ihPadChar_('', 40));                           // 29 공란
+  return b;
+}
+function trAttach1PrintPageHtml_(asset, seq){
+  const transferPrice = Number(asset.transferPrice) || 0;
+  const acquisitionPrice = Number(asset.acquisitionPrice) || 0;
+  const necessaryExpenses = Number(asset.necessaryExpenses) || 0;
+  const grossGain = transferPrice - acquisitionPrice - necessaryExpenses;
+  const years = trHoldingYearsSimple_(asset.acquisitionDate, asset.transferDate);
+  const eligibleForLtDeduction = years >= 3 && !asset.isUnregisteredTransfer && !asset.isNonBusinessLand;
+  const ltRate = eligibleForLtDeduction ? trLongTermDeductionRate_(years, !!asset.isOneHouseOneFamily) : 0;
+  const ltDeduction = Math.round(Math.max(0, grossGain) * ltRate);
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">소득세법 시행규칙 [별지 제84호서식 부표1]</div>' +
+    '<div class="pf-title">양도소득금액 계산명세서 — 자산 ' + seq + '</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '소재지', asset.assetLocation || '') +
+      pfRow_(++n, '양도일자', asset.transferDate) +
+      pfRow_(++n, '취득일자', asset.acquisitionDate) +
+      pfRow_(++n, '양도가액', won(transferPrice)) +
+      pfRow_(++n, '취득가액', won(acquisitionPrice)) +
+      pfRow_(++n, '기타필요경비', won(necessaryExpenses)) +
+      pfRow_(++n, '전체양도차익', won(grossGain)) +
+      pfRow_(++n, '장기보유특별공제(보유 ' + years + '년, 참고치)', won(ltDeduction)) +
+      pfRow_(++n, '양도소득금액', won(grossGain - ltDeduction)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다. 장기보유특별공제는 일반적인 경우(재건축·다주택중과·안분 등 특례 없음)만 정확하며, 특례가 있는 거래는 위 본표(세액 계산결과)를 기준으로 직접 검토하세요.</div>' +
+  '</div>';
+}
+function trAttach2PrintPageHtml_(stock, seq){
+  const input = stock.input || {};
+  const transferPrice = Number(input.transferPrice) || 0;
+  const acquisitionPrice = Number(input.acquisitionPrice) || 0;
+  const necessaryExpenses = Number(input.transferExpenses) || 0;
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">소득세법 시행규칙 [별지 제84호서식 부표2]</div>' +
+    '<div class="pf-title">주식양도소득금액 계산명세서</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '주식종목명', input.companyName) +
+      pfRow_(++n, '양도일자', input.transferDate) +
+      pfRow_(++n, '양도가액', won(transferPrice)) +
+      pfRow_(++n, '취득일자', input.acquisitionDate) +
+      pfRow_(++n, '취득가액', won(acquisitionPrice)) +
+      pfRow_(++n, '필요경비', won(necessaryExpenses)) +
+      pfRow_(++n, '양도소득금액', won(transferPrice - acquisitionPrice - necessaryExpenses)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다.</div>' +
+  '</div>';
+}
+function trAttach3PrintPageHtml_(items){
+  if (!items.length) return '';
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">소득세법 시행규칙 [별지 제84호서식 부표3]</div>' +
+    '<div class="pf-title">취득가액 및 필요경비계산 상세명세서</div>' +
+    '<table class="pf-table">' +
+      items.map(function(row){ return pfRow_(0, row.label, row.payee + ' — ' + won(row.amount)); }).join('') +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 각 항목의 구분코드는 항목명에서 자동 추정했으니(취득세/등록세/법무사비용/중개수수료 등 키워드), 실제 제출 전 정확한 구분코드인지 확인하세요.</div>' +
+  '</div>';
+}
+
 function trValidateEfileInputs_(){
   const errs = [];
   const validItems = (lastTransferResults_ || []).filter(function(item){ return item.result && !item.result.error; });
@@ -6368,6 +6642,13 @@ function trBuildEfileBytes_(){
     rows.push(trRateDetailRecord_('98', item.result));
     if (idx === 0 && lastOverseasTransferResult_) rows.push(trOverseasRateDetailRecord_(lastOverseasTransferResult_)); // 대표 양도인의 신고서에 국외분 행 추가
     buyers.forEach(function(buyer, i){ rows.push(trBuyerRecord_(buyer, i + 1)); });
+    // [2026.09.30 신규, 재검토88] 부표1(양도소득금액계산명세서)+부표3(취득가액및필요경비상세) —
+    // 이 양도인의 자산별 명세.
+    (item.assets || []).forEach(function(asset, aIdx){
+      const seq = aIdx + 1;
+      rows.push(trAttach1AssetRecord_(asset, seq));
+      trAttach3ExpenseRecords_(asset, seq).forEach(function(r){ rows.push(r); });
+    });
   });
   // 주식등 양도세(신고유형 6/7/8) — 부동산과 완전히 별도 세목이라 그 자체로 독립된 HEAD+기본정보+세율별내역
   // 세트를 만든다. 부동산 신고서가 하나도 없어도(주식만 있는 사건) 독립적으로 생성된다.
@@ -6377,6 +6658,8 @@ function trBuildEfileBytes_(){
     rows.push(trBasicRecord_(primarySeller));
     rows.push(trStockRateDetailRecord_('00', lastStockTransferResult_.result));
     rows.push(trStockRateDetailRecord_('98', lastStockTransferResult_.result));
+    // 부표2(주식양도소득금액계산명세서) — 계산기가 단일 거래만 다루므로 1건.
+    rows.push(trAttach2StockRecord_(lastStockTransferResult_, 1));
   }
   // 부동산·주식 어느 쪽도 없이 국외자산만 있는 경우를 대비해, 대표 양도인의 신고서가 하나도
   // 없으면 국외자산 전용 신고서 세트를 별도로 만든다(위에서 이미 부동산 신고서에 얹었으면 중복 생성 안 함).
@@ -6398,7 +6681,7 @@ function trEfileFileName_(){
 }
 
 // 양도소득세과세표준신고 및 납부계산서(별지 제84호서식) — 양도인(신고인)마다 한 페이지.
-function trPrintFormPageHtml_(seller, r, buyers){
+function trPrintFormPageHtml_(seller, r, buyers, assets){
   const localTax = r.지방소득세 || 0;
   const nationalReduction = (r.합산자경감면액 || 0) + (r.합산수용감면액 || 0);
   const reportPenalty = (r.무신고가산세 || 0) + (r.과소신고가산세 || 0);
@@ -6431,18 +6714,34 @@ function trPrintFormPageHtml_(seller, r, buyers){
     '</table>' +
     '<div class="pf-section-head">개인지방소득세(참고, 세율구분 98)</div>' +
     '<table class="pf-table">' + pfRow_(0, '지방소득세(국세의 10% 근사)', won(localTax)) + '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 지방소득세는 위택스 별도신고 필요 여부를 실무로 확인하세요. 양도소득금액계산명세서 등 첨부서식은 별도로 작성해야 합니다.</div>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 지방소득세는 위택스 별도신고 필요 여부를 실무로 확인하세요. 양도소득금액계산명세서(부표1)·취득가액및필요경비계산상세명세서(부표3)는 뒤에 이어집니다.</div>' +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml(seller.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
-  '</div>';
+  '</div>' + (assets || []).map(function(asset, aIdx){ return trAttach1PrintPageHtml_(asset, aIdx + 1); }).join('') +
+    trAttach3PrintPageHtml_(trAttach3ItemsForPrint_(assets || []));
+}
+function trAttach3ItemsForPrint_(assets){
+  const items = [];
+  assets.forEach(function(asset){
+    (Array.isArray(asset.acquisitionExpenseItems) ? asset.acquisitionExpenseItems : []).forEach(function(it){
+      if (numVal(it.amount)) items.push({ label: it.label || '취득비용', payee: it.payee || '', amount: numVal(it.amount) });
+    });
+    (Array.isArray(asset.transferExpenseItems) ? asset.transferExpenseItems : []).forEach(function(it){
+      if (numVal(it.amount)) items.push({ label: it.label || '양도비용', payee: it.payee || '', amount: numVal(it.amount) });
+    });
+  });
+  return items;
 }
 function trPrintFormBodyHtml_(){
   const buyers = trCollectBuyers_();
   let html = (lastTransferResults_ || []).filter(function(item){ return item.result && !item.result.error; })
-    .map(function(item){ return trPrintFormPageHtml_(item.seller || {}, item.result, buyers); }).join('');
+    .map(function(item){ return trPrintFormPageHtml_(item.seller || {}, item.result, buyers, item.assets); }).join('');
   const seller = (transferSellers && transferSellers[0]) || {};
-  if (lastStockTransferResult_) html += trStockPrintPageHtml_(seller, lastStockTransferResult_);
+  if (lastStockTransferResult_){
+    html += trStockPrintPageHtml_(seller, lastStockTransferResult_);
+    html += trAttach2PrintPageHtml_(lastStockTransferResult_, 1);
+  }
   if (lastOverseasTransferResult_) html += trOverseasPrintPageHtml_(seller, lastOverseasTransferResult_);
   return html;
 }
@@ -10526,7 +10825,7 @@ taxCalcView.addEventListener('click', function(e){
       else document.getElementById('taxCalcTransferResult').innerHTML = '';
       // [2026.09.25 신규, 재검토78] 전자신고파일 생성용 — 단독 양도인도 배열 형태(세율구분별
       // 다건과 동일 모양)로 저장해 아래 trBuildEfileBytes_()가 단독/공동 구분 없이 동작하게 한다.
-      lastTransferResults_ = result ? [{ seller: transferSellers[0] || {}, result: result }] : null;
+      lastTransferResults_ = result ? [{ seller: transferSellers[0] || {}, result: result, assets: inputs }] : null;
     } else {
       // [2026.09.23 신규] 공동양도인 — 증여세 증여자와 같은 부류로, 양도인마다 완전히 독립적으로
       // calculateTransferTaxMultiJS를 호출한다(그래야 각자 기본공제 250만원·자기 세율구간이
@@ -10559,7 +10858,7 @@ taxCalcView.addEventListener('click', function(e){
           unpaidTaxAtDesignatedDueDate: numVal(seller.unpaidAtDesignated) || 0,
           isSelfElectronicFiling: !!seller.isSelfElectronicFiling
         };
-        return { seller: seller, result: calculateTransferTaxMultiJS(sellerAssets, filingParams) };
+        return { seller: seller, result: calculateTransferTaxMultiJS(sellerAssets, filingParams), assets: sellerAssets };
       }).filter(Boolean);
       renderTransferResult(results);
       lastTransferResults_ = results.length ? results : null; // 전자신고파일 생성용(재검토78)
@@ -10854,6 +11153,11 @@ taxCalcView.addEventListener('click', function(e){
   } else if (action === 'run-stock-transfer'){
     const input = {
       assetCategory: document.getElementById('stAssetCategory').value,
+      companyName: document.getElementById('stCompanyName').value,
+      bizRegNo: document.getElementById('stBizRegNo').value,
+      transferDate: document.getElementById('stTransferDate').value,
+      acquisitionDate: document.getElementById('stAcquisitionDate').value,
+      acquisitionType: document.getElementById('stAcquisitionType').value,
       transferPrice: numVal(document.getElementById('stTransferPrice').value) || 0,
       acquisitionPrice: numVal(document.getElementById('stAcquisitionPrice').value) || 0,
       transferExpenses: numVal(document.getElementById('stTransferExpenses').value) || 0,
@@ -10912,7 +11216,7 @@ taxCalcView.addEventListener('click', function(e){
       }
     }
     renderStockTransferResult(stResult);
-    lastStockTransferResult_ = (stResult && !stResult.error) ? { assetCategory: input.assetCategory, result: stResult } : null; // 재검토85: 전자신고·인쇄용 저장
+    lastStockTransferResult_ = (stResult && !stResult.error) ? { assetCategory: input.assetCategory, result: stResult, input: input } : null; // 재검토85: 전자신고·인쇄용 저장
   } else if (action === 'add-overseas-asset'){
     // [2026.09.23 신규] 국외자산은 계약(안분) 개념이 없으므로 계약 없이 바로 만든다 —
     // "계약을 거치지 않고는 자산을 만들 수 없다"는 국내 원칙의 명시적 예외.
