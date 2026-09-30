@@ -2341,6 +2341,15 @@ let lastRelatedPartyGiftResult_ = null;  // jm, 일감몰아주기
 let lastBusinessOpportunityGiftResult_ = null; // jt, 일감떼어주기
 let lastExcessDividendGiftResult_ = null; // ed, 초과배당
 let lastSpecificCorpGiftResult_ = null;   // sc, 특정법인거래
+// [2026.09.30 신규, 재검토87] 명의신탁·재산취득자금·상장이익·재산가치증가이익·전환사채 5개도
+// 위와 같은 "계산은 되는데 저장이 안 되는" 결함이 있었다. 다만 이 5개는 국세청이 별도
+// 서식번호를 부여하지 않은 합산배제증여재산(§45의2·§45·§41의3·§42의3·§40)이라 세무사님
+// 확인대로 전용 서식이 아니라 "일반 증여세과세표준신고서(별지10호)" 양식 그대로 인쇄한다.
+let lastNomineeTrustResult_ = null;              // nt, 명의신탁(§45의2)
+let lastPropertyFundsResult_ = null;             // af, 재산취득자금 증여추정(§45)
+let lastStockListingGiftResult_ = null;          // sl, 상장이익(§41의3·§41의5)
+let lastPropertyValueIncreaseGiftResult_ = null; // pv, 재산가치증가이익(§42의3)
+let lastConvertibleBondGiftResult_ = null;       // cb, 전환사채등(§40)
 
 // [2026.09 버그수정] "임대 중인 부동산(임대료환산가액)"이 예전엔 독립된 평가방법이었다 — 그런데
 // 상증세법§61⑤은 임대료환산가액을 "그 자체로 쓰는 방법"이 아니라 "일반 평가방법(기준시가 등)과
@@ -7922,6 +7931,7 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-nominee-trust">증여세 계산하기</button>' +
       '<div id="taxCalcNomineeTrustResult"></div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="print-nominee-trust-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
       '</div>' +
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="pf" style="' + (giftActiveSubtab_ === 'pf' ? '' : 'display:none;') + '">' +
@@ -7946,6 +7956,7 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-property-funds">증여세 계산하기</button>' +
       '<div id="taxCalcPropertyFundsResult"></div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="print-property-funds-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
       '</div>' +
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="jm" style="' + (giftActiveSubtab_ === 'jm' ? '' : 'display:none;') + '">' +
@@ -8047,6 +8058,7 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-stock-listing-gift">증여세 계산하기</button>' +
       '<div id="taxCalcStockListingGiftResult"></div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="print-stock-listing-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
       '</div>' +
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="pv" style="' + (giftActiveSubtab_ === 'pv' ? '' : 'display:none;') + '">' +
@@ -8073,6 +8085,7 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-property-value-increase-gift">증여세 계산하기</button>' +
       '<div id="taxCalcPropertyValueIncreaseGiftResult"></div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="print-property-value-increase-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
       '</div>' +
     '</div>' +
     // [2026.09.23 흡수] 채무면제이익(§36) 독립계산기는 giftValuationAssets_()의 평가방법
@@ -8125,6 +8138,7 @@ function renderGiftPane(){
       '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('cb') + '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-convertible-bond-gift">증여세 계산하기</button>' +
       '<div id="taxCalcConvertibleBondGiftResult"></div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="print-convertible-bond-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
     '</div>' +
     '</div>' +
     // [2026.09.23 흡수] 부동산무상사용·담보이용이익(§37) 독립계산기는 giftValuationAssets_()의
@@ -8855,6 +8869,124 @@ function scPrintFormPageHtml_(){
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+  '</div>';
+}
+
+// [2026.09.30 신규, 재검토87] 명의신탁·재산취득자금·상장이익·재산가치증가이익·전환사채 —
+// 국세청이 별도 서식번호를 부여하지 않은 합산배제증여재산이라, 세무사님 확인대로 전용
+// 서식을 새로 만들지 않고 "일반 증여세과세표준신고서(별지10호)" 양식 그대로 인쇄한다.
+function gfGeneralFormNote_(){
+  return '<div class="pf-note">이 항목은 국세청이 별도 서식번호를 부여하지 않아 일반 증여세과세표준신고서(별지10호) 양식으로 출력합니다 — 같은 증여자·수증자의 다른 증여재산과 합산해서 신고할지, 이 건만 단독으로 신고할지 직접 판단하세요. NETAX 계산 결과를 기준으로 자동 생성되었습니다.</div>';
+}
+function gfGeneralFormSignHtml_(){
+  return '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
+    new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
+    '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>';
+}
+function ntPrintFormPageHtml_(){
+  const r = lastNomineeTrustResult_;
+  if (!r) return '';
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호서식]</div>' +
+    '<div class="pf-title">증여세 과세표준신고 및 자진납부계산서(명의신탁재산의 증여의제)</div>' +
+    gfPrintIdentityRows_() +
+    '<div class="pf-section-head">세액 계산</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '명의신탁재산가액', won(r.명의신탁재산가액)) +
+      (r.감정평가수수료공제 ? pfRow_(++n, '감정평가수수료공제', won(r.감정평가수수료공제)) : '') +
+      pfRow_(++n, '과세표준', won(r.과세표준)) +
+      pfRow_(++n, '산출세액', won(r.산출세액)) +
+      (r.신고세액공제 ? pfRow_(++n, '신고세액공제', won(r.신고세액공제)) : '') +
+      (r.무신고가산세 ? pfRow_(++n, '무신고가산세', won(r.무신고가산세)) : '') +
+      (r.과소신고가산세 ? pfRow_(++n, '과소신고가산세', won(r.과소신고가산세)) : '') +
+      (r.납부지연가산세 ? pfRow_(++n, '납부지연가산세', won(r.납부지연가산세)) : '') +
+      pfRow_(++n, '자진납부할 세액(합계액)', won(r.납부세액)) +
+    '</table>' +
+    gfGeneralFormNote_() + gfGeneralFormSignHtml_() +
+  '</div>';
+}
+function afPrintFormPageHtml_(){
+  const r = lastPropertyFundsResult_;
+  if (!r) return '';
+  let n = 0;
+  let rows =
+    pfRow_(++n, '취득재산의 가액(또는 상환금액)', won(r.취득재산가액)) +
+    pfRow_(++n, '입증된 금액', won(r.입증된금액)) +
+    pfRow_(++n, '미입증금액', won(r.미입증금액)) +
+    pfRow_(++n, '배제기준금액(20%와 2억원 중 적은 금액)', won(r.배제기준금액));
+  if (!r.과세대상여부){
+    rows += pfRow_(++n, '증여추정 적용여부', '적용 안 됨');
+  } else {
+    rows += pfRow_(++n, '증여의제이익(=미입증금액)', won(r.증여의제이익)) +
+      pfRow_(++n, '과세표준', won(r.과세표준)) +
+      pfRow_(++n, '산출세액', won(r.산출세액)) +
+      (r.신고세액공제 ? pfRow_(++n, '신고세액공제', won(r.신고세액공제)) : '') +
+      (r.무신고가산세 ? pfRow_(++n, '무신고가산세', won(r.무신고가산세)) : '') +
+      (r.과소신고가산세 ? pfRow_(++n, '과소신고가산세', won(r.과소신고가산세)) : '') +
+      (r.납부지연가산세 ? pfRow_(++n, '납부지연가산세', won(r.납부지연가산세)) : '') +
+      pfRow_(++n, '자진납부할 세액(합계액)', won(r.납부세액));
+  }
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호서식]</div>' +
+    '<div class="pf-title">증여세 과세표준신고 및 자진납부계산서(재산취득자금 등의 증여추정)</div>' +
+    gfPrintIdentityRows_() +
+    '<div class="pf-section-head">세액 계산</div>' +
+    '<table class="pf-table">' + rows + '</table>' +
+    gfGeneralFormNote_() + gfGeneralFormSignHtml_() +
+  '</div>';
+}
+function slPrintFormPageHtml_(){
+  const r = lastStockListingGiftResult_;
+  if (!r) return '';
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호서식]</div>' +
+    '<div class="pf-title">증여세 과세표준신고 및 자진납부계산서(주식등의 상장 등에 따른 이익)</div>' +
+    gfPrintIdentityRows_() +
+    '<div class="pf-section-head">세액 계산</div>' +
+    '<table class="pf-table">' +
+      gfDeemedGiftPrintRows_(r, [{ key: '증여의제이익', label: '증여의제이익' }]) +
+    '</table>' +
+    gfGeneralFormNote_() + gfGeneralFormSignHtml_() +
+  '</div>';
+}
+function pvPrintFormPageHtml_(){
+  const r = lastPropertyValueIncreaseGiftResult_;
+  if (!r) return '';
+  let n = 0;
+  let rows = pfRow_(++n, '재산가치증가이익', won(r.재산가치증가이익));
+  if (r.과세대상여부 === false){
+    rows += pfRow_(++n, '과세대상 여부', '적용 안 됨');
+  } else {
+    rows += pfRow_(++n, '과세표준(3천만원 공제후)', won(r.과세표준_3천만원공제후)) +
+      pfRow_(++n, '산출세액', won(r.산출세액)) +
+      (r.신고세액공제 ? pfRow_(++n, '신고세액공제', won(r.신고세액공제)) : '') +
+      (r.무신고가산세 ? pfRow_(++n, '무신고가산세', won(r.무신고가산세)) : '') +
+      (r.과소신고가산세 ? pfRow_(++n, '과소신고가산세', won(r.과소신고가산세)) : '') +
+      (r.납부지연가산세 ? pfRow_(++n, '납부지연가산세', won(r.납부지연가산세)) : '') +
+      pfRow_(++n, '자진납부할 세액(합계액)', won(r.납부세액));
+  }
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호서식]</div>' +
+    '<div class="pf-title">증여세 과세표준신고 및 자진납부계산서(재산가치증가에 따른 이익)</div>' +
+    gfPrintIdentityRows_() +
+    '<div class="pf-section-head">세액 계산</div>' +
+    '<table class="pf-table">' + rows + '</table>' +
+    gfGeneralFormNote_() + gfGeneralFormSignHtml_() +
+  '</div>';
+}
+function cbPrintFormPageHtml_(){
+  const r = lastConvertibleBondGiftResult_;
+  if (!r) return '';
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호서식]</div>' +
+    '<div class="pf-title">증여세 과세표준신고 및 자진납부계산서(전환사채등 인수·취득·양도에 따른 이익)</div>' +
+    gfPrintIdentityRows_() +
+    '<div class="pf-section-head">세액 계산</div>' +
+    '<table class="pf-table">' +
+      gfDeemedGiftPrintRows_(r, [{ key: '증여의제이익', label: '증여의제이익' }]) +
+    '</table>' +
+    gfGeneralFormNote_() + gfGeneralFormSignHtml_() +
   '</div>';
 }
 
@@ -11086,7 +11218,9 @@ taxCalcView.addEventListener('click', function(e){
       monthsAfterDesignatedDueDate: numVal(document.getElementById('ntMonthsAfterDesignated').value) || 0,
       unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('ntUnpaidAtDesignated').value) || 0
     };
-    renderNomineeTrustResult(calculateNomineeTrustGiftTaxJS(input));
+    const ntResult = calculateNomineeTrustGiftTaxJS(input);
+    renderNomineeTrustResult(ntResult);
+    lastNomineeTrustResult_ = (ntResult && !ntResult.error) ? ntResult : null;
   } else if (action === 'run-property-funds'){
     const input = {
       acquisitionValue: numVal(document.getElementById('afTotalValue').value) || 0,
@@ -11099,7 +11233,9 @@ taxCalcView.addEventListener('click', function(e){
       monthsAfterDesignatedDueDate: numVal(document.getElementById('afMonthsAfterDesignated').value) || 0,
       unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('afUnpaidAtDesignated').value) || 0
     };
-    renderPropertyFundsResult(calculatePropertyAcquisitionFundsGiftTaxJS(input));
+    const afResult = calculatePropertyAcquisitionFundsGiftTaxJS(input);
+    renderPropertyFundsResult(afResult);
+    lastPropertyFundsResult_ = (afResult && !afResult.error) ? afResult : null;
   } else if (action === 'run-convertible-bond-gift'){
     const input = {
       caseType: document.getElementById('cbCaseType').value,
@@ -11127,7 +11263,9 @@ taxCalcView.addEventListener('click', function(e){
       unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('cbUnpaidAtDesignated').value) || 0
     };
     Object.assign(input, taxCalcGiftAggregationInput_('cb'));
-    renderConvertibleBondGiftResult(calculateConvertibleBondGiftTaxJS(input));
+    const cbResult = calculateConvertibleBondGiftTaxJS(input);
+    renderConvertibleBondGiftResult(cbResult);
+    lastConvertibleBondGiftResult_ = (cbResult && !cbResult.error) ? cbResult : null;
   } else if (action === 'run-excess-dividend-gift'){
     const input = {
       isFinalSettlement: document.getElementById('edFinalSettlement').checked,
@@ -11167,7 +11305,9 @@ taxCalcView.addEventListener('click', function(e){
       monthsAfterDesignatedDueDate: numVal(document.getElementById('slMonthsAfterDesignated').value) || 0,
       unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('slUnpaidAtDesignated').value) || 0
     };
-    renderStockListingGiftResult(calculateStockListingGiftTaxJS(input));
+    const slResult = calculateStockListingGiftTaxJS(input);
+    renderStockListingGiftResult(slResult);
+    lastStockListingGiftResult_ = (slResult && !slResult.error) ? slResult : null;
   } else if (action === 'run-nontaxable-inheritance'){
     const input = {
       itemType: document.getElementById('niItemType').value,
@@ -11214,6 +11354,21 @@ taxCalcView.addEventListener('click', function(e){
   } else if (action === 'print-excess-dividend-gift'){
     if (!lastExcessDividendGiftResult_){ nxAlert_('먼저 위에서 "증여세 계산하기"를 눌러 계산을 완료하세요.'); return; }
     openPrintFormWindow_('초과배당 증여의제 신고서', edPrintFormPageHtml_());
+  } else if (action === 'print-nominee-trust-gift'){
+    if (!lastNomineeTrustResult_){ nxAlert_('먼저 위에서 "증여세 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('증여세 과세표준신고서(명의신탁재산 증여의제)', ntPrintFormPageHtml_());
+  } else if (action === 'print-property-funds-gift'){
+    if (!lastPropertyFundsResult_){ nxAlert_('먼저 위에서 "증여세 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('증여세 과세표준신고서(재산취득자금 증여추정)', afPrintFormPageHtml_());
+  } else if (action === 'print-stock-listing-gift'){
+    if (!lastStockListingGiftResult_){ nxAlert_('먼저 위에서 "증여세 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('증여세 과세표준신고서(주식등의 상장 등에 따른 이익)', slPrintFormPageHtml_());
+  } else if (action === 'print-property-value-increase-gift'){
+    if (!lastPropertyValueIncreaseGiftResult_){ nxAlert_('먼저 위에서 "증여세 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('증여세 과세표준신고서(재산가치증가에 따른 이익)', pvPrintFormPageHtml_());
+  } else if (action === 'print-convertible-bond-gift'){
+    if (!lastConvertibleBondGiftResult_){ nxAlert_('먼저 위에서 "증여세 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('증여세 과세표준신고서(전환사채등에 따른 이익)', cbPrintFormPageHtml_());
   } else if (action === 'download-gf-efile'){
     const errs = gfValidateEfileInputs_();
     if (errs.length){ renderGfEfileResult_(); return; }
@@ -11356,7 +11511,9 @@ taxCalcView.addEventListener('click', function(e){
       monthsAfterDesignatedDueDate: numVal(document.getElementById('pvMonthsAfterDesignated').value) || 0,
       unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('pvUnpaidAtDesignated').value) || 0
     };
-    renderPropertyValueIncreaseGiftResult(calculatePropertyValueIncreaseGiftTaxJS(input));
+    const pvResult = calculatePropertyValueIncreaseGiftTaxJS(input);
+    renderPropertyValueIncreaseGiftResult(pvResult);
+    lastPropertyValueIncreaseGiftResult_ = (pvResult && !pvResult.error) ? pvResult : null;
   } else if (action === 'run-related-party-gift'){
     const input = {
       companySize: document.getElementById('jmCompanySize').value,
