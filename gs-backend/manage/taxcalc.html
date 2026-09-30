@@ -1579,6 +1579,110 @@ function renderTransferContractGroupHtml_(contract, idx){
 // 여러 번 차감돼 증여의제이익이 과소계산된다). 지금까지는 그 통합비율을 세무사가 직접
 // 암산/외부계산해서 한 칸에 타이핑해야 했는데, 여기서 매출액만 넣으면 계산해준다.
 let relatedPartyRatioRows_ = [{}, {}];
+let jmRelatedPartyTotalSales_ = ''; // [2026.09.30, 재검토99] 수혜법인 총매출액 — 부표4 인쇄용으로 모달 밖에도 보존
+// [2026.09.30 신규, 재검토99] 일감몰아주기(jm)·일감떼어주기(jt) 공통 — 지배주주+친족의 직접·
+// 간접 주식보유 내역. 부표1(계산명세Ⅰ)의 "나.수혜법인 지배주주" 직접보유표, 부표2(간접보유비율
+// 산정)의 1~3차 출자법인 체인을 한 화면에서 입력받는다. target별로 따로 보존(jm/jt 별개 신고).
+let shareholdingRows_ = { jm: [{}], jt: [{}] };
+function shareholdingIndirectRatio_(row){
+  const l1 = numVal(row.chain1Ratio), l2 = numVal(row.chain2Ratio), l3 = numVal(row.chain3Ratio);
+  if (!l1) return 0;
+  let ratio = l1 / 100;
+  if (l2) ratio = ratio * (l2 / 100);
+  if (l3) ratio = ratio * (l3 / 100);
+  return ratio * 100;
+}
+function renderShareholdingRows_(target){
+  const rows = shareholdingRows_[target];
+  return rows.map(function(row, i){
+    const indirect = shareholdingIndirectRatio_(row);
+    return '<div class="taxcalc-asset-head" style="margin-top:6px;"><span style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
+        '<b>주주 ' + tcPad2_(i + 1) + '</b>' +
+        (i > 0 ? '<button type="button" class="taxcalc-del-asset" data-action="del-sh-row" data-idx="' + i + '">✕ 주주 삭제</button>' : '') +
+        '<button type="button" class="taxcalc-add-asset-inline" data-action="add-sh-row">+ 주주 추가</button>' +
+      '</span></div>' +
+    '<div class="taxcalc-grid" data-sh-idx="' + i + '" style="padding-top:6px;border-top:1px dashed var(--line);">' +
+      '<div class="taxcalc-field"><label>성명</label><input type="text" data-shfield="name" value="' + (row.name || '').replace(/"/g, '&quot;') + '"></div>' +
+      '<div class="taxcalc-field"><label>관계</label><input type="text" data-shfield="relation" value="' + (row.relation || '').replace(/"/g, '&quot;') + '" placeholder="예: 본인, 배우자, 자녀"></div>' +
+      '<div class="taxcalc-field"><label>직접보유비율(%)</label><input type="number" step="0.01" data-shfield="directRatio" value="' + (row.directRatio || '') + '" placeholder="수혜법인 직접보유"></div>' +
+      '<div class="taxcalc-field"><label>1차 출자법인명</label><input type="text" data-shfield="chain1Company" value="' + (row.chain1Company || '').replace(/"/g, '&quot;') + '" placeholder="간접보유시만"></div>' +
+      '<div class="taxcalc-field"><label>1차 지분율(%)</label><input type="number" step="0.01" data-shfield="chain1Ratio" value="' + (row.chain1Ratio || '') + '" placeholder="주주→1차법인"></div>' +
+      '<div class="taxcalc-field"><label>2차 출자법인명</label><input type="text" data-shfield="chain2Company" value="' + (row.chain2Company || '').replace(/"/g, '&quot;') + '" placeholder="3단계 이상만"></div>' +
+      '<div class="taxcalc-field"><label>2차 지분율(%)</label><input type="number" step="0.01" data-shfield="chain2Ratio" value="' + (row.chain2Ratio || '') + '" placeholder="1차법인→2차법인"></div>' +
+      '<div class="taxcalc-field"><label>수혜법인 직전 출자법인명</label><input type="text" data-shfield="chain3Company" value="' + (row.chain3Company || '').replace(/"/g, '&quot;') + '"></div>' +
+      '<div class="taxcalc-field"><label>수혜법인 출자비율(%)</label><input type="number" step="0.01" data-shfield="chain3Ratio" value="' + (row.chain3Ratio || '') + '" placeholder="마지막법인→수혜법인"></div>' +
+      '<div class="taxcalc-field"><span class="taxcalc-result-note" style="margin:0;">간접보유비율(자동계산): ' + indirect.toFixed(4) + '% · 합계(직접+간접): ' + (numVal(row.directRatio) + indirect).toFixed(4) + '%</span></div>' +
+    '</div>';
+  }).join('');
+}
+function openShareholdingHelperModal_(target){
+  if (!shareholdingRows_[target] || !shareholdingRows_[target].length) shareholdingRows_[target] = [{}];
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.display = 'flex';
+  overlay.innerHTML =
+    '<div class="modal-panel" style="width:min(760px, 96vw);">' +
+      '<div class="modal-head"><span>지배주주 등 주식보유비율 계산(직접+간접)</span><span class="modal-close" id="btnCloseSh">✕</span></div>' +
+      '<div class="modal-body">' +
+        '<div class="taxcalc-result-note" style="margin-bottom:8px;">지배주주와 그 친족 각각의 직접보유비율·간접보유비율(출자법인을 거쳐 최대 3단계까지)을 입력하면 자동으로 합산합니다. 여기 입력한 내역은 부표(계산명세Ⅰ, 간접보유비율산정)를 인쇄할 때도 그대로 쓰입니다.</div>' +
+        '<div id="shRows">' + renderShareholdingRows_(target) + '</div>' +
+        '<button type="button" class="taxcalc-run-btn" id="shRunBtn" style="margin-top:8px;">합계 계산하기</button>' +
+        '<div id="shResult"></div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  function close(){ overlay.remove(); }
+  overlay.querySelector('#btnCloseSh').onclick = close;
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+  function rerenderRows(){
+    overlay.querySelector('#shRows').innerHTML = renderShareholdingRows_(target);
+    wireRows();
+    enhanceNumberInputs(overlay);
+  }
+  function wireRows(){
+    overlay.querySelectorAll('[data-shfield]').forEach(function(el){
+      el.addEventListener('input', function(){
+        const i = numVal(el.closest('[data-sh-idx]').dataset.shIdx);
+        shareholdingRows_[target][i][el.dataset.shfield] = el.value;
+        const noteEl = el.closest('[data-sh-idx]').querySelector('.taxcalc-result-note');
+        if (noteEl){
+          const row = shareholdingRows_[target][i];
+          const indirect = shareholdingIndirectRatio_(row);
+          noteEl.textContent = '간접보유비율(자동계산): ' + indirect.toFixed(4) + '% · 합계(직접+간접): ' + (numVal(row.directRatio) + indirect).toFixed(4) + '%';
+        }
+      });
+    });
+    overlay.querySelectorAll('[data-action="del-sh-row"]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        shareholdingRows_[target].splice(numVal(btn.dataset.idx), 1);
+        rerenderRows();
+      });
+    });
+    overlay.querySelectorAll('[data-action="add-sh-row"]').forEach(function(btn){
+      btn.addEventListener('click', function(){ shareholdingRows_[target].push({}); rerenderRows(); });
+    });
+  }
+  wireRows();
+  enhanceNumberInputs(overlay);
+  overlay.querySelector('#shRunBtn').addEventListener('click', function(){
+    const total = shareholdingRows_[target].reduce(function(s, row){
+      return s + numVal(row.directRatio) + shareholdingIndirectRatio_(row);
+    }, 0);
+    const resultBox = document.getElementById('shResult');
+    let html = '<div class="taxcalc-result" style="margin-top:10px;">';
+    html += taxCalcResultRow('지배주주+친족 주식보유비율(합계)', total.toFixed(4) + '%', { total: true });
+    html += '<button type="button" class="taxcalc-run-btn" id="shApplyBtn" style="margin-top:8px;">위 계산결과 반영하기</button>';
+    html += '</div>';
+    resultBox.innerHTML = html;
+    resultBox.querySelector('#shApplyBtn').addEventListener('click', function(){
+      const fieldId = target === 'jt' ? 'jtShareRatio' : 'jmShareRatio';
+      const el = document.getElementById(fieldId);
+      if (el) el.value = total.toFixed(4);
+      close();
+      showToast('지배주주+친족 주식보유비율을 반영했습니다.', 'success');
+    });
+  });
+}
 function renderRelatedPartyRatioRows_(){
   // [2026.09.20] 삭제 제한을 없애려면(마지막 1건도 지울 수 있게) 배열이 비었을 때 자리채움용
   // 빈 행 하나가 남아야 한다 — 임대차·신탁수익 등과 같은 안전장치.
@@ -1596,7 +1700,11 @@ function renderRelatedPartyRatioRows_(){
   }).join('');
 }
 function openRelatedPartyRatioHelperModal_(){
-  relatedPartyRatioRows_ = [{}, {}];
+  // [2026.09.30 수정, 재검토99] 인쇄서식 확장 작업 중 발견 — 이 모달을 열 때마다 이미 입력해둔
+  // 법인별 내역(relatedPartyRatioRows_)을 통째로 지우고 있었다. 계산해서 jmTradeRatio에
+  // 반영한 뒤 모달을 닫으면 그 산출근거(부표4에 필요한 법인별 매출명세)가 남지 않는 구조였다
+  // — 부표를 인쇄하려면 이 내역 자체가 남아있어야 하므로 더 이상 초기화하지 않는다.
+  if (!relatedPartyRatioRows_ || !relatedPartyRatioRows_.length) relatedPartyRatioRows_ = [{}, {}];
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.style.display = 'flex';
@@ -1604,8 +1712,8 @@ function openRelatedPartyRatioHelperModal_(){
     '<div class="modal-panel" style="width:min(600px, 94vw);">' +
       '<div class="modal-head"><span>특수관계법인거래비율 계산(다수 특수관계법인)</span><span class="modal-close" id="btnCloseRpr">✕</span></div>' +
       '<div class="modal-body">' +
-        '<div class="taxcalc-result-note" style="margin-bottom:8px;">특수관계법인이 여러 곳이어도 회사별로 따로 계산해 더하면 안 됩니다(상증세법 시행령§34의3) — 모든 특수관계법인의 매출액을 먼저 합산한 뒤, 수혜법인 총매출액으로 한 번만 나눕니다.</div>' +
-        '<div class="taxcalc-grid" style="margin-bottom:8px;"><div class="taxcalc-field"><label>수혜법인 총매출액</label><input type="number" id="rprTotalSales" placeholder="원"></div></div>' +
+        '<div class="taxcalc-result-note" style="margin-bottom:8px;">특수관계법인이 여러 곳이어도 회사별로 따로 계산해 더하면 안 됩니다(상증세법 시행령§34의3) — 모든 특수관계법인의 매출액을 먼저 합산한 뒤, 수혜법인 총매출액으로 한 번만 나눕니다. 여기 입력한 내역은 부표(지배주주등과 특수관계법인)를 인쇄할 때도 그대로 쓰입니다.</div>' +
+        '<div class="taxcalc-grid" style="margin-bottom:8px;"><div class="taxcalc-field"><label>수혜법인 총매출액</label><input type="number" id="rprTotalSales" placeholder="원" value="' + (jmRelatedPartyTotalSales_ || '') + '"></div></div>' +
         '<div id="rprRows">' + renderRelatedPartyRatioRows_() + '</div>' +
         '<button type="button" class="taxcalc-run-btn" id="rprRunBtn">비율 계산하기</button>' +
         '<div id="rprResult"></div>' +
@@ -1646,6 +1754,7 @@ function openRelatedPartyRatioHelperModal_(){
   }
   wireRows();
   enhanceNumberInputs(overlay);
+  overlay.querySelector('#rprTotalSales').addEventListener('input', function(){ jmRelatedPartyTotalSales_ = this.value; });
   overlay.querySelector('#rprRunBtn').addEventListener('click', function(){
     const totalSales = numVal(document.getElementById('rprTotalSales').value);
     const sumRelated = relatedPartyRatioRows_.reduce(function(s, r){ return s + (numVal(r.sales) || 0); }, 0);
@@ -8776,6 +8885,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-related-party-ratio-helper">🧮 특수관계법인 여러 곳이면 매출 합산해서 계산</button></div>' +
         '<div class="taxcalc-field"><label>특수관계법인 매출액(일반기업 대체과세요건용)</label><input type="number" id="jmRelatedPartySales" placeholder="원"><span class="taxcalc-field-help">일반기업이고 거래비율 20~30%일 때만 — §45의3①1호나목2</span></div>' +
         '<div class="taxcalc-field"><label>지배주주+친족 주식보유비율</label><input type="number" step="0.01" id="jmShareRatio" placeholder="%"><span class="taxcalc-field-help">직접 또는 간접, 출자관계별로 따로 계산</span></div>' +
+        '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-shareholding-helper" data-target="jm">🧮 주주별 직접·간접보유 내역으로 계산</button></div>' +
         '<div class="taxcalc-field"><label>배당소득공제</label><input type="number" id="jmDividendDeduction" placeholder="원"><span class="taxcalc-field-help">신고기한 내 받은 배당소득 공제액, 없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>수혜법인 사업연도 종료일</label><input type="date" id="jmFiscalYearEnd" min="1900-01-01" max="2099-12-31"></div>' +
       '</div>' +
@@ -8807,6 +8917,7 @@ function renderGiftPane(){
         '</select></div>' +
         '<div class="taxcalc-field"><label>사업기회로 인한 수혜법인 이익</label><input type="number" id="jtProfit" placeholder="원"><span class="taxcalc-field-help">개시: 해당연도분 / 정산: 누적 합계</span></div>' +
         '<div class="taxcalc-field"><label>지배주주+친족 주식보유비율</label><input type="number" step="0.01" id="jtShareRatio" placeholder="%"><span class="taxcalc-field-help">30% 이상이어야 과세</span></div>' +
+        '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-shareholding-helper" data-target="jt">🧮 주주별 직접·간접보유 내역으로 계산</button></div>' +
         '<div class="taxcalc-field"><label>법인세 납부세액 중 상당액</label><input type="number" id="jtCorporateTax" placeholder="원"><span class="taxcalc-field-help">직접 입력시 아래 자동계산값보다 우선 — 개시: 해당연도분 / 정산: 누적 합계, 비우면 자동계산</span></div>' +
         '<div class="taxcalc-field"><label>수혜법인의 법인세 산출세액(공제·감면 차감후)</label><input type="number" id="jtCorpTaxAfterCredit" placeholder="원"><span class="taxcalc-field-help">법인세 납부세액 중 상당액 자동계산용</span></div>' +
         '<div class="taxcalc-field"><label>수혜법인의 해당 사업연도 소득금액</label><input type="number" id="jtCorpTaxableIncome" placeholder="원"><span class="taxcalc-field-help">법인세법§14, 자동계산용</span></div>' +
@@ -9854,6 +9965,86 @@ function jmPrintFormPageHtml_(){
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+  '</div>' +
+  jmAttach1PrintPageHtml_() + jmAttach2PrintPageHtml_() + jmAttach3PrintPageHtml_() + jmAttach4PrintPageHtml_();
+}
+// [2026.09.30 신규, 재검토99] 세무사님 지시 — "계산기를 보완해가면서 인쇄기능을 구현하라."
+// 일감몰아주기는 계산기 구조상 원천적으로 불가능하다고 재검토98에서 보고했으나, 그 근본원인
+// (거래처 법인별 매출내역·주주 출자체인을 아예 안 물어봄)을 "🧮 주주별 직접·간접보유 내역으로
+// 계산"/"🧮 특수관계법인 여러 곳이면 매출 합산해서 계산" 두 헬퍼 모달에 반영해서 해소했다 —
+// 원래 있던 이 두 헬퍼는 계산 결과(최종 비율)만 메인 필드에 반영하고 상세 입력 자체는 모달을
+// 닫으면 버려지는 구조였는데, 그 상세를 보존하도록 고치고 부표로 인쇄한다.
+function jmAttach1PrintPageHtml_(){
+  const rows = (shareholdingRows_.jm || []).filter(function(row){ return numVal(row.directRatio) > 0; });
+  if (!rows.length) return '';
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의3서식 부표1]</div>' +
+    '<div class="pf-title">계산명세서(Ⅰ) — 나.수혜법인 지배주주 직접보유 현황</div>' +
+    '<table class="pf-table">' +
+      '<tr><th>성명</th><th>관계</th><th>직접보유비율</th></tr>' +
+      rows.map(function(row){
+        return '<tr><td>' + escapeHtml(row.name || '') + '</td><td>' + escapeHtml(row.relation || '') + '</td>' +
+          '<td class="pf-right">' + numVal(row.directRatio).toFixed(4) + '%</td></tr>';
+      }).join('') +
+      '<tr><td colspan="2">계</td><td class="pf-right">' + rows.reduce(function(s,r){ return s + numVal(r.directRatio); }, 0).toFixed(4) + '%</td></tr>' +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX "주주별 직접·간접보유 내역" 도구의 입력값을 기준으로 자동 생성되었습니다.</div>' +
+  '</div>';
+}
+function jmAttach2PrintPageHtml_(){
+  const rows = (shareholdingRows_.jm || []).filter(function(row){ return row.chain1Company || numVal(row.chain1Ratio) > 0; });
+  if (!rows.length) return '';
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의3서식 부표2]</div>' +
+    '<div class="pf-title">지배주주 판정을 위한 간접보유비율 산정</div>' +
+    '<table class="pf-table">' +
+      '<tr><th>주주</th><th>1차 출자법인</th><th>1차 지분율</th><th>2차 출자법인</th><th>2차 지분율</th><th>수혜법인 직전 출자법인</th><th>수혜법인 출자비율</th><th>간접보유비율(계산)</th></tr>' +
+      rows.map(function(row){
+        return '<tr><td>' + escapeHtml(row.name || '') + '</td>' +
+          '<td>' + escapeHtml(row.chain1Company || '') + '</td><td class="pf-right">' + (row.chain1Ratio || '') + '%</td>' +
+          '<td>' + escapeHtml(row.chain2Company || '') + '</td><td class="pf-right">' + (row.chain2Ratio || '') + '%</td>' +
+          '<td>' + escapeHtml(row.chain3Company || '') + '</td><td class="pf-right">' + (row.chain3Ratio || '') + '%</td>' +
+          '<td class="pf-right">' + shareholdingIndirectRatio_(row).toFixed(4) + '%</td></tr>';
+      }).join('') +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX "주주별 직접·간접보유 내역" 도구의 입력값을 기준으로 자동 생성되었습니다 — 간접보유비율은 각 단계 지분율을 곱해서 계산합니다.</div>' +
+  '</div>';
+}
+function jmAttach3PrintPageHtml_(){
+  // [2026.09.30] "수증자 간접보유비율"은 공식상 지배주주 그룹과 별개 표이지만, 증여받는
+  // 수증자 본인도 통상 위 지배주주+친족 그룹의 구성원이므로 NETAX는 같은 표를 공유한다(수증자
+  // 개인·지배주주그룹을 별도 인물로 나눠 입력받는 기능은 없음 — 다른 사람이면 직접 확인 필요).
+  const donee = giftDonees[0] || {};
+  const row = (shareholdingRows_.jm || []).find(function(r){ return r.name && donee.name && r.name === donee.name; });
+  if (!row) return '';
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의3서식 부표3]</div>' +
+    '<div class="pf-title">수증자 간접보유비율</div>' +
+    '<table class="pf-table">' +
+      pfRow_(0, '수증자', escapeHtml(row.name || '')) +
+      pfRow_(0, '1차 출자법인 (지분율)', escapeHtml(row.chain1Company || '') + ' (' + (row.chain1Ratio || 0) + '%)') +
+      pfRow_(0, '2차 출자법인 (지분율)', escapeHtml(row.chain2Company || '') + ' (' + (row.chain2Ratio || 0) + '%)') +
+      pfRow_(0, '수혜법인 직전 출자법인 (지분율)', escapeHtml(row.chain3Company || '') + ' (' + (row.chain3Ratio || 0) + '%)') +
+      pfRow_(0, '간접보유비율(계산)', shareholdingIndirectRatio_(row).toFixed(4) + '%') +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX "주주별 직접·간접보유 내역" 도구에서 수증자와 같은 성명의 행을 찾아 자동 생성되었습니다 — 수증자가 목록에 없으면(이름 불일치 등) 인쇄되지 않으니 직접 확인하세요.</div>' +
+  '</div>';
+}
+function jmAttach4PrintPageHtml_(){
+  const rows = (relatedPartyRatioRows_ || []).filter(function(r){ return r.label || numVal(r.sales) > 0; });
+  if (!rows.length) return '';
+  const totalSales = numVal(jmRelatedPartyTotalSales_);
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의3서식 부표4]</div>' +
+    '<div class="pf-title">라.지배주주등과 특수관계법인(증여자 등)</div>' +
+    '<table class="pf-table">' +
+      '<tr><th>특수관계법인명</th><th>매출액(과세제외매출액 차감후)</th></tr>' +
+      rows.map(function(r){ return '<tr><td>' + escapeHtml(r.label || '') + '</td><td class="pf-right">' + won(numVal(r.sales)) + '</td></tr>'; }).join('') +
+      pfRow_(0, '특수관계법인 매출 합계', won(rows.reduce(function(s,r){ return s + numVal(r.sales); }, 0))) +
+      pfRow_(0, '수혜법인 총매출액', won(totalSales)) +
+      pfRow_(0, '특수관계법인거래비율', totalSales ? (rows.reduce(function(s,r){ return s + numVal(r.sales); }, 0) / totalSales * 100).toFixed(4) + '%' : '') +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX "특수관계법인 매출 합산" 도구의 입력값을 기준으로 자동 생성되었습니다.</div>' +
   '</div>';
 }
 function jtPrintFormPageHtml_(){
@@ -9900,6 +10091,46 @@ function jtPrintFormPageHtml_(){
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+  '</div>' +
+  jtAttach1PrintPageHtml_() + jtAttach2PrintPageHtml_();
+}
+// [2026.09.30 신규, 재검토99] 일감떼어주기(A/A-1 부표) — jm과 같은 "주주별 직접·간접보유
+// 내역" 도구(shareholdingRows_.jt)를 공유해서 채운다. B/B-1(3개년 부문별 손익계산서)은 별도의
+// 훨씬 큰 반복입력(매출원가 5항목·판관비 15항목×3개년)이 필요해 이번 라운드엔 포함하지 않았다.
+function jtAttach1PrintPageHtml_(){
+  const rows = (shareholdingRows_.jt || []).filter(function(row){ return numVal(row.directRatio) > 0; });
+  if (!rows.length) return '';
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의4서식 부표1(A)]</div>' +
+    '<div class="pf-title">계산명세서(A) — 수혜법인 지배주주 직접보유 현황</div>' +
+    '<table class="pf-table">' +
+      '<tr><th>성명</th><th>관계</th><th>직접보유비율</th></tr>' +
+      rows.map(function(row){
+        return '<tr><td>' + escapeHtml(row.name || '') + '</td><td>' + escapeHtml(row.relation || '') + '</td>' +
+          '<td class="pf-right">' + numVal(row.directRatio).toFixed(4) + '%</td></tr>';
+      }).join('') +
+      '<tr><td colspan="2">계</td><td class="pf-right">' + rows.reduce(function(s,r){ return s + numVal(r.directRatio); }, 0).toFixed(4) + '%</td></tr>' +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX "주주별 직접·간접보유 내역" 도구의 입력값을 기준으로 자동 생성되었습니다.</div>' +
+  '</div>';
+}
+function jtAttach2PrintPageHtml_(){
+  const rows = (shareholdingRows_.jt || []).filter(function(row){ return row.chain1Company || numVal(row.chain1Ratio) > 0; });
+  if (!rows.length) return '';
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의4서식 부표2(A-1)]</div>' +
+    '<div class="pf-title">수증자 간접보유비율</div>' +
+    '<table class="pf-table">' +
+      '<tr><th>주주</th><th>1차 출자법인</th><th>1차 지분율</th><th>2차 출자법인</th><th>2차 지분율</th><th>수혜법인 직전 출자법인</th><th>수혜법인 출자비율</th><th>간접보유비율(계산)</th></tr>' +
+      rows.map(function(row){
+        return '<tr><td>' + escapeHtml(row.name || '') + '</td>' +
+          '<td>' + escapeHtml(row.chain1Company || '') + '</td><td class="pf-right">' + (row.chain1Ratio || '') + '%</td>' +
+          '<td>' + escapeHtml(row.chain2Company || '') + '</td><td class="pf-right">' + (row.chain2Ratio || '') + '%</td>' +
+          '<td>' + escapeHtml(row.chain3Company || '') + '</td><td class="pf-right">' + (row.chain3Ratio || '') + '%</td>' +
+          '<td class="pf-right">' + shareholdingIndirectRatio_(row).toFixed(4) + '%</td></tr>';
+      }).join('') +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX "주주별 직접·간접보유 내역" 도구의 입력값을 기준으로 자동 생성되었습니다.</div>' +
   '</div>';
 }
 function gfDeemedGiftPrintRows_(r, extraFields){
@@ -11413,6 +11644,8 @@ taxCalcView.addEventListener('click', function(e){
     });
   } else if (action === 'open-related-party-ratio-helper'){
     openRelatedPartyRatioHelperModal_();
+  } else if (action === 'open-shareholding-helper'){
+    openShareholdingHelperModal_(btn.dataset.target);
   } else if (action === 'open-pre1990-standard-price'){
     openPre1990StandardPriceModal_(numVal(btn.dataset.idx));
   } else if (action === 'open-tax-office-guide'){
