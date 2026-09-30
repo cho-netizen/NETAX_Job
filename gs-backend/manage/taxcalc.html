@@ -1011,7 +1011,6 @@ function recomputeContractAllocation_(contractId, kind){
   const totalExpense = computeCostItemsTotal_(contract.totalExpenseItems);
   const priceField = kind === 'acquisition' ? 'acquisitionPrice' : 'transferPrice';
   const listKey = kind === 'acquisition' ? 'acquisitionExpenseItems' : 'transferExpenseItems';
-  const soloLabel = kind === 'acquisition' ? '취득 관련 비용(계약)' : '양도 관련 비용(계약)';
   const shareLabel = kind === 'acquisition' ? '취득 관련 비용(계약 안분)' : '양도 관련 비용(계약 안분)';
   contract._lastError = '';
   // 계약에 딸린 날짜(취득일/양도일)와, 양도계약이면 양수인 정보·매매계약체결일·토지거래허가
@@ -1052,7 +1051,14 @@ function recomputeContractAllocation_(contractId, kind){
       asset[priceField] = contract.totalPrice || 0;
       contract._lastVatTotal = 0;
     }
-    tcSetContractCostItem_(asset, listKey, soloLabel, totalExpense);
+    // [2026.09.30 수정, 재검토89] 계약 구성원이 1명뿐이면 안분(비율계산) 자체가 필요 없으므로,
+    // 예전처럼 항목별 구분(expenseCode)을 잃어버리는 합계 한 줄로 뭉치지 말고 계약에 입력된
+    // 항목들을 그대로(구분·지급처·증빙 등 전부) 복사한다 — 그래야 부표3(취득가액및필요경비
+    // 계산상세명세서)이 항목별 구분코드를 정확히 낼 수 있다.
+    const OLD_LABELS_ = ['취득 관련 비용(계약)', '취득 관련 비용(계약 안분)', '양도 관련 비용(계약)', '양도 관련 비용(계약 안분)'];
+    asset[listKey] = (Array.isArray(contract.totalExpenseItems) ? contract.totalExpenseItems : [])
+      .filter(function(it){ return numVal(it.amount) > 0 && OLD_LABELS_.indexOf(it.label) === -1; })
+      .map(function(it){ return Object.assign({}, it); });
     return;
   }
   // [2026.09 버그수정] 이 사건에 실제 있는 자산(memberIdxs)은 이미 위에서 입력받은
@@ -1152,7 +1158,7 @@ function renderTransferInfoSectionHtml_(idx){
     '</select><span class="taxcalc-field-help">부당행위계산부인·증여의제 판정용 — 특수관계인과 시가보다 현저히 낮거나 높게 거래했다면 소득세법§101(부당행위계산부인)·상증세법§35(저가양수·고가양도 증여의제, 증여세 탭)를 확인하세요</span></div>' +
     renderGiftDeemedCheckHtml_(idx, !!a.buyerRelation && a.buyerRelation !== 'none') +
     '</div>';
-  html += renderCostItemsSectionHtml_(a, 'transferExpenseItems', '양도비용 내역', '예: 중개보수');
+  html += renderCostItemsSectionHtml_(a, 'transferExpenseItems', '양도비용 내역', '예: 중개보수', 'transfer');
   return html;
 }
 function renderAcquisitionInfoSectionHtml_(idx){
@@ -1199,7 +1205,7 @@ function renderAcquisitionInfoSectionHtml_(idx){
     ? '<div class="taxcalc-result-note" style="margin-top:4px;">취득비용은 계약 카드에서 입력합니다(합계 ' + won(computeCostItemsTotal_(a.acquisitionExpenseItems)) + '원 반영됨)</div>'
     // [2026.09.23 버그수정] 세무사님 지적 — 이 자산 카드(이미 "양도자산 02"처럼 번호가 붙어
     // 있음) 안에 딱 한 번만 나오는 절인데 자산 인덱스를 또 붙이면 혼란만 준다 — 번호를 뺀다.
-    : renderCostItemsSectionHtml_(a, 'acquisitionExpenseItems', '취득비용', '예: 취득세');
+    : renderCostItemsSectionHtml_(a, 'acquisitionExpenseItems', '취득비용', '예: 취득세', 'acquisition');
   return html;
 }
 // 계약 구성원이 2건 이상일 때만 필요한, 안분 비율 계산용 기준시가 입력칸 — 예전엔 "계약
@@ -1415,7 +1421,7 @@ function renderContractCardHtml_(contract, kind, idx){
         : '') +
     '</div>' +
     (kind === 'transfer' ? renderContractBuyersHtml_(contract) : '') +
-    renderCostItemsSectionHtml_(contract, 'totalExpenseItems', expenseTitle, kind === 'acquisition' ? '예: 취득세' : '예: 중개보수') +
+    renderCostItemsSectionHtml_(contract, 'totalExpenseItems', expenseTitle, kind === 'acquisition' ? '예: 취득세' : '예: 중개보수', kind) +
     (kind === 'transfer' && contract.hasBuildingVat ? '<div class="taxcalc-result-note">건물분 부가세 자동 제외 합계: ' + won(contract._lastVatTotal || 0) + '(10/110, 자산구분=건물인 자산에만 적용됩니다)</div>' : '') +
     (contract._lastError ? '<div class="taxcalc-error">' + escapeHtml(contract._lastError) + '</div>' : '') +
     // [2026.09.20 중복제거] 세무사님 지적 — "이 계약에 속한 자산" 한 줄 요약 목록은 양도계약
@@ -3508,12 +3514,53 @@ let taxCalcTier = 'simple';
 function computeCostItemsTotal_(items){
   return (Array.isArray(items) ? items : []).reduce(function(s, it){ return s + (numVal(it.amount) || 0); }, 0);
 }
-function renderCostItemsSectionHtml_(a, listKey, title, placeholderExample){
+// 취득가액및필요경비계산상세명세서(부표3, 자료구분07) 구분코드 — 국세청 양도소득세전자신고
+// 파일설명서(V4.7) p.49 표 그대로. [2026.09.30 수정, 재검토89] 예전엔 "항목"란에 적은 자유
+// 텍스트(예: "취득세")를 키워드로 추측해 구분코드를 붙였는데, 세무사님 지적대로 "취득세"만
+// 맞고 엘리베이터·쟁송비 등 다른 유형은 전부 "기타"로 잘못 뭉뚱그려질 위험이 있었다 — 추측
+// 대신 직접 선택하게 고친다(상속세 채무·공과금 종류 선택과 같은 원칙).
+const TR_EXPENSE_CODE_OPTIONS_ = {
+  acquisition: [
+    { code: '11201', label: '취득세' },
+    { code: '11301', label: '등록세' },
+    { code: '11401', label: '법무사비용' },
+    { code: '11501', label: '취득중개수수료' },
+    { code: '12001', label: '자기가 제조·생산·건설한 비용' },
+    { code: '13101', label: '취득시 쟁송비(변호사비용)' },
+    { code: '13201', label: '취득시 쟁송비(기타비용)' },
+    { code: '13301', label: '매수자부담 양도소득세' },
+    { code: '27101', label: '취득후 쟁송비용(변호사비용)' },
+    { code: '27201', label: '취득후 쟁송비용(기타 소송·화해비용)' },
+    { code: '26001', label: '자본적지출 — 용도변경·개량·이용편의를 위한 지출' },
+    { code: '26002', label: '자본적지출 — 엘리베이터·냉난방 설치' },
+    { code: '26003', label: '자본적지출 — 피난시설 등 설치' },
+    { code: '26004', label: '자본적지출 — 재해 등으로 인한 원상복구' },
+    { code: '26101', label: '개발부담금·재건축부담금' },
+    { code: '26005', label: '자본적지출 — 자산가치증가 등 수선비' },
+    { code: '28101', label: '수익자부담금' },
+    { code: '28001', label: '토지 장애철거비' },
+    { code: '28002', label: '도로시설비 등' },
+    { code: '28003', label: '사방사업소요비용' },
+    { code: '13401', label: '기타(취득 가산항목)' },
+    { code: '28009', label: '기타(취득 관련 비용)' },
+    { code: '11601', label: '기타 부대비용' }
+  ],
+  transfer: [
+    { code: '29001', label: '양도시 중개수수료 등 직접지출비용' },
+    { code: '29101', label: '국민주택채권·토지개발채권 매각차손 등 기타경비' }
+  ]
+};
+const TR_EXPENSE_CODE_NEEDS_DETAIL_ = { '11401': 1, '11501': 1, '12001': 1, '13101': 1, '26001': 1, '26002': 1, '26003': 1, '26004': 1, '26005': 1, '27101': 1, '28001': 1, '28002': 1, '28003': 1, '29001': 1 };
+function renderCostItemsSectionHtml_(a, listKey, title, placeholderExample, kind){
+  const codeOptions = TR_EXPENSE_CODE_OPTIONS_[kind === 'transfer' ? 'transfer' : 'acquisition'];
   const items = (Array.isArray(a[listKey]) && a[listKey].length) ? a[listKey] : [{}];
   const rowsHtml = items.map(function(it, iidx){
     const isInformal = it.receiptType === 'informal' || it.receiptType === 'other';
     return '<div class="taxcalc-grid" data-cost-idx="' + iidx + '" style="margin-top:4px;padding-top:4px;border-top:1px dashed var(--line);">' +
       '<div class="taxcalc-field"><label>항목</label><input type="text" data-costfield="label" value="' + (it.label || '').replace(/"/g, '&quot;') + '" placeholder="' + placeholderExample + '"></div>' +
+      '<div class="taxcalc-field"><label>구분(취득가액및필요경비계산상세명세서용)</label><select data-costfield="expenseCode">' +
+        codeOptions.map(function(o){ return '<option value="' + o.code + '"' + (it.expenseCode === o.code ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('') +
+      '</select></div>' +
       '<div class="taxcalc-field"><label>지급처</label><input type="text" data-costfield="payee" value="' + (it.payee || '').replace(/"/g, '&quot;') + '" placeholder="예: OO공인중개사"></div>' +
       '<div class="taxcalc-field"><label>지급처 사업자등록번호</label><input type="text" data-costfield="payeeBizRegNo" value="' + (it.payeeBizRegNo || '').replace(/"/g, '&quot;') + '" placeholder="취득가액및필요경비계산상세명세서용, 없으면 비움"></div>' +
       '<div class="taxcalc-field"><label>지급일자</label><input type="date" data-costfield="payDate" value="' + (it.payDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
@@ -6375,16 +6422,13 @@ function trLongTermDeductionRate_(years, isOneHouse){
   const table = isOneHouse ? [0.24, 0.32, 0.40, 0.48, 0.56, 0.64, 0.72, 0.80] : [0.10, 0.12, 0.15, 0.18, 0.21, 0.24, 0.27, 0.30];
   return table[Math.min(years - 3, 7)];
 }
+// [2026.09.30 수정, 재검토89] 항목명 키워드 추측 대신 renderCostItemsSectionHtml_에서 직접
+// 선택한 item.expenseCode를 그대로 쓴다(TR_EXPENSE_CODE_OPTIONS_ 참고) — 옛 데이터 등
+// expenseCode가 비어있는 경우에만 기본값(취득비용=기타부대비용, 양도비용=중개수수료)으로 채운다.
 function trExpenseCategoryCode_(item, kind){
-  if (kind === 'transfer') return '29001'; // 양도시 중개수수료 등 직접지출비용
-  const label = String(item.label || '');
-  if (/취득세/.test(label)) return '11201';
-  if (/등록세/.test(label)) return '11301';
-  if (/법무사/.test(label)) return '11401';
-  if (/중개|수수료/.test(label)) return '11501';
-  return '11601'; // 기타 부대비용
+  if (item.expenseCode) return item.expenseCode;
+  return kind === 'transfer' ? '29001' : '11601';
 }
-const TR_EXPENSE_CODE_NEEDS_DETAIL_ = { '11401': 1, '11501': 1, '12001': 1, '13101': 1, '26001': 1, '26002': 1, '26003': 1, '26004': 1, '26005': 1, '27101': 1, '28001': 1, '28002': 1, '28003': 1, '29001': 1 };
 function trReceiptTypeCode_(receiptType){
   return { cashreceipt: '01', card: '02', taxinvoice: '03', invoice: '04' }[receiptType] || '10';
 }
@@ -6598,7 +6642,7 @@ function trAttach3PrintPageHtml_(items){
     '<table class="pf-table">' +
       items.map(function(row){ return pfRow_(0, row.label, row.payee + ' — ' + won(row.amount)); }).join('') +
     '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 각 항목의 구분코드는 항목명에서 자동 추정했으니(취득세/등록세/법무사비용/중개수수료 등 키워드), 실제 제출 전 정확한 구분코드인지 확인하세요.</div>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 각 항목의 구분코드는 취득비용·양도비용 입력 화면에서 직접 선택한 값입니다.</div>' +
   '</div>';
 }
 
