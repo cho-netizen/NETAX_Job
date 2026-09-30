@@ -2102,13 +2102,20 @@ function openOneHouseSpecialCaseModal_(idx){
     if (applyBtn){
       applyBtn.addEventListener('click', function(){
         transferAssets[idx].isOneHouseOneFamily = true;
-        // [2026.09.30 신규, 재검토97] 인쇄서식 전수대조에서 발견 — 별지83호~83의8서식(농어촌
-        // 주택등·인구감소지역·미분양주택 1세대1주택 특례적용신고서)이 국세청 공식 서식으로
-        // 존재하는데, 이 판정모달은 예전엔 체크박스만 켜고 판정에 쓴 사실관계 자체를 버렸다 —
-        // 나중에 인쇄할 근거가 아예 안 남는 구조였다. 자산에 그대로 저장해서 인쇄에 쓴다.
-        const provisionLabels = { u9: '수도권 밖 준공후미분양주택(조특법§98의9)', pd: '인구감소지역 주택(조특법§71의2)', rh: '농어촌주택등(조특법§99의4)' };
+        // [2026.09.30 정정, 재검토98] 재검토97에서 "별지83호서식 계열"이라고 적었던 게 틀렸다 —
+        // law.go.kr 원문 대조 결과 별지83호는 완전히 다른 조항(§155⑬ 상속·이농·귀농주택)용이고,
+        // 이 판정모달(u9/pd/rh)이 실제로 쓰는 서식은 (1) 농어촌주택등(rh, 고향주택 포함) →
+        // 조특법 시행규칙 별지 제63호의4서식, (2) 인구감소지역주택(pd)+수도권밖준공후미분양(u9)
+        // → 조특법 시행규칙 별지 제52호의3서식(두 조문이 원래 하나의 통합서식) — 총 2개뿐이다.
+        const provisionForms = {
+          u9: { label: '수도권 밖 준공후미분양주택(조특법§98의9)', formNo: '조세특례제한법 시행규칙 [별지 제52호의3서식]', formTitle: '1세대1주택 과세특례(인구감소지역주택, 준공후미분양주택 취득자) 신고서' },
+          pd: { label: '인구감소지역 주택(조특법§71의2)', formNo: '조세특례제한법 시행규칙 [별지 제52호의3서식]', formTitle: '1세대1주택 과세특례(인구감소지역주택, 준공후미분양주택 취득자) 신고서' },
+          rh: { label: '농어촌주택등(조특법§99의4)', formNo: '조세특례제한법 시행규칙 [별지 제63호의4서식]', formTitle: '농어촌주택 등 취득자에 대한 과세특례신고서' }
+        };
+        const pf = provisionForms[provision] || {};
         transferAssets[idx].oneHouseSpecialCase = {
-          provisionLabel: provisionLabels[provision] || provision,
+          provisionLabel: pf.label || provision,
+          formNo: pf.formNo || '', formTitle: pf.formTitle || '',
           acquisitionDate: document.getElementById(provision + 'AcquisitionDate') ? document.getElementById(provision + 'AcquisitionDate').value : '',
           houseType: provision === 'rh' ? (document.getElementById('rhHouseType').value === 'hometown' ? '고향주택' : '농어촌주택') : '',
           안내: r.안내 || ''
@@ -6876,15 +6883,15 @@ function oneHouseSpecialCasePrintPageHtml_(asset){
   if (!c) return '';
   let n = 0;
   return '<div class="pf-page">' +
-    '<div class="pf-formno">소득세법 시행규칙 [별지 제83호서식 계열]</div>' +
-    '<div class="pf-title">1세대1주택 특례적용신고서(' + escapeHtml(c.provisionLabel) + ')</div>' +
+    '<div class="pf-formno">' + escapeHtml(c.formNo || '') + '</div>' +
+    '<div class="pf-title">' + escapeHtml(c.formTitle || '1세대1주택 특례적용신고서') + '</div>' +
     '<table class="pf-table">' +
       pfRow_(++n, '적용 특례', c.provisionLabel) +
       (c.houseType ? pfRow_(++n, '구분', c.houseType) : '') +
       (c.acquisitionDate ? pfRow_(++n, '특례주택 취득일', c.acquisitionDate) : '') +
       pfRow_(++n, '판정 결과', '적용 가능(주택수 제외)') +
     '</table>' +
-    '<div class="pf-note">이 서식은 NETAX "특정주택 제외 판정" 도구의 판정 결과를 기준으로 자동 생성되었습니다 — ' + escapeHtml(c.안내 || '') + ' 정확한 별지 서식번호는 특례 종류별로 다르니(농어촌주택§99의4·고향주택·인구감소지역§71의2·미분양주택§98의9 각각 별도) 홈택스에서 해당 유형으로 다시 확인하세요.</div>' +
+    '<div class="pf-note">이 서식은 NETAX "특정주택 제외 판정" 도구의 판정 결과를 기준으로 자동 생성되었습니다 — ' + escapeHtml(c.안내 || '') + ' 서식에 있는 신청인 주소·전화번호·소재지·면적·기준시가 등 세부 항목은 아직 자동으로 안 채워지니 직접 보완하세요.</div>' +
   '</div>';
 }
 function trAttach2PrintPageHtml_(stock, seq){
@@ -9226,14 +9233,21 @@ function gfTaxCalcRecord_(item, donor){
   b = b.concat(ihPadNum_(0, 13));                           // 37 현금_분납_금액
   b = b.concat(ihPadChar_('', 8));                          // 38 현금_신고납부_일자
   b = b.concat(ihPadNum_(r.납부세액, 13));                  // 39 현금_신고납부_금액(분납·연부연납·물납 미신청 가정)
-  b = b.concat(ihPadNum_(0, 13));                           // 40 세액공제_영농자녀수증농지감면(잠정 0)
-  b = b.concat(ihPadNum_(0, 13));                           // 41 세액공제_초과배당에대한소득세상당액(잠정 0)
+  // [2026.09.30 수정, 재검토98] 정밀 재조사에서 발견 — 이 필드는 "잠정 0"이 아니라 전용 필드였다.
+  // 증여세전자신고파일설명서(2025년10월) 항목설명: "26.그밖의공제·감면세액 = 40.영농자녀수증농지
+  // 감면 + 41.초과배당에대한소득세상당액 결과값과 일치"(검증조건) — 40번이 실제 값을 담는 자리고
+  // 26번은 그 합계를 다시 적는 자리다. 40번이 계속 0으로 나가면 이 검증조건과 어긋난다.
+  b = b.concat(ihPadNum_(numVal(r.영농자녀증여농지세액감면) || 0, 13)); // 40 세액공제_영농자녀수증농지감면
+  b = b.concat(ihPadNum_(0, 13));                           // 41 세액공제_초과배당에대한소득세상당액(이 서식[기본세율]에는 해당없음 — 별도 초과배당 서식(ed탭)에서 산정)
   // [2026.09.30 수정, 재검토91] 혼인일·출생일 입력값으로 실제 어느 쪽 해당인지 판정해 정확한
   // 칸에 나눠 넣는다(둘 다 해당되는 드문 경우는 gfMarriageBirthSplit_이 사용자가 입력한 배분값을 씀).
   const marriageBirthSplit = gfMarriageBirthSplit_(numVal(r.혼인출산증여재산공제) || 0);
   b = b.concat(ihPadNum_(marriageBirthSplit.marriage, 13));   // 42 증여재산공제_혼인
   b = b.concat(ihPadNum_(marriageBirthSplit.birth, 13));      // 43 증여재산공제_출산
-  b = b.concat(ihPadNum_(0, 13));                           // 44 가업승계 납부유예세액(잠정 0)
+  // [2026.09.30 수정, 재검토98] 확정 버그 — UI(giftBizSuccessionDeferred)와 결과화면(r.가업승계
+  // 납부유예세액)엔 이미 있는 값인데 e-file만 0으로 고정돼 있었다. 조특법§30의7 납부유예를 쓴
+  // 사건은 이 필드가 계속 0으로 나가고 있었다.
+  b = b.concat(ihPadNum_(numVal(r.가업승계납부유예세액) || 0, 13)); // 44 가업승계 납부유예세액
   b = b.concat(ihPadNum_(r.합산배제증여재산공제, 13));      // 45 합산배제증여재산공제
   b = b.concat(ihPadChar_('', 10));                         // 46 공란
   return b;
