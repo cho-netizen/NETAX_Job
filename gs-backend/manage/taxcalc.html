@@ -6275,10 +6275,10 @@ function trHeadRecord_(seller, filingType){
   b = b.concat(ihPadChar_('', 20));                           // 16 계좌번호(국세환급금)
   b = b.concat(ihPadChar_('', 20));                           // 17 예금종류
   b = b.concat(ihPadChar_('', 13));                           // 18 세무대리인주민등록번호
-  b = b.concat(ihPadChar_('', 30));                           // 19 세무대리인성명
-  b = b.concat(ihPadChar_('', 12));                           // 20 세무대리인전화번호
-  b = b.concat(ihPadChar_('', 10));                           // 21 세무대리인사업자등록번호
-  b = b.concat(ihPadChar_('', 6));                            // 22 세무대리인관리번호
+  b = b.concat(ihPadChar_(taxAgentField_('taxAgentName'), 30)); // 19 세무대리인성명
+  b = b.concat(ihPadChar_(ihOnlyDigits_(taxAgentField_('taxAgentPhone')), 12)); // 20 세무대리인전화번호
+  b = b.concat(ihPadChar_(ihOnlyDigits_(taxAgentField_('taxAgentBizNo')), 10)); // 21 세무대리인사업자등록번호
+  b = b.concat(ihPadChar_(taxAgentField_('taxAgentMgmtNo'), 6)); // 22 세무대리인관리번호
   b = b.concat(ihPadChar_('9000', 4));                        // 23 세무프로그램코드(9000 기타)
   b = b.concat(ihPadChar_(todayYmd, 8));                      // 24 작성일자
   b = b.concat(ihDateField_(latest));                         // 25 양도일자(계산명세 중 가장 큰 양도일)
@@ -6992,6 +6992,7 @@ function trPrintFormPageHtml_(seller, r, buyers, assets){
       pfRow_(++n, '성명', seller.name) + pfRow_(++n, '주민등록번호', seller.regNo) +
       pfRow_(++n, '전화번호', seller.phone) + pfRow_(++n, '주소', seller.address) +
     '</table>' +
+    taxAgentPrintRows_() +
     '<div class="pf-section-head">양수인</div>' +
     '<table class="pf-table">' +
       (buyers.length ? buyers.map(function(b, i){
@@ -7162,9 +7163,9 @@ function wtHeadRecord_(seller){
   b = b.concat(ihPadChar_('B4011', 5));                       // 4 신고서식코드(별지 40호의11, 고정)
   b = b.concat(ihPadChar_('9000', 4));                        // 5 세무프로그램코드(국세코드 준용, 9000=기타)
   b = b.concat(ihPadChar_('', 13));                           // 6 세무대리인주민등록번호
-  b = b.concat(ihPadChar_('', 80));                           // 7 세무대리인성명
-  b = b.concat(ihPadChar_('', 10));                           // 8 세무대리인사업자등록번호
-  b = b.concat(ihPadChar_('', 16));                           // 9 세무대리인연락처
+  b = b.concat(ihPadChar_(taxAgentField_('taxAgentName'), 80)); // 7 세무대리인성명
+  b = b.concat(ihPadChar_(ihOnlyDigits_(taxAgentField_('taxAgentBizNo')), 10)); // 8 세무대리인사업자등록번호
+  b = b.concat(ihPadChar_(ihOnlyDigits_(taxAgentField_('taxAgentPhone')), 16)); // 9 세무대리인연락처
   b = b.concat(ihPadChar_('', 8));                            // 10 납부기한(비우면 자동납기 처리)
   b = b.concat(ihPadChar_('V2020.1.01', 10));                 // 11 적용서식(고정)
   return b;
@@ -7485,6 +7486,7 @@ function renderInheritancePane(){
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><span class="taxcalc-result-note" style="margin:0;">기납부증여세액공제(§28)는 위 상속인 명부의 "10년 이내 사전증여" 입력에서 상속인별로 자동 계산됩니다(과세가액 5억원 이하면 배제)</span></div>' +
         '<div class="taxcalc-field"><label>외국납부세액</label><input type="number" id="ihForeignTax" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>외국법령에 따라 상속세가 부과된 재산의 과세표준</label><input type="number" id="ihForeignBase" placeholder="원"><span class="taxcalc-field-help">외국납부세액공제신청서(별지7호)용 — 비우면 예전처럼 외국납부세액 전액을 한도로 계산(비례한도 미적용)</span></div>' +
         '<div class="taxcalc-field"><label>단기재상속공제(§30②) — 전의 상속세 산출세액</label><input type="number" id="ihPriorInheritanceTax" placeholder="원"><span class="taxcalc-field-help">재상속인 경우만, 없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>단기재상속공제 — 재상속분의 재산가액</label><input type="number" id="ihReinheritedPropertyValue" placeholder="원"><span class="taxcalc-field-help">전의 상속재산 중 이번에 다시 상속되는 부분</span></div>' +
         '<div class="taxcalc-field"><label>단기재상속공제 — 전의 상속재산가액</label><input type="number" id="ihPriorInheritanceTotalPropertyValue" placeholder="원"><span class="taxcalc-field-help">전의 상속 전체 재산가액</span></div>' +
@@ -7743,10 +7745,10 @@ function buildIhHeadRecord_(){
   b = b.concat(ihPadChar_('1', 1));                 // 8 납세자구분(정상)
   b = b.concat(ihPadChar_(ym, 6));                  // 9 과세기간_년월(상속개시일의 년월)
   b = b.concat(ihPadChar_('', 20));                 // 10 사용자ID
-  b = b.concat(ihPadChar_('', 30));                 // 11 세무대리인성명
-  b = b.concat(ihPadChar_('', 6));                  // 12 세무대리인관리번호
-  b = b.concat(ihPadChar_('', 14));                 // 13 세무대리인전화번호
-  b = b.concat(ihPadChar_('', 10));                 // 14 세무대리인사업자번호
+  b = b.concat(ihPadChar_(taxAgentField_('taxAgentName'), 30));    // 11 세무대리인성명
+  b = b.concat(ihPadChar_(taxAgentField_('taxAgentMgmtNo'), 6));   // 12 세무대리인관리번호
+  b = b.concat(ihPadChar_(ihOnlyDigits_(taxAgentField_('taxAgentPhone')), 14)); // 13 세무대리인전화번호
+  b = b.concat(ihPadChar_(ihOnlyDigits_(taxAgentField_('taxAgentBizNo')), 10)); // 14 세무대리인사업자번호
   b = b.concat(ihPadChar_('9000', 4));              // 15 세무프로그램코드(미등록업체=기타)
   b = b.concat(ihPadChar_(submitYm, 6));            // 16 제출년월
   b = b.concat(ihPadChar_(ym, 6));                  // 17 지급년월(=과세기간_년월)
@@ -8241,6 +8243,7 @@ function ihPrintFormBodyHtml_(){
       pfRow_(++n, '주소(사망 당시 주소지)', g_('ihDeceasedAddress')) + pfRow_(++n, '상속개시일', g_('ihDeathDate')) +
       pfRow_(++n, '거주구분', (document.getElementById('ihDecedentResident') && document.getElementById('ihDecedentResident').value === 'nonresident') ? '비거주자' : '거주자') +
     '</table>' +
+    taxAgentPrintRows_() +
     '<div class="pf-section-head">세액 계산</div>' +
     '<table class="pf-table">' +
       pfRow_(++n, '상속세과세가액', won(r.상속세과세가액_적용값)) +
@@ -8275,7 +8278,9 @@ function ihPrintFormBodyHtml_(){
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml(reporter.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
-  '</div>' + ihAttachPrintPagesHtml_();
+  '</div>' +
+  foreignTaxCreditPrintPageHtml_('상속세', taxBase, calcTaxTotal, numVal(g_('ihForeignBase')), numVal(g_('ihForeignTax')), numVal(r.외국납부세액공제)) +
+  ihAttachPrintPagesHtml_();
 }
 
 // 부표1(과세가액계산명세서)·부표2(상속인별 상속재산 및 평가명세서)·부표3(채무·공과금·
@@ -8496,6 +8501,7 @@ function renderGiftPane(){
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>기타 세액공제·가산세·유예 (해당 사안일 때만 별도로 계산하여 입력)</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>외국납부세액공제</label><input type="number" id="giftForeignTax" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>외국법령에 따라 증여세가 부과된 재산의 과세표준</label><input type="number" id="giftForeignBase" placeholder="원"><span class="taxcalc-field-help">외국납부세액공제신청서(별지7호)용 — 비우면 예전처럼 외국납부세액 전액을 한도로 계산(비례한도 미적용)</span></div>' +
         '<div class="taxcalc-field"><label>그 밖의 공제·감면세액</label><input type="number" id="giftOtherCredits" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>이자상당액</label><input type="number" id="giftInterest" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>공익법인등 관련 가산세</label><input type="number" id="giftPublicOrgPenalty" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
@@ -8506,6 +8512,21 @@ function renderGiftPane(){
     '</div>' +
     '<button type="button" class="taxcalc-run-btn" data-action="run-gift">세액 계산하기</button>' +
     '<div id="taxCalcGiftResult"></div>' +
+    // [2026.09.30 신규, 재검토97] 인쇄서식 전수대조에서 발견 — 별지10호~10호의6뿐 아니라
+    // 양도세·상속세 e-file 헤더에도 "세무대리인" 인적사항(성명/사업자등록번호/관리번호/
+    // 전화번호)을 입력받는 곳이 아예 없어 전부 공란으로 나가고 있었다. 사건마다 바뀌는 값이
+    // 아니라(세무사 본인 정보) 한 곳에만 두고 3개 세목의 모든 인쇄서식·e-file이 공유해서
+    // 쓴다(taxAgentPrintRows_, taxAgentEfileFields_). 증여세 탭에 둔 건 배치상 편의일 뿐 —
+    // 다른 세목 탭에서 계산해도 여기 입력한 값이 그대로 적용된다.
+    '<div class="taxcalc-asset" style="margin-top:20px;">' +
+      '<div class="taxcalc-asset-head"><b>세무대리인 (상속·증여·양도세 모든 인쇄서식·전자신고파일에 공통 반영)</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>성명</label><input type="text" id="taxAgentName" placeholder="없으면 비움"></div>' +
+        '<div class="taxcalc-field"><label>사업자등록번호</label><input type="text" id="taxAgentBizNo" placeholder="000-00-00000"></div>' +
+        '<div class="taxcalc-field"><label>관리번호</label><input type="text" id="taxAgentMgmtNo" placeholder="세무대리인 관리번호"></div>' +
+        '<div class="taxcalc-field"><label>전화번호</label><input type="text" id="taxAgentPhone" placeholder="02 1234 5678"></div>' +
+      '</div>' +
+    '</div>' +
     // [2026.09.25 신규, 재검토77] 서식·전자신고 — 상속세와 같은 1단계(신고서 본체만).
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>서식·전자신고 — 증여세과세표준신고 및 자진납부계산서(G101500)</b></div>' +
@@ -9053,10 +9074,10 @@ function gfHeadRecord_(doneeRegNo, giftDate){
   b = b.concat(ihPadChar_('1', 1));                // 8 납세자구분(정상)
   b = b.concat(ihPadChar_(ym, 6));                 // 9 과세기간_년월(증여년월)
   b = b.concat(ihPadChar_('', 20));                // 10 사용자ID
-  b = b.concat(ihPadChar_('', 30));                // 11 세무대리인성명
-  b = b.concat(ihPadChar_('', 6));                 // 12 세무대리인관리번호
-  b = b.concat(ihPadChar_('', 14));                // 13 세무대리인전화번호
-  b = b.concat(ihPadChar_('', 10));                // 14 세무대리인사업자번호
+  b = b.concat(ihPadChar_(taxAgentField_('taxAgentName'), 30));    // 11 세무대리인성명
+  b = b.concat(ihPadChar_(taxAgentField_('taxAgentMgmtNo'), 6));   // 12 세무대리인관리번호
+  b = b.concat(ihPadChar_(ihOnlyDigits_(taxAgentField_('taxAgentPhone')), 14)); // 13 세무대리인전화번호
+  b = b.concat(ihPadChar_(ihOnlyDigits_(taxAgentField_('taxAgentBizNo')), 10)); // 14 세무대리인사업자번호
   b = b.concat(ihPadChar_('9000', 4));             // 15 세무프로그램코드
   b = b.concat(ihPadChar_(submitYm, 6));           // 16 제출년월
   b = b.concat(ihPadChar_(ym, 6));                 // 17 지급년월
@@ -9366,6 +9387,7 @@ function gfPrintFormPageHtml_(item, giftDate){
       pfRow_(++n, '성명', donor.name) + pfRow_(++n, '주민등록번호', donor.regNo) +
       pfRow_(++n, '주소', donor.address) + pfRow_(++n, '증여일자', giftDate) +
     '</table>' +
+    taxAgentPrintRows_() +
     '<div class="pf-section-head">세액 계산</div>' +
     '<table class="pf-table">' +
       pfRow_(++n, '증여재산가액', won(giftAmount)) +
@@ -9432,8 +9454,18 @@ function gfAttach1PrintPageHtml_(donorIdx, doneeIdx){
 }
 function gfPrintFormBodyHtml_(){
   const giftDate = document.getElementById('giftDate').value;
-  return (lastGiftResults_ || []).filter(function(item){ return item.result && !item.result.error; })
-    .map(function(item){ return gfPrintFormPageHtml_(item, giftDate); }).join('');
+  const validItems = (lastGiftResults_ || []).filter(function(item){ return item.result && !item.result.error; });
+  let html = validItems.map(function(item){ return gfPrintFormPageHtml_(item, giftDate); }).join('');
+  // [2026.09.30 신규, 재검토97] 외국납부세액공제신청서(별지7호) — 입력칸(giftForeignTax 등)이
+  // 신고 건 전체에 하나씩만 있으므로(개별 수증자·증여자 조합마다 따로 있지 않음), 첫 번째
+  // 유효한 계산 결과 하나에만 붙여 중복 인쇄를 막는다.
+  const first = validItems[0];
+  if (first){
+    const r = first.result;
+    html += foreignTaxCreditPrintPageHtml_('증여세', numVal(r.과세표준), numVal(r.산출세액_할증전) + numVal(r.세대생략할증액), taxAgentField_('giftForeignBase'), taxAgentField_('giftForeignTax'), numVal(r.외국납부세액공제));
+    html += farmlandExemptionPrintPageHtml_(giftDonees[first.doneeIdx] || {}, taxAgentField_('giftFarmlandExemption'));
+  }
+  return html;
 }
 
 // [2026.09.30 신규, 재검토86] 증여세 5개 특례서식(별지 10호의2~6) — 국세청 공식 확인 결과
@@ -9441,6 +9473,66 @@ function gfPrintFormBodyHtml_(){
 // 아니므로(화면입력 신고만 가능), 전자신고파일이 아니라 인쇄용 서식만 제공한다. 수증자·
 // 증여자 신원은 이 5개 탭 자체에 입력칸이 없으므로 "일반" 탭의 giftDonees[0]/giftDonors[0]을
 // 그대로 가져다 쓴다(같은 사건의 같은 당사자이므로).
+// [2026.09.30 신규, 재검토97] 외국납부세액공제신청서(상속세및증여세법시행규칙 별지 제7호서식,
+// 자료구분25, G100900, 상속세·증여세 공용) — 인쇄서식 전수대조에서 발견된 누락 서식. 계산
+// 자체는 taxcalc-engine.html의 foreignTaxCreditByFormula 산식(산출세액×min(1,외국과세표준/
+// 전체과세표준), 외국납부세액 한도)을 그대로 따라 하되, 상속세 결과객체는 이 비율한도값을
+// 안 돌려주므로(증여세는 돌려줌) 여기서 같은 공식으로 다시 계산한다 — 공식이 아주 단순해서
+// (엔진과 중복되더라도) 별도 필드 추가보다 이 편이 더 간단하고 안전하다.
+function foreignTaxCreditPrintPageHtml_(formLabel, taxBase, calculatedTax, foreignBase, foreignPaid, creditAmount){
+  if (!numVal(creditAmount)) return '';
+  const creditLimit = (numVal(foreignBase) > 0 && numVal(taxBase) > 0)
+    ? Math.round(numVal(calculatedTax) * Math.min(1, numVal(foreignBase) / numVal(taxBase)))
+    : numVal(foreignPaid);
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제7호서식]</div>' +
+    '<div class="pf-title">외국납부세액공제신청서(' + formLabel + ')</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, formLabel + '산출세액', won(numVal(calculatedTax))) +
+      pfRow_(++n, formLabel + '의 과세표준(전체)', won(numVal(taxBase))) +
+      pfRow_(++n, '외국납부세액이 부과된 재산의 과세표준(외국 법령 기준)', won(numVal(foreignBase))) +
+      pfRow_(++n, '공제대상세액 [①×③÷②]', won(creditLimit)) +
+      pfRow_(++n, '외국납부세액(실제 납부액)', won(numVal(foreignPaid))) +
+      pfRow_(++n, '공제세액 [MIN(④,⑤)]', won(numVal(creditAmount))) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — "외국법령에 따라 부과된 재산의 과세표준" 입력칸을 채우지 않았으면 비례한도 없이 외국납부세액 전액이 그대로 공제세액으로 계산됩니다.</div>' +
+  '</div>';
+}
+// [2026.09.30 신규, 재검토97] 영농자녀 증여농지 세액감면신청서 + 증여받은 농지등의 명세서
+// (조특법 시행규칙 별지 제52호서식) — 인쇄서식 전수대조에서 발견된 누락 서식. NETAX는 감면세액
+// 최종 금액(giftFarmlandExemption)만 입력받고 농지별 소재지·지목·면적·자경기간 등 상세는
+// 수집하지 않으므로(요건 판정은 세무사님이 별도로 확인해서 입력), 그 상세명세는 이 인쇄물에
+// 빈칸으로 남기고 안내문으로 명시한다 — 있지도 않은 농지내역을 지어내지 않는다.
+function farmlandExemptionPrintPageHtml_(donee, exemptionAmount){
+  if (!numVal(exemptionAmount)) return '';
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">조세특례제한법 시행규칙 [별지 제52호서식]</div>' +
+    '<div class="pf-title">영농자녀 등이 증여받는 농지등에 대한 증여세 감면신청서</div>' +
+    '<div class="pf-section-head">신청인(수증자)</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '성명', donee.name) + pfRow_(++n, '주민등록번호', donee.regNo) +
+    '</table>' +
+    '<div class="pf-section-head">감면세액</div>' +
+    '<table class="pf-table">' + pfRow_(0, '영농자녀 증여농지 세액감면(조특법§71)', won(numVal(exemptionAmount))) + '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — "증여받은 농지등의 명세서"(농지 소재지·지목·면적·자경기간 등)는 NETAX가 수집하지 않으므로 별도로 작성해 첨부하세요. 감면요건(8년 이상 자경, 농지 소재지 등) 충족 여부도 별도로 확인이 필요합니다.</div>' +
+  '</div>';
+}
+function taxAgentField_(id){
+  const el = document.getElementById(id);
+  return el ? el.value : '';
+}
+function taxAgentPrintRows_(){
+  const g_ = taxAgentField_;
+  if (!g_('taxAgentName')) return '';
+  let n = 0;
+  return '<div class="pf-section-head">세무대리인</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '성명', g_('taxAgentName')) + pfRow_(++n, '사업자등록번호', g_('taxAgentBizNo')) +
+      pfRow_(++n, '관리번호', g_('taxAgentMgmtNo')) + pfRow_(++n, '전화번호', g_('taxAgentPhone')) +
+    '</table>';
+}
 function gfPrintIdentityRows_(){
   const donee = giftDonees[0] || {};
   const donor = giftDonors[0] || {};
@@ -9454,7 +9546,8 @@ function gfPrintIdentityRows_(){
     '<table class="pf-table">' +
       pfRow_(++n, '성명', donor.name) + pfRow_(++n, '주민등록번호', donor.regNo) +
       pfRow_(++n, '주소', donor.address) +
-    '</table>';
+    '</table>' +
+    taxAgentPrintRows_();
 }
 function gfPrintFormNote_(){
   return '<div class="pf-note">이 서식은 홈택스 "파일변환신고"(전자신고) 대상이 아닙니다(국세청은 기본세율 증여세신고서만 파일변환신고를 지원) — 이 인쇄물을 참고해 홈택스 화면입력으로 직접 신고하세요. NETAX 계산 결과를 기준으로 자동 생성되었습니다.</div>';
@@ -9509,10 +9602,30 @@ function jmPrintFormPageHtml_(){
       gfPrintFormNote_() +
     '</div>';
   }
+  // [2026.09.30 신규, 재검토97] 인쇄서식 전수대조에서 발견 — 이 신고서의 핵심(증여의제이익이
+  // 어떻게 나왔는지)을 보여주는 계산명세 부표가 official 서식엔 5개(계산명세Ⅰ·간접보유비율산정·
+  // 수증자간접보유비율·지배주주특수관계법인·계산명세Ⅱ)나 있는데, 인쇄물엔 최종 세액만 찍혀
+  // 있었다. 그 5개 부표를 전부 새로 만들기엔(각각 별도 다단 표 구조) 범위가 너무 커서, 계산에
+  // 실제로 쓰인 입력값과 중간값(기업규모·소득기준·거래비율·지분비율·차감비율 등)을 한 표로
+  // 모아 "산출근거"를 확인할 수 있게 한다 — 공식 부표의 다단 표 형식 그대로는 아니지만, 세무
+  // 검토에 필요한 숫자는 전부 보인다.
+  const jmCompanySizeLabel = { general: '일반기업', medium: '중견기업', small: '중소기업' }[document.getElementById('jmCompanySize') ? document.getElementById('jmCompanySize').value : ''] || '';
   return '<div class="pf-page">' +
     '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의3서식]</div>' +
     '<div class="pf-title">특수관계법인과의 거래를 통한 이익의 증여의제 신고서(일감몰아주기)</div>' +
     gfPrintIdentityRows_() +
+    '<div class="pf-section-head">증여의제이익 계산명세(산출근거)</div>' +
+    '<table class="pf-table">' +
+      pfRow_(0, '수혜법인 기업규모', jmCompanySizeLabel) +
+      pfRow_(0, '적용소득기준', r.적용소득기준) +
+      pfRow_(0, '적용소득금액', won(r.적용소득금액)) +
+      pfRow_(0, '특수관계법인거래비율(과세제외매출 반영)', taxAgentField_('jmTradeRatio') + '%') +
+      pfRow_(0, '과세요건 거래비율기준', r.과세요건_거래비율기준 + '%') +
+      pfRow_(0, '지배주주+친족 주식보유비율', taxAgentField_('jmShareRatio') + '%') +
+      pfRow_(0, '과세요건 지분율기준', r.과세요건_지분율기준 + '%') +
+      pfRow_(0, '계산식 차감비율(거래)', r.증여의제이익_계산식차감비율_거래 + '%p') +
+      pfRow_(0, '계산식 차감비율(지분)', r.증여의제이익_계산식차감비율_지분 + '%p') +
+    '</table>' +
     '<div class="pf-section-head">세액 계산</div>' +
     '<table class="pf-table">' +
       (r.배당소득공제 ? pfRow_(++n, '배당소득공제', won(r.배당소득공제)) : '') +
@@ -9544,10 +9657,22 @@ function jtPrintFormPageHtml_(){
       gfPrintFormNote_() +
     '</div>';
   }
+  // [2026.09.30 신규, 재검토97] jm(일감몰아주기)과 같은 이유 — 공식 서식엔 계산명세서(A/A-1/
+  // B/B-1) 4개 부표가 있지만, 전체를 새로 만들기엔 범위가 커서 계산에 쓰인 입력값·중간값을
+  // 한 표로 모아 산출근거를 보여준다.
+  const jtPhaseLabel = { initial: '개시사업연도', settlement: '정산사업연도' }[document.getElementById('jtPhase') ? document.getElementById('jtPhase').value : ''] || '';
   return '<div class="pf-page">' +
     '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의4서식]</div>' +
     '<div class="pf-title">특수관계법인으로부터 제공받은 사업기회로 발생한 이익의 증여의제 신고서(일감떼어주기)</div>' +
     gfPrintIdentityRows_() +
+    '<div class="pf-section-head">증여의제이익 계산명세(산출근거)</div>' +
+    '<table class="pf-table">' +
+      pfRow_(0, '신고 단계', jtPhaseLabel) +
+      pfRow_(0, '사업기회로 인한 수혜법인 이익', won(numVal(taxAgentField_('jtProfit')))) +
+      pfRow_(0, '지배주주+친족 주식보유비율', taxAgentField_('jtShareRatio') + '%') +
+      pfRow_(0, '법인세 납부세액 중 상당액', won(numVal(taxAgentField_('jtCorporateTax')))) +
+      (jtPhaseLabel === '개시사업연도' ? pfRow_(0, '개시사업연도 월수', taxAgentField_('jtMonths')) : '') +
+    '</table>' +
     '<div class="pf-section-head">세액 계산</div>' +
     '<table class="pf-table">' +
       pfRow_(++n, '증여의제이익', won(r.증여의제이익)) +
@@ -11866,6 +11991,7 @@ taxCalcView.addEventListener('click', function(e){
       publicTrustAmount: numVal(document.getElementById('giftPublicTrust').value) || 0,
       disabledTrustAmount: numVal(document.getElementById('giftDisabledTrust').value) || 0,
       foreignTaxPaidAmount: numVal(document.getElementById('giftForeignTax').value) || 0,
+      foreignGiftTaxBase: numVal(document.getElementById('giftForeignBase') ? document.getElementById('giftForeignBase').value : 0) || 0,
       otherCreditsAmount: numVal(document.getElementById('giftOtherCredits').value) || 0,
       interestAmount: numVal(document.getElementById('giftInterest').value) || 0,
       publicInterestOrgPenalty: numVal(document.getElementById('giftPublicOrgPenalty').value) || 0,
@@ -12509,6 +12635,7 @@ taxCalcView.addEventListener('click', function(e){
       generationSkipOver2Billion: document.getElementById('ihGenSkipOver2B').checked,
       generationSkipMinorHeir: document.getElementById('ihGenSkipMinorHeir').checked,
       foreignTaxPaidAmount: numVal(document.getElementById('ihForeignTax').value) || 0,
+      foreignEstateTaxBase: numVal(document.getElementById('ihForeignBase') ? document.getElementById('ihForeignBase').value : 0) || 0,
       priorInheritanceTax: numVal(document.getElementById('ihPriorInheritanceTax').value) || 0,
       reinheritedPropertyValue: numVal(document.getElementById('ihReinheritedPropertyValue').value) || 0,
       priorInheritanceTotalPropertyValue: numVal(document.getElementById('ihPriorInheritanceTotalPropertyValue').value) || 0,
