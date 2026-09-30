@@ -2102,6 +2102,17 @@ function openOneHouseSpecialCaseModal_(idx){
     if (applyBtn){
       applyBtn.addEventListener('click', function(){
         transferAssets[idx].isOneHouseOneFamily = true;
+        // [2026.09.30 신규, 재검토97] 인쇄서식 전수대조에서 발견 — 별지83호~83의8서식(농어촌
+        // 주택등·인구감소지역·미분양주택 1세대1주택 특례적용신고서)이 국세청 공식 서식으로
+        // 존재하는데, 이 판정모달은 예전엔 체크박스만 켜고 판정에 쓴 사실관계 자체를 버렸다 —
+        // 나중에 인쇄할 근거가 아예 안 남는 구조였다. 자산에 그대로 저장해서 인쇄에 쓴다.
+        const provisionLabels = { u9: '수도권 밖 준공후미분양주택(조특법§98의9)', pd: '인구감소지역 주택(조특법§71의2)', rh: '농어촌주택등(조특법§99의4)' };
+        transferAssets[idx].oneHouseSpecialCase = {
+          provisionLabel: provisionLabels[provision] || provision,
+          acquisitionDate: document.getElementById(provision + 'AcquisitionDate') ? document.getElementById(provision + 'AcquisitionDate').value : '',
+          houseType: provision === 'rh' ? (document.getElementById('rhHouseType').value === 'hometown' ? '고향주택' : '농어촌주택') : '',
+          안내: r.안내 || ''
+        };
         close();
         renderTransferPane();
         showToast('1세대1주택 비과세 전제를 체크했습니다.', 'success');
@@ -6852,6 +6863,28 @@ function trAttach1PrintPageHtml_(asset, seq){
       pfRow_(++n, '양도소득금액', won(grossGain - ltDeduction)) +
     '</table>' +
     '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다. 장기보유특별공제는 일반적인 경우(재건축·다주택중과·안분 등 특례 없음)만 정확하며, 특례가 있는 거래는 위 본표(세액 계산결과)를 기준으로 직접 검토하세요.</div>' +
+  '</div>' +
+  oneHouseSpecialCasePrintPageHtml_(asset);
+}
+// [2026.09.30 신규, 재검토97] 별지83호~83의8서식(농어촌주택등·인구감소지역·미분양주택
+// 1세대1주택 특례적용신고서) — 세목마다 서식번호가 갈리고(수도권밖미분양=83의5, 인구감소=
+// 83의?, 농어촌주택=83, 고향주택=83의2 등) 정확한 개별 서식번호·표 구조까지 law.go.kr에서
+// 확인하지 못했으므로, "1세대1주택 특례적용신고서" 공통 명칭으로 판정에 쓴 사실관계를 그대로
+// 인쇄한다 — 정확한 서식번호는 신고 전 홈택스에서 해당 유형으로 재확인하세요.
+function oneHouseSpecialCasePrintPageHtml_(asset){
+  const c = asset.oneHouseSpecialCase;
+  if (!c) return '';
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">소득세법 시행규칙 [별지 제83호서식 계열]</div>' +
+    '<div class="pf-title">1세대1주택 특례적용신고서(' + escapeHtml(c.provisionLabel) + ')</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '적용 특례', c.provisionLabel) +
+      (c.houseType ? pfRow_(++n, '구분', c.houseType) : '') +
+      (c.acquisitionDate ? pfRow_(++n, '특례주택 취득일', c.acquisitionDate) : '') +
+      pfRow_(++n, '판정 결과', '적용 가능(주택수 제외)') +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX "특정주택 제외 판정" 도구의 판정 결과를 기준으로 자동 생성되었습니다 — ' + escapeHtml(c.안내 || '') + ' 정확한 별지 서식번호는 특례 종류별로 다르니(농어촌주택§99의4·고향주택·인구감소지역§71의2·미분양주택§98의9 각각 별도) 홈택스에서 해당 유형으로 다시 확인하세요.</div>' +
   '</div>';
 }
 function trAttach2PrintPageHtml_(stock, seq){
