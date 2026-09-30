@@ -4283,7 +4283,7 @@ function renderTransferPane(){
       '</div>' +
     '</div>' +
     '<div class="taxcalc-asset-head" style="margin-top:20px;"><b>서식·전자신고 — 양도소득세과세표준신고 및 자진납부계산서(C116300, 국세청 홈택스)</b></div>' +
-    '<div class="taxcalc-result-note" style="margin:2px 0 8px;">부동산(국내)·주식등·국외자산 중 "세액 계산하기"를 실행한 탭이 있으면 그 결과를 모두 이 파일 하나에 담습니다(같은 서식코드 C116300, 신고유형으로 구분). 양수인과의 관계 코드는 국세청 별지 코드표를 확보하지 못해 임시값(99)으로 채웠습니다.</div>' +
+    '<div class="taxcalc-result-note" style="margin:2px 0 8px;">부동산(국내)·주식등·국외자산 중 "세액 계산하기"를 실행한 탭이 있으면 그 결과를 모두 이 파일 하나에 담습니다(같은 서식코드 C116300, 신고유형으로 구분). 양수인과의 관계는 배우자·무관계만 정밀하게 코드로 매칭되고, 그 외(직계존비속·형제자매·기타친족·경제적연관·경영지배)는 방향·촌수를 세분화하지 않아 "기타"로 일괄 처리됩니다.</div>' +
     '<button type="button" class="taxcalc-run-btn" data-action="check-tr-efile">전자신고파일 작성하기</button>' +
     '<button type="button" class="taxcalc-run-btn" data-action="print-tr-form">🖨 인쇄용 서식 보기</button>' +
     '<div id="taxCalcTrEfileResult"></div>' +
@@ -6161,9 +6161,18 @@ function trParseShareRatioParts_(raw){
   if (m && Number(m[2])) return { num: Number(m[1]), den: Number(m[2]) };
   return { num: 1, den: 1 };
 }
-// TODO: 양수인_양도자와의관계 코드리스트(파일설명서 별첨)를 확보하지 못해 임시값('99' 기타)을
-// 쓴다 — 실제 제출 전 국세청 별지 코드표로 교체해야 한다(화면에도 안내 문구로 표시함).
-function trRelationCode_(relation){ return '99'; }
+// [2026.09.30 수정, 재검토92] 양도세 규격서 별첨(양수인내역 양도자와의관계 목록, 00~ZZ)을
+// 이미 확보했음에도 예전엔 임시값 '99'(동거인이라는 구체적 의미가 있는 코드! 상속세와 같은
+// 유형의 오류)를 썼다 — 양도세 화면의 "관계"는 상속·증여처럼 세부 촌수가 아니라 굵직한
+// 범주(배우자/직계존비속/형제자매/기타친족/경제적연관/경영지배)만 받으므로, 방향·촌수까지
+// 정확히 아는 배우자·무관계만 정밀하게 매칭하고 나머지 범주는 안전하게 '기타(ZB)'로 둔다
+// (직계존비속을 부모 쪽인지 자녀 쪽인지 확신 없이 03/04나 05로 잘못 찍는 것보다 낫다).
+function trRelationCode_(relation, regNo){
+  if (relation === 'none') return 'ZA'; // 무관계
+  if (relation === 'spouse') return ihGenderFromRegNo_(regNo) === 'M' ? '07' : '02'; // 남편/처
+  if (!relation) return 'ZZ'; // 해당없음(미선택)
+  return 'ZB'; // 직계존비속·형제자매·기타친족·경제적연관·경영지배 — 방향/촌수 불명확이라 기타로 처리
+}
 
 function trHeadRecord_(seller, filingType){
   const latest = trLatestTransferDate_();
@@ -6413,7 +6422,7 @@ function trBuyerRecord_(buyer, seq){
   b = b.concat(ihPadChar_(ihOnlyDigits_(buyer.phone), 12));        // 8 양수인_전화번호
   b = b.concat(ihPadDec_(share.num, 11, 3));                       // 9 양수인_지분(분자)
   b = b.concat(ihPadDec_(share.den, 11, 3));                       // 10 양수인_지분(분모)
-  b = b.concat(ihPadChar_(trRelationCode_(buyer.relation), 2));    // 11 양수인_양도자와의관계(임시값, 위 참고)
+  b = b.concat(ihPadChar_(trRelationCode_(buyer.relation, buyer.regNo), 2)); // 11 양수인_양도자와의관계
   b = b.concat(ihPadChar_('', 24));                                // 12 공란
   return b;
 }
@@ -6986,7 +6995,7 @@ function wtBasicRecord_(seller, buyer){
   b = b.concat(ihPadChar_(buyer ? (buyer.name || '') : '', 80)); // 23 양수인성명
   b = b.concat(ihPadDec_(share.num, 11, 3));                  // 24 양수인분자지분율
   b = b.concat(ihPadDec_(share.den, 11, 3));                  // 25 양수인분모지분율
-  b = b.concat(ihPadChar_(buyer ? trRelationCode_(buyer.relation) : '', 2)); // 26 양도인과의관계코드(임시값, 위 참고)
+  b = b.concat(ihPadChar_(buyer ? trRelationCode_(buyer.relation, buyer.regNo) : 'ZZ', 2)); // 26 양도인과의관계코드
   b = b.concat(ihPadChar_('ZZ', 2));                          // 27 양도자산종류코드(해당없음 — 다자산 합산이라 단일코드 미지정)
   b = b.concat(ihDateField_(latest));                         // 28 양도일자
   b = b.concat(ihPadChar_('', 6));                            // 29 양도물건지(대표) 우편번호
