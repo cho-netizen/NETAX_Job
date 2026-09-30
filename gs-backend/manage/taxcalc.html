@@ -593,6 +593,25 @@ function taxCalcIsBirthGiftEligible_(giftDateStr, birthDateStr){
   if (!giftDateStr || !birthDateStr) return false;
   return taxCalcDateInRange_(giftDateStr, new Date(birthDateStr + 'T00:00:00'), taxCalcAddYears_(birthDateStr, 2));
 }
+// [2026.09.30 신규, 재검토91] 전자신고 증여재산공제 계산명세(자료구분16)는 혼인분·출산분을
+// 각각 별도 칸(10번/11번)에 나눠 기재해야 하는데, 엔진은 "혼인+출산 평생통산 1억원" 하나의
+// 값만 계산한다(법 자체가 통산 한도라 이게 맞음) — 실제로 신고서에 낼 때는 이 통산 한도로
+// 정해진 최종 금액을 두 칸에 배분해야 하므로, 혼인일·출생일 둘 다 해당되는(드문) 경우에만
+// 배분 비율을 직접 입력받고, 한쪽만 해당되면 자동으로 그 쪽에 전액 배분한다.
+function gfMarriageBirthSplit_(totalDeduction){
+  const giftDate = (document.getElementById('giftDate') || {}).value;
+  const marriageDate = (document.getElementById('giftMarriageDate') || {}).value;
+  const birthDate = (document.getElementById('giftBirthDate') || {}).value;
+  const isMarriage = taxCalcIsMarriageGiftEligible_(giftDate, marriageDate);
+  const isBirth = taxCalcIsBirthGiftEligible_(giftDate, birthDate);
+  if (isMarriage && !isBirth) return { marriage: totalDeduction, birth: 0 };
+  if (isBirth && !isMarriage) return { marriage: 0, birth: totalDeduction };
+  if (isMarriage && isBirth){
+    const marriagePortion = Math.min(totalDeduction, numVal((document.getElementById('giftMarriageBirthSplit') || {}).value) || 0);
+    return { marriage: marriagePortion, birth: totalDeduction - marriagePortion };
+  }
+  return { marriage: 0, birth: 0 };
+}
 // 법정 한도가 있는 금액 필드(감정평가수수료 500만원, 동거주택공제 6억, 주식양도 기본공제 250만원 등) —
 // tax-calc.js/Code.js가 이미 Math.min(입력값, 한도)로 캡을 적용하므로, 입력칸 옆에 실제 반영될 금액을
 // 바로 보여줘서 한도가 실제로 걸리는지 눈으로 확인할 수 있게 한다.
@@ -639,6 +658,8 @@ function updateGiftMarriageBirthHints(){
   const bHint = document.getElementById('giftBirthHint');
   if (mHint) mHint.textContent = !marriageDate ? '' : (!giftDate ? '증여일을 입력하세요' : (taxCalcIsMarriageGiftEligible_(giftDate, marriageDate) ? '✓ 공제대상(혼인일 전후 2년 이내)' : '✗ 기간 벗어남(혼인일 전후 2년 초과)'));
   if (bHint) bHint.textContent = !birthDate ? '' : (!giftDate ? '증여일을 입력하세요' : (taxCalcIsBirthGiftEligible_(giftDate, birthDate) ? '✓ 공제대상(출생일부터 2년 이내)' : '✗ 기간 벗어남(출생일부터 2년 초과)'));
+  const splitField = document.getElementById('giftMarriageBirthSplitField');
+  if (splitField) splitField.style.display = (taxCalcIsMarriageGiftEligible_(giftDate, marriageDate) && taxCalcIsBirthGiftEligible_(giftDate, birthDate)) ? '' : 'none';
 }
 
 // 일부 브라우저는 type="date" 입력칸의 연도 세그먼트에 계속 숫자를 입력하면 4자리를 넘겨서
@@ -8188,6 +8209,9 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>혼인일</label><input type="date" id="giftMarriageDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">비어있으면 미해당</span><span class="taxcalc-result-note" id="giftMarriageHint" style="margin:2px 0 0;"></span></div>' +
         '<div class="taxcalc-field"><label>출생일·입양일</label><input type="date" id="giftBirthDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">비어있으면 미해당</span><span class="taxcalc-result-note" id="giftBirthHint" style="margin:2px 0 0;"></span></div>' +
         '<div class="taxcalc-field"><label>과거에 이미 받은 혼인·출산공제 누적액</label><input type="number" id="giftPriorMarriageBirth" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        // [2026.09.30 신규, 재검토91] 혼인일·출생일 둘 다 입력되어 둘 다 요건을 충족하는 드문
+        // 경우에만 보인다 — 전자신고서(자료구분16)는 혼인분·출산분을 각 칸에 나눠 내야 하므로.
+        '<div class="taxcalc-field" id="giftMarriageBirthSplitField" style="display:none;"><label>이 중 혼인분 해당 금액</label><input type="number" id="giftMarriageBirthSplit" placeholder="원"><span class="taxcalc-field-help">혼인·출산 둘 다 요건을 충족할 때만 — 나머지는 자동으로 출산분으로 처리됩니다(전자신고서 혼인/출산 칸 구분용)</span></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>㉜㉝ 그 밖의 공제</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -8877,8 +8901,11 @@ function gfTaxCalcRecord_(item, donor){
   b = b.concat(ihPadNum_(r.납부세액, 13));                  // 39 현금_신고납부_금액(분납·연부연납·물납 미신청 가정)
   b = b.concat(ihPadNum_(0, 13));                           // 40 세액공제_영농자녀수증농지감면(잠정 0)
   b = b.concat(ihPadNum_(0, 13));                           // 41 세액공제_초과배당에대한소득세상당액(잠정 0)
-  b = b.concat(ihPadNum_(r.혼인출산증여재산공제, 13));      // 42+43 증여재산공제_혼인출산(혼인·출산 구분 세분화 전까지 42에 합산)
-  b = b.concat(ihPadNum_(0, 13));                           // 43 증여재산공제_출산(위 42에 합산했으므로 0)
+  // [2026.09.30 수정, 재검토91] 혼인일·출생일 입력값으로 실제 어느 쪽 해당인지 판정해 정확한
+  // 칸에 나눠 넣는다(둘 다 해당되는 드문 경우는 gfMarriageBirthSplit_이 사용자가 입력한 배분값을 씀).
+  const marriageBirthSplit = gfMarriageBirthSplit_(numVal(r.혼인출산증여재산공제) || 0);
+  b = b.concat(ihPadNum_(marriageBirthSplit.marriage, 13));   // 42 증여재산공제_혼인
+  b = b.concat(ihPadNum_(marriageBirthSplit.birth, 13));      // 43 증여재산공제_출산
   b = b.concat(ihPadNum_(0, 13));                           // 44 가업승계 납부유예세액(잠정 0)
   b = b.concat(ihPadNum_(r.합산배제증여재산공제, 13));      // 45 합산배제증여재산공제
   b = b.concat(ihPadChar_('', 10));                         // 46 공란
@@ -8968,6 +8995,45 @@ function gfAttach1AssetRecordsForPair_(donorIdx, doneeIdx){
   return rows;
 }
 
+// [2026.09.30 신규, 재검토91] 혼인출산 증여재산공제액 계산명세(자료구분16, G108400, 200B)
+// +혼인출산증여재산내역(자료구분17, 100B) — 증여세전자신고파일설명서 42번 항목 각주에 "혼인
+// 증여재산공제액과 출산증여재산공제액은 합산하여 최대 1억원 한도, 혼인출산 증여재산공제액
+// 계산명세(16)·혼인출산 공제 증여재산내역(17) 레코드 필수"라고 명시 — 혼인·출산공제를 받을 때
+// 반드시 같이 내야 하는 부표인데 아예 구현이 안 돼 있었다. 과거 10년 이내 사용액은 이 항목
+// 자체가 혼인분/출산분을 나눠 받지 않으므로(giftPriorMarriageBirth는 합산 1개 값), 이번 건과
+// 같은 사유(혼인만/출산만/둘 다)로 이미 썼다고 가정해 배분한다 — 실제로 혼인분과 출산분을
+// 각각 다른 시점에 나눠 써온 경우는 이 배분이 근사치일 수 있음을 안내에 남긴다.
+function gfAttachMarriageBirthCalcRecord_(donor, currentSplit){
+  const priorTotal = numVal((document.getElementById('giftPriorMarriageBirth') || {}).value) || 0;
+  const priorSplit = gfMarriageBirthSplit_(priorTotal);
+  const remaining = Math.max(0, 100000000 - priorTotal);
+  let b = [];
+  b = b.concat(ihPadChar_('16', 2));
+  b = b.concat(ihPadChar_('G108400', 7));
+  b = b.concat(ihPadNum_(priorSplit.marriage, 13)); // 3 10년이내혼인공제금액
+  b = b.concat(ihPadNum_(0, 13));                   // 4 10년도과혼인공제금액(구분 미수집, 0)
+  b = b.concat(ihPadNum_(priorSplit.birth, 13));    // 5 10년이내출산공제금액
+  b = b.concat(ihPadNum_(0, 13));                   // 6 10년도과출산공제금액(구분 미수집, 0)
+  b = b.concat(ihPadNum_(remaining, 13));           // 7 공제받을수있는금액
+  b = b.concat(ihPadNum_(currentSplit.marriage, 13)); // 8 혼인공제받을금액
+  b = b.concat(ihPadNum_(currentSplit.birth, 13));    // 9 출산공제받을금액
+  b = b.concat(ihPadNum_(priorSplit.marriage + currentSplit.marriage, 13)); // 10 혼인증여재산공제액
+  b = b.concat(ihPadNum_(priorSplit.birth + currentSplit.birth, 13));       // 11 출산증여재산공제액
+  b = b.concat(ihPadChar_('', 74));                 // 12 공란
+  return b;
+}
+function gfAttachMarriageBirthDetailRecord_(giftDate, seq, kind, eventDate, giftAmount){
+  let b = [];
+  b = b.concat(ihPadChar_('17', 2));
+  b = b.concat(ihPadChar_('G108400', 7));
+  b = b.concat(ihPadNum_(seq, 6));                  // 3 자료일련번호
+  b = b.concat(ihPadChar_(kind, 2));                // 4 혼인출산구분코드('01' 혼인, '02' 출산)
+  b = b.concat(ihDateField_(eventDate));            // 5 혼인및출산일자
+  b = b.concat(ihDateField_(giftDate));             // 6 증여일자
+  b = b.concat(ihPadNum_(giftAmount, 13));          // 7 증여재산가액
+  b = b.concat(ihPadChar_('', 54));                 // 8 공란
+  return b;
+}
 function gfBuildEfileBytes_(){
   const giftDate = document.getElementById('giftDate').value;
   const CRLF = [0x0D, 0x0A];
@@ -8978,6 +9044,14 @@ function gfBuildEfileBytes_(){
     const donor = giftDonors[item.donorIdxs[0]] || {};
     all = all.concat(gfHeadRecord_(donee.regNo, giftDate), CRLF, gfBasicRecord_(donee, donor, giftDate, item.doneeIdx), CRLF, gfTaxCalcRecord_(item, donor), CRLF);
     gfAttach1AssetRecordsForPair_(item.donorIdxs[0], item.doneeIdx).forEach(function(r){ all = all.concat(r, CRLF); });
+    const marriageBirthTotal = numVal(item.result.혼인출산증여재산공제) || 0;
+    if (marriageBirthTotal > 0){
+      const split = gfMarriageBirthSplit_(marriageBirthTotal);
+      all = all.concat(gfAttachMarriageBirthCalcRecord_(donor, split), CRLF);
+      let detailSeq = 0;
+      if (split.marriage > 0) all = all.concat(gfAttachMarriageBirthDetailRecord_(giftDate, ++detailSeq, '01', document.getElementById('giftMarriageDate').value, split.marriage), CRLF);
+      if (split.birth > 0) all = all.concat(gfAttachMarriageBirthDetailRecord_(giftDate, ++detailSeq, '02', document.getElementById('giftBirthDate').value, split.birth), CRLF);
+    }
   });
   return new Uint8Array(all);
 }
@@ -9024,6 +9098,12 @@ function gfPrintFormPageHtml_(item, giftDate){
       pfRow_(++n, '채무액', won(r.인수채무액)) +
       pfRow_(++n, '증여세과세가액', won(taxable)) +
       pfRow_(++n, '증여재산공제', won(r.증여재산공제)) +
+      (r.혼인출산증여재산공제 ? (function(){
+        const s = gfMarriageBirthSplit_(numVal(r.혼인출산증여재산공제) || 0);
+        return pfRow_(++n, '혼인·출산 증여재산공제', won(r.혼인출산증여재산공제)) +
+          (s.marriage ? pfRow_(0, '(혼인분)', won(s.marriage), { indent: true }) : '') +
+          (s.birth ? pfRow_(0, '(출산분)', won(s.birth), { indent: true }) : '');
+      })() : '') +
       pfRow_(++n, '재해손실공제', won(r.재해손실공제)) +
       pfRow_(++n, '감정평가수수료', won(r.감정평가수수료공제)) +
       pfRow_(++n, '과세표준', won(taxBase)) +
@@ -9403,7 +9483,7 @@ function renderGfEfileResult_(){
   const fileName = gfEfileFileName_();
   const pairCount = (lastGiftResults_ || []).filter(function(item){ return !item.result.error; }).length;
   box.innerHTML = '<div class="taxcalc-result-note">✅ 검증 통과 — 신고서 본체 ' + pairCount + '건(증여자×수증인 조합별) 준비됨. 파일명: <b>' + fileName + '</b></div>' +
-    '<div class="taxcalc-result-note" style="color:#b00;">⚠ 혼인·출산 증여재산공제는 구분 없이 "혼인" 칸에 합산해서 기재합니다(출산분 별도 입력칸이 없음). 실제 제출 전 홈택스 전자신고 변환프로그램으로 반드시 재검증하세요.</div>' +
+    '<div class="taxcalc-result-note">실제 제출 전 홈택스 전자신고 변환프로그램으로 반드시 재검증하세요.</div>' +
     '<button type="button" class="taxcalc-run-btn" data-action="download-gf-efile" style="margin-top:8px;">💾 전자신고파일 다운로드(' + fileName + ')</button>';
 }
 
