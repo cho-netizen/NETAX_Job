@@ -6442,9 +6442,15 @@ function trHoldingYearsSimple_(acqDate, transDate){
   if (t.getMonth() < a.getMonth() || (t.getMonth() === a.getMonth() && t.getDate() < a.getDate())) years -= 1;
   return Math.max(0, years);
 }
+// [2026.09.30 수정, 재검토93] 세무사님이 J드라이브에 직접 받아두신 국세청 공식 서식
+// (양도소득금액 계산명세서, 별지 제84호서식 부표1, 2024.3.22 개정)을 대조한 결과, 조합원
+// 입주권과 분양권을 둘 다 '08'(부동산을 취득할 수 있는 권리, 기타)로 뭉뚱그리고 있었는데
+// 실제로는 조합원입주권=24, 분양권=25로 서로 다른 전용 코드가 있었다 — '08'은 그 둘을
+// 제외한, 달리 분류 안 되는 기타 권리에만 쓰는 코드였다.
 function trAssetTypeCode1_(asset){
+  if (asset.isReconstructionRights) return '24'; // 조합원입주권
+  if (asset.assetType === 'presale_right') return '25'; // 분양권
   if (asset.assetType === 'house') return (Number(asset.transferPrice) || 0) > 1200000000 ? '02' : '03';
-  if (asset.assetType === 'presale_right' || asset.isReconstructionRights) return '08';
   return (asset.assetKind === 'building') ? '04' : '01'; // assetKind 기본값이 land이므로 그 외에는 토지로 본다
 }
 function trRateClassCode1_(asset, taxBaseApprox){
