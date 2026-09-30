@@ -9757,6 +9757,48 @@ function srPrintFormPageHtml_(){
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+  '</div>' +
+  srAttach2PrintPageHtml_(r);
+}
+// [2026.09.30 신규, 재검토98] 별지10호의2서식 부표2(가업승계 주식등 증여재산평가 및
+// 과세가액계산명세서) — 정밀 재조사로 확인된 ①~⑬ 항목 그대로. 이미 srPrintFormPageHtml_이
+// 요약해서 보여주는 값들(가업자산상당액·비율·총한도액 등)의 산출근거가 되는 5개 사업무관자산
+// 세부항목(㉮~㉲)은 화면 입력값(srTotalAsset 등)을 직접 읽어서 채운다.
+function srAttach2PrintPageHtml_(r){
+  if (r.특례종류 !== '가업승계주식등(조특법 §30의6)') return '';
+  const totalAsset = numVal(taxAgentField_('srTotalAsset'));
+  const nonBiz55 = numVal(taxAgentField_('srNonBiz55'));
+  const nonBiz49 = numVal(taxAgentField_('srNonBiz49'));
+  const nonBiz61 = numVal(taxAgentField_('srNonBiz61'));
+  const excessCash = numVal(taxAgentField_('srExcessCash'));
+  const nonBizStock = numVal(taxAgentField_('srNonBizStock'));
+  const nonBizTotal = nonBiz55 + nonBiz49 + nonBiz61 + excessCash + nonBizStock;
+  const businessRelated = Math.max(0, totalAsset - nonBizTotal);
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의2서식 부표2]</div>' +
+    '<div class="pf-title">가업승계 주식등 증여재산평가 및 과세가액계산명세서</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '증여일 현재 주식등의 가액', won(r.증여재산가액)) +
+      pfRow_(++n, '총자산가액', won(totalAsset)) +
+      pfRow_(0, '(법인세법§55의2 해당자산)', won(nonBiz55), { indent: true }) +
+      pfRow_(0, '(시행령§49 해당자산·임대용부동산)', won(nonBiz49), { indent: true }) +
+      pfRow_(0, '(시행령§61①2호 해당자산·대여금)', won(nonBiz61), { indent: true }) +
+      pfRow_(0, '(과다보유현금)', won(excessCash), { indent: true }) +
+      pfRow_(0, '(영업무관 주식·채권·금융상품)', won(nonBizStock), { indent: true }) +
+      pfRow_(++n, '사업무관자산가액 계', won(nonBizTotal)) +
+      pfRow_(++n, '사업관련자산가액', won(businessRelated)) +
+      pfRow_(++n, '사업관련자산가액비율', totalAsset ? (businessRelated / totalAsset * 100).toFixed(2) + '%' : '') +
+      pfRow_(++n, '가업자산상당액', won(r.가업자산상당액)) +
+      pfRow_(++n, '기 과세특례적용분 증여세과세가액', won((r.과세특례적용전_증여세과세가액_계 || 0) - (r.가업자산상당액 || 0))) +
+      pfRow_(++n, '합계', won(r.과세특례적용전_증여세과세가액_계)) +
+      pfRow_(++n, '총한도액', won(r.총한도액)) +
+      pfRow_(++n, '기 과세특례적용분', won((r.과세특례적용전_증여세과세가액_계 || 0) - (r.가업자산상당액 || 0))) +
+      pfRow_(++n, '계', won(r.총한도액)) +
+      pfRow_(++n, '과세특례적용대상금액', won(r.과세특례적용대상_증여세과세가액)) +
+      pfRow_(++n, '기본세율적용대상 증여재산가액', won(r.기본세율적용대상_증여재산가액)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다.</div>' +
   '</div>';
 }
 function jmPrintFormPageHtml_(){
