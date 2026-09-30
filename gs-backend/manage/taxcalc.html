@@ -2994,7 +2994,19 @@ function valuationAssetMethodFieldsHtml(m, a){
     '<div class="taxcalc-field"><label>피상속인 실질보험료부담비율</label><input type="number" step="0.01" min="0" max="1" data-field="diPremiumRatio" placeholder="0~1" value="' + (a.diPremiumRatio || '') + '"><span class="taxcalc-field-help">보험금만, 계약자가 다를 때</span></div>' +
     '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="diAlreadyGiftTaxed"' + (a.diAlreadyGiftTaxed ? ' checked' : '') + '><label>[피상속인이 신탁한 재산만] 이미 §33①로 증여재산가액 처리됨</label></div>' +
     '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="diExcludedPension"' + (a.diExcludedPension ? ' checked' : '') + '><label>[퇴직금등만] 국민연금법 등 열거된 유족연금·유족보상금류에 해당</label></div>';
-  return '<div class="taxcalc-field"><label>평가액</label><input type="number" data-field="directValue" placeholder="원" value="' + (a.directValue || '') + '"><button type="button" class="taxcalc-ai-btn" data-action="lookup-real-price" style="margin-top:4px;">🔍 아파트 실거래가 조회(참고)</button></div>';
+  // [2026.09.30 신규, 재검토90] "직접입력" 평가액은 실제로는 매매가/감정가/수용가/경매가/
+  // 매매사례가 등 여러 근거 중 하나인데, 예전엔 항상 '01'(매매거래액)로 고정 기재해 전자신고
+  // 상속증여재산평가방법구분 코드(별첨4)가 실제 근거와 다르게 나갈 수 있었다 — 직접 선택하게 한다.
+  return '<div class="taxcalc-field"><label>평가액</label><input type="number" data-field="directValue" placeholder="원" value="' + (a.directValue || '') + '"><button type="button" class="taxcalc-ai-btn" data-action="lookup-real-price" style="margin-top:4px;">🔍 아파트 실거래가 조회(참고)</button></div>' +
+    '<div class="taxcalc-field"><label>평가근거(전자신고용)</label><select data-field="directBasisCode">' +
+      '<option value="01"' + (!a.directBasisCode || a.directBasisCode === '01' ? ' selected' : '') + '>당해재산의 매매거래액</option>' +
+      '<option value="02"' + (a.directBasisCode === '02' ? ' selected' : '') + '>당해재산의 감정가액</option>' +
+      '<option value="03"' + (a.directBasisCode === '03' ? ' selected' : '') + '>당해재산의 수용보상가액</option>' +
+      '<option value="04"' + (a.directBasisCode === '04' ? ' selected' : '') + '>당해재산의 경매·공매가액</option>' +
+      '<option value="05"' + (a.directBasisCode === '05' ? ' selected' : '') + '>유사재산의 매매사례가액 등</option>' +
+      '<option value="06"' + (a.directBasisCode === '06' ? ' selected' : '') + '>현금 등 시가(1~5 제외)</option>' +
+      '<option value="07"' + (a.directBasisCode === '07' ? ' selected' : '') + '>저당권 등 평가특례액</option>' +
+    '</select></div>';
 }
 
 // 임대차 내역은 자산의 평가방법과 무관하게(§66 평가특례의 담보·임대보증금 캡 비교, §61⑤ 임대료환산가액
@@ -7620,13 +7632,42 @@ const IH_ASSET_TYPE_CODE_MAP_ = { // 재산평가 "방법"(VALUATION_METHOD_LABE
   deemedInheritanceItem: '11'
 };
 function ihAssetTypeCode_(method){ return IH_ASSET_TYPE_CODE_MAP_[method] || '12'; }
-function ihAssetValuationBasisCode_(method){ return method === 'direct' ? '01' : '08'; } // 01 매매거래가액, 08 기준시가 등 보충적평가
-// TODO: 재산인적관계코드·상속대상자구분코드 별첨 코드표를 확보하지 못해 임시값을 쓴다(상속세·
-// 증여세 e-file 전체에서 반복돼 온 한계와 동일) — 실제 제출 전 국세청 코드표로 교체 필요.
-function ihHeirRelationCode_(relation){
-  if (relation === '배우자') return '01';
-  if (relation === '자녀') return '02';
-  return '99';
+function ihAssetValuationBasisCode_(a){
+  const method = (a && a.method) || a; // 하위호환 — method 문자열만 넘기던 옛 호출도 그대로 동작
+  if (method !== 'direct') return '08'; // 기준시가 등 보충적평가법(고시가격 기반 자산 전부)
+  return (a && a.directBasisCode) || '01'; // 직접입력의 실제 근거(매매가/감정가/수용가/경매가/매매사례가/현금등시가) — 미선택시 매매거래액
+}
+// [2026.09.30 수정, 재검토90] 세무사님 지시로 다른 세목도 전수조사 — 국세청 상속세전자신고
+// 파일설명서(2026년2월판) 별첨 "7.재산인적관계 코드"(00~ZZ, 150여개)를 직접 확인한 결과 예전
+// 임시값(01=배우자,02=자녀,그외=99)이 실제로는 01=본인,02=처,99=동거인으로 완전히 다른 뜻이라
+// 틀린 코드였다(양도세 부표3과 같은 종류의 문제). 상속인의 주민등록번호 뒷자리로 성별을 판정해
+// 배우자→처(02)/남편(07), 부모→부(03)/모(04)로 정확히 나누고, 자녀→자(05), 손자녀→손(40),
+// 상속인 아닌 자→기타(ZB)로 고친다.
+function ihGenderFromRegNo_(regNo){
+  const digits = String(regNo || '').replace(/\D/g, '');
+  if (digits.length < 7) return null;
+  const g = digits.charAt(6);
+  if ('1357'.indexOf(g) !== -1) return 'M';
+  if ('2468'.indexOf(g) !== -1) return 'F';
+  return null;
+}
+function ihHeirRelationCode_(relation, regNo){
+  const gender = ihGenderFromRegNo_(regNo);
+  if (relation === '배우자') return gender === 'M' ? '07' : '02'; // 07 남편, 02 처(성별 미상이면 처로 기본)
+  if (relation === '자녀') return '05'; // 자
+  if (String(relation || '').indexOf('손자녀') === 0) return '40'; // 손
+  if (relation === '부모(직계존속)') return gender === 'F' ? '04' : '03'; // 04 모, 03 부(성별 미상이면 부로 기본)
+  if (relation === '상속인 아닌 자(유증·사인증여 등)') return 'ZB'; // 기타
+  return 'ZZ'; // 해당없음(관계 미선택)
+}
+// 16.상속대상자구분 코드(별첨) — 10 상속인, 20 대습상속, 30 수유자, 40 상속포기자, 90 기타.
+// 예전 임시값 '99'는 이 표에 존재하지도 않는 코드였다(전자신고 검증에서 오류로 걸릴 수 있음).
+function ihHeirClassCode_(h){
+  if (h.hasRenounced) return '40'; // 상속포기자 — 관계와 무관하게 최우선
+  if (String(h.relation || '').indexOf('대습상속') !== -1) return '20';
+  if (h.relation === '손자녀(세대생략 — 부모 생존, 유증·상속포기 등)' || h.relation === '상속인 아닌 자(유증·사인증여 등)') return '30'; // 수유자
+  if (h.relation === '배우자' || h.relation === '자녀' || h.relation === '부모(직계존속)') return '10';
+  return '90';
 }
 function ihValuationAssetsGrossTotal_(){
   return (inheritanceValuationAssets_() || []).reduce(function(s, a){ return s + computeValuationAssetValue(a); }, 0);
@@ -7727,7 +7768,7 @@ function ihAttach1AssetRecord_(a, seq){
   b = b.concat(ihPadNum_(seq, 6));
   b = b.concat(ihPadChar_('A11', 3));                       // 재산구분코드(본래의 상속재산-상속인, 고정)
   b = b.concat(ihPadChar_(ihAssetTypeCode_(a.method), 2));  // 재산종류코드
-  b = b.concat(ihPadChar_(ihAssetValuationBasisCode_(a.method), 2)); // 평가기준코드
+  b = b.concat(ihPadChar_(ihAssetValuationBasisCode_(a), 2)); // 평가기준코드
   b = b.concat(ihPadNum_(Math.round(computeValuationAssetValue(a)), 14)); // 평가가액
   b = b.concat(ihPadDec_(numVal(a.assetArea) || 0, 18, 3)); // 수량
   b = b.concat(ihPadDec_(numVal(a.assetArea) || 0, 18, 3)); // 면적
@@ -7770,7 +7811,7 @@ function ihAttach2HeirRecord_(h, seq){
   b = b.concat(ihPadChar_('06', 2));
   b = b.concat(ihPadChar_(IH_ATTACH2_FORM_CODE_, 7));
   b = b.concat(ihPadNum_(seq, 6));
-  b = b.concat(ihPadChar_(ihHeirRelationCode_(h.relation), 2));
+  b = b.concat(ihPadChar_(ihHeirRelationCode_(h.relation, h.regNo), 2));
   b = b.concat(ihPadChar_(h.name || '', 30));
   b = b.concat(ihPadChar_(ihOnlyDigits_(h.regNo), 13));
   b = b.concat(ihPadChar_(ihOnlyDigits_(h.phone), 14));
@@ -7794,7 +7835,7 @@ function ihAttach2HeirRecord_(h, seq){
   b = b.concat(ihPadNum_(0, 14));                  // 가산하는증여재산가액_조특법30의6
   b = b.concat(ihPadNum_(actualAmount, 14));       // 상속인별 합계
   b = b.concat(ihPadChar_('N', 1));                // 영농상속인여부
-  b = b.concat(ihPadChar_('99', 2));               // 상속대상자구분코드(임시값)
+  b = b.concat(ihPadChar_(ihHeirClassCode_(h), 2)); // 상속대상자구분코드
   b = b.concat(ihPadChar_('N', 1));                // 장애인여부(미수집)
   b = b.concat(ihPadChar_('N', 1));                // 동거여부(미수집)
   b = b.concat(ihPadNum_(0, 3));                   // 기대여명
@@ -8733,6 +8774,20 @@ function gfHeadRecord_(doneeRegNo, giftDate){
   return b;
 }
 
+// [2026.09.30 신규, 재검토90] 증여세도 상속세와 같은 재산인적관계 코드(별첨)를 쓴다(증여세
+// 전자신고파일설명서 자체의 별첨에서 직접 확인) — 예전엔 코드표를 못 구해서 공란으로 뒀지만,
+// "관계(수증자 기준)" 선택(d.relation)과 세대생략 체크(d.genSkip)가 이미 입력받고 있으므로
+// 수증자 주민등록번호로 성별만 더 판정하면 바로 채울 수 있다.
+function gfDoneeRelationCode_(donor, donee){
+  const gender = ihGenderFromRegNo_(donee.regNo);
+  const rel = donor.relation;
+  if (rel === '배우자') return gender === 'M' ? '07' : '02'; // 07 남편, 02 처
+  if (rel === '직계존속') return donor.genSkip === '1' ? (gender === 'M' ? '50' : '51') : (gender === 'M' ? '03' : '04'); // 조부/조모, 부/모
+  if (rel === '직계비속') return donor.genSkip === '1' ? '40' : '05'; // 손, 자
+  if (rel === '기타친족') return 'ZB'; // 기타(세부 친족 미수집)
+  if (rel === '기타') return 'ZA'; // 무관계
+  return 'ZZ'; // 해당없음(관계 미선택)
+}
 function gfBasicRecord_(donee, donor, giftDate, doneeIdx){
   let b = [];
   b = b.concat(ihPadChar_('02', 2));                          // 1 자료구분
@@ -8756,16 +8811,17 @@ function gfBasicRecord_(donee, donor, giftDate, doneeIdx){
   b = b.concat(ihPadChar_(donor.address, 70));                 // 19 증여자_주소
   b = b.concat(ihPadChar_(donor.phone, 14));                   // 20 증여자_전화번호
   b = b.concat(ihDateField_(giftDate));                        // 21 증여일자
-  b = b.concat(ihPadChar_('', 2));                             // 22 증여자와의 관계(코드표 필요 — 다음 단계, 잠정 공란)
+  b = b.concat(ihPadChar_(gfDoneeRelationCode_(donor, donee), 2)); // 22 증여자와의 관계
   b = b.concat(ihPadChar_(taxCalcGiftDoneeIsMinor(doneeIdx || 0) ? 'Y' : 'N', 1)); // 23 미성년자 구분
-  b = b.concat(ihPadChar_('N', 1));                            // 24 세대를 건너뛴 구분(잠정 N — genSkip 반영은 다음 단계)
+  b = b.concat(ihPadChar_((donor.genSkip === '1' && (donor.relation === '직계존속' || donor.relation === '직계비속')) ? 'Y' : 'N', 1)); // 24 세대를 건너뛴 구분
   b = b.concat(ihPadChar_(donee.resident === 'nonresident' ? 'Y' : 'N', 1)); // 25 비거주자구분
   b = b.concat(ihPadChar_('', 10));                            // 26 수증자_법정동코드(행안부, 공란)
   b = b.concat(ihPadChar_('', 196));                           // 27~34 도로명주소 계열(생략, 12+50+1+5+5+22+12+2=109) + 35 공란(87) = 196
   return b;
 }
 
-function gfTaxCalcRecord_(item){
+function gfTaxCalcRecord_(item, donor){
+  donor = donor || {};
   const r = item.result || {};
   const giftAmount = numVal(item.amount) || 0;
   const priorGiftAdd = numVal(item.priorGiftAmount) || 0; // §47② 재차증여 가산액
@@ -8785,10 +8841,13 @@ function gfTaxCalcRecord_(item){
   b = b.concat(ihPadNum_(r.장애인신탁재산가액, 13));        // 8 과세가액불산입_장애인신탁재산가액
   b = b.concat(ihPadNum_(r.인수채무액, 13));                // 9 채무액
   b = b.concat(ihPadNum_(taxable, 13));                     // 10 증여세과세가액
+  // [2026.09.30 수정, 재검토90] donor.relation(관계(수증자 기준))이 이미 입력받고 있으므로
+  // 세 필드(배우자/직계존비속/그밖의친족) 중 실제 해당하는 칸에 정확히 채운다(예전엔 관계코드가
+  // 없다는 이유로 전부 "그밖의친족" 칸에 몰아넣었었다).
   const relDed = numVal(r.증여재산공제) || 0;
-  b = b.concat(ihPadNum_(0, 13));                           // 11 증여재산공제_배우자(관계코드 세분화 전이라 잠정 0)
-  b = b.concat(ihPadNum_(0, 13));                           // 12 증여재산공제_직계존비속(잠정 0)
-  b = b.concat(ihPadNum_(relDed, 13));                      // 13 증여재산공제_그밖의친족(관계별 세분화 전까지 여기로 몰아 합계는 맞춘다)
+  b = b.concat(ihPadNum_(donor.relation === '배우자' ? relDed : 0, 13));  // 11 증여재산공제_배우자
+  b = b.concat(ihPadNum_((donor.relation === '직계존속' || donor.relation === '직계비속') ? relDed : 0, 13)); // 12 증여재산공제_직계존비속
+  b = b.concat(ihPadNum_((donor.relation === '기타친족' || donor.relation === '기타' || !donor.relation) ? relDed : 0, 13)); // 13 증여재산공제_그밖의친족
   b = b.concat(ihPadNum_(r.재해손실공제, 13));              // 14 재해손실공제
   b = b.concat(ihPadNum_(r.감정평가수수료공제, 13));        // 15 감정평가수수료
   b = b.concat(ihPadNum_(taxBase, 13));                     // 16 과세표준
@@ -8855,7 +8914,7 @@ function gfAttach1AssetRecord_(a, allocRatio, seq){
   b = b.concat(ihPadNum_(seq, 6));
   b = b.concat(ihPadChar_('A11', 3));                        // 재산구분코드(본래의 증여재산, 고정)
   b = b.concat(ihPadChar_('ZZ', 2));                         // 재산종류(서식개정으로 미사용)
-  b = b.concat(ihPadChar_(ihAssetValuationBasisCode_(a.method), 2));
+  b = b.concat(ihPadChar_(ihAssetValuationBasisCode_(a), 2));
   b = b.concat(ihPadNum_(value, 13));
   b = b.concat(ihPadDec_(numVal(a.assetArea) || 0, 18, 3));  // 면적
   b = b.concat(ihPadDec_(numVal(a.assetArea) || 0, 18, 3));  // 수량
@@ -8917,7 +8976,7 @@ function gfBuildEfileBytes_(){
     if (item.result.error) return;
     const donee = giftDonees[item.doneeIdx] || {};
     const donor = giftDonors[item.donorIdxs[0]] || {};
-    all = all.concat(gfHeadRecord_(donee.regNo, giftDate), CRLF, gfBasicRecord_(donee, donor, giftDate, item.doneeIdx), CRLF, gfTaxCalcRecord_(item), CRLF);
+    all = all.concat(gfHeadRecord_(donee.regNo, giftDate), CRLF, gfBasicRecord_(donee, donor, giftDate, item.doneeIdx), CRLF, gfTaxCalcRecord_(item, donor), CRLF);
     gfAttach1AssetRecordsForPair_(item.donorIdxs[0], item.doneeIdx).forEach(function(r){ all = all.concat(r, CRLF); });
   });
   return new Uint8Array(all);
@@ -9344,7 +9403,7 @@ function renderGfEfileResult_(){
   const fileName = gfEfileFileName_();
   const pairCount = (lastGiftResults_ || []).filter(function(item){ return !item.result.error; }).length;
   box.innerHTML = '<div class="taxcalc-result-note">✅ 검증 통과 — 신고서 본체 ' + pairCount + '건(증여자×수증인 조합별) 준비됨. 파일명: <b>' + fileName + '</b></div>' +
-    '<div class="taxcalc-result-note" style="color:#b00;">⚠ 아직 증여재산및평가명세서 등 첨부서식은 포함되지 않은 1단계 버전이고, 증여재산공제(배우자/직계존비속/기타친족 구분)·세대생략·혼인출산공제 세부항목도 관계코드 세분화 전까지 근사치입니다 — 실제 제출 전 홈택스 전자신고 변환프로그램으로 반드시 재검증하세요.</div>' +
+    '<div class="taxcalc-result-note" style="color:#b00;">⚠ 혼인·출산 증여재산공제는 구분 없이 "혼인" 칸에 합산해서 기재합니다(출산분 별도 입력칸이 없음). 실제 제출 전 홈택스 전자신고 변환프로그램으로 반드시 재검증하세요.</div>' +
     '<button type="button" class="taxcalc-run-btn" data-action="download-gf-efile" style="margin-top:8px;">💾 전자신고파일 다운로드(' + fileName + ')</button>';
 }
 
