@@ -7921,6 +7921,11 @@ const IH_ASSET_TYPE_CODE_MAP_ = { // 재산평가 "방법"(VALUATION_METHOD_LABE
   deemedInheritanceItem: '11', artwork: '14' // 서화·골동품 등(별첨 상속증여재산분류코드 14)
 };
 function ihAssetTypeCode_(method){ return IH_ASSET_TYPE_CODE_MAP_[method] || '12'; }
+const VALUATION_METHOD_LABELS_BASIS_ = {
+  '01': '당해재산의 매매거래가액', '02': '당해재산의 감정가액', '03': '당해재산의 수용보상가액',
+  '04': '당해재산의 경매·공매가액', '05': '유사재산의 매매사례가액 등', '06': '현금 등 시가',
+  '07': '저당권 등 평가특례가액', '08': '기준시가 등 보충적평가법'
+};
 function ihAssetValuationBasisCode_(a){
   const method = (a && a.method) || a; // 하위호환 — method 문자열만 넘기던 옛 호출도 그대로 동작
   if (method !== 'direct') return '08'; // 기준시가 등 보충적평가법(고시가격 기반 자산 전부)
@@ -8041,7 +8046,7 @@ function ihAttach3DuesRecord_(item, seq){
   b = b.concat(ihPadNum_(seq, 6));
   b = b.concat(ihPadChar_(item.duesType === 'local' ? '02' : '01', 2)); // 01 국세, 02 지방세(스펙 예시문에서 01=국세 확인됨)
   b = b.concat(ihPadChar_(String(item.year || ''), 4));
-  b = b.concat(ihPadChar_('1', 1)); // 공과금_분기(세목코드 41.부가가치세 아니면 1분기로 고정하라는 스펙 안내 그대로)
+  b = b.concat(ihPadChar_(item.quarter || '1', 1)); // 공과금_분기(입력 없으면 1분기로 고정하라는 스펙 안내 그대로)
   b = b.concat(ihPadNum_(numVal(item.amount) || 0, 14));
   b = b.concat(ihPadNum_(numVal(item.amount) || 0, 14));
   b = b.concat(ihPadChar_('', 2)); // 세목코드(국세일 때만 필수, 미수집)
@@ -8335,33 +8340,83 @@ function ihAttachPrintPagesHtml_(){
   let html = '<div class="pf-page">' +
     '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제9호서식 부표1]</div>' +
     '<div class="pf-title">상속세과세가액계산명세서</div>' +
+    // [2026.09.30 전면개편, 재검토98] 정밀 재조사로 공식 "가"표가 8개 컬럼(재산구분·재산종류·
+    // 소재지·사업자등록번호(계좌번호,지분)·수량(면적)·단가·평가가액·평가기준)임을 확인 — 예전엔
+    // "번호. 자산위치 — 평가가액" 한 줄로 뭉개져 있었다. e-file(ihAttach1AssetRecord_)이 이미
+    // 이 구조로 데이터를 갖고 있어 그대로 옮긴다(단가·사업자등록번호는 미수집이라 공란).
     '<div class="pf-section-head">가. 상속받은 총재산명세</div>' +
     '<table class="pf-table">' +
-      assets.map(function(a, i){ return pfRow_(0, (i + 1) + '. ' + (a.assetLocation || VALUATION_METHOD_LABELS[a.method] || '자산'), won(Math.round(computeValuationAssetValue(a)))); }).join('') +
+      '<tr><th>재산구분</th><th>재산종류</th><th>소재지·법인명등</th><th>사업자등록번호<br>(계좌번호,지분)</th><th>수량(면적)</th><th>단가</th><th>평가가액</th><th>평가기준</th></tr>' +
+      assets.map(function(a){
+        return '<tr><td>본래의 상속재산</td><td>' + escapeHtml(VALUATION_METHOD_LABELS[a.method] || '') + '</td>' +
+          '<td>' + escapeHtml(a.assetLocation || '') + '</td><td></td>' +
+          '<td class="pf-right">' + (numVal(a.assetArea) || '') + '</td><td class="pf-right"></td>' +
+          '<td class="pf-right">' + won(Math.round(computeValuationAssetValue(a))) + '</td>' +
+          '<td>' + escapeHtml(VALUATION_METHOD_LABELS_BASIS_[ihAssetValuationBasisCode_(a)] || ihAssetValuationBasisCode_(a)) + '</td></tr>';
+      }).join('') +
       pfRow_(0, '계', won(Math.round(ihValuationAssetsGrossTotal_()))) +
     '</table>' +
     '<div class="pf-section-head">나. 상속세 과세가액 계산</div>' +
-    '<table class="pf-table">' +
-      pfRow_(++n, '총상속재산가액', won(grossEstate)) +
-      pfRow_(++n, '상속개시 전 처분재산등 산입액', won(r.상속개시전처분재산_추정합계)) +
-      pfRow_(++n, '비과세재산가액', won(r.비과세재산가액)) +
-      pfRow_(++n, '과세가액불산입액(공익법인·공익신탁)', won((numVal(r.공익법인출연재산가액) || 0) + (numVal(r.공익신탁재산가액) || 0))) +
-      pfRow_(++n, '채무', won(computeDebtTotal_(inheritanceDebtItems))) +
-      pfRow_(++n, '공과금', won(computeDuesTotal_(inheritanceDuesItems))) +
-      pfRow_(++n, '장례비용공제', won(r.장례비용공제)) +
-      pfRow_(++n, '상속세과세가액', won(r.상속세과세가액_적용값)) +
-    '</table>' +
+    (function(){
+      // [2026.09.30 전면개편, 재검토98] 정밀 재조사에서 공식 서식 "나"표가 ⑩~㉙ 20개 항목의
+      // 소계·세부내역 구조임을 확인 — 예전엔 8개 요약줄로 뭉개져 있었다. e-file
+      // (ihAttach1CalcRecord_)이 이미 이 구조 그대로 값을 갖고 있어서 그대로 옮긴다(세부미수집
+      // 항목은 0으로 정직하게 표시 — 지어내지 않음).
+      const disposalIncluded = numVal(r.상속개시전처분재산_추정합계) || 0;
+      const grossTotal = grossEstate + disposalIncluded;
+      const nonTaxable = numVal(r.비과세재산가액) || 0;
+      const publicOrg = numVal(g_('ihPublicOrg'));
+      const publicTrust = numVal(g_('ihPublicTrust'));
+      const nonIncluded = publicOrg + publicTrust;
+      const duesTotal = computeDuesTotal_(inheritanceDuesItems);
+      const debtTotal = computeDebtTotal_(inheritanceDebtItems);
+      const funeralTotal = numVal(r.장례비용공제) || 0;
+      const totalDeduction = duesTotal + funeralTotal + debtTotal;
+      let m = 9;
+      return '<table class="pf-table">' +
+        pfRow_(++m, '상속재산가액', won(grossEstate)) +
+        pfRow_(++m, '상속개시전 처분재산등 산입액', won(disposalIncluded)) +
+        pfRow_(++m, '합계', won(grossTotal)) +
+        pfRow_(++m, '비과세재산가액 계', won(nonTaxable)) +
+        pfRow_(0, '(금양임야등가액)', won(0), { indent: true }) +
+        pfRow_(0, '(공공단체 유증재산가액)', won(0), { indent: true }) +
+        pfRow_(0, '(기타)', won(nonTaxable), { indent: true }) +
+        pfRow_(++m, '과세가액불산입액 계', won(nonIncluded)) +
+        pfRow_(0, '(공익법인출연재산가액, §16)', won(publicOrg), { indent: true }) +
+        pfRow_(0, '(공익신탁재산가액, §17)', won(publicTrust), { indent: true }) +
+        pfRow_(0, '(기타)', won(0), { indent: true }) +
+        pfRow_(++m, '공과금·장례비용·채무 계', won(totalDeduction)) +
+        pfRow_(0, '(공과금)', won(duesTotal), { indent: true }) +
+        pfRow_(0, '(장례비용)', won(funeralTotal), { indent: true }) +
+        pfRow_(0, '(채무)', won(debtTotal), { indent: true }) +
+        pfRow_(++m, '가산하는 증여재산가액 계', won(0)) +
+        pfRow_(0, '(상속세및증여세법 제13조)', won(0), { indent: true }) +
+        pfRow_(0, '(조세특례제한법 제30조의5)', won(0), { indent: true }) +
+        pfRow_(0, '(조세특례제한법 제30조의6)', won(0), { indent: true }) +
+        pfRow_(++m, '상속세과세가액', won(r.상속세과세가액_적용값)) +
+      '</table>';
+    })() +
   '</div>';
 
   html += '<div class="pf-page">' +
     '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제9호서식 부표2]</div>' +
     '<div class="pf-title">상속인별 상속재산 및 평가명세서</div>' +
+    // [2026.09.30 전면개편, 재검토98] 정밀 재조사로 공식 "가"표 컬럼(8개: 관계/성명/주민등록번호/
+    // 주소/법정상속지분율/법정상속재산가액/실제상속지분율/실제상속재산가액)을 확인 — e-file
+    // (ihAttach2HeirRecord_)과 같은 계산식을 그대로 재사용한다.
     '<div class="pf-section-head">가. 상속인별 상속현황</div>' +
     '<table class="pf-table">' +
-      '<tr><th>상속인</th><th>관계</th><th>법정상속지분</th><th>실제상속재산가액</th></tr>' +
+      '<tr><th>피상속인과의 관계</th><th>성명</th><th>주민등록번호</th><th>주소</th><th>법정상속지분율</th><th>법정상속재산가액</th><th>실제상속지분율</th><th>실제상속재산가액</th></tr>' +
       inheritanceHeirs.map(function(h, i){
-        return '<tr><td>' + escapeHtml(h.name || ('상속인' + (i + 1))) + '</td><td class="pf-right">' + escapeHtml(h.relation || '') + '</td>' +
-          '<td class="pf-right">' + escapeHtml(h.statutoryShareRatio || '') + '</td><td class="pf-right">' + won(Math.round(computeHeirActualValue_(i))) + '</td></tr>';
+        const legal = ihParseFraction_(h.statutoryShareRatio);
+        const grossTotal = ihValuationAssetsGrossTotal_();
+        const legalAmount = legal.den ? Math.round(grossTotal * legal.num / legal.den) : 0;
+        const ratioPct = legal.den ? (legal.num / legal.den * 100).toFixed(2) + '%' : '';
+        const actualAmount = Math.round(computeHeirActualValue_(i));
+        return '<tr><td>' + escapeHtml(h.relation || '') + '</td><td>' + escapeHtml(h.name || ('상속인' + (i + 1))) + '</td>' +
+          '<td>' + escapeHtml(h.regNo || '') + '</td><td>' + escapeHtml(h.address || '') + '</td>' +
+          '<td class="pf-right">' + escapeHtml(h.statutoryShareRatio || '') + '</td><td class="pf-right">' + won(legalAmount) + '</td>' +
+          '<td class="pf-right">' + ratioPct + '(근사)</td><td class="pf-right">' + won(actualAmount) + '</td></tr>';
       }).join('') +
     '</table>' +
     '<div class="pf-section-head">나. 상속인별 상속재산 배분</div>' +
@@ -8383,24 +8438,31 @@ function ihAttachPrintPagesHtml_(){
   html += '<div class="pf-page">' +
     '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제9호서식 부표3]</div>' +
     '<div class="pf-title">채무·공과금·장례비용 및 상속공제명세서</div>' +
+    // [2026.09.30 전면개편, 재검토98] 정밀 재조사로 확인된 공식 컬럼 그대로 — 가.채무는
+    // 채무종류/차입기간(발생~종료)/채권자성명/채권자주민(사업자)번호/채권자주소/금액,
+    // 나.공과금은 종류/연도/분기/금액, 다.장례비용은 지급처/사업자번호/지급내역/금액.
     '<div class="pf-section-head">가. 채무</div>' +
     '<table class="pf-table">' +
       (debtRows.length ? debtRows.map(function(it){
-        return pfRow_(0, (it.debtType === 'other' ? '그 밖의 채무' : '금융기관 등 차입금') + ' — ' + (it.creditorName || ''), won(numVal(it.amount)));
+        return pfRow_(0, (it.debtType === 'other' ? '그 밖의 채무' : '금융기관 등 차입금'),
+          (it.creditorName || '') + (it.creditorRegNo ? ' (' + it.creditorRegNo + ')' : '') +
+          (it.startDate || it.endDate ? ' — 차입기간 ' + (it.startDate || '?') + '~' + (it.endDate || '?') : '') +
+          (it.creditorAddress ? ' — ' + it.creditorAddress : '') + ' — ' + won(numVal(it.amount)));
       }).join('') : pfRow_(0, '채무', '입력 없음')) +
       pfRow_(0, '계', won(computeDebtTotal_(inheritanceDebtItems))) +
     '</table>' +
     '<div class="pf-section-head">나. 공과금</div>' +
     '<table class="pf-table">' +
       (duesRows.length ? duesRows.map(function(it){
-        return pfRow_(0, (it.duesType === 'local' ? '지방세' : '국세') + ' — ' + (it.year || ''), won(numVal(it.amount)));
+        return pfRow_(0, (it.duesType === 'local' ? '지방세' : '국세'), (it.year || '') + (it.quarter ? ' ' + it.quarter + '분기' : '') + ' — ' + won(numVal(it.amount)));
       }).join('') : pfRow_(0, '공과금', '입력 없음')) +
       pfRow_(0, '계', won(computeDuesTotal_(inheritanceDuesItems))) +
     '</table>' +
     '<div class="pf-section-head">다. 장례비용</div>' +
     '<table class="pf-table">' +
       (funeralRows.length ? funeralRows.map(function(it){
-        return pfRow_(0, (it.category === 'niche' ? '봉안시설·자연장지' : '일반장례') + ' — ' + (it.payee || ''), won(numVal(it.amount)));
+        return pfRow_(0, (it.category === 'niche' ? '봉안시설·자연장지' : '일반장례'),
+          (it.payee || '') + (it.bizNo ? ' (' + it.bizNo + ')' : '') + (it.detail ? ' — ' + it.detail : '') + ' — ' + won(numVal(it.amount)));
       }).join('') : pfRow_(0, '장례비용', '입력 없음')) +
       pfRow_(0, '계', won(numVal(r.장례비용공제))) +
     '</table>' +
@@ -8418,6 +8480,11 @@ function ihAttachPrintPagesHtml_(){
       pfRow_(0, '금융재산상속공제', won(r.금융재산상속공제)) +
       pfRow_(0, '재해손실공제', won(r.재해손실공제)) +
       pfRow_(0, '동거주택상속공제', won(r.동거주택상속공제)) +
+      // [2026.09.30 신규, 재검토98] 정밀 재조사에서 확인 — 공식 서식 "라.상속공제"는 합계 바로
+      // 앞에 ㉚공제적용한도액(§24) 줄이 있는데 인쇄물에 빠져 있었다. e-file(ihAttach3DeductionRecord_)은
+      // 이미 정확히 이 한도(과세가액-가업-영농-배우자-금융-재해-동거주택)를 계산해 필드에 담고
+      // 있어서, 그 계산식을 그대로 재사용한다.
+      pfRow_(0, '공제적용한도액(§24)', won(Math.max(0, numVal(r.상속세과세가액_적용값) - (numVal(r.가업상속공제)||0) - (numVal(r.영농상속공제)||0) - (numVal(r.배우자공제)||0) - (numVal(r.금융재산상속공제)||0) - (numVal(r.재해손실공제)||0) - (numVal(r.동거주택상속공제)||0)))) +
       pfRow_(0, '상속공제금액 합계', won(r.상속공제_합계)) +
     '</table>' +
     '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다.</div>' +
@@ -9973,6 +10040,7 @@ function renderDebtItemsList(){
       '<div class="taxcalc-field"><label>채무 종류</label><select data-dbfield="debtType"><option value="loan"' + (item.debtType !== 'other' ? ' selected' : '') + '>금융기관 등 차입금</option><option value="other"' + (item.debtType === 'other' ? ' selected' : '') + '>그 밖의 채무(사채 등)</option></select></div>' +
       '<div class="taxcalc-field"><label>채권자 성명(상호)</label><input type="text" data-dbfield="creditorName" value="' + (item.creditorName || '').replace(/"/g, '&quot;') + '"></div>' +
       '<div class="taxcalc-field"><label>채권자 주민(사업자)번호</label><input type="text" data-dbfield="creditorRegNo" value="' + (item.creditorRegNo || '').replace(/"/g, '&quot;') + '"></div>' +
+      '<div class="taxcalc-field"><label>채권자 주소(소재지)</label><input type="text" data-dbfield="creditorAddress" value="' + (item.creditorAddress || '').replace(/"/g, '&quot;') + '" placeholder="부표3용, 없으면 비움"></div>' +
       '<div class="taxcalc-field"><label>차입일</label><input type="date" data-dbfield="startDate" value="' + (item.startDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
       '<div class="taxcalc-field"><label>상환(예정)일</label><input type="date" data-dbfield="endDate" value="' + (item.endDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
       '<div class="taxcalc-field"><label>채무금액</label><input type="number" data-dbfield="amount" placeholder="원" value="' + (item.amount || '') + '"></div>' +
@@ -10000,6 +10068,7 @@ function renderDuesItemsList(){
     return '<div class="taxcalc-grid" data-dues-idx="' + idx + '" style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--line);">' +
       '<div class="taxcalc-field"><label>공과금 종류</label><select data-duefield="duesType"><option value="national"' + (item.duesType !== 'local' ? ' selected' : '') + '>국세</option><option value="local"' + (item.duesType === 'local' ? ' selected' : '') + '>지방세</option></select></div>' +
       '<div class="taxcalc-field"><label>연도</label><input type="number" data-duefield="year" placeholder="예: 2025" value="' + (item.year || '') + '"></div>' +
+      '<div class="taxcalc-field"><label>분기</label><select data-duefield="quarter"><option value=""' + (!item.quarter ? ' selected' : '') + '>해당없음</option><option value="1"' + (item.quarter === '1' ? ' selected' : '') + '>1분기</option><option value="2"' + (item.quarter === '2' ? ' selected' : '') + '>2분기</option><option value="3"' + (item.quarter === '3' ? ' selected' : '') + '>3분기</option><option value="4"' + (item.quarter === '4' ? ' selected' : '') + '>4분기</option></select></div>' +
       '<div class="taxcalc-field"><label>금액</label><input type="number" data-duefield="amount" placeholder="원" value="' + (item.amount || '') + '"></div>' +
       (idx > 0 ? '<button type="button" class="taxcalc-del-asset" data-action="del-dues-item" data-idx="' + idx + '">✕ 공과금 삭제</button>' : '') +
     '</div>';
@@ -10106,6 +10175,7 @@ function renderFuneralItemsList(){
       '<div class="taxcalc-field"><label>지급처</label><input type="text" data-ffield="payee" value="' + (item.payee || '').replace(/"/g, '&quot;') + '" placeholder="예: OO장례식장"></div>' +
       '<div class="taxcalc-field"><label>지급처 사업자번호</label><input type="text" data-ffield="bizNo" value="' + (item.bizNo || '').replace(/"/g, '&quot;') + '" placeholder="123-45-67890"><button type="button" class="taxcalc-ai-btn" data-action="check-bizno" style="margin-top:4px;">🔍 확인</button><span class="taxcalc-result-note" data-bizno-result style="margin:2px 0 0;"></span></div>' +
       '<div class="taxcalc-field"><label>구분</label><select data-ffield="category"><option value="general"' + (item.category !== 'niche' ? ' selected' : '') + '>일반 장례비용</option><option value="niche"' + (item.category === 'niche' ? ' selected' : '') + '>봉안시설·자연장지 비용</option></select></div>' +
+      '<div class="taxcalc-field"><label>지급내역</label><input type="text" data-ffield="detail" value="' + (item.detail || '').replace(/"/g, '&quot;') + '" placeholder="부표3용, 예: 빈소·운구·장지 비용"></div>' +
       '<div class="taxcalc-field"><label>금액</label><input type="number" data-ffield="amount" placeholder="원" value="' + (item.amount || '') + '"></div>' +
       (idx > 0 ? '<button type="button" class="taxcalc-del-asset" data-action="del-funeral-item" data-idx="' + idx + '">✕ 장례비용 삭제</button>' : '') +
     '</div>';
@@ -10272,6 +10342,7 @@ function renderHeirRegistry(){
       '<div class="taxcalc-grid">' +
       '<div class="taxcalc-field"><label>성명</label><input type="text" data-hfield="name" data-nameonly="1" value="' + (h.name || '').replace(/"/g,'&quot;') + '"></div>' +
       '<div class="taxcalc-field"><label>주민등록번호</label><input type="text" data-hfield="regNo" data-regno="1" placeholder="000000-0000000" value="' + (h.regNo || '').replace(/"/g,'&quot;') + '"></div>' +
+      '<div class="taxcalc-field"><label>주소</label><input type="text" data-hfield="address" value="' + (h.address || '').replace(/"/g,'&quot;') + '" placeholder="부표2용, 없으면 비움"></div>' +
       '<div class="taxcalc-field"><label>관계</label><select data-hfield="relation"><option value="">선택</option>' + relationOptions + '</select></div>' +
       '<div class="taxcalc-field" data-show-if-heir-relation="1" style="' + (h.relation === '손자녀(대습상속 — 부모가 먼저 사망·결격)' ? '' : 'display:none;') + '"><label>대습그룹</label><input type="text" data-hfield="substitutionGroup" placeholder="예: 장남대습" value="' + (h.substitutionGroup || '').replace(/"/g,'&quot;') + '"><span class="taxcalc-field-help">한 자녀(피대습자)가 먼저 사망하여 그 몫을 손자녀 여러 명이 함께 대습상속받는 경우, 같은 그룹명을 입력하면 그 자녀 1인 몫(민법§1001)을 인원수로 나눠 법정상속지분을 자동 계산합니다</span></div>' +
       '<div class="taxcalc-field" style="flex:0 1 340px;"><label>주소</label><div class="taxcalc-field-inline"><input type="text" data-hfield="address" value="' + (h.address || '').replace(/"/g,'&quot;') + '" placeholder="예: OO시 OO구 OO동 123-4 (검색 또는 직접입력)"><button type="button" class="taxcalc-ai-btn" data-action="open-address-search-heir" data-idx="' + idx + '" title="주소 검색">🔍</button></div></div>' +
