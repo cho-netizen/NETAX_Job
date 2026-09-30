@@ -5302,6 +5302,7 @@ function renderGiftDoneeRegistry(){
         // [2026.09.25 신규, 재검토77] 전자신고파일(기본사항 레코드)의 "수증자_전화번호"는
         // Not Null 필수항목인데 여태 입력칸이 없었다.
         '<div class="taxcalc-field"><label>전화번호</label><input type="text" data-dnfield="phone" value="' + (dn.phone || '').replace(/"/g, '&quot;') + '" placeholder="02 1234 5678"><span class="taxcalc-field-help">전자신고파일용</span></div>' +
+        '<div class="taxcalc-field"><label>전자우편주소</label><input type="text" data-dnfield="email" value="' + (dn.email || '').replace(/"/g, '&quot;') + '" placeholder="인쇄서식용, 없으면 비움"></div>' +
         '<input type="hidden" data-dnfield="admCd" value="' + (dn.admCd || '').replace(/"/g, '&quot;') + '"><input type="hidden" data-dnfield="mtYn" value="' + (dn.mtYn || '0') + '">' +
         '<input type="hidden" data-dnfield="lnbrMnnm" value="' + (dn.lnbrMnnm || '') + '"><input type="hidden" data-dnfield="lnbrSlno" value="' + (dn.lnbrSlno || '') + '">' +
         '<div class="taxcalc-field"><label>거주구분</label><select data-dnfield="resident"' + idOf('giftDoneeResident') + '><option value="resident"' + (dn.resident !== 'nonresident' ? ' selected' : '') + '>거주자</option><option value="nonresident"' + (dn.resident === 'nonresident' ? ' selected' : '') + '>비거주자</option></select><span class="taxcalc-field-help">국내에 주소를 두거나 183일 이상 거소를 둔 사람=거주자. 비거주자면 증여재산공제(§53)·혼인출산증여재산공제(§53의2)를 받을 수 없습니다</span></div>' +
@@ -9491,10 +9492,15 @@ function gfPrintFormPageHtml_(item, giftDate){
     '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호서식]</div>' +
     '<div class="pf-title">증여세 과세표준신고 및 자진납부계산서</div>' +
     '<div class="pf-check">[ ] 기한 내 신고&nbsp;&nbsp; [ ] 수정신고 &nbsp;&nbsp; [ ] 기한 후 신고</div>' +
+    // [2026.09.30 추가, 재검토98] 정밀 재조사로 확인된 본문 필드 — 거주구분·전자우편·증여자와의
+    // 관계는 이미 e-file(gfBasicRecord_ 등)이 쓰고 있는 값을 그대로 옮긴다.
     '<div class="pf-section-head">수증자</div>' +
     '<table class="pf-table">' +
       pfRow_(++n, '성명', donee.name) + pfRow_(++n, '주민등록번호', donee.regNo) +
+      pfRow_(++n, '거주구분', donee.resident === 'nonresident' ? '비거주자' : '거주자') +
+      pfRow_(++n, '전자우편주소', donee.email) +
       pfRow_(++n, '전화번호', donee.phone) + pfRow_(++n, '주소', donee.address) +
+      pfRow_(++n, '증여자와의 관계', donor.relation) +
     '</table>' +
     '<div class="pf-section-head">증여자</div>' +
     '<table class="pf-table">' +
@@ -9542,7 +9548,8 @@ function gfPrintFormPageHtml_(item, giftDate){
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml(donee.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
-  '</div>' + gfAttach1PrintPageHtml_(item.donorIdxs[0], item.doneeIdx);
+  '</div>' + gfAttach1PrintPageHtml_(item.donorIdxs[0], item.doneeIdx) +
+  gfMarriageBirthPrintPageHtml_(donee, donor, giftDate, item);
 }
 function gfAttach1PrintPageHtml_(donorIdx, doneeIdx){
   const rows = [];
@@ -9557,13 +9564,62 @@ function gfAttach1PrintPageHtml_(donorIdx, doneeIdx){
     }, 0);
     if (ratio > 0) rows.push({ a: a, value: Math.round(computeValuationAssetValue(a) * ratio) });
   });
+  // [2026.09.30 전면개편, 재검토98] 정밀 재조사로 공식 8컬럼(재산구분/재산종류/소재지·법인명등/
+  // 사업자등록번호(지분율)/수량(면적)/국외자산여부·국가명/평가가액/평가기준) 확인 — e-file
+  // (gfAttach1AssetRecord_)이 이미 이 구조로 값을 갖고 있어 그대로 옮긴다.
   return '<div class="pf-page">' +
     '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호서식 부표1]</div>' +
     '<div class="pf-title">증여재산 및 평가명세서</div>' +
     '<table class="pf-table">' +
-      (rows.length ? rows.map(function(row, i){ return pfRow_(0, (i + 1) + '. ' + (row.a.assetLocation || VALUATION_METHOD_LABELS[row.a.method] || '자산'), won(row.value)); }).join('') : pfRow_(0, '증여재산', '입력 없음')) +
+      '<tr><th>재산구분</th><th>재산종류</th><th>소재지·법인명등</th><th>사업자등록번호<br>(지분율)</th><th>수량(면적)</th><th>국외자산여부<br>(국가명)</th><th>평가가액</th><th>평가기준</th></tr>' +
+      (rows.length ? rows.map(function(row){
+        return '<tr><td>본래의 증여재산</td><td>' + escapeHtml(VALUATION_METHOD_LABELS[row.a.method] || '') + '</td>' +
+          '<td>' + escapeHtml(row.a.assetLocation || '') + '</td><td>(100%)</td>' +
+          '<td class="pf-right">' + (numVal(row.a.assetArea) || '') + '</td><td>아니오</td>' +
+          '<td class="pf-right">' + won(row.value) + '</td>' +
+          '<td>' + escapeHtml(VALUATION_METHOD_LABELS_BASIS_[ihAssetValuationBasisCode_(row.a)] || ihAssetValuationBasisCode_(row.a)) + '</td></tr>';
+      }).join('') : '<tr><td colspan="8">증여재산 입력 없음</td></tr>') +
       pfRow_(0, '계', won(rows.reduce(function(s, row){ return s + row.value; }, 0))) +
     '</table>' +
+  '</div>';
+}
+// [2026.09.30 신규, 재검토98] 혼인 및 출산 증여재산공제명세서(별지10호서식 부표3) — e-file
+// (gfAttachMarriageBirthCalcRecord_/DetailRecord_)은 이미 이 구조를 정확히 구현해놨는데
+// 인쇄서식엔 이 부표 자체가 없었다(본문에 합계 한 줄만 나옴). 같은 계산을 재사용해 인쇄한다.
+function gfMarriageBirthPrintPageHtml_(donee, donor, giftDate, item){
+  const totalDeduction = numVal(item.result.혼인출산증여재산공제) || 0;
+  if (!totalDeduction) return '';
+  const priorTotal = numVal((document.getElementById('giftPriorMarriageBirth') || {}).value) || 0;
+  const priorSplit = gfMarriageBirthSplit_(priorTotal);
+  const remaining = Math.max(0, 100000000 - priorTotal);
+  const currentSplit = gfMarriageBirthSplit_(totalDeduction);
+  const marriageDate = (document.getElementById('giftMarriageDate') || {}).value;
+  const birthDate = (document.getElementById('giftBirthDate') || {}).value;
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호서식 부표3]</div>' +
+    '<div class="pf-title">혼인 및 출산 증여재산공제명세서</div>' +
+    '<div class="pf-section-head">1. 혼인 증여재산공제</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '혼인신고(예정)일', marriageDate) + pfRow_(++n, '증여일자', giftDate) +
+      pfRow_(++n, '증여재산가액', won(currentSplit.marriage)) +
+      pfRow_(++n, '10년 이내 기존 공제액', won(priorSplit.marriage)) +
+      pfRow_(++n, '10년 도과 기존 공제액', won(0)) +
+      pfRow_(++n, '공제받을 수 있는 금액(1억원 한도)', won(remaining)) +
+      pfRow_(++n, '이번에 받을 금액', won(currentSplit.marriage)) +
+      pfRow_(++n, '혼인 증여재산공제액(최종)', won(priorSplit.marriage + currentSplit.marriage)) +
+    '</table>' +
+    '<div class="pf-section-head">2. 출산 증여재산공제</div>' +
+    '<table class="pf-table">' +
+      pfRow_(0, '출생일 또는 입양신고일', birthDate) + pfRow_(0, '증여일자', giftDate) +
+      pfRow_(0, '증여재산가액', won(currentSplit.birth)) +
+      pfRow_(0, '10년 이내 기존 공제액', won(priorSplit.birth)) +
+      pfRow_(0, '10년 도과 기존 공제액', won(0)) +
+      pfRow_(0, '공제받을 수 있는 금액(1억원 한도)', won(remaining)) +
+      pfRow_(0, '이번에 받을 금액', won(currentSplit.birth)) +
+      pfRow_(0, '출산 증여재산공제액(최종)', won(priorSplit.birth + currentSplit.birth)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 혼인·출산 공제는 합산 1억원 한도이며, "10년 도과 기존 공제액" 구분은 미수집이라 0으로 표시됩니다(과거 사용액 전부를 10년 이내로 간주).</div>' +
   '</div>';
 }
 function gfPrintFormBodyHtml_(){
