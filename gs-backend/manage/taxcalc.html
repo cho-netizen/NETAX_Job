@@ -2432,6 +2432,12 @@ const VALUATION_METHOD_LABELS = {
   patentRight: '특허권·상표권·저작권등(§64, 연도별수입금액을 잔존연수(최대20년) 현재가치화 vs 취득가액-감가상각 중 큰 금액)',
   miningRight: '광업권·채석권등(§64, 3년평균소득을 채굴가능연수 현재가치화 vs 취득가액-감가상각 중 큰 금액)',
   memberRight: '조합원입주권(재개발·재건축 조합원권리가액, §61③)',
+  // [2026.09.30 신규, 재검토97] 인쇄서식 전수대조에서 발견 — 서화·골동품 등은 상속증여재산
+  // 분류코드에 전용 코드(14)가 있는데도(별지9호서식 부표8 대상) 이 앱엔 자산유형 자체가 없어
+  // 등록할 방법이 아예 없었다. 평가방법은 시행령§52②에 따라 원칙적으로 2인 이상 전문가
+  // 감정가액 평균이라 "직접입력"과 입력 항목이 같으므로(값·평가근거 필드 재사용, default
+  // 분기로 자동 처리됨) 옵션만 추가한다.
+  artwork: '서화·골동품 등(§65, 시행령§52② — 2인 이상 전문가 감정가액 평균 등 직접입력)',
   // [2026.09.23 흡수] 아래 6개는 원래 별도 완결형 계산기(자기 과세표준·공제·가산세까지 전부
   // 따로 계산)였다 — 세무사님 지적: "세액계산부터 분납·연부연납까지 하나의 화면에 일관되게
   // 들어와야 한다"는 원칙에 따라, §55①에서 합산배제로 열거되지 않은(일반 증여재산과 합산되는)
@@ -5366,6 +5372,11 @@ function renderGiftInheritanceSharedPane_(){
         '<div class="taxcalc-field"><label>추징세액(당초 감면·특례로 줄었던 세액)</label><input type="number" id="ckAmount" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>이자 기산일</label><input type="date" id="ckStartDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">당초 신고기한 다음날 등</span></div>' +
         '<div class="taxcalc-field"><label>추징사유 발생일</label><input type="date" id="ckEndDate" min="1900-01-01" max="2099-12-31"></div>' +
+        '<div class="taxcalc-field"><label>서식 구분(인쇄용, 해당시)</label><select id="ckFormType">' +
+          '<option value="">해당없음(인쇄서식 없음)</option>' +
+          '<option value="ih6">상속세 — 가업·영농상속공제 사후관리추징(부표6)</option>' +
+          '<option value="ih7">상속세 — 가업상속 납부유예 사후관리추징(부표7)</option>' +
+        '</select></div>' +
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-clawback-interest">이자상당액 계산하기</button>' +
       '<div id="taxCalcClawbackResult"></div>' +
@@ -6040,10 +6051,53 @@ function renderClawbackResult(r){
   html += taxCalcResultRow('납부할 세액', won(r.납부할세액), { total: true });
   html += '<button type="button" class="taxcalc-run-btn" data-action="apply-clawback-to-gift">이 이자상당액을 증여세 계산기에 반영</button>';
   html += '<button type="button" class="taxcalc-run-btn" data-action="apply-clawback-to-inheritance">이 이자상당액을 상속세 계산기에 반영</button>';
+  const formType = document.getElementById('ckFormType') ? document.getElementById('ckFormType').value : '';
+  if (formType) html += '<button type="button" class="taxcalc-run-btn" data-action="print-clawback-form">🖨 인쇄용 서식 보기(' + (formType === 'ih6' ? '부표6' : '부표7') + ')</button>';
   html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   html += '</div>';
   box.innerHTML = html;
   box.dataset.lastInterestTotal = r.이자상당액_합계;
+  lastClawbackResult_ = r;
+}
+// [2026.09.30 신규, 재검토97] 상속세 부표6(가업·영농상속공제 사후관리추징, 2024.3.22신설)·
+// 부표7(가업상속납부유예 사후관리추징, 2024.3.22신설) — law.go.kr 전수대조에서 이 서식 자체가
+// 없다는 게 드러났다. 계산 로직(이자상당액 구간별 계산)은 이미 calculateClawbackInterestJS
+// (위 "사후관리 추징이자" 도구)가 하고 있으므로, 그 결과를 공식 서식 레이아웃으로 인쇄만 새로
+// 만든다 — 피상속인·신고인 인적사항은 상속세 탭에 입력해둔 값을 그대로 가져와 쓴다.
+var lastClawbackResult_ = null;
+function ihClawbackPrintPageHtml_(formType, r){
+  const g_ = function(id){ const el = document.getElementById(id); return el ? el.value : ''; };
+  const reporter = (typeof inheritanceHeirs !== 'undefined' ? inheritanceHeirs.find(function(h){ return h.isReporter; }) : null) || {};
+  const isForm6 = formType === 'ih6';
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제9호서식 ' + (isForm6 ? '부표6' : '부표7') + ']</div>' +
+    '<div class="pf-title">' + (isForm6 ? '가업상속공제·영농상속공제 사후관리 위반 신고 및 자진납부계산서' : '가업상속 납부유예 사후관리 위반 신고 및 자진납부계산서') + '</div>' +
+    '<div class="pf-section-head">신고인</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '성명', reporter.name) + pfRow_(++n, '주민등록번호', reporter.regNo) +
+    '</table>' +
+    '<div class="pf-section-head">피상속인</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '성명', g_('ihDeceasedName')) + pfRow_(++n, '주민등록번호', g_('ihDeceasedRegNo')) +
+      pfRow_(++n, '상속개시일', g_('ihDeathDate')) +
+    '</table>' +
+    '<div class="pf-section-head">사후관리 위반 및 추징세액 계산</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '이자 기산일(당초 신고기한 다음날)', r.이자기산일) +
+      pfRow_(++n, '추징사유 발생일', r.추징사유발생일) +
+      pfRow_(++n, '당초 감면·공제받은 세액(추징대상)', won(r.추징세액)) +
+      (r.구간별_이자상당액 || []).map(function(seg){
+        return pfRow_(0, '이자상당액(' + seg.시작일 + '~' + seg.종료일 + ', ' + seg.일수 + '일, 연' + (seg.연이율 * 100).toFixed(1) + '%)', won(seg.이자상당액), { indent: true });
+      }).join('') +
+      pfRow_(++n, '이자상당액 합계', won(r.이자상당액_합계)) +
+      pfRow_(++n, '자진납부할 세액(합계액)', won(r.납부할세액)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX "사후관리 추징이자" 계산 결과를 기준으로 자동 생성되었습니다 — 사유발생일이 속하는 달의 말일부터 3개월 이내 신고·납부해야 합니다(상증세법§18의2⑯·§18의3⑧⑩·§72의2⑦⑨).</div>' +
+    '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
+      new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
+      '신고인 &nbsp;' + escapeHtml(reporter.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+  '</div>';
 }
 
 function renderBusinessSuccessionDeferralAmountResult(r){
@@ -7822,7 +7876,7 @@ const IH_ASSET_TYPE_CODE_MAP_ = { // 재산평가 "방법"(VALUATION_METHOD_LABE
   listedStock: '09', unlistedStock: '10', memberRight: '08',
   goodwill: '12', trustBenefit: '12', periodicPayment: '12', conditionalRight: '12',
   otherTangible: '12', groundRight: '12', patentRight: '12', miningRight: '12',
-  deemedInheritanceItem: '11'
+  deemedInheritanceItem: '11', artwork: '14' // 서화·골동품 등(별첨 상속증여재산분류코드 14)
 };
 function ihAssetTypeCode_(method){ return IH_ASSET_TYPE_CODE_MAP_[method] || '12'; }
 function ihAssetValuationBasisCode_(a){
@@ -8217,7 +8271,7 @@ function ihPrintFormBodyHtml_(){
       pfRow_(++n, '납부지연가산세', won(numVal(r.납부지연가산세) || 0)) +
       pfRow_(++n, '납부할 세액(합계액)', won(r.납부세액)) +
     '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 부표1~3은 뒤에 이어집니다. 부표4(상속개시전 처분재산)·부표5(영리법인 면제)는 해당 사실관계가 있는 사건에서만 필요해 아직 포함되지 않습니다.</div>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 부표1~3, (배우자가 있으면)부표3의2는 뒤에 이어집니다. 부표4(상속개시전 처분재산)·부표5(영리법인 면제)·부표6·7(사후관리추징 — "증여·상속 공통 > 사후관리 추징이자" 탭에서 별도 인쇄)는 해당 사실관계가 있는 사건에서만 필요해 여기 포함되지 않습니다. 서화·골동품 등 자산을 등록한 경우, 재산가액은 부표1에 정확히 반영되지만 전용 부표8(서화·골동품 등 상속재산 명세서)은 아직 별도로 만들어지지 않으니 신고시 직접 작성하세요.</div>' +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml(reporter.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
@@ -8323,6 +8377,39 @@ function ihAttachPrintPagesHtml_(){
     '</table>' +
     '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다.</div>' +
   '</div>';
+
+  // [2026.09.30 신규, 재검토97] 인쇄서식 전수대조에서 발견 — 배우자가 있는 거의 모든 상속
+  // 건에서 필요한 부표3의2(배우자 상속공제 명세서)가 아예 없었다. 최종 공제액(r.배우자공제)만
+  // 부표3에 한 줄 찍히고, 그 한도액 산출근거(§19)는 어디에도 안 보였다 — 계산 자체는 이미
+  // spouseInheritanceLimit_/spouseInheritanceDeduction_(taxcalc-engine.html)이 정확히 하고
+  // 있으므로, 그 계산에 쓰인 입력값을 그대로 가져와 공식 서식 그대로의 항목 순서로 보여준다.
+  if (taxCalcHeirRegistryHasSpouse){
+    const estateBase = numVal(r.상속세과세가액_적용값) - g_('ihPriorGiftedIncluded');
+    const nonHeirBequest = g_('ihNonHeirBequest');
+    const giftToHeirs = g_('ihGiftToHeirs');
+    const legalShareRatio = numVal(document.getElementById('ihSpouseRatio') ? document.getElementById('ihSpouseRatio').value : 0) || 0;
+    const spouseGiftBase = g_('ihSpouseGiftBase');
+    const limitBeforeCap = Math.max(0, (estateBase - nonHeirBequest + giftToHeirs) * legalShareRatio - spouseGiftBase);
+    const limitAmount = Math.min(limitBeforeCap, 3000000000);
+    const actualAmount = g_('ihSpouseActual');
+    const isDivided = !document.getElementById('ihSpouseDivided') || document.getElementById('ihSpouseDivided').checked;
+    html += '<div class="pf-page">' +
+      '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제9호서식 부표3의2]</div>' +
+      '<div class="pf-title">배우자 상속공제 명세서</div>' +
+      '<table class="pf-table">' +
+        pfRow_(0, '① 상속재산의 가액', won(estateBase)) +
+        pfRow_(0, '② 배우자 외의 자에게 유증 등을 한 재산가액', won(nonHeirBequest)) +
+        pfRow_(0, '③ 상속인의 상속개시전 10년 이내 증여재산가액', won(giftToHeirs)) +
+        pfRow_(0, '④ 배우자의 법정상속분 비율', (legalShareRatio * 100).toFixed(2) + '%') +
+        pfRow_(0, '⑤ 배우자의 상속개시전 10년 이내 증여재산 과세표준', won(spouseGiftBase)) +
+        pfRow_(0, '공제한도액 [(①-②+③)×④-⑤], 30억원 한도', won(limitAmount)) +
+        pfRow_(0, '배우자의 실제 상속재산가액', won(actualAmount)) +
+        pfRow_(0, '배우자상속재산 분할기한까지 분할·신고 여부', isDivided ? '분할·신고함' : '미분할(§19②③ — 최소보장액 5억원만 인정)') +
+        pfRow_(0, '배우자 상속공제액', won(numVal(r.배우자공제))) +
+      '</table>' +
+      '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 배우자 상속공제액은 최소 5억원, (실제 상속재산가액·공제한도액) 중 작은 값입니다.</div>' +
+    '</div>';
+  }
   return html;
 }
 
@@ -12002,6 +12089,10 @@ taxCalcView.addEventListener('click', function(e){
   } else if (action === 'print-ih-form'){
     if (!lastInheritanceResult){ nxAlert_('먼저 위에서 "세액 계산하기"를 눌러 계산을 완료하세요.'); return; }
     openPrintFormWindow_('상속세 과세표준신고서', ihPrintFormBodyHtml_());
+  } else if (action === 'print-clawback-form'){
+    const formType = document.getElementById('ckFormType') ? document.getElementById('ckFormType').value : '';
+    if (!formType || !lastClawbackResult_){ nxAlert_('먼저 위에서 서식 구분을 고르고 "이자상당액 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('사후관리 위반 신고 및 자진납부계산서', ihClawbackPrintPageHtml_(formType, lastClawbackResult_));
   } else if (action === 'download-ih-efile'){
     const errs = ihValidateEfileInputs_();
     if (errs.length){ renderIhEfileResult_(); return; }
