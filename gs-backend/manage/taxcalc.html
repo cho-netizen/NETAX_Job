@@ -31,6 +31,33 @@ function numVal(v){
   return Number.isFinite(n) ? n : 0;
 }
 
+// [2026.09.30, 재검토95] "관련 법령" 버튼 — 지금 보고 있는 세목탭에 해당하는 법령 조문을
+// 법제처 국가법령정보센터(law.go.kr)에서 바로 열어준다. 법령정보시스템을 우리 화면 안에
+// 그대로 옮겨오는 건(iframe 임베드) 실익이 적다고 판단해(즐겨찾기로 새 탭 여는 것과 차이가
+// 없음) 접었고, 대신 "지금 계산 중인 세목 → 관련 조문"을 바로 연결하는 이 버튼만 만든다.
+// law.go.kr URL은 날짜를 안 넣으면 항상 최신 시행본을 보여주므로(확인됨) 개정돼도 이 링크
+// 자체는 손볼 필요가 없다. 이 매핑(TAX_LAW_REFS_)은 세무사님이 궁극적으로 원하는 "AI 완전
+// 자동화 시 적절한 법령을 조회하도록 하는 안전장치"의 기초 데이터로도 그대로 재사용할 수
+// 있게, 계산항목이 아니라 세목 단위로 법령명만 담아 단순하게 유지한다.
+const TAX_LAW_REFS_ = {
+  transfer: { label: '양도소득세', lawName: '소득세법' },
+  gift: { label: '증여세', lawName: '상속세및증여세법' },
+  inheritance: { label: '상속세', lawName: '상속세및증여세법' },
+  giftinheritanceshared: { label: '증여·상속 공통', lawName: '상속세및증여세법' },
+  acquisition: { label: '취득세', lawName: '지방세법' },
+  registrationlicense: { label: '등록면허세', lawName: '지방세법' }
+};
+function taxLawGoKrUrl_(lawName){
+  return 'https://www.law.go.kr/법령/' + encodeURIComponent(lawName);
+}
+function updateTaxLawRefButton_(tabKey){
+  const link = document.getElementById('taxLawRefLink');
+  if (!link) return;
+  const ref = TAX_LAW_REFS_[tabKey] || TAX_LAW_REFS_.transfer;
+  link.href = taxLawGoKrUrl_(ref.lawName);
+  link.title = ref.lawName + ' 조문을 국가법령정보센터(law.go.kr)에서 새 탭으로 엽니다';
+}
+
 // §43②(1년 이내 동일거래 합산) 입력칸 하나(합계액)를 각 계산기가 요구하는 priorBenefitsWithinOneYear
 // 배열로 변환한다. 비어있으면 빈 배열(합산 없음, 기존 동작과 동일).
 function priorBenefitsArray_(elementId){
@@ -10491,6 +10518,7 @@ function updateTaxCalcPaneVisibility(){
   taxCalcAcquisitionPane.style.display = which === 'acquisition' ? 'block' : 'none';
   taxCalcRegistrationLicensePane.style.display = which === 'registrationlicense' ? 'block' : 'none';
   taxCalcView.classList.toggle('taxcalc-view-tier-simple', taxCalcTier === 'simple');
+  updateTaxLawRefButton_(which);
 }
 
 document.querySelectorAll('.taxcalc-tab').forEach(function(tab){
