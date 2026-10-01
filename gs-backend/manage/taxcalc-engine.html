@@ -5357,6 +5357,65 @@
     };
   };
 
+  // 1세대1주택 비과세 보유기간·거주기간 요건의 예외사유 (소득세법시행령§154①1호~5호, 4호는
+  // 2020.2.11 삭제) — [2026.10.01 신규, 재검토103] law.go.kr 조문 원문(2026.10.1 시행본)을
+  // iframe 안 실제 텍스트로 직접 확보해 정밀구현(이미지 아님, 일반 HTML 텍스트였음). 본문 단서가
+  // 접속사로 면제범위를 명확히 구분한다: "제1호부터 제3호까지의 어느 하나에 해당하는 경우에는
+  // 그 보유기간 및 거주기간의 제한을 받지 않으며 제5호에 해당하는 경우에는 거주기간의 제한을
+  // 받지 않는다" — 즉 1~3호는 보유+거주 둘 다 면제, 5호는 거주기간만 면제(보유기간은 그대로
+  // 적용, 이 함수가 대신 판정하지 않고 별도 확인 체크박스로 받는다).
+  window.calculateHoldingResidencyExceptionJS = function (p) {
+    p = p || {};
+    const reason = p.reasonType;
+    const addYears_ = function (dateStr, n) { const d = new Date(dateStr); d.setFullYear(d.getFullYear() + n); return d.getTime(); };
+    if (reason === 'rental5y') {
+      const years = Number(p.livedYears) || 0;
+      if (years < 5) return { 적용여부: false, 안내: '임대주택(민간건설임대·공공건설임대·공공매입임대) 임차일부터 양도일까지 세대전원이 거주한 기간이 5년 이상이어야 하는데(시행령§154①1호), 이를 충족하지 못해 적용대상이 아닙니다.' };
+      return { 적용여부: true, 면제범위: 'both', 안내: '민간건설임대주택·공공건설임대주택(공공매입임대주택 포함)을 5년 이상 거주 후 양도하여 시행령§154①1호에 따라 보유기간 및 거주기간의 제한을 받지 않습니다.' };
+    }
+    if (reason === 'expropriation') {
+      if (!p.acquisitionDate || !p.publicNoticeDate) return { error: '취득일과 사업인정고시일이 필요합니다.' };
+      if (new Date(p.acquisitionDate).getTime() >= new Date(p.publicNoticeDate).getTime()) {
+        return { 적용여부: false, 안내: '사업인정고시일 전에 취득한 주택만 해당하는데(시행령§154①2호가목), 취득일이 고시일 이후라 적용대상이 아닙니다.' };
+      }
+      if (p.isRemainderSale && p.originalTransferDate && p.transferDate && new Date(p.transferDate).getTime() > addYears_(p.originalTransferDate, 5)) {
+        return { 적용여부: false, 안내: '잔존주택은 최초 양도일(또는 수용일)부터 5년 이내에 양도해야 하는데(시행령§154①2호 후단), 기한을 넘겨 적용대상이 아닙니다.' };
+      }
+      return { 적용여부: true, 면제범위: 'both', 안내: '사업인정고시일 전 취득한 주택이 협의매수·수용되어 시행령§154①2호가목에 따라 보유기간 및 거주기간의 제한을 받지 않습니다.' };
+    }
+    if (reason === 'emigration' || reason === 'overseas_study') {
+      if (!p.departureDate || !p.transferDate) return { error: '출국일과 양도일이 필요합니다.' };
+      if (!p.hadOneHouseAtDeparture) {
+        return { 적용여부: false, 안내: '출국일 현재 1주택을 보유하고 있어야 하는데(시행령§154①2호나목·다목), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
+      }
+      if (new Date(p.transferDate).getTime() > addYears_(p.departureDate, 2)) {
+        return { 적용여부: false, 안내: '출국일부터 2년 이내에 양도해야 하는데(시행령§154①2호나목·다목), 기한을 넘겨 적용대상이 아닙니다.' };
+      }
+      const label = reason === 'emigration' ? '해외이주법에 따른 해외이주(2호나목)' : '1년 이상 국외거주를 필요로 하는 취학 또는 근무상의 형편(2호다목)';
+      return { 적용여부: true, 면제범위: 'both', 안내: label + '으로 세대전원이 출국해 시행령§154①에 따라 보유기간 및 거주기간의 제한을 받지 않습니다.' };
+    }
+    if (reason === 'domestic_relocation') {
+      if (!p.resided1YearOrMore) {
+        return { 적용여부: false, 안내: '1년 이상 거주한 주택이어야 하는데(시행령§154①3호), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
+      }
+      return { 적용여부: true, 면제범위: 'both', 안내: '1년 이상 거주한 주택을 취학·근무상형편·질병요양 등 부득이한 사유로 양도해 시행령§154①3호에 따라 보유기간 및 거주기간의 제한을 받지 않습니다.' };
+    }
+    if (reason === 'pre_notice_contract') {
+      if (!p.contractDate || !p.noticeDate) return { error: '매매계약체결일과 조정대상지역 공고일이 필요합니다.' };
+      if (new Date(p.contractDate).getTime() >= new Date(p.noticeDate).getTime()) {
+        return { 적용여부: false, 안내: '조정대상지역의 공고가 있은 날 이전에 매매계약을 체결해야 하는데(시행령§154①5호), 계약일이 공고일 이후라 적용대상이 아닙니다.' };
+      }
+      if (!p.hadNoHouseAtDownPayment) {
+        return { 적용여부: false, 안내: '계약금 지급일 현재 1세대가 주택을 보유하지 않아야 하는데(시행령§154①5호), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
+      }
+      if (!p.holdingPeriodMetSeparately) {
+        return { 적용여부: false, 안내: '시행령§154①5호는 거주기간 요건만 면제하고 보유기간(2년, 해당자는 3년) 요건은 그대로 적용됩니다(본문 단서가 1~3호는 "보유기간 및 거주기간", 5호는 "거주기간"만 면제한다고 명확히 구분) — 보유기간 요건을 별도로 충족했는지 확인 후 체크하세요.' };
+      }
+      return { 적용여부: true, 면제범위: 'residency_only', 안내: '조정대상지역 공고 전 매매계약+계약금 지급(무주택 세대)으로 시행령§154①5호에 따라 거주기간 요건만 면제됩니다(보유기간 요건은 그대로 적용되며, 별도 충족이 확인되었습니다).' };
+    }
+    return { error: 'reasonType을 선택하세요.' };
+  };
+
   // 전환사채등의 주식전환등에 따른 이익의 증여 (상증세법§40, 시행령§30) — 4가지 세부 케이스로 나뉜다.
   // acquisition(법§40①1호, 취득시 — 특수관계인 저가취득/최대주주등 초과배정저가취득/그 특수관계인 초과배정
   //   저가취득): 이익 = 전환사채등의 시가 - 인수취득가액. 게이트: min(시가30%, 1억).

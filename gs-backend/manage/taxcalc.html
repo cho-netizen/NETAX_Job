@@ -2316,6 +2316,7 @@ function openOneHouseSpecialCaseModal_(idx){
           '<option value="pr">1주택+1분양권 보유(소득세법시행령§156의3, 2021.2.17~)</option>' +
           '<option value="tw">일시적 2주택(소득세법시행령§155①)</option>' +
           '<option value="mg">상생임대주택(소득세법시행령§155의3, 2021.12.20~2026.12.31 계약분)</option>' +
+          '<option value="hr">보유·거주기간 요건 면제사유(소득세법시행령§154①1호~5호)</option>' +
         '</select></div>' +
         '<div id="ohsU9" class="taxcalc-grid">' +
           '<div class="taxcalc-field"><label>준공후미분양주택 취득일</label><input type="date" id="u9AcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
@@ -2375,6 +2376,28 @@ function openOneHouseSpecialCaseModal_(idx){
           '<div class="taxcalc-field"><label>상생임대차 보증금</label><input type="number" id="mgLeaseDeposit" placeholder="원"></div>' +
           '<div class="taxcalc-field"><label>상생임대차 월세</label><input type="number" id="mgLeaseRent" placeholder="원"></div>' +
         '</div>' +
+        '<div id="ohsHr" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-field"><label>사유</label><select id="hrReasonType">' +
+            '<option value="rental5y">1호: 민간·공공건설임대주택(공공매입임대주택 포함) 5년 이상 거주 후 양도</option>' +
+            '<option value="expropriation">2호가목: 사업인정고시일 전 취득 주택의 협의매수·수용</option>' +
+            '<option value="emigration">2호나목: 해외이주법에 따른 해외이주로 세대전원 출국</option>' +
+            '<option value="overseas_study">2호다목: 1년 이상 국외거주 필요한 취학·근무상 형편으로 세대전원 출국</option>' +
+            '<option value="domestic_relocation">3호: 1년 이상 거주 후 취학·근무·질병요양 등으로 양도</option>' +
+            '<option value="pre_notice_contract">5호: 조정대상지역 공고 전 매매계약(무주택세대) — 거주기간만 면제</option>' +
+          '</select></div>' +
+          '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 "취득일"·"양도일" 입력칸 값을 그대로 씁니다. 아래 입력칸은 선택한 사유에 맞는 것만 채우세요.</div>' +
+          '<div class="taxcalc-field"><label>[1호만] 임차일~양도일 세대전원 거주기간 합계</label><input type="number" id="hrLivedYears" placeholder="년"></div>' +
+          '<div class="taxcalc-field"><label>[2호가목만] 사업인정고시일</label><input type="date" id="hrPublicNoticeDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="hrIsRemainderSale"><label for="hrIsRemainderSale">[2호가목만] 잔존주택을 나중에 별도로 양도함(5년 이내 특례)</label></div>' +
+          '<div class="taxcalc-field"><label>[위 체크시만] 최초 수용일 또는 양도일</label><input type="date" id="hrOriginalTransferDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field"><label>[2호나·다목만] 출국일</label><input type="date" id="hrDepartureDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="hrHadOneHouseAtDeparture"><label for="hrHadOneHouseAtDeparture">[2호나·다목만] 출국일 현재 1주택 보유</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="hrResided1Y"><label for="hrResided1Y">[3호만] 1년 이상 거주한 주택임</label></div>' +
+          '<div class="taxcalc-field"><label>[5호만] 매매계약 체결일</label><input type="date" id="hrContractDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field"><label>[5호만] 조정대상지역 공고일</label><input type="date" id="hrNoticeDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="hrHadNoHouseAtDownPayment"><label for="hrHadNoHouseAtDownPayment">[5호만] 계약금 지급일 현재 1세대 무주택</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="hrHoldingMetSeparately"><label for="hrHoldingMetSeparately">[5호만] 보유기간(2년, 해당자는 3년) 요건은 별도로 충족함(5호는 거주기간만 면제— 보유기간은 그대로 적용)</label></div>' +
+        '</div>' +
         '<button type="button" class="taxcalc-run-btn" id="ohsRunBtn" style="margin-top:8px;">적용 가능 여부 판정하기</button>' +
         '<div id="ohsResult"></div>' +
       '</div>' +
@@ -2387,7 +2410,7 @@ function openOneHouseSpecialCaseModal_(idx){
   enhanceDateInputs(overlay);
   const provisionSel = overlay.querySelector('#ohsProvision');
   provisionSel.addEventListener('change', function(){
-    ['ohsU9', 'ohsPd', 'ohsRh', 'ohsPr', 'ohsTw', 'ohsMg'].forEach(function(id){
+    ['ohsU9', 'ohsPd', 'ohsRh', 'ohsPr', 'ohsTw', 'ohsMg', 'ohsHr'].forEach(function(id){
       overlay.querySelector('#' + id).style.display = (id === 'ohs' + provisionSel.value.charAt(0).toUpperCase() + provisionSel.value.slice(1)) ? '' : 'none';
     });
   });
@@ -2445,7 +2468,7 @@ function openOneHouseSpecialCaseModal_(idx){
         expropriationDate: document.getElementById('twExpropriationDate').value,
         hasDisposalDelayException: document.getElementById('twDisposalDelay').checked
       });
-    } else {
+    } else if (provision === 'mg'){
       r = calculateMutualGrowthLeaseExclusionJS({
         priorLeaseStartDate: document.getElementById('mgPriorStart').value,
         priorLeaseEndDate: document.getElementById('mgPriorEnd').value,
@@ -2457,6 +2480,23 @@ function openOneHouseSpecialCaseModal_(idx){
         mutualLeaseDeposit: numVal(document.getElementById('mgLeaseDeposit').value),
         mutualLeaseRent: numVal(document.getElementById('mgLeaseRent').value),
         transferDate: transferAssets[idx].transferDate
+      });
+    } else {
+      r = calculateHoldingResidencyExceptionJS({
+        reasonType: document.getElementById('hrReasonType').value,
+        acquisitionDate: transferAssets[idx].acquisitionDate,
+        transferDate: transferAssets[idx].transferDate,
+        livedYears: numVal(document.getElementById('hrLivedYears').value),
+        publicNoticeDate: document.getElementById('hrPublicNoticeDate').value,
+        isRemainderSale: document.getElementById('hrIsRemainderSale').checked,
+        originalTransferDate: document.getElementById('hrOriginalTransferDate').value,
+        departureDate: document.getElementById('hrDepartureDate').value,
+        hadOneHouseAtDeparture: document.getElementById('hrHadOneHouseAtDeparture').checked,
+        resided1YearOrMore: document.getElementById('hrResided1Y').checked,
+        contractDate: document.getElementById('hrContractDate').value,
+        noticeDate: document.getElementById('hrNoticeDate').value,
+        hadNoHouseAtDownPayment: document.getElementById('hrHadNoHouseAtDownPayment').checked,
+        holdingPeriodMetSeparately: document.getElementById('hrHoldingMetSeparately').checked
       });
     }
     const resultBox = document.getElementById('ohsResult');
