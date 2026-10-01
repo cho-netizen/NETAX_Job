@@ -5221,6 +5221,118 @@
   // 과세), (b) 재건축기간 대체주택 특례가 없다는 점이 다르다. 세액은 계산하지 않고 적용 가능 여부만
   // 판정하며, "부득이한 사유"(②단서 괄호, 시행규칙 위임 — 구체적 목록은 이번 조사에서 원문 미확인)는
   // 사용자가 직접 해당 여부를 체크하도록 한다(지어내지 않음).
+  // 주택과 조합원입주권을 소유한 경우 1세대1주택의 특례 (소득세법§89②단서, 시행령§156의2③④) —
+  // [2026.10.01 신규, 재검토103] 재검토100의 댓글에서 예고만 하고 실제로는 만들지 않았던 함수.
+  // law.go.kr 조문 원문 직접대조로 §156의3②③(분양권)과 수치·구조가 완전히 동일함을 확인(②는
+  // §156의2에서 ①삭제 때문에 ③으로 밀린 것뿐) — ①1년경과후 조합원입주권취득(§154①1호·2호가목·
+  // 3호 예외시 면제)+3년이내 종전주택양도, 초과시 완공후3년이내 전입+1년거주 및 완공전·후3년
+  // 이내 양도. 분양권과 달리 2021.1.1 경과규정이 없다(조합원입주권은 원래부터 주택수 포함).
+  window.calculateReconstructionRightsOneHouseExclusionJS = function (p) {
+    p = p || {};
+    const formerAcq = p.formerHouseAcquisitionDate, rightAcq = p.unionMembershipRightAcquisitionDate, formerTransfer = p.formerHouseTransferDate;
+    if (!formerAcq || !rightAcq || !formerTransfer) return { error: '종전주택 취득일·조합원입주권 취득일·종전주택 양도일이 모두 필요합니다.' };
+    const addYears_ = function (dateStr, n) { const d = new Date(dateStr); d.setFullYear(d.getFullYear() + n); return d.getTime(); };
+    if (!p.meetsHoldingPeriodException && new Date(rightAcq).getTime() < addYears_(formerAcq, 1)) {
+      return { 적용여부: false, 안내: '종전주택을 취득한 날부터 1년이 지나기 전에 조합원입주권을 취득해 시행령§156의2③의 요건을 충족하지 못합니다(시행령§154①1호·2호가목·3호 예외사유 해당시 면제).' };
+    }
+    const withinThreeYears = new Date(formerTransfer).getTime() <= addYears_(rightAcq, 3);
+    if (withinThreeYears || p.unableToTransferWithinThreeYearsReason) {
+      return { 적용여부: true, 안내: '조합원입주권 취득일부터 3년 이내에 종전주택을 양도' + (withinThreeYears ? '' : '하지 못했으나 재정경제부령으로 정하는 부득이한 사유에 해당') + '하여, 시행령§156의2③에 따라 종전주택을 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다.' };
+    }
+    if (!p.newHousingCompletionDate) {
+      return { 적용여부: false, 안내: '조합원입주권 취득일부터 3년을 초과해 종전주택을 양도하는 경우에는 시행령§156의2④ 요건(신축주택 완성 후 3년 이내 전입+1년 이상 계속거주, 완성 전이거나 완성 후 3년 이내 종전주택 양도) 충족 여부를 판정해야 하므로, 신축주택 완성일을 입력하세요.' };
+    }
+    const completionTime = new Date(p.newHousingCompletionDate).getTime();
+    if (!(new Date(formerTransfer).getTime() <= completionTime || new Date(formerTransfer).getTime() <= addYears_(p.newHousingCompletionDate, 3))) {
+      return { 적용여부: false, 안내: '신축주택이 완성되기 전이거나 완성된 후 3년 이내에 종전주택을 양도해야 하는데(시행령§156의2④2호), 그 기한을 넘겨 양도해 적용대상이 아닙니다.' };
+    }
+    if (!p.movedInWithinThreeYearsOfCompletion || !p.residedOneYearOrMore) {
+      return { 적용여부: false, 안내: '신축주택이 완성된 후 3년 이내에 세대전원이 이사하여 1년 이상 계속 거주해야 하는데(시행령§156의2④1호), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
+    }
+    return { 적용여부: true, 안내: '조합원입주권 취득일부터 3년을 초과해 종전주택을 양도했지만, 신축주택 완성 후 3년 이내 세대전원 전입+1년 이상 계속거주 및 완성 전(또는 완성 후 3년 이내) 종전주택 양도 요건을 모두 충족해 시행령§156의2④에 따라 비과세(§89①3호) 판정을 적용합니다.' };
+  };
+
+  // 재건축·재개발 등 사업시행기간 중 거주목적 대체주택 특례 (시행령§156의2⑤) — [2026.10.01 신규,
+  // 재검토103] §156의3(분양권)에는 없는, §156의2에만 있는 고유 특례(law.go.kr 비교대조로 확인).
+  // 사업시행인가일 이후 취득한 대체주택에서 1년 이상 거주 + 신축주택 완성후 3년이내 전입+1년
+  // 이상거주(국외출국 등 부득이한 사유 예외) + 완성전이거나 완성후3년이내 대체주택 양도, 셋 다
+  // 충족하면 대체주택을 1세대1주택으로 본다(보유·거주기간 제한 없음).
+  window.calculateReplacementHouseExclusionJS = function (p) {
+    p = p || {};
+    if (!p.businessApprovalDate || !p.replacementHouseAcquisitionDate) return { error: '사업시행인가일과 대체주택 취득일이 필요합니다.' };
+    if (new Date(p.replacementHouseAcquisitionDate).getTime() < new Date(p.businessApprovalDate).getTime()) {
+      return { 적용여부: false, 안내: '재개발·재건축 등 사업시행인가일 이후에 대체주택을 취득해야 하는데(시행령§156의2⑤1호), 그 전에 취득해 적용대상이 아닙니다.' };
+    }
+    if (!p.residedOneYearOrMoreInReplacement) {
+      return { 적용여부: false, 안내: '대체주택에서 1년 이상 거주해야 하는데(시행령§156의2⑤1호), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
+    }
+    if (!p.newHousingCompletionDate) {
+      return { error: '신축주택 완성(예정)일이 필요합니다(시행령§156의2⑤2호·3호 판정용).' };
+    }
+    if (!p.isOverseasException && (!p.movedInWithinThreeYearsOfCompletion || !p.residedOneYearOrMoreAfterMoveIn)) {
+      return { 적용여부: false, 안내: '신축주택이 완성된 후 3년 이내에 세대전원이 이사하여 1년 이상 거주해야 하는데(시행령§156의2⑤2호, 국외출국 등 부득이한 사유는 예외), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
+    }
+    const addYears_ = function (dateStr, n) { const d = new Date(dateStr); d.setFullYear(d.getFullYear() + n); return d.getTime(); };
+    const completionTime = new Date(p.newHousingCompletionDate).getTime();
+    const transferTime = p.replacementHouseTransferDate ? new Date(p.replacementHouseTransferDate).getTime() : NaN;
+    if (!(transferTime <= completionTime || transferTime <= addYears_(p.newHousingCompletionDate, 3))) {
+      return { 적용여부: false, 안내: '신축주택이 완성되기 전이거나 완성된 후 3년 이내에 대체주택을 양도해야 하는데(시행령§156의2⑤3호), 그 기한을 넘겨 적용대상이 아닙니다.' };
+    }
+    return { 적용여부: true, 안내: '재개발·재건축 등 사업시행기간 중 거주목적으로 취득한 대체주택이 시행령§156의2⑤의 요건(사업시행인가일 이후 취득+1년이상거주, 신축주택 완성후 3년이내 전입+1년이상거주, 완성전 또는 완성후 3년이내 양도)을 모두 충족해 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다(보유·거주기간 제한 없음).' };
+  };
+
+  // 상속주택 특례(시행령§155②)·공동상속주택 특례(§155③) — [2026.10.01 신규, 재검토103]
+  // 상속받은 주택과 일반주택을 각각 1개씩 보유한 1세대가 일반주택을 양도하면 1세대1주택으로
+  // 본다. 상속개시 전 2년 이내 피상속인으로부터 증여받은 주택은 "일반주택"에서 제외(적용불가).
+  // 공동상속주택(2인 이상 공동소유)은 최대지분자 외의 공유자에게는 그 주택을 소유주택으로 보지
+  // 않는다(③) — 즉 최대지분자가 아니면 일반주택 비과세가 당연히 인정된다. 피상속인이 2주택
+  // 이상이었을 때 "그 상속주택" 1개를 정하는 순위(소유기간→거주기간→거주사실→기준시가)는
+  // 이미 상속인 명부에서 어느 주택을 상속받았는지가 확정된 사실관계라 이 판정에서 다시 계산
+  // 하지 않는다(세무사님이 이미 아는 사실관계를 입력받는다).
+  window.calculateInheritedHouseExclusionJS = function (p) {
+    p = p || {};
+    if (p.isGeneralHouseGiftedWithin2Years) {
+      return { 적용여부: false, 안내: '일반주택이 상속개시 전 2년 이내 피상속인으로부터 증여받은 것이면 시행령§155②의 "일반주택"에서 제외되어 적용대상이 아닙니다.' };
+    }
+    if (p.isCoInheritedHouse && !p.isLargestShareHolder) {
+      return { 적용여부: true, 안내: '공동상속주택(2인 이상 공동소유)으로서 신청인이 최대지분자가 아니므로 시행령§155③에 따라 그 주택을 신청인의 소유주택으로 보지 않습니다 — 일반주택 양도시 1세대1주택 비과세(§89①3호) 판정을 적용합니다.' };
+    }
+    return {
+      적용여부: true,
+      안내: '상속받은 주택과 일반주택을 각각 1개씩 보유한 1세대가 일반주택을 양도하여 시행령§155②에 따라 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다' + (p.isCoInheritedHouse ? '(공동상속주택 최대지분자로서 그 주택을 소유주택으로 보지만, §155②의 "상속받은 주택"에 해당해 일반주택 비과세는 그대로 인정됨)' : '') + '.'
+    };
+  };
+
+  // 동거봉양 합가 특례(시행령§155④) — [2026.10.01 신규, 재검토103] 60세 이상 직계존속(배우자의
+  // 직계존속 포함, 국민건강보험법령상 중증질환 요양급여 대상자는 60세 미만도 인정)을 봉양하기
+  // 위해 합가해 2주택이 된 세대가 합친 날부터 10년 이내 먼저 양도하는 주택을 1세대1주택으로 본다.
+  window.calculateCohabitationMergerExclusionJS = function (p) {
+    p = p || {};
+    if (!p.mergeDate || !p.transferDate) return { error: '합가일과 양도일이 필요합니다.' };
+    if (!p.directAncestorAge60OrOlder && !p.severeIllnessException) {
+      return { 적용여부: false, 안내: '봉양 대상 직계존속(배우자의 직계존속 포함)이 60세 이상이어야 하는데(시행령§155④), 요건을 충족하지 못했습니다(국민건강보험법 시행령에 따른 중증질환 요양급여 대상자는 60세 미만도 인정되니 해당되면 체크하세요).' };
+    }
+    const addYears_ = function (dateStr, n) { const d = new Date(dateStr); d.setFullYear(d.getFullYear() + n); return d.getTime(); };
+    if (new Date(p.transferDate).getTime() > addYears_(p.mergeDate, 10)) {
+      return { 적용여부: false, 안내: '세대를 합친 날부터 10년 이내에 먼저 양도해야 하는데(시행령§155④), 기한을 넘겨 적용대상이 아닙니다.' };
+    }
+    return { 적용여부: true, 안내: '60세 이상 직계존속 동거봉양을 위한 합가로 2주택이 된 세대가 합친 날부터 10년 이내 먼저 양도해 시행령§155④에 따라 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다.' };
+  };
+
+  // 혼인 합가 특례(시행령§155⑤) — [2026.10.01 신규, 재검토103] 혼인으로(또는 60세 이상 직계존속을
+  // 동거봉양하던 무주택자가 혼인으로) 2주택이 된 세대가 혼인한 날부터 10년 이내 먼저 양도하는
+  // 주택을 1세대1주택으로 본다(2024.11.12 개정으로 5년→10년 연장 확인 — 그 이전 양도분의
+  // 경과규정은 이번 조사에서 미확인, 아주 오래된 혼인건이면 재확인 필요).
+  window.calculateMarriageMergerExclusionJS = function (p) {
+    p = p || {};
+    if (!p.marriageDate || !p.transferDate) return { error: '혼인일과 양도일이 필요합니다.' };
+    const addYears_ = function (dateStr, n) { const d = new Date(dateStr); d.setFullYear(d.getFullYear() + n); return d.getTime(); };
+    if (new Date(p.transferDate).getTime() > addYears_(p.marriageDate, 10)) {
+      return { 적용여부: false, 안내: '혼인한 날부터 10년 이내에 먼저 양도해야 하는데(시행령§155⑤), 기한을 넘겨 적용대상이 아닙니다(2024.11.12 개정 전 혼인건은 기한이 다를 수 있으니 오래된 건이면 별도 확인하세요).' };
+    }
+    return { 적용여부: true, 안내: '혼인으로 2주택이 된 세대가 혼인한 날부터 10년 이내 먼저 양도해 시행령§155⑤에 따라 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다.' };
+  };
+
   window.calculatePresaleRightOneHouseExclusionJS = function (p) {
     p = p || {};
     const formerHouseAcquisitionDate = p.formerHouseAcquisitionDate;

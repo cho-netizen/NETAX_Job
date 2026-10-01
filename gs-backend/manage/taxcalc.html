@@ -2317,6 +2317,11 @@ function openOneHouseSpecialCaseModal_(idx){
           '<option value="tw">일시적 2주택(소득세법시행령§155①)</option>' +
           '<option value="mg">상생임대주택(소득세법시행령§155의3, 2021.12.20~2026.12.31 계약분)</option>' +
           '<option value="hr">보유·거주기간 요건 면제사유(소득세법시행령§154①1호~5호)</option>' +
+          '<option value="ci">1주택+1조합원입주권 보유(소득세법시행령§156의2③④)</option>' +
+          '<option value="rp">재건축 등 사업기간 중 대체주택(소득세법시행령§156의2⑤)</option>' +
+          '<option value="ih">상속주택·공동상속주택(소득세법시행령§155②③)</option>' +
+          '<option value="cb">동거봉양 합가(소득세법시행령§155④, 합가일부터 10년)</option>' +
+          '<option value="mc">혼인 합가(소득세법시행령§155⑤, 혼인일부터 10년)</option>' +
         '</select></div>' +
         '<div id="ohsU9" class="taxcalc-grid">' +
           '<div class="taxcalc-field"><label>준공후미분양주택 취득일</label><input type="date" id="u9AcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
@@ -2398,6 +2403,38 @@ function openOneHouseSpecialCaseModal_(idx){
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="hrHadNoHouseAtDownPayment"><label for="hrHadNoHouseAtDownPayment">[5호만] 계약금 지급일 현재 1세대 무주택</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="hrHoldingMetSeparately"><label for="hrHoldingMetSeparately">[5호만] 보유기간(2년, 해당자는 3년) 요건은 별도로 충족함(5호는 거주기간만 면제— 보유기간은 그대로 적용)</label></div>' +
         '</div>' +
+        '<div id="ohsCi" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 "취득일"·"양도일" 입력칸 값을 그대로 씁니다.</div>' +
+          '<div class="taxcalc-field"><label>조합원입주권 취득일</label><input type="date" id="ciAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="ciHoldingException"><label for="ciHoldingException">종전주택 취득 후 1년 경과 요건의 예외사유(시행령§154①1호·2호가목·3호)에 해당</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="ciLateTransferReason">[3년초과 양도일 때만] <label for="ciLateTransferReason">3년 이내 양도하지 못한 재정경제부령상 부득이한 사유에 해당</label></div>' +
+          '<div class="taxcalc-field"><label>신축주택 완성(예정)일</label><input type="date" id="ciCompletionDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">조합원입주권취득일로부터 3년 초과해 종전주택을 양도할 때만 필요</span></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="ciMovedIn"><label for="ciMovedIn">[3년초과 양도일 때만] 신축주택 완성 후 3년 이내 세대전원 이사(전입)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="ciResided1Y"><label for="ciResided1Y">[3년초과 양도일 때만] 전입 후 1년 이상 계속 거주</label></div>' +
+        '</div>' +
+        '<div id="ohsRp" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-result-note" style="flex-basis:100%;">대체주택(이 양도자산)의 양도일은 위 "양도일" 입력칸 값을 그대로 씁니다. 이 특례는 보유·거주기간 제한이 아예 없습니다(대체주택 자체의 취득일은 아래 별도 입력).</div>' +
+          '<div class="taxcalc-field"><label>사업시행인가일</label><input type="date" id="rpApprovalDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field"><label>대체주택 취득일</label><input type="date" id="rpAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rpResided1Y"><label for="rpResided1Y">대체주택에서 1년 이상 거주</label></div>' +
+          '<div class="taxcalc-field"><label>신축주택 완성(예정)일</label><input type="date" id="rpCompletionDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rpOverseas"><label for="rpOverseas">국외출국 등 부득이한 사유로 전입·거주 요건 예외 해당</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rpMovedIn">[위 예외 아니면]<label for="rpMovedIn">신축주택 완성 후 3년 이내 세대전원 이사(전입)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rpResided1YAfter">[위 예외 아니면]<label for="rpResided1YAfter">전입 후 1년 이상 계속 거주</label></div>' +
+        '</div>' +
+        '<div id="ohsIh" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihGiftedWithin2y"><label for="ihGiftedWithin2y">일반주택(이 양도자산)이 상속개시 전 2년 이내 피상속인으로부터 증여받은 것임(해당시 적용배제)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihCoInherited"><label for="ihCoInherited">상속주택이 공동상속주택(2인 이상 공동소유)임</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihLargestShare">[공동상속일 때만]<label for="ihLargestShare">신청인이 최대지분자임</label></div>' +
+        '</div>' +
+        '<div id="ohsCb" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-field"><label>합가일</label><input type="date" id="cbMergeDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="cbAge60"><label for="cbAge60">봉양 대상 직계존속(배우자의 직계존속 포함)이 60세 이상</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="cbSevereIllness">[60세 미만이면]<label for="cbSevereIllness">국민건강보험법령상 중증질환 요양급여 대상자임</label></div>' +
+        '</div>' +
+        '<div id="ohsMc" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-field"><label>혼인일</label><input type="date" id="mcMarriageDate" min="1900-01-01" max="2099-12-31"></div>' +
+        '</div>' +
         '<button type="button" class="taxcalc-run-btn" id="ohsRunBtn" style="margin-top:8px;">적용 가능 여부 판정하기</button>' +
         '<div id="ohsResult"></div>' +
       '</div>' +
@@ -2410,7 +2447,7 @@ function openOneHouseSpecialCaseModal_(idx){
   enhanceDateInputs(overlay);
   const provisionSel = overlay.querySelector('#ohsProvision');
   provisionSel.addEventListener('change', function(){
-    ['ohsU9', 'ohsPd', 'ohsRh', 'ohsPr', 'ohsTw', 'ohsMg', 'ohsHr'].forEach(function(id){
+    ['ohsU9', 'ohsPd', 'ohsRh', 'ohsPr', 'ohsTw', 'ohsMg', 'ohsHr', 'ohsCi', 'ohsRp', 'ohsIh', 'ohsCb', 'ohsMc'].forEach(function(id){
       overlay.querySelector('#' + id).style.display = (id === 'ohs' + provisionSel.value.charAt(0).toUpperCase() + provisionSel.value.slice(1)) ? '' : 'none';
     });
   });
@@ -2481,7 +2518,7 @@ function openOneHouseSpecialCaseModal_(idx){
         mutualLeaseRent: numVal(document.getElementById('mgLeaseRent').value),
         transferDate: transferAssets[idx].transferDate
       });
-    } else {
+    } else if (provision === 'hr'){
       r = calculateHoldingResidencyExceptionJS({
         reasonType: document.getElementById('hrReasonType').value,
         acquisitionDate: transferAssets[idx].acquisitionDate,
@@ -2497,6 +2534,46 @@ function openOneHouseSpecialCaseModal_(idx){
         noticeDate: document.getElementById('hrNoticeDate').value,
         hadNoHouseAtDownPayment: document.getElementById('hrHadNoHouseAtDownPayment').checked,
         holdingPeriodMetSeparately: document.getElementById('hrHoldingMetSeparately').checked
+      });
+    } else if (provision === 'ci'){
+      r = calculateReconstructionRightsOneHouseExclusionJS({
+        formerHouseAcquisitionDate: transferAssets[idx].acquisitionDate,
+        formerHouseTransferDate: transferAssets[idx].transferDate,
+        unionMembershipRightAcquisitionDate: document.getElementById('ciAcquisitionDate').value,
+        meetsHoldingPeriodException: document.getElementById('ciHoldingException').checked,
+        unableToTransferWithinThreeYearsReason: document.getElementById('ciLateTransferReason').checked,
+        newHousingCompletionDate: document.getElementById('ciCompletionDate').value,
+        movedInWithinThreeYearsOfCompletion: document.getElementById('ciMovedIn').checked,
+        residedOneYearOrMore: document.getElementById('ciResided1Y').checked
+      });
+    } else if (provision === 'rp'){
+      r = calculateReplacementHouseExclusionJS({
+        businessApprovalDate: document.getElementById('rpApprovalDate').value,
+        replacementHouseAcquisitionDate: document.getElementById('rpAcquisitionDate').value,
+        residedOneYearOrMoreInReplacement: document.getElementById('rpResided1Y').checked,
+        newHousingCompletionDate: document.getElementById('rpCompletionDate').value,
+        isOverseasException: document.getElementById('rpOverseas').checked,
+        movedInWithinThreeYearsOfCompletion: document.getElementById('rpMovedIn').checked,
+        residedOneYearOrMoreAfterMoveIn: document.getElementById('rpResided1YAfter').checked,
+        replacementHouseTransferDate: transferAssets[idx].transferDate
+      });
+    } else if (provision === 'ih'){
+      r = calculateInheritedHouseExclusionJS({
+        isGeneralHouseGiftedWithin2Years: document.getElementById('ihGiftedWithin2y').checked,
+        isCoInheritedHouse: document.getElementById('ihCoInherited').checked,
+        isLargestShareHolder: document.getElementById('ihLargestShare').checked
+      });
+    } else if (provision === 'cb'){
+      r = calculateCohabitationMergerExclusionJS({
+        mergeDate: document.getElementById('cbMergeDate').value,
+        transferDate: transferAssets[idx].transferDate,
+        directAncestorAge60OrOlder: document.getElementById('cbAge60').checked,
+        severeIllnessException: document.getElementById('cbSevereIllness').checked
+      });
+    } else {
+      r = calculateMarriageMergerExclusionJS({
+        marriageDate: document.getElementById('mcMarriageDate').value,
+        transferDate: transferAssets[idx].transferDate
       });
     }
     const resultBox = document.getElementById('ohsResult');
@@ -2530,7 +2607,13 @@ function openOneHouseSpecialCaseModal_(idx){
           // 자체가 없다(일반 과세표준신고서로 비과세 신고) — formNo를 비워 oneHouseSpecialCase를
           // 아예 안 만든다(아래 분기). 상생임대주택(§155의3)은 별지83호의4서식이 전용서식으로
           // 확인됨.
-          mg: { label: '상생임대주택(소득세법시행령§155의3)', formNo: '소득세법 시행규칙 [별지 제83호의4서식]', formTitle: '상생임대주택에 대한 특례적용신고서' }
+          mg: { label: '상생임대주택(소득세법시행령§155의3)', formNo: '소득세법 시행규칙 [별지 제83호의4서식]', formTitle: '상생임대주택에 대한 특례적용신고서' },
+          // [2026.10.01 신규, 재검토103] §156의2⑪은 "제3항부터 제11항까지"(⑤ 대체주택특례 포함)
+          // 전부 같은 "조합원입주권 소유 1세대1주택 특례적용신고서"를 요구 — §156의3과 마찬가지로
+          // 별지83호의5서식 공유 확인(law.go.kr 비교조사). §155②③④⑤(상속주택·동거봉양·혼인합가,
+          // hr과 마찬가지로 hr/ih/cb/mc)는 전용신고서식 자체가 없음(일반 신고서로 비과세 신고).
+          ci: { label: '1주택+1조합원입주권 보유(소득세법시행령§156의2③④)', formNo: '소득세법 시행규칙 [별지 제83호의5서식]', formTitle: '조합원입주권 또는 분양권 소유자 1세대1주택 특례적용신고서' },
+          rp: { label: '재건축 등 사업기간 중 대체주택(소득세법시행령§156의2⑤)', formNo: '소득세법 시행규칙 [별지 제83호의5서식]', formTitle: '조합원입주권 또는 분양권 소유자 1세대1주택 특례적용신고서' }
         };
         const pf = provisionForms[provision] || {};
         if (pf.formNo){
