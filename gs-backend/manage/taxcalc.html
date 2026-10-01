@@ -4849,6 +4849,8 @@ function renderTransferPane(){
           '<option value="pr">공공매입임대주택 건설목적 토지양도 감면 사후관리(조특법§97의10③)</option>' +
           '<option value="mr">박물관등 이전 양도세 분할납부(조특법§83, 적용기한 만료 — 과거 거래용)</option>' +
           '<option value="fr">경영회생 지원 농지 매매 환급(조특법§70의2)</option>' +
+          '<option value="rfc">귀농주택 사후관리(소득세법시행령§155⑫)</option>' +
+          '<option value="lrc">장기임대주택·장기어린이집 거주주택 사후관리(소득세법시행령§155㉒)</option>' +
         '</select></div>' +
       '</div>' +
       '<div id="trSpecialCase-bt">' +
@@ -4950,6 +4952,35 @@ function renderTransferPane(){
         '</div>' +
         '<button type="button" class="taxcalc-run-btn" data-action="run-farmland-repurchase">환급 가능 여부 확인하기</button>' +
         '<div id="taxCalcFarmlandRepurchaseResult"></div>' +
+      '</div>' +
+      // [2026.10.01 신규, 재검토103] 귀농주택 사후관리(§155⑫) — 위 "특정주택 제외 판정"
+      // 모달(rf)로 비과세 판정을 받은 뒤, 귀농일부터 3년간 계속 영농(어)종사+거주 요건을
+      // 못 채우면 당초 비과세받은 세액상당액을 추징한다. 별도 과세기간(나중)에 벌어지는
+      // 사후판정이라 위 모달로는 다룰 수 없어 pr(공공매입임대주택 사후관리)과 같은 패턴으로
+      // 여기 둔다.
+      '<div id="trSpecialCase-rfc" style="display:none;">' +
+        '<div class="taxcalc-result-note" style="margin:6px 0;">정상 비과세 판정은 위 양도자산 카드의 "🔍 특정주택 제외 판정"(귀농주택)으로 받습니다. 이 도구는 귀농일부터 3년 요건 미충족시 추징 여부만 확인합니다</div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rfcFarming3Y"><label for="rfcFarming3Y">귀농일부터 계속하여 3년 이상 영농 또는 영어에 종사함</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rfcResided3Y"><label for="rfcResided3Y">그 3년 동안 귀농주택에 거주함</label></div>' +
+          '<div class="taxcalc-field"><label>당초 비과세받아 줄어든 세액(추징대상액)</label><input type="number" id="rfcOriginalTaxSaved" placeholder="원"></div>' +
+        '</div>' +
+        '<button type="button" class="taxcalc-run-btn" data-action="run-return-farm-house-clawback">사후관리(추징) 판정하기</button>' +
+        '<div id="taxCalcReturnFarmHouseClawbackResult"></div>' +
+      '</div>' +
+      // [2026.10.01 신규, 재검토103] 장기임대주택·장기어린이집 거주주택 사후관리(§155㉒) —
+      // 위 모달(lr)로 비과세 판정을 받은 뒤 임대기간요건(또는 운영기간요건)을 못 채우면
+      // [거주주택 양도 당시 장기임대주택으로 안 봤을 경우 세액-당초납부세액]을 추징한다.
+      '<div id="trSpecialCase-lrc" style="display:none;">' +
+        '<div class="taxcalc-result-note" style="margin:6px 0;">정상 비과세 판정은 위 양도자산 카드의 "🔍 특정주택 제외 판정"(장기임대주택·장기어린이집)으로 받습니다. 이 도구는 임대(운영)기간요건 미충족시 추징 여부만 확인합니다</div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrcMeetsPeriod"><label for="lrcMeetsPeriod">임대기간요건(또는 운영기간요건)을 충족함</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrcExempt">[위 체크 안했을 때만]<label for="lrcExempt">수용 등 부득이한 사유, 재건축·재개발·리모델링 기간 특례(§155㉒2호)에 해당</label></div>' +
+          '<div class="taxcalc-field"><label>장기임대주택으로 안 봤을 경우 납부했을 세액</label><input type="number" id="lrcTaxIfNotLongTerm" placeholder="원"></div>' +
+          '<div class="taxcalc-field"><label>거주주택 양도 당시 실제 납부한 세액</label><input type="number" id="lrcTaxPaid" placeholder="원"></div>' +
+        '</div>' +
+        '<button type="button" class="taxcalc-run-btn" data-action="run-rental-housing-residence-clawback">사후관리(추징) 판정하기</button>' +
+        '<div id="taxCalcRentalHousingResidenceClawbackResult"></div>' +
       '</div>' +
     '</div>' +
     '<div class="taxcalc-asset-head" style="margin-top:20px;"><b>서식·전자신고 — 양도소득세과세표준신고 및 자진납부계산서(C116300, 국세청 홈택스)</b></div>' +
@@ -5645,6 +5676,36 @@ function renderPublicRentalHousingLandResult(r){
     html += taxCalcResultRow('사후관리 판정', '해당없음(§97의10 적용대상 아님)', { total: true });
   } else {
     html += taxCalcResultRow('사후관리 판정', '추징 사유 없음 — 감면 유지', { total: true });
+  }
+  if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  html += '</div>';
+  box.innerHTML = html;
+}
+
+function renderReturnFarmHouseClawbackResult(r){
+  const box = document.getElementById('taxCalcReturnFarmHouseClawbackResult');
+  if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
+  let html = '<div class="taxcalc-result">';
+  if (r.추징대상){
+    html += taxCalcResultRow('사후관리 판정', '추징 대상(비과세 취소)', { total: true });
+    html += taxCalcResultRow('추징액', won(r.추징액));
+  } else {
+    html += taxCalcResultRow('사후관리 판정', '추징 사유 없음 — 비과세 유지', { total: true });
+  }
+  if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  html += '</div>';
+  box.innerHTML = html;
+}
+
+function renderRentalHousingResidenceClawbackResult(r){
+  const box = document.getElementById('taxCalcRentalHousingResidenceClawbackResult');
+  if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
+  let html = '<div class="taxcalc-result">';
+  if (r.추징대상){
+    html += taxCalcResultRow('사후관리 판정', '추징 대상(비과세 취소)', { total: true });
+    html += taxCalcResultRow('추징액', won(r.추징액));
+  } else {
+    html += taxCalcResultRow('사후관리 판정', '추징 사유 없음 — 비과세 유지', { total: true });
   }
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   html += '</div>';
@@ -12379,7 +12440,7 @@ document.querySelectorAll('#taxCalcTierTabs [data-tier]').forEach(function(tab){
 // 그대로 유지 — 카드를 다시 그리지 않고 표시만 전환).
 taxCalcView.addEventListener('change', function(e){
   if (e.target.id === 'trSpecialCaseType'){
-    ['bt', 'pr', 'mr', 'fr'].forEach(function(key){
+    ['bt', 'pr', 'mr', 'fr', 'rfc', 'lrc'].forEach(function(key){
       const el = document.getElementById('trSpecialCase-' + key);
       if (el) el.style.display = (key === e.target.value) ? '' : 'none';
     });
@@ -13040,6 +13101,19 @@ taxCalcView.addEventListener('click', function(e){
       originalReductionAmount: numVal(document.getElementById('prOriginalReduction').value) || 0
     };
     renderPublicRentalHousingLandResult(calculatePublicRentalHousingLandReductionJS(input));
+  } else if (action === 'run-return-farm-house-clawback'){
+    renderReturnFarmHouseClawbackResult(calculateReturnFarmHouseClawbackJS({
+      continuedFarmingThreeYears: document.getElementById('rfcFarming3Y').checked,
+      residedDuringThreeYears: document.getElementById('rfcResided3Y').checked,
+      originalTaxSaved: numVal(document.getElementById('rfcOriginalTaxSaved').value) || 0
+    }));
+  } else if (action === 'run-rental-housing-residence-clawback'){
+    renderRentalHousingResidenceClawbackResult(calculateRentalHousingResidenceClawbackJS({
+      meetsRentalOrChildcarePeriodRequirement: document.getElementById('lrcMeetsPeriod').checked,
+      hasExemptReason: document.getElementById('lrcExempt').checked,
+      taxIfNotLongTerm: numVal(document.getElementById('lrcTaxIfNotLongTerm').value) || 0,
+      taxPaidAtTransfer: numVal(document.getElementById('lrcTaxPaid').value) || 0
+    }));
   } else if (action === 'run-acquisition-tax'){
     // [2026.09.23 재구성] 취득인이 여러 명(공동취득)일 수 있다 — 세율 자체가 취득인 개인
     // 사정(다주택수·생애최초·법인여부·특수관계 등)에 좌우되므로 증여자와 같은 부류로 각자

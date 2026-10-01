@@ -5461,6 +5461,37 @@
     };
   };
 
+  // 귀농주택 사후관리(시행령§155⑫) — [2026.10.01 신규, 재검토103] 귀농일부터 계속하여 3년 이상
+  // 영농(어)에 종사하지 않거나 그 기간 거주하지 않으면 당초 비과세 취소·세액상당액 추징(상속
+  // 발생시 피상속인·상속인 영농기간 통산은 UI에서 "계속 종사함" 체크로 포괄 처리).
+  window.calculateReturnFarmHouseClawbackJS = function (p) {
+    p = p || {};
+    if (p.continuedFarmingThreeYears && p.residedDuringThreeYears) {
+      return { 추징대상: false, 안내: '귀농일부터 3년 이상 계속 영농(어)에 종사하고 그 기간 동안 거주해 시행령§155⑫의 사후관리 위반이 아닙니다.' };
+    }
+    const originalTaxSaved = Number(p.originalTaxSaved) || 0;
+    return {
+      추징대상: true, 추징액: originalTaxSaved,
+      안내: '귀농일부터 3년 이상 계속 영농(어)에 종사하지 않았거나 그 기간 거주하지 않아(시행령§155⑫) 당초 비과세받았던 세액상당액을 양도소득세로 신고·납부해야 합니다(그 기간 중 상속이 개시된 경우 피상속인과 상속인의 영농·영어기간을 통산합니다).'
+    };
+  };
+
+  // 장기임대주택·장기어린이집 거주주택 사후관리(시행령§155㉒) — [2026.10.01 신규, 재검토103]
+  // 임대(운영)기간요건을 못 채우면 [거주주택 양도 당시 장기임대주택으로 안 봤을 경우 납부했을
+  // 세액 - 당초 납부한 세액]을 추징. 수용 등 부득이한 사유·재건축재개발·리모델링 기간 특례
+  // (㉒2호가~다목)는 요건을 갖춘 것으로 보아 추징 예외.
+  window.calculateRentalHousingResidenceClawbackJS = function (p) {
+    p = p || {};
+    if (p.meetsRentalOrChildcarePeriodRequirement || p.hasExemptReason) {
+      return { 추징대상: false, 안내: p.hasExemptReason ? '수용 등 부득이한 사유, 재건축·재개발 또는 리모델링 기간 특례(시행령§155㉒2호)에 해당해 임대(운영)기간요건을 갖춘 것으로 보아 사후관리 위반이 아닙니다.' : '임대기간요건(또는 운영기간요건)을 충족해 시행령§155㉒의 사후관리 위반이 아닙니다.' };
+    }
+    const clawback = Math.max(0, (Number(p.taxIfNotLongTerm) || 0) - (Number(p.taxPaidAtTransfer) || 0));
+    return {
+      추징대상: true, 추징액: clawback,
+      안내: '임대기간요건(또는 운영기간요건)을 충족하지 못해(시행령§155㉒) [거주주택 양도 당시 장기임대주택·장기어린이집으로 보지 않았을 경우 납부했을 세액 - 당초 납부한 세액]을 그 사유발생일이 속하는 달의 말일부터 2개월 이내에 양도소득세로 신고·납부해야 합니다.'
+    };
+  };
+
   window.calculatePresaleRightOneHouseExclusionJS = function (p) {
     p = p || {};
     const formerHouseAcquisitionDate = p.formerHouseAcquisitionDate;
