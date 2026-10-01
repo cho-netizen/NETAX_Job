@@ -5201,6 +5201,73 @@
     };
   };
 
+  // 주택과 분양권을 소유한 경우 1세대1주택의 특례 (소득세법§89②단서, 시행령§156의3) — 1주택(종전주택)을
+  // 소유한 1세대가 종전주택 양도 전에 분양권을 취득해 일시적으로 1주택+1분양권이 된 경우, 종전주택
+  // 양도분을 1세대1주택 비과세(§89①3호) 판정 대상으로 본다. [2021.2.17 본조신설] — 분양권의 "주택수
+  // 포함" 자체가 2021.1.1 이후 취득분부터(2020.12.29 개정 부칙 제4조) 적용되므로, 그 전에 취득한
+  // 분양권은 애초에 주택수에 포함되지 않아 이 조문을 거칠 필요 없이 종전주택이 그냥 1주택이다.
+  // ②항(원칙): 종전주택 취득일부터 1년 이상 지난 후 분양권을 취득하고(§154①1호·2호가목·3호— 임차인
+  // 거주, 수용·협의매수, 해외이주 등 예외사유 해당시 이 요건 자체를 적용 안 함), 그 분양권 취득일부터
+  // 3년 이내에 종전주택을 양도하면(3년 초과도 재정경제부령으로 정하는 부득이한 사유가 있으면 포함)
+  // 비과세. ③항(3년 초과시): 위 "1년 경과 후 취득" 요건은 그대로 두고, 추가로 (1) 분양권으로 취득하는
+  // 주택이 완성된 후 3년 이내에 세대전원이 이사해 1년 이상 계속 거주할 것, (2) 그 주택이 완성되기
+  // 전이거나 완성된 후 3년 이내에 종전주택을 양도할 것 — 둘 다 충족해야 비과세. 조합원입주권 특례
+  // (§156의2, calculateReconstructionRightsOneHouseExclusionJS류)와 조문 구조가 거의 동일하나, 분양권은
+  // (a) 분양권 자체의 양도에는 비과세 조항이 없고(§89①4호는 조합원입주권 전용, 분양권은 §104①로 항상
+  // 과세), (b) 재건축기간 대체주택 특례가 없다는 점이 다르다. 세액은 계산하지 않고 적용 가능 여부만
+  // 판정하며, "부득이한 사유"(②단서 괄호, 시행규칙 위임 — 구체적 목록은 이번 조사에서 원문 미확인)는
+  // 사용자가 직접 해당 여부를 체크하도록 한다(지어내지 않음).
+  window.calculatePresaleRightOneHouseExclusionJS = function (p) {
+    p = p || {};
+    const formerHouseAcquisitionDate = p.formerHouseAcquisitionDate;
+    const presaleRightAcquisitionDate = p.presaleRightAcquisitionDate;
+    const formerHouseTransferDate = p.formerHouseTransferDate;
+    if (!formerHouseAcquisitionDate || !presaleRightAcquisitionDate || !formerHouseTransferDate) {
+      return { error: '종전주택 취득일·분양권 취득일·종전주택 양도일이 모두 필요합니다.' };
+    }
+    const presaleRightAcqTime = new Date(presaleRightAcquisitionDate).getTime();
+    const cutoverTime = new Date('2021-01-01').getTime();
+    if (presaleRightAcqTime < cutoverTime) {
+      return {
+        적용여부: true, 경과규정적용: true,
+        안내: '분양권을 2021.1.1 전에 취득해(2020.12.29 개정 법률 부칙 제4조) 소득세법§89②(분양권의 주택수 포함)가 애초에 적용되지 않습니다 — 분양권 없이 종전주택 1채만 보유한 것으로 보아 일반적인 1세대1주택 비과세(§89①3호) 요건만 충족하면 됩니다.'
+      };
+    }
+    const addYears_ = function (dateStr, n) { const d = new Date(dateStr); d.setFullYear(d.getFullYear() + n); return d.getTime(); };
+    const formerHouseAcqTime = new Date(formerHouseAcquisitionDate).getTime();
+    const formerHouseTransferTime = new Date(formerHouseTransferDate).getTime();
+    if (!p.meetsHoldingPeriodException && presaleRightAcqTime < addYears_(formerHouseAcquisitionDate, 1)) {
+      return {
+        적용여부: false,
+        안내: '종전주택을 취득한 날부터 1년이 지나기 전에 분양권을 취득해 시행령§156의3②의 요건을 충족하지 못합니다(소득세법시행령§154①1호·2호가목·3호의 예외사유에 해당하면 이 요건 자체가 면제되니, 해당되면 meetsHoldingPeriodException을 체크하세요).'
+      };
+    }
+    const withinThreeYears = formerHouseTransferTime <= addYears_(presaleRightAcquisitionDate, 3);
+    if (withinThreeYears || p.unableToTransferWithinThreeYearsReason) {
+      return {
+        적용여부: true,
+        안내: '분양권 취득일부터 3년 이내에 종전주택을 양도' + (withinThreeYears ? '' : '하지 못했으나 재정경제부령으로 정하는 부득이한 사유에 해당') + '하여, 시행령§156의3②에 따라 종전주택을 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다.'
+      };
+    }
+    // ③항 — 3년을 초과해 양도하는 경우: 완성 후 3년 이내 전입+1년 이상 계속거주 AND 완성 전이거나
+    // 완성 후 3년 이내 양도, 둘 다 충족해야 함.
+    if (!p.newHousingCompletionDate) {
+      return { 적용여부: false, 안내: '분양권 취득일부터 3년을 초과해 종전주택을 양도하는 경우에는 시행령§156의3③ 요건(신축주택 완성 후 3년 이내 세대전원 전입+1년 이상 계속거주, 완성 전이거나 완성 후 3년 이내 종전주택 양도) 충족 여부를 판정해야 하므로, 신축주택 완성일을 입력하세요.' };
+    }
+    const completionTime = new Date(p.newHousingCompletionDate).getTime();
+    const transferredBeforeOrWithinThreeYearsOfCompletion = formerHouseTransferTime <= completionTime || formerHouseTransferTime <= addYears_(p.newHousingCompletionDate, 3);
+    if (!transferredBeforeOrWithinThreeYearsOfCompletion) {
+      return { 적용여부: false, 안내: '신축주택이 완성되기 전이거나 완성된 후 3년 이내에 종전주택을 양도해야 하는데(시행령§156의3③2호), 그 기한을 넘겨 양도해 적용대상이 아닙니다.' };
+    }
+    if (!p.movedInWithinThreeYearsOfCompletion || !p.residedOneYearOrMore) {
+      return { 적용여부: false, 안내: '신축주택이 완성된 후 3년 이내에 세대전원이 이사하여 1년 이상 계속 거주해야 하는데(시행령§156의3③1호), 이 요건을 충족하지 못해(또는 아직 확정되지 않아) 적용대상이 아닙니다. 나중에 요건을 충족하지 못하게 되면 그 사유발생일이 속하는 달의 말일부터 2개월 이내에 비과세받지 않았을 경우의 세액을 신고·납부해야 합니다(시행령§156의3⑩).' };
+    }
+    return {
+      적용여부: true,
+      안내: '분양권 취득일부터 3년을 초과해 종전주택을 양도했지만, 신축주택 완성 후 3년 이내 세대전원 전입+1년 이상 계속거주 및 완성 전(또는 완성 후 3년 이내) 종전주택 양도 요건을 모두 충족해 시행령§156의3③에 따라 비과세(§89①3호) 판정을 적용합니다.'
+    };
+  };
+
   // 전환사채등의 주식전환등에 따른 이익의 증여 (상증세법§40, 시행령§30) — 4가지 세부 케이스로 나뉜다.
   // acquisition(법§40①1호, 취득시 — 특수관계인 저가취득/최대주주등 초과배정저가취득/그 특수관계인 초과배정
   //   저가취득): 이익 = 전환사채등의 시가 - 인수취득가액. 게이트: min(시가30%, 1억).

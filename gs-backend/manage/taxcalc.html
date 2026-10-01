@@ -2313,6 +2313,7 @@ function openOneHouseSpecialCaseModal_(idx){
           '<option value="u9">수도권 밖 준공후미분양주택(조특법§98의9, 2024.1.10~2026.12.31 취득)</option>' +
           '<option value="pd">인구감소지역 주택(조특법§71의2, 2024.1.4~2026.12.31 취득)</option>' +
           '<option value="rh">농어촌주택등(조특법§99의4, 2003.8.1~2028.12.31 취득)</option>' +
+          '<option value="pr">1주택+1분양권 보유(소득세법시행령§156의3, 2021.2.17~)</option>' +
         '</select></div>' +
         '<div id="ohsU9" class="taxcalc-grid">' +
           '<div class="taxcalc-field"><label>준공후미분양주택 취득일</label><input type="date" id="u9AcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
@@ -2338,6 +2339,15 @@ function openOneHouseSpecialCaseModal_(idx){
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="rhClawback"><label for="rhClawback">특례 적용 후 농어촌주택등을 3년 이상 보유하지 않게 된 사후관리 위반이 발생함</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="rhExempted"><label for="rhExempted">[사후관리 위반일 때만] 수용 등 부득이한 사유에 해당(추징 예외)</label></div>' +
         '</div>' +
+        '<div id="ohsPr" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 "취득일"·"양도일" 입력칸 값을 그대로 씁니다.</div>' +
+          '<div class="taxcalc-field"><label>분양권 취득일</label><input type="date" id="prAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="prHoldingException"><label for="prHoldingException">종전주택 취득 후 1년 경과 요건의 예외사유(시행령§154①1호·2호가목·3호 — 임차인거주주택 취득, 수용·협의매수, 해외이주 등)에 해당</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="prLateTransferReason">[분양권취득 3년 초과 양도일 때만] <label for="prLateTransferReason">3년 이내 양도하지 못한 재정경제부령상 부득이한 사유에 해당</label></div>' +
+          '<div class="taxcalc-field"><label>신축주택 완성(예정)일</label><input type="date" id="prCompletionDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">분양권취득일로부터 3년 초과해 종전주택을 양도할 때만 필요</span></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="prMovedIn"><label for="prMovedIn">[3년초과 양도일 때만] 신축주택 완성 후 3년 이내 세대전원 이사(전입)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="prResided1Y"><label for="prResided1Y">[3년초과 양도일 때만] 전입 후 1년 이상 계속 거주</label></div>' +
+        '</div>' +
         '<button type="button" class="taxcalc-run-btn" id="ohsRunBtn" style="margin-top:8px;">적용 가능 여부 판정하기</button>' +
         '<div id="ohsResult"></div>' +
       '</div>' +
@@ -2350,7 +2360,7 @@ function openOneHouseSpecialCaseModal_(idx){
   enhanceDateInputs(overlay);
   const provisionSel = overlay.querySelector('#ohsProvision');
   provisionSel.addEventListener('change', function(){
-    ['ohsU9', 'ohsPd', 'ohsRh'].forEach(function(id){
+    ['ohsU9', 'ohsPd', 'ohsRh', 'ohsPr'].forEach(function(id){
       overlay.querySelector('#' + id).style.display = (id === 'ohs' + provisionSel.value.charAt(0).toUpperCase() + provisionSel.value.slice(1)) ? '' : 'none';
     });
   });
@@ -2371,7 +2381,7 @@ function openOneHouseSpecialCaseModal_(idx){
         wasOneOrFewerBeforeAcquisition: document.getElementById('pdWasOneOrFewer').checked,
         meetsAreaAndPriceRequirements: document.getElementById('pdAreaPriceOk').checked
       });
-    } else {
+    } else if (provision === 'rh'){
       r = calculateRuralHouseOneHouseExclusionJS({
         houseType: document.getElementById('rhHouseType').value,
         acquisitionDate: document.getElementById('rhAcquisitionDate').value,
@@ -2381,6 +2391,17 @@ function openOneHouseSpecialCaseModal_(idx){
         isPendingHoldingPeriod: document.getElementById('rhPendingHolding').checked,
         triggerClawback: document.getElementById('rhClawback').checked,
         isExemptedReason: document.getElementById('rhExempted').checked
+      });
+    } else {
+      r = calculatePresaleRightOneHouseExclusionJS({
+        formerHouseAcquisitionDate: transferAssets[idx].acquisitionDate,
+        formerHouseTransferDate: transferAssets[idx].transferDate,
+        presaleRightAcquisitionDate: document.getElementById('prAcquisitionDate').value,
+        meetsHoldingPeriodException: document.getElementById('prHoldingException').checked,
+        unableToTransferWithinThreeYearsReason: document.getElementById('prLateTransferReason').checked,
+        newHousingCompletionDate: document.getElementById('prCompletionDate').value,
+        movedInWithinThreeYearsOfCompletion: document.getElementById('prMovedIn').checked,
+        residedOneYearOrMore: document.getElementById('prResided1Y').checked
       });
     }
     const resultBox = document.getElementById('ohsResult');
@@ -2399,13 +2420,17 @@ function openOneHouseSpecialCaseModal_(idx){
         transferAssets[idx].isOneHouseOneFamily = true;
         // [2026.09.30 정정, 재검토98] 재검토97에서 "별지83호서식 계열"이라고 적었던 게 틀렸다 —
         // law.go.kr 원문 대조 결과 별지83호는 완전히 다른 조항(§155⑬ 상속·이농·귀농주택)용이고,
-        // 이 판정모달(u9/pd/rh)이 실제로 쓰는 서식은 (1) 농어촌주택등(rh, 고향주택 포함) →
+        // 이 판정모달(u9/pd/rh/pr)이 실제로 쓰는 서식은 (1) 농어촌주택등(rh, 고향주택 포함) →
         // 조특법 시행규칙 별지 제63호의4서식, (2) 인구감소지역주택(pd)+수도권밖준공후미분양(u9)
-        // → 조특법 시행규칙 별지 제52호의3서식(두 조문이 원래 하나의 통합서식) — 총 2개뿐이다.
+        // → 조특법 시행규칙 별지 제52호의3서식(두 조문이 원래 하나의 통합서식), (3) 1주택+1분양권
+        // (pr, 재검토101) → 소득세법 시행규칙 별지 제83호의5서식(조합원입주권과 같은 서식 —
+        // reconstructionRightsPrintPageHtml_이 쓰는 서식과 동일, ⑥⑦란에서 조합원입주권/분양권을
+        // 체크로 구분) — 총 3종.
         const provisionForms = {
           u9: { label: '수도권 밖 준공후미분양주택(조특법§98의9)', formNo: '조세특례제한법 시행규칙 [별지 제52호의3서식]', formTitle: '1세대1주택 과세특례(인구감소지역주택, 준공후미분양주택 취득자) 신고서' },
           pd: { label: '인구감소지역 주택(조특법§71의2)', formNo: '조세특례제한법 시행규칙 [별지 제52호의3서식]', formTitle: '1세대1주택 과세특례(인구감소지역주택, 준공후미분양주택 취득자) 신고서' },
-          rh: { label: '농어촌주택등(조특법§99의4)', formNo: '조세특례제한법 시행규칙 [별지 제63호의4서식]', formTitle: '농어촌주택 등 취득자에 대한 과세특례신고서' }
+          rh: { label: '농어촌주택등(조특법§99의4)', formNo: '조세특례제한법 시행규칙 [별지 제63호의4서식]', formTitle: '농어촌주택 등 취득자에 대한 과세특례신고서' },
+          pr: { label: '1주택+1분양권 보유(소득세법시행령§156의3)', formNo: '소득세법 시행규칙 [별지 제83호의5서식]', formTitle: '조합원입주권 또는 분양권 소유자 1세대1주택 특례적용신고서' }
         };
         const pf = provisionForms[provision] || {};
         transferAssets[idx].oneHouseSpecialCase = {
@@ -2413,6 +2438,7 @@ function openOneHouseSpecialCaseModal_(idx){
           formNo: pf.formNo || '', formTitle: pf.formTitle || '',
           acquisitionDate: document.getElementById(provision + 'AcquisitionDate') ? document.getElementById(provision + 'AcquisitionDate').value : '',
           houseType: provision === 'rh' ? (document.getElementById('rhHouseType').value === 'hometown' ? '고향주택' : '농어촌주택') : '',
+          newHousingCompletionDate: provision === 'pr' ? document.getElementById('prCompletionDate').value : '',
           안내: r.안내 || ''
         };
         close();
@@ -7322,6 +7348,7 @@ function oneHouseSpecialCasePrintPageHtml_(asset){
       pfRow_(++n, '적용 특례', c.provisionLabel) +
       (c.houseType ? pfRow_(++n, '구분', c.houseType) : '') +
       (c.acquisitionDate ? pfRow_(++n, '특례주택 취득일', c.acquisitionDate) : '') +
+      (c.newHousingCompletionDate ? pfRow_(++n, '신축주택 완성(예정)일', c.newHousingCompletionDate) : '') +
       pfRow_(++n, '판정 결과', '적용 가능(주택수 제외)') +
     '</table>' +
     '<div class="pf-note">이 서식은 NETAX "특정주택 제외 판정" 도구의 판정 결과를 기준으로 자동 생성되었습니다 — ' + escapeHtml(c.안내 || '') + ' 서식에 있는 신청인 주소·전화번호·소재지·면적·기준시가 등 세부 항목은 아직 자동으로 안 채워지니 직접 보완하세요.</div>' +
