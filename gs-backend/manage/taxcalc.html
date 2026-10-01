@@ -1649,6 +1649,123 @@ function openSrAssetHelperModal_(){
     showToast('증여재산가액 합계(' + won(total) + ')를 반영했습니다.', 'success');
   });
 }
+// [2026.10.01 신규, 재검토101] 일감떼어주기(jt) 부표3(B)·부표4(B-1) — 수혜법인의 부문별
+// 영업이익명세서. 공식 서식은 매출원가 5호·판관비 15호로 항목이 고정돼 있으나, 정확한
+// 법정 세부항목명을 재검증 못 해 임의로 지어내는 위험을 피하기 위해 "항목명 직접입력 +
+// 전체금액/부문금액"의 반복입력표로 구현한다 — 항목 개수는 자유, 합계만 정확하면 세액계산
+// (사업기회로 인한 수혜법인 이익)에는 지장이 없다. 3개년(개시사업연도+그 다음 2년) 반복.
+let jtSegmentYears_ = [{ costs: [{}], expenses: [{}] }, { costs: [{}], expenses: [{}] }, { costs: [{}], expenses: [{}] }];
+function jtSegmentYearOperatingProfit_(year){
+  const costSum = (year.costs || []).reduce(function(s, r){ return s + numVal(r.segment); }, 0);
+  const expenseSum = (year.expenses || []).reduce(function(s, r){ return s + numVal(r.segment); }, 0);
+  const grossProfit = numVal(year.segmentSales) - costSum;
+  return grossProfit - expenseSum;
+}
+function renderJtSegmentRowGroup_(yearIdx, groupKey, groupLabel){
+  const rows = jtSegmentYears_[yearIdx][groupKey];
+  return '<div class="taxcalc-asset-head" style="margin-top:6px;"><span style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
+      '<b>' + groupLabel + '</b>' +
+      '<button type="button" class="taxcalc-add-asset-inline" data-action="add-jt-seg-row" data-year="' + yearIdx + '" data-group="' + groupKey + '">+ 항목 추가</button>' +
+    '</span></div>' +
+    rows.map(function(row, i){
+      return '<div class="taxcalc-grid" data-jtseg-year="' + yearIdx + '" data-jtseg-group="' + groupKey + '" data-jtseg-idx="' + i + '" style="padding-top:4px;">' +
+        '<div class="taxcalc-field"><label>항목명</label><input type="text" data-jtsegfield="label" value="' + (row.label || '').replace(/"/g, '&quot;') + '"></div>' +
+        '<div class="taxcalc-field"><label>전체금액</label><input type="number" data-jtsegfield="total" placeholder="원" value="' + (row.total || '') + '"></div>' +
+        '<div class="taxcalc-field"><label>부문(사업기회 제공분) 금액</label><input type="number" data-jtsegfield="segment" placeholder="원" value="' + (row.segment || '') + '"></div>' +
+        (i > 0 ? '<button type="button" class="taxcalc-del-asset" data-action="del-jt-seg-row" data-year="' + yearIdx + '" data-group="' + groupKey + '" data-idx="' + i + '">✕ 삭제</button>' : '') +
+      '</div>';
+    }).join('');
+}
+function renderJtSegmentYear_(yearIdx){
+  const year = jtSegmentYears_[yearIdx];
+  const profit = jtSegmentYearOperatingProfit_(year);
+  return '<div class="taxcalc-asset" style="margin-top:10px; border:1px solid var(--line); border-radius:8px; padding:8px;">' +
+    '<div class="taxcalc-asset-head"><b>' + (yearIdx + 1) + '년차</b></div>' +
+    '<div class="taxcalc-grid" data-jtseg-sales-year="' + yearIdx + '">' +
+      '<div class="taxcalc-field"><label>총매출액</label><input type="number" data-jtsegsales="totalSales" placeholder="원" value="' + (year.totalSales || '') + '"></div>' +
+      '<div class="taxcalc-field"><label>부문(사업기회 제공분) 매출액</label><input type="number" data-jtsegsales="segmentSales" placeholder="원" value="' + (year.segmentSales || '') + '"></div>' +
+    '</div>' +
+    renderJtSegmentRowGroup_(yearIdx, 'costs', '매출원가 항목') +
+    renderJtSegmentRowGroup_(yearIdx, 'expenses', '판매관리비 항목') +
+    '<div class="taxcalc-result-note" data-jtseg-profit-year="' + yearIdx + '" style="margin-top:6px;">부문 영업이익(자동계산): ' + won(profit) + '</div>' +
+  '</div>';
+}
+function openJtSegmentHelperModal_(){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.display = 'flex';
+  overlay.innerHTML =
+    '<div class="modal-panel" style="width:min(820px, 96vw); max-height:88vh; overflow:auto;">' +
+      '<div class="modal-head"><span>부문별 영업이익 계산(3개년)</span><span class="modal-close" id="btnCloseJtSeg">✕</span></div>' +
+      '<div class="modal-body">' +
+        '<div class="taxcalc-result-note" style="margin-bottom:8px;">매출원가·판매관리비는 항목명을 직접 입력하세요(공식 서식은 매출원가 5호·판관비 15호로 세분되어 있으니, 해당 항목이 있으면 같은 이름으로 나눠 입력하는 게 좋습니다). 3개년 부문 영업이익 합계가 "사업기회로 인한 수혜법인 이익"에 반영되고, 여기 입력한 내역은 부표3(B)·부표4(B-1) 인쇄에도 그대로 쓰입니다.</div>' +
+        '<div id="jtSegYears">' + [0,1,2].map(renderJtSegmentYear_).join('') + '</div>' +
+        '<button type="button" class="taxcalc-run-btn" id="jtSegRunBtn" style="margin-top:8px;">3개년 합계 계산하기</button>' +
+        '<div id="jtSegResult"></div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  function close(){ overlay.remove(); }
+  overlay.querySelector('#btnCloseJtSeg').onclick = close;
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+  function rerenderYear(yearIdx){
+    overlay.querySelector('[data-jtseg-sales-year="' + yearIdx + '"]').closest('.taxcalc-asset').outerHTML = renderJtSegmentYear_(yearIdx);
+    wireAll();
+    enhanceNumberInputs(overlay);
+  }
+  function wireAll(){
+    overlay.querySelectorAll('[data-jtsegsales]').forEach(function(el){
+      el.addEventListener('input', function(){
+        const yearIdx = numVal(el.closest('[data-jtseg-sales-year]').dataset.jtsegSalesYear);
+        jtSegmentYears_[yearIdx][el.dataset.jtsegsales] = el.value;
+        updateProfitNote(yearIdx);
+      });
+    });
+    overlay.querySelectorAll('[data-jtsegfield]').forEach(function(el){
+      el.addEventListener('input', function(){
+        const cell = el.closest('[data-jtseg-year]');
+        const yearIdx = numVal(cell.dataset.jtsegYear), group = cell.dataset.jtsegGroup, idx = numVal(cell.dataset.jtsegIdx);
+        jtSegmentYears_[yearIdx][group][idx][el.dataset.jtsegfield] = el.value;
+        updateProfitNote(yearIdx);
+      });
+    });
+    overlay.querySelectorAll('[data-action="add-jt-seg-row"]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        const yearIdx = numVal(btn.dataset.year), group = btn.dataset.group;
+        jtSegmentYears_[yearIdx][group].push({});
+        rerenderYear(yearIdx);
+      });
+    });
+    overlay.querySelectorAll('[data-action="del-jt-seg-row"]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        const yearIdx = numVal(btn.dataset.year), group = btn.dataset.group, idx = numVal(btn.dataset.idx);
+        jtSegmentYears_[yearIdx][group].splice(idx, 1);
+        rerenderYear(yearIdx);
+      });
+    });
+  }
+  function updateProfitNote(yearIdx){
+    const note = overlay.querySelector('[data-jtseg-profit-year="' + yearIdx + '"]');
+    if (note) note.textContent = '부문 영업이익(자동계산): ' + won(jtSegmentYearOperatingProfit_(jtSegmentYears_[yearIdx]));
+  }
+  wireAll();
+  enhanceNumberInputs(overlay);
+  overlay.querySelector('#jtSegRunBtn').addEventListener('click', function(){
+    const total = jtSegmentYears_.reduce(function(s, year){ return s + jtSegmentYearOperatingProfit_(year); }, 0);
+    const resultBox = document.getElementById('jtSegResult');
+    let html = '<div class="taxcalc-result" style="margin-top:10px;">';
+    html += taxCalcResultRow('3개년 부문 영업이익 합계', won(total), { total: true });
+    html += '<button type="button" class="taxcalc-run-btn" id="jtSegApplyBtn" style="margin-top:8px;">위 계산결과 반영하기</button>';
+    html += '</div>';
+    resultBox.innerHTML = html;
+    resultBox.querySelector('#jtSegApplyBtn').addEventListener('click', function(){
+      const el = document.getElementById('jtProfit');
+      if (el) el.value = total;
+      close();
+      showToast('사업기회로 인한 수혜법인 이익(' + won(total) + ')을 반영했습니다.', 'success');
+    });
+  });
+}
 // [2026.09.30 신규, 재검토99] 일감몰아주기(jm)·일감떼어주기(jt) 공통 — 지배주주+친족의 직접·
 // 간접 주식보유 내역. 부표1(계산명세Ⅰ)의 "나.수혜법인 지배주주" 직접보유표, 부표2(간접보유비율
 // 산정)의 1~3차 출자법인 체인을 한 화면에서 입력받는다. target별로 따로 보존(jm/jt 별개 신고).
@@ -9143,6 +9260,7 @@ function renderGiftPane(){
           '<option value="initial">개시사업연도(잠정)</option><option value="settlement">정산사업연도(2년 경과, 확정)</option>' +
         '</select></div>' +
         '<div class="taxcalc-field"><label>사업기회로 인한 수혜법인 이익</label><input type="number" id="jtProfit" placeholder="원"><span class="taxcalc-field-help">개시: 해당연도분 / 정산: 누적 합계</span></div>' +
+        '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-jt-segment-helper">🧮 부문별 매출·비용 내역으로 계산(3개년)</button></div>' +
         '<div class="taxcalc-field"><label>지배주주+친족 주식보유비율</label><input type="number" step="0.01" id="jtShareRatio" placeholder="%"><span class="taxcalc-field-help">30% 이상이어야 과세</span></div>' +
         '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-shareholding-helper" data-target="jt">🧮 주주별 직접·간접보유 내역으로 계산</button></div>' +
         '<div class="taxcalc-field"><label>법인세 납부세액 중 상당액</label><input type="number" id="jtCorporateTax" placeholder="원"><span class="taxcalc-field-help">직접 입력시 아래 자동계산값보다 우선 — 개시: 해당연도분 / 정산: 누적 합계, 비우면 자동계산</span></div>' +
@@ -10346,11 +10464,10 @@ function jtPrintFormPageHtml_(){
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
   '</div>' +
-  jtAttach1PrintPageHtml_() + jtAttach2PrintPageHtml_();
+  jtAttach1PrintPageHtml_() + jtAttach2PrintPageHtml_() + jtAttach3PrintPageHtml_() + jtAttach4PrintPageHtml_();
 }
 // [2026.09.30 신규, 재검토99] 일감떼어주기(A/A-1 부표) — jm과 같은 "주주별 직접·간접보유
-// 내역" 도구(shareholdingRows_.jt)를 공유해서 채운다. B/B-1(3개년 부문별 손익계산서)은 별도의
-// 훨씬 큰 반복입력(매출원가 5항목·판관비 15항목×3개년)이 필요해 이번 라운드엔 포함하지 않았다.
+// 내역" 도구(shareholdingRows_.jt)를 공유해서 채운다.
 function jtAttach1PrintPageHtml_(){
   const rows = (shareholdingRows_.jt || []).filter(function(row){ return numVal(row.directRatio) > 0; });
   if (!rows.length) return '';
@@ -10386,6 +10503,57 @@ function jtAttach2PrintPageHtml_(){
     '</table>' +
     '<div class="pf-note">이 서식은 NETAX "주주별 직접·간접보유 내역" 도구의 입력값을 기준으로 자동 생성되었습니다.</div>' +
   '</div>';
+}
+// [2026.10.01 신규, 재검토101] 일감떼어주기 부표3(B)·부표4(B-1) — "부문별 영업이익 계산"
+// 도구(jtSegmentYears_)를 공유해서 채운다. 매출원가·판관비는 사용자가 직접 입력한 항목명을
+// 그대로 쓴다(공식 세부항목명을 확정검증 못 해 임의로 지어내지 않기 위함).
+function jtAttach3PrintPageHtml_(){
+  const years = jtSegmentYears_ || [];
+  if (!years.some(function(y){ return numVal(y.totalSales) > 0 || numVal(y.segmentSales) > 0; })) return '';
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의4서식 부표3(B)]</div>' +
+    '<div class="pf-title">사업부문별 영업손익 계산서(요약)</div>' +
+    '<table class="pf-table">' +
+      '<tr><th>구분</th><th>총매출액</th><th>부문(사업기회 제공분) 매출액</th><th>매출원가(부문)</th><th>판매관리비(부문)</th><th>부문 영업이익</th></tr>' +
+      years.map(function(y, i){
+        const costSum = (y.costs || []).reduce(function(s, r){ return s + numVal(r.segment); }, 0);
+        const expenseSum = (y.expenses || []).reduce(function(s, r){ return s + numVal(r.segment); }, 0);
+        return '<tr><td>' + (i + 1) + '년차</td>' +
+          '<td class="pf-right">' + won(numVal(y.totalSales)) + '</td>' +
+          '<td class="pf-right">' + won(numVal(y.segmentSales)) + '</td>' +
+          '<td class="pf-right">' + won(costSum) + '</td>' +
+          '<td class="pf-right">' + won(expenseSum) + '</td>' +
+          '<td class="pf-right">' + won(jtSegmentYearOperatingProfit_(y)) + '</td></tr>';
+      }).join('') +
+      '<tr><td>3개년 합계</td><td></td><td></td><td></td><td></td><td class="pf-right">' +
+        won(years.reduce(function(s, y){ return s + jtSegmentYearOperatingProfit_(y); }, 0)) + '</td></tr>' +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX "부문별 매출·비용 내역으로 계산(3개년)" 도구의 입력값을 기준으로 자동 생성되었습니다. 매출원가·판관비 세부항목은 부표4(B-1)에 표시됩니다.</div>' +
+  '</div>';
+}
+function jtAttach4PrintPageHtml_(){
+  const years = jtSegmentYears_ || [];
+  if (!years.some(function(y){ return (y.costs || []).some(function(r){ return r.label; }) || (y.expenses || []).some(function(r){ return r.label; }); })) return '';
+  function itemRows(label, items){
+    return items.filter(function(r){ return r.label; }).map(function(r){
+      return '<tr><td>' + label + '</td><td>' + escapeHtml(r.label || '') + '</td>' +
+        '<td class="pf-right">' + won(numVal(r.total)) + '</td><td class="pf-right">' + won(numVal(r.segment)) + '</td></tr>';
+    }).join('');
+  }
+  return years.map(function(y, i){
+    const hasItems = (y.costs || []).some(function(r){ return r.label; }) || (y.expenses || []).some(function(r){ return r.label; });
+    if (!hasItems) return '';
+    return '<div class="pf-page">' +
+      '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의4서식 부표4(B-1)]</div>' +
+      '<div class="pf-title">사업부문별 영업손익 계산서(세부내역) — ' + (i + 1) + '년차</div>' +
+      '<table class="pf-table">' +
+        '<tr><th>구분</th><th>항목명</th><th>전체금액</th><th>부문(사업기회 제공분) 금액</th></tr>' +
+        itemRows('매출원가', y.costs || []) +
+        itemRows('판매관리비', y.expenses || []) +
+      '</table>' +
+      '<div class="pf-note">이 서식은 NETAX "부문별 매출·비용 내역으로 계산(3개년)" 도구에 직접 입력한 항목명·금액을 그대로 표시합니다.</div>' +
+    '</div>';
+  }).join('');
 }
 function gfDeemedGiftPrintRows_(r, extraFields){
   let n = 0;
@@ -11924,6 +12092,8 @@ taxCalcView.addEventListener('click', function(e){
     openShareholdingHelperModal_(btn.dataset.target);
   } else if (action === 'open-sr-asset-helper'){
     openSrAssetHelperModal_();
+  } else if (action === 'open-jt-segment-helper'){
+    openJtSegmentHelperModal_();
   } else if (action === 'print-bd-deferral-form'){
     if (!lastBdDeferralResult_){ nxAlert_('먼저 "납부유예금액 계산하기"를 눌러 계산을 완료하세요.'); return; }
     openPrintFormWindow_('가업승계 증여세 납부유예 증여재산평가 및 납부유예세액계산명세서', bdDeferralPrintPageHtml_(lastBdDeferralResult_));
