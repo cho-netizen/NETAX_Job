@@ -1692,6 +1692,7 @@
       기본공제: basicDeductionUsedInPool ? 2500000 : (usedBasicOnShort && shortTerm.length ? 2500000 : 0),
       합산과세표준: poolTaxBase, 합산기본세액: poolBaseTax, 합산가산액: poolSurchargeTotal, 합산자경감면액: farmlandReductionTotal, 합산자경감면_추징액: farmlandClawbackTotal,
       합산수용감면액: compensationReductionTotal, 합산채권만기특약위반_추징액: bondBreachClawbackTotal, 다운계약서_감면배제_추징액: downContractClawbackTotal, 비과세거래_다운계약서_추징액: exemptClawbackTotal,
+      합산조특법세액감면액: percentTaxReductionTotal, // [2026.10.01 신규, 재검토102] 미분양주택§98의4·공공매입임대주택§97의9·국가양도산지§85의10·구조조정대상부동산§43·장기임대주택§97 5개 합계 — 최종세액엔 이미 반영됐지만 이 필드가 없어 인쇄서식·전자신고파일의 "감면세액" 합계줄에서 누락되고 있었다.
       합산그룹_산출세액: poolTaxWithSurcharge,
       단기거래_산출세액_합계: shortTaxTotal, 미등기거래_산출세액_합계: unregisteredTaxTotal,
       산출세액_합계: totalCalculatedTax,
