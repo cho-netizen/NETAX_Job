@@ -5504,6 +5504,11 @@ function renderGiftInheritanceSharedPane_(){
           '<option value="">해당없음(인쇄서식 없음)</option>' +
           '<option value="ih6">상속세 — 가업·영농상속공제 사후관리추징(부표6)</option>' +
           '<option value="ih7">상속세 — 가업상속 납부유예 사후관리추징(부표7)</option>' +
+          '<option value="gf_marriage">증여세 — 혼인출산 증여재산공제 추징사유 신고(부표4)</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field"><label>[혼인출산공제 추징만] 추징사유</label><select id="ckMarriageReason">' +
+          '<option value="01">혼인 전 공제받고 2년 이내 혼인하지 않음</option>' +
+          '<option value="02">혼인 후 공제받았으나 혼인이 무효로 됨</option>' +
         '</select></div>' +
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-clawback-interest">이자상당액 계산하기</button>' +
@@ -6180,7 +6185,7 @@ function renderClawbackResult(r){
   html += '<button type="button" class="taxcalc-run-btn" data-action="apply-clawback-to-gift">이 이자상당액을 증여세 계산기에 반영</button>';
   html += '<button type="button" class="taxcalc-run-btn" data-action="apply-clawback-to-inheritance">이 이자상당액을 상속세 계산기에 반영</button>';
   const formType = document.getElementById('ckFormType') ? document.getElementById('ckFormType').value : '';
-  if (formType) html += '<button type="button" class="taxcalc-run-btn" data-action="print-clawback-form">🖨 인쇄용 서식 보기(' + (formType === 'ih6' ? '부표6' : '부표7') + ')</button>';
+  if (formType) html += '<button type="button" class="taxcalc-run-btn" data-action="print-clawback-form">🖨 인쇄용 서식 보기(' + ({ ih6: '부표6', ih7: '부표7', gf_marriage: '증여세 부표4' }[formType] || '') + ')</button>';
   html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   html += '</div>';
   box.innerHTML = html;
@@ -6225,6 +6230,39 @@ function ihClawbackPrintPageHtml_(formType, r){
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml(reporter.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+  '</div>';
+}
+// [2026.09.30 신규, 재검토99] 혼인출산 증여재산공제 추징사유 신고 및 자진납부계산서(별지10호
+// 부표4) — 계산 로직 자체가 없었던 항목. 이미 있는 계산명세(calculateClawbackInterestJS,
+// 위 "사후관리 추징이자" 도구)를 그대로 재사용해 신고인(수증자) 정보·증여재산 내역(부표1과
+// 같은 8컬럼 표 재사용)·추징사유·이자상당액을 묶어 인쇄한다.
+function gfMarriageClawbackPrintPageHtml_(r){
+  const donee = giftDonees[0] || {};
+  const reasonCode = document.getElementById('ckMarriageReason') ? document.getElementById('ckMarriageReason').value : '01';
+  const reasonLabel = reasonCode === '02' ? '혼인 후 공제받았으나 혼인이 무효로 됨' : '혼인 전 공제받고 2년 이내 혼인하지 않음';
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호서식 부표4]</div>' +
+    '<div class="pf-title">혼인출산 증여재산공제 추징사유 신고 및 자진납부계산서</div>' +
+    '<div class="pf-section-head">신고인(수증자)</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '성명', donee.name) + pfRow_(++n, '주민등록번호', donee.regNo) +
+    '</table>' +
+    '<div class="pf-section-head">추징사유 및 세액 계산</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '수정신고·기한후신고 코드', reasonCode + ' — ' + reasonLabel) +
+      pfRow_(++n, '결정된 증여세액(추징대상)', won(r.추징세액)) +
+      pfRow_(++n, '이자 기산일', r.이자기산일) + pfRow_(++n, '추징사유 발생일', r.추징사유발생일) +
+      (r.구간별_이자상당액 || []).map(function(seg){
+        return pfRow_(0, '이자상당액(' + seg.시작일 + '~' + seg.종료일 + ', ' + seg.일수 + '일, 연' + (seg.연이율 * 100).toFixed(1) + '%)', won(seg.이자상당액), { indent: true });
+      }).join('') +
+      pfRow_(++n, '이자상당액 합계', won(r.이자상당액_합계)) +
+      pfRow_(++n, '납부할 세액(합계액)', won(r.납부할세액)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX "사후관리 추징이자" 계산 결과를 기준으로 자동 생성되었습니다 — 추징사유 발생일이 속하는 달의 말일부터 3개월 이내 신고·납부해야 합니다(상증세법§53의2⑤).</div>' +
+    '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
+      new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
+      '신고인 &nbsp;' + escapeHtml(donee.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
   '</div>';
 }
 
@@ -12667,7 +12705,8 @@ taxCalcView.addEventListener('click', function(e){
   } else if (action === 'print-clawback-form'){
     const formType = document.getElementById('ckFormType') ? document.getElementById('ckFormType').value : '';
     if (!formType || !lastClawbackResult_){ nxAlert_('먼저 위에서 서식 구분을 고르고 "이자상당액 계산하기"를 눌러 계산을 완료하세요.'); return; }
-    openPrintFormWindow_('사후관리 위반 신고 및 자진납부계산서', ihClawbackPrintPageHtml_(formType, lastClawbackResult_));
+    if (formType === 'gf_marriage') openPrintFormWindow_('혼인출산 증여재산공제 추징사유 신고 및 자진납부계산서', gfMarriageClawbackPrintPageHtml_(lastClawbackResult_));
+    else openPrintFormWindow_('사후관리 위반 신고 및 자진납부계산서', ihClawbackPrintPageHtml_(formType, lastClawbackResult_));
   } else if (action === 'download-ih-efile'){
     const errs = ihValidateEfileInputs_();
     if (errs.length){ renderIhEfileResult_(); return; }
