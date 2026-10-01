@@ -5407,6 +5407,60 @@
     };
   };
 
+  // 문화재주택·귀농주택·이농주택 특례(시행령§155⑥⑦⑨~⑬) — [2026.10.01 신규, 재검토103]
+  // law.go.kr 원문 조사로 확인 — 조특법§99의4(calculateRuralHouseOneHouseExclusionJS, 매입형·
+  // 가액3억원 이하·2003.8.1~2028.12.31 취득기간 제한)와는 완전히 별개 조문이다. 이쪽은 가액
+  // 기준 없이(귀농주택만 "고가주택 아닐 것" 요건) 영농·영어 목적 실제 귀농/이농을 전제로 한다.
+  // 세 가지(문화재/이농/귀농)는 요건이 서로 다르나 전용서식은 소득세법 시행규칙 별지83호서식
+  // (농어촌주택 소유자 1세대1주택 특례적용신고서) 하나로 공유된다(law.go.kr 확인).
+  window.calculateCulturalHeritageHouseExclusionJS = function (p) {
+    p = p || {};
+    if (!p.isCulturalHeritage) {
+      return { 적용여부: false, 안내: '지정문화유산·국가등록문화유산·천연기념물등에 해당하는 주택이어야 하는데(시행령§155⑥1호), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
+    }
+    return { 적용여부: true, 안내: '지정문화유산 등에 해당하는 주택과 일반주택을 각각 1개씩 보유한 1세대가 일반주택을 양도하여 시행령§155⑥에 따라 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다.' };
+  };
+  window.calculateEmigratedFarmHouseExclusionJS = function (p) {
+    p = p || {};
+    if (!p.isOutsideMetroEupMyeon) {
+      return { 적용여부: false, 안내: '수도권 밖의 읍(도시지역 제외)·면 지역에 소재해야 하는데(시행령§155⑦ 본문), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
+    }
+    if (!p.residedFiveYearsOrMoreAfterAcquisition) {
+      return { 적용여부: false, 안내: '이농인(어업에서 떠난 자 포함)이 취득일 후 5년 이상 거주한 사실이 있어야 하는데(시행령§155⑦2호·⑨), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
+    }
+    return { 적용여부: true, 안내: '이농주택과 일반주택을 각각 1개씩 보유한 1세대가 일반주택을 양도하여 시행령§155⑦2호에 따라 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다.' };
+  };
+  window.calculateReturnFarmHouseExclusionJS = function (p) {
+    p = p || {};
+    if (!p.isOutsideMetroEupMyeon) {
+      return { 적용여부: false, 안내: '수도권 밖의 읍(도시지역 제외)·면 지역에 소재해야 하는데(시행령§155⑦ 본문), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
+    }
+    if (p.isHighValueHouseAtAcquisition) {
+      return { 적용여부: false, 안내: '취득 당시 고가주택(소득세법§89①3호, 실거래가·기준시가 12억원 초과)에 해당하지 않아야 하는데(시행령§155⑩2호), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
+    }
+    if (Number(p.landAreaSqm) > 660) {
+      return { 적용여부: false, 안내: '대지면적이 660㎡ 이내여야 하는데(시행령§155⑩3호), 이를 초과해 적용대상이 아닙니다.' };
+    }
+    if (!p.meetsFarmingPurposeRequirement) {
+      return { 적용여부: false, 안내: '영농 또는 영어 목적 취득 요건(1,000㎡ 이상 농지소유자 또는 배우자가 그 농지소재지— 같은 시군구·연접 시군구·농지로부터 직선 30km 이내— 에 있는 주택을 취득하거나, 어업인이 취득)을 충족해야 하는데(시행령§155⑩4호), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
+    }
+    if (!p.wholeFamilyMovedIn) {
+      return { 적용여부: false, 안내: '세대전원이 이사하여 거주해야 하는데(시행령§155⑩5호, 부득이한 사유시 일부 예외), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
+    }
+    if (!p.acquisitionDate || !p.generalHouseTransferDate) return { error: '귀농주택 취득일과 일반주택 양도일이 필요합니다.' };
+    const addYears_ = function (dateStr, n) { const d = new Date(dateStr); d.setFullYear(d.getFullYear() + n); return d.getTime(); };
+    if (new Date(p.generalHouseTransferDate).getTime() > addYears_(p.acquisitionDate, 5)) {
+      return { 적용여부: false, 안내: '귀농주택을 취득한 날부터 5년 이내에 일반주택을 양도해야 하는데(시행령§155⑦ 단서), 기한을 넘겨 적용대상이 아닙니다.' };
+    }
+    if (p.isNotFirstGeneralHouseSinceReturn) {
+      return { 적용여부: false, 안내: '귀농 후 최초로 양도하는 1개의 일반주택에 한해 적용되는데(시행령§155⑪), 이미 다른 일반주택을 먼저 양도한 적이 있어 적용대상이 아닙니다.' };
+    }
+    return {
+      적용여부: true,
+      안내: '귀농주택과 일반주택을 각각 1개씩 보유한 1세대가 귀농주택 취득일부터 5년 이내에 귀농 후 최초로 일반주택을 양도하여 시행령§155⑦3호에 따라 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다. 귀농일부터 3년간 계속 영농(어)종사+거주해야 사후관리 추징을 피할 수 있습니다(시행령§155⑫, 상속 발생시 피상속인·상속인 영농기간 통산).'
+    };
+  };
+
   window.calculatePresaleRightOneHouseExclusionJS = function (p) {
     p = p || {};
     const formerHouseAcquisitionDate = p.formerHouseAcquisitionDate;

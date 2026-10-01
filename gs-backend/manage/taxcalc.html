@@ -2325,6 +2325,9 @@ function openOneHouseSpecialCaseModal_(idx){
           '<option value="iu">상속받은 조합원입주권(소득세법시행령§156의2⑥⑦)</option>' +
           '<option value="ip">상속받은 분양권(소득세법시행령§156의3④⑤)</option>' +
           '<option value="lr">장기임대주택·장기어린이집 보유자의 거주주택(소득세법시행령§155⑳)</option>' +
+          '<option value="ch">문화재주택(소득세법시행령§155⑥)</option>' +
+          '<option value="ef">이농주택(소득세법시행령§155⑦2호·⑨)</option>' +
+          '<option value="rf">귀농주택(소득세법시행령§155⑦3호·⑩~⑬, 조특법§99의4와 별개)</option>' +
         '</select></div>' +
         '<div id="ohsU9" class="taxcalc-grid">' +
           '<div class="taxcalc-field"><label>준공후미분양주택 취득일</label><input type="date" id="u9AcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
@@ -2456,6 +2459,23 @@ function openOneHouseSpecialCaseModal_(idx){
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrMeetsRequirements"><label for="lrMeetsRequirements">장기임대주택(민간임대주택법 등록+임대료 5%이내 증가 등, 시행령§167조의3①2호 가~자목 중 해당) 또는 장기어린이집 요건 충족(별도 확인)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrHasPriorResidence"><label for="lrHasPriorResidence">민간임대주택 등록(또는 어린이집 운영) 이력이 있는 거주주택을 과거에 이미 양도한 적이 있음("직전거주주택보유주택" — 해당시 안분비과세)</label></div>' +
         '</div>' +
+        '<div id="ohsCh" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="chIsHeritage"><label for="chIsHeritage">지정문화유산·국가등록문화유산·천연기념물등에 해당하는 주택임</label></div>' +
+        '</div>' +
+        '<div id="ohsEf" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="efOutsideMetro"><label for="efOutsideMetro">수도권 밖의 읍(도시지역 제외)·면 지역에 소재</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="efResided5Y"><label for="efResided5Y">이농인(어업 포함)이 취득일 후 5년 이상 거주한 사실이 있음</label></div>' +
+        '</div>' +
+        '<div id="ohsRf" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-result-note" style="flex-basis:100%;">일반주택(이 양도자산)의 양도일은 위 "양도일" 입력값을 그대로 씁니다.</div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rfOutsideMetro"><label for="rfOutsideMetro">수도권 밖의 읍(도시지역 제외)·면 지역에 소재</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rfHighValue"><label for="rfHighValue">취득 당시 고가주택(실거래가·기준시가 12억원 초과)에 해당함(체크시 적용배제)</label></div>' +
+          '<div class="taxcalc-field"><label>대지면적(㎡)</label><input type="number" id="rfLandArea" placeholder="㎡"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rfFarmingPurpose"><label for="rfFarmingPurpose">영농·영어 목적 취득 요건 충족(1,000㎡ 이상 농지소유자·배우자가 농지소재지에 취득, 또는 어업인 취득)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rfMovedIn"><label for="rfMovedIn">세대전원이 이사하여 거주함(부득이한 사유시 일부 예외)</label></div>' +
+          '<div class="taxcalc-field"><label>귀농주택 취득일</label><input type="date" id="rfAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="rfNotFirst"><label for="rfNotFirst">귀농 후 이미 다른 일반주택을 먼저 양도한 적이 있음(체크시 적용배제— 최초 1건만 인정)</label></div>' +
+        '</div>' +
         '<button type="button" class="taxcalc-run-btn" id="ohsRunBtn" style="margin-top:8px;">적용 가능 여부 판정하기</button>' +
         '<div id="ohsResult"></div>' +
       '</div>' +
@@ -2468,7 +2488,7 @@ function openOneHouseSpecialCaseModal_(idx){
   enhanceDateInputs(overlay);
   const provisionSel = overlay.querySelector('#ohsProvision');
   provisionSel.addEventListener('change', function(){
-    ['ohsU9', 'ohsPd', 'ohsRh', 'ohsPr', 'ohsTw', 'ohsMg', 'ohsHr', 'ohsCi', 'ohsRp', 'ohsIh', 'ohsCb', 'ohsMc', 'ohsIu', 'ohsIp', 'ohsLr'].forEach(function(id){
+    ['ohsU9', 'ohsPd', 'ohsRh', 'ohsPr', 'ohsTw', 'ohsMg', 'ohsHr', 'ohsCi', 'ohsRp', 'ohsIh', 'ohsCb', 'ohsMc', 'ohsIu', 'ohsIp', 'ohsLr', 'ohsCh', 'ohsEf', 'ohsRf'].forEach(function(id){
       overlay.querySelector('#' + id).style.display = (id === 'ohs' + provisionSel.value.charAt(0).toUpperCase() + provisionSel.value.slice(1)) ? '' : 'none';
     });
   });
@@ -2610,11 +2630,31 @@ function openOneHouseSpecialCaseModal_(idx){
         isCoInheritedRight: document.getElementById('ipCoInherited').checked,
         isLargestShareHolder: document.getElementById('ipLargestShare').checked
       });
-    } else {
+    } else if (provision === 'lr'){
       r = calculateRentalHousingResidenceExclusionJS({
         residencePeriodMonths: numVal(document.getElementById('lrResidenceMonths').value),
         meetsLongTermRentalRequirements: document.getElementById('lrMeetsRequirements').checked,
         hasPriorQualifyingResidence: document.getElementById('lrHasPriorResidence').checked
+      });
+    } else if (provision === 'ch'){
+      r = calculateCulturalHeritageHouseExclusionJS({
+        isCulturalHeritage: document.getElementById('chIsHeritage').checked
+      });
+    } else if (provision === 'ef'){
+      r = calculateEmigratedFarmHouseExclusionJS({
+        isOutsideMetroEupMyeon: document.getElementById('efOutsideMetro').checked,
+        residedFiveYearsOrMoreAfterAcquisition: document.getElementById('efResided5Y').checked
+      });
+    } else {
+      r = calculateReturnFarmHouseExclusionJS({
+        isOutsideMetroEupMyeon: document.getElementById('rfOutsideMetro').checked,
+        isHighValueHouseAtAcquisition: document.getElementById('rfHighValue').checked,
+        landAreaSqm: numVal(document.getElementById('rfLandArea').value),
+        meetsFarmingPurposeRequirement: document.getElementById('rfFarmingPurpose').checked,
+        wholeFamilyMovedIn: document.getElementById('rfMovedIn').checked,
+        acquisitionDate: document.getElementById('rfAcquisitionDate').value,
+        generalHouseTransferDate: transferAssets[idx].transferDate,
+        isNotFirstGeneralHouseSinceReturn: document.getElementById('rfNotFirst').checked
       });
     }
     const resultBox = document.getElementById('ohsResult');
@@ -2659,7 +2699,13 @@ function openOneHouseSpecialCaseModal_(idx){
           // 상속분양권도 전용서식 없이 §156의2·§156의3이 공유하는 별지83호의5서식 하나로 처리.
           iu: { label: '상속받은 조합원입주권(소득세법시행령§156의2⑥⑦)', formNo: '소득세법 시행규칙 [별지 제83호의5서식]', formTitle: '조합원입주권 또는 분양권 소유자 1세대1주택 특례적용신고서' },
           ip: { label: '상속받은 분양권(소득세법시행령§156의3④⑤)', formNo: '소득세법 시행규칙 [별지 제83호의5서식]', formTitle: '조합원입주권 또는 분양권 소유자 1세대1주택 특례적용신고서' },
-          lr: { label: '장기임대주택·장기어린이집 보유자의 거주주택(소득세법시행령§155⑳)', formNo: '소득세법 시행규칙 [별지 제83호의2서식]', formTitle: '주택임대사업자의 거주주택 1세대1주택 특례적용신고서' }
+          lr: { label: '장기임대주택·장기어린이집 보유자의 거주주택(소득세법시행령§155⑳)', formNo: '소득세법 시행규칙 [별지 제83호의2서식]', formTitle: '주택임대사업자의 거주주택 1세대1주택 특례적용신고서' },
+          // [2026.10.01 신규, 재검토103] law.go.kr 조사로 확인 — 문화재주택·이농주택·귀농주택은
+          // 조특법§99의4(rh, 별지63호의4서식)와는 완전히 별개 조문이며 소득세법 시행규칙 별지
+          // 제83호서식(농어촌주택 소유자 1세대1주택 특례적용신고서)을 공유한다.
+          ch: { label: '문화재주택(소득세법시행령§155⑥)', formNo: '소득세법 시행규칙 [별지 제83호서식]', formTitle: '농어촌주택 소유자 1세대1주택 특례적용신고서' },
+          ef: { label: '이농주택(소득세법시행령§155⑦2호)', formNo: '소득세법 시행규칙 [별지 제83호서식]', formTitle: '농어촌주택 소유자 1세대1주택 특례적용신고서' },
+          rf: { label: '귀농주택(소득세법시행령§155⑦3호)', formNo: '소득세법 시행규칙 [별지 제83호서식]', formTitle: '농어촌주택 소유자 1세대1주택 특례적용신고서' }
         };
         const pf = provisionForms[provision] || {};
         if (pf.formNo){
