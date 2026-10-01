@@ -4549,6 +4549,21 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isFarmlandSubstitutionExempt" id="farmsub-' + idx + '"><label for="farmsub-' + idx + '">농지대토 감면(§70)</label></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="isFarmlandSubstitutionExempt" style="display:none;"><input type="checkbox" data-field="isFarmlandSubstitutionRequirementFailed" id="farmsubFail-' + idx + '"><label for="farmsubFail-' + idx + '">[§70만] 사후에 요건 미충족(§70④, 감면세액+이자상당액 추징)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isForestManagementExempt" id="forest-' + idx + '"><label for="forest-' + idx + '">자경산지 감면(§69의4, 10년 이상 직접경영 — 경영기간별 10~50%)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isBankruptcyDisposal" id="bankruptcy-' + idx + '"><label for="bankruptcy-' + idx + '">파산선고에 의한 처분(§89①1호, 요건 없이 전액 비과세)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isFarmlandExchange" id="farmex-' + idx + '"><label for="farmex-' + idx + '">농지의 교환·분합으로 발생한 소득(§89①2호·시행령§153, 비과세)</label></div>' +
+          '<div class="taxcalc-field" data-show-if="isFarmlandExchange" style="display:none;"><label>교환 사유</label><select data-field="farmlandExchangeCategory">' +
+            '<option value="">선택</option>' +
+            '<option value="cat1">국가·지자체 시행사업으로 인한 교환</option>' +
+            '<option value="cat2">국가·지자체 소유토지와의 교환</option>' +
+            '<option value="cat3">경작상 필요에 의한 교환</option>' +
+            '<option value="cat4">농어촌정비법·농지법 등에 의한 교환·분합</option>' +
+          '</select></div>' +
+          '<div class="taxcalc-field" data-show-if="isFarmlandExchange" style="display:none;"><label>교환받은 농지가액</label><input type="number" data-field="farmlandExchangeValueA" placeholder="원"></div>' +
+          '<div class="taxcalc-field" data-show-if="isFarmlandExchange" style="display:none;"><label>교환해준 농지가액</label><input type="number" data-field="farmlandExchangeValueB" placeholder="원"><span class="taxcalc-field-help">두 가액 차이가 큰 쪽의 1/4 이내여야 비과세(시행령§153①)</span></div>' +
+          '<div class="taxcalc-field checkbox" data-show-if="isFarmlandExchange" style="display:none;"><input type="checkbox" data-field="farmlandExchangeCultivation3YearsMet" id="farmexCult-' + idx + '"><label for="farmexCult-' + idx + '">[경작상 필요만] 새 농지를 농지소재지에서 3년 이상 거주하며 경작</label></div>' +
+          '<div class="taxcalc-field checkbox" data-show-if="isFarmlandExchange" style="display:none;"><input type="checkbox" data-field="farmlandExchangeExpropriationException" id="farmexExc-' + idx + '"><label for="farmexExc-' + idx + '">[경작상 필요만, 3년 미충족시] 수용 등 부득이한 사유(시행령§153⑤ 예외)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="hasRelocationRight" id="relocright-' + idx + '"><label for="relocright-' + idx + '">개발제한구역법상 이축권을 토지와 함께 양도(§94①4호마)</label></div>' +
+          '<div class="taxcalc-field" data-show-if="hasRelocationRight" style="display:none;"><label>이축권 감정평가액(별도 구분신고시)</label><input type="number" data-field="relocationRightAppraisalValue" placeholder="원"><span class="taxcalc-field-help">감정평가법인 감정가액으로 구분신고하면 그 금액만큼 양도가액에서 제외(시행령§158의2) — 미입력시 토지가액에 포함된 것으로 그대로 계산</span></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isNewBuildingWithin5Years" id="newbldg-' + idx + '"><label for="newbldg-' + idx + '">신축(증축, 85㎡초과분) 후 5년 이내 양도 + 감정가액 또는 환산취득가액을 취득가액으로 사용</label></div>' +
           '<div class="taxcalc-field" data-show-if="isNewBuildingWithin5Years" style="display:none;"><label>감정가액·환산취득가액 중 건물분</label><input type="number" data-field="convertedBuildingAcquisitionValueForPenalty" placeholder="원"><span class="taxcalc-field-help">위 체크 시 — 가산세 5%(소득세법§114의2)</span></div>' +
           '<div class="taxcalc-field"><label>등록임대주택 장특공제 특례</label><select data-field="rentalSpecialType">' +
@@ -5433,6 +5448,15 @@ function collectTransferInput(vals){
     isFarmlandSubstitutionExempt: !!vals.isFarmlandSubstitutionExempt,
     isFarmlandSubstitutionRequirementFailed: !!vals.isFarmlandSubstitutionRequirementFailed,
     isForestManagementExempt: !!vals.isForestManagementExempt,
+    isBankruptcyDisposal: !!vals.isBankruptcyDisposal,
+    isFarmlandExchange: !!vals.isFarmlandExchange,
+    farmlandExchangeCategory: vals.farmlandExchangeCategory || '',
+    farmlandExchangeValueA: numVal(vals.farmlandExchangeValueA) || 0,
+    farmlandExchangeValueB: numVal(vals.farmlandExchangeValueB) || 0,
+    farmlandExchangeCultivation3YearsMet: !!vals.farmlandExchangeCultivation3YearsMet,
+    farmlandExchangeExpropriationException: !!vals.farmlandExchangeExpropriationException,
+    hasRelocationRight: !!vals.hasRelocationRight,
+    relocationRightAppraisalValue: numVal(vals.relocationRightAppraisalValue) || 0,
     isNewBuildingWithin5Years: !!vals.isNewBuildingWithin5Years,
     convertedBuildingAcquisitionValueForPenalty: numVal(vals.convertedBuildingAcquisitionValueForPenalty) || 0,
     rentalSpecialType: vals.rentalSpecialType || '',
@@ -5669,6 +5693,8 @@ function renderOneTransferResultHtml_(r, label, sellerIdx){
           '</div><div class="taxcalc-result-note">' + (dd.안내 || '') + '</div>';
       } else if (n.구분 === '취득가액산정'){
         html += '<div>' + label + ' — ' + n.특례 + '</div>';
+      } else if (n.양도차손통산후소득금액 !== undefined){
+        html += '<div>' + label + ' (' + n.구분 + ') — 양도차손 통산 적용: 소득금액 ' + won(n.소득금액 != null ? n.소득금액 : n.양도차익) + ' → 통산 후 ' + won(n.양도차손통산후소득금액) + '(§102②·시행령§167의2, 다른 자산 손익과 상계)</div>';
       } else {
         const parts = [];
         if (n.특례) parts.push(n.특례);
@@ -11815,6 +11841,7 @@ function renderInheritanceResult(r){
     html += taxCalcResultRow('영농상속공제', won(r.영농상속공제));
     if (r.영농상속공제_계산내역) html += '<div class="taxcalc-result-note">자동계산: 대상금액 ' + won(r.영농상속공제_계산내역.대상금액) + ' / 한도액 ' + won(r.영농상속공제_계산내역.한도액) + '</div>';
   }
+  if (r.가업영농상속공제_동일자산중복적용주의) html += '<div class="taxcalc-result-note">⚠ 가업상속공제와 영농상속공제를 동일한 상속재산에 중복 적용할 수 없습니다(§18의4) — 서로 다른 상속재산(예: 별개의 가업용 자산과 영농용 자산)에 각각 적용한 것인지 반드시 확인하세요. 같은 자산을 양쪽에 중복 입력했다면 하나만 남기고 다시 계산하세요.</div>';
   html += taxCalcResultRow('상속공제 합계', won(r.상속공제_합계) + (r.상속공제종합한도_적용여부 ? ' (종합한도 적용됨)' : ''));
   html += taxCalcResultRow('과세표준', won(r.과세표준));
   html += taxCalcResultRow('산출세액', won(r.산출세액) + (r.세대생략가산액 ? ' (세대생략가산액 ' + won(r.세대생략가산액) + ' 포함)' : ''));

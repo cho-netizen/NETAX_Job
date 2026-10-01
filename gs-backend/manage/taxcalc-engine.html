@@ -674,6 +674,31 @@
     // (isReconstructionRights)도 자동으로 'house'로 취급한다.
     const assetType = (t.assetType === 'house' || isReconstruction) ? 'house' : (t.assetType === 'presale_right' ? 'presale_right' : 'other');
     const isPresaleRight = assetType === 'presale_right';
+    // [2026.10.01 신규, 재검토103] §89①1호 — 파산선고에 의한 처분으로 발생하는 소득은 요건 없이
+    // 전액 비과세다(law.go.kr 원문: "1. 파산선고에 의한 처분으로 발생하는 소득."). 다른 모든
+    // 비과세·과세 판정보다 우선 적용되는 무조건부 예외라 가장 먼저 게이트한다.
+    if (t.isBankruptcyDisposal) {
+      return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t };
+    }
+    // [2026.10.01 신규, 재검토103] §89①2호·시행령§153 — 농지의 교환 또는 분합으로 발생하는 소득은
+    // 비과세. law.go.kr 원문 확인: (a) 쌍방 토지가액 차이가 큰 쪽 가액의 4분의 1 이내, (b) 다음 중
+    // 하나에 해당 — ①국가·지방자치단체가 시행하는 사업으로 인한 교환, ②국가·지방자치단체가 소유하는
+    // 토지와의 교환, ③경작상 필요에 의한 교환(단서: 새로 취득하는 농지를 농지소재지에서 3년 이상
+    // 거주하며 경작해야 하나, 수용 등 §153⑤의 부득이한 사유가 있으면 예외), ④농어촌정비법·농지법·
+    // 한국농어촌공사법·농업협동조합법에 따른 교환·분합. (§153③④⑥의 농지소재지 세부 정의·제외농지
+    // 목록·상속 경작기간 통산까지는 지어내지 않고, 위 핵심 요건만 판정한다 — 경계선 사례는 직접 재검토.)
+    if (t.isFarmlandExchange) {
+      const feValA = Number(t.farmlandExchangeValueA) || 0;
+      const feValB = Number(t.farmlandExchangeValueB) || 0;
+      const feMax = Math.max(feValA, feValB), feMin = Math.min(feValA, feValB);
+      const feWithinQuarter = feMax > 0 && (feMax - feMin) <= feMax / 4;
+      const feCat = t.farmlandExchangeCategory;
+      const feCategoryOk = (feCat === 'cat1' || feCat === 'cat2' || feCat === 'cat4')
+        || (feCat === 'cat3' && (!!t.farmlandExchangeCultivation3YearsMet || !!t.farmlandExchangeExpropriationException));
+      if (feWithinQuarter && feCategoryOk) {
+        return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t };
+      }
+    }
     // [2026.09 신규] 세무사님 지시 — 소득세법§89①3호(1세대1주택 비과세)·§95③(고가주택 12억
     // 초과분만 과세, 향상된 장기보유특별공제표)는 문언상 "거주자"에 한정된다. 비거주자는 원칙적으로
     // 이 혜택을 받을 수 없고, 예외적으로 출국일 현재 1주택을 보유한 채 출국 후 2년 이내 양도하면
@@ -705,9 +730,15 @@
     // (§114의2 환산취득가액가산세 등)를 그대로 유지하면서, 최종 양도차익 금액만 바꿔치기한다.
     // (t.necessaryExpenses·t.acquisitionPrice를 직접 조작하면 위 판정 게이트가 깨질 수 있어
     // 이 방식을 씀 — 호출부는 resolveNewHouseReductionAdjustment_ 참고.)
+    // [2026.10.01 신규, 재검토103] §94①4호마 단서·시행령§158의2 — 개발제한구역법상 이축권을
+    // 토지와 함께 양도하는 경우, 원칙은 토지 양도가액에 포함되어 "기타자산"으로 과세되지만,
+    // 감정평가법인등의 감정가액으로 구분하여 신고하면 그 금액은 "양도소득에서 제외"된다(즉 이
+    // 계산기의 토지 양도차익 계산에서 뺀다 — 제외된 이축권 가액 자체의 별도 과세 여부는 이
+    // 계산기 범위 밖이니 별도로 확인할 것).
+    const relocationRightExclusion = (!!t.hasRelocationRight && Number(t.relocationRightAppraisalValue) > 0) ? Number(t.relocationRightAppraisalValue) : 0;
     const gainBeforeDeduction = (t._externalGainOverride != null)
       ? Number(t._externalGainOverride)
-      : (transferPrice - acquisitionPrice - necessaryExpenses);
+      : (transferPrice - relocationRightExclusion - acquisitionPrice - necessaryExpenses);
 
     if (isUnregistered) {
       return { holdingYears, isUnregistered: true, gainBeforeDeduction, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t };
@@ -1425,9 +1456,79 @@
     const pooled = active.filter(function (c) { return c.isPoolable; });
     const shortTerm = active.filter(function (c) { return !c.isPoolable; });
 
+    // 소득세법§102②·시행령§167의2(양도차손의 통산) — 둘 이상 자산 중 양도차손(결손)이 발생한
+    // 자산이 있으면, 같은 세율을 적용받는 자산의 양도소득금액에서 먼저 공제하고, 그래도 남는
+    // 손실은 다른 세율 자산들의 양도소득금액에 "세율별 합계액 비중"으로 안분하여 공제한다
+    // (이월결손금 개념이 없어 당해 연도에 못 턴 손실은 소멸한다). 과거 코드는 단기양도·미등기양도
+    // 건을 건별로 Math.max(0, ...)로 손실을 그냥 버려서 다른 자산의 이익과 전혀 상계되지 않았다
+    // (재검토103에서 확인·수정) — 아래에서 "같은 세율(버킷)" 내부 상계 + "버킷간" 안분을 먼저
+    // 적용한 뒤에만 개별/합산 세액 계산에 들어간다. 합산(장기)그룹 내부의 자산별 안분(다주택중과
+    // 가산액, 8년자경감면 등)은 기존처럼 원래(통산 전) 소득금액 비중을 그대로 쓴다 — 통산으로
+    // 바뀌는 것은 합산그룹의 "과세표준 합계" 자체뿐이다.
+    function nettingBucketKey_(c) {
+      if (c.isUnregistered) return 'unregistered';
+      if (c.isPoolable) return 'progressive';
+      const r = (c.assetType === 'house' || c.assetType === 'presale_right')
+        ? (c.holdingYears < 1 ? 0.70 : 0.60) : (c.holdingYears < 1 ? 0.50 : 0.40);
+      return 'short_' + r;
+    }
+    const nettingBuckets_ = {};
+    pooled.concat(shortTerm).concat(unregistered).forEach(function (c) {
+      const key = nettingBucketKey_(c);
+      const inc = c.isUnregistered ? c.gainBeforeDeduction : c.incomeAmount;
+      if (!nettingBuckets_[key]) nettingBuckets_[key] = { key: key, items: [] };
+      nettingBuckets_[key].items.push({ c: c, inc: inc });
+    });
+    const nettingBucketList_ = Object.keys(nettingBuckets_).map(function (k) {
+      const b = nettingBuckets_[k];
+      b.sum = b.items.reduce(function (s, it) { return s + it.inc; }, 0);
+      return b;
+    });
+    let excessLoss_ = 0;
+    nettingBucketList_.forEach(function (b) { if (b.sum < 0) excessLoss_ += -b.sum; });
+    const recipientBuckets_ = nettingBucketList_.filter(function (b) { return b.sum > 0; });
+    const recipientSumTotal_ = recipientBuckets_.reduce(function (s, b) { return s + b.sum; }, 0);
+    let distributedLoss_ = 0;
+    recipientBuckets_.forEach(function (b, i) {
+      if (excessLoss_ <= 0 || recipientSumTotal_ <= 0) { b.netSum = b.sum; return; }
+      const exported = (i === recipientBuckets_.length - 1)
+        ? (excessLoss_ - distributedLoss_)
+        : Math.round(excessLoss_ * (b.sum / recipientSumTotal_));
+      distributedLoss_ += exported;
+      b.netSum = Math.max(0, b.sum - exported);
+    });
+    nettingBucketList_.forEach(function (b) { if (b.sum <= 0) b.netSum = 0; });
+    const nettedIncomeByIdx_ = {};
+    // 양도차손 자산이 하나라도 있으면(통산 결과 최종 세액이 안 바뀌더라도) §102②·시행령§167의2가
+    // 적용된 것이므로, "적용여부"는 손실자산 존재 자체로 판정한다(버킷 합계가 우연히 안 바뀌는
+    // 경우까지 "미적용"으로 잘못 표시하지 않기 위함).
+    let lossNettingApplied_ = nettingBucketList_.some(function (b) { return b.items.some(function (it) { return it.inc < 0; }); });
+    let lossNettingDetail_ = [];
+    nettingBucketList_.forEach(function (b) {
+      if (b.key === 'progressive') return; // 합산그룹 자산별 안분은 기존 로직 유지, 집계값만 아래에서 별도 사용
+      const gainItems = b.items.filter(function (it) { return it.inc > 0; });
+      const gainSum = gainItems.reduce(function (s, it) { return s + it.inc; }, 0);
+      let allocated = 0;
+      gainItems.forEach(function (it, i) {
+        const share = gainSum > 0 ? it.inc / gainSum : 0;
+        const val = (i === gainItems.length - 1) ? (b.netSum - allocated) : Math.round(b.netSum * share);
+        allocated += val;
+        nettedIncomeByIdx_[it.c.idx] = val;
+      });
+      b.items.forEach(function (it) { if (it.inc <= 0) nettedIncomeByIdx_[it.c.idx] = 0; });
+    });
+    const poolBucket_ = nettingBuckets_['progressive'];
+    const poolTaxBaseIncome_ = poolBucket_ ? poolBucket_.netSum : 0;
+    if (lossNettingApplied_) {
+      nettingBucketList_.forEach(function (b) {
+        if (b.netSum !== Math.max(0, b.sum)) lossNettingDetail_.push({ 버킷: b.key, 버킷내_통산전소득합계: Math.round(b.sum), 버킷내_통산후소득합계: Math.round(b.netSum), 비고: '다른 세율 버킷과 교차 안분됨' });
+        else if (b.items.some(function (it) { return it.inc < 0; })) lossNettingDetail_.push({ 버킷: b.key, 버킷내_통산전소득합계: Math.round(b.sum), 버킷내_통산후소득합계: Math.round(b.netSum), 비고: '같은 세율 버킷 내부에서 상계됨' });
+      });
+    }
+
     const poolIncomeSum = pooled.reduce(function (s, c) { return s + c.incomeAmount; }, 0);
     const basicDeductionUsedInPool = pooled.length > 0;
-    const poolTaxBase = Math.max(0, poolIncomeSum - (basicDeductionUsedInPool ? 2500000 : 0));
+    const poolTaxBase = Math.max(0, poolTaxBaseIncome_ - (basicDeductionUsedInPool ? 2500000 : 0));
     const poolBaseTax = progressiveTax(poolTaxBase, TRANSFER_TAX_BRACKETS);
 
     let poolSurchargeTotal = 0;
@@ -1626,7 +1727,8 @@
     const shortItems = shortTerm.map(function (c) {
       const bd = (!usedBasicOnShort) ? 2500000 : 0;
       if (bd) usedBasicOnShort = true;
-      const base = Math.max(0, c.incomeAmount - bd);
+      const nettedInc_ = (nettedIncomeByIdx_[c.idx] !== undefined) ? nettedIncomeByIdx_[c.idx] : c.incomeAmount;
+      const base = Math.max(0, nettedInc_ - bd);
       const rate = (c.assetType === 'house' || c.assetType === 'presale_right')
         ? (c.holdingYears < 1 ? 0.70 : 0.60) : (c.holdingYears < 1 ? 0.50 : 0.40);
       const shortTermTax = Math.round(base * rate);
@@ -1661,14 +1763,20 @@
     const shortResults = shortItems.map(function (it) {
       const c = it.c;
       const tax = it.dualRateEligible ? it.finalTax : it.shortTermTax;
-      assetNotes.push({ idx: c.idx, 구분: '단기양도(개별)', 소득금액: Math.round(c.incomeAmount), 기본공제적용: it.bd > 0, 세율: it.rate, 세액: tax });
+      const note = { idx: c.idx, 구분: '단기양도(개별)', 소득금액: Math.round(c.incomeAmount), 기본공제적용: it.bd > 0, 세율: it.rate, 세액: tax };
+      const nettedInc_ = nettedIncomeByIdx_[c.idx];
+      if (nettedInc_ !== undefined && Math.round(nettedInc_) !== Math.round(c.incomeAmount)) note.양도차손통산후소득금액 = Math.round(nettedInc_);
+      assetNotes.push(note);
       return tax;
     });
     const shortTaxTotal = shortResults.reduce(function (s, v) { return s + v; }, 0);
 
     const unregisteredResults = unregistered.map(function (c) {
-      const tax = Math.max(0, Math.round(c.gainBeforeDeduction * 0.7));
-      assetNotes.push({ idx: c.idx, 구분: '미등기양도(개별)', 양도차익: Math.round(c.gainBeforeDeduction), 세액: tax });
+      const nettedInc_ = (nettedIncomeByIdx_[c.idx] !== undefined) ? nettedIncomeByIdx_[c.idx] : c.gainBeforeDeduction;
+      const tax = Math.max(0, Math.round(nettedInc_ * 0.7));
+      const note = { idx: c.idx, 구분: '미등기양도(개별)', 양도차익: Math.round(c.gainBeforeDeduction), 세액: tax };
+      if (Math.round(nettedInc_) !== Math.round(c.gainBeforeDeduction)) note.양도차손통산후소득금액 = Math.round(nettedInc_);
+      assetNotes.push(note);
       return tax;
     });
     const unregisteredTaxTotal = unregisteredResults.reduce(function (s, v) { return s + v; }, 0);
@@ -1716,7 +1824,9 @@
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       지방소득세: localIncomeTax, 납부세액_합계: grandTotal,
       자산별_내역: assetNotes,
-      안내: '2년 이상 보유·특례 없는(또는 다주택중과·비사업용토지만 해당하는) 거래는 소득금액을 합산해 기본공제(250만원, 전체 1회)와 누진세율을 함께 적용했습니다. 단기양도(2년 미만)·미등기양도는 합산 누진세 대상이 아니라 건별로 따로 계산해 더했습니다. 다주택중과·비사업용토지 가산액과 8년자경농지 감면액은 자산별 소득금액 비중으로 계산한 근사치이니, 특례가 여러 건 섞인 복잡한 합산은 결과를 참고용으로만 쓰고 반드시 재검토하세요. 신고불성실·납부지연가산세는 전체 확정신고 기준(산출세액 합계)으로 한 번만 계산했습니다.'
+      양도차손_통산_적용여부: lossNettingApplied_,
+      양도차손_통산_내역: lossNettingApplied_ ? lossNettingDetail_ : undefined,
+      안내: '2년 이상 보유·특례 없는(또는 다주택중과·비사업용토지만 해당하는) 거래는 소득금액을 합산해 기본공제(250만원, 전체 1회)와 누진세율을 함께 적용했습니다. 단기양도(2년 미만)·미등기양도는 합산 누진세 대상이 아니라 건별로 따로 계산해 더했습니다. 다주택중과·비사업용토지 가산액과 8년자경농지 감면액은 자산별 소득금액 비중으로 계산한 근사치이니, 특례가 여러 건 섞인 복잡한 합산은 결과를 참고용으로만 쓰고 반드시 재검토하세요. 신고불성실·납부지연가산세는 전체 확정신고 기준(산출세액 합계)으로 한 번만 계산했습니다.' + (lossNettingApplied_ ? ' 일부 자산에서 발생한 양도차손은 소득세법§102②·시행령§167의2에 따라 같은 세율 자산의 소득금액에서 먼저, 남으면 다른 세율 자산들의 소득금액에 안분하여 공제했습니다(자산별_내역의 "양도차손통산후소득금액" 참고, 당해연도에 못 턴 손실은 이월되지 않고 소멸).' : '')
     };
   };
 
@@ -2293,6 +2403,11 @@
     const businessInheritanceDeduction = isDecedentResident ? (businessInheritanceDetail ? businessInheritanceDetail.deductionAmount : (Number(p.businessInheritanceDeduction) || 0)) : 0;
     const farmingInheritanceDetail = isDecedentResident ? farmingInheritanceDeductionDetailed(p) : null;
     const farmingInheritanceDeduction = isDecedentResident ? (farmingInheritanceDetail ? farmingInheritanceDetail.deductionAmount : (Number(p.farmingInheritanceDeduction) || 0)) : 0;
+    // [2026.10.01 신규, 재검토103] §18의4(가업상속공제와 영농상속공제의 동시 적용 배제) — law.go.kr
+    // 원문 확인: "제18조의2 및 제18조의3은 동일한 상속재산에 대하여 동시에 적용하지 아니한다." 서로
+    // 다른 상속재산에 각각 적용하는 건 허용되므로 자동으로 하나를 차단하지 않고(지어내지 않음),
+    // 둘 다 금액이 잡히면 "동일 자산에 중복 적용된 게 아닌지" 확인하라는 안내만 플래그로 띄운다.
+    const businessAndFarmingSameAssetWarning = (businessInheritanceDeduction > 0 && farmingInheritanceDeduction > 0);
 
     // §24 한도가 걸리는 항목은 제18조·18의2·18의3·19~23·23의2뿐이다(§25①1호). 감정평가수수료공제(§25①2호)와
     // 장례비용공제(§14①3호, 과세가액 산정단계에서 차감되는 항목)는 §24 열거에 없으므로 한도 계산에서 제외하고
@@ -2420,6 +2535,7 @@
         미충족요건목록: businessInheritanceDetail.failedRequirements
       } : null,
       영농상속공제: farmingInheritanceDeduction,
+      가업영농상속공제_동일자산중복적용주의: businessAndFarmingSameAssetWarning,
       영농상속공제_계산내역: farmingInheritanceDetail ? {
         대상금액: farmingInheritanceDetail.targetAmount, 한도액: farmingInheritanceDetail.limitAmount,
         소득세법적용분: farmingInheritanceDetail.individualTotal, 법인세법적용분: farmingInheritanceDetail.targetCorporate,
