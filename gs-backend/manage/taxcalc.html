@@ -1580,6 +1580,75 @@ function renderTransferContractGroupHtml_(contract, idx){
 // 암산/외부계산해서 한 칸에 타이핑해야 했는데, 여기서 매출액만 넣으면 계산해준다.
 let relatedPartyRatioRows_ = [{}, {}];
 let jmRelatedPartyTotalSales_ = ''; // [2026.09.30, 재검토99] 수혜법인 총매출액 — 부표4 인쇄용으로 모달 밖에도 보존
+// [2026.09.30 신규, 재검토100] 특례세율(sr) 탭 — 창업자금(§30의5) 증여재산평가 및 과세가액
+// 계산명세서(별지10호의2 부표1)에 필요한 재산별 명세(재산구분·재산종류·소재지·평가가액·
+// 평가기준)를 받는다. 지금까지 sr탭은 "해당 증여재산가액" 합계 한 값만 입력받아 부표1 자체를
+// 만들 근거가 아예 없었다 — 재산평가 탭의 8컬럼 체계를 그대로 재사용해서 입력받는다.
+let srAssetRows_ = [{}];
+function renderSrAssetRows_(){
+  if (!srAssetRows_.length) srAssetRows_ = [{}];
+  return srAssetRows_.map(function(row, i){
+    return '<div class="taxcalc-asset-head" style="margin-top:6px;"><span style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
+        '<b>재산 ' + tcPad2_(i + 1) + '</b>' +
+        (i > 0 ? '<button type="button" class="taxcalc-del-asset" data-action="del-sr-asset-row" data-idx="' + i + '">✕ 재산 삭제</button>' : '') +
+        '<button type="button" class="taxcalc-add-asset-inline" data-action="add-sr-asset-row">+ 재산 추가</button>' +
+      '</span></div>' +
+    '<div class="taxcalc-grid" data-sra-idx="' + i + '" style="padding-top:6px;border-top:1px dashed var(--line);">' +
+      '<div class="taxcalc-field"><label>재산종류</label><select data-srafield="method">' +
+        Object.keys(VALUATION_METHOD_LABELS).map(function(k){ return '<option value="' + k + '"' + (row.method === k ? ' selected' : '') + '>' + VALUATION_METHOD_LABELS[k] + '</option>'; }).join('') +
+      '</select></div>' +
+      '<div class="taxcalc-field"><label>소재지·내용</label><input type="text" data-srafield="assetLocation" value="' + (row.assetLocation || '').replace(/"/g, '&quot;') + '"></div>' +
+      '<div class="taxcalc-field"><label>평가가액</label><input type="number" data-srafield="value" placeholder="원" value="' + (row.value || '') + '"></div>' +
+    '</div>';
+  }).join('');
+}
+function openSrAssetHelperModal_(){
+  if (!srAssetRows_ || !srAssetRows_.length) srAssetRows_ = [{}];
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.display = 'flex';
+  overlay.innerHTML =
+    '<div class="modal-panel" style="width:min(640px, 94vw);">' +
+      '<div class="modal-head"><span>창업자금 증여재산 목록(부표1용)</span><span class="modal-close" id="btnCloseSra">✕</span></div>' +
+      '<div class="modal-body">' +
+        '<div class="taxcalc-result-note" style="margin-bottom:8px;">증여받은 재산이 여러 건이면 각각 입력하세요 — 합계가 "해당 증여재산가액"에 반영되고, 여기 입력한 내역이 부표1(창업자금 증여재산평가 및 과세가액계산명세서)로 그대로 인쇄됩니다.</div>' +
+        '<div id="sraRows">' + renderSrAssetRows_() + '</div>' +
+        '<button type="button" class="taxcalc-run-btn" id="sraRunBtn" style="margin-top:8px;">합계 반영하기</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  function close(){ overlay.remove(); }
+  overlay.querySelector('#btnCloseSra').onclick = close;
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+  function rerenderRows(){
+    overlay.querySelector('#sraRows').innerHTML = renderSrAssetRows_();
+    wireRows();
+    enhanceNumberInputs(overlay);
+  }
+  function wireRows(){
+    overlay.querySelectorAll('[data-srafield]').forEach(function(el){
+      el.addEventListener('input', function(){
+        const i = numVal(el.closest('[data-sra-idx]').dataset.sraIdx);
+        srAssetRows_[i][el.dataset.srafield] = el.value;
+      });
+    });
+    overlay.querySelectorAll('[data-action="del-sr-asset-row"]').forEach(function(btn){
+      btn.addEventListener('click', function(){ srAssetRows_.splice(numVal(btn.dataset.idx), 1); rerenderRows(); });
+    });
+    overlay.querySelectorAll('[data-action="add-sr-asset-row"]').forEach(function(btn){
+      btn.addEventListener('click', function(){ srAssetRows_.push({}); rerenderRows(); });
+    });
+  }
+  wireRows();
+  enhanceNumberInputs(overlay);
+  overlay.querySelector('#sraRunBtn').addEventListener('click', function(){
+    const total = srAssetRows_.reduce(function(s, row){ return s + numVal(row.value); }, 0);
+    const el = document.getElementById('srGiftAmount');
+    if (el) el.value = total;
+    close();
+    showToast('증여재산가액 합계(' + won(total) + ')를 반영했습니다.', 'success');
+  });
+}
 // [2026.09.30 신규, 재검토99] 일감몰아주기(jm)·일감떼어주기(jt) 공통 — 지배주주+친족의 직접·
 // 간접 주식보유 내역. 부표1(계산명세Ⅰ)의 "나.수혜법인 지배주주" 직접보유표, 부표2(간접보유비율
 // 산정)의 1~3차 출자법인 체인을 한 화면에서 입력받는다. target별로 따로 보존(jm/jt 별개 신고).
@@ -5539,8 +5608,20 @@ function renderGiftInheritanceSharedPane_(){
           '<option value="gift">조특법§30의7(가업승계증여세납부유예)</option>' +
         '</select></div>' +
         '<div class="taxcalc-field"><label>산출세액</label><input type="number" id="bdTaxPayable" placeholder="원"><span class="taxcalc-field-help">상속세 또는 증여세</span></div>' +
-        '<div class="taxcalc-field"><label>가업상속재산가액·가업자산상당액</label><input type="number" id="bdBusinessValue" placeholder="원"><span class="taxcalc-field-help">§15⑤ 기준, 증여는 같은 호 준용·상속개시일→증여일</span></div>' +
+        '<div class="taxcalc-field"><label>가업상속재산가액·가업자산상당액</label><input type="number" id="bdBusinessValue" placeholder="원"><span class="taxcalc-field-help">§15⑤ 기준, 증여는 같은 호 준용·상속개시일→증여일. 아래 사업무관자산 내역을 채우면 자동계산됩니다</span></div>' +
         '<div class="taxcalc-field"><label>총 상속재산가액·총 증여재산가액</label><input type="number" id="bdTotalValue" placeholder="원"></div>' +
+      '</div>' +
+      // [2026.09.30 신규, 재검토100] (조특법§30의7, 증여만) 별지10호 부표2(가업승계 증여세
+      // 납부유예 증여재산평가 및 납부유예세액계산명세서)용 — 특례세율(sr)탭과 같은 5항목
+      // 사업무관자산 내역을 입력받아 가업자산상당액을 자동계산한다(직접입력도 그대로 유지).
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>(증여만, 조특법§30의7) 사업관련자산가액 비율 — 채우면 부표2 인쇄와 가업자산상당액 자동계산에 쓰입니다</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>총자산가액</label><input type="number" id="bdTotalAsset" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>사업무관자산 - §55의2</label><input type="number" id="bdNonBiz55" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>사업무관자산 - 시행령§49</label><input type="number" id="bdNonBiz49" placeholder="원"><span class="taxcalc-field-help">임대용부동산 포함</span></div>' +
+        '<div class="taxcalc-field"><label>사업무관자산 - 시행령§61①2호</label><input type="number" id="bdNonBiz61" placeholder="원"><span class="taxcalc-field-help">대여금</span></div>' +
+        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="bdExcessCash" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>영업무관 주식·채권·금융상품</label><input type="number" id="bdNonBizStock" placeholder="원"></div>' +
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-business-succession-deferral-amount">납부유예금액 계산하기</button>' +
       '<div id="taxCalcBusinessSuccessionDeferralAmountResult"></div>' +
@@ -6281,19 +6362,62 @@ function gfMarriageClawbackPrintPageHtml_(r){
   '</div>';
 }
 
+let lastBdDeferralResult_ = null;
 function renderBusinessSuccessionDeferralAmountResult(r){
   const box = document.getElementById('taxCalcBusinessSuccessionDeferralAmountResult');
   if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
+  lastBdDeferralResult_ = r;
   let html = '<div class="taxcalc-result">';
   html += taxCalcResultRow('납부유예금액', won(r.납부유예금액), { total: true });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  const bdProvision = document.getElementById('bdProvision').value;
   if (r.납부유예금액){
-    const bdProvision = document.getElementById('bdProvision').value;
     const targetField = bdProvision === 'gift' ? 'giftBizSuccessionDeferred' : 'ihBizInheritDeferred';
     html += '<button type="button" class="taxcalc-run-btn" data-action="accumulate-into-field" data-target-field="' + targetField + '" data-target-label="가업승계 납부유예세액" data-amount="' + r.납부유예금액 + '">이 금액을 납부유예세액에 더하기</button>';
   }
+  // [2026.09.30 신규, 재검토100] 증여(조특법§30의7)만 — 별지10호 부표2(가업승계 증여세 납부유예
+  // 증여재산평가 및 납부유예세액계산명세서) 인쇄. 상속(§72의2)은 이 서식 대상이 아니다.
+  if (bdProvision === 'gift') html += '<button type="button" class="taxcalc-run-btn" data-action="print-bd-deferral-form">🖨 인쇄용 서식 보기(별지10호 부표2)</button>';
   html += '</div>';
   box.innerHTML = html;
+}
+function bdDeferralPrintPageHtml_(r){
+  const totalAsset = numVal(document.getElementById('bdTotalAsset').value) || 0;
+  const nonBiz55 = numVal(document.getElementById('bdNonBiz55').value) || 0;
+  const nonBiz49 = numVal(document.getElementById('bdNonBiz49').value) || 0;
+  const nonBiz61 = numVal(document.getElementById('bdNonBiz61').value) || 0;
+  const excessCash = numVal(document.getElementById('bdExcessCash').value) || 0;
+  const nonBizStock = numVal(document.getElementById('bdNonBizStock').value) || 0;
+  const nonBizTotal = nonBiz55 + nonBiz49 + nonBiz61 + excessCash + nonBizStock;
+  const businessRelated = Math.max(0, totalAsset - nonBizTotal);
+  const totalValue = numVal(document.getElementById('bdTotalValue').value) || 0;
+  const businessValue = numVal(document.getElementById('bdBusinessValue').value) || 0;
+  const taxPayable = numVal(document.getElementById('bdTaxPayable').value) || 0;
+  const donee = giftDonees[0] || {};
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호서식 부표2]</div>' +
+    '<div class="pf-title">가업승계 증여세 납부유예 증여재산평가 및 납부유예세액계산명세서</div>' +
+    '<div class="pf-section-head">수증자</div>' +
+    '<table class="pf-table">' + pfRow_(++n, '성명', donee.name) + pfRow_(++n, '주민등록번호', donee.regNo) + '</table>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '증여일 현재 주식등의 가액', won(totalValue)) +
+      pfRow_(++n, '총자산가액', won(totalAsset)) +
+      pfRow_(0, '(법인세법§55의2 해당자산)', won(nonBiz55), { indent: true }) +
+      pfRow_(0, '(시행령§49 해당자산·임대용부동산)', won(nonBiz49), { indent: true }) +
+      pfRow_(0, '(시행령§61①2호 해당자산·대여금)', won(nonBiz61), { indent: true }) +
+      pfRow_(0, '(과다보유현금)', won(excessCash), { indent: true }) +
+      pfRow_(0, '(영업무관 주식·채권·금융상품)', won(nonBizStock), { indent: true }) +
+      pfRow_(++n, '사업무관자산가액 계', won(nonBizTotal)) +
+      pfRow_(++n, '사업관련자산가액', won(businessRelated)) +
+      pfRow_(++n, '사업관련자산가액비율', totalAsset ? (businessRelated / totalAsset * 100).toFixed(2) + '%' : '') +
+      pfRow_(++n, '가업자산상당액', won(businessValue)) +
+      pfRow_(++n, '총증여재산가액', won(totalValue)) +
+      pfRow_(++n, '증여세 납부세액', won(taxPayable)) +
+      pfRow_(++n, '납부유예세액 [⑧×⑥÷⑦]', won(r.납부유예금액)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다.</div>' +
+  '</div>';
 }
 
 function renderPropertyInKindStockReceiptResult(r){
@@ -8834,6 +8958,7 @@ function renderGiftPane(){
           '<option value="startup">창업자금(§30의5)</option><option value="business_succession">가업승계 주식등(§30의6)</option>' +
         '</select></div>' +
         '<div class="taxcalc-field"><label>해당 증여재산가액</label><input type="number" id="srGiftAmount" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-sr-asset-helper">🧮 재산이 여러 건이면 목록으로 합산(부표1용)</button></div>' +
         '<div class="taxcalc-field"><label>증여일자</label><input type="date" id="srGiftDate" min="1900-01-01" max="2099-12-31"></div>' +
         '<div class="taxcalc-field"><label>수증자 나이(만)</label><input type="number" id="srDoneeAge" placeholder="세" maxlength="3"><span class="taxcalc-field-help">18세 이상만 대상</span></div>' +
         '<div class="taxcalc-field"><label>증여자(부모) 나이(만)</label><input type="number" id="srDonorAge" placeholder="세" maxlength="3"><span class="taxcalc-field-help">60세 이상만 대상</span></div>' +
@@ -9942,12 +10067,39 @@ function srPrintFormPageHtml_(){
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
   '</div>' +
-  srAttach2PrintPageHtml_(r);
+  srAttach1PrintPageHtml_(r) + srAttach2PrintPageHtml_(r);
 }
 // [2026.09.30 신규, 재검토98] 별지10호의2서식 부표2(가업승계 주식등 증여재산평가 및
 // 과세가액계산명세서) — 정밀 재조사로 확인된 ①~⑬ 항목 그대로. 이미 srPrintFormPageHtml_이
 // 요약해서 보여주는 값들(가업자산상당액·비율·총한도액 등)의 산출근거가 되는 5개 사업무관자산
 // 세부항목(㉮~㉲)은 화면 입력값(srTotalAsset 등)을 직접 읽어서 채운다.
+// [2026.09.30 신규, 재검토100] 별지10호의2서식 부표1(창업자금 증여재산평가 및 과세가액
+// 계산명세서) — "🧮 재산이 여러 건이면 목록으로 합산" 도구(srAssetRows_)에 입력한 내역을
+// 8컬럼(상속세·증여세 부표1과 같은 체계)으로 인쇄한다. 가업승계(특례종류가 다름)에는 해당
+// 없는 서식이라 창업자금일 때만 출력한다.
+function srAttach1PrintPageHtml_(r){
+  if (r.특례종류 !== '창업자금(조특법 §30의5)') return '';
+  const rows = (srAssetRows_ || []).filter(function(row){ return row.method || numVal(row.value) > 0; });
+  if (!rows.length) return '';
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의2서식 부표1]</div>' +
+    '<div class="pf-title">창업자금 증여재산평가 및 과세가액계산명세서</div>' +
+    '<table class="pf-table">' +
+      '<tr><th>재산구분</th><th>재산종류</th><th>소재지·내용</th><th>평가가액</th></tr>' +
+      rows.map(function(row){
+        return '<tr><td>본래의 증여재산</td><td>' + escapeHtml(VALUATION_METHOD_LABELS[row.method] || '') + '</td>' +
+          '<td>' + escapeHtml(row.assetLocation || '') + '</td><td class="pf-right">' + won(numVal(row.value)) + '</td></tr>';
+      }).join('') +
+      pfRow_(0, '해당 증여재산가액 계', won(rows.reduce(function(s,row){ return s + numVal(row.value); }, 0))) +
+      pfRow_(0, '인수한 채무액', won(r.인수채무액)) +
+      pfRow_(0, '과세특례 적용전 증여세과세가액 계', won(r.과세특례적용전_증여세과세가액_계)) +
+      pfRow_(0, '총한도액', won(r.총한도액)) +
+      pfRow_(0, '과세특례 적용대상 증여세과세가액', won(r.과세특례적용대상_증여세과세가액)) +
+      pfRow_(0, '기본세율 적용대상 증여재산가액(한도초과분)', won(r.기본세율적용대상_증여재산가액)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX "재산 목록 합산" 도구의 입력값을 기준으로 자동 생성되었습니다.</div>' +
+  '</div>';
+}
 function srAttach2PrintPageHtml_(r){
   if (r.특례종류 !== '가업승계주식등(조특법 §30의6)') return '';
   const totalAsset = numVal(taxAgentField_('srTotalAsset'));
@@ -11741,6 +11893,11 @@ taxCalcView.addEventListener('click', function(e){
     openRelatedPartyRatioHelperModal_();
   } else if (action === 'open-shareholding-helper'){
     openShareholdingHelperModal_(btn.dataset.target);
+  } else if (action === 'open-sr-asset-helper'){
+    openSrAssetHelperModal_();
+  } else if (action === 'print-bd-deferral-form'){
+    if (!lastBdDeferralResult_){ nxAlert_('먼저 "납부유예금액 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('가업승계 증여세 납부유예 증여재산평가 및 납부유예세액계산명세서', bdDeferralPrintPageHtml_(lastBdDeferralResult_));
   } else if (action === 'open-pre1990-standard-price'){
     openPre1990StandardPriceModal_(numVal(btn.dataset.idx));
   } else if (action === 'open-tax-office-guide'){
@@ -13006,10 +13163,20 @@ taxCalcView.addEventListener('click', function(e){
     };
     renderClawbackResult(calculateClawbackInterestJS(input));
   } else if (action === 'run-business-succession-deferral-amount'){
+    // [2026.09.30 신규, 재검토100] 별지10호 부표2용 사업무관자산 5항목을 채웠으면 그 비율로
+    // 가업자산상당액을 자동계산(sr탭과 같은 공식) — 안 채웠으면 예전처럼 직접입력값을 쓴다.
+    const bdTotalAsset = numVal(document.getElementById('bdTotalAsset').value) || 0;
+    let businessValue = numVal(document.getElementById('bdBusinessValue').value) || 0;
+    if (bdTotalAsset > 0){
+      const nonBizTotal = (numVal(document.getElementById('bdNonBiz55').value) || 0) + (numVal(document.getElementById('bdNonBiz49').value) || 0) +
+        (numVal(document.getElementById('bdNonBiz61').value) || 0) + (numVal(document.getElementById('bdExcessCash').value) || 0) + (numVal(document.getElementById('bdNonBizStock').value) || 0);
+      const ratio = Math.max(0, bdTotalAsset - nonBizTotal) / bdTotalAsset;
+      businessValue = Math.round((numVal(document.getElementById('bdTotalValue').value) || 0) * ratio);
+    }
     const input = {
       provision: document.getElementById('bdProvision').value,
       taxPayable: numVal(document.getElementById('bdTaxPayable').value) || 0,
-      businessSuccessionPropertyValue: numVal(document.getElementById('bdBusinessValue').value) || 0,
+      businessSuccessionPropertyValue: businessValue,
       totalPropertyValue: numVal(document.getElementById('bdTotalValue').value) || 0
     };
     renderBusinessSuccessionDeferralAmountResult(calculateBusinessSuccessionDeferralAmountJS(input));
