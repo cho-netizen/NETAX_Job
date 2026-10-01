@@ -2314,6 +2314,8 @@ function openOneHouseSpecialCaseModal_(idx){
           '<option value="pd">인구감소지역 주택(조특법§71의2, 2024.1.4~2026.12.31 취득)</option>' +
           '<option value="rh">농어촌주택등(조특법§99의4, 2003.8.1~2028.12.31 취득)</option>' +
           '<option value="pr">1주택+1분양권 보유(소득세법시행령§156의3, 2021.2.17~)</option>' +
+          '<option value="tw">일시적 2주택(소득세법시행령§155①)</option>' +
+          '<option value="mg">상생임대주택(소득세법시행령§155의3, 2021.12.20~2026.12.31 계약분)</option>' +
         '</select></div>' +
         '<div id="ohsU9" class="taxcalc-grid">' +
           '<div class="taxcalc-field"><label>준공후미분양주택 취득일</label><input type="date" id="u9AcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
@@ -2348,6 +2350,31 @@ function openOneHouseSpecialCaseModal_(idx){
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="prMovedIn"><label for="prMovedIn">[3년초과 양도일 때만] 신축주택 완성 후 3년 이내 세대전원 이사(전입)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="prResided1Y"><label for="prResided1Y">[3년초과 양도일 때만] 전입 후 1년 이상 계속 거주</label></div>' +
         '</div>' +
+        '<div id="ohsTw" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 "취득일"·"양도일" 입력칸 값을 그대로 씁니다. 신규주택 취득일 기준 조정대상지역 여부에 따라 처분기한이 2년 또는 3년으로 자동 분기됩니다(2026.10.1 개정 반영).</div>' +
+          '<div class="taxcalc-field"><label>신규주택 취득일</label><input type="date" id="twNewAcqDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="twHoldingException"><label for="twHoldingException">종전주택 취득 후 1년 경과 요건의 예외사유(시행령§154①1호·2호가목·3호)에 해당</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="twFormerAdjusted"><label for="twFormerAdjusted">신규주택 취득일 현재 종전주택이 조정대상지역 소재</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="twNewAdjusted"><label for="twNewAdjusted">신규주택 취득일 현재 신규주택도 조정대상지역 소재(둘 다 해당시 처분기한 2년)</label></div>' +
+          '<div class="taxcalc-field"><label>[둘다 조정지역일때만] 조정대상지역 공고일</label><input type="date" id="twNoticeDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field"><label>[둘다 조정지역일때만] 신규주택 매매계약 체결일</label><input type="date" id="twContractDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">공고일 이전 계약+계약금 지급 증빙시 2년 대신 3년 적용</span></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="twDownPaymentProof"><label for="twDownPaymentProof">[위 계약일 입력시만] 계약금 지급사실 증빙서류 보유</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="twExpropriated"><label for="twExpropriated">종전주택·부수토지 일부가 협의매수·수용되어 잔존주택을 나중에 양도함(5년 이내 특례)</label></div>' +
+          '<div class="taxcalc-field"><label>[위 체크시만] 수용일 또는 최초 양도일</label><input type="date" id="twExpropriationDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="twDisposalDelay"><label for="twDisposalDelay">처분기한 경과 사유가 경매·공매·재개발 현금청산소송 등 진행중임(§155⑱ 구제)</label></div>' +
+        '</div>' +
+        '<div id="ohsMg" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-result-note" style="flex-basis:100%;">양도일은 위 "양도일" 입력칸 값을 그대로 씁니다. 이 특례는 거주기간 요건만 면제합니다 — 보유기간 요건은 별도로 충족해야 합니다.</div>' +
+          '<div class="taxcalc-field"><label>직전임대차 시작일</label><input type="date" id="mgPriorStart" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field"><label>직전임대차 종료일</label><input type="date" id="mgPriorEnd" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field"><label>직전임대차 보증금</label><input type="number" id="mgPriorDeposit" placeholder="원"></div>' +
+          '<div class="taxcalc-field"><label>직전임대차 월세</label><input type="number" id="mgPriorRent" placeholder="원"></div>' +
+          '<div class="taxcalc-field"><label>상생임대차계약 체결일</label><input type="date" id="mgContractDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">2021.12.20~2026.12.31 체결분만 해당</span></div>' +
+          '<div class="taxcalc-field"><label>상생임대차 시작일</label><input type="date" id="mgLeaseStart" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field"><label>상생임대차 종료일</label><input type="date" id="mgLeaseEnd" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field"><label>상생임대차 보증금</label><input type="number" id="mgLeaseDeposit" placeholder="원"></div>' +
+          '<div class="taxcalc-field"><label>상생임대차 월세</label><input type="number" id="mgLeaseRent" placeholder="원"></div>' +
+        '</div>' +
         '<button type="button" class="taxcalc-run-btn" id="ohsRunBtn" style="margin-top:8px;">적용 가능 여부 판정하기</button>' +
         '<div id="ohsResult"></div>' +
       '</div>' +
@@ -2360,7 +2387,7 @@ function openOneHouseSpecialCaseModal_(idx){
   enhanceDateInputs(overlay);
   const provisionSel = overlay.querySelector('#ohsProvision');
   provisionSel.addEventListener('change', function(){
-    ['ohsU9', 'ohsPd', 'ohsRh', 'ohsPr'].forEach(function(id){
+    ['ohsU9', 'ohsPd', 'ohsRh', 'ohsPr', 'ohsTw', 'ohsMg'].forEach(function(id){
       overlay.querySelector('#' + id).style.display = (id === 'ohs' + provisionSel.value.charAt(0).toUpperCase() + provisionSel.value.slice(1)) ? '' : 'none';
     });
   });
@@ -2392,7 +2419,7 @@ function openOneHouseSpecialCaseModal_(idx){
         triggerClawback: document.getElementById('rhClawback').checked,
         isExemptedReason: document.getElementById('rhExempted').checked
       });
-    } else {
+    } else if (provision === 'pr'){
       r = calculatePresaleRightOneHouseExclusionJS({
         formerHouseAcquisitionDate: transferAssets[idx].acquisitionDate,
         formerHouseTransferDate: transferAssets[idx].transferDate,
@@ -2402,6 +2429,34 @@ function openOneHouseSpecialCaseModal_(idx){
         newHousingCompletionDate: document.getElementById('prCompletionDate').value,
         movedInWithinThreeYearsOfCompletion: document.getElementById('prMovedIn').checked,
         residedOneYearOrMore: document.getElementById('prResided1Y').checked
+      });
+    } else if (provision === 'tw'){
+      r = calculateTemporaryTwoHouseExclusionJS({
+        formerHouseAcquisitionDate: transferAssets[idx].acquisitionDate,
+        formerHouseTransferDate: transferAssets[idx].transferDate,
+        newHouseAcquisitionDate: document.getElementById('twNewAcqDate').value,
+        meetsHoldingPeriodException: document.getElementById('twHoldingException').checked,
+        isFormerHouseAdjustedArea: document.getElementById('twFormerAdjusted').checked,
+        isNewHouseAdjustedArea: document.getElementById('twNewAdjusted').checked,
+        adjustedAreaPublicNoticeDate: document.getElementById('twNoticeDate').value,
+        newHouseContractDate: document.getElementById('twContractDate').value,
+        hasDownPaymentProof: document.getElementById('twDownPaymentProof').checked,
+        isExpropriated: document.getElementById('twExpropriated').checked,
+        expropriationDate: document.getElementById('twExpropriationDate').value,
+        hasDisposalDelayException: document.getElementById('twDisposalDelay').checked
+      });
+    } else {
+      r = calculateMutualGrowthLeaseExclusionJS({
+        priorLeaseStartDate: document.getElementById('mgPriorStart').value,
+        priorLeaseEndDate: document.getElementById('mgPriorEnd').value,
+        priorLeaseDeposit: numVal(document.getElementById('mgPriorDeposit').value),
+        priorLeaseRent: numVal(document.getElementById('mgPriorRent').value),
+        mutualLeaseContractDate: document.getElementById('mgContractDate').value,
+        mutualLeaseStartDate: document.getElementById('mgLeaseStart').value,
+        mutualLeaseEndDate: document.getElementById('mgLeaseEnd').value,
+        mutualLeaseDeposit: numVal(document.getElementById('mgLeaseDeposit').value),
+        mutualLeaseRent: numVal(document.getElementById('mgLeaseRent').value),
+        transferDate: transferAssets[idx].transferDate
       });
     }
     const resultBox = document.getElementById('ohsResult');
@@ -2430,17 +2485,28 @@ function openOneHouseSpecialCaseModal_(idx){
           u9: { label: '수도권 밖 준공후미분양주택(조특법§98의9)', formNo: '조세특례제한법 시행규칙 [별지 제52호의3서식]', formTitle: '1세대1주택 과세특례(인구감소지역주택, 준공후미분양주택 취득자) 신고서' },
           pd: { label: '인구감소지역 주택(조특법§71의2)', formNo: '조세특례제한법 시행규칙 [별지 제52호의3서식]', formTitle: '1세대1주택 과세특례(인구감소지역주택, 준공후미분양주택 취득자) 신고서' },
           rh: { label: '농어촌주택등(조특법§99의4)', formNo: '조세특례제한법 시행규칙 [별지 제63호의4서식]', formTitle: '농어촌주택 등 취득자에 대한 과세특례신고서' },
-          pr: { label: '1주택+1분양권 보유(소득세법시행령§156의3)', formNo: '소득세법 시행규칙 [별지 제83호의5서식]', formTitle: '조합원입주권 또는 분양권 소유자 1세대1주택 특례적용신고서' }
+          pr: { label: '1주택+1분양권 보유(소득세법시행령§156의3)', formNo: '소득세법 시행규칙 [별지 제83호의5서식]', formTitle: '조합원입주권 또는 분양권 소유자 1세대1주택 특례적용신고서' },
+          // [2026.10.01 신규, 재검토103] 일시적2주택(§155①)은 law.go.kr 조사 결과 전용신고서식
+          // 자체가 없다(일반 과세표준신고서로 비과세 신고) — formNo를 비워 oneHouseSpecialCase를
+          // 아예 안 만든다(아래 분기). 상생임대주택(§155의3)은 별지83호의4서식이 전용서식으로
+          // 확인됨.
+          mg: { label: '상생임대주택(소득세법시행령§155의3)', formNo: '소득세법 시행규칙 [별지 제83호의4서식]', formTitle: '상생임대주택에 대한 특례적용신고서' }
         };
         const pf = provisionForms[provision] || {};
-        transferAssets[idx].oneHouseSpecialCase = {
-          provisionLabel: pf.label || provision,
-          formNo: pf.formNo || '', formTitle: pf.formTitle || '',
-          acquisitionDate: document.getElementById(provision + 'AcquisitionDate') ? document.getElementById(provision + 'AcquisitionDate').value : '',
-          houseType: provision === 'rh' ? (document.getElementById('rhHouseType').value === 'hometown' ? '고향주택' : '농어촌주택') : '',
-          newHousingCompletionDate: provision === 'pr' ? document.getElementById('prCompletionDate').value : '',
-          안내: r.안내 || ''
-        };
+        if (pf.formNo){
+          transferAssets[idx].oneHouseSpecialCase = {
+            provisionLabel: pf.label || provision,
+            formNo: pf.formNo || '', formTitle: pf.formTitle || '',
+            acquisitionDate: document.getElementById(provision + 'AcquisitionDate') ? document.getElementById(provision + 'AcquisitionDate').value : '',
+            houseType: provision === 'rh' ? (document.getElementById('rhHouseType').value === 'hometown' ? '고향주택' : '농어촌주택') : '',
+            newHousingCompletionDate: provision === 'pr' ? document.getElementById('prCompletionDate').value : '',
+            mgContractDate: provision === 'mg' ? document.getElementById('mgContractDate').value : '',
+            mgLeasePeriod: provision === 'mg' ? (document.getElementById('mgLeaseStart').value + ' ~ ' + document.getElementById('mgLeaseEnd').value) : '',
+            안내: r.안내 || ''
+          };
+        } else {
+          delete transferAssets[idx].oneHouseSpecialCase;
+        }
         close();
         renderTransferPane();
         showToast('1세대1주택 비과세 전제를 체크했습니다.', 'success');
@@ -7464,7 +7530,9 @@ function oneHouseSpecialCasePrintPageHtml_(asset){
       (c.houseType ? pfRow_(++n, '구분', c.houseType) : '') +
       (c.acquisitionDate ? pfRow_(++n, '특례주택 취득일', c.acquisitionDate) : '') +
       (c.newHousingCompletionDate ? pfRow_(++n, '신축주택 완성(예정)일', c.newHousingCompletionDate) : '') +
-      pfRow_(++n, '판정 결과', '적용 가능(주택수 제외)') +
+      (c.mgContractDate ? pfRow_(++n, '상생임대차계약 체결일', c.mgContractDate) : '') +
+      (c.mgLeasePeriod ? pfRow_(++n, '상생임대차 기간', c.mgLeasePeriod) : '') +
+      pfRow_(++n, '판정 결과', c.mgContractDate ? '적용 가능(거주기간 요건 면제 — 보유기간 요건은 별도 충족 필요)' : '적용 가능(주택수 제외)') +
     '</table>' +
     '<div class="pf-note">이 서식은 NETAX "특정주택 제외 판정" 도구의 판정 결과를 기준으로 자동 생성되었습니다 — ' + escapeHtml(c.안내 || '') + ' 서식에 있는 신청인 주소·전화번호·소재지·면적·기준시가 등 세부 항목은 아직 자동으로 안 채워지니 직접 보완하세요.</div>' +
   '</div>';
