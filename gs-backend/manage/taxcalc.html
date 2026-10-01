@@ -3175,10 +3175,25 @@ function valuationAssetMethodFieldsHtml(m, a){
     '<div class="taxcalc-field"><label>피상속인 실질보험료부담비율</label><input type="number" step="0.01" min="0" max="1" data-field="diPremiumRatio" placeholder="0~1" value="' + (a.diPremiumRatio || '') + '"><span class="taxcalc-field-help">보험금만, 계약자가 다를 때</span></div>' +
     '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="diAlreadyGiftTaxed"' + (a.diAlreadyGiftTaxed ? ' checked' : '') + '><label>[피상속인이 신탁한 재산만] 이미 §33①로 증여재산가액 처리됨</label></div>' +
     '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="diExcludedPension"' + (a.diExcludedPension ? ' checked' : '') + '><label>[퇴직금등만] 국민연금법 등 열거된 유족연금·유족보상금류에 해당</label></div>';
+  // [2026.09.30 신규, 재검토99] 상속세 부표8·증여세 서화골동품명세서(별지10-5·10-6호용) 인쇄에
+  // 필요한 항목(작품코드·작가명·작품명·제작년도·재질·크기)을 "서화·골동품" 자산유형에 추가
+  // 입력받는다 — 평가액 자체는 아래 공용 직접입력 블록(감정가액 등)을 그대로 쓴다.
+  const artworkExtra = (m === 'artwork') ? (
+    '<div class="taxcalc-field"><label>작품코드</label><select data-field="artworkCode">' +
+      [['01','서양화'],['02','동양화'],['03','데생'],['04','파스텔'],['05','콜라주'],['06','판화'],['07','인쇄화'],['08','석판화'],
+       ['09','골동품'],['10','기타'],['11','서예'],['12','조각'],['13','도자기'],['14','사진'],['ZZ','해당없음']]
+        .map(function(c){ return '<option value="' + c[0] + '"' + (a.artworkCode === c[0] ? ' selected' : '') + '>' + c[1] + '</option>'; }).join('') +
+    '</select></div>' +
+    '<div class="taxcalc-field"><label>작가명</label><input type="text" data-field="artworkArtist" value="' + (a.artworkArtist || '').replace(/"/g, '&quot;') + '"></div>' +
+    '<div class="taxcalc-field"><label>작품명</label><input type="text" data-field="artworkTitle" value="' + (a.artworkTitle || '').replace(/"/g, '&quot;') + '"></div>' +
+    '<div class="taxcalc-field"><label>제작년도</label><input type="text" data-field="artworkYear" placeholder="YYYY" maxlength="4" value="' + (a.artworkYear || '').replace(/"/g, '&quot;') + '"></div>' +
+    '<div class="taxcalc-field"><label>재질</label><input type="text" data-field="artworkMaterial" value="' + (a.artworkMaterial || '').replace(/"/g, '&quot;') + '"></div>' +
+    '<div class="taxcalc-field"><label>크기(또는 작품호수 등)</label><input type="text" data-field="artworkSize" value="' + (a.artworkSize || '').replace(/"/g, '&quot;') + '" placeholder="예: 100mm×150mm, 10호"></div>'
+  ) : '';
   // [2026.09.30 신규, 재검토90] "직접입력" 평가액은 실제로는 매매가/감정가/수용가/경매가/
   // 매매사례가 등 여러 근거 중 하나인데, 예전엔 항상 '01'(매매거래액)로 고정 기재해 전자신고
   // 상속증여재산평가방법구분 코드(별첨4)가 실제 근거와 다르게 나갈 수 있었다 — 직접 선택하게 한다.
-  return '<div class="taxcalc-field"><label>평가액</label><input type="number" data-field="directValue" placeholder="원" value="' + (a.directValue || '') + '"><button type="button" class="taxcalc-ai-btn" data-action="lookup-real-price" style="margin-top:4px;">🔍 아파트 실거래가 조회(참고)</button></div>' +
+  return artworkExtra + '<div class="taxcalc-field"><label>평가액</label><input type="number" data-field="directValue" placeholder="원" value="' + (a.directValue || '') + '"><button type="button" class="taxcalc-ai-btn" data-action="lookup-real-price" style="margin-top:4px;">🔍 아파트 실거래가 조회(참고)</button></div>' +
     '<div class="taxcalc-field"><label>평가근거(전자신고용)</label><select data-field="directBasisCode">' +
       '<option value="01"' + (!a.directBasisCode || a.directBasisCode === '01' ? ' selected' : '') + '>당해재산의 매매거래액</option>' +
       '<option value="02"' + (a.directBasisCode === '02' ? ' selected' : '') + '>당해재산의 감정가액</option>' +
@@ -8467,7 +8482,7 @@ function ihPrintFormBodyHtml_(){
       pfRow_(++n, '납부지연가산세', won(numVal(r.납부지연가산세) || 0)) +
       pfRow_(++n, '납부할 세액(합계액)', won(r.납부세액)) +
     '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 부표1~3, (배우자가 있으면)부표3의2는 뒤에 이어집니다. 부표4(상속개시전 처분재산)·부표5(영리법인 면제)·부표6·7(사후관리추징 — "증여·상속 공통 > 사후관리 추징이자" 탭에서 별도 인쇄)는 해당 사실관계가 있는 사건에서만 필요해 여기 포함되지 않습니다. 서화·골동품 등 자산을 등록한 경우, 재산가액은 부표1에 정확히 반영되지만 전용 부표8(서화·골동품 등 상속재산 명세서)은 아직 별도로 만들어지지 않으니 신고시 직접 작성하세요.</div>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 부표1~3, (배우자가 있으면)부표3의2, (서화·골동품 자산이 있으면)부표8은 뒤에 이어집니다. 부표4(상속개시전 처분재산)·부표5(영리법인 면제)·부표6·7(사후관리추징 — "증여·상속 공통 > 사후관리 추징이자" 탭에서 별도 인쇄)는 해당 사실관계가 있는 사건에서만 필요해 여기 포함되지 않습니다.</div>' +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml(reporter.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
@@ -8668,6 +8683,26 @@ function ihAttachPrintPagesHtml_(){
         pfRow_(0, '배우자 상속공제액', won(numVal(r.배우자공제))) +
       '</table>' +
       '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 배우자 상속공제액은 최소 5억원, (실제 상속재산가액·공제한도액) 중 작은 값입니다.</div>' +
+    '</div>';
+  }
+  // [2026.09.30 신규, 재검토99] 부표8(서화·골동품 등 상속재산 명세서, 신설 2025.3.21) — "서화·
+  // 골동품 등" 자산유형(artwork)에 추가한 작품코드·작가명 등 입력값을 그대로 옮긴다.
+  const artworkAssets = assets.filter(function(a){ return a.method === 'artwork'; });
+  if (artworkAssets.length){
+    const ART_CODE_LABELS_ = { '01':'서양화','02':'동양화','03':'데생','04':'파스텔','05':'콜라주','06':'판화','07':'인쇄화','08':'석판화','09':'골동품','10':'기타','11':'서예','12':'조각','13':'도자기','14':'사진','ZZ':'해당없음' };
+    html += '<div class="pf-page">' +
+      '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제9호서식 부표8]</div>' +
+      '<div class="pf-title">서화·골동품 등 상속재산 명세서</div>' +
+      '<table class="pf-table">' +
+        '<tr><th>작품코드</th><th>작가명</th><th>작품명</th><th>제작년도</th><th>재질</th><th>크기</th><th>평가가액</th></tr>' +
+        artworkAssets.map(function(a){
+          return '<tr><td>' + escapeHtml(ART_CODE_LABELS_[a.artworkCode] || a.artworkCode || '') + '</td>' +
+            '<td>' + escapeHtml(a.artworkArtist || '') + '</td><td>' + escapeHtml(a.artworkTitle || '') + '</td>' +
+            '<td>' + escapeHtml(a.artworkYear || '') + '</td><td>' + escapeHtml(a.artworkMaterial || '') + '</td>' +
+            '<td>' + escapeHtml(a.artworkSize || '') + '</td><td class="pf-right">' + won(Math.round(computeValuationAssetValue(a))) + '</td></tr>';
+        }).join('') +
+      '</table>' +
+      '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다.</div>' +
     '</div>';
   }
   return html;
@@ -10197,6 +10232,28 @@ function gfDeemedGiftPrintRows_(r, extraFields){
   rows += pfRow_(++n, '자진납부할 세액(합계액)', won(r.납부세액));
   return rows;
 }
+// [2026.09.30 신규, 재검토99] 서화·골동품 등 증여재산명세서(10-5·10-6용) — 상속세 부표8과 같은
+// artworkCode 등 입력값을 재사용한다.
+function gfArtworkPrintPageHtml_(){
+  const donee = giftDonees[0] || {};
+  const artworkAssets = (giftValuationAssets_() || []).filter(function(a){ return a.method === 'artwork'; });
+  if (!artworkAssets.length) return '';
+  const ART_CODE_LABELS_ = { '01':'서양화','02':'동양화','03':'데생','04':'파스텔','05':'콜라주','06':'판화','07':'인쇄화','08':'석판화','09':'골동품','10':'기타','11':'서예','12':'조각','13':'도자기','14':'사진','ZZ':'해당없음' };
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의5·10호의6서식 부표]</div>' +
+    '<div class="pf-title">서화·골동품 등 증여재산명세서</div>' +
+    '<table class="pf-table">' +
+      '<tr><th>수증자</th><th>작품코드</th><th>작가명</th><th>작품명</th><th>제작년도</th><th>재질</th><th>크기</th><th>평가가액</th></tr>' +
+      artworkAssets.map(function(a){
+        return '<tr><td>' + escapeHtml(donee.name || '') + '</td><td>' + escapeHtml(ART_CODE_LABELS_[a.artworkCode] || a.artworkCode || '') + '</td>' +
+          '<td>' + escapeHtml(a.artworkArtist || '') + '</td><td>' + escapeHtml(a.artworkTitle || '') + '</td>' +
+          '<td>' + escapeHtml(a.artworkYear || '') + '</td><td>' + escapeHtml(a.artworkMaterial || '') + '</td>' +
+          '<td>' + escapeHtml(a.artworkSize || '') + '</td><td class="pf-right">' + won(Math.round(computeValuationAssetValue(a))) + '</td></tr>';
+      }).join('') +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다.</div>' +
+  '</div>';
+}
 function edPrintFormPageHtml_(){
   const r = lastExcessDividendGiftResult_;
   if (!r) return '';
@@ -10216,7 +10273,7 @@ function edPrintFormPageHtml_(){
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
-  '</div>';
+  '</div>' + gfArtworkPrintPageHtml_();
 }
 function scPrintFormPageHtml_(){
   const r = lastSpecificCorpGiftResult_;
@@ -10237,7 +10294,7 @@ function scPrintFormPageHtml_(){
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
-  '</div>';
+  '</div>' + gfArtworkPrintPageHtml_();
 }
 
 // [2026.09.30 신규, 재검토87] 명의신탁·재산취득자금·상장이익·재산가치증가이익·전환사채 —
