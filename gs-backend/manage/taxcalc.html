@@ -7313,9 +7313,11 @@ function trAttach1PrintPageHtml_(asset, seq){
 }
 // [2026.09.30 신규, 재검토100] 소득세법 시행규칙 [별지 제83호의5서식] "조합원입주권 또는
 // 분양권 소유자 1세대1주택 특례적용신고서" — 정밀 재조사로 확인된 정확한 서식번호(재검토97의
-// "별지83호" 라벨은 오류였음, 재검토98에서 정정)로 조합원입주권 케이스를 인쇄한다. 분양권은
-// 1세대1주택 비과세 판정 로직 자체가 코드에 없어서(별도 신규 조사·구현 필요) 여기 포함하지
-// 않는다 — 지어내지 않는다.
+// "별지83호" 라벨은 오류였음, 재검토98에서 정정)로 조합원입주권 케이스를 인쇄한다. 분양권
+// 1세대1주택 비과세 판정(시행령§156의3)은 재검토101(2026.10.01)에서 구현 완료 —
+// openOneHouseSpecialCaseModal_의 'pr' 분기가 이 asset이 아니라 종전주택(별도 asset)에
+// oneHouseSpecialCase를 세팅하는 구조라 이 함수의 대상(asset.isReconstructionRights)과는
+// 별개로, oneHouseSpecialCasePrintPageHtml_(trAttach1PrintPageHtml_에서 같이 호출됨)이 처리한다.
 function reconstructionRightsPrintPageHtml_(asset){
   if (!asset.isReconstructionRights) return '';
   let n = 0;
@@ -8790,7 +8792,7 @@ function ihPrintFormBodyHtml_(){
       pfRow_(++n, '납부지연가산세', won(numVal(r.납부지연가산세) || 0)) +
       pfRow_(++n, '납부할 세액(합계액)', won(r.납부세액)) +
     '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 부표1~3, (배우자가 있으면)부표3의2, (서화·골동품 자산이 있으면)부표8은 뒤에 이어집니다. 부표4(상속개시전 처분재산)·부표5(영리법인 면제)·부표6·7(사후관리추징 — "증여·상속 공통 > 사후관리 추징이자" 탭에서 별도 인쇄)는 해당 사실관계가 있는 사건에서만 필요해 여기 포함되지 않습니다.</div>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 부표1~3, (배우자가 있으면)부표3의2, (서화·골동품 자산이 있으면)부표8, (가업상속공제·영농상속공제·가업상속납부유예·금융재산상속공제·재해손실공제·동거주택상속공제·배우자재산미분할이 각각 해당하면)별지1·2·3·5·6·6의2·12호의2서식은 뒤에 이어집니다. 부표4(상속개시전 처분재산)·부표5(영리법인 면제)·부표6·7(사후관리추징 — "증여·상속 공통 > 사후관리 추징이자" 탭에서 별도 인쇄)는 해당 사실관계가 있는 사건에서만 필요해 여기 포함되지 않습니다.</div>' +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml(reporter.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
@@ -9013,8 +9015,222 @@ function ihAttachPrintPagesHtml_(){
       '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다.</div>' +
     '</div>';
   }
+  // [2026.10.01 신규, 재검토102] 전수감사로 발견된 "금액은 계산되는데 전용 신고서식이 없던" 6개
+  // 공제(가업상속공제·영농상속공제·가업상속납부유예(상속경로)·금융재산상속공제·재해손실공제·
+  // 동거주택상속공제) + 배우자상속재산 미분할 신고서, law.go.kr 원문(별지1·2·3·5·6·6의2·12의2호
+  // 서식, 2025.3.21 개정판까지)을 글자단위로 복원해 정확한 항목 그대로 구현한다.
+  const bizDetail = r.가업상속공제_계산내역;
+  if (bizDetail){
+    const nonBizTotal = ihDomNum_('ihBusinessNonBiz55') + ihDomNum_('ihBusinessNonBiz49') + ihDomNum_('ihBusinessNonBiz61') + ihDomNum_('ihBusinessExcessCash') + ihDomNum_('ihBusinessNonBizStock');
+    const totalAsset = ihDomNum_('ihBusinessTotalAsset');
+    const bizRelatedAssetValue = Math.max(0, totalAsset - nonBizTotal);
+    const heir = inheritanceHeirs[0] || {};
+    html += '<div class="pf-page">' +
+      '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제1호서식]</div>' +
+      '<div class="pf-title">가업상속공제신고서</div>' +
+      '<div class="pf-section-head">다. 피상속인</div>' +
+      '<table class="pf-table">' + pfRow_(0, '성명', g_('ihDeceasedName')) + pfRow_(0, '주민등록번호', g_('ihDeceasedRegNo')) + pfRow_(0, '가업영위기간', ihDomNum_('ihBusinessYears') + '년') + '</table>' +
+      '<div class="pf-section-head">라. 가업상속인</div>' +
+      '<table class="pf-table">' + pfRow_(0, '성명', heir.name || '') + pfRow_(0, '주민등록번호', heir.regNo || '') + pfRow_(0, '주소', heir.address || '') + '</table>' +
+      '<div class="pf-note">가업상속인은 상속인 명부의 첫 번째 행을 기본값으로 표시합니다 — 실제 가업상속인이 다르면 직접 수정하세요. "가.가업 현황"·"나.중소·중견기업 여부"는 상호·사업자등록번호 등 별도 수집항목이 없어 직접 보완하세요. "마.가업상속재산가액"·"바.공제신고액"은 아래 부표1·부표2를 참고하세요.</div>' +
+    '</div>' +
+    '<div class="pf-page">' +
+      '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제1호서식 부표 1]</div>' +
+      '<div class="pf-title">가업상속재산명세서</div>' +
+      ihBizAssetDetailTableHtml_(bizDetail, nonBizTotal, bizRelatedAssetValue) +
+      '<div class="pf-section-head">다. 한도액계산</div>' +
+      '<table class="pf-table">' +
+        pfRow_(0, '⑧ 한도액(가업영위기간 ' + ihDomNum_('ihBusinessYears') + '년)', won(bizDetail.한도액)) +
+        pfRow_(0, '⑨ 가업상속공제 대상금액(①+⑦)', won(bizDetail.대상금액)) +
+        pfRow_(0, '⑩ 가업상속공제액(⑨와⑧중 적은금액)', won(r.가업상속공제)) +
+      '</table>' +
+      (bizDetail.중견기업게이트_적용여부 !== undefined ? '<div class="pf-section-head">라. 중견기업 적용요건</div>' +
+        '<table class="pf-table">' +
+          pfRow_(0, '가업상속인의 가업상속재산 외 상속재산가액', won(ihDomNum_('ihBusinessHeirNonBizAsset'))) +
+          pfRow_(0, '가업상속공제 미적용시 그 상속인 납부세액×200%', won(ihDomNum_('ihBusinessHeirTaxWithoutDeduction') * 2)) +
+          pfRow_(0, '중견기업 게이트 적용(공제배제) 여부', bizDetail.중견기업게이트_적용여부 ? '적용(공제배제됨)' : '미적용') +
+        '</table>' : '') +
+      '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다.</div>' +
+    '</div>' +
+    ihBizAssetListPrintPageHtml_('별지 제1호서식 부표 2');
+  }
+  const farmingDetail = r.영농상속공제_계산내역;
+  if (farmingDetail){
+    const nonBizTotal = ihDomNum_('ihFarmingNonBiz55') + ihDomNum_('ihFarmingNonBiz49') + ihDomNum_('ihFarmingNonBiz61') + ihDomNum_('ihFarmingExcessCash') + ihDomNum_('ihFarmingNonBizStock');
+    const totalAsset = ihDomNum_('ihFarmingTotalAsset');
+    const bizRelatedAssetValue = Math.max(0, totalAsset - nonBizTotal);
+    const heir = inheritanceHeirs[0] || {};
+    html += '<div class="pf-page">' +
+      '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제2호서식]</div>' +
+      '<div class="pf-title">영농상속공제신고서</div>' +
+      '<div class="pf-section-head">1. 피상속인 및 신고인(상속인)</div>' +
+      '<table class="pf-table">' + pfRow_(0, '피상속인 성명', g_('ihDeceasedName')) + pfRow_(0, '피상속인 주민등록번호', g_('ihDeceasedRegNo')) + pfRow_(0, '상속인 성명', heir.name || '') + pfRow_(0, '상속인 주민등록번호', heir.regNo || '') + '</table>' +
+      '<div class="pf-section-head">2. 영농상속재산명세</div>' +
+      '<table class="pf-table">' +
+        pfRow_(0, '가-1. 소득세법 적용 영농(① 합계)', won(farmingDetail.소득세법적용분)) +
+        pfRow_(0, '가-2. 법인세법 적용 영농(② 상속개시일 현재 주식등의 가액)', won(ihDomNum_('ihFarmingStockValue'))) +
+      '</table>' +
+      '<div class="pf-section-head">3. 영농상속공제액</div>' +
+      '<table class="pf-table">' +
+        pfRow_(0, '③ 총자산가액', won(totalAsset)) +
+        pfRow_(0, '사업무관자산 - §55의2', won(ihDomNum_('ihFarmingNonBiz55')), { indent: true }) +
+        pfRow_(0, '사업무관자산 - 시행령§49(임대용부동산 포함)', won(ihDomNum_('ihFarmingNonBiz49')), { indent: true }) +
+        pfRow_(0, '사업무관자산 - 시행령§61①2호', won(ihDomNum_('ihFarmingNonBiz61')), { indent: true }) +
+        pfRow_(0, '과다보유현금', won(ihDomNum_('ihFarmingExcessCash')), { indent: true }) +
+        pfRow_(0, '영업무관 주식·채권·금융상품', won(ihDomNum_('ihFarmingNonBizStock')), { indent: true }) +
+        pfRow_(0, '④ 사업무관자산가액 계', won(nonBizTotal)) +
+        pfRow_(0, '⑤ 사업관련자산가액(③-④)', won(bizRelatedAssetValue)) +
+        pfRow_(0, '⑥ 사업관련자산가액비율(⑤÷③)', (Number(farmingDetail.사업관련자산가액비율) * 100 || 0).toFixed(2) + '%') +
+        pfRow_(0, '⑧ 영농상속공제 대상금액(①+③×⑦)', won(farmingDetail.대상금액)) +
+        pfRow_(0, '⑨ 영농상속공제 한도액', won(farmingDetail.한도액)) +
+        pfRow_(0, '⑩ 영농상속공제액(⑧과⑨중 적은금액)', won(r.영농상속공제)) +
+      '</table>' +
+      '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 영농재산 종류별 소재지·수량·단가 등 세부내역은 별도 수집항목이 없어 직접 보완하세요.</div>' +
+    '</div>';
+  }
+  if (!document.getElementById('ihSpouseDivided') || !document.getElementById('ihSpouseDivided').checked){
+    const heir = (inheritanceHeirs.filter(function(h){ return h.relation === '배우자'; })[0]) || {};
+    html += '<div class="pf-page">' +
+      '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제3호서식]</div>' +
+      '<div class="pf-title">배우자 상속재산 미분할 신고서</div>' +
+      '<div class="pf-section-head">1. 피상속인 및 신고인(상속인)</div>' +
+      '<table class="pf-table">' + pfRow_(0, '피상속인 성명', g_('ihDeceasedName')) + pfRow_(0, '피상속인 주민등록번호', g_('ihDeceasedRegNo')) + pfRow_(0, '신고인(상속인) 성명', heir.name || '') + pfRow_(0, '신고인(상속인) 주민등록번호', heir.regNo || '') + pfRow_(0, '주소', heir.address || '') + '</table>' +
+      '<div class="pf-section-head">2. 상속재산(배우자 상속재산분할기한까지 미분할 재산)</div>' +
+      '<table class="pf-table">' +
+        '<tr><th>재산종류</th><th>소재지</th><th>수량(면적)</th><th>평가액</th></tr>' +
+        assets.map(function(a){ return '<tr><td>' + escapeHtml(VALUATION_METHOD_LABELS[a.method] || '') + '</td><td>' + escapeHtml(a.assetLocation || '') + '</td><td class="pf-right">' + (numVal(a.assetArea) || '') + '</td><td class="pf-right">' + won(Math.round(computeValuationAssetValue(a))) + '</td></tr>'; }).join('') +
+      '</table>' +
+      '<div class="pf-section-head">3. 상속재산 미분할 사유</div>' +
+      '<div class="pf-check">[ ] 상속회복청구의 소 &nbsp;&nbsp; [ ] 상속재산 분할 심판 &nbsp;&nbsp; [ ] 상속인이 확정되지 아니한 경우</div>' +
+      '<div class="pf-note">이 서식은 "배우자상속재산분할기한까지 분할·등기하고 신고함" 체크가 꺼져 있어 자동 생성되었습니다(§19②③) — 해당하는 미분할 사유에 직접 체크하고, 입증서류를 첨부하세요.</div>' +
+    '</div>';
+  }
+  if (ihDomNum_('ihNetFinancial') > 0){
+    const heir = inheritanceHeirs[0] || {};
+    const netFinancial = ihDomNum_('ihNetFinancial');
+    html += '<div class="pf-page">' +
+      '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제5호서식]</div>' +
+      '<div class="pf-title">금융재산 상속공제 신고서</div>' +
+      '<div class="pf-section-head">1. 피상속인 및 신고인(상속인)</div>' +
+      '<table class="pf-table">' + pfRow_(0, '피상속인 성명', g_('ihDeceasedName')) + pfRow_(0, '피상속인 주민등록번호', g_('ihDeceasedRegNo')) + pfRow_(0, '상속인 성명', heir.name || '') + pfRow_(0, '상속인 주민등록번호', heir.regNo || '') + '</table>' +
+      '<div class="pf-note">2.금융재산 및 금융채무 명세(종류·계좌번호·상호별 세부내역)는 순금융재산가액만 수집해 직접 보완이 필요합니다.</div>' +
+      '<div class="pf-section-head">3. 금융재산 상속공제금액</div>' +
+      '<table class="pf-table">' +
+        pfRow_(0, '③ 순금융재산가액(금융재산-금융채무)', won(netFinancial)) +
+        pfRow_(0, '④ 금융재산 상속공제 한도액(§22②)', won(netFinancial <= 20000000 ? netFinancial : (netFinancial <= 100000000 ? 20000000 : (netFinancial <= 1000000000 ? Math.round(netFinancial * 0.2) : 200000000)))) +
+        pfRow_(0, '⑤ 금융재산 상속공제금액(③과④중 적은금액)', won(r.금융재산상속공제)) +
+      '</table>' +
+      '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다. 한도표(§22②): 순금융재산가액 2천만원 이하는 전액, 2천만원초과~1억원이하는 2천만원, 1억원초과~10억원이하는 순금융재산가액의 20%, 10억원초과는 2억원.</div>' +
+    '</div>';
+  }
+  if (ihDomNum_('ihDisasterLoss') > 0){
+    const heir = inheritanceHeirs[0] || {};
+    html += '<div class="pf-page">' +
+      '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제6호서식]</div>' +
+      '<div class="pf-title">재해손실 공제신고서</div>' +
+      '<div class="pf-check">[√] 상속세 &nbsp;&nbsp; [ ] 증여세</div>' +
+      '<div class="pf-section-head">1. 신고인</div>' +
+      '<table class="pf-table">' + pfRow_(0, '피상속인 성명', g_('ihDeceasedName')) + pfRow_(0, '피상속인 주민등록번호', g_('ihDeceasedRegNo')) + pfRow_(0, '신고인(상속인) 성명', heir.name || '') + pfRow_(0, '신고인(상속인) 주민등록번호', heir.regNo || '') + '</table>' +
+      '<div class="pf-note">2.재난사항(재난의 종류·발생일)은 별도 수집항목이 없어 직접 보완하세요.</div>' +
+      '<div class="pf-section-head">3. 재난으로 손실·훼손된 상속재산 명세</div>' +
+      '<table class="pf-table">' + pfRow_(0, '④ 합계(차감액, 재해손실공제액)', won(ihDomNum_('ihDisasterLoss'))) + '</table>' +
+      '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 재산종류별·보상금 수령 여부 등 세부내역은 직접 보완하세요.</div>' +
+    '</div>';
+  }
+  if (r.동거주택상속공제 > 0 || ihDomNum_('ihCohabitValue') > 0){
+    const heir = inheritanceHeirs[0] || {};
+    const cohabitValue = ihDomNum_('ihCohabitValue');
+    html += '<div class="pf-page">' +
+      '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제6호의2서식]</div>' +
+      '<div class="pf-title">동거주택상속공제신고서</div>' +
+      '<div class="pf-section-head">1. 신고자</div>' +
+      '<table class="pf-table">' + pfRow_(0, '피상속인 성명', g_('ihDeceasedName')) + pfRow_(0, '피상속인 주민등록번호', g_('ihDeceasedRegNo')) + pfRow_(0, '상속개시일', g_('ihDeathDate')) + pfRow_(0, '신청인(상속인) 성명', heir.name || '') + pfRow_(0, '신청인(상속인) 주민등록번호', heir.regNo || '') + pfRow_(0, '주소', heir.address || '') + '</table>' +
+      '<div class="pf-section-head">2. 동거주택 현황</div>' +
+      '<table class="pf-table">' +
+        pfRow_(0, '② 평가가액(동거주택 평가액-담보채무액)', won(cohabitValue)) +
+        pfRow_(0, '③ 상속개시일부터 소급 10년이상 계속 1세대1주택여부', (document.getElementById('ihCohabitReq1') && document.getElementById('ihCohabitReq1').checked && document.getElementById('ihCohabitReq2') && document.getElementById('ihCohabitReq2').checked && document.getElementById('ihCohabitReq3') && document.getElementById('ihCohabitReq3').checked) ? '해당' : '해당안됨') +
+      '</table>' +
+      '<div class="pf-section-head">3. 동거주택 상속공제</div>' +
+      '<table class="pf-table">' +
+        pfRow_(0, '⑩ 동거주택 공제대상액', won(cohabitValue)) +
+        pfRow_(0, '⑪ 한도금액', won(600000000)) +
+        pfRow_(0, '⑫ 동거주택상속공제액(⑩과⑪중 적은금액)', won(r.동거주택상속공제)) +
+      '</table>' +
+      '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 동거기간(연·월)·예외유형 등 세부내역은 직접 보완하세요.</div>' +
+    '</div>';
+  }
+  if (ihDomNum_('ihBizInheritDeferred') > 0 && bizDetail){
+    const nonBizTotal = ihDomNum_('ihBusinessNonBiz55') + ihDomNum_('ihBusinessNonBiz49') + ihDomNum_('ihBusinessNonBiz61') + ihDomNum_('ihBusinessExcessCash') + ihDomNum_('ihBusinessNonBizStock');
+    const totalAsset = ihDomNum_('ihBusinessTotalAsset');
+    const bizRelatedAssetValue = Math.max(0, totalAsset - nonBizTotal);
+    const heir = inheritanceHeirs[0] || {};
+    // taxAfterReportCredit 재구성 — 엔진의 가업상속납부유예_가능세액(=taxAfterReportCredit×대상금액÷총상속재산가액)과
+    // 정확히 같은 분자를 쓰기 위해, 엔진 내부 계산식(§72의2 납부유예 가능세액)을 그대로 역산한다.
+    const taxAfterReportCredit = (numVal(r.산출세액) || 0) - (numVal(r.기납부증여세액공제) || 0) - (numVal(r.특례증여세액공제) || 0) - (numVal(r.외국납부세액공제) || 0) - (numVal(r.단기재상속세액공제) || 0) - (numVal(r.그밖의공제) || 0) - (numVal(r.문화재등징수유예세액) || 0) - (numVal(r.신고세액공제) || 0);
+    html += '<div class="pf-page">' +
+      '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제12호의2서식]</div>' +
+      '<div class="pf-title">가업상속 납부유예신청서</div>' +
+      '<div class="pf-section-head">가. 가업상속인(신청인)</div>' +
+      '<table class="pf-table">' + pfRow_(0, '성명', heir.name || '') + pfRow_(0, '주민등록번호', heir.regNo || '') + pfRow_(0, '주소', heir.address || '') + '</table>' +
+      '<div class="pf-section-head">라. 피상속인</div>' +
+      '<table class="pf-table">' + pfRow_(0, '성명', g_('ihDeceasedName')) + pfRow_(0, '주민등록번호', g_('ihDeceasedRegNo')) + pfRow_(0, '가업영위기간', ihDomNum_('ihBusinessYears') + '년') + '</table>' +
+      '<div class="pf-section-head">바. 가업상속 납부유예를 신청하는 상속세</div>' +
+      '<table class="pf-table">' + pfRow_(0, '신청세액', won(ihDomNum_('ihBizInheritDeferred'))) + '</table>' +
+      '<div class="pf-note">가업상속인은 상속인 명부 첫 번째 행을 기본값으로 표시합니다 — 실제와 다르면 직접 수정하세요. "나.가업 현황"·"다.중소기업 여부"는 상호·사업자등록번호 등 별도 수집항목이 없어 직접 보완하세요.</div>' +
+    '</div>' +
+    '<div class="pf-page">' +
+      '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제12호의2서식 부표 1]</div>' +
+      '<div class="pf-title">가업상속재산명세서</div>' +
+      ihBizAssetDetailTableHtml_(bizDetail, nonBizTotal, bizRelatedAssetValue) +
+      '<div class="pf-section-head">다. 가업상속 납부유예 가능 상속세 납부세액</div>' +
+      '<table class="pf-table">' +
+        pfRow_(0, '⑧ 상속세 납부세액(신고세액공제 적용 후)', won(Math.max(0, taxAfterReportCredit))) +
+        pfRow_(0, '⑨ 총상속재산가액', won(ihDomNum_('ihTotalGrossEstate'))) +
+        pfRow_(0, '⑩ 납부유예 가능세액(⑧×가업상속재산가액÷⑨)', won(r.가업상속납부유예_가능세액)) +
+      '</table>' +
+      '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다.</div>' +
+    '</div>' +
+    ihBizAssetListPrintPageHtml_('별지 제12호의2서식 부표 2');
+  }
   return html;
 }
+// [2026.10.01 신규, 재검토102] 가업상속공제(별지1호)·가업상속납부유예(별지12호의2) 부표1의
+// "가.소득세법 적용가업"+"나.법인세법 적용가업" 표는 두 서식이 완전히 동일한 구조라 공유한다.
+function ihBizAssetDetailTableHtml_(detail, nonBizTotal, bizRelatedAssetValue){
+  return '<div class="pf-section-head">가. 소득세법 적용 가업</div>' +
+    '<table class="pf-table">' + pfRow_(0, '① 사업용자산 순액 합계', won(detail.소득세법적용분)) + '</table>' +
+    '<div class="pf-section-head">나. 법인세법 적용 가업</div>' +
+    '<table class="pf-table">' +
+      pfRow_(0, '② 상속개시일 현재 주식등의 가액', won(ihDomNum_('ihBusinessStockValue'))) +
+      pfRow_(0, '③ 총자산가액', won(ihDomNum_('ihBusinessTotalAsset'))) +
+      pfRow_(0, '사업무관자산 - §55의2', won(ihDomNum_('ihBusinessNonBiz55')), { indent: true }) +
+      pfRow_(0, '사업무관자산 - 시행령§49(임대용부동산 포함)', won(ihDomNum_('ihBusinessNonBiz49')), { indent: true }) +
+      pfRow_(0, '사업무관자산 - 시행령§61①2호', won(ihDomNum_('ihBusinessNonBiz61')), { indent: true }) +
+      pfRow_(0, '과다보유현금', won(ihDomNum_('ihBusinessExcessCash')), { indent: true }) +
+      pfRow_(0, '영업무관 주식·채권·금융상품', won(ihDomNum_('ihBusinessNonBizStock')), { indent: true }) +
+      pfRow_(0, '④ 사업무관자산가액 계', won(nonBizTotal)) +
+      pfRow_(0, '⑤ 사업관련자산가액(③-④)', won(bizRelatedAssetValue)) +
+      pfRow_(0, '⑥ 사업관련자산가액비율(⑤÷③)', (Number(detail.사업관련자산가액비율) * 100 || 0).toFixed(2) + '%') +
+      pfRow_(0, '⑦ 가업상속 재산가액(②×⑥)', won(detail.법인세법적용분)) +
+    '</table>';
+}
+function ihBizAssetListPrintPageHtml_(formNo){
+  const bizAssets = (inheritanceValuationAssets_() || []).filter(function(a){ return a.isBusinessAsset; });
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [' + formNo + ']</div>' +
+    '<div class="pf-title">가업용 자산 명세</div>' +
+    '<table class="pf-table">' +
+      '<tr><th>일련번호</th><th>구분코드</th><th>소재지</th><th>지목·명칭등</th><th>평가액</th></tr>' +
+      (bizAssets.length ? bizAssets.map(function(a, i){
+        return '<tr><td>' + (i + 1) + '</td><td>' + (a.method === 'land' ? '① 토지' : (a.method === 'building' ? '② 건축물' : '③ 기계장치등')) + '</td>' +
+          '<td>' + escapeHtml(a.assetLocation || '') + '</td><td>' + escapeHtml(VALUATION_METHOD_LABELS[a.method] || '') + '</td>' +
+          '<td class="pf-right">' + won(Math.round(computeValuationAssetValue(a))) + '</td></tr>';
+      }).join('') : '<tr><td colspan="5">사업용자산으로 표시된 개별 자산이 없습니다 — "재산평가" 탭에서 해당 자산에 "사업용자산" 체크를 했는지 확인하세요.</td></tr>') +
+    '</table>' +
+    '<div class="pf-note">구분코드는 ①토지·②건축물·③기계장치등 입니다 — 기계장치는 개별 입력항목이 없어 "③기계장치등"으로 표시되니, 실제 종류가 다르면 직접 수정하세요.</div>' +
+  '</div>';
+}
+function ihDomNum_(id){ const el = document.getElementById(id); return el ? numVal(el.value) : 0; }
 
 function renderIhEfileResult_(){
   const box = document.getElementById('taxCalcIhEfileResult');
