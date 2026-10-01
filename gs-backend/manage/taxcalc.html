@@ -4032,6 +4032,9 @@ function renderPropertyCardHtml_(idx, opts){
             '<div class="taxcalc-field checkbox" data-show-if="isReconstructionRights" style="display:none;"><input type="checkbox" data-field="isOneMemberRightOneFamily" id="rrOneMember-' + idx + '"><label for="rrOneMember-' + idx + '">1세대1조합원입주권 비과세 요건 충족 전제(소득세법§89①4호) — 12억 초과분만 과세(§95③ 후단, 시행령§160①②를 유추적용, 확정 조문 아님)</label></div>' +
             '<div class="taxcalc-field checkbox" data-show-if="isReconstructionRights" style="display:none;"><input type="checkbox" data-field="isSuccessorMember" id="rrSuccessor-' + idx + '"><label for="rrSuccessor-' + idx + '">승계조합원(다른 조합원으로부터 매매 등으로 이 조합원입주권 자체를 취득) — 체크시 §95②본문 괄호에 따라 관리처분계획인가 전 구간 장기보유특별공제를 아예 적용하지 않음(체크 안하면 원조합원으로 간주)</label></div>' : '') +
           '<div class="taxcalc-field" data-show-if="isReconstructionRights" style="display:none;"><label>관리처분계획인가일</label><input type="date" data-field="managementDispositionDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field" data-show-if="isReconstructionRights" style="display:none;"><label>사업시행인가일</label><input type="date" data-field="businessApprovalDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">1세대1주택 특례적용신고서(별지83의5호)용, 없으면 비움</span></div>' +
+          '<div class="taxcalc-field" data-show-if="isReconstructionRights" style="display:none;"><label>신축주택 완성일(사용승인일)</label><input type="date" data-field="newHousingCompletionDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">준공 전이면 비움</span></div>' +
+          '<div class="taxcalc-field" data-show-if="isReconstructionRights" style="display:none;"><label>종전주택 거주기간</label><input type="text" data-field="formerResidencePeriod" placeholder="예: 2년 3개월"></div>' +
           '<div class="taxcalc-field" data-show-if="isReconstructionRights" style="display:none;"><label>권리가액(종전자산평가액)</label><input type="number" data-field="rightsValue" placeholder="원"></div>' +
           '<div class="taxcalc-field" data-show-if="isReconstructionRights" style="display:none;"><label>분담금 납부액(없으면 0)</label><input type="number" data-field="settlementPaid" placeholder="원"></div>' +
           '<div class="taxcalc-field" data-show-if="isReconstructionRights" style="display:none;"><label>청산금 수령액(없으면 0)</label><input type="number" data-field="settlementReceived" placeholder="원"></div>' +
@@ -7158,7 +7161,33 @@ function trAttach1PrintPageHtml_(asset, seq){
     '</table>' +
     '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다. 장기보유특별공제는 일반적인 경우(재건축·다주택중과·안분 등 특례 없음)만 정확하며, 특례가 있는 거래는 위 본표(세액 계산결과)를 기준으로 직접 검토하세요.</div>' +
   '</div>' +
-  oneHouseSpecialCasePrintPageHtml_(asset);
+  oneHouseSpecialCasePrintPageHtml_(asset) +
+  reconstructionRightsPrintPageHtml_(asset);
+}
+// [2026.09.30 신규, 재검토100] 소득세법 시행규칙 [별지 제83호의5서식] "조합원입주권 또는
+// 분양권 소유자 1세대1주택 특례적용신고서" — 정밀 재조사로 확인된 정확한 서식번호(재검토97의
+// "별지83호" 라벨은 오류였음, 재검토98에서 정정)로 조합원입주권 케이스를 인쇄한다. 분양권은
+// 1세대1주택 비과세 판정 로직 자체가 코드에 없어서(별도 신규 조사·구현 필요) 여기 포함하지
+// 않는다 — 지어내지 않는다.
+function reconstructionRightsPrintPageHtml_(asset){
+  if (!asset.isReconstructionRights) return '';
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">소득세법 시행규칙 [별지 제83호의5서식]</div>' +
+    '<div class="pf-title">조합원입주권 또는 분양권 소유자 1세대1주택 특례적용신고서</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '주택구분', asset.isCompletedNewHousing ? '신축주택(준공 후 양도)' : '조합원입주권(준공 전 양도)') +
+      pfRow_(++n, '소재지', asset.assetLocation || '') +
+      pfRow_(++n, '취득일(종전부동산)', asset.acquisitionDate) +
+      pfRow_(++n, '양도일', asset.transferDate) +
+      pfRow_(++n, '종전주택 거주기간', asset.formerResidencePeriod || '') +
+      pfRow_(++n, '사업시행인가일', asset.businessApprovalDate || '') +
+      pfRow_(++n, '관리처분계획인가일', asset.managementDispositionDate || '') +
+      pfRow_(++n, '완성일(사용승인일)', asset.newHousingCompletionDate || '') +
+      pfRow_(++n, '양도가액', won(Number(asset.transferPrice) || 0)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 신청인(소유자) 인적사항·면적은 직접 보완하세요.</div>' +
+  '</div>';
 }
 // [2026.09.30 신규, 재검토97] 별지83호~83의8서식(농어촌주택등·인구감소지역·미분양주택
 // 1세대1주택 특례적용신고서) — 세목마다 서식번호가 갈리고(수도권밖미분양=83의5, 인구감소=
