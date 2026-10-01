@@ -2328,6 +2328,7 @@ function openOneHouseSpecialCaseModal_(idx){
           '<option value="ch">문화재주택(소득세법시행령§155⑥)</option>' +
           '<option value="ef">이농주택(소득세법시행령§155⑦2호·⑨)</option>' +
           '<option value="rf">귀농주택(소득세법시행령§155⑦3호·⑩~⑬, 조특법§99의4와 별개)</option>' +
+          '<option value="mp">장기저당담보주택·주택연금(소득세법시행령§155의2)</option>' +
         '</select></div>' +
         '<div id="ohsU9" class="taxcalc-grid">' +
           '<div class="taxcalc-field"><label>준공후미분양주택 취득일</label><input type="date" id="u9AcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
@@ -2374,6 +2375,7 @@ function openOneHouseSpecialCaseModal_(idx){
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="twExpropriated"><label for="twExpropriated">종전주택·부수토지 일부가 협의매수·수용되어 잔존주택을 나중에 양도함(5년 이내 특례)</label></div>' +
           '<div class="taxcalc-field"><label>[위 체크시만] 수용일 또는 최초 양도일</label><input type="date" id="twExpropriationDate" min="1900-01-01" max="2099-12-31"></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="twDisposalDelay"><label for="twDisposalDelay">처분기한 경과 사유가 경매·공매·재개발 현금청산소송 등 진행중임(§155⑱ 구제)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="twCorpRelocation"><label for="twCorpRelocation">수도권 소재 법인·공공기관의 지방이전에 따라 그 임직원·종사자가 이전지(또는 연접 시군)에 신규주택 취득(§155⑯, 처분기한 5년으로 연장+1년경과요건 면제)</label></div>' +
         '</div>' +
         '<div id="ohsMg" class="taxcalc-grid" style="display:none;">' +
           '<div class="taxcalc-result-note" style="flex-basis:100%;">양도일은 위 "양도일" 입력칸 값을 그대로 씁니다. 이 특례는 거주기간 요건만 면제합니다 — 보유기간 요건은 별도로 충족해야 합니다.</div>' +
@@ -2476,6 +2478,13 @@ function openOneHouseSpecialCaseModal_(idx){
           '<div class="taxcalc-field"><label>귀농주택 취득일</label><input type="date" id="rfAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="rfNotFirst"><label for="rfNotFirst">귀농 후 이미 다른 일반주택을 먼저 양도한 적이 있음(체크시 적용배제— 최초 1건만 인정)</label></div>' +
         '</div>' +
+        '<div id="ohsMp" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="mpAge60"><label for="mpAge60">계약체결일 현재 주택을 담보로 제공한 가입자가 60세 이상</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="mpTenYears"><label for="mpTenYears">계약기간 10년 이상 + 매월·매분기 등 정기적으로 대출금 수령</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="mpRepayAtMaturity"><label for="mpRepayAtMaturity">만기에 주택을 처분해 일시 상환하는 계약조건</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="mpBeforeMaturity"><label for="mpBeforeMaturity">계약기간 만료 전에 양도함(체크시 적용배제)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="mpCohabitation"><label for="mpCohabitation">장기저당담보주택 보유 직계존속(배우자측 포함)을 동거봉양하기 위해 합가해 2주택이 됨</label></div>' +
+        '</div>' +
         '<button type="button" class="taxcalc-run-btn" id="ohsRunBtn" style="margin-top:8px;">적용 가능 여부 판정하기</button>' +
         '<div id="ohsResult"></div>' +
       '</div>' +
@@ -2488,7 +2497,7 @@ function openOneHouseSpecialCaseModal_(idx){
   enhanceDateInputs(overlay);
   const provisionSel = overlay.querySelector('#ohsProvision');
   provisionSel.addEventListener('change', function(){
-    ['ohsU9', 'ohsPd', 'ohsRh', 'ohsPr', 'ohsTw', 'ohsMg', 'ohsHr', 'ohsCi', 'ohsRp', 'ohsIh', 'ohsCb', 'ohsMc', 'ohsIu', 'ohsIp', 'ohsLr', 'ohsCh', 'ohsEf', 'ohsRf'].forEach(function(id){
+    ['ohsU9', 'ohsPd', 'ohsRh', 'ohsPr', 'ohsTw', 'ohsMg', 'ohsHr', 'ohsCi', 'ohsRp', 'ohsIh', 'ohsCb', 'ohsMc', 'ohsIu', 'ohsIp', 'ohsLr', 'ohsCh', 'ohsEf', 'ohsRf', 'ohsMp'].forEach(function(id){
       overlay.querySelector('#' + id).style.display = (id === 'ohs' + provisionSel.value.charAt(0).toUpperCase() + provisionSel.value.slice(1)) ? '' : 'none';
     });
   });
@@ -2544,7 +2553,8 @@ function openOneHouseSpecialCaseModal_(idx){
         hasDownPaymentProof: document.getElementById('twDownPaymentProof').checked,
         isExpropriated: document.getElementById('twExpropriated').checked,
         expropriationDate: document.getElementById('twExpropriationDate').value,
-        hasDisposalDelayException: document.getElementById('twDisposalDelay').checked
+        hasDisposalDelayException: document.getElementById('twDisposalDelay').checked,
+        isCorporateOrPublicRelocation: document.getElementById('twCorpRelocation').checked
       });
     } else if (provision === 'mg'){
       r = calculateMutualGrowthLeaseExclusionJS({
@@ -2645,7 +2655,7 @@ function openOneHouseSpecialCaseModal_(idx){
         isOutsideMetroEupMyeon: document.getElementById('efOutsideMetro').checked,
         residedFiveYearsOrMoreAfterAcquisition: document.getElementById('efResided5Y').checked
       });
-    } else {
+    } else if (provision === 'rf'){
       r = calculateReturnFarmHouseExclusionJS({
         isOutsideMetroEupMyeon: document.getElementById('rfOutsideMetro').checked,
         isHighValueHouseAtAcquisition: document.getElementById('rfHighValue').checked,
@@ -2655,6 +2665,14 @@ function openOneHouseSpecialCaseModal_(idx){
         acquisitionDate: document.getElementById('rfAcquisitionDate').value,
         generalHouseTransferDate: transferAssets[idx].transferDate,
         isNotFirstGeneralHouseSinceReturn: document.getElementById('rfNotFirst').checked
+      });
+    } else {
+      r = calculateLongTermMortgageHouseExclusionJS({
+        mortgagorAge60OrOlderAtContract: document.getElementById('mpAge60').checked,
+        contractTermTenYearsOrMore: document.getElementById('mpTenYears').checked,
+        repayAtMaturityByDisposal: document.getElementById('mpRepayAtMaturity').checked,
+        transferredBeforeContractMaturity: document.getElementById('mpBeforeMaturity').checked,
+        isCohabitationMerger: document.getElementById('mpCohabitation').checked
       });
     }
     const resultBox = document.getElementById('ohsResult');
@@ -2705,7 +2723,14 @@ function openOneHouseSpecialCaseModal_(idx){
           // 제83호서식(농어촌주택 소유자 1세대1주택 특례적용신고서)을 공유한다.
           ch: { label: '문화재주택(소득세법시행령§155⑥)', formNo: '소득세법 시행규칙 [별지 제83호서식]', formTitle: '농어촌주택 소유자 1세대1주택 특례적용신고서' },
           ef: { label: '이농주택(소득세법시행령§155⑦2호)', formNo: '소득세법 시행규칙 [별지 제83호서식]', formTitle: '농어촌주택 소유자 1세대1주택 특례적용신고서' },
-          rf: { label: '귀농주택(소득세법시행령§155⑦3호)', formNo: '소득세법 시행규칙 [별지 제83호서식]', formTitle: '농어촌주택 소유자 1세대1주택 특례적용신고서' }
+          rf: { label: '귀농주택(소득세법시행령§155⑦3호)', formNo: '소득세법 시행규칙 [별지 제83호서식]', formTitle: '농어촌주택 소유자 1세대1주택 특례적용신고서' },
+          // [2026.10.01 신규, 재검토103] law.go.kr 조문 확인 — §155의2④은 "제2항(동거봉양 합가)의
+          // 규정을 적용받으려는 자"만 신고서 제출의무를 명시한다. ①항(1주택 단독보유) 단독 적용은
+          // 조문상 신고서 제출의무가 없는 것으로 읽혀(법제처 유권해석 재확인 전까지 조문 문언 그대로
+          // 따름), 동거봉양 케이스에서만 formNo를 채운다(아래 조건부 처리).
+          mp: (document.getElementById('mpCohabitation') && document.getElementById('mpCohabitation').checked)
+            ? { label: '장기저당담보주택(동거봉양 합가, 소득세법시행령§155의2②)', formNo: '소득세법 시행규칙 [별지 제83호의3서식]', formTitle: '장기저당담보주택에 대한 특례적용신고서' }
+            : { label: '장기저당담보주택·주택연금(소득세법시행령§155의2①)' }
         };
         const pf = provisionForms[provision] || {};
         if (pf.formNo){
@@ -4851,6 +4876,7 @@ function renderTransferPane(){
           '<option value="fr">경영회생 지원 농지 매매 환급(조특법§70의2)</option>' +
           '<option value="rfc">귀농주택 사후관리(소득세법시행령§155⑫)</option>' +
           '<option value="lrc">장기임대주택·장기어린이집 거주주택 사후관리(소득세법시행령§155㉒)</option>' +
+          '<option value="udr">상속주택 미분할등기 추징(소득세법시행령§155⑲)</option>' +
         '</select></div>' +
       '</div>' +
       '<div id="trSpecialCase-bt">' +
@@ -4981,6 +5007,19 @@ function renderTransferPane(){
         '</div>' +
         '<button type="button" class="taxcalc-run-btn" data-action="run-rental-housing-residence-clawback">사후관리(추징) 판정하기</button>' +
         '<div id="taxCalcRentalHousingResidenceClawbackResult"></div>' +
+      '</div>' +
+      // [2026.10.01 신규, 재검토103] 상속주택 미분할등기 추징(§155⑲) — 상속주택을 미분할
+      // 상태(민법 법정상속분 의제)로 일반주택을 먼저 양도해 비과세받은 뒤, 나중에(제척기간 내)
+      // 협의분할등기한 결과 §155②③ 요건을 상실하면 추징한다.
+      '<div id="trSpecialCase-udr" style="display:none;">' +
+        '<div class="taxcalc-result-note" style="margin:6px 0;">정상 비과세 판정은 위 양도자산 카드의 "🔍 특정주택 제외 판정"(상속주택)으로 받습니다. 이 도구는 나중에 협의분할등기한 결과 비과세 요건을 잃었는지만 확인합니다</div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="udrDivided"><label for="udrDivided">상속주택 외 주택(일반주택)을 양도한 후 협의분할등기를 함</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="udrLosesExemption">[위 체크시만]<label for="udrLosesExemption">그 등기 결과 §155②③ 요건을 더 이상 충족하지 못하게 됨</label></div>' +
+          '<div class="taxcalc-field"><label>추가 납부할 세액</label><input type="number" id="udrAdditionalTax" placeholder="원"></div>' +
+        '</div>' +
+        '<button type="button" class="taxcalc-run-btn" data-action="run-inherited-house-undivided-clawback">사후관리(추징) 판정하기</button>' +
+        '<div id="taxCalcInheritedHouseUndividedClawbackResult"></div>' +
       '</div>' +
     '</div>' +
     '<div class="taxcalc-asset-head" style="margin-top:20px;"><b>서식·전자신고 — 양도소득세과세표준신고 및 자진납부계산서(C116300, 국세청 홈택스)</b></div>' +
@@ -5699,6 +5738,21 @@ function renderReturnFarmHouseClawbackResult(r){
 
 function renderRentalHousingResidenceClawbackResult(r){
   const box = document.getElementById('taxCalcRentalHousingResidenceClawbackResult');
+  if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
+  let html = '<div class="taxcalc-result">';
+  if (r.추징대상){
+    html += taxCalcResultRow('사후관리 판정', '추징 대상(비과세 취소)', { total: true });
+    html += taxCalcResultRow('추징액', won(r.추징액));
+  } else {
+    html += taxCalcResultRow('사후관리 판정', '추징 사유 없음 — 비과세 유지', { total: true });
+  }
+  if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  html += '</div>';
+  box.innerHTML = html;
+}
+
+function renderInheritedHouseUndividedClawbackResult(r){
+  const box = document.getElementById('taxCalcInheritedHouseUndividedClawbackResult');
   if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
   let html = '<div class="taxcalc-result">';
   if (r.추징대상){
@@ -12440,7 +12494,7 @@ document.querySelectorAll('#taxCalcTierTabs [data-tier]').forEach(function(tab){
 // 그대로 유지 — 카드를 다시 그리지 않고 표시만 전환).
 taxCalcView.addEventListener('change', function(e){
   if (e.target.id === 'trSpecialCaseType'){
-    ['bt', 'pr', 'mr', 'fr', 'rfc', 'lrc'].forEach(function(key){
+    ['bt', 'pr', 'mr', 'fr', 'rfc', 'lrc', 'udr'].forEach(function(key){
       const el = document.getElementById('trSpecialCase-' + key);
       if (el) el.style.display = (key === e.target.value) ? '' : 'none';
     });
@@ -13113,6 +13167,12 @@ taxCalcView.addEventListener('click', function(e){
       hasExemptReason: document.getElementById('lrcExempt').checked,
       taxIfNotLongTerm: numVal(document.getElementById('lrcTaxIfNotLongTerm').value) || 0,
       taxPaidAtTransfer: numVal(document.getElementById('lrcTaxPaid').value) || 0
+    }));
+  } else if (action === 'run-inherited-house-undivided-clawback'){
+    renderInheritedHouseUndividedClawbackResult(calculateInheritedHouseUndividedRegistrationClawbackJS({
+      laterDividedAndRegistered: document.getElementById('udrDivided').checked,
+      wouldLoseExemptionAfterDivision: document.getElementById('udrLosesExemption').checked,
+      additionalTaxAmount: numVal(document.getElementById('udrAdditionalTax').value) || 0
     }));
   } else if (action === 'run-acquisition-tax'){
     // [2026.09.23 재구성] 취득인이 여러 명(공동취득)일 수 있다 — 세율 자체가 취득인 개인

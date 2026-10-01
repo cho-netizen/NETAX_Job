@@ -484,9 +484,19 @@
     return Math.min(0.30, years * 0.02);
   }
 
+  // [2026.10.01 정정, 재검토103] 표2(연4%+4%, 최대80%)는 소득세법§95②·시행령§159의4가 정의하는
+  // "1세대1주택"(보유기간 중 거주기간 2년 이상) 전체에 대한 단일 전제조건이다 — "보유분은 표2
+  // 세율을 유지하고 거주분만 깎는다"는 분리형 게이트가 아니다. law.go.kr §95②·§159의4 원문 확인
+  // 결과, 거주기간 2년 미만이면 그 자산은 애초에 "대통령령으로 정하는 1세대1주택"에 해당하지
+  // 않아 §95②의 "다만" 단서 자체가 적용 안 되고 본문의 표1(연2%, 최대30%)로 전부 돌아간다.
+  // 예전 코드는 liveYears<2일 때 liveRate만 0으로 두고 ownRate(최대40%)는 그대로 반환해, 거주
+  // 요건 없이 12억 초과 1세대1주택을 양도하는 거래(실제로 §154①이 거주기간을 안 요구하는
+  // 비조정대상지역 취득분 등에서 흔함)의 장특공제를 최대 2배 과다 인정 → 세액 과소계산하고
+  // 있었다(세무사님 지시로 전수조사 중 발견).
   function longTermRate1House(ownYears, liveYears) {
+    if (liveYears < 2) return longTermRate(ownYears);
     const ownRate = ownYears >= 3 ? Math.min(0.40, ownYears * 0.04) : 0;
-    const liveRate = liveYears >= 2 ? Math.min(0.40, liveYears * 0.04) : 0;
+    const liveRate = Math.min(0.40, liveYears * 0.04);
     return ownRate + liveRate;
   }
 
@@ -5492,6 +5502,58 @@
     };
   };
 
+  // 장기저당담보주택(주택연금 등)에 대한 1세대1주택의 특례(시행령§155의2) — [2026.10.01 신규,
+  // 재검토103] law.go.kr 원문 조사로 확인. 효과는 "거주기간 요건만 면제"(§154① 적용시) —
+  // 보유기간 요건은 그대로 적용된다(hr/mg와 동일한 성격). ①항(1주택 단독 보유)과 ②항(장기저당
+  // 담보주택 보유 직계존속 동거봉양 합가로 2주택) 둘 다 요건은 같되(60세이상+10년이상계약+
+  // 만기일시상환), ②항만 전용신고서(별지83호의3서식) 제출의무가 조문(④ "제2항의 규정을
+  // 적용받으려는 자")에 명시돼 있다 — ①항 단독은 자동적용으로 해석(법제처 유권해석 재확인 전
+  // 까지는 조문 문언 그대로 따름). 계약기간 만료 전 양도시 ①②항 전부 무효(③항).
+  window.calculateLongTermMortgageHouseExclusionJS = function (p) {
+    p = p || {};
+    if (p.transferredBeforeContractMaturity) {
+      return { 적용여부: false, 안내: '장기저당담보 계약기간(10년 이상) 만료 전에 양도하면 시행령§155의2③에 따라 이 특례가 전혀 적용되지 않습니다.' };
+    }
+    if (!p.mortgagorAge60OrOlderAtContract) {
+      return { 적용여부: false, 안내: '계약체결일 현재 주택을 담보로 제공한 가입자가 60세 이상이어야 하는데(시행령§155의2①1호), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
+    }
+    if (!p.contractTermTenYearsOrMore) {
+      return { 적용여부: false, 안내: '장기저당담보 계약기간이 10년 이상으로 매월·매분기 등 정기적으로 대출금을 수령하는 조건이어야 하는데(시행령§155의2①2호), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
+    }
+    if (!p.repayAtMaturityByDisposal) {
+      return { 적용여부: false, 안내: '만기에 그 주택을 처분해 일시 상환하는 계약조건이어야 하는데(시행령§155의2①3호), 이 요건을 충족하지 못해 적용대상이 아닙니다.' };
+    }
+    if (p.isCohabitationMerger) {
+      return {
+        적용여부: true, 신고서필요: true,
+        안내: '장기저당담보주택을 소유한 직계존속(배우자의 직계존속 포함)을 동거봉양하기 위해 합가해 2주택이 된 세대가 먼저 양도하는 주택에 대해 시행령§155의2②에 따라 1세대1주택으로 보며, 그 주택이 장기저당담보주택이면 거주기간 제한도 받지 않습니다(보유기간 요건은 그대로 적용).'
+      };
+    }
+    return {
+      적용여부: true, 신고서필요: false,
+      안내: '1주택을 보유한 1세대가 장기저당담보주택(주택연금 등)을 양도하는 경우 시행령§155의2①에 따라 §154①(1세대1주택 비과세) 적용시 거주기간 제한을 받지 않습니다(보유기간 요건은 그대로 적용).'
+    };
+  };
+
+  // 상속주택 미분할등기 추징(시행령§155⑲) — [2026.10.01 신규, 재검토103] §155②③(상속주택)
+  // 비과세 판정 후, 상속주택을 미분할 상태(민법§1009·§1010 법정상속분 의제)로 일반주택을
+  // 먼저 양도했는데 나중에(제척기간 내) 협의분할등기한 결과 비과세 요건을 상실하게 되면,
+  // 등기일이 속하는 달의 말일부터 2개월 이내에 추가 신고·납부해야 한다.
+  window.calculateInheritedHouseUndividedRegistrationClawbackJS = function (p) {
+    p = p || {};
+    if (!p.laterDividedAndRegistered) {
+      return { 추징대상: false, 안내: '상속주택을 아직 협의분할등기하지 않았으면 민법§1009·§1010의 법정상속분에 따라 그 상속주택을 소유하는 것으로 보아(시행령§155⑲ 본문) 당초 비과세 판정을 그대로 유지합니다.' };
+    }
+    if (!p.wouldLoseExemptionAfterDivision) {
+      return { 추징대상: false, 안내: '협의분할등기 후에도 시행령§155②③의 요건을 계속 충족하면 추가 신고·납부 의무가 없습니다.' };
+    }
+    const additionalTax = Number(p.additionalTaxAmount) || 0;
+    return {
+      추징대상: true, 추징액: additionalTax,
+      안내: '상속주택을 등기 전 법정상속분에 따라 소유한 것으로 보아 비과세를 적용받았으나, 이후(국세 부과제척기간 내) 협의분할등기한 결과 시행령§155②③의 적용을 받지 못하게 되어(시행령§155⑲ 단서), 그 등기일이 속하는 달의 말일부터 2개월 이내에 추가 양도소득세를 신고·납부해야 합니다.'
+    };
+  };
+
   window.calculatePresaleRightOneHouseExclusionJS = function (p) {
     p = p || {};
     const formerHouseAcquisitionDate = p.formerHouseAcquisitionDate;
@@ -5553,6 +5615,11 @@
   // 적용). 종전주택 일부가 수용·협의매수된 경우 잔존주택을 수용일로부터 5년 이내 양도시 특례
   // 포함. §155⑱(경매·공매·소송 등 처분지연) 사유 해당시 기한 도과해도 구제. 전용 신고서식은
   // 없음(일반 과세표준신고서로 비과세 신고, law.go.kr §155 전체 조사로 확인).
+  // [2026.10.01 추가, 재검토103] §155⑯(법인·공공기관의 지방이전) — 수도권 소재 법인·공공기관이
+  // 수도권 밖으로 이전하면서 그 임직원·종사자가 이전지(또는 연접 시군)에 신규주택을 취득하는
+  // 경우, ①항의 처분기한을 "3년"→"5년"으로 늘리고(2년 규정 자체가 적용 안 되는 것으로 law.go.kr
+  // 원문이 "3년을 5년으로 본다"고만 명시— 조정대상지역 2년 케이스에도 5년이 적용되는지는 원문
+  // 그대로 해석), 1년 경과 후 신규주택 취득 요건도 전부 면제한다.
   window.calculateTemporaryTwoHouseExclusionJS = function (p) {
     p = p || {};
     const formerAcq = p.formerHouseAcquisitionDate, newAcq = p.newHouseAcquisitionDate, formerTransfer = p.formerHouseTransferDate;
@@ -5560,26 +5627,27 @@
     const addYears_ = function (dateStr, n) { const d = new Date(dateStr); d.setFullYear(d.getFullYear() + n); return d.getTime(); };
     const newAcqTime = new Date(newAcq).getTime();
     const formerTransferTime = new Date(formerTransfer).getTime();
-    if (!p.meetsHoldingPeriodException && newAcqTime < addYears_(formerAcq, 1)) {
-      return { 적용여부: false, 안내: '종전주택을 취득한 날부터 1년이 지나기 전에 신규주택을 취득해 시행령§155①의 요건을 충족하지 못합니다(시행령§154①1호·2호가목·3호의 예외사유에 해당하면 이 요건 자체가 면제되니, 해당되면 meetsHoldingPeriodException을 체크하세요).' };
+    if (!p.meetsHoldingPeriodException && !p.isCorporateOrPublicRelocation && newAcqTime < addYears_(formerAcq, 1)) {
+      return { 적용여부: false, 안내: '종전주택을 취득한 날부터 1년이 지나기 전에 신규주택을 취득해 시행령§155①의 요건을 충족하지 못합니다(시행령§154①1호·2호가목·3호의 예외사유, 또는 법인·공공기관 지방이전(§155⑯)에 해당하면 이 요건 자체가 면제되니, 해당되면 체크하세요).' };
     }
     let deadlineYears = 3;
     if (p.isFormerHouseAdjustedArea && p.isNewHouseAdjustedArea) {
       const preNoticeContract = p.newHouseContractDate && p.adjustedAreaPublicNoticeDate && new Date(p.newHouseContractDate).getTime() < new Date(p.adjustedAreaPublicNoticeDate).getTime() && p.hasDownPaymentProof;
       deadlineYears = preNoticeContract ? 3 : 2;
     }
+    if (p.isCorporateOrPublicRelocation) deadlineYears = 5;
     let withinDeadline = formerTransferTime <= addYears_(newAcq, deadlineYears);
     if (!withinDeadline && p.isExpropriated && p.expropriationDate) {
       withinDeadline = formerTransferTime <= addYears_(p.expropriationDate, 5);
     }
     if (!withinDeadline && p.hasDisposalDelayException) withinDeadline = true;
     if (!withinDeadline) {
-      return { 적용여부: false, 안내: '신규주택 취득일부터 ' + deadlineYears + '년 이내에 종전주택을 양도해야 하는데(시행령§155①' + (deadlineYears === 2 ? '1호' : '2호') + '), 기한을 넘겨 적용대상이 아닙니다(경매·공매·소송 등 §155⑱ 부득이한 사유에 해당하면 구제되니 해당되면 체크하세요).' };
+      return { 적용여부: false, 안내: '신규주택 취득일부터 ' + deadlineYears + '년 이내에 종전주택을 양도해야 하는데(시행령§155①' + (deadlineYears === 2 ? '1호' : (deadlineYears === 5 ? '⑯(법인·공공기관 지방이전)' : '2호')) + '), 기한을 넘겨 적용대상이 아닙니다(경매·공매·소송 등 §155⑱ 부득이한 사유에 해당하면 구제되니 해당되면 체크하세요).' };
     }
     return {
       적용여부: true,
       처분기한년수: deadlineYears,
-      안내: '신규주택 취득일부터 ' + deadlineYears + '년 이내에 종전주택을 양도하여, 시행령§155①에 따라 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다' + (deadlineYears === 2 ? '(신규주택 취득 당시 종전·신규주택 모두 조정대상지역 소재)' : '') + '.'
+      안내: '신규주택 취득일부터 ' + deadlineYears + '년 이내에 종전주택을 양도하여, 시행령§155①에 따라 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다' + (deadlineYears === 2 ? '(신규주택 취득 당시 종전·신규주택 모두 조정대상지역 소재)' : (deadlineYears === 5 ? '(법인·공공기관 지방이전에 따른 §155⑯ 특례로 처분기한이 5년으로 연장됨)' : '')) + '.'
     };
   };
 
