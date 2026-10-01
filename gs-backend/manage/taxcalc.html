@@ -2320,8 +2320,11 @@ function openOneHouseSpecialCaseModal_(idx){
           '<option value="ci">1주택+1조합원입주권 보유(소득세법시행령§156의2③④)</option>' +
           '<option value="rp">재건축 등 사업기간 중 대체주택(소득세법시행령§156의2⑤)</option>' +
           '<option value="ih">상속주택·공동상속주택(소득세법시행령§155②③)</option>' +
-          '<option value="cb">동거봉양 합가(소득세법시행령§155④, 합가일부터 10년)</option>' +
-          '<option value="mc">혼인 합가(소득세법시행령§155⑤, 혼인일부터 10년)</option>' +
+          '<option value="cb">동거봉양 합가(소득세법시행령§155④·§156의2⑧, 합가일부터 10년)</option>' +
+          '<option value="mc">혼인 합가(소득세법시행령§155⑤·§156의2⑨, 혼인일부터 10년)</option>' +
+          '<option value="iu">상속받은 조합원입주권(소득세법시행령§156의2⑥⑦)</option>' +
+          '<option value="ip">상속받은 분양권(소득세법시행령§156의3④⑤)</option>' +
+          '<option value="lr">장기임대주택·장기어린이집 보유자의 거주주택(소득세법시행령§155⑳)</option>' +
         '</select></div>' +
         '<div id="ohsU9" class="taxcalc-grid">' +
           '<div class="taxcalc-field"><label>준공후미분양주택 취득일</label><input type="date" id="u9AcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
@@ -2435,6 +2438,24 @@ function openOneHouseSpecialCaseModal_(idx){
         '<div id="ohsMc" class="taxcalc-grid" style="display:none;">' +
           '<div class="taxcalc-field"><label>혼인일</label><input type="date" id="mcMarriageDate" min="1900-01-01" max="2099-12-31"></div>' +
         '</div>' +
+        '<div id="ohsIu" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="iuDecedentHadOther"><label for="iuDecedentHadOther">피상속인이 상속개시 당시 주택 또는 분양권을 소유하고 있었음(해당시 원칙적으로 적용배제)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="iuOnlyRightAndPresale">[위 체크시만]<label for="iuOnlyRightAndPresale">피상속인이 주택 없이 조합원입주권+분양권만 소유했었음(§156의2⑮ 선택특례로 적용 가능)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="iuCoInherited"><label for="iuCoInherited">공동상속조합원입주권(2인 이상 공동소유)임</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="iuLargestShare">[공동상속일 때만]<label for="iuLargestShare">신청인이 최대지분자임</label></div>' +
+        '</div>' +
+        '<div id="ohsIp" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="ipDecedentHadOther"><label for="ipDecedentHadOther">피상속인이 상속개시 당시 주택 또는 조합원입주권을 소유하고 있었음(해당시 원칙적으로 적용배제)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="ipOnlyRightAndPresale">[위 체크시만]<label for="ipOnlyRightAndPresale">피상속인이 주택 없이 조합원입주권+분양권만 소유했었음(§156의3⑫ 선택특례로 적용 가능)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="ipCoInherited"><label for="ipCoInherited">공동상속분양권(2인 이상 공동소유)임</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="ipLargestShare">[공동상속일 때만]<label for="ipLargestShare">신청인이 최대지분자임</label></div>' +
+        '</div>' +
+        '<div id="ohsLr" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-result-note" style="flex-basis:100%;">거주주택(이 양도자산)의 취득일·양도일은 위 입력값을 그대로 씁니다.</div>' +
+          '<div class="taxcalc-field"><label>거주주택 보유기간 중 거주기간 합계(개월)</label><input type="number" id="lrResidenceMonths" placeholder="개월"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrMeetsRequirements"><label for="lrMeetsRequirements">장기임대주택(민간임대주택법 등록+임대료 5%이내 증가 등, 시행령§167조의3①2호 가~자목 중 해당) 또는 장기어린이집 요건 충족(별도 확인)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrHasPriorResidence"><label for="lrHasPriorResidence">민간임대주택 등록(또는 어린이집 운영) 이력이 있는 거주주택을 과거에 이미 양도한 적이 있음("직전거주주택보유주택" — 해당시 안분비과세)</label></div>' +
+        '</div>' +
         '<button type="button" class="taxcalc-run-btn" id="ohsRunBtn" style="margin-top:8px;">적용 가능 여부 판정하기</button>' +
         '<div id="ohsResult"></div>' +
       '</div>' +
@@ -2447,7 +2468,7 @@ function openOneHouseSpecialCaseModal_(idx){
   enhanceDateInputs(overlay);
   const provisionSel = overlay.querySelector('#ohsProvision');
   provisionSel.addEventListener('change', function(){
-    ['ohsU9', 'ohsPd', 'ohsRh', 'ohsPr', 'ohsTw', 'ohsMg', 'ohsHr', 'ohsCi', 'ohsRp', 'ohsIh', 'ohsCb', 'ohsMc'].forEach(function(id){
+    ['ohsU9', 'ohsPd', 'ohsRh', 'ohsPr', 'ohsTw', 'ohsMg', 'ohsHr', 'ohsCi', 'ohsRp', 'ohsIh', 'ohsCb', 'ohsMc', 'ohsIu', 'ohsIp', 'ohsLr'].forEach(function(id){
       overlay.querySelector('#' + id).style.display = (id === 'ohs' + provisionSel.value.charAt(0).toUpperCase() + provisionSel.value.slice(1)) ? '' : 'none';
     });
   });
@@ -2570,10 +2591,30 @@ function openOneHouseSpecialCaseModal_(idx){
         directAncestorAge60OrOlder: document.getElementById('cbAge60').checked,
         severeIllnessException: document.getElementById('cbSevereIllness').checked
       });
-    } else {
+    } else if (provision === 'mc'){
       r = calculateMarriageMergerExclusionJS({
         marriageDate: document.getElementById('mcMarriageDate').value,
         transferDate: transferAssets[idx].transferDate
+      });
+    } else if (provision === 'iu'){
+      r = calculateInheritedUnionRightExclusionJS({
+        decedentHadHouseOrPresaleRight: document.getElementById('iuDecedentHadOther').checked,
+        decedentOnlyHadUnionRightAndPresaleRight: document.getElementById('iuOnlyRightAndPresale').checked,
+        isCoInheritedRight: document.getElementById('iuCoInherited').checked,
+        isLargestShareHolder: document.getElementById('iuLargestShare').checked
+      });
+    } else if (provision === 'ip'){
+      r = calculateInheritedPresaleRightExclusionJS({
+        decedentHadHouseOrUnionRight: document.getElementById('ipDecedentHadOther').checked,
+        decedentOnlyHadUnionRightAndPresaleRight: document.getElementById('ipOnlyRightAndPresale').checked,
+        isCoInheritedRight: document.getElementById('ipCoInherited').checked,
+        isLargestShareHolder: document.getElementById('ipLargestShare').checked
+      });
+    } else {
+      r = calculateRentalHousingResidenceExclusionJS({
+        residencePeriodMonths: numVal(document.getElementById('lrResidenceMonths').value),
+        meetsLongTermRentalRequirements: document.getElementById('lrMeetsRequirements').checked,
+        hasPriorQualifyingResidence: document.getElementById('lrHasPriorResidence').checked
       });
     }
     const resultBox = document.getElementById('ohsResult');
@@ -2613,7 +2654,12 @@ function openOneHouseSpecialCaseModal_(idx){
           // 별지83호의5서식 공유 확인(law.go.kr 비교조사). §155②③④⑤(상속주택·동거봉양·혼인합가,
           // hr과 마찬가지로 hr/ih/cb/mc)는 전용신고서식 자체가 없음(일반 신고서로 비과세 신고).
           ci: { label: '1주택+1조합원입주권 보유(소득세법시행령§156의2③④)', formNo: '소득세법 시행규칙 [별지 제83호의5서식]', formTitle: '조합원입주권 또는 분양권 소유자 1세대1주택 특례적용신고서' },
-          rp: { label: '재건축 등 사업기간 중 대체주택(소득세법시행령§156의2⑤)', formNo: '소득세법 시행규칙 [별지 제83호의5서식]', formTitle: '조합원입주권 또는 분양권 소유자 1세대1주택 특례적용신고서' }
+          rp: { label: '재건축 등 사업기간 중 대체주택(소득세법시행령§156의2⑤)', formNo: '소득세법 시행규칙 [별지 제83호의5서식]', formTitle: '조합원입주권 또는 분양권 소유자 1세대1주택 특례적용신고서' },
+          // [2026.10.01 신규, 재검토103] law.go.kr 시행규칙§103① 원문대조 — 상속조합원입주권·
+          // 상속분양권도 전용서식 없이 §156의2·§156의3이 공유하는 별지83호의5서식 하나로 처리.
+          iu: { label: '상속받은 조합원입주권(소득세법시행령§156의2⑥⑦)', formNo: '소득세법 시행규칙 [별지 제83호의5서식]', formTitle: '조합원입주권 또는 분양권 소유자 1세대1주택 특례적용신고서' },
+          ip: { label: '상속받은 분양권(소득세법시행령§156의3④⑤)', formNo: '소득세법 시행규칙 [별지 제83호의5서식]', formTitle: '조합원입주권 또는 분양권 소유자 1세대1주택 특례적용신고서' },
+          lr: { label: '장기임대주택·장기어린이집 보유자의 거주주택(소득세법시행령§155⑳)', formNo: '소득세법 시행규칙 [별지 제83호의2서식]', formTitle: '주택임대사업자의 거주주택 1세대1주택 특례적용신고서' }
         };
         const pf = provisionForms[provision] || {};
         if (pf.formNo){
