@@ -7316,7 +7316,6 @@ function trAttach1PrintPageHtml_(asset, seq){
   reconstructionRightsPrintPageHtml_(asset) +
   trSect13ReductionPrintPageHtml_(asset) +
   trCompensationReductionPrintPageHtml_(asset) +
-  trLandReplacementPrintPageHtml_(asset) +
   trRestrictedZonePrintPageHtml_(asset) +
   trRestructuringPropertyPrintPageHtml_(asset) +
   trLongTermRentalHousePrintPageHtml_(asset);
@@ -7326,6 +7325,14 @@ function trAttach1PrintPageHtml_(asset, seq){
 // 발견됨). 자경농지(§69)·축사용지(§69의2)·자영어업용지(§69의3)·자경산지(§69의4)·농지대토(§70)·
 // 국가양도산지(§85의10) 6개는 전용서식이 따로 없고 공용서식(별지13호, 체크박스로 사유 선택)
 // 하나를 같이 쓴다는 게 이번 조사로 확인됐다.
+// [2026.10.01 추가 정정, 재검토102 후속] 대토보상(land_replacement, §77의2)도 처음엔 별지55호
+// 서식(1) "대토보상자의 보상명세서"로 구현했으나, 시행령 제72조·제73조 전체 조문(항별로 전수
+// 확인)을 재조사한 결과 제72조⑥·제73조②·③은 전부 "사업시행자"의 세무서 통보의무이고, 별지55호
+// 서식은 그 사업시행자가 작성·제출하는 서류였다 — 납세자(양도인) 본인이 작성·제출할 의무가
+// 있는 서류가 아니다. 납세자 본인이 실제로 제출할 것은 시행령 제73조⑥(모법 제77조의2④)에 따른
+// 세액감면(또는 과세이연)신청서 — 바로 이 별지13호서식의 "대토보상" 체크항목이다. 그래서
+// 별지55호서식 인쇄는 제거하고, land_replacement도 이 공용서식(SECT13_MAP_)에 합쳐 올바른
+// 신청서 하나로 통일한다.
 function trSect13ReductionPrintPageHtml_(asset){
   const SECT13_MAP_ = [
     { flag: 'isEightYearFarmland', label: '8년 자경농지', article: '제66조제9항' },
@@ -7335,7 +7342,8 @@ function trSect13ReductionPrintPageHtml_(asset){
     { flag: 'isFarmlandSubstitutionExempt', label: '농지대토', article: '제67조제9항' },
     { flag: 'isNationalForestLandReduction', label: '국가에 양도하는 산지', article: '제79조의11' }
   ];
-  const matched = SECT13_MAP_.filter(function(m){ return asset[m.flag]; })[0];
+  const isLandReplacement = asset.compensationType === 'land_replacement';
+  const matched = isLandReplacement ? { label: '대토보상(세액감면 또는 과세이연 신청)', article: '제73조제6항' } : SECT13_MAP_.filter(function(m){ return asset[m.flag]; })[0];
   if (!matched) return '';
   return '<div class="pf-page">' +
     '<div class="pf-formno">조세특례제한법 시행규칙 [별지 제13호서식]</div>' +
@@ -7347,7 +7355,9 @@ function trSect13ReductionPrintPageHtml_(asset){
       pfRow_(0, '양도일', asset.transferDate) +
       pfRow_(0, '근거조항(조특법 시행령)', matched.article) +
     '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 신청인 성명·주민등록번호·주소 등 인적사항은 본 서식(별지84호) 상단을 참고해 직접 보완하세요.</div>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 신청인 성명·주민등록번호·주소 등 인적사항은 본 서식(별지84호) 상단을 참고해 직접 보완하세요.' +
+    (isLandReplacement ? ' 대토보상은 이 신청서에 "대토보상 신청서 및 대토보상 계약서 사본"을 첨부해야 합니다(시행령§73⑥) — 대토보상자의 보상명세서(별지55호서식)는 사업시행자가 세무서에 통보하는 서류라 납세자 본인이 작성·제출할 의무는 없습니다.' : '') +
+    '</div>' +
   '</div>';
 }
 function trCompensationReductionPrintPageHtml_(asset){
@@ -7366,19 +7376,6 @@ function trCompensationReductionPrintPageHtml_(asset){
       pfRow_(++n, '보상유형', typeLabel) +
     '</table>' +
     '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다. 수용사실을 확인하는 부표(별지54호서식 부표, 토지 등 수용사실 확인서)는 보상금 지급내역 등을 사업시행자가 직접 작성·날인해야 하는 서류라 이 계산기가 대신 작성할 수 없습니다 — 사업시행자에게 받아 함께 제출하세요.</div>' +
-  '</div>';
-}
-function trLandReplacementPrintPageHtml_(asset){
-  if (asset.compensationType !== 'land_replacement') return '';
-  return '<div class="pf-page">' +
-    '<div class="pf-formno">조세특례제한법 시행규칙 [별지 제55호서식(1)]</div>' +
-    '<div class="pf-title">대토보상자의 보상명세서</div>' +
-    '<table class="pf-table">' +
-      pfRow_(0, '소재지', asset.assetLocation || '') +
-      pfRow_(0, '사업인정고시일', asset.publicNoticeDate || '') +
-      pfRow_(0, '대토보상 계약일', asset.transferDate) +
-    '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 사업시행자 정보·보상금 지급명세 등은 사업시행자로부터 받아 직접 보완하세요. 시행령§73 각 항의 정확한 적용관계(이 보상명세서 외에 별지13호서식 "대토보상" 항목으로 세액감면 자체를 별도 신청해야 하는지)는 이번 조사로 완전히 확정하지 못했으니 신고 전 재확인하세요.</div>' +
   '</div>';
 }
 function trRestrictedZonePrintPageHtml_(asset){
