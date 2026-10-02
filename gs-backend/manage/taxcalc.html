@@ -1766,6 +1766,147 @@ function openJtSegmentHelperModal_(){
     });
   });
 }
+// 비사업용토지 판정(소득세법§104의3·시행령§168의6) — [2026.10.02 신규, 재검토104]
+function openNonBusinessLandModal_(idx){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.display = 'flex';
+  overlay.innerHTML =
+    '<div class="modal-panel" style="width:min(600px, 94vw);">' +
+      '<div class="modal-head"><span>비사업용토지 판정(§104의3)</span><span class="modal-close" id="btnCloseNbl">✕</span></div>' +
+      '<div class="modal-body">' +
+        '<div class="taxcalc-field" style="margin-bottom:8px;"><label>토지 종류</label><select id="nblLandType">' +
+          '<option value="farmland">농지</option>' +
+          '<option value="forest">임야</option>' +
+          '<option value="pasture">목장용지</option>' +
+          '<option value="other_land">기타토지(나대지·잡종지 등)</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field"><label>보유기간(년)</label><input type="number" id="nblHoldingYears" placeholder="년" step="0.1"></div>' +
+        '<div id="nblFarmland" class="taxcalc-grid">' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblMeetsResidency"><label for="nblMeetsResidency">양도일 현재 농지소재지에 거주하며 직접 경작 중</label></div>' +
+          '<div class="taxcalc-field"><label>[위 체크시만] 그 상태를 양도일부터 거슬러 연속으로 유지한 기간</label><input type="number" id="nblBizYearsFarm" placeholder="년" step="0.1"></div>' +
+        '</div>' +
+        '<div id="nblForest" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblProtectedForest"><label for="nblProtectedForest">산림유전자원보호림 등 법정 지정림(보유기간 무관 제외)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblResidentForest"><label for="nblResidentForest">[법정지정림 아닐때만] 양도일 현재 임야소재지에 거주 중</label></div>' +
+          '<div class="taxcalc-field"><label>[거주 체크시만] 그 상태를 거슬러 연속 유지한 기간</label><input type="number" id="nblBizYearsForest" placeholder="년" step="0.1"></div>' +
+        '</div>' +
+        '<div id="nblPasture" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblLivestockBiz"><label for="nblLivestockBiz">양도일 현재 축산업을 경영 중</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblExceedsArea"><label for="nblExceedsArea">[경영중일때만] 기준면적을 초과함</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblUrbanArea"><label for="nblUrbanArea">[경영중일때만] 도시지역에 소재</label></div>' +
+          '<div class="taxcalc-field"><label>[경영중+기준이내+비도시일때만] 그 상태를 거슬러 연속 유지한 기간</label><input type="number" id="nblBizYearsPasture" placeholder="년" step="0.1"></div>' +
+        '</div>' +
+        '<div id="nblOther" class="taxcalc-grid" style="display:none;">' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblPropertyTaxExempt"><label for="nblPropertyTaxExempt">재산세가 비과세·면제되는 토지</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblPropertyTaxSeparate"><label for="nblPropertyTaxSeparate">재산세 별도합산·분리과세대상 토지</label></div>' +
+        '</div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblSignificantReason"><label for="nblSignificantReason">거주 또는 사업과 직접 관련 있다고 인정할 상당한 이유(시행령상 예외, 별도 확인)</label></div>' +
+        '<button type="button" class="taxcalc-run-btn" id="nblRunBtn" style="margin-top:8px;">판정하기</button>' +
+        '<div id="nblResult"></div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  function close(){ overlay.remove(); }
+  overlay.querySelector('#btnCloseNbl').onclick = close;
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+  const groups = { farmland: 'nblFarmland', forest: 'nblForest', pasture: 'nblPasture', other_land: 'nblOther' };
+  overlay.querySelector('#nblLandType').addEventListener('change', function(){
+    const v = this.value;
+    Object.keys(groups).forEach(function(k){ overlay.querySelector('#' + groups[k]).style.display = (k === v) ? '' : 'none'; });
+  });
+  enhanceNumberInputs(overlay);
+  overlay.querySelector('#nblRunBtn').addEventListener('click', function(){
+    const landType = overlay.querySelector('#nblLandType').value;
+    const holdingYears = numVal(overlay.querySelector('#nblHoldingYears').value);
+    const input = { landType: landType, holdingYears: holdingYears, hasSignificantReasonException: overlay.querySelector('#nblSignificantReason').checked };
+    if (landType === 'farmland'){
+      input.meetsResidencyAndCultivation = overlay.querySelector('#nblMeetsResidency').checked;
+      input.businessUseYears = numVal(overlay.querySelector('#nblBizYearsFarm').value);
+    } else if (landType === 'forest'){
+      input.isProtectedForest = overlay.querySelector('#nblProtectedForest').checked;
+      input.isResidentAtForestLocation = overlay.querySelector('#nblResidentForest').checked;
+      input.businessUseYears = numVal(overlay.querySelector('#nblBizYearsForest').value);
+    } else if (landType === 'pasture'){
+      input.isLivestockBusiness = overlay.querySelector('#nblLivestockBiz').checked;
+      input.exceedsStandardArea = overlay.querySelector('#nblExceedsArea').checked;
+      input.isUrbanArea = overlay.querySelector('#nblUrbanArea').checked;
+      input.businessUseYears = numVal(overlay.querySelector('#nblBizYearsPasture').value);
+    } else {
+      input.isPropertyTaxExemptOrFree = overlay.querySelector('#nblPropertyTaxExempt').checked;
+      input.isPropertyTaxSeparateOrDividedAssessment = overlay.querySelector('#nblPropertyTaxSeparate').checked;
+    }
+    const r = window.calculateNonBusinessLandJS(input);
+    const resultBox = document.getElementById('nblResult');
+    if (r.error){ resultBox.innerHTML = '<div class="taxcalc-error">' + r.error + '</div>'; return; }
+    let html = '<div class="taxcalc-result" style="margin-top:10px;">';
+    html += taxCalcResultRow('비사업용토지 여부', r.비사업용여부 ? '해당(세율 10%p 가산)' : '해당없음', { total: true });
+    html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+    html += '<button type="button" class="taxcalc-run-btn" id="nblApplyBtn" style="margin-top:8px;">이 판정결과로 체크하기</button>';
+    html += '</div>';
+    resultBox.innerHTML = html;
+    resultBox.querySelector('#nblApplyBtn').addEventListener('click', function(){
+      transferAssets[idx].isNonBusinessLand = r.비사업용여부;
+      close();
+      renderTransferPane();
+      showToast('비사업용토지 ' + (r.비사업용여부 ? '해당' : '해당없음') + '으로 체크했습니다.', 'success');
+    });
+  });
+}
+// 기타자산(과점주주 특정주식·부동산과다보유법인 주식) 판정 — 소득세법§94①4호다·라목. [2026.10.02 신규, 재검토104]
+function openControllingShareholderModal_(){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.display = 'flex';
+  overlay.innerHTML =
+    '<div class="modal-panel" style="width:min(600px, 94vw);">' +
+      '<div class="modal-head"><span>기타자산(과점주주·부동산과다법인) 판정</span><span class="modal-close" id="btnCloseCs">✕</span></div>' +
+      '<div class="modal-body">' +
+        '<div class="taxcalc-field"><label>발행법인 자산총액</label><input type="number" id="csTotalAsset" placeholder="원"><span class="taxcalc-field-help">장부가액 기준(토지는 기준시가가 더 크면 기준시가, 시행령§158④)</span></div>' +
+        '<div class="taxcalc-field"><label>그중 부동산등(토지·건물·부동산권리) 가액</label><input type="number" id="csRealEstate" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>다른 법인 주식가액(있으면)</label><input type="number" id="csOtherStock" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>[위 입력시만] 그 다른 법인의 부동산등보유비율(%)</label><input type="number" id="csOtherRatio" placeholder="%" step="0.1"></div>' +
+        '<div class="taxcalc-field"><label>과점주주(본인+특수관계인) 합산지분(%)</label><input type="number" id="csOwnership" placeholder="%" step="0.1"></div>' +
+        '<div class="taxcalc-field"><label>과점주주 외의 자에게 양도하는 지분(%)</label><input type="number" id="csTransferRatio" placeholder="%" step="0.1"></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="csThreeYearCombined"><label for="csThreeYearCombined">단독으로는 50% 미달이나, 다른 과점주주가 최근 3년 내 양도한 지분과 합산하면 50%이상(시행령§158②)</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="csSpecialBusiness"><label for="csSpecialBusiness">발행법인이 골프장업·스키장업 등 체육시설업, 휴양시설관련 관광사업, 또는 부동산업·부동산개발업을 영위(시행령§158⑧, 라목용)</label></div>' +
+        '<button type="button" class="taxcalc-run-btn" id="csRunBtn" style="margin-top:8px;">판정하기</button>' +
+        '<div id="csResult"></div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  function close(){ overlay.remove(); }
+  overlay.querySelector('#btnCloseCs').onclick = close;
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+  enhanceNumberInputs(overlay);
+  overlay.querySelector('#csRunBtn').addEventListener('click', function(){
+    const input = {
+      totalAssetValue: numVal(overlay.querySelector('#csTotalAsset').value),
+      realEstateValue: numVal(overlay.querySelector('#csRealEstate').value),
+      otherCorpStockValue: numVal(overlay.querySelector('#csOtherStock').value),
+      otherCorpRealEstateRatio: numVal(overlay.querySelector('#csOtherRatio').value) / 100,
+      shareholderGroupOwnershipRatio: numVal(overlay.querySelector('#csOwnership').value) / 100,
+      transferRatioToOutsiders: numVal(overlay.querySelector('#csTransferRatio').value) / 100,
+      combinedWithPriorThreeYearSalesReaches50Pct: overlay.querySelector('#csThreeYearCombined').checked,
+      isSpecialBusinessUnderDecree158_8: overlay.querySelector('#csSpecialBusiness').checked
+    };
+    const r = window.calculateControllingShareholderStockJS(input);
+    const resultBox = document.getElementById('csResult');
+    if (r.error){ resultBox.innerHTML = '<div class="taxcalc-error">' + r.error + '</div>'; return; }
+    let html = '<div class="taxcalc-result" style="margin-top:10px;">';
+    html += taxCalcResultRow('기타자산 해당여부', r.기타자산여부 ? '해당' : '해당없음', { total: true });
+    html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+    if (r.기타자산여부) html += '<button type="button" class="taxcalc-run-btn" id="csApplyBtn" style="margin-top:8px;">자산구분을 기타자산으로 설정</button>';
+    html += '</div>';
+    resultBox.innerHTML = html;
+    const applyBtn = resultBox.querySelector('#csApplyBtn');
+    if (applyBtn) applyBtn.addEventListener('click', function(){
+      document.getElementById('stAssetCategory').value = 'other_asset';
+      close();
+      showToast('자산구분을 기타자산으로 설정했습니다.', 'success');
+    });
+  });
+}
 // [2026.09.30 신규, 재검토99] 일감몰아주기(jm)·일감떼어주기(jt) 공통 — 지배주주+친족의 직접·
 // 간접 주식보유 내역. 부표1(계산명세Ⅰ)의 "나.수혜법인 지배주주" 직접보유표, 부표2(간접보유비율
 // 산정)의 1~3차 출자법인 체인을 한 화면에서 입력받는다. target별로 따로 보존(jm/jt 별개 신고).
@@ -2447,18 +2588,42 @@ function openOneHouseSpecialCaseModal_(idx){
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="iuDecedentHadOther"><label for="iuDecedentHadOther">피상속인이 상속개시 당시 주택 또는 분양권을 소유하고 있었음(해당시 원칙적으로 적용배제)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="iuOnlyRightAndPresale">[위 체크시만]<label for="iuOnlyRightAndPresale">피상속인이 주택 없이 조합원입주권+분양권만 소유했었음(§156의2⑮ 선택특례로 적용 가능)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="iuCoInherited"><label for="iuCoInherited">공동상속조합원입주권(2인 이상 공동소유)임</label></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="iuLargestShare">[공동상속일 때만]<label for="iuLargestShare">신청인이 최대지분자임</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="iuLargestShare">[공동상속일 때만]<label for="iuLargestShare">신청인이 최대지분자임(지분이 같으면 아래 자동판정 도구 사용)</label></div>' +
+          '<div class="taxcalc-result-note" style="flex-basis:100%;">지분이 같아 누가 소유자로 간주되는지 애매하면 아래로 지분율·거주자·최연장자를 입력해 자동판정하고, 결과를 위 체크박스에 반영하세요(시행령§156의2⑦ 1지분→2거주자→3최연장자).</div>' +
+          '<div class="taxcalc-field"><label>신청인 상속지분(%)</label><input type="number" id="iuApplicantShare" placeholder="%" step="0.1"></div>' +
+          '<div class="taxcalc-field"><label>신청인 외 상속인 중 최고지분(%)</label><input type="number" id="iuMaxOtherShare" placeholder="%" step="0.1"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="iuOnlyResident"><label for="iuOnlyResident">[지분 동률일 때만] 신청인이 동순위 지분자 중 유일한 거주자임</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="iuOldest"><label for="iuOldest">[지분·거주로도 안 가려지면] 신청인이 동순위자 중 최연장자임</label></div>' +
+          '<button type="button" class="taxcalc-ai-btn" id="iuPriorityBtn">🧮 소유자 자동판정</button>' +
+          '<div id="iuPriorityResult" style="flex-basis:100%;"></div>' +
         '</div>' +
         '<div id="ohsIp" class="taxcalc-grid" style="display:none;">' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="ipDecedentHadOther"><label for="ipDecedentHadOther">피상속인이 상속개시 당시 주택 또는 조합원입주권을 소유하고 있었음(해당시 원칙적으로 적용배제)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="ipOnlyRightAndPresale">[위 체크시만]<label for="ipOnlyRightAndPresale">피상속인이 주택 없이 조합원입주권+분양권만 소유했었음(§156의3⑫ 선택특례로 적용 가능)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="ipCoInherited"><label for="ipCoInherited">공동상속분양권(2인 이상 공동소유)임</label></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="ipLargestShare">[공동상속일 때만]<label for="ipLargestShare">신청인이 최대지분자임</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="ipLargestShare">[공동상속일 때만]<label for="ipLargestShare">신청인이 최대지분자임(지분이 같으면 아래 자동판정 도구 사용)</label></div>' +
+          '<div class="taxcalc-result-note" style="flex-basis:100%;">지분이 같아 누가 소유자로 간주되는지 애매하면 아래로 지분율·최연장자를 입력해 자동판정하고, 결과를 위 체크박스에 반영하세요(시행령§156의3⑤5호 — 분양권은 거주 개념 없이 1지분→2최연장자).</div>' +
+          '<div class="taxcalc-field"><label>신청인 상속지분(%)</label><input type="number" id="ipApplicantShare" placeholder="%" step="0.1"></div>' +
+          '<div class="taxcalc-field"><label>신청인 외 상속인 중 최고지분(%)</label><input type="number" id="ipMaxOtherShare" placeholder="%" step="0.1"></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="ipOldest"><label for="ipOldest">[지분 동률일 때만] 신청인이 동순위자 중 최연장자임</label></div>' +
+          '<button type="button" class="taxcalc-ai-btn" id="ipPriorityBtn">🧮 소유자 자동판정</button>' +
+          '<div id="ipPriorityResult" style="flex-basis:100%;"></div>' +
         '</div>' +
         '<div id="ohsLr" class="taxcalc-grid" style="display:none;">' +
           '<div class="taxcalc-result-note" style="flex-basis:100%;">거주주택(이 양도자산)의 취득일·양도일은 위 입력값을 그대로 씁니다.</div>' +
           '<div class="taxcalc-field"><label>거주주택 보유기간 중 거주기간 합계(개월)</label><input type="number" id="lrResidenceMonths" placeholder="개월"></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrMeetsRequirements"><label for="lrMeetsRequirements">장기임대주택(민간임대주택법 등록+임대료 5%이내 증가 등, 시행령§167조의3①2호 가~자목 중 해당) 또는 장기어린이집 요건 충족(별도 확인)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrUseMaCalc"><label for="lrUseMaCalc">임대주택이 "10년 이상 장기일반민간매입임대주택"(마목, 2020.8.18 이후 신규등록 가능한 사실상 유일한 유형)이면 체크해 아래에서 자동판정, 그 외 레거시 유형(가~라·바~자목)이면 체크 해제하고 별도 확인한 요건충족 여부를 직접 체크</label></div>' +
+          '<div id="lrMaFields" class="taxcalc-grid">' +
+            '<div class="taxcalc-field"><label>임대기간(년)</label><input type="number" id="lrMaYears" placeholder="년"></div>' +
+            '<div class="taxcalc-field"><label>임대개시일 당시 기준시가 합계</label><input type="number" id="lrMaStandardPrice" placeholder="원"></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrMaOutsideMetro"><label for="lrMaOutsideMetro">수도권 밖 소재(한도 3억, 수도권은 6억)</label></div>' +
+            '<div class="taxcalc-field"><label>직전 임대차 대비 임대료등 증가율(%)</label><input type="number" id="lrMaRentIncrease" placeholder="%" step="0.1"></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrMaExcl1"><label for="lrMaExcl1">[단서1호] 1주택이상 보유중 새로 취득한 조정대상지역 내 장기임대주택(공고전 계약 증빙 있으면 체크 해제)</label></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrMaExcl2"><label for="lrMaExcl2">[단서2호] 2020.7.11 이후 등록신청한 아파트 장기임대주택</label></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrMaExcl3"><label for="lrMaExcl3">[단서3호] 단기임대주택을 2020.7.11 이후 장기로 변경신고</label></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrMaExcl4"><label for="lrMaExcl4">[단서4호] 아파트 양도기한(§167조의3⑪) 경과 후 양도</label></div>' +
+          '</div>' +
+          '<div id="lrManualField" class="taxcalc-field checkbox" style="display:none;"><input type="checkbox" id="lrMeetsRequirements"><label for="lrMeetsRequirements">장기임대주택(가·나·다·라·바·사·아·자목 중 해당, 등록시기·면적·호수 등 세부요건은 직접 확인) 또는 장기어린이집 요건 충족(별도 확인)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrHasPriorResidence"><label for="lrHasPriorResidence">민간임대주택 등록(또는 어린이집 운영) 이력이 있는 거주주택을 과거에 이미 양도한 적이 있음("직전거주주택보유주택" — 해당시 안분비과세)</label></div>' +
         '</div>' +
         '<div id="ohsCh" class="taxcalc-grid" style="display:none;">' +
@@ -2500,6 +2665,37 @@ function openOneHouseSpecialCaseModal_(idx){
     ['ohsU9', 'ohsPd', 'ohsRh', 'ohsPr', 'ohsTw', 'ohsMg', 'ohsHr', 'ohsCi', 'ohsRp', 'ohsIh', 'ohsCb', 'ohsMc', 'ohsIu', 'ohsIp', 'ohsLr', 'ohsCh', 'ohsEf', 'ohsRf', 'ohsMp'].forEach(function(id){
       overlay.querySelector('#' + id).style.display = (id === 'ohs' + provisionSel.value.charAt(0).toUpperCase() + provisionSel.value.slice(1)) ? '' : 'none';
     });
+  });
+  overlay.querySelector('#lrUseMaCalc').addEventListener('change', function(){
+    overlay.querySelector('#lrMaFields').style.display = this.checked ? '' : 'none';
+    overlay.querySelector('#lrManualField').style.display = this.checked ? 'none' : '';
+  });
+  overlay.querySelector('#lrUseMaCalc').checked = true;
+  overlay.querySelector('#lrManualField').style.display = 'none';
+  overlay.querySelector('#iuPriorityBtn').addEventListener('click', function(){
+    const r = window.calculateCoInheritedRightPriorityJS({
+      applicantShareRatio: numVal(overlay.querySelector('#iuApplicantShare').value) / 100,
+      maxOtherShareRatio: numVal(overlay.querySelector('#iuMaxOtherShare').value) / 100,
+      isResidenceBased: true,
+      applicantIsOnlyResidentAmongTied: overlay.querySelector('#iuOnlyResident').checked,
+      applicantIsOldestAmongTied: overlay.querySelector('#iuOldest').checked
+    });
+    const box = overlay.querySelector('#iuPriorityResult');
+    if (r.error){ box.innerHTML = '<div class="taxcalc-error">' + r.error + '</div>'; return; }
+    box.innerHTML = '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+    overlay.querySelector('#iuLargestShare').checked = r.신청인이소유자;
+  });
+  overlay.querySelector('#ipPriorityBtn').addEventListener('click', function(){
+    const r = window.calculateCoInheritedRightPriorityJS({
+      applicantShareRatio: numVal(overlay.querySelector('#ipApplicantShare').value) / 100,
+      maxOtherShareRatio: numVal(overlay.querySelector('#ipMaxOtherShare').value) / 100,
+      isResidenceBased: false,
+      applicantIsOldestAmongTied: overlay.querySelector('#ipOldest').checked
+    });
+    const box = overlay.querySelector('#ipPriorityResult');
+    if (r.error){ box.innerHTML = '<div class="taxcalc-error">' + r.error + '</div>'; return; }
+    box.innerHTML = '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+    overlay.querySelector('#ipLargestShare').checked = r.신청인이소유자;
   });
   overlay.querySelector('#ohsRunBtn').addEventListener('click', function(){
     const provision = provisionSel.value;
@@ -2641,11 +2837,25 @@ function openOneHouseSpecialCaseModal_(idx){
         isLargestShareHolder: document.getElementById('ipLargestShare').checked
       });
     } else if (provision === 'lr'){
-      r = calculateRentalHousingResidenceExclusionJS({
+      const lrInput = {
         residencePeriodMonths: numVal(document.getElementById('lrResidenceMonths').value),
-        meetsLongTermRentalRequirements: document.getElementById('lrMeetsRequirements').checked,
         hasPriorQualifyingResidence: document.getElementById('lrHasPriorResidence').checked
-      });
+      };
+      if (document.getElementById('lrUseMaCalc').checked){
+        lrInput.rentalItemMa = {
+          rentalYears: numVal(document.getElementById('lrMaYears').value),
+          standardPriceAtLeaseStart: numVal(document.getElementById('lrMaStandardPrice').value),
+          isOutsideMetro: document.getElementById('lrMaOutsideMetro').checked,
+          rentIncreaseRate: numVal(document.getElementById('lrMaRentIncrease').value),
+          hadOneHouseAndNewlyAcquiredAdjustedAreaLTRH: document.getElementById('lrMaExcl1').checked,
+          isApartmentRegisteredAfter20200711: document.getElementById('lrMaExcl2').checked,
+          isShortToLongConversionAfter20200711: document.getElementById('lrMaExcl3').checked,
+          isPastTransferDeadline: document.getElementById('lrMaExcl4').checked
+        };
+      } else {
+        lrInput.meetsLongTermRentalRequirements = document.getElementById('lrMeetsRequirements').checked;
+      }
+      r = calculateRentalHousingResidenceExclusionJS(lrInput);
     } else if (provision === 'ch'){
       r = calculateCulturalHeritageHouseExclusionJS({
         isCulturalHeritage: document.getElementById('chIsHeritage').checked
@@ -4531,6 +4741,7 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isPermitObtained" id="permitOk-' + idx + '"><label for="permitOk-' + idx + '">[나목만] 허가를 받음</label></div>') +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isExtendedDeadlineRegion" id="extRegion-' + idx + '"><label for="extRegion-' + idx + '">[연장특례] 6개월 유예지역(시행령이 별도 열거한 특정지역, 직접 확인 필요)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isNonBusinessLand" id="nbl-' + idx + '"><label for="nbl-' + idx + '">비사업용토지</label></div>' +
+          '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-non-business-land-modal" data-idx="' + idx + '" title="농지·임야·목장용지·기타토지(나대지 등)의 비사업용 여부를 법령 기준으로 판정합니다">🧮 비사업용토지 판정</button></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isUnregisteredTransfer" id="unreg-' + idx + '"><label for="unreg-' + idx + '">미등기양도</label></div>' +
           // [2026.09 재설계] 세무사님 재점검 지시 — 아래 3개 필드는 원래 아무 체크박스 없이
           // 항상 떠 있었다(§97의2④·§95④단서, 가업상속공제 안분). "이 자산이 상속받은 자산인지"
@@ -5070,6 +5281,7 @@ function renderTransferPane(){
         '</select></div>' +
         '<div class="taxcalc-field"><label>양도비용</label><input type="number" id="stTransferExpenses" placeholder="원"><span class="taxcalc-field-help">증권거래세 등, 없으면 0</span></div>' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" id="stMajorityNonBizLand"><label for="stMajorityNonBizLand">[기타자산만] 발행법인 자산의 50%이상이 비사업용토지(§104①9호, 기본세율+10%p 가산)</label></div>' +
+        '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-controlling-shareholder-modal" title="과점주주 특정주식(§94①4호다목)·부동산과다보유법인 주식(라목) 해당여부를 판정합니다">🧮 기타자산(과점주주·부동산과다법인) 판정</button></div>' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" id="stIsDaejuju"><label for="stIsDaejuju">대주주(국내주식만 해당, 지분율·시가총액 기준은 별도 확인)</label></div>' +
         '<div class="taxcalc-field"><label>기장누락·미기장 소득금액(대주주만, §115)</label><input type="number" id="stUnrecordedIncome" placeholder="원"><span class="taxcalc-field-help">거래명세 등 기장의무 위반분, 없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>기장불성실가산세용 거래금액(산출세액 0원일 때만)</label><input type="number" id="stBookkeepingPenaltyTxAmount" placeholder="원"><span class="taxcalc-field-help">산출세액이 없을 때 거래금액×7/10000으로 가산</span></div>' +
@@ -13552,6 +13764,10 @@ taxCalcView.addEventListener('click', function(e){
     });
   } else if (action === 'open-one-house-special-modal'){
     openOneHouseSpecialCaseModal_(numVal(btn.dataset.idx));
+  } else if (action === 'open-non-business-land-modal'){
+    openNonBusinessLandModal_(numVal(btn.dataset.idx));
+  } else if (action === 'open-controlling-shareholder-modal'){
+    openControllingShareholderModal_();
   } else if (action === 'open-industrial-complex-lot-modal'){
     openIndustrialComplexLotModal_(numVal(btn.dataset.idx));
   } else if (action === 'send-debt-to-transfer'){

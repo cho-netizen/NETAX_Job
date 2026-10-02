@@ -4739,6 +4739,48 @@
     { max: Infinity, rate: 0.25, deduction: 15000000 }
   ];
 
+  // 기타자산(특정주식) 해당여부 판정 — 소득세법§94①4호다목·라목, 시행령§158. [2026.10.02 신규,
+  // 재검토104] law.go.kr 원문 확인 완료.
+  // 다목: 법인 자산총액 중 [부동산등가액(①1·2호) + 다른법인주식가액×그법인의 부동산등보유비율]의
+  //   합계가 차지하는 비율이 50%이상인 법인의 "과점주주"(본인+특수관계인 합산지분 50% 초과,
+  //   시행령§158①)가 그 법인주식의 50%이상을 과점주주 외의 자에게 양도하는 경우 → 그 주식 전체가
+  //   기타자산(여러 번에 나눠 팔아도 과점주주 중 1인의 양도일로부터 소급 3년 내 합산, §158②).
+  // 라목: 골프장업·스키장업 등 체육시설업, 관광사업 중 휴양시설관련업, 부동산업·부동산개발업
+  //   (시행령§158⑧)을 하는 법인으로서 위와 같은 부동산등비율이 80%이상이면, 지분비율과 무관하게
+  //   그 법인 주식등 전체가 기타자산.
+  window.calculateControllingShareholderStockJS = function (p) {
+    p = p || {};
+    const totalAssetValue = Number(p.totalAssetValue);
+    if (!totalAssetValue || totalAssetValue <= 0) return { error: '발행법인 자산총액이 필요합니다(장부가액 기준, 토지는 기준시가가 더 크면 기준시가 — 시행령§158④).' };
+    const realEstateValue = Number(p.realEstateValue) || 0;
+    const otherCorpStockValue = Number(p.otherCorpStockValue) || 0;
+    const otherCorpRealEstateRatio = Math.max(0, Math.min(1, Number(p.otherCorpRealEstateRatio) || 0));
+    const realEstateRatio = (realEstateValue + otherCorpStockValue * otherCorpRealEstateRatio) / totalAssetValue;
+
+    const shareholderGroupOwnershipRatio = Math.max(0, Math.min(1, Number(p.shareholderGroupOwnershipRatio) || 0));
+    const isControllingShareholder = shareholderGroupOwnershipRatio > 0.5 || !!p.combinedWithPriorThreeYearSalesReaches50Pct;
+    const transferRatioToOutsiders = Math.max(0, Math.min(1, Number(p.transferRatioToOutsiders) || 0));
+    const meetsItemDa = realEstateRatio >= 0.5 && isControllingShareholder
+      && (transferRatioToOutsiders >= 0.5 || !!p.combinedWithPriorThreeYearSalesReaches50Pct);
+
+    const meetsItemRa = !!p.isSpecialBusinessUnderDecree158_8 && realEstateRatio >= 0.8;
+
+    const isOtherAsset = meetsItemDa || meetsItemRa;
+    const detail = { 부동산등비율: realEstateRatio, 과점주주여부: isControllingShareholder, 다목해당: meetsItemDa, 라목해당: meetsItemRa };
+    if (!isOtherAsset) {
+      return {
+        기타자산여부: false, 상세: detail,
+        안내: '법인 자산 중 부동산등 비율이 ' + Math.round(realEstateRatio * 10000) / 100 + '%로, 다목(과점주주+50%이상 비율+50%이상 양도) 또는 라목(§158⑧ 열거사업+80%이상 비율) 요건을 충족하지 못해 기타자산(§94①4호다·라목)에 해당하지 않습니다. 일반 국내·국외주식등으로 과세합니다.'
+      };
+    }
+    return {
+      기타자산여부: true, 상세: detail,
+      안내: (meetsItemDa ? '과점주주(본인+특수관계인 합산지분 50% 초과)가 부동산등비율 50%이상인 법인의 주식 50%이상을 과점주주 외의 자에게 양도해 §94①4호다목에 해당합니다.' : '')
+        + (meetsItemRa ? (meetsItemDa ? ' 또한 ' : '') + '골프장업등 §158⑧ 열거사업을 하는 부동산등비율 80%이상 법인의 주식등이라 §94①4호라목에도 해당합니다(지분비율 무관).' : '')
+        + ' 자산구분을 "기타자산"으로, 양도소득세 세율은 기본세율(누진 6~45%)이 적용됩니다 — 추가로 발행법인 자산의 50%이상이 "비사업용토지"(§104의3 기준, 위 부동산등비율과는 다른 개념)에 해당하면 §104①9호로 10%p가 더 가산되니 별도로 확인해 체크하세요.'
+    };
+  };
+
   // 주식등 양도소득세 — Code.js toolCalculateStockTransferTax와 동일 로직. 부동산 양도세와 완전히 별도 세목.
   window.calculateStockTransferTaxJS = function (p) {
     p = p || {};
@@ -5463,6 +5505,40 @@
     return { 적용여부: true, 안내: '혼인으로 2주택이 된 세대가 혼인한 날부터 10년 이내 먼저 양도해 시행령§155⑤에 따라 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다.' };
   };
 
+  // 공동상속 조합원입주권·분양권의 "소유자" 우선순위 판정(시행령§156의2⑦·§156의3⑤5호) —
+  // [2026.10.02 신규, 재검토104] law.go.kr 원문 확인 — 공동상속조합원입주권은 1차 지분최대자,
+  // 지분이 같으면 2차 그 중 거주자(⑦에서 "거주하는 자가 있는 경우 그 사람"), 그래도 같으면
+  // 3차 최연장자(민법상 연장자 기준)로 "그 조합원입주권을 소유한 것으로 본다"는 1인을 정한다.
+  // 공동상속분양권(§156의3⑤5호)은 거주 개념이 없는 권리라 지분최대자→(동률시)최연장자 2단계뿐.
+  function calculateCoInheritedRightPriorityJS(p) {
+    p = p || {};
+    const applicantShare = Number(p.applicantShareRatio);
+    const maxOtherShare = Number(p.maxOtherShareRatio);
+    if (!Number.isFinite(applicantShare) || !Number.isFinite(maxOtherShare)) {
+      return { error: '신청인 지분율과 그 외 상속인 중 최고 지분율이 필요합니다.' };
+    }
+    if (applicantShare > maxOtherShare) {
+      return { 신청인이소유자: true, 안내: '신청인의 상속지분(' + Math.round(applicantShare * 10000) / 100 + '%)이 다른 공동상속인보다 커서(1순위, 지분) 신청인이 소유자로 간주됩니다.' };
+    }
+    if (applicantShare < maxOtherShare) {
+      return { 신청인이소유자: false, 안내: '신청인의 상속지분(' + Math.round(applicantShare * 10000) / 100 + '%)이 다른 공동상속인(' + Math.round(maxOtherShare * 10000) / 100 + '%)보다 작아(1순위, 지분) 신청인은 소유자로 간주되지 않습니다.' };
+    }
+    // 지분 동률
+    if (p.isResidenceBased) {
+      if (p.applicantIsOnlyResidentAmongTied) {
+        return { 신청인이소유자: true, 안내: '지분이 같은 공동상속인들 중 신청인만 거주자여서(2순위, 거주) 신청인이 소유자로 간주됩니다(시행령§156의2⑦).' };
+      }
+      return p.applicantIsOldestAmongTied
+        ? { 신청인이소유자: true, 안내: '지분도 같고 거주자 여부로도 가려지지 않아(둘 다 거주 또는 둘 다 비거주) 3순위인 최연장자 기준으로 신청인이 소유자로 간주됩니다(시행령§156의2⑦).' }
+        : { 신청인이소유자: false, 안내: '지분도 같고 거주자 여부로도 가려지지 않아 3순위인 최연장자 기준을 적용한 결과 신청인은 최연장자가 아니라 소유자로 간주되지 않습니다(시행령§156의2⑦).' };
+    }
+    // 분양권 — 거주기준 없이 바로 최연장자(2순위)
+    return p.applicantIsOldestAmongTied
+      ? { 신청인이소유자: true, 안내: '지분이 같아 2순위인 최연장자 기준을 적용한 결과 신청인이 최연장자로 소유자로 간주됩니다(시행령§156의3⑤5호 — 분양권은 거주 개념이 없어 지분 다음 곧바로 최연장자 기준입니다).' }
+      : { 신청인이소유자: false, 안내: '지분이 같아 2순위인 최연장자 기준을 적용한 결과 신청인은 최연장자가 아니라 소유자로 간주되지 않습니다(시행령§156의3⑤5호).' };
+  }
+  window.calculateCoInheritedRightPriorityJS = calculateCoInheritedRightPriorityJS;
+
   // 상속받은 조합원입주권 특례(시행령§156의2⑥⑦) — [2026.10.01 신규, 재검토103] 피상속인이
   // 상속개시 당시 주택·분양권을 소유하지 않았을 때의 상속조합원입주권만 해당(2 이상이면 ⑥의
   // 순위— 소유기간합산 최장→거주기간최장→상속인선택— 에 따른 1개로 한정, 상속주택(§155②)과
@@ -5502,6 +5578,114 @@
     };
   };
 
+  // 비사업용토지 판정(소득세법§104의3·시행령§168의6) — [2026.10.02 신규, 재검토104]
+  // law.go.kr 원문 확인 완료. 두 단계로 판정한다.
+  // (1) "기간기준"(시행령§168의6) — 토지 소유기간 중 "사업용으로 사용한 기간"이 다음 3가지 중
+  //     하나라도 충족하면 그 즉시 사업용으로 인정(= 비사업용 아님). 조문은 "비사업용으로 사용한
+  //     기간이 다음을 모두 초과"라고 역으로 규정하지만, 그 여집합을 취하면 이 3가지 OR조건이 된다:
+  //     소유 5년이상 → [양도일 직전5년 중 3년 이상]OR[직전3년 중 2년 이상]OR[소유기간의 60%이상]
+  //     소유 3년이상5년미만 → [최소 3년]OR[직전3년중2년이상]OR[60%이상]
+  //     소유 2년이상3년미만 → [최소 2년]OR[60%이상]
+  //     소유 2년미만 → [60%이상]만
+  //     "사업용으로 사용한 기간"은 양도일부터 거슬러 연속된 기간으로 입력받는다(중간에 끊겼다가
+  //     재개된 경우는 이 간이판정이 정확하지 않을 수 있어 별도 확인 안내를 덧붙인다).
+  // (2) "유형별기준"(§104의3①1~4호) — 그 사업용 사용기간 동안 토지 종류별 실질기준(농지=재촌+자경,
+  //     임야=재촌 또는 법정보호림, 목장용지=축산업경영+기준면적이내+비도시지역, 기타토지=재산세
+  //     비과세·면제 또는 별도합산·분리과세대상)을 충족해야 "사업용 사용"으로 인정된다 — 이 실질
+  //     기준 자체도 사용자가 "사업용으로 사용했다고 보는 기간"을 산정할 때 이미 반영해 입력하는
+  //     것을 전제로 하므로, 아래 함수는 입력받은 연수를 그대로 기간기준에 대입한다(유형별기준은
+  //     사용자가 입력폼에서 체크한 사실관계를 기간기준 계산 전 1차로 걸러내는 역할).
+  function nonBusinessLandPeriodTestJS_(holdingYears, businessUseYears) {
+    const bu = Math.max(0, Math.min(businessUseYears, holdingYears));
+    const ratio = holdingYears > 0 ? bu / holdingYears : 0;
+    if (holdingYears >= 5) {
+      return Math.min(bu, 5) >= 3 || Math.min(bu, 3) >= 2 || ratio >= 0.6;
+    } else if (holdingYears >= 3) {
+      return bu >= 3 || Math.min(bu, 3) >= 2 || ratio >= 0.6;
+    } else if (holdingYears >= 2) {
+      return bu >= 2 || ratio >= 0.6;
+    }
+    return ratio >= 0.6;
+  }
+  window.calculateNonBusinessLandJS = function (p) {
+    p = p || {};
+    const landType = p.landType;
+    if (['farmland', 'forest', 'pasture', 'other_land'].indexOf(landType) === -1) {
+      return { error: '토지 종류(농지/임야/목장용지/기타토지)를 선택하세요.' };
+    }
+    const holdingYears = Number(p.holdingYears);
+    if (!Number.isFinite(holdingYears) || holdingYears < 0) return { error: '보유기간(년)이 필요합니다.' };
+
+    // 유형별기준(§104의3①1~4호) 판정 — 아래 두 변수로 분리한다.
+    // permanentExclusion: 법정보호림·재산세비과세 등 "기간"과 무관하게 그 자체로 사업용 제외되는
+    //   범주(충족하면 기간기준 없이 즉시 사업용) — 상당한이유 예외도 이 범주로 취급한다.
+    // currentlyMeetsType: 양도일 현재 그 유형의 실질 사업용요건(재촌+자경 등)을 충족하는지 — 이것만
+    //   충족한다고 즉시 사업용이 되는 게 아니라, 이 상태를 "얼마나 오래" 유지했는지(businessUseYears)를
+    //   기간기준(시행령§168의6)에 대입해야 비로소 사업용 여부가 확정된다 — [2026.10.02 수정] 최초
+    //   구현은 "현재 충족"만으로 기간기준을 건너뛰어 바로 사업용 처리하는 버그가 있었음(한 달만
+    //   경작해도 사업용으로 오판정) — 반드시 기간기준을 통과시킨다.
+    let typeNote = '';
+    let permanentExclusion = false;
+    let currentlyMeetsType = false;
+    let noPeriodConcept = false; // other_land는 "사용기간" 개념 자체가 없어 기간기준 적용 안 함
+    if (landType === 'farmland') {
+      currentlyMeetsType = !!p.meetsResidencyAndCultivation;
+      typeNote = '농지는 소유자가 농지소재지에 거주하며 직접 경작한 기간만 사업용입니다(§104의3①1호가목). 도시지역 농지(1호나목, 특별시·광역시·시지역 도시지역)는 재촌·자경 여부와 무관하게 원칙적으로 비사업용이나(도시지역 편입 유예기간 예외 있음), 이 판정은 그 세부 유예기간까지는 반영하지 않으니 도시지역 농지는 별도 확인하세요.';
+    } else if (landType === 'forest') {
+      if (p.isProtectedForest) {
+        permanentExclusion = true;
+        typeNote = '산림유전자원보호림 등 법정 지정림(§104의3①2호가목)으로 비사업용 제외 대상입니다.';
+      } else {
+        currentlyMeetsType = !!p.isResidentAtForestLocation;
+        typeNote = '임야는 원칙적으로 비사업용이나, 임야소재지에 거주하는 기간은 제외됩니다(2호나목). "거주 또는 사업과 직접 관련 있다고 인정할 상당한 이유"(2호다목)는 이 판정이 재현하지 않으니 해당 여지가 있으면 별도 확인하세요.';
+      }
+    } else if (landType === 'pasture') {
+      if (!p.isLivestockBusiness) {
+        typeNote = '축산업을 경영하지 않는 자가 소유하는 목장용지는 그 자체로 비사업용입니다(§104의3①3호나목).';
+        currentlyMeetsType = false;
+      } else {
+        currentlyMeetsType = !p.exceedsStandardArea && !p.isUrbanArea;
+        typeNote = '축산업 경영자 소유 목장용지는 기준면적 이내·비도시지역인 기간만 사업용입니다(3호가목 역, 기준면적초과·도시지역이면 그 기간은 비사업용).';
+      }
+    } else {
+      // other_land(나대지·잡종지 등) — §104의3①4호는 "사용기간" 개념이 아니라 현재의 재산세
+      // 과세분류(비과세·면제 또는 별도합산·분리과세대상인지)로 판정하므로 기간기준을 적용하지 않는다.
+      noPeriodConcept = true;
+      permanentExclusion = !!(p.isPropertyTaxExemptOrFree || p.isPropertyTaxSeparateOrDividedAssessment);
+      typeNote = '농지·임야·목장용지 외 토지(나대지·잡종지 등)는 원칙적으로 비사업용이나, 재산세가 비과세·면제되거나 별도합산·분리과세대상인 토지는 제외됩니다(§104의3①4호가·나목) — 이 유형은 보유기간 중 사용기간을 따지는 기간기준(시행령§168의6)이 적용되지 않고 양도일 현재 분류로만 판정합니다.';
+    }
+    if (p.hasSignificantReasonException) {
+      permanentExclusion = true;
+      typeNote += ' "거주 또는 사업과 직접 관련 있다고 인정할 상당한 이유"(시행령이 정하는 상당한 이유 예외)에 해당한다고 체크하셨으므로 사업용으로 처리합니다 — 실제 요건 충족은 직접 확인하세요.';
+    }
+
+    if (permanentExclusion) {
+      return { 비사업용여부: false, 안내: typeNote + ' 비사업용 제외 범주에 해당해 보유기간과 무관하게 사업용입니다.' };
+    }
+    if (noPeriodConcept) {
+      return { 비사업용여부: true, 안내: typeNote + ' 위 제외 범주에 해당하지 않아 비사업용 토지(§104의3)에 해당합니다 — 양도소득세 세율에 10%p가 가산됩니다(§104①8호).' };
+    }
+    if (!currentlyMeetsType) {
+      return { 비사업용여부: true, 안내: typeNote + ' 양도일 현재 그 요건을 충족하지 못해(과거에 충족했더라도 연속되지 않으면 기간기준 자체를 적용할 수 없음) 비사업용 토지(§104의3)에 해당합니다 — 양도소득세 세율에 10%p가 가산됩니다(§104①8호).' };
+    }
+
+    // 여기부터는 "양도일 현재 요건충족" 상태가 맞음 — 그 상태를 양도일부터 거슬러 며칠(년)
+    // 연속으로 유지했는지(businessUseYears)를 기간기준(시행령§168의6)에 대입해 최종 판정한다.
+    const businessUseYears = Math.max(0, Number(p.businessUseYears) || 0);
+    const periodSaysBusiness = nonBusinessLandPeriodTestJS_(holdingYears, businessUseYears);
+    const detail = {
+      보유기간_년: holdingYears, 사업용사용기간_년: businessUseYears,
+      기간기준_안내: '시행령§168의6 — 보유기간 ' + holdingYears + '년 기준, 양도일 직전 5년 중 3년↑ 또는 직전 3년 중 2년↑ 또는 전체 보유기간의 60%↑ 중 하나라도 사업용으로 사용했으면(보유기간대별로 적용 문턱이 다름) 비사업용에서 제외됩니다.'
+    };
+    if (periodSaysBusiness) {
+      return { 비사업용여부: false, 상세: detail, 안내: typeNote + ' 양도일 현재 요건을 충족하고, 기간기준(시행령§168의6)상 사업용 사용기간도 충분해 비사업용 토지에서 제외됩니다.' };
+    }
+    return {
+      비사업용여부: true, 상세: detail,
+      안내: typeNote + ' 양도일 현재는 요건을 충족하지만, 그 유지기간이 기간기준(시행령§168의6)에 미달해 비사업용 토지(§104의3)에 해당합니다 — 양도소득세 세율에 10%p가 가산됩니다(§104①8호). 입력한 "사업용으로 사용한 기간"은 양도일부터 거슬러 연속된 기간을 전제로 계산했습니다 — 사용현황이 중간에 끊겼다가 재개된 경우는 직접 재확인하세요.'
+    };
+  };
+
   // 장기임대주택(장기어린이집) 보유자의 거주주택 비과세 특례(시행령§155⑳~㉕) — [2026.10.01
   // 신규, 재검토103] law.go.kr 원문 조사로 확인 — §167조의3①2호 가~자목(민간임대주택법상 등록
   // 유형별 임대기간5·10·6년, 기준시가한도, 임대료5%증가제한 등 9갈래)은 세부요건이 매우 복잡해
@@ -5512,13 +5696,55 @@
   // 주택)는 이 조문의 "장기임대주택" 범위에 아예 포함되지 않음(원문 확인, 기존 rentalLongTermRate
   // 와는 완전히 별개 조문). 사후관리(㉒, 임대기간요건 미충족시 추징)·㉑(요건충족 전 양도 허용)은
   // 이번 라운드에서 범위 밖(기존 "사후관리 추징이자" 공용 도구 확장 검토는 별도 과제로 남김).
+  // [2026.10.02 신규, 재검토104] §167조의3①2호 가~자목 중 "마목"(10년이상 장기일반민간
+  // 매입임대주택)만 핵심요건을 직접 계산한다 — 2020.8.18 민간임대주택법 개정으로 "단기민간임대
+  // 주택"(아·자목) 신규등록 자체가 폐지되고, 가·나·다·라목도 각각 2018.3.31·2003.10.29·2008~
+  // 2009년 특정기간까지의 등록만 인정되는 종료된(레거시) 유형이라, 지금 신규로 발생할 수 있는
+  // 사실상 유일한 유형이 마목이다(법 문언·시행령§167조의3①2호마목 원문 그대로 구현, 지어내지
+  // 않음). 가·나·다·라·바·사·아·자목은 등록시기·면적·호수 요건까지 전부 재현하면 지나치게
+  // 방대해(각 목마다 다른 기준시가·등록기한) 기존처럼 "요건충족 별도확인" 체크로 남긴다.
+  function rentalHousingItemMaCheckJS_(m) {
+    const rentalYears = Number(m.rentalYears) || 0;
+    if (rentalYears < 10) {
+      return { 충족: false, 사유: '10년 이상 임대해야 하는데(마목 본문), 임대기간이 ' + rentalYears + '년으로 미달합니다.' };
+    }
+    const priceLimit = m.isOutsideMetro ? 300000000 : 600000000;
+    const standardPrice = Number(m.standardPriceAtLeaseStart) || 0;
+    if (standardPrice > priceLimit) {
+      return { 충족: false, 사유: '임대개시일 당시 기준시가 합계액이 ' + (m.isOutsideMetro ? '수도권 밖 3억원' : '6억원') + '을 초과합니다(마목).' };
+    }
+    const rentIncreaseRate = Number(m.rentIncreaseRate);
+    if (Number.isFinite(rentIncreaseRate) && rentIncreaseRate > 5) {
+      return { 충족: false, 사유: '직전 임대차계약 대비 임대료등 증가율이 5%를 초과합니다(마목).' };
+    }
+    if (m.hadOneHouseAndNewlyAcquiredAdjustedAreaLTRH) {
+      return { 충족: false, 사유: '1세대가 1주택 이상을 보유한 상태에서 새로 취득한 조정대상지역 내 장기일반민간임대주택이라 제외됩니다(마목 단서 1호) — 조정대상지역 공고 전 계약·계약금 지급 증빙이 있으면 예외이니 별도 확인하세요.' };
+    }
+    if (m.isApartmentRegisteredAfter20200711) {
+      return { 충족: false, 사유: '2020.7.11 이후 임대사업자등록을 신청한 아파트 장기일반민간임대주택이라 제외됩니다(마목 단서 2호).' };
+    }
+    if (m.isShortToLongConversionAfter20200711) {
+      return { 충족: false, 사유: '단기민간임대주택을 2020.7.11 이후 장기일반민간임대주택등으로 변경신고한 주택이라 제외됩니다(마목 단서 3호).' };
+    }
+    if (m.isPastTransferDeadline) {
+      return { 충족: false, 사유: '아파트 민간매입임대주택으로서 양도기한(시행령§167조의3⑪)이 지난 후 양도하는 주택이라 제외됩니다(마목 단서 4호).' };
+    }
+    return { 충족: true, 사유: '10년 이상 임대, 기준시가 한도 이내, 임대료 5%이내 증가, 단서 제외사유 없음 — 마목 요건을 충족합니다.' };
+  }
   window.calculateRentalHousingResidenceExclusionJS = function (p) {
     p = p || {};
     if (p.residencePeriodMonths === undefined || p.residencePeriodMonths === null || p.residencePeriodMonths === '') {
       return { error: '거주주택의 보유기간 중 거주기간(개월)이 필요합니다.' };
     }
-    if (!p.meetsLongTermRentalRequirements) {
-      return { 적용여부: false, 안내: '장기임대주택(소득세법시행령§167조의3①2호 가목~자목 중 하나, 또는 장기어린이집)이 양도일 현재 사업자등록(법§168)+민간임대주택 등록을 유지하고 임대보증금·임대료 증가율이 5%를 초과하지 않아야 하는데(시행령§155⑳2호·3호), 이 요건을 충족하지 못해(또는 목별 기준시가·임대기간 요건을 아직 확인하지 못해) 적용대상이 아닙니다.' };
+    let meetsRental = !!p.meetsLongTermRentalRequirements;
+    let rentalCheckNote = '';
+    if (p.rentalItemMa) {
+      const check = rentalHousingItemMaCheckJS_(p.rentalItemMa);
+      meetsRental = check.충족;
+      rentalCheckNote = check.사유 + ' ';
+    }
+    if (!meetsRental) {
+      return { 적용여부: false, 안내: rentalCheckNote + '장기임대주택(소득세법시행령§167조의3①2호 가목~자목 중 하나, 또는 장기어린이집)이 양도일 현재 사업자등록(법§168)+민간임대주택 등록을 유지하고 임대보증금·임대료 증가율이 5%를 초과하지 않아야 하는데(시행령§155⑳2호·3호), 이 요건을 충족하지 못해(또는 목별 기준시가·임대기간 요건을 아직 확인하지 못해) 적용대상이 아닙니다.' };
     }
     const months = Number(p.residencePeriodMonths) || 0;
     if (months < 24) {
