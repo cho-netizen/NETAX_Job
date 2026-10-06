@@ -7241,6 +7241,37 @@ function renderBusinessOpportunityGiftResult(r){
   box.innerHTML = html;
 }
 
+// [2026.10.06 신규, 재검토112] 상속세(증여세) 연부연납허가(변경,철회)신청서(상증세법§71,
+// 별지11호서식) — law.go.kr 서식명 검색으로 확인. 세액계산↔인쇄서식 상호보완 재점검 중 발견 —
+// 연부연납 계산기(ip)는 2026.09.24부터 있었는데 인쇄서식이 아예 없었다(실무에서 가장 흔히
+// 쓰이는 서식 중 하나인데도 누락).
+let lastInstallmentResult_ = null;
+let lastInstallmentInput_ = null;
+function installmentPrintFormPageHtml_(input, r){
+  if (!input || !r) return '';
+  const isGift = input.taxType === 'gift';
+  const person = isGift ? ((giftDonees && giftDonees[0]) || {}) : ((typeof inheritanceHeirs !== 'undefined' && inheritanceHeirs[0]) || {});
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제11호서식]</div>' +
+    '<div class="pf-title">' + (isGift ? '증여세' : '상속세') + ' 연부연납허가신청서</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '신청인 성명', person.name || '') +
+      pfRow_(++n, '신청인 주민등록번호', person.regNo || '') +
+      pfRow_(++n, '총 납부세액', won(input.totalTaxAmount)) +
+      pfRow_(++n, '최초 납부세액', won(input.initialPaymentAmount)) +
+      pfRow_(++n, '연부연납대상금액', won(r.연부연납대상금액)) +
+      pfRow_(++n, '연부연납기간', (input.installmentPeriodYears || '') + '년') +
+    '</table>' +
+    '<div class="pf-section-head">연부연납세액 계산명세</div>' +
+    '<table class="pf-table"><tr><th>회차</th><th>원금</th><th>가산금</th><th>납부예정세액</th></tr>' +
+      r.회차별_납부예정세액.map(function(row){
+        return '<tr><td>' + row.회차 + '</td><td>' + won(row.원금) + '</td><td>' + won(row.가산금) + '</td><td>' + won(row.납부예정세액) + '</td></tr>';
+      }).join('') +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다(상증세법§71) — 납세담보 제공방법 등은 직접 보완하세요.</div>' +
+  '</div>';
+}
 function renderInstallmentResult(r, boxId){
   const box = document.getElementById(boxId);
   if (r.error){ box.innerHTML = '<div class="taxcalc-error">' + r.error + '</div>'; return; }
@@ -7256,6 +7287,7 @@ function renderInstallmentResult(r, boxId){
   html += taxCalcResultRow('총 납부액(최초납부 포함)', won(r.총납부액_최초포함), { total: true });
   if (r.각회분_1천만원미만_경고) html += '<div class="taxcalc-result-note">⚠ 회당 원금이 1천만원 미만입니다 — 연부연납기간을 줄이거나 신청 요건을 재확인하세요.</div>';
   html += '<div class="taxcalc-result-note">가산금은 잔여 미납액에 연이자율을 적용하는 근사 모델로, 거치기간(가업상속재산 비율 50%이상시 5년까지, 미만시 3년까지)은 반영하지 않습니다. 연부연납기간 한도(증여세 일반5년/특례15년, 상속세 일반10년/가업상속 50%미만10년·50%이상20년)와 정확한 이자율·거치기간 적용은 홈택스 모의계산으로 재검증하세요.</div>';
+  html += '<button type="button" class="taxcalc-run-btn" data-action="print-installment" style="margin-top:4px;">🖨 연부연납허가신청서 인쇄용 서식 보기</button>';
   html += '</div>';
   box.innerHTML = html;
 }
@@ -7512,8 +7544,33 @@ function renderBusinessSuccessionDeferralClawbackResult(r){
   box.innerHTML = html;
 }
 
-function renderPropertyInKindPaymentResult(r){
+// [2026.10.06 신규, 재검토112] 상속세 물납(변경,철회)신청서(별지13호)·문화재등 상속세 물납
+// (철회)신청서(별지14호의2) — law.go.kr 서식명으로 조문(§73/§73의2) 대조 확인. 이 ik 계산기는
+// "요건 충족 여부만" 판정하고 물납충당재산의 구체적 명세는 다루지 않는다고 스스로 밝히고 있어,
+// 인쇄서식도 그 범위(적용가능여부·한도)만 자동채움하고 나머지는 직접 보완 대상으로 남긴다.
+let lastPropertyInKindInput_ = null;
+let lastPropertyInKindResult_ = null;
+function propertyInKindPaymentPrintFormPageHtml_(input, r){
+  if (!input || !r) return '';
+  const isCultural = input.provision === 'cultural_heritage';
+  const heir = (typeof inheritanceHeirs !== 'undefined' && inheritanceHeirs[0]) || {};
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [' + (isCultural ? '별지 제14호의2서식' : '별지 제13호서식') + ']</div>' +
+    '<div class="pf-title">' + (isCultural ? '문화재 등 상속세 물납(철회)신청서' : '상속세 물납(변경,철회)신청서') + '</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '신청인 성명', heir.name || '') +
+      pfRow_(++n, '신청인 주민등록번호', heir.regNo || '') +
+      pfRow_(++n, '상속세 납부세액', won(input.inheritanceTaxPayable)) +
+      pfRow_(++n, '물납신청가능세액 한도', won(r.물납신청가능세액_한도 || 0)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX "물납 적격판정" 계산 결과를 기준으로 자동 생성되었습니다 — 물납충당재산의 구체적 명세(재산종류·수량·가액 등)는 이 계산기가 다루지 않는 범위라 직접 작성하세요.</div>' +
+  '</div>';
+}
+function renderPropertyInKindPaymentResult(r, input){
   const box = document.getElementById('taxCalcPropertyInKindPaymentResult');
+  lastPropertyInKindInput_ = input || null;
+  lastPropertyInKindResult_ = (r && !r.error && r.적용가능여부) ? r : null;
   if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
   let html = '<div class="taxcalc-result">';
   html += taxCalcResultRow('적용 가능 여부', r.적용가능여부 ? '가능' : '불가능', { total: true });
@@ -7521,6 +7578,7 @@ function renderPropertyInKindPaymentResult(r){
   if (r.물납신청가능세액_한도 !== undefined) html += taxCalcResultRow('물납신청가능세액 한도', won(r.물납신청가능세액_한도));
   (r.미충족사유 || []).forEach(function(reason){ html += '<div class="taxcalc-result-note">- ' + reason + '</div>'; });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  if (r.적용가능여부) html += '<button type="button" class="taxcalc-run-btn" data-action="print-property-in-kind" style="margin-top:4px;">🖨 물납신청서 인쇄용 서식 보기</button>';
   html += '</div>';
   box.innerHTML = html;
 }
@@ -13314,6 +13372,16 @@ const PRINT_REGISTRY_ = [
       if (formType === 'sr_succession_deferred') return srSuccessionClawbackPrintPageHtml_(lastClawbackResult_, true);
       return ihClawbackPrintPageHtml_(formType, lastClawbackResult_);
     } },
+  { key: 'propertyinkind', group: '증여·상속 공통', label: '상속세 물납신청서(상증세법§73·§73의2)',
+    formNo: '상속세 및 증여세법 시행규칙 [별지 제13호서식 또는 별지 제14호의2서식]',
+    isReady: function(){ return !!lastPropertyInKindResult_; },
+    title: function(){ return lastPropertyInKindInput_ && lastPropertyInKindInput_.provision === 'cultural_heritage' ? '문화재 등 상속세 물납(철회)신청서' : '상속세 물납(변경,철회)신청서'; },
+    bodyFn: function(){ return propertyInKindPaymentPrintFormPageHtml_(lastPropertyInKindInput_, lastPropertyInKindResult_); } },
+  { key: 'installment', group: '증여·상속 공통', label: '상속세(증여세) 연부연납허가신청서(상증세법§71)',
+    formNo: '상속세 및 증여세법 시행규칙 [별지 제11호서식]',
+    isReady: function(){ return !!lastInstallmentResult_; },
+    title: function(){ return (lastInstallmentInput_ && lastInstallmentInput_.taxType === 'gift' ? '증여세' : '상속세') + ' 연부연납허가신청서'; },
+    bodyFn: function(){ return installmentPrintFormPageHtml_(lastInstallmentInput_, lastInstallmentResult_); } },
   { key: 'cr', group: '증여·상속 공통', label: '상속세(증여세) 과세표준 및 세액의 결정(경정)청구서',
     formNo: '상속세 및 증여세법 시행규칙 [별지 제16호서식]',
     isReady: function(){ return !!lastCorrectionClaimInput_; },
@@ -15308,7 +15376,10 @@ function handleTaxCalcClick_(e){
       culturalHeritageValue: numVal(document.getElementById('ikCulturalValue').value) || 0,
       excludedDamagedCulturalHeritageValue: numVal(document.getElementById('ikExcludedDamagedValue').value) || 0
     };
-    renderPropertyInKindPaymentResult(calculatePropertyInKindPaymentEligibilityJS(input));
+    renderPropertyInKindPaymentResult(calculatePropertyInKindPaymentEligibilityJS(input), input);
+  } else if (action === 'print-property-in-kind'){
+    if (!lastPropertyInKindResult_){ nxAlert_('먼저 위에서 "적용 가능 여부 판정하기"를 눌러 요건을 충족하는지 확인하세요.'); return; }
+    openPrintFormWindow_('상속세 물납신청서', propertyInKindPaymentPrintFormPageHtml_(lastPropertyInKindInput_, lastPropertyInKindResult_));
   } else if (action === 'run-property-in-kind-stock-receipt-value'){
     const input = {
       changeType: document.getElementById('svChangeType').value,
@@ -15362,7 +15433,13 @@ function handleTaxCalcClick_(e){
       installmentPeriodYears: numVal(document.getElementById('ipIhYears').value) || 0,
       annualInterestRatePercent: numVal(document.getElementById('ipIhRate').value)
     };
-    renderInstallmentResult(calculateInstallmentPaymentScheduleJS(input), 'taxCalcInstallmentInheritanceResult');
+    const installmentResult = calculateInstallmentPaymentScheduleJS(input);
+    lastInstallmentInput_ = input;
+    lastInstallmentResult_ = (installmentResult && !installmentResult.error) ? installmentResult : null;
+    renderInstallmentResult(installmentResult, 'taxCalcInstallmentInheritanceResult');
+  } else if (action === 'print-installment'){
+    if (!lastInstallmentResult_){ nxAlert_('먼저 위에서 "연부연납 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_((lastInstallmentInput_.taxType === 'gift' ? '증여세' : '상속세') + ' 연부연납허가신청서', installmentPrintFormPageHtml_(lastInstallmentInput_, lastInstallmentResult_));
   } else if (action === 'run-inheritance'){
     const disposalPresumptionItems = inheritanceDisposalItems.map(function(item){
       return {
