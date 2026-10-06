@@ -4310,6 +4310,7 @@ let lastTransferResults_ = null; // [2026.09.25 신규, 재검토78] 양도세 �
 // 저장되지 않아, 전자신고·인쇄 서식이 그 결과를 참조할 방법이 아예 없었다 — 부동산(run-transfer)이
 // lastTransferResults_에 저장하는 것과 같은 방식으로 이 둘도 저장한다.
 let lastStockTransferResult_ = null;
+let lastFarmlandRepurchaseResult_ = null; // [2026.10.06 신규, 재검토109] fr(경영회생 지원 농지매매환급, 별지51호의3) 인쇄용 저장 — mr(박물관이전)과 달리 이전엔 저장 안 됨
 let lastOverseasTransferResult_ = null;
 let transferBulkAiState = {}; // 증빙 일괄 자동입력(사건폴더 전체 스캔) 진행상태 — 거래행이 아직 없을 때도 보여줄 상단 배지용
 // [2026.09.24 신규] 국외자산 확정신고는 그 과세기간 전체에 대해 1번뿐이라(자산별로 따로
@@ -4336,7 +4337,7 @@ let giftInheritanceSharedActiveSubtab_ = 'val';
 const GIFT_INHERITANCE_SHARED_SUBTAB_LABELS = {
   val: '재산평가', cd: '공익법인출연재산 불산입', fmv: '시가인정범위', ip: '연부연납',
   bd: '납부유예 금액계산', bc: '납부유예 사후관리', ck: '사후관리 추징이자', ik: '물납 적격판정',
-  sv: '물납 수납가액', ch: '문화유산 징수유예'
+  sv: '물납 수납가액', ch: '문화유산 징수유예', cr: '경정청구서'
 };
 
 // 아래 두 함수는 "이 사건에 없는 자산"(취득계약 externalMembers, 자산유형 개념이 없음) 전용
@@ -4967,6 +4968,10 @@ function renderSellerRegistry(){
         '<div class="taxcalc-field"><label>전화번호</label><input type="text" data-slfield="phone"' + idOf('trTransferorPhone') + ' value="' + (s.phone || '').replace(/"/g, '&quot;') + '" placeholder="숫자만, 예: 0212341234"></div>' +
         '<div class="taxcalc-field"><label style="visibility:hidden;">관할세무서</label><input type="hidden" data-slfield="taxOffice" id="trTransferorTaxOffice' + suf + '" value="' + (s.taxOffice || '').replace(/"/g, '&quot;') + '"><button type="button" class="taxcalc-ai-btn" data-action="open-tax-office-guide" data-address-input="trTransferorAddress' + suf + '" data-office-input="trTransferorTaxOffice' + suf + '">관할세무서</button></div>' +
         '<div class="taxcalc-field"><label>다주택중과 판정용 주택수</label><select data-slfield="multiHouseCount"' + idOf('trMultiHouseCount') + '><option value="0"' + (s.multiHouseCount === '0' || !s.multiHouseCount ? ' selected' : '') + '>해당없음/1주택</option><option value="2"' + (s.multiHouseCount === '2' ? ' selected' : '') + '>2주택</option><option value="3"' + (s.multiHouseCount === '3' ? ' selected' : '') + '>3주택 이상</option></select></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" data-slfield="isMultiHouseRentalExemption"' + idOf('trMultiHouseRentalExemption') + (s.isMultiHouseRentalExemption ? ' checked' : '') + '><label>[2·3주택일 때만] 다른 보유주택이 등록 장기임대주택이라 이번 양도에 일반세율 적용(시행령§167의3①2·3·8호의2, 중과배제) — 별지83호의6 신청서 인쇄</label></div>' +
+        '<div class="taxcalc-field"><label>[위 체크시] 장기임대주택 소재지</label><input type="text" data-slfield="mhRentalLocation"' + idOf('trMhRentalLocation') + ' value="' + (s.mhRentalLocation || '').replace(/"/g, '&quot;') + '"></div>' +
+        '<div class="taxcalc-field"><label>[위 체크시] 임대등록일</label><input type="date" data-slfield="mhRentalRegistrationDate"' + idOf('trMhRentalRegistrationDate') + ' value="' + (s.mhRentalRegistrationDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
+        '<div class="taxcalc-field"><label>[위 체크시] 임대개시일</label><input type="date" data-slfield="mhRentalStartDate"' + idOf('trMhRentalStartDate') + ' value="' + (s.mhRentalStartDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
         '<div class="taxcalc-field"><label>거주구분</label><select data-slfield="isTransferorResident"' + idOf('trResident') + '><option value="resident"' + (!isNonResident ? ' selected' : '') + '>거주자</option><option value="nonresident"' + (isNonResident ? ' selected' : '') + '>비거주자</option></select><span class="taxcalc-field-help">1세대1주택 비과세·고가주택 12억 초과분 과세(§89①3호·§95③)는 거주자만 적용</span></div>' +
         (isNonResident ? '<div class="taxcalc-field checkbox"><input type="checkbox" data-slfield="isNonResidentTwoYearException"' + idOf('trNonResidentTwoYearException') + (s.isNonResidentTwoYearException ? ' checked' : '') + '><label>출국일 당시 1주택 보유 + 출국 후 2년 이내 양도(시행령§155① 특례)</label></div>' : '') +
       '</div>' +
@@ -5023,6 +5028,8 @@ function renderTransferPane(){
       '<button type="button" class="taxcalc-subtab' + (trActiveSubtab_ === 'realestate' ? ' active' : '') + '" data-action="switch-transfer-subtab" data-subtab="realestate">부동산</button>' +
       '<button type="button" class="taxcalc-subtab' + (trActiveSubtab_ === 'stock' ? ' active' : '') + '" data-action="switch-transfer-subtab" data-subtab="stock">주식등</button>' +
       '<button type="button" class="taxcalc-subtab' + (trActiveSubtab_ === 'overseas' ? ' active' : '') + '" data-action="switch-transfer-subtab" data-subtab="overseas">국외자산</button>' +
+      '<button type="button" class="taxcalc-subtab' + (trActiveSubtab_ === 'exittax' ? ' active' : '') + '" data-action="switch-transfer-subtab" data-subtab="exittax">국외전출자</button>' +
+      '<button type="button" class="taxcalc-subtab' + (trActiveSubtab_ === 'derivative' ? ' active' : '') + '" data-action="switch-transfer-subtab" data-subtab="derivative">파생상품</button>' +
     '</div>' +
     // [2026.10.02 재구성, 재검토105] 양도소득세과세표준신고서(C116300, 홈택스)·위택스 참고자료
     // 생성 버튼은 "🖨 인쇄" 최상위 메뉴(PRINT_REGISTRY_, taxcalc.html)로 이전했다 — 예전엔
@@ -5073,6 +5080,59 @@ function renderTransferPane(){
     (overseasIdxs.length ? '<div class="taxcalc-asset-head" style="margin-top:10px;"><b>국외자산 신고 상태·가산세(전체 국외자산 공통 — 확정신고는 과세기간당 1번)</b></div>' + renderOverseasSharedFilingSectionHtml_() : '') +
     (overseasIdxs.length ? '<button type="button" class="taxcalc-run-btn" data-action="run-overseas-transfer" style="margin-top:8px;">세액 계산하기(국외자산)</button>' : '') +
     '<div id="taxCalcOverseasAssetTransferResult"></div>' +
+    '</div>' +
+    // [2026.10.06 신규, 재검토110] 국외전출자 국내주식등 과세특례(소득세법§118의9~18) — law.go.kr
+    // 원문 확인 완료(현행 조문, 2025.12.23 개정분은 2027.1.1 시행이라 아직 해외주식등은
+    // 과세대상 아님). 출국을 양도로 의제하는 완전히 별도 세목이라 부동산·주식·국외자산과
+    // 마찬가지로 독립 서브탭으로 둔다. calculateExitTaxJS(taxcalc-engine.html) 참고.
+    '<div class="taxcalc-subpane" data-subpane="exittax" style="' + (trActiveSubtab_ === 'exittax' ? '' : 'display:none;') + '">' +
+    '<div class="taxcalc-asset" style="margin-top:20px;">' +
+      '<div class="taxcalc-asset-head"><b>국외전출자 국내주식등 과세특례(소득세법§118의9~18) — 거주자가 비거주자가 되며 출국할 때, 보유 국내주식등(대주주분만)을 출국일에 양도한 것으로 보아 과세합니다. 부동산·주식등 양도와 완전히 별도 세목입니다</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>출국일</label><input type="date" id="etDepartureDate" min="1900-01-01" max="2099-12-31"></div>' +
+        '<div class="taxcalc-field"><label>출국일 10년 전부터 출국일까지 국내 거주기간 합계</label><input type="number" id="etResidenceYears" placeholder="년" step="0.1"><span class="taxcalc-field-help">5년 미만이면 과세대상 아님(§118의9①1호)</span></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="etIsMajorShareholder"><label for="etIsMajorShareholder">직전연도 종료일 현재 대주주 해당(지분율·시가총액 기준은 별도 확인, §118의9①2호)</label></div>' +
+        '<div class="taxcalc-field"><label>출국일 현재 시가(양도가액 의제)</label><input type="number" id="etDepartureMarketValue" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>취득가액</label><input type="number" id="etAcquisitionPrice" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>기타 필요경비</label><input type="number" id="etOtherExpenses" placeholder="원"><span class="taxcalc-field-help">없으면 0</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>출국 후 실제 양도했다면(조정공제·외국납부세액공제용, §118의12·13·14) — 아직 양도 전이면 비워두세요</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>실제 양도가액</label><input type="number" id="etActualTransferPrice" placeholder="원"><span class="taxcalc-field-help">출국일 시가보다 낮으면 차액만큼 조정공제</span></div>' +
+        '<div class="taxcalc-field"><label>외국정부에 납부(예정)한 세액</label><input type="number" id="etForeignTaxPaid" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>[외국납부세액 없을 때만] 비거주자 국내원천소득 세액상당액</label><input type="number" id="etNonresidentSourceTax" placeholder="원"><span class="taxcalc-field-help">제119조11호로 국내 재과세되는 경우(§118의14)</span></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>보유현황 신고(§118의15①④) — 출국일 전날까지 납세관리인·보유현황을 신고하지 않았거나 누락했으면 가산세 2%</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="etHoldingReportNotFiled"><label for="etHoldingReportNotFiled">보유현황을 신고하지 않았거나 누락함</label></div>' +
+        '<div class="taxcalc-field"><label>[위 체크시] 액면금액(또는 출자가액)</label><input type="number" id="etFaceValueForPenalty" placeholder="원"></div>' +
+      '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-exit-tax">세액 계산하기(국외전출자)</button>' +
+      '<div id="taxCalcExitTaxResult"></div>' +
+    '</div>' +
+    '</div>' +
+    // [2026.10.06 신규, 재검토110] 파생상품등 양도소득세(소득세법§94①5호·§104①13호) — law.go.kr
+    // 원문 확인 완료(법정20%, 시행령 탄력세율 10% 현재 적용중). calculateDerivativeTransferTaxJS
+    // (taxcalc-engine.html) 참고. 별지84호서식 부표2의2(종목별 매도·매수내역)는 세액계산에는
+    // 불필요해 국내/국외 합계 손익만 입력받는다 — 인쇄서식의 종목별 명세는 직접 보완 대상.
+    '<div class="taxcalc-subpane" data-subpane="derivative" style="' + (trActiveSubtab_ === 'derivative' ? '' : 'display:none;') + '">' +
+    '<div class="taxcalc-asset" style="margin-top:20px;">' +
+      '<div class="taxcalc-asset-head"><b>파생상품등 양도소득세(소득세법§94①5호·§104①13호, 선물·옵션·ELW·CFD 등) — 부동산·주식등과 완전히 별도 세목입니다. 국내·국외 파생상품을 통산해 기본공제(연 250만원)를 1회만 적용하고, 손실은 다음 과세기간으로 이월되지 않습니다</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>국내 파생상품 양도손익 합계</label><input type="number" id="dvDomesticGain" placeholder="원(손실이면 음수)"></div>' +
+        '<div class="taxcalc-field"><label>국외 파생상품 양도손익 합계</label><input type="number" id="dvOverseasGain" placeholder="원(손실이면 음수)"></div>' +
+      '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>신고 상태·가산세</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>신고 상태</label><select id="dvFilingStatus"><option value="ontime">정상신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option></select></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="dvFraudulent"><label for="dvFraudulent">부정행위에 해당</label></div>' +
+        '<div class="taxcalc-field"><label>[과소신고만] 과소신고 세액</label><input type="number" id="dvUnderreportedTax" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>[부정행위 과소신고만] 그 중 부정행위분 세액</label><input type="number" id="dvFraudulentUnderreportedTax" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>납부지연일수</label><input type="number" id="dvUnpaidDays" placeholder="일"></div>' +
+      '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-derivative-transfer">세액 계산하기(파생상품)</button>' +
+      '<div id="taxCalcDerivativeTransferResult"></div>' +
+    '</div>' +
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="realestate" style="' + (trActiveSubtab_ === 'realestate' ? '' : 'display:none;') + '">' +
     // [2026.09 삭제] "토지·건물 안분계산기"(자산 하나를 토지분/건물분 2건으로 쪼개 거래
@@ -6018,13 +6078,28 @@ function renderMuseumRelocationResult(r){
 
 function renderFarmlandRepurchaseResult(r){
   const box = document.getElementById('taxCalcFarmlandRepurchaseResult');
+  lastFarmlandRepurchaseResult_ = (r && !r.error) ? r : null;
   if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
   let html = '<div class="taxcalc-result">';
   html += taxCalcResultRow('환급 가능 여부', r.환급가능여부 ? '환급 가능' : '환급 불가');
   if (r.환급대상세액 !== undefined) html += taxCalcResultRow('환급대상세액', won(r.환급대상세액), { total: true });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  if (r.환급가능여부) html += '<button type="button" class="taxcalc-run-btn" data-action="print-farmland-repurchase" style="margin-top:8px;">🖨 환급신청서 인쇄용 서식 보기</button>';
   html += '</div>';
   box.innerHTML = html;
+}
+function frPrintFormPageHtml_(r){
+  if (!r) return '';
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">조세특례제한법 시행규칙 [별지 제51호의3서식]</div>' +
+    '<div class="pf-title">경영회생 지원을 위한 농지 매매 등에 대한 양도소득세 환급신청서</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '환급대상세액', won(r.환급대상세액 || 0)) +
+      pfRow_(++n, '환급 가능 여부', r.환급가능여부 ? '환급 가능' : '환급 불가') +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다(조특법§70의2) — 신청인 인적사항, 한국농어촌공사 양도·환매 일자 및 농지 소재지는 직접 보완하세요.</div>' +
+  '</div>';
 }
 
 function renderStockTransferResult(r){
@@ -6089,6 +6164,107 @@ function renderOneOverseasResultHtml_(r, label){
 // 중복 적용되는 세액오류가 있었다), calculateOverseasAssetTransferTaxMultiJS가 이미 합산한
 // 결과 하나를 받는다(더 이상 자산별 결과 배열이 아니다). 거래별_내역으로 자산별 양도차익만
 // 참고로 보여주고, 실제 세액 계산(기본공제·산출세액 이하)은 합산 결과 하나로만 표시한다.
+// [2026.10.06 신규, 재검토110] 국외전출자 국내주식등 과세특례(§118의9~18) 결과 렌더링+인쇄.
+let lastExitTaxInput_ = null;
+let lastExitTaxResult_ = null;
+function renderExitTaxResult(r){
+  const box = document.getElementById('taxCalcExitTaxResult');
+  lastExitTaxResult_ = (r && !r.error) ? r : null;
+  if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
+  let html = '<div class="taxcalc-result">';
+  html += taxCalcResultRow('양도소득금액', won(r.양도소득금액));
+  html += taxCalcResultRow('기본공제', '-' + won(r.기본공제));
+  html += taxCalcResultRow('과세표준', won(r.과세표준));
+  html += taxCalcResultRow('적용세율', r.적용세율_설명);
+  html += taxCalcResultRow('산출세액', won(r.산출세액));
+  if (r.조정공제액) html += taxCalcResultRow('조정공제액(§118의12)', '-' + won(r.조정공제액));
+  if (r.외국납부세액공제) html += taxCalcResultRow('외국납부세액공제(§118의13)', '-' + won(r.외국납부세액공제));
+  if (r.비거주자국내원천세액공제) html += taxCalcResultRow('비거주자국내원천세액공제(§118의14)', '-' + won(r.비거주자국내원천세액공제));
+  if (r.보유현황미신고가산세) html += taxCalcResultRow('보유현황 미신고가산세(§118의15④)', '+' + won(r.보유현황미신고가산세));
+  html += taxCalcResultRow('지방소득세', won(r.지방소득세));
+  html += taxCalcResultRow('납부세액 합계', won(r.납부세액_합계), { total: true });
+  if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  html += '<button type="button" class="taxcalc-run-btn" data-action="print-exit-tax" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>';
+  html += '</div>';
+  box.innerHTML = html;
+}
+function exitTaxPrintFormPageHtml_(input, r){
+  if (!input || !r) return '';
+  let n = 0;
+  const page1 = '<div class="pf-page">' +
+    '<div class="pf-formno">소득세법 시행규칙 [별지 제84호서식]</div>' +
+    '<div class="pf-title">양도소득(국외전출자) 과세표준 신고 및 납부계산서</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '출국일', input.departureDate) +
+      pfRow_(++n, '출국일 시가(양도가액 의제)', won(r.출국일시가 !== undefined ? r.출국일시가 : (numVal(input.departureMarketValue) || 0))) +
+      pfRow_(++n, '필요경비', won(r.필요경비 || 0)) +
+      pfRow_(++n, '양도소득금액', won(r.양도소득금액)) +
+      pfRow_(++n, '기본공제', won(r.기본공제)) +
+      pfRow_(++n, '과세표준', won(r.과세표준)) +
+      pfRow_(++n, '산출세액', won(r.산출세액)) +
+      pfRow_(++n, '조정공제액', won(r.조정공제액 || 0)) +
+      pfRow_(++n, '외국납부세액공제', won(r.외국납부세액공제 || 0)) +
+      pfRow_(++n, '비거주자국내원천세액공제', won(r.비거주자국내원천세액공제 || 0)) +
+      pfRow_(++n, '자진납부할 세액(국세)', won(Math.max(0, (r.납부세액_합계 || 0) - (r.지방소득세 || 0)))) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 신청인 인적사항·납세관리인 정보는 직접 보완하세요.</div>' +
+  '</div>';
+  let m = 0;
+  const page2 = '<div class="pf-page">' +
+    '<div class="pf-formno">소득세법 시행규칙 [별지 제103호서식]</div>' +
+    '<div class="pf-title">국외전출자 양도소득세 세액공제신청서, 국외전출자 국내주식등 양도내역서</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++m, '실제 양도가액', input.actualTransferPrice ? won(numVal(input.actualTransferPrice)) : '(미양도)') +
+      pfRow_(++m, '외국정부 납부세액', won(numVal(input.foreignTaxPaid) || 0)) +
+      pfRow_(++m, '비거주자 국내원천소득 세액상당액', won(numVal(input.nonresidentSourceTaxEquivalent) || 0)) +
+      pfRow_(++m, '공제 적용구분', r.공제구분 || '(해당없음)') +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 국외전출자 국내주식등의 종목·수량 등 양도내역은 직접 보완하세요.</div>' +
+  '</div>';
+  return page1 + page2;
+}
+// [2026.10.06 신규, 재검토110] 파생상품등 양도소득세(§94①5호·§104①13호) 결과 렌더링+인쇄.
+let lastDerivativeResult_ = null;
+function renderDerivativeTransferResult(r){
+  const box = document.getElementById('taxCalcDerivativeTransferResult');
+  if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
+  let html = '<div class="taxcalc-result">';
+  html += taxCalcResultRow('국내 파생상품 손익', won(r.국내파생상품손익));
+  html += taxCalcResultRow('국외 파생상품 손익', won(r.국외파생상품손익));
+  html += taxCalcResultRow('통산손익', won(r.통산손익));
+  html += taxCalcResultRow('기본공제', '-' + won(r.기본공제));
+  html += taxCalcResultRow('과세표준', won(r.과세표준));
+  html += taxCalcResultRow('적용세율', r.적용세율_설명);
+  html += taxCalcResultRow('산출세액', won(r.산출세액));
+  if (r.무신고가산세) html += taxCalcResultRow('무신고가산세', '+' + won(r.무신고가산세));
+  if (r.과소신고가산세) html += taxCalcResultRow('과소신고가산세', '+' + won(r.과소신고가산세));
+  if (r.납부지연가산세) html += taxCalcResultRow('납부지연가산세', '+' + won(r.납부지연가산세));
+  html += taxCalcResultRow('지방소득세', won(r.지방소득세));
+  html += taxCalcResultRow('납부세액 합계', won(r.납부세액_합계), { total: true });
+  if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  html += '<button type="button" class="taxcalc-run-btn" data-action="print-derivative-transfer" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>';
+  html += '</div>';
+  box.innerHTML = html;
+}
+function derivativePrintFormPageHtml_(r){
+  if (!r) return '';
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">소득세법 시행규칙 [별지 제84호서식 부표2의2]</div>' +
+    '<div class="pf-title">파생상품등 양도소득금액 계산명세서</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '국내 파생상품 손익', won(r.국내파생상품손익)) +
+      pfRow_(++n, '국외 파생상품 손익', won(r.국외파생상품손익)) +
+      pfRow_(++n, '통산 양도소득금액', won(r.통산손익)) +
+      pfRow_(++n, '기본공제', won(r.기본공제)) +
+      pfRow_(++n, '과세표준', won(r.과세표준)) +
+      pfRow_(++n, '세율', '10%(탄력세율)') +
+      pfRow_(++n, '산출세액', won(r.산출세액)) +
+      pfRow_(++n, '자진납부할 세액(국세)', won(Math.max(0, (r.납부세액_합계 || 0) - (r.지방소득세 || 0)))) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 종목·증권사·계좌번호·종목별 매도/매수가액 등 상세 명세(세율구분코드 81)는 직접 보완하세요.</div>' +
+  '</div>';
+}
 function renderOverseasAssetTransferResult(result){
   const box = document.getElementById('taxCalcOverseasAssetTransferResult');
   if (!box) return;
@@ -6371,6 +6547,11 @@ function renderGiftInheritanceSharedPane_(){
           '<option value="ih6">상속세 — 가업·영농상속공제 사후관리추징(부표6)</option>' +
           '<option value="ih7">상속세 — 가업상속 납부유예 사후관리추징(부표7)</option>' +
           '<option value="gf_marriage">증여세 — 혼인출산 증여재산공제 추징사유 신고(부표4)</option>' +
+          '<option value="farmland_gift">증여세 — 영농자녀 증여세 감면 위반사유 신고(별지52호의2)</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field"><label>[영농자녀 감면위반만] 위반유형</label><select id="ckFarmlandReason">' +
+          '<option value="01">5년 이내 정당한 사유없이 양도(§71②)</option>' +
+          '<option value="02">5년 이내 정당한 사유없이 직접 영농 종사하지 않게 됨(§71②)</option>' +
         '</select></div>' +
         '<div class="taxcalc-field"><label>[혼인출산공제 추징만] 추징사유</label><select id="ckMarriageReason">' +
           '<option value="01">혼인 전 공제받고 2년 이내 혼인하지 않음</option>' +
@@ -6527,6 +6708,28 @@ function renderGiftInheritanceSharedPane_(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-fair-market-value-recognition">시가 인정 여부 판정하기</button>' +
       '<div id="taxCalcFmvRecognitionResult"></div>' +
+    '</div>' +
+    '</div>' +
+    // [2026.10.06 신규, 재검토109] law.go.kr 서식명 검색("상속세과세표준")으로 발견 — 별지16호
+    // (상속세·증여세 과세표준 및 세액의 결정·경정청구서)는 세액계산 자체가 아니라 이미 신고·
+    // 결정된 세액을 "정정"하는 별도 절차라 새 계산엔진이 필요없다 — 이미 계산된 상속세/증여세
+    // 결과(lastInheritanceResult/lastGiftResults_)를 "청구 후 세액"으로, 당초 세액은 직접
+    // 입력받아 차액만 보여준다.
+    '<div class="taxcalc-subpane" data-subpane="cr" style="' + (giftInheritanceSharedActiveSubtab_ === 'cr' ? '' : 'display:none;') + '">' +
+    '<div class="taxcalc-asset" style="margin-top:20px;">' +
+      '<div class="taxcalc-asset-head"><b>(상증세법§76④·국세기본법§45의2) — 이미 신고·결정된 상속세·증여세를 정정청구할 때. 통상 경정청구는 법정신고기한부터 5년 이내, 후발적 사유는 그 사유를 안 날부터 3개월 이내입니다</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>세목</label><select id="crTaxType"><option value="inheritance">상속세</option><option value="gift">증여세</option></select></div>' +
+        '<div class="taxcalc-field"><label>당초 신고(결정)세액</label><input type="number" id="crOriginalTax" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>청구 후 정당한 세액</label><div class="taxcalc-field-inline"><input type="number" id="crCorrectedTax" placeholder="원" readonly><button type="button" class="taxcalc-ai-btn" data-action="import-crcorrected-tax" title="위에서 방금 계산한 상속세 또는 증여세 납부세액을 그대로 가져옵니다">위 계산결과 가져오기</button></div></div>' +
+        '<div class="taxcalc-field"><label>경정청구 사유 구분</label><select id="crReason">' +
+          '<option value="ordinary">통상적 경정청구(국세기본법§45의2①, 과세표준·세액 과다신고)</option>' +
+          '<option value="subsequent">후발적 경정청구(§45의2②, 판결·계약해제 등 사후 사유)</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field" style="flex-basis:100%;"><label>경정청구 사유(구체적 내용)</label><input type="text" id="crReasonDetail" placeholder="예: 상속재산분할 협의 결과 반영, 채무 추가 확인 등"></div>' +
+      '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-correction-claim">환급(추가납부)세액 계산하기</button>' +
+      '<div id="taxCalcCorrectionClaimResult"></div>' +
     '</div>' +
     '</div>';
   renderGiftDoneeRegistry();
@@ -7063,6 +7266,10 @@ function renderClawbackResult(r){
   html += '<button type="button" class="taxcalc-run-btn" data-action="apply-clawback-to-gift">이 이자상당액을 증여세 계산기에 반영</button>';
   html += '<button type="button" class="taxcalc-run-btn" data-action="apply-clawback-to-inheritance">이 이자상당액을 상속세 계산기에 반영</button>';
   const formType = document.getElementById('ckFormType') ? document.getElementById('ckFormType').value : '';
+  // [2026.10.06 버그수정, 재검토110] 인쇄 버튼이 이 결과박스 어디에도 없어서(죽은 formType
+  // 변수만 읽고 버리고 있었음) print-clawback-form 핸들러가 중앙 인쇄허브 말고는 전혀 눌릴
+  // 방법이 없었다 — 실클릭 테스트로 발견(별지52호의2 신규추가 검증 중).
+  if (formType) html += '<button type="button" class="taxcalc-run-btn" data-action="print-clawback-form" style="margin-top:4px;">🖨 인쇄용 서식 보기</button>';
   html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   html += '</div>';
   box.innerHTML = html;
@@ -7113,6 +7320,41 @@ function ihClawbackPrintPageHtml_(formType, r){
 // 부표4) — 계산 로직 자체가 없었던 항목. 이미 있는 계산명세(calculateClawbackInterestJS,
 // 위 "사후관리 추징이자" 도구)를 그대로 재사용해 신고인(수증자) 정보·증여재산 내역(부표1과
 // 같은 8컬럼 표 재사용)·추징사유·이자상당액을 묶어 인쇄한다.
+// [2026.10.06 신규, 재검토110] 영농자녀 증여세 감면 위반사유 신고 및 자진납부계산서(조특법§71②
+// ·시행령§68⑮, 별지52호의2서식) — law.go.kr 공식PDF 확인. 기존 사후관리추징이자(ck) 카드가
+// "영농자녀 증여농지 감면... 등 사후관리 위반"을 계산대상이라고 이미 설명해놓고도 실제
+// 인쇄서식 3종(ih6/ih7/gf_marriage)에는 빠져있던 누락.
+function farmlandGiftClawbackPrintPageHtml_(r){
+  const donee = giftDonees[0] || {};
+  const donor = giftDonors[0] || {};
+  const reasonCode = document.getElementById('ckFarmlandReason') ? document.getElementById('ckFarmlandReason').value : '01';
+  const reasonLabel = reasonCode === '02' ? '5년 이내 정당한 사유없이 직접 영농에 종사하지 않게 된 경우' : '5년 이내 정당한 사유없이 양도하는 경우';
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">조세특례제한법 시행규칙 [별지 제52호의2서식]</div>' +
+    '<div class="pf-title">영농자녀 증여세 감면 위반사유 신고 및 자진납부계산서</div>' +
+    '<div class="pf-section-head">수증자·증여자</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '수증자 성명', donee.name) + pfRow_(++n, '수증자 주민등록번호', donee.regNo) +
+      pfRow_(++n, '증여자 성명', donor.name) + pfRow_(++n, '증여자 주민등록번호', donor.regNo) +
+    '</table>' +
+    '<div class="pf-section-head">과세특례 위반 및 세액 계산</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '과세특례 위반코드', reasonCode + ' — ' + reasonLabel) +
+      pfRow_(++n, '증여세액(과세특례 위반으로 결정)', won(r.추징세액)) +
+      pfRow_(++n, '이자 기산일', r.이자기산일) + pfRow_(++n, '추징사유 발생일', r.추징사유발생일) +
+      (r.구간별_이자상당액 || []).map(function(seg){
+        return pfRow_(0, '이자상당액(' + seg.시작일 + '~' + seg.종료일 + ', ' + seg.일수 + '일, 연' + (seg.연이율 * 100).toFixed(1) + '%)', won(seg.이자상당액), { indent: true });
+      }).join('') +
+      pfRow_(++n, '이자상당액 합계', won(r.이자상당액_합계)) +
+      pfRow_(++n, '납부할 세액(합계액)', won(r.납부할세액)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX "사후관리 추징이자" 계산 결과를 기준으로 자동 생성되었습니다(조특법§71②, 시행령§68⑮).</div>' +
+    '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
+      new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
+      '신고인 &nbsp;' + escapeHtml(donee.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+  '</div>';
+}
 function gfMarriageClawbackPrintPageHtml_(r){
   const donee = giftDonees[0] || {};
   const reasonCode = document.getElementById('ckMarriageReason') ? document.getElementById('ckMarriageReason').value : '01';
@@ -7251,6 +7493,46 @@ function renderCulturalHeritageTaxDeferralResult(r){
   }
   html += '</div>';
   box.innerHTML = html;
+}
+
+// [2026.10.06 신규, 재검토109] 경정청구서(별지16호) — 새 세액계산 엔진이 아니라 이미 계산된
+// 상속세·증여세 결과를 "당초 신고(결정)세액"과 비교해 환급(또는 추가납부)액만 보여준다.
+let lastCorrectionClaimInput_ = null;
+function renderCorrectionClaimResult(input){
+  const box = document.getElementById('taxCalcCorrectionClaimResult');
+  const diff = input.originalTax - input.correctedTax;
+  let html = '<div class="taxcalc-result">';
+  html += taxCalcResultRow('당초 신고(결정)세액', won(input.originalTax));
+  html += taxCalcResultRow('청구 후 정당한 세액', won(input.correctedTax));
+  if (diff > 0){
+    html += taxCalcResultRow('환급(경정청구)세액', won(diff), { total: true });
+  } else if (diff < 0){
+    html += '<div class="taxcalc-result-note">⚠ 청구 후 세액이 당초세액보다 많습니다 — 경정청구가 아니라 수정신고 대상입니다(국세기본법§45).</div>';
+  } else {
+    html += '<div class="taxcalc-result-note">차액이 없습니다 — 경정청구 실익이 없습니다.</div>';
+  }
+  html += '<div class="taxcalc-result-note">' + (input.reasonType === 'subsequent' ? '후발적 경정청구는 그 사유가 발생했음을 안 날부터 3개월 이내(국세기본법§45의2②)' : '통상적 경정청구는 법정신고기한부터 5년 이내(국세기본법§45의2①)') + '에 제기해야 합니다.</div>';
+  html += '<button type="button" class="taxcalc-run-btn" data-action="print-correction-claim" style="margin-top:8px;">🖨 경정청구서 인쇄용 서식 보기</button>';
+  html += '</div>';
+  box.innerHTML = html;
+}
+function crPrintFormPageHtml_(input){
+  if (!input) return '';
+  const diff = input.originalTax - input.correctedTax;
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제16호서식]</div>' +
+    '<div class="pf-title">상속세(증여세) 과세표준 및 세액의 결정(경정)청구서</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '세목', input.taxType === 'inheritance' ? '상속세' : '증여세') +
+      pfRow_(++n, '당초 신고(결정)세액', won(input.originalTax)) +
+      pfRow_(++n, '청구 후 정당한 세액', won(input.correctedTax)) +
+      pfRow_(++n, '환급세액', won(Math.max(0, diff))) +
+      pfRow_(++n, '청구 구분', input.reasonType === 'subsequent' ? '후발적 경정청구(§45의2②)' : '통상적 경정청구(§45의2①)') +
+      pfRow_(++n, '경정청구 사유', input.reasonDetail || '') +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 신청인 인적사항·당초 신고(결정)일자는 직접 보완하세요.</div>' +
+  '</div>';
 }
 
 function renderGiftOverlapResult(r){
@@ -7946,7 +8228,12 @@ function trAttach1PrintPageHtml_(asset, seq){
   trCompensationReductionPrintPageHtml_(asset) +
   trRestrictedZonePrintPageHtml_(asset) +
   trRestructuringPropertyPrintPageHtml_(asset) +
-  trLongTermRentalHousePrintPageHtml_(asset);
+  trLongTermRentalHousePrintPageHtml_(asset) +
+  trRentalGeneralPrintPageHtml_(asset) +
+  trRentalLongPrintPageHtml_(asset) +
+  trNewHouseSect992PrintPageHtml_(asset) +
+  trUnsoldHouseSect63PrintPageHtml_(asset) +
+  trPensionAccountCreditPrintPageHtml_(asset);
 }
 // [2026.10.01 신규, 재검토102] 조특법 양도세 세액감면 10종의 전용 신청서 — law.go.kr 원문을
 // 글자단위로 복원해 정확한 서식 그대로 구현(전수감사로 "계산은 되는데 신청서가 없다"는 결함이
@@ -8047,6 +8334,130 @@ function trLongTermRentalHousePrintPageHtml_(asset){
     '</table>' +
     '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 임대내역(임차인·보증금·임대기간 등)은 별도 수집항목이 없어 직접 보완하세요.</div>' +
   '</div>';
+}
+// [2026.10.06 신규, 재검토108] J드라이브 공식서식 원본(7 양도소득세 폴더) 전수대조로 발견된
+// 누락 4종 — 전부 "계산 로직은 이미 있는데 신청서만 없던" 경우(law.go.kr PDF 원문과 대조해
+// 조문·서식번호 확인완료). 등록임대주택 장특공제 특례(rentalSpecialType)는 §97(세액감면,
+// 별지62호, 위 함수)과 완전히 다른 조문 — §97의3은 별지62호의2, §97의4는 별지62호의3이다.
+function trRentalGeneralPrintPageHtml_(asset){
+  if (asset.rentalSpecialType !== 'rental_general') return '';
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">조세특례제한법 시행규칙 [별지 제62호의2서식]</div>' +
+    '<div class="pf-title">장기일반민간임대주택등에 대한 과세특례적용신청서</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '소재지(임대주택)', asset.assetLocation || '') +
+      pfRow_(++n, '취득일', asset.acquisitionDate) +
+      pfRow_(++n, '양도일', asset.transferDate) +
+      pfRow_(++n, '임대기간', (asset.rentalYears || '') + (asset.rentalYears ? '년' : '')) +
+      pfRow_(++n, '장기보유특별공제율', (Number(asset.rentalYears) >= 10 ? '70%(10년 이상)' : (Number(asset.rentalYears) >= 8 ? '50%(8년 이상 10년 미만)' : ''))) +
+      pfRow_(++n, '취득 당시 기준시가', won(numVal(asset.acquisitionStandardPrice) || 0)) +
+      pfRow_(++n, '등록일 당시 기준시가', won(numVal(asset.registrationStandardPrice) || 0)) +
+      pfRow_(++n, '양도 당시 기준시가', won(numVal(asset.transferStandardPrice) || 0)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 임차인·보증금·월세 등 임대내역과 사업자등록일은 별도 수집항목이 없어 직접 보완하세요.</div>' +
+  '</div>';
+}
+function trRentalLongPrintPageHtml_(asset){
+  if (asset.rentalSpecialType !== 'rental_long') return '';
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">조세특례제한법 시행규칙 [별지 제62호의3서식]</div>' +
+    '<div class="pf-title">장기임대주택에 대한 과세특례적용신청서</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '소재지(임대주택)', asset.assetLocation || '') +
+      pfRow_(++n, '취득일', asset.acquisitionDate) +
+      pfRow_(++n, '양도일', asset.transferDate) +
+      pfRow_(++n, '임대기간', (asset.rentalYears || '') + (asset.rentalYears ? '년' : '')) +
+      pfRow_(++n, '취득 당시 기준시가', won(numVal(asset.acquisitionStandardPrice) || 0)) +
+      pfRow_(++n, '등록일 당시 기준시가', won(numVal(asset.registrationStandardPrice) || 0)) +
+      pfRow_(++n, '양도 당시 기준시가', won(numVal(asset.transferStandardPrice) || 0)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 임차인·보증금·월세 등 임대내역과 사업자등록일은 별도 수집항목이 없어 직접 보완하세요.</div>' +
+  '</div>';
+}
+function trNewHouseSect992PrintPageHtml_(asset){
+  if (asset.newHouseReductionProvision !== 'sect99_2' || asset.nhIsHighPriceHouseExcluded) return '';
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">조세특례제한법 시행규칙 [별지 제63호의2서식]</div>' +
+    '<div class="pf-title">양도소득세특례세율적용신청서</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '양도주택 소재지', asset.assetLocation || '') +
+      pfRow_(++n, '취득일자', asset.acquisitionDate) +
+      pfRow_(++n, '양도일자', asset.transferDate) +
+      pfRow_(++n, '특례세율', '10%') +
+      pfRow_(++n, '요건(6억원 이하 또는 85㎡ 이하)', asset.nhIsPriceOrAreaQualified ? '충족' : '미확인') +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다(조특법 시행령§99의2④, 2013.4.1~2013.12.31 취득분) — 신축주택 취득명세(소재지·면적·취득일 또는 계약금지급일)는 직접 보완하세요. §99·§99의3(다른 취득기간)은 이 서식과 다른 적용조문이라 별도 서식이 공식 확인되지 않아 인쇄 대상에서 제외했습니다.</div>' +
+  '</div>';
+}
+// [2026.10.06 신규, 재검토109] law.go.kr 법령정보센터 서식명 검색("미분양주택")으로 직접
+// 확인 — 조특법 시행규칙 별지 제63호서식(미분양주택과세특례적용신고서) 1개가 §98의3~8
+// 6개 조문을 전부 공유한다(J드라이브 파일목록엔 이 서식이 아예 없었음 — 다운로드 누락이
+// 실존했다는 세무사님 지적이 맞았다). unsoldHouseReductionProvision 필드로 계산은 이미 됨.
+function trUnsoldHouseSect63PrintPageHtml_(asset){
+  if (!asset.unsoldHouseReductionProvision) return '';
+  const PROVISION_LABEL_ = {
+    sect98_3: '§98의3(100%, 수도권과밀억제권역은 60%)', sect98_4: '§98의4(비거주자, 세액 10% 감면)',
+    sect98_5: '§98의5(분양가인하율에 따라 60/80/100%)', sect98_6: '§98의6(50%)',
+    sect98_7: '§98의7(100%, 취득가액 9억원 초과시 배제)', sect98_8: '§98의8(50%, 5년이상 임대 요건)'
+  };
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">조세특례제한법 시행규칙 [별지 제63호서식]</div>' +
+    '<div class="pf-title">미분양주택과세특례적용신고서</div>' +
+    '<div class="pf-check">[√] ' + escapeHtml(PROVISION_LABEL_[asset.unsoldHouseReductionProvision] || asset.unsoldHouseReductionProvision) + '</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '소재지', asset.assetLocation || '') +
+      pfRow_(++n, '취득일', asset.acquisitionDate) +
+      pfRow_(++n, '양도일', asset.transferDate) +
+      (asset.unsoldHouseReductionProvision === 'sect98_3' ? pfRow_(++n, '수도권과밀억제권역 여부', asset.uhIsOverconcentrationZone ? '해당(60%)' : '비해당(100%)') : '') +
+      (asset.unsoldHouseReductionProvision === 'sect98_5' ? pfRow_(++n, '분양가인하율', (asset.uhPriceDiscountRate || '') + '%') : '') +
+      (asset.unsoldHouseReductionProvision === 'sect98_8' ? pfRow_(++n, '전용면적', (asset.uhExclusiveAreaSqm || '') + '㎡') : '') +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 신청인 인적사항·주택 상세명세는 직접 보완하세요.</div>' +
+  '</div>';
+}
+function trPensionAccountCreditPrintPageHtml_(asset){
+  if (!numVal(asset.pensionAccountContribution)) return '';
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">조세특례제한법 시행규칙 [별지 제63호의32서식]</div>' +
+    '<div class="pf-title">연금계좌 납입에 대한 양도소득세 세액공제신청서</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '양도 부동산 소재지', asset.assetLocation || '') +
+      pfRow_(++n, '취득일', asset.acquisitionDate) +
+      pfRow_(++n, '양도일', asset.transferDate) +
+      pfRow_(++n, '납입일', asset.pensionContributionDate || '') +
+      pfRow_(++n, '연금계좌 납입금액', won(numVal(asset.pensionAccountContribution) || 0)) +
+      pfRow_(++n, '생애 납입 한도액', won(100000000)) +
+      pfRow_(++n, '공제율', '10%') +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다(조특법 시행령§99의14②) — 연금계좌 소유자·은행·계좌번호 등 연금계좌정보는 직접 보완하세요. 첨부서류: 납입확인서(소득세법 시행규칙 별지 제38호의2서식).</div>' +
+  '</div>';
+}
+// [2026.10.06 버그수정, 재검토108] trAttach1PrintPageHtml_ 체인에 걸어뒀더니 국외자산은
+// 그 체인을 전혀 안 탄다는 게 확인됐다(trOverseasPrintPageHtml_가 lastOverseasTransferResult_
+// 집계값만으로 완전히 별도 경로로 인쇄됨, trAttach1PrintPageHtml_은 lastTransferResults_에
+// 담긴 국내 부동산 자산에만 호출됨) — 국외자산은 자산카드 자체(transferAssets)를 직접 걸러서
+// trPrintFormBodyHtml_에서 호출한다(실제 button.click() 경로로 재검증 완료).
+function trOverseasForeignTaxCreditPrintPageHtml_(overseasAssets){
+  const qualifying = (overseasAssets || []).filter(function(a){ return a.isOverseasAsset && a.oaForeignTaxMethod === 'credit' && numVal(a.oaForeignTaxPaid); });
+  return qualifying.map(function(asset){
+    let n = 0;
+    return '<div class="pf-page">' +
+      '<div class="pf-formno">소득세법 시행규칙 [별지 제11호서식]</div>' +
+      '<div class="pf-title">외국납부세액공제 신청서</div>' +
+      '<table class="pf-table">' +
+        pfRow_(++n, '국외자산 소재지', asset.assetLocation || '') +
+        pfRow_(++n, '취득일', asset.acquisitionDate) +
+        pfRow_(++n, '양도일', asset.transferDate) +
+        pfRow_(++n, '외국납부세액', won(numVal(asset.oaForeignTaxPaid) || 0)) +
+      '</table>' +
+      '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다(소득세법§118의6) — 국가별·소득종류별 세부 명세는 직접 보완하세요.</div>' +
+    '</div>';
+  }).join('');
 }
 // [2026.09.30 신규, 재검토100] 소득세법 시행규칙 [별지 제83호의5서식] "조합원입주권 또는
 // 분양권 소유자 1세대1주택 특례적용신고서" — 정밀 재조사로 확인된 정확한 서식번호(재검토97의
@@ -8221,6 +8632,28 @@ function trEfileFileName_(){
 }
 
 // 양도소득세과세표준신고 및 납부계산서(별지 제84호서식) — 양도인(신고인)마다 한 페이지.
+// [2026.10.06 신규, 재검토109] 별지83호의6(1세대3주택이상자의 장기임대주택 등 일반세율
+// 적용신청서) — law.go.kr 서식원본(PDF) 대조로 조문·구조 확인. 다주택중과 판정은 이미 되지만
+// (multiHouseCount), 중과배제 사유가 "등록 장기임대주택 보유"일 때 그 임대주택 쪽 정보(소재지·
+// 등록일·임대개시일)는 기존 입력칸에 없어 세무사님 지적("계산기가 없는 건 보완하라")대로
+// 양도인 카드에 최소 입력칸 3개를 새로 추가했다 — 임대내역(임차인·보증금 등) 세부는 서식
+// 자체가 요구하는 분량이 많아(뒷면 작성방법 11개 항목) 직접 보완 대상으로 남긴다.
+function trMultiHouseRentalExemptionPrintPageHtml_(seller){
+  if (!seller || !seller.isMultiHouseRentalExemption) return '';
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">소득세법 시행규칙 [별지 제83호의6서식]</div>' +
+    '<div class="pf-title">1세대 3주택 이상자의 장기임대주택 등 일반세율 적용신청서</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '신청인 성명', seller.name || '') +
+      pfRow_(++n, '신청인 주민등록번호', seller.regNo || '') +
+      pfRow_(++n, '장기임대주택 소재지', seller.mhRentalLocation || '') +
+      pfRow_(++n, '임대등록일', seller.mhRentalRegistrationDate || '') +
+      pfRow_(++n, '임대개시일', seller.mhRentalStartDate || '') +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 양도주택 면적·기준시가, 장기임대주택 등 보유내역(기준호수·공제기간 등), 임대내역(임차인·보증금·월세·임대기간)은 서식 뒷면 작성방법에 따라 직접 보완하세요.</div>' +
+  '</div>';
+}
 function trPrintFormPageHtml_(seller, r, buyers, assets){
   const localTax = r.지방소득세 || 0;
   // [2026.10.01 정정, 재검토102] 비거주자특례§98의4·공공매입임대주택§97의10·국가양도산지§85의10·
@@ -8289,13 +8722,14 @@ const TR_RECEIPT_TYPE_LABELS_ = {
 function trPrintFormBodyHtml_(){
   const buyers = trCollectBuyers_();
   let html = (lastTransferResults_ || []).filter(function(item){ return item.result && !item.result.error; })
-    .map(function(item){ return trPrintFormPageHtml_(item.seller || {}, item.result, buyers, item.assets); }).join('');
+    .map(function(item){ return trPrintFormPageHtml_(item.seller || {}, item.result, buyers, item.assets) + trMultiHouseRentalExemptionPrintPageHtml_(item.seller); }).join('');
   const seller = (transferSellers && transferSellers[0]) || {};
   if (lastStockTransferResult_){
     html += trStockPrintPageHtml_(seller, lastStockTransferResult_);
     html += trAttach2PrintPageHtml_(lastStockTransferResult_, 1);
   }
   if (lastOverseasTransferResult_) html += trOverseasPrintPageHtml_(seller, lastOverseasTransferResult_);
+  html += trOverseasForeignTaxCreditPrintPageHtml_(transferAssets);
   return html;
 }
 // [2026.09.30 신규, 재검토85] 주식등·국외자산도 부동산과 같은 페이지 형식으로 인쇄에 포함한다.
@@ -11186,7 +11620,25 @@ function srPrintFormPageHtml_(){
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
   '</div>' +
-  srAttach1PrintPageHtml_(r) + srAttach2PrintPageHtml_(r);
+  srAttach1PrintPageHtml_(r) + srAttach2PrintPageHtml_(r) + srBusinessSuccessionApplicationPrintPageHtml_(r);
+}
+// [2026.10.06 신규, 재검토110] 가업승계 주식 등 증여세 과세특례 적용신청서(조특법§30의6⑤,
+// 별지11호의8서식) — law.go.kr 공식PDF 확인. 가업승계 특례세율(sr) 계산은 이미 되는데 이
+// 신청서(가업현황·증여자 가업영위기간·수증자 임원취임일 등 자격요건 확인용)가 없던 누락 —
+// 세액 자체는 위 본표와 동일하므로 과세특례 적용대상 과세가액만 교차표기하고, 가업현황·
+// 재직기간 등 정성적 요건은 자산자료가 아니라 직접 보완 대상으로 남긴다.
+function srBusinessSuccessionApplicationPrintPageHtml_(r){
+  if (!r || r.특례종류 !== '가업승계주식등(조특법 §30의6)') return '';
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">조세특례제한법 시행규칙 [별지 제11호의8서식]</div>' +
+    '<div class="pf-title">가업승계 주식 등 증여세 과세특례 적용신청서</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '과세특례 적용대상 증여세 과세가액', won(r.과세특례적용대상_증여세과세가액)) +
+      pfRow_(++n, '가업자산상당액', won(r.가업자산상당액 || 0)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 가업현황(상호·사업자등록번호·업종)·중소기업(중견기업) 해당여부·증여자 가업영위기간 및 대표이사 재직기간·수증자 임원(대표이사) 취임일 등 자격요건 사항은 직접 보완하세요. 첨부서류: 가업법인의 중소기업기준검토표(법인세법 시행규칙 별지 제51호서식), 증여일 현재·직전 10년간 주주현황.</div>' +
+  '</div>';
 }
 // [2026.09.30 신규, 재검토98] 별지10호의2서식 부표2(가업승계 주식등 증여재산평가 및
 // 과세가액계산명세서) — 정밀 재조사로 확인된 ①~⑬ 항목 그대로. 이미 srPrintFormPageHtml_이
@@ -12674,13 +13126,50 @@ const PRINT_REGISTRY_ = [
       { formNo: '소득세법 시행규칙 [별지 제84호서식 부표1]', title: '양도소득금액 계산명세서', section: 'required' },
       { formNo: '소득세법 시행규칙 [별지 제84호서식 부표2]', title: '주식양도소득금액 계산명세서', section: 'required' },
       { formNo: '소득세법 시행규칙 [별지 제84호서식 부표3]', title: '취득가액 및 필요경비계산 상세명세서', section: 'required' },
+      // 1세대1주택 특례적용신고서 계열 — [2026.10.06 보강, 재검토107] 세무사님 지적("서식이
+      // 왜 이거밖에 없냐") 재조사로 발견: 적용된 특례 종류(u9/pd/rh/pr/ci/rp/iu/ip/mg/lr/ch/
+      // ef/rf/mp 등, "특정주택 제외 판정" 모달 provisionForms 참고)에 따라 서식번호가 7갈래로
+      // 전부 다른데, 기존엔 그중 하나(별지83호의5)만 카탈로그에 올려서 나머지 6종은 계산 전엔
+      // 아예 안 보였다 — 7종 전부 올린다.
+      { formNo: '조세특례제한법 시행규칙 [별지 제52호의3서식]', title: '1세대1주택 과세특례(인구감소지역주택·준공후미분양주택 취득자) 신고서', section: 'optional' },
+      { formNo: '소득세법 시행규칙 [별지 제63호의4서식]', title: '농어촌주택 등 취득자에 대한 과세특례신고서', section: 'optional' },
+      { formNo: '소득세법 시행규칙 [별지 제83호서식]', title: '농어촌주택 소유자 1세대1주택 특례적용신고서(문화재주택·이농주택·귀농주택)', section: 'optional' },
+      { formNo: '소득세법 시행규칙 [별지 제83호의2서식]', title: '주택임대사업자의 거주주택 1세대1주택 특례적용신고서', section: 'optional' },
+      { formNo: '소득세법 시행규칙 [별지 제83호의3서식]', title: '장기저당담보주택에 대한 특례적용신고서(동거봉양 합가)', section: 'optional' },
+      { formNo: '소득세법 시행규칙 [별지 제83호의4서식]', title: '상생임대주택에 대한 특례적용신고서', section: 'optional' },
       { formNo: '소득세법 시행규칙 [별지 제83호의5서식]', title: '조합원입주권 또는 분양권 소유자 1세대1주택 특례적용신고서', section: 'optional' },
       { formNo: '조세특례제한법 시행규칙 [별지 제13호서식]', title: '현물출자 등에 대한 세액감면(면제)신청서 — 자경농지·축사용지·자영어업·자경산지·농지대토·국가양도산지·대토보상 공용', section: 'optional' },
       { formNo: '조세특례제한법 시행규칙 [별지 제54호서식]', title: '공익사업용토지 등에 대한 세액감면신청서', section: 'optional' },
       { formNo: '조세특례제한법 시행규칙 [별지 제14호서식]', title: '개발제한구역 지정에 따른 매수대상 토지 등에 대한 세액감면신청서', section: 'optional' },
       { formNo: '조세특례제한법 시행규칙 [별지 제37호서식]', title: '구조조정대상부동산등세액감면신청서', section: 'optional' },
-      { formNo: '조세특례제한법 시행규칙 [별지 제62호서식]', title: '장기임대주택에 대한 양도소득 세액감면신청서', section: 'optional' }
+      { formNo: '조세특례제한법 시행규칙 [별지 제62호서식]', title: '장기임대주택에 대한 양도소득 세액감면신청서', section: 'optional' },
+      // [2026.10.06 보강, 재검토108] J드라이브 공식서식 원본 전수대조로 추가 발견한 4종 —
+      // 전부 "계산은 이미 되는데(rentalSpecialType/newHouseReductionProvision/
+      // pensionAccountContribution 필드) 신청서가 없던" 경우, law.go.kr PDF 원문 대조로
+      // 서식번호·조문 확인완료(trRentalGeneralPrintPageHtml_ 등 참고).
+      { formNo: '조세특례제한법 시행규칙 [별지 제62호의2서식]', title: '장기일반민간임대주택등에 대한 과세특례적용신청서(조특법§97의3)', section: 'optional' },
+      { formNo: '조세특례제한법 시행규칙 [별지 제62호의3서식]', title: '장기임대주택에 대한 과세특례적용신청서(조특법§97의4)', section: 'optional' },
+      { formNo: '조세특례제한법 시행규칙 [별지 제63호의2서식]', title: '양도소득세특례세율적용신청서(조특법§99의2, 신축주택)', section: 'optional' },
+      { formNo: '조세특례제한법 시행규칙 [별지 제63호의32서식]', title: '연금계좌 납입에 대한 양도소득세 세액공제신청서(조특법§99의14)', section: 'optional' },
+      { formNo: '소득세법 시행규칙 [별지 제11호서식]', title: '외국납부세액공제 신청서(국외자산 양도, 소득세법§118의6)', section: 'optional' },
+      // [2026.10.06 재검토109] law.go.kr 서식명 검색으로 추가발견 2종.
+      { formNo: '조세특례제한법 시행규칙 [별지 제63호서식]', title: '미분양주택과세특례적용신고서(조특법§98의3~8)', section: 'optional' },
+      { formNo: '소득세법 시행규칙 [별지 제83호의6서식]', title: '1세대 3주택 이상자의 장기임대주택 등 일반세율 적용신청서(다주택중과 배제)', section: 'optional' }
     ] },
+  { key: 'exittax', group: '양도소득세', label: '국외전출자 양도소득세(소득세법§118의9~18)',
+    formNo: '소득세법 시행규칙 [별지 제84호서식]',
+    isReady: function(){ return !!lastExitTaxResult_; },
+    title: '국외전출자 양도소득(국외전출자) 과세표준 신고 및 납부계산서',
+    bodyFn: function(){ return exitTaxPrintFormPageHtml_(lastExitTaxInput_, lastExitTaxResult_); } },
+  { key: 'derivative', group: '양도소득세', label: '파생상품등 양도소득금액 계산명세서(소득세법§94①5호·§104①13호)',
+    formNo: '소득세법 시행규칙 [별지 제84호서식 부표2의2]',
+    isReady: function(){ return !!lastDerivativeResult_; },
+    title: '파생상품등 양도소득금액 계산명세서',
+    bodyFn: function(){ return derivativePrintFormPageHtml_(lastDerivativeResult_); } },
+  { key: 'fr', group: '양도소득세', label: '경영회생 지원 농지매매 양도소득세 환급신청서(조특법§70의2)',
+    formNo: '조세특례제한법 시행규칙 [별지 제51호의3서식]',
+    isReady: function(){ return !!(lastFarmlandRepurchaseResult_ && lastFarmlandRepurchaseResult_.환급가능여부); },
+    title: '경영회생 지원 농지매매 양도소득세 환급신청서', bodyFn: function(){ return frPrintFormPageHtml_(lastFarmlandRepurchaseResult_); } },
   { key: 'tr_wetax', group: '양도소득세', label: '위택스 개인지방소득세(양도소득) 참고자료 — 부동산만 지원',
     formNo: '지방세법 시행규칙 [별지 제40호의11서식]',
     isReady: function(){ return !!(lastTransferResults_ && lastTransferResults_.length); },
@@ -12765,12 +13254,19 @@ const PRINT_REGISTRY_ = [
     },
     title: function(){
       const formType = document.getElementById('ckFormType') ? document.getElementById('ckFormType').value : '';
-      return formType === 'gf_marriage' ? '혼인출산 증여재산공제 추징사유 신고 및 자진납부계산서' : '사후관리 위반 신고 및 자진납부계산서';
+      return formType === 'gf_marriage' ? '혼인출산 증여재산공제 추징사유 신고 및 자진납부계산서' : (formType === 'farmland_gift' ? '영농자녀 증여세 감면 위반사유 신고 및 자진납부계산서' : '사후관리 위반 신고 및 자진납부계산서');
     },
     bodyFn: function(){
       const formType = document.getElementById('ckFormType') ? document.getElementById('ckFormType').value : '';
-      return formType === 'gf_marriage' ? gfMarriageClawbackPrintPageHtml_(lastClawbackResult_) : ihClawbackPrintPageHtml_(formType, lastClawbackResult_);
-    } }
+      if (formType === 'gf_marriage') return gfMarriageClawbackPrintPageHtml_(lastClawbackResult_);
+      if (formType === 'farmland_gift') return farmlandGiftClawbackPrintPageHtml_(lastClawbackResult_);
+      return ihClawbackPrintPageHtml_(formType, lastClawbackResult_);
+    } },
+  { key: 'cr', group: '증여·상속 공통', label: '상속세(증여세) 과세표준 및 세액의 결정(경정)청구서',
+    formNo: '상속세 및 증여세법 시행규칙 [별지 제16호서식]',
+    isReady: function(){ return !!lastCorrectionClaimInput_; },
+    title: '상속세(증여세) 과세표준 및 세액의 결정(경정)청구서',
+    bodyFn: function(){ return crPrintFormPageHtml_(lastCorrectionClaimInput_); } }
 ];
 // [2026.10.02 재구성, 재검토106] 세무사님이 양도코리아 "인쇄 및 전자신고" 탭을 직접 보여주며
 // 지시 — 콤보박스 하나가 아니라, 개별 공식서식을 전부 "구분·서식번호·인쇄버튼·전자신고대상
@@ -13610,6 +14106,40 @@ function handleTaxCalcClick_(e){
       lastTransferResults_ = results.length ? results : null; // 전자신고파일 생성용(재검토78)
     }
     transferAssets.forEach(function(a, idx){ if (!a.isOverseasAsset) populateTransferCalcBasis_(idx); }); // 산출내역을 토글 없이 한꺼번에 보여준다
+  } else if (action === 'run-exit-tax'){
+    const input = {
+      departureDate: document.getElementById('etDepartureDate').value,
+      residenceYearsIn10: numVal(document.getElementById('etResidenceYears').value),
+      isMajorShareholder: document.getElementById('etIsMajorShareholder').checked,
+      departureMarketValue: numVal(document.getElementById('etDepartureMarketValue').value) || 0,
+      acquisitionPrice: numVal(document.getElementById('etAcquisitionPrice').value) || 0,
+      otherNecessaryExpenses: numVal(document.getElementById('etOtherExpenses').value) || 0,
+      actualTransferPrice: document.getElementById('etActualTransferPrice').value,
+      foreignTaxPaid: numVal(document.getElementById('etForeignTaxPaid').value) || 0,
+      nonresidentSourceTaxEquivalent: numVal(document.getElementById('etNonresidentSourceTax').value) || 0,
+      holdingReportNotFiled: document.getElementById('etHoldingReportNotFiled').checked,
+      faceValueForPenalty: numVal(document.getElementById('etFaceValueForPenalty').value) || 0
+    };
+    lastExitTaxInput_ = input;
+    renderExitTaxResult(calculateExitTaxJS(input));
+  } else if (action === 'print-exit-tax'){
+    if (!lastExitTaxResult_){ nxAlert_('먼저 위에서 "세액 계산하기(국외전출자)"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('국외전출자 양도소득세', exitTaxPrintFormPageHtml_(lastExitTaxInput_, lastExitTaxResult_));
+  } else if (action === 'run-derivative-transfer'){
+    const input = {
+      domesticGainLoss: numVal(document.getElementById('dvDomesticGain').value) || 0,
+      overseasGainLoss: numVal(document.getElementById('dvOverseasGain').value) || 0,
+      filingStatus: document.getElementById('dvFilingStatus').value,
+      isFraudulent: document.getElementById('dvFraudulent').checked,
+      underreportedTaxAmount: numVal(document.getElementById('dvUnderreportedTax').value) || 0,
+      fraudulentUnderreportedTaxAmount: numVal(document.getElementById('dvFraudulentUnderreportedTax').value) || 0,
+      unpaidDays: numVal(document.getElementById('dvUnpaidDays').value) || 0
+    };
+    lastDerivativeResult_ = calculateDerivativeTransferTaxJS(input);
+    renderDerivativeTransferResult(lastDerivativeResult_);
+  } else if (action === 'print-derivative-transfer'){
+    if (!lastDerivativeResult_){ nxAlert_('먼저 위에서 "세액 계산하기(파생상품)"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('파생상품등 양도소득세', derivativePrintFormPageHtml_(lastDerivativeResult_));
   } else if (action === 'run-overseas-transfer'){
     // [2026.09.24 재구성] 국외자산은 부동산 "본계산"과 완전히 별도 세목이라 위 run-transfer
     // 에서 분리해 전용 버튼으로 뺐다(재검토59 이어서, 세무사님 지적 "합칠 수 없으면 합치지
@@ -13896,6 +14426,32 @@ function handleTaxCalcClick_(e){
     }
     renderTransferPane();
     showToast('등록면허세 ' + won(total) + '을 취득비용 내역에 추가했습니다.', 'success');
+  } else if (action === 'import-crcorrected-tax'){
+    const taxType = document.getElementById('crTaxType').value;
+    let total = null;
+    if (taxType === 'inheritance'){
+      if (!lastInheritanceResult){ nxAlert_('먼저 상속세를 계산하세요.'); return; }
+      total = lastInheritanceResult.납부세액 || 0;
+    } else {
+      if (!lastGiftResults_ || !lastGiftResults_.length){ nxAlert_('먼저 증여세를 계산하세요.'); return; }
+      total = lastGiftResults_.reduce(function(s, g){ return s + ((g.result && g.result.납부세액) || 0); }, 0);
+    }
+    const el = document.getElementById('crCorrectedTax');
+    el.value = String(total);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  } else if (action === 'run-correction-claim'){
+    const input = {
+      taxType: document.getElementById('crTaxType').value,
+      originalTax: numVal(document.getElementById('crOriginalTax').value) || 0,
+      correctedTax: numVal(document.getElementById('crCorrectedTax').value) || 0,
+      reasonType: document.getElementById('crReason').value,
+      reasonDetail: document.getElementById('crReasonDetail').value || ''
+    };
+    lastCorrectionClaimInput_ = input;
+    renderCorrectionClaimResult(input);
+  } else if (action === 'print-correction-claim'){
+    if (!lastCorrectionClaimInput_){ nxAlert_('먼저 위에서 "환급(추가납부)세액 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('상속세(증여세) 과세표준 및 세액의 결정(경정)청구서', crPrintFormPageHtml_(lastCorrectionClaimInput_));
   } else if (action === 'import-transfer-total-tax-to-mr'){
     // [2026.09.23 신규] 위에서 방금 계산한 납부세액 합계를 손으로 옮겨 적지 않게 그대로
     // 가져온다 — 세무사님 지시("나머지 부속계산기도 흡수하라")에 따른 최소 통합.
@@ -14399,6 +14955,7 @@ function handleTaxCalcClick_(e){
     const formType = document.getElementById('ckFormType') ? document.getElementById('ckFormType').value : '';
     if (!formType || !lastClawbackResult_){ nxAlert_('먼저 위에서 서식 구분을 고르고 "이자상당액 계산하기"를 눌러 계산을 완료하세요.'); return; }
     if (formType === 'gf_marriage') openPrintFormWindow_('혼인출산 증여재산공제 추징사유 신고 및 자진납부계산서', gfMarriageClawbackPrintPageHtml_(lastClawbackResult_));
+    else if (formType === 'farmland_gift') openPrintFormWindow_('영농자녀 증여세 감면 위반사유 신고 및 자진납부계산서', farmlandGiftClawbackPrintPageHtml_(lastClawbackResult_));
     else openPrintFormWindow_('사후관리 위반 신고 및 자진납부계산서', ihClawbackPrintPageHtml_(formType, lastClawbackResult_));
   } else if (action === 'download-ih-efile'){
     const errs = ihValidateEfileInputs_();
@@ -14418,6 +14975,9 @@ function handleTaxCalcClick_(e){
   } else if (action === 'print-gf-form'){
     if (!lastGiftResults_ || !lastGiftResults_.length){ nxAlert_('먼저 위에서 "세액 계산하기"를 눌러 계산을 완료하세요.'); return; }
     openPrintFormWindow_('증여세 과세표준신고서', gfPrintFormBodyHtml_());
+  } else if (action === 'print-farmland-repurchase'){
+    if (!lastFarmlandRepurchaseResult_){ nxAlert_('먼저 위에서 "환급 가능 여부 확인하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('경영회생 지원 농지매매 양도소득세 환급신청서', frPrintFormPageHtml_(lastFarmlandRepurchaseResult_));
   } else if (action === 'print-special-rate-gift'){
     if (!lastSpecialRateGiftResult_){ nxAlert_('먼저 위에서 "특례세율 증여세 계산하기"를 눌러 계산을 완료하세요.'); return; }
     openPrintFormWindow_('증여세 과세표준신고서(특례세율)', srPrintFormPageHtml_());

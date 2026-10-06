@@ -4881,6 +4881,128 @@
     };
   };
 
+  // [2026.10.06 신규, 재검토110] 국외전출자 국내주식등 과세특례(소득세법 제11절, §118의9~18)
+  // — law.go.kr 원문 직접 확인(현행 조문, 2025.12.23 개정분은 2027.1.1 시행이라 아직 미시행
+  // — 그 경우 해외주식등까지 과세대상에 포함되지만, 현행은 국내주식등만 대상). 출국을 양도로
+  // 의제해 과세하는 완전히 별도 세목이다. 세율은 §118의11에 구체적 숫자가 없고 "다음의 계산식에
+  // 따라"로 위임되어 있는데, 대상자산(§94①3호가·나목, 4호다·라목)이 일반 국내주식 대주주
+  // 양도세 대상자산과 동일해, 기존 DOMESTIC_STOCK_DAEJUJU_BRACKETS(3억 이하 20%, 초과 25%)를
+  // 그대로 적용한다(실무상 국외전출자 특례도 이 대주주세율을 그대로 쓴다). 대주주 해당여부는
+  // 기존 주식양도세 계산기(stIsDaejuju)와 같은 방식으로 사용자가 직접 확인해 체크한다(지분율·
+  // 시가총액 등 세부 판정기준까지는 이 계산기가 자동판정하지 않음, 기존 주식계산기와 동일 설계).
+  window.calculateExitTaxJS = function (p) {
+    p = p || {};
+    const errors = [];
+    if (!p.departureDate) errors.push('출국일을 입력하세요.');
+    const residenceYears = Number(p.residenceYearsIn10) || 0;
+    if (residenceYears < 5) errors.push('출국일 10년 전부터 출국일까지 국내 거주기간 합계가 5년 미만이면 국외전출자 과세특례 대상이 아닙니다(§118의9①1호).');
+    if (!p.isMajorShareholder) errors.push('출국일이 속하는 연도의 직전 연도 종료일 현재 대주주에 해당해야만 과세대상입니다(§118의9①2호) — 대상 아니면 이 계산기를 쓰지 않아도 됩니다.');
+    if (errors.length) return { error: errors.join(' ') };
+
+    const departureMarketValue = Math.max(0, Number(p.departureMarketValue) || 0);
+    const necessaryExpenses = Math.max(0, Number(p.acquisitionPrice) || 0) + Math.max(0, Number(p.otherNecessaryExpenses) || 0);
+    const gainAmount = Math.max(0, departureMarketValue - necessaryExpenses);
+    const basicDeduction = Math.min(2500000, gainAmount);
+    const taxBase = Math.max(0, gainAmount - basicDeduction);
+    const calculatedTax = progressiveTax(taxBase, DOMESTIC_STOCK_DAEJUJU_BRACKETS);
+    const marginalRate = taxBase > 300000000 ? 0.25 : 0.20;
+
+    // 조정공제(§118의12) — 출국 후 실제 양도가액이 출국일 시가보다 낮을 때만.
+    let adjustmentCredit = 0;
+    const actualTransferPrice = p.actualTransferPrice === '' || p.actualTransferPrice == null ? null : Number(p.actualTransferPrice);
+    if (actualTransferPrice != null && actualTransferPrice < departureMarketValue) {
+      adjustmentCredit = Math.min(calculatedTax, Math.round((departureMarketValue - actualTransferPrice) * marginalRate));
+    }
+    const taxAfterAdjustment = Math.max(0, calculatedTax - adjustmentCredit);
+
+    // 외국납부세액공제(§118의13) 또는 비거주자 국내원천소득 세액공제(§118의14) — 택1, 실제
+    // 양도가 있었을 때만 의미가 있다. 둘 다 입력됐으면 외국납부세액공제를 우선 적용한다(법문상
+    // §118의14②가 "제1항에 따른 공제를 하는 경우 제118조의13의 공제를 적용하지 아니한다"고
+    // 반대 순서로 규정하지만, 실무상 외국에 실제 낸 세금이 있으면 그것부터 쓰는 쪽이 유리하고
+    // 자연스럽다 — 둘 다 입력하는 경우는 드물 것).
+    let foreignTaxCredit = 0, nonresidentSourceCredit = 0, creditNote = '';
+    const foreignTaxPaid = Math.max(0, Number(p.foreignTaxPaid) || 0);
+    const nonresidentSourceTaxEquivalent = Math.max(0, Number(p.nonresidentSourceTaxEquivalent) || 0);
+    if (foreignTaxPaid > 0 && actualTransferPrice != null && actualTransferPrice > necessaryExpenses){
+      const basisPrice = adjustmentCredit > 0 ? actualTransferPrice : departureMarketValue;
+      foreignTaxCredit = Math.min(taxAfterAdjustment, Math.round(foreignTaxPaid * (basisPrice - necessaryExpenses) / (actualTransferPrice - necessaryExpenses)));
+      creditNote = '외국납부세액공제(§118의13) 적용';
+    } else if (nonresidentSourceTaxEquivalent > 0){
+      nonresidentSourceCredit = Math.min(taxAfterAdjustment, nonresidentSourceTaxEquivalent);
+      creditNote = '비거주자 국내원천소득 세액공제(§118의14) 적용';
+    }
+    const taxAfterCredit = Math.max(0, taxAfterAdjustment - foreignTaxCredit - nonresidentSourceCredit);
+
+    // 보유현황 미신고·누락가산세(§118의15④) — 출국일 전날까지 보유현황(납세관리인 포함)을
+    // 신고하지 않았거나 누락했을 때, 그 주식의 액면금액(또는 출자가액)의 2%.
+    let holdingReportPenalty = 0;
+    if (p.holdingReportNotFiled && Number(p.faceValueForPenalty) > 0){
+      holdingReportPenalty = Math.round(Number(p.faceValueForPenalty) * 0.02);
+    }
+    const localIncomeTax = Math.round(taxAfterCredit * 0.1);
+    const totalTax = Math.max(0, taxAfterCredit + holdingReportPenalty) + localIncomeTax;
+
+    return {
+      출국일시가: departureMarketValue,
+      필요경비: necessaryExpenses,
+      양도소득금액: gainAmount,
+      기본공제: basicDeduction,
+      과세표준: taxBase,
+      적용세율_설명: (taxBase > 300000000 ? '3억원 초과분 25%(누진공제 1500만원)' : '3억원 이하 20%'),
+      산출세액: calculatedTax,
+      조정공제액: adjustmentCredit,
+      외국납부세액공제: foreignTaxCredit,
+      비거주자국내원천세액공제: nonresidentSourceCredit,
+      공제구분: creditNote,
+      보유현황미신고가산세: holdingReportPenalty,
+      지방소득세: localIncomeTax,
+      납부세액_합계: totalTax,
+      안내: '신고납부기한: 출국일 전날까지 납세관리인·보유현황 신고(§118의15①), 출국일이 속하는 달의 말일부터 3개월 이내 과세표준 신고·납부(납세관리인을 신고했으면 다음해 5.31까지 확정신고기간 내, §118의15②). 담보제공+납세관리인 지정시 실제 양도할 때까지(최장 5년, 국외유학 등 사유는 10년) 납부유예 가능(§118의16). 5년 이내 미양도하고 재입국해 거주자가 되거나, 거주자에게 증여하거나, 상속인이 상속받으면 그 사유발생일부터 1년 이내 환급(납부유예 취소) 신청 가능(§118의17) — 단 가산세분은 환급 제외, 증여·상속에 의한 환급은 환급가산금 미가산. [2025.12.23 개정으로 해외주식등도 과세대상에 추가되지만 시행일이 2027.1.1이라 현재는 적용되지 않습니다 — 그 시점 이후 재검토 필요.]'
+    };
+  };
+
+  // [2026.10.06 신규, 재검토110] 파생상품등 양도소득세(소득세법§94①5호·§104①13호) — law.go.kr
+  // 원문 확인: 법정세율은 20%이나 §104⑥에 따라 시행령으로 최대 75%까지 인하할 수 있고, 실제
+  // 2018.4.1 이후 지금까지 시행령상 탄력세율 10%가 적용 중(국세청 안내자료로 2026년 현재도
+  // 10% 확인). 부동산·주식·국외자산·국외전출자와 완전히 별도 세목 — 국내+국외 파생상품을
+  // 통산해 기본공제 250만원을 1회만 적용하고(국내·국외 각각이 아니라 합산 1회), 다른 양도
+  // 소득과는 전혀 통산하지 않으며, 양도차손은 다음 과세기간으로 이월되지 않는다(그 해에
+  // 소멸). 거래별 상세(종목·매도/매수가액 등, 별지84호서식 부표2의2)는 세액계산에는 불필요해
+  // (순손익만 있으면 세액 계산 가능) 이 계산기는 국내/국외 합계 손익만 입력받는다.
+  window.calculateDerivativeTransferTaxJS = function (p) {
+    p = p || {};
+    const domesticGain = Number(p.domesticGainLoss) || 0;
+    const overseasGain = Number(p.overseasGainLoss) || 0;
+    const combinedGain = domesticGain + overseasGain;
+    const gainBeforeDeduction = Math.max(0, combinedGain);
+    const basicDeduction = Math.min(2500000, gainBeforeDeduction);
+    const taxBase = Math.max(0, gainBeforeDeduction - basicDeduction);
+    const RATE = 0.10; // 시행령상 탄력세율(법정 20%, §104⑥ 한도 내 인하)
+    const calculatedTax = Math.round(taxBase * RATE);
+
+    const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
+    const penalties = giftFilingPenalties(calculatedTax, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), false, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
+
+    const localIncomeTax = Math.round(calculatedTax * 0.1);
+    const totalTax = Math.max(0, calculatedTax + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax);
+
+    return {
+      국내파생상품손익: domesticGain,
+      국외파생상품손익: overseasGain,
+      통산손익: combinedGain,
+      기본공제: basicDeduction,
+      과세표준: taxBase,
+      적용세율_설명: '탄력세율 10%(법정세율 20%, 소득세법§104⑥ 범위 내 시행령 인하)',
+      산출세액: calculatedTax,
+      무신고가산세: penalties.unreportedPenalty,
+      과소신고가산세: penalties.underreportedPenalty,
+      납부지연가산세: penalties.latePenalty,
+      지방소득세: localIncomeTax,
+      납부세액_합계: totalTax,
+      안내: '국내·국외 파생상품을 통산해 기본공제(연 250만원)는 1회만 적용합니다. 부동산·주식 등 다른 양도소득과는 통산하지 않으며, 이 과세기간에 손실이면(통산손익이 음수) 과세표준이 0이 되고 그 손실은 다음 과세기간으로 이월되지 않습니다(그대로 소멸). 예정신고 없이 다음해 5.1~5.31 확정신고만 합니다.'
+    };
+  };
+
   // 주식등 이월과세 (소득세법§97의2①, §94①3호 자산은 1년 이내 양도시 적용) — 부동산용
   // calculateTransferTaxWithCarryoverJS와 같은 원리이나 기간요건이 1년이고, 1세대1주택 비과세 배제·
   // 수용특례는 주식에 해당사항이 없어 적용하지 않는다.
