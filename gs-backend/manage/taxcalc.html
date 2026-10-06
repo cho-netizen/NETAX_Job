@@ -13252,26 +13252,26 @@ const PRINT_REGISTRY_ = [
       // 전부 "계산은 이미 되는데(rentalSpecialType/newHouseReductionProvision/
       // pensionAccountContribution 필드) 신청서가 없던" 경우, law.go.kr PDF 원문 대조로
       // 서식번호·조문 확인완료(trRentalGeneralPrintPageHtml_ 등 참고).
-      { formNo: '조세특례제한법 시행규칙 [별지 제62호의2서식]', title: '장기일반민간임대주택등에 대한 과세특례적용신청서(조특법§97의3)', section: 'optional' },
-      { formNo: '조세특례제한법 시행규칙 [별지 제62호의3서식]', title: '장기임대주택에 대한 과세특례적용신청서(조특법§97의4)', section: 'optional' },
-      { formNo: '조세특례제한법 시행규칙 [별지 제63호의2서식]', title: '양도소득세특례세율적용신청서(조특법§99의2, 신축주택)', section: 'optional' },
-      { formNo: '조세특례제한법 시행규칙 [별지 제63호의32서식]', title: '연금계좌 납입에 대한 양도소득세 세액공제신청서(조특법§99의14)', section: 'optional' },
-      { formNo: '소득세법 시행규칙 [별지 제11호서식]', title: '외국납부세액공제 신청서(국외자산 양도, 소득세법§118의6)', section: 'optional' },
+      { formNo: '조세특례제한법 시행규칙 [별지 제62호의2서식]', title: '장기일반민간임대주택등에 대한 과세특례적용신청서', section: 'optional' },
+      { formNo: '조세특례제한법 시행규칙 [별지 제62호의3서식]', title: '장기임대주택에 대한 과세특례적용신청서', section: 'optional' },
+      { formNo: '조세특례제한법 시행규칙 [별지 제63호의2서식]', title: '양도소득세특례세율적용신청서', section: 'optional' },
+      { formNo: '조세특례제한법 시행규칙 [별지 제63호의32서식]', title: '연금계좌 납입에 대한 양도소득세 세액공제신청서', section: 'optional' },
+      { formNo: '소득세법 시행규칙 [별지 제11호서식]', title: '외국납부세액공제 신청서', section: 'optional' },
       // [2026.10.06 재검토109] law.go.kr 서식명 검색으로 추가발견 2종.
-      { formNo: '조세특례제한법 시행규칙 [별지 제63호서식]', title: '미분양주택과세특례적용신고서(조특법§98의3~8)', section: 'optional' },
-      { formNo: '소득세법 시행규칙 [별지 제83호의6서식]', title: '1세대 3주택 이상자의 장기임대주택 등 일반세율 적용신청서(다주택중과 배제)', section: 'optional' }
+      { formNo: '조세특례제한법 시행규칙 [별지 제63호서식]', title: '미분양주택과세특례적용신고서', section: 'optional' },
+      { formNo: '소득세법 시행규칙 [별지 제83호의6서식]', title: '1세대 3주택 이상자의 장기임대주택 등 일반세율 적용신청서', section: 'optional' }
     ] },
-  { key: 'exittax', group: '양도소득세', label: '국외전출자 양도소득세(소득세법§118의9~18)',
+  { key: 'exittax', group: '양도소득세', label: '국외전출자 양도소득세',
     formNo: '소득세법 시행규칙 [별지 제84호서식]',
     isReady: function(){ return !!lastExitTaxResult_; },
     title: '국외전출자 양도소득(국외전출자) 과세표준 신고 및 납부계산서',
     bodyFn: function(){ return exitTaxPrintFormPageHtml_(lastExitTaxInput_, lastExitTaxResult_); } },
-  { key: 'derivative', group: '양도소득세', label: '파생상품등 양도소득금액 계산명세서(소득세법§94①5호·§104①13호)',
+  { key: 'derivative', group: '양도소득세', label: '파생상품등 양도소득금액 계산명세서',
     formNo: '소득세법 시행규칙 [별지 제84호서식 부표2의2]',
     isReady: function(){ return !!lastDerivativeResult_; },
     title: '파생상품등 양도소득금액 계산명세서',
     bodyFn: function(){ return derivativePrintFormPageHtml_(lastDerivativeResult_); } },
-  { key: 'fr', group: '양도소득세', label: '경영회생 지원 농지매매 양도소득세 환급신청서(조특법§70의2)',
+  { key: 'fr', group: '양도소득세', label: '경영회생 지원 농지매매 양도소득세 환급신청서',
     formNo: '조세특례제한법 시행규칙 [별지 제51호의3서식]',
     isReady: function(){ return !!(lastFarmlandRepurchaseResult_ && lastFarmlandRepurchaseResult_.환급가능여부); },
     title: '경영회생 지원 농지매매 양도소득세 환급신청서', bodyFn: function(){ return frPrintFormPageHtml_(lastFarmlandRepurchaseResult_); } },
@@ -13372,12 +13372,12 @@ const PRINT_REGISTRY_ = [
       if (formType === 'sr_succession_deferred') return srSuccessionClawbackPrintPageHtml_(lastClawbackResult_, true);
       return ihClawbackPrintPageHtml_(formType, lastClawbackResult_);
     } },
-  { key: 'propertyinkind', group: '증여·상속 공통', label: '상속세 물납신청서(상증세법§73·§73의2)',
+  { key: 'propertyinkind', group: '증여·상속 공통', label: '상속세 물납신청서',
     formNo: '상속세 및 증여세법 시행규칙 [별지 제13호서식 또는 별지 제14호의2서식]',
     isReady: function(){ return !!lastPropertyInKindResult_; },
     title: function(){ return lastPropertyInKindInput_ && lastPropertyInKindInput_.provision === 'cultural_heritage' ? '문화재 등 상속세 물납(철회)신청서' : '상속세 물납(변경,철회)신청서'; },
     bodyFn: function(){ return propertyInKindPaymentPrintFormPageHtml_(lastPropertyInKindInput_, lastPropertyInKindResult_); } },
-  { key: 'installment', group: '증여·상속 공통', label: '상속세(증여세) 연부연납허가신청서(상증세법§71)',
+  { key: 'installment', group: '증여·상속 공통', label: '상속세(증여세) 연부연납허가신청서',
     formNo: '상속세 및 증여세법 시행규칙 [별지 제11호서식]',
     isReady: function(){ return !!lastInstallmentResult_; },
     title: function(){ return (lastInstallmentInput_ && lastInstallmentInput_.taxType === 'gift' ? '증여세' : '상속세') + ' 연부연납허가신청서'; },
@@ -13452,9 +13452,9 @@ const PRINT_EFILE_INCLUDED_FORMNO_ = [
 ];
 const PRINT_EFILE_LOCAL_TAX_FORMNO_ = ['지방세법 시행규칙 [별지 제40호의11서식]'];
 function printEfileStatusLabel_(formNo){
-  if (PRINT_EFILE_INCLUDED_FORMNO_.indexOf(formNo) !== -1) return { label: '전자신고대상', cls: 'ok' };
-  if (PRINT_EFILE_LOCAL_TAX_FORMNO_.indexOf(formNo) !== -1) return { label: '지방세 전자신고', cls: 'ok' };
-  return { label: '서면신고', cls: '' };
+  if (PRINT_EFILE_INCLUDED_FORMNO_.indexOf(formNo) !== -1) return { label: '전자', cls: 'ok' };
+  if (PRINT_EFILE_LOCAL_TAX_FORMNO_.indexOf(formNo) !== -1) return { label: '전자', cls: 'ok' };
+  return { label: '서면', cls: '' };
 }
 let printActiveGroup_ = null;
 function printRegistryGroups_(){
@@ -13469,12 +13469,13 @@ function printRegistryGroups_(){
 // 참고 — 표를 가볍게 보이게 하는 게 목적이라 formNo 원문 자체는 그대로 두고 표시만 줄인다).
 function printShortFormNo_(formNo){
   const m = formNo && formNo.match(/\[([^\]]*)\]/);
-  return m ? m[1] : (formNo || '');
+  const bracketed = m ? m[1] : (formNo || '');
+  return bracketed.replace(/별지\s*제/g, '').replace(/서식/g, '').trim();
 }
 function printRenderRow_(row, idx){
   const efile = row.formNo ? printEfileStatusLabel_(row.formNo) : { label: '', cls: 'none' };
   return '<tr>' +
-    '<td>' + escapeHtml(row.title) + (row.ready ? '' : ' <span class="print-hub-pending">(미계산)</span>') + '</td>' +
+    '<td>' + escapeHtml(row.title) + '</td>' +
     '<td class="print-hub-formno">' + escapeHtml(printShortFormNo_(row.formNo) || '-') + '</td>' +
     '<td class="print-hub-print-cell"><button type="button" class="print-hub-btn" data-action="print-row" data-row-idx="' + idx + '"' + (row.ready ? '' : ' disabled') + '>🖨 인쇄</button></td>' +
     '<td class="print-hub-efile ' + efile.cls + '">' + escapeHtml(efile.label) + '</td>' +
@@ -13486,7 +13487,7 @@ function printRenderTable_(rows, sectionTitle){
   return '<div class="print-hub-section-head">' + escapeHtml(sectionTitle) + '</div>' +
     '<table class="print-hub-table">' +
       '<colgroup><col class="ph-col-label"><col class="ph-col-formno"><col class="ph-col-print"><col class="ph-col-efile"></colgroup>' +
-      '<tr><th>구분</th><th>서식번호</th><th>인쇄</th><th>전자신고</th></tr>' +
+      '<tr><th>서식명</th><th>서식번호</th><th></th><th></th></tr>' +
       rows.map(function(row){ return printRenderRow_(row, printCurrentRows_.indexOf(row)); }).join('') +
     '</table>';
 }
@@ -13516,8 +13517,8 @@ function renderPrintPane(){
       '<div class="print-hub-toolbar">' +
         '<button type="button" class="ghost-btn" data-action="print-group-batch"' + (anyReady ? '' : ' disabled') + '>🖨 일괄출력(이 세목 전체)</button>' +
       '</div>' +
-      printRenderTable_(requiredRows, '필수적 신고서식') +
-      printRenderTable_(optionalRows, '임의적 신고서식(해당 사실관계가 있을 때만 데이터가 채워집니다)') +
+      printRenderTable_(requiredRows, '필수 신고서식') +
+      printRenderTable_(optionalRows, '임의 신고서식') +
       (efileItems.length ? '<div class="print-hub-section-head">전자신고파일 작성</div>' +
         '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:flex-start;">' +
         efileItems.map(function(item){
