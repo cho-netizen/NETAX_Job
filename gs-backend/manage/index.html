@@ -64,6 +64,7 @@
         <div class="menu-item" data-view="lawsearch">⚖️ 법령조회</div>
         <div class="menu-item" data-view="docs">📁 증빙확보</div>
         <div class="menu-item" data-view="taxcalc">🧮 세액계산</div>
+        <div class="menu-item" data-view="print">🖨 세액인쇄</div>
         <div class="menu-item" data-view="reportwriter">✍ 문서작성</div>
         <div class="menu-item" data-view="reports">📖 열람관리</div>
 
@@ -111,7 +112,6 @@
             <button type="button" class="taxcalc-tab" data-tab="giftinheritanceshared">증여·상속 공통</button>
             <button type="button" class="taxcalc-tab" data-tab="acquisition">취득세</button>
             <button type="button" class="taxcalc-tab" data-tab="registrationlicense">등록면허세</button>
-            <button type="button" class="taxcalc-tab" data-tab="print">🖨 인쇄</button>
           </div>
           <div class="taxcalc-body">
             <div id="taxCalcTransferPane" class="taxcalc-pane"></div>
@@ -128,16 +128,24 @@
             <div id="taxCalcValuationPane" class="taxcalc-pane" style="display:none;"></div>
             <div id="taxCalcAcquisitionPane" class="taxcalc-pane" style="display:none;"></div>
             <div id="taxCalcRegistrationLicensePane" class="taxcalc-pane" style="display:none;"></div>
-            <!-- [2026.10.02 신규, 재검토105] 인쇄 모아보기 — 양도코리아처럼 세목·서브탭마다
-                 흩어져 있던 "🖨 인쇄용 서식 보기" 버튼들이 엉뚱한 탭에 숨어 안 보이는 사고(주식
-                 양도세 인쇄버튼이 "부동산" 서브탭 안에만 있던 버그)가 다시 나지 않도록, 계산이
-                 끝난 모든 서식을 탭과 무관하게 한곳에 모아 보여주는 중앙 인쇄 허브. 기존 각
-                 세목 탭의 인쇄 버튼은 그대로 두고(바로 그 자리에서 인쇄하고 싶을 때 편의상
-                 유지), 이 탭은 "뭐가 준비됐는지 한눈에"를 위한 추가 진입점이다. -->
-            <div id="taxCalcPrintPane" class="taxcalc-pane" style="display:none;"></div>
           </div>
         </div>
       </div>
+
+      <!-- [2026.10.02 신규, 재검토105] 인쇄 — 세액계산과는 별도의 최상위 메뉴. 양도코리아처럼
+           세목·서브탭마다 흩어져 있던 "🖨 인쇄용 서식 보기"/"전자신고파일 작성하기" 버튼들이
+           엉뚱한 탭에 숨어 안 보이는 사고(주식양도세 인쇄버튼이 "부동산" 서브탭 안에만 있던
+           버그)가 다시 나지 않도록, 계산이 끝난 모든 서식·전자신고를 세목별로 묶어 한곳에
+           모아 보여준다(renderPrintPane(), taxcalc.html). 세액계산 각 탭의 개별 인쇄·전자신고
+           버튼은 이 허브로 이전하며 제거했다 — 중복 진입점을 없애 다시 숨는 사고를 구조적으로
+           방지한다. -->
+      <div class="view" id="view-print">
+        <div class="view-head"><h2>🖨 세액인쇄</h2></div>
+        <div class="view-body">
+          <div id="taxCalcPrintPane"></div>
+        </div>
+      </div>
+
       <?!= include_('manage/taxcalc-engine') ?>
       <?!= include_('manage/taxcalc') ?>
 

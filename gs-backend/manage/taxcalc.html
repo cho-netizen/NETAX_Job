@@ -5024,22 +5024,11 @@ function renderTransferPane(){
       '<button type="button" class="taxcalc-subtab' + (trActiveSubtab_ === 'stock' ? ' active' : '') + '" data-action="switch-transfer-subtab" data-subtab="stock">주식등</button>' +
       '<button type="button" class="taxcalc-subtab' + (trActiveSubtab_ === 'overseas' ? ' active' : '') + '" data-action="switch-transfer-subtab" data-subtab="overseas">국외자산</button>' +
     '</div>' +
-    // [2026.10.02 버그수정, 재검토105] 세무사님 지적 — "주식양도소득세 인쇄기능이 없다." 실제로는
-    // 있었으나(trStockPrintPageHtml_, 재검토85) 이 공용 서식·전자신고 블록이 "부동산" 서브탭
-    // 안에만 물리적으로 들어있어서, 주식등·국외자산 탭에서는 이 버튼 자체가 안 보였다(부동산
-    // 탭으로 가야만 찾을 수 있었음). 부동산·주식등·국외자산 3개 세목을 전부 한 파일(C116300)에
-    // 담는 공용 기능이므로, 서브탭 전환과 무관하게 항상 보이도록 서브탭 바로 아래(서브패널
-    // 바깥)로 옮긴다.
-    '<div class="taxcalc-asset-head" style="margin-top:20px;"><b>서식·전자신고 — 양도소득세과세표준신고 및 자진납부계산서(C116300, 국세청 홈택스)</b></div>' +
-    '<div class="taxcalc-result-note" style="margin:2px 0 8px;">부동산(국내)·주식등·국외자산 중 "세액 계산하기"를 실행한 탭이 있으면 그 결과를 모두 이 파일 하나에 담습니다(같은 서식코드 C116300, 신고유형으로 구분). 양수인과의 관계는 배우자·무관계만 정밀하게 코드로 매칭되고, 그 외(직계존비속·형제자매·기타친족·경제적연관·경영지배)는 방향·촌수를 세분화하지 않아 "기타"로 일괄 처리됩니다.</div>' +
-    '<button type="button" class="taxcalc-run-btn" data-action="check-tr-efile">전자신고파일 작성하기</button>' +
-    '<button type="button" class="taxcalc-run-btn" data-action="print-tr-form">🖨 인쇄용 서식 보기</button>' +
-    '<div id="taxCalcTrEfileResult"></div>' +
-    '<div class="taxcalc-asset-head" style="margin-top:20px;"><b>서식·전자신고 — 개인지방소득세(양도소득) 과세표준 신고 및 납부계산서(C116300, 위택스)</b></div>' +
-    '<div class="taxcalc-result-note" style="margin:2px 0 8px;">⚠ 홈택스 파일과는 <b>완전히 별도로 위택스(wetax.go.kr)에 신고해야 합니다.</b> 위택스 공식 규격("개인지방소득세(양도소득) 파일레이아웃 VER 1.2.7", 행정안전부, 2026.6.30)에 맞춰 생성합니다 — 암호화는 필요 없습니다(평문 텍스트). 납세지 시도·시군구·법정동코드는 양도인 주소검색 결과에서 자동으로 채웁니다(출장소 관할 자치단체는 다를 수 있어 위택스에서 한 번 확인 권장). 감면·가산세·세액공제는 국세 계산결과의 10% 근사치입니다.</div>' +
-    '<button type="button" class="taxcalc-run-btn" data-action="check-wt-efile">위택스 전자신고파일 작성하기</button>' +
-    '<button type="button" class="taxcalc-run-btn" data-action="print-tr-wetax-form">🖨 위택스 신고 참고자료</button>' +
-    '<div id="taxCalcWtEfileResult"></div>' +
+    // [2026.10.02 재구성, 재검토105] 양도소득세과세표준신고서(C116300, 홈택스)·위택스 참고자료
+    // 생성 버튼은 "🖨 인쇄" 최상위 메뉴(PRINT_REGISTRY_, taxcalc.html)로 이전했다 — 예전엔
+    // 이 공용(부동산+주식+국외자산 통합) 블록이 "부동산" 서브탭 안에만 있어서 주식등·국외자산
+    // 탭에서는 보이지 않는 버그가 있었고, 그 자리에 다시 둬도 같은 사고가 재발할 위험이 있어
+    // 아예 세액계산 밖의 독립된 인쇄 허브로 옮겼다.
     '<div class="taxcalc-subpane" data-subpane="realestate" style="' + (trActiveSubtab_ === 'realestate' ? '' : 'display:none;') + '">' +
     // [2026.09.23 정정] 세무사님 지적 — "양도인 연락처라는 정보는 개별 양도인 속에 있지 않고
     // 별도로 자리하고 있네? 개별 양도인 정보 속으로 반영해야지" / "양도인마다 주소를 넣어야
@@ -7074,7 +7063,6 @@ function renderClawbackResult(r){
   html += '<button type="button" class="taxcalc-run-btn" data-action="apply-clawback-to-gift">이 이자상당액을 증여세 계산기에 반영</button>';
   html += '<button type="button" class="taxcalc-run-btn" data-action="apply-clawback-to-inheritance">이 이자상당액을 상속세 계산기에 반영</button>';
   const formType = document.getElementById('ckFormType') ? document.getElementById('ckFormType').value : '';
-  if (formType) html += '<button type="button" class="taxcalc-run-btn" data-action="print-clawback-form">🖨 인쇄용 서식 보기(' + ({ ih6: '부표6', ih7: '부표7', gf_marriage: '증여세 부표4' }[formType] || '') + ')</button>';
   html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   html += '</div>';
   box.innerHTML = html;
@@ -7170,7 +7158,6 @@ function renderBusinessSuccessionDeferralAmountResult(r){
   }
   // [2026.09.30 신규, 재검토100] 증여(조특법§30의7)만 — 별지10호 부표2(가업승계 증여세 납부유예
   // 증여재산평가 및 납부유예세액계산명세서) 인쇄. 상속(§72의2)은 이 서식 대상이 아니다.
-  if (bdProvision === 'gift') html += '<button type="button" class="taxcalc-run-btn" data-action="print-bd-deferral-form">🖨 인쇄용 서식 보기(별지10호 부표2)</button>';
   html += '</div>';
   box.innerHTML = html;
 }
@@ -8819,14 +8806,10 @@ function renderInheritancePane(){
       '<button type="button" class="taxcalc-run-btn" data-action="run-nontaxable-inheritance">비과세 여부 확인하기</button>' +
       '<div id="taxCalcNontaxableInheritanceResult"></div>' +
     '</div>' +
-    // [2026.09.24 신규, 재검토76] 서식·전자신고 — 1단계는 신고서 본체(HEAD·기본사항·세액계산)만.
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>서식·전자신고 — 상속세과세표준신고 및 자진납부계산서(G101000)</b></div>' +
-      '<div class="taxcalc-result-note">위에서 "세액 계산하기"를 먼저 실행한 뒤 이용하세요. 국세청 홈택스 "파일변환신고" 규격(2026.02)에 맞춘 본표+부표1(과세가액계산·재산명세)+부표2(상속인별 상속현황·재산관계)+부표3(장례비용·상속공제)를 만듭니다. 부표4(상속개시전 처분재산)·부표5(영리법인 면제)는 해당 사실관계가 있을 때만 필요한 서식이라 아직 포함되지 않습니다.</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="check-ih-efile" style="margin-top:8px;">전자신고파일 작성하기</button>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="print-ih-form" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
-      '<div id="taxCalcIhEfileResult" style="margin-top:8px;"></div>' +
-    '</div>';
+    // [2026.10.02 재구성, 재검토105] 인쇄·전자신고파일 작성 버튼은 "🖨 인쇄" 최상위 메뉴로
+    // 이전했다(PRINT_REGISTRY_, taxcalc.html) — 세목 탭마다 흩어진 중복 진입점을 없애고, 계산이
+    // 끝난 모든 서식을 거기 한곳에서 확인·인쇄·전자신고하게 한다.
+    '';
   renderDisposalItemsList();
   renderDebtItemsList();
   renderDuesItemsList();
@@ -10093,14 +10076,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>전화번호</label><input type="text" id="taxAgentPhone" placeholder="02 1234 5678"></div>' +
       '</div>' +
     '</div>' +
-    // [2026.09.25 신규, 재검토77] 서식·전자신고 — 상속세와 같은 1단계(신고서 본체만).
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>서식·전자신고 — 증여세과세표준신고 및 자진납부계산서(G101500)</b></div>' +
-      '<div class="taxcalc-result-note">위에서 "세액 계산하기"를 먼저 실행한 뒤 이용하세요. 증여자·수증인 조합마다 별도 신고서로 만들어 한 파일에 이어붙입니다 — 증여재산및평가명세서 등 첨부서식은 아직 포함되지 않습니다.</div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="check-gf-efile" style="margin-top:8px;">전자신고파일 작성하기</button>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="print-gf-form" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
-      '<div id="taxCalcGfEfileResult" style="margin-top:8px;"></div>' +
-    '</div>' +
+    // [2026.10.02 재구성, 재검토105] 인쇄·전자신고파일 작성 버튼은 "🖨 인쇄" 최상위 메뉴로 이전.
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="sr" style="' + (giftActiveSubtab_ === 'sr' ? '' : 'display:none;') + '">' +
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
@@ -10148,7 +10124,6 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-special-rate-gift">특례세율 증여세 계산하기</button>' +
       '<div id="taxCalcSpecialRateGiftResult"></div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="print-special-rate-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
       '<div class="taxcalc-result-note">이 서식은 홈택스 "파일변환신고"(전자신고) 대상이 아닙니다(국세청은 기본세율 증여세신고서만 파일변환신고를 지원) — 인쇄해서 홈택스 화면입력으로 직접 신고하세요.</div>' +
     '</div>' +
     '</div>' +
@@ -10194,7 +10169,6 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-nominee-trust">증여세 계산하기</button>' +
       '<div id="taxCalcNomineeTrustResult"></div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="print-nominee-trust-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
       '</div>' +
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="pf" style="' + (giftActiveSubtab_ === 'pf' ? '' : 'display:none;') + '">' +
@@ -10219,7 +10193,6 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-property-funds">증여세 계산하기</button>' +
       '<div id="taxCalcPropertyFundsResult"></div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="print-property-funds-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
       '</div>' +
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="jm" style="' + (giftActiveSubtab_ === 'jm' ? '' : 'display:none;') + '">' +
@@ -10254,7 +10227,6 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-related-party-gift">일감몰아주기 증여세 계산하기</button>' +
       '<div id="taxCalcRelatedPartyGiftResult"></div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="print-related-party-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
       '<div class="taxcalc-result-note">이 서식은 홈택스 "파일변환신고"(전자신고) 대상이 아닙니다(국세청은 기본세율 증여세신고서만 파일변환신고를 지원) — 인쇄해서 홈택스 화면입력으로 직접 신고하세요.</div>' +
       '</div>' +
     '</div>' +
@@ -10291,7 +10263,6 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-business-opportunity-gift">일감떼어주기 증여세 계산하기</button>' +
       '<div id="taxCalcBusinessOpportunityGiftResult"></div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="print-business-opportunity-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
       '<div class="taxcalc-result-note">이 서식은 홈택스 "파일변환신고"(전자신고) 대상이 아닙니다(국세청은 기본세율 증여세신고서만 파일변환신고를 지원) — 인쇄해서 홈택스 화면입력으로 직접 신고하세요.</div>' +
       '</div>' +
     '</div>' +
@@ -10324,7 +10295,6 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-stock-listing-gift">증여세 계산하기</button>' +
       '<div id="taxCalcStockListingGiftResult"></div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="print-stock-listing-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
       '</div>' +
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="pv" style="' + (giftActiveSubtab_ === 'pv' ? '' : 'display:none;') + '">' +
@@ -10351,7 +10321,6 @@ function renderGiftPane(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-property-value-increase-gift">증여세 계산하기</button>' +
       '<div id="taxCalcPropertyValueIncreaseGiftResult"></div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="print-property-value-increase-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
       '</div>' +
     '</div>' +
     // [2026.09.23 흡수] 채무면제이익(§36) 독립계산기는 giftValuationAssets_()의 평가방법
@@ -10404,7 +10373,6 @@ function renderGiftPane(){
       '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('cb') + '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-convertible-bond-gift">증여세 계산하기</button>' +
       '<div id="taxCalcConvertibleBondGiftResult"></div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="print-convertible-bond-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
     '</div>' +
     '</div>' +
     // [2026.09.23 흡수] 부동산무상사용·담보이용이익(§37) 독립계산기는 giftValuationAssets_()의
@@ -10451,7 +10419,6 @@ function renderGiftPane(){
       '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('sc') + '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-specific-corp-gift">증여세 계산하기</button>' +
       '<div id="taxCalcSpecificCorpGiftResult"></div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="print-specific-corp-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
       '<div class="taxcalc-result-note">이 서식은 홈택스 "파일변환신고"(전자신고) 대상이 아닙니다(국세청은 기본세율 증여세신고서만 파일변환신고를 지원) — 인쇄해서 홈택스 화면입력으로 직접 신고하세요.</div>' +
       '</div>' +
     '</div>' +
@@ -10484,7 +10451,6 @@ function renderGiftPane(){
       '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('ed') + '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-excess-dividend-gift">증여세 계산하기</button>' +
       '<div id="taxCalcExcessDividendGiftResult"></div>' +
-      '<button type="button" class="taxcalc-run-btn" data-action="print-excess-dividend-gift" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' +
       '<div class="taxcalc-result-note">이 서식은 홈택스 "파일변환신고"(전자신고) 대상이 아닙니다(국세청은 기본세율 증여세신고서만 파일변환신고를 지원) — 인쇄해서 홈택스 화면입력으로 직접 신고하세요.</div>' +
       '</div>' +
     '</div>' +
@@ -12687,42 +12653,112 @@ function renderAcquisitionTaxResult(results){
 // "뭐가 준비됐는지 한눈에" 보기 위한 추가 진입점이다 — 주식양도세 인쇄버튼이 부동산 서브탭
 // 안에 숨어 안 보였던 사고(재검토105) 재발 방지가 목적이라, isReady()는 각 세목의 기존
 // print-* 액션 핸들러가 쓰는 조건을 그대로 재사용한다(새 상태를 만들지 않음 — 중복 버그 방지).
+const PRINT_GROUP_ORDER_ = ['양도소득세', '상속세', '증여세', '증여·상속 공통'];
+// [2026.10.02 버그수정, 재검토106] 세무사님 지적 — 계산 전에는 서식번호·전자신고대상여부가
+// 전부 빈칸("-")으로 보여서 "서식을 몇 개 안 만들었다"처럼 보였다. 서식번호·전자신고대상은
+// 법령이 정한 그 서식 "고유의 정체성"이라 계산 여부와 무관하게 항상 고정값인데, 이전 버전은
+// 계산 결과 HTML에서 추출될 때만 채워지는 값으로 잘못 다뤘다(추출 전엔 전부 공란). 이제 각
+// 소스에 정적 서식번호(formNo)와, 부표·첨부가 많은 소스(tr/ih/gf)는 정적 서식목록
+// (subForms — 양도코리아의 "필수/임의 신고서식" 표를 그대로 본뜸)까지 미리 등록해 계산
+// 전에도 "이 세목엔 이런 서식들이 있다"가 전부 보이게 한다. 계산 후에는 실제 생성된 페이지를
+// 서식번호로 매칭해 그 자리를 "준비됨"으로 바꾼다 — 카탈로그에 없는 페이지가 실제로 나오면
+// (목록을 빠뜨렸을 경우) 버리지 않고 행을 추가한다(self-healing).
 const PRINT_REGISTRY_ = [
-  { key: 'tr', label: '양도소득세 과세표준신고서(부동산·주식등·국외자산)',
+  { key: 'tr', group: '양도소득세', label: '양도소득세 과세표준신고서(부동산·주식등·국외자산)',
+    formNo: '소득세법 시행규칙 [별지 제84호서식]',
     isReady: function(){ return !!((lastTransferResults_ && lastTransferResults_.length) || lastStockTransferResult_ || lastOverseasTransferResult_); },
-    title: '양도소득세 과세표준신고서', bodyFn: trPrintFormBodyHtml_ },
-  { key: 'tr_wetax', label: '위택스 개인지방소득세(양도소득) 참고자료 — 부동산만 지원',
+    title: '양도소득세 과세표준신고서', bodyFn: trPrintFormBodyHtml_,
+    efileAction: 'check-tr-efile', efileResultId: 'taxCalcTrEfileResult', efileLabel: '전자신고파일 작성하기(홈택스)',
+    subForms: [
+      { formNo: '소득세법 시행규칙 [별지 제84호서식]', title: '양도소득세 과세표준신고 및 납부계산서', section: 'required' },
+      { formNo: '소득세법 시행규칙 [별지 제84호서식 부표1]', title: '양도소득금액 계산명세서', section: 'required' },
+      { formNo: '소득세법 시행규칙 [별지 제84호서식 부표2]', title: '주식양도소득금액 계산명세서', section: 'required' },
+      { formNo: '소득세법 시행규칙 [별지 제84호서식 부표3]', title: '취득가액 및 필요경비계산 상세명세서', section: 'required' },
+      { formNo: '소득세법 시행규칙 [별지 제83호의5서식]', title: '조합원입주권 또는 분양권 소유자 1세대1주택 특례적용신고서', section: 'optional' },
+      { formNo: '조세특례제한법 시행규칙 [별지 제13호서식]', title: '현물출자 등에 대한 세액감면(면제)신청서 — 자경농지·축사용지·자영어업·자경산지·농지대토·국가양도산지·대토보상 공용', section: 'optional' },
+      { formNo: '조세특례제한법 시행규칙 [별지 제54호서식]', title: '공익사업용토지 등에 대한 세액감면신청서', section: 'optional' },
+      { formNo: '조세특례제한법 시행규칙 [별지 제14호서식]', title: '개발제한구역 지정에 따른 매수대상 토지 등에 대한 세액감면신청서', section: 'optional' },
+      { formNo: '조세특례제한법 시행규칙 [별지 제37호서식]', title: '구조조정대상부동산등세액감면신청서', section: 'optional' },
+      { formNo: '조세특례제한법 시행규칙 [별지 제62호서식]', title: '장기임대주택에 대한 양도소득 세액감면신청서', section: 'optional' }
+    ] },
+  { key: 'tr_wetax', group: '양도소득세', label: '위택스 개인지방소득세(양도소득) 참고자료 — 부동산만 지원',
+    formNo: '지방세법 시행규칙 [별지 제40호의11서식]',
     isReady: function(){ return !!(lastTransferResults_ && lastTransferResults_.length); },
-    title: '위택스 개인지방소득세 신고 참고자료', bodyFn: trWetaxPrintFormBodyHtml_ },
-  { key: 'ih', label: '상속세 과세표준신고서',
-    isReady: function(){ return !!lastInheritanceResult; }, title: '상속세 과세표준신고서', bodyFn: ihPrintFormBodyHtml_ },
-  { key: 'gf', label: '증여세 과세표준신고서(일반)',
-    isReady: function(){ return !!(lastGiftResults_ && lastGiftResults_.length); }, title: '증여세 과세표준신고서', bodyFn: gfPrintFormBodyHtml_ },
-  { key: 'sr', label: '증여세 과세표준신고서(특례세율: 창업자금·가업승계)',
+    title: '위택스 개인지방소득세 신고 참고자료', bodyFn: trWetaxPrintFormBodyHtml_,
+    efileAction: 'check-wt-efile', efileResultId: 'taxCalcWtEfileResult', efileLabel: '전자신고파일 작성하기(위택스)',
+    subForms: [
+      { formNo: '지방세법 시행규칙 [별지 제40호의11서식]', title: '양도소득에 대한 개인지방소득세 과세표준신고 및 납부계산서', section: 'required' }
+    ] },
+  { key: 'ih', group: '상속세', label: '상속세 과세표준신고서',
+    formNo: '상속세 및 증여세법 시행규칙 [별지 제9호서식]',
+    isReady: function(){ return !!lastInheritanceResult; }, title: '상속세 과세표준신고서', bodyFn: ihPrintFormBodyHtml_,
+    efileAction: 'check-ih-efile', efileResultId: 'taxCalcIhEfileResult', efileLabel: '전자신고파일 작성하기',
+    subForms: [
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제9호서식]', title: '상속세 과세표준신고 및 자진납부계산서', section: 'required' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표1]', title: '상속세과세가액계산명세서', section: 'required' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표2]', title: '상속인별 상속재산 및 평가명세서', section: 'required' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표3]', title: '채무·공과금·장례비용 및 상속공제명세서', section: 'required' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표3의2]', title: '배우자 상속공제 명세서', section: 'optional' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표8]', title: '서화·골동품 등 상속재산 명세서', section: 'optional' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제1호서식]', title: '가업상속공제신고서', section: 'optional' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제1호서식 부표 1]', title: '가업상속재산명세서', section: 'optional' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제2호서식]', title: '영농상속공제신고서', section: 'optional' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제3호서식]', title: '배우자 상속재산 미분할 신고서', section: 'optional' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제5호서식]', title: '금융재산 상속공제 신고서', section: 'optional' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제6호서식]', title: '재해손실 공제신고서', section: 'optional' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제6호의2서식]', title: '동거주택상속공제신고서', section: 'optional' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제12호의2서식]', title: '가업상속 납부유예신청서', section: 'optional' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제12호의2서식 부표 1]', title: '가업상속재산명세서(납부유예)', section: 'optional' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제7호서식]', title: '외국납부세액공제신청서', section: 'optional' }
+    ] },
+  { key: 'gf', group: '증여세', label: '증여세 과세표준신고서(일반)',
+    formNo: '상속세 및 증여세법 시행규칙 [별지 제10호서식]',
+    isReady: function(){ return !!(lastGiftResults_ && lastGiftResults_.length); }, title: '증여세 과세표준신고서', bodyFn: gfPrintFormBodyHtml_,
+    efileAction: 'check-gf-efile', efileResultId: 'taxCalcGfEfileResult', efileLabel: '전자신고파일 작성하기',
+    subForms: [
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제10호서식]', title: '증여세 과세표준신고 및 자진납부계산서', section: 'required' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제10호서식 부표1]', title: '증여재산 및 평가명세서', section: 'required' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제10호서식 부표3]', title: '혼인 및 출산 증여재산공제명세서', section: 'optional' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제7호서식]', title: '외국납부세액공제신청서', section: 'optional' },
+      { formNo: '조세특례제한법 시행규칙 [별지 제52호서식]', title: '영농자녀 등이 증여받는 농지등에 대한 증여세 감면신청서', section: 'optional' }
+    ] },
+  { key: 'sr', group: '증여세', label: '증여세 과세표준신고서(특례세율: 창업자금·가업승계)',
+    formNo: '상속세 및 증여세법 시행규칙 [별지 제10호의2서식]',
     isReady: function(){ return !!lastSpecialRateGiftResult_; }, title: '증여세 과세표준신고서(특례세율)', bodyFn: srPrintFormPageHtml_ },
-  { key: 'jm', label: '일감몰아주기 증여의제 신고서',
+  { key: 'jm', group: '증여세', label: '일감몰아주기 증여의제 신고서',
+    formNo: '상속세 및 증여세법 시행규칙 [별지 제10호의3서식]',
     isReady: function(){ return !!lastRelatedPartyGiftResult_; }, title: '일감몰아주기 증여의제 신고서', bodyFn: jmPrintFormPageHtml_ },
-  { key: 'jt', label: '일감떼어주기 증여의제 신고서',
+  { key: 'jt', group: '증여세', label: '일감떼어주기 증여의제 신고서',
+    formNo: '상속세 및 증여세법 시행규칙 [별지 제10호의4서식]',
     isReady: function(){ return !!lastBusinessOpportunityGiftResult_; }, title: '일감떼어주기 증여의제 신고서', bodyFn: jtPrintFormPageHtml_ },
-  { key: 'sc', label: '특정법인 거래이익 증여의제 신고서',
+  { key: 'sc', group: '증여세', label: '특정법인 거래이익 증여의제 신고서',
+    formNo: '상속세 및 증여세법 시행규칙 [별지 제10호의6서식]',
     isReady: function(){ return !!lastSpecificCorpGiftResult_; }, title: '특정법인 거래이익 증여의제 신고서', bodyFn: scPrintFormPageHtml_ },
-  { key: 'ed', label: '초과배당 증여의제 신고서',
+  { key: 'ed', group: '증여세', label: '초과배당 증여의제 신고서',
+    formNo: '상속세 및 증여세법 시행규칙 [별지 제10호의5서식]',
     isReady: function(){ return !!lastExcessDividendGiftResult_; }, title: '초과배당 증여의제 신고서', bodyFn: edPrintFormPageHtml_ },
-  { key: 'nt', label: '증여세 과세표준신고서(명의신탁재산 증여의제)',
+  { key: 'nt', group: '증여세', label: '증여세 과세표준신고서(명의신탁재산 증여의제)',
+    formNo: '상속세 및 증여세법 시행규칙 [별지 제10호서식]',
     isReady: function(){ return !!lastNomineeTrustResult_; }, title: '증여세 과세표준신고서(명의신탁재산 증여의제)', bodyFn: ntPrintFormPageHtml_ },
-  { key: 'pf', label: '증여세 과세표준신고서(재산취득자금 증여추정)',
+  { key: 'pf', group: '증여세', label: '증여세 과세표준신고서(재산취득자금 증여추정)',
+    formNo: '상속세 및 증여세법 시행규칙 [별지 제10호서식]',
     isReady: function(){ return !!lastPropertyFundsResult_; }, title: '증여세 과세표준신고서(재산취득자금 증여추정)', bodyFn: afPrintFormPageHtml_ },
-  { key: 'sl', label: '증여세 과세표준신고서(주식등의 상장 등에 따른 이익)',
+  { key: 'sl', group: '증여세', label: '증여세 과세표준신고서(주식등의 상장 등에 따른 이익)',
+    formNo: '상속세 및 증여세법 시행규칙 [별지 제10호서식]',
     isReady: function(){ return !!lastStockListingGiftResult_; }, title: '증여세 과세표준신고서(주식등의 상장 등에 따른 이익)', bodyFn: slPrintFormPageHtml_ },
-  { key: 'pv', label: '증여세 과세표준신고서(재산가치증가에 따른 이익)',
+  { key: 'pv', group: '증여세', label: '증여세 과세표준신고서(재산가치증가에 따른 이익)',
+    formNo: '상속세 및 증여세법 시행규칙 [별지 제10호서식]',
     isReady: function(){ return !!lastPropertyValueIncreaseGiftResult_; }, title: '증여세 과세표준신고서(재산가치증가에 따른 이익)', bodyFn: pvPrintFormPageHtml_ },
-  { key: 'cb', label: '증여세 과세표준신고서(전환사채등에 따른 이익)',
+  { key: 'cb', group: '증여세', label: '증여세 과세표준신고서(전환사채등에 따른 이익)',
+    formNo: '상속세 및 증여세법 시행규칙 [별지 제10호서식]',
     isReady: function(){ return !!lastConvertibleBondGiftResult_; }, title: '증여세 과세표준신고서(전환사채등에 따른 이익)', bodyFn: cbPrintFormPageHtml_ },
-  { key: 'bd', label: '가업승계 증여세 납부유예 증여재산평가 및 납부유예세액계산명세서',
+  { key: 'bd', group: '증여세', label: '가업승계 증여세 납부유예 증여재산평가 및 납부유예세액계산명세서',
+    formNo: '상속세 및 증여세법 시행규칙 [별지 제10호서식 부표2]',
     isReady: function(){ return !!lastBdDeferralResult_; },
     title: '가업승계 증여세 납부유예 증여재산평가 및 납부유예세액계산명세서',
     bodyFn: function(){ return bdDeferralPrintPageHtml_(lastBdDeferralResult_); } },
-  { key: 'clawback', label: '사후관리 위반 신고서(상속세 부표6·7 또는 혼인출산공제 추징)',
+  { key: 'clawback', group: '증여·상속 공통', label: '사후관리 위반 신고서(상속세 부표6·7 또는 혼인출산공제 추징)',
+    formNo: '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표6·7 또는 별지 제10호서식 부표4]',
     isReady: function(){
       const formType = document.getElementById('ckFormType') ? document.getElementById('ckFormType').value : '';
       return !!(formType && lastClawbackResult_);
@@ -12736,20 +12772,138 @@ const PRINT_REGISTRY_ = [
       return formType === 'gf_marriage' ? gfMarriageClawbackPrintPageHtml_(lastClawbackResult_) : ihClawbackPrintPageHtml_(formType, lastClawbackResult_);
     } }
 ];
+// [2026.10.02 재구성, 재검토106] 세무사님이 양도코리아 "인쇄 및 전자신고" 탭을 직접 보여주며
+// 지시 — 콤보박스 하나가 아니라, 개별 공식서식을 전부 "구분·서식번호·인쇄버튼·전자신고대상
+// 여부"가 있는 표로 나열해야 한다. 각 세목 계산함수(PRINT_REGISTRY_의 bodyFn)는 이미 본문+
+// 모든 첨부서식을 하나의 HTML로 이어붙여 반환하므로(trPrintFormBodyHtml_ 등), 그 HTML을
+// "pf-page"(페이지) 단위로 쪼개 각 페이지의 "pf-formno"(별지 서식 번호)·"pf-title"(서식명)을
+// 그대로 읽어 표의 한 행으로 만든다 — 어떤 특례가 실제로 붙었는지 지어내지 않고 실제 생성
+// 결과에서 그대로 뽑으므로 항상 정확하다(상속세처럼 사안마다 붙는 부표가 달라져도 자동 반영).
+// 각 소스의 첫 페이지(본문)는 "필수적 신고서식"으로, 그 뒤에 이어지는 첨부·특례서식은
+// "임의적 신고서식"으로 분류한다(양도코리아의 구획과 같은 취지 — 정확한 법정 필수/임의 구분이
+// 아니라 "항상 나오는 본문" vs "사안에 따라 붙는 첨부"의 근사 구획임을 안내문으로 밝힌다).
+function printExtractPages_(item){
+  const itemFormNo = typeof item.formNo === 'function' ? item.formNo() : item.formNo;
+  // 서식목록(subForms)이 등록된 소스(tr/ih/gf) — 계산 여부와 무관하게 카탈로그를 전부 행으로
+  // 깔아두고, 계산됐으면 실제 생성된 페이지를 서식번호로 매칭해 그 행만 "준비됨"으로 바꾼다.
+  if (item.subForms){
+    const rows = item.subForms.map(function(sf){
+      return { formNo: sf.formNo, title: sf.title, html: '', section: sf.section, ready: false, sourceKey: item.key };
+    });
+    if (item.isReady()){
+      let html;
+      try { html = item.bodyFn(); } catch (e) { html = ''; }
+      const chunks = html ? html.split('<div class="pf-page">').slice(1).map(function(c){ return '<div class="pf-page">' + c; }) : [];
+      chunks.forEach(function(pageHtml, idx){
+        const formNoMatch = pageHtml.match(/<div class="pf-formno">([^<]*)<\/div>/);
+        const titleMatch = pageHtml.match(/<div class="pf-title">([^<]*)<\/div>/);
+        const foundFormNo = formNoMatch ? formNoMatch[1] : '';
+        const match = rows.find(function(r){ return r.formNo === foundFormNo && !r.ready; });
+        if (match){
+          match.html = pageHtml;
+          match.ready = true;
+        } else {
+          // 카탈로그에 없던 페이지(목록에서 빠뜨렸거나 사례별로 서식번호가 달라지는 1세대1주택
+          // 특례 등) — 버리지 않고 그대로 행을 추가한다.
+          rows.push({
+            formNo: foundFormNo,
+            title: titleMatch ? titleMatch[1] : item.label,
+            html: pageHtml,
+            section: idx === 0 ? 'required' : 'optional',
+            ready: true,
+            sourceKey: item.key
+          });
+        }
+      });
+    }
+    return rows;
+  }
+  // 서식목록이 없는 단일서식 소스 — 기존처럼 소스 전체를 한 덩어리로 다룬다.
+  if (!item.isReady()) return [{ formNo: itemFormNo || '', title: item.label, html: '', section: 'required', ready: false, sourceKey: item.key }];
+  let html;
+  try { html = item.bodyFn(); } catch (e) { return [{ formNo: itemFormNo || '', title: item.label, html: '', section: 'required', ready: false, sourceKey: item.key }]; }
+  return [{ formNo: itemFormNo || '', title: (typeof item.title === 'function' ? item.title() : item.title) || item.label, html: html, section: 'required', ready: true, sourceKey: item.key }];
+}
+// 전자신고파일(바이트)에 실제로 포함되는 서식번호만 "전자신고대상", 나머지는 "서면신고"로
+// 표시한다 — trBuildEfileBytes_/ihBuildEfileBytes_/gfBuildEfileBytes_/wtBuildEfileBytes_가
+// 실제로 만드는 레코드(본문·부표1·부표2·부표3)와 그대로 맞춘 목록이다.
+const PRINT_EFILE_INCLUDED_FORMNO_ = [
+  '소득세법 시행규칙 [별지 제84호서식]', '소득세법 시행규칙 [별지 제84호서식 부표1]',
+  '소득세법 시행규칙 [별지 제84호서식 부표2]', '소득세법 시행규칙 [별지 제84호서식 부표3]',
+  '상속세 및 증여세법 시행규칙 [별지 제9호서식]', '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표1]',
+  '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표2]', '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표3]',
+  '상속세 및 증여세법 시행규칙 [별지 제10호서식]', '상속세 및 증여세법 시행규칙 [별지 제10호서식 부표1]'
+];
+const PRINT_EFILE_LOCAL_TAX_FORMNO_ = ['지방세법 시행규칙 [별지 제40호의11서식]'];
+function printEfileStatusLabel_(formNo){
+  if (PRINT_EFILE_INCLUDED_FORMNO_.indexOf(formNo) !== -1) return { label: '전자신고대상', cls: 'ok' };
+  if (PRINT_EFILE_LOCAL_TAX_FORMNO_.indexOf(formNo) !== -1) return { label: '지방세 전자신고', cls: 'ok' };
+  return { label: '서면신고', cls: '' };
+}
+let printActiveGroup_ = null;
+function printRegistryGroups_(){
+  const groups = {};
+  PRINT_REGISTRY_.forEach(function(item){
+    (groups[item.group] = groups[item.group] || []).push(item);
+  });
+  return groups;
+}
+function printRenderRow_(row, idx){
+  const efile = row.formNo ? printEfileStatusLabel_(row.formNo) : { label: '', cls: '' };
+  return '<tr>' +
+    '<td>' + escapeHtml(row.title) + (row.ready ? '' : ' <span style="color:var(--sub); font-size:12px;">(미계산)</span>') + '</td>' +
+    '<td style="color:var(--sub); font-size:12px; white-space:nowrap;">' + escapeHtml(row.formNo || '-') + '</td>' +
+    '<td><button type="button" class="taxcalc-run-btn" data-action="print-row" data-row-idx="' + idx + '"' + (row.ready ? '' : ' disabled') + '>🖨 인쇄하기</button></td>' +
+    '<td style="white-space:nowrap;' + (efile.cls === 'ok' ? ' color:#1a5cff;' : '') + '">' + escapeHtml(efile.label) + '</td>' +
+  '</tr>';
+}
+let printCurrentRows_ = []; // 현재 그룹에서 렌더링된 행 전체(인쇄 버튼이 data-row-idx로 참조)
+function printRenderTable_(rows, sectionTitle){
+  if (!rows.length) return '';
+  return '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>' + escapeHtml(sectionTitle) + '</b></div>' +
+    '<table class="pf-table" style="table-layout:auto;">' +
+      '<tr><th>구분</th><th>서식번호</th><th>인쇄</th><th>전자신고 대상여부</th></tr>' +
+      rows.map(function(row){ return printRenderRow_(row, printCurrentRows_.indexOf(row)); }).join('') +
+    '</table>';
+}
 function renderPrintPane(){
+  const groups = printRegistryGroups_();
+  const availableGroups = PRINT_GROUP_ORDER_.filter(function(g){ return groups[g] && groups[g].length; });
+  if (availableGroups.indexOf(printActiveGroup_) === -1) printActiveGroup_ = availableGroups[0] || null;
+  if (!printActiveGroup_){ taxCalcPrintPane.innerHTML = '<div class="taxcalc-result-note">등록된 서식이 없습니다.</div>'; return; }
+
+  const items = groups[printActiveGroup_];
+  printCurrentRows_ = [];
+  items.forEach(function(item){
+    printExtractPages_(item).forEach(function(row){ printCurrentRows_.push(row); });
+  });
+  const requiredRows = printCurrentRows_.filter(function(r){ return r.section === 'required'; });
+  const optionalRows = printCurrentRows_.filter(function(r){ return r.section === 'optional'; });
+  const anyReady = printCurrentRows_.some(function(r){ return r.ready; });
+  const efileItems = items.filter(function(item){ return item.efileAction; });
+
   taxCalcPrintPane.innerHTML =
-    '<div class="taxcalc-asset" style="margin-top:14px;">' +
-      '<div class="taxcalc-asset-head"><b>인쇄 모아보기 — 계산이 끝난 서식을 탭과 무관하게 한곳에서 확인·인쇄합니다</b></div>' +
-      '<div class="taxcalc-result-note" style="margin:2px 0 10px;">각 세목 탭에서 "세액 계산하기"를 실행하면 아래 "준비됨"으로 바뀝니다. 계산값을 바꿨으면 그 탭에서 다시 계산한 뒤 이 탭을 새로고침(다시 열기)하세요 — 자동으로 최신 상태를 다시 읽습니다.</div>' +
-      PRINT_REGISTRY_.map(function(item){
-        const ready = !!item.isReady();
-        return '<div style="display:flex; align-items:center; gap:10px; padding:9px 2px; border-bottom:1px solid var(--taxcalc-border, #e3e3e3); flex-wrap:wrap;">' +
-          '<span style="flex:1; min-width:200px;">' + escapeHtml(item.label) + '</span>' +
-          '<span style="font-size:12px; color:' + (ready ? '#1a7f37' : 'var(--sub)') + ';">' + (ready ? '✔ 준비됨' : '미계산') + '</span>' +
-          '<button type="button" class="taxcalc-run-btn" data-action="print-registry-item" data-key="' + item.key + '"' + (ready ? '' : ' disabled') + '>🖨 인쇄</button>' +
-        '</div>';
+    '<div class="taxcalc-tabs">' +
+      availableGroups.map(function(g){
+        return '<button type="button" class="taxcalc-tab' + (g === printActiveGroup_ ? ' active' : '') + '" data-action="switch-print-subtab" data-group="' + escapeHtml(g) + '">' + escapeHtml(g) + '</button>';
       }).join('') +
-    '</div>';
+    '</div>' +
+    '<div class="taxcalc-asset" style="margin-top:14px;">' +
+      '<div style="display:flex; justify-content:flex-end;">' +
+        '<button type="button" class="taxcalc-run-btn" data-action="print-group-batch"' + (anyReady ? '' : ' disabled') + '>🖨 일괄출력(이 세목 전체)</button>' +
+      '</div>' +
+      printRenderTable_(requiredRows, '필수적 신고서식') +
+      printRenderTable_(optionalRows, '임의적 신고서식(해당 사실관계가 있을 때만 데이터가 채워집니다)') +
+      (efileItems.length ? '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>전자신고파일 작성</b></div>' +
+        efileItems.map(function(item){
+          const ready = !!item.isReady();
+          return '<div style="margin:6px 0;">' +
+            '<button type="button" class="taxcalc-run-btn" data-action="' + item.efileAction + '" data-registry-key="' + item.key + '"' + (ready ? '' : ' disabled') + '>' + item.efileLabel + '</button>' +
+            '<div id="' + item.efileResultId + '" style="margin-top:6px;"></div>' +
+          '</div>';
+        }).join('') : '') +
+    '</div>' +
+    '<div class="taxcalc-result-note" style="margin-top:10px;">"필수/임의" 구분은 법정 필수서류 목록이 아니라 "항상 나오는 본문" vs "사안에 따라 붙는 첨부서식"의 편의상 구획입니다 — 실제 제출 의무는 별도로 확인하세요. 계산값을 바꿨으면 그 세목 탭에서 다시 "세액 계산하기"를 누른 뒤 이 화면을 나갔다가 다시 들어오세요.</div>';
 }
 
 // ---- 화면 전환 및 이벤트 바인딩 ----
@@ -12763,8 +12917,15 @@ function initTaxCalcOnce_(){
   renderValuationPane();
   renderAcquisitionPane();
   renderRegistrationLicensePane();
-  renderPrintPane();
   updateTaxCalcPaneVisibility();
+}
+
+// [2026.10.02 신규, 재검토105] "인쇄"는 세액계산과 별도의 최상위 메뉴라 showView('print')가
+// 열 때마다(세액계산 init과 무관하게) 이 함수를 부른다 — 대시보드처럼 열 때마다 매번 새로
+// 그려서 "준비됨" 상태가 항상 최신을 반영하게 한다(한 번만 그리는 initTaxCalcOnce_ 패턴과는
+// 다름).
+function initPrintHub(){
+  renderPrintPane();
 }
 
 // 현재 탭(양도/증여/상속)에 맞는 화면만 보이게 한다. 간편·정밀은 같은 화면을 공유하므로
@@ -12786,8 +12947,6 @@ function updateTaxCalcPaneVisibility(){
   taxCalcValuationPane.style.display = (which === 'giftinheritanceshared' && giftInheritanceSharedActiveSubtab_ === 'val') ? 'block' : 'none';
   taxCalcAcquisitionPane.style.display = which === 'acquisition' ? 'block' : 'none';
   taxCalcRegistrationLicensePane.style.display = which === 'registrationlicense' ? 'block' : 'none';
-  taxCalcPrintPane.style.display = which === 'print' ? 'block' : 'none';
-  if (which === 'print') renderPrintPane(); // 탭을 열 때마다 최신 "준비됨" 상태로 다시 그린다
   taxCalcView.classList.toggle('taxcalc-view-tier-simple', taxCalcTier === 'simple');
   updateTaxLawRefButton_(which);
 }
@@ -12837,12 +12996,19 @@ taxCalcView.addEventListener('change', function(e){
 });
 
 // 클릭 위임 — 거래추가/삭제/계산 버튼들은 매번 다시 그려지므로(renderTransferPane) 위임 방식이 안전하다.
-taxCalcView.addEventListener('click', function(e){
+// [2026.10.02 버그수정, 재검토105] "세액인쇄"(taxCalcPrintPane)가 세액계산과 별도의 최상위
+// 뷰(view-print)로 분리되면서 taxCalcView의 자손이 아니게 됐다 — taxCalcView에만 달아둔
+// 위임 리스너로는 세액인쇄 안의 버튼 클릭이 전혀 안 잡히는(인쇄·전자신고 버튼이 통째로 먹통인)
+// 사고가 날 뻔했다. 함수를 이름 붙여 분리하고 두 컨테이너 모두에 건다.
+function handleTaxCalcClick_(e){
   const btn = e.target.closest('[data-action]');
   if (!btn) return;
   const action = btn.dataset.action;
 
-  if (action === 'switch-transfer-subtab'){
+  if (action === 'switch-print-subtab'){
+    printActiveGroup_ = btn.dataset.group;
+    renderPrintPane();
+  } else if (action === 'switch-transfer-subtab'){
     // [2026.09.24 신규] 부동산/주식등/국외자산 하위 탭 전환 — 데이터는 그대로 두고 표시만
     // 바꾸면 되므로 전체 재렌더 없이 CSS만 토글한다(입력 중이던 값이 날아가지 않게).
     trActiveSubtab_ = btn.dataset.subtab;
@@ -14298,11 +14464,14 @@ taxCalcView.addEventListener('click', function(e){
   } else if (action === 'print-tr-wetax-form'){
     if (!lastTransferResults_ || !lastTransferResults_.length){ nxAlert_('먼저 위에서 "세액 계산하기"를 눌러 계산을 완료하세요.'); return; }
     openPrintFormWindow_('위택스 개인지방소득세 신고 참고자료', trWetaxPrintFormBodyHtml_());
-  } else if (action === 'print-registry-item'){
-    const item = PRINT_REGISTRY_.find(function(i){ return i.key === btn.dataset.key; });
-    if (!item || !item.isReady()){ nxAlert_('먼저 해당 세목 탭에서 "세액 계산하기"를 눌러 계산을 완료하세요.'); return; }
-    const title = typeof item.title === 'function' ? item.title() : item.title;
-    openPrintFormWindow_(title, item.bodyFn());
+  } else if (action === 'print-row'){
+    const row = printCurrentRows_[numVal(btn.dataset.rowIdx)];
+    if (!row || !row.ready){ nxAlert_('이 서식은 아직 계산된 데이터가 없습니다.'); return; }
+    openPrintFormWindow_(row.title || '인쇄', row.html);
+  } else if (action === 'print-group-batch'){
+    const readyRows = printCurrentRows_.filter(function(r){ return r.ready; });
+    if (!readyRows.length){ nxAlert_('먼저 이 세목 탭에서 "세액 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_(printActiveGroup_ + ' 일괄출력', readyRows.map(function(r){ return r.html; }).join(''));
   } else if (action === 'check-wt-efile'){
     renderWtEfileResult_();
   } else if (action === 'download-wt-efile'){
@@ -14820,7 +14989,9 @@ taxCalcView.addEventListener('click', function(e){
     const result = allocateInheritanceTaxByHeirJS(lastInheritanceResult, heirs);
     renderHeirResult(result);
   }
-});
+}
+taxCalcView.addEventListener('click', handleTaxCalcClick_);
+taxCalcPrintPane.addEventListener('click', handleTaxCalcClick_);
 
 var taxCalcInited = false;
 function initTaxCalc(){

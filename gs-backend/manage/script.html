@@ -228,7 +228,7 @@
   var VIEW_LABELS_ = {
     dashboard: '대시보드', booking: '예약관리', workmanage: '작업관리', casehandling: '처리개요', lawsearch: '법령조회', clientmanage: '고객관리',
     collections: '수금관리',
-    docs: '증빙확보', taxcalc: '세액계산', reportwriter: '문서작성', reports: '열람관리',
+    docs: '증빙확보', taxcalc: '세액계산', print: '세액인쇄', reportwriter: '문서작성', reports: '열람관리',
     'memo-text': '일반메모', 'memo-hand': '필기메모', reporthub: '보고서 모음', settings: '설정', manual: '사용자메뉴얼'
   };
 
@@ -424,6 +424,7 @@
       if (name === 'memo-hand' && typeof initMemoHand === 'function') initMemoHand();
       if (name === 'reporthub' && typeof initReportHub === 'function') initReportHub();
       if (name === 'taxcalc' && typeof initTaxCalc === 'function') initTaxCalc();
+      if (name === 'print' && typeof initPrintHub === 'function') initPrintHub();
       if (name === 'reportwriter' && typeof initReportWriter === 'function') initReportWriter();
       if (name === 'reports' && typeof initReports === 'function') initReports();
       if (name === 'settings' && typeof initSettings === 'function') initSettings();
