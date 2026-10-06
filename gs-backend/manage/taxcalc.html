@@ -6548,10 +6548,18 @@ function renderGiftInheritanceSharedPane_(){
           '<option value="ih7">상속세 — 가업상속 납부유예 사후관리추징(부표7)</option>' +
           '<option value="gf_marriage">증여세 — 혼인출산 증여재산공제 추징사유 신고(부표4)</option>' +
           '<option value="farmland_gift">증여세 — 영농자녀 증여세 감면 위반사유 신고(별지52호의2)</option>' +
+          '<option value="sr_succession">증여세 — 가업승계 주식등 과세특례 추징사유 신고(별지11호의10)</option>' +
+          '<option value="sr_succession_deferred">증여세 — 가업승계 납부유예 사후관리추징사유 신고(별지11호의13)</option>' +
         '</select></div>' +
         '<div class="taxcalc-field"><label>[영농자녀 감면위반만] 위반유형</label><select id="ckFarmlandReason">' +
           '<option value="01">5년 이내 정당한 사유없이 양도(§71②)</option>' +
           '<option value="02">5년 이내 정당한 사유없이 직접 영농 종사하지 않게 됨(§71②)</option>' +
+        '</select></div>' +
+        '<div class="taxcalc-field"><label>[가업승계 추징(일반·납부유예)만] 위반유형</label><select id="ckSuccessionReason">' +
+          '<option value="01">가업을 승계하지 않은 경우(§30의6③ 전단)</option>' +
+          '<option value="02">가업을 승계한 후 가업에 종사하지 않은 경우(§30의6③1호)</option>' +
+          '<option value="03">가업을 승계한 후 가업을 휴업하거나 폐업한 경우(§30의6③1호)</option>' +
+          '<option value="04">가업을 승계한 후 증여받은 주식등의 지분이 줄어드는 경우(§30의6③2호)</option>' +
         '</select></div>' +
         '<div class="taxcalc-field"><label>[혼인출산공제 추징만] 추징사유</label><select id="ckMarriageReason">' +
           '<option value="01">혼인 전 공제받고 2년 이내 혼인하지 않음</option>' +
@@ -7350,6 +7358,45 @@ function farmlandGiftClawbackPrintPageHtml_(r){
       pfRow_(++n, '납부할 세액(합계액)', won(r.납부할세액)) +
     '</table>' +
     '<div class="pf-note">이 서식은 NETAX "사후관리 추징이자" 계산 결과를 기준으로 자동 생성되었습니다(조특법§71②, 시행령§68⑮).</div>' +
+    '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
+      new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
+      '신고인 &nbsp;' + escapeHtml(donee.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+  '</div>';
+}
+// [2026.10.06 신규, 재검토111] 가업승계 증여세 과세특례 추징사유 신고서(조특법§30의6③,
+// 별지11호의10서식) 및 그 납부유예 버전(별지11호의13서식) — law.go.kr 서식원본 PDF로 4개
+// 위반코드까지 확인. sr(특례세율) 계산기가 세무사님 지적("완벽하게 구현하라")으로 추가 발견된
+// 누락 — 기존 ck(사후관리추징) 카드가 이미 이 용도까지 커버한다고 설명해놓고도 실제
+// ckFormType 목록엔 빠져있었다.
+function srSuccessionClawbackPrintPageHtml_(r, isDeferred){
+  const donee = giftDonees[0] || {};
+  const donor = giftDonors[0] || {};
+  const reasonCode = document.getElementById('ckSuccessionReason') ? document.getElementById('ckSuccessionReason').value : '01';
+  const REASON_LABEL_ = {
+    '01': '가업을 승계하지 않은 경우', '02': '가업을 승계한 후 가업에 종사하지 않은 경우',
+    '03': '가업을 승계한 후 가업을 휴업하거나 폐업한 경우', '04': '가업을 승계한 후 증여받은 주식등의 지분이 줄어드는 경우'
+  };
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">조세특례제한법 시행규칙 [' + (isDeferred ? '별지 제11호의13서식' : '별지 제11호의10서식') + ']</div>' +
+    '<div class="pf-title">가업승계 ' + (isDeferred ? '납부유예 사후관리추징사유' : '증여세 과세특례 추징사유') + ' 신고 및 자진납부 계산서</div>' +
+    '<div class="pf-section-head">수증자·증여자</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '수증자 성명', donee.name) + pfRow_(++n, '수증자 주민등록번호', donee.regNo) +
+      pfRow_(++n, '증여자 성명', donor.name) + pfRow_(++n, '증여자 주민등록번호', donor.regNo) +
+    '</table>' +
+    '<div class="pf-section-head">사후관리 위반 및 세액 계산</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '사후관리 위반코드', reasonCode + ' — ' + (REASON_LABEL_[reasonCode] || '')) +
+      pfRow_(++n, '증여세액(추징대상)', won(r.추징세액)) +
+      pfRow_(++n, '이자 기산일', r.이자기산일) + pfRow_(++n, '추징사유 발생일', r.추징사유발생일) +
+      (r.구간별_이자상당액 || []).map(function(seg){
+        return pfRow_(0, '이자상당액(' + seg.시작일 + '~' + seg.종료일 + ', ' + seg.일수 + '일, 연' + (seg.연이율 * 100).toFixed(1) + '%)', won(seg.이자상당액), { indent: true });
+      }).join('') +
+      pfRow_(++n, '이자상당액 합계', won(r.이자상당액_합계)) +
+      pfRow_(++n, '납부할 세액(합계액)', won(r.납부할세액)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX "사후관리 추징이자" 계산 결과를 기준으로 자동 생성되었습니다(조특법§30의6' + (isDeferred ? '⑧·시행령§27의6⑬' : '③') + ').</div>' +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml(donee.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
@@ -13254,12 +13301,17 @@ const PRINT_REGISTRY_ = [
     },
     title: function(){
       const formType = document.getElementById('ckFormType') ? document.getElementById('ckFormType').value : '';
-      return formType === 'gf_marriage' ? '혼인출산 증여재산공제 추징사유 신고 및 자진납부계산서' : (formType === 'farmland_gift' ? '영농자녀 증여세 감면 위반사유 신고 및 자진납부계산서' : '사후관리 위반 신고 및 자진납부계산서');
+      if (formType === 'gf_marriage') return '혼인출산 증여재산공제 추징사유 신고 및 자진납부계산서';
+      if (formType === 'farmland_gift') return '영농자녀 증여세 감면 위반사유 신고 및 자진납부계산서';
+      if (formType === 'sr_succession' || formType === 'sr_succession_deferred') return '가업승계 증여세 과세특례 추징사유 신고 및 자진납부계산서';
+      return '사후관리 위반 신고 및 자진납부계산서';
     },
     bodyFn: function(){
       const formType = document.getElementById('ckFormType') ? document.getElementById('ckFormType').value : '';
       if (formType === 'gf_marriage') return gfMarriageClawbackPrintPageHtml_(lastClawbackResult_);
       if (formType === 'farmland_gift') return farmlandGiftClawbackPrintPageHtml_(lastClawbackResult_);
+      if (formType === 'sr_succession') return srSuccessionClawbackPrintPageHtml_(lastClawbackResult_, false);
+      if (formType === 'sr_succession_deferred') return srSuccessionClawbackPrintPageHtml_(lastClawbackResult_, true);
       return ihClawbackPrintPageHtml_(formType, lastClawbackResult_);
     } },
   { key: 'cr', group: '증여·상속 공통', label: '상속세(증여세) 과세표준 및 세액의 결정(경정)청구서',
@@ -14956,6 +15008,8 @@ function handleTaxCalcClick_(e){
     if (!formType || !lastClawbackResult_){ nxAlert_('먼저 위에서 서식 구분을 고르고 "이자상당액 계산하기"를 눌러 계산을 완료하세요.'); return; }
     if (formType === 'gf_marriage') openPrintFormWindow_('혼인출산 증여재산공제 추징사유 신고 및 자진납부계산서', gfMarriageClawbackPrintPageHtml_(lastClawbackResult_));
     else if (formType === 'farmland_gift') openPrintFormWindow_('영농자녀 증여세 감면 위반사유 신고 및 자진납부계산서', farmlandGiftClawbackPrintPageHtml_(lastClawbackResult_));
+    else if (formType === 'sr_succession') openPrintFormWindow_('가업승계 증여세 과세특례 추징사유 신고 및 자진납부계산서', srSuccessionClawbackPrintPageHtml_(lastClawbackResult_, false));
+    else if (formType === 'sr_succession_deferred') openPrintFormWindow_('가업승계 납부유예 사후관리추징사유 신고 및 자진납부계산서', srSuccessionClawbackPrintPageHtml_(lastClawbackResult_, true));
     else openPrintFormWindow_('사후관리 위반 신고 및 자진납부계산서', ihClawbackPrintPageHtml_(formType, lastClawbackResult_));
   } else if (action === 'download-ih-efile'){
     const errs = ihValidateEfileInputs_();
