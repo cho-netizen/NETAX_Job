@@ -18,6 +18,16 @@
       <h3>비밀번호 변경</h3>
       <div id="settingsPwBody"></div>
     </div>
+    <!-- [2026.10.06 신규, 재검토114] 세무대리인 정보 — 세무사님 지적("기본정보가 왜 세액계산
+         안 증여세 탭에 있나, 저장도 안 되고 있었다")으로 여기로 옮겼다. 사건마다 바뀌지 않는
+         값이라 사건별 데이터가 아니라 이 앱 전체에 1세트만 저장하고(PropertiesService,
+         getTaxAgentSettings_/saveTaxAgentSettings_ — Code.js), 양도세·상속세·증여세 모든
+         인쇄서식·전자신고파일(taxAgentField_, taxcalc.html)이 공통으로 읽어 쓴다. -->
+    <div class="card" style="max-width:480px;">
+      <h3>🖋 세무대리인 정보</h3>
+      <div class="taxcalc-result-note" style="margin-bottom:8px;">양도세·상속세·증여세의 모든 인쇄서식·전자신고파일에 공통으로 반영됩니다. 한 번만 입력해두면 됩니다.</div>
+      <div id="settingsTaxAgentBody"></div>
+    </div>
     <div class="card" style="max-width:720px;">
       <h3>🛠 정비도구</h3>
       <div class="settings-tools-group">
@@ -125,7 +135,61 @@
         .manageApp_changePassword(cur, next);
     });
   }
-  function initSettings(){ settingsRenderPwForm_(); settingsWireMaintenanceTools_(); }
+  // [2026.10.06 신규, 재검토114] 세무대리인 정보 입력칸 — settingsPwBody와 같은 패턴(화면을
+  // 열 때만 DOM에 채워 넣음, 값은 callGas로 서버 PropertiesService에 저장/로드).
+  function settingsRenderTaxAgentForm_(){
+    var body = document.getElementById('settingsTaxAgentBody');
+    body.innerHTML =
+      '<div style="display:flex; flex-direction:column; gap:8px;">' +
+      '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">성명</label>' +
+      '<input type="text" id="setTaxAgentName" style="width:100%;" placeholder="없으면 비움"></div>' +
+      '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">사업자등록번호</label>' +
+      '<input type="text" id="setTaxAgentBizNo" style="width:100%;" placeholder="000-00-00000"></div>' +
+      '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">관리번호</label>' +
+      '<input type="text" id="setTaxAgentMgmtNo" style="width:100%;" placeholder="세무대리인 관리번호"></div>' +
+      '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">전화번호</label>' +
+      '<input type="text" id="setTaxAgentPhone" style="width:100%;" placeholder="02 1234 5678"></div>' +
+      '<button type="button" id="setBtnTaxAgentSave" class="save-btn" style="align-self:flex-start;">저장</button>' +
+      '<div id="setTaxAgentMsg" style="font-size:12px; min-height:16px;"></div>' +
+      '</div>';
+    callGas('get_tax_agent_settings').then(function(res){
+      if (!res) return;
+      document.getElementById('setTaxAgentName').value = res.taxAgentName || '';
+      document.getElementById('setTaxAgentBizNo').value = res.taxAgentBizNo || '';
+      document.getElementById('setTaxAgentMgmtNo').value = res.taxAgentMgmtNo || '';
+      document.getElementById('setTaxAgentPhone').value = res.taxAgentPhone || '';
+    }).catch(function(err){
+      document.getElementById('setTaxAgentMsg').textContent = '불러오기 오류: ' + (err && err.message ? err.message : err);
+    });
+    document.getElementById('setBtnTaxAgentSave').addEventListener('click', function(){
+      var btn = document.getElementById('setBtnTaxAgentSave');
+      var msg = document.getElementById('setTaxAgentMsg');
+      btn.disabled = true;
+      callGas('save_tax_agent_settings', {
+        taxAgentName: document.getElementById('setTaxAgentName').value,
+        taxAgentBizNo: document.getElementById('setTaxAgentBizNo').value,
+        taxAgentMgmtNo: document.getElementById('setTaxAgentMgmtNo').value,
+        taxAgentPhone: document.getElementById('setTaxAgentPhone').value
+      }).then(function(res){
+        btn.disabled = false;
+        if (res && res.success){
+          msg.style.color = 'var(--success)';
+          msg.textContent = '저장했습니다.';
+          // taxcalc.html이 쓰는 캐시도 즉시 갱신 — 설정 화면에서 저장한 뒤 바로 세액계산으로
+          // 넘어가도 새로고침 없이 반영되도록.
+          if (typeof tcLoadTaxAgentSettings_ === 'function') tcLoadTaxAgentSettings_();
+        } else {
+          msg.style.color = 'var(--danger)';
+          msg.textContent = (res && res.message) || '저장 실패';
+        }
+      }).catch(function(err){
+        btn.disabled = false;
+        msg.style.color = 'var(--danger)';
+        msg.textContent = '오류: ' + (err && err.message ? err.message : err);
+      });
+    });
+  }
+  function initSettings(){ settingsRenderPwForm_(); settingsRenderTaxAgentForm_(); settingsWireMaintenanceTools_(); }
 
   // [2026.09.19 신규] 사건관리·고객관리·수금관리·증빙관리 각 화면 툴바에 흩어져 있던 1회성
   // 정비도구를 여기 한 군데로 모았다. 실제 로직(모달·함수)은 각 도구가 다루는 데이터와

@@ -6084,7 +6084,7 @@ function renderFarmlandRepurchaseResult(r){
   html += taxCalcResultRow('환급 가능 여부', r.환급가능여부 ? '환급 가능' : '환급 불가');
   if (r.환급대상세액 !== undefined) html += taxCalcResultRow('환급대상세액', won(r.환급대상세액), { total: true });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
-  if (r.환급가능여부) html += '<button type="button" class="taxcalc-run-btn" data-action="print-farmland-repurchase" style="margin-top:8px;">🖨 환급신청서 인쇄용 서식 보기</button>';
+  if (r.환급가능여부) html += '<button type="button" class="taxcalc-run-btn" data-action="print-farmland-repurchase" style="margin-top:8px;">🖨 환급신청서 인쇄용 서식 보기</button>' + tcToolSaveButtonHtml_('fr');
   html += '</div>';
   box.innerHTML = html;
 }
@@ -6184,7 +6184,7 @@ function renderExitTaxResult(r){
   html += taxCalcResultRow('지방소득세', won(r.지방소득세));
   html += taxCalcResultRow('납부세액 합계', won(r.납부세액_합계), { total: true });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
-  html += '<button type="button" class="taxcalc-run-btn" data-action="print-exit-tax" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>';
+  html += '<button type="button" class="taxcalc-run-btn" data-action="print-exit-tax" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' + tcToolSaveButtonHtml_('exittax');
   html += '</div>';
   box.innerHTML = html;
 }
@@ -6242,7 +6242,7 @@ function renderDerivativeTransferResult(r){
   html += taxCalcResultRow('지방소득세', won(r.지방소득세));
   html += taxCalcResultRow('납부세액 합계', won(r.납부세액_합계), { total: true });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
-  html += '<button type="button" class="taxcalc-run-btn" data-action="print-derivative-transfer" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>';
+  html += '<button type="button" class="taxcalc-run-btn" data-action="print-derivative-transfer" style="margin-top:8px;">🖨 인쇄용 서식 보기</button>' + tcToolSaveButtonHtml_('derivative');
   html += '</div>';
   box.innerHTML = html;
 }
@@ -6970,6 +6970,7 @@ function renderNomineeTrustResult(r){
   if (r.납부지연가산세) html += taxCalcResultRow('납부지연가산세', '+' + won(r.납부지연가산세));
   html += taxCalcResultRow('납부세액', won(r.납부세액), { total: true });
   html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  html += tcToolSaveButtonHtml_('nt');
   html += '</div>';
   box.innerHTML = html;
 }
@@ -6998,11 +6999,12 @@ function renderPropertyFundsResult(r){
   if (r.납부지연가산세) html += taxCalcResultRow('납부지연가산세', '+' + won(r.납부지연가산세));
   html += taxCalcResultRow('납부세액', won(r.납부세액), { total: true });
   html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  html += tcToolSaveButtonHtml_('pf');
   html += '</div>';
   box.innerHTML = html;
 }
 
-function renderDeemedGiftGenericResult_(box, r, fields){
+function renderDeemedGiftGenericResult_(box, r, fields, toolKey){
   if (r.error){ box.innerHTML = '<div class="taxcalc-error">' + r.error + '</div>'; return; }
   let html = '<div class="taxcalc-result">';
   fields.forEach(function(f){ if (r[f.key] !== undefined && r[f.key] !== null) html += taxCalcResultRow(f.label, f.fmt ? f.fmt(r[f.key]) : won(r[f.key])); });
@@ -7030,25 +7032,26 @@ function renderDeemedGiftGenericResult_(box, r, fields){
   if (r.납부지연가산세) html += taxCalcResultRow('납부지연가산세', '+' + won(r.납부지연가산세));
   html += taxCalcResultRow('납부세액', won(r.납부세액), { total: true });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  if (toolKey) html += tcToolSaveButtonHtml_(toolKey);
   html += '</div>';
   box.innerHTML = html;
 }
 function renderConvertibleBondGiftResult(r){
   renderDeemedGiftGenericResult_(document.getElementById('taxCalcConvertibleBondGiftResult'), r, [
     { key: '증여의제이익', label: '증여의제이익' }
-  ]);
+  ], 'cb');
 }
 function renderExcessDividendGiftResult(r){
   renderDeemedGiftGenericResult_(document.getElementById('taxCalcExcessDividendGiftResult'), r, [
     { key: '초과배당금액', label: '초과배당금액' },
     { key: '소득세상당액', label: '소득세상당액' },
     { key: '증여의제이익', label: '증여의제이익' }
-  ]);
+  ], 'ed');
 }
 function renderStockListingGiftResult(r){
   renderDeemedGiftGenericResult_(document.getElementById('taxCalcStockListingGiftResult'), r, [
     { key: '증여의제이익', label: '증여의제이익' }
-  ]);
+  ], 'sl');
 }
 function renderNontaxableInheritanceResult(r){
   const box = document.getElementById('taxCalcNontaxableInheritanceResult');
@@ -7089,6 +7092,7 @@ function renderSpecialRateGiftResult(r){
   html += taxCalcResultRow('납부세액', won(r.납부세액), { total: true });
   if (r.기본세율적용대상_증여재산가액) html += '<div class="taxcalc-result-note">한도를 초과하는 ' + won(r.기본세율적용대상_증여재산가액) + '은 이 결과와 별개로 위 일반 증여세 계산기로 반드시 신고하세요.</div>';
   html += '<div class="taxcalc-result-note">이 특례에는 신고세액공제(3%)가 적용되지 않습니다. 가업영위기간·중소/중견기업 여부 등 자격요건은 별도로 확인하세요. 실제 신고 전 홈택스 모의계산으로 재검증하세요.</div>';
+  html += tcToolSaveButtonHtml_('sr');
   html += '</div>';
   box.innerHTML = html;
 }
@@ -7112,6 +7116,7 @@ function renderRelatedPartyGiftResult(r){
   if (r.납부지연가산세) html += taxCalcResultRow('납부지연가산세', '+' + won(r.납부지연가산세));
   html += taxCalcResultRow('납부세액', won(r.납부세액), { total: true });
   html += '<div class="taxcalc-result-note">특수관계법인거래비율·주식보유비율은 과세제외매출액을 반영해 이미 계산된 최종 비율을 넣어야 합니다. 지배주주 판정, 다수 특수관계법인이 있는 경우의 증여자별 안분은 별도로 확인하세요. 실제 신고 전 홈택스 모의계산으로 재검증하세요.</div>';
+  html += tcToolSaveButtonHtml_('jm');
   html += '</div>';
   box.innerHTML = html;
 }
@@ -7137,6 +7142,7 @@ function renderPropertyValueIncreaseGiftResult(r){
   if (r.납부지연가산세) html += taxCalcResultRow('납부지연가산세', '+' + won(r.납부지연가산세));
   html += taxCalcResultRow('납부세액', won(r.납부세액), { total: true });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  html += tcToolSaveButtonHtml_('pv');
   html += '</div>';
   box.innerHTML = html;
 }
@@ -7216,7 +7222,7 @@ function renderSpecificCorpGiftResult(r){
     { key: '특정법인의이익', label: '특정법인의 이익(법인세상당액 차감후)' },
     { key: '법인세상당액_전체', label: '법인세상당액(전체)' },
     { key: '증여의제이익', label: '증여의제이익' }
-  ]);
+  ], 'sc');
 }
 
 function renderBusinessOpportunityGiftResult(r){
@@ -7237,6 +7243,7 @@ function renderBusinessOpportunityGiftResult(r){
   if (r.납부지연가산세) html += taxCalcResultRow('납부지연가산세', '+' + won(r.납부지연가산세));
   html += taxCalcResultRow('납부세액', won(r.납부세액), { total: true });
   html += '<div class="taxcalc-result-note">' + (r.안내 || '') + '</div>';
+  html += tcToolSaveButtonHtml_('jt');
   html += '</div>';
   box.innerHTML = html;
 }
@@ -7287,7 +7294,7 @@ function renderInstallmentResult(r, boxId){
   html += taxCalcResultRow('총 납부액(최초납부 포함)', won(r.총납부액_최초포함), { total: true });
   if (r.각회분_1천만원미만_경고) html += '<div class="taxcalc-result-note">⚠ 회당 원금이 1천만원 미만입니다 — 연부연납기간을 줄이거나 신청 요건을 재확인하세요.</div>';
   html += '<div class="taxcalc-result-note">가산금은 잔여 미납액에 연이자율을 적용하는 근사 모델로, 거치기간(가업상속재산 비율 50%이상시 5년까지, 미만시 3년까지)은 반영하지 않습니다. 연부연납기간 한도(증여세 일반5년/특례15년, 상속세 일반10년/가업상속 50%미만10년·50%이상20년)와 정확한 이자율·거치기간 적용은 홈택스 모의계산으로 재검증하세요.</div>';
-  html += '<button type="button" class="taxcalc-run-btn" data-action="print-installment" style="margin-top:4px;">🖨 연부연납허가신청서 인쇄용 서식 보기</button>';
+  html += '<button type="button" class="taxcalc-run-btn" data-action="print-installment" style="margin-top:4px;">🖨 연부연납허가신청서 인쇄용 서식 보기</button>' + tcToolSaveButtonHtml_('installment');
   html += '</div>';
   box.innerHTML = html;
 }
@@ -7309,7 +7316,7 @@ function renderClawbackResult(r){
   // [2026.10.06 버그수정, 재검토110] 인쇄 버튼이 이 결과박스 어디에도 없어서(죽은 formType
   // 변수만 읽고 버리고 있었음) print-clawback-form 핸들러가 중앙 인쇄허브 말고는 전혀 눌릴
   // 방법이 없었다 — 실클릭 테스트로 발견(별지52호의2 신규추가 검증 중).
-  if (formType) html += '<button type="button" class="taxcalc-run-btn" data-action="print-clawback-form" style="margin-top:4px;">🖨 인쇄용 서식 보기</button>';
+  if (formType) html += '<button type="button" class="taxcalc-run-btn" data-action="print-clawback-form" style="margin-top:4px;">🖨 인쇄용 서식 보기</button>' + tcToolSaveButtonHtml_('clawback');
   html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   html += '</div>';
   box.innerHTML = html;
@@ -7479,6 +7486,7 @@ function renderBusinessSuccessionDeferralAmountResult(r){
   }
   // [2026.09.30 신규, 재검토100] 증여(조특법§30의7)만 — 별지10호 부표2(가업승계 증여세 납부유예
   // 증여재산평가 및 납부유예세액계산명세서) 인쇄. 상속(§72의2)은 이 서식 대상이 아니다.
+  if (bdProvision === 'gift') html += tcToolSaveButtonHtml_('bd');
   html += '</div>';
   box.innerHTML = html;
 }
@@ -7578,7 +7586,7 @@ function renderPropertyInKindPaymentResult(r, input){
   if (r.물납신청가능세액_한도 !== undefined) html += taxCalcResultRow('물납신청가능세액 한도', won(r.물납신청가능세액_한도));
   (r.미충족사유 || []).forEach(function(reason){ html += '<div class="taxcalc-result-note">- ' + reason + '</div>'; });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
-  if (r.적용가능여부) html += '<button type="button" class="taxcalc-run-btn" data-action="print-property-in-kind" style="margin-top:4px;">🖨 물납신청서 인쇄용 서식 보기</button>';
+  if (r.적용가능여부) html += '<button type="button" class="taxcalc-run-btn" data-action="print-property-in-kind" style="margin-top:4px;">🖨 물납신청서 인쇄용 서식 보기</button>' + tcToolSaveButtonHtml_('propertyinkind');
   html += '</div>';
   box.innerHTML = html;
 }
@@ -7617,7 +7625,7 @@ function renderCorrectionClaimResult(input){
     html += '<div class="taxcalc-result-note">차액이 없습니다 — 경정청구 실익이 없습니다.</div>';
   }
   html += '<div class="taxcalc-result-note">' + (input.reasonType === 'subsequent' ? '후발적 경정청구는 그 사유가 발생했음을 안 날부터 3개월 이내(국세기본법§45의2②)' : '통상적 경정청구는 법정신고기한부터 5년 이내(국세기본법§45의2①)') + '에 제기해야 합니다.</div>';
-  html += '<button type="button" class="taxcalc-run-btn" data-action="print-correction-claim" style="margin-top:8px;">🖨 경정청구서 인쇄용 서식 보기</button>';
+  html += '<button type="button" class="taxcalc-run-btn" data-action="print-correction-claim" style="margin-top:8px;">🖨 경정청구서 인쇄용 서식 보기</button>' + tcToolSaveButtonHtml_('cr');
   html += '</div>';
   box.innerHTML = html;
 }
@@ -10600,21 +10608,11 @@ function renderGiftPane(){
     '</div>' +
     '<button type="button" class="taxcalc-run-btn" data-action="run-gift">세액 계산하기</button>' +
     '<div id="taxCalcGiftResult"></div>' +
-    // [2026.09.30 신규, 재검토97] 인쇄서식 전수대조에서 발견 — 별지10호~10호의6뿐 아니라
-    // 양도세·상속세 e-file 헤더에도 "세무대리인" 인적사항(성명/사업자등록번호/관리번호/
-    // 전화번호)을 입력받는 곳이 아예 없어 전부 공란으로 나가고 있었다. 사건마다 바뀌는 값이
-    // 아니라(세무사 본인 정보) 한 곳에만 두고 3개 세목의 모든 인쇄서식·e-file이 공유해서
-    // 쓴다(taxAgentPrintRows_, taxAgentEfileFields_). 증여세 탭에 둔 건 배치상 편의일 뿐 —
-    // 다른 세목 탭에서 계산해도 여기 입력한 값이 그대로 적용된다.
-    '<div class="taxcalc-asset" style="margin-top:20px;">' +
-      '<div class="taxcalc-asset-head"><b>세무대리인 (상속·증여·양도세 모든 인쇄서식·전자신고파일에 공통 반영)</b></div>' +
-      '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>성명</label><input type="text" id="taxAgentName" placeholder="없으면 비움"></div>' +
-        '<div class="taxcalc-field"><label>사업자등록번호</label><input type="text" id="taxAgentBizNo" placeholder="000-00-00000"></div>' +
-        '<div class="taxcalc-field"><label>관리번호</label><input type="text" id="taxAgentMgmtNo" placeholder="세무대리인 관리번호"></div>' +
-        '<div class="taxcalc-field"><label>전화번호</label><input type="text" id="taxAgentPhone" placeholder="02 1234 5678"></div>' +
-      '</div>' +
-    '</div>' +
+    // [2026.10.06 재구성, 재검토114] 세무대리인 정보 입력칸은 설정탭("⚙ 설정 > 세무대리인
+    // 정보")으로 옮겼다 — 세무사님 지적("기본정보가 왜 증여세 탭에 있나, 저장도 안 되는데")
+    // 대로, 사건마다 바뀌지 않는 값은 여기 DOM이 아니라 서버(PropertiesService)에 1회만
+    // 저장해두고 taxAgentField_()가 그 값을 불러와 쓴다 — 계산 로직·인쇄서식(taxAgentPrintRows_
+    // 등)은 전혀 안 바뀐다.
     // [2026.10.02 재구성, 재검토105] 인쇄·전자신고파일 작성 버튼은 "🖨 인쇄" 최상위 메뉴로 이전.
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="sr" style="' + (giftActiveSubtab_ === 'sr' ? '' : 'display:none;') + '">' +
@@ -11656,9 +11654,18 @@ function farmlandExemptionPrintPageHtml_(donee, exemptionAmount){
     '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — "증여받은 농지등의 명세서"(농지 소재지·지목·면적·자경기간 등)는 NETAX가 수집하지 않으므로 별도로 작성해 첨부하세요. 감면요건(8년 이상 자경, 농지 소재지 등) 충족 여부도 별도로 확인이 필요합니다.</div>' +
   '</div>';
 }
+// [2026.10.06 재구성, 재검토114] 세무대리인 정보를 증여세 탭 DOM 입력칸이 아니라 설정탭에서
+// 1회 입력·영구저장한 값으로 읽어온다(이전엔 화면을 새로고침하면 매번 다시 입력해야 했음) —
+// settings.html의 "세무대리인 정보" 카드와 getTaxAgentSettings_/saveTaxAgentSettings_(Code.js)
+// 를 공유한다. 호출부(taxAgentPrintRows_ 등 taxAgentField_('taxAgentName') 형태)는 그대로.
+let TC_TAX_AGENT_CACHE_ = { taxAgentName: '', taxAgentBizNo: '', taxAgentMgmtNo: '', taxAgentPhone: '' };
+function tcLoadTaxAgentSettings_(){
+  return callGas('get_tax_agent_settings').then(function(res){
+    if (res) TC_TAX_AGENT_CACHE_ = res;
+  }).catch(function(){ /* 설정을 못 불러와도 계산 자체는 계속 쓸 수 있어야 하므로 조용히 무시 */ });
+}
 function taxAgentField_(id){
-  const el = document.getElementById(id);
-  return el ? el.value : '';
+  return TC_TAX_AGENT_CACHE_[id] || '';
 }
 function taxAgentPrintRows_(){
   const g_ = taxAgentField_;
@@ -13533,6 +13540,7 @@ function renderPrintPane(){
 // [2026.09] 관리 앱 이식본 — openTaxCalcView/closeTaxCalcView의 탐색기 패널 전환·새창 부트스트랩
 // 부분은 이 앱의 메뉴 라우팅(showView)으로 대체하고, 4개 탭 최초 렌더만 이 함수가 담당한다.
 function initTaxCalcOnce_(){
+  tcLoadTaxAgentSettings_();
   renderTransferPane();
   renderGiftPane();
   renderInheritancePane();
@@ -15434,6 +15442,8 @@ function handleTaxCalcClick_(e){
     lastInstallmentInput_ = input;
     lastInstallmentResult_ = (installmentResult && !installmentResult.error) ? installmentResult : null;
     renderInstallmentResult(installmentResult, 'taxCalcInstallmentInheritanceResult');
+  } else if (action === 'save-tool-result'){
+    tcSaveToolResult_(btn.dataset.toolKey);
   } else if (action === 'print-installment'){
     if (!lastInstallmentResult_){ nxAlert_('먼저 위에서 "연부연납 계산하기"를 눌러 계산을 완료하세요.'); return; }
     openPrintFormWindow_((lastInstallmentInput_.taxType === 'gift' ? '증여세' : '상속세') + ' 연부연납허가신청서', installmentPrintFormPageHtml_(lastInstallmentInput_, lastInstallmentResult_));
@@ -16207,6 +16217,7 @@ function renderTcCaseBar_(){
     tcApplyCaseBaseDate_(tcCurrentCase);
     tcApplySpecialGiftProvisionDefaults_(tcCurrentCase);
     tcApplyGiftRelation_(tcCurrentCase);
+    tcRestoreToolResults_(tcCurrentCase);
   }
   tcRenderCaseFactsBanner_(tcCurrentCase);
 }
@@ -16283,6 +16294,219 @@ function tcSaveList_(newList){
   }).catch(function(err){ showToast('저장 중 오류: ' + (err && err.message ? err.message : err), 'error'); return false; });
 }
 
+// [2026.10.06 신규, 재검토113] 세무사님 지적 — "모든 계산기에 저장기능이 있어야 저장된
+// 내용을 읽어서 보고서도 작성할 수 있는 거 아닌가? 저장기능은 필수다." tr/ih/gf(양도·상속·
+// 증여 본계산)는 tcSaveCurrentResult_가 이미 사건에 저장하지만, 독립 계산기 18종(국외전출자·
+// 파생상품·연부연납·물납·경정청구·사후관리추징·일감몰아주기 등 증여세 특례의제 9종)은 저장
+// 대상이 아니었다 — 그래서 사건을 다시 열면 이 18종의 인쇄 버튼이 전부 꺼진 채로 돌아왔다
+// (계산은 메모리에만 있고 저장된 적이 없으니 당연한 결과). 세액계산결과 배열은 이미 자유
+// 형식 JSON이라(백엔드 스키마 변경 없이) 도구키·구조화결과값을 같이 넣을 수 있다 — 이
+// 레지스트리가 각 도구의 모듈변수를 읽고(get) 복원하는(set) 방법을 한곳에 모은다.
+const TC_TOOL_STATE_ = {
+  // [2026.10.06 추가] 양도·상속·증여 "본계산" 3종도 같은 문제가 있었다 — tcSaveCurrentResult_가
+  // 지금까지 저장한 건 결과창의 텍스트 요약+최종세액 숫자뿐이라, 사건을 다시 열어도 별지84호·
+  // 9호·10호 본표를 인쇄하려면 그 사건의 핵심 세금계산인데도 다시 계산해야 했다. 독립
+  // 계산기들과 같은 방식(구조화된 결과 자체를 저장)으로 맞춘다 — 저장 버튼은 기존 "💾 저장"
+  // 하나를 그대로 쓰고(tcSaveCurrentResult_가 이 state도 같이 담는다), 복원만 이 레지스트리로.
+  tr: {
+    label: '양도소득세 과세표준신고서',
+    // [2026.10.06 버그수정] 세무사님 지적 — "양수인정보는 왜 복원 안 되나?" 확인해보니
+    // lastTransferResults_(계산 결과 숫자)만 복원하고, 정작 인쇄할 때 양수인을 읽어오는
+    // trCollectBuyers_()는 그 결과가 아니라 화면의 "살아있는" transferAssets/transferContracts
+    // 전역변수를 직접 읽는 구조였다 — 그 두 변수는 복원 대상이 아니었으니 양수인이 빌 수밖에
+    // 없었다. 계산결과뿐 아니라 그 계산의 바탕이 된 입력값(자산목록·계약·양수인)까지 같이
+    // 저장·복원해야 인쇄서식이 실제로 완성된다.
+    get: function(){
+      if (!((lastTransferResults_ && lastTransferResults_.length) || lastStockTransferResult_ || lastOverseasTransferResult_)) return null;
+      return {
+        transferResults: lastTransferResults_, stockResult: lastStockTransferResult_, overseasResult: lastOverseasTransferResult_,
+        transferAssets: transferAssets, transferContracts: transferContracts, transferSellers: transferSellers
+      };
+    },
+    set: function(saved){
+      lastTransferResults_ = saved.transferResults || null;
+      lastStockTransferResult_ = saved.stockResult || null;
+      lastOverseasTransferResult_ = saved.overseasResult || null;
+      if (Array.isArray(saved.transferAssets)) transferAssets = saved.transferAssets;
+      if (Array.isArray(saved.transferContracts)) transferContracts = saved.transferContracts;
+      if (Array.isArray(saved.transferSellers)) transferSellers = saved.transferSellers;
+      if (typeof renderTransferPane === 'function') renderTransferPane();
+    }
+  },
+  ih: {
+    label: '상속세 과세표준신고서',
+    get: function(){ return lastInheritanceResult ? { result: lastInheritanceResult } : null; },
+    set: function(saved){ lastInheritanceResult = saved.result || null; }
+  },
+  gf: {
+    label: '증여세 과세표준신고서',
+    get: function(){ return (lastGiftResults_ && lastGiftResults_.length) ? { giftResults: lastGiftResults_ } : null; },
+    set: function(saved){ lastGiftResults_ = saved.giftResults || null; }
+  },
+  exittax: {
+    label: '국외전출자 양도소득세',
+    get: function(){ return lastExitTaxResult_ ? { input: lastExitTaxInput_, result: lastExitTaxResult_ } : null; },
+    set: function(saved){ lastExitTaxInput_ = saved.input || null; lastExitTaxResult_ = saved.result || null; },
+    total: function(saved){ return saved.result && saved.result.납부세액_합계; }
+  },
+  derivative: {
+    label: '파생상품등 양도소득세',
+    get: function(){ return lastDerivativeResult_ ? { result: lastDerivativeResult_ } : null; },
+    set: function(saved){ lastDerivativeResult_ = saved.result || null; },
+    total: function(saved){ return saved.result && saved.result.납부세액_합계; }
+  },
+  fr: {
+    label: '경영회생 지원 농지매매 환급',
+    get: function(){ return lastFarmlandRepurchaseResult_ ? { result: lastFarmlandRepurchaseResult_ } : null; },
+    set: function(saved){ lastFarmlandRepurchaseResult_ = saved.result || null; },
+    total: function(saved){ return saved.result && saved.result.환급대상세액; }
+  },
+  sr: {
+    label: '증여세 특례세율(창업자금·가업승계)',
+    get: function(){ return lastSpecialRateGiftResult_ ? { result: lastSpecialRateGiftResult_ } : null; },
+    set: function(saved){ lastSpecialRateGiftResult_ = saved.result || null; },
+    total: function(saved){ return saved.result && saved.result.납부세액; }
+  },
+  jm: { label: '일감몰아주기 증여의제',
+    get: function(){ return lastRelatedPartyGiftResult_ ? { result: lastRelatedPartyGiftResult_ } : null; },
+    set: function(saved){ lastRelatedPartyGiftResult_ = saved.result || null; },
+    total: function(saved){ return saved.result && saved.result.납부세액; } },
+  jt: { label: '일감떼어주기 증여의제',
+    get: function(){ return lastBusinessOpportunityGiftResult_ ? { result: lastBusinessOpportunityGiftResult_ } : null; },
+    set: function(saved){ lastBusinessOpportunityGiftResult_ = saved.result || null; },
+    total: function(saved){ return saved.result && saved.result.납부세액; } },
+  sc: { label: '특정법인 거래이익 증여의제',
+    get: function(){ return lastSpecificCorpGiftResult_ ? { result: lastSpecificCorpGiftResult_ } : null; },
+    set: function(saved){ lastSpecificCorpGiftResult_ = saved.result || null; },
+    total: function(saved){ return saved.result && saved.result.납부세액; } },
+  ed: { label: '초과배당 증여의제',
+    get: function(){ return lastExcessDividendGiftResult_ ? { result: lastExcessDividendGiftResult_ } : null; },
+    set: function(saved){ lastExcessDividendGiftResult_ = saved.result || null; },
+    total: function(saved){ return saved.result && saved.result.납부세액; } },
+  nt: { label: '명의신탁재산 증여의제',
+    get: function(){ return lastNomineeTrustResult_ ? { result: lastNomineeTrustResult_ } : null; },
+    set: function(saved){ lastNomineeTrustResult_ = saved.result || null; },
+    total: function(saved){ return saved.result && saved.result.납부세액; } },
+  pf: { label: '재산취득자금 증여추정',
+    get: function(){ return lastPropertyFundsResult_ ? { result: lastPropertyFundsResult_ } : null; },
+    set: function(saved){ lastPropertyFundsResult_ = saved.result || null; },
+    total: function(saved){ return saved.result && saved.result.납부세액; } },
+  sl: { label: '주식등의 상장 등에 따른 이익',
+    get: function(){ return lastStockListingGiftResult_ ? { result: lastStockListingGiftResult_ } : null; },
+    set: function(saved){ lastStockListingGiftResult_ = saved.result || null; },
+    total: function(saved){ return saved.result && saved.result.납부세액; } },
+  pv: { label: '재산가치증가에 따른 이익',
+    get: function(){ return lastPropertyValueIncreaseGiftResult_ ? { result: lastPropertyValueIncreaseGiftResult_ } : null; },
+    set: function(saved){ lastPropertyValueIncreaseGiftResult_ = saved.result || null; },
+    total: function(saved){ return saved.result && saved.result.납부세액; } },
+  cb: { label: '전환사채등에 따른 이익',
+    get: function(){ return lastConvertibleBondGiftResult_ ? { result: lastConvertibleBondGiftResult_ } : null; },
+    set: function(saved){ lastConvertibleBondGiftResult_ = saved.result || null; },
+    total: function(saved){ return saved.result && saved.result.납부세액; } },
+  // [bd 인쇄서식(별지10호서식 부표2)은 결과값 하나로 안 끝난다 — bdDeferralPrintPageHtml_이
+  // 총자산가액·사업무관자산 5종 등 입력칸 9개를 DOM에서 직접 읽으므로, 그 값들도 같이
+  // 저장·복원해야 사건을 다시 열었을 때 서식이 제대로 채워진다.]
+  bd: { label: '가업승계 증여세 납부유예 계산',
+    get: function(){
+      if (!lastBdDeferralResult_) return null;
+      const domFields = ['bdTotalAsset', 'bdNonBiz55', 'bdNonBiz49', 'bdNonBiz61', 'bdExcessCash', 'bdNonBizStock', 'bdTotalValue', 'bdBusinessValue', 'bdTaxPayable'];
+      const dom = {};
+      domFields.forEach(function(id){ const el = document.getElementById(id); if (el) dom[id] = el.value; });
+      return { result: lastBdDeferralResult_, dom: dom };
+    },
+    set: function(saved){
+      lastBdDeferralResult_ = saved.result || null;
+      Object.keys(saved.dom || {}).forEach(function(id){ const el = document.getElementById(id); if (el) el.value = saved.dom[id]; });
+    },
+    total: function(saved){ return saved.result && saved.result.납부유예금액; } },
+  // [클로백은 결과값 하나로 안 끝난다 — 인쇄서식이 formType(ckFormType)과 그 하위 사유
+  // 선택값(ckMarriageReason 등)도 DOM에서 직접 읽으므로, 저장·복원 둘 다 그 값들까지 같이
+  // 다룬다. renderGiftInheritanceSharedPane_이 이미 초기화 때 전체 서브탭을 렌더링해두므로
+  // (display:none이어도 DOM엔 존재) 사건을 불러오는 시점엔 이 input 요소들이 이미 있다.]
+  clawback: {
+    label: '사후관리 위반(추징)',
+    get: function(){
+      const formTypeEl = document.getElementById('ckFormType');
+      const formType = formTypeEl ? formTypeEl.value : '';
+      if (!formType || !lastClawbackResult_) return null;
+      const saved = { result: lastClawbackResult_, formType: formType };
+      if (formType === 'gf_marriage') saved.ckMarriageReason = (document.getElementById('ckMarriageReason') || {}).value;
+      if (formType === 'farmland_gift') saved.ckFarmlandReason = (document.getElementById('ckFarmlandReason') || {}).value;
+      if (formType === 'sr_succession' || formType === 'sr_succession_deferred') saved.ckSuccessionReason = (document.getElementById('ckSuccessionReason') || {}).value;
+      return saved;
+    },
+    set: function(saved){
+      lastClawbackResult_ = saved.result || null;
+      const formTypeEl = document.getElementById('ckFormType');
+      if (formTypeEl && saved.formType) formTypeEl.value = saved.formType;
+      if (saved.ckMarriageReason != null){ const el = document.getElementById('ckMarriageReason'); if (el) el.value = saved.ckMarriageReason; }
+      if (saved.ckFarmlandReason != null){ const el = document.getElementById('ckFarmlandReason'); if (el) el.value = saved.ckFarmlandReason; }
+      if (saved.ckSuccessionReason != null){ const el = document.getElementById('ckSuccessionReason'); if (el) el.value = saved.ckSuccessionReason; }
+    },
+    total: function(saved){ return saved.result && saved.result.납부할세액; }
+  },
+  propertyinkind: {
+    label: '상속세 물납신청서',
+    get: function(){ return lastPropertyInKindResult_ ? { input: lastPropertyInKindInput_, result: lastPropertyInKindResult_ } : null; },
+    set: function(saved){ lastPropertyInKindInput_ = saved.input || null; lastPropertyInKindResult_ = saved.result || null; },
+    total: function(saved){ return saved.result && saved.result.물납신청가능세액_한도; }
+  },
+  installment: {
+    label: '상속세(증여세) 연부연납허가신청서',
+    get: function(){ return lastInstallmentResult_ ? { input: lastInstallmentInput_, result: lastInstallmentResult_ } : null; },
+    set: function(saved){ lastInstallmentInput_ = saved.input || null; lastInstallmentResult_ = saved.result || null; },
+    total: function(saved){ return saved.result && saved.result.총납부액_최초포함; }
+  },
+  cr: {
+    label: '상속세(증여세) 경정청구서',
+    get: function(){ return lastCorrectionClaimInput_ ? { input: lastCorrectionClaimInput_ } : null; },
+    set: function(saved){ lastCorrectionClaimInput_ = saved.input || null; },
+    total: function(saved){ return saved.input && (saved.input.originalTax - saved.input.correctedTax); }
+  }
+};
+// 독립 계산기 결과창 맨 끝에 붙이는 공용 저장 버튼 — toolKey는 TC_TOOL_STATE_의 키.
+function tcToolSaveButtonHtml_(toolKey){
+  return '<button type="button" class="taxcalc-run-btn" data-action="save-tool-result" data-tool-key="' + toolKey + '" style="margin-top:4px;">💾 이 사건에 저장</button>';
+}
+// 독립 계산기 하나의 현재 결과를 그 사건의 세액계산결과 배열에 추가 저장한다(같은 도구키로
+// 이미 저장된 항목이 있어도 지우지 않고 새 항목을 덧붙인다 — 재계산 이력을 그대로 남기는
+// 기존 tcSaveCurrentResult_ 방식과 동일. 복원 시엔 가장 최근(마지막) 항목만 쓴다).
+function tcSaveToolResult_(toolKey){
+  if (!tcSelectedId || !tcCurrentCase){ showToast('먼저 사건을 선택해주세요.', 'warning'); return; }
+  const spec = TC_TOOL_STATE_[toolKey];
+  if (!spec) return;
+  const state = spec.get();
+  if (!state){ showToast('먼저 이 계산기에서 계산을 실행하세요.', 'warning'); return; }
+  const totalNum = Number(spec.total(state));
+  const entry = {
+    id: 'tc_' + Date.now(),
+    도구키: toolKey,
+    세목: spec.label,
+    요약: spec.label + ' 저장됨',
+    최종세액: Number.isFinite(totalNum) ? totalNum : undefined,
+    계산일: new Date().toISOString().slice(0, 10),
+    저장값: state
+  };
+  const newList = (tcCurrentCase.세액계산결과 || []).concat([entry]);
+  tcSaveList_(newList).then(function(ok){
+    if (ok) showToast('이 사건에 저장했습니다' + (Number.isFinite(totalNum) ? ' — ' + won(totalNum) : '') + '.', 'success');
+  });
+}
+// 사건을 선택(또는 다시 열람)할 때, 세액계산결과 배열 안에 도구키가 붙은 저장 항목이 있으면
+// 그 도구의 모듈변수를 복원해 인쇄 버튼이 바로 켜지게 한다 — 같은 도구키가 여러 번 저장돼
+// 있으면(재계산 이력) 가장 나중에 저장된 것만 쓴다.
+function tcRestoreToolResults_(caseObj){
+  if (!caseObj || !Array.isArray(caseObj.세액계산결과)) return;
+  const latestByKey = {};
+  caseObj.세액계산결과.forEach(function(entry){
+    if (entry && entry.도구키 && entry.저장값) latestByKey[entry.도구키] = entry.저장값;
+  });
+  Object.keys(latestByKey).forEach(function(key){
+    const spec = TC_TOOL_STATE_[key];
+    if (spec) spec.set(latestByKey[key]);
+  });
+}
+
 // 지금 활성화된 메인 탭(양도/증여/상속/취득)의 메인 결과 박스 텍스트를 그대로 캡처한다. 각
 // 탭 안에는 우회양도부인 등 부속 계산기가 여러 개 더 있지만(각각 별도 id), 신고서
 // 자체의 최종 세액은 항상 이 4개 메인 박스(taxCalcTransferResult 등)에 표시되므로 이것만
@@ -16328,6 +16552,15 @@ function tcSaveCurrentResult_(){
     계산일: new Date().toISOString().slice(0, 10)
   };
   if (dateSnapshot_) entry.기준일스냅샷 = dateSnapshot_;
+  // [2026.10.06 추가] 이 탭(양도/증여/상속)의 본계산 구조화 결과도 같이 저장 — 사건을 다시
+  // 열었을 때 tcRestoreToolResults_가 이걸로 lastTransferResults_ 등을 복원해 별지84호·9호·
+  // 10호 인쇄가 바로 켜지게 한다(TC_TOOL_STATE_의 tr/ih/gf 항목 참고).
+  var toolKeyByTab_ = { transfer: 'tr', inheritance: 'ih', gift: 'gf' };
+  var toolKey_ = toolKeyByTab_[tab];
+  if (toolKey_ && TC_TOOL_STATE_[toolKey_]){
+    var toolState_ = TC_TOOL_STATE_[toolKey_].get();
+    if (toolState_) { entry.도구키 = toolKey_; entry.저장값 = toolState_; }
+  }
   var newList = (tcCurrentCase.세액계산결과 || []).concat([entry]);
   // [2026.09 버그수정] 계산결과 저장(잠금 있음)과 사건개요 금액 동기화(잠금 없음)를 동시에
   // 따로 보내면, 두 요청이 서버에 도착하는 순서가 뒤바뀔 수 있어(구글 앱스스크립트는 각

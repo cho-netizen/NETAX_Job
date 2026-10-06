@@ -3152,6 +3152,18 @@ function dispatchClientAction_(body) {
   // 자체는 AI 도구로 이미 살아있어 aisidebar 채팅으로는 여전히 가능하지만, 비개발자 사용자
   // 입장에서는 "화면에 버튼이 없으면 그 기능이 없어진 것"과 같다). 화면에서 바로 부를 수
   // 있도록 액션을 추가한다.
+  // [2026.10.06 신규, 재검토114] 세무대리인 정보(성명·사업자등록번호·관리번호·전화번호) —
+  // 세무사님 본인 정보라 사건마다 달라지지 않는데, 지금까지는 증여세 탭 안 입력칸(DOM)에만
+  // 있어서 화면을 새로고침하면 사라지고 매번 다시 입력해야 했다("설정탭으로 옮기고 모든
+  // 신고서에 반영"). 사용자가 한 명뿐인 단일 테넌트 앱이라 PropertiesService(스크립트 속성)에
+  // 그대로 저장한다 — API 키·폴더ID 등 기존 전역설정값과 같은 저장소·같은 패턴.
+  if (body.action === 'get_tax_agent_settings') {
+    return jsonResponse(getTaxAgentSettings_());
+  }
+  if (body.action === 'save_tax_agent_settings') {
+    return jsonResponse(saveTaxAgentSettings_(body));
+  }
+  // (함수 정의는 getTaxAgentSettings_/saveTaxAgentSettings_ 참고 — 파일 하단)
   if (body.action === 'send_email') {
     return jsonResponse(toolSendEmail(body.to, body.subject, body.body));
   }
@@ -22714,6 +22726,27 @@ function toolDeleteWorkCase(input, contextPath) {
   const resolved = work_resolveCase_(input, contextPath);
   if (resolved.error) return resolved;
   return work_deleteCase({ id: resolved.row[resolved.col.id] });
+}
+
+// [2026.10.06 신규, 재검토114] 세무대리인 정보 — 단일 테넌트(세무사 본인 정보라 전체 앱에
+// 딱 1세트만 존재) 설정값이라 별도 시트 없이 스크립트 속성에 저장한다(API 키 등 기존 전역
+// 설정값과 같은 방식). taxcalc.html의 모든 인쇄서식·전자신고파일 생성, settings.html의
+// "세무대리인 정보" 입력화면 양쪽에서 이 두 함수만 호출한다.
+const TAX_AGENT_SETTINGS_KEYS_ = ['taxAgentName', 'taxAgentBizNo', 'taxAgentMgmtNo', 'taxAgentPhone'];
+function getTaxAgentSettings_() {
+  const props = PropertiesService.getScriptProperties();
+  const result = {};
+  TAX_AGENT_SETTINGS_KEYS_.forEach(function (key) {
+    result[key] = props.getProperty('TAX_AGENT_' + key) || '';
+  });
+  return result;
+}
+function saveTaxAgentSettings_(body) {
+  const props = PropertiesService.getScriptProperties();
+  TAX_AGENT_SETTINGS_KEYS_.forEach(function (key) {
+    if (body[key] !== undefined) props.setProperty('TAX_AGENT_' + key, String(body[key]).trim());
+  });
+  return { success: true };
 }
 
 function jsonResponse(obj) {
