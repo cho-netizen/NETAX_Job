@@ -13516,19 +13516,15 @@ function renderPrintPane(){
     '<div class="taxcalc-asset" style="margin-top:14px;">' +
       '<div class="print-hub-toolbar">' +
         '<button type="button" class="ghost-btn" data-action="print-group-batch"' + (anyReady ? '' : ' disabled') + '>🖨 일괄출력(이 세목 전체)</button>' +
+        efileItems.map(function(item){
+          return '<button type="button" class="save-btn" data-action="' + item.efileAction + '" data-registry-key="' + item.key + '"' + (item.isReady() ? '' : ' disabled') + '>' + item.efileLabel + '</button>';
+        }).join('') +
       '</div>' +
       printRenderTable_(requiredRows, '필수 신고서식') +
       printRenderTable_(optionalRows, '임의 신고서식') +
-      (efileItems.length ? '<div class="print-hub-section-head">전자신고파일 작성</div>' +
-        '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:flex-start;">' +
-        efileItems.map(function(item){
-          const ready = !!item.isReady();
-          return '<div>' +
-            '<button type="button" class="save-btn" data-action="' + item.efileAction + '" data-registry-key="' + item.key + '"' + (ready ? '' : ' disabled') + '>' + item.efileLabel + '</button>' +
-            '<div id="' + item.efileResultId + '" style="margin-top:6px;"></div>' +
-          '</div>';
-        }).join('') +
-        '</div>' : '') +
+      (efileItems.length ? efileItems.map(function(item){
+        return '<div id="' + item.efileResultId + '" style="margin-top:6px;"></div>';
+      }).join('') : '') +
     '</div>' +
     '<div class="taxcalc-result-note" style="margin-top:10px;">"필수/임의" 구분은 법정 필수서류 목록이 아니라 "항상 나오는 본문" vs "사안에 따라 붙는 첨부서식"의 편의상 구획입니다 — 실제 제출 의무는 별도로 확인하세요. 계산값을 바꿨으면 그 세목 탭에서 다시 "세액 계산하기"를 누른 뒤 이 화면을 나갔다가 다시 들어오세요.</div>';
 }
