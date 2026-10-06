@@ -12848,21 +12848,29 @@ function printRegistryGroups_(){
   });
   return groups;
 }
+// 서식번호 표시용 — "OOO법 시행규칙 [별지 제84호서식]"처럼 매 행 반복되는 근거법령 문구를
+// 빼고 "별지 제84호서식"만 보여준다(근거법령은 구분 열의 서식명으로 충분히 구별됨, 양도코리아
+// 참고 — 표를 가볍게 보이게 하는 게 목적이라 formNo 원문 자체는 그대로 두고 표시만 줄인다).
+function printShortFormNo_(formNo){
+  const m = formNo && formNo.match(/\[([^\]]*)\]/);
+  return m ? m[1] : (formNo || '');
+}
 function printRenderRow_(row, idx){
-  const efile = row.formNo ? printEfileStatusLabel_(row.formNo) : { label: '', cls: '' };
+  const efile = row.formNo ? printEfileStatusLabel_(row.formNo) : { label: '', cls: 'none' };
   return '<tr>' +
-    '<td>' + escapeHtml(row.title) + (row.ready ? '' : ' <span style="color:var(--sub); font-size:12px;">(미계산)</span>') + '</td>' +
-    '<td style="color:var(--sub); font-size:12px; white-space:nowrap;">' + escapeHtml(row.formNo || '-') + '</td>' +
-    '<td><button type="button" class="taxcalc-run-btn" data-action="print-row" data-row-idx="' + idx + '"' + (row.ready ? '' : ' disabled') + '>🖨 인쇄하기</button></td>' +
-    '<td style="white-space:nowrap;' + (efile.cls === 'ok' ? ' color:#1a5cff;' : '') + '">' + escapeHtml(efile.label) + '</td>' +
+    '<td>' + escapeHtml(row.title) + (row.ready ? '' : ' <span class="print-hub-pending">(미계산)</span>') + '</td>' +
+    '<td class="print-hub-formno">' + escapeHtml(printShortFormNo_(row.formNo) || '-') + '</td>' +
+    '<td class="print-hub-print-cell"><button type="button" class="print-hub-btn" data-action="print-row" data-row-idx="' + idx + '"' + (row.ready ? '' : ' disabled') + '>🖨 인쇄</button></td>' +
+    '<td class="print-hub-efile ' + efile.cls + '">' + escapeHtml(efile.label) + '</td>' +
   '</tr>';
 }
 let printCurrentRows_ = []; // 현재 그룹에서 렌더링된 행 전체(인쇄 버튼이 data-row-idx로 참조)
 function printRenderTable_(rows, sectionTitle){
   if (!rows.length) return '';
-  return '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>' + escapeHtml(sectionTitle) + '</b></div>' +
-    '<table class="pf-table" style="table-layout:auto;">' +
-      '<tr><th>구분</th><th>서식번호</th><th>인쇄</th><th>전자신고 대상여부</th></tr>' +
+  return '<div class="print-hub-section-head">' + escapeHtml(sectionTitle) + '</div>' +
+    '<table class="print-hub-table">' +
+      '<colgroup><col class="ph-col-label"><col class="ph-col-formno"><col class="ph-col-print"><col class="ph-col-efile"></colgroup>' +
+      '<tr><th>구분</th><th>서식번호</th><th>인쇄</th><th>전자신고</th></tr>' +
       rows.map(function(row){ return printRenderRow_(row, printCurrentRows_.indexOf(row)); }).join('') +
     '</table>';
 }
@@ -12889,19 +12897,21 @@ function renderPrintPane(){
       }).join('') +
     '</div>' +
     '<div class="taxcalc-asset" style="margin-top:14px;">' +
-      '<div style="display:flex; justify-content:flex-end;">' +
-        '<button type="button" class="taxcalc-run-btn" data-action="print-group-batch"' + (anyReady ? '' : ' disabled') + '>🖨 일괄출력(이 세목 전체)</button>' +
+      '<div class="print-hub-toolbar">' +
+        '<button type="button" class="ghost-btn" data-action="print-group-batch"' + (anyReady ? '' : ' disabled') + '>🖨 일괄출력(이 세목 전체)</button>' +
       '</div>' +
       printRenderTable_(requiredRows, '필수적 신고서식') +
       printRenderTable_(optionalRows, '임의적 신고서식(해당 사실관계가 있을 때만 데이터가 채워집니다)') +
-      (efileItems.length ? '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>전자신고파일 작성</b></div>' +
+      (efileItems.length ? '<div class="print-hub-section-head">전자신고파일 작성</div>' +
+        '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:flex-start;">' +
         efileItems.map(function(item){
           const ready = !!item.isReady();
-          return '<div style="margin:6px 0;">' +
-            '<button type="button" class="taxcalc-run-btn" data-action="' + item.efileAction + '" data-registry-key="' + item.key + '"' + (ready ? '' : ' disabled') + '>' + item.efileLabel + '</button>' +
+          return '<div>' +
+            '<button type="button" class="save-btn" data-action="' + item.efileAction + '" data-registry-key="' + item.key + '"' + (ready ? '' : ' disabled') + '>' + item.efileLabel + '</button>' +
             '<div id="' + item.efileResultId + '" style="margin-top:6px;"></div>' +
           '</div>';
-        }).join('') : '') +
+        }).join('') +
+        '</div>' : '') +
     '</div>' +
     '<div class="taxcalc-result-note" style="margin-top:10px;">"필수/임의" 구분은 법정 필수서류 목록이 아니라 "항상 나오는 본문" vs "사안에 따라 붙는 첨부서식"의 편의상 구획입니다 — 실제 제출 의무는 별도로 확인하세요. 계산값을 바꿨으면 그 세목 탭에서 다시 "세액 계산하기"를 누른 뒤 이 화면을 나갔다가 다시 들어오세요.</div>';
 }
