@@ -3555,12 +3555,17 @@
   window.calculateInstallmentSplitPaymentLimitJS = function (p) {
     p = p || {};
     const totalTaxAmount = Number(p.totalTaxAmount);
+    // taxType: 'transfer'(양도소득세, 소득세법§77·시행령§116) 또는 'inheritance'/'gift'(상증세법§70②·
+    // 시행령§66②, 기본값) — 신고기한 지난 후 2개월 이내 분납 가능 여부·한도 금액 산식(1천만원/
+    // 2천만원/50%) 자체는 두 법 모두 동일해서 하나의 함수로 계산하고, 조문 인용 문구만 다르게 낸다.
+    const isTransfer = p.taxType === 'transfer';
+    const provisionLabel = isTransfer ? '소득세법§77·시행령§116' : '상증세법§70②·시행령§66②';
     if (!totalTaxAmount || totalTaxAmount <= 0) return { error: '납부할 세액이 필요합니다.' };
     if (p.hasInstallmentPaymentApproval) {
-      return { 분납가능여부: false, 안내: '연부연납(§71)을 허가받은 경우에는 분납(§70②)을 적용하지 않습니다(중복 불가).' };
+      return { 분납가능여부: false, 안내: (isTransfer ? '' : '연부연납(§71)을 허가받은 경우에는 ') + '분납(' + provisionLabel + ')을 적용하지 않습니다(중복 불가).' };
     }
     if (totalTaxAmount <= 10000000) {
-      return { 분납가능여부: false, 안내: '납부할 세액이 1천만원을 초과하지 않아 분납할 수 없습니다(§70②).' };
+      return { 분납가능여부: false, 안내: '납부할 세액이 1천만원을 초과하지 않아 분납할 수 없습니다(' + provisionLabel + ').' };
     }
     const maxSplitAmount = totalTaxAmount <= 20000000
       ? (totalTaxAmount - 10000000)
@@ -3572,8 +3577,8 @@
       분납가능_최대금액: maxSplitAmount,
       분납기한: '신고기한이 지난 후 2개월 이내',
       안내: (totalTaxAmount <= 20000000
-        ? '세액이 2천만원 이하이므로 1천만원 초과분(' + maxSplitAmount.toLocaleString() + '원)까지 분납할 수 있습니다(시행령§66②1호).'
-        : '세액이 2천만원을 초과하므로 세액의 50% 이하(' + maxSplitAmount.toLocaleString() + '원)까지 분납할 수 있습니다(시행령§66②2호).')
+        ? '세액이 2천만원 이하이므로 1천만원 초과분(' + maxSplitAmount.toLocaleString() + '원)까지 분납할 수 있습니다(' + provisionLabel + '1호).'
+        : '세액이 2천만원을 초과하므로 세액의 50% 이하(' + maxSplitAmount.toLocaleString() + '원)까지 분납할 수 있습니다(' + provisionLabel + '2호).')
     };
   };
 

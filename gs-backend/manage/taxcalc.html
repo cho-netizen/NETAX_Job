@@ -4335,7 +4335,7 @@ let giftInheritanceSharedActiveSubtab_ = 'val';
 // 조문번호 오름차순(§16→§74·75). ck(사후관리 추징이자)는 특정 조문이 없는 공통 이자산식이라
 // 그 결과를 이어 쓰는 bc(납부유예 사후관리) 바로 뒤에 둔다.
 const GIFT_INHERITANCE_SHARED_SUBTAB_LABELS = {
-  val: '재산평가', cd: '공익법인출연재산 불산입', fmv: '시가인정범위', ip: '연부연납',
+  val: '재산평가', cd: '공익법인출연재산 불산입', fmv: '시가인정범위', ip: '연부연납', sp: '분납(2개월내)',
   bd: '납부유예 금액계산', bc: '납부유예 사후관리', ck: '사후관리 추징이자', ik: '물납 적격판정',
   sv: '물납 수납가액', ch: '문화유산 징수유예', cr: '경정청구서'
 };
@@ -5064,6 +5064,19 @@ function renderTransferPane(){
     (cardsHtml ? '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>⚠ 계약이 지정되지 않은 자산(계약이 삭제됐거나 아직 안 골랐음 — 위에서 계약을 선택하세요)</b></div><div id="taxCalcTransferCards">' + cardsHtml + '</div>' : '') +
     '<button type="button" class="taxcalc-run-btn" data-action="run-transfer">세액 계산하기</button>' +
     '<div id="taxCalcTransferResult"></div>' +
+    // [2026.10.06 신규, 재검토113] 양도소득세 분납(§77) — 연부연납 제도가 없는 양도소득세는
+    // 이 조문으로 신고기한이 지난 후 2개월 이내 세액 일부를 나눠 낼 수 있다. 엔진은 이미
+    // 상속세·증여세 계산기(sp)와 같은 함수를 taxType만 바꿔 쓴다. 공동양도인이 있으면 이
+    // 계산기는 대표 양도인(첫 번째) 1인의 세액을 기준으로 한다 — 공동양도인 각자 분납은
+    // 홈택스에서 개별 확인 필요.
+    '<div class="taxcalc-asset" style="margin-top:14px;">' +
+      '<div class="taxcalc-asset-head"><b>세액 분할납부(§77, 선택) — 대표 양도인 1인 기준</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>납부할 세액</label><div class="taxcalc-field-inline"><input type="number" id="trSpTotal" placeholder="원"><button type="button" class="taxcalc-ai-btn" data-action="import-transfer-total-tax-to-sp" title="방금 계산한 대표 양도인 납부세액을 가져옵니다">위 계산결과 가져오기</button></div><span class="taxcalc-field-help">1천만원 초과해야 분납 가능</span></div>' +
+      '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-split-payment-transfer">분납 한도 계산하기</button>' +
+      '<div id="taxCalcTrSplitPaymentResult"></div>' +
+    '</div>' +
     '</div>' +
     // [2026.09.24 재구성] 국외자산 양도소득세(§118의2~8)는 "국내자산 양도세와 완전히 별도
     // 세목"이라 과세표준·기본공제·세율을 절대 합칠 수 없다 — 세무사님 지적("그렇게 합칠 수
@@ -5104,8 +5117,19 @@ function renderTransferPane(){
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>보유현황 신고(§118의15①④) — 출국일 전날까지 납세관리인·보유현황을 신고하지 않았거나 누락했으면 가산세 2%</b></div>' +
       '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>납세관리인 성명</label><input type="text" id="etTaxManagerName" placeholder="국내 납세관리인"></div>' +
+        '<div class="taxcalc-field"><label>납세관리인 주소</label><input type="text" id="etTaxManagerAddress" placeholder=""></div>' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" id="etHoldingReportNotFiled"><label for="etHoldingReportNotFiled">보유현황을 신고하지 않았거나 누락함</label></div>' +
         '<div class="taxcalc-field"><label>[위 체크시] 액면금액(또는 출자가액)</label><input type="number" id="etFaceValueForPenalty" placeholder="원"></div>' +
+      '</div>' +
+      // [2026.10.06 신규, 재검토115] 법령정보센터 소득세법 시행규칙 서식 전체목록 재대조로
+      // 발견 — 별지104호(보유현황신고서)·별지105호(납부유예신청서)는 각각 독립된 공식서식인데
+      // 지금까지는 안내문구로만 설명하고 실제 서식을 안 만들고 있었다(§118의15①은 "신고해야
+      // 한다"는 필수의무인데 서식조차 없었던 것 — "실행 가능해야 안내문구" 원칙 위반).
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>납부유예 신청(§118의16, 선택) — 담보제공+납세관리인 지정시 실제 양도할 때까지(최장 5년, 국외유학 등 사유는 10년) 납부를 미룰 수 있습니다</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="etDeferralRequested"><label for="etDeferralRequested">납부유예를 신청함</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="etCollateralProvided"><label for="etCollateralProvided">[위 체크시] 납세담보를 제공함</label></div>' +
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-exit-tax">세액 계산하기(국외전출자)</button>' +
       '<div id="taxCalcExitTaxResult"></div>' +
@@ -5991,10 +6015,36 @@ function renderTransferResult(results){
   // 가져다 쓸 수 있게 방금 계산된 납부세액 합계를 저장해둔다 — 손으로 옮겨 적지 않게.
   window.__lastTransferTotalTax = list.every(function(item){ return item.result && !item.result.error; })
     ? list.reduce(function(s, item){ return s + (numVal(item.result.납부세액_합계) || 0); }, 0) : null;
+  // [2026.10.06 신규, 재검토113] 분납(sp) 계산기는 "대표 양도인(첫 번째) 1인" 기준이라
+  // 전체 합계가 아니라 그 사람의 세액만 따로 저장해둔다.
+  window.__lastTransferPrimaryTax = (list[0] && list[0].result && !list[0].result.error) ? (numVal(list[0].result.납부세액_합계) || 0) : null;
   if (list.length > 1 && list.every(function(item){ return item.result && !item.result.error; })){
     const grandTotal = window.__lastTransferTotalTax;
     html += '<div class="taxcalc-result" style="margin-top:10px;">' + taxCalcResultRow('양도인 전체 합계 납부세액', won(grandTotal), { total: true }) + '</div>';
   }
+  box.innerHTML = html;
+}
+
+// [2026.10.06 신규, 재검토113] 양도소득세 분납(§77) — 상속·증여세 분납(sp)과 같은 엔진함수를
+// taxType:'transfer'로 호출한다. 별도 공식 신청서가 없어(law.go.kr 확인) 인쇄서식은 없다.
+let lastTrSplitPaymentInput_ = null;
+let lastTrSplitPaymentResult_ = null;
+function renderTrSplitPaymentResult_(r, input){
+  lastTrSplitPaymentInput_ = input || null;
+  lastTrSplitPaymentResult_ = (r && !r.error) ? r : null;
+  const box = document.getElementById('taxCalcTrSplitPaymentResult');
+  if (!box) return;
+  if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
+  let html = '<div class="taxcalc-result">';
+  html += taxCalcResultRow('분납 가능 여부', r.분납가능여부 ? '가능' : '불가능');
+  if (r.분납가능여부){
+    html += taxCalcResultRow('신고기한까지 납부할 금액', won(r.신고기한까지_납부할금액));
+    html += taxCalcResultRow('분납 가능 최대금액', won(r.분납가능_최대금액), { total: true });
+    html += taxCalcResultRow('분납기한', r.분납기한);
+  }
+  html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  if (r.분납가능여부) html += tcToolSaveButtonHtml_('trsp');
+  html += '</div>';
   box.innerHTML = html;
 }
 
@@ -6221,7 +6271,30 @@ function exitTaxPrintFormPageHtml_(input, r){
     '</table>' +
     '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 국외전출자 국내주식등의 종목·수량 등 양도내역은 직접 보완하세요.</div>' +
   '</div>';
-  return page1 + page2;
+  let k = 0;
+  const page3 = '<div class="pf-page">' +
+    '<div class="pf-formno">소득세법 시행규칙 [별지 제104호서식]</div>' +
+    '<div class="pf-title">국외전출자 국내주식등 보유현황 신고서</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++k, '출국일', input.departureDate) +
+      pfRow_(++k, '납세관리인 성명', input.taxManagerName || '') +
+      pfRow_(++k, '납세관리인 주소', input.taxManagerAddress || '') +
+      pfRow_(++k, '보유 국내주식등 시가(출국일 기준)', won(numVal(input.departureMarketValue) || 0)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다(§118의15①, 출국일 전날까지 신고) — 종목별 수량·취득일 등 상세 보유명세는 직접 보완하세요.</div>' +
+  '</div>';
+  const page4 = input.deferralRequested ? ('<div class="pf-page">' +
+    '<div class="pf-formno">소득세법 시행규칙 [별지 제105호서식]</div>' +
+    '<div class="pf-title">국외전출자 납부유예신청서</div>' +
+    '<table class="pf-table">' +
+      pfRow_(0, '납세관리인 성명', input.taxManagerName || '') +
+      pfRow_(0, '납세담보 제공 여부', input.collateralProvided ? '제공함' : '미확인') +
+      pfRow_(0, '유예 신청세액', won(Math.max(0, (r.납부세액_합계 || 0) - (r.지방소득세 || 0)))) +
+      pfRow_(0, '유예기간', '출국일부터 5년(국외유학 등 사유는 10년) 이내 실제 양도시까지') +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다(§118의16) — 납세담보 제공방법·담보목적물 명세는 직접 보완하세요.</div>' +
+  '</div>') : '';
+  return page1 + page2 + page3 + page4;
 }
 // [2026.10.06 신규, 재검토110] 파생상품등 양도소득세(§94①5호·§104①13호) 결과 렌더링+인쇄.
 let lastDerivativeResult_ = null;
@@ -6533,6 +6606,22 @@ function renderGiftInheritanceSharedPane_(){
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-installment-inheritance">연부연납 계산하기</button>' +
       '<div id="taxCalcInstallmentInheritanceResult"></div>' +
+    '</div>' +
+    '</div>' +
+    // [2026.10.06 신규, 재검토113] 세무사님 지적으로 발견 — 분납(§70②) 계산기는 엔진에 이미
+    // 구현돼 있었는데(calculateInstallmentSplitPaymentLimitJS) 화면 어디에도 연결돼 있지
+    // 않았다(완전한 사각지대). 연부연납(ip, 바로 위)과 짝을 이루는 대안 납부방법이라 바로
+    // 옆에 둔다 — 연부연납을 이미 허가받았으면 중복 적용 불가(엔진이 자동으로 걸러줌).
+    '<div class="taxcalc-subpane" data-subpane="sp" style="' + (giftInheritanceSharedActiveSubtab_ === 'sp' ? '' : 'display:none;') + '">' +
+    '<div class="taxcalc-asset" style="margin-top:20px;">' +
+      '<div class="taxcalc-asset-head"><b>(§70②) — 연부연납을 신청하지 않을 때, 신고기한이 지난 후 2개월 이내로 세액 일부를 나눠 낼 수 있는지 확인합니다(연부연납과 중복 불가)</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>세목</label><select id="spIhTaxType"><option value="inheritance" selected>상속세</option><option value="gift">증여세</option></select></div>' +
+        '<div class="taxcalc-field"><label>납부할 세액</label><input type="number" id="spIhTotal" placeholder="원"><span class="taxcalc-field-help">1천만원 초과해야 분납 가능</span></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="spIhHasInstallment"><label for="spIhHasInstallment">연부연납을 이미 허가받음(중복 불가)</label></div>' +
+      '</div>' +
+      '<button type="button" class="taxcalc-run-btn" data-action="run-split-payment-inheritance">분납 한도 계산하기</button>' +
+      '<div id="taxCalcSplitPaymentResult"></div>' +
     '</div>' +
     '</div>' +
     '<div class="taxcalc-subpane" data-subpane="ck" style="' + (giftInheritanceSharedActiveSubtab_ === 'ck' ? '' : 'display:none;') + '">' +
@@ -7299,6 +7388,29 @@ function renderInstallmentResult(r, boxId){
   box.innerHTML = html;
 }
 
+// [2026.10.06 신규, 재검토113] 분납(§70②) — 별도 공식 신청서가 없다(law.go.kr "분할납부신청서"
+// 전수검색 결과 소득세법·상증세법 시행규칙 어디에도 해당 서식이 없음 확인 — 신고서 본문의
+// "분납할 세액" 란에 금액만 기재하는 방식). 그래서 인쇄서식은 없고 계산결과만 보여준다.
+let lastSplitPaymentInput_ = null;
+let lastSplitPaymentResult_ = null;
+function renderSplitPaymentResult_(r, input){
+  lastSplitPaymentInput_ = input || null;
+  lastSplitPaymentResult_ = (r && !r.error) ? r : null;
+  const box = document.getElementById('taxCalcSplitPaymentResult');
+  if (!box) return;
+  if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
+  let html = '<div class="taxcalc-result">';
+  html += taxCalcResultRow('분납 가능 여부', r.분납가능여부 ? '가능' : '불가능');
+  if (r.분납가능여부){
+    html += taxCalcResultRow('신고기한까지 납부할 금액', won(r.신고기한까지_납부할금액));
+    html += taxCalcResultRow('분납 가능 최대금액', won(r.분납가능_최대금액), { total: true });
+    html += taxCalcResultRow('분납기한', r.분납기한);
+  }
+  html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  if (r.분납가능여부) html += tcToolSaveButtonHtml_('sp');
+  html += '</div>';
+  box.innerHTML = html;
+}
 
 function renderClawbackResult(r){
   const box = document.getElementById('taxCalcClawbackResult');
@@ -7529,12 +7641,38 @@ function bdDeferralPrintPageHtml_(r){
   '</div>';
 }
 
-function renderPropertyInKindStockReceiptResult(r){
+// [2026.10.06 신규, 재검토115] 법령정보센터 상증세법 시행규칙 서식 전체목록 재대조로 발견 —
+// 물납 재산 재평가 신청서(별지13호의2서식, 시행규칙§20의2)는 이 sv 계산기(수납가액 재평가)가
+// 다루는 바로 그 상황(신주발행·감자)에 대한 공식 신청서인데 인쇄가 없었다.
+let lastSvInput_ = null;
+let lastSvResult_ = null;
+function svPrintFormPageHtml_(input, r){
+  if (!input || !r) return '';
+  const CHANGE_TYPE_LABEL_ = { free_increase: '무상증자', paid_increase: '유상증자', free_decrease: '무상감자', paid_decrease: '유상감자' };
+  const heir = (typeof inheritanceHeirs !== 'undefined' && inheritanceHeirs[0]) || {};
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제13호의2서식]</div>' +
+    '<div class="pf-title">물납 재산 재평가 신청서</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '신청인 성명', heir.name || '') +
+      pfRow_(++n, '신청인 주민등록번호', heir.regNo || '') +
+      pfRow_(++n, '구분', CHANGE_TYPE_LABEL_[input.changeType] || '') +
+      pfRow_(++n, '구주식 1주당 과세가액', won(input.oldSharePreChangeValue)) +
+      pfRow_(++n, '재평가 후 구주 1주당 수납가액', won(r.구주1주당수납가액)) +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다(시행규칙§20의2).</div>' +
+  '</div>';
+}
+function renderPropertyInKindStockReceiptResult(r, input){
   const box = document.getElementById('taxCalcPropertyInKindStockReceiptResult');
+  lastSvInput_ = input || null;
+  lastSvResult_ = (r && !r.error) ? r : null;
   if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
   let html = '<div class="taxcalc-result">';
   html += taxCalcResultRow('구주1주당 수납가액', won(r.구주1주당수납가액), { total: true });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
+  html += '<button type="button" class="taxcalc-run-btn" data-action="print-sv" style="margin-top:4px;">🖨 물납재산 재평가신청서 인쇄용 서식 보기</button>' + tcToolSaveButtonHtml_('sv');
   html += '</div>';
   box.innerHTML = html;
 }
@@ -7591,8 +7729,34 @@ function renderPropertyInKindPaymentResult(r, input){
   box.innerHTML = html;
 }
 
-function renderCulturalHeritageTaxDeferralResult(r){
+// [2026.10.06 신규, 재검토115] 법령정보센터 상증세법 시행규칙 서식 전체목록 재대조로 발견 —
+// 징수유예 국가지정문화재등(보유현황명세서, 양도거래신고서)(별지14호의3서식)는 이 ch
+// 계산기(문화유산 징수유예)가 다루는 바로 그 제도의 사후 신고서식인데 인쇄가 없었다.
+let lastChInput_ = null;
+let lastChResult_ = null;
+function chPrintFormPageHtml_(input, r){
+  if (!input || !r) return '';
+  const ITEM_LABEL_ = { cultural_property: '문화유산자료등', museum_material: '박물관자료등', national_heritage: '국가지정문화유산등', natural_monument: '천연기념물등' };
+  const isGift = input.taxType === 'gift';
+  const person = isGift ? ((giftDonees && giftDonees[0]) || {}) : ((typeof inheritanceHeirs !== 'undefined' && inheritanceHeirs[0]) || {});
+  let n = 0;
+  return '<div class="pf-page">' +
+    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제14호의3서식]</div>' +
+    '<div class="pf-title">징수유예 국가지정문화재등 보유현황명세서</div>' +
+    '<table class="pf-table">' +
+      pfRow_(++n, '신청인 성명', person.name || '') +
+      pfRow_(++n, '신청인 주민등록번호', person.regNo || '') +
+      pfRow_(++n, '재산 종류', ITEM_LABEL_[input.itemType] || '') +
+      pfRow_(++n, '징수유예세액', won(r.징수유예세액 || 0)) +
+      pfRow_(++n, '현재 상태', r.상태 || '') +
+    '</table>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다(§74·§75) — 해당 재산을 양도한 경우에는 이 서식을 "양도거래신고서"로 전환해 양도일·양도가액을 직접 보완하세요.</div>' +
+  '</div>';
+}
+function renderCulturalHeritageTaxDeferralResult(r, input){
   const box = document.getElementById('taxCalcCulturalHeritageTaxDeferralResult');
+  lastChInput_ = input || null;
+  lastChResult_ = (r && !r.error) ? r : null;
   if (!r || r.error){ box.innerHTML = '<div class="taxcalc-error">' + ((r && r.error) || '계산 결과가 없습니다.') + '</div>'; return; }
   let html = '<div class="taxcalc-result">';
   html += taxCalcResultRow('상태', r.상태);
@@ -7603,6 +7767,7 @@ function renderCulturalHeritageTaxDeferralResult(r){
     const chTaxType = document.getElementById('chTaxType').value;
     const targetField = chTaxType === 'gift' ? 'giftMuseumDeferred' : 'ihCulturalDeferred';
     html += '<button type="button" class="taxcalc-run-btn" data-action="accumulate-into-field" data-target-field="' + targetField + '" data-target-label="문화재등 징수유예세액" data-amount="' + r.징수유예세액 + '">이 금액을 징수유예세액에 더하기</button>';
+    html += '<button type="button" class="taxcalc-run-btn" data-action="print-ch" style="margin-top:4px;">🖨 보유현황명세서 인쇄용 서식 보기</button>' + tcToolSaveButtonHtml_('ch');
   }
   html += '</div>';
   box.innerHTML = html;
@@ -7790,7 +7955,10 @@ function trBasicRecord_(seller){
   return b;
 }
 
-function trRateDetailRecord_(rateClass, r){ // rateClass: '00'(국세 합계) 또는 '98'(지방소득세, 10% 근사)
+function trRateDetailRecord_(rateClass, r, splitAmt){ // rateClass: '00'(국세 합계) 또는 '98'(지방소득세, 10% 근사)
+  // splitAmt: 분납(§77) 신청금액(국세 기준, 대표 양도인 1인) — trBuildEfileBytes_가 대표
+  // 양도인 레코드에만 넘긴다. 지방소득세(98)는 지방세 영역(위택스)이라 범위 밖 — 적용 안 함.
+  splitAmt = (!splitAmt || rateClass === '98') ? 0 : splitAmt;
   const isLocal = rateClass === '98';
   const localTax = r.지방소득세 || 0;
   // [주의] 아래 소득금액·과세표준은 장기보유(합산그룹) 거래만 반영된 근사치다 — 엔진
@@ -7831,9 +7999,12 @@ function trRateDetailRecord_(rateClass, r){ // rateClass: '00'(국세 합계) �
   b = b.concat(ihPadNum_(가산세_납부, 13));             // 16 가산세-납부불성실
   b = b.concat(ihPadNum_(가산세_계, 13));               // 17 가산세-계
   b = b.concat(ihPadNum_(0, 13));                       // 18 기신고,결정,경정세액
+  // [2026.10.06 수정, 재검토113] 분납(sp/trsp) 계산기가 'transfer' 기준으로 계산한 분납
+  // 신청금액이 있으면(대표 양도인만) 20·21번에 반영한다 — 이전엔 항상 "분납 미지원" 0 고정.
+  const 즉시납부세액 = Math.max(0, 자진납부할세액 - splitAmt);
   b = b.concat(ihPadNum_(자진납부할세액, 13));          // 19 자진납부할 세액
-  b = b.concat(ihPadNum_(0, 13));                       // 20 분납할 세액(분납 미지원)
-  b = b.concat(ihPadNum_(자진납부할세액, 13));          // 21 자진납부세액(분납 없음 — 19와 동일)
+  b = b.concat(ihPadNum_(splitAmt, 13));                // 20 분납할 세액
+  b = b.concat(ihPadNum_(즉시납부세액, 13));            // 21 자진납부세액(분납신청액 제외한 나머지, 분납 없으면 19와 동일)
   b = b.concat(ihPadNum_(0, 13));                       // 22 농어촌특별세_소득세감면세액(엔진 미노출)
   b = b.concat(ihPadNum_(0, 5));                        // 23 농어촌특별세_세율
   b = b.concat(ihPadNum_(0, 13));                       // 24 농어촌특별세_산출세액
@@ -8697,12 +8868,15 @@ const TR_STOCK_FILING_TYPE_ = { domestic_stock: '6', foreign_stock: '7', derivat
 function trBuildEfileBytes_(){
   const buyers = trCollectBuyers_();
   const primarySeller = (transferSellers && transferSellers[0]) || {};
+  // [2026.10.06 신규, 재검토113] 분납(trsp) 계산기는 대표 양도인(idx===0) 1인 기준으로만
+  // 계산한다 — 공동양도인 각자 분납은 범위 밖(UI 안내문 참고).
+  const trSplitAmt = (lastTrSplitPaymentInput_ && lastTrSplitPaymentInput_.taxType === 'transfer' && lastTrSplitPaymentResult_ && lastTrSplitPaymentResult_.분납가능여부) ? (numVal(lastTrSplitPaymentResult_.분납가능_최대금액) || 0) : 0;
   const rows = [];
   (lastTransferResults_ || []).forEach(function(item, idx){
     if (!item.result || item.result.error) return;
     rows.push(trHeadRecord_(item.seller));
     rows.push(trBasicRecord_(item.seller));
-    rows.push(trRateDetailRecord_('00', item.result));
+    rows.push(trRateDetailRecord_('00', item.result, idx === 0 ? trSplitAmt : 0));
     rows.push(trRateDetailRecord_('98', item.result));
     if (idx === 0 && lastOverseasTransferResult_) rows.push(trOverseasRateDetailRecord_(lastOverseasTransferResult_)); // 대표 양도인의 신고서에 국외분 행 추가
     buyers.forEach(function(buyer, i){ rows.push(trBuyerRecord_(buyer, i + 1)); });
@@ -9626,14 +9800,21 @@ function buildIhTaxCalcRecord_(){
   b = b.concat(ihPadNum_(0, 14));                         // 24 신고불성실가산세(규격상 0 고정)
   b = b.concat(ihPadNum_(0, 14));                         // 25 납부지연가산세(규격상 0 고정)
   b = b.concat(ihPadNum_(r.납부세액, 14));                // 26 납부할 세액(합계액) — 엔진 계산값 그대로 신뢰
+  // [2026.10.06 수정, 재검토113] 연부연납(installment)·분납(sp) 계산기는 이미 화면에 있었는데
+  // 이 e-file은 항상 "미신청 가정"으로 0 고정이었다 — 실제로 신청한 사건이면 틀린 파일이
+  // 나가고 있었다. 두 계산기 모두 taxType이 'inheritance'로 맞게 계산된 결과가 있을 때만
+  // 금액을 채운다(일자는 확정승인일을 알 수 없어 공란 유지 — 기존과 동일).
+  const ihInstallmentAmt = (lastInstallmentInput_ && lastInstallmentInput_.taxType === 'inheritance' && lastInstallmentResult_) ? (numVal(lastInstallmentResult_.연부연납대상금액) || 0) : 0;
+  const ihSplitAmt = (lastSplitPaymentInput_ && lastSplitPaymentInput_.taxType === 'inheritance' && lastSplitPaymentResult_ && lastSplitPaymentResult_.분납가능여부) ? (numVal(lastSplitPaymentResult_.분납가능_최대금액) || 0) : 0;
+  const ihCashPaid = Math.max(0, (numVal(r.납부세액) || 0) - ihInstallmentAmt - ihSplitAmt);
   b = b.concat(ihPadChar_('', 8));                        // 27 납부방법_연부연납_일자
-  b = b.concat(ihPadNum_(0, 14));                         // 28 납부방법_연부연납_금액
+  b = b.concat(ihPadNum_(ihInstallmentAmt, 14));          // 28 납부방법_연부연납_금액
   b = b.concat(ihPadChar_('', 8));                        // 29 납부방법_물납_일자
   b = b.concat(ihPadNum_(0, 14));                         // 30 납부방법_물납_금액
   b = b.concat(ihPadChar_('', 8));                        // 31 현금_분납_일자
-  b = b.concat(ihPadNum_(0, 14));                         // 32 현금_분납_금액
+  b = b.concat(ihPadNum_(ihSplitAmt, 14));                // 32 현금_분납_금액
   b = b.concat(ihPadChar_('', 8));                        // 33 현금_신고납부_일자
-  b = b.concat(ihPadNum_(r.납부세액, 14));                // 34 현금_신고납부_금액(분납·연부연납·물납 미신청 가정)
+  b = b.concat(ihPadNum_(ihCashPaid, 14));                // 34 현금_신고납부_금액(연부연납·분납 신청액 제외한 나머지)
   b = b.concat(ihPadNum_(g_('ihBizInheritDeferred'), 14)); // 35 가업상속 납부유예 세액
   b = b.concat(ihPadChar_('', 262));                      // 36 공란
   return b;
@@ -11258,14 +11439,19 @@ function gfTaxCalcRecord_(item, donor){
   b = b.concat(ihPadNum_(0, 13));                           // 29 납부지연가산세(규격상 0 고정)
   b = b.concat(ihPadNum_(r.공익법인등관련가산세, 13));      // 30 공익법인 등 관련가산세
   b = b.concat(ihPadNum_(r.납부세액, 13));                  // 31 자진납부할세액(합계액) — 엔진 계산값 신뢰
+  // [2026.10.06 수정, 재검토113] 상속세(buildIhTaxCalcRecord_)와 동일 수정 — 연부연납·분납
+  // 계산기가 'gift' 기준으로 계산된 결과가 있을 때만 금액을 채운다(일자는 공란 유지).
+  const gfInstallmentAmt = (lastInstallmentInput_ && lastInstallmentInput_.taxType === 'gift' && lastInstallmentResult_) ? (numVal(lastInstallmentResult_.연부연납대상금액) || 0) : 0;
+  const gfSplitAmt = (lastSplitPaymentInput_ && lastSplitPaymentInput_.taxType === 'gift' && lastSplitPaymentResult_ && lastSplitPaymentResult_.분납가능여부) ? (numVal(lastSplitPaymentResult_.분납가능_최대금액) || 0) : 0;
+  const gfCashPaid = Math.max(0, (numVal(r.납부세액) || 0) - gfInstallmentAmt - gfSplitAmt);
   b = b.concat(ihPadChar_('', 8));                          // 32 납부방법_연부연납_일자
-  b = b.concat(ihPadNum_(0, 13));                           // 33 납부방법_연부연납_금액
+  b = b.concat(ihPadNum_(gfInstallmentAmt, 13));            // 33 납부방법_연부연납_금액
   b = b.concat(ihPadChar_('', 8));                          // 34 납부방법_물납_일자
   b = b.concat(ihPadNum_(0, 13));                           // 35 납부방법_물납_금액
   b = b.concat(ihPadChar_('', 8));                          // 36 현금_분납_일자
-  b = b.concat(ihPadNum_(0, 13));                           // 37 현금_분납_금액
+  b = b.concat(ihPadNum_(gfSplitAmt, 13));                  // 37 현금_분납_금액
   b = b.concat(ihPadChar_('', 8));                          // 38 현금_신고납부_일자
-  b = b.concat(ihPadNum_(r.납부세액, 13));                  // 39 현금_신고납부_금액(분납·연부연납·물납 미신청 가정)
+  b = b.concat(ihPadNum_(gfCashPaid, 13));                  // 39 현금_신고납부_금액(연부연납·분납 신청액 제외한 나머지)
   // [2026.09.30 수정, 재검토98] 정밀 재조사에서 발견 — 이 필드는 "잠정 0"이 아니라 전용 필드였다.
   // 증여세전자신고파일설명서(2025년10월) 항목설명: "26.그밖의공제·감면세액 = 40.영농자녀수증농지
   // 감면 + 41.초과배당에대한소득세상당액 결과값과 일치"(검증조건) — 40번이 실제 값을 담는 자리고
@@ -13389,6 +13575,16 @@ const PRINT_REGISTRY_ = [
     isReady: function(){ return !!lastInstallmentResult_; },
     title: function(){ return (lastInstallmentInput_ && lastInstallmentInput_.taxType === 'gift' ? '증여세' : '상속세') + ' 연부연납허가신청서'; },
     bodyFn: function(){ return installmentPrintFormPageHtml_(lastInstallmentInput_, lastInstallmentResult_); } },
+  { key: 'sv', group: '증여·상속 공통', label: '물납 재산 재평가 신청서(시행규칙§20의2)',
+    formNo: '상속세 및 증여세법 시행규칙 [별지 제13호의2서식]',
+    isReady: function(){ return !!lastSvResult_; },
+    title: '물납 재산 재평가 신청서',
+    bodyFn: function(){ return svPrintFormPageHtml_(lastSvInput_, lastSvResult_); } },
+  { key: 'ch', group: '증여·상속 공통', label: '징수유예 국가지정문화재등 보유현황명세서(상증세법§74·§75)',
+    formNo: '상속세 및 증여세법 시행규칙 [별지 제14호의3서식]',
+    isReady: function(){ return !!(lastChResult_ && lastChResult_.징수유예세액); },
+    title: '징수유예 국가지정문화재등 보유현황명세서',
+    bodyFn: function(){ return chPrintFormPageHtml_(lastChInput_, lastChResult_); } },
   { key: 'cr', group: '증여·상속 공통', label: '상속세(증여세) 과세표준 및 세액의 결정(경정)청구서',
     formNo: '상속세 및 증여세법 시행규칙 [별지 제16호서식]',
     isReady: function(){ return !!lastCorrectionClaimInput_; },
@@ -14243,7 +14439,11 @@ function handleTaxCalcClick_(e){
       foreignTaxPaid: numVal(document.getElementById('etForeignTaxPaid').value) || 0,
       nonresidentSourceTaxEquivalent: numVal(document.getElementById('etNonresidentSourceTax').value) || 0,
       holdingReportNotFiled: document.getElementById('etHoldingReportNotFiled').checked,
-      faceValueForPenalty: numVal(document.getElementById('etFaceValueForPenalty').value) || 0
+      faceValueForPenalty: numVal(document.getElementById('etFaceValueForPenalty').value) || 0,
+      taxManagerName: document.getElementById('etTaxManagerName').value,
+      taxManagerAddress: document.getElementById('etTaxManagerAddress').value,
+      deferralRequested: document.getElementById('etDeferralRequested').checked,
+      collateralProvided: document.getElementById('etCollateralProvided').checked
     };
     lastExitTaxInput_ = input;
     renderExitTaxResult(calculateExitTaxJS(input));
@@ -14584,6 +14784,14 @@ function handleTaxCalcClick_(e){
     const el = document.getElementById('mrTotalTax');
     el.value = String(window.__lastTransferTotalTax);
     el.dispatchEvent(new Event('input', { bubbles: true }));
+  } else if (action === 'import-transfer-total-tax-to-sp'){
+    if (window.__lastTransferPrimaryTax == null){ nxAlert_('먼저 위 "세액 계산하기"로 양도소득세를 계산하세요.'); return; }
+    const el = document.getElementById('trSpTotal');
+    el.value = String(window.__lastTransferPrimaryTax);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  } else if (action === 'run-split-payment-transfer'){
+    const input = { taxType: 'transfer', totalTaxAmount: numVal(document.getElementById('trSpTotal').value) || 0 };
+    renderTrSplitPaymentResult_(calculateInstallmentSplitPaymentLimitJS(input), input);
   } else if (action === 'run-museum-relocation'){
     const input = {
       transferDate: document.getElementById('mrTransferDate').value,
@@ -15394,7 +15602,10 @@ function handleTaxCalcClick_(e){
       decreasedSharesPerOldShare: numVal(document.getElementById('svDecreasedSharesPerOld').value) || 0,
       paymentPerDecreasedShare: numVal(document.getElementById('svPaymentPerDecreasedShare').value) || 0
     };
-    renderPropertyInKindStockReceiptResult(calculatePropertyInKindStockReceiptValueJS(input));
+    renderPropertyInKindStockReceiptResult(calculatePropertyInKindStockReceiptValueJS(input), input);
+  } else if (action === 'print-sv'){
+    if (!lastSvResult_){ nxAlert_('먼저 위에서 "수납가액 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('물납 재산 재평가 신청서', svPrintFormPageHtml_(lastSvInput_, lastSvResult_));
   } else if (action === 'run-cultural-heritage-tax-deferral'){
     const input = {
       taxType: document.getElementById('chTaxType').value,
@@ -15404,7 +15615,10 @@ function handleTaxCalcClick_(e){
       eligiblePropertyValue: numVal(document.getElementById('chEligibleProperty').value) || 0,
       triggerEvent: document.getElementById('chTriggerEvent').value
     };
-    renderCulturalHeritageTaxDeferralResult(calculateCulturalHeritageTaxDeferralJS(input));
+    renderCulturalHeritageTaxDeferralResult(calculateCulturalHeritageTaxDeferralJS(input), input);
+  } else if (action === 'print-ch'){
+    if (!lastChResult_){ nxAlert_('먼저 위에서 "징수유예세액 계산하기"를 눌러 계산을 완료하세요.'); return; }
+    openPrintFormWindow_('징수유예 국가지정문화재등 보유현황명세서', chPrintFormPageHtml_(lastChInput_, lastChResult_));
   } else if (action === 'run-gift-special-provision-overlap'){
     const candidates = [];
     for (let i = 1; i <= 4; i++) {
@@ -15442,6 +15656,13 @@ function handleTaxCalcClick_(e){
     lastInstallmentInput_ = input;
     lastInstallmentResult_ = (installmentResult && !installmentResult.error) ? installmentResult : null;
     renderInstallmentResult(installmentResult, 'taxCalcInstallmentInheritanceResult');
+  } else if (action === 'run-split-payment-inheritance'){
+    const input = {
+      taxType: document.getElementById('spIhTaxType').value,
+      totalTaxAmount: numVal(document.getElementById('spIhTotal').value) || 0,
+      hasInstallmentPaymentApproval: !!document.getElementById('spIhHasInstallment').checked
+    };
+    renderSplitPaymentResult_(calculateInstallmentSplitPaymentLimitJS(input), input);
   } else if (action === 'save-tool-result'){
     tcSaveToolResult_(btn.dataset.toolKey);
   } else if (action === 'print-installment'){
@@ -16457,11 +16678,35 @@ const TC_TOOL_STATE_ = {
     set: function(saved){ lastInstallmentInput_ = saved.input || null; lastInstallmentResult_ = saved.result || null; },
     total: function(saved){ return saved.result && saved.result.총납부액_최초포함; }
   },
+  sp: {
+    label: '상속세(증여세) 분납(§70②) 계산',
+    get: function(){ return lastSplitPaymentResult_ ? { input: lastSplitPaymentInput_, result: lastSplitPaymentResult_ } : null; },
+    set: function(saved){ lastSplitPaymentInput_ = saved.input || null; lastSplitPaymentResult_ = saved.result || null; },
+    total: function(saved){ return saved.result && saved.result.분납가능_최대금액; }
+  },
+  trsp: {
+    label: '양도소득세 분납(§77) 계산',
+    get: function(){ return lastTrSplitPaymentResult_ ? { input: lastTrSplitPaymentInput_, result: lastTrSplitPaymentResult_ } : null; },
+    set: function(saved){ lastTrSplitPaymentInput_ = saved.input || null; lastTrSplitPaymentResult_ = saved.result || null; },
+    total: function(saved){ return saved.result && saved.result.분납가능_최대금액; }
+  },
   cr: {
     label: '상속세(증여세) 경정청구서',
     get: function(){ return lastCorrectionClaimInput_ ? { input: lastCorrectionClaimInput_ } : null; },
     set: function(saved){ lastCorrectionClaimInput_ = saved.input || null; },
     total: function(saved){ return saved.input && (saved.input.originalTax - saved.input.correctedTax); }
+  },
+  sv: {
+    label: '물납 재산 재평가 신청서',
+    get: function(){ return lastSvResult_ ? { input: lastSvInput_, result: lastSvResult_ } : null; },
+    set: function(saved){ lastSvInput_ = saved.input || null; lastSvResult_ = saved.result || null; },
+    total: function(saved){ return saved.result && saved.result.구주1주당수납가액; }
+  },
+  ch: {
+    label: '징수유예 국가지정문화재등 보유현황명세서',
+    get: function(){ return lastChResult_ ? { input: lastChInput_, result: lastChResult_ } : null; },
+    set: function(saved){ lastChInput_ = saved.input || null; lastChResult_ = saved.result || null; },
+    total: function(saved){ return saved.result && saved.result.징수유예세액; }
   }
 };
 // 독립 계산기 결과창 맨 끝에 붙이는 공용 저장 버튼 — toolKey는 TC_TOOL_STATE_의 키.
