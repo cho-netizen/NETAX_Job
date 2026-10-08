@@ -66,7 +66,8 @@
   // 구글 응답이 불안정하면 30초). 한 번 받은 결과를 1분간 같이 쓰고, 동시에 같은 요청이 나가면 하나로 합친다.
   // 저장·수정 같은 쓰기 요청이 하나라도 나가면 기억을 지워 다음엔 새로 받는다(오래된 목록이 보이지 않게).
   // 화면이 받은 결과를 고쳐도 다른 화면에 번지지 않도록 매번 복사본을 준다.
-  var CALLGAS_SHARED_READS_ = { work_get_cases: true, client_get_clients: true };
+  // 값 = 응답에 반드시 있어야 하는 목록 이름 — 없으면 기억하지 않고 오류로 처리한다.
+  var CALLGAS_SHARED_READS_ = { work_get_cases: 'cases', client_get_clients: 'clients' };
   var CALLGAS_SHARED_TTL_MS_ = 60000;
   var CALLGAS_READONLY_RE_ = /(^|_)(get|list|search|read|lookup|load|check)/i;
   var callGasShared_ = {};
@@ -75,7 +76,11 @@
     if (CALLGAS_SHARED_READS_[action] && isPlain){
       var hit = callGasShared_[action];
       if (!hit || Date.now() - hit.at > CALLGAS_SHARED_TTL_MS_){
-        hit = { at: Date.now(), promise: callGasRaw_(action, payload) };
+        var listKey = CALLGAS_SHARED_READS_[action];
+        hit = { at: Date.now(), promise: callGasRaw_(action, payload).then(function(res){
+          if (!res || !Array.isArray(res[listKey])) throw new Error('목록을 받지 못했습니다(서버 응답 이상) — 잠시 후 다시 시도하세요.');
+          return res;
+        }) };
         callGasShared_[action] = hit;
         hit.promise.catch(function(){ if (callGasShared_[action] === hit) delete callGasShared_[action]; });
       }

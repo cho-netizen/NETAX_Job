@@ -203,6 +203,8 @@
   .nxai-saved{ margin-top:8px; padding:6px 9px; border-radius:7px; font-size:12.5px; background:var(--success-bg); color:var(--success); }
   .nxai-saved a{ color:inherit; font-weight:700; }
   .nxai-links{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .nxai-local-badge{ display:inline-block; font-size:11px; font-weight:700; color:#1f7a4d; background:var(--success-bg); border-radius:5px; padding:1px 7px; margin-bottom:6px; }
+  html.nx-dark .nxai-local-badge{ background:#173226; color:#8fd6ac; }
   .nxai-confirm{ margin-top:10px; border:1px solid #e8cf8a; background:#fffaf0; border-radius:9px; padding:9px 11px; white-space:normal; }
   .nxai-confirm-head{ font-weight:700; font-size:.95em; color:#7a5300; margin-bottom:4px; }
   .nxai-confirm-body{ font-size:.95em; white-space:pre-wrap; margin-bottom:8px; color:var(--ink); }
@@ -1519,9 +1521,246 @@
     }, extra || {});
   }
 
+  // ============================================================
+  // [2026.10.08] ⚡ 바로 처리기 — job 기능 요청은 AI를 부르지 않고 화면이 직접 처리한다(토큰 0).
+  // ------------------------------------------------------------
+  // 세무사님 원칙: "job의 GAS 도구를 쓰는 데 비싼 토큰을 쓰면 안 된다. 토큰은 고급 전략·판단에만."
+  // 화면 열기·예약/수금/체크리스트 조회·마감 임박·진행 사건·자동계산 시작처럼 문장 패턴이 분명한 요청은
+  // 여기서 정규식으로 알아보고 job의 같은 서버 기능(callGas)·화면 함수(goTo*_)로 바로 처리한다.
+  // 판단이 필요한 말(왜·검토·분석·전략·얼마…)이 있거나, 대상을 하나로 못 정하면 AI로 넘긴다(보수적으로).
+  // 결과에는 [🤖 AI에게 묻기] 버튼이 있어 언제든 같은 질문을 AI에게 넘길 수 있다.
+  // ============================================================
+  var NXAI_LOCAL_VIEWS_ = [
+    [/처리\s*개요/, 'casehandling'], [/법령\s*조회|예규\s*판례/, 'lawsearch'], [/증빙\s*(확보|관리)|사건\s*폴더/, 'docs'],
+    [/세액\s*인쇄|인쇄\s*서식|전자\s*신고\s*파일/, 'print'], [/세액\s*계산/, 'taxcalc'], [/문서\s*작성/, 'reportwriter'],
+    [/작업\s*관리/, 'workmanage'], [/고객\s*관리/, 'clientmanage'], [/예약\s*관리/, 'booking'], [/수금\s*관리/, 'collections'],
+    [/대시\s*보드/, 'dashboard'], [/열람\s*관리/, 'reports'], [/일반\s*메모/, 'memo-text'], [/보고서\s*모음/, 'reporthub']
+  ];
+  var NXAI_LOCAL_OPEN_RE_ = /(열어|열기|보여|띄워|가자|가\s*줘|이동|켜\s*줘|들어가)/;
+  var NXAI_LOCAL_JUDGE_RE_ = /(왜|어떻게|어떤|검토|분석|판단|의견|전략|가능(한|할|해|성)|될까|되나|맞나|맞는지|해석|비교|추천|설명|이유|위험|요약|정리해|작성해|써\s*줘|만들어|고쳐|수정해|얼마|세액은|절세|신고\s*해야)/;
+
+  function nxAiDetectLocal_(text){
+    var t = String(text || '').trim();
+    if (!t || t.length > 60 || NXAI_LOCAL_JUDGE_RE_.test(t)) return null;
+    if (/자동\s*계산/.test(t)){
+      var m = /(양도|증여|상속)/.exec(t);
+      return { kind: 'autocalc', tab: m ? { 양도: 'transfer', 증여: 'gift', 상속: 'inheritance' }[m[1]] : '' };
+    }
+    if (/예약/.test(t) && !/(승인|거절|취소|연결|등록)/.test(t) && /(보여|목록|확인|대기|몇|있어|있나|현황|알려)/.test(t)) return { kind: 'bookings' };
+    if (/(수금|입금|상담\s*(기록|내역|이력)|자문\s*(기록|내역))/.test(t) && !/(추가|등록|기록해|입력)/.test(t)) return { kind: 'logs' };
+    if (/(체크\s*리스트|제출\s*현황|증빙\s*현황)/.test(t) && !/(표시|체크해|완료로|확보로)/.test(t)) return { kind: 'checklist' };
+    if (/(마감|기한|법정일)/.test(t) && /(임박|다가|이번\s*주|곧|지난|넘은|남은|보여|알려|목록)/.test(t)) return { kind: 'deadlines' };
+    if (/진행\s*중/.test(t) && /사건/.test(t) && /(몇|목록|보여|현황|알려)/.test(t)) return { kind: 'active' };
+    for (var i = 0; i < NXAI_LOCAL_VIEWS_.length; i++){
+      if (NXAI_LOCAL_VIEWS_[i][0].test(t) && (NXAI_LOCAL_OPEN_RE_.test(t) || t.length <= 20)) return { kind: 'open', view: NXAI_LOCAL_VIEWS_[i][1] };
+    }
+    return null;
+  }
+
+  function nxAiNorm_(s){ return String(s || '').replace(/\s+/g, ''); }
+  // 문장 속 사건 찾기 — 사건명·고객명·납세자명이 들어 있는 사건. 세목 단어가 있으면 그것으로 좁히고,
+  // 진행 중인 사건을 우선한다. 결과: { list: [후보…] } (0개면 못 찾음, 2개 이상이면 고르게 함)
+  var NXAI_TAX_WORD_ = { 양도: 'transfer', 증여: 'gift', 상속: 'inheritance' };
+  function nxAiFindCases_(text){
+    return callGas('work_get_cases', {}).then(function(res){
+      if (!res || !Array.isArray(res.cases)) throw new Error('사건 목록을 받지 못했습니다 — 잠시 후 다시 시도하세요.');
+      var t = nxAiNorm_(text);
+      var hits = (res.cases || []).filter(function(c){
+        return [c.사건명, c.고객명, c.납세자].some(function(n){ n = nxAiNorm_(n); return n.length >= 2 && t.indexOf(n) !== -1; });
+      });
+      var taxM = /(양도|증여|상속)/.exec(text);
+      if (taxM && hits.length > 1){
+        var narrowed = hits.filter(function(c){ return c.세목 === NXAI_TAX_WORD_[taxM[1]] || String(c.사건명 || '').indexOf(taxM[1]) !== -1; });
+        if (narrowed.length) hits = narrowed;
+      }
+      if (hits.length > 1){
+        var open = hits.filter(function(c){ return c.상태 !== '완료'; });
+        if (open.length) hits = open;
+      }
+      return { list: hits };
+    });
+  }
+  function nxAiFindClient_(text){
+    return callGas('client_get_clients', {}).then(function(res){
+      if (!res || !Array.isArray(res.clients)) throw new Error('고객 목록을 받지 못했습니다 — 잠시 후 다시 시도하세요.');
+      var t = nxAiNorm_(text);
+      var hits = (res.clients || []).filter(function(c){ var n = nxAiNorm_(c.성명); return n.length >= 2 && t.indexOf(n) !== -1; });
+      // 이름이 다른 이름에 포함되는 경우(예: 김순 / 김순희) 가장 긴 이름만
+      var maxLen = hits.reduce(function(m, c){ return Math.max(m, nxAiNorm_(c.성명).length); }, 0);
+      return hits.filter(function(c){ return nxAiNorm_(c.성명).length === maxLen; });
+    });
+  }
+  function nxAiMdTable_(headers, rows){
+    if (!rows.length) return '';
+    var esc = function(v){ return String(v == null ? '' : v).replace(/\|/g, '/').replace(/\n/g, ' '); };
+    return '| ' + headers.join(' | ') + ' |\n|' + headers.map(function(){ return '---'; }).join('|') + '|\n'
+      + rows.map(function(r){ return '| ' + r.map(esc).join(' | ') + ' |'; }).join('\n');
+  }
+  function nxAiTodayStr_(){ var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+
+  // 실행 — 성공하면 { md: 화면에 보일 내용, note: 대화기록에 남길 한 줄, choices: [{label, run}] }, 못 하면 null(→ AI로)
+  function nxAiRunLocal_(intent, text){
+    var VIEW_LABEL = function(v){ return NXAI_VIEW_LABELS_[v] || v; };
+    var pickCase = function(found, onOne, what){
+      if (found.list.length === 1) return onOne(found.list[0]);
+      if (!found.list.length) return null;
+      return { md: '어느 사건인지 골라 주세요(' + what + ').', note: '[⚡바로 처리] 사건 후보 ' + found.list.length + '건 — 선택 대기',
+        choices: found.list.slice(0, 8).map(function(c){ return { label: (c.사건명 || c.고객명) + (c.상태 === '완료' ? ' (완료)' : ''), run: function(){ return onOne(c); } }; }) };
+    };
+    if (intent.kind === 'open'){
+      var needsCase = ['casehandling', 'lawsearch', 'docs', 'taxcalc', 'print', 'reportwriter', 'workmanage'].indexOf(intent.view) !== -1;
+      if (!needsCase){ nxAiOpenJobView_(intent.view); return Promise.resolve({ md: VIEW_LABEL(intent.view) + ' 화면을 열었습니다.', note: '[⚡바로 처리] ' + VIEW_LABEL(intent.view) + ' 화면 열기' }); }
+      return nxAiFindCases_(text).then(function(found){
+        if (!found.list.length){ nxAiOpenJobView_(intent.view); return { md: VIEW_LABEL(intent.view) + ' 화면을 열었습니다(문장에서 사건을 찾지 못해 사건은 화면에서 골라 주세요).', note: '[⚡바로 처리] ' + VIEW_LABEL(intent.view) + ' 열기' }; }
+        return pickCase(found, function(c){
+          nxAiOpenJobView_(intent.view, c.id);
+          return { md: '**' + (c.사건명 || c.고객명) + '** 사건의 ' + VIEW_LABEL(intent.view) + ' 화면을 열었습니다.', note: '[⚡바로 처리] ' + (c.사건명 || '') + ' ' + VIEW_LABEL(intent.view) + ' 열기' };
+        }, VIEW_LABEL(intent.view) + ' 열기');
+      });
+    }
+    if (intent.kind === 'autocalc'){
+      return nxAiFindCases_(text).then(function(found){
+        if (!found.list.length) return null;
+        return pickCase(found, function(c){
+          var tab = intent.tab || ({ transfer: 'transfer', gift: 'gift', inheritance: 'inheritance' }[c.세목] || '');
+          if (!tab) return { md: '**' + c.사건명 + '** — 어느 세목(양도·증여·상속)으로 자동계산할지 함께 말씀해 주세요.', note: '[⚡바로 처리] 자동계산 세목 미지정' };
+          nxAiOpenJobView_('taxcalc', c.id, '', 'autocalc', tab);
+          var tabName = { transfer: '양도소득세', gift: '증여세', inheritance: '상속세' }[tab];
+          return { md: '**' + c.사건명 + '** 사건의 ' + tabName + ' 자동계산을 시작했습니다. 세액계산 화면에서 증빙을 읽어 칸을 채우고, 확인이 필요한 항목은 화면이 직접 묻습니다.', note: '[⚡바로 처리] ' + c.사건명 + ' ' + tabName + ' 자동계산 시작' };
+        }, '자동계산');
+      });
+    }
+    if (intent.kind === 'bookings'){
+      return callGas('list_bookings', {}).then(function(res){
+        if (!res || !Array.isArray(res.bookings)) throw new Error('예약 목록을 받지 못했습니다 — 잠시 후 다시 시도하세요.');
+        var all = res.bookings;
+        var waiting = all.filter(function(b){ return b.status !== '확정' && b.status !== '거절' && b.status !== '취소'; });
+        var today = nxAiTodayStr_();
+        var upcoming = all.filter(function(b){ return b.status === '확정' && b.reservedDate >= today; });
+        var md = '**승인 대기 ' + waiting.length + '건**' + (waiting.length ? '\n\n' + nxAiMdTable_(['신청일', '이름', '희망일시', '내용'], waiting.map(function(b){ return [b.date, b.name, b.reservedDate + ' ' + b.reservedTime, String(b.situation || '').slice(0, 40)]; })) : '')
+          + '\n\n**확정된 앞으로의 예약 ' + upcoming.length + '건**' + (upcoming.length ? '\n\n' + nxAiMdTable_(['일시', '이름', '유형'], upcoming.map(function(b){ return [b.reservedDate + ' ' + b.reservedTime, b.name, b.type]; })) : '');
+        return { md: md, note: '[⚡바로 처리] 예약 조회 — 승인 대기 ' + waiting.length + '건, 앞으로 확정 ' + upcoming.length + '건' };
+      });
+    }
+    if (intent.kind === 'logs'){
+      return nxAiFindClient_(text).then(function(clients){
+        if (clients.length !== 1) return null; // 고객을 하나로 못 정하면 AI로
+        var c = clients[0];
+        return callGas('client_get_consult_logs', { search: c.성명 }).then(function(res){
+          if (!res || !Array.isArray(res.logs)) throw new Error('상담·수금 기록을 받지 못했습니다 — 잠시 후 다시 시도하세요.');
+          var logs = res.logs.filter(function(l){ return l.고객ID === c.id || l.고객명 === c.성명; });
+          var paid = logs.filter(function(l){ return Number(l.금액) > 0; });
+          var sum = paid.reduce(function(s, l){ return s + Number(l.금액 || 0); }, 0);
+          var md = '**' + c.성명 + '** — 기록 ' + logs.length + '건, 수금 ' + paid.length + '건 합계 **' + sum.toLocaleString('ko-KR') + '원**'
+            + (logs.length ? '\n\n' + nxAiMdTable_(['날짜', '유형', '금액', '증빙', '내용'], logs.slice(0, 20).map(function(l){ return [l.날짜, l.유형, l.금액 ? Number(l.금액).toLocaleString('ko-KR') : '', l.수취증빙, String(l.내용 || '').slice(0, 40)]; })) : '')
+            + (logs.length > 20 ? '\n\n(최근 20건만 표시)' : '');
+          return { md: md, note: '[⚡바로 처리] ' + c.성명 + ' 상담·수금 기록 ' + logs.length + '건(수금 합계 ' + sum.toLocaleString('ko-KR') + '원)' };
+        });
+      });
+    }
+    if (intent.kind === 'checklist'){
+      return nxAiFindCases_(text).then(function(found){
+        if (!found.list.length) return null;
+        return pickCase(found, function(c){
+          if (!c.my_report_id) return { md: '**' + c.사건명 + '** — 아직 고객창구(my.netax.kr)에 연결되지 않아 체크리스트가 없습니다.', note: '[⚡바로 처리] ' + c.사건명 + ' 체크리스트 없음' };
+          return callGas('admin_get_case', { report_id: c.my_report_id }).then(function(res){
+            var cs = res && res.case ? res.case : {};
+            var items = cs.checklist || [], st = cs.submission_status || {};
+            var name = function(it){ return typeof it === 'string' ? it : (it && (it.item || it.name || it.label)) || ''; };
+            var done = items.filter(function(it){ return st[name(it)]; });
+            var md = '**' + c.사건명 + '** 체크리스트 — ' + done.length + '/' + items.length + ' 확보\n\n'
+              + items.map(function(it){ var n = name(it); return (st[n] ? '- ✅ ' : '- ⬜ ') + n; }).join('\n');
+            return { md: md, note: '[⚡바로 처리] ' + c.사건명 + ' 체크리스트 ' + done.length + '/' + items.length + ' 확보' };
+          });
+        }, '체크리스트');
+      });
+    }
+    if (intent.kind === 'deadlines' || intent.kind === 'active'){
+      return callGas('work_get_cases', {}).then(function(res){
+        if (!res || !Array.isArray(res.cases)) throw new Error('사건 목록을 받지 못했습니다 — 잠시 후 다시 시도하세요.');
+        var today = nxAiTodayStr_();
+        var limit = new Date(); limit.setDate(limit.getDate() + 14);
+        var limitStr = limit.getFullYear() + '-' + String(limit.getMonth() + 1).padStart(2, '0') + '-' + String(limit.getDate()).padStart(2, '0');
+        var open = (res.cases || []).filter(function(c){ return c.상태 !== '완료'; });
+        if (intent.kind === 'active'){
+          var act = open.filter(function(c){ return c.상태 === '진행'; });
+          return { md: '**진행 중 ' + act.length + '건** (보류 ' + open.filter(function(c){ return c.상태 === '보류'; }).length + '건 별도)\n\n' + nxAiMdTable_(['사건', '법정일'], act.map(function(c){ return [c.사건명 || c.고객명, c.법정일 || '']; })),
+            note: '[⚡바로 처리] 진행 중 사건 ' + act.length + '건' };
+        }
+        var due = open.filter(function(c){ return c.법정일 && c.법정일 <= limitStr; }).sort(function(a, b){ return String(a.법정일).localeCompare(String(b.법정일)); });
+        var over = due.filter(function(c){ return c.법정일 < today; });
+        return { md: '**마감 임박·경과 ' + due.length + '건** (기한 지남 ' + over.length + '건, 오늘부터 14일 이내 포함)\n\n' + nxAiMdTable_(['법정일', '사건', '상태'], due.map(function(c){ return [(c.법정일 < today ? '⚠️ ' : '') + c.법정일, c.사건명 || c.고객명, c.상태]; })),
+          note: '[⚡바로 처리] 마감 임박 ' + due.length + '건(기한 지남 ' + over.length + '건)' };
+      });
+    }
+    return Promise.resolve(null);
+  }
+
+  // 바로 처리 결과를 말풍선에 그린다(⚡ 표시 + 후보 고르기 버튼 + AI에게 묻기 버튼).
+  function nxAiRenderLocal_(bubble, res, text){
+    bubble.innerHTML = '<div class="nxai-local-badge">⚡ 바로 처리 · AI 미사용(토큰 0)</div><div class="nxai-md">' + nxAiMd_(res.md) + '</div>';
+    var links = document.createElement('div');
+    links.className = 'nxai-links';
+    (res.choices || []).forEach(function(ch){
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'nxai-btn'; b.textContent = ch.label;
+      b.addEventListener('click', function(){
+        Promise.resolve(ch.run()).then(function(r2){ if (r2) nxAiRenderLocal_(bubble, r2, text); });
+      });
+      links.appendChild(b);
+    });
+    var ask = document.createElement('button');
+    ask.type = 'button'; ask.className = 'nxai-btn'; ask.textContent = '🤖 AI에게 묻기';
+    ask.title = '같은 질문을 AI에게 넘깁니다(토큰 사용)';
+    ask.addEventListener('click', function(){ if (!nxAiAbort) nxAiSendAI_(text); });
+    links.appendChild(ask);
+    bubble.appendChild(links);
+    // 대화기록에는 요약 한 줄 + 결과표(최대 3천 자)를 남긴다 — 이어서 "이 중 ○○ 건 검토해줘"라고 AI에게 물으면
+    // AI가 이 결과를 보고 판단한다(조회는 토큰 0, 판단에만 토큰). 결과가 길면 앞부분만.
+    if (bubble._nxMsgRef){
+      var body = String(res.md || '');
+      bubble._nxMsgRef.content = (res.note || '[⚡바로 처리]') + '\n' + (body.length > 3000 ? body.slice(0, 3000) + '\n…(이하 생략)' : body);
+    }
+  }
+
   function nxAiSend_(){
     var input = nxAiEl_('nxAiInput');
     var text = input.value.trim();
+    if (!text || nxAiAbort) return;
+    // 첨부가 있으면 AI가 봐야 하므로 바로 처리하지 않는다.
+    if (nxAiPendingFiles.length || nxAiPendingImages.length) return nxAiSendAI_();
+    var intent = nxAiDetectLocal_(text);
+    if (!intent) return nxAiSendAI_();
+    input.value = ''; input.style.height = 'auto';
+    nxAiPhoneTab_('chat');
+    var userMsg = { role: 'user', content: text };
+    nxAiConv.messages.push(userMsg);
+    var ub = nxAiAppendBubble_('user', text);
+    ub._nxMsgRef = userMsg;
+    var bubble = nxAiAppendBubble_('assistant', '⚡ 처리 중…');
+    var aiMsg = { role: 'assistant', content: '[⚡바로 처리]' };
+    bubble._nxMsgRef = aiMsg;
+    nxAiRunLocal_(intent, text).then(function(res){
+      if (!res){
+        // 대상을 정하지 못함 — 이 질문은 AI에게 넘긴다(방금 넣은 말풍선·기록은 걷어낸다).
+        var i = nxAiConv.messages.indexOf(userMsg); if (i !== -1) nxAiConv.messages.splice(i, 1);
+        ub.remove(); bubble.remove();
+        nxAiSendAI_(text);
+        return;
+      }
+      nxAiConv.messages.push(aiMsg);
+      nxAiRenderLocal_(bubble, res, text);
+      nxAiScheduleSave_();
+    }).catch(function(err){
+      bubble.textContent = '바로 처리 중 오류: ' + (err && err.message ? err.message : err);
+      var i = nxAiConv.messages.indexOf(userMsg); if (i !== -1) nxAiConv.messages.splice(i, 1);
+      if (typeof nxLogBug_ === 'function') nxLogBug_({ kind: 'local', where: '바로 처리(' + intent.kind + ')', message: String(err && err.message || err), detail: text });
+    });
+  }
+
+  function nxAiSendAI_(forcedText){
+    var input = nxAiEl_('nxAiInput');
+    var text = (forcedText || input.value).trim();
     if (!text || nxAiAbort) return;
     if (nxAiApiSecret === null){ nxAiToast_('아직 준비 중입니다 — 잠시 후 다시 시도해주세요.'); return; }
 
