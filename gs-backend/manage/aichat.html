@@ -375,7 +375,16 @@
   // ↑ HtmlService 콘텐츠는 별도 샌드박스 iframe(googleusercontent.com)에서 돌아 location으로
   //   주소를 유도할 수 없다(예전 aisidebar.html에서 확인된 사실) — 실제 exec 주소를 직접 쓴다.
   var NXAI_MAX_ROUNDS = 14;             // work chat.js의 CLIENT_MAX_TOOL_ROUNDS 그대로
-  var NXAI_MAX_MESSAGES = 200;          // Code.js AI_CONV_MAX_MESSAGES_와 같은 값
+  var NXAI_MAX_MESSAGES = 200;          // 저장·화면 표시 한도 — Code.js AI_CONV_MAX_MESSAGES_와 같은 값
+  // [2026.10.08] AI에게 보내는 대화는 최근 60개만(work chat.js CHAT_HISTORY_MAX_MESSAGES와 같은 기준) —
+  // 처음엔 저장 한도(200개)를 그대로 보내서, 대화가 길어질수록 질문 1번에 드는 토큰이 work보다 커졌다.
+  var NXAI_REQUEST_MAX_MESSAGES = 60;
+  function nxAiTrimForRequest_(msgs){
+    var out = msgs.slice(-NXAI_REQUEST_MAX_MESSAGES);
+    // API는 첫 메시지가 사용자 발화여야 한다 — 잘린 앞부분이 AI 답변으로 시작하면 하나 더 뺀다.
+    while (out.length && out[0].role !== 'user') out.shift();
+    return out;
+  }
   var nxAiApiSecret = null;
   var nxAiMode = 'side';
   var nxAiConv = nxAiBlankConv_();      // { id, title, caseId, caseName, caseFolderId, casePath, messages }
@@ -1348,7 +1357,8 @@
   function nxAiSaveSettings_(){ nxAiLs_(NXAI_SETTINGS_KEY, JSON.stringify(nxAiSettings)); }
 
   // 세무 조문·계산 등 어려운 판단이 필요해 보이면 Sonnet(높음), 그 외엔 Haiku(보통) — work와 같은 규칙.
-  var NXAI_COMPLEX_RE = /(양도소득세|증여세|상속세|취득세|재산세|종합소득세|법인세|부가가치세|세법|시행령|시행규칙|판례|예규|조문|§|비과세|감면|공제|과세표준|세율|절세|불복|경정청구|가업승계|명의신탁|특수관계자|평가액|법정상속분|유류분|부담부증여|이월과세|양도차익|세액|계산)/;
+  // work chat.js AUTO_MODEL_COMPLEX_RE와 똑같이 유지(토큰 절약 기준을 work와 맞춤 — 단어를 더 넣으면 비싼 모델로 가는 질문이 늘어난다)
+  var NXAI_COMPLEX_RE = /(양도소득세|증여세|상속세|취득세|재산세|종합소득세|법인세|부가가치세|세법|시행령|시행규칙|판례|예규|조문|§|비과세|감면|공제|과세표준|세율|절세|불복|경정청구|가업승계|명의신탁|특수관계자|평가액|법정상속분|유류분|부담부증여|이월과세|양도차익)/;
   function nxAiPickAutoModel_(text){
     if (NXAI_COMPLEX_RE.test(text || '')) return { model: 'claude-sonnet-5', effort: 'high' };
     return { model: 'claude-haiku-4-5-20251001', effort: 'medium' };
@@ -1537,7 +1547,7 @@
       var imageBlocks = images.map(function(img){ return nxAiParseDataUrl_(img.dataUrl); }).filter(Boolean)
         .map(function(p){ return { type: 'image', source: { type: 'base64', media_type: p.mimeType, data: p.base64 } }; });
       var extra = [].concat(mediaBlock ? [mediaBlock] : [], imageBlocks);
-      var requestMessages = nxAiConv.messages.slice();
+      var requestMessages = nxAiTrimForRequest_(nxAiConv.messages);
       if (extra.length) requestMessages[requestMessages.length - 1] = { role: 'user', content: [{ type: 'text', text: text }].concat(extra) };
       var convAtSend = nxAiConv;
       return nxAiRunTurn_(requestMessages, {
@@ -1621,7 +1631,7 @@
       var editTarget = (openFileCtx && typeof openFileCtx.liveContent === 'string') ? Object.assign({}, nxAiPreviewFile) : null;
       var convAtSend = nxAiConv;
       nxAiAbort = new AbortController(); nxAiSetBusy_(true);
-      nxAiRunTurn_(nxAiConv.messages.slice(), {
+      nxAiRunTurn_(nxAiTrimForRequest_(nxAiConv.messages), {
         thinkingBubble: thinking, signal: nxAiAbort.signal,
         context: nxAiBuildContext_({ openFile: openFileCtx }),
         settingsPayload: nxAiBuildSettingsPayload_(lastUser),
