@@ -3156,6 +3156,132 @@ function runUiEngineCalcTool_(name, input) {
   return result;
 }
 
+// ============================================================
+// [2026.10.08] job AI탭 — 대화 저장소
+// ------------------------------------------------------------
+// work.netax.kr은 사건 폴더마다 _대화기록.json 하나만 두는 방식이라 사건당 대화가 1개뿐이었고,
+// 사건이 아닌 일반 대화는 저장되지 않았다. job AI탭은 대화마다 파일 1개를 기본폴더(사건 폴더들이
+// 있는 곳) 아래 "_AI대화기록" 폴더에 두고, 목록은 같은 폴더의 _목록.json 하나로 관리한다.
+// 대화마다 사건(caseId·폴더ID)을 연결할 수 있고 한 사건에 여러 대화도 가능하다. "_"로 시작하는
+// 폴더라 AI의 자동참조 대상에서도 빠진다.
+// ============================================================
+const AI_CONV_FOLDER_NAME_ = '_AI대화기록';
+const AI_CONV_INDEX_NAME_ = '_목록.json';
+const AI_CONV_MAX_MESSAGES_ = 200; // 너무 길어지면 매 요청 토큰이 누적되므로 최근 것만 보관(화면에서도 같은 기준)
+
+function ai_convFolder_() {
+  const root = getDefaultFolder();
+  const it = root.getFoldersByName(AI_CONV_FOLDER_NAME_);
+  return it.hasNext() ? it.next() : root.createFolder(AI_CONV_FOLDER_NAME_);
+}
+
+function ai_convReadIndex_(folder) {
+  const it = folder.getFilesByName(AI_CONV_INDEX_NAME_);
+  if (!it.hasNext()) return { file: null, list: [] };
+  const file = it.next();
+  try {
+    const list = JSON.parse(file.getBlob().getDataAsString('UTF-8') || '[]');
+    return { file: file, list: Array.isArray(list) ? list : [] };
+  } catch (err) {
+    return { file: file, list: [] };
+  }
+}
+
+function ai_convWriteIndex_(folder, idx, list) {
+  const text = JSON.stringify(list);
+  if (idx.file) idx.file.setContent(text);
+  else folder.createFile(AI_CONV_INDEX_NAME_, text, 'application/json');
+}
+
+function ai_convList() {
+  const folder = ai_convFolder_();
+  const list = ai_convReadIndex_(folder).list.slice();
+  list.sort(function (a, b) { return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); });
+  // folderId — 사건이 연결되지 않은 대화에서 내 컴퓨터 파일을 올릴 때 이 폴더에 둔다.
+  return { success: true, conversations: list, folderId: folder.getId() };
+}
+
+function ai_convLoad(body) {
+  if (!body.id) return { error: '대화 id가 없습니다.' };
+  const folder = ai_convFolder_();
+  const entry = ai_convReadIndex_(folder).list.find(function (c) { return c.id === body.id; });
+  if (!entry || !entry.fileId) return { error: '대화를 찾을 수 없습니다.' };
+  try {
+    const conv = JSON.parse(DriveApp.getFileById(entry.fileId).getBlob().getDataAsString('UTF-8'));
+    return { success: true, conversation: conv };
+  } catch (err) {
+    return { error: '대화를 불러오지 못했습니다: ' + err.message };
+  }
+}
+
+// body.conversation = { id?, title, caseId?, caseName?, caseFolderId?, messages:[{role, content}] }
+function ai_convSave(body) {
+  const c = body.conversation || {};
+  if (!Array.isArray(c.messages)) return { error: '저장할 대화 내용이 없습니다.' };
+  return withLock_(10000, function () {
+    const folder = ai_convFolder_();
+    const idx = ai_convReadIndex_(folder);
+    const id = c.id || ('c' + Date.now() + Math.random().toString(36).slice(2, 6));
+    const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss");
+    const conv = {
+      id: id,
+      title: String(c.title || '새 대화').slice(0, 60),
+      caseId: c.caseId || '',
+      caseName: c.caseName || '',
+      caseFolderId: c.caseFolderId || '',
+      updatedAt: now,
+      messages: c.messages.slice(-AI_CONV_MAX_MESSAGES_)
+    };
+    let entry = idx.list.find(function (e) { return e.id === id; });
+    let fileId = entry && entry.fileId;
+    const text = JSON.stringify(conv);
+    try {
+      if (fileId) DriveApp.getFileById(fileId).setContent(text);
+      else fileId = folder.createFile(id + '.json', text, 'application/json').getId();
+    } catch (err) {
+      // 파일이 지워졌거나 접근 불가하면 새로 만든다(목록과 실제 파일이 어긋난 경우 자동 복구)
+      fileId = folder.createFile(id + '.json', text, 'application/json').getId();
+    }
+    const meta = { id: id, title: conv.title, caseId: conv.caseId, caseName: conv.caseName, caseFolderId: conv.caseFolderId, updatedAt: now, count: conv.messages.length, fileId: fileId };
+    if (entry) Object.assign(entry, meta); else idx.list.push(meta);
+    ai_convWriteIndex_(folder, idx, idx.list);
+    return { success: true, id: id, updatedAt: now };
+  });
+}
+
+function ai_convRename(body) {
+  if (!body.id || !body.title) return { error: '대화 id와 새 제목이 필요합니다.' };
+  return withLock_(10000, function () {
+    const folder = ai_convFolder_();
+    const idx = ai_convReadIndex_(folder);
+    const entry = idx.list.find(function (e) { return e.id === body.id; });
+    if (!entry) return { error: '대화를 찾을 수 없습니다.' };
+    entry.title = String(body.title).slice(0, 60);
+    try {
+      const f = DriveApp.getFileById(entry.fileId);
+      const conv = JSON.parse(f.getBlob().getDataAsString('UTF-8'));
+      conv.title = entry.title;
+      f.setContent(JSON.stringify(conv));
+    } catch (err) { /* 목록 제목만이라도 바꾼다 */ }
+    ai_convWriteIndex_(folder, idx, idx.list);
+    return { success: true };
+  });
+}
+
+// 휴지통으로 보낸다(드라이브 휴지통에서 30일간 복구 가능 — 영구삭제 아님).
+function ai_convDelete(body) {
+  if (!body.id) return { error: '대화 id가 없습니다.' };
+  return withLock_(10000, function () {
+    const folder = ai_convFolder_();
+    const idx = ai_convReadIndex_(folder);
+    const entry = idx.list.find(function (e) { return e.id === body.id; });
+    if (!entry) return { error: '대화를 찾을 수 없습니다.' };
+    try { DriveApp.getFileById(entry.fileId).setTrashed(true); } catch (err) { }
+    ai_convWriteIndex_(folder, idx, idx.list.filter(function (e) { return e.id !== body.id; }));
+    return { success: true };
+  });
+}
+
 /**
  * 문서수정·관계도수정·폴더이동 — 지금까지 <<<EDIT_DOCUMENT>>> 같은 텍스트 마커로 처리하던
  * 세 가지를, 다른 12개 도구와 동일한 방식(tool_use)으로 통일한 것.
@@ -3164,7 +3290,30 @@ function runUiEngineCalcTool_(name, input) {
  */
 function getClientActionTools_(ctx) {
   const tools = [];
-  if (ctx && ctx.openFile && typeof ctx.openFile.liveContent === 'string') {
+  // [2026.10.08] job AI탭(ctx.aiPanel)에서는 "바뀌는 부분만" 보내는 edits 방식을 추가로 연다 —
+  // 문서 전체(content)를 다시 쓰게 하면 1만 9천 자 문서의 제목 한 줄을 바꾸는 데도 6분이 넘게
+  // 걸렸다(실측, Apps Script 6분 한도에 거의 닿음). edits는 서버가 지금 열린 원문(liveContent)에
+  // 직접 적용해서 완성본을 만들어 화면에 넘기므로, 화면 쪽 처리(edit_document)는 그대로다.
+  // work.netax.kr(aiPanel 없음)은 기존 content 방식 그대로 둔다.
+  if (ctx && ctx.aiPanel && ctx.openFile && typeof ctx.openFile.liveContent === 'string') {
+    tools.push({
+      name: 'apply_document_edit',
+      description: '지금 미리보기 칸에 열려 있는 문서의 수정안을 사용자에게 제시한다. 사용자가 "이 문서 고쳐줘"처럼 명확히 문서 수정을 요청했을 때만 호출하라. 호출해도 즉시 저장되지 않는다 — 사용자가 화면에서 "이 수정안으로 저장" 버튼을 눌러야 실제로 반영된다. '
+        + '일부만 고칠 때는 반드시 edits(바꿀 부분 목록)를 써라 — 문서 전체를 다시 쓰면 매우 느리다. edits의 find는 원문에 정확히 한 번만 나오는 구절이어야 하며(앞뒤 문맥을 조금 더 넣어 유일하게 만들 것), 위에서부터 순서대로 적용된다. '
+        + '문서를 처음부터 새로 쓰다시피 크게 바꿀 때만 content(문서 전체 새 내용)를 써라. 둘 중 하나만 쓴다.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          edits: {
+            type: 'array',
+            description: '바꿀 부분 목록. 각 항목: find=원문에서 찾을 구절(정확히 일치, 원문에 한 번만 나와야 함), replace=바꿀 내용(삭제는 빈 문자열).',
+            items: { type: 'object', properties: { find: { type: 'string' }, replace: { type: 'string' } }, required: ['find', 'replace'] }
+          },
+          content: { type: 'string', description: '문서를 거의 새로 쓸 때만 — 수정된 문서 전체 내용' }
+        }
+      }
+    });
+  } else if (ctx && ctx.openFile && typeof ctx.openFile.liveContent === 'string') {
     tools.push({
       name: 'apply_document_edit',
       description: '지금 편집기에 열려 있는 문서 전체를 새 버전으로 교체하는 수정안을 사용자에게 제시한다. 사용자가 "이 문서 고쳐줘"처럼 명확히 문서 수정을 요청했을 때만 호출하라. 호출해도 즉시 저장되지 않는다 — 사용자가 화면에서 "적용하기" 버튼을 직접 눌러야 실제로 반영된다(되돌리기 어려운 작업이라 반드시 사용자 확인을 거치도록 설계됨). content는 부분 수정이 아니라 문서 전체의 새 내용이어야 한다.',
@@ -3259,6 +3408,13 @@ function dispatchClientAction_(body) {
   if (WORK_ACTIONS.indexOf(body.action) !== -1) {
     return jsonResponse(work_doPost(body));
   }
+
+  // [2026.10.08] job AI탭 대화 저장소(ai_conv* 위 설명 참고)
+  if (body.action === 'ai_conv_list') return jsonResponse(ai_convList());
+  if (body.action === 'ai_conv_load') return jsonResponse(ai_convLoad(body));
+  if (body.action === 'ai_conv_save') return jsonResponse(ai_convSave(body));
+  if (body.action === 'ai_conv_rename') return jsonResponse(ai_convRename(body));
+  if (body.action === 'ai_conv_delete') return jsonResponse(ai_convDelete(body));
 
   // [2026.09] law 모듈 — 법령예규판례 검색(AI 경유 없이 화면에서 직접 조회). toolSearchTaxPrecedent/
   // toolGetTaxPrecedentDetail은 원래 AI 도구용 상태없는 함수라 그대로 재사용, 사건 첨부는
@@ -3652,10 +3808,22 @@ function buildContextSystemPrompt(basePrompt, body) {
   // 물어본 마감임박 안내까지 덧붙이는("오지랍") 문제가 확인됐다 — 요청한 것만 간결히 답하라고
   // 명시한다. ctx.currentView가 있을 때만(=이 사이드바에서 온 요청일 때만) 적용되므로 기존
   // 채팅앱(work.netax.kr)의 답변 스타일에는 영향이 없다.
+  // [2026.10.08] job AI탭 — 같은 AI 화면이 넓은 "AI탭"(ctx.aiPanel==='tab')과 좁은 사이드바를
+  // 오간다. 간결 답변 규칙은 사이드바일 때만 적용하고, AI탭에서는 work.netax.kr 채팅과 같이
+  // 충분히 분석해서 답하게 한다. 대화에 연결된 사건이 있으면 그 사건을 알려준다.
   if (ctx.currentView) {
-    dynamicExtra += '\n\n[현재 화면] 사용자는 지금 관리 앱(my.netax.kr)의 "' + ctx.currentView + '" 화면을 보고 있다.';
-    dynamicExtra += '\n[답변 스타일] 이건 화면 옆 좁은 사이드바 대화다 — 물어본 것에만 짧고 간결하게 답하라. ' +
-      '개수·여부를 물었으면 숫자·결론부터 말하고, 표·전체 목록·추가 분석·안 물어본 주의사항은 사용자가 더 요청하기 전엔 먼저 나열하지 마라.';
+    if (ctx.aiPanel === 'tab') {
+      dynamicExtra += '\n\n[현재 화면] 사용자는 업무 관리 앱(job)의 AI탭(전체 화면 대화)에서 묻고 있다. 필요한 만큼 충분히 분석해서 답하라.';
+    } else {
+      dynamicExtra += '\n\n[현재 화면] 사용자는 지금 업무 관리 앱(job)의 "' + ctx.currentView + '" 화면을 보고 있다.';
+      dynamicExtra += '\n[답변 스타일] 이건 화면 옆 좁은 사이드바 대화다 — 물어본 것에만 짧고 간결하게 답하라. ' +
+        '개수·여부를 물었으면 숫자·결론부터 말하고, 표·전체 목록·추가 분석·안 물어본 주의사항은 사용자가 더 요청하기 전엔 먼저 나열하지 마라.';
+    }
+  }
+  if (ctx.linkedCase && ctx.linkedCase.name) {
+    dynamicExtra += '\n[이 대화에 연결된 사건] "' + ctx.linkedCase.name + '"'
+      + (ctx.linkedCase.id ? ' (작업관리 사건ID: ' + ctx.linkedCase.id + ')' : '')
+      + ' — 사건 폴더는 위 [현재 화면 상태]의 위치다. 사용자가 특정하지 않으면 이 사건에 대한 질문으로 보고 그 폴더의 자료부터 확인하라.';
   }
 
   if (ctx.openFile && ctx.openFile.name) {
@@ -3664,6 +3832,11 @@ function buildContextSystemPrompt(basePrompt, body) {
     if (typeof ctx.openFile.liveContent === 'string') {
       dynamicExtra += '\n\n[지금 편집기에 실시간으로 열려 있는 문서 내용 — 저장 여부와 무관하게 이게 최신 상태다. read_drive_file로 다시 읽을 필요 없음]\n'
         + '-----\n' + ctx.openFile.liveContent + '\n-----';
+      if (ctx.aiPanel) {
+        dynamicExtra += '\n\n[job AI — 문서 수정 방식] 이 문서는 AI탭 오른쪽 미리보기 칸에 열려 있다. 고칠 때는 apply_document_edit의 edits(바꿀 부분만)를 써라 — '
+          + '이 경우에 한해 위의 "content 생략 금지" 규칙은 적용되지 않는다(edits를 쓰면 content는 비워둔다). 문서를 거의 새로 쓸 때만 content를 쓴다. '
+          + '사용자에게는 "미리보기 칸의 [이 수정안으로 저장]을 누르면 반영된다"고 안내하라.';
+      }
       dynamicExtra += '\n\n[중요] 지금 편집기에 열려 있는 바로 이 문서를 고치거나, 이 문서를 바탕으로 새로 정리해달라는 요청이면 — save_file_to_folder로 조용히 덮어쓰지 말고 반드시 apply_document_edit 도구를 사용하라(도구 설명 참고). save_file_to_folder를 쓰면 사용자가 "편집기에 적용하기" 버튼을 못 받아서 편집기 화면이 갱신 안 된 채로 남는다. 완전히 다른 새 파일을 만드는 경우(지금 열려있는 문서와 무관한 별도 파일)에만 save_file_to_folder를 써라. 문서 수정을 요청한 게 아니라면 둘 다 쓰지 마라.';
     } else if (ctx.openFile.mimeType && (ctx.openFile.mimeType.indexOf('image/') === 0 || ctx.openFile.mimeType === 'application/pdf')) {
       dynamicExtra += '\n이 파일은 이미지 또는 PDF 뷰어로 열려 있다. 사용자 메시지에 이 파일 자체가 이미지/문서 블록으로 이미 첨부되어 있을 수 있으니, 그 내용을 직접 보고 판단해서 답하라.';
@@ -14617,6 +14790,31 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
       // 쌓아두기만 하고, Claude에게는 "요청이 접수됐다"는 합성 결과만 돌려줘서 대화를 이어가게 한다. ----
       if (block.name === 'apply_document_edit') {
         const input = block.input || {};
+        // [2026.10.08] job AI탭의 edits(부분 수정) — 지금 열린 원문에 서버가 직접 적용해 완성본을 만든다.
+        // find가 원문에 없거나 여러 번 나오면 엉뚱한 곳이 바뀔 수 있으므로 적용하지 않고 AI에게 되돌려준다.
+        if (Array.isArray(input.edits) && input.edits.length) {
+          const live = body.context && body.context.openFile && typeof body.context.openFile.liveContent === 'string'
+            ? body.context.openFile.liveContent : null;
+          if (live === null) {
+            return { type: 'tool_result', tool_use_id: block.id, is_error: true, content: '지금 열린 문서 내용이 없어 부분 수정을 적용할 수 없습니다. 사용자에게 미리보기 칸에 문서를 열어달라고 하세요.' };
+          }
+          let text = live;
+          const problems = [];
+          input.edits.forEach(function (ed, i) {
+            const find = String((ed && ed.find) || '');
+            const replace = String((ed && ed.replace) || '');
+            if (!find) { problems.push((i + 1) + '번: find가 비어 있음'); return; }
+            const first = text.indexOf(find);
+            if (first === -1) { problems.push((i + 1) + '번: 원문에서 찾을 수 없음 — "' + find.slice(0, 60) + '"'); return; }
+            if (text.indexOf(find, first + find.length) !== -1) { problems.push((i + 1) + '번: 원문에 여러 번 나옴(앞뒤 문맥을 더 넣어 유일하게) — "' + find.slice(0, 60) + '"'); return; }
+            text = text.slice(0, first) + replace + text.slice(first + find.length);
+          });
+          if (problems.length) {
+            return { type: 'tool_result', tool_use_id: block.id, is_error: true, content: '수정안을 적용하지 않았습니다. 다음 항목을 고쳐 edits 전체를 다시 보내세요: ' + problems.join(' / ') };
+          }
+          clientActions.push({ type: 'edit_document', content: text });
+          return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ status: 'prepared', 적용한_수정: input.edits.length + '곳', note: '사용자 화면에 수정안이 표시되었습니다. 실제 저장은 사용자가 버튼을 눌러야 이루어집니다.' }) };
+        }
         clientActions.push({ type: 'edit_document', content: input.content || '' });
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ status: 'prepared', note: '사용자 화면에 적용 버튼과 함께 제시되었습니다. 실제 반영은 사용자가 버튼을 눌러야 이루어집니다.' }) };
       }

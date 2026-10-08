@@ -32,7 +32,7 @@
 
 ### 이 저장소의 배포 ID
 배포 ID = AKfycbyFbvXiV6rSzCvhtc_T2WrzNF5ZxhOFWtSSsgzSavzPbjv4LBGhjXhu_Q2_8m-PDj8s
-(`gs-backend/manage/aisidebar.html`의 `AI_SB_GAS_URL`, 리다이렉트 `index.html`의 대상 주소와
+(`gs-backend/manage/aichat.html`의 `NXAI_GAS_URL`, 리다이렉트 `index.html`의 대상 주소와
 동일한 ID인지 항상 확인할 것 — 다르면 잘못된 배포에 올리는 것임)
 
 `NETAX_Work`/`NETAX_Work-staging`도 여전히 같은 scriptId/배포ID를 쓴다(뒷단 로직 공유,

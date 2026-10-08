@@ -52,6 +52,9 @@
       <div id="sideMenuInner">
         <div class="menu-brand">NETAX</div>
 
+        <!-- [2026.10.08] job AI탭 — 메뉴 맨 위(세무사님 지정). aichat.html 참고 -->
+        <div class="menu-item" data-view="ai">🤖 AI</div>
+
         <div class="menu-group-label">관리</div>
         <div class="menu-item active" data-view="dashboard">📊 대시보드</div>
         <div class="menu-item" data-view="booking">📅 예약관리</div>
@@ -80,6 +83,8 @@
     </nav>
 
     <main id="centerWork">
+      <!-- [2026.10.08] AI탭 — aichat.html의 AI 화면(#nxAi)이 이 메뉴를 열면 여기로, 다른 메뉴에선 오른쪽 사이드바로 옮겨간다 -->
+      <div class="view" id="view-ai"><div id="nxAiTabHost"></div></div>
       <?!= include_('manage/dashboard') ?>
       <?!= include_('manage/booking') ?>
       <?!= include_('manage/workmanage') ?>
@@ -165,7 +170,7 @@
 
     <aside id="sideAI">
       <div id="sideAIInner">
-        <?!= include_('manage/aisidebar') ?>
+        <?!= include_('manage/aichat') ?>
       </div>
     </aside>
   </div>
