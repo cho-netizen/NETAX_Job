@@ -83,6 +83,27 @@
     loadDashTasks_();
     loadDashCaseLog_();
     loadDashNightlyStatus_();
+    dashMeasureLoad_();
+  }
+
+  // [2026.10.08] 대시보드가 다 뜨는 데 실제로 몇 초 걸리는지 기록(설정 → 🐞 오류 기록에 "perf"로 남음) —
+  // 요청 8개를 묶어 보내는 개선을 할지, 실제 job 화면의 실측값으로 판단하기 위함. 이 기기에서 처음 연 1번만.
+  var dashLoadMeasured_ = false;
+  function dashMeasureLoad_(){
+    if (dashLoadMeasured_) return;
+    dashLoadMeasured_ = true;
+    var t0 = Date.now(), view = document.getElementById('view-dashboard');
+    var firstDone = null;
+    var timer = setInterval(function(){
+      var txt = view ? view.innerText : '';
+      var pending = (txt.match(/불러오는 중/g) || []).length;
+      var secs = Math.round((Date.now() - t0) / 1000);
+      if (pending < 8 && firstDone === null) firstDone = secs;
+      if (pending === 0 || secs >= 180){
+        clearInterval(timer);
+        if (typeof nxLogBug_ === 'function') nxLogBug_({ kind: 'perf', where: '대시보드', message: '대시보드 ' + (pending === 0 ? '전체 표시 ' : '180초 지나도 ' + pending + '칸 미완료, ') + secs + '초 (첫 칸 ' + firstDone + '초)', detail: window.NX_STANDALONE ? 'job.netax.kr/app' : '구글 주소' });
+      }
+    }, 1000);
   }
 
   // [2026.09 버그수정] "가장 이른 8건"이 아니라 실제로 임박한 것만 골라서 보여준다 — 열린

@@ -1150,9 +1150,24 @@
     casehandling: '처리개요', lawsearch: '법령조회', docs: '증빙확보', taxcalc: '세액계산', print: '세액인쇄', reportwriter: '문서작성',
     reports: '열람관리', 'memo-text': '일반메모', reporthub: '보고서 모음' };
   // 각 화면의 "그 사건으로 열기" 함수(goTo*_)를 그대로 쓴다 — 화면 버튼이 하는 것과 같은 동작.
-  function nxAiOpenJobView_(view, caseId, clientId){
+  function nxAiOpenJobView_(view, caseId, clientId, then, taxTab){
     var side = nxAiEl_('sideAI');
     var openSide = function(){ if (side) side.classList.add('expanded'); };
+    // 세액계산 자동계산 — 화면의 [📄 자동계산] 버튼과 같은 동작(tcRunAutoCalc_)을 그 사건·세목으로 실행
+    if (view === 'taxcalc' && caseId && then === 'autocalc' && typeof goToTaxCalc_ === 'function'){
+      goToTaxCalc_(caseId); openSide();
+      var tries = 0;
+      var waitAndRun = function(){
+        tries++;
+        var ready = typeof tcCurrentCase !== 'undefined' && tcCurrentCase && tcCurrentCase.id === caseId && document.getElementById('tcAutoCalcBtn');
+        if (!ready){ if (tries < 60) setTimeout(waitAndRun, 500); else nxAiToast_('세액계산 화면이 준비되지 않아 자동계산을 시작하지 못했습니다 — [📄 자동계산]을 직접 눌러주세요.'); return; }
+        var tabBtn = taxTab ? document.querySelector('.taxcalc-tab[data-tab="' + taxTab + '"]') : null;
+        if (tabBtn && !tabBtn.classList.contains('active')) tabBtn.click();
+        setTimeout(function(){ if (typeof tcRunAutoCalc_ === 'function') tcRunAutoCalc_(); }, 400);
+      };
+      setTimeout(waitAndRun, 500);
+      return;
+    }
     if (caseId){
       if (view === 'casehandling' && typeof goToCaseHandling_ === 'function'){ goToCaseHandling_(caseId); openSide(); return; }
       if (view === 'lawsearch' && typeof goToLawSearch_ === 'function'){ goToLawSearch_(caseId); openSide(); return; }
@@ -1195,6 +1210,12 @@
     };
     cancelBtn.addEventListener('click', function(){ finish('취소했습니다(실행하지 않음).', false); });
     runBtn.addEventListener('click', function(){
+      // 화면 안에서 처리하는 제안(서버 호출 아님)
+      if (a.gasAction === 'client:memoSave'){
+        if (typeof openSaveDialog === 'function'){ openSaveDialog((a.payload && a.payload.content) || '', null); finish('메모 저장 창을 열었습니다 — 저장 위치를 골라 저장하세요.', true); }
+        else finish('메모 저장 창을 열 수 없습니다.', false);
+        return;
+      }
       runBtn.disabled = true; cancelBtn.disabled = true; runBtn.textContent = '실행 중…';
       callGas(a.gasAction, a.payload || {}).then(function(res){
         var ok = !(res && (res.success === false || res.error));
@@ -1261,8 +1282,8 @@
     // [2026.10.08] job 기능 — 화면 열기(job_open_screen): 바로 그 화면으로 가고, 다시 가는 링크도 남긴다.
     actions.filter(function(a){ return a && a.type === 'open_view'; }).forEach(function(a){
       var label = (NXAI_VIEW_LABELS_[a.view] || a.view);
-      var go = function(){ nxAiOpenJobView_(a.view, a.caseId, a.clientId); };
-      addLink('📍 ' + label + ' 열기', go);
+      var go = function(){ nxAiOpenJobView_(a.view, a.caseId, a.clientId, a.then, a.taxTab); };
+      addLink('📍 ' + label + (a.then === 'autocalc' ? ' 자동계산' : ' 열기'), go);
       if (!bubbleEl._nxOpenedOnce){ bubbleEl._nxOpenedOnce = true; setTimeout(go, 300); }
     });
 

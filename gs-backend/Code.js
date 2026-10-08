@@ -3542,7 +3542,12 @@ const JOB_PROPOSE_ACTIONS_ = {
   client_sms: { gas: 'client_send_sms', label: '고객에게 문자 발송', required: ['고객ID', 'message'] },
   portal_sms: { gas: 'send_my_portal_sms', label: '고객창구(my.netax.kr) 안내문자 발송', required: ['caseId'] },
   checklist_mark: { gas: 'admin_set_checklist_status', label: '증빙 체크리스트 확보 표시 변경', required: ['caseId', 'item'] },
-  case_update: { gas: 'work_update_case', label: '사건 정보 수정', required: ['id'] }
+  case_update: { gas: 'work_update_case', label: '사건 정보 수정', required: ['id'] },
+  // 메모 저장은 job 메모 화면의 "저장 위치 고르기" 창을 여는 것(어느 고객·사건 메모로 둘지는 사람이 고름)
+  memo_save: { gas: 'client:memoSave', label: '메모로 저장', required: ['content'] },
+  // 블로그 발행은 외부 공개 글이라 반드시 사람이 확인 — 보고서 모음 화면의 발행 버튼과 같은 서버 기능
+  blog_naver: { gas: 'post_to_naver_blog', label: '네이버 블로그에 발행(공개 글)', required: ['content'] },
+  blog_google: { gas: 'post_to_google_blog', label: '구글 블로그에 발행(공개 글)', required: ['content'] }
 };
 const JOB_CASE_UPDATE_FORBIDDEN_ = ['폴더ID', '생성일', '수정일', '고객ID', 'my_report_id', '하위업무'];
 
@@ -3585,7 +3590,8 @@ const JOB_AI_TOOLS_ = [
     description: '되돌리기 어려운 job 작업을 사용자에게 "제안"한다 — 실행하지 않는다. 화면에 [실행] 버튼이 뜨고 사용자가 눌러야 실제로 실행된다. 반드시 summary에 무엇을 하는지 한두 문장으로 쓰고, 답변에서도 "제안을 띄웠으니 확인 후 실행을 누르라"고 안내하라(이미 했다고 말하지 마라). '
       + 'action별 params: booking_approve{rowIndex,eventId,phone,reservedDate,reservedTime} / booking_reject{rowIndex,phone} / booking_link_case{rowIndex,caseId} / booking_cancel{rowIndex} — 값은 job_lookup(bookings) 결과 그대로. '
       + 'client_sms{고객ID,message}(고객ID는 list_clients로 확인) / portal_sms{caseId}(고객창구 접속 안내문자) / checklist_mark{caseId,item,submitted(기본 true, false면 확보 표시 해제)}(item은 job_lookup checklist의 항목명 그대로) / '
-      + 'case_update{id, 바꿀 항목들…}(작업관리 사건 필드: 상태·법정일·처리방향·처리대상·개요·사건개요(JSON 문자열) 등; 폴더ID·고객ID 등 연결정보는 못 바꿈).',
+      + 'case_update{id, 바꿀 항목들…}(작업관리 사건 필드: 상태·법정일·처리방향·처리대상·개요·사건개요(JSON 문자열) 등; 폴더ID·고객ID 등 연결정보는 못 바꿈) / '
+      + 'memo_save{content}(메모 저장 창을 열어 사용자가 저장 위치를 고름) / blog_naver{content}·blog_google{content}(블로그 글 전문 — 공개 발행이므로 내용을 summary에 요약).',
     input_schema: {
       type: 'object',
       properties: {
@@ -3598,14 +3604,16 @@ const JOB_AI_TOOLS_ = [
   },
   {
     name: 'job_open_screen',
-    description: '사용자 화면에서 job 메뉴를 연다(caseId를 주면 그 사건으로). 사용자가 "○○ 화면 열어줘/보여줘"라고 하거나, 결과를 해당 화면에서 확인하게 할 때 쓴다. 바로 실행된다(화면 이동이라 되돌리기 쉬움). AI 대화는 오른쪽 사이드바로 옮겨가 이어진다.',
+    description: '사용자 화면에서 job 메뉴를 연다(caseId를 주면 그 사건으로). 사용자가 "○○ 화면 열어줘/보여줘"라고 하거나, 결과를 해당 화면에서 확인하게 할 때 쓴다. "○○ 사건 양도세(증여세·상속세) 자동계산 해줘"면 view=taxcalc, then=autocalc, taxTab을 지정하라 — 계산은 화면의 계산엔진이 하고, 확인이 필요한 항목은 화면이 사용자에게 직접 묻는다(답변에서 세액을 지어내지 마라). 바로 실행된다(화면 이동이라 되돌리기 쉬움). AI 대화는 오른쪽 사이드바로 옮겨가 이어진다.',
     input_schema: {
       type: 'object',
       properties: {
         view: { type: 'string', enum: ['dashboard', 'booking', 'workmanage', 'clientmanage', 'collections', 'casehandling', 'lawsearch', 'docs', 'taxcalc', 'print', 'reportwriter', 'reports', 'memo-text', 'reporthub'],
           description: 'dashboard=대시보드, booking=예약관리, workmanage=작업관리, clientmanage=고객관리, collections=수금관리, casehandling=처리개요, lawsearch=법령조회, docs=증빙확보(사건 폴더), taxcalc=세액계산, print=세액인쇄, reportwriter=문서작성, reports=열람관리, memo-text=일반메모, reporthub=보고서 모음' },
         caseId: { type: 'string', description: '작업관리 사건ID(선택) — 사건이 있는 화면은 그 사건을 골라서 연다' },
-        clientId: { type: 'string', description: 'clientmanage일 때 고객ID(선택)' }
+        clientId: { type: 'string', description: 'clientmanage일 때 고객ID(선택)' },
+        then: { type: 'string', enum: ['autocalc'], description: 'view=taxcalc이고 caseId가 있을 때만: autocalc=세액계산 화면의 [자동계산] 버튼과 같은 동작(사건 폴더 증빙을 읽어 입력칸을 채우고, 확정 못 한 항목은 화면이 사용자에게 묻고, 계산)까지 실행' },
+        taxTab: { type: 'string', enum: ['transfer', 'gift', 'inheritance'], description: 'then=autocalc일 때 세목: transfer=양도소득세, gift=증여세, inheritance=상속세' }
       },
       required: ['view']
     }
@@ -14430,7 +14438,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
       }
       if (block.name === 'job_open_screen') {
         const input = block.input || {};
-        clientActions.push({ type: 'open_view', view: input.view, caseId: input.caseId || '', clientId: input.clientId || '' });
+        clientActions.push({ type: 'open_view', view: input.view, caseId: input.caseId || '', clientId: input.clientId || '', then: input.then || '', taxTab: input.taxTab || '' });
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ status: 'opened', view: input.view }) };
       }
 
