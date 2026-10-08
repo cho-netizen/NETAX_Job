@@ -3201,6 +3201,134 @@ function ai_convList() {
   return { success: true, conversations: list, folderId: folder.getId() };
 }
 
+// work 대화기록 목록 — 드라이브 전체 검색이라 느려서(실측 약 12초) 대화 목록과 따로 받는다.
+// 검색 결과는 5분간 캐시하고, 이미 불러온 파일을 빼는 건 매번 현재 목록 기준으로 한다.
+function ai_workHistories(body) {
+  const cache = CacheService.getScriptCache();
+  const CACHE_KEY = 'ai_work_histories_v1';
+  let raw = null;
+  if (!(body && body.refresh)) {
+    try { raw = JSON.parse(cache.get(CACHE_KEY) || 'null'); } catch (err) { raw = null; }
+  }
+  if (!raw) {
+    raw = ai_listWorkHistories_([]);
+    try { cache.put(CACHE_KEY, JSON.stringify(raw), 300); } catch (err) { }
+  }
+  const imported = {};
+  const convs = ai_convReadIndex_(ai_convFolder_()).list;
+  convs.forEach(function (c) { if (c.sourceFileId) imported[c.sourceFileId] = true; });
+  // 이미 불러온 대화 중 work 원본이 그 뒤 더 바뀐 것 — 화면에 "work 새 내용" 표시를 띄운다.
+  const rawById = {};
+  raw.forEach(function (w) { rawById[w.fileId] = w; });
+  const updatedImports = convs.filter(function (c) {
+    const w = c.sourceFileId && rawById[c.sourceFileId];
+    return w && String(w.updatedAt) > String(c.sourceSyncedAt || c.updatedAt || '');
+  }).map(function (c) { return c.id; });
+  return { success: true, workHistories: raw.filter(function (w) { return !imported[w.fileId]; }), updatedImports: updatedImports };
+}
+
+// ============================================================
+// [2026.10.08] work → job 대화 가져오기/이어붙이기 — work.netax.kr과 job을 함께 쓰는 전환 기간용.
+// 세무사님 결정: "당분간 이렇게 진행, 시스템이 안정되면 불러오기를 끊는다" — 끊을 때는 이 묶음(아래
+// 함수 3개 + ai_workHistories/ai_listWorkHistories_)과 aichat.html의 work 관련 부분을 걷어내면 된다.
+// ============================================================
+function ai_cleanWorkMsg_(text) {
+  return String(text || '')
+    .replace(/<<<NAVIGATE_TO>>>[\s\S]*?<<<END_NAVIGATE_TO>>>/g, '')
+    .replace(/<<<EDIT_DOCUMENT>>>[\s\S]*?<<<END_EDIT_DOCUMENT>>>/g, '(문서 수정 제안 — 지난 대화라 다시 적용할 수 없습니다)')
+    .replace(/<<<DIAGRAM_MERMAID>>>[\s\S]*?<<<END_DIAGRAM_MERMAID>>>/g, '(관계도 제안 — 지난 대화라 다시 적용할 수 없습니다)')
+    .trim();
+}
+
+function ai_readWorkHistory_(fileId) {
+  const file = DriveApp.getFileById(fileId);
+  let arr = [];
+  try { arr = JSON.parse(file.getBlob().getDataAsString('UTF-8') || '[]'); } catch (err) { arr = []; }
+  const msgs = (Array.isArray(arr) ? arr : []).filter(function (m) {
+    return m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string';
+  }).map(function (m) { return { role: m.role, content: ai_cleanWorkMsg_(m.content) }; })
+    .filter(function (m) { return m.content; });
+  const syncedAt = Utilities.formatDate(file.getLastUpdated(), Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss");
+  return { msgs: msgs, syncedAt: syncedAt };
+}
+
+// body: { fileId, caseId, caseName, caseFolderId } — 이미 불러온 파일이면 새로 만들지 않고 그 대화를 돌려준다.
+function ai_convImportWork(body) {
+  if (!body.fileId) return { error: 'work 대화기록 파일이 지정되지 않았습니다.' };
+  const existing = ai_convReadIndex_(ai_convFolder_()).list.find(function (c) { return c.sourceFileId === body.fileId; });
+  if (existing) return ai_convLoad({ id: existing.id });
+  const w = ai_readWorkHistory_(body.fileId);
+  if (!w.msgs.length) return { error: '불러올 대화가 없습니다.' };
+  const saved = ai_convSave({ conversation: {
+    title: 'work 대화 — ' + (body.caseName || ''), sourceFileId: body.fileId, sourceSyncedAt: w.syncedAt,
+    caseId: body.caseId || '', caseName: body.caseName || '', caseFolderId: body.caseFolderId || '', messages: w.msgs
+  } });
+  if (saved.error) return saved;
+  return ai_convLoad({ id: saved.id });
+}
+
+// 불러온 뒤 work에서 더 쌓인 대화를 job 대화 끝에 이어붙인다. 기준점은 "job 대화의 가장 최근 메시지 중
+// work 원본에도 있는 것" — 그 뒤의 work 메시지만 붙이므로, job에서만 이어간 메시지는 건드리지 않는다.
+// (work는 최근 60개만 보관하므로 저장 위치 번호가 아니라 내용으로 맞춘다.)
+function ai_convSyncWork(body) {
+  const loaded = ai_convLoad({ id: body.id });
+  if (loaded.error) return loaded;
+  const conv = loaded.conversation;
+  if (!conv.sourceFileId) return { error: 'work에서 불러온 대화가 아닙니다.' };
+  const w = ai_readWorkHistory_(conv.sourceFileId);
+  let anchor = -1;
+  for (let i = conv.messages.length - 1; i >= 0 && anchor === -1; i--) {
+    const m = conv.messages[i];
+    if (typeof m.content !== 'string') continue;
+    for (let j = w.msgs.length - 1; j >= 0; j--) {
+      if (w.msgs[j].role === m.role && w.msgs[j].content === m.content) { anchor = j; break; }
+    }
+  }
+  if (anchor === -1) return { error: 'work 대화와 이어붙일 기준을 찾지 못했습니다(work 쪽 대화가 많이 바뀌었을 수 있습니다). 목록에서 이 대화를 지우고 work 대화를 새로 불러오세요.' };
+  const added = w.msgs.slice(anchor + 1);
+  conv.messages = conv.messages.concat(added);
+  conv.sourceSyncedAt = w.syncedAt;
+  const saved = ai_convSave({ conversation: conv });
+  if (saved.error) return saved;
+  return { success: true, appended: added.length, conversation: ai_convLoad({ id: conv.id }).conversation };
+}
+
+// [2026.10.08] work.netax.kr이 사건 폴더마다 남긴 _대화기록.json을 찾아 목록에 함께 보여준다
+// (세무사님 지적: "대화목록이 1개만 뜬다" — work 대화는 사건별 파일이라 job 목록에 안 나타났다).
+// 이미 job 대화로 불러온 파일(sourceFileId)은 빼서 같은 대화가 두 번 보이지 않게 한다. 원본은 그대로 둔다.
+// 사건 폴더ID로 작업관리 사건을 찾아 연결 정보를 같이 준다(못 찾으면 폴더명만).
+function ai_listWorkHistories_(convList) {
+  const imported = {};
+  (convList || []).forEach(function (c) { if (c.sourceFileId) imported[c.sourceFileId] = true; });
+  let caseByFolder = {};
+  try {
+    const res = work_getCases();
+    (res.cases || []).forEach(function (c) { if (c.폴더ID) caseByFolder[c.폴더ID] = c; });
+  } catch (err) { caseByFolder = {}; }
+  const out = [];
+  const tz = Session.getScriptTimeZone();
+  const it = DriveApp.searchFiles("title = '_대화기록.json' and trashed = false");
+  while (it.hasNext() && out.length < 300) {
+    const f = it.next();
+    if (imported[f.getId()]) continue;
+    const parents = f.getParents();
+    if (!parents.hasNext()) continue;
+    const parent = parents.next();
+    const c = caseByFolder[parent.getId()];
+    out.push({
+      fileId: f.getId(),
+      folderId: parent.getId(),
+      folderName: parent.getName(),
+      caseId: c ? c.id : '',
+      caseName: c ? (c.사건명 || c.고객명 || '') : '',
+      updatedAt: Utilities.formatDate(f.getLastUpdated(), tz, "yyyy-MM-dd'T'HH:mm:ss"),
+      sizeKb: Math.max(1, Math.round(f.getSize() / 1024))
+    });
+  }
+  out.sort(function (a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  return out;
+}
+
 function ai_convLoad(body) {
   if (!body.id) return { error: '대화 id가 없습니다.' };
   const folder = ai_convFolder_();
@@ -3223,8 +3351,13 @@ function ai_convSave(body) {
     const idx = ai_convReadIndex_(folder);
     const id = c.id || ('c' + Date.now() + Math.random().toString(36).slice(2, 6));
     const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss");
+    const prevEntry = idx.list.find(function (e) { return e.id === id; });
     const conv = {
       id: id,
+      // work 대화기록에서 불러온 대화면 원본 파일ID — 목록에서 그 work 항목을 다시 보여주지 않는 데 쓴다.
+      sourceFileId: c.sourceFileId || (prevEntry && prevEntry.sourceFileId) || '',
+      // work 원본을 마지막으로 반영한 시점(그 파일의 수정시각) — 이후 work에서 대화가 더 쌓였는지 판단에 쓴다.
+      sourceSyncedAt: c.sourceSyncedAt || (prevEntry && prevEntry.sourceSyncedAt) || '',
       title: String(c.title || '새 대화').slice(0, 60),
       caseId: c.caseId || '',
       caseName: c.caseName || '',
@@ -3242,7 +3375,7 @@ function ai_convSave(body) {
       // 파일이 지워졌거나 접근 불가하면 새로 만든다(목록과 실제 파일이 어긋난 경우 자동 복구)
       fileId = folder.createFile(id + '.json', text, 'application/json').getId();
     }
-    const meta = { id: id, title: conv.title, caseId: conv.caseId, caseName: conv.caseName, caseFolderId: conv.caseFolderId, updatedAt: now, count: conv.messages.length, fileId: fileId };
+    const meta = { id: id, sourceFileId: conv.sourceFileId, sourceSyncedAt: conv.sourceSyncedAt, title: conv.title, caseId: conv.caseId, caseName: conv.caseName, caseFolderId: conv.caseFolderId, updatedAt: now, count: conv.messages.length, fileId: fileId };
     if (entry) Object.assign(entry, meta); else idx.list.push(meta);
     ai_convWriteIndex_(folder, idx, idx.list);
     return { success: true, id: id, updatedAt: now };
@@ -3415,6 +3548,9 @@ function dispatchClientAction_(body) {
   if (body.action === 'ai_conv_save') return jsonResponse(ai_convSave(body));
   if (body.action === 'ai_conv_rename') return jsonResponse(ai_convRename(body));
   if (body.action === 'ai_conv_delete') return jsonResponse(ai_convDelete(body));
+  if (body.action === 'ai_work_histories') return jsonResponse(ai_workHistories(body));
+  if (body.action === 'ai_conv_import_work') return jsonResponse(ai_convImportWork(body));
+  if (body.action === 'ai_conv_sync_work') return jsonResponse(ai_convSyncWork(body));
 
   // [2026.09] law 모듈 — 법령예규판례 검색(AI 경유 없이 화면에서 직접 조회). toolSearchTaxPrecedent/
   // toolGetTaxPrecedentDetail은 원래 AI 도구용 상태없는 함수라 그대로 재사용, 사건 첨부는

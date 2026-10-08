@@ -3,6 +3,47 @@
   // 공용 인프라 — google.script.run 래퍼, 로그인 게이트, 메뉴 라우팅
   // ============================================================
 
+  // ============================================================
+  // [2026.10.08] 화면 배치 기준 + 다크모드 (설정 탭에서 바꾸고 이 기기에만 기억 — work.netax.kr의
+  // 같은 이름 설정을 옮겨온 것). 화면 배치는 폭으로 자동 판정(폰 600px 미만·태블릿 900px 미만·그 외 PC)
+  // 하거나 한 단계로 고정한다. 각 화면의 반응형 규칙은 화면 폭(@media) 대신 body의 lay-phone/
+  // lay-tablet/lay-pc 클래스와 window.nxLayout을 따른다(style.html·reportwriter.html·aichat.html).
+  // ============================================================
+  var NX_LAYOUT_KEY_ = 'nx_device_override', NX_DARK_KEY_ = 'nx_dark_mode';
+  function nxLs_(key, val){
+    try{ if (val === undefined) return localStorage.getItem(key); localStorage.setItem(key, val); }catch(e){}
+    return null;
+  }
+  function nxLayoutOverride_(){ var o = nxLs_(NX_LAYOUT_KEY_); return (o === 'pc' || o === 'tablet' || o === 'phone') ? o : 'auto'; }
+  function nxLayoutStage_(){
+    var o = nxLayoutOverride_();
+    if (o !== 'auto') return o;
+    var w = window.innerWidth;
+    return w < 600 ? 'phone' : (w < 900 ? 'tablet' : 'pc');
+  }
+  function nxApplyLayout_(){
+    var st = nxLayoutStage_();
+    var changed = window.nxLayout !== st;
+    window.nxLayout = st;
+    ['pc', 'tablet', 'phone'].forEach(function(s){ document.body.classList.toggle('lay-' + s, s === st); });
+    if (changed){ try{ document.dispatchEvent(new CustomEvent('nx-layout-change', { detail: st })); }catch(e){} }
+  }
+  function nxSetLayoutOverride_(value){ nxLs_(NX_LAYOUT_KEY_, value); nxApplyLayout_(); }
+  function nxApplyDark_(on){ document.documentElement.classList.toggle('nx-dark', !!on); }
+  function nxSetDark_(on){ nxLs_(NX_DARK_KEY_, on ? '1' : '0'); nxApplyDark_(on); }
+  function nxIsDark_(){ return document.documentElement.classList.contains('nx-dark'); }
+  (function(){
+    var saved = nxLs_(NX_DARK_KEY_);
+    var prefersDark = false;
+    try{ prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches; }catch(e){}
+    nxApplyDark_(saved === null ? prefersDark : saved === '1');
+    nxApplyLayout_();
+    var t = null;
+    window.addEventListener('resize', function(){ clearTimeout(t); t = setTimeout(nxApplyLayout_, 120); });
+    // 문서작성의 확대·축소 버튼 위치는 화면 배치 단계에 따라 달라진다(reportwriter.html)
+    document.addEventListener('nx-layout-change', function(){ if (typeof updatePreviewControlsPosition === 'function') try{ updatePreviewControlsPosition(); }catch(e){} });
+  })();
+
   // [2026.09] "저장 버튼을 눌러도 반응이 없어 답답하다" — 버튼 하나하나에 로딩 상태를
   // 넣는 대신, 서버 요청이 진행 중인 동안 항상 켜지는 전역 진행바(#globalProgressBar,
   // style.html)로 한 번에 해결한다. 여러 요청이 동시에 나갈 수 있어 카운터로 관리 —

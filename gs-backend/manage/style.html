@@ -654,14 +654,35 @@
   .taxcalc-view-tier-simple .taxcalc-ai-btn,
   .taxcalc-view-tier-simple .taxcalc-ai-status{ display:none; }
 
-  @media (max-width:560px){
-    .taxcalc-tabs{ padding:0 8px; overflow-x:auto; }
-    .taxcalc-tab{ padding:9px 10px; font-size:12px; white-space:nowrap; }
-    .taxcalc-body{ padding:10px; }
-    .taxcalc-tier-tabs{ order:3; width:100%; justify-content:center; }
-    .taxcalc-tier-tabs button{ flex:1; text-align:center; }
-    .taxcalc-asset-head{ flex-wrap:wrap; row-gap:6px; }
-    .taxcalc-asset-head span{ flex-wrap:wrap; }
-    .taxcalc-grid > .taxcalc-field{ flex-basis:100% !important; }
+  /* [2026.10.08] 예전 @media (max-width:560px) — 화면 폭 대신 "화면 배치 기준"(설정 탭) 단계 클래스를
+     따른다(body.lay-phone/lay-tablet/lay-pc, script.html nxApplyLayout_). 자동이면 폭 600px 미만이 폰. */
+  body.lay-phone .taxcalc-tabs{ padding:0 8px; overflow-x:auto; }
+  body.lay-phone .taxcalc-tab{ padding:9px 10px; font-size:12px; white-space:nowrap; }
+  body.lay-phone .taxcalc-body{ padding:10px; }
+  body.lay-phone .taxcalc-tier-tabs{ order:3; width:100%; justify-content:center; }
+  body.lay-phone .taxcalc-tier-tabs button{ flex:1; text-align:center; }
+  body.lay-phone .taxcalc-asset-head{ flex-wrap:wrap; row-gap:6px; }
+  body.lay-phone .taxcalc-asset-head span{ flex-wrap:wrap; }
+  body.lay-phone .taxcalc-grid > .taxcalc-field{ flex-basis:100% !important; }
+
+  /* ===== [2026.10.08] 다크모드(설정 탭) ==========================================
+     - 업무 화면들(#centerWork의 각 .view)은 색이 화면마다 직접 박혀 있어(630곳) 하나씩 바꾸면 빠지는
+       곳이 생긴다 — 화면 전체를 반전(invert + hue-rotate로 색상은 유지, 밝기만 뒤집음)해서 빠짐없이 적용한다.
+     - 사진·영상·미리보기(iframe)·캔버스(필기)와 종이 문서(세액인쇄 서식 .pf-page, 문서작성 미리보기
+       #renderOut)는 다시 반전시켜 원래 모습(밝은 종이)으로 보이게 한다. 인쇄할 때는 반전을 끈다.
+     - AI 화면(#view-ai·사이드바)과 공통 창은 반전 대신 어두운 색을 직접 지정한다(aichat.html 참고).
+     - 화면에서 body로 꺼내 붙이는 메뉴·확인창도 같은 반전을 적용해 화면과 톤을 맞춘다. */
+  html.nx-dark, html.nx-dark body{ background:#10151f; }
+  html.nx-dark #centerWork{ background:#10151f; }
+  html.nx-dark #centerWork > .view:not(#view-ai){ filter:invert(1) hue-rotate(180deg); background:var(--bg); }
+  html.nx-dark #centerWork > .view:not(#view-ai) :is(img, video, iframe, canvas, .pf-page, #renderOut){ filter:invert(1) hue-rotate(180deg); }
+  html.nx-dark #centerWork > .view:not(#view-ai) :is(.pf-page, #renderOut) :is(img, video, iframe, canvas){ filter:none; }
+  html.nx-dark body > :not(#appRoot):not(#loginGate):not(.nxai-overlay):not(.toast):not(#globalProgressBar):not(script):not(style):not(.modal-overlay){ filter:invert(1) hue-rotate(180deg); }
+  html.nx-dark body > .modal-overlay > *{ filter:invert(1) hue-rotate(180deg); }
+  html.nx-dark #sideMenu, html.nx-dark #sideAI{ background:#0b1120; }
+  /* 스크롤바는 반전 필터가 안 먹어서 밝게 남는다 — 어두운 색을 직접 준다 */
+  html.nx-dark, html.nx-dark *{ scrollbar-color:#3a4356 #121826; }
+  @media print{
+    html.nx-dark #centerWork > .view, html.nx-dark #centerWork > .view *, html.nx-dark body > *{ filter:none !important; }
   }
 </style>

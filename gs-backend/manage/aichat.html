@@ -15,27 +15,38 @@
   - 이 파일이 예전 aisidebar.html을 대체한다.
   ============================================================
 -->
-<div id="nxAi" class="nxai mode-side">
+<div id="nxAi" class="nxai mode-side ph-chat">
+  <div class="nxai-phone-tabs" id="nxAiPhoneTabs">
+    <button type="button" data-ph="list">💬 대화 목록</button>
+    <button type="button" data-ph="chat" class="on">🤖 대화</button>
+    <button type="button" data-ph="files">📂 자료</button>
+  </div>
   <aside class="nxai-list" id="nxAiList">
     <div class="nxai-list-head">
       <b>대화</b>
+      <span class="nxai-spacer"></span>
       <button type="button" class="nxai-btn primary" id="nxAiNewBtn" title="새 대화 시작">+ 새 대화</button>
+      <button type="button" class="nxai-icon dark nxai-fold" id="nxAiListHide" title="대화 목록 숨기기">«</button>
     </div>
     <input type="search" id="nxAiListSearch" class="nxai-list-search" placeholder="대화·사건 검색">
     <div class="nxai-list-body" id="nxAiListBody"><div class="nxai-muted">불러오는 중…</div></div>
   </aside>
 
+  <div class="nxai-main">
   <section class="nxai-chat">
     <div class="nxai-head">
       <span class="nxai-resize" id="nxAiResize" title="끌어서 너비 조절"></span>
+      <button type="button" class="nxai-icon nxai-fold" id="nxAiListShow" title="대화 목록 열기">»</button>
       <button type="button" class="nxai-title" id="nxAiTitle" title="눌러서 대화 제목 바꾸기">🤖 새 대화</button>
       <button type="button" class="nxai-case-chip" id="nxAiCaseChip" title="이 대화에 사건 연결/변경">🔗 사건 연결</button>
+      <button type="button" class="nxai-btn" id="nxAiSyncWork" hidden title="이 대화를 불러온 뒤 work에서 대화가 더 쌓였습니다 — 추가된 부분만 끝에 붙입니다">⤵ work 새 내용 이어붙이기</button>
       <span class="nxai-spacer"></span>
       <button type="button" class="nxai-icon" id="nxAiNewBtnSide" title="새 대화">＋</button>
       <button type="button" class="nxai-icon" id="nxAiFontDown" title="글자 작게">가-</button>
       <button type="button" class="nxai-icon" id="nxAiFontUp" title="글자 크게">가+</button>
       <button type="button" class="nxai-icon" id="nxAiOpenTab" title="AI탭으로 크게 보기">⤢</button>
       <button type="button" class="nxai-icon" id="nxAiCollapse" title="접기">≫</button>
+      <button type="button" class="nxai-icon nxai-fold" id="nxAiPvShow" title="미리보기 칸 열기">«</button>
     </div>
     <div class="nxai-body" id="nxAiBody">
       <div class="nxai-empty" id="nxAiEmpty">무엇이든 지시하세요 — 사건 자료 확인, 세액계산, 작업·고객 등록, 보고서 작성까지 job의 기능을 대신 실행합니다.<br>사건을 연결하면 그 사건 폴더를 기준으로 일합니다.</div>
@@ -71,7 +82,8 @@
       <button type="button" class="nxai-pv-tab on" data-pv="files" id="nxAiPvTabFiles">📂 사건 자료</button>
       <button type="button" class="nxai-pv-tab" data-pv="view" id="nxAiPvTabView">👁 미리보기</button>
       <span class="nxai-spacer"></span>
-      <button type="button" class="nxai-icon" id="nxAiPvToggle" title="미리보기 칸 접기">⇥</button>
+      <button type="button" class="nxai-icon dark" id="nxAiPvPosBtn" title="미리보기 위치">A</button>
+      <button type="button" class="nxai-icon dark nxai-fold" id="nxAiPvToggle" title="미리보기 칸 숨기기">»</button>
     </div>
     <div class="nxai-pv-files" id="nxAiPvFiles"><div class="nxai-muted">사건을 연결하면 그 사건 폴더의 자료가 여기 보입니다.</div></div>
     <div class="nxai-pv-view" id="nxAiPvView" hidden>
@@ -94,6 +106,7 @@
       </div>
     </div>
   </aside>
+  </div>
 </div>
 
 <!-- 사건 선택 -->
@@ -156,7 +169,9 @@
   .nxai-icon.dark{ color:var(--ink); }
 
   /* ===== 대화창 ===== */
-  .nxai-chat{ flex:1; min-width:0; display:flex; flex-direction:column; }
+  .nxai-main{ flex:1; min-width:0; min-height:0; display:flex; flex-direction:row; }
+  .nxai.pv-at-bottom .nxai-main{ flex-direction:column; }
+  .nxai-chat{ flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; }
   .nxai-head{ display:flex; align-items:center; gap:6px; padding:8px 10px; border-bottom:1px solid var(--line); flex-shrink:0; position:relative; min-width:0; }
   .nxai-title{ border:none; background:none; cursor:pointer; font-weight:700; font-size:14px; color:inherit; min-width:0; max-width:45%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:2px 4px; text-align:left; }
   .nxai-case-chip{ border:1px dashed currentColor; background:none; color:inherit; opacity:.8; border-radius:999px; padding:2px 10px; font-size:12px; cursor:pointer; min-width:0; max-width:40%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -210,7 +225,15 @@
   /* ===== 대화 목록 / 미리보기 — AI탭에서만 보인다 ===== */
   .nxai-list, .nxai-preview{ display:none; }
   .nxai-list{ width:230px; flex-shrink:0; border-right:1px solid var(--line); flex-direction:column; min-height:0; background:#f7f8fa; }
-  .nxai-list-head{ display:flex; align-items:center; justify-content:space-between; padding:10px; gap:6px; }
+  .nxai-list-head{ display:flex; align-items:center; padding:10px; gap:6px; }
+  #nxAiListShow, #nxAiPvShow{ display:none; }
+  .nxai.mode-tab.list-collapsed .nxai-list{ display:none; }
+  .nxai.mode-tab.list-collapsed #nxAiListShow, .nxai.mode-tab.pv-collapsed #nxAiPvShow{ display:inline-block; }
+  .nxai-fold{ font-size:15px; font-weight:700; line-height:1; }
+  .nxai-badge{ display:inline-block; font-size:10.5px; font-weight:700; padding:0 5px; margin-right:5px; border-radius:4px; background:#e6ebf5; color:var(--navy); vertical-align:1px; }
+  .nxai-conv.work .t{ font-weight:500; }
+  .nxai-badge.new{ background:#fff0c7; color:#7a5300; }
+  #nxAiSyncWork{ font-size:11.5px; padding:3px 8px; color:#7a5300; background:#fff4d6; border-color:#e8cf8a; }
   .nxai-list-search{ margin:0 10px 8px; padding:6px 9px; border:1px solid var(--line); border-radius:7px; font-size:12.5px; }
   .nxai-list-body{ flex:1; overflow-y:auto; padding:0 6px 10px; }
   .nxai-conv{ padding:8px 9px; border-radius:8px; cursor:pointer; display:flex; flex-direction:column; gap:2px; }
@@ -219,8 +242,15 @@
   .nxai-conv .t{ font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .nxai-conv .m{ font-size:11.5px; color:#7a8496; display:flex; gap:6px; flex-wrap:wrap; }
   .nxai-preview{ width:42%; min-width:300px; max-width:720px; flex-shrink:0; border-left:1px solid var(--line); flex-direction:column; min-height:0; background:#fff; }
-  .nxai.pv-collapsed .nxai-preview{ width:auto; min-width:0; }
-  .nxai.pv-collapsed .nxai-pv-files, .nxai.pv-collapsed .nxai-pv-view, .nxai.pv-collapsed .nxai-pv-tab{ display:none !important; }
+  /* 숨기면 칸 자체를 없앤다(머리줄 조각도 안 남게) — 다시 여는 버튼은 대화창 머리에 있다 */
+  .nxai.mode-tab.pv-collapsed .nxai-preview{ display:none; }
+  /* 미리보기 아래 배치(위치 전환 아이콘 또는 태블릿 기본) — 숨기기/열기 버튼은 90도 돌려 위아래를 가리킨다 */
+  .nxai.pv-at-bottom .nxai-preview{ width:auto; min-width:0; max-width:none; height:38%; min-height:160px; border-left:none; border-top:1px solid var(--line); }
+  .nxai.pv-at-bottom #nxAiPvToggle, .nxai.pv-at-bottom #nxAiPvShow{ transform:rotate(90deg); }
+  #nxAiPvPosBtn{ font-size:12px; font-weight:700; min-width:22px; text-align:center; border:1px solid var(--line); opacity:1; }
+  #nxAiPvPosBtn.fixed{ background:var(--navy); color:#fff; border-color:var(--navy); }
+  html.nx-dark #nxAiPvPosBtn{ border-color:#2e384c; }
+  html.nx-dark #nxAiPvPosBtn.fixed{ background:var(--gold); color:var(--navy); border-color:var(--gold); }
   .nxai-pv-head{ display:flex; align-items:center; gap:4px; padding:6px 8px; border-bottom:1px solid var(--line); }
   .nxai-pv-tab{ border:none; background:none; padding:6px 10px; border-radius:7px; cursor:pointer; font-size:12.5px; color:var(--ink); }
   .nxai-pv-tab.on{ background:#e3e7ef; font-weight:700; }
@@ -283,12 +313,50 @@
   .nxai-case-row .s{ color:#7a8496; font-size:12px; white-space:nowrap; }
 
   /* 좁은 화면 — AI탭에서 목록·미리보기를 위아래로 쌓는다 */
-  @media (max-width: 900px){
-    .nxai.mode-tab{ flex-direction:column; overflow-y:auto; }
-    .nxai.mode-tab .nxai-list{ width:auto; max-height:28vh; border-right:none; border-bottom:1px solid var(--line); }
-    .nxai.mode-tab .nxai-chat{ min-height:70vh; }
-    .nxai.mode-tab .nxai-preview{ width:auto; min-width:0; max-width:none; border-left:none; border-top:1px solid var(--line); min-height:60vh; }
-  }
+  /* ===== 화면 배치 단계(설정 탭 "화면 배치 기준", body.lay-*) =====
+     태블릿: 위(목록)·가운데(대화)·아래(미리보기)로 쌓는다. 숨기기/열기 버튼은 좌우용 «»를 90도
+     돌려 위아래를 가리키게 한다(모양 일관성 — 세무사님 지적). 숨기면 칸이 완전히 사라진다. */
+  .nxai-phone-tabs{ display:none; }
+  body.lay-tablet .nxai.mode-tab{ flex-direction:column; }
+  body.lay-tablet .nxai.mode-tab .nxai-list{ width:auto; height:18%; min-height:96px; flex-shrink:0; border-right:none; border-bottom:1px solid var(--line); }
+  body.lay-tablet .nxai.mode-tab #nxAiListHide, body.lay-tablet .nxai.mode-tab #nxAiListShow{ transform:rotate(90deg); }
+  /* 폰: 한 번에 한 칸만 화면 가득 — 위쪽 탭으로 바꾼다. 숨기기 버튼은 필요 없다. */
+  body.lay-phone .nxai.mode-tab{ flex-direction:column; }
+  body.lay-phone .nxai.mode-tab .nxai-phone-tabs{ display:flex; flex-shrink:0; border-bottom:1px solid var(--line); }
+  body.lay-phone .nxai-phone-tabs button{ flex:1; border:none; background:none; padding:10px 4px; font-size:13px; color:inherit; border-bottom:2px solid transparent; cursor:pointer; }
+  body.lay-phone .nxai-phone-tabs button.on{ border-bottom-color:var(--gold); font-weight:700; }
+  body.lay-phone .nxai.mode-tab .nxai-list, body.lay-phone .nxai.mode-tab .nxai-chat, body.lay-phone .nxai.mode-tab .nxai-preview{ display:none; width:auto; min-width:0; max-width:none; border:none; flex:1; min-height:0; }
+  body.lay-phone .nxai.mode-tab.ph-list .nxai-list, body.lay-phone .nxai.mode-tab.ph-chat .nxai-chat, body.lay-phone .nxai.mode-tab.ph-files .nxai-preview{ display:flex; }
+  body.lay-phone .nxai.mode-tab .nxai-fold, body.lay-phone .nxai.mode-tab #nxAiPvToggle, body.lay-phone .nxai.mode-tab #nxAiPvPosBtn{ display:none !important; }
+  body.lay-phone .nxai.mode-tab .nxai-main{ flex-direction:column; }
+  body.lay-phone .nxai.mode-tab.ph-list .nxai-main{ display:none; }
+  body.lay-phone .nxai.mode-tab .nxai-preview{ height:auto; }
+
+  /* ===== 다크모드(설정 탭) — AI 화면은 반전이 아니라 직접 색을 지정한다(style.html 설명 참고) ===== */
+  html.nx-dark #view-ai{ background:#141a26; }
+  html.nx-dark .nxai.mode-tab{ background:#141a26; color:#e3e8f0; }
+  html.nx-dark .nxai-list{ background:#10151f; border-color:#273042; }
+  html.nx-dark .nxai-head, html.nx-dark .nxai-pv-head, html.nx-dark .nxai-pv-viewhead, html.nx-dark .nxai-pv-editbar, html.nx-dark .nxai-phone-tabs{ border-color:#273042; }
+  html.nx-dark .nxai-conv:hover, html.nx-dark .nxai-file:hover, html.nx-dark .nxai-case-row:hover{ background:#1c2433; }
+  html.nx-dark .nxai-conv.on, html.nx-dark .nxai-pv-tab.on{ background:#25304a; }
+  html.nx-dark .nxai-conv .m, html.nx-dark .nxai-muted, html.nx-dark .nxai-empty, html.nx-dark .nxai-history-hint, html.nx-dark .nxai-pv-crumb, html.nx-dark .nxai-case-row .s, html.nx-dark .nxai-label{ color:#8e99ad; }
+  html.nx-dark .nxai-msg.ai, html.nx-dark .nxai.mode-side .nxai-msg.ai{ background:#1f2737; color:#e3e8f0; }
+  html.nx-dark .nxai-msg.me{ background:rgba(200,162,68,.25); color:#f3ecda; }
+  html.nx-dark .nxai-input-row textarea, html.nx-dark .nxai-list-search, html.nx-dark .nxai-model,
+  html.nx-dark .nxai-modal select, html.nx-dark .nxai-modal input[type=number], html.nx-dark .nxai-modal textarea, html.nx-dark .nxai-modal input[type=search]{ background:#0f1420; color:#e3e8f0; border-color:#2e384c; }
+  html.nx-dark .nxai-preview{ background:#141a26; border-color:#273042; }
+  html.nx-dark .nxai-pv-tab{ color:#e3e8f0; }
+  html.nx-dark .nxai-pv-content textarea{ background:#0f1420; color:#e3e8f0; }
+  html.nx-dark .nxai-btn{ background:#1c2433; color:#e3e8f0; border-color:#2e384c; }
+  html.nx-dark .nxai-btn.primary{ background:var(--gold); color:var(--navy); border-color:var(--gold); }
+  html.nx-dark .nxai-icon.dark{ color:#e3e8f0; }
+  html.nx-dark .nxai-modal{ background:#161d2b; color:#e3e8f0; }
+  html.nx-dark .nxai-badge{ background:#25304a; color:#cfd8ea; }
+  html.nx-dark .nxai-badge.new, html.nx-dark .nxai-notice, html.nx-dark .nxai-pv-proposal, html.nx-dark #nxAiSyncWork{ background:#3a2f12; color:#f0d58a; border-color:#5c4a1c; }
+  html.nx-dark .nxai-warn{ background:#3d1d1b; color:#f2a59c; }
+  html.nx-dark .nxai-saved{ background:#173226; color:#8fd6ac; }
+  html.nx-dark .nxai-table th, html.nx-dark .nxai-table td, html.nx-dark .nxai-md .nxai-hr{ border-color:#2e384c; }
+  html.nx-dark .nxai-md code{ background:#273042; }
 </style>
 
 <script>
@@ -304,6 +372,9 @@
   var nxAiMode = 'side';
   var nxAiConv = nxAiBlankConv_();      // { id, title, caseId, caseName, caseFolderId, casePath, messages }
   var nxAiConvList = [];
+  var nxAiWorkLoading = false;
+  var nxAiWorkUpdated = {};            // 불러온 뒤 work 원본이 더 바뀐 대화 id → true
+  var nxAiWorkList = [];                // 아직 job 대화로 안 불러온 work 대화기록(_대화기록.json) 목록
   var nxAiAbort = null;
   var nxAiSaveTimer = null;
   var nxAiPendingFiles = [];            // [{id,name,type:'file'|'folder',mimeType,path}] — 드라이브 파일/폴더 첨부
@@ -314,8 +385,31 @@
   var nxAiPvFolder = null;              // 사건 자료 칸이 보고 있는 폴더 {folderId, path}
   var nxAiConvFolderId = null;          // _AI대화기록 폴더 — 사건 없는 대화의 업로드 위치
 
-  function nxAiBlankConv_(){ return { id: null, title: '', caseId: '', caseName: '', caseFolderId: '', casePath: null, messages: [] }; }
+  function nxAiBlankConv_(){ return { id: null, sourceFileId: '', title: '', caseId: '', caseName: '', caseFolderId: '', casePath: null, messages: [] }; }
   function nxAiEl_(id){ return document.getElementById(id); }
+  function nxAiApplyPvPos_(){
+    var root = nxAiEl_('nxAi');
+    if (!root) return;
+    var saved = nxAiLs_('nxAiPvPos');
+    var bottom = saved === 'bottom' || (saved !== 'right' && window.nxLayout === 'tablet');
+    root.classList.toggle('pv-at-bottom', bottom);
+    // 버튼 글자: A=자동, H=오른쪽(좌우 배치) 고정, V=아래(위아래 배치) 고정 — 세무사님 지정
+    var btn = nxAiEl_('nxAiPvPosBtn');
+    if (btn){
+      var fixed = saved === 'right' || saved === 'bottom';
+      btn.textContent = saved === 'right' ? 'H' : (saved === 'bottom' ? 'V' : 'A');
+      btn.classList.toggle('fixed', fixed);
+      var nextLabel = saved === 'right' ? '아래 고정' : (saved === 'bottom' ? '자동' : '오른쪽 고정');
+      btn.title = '미리보기 위치: ' + (fixed ? (bottom ? '아래 고정' : '오른쪽 고정') : ('자동(지금 ' + (bottom ? '아래' : '오른쪽') + ')')) + ' — 누르면 ' + nextLabel;
+    }
+  }
+  // 폰 화면(body.lay-phone)에서 보이는 칸 하나를 고른다: list | chat | files. 다른 화면 배치에선 표시만 기억.
+  function nxAiPhoneTab_(which){
+    var root = nxAiEl_('nxAi');
+    if (!root) return;
+    ['list', 'chat', 'files'].forEach(function(k){ root.classList.toggle('ph-' + k, k === which); });
+    Array.prototype.forEach.call(document.querySelectorAll('#nxAiPhoneTabs button'), function(b){ b.classList.toggle('on', b.getAttribute('data-ph') === which); });
+  }
   function nxAiEsc_(s){ return (typeof escapeHtml === 'function') ? escapeHtml(s) : String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function nxAiToast_(msg){ if (typeof toast === 'function') toast(msg); }
   function nxAiConfirm_(msg){ return (typeof nxConfirm_ === 'function') ? nxConfirm_(msg) : Promise.resolve(window.confirm(msg)); }
@@ -353,7 +447,10 @@
   // script.html의 showView가 화면을 바꿀 때마다 부른다.
   function nxAiOnViewChange_(name){
     nxAiSetMode_(name === 'ai' ? 'tab' : 'side');
-    if (name === 'ai') nxAiRenderConvList_();
+    if (name === 'ai'){
+      if (nxAiListState === 'error' || nxAiListState === 'idle') nxAiLoadConvList_(true);
+      else nxAiRenderConvList_();
+    }
   }
 
   // 결과 링크(작업관리에서 보기 등)로 다른 화면에 갈 때 — 같은 대화를 사이드바로 펼쳐서 이어간다.
@@ -369,11 +466,36 @@
   // ============================================================
   // 대화 목록 / 저장
   // ============================================================
-  function nxAiLoadConvList_(){
+  // 대화 목록을 받는다. 실패하면(일시적인 서버·네트워크 오류) "대화 없음"으로 잘못 보이지 않게 오류 상태를
+  // 기억해 두고 1회 자동 재시도한다 — 그래도 안 되면 목록에 [다시 시도]를 보여준다(AI탭을 열 때도 다시 시도).
+  var nxAiListState = 'idle'; // idle | loading | ok | error
+  function nxAiLoadConvList_(isRetry){
+    nxAiListState = 'loading';
+    nxAiRenderConvList_();
     return callGas('ai_conv_list', {}).then(function(res){
-      if (res && !res.error){ nxAiConvList = res.conversations || []; nxAiConvFolderId = res.folderId || null; }
+      if (!res || res.error) throw new Error(res && res.error || '응답 없음');
+      nxAiConvList = res.conversations || [];
+      nxAiConvFolderId = res.folderId || null;
+      nxAiListState = 'ok';
       nxAiRenderConvList_();
-    }).catch(function(){ nxAiRenderConvList_(); });
+      // work 대화기록은 드라이브 전체 검색이라 느리므로 뒤이어 따로 받아 덧붙인다.
+      nxAiWorkLoading = true; nxAiRenderConvList_();
+      return callGas('ai_work_histories', {}).then(function(w){
+        nxAiWorkLoading = false;
+        if (w && !w.error){
+          nxAiWorkList = w.workHistories || [];
+          nxAiWorkUpdated = {};
+          (w.updatedImports || []).forEach(function(id){ nxAiWorkUpdated[id] = true; });
+          nxAiRefreshSyncUi_();
+        }
+        nxAiRenderConvList_();
+      }, function(){ nxAiWorkLoading = false; nxAiRenderConvList_(); });
+    }).catch(function(){
+      nxAiWorkLoading = false;
+      if (!isRetry){ setTimeout(function(){ nxAiLoadConvList_(true); }, 2000); return; }
+      nxAiListState = 'error';
+      nxAiRenderConvList_();
+    });
   }
 
   function nxAiFmtTime_(s){
@@ -385,41 +507,70 @@
     return (d.getMonth() + 1) + '/' + d.getDate();
   }
 
+  // job 대화와 work 대화기록(아직 안 불러온 것)을 한 목록에 최근 순으로 섞어 보여준다.
+  // work 항목은 누르면 그 자리에서 job 대화로 불러온다(원본 파일은 그대로 둠).
   function nxAiRenderConvList_(){
     var body = nxAiEl_('nxAiListBody');
     if (!body) return;
     var q = (nxAiEl_('nxAiListSearch').value || '').trim();
-    var list = nxAiConvList.filter(function(c){
-      return !q || (c.title || '').indexOf(q) !== -1 || (c.caseName || '').indexOf(q) !== -1;
+    var items = nxAiConvList.map(function(c){ return { kind: 'job', c: c, at: c.updatedAt || '' }; })
+      .concat(nxAiWorkList.map(function(w){ return { kind: 'work', w: w, at: w.updatedAt || '' }; }));
+    items = items.filter(function(it){
+      if (!q) return true;
+      var hay = it.kind === 'job' ? [it.c.title, it.c.caseName].join(' ') : [it.w.caseName, it.w.folderName].join(' ');
+      return hay.indexOf(q) !== -1;
     });
-    if (!list.length){
-      body.innerHTML = '<div class="nxai-muted">' + (q ? '검색 결과가 없습니다.' : '아직 저장된 대화가 없습니다. 아래에서 바로 시작하세요.') + '</div>';
+    items.sort(function(a, b){ return String(b.at).localeCompare(String(a.at)); });
+    if (nxAiListState === 'loading' && !nxAiConvList.length){ body.innerHTML = '<div class="nxai-muted">대화 목록을 불러오는 중…</div>'; return; }
+    if (nxAiListState === 'error' && !nxAiConvList.length){
+      body.innerHTML = '<div class="nxai-muted">대화 목록을 불러오지 못했습니다. <a href="#" id="nxAiListRetry">다시 시도</a></div>';
+      nxAiEl_('nxAiListRetry').addEventListener('click', function(e){ e.preventDefault(); nxAiLoadConvList_(true); });
+      return;
+    }
+    if (!items.length){
+      body.innerHTML = '<div class="nxai-muted">' + (q ? '검색 결과가 없습니다.' : (nxAiWorkLoading ? 'work에서 하던 대화를 찾는 중…' : '아직 저장된 대화가 없습니다. 대화창에서 바로 시작하세요.')) + '</div>';
       return;
     }
     body.innerHTML = '';
-    list.forEach(function(c){
+    items.forEach(function(it){
       var row = document.createElement('div');
-      row.className = 'nxai-conv' + (c.id === nxAiConv.id ? ' on' : '');
-      row._convId = c.id;
-      row.innerHTML = '<span class="t">' + nxAiEsc_(c.title || '새 대화') + '</span>'
-        + '<span class="m">' + (c.caseName ? '<span>🔗 ' + nxAiEsc_(c.caseName) + '</span>' : '<span>일반</span>')
-        + '<span>' + nxAiEsc_(nxAiFmtTime_(c.updatedAt)) + '</span></span>';
-      row.addEventListener('click', function(){ nxAiOpenConv_(c.id); });
-      row.addEventListener('contextmenu', function(e){
-        e.preventDefault();
-        nxAiShowMenu_(e.clientX, e.clientY, [
-          { label: '✏️ 제목 바꾸기', action: function(){ nxAiRenameConv_(c.id, c.title); } },
-          { label: '🗑 대화 삭제(휴지통)', action: function(){ nxAiDeleteConv_(c.id); } }
-        ]);
-      });
+      if (it.kind === 'job'){
+        var c = it.c;
+        row.className = 'nxai-conv' + (c.id === nxAiConv.id ? ' on' : '');
+        row._convId = c.id;
+        row.innerHTML = '<span class="t">' + (nxAiWorkUpdated[c.id] ? '<span class="nxai-badge new" title="불러온 뒤 work에서 대화가 더 쌓였습니다">work 새 내용</span>' : '') + nxAiEsc_(c.title || '새 대화') + '</span>'
+          + '<span class="m">' + (c.caseName ? '<span>🔗 ' + nxAiEsc_(c.caseName) + '</span>' : '<span>일반</span>')
+          + '<span>' + nxAiEsc_(nxAiFmtTime_(c.updatedAt)) + '</span></span>';
+        row.addEventListener('click', function(){ nxAiOpenConv_(c.id); });
+        row.addEventListener('contextmenu', function(e){
+          e.preventDefault();
+          nxAiShowMenu_(e.clientX, e.clientY, [
+            { label: '✏️ 제목 바꾸기', action: function(){ nxAiRenameConv_(c.id, c.title); } },
+            { label: '🗑 대화 삭제(휴지통)', action: function(){ nxAiDeleteConv_(c.id); } }
+          ]);
+        });
+      } else {
+        var w = it.w;
+        row.className = 'nxai-conv work';
+        row.title = 'work.netax.kr에서 하던 대화 — 누르면 불러와서 이어갑니다(원본은 그대로 둡니다)';
+        row.innerHTML = '<span class="t"><span class="nxai-badge">work</span>' + nxAiEsc_(w.caseName || w.folderName) + '</span>'
+          + '<span class="m"><span>' + nxAiEsc_(nxAiFmtTime_(w.updatedAt)) + '</span><span>' + w.sizeKb + 'KB</span></span>';
+        row.addEventListener('click', function(){
+          nxAiImportWorkHistory_({ id: w.fileId, name: '_대화기록.json' }, {
+            caseId: w.caseId, caseName: w.caseName || w.folderName, caseFolderId: w.folderId
+          });
+        });
+      }
       body.appendChild(row);
     });
+    if (nxAiWorkLoading) body.insertAdjacentHTML('beforeend', '<div class="nxai-muted">work에서 하던 대화를 찾는 중…</div>');
   }
 
   function nxAiOpenConv_(id){
     if (nxAiAbort){ nxAiToast_('답변을 받는 중입니다 — 끝난 뒤에 바꿔주세요.'); return; }
     // 서버 왕복에 몇 초 걸리므로, 누른 즉시 그 대화가 선택된 것과 불러오는 중임을 보여준다.
     Array.prototype.forEach.call(document.querySelectorAll('.nxai-conv'), function(r){ r.classList.toggle('on', r._convId === id); });
+    nxAiPhoneTab_('chat');
     var loadingEl = nxAiAppendBubble_('assistant', '대화를 불러오는 중…');
     loadingEl.classList.add('nxai-loading');
     nxAiFlushSave_().then(function(){
@@ -466,12 +617,12 @@
     var convAtSave = nxAiConv;
     return callGas('ai_conv_save', { conversation: {
       id: convAtSave.id, title: convAtSave.title, caseId: convAtSave.caseId, caseName: convAtSave.caseName,
-      caseFolderId: convAtSave.caseFolderId, casePath: convAtSave.casePath, messages: convAtSave.messages.slice(-NXAI_MAX_MESSAGES)
+      caseFolderId: convAtSave.caseFolderId, casePath: convAtSave.casePath, sourceFileId: convAtSave.sourceFileId || '', messages: convAtSave.messages.slice(-NXAI_MAX_MESSAGES)
     } }).then(function(res){
       if (!res || res.error){ nxAiToast_('대화 저장 실패: ' + (res && res.error)); return; }
       convAtSave.id = res.id;
       var existing = nxAiConvList.find(function(c){ return c.id === res.id; });
-      var meta = { id: res.id, title: convAtSave.title, caseId: convAtSave.caseId, caseName: convAtSave.caseName, caseFolderId: convAtSave.caseFolderId, updatedAt: res.updatedAt, count: convAtSave.messages.length };
+      var meta = { id: res.id, sourceFileId: convAtSave.sourceFileId || '', title: convAtSave.title, caseId: convAtSave.caseId, caseName: convAtSave.caseName, caseFolderId: convAtSave.caseFolderId, updatedAt: res.updatedAt, count: convAtSave.messages.length };
       if (existing) Object.assign(existing, meta); else nxAiConvList.unshift(meta);
       nxAiConvList.sort(function(a, b){ return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); });
       nxAiRenderConvList_();
@@ -509,6 +660,7 @@
 
   function nxAiRefreshTitle_(){
     nxAiEl_('nxAiTitle').textContent = '🤖 ' + (nxAiConv.title || '새 대화');
+    nxAiRefreshSyncUi_();
   }
 
   // ============================================================
@@ -575,6 +727,8 @@
     nxAiEl_('nxAiPvFiles').hidden = which !== 'files';
     nxAiEl_('nxAiPvView').hidden = which !== 'view';
     nxAiEl_('nxAi').classList.remove('pv-collapsed');
+    nxAiLs_('nxAiPvHidden', '0');
+    nxAiPhoneTab_('files');
   }
   function nxAiPvRenderEmpty_(){
     nxAiPvFolder = null;
@@ -647,32 +801,70 @@
     }
   }
   // work 대화기록 → 새 job 대화로 복사(원본 파일은 그대로 둔다 — work에서도 계속 볼 수 있게).
-  function nxAiImportWorkHistory_(file){
+  // ============================================================
+  // work → job 대화 가져오기/이어붙이기 — work.netax.kr과 함께 쓰는 전환 기간용(Code.js ai_convImportWork·
+  // ai_convSyncWork 참고). 시스템이 안정되면 이 묶음과 대화 목록의 work 항목 표시를 걷어내면 된다.
+  // ============================================================
+  // caseInfo 생략 시 지금 대화에 연결된 사건을 쓴다(사건 자료 칸의 불러오기 버튼). 대화 목록의 work 항목은 그 파일의 사건 정보를 넘긴다.
+  function nxAiImportWorkHistory_(file, caseInfo){
     if (nxAiAbort){ nxAiToast_('답변을 받는 중입니다 — 끝난 뒤에 해주세요.'); return; }
-    callGas('readFile', { fileId: file.id }).then(function(res){
-      var msgs = [];
-      try{ msgs = JSON.parse((res && res.content) || '[]'); }catch(e){}
-      msgs = (Array.isArray(msgs) ? msgs : []).filter(function(m){ return m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'; })
-        .map(function(m){
-          // 예전 work 대화의 내부 신호 표시(<<<EDIT_DOCUMENT>>> 등)는 다시 적용할 수 없으므로 안내 문구로 바꾼다(work와 같은 처리).
-          return { role: m.role, content: m.content
-            .replace(/<<<NAVIGATE_TO>>>[\s\S]*?<<<END_NAVIGATE_TO>>>/g, '')
-            .replace(/<<<EDIT_DOCUMENT>>>[\s\S]*?<<<END_EDIT_DOCUMENT>>>/g, '(문서 수정 제안 — 지난 대화라 다시 적용할 수 없습니다)')
-            .replace(/<<<DIAGRAM_MERMAID>>>[\s\S]*?<<<END_DIAGRAM_MERMAID>>>/g, '(관계도 제안 — 지난 대화라 다시 적용할 수 없습니다)').trim() };
-        });
-      if (!msgs.length){ nxAiToast_('불러올 대화가 없습니다.'); return; }
-      return nxAiFlushSave_().then(function(){
-        nxAiConv = Object.assign(nxAiBlankConv_(), {
-          title: 'work 대화 — ' + nxAiConv.caseName,
-          caseId: nxAiConv.caseId, caseName: nxAiConv.caseName, caseFolderId: nxAiConv.caseFolderId, casePath: nxAiConv.casePath,
-          messages: msgs
-        });
-        nxAiRenderConversation_();
-        nxAiRefreshCaseUi_();
-        nxAiSaveNow_();
-        nxAiToast_('work 대화 ' + msgs.length + '개 메시지를 불러왔습니다. 이어서 질문하면 됩니다.');
-      });
+    var ci = caseInfo || { caseId: nxAiConv.caseId, caseName: nxAiConv.caseName, caseFolderId: nxAiConv.caseFolderId };
+    var loadingEl = nxAiAppendBubble_('assistant', 'work 대화를 불러오는 중…');
+    nxAiFlushSave_().then(function(){
+      return callGas('ai_conv_import_work', { fileId: file.id, caseId: ci.caseId || '', caseName: ci.caseName || '', caseFolderId: ci.caseFolderId || '' });
+    }).then(function(res){
+      loadingEl.remove();
+      if (!res || res.error){ nxAiToast_('work 대화를 불러오지 못했습니다: ' + (res && res.error)); return; }
+      nxAiAdoptConversation_(res.conversation);
+      nxAiWorkList = nxAiWorkList.filter(function(w){ return w.fileId !== file.id; });
+      nxAiLoadConvListOnly_();
+      nxAiToast_('work 대화 ' + nxAiConv.messages.length + '개 메시지를 불러왔습니다. 이어서 질문하면 됩니다.');
+    }).catch(function(err){
+      loadingEl.remove();
+      nxAiToast_('work 대화를 불러오지 못했습니다: ' + (err && err.message ? err.message : err));
     });
+  }
+
+  // 불러온 뒤 work에서 더 쌓인 대화를 이어붙인다.
+  function nxAiSyncWork_(){
+    if (nxAiAbort || !nxAiConv.id) return;
+    var id = nxAiConv.id;
+    var btn = nxAiEl_('nxAiSyncWork');
+    btn.disabled = true; btn.textContent = '이어붙이는 중…';
+    nxAiFlushSave_().then(function(){
+      return callGas('ai_conv_sync_work', { id: id });
+    }).then(function(res){
+      btn.disabled = false; btn.textContent = '⤵ work 새 내용 이어붙이기';
+      if (!res || res.error){ nxAiToast_(res && res.error || '이어붙이지 못했습니다.'); return; }
+      delete nxAiWorkUpdated[id];
+      if (nxAiConv.id === id) nxAiAdoptConversation_(res.conversation);
+      nxAiRenderConvList_();
+      nxAiToast_(res.appended ? ('work에서 ' + res.appended + '개 메시지를 이어붙였습니다.') : 'work에 새로 추가된 대화가 없습니다.');
+    }).catch(function(err){
+      btn.disabled = false; btn.textContent = '⤵ work 새 내용 이어붙이기';
+      nxAiToast_('이어붙이기 오류: ' + (err && err.message ? err.message : err));
+    });
+  }
+
+  function nxAiAdoptConversation_(conv){
+    nxAiConv = Object.assign(nxAiBlankConv_(), conv);
+    nxAiRenderConversation_();
+    nxAiRefreshCaseUi_();
+    if (nxAiConv.caseFolderId) nxAiPvNavigate_({ folderId: nxAiConv.caseFolderId });
+  }
+
+  // 대화 목록만 다시 받는다(work 검색은 다시 하지 않음).
+  function nxAiLoadConvListOnly_(){
+    return callGas('ai_conv_list', {}).then(function(res){
+      if (res && !res.error) nxAiConvList = res.conversations || [];
+      nxAiRenderConvList_();
+    });
+  }
+
+  // 지금 대화가 "work에 새 내용 있음"이면 대화창 위에 이어붙이기 버튼을 보여준다.
+  function nxAiRefreshSyncUi_(){
+    var btn = nxAiEl_('nxAiSyncWork');
+    if (btn) btn.hidden = !(nxAiConv.id && nxAiWorkUpdated[nxAiConv.id]);
   }
 
   function nxAiFileIcon_(f){
@@ -1209,6 +1401,7 @@
 
     var files = nxAiPendingFiles.slice(), images = nxAiPendingImages.slice();
     var note = files.map(function(a){ return (a.type === 'folder' ? ' 📁' : ' 📎') + a.name; }).join('') + images.map(function(){ return ' 🖼️'; }).join('');
+    nxAiPhoneTab_('chat');
     var userBubble = nxAiAppendBubble_('user', text + note);
     input.value = ''; input.style.height = 'auto';
     nxAiPendingFiles = []; nxAiPendingImages = []; nxAiRenderAttachBar_();
@@ -1454,6 +1647,13 @@
     });
 
     nxAiEl_('nxAiNewBtn').addEventListener('click', nxAiNewConv_);
+    nxAiEl_('nxAiSyncWork').addEventListener('click', function(e){ e.stopPropagation(); nxAiSyncWork_(); });
+    // 대화 목록 접기/펼치기 — 이 기기에 기억
+    var LIST_HIDDEN_KEY = 'nxAiListHidden';
+    var setListHidden = function(hidden){ nxAiEl_('nxAi').classList.toggle('list-collapsed', hidden); nxAiLs_(LIST_HIDDEN_KEY, hidden ? '1' : '0'); };
+    nxAiEl_('nxAiListHide').addEventListener('click', function(){ setListHidden(true); });
+    nxAiEl_('nxAiListShow').addEventListener('click', function(e){ e.stopPropagation(); setListHidden(false); });
+    if (nxAiLs_(LIST_HIDDEN_KEY) === '1') nxAiEl_('nxAi').classList.add('list-collapsed');
     nxAiEl_('nxAiNewBtnSide').addEventListener('click', function(e){ e.stopPropagation(); nxAiNewConv_(); });
     nxAiEl_('nxAiListSearch').addEventListener('input', nxAiRenderConvList_);
     nxAiEl_('nxAiTitle').addEventListener('click', function(){ nxAiRenameConv_(nxAiConv.id, nxAiConv.title); });
@@ -1519,7 +1719,26 @@
 
     nxAiEl_('nxAiPvTabFiles').addEventListener('click', function(){ nxAiPvShowTab_('files'); });
     nxAiEl_('nxAiPvTabView').addEventListener('click', function(){ nxAiPvShowTab_('view'); });
-    nxAiEl_('nxAiPvToggle').addEventListener('click', function(){ nxAiEl_('nxAi').classList.toggle('pv-collapsed'); });
+    // 미리보기 숨기기(칸 안의 ») / 열기(대화창 머리의 «) — 이 기기에 기억
+    var PV_HIDDEN_KEY = 'nxAiPvHidden';
+    var setPvHidden = function(hidden){ nxAiEl_('nxAi').classList.toggle('pv-collapsed', hidden); nxAiLs_(PV_HIDDEN_KEY, hidden ? '1' : '0'); };
+    nxAiEl_('nxAiPvToggle').addEventListener('click', function(){ setPvHidden(true); });
+    nxAiEl_('nxAiPvShow').addEventListener('click', function(e){ e.stopPropagation(); setPvHidden(false); });
+    if (nxAiLs_(PV_HIDDEN_KEY) === '1') nxAiEl_('nxAi').classList.add('pv-collapsed');
+    // 미리보기 위치 — 아이콘으로 오른쪽/아래를 고르면 이 기기에 기억. 고른 적 없으면 PC=오른쪽, 태블릿=아래.
+    // 누를 때마다 자동 → 오른쪽 고정 → 아래 고정 → 자동 (세무사님 선택)
+    nxAiEl_('nxAiPvPosBtn').addEventListener('click', function(){
+      var cur = nxAiLs_('nxAiPvPos');
+      var next = cur === 'right' ? 'bottom' : (cur === 'bottom' ? 'auto' : 'right');
+      nxAiLs_('nxAiPvPos', next);
+      nxAiApplyPvPos_();
+    });
+    document.addEventListener('nx-layout-change', nxAiApplyPvPos_);
+    nxAiApplyPvPos_();
+    // 폰 탭 전환
+    Array.prototype.forEach.call(document.querySelectorAll('#nxAiPhoneTabs button'), function(b){
+      b.addEventListener('click', function(){ nxAiPhoneTab_(b.getAttribute('data-ph')); });
+    });
     nxAiEl_('nxAiPvAttach').addEventListener('click', function(){ if (nxAiPreviewFile) nxAiAddFileAttachment_(nxAiPreviewFile); });
     nxAiEl_('nxAiPvSave').addEventListener('click', nxAiPvSave_);
     nxAiEl_('nxAiPvSaveProposal').addEventListener('click', nxAiPvSave_);

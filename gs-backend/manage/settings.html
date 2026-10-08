@@ -18,6 +18,31 @@
       <h3>비밀번호 변경</h3>
       <div id="settingsPwBody"></div>
     </div>
+    <!-- [2026.10.08] work.netax.kr 설정 창에서 옮겨온 항목 — AI 관련 설정(강도·온도 등)은 대화하다
+         바로 바꾸도록 AI 화면의 ⚙(Alt+S)에 두고, 앱 전체에 걸리는 것만 여기 둔다. 둘 다 이 기기에만 기억. -->
+    <div class="card" style="max-width:480px;">
+      <h3>🖥 화면</h3>
+      <label style="display:flex; align-items:center; gap:8px; margin:6px 0 12px; font-size:14px;">
+        <input type="checkbox" id="settingsDarkMode"> 🌙 다크모드
+      </label>
+      <div style="font-size:13px; margin-bottom:6px;">📱 화면 배치 기준</div>
+      <select id="settingsLayout" style="font-size:13px; padding:6px 8px; border:1px solid var(--line); border-radius:6px;">
+        <option value="auto">자동 감지(기본)</option>
+        <option value="pc">PC 화면으로 고정</option>
+        <option value="tablet">태블릿 화면으로 고정</option>
+        <option value="phone">폰 화면으로 고정</option>
+      </select>
+      <div class="settings-tool-desc" id="settingsLayoutNow" style="margin-top:6px;"></div>
+      <div class="settings-tool-desc">자동 감지가 기기에 잘 안 맞을 때(예: 큰 태블릿이 PC처럼 보이는데 좁게 쓰고 싶을 때) 고정합니다. 다크모드에서도 세액인쇄 서식·문서작성 미리보기·사진은 원래 밝은 모습으로 보이고, 인쇄는 항상 밝게 나옵니다.</div>
+    </div>
+    <div class="card" style="max-width:480px;">
+      <h3>🔗 바로가기</h3>
+      <div style="display:flex; flex-wrap:wrap; gap:8px;">
+        <a class="ghost-btn" href="https://console.anthropic.com" target="_blank" rel="noopener" style="text-decoration:none;">Claude 콘솔 열기 ↗</a>
+        <a class="ghost-btn" href="https://aistudio.google.com" target="_blank" rel="noopener" style="text-decoration:none;">Google AI Studio 열기 ↗</a>
+      </div>
+      <div class="settings-tool-desc">AI 사용요금·API 키 확인용입니다.</div>
+    </div>
     <!-- [2026.10.06 신규, 재검토114] 세무대리인 정보 — 세무사님 지적("기본정보가 왜 세액계산
          안 증여세 탭에 있나, 저장도 안 되고 있었다")으로 여기로 옮겼다. 사건마다 바뀌지 않는
          값이라 사건별 데이터가 아니라 이 앱 전체에 1세트만 저장하고(PropertiesService,
@@ -223,4 +248,24 @@
     var body = document.getElementById('settingsPwBody');
     if (body) body.innerHTML = '';
   }
+</script>
+
+<script>
+  // [2026.10.08] 화면 카드(다크모드·화면 배치 기준) — 실제 적용은 script.html의 nxSetDark_/nxSetLayoutOverride_.
+  // script.html이 이 파일보다 나중에 포함되므로, 그 함수들이 준비된 뒤(DOMContentLoaded)에 연결한다.
+  document.addEventListener('DOMContentLoaded', function(){
+    var dark = document.getElementById('settingsDarkMode');
+    var layout = document.getElementById('settingsLayout');
+    var now = document.getElementById('settingsLayoutNow');
+    var LABEL = { pc: 'PC', tablet: '태블릿', phone: '폰' };
+    function refresh(){
+      dark.checked = nxIsDark_();
+      layout.value = nxLayoutOverride_();
+      now.textContent = '지금 적용 중: ' + (LABEL[window.nxLayout] || '-') + ' 화면' + (layout.value === 'auto' ? ' (자동 감지)' : ' (고정)');
+    }
+    dark.addEventListener('change', function(){ nxSetDark_(dark.checked); });
+    layout.addEventListener('change', function(){ nxSetLayoutOverride_(layout.value); refresh(); });
+    document.addEventListener('nx-layout-change', refresh);
+    refresh();
+  });
 </script>
