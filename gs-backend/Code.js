@@ -3547,7 +3547,10 @@ const JOB_PROPOSE_ACTIONS_ = {
   memo_save: { gas: 'client:memoSave', label: '메모로 저장', required: ['content'] },
   // 블로그 발행은 외부 공개 글이라 반드시 사람이 확인 — 보고서 모음 화면의 발행 버튼과 같은 서버 기능
   blog_naver: { gas: 'post_to_naver_blog', label: '네이버 블로그에 발행(공개 글)', required: ['content'] },
-  blog_google: { gas: 'post_to_google_blog', label: '구글 블로그에 발행(공개 글)', required: ['content'] }
+  blog_google: { gas: 'post_to_google_blog', label: '구글 블로그에 발행(공개 글)', required: ['content'] },
+  // 수금관리 — 현금영수증 대조(둘 다 수금 기록을 새로 만들 수 있어 사람이 확인 후 실행)
+  receipts_scan: { gas: 'scan_cash_receipts', label: '사건폴더의 현금영수증을 읽어 수금내역에 반영', required: [] },
+  receipts_import: { gas: 'import_hometax_receipts', label: '홈택스 현금영수증 매출내역 엑셀 가져오기', required: [] }
 };
 const JOB_CASE_UPDATE_FORBIDDEN_ = ['폴더ID', '생성일', '수정일', '고객ID', 'my_report_id', '하위업무'];
 
@@ -3591,7 +3594,8 @@ const JOB_AI_TOOLS_ = [
       + 'action별 params: booking_approve{rowIndex,eventId,phone,reservedDate,reservedTime} / booking_reject{rowIndex,phone} / booking_link_case{rowIndex,caseId} / booking_cancel{rowIndex} — 값은 job_lookup(bookings) 결과 그대로. '
       + 'client_sms{고객ID,message}(고객ID는 list_clients로 확인) / portal_sms{caseId}(고객창구 접속 안내문자) / checklist_mark{caseId,item,submitted(기본 true, false면 확보 표시 해제)}(item은 job_lookup checklist의 항목명 그대로) / '
       + 'case_update{id, 바꿀 항목들…}(작업관리 사건 필드: 상태·법정일·처리방향·처리대상·개요·사건개요(JSON 문자열) 등; 폴더ID·고객ID 등 연결정보는 못 바꿈) / '
-      + 'memo_save{content}(메모 저장 창을 열어 사용자가 저장 위치를 고름) / blog_naver{content}·blog_google{content}(블로그 글 전문 — 공개 발행이므로 내용을 summary에 요약).',
+      + 'memo_save{content}(메모 저장 창을 열어 사용자가 저장 위치를 고름) / blog_naver{content}·blog_google{content}(블로그 글 전문 — 공개 발행이므로 내용을 summary에 요약) / '
+      + 'receipts_scan{}(사건폴더에 저장된 현금영수증 사진·PDF를 읽어 수금내역 반영) / receipts_import{}(0_NX_0 폴더의 홈택스 매출내역 엑셀을 수금내역으로 가져오기).',
     input_schema: {
       type: 'object',
       properties: {
@@ -14162,7 +14166,10 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
   // 분야의 계산기만 포함한다 — 모델 종류와 무관하게 동일하게 적용(Haiku도 이제 세금 계산을
   // 할 수 있다, 필요한 분야 하나만 열람하는 한 20만 토큰 한도를 넘길 일이 없음).
   const browsedCats = browsedTaxCategories_(body.messages);
+  const isJobPanel_ = !!(body.context && body.context.aiPanel);
   const tools = DRIVE_TOOLS.filter(function (t) {
+    // [2026.10.08] job 화면(AI탭·사이드바)에서는 담당자(업무관리자) 도구를 쓰지 않는다 — job에서 없앤 기능.
+    if (isJobPanel_ && /business_manager/.test(t.name)) return false;
     if (BASIC_TOOL_NAMES_.has(t.name)) return true;
     const cat = TAX_TOOL_TO_CATEGORY_[t.name];
     return !!cat && browsedCats.has(cat);
