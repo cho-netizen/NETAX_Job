@@ -18,31 +18,58 @@
     // 구글 웹앱 응답은 ①실행 → ②결과 받아가기 두 단계인데 ②가 자주 실패한다(오류 화면 HTML이 옴 —
     // Code.js manageApp_dispatchHttpOnce_ 설명 참고). 그때도 서버 실행은 끝나 있으므로, 같은 요청번호(rid)로
     // 다시 묻는다 — 서버는 다시 실행하지 않고 기억해둔 결과를 준다(저장이 두 번 되지 않음).
-    var RETRY_DELAYS = [1000, 2000, 4000, 6000];
+    var RETRY_DELAYS = [1000, 2000, 3000, 4000, 5000, 6000, 6000, 6000];
     function newRid(){ return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10); }
+    // 묶어 보내기 — 거의 동시에(40ms 안에) 나가는 호출을 하나의 요청으로 묶는다. 대시보드처럼 8개를 따로
+    // 보내면 구글 서버가 각각 22~31초 걸리고 결과 받기도 대부분 실패했다(2026-10-08 실측). 서버는 한 번
+    // 실행 안에서 차례로 처리해 결과를 배열로 돌려준다(Code.js manageApp_dispatchHttpBatch_).
+    var BATCH_WAIT_MS = 40, BATCH_MAX = 12;
+    var queue = [], flushTimer = null;
     function post(fnName, args){
+      return new Promise(function(resolve, reject){
+        queue.push({ fn: fnName, args: args, resolve: resolve, reject: reject });
+        if (queue.length >= BATCH_MAX){ flush(); return; }
+        if (!flushTimer) flushTimer = setTimeout(flush, BATCH_WAIT_MS);
+      });
+    }
+    function flush(){
+      clearTimeout(flushTimer); flushTimer = null;
+      var items = queue.splice(0, queue.length);
+      if (!items.length) return;
       var rid = newRid();
-      var body = JSON.stringify({ __manage: { fn: fnName, args: args }, __rid: rid });
+      var body = JSON.stringify({ __manageBatch: items.map(function(it){ return { fn: it.fn, args: it.args }; }), __rid: rid });
+      var failAll = function(err){ items.forEach(function(it){ it.reject(err); }); };
       var attempt = function(n){
-        return fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body })
+        // 결과 받기 단계가 멈추면 15~30초 뒤에야 실패가 오므로, 25초에서 끊고 같은 요청번호로 다시 묻는다
+        // (서버는 항목별로 기억해둔 결과를 쓰고, 묶음이 아직 실행 중이면 끝날 때까지 기다렸다가 준다).
+        var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, 25000) : null;
+        var retry = function(){
+          return new Promise(function(r){ setTimeout(r, RETRY_DELAYS[n]); }).then(function(){ return attempt(n + 1); });
+        };
+        return fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body, signal: ctrl ? ctrl.signal : undefined })
           .then(function(res){ return res.text(); })
+          .then(function(text){ clearTimeout(timer); return text; }, function(err){ clearTimeout(timer); throw err; })
           .then(function(text){
             var data = null;
             try{ data = JSON.parse(text); }catch(e){ data = null; }
-            var stillRunning = data && data.error && !('__result' in data) && /아직 처리 중/.test(data.error);
-            if (!data || stillRunning){
-              if (n < RETRY_DELAYS.length) return new Promise(function(r){ setTimeout(r, RETRY_DELAYS[n]); }).then(function(){ return attempt(n + 1); });
+            if (!data || !Array.isArray(data.__results)){
+              if (data && data.error) throw new Error(data.error);
+              if (n < RETRY_DELAYS.length) return retry();
               throw new Error('서버 응답을 받지 못했습니다(구글 서버가 일시적으로 불안정합니다). 잠시 후 다시 시도하세요. 저장 작업이었다면 화면을 새로고침해 반영됐는지 먼저 확인하세요.');
             }
-            if (data.error && !('__result' in data)) throw new Error(data.error);
-            return data.__result;
+            items.forEach(function(it, i){
+              var r = data.__results[i];
+              if (r && r.error && !('__result' in r)) it.reject(new Error(r.error));
+              else it.resolve(r ? r.__result : undefined);
+            });
           }, function(err){
-            // 요청이 서버에 닿기 전에 끊긴 네트워크 오류 — 같은 요청번호로 다시 보내도 안전하다.
-            if (n < RETRY_DELAYS.length) return new Promise(function(r){ setTimeout(r, RETRY_DELAYS[n]); }).then(function(){ return attempt(n + 1); });
+            // 요청이 서버에 닿기 전에 끊겼거나 25초가 지남 — 같은 요청번호로 다시 보내도 안전하다.
+            if (n < RETRY_DELAYS.length) return retry();
             throw err;
           });
       };
-      return attempt(0);
+      attempt(0).catch(failAll);
     }
 
     function runner(){

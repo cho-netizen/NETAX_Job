@@ -35,6 +35,15 @@
       <div class="settings-tool-desc" id="settingsLayoutNow" style="margin-top:6px;"></div>
       <div class="settings-tool-desc">자동 감지가 기기에 잘 안 맞을 때(예: 큰 태블릿이 PC처럼 보이는데 좁게 쓰고 싶을 때) 고정합니다. 다크모드에서도 세액인쇄 서식·문서작성 미리보기·사진은 원래 밝은 모습으로 보이고, 인쇄는 항상 밝게 나옵니다.</div>
     </div>
+    <div class="card" style="max-width:720px;">
+      <h3>🐞 오류 기록</h3>
+      <div class="settings-tool-desc" style="margin:0 0 8px;">job 화면과 AI가 일하다 난 오류가 자동으로 쌓입니다. 이상한 점을 일일이 설명하지 않으셔도, Claude Code에게 "오류 기록 확인해줘"라고 하면 이 기록을 보고 원인을 찾습니다.</div>
+      <div style="display:flex; gap:6px; margin-bottom:8px;">
+        <button type="button" class="ghost-btn" id="stBtnBugRefresh">🔄 불러오기</button>
+        <button type="button" class="ghost-btn" id="stBtnBugClear">🗑 기록 비우기</button>
+      </div>
+      <div id="stBugList" class="settings-tool-desc">불러오기를 누르면 최근 기록이 보입니다.</div>
+    </div>
     <div class="card" style="max-width:480px;">
       <h3>🔗 바로가기</h3>
       <div style="display:flex; flex-wrap:wrap; gap:8px;">
@@ -264,6 +273,26 @@
       now.textContent = '지금 적용 중: ' + (LABEL[window.nxLayout] || '-') + ' 화면' + (layout.value === 'auto' ? ' (자동 감지)' : ' (고정)');
     }
     dark.addEventListener('change', function(){ nxSetDark_(dark.checked); });
+    // 오류 기록 카드
+    var bugList = document.getElementById('stBugList');
+    function loadBugs(){
+      bugList.textContent = '불러오는 중…';
+      callGas('ai_list_bugs', {}).then(function(res){
+        var es = (res && res.entries) || [];
+        if (!es.length){ bugList.textContent = '기록된 오류가 없습니다.'; return; }
+        bugList.innerHTML = '<div style="margin-bottom:4px;">전체 ' + (res.total || es.length) + '건 중 최근 ' + es.length + '건</div>' + es.map(function(e){
+          return '<div style="padding:5px 0; border-top:1px solid var(--line);"><b>' + escapeHtml(e.at) + '</b> · ' + escapeHtml(e.kind) + (e.view ? ' · ' + escapeHtml(e.view) : '') + (e.where ? ' · ' + escapeHtml(e.where) : '')
+            + '<br>' + escapeHtml(e.message) + '</div>';
+        }).join('');
+      }).catch(function(err){ bugList.textContent = '불러오지 못했습니다: ' + (err && err.message ? err.message : err); });
+    }
+    document.getElementById('stBtnBugRefresh').addEventListener('click', loadBugs);
+    document.getElementById('stBtnBugClear').addEventListener('click', function(){
+      nxConfirm_('오류 기록을 모두 지울까요?').then(function(ok){
+        if (!ok) return;
+        callGas('ai_clear_bugs', {}).then(loadBugs);
+      });
+    });
     layout.addEventListener('change', function(){ nxSetLayoutOverride_(layout.value); refresh(); });
     document.addEventListener('nx-layout-change', refresh);
     refresh();

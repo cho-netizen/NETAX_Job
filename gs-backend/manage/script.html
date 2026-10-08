@@ -61,7 +61,53 @@
 
   // manageApp_call(action, payload)를 프라미스로 감싼다. 기존 앱의 callGas(action, payload)와
   // 시그니처를 맞춰서, work-manage.js/client-manage.js 등을 이식할 때 호출부 코드를 그대로 쓸 수 있게 한다.
+  // [2026.10.08] 여러 화면이 같은 목록을 따로 받아오던 것을 함께 쓴다 — 사건 목록(work_get_cases)은
+  // 처리개요·법령조회·증빙확보·세액계산·문서작성·작업관리·대시보드 등 10곳이 각자 불렀다(요청 1번에 5초 이상,
+  // 구글 응답이 불안정하면 30초). 한 번 받은 결과를 1분간 같이 쓰고, 동시에 같은 요청이 나가면 하나로 합친다.
+  // 저장·수정 같은 쓰기 요청이 하나라도 나가면 기억을 지워 다음엔 새로 받는다(오래된 목록이 보이지 않게).
+  // 화면이 받은 결과를 고쳐도 다른 화면에 번지지 않도록 매번 복사본을 준다.
+  var CALLGAS_SHARED_READS_ = { work_get_cases: true, client_get_clients: true };
+  var CALLGAS_SHARED_TTL_MS_ = 60000;
+  var CALLGAS_READONLY_RE_ = /(^|_)(get|list|search|read|lookup|load|check)/i;
+  var callGasShared_ = {};
   function callGas(action, payload){
+    var isPlain = !payload || Object.keys(payload).length === 0;
+    if (CALLGAS_SHARED_READS_[action] && isPlain){
+      var hit = callGasShared_[action];
+      if (!hit || Date.now() - hit.at > CALLGAS_SHARED_TTL_MS_){
+        hit = { at: Date.now(), promise: callGasRaw_(action, payload) };
+        callGasShared_[action] = hit;
+        hit.promise.catch(function(){ if (callGasShared_[action] === hit) delete callGasShared_[action]; });
+      }
+      return hit.promise.then(function(res){ return JSON.parse(JSON.stringify(res)); });
+    }
+    if (!CALLGAS_READONLY_RE_.test(action) && action.indexOf('ai_') !== 0) callGasShared_ = {};
+    return callGasRaw_(action, payload);
+  }
+  // [2026.10.08] 버그 자동기록 — 화면 스크립트 오류를 서버 _오류기록.json에 남긴다(Code.js ai_logBug).
+  // 같은 오류는 한 번만, 한 번 열 때 최대 10건(오류가 반복돼 서버를 두드리지 않게).
+  var nxBugSent_ = {}, nxBugCount_ = 0;
+  function nxLogBug_(entry){
+    try{
+      var key = (entry.kind || '') + '|' + (entry.message || '').slice(0, 120);
+      if (nxBugSent_[key] || nxBugCount_ >= 10) return;
+      nxBugSent_[key] = true; nxBugCount_++;
+      entry.view = entry.view || window._currentViewLabel || '';
+      callGasRaw_('ai_log_bug', { entry: entry }).catch(function(){});
+    }catch(e){}
+  }
+  window.addEventListener('error', function(e){
+    if (!e || !e.message || /ResizeObserver loop/.test(e.message)) return;
+    nxLogBug_({ kind: 'js', where: (e.filename || '').split('/').pop() + ':' + (e.lineno || ''), message: e.message, detail: e.error && e.error.stack ? String(e.error.stack).slice(0, 1200) : '' });
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    var r = e && e.reason;
+    var msg = r && r.message ? r.message : String(r || '');
+    if (!msg || /AUTH_REQUIRED|AbortError/.test(msg)) return;
+    nxLogBug_({ kind: 'promise', where: '', message: msg, detail: r && r.stack ? String(r.stack).slice(0, 1200) : '' });
+  });
+
+  function callGasRaw_(action, payload){
     callGasProgress_(1);
     return new Promise(function(resolve, reject){
       google.script.run

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-08 08:05 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-08 12:03 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] job.netax.kr에서 직접 열릴 때 google.script.run 대리(구글 틀 안에서는 아무 일도 안 함) -->
@@ -25,31 +25,58 @@
     // 구글 웹앱 응답은 ①실행 → ②결과 받아가기 두 단계인데 ②가 자주 실패한다(오류 화면 HTML이 옴 —
     // Code.js manageApp_dispatchHttpOnce_ 설명 참고). 그때도 서버 실행은 끝나 있으므로, 같은 요청번호(rid)로
     // 다시 묻는다 — 서버는 다시 실행하지 않고 기억해둔 결과를 준다(저장이 두 번 되지 않음).
-    var RETRY_DELAYS = [1000, 2000, 4000, 6000];
+    var RETRY_DELAYS = [1000, 2000, 3000, 4000, 5000, 6000, 6000, 6000];
     function newRid(){ return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10); }
+    // 묶어 보내기 — 거의 동시에(40ms 안에) 나가는 호출을 하나의 요청으로 묶는다. 대시보드처럼 8개를 따로
+    // 보내면 구글 서버가 각각 22~31초 걸리고 결과 받기도 대부분 실패했다(2026-10-08 실측). 서버는 한 번
+    // 실행 안에서 차례로 처리해 결과를 배열로 돌려준다(Code.js manageApp_dispatchHttpBatch_).
+    var BATCH_WAIT_MS = 40, BATCH_MAX = 12;
+    var queue = [], flushTimer = null;
     function post(fnName, args){
+      return new Promise(function(resolve, reject){
+        queue.push({ fn: fnName, args: args, resolve: resolve, reject: reject });
+        if (queue.length >= BATCH_MAX){ flush(); return; }
+        if (!flushTimer) flushTimer = setTimeout(flush, BATCH_WAIT_MS);
+      });
+    }
+    function flush(){
+      clearTimeout(flushTimer); flushTimer = null;
+      var items = queue.splice(0, queue.length);
+      if (!items.length) return;
       var rid = newRid();
-      var body = JSON.stringify({ __manage: { fn: fnName, args: args }, __rid: rid });
+      var body = JSON.stringify({ __manageBatch: items.map(function(it){ return { fn: it.fn, args: it.args }; }), __rid: rid });
+      var failAll = function(err){ items.forEach(function(it){ it.reject(err); }); };
       var attempt = function(n){
-        return fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body })
+        // 결과 받기 단계가 멈추면 15~30초 뒤에야 실패가 오므로, 25초에서 끊고 같은 요청번호로 다시 묻는다
+        // (서버는 항목별로 기억해둔 결과를 쓰고, 묶음이 아직 실행 중이면 끝날 때까지 기다렸다가 준다).
+        var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, 25000) : null;
+        var retry = function(){
+          return new Promise(function(r){ setTimeout(r, RETRY_DELAYS[n]); }).then(function(){ return attempt(n + 1); });
+        };
+        return fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body, signal: ctrl ? ctrl.signal : undefined })
           .then(function(res){ return res.text(); })
+          .then(function(text){ clearTimeout(timer); return text; }, function(err){ clearTimeout(timer); throw err; })
           .then(function(text){
             var data = null;
             try{ data = JSON.parse(text); }catch(e){ data = null; }
-            var stillRunning = data && data.error && !('__result' in data) && /아직 처리 중/.test(data.error);
-            if (!data || stillRunning){
-              if (n < RETRY_DELAYS.length) return new Promise(function(r){ setTimeout(r, RETRY_DELAYS[n]); }).then(function(){ return attempt(n + 1); });
+            if (!data || !Array.isArray(data.__results)){
+              if (data && data.error) throw new Error(data.error);
+              if (n < RETRY_DELAYS.length) return retry();
               throw new Error('서버 응답을 받지 못했습니다(구글 서버가 일시적으로 불안정합니다). 잠시 후 다시 시도하세요. 저장 작업이었다면 화면을 새로고침해 반영됐는지 먼저 확인하세요.');
             }
-            if (data.error && !('__result' in data)) throw new Error(data.error);
-            return data.__result;
+            items.forEach(function(it, i){
+              var r = data.__results[i];
+              if (r && r.error && !('__result' in r)) it.reject(new Error(r.error));
+              else it.resolve(r ? r.__result : undefined);
+            });
           }, function(err){
-            // 요청이 서버에 닿기 전에 끊긴 네트워크 오류 — 같은 요청번호로 다시 보내도 안전하다.
-            if (n < RETRY_DELAYS.length) return new Promise(function(r){ setTimeout(r, RETRY_DELAYS[n]); }).then(function(){ return attempt(n + 1); });
+            // 요청이 서버에 닿기 전에 끊겼거나 25초가 지남 — 같은 요청번호로 다시 보내도 안전하다.
+            if (n < RETRY_DELAYS.length) return retry();
             throw err;
           });
       };
-      return attempt(0);
+      attempt(0).catch(failAll);
     }
 
     function runner(){
@@ -42600,6 +42627,15 @@ function goToReportWriter_(caseId, opts){
       <div class="settings-tool-desc" id="settingsLayoutNow" style="margin-top:6px;"></div>
       <div class="settings-tool-desc">자동 감지가 기기에 잘 안 맞을 때(예: 큰 태블릿이 PC처럼 보이는데 좁게 쓰고 싶을 때) 고정합니다. 다크모드에서도 세액인쇄 서식·문서작성 미리보기·사진은 원래 밝은 모습으로 보이고, 인쇄는 항상 밝게 나옵니다.</div>
     </div>
+    <div class="card" style="max-width:720px;">
+      <h3>🐞 오류 기록</h3>
+      <div class="settings-tool-desc" style="margin:0 0 8px;">job 화면과 AI가 일하다 난 오류가 자동으로 쌓입니다. 이상한 점을 일일이 설명하지 않으셔도, Claude Code에게 "오류 기록 확인해줘"라고 하면 이 기록을 보고 원인을 찾습니다.</div>
+      <div style="display:flex; gap:6px; margin-bottom:8px;">
+        <button type="button" class="ghost-btn" id="stBtnBugRefresh">🔄 불러오기</button>
+        <button type="button" class="ghost-btn" id="stBtnBugClear">🗑 기록 비우기</button>
+      </div>
+      <div id="stBugList" class="settings-tool-desc">불러오기를 누르면 최근 기록이 보입니다.</div>
+    </div>
     <div class="card" style="max-width:480px;">
       <h3>🔗 바로가기</h3>
       <div style="display:flex; flex-wrap:wrap; gap:8px;">
@@ -42829,6 +42865,26 @@ function goToReportWriter_(caseId, opts){
       now.textContent = '지금 적용 중: ' + (LABEL[window.nxLayout] || '-') + ' 화면' + (layout.value === 'auto' ? ' (자동 감지)' : ' (고정)');
     }
     dark.addEventListener('change', function(){ nxSetDark_(dark.checked); });
+    // 오류 기록 카드
+    var bugList = document.getElementById('stBugList');
+    function loadBugs(){
+      bugList.textContent = '불러오는 중…';
+      callGas('ai_list_bugs', {}).then(function(res){
+        var es = (res && res.entries) || [];
+        if (!es.length){ bugList.textContent = '기록된 오류가 없습니다.'; return; }
+        bugList.innerHTML = '<div style="margin-bottom:4px;">전체 ' + (res.total || es.length) + '건 중 최근 ' + es.length + '건</div>' + es.map(function(e){
+          return '<div style="padding:5px 0; border-top:1px solid var(--line);"><b>' + escapeHtml(e.at) + '</b> · ' + escapeHtml(e.kind) + (e.view ? ' · ' + escapeHtml(e.view) : '') + (e.where ? ' · ' + escapeHtml(e.where) : '')
+            + '<br>' + escapeHtml(e.message) + '</div>';
+        }).join('');
+      }).catch(function(err){ bugList.textContent = '불러오지 못했습니다: ' + (err && err.message ? err.message : err); });
+    }
+    document.getElementById('stBtnBugRefresh').addEventListener('click', loadBugs);
+    document.getElementById('stBtnBugClear').addEventListener('click', function(){
+      nxConfirm_('오류 기록을 모두 지울까요?').then(function(ok){
+        if (!ok) return;
+        callGas('ai_clear_bugs', {}).then(loadBugs);
+      });
+    });
     layout.addEventListener('change', function(){ nxSetLayoutOverride_(layout.value); refresh(); });
     document.addEventListener('nx-layout-change', refresh);
     refresh();
@@ -43081,6 +43137,10 @@ function goToReportWriter_(caseId, opts){
         <li><b>답변을 멈추려면</b>: 답변이 오는 동안 ➤ 자리가 ⏹로 바뀌는데, 그걸 누릅니다.</li>
         <li><b>말풍선 메뉴</b>: AI 답변을 누르면 복사, 내 질문을 누르면 입력창에 다시 채워집니다. 오른쪽 클릭하면 다시 만들기·메모로 저장·삭제·되돌리기가 있습니다.</li>
         <li><b>모델·설정</b>: 입력창 아래 모델 이름 옆 V/F(자동/고정), +(어드바이저), ⚙(설정, Alt+S). 가-/가+로 글자 크기를 바꿉니다.</li>
+        <li><b>job 기능 맡기기</b>: "대기 중인 예약 보여줘", "○○ 사건 처리개요 열어줘", "○○ 고객에게 서류 받았다고 문자 보내줘"처럼 말하면 AI가 job의 기능으로 처리합니다. 예약 승인·거절, 문자 발송, 체크리스트 표시, 사건정보 수정처럼 되돌리기 어려운 일은 AI가 <b>🟡 실행 제안</b>만 띄우고, <b>▶ 실행</b>을 눌러야 실제로 실행됩니다(<b>취소</b>를 누르면 아무 일도 안 일어남).</li>
+        <li><b>화면 캡처 첨부</b>: Win+Shift+S로 원하는 부분을 캡처한 뒤 입력창에 Ctrl+V 하면 첨부됩니다(지금 job 주소에서는 📷 버튼으로 직접 캡처가 막혀 있습니다).</li>
+        <li><b>대화 목록·미리보기 칸 정리</b>: 목록은 «로 숨기고 대화창의 »로 엽니다. 미리보기는 »로 숨기고 대화창의 «로 엽니다. 미리보기 머리줄의 <b>A/H/V</b> 버튼으로 위치를 바꿉니다(A 자동, H 오른쪽, V 아래).</li>
+        <li><b>오류 기록</b>: job 화면과 AI가 일하다 난 오류는 자동으로 기록됩니다. 설정 → 🐞 오류 기록에서 볼 수 있고, Claude Code에게 "오류 기록 확인해줘"라고 하면 원인을 찾아 고칩니다.</li>
       </ul>
     </section>
 
@@ -43088,6 +43148,9 @@ function goToReportWriter_(caseId, opts){
       <h3>⚙️ 설정</h3>
       <ul>
         <li><b>로그인 비밀번호를 바꾸려면</b>: 현재 비밀번호·새 비밀번호(4자 이상)·새 비밀번호 확인을 입력하고 변경을 누릅니다.</li>
+        <li><b>🖥 화면</b>: 🌙 다크모드를 켜고 끕니다(세액인쇄 서식·문서 미리보기·사진은 밝게 보이고, 인쇄는 항상 밝게 나옵니다). 📱 화면 배치 기준에서 자동/PC/태블릿/폰을 고정할 수 있습니다. 이 기기에만 기억됩니다.</li>
+        <li><b>🐞 오류 기록</b>: 🔄 불러오기로 최근 오류를 봅니다. 고친 뒤에는 🗑 기록 비우기로 지울 수 있습니다.</li>
+        <li><b>🔗 바로가기</b>: Claude 콘솔(AI 사용요금·키 확인), Google AI Studio.</li>
       </ul>
     </section>
 
@@ -43187,7 +43250,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     </div>
     <div class="nxai-tools">
       <button type="button" class="nxai-tool" id="nxAiAttachBtn" title="파일 첨부 (사건 자료 또는 내 컴퓨터)">📎</button>
-      <button type="button" class="nxai-tool" id="nxAiCaptureBtn" title="화면 캡처해서 첨부">📷</button>
+      <button type="button" class="nxai-tool" id="nxAiCaptureBtn" title="화면 캡처해서 첨부 (Win+Shift+S로 캡처 후 입력창에 Ctrl+V도 됩니다)">📷</button>
       <select id="nxAiModel" class="nxai-model" title="AI 모델 — F(고정)가 아니면 질문 내용에 따라 자동으로 바뀝니다(지금 값은 마지막으로 실제 쓰인 모델)">
         <option value="claude-sonnet-5">Sonnet 5</option>
         <option value="claude-opus-4-8">Opus 4.8</option>
@@ -43331,6 +43394,13 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   .nxai-saved{ margin-top:8px; padding:6px 9px; border-radius:7px; font-size:12.5px; background:var(--success-bg); color:var(--success); }
   .nxai-saved a{ color:inherit; font-weight:700; }
   .nxai-links{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .nxai-confirm{ margin-top:10px; border:1px solid #e8cf8a; background:#fffaf0; border-radius:9px; padding:9px 11px; white-space:normal; }
+  .nxai-confirm-head{ font-weight:700; font-size:.95em; color:#7a5300; margin-bottom:4px; }
+  .nxai-confirm-body{ font-size:.95em; white-space:pre-wrap; margin-bottom:8px; color:var(--ink); }
+  .nxai-confirm-btns{ display:flex; gap:6px; }
+  html.nx-dark .nxai-confirm{ background:#2a2412; border-color:#5c4a1c; }
+  html.nx-dark .nxai-confirm-head{ color:#f0d58a; }
+  html.nx-dark .nxai-confirm-body{ color:#e3e8f0; }
   .nxai-attachbar{ display:flex; flex-wrap:wrap; gap:6px; padding:0 10px; }
   .nxai-attachbar:empty{ display:none; }
   .nxai-chip{ display:inline-flex; align-items:center; gap:5px; font-size:12px; padding:3px 8px; border-radius:999px; background:rgba(127,127,127,.15); max-width:220px; }
@@ -43554,7 +43624,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     google.script.run.withSuccessHandler(function(secret){ nxAiApiSecret = secret || ''; })
       .withFailureHandler(function(){ nxAiApiSecret = ''; })
       .manageApp_getApiSecret(typeof manageAppSessionToken_ !== 'undefined' ? manageAppSessionToken_ : null);
-    nxAiLoadConvList_();
+    // [2026.10.08 수정] 대화 목록(특히 work 대화기록 검색 — 드라이브 전체 검색, 약 12초)을 로그인 직후에 같이
+    // 돌렸더니 대시보드 요청들과 겹쳐 job 첫 화면이 느려졌다(원인 분석으로 확인). 목록은 AI탭을 처음 열 때
+    // 불러온다(nxAiOnViewChange_). 사이드바에서 대화하는 데는 목록이 필요 없다.
   }
 
   // ============================================================
@@ -44156,7 +44228,14 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var files = Array.prototype.slice.call(fileList || []);
     if (!files.length) return;
     var targetFolderId = nxAiConv.caseFolderId || nxAiConvFolderId;
-    if (!targetFolderId){ nxAiToast_('올릴 폴더를 아직 확인하지 못했습니다 — 잠시 후 다시 시도해주세요.'); return; }
+    if (!targetFolderId){
+      // 대화 목록을 아직 안 불러왔으면(AI탭을 안 열었으면) 업로드 폴더도 모른다 — 목록만 받아 폴더를 확인한 뒤 다시 시도
+      callGas('ai_conv_list', {}).then(function(res){
+        if (res && res.folderId){ nxAiConvFolderId = res.folderId; nxAiUploadLocalFiles_(files); }
+        else nxAiToast_('올릴 폴더를 확인하지 못했습니다 — 잠시 후 다시 시도해주세요.');
+      }).catch(function(){ nxAiToast_('올릴 폴더를 확인하지 못했습니다 — 잠시 후 다시 시도해주세요.'); });
+      return;
+    }
     files.reduce(function(p, file){
       return p.then(function(){
         if (file.size > 20 * 1024 * 1024){ nxAiToast_(file.name + ' — 20MB를 넘어 올릴 수 없습니다.'); return; }
@@ -44256,6 +44335,71 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     return out.join('');
   }
 
+  // ============================================================
+  // [2026.10.08] job 기능 연결 — 화면 열기 / 실행 제안 카드
+  // ============================================================
+  var NXAI_VIEW_LABELS_ = { dashboard: '대시보드', booking: '예약관리', workmanage: '작업관리', clientmanage: '고객관리', collections: '수금관리',
+    casehandling: '처리개요', lawsearch: '법령조회', docs: '증빙확보', taxcalc: '세액계산', print: '세액인쇄', reportwriter: '문서작성',
+    reports: '열람관리', 'memo-text': '일반메모', reporthub: '보고서 모음' };
+  // 각 화면의 "그 사건으로 열기" 함수(goTo*_)를 그대로 쓴다 — 화면 버튼이 하는 것과 같은 동작.
+  function nxAiOpenJobView_(view, caseId, clientId){
+    var side = nxAiEl_('sideAI');
+    var openSide = function(){ if (side) side.classList.add('expanded'); };
+    if (caseId){
+      if (view === 'casehandling' && typeof goToCaseHandling_ === 'function'){ goToCaseHandling_(caseId); openSide(); return; }
+      if (view === 'lawsearch' && typeof goToLawSearch_ === 'function'){ goToLawSearch_(caseId); openSide(); return; }
+      if (view === 'taxcalc' && typeof goToTaxCalc_ === 'function'){ goToTaxCalc_(caseId); openSide(); return; }
+      if (view === 'print' && typeof goToTaxCalc_ === 'function'){ goToTaxCalc_(caseId); setTimeout(function(){ goToView_('print'); openSide(); }, 600); return; }
+      if (view === 'reportwriter' && typeof goToReportWriter_ === 'function'){ goToReportWriter_(caseId); openSide(); return; }
+      if (view === 'workmanage' && typeof goToWorkManage_ === 'function'){ goToWorkManage_(caseId); openSide(); return; }
+      if (view === 'docs'){
+        callGas('work_get_cases', {}).then(function(res){
+          var c = (res.cases || []).filter(function(x){ return x.id === caseId; })[0];
+          if (typeof docsLoaded !== 'undefined') docsLoaded = true; // initDocs의 기본위치 이동과 겹치지 않게(처리개요 화면과 같은 처리)
+          goToView_('docs');
+          if (c && c.폴더ID && typeof docsNavigateById_ === 'function') docsNavigateById_(c.폴더ID);
+          openSide();
+        });
+        return;
+      }
+    }
+    if (view === 'clientmanage' && clientId && typeof goToClientManage_ === 'function'){ goToClientManage_(clientId); openSide(); return; }
+    nxAiGoToView_(view);
+  }
+
+  function nxAiConfirmCard_(a, bubbleEl){
+    var card = document.createElement('div');
+    card.className = 'nxai-confirm';
+    card.innerHTML = '<div class="nxai-confirm-head">🟡 실행 제안 — ' + nxAiEsc_(a.label || '') + '</div>'
+      + '<div class="nxai-confirm-body"></div>'
+      + '<div class="nxai-confirm-btns"><button type="button" class="nxai-btn primary">▶ 실행</button><button type="button" class="nxai-btn">취소</button></div>';
+    card.querySelector('.nxai-confirm-body').textContent = a.summary || '';
+    var runBtn = card.querySelectorAll('button')[0], cancelBtn = card.querySelectorAll('button')[1];
+    var finish = function(text, ok){
+      card.querySelector('.nxai-confirm-btns').innerHTML = '';
+      var res = document.createElement('div');
+      res.className = ok ? 'nxai-saved' : 'nxai-warn';
+      res.textContent = text;
+      card.appendChild(res);
+      // 다음 질문 때 AI도 결과를 알도록, 이 답변 기록 끝에 결과를 덧붙인다.
+      var ref = bubbleEl._nxMsgRef;
+      if (ref && typeof ref.content === 'string'){ ref.content += '\n\n[사용자 처리: ' + (a.label || '') + ' — ' + text + ']'; nxAiScheduleSave_(); }
+    };
+    cancelBtn.addEventListener('click', function(){ finish('취소했습니다(실행하지 않음).', false); });
+    runBtn.addEventListener('click', function(){
+      runBtn.disabled = true; cancelBtn.disabled = true; runBtn.textContent = '실행 중…';
+      callGas(a.gasAction, a.payload || {}).then(function(res){
+        var ok = !(res && (res.success === false || res.error));
+        finish(ok ? ('✅ 실행했습니다' + (res && res.message ? ': ' + res.message : '')) : ('실행하지 못했습니다: ' + ((res && (res.message || res.error)) || '알 수 없는 오류')), ok);
+        if (ok && /^(booking_)/.test(a.kind) && typeof initBooking === 'function' && document.getElementById('view-booking') && document.getElementById('view-booking').classList.contains('active')) initBooking();
+        if (ok && a.kind === 'case_update' && typeof initWorkManage === 'function' && document.getElementById('view-workmanage') && document.getElementById('view-workmanage').classList.contains('active')) initWorkManage();
+      }).catch(function(err){
+        finish('실행하지 못했습니다: ' + (err && err.message ? err.message : err), false);
+      });
+    });
+    return card;
+  }
+
   // "반영했습니다/저장했습니다"류 완료 주장 — 실제 저장 신호 없이 말만 하면 경고(work와 동일)
   var NXAI_COMPLETION_CLAIM_RE = /(반영했|저장했|업데이트했|갱신했|추가했습니다|등록했|생성했|파일을?\s*만들었)/;
 
@@ -44305,6 +44449,19 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (typeof initClientManage === 'function' && document.getElementById('view-clientmanage') && document.getElementById('view-clientmanage').classList.contains('active')) initClientManage();
       addLink('🙋 고객관리에서 보기', function(){ nxAiGoToView_('clientmanage'); });
     }
+
+    // [2026.10.08] job 기능 — 화면 열기(job_open_screen): 바로 그 화면으로 가고, 다시 가는 링크도 남긴다.
+    actions.filter(function(a){ return a && a.type === 'open_view'; }).forEach(function(a){
+      var label = (NXAI_VIEW_LABELS_[a.view] || a.view);
+      var go = function(){ nxAiOpenJobView_(a.view, a.caseId, a.clientId); };
+      addLink('📍 ' + label + ' 열기', go);
+      if (!bubbleEl._nxOpenedOnce){ bubbleEl._nxOpenedOnce = true; setTimeout(go, 300); }
+    });
+
+    // [2026.10.08] job 기능 — 실행 제안(job_propose_action): 사람이 [실행]을 눌러야 화면이 서버 기능을 부른다.
+    actions.filter(function(a){ return a && a.type === 'confirm_action'; }).forEach(function(a){
+      bubbleEl.appendChild(nxAiConfirmCard_(a, bubbleEl));
+    });
 
     // 문서 수정안 — 미리보기 칸에 띄우고, 사람이 저장 버튼을 눌러야 반영된다.
     var editAction = actions.find(function(a){ return a && a.type === 'edit_document'; });
@@ -44568,6 +44725,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         onError: function(msg){
           thinking.textContent = msg;
           var i = convAtSend.messages.indexOf(userMsg); if (i !== -1) convAtSend.messages.splice(i, 1);
+          if (typeof nxLogBug_ === 'function') nxLogBug_({ kind: 'ai', where: 'AI 대화(' + nxAiMode + ')', message: msg, detail: '질문: ' + text.slice(0, 300) });
         },
         onAbort: function(){
           thinking.textContent = '⏹ 중단됨';
@@ -44678,6 +44836,13 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // 돌아서, 브라우저가 이 틀에 화면공유 권한을 안 줄 수 있다 — 그 경우 이유를 그대로 알린다.
   // ============================================================
   function nxAiCapture_(){
+    // 구글 틀(지금 job 주소) 안에서는 화면 캡처 권한 자체가 막혀 있다(틀의 허용목록에 display-capture 없음 —
+    // 2026-10-08 확인). 버튼을 눌러도 아무 일이 없지 않도록, 바로 쓸 수 있는 방법을 안내하고 입력창을 준비한다.
+    if (!window.NX_STANDALONE){
+      nxAiToast_('이 화면에서는 직접 캡처가 막혀 있습니다 — Win+Shift+S로 캡처한 뒤 입력창에 Ctrl+V 하면 첨부됩니다.');
+      nxAiEl_('nxAiInput').focus();
+      return;
+    }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia){
       nxAiToast_('이 브라우저(또는 이 화면 틀)에서는 화면 캡처를 쓸 수 없습니다 — 캡처 이미지를 입력창에 붙여넣기(Ctrl+V) 해주세요.');
       return;
@@ -45056,7 +45221,53 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
 
   // manageApp_call(action, payload)를 프라미스로 감싼다. 기존 앱의 callGas(action, payload)와
   // 시그니처를 맞춰서, work-manage.js/client-manage.js 등을 이식할 때 호출부 코드를 그대로 쓸 수 있게 한다.
+  // [2026.10.08] 여러 화면이 같은 목록을 따로 받아오던 것을 함께 쓴다 — 사건 목록(work_get_cases)은
+  // 처리개요·법령조회·증빙확보·세액계산·문서작성·작업관리·대시보드 등 10곳이 각자 불렀다(요청 1번에 5초 이상,
+  // 구글 응답이 불안정하면 30초). 한 번 받은 결과를 1분간 같이 쓰고, 동시에 같은 요청이 나가면 하나로 합친다.
+  // 저장·수정 같은 쓰기 요청이 하나라도 나가면 기억을 지워 다음엔 새로 받는다(오래된 목록이 보이지 않게).
+  // 화면이 받은 결과를 고쳐도 다른 화면에 번지지 않도록 매번 복사본을 준다.
+  var CALLGAS_SHARED_READS_ = { work_get_cases: true, client_get_clients: true };
+  var CALLGAS_SHARED_TTL_MS_ = 60000;
+  var CALLGAS_READONLY_RE_ = /(^|_)(get|list|search|read|lookup|load|check)/i;
+  var callGasShared_ = {};
   function callGas(action, payload){
+    var isPlain = !payload || Object.keys(payload).length === 0;
+    if (CALLGAS_SHARED_READS_[action] && isPlain){
+      var hit = callGasShared_[action];
+      if (!hit || Date.now() - hit.at > CALLGAS_SHARED_TTL_MS_){
+        hit = { at: Date.now(), promise: callGasRaw_(action, payload) };
+        callGasShared_[action] = hit;
+        hit.promise.catch(function(){ if (callGasShared_[action] === hit) delete callGasShared_[action]; });
+      }
+      return hit.promise.then(function(res){ return JSON.parse(JSON.stringify(res)); });
+    }
+    if (!CALLGAS_READONLY_RE_.test(action) && action.indexOf('ai_') !== 0) callGasShared_ = {};
+    return callGasRaw_(action, payload);
+  }
+  // [2026.10.08] 버그 자동기록 — 화면 스크립트 오류를 서버 _오류기록.json에 남긴다(Code.js ai_logBug).
+  // 같은 오류는 한 번만, 한 번 열 때 최대 10건(오류가 반복돼 서버를 두드리지 않게).
+  var nxBugSent_ = {}, nxBugCount_ = 0;
+  function nxLogBug_(entry){
+    try{
+      var key = (entry.kind || '') + '|' + (entry.message || '').slice(0, 120);
+      if (nxBugSent_[key] || nxBugCount_ >= 10) return;
+      nxBugSent_[key] = true; nxBugCount_++;
+      entry.view = entry.view || window._currentViewLabel || '';
+      callGasRaw_('ai_log_bug', { entry: entry }).catch(function(){});
+    }catch(e){}
+  }
+  window.addEventListener('error', function(e){
+    if (!e || !e.message || /ResizeObserver loop/.test(e.message)) return;
+    nxLogBug_({ kind: 'js', where: (e.filename || '').split('/').pop() + ':' + (e.lineno || ''), message: e.message, detail: e.error && e.error.stack ? String(e.error.stack).slice(0, 1200) : '' });
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    var r = e && e.reason;
+    var msg = r && r.message ? r.message : String(r || '');
+    if (!msg || /AUTH_REQUIRED|AbortError/.test(msg)) return;
+    nxLogBug_({ kind: 'promise', where: '', message: msg, detail: r && r.stack ? String(r.stack).slice(0, 1200) : '' });
+  });
+
+  function callGasRaw_(action, payload){
     callGasProgress_(1);
     return new Promise(function(resolve, reject){
       google.script.run

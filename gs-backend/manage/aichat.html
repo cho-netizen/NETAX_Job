@@ -58,7 +58,7 @@
     </div>
     <div class="nxai-tools">
       <button type="button" class="nxai-tool" id="nxAiAttachBtn" title="파일 첨부 (사건 자료 또는 내 컴퓨터)">📎</button>
-      <button type="button" class="nxai-tool" id="nxAiCaptureBtn" title="화면 캡처해서 첨부">📷</button>
+      <button type="button" class="nxai-tool" id="nxAiCaptureBtn" title="화면 캡처해서 첨부 (Win+Shift+S로 캡처 후 입력창에 Ctrl+V도 됩니다)">📷</button>
       <select id="nxAiModel" class="nxai-model" title="AI 모델 — F(고정)가 아니면 질문 내용에 따라 자동으로 바뀝니다(지금 값은 마지막으로 실제 쓰인 모델)">
         <option value="claude-sonnet-5">Sonnet 5</option>
         <option value="claude-opus-4-8">Opus 4.8</option>
@@ -202,6 +202,13 @@
   .nxai-saved{ margin-top:8px; padding:6px 9px; border-radius:7px; font-size:12.5px; background:var(--success-bg); color:var(--success); }
   .nxai-saved a{ color:inherit; font-weight:700; }
   .nxai-links{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .nxai-confirm{ margin-top:10px; border:1px solid #e8cf8a; background:#fffaf0; border-radius:9px; padding:9px 11px; white-space:normal; }
+  .nxai-confirm-head{ font-weight:700; font-size:.95em; color:#7a5300; margin-bottom:4px; }
+  .nxai-confirm-body{ font-size:.95em; white-space:pre-wrap; margin-bottom:8px; color:var(--ink); }
+  .nxai-confirm-btns{ display:flex; gap:6px; }
+  html.nx-dark .nxai-confirm{ background:#2a2412; border-color:#5c4a1c; }
+  html.nx-dark .nxai-confirm-head{ color:#f0d58a; }
+  html.nx-dark .nxai-confirm-body{ color:#e3e8f0; }
   .nxai-attachbar{ display:flex; flex-wrap:wrap; gap:6px; padding:0 10px; }
   .nxai-attachbar:empty{ display:none; }
   .nxai-chip{ display:inline-flex; align-items:center; gap:5px; font-size:12px; padding:3px 8px; border-radius:999px; background:rgba(127,127,127,.15); max-width:220px; }
@@ -425,7 +432,9 @@
     google.script.run.withSuccessHandler(function(secret){ nxAiApiSecret = secret || ''; })
       .withFailureHandler(function(){ nxAiApiSecret = ''; })
       .manageApp_getApiSecret(typeof manageAppSessionToken_ !== 'undefined' ? manageAppSessionToken_ : null);
-    nxAiLoadConvList_();
+    // [2026.10.08 수정] 대화 목록(특히 work 대화기록 검색 — 드라이브 전체 검색, 약 12초)을 로그인 직후에 같이
+    // 돌렸더니 대시보드 요청들과 겹쳐 job 첫 화면이 느려졌다(원인 분석으로 확인). 목록은 AI탭을 처음 열 때
+    // 불러온다(nxAiOnViewChange_). 사이드바에서 대화하는 데는 목록이 필요 없다.
   }
 
   // ============================================================
@@ -1027,7 +1036,14 @@
     var files = Array.prototype.slice.call(fileList || []);
     if (!files.length) return;
     var targetFolderId = nxAiConv.caseFolderId || nxAiConvFolderId;
-    if (!targetFolderId){ nxAiToast_('올릴 폴더를 아직 확인하지 못했습니다 — 잠시 후 다시 시도해주세요.'); return; }
+    if (!targetFolderId){
+      // 대화 목록을 아직 안 불러왔으면(AI탭을 안 열었으면) 업로드 폴더도 모른다 — 목록만 받아 폴더를 확인한 뒤 다시 시도
+      callGas('ai_conv_list', {}).then(function(res){
+        if (res && res.folderId){ nxAiConvFolderId = res.folderId; nxAiUploadLocalFiles_(files); }
+        else nxAiToast_('올릴 폴더를 확인하지 못했습니다 — 잠시 후 다시 시도해주세요.');
+      }).catch(function(){ nxAiToast_('올릴 폴더를 확인하지 못했습니다 — 잠시 후 다시 시도해주세요.'); });
+      return;
+    }
     files.reduce(function(p, file){
       return p.then(function(){
         if (file.size > 20 * 1024 * 1024){ nxAiToast_(file.name + ' — 20MB를 넘어 올릴 수 없습니다.'); return; }
@@ -1127,6 +1143,71 @@
     return out.join('');
   }
 
+  // ============================================================
+  // [2026.10.08] job 기능 연결 — 화면 열기 / 실행 제안 카드
+  // ============================================================
+  var NXAI_VIEW_LABELS_ = { dashboard: '대시보드', booking: '예약관리', workmanage: '작업관리', clientmanage: '고객관리', collections: '수금관리',
+    casehandling: '처리개요', lawsearch: '법령조회', docs: '증빙확보', taxcalc: '세액계산', print: '세액인쇄', reportwriter: '문서작성',
+    reports: '열람관리', 'memo-text': '일반메모', reporthub: '보고서 모음' };
+  // 각 화면의 "그 사건으로 열기" 함수(goTo*_)를 그대로 쓴다 — 화면 버튼이 하는 것과 같은 동작.
+  function nxAiOpenJobView_(view, caseId, clientId){
+    var side = nxAiEl_('sideAI');
+    var openSide = function(){ if (side) side.classList.add('expanded'); };
+    if (caseId){
+      if (view === 'casehandling' && typeof goToCaseHandling_ === 'function'){ goToCaseHandling_(caseId); openSide(); return; }
+      if (view === 'lawsearch' && typeof goToLawSearch_ === 'function'){ goToLawSearch_(caseId); openSide(); return; }
+      if (view === 'taxcalc' && typeof goToTaxCalc_ === 'function'){ goToTaxCalc_(caseId); openSide(); return; }
+      if (view === 'print' && typeof goToTaxCalc_ === 'function'){ goToTaxCalc_(caseId); setTimeout(function(){ goToView_('print'); openSide(); }, 600); return; }
+      if (view === 'reportwriter' && typeof goToReportWriter_ === 'function'){ goToReportWriter_(caseId); openSide(); return; }
+      if (view === 'workmanage' && typeof goToWorkManage_ === 'function'){ goToWorkManage_(caseId); openSide(); return; }
+      if (view === 'docs'){
+        callGas('work_get_cases', {}).then(function(res){
+          var c = (res.cases || []).filter(function(x){ return x.id === caseId; })[0];
+          if (typeof docsLoaded !== 'undefined') docsLoaded = true; // initDocs의 기본위치 이동과 겹치지 않게(처리개요 화면과 같은 처리)
+          goToView_('docs');
+          if (c && c.폴더ID && typeof docsNavigateById_ === 'function') docsNavigateById_(c.폴더ID);
+          openSide();
+        });
+        return;
+      }
+    }
+    if (view === 'clientmanage' && clientId && typeof goToClientManage_ === 'function'){ goToClientManage_(clientId); openSide(); return; }
+    nxAiGoToView_(view);
+  }
+
+  function nxAiConfirmCard_(a, bubbleEl){
+    var card = document.createElement('div');
+    card.className = 'nxai-confirm';
+    card.innerHTML = '<div class="nxai-confirm-head">🟡 실행 제안 — ' + nxAiEsc_(a.label || '') + '</div>'
+      + '<div class="nxai-confirm-body"></div>'
+      + '<div class="nxai-confirm-btns"><button type="button" class="nxai-btn primary">▶ 실행</button><button type="button" class="nxai-btn">취소</button></div>';
+    card.querySelector('.nxai-confirm-body').textContent = a.summary || '';
+    var runBtn = card.querySelectorAll('button')[0], cancelBtn = card.querySelectorAll('button')[1];
+    var finish = function(text, ok){
+      card.querySelector('.nxai-confirm-btns').innerHTML = '';
+      var res = document.createElement('div');
+      res.className = ok ? 'nxai-saved' : 'nxai-warn';
+      res.textContent = text;
+      card.appendChild(res);
+      // 다음 질문 때 AI도 결과를 알도록, 이 답변 기록 끝에 결과를 덧붙인다.
+      var ref = bubbleEl._nxMsgRef;
+      if (ref && typeof ref.content === 'string'){ ref.content += '\n\n[사용자 처리: ' + (a.label || '') + ' — ' + text + ']'; nxAiScheduleSave_(); }
+    };
+    cancelBtn.addEventListener('click', function(){ finish('취소했습니다(실행하지 않음).', false); });
+    runBtn.addEventListener('click', function(){
+      runBtn.disabled = true; cancelBtn.disabled = true; runBtn.textContent = '실행 중…';
+      callGas(a.gasAction, a.payload || {}).then(function(res){
+        var ok = !(res && (res.success === false || res.error));
+        finish(ok ? ('✅ 실행했습니다' + (res && res.message ? ': ' + res.message : '')) : ('실행하지 못했습니다: ' + ((res && (res.message || res.error)) || '알 수 없는 오류')), ok);
+        if (ok && /^(booking_)/.test(a.kind) && typeof initBooking === 'function' && document.getElementById('view-booking') && document.getElementById('view-booking').classList.contains('active')) initBooking();
+        if (ok && a.kind === 'case_update' && typeof initWorkManage === 'function' && document.getElementById('view-workmanage') && document.getElementById('view-workmanage').classList.contains('active')) initWorkManage();
+      }).catch(function(err){
+        finish('실행하지 못했습니다: ' + (err && err.message ? err.message : err), false);
+      });
+    });
+    return card;
+  }
+
   // "반영했습니다/저장했습니다"류 완료 주장 — 실제 저장 신호 없이 말만 하면 경고(work와 동일)
   var NXAI_COMPLETION_CLAIM_RE = /(반영했|저장했|업데이트했|갱신했|추가했습니다|등록했|생성했|파일을?\s*만들었)/;
 
@@ -1176,6 +1257,19 @@
       if (typeof initClientManage === 'function' && document.getElementById('view-clientmanage') && document.getElementById('view-clientmanage').classList.contains('active')) initClientManage();
       addLink('🙋 고객관리에서 보기', function(){ nxAiGoToView_('clientmanage'); });
     }
+
+    // [2026.10.08] job 기능 — 화면 열기(job_open_screen): 바로 그 화면으로 가고, 다시 가는 링크도 남긴다.
+    actions.filter(function(a){ return a && a.type === 'open_view'; }).forEach(function(a){
+      var label = (NXAI_VIEW_LABELS_[a.view] || a.view);
+      var go = function(){ nxAiOpenJobView_(a.view, a.caseId, a.clientId); };
+      addLink('📍 ' + label + ' 열기', go);
+      if (!bubbleEl._nxOpenedOnce){ bubbleEl._nxOpenedOnce = true; setTimeout(go, 300); }
+    });
+
+    // [2026.10.08] job 기능 — 실행 제안(job_propose_action): 사람이 [실행]을 눌러야 화면이 서버 기능을 부른다.
+    actions.filter(function(a){ return a && a.type === 'confirm_action'; }).forEach(function(a){
+      bubbleEl.appendChild(nxAiConfirmCard_(a, bubbleEl));
+    });
 
     // 문서 수정안 — 미리보기 칸에 띄우고, 사람이 저장 버튼을 눌러야 반영된다.
     var editAction = actions.find(function(a){ return a && a.type === 'edit_document'; });
@@ -1439,6 +1533,7 @@
         onError: function(msg){
           thinking.textContent = msg;
           var i = convAtSend.messages.indexOf(userMsg); if (i !== -1) convAtSend.messages.splice(i, 1);
+          if (typeof nxLogBug_ === 'function') nxLogBug_({ kind: 'ai', where: 'AI 대화(' + nxAiMode + ')', message: msg, detail: '질문: ' + text.slice(0, 300) });
         },
         onAbort: function(){
           thinking.textContent = '⏹ 중단됨';
@@ -1549,6 +1644,13 @@
   // 돌아서, 브라우저가 이 틀에 화면공유 권한을 안 줄 수 있다 — 그 경우 이유를 그대로 알린다.
   // ============================================================
   function nxAiCapture_(){
+    // 구글 틀(지금 job 주소) 안에서는 화면 캡처 권한 자체가 막혀 있다(틀의 허용목록에 display-capture 없음 —
+    // 2026-10-08 확인). 버튼을 눌러도 아무 일이 없지 않도록, 바로 쓸 수 있는 방법을 안내하고 입력창을 준비한다.
+    if (!window.NX_STANDALONE){
+      nxAiToast_('이 화면에서는 직접 캡처가 막혀 있습니다 — Win+Shift+S로 캡처한 뒤 입력창에 Ctrl+V 하면 첨부됩니다.');
+      nxAiEl_('nxAiInput').focus();
+      return;
+    }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia){
       nxAiToast_('이 브라우저(또는 이 화면 틀)에서는 화면 캡처를 쓸 수 없습니다 — 캡처 이미지를 입력창에 붙여넣기(Ctrl+V) 해주세요.');
       return;

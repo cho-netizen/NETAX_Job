@@ -3415,6 +3415,203 @@ function ai_convDelete(body) {
   });
 }
 
+// ============================================================
+// [2026.10.08] job 기능을 AI가 쓰게 하는 도구 3종 (job AI탭/사이드바에서만 — ctx.aiPanel)
+// ------------------------------------------------------------
+// 원칙: AI는 job 화면의 버튼이 부르는 것과 "같은 서버 기능"만 쓴다.
+//  - job_lookup: 조회 전용(예약·상담/수금 기록·증빙 체크리스트·메모·사건 로그·보고서 목록) — 바로 실행
+//  - job_propose_action: 되돌리기 어려운 일(예약 승인·거절, 문자 발송, 체크리스트 표시, 사건정보 수정)은
+//    실행하지 않고 "제안"만 화면에 띄운다. 세무사님이 [실행]을 눌러야 화면이 그 기능을 부른다
+//    (aichat.html confirm_action). AI 말만 믿고 문자가 나가는 일이 없도록 하는 구조적 장치.
+//  - job_open_screen: job 화면을 그 사건으로 연다(각 화면의 goTo*_ 함수 사용).
+// ============================================================
+// ============================================================
+// [2026.10.08] 버그 자동기록 — AI가 일하다 난 도구 오류, AI 화면의 통신 실패, job 화면의 스크립트 오류를
+// _AI대화기록 폴더의 _오류기록.json에 쌓는다(최근 300건). 세무사님이 일일이 설명하지 않아도 Claude Code가
+// 이 기록을 보고 원인을 찾아 고친다(AI 자동 코드수정은 하지 않음 — 2026-10-08 결정). 설정 탭과
+// job_lookup(kind=bug_log)으로 볼 수 있다.
+// ============================================================
+const AI_BUG_LOG_NAME_ = '_오류기록.json';
+function ai_bugLogFile_() {
+  const folder = ai_convFolder_();
+  const it = folder.getFilesByName(AI_BUG_LOG_NAME_);
+  return it.hasNext() ? it.next() : folder.createFile(AI_BUG_LOG_NAME_, '[]', 'application/json');
+}
+function ai_logBug(body) {
+  const e = (body && body.entry) || {};
+  try {
+    return withLock_(5000, function () {
+      const file = ai_bugLogFile_();
+      let arr = [];
+      try { arr = JSON.parse(file.getBlob().getDataAsString('UTF-8') || '[]'); } catch (err) { arr = []; }
+      arr.push({
+        at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss"),
+        kind: String(e.kind || 'etc').slice(0, 20),
+        where: String(e.where || '').slice(0, 120),
+        message: String(e.message || '').slice(0, 600),
+        detail: String(e.detail || '').slice(0, 1500),
+        view: String(e.view || '').slice(0, 40)
+      });
+      file.setContent(JSON.stringify(arr.slice(-300)));
+      return { success: true };
+    });
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+function ai_listBugs() {
+  let arr = [];
+  try { arr = JSON.parse(ai_bugLogFile_().getBlob().getDataAsString('UTF-8') || '[]'); } catch (err) { arr = []; }
+  return { success: true, entries: arr.slice(-100).reverse(), total: arr.length };
+}
+function ai_clearBugs() {
+  ai_bugLogFile_().setContent('[]');
+  return { success: true };
+}
+// AI 도구 결과 중 오류만 골라 기록한다(한 라운드에 여러 개면 각각).
+function ai_logToolErrors_(blocks, results, ctx) {
+  try {
+    (results || []).forEach(function (r, i) {
+      if (!r || typeof r.content !== 'string') return;
+      let msg = '';
+      if (r.is_error) msg = r.content;
+      else if (r.content.charAt(0) === '{') {
+        try { const o = JSON.parse(r.content); if (o && o.error) msg = String(o.error); } catch (err) { }
+      }
+      if (!msg) return;
+      const b = blocks[i] || {};
+      ai_logBug({ entry: { kind: 'tool', where: b.name || '', message: msg, detail: JSON.stringify(b.input || {}).slice(0, 1500), view: (ctx && ctx.currentView) || '' } });
+    });
+  } catch (err) { }
+}
+
+function job_execAction_(action, payload) {
+  const body = Object.assign({}, payload || {}, { action: action });
+  const props = PropertiesService.getScriptProperties();
+  if (MANAGE_APP_RPT_ADMIN_ACTIONS_.indexOf(action) !== -1) body.admin_code = props.getProperty('RPT_ADMIN_CODE');
+  else if (MANAGE_APP_MY_ADMIN_ACTIONS_.indexOf(action) !== -1) body.admin_code = props.getProperty('ADMIN_CODE');
+  const out = dispatchClientAction_(body);
+  if (!out) return { error: '알 수 없는 작업: ' + action };
+  try { return JSON.parse(out.getContent()); } catch (err) { return { error: '응답을 읽지 못했습니다: ' + err.message }; }
+}
+
+function job_findCase_(caseId) {
+  const res = work_getCases();
+  return (res.cases || []).find(function (c) { return c.id === caseId; }) || null;
+}
+
+// 목록이 너무 길면 AI 요청이 무거워지므로 앞부분만 준다(잘랐다는 사실은 알린다).
+function job_trimList_(arr, max) {
+  if (!Array.isArray(arr)) return arr;
+  return arr.length > max ? { 전체건수: arr.length, 앞부분만: arr.slice(0, max), 안내: '목록이 길어 앞 ' + max + '건만 보냅니다. 필요하면 search로 좁히세요.' } : arr;
+}
+
+function job_lookup_(input) {
+  const kind = input.kind;
+  if (kind === 'bookings') {
+    const r = job_execAction_('list_bookings', {});
+    const list = (r.bookings || r.data || (Array.isArray(r) ? r : [])).map(function (b, i) {
+      // 예약 승인·거절에 필요한 행번호 — 예약관리 화면(booking.html)과 같은 규칙(시트 1행=헤더 → 배열 i번째 = i+2행)
+      return Object.assign({ rowIndex: i + 2 }, b);
+    });
+    return { 예약: job_trimList_(list.slice().reverse(), 60), 안내: '최근 것부터. 승인·거절은 job_propose_action으로 제안하라(rowIndex·eventId·phone·reservedDate·reservedTime 그대로 사용).' };
+  }
+  if (kind === 'consult_logs') {
+    const r = job_execAction_('client_get_consult_logs', { search: input.search || '' });
+    return job_trimList_(r.logs || r.data || r, 80);
+  }
+  if (kind === 'checklist') {
+    if (!input.caseId) return { error: 'checklist는 caseId(작업관리 사건ID)가 필요합니다.' };
+    const c = job_findCase_(input.caseId);
+    if (!c) return { error: '사건을 찾을 수 없습니다: ' + input.caseId };
+    if (!c.my_report_id) return { error: '이 사건은 아직 고객창구(my.netax.kr)에 연결되지 않아 체크리스트가 없습니다.' };
+    return job_execAction_('admin_get_case', { report_id: c.my_report_id });
+  }
+  if (kind === 'memos') return job_trimList_(job_execAction_('listGeneralMemos', {}), 60);
+  if (kind === 'case_log') return job_trimList_(job_execAction_('getGlobalLog', {}), 80);
+  if (kind === 'reports') return job_trimList_(job_execAction_('list_all_reports', {}), 80);
+  if (kind === 'bug_log') return ai_listBugs();
+  return { error: '알 수 없는 kind: ' + kind };
+}
+
+const JOB_PROPOSE_ACTIONS_ = {
+  booking_approve: { gas: 'approve', label: '상담 예약 승인(고객에게 확정 문자가 갑니다)', required: ['rowIndex', 'eventId', 'phone', 'reservedDate', 'reservedTime'] },
+  booking_reject: { gas: 'reject', label: '상담 예약 거절(고객에게 안내 문자가 갑니다)', required: ['rowIndex', 'phone'] },
+  booking_link_case: { gas: 'link_booking_case', label: '예약을 사건에 연결', required: ['rowIndex', 'caseId'] },
+  booking_cancel: { gas: 'cancel_confirmed_booking', label: '확정된 예약 취소', required: ['rowIndex'] },
+  client_sms: { gas: 'client_send_sms', label: '고객에게 문자 발송', required: ['고객ID', 'message'] },
+  portal_sms: { gas: 'send_my_portal_sms', label: '고객창구(my.netax.kr) 안내문자 발송', required: ['caseId'] },
+  checklist_mark: { gas: 'admin_set_checklist_status', label: '증빙 체크리스트 확보 표시 변경', required: ['caseId', 'item'] },
+  case_update: { gas: 'work_update_case', label: '사건 정보 수정', required: ['id'] }
+};
+const JOB_CASE_UPDATE_FORBIDDEN_ = ['폴더ID', '생성일', '수정일', '고객ID', 'my_report_id', '하위업무'];
+
+function job_buildProposal_(input) {
+  const spec = JOB_PROPOSE_ACTIONS_[input.action];
+  if (!spec) return { error: '제안할 수 없는 작업입니다: ' + input.action };
+  const params = Object.assign({}, input.params || {});
+  const missing = spec.required.filter(function (k) { return params[k] === undefined || params[k] === null || params[k] === ''; });
+  if (missing.length) return { error: '필요한 값이 빠졌습니다: ' + missing.join(', ') + ' — job_lookup으로 먼저 확인하라.' };
+  let payload = params;
+  if (input.action === 'checklist_mark') {
+    const c = job_findCase_(params.caseId);
+    if (!c || !c.my_report_id) return { error: '이 사건은 고객창구에 연결되지 않아 체크리스트가 없습니다.' };
+    payload = { report_id: c.my_report_id, item: params.item, submitted: params.submitted !== false };
+  }
+  if (input.action === 'case_update') {
+    const bad = Object.keys(params).filter(function (k) { return JOB_CASE_UPDATE_FORBIDDEN_.indexOf(k) !== -1; });
+    if (bad.length) return { error: '이 항목은 AI가 바꿀 수 없습니다: ' + bad.join(', ') };
+    if (!job_findCase_(params.id)) return { error: '사건을 찾을 수 없습니다: ' + params.id };
+  }
+  return { action: { type: 'confirm_action', label: spec.label, summary: String(input.summary || '').slice(0, 500), gasAction: spec.gas, payload: payload, kind: input.action } };
+}
+
+const JOB_AI_TOOLS_ = [
+  {
+    name: 'job_lookup',
+    description: 'job 화면의 자료를 조회한다(읽기 전용, 바로 실행). kind: bookings=상담 예약 목록(승인·거절 제안에 필요한 rowIndex 등 포함), consult_logs=고객 상담·자문·수금 기록(search=고객명으로 좁히기), checklist=사건의 고객창구 증빙 체크리스트(caseId 필요), memos=일반메모 목록, case_log=전체 사건 처리일지, reports=보고서 모음 목록, bug_log=job 오류 자동기록(최근 100건). 사건·고객 목록 자체는 list_work_cases·list_clients를 써라.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: ['bookings', 'consult_logs', 'checklist', 'memos', 'case_log', 'reports', 'bug_log'] },
+        caseId: { type: 'string', description: 'checklist일 때 작업관리 사건ID' },
+        search: { type: 'string', description: 'consult_logs일 때 고객명 검색어(선택)' }
+      },
+      required: ['kind']
+    }
+  },
+  {
+    name: 'job_propose_action',
+    description: '되돌리기 어려운 job 작업을 사용자에게 "제안"한다 — 실행하지 않는다. 화면에 [실행] 버튼이 뜨고 사용자가 눌러야 실제로 실행된다. 반드시 summary에 무엇을 하는지 한두 문장으로 쓰고, 답변에서도 "제안을 띄웠으니 확인 후 실행을 누르라"고 안내하라(이미 했다고 말하지 마라). '
+      + 'action별 params: booking_approve{rowIndex,eventId,phone,reservedDate,reservedTime} / booking_reject{rowIndex,phone} / booking_link_case{rowIndex,caseId} / booking_cancel{rowIndex} — 값은 job_lookup(bookings) 결과 그대로. '
+      + 'client_sms{고객ID,message}(고객ID는 list_clients로 확인) / portal_sms{caseId}(고객창구 접속 안내문자) / checklist_mark{caseId,item,submitted(기본 true, false면 확보 표시 해제)}(item은 job_lookup checklist의 항목명 그대로) / '
+      + 'case_update{id, 바꿀 항목들…}(작업관리 사건 필드: 상태·법정일·처리방향·처리대상·개요·사건개요(JSON 문자열) 등; 폴더ID·고객ID 등 연결정보는 못 바꿈).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: Object.keys(JOB_PROPOSE_ACTIONS_) },
+        params: { type: 'object', description: 'action별 값(설명 참고)' },
+        summary: { type: 'string', description: '사용자에게 보여줄 제안 설명(무엇을, 누구에게)' }
+      },
+      required: ['action', 'params', 'summary']
+    }
+  },
+  {
+    name: 'job_open_screen',
+    description: '사용자 화면에서 job 메뉴를 연다(caseId를 주면 그 사건으로). 사용자가 "○○ 화면 열어줘/보여줘"라고 하거나, 결과를 해당 화면에서 확인하게 할 때 쓴다. 바로 실행된다(화면 이동이라 되돌리기 쉬움). AI 대화는 오른쪽 사이드바로 옮겨가 이어진다.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        view: { type: 'string', enum: ['dashboard', 'booking', 'workmanage', 'clientmanage', 'collections', 'casehandling', 'lawsearch', 'docs', 'taxcalc', 'print', 'reportwriter', 'reports', 'memo-text', 'reporthub'],
+          description: 'dashboard=대시보드, booking=예약관리, workmanage=작업관리, clientmanage=고객관리, collections=수금관리, casehandling=처리개요, lawsearch=법령조회, docs=증빙확보(사건 폴더), taxcalc=세액계산, print=세액인쇄, reportwriter=문서작성, reports=열람관리, memo-text=일반메모, reporthub=보고서 모음' },
+        caseId: { type: 'string', description: '작업관리 사건ID(선택) — 사건이 있는 화면은 그 사건을 골라서 연다' },
+        clientId: { type: 'string', description: 'clientmanage일 때 고객ID(선택)' }
+      },
+      required: ['view']
+    }
+  }
+];
+
 /**
  * 문서수정·관계도수정·폴더이동 — 지금까지 <<<EDIT_DOCUMENT>>> 같은 텍스트 마커로 처리하던
  * 세 가지를, 다른 12개 도구와 동일한 방식(tool_use)으로 통일한 것.
@@ -3477,6 +3674,8 @@ function getClientActionTools_(ctx) {
       required: ['path']
     }
   });
+  // [2026.10.08] job 기능 도구 — job 화면(ctx.aiPanel)에서만. work.netax.kr 화면은 이 신호들을 처리하지 못한다.
+  if (ctx && ctx.aiPanel) JOB_AI_TOOLS_.forEach(function (t) { tools.push(t); });
   return tools;
 }
 
@@ -3549,6 +3748,9 @@ function dispatchClientAction_(body) {
   if (body.action === 'ai_conv_rename') return jsonResponse(ai_convRename(body));
   if (body.action === 'ai_conv_delete') return jsonResponse(ai_convDelete(body));
   if (body.action === 'ai_work_histories') return jsonResponse(ai_workHistories(body));
+  if (body.action === 'ai_log_bug') return jsonResponse(ai_logBug(body));
+  if (body.action === 'ai_list_bugs') return jsonResponse(ai_listBugs());
+  if (body.action === 'ai_clear_bugs') return jsonResponse(ai_clearBugs());
   if (body.action === 'ai_conv_import_work') return jsonResponse(ai_convImportWork(body));
   if (body.action === 'ai_conv_sync_work') return jsonResponse(ai_convSyncWork(body));
 
@@ -3819,6 +4021,9 @@ function doPost(e) {
     if (body.__manage) {
       return jsonResponse(manageApp_dispatchHttpOnce_(body.__manage, body.__rid));
     }
+    if (Array.isArray(body.__manageBatch)) {
+      return jsonResponse(manageApp_dispatchHttpBatch_(body.__manageBatch, body.__rid));
+    }
 
     // [2026.08] 이 웹앱 배포가 "모든 사용자"(로그인 불필요) 접근으로 되어 있어서, URL만 알면
     // 누구나 파일 조회/업로드/삭제 등을 호출할 수 있는 상태였다. 프론트엔드(config.js)가 매 요청에
@@ -3963,6 +4168,9 @@ function buildContextSystemPrompt(basePrompt, body) {
       dynamicExtra += '\n[답변 스타일] 이건 화면 옆 좁은 사이드바 대화다 — 물어본 것에만 짧고 간결하게 답하라. ' +
         '개수·여부를 물었으면 숫자·결론부터 말하고, 표·전체 목록·추가 분석·안 물어본 주의사항은 사용자가 더 요청하기 전엔 먼저 나열하지 마라.';
     }
+  }
+  if (ctx.aiPanel) {
+    dynamicExtra += '\n[job 기능] 예약·상담/수금 기록·증빙 체크리스트·메모·처리일지·보고서 목록은 job_lookup으로 조회하고, 예약 승인·거절·문자 발송·체크리스트 표시·사건정보 수정은 job_propose_action으로 "제안"만 하라(사용자가 [실행]을 눌러야 실행됨). 화면을 보여줄 때는 job_open_screen.';
   }
   if (ctx.linkedCase && ctx.linkedCase.name) {
     dynamicExtra += '\n[이 대화에 연결된 사건] "' + ctx.linkedCase.name + '"'
@@ -14196,7 +14404,10 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         b.name === 'propose_new_business_manager' ||
         b.name === 'apply_document_edit' ||
         b.name === 'apply_diagram_edit' ||
-        b.name === 'navigate_to_folder'
+        b.name === 'navigate_to_folder' ||
+        b.name === 'job_lookup' ||
+        b.name === 'job_propose_action' ||
+        b.name === 'job_open_screen'
       );
     });
 
@@ -14204,6 +14415,25 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
     const toolResults = toolUseBlocks.map(function (block) {
       // [2026.10.08] 세액계산 도구는 세액계산 화면과 같은 엔진으로 계산한다(getUiCalcEngine_ 위 설명 참고).
       // 화면 엔진에 해당 함수가 없거나 예외 목록에 있는 도구만 아래 기존 분기로 내려간다.
+      // [2026.10.08] job 기능 도구(JOB_AI_TOOLS_ 설명 참고)
+      if (block.name === 'job_lookup') {
+        let r;
+        try { r = job_lookup_(block.input || {}); } catch (err) { r = { error: '조회 중 오류: ' + err.message }; }
+        const text = JSON.stringify(r);
+        return { type: 'tool_result', tool_use_id: block.id, content: text.length > 60000 ? text.slice(0, 60000) + '…(너무 길어 잘림 — 조건을 좁혀 다시 조회하라)' : text };
+      }
+      if (block.name === 'job_propose_action') {
+        const r = job_buildProposal_(block.input || {});
+        if (r.error) return { type: 'tool_result', tool_use_id: block.id, is_error: true, content: r.error };
+        clientActions.push(r.action);
+        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ status: 'proposed', note: '화면에 [실행] 버튼과 함께 제안을 띄웠다. 아직 실행되지 않았다 — 사용자가 버튼을 눌러야 실행된다. 이미 했다고 말하지 마라.' }) };
+      }
+      if (block.name === 'job_open_screen') {
+        const input = block.input || {};
+        clientActions.push({ type: 'open_view', view: input.view, caseId: input.caseId || '', clientId: input.clientId || '' });
+        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ status: 'opened', view: input.view }) };
+      }
+
       const uiCalcResult = runUiEngineCalcTool_(block.name, block.input);
       if (uiCalcResult) {
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(uiCalcResult) };
@@ -15004,6 +15234,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
     // 도구 호출이 있었다 — 아직 끝난 게 아니다. 이번 라운드의 원본 응답(assistant)과 도구
     // 실행결과(tool_result)를 클라이언트에 돌려주면, 클라이언트가 대화에 이어붙여서 즉시
     // 다음 라운드 요청을 보낸다(chat.js의 runChatTurn_).
+    ai_logToolErrors_(toolUseBlocks, toolResults, body.context || {});
     return {
       done: false,
       assistantContent: result.content,
@@ -15923,6 +16154,40 @@ function manageApp_dispatchHttpOnce_(req, rid) {
     if (text.length < 95000) cache.put(key, text, 600); else cache.remove(key);
   } catch (err) { cache.remove(key); }
   return result;
+}
+
+// [2026.10.08] 묶음 요청 — 화면(gasbridge.html)이 거의 동시에 나가는 요청들을 하나로 묶어 보낸다.
+// 대시보드처럼 8개를 동시에 보내면 구글 서버가 감당 못 해 각각 22~31초 걸리고 결과 받기도 8개 중 6개가
+// 실패했다(실측). 한 번 실행 안에서 차례로 처리하면 서버 코드 적재도 1번이고 결과 받기도 1번이다.
+// 같은 요청번호로 다시 오면 항목별로 기억해둔 결과를 쓰고(쓰기 작업이 두 번 실행되지 않게), 기억 못 한
+// 큰 결과(대부분 조회)만 다시 실행한다. 한 항목이 오류여도 나머지는 그대로 돌려준다.
+function manageApp_dispatchHttpBatch_(items, rid) {
+  const list = (items || []).slice(0, 30);
+  const cache = CacheService.getScriptCache();
+  const useRid = rid && typeof rid === 'string' && rid.length <= 80;
+  const batchKey = useRid ? 'mridb_' + rid : null;
+  const PENDING = '__pending__';
+  if (batchKey && cache.get(batchKey) === PENDING) {
+    // 같은 묶음이 아직 실행 중 — 끝날 때까지(최대 25초) 기다렸다가 항목별 기억을 쓴다.
+    for (let i = 0; i < 25 && cache.get(batchKey) === PENDING; i++) Utilities.sleep(1000);
+  }
+  if (batchKey) cache.put(batchKey, PENDING, 600);
+  const results = list.map(function (req, i) {
+    const itemKey = useRid ? 'mrid_' + rid + '_' + i : null;
+    if (itemKey) {
+      const saved = cache.get(itemKey);
+      if (saved) { try { return JSON.parse(saved); } catch (err) { } }
+    }
+    let r;
+    try { r = manageApp_dispatchHttp_(req); }
+    catch (err) { r = { error: '서버 처리 중 오류: ' + (err && err.message ? err.message : err) }; }
+    if (itemKey) {
+      try { const text = JSON.stringify(r); if (text.length < 95000) cache.put(itemKey, text, 600); } catch (err) { }
+    }
+    return r;
+  });
+  if (batchKey) cache.put(batchKey, 'done', 600);
+  return { __results: results };
 }
 
 // 공개 주소에서 비밀번호를 받게 되므로 무작정 대입을 늦춘다: 틀리면 1.5초 뒤에 답하고, 10분 안에
