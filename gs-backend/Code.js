@@ -494,12 +494,25 @@ const DRIVE_TOOLS = [
   },
   {
     name: 'calculate_transfer_tax',
-    description: '양도소득세를 정확히 계산한다(기본세율 누진구조, 단기양도세율, 장기보유특별공제 — 일반 및 1세대1주택 특례, 1세대1주택 12억 비과세, 다주택자 중과, 비사업용토지 가산, 미등기양도 70%, 8년자경농지 감면, 가업상속공제 적용자산의 취득가액·장기보유특별공제 특례(§97의2④·§95④단서), 필요경비 개산공제, 환산취득가액 가산세, 무신고·과소신고·납부지연가산세, 지방소득세 포함). 수용/환지 등 조특법상 개별 감면은 포함되지 않는다. 주식등 양도는 이 도구가 아니라 calculate_stock_transfer_tax를 써야 한다.',
+    description: '양도소득세를 정확히 계산한다(기본세율 누진구조, 단기양도세율, 장기보유특별공제 — 일반 및 1세대1주택 특례, 1세대1주택 12억 비과세, 다주택자 중과, 비사업용토지 가산, 미등기양도 70%, 8년자경농지 감면, 가업상속공제 적용자산의 취득가액·장기보유특별공제 특례(§97의2④·§95④단서), 필요경비 개산공제, 환산취득가액 가산세, 무신고·과소신고·납부지연가산세, 지방소득세 포함, 파산선고 처분·농지 교환분합 비과세, 이축권 감정가액 제외, 비거주자의 1세대1주택 특례 배제도 반영). 세액계산 화면과 같은 계산엔진을 쓴다. 수용/환지 등 조특법상 개별 감면은 포함되지 않는다. 주식등 양도는 이 도구가 아니라 calculate_stock_transfer_tax를 써야 한다.',
     input_schema: {
       type: 'object',
       properties: {
         isOffshoreTransaction: { type: 'boolean', description: '국세기본법§47의2·§47의3의 역외거래 부정행위(무신고·과소신고)에 해당하는지 — true면 가산세율이 40%(국내)가 아니라 60%로 적용된다.' },
         transferPrice: { type: 'number', description: '양도가액(원)' },
+        // [2026.10.08] AI 계산도구를 세액계산 화면 엔진(manage/taxcalc-engine.html)으로 일원화하면서,
+        // 화면 엔진에만 있던 법령 보강 항목을 AI도 넘길 수 있도록 추가(재검토103-2 이후 화면에만 반영됐던 것).
+        isBankruptcyDisposal: { type: 'boolean', description: '파산선고에 의한 처분으로 발생한 소득인지(소득세법§89①1호) — true면 요건 없이 전액 비과세.' },
+        isFarmlandExchange: { type: 'boolean', description: '농지의 교환 또는 분합으로 발생한 소득인지(§89①2호·시행령§153) — true면 아래 farmlandExchange* 항목으로 비과세 요건을 판정한다.' },
+        farmlandExchangeCategory: { type: 'string', enum: ['cat1', 'cat2', 'cat3', 'cat4'], description: 'isFarmlandExchange일 때 교환 사유(시행령§153①) — cat1=국가·지자체 시행사업으로 인한 교환, cat2=국가·지자체 소유토지와의 교환, cat3=경작상 필요에 의한 교환, cat4=농어촌정비법·농지법 등에 의한 교환·분합.' },
+        farmlandExchangeValueA: { type: 'number', description: 'isFarmlandExchange일 때 교환받은 농지가액(원). 두 가액 차이가 큰 쪽의 1/4 이내여야 비과세(시행령§153①).' },
+        farmlandExchangeValueB: { type: 'number', description: 'isFarmlandExchange일 때 교환해준 농지가액(원).' },
+        farmlandExchangeCultivation3YearsMet: { type: 'boolean', description: 'farmlandExchangeCategory가 cat3(경작상 필요)일 때만 — 새 농지를 농지소재지에서 3년 이상 거주하며 경작했는지.' },
+        farmlandExchangeExpropriationException: { type: 'boolean', description: 'cat3이고 3년 경작을 못 채웠을 때 — 수용 등 부득이한 사유에 해당하는지(시행령§153⑤ 예외).' },
+        isTransferorResident: { type: 'boolean', description: '양도인이 거주자인지(기본 true). false(비거주자)면 1세대1주택 비과세·고가주택 12억 초과분 과세(§89①3호·§95③)를 적용하지 않는다(isNonResidentTwoYearException 예외).' },
+        isNonResidentTwoYearException: { type: 'boolean', description: '비거주자이지만 출국일 당시 1주택 보유 + 출국 후 2년 이내 양도(시행령§154①2호나목 해외이주·다목 1년이상 국외 취학·근무)에 해당하는지 — true면 거주자와 같이 1세대1주택 특례를 적용한다.' },
+        hasRelocationRight: { type: 'boolean', description: '개발제한구역법상 이축권을 토지·건물과 함께 양도하는지(§94①4호마).' },
+        relocationRightAppraisalValue: { type: 'number', description: 'hasRelocationRight일 때 이축권 감정평가액(원, 감정평가법인 감정가액으로 별도 구분신고하는 경우) — 그 금액만큼 양도가액에서 제외한다(시행령§158의2).' },
         acquisitionPrice: { type: 'number', description: '취득가액(원, 실지거래가액). 생략하면 소득세법시행령§176의2③ 순차적용(매매사례가액→감정가액→환산취득가액→기준시가)으로 자동 산정한다 — comparableTransactionPrice(매매사례가액)/appraisalValue(감정가액)/acquisitionStandardPriceForConversion+transferStandardPriceForConversion(환산취득가액) 중 있는 것을 우선순위대로 쓴다.' },
         depreciationDeductedAsBusinessExpense: { type: 'number', description: '사업용자산(예: 부동산임대업 건물)을 양도하는 경우 — 보유기간 중 사업소득금액 계산시 감가상각비로 필요경비에 산입했거나 산입할 금액(원, §97③). 있으면 취득가액에서 이 금액을 차감한다(이중공제 방지). 사업용이 아니면 생략.' },
         businessSuccessionDeductionRatio: { type: 'number', description: '상속받은 이 자산 중 가업상속공제(상증세법§18의2)가 적용된 비율(0~1). 이 값이 있고 decedentAcquisitionValue도 입력하면, 취득가액을 "피상속인 취득가액×이 비율+상속개시일현재가액×(1-이 비율)"로 조정한다(§97의2④). decedentAcquisitionDate도 함께 입력하면 장기보유특별공제의 보유기간도 그 비율만큼 피상속인 취득일부터 기산해 가중평균한다(§95④단서) — 세율판정용 보유기간(단기양도 여부)은 이 예외가 없어 상속개시일(acquisitionDate) 기준 그대로 적용된다. 일반 상속재산(가업상속공제 미적용)이면 이 필드들을 전부 생략하면 된다.' },
@@ -577,7 +590,7 @@ const DRIVE_TOOLS = [
   },
   {
     name: 'calculate_transfer_tax_multi',
-    description: '같은 과세기간(연도) 안에 2건 이상 양도가 있어 확정신고를 합산해야 할 때 쓴다. 2년 이상 보유하고 특례(비과세·미등기·분양권) 없는 거래는 소득금액을 합산해 기본공제(250만원, 전체 1회)와 누진세율을 함께 적용하고, 단기양도(2년 미만)·미등기양도는 특성상 합산 대상이 아니라 건별로 개별세율로 계산해서 더한다. 각 거래의 입력 필드는 calculate_transfer_tax와 동일하다(양도가액·취득가액·보유기간·1세대1주택·다주택중과·8년자경 등 전부). 거래가 1건뿐이면 이 도구 대신 calculate_transfer_tax를 쓰는 게 더 간단하다.',
+    description: '같은 과세기간(연도) 안에 2건 이상 양도가 있어 확정신고를 합산해야 할 때 쓴다. 2년 이상 보유하고 특례(비과세·미등기·분양권) 없는 거래는 소득금액을 합산해 기본공제(250만원, 전체 1회)와 누진세율을 함께 적용하고, 단기양도(2년 미만)·미등기양도는 특성상 합산 대상이 아니라 건별로 개별세율로 계산해서 더한다. 같은 자산군(소득세법§102① 각 호) 안에서는 어느 거래의 양도차손이든 다른 거래의 양도소득금액과 통산한다(§102②·시행령§167의2 — 단기·미등기 거래의 손실도 버리지 않음). 각 거래의 입력 필드는 calculate_transfer_tax와 동일하다(양도가액·취득가액·보유기간·1세대1주택·다주택중과·8년자경 등 전부). 거래가 1건뿐이면 이 도구 대신 calculate_transfer_tax를 쓰는 게 더 간단하다.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1831,6 +1844,8 @@ const DRIVE_TOOLS = [
         saleProceedsAmount: { type: 'number', description: 'penaltyType이 income_underused이고 §48②5호 매각대금 기준금액을 자동계산할 때 — 기본재산 매각대금(원).' },
         saleCheckpointYear: { type: 'integer', enum: [1, 2], description: 'penaltyType이 income_underused이고 §48②5호 매각대금 기준금액을 자동계산할 때 — 매각일이 속하는 과세기간(사업연도) 종료일부터 확인시점(1년=30%기준, 2년=60%기준).' },
         cumulativeActualUsedAmount: { type: 'number', description: 'penaltyType이 income_underused이고 §48②5호 매각대금 기준금액을 자동계산할 때 — 매각일이 속하는 과세기간(사업연도) 종료일부터 확인시점까지 누적 실제 직접공익목적사업 사용액(원).' },
+        operatingIncomeUnderusedAmount: { type: 'number', description: 'penaltyType이 income_underused일 때 — §78⑨1호 운용소득 미달사용액(원)을 이미 알고 있으면 직접 입력(입력하면 operatingIncomeAmount로 자동계산하지 않음).' },
+        directUseUnderusedAmount: { type: 'number', description: 'penaltyType이 income_underused일 때 — §78⑨3호(§48②7호) 기준금액 미달사용액(원)을 이미 알고 있으면 직접 입력(입력하면 totalAssetValue 등으로 자동계산하지 않음).' },
         operatingIncomeAmount: { type: 'number', description: 'penaltyType이 income_underused이고 §48②5호 운용소득 기준금액을 자동계산할 때 — 해당 과세기간(사업연도) 수익사업 소득금액 등 합계(시행령§38⑤1호, 원).' },
         taxAndCarryforwardLossAmount: { type: 'number', description: 'penaltyType이 income_underused이고 §48②5호 운용소득 기준금액을 자동계산할 때 — 해당 소득에 대한 법인세·소득세·농어촌특별세·주민세 및 이월결손금(시행령§38⑤2호, 원).' },
         actualOperatingIncomeUsedAmount: { type: 'number', description: 'penaltyType이 income_underused이고 §48②5호 운용소득 기준금액을 자동계산할 때 — 운용소득을 실제로 직접공익목적사업에 사용한 금액(원). 없으면 0.' },
@@ -2313,7 +2328,8 @@ const DRIVE_TOOLS = [
       type: 'object',
       properties: {
         totalTaxAmount: { type: 'number', description: '납부할 세액(원, §70①에 따라 각종 공제·연부연납·물납 신청분을 제외한 자진납부할 금액). 1천만원을 초과해야 분납 가능.' },
-        hasInstallmentPaymentApproval: { type: 'boolean', description: '이 세액에 대해 연부연납(§71)을 이미 허가받았는지. true면 분납을 적용할 수 없다.' }
+        hasInstallmentPaymentApproval: { type: 'boolean', description: '이 세액에 대해 연부연납(§71)을 이미 허가받았는지. true면 분납을 적용할 수 없다.' },
+        taxType: { type: 'string', enum: ['inheritance', 'gift', 'transfer'], description: '세목(생략시 상속세·증여세 기준). transfer=양도소득세 분납(소득세법§77·시행령§116 — 납부기한 경과 후 2개월 이내, 한도 산식은 상증세와 같음).' }
       },
       required: ['totalTaxAmount']
     }
@@ -3029,6 +3045,117 @@ const DRIVE_TOOLS = [
   }
 ];
 
+// [2026.10.08] 이월과세 도구는 화면 엔진(calculateTransferTaxWithCarryoverJS)이 입력 전체를
+// calculateTransferTaxSingleJS에 그대로 넘기므로 calculate_transfer_tax의 모든 항목이 그대로 통한다.
+// 같은 설명을 두 곳에 따로 적으면 어긋나므로, calculate_transfer_tax 쪽 정의에서 빠진 것만 가져온다.
+// 취득가액·취득일은 이월과세 여부에 따라 엔진이 증여자/수증자 값으로 덮어쓰므로 가져오지 않는다
+// (donorAcquisitionPrice·doneeOwnAcquisitionPrice 등 이 도구 고유 항목으로 받는다).
+(function mergeCarryoverSchemaFromTransferTax_() {
+  const base = DRIVE_TOOLS.find(function (t) { return t.name === 'calculate_transfer_tax'; });
+  const carry = DRIVE_TOOLS.find(function (t) { return t.name === 'calculate_transfer_tax_with_carryover'; });
+  if (!base || !carry) return;
+  const skip = { acquisitionPrice: true, acquisitionDate: true };
+  Object.keys(base.input_schema.properties).forEach(function (k) {
+    if (skip[k] || carry.input_schema.properties[k]) return;
+    carry.input_schema.properties[k] = base.input_schema.properties[k];
+  });
+})();
+
+// ============================================================
+// [2026.10.08] AI 세액계산 도구 → 세액계산 화면 엔진 일원화
+// ------------------------------------------------------------
+// 지금까지 AI(calculate_* 도구)는 이 파일의 toolCalculate* 함수로, 세액계산 화면은
+// manage/taxcalc-engine.html의 calculate*JS 함수로 따로 계산했다. 화면 엔진은 원래 이 파일의
+// 계산을 옮겨간 것인데, 이후 법령 기준 점검(양도차손 통산 §102②, 파산선고·농지교환분합 비과세,
+// 이축권, 1세대1주택 §154~§155 특례 등)이 화면 엔진에만 반영돼 AI 계산이 뒤처졌다(예: 같은 해
+// 토지 양도이익 2억+단기 양도손실 1억 → AI 4,557만원, 화면 990만원(정답)).
+// 이제 AI 도구도 화면 엔진 파일을 서버에서 그대로 읽어 실행한다 — 계산 로직은 화면 엔진 한 곳에만
+// 두고, 고칠 때도 그 파일만 고치면 AI와 화면에 동시에 반영된다.
+//
+// 예외(이 파일의 함수를 계속 씀): 재산평가 단순공식 10종·건물기준시가 2종·조건부권리 안내 1종 —
+// 화면 엔진 쪽은 계산기 워크시트용으로 숫자만 돌려주는 등 반환 형태가 다르고, 계산값은 동일함을
+// 확인했다(2026.10.08 비교). AI용 안내문(다른 도구 이름 안내 등)이 더 자세해서 그대로 둔다.
+// ============================================================
+var uiCalcEngineCache_ = null;
+
+function getUiCalcEngine_() {
+  if (uiCalcEngineCache_) return uiCalcEngineCache_;
+  let src = HtmlService.createHtmlOutputFromFile('manage/taxcalc-engine').getContent();
+  src = src.replace(/^\s*<script>/, '').replace(/<\/script>\s*$/, '');
+  const win = {};
+  new Function('window', src)(win);
+  uiCalcEngineCache_ = win;
+  return win;
+}
+
+// 도구명 → 화면 엔진 함수명. 값이 배열이면 [함수명, 인자구성함수] (여러 인자를 받는 함수).
+const UI_ENGINE_CALC_TOOL_EXCEPTIONS_ = {
+  calculate_land_value: true, calculate_house_value: true, calculate_listed_stock_value: true,
+  calculate_rental_conversion_value: true, calculate_goodwill_value: true, calculate_ground_right_value: true,
+  calculate_patent_right_value: true, calculate_mining_right_value: true, calculate_dividend_difference: true,
+  calculate_adjusted_share_count: true, calculate_building_standard_price: true,
+  calculate_building_standard_price_multi: true, explain_conditional_right_valuation_factors: true
+};
+const UI_ENGINE_CALC_TOOL_ARGS_ = {
+  calculate_transfer_tax: ['calculateTransferTaxSingleJS'],
+  calculate_transfer_tax_multi: ['calculateTransferTaxMultiJS', function (input) {
+    return [input.transactions, {
+      filingStatus: input.filingStatus, isFraudulent: input.isFraudulent, underreportedTaxAmount: input.underreportedTaxAmount,
+      fraudulentUnderreportedTaxAmount: input.fraudulentUnderreportedTaxAmount,
+      unpaidDays: input.unpaidDays, unpaidTaxForLatePenalty: input.unpaidTaxForLatePenalty, isSelfElectronicFiling: input.isSelfElectronicFiling,
+      monthsAfterDesignatedDueDate: input.monthsAfterDesignatedDueDate, unpaidTaxAtDesignatedDueDate: input.unpaidTaxAtDesignatedDueDate,
+      isOffshoreTransaction: input.isOffshoreTransaction
+    }];
+  }],
+  calculate_overseas_asset_transfer_tax_multi: ['calculateOverseasAssetTransferTaxMultiJS', function (input) {
+    return [input.transactions, input];
+  }],
+  allocate_inheritance_tax_by_heir: ['allocateInheritanceTaxByHeirJS', function (input) {
+    return [input.aggregateResult, input.heirs, input.nonHeirPriorGiftTaxableBaseTotal, input.nonHeirPriorGiftAmountTotal];
+  }]
+};
+
+function isUiEngineCalcTool_(name) {
+  return /^(calculate|allocate|check|explain)_/.test(name) && !UI_ENGINE_CALC_TOOL_EXCEPTIONS_[name];
+}
+
+// 화면 엔진으로 계산해서 결과 객체를 돌려준다. 해당 도구가 아니면 null.
+function runUiEngineCalcTool_(name, input) {
+  if (!isUiEngineCalcTool_(name)) return null;
+  input = input || {};
+  const spec = UI_ENGINE_CALC_TOOL_ARGS_[name];
+  const fnName = spec ? spec[0] : name.replace(/_([a-z])/g, function (_, c) { return c.toUpperCase(); }) + 'JS';
+  let engine;
+  try {
+    engine = getUiCalcEngine_();
+  } catch (err) {
+    // 엔진 파일을 못 읽으면 조용히 옛 계산으로 넘어가지 않는다 — 덜 정확한 결과를 정답처럼 내지 않도록 오류로 알린다.
+    return { error: '세액계산 엔진을 불러오지 못했습니다: ' + (err && err.message ? err.message : err) + ' — 잠시 후 다시 시도하거나 세액계산 화면에서 직접 계산하세요.' };
+  }
+  const fn = engine[fnName];
+  if (typeof fn !== 'function') return null; // 화면 엔진에 없는 도구는 기존 처리로 넘긴다
+  const args = (spec && spec[1]) ? spec[1](input) : [input];
+  let result;
+  try {
+    result = fn.apply(null, JSON.parse(JSON.stringify(args)));
+  } catch (err) {
+    return { error: '계산 중 오류가 났습니다: ' + (err && err.message ? err.message : err) };
+  }
+  // 화면 엔진의 오류 문구는 사람용이라 입력항목 이름이 빠져 있다("증여재산가액이 필요합니다").
+  // AI가 스스로 고쳐 다시 부를 수 있도록 이 도구의 필수 항목 이름과 설명을 덧붙인다.
+  if (result && typeof result === 'object' && result.error) {
+    const tool = DRIVE_TOOLS.find(function (t) { return t.name === name; });
+    const schema = tool && tool.input_schema;
+    if (schema && Array.isArray(schema.required) && schema.required.length) {
+      result.필수입력항목 = schema.required.map(function (k) {
+        const p = schema.properties && schema.properties[k];
+        return k + (p && p.description ? ' — ' + String(p.description).slice(0, 80) : '');
+      });
+    }
+  }
+  return result;
+}
+
 /**
  * 문서수정·관계도수정·폴더이동 — 지금까지 <<<EDIT_DOCUMENT>>> 같은 텍스트 마커로 처리하던
  * 세 가지를, 다른 12개 도구와 동일한 방식(tool_use)으로 통일한 것.
@@ -3274,6 +3401,9 @@ function dispatchClientAction_(body) {
   }
   if (body.action === 'searchAddress') {
     return jsonResponse(handleSearchAddress(body));
+  }
+  if (body.action === 'searchAddressHo') {
+    return jsonResponse(handleSearchAddressHo(body));
   }
   if (body.action === 'lookupRealPrice') {
     return jsonResponse(handleLookupRealPrice(body));
@@ -12948,7 +13078,19 @@ function handleSearchAddress(body) {
     const common = data.results && data.results.common;
     if (!common) return { error: '주소 검색 API 응답 형식을 해석할 수 없습니다.' };
     if (common.errorCode !== '0') return { error: '주소 검색 오류(' + common.errorCode + '): ' + common.errorMessage };
-    const juso = (data.results.juso || []).map(function (j) {
+    function sortDongList_(list) {
+      // [2026.10.08, 재검토128] juso.go.kr이 반환하는 순서가 숫자 순이 아니라서(세무사님 지적)
+      // 동 번호를 숫자로 뽑아 정렬한다 — "가동"처럼 숫자가 없는 동명은 뒤로 보내고 한글 순.
+      return list.sort(function (a, b) {
+        const na = parseInt(a, 10), nb = parseInt(b, 10);
+        const aNum = !isNaN(na), bNum = !isNaN(nb);
+        if (aNum && bNum) return na - nb;
+        if (aNum) return -1;
+        if (bNum) return 1;
+        return a.localeCompare(b, 'ko');
+      });
+    }
+    const rawJuso = (data.results.juso || []).map(function (j) {
       // detBdNmList가 동 목록을 담고 있다(예: "101동,102동"). 필드가 비어있으면 단독 건물이라 동 구분이 없는 것.
       const dongList = j.detBdNmList ? String(j.detBdNmList).split(',').map(function (s) { return s.trim(); }).filter(Boolean) : [];
       // admCd(법정동코드10)·mtYn(산여부)·lnbrMnnm/lnbrSlno(지번 본번·부번)는 화면 표시용이 아니라,
@@ -12956,12 +13098,89 @@ function handleSearchAddress(body) {
       return {
         roadAddr: j.roadAddr, jibunAddr: j.jibunAddr, zipNo: j.zipNo, bdNm: j.bdNm, dongList: dongList,
         admCd: j.admCd || '', mtYn: j.mtYn || '0', lnbrMnnm: j.lnbrMnnm || '', lnbrSlno: j.lnbrSlno || '',
-        siNm: j.siNm || '', sggNm: j.sggNm || '', emdNm: j.emdNm || ''
+        siNm: j.siNm || '', sggNm: j.sggNm || '', emdNm: j.emdNm || '',
+        // [2026.10.08, 재검토129] 상세주소(층/호) API(addrDetailApi.do)가 건물을 특정하는 데
+        // 쓰는 키 4종 — 동 하나를 고른 뒤 그 동의 호 목록을 따로 조회(searchAddressHo)할 때 넘긴다.
+        rnMgtSn: j.rnMgtSn || '', udrtYn: j.udrtYn || '0', buldMnnm: j.buldMnnm || '', buldSlno: j.buldSlno || ''
       };
+    });
+    // [2026.10.08, 재검토128] 세무사님 지적 — "래미안슈르" 같은 큰 단지는 법정동 경계에 걸쳐
+    // juso.go.kr이 결과를 여러 줄로 쪼개 주는데(예: 원문동 줄엔 301~342동, 별양동 줄엔
+    // 343~348동만), 지금까지는 사용자가 고른 그 한 줄의 동 목록만 보여줘서 다른 줄에 있는
+    // 동이 통째로 안 보였다 — "정렬 문제"가 아니라 "집계 누락"이었다. 같은 단지(시/군구+건물명
+    // 동일)끼리는 동 목록을 합쳐서, 어느 줄을 고르든 단지 전체 동이 다 뜨게 한다.
+    const dongByGroup_ = {};
+    rawJuso.forEach(function (j) {
+      if (!j.bdNm || !j.dongList.length) return;
+      const groupKey = j.siNm + '|' + j.sggNm + '|' + j.bdNm;
+      if (!dongByGroup_[groupKey]) dongByGroup_[groupKey] = {};
+      j.dongList.forEach(function (d) { dongByGroup_[groupKey][d] = true; });
+    });
+    const juso = rawJuso.map(function (j) {
+      if (!j.bdNm || !j.dongList.length) return j;
+      const groupKey = j.siNm + '|' + j.sggNm + '|' + j.bdNm;
+      j.dongList = sortDongList_(Object.keys(dongByGroup_[groupKey]));
+      return j;
     });
     return { juso: juso, totalCount: Number(common.totalCount) || juso.length };
   } catch (e) {
     return { error: '주소 검색 API 호출 실패: ' + e.message };
+  }
+}
+
+// [2026.10.08 신규, 재검토129] 세무사님 지적("동값에 매치되는 호값이 떠야 하는 거 아닌가") —
+// 처음엔 juso.go.kr 공개 API에 호수 정보가 아예 없다고 잘못 판단했었다. 실제로는 "도로명주소"
+// API(handleSearchAddress)와는 별도로 "상세주소" API(addrDetailApi.do)가 있고, 동 하나를
+// 특정하면(admCd+rnMgtSn+udrtYn+buldMnnm+buldSlno+dongNm) 그 동의 실제 층/호 목록을 돌려준다.
+// "상세주소" 카테고리는 "도로명주소"와 별도로 오픈API 신청을 받아야 하는 별개 서비스라, 이 키가
+// 아직 없으면(JUSO_API_KEY와 별도 키 필요할 수 있음) 에러 메시지로 안내한다.
+function handleSearchAddressHo(body) {
+  const apiKey = PropertiesService.getScriptProperties().getProperty('JUSO_DETAIL_API_KEY')
+    || PropertiesService.getScriptProperties().getProperty('JUSO_API_KEY');
+  if (!apiKey) {
+    return { error: '상세주소(호) API 키가 아직 등록되지 않았습니다. juso.go.kr에서 "상세주소 - 검색 API"를 별도로 신청한 뒤, 스크립트 속성에 JUSO_DETAIL_API_KEY로 등록하세요.' };
+  }
+  const admCd = String(body.admCd || '').trim();
+  const rnMgtSn = String(body.rnMgtSn || '').trim();
+  const udrtYn = String(body.udrtYn || '0').trim();
+  const buldMnnm = String(body.buldMnnm || '').trim();
+  const buldSlno = String(body.buldSlno || '').trim();
+  const dongNm = String(body.dongNm || '').trim();
+  if (!admCd || !rnMgtSn || !buldMnnm) {
+    return { error: '건물을 특정할 정보(행정구역코드·도로명코드·건물본번)가 없습니다 — 먼저 위 주소 검색으로 건물을 선택하세요.' };
+  }
+  const url = 'https://business.juso.go.kr/addrlink/addrDetailApi.do'
+    + '?confmKey=' + encodeURIComponent(apiKey)
+    + '&admCd=' + encodeURIComponent(admCd)
+    + '&rnMgtSn=' + encodeURIComponent(rnMgtSn)
+    + '&udrtYn=' + encodeURIComponent(udrtYn || '0')
+    + '&buldMnnm=' + encodeURIComponent(buldMnnm)
+    + '&buldSlno=' + encodeURIComponent(buldSlno || '0')
+    + '&searchType=floorho'
+    + '&dongNm=' + encodeURIComponent(dongNm)
+    + '&resultType=json';
+  try {
+    const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    const data = JSON.parse(res.getContentText());
+    const common = data.results && data.results.common;
+    if (!common) return { error: '상세주소 API 응답 형식을 해석할 수 없습니다.' };
+    if (common.errorCode !== '0') return { error: '상세주소 검색 오류(' + common.errorCode + '): ' + common.errorMessage };
+    const seen = {};
+    (data.results.juso || []).forEach(function (j) {
+      const ho = String(j.hoNm || '').trim();
+      if (ho) seen[ho] = true;
+    });
+    const hoList = Object.keys(seen).sort(function (a, b) {
+      const na = parseInt(a, 10), nb = parseInt(b, 10);
+      const aNum = !isNaN(na), bNum = !isNaN(nb);
+      if (aNum && bNum) return na - nb;
+      if (aNum) return -1;
+      if (bNum) return 1;
+      return a.localeCompare(b, 'ko');
+    });
+    return { hoList: hoList };
+  } catch (e) {
+    return { error: '상세주소 API 호출 실패: ' + e.message };
   }
 }
 
@@ -13666,6 +13885,13 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
 
     if (toolUseBlocks.length > 0) {
     const toolResults = toolUseBlocks.map(function (block) {
+      // [2026.10.08] 세액계산 도구는 세액계산 화면과 같은 엔진으로 계산한다(getUiCalcEngine_ 위 설명 참고).
+      // 화면 엔진에 해당 함수가 없거나 예외 목록에 있는 도구만 아래 기존 분기로 내려간다.
+      const uiCalcResult = runUiEngineCalcTool_(block.name, block.input);
+      if (uiCalcResult) {
+        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(uiCalcResult) };
+      }
+
       if (block.name === 'browse_tax_calculators') {
         const resultObj = toolBrowseTaxCalculators(block.input && block.input.category);
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj) };

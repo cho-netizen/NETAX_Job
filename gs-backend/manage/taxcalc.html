@@ -19,6 +19,109 @@ const taxCalcAcquisitionPane = document.getElementById('taxCalcAcquisitionPane')
 const taxCalcRegistrationLicensePane = document.getElementById('taxCalcRegistrationLicensePane');
 const taxCalcPrintPane = document.getElementById('taxCalcPrintPane');
 
+// [2026.10.07 신규, 재검토124] 세무사님 반복 지적("관리화면 여러곳에서 강조했는데 처리화면엔
+// 반영이 안 됐다") — 필드 폭을 데이터 타입별로 px값 하나씩 미리 추측해 화이트리스트로 좁히는
+// 방식(style.html의 [data-nameonly] 등)은 새 계산기·새 필드가 생길 때마다 또 빠진다. 대신
+// "지금 실제로 입력된(또는 placeholder) 내용의 실측 폭"에 맞춰 입력칸 자체가 타이핑할 때마다
+// 반응형으로 늘었다 줄었다 하게 만든다 — 한글은 영문보다 훨씬 넓어서 글자수(ch) 기반 추정은
+// 부정확하므로, 입력칸과 똑같은 글꼴의 숨은 측정용 span으로 실제 렌더 폭을 재서 그대로 쓴다.
+// 이미 고정폭 규칙이 있는 날짜·성명(data-nameonly)·주민등록번호(data-regno)·주소
+// (.taxcalc-field-inline 안, 검색버튼과 함께 폭을 나눠 쓰는 구조라 이 메커니즘과 안 맞음)는
+// 그 형식 자체가 항상 일정한 길이라 동적 측정이 필요 없으므로 제외한다.
+// [2026.10.08 수정, 재검토125] .taxcalc-money(금액 콤마서식 input)는 애초엔 "이미 정적
+// width:150px로 처리됨"이라 제외했었는데, 이게 틀렸다 — enhanceNumberInputs가 type="number"인
+// 입력을 전부 .taxcalc-money로 바꾸는데, 그 중엔 납부지연일수처럼 "금액이 아니라 그냥 1~4자리
+// 숫자(일수·개월수 등)"인 계산결과 필드도 섞여 있어서, 실제로는 2~3자리면 충분한 필드까지
+// 몽땅 150px(금액용 폭)로 고정되어 있었다. 금액이든 일수든 "실측 폭" 방식은 똑같이 맞게
+// 동작하므로(금액은 타이핑할수록 늘어나고, 일수는 애초에 짧아서 MIN폭에 묶인다) 제외할 이유가
+// 없다 — 아래로 빼고, 실제 크기 반영은 enhanceNumberInputs 안에서 변환 직후 바로 호출한다.
+// [2026.10.08 2차 수정, 재검토127] 세무사님이 실제 화면 캡처로 지적 — (1) 과소신고분 세액·
+// 미납세액 같은 빈 금액칸이 placeholder("원"/"0")만큼만 재져서 너무 좁았다. 데이터가 길어서
+// 생기는 문제뿐 아니라, "아직 비어있어서" 생기는 문제도 있었다 — 금액칸은 실제로 몇백만~몇억
+// 단위가 들어올 걸 알고 있으므로 빈 상태에서도 최소폭을 더 넉넉히 둔다. (2) 반대로 "지급처
+// 사업자등록번호"처럼 placeholder에 "취득가액및필요경비계산상세명세서용, 없으면 비움" 같은
+// 긴 안내문을 써둔 칸은, 그 안내문 길이만큼 칸이 넓어져버렸다 — placeholder는 "예시 데이터"로
+// 쓴 경우(예: 101동)와 "안내문"으로 쓴 경우가 섞여있는데 후자는 실제 입력 길이와 무관하므로,
+// 값이 없을 때(placeholder만 있을 때)는 별도의 더 좁은 상한을 둬서 안내문이 아무리 길어도
+// 칸이 과도하게 늘어나지 않게 한다(placeholder 자체는 브라우저가 어차피 잘라서 보여준다 —
+// 실제 입력값만 절대 안 잘리면 된다). (3) <select>는 지금까지 이 메커니즘 밖이라 브라우저
+// 기본 동작(현재 선택과 무관하게 "가장 긴 option 글자수"로 폭을 잡음) 그대로였다 — 관계·구분·
+// 신고상태 select들이 전부 가장 긴 보기 하나 때문에 넓어 보였던 원인. select용 측정·리스너를
+// 같이 추가한다(선택된 option의 글자만 잰다, select는 input이 아니라 change로 값이 바뀜).
+const TC_AUTOWIDTH_SELECTOR_ = '.taxcalc-field > input[type="text"]:not(.taxcalc-date):not([data-nameonly]):not([data-regno])';
+const TC_AUTOWIDTH_SELECT_SELECTOR_ = '.taxcalc-field > select';
+const TC_AUTOWIDTH_MIN_PX_ = 48;
+const TC_AUTOWIDTH_MONEY_MIN_PX_ = 92;
+const TC_AUTOWIDTH_MAX_PX_ = 300;
+const TC_AUTOWIDTH_PLACEHOLDER_MAX_PX_ = 160;
+const TC_AUTOWIDTH_SELECT_MIN_PX_ = 60;
+const TC_AUTOWIDTH_SELECT_MAX_PX_ = 280;
+let tcAutoWidthMeasurer_ = null;
+function tcMeasureTextWidth_(text, refEl){
+  if (!tcAutoWidthMeasurer_){
+    tcAutoWidthMeasurer_ = document.createElement('span');
+    tcAutoWidthMeasurer_.style.cssText = 'position:absolute; visibility:hidden; white-space:pre; top:-9999px; left:-9999px;';
+    document.body.appendChild(tcAutoWidthMeasurer_);
+  }
+  const cs = getComputedStyle(refEl);
+  tcAutoWidthMeasurer_.style.font = cs.font;
+  tcAutoWidthMeasurer_.style.letterSpacing = cs.letterSpacing;
+  tcAutoWidthMeasurer_.textContent = text || '';
+  return tcAutoWidthMeasurer_.offsetWidth;
+}
+function tcResizeAutoWidthInput_(el){
+  // [2026.10.08, 재검토125] 케이스 복원·초기화처럼 "여러 칸을 한꺼번에 훑는" 호출부에서마다
+  // 날짜·성명·주민등록번호 칸을 걸러내라고 하는 대신, 이 함수 자체가 대상이 아니면 조용히
+  // 빠지게 한다 — 안 그러면 고정폭이어야 할 칸(.taxcalc-date 등)까지 실측폭으로 덮어써 버린다.
+  if (!el || !el.matches || !el.matches(TC_AUTOWIDTH_SELECTOR_)) return;
+  const hasValue = el.value !== '';
+  const sample = hasValue ? el.value : (el.placeholder || '');
+  const w = tcMeasureTextWidth_(sample, el);
+  const minPx = el.classList.contains('taxcalc-money') ? TC_AUTOWIDTH_MONEY_MIN_PX_ : TC_AUTOWIDTH_MIN_PX_;
+  // 실제 값이 있으면 넉넉한 상한(300px)까지 그대로 늘어나지만, placeholder뿐일 때는 그게
+  // 안내문이어도 160px에서 멈춘다 — 안내문은 잘려 보여도 되지만 실제 입력값은 절대 안 된다.
+  const maxPx = hasValue ? TC_AUTOWIDTH_MAX_PX_ : Math.max(minPx, TC_AUTOWIDTH_PLACEHOLDER_MAX_PX_);
+  el.style.width = Math.min(maxPx, Math.max(minPx, w + 22)) + 'px';
+}
+function tcResizeAutoWidthSelect_(el){
+  if (!el || !el.matches || !el.matches(TC_AUTOWIDTH_SELECT_SELECTOR_)) return;
+  const opt = el.options && el.options[el.selectedIndex];
+  const w = tcMeasureTextWidth_(opt ? opt.text : '', el);
+  // select는 화살표 아이콘·좌우 패딩이 텍스트 input보다 더 필요해서 여유분을 더 둔다.
+  el.style.width = Math.min(TC_AUTOWIDTH_SELECT_MAX_PX_, Math.max(TC_AUTOWIDTH_SELECT_MIN_PX_, w + 40)) + 'px';
+}
+// 타이핑할 때마다 즉시 반응(위임 리스너라 지금 있는 칸이든 나중에 새로 그려지는 칸이든 전부 적용).
+taxCalcView.addEventListener('input', function(e){
+  if (e.target.matches && e.target.matches(TC_AUTOWIDTH_SELECTOR_)) tcResizeAutoWidthInput_(e.target);
+});
+// select는 input 이벤트가 안 뜨고 change만 뜬다(옵션을 고르는 즉시 바로 반영).
+taxCalcView.addEventListener('change', function(e){
+  if (e.target.matches && e.target.matches(TC_AUTOWIDTH_SELECT_SELECTOR_)) tcResizeAutoWidthSelect_(e.target);
+  // [2026.10.08, 재검토129] 피상속인 주소는 배열이 아니라 고정 id 필드라(다른 5곳과 달리)
+  // 전용 배선이 없다 — 동을 고르면 숨은칸에 저장해둔 건물 특정 키로 호 목록을 조회한다.
+  if (e.target.id === 'ihDeceasedDong'){
+    const g_ = function(id){ const el = document.getElementById(id); return el ? el.value : ''; };
+    tcFetchHoListForDongInput_({
+      admCd: g_('ihDeceasedAdmCd'), rnMgtSn: g_('ihDeceasedRnMgtSn'), udrtYn: g_('ihDeceasedUdrtYn'),
+      buldMnnm: g_('ihDeceasedBuldMnnm'), buldSlno: g_('ihDeceasedBuldSlno')
+    }, e.target.value, e.target);
+  }
+});
+// 처음 그려질 때(이미 값이 채워진 채로 렌더되는 경우 — 예: 사건 다시 열기) 폭을 맞춰줄 초기
+// 측정 — innerHTML로 통째로 새로 그리는 패턴이라 각 render 함수마다 호출부를 일일이 심는 대신
+// MutationObserver로 taxCalcView 전체에 걸쳐 한 번에 처리한다(새 계산기가 생겨도 자동 적용).
+new MutationObserver(function(mutations){
+  mutations.forEach(function(m){
+    m.addedNodes.forEach(function(node){
+      if (node.nodeType !== 1) return;
+      if (node.matches && node.matches(TC_AUTOWIDTH_SELECTOR_)) tcResizeAutoWidthInput_(node);
+      if (node.querySelectorAll) node.querySelectorAll(TC_AUTOWIDTH_SELECTOR_).forEach(tcResizeAutoWidthInput_);
+      if (node.matches && node.matches(TC_AUTOWIDTH_SELECT_SELECTOR_)) tcResizeAutoWidthSelect_(node);
+      if (node.querySelectorAll) node.querySelectorAll(TC_AUTOWIDTH_SELECT_SELECTOR_).forEach(tcResizeAutoWidthSelect_);
+    });
+  });
+}).observe(taxCalcView, { childList: true, subtree: true });
+
 function won(n){
   return Number.isFinite(n) ? Math.round(n).toLocaleString('ko-KR') + '원' : '-';
 }
@@ -85,6 +188,9 @@ function enhanceNumberInputs(container){
     el.setAttribute('inputmode', 'decimal');
     el.classList.add('taxcalc-money');
     if (el.value !== '') el.value = formatNumberInputValue_(el.value);
+    // type 변환이 attribute가 아니라 property라 MutationObserver가 못 잡는다 — 변환 직후
+    // 여기서 바로 실측 폭을 맞춘다(납부지연일수 등 금액 아닌 계산결과 필드 폭 버그, 재검토125).
+    if (el.parentElement && el.parentElement.classList.contains('taxcalc-field')) tcResizeAutoWidthInput_(el);
     if (el.dataset.commaEnhanced) return;
     el.dataset.commaEnhanced = '1';
     el.addEventListener('input', function(){
@@ -119,6 +225,9 @@ function setUnpaidDaysField_(fieldId, days){
   const el = document.getElementById(fieldId);
   if (!el) return;
   el.value = String(days);
+  // .value= 는 property라 input 이벤트도, MutationObserver도 반응 안 한다 — 재계산 때마다
+  // 여기서 직접 폭을 다시 맞춘다(재검토125, enhanceNumberInputs의 초기 변환시점 호출과 같은 이유).
+  if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(el);
 }
 // [2026.09.23 재설계] 양도인이 여러 명이면 "실제 납부일"도 각자 따로다(각자 별도 확정신고) —
 // idx가 0(또는 생략)이면 예전 flat id(trPaidDate/trUnpaidDays)를 그대로 쓰고, 그 외에는
@@ -173,6 +282,7 @@ function recomputeSpouseRatio(){
   if (!taxCalcHeirRegistryHasSpouse){
     ratioEl.value = '0';
     if (hint) hint.textContent = '상속인 명부에 배우자가 없어 0으로 처리';
+    if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(ratioEl);
     return;
   }
   const otherHeirs = numVal(otherHeirsEl ? otherHeirsEl.value : 0);
@@ -184,6 +294,7 @@ function recomputeSpouseRatio(){
     ratioEl.value = '1';
     if (hint) hint.textContent = '공동상속인 0명 → 배우자 단독상속 가정(1)';
   }
+  if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(ratioEl);
 }
 
 function recomputeStockUnpaidDays(){
@@ -461,7 +572,9 @@ function calcAgeAt_(birthDateStr, atDateStr){
 }
 function setReadonlyField_(fieldId, value){
   const el = document.getElementById(fieldId);
-  if (el) el.value = String(value);
+  if (!el) return;
+  el.value = String(value);
+  if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(el);
 }
 function recomputeHeirDerivedFields(){
   const deathDateEl = document.getElementById('ihDeathDate');
@@ -478,14 +591,21 @@ function recomputeHeirDerivedFields(){
   // 반영이 전혀 없었다. 아래에서 "포기자 제외 + 대습그룹별 묶음"으로 정확히 센다.
   const activeHeirs = heirs.filter(function(h){ return !h.hasRenounced; });
   const livingChildHeirs = activeHeirs.filter(function(h){ return h.relation === '자녀'; });
-  const substituteHeirs = activeHeirs.filter(function(h){ return (h.relation || '').indexOf('손자녀(대습상속') !== -1; });
-  // 대습그룹(같은 피대습자=사망한 자녀 1명을 함께 대습하는 손자녀들)별로 묶는다 — 그룹을
-  // 안 적었으면 "이 대습자 혼자 그 피대습자를 전부 대습"으로 보아 자기 자신만의 그룹으로 취급.
+  // [2026.10.07 수정, 재검토118] 세무사님 지적으로 발견 — 민법§1003②은 "상속인이 될 직계비속
+  // (사망한 자녀)의 배우자"(며느리/사위)도 그 직계비속(손자녀)과 "공동으로" 대습상속한다고
+  // 정하는데, 그동안 relation 선택지에 대습상속한 손자녀만 있고 대습상속한 며느리/사위는
+  // 아예 없었다 — 배우자와 자녀들이 함께 대습하는 흔한 사례를 표현할 방법 자체가 없던 버그.
+  const substituteHeirs = activeHeirs.filter(function(h){ return (h.relation || '').indexOf('손자녀(대습상속') !== -1 || (h.relation || '').indexOf('며느리/사위(대습상속') !== -1; });
+  // 대습그룹(같은 피대습자=사망한 자녀 1명을 함께 대습하는 며느리/사위·손자녀들)별로 묶는다 —
+  // 그룹을 안 적었으면 "이 대습자 혼자 그 피대습자를 전부 대습"으로 보아 자기 자신만의 그룹으로 취급.
   const substituteGroupMap = {};
   substituteHeirs.forEach(function(h){
     const key = (h.substitutionGroup || '').trim() || ('__solo_' + heirs.indexOf(h));
     (substituteGroupMap[key] = substituteGroupMap[key] || []).push(h);
   });
+  // 그룹 안에서도 며느리/사위(대습배우자):손자녀(대습자녀) = 1.5:1(§1009를 그룹 내부에
+  // 재귀적용, 정수화하면 3:2) — 그룹 전체가 전부 손자녀뿐이면 기존처럼 균등분배와 동일해진다.
+  function substituteMemberWeight_(h){ return (h.relation || '').indexOf('며느리/사위(대습상속') !== -1 ? 3 : 2; }
   const substituteGroupKeys = Object.keys(substituteGroupMap);
   const childUnitCount = livingChildHeirs.length + substituteGroupKeys.length; // 1순위 "몫" 단위 개수(사람 수 아님)
   const childHeirs = livingChildHeirs.concat(substituteHeirs); // 기존 호출부 호환용(포기자는 이미 activeHeirs에서 제외됨)
@@ -556,7 +676,13 @@ function recomputeHeirDerivedFields(){
       else {
         const groupKey = (h.substitutionGroup || '').trim() || ('__solo_' + hidx);
         const group = substituteGroupMap[groupKey];
-        if (group) statutory = reduceFraction_(2, group.length * totalWeight); // 그 그룹(피대습자 1명) 몫을 그룹 인원수로 균분
+        if (group){
+          // [2026.10.07 수정, 재검토118] 그룹 전체 몫(2/totalWeight, 살아있는 자녀 1인과 동일
+          // 가중치)을 인원수로 균등분배하던 것을, 며느리/사위(가중치3):손자녀(가중치2) 비율로
+          // 정확히 재분배한다 — 그룹이 손자녀뿐이면 2:2:...와 같아 기존과 결과가 동일하다.
+          const groupWeightSum = group.reduce(function(s, gh){ return s + substituteMemberWeight_(gh); }, 0);
+          statutory = reduceFraction_(2 * substituteMemberWeight_(h), groupWeightSum * totalWeight);
+        }
       }
     }
     const wasSynced = (h.actualShareRatio || '') === (h.statutoryShareRatio || '');
@@ -565,10 +691,10 @@ function recomputeHeirDerivedFields(){
     const row = document.querySelector('[data-heir-idx="' + hidx + '"]');
     if (row){
       const statEl = row.querySelector('[data-hfield="statutoryShareRatio"]');
-      if (statEl) statEl.value = statutory;
+      if (statEl){ statEl.value = statutory; if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(statEl); }
       if (wasSynced){
         const actEl = row.querySelector('[data-hfield="actualShareRatio"]');
-        if (actEl) actEl.value = statutory;
+        if (actEl){ actEl.value = statutory; if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(actEl); }
       }
     }
   });
@@ -592,11 +718,13 @@ function recomputeGenSkipRatio(){
   if (amount <= 0 || total <= 0){
     ratioEl.value = '0';
     if (hint) hint.textContent = total <= 0 ? '총상속재산가액(또는 상속세과세가액)을 먼저 입력하세요' : '';
+    if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(ratioEl);
     return;
   }
   const ratio = Math.min(1, amount / total);
   ratioEl.value = ratio.toFixed(4);
   if (hint) hint.textContent = won(amount) + ' ÷ ' + won(total) + ' ≈ ' + ratio.toFixed(4);
+  if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(ratioEl);
 }
 
 // 혼인·출산 증여재산공제(상증세법§53의2) 요건을 날짜로 직접 판정한다(수동 체크박스 대신).
@@ -849,17 +977,26 @@ const ASSET_LAND_CATEGORY_OPTIONS = ['전', '답', '과수원', '목장용지', 
 // 긴 주소가 잘려 보였다. 같은 데이터(소재지)는 두 화면에서 같은 폭으로 보여야 한다.
 // 소재지·동·호는 공시가격 자동조회(PNU 조립)에 실제로 쓰이므로 양도세 자산·증여상속
 // 재산평가 양쪽에서 공통으로 필요하다 — 아래 assetDetailFieldsHtml_에서도 재사용한다.
-function assetLocationFieldsHtml_(a){
+function assetLocationFieldsHtml_(a, idx){
   const dongOptions = (Array.isArray(a.assetDongList) && a.assetDongList.length) ? a.assetDongList :
     (a.assetDong ? [a.assetDong] : []);
+  // [2026.10.07 수정, 재검토122] 동 select→datalist 전환(seller와 동일 이유) — 여러 자산행이
+  // 한 화면에 반복되므로 datalist id가 행마다 겹치지 않게 idx를 꼭 받아야 한다.
+  const dongListId = 'assetDongList' + (idx != null ? idx : Math.random().toString(36).slice(2));
+  const hoListId = dongListId.replace('Dong', 'Ho');
+  const hoOptions = Array.isArray(a.assetHoList) ? a.assetHoList : [];
   return '' +
     '<div class="taxcalc-field" style="flex:0 1 340px;"><label>소재지</label><div class="taxcalc-field-inline"><input type="text" data-field="assetLocation" value="' + (a.assetLocation || '').replace(/"/g, '&quot;') + '" placeholder="예: OO시 OO구 OO동 123-4 (검색 또는 직접입력)"><button type="button" class="taxcalc-ai-btn" data-action="open-address-search" title="주소 검색">🔍</button></div>' +
       (a.assetZipNo ? '<span class="taxcalc-result-note" style="margin:2px 0 0;">우편번호 ' + a.assetZipNo + '</span>' : '') +
     '</div>' +
-    '<div class="taxcalc-field"><label>동</label><select data-field="assetDong"><option value="">직접입력/해당없음</option>' +
-      dongOptions.map(function(d){ return '<option value="' + d + '"' + (a.assetDong === d ? ' selected' : '') + '>' + d + '</option>'; }).join('') +
-    '</select></div>' +
-    '<div class="taxcalc-field"><label>호</label><input type="text" data-field="assetHo" value="' + (a.assetHo || '').replace(/"/g, '&quot;') + '" placeholder="예: 1502호"><span class="taxcalc-field-help">공공데이터에 없는 호는 직접 입력하세요</span></div>';
+    '<div class="taxcalc-field"><label>동</label><input type="text" data-field="assetDong" list="' + dongListId + '" value="' + (a.assetDong || '').replace(/"/g, '&quot;') + '" placeholder="예: 101동"><datalist id="' + dongListId + '">' +
+      dongOptions.map(function(d){ return '<option value="' + d.replace(/"/g, '&quot;') + '">'; }).join('') +
+    '</datalist></div>' +
+    // [2026.10.08 수정, 재검토129] 상세주소 API로 동에 맞는 호 목록을 자동으로 채운다(동 바뀔 때
+    // tcFetchHoListForDongInput_가 이 datalist를 다시 채움) — 목록에 없으면 직접 입력 가능.
+    '<div class="taxcalc-field"><label>호</label><input type="text" data-field="assetHo" list="' + hoListId + '" value="' + (a.assetHo || '').replace(/"/g, '&quot;') + '" placeholder="예: 1502호"><datalist id="' + hoListId + '">' +
+      hoOptions.map(function(h){ return '<option value="' + h.replace(/"/g, '&quot;') + '">'; }).join('') +
+    '</datalist></div>';
 }
 // [2026.09 버그수정] 세무사님 재점검 지시로 발견 — 이 함수는 원래 양도세 거래카드와 증여·상속
 // 재산평가 자산행 양쪽에서 공통으로 썼는데, "자산구분"(토지/건물/기타)·"지목/층수·용도"·
@@ -870,7 +1007,7 @@ function assetLocationFieldsHtml_(a){
 // 섹션의 진짜 면적란에 따로 또 입력해야 하는, 겉보기엔 중복인데 실제로는 죽어있는 필드였다.
 // 양도세 자산은 그대로 두고, 증여·상속 재산평가 자산행은 assetLocationFieldsHtml_(실제로
 // 공시가격 자동조회에 쓰이는 소재지·동·호만)만 쓰도록 분리한다.
-function assetDetailFieldsHtml_(a){
+function assetDetailFieldsHtml_(a, idx){
   const kind = a.assetKind || 'land';
   const isBuilding = kind === 'building';
   const subTypeFieldHtml = isBuilding ?
@@ -884,7 +1021,7 @@ function assetDetailFieldsHtml_(a){
       '<option value="building"' + (kind === 'building' ? ' selected' : '') + '>건물</option>' +
       '<option value="other"' + (kind === 'other' ? ' selected' : '') + '>기타</option>' +
     '</select><span class="taxcalc-field-help">기준시가 안분용 — 구분소유 건물·아파트 등 대지권 포함분도 건물은 건물면적만 입력</span></div>' +
-    assetLocationFieldsHtml_(a) +
+    assetLocationFieldsHtml_(a, idx) +
     subTypeFieldHtml +
     '<div class="taxcalc-field"><label>면적(㎡)</label><input type="number" data-field="assetArea" value="' + (a.assetArea || '') + '"></div>';
 }
@@ -900,12 +1037,32 @@ function taxCalcResultRow(label, value, opts){
 // 화면(말풍선) 없이 단발성으로 호출한다. 백엔드는 이미 list_drive_folder/read_drive_file 도구를
 // 갖고 있으므로, context.currentPath(현재 탐색기 폴더)를 넘기고 "이 파일을 읽고 JSON만 답하라"고
 // 지시하면 대화 turn을 새로 만들지 않고도 값을 뽑아올 수 있다.
-// ============================================================
+// [2026.10.07 수정, 재검토114] context.currentPath가 어디에도 정의된 적 없는 explorerPath를
+// 참조하고 있었다(세무사님이 "증빙에서 자동입력 범위가 뭐냐"고 물어서 발견 — 호출하면 항상
+// ReferenceError로 실패했을 것). 세액계산 화면에서 선택된 사건(tcCurrentCase)의 폴더는
+// work_getOrCreateCaseFolder_가 "고객사건" 루트 바로 아래에 사건명 그대로 만들므로, 그 사건의
+// 폴더를 가리키려면 [사건명] 한 칸짜리 경로면 된다(증빙확보 화면 docsPath와 같은 형식).
+// 하위폴더까지 살펴보는 것은 list_drive_folder 도구를 쓰는 AI 모델 자신의 판단에 맡긴다(이미
+// 시스템 프롬프트가 허용 — 아래 각 instruction에서도 명시적으로 지시한다).
+// [2026.10.07 신규, 재검토116] 세무사님 지적 — "정보입수의 첫단계는 의뢰내용을 참고하는
+// 것이다." 사건 생성시 "OOO_의뢰내용.md"(상담·접수 당시 의뢰인이 말한 내용을 정리한 파일,
+// RW_INTAKE_FILENAME_PATTERN_ /의뢰내용/, Code.js 참고)가 사건폴더에 자동으로 들어있는데,
+// 계약서·등기부등본보다 이 파일이 사건의 핵심 사실관계(누가 상속인인지, 재산이 뭔지, 어떤
+// 특례를 염두에 두고 있는지 등)를 가장 압축적이고 신뢰할 수 있게 담고 있다 — 다른 문서를
+// 뒤지기 전에 반드시 먼저 읽어야 한다. 세 자동계산 instruction 전부 이 문장으로 시작한다.
+// [2026.10.07 보강, 재검토117] 세무사님 추가 설명 — 의뢰내용에는 "양도가액 5억"처럼 바로 쓸
+// 숫자만 있는 게 아니라, "배우자와 자녀3명(그중 1명 사망으로 대습 — 그 배우자와 자녀2명이
+// 대신 상속)"처럼 다른 문서를 해석하는 데 필요한 구조·범위 정보도 들어있다. 이런 경우 정확한
+// 성명·주민번호를 다른 문서(가족관계증명서 등)에서 아직 못 찾았더라도, 의뢰내용이 알려준
+// 인원수·관계유형만으로 일단 "자녀1", "손자녀1"처럼 코드명을 붙여 그 구조부터 반영해라 —
+// 인원수·관계유형 자체가 법정상속지분 등 계산 구조를 결정하므로, 정확한 신원을 모른다고
+// 통째로 빼버리면 안 된다. 나중에 다른 문서에서 실명이 확인되면 그 이름으로 바꿔 써라.
+const AI_EXTRACTION_PRIORITY_HINT_ = '먼저 파일명에 "의뢰내용"이 포함된 파일(사건 접수 당시 의뢰인 상담 내용을 정리한 파일)이 있으면 그것부터 읽어라 — 다른 어떤 문서보다 사건의 핵심 사실관계(누가 당사자인지, 재산이 무엇인지, 어떤 특례를 염두에 두고 있는지)를 가장 직접적으로 담고 있다. 의뢰내용은 "양도가액 5억"처럼 바로 쓸 숫자만 담고 있는 게 아니라, "배우자와 자녀3명(1명은 사망으로 대습상속)"처럼 다른 문서를 해석하는 틀이 되는 구조·범위 정보도 담고 있을 수 있다 — 정확한 성명·번호를 아직 못 찾았어도 그 구조(인원수·관계유형)는 "자녀1"·"손자녀1"처럼 코드명을 붙여서라도 반영해라(아래 heirs 스키마가 있는 지시라면 특히 중요 — 인원수·관계유형 자체가 세액 계산 구조를 바꾼다). 나중에 다른 문서에서 실명이 확인되면 그걸로 바꿔라. 의뢰내용을 읽은 뒤 나머지 문서로 교차 확인·보완해라. ';
 async function runFolderAiExtraction(instructionText){
   const payload = Object.assign({
     _key: (window.NX_CONFIG && window.NX_CONFIG.API_SECRET) || '',
     messages: [{ role: 'user', content: instructionText }],
-    context: { currentPath: explorerPath }
+    context: { currentPath: tcCurrentCase ? [tcCurrentCase.사건명] : [] }
   }, (typeof buildAiSettingsPayload === 'function') ? buildAiSettingsPayload(false) : {});
   const res = await fetch(GAS_URL, {
     method: 'POST',
@@ -926,9 +1083,39 @@ function extractJsonFromReply(text){
   try { return JSON.parse(candidate); } catch (e) { return null; }
 }
 
+// [2026.10.08 신규, 재검토129] 세무사님 지적("동값에 매치되는 호값이 떠야 하는 거 아닌가")으로
+// 확인됨 — juso.go.kr은 "도로명주소" API와 별도로 "상세주소" API(searchAddressHo)를 제공하고,
+// 동 하나를 고르면 그 동의 실제 층/호 목록을 돌려준다. 동 datalist의 id 작명 규칙
+// ("...DongList"+idx/suf)을 그대로 따라 "...HoList"로 바꾸면 쌍을 이루는 호 datalist를 찾을 수
+// 있게 모든 동 입력칸의 id/list를 지어뒀으므로(이 함수가 그 규칙으로 동→호 datalist를 찾는다),
+// 동 값이 바뀔 때마다 이 함수를 불러주면 된다(각 entity의 addressBuildingKey에 저장해둔
+// admCd/rnMgtSn/udrtYn/buldMnnm/buldSlno로 건물을 특정).
+function tcFetchHoListForDongInput_(buildingKey, dongNm, dongInputEl, onResult){
+  if (!buildingKey || !buildingKey.admCd || !buildingKey.rnMgtSn || !buildingKey.buldMnnm) return;
+  if (!dongNm || !dongInputEl) return;
+  const listId = dongInputEl.getAttribute('list');
+  if (!listId) return;
+  const hoListId = listId.replace('Dong', 'Ho');
+  const datalistEl = document.getElementById(hoListId);
+  if (!datalistEl) return;
+  datalistEl.innerHTML = '<option value="조회 중…">';
+  callGas('searchAddressHo', {
+    admCd: buildingKey.admCd, rnMgtSn: buildingKey.rnMgtSn, udrtYn: buildingKey.udrtYn || '0',
+    buldMnnm: buildingKey.buldMnnm, buldSlno: buildingKey.buldSlno || '0', dongNm: dongNm
+  }).then(function(data){
+    if (data.error){ datalistEl.innerHTML = ''; console.warn('호 목록 조회 실패:', data.error); return; }
+    const hoList = data.hoList || [];
+    // [2026.10.08, 재검토129] 여기서 채운 datalist는 DOM에만 있어 다른 필드 수정으로 이 패널이
+    // 다시 그려지면(innerHTML 재생성) 사라진다 — entity 쪽 배열에도 같이 저장해 다음 렌더에서
+    // 그 값으로 datalist가 다시 채워지게 한다(동 datalist와 같은 패턴).
+    if (typeof onResult === 'function') onResult(hoList);
+    datalistEl.innerHTML = hoList.map(function(h){ return '<option value="' + escapeHtml(h) + '">'; }).join('');
+  }).catch(function(){ datalistEl.innerHTML = ''; });
+}
 // 도로명주소 API(juso.go.kr) 검색 모달 — 건물명(아파트명 등)으로 검색하면 도로명·지번주소 후보와,
-// 공동주택이면 동(棟) 목록(detBdNmList)까지 함께 온다. 호수는 공공데이터에 없는 개인정보라 항상
-// 직접 입력해야 한다. API 키가 아직 등록 안 됐으면 GAS 쪽에서 그 안내 문구를 그대로 돌려준다.
+// 공동주택이면 동(棟) 목록(detBdNmList)까지 함께 온다. 동을 고르면 tcFetchHoListForDongInput_가
+// 상세주소 API로 그 동의 호 목록까지 자동으로 채운다(목록에 없는 호는 직접 입력 가능).
+// API 키가 아직 등록 안 됐으면 GAS 쪽에서 그 안내 문구를 그대로 돌려준다.
 // [2026.09 버그수정] defaultKeyword(예: 사건개요서에 이미 입력해둔 소재지)를 넘기면 검색어를
 // 미리 채우고 바로 검색까지 실행한다 — 안 그러면 처리개요에서 이미 검색해서 골라둔 주소를
 // 증빙확보 등 다른 화면에서 또 처음부터 입력해야 했다.
@@ -1464,8 +1651,11 @@ function renderContractCardHtml_(contract, kind, idx){
         (contract.hasExtendedDeadlineClaim ?
           '<div class="taxcalc-field"><label>매매계약체결일</label><input type="date" data-cfield="saleContractDate" value="' + (contract.saleContractDate || '') + '" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">중과배제 연장특례(나목·다목) 판정용</span></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-cfield="isLandTransactionPermitArea" id="ctLtpa-' + contract.id + '"' + (contract.isLandTransactionPermitArea ? ' checked' : '') + '><label for="ctLtpa-' + contract.id + '">[연장특례] 토지거래허가구역 내 주택(나목 — 미체크시 다목 적용)</label></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" data-cfield="isPermitApplicationFiledByDeadline" id="ctPermitApp-' + contract.id + '"' + (contract.isPermitApplicationFiledByDeadline ? ' checked' : '') + '><label for="ctPermitApp-' + contract.id + '">[나목만] 2026.5.9까지 토지거래허가 신청함</label></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" data-cfield="isPermitObtained" id="ctPermitOk-' + contract.id + '"' + (contract.isPermitObtained ? ' checked' : '') + '><label for="ctPermitOk-' + contract.id + '">[나목만] 허가를 받음</label></div>' : '') +
+          (contract.isLandTransactionPermitArea ?
+            '<div class="taxcalc-asset-head" style="margin-top:4px;"><b>나목만 — 허가 신청·취득 여부</b></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" data-cfield="isPermitApplicationFiledByDeadline" id="ctPermitApp-' + contract.id + '"' + (contract.isPermitApplicationFiledByDeadline ? ' checked' : '') + '><label for="ctPermitApp-' + contract.id + '">2026.5.9까지 토지거래허가 신청함</label></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" data-cfield="isPermitObtained" id="ctPermitOk-' + contract.id + '"' + (contract.isPermitObtained ? ' checked' : '') + '><label for="ctPermitOk-' + contract.id + '">허가를 받음</label></div>'
+          : '') : '') +
         '<div class="taxcalc-field checkbox"><input type="checkbox" data-cfield="hasBuildingVat" id="ctVat-' + contract.id + '"' + (contract.hasBuildingVat ? ' checked' : '') + '><label for="ctVat-' + contract.id + '">계약금액에 건물분 부가가치세가 별도 포함됨(사업용 건물 등)</label></div>'
         : '') +
     '</div>' +
@@ -1598,7 +1788,7 @@ function renderSrAssetRows_(){
       '<div class="taxcalc-field"><label>재산종류</label><select data-srafield="method">' +
         Object.keys(VALUATION_METHOD_LABELS).map(function(k){ return '<option value="' + k + '"' + (row.method === k ? ' selected' : '') + '>' + VALUATION_METHOD_LABELS[k] + '</option>'; }).join('') +
       '</select></div>' +
-      '<div class="taxcalc-field"><label>소재지·내용</label><input type="text" data-srafield="assetLocation" value="' + (row.assetLocation || '').replace(/"/g, '&quot;') + '"></div>' +
+      '<div class="taxcalc-field"><label>소재지·내용</label><input type="text" data-srafield="assetLocation" value="' + (row.assetLocation || '').replace(/"/g, '&quot;') + '" placeholder="예: OO시 OO구 OO동"></div>' +
       '<div class="taxcalc-field"><label>평가가액</label><input type="number" data-srafield="value" placeholder="원" value="' + (row.value || '') + '"></div>' +
     '</div>';
   }).join('');
@@ -1645,7 +1835,7 @@ function openSrAssetHelperModal_(){
   overlay.querySelector('#sraRunBtn').addEventListener('click', function(){
     const total = srAssetRows_.reduce(function(s, row){ return s + numVal(row.value); }, 0);
     const el = document.getElementById('srGiftAmount');
-    if (el) el.value = total;
+    if (el){ el.value = total; if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(el); }
     close();
     showToast('증여재산가액 합계(' + won(total) + ')를 반영했습니다.', 'success');
   });
@@ -1761,7 +1951,7 @@ function openJtSegmentHelperModal_(){
     resultBox.innerHTML = html;
     resultBox.querySelector('#jtSegApplyBtn').addEventListener('click', function(){
       const el = document.getElementById('jtProfit');
-      if (el) el.value = total;
+      if (el){ el.value = total; if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(el); }
       close();
       showToast('사업기회로 인한 수혜법인 이익(' + won(total) + ')을 반영했습니다.', 'success');
     });
@@ -2005,7 +2195,7 @@ function openShareholdingHelperModal_(target){
     resultBox.querySelector('#shApplyBtn').addEventListener('click', function(){
       const fieldId = target === 'jt' ? 'jtShareRatio' : 'jmShareRatio';
       const el = document.getElementById(fieldId);
-      if (el) el.value = total.toFixed(4);
+      if (el){ el.value = total.toFixed(4); if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(el); }
       close();
       showToast('지배주주+친족 주식보유비율을 반영했습니다.', 'success');
     });
@@ -2097,7 +2287,7 @@ function openRelatedPartyRatioHelperModal_(){
     resultBox.innerHTML = html;
     resultBox.querySelector('#rprApplyBtn').addEventListener('click', function(){
       const target = document.getElementById('jmTradeRatio');
-      if (target) target.value = ratioPct.toFixed(4);
+      if (target){ target.value = ratioPct.toFixed(4); if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(target); }
       close();
       showToast('특수관계법인거래비율을 반영했습니다.', 'success');
     });
@@ -2496,28 +2686,43 @@ function openOneHouseSpecialCaseModal_(idx){
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="rhClawback"><label for="rhClawback">특례 적용 후 농어촌주택등을 3년 이상 보유하지 않게 된 사후관리 위반이 발생함</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="rhExempted"><label for="rhExempted">[사후관리 위반일 때만] 수용 등 부득이한 사유에 해당(추징 예외)</label></div>' +
         '</div>' +
-        '<div id="ohsPr" class="taxcalc-grid" style="display:none;">' +
-          '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 "취득일"·"양도일" 입력칸 값을 그대로 씁니다.</div>' +
-          '<div class="taxcalc-field"><label>분양권 취득일</label><input type="date" id="prAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="prHoldingException"><label for="prHoldingException">종전주택 취득 후 1년 경과 요건의 예외사유(시행령§154①1호·2호가목·3호 — 임차인거주주택 취득, 수용·협의매수, 해외이주 등)에 해당</label></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="prLateTransferReason">[분양권취득 3년 초과 양도일 때만] <label for="prLateTransferReason">3년 이내 양도하지 못한 재정경제부령상 부득이한 사유에 해당</label></div>' +
-          '<div class="taxcalc-field"><label>신축주택 완성(예정)일</label><input type="date" id="prCompletionDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">분양권취득일로부터 3년 초과해 종전주택을 양도할 때만 필요</span></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="prMovedIn"><label for="prMovedIn">[3년초과 양도일 때만] 신축주택 완성 후 3년 이내 세대전원 이사(전입)</label></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="prResided1Y"><label for="prResided1Y">[3년초과 양도일 때만] 전입 후 1년 이상 계속 거주</label></div>' +
+        '<div id="ohsPr" style="display:none;">' +
+          '<div class="taxcalc-grid">' +
+            '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 "취득일"·"양도일" 입력칸 값을 그대로 씁니다.</div>' +
+            '<div class="taxcalc-field"><label>분양권 취득일</label><input type="date" id="prAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="prHoldingException"><label for="prHoldingException">종전주택 취득 후 1년 경과 요건의 예외사유(시행령§154①1호·2호가목·3호 — 임차인거주주택 취득, 수용·협의매수, 해외이주 등)에 해당</label></div>' +
+          '</div>' +
+          // [2026.10.08, 재검토125] prLateTransferReason은 원래 대괄호 문구가 <label> 밖에
+          // 떨어져 있어(input 뒤에 맨 텍스트로) 그 글자를 눌러도 체크박스가 안 눌렸다 — 소제목으로
+          // 옮기면서 같이 바로잡는다.
+          '<div class="taxcalc-asset-head" style="margin-top:8px;"><b>분양권취득일로부터 3년 초과해 종전주택 양도할 때만</b></div>' +
+          '<div class="taxcalc-grid">' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="prLateTransferReason"><label for="prLateTransferReason">3년 이내 양도하지 못한 재정경제부령상 부득이한 사유에 해당</label></div>' +
+            '<div class="taxcalc-field"><label>신축주택 완성(예정)일</label><input type="date" id="prCompletionDate" min="1900-01-01" max="2099-12-31"></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="prMovedIn"><label for="prMovedIn">신축주택 완성 후 3년 이내 세대전원 이사(전입)</label></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="prResided1Y"><label for="prResided1Y">전입 후 1년 이상 계속 거주</label></div>' +
+          '</div>' +
         '</div>' +
-        '<div id="ohsTw" class="taxcalc-grid" style="display:none;">' +
-          '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 "취득일"·"양도일" 입력칸 값을 그대로 씁니다. 신규주택 취득일 기준 조정대상지역 여부에 따라 처분기한이 2년 또는 3년으로 자동 분기됩니다(2026.10.1 개정 반영).</div>' +
-          '<div class="taxcalc-field"><label>신규주택 취득일</label><input type="date" id="twNewAcqDate" min="1900-01-01" max="2099-12-31"></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="twHoldingException"><label for="twHoldingException">종전주택 취득 후 1년 경과 요건의 예외사유(시행령§154①1호·2호가목·3호)에 해당</label></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="twFormerAdjusted"><label for="twFormerAdjusted">신규주택 취득일 현재 종전주택이 조정대상지역 소재</label></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="twNewAdjusted"><label for="twNewAdjusted">신규주택 취득일 현재 신규주택도 조정대상지역 소재(둘 다 해당시 처분기한 2년)</label></div>' +
-          '<div class="taxcalc-field"><label>[둘다 조정지역일때만] 조정대상지역 공고일</label><input type="date" id="twNoticeDate" min="1900-01-01" max="2099-12-31"></div>' +
-          '<div class="taxcalc-field"><label>[둘다 조정지역일때만] 신규주택 매매계약 체결일</label><input type="date" id="twContractDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">공고일 이전 계약+계약금 지급 증빙시 2년 대신 3년 적용</span></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="twDownPaymentProof"><label for="twDownPaymentProof">[위 계약일 입력시만] 계약금 지급사실 증빙서류 보유</label></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="twExpropriated"><label for="twExpropriated">종전주택·부수토지 일부가 협의매수·수용되어 잔존주택을 나중에 양도함(5년 이내 특례)</label></div>' +
-          '<div class="taxcalc-field"><label>[위 체크시만] 수용일 또는 최초 양도일</label><input type="date" id="twExpropriationDate" min="1900-01-01" max="2099-12-31"></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="twDisposalDelay"><label for="twDisposalDelay">처분기한 경과 사유가 경매·공매·재개발 현금청산소송 등 진행중임(§155⑱ 구제)</label></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="twCorpRelocation"><label for="twCorpRelocation">수도권 소재 법인·공공기관의 지방이전에 따라 그 임직원·종사자가 이전지(또는 연접 시군)에 신규주택 취득(§155⑯, 처분기한 5년으로 연장+1년경과요건 면제)</label></div>' +
+        '<div id="ohsTw" style="display:none;">' +
+          '<div class="taxcalc-grid">' +
+            '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 "취득일"·"양도일" 입력칸 값을 그대로 씁니다. 신규주택 취득일 기준 조정대상지역 여부에 따라 처분기한이 2년 또는 3년으로 자동 분기됩니다(2026.10.1 개정 반영).</div>' +
+            '<div class="taxcalc-field"><label>신규주택 취득일</label><input type="date" id="twNewAcqDate" min="1900-01-01" max="2099-12-31"></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="twHoldingException"><label for="twHoldingException">종전주택 취득 후 1년 경과 요건의 예외사유(시행령§154①1호·2호가목·3호)에 해당</label></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="twFormerAdjusted"><label for="twFormerAdjusted">신규주택 취득일 현재 종전주택이 조정대상지역 소재</label></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="twNewAdjusted"><label for="twNewAdjusted">신규주택 취득일 현재 신규주택도 조정대상지역 소재(둘 다 해당시 처분기한 2년)</label></div>' +
+          '</div>' +
+          '<div class="taxcalc-asset-head" style="margin-top:8px;"><b>둘 다 조정지역일 때만 — 처분기한 2년 산정용</b></div>' +
+          '<div class="taxcalc-grid">' +
+            '<div class="taxcalc-field"><label>조정대상지역 공고일</label><input type="date" id="twNoticeDate" min="1900-01-01" max="2099-12-31"></div>' +
+            '<div class="taxcalc-field"><label>신규주택 매매계약 체결일</label><input type="date" id="twContractDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">공고일 이전 계약+계약금 지급 증빙시 2년 대신 3년 적용</span></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="twDownPaymentProof"><label for="twDownPaymentProof">[위 계약일 입력시만] 계약금 지급사실 증빙서류 보유</label></div>' +
+          '</div>' +
+          '<div class="taxcalc-grid">' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="twExpropriated"><label for="twExpropriated">종전주택·부수토지 일부가 협의매수·수용되어 잔존주택을 나중에 양도함(5년 이내 특례)</label></div>' +
+            '<div class="taxcalc-field"><label>[위 체크시만] 수용일 또는 최초 양도일</label><input type="date" id="twExpropriationDate" min="1900-01-01" max="2099-12-31"></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="twDisposalDelay"><label for="twDisposalDelay">처분기한 경과 사유가 경매·공매·재개발 현금청산소송 등 진행중임(§155⑱ 구제)</label></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="twCorpRelocation"><label for="twCorpRelocation">수도권 소재 법인·공공기관의 지방이전에 따라 그 임직원·종사자가 이전지(또는 연접 시군)에 신규주택 취득(§155⑯, 처분기한 5년으로 연장+1년경과요건 면제)</label></div>' +
+          '</div>' +
         '</div>' +
         '<div id="ohsMg" class="taxcalc-grid" style="display:none;">' +
           '<div class="taxcalc-result-note" style="flex-basis:100%;">양도일은 위 "양도일" 입력칸 값을 그대로 씁니다. 이 특례는 거주기간 요건만 면제합니다 — 보유기간 요건은 별도로 충족해야 합니다.</div>' +
@@ -2531,36 +2736,60 @@ function openOneHouseSpecialCaseModal_(idx){
           '<div class="taxcalc-field"><label>상생임대차 보증금</label><input type="number" id="mgLeaseDeposit" placeholder="원"></div>' +
           '<div class="taxcalc-field"><label>상생임대차 월세</label><input type="number" id="mgLeaseRent" placeholder="원"></div>' +
         '</div>' +
-        '<div id="ohsHr" class="taxcalc-grid" style="display:none;">' +
-          '<div class="taxcalc-field"><label>사유</label><select id="hrReasonType">' +
-            '<option value="rental5y">1호: 민간·공공건설임대주택(공공매입임대주택 포함) 5년 이상 거주 후 양도</option>' +
-            '<option value="expropriation">2호가목: 사업인정고시일 전 취득 주택의 협의매수·수용</option>' +
-            '<option value="emigration">2호나목: 해외이주법에 따른 해외이주로 세대전원 출국</option>' +
-            '<option value="overseas_study">2호다목: 1년 이상 국외거주 필요한 취학·근무상 형편으로 세대전원 출국</option>' +
-            '<option value="domestic_relocation">3호: 1년 이상 거주 후 취학·근무·질병요양 등으로 양도</option>' +
-            '<option value="pre_notice_contract">5호: 조정대상지역 공고 전 매매계약(무주택세대) — 거주기간만 면제</option>' +
-          '</select></div>' +
-          '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 "취득일"·"양도일" 입력칸 값을 그대로 씁니다. 아래 입력칸은 선택한 사유에 맞는 것만 채우세요.</div>' +
-          '<div class="taxcalc-field"><label>[1호만] 임차일~양도일 세대전원 거주기간 합계</label><input type="number" id="hrLivedYears" placeholder="년"></div>' +
-          '<div class="taxcalc-field"><label>[2호가목만] 사업인정고시일</label><input type="date" id="hrPublicNoticeDate" min="1900-01-01" max="2099-12-31"></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="hrIsRemainderSale"><label for="hrIsRemainderSale">[2호가목만] 잔존주택을 나중에 별도로 양도함(5년 이내 특례)</label></div>' +
-          '<div class="taxcalc-field"><label>[위 체크시만] 최초 수용일 또는 양도일</label><input type="date" id="hrOriginalTransferDate" min="1900-01-01" max="2099-12-31"></div>' +
-          '<div class="taxcalc-field"><label>[2호나·다목만] 출국일</label><input type="date" id="hrDepartureDate" min="1900-01-01" max="2099-12-31"></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="hrHadOneHouseAtDeparture"><label for="hrHadOneHouseAtDeparture">[2호나·다목만] 출국일 현재 1주택 보유</label></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="hrResided1Y"><label for="hrResided1Y">[3호만] 1년 이상 거주한 주택임</label></div>' +
-          '<div class="taxcalc-field"><label>[5호만] 매매계약 체결일</label><input type="date" id="hrContractDate" min="1900-01-01" max="2099-12-31"></div>' +
-          '<div class="taxcalc-field"><label>[5호만] 조정대상지역 공고일</label><input type="date" id="hrNoticeDate" min="1900-01-01" max="2099-12-31"></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="hrHadNoHouseAtDownPayment"><label for="hrHadNoHouseAtDownPayment">[5호만] 계약금 지급일 현재 1세대 무주택</label></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="hrHoldingMetSeparately"><label for="hrHoldingMetSeparately">[5호만] 보유기간(2년, 해당자는 3년) 요건은 별도로 충족함(5호는 거주기간만 면제— 보유기간은 그대로 적용)</label></div>' +
+        // [2026.10.08, 재검토125] 세무사님 지적("예시는 하나일 뿐") — 이 블록만 "[Nㅎ만]"이
+        // 사유별로 2~4개씩 묶여 반복되는 가장 심한 사례였다. 바깥 토글 대상 id(ohsHr)는 그대로
+        // 유지하되(provisionSel 핸들러가 overlay.querySelector('#ohsHr') 하나로 보이기/숨기기
+        // 하므로 — 안의 구조를 여러 grid+소제목으로 쪼개도 바깥 하나만 숨기면 전부 같이 숨는다),
+        // 안쪽을 사유별 소제목 그룹으로 나누고 반복 접두사를 제거했다. 1호·3호는 필드가 1개뿐이라
+        // 묶을 게 없어 접두사를 그대로 둔다.
+        '<div id="ohsHr" style="display:none;">' +
+          '<div class="taxcalc-grid">' +
+            '<div class="taxcalc-field"><label>사유</label><select id="hrReasonType">' +
+              '<option value="rental5y">1호: 민간·공공건설임대주택(공공매입임대주택 포함) 5년 이상 거주 후 양도</option>' +
+              '<option value="expropriation">2호가목: 사업인정고시일 전 취득 주택의 협의매수·수용</option>' +
+              '<option value="emigration">2호나목: 해외이주법에 따른 해외이주로 세대전원 출국</option>' +
+              '<option value="overseas_study">2호다목: 1년 이상 국외거주 필요한 취학·근무상 형편으로 세대전원 출국</option>' +
+              '<option value="domestic_relocation">3호: 1년 이상 거주 후 취학·근무·질병요양 등으로 양도</option>' +
+              '<option value="pre_notice_contract">5호: 조정대상지역 공고 전 매매계약(무주택세대) — 거주기간만 면제</option>' +
+            '</select></div>' +
+            '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 "취득일"·"양도일" 입력칸 값을 그대로 씁니다. 아래 입력칸은 선택한 사유에 맞는 것만 채우세요.</div>' +
+            '<div class="taxcalc-field"><label>[1호만] 임차일~양도일 세대전원 거주기간 합계</label><input type="number" id="hrLivedYears" placeholder="년"></div>' +
+          '</div>' +
+          '<div class="taxcalc-asset-head" style="margin-top:8px;"><b>2호가목만 — 사업인정고시일·잔존주택 특례</b></div>' +
+          '<div class="taxcalc-grid">' +
+            '<div class="taxcalc-field"><label>사업인정고시일</label><input type="date" id="hrPublicNoticeDate" min="1900-01-01" max="2099-12-31"></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="hrIsRemainderSale"><label for="hrIsRemainderSale">잔존주택을 나중에 별도로 양도함(5년 이내 특례)</label></div>' +
+            '<div class="taxcalc-field"><label>[위 체크시만] 최초 수용일 또는 양도일</label><input type="date" id="hrOriginalTransferDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '</div>' +
+          '<div class="taxcalc-asset-head" style="margin-top:8px;"><b>2호나·다목만 — 출국 요건</b></div>' +
+          '<div class="taxcalc-grid">' +
+            '<div class="taxcalc-field"><label>출국일</label><input type="date" id="hrDepartureDate" min="1900-01-01" max="2099-12-31"></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="hrHadOneHouseAtDeparture"><label for="hrHadOneHouseAtDeparture">출국일 현재 1주택 보유</label></div>' +
+          '</div>' +
+          '<div class="taxcalc-grid">' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="hrResided1Y"><label for="hrResided1Y">[3호만] 1년 이상 거주한 주택임</label></div>' +
+          '</div>' +
+          '<div class="taxcalc-asset-head" style="margin-top:8px;"><b>5호만 — 조정대상지역 공고 전 계약 특례</b></div>' +
+          '<div class="taxcalc-grid">' +
+            '<div class="taxcalc-field"><label>매매계약 체결일</label><input type="date" id="hrContractDate" min="1900-01-01" max="2099-12-31"></div>' +
+            '<div class="taxcalc-field"><label>조정대상지역 공고일</label><input type="date" id="hrNoticeDate" min="1900-01-01" max="2099-12-31"></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="hrHadNoHouseAtDownPayment"><label for="hrHadNoHouseAtDownPayment">계약금 지급일 현재 1세대 무주택</label></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="hrHoldingMetSeparately"><label for="hrHoldingMetSeparately">보유기간(2년, 해당자는 3년) 요건은 별도로 충족함(5호는 거주기간만 면제— 보유기간은 그대로 적용)</label></div>' +
+          '</div>' +
         '</div>' +
-        '<div id="ohsCi" class="taxcalc-grid" style="display:none;">' +
-          '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 "취득일"·"양도일" 입력칸 값을 그대로 씁니다.</div>' +
-          '<div class="taxcalc-field"><label>조합원입주권 취득일</label><input type="date" id="ciAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="ciHoldingException"><label for="ciHoldingException">종전주택 취득 후 1년 경과 요건의 예외사유(시행령§154①1호·2호가목·3호)에 해당</label></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="ciLateTransferReason">[3년초과 양도일 때만] <label for="ciLateTransferReason">3년 이내 양도하지 못한 재정경제부령상 부득이한 사유에 해당</label></div>' +
-          '<div class="taxcalc-field"><label>신축주택 완성(예정)일</label><input type="date" id="ciCompletionDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">조합원입주권취득일로부터 3년 초과해 종전주택을 양도할 때만 필요</span></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="ciMovedIn"><label for="ciMovedIn">[3년초과 양도일 때만] 신축주택 완성 후 3년 이내 세대전원 이사(전입)</label></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" id="ciResided1Y"><label for="ciResided1Y">[3년초과 양도일 때만] 전입 후 1년 이상 계속 거주</label></div>' +
+        '<div id="ohsCi" style="display:none;">' +
+          '<div class="taxcalc-grid">' +
+            '<div class="taxcalc-result-note" style="flex-basis:100%;">종전주택(이 양도자산)의 취득일·양도일은 위 "취득일"·"양도일" 입력칸 값을 그대로 씁니다.</div>' +
+            '<div class="taxcalc-field"><label>조합원입주권 취득일</label><input type="date" id="ciAcquisitionDate" min="1900-01-01" max="2099-12-31"></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="ciHoldingException"><label for="ciHoldingException">종전주택 취득 후 1년 경과 요건의 예외사유(시행령§154①1호·2호가목·3호)에 해당</label></div>' +
+          '</div>' +
+          '<div class="taxcalc-asset-head" style="margin-top:8px;"><b>조합원입주권취득일로부터 3년 초과해 종전주택 양도할 때만</b></div>' +
+          '<div class="taxcalc-grid">' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="ciLateTransferReason"><label for="ciLateTransferReason">3년 이내 양도하지 못한 재정경제부령상 부득이한 사유에 해당</label></div>' +
+            '<div class="taxcalc-field"><label>신축주택 완성(예정)일</label><input type="date" id="ciCompletionDate" min="1900-01-01" max="2099-12-31"></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="ciMovedIn"><label for="ciMovedIn">신축주택 완성 후 3년 이내 세대전원 이사(전입)</label></div>' +
+            '<div class="taxcalc-field checkbox"><input type="checkbox" id="ciResided1Y"><label for="ciResided1Y">전입 후 1년 이상 계속 거주</label></div>' +
+          '</div>' +
         '</div>' +
         '<div id="ohsRp" class="taxcalc-grid" style="display:none;">' +
           '<div class="taxcalc-result-note" style="flex-basis:100%;">대체주택(이 양도자산)의 양도일은 위 "양도일" 입력칸 값을 그대로 씁니다. 이 특례는 보유·거주기간 제한이 아예 없습니다(대체주택 자체의 취득일은 아래 별도 입력).</div>' +
@@ -3020,6 +3249,59 @@ function openIndustrialComplexLotModal_(idx){
   });
 }
 
+// [2026.10.07 신규, 재검토114] 증빙 자동입력→자동계산 — 세무사님 지시("증빙에서 자동입력이
+// 아니라 자동계산으로... 확인되지 않는 정보는 물어보는 과정이 있어야") — AI가 사건폴더에서
+// 못 찾은 "핵심 계산 항목"만 추려 계산 직전에 한 번에 확인받는 모달. items의 각 원소는
+// { recordLabel?, fieldLabel, type, options?, set(value) } — get()은 필요 없다(항상 빈 값일
+// 때만 이 목록에 들어오므로). 빈 채로 "계산하기"를 눌러도(세무사님이 중요하지 않다고 판단하면)
+// 그대로 진행한다 — 강제로 막지 않는다.
+// [2026.10.07 확장, 재검토115] 세무사님 재지시 — "세액은 계산하면서 감면은 모르겠는데 라고
+// 하면 안 된다." type:'boolean'을 추가해 "이 특례/감면이 적용되나요?"형 예/아니오 질문도
+// 같은 모달에서 물을 수 있게 한다(선택 안 함 = 적용 안 함으로 처리, 세금을 더 걷는 방향의
+// 안전한 기본값 — 사용자가 틀렸다면 명시적으로 "예"를 골라야 한다).
+function showMissingFieldsModal_(title, items, onConfirm){
+  if (!items.length){ onConfirm(); return; }
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.display = 'flex';
+  overlay.innerHTML =
+    '<div class="modal-panel" style="width:min(560px, 94vw); max-height:min(640px, 90vh); overflow-y:auto;">' +
+      '<div class="modal-head"><span>' + escapeHtml(title) + '</span><span class="modal-close" id="btnCloseMissing">✕</span></div>' +
+      '<div class="modal-body">' +
+        '<div class="taxcalc-result-note" style="margin-bottom:8px;">증빙에서 찾지 못했거나, 적용 여부를 확증할 수 없는 항목입니다 — 확인한 뒤 계산을 진행하세요(비워두면 적용 안 함으로 계산합니다).</div>' +
+        items.map(function(it, idx){
+          const labelText = it.recordLabel ? (it.recordLabel + ' — ' + it.fieldLabel) : it.fieldLabel;
+          let inputHtml;
+          if (it.type === 'boolean'){
+            inputHtml = '<select id="mfInput-' + idx + '"><option value="">선택 안 함(적용 안 함으로 처리)</option><option value="true">예, 해당됩니다</option><option value="false">아니오, 해당 없습니다</option></select>';
+          } else if (it.type === 'select'){
+            inputHtml = '<select id="mfInput-' + idx + '"><option value="">선택 안 함</option>' + it.options.map(function(o){ return '<option value="' + escapeHtml(o) + '">' + escapeHtml(o) + '</option>'; }).join('') + '</select>';
+          } else {
+            inputHtml = '<input type="' + (it.type || 'text') + '" id="mfInput-' + idx + '" placeholder="' + escapeHtml(it.fieldLabel) + '">';
+          }
+          return '<div class="taxcalc-field"><label>' + escapeHtml(labelText) + (it.reason ? '<span class="taxcalc-field-help"> — AI 판단근거: ' + escapeHtml(it.reason) + '</span>' : '') + '</label>' + inputHtml + '</div>';
+        }).join('') +
+      '</div>' +
+      '<div class="modal-body" style="padding-top:0;"><button type="button" class="taxcalc-run-btn" id="btnConfirmMissing">확인하고 계산하기</button></div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  function close(){ overlay.remove(); }
+  overlay.querySelector('#btnCloseMissing').onclick = close;
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+  if (typeof enhanceNumberInputs === 'function') enhanceNumberInputs(overlay);
+  if (typeof enhanceDateInputs === 'function') enhanceDateInputs(overlay);
+  overlay.querySelector('#btnConfirmMissing').addEventListener('click', function(){
+    items.forEach(function(it, idx){
+      const el = document.getElementById('mfInput-' + idx);
+      if (!el || el.value === '') return;
+      if (it.type === 'boolean') it.set(el.value === 'true');
+      else it.set(it.type === 'number' ? (numVal(el.value) || 0) : el.value);
+    });
+    close();
+    onConfirm();
+  });
+}
+
 // 매매사례가액(아파트 실거래가) 참고조회 모달 — 계약년월(YYYYMM)로 그 지역 아파트 실거래 목록을
 // 받아와 사용자가 유사한 거래를 골라 평가액에 채울 수 있게 한다. 시가로 그대로 쓸지는 면적·층·거래
 // 시점의 유사성을 사용자가 직접 판단해야 하므로 자동으로 채우지 않고 "골라서 채우기"로만 동작한다.
@@ -3092,25 +3374,70 @@ const TRANSFER_AI_FIELD_LABELS = {
   acquisitionDate: '취득일', transferDate: '양도일', assetType: '과세대상 구분',
   assetKind: '자산구분(토지·건물)', assetLocation: '소재지', assetSubType: '지목/층수·용도', assetArea: '면적'
 };
+// [2026.10.07 신규, 재검토115] 세무사님 지시 — "세액은 계산하면서 감면은 모르겠는데 라고 하면
+// 안 된다." 자산 카드에 있는 적용 여부 판정형 특례·감면·비과세 체크박스(각각 자체 입력칸이
+// 딸린 "is..." 플래그)를 전부 나열해, AI가 문서를 보고 각각 true(적용, 근거 있음)/false(명백히
+// 해당없음)/null(문서로 확정 불가)을 판단하게 한다. true면 자동으로 체크하고(카드에서 바로
+// 확인·세부입력 가능), null이면 계산 직전 확인모달에서 예/아니오로 직접 물어본다 — 둘 다 아닌
+// "그냥 모르는 채로 계산"은 없다. false는 조용히 넘어간다(해당없는 감면까지 전부 물어보면
+// 질문이 너무 많아진다 — 명백히 무관한 건 AI가 걸러낸다).
+const TRANSFER_PROVISION_SPECS_ = [
+  { key: 'isOneHouseOneFamily', q: '1세대1주택 비과세 대상인가요?(§89①3호)' },
+  { key: 'isNonBusinessLand', q: '비사업용토지에 해당하나요?(§104의3)' },
+  { key: 'isUnregisteredTransfer', q: '등기 없이 양도했나요(미등기양도)?' },
+  { key: 'isReconstructionRights', q: '재건축·재개발로 취득한 조합원입주권 또는 그로 지어진 신축주택을 양도했나요?' },
+  { key: 'isLandReplotment', q: '환지처분으로 취득한 토지를 양도했나요?' },
+  { key: 'isAdjustedArea', q: '조정대상지역 내 다주택 중과 대상인가요?' },
+  { key: 'isBusinessSuccessionAsset', q: '가업상속공제를 받은 자산을 양도했나요(피상속인 취득가액 승계, §97의2④)?' },
+  { key: 'isEightYearFarmland', q: '8년 이상 재촌·자경한 농지인가요(§69 감면)?' },
+  { key: 'isLivestockLandExempt', q: '8년 이상 자경한 축사용지 폐업 감면 대상인가요(§69의2)?' },
+  { key: 'isFisheryLandExempt', q: '8년 이상 자영한 어업용토지 감면 대상인가요(§69의3)?' },
+  { key: 'isFarmlandSubstitutionExempt', q: '농지를 대토(교체취득)했나요(§70 감면)?' },
+  { key: 'isForestManagementExempt', q: '10년 이상 직접 경영한 산지인가요(§69의4 감면)?' },
+  { key: 'isBankruptcyDisposal', q: '파산선고에 의한 처분인가요(§89①1호, 전액 비과세)?' },
+  { key: 'isFarmlandExchange', q: '농지의 교환·분합으로 발생한 소득인가요(§89①2호, 비과세)?' },
+  { key: 'isPublicRentalHousingLand', q: '공공주택사업자와 건설·양도 약정을 맺고 양도한 토지인가요(§97의10 감면)?' },
+  { key: 'isNationalForestLandReduction', q: '국유림의 경영 및 관리에 관한 법률에 따라 국가에 양도한 산지인가요(§85의10 감면)?' },
+  { key: 'isRestructuringPropertyReduction', q: '조특법§43 구조조정대상 부동산 감면 대상인가요?' }
+];
 async function runAiAutoFillTransferBulk(){
   transferBulkAiState = { _aiStatus: 'loading' };
   const statusEl = document.getElementById('aiStatus-transfer-bulk');
   if (statusEl) statusEl.innerHTML = renderAiStatusHtml(transferBulkAiState);
 
-  const instruction = '현재 사건 폴더 안의 모든 파일을 살펴봐줘(매매계약서·등기부등본 등 양도소득세 관련 증빙일 수 있는 파일 전부). ' +
-    '그 안에서 서로 다른 양도거래가 몇 건인지 파악하고, 각 거래마다 아래 스키마의 객체를 하나씩 만들어서, 다른 설명 없이 ' +
-    '그 객체들을 담은 JSON 배열 코드블록 하나만 답해줘(거래가 1건이면 원소도 1개). 모르거나 문서에 없는 값은 null로 남겨줘.\n' +
-    '```json\n[{"transferPrice": 숫자 또는 null, "acquisitionPrice": 숫자 또는 null, "acquisitionExpenses": 숫자 또는 null, "transferExpensesOnly": 숫자 또는 null, ' +
+  const provisionSchemaLines = TRANSFER_PROVISION_SPECS_.map(function(s){ return '"' + s.key + '": true 또는 false 또는 null(' + s.q + ')'; }).join(', ');
+  // [2026.10.07 신규, 재검토121] 세무사님 지적 — "관할세무서 확인이 세액계산(자동계산)에
+  // 반영되어 있는지 확인하라." 전엔 거래별 핵심 항목·특례만 물었지 양도인 본인 정보(성명·
+  // 주민번호·주소·관할세무서)는 아예 스키마에 없었다 — 인쇄서식 "신고인" 란·"OO세무서장
+  // 귀하"가 다 비게 된다. sellerAddress는 문서로 찾을 수 있지만 sellerTaxOffice는 주소→관할
+  // 세무서 매칭표를 AI가 갖고 있지 않으므로(공개 API도 없음, open-tax-office-guide 주석
+  // 참고) "이미 어떤 문서에 명시돼 있을 때만" 답하게 한다 — 주소만 보고 추정하면 틀릴 수 있다.
+  const instruction = AI_EXTRACTION_PRIORITY_HINT_ + '현재 사건 폴더 안의 모든 파일을 살펴봐줘(하위 폴더까지 전부 포함해서, 매매계약서·등기부등본 등 양도소득세 관련 증빙일 수 있는 파일 전부). ' +
+    '그 안에서 서로 다른 양도거래가 몇 건인지 파악하고, 다른 설명 없이 아래 스키마의 JSON 코드블록 하나만 답해줘. 모르거나 문서에 없는 값은 null로 남겨줘.\n' +
+    '```json\n{"sellerName": "문자열 또는 null(양도인=납세자 성명)", "sellerRegNo": "문자열 또는 null", "sellerAddress": "문자열 또는 null(양도인 주소=납세지)", ' +
+    '"sellerTaxOffice": "문자열 또는 null(양도인 관할세무서 — 문서에 이미 명시돼 있을 때만, 주소만 보고 추정하지 마라)", ' +
+    '"transactions": [{"transferPrice": 숫자 또는 null, "acquisitionPrice": 숫자 또는 null, "acquisitionExpenses": 숫자 또는 null, "transferExpensesOnly": 숫자 또는 null, ' +
     '"acquisitionDate": "YYYY-MM-DD 또는 null", "transferDate": "YYYY-MM-DD 또는 null", "assetType": "house 또는 presale_right 또는 other 또는 null", ' +
     '"assetKind": "land 또는 building 또는 other 또는 null", "assetLocation": "문자열 또는 null(소재지·지번)", ' +
-    '"assetSubType": "문자열 또는 null(토지면 지목, 건물이면 층수·용도)", "assetArea": "숫자 또는 null(면적, ㎡)"}]\n```\n' +
-    '(transferPrice=양도가액, acquisitionPrice=취득가액, acquisitionExpenses=취득세·법무사비 등 취득 관련 비용, transferExpensesOnly=중개보수·양도세 신고수수료 등 양도비용, assetType은 주택·조합원입주권이면 house, 분양권(아파트 등 공급계약상 지위)이면 presale_right, 그 외 부동산이면 other, assetKind는 토지만이면 land·구분소유 건물 포함 건물이면 building. 같은 거래를 서로 다른 문서에서 중복으로 찾았으면 하나로 합쳐라.)';
+    '"assetSubType": "문자열 또는 null(토지면 지목, 건물이면 층수·용도)", "assetArea": "숫자 또는 null(면적, ㎡)", ' +
+    '"provisions": {' + provisionSchemaLines + '}}](거래가 몇 건이든 전부 — 1건도 배열 1개 원소)}\n```\n' +
+    '(transferPrice=양도가액, acquisitionPrice=취득가액, acquisitionExpenses=취득세·법무사비 등 취득 관련 비용, transferExpensesOnly=중개보수·양도세 신고수수료 등 양도비용, assetType은 주택·조합원입주권이면 house, 분양권(아파트 등 공급계약상 지위)이면 presale_right, 그 외 부동산이면 other, assetKind는 토지만이면 land·구분소유 건물 포함 건물이면 building. ' +
+    'provisions의 각 항목은 문서에 그 특례·감면·비과세에 해당한다는 명확한 근거(예: 농지원부·주택임대사업자등록증·조합원입주권 안내문·파산선고문 등)가 있으면 true, 문서 내용상 명백히 해당 없는 성격의 거래(예: 상가 매매인데 농지 관련 질문)면 false, 애매하거나 판단할 근거가 아예 없으면 null로 답해라 — 절대 임의로 지어내지 마라. 같은 거래를 서로 다른 문서에서 중복으로 찾았으면 하나로 합쳐라.)';
 
   try {
     const reply = await runFolderAiExtraction(instruction);
     const json = extractJsonFromReply(reply);
-    const items = Array.isArray(json) ? json : (json ? [json] : []);
+    const items = Array.isArray(json) ? json : (json && Array.isArray(json.transactions) ? json.transactions : (json ? [json] : []));
     if (!items.length) throw new Error('응답에서 거래를 찾지 못했습니다. 응답: ' + reply.slice(0, 200));
+    // [2026.10.07 신규, 재검토121] 양도인 본인 정보는 transferSellers[0]에 반영 — 이미 입력돼
+    // 있는 값은 덮어쓰지 않는다(여러 번 돌려도 기존 수기입력이 지워지지 않도록).
+    if (json && !Array.isArray(json)){
+      const seller0 = transferSellers[0] || (transferSellers[0] = {});
+      if (json.sellerName && !seller0.name) seller0.name = json.sellerName;
+      if (json.sellerRegNo && !seller0.regNo) seller0.regNo = json.sellerRegNo;
+      if (json.sellerAddress && !seller0.address) seller0.address = json.sellerAddress;
+      if (json.sellerTaxOffice && !seller0.taxOffice) seller0.taxOffice = json.sellerTaxOffice;
+    }
     let filledCount = 0;
     items.forEach(function(item){
       let target = transferAssets.find(function(v){ return !v.transferPrice && !v._aiStatus; });
@@ -3124,6 +3451,16 @@ async function runAiAutoFillTransferBulk(){
           filled.push(TRANSFER_AI_FIELD_LABELS[key]);
         }
       });
+      // [2026.10.07 신규, 재검토115] provisions 판정 반영 — true면 바로 체크(카드에 자동 반영),
+      // null이면 확인모달에서 물어볼 수 있게 키만 따로 쌓아둔다. false는 조용히 넘어간다.
+      const uncertainProvisions = [];
+      const provisions = item.provisions || {};
+      TRANSFER_PROVISION_SPECS_.forEach(function(spec){
+        const v = provisions[spec.key];
+        if (v === true){ target[spec.key] = true; filled.push(spec.q + '(자동 적용)'); }
+        else if (v === null || v === undefined) uncertainProvisions.push(spec.key);
+      });
+      target._aiUncertainProvisionKeys = uncertainProvisions;
       target._aiStatus = filled.length ? 'done' : 'error';
       target._aiFilledFields = filled;
       target._aiFileName = '증빙 일괄조회';
@@ -3139,10 +3476,14 @@ async function runAiAutoFillTransferBulk(){
 
 // 증여세·상속세 화면은 "거래 카드 배열"이 아니라 단일 폼이라, 화면 전체를 다시 그리지 않고
 // 해당 필드 DOM만 직접 채운 뒤 상태배지만 갱신한다(재렌더링하면 사용자가 이미 입력한 다른 값이 날아간다).
-async function runAiAutoFillForm(fileName, statusElId, instruction, fieldMap, fieldLabels){
+// [2026.10.07 확장, 재검토115] provisionSpecs(선택) — TRANSFER_PROVISION_SPECS_와 같은 패턴의
+// "적용 여부 자체를 판정해야 하는" 특례 목록. true면 그 자리에서 체크박스를 켜고, null/판정불가면
+// uncertainProvisionKeys로 모아서 반환한다 — 호출자가 계산 전 확인모달에서 예/아니오로 물을 수 있게.
+async function runAiAutoFillForm(fileName, statusElId, instruction, fieldMap, fieldLabels, provisionSpecs){
   const statusEl = document.getElementById(statusElId);
   const state = { _aiStatus: 'loading' };
   statusEl.innerHTML = renderAiStatusHtml(state);
+  const uncertainProvisionKeys = [];
   try {
     const reply = await runFolderAiExtraction(instruction);
     const json = extractJsonFromReply(reply);
@@ -3158,8 +3499,20 @@ async function runAiAutoFillForm(fileName, statusElId, instruction, fieldMap, fi
         // [2026.09.23 버그수정] 증여자·수증인 카드가 배열로 바뀌면서(giftDonors/giftDonees)
         // 이 필드들은 이제 input 이벤트로만 배열에 반영된다 — el.value만 바꾸면 화면엔 보이는데
         // giftDonors[0]/giftDonees[0]엔 안 들어가 계산에서 빠지는 조용한 불일치가 생긴다.
-        el.dispatchEvent(new Event(spec.type === 'checkbox' ? 'change' : 'input', { bubbles: true }));
+        // [2026.10.07 수정, 재검토114] select(관계 등)는 이 파일 어디서나 'change' 리스너만
+        // 쓰므로(el.tagName === 'SELECT' ? 'change' : 'input' 관례), checkbox뿐 아니라 select도
+        // 'change'로 보내야 한다 — 'input'만 보내면 select는 배열에 반영되지 않는다.
+        el.dispatchEvent(new Event((spec.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input', { bubbles: true }));
         filled.push(fieldLabels[key] || key);
+      }
+    });
+    (provisionSpecs || []).forEach(function(spec){
+      const v = json.provisions ? json.provisions[spec.key] : undefined;
+      if (v === true){
+        const el = document.getElementById(spec.id);
+        if (el){ el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); filled.push(spec.q + '(자동 적용)'); }
+      } else if (v === null || v === undefined){
+        uncertainProvisionKeys.push(spec.key);
       }
     });
     if (!filled.length) throw new Error('문서에서 값을 찾지 못했습니다(전부 null) — 직접 입력하세요.');
@@ -3168,42 +3521,339 @@ async function runAiAutoFillForm(fileName, statusElId, instruction, fieldMap, fi
     state._aiStatus = 'error'; state._aiError = err && err.message ? err.message : String(err);
   }
   statusEl.innerHTML = renderAiStatusHtml(state);
+  return { uncertainProvisionKeys: uncertainProvisionKeys };
 }
 
 const GIFT_AI_FIELD_MAP = {
-  giftAmount: { id: 'giftAmount', type: 'number' }, relation: { id: 'giftRelation', type: 'text' },
+  // [2026.10.07 수정, 재검토114] relation은 <select>인데 'text'로 잘못 적혀 있었다 — 'input'
+  // 이벤트만 디스패치되면(아래) select엔 'change' 리스너만 있어서(이 파일의 다른 모든 select와
+  // 동일한 관례) 화면엔 값이 보여도 giftDonors[0].relation 배열엔 반영 안 되는 조용한 불일치가 났다.
+  giftAmount: { id: 'giftAmount', type: 'number' }, relation: { id: 'giftRelation', type: 'select' },
   giftDate: { id: 'giftDate', type: 'date' }, debtAssumedAmount: { id: 'giftDebtAssumed', type: 'number' },
   doneeName: { id: 'giftDoneeName', type: 'text' }, doneeRegNo: { id: 'giftDoneeRegNo', type: 'text' }, doneeAddress: { id: 'giftDoneeAddress', type: 'text' },
-  donorName: { id: 'giftDonorName', type: 'text' }, donorRegNo: { id: 'giftDonorRegNo', type: 'text' }, donorAddress: { id: 'giftDonorAddress', type: 'text' }
+  // [2026.10.07 신규, 재검토121] 관할세무서(증여세 납세지=수증자 주소지, §6) — 주소→관할세무서
+  // 매칭표가 없어 문서에 이미 명시돼 있을 때만 채워진다(아래 instruction 참고).
+  doneeTaxOffice: { id: 'giftDoneeTaxOffice', type: 'text' },
+  donorName: { id: 'giftDonorName', type: 'text' }, donorRegNo: { id: 'giftDonorRegNo', type: 'text' }, donorAddress: { id: 'giftDonorAddress', type: 'text' },
+  // [2026.10.07 신규, 재검토115] 세무사님 지시 — "감면은 모르겠다고 하면 안 된다." 핵심
+  // 신원·금액 필드만 보던 범위를 넓혀, 공제·비과세·세액공제·감면 금액 필드도 AI가 문서에서
+  // 적극적으로 찾게 한다(증거 없으면 null→0 그대로, 억지로 묻지는 않는다 — 금액형 공제는
+  // "있으면 입력, 없으면 0"이 자연스러운 기본값이라 아래 provisions처럼 예/아니오를 강제로
+  // 물을 필요는 없다).
+  appraisalFeeAmount: { id: 'giftAppraisalFee', type: 'number' }, disasterLossAmount: { id: 'giftDisasterLoss', type: 'number' },
+  nonTaxableAmount: { id: 'giftNonTaxable', type: 'number' }, publicInterestOrgAmount: { id: 'giftPublicOrg', type: 'number' },
+  publicTrustAmount: { id: 'giftPublicTrust', type: 'number' }, disabledTrustAmount: { id: 'giftDisabledTrust', type: 'number' },
+  foreignTaxPaidAmount: { id: 'giftForeignTax', type: 'number' }, foreignGiftTaxBase: { id: 'giftForeignBase', type: 'number' },
+  otherCreditsAmount: { id: 'giftOtherCredits', type: 'number' }, farmlandGiftTaxExemptionAmount: { id: 'giftFarmlandExemption', type: 'number' }
 };
 const GIFT_AI_FIELD_LABELS = {
   giftAmount: '증여재산가액', relation: '관계', giftDate: '증여일자', debtAssumedAmount: '인수채무액',
-  doneeName: '수증자 성명', doneeRegNo: '수증자 주민등록번호', doneeAddress: '수증자 주소',
-  donorName: '증여자 성명', donorRegNo: '증여자 주민등록번호', donorAddress: '증여자 주소'
+  doneeName: '수증자 성명', doneeRegNo: '수증자 주민등록번호', doneeAddress: '수증자 주소', doneeTaxOffice: '수증자 관할세무서',
+  donorName: '증여자 성명', donorRegNo: '증여자 주민등록번호', donorAddress: '증여자 주소',
+  appraisalFeeAmount: '감정평가수수료공제', disasterLossAmount: '재해손실공제', nonTaxableAmount: '비과세재산가액',
+  publicInterestOrgAmount: '공익법인출연재산가액', publicTrustAmount: '공익신탁재산가액', disabledTrustAmount: '장애인신탁재산가액',
+  foreignTaxPaidAmount: '외국납부세액공제', foreignGiftTaxBase: '외국증여세 과세표준', otherCreditsAmount: '그 밖의 공제',
+  farmlandGiftTaxExemptionAmount: '영농자녀 증여농지 세액감면(조특법§71)'
 };
+// [2026.10.07 신규, 재검토115] 금액이 아니라 "적용 여부" 자체를 판정해야 하는 특례 — 문서 근거로
+// 확정 못 하면(null) 계산 전 확인모달에서 예/아니오로 물어본다(TRANSFER_PROVISION_SPECS_와 같은 패턴).
+const GIFT_PROVISION_SPECS_ = [
+  { key: 'isExcludedFromAggregation', id: 'giftExcludedAgg', q: '상증세법§55①3호 합산배제증여재산(창업자금·가업승계주식 등, 3천만원 고정공제)에 해당하나요?' }
+];
 function runAiAutoFillGift(){
-  const instruction = '현재 사건 폴더 안의 모든 파일을 살펴봐줘(증여계약서·가족관계증명서·주민등록초본 등 증여세 관련 증빙일 수 있는 파일 전부, 여러 개면 전부 종합해서). ' +
+  const provisionSchemaLines = GIFT_PROVISION_SPECS_.map(function(s){ return '"' + s.key + '": true 또는 false 또는 null(' + s.q + ')'; }).join(', ');
+  const instruction = AI_EXTRACTION_PRIORITY_HINT_ + '현재 사건 폴더 안의 모든 파일을 살펴봐줘(하위 폴더까지 전부 포함해서, 증여계약서·가족관계증명서·주민등록초본 등 증여세 관련 증빙일 수 있는 파일 전부, 여러 개면 전부 종합해서). ' +
     '증여세 신고에 필요한 값을 찾아서, 다른 설명 없이 아래 스키마의 JSON 코드블록 하나만 답해줘. 모르거나 문서에 없는 값은 null로 남겨줘.\n' +
     '```json\n{"giftAmount": 숫자 또는 null, "relation": "배우자 또는 직계존속 또는 직계비속 또는 기타친족 또는 기타 또는 null(수증자 기준 증여자와의 관계)", ' +
     '"giftDate": "YYYY-MM-DD 또는 null", "debtAssumedAmount": 숫자 또는 null(부담부증여로 수증자가 인수한 채무, 없으면 0), ' +
     '"doneeName": "문자열 또는 null", "doneeRegNo": "문자열 또는 null", "doneeAddress": "문자열 또는 null", ' +
-    '"donorName": "문자열 또는 null", "donorRegNo": "문자열 또는 null", "donorAddress": "문자열 또는 null"}\n```';
-  return runAiAutoFillForm('증빙 일괄조회', 'aiStatus-gift', instruction, GIFT_AI_FIELD_MAP, GIFT_AI_FIELD_LABELS);
+    '"doneeTaxOffice": "문자열 또는 null(수증자 관할세무서 — 문서에 이미 명시돼 있을 때만, 주소만 보고 추정하지 마라)", ' +
+    '"donorName": "문자열 또는 null", "donorRegNo": "문자열 또는 null", "donorAddress": "문자열 또는 null", ' +
+    '"appraisalFeeAmount": 숫자 또는 null(감정평가수수료), "disasterLossAmount": 숫자 또는 null(재해손실), ' +
+    '"nonTaxableAmount": 숫자 또는 null(비과세재산가액), "publicInterestOrgAmount": 숫자 또는 null(공익법인 출연재산가액), ' +
+    '"publicTrustAmount": 숫자 또는 null(공익신탁재산가액), "disabledTrustAmount": 숫자 또는 null(장애인신탁재산가액), ' +
+    '"foreignTaxPaidAmount": 숫자 또는 null(외국납부세액), "foreignGiftTaxBase": 숫자 또는 null(외국증여세 과세표준), ' +
+    '"otherCreditsAmount": 숫자 또는 null(그 밖의 공제), "farmlandGiftTaxExemptionAmount": 숫자 또는 null(영농자녀 증여농지 세액감면), ' +
+    '"provisions": {' + provisionSchemaLines + '}}\n```\n' +
+    '(각 공제·감면 금액은 문서에 그 항목에 해당한다는 명확한 근거가 있을 때만 숫자로 답하고, 근거가 없으면 null로 남겨라 — 절대 임의로 지어내지 마라. provisions도 마찬가지로 명확한 근거가 있을 때만 true/false, 애매하면 null.)';
+  return runAiAutoFillForm('증빙 일괄조회', 'aiStatus-gift', instruction, GIFT_AI_FIELD_MAP, GIFT_AI_FIELD_LABELS, GIFT_PROVISION_SPECS_);
 }
 
-const INHERITANCE_AI_FIELD_MAP = {
-  deceasedName: { id: 'ihDeceasedName', type: 'text' }, deceasedRegNo: { id: 'ihDeceasedRegNo', type: 'text' }, deathDate: { id: 'ihDeathDate', type: 'date' }
+// [2026.10.07 전면 재작성, 재검토116] 세무사님 지적 — "상속세도 마찬가지다"(핵심 항목만
+// 자동화하고 상속인·상속재산은 범위 밖으로 뺀 게 틀렸다는 지적). "OOO_의뢰내용.md" 파일(사건
+// 접수시 자동으로 들어가는, 상담 내용을 정리한 파일 — RW_INTAKE_FILENAME_PATTERN_, Code.js)이
+// 이미 "누가 상속인이고 재산이 뭔지"를 상담 단계에서 정리해 담고 있으므로, 양도세·증여세와
+// 똑같이 끝까지 자동화한다 — 피상속인 정보뿐 아니라 상속인 명부·총상속재산가액·채무·공과금까지
+// AI가 채우고, "세액 계산하기"까지 자동 실행한다. 단, 가업상속공제·영농상속공제·납부유예처럼
+// 이 계산기 자체가 "자격요건 판정과 세액을 산출하지 않고 별도 계산값을 입력받는" 구조로 이미
+// 설계된 항목(ihPrintFormBodyHtml_ 근처 안내문 참고)은 AI가 손대지 않는다 — 그건 "증여·상속
+// 공통" 탭의 전용 계산기(bd 등)로 별도 진행해야 하는 전문적 판단 영역이라 범위 밖이 맞다.
+// [2026.10.07 수정, 재검토118] 며느리/사위(대습상속)를 추가 — HEIR_RELATION_OPTIONS와 반드시
+// 동일하게 유지할 것(화면의 select 옵션 문자열과 정확히 일치해야 target.relation이 반영된다).
+const INHERITANCE_HEIR_RELATION_ENUM_ = ['배우자', '자녀', '손자녀(대습상속 — 부모가 먼저 사망·결격)', '며느리/사위(대습상속 — 배우자였던 자녀가 먼저 사망·결격)', '손자녀(세대생략 — 부모 생존, 유증·상속포기 등)', '부모(직계존속)', '상속인 아닌 자(유증·사인증여 등)'];
+const INHERITANCE_PROVISION_SPECS_ = [
+  { key: 'isSpousePropertyDivided', id: 'ihSpouseDivided', q: '배우자 상속재산을 분할기한(신고기한 다음날부터 9개월) 내 분할·등기하고 신고했나요(§19②③)?' }
+];
+async function runAiAutoFillInheritanceFull_(){
+  const statusEl = document.getElementById('aiStatus-inheritance');
+  const state = { _aiStatus: 'loading' };
+  if (statusEl) statusEl.innerHTML = renderAiStatusHtml(state);
+  const uncertainProvisionKeys = [];
+  try {
+    const relationEnumText = INHERITANCE_HEIR_RELATION_ENUM_.map(function(r){ return '"' + r + '"'; }).join(' 또는 ');
+    const provisionSchemaLines = INHERITANCE_PROVISION_SPECS_.map(function(s){ return '"' + s.key + '": true 또는 false 또는 null(' + s.q + ')'; }).join(', ');
+    const instruction = AI_EXTRACTION_PRIORITY_HINT_ + '현재 사건 폴더 안의 모든 파일을 살펴봐줘(하위 폴더까지 전부 포함해서, 의뢰내용·가족관계증명서·기본증명서·사망진단서·제적등본·부동산등기부등본·예금잔액증명서 등 상속세 관련 증빙일 수 있는 파일 전부, 여러 개면 전부 종합해서). ' +
+      '상속세 신고에 필요한 값을 찾아서, 다른 설명 없이 아래 스키마의 JSON 코드블록 하나만 답해줘. 모르거나 문서에 없는 값은 null로 남겨줘.\n' +
+      '```json\n{"deceasedName": "문자열 또는 null", "deceasedRegNo": "문자열 또는 null", "deathDate": "YYYY-MM-DD 또는 null(상속개시일=사망일)", ' +
+      '"deceasedTaxOffice": "문자열 또는 null(피상속인 관할세무서=상속세 납세지, §6 — 문서에 이미 명시돼 있을 때만, 주소만 보고 추정하지 마라)", ' +
+      '"heirs": [{"name": "문자열(실명 모르면 \\"자녀1\\"처럼 코드명) 또는 null", "regNo": "문자열 또는 null", "relation": ' + relationEnumText + ' 또는 null, ' +
+      '"substitutionGroup": "문자열 또는 null(대습상속 — 한 자녀가 먼저 사망해 그 배우자(며느리/사위)·자녀(손자녀) 여러 명이 그 1인 몫을 함께 대습상속받을 때, 같은 그룹명을 붙여라. 예: 먼저 사망한 \\"장남\\"의 배우자와 자녀들이면 전부 \\"장남대습\\". 주의: 먼저 사망한 자녀의 배우자는 \\"배우자\\"가 아니라 \\"며느리/사위(대습상속...)\\"를 relation으로 써라 — \\"배우자\\"는 피상속인 본인의 배우자 전용이다)", ' +
+      '"isReporter": true 또는 false 또는 null(이 사건의 신고 대표자면 true), "hasRenounced": true 또는 false 또는 null(상속포기), "isDisabled": true 또는 false 또는 null, "isCohabitHouse": true 또는 false 또는 null(피상속인과 10년 이상 한 주택에서 동거 — 동거주택상속공제 대상)} 또는 null](상속인이 몇 명이든 전부 — 1명도 배열 1개 원소), ' +
+      '"grossEstateValue": 숫자 또는 null(총상속재산가액 — 부동산·예금·주식 등 상속재산 전체 합계), ' +
+      '"debtTotal": 숫자 또는 null(피상속인의 채무 합계, 대출금 등), "duesTotal": 숫자 또는 null(미납 국세·지방세 등 공과금 합계), ' +
+      '"provisions": {' + provisionSchemaLines + '}}\n```\n' +
+      '(heirs는 의뢰내용이나 문서로 존재와 관계유형이 확인되는 상속인은 전부 넣어라 — 정확한 실명·주민번호를 아직 못 찾았어도 괜찮다(위 name 설명대로 코드명으로 채워라), 인원수·관계유형 자체가 계산 구조를 결정하기 때문이다. 몇 명인지조차 전혀 알 수 없을 때만 빈 배열로 남겨라. grossEstateValue·debtTotal·duesTotal은 문서에 합계나 각 항목 금액이 있으면 더해서 답하고, 근거가 없으면 null — 절대 임의로 지어내지 마라. 가업상속공제·영농상속공제·납부유예처럼 별도 전문계산이 필요한 특례는 이 스키마에 없으니 신경쓰지 마라.)';
+    const reply = await runFolderAiExtraction(instruction);
+    const json = extractJsonFromReply(reply);
+    if (!json) throw new Error('응답에서 값을 찾지 못했습니다. 응답: ' + reply.slice(0, 200));
+    const filled = [];
+    [['deceasedName', 'ihDeceasedName', '피상속인 성명'], ['deceasedRegNo', 'ihDeceasedRegNo', '피상속인 주민등록번호'], ['deathDate', 'ihDeathDate', '상속개시일'], ['deceasedTaxOffice', 'ihDeceasedTaxOffice', '관할세무서']].forEach(function(t){
+      if (json[t[0]] !== null && json[t[0]] !== undefined && json[t[0]] !== ''){
+        const el = document.getElementById(t[1]);
+        if (el){ el.value = json[t[0]]; el.dispatchEvent(new Event('input', { bubbles: true })); filled.push(t[2]); }
+      }
+    });
+    if (typeof tcSyncTaxOfficeButtons_ === 'function' && typeof taxCalcInheritancePane !== 'undefined') tcSyncTaxOfficeButtons_(taxCalcInheritancePane);
+    if (Array.isArray(json.heirs) && json.heirs.length){
+      json.heirs.forEach(function(h, i){
+        let target = inheritanceHeirs[i];
+        if (!target){ target = {}; inheritanceHeirs.push(target); }
+        if (h.name) target.name = h.name;
+        if (h.regNo) target.regNo = h.regNo;
+        if (h.relation && INHERITANCE_HEIR_RELATION_ENUM_.indexOf(h.relation) !== -1) target.relation = h.relation;
+        if (h.substitutionGroup) target.substitutionGroup = h.substitutionGroup;
+        if (h.hasRenounced === true) target.hasRenounced = true;
+        if (h.isDisabled === true) target.isDisabled = true;
+        if (h.isCohabitHouse === true) target.isCohabitHouse = true;
+        if (h.isReporter === true) target.isReporter = true;
+      });
+      // "신고인" 자동판정 — 세액 자체(상속인 전원 몫 합산)에는 영향이 없고 전자신고 2만원공제
+      // 표시에만 관계되므로, AI가 못 골랐으면 그냥 첫 번째 상속인으로 기본값 처리하고 넘어간다
+      // (잘못됐으면 카드에서 체크박스 하나로 바로 고칠 수 있어 굳이 확인모달로 물을 정도는 아님).
+      if (!inheritanceHeirs.some(function(h){ return h.isReporter; }) && inheritanceHeirs[0]) inheritanceHeirs[0].isReporter = true;
+      // [2026.10.07 수정, 재검토117] 법정상속지분(대습그룹 묶음 포함)은 renderHeirRegistry()가
+      // 아니라 recomputeHeirDerivedFields()가 별도로 계산한다 — 안 부르면 화면에 빈칸으로
+      // 남는다(값은 맞게 들어갔어도 법정상속지분만 비어 보이는 눈에 띄는 버그였을 것).
+      if (typeof recomputeHeirDerivedFields === 'function') recomputeHeirDerivedFields();
+      filled.push('상속인 명부(' + json.heirs.length + '명)');
+    }
+    if (json.grossEstateValue !== null && json.grossEstateValue !== undefined){
+      const el = document.getElementById('ihGrossEstateGeneral');
+      if (el){ el.value = json.grossEstateValue; el.dispatchEvent(new Event('input', { bubbles: true })); filled.push('총상속재산가액'); }
+    }
+    if (json.debtTotal !== null && json.debtTotal !== undefined && numVal(json.debtTotal) > 0){
+      inheritanceDebtItems = [{ debtType: 'loan', amount: json.debtTotal }];
+      filled.push('채무');
+    }
+    if (json.duesTotal !== null && json.duesTotal !== undefined && numVal(json.duesTotal) > 0){
+      inheritanceDuesItems = [{ duesType: 'national', amount: json.duesTotal }];
+      filled.push('공과금');
+    }
+    INHERITANCE_PROVISION_SPECS_.forEach(function(spec){
+      const v = json.provisions ? json.provisions[spec.key] : undefined;
+      if (v === true || v === false){
+        const el = document.getElementById(spec.id);
+        if (el){ el.checked = v; el.dispatchEvent(new Event('change', { bubbles: true })); filled.push(spec.q + '(' + (v ? '예' : '아니오') + ', 자동판단)'); }
+      } else {
+        uncertainProvisionKeys.push(spec.key);
+      }
+    });
+    if (!filled.length) throw new Error('문서에서 값을 찾지 못했습니다(전부 null) — 직접 입력하세요.');
+    state._aiStatus = 'done'; state._aiFilledFields = filled; state._aiFileName = '증빙 일괄조회';
+  } catch (err) {
+    state._aiStatus = 'error'; state._aiError = err && err.message ? err.message : String(err);
+  }
+  if (statusEl) statusEl.innerHTML = renderAiStatusHtml(state);
+  // [주의] 재산평가 자산목록(valuationAssets)과 채무·공과금 세부입력칸은 전부 "거래 카드 배열"이
+  // 아니라 플레인 DOM 입력(값이 JS 변수에 안 묶여있음)이라, taxCalcInheritancePane 전체를
+  // 다시 그리면(renderInheritancePane) 이미 입력해둔 값이 날아간다 — 상속인 명부(ihHeirRegistry)와
+  // 채무·공과금 목록(ihDebtItemsList/ihDuesItemsList)만 각자의 좁은 렌더함수로 갱신한다.
+  if (typeof renderHeirRegistry === 'function') renderHeirRegistry();
+  if (typeof renderHeirTool === 'function') renderHeirTool();
+  if (typeof renderDebtItemsList === 'function') renderDebtItemsList();
+  if (typeof renderDuesItemsList === 'function') renderDuesItemsList();
+  return { uncertainProvisionKeys: uncertainProvisionKeys };
+}
+
+// [2026.10.07 이동, 재검토119] 탭마다 따로 있던 "자동계산" 버튼을 사건선택·저장과 같은
+// 공유 바(renderTcCaseBar_)로 올리면서, 지금 활성 탭을 보고 양도세·증여세·상속세 중 맞는
+// 함수로 연결하는 진입점이 필요해졌다. 취득세·등록면허세·증여상속공통(재산평가 등) 탭은
+// 자동계산 대상이 아니므로 안내만 한다. 증여세는 giftActiveSubtab_이 'general'이 아니면
+// giftAmount 등 입력칸 자체가 화면에 없으므로(다른 특례 하위탭 표시 중), 먼저 'general'로
+// 강제 전환한다(switch-gift-subtab 핸들러와 동일한 CSS 토글 — 다른 하위탭 입력값은 안 날아감).
+function tcRunAutoCalc_(){
+  const activeTabEl = document.querySelector('.taxcalc-tab.active');
+  const which = activeTabEl ? activeTabEl.dataset.tab : '';
+  if (which === 'transfer'){
+    tcRunAutoCalcTransfer_();
+  } else if (which === 'gift'){
+    if (giftActiveSubtab_ !== 'general'){
+      giftActiveSubtab_ = 'general';
+      taxCalcGiftPane.querySelectorAll('.taxcalc-subtab').forEach(function(t){ t.classList.toggle('active', t.dataset.subtab === 'general'); });
+      taxCalcGiftPane.querySelectorAll('[data-subpane]').forEach(function(p){ p.style.display = (p.dataset.subpane === 'general') ? '' : 'none'; });
+    }
+    tcRunAutoCalcGift_();
+  } else if (which === 'inheritance'){
+    tcRunAutoCalcInheritance_();
+  } else {
+    nxAlert_('이 탭에서는 자동계산을 지원하지 않습니다 — 양도소득세·증여세·상속세 탭에서만 쓸 수 있습니다.');
+  }
+}
+
+// [2026.10.07 신규, 재검토114] "증빙에서 자동 입력"을 "증빙에서 자동 계산"으로 승격 — 세무사님
+// 지시: 버튼을 누르면 (1) 사건폴더(하위폴더 포함)에서 증빙을 찾아 채우고, (2) 핵심 계산 항목 중
+// 못 찾은 것만 모달로 확인받은 뒤, (3) 실제 "세액 계산하기" 버튼까지 자동으로 눌러준다.
+const TRANSFER_AUTOCALC_REQUIRED_ = {
+  transferPrice: '양도가액', acquisitionPrice: '취득가액', acquisitionDate: '취득일', transferDate: '양도일'
 };
-const INHERITANCE_AI_FIELD_LABELS = {
-  deceasedName: '피상속인 성명', deceasedRegNo: '피상속인 주민등록번호', deathDate: '상속개시일'
+async function tcRunAutoCalcTransfer_(){
+  if (!tcCurrentCase){ nxAlert_('먼저 사건을 선택해야 그 사건 폴더에서 증빙을 찾을 수 있습니다.'); return; }
+  await runAiAutoFillTransferBulk();
+  const missing = [];
+  transferAssets.forEach(function(a, idx){
+    if (a._aiStatus !== 'done') return; // 이번에 AI가 채운 행만 확인 — 이미 수기로 입력해둔 다른 행은 건드리지 않는다
+    Object.keys(TRANSFER_AUTOCALC_REQUIRED_).forEach(function(key){
+      if (!a[key]){
+        missing.push({
+          recordLabel: '거래 ' + (idx + 1) + '번',
+          fieldLabel: TRANSFER_AUTOCALC_REQUIRED_[key],
+          type: (key === 'acquisitionDate' || key === 'transferDate') ? 'date' : 'number',
+          set: (function(asset, k){ return function(v){ asset[k] = v; }; })(a, key)
+        });
+      }
+    });
+    // [2026.10.07 신규, 재검토115] AI가 문서만으로 적용 여부를 확정하지 못한 특례·감면·비과세
+    // ("세액은 계산하면서 감면은 모르겠다"가 되지 않도록, 전부 예/아니오로 확인받는다).
+    (a._aiUncertainProvisionKeys || []).forEach(function(key){
+      const spec = TRANSFER_PROVISION_SPECS_.find(function(s){ return s.key === key; });
+      if (!spec) return;
+      missing.push({
+        recordLabel: '거래 ' + (idx + 1) + '번',
+        fieldLabel: spec.q,
+        type: 'boolean',
+        set: (function(asset, k){ return function(v){ asset[k] = v; }; })(a, key)
+      });
+    });
+  });
+  // [2026.10.07 신규, 재검토121] 관할세무서 확인이 세액계산(자동계산)에 빠져있으면 인쇄서식의
+  // "OO세무서장 귀하"가 끝까지 공란으로 남는다 — 다른 핵심 항목과 똑같이 확인 목록에 넣는다.
+  // 여기서 AI가 채우지 못했으면(주소→관할세무서 매칭표가 없어 거의 항상 비어있을 것이다)
+  // 빈 텍스트칸으로 물어본다 — 지금 당장 모르면 비워두고, 나중에 양도인 카드의 "관할세무서"
+  // 버튼으로 조회해도 된다(강제하지 않음).
+  if (transferSellers[0] && !transferSellers[0].taxOffice){
+    missing.push({
+      fieldLabel: '관할세무서(양도인)', type: 'text',
+      set: function(v){ transferSellers[0].taxOffice = v; }
+    });
+  }
+  showMissingFieldsModal_('증빙 자동계산 — 확인 필요한 항목(양도소득세)', missing, function(){
+    renderTransferPane();
+    const btn = document.querySelector('[data-action="run-transfer"]');
+    if (btn) btn.click();
+  });
+}
+
+const GIFT_AUTOCALC_REQUIRED_ = {
+  giftAmount: { id: 'giftAmount', label: '증여재산가액', type: 'number' },
+  relation: { id: 'giftRelation', label: '관계', type: 'select', options: ['배우자', '직계존속', '직계비속', '기타친족', '기타'] },
+  giftDate: { id: 'giftDate', label: '증여일자', type: 'date' }
 };
-// 자녀 수·배우자 유무·신고인 등은 이제 상속인 명부에서 자동으로 유도하므로(recomputeHeirDerivedFields),
-// AI자동입력은 피상속인 정보만 채운다 — 상속인 명부 자체는 사건 폴더의 가족관계증명서를 보고 직접 입력한다.
-function runAiAutoFillInheritance(){
-  const instruction = '현재 사건 폴더 안의 모든 파일을 살펴봐줘(가족관계증명서·기본증명서·사망진단서 등 상속세 관련 증빙일 수 있는 파일 전부, 여러 개면 전부 종합해서). ' +
-    '상속세 신고에 필요한 피상속인 정보를 찾아서, 다른 설명 없이 아래 스키마의 JSON 코드블록 하나만 답해줘. 모르거나 문서에 없는 값은 null로 남겨줘.\n' +
-    '```json\n{"deceasedName": "문자열 또는 null(피상속인)", "deceasedRegNo": "문자열 또는 null", "deathDate": "YYYY-MM-DD 또는 null(상속개시일=사망일)"}\n```';
-  return runAiAutoFillForm('증빙 일괄조회', 'aiStatus-inheritance', instruction, INHERITANCE_AI_FIELD_MAP, INHERITANCE_AI_FIELD_LABELS);
+async function tcRunAutoCalcGift_(){
+  if (!tcCurrentCase){ nxAlert_('먼저 사건을 선택해야 그 사건 폴더에서 증빙을 찾을 수 있습니다.'); return; }
+  const fillResult = await runAiAutoFillGift();
+  if (typeof tcSyncTaxOfficeButtons_ === 'function') tcSyncTaxOfficeButtons_(taxCalcGiftPane);
+  const missing = [];
+  Object.keys(GIFT_AUTOCALC_REQUIRED_).forEach(function(key){
+    const spec = GIFT_AUTOCALC_REQUIRED_[key];
+    const el = document.getElementById(spec.id);
+    if (el && !el.value){
+      missing.push({
+        fieldLabel: spec.label, type: spec.type, options: spec.options,
+        set: function(v){ el.value = v; el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true })); }
+      });
+    }
+  });
+  // [2026.10.07 신규, 재검토121] 관할세무서 확인이 자동계산에 빠져있으면 인쇄서식의 "OO세무서장
+  // 귀하"가 끝까지 공란으로 남는다 — 지금 당장 모르면 비워두고 나중에 전용 버튼으로 조회해도 된다.
+  const doneeTaxOfficeEl = document.getElementById('giftDoneeTaxOffice');
+  if (doneeTaxOfficeEl && !doneeTaxOfficeEl.value){
+    missing.push({
+      fieldLabel: '관할세무서(수증자)', type: 'text',
+      set: function(v){ doneeTaxOfficeEl.value = v; doneeTaxOfficeEl.dispatchEvent(new Event('input', { bubbles: true })); if (typeof tcSyncTaxOfficeButtons_ === 'function') tcSyncTaxOfficeButtons_(taxCalcGiftPane); }
+    });
+  }
+  // [2026.10.07 신규, 재검토115] "감면은 모르겠다"가 안 되도록, 문서로 확정 못 한 특례도 전부 확인.
+  ((fillResult && fillResult.uncertainProvisionKeys) || []).forEach(function(key){
+    const spec = GIFT_PROVISION_SPECS_.find(function(s){ return s.key === key; });
+    if (!spec) return;
+    const el = document.getElementById(spec.id);
+    if (!el) return;
+    missing.push({
+      fieldLabel: spec.q, type: 'boolean',
+      set: function(v){ el.checked = v; el.dispatchEvent(new Event('change', { bubbles: true })); }
+    });
+  });
+  showMissingFieldsModal_('증빙 자동계산 — 확인 필요한 항목(증여세)', missing, function(){
+    const btn = document.querySelector('[data-action="run-gift"]');
+    if (btn) btn.click();
+  });
+}
+
+// [2026.10.07 재작성, 재검토116] 양도세·증여세와 동일하게 끝까지 자동화 — 피상속인 정보·
+// 상속인 명부·총상속재산가액·채무·공과금을 채운 뒤, 핵심 항목 중 못 찾은 것만 확인모달로
+// 물어보고, "상속세과세가액 자동계산해서 반영" + "세액 계산하기"까지 순서대로 자동 실행한다.
+// 단, AI가 상속인을 단 한 명도 찾지 못했으면(문서 자체가 부족한 극단적 경우) 억지로 빈
+// 명부로 계산을 돌리지 않고 안내만 한다 — "상속인 0명"으로 계산하면 전혀 다른(훨씬 적은)
+// 세액이 나와 위험하기 때문이다.
+async function tcRunAutoCalcInheritance_(){
+  if (!tcCurrentCase){ nxAlert_('먼저 사건을 선택해야 그 사건 폴더에서 증빙을 찾을 수 있습니다.'); return; }
+  const fillResult = await runAiAutoFillInheritanceFull_();
+  const hasNamedHeir = inheritanceHeirs.some(function(h){ return h && h.name && h.relation; });
+  if (!hasNamedHeir){
+    showToast('상속인을 찾지 못했습니다 — 상속인 명부·상속재산은 가족관계증명서 등을 보고 직접 입력한 뒤 "세액 계산하기"를 눌러주세요.', 'warning');
+    return;
+  }
+  const missing = [];
+  [['ihDeceasedName', '피상속인 성명', 'text'], ['ihDeathDate', '상속개시일', 'date']].forEach(function(t){
+    const el = document.getElementById(t[0]);
+    if (el && !el.value) missing.push({ fieldLabel: t[1], type: t[2], set: function(v){ el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); } });
+  });
+  const estateEl = document.getElementById('ihGrossEstateGeneral');
+  if (estateEl && !estateEl.value){
+    missing.push({ fieldLabel: '총상속재산가액', type: 'number', set: function(v){ estateEl.value = v; estateEl.dispatchEvent(new Event('input', { bubbles: true })); } });
+  }
+  // [2026.10.07 신규, 재검토121] 관할세무서 확인이 자동계산에 빠져있으면 인쇄서식의 "OO세무서장
+  // 귀하"가 끝까지 공란으로 남는다 — 지금 당장 모르면 비워두고 나중에 전용 버튼으로 조회해도 된다.
+  const ihTaxOfficeEl = document.getElementById('ihDeceasedTaxOffice');
+  if (ihTaxOfficeEl && !ihTaxOfficeEl.value){
+    missing.push({
+      fieldLabel: '관할세무서(피상속인)', type: 'text',
+      set: function(v){ ihTaxOfficeEl.value = v; ihTaxOfficeEl.dispatchEvent(new Event('input', { bubbles: true })); if (typeof tcSyncTaxOfficeButtons_ === 'function') tcSyncTaxOfficeButtons_(taxCalcInheritancePane); }
+    });
+  }
+  ((fillResult && fillResult.uncertainProvisionKeys) || []).forEach(function(key){
+    const spec = INHERITANCE_PROVISION_SPECS_.find(function(s){ return s.key === key; });
+    if (!spec) return;
+    const el = document.getElementById(spec.id);
+    if (!el) return;
+    missing.push({ fieldLabel: spec.q, type: 'boolean', set: function(v){ el.checked = v; el.dispatchEvent(new Event('change', { bubbles: true })); } });
+  });
+  showMissingFieldsModal_('증빙 자동계산 — 확인 필요한 항목(상속세)', missing, function(){
+    const applyBtn = document.querySelector('[data-action="apply-ih-estate-auto"]');
+    if (applyBtn) applyBtn.click();
+    const runBtn = document.querySelector('[data-action="run-inheritance"]');
+    if (runBtn) runBtn.click();
+  });
 }
 
 // ---- 상속증여재산 평가(자산 목록) — 증여세·상속세 화면 공통 ----
@@ -4088,7 +4738,7 @@ function refreshGiftAssetAllocationList_(){
         if (donor && donor.giftShareRatio){
           alloc.ratio = donor.giftShareRatio;
           const ratioEl = el.closest('[data-dalloc-idx]').querySelector('[data-dafield="ratio"]');
-          if (ratioEl) ratioEl.value = donor.giftShareRatio;
+          if (ratioEl){ ratioEl.value = donor.giftShareRatio; if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(ratioEl); }
         }
       }
       updateDonorActualValueHints();
@@ -4114,7 +4764,7 @@ function refreshInheritanceAssetAllocationList_(){
         if (heir && heir.actualShareRatio){
           alloc.ratio = heir.actualShareRatio;
           const ratioEl = el.closest('[data-alloc-idx]').querySelector('[data-hafield="ratio"]');
-          if (ratioEl) ratioEl.value = heir.actualShareRatio;
+          if (ratioEl){ ratioEl.value = heir.actualShareRatio; if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(ratioEl); }
         }
       }
       updateHeirActualValueHints();
@@ -4136,7 +4786,7 @@ function renderValuationAssetRow(a, idx){
         '<button type="button" class="taxcalc-add-asset-inline" data-action="add-valuation-asset">+ 자산 추가</button>' +
       '</span></div>' +
       '<div class="taxcalc-grid">' +
-        assetLocationFieldsHtml_(a) +
+        assetLocationFieldsHtml_(a, idx) +
         '<div class="taxcalc-field"><label>평가방법</label><select data-field="method">' +
           Object.keys(VALUATION_METHOD_LABELS).map(function (k) { return '<option value="' + k + '"' + (method === k ? ' selected' : '') + '>' + VALUATION_METHOD_LABELS[k] + '</option>'; }).join('') +
         '</select></div>' +
@@ -4163,6 +4813,7 @@ function recomputeBusinessAssetTotal_(containerId, assets){
   if (!el) return;
   const total = assets.filter(function(a){ return a.isBusinessAsset; }).reduce(function(s, a){ return s + computeValuationAssetValue(a); }, 0);
   el.value = String(total);
+  if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(el);
 }
 // 임대보증금은 언젠가 돌려줘야 할 채무(임대보증금반환채무)이므로, 자산 목록에 입력된 모든 임대차의
 // 보증금 합계를 자동으로 더해서 "자산 평가액 합계"에서 빼줄 수 있게 한다(순재산가액 = 자산가액-채무).
@@ -4201,6 +4852,12 @@ function renderValuationAssetList(containerId, assets){
         if (totalEl) totalEl.textContent = won(assets.reduce(function (s, a) { return s + computeValuationAssetValue(a); }, 0));
         recomputeBusinessAssetTotal_(containerId, assets);
       }
+    });
+  });
+  container.querySelectorAll('[data-field="assetDong"]').forEach(function (el) {
+    el.addEventListener('change', function () {
+      const idx = numVal(el.closest('.taxcalc-asset').dataset.idx);
+      tcFetchHoListForDongInput_(assets[idx].addressBuildingKey, el.value, el, function(hoList){ assets[idx].assetHoList = hoList; });
     });
   });
   container.querySelectorAll('[data-lfield]').forEach(function (el) {
@@ -4496,7 +5153,7 @@ function renderCostItemsSectionHtml_(a, listKey, title, placeholderExample, kind
         codeOptions.map(function(o){ return '<option value="' + o.code + '"' + (it.expenseCode === o.code ? ' selected' : '') + '>' + escapeHtml(o.label) + '</option>'; }).join('') +
       '</select></div>' +
       '<div class="taxcalc-field"><label>지급처</label><input type="text" data-costfield="payee" value="' + (it.payee || '').replace(/"/g, '&quot;') + '" placeholder="예: OO공인중개사"></div>' +
-      '<div class="taxcalc-field"><label>지급처 사업자등록번호</label><input type="text" data-costfield="payeeBizRegNo" value="' + (it.payeeBizRegNo || '').replace(/"/g, '&quot;') + '" placeholder="취득가액및필요경비계산상세명세서용, 없으면 비움"></div>' +
+      '<div class="taxcalc-field"><label>지급처 사업자등록번호</label><input type="text" data-costfield="payeeBizRegNo" value="' + (it.payeeBizRegNo || '').replace(/"/g, '&quot;') + '" placeholder="예: 123-45-67890, 없으면 비움"></div>' +
       '<div class="taxcalc-field"><label>지급일자</label><input type="date" data-costfield="payDate" value="' + (it.payDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
       '<div class="taxcalc-field"><label>증빙종류</label><select data-costfield="receiptType">' +
         '<option value="taxinvoice"' + (it.receiptType === 'taxinvoice' ? ' selected' : '') + '>세금계산서</option>' +
@@ -4551,7 +5208,15 @@ function tcRestoreFlatFieldValues_(paneEl, map){
     var el = document.getElementById(id);
     if (!el || !paneEl.contains(el)) return;
     if (el.type === 'checkbox' || el.type === 'radio') el.checked = map[id];
-    else el.value = map[id];
+    else {
+      el.value = map[id];
+      // [2026.10.08, 재검토125] 이 함수는 계약·조문 선택 등으로 패널 전체가 다시 그려질
+      // 때마다(renderTransferPane 등) 호출된다 — 새로 그려진 칸은 빈값 기준폭으로 이미
+      // 맞춰진 뒤라, 여기서 실제값을 다시 넣으면 그 폭이 안 맞은 채로 남는다.
+      // [2026.10.08, 재검토127] select(관계·구분·신고상태 등)도 같은 문제라 같이 재계산한다.
+      if (el.tagName === 'SELECT'){ if (typeof tcResizeAutoWidthSelect_ === 'function') tcResizeAutoWidthSelect_(el); }
+      else if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(el);
+    }
   });
 }
 // [2026.09 신규] 관할세무서 버튼(data-office-input)은 결과를 숨겨진 input에 저장해두고
@@ -4667,7 +5332,7 @@ function renderPropertyCardHtml_(idx, opts){
           // (이건 §104 세율 특례 대상 여부, 저건 계약 안분용 자산 구성)인데 라벨만으로는 구분이
           // 안 됨 — 각자의 실제 용도가 라벨에 드러나도록 이름을 확실히 갈라놓는다.
           '<div class="taxcalc-field"><label>과세대상 구분</label><select data-field="assetType"><option value="other">그 외 부동산</option><option value="house">주택·조합원입주권</option><option value="presale_right">분양권</option></select><span class="taxcalc-field-help">세율 특례 판정용 — 분양권은 §104①1호·2호·3호(1년미만 70%/1년이상 60% 단일세율, 장기보유특별공제·기본세율누진 배제)</span></div>' +
-          assetDetailFieldsHtml_(transferAssets[idx]) +
+          assetDetailFieldsHtml_(transferAssets[idx], idx) +
         '</div>' +
         // [2026.09 전면 재설계] 세무사님 지시 — 이 자산이 이미 어느 양도계약 카드 "안에"
         // 그려지는 중이면(opts.nested) 양도일·양수인·양도가액·양도비용은 그 계약 카드가
@@ -4738,9 +5403,25 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-industrial-complex-lot-modal" data-idx="' + idx + '" title="산업단지 조성으로 이주한 이주택지를 분양받아 양도하는 경우, 다주택중과 배제 대상인지 판정합니다(조특법§104의20, 2012.12.31까지 양도분만)">🔍 산업단지 이주택지 중과배제 판정</button></div>' +
           (transferAssets[idx].transferContractId ? '<div class="taxcalc-field"><span class="taxcalc-field-help">매매계약체결일·토지거래허가 관련 항목은 양도계약에서 가져옵니다 — 계약 카드에서 수정하세요</span></div>' :
           '<div class="taxcalc-field"><label>매매계약체결일</label><input type="date" data-field="saleContractDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">중과배제 연장 — 양도일이 2026.5.9 이후여도 이 날짜 기준 중과배제 연장특례(나목·다목) 판정용</span></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isLandTransactionPermitArea" id="ltpa-' + idx + '"><label for="ltpa-' + idx + '">[연장특례] 토지거래허가구역 내 주택(나목 — 미체크시 다목 적용)</label></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isPermitApplicationFiledByDeadline" id="permitApp-' + idx + '"><label for="permitApp-' + idx + '">[나목만] 2026.5.9까지 토지거래허가 신청함</label></div>' +
-          '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isPermitObtained" id="permitOk-' + idx + '"><label for="permitOk-' + idx + '">[나목만] 허가를 받음</label></div>') +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isLandTransactionPermitArea" id="ltpa-' + idx + '"><label for="ltpa-' + idx + '">[연장특례] 토지거래허가구역 내 주택(나목 — 미체크시 다목 적용)</label></div>') +
+        '</div>' +
+        // [2026.10.08, 재검토125] "[나목만]"이 반복되던 것을 소제목으로 묶으면서, 라벨이
+        // 약속한 대로 나목(isLandTransactionPermitArea) 체크시에만 보이도록 data-show-if도
+        // 새로 달았다 — 원래는 라벨만 "나목만"이라 써있고 실제로는 항상 떠 있었다.
+        (transferAssets[idx].transferContractId ? '' :
+        '<div class="taxcalc-asset-head" data-show-if="isLandTransactionPermitArea" style="display:none; margin-top:4px;"><b>나목만 — 허가 신청·취득 여부</b></div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field checkbox" data-show-if="isLandTransactionPermitArea" style="display:none;"><input type="checkbox" data-field="isPermitApplicationFiledByDeadline" id="permitApp-' + idx + '"><label for="permitApp-' + idx + '">2026.5.9까지 토지거래허가 신청함</label></div>' +
+          '<div class="taxcalc-field checkbox" data-show-if="isLandTransactionPermitArea" style="display:none;"><input type="checkbox" data-field="isPermitObtained" id="permitOk-' + idx + '"><label for="permitOk-' + idx + '">허가를 받음</label></div>' +
+        '</div>') +
+        // [2026.10.08, 재검토126] 세무사님 지적 — 그루핑 기준을 "[대괄호]가 붙은 라벨"로
+        // 좁힌 적이 없다. 이 블록(기타 비과세·감면 사유)이 한 칸짜리 grid 안에 서로 무관한
+        // 체크박스·select 20여 개를 쭉 늘어놓고, 그 중 조건부 세부입력이 2개 이상 딸린 것들
+        // (가업상속공제·농지교환·임대주택특례·연금계좌공제·수용감면)까지 아무 구분선 없이
+        // 섞여 있었다 — 대괄호 여부와 무관하게, "체크/선택 하나에 세부입력 2개 이상이 달려
+        // 있는가"를 기준으로 삼아 해당 클러스터마다 소제목을 붙였다. 세부입력이 1개뿐이거나
+        // 아예 없는 단순 체크박스는 묶을 게 없으므로 그대로 둔다.
+        '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isExtendedDeadlineRegion" id="extRegion-' + idx + '"><label for="extRegion-' + idx + '">[연장특례] 6개월 유예지역(시행령이 별도 열거한 특정지역, 직접 확인 필요)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isNonBusinessLand" id="nbl-' + idx + '"><label for="nbl-' + idx + '">비사업용토지</label></div>' +
           '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-non-business-land-modal" data-idx="' + idx + '" title="농지·임야·목장용지·기타토지(나대지 등)의 비사업용 여부를 법령 기준으로 판정합니다">🧮 비사업용토지 판정</button></div>' +
@@ -4751,9 +5432,14 @@ function renderPropertyCardHtml_(idx, opts){
           // (엔진(taxcalc-engine.html:637)은 이미 값의 존재 여부로만 판단해 이 체크박스 자체를
           // 읽지 않으므로, 화면 표시만 담당하는 순수 UI 게이트다).
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isBusinessSuccessionAsset" id="bizSucc-' + idx + '"><label for="bizSucc-' + idx + '">가업상속공제 대상으로 상속받은 자산(피상속인 취득가액을 안분 반영, §97의2④·§95④단서)</label></div>' +
+        '</div>' +
+        '<div class="taxcalc-asset-head" data-show-if="isBusinessSuccessionAsset" style="display:none; margin-top:4px;"><b>위 체크시만 — 피상속인 취득정보</b></div>' +
+        '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field" data-show-if="isBusinessSuccessionAsset" style="display:none;"><label>가업상속공제 적용률(0~1)</label><input type="number" step="0.01" min="0" max="1" data-field="businessSuccessionDeductionRatio" placeholder="예: 0.5"></div>' +
           '<div class="taxcalc-field" data-show-if="isBusinessSuccessionAsset" style="display:none;"><label>피상속인 취득가액</label><input type="number" data-field="decedentAcquisitionValue" placeholder="원"><span class="taxcalc-field-help">아래 취득일과 함께 입력하세요</span></div>' +
           '<div class="taxcalc-field" data-show-if="isBusinessSuccessionAsset" style="display:none;"><label>피상속인 취득일</label><input type="date" data-field="decedentAcquisitionDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">위 취득가액과 함께 입력하세요</span></div>' +
+        '</div>' +
+        '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isEightYearFarmland" id="farm-' + idx + '"><label for="farm-' + idx + '">8년 자경농지 감면(§69, 농지소재지 재촌+8년 자경 요건 모두 충족 전제)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isLivestockLandExempt" id="livestock-' + idx + '"><label for="livestock-' + idx + '">8년 이상 자경 축사용지 폐업 감면(§69의2)</label></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="isLivestockLandExempt" style="display:none;"><input type="checkbox" data-field="isLivestockRestartedWithin5Years" id="livestockRestart-' + idx + '"><label for="livestockRestart-' + idx + '">[§69의2만] 양도 후 5년 이내 축산업 재개(§69의2②, 감면세액 추징)</label></div>' +
@@ -4764,6 +5450,9 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isForestManagementExempt" id="forest-' + idx + '"><label for="forest-' + idx + '">자경산지 감면(§69의4, 10년 이상 직접경영 — 경영기간별 10~50%)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isBankruptcyDisposal" id="bankruptcy-' + idx + '"><label for="bankruptcy-' + idx + '">파산선고에 의한 처분(§89①1호, 요건 없이 전액 비과세)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isFarmlandExchange" id="farmex-' + idx + '"><label for="farmex-' + idx + '">농지의 교환·분합으로 발생한 소득(§89①2호·시행령§153, 비과세)</label></div>' +
+        '</div>' +
+        '<div class="taxcalc-asset-head" data-show-if="isFarmlandExchange" style="display:none; margin-top:4px;"><b>위 체크시만 — 농지 교환·분합 세부사항</b></div>' +
+        '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field" data-show-if="isFarmlandExchange" style="display:none;"><label>교환 사유</label><select data-field="farmlandExchangeCategory">' +
             '<option value="">선택</option>' +
             '<option value="cat1">국가·지자체 시행사업으로 인한 교환</option>' +
@@ -4775,6 +5464,8 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field" data-show-if="isFarmlandExchange" style="display:none;"><label>교환해준 농지가액</label><input type="number" data-field="farmlandExchangeValueB" placeholder="원"><span class="taxcalc-field-help">두 가액 차이가 큰 쪽의 1/4 이내여야 비과세(시행령§153①)</span></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="isFarmlandExchange" style="display:none;"><input type="checkbox" data-field="farmlandExchangeCultivation3YearsMet" id="farmexCult-' + idx + '"><label for="farmexCult-' + idx + '">[경작상 필요만] 새 농지를 농지소재지에서 3년 이상 거주하며 경작</label></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="isFarmlandExchange" style="display:none;"><input type="checkbox" data-field="farmlandExchangeExpropriationException" id="farmexExc-' + idx + '"><label for="farmexExc-' + idx + '">[경작상 필요만, 3년 미충족시] 수용 등 부득이한 사유(시행령§153⑤ 예외)</label></div>' +
+        '</div>' +
+        '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="hasRelocationRight" id="relocright-' + idx + '"><label for="relocright-' + idx + '">개발제한구역법상 이축권을 토지와 함께 양도(§94①4호마)</label></div>' +
           '<div class="taxcalc-field" data-show-if="hasRelocationRight" style="display:none;"><label>이축권 감정평가액(별도 구분신고시)</label><input type="number" data-field="relocationRightAppraisalValue" placeholder="원"><span class="taxcalc-field-help">감정평가법인 감정가액으로 구분신고하면 그 금액만큼 양도가액에서 제외(시행령§158의2) — 미입력시 토지가액에 포함된 것으로 그대로 계산</span></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isNewBuildingWithin5Years" id="newbldg-' + idx + '"><label for="newbldg-' + idx + '">신축(증축, 85㎡초과분) 후 5년 이내 양도 + 감정가액 또는 환산취득가액을 취득가액으로 사용</label></div>' +
@@ -4784,15 +5475,25 @@ function renderPropertyCardHtml_(idx, opts){
             '<option value="rental_general">장기일반민간임대주택(조특법§97의3, 10년↑70%)</option>' +
             '<option value="rental_long">장기임대주택(조특법§97의4, 일반공제+임대기간별 추가공제)</option>' +
           '</select></div>' +
-          '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>임대기간</label><input type="number" data-field="rentalYears" placeholder="년" maxlength="2"><span class="taxcalc-field-help">위 특례 선택 시</span></div>' +
+        '</div>' +
+        '<div class="taxcalc-asset-head" data-show-if="rentalSpecialType" style="display:none; margin-top:4px;"><b>위 특례 선택시만 — 안분용 기준시가</b></div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>임대기간</label><input type="number" data-field="rentalYears" placeholder="년" maxlength="2"></div>' +
           '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>취득 당시 기준시가</label><input type="number" data-field="acquisitionStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의3 선택시 필수 — 임대기간중 양도차익 안분용, 3종 모두 없으면 계산 불가</span></div>' +
           '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>등록일 당시 기준시가</label><input type="number" data-field="registrationStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의3 선택시 필수</span></div>' +
           '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>양도 당시 기준시가</label><input type="number" data-field="transferStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의3 선택시 필수</span></div>' +
+        '</div>' +
+        '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field"><label>연금계좌 납입액(조특법§99의14)</label><input type="number" data-field="pensionAccountContribution" placeholder="원"><span class="taxcalc-field-help">세액공제, 해당시만 입력 — 10년이상보유+2027.12.31까지 양도만 해당, 입력하면 아래 요건 확인란이 뜹니다</span></div>' +
+        '</div>' +
+        '<div class="taxcalc-asset-head" data-show-if="pensionAccountContribution" style="display:none; margin-top:4px;"><b>연금계좌공제 — 위 납입액 입력시만 요건 확인</b></div>' +
+        '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field" data-show-if="pensionAccountContribution" style="display:none;"><label>연금계좌 납입일</label><input type="date" data-field="pensionContributionDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">양도일로부터 6개월 이내</span></div>' +
-          '<div class="taxcalc-field checkbox" data-show-if="pensionAccountContribution" style="display:none;"><input type="checkbox" data-field="isBasicPensionRecipient" id="pensionRecipient-' + idx + '"><label for="pensionRecipient-' + idx + '">[연금계좌공제] 양도 당시 기초연금 수급자</label></div>' +
-          '<div class="taxcalc-field checkbox" data-show-if="pensionAccountContribution" style="display:none;"><input type="checkbox" data-field="isOneHouseOrNoHouseHousehold" id="pensionOneHouse-' + idx + '"><label for="pensionOneHouse-' + idx + '">[연금계좌공제] 양도 당시 1주택 또는 무주택 세대구성원</label></div>' +
-          '<div class="taxcalc-field checkbox" data-show-if="pensionAccountContribution" style="display:none;"><input type="checkbox" data-field="isPensionWithdrawnWithin5Years" id="pensionWithdrawn-' + idx + '"><label for="pensionWithdrawn-' + idx + '">[연금계좌공제] 납입일부터 5년 이내 연금외수령(§99의14②, 공제세액 추징)</label></div>' +
+          '<div class="taxcalc-field checkbox" data-show-if="pensionAccountContribution" style="display:none;"><input type="checkbox" data-field="isBasicPensionRecipient" id="pensionRecipient-' + idx + '"><label for="pensionRecipient-' + idx + '">양도 당시 기초연금 수급자</label></div>' +
+          '<div class="taxcalc-field checkbox" data-show-if="pensionAccountContribution" style="display:none;"><input type="checkbox" data-field="isOneHouseOrNoHouseHousehold" id="pensionOneHouse-' + idx + '"><label for="pensionOneHouse-' + idx + '">양도 당시 1주택 또는 무주택 세대구성원</label></div>' +
+          '<div class="taxcalc-field checkbox" data-show-if="pensionAccountContribution" style="display:none;"><input type="checkbox" data-field="isPensionWithdrawnWithin5Years" id="pensionWithdrawn-' + idx + '"><label for="pensionWithdrawn-' + idx + '">납입일부터 5년 이내 연금외수령(§99의14②, 공제세액 추징)</label></div>' +
+        '</div>' +
+        '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field"><label>공익사업용토지 수용감면</label><select data-field="compensationType">' +
             '<option value="">해당없음</option>' +
             '<option value="cash">현금보상(조특법§77①, 15%)</option>' +
@@ -4803,6 +5504,9 @@ function renderPropertyCardHtml_(idx, opts){
             '<option value="restricted_zone_40">개발제한구역 매수 - 지정일 이전 취득(조특법§77의3, 40%)</option>' +
             '<option value="restricted_zone_25">개발제한구역 매수 - 20년 이전 취득(조특법§77의3, 25%)</option>' +
           '</select></div>' +
+        '</div>' +
+        '<div class="taxcalc-asset-head" data-show-if="compensationType" style="display:none; margin-top:4px;"><b>위 선택시만 — 수용감면 세부사항</b></div>' +
+        '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field" data-show-if="compensationType" style="display:none;"><label>사업인정고시일</label><input type="date" data-field="publicNoticeDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">현금·채권·대토보상 선택시, 2년이전취득 요건(§77①·§77의2①) 판정용 — 모르면 비워두면 양도일 기준으로 판정</span></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="compensationType" style="display:none;"><input type="checkbox" data-field="isBondPledgeBreached" id="bondBreach-' + idx + '"><label for="bondBreach-' + idx + '">채권 만기보유 특약 위반(§77④, 3년·5년만기특약 선택시만 해당 — 즉시 차액 추징)</label></div>' +
           '<div class="taxcalc-field" data-show-if="compensationType" style="display:none;"><label>다운계약서 등 계약서·실거래 차액</label><input type="number" data-field="downContractPriceDifference" placeholder="원"><span class="taxcalc-field-help">소득세법§91② 비과세·감면 배제 추징용, 해당 시만</span></div>' +
@@ -4897,10 +5601,16 @@ function renderPropertyCardHtml_(idx, opts){
             '<option value="purchase_5yr_novacancy">매입임대주택(1995.1.1이후취득·무입주) 5년이상(전액 면제)</option>' +
             '<option value="rental_10yr">10년이상 임대(전액 면제)</option>' +
           '</select></div>' +
-          '<div class="taxcalc-field" data-show-if="longTermRentalHouseProvision" style="display:none;"><label>[§97의5만] 등록일 현재 평가액</label><input type="number" data-field="lrRegistrationValue" placeholder="원"><span class="taxcalc-field-help">근사치용 — 아래 기준시가 3종이 없을 때만 사용</span></div>' +
-          '<div class="taxcalc-field" data-show-if="longTermRentalHouseProvision" style="display:none;"><label>[§97의5만] 취득 당시 기준시가</label><input type="number" data-field="lrAcquisitionStandardPrice" placeholder="원"></div>' +
-          '<div class="taxcalc-field" data-show-if="longTermRentalHouseProvision" style="display:none;"><label>[§97의5만] 등록일 당시 기준시가</label><input type="number" data-field="lrRegistrationStandardPrice" placeholder="원"></div>' +
-          '<div class="taxcalc-field" data-show-if="longTermRentalHouseProvision" style="display:none;"><label>[§97의5만] 양도 당시 기준시가</label><input type="number" data-field="lrTransferStandardPrice" placeholder="원"></div>' +
+        '</div>' +
+        // [2026.10.08, 재검토125] "[§97의5만]"이 4칸 모두 반복되어 라벨만 길어지고 칸 사이
+        // 간격이 벌어지던 것을 소제목 하나로 묶었다(세무사님 지적) — 조건부 표시(data-show-if)
+        // 자체는 그대로 두고 표시·라벨만 정리.
+        '<div class="taxcalc-asset-head" style="margin-top:8px;"><b>§97의5 해당시만 — 과세표준 계산용 기준시가</b></div>' +
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field" data-show-if="longTermRentalHouseProvision" style="display:none;"><label>등록일 현재 평가액</label><input type="number" data-field="lrRegistrationValue" placeholder="원"><span class="taxcalc-field-help">근사치용 — 아래 기준시가 3종이 없을 때만 사용</span></div>' +
+          '<div class="taxcalc-field" data-show-if="longTermRentalHouseProvision" style="display:none;"><label>취득 당시 기준시가</label><input type="number" data-field="lrAcquisitionStandardPrice" placeholder="원"></div>' +
+          '<div class="taxcalc-field" data-show-if="longTermRentalHouseProvision" style="display:none;"><label>등록일 당시 기준시가</label><input type="number" data-field="lrRegistrationStandardPrice" placeholder="원"></div>' +
+          '<div class="taxcalc-field" data-show-if="longTermRentalHouseProvision" style="display:none;"><label>양도 당시 기준시가</label><input type="number" data-field="lrTransferStandardPrice" placeholder="원"></div>' +
         '</div>' +
         renderSellerAllocationSectionHtml_(idx) +
       '</div>';
@@ -4961,19 +5671,33 @@ function renderSellerRegistry(){
         '<div class="taxcalc-field"><label>성명</label><input type="text" data-slfield="name"' + idOf('trTransferorName') + ' data-nameonly="1" value="' + (s.name || '').replace(/"/g, '&quot;') + '"></div>' +
         '<div class="taxcalc-field"><label>주민등록번호</label><input type="text" data-slfield="regNo"' + idOf('trTransferorRegNo') + ' data-regno="1" placeholder="000000-0000000" value="' + (s.regNo || '').replace(/"/g, '&quot;') + '"></div>' +
         '<div class="taxcalc-field" style="flex:0 1 340px;"><label>주소(납세지)</label><div class="taxcalc-field-inline"><input type="text" data-slfield="address" id="trTransferorAddress' + suf + '" value="' + (s.address || '').replace(/"/g, '&quot;') + '" placeholder="예: OO시 OO구 OO동 123-4 (검색 또는 직접입력)"><button type="button" class="taxcalc-ai-btn" data-action="open-address-search-seller" data-idx="' + idx + '" title="주소 검색">🔍</button></div></div>' +
-        '<div class="taxcalc-field"><label>동</label><select data-slfield="addressDong"' + idOf('trTransferorDong') + '><option value="">직접입력/해당없음</option>' +
-          (Array.isArray(s.addressDongList) ? s.addressDongList : []).map(function(dd){ return '<option value="' + dd + '"' + (s.addressDong === dd ? ' selected' : '') + '>' + dd + '</option>'; }).join('') +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>호</label><input type="text" data-slfield="addressHo"' + idOf('trTransferorHo') + ' value="' + (s.addressHo || '').replace(/"/g, '&quot;') + '" placeholder="예: 1502호"></div>' +
+        // [2026.10.07 수정, 재검토122] 세무사님 지적 — "직접입력"이라고 써놓고 실제론 select라
+        // 검색 전(동 목록이 없을 때)엔 아무것도 입력할 수 없었다(값이 "" 하나뿐인 잠긴 select).
+        // <input list>(datalist)로 바꿔 검색 후엔 동 목록에서 고르고, 검색 전이나 목록에 없는
+        // 동이면 호처럼 그냥 직접 타이핑할 수 있게 한다 — data-slfield 바인딩은 그대로다.
+        '<div class="taxcalc-field"><label>동</label><input type="text" data-slfield="addressDong"' + idOf('trTransferorDong') + ' list="trDongList' + suf + '" value="' + (s.addressDong || '').replace(/"/g, '&quot;') + '" placeholder="예: 101동"><datalist id="trDongList' + suf + '">' +
+          (Array.isArray(s.addressDongList) ? s.addressDongList : []).map(function(dd){ return '<option value="' + dd.replace(/"/g, '&quot;') + '">'; }).join('') +
+        '</datalist></div>' +
+        '<div class="taxcalc-field"><label>호</label><input type="text" data-slfield="addressHo"' + idOf('trTransferorHo') + ' list="trHoList' + suf + '" value="' + (s.addressHo || '').replace(/"/g, '&quot;') + '" placeholder="예: 1502호"><datalist id="trHoList' + suf + '">' +
+          (Array.isArray(s.addressHoList) ? s.addressHoList : []).map(function(hh){ return '<option value="' + hh.replace(/"/g, '&quot;') + '">'; }).join('') +
+        '</datalist></div>' +
         '<div class="taxcalc-field"><label>전화번호</label><input type="text" data-slfield="phone"' + idOf('trTransferorPhone') + ' value="' + (s.phone || '').replace(/"/g, '&quot;') + '" placeholder="숫자만, 예: 0212341234"></div>' +
         '<div class="taxcalc-field"><label style="visibility:hidden;">관할세무서</label><input type="hidden" data-slfield="taxOffice" id="trTransferorTaxOffice' + suf + '" value="' + (s.taxOffice || '').replace(/"/g, '&quot;') + '"><button type="button" class="taxcalc-ai-btn" data-action="open-tax-office-guide" data-address-input="trTransferorAddress' + suf + '" data-office-input="trTransferorTaxOffice' + suf + '">관할세무서</button></div>' +
         '<div class="taxcalc-field"><label>다주택중과 판정용 주택수</label><select data-slfield="multiHouseCount"' + idOf('trMultiHouseCount') + '><option value="0"' + (s.multiHouseCount === '0' || !s.multiHouseCount ? ' selected' : '') + '>해당없음/1주택</option><option value="2"' + (s.multiHouseCount === '2' ? ' selected' : '') + '>2주택</option><option value="3"' + (s.multiHouseCount === '3' ? ' selected' : '') + '>3주택 이상</option></select></div>' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" data-slfield="isMultiHouseRentalExemption"' + idOf('trMultiHouseRentalExemption') + (s.isMultiHouseRentalExemption ? ' checked' : '') + '><label>[2·3주택일 때만] 다른 보유주택이 등록 장기임대주택이라 이번 양도에 일반세율 적용(시행령§167의3①2·3·8호의2, 중과배제) — 별지83호의6 신청서 인쇄</label></div>' +
-        '<div class="taxcalc-field"><label>[위 체크시] 장기임대주택 소재지</label><input type="text" data-slfield="mhRentalLocation"' + idOf('trMhRentalLocation') + ' value="' + (s.mhRentalLocation || '').replace(/"/g, '&quot;') + '"></div>' +
-        '<div class="taxcalc-field"><label>[위 체크시] 임대등록일</label><input type="date" data-slfield="mhRentalRegistrationDate"' + idOf('trMhRentalRegistrationDate') + ' value="' + (s.mhRentalRegistrationDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>[위 체크시] 임대개시일</label><input type="date" data-slfield="mhRentalStartDate"' + idOf('trMhRentalStartDate') + ' value="' + (s.mhRentalStartDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
+      '</div>' +
+      // [2026.10.08, 재검토125] 세무사님 지적 — "[위 체크시]"가 소재지·임대등록일·임대개시일
+      // 3칸 모두 반복돼 라벨만 길어지고 칸 사이가 벌어졌다. 소제목 하나로 묶고 각 라벨은
+      // 짧게 줄인다(위 체크박스에 대한 조건이라는 건 소제목이 말해주므로 반복 불필요).
+      '<div class="taxcalc-asset-head" style="margin-top:8px;"><b>장기임대주택 등록정보(위 체크시)</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>소재지</label><input type="text" data-slfield="mhRentalLocation"' + idOf('trMhRentalLocation') + ' value="' + (s.mhRentalLocation || '').replace(/"/g, '&quot;') + '" placeholder="예: OO시 OO구 OO동"></div>' +
+        '<div class="taxcalc-field"><label>임대등록일</label><input type="date" data-slfield="mhRentalRegistrationDate"' + idOf('trMhRentalRegistrationDate') + ' value="' + (s.mhRentalRegistrationDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
+        '<div class="taxcalc-field"><label>임대개시일</label><input type="date" data-slfield="mhRentalStartDate"' + idOf('trMhRentalStartDate') + ' value="' + (s.mhRentalStartDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
+      '</div>' +
+      '<div class="taxcalc-grid" style="margin-top:8px;">' +
         '<div class="taxcalc-field"><label>거주구분</label><select data-slfield="isTransferorResident"' + idOf('trResident') + '><option value="resident"' + (!isNonResident ? ' selected' : '') + '>거주자</option><option value="nonresident"' + (isNonResident ? ' selected' : '') + '>비거주자</option></select><span class="taxcalc-field-help">1세대1주택 비과세·고가주택 12억 초과분 과세(§89①3호·§95③)는 거주자만 적용</span></div>' +
-        (isNonResident ? '<div class="taxcalc-field checkbox"><input type="checkbox" data-slfield="isNonResidentTwoYearException"' + idOf('trNonResidentTwoYearException') + (s.isNonResidentTwoYearException ? ' checked' : '') + '><label>출국일 당시 1주택 보유 + 출국 후 2년 이내 양도(시행령§155① 특례)</label></div>' : '') +
+        (isNonResident ? '<div class="taxcalc-field checkbox"><input type="checkbox" data-slfield="isNonResidentTwoYearException"' + idOf('trNonResidentTwoYearException') + (s.isNonResidentTwoYearException ? ' checked' : '') + '><label>출국일 당시 1주택 보유 + 출국 후 2년 이내 양도(시행령§154①2호나·다목)</label></div>' : '') +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:10px;"><b>신고 상태 · 가산세(이 양도인 몫)</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -4999,6 +5723,14 @@ function renderSellerRegistry(){
       transferSellers[idx][key] = el.type === 'checkbox' ? el.checked : el.value;
       if (key === 'paidDate') recomputeTransferUnpaidDays(idx);
       if (key === 'name') { renderSellerRegistry(); return; }
+    });
+  });
+  // [2026.10.08, 재검토129] 동을 고르면(타이핑마다가 아니라 change — 포커스 벗어날 때 1번만) 그
+  // 동의 호 목록을 상세주소 API로 자동 채운다.
+  container.querySelectorAll('[data-slfield="addressDong"]').forEach(function(el){
+    el.addEventListener('change', function(){
+      const idx = numVal(el.closest('[data-seller-idx]').dataset.sellerIdx);
+      tcFetchHoListForDongInput_(transferSellers[idx].addressBuildingKey, el.value, el, function(hoList){ transferSellers[idx].addressHoList = hoList; });
     });
   });
   enhanceNumberInputs(container);
@@ -5044,7 +5776,6 @@ function renderTransferPane(){
     // 버튼·상태만 남긴다.
     '<div class="taxcalc-asset-head"><span style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
         '<b>양도인</b>' +
-        '<button type="button" class="taxcalc-ai-btn" data-action="open-evidence-transfer">📄 증빙에서 자동 입력(사건폴더 전체)</button>' +
       '</span></div>' +
       '<div class="taxcalc-ai-status" id="aiStatus-transfer-bulk">' + renderAiStatusHtml(transferBulkAiState) + '</div>' +
     // [2026.09.23 신규] 공동양도인(부부 공동명의 등) 지원 — 다주택수·거주구분·신고상태·가산세·
@@ -5348,7 +6079,7 @@ function renderTransferPane(){
           '<option value="derivative">파생상품등</option><option value="other_asset">기타자산(특정주식·부동산과다보유법인)</option>' +
           '<option value="trust_beneficiary">신탁 수익권(§94①6호)</option>' +
         '</select></div>' +
-        '<div class="taxcalc-field"><label>종목명(발행법인명)</label><input type="text" id="stCompanyName" placeholder="주식양도소득금액계산명세서용"></div>' +
+        '<div class="taxcalc-field"><label>종목명(발행법인명)</label><input type="text" id="stCompanyName" placeholder="예: OO전자"></div>' +
         '<div class="taxcalc-field"><label>발행법인 사업자등록번호</label><input type="text" id="stBizRegNo" placeholder="없으면 비움"></div>' +
         '<div class="taxcalc-field"><label>양도가액</label><input type="number" id="stTransferPrice" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>양도일</label><input type="date" id="stTransferDate" min="1900-01-01" max="2099-12-31"></div>' +
@@ -5439,7 +6170,11 @@ function renderTransferPane(){
       const el = card.querySelector('[data-field="' + key + '"]');
       if (!el) return;
       if (el.type === 'checkbox') el.checked = !!vals[key];
-      else el.value = vals[key];
+      else {
+        el.value = vals[key];
+        if (el.tagName === 'SELECT'){ if (typeof tcResizeAutoWidthSelect_ === 'function') tcResizeAutoWidthSelect_(el); }
+        else if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(el);
+      }
     });
     // [2026.09 버그수정] 세무사님 재점검("손과 눈으로 수동으로 시스템을 사용한다고 가정")
     // 중 실제로 재현됨 — 체크박스는 브라우저가 innerHTML을 다시 그려도 같은 id(예: "rr-0")의
@@ -5485,6 +6220,7 @@ function renderTransferPane(){
           return;
         }
         transferAssets[idx][key] = el.type === 'checkbox' ? el.checked : el.value;
+        if (key === 'assetDong') tcFetchHoListForDongInput_(transferAssets[idx].addressBuildingKey, el.value, el, function(hoList){ transferAssets[idx].assetHoList = hoList; });
         // [2026.09 버그수정] 세무사님 재점검 중 발견 — isBusinessSuccessionAsset은 순수 UI
         // 게이트일 뿐(엔진은 businessSuccessionDeductionRatio>0·decedentAcquisitionValue 존재
         // 여부로만 판단, 이 체크박스 자체는 안 읽음)이라, 체크했다가 값을 입력하고 다시
@@ -6029,6 +6765,11 @@ function renderTransferResult(results){
 // taxType:'transfer'로 호출한다. 별도 공식 신청서가 없어(law.go.kr 확인) 인쇄서식은 없다.
 let lastTrSplitPaymentInput_ = null;
 let lastTrSplitPaymentResult_ = null;
+// [2026.10.07 수정, 재검토123] 세무사님 지적 — "한도만 확인하고 한도 내 임의 금액을 분납하고
+// 싶으면 어떻게 입력하나?" 전엔 한도(분납가능_최대금액)만 보여주고 그 값을 그대로 신청금액으로
+// 써버렸다(e-file에도 그대로 꽂음) — 실제로는 한도 이내 어떤 금액이든 선택할 수 있어야 한다.
+// "실제 분납신청금액" 입력칸을 추가해 기본값은 한도(최대)로 채우되 자유롭게 줄일 수 있게 하고,
+// 그 선택값(분납신청금액)을 결과 객체에 저장해 저장·e-file 전부 이 값을 쓰게 한다.
 function renderTrSplitPaymentResult_(r, input){
   lastTrSplitPaymentInput_ = input || null;
   lastTrSplitPaymentResult_ = (r && !r.error) ? r : null;
@@ -6039,13 +6780,27 @@ function renderTrSplitPaymentResult_(r, input){
   html += taxCalcResultRow('분납 가능 여부', r.분납가능여부 ? '가능' : '불가능');
   if (r.분납가능여부){
     html += taxCalcResultRow('신고기한까지 납부할 금액', won(r.신고기한까지_납부할금액));
-    html += taxCalcResultRow('분납 가능 최대금액', won(r.분납가능_최대금액), { total: true });
+    html += taxCalcResultRow('분납 가능 최대금액(한도)', won(r.분납가능_최대금액));
+    html += '<div class="taxcalc-field"><label>실제 분납신청금액</label><input type="number" id="trSpChosenAmount" value="' + (r.분납신청금액 != null ? r.분납신청금액 : r.분납가능_최대금액) + '" placeholder="원"><span class="taxcalc-field-help">한도까지 전부 신청할 필요는 없습니다 — 한도(' + won(r.분납가능_최대금액) + ') 이내에서 원하는 금액을 직접 입력하세요</span></div>';
     html += taxCalcResultRow('분납기한', r.분납기한);
   }
   html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   if (r.분납가능여부) html += tcToolSaveButtonHtml_('trsp');
   html += '</div>';
   box.innerHTML = html;
+  if (r.분납가능여부){
+    r.분납신청금액 = (r.분납신청금액 != null) ? r.분납신청금액 : r.분납가능_최대금액;
+    const chosenEl = document.getElementById('trSpChosenAmount');
+    if (chosenEl){
+      chosenEl.addEventListener('input', function(){
+        let v = numVal(chosenEl.value) || 0;
+        if (v > r.분납가능_최대금액) v = r.분납가능_최대금액;
+        if (v < 0) v = 0;
+        r.분납신청금액 = v;
+      });
+      enhanceNumberInputs(box);
+    }
+  }
 }
 
 function renderPublicRentalHousingLandResult(r){
@@ -6406,10 +7161,13 @@ function renderGiftDonorRegistry(){
         '<div class="taxcalc-field"><label>성명</label><input type="text" data-dfield="name"' + idOf('giftDonorName') + ' data-nameonly="1" value="' + (d.name || '').replace(/"/g, '&quot;') + '"></div>' +
         '<div class="taxcalc-field"><label>주민등록번호</label><input type="text" data-dfield="regNo"' + idOf('giftDonorRegNo') + ' data-regno="1" placeholder="000000-0000000" value="' + (d.regNo || '').replace(/"/g, '&quot;') + '"></div>' +
         '<div class="taxcalc-field" style="flex:0 1 340px;"><label>주소</label><div class="taxcalc-field-inline"><input type="text" data-dfield="address"' + idOf('giftDonorAddress') + ' value="' + (d.address || '').replace(/"/g, '&quot;') + '" placeholder="예: OO시 OO구 OO동 123-4 (검색 또는 직접입력)"><button type="button" class="taxcalc-ai-btn" data-action="open-address-search-donor" data-idx="' + idx + '" title="주소 검색">🔍</button></div></div>' +
-        '<div class="taxcalc-field"><label>동</label><select data-dfield="addressDong"><option value="">직접입력/해당없음</option>' +
-          (Array.isArray(d.addressDongList) ? d.addressDongList : []).map(function(dd){ return '<option value="' + dd + '"' + (d.addressDong === dd ? ' selected' : '') + '>' + dd + '</option>'; }).join('') +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>호</label><input type="text" data-dfield="addressHo" value="' + (d.addressHo || '').replace(/"/g, '&quot;') + '" placeholder="예: 1502호"></div>' +
+        // [2026.10.07 수정, 재검토122] 동 select→datalist 전환(seller와 동일 이유).
+        '<div class="taxcalc-field"><label>동</label><input type="text" data-dfield="addressDong" list="giftDonorDongList' + idx + '" value="' + (d.addressDong || '').replace(/"/g, '&quot;') + '" placeholder="예: 101동"><datalist id="giftDonorDongList' + idx + '">' +
+          (Array.isArray(d.addressDongList) ? d.addressDongList : []).map(function(dd){ return '<option value="' + dd.replace(/"/g, '&quot;') + '">'; }).join('') +
+        '</datalist></div>' +
+        '<div class="taxcalc-field"><label>호</label><input type="text" data-dfield="addressHo" list="giftDonorHoList' + idx + '" value="' + (d.addressHo || '').replace(/"/g, '&quot;') + '" placeholder="예: 1502호"><datalist id="giftDonorHoList' + idx + '">' +
+          (Array.isArray(d.addressHoList) ? d.addressHoList : []).map(function(hh){ return '<option value="' + hh.replace(/"/g, '&quot;') + '">'; }).join('') +
+        '</datalist></div>' +
         '<div class="taxcalc-field"><label>관계(수증자 기준)</label><select data-dfield="relation"' + idOf('giftRelation') + '>' +
           '<option value="배우자"' + (d.relation === '배우자' ? ' selected' : '') + '>배우자</option>' +
           '<option value="직계존속" data-genskip="0"' + ((d.relation === '직계존속' || !d.relation) && d.genSkip !== '1' ? ' selected' : '') + '>직계존속(부모 등, 1촌)</option>' +
@@ -6490,6 +7248,12 @@ function renderGiftDonorRegistry(){
       if (key === 'name' || key === 'relation' || key === 'sameAsGroup') { renderGiftDonorRegistry(); return; } // 제목·자산배분 드롭다운 라벨·동일인그룹 안내 갱신
     });
   });
+  container.querySelectorAll('[data-dfield="addressDong"]').forEach(function(el){
+    el.addEventListener('change', function(){
+      const idx = numVal(el.closest('[data-donor-idx]').dataset.donorIdx);
+      tcFetchHoListForDongInput_(giftDonors[idx].addressBuildingKey, el.value, el, function(hoList){ giftDonors[idx].addressHoList = hoList; });
+    });
+  });
   enhanceNumberInputs(container);
   enhanceDateInputs(container);
   enhanceRegNoInputs(container);
@@ -6518,15 +7282,18 @@ function renderGiftDoneeRegistry(){
         '<div class="taxcalc-field"><label>성명</label><input type="text" data-dnfield="name"' + idOf('giftDoneeName') + ' data-nameonly="1" value="' + (dn.name || '').replace(/"/g, '&quot;') + '"></div>' +
         '<div class="taxcalc-field"><label>주민등록번호</label><input type="text" data-dnfield="regNo" id="giftDoneeRegNo' + suf + '" placeholder="000000-0000000" data-regno="1" value="' + (dn.regNo || '').replace(/"/g, '&quot;') + '"></div>' +
         '<div class="taxcalc-field" style="flex:0 1 340px;"><label>주소(납세지)</label><div class="taxcalc-field-inline"><input type="text" data-dnfield="address" id="giftDoneeAddress' + suf + '" value="' + (dn.address || '').replace(/"/g, '&quot;') + '" placeholder="예: OO시 OO구 OO동 123-4 (검색 또는 직접입력)"><button type="button" class="taxcalc-ai-btn" data-action="open-address-search-donee" data-idx="' + idx + '" title="주소 검색">🔍</button></div></div>' +
-        '<div class="taxcalc-field"><label>동</label><select data-dnfield="addressDong"' + idOf('giftDoneeDong') + '><option value="">직접입력/해당없음</option>' +
-          (Array.isArray(dn.addressDongList) ? dn.addressDongList : []).map(function(dd){ return '<option value="' + dd + '"' + (dn.addressDong === dd ? ' selected' : '') + '>' + dd + '</option>'; }).join('') +
-        '</select></div>' +
-        '<div class="taxcalc-field"><label>호</label><input type="text" data-dnfield="addressHo"' + idOf('giftDoneeHo') + ' value="' + (dn.addressHo || '').replace(/"/g, '&quot;') + '" placeholder="예: 1502호"></div>' +
+        // [2026.10.07 수정, 재검토122] 동 select→datalist 전환(seller와 동일 이유).
+        '<div class="taxcalc-field"><label>동</label><input type="text" data-dnfield="addressDong"' + idOf('giftDoneeDong') + ' list="giftDoneeDongList' + suf + '" value="' + (dn.addressDong || '').replace(/"/g, '&quot;') + '" placeholder="예: 101동"><datalist id="giftDoneeDongList' + suf + '">' +
+          (Array.isArray(dn.addressDongList) ? dn.addressDongList : []).map(function(dd){ return '<option value="' + dd.replace(/"/g, '&quot;') + '">'; }).join('') +
+        '</datalist></div>' +
+        '<div class="taxcalc-field"><label>호</label><input type="text" data-dnfield="addressHo"' + idOf('giftDoneeHo') + ' list="giftDoneeHoList' + suf + '" value="' + (dn.addressHo || '').replace(/"/g, '&quot;') + '" placeholder="예: 1502호"><datalist id="giftDoneeHoList' + suf + '">' +
+          (Array.isArray(dn.addressHoList) ? dn.addressHoList : []).map(function(hh){ return '<option value="' + hh.replace(/"/g, '&quot;') + '">'; }).join('') +
+        '</datalist></div>' +
         '<div class="taxcalc-field"><label style="visibility:hidden;">관할세무서</label><input type="hidden" data-dnfield="taxOffice" id="giftDoneeTaxOffice' + suf + '" value="' + (dn.taxOffice || '').replace(/"/g, '&quot;') + '"><button type="button" class="taxcalc-ai-btn" data-action="open-tax-office-guide" data-address-input="giftDoneeAddress' + suf + '" data-office-input="giftDoneeTaxOffice' + suf + '">관할세무서</button></div>' +
         // [2026.09.25 신규, 재검토77] 전자신고파일(기본사항 레코드)의 "수증자_전화번호"는
         // Not Null 필수항목인데 여태 입력칸이 없었다.
         '<div class="taxcalc-field"><label>전화번호</label><input type="text" data-dnfield="phone" value="' + (dn.phone || '').replace(/"/g, '&quot;') + '" placeholder="02 1234 5678"><span class="taxcalc-field-help">전자신고파일용</span></div>' +
-        '<div class="taxcalc-field"><label>전자우편주소</label><input type="text" data-dnfield="email" value="' + (dn.email || '').replace(/"/g, '&quot;') + '" placeholder="인쇄서식용, 없으면 비움"></div>' +
+        '<div class="taxcalc-field"><label>전자우편주소</label><input type="text" data-dnfield="email" value="' + (dn.email || '').replace(/"/g, '&quot;') + '" placeholder="예: abc@example.com"></div>' +
         '<input type="hidden" data-dnfield="admCd" value="' + (dn.admCd || '').replace(/"/g, '&quot;') + '"><input type="hidden" data-dnfield="mtYn" value="' + (dn.mtYn || '0') + '">' +
         '<input type="hidden" data-dnfield="lnbrMnnm" value="' + (dn.lnbrMnnm || '') + '"><input type="hidden" data-dnfield="lnbrSlno" value="' + (dn.lnbrSlno || '') + '">' +
         '<div class="taxcalc-field"><label>거주구분</label><select data-dnfield="resident"' + idOf('giftDoneeResident') + '><option value="resident"' + (dn.resident !== 'nonresident' ? ' selected' : '') + '>거주자</option><option value="nonresident"' + (dn.resident === 'nonresident' ? ' selected' : '') + '>비거주자</option></select><span class="taxcalc-field-help">국내에 주소를 두거나 183일 이상 거소를 둔 사람=거주자. 비거주자면 증여재산공제(§53)·혼인출산증여재산공제(§53의2)를 받을 수 없습니다</span></div>' +
@@ -6549,6 +7316,12 @@ function renderGiftDoneeRegistry(){
       giftDonees[idx][key] = el.value;
       if (key === 'regNo') updateGiftMinorHint(idx);
       if (key === 'name') { renderGiftDoneeRegistry(); return; } // 제목·자산배분 드롭다운 라벨 갱신
+    });
+  });
+  container.querySelectorAll('[data-dnfield="addressDong"]').forEach(function(el){
+    el.addEventListener('change', function(){
+      const idx = numVal(el.closest('[data-donee-idx]').dataset.doneeIdx);
+      tcFetchHoListForDongInput_(giftDonees[idx].addressBuildingKey, el.value, el, function(hoList){ giftDonees[idx].addressHoList = hoList; });
     });
   });
   enhanceNumberInputs(container);
@@ -7393,6 +8166,9 @@ function renderInstallmentResult(r, boxId){
 // "분납할 세액" 란에 금액만 기재하는 방식). 그래서 인쇄서식은 없고 계산결과만 보여준다.
 let lastSplitPaymentInput_ = null;
 let lastSplitPaymentResult_ = null;
+// [2026.10.07 수정, 재검토123] trsp와 동일 — 한도(분납가능_최대금액)만 보여주고 그 값을
+// 그대로 신청금액으로 쓰던 것을, "실제 분납신청금액"을 따로 입력받아 한도 이내 자유롭게
+// 정할 수 있게 한다.
 function renderSplitPaymentResult_(r, input){
   lastSplitPaymentInput_ = input || null;
   lastSplitPaymentResult_ = (r && !r.error) ? r : null;
@@ -7403,13 +8179,27 @@ function renderSplitPaymentResult_(r, input){
   html += taxCalcResultRow('분납 가능 여부', r.분납가능여부 ? '가능' : '불가능');
   if (r.분납가능여부){
     html += taxCalcResultRow('신고기한까지 납부할 금액', won(r.신고기한까지_납부할금액));
-    html += taxCalcResultRow('분납 가능 최대금액', won(r.분납가능_최대금액), { total: true });
+    html += taxCalcResultRow('분납 가능 최대금액(한도)', won(r.분납가능_최대금액));
+    html += '<div class="taxcalc-field"><label>실제 분납신청금액</label><input type="number" id="spChosenAmount" value="' + (r.분납신청금액 != null ? r.분납신청금액 : r.분납가능_최대금액) + '" placeholder="원"><span class="taxcalc-field-help">한도까지 전부 신청할 필요는 없습니다 — 한도(' + won(r.분납가능_최대금액) + ') 이내에서 원하는 금액을 직접 입력하세요</span></div>';
     html += taxCalcResultRow('분납기한', r.분납기한);
   }
   html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   if (r.분납가능여부) html += tcToolSaveButtonHtml_('sp');
   html += '</div>';
   box.innerHTML = html;
+  if (r.분납가능여부){
+    r.분납신청금액 = (r.분납신청금액 != null) ? r.분납신청금액 : r.분납가능_최대금액;
+    const chosenEl = document.getElementById('spChosenAmount');
+    if (chosenEl){
+      chosenEl.addEventListener('input', function(){
+        let v = numVal(chosenEl.value) || 0;
+        if (v > r.분납가능_최대금액) v = r.분납가능_최대금액;
+        if (v < 0) v = 0;
+        r.분납신청금액 = v;
+      });
+      enhanceNumberInputs(box);
+    }
+  }
 }
 
 function renderClawbackResult(r){
@@ -7472,7 +8262,7 @@ function ihClawbackPrintPageHtml_(formType, r){
     '<div class="pf-note">이 서식은 NETAX "사후관리 추징이자" 계산 결과를 기준으로 자동 생성되었습니다 — 사유발생일이 속하는 달의 말일부터 3개월 이내 신고·납부해야 합니다(상증세법§18의2⑯·§18의3⑧⑩·§72의2⑦⑨).</div>' +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
-      '신고인 &nbsp;' + escapeHtml(reporter.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+      '신고인 &nbsp;' + escapeHtml(reporter.name || '') + ' &nbsp;(서명 또는 인)<br>' + pfTaxOfficeGreeting_(g_('ihDeceasedTaxOffice')) + '</div>' +
   '</div>';
 }
 // [2026.09.30 신규, 재검토99] 혼인출산 증여재산공제 추징사유 신고 및 자진납부계산서(별지10호
@@ -7511,7 +8301,7 @@ function farmlandGiftClawbackPrintPageHtml_(r){
     '<div class="pf-note">이 서식은 NETAX "사후관리 추징이자" 계산 결과를 기준으로 자동 생성되었습니다(조특법§71②, 시행령§68⑮).</div>' +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
-      '신고인 &nbsp;' + escapeHtml(donee.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+      '신고인 &nbsp;' + escapeHtml(donee.name || '') + ' &nbsp;(서명 또는 인)<br>' + pfTaxOfficeGreeting_(donee.taxOffice) + '</div>' +
   '</div>';
 }
 // [2026.10.06 신규, 재검토111] 가업승계 증여세 과세특례 추징사유 신고서(조특법§30의6③,
@@ -7550,7 +8340,7 @@ function srSuccessionClawbackPrintPageHtml_(r, isDeferred){
     '<div class="pf-note">이 서식은 NETAX "사후관리 추징이자" 계산 결과를 기준으로 자동 생성되었습니다(조특법§30의6' + (isDeferred ? '⑧·시행령§27의6⑬' : '③') + ').</div>' +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
-      '신고인 &nbsp;' + escapeHtml(donee.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+      '신고인 &nbsp;' + escapeHtml(donee.name || '') + ' &nbsp;(서명 또는 인)<br>' + pfTaxOfficeGreeting_(donee.taxOffice) + '</div>' +
   '</div>';
 }
 function gfMarriageClawbackPrintPageHtml_(r){
@@ -7579,7 +8369,7 @@ function gfMarriageClawbackPrintPageHtml_(r){
     '<div class="pf-note">이 서식은 NETAX "사후관리 추징이자" 계산 결과를 기준으로 자동 생성되었습니다 — 추징사유 발생일이 속하는 달의 말일부터 3개월 이내 신고·납부해야 합니다(상증세법§53의2⑤).</div>' +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
-      '신고인 &nbsp;' + escapeHtml(donee.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+      '신고인 &nbsp;' + escapeHtml(donee.name || '') + ' &nbsp;(서명 또는 인)<br>' + pfTaxOfficeGreeting_(donee.taxOffice) + '</div>' +
   '</div>';
 }
 
@@ -8870,7 +9660,9 @@ function trBuildEfileBytes_(){
   const primarySeller = (transferSellers && transferSellers[0]) || {};
   // [2026.10.06 신규, 재검토113] 분납(trsp) 계산기는 대표 양도인(idx===0) 1인 기준으로만
   // 계산한다 — 공동양도인 각자 분납은 범위 밖(UI 안내문 참고).
-  const trSplitAmt = (lastTrSplitPaymentInput_ && lastTrSplitPaymentInput_.taxType === 'transfer' && lastTrSplitPaymentResult_ && lastTrSplitPaymentResult_.분납가능여부) ? (numVal(lastTrSplitPaymentResult_.분납가능_최대금액) || 0) : 0;
+  // [2026.10.07 수정, 재검토123] 한도(분납가능_최대금액)를 무조건 쓰지 않고, 세무사님이 화면에서
+  // 직접 고른 실제 신청금액(분납신청금액 — 없으면 한도로 기본값 처리되어 있음)을 쓴다.
+  const trSplitAmt = (lastTrSplitPaymentInput_ && lastTrSplitPaymentInput_.taxType === 'transfer' && lastTrSplitPaymentResult_ && lastTrSplitPaymentResult_.분납가능여부) ? (numVal(lastTrSplitPaymentResult_.분납신청금액 != null ? lastTrSplitPaymentResult_.분납신청금액 : lastTrSplitPaymentResult_.분납가능_최대금액) || 0) : 0;
   const rows = [];
   (lastTransferResults_ || []).forEach(function(item, idx){
     if (!item.result || item.result.error) return;
@@ -8986,7 +9778,7 @@ function trPrintFormPageHtml_(seller, r, buyers, assets){
     '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 지방소득세는 위택스 별도신고 필요 여부를 실무로 확인하세요. 양도소득금액계산명세서(부표1)·취득가액및필요경비계산상세명세서(부표3)는 뒤에 이어집니다.</div>' +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
-      '신고인 &nbsp;' + escapeHtml(seller.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+      '신고인 &nbsp;' + escapeHtml(seller.name || '') + ' &nbsp;(서명 또는 인)<br>' + pfTaxOfficeGreeting_(seller.taxOffice) + '</div>' +
   '</div>' + (assets || []).map(function(asset, aIdx){ return trAttach1PrintPageHtml_(asset, aIdx + 1); }).join('') +
     trAttach3PrintPageHtml_(trAttach3ItemsForPrint_(assets || []));
 }
@@ -9309,8 +10101,7 @@ function renderInheritancePane(){
   taxCalcInheritancePane.innerHTML =
     '<div id="tcInheritanceCaseFactsBanner"></div>' +
     '<div class="taxcalc-asset">' +
-      '<div class="taxcalc-asset-head"><b>피상속인 정보</b>' +
-        '<span><button type="button" class="taxcalc-ai-btn" data-action="open-evidence-inheritance">📄 증빙에서 자동 입력</button></span>' +
+      '<div class="taxcalc-asset-head"><b>피상속인 정보</b></div>' +
       '<div class="taxcalc-ai-status" id="aiStatus-inheritance"></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>성명</label><input type="text" id="ihDeceasedName" data-nameonly="1"></div>' +
@@ -9322,9 +10113,14 @@ function renderInheritancePane(){
         // PNU 저장과 같은 패턴).
         '<input type="hidden" id="ihDeceasedAdmCd" value=""><input type="hidden" id="ihDeceasedMtYn" value="0">' +
         '<input type="hidden" id="ihDeceasedLnbrMnnm" value=""><input type="hidden" id="ihDeceasedLnbrSlno" value="">' +
+        // [2026.10.08 신규, 재검토129] 상세주소(호) API 호출용 건물 특정 키 — PNU용 키와 같은
+        // 패턴으로 숨은칸에 저장해둔다.
+        '<input type="hidden" id="ihDeceasedRnMgtSn" value=""><input type="hidden" id="ihDeceasedUdrtYn" value="0">' +
+        '<input type="hidden" id="ihDeceasedBuldMnnm" value=""><input type="hidden" id="ihDeceasedBuldSlno" value="">' +
         '</div>' +
-        '<div class="taxcalc-field"><label>동</label><select id="ihDeceasedDong"><option value="">직접입력/해당없음</option></select></div>' +
-        '<div class="taxcalc-field"><label>호</label><input type="text" id="ihDeceasedHo" placeholder="예: 1502호"><span class="taxcalc-field-help">동은 검색결과 목록에서 고르지만, 호는 목록이 제공되지 않아 직접 입력합니다</span></div>' +
+        // [2026.10.07 수정, 재검토122] 동 select→datalist 전환(seller와 동일 이유).
+        '<div class="taxcalc-field"><label>동</label><input type="text" id="ihDeceasedDong" list="ihDeceasedDongList" placeholder="예: 101동"><datalist id="ihDeceasedDongList"></datalist></div>' +
+        '<div class="taxcalc-field"><label>호</label><input type="text" id="ihDeceasedHo" list="ihDeceasedHoList" placeholder="예: 1502호"><datalist id="ihDeceasedHoList"></datalist><span class="taxcalc-field-help">동을 고르면 호 목록이 자동으로 뜹니다 — 목록에 없으면 직접 입력하세요</span></div>' +
         '<div class="taxcalc-field"><label style="visibility:hidden;">관할세무서</label><input type="hidden" id="ihDeceasedTaxOffice" value=""><button type="button" class="taxcalc-ai-btn" data-action="open-tax-office-guide" data-address-input="ihDeceasedAddress" data-office-input="ihDeceasedTaxOffice" id="ihDeceasedTaxOfficeBtn">관할세무서</button></div>' +
         '<div class="taxcalc-field"><label>거주구분</label><select id="ihDecedentResident"><option value="resident" selected>거주자</option><option value="nonresident">비거주자</option></select><span class="taxcalc-field-help">국내에 주소를 두거나 183일 이상 거소를 둔 사람=거주자</span><span class="taxcalc-result-note" style="margin:2px 0 0;">비거주자면 기초공제(2억원)만 적용되고 배우자공제·일괄공제·인적공제·금융재산공제·동거주택공제·장례비용공제·가업/영농상속공제는 적용되지 않습니다(§14②·§18~§23의2).</span></div>' +
       '</div>' +
@@ -9649,6 +10445,18 @@ function pfRow_(n, label, value, opts){
   return '<tr><th style="' + style + '">' + (n ? circledNum_(n) + ' ' : '') + escapeHtml(label) + '</th>' +
     '<td class="pf-right">' + escapeHtml(value == null ? '' : String(value)) + '</td></tr>';
 }
+// [2026.10.07 신규, 재검토120] 세무사님 지적으로 발견 — "관할세무서" 버튼(open-tax-office-guide)이
+// 조회해 저장한 값이 어떤 인쇄서식에도 반영되지 않고 있었다(전부 그냥 "세무서장 귀하"로 고정).
+// 세무사님 확인: "인쇄서식에 반영할 계획이 항상 있었다" — 전부 이 헬퍼로 바꿔 끼운다. 저장된
+// 값은 조회 결과를 그대로 받아적은 문자열이라 보통 "역삼세무서"처럼 이미 "세무서"로 끝나는
+// 정식명칭이다 — 그 경우만 "장 귀하"를 붙이고, 그 외(세무사님이 "역삼세무서장"처럼 이미 완전한
+// 형태로 적었거나 다른 식으로 적은 경우)는 그대로 쓰고 "귀하"만 붙인다. 비어있으면(아직 조회
+// 안 함) 예전처럼 "세무서장 귀하"로 둔다.
+function pfTaxOfficeGreeting_(taxOffice){
+  const t = String(taxOffice || '').trim();
+  if (!t) return '세무서장 귀하';
+  return escapeHtml(t.endsWith('세무서') ? (t + '장 귀하') : (t + ' 귀하'));
+}
 function openPrintFormWindow_(title, bodyHtml){
   const win = window.open('', '_blank');
   if (!win){ nxAlert_('팝업이 차단되었습니다. 브라우저의 팝업 차단을 해제한 뒤 다시 시도하세요.'); return; }
@@ -9805,7 +10613,8 @@ function buildIhTaxCalcRecord_(){
   // 나가고 있었다. 두 계산기 모두 taxType이 'inheritance'로 맞게 계산된 결과가 있을 때만
   // 금액을 채운다(일자는 확정승인일을 알 수 없어 공란 유지 — 기존과 동일).
   const ihInstallmentAmt = (lastInstallmentInput_ && lastInstallmentInput_.taxType === 'inheritance' && lastInstallmentResult_) ? (numVal(lastInstallmentResult_.연부연납대상금액) || 0) : 0;
-  const ihSplitAmt = (lastSplitPaymentInput_ && lastSplitPaymentInput_.taxType === 'inheritance' && lastSplitPaymentResult_ && lastSplitPaymentResult_.분납가능여부) ? (numVal(lastSplitPaymentResult_.분납가능_최대금액) || 0) : 0;
+  // [2026.10.07 수정, 재검토123] 한도가 아니라 세무사님이 화면에서 직접 고른 실제 신청금액을 쓴다.
+  const ihSplitAmt = (lastSplitPaymentInput_ && lastSplitPaymentInput_.taxType === 'inheritance' && lastSplitPaymentResult_ && lastSplitPaymentResult_.분납가능여부) ? (numVal(lastSplitPaymentResult_.분납신청금액 != null ? lastSplitPaymentResult_.분납신청금액 : lastSplitPaymentResult_.분납가능_최대금액) || 0) : 0;
   const ihCashPaid = Math.max(0, (numVal(r.납부세액) || 0) - ihInstallmentAmt - ihSplitAmt);
   b = b.concat(ihPadChar_('', 8));                        // 27 납부방법_연부연납_일자
   b = b.concat(ihPadNum_(ihInstallmentAmt, 14));          // 28 납부방법_연부연납_금액
@@ -10258,7 +11067,7 @@ function ihPrintFormBodyHtml_(){
     '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 부표1~3, (배우자가 있으면)부표3의2, (서화·골동품 자산이 있으면)부표8, (가업상속공제·영농상속공제·가업상속납부유예·금융재산상속공제·재해손실공제·동거주택상속공제·배우자재산미분할이 각각 해당하면)별지1·2·3·5·6·6의2·12호의2서식은 뒤에 이어집니다. 부표4(상속개시전 처분재산)·부표5(영리법인 면제)·부표6·7(사후관리추징 — "증여·상속 공통 > 사후관리 추징이자" 탭에서 별도 인쇄)는 해당 사실관계가 있는 사건에서만 필요해 여기 포함되지 않습니다.</div>' +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
-      '신고인 &nbsp;' + escapeHtml(reporter.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+      '신고인 &nbsp;' + escapeHtml(reporter.name || '') + ' &nbsp;(서명 또는 인)<br>' + pfTaxOfficeGreeting_(g_('ihDeceasedTaxOffice')) + '</div>' +
   '</div>' +
   foreignTaxCreditPrintPageHtml_('상속세', taxBase, calcTaxTotal, numVal(g_('ihForeignBase')), numVal(g_('ihForeignTax')), numVal(r.외국납부세액공제)) +
   ihAttachPrintPagesHtml_();
@@ -10738,9 +11547,7 @@ function renderGiftPane(){
     '<div class="taxcalc-subpane" data-subpane="general" style="' + (giftActiveSubtab_ === 'general' ? '' : 'display:none;') + '">' +
     '<div id="tcGiftCaseFactsBanner"></div>' +
     '<div class="taxcalc-asset">' +
-      '<div class="taxcalc-asset-head"><b>증여 기본정보</b>' +
-        '<span><button type="button" class="taxcalc-ai-btn" data-action="open-evidence-gift">📄 증빙에서 자동 입력</button></span>' +
-      '</div>' +
+      '<div class="taxcalc-asset-head"><b>증여 기본정보</b></div>' +
       '<div class="taxcalc-ai-status" id="aiStatus-gift"></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>증여일자</label><input type="date" id="giftDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-result-note" id="giftDateDeadlineHint" style="margin:2px 0 0;"></span></div>' +
@@ -11442,7 +12249,8 @@ function gfTaxCalcRecord_(item, donor){
   // [2026.10.06 수정, 재검토113] 상속세(buildIhTaxCalcRecord_)와 동일 수정 — 연부연납·분납
   // 계산기가 'gift' 기준으로 계산된 결과가 있을 때만 금액을 채운다(일자는 공란 유지).
   const gfInstallmentAmt = (lastInstallmentInput_ && lastInstallmentInput_.taxType === 'gift' && lastInstallmentResult_) ? (numVal(lastInstallmentResult_.연부연납대상금액) || 0) : 0;
-  const gfSplitAmt = (lastSplitPaymentInput_ && lastSplitPaymentInput_.taxType === 'gift' && lastSplitPaymentResult_ && lastSplitPaymentResult_.분납가능여부) ? (numVal(lastSplitPaymentResult_.분납가능_최대금액) || 0) : 0;
+  // [2026.10.07 수정, 재검토123] 한도가 아니라 세무사님이 화면에서 직접 고른 실제 신청금액을 쓴다.
+  const gfSplitAmt = (lastSplitPaymentInput_ && lastSplitPaymentInput_.taxType === 'gift' && lastSplitPaymentResult_ && lastSplitPaymentResult_.분납가능여부) ? (numVal(lastSplitPaymentResult_.분납신청금액 != null ? lastSplitPaymentResult_.분납신청금액 : lastSplitPaymentResult_.분납가능_최대금액) || 0) : 0;
   const gfCashPaid = Math.max(0, (numVal(r.납부세액) || 0) - gfInstallmentAmt - gfSplitAmt);
   b = b.concat(ihPadChar_('', 8));                          // 32 납부방법_연부연납_일자
   b = b.concat(ihPadNum_(gfInstallmentAmt, 13));            // 33 납부방법_연부연납_금액
@@ -11698,7 +12506,7 @@ function gfPrintFormPageHtml_(item, giftDate){
     '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 부표1(증여재산 및 평가명세서)은 뒤에 이어집니다. 외국납부세액공제·영농특례 등 조건부 서식은 해당 사실관계가 있을 때만 필요해 포함되지 않았습니다.</div>' +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
-      '신고인 &nbsp;' + escapeHtml(donee.name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+      '신고인 &nbsp;' + escapeHtml(donee.name || '') + ' &nbsp;(서명 또는 인)<br>' + pfTaxOfficeGreeting_(donee.taxOffice) + '</div>' +
   '</div>' + gfAttach1PrintPageHtml_(item.donorIdxs[0], item.doneeIdx) +
   gfMarriageBirthPrintPageHtml_(donee, donor, giftDate, item);
 }
@@ -11916,7 +12724,7 @@ function srPrintFormPageHtml_(){
     gfPrintFormNote_() +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
-      '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+      '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>' + pfTaxOfficeGreeting_((giftDonees[0] || {}).taxOffice) + '</div>' +
   '</div>' +
   srAttach1PrintPageHtml_(r) + srAttach2PrintPageHtml_(r) + srBusinessSuccessionApplicationPrintPageHtml_(r);
 }
@@ -12058,7 +12866,7 @@ function jmPrintFormPageHtml_(){
     gfPrintFormNote_() +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
-      '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+      '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>' + pfTaxOfficeGreeting_((giftDonees[0] || {}).taxOffice) + '</div>' +
   '</div>' +
   jmAttach1PrintPageHtml_() + jmAttach2PrintPageHtml_() + jmAttach3PrintPageHtml_() + jmAttach4PrintPageHtml_();
 }
@@ -12184,7 +12992,7 @@ function jtPrintFormPageHtml_(){
     gfPrintFormNote_() +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
-      '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+      '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>' + pfTaxOfficeGreeting_((giftDonees[0] || {}).taxOffice) + '</div>' +
   '</div>' +
   jtAttach1PrintPageHtml_() + jtAttach2PrintPageHtml_() + jtAttach3PrintPageHtml_() + jtAttach4PrintPageHtml_();
 }
@@ -12343,7 +13151,7 @@ function edPrintFormPageHtml_(){
     gfPrintFormNote_() +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
-      '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+      '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>' + pfTaxOfficeGreeting_((giftDonees[0] || {}).taxOffice) + '</div>' +
   '</div>' + gfArtworkPrintPageHtml_();
 }
 function scPrintFormPageHtml_(){
@@ -12364,7 +13172,7 @@ function scPrintFormPageHtml_(){
     gfPrintFormNote_() +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
-      '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>' +
+      '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>' + pfTaxOfficeGreeting_((giftDonees[0] || {}).taxOffice) + '</div>' +
   '</div>' + gfArtworkPrintPageHtml_();
 }
 
@@ -12377,7 +13185,7 @@ function gfGeneralFormNote_(){
 function gfGeneralFormSignHtml_(){
   return '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
     new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
-    '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>세무서장 귀하</div>';
+    '신고인 &nbsp;' + escapeHtml((giftDonees[0] || {}).name || '') + ' &nbsp;(서명 또는 인)<br>' + pfTaxOfficeGreeting_((giftDonees[0] || {}).taxOffice) + '</div>';
 }
 function ntPrintFormPageHtml_(){
   const r = lastNomineeTrustResult_;
@@ -12535,7 +13343,7 @@ function renderDebtItemsList(){
       '<div class="taxcalc-field"><label>채무 종류</label><select data-dbfield="debtType"><option value="loan"' + (item.debtType !== 'other' ? ' selected' : '') + '>금융기관 등 차입금</option><option value="other"' + (item.debtType === 'other' ? ' selected' : '') + '>그 밖의 채무(사채 등)</option></select></div>' +
       '<div class="taxcalc-field"><label>채권자 성명(상호)</label><input type="text" data-dbfield="creditorName" value="' + (item.creditorName || '').replace(/"/g, '&quot;') + '"></div>' +
       '<div class="taxcalc-field"><label>채권자 주민(사업자)번호</label><input type="text" data-dbfield="creditorRegNo" value="' + (item.creditorRegNo || '').replace(/"/g, '&quot;') + '"></div>' +
-      '<div class="taxcalc-field"><label>채권자 주소(소재지)</label><input type="text" data-dbfield="creditorAddress" value="' + (item.creditorAddress || '').replace(/"/g, '&quot;') + '" placeholder="부표3용, 없으면 비움"></div>' +
+      '<div class="taxcalc-field"><label>채권자 주소(소재지)</label><input type="text" data-dbfield="creditorAddress" value="' + (item.creditorAddress || '').replace(/"/g, '&quot;') + '" placeholder="예: OO시 OO구 OO동, 없으면 비움"></div>' +
       '<div class="taxcalc-field"><label>차입일</label><input type="date" data-dbfield="startDate" value="' + (item.startDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
       '<div class="taxcalc-field"><label>상환(예정)일</label><input type="date" data-dbfield="endDate" value="' + (item.endDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
       '<div class="taxcalc-field"><label>채무금액</label><input type="number" data-dbfield="amount" placeholder="원" value="' + (item.amount || '') + '"></div>' +
@@ -12811,7 +13619,7 @@ function renderInheritanceResult(r){
 // 대신 상속받는 "대습상속"은 세대생략할증이 배제되고, 부모가 생존한 상태에서 유증·상속포기 등으로
 // 세대를 건너뛰어 상속받는 경우만 할증(30%/40%)이 적용된다. 체크박스로 다시 물을 필요 없이
 // 관계 선택만으로 자동 판정한다.
-const HEIR_RELATION_OPTIONS = ['배우자', '자녀', '손자녀(대습상속 — 부모가 먼저 사망·결격)', '손자녀(세대생략 — 부모 생존, 유증·상속포기 등)', '부모(직계존속)', '상속인 아닌 자(유증·사인증여 등)'];
+const HEIR_RELATION_OPTIONS = ['배우자', '자녀', '손자녀(대습상속 — 부모가 먼저 사망·결격)', '며느리/사위(대습상속 — 배우자였던 자녀가 먼저 사망·결격)', '손자녀(세대생략 — 부모 생존, 유증·상속포기 등)', '부모(직계존속)', '상속인 아닌 자(유증·사인증여 등)'];
 function renderHeirRegistry(){
   const container = document.getElementById('ihHeirRegistry');
   if (!container) return;
@@ -12838,14 +13646,17 @@ function renderHeirRegistry(){
       '<div class="taxcalc-grid">' +
       '<div class="taxcalc-field"><label>성명</label><input type="text" data-hfield="name" data-nameonly="1" value="' + (h.name || '').replace(/"/g,'&quot;') + '"></div>' +
       '<div class="taxcalc-field"><label>주민등록번호</label><input type="text" data-hfield="regNo" data-regno="1" placeholder="000000-0000000" value="' + (h.regNo || '').replace(/"/g,'&quot;') + '"></div>' +
-      '<div class="taxcalc-field"><label>주소</label><input type="text" data-hfield="address" value="' + (h.address || '').replace(/"/g,'&quot;') + '" placeholder="부표2용, 없으면 비움"></div>' +
+      '<div class="taxcalc-field"><label>주소</label><input type="text" data-hfield="address" value="' + (h.address || '').replace(/"/g,'&quot;') + '" placeholder="예: OO시 OO구 OO동, 없으면 비움"></div>' +
       '<div class="taxcalc-field"><label>관계</label><select data-hfield="relation"><option value="">선택</option>' + relationOptions + '</select></div>' +
-      '<div class="taxcalc-field" data-show-if-heir-relation="1" style="' + (h.relation === '손자녀(대습상속 — 부모가 먼저 사망·결격)' ? '' : 'display:none;') + '"><label>대습그룹</label><input type="text" data-hfield="substitutionGroup" placeholder="예: 장남대습" value="' + (h.substitutionGroup || '').replace(/"/g,'&quot;') + '"><span class="taxcalc-field-help">한 자녀(피대습자)가 먼저 사망하여 그 몫을 손자녀 여러 명이 함께 대습상속받는 경우, 같은 그룹명을 입력하면 그 자녀 1인 몫(민법§1001)을 인원수로 나눠 법정상속지분을 자동 계산합니다</span></div>' +
+      '<div class="taxcalc-field" data-show-if-heir-relation="1" style="' + ((h.relation === '손자녀(대습상속 — 부모가 먼저 사망·결격)' || h.relation === '며느리/사위(대습상속 — 배우자였던 자녀가 먼저 사망·결격)') ? '' : 'display:none;') + '"><label>대습그룹</label><input type="text" data-hfield="substitutionGroup" placeholder="예: 장남대습" value="' + (h.substitutionGroup || '').replace(/"/g,'&quot;') + '"><span class="taxcalc-field-help">한 자녀(피대습자)가 먼저 사망하여 그 몫을 며느리/사위·손자녀가 함께 대습상속받는 경우, 같은 그룹명을 입력하면 그 자녀 1인 몫(민법§1001)을 며느리/사위:손자녀 = 1.5:1(§1009 재적용) 비율로 나눠 법정상속지분을 자동 계산합니다</span></div>' +
       '<div class="taxcalc-field" style="flex:0 1 340px;"><label>주소</label><div class="taxcalc-field-inline"><input type="text" data-hfield="address" value="' + (h.address || '').replace(/"/g,'&quot;') + '" placeholder="예: OO시 OO구 OO동 123-4 (검색 또는 직접입력)"><button type="button" class="taxcalc-ai-btn" data-action="open-address-search-heir" data-idx="' + idx + '" title="주소 검색">🔍</button></div></div>' +
-      '<div class="taxcalc-field"><label>동</label><select data-hfield="addressDong"><option value="">직접입력/해당없음</option>' +
-        (Array.isArray(h.addressDongList) ? h.addressDongList : []).map(function(d){ return '<option value="' + d + '"' + (h.addressDong === d ? ' selected' : '') + '>' + d + '</option>'; }).join('') +
-      '</select></div>' +
-      '<div class="taxcalc-field"><label>호</label><input type="text" data-hfield="addressHo" value="' + (h.addressHo || '').replace(/"/g,'&quot;') + '" placeholder="예: 1502호"></div>' +
+      // [2026.10.07 수정, 재검토122] 동 select→datalist 전환(seller와 동일 이유).
+      '<div class="taxcalc-field"><label>동</label><input type="text" data-hfield="addressDong" list="ihHeirDongList' + idx + '" value="' + (h.addressDong || '').replace(/"/g,'&quot;') + '" placeholder="예: 101동"><datalist id="ihHeirDongList' + idx + '">' +
+        (Array.isArray(h.addressDongList) ? h.addressDongList : []).map(function(d){ return '<option value="' + d.replace(/"/g,'&quot;') + '">'; }).join('') +
+      '</datalist></div>' +
+      '<div class="taxcalc-field"><label>호</label><input type="text" data-hfield="addressHo" list="ihHeirHoList' + idx + '" value="' + (h.addressHo || '').replace(/"/g,'&quot;') + '" placeholder="예: 1502호"><datalist id="ihHeirHoList' + idx + '">' +
+        (Array.isArray(h.addressHoList) ? h.addressHoList : []).map(function(hh){ return '<option value="' + hh.replace(/"/g,'&quot;') + '">'; }).join('') +
+      '</datalist></div>' +
       '<div class="taxcalc-field"><span class="taxcalc-result-note" style="margin:0;">나이' + (age !== null ? ' — 만 ' + age + '세(주민등록번호로 자동 계산)' : ' — 주민등록번호를 입력하면 자동 계산됩니다') + '</span></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="isDisabled" id="hDisabled-' + idx + '"' + (h.isDisabled ? ' checked' : '') + '><label for="hDisabled-' + idx + '">장애인</label></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="isReporter" id="hReporter-' + idx + '"' + (h.isReporter ? ' checked' : '') + '><label for="hReporter-' + idx + '">신고인</label></div>' +
@@ -12896,11 +13707,17 @@ function renderHeirRegistry(){
       }
       if (key === 'relation'){
         row.querySelectorAll('[data-show-if-heir-relation]').forEach(function(field){
-          field.style.display = (el.value === '손자녀(대습상속 — 부모가 먼저 사망·결격)') ? 'flex' : 'none';
+          field.style.display = (el.value === '손자녀(대습상속 — 부모가 먼저 사망·결격)' || el.value === '며느리/사위(대습상속 — 배우자였던 자녀가 먼저 사망·결격)') ? 'flex' : 'none';
         });
       }
       recomputeHeirDerivedFields();
       updateHeirActualValueHints();
+    });
+  });
+  container.querySelectorAll('[data-hfield="addressDong"]').forEach(function(el){
+    el.addEventListener('change', function(){
+      const idx = numVal(el.closest('[data-heir-idx]').dataset.heirIdx);
+      tcFetchHoListForDongInput_(inheritanceHeirs[idx].addressBuildingKey, el.value, el, function(hoList){ inheritanceHeirs[idx].addressHoList = hoList; });
     });
   });
   enhanceNumberInputs(container);
@@ -14047,7 +14864,7 @@ function handleTaxCalcClick_(e){
     const value = computeDonorActualValue_(idx);
     giftDonors[idx].giftAmount = value;
     const el = document.getElementById(idx === 0 ? 'giftAmount' : 'giftAmount-' + idx);
-    if (el) el.value = value;
+    if (el){ el.value = value; if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(el); }
   } else if (action === 'apply-valuation-total'){
     const target = btn.dataset.target;
     const assets = target === 'giftValuationList' ? giftValuationAssets_() : inheritanceValuationAssets_();
@@ -14058,9 +14875,15 @@ function handleTaxCalcClick_(e){
       // 보이므로 항상 donor 0) — el.value만 바꾸면 배열은 갱신되지 않는 문제를 apply-donor-
       // allocation과 같은 방식으로 방지한다.
       if (giftDonors[0]) giftDonors[0].giftAmount = net;
-      document.getElementById('giftAmount').value = net;
+      const gaEl = document.getElementById('giftAmount');
+      gaEl.value = net;
+      if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(gaEl);
     }
-    else document.getElementById('ihEstate').value = net;
+    else {
+      const ieEl = document.getElementById('ihEstate');
+      ieEl.value = net;
+      if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(ieEl);
+    }
   } else if (action === 'open-address-search'){
     // 이 버튼이 어느 자산 목록(양도세 거래카드/증여·상속 재산평가 자산행) 안에 있는지 DOM으로
     // 찾아서, 검색결과를 그 자산의 소재지·동·면적 관련 상태에 바로 채운다.
@@ -14080,6 +14903,10 @@ function handleTaxCalcClick_(e){
       assets[idx].assetMtYn = picked.mtYn || '0';
       assets[idx].assetLnbrMnnm = picked.lnbrMnnm || '';
       assets[idx].assetLnbrSlno = picked.lnbrSlno || '';
+      // [2026.10.08, 재검토129] 동을 고르면 상세주소 API로 호 목록을 조회할 때 건물을
+      // 특정하는 키 — 동 datalist(assetDongList)와 짝을 이룬다.
+      assets[idx].addressBuildingKey = { admCd: picked.admCd || '', rnMgtSn: picked.rnMgtSn || '', udrtYn: picked.udrtYn || '0', buldMnnm: picked.buldMnnm || '', buldSlno: picked.buldSlno || '' };
+      assets[idx].assetHoList = [];
       if (giftListEl) renderValuationAssetList('giftValuationList', giftValuationAssets_());
       else if (ihListEl) renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets_());
       else renderTransferPane();
@@ -14098,20 +14925,35 @@ function handleTaxCalcClick_(e){
     openAddressSearchModal_(function(picked){
       const el = targetId ? document.getElementById(targetId) : null;
       if (el) el.value = picked.roadAddr || picked.jibunAddr || '';
+      // [2026.10.07 수정, 재검토122] dongEl이 이제 select가 아니라 input(list=datalist)이다 —
+      // 값은 비우고(검색 전처럼 직접 타이핑 가능한 빈 칸으로) datalist 쪽만 목록으로 채운다.
       const dongEl = targetDongId ? document.getElementById(targetDongId) : null;
       if (dongEl){
+        dongEl.value = '';
+        if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(dongEl);
         const dongList = picked.dongList || [];
-        dongEl.innerHTML = '<option value="">직접입력/해당없음</option>' +
-          dongList.map(function(d){ return '<option value="' + d + '">' + d + '</option>'; }).join('');
+        const datalistEl = document.getElementById(dongEl.getAttribute('list'));
+        if (datalistEl) datalistEl.innerHTML = dongList.map(function(d){ return '<option value="' + escapeHtml(d) + '">'; }).join('');
       }
       const hoEl = targetHoId ? document.getElementById(targetHoId) : null;
-      if (hoEl) hoEl.value = '';
+      if (hoEl){
+        hoEl.value = '';
+        if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(hoEl);
+        // 새 주소를 골랐으니 이전 동에 딸려있던 호 목록은 비운다 — 동을 다시 고르면 채워진다.
+        const hoDatalistEl = document.getElementById(hoEl.getAttribute('list'));
+        if (hoDatalistEl) hoDatalistEl.innerHTML = '';
+      }
       if (targetId === 'ihDeceasedAddress'){
         const set_ = function(id, v){ const e = document.getElementById(id); if (e) e.value = v || ''; };
         set_('ihDeceasedAdmCd', picked.admCd);
         set_('ihDeceasedMtYn', picked.mtYn || '0');
         set_('ihDeceasedLnbrMnnm', picked.lnbrMnnm);
         set_('ihDeceasedLnbrSlno', picked.lnbrSlno);
+        // [2026.10.08, 재검토129] 상세주소(호) API용 건물 특정 키도 같이 저장한다.
+        set_('ihDeceasedRnMgtSn', picked.rnMgtSn);
+        set_('ihDeceasedUdrtYn', picked.udrtYn || '0');
+        set_('ihDeceasedBuldMnnm', picked.buldMnnm);
+        set_('ihDeceasedBuldSlno', picked.buldSlno);
       }
     });
   } else if (action === 'open-address-search-heir'){
@@ -14122,6 +14964,9 @@ function handleTaxCalcClick_(e){
       inheritanceHeirs[idx].address = picked.roadAddr || picked.jibunAddr || '';
       inheritanceHeirs[idx].addressDongList = picked.dongList || [];
       inheritanceHeirs[idx].addressDong = '';
+      // [2026.10.08, 재검토129] 동 선택시 상세주소 API로 호 목록을 조회할 건물 특정 키.
+      inheritanceHeirs[idx].addressBuildingKey = { admCd: picked.admCd || '', rnMgtSn: picked.rnMgtSn || '', udrtYn: picked.udrtYn || '0', buldMnnm: picked.buldMnnm || '', buldSlno: picked.buldSlno || '' };
+      inheritanceHeirs[idx].addressHoList = [];
       renderHeirRegistry();
     });
   } else if (action === 'open-address-search-donor'){
@@ -14130,6 +14975,8 @@ function handleTaxCalcClick_(e){
       giftDonors[idx].address = picked.roadAddr || picked.jibunAddr || '';
       giftDonors[idx].addressDongList = picked.dongList || [];
       giftDonors[idx].addressDong = '';
+      giftDonors[idx].addressBuildingKey = { admCd: picked.admCd || '', rnMgtSn: picked.rnMgtSn || '', udrtYn: picked.udrtYn || '0', buldMnnm: picked.buldMnnm || '', buldSlno: picked.buldSlno || '' };
+      giftDonors[idx].addressHoList = [];
       renderGiftDonorRegistry();
     });
   } else if (action === 'open-address-search-donee'){
@@ -14138,6 +14985,8 @@ function handleTaxCalcClick_(e){
       giftDonees[idx].address = picked.roadAddr || picked.jibunAddr || '';
       giftDonees[idx].addressDongList = picked.dongList || [];
       giftDonees[idx].addressDong = '';
+      giftDonees[idx].addressBuildingKey = { admCd: picked.admCd || '', rnMgtSn: picked.rnMgtSn || '', udrtYn: picked.udrtYn || '0', buldMnnm: picked.buldMnnm || '', buldSlno: picked.buldSlno || '' };
+      giftDonees[idx].addressHoList = [];
       // [2026.09.25 신규, 재검토77] 전자신고파일의 "수증자_법정동코드"는 Not Null 필수항목이라
       // 상속세 피상속인 주소와 같은 패턴으로 admCd 등을 버리지 않고 저장한다.
       giftDonees[idx].admCd = picked.admCd || '';
@@ -14152,6 +15001,8 @@ function handleTaxCalcClick_(e){
       transferSellers[idx].address = picked.roadAddr || picked.jibunAddr || '';
       transferSellers[idx].addressDongList = picked.dongList || [];
       transferSellers[idx].addressDong = '';
+      transferSellers[idx].addressBuildingKey = { admCd: picked.admCd || '', rnMgtSn: picked.rnMgtSn || '', udrtYn: picked.udrtYn || '0', buldMnnm: picked.buldMnnm || '', buldSlno: picked.buldSlno || '' };
+      transferSellers[idx].addressHoList = [];
       // [2026.09.25 신규, 재검토78] 전자신고파일의 "주소_법정동코드"는 Not Null 필수항목이라
       // 상속세/증여세와 같은 패턴으로 admCd 등을 버리지 않고 저장한다.
       transferSellers[idx].admCd = picked.admCd || '';
@@ -14287,9 +15138,6 @@ function handleTaxCalcClick_(e){
       else if (ihListEl) renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets_());
       else renderTransferPane();
     });
-  } else if (action === 'open-evidence-transfer' || action === 'open-evidence-gift' || action === 'open-evidence-inheritance'){
-    // [2026.09] 증빙 AI 자동입력은 1단계(GAS만 사용) 범위 밖 — 다음 단계(AI 사이드바)에서 다시 연결한다.
-    toast('증빙 AI 자동입력은 다음 단계(AI 연동)에서 지원됩니다. 지금은 직접 입력해주세요.');
   } else if (action === 'show-calc-basis'){
     const idx = numVal(btn.dataset.idx);
     const box = document.getElementById('calcBasis-' + idx);
@@ -15829,7 +16677,9 @@ function handleTaxCalcClick_(e){
     const debtTotal = computeDebtTotal_(inheritanceDebtItems);
     const duesTotal = computeDuesTotal_(inheritanceDuesItems);
     const estate = Math.max(0, gross - nonTaxable - nonIncluded - debtTotal - duesTotal);
-    document.getElementById('ihEstate').value = estate;
+    const ihEstateEl = document.getElementById('ihEstate');
+    ihEstateEl.value = estate;
+    if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(ihEstateEl);
     showToast('상속세과세가액 ' + won(estate) + '을(를) 반영했습니다(장례비용은 별도 항목으로 이미 반영되니 제외됨).', 'success');
   } else if (action === 'add-heir-row'){
     inheritanceHeirs.push({});
@@ -16036,15 +16886,23 @@ function tcResetPaneFields_(paneEl){
   if (!paneEl) return;
   paneEl.querySelectorAll('input, select, textarea').forEach(function(el){
     if (el.type === 'checkbox' || el.type === 'radio') el.checked = el.defaultChecked;
-    else if (el.tagName === 'SELECT') el.selectedIndex = 0;
-    else el.value = el.defaultValue || '';
+    else if (el.tagName === 'SELECT'){
+      el.selectedIndex = 0;
+      if (typeof tcResizeAutoWidthSelect_ === 'function') tcResizeAutoWidthSelect_(el);
+    }
+    else {
+      el.value = el.defaultValue || '';
+      // [2026.10.08, 재검토125] 사건을 바꾸면 값은 비워지는데, 이전 사건 값 기준으로 넓어진
+      // 폭은 그대로 남아있었다(resize 트리거 없음) — 빈 값/placeholder 기준으로 다시 잰다.
+      if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(el);
+    }
   });
 }
 function tcResetOverviewInputsForNewCase_(){
   Object.keys(TC_OVERVIEW_INPUT_KEYS_).forEach(function(semok){
     TC_OVERVIEW_INPUT_KEYS_[semok].forEach(function(key){
       var el = document.getElementById(key);
-      if (el) el.value = '';
+      if (el){ el.value = ''; if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(el); }
     });
   });
   tcLastOverviewValues_ = {};
@@ -16300,6 +17158,7 @@ function tcApplySpecialGiftProvisionDefaults_(caseObj){
     el.value = value;
     tcLastOverviewValues_[key] = String(value);
     if (key === 'srGiftDate') el.dispatchEvent(new Event('input', { bubbles: true }));
+    else if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(el);
   });
 }
 // [2026.09 재설계] "자산이 여러 필지면 사건개요서 단계에서 전체 목록부터 파악해야 하는데,
@@ -16402,15 +17261,22 @@ function renderTcCaseBar_(){
   // 사건선택 콤보 우측에 붙여서 배치하자." 예전엔(2026.09) 저장 목록이 길어지면 이 바가
   // 늘어나 계산 영역과 멀어진다는 이유로 저장 버튼을 별도 #taxCalcSaveBar(taxcalc-body 맨
   // 위)로 뺐었는데, 이번 지시로 다시 사건선택 콤보 옆으로 되돌린다.
+  // [2026.10.07 이동, 재검토119] 세무사님 지시 — "버튼명을 <자동계산>으로, 저장버튼 행으로
+  // 올리자." 예전엔 양도세·증여세·상속세 각 탭 안에 따로따로 있어서 탭을 눌러야만 보였는데,
+  // 사건선택·저장과 같은 급의 "사건 전체에 걸친 조작"이라 이 공유 바로 올린다 — 탭마다 다시
+  // 안 만들어도 되고, 사건을 바꿔도 위치가 그대로다. 실제 동작은 지금 활성 탭을 보고 양도세·
+  // 증여세·상속세 중 맞는 자동계산 함수로 그대로 연결한다(tcRunAutoCalc_ 참고).
   tcCaseBarEl.innerHTML =
     '<div class="tb-row" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
     '<select id="tcCaseSelect" style="min-width:220px; max-width:360px;">' + options + '</select>' +
     '<button type="button" id="tcSaveBtn" class="save-btn"' + (tcSelectedId ? '' : ' disabled') + '>💾 저장</button>' +
+    '<button type="button" id="tcAutoCalcBtn" class="taxcalc-ai-btn"' + (tcSelectedId ? '' : ' disabled') + '>📄 자동계산</button>' +
     '<button type="button" id="tcBackToCaseBtn" class="ghost-btn" style="margin-left:auto;"><span class="btn-ic">↩</span><span class="btn-tx"> 처리개요</span></button>' +
     '</div>' +
     (tcSelectedId ? '<div id="tcSavedList" style="display:flex; flex-direction:column; gap:6px;"></div>' : '');
 
   document.getElementById('tcSaveBtn').addEventListener('click', tcSaveCurrentResult_);
+  document.getElementById('tcAutoCalcBtn').addEventListener('click', tcRunAutoCalc_);
   document.getElementById('tcCaseSelect').addEventListener('change', function(){
     tcSelectedId = this.value || null;
     tcCurrentCase = tcSelectedId ? tcCases.filter(function(c){ return c.id === tcSelectedId; })[0] : null;
@@ -16682,13 +17548,13 @@ const TC_TOOL_STATE_ = {
     label: '상속세(증여세) 분납(§70②) 계산',
     get: function(){ return lastSplitPaymentResult_ ? { input: lastSplitPaymentInput_, result: lastSplitPaymentResult_ } : null; },
     set: function(saved){ lastSplitPaymentInput_ = saved.input || null; lastSplitPaymentResult_ = saved.result || null; },
-    total: function(saved){ return saved.result && saved.result.분납가능_최대금액; }
+    total: function(saved){ return saved.result && (saved.result.분납신청금액 != null ? saved.result.분납신청금액 : saved.result.분납가능_최대금액); }
   },
   trsp: {
     label: '양도소득세 분납(§77) 계산',
     get: function(){ return lastTrSplitPaymentResult_ ? { input: lastTrSplitPaymentInput_, result: lastTrSplitPaymentResult_ } : null; },
     set: function(saved){ lastTrSplitPaymentInput_ = saved.input || null; lastTrSplitPaymentResult_ = saved.result || null; },
-    total: function(saved){ return saved.result && saved.result.분납가능_최대금액; }
+    total: function(saved){ return saved.result && (saved.result.분납신청금액 != null ? saved.result.분납신청금액 : saved.result.분납가능_최대금액); }
   },
   cr: {
     label: '상속세(증여세) 경정청구서',
@@ -16750,6 +17616,18 @@ function tcRestoreToolResults_(caseObj){
     const spec = TC_TOOL_STATE_[key];
     if (spec) spec.set(latestByKey[key]);
   });
+  // [2026.10.08, 재검토125] 세무사님 지적 — 납부지연일수 하나만 땜질하고 끝낸 게 문제였다.
+  // 위 spec.set()들(bd/ck 등 여러 도구)이 저장된 DOM 필드값을 el.value=로 직접 복원하는데,
+  // 이 경로는 전부 실측폭 메커니즘(input 이벤트도, MutationObserver의 childList도) 밖이라
+  // "사건을 다시 열면" 그 필드들만 복원 전 placeholder 기준 폭에 멈춰있었다 — 한 곳마다
+  // 따로 고치는 대신, 복원이 끝나는 이 지점에서 전체를 한 번에 다시 잰다.
+  if (typeof tcResizeAutoWidthInput_ === 'function' && typeof TC_AUTOWIDTH_SELECTOR_ === 'string'){
+    taxCalcView.querySelectorAll(TC_AUTOWIDTH_SELECTOR_).forEach(tcResizeAutoWidthInput_);
+  }
+  // [2026.10.08, 재검토127] select(관계·구분·신고상태 등)도 같은 복원 사각지대라 같이 훑는다.
+  if (typeof tcResizeAutoWidthSelect_ === 'function' && typeof TC_AUTOWIDTH_SELECT_SELECTOR_ === 'string'){
+    taxCalcView.querySelectorAll(TC_AUTOWIDTH_SELECT_SELECTOR_).forEach(tcResizeAutoWidthSelect_);
+  }
 }
 
 // 지금 활성화된 메인 탭(양도/증여/상속/취득)의 메인 결과 박스 텍스트를 그대로 캡처한다. 각

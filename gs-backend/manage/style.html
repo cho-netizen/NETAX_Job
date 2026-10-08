@@ -438,8 +438,13 @@
      필드 전체가 통째로 넓어짐) 셀렉트와 똑같은 문제가 났다. 필드 자체에 상한을 둬서
      긴 문장은 필드 폭 안에서 줄바꿈되게 한다(주소 등 flex-basis:340px 지정 필드는
      그대로 340px 유지, 상한보다 작으므로 영향 없음). */
-  .taxcalc-field{ display:flex; flex-direction:column; gap:3px; flex:0 1 auto; max-width:360px; position:relative; }
-  .taxcalc-field label{ font-size:12px; font-weight:600; color:var(--ink); }
+  /* [2026.10.07 수정, 재검토124] 세무사님 지적 — 라벨 문장이 길면(조문 설명을 그대로 붙인
+     라벨 등) flex 아이템의 기본 min-width(auto)가 "줄바꿈 전 내용 폭"을 하한선으로 잡아서,
+     입력칸은 짧은데 라벨 때문에 필드 전체가 넓어지는 문제가 있었다. min-width:0으로 그
+     하한선을 없애 필드 폭이 입력칸(이제 실측 반응형 폭)을 따라가게 하고, 라벨은 그 좁은
+     폭 안에서 여러 줄로 자연스럽게 줄바꿈되게 한다. */
+  .taxcalc-field{ display:flex; flex-direction:column; gap:3px; flex:0 1 auto; max-width:360px; min-width:0; position:relative; }
+  .taxcalc-field label{ font-size:12px; font-weight:600; color:var(--ink); overflow-wrap:break-word; }
   .taxcalc-field input, .taxcalc-field select{
     border:1px solid var(--taxcalc-border); border-radius:6px; padding:6px 8px; font-family:inherit;
     font-size:13px; box-sizing:border-box; background:var(--panel); color:var(--ink);
@@ -450,6 +455,12 @@
      통째로 넓어져 있었다(실측 607px). 셀렉트만 상한을 둬서 긴 옵션은 그 옵션이 실제
      선택됐을 때만 말줄임(...)되게 한다. */
   .taxcalc-field select{ max-width:280px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  /* [2026.10.08 추가, 재검토127] 위 max-width:280으로는 부족했다 — .taxcalc-field가
+     align-items 기본값(stretch)이라, select는 max-width 상한 안에서도 그릴드 칸 폭까지
+     계속 늘어나 있었다(그래서 "정상(기한내) 신고"처럼 짧은 보기를 골라도 넓게 보임).
+     날짜·금액 입력칸처럼 align-self:flex-start로 늘어남 자체를 끊고, 실제 폭은
+     taxcalc.html의 tcResizeAutoWidthSelect_()가 선택된 보기 글자 수만큼만 잰다. */
+  .taxcalc-field > select{ align-self:flex-start; }
   /* [2026.09.16 버그수정] 세무사님 전체 재검토 지시 — .taxcalc-field가 flex-column
      기본값(align-items:stretch)이라, 날짜(10자)·숫자(면적·연도 등 대개 몇 자리) 입력칸까지
      그리드 칸(180px 이상) 전체 폭으로 늘어나 데이터 길이에 비해 항상 크게 남아 보였다.
@@ -484,6 +495,11 @@
   .taxcalc-field > input[data-lfield="tenantBizNo"]{ align-self:flex-start; width:150px; }
   .taxcalc-field > input[data-cfield="name"]{ align-self:flex-start; width:140px; }
   .taxcalc-field > input#ihReporterRelation{ align-self:flex-start; width:95px; }
+  /* [2026.10.07 신규, 재검토124] 위 개별 규칙들의 대상이 아닌 나머지 일반 텍스트칸은 이제
+     taxcalc.html의 tcResizeAutoWidthInput_()이 타이핑마다 실측해서 style.width를 직접
+     박아준다 — 여기서는 그 JS가 정한 폭이 flex stretch로 다시 뭉개지지 않도록 기준축만
+     잡아준다(다른 narrow 규칙들과 동일한 align-self:flex-start 관례). */
+  .taxcalc-field > input[type="text"]:not(.taxcalc-date):not(.taxcalc-money):not([data-nameonly]):not([data-regno]){ align-self:flex-start; }
   .taxcalc-field input::placeholder{ color:var(--taxcalc-hint); opacity:0.85; }
   .taxcalc-field input:focus, .taxcalc-field select:focus{ outline:none; border-color:var(--gold); box-shadow:0 0 0 1px var(--gold); }
   .taxcalc-field input[readonly]{ background:var(--taxcalc-hint-bg, rgba(128,128,128,0.12)); color:var(--taxcalc-hint); cursor:default; }
