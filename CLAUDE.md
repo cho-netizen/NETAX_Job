@@ -17,6 +17,19 @@
 없고, HTML 파일들은 구글 앱스스크립트가 처리해야 하는 템플릿 태그가 그대로 남아있어 깨진
 상태로만 보인다 — 신경 쓸 필요 없음.
 
+## [2026.10.08] 구조 전환 — 화면은 job.netax.kr이 직접 서빙
+구글 앱스스크립트 틀(iframe) 안에서는 마이크·화면캡처가 막히고(허용목록에 없음) 휴대폰 앱 설치·
+공유하기·확장프로그램 연결도 막혀서, 화면을 work.netax.kr처럼 깃허브 페이지에서 직접 띄우는 구조로
+바꿨다. `gs-backend/manage/*.html`(원본)을 `tools/build-app.js`가 한 장으로 조립해 `app/index.html`을
+만들고, 깃허브 페이지가 그것을 `job.netax.kr/app/`로 서빙한다. 서버 호출은 `manage/gasbridge.html`이
+google.script.run 대신 doPost의 `__manage` 입구(Code.js `manageApp_dispatchHttpOnce_`)로 보낸다 —
+요청번호(rid)로 같은 요청이 두 번 실행되지 않게 한다(구글 응답 2단계 중 결과 받아가기가 자주 실패하기 때문).
+예전 구글 주소(`.../exec?app=manage`)도 그대로 동작한다(gasbridge는 그 안에서는 아무 일도 안 함).
+
+**화면(`manage/*.html`)을 고쳤으면** 아래 GS 절차(clasp push/deploy)에 더해:
+1. `node tools/build-app.js` — `app/index.html` 다시 만들기 (직접 고치지 말 것, 자동 생성 파일)
+2. git commit/push — 깃허브 페이지에 올라가야 job.netax.kr/app/에 반영된다(커밋 승인은 전역 규칙대로)
+
 ## GS(Apps Script) 코드 수정 시 반드시 지킬 절차
 `gs-backend` 폴더 안의 `.js`/`.html`/`appsscript.json` 파일을 수정했다면, 코드 수정만으로는
 실제 서비스에 반영되지 않는다. 아래 순서를 매번 빠짐없이 실행한다 (사용자에게 각 단계를 할지

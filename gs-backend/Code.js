@@ -3812,6 +3812,14 @@ function doPost(e) {
       return jsonResponse({ error: '카카오 웹훅 인증 실패' });
     }
 
+    // [2026.10.08] job 구조 전환 — job.netax.kr이 화면을 직접 띄우면(구글 틀 밖) google.script.run을
+    // 쓸 수 없으므로, 그 화면은 같은 서버함수(manageApp_*)를 이 입구로 부른다(manage/gasbridge.html).
+    // 허용 함수만 받고, 각 함수가 자체적으로 비밀번호·세션토큰을 검사하므로 _key(API_SECRET)는
+    // 요구하지 않는다(API_SECRET을 공개 화면 코드에 넣지 않기 위함).
+    if (body.__manage) {
+      return jsonResponse(manageApp_dispatchHttpOnce_(body.__manage, body.__rid));
+    }
+
     // [2026.08] 이 웹앱 배포가 "모든 사용자"(로그인 불필요) 접근으로 되어 있어서, URL만 알면
     // 누구나 파일 조회/업로드/삭제 등을 호출할 수 있는 상태였다. 프론트엔드(config.js)가 매 요청에
     // 같이 실어 보내는 비밀값과 스크립트 속성 API_SECRET을 대조해서, 값이 없거나 틀리면 거부한다.
@@ -15861,6 +15869,80 @@ function manageApp_verifySessionToken_(token) {
 // [2026.09] admin.netax.kr과 같은 패턴 — 계정 없이 공용 비밀번호 하나로 접근을 막는 얇은 게이트.
 // 스크립트 속성 MANAGE_APP_PASSWORD가 비어있으면(설정 전) 항상 거부한다. 성공하면 위 세션
 // 토큰을 함께 발급한다(호환을 위해 이름은 그대로 두되 반환값을 boolean에서 객체로 바꿈).
+// [2026.10.08] job.netax.kr 직접 서빙용 입구(doPost의 __manage 분기). google.script.run과 같은 함수를
+// 같은 인자로 부른다 — 화면 쪽 코드는 그대로 두고 통신 방식만 바뀐다.
+const MANAGE_APP_HTTP_FUNCS_ = {
+  manageApp_checkPassword: function (a) { return manageApp_checkPasswordThrottled_(a[0]); },
+  manageApp_getApiSecret: function (a) { return manageApp_getApiSecret(a[0]); },
+  manageApp_getRptAdminCode: function (a) { return manageApp_getRptAdminCode(a[0]); },
+  manageApp_changePassword: function (a) { return manageApp_changePassword(a[0], a[1]); },
+  manageApp_call: function (a) { return manageApp_call(a[0], a[1], a[2]); }
+};
+function manageApp_dispatchHttp_(req) {
+  const fn = req && MANAGE_APP_HTTP_FUNCS_[req.fn];
+  if (!fn) return { error: '허용되지 않은 요청입니다.' };
+  const args = Array.isArray(req.args) ? req.args : [];
+  return { __result: fn(args) };
+}
+
+// [2026.10.08] 같은 요청을 두 번 실행하지 않기 위한 장치(요청번호 rid).
+// 구글 웹앱 응답은 ①실행 → ②결과주소(googleusercontent)에서 받아가기 두 단계인데, ②가 15~30초 매달리다
+// 404("드라이브 파일을 열 수 없음")로 실패하는 일이 잦다(2026-10-08 실측, 4번 중 2번). 그때도 ①은 이미 끝나
+// 있으므로 화면이 그냥 다시 보내면 저장이 두 번 될 수 있다. 화면(gasbridge.html)이 같은 요청번호로 다시
+// 보내면 여기서는 다시 실행하지 않고 기억해둔 결과를 돌려준다. 앞 요청이 아직 실행 중이면 끝날 때까지
+// 기다렸다가 그 결과를 준다. 결과는 10분 기억(CacheService 한도 100KB 넘는 결과는 기억 못 함 — 그 경우
+// 재시도 시 다시 실행되지만, 그런 큰 응답은 대부분 조회용이라 위험이 낮다).
+function manageApp_dispatchHttpOnce_(req, rid) {
+  if (!rid || typeof rid !== 'string' || rid.length > 80) return manageApp_dispatchHttp_(req);
+  const cache = CacheService.getScriptCache();
+  const key = 'mrid_' + rid;
+  const PENDING = '__pending__';
+  const existing = cache.get(key);
+  if (existing && existing !== PENDING) {
+    try { return JSON.parse(existing); } catch (err) { }
+  }
+  if (existing === PENDING) {
+    // 앞 요청이 아직 실행 중 — 최대 25초 기다린다.
+    for (let i = 0; i < 25; i++) {
+      Utilities.sleep(1000);
+      const v = cache.get(key);
+      if (v && v !== PENDING) { try { return JSON.parse(v); } catch (err) { break; } }
+    }
+    return { error: '앞서 보낸 같은 요청이 아직 처리 중입니다. 잠시 후 화면을 새로고침해 결과를 확인하세요.' };
+  }
+  cache.put(key, PENDING, 600);
+  let result;
+  try {
+    result = manageApp_dispatchHttp_(req);
+  } catch (err) {
+    cache.remove(key);
+    throw err;
+  }
+  try {
+    const text = JSON.stringify(result);
+    if (text.length < 95000) cache.put(key, text, 600); else cache.remove(key);
+  } catch (err) { cache.remove(key); }
+  return result;
+}
+
+// 공개 주소에서 비밀번호를 받게 되므로 무작정 대입을 늦춘다: 틀리면 1.5초 뒤에 답하고, 10분 안에
+// 30번 넘게 틀리면 10분간 로그인 자체를 막는다(맞는 비밀번호여도). 구글 틀 방식(google.script.run)은
+// 그대로 manageApp_checkPassword를 쓴다.
+function manageApp_checkPasswordThrottled_(pw) {
+  const cache = CacheService.getScriptCache();
+  if (cache.get('manage_login_locked')) {
+    return { ok: false, token: '', locked: true, message: '로그인 시도가 너무 많아 10분간 잠겼습니다. 잠시 후 다시 시도하세요.' };
+  }
+  const res = manageApp_checkPassword(pw);
+  if (!res.ok) {
+    const fails = Number(cache.get('manage_login_fails') || 0) + 1;
+    cache.put('manage_login_fails', String(fails), 600);
+    if (fails >= 30) cache.put('manage_login_locked', '1', 600);
+    Utilities.sleep(1500);
+  }
+  return res;
+}
+
 function manageApp_checkPassword(pw) {
   const expected = PropertiesService.getScriptProperties().getProperty('MANAGE_APP_PASSWORD');
   const ok = !!expected && pw === expected;

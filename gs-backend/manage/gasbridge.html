@@ -1,0 +1,65 @@
+<script>
+  // ============================================================
+  // [2026.10.08] job 구조 전환 — google.script.run 대리(브리지)
+  // ------------------------------------------------------------
+  // 이 앱은 원래 구글 앱스스크립트가 만든 틀(iframe) 안에서만 돌았고, 서버 호출은 그 틀이 제공하는
+  // google.script.run으로 했다. 그 틀은 마이크·화면캡처를 막고(허용목록에 없음) 휴대폰 앱 설치·
+  // 공유하기·확장프로그램 연결도 막아서, 화면을 job.netax.kr에서 직접 띄우는 방식으로 바꿨다
+  // (gs-backend는 데이터 처리만). 그렇게 띄우면 google.script.run이 없으므로, 같은 모양의 대리
+  // 객체를 만들어 서버(doPost의 __manage 입구 → manageApp_dispatchHttp_)로 보낸다. 화면 쪽 코드는
+  // 그대로 google.script.run.withSuccessHandler(...).manageApp_xxx(...)를 쓰면 된다.
+  // 구글 틀 안에서 열렸을 때(예전 주소)는 진짜 google.script.run이 있으므로 아무것도 하지 않는다.
+  // ============================================================
+  (function(){
+    if (window.google && window.google.script && window.google.script.run) return;
+    var GAS_URL = 'https://script.google.com/macros/s/AKfycbyFbvXiV6rSzCvhtc_T2WrzNF5ZxhOFWtSSsgzSavzPbjv4LBGhjXhu_Q2_8m-PDj8s/exec';
+    window.NX_STANDALONE = true; // 구글 틀 밖(job.netax.kr)에서 직접 열렸다는 표시
+
+    // 구글 웹앱 응답은 ①실행 → ②결과 받아가기 두 단계인데 ②가 자주 실패한다(오류 화면 HTML이 옴 —
+    // Code.js manageApp_dispatchHttpOnce_ 설명 참고). 그때도 서버 실행은 끝나 있으므로, 같은 요청번호(rid)로
+    // 다시 묻는다 — 서버는 다시 실행하지 않고 기억해둔 결과를 준다(저장이 두 번 되지 않음).
+    var RETRY_DELAYS = [1000, 2000, 4000, 6000];
+    function newRid(){ return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10); }
+    function post(fnName, args){
+      var rid = newRid();
+      var body = JSON.stringify({ __manage: { fn: fnName, args: args }, __rid: rid });
+      var attempt = function(n){
+        return fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body })
+          .then(function(res){ return res.text(); })
+          .then(function(text){
+            var data = null;
+            try{ data = JSON.parse(text); }catch(e){ data = null; }
+            var stillRunning = data && data.error && !('__result' in data) && /아직 처리 중/.test(data.error);
+            if (!data || stillRunning){
+              if (n < RETRY_DELAYS.length) return new Promise(function(r){ setTimeout(r, RETRY_DELAYS[n]); }).then(function(){ return attempt(n + 1); });
+              throw new Error('서버 응답을 받지 못했습니다(구글 서버가 일시적으로 불안정합니다). 잠시 후 다시 시도하세요. 저장 작업이었다면 화면을 새로고침해 반영됐는지 먼저 확인하세요.');
+            }
+            if (data.error && !('__result' in data)) throw new Error(data.error);
+            return data.__result;
+          }, function(err){
+            // 요청이 서버에 닿기 전에 끊긴 네트워크 오류 — 같은 요청번호로 다시 보내도 안전하다.
+            if (n < RETRY_DELAYS.length) return new Promise(function(r){ setTimeout(r, RETRY_DELAYS[n]); }).then(function(){ return attempt(n + 1); });
+            throw err;
+          });
+      };
+      return attempt(0);
+    }
+
+    function runner(){
+      var onOk = function(){}, onFail = function(err){ console.error(err); };
+      var proxy = new Proxy({}, { get: function(t, key){
+        if (key === 'withSuccessHandler') return function(f){ onOk = f; return proxy; };
+        if (key === 'withFailureHandler') return function(f){ onFail = f; return proxy; };
+        if (key === 'withUserObject') return function(){ return proxy; };
+        return function(){
+          var args = Array.prototype.slice.call(arguments);
+          post(String(key), args).then(function(r){ onOk(r); }, function(e){ onFail(e); });
+        };
+      }});
+      return proxy;
+    }
+
+    window.google = window.google || {};
+    window.google.script = { get run(){ return runner(); } };
+  })();
+</script>

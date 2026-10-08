@@ -3,6 +3,10 @@
 <head>
   <base target="_top">
   <meta charset="utf-8">
+  <!-- [2026.10.08] job.netax.kr에서 직접 열릴 때 google.script.run 대리(구글 틀 안에서는 아무 일도 안 함) -->
+  <?!= include_('manage/gasbridge') ?>
+  <!-- 구글 틀에서는 서버(doGet setTitle)가 제목을 붙였지만, job.netax.kr에서 직접 열 때는 이 태그가 쓰인다 -->
+  <title>NETAX 관리</title>
   <!-- [2026.09 버그수정] 실사용 지적 — 이 태그가 아예 없어서 휴대폰에서 열면 브라우저가
        데스크톱 너비(약 980px)로 그린 화면을 통째로 축소해 보여줬다 — 글씨·버튼이 너무 작아
        사실상 못 쓰는 수준이라 "안 열린다"고 느껴졌을 것. 이 태그를 넣어야 휴대폰이 자기
