@@ -3814,6 +3814,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'improve_report_get') return jsonResponse(getImprovementReport_());
   if (body.action === 'system_audit_run') return jsonResponse(runNightlySystemAudit(true) || { success: true });
   if (body.action === 'improve_request_add') return jsonResponse(improve_addRequest_(body));
+  if (body.action === 'gh_mark_deployed') { if (!/^[0-9a-f]{40}$/.test(String(body.sha || ''))) return jsonResponse({ success: false, error: 'sha 형식 오류' }); gh_markDeployed_(body.sha); return jsonResponse({ success: true }); } // PC에서 clasp 배포·푸시 후 기준 맞춤(tools/mark-deployed.js)
   if (body.action === 'gh_deploy_status') return jsonResponse(gh_deployStatus_());
   if (body.action === 'gh_deploy_apply') return jsonResponse(gh_deployApply_(body));
   if (body.action === 'improve_token_get') return jsonResponse({ success: true, token: improve_readToken_() });

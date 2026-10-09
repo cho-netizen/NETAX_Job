@@ -42,6 +42,10 @@ google.script.run 대신 doPost의 `__manage` 입구(Code.js `manageApp_dispatch
    깨지므로, `clasp deploy` (ID 옵션 없이)로 새 배포를 만드는 것은 금지.
 3. 위 두 단계가 끝난 뒤에만 `git commit`/`git push` 진행 여부를 평소 규칙대로 묻는다 (이건
    실제 반영과 무관한 기록/백업용이라 순서상 나중이어도 무방).
+4. [2026.10.09] 푸시까지 끝났으면 `node tools/mark-deployed.js` — job 설정 🐞 카드의 📥 수정 반영이
+   "운영 = 깃허브 main"으로 알게 한다(안 하면 이미 반영된 커밋이 "반영 대기"로 보임).
+   **주의:** 이제 깃허브 main은 job이 📥로 그대로 받아 운영에 올리는 원본이다. 운영에 안 올린(또는
+   검증 안 된) 코드를 main에 푸시해 두면, 세무사님이 📥를 누를 때 그대로 운영에 들어간다.
 
 ### 이 저장소의 배포 ID
 배포 ID = AKfycbyFbvXiV6rSzCvhtc_T2WrzNF5ZxhOFWtSSsgzSavzPbjv4LBGhjXhu_Q2_8m-PDj8s
