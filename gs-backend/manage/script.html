@@ -105,11 +105,20 @@
     if (!e || !e.message || /ResizeObserver loop/.test(e.message)) return;
     nxLogBug_({ kind: 'js', where: (e.filename || '').split('/').pop() + ':' + (e.lineno || ''), message: e.message, detail: e.error && e.error.stack ? String(e.error.stack).slice(0, 1200) : '' });
   });
+  // [2026.10.09] 실사용 점검에서 발견 — 화면 코드가 서버 실패를 따로 받아주지 않은 곳(예: 증빙확보의 확보완료/미확보로)은
+  // 저장이 실패해도 화면에 아무 말이 없어 "눌렀는데 아무 일도 안 일어남"으로 보였다. 화면마다 고치는 대신 여기 한 곳에서,
+  // 서버 요청(callGasRaw_)에서 난 실패를 아무도 받아주지 않았으면 무엇이 실패했는지 화면에 알린다(오류 기록에도 남음).
+  var NX_ACTION_VERB_ = function(action){
+    return /(update|save|set|create|add|apply|link|approve|reject|cancel|delete|remove|send|publish|upload|mark|rename|merge)/i.test(action || '') ? '저장·처리' : '불러오기';
+  };
   window.addEventListener('unhandledrejection', function(e){
     var r = e && e.reason;
     var msg = r && r.message ? r.message : String(r || '');
     if (!msg || /AUTH_REQUIRED|AbortError/.test(msg)) return;
-    nxLogBug_({ kind: 'promise', where: '', message: msg, detail: r && r.stack ? String(r.stack).slice(0, 1200) : '' });
+    if (r && r.nxAction){
+      try{ toast('⚠ ' + NX_ACTION_VERB_(r.nxAction) + '에 실패했습니다 — ' + msg.slice(0, 120) + ' (잠시 후 다시 시도해 주세요)'); }catch(err){}
+    }
+    nxLogBug_({ kind: 'promise', where: r && r.nxAction ? '서버요청 ' + r.nxAction : '', message: msg, detail: r && r.stack ? String(r.stack).slice(0, 1200) : '' });
   });
 
   function callGasRaw_(action, payload){
@@ -124,11 +133,13 @@
             nxAlert_('로그인이 만료되었습니다. 다시 로그인해주세요.').then(function(){ location.reload(); });
             return;
           }
-          if (res && res.error) reject(new Error(res.error));
+          if (res && res.error){ var er = new Error(res.error); er.nxAction = action; reject(er); }
           else resolve(res);
         })
         .withFailureHandler(function(err){
           callGasProgress_(-1);
+          if (!(err instanceof Error)) err = new Error(String(err && err.message || err || '서버 연결 실패'));
+          err.nxAction = action;
           reject(err);
         })
         .manageApp_call(action, payload || {}, manageAppSessionToken_);

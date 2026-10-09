@@ -1245,6 +1245,8 @@ let rwCaseFileOptions_ = [];
 let rwActiveCaseSubfolders_ = null;
 
 let docs = loadDocs();
+// 처음 불러온 시점의 내용을 "손대기 전" 기준으로 기억(rwHasUnsavedDriveChanges_ 참고). 이전 세션에서 이미 기준이 저장돼 있으면 그대로 둔다.
+docs.forEach(function(d){ if (d.rwBaseline_ === undefined) d.rwBaseline_ = d.md || ''; });
 let selectedId = localStorage.getItem(SELECTED_KEY);
 if (!docs.find(d => d.id === selectedId)) selectedId = docs.length ? docs[0].id : null;
 
@@ -1287,6 +1289,7 @@ async function hydrateDocsFromIdb_(){
       // IndexedDB가 이미 더 최신/많은 데이터를 갖고 있으면 화면을 그걸로 다시 그린다.
       if (!rwLoadingFileId_ && JSON.stringify(idbDocs) !== JSON.stringify(docs)) {
         docs = idbDocs;
+        docs.forEach(function(d){ if (d.rwBaseline_ === undefined) d.rwBaseline_ = d.md || ''; }); // 손대기 전 기준(rwHasUnsavedDriveChanges_)
         if (!docs.find(d => d.id === selectedId)) selectedId = docs.length ? docs[0].id : null;
         refreshDocSelect();
         loadSelectedIntoEditor();
@@ -1595,7 +1598,8 @@ function addFilesFromInput(fileList){
           name: name || '이름없는 문서',
           theme: 'memo',
           format: isHtml ? 'html' : 'md', // 확장자로 자동 판별 (md/txt → md 파서, html/htm → 원본 스타일 제거 후 그대로)
-          md: content
+          md: content,
+          rwBaseline_: content
         };
         docs.push(newDoc);
         if (firstNewId === null) firstNewId = newDoc.id;
@@ -1936,7 +1940,7 @@ async function createNewDoc(kind){
   // 용도가 정해지지 않은 경우에만 쓴다.
   const FIXED_DOC_TYPE_ = { review: 'review', review_specific: 'review_specific', advisory: 'advisory', filing: 'filing', reference: 'reference', progress: 'progress', appeal_petition: 'appeal_petition', translation: 'translation', summary: 'summary' };
   const docType = FIXED_DOC_TYPE_[kind] || rwGuessDocType_();
-  const newDoc = { id: uid(), name: name.trim() || tpl.fallbackName, theme: RW_DOC_TYPE_THEME_[docType] || 'memo', format: 'md', md: mdContent, docType: docType };
+  const newDoc = { id: uid(), name: name.trim() || tpl.fallbackName, theme: RW_DOC_TYPE_THEME_[docType] || 'memo', format: 'md', md: mdContent, docType: docType, rwBaseline_: mdContent };
   docs.push(newDoc);
   selectedId = newDoc.id;
   const saved = await persist();
@@ -3274,11 +3278,16 @@ function currentDriveFileId_(){
 // 실제 드라이브에 저장한 시점의 내용)와 다르면 "저장 안 한 변경"으로 본다 — persist()가
 // 매번 자동으로 채워주는 IndexedDB/localStorage 캐시는 브라우저를 벗어나면 사라질 수 있는
 // 임시 저장일 뿐이라 여기서는 진짜 저장(드라이브)만 기준으로 삼는다.
+// [2026.10.09 버그수정] 실사용 점검에서 발견 — 처리개요에서 "✍ 문서작성"으로 들어갔다가 다른 화면으로 가면, 아무것도
+// 고치지 않았는데도 매번 "저장하지 않은 내용" 확인창이 떴다. 원인: 기본으로 들어있는 샘플 문서(청구취지·검토보고서 샘플)나
+// 템플릿으로 막 만든 새 문서처럼 "드라이브에 저장된 적 없는" 문서를 전부 미저장으로 셌다. 이제는 문서가 처음 생겼을 때의
+// 내용(rwBaseline_)이나 드라이브 저장본(rwDriveSaved_)과 달라졌을 때만 — 즉 실제로 손댄 문서만 미저장으로 본다.
 function rwHasUnsavedDriveChanges_(){
   const mdInputEl = document.getElementById('mdInput');
   return docs.some(function(d){
     const content = (d.id === selectedId && mdInputEl) ? mdInputEl.value : d.md;
-    return !!(content && content.trim()) && content !== d.rwDriveSaved_;
+    const base = d.rwDriveSaved_ !== undefined ? d.rwDriveSaved_ : d.rwBaseline_;
+    return !!(content && content.trim()) && content !== base;
   });
 }
 
