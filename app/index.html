@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 13:53 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 14:06 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -478,7 +478,7 @@
 
   /* [2026.09 신규] 서식 빠른삽입 툴바 + 마크다운 도움말 — reportwriter.html(작성관리)의
      #mdHelpBar/floating-panel과 같은 모양으로 맞춘 것(일치시키기), id/클래스는 memo 전용. */
-  #memoMdHelpBar{ display:flex; align-items:center; gap:2px; padding:5px 8px; background:#f7f8fa; border-bottom:1px solid var(--line); flex-shrink:0; }
+  #memoMdHelpBar{ display:flex; flex-wrap:wrap; align-items:center; gap:2px; padding:5px 8px; background:#f7f8fa; border-bottom:1px solid var(--line); flex-shrink:0; }
   #memoMdHelpBar button{ background:#dde3ee; border:1px solid #8b93a3; color:#1c2333; box-shadow:0 1px 2px rgba(20,25,40,0.10);
     font-size:12.5px; font-weight:700; padding:3px 9px; border-radius:4px; font-family:inherit; cursor:pointer; }
   #memoMdHelpBar button:hover{ background:#c7d0e0; border-color:#5b6b8c; }
@@ -42783,7 +42783,7 @@ function goToReportWriter_(caseId, opts){
     <div class="card" style="max-width:720px;">
       <h3>🐞 오류 기록</h3>
       <div class="settings-tool-desc" style="margin:0 0 8px;">job 화면과 AI가 일하다 난 오류가 자동으로 쌓입니다. 이상한 점을 일일이 설명하지 않으셔도, Claude Code에게 "오류 기록 확인해줘"라고 하면 이 기록을 보고 원인을 찾습니다.</div>
-      <div style="display:flex; gap:6px; margin-bottom:8px;">
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
         <button type="button" class="ghost-btn" id="stBtnBugRefresh">🔄 불러오기</button>
         <button type="button" class="ghost-btn" id="stBtnBugClear">🗑 기록 비우기</button>
         <button type="button" class="ghost-btn" id="stBtnSelfCheck" title="세액계산 엔진 정답 사례·사건/고객/예약/AI대화 읽기를 지금 점검합니다(AI 비용 0, 매일 밤 자동으로도 돔)">🩺 지금 자가점검</button>
