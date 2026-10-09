@@ -43,6 +43,8 @@
         <button type="button" class="ghost-btn" id="stBtnBugClear">🗑 기록 비우기</button>
         <button type="button" class="ghost-btn" id="stBtnSelfCheck" title="세액계산 엔진 정답 사례·사건/고객/예약/AI대화 읽기를 지금 점검합니다(AI 비용 0, 매일 밤 자동으로도 돔)">🩺 지금 자가점검</button>
         <button type="button" class="ghost-btn" id="stBtnImprove" title="최근 7일 오류·유료 AI 질문·자가점검·화면 속도를 모아 고칠 거리를 정리합니다(AI 비용 0, 매일 밤 자동으로도 돔). 고치는 건 AI 탭 🛠(웹 Claude Code)">🛠 개선 후보 보기</button>
+        <button type="button" class="ghost-btn" id="stBtnImproveReq" title="고쳤으면 하는 점·새 기능을 적어 두면 개선 후보에 올라가고, 웹 Claude Code(매주 월·AI 탭 🛠)가 구현해 수정안으로 올립니다(AI 비용 0)">✍ 개선요구사항 적기</button>
+        <button type="button" class="ghost-btn" id="stBtnSysAudit" title="업무관리자·지침 파일끼리 모순·중복이 없는지 유료 AI(Sonnet)가 점검합니다 — 지침이 바뀌면 개선 후보에 알림이 뜹니다(자동 실행 안 함)">🧾 지침 점검</button>
         <button type="button" class="ghost-btn" id="stBtnGhDeploy" title="웹 Claude Code가 깃허브에 올리고 세무사님이 승인(Merge)한 수정을 job에 반영합니다">📥 수정 반영</button>
       </div>
       <div id="stBugList" class="settings-tool-desc">불러오기를 누르면 최근 기록이 보입니다.</div>
@@ -309,6 +311,28 @@
           + (r.headline || []).map(function(h){ return '<div style="padding:3px 0; border-top:1px solid var(--line);">' + escapeHtml(h) + '</div>'; }).join('')
           + '<div style="padding:3px 0; border-top:1px solid var(--line); color:var(--sub);">유료 AI ' + (r.paid ? r.paid.totalKrw : 0) + '원(7일) · 고치려면 AI 탭 🛠 → 지금 실행(매주 월요일 아침엔 자동) → 깃허브 수정안 승인(Merge) → 📥 수정 반영</div>';
       }).catch(function(err){ bugList.textContent = '개선 후보를 만들지 못했습니다: ' + (err && err.message ? err.message : err); });
+    });
+    // [2026.10.09 토큰0] ✍ 개선요구사항 — 총괄관리자 폴더 개선요구사항.md에 덧붙이고 개선 후보 보고서에 바로 올린다(0원)
+    document.getElementById('stBtnImproveReq').addEventListener('click', function(){
+      nxPrompt_('고쳤으면 하는 점이나 새로 원하는 기능을 적어 주세요.\n다음 웹 Claude Code 실행(매주 월요일 아침 또는 AI 탭 🛠) 때 구현해서 수정안으로 올립니다.', '').then(function(text){
+        text = String(text || '').trim();
+        if (!text) return;
+        bugList.textContent = '✍ 저장 중…';
+        callGas('improve_request_add', { text: text }).then(function(r){
+          bugList.textContent = (r && r.success) ? '✅ 개선요구사항을 적었습니다 — 개선 후보에 올라갔습니다. 바로 처리하려면 AI 탭 🛠 → 지금 실행.' : '저장하지 못했습니다: ' + ((r && r.error) || '');
+        }).catch(function(err){ bugList.textContent = '저장 중 오류: ' + (err && err.message ? err.message : err); });
+      });
+    });
+    // [2026.10.09 토큰0] 🧾 지침 점검 — 밤에는 "지침 바뀜"만 표시하고, 유료 AI 점검은 이 버튼으로만
+    document.getElementById('stBtnSysAudit').addEventListener('click', function(){
+      nxConfirm_('🧾 업무관리자·지침 파일 점검을 할까요?\n\n유료 AI(Sonnet)가 지침 전체를 읽습니다 — 수백 원~1천 원 정도. 지침이 지난 점검 이후 바뀌지 않았으면 비용 없이 끝납니다.').then(function(ok){
+        if (!ok) return;
+        bugList.textContent = '🧾 점검 중… (1~2분)';
+        callGas('system_audit_run', {}).then(function(r){
+          if (!r || r.success === false){ bugList.textContent = '점검하지 못했습니다: ' + ((r && r.error) || ''); return; }
+          bugList.innerHTML = '<div style="white-space:pre-wrap;">' + escapeHtml(String(r.report || '점검을 마쳤습니다 — 총괄관리자 폴더 _점검리포트에 저장했습니다.')) + '</div>';
+        }).catch(function(err){ bugList.textContent = '점검 중 오류: ' + (err && err.message ? err.message : err); });
+      });
     });
     // [2026.10.09] 📥 수정 반영 — 깃허브 main(승인된 수정)을 job 자신이 받아 배포한다(Code.js gh_deployApply_).
     document.getElementById('stBtnGhDeploy').addEventListener('click', function(){

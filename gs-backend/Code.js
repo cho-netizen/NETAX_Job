@@ -3812,6 +3812,8 @@ function dispatchClientAction0_(body) {
   if (body.action === 'self_check_last') return jsonResponse(selfCheckLast_());
   if (body.action === 'improve_report_run') return jsonResponse(buildImprovementReport_());
   if (body.action === 'improve_report_get') return jsonResponse(getImprovementReport_());
+  if (body.action === 'system_audit_run') return jsonResponse(runNightlySystemAudit(true) || { success: true });
+  if (body.action === 'improve_request_add') return jsonResponse(improve_addRequest_(body));
   if (body.action === 'gh_deploy_status') return jsonResponse(gh_deployStatus_());
   if (body.action === 'gh_deploy_apply') return jsonResponse(gh_deployApply_(body));
   if (body.action === 'improve_token_get') return jsonResponse({ success: true, token: improve_readToken_() });
@@ -15659,7 +15661,7 @@ function collectRecentUserQuestionsSample_(daysBack, maxFiles) {
  * 귀찮게 하는 패턴"이 있는지까지 판단하며, 새 업무관리자가 필요하다고 판단되면 그 자리에서
  * "_제안함"에 초안까지 자동으로 만들어둔다(활성화는 여전히 사람이 직접 해야 함).
  */
-function runNightlySystemAudit() {
+function runNightlySystemAudit(force) {
   const chiefFolder = getChiefManagerFolder_();
   if (!chiefFolder) {
     console.error('총괄관리자 폴더가 설정되지 않아 야간점검을 건너뜁니다(CHIEF_MANAGER_FOLDER_ID 미설정).');
@@ -15685,6 +15687,13 @@ function runNightlySystemAudit() {
     const auditHash = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, String(auditData.전체내용 || ''), Utilities.Charset.UTF_8));
     if (auditProps.getProperty('AUDIT_LAST_HASH') === auditHash) {
       saveReport('# 점검리포트 ' + today + '\n\n업무관리자·지침 파일이 지난 점검 이후 바뀌지 않아 AI 점검을 건너뛰었습니다(비용 0원).');
+      return { success: true, report: '지침 파일이 지난 점검 이후 바뀌지 않았습니다 — 점검할 것 없음(비용 0원).' };
+    }
+    // [2026.10.09 토큰0 전수조사] 지침이 바뀐 날에도 밤에는 AI를 부르지 않는다 — "바뀜"만 표시해 개선 후보 보고서에 띄우고,
+    // 실제 AI 점검은 설정 🐞 카드의 🧾 지침 점검 버튼(force=true)으로만 한다(템플릿 점검과 같은 방식).
+    if (force !== true) {
+      auditProps.setProperty('AUDIT_PENDING', today);
+      saveReport('# 점검리포트 ' + today + '\n\n업무관리자·지침 파일이 바뀌었습니다. AI 점검은 자동으로 하지 않습니다(비용 0원) — 필요하면 설정 🐞 카드의 🧾 지침 점검 버튼을 눌러 주세요.');
       return;
     }
 
@@ -15731,6 +15740,7 @@ function runNightlySystemAudit() {
 
     const result = JSON.parse(response.getContentText());
     auditProps.setProperty('AUDIT_LAST_HASH', auditHash);
+    auditProps.deleteProperty('AUDIT_PENDING');
     let text = (result.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('\n').trim();
 
     // 제안 블록이 있으면 뽑아내서 자동으로 "_제안함"에 초안을 저장하고, 보고문에서는 그 블록을 제거한다.
@@ -15760,8 +15770,10 @@ function runNightlySystemAudit() {
       : '## 결과: 확인 필요\n\n' + text;
 
     saveReport(body);
+    return { success: true, report: body };
   } catch (err) {
     saveReport('# 점검리포트 ' + today + '\n\n점검 중 오류 발생: ' + err.message);
+    return { success: false, error: err.message };
   }
 }
 
@@ -15931,57 +15943,38 @@ function processImprovementRequests() {
   const newRequestText = requestText.slice(tracking.processedLength || 0).trim();
   if (!newRequestText) return;
 
-  const apiKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
-  if (!apiKey) return;
-
-  const outputFolder = getOrCreateSubfolder_(chiefFolder, '_생성파일');
-  const today = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
-
-  try {
-    const prompt = '너는 이 NX 시스템(세무자문 1인 사무실용 AI 비서)의 총괄관리자다. '
-      + '아래는 조종호님이 개선요구사항.md에 새로 적은 항목들이다. 각 항목마다:\n'
-      + '1) 어느 파일을 건드려야 하는지 짐작해서 밝혀라 — 후보는 Code.js(Apps Script 백엔드), '
-      + 'NX-Work 메인 index.html(프론트엔드), report-writer/index.html(내부 보고서 편집기), '
-      + '또는 "코드가 아니라 운영 방식/판단의 문제"일 수도 있다.\n'
-      + '2) 원인으로 짐작되는 부분과, 어떻게 고치면 될지 방향을 구체적으로 적어라. 실제 코드를 '
-      + '작성하지는 마라 — 방향과 체크리스트만 제시한다.\n'
-      + '3) 이 시스템의 실제 코드 내용은 이 프롬프트에 포함돼 있지 않으니, 지금 아는 사실(예: '
-      + '업무관리자 도구들이 폴더 참조 문제로 항상 빈손이었던 사례처럼)을 근거로 삼되, 확실하지 '
-      + '않은 부분은 "확인 필요"라고 솔직히 표시해라.\n'
-      + '4) 이미 해결된 것으로 보이거나 정보가 부족해 판단이 안 서는 항목은 그렇다고 명시해라.\n\n'
-      + '=== 새로 추가된 개선요구사항 ===\n' + newRequestText;
-
-    const response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
-      method: 'post',
-      contentType: 'application/json',
-      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      payload: JSON.stringify({ model: DEFAULT_MODEL, max_tokens: 4000, messages: [{ role: 'user', content: prompt }] }),
-      muteHttpExceptions: true
-    });
-
-    let memoBody;
-    if (response.getResponseCode() !== 200) {
-      memoBody = '# 개선요구사항 처리메모 (' + today + ')\n\nClaude API 오류(status ' + response.getResponseCode() + ')로 처리 실패했습니다.\n\n## 이번에 새로 추가된 요구사항\n' + newRequestText;
-    } else {
-      const result = JSON.parse(response.getContentText());
-      const text = (result.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('\n').trim();
-      memoBody = '# 개선요구사항 처리메모 (' + today + ')\n\n'
-        + '이 메모는 실제 코드를 자동으로 고친 게 아니라, 무엇을 어떻게 고치면 될지 방향만 정리한 것입니다. '
-        + '실제 반영은 대화 세션에서 직접 확인하며 진행하세요.\n\n'
-        + '## 이번에 새로 추가된 요구사항\n' + newRequestText + '\n\n## 검토 메모\n' + (text || '(빈 응답)');
-    }
-
-    writeFileOverwrite_(outputFolder, '개선요구사항_처리메모_' + today + '.md', memoBody, 'text/markdown');
-  } catch (err) {
-    writeFileOverwrite_(outputFolder, '개선요구사항_처리메모_' + today + '.md',
-      '# 개선요구사항 처리메모 (' + today + ')\n\n처리 중 오류 발생: ' + err.message + '\n\n## 이번에 새로 추가된 요구사항\n' + newRequestText,
-      'text/markdown');
-  }
-
+  // [2026.10.09 토큰0 전수조사] 예전엔 새 요구사항마다 유료 AI(Sonnet)가 "고칠 방향 메모"를 썼다. 이제는 새로 적힌 부분을
+  // 날짜와 함께 기록만 하고(0원), 개선 후보 보고서가 그것을 담아 웹 Claude Code 루틴(매주 월·AI탭 🛠)이 직접 구현해 수정안(PR)으로 올린다.
+  const nowStr = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
+  tracking.entries = (tracking.entries || []).concat([{ at: nowStr, text: newRequestText.slice(0, 4000) }]).slice(-30);
   tracking.processedLength = requestText.length;
   writeFileOverwrite_(chiefFolder, IMPROVEMENT_TRACKING_FILE, JSON.stringify(tracking), 'application/json');
+  return { success: true, added: newRequestText.length };
 }
-
+// 최근 N일 안에 적힌 개선요구사항(개선 후보 보고서용)
+function improve_recentRequests_(days) {
+  const chiefFolder = getChiefManagerFolder_();
+  if (!chiefFolder) return [];
+  let tracking = {};
+  try { tracking = JSON.parse(readFileIfExists_(chiefFolder, IMPROVEMENT_TRACKING_FILE) || '{}'); } catch (e) { tracking = {}; }
+  const since = Date.now() - days * 86400000;
+  return (tracking.entries || []).filter(function (x) { return improve_parseAt_(x.at) >= since; });
+}
+// 설정 🐞 카드의 ✍ 개선요구사항 적기 — 개선요구사항.md 끝에 덧붙이고 곧바로 기록(0원)
+function improve_addRequest_(body) {
+  const text = String((body && body.text) || '').trim();
+  if (!text) return { success: false, error: '내용이 비어 있습니다' };
+  const chiefFolder = getChiefManagerFolder_();
+  if (!chiefFolder) return { success: false, error: '총괄관리자 폴더가 설정되어 있지 않습니다' };
+  return withLock_(10000, function () {
+    const cur = readFileIfExists_(chiefFolder, '개선요구사항.md') || '';
+    const line = '\n- [' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') + '] ' + text.replace(/\r?\n/g, '\n  ') + '\n';
+    writeFileOverwrite_(chiefFolder, '개선요구사항.md', cur + line, 'text/markdown');
+    processImprovementRequests();
+    try { buildImprovementReport_(); } catch (e) {}
+    return { success: true };
+  });
+}
 /**
  * 매일 새벽, "0 빈폴더"(기본 작업폴더 — NX_DEFAULT_FOLDER_ID)에 "오늘의 요약.md"를 만들어둔다.
  * NX-Work를 켜면 항상 이 폴더가 맨 처음 열리는 것을 역이용해서, 마감 현황·어젯밤 자기점검
@@ -24223,13 +24216,29 @@ function buildImprovementReport_() {
   errors.slice(0, 5).forEach(function (e) { headline.push('🐞 ' + (e.where || e.kind) + ' — ' + e.message.slice(0, 60) + ' (' + e.count + '회)'); });
   paidRepeats.slice(0, 5).forEach(function (g) { headline.push('💸 유료 AI로 반복된 요청 "' + g.samples[0].slice(0, 30) + '…" ' + g.count + '회 — ⚡바로 처리 후보'); });
   if (perfSlow) headline.push('🐢 대시보드 표시 중앙값 ' + perf.median + '초(최대 ' + perf.max + '초)');
-  const candidateCount = scFails.length + errors.length + paidRepeats.length + (perfSlow ? 1 : 0);
+  // [2026.10.09] 세무사님 개선요구사항(최근 8일, 주1회 루틴이 놓치지 않게 하루 겹침)·바뀐 지침(AI 점검 대기)
+  let requests = [];
+  try { requests = improve_recentRequests_(8); } catch (e) {}
+  const auditPending = PropertiesService.getScriptProperties().getProperty('AUDIT_PENDING') || '';
+  requests.forEach(function (r) { headline.unshift('📝 개선요구사항(' + r.at.slice(5, 10) + ') — ' + r.text.replace(/\s+/g, ' ').slice(0, 60)); });
+  if (auditPending) headline.push('📚 업무관리자 지침이 바뀜(' + auditPending + ') — 설정 🐞 카드 🧾 지침 점검 버튼(유료)으로 점검');
+  const candidateCount = requests.length + scFails.length + errors.length + paidRepeats.length + (perfSlow ? 1 : 0) + (auditPending ? 1 : 0);
 
   const report = {
     generatedAt: Utilities.formatDate(new Date(), 'Asia/Seoul', "yyyy-MM-dd HH:mm"),
     period: '최근 7일',
     candidateCount: candidateCount,
     headline: headline,
+    // 웹 Claude Code 루틴이 읽는 처리 안내(루틴 지시문을 고치지 않고도 새 항목 처리법을 알려 주려고 보고서에 함께 싣는다)
+    guide: [
+      'requests(📝)는 세무사님이 직접 적은 개선요구사항(버전업·새 기능·불편사항) = 직접 지시다. 우선순위: 🩺 자가점검 실패 > 📝 > 🐞 > 💸 > 🐢. 구현해서 PR로 올린다. 큰 기능이면 바로 쓸 수 있는 첫 단계까지 구현하고 나머지 계획은 PR "남은 단계"에. 모호하면 가장 보수적으로 해석하고 "확인 필요"에 질문.',
+      '중복 방지: git fetch --all 후 git branch -r 과 최근 14일 main 커밋을 보고, 같은 내용을 이미 반영했거나 이미 올린 브랜치가 있으면 그 후보는 건너뛰고 이유만 적는다.',
+      'auditPending(📚)은 코드 수정 대상이 아니다 — 답변에 "설정 🐞 카드 🧾 지침 점검 버튼 권장"만 적는다.',
+      '새 기능에 유료 AI 호출을 넣지 않는다(꼭 필요하면 사람이 버튼을 누를 때만, PR에 예상 비용 명시). 바뀐 사용법은 gs-backend/manage/manual.html 에 한두 줄 추가.',
+      '개선요구사항에 고객 정보가 섞여 있으면 PR·커밋에는 일반화해서 쓴다(저장소 공개).'
+    ],
+    requests: requests,
+    auditPending: auditPending,
     selfCheck: { at: sc.last ? sc.last.at : null, fresh: sc.fresh, fails: scFails },
     errors: errors,
     paid: { totalUsd: Math.round(paidTotal * 1e4) / 1e4, totalKrw: Math.round(paidTotal * 1400), byKind: paidByKind, repeats: paidRepeats },
