@@ -86,7 +86,12 @@
       }
       return hit.promise.then(function(res){ return JSON.parse(JSON.stringify(res)); });
     }
-    if (!CALLGAS_READONLY_RE_.test(action) && action.indexOf('ai_') !== 0) callGasShared_ = {};
+    if (!CALLGAS_READONLY_RE_.test(action) && action.indexOf('ai_') !== 0){
+      // [2026.10.09 버그수정] 저장 "시작"에만 기억을 지우면, 저장이 도는 사이 다른 화면이 사건 목록을 읽어 저장 전 목록이
+      // 다시 1분간 기억됐다(시험 사건 8개를 만들었는데 목록엔 6개만 보임 — 실사용 점검에서 발견). 끝날 때도 한 번 더 지운다.
+      callGasShared_ = {};
+      return callGasRaw_(action, payload).then(function(res){ callGasShared_ = {}; return res; }, function(err){ callGasShared_ = {}; throw err; });
+    }
     return callGasRaw_(action, payload);
   }
   // [2026.10.08] 버그 자동기록 — 화면 스크립트 오류를 서버 _오류기록.json에 남긴다(Code.js ai_logBug).

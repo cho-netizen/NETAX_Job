@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 04:46 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 05:17 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -31216,6 +31216,10 @@ function renderInheritanceResult(r){
   lastInheritanceResult = r.error ? null : r;
   if (r.error){ box.innerHTML = '<div class="taxcalc-error">' + r.error + '</div>'; renderHeirTool(); return; }
   let html = '<div class="taxcalc-result">';
+  // [2026.10.09] 실사용 점검에서 발견 — 처리개요의 상속인 이름은 이름만 넘어오고 관계(배우자·자녀…)는 비어 있어,
+  // 배우자가 있는데도 배우자공제(최소 5억)가 0원으로 계산되는데 아무 경고가 없었다. 관계가 빈 상속인이 있으면 알린다.
+  const ihNoRelation_ = (inheritanceHeirs || []).filter(function(h){ return h && String(h.name || '').trim() && !h.relation; }).map(function(h){ return h.name; });
+  if (ihNoRelation_.length) html += '<div class="taxcalc-result-note" style="color:#a83232;">⚠ 상속인 명부에서 관계가 비어 있는 사람이 있습니다(' + escapeHtml(ihNoRelation_.join(', ')) + ') — 배우자·자녀·대습상속인 등 관계를 골라야 배우자공제·인적공제·법정상속분이 맞게 계산됩니다. 지금 결과는 그 사람들을 공제 판단에서 뺀 값입니다.</div>';
   if (r.피상속인_거주구분 === '비거주자') html += '<div class="taxcalc-result-note">⚠ 피상속인이 비거주자로 설정되어 기초공제(2억원)와 감정평가수수료공제만 적용되고, 배우자공제·일괄공제·인적공제·금융재산공제·동거주택공제·장례비용공제·가업/영농상속공제는 모두 0원 처리되었습니다.</div>';
   if (r.비과세재산가액) html += taxCalcResultRow('비과세재산가액', '-' + won(r.비과세재산가액));
   if (r.공익법인출연재산가액) html += taxCalcResultRow('공익법인출연재산가액', '-' + won(r.공익법인출연재산가액));
@@ -33636,6 +33640,18 @@ function handleTaxCalcClick_(e){
       });
       return { donorIdxs: g.donorIdxs, doneeIdx: g.doneeIdx, amount: g.amount, priorGiftAmount: input.priorGiftAmount, result: calculateGiftTaxJS(input) };
     });
+    // [2026.10.09 버그수정] 계산할 (증여자·수증인) 금액이 하나도 없으면 결과칸에 주석만 보이고 아무 설명이 없었다 —
+    // 특히 수증인이 2명 이상이면(사건개요의 "공동수증인"을 채우면 자동으로 그렇게 됨) 증여재산가액 칸을 쓰지 않고
+    // 재산평가 자산 배분으로만 금액을 나누는데, 그걸 몰라 "계산이 안 된다"로 보였다(실사용 점검 중 발견).
+    if (!results.length){
+      const box0 = document.getElementById('taxCalcGiftResult');
+      box0.innerHTML = '<div class="taxcalc-result"><div class="taxcalc-result-note" style="color:#a83232;">⚠ 계산할 증여 금액이 없습니다 — ' +
+        (doneeCount > 1
+          ? '수증인이 ' + doneeCount + '명이라 증여자별 "증여재산가액" 칸 대신 <b>재산평가 자산 배분</b>(위 "재산평가 자산 배분" 칸)에서 각 자산을 어느 증여자→어느 수증인 몫으로 나눌지 정해야 계산됩니다. 재산평가 탭에서 자산을 등록하고 여기서 배분해 주세요. (수증인을 1명만 두면 증여재산가액 칸에 바로 입력할 수 있습니다.)'
+          : '증여자 카드의 "증여재산가액"을 입력해 주세요.') + '</div></div>';
+      lastGiftResults_ = [];
+      return;
+    }
     lastGiftResults_ = results; // [2026.09.25, 재검토77] 전자신고파일 생성용으로 보관.
     renderGiftResult(results);
   } else if (action === 'run-special-rate-gift'){
@@ -46093,7 +46109,12 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       }
       return hit.promise.then(function(res){ return JSON.parse(JSON.stringify(res)); });
     }
-    if (!CALLGAS_READONLY_RE_.test(action) && action.indexOf('ai_') !== 0) callGasShared_ = {};
+    if (!CALLGAS_READONLY_RE_.test(action) && action.indexOf('ai_') !== 0){
+      // [2026.10.09 버그수정] 저장 "시작"에만 기억을 지우면, 저장이 도는 사이 다른 화면이 사건 목록을 읽어 저장 전 목록이
+      // 다시 1분간 기억됐다(시험 사건 8개를 만들었는데 목록엔 6개만 보임 — 실사용 점검에서 발견). 끝날 때도 한 번 더 지운다.
+      callGasShared_ = {};
+      return callGasRaw_(action, payload).then(function(res){ callGasShared_ = {}; return res; }, function(err){ callGasShared_ = {}; throw err; });
+    }
     return callGasRaw_(action, payload);
   }
   // [2026.10.08] 버그 자동기록 — 화면 스크립트 오류를 서버 _오류기록.json에 남긴다(Code.js ai_logBug).

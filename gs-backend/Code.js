@@ -22601,6 +22601,17 @@ function work_createCase(params) {
 
     sheet.appendRow(newRow);
     SpreadsheetApp.flush();
+    // [2026.10.09 버그수정] 시트에 쓴 날짜시각은 다시 읽으면 시트 시간대 때문에 몇 시간 어긋나고 밀리초가 잘린 값으로 돌아온다.
+    // 방금 만든 new Date()를 그대로 돌려주면, 화면이 그 값을 기대수정일로 보내는 다음 저장이 시트 값과 안 맞아 매번 "다른 화면이 먼저
+    // 저장했습니다" 충돌로 막혔다(세액계산 💾 저장 직후 사건개요 동기화, 증빙 연속 체크 등 — 실사용 점검에서 발견, 실제 7시간 차이).
+    // 시트에 실제로 저장된 값을 다시 읽어 돌려준다(목록 조회 때와 같은 값이 되도록).
+    try {
+      const lastRow = sheet.getLastRow();
+      if (String(sheet.getRange(lastRow, col.id + 1).getValue()) === String(newRow[col.id])) {
+        newRow[col.생성일] = sheet.getRange(lastRow, col.생성일 + 1).getValue();
+        newRow[col.수정일] = sheet.getRange(lastRow, col.수정일 + 1).getValue();
+      }
+    } catch (e) { /* 다시 읽기 실패해도 생성 결과는 그대로 돌려준다 */ }
 
     const caseObj = work_readRow_(col, newRow);
     const calendarOk = work_syncCaseCalendar_(caseObj);
@@ -22854,6 +22865,11 @@ function work_updateCase(params) {
 
     sheet.getRange(found.rowIndex, 1, 1, row.length).setValues([row]);
     SpreadsheetApp.flush();
+    // [2026.10.09 버그수정] 시트에 쓴 날짜시각은 다시 읽으면 시트 시간대 때문에 몇 시간 어긋나고 밀리초가 잘린 값으로 돌아온다.
+    // 방금 만든 new Date()를 그대로 돌려주면, 화면이 그 값을 기대수정일로 보내는 다음 저장이 시트 값과 안 맞아 매번 "다른 화면이 먼저
+    // 저장했습니다" 충돌로 막혔다(세액계산 💾 저장 직후 사건개요 동기화, 증빙 연속 체크 등 — 실사용 점검에서 발견, 실제 7시간 차이).
+    // 시트에 실제로 저장된 값을 다시 읽어 돌려준다(목록 조회 때와 같은 값이 되도록).
+    row[col.수정일] = sheet.getRange(found.rowIndex, col.수정일 + 1).getValue();
 
     const caseObj = work_readRow_(col, row);
     const calendarOk = work_syncCaseCalendar_(caseObj);
