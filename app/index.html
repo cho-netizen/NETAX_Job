@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 13:25 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 13:43 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -38798,9 +38798,15 @@ function currentDriveFileId_(){
 // 고치지 않았는데도 매번 "저장하지 않은 내용" 확인창이 떴다. 원인: 기본으로 들어있는 샘플 문서(청구취지·검토보고서 샘플)나
 // 템플릿으로 막 만든 새 문서처럼 "드라이브에 저장된 적 없는" 문서를 전부 미저장으로 셌다. 이제는 문서가 처음 생겼을 때의
 // 내용(rwBaseline_)이나 드라이브 저장본(rwDriveSaved_)과 달라졌을 때만 — 즉 실제로 손댄 문서만 미저장으로 본다.
+// [2026.10.09 버그수정 2] 사건 폴더에 연결되지 않은 문서(💾 버튼이 꺼져 있어 드라이브에 저장할 방법 자체가 없는 문서)는
+// 브라우저 자동저장(persist)만 되므로 경고 대상에서 뺀다 — 예전엔 그런 문서를 한 번 고치면 화면을 나갈 때마다 끝없이
+// "저장하지 않은 내용" 확인창이 떴다(실사용 점검에서 발견). 드라이브에서 연 문서, 이미 드라이브에 저장한 문서,
+// 사건 폴더에 저장 예정인 지금 문서만 센다.
 function rwHasUnsavedDriveChanges_(){
   const mdInputEl = document.getElementById('mdInput');
   return docs.some(function(d){
+    const savable = d.rwDriveSaved_ !== undefined || String(d.id).indexOf('drive-') === 0 || (d.id === selectedId && !!pendingSaveFolderId);
+    if (!savable) return false;
     const content = (d.id === selectedId && mdInputEl) ? mdInputEl.value : d.md;
     const base = d.rwDriveSaved_ !== undefined ? d.rwDriveSaved_ : d.rwBaseline_;
     return !!(content && content.trim()) && content !== base;
