@@ -16118,7 +16118,7 @@ function handleGetNightlyStatus(body) {
         ok: !r.candidateCount,
         failLabel: '개선 후보 ' + r.candidateCount + '건',
         date: String(r.generatedAt || '').slice(0, 10),
-        message: r.candidateCount ? (r.headline || []).slice(0, 4).join('\n') + '\n→ Claude Code에게 "개선 후보 처리해줘"(매주 월요일 자동 분석도 함)' : '최근 7일 개선할 거리 없음'
+        message: r.candidateCount ? (r.headline || []).slice(0, 4).join('\n') + '\n→ AI 탭 🛠(웹 Claude Code)가 고쳐 깃허브에 올림, 매주 월요일 아침 자동 — 승인 후 설정 🐞 카드 📥 수정 반영' : '최근 7일 개선할 거리 없음'
       });
     }
   } catch (e) { /* 보고서가 아직 없으면 생략 */ }
@@ -24163,6 +24163,7 @@ function tc_extractCaseDocs_(body) {
 // ③④ 분석·수정은 Claude Code(세무사님 PC, 구독요금): 매주 월요일 예약작업이 이 보고서를 읽어 수정안을 준비하고,
 //    세무사님이 "진행"하면 고쳐서 실제 확인 후 반영한다(운영 반영 전 사람 확인 — 자동 수정은 하지 않음).
 //    수동은 언제든 Claude Code에게 "개선 후보 처리해줘". 읽는 도구: NETAX_Job/tools/improve-report.js
+//    [갱신] 실제 운영 흐름은 웹 Claude Code 루틴(trig_01K6EHE36YV1H7sAUsNzguY3, 매주 월 08시·AI탭 🛠) → 깃허브 PR → 승인 → 📥(gh_deployApply_).
 // 시험 중 생긴 기록("[점검 중", "zz_", "[시험]")은 빼고 센다.
 // ============================================================
 const IMPROVE_REPORT_NAME_ = '_개선후보.json';

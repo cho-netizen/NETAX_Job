@@ -42,7 +42,7 @@
         <button type="button" class="ghost-btn" id="stBtnBugRefresh">🔄 불러오기</button>
         <button type="button" class="ghost-btn" id="stBtnBugClear">🗑 기록 비우기</button>
         <button type="button" class="ghost-btn" id="stBtnSelfCheck" title="세액계산 엔진 정답 사례·사건/고객/예약/AI대화 읽기를 지금 점검합니다(AI 비용 0, 매일 밤 자동으로도 돔)">🩺 지금 자가점검</button>
-        <button type="button" class="ghost-btn" id="stBtnImprove" title="최근 7일 오류·유료 AI 질문·자가점검·화면 속도를 모아 고칠 거리를 정리합니다(AI 비용 0, 매일 밤 자동으로도 돔). 고치는 건 Claude Code에게 &quot;개선 후보 처리해줘&quot;">🛠 개선 후보 보기</button>
+        <button type="button" class="ghost-btn" id="stBtnImprove" title="최근 7일 오류·유료 AI 질문·자가점검·화면 속도를 모아 고칠 거리를 정리합니다(AI 비용 0, 매일 밤 자동으로도 돔). 고치는 건 AI 탭 🛠(웹 Claude Code)">🛠 개선 후보 보기</button>
         <button type="button" class="ghost-btn" id="stBtnGhDeploy" title="웹 Claude Code가 깃허브에 올리고 세무사님이 승인(Merge)한 수정을 job에 반영합니다">📥 수정 반영</button>
       </div>
       <div id="stBugList" class="settings-tool-desc">불러오기를 누르면 최근 기록이 보입니다.</div>
@@ -307,7 +307,7 @@
         if (!r){ bugList.textContent = '보고서를 받지 못했습니다.'; return; }
         bugList.innerHTML = '<div style="margin-bottom:4px;"><b>' + (r.candidateCount ? '🛠 개선 후보 ' + r.candidateCount + '건' : '✅ 개선할 거리 없음') + '</b> · ' + escapeHtml(r.period + ' · ' + r.generatedAt) + '</div>'
           + (r.headline || []).map(function(h){ return '<div style="padding:3px 0; border-top:1px solid var(--line);">' + escapeHtml(h) + '</div>'; }).join('')
-          + '<div style="padding:3px 0; border-top:1px solid var(--line); color:var(--sub);">유료 AI ' + (r.paid ? r.paid.totalKrw : 0) + '원(7일) · 고치려면 Claude Code에게 "개선 후보 처리해줘" — 매주 월요일 아침엔 자동으로 분석합니다</div>';
+          + '<div style="padding:3px 0; border-top:1px solid var(--line); color:var(--sub);">유료 AI ' + (r.paid ? r.paid.totalKrw : 0) + '원(7일) · 고치려면 AI 탭 🛠 → 지금 실행(매주 월요일 아침엔 자동) → 깃허브 수정안 승인(Merge) → 📥 수정 반영</div>';
       }).catch(function(err){ bugList.textContent = '개선 후보를 만들지 못했습니다: ' + (err && err.message ? err.message : err); });
     });
     // [2026.10.09] 📥 수정 반영 — 깃허브 main(승인된 수정)을 job 자신이 받아 배포한다(Code.js gh_deployApply_).
