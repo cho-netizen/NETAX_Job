@@ -68,7 +68,8 @@
       <button type="button" class="nxai-tool" id="nxAiGemBtn" title="입력창 내용을 제미니(무료)에게 물어보기 — NX 외부조회 커넥터 확장프로그램 필요. 고객 개인정보는 넣지 마세요">🔮</button>
       <button type="button" class="nxai-tool" id="nxAiBothBtn" title="같은 질문을 AI와 제미니에게 동시에 묻습니다 — 서로 답을 보지 않은 독립 의견을 받고 싶을 때(AI 쪽은 토큰 사용, NX 외부조회 커넥터 필요)">⚖</button>
       <button type="button" class="nxai-tool" id="nxAiExtBtn" title="NX 외부조회 커넥터 미연결 — 클릭하면 다시 연결합니다">🔌</button>
-      <button type="button" class="nxai-tool" id="nxAiCaptureBtn" title="화면 캡처해서 첨부 (Win+Shift+S로 캡처 후 입력창에 Ctrl+V도 됩니다)">📷</button>
+      <button type="button" class="nxai-tool" id="nxAiCaptureBtn" title="화면 캡처해서 첨부 — NX 커넥터가 있으면 도우미 창에서 다른 프로그램 창도 고를 수 있음(없으면 Win+Shift+S 후 입력창에 Ctrl+V)">📷</button>
+      <button type="button" class="nxai-tool" id="nxAiVoiceBtn" title="🎤 음성 입력 — PC는 NX 커넥터의 도우미 창에서 말하면 글자로 바뀌어 입력창에 들어옵니다. 휴대폰은 키보드의 🎤(음성입력)를 쓰세요">🎤</button>
       <select id="nxAiModel" class="nxai-model" title="AI 모델 — F(고정)가 아니면 질문 내용에 따라 자동으로 바뀝니다(지금 값은 마지막으로 실제 쓰인 모델)">
         <option value="claude-sonnet-5">Sonnet 5</option>
         <option value="claude-opus-4-8">Opus 4.8</option>
@@ -2146,6 +2147,8 @@
     // 구글 틀(지금 job 주소) 안에서는 화면 캡처 권한 자체가 막혀 있다(틀의 허용목록에 display-capture 없음 —
     // 2026-10-08 확인). 버튼을 눌러도 아무 일이 없지 않도록, 바로 쓸 수 있는 방법을 안내하고 입력창을 준비한다.
     if (!window.NX_STANDALONE){
+      // [2026.10.10] NX 커넥터(1.4.0~)가 연결돼 있으면 그 "도우미 창"이 대신 찍는다 — 크롬 밖의 한글·엑셀 창도 고를 수 있다
+      if (nxAiExtConnected){ nxAiExtPost_({ type: 'NX_OPEN_HELPER', mode: 'screen' }); nxAiToast_('NX 도우미 창을 열었습니다 — "캡처할 창·화면 고르기"를 누르세요. (커넥터 1.4.0 이상 필요)'); return; }
       nxAiToast_('이 화면에서는 직접 캡처가 막혀 있습니다 — Win+Shift+S로 캡처한 뒤 입력창에 Ctrl+V 하면 첨부됩니다.');
       nxAiEl_('nxAiInput').focus();
       return;
@@ -2380,6 +2383,12 @@
       return;
     }
     if (d.type === 'NX_CAPTURE') return nxAiInsertCapturedText_(d.text, d);
+    // [2026.10.10] 도우미 창 음성 입력 — 번호 없이 입력창 뒤에 이어 붙인다(보내기는 세무사님이)
+    if (d.type === 'NX_CAPTURE_VOICE'){
+      var vin = nxAiEl_('nxAiInput'), vt = String(d.text || '').trim();
+      if (vt){ vin.value = vin.value ? (vin.value.replace(/\s*$/, '') + ' ' + vt) : vt; vin.dispatchEvent(new Event('input')); vin.focus(); nxAiToast_('🎤 말씀하신 내용을 입력창에 넣었습니다 — 확인 후 보내세요.'); }
+      return;
+    }
     if (d.type === 'NX_CAPTURE_IMAGE'){
       if (d.dataUrl) nxAiAddImage_('화면캡처' + (d.title ? ' · ' + d.title : ''), d.dataUrl);
       nxAiToast_('확장프로그램에서 화면 캡처를 받아 첨부했습니다.');
@@ -2534,6 +2543,12 @@
     });
     nxAiEl_('nxAiFileInput').addEventListener('change', function(e){ nxAiUploadLocalFiles_(e.target.files); e.target.value = ''; });
     nxAiEl_('nxAiCaptureBtn').addEventListener('click', nxAiCapture_);
+    // [2026.10.10] 🎤 — 구글 틀 안이라 마이크가 막혀 있어 NX 커넥터 도우미 창이 대신 듣는다(휴대폰은 키보드 음성입력)
+    nxAiEl_('nxAiVoiceBtn').addEventListener('click', function(){
+      if (nxAiExtConnected){ nxAiExtPost_({ type: 'NX_OPEN_HELPER', mode: 'voice' }); nxAiToast_('NX 도우미 창을 열었습니다 — "🎤 말하기 시작"을 누르고 말씀하세요. (커넥터 1.4.0 이상 필요)'); return; }
+      nxAiToast_('PC에서는 NX 커넥터(크롬 확장프로그램)가 연결돼야 음성 입력을 쓸 수 있습니다 — 🔌를 눌러 연결해 보세요. 휴대폰은 키보드의 🎤(음성입력)를 쓰면 됩니다.');
+      nxAiEl_('nxAiInput').focus();
+    });
     nxAiEl_('nxAiGemBtn').addEventListener('click', function(){ nxAiAskGemManual_(); });
     nxAiEl_('nxAiBothBtn').addEventListener('click', nxAiAskBoth_);
     nxAiEl_('nxAiStrategyBtn').addEventListener('click', nxAiStrategyReview_);
