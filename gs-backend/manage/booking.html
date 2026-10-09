@@ -144,7 +144,7 @@
   function bookingApprove(rowIndex){
     var b = (window._bookingCache||[]).filter(function(x){ return x._rowIndex === rowIndex; })[0];
     if (!b) return;
-    nxConfirm_(b.name + '님의 신청을 승인할까요?').then(function(ok){
+    nxConfirm_(b.name + '님의 신청을 승인할까요?\n\n승인하면 고객에게 예약 확정 문자가 바로 발송되고 캘린더에 일정이 등록됩니다.').then(function(ok){
       if (!ok) return;
       callGas('approve', { rowIndex: rowIndex, eventId: b.eventId, phone: b.phone, reservedDate: b.reservedDate, reservedTime: b.reservedTime })
         .then(function(res){
@@ -158,7 +158,7 @@
   function bookingReject(rowIndex){
     var b = (window._bookingCache||[]).filter(function(x){ return x._rowIndex === rowIndex; })[0];
     if (!b) return;
-    nxConfirm_(b.name + '님의 신청을 거절할까요?').then(function(ok){
+    nxConfirm_(b.name + '님의 신청을 거절할까요?\n\n거절하면 고객에게 거절 안내 문자가 바로 발송됩니다.').then(function(ok){
       if (!ok) return;
       callGas('reject', { rowIndex: rowIndex, phone: b.phone })
         .then(function(res){
@@ -174,7 +174,7 @@
   function bookingCancelConfirmed(rowIndex){
     var b = (window._bookingCache||[]).filter(function(x){ return x._rowIndex === rowIndex; })[0];
     if (!b) return;
-    nxConfirm_(b.name + '님의 확정된 예약을 취소할까요? 캘린더 일정도 같이 지워집니다.').then(function(ok){
+    nxConfirm_(b.name + '님의 확정된 예약을 취소할까요?\n\n캘린더 일정이 지워지고, 고객에게 취소 안내 문자가 바로 발송됩니다.').then(function(ok){
       if (!ok) return;
       callGas('cancel_confirmed_booking', { rowIndex: rowIndex })
         .then(function(res){
@@ -206,6 +206,10 @@
       date: date, time: time,
       situation: document.getElementById('bkNewSituation').value.trim()
     };
+    // [2026.10.09] 전화번호를 넣으면 서버가 고객에게 '예약 등록' 문자를 바로 보낸다 — 예전엔 확인 없이 바로 나갔다
+    var go = payload.phone ? nxConfirm_(name + '님 예약을 ' + date + ' ' + time + '으로 등록할까요?\n\n전화번호가 있어 고객에게 예약 등록 문자가 바로 발송됩니다. 문자를 보내지 않으려면 취소하고 전화번호를 비운 채 등록하세요.') : Promise.resolve(true);
+    go.then(function(ok){
+    if (!ok) return;
     var btn = document.getElementById('bkNewSubmit');
     btn.disabled = true; btn.textContent = '등록 중…';
     callGas('admin_apply', payload).then(function(res){
@@ -224,6 +228,7 @@
       document.getElementById('bkAdminForm').style.display = 'none';
       initBooking(true);
     }).catch(function(e){ btn.disabled = false; btn.textContent = '등록'; toast('오류: ' + e.message); });
+    });
   });
 
   // [2026.09.23 신규, "전수조사" 지시로 발견] 예약의 "유형"(관리자 직권등록 자유텍스트)·
