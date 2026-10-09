@@ -22970,6 +22970,17 @@ function work_deleteCase(params) {
         console.log('사건 삭제 시 my.netax.kr 접속 차단 실패: ' + err.message);
       }
     }
+    // [2026.10.09 버그수정] 사건을 지워도 그 사건의 문서가 "보고서 모음" 목록(인덱스)에 밤 재정리 때까지 남아 있었다
+    // (실사용 점검에서 발견 — 지운 시험사건 문서가 계속 보임). 지우는 즉시 그 사건 항목만 걷어낸다.
+    try {
+      const idxList = rh_loadReportIndex_();
+      if (idxList) {
+        const kept = idxList.filter(function (x) { return x.caseId !== params.id; });
+        if (kept.length !== idxList.length) rh_saveReportIndex_(kept);
+      }
+    } catch (err) {
+      console.log('사건 삭제 시 보고서 목록 정리 실패: ' + err.message);
+    }
     return { success: true };
   });
 }
