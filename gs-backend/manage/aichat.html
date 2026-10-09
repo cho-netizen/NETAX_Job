@@ -1068,14 +1068,14 @@
     });
   }
   // 내 컴퓨터 파일 — 연결된 사건 폴더(없으면 대화기록 폴더)에 올린 뒤 드라이브 파일로 첨부한다.
-  function nxAiUploadLocalFiles_(fileList){
+  function nxAiUploadLocalFiles_(fileList, onUploaded){
     var files = Array.prototype.slice.call(fileList || []);
     if (!files.length) return;
     var targetFolderId = nxAiConv.caseFolderId || nxAiConvFolderId;
     if (!targetFolderId){
       // 대화 목록을 아직 안 불러왔으면(AI탭을 안 열었으면) 업로드 폴더도 모른다 — 목록만 받아 폴더를 확인한 뒤 다시 시도
       callGas('ai_conv_list', {}).then(function(res){
-        if (res && res.folderId){ nxAiConvFolderId = res.folderId; nxAiUploadLocalFiles_(files); }
+        if (res && res.folderId){ nxAiConvFolderId = res.folderId; nxAiUploadLocalFiles_(files, onUploaded); }
         else nxAiToast_('올릴 폴더를 확인하지 못했습니다 — 잠시 후 다시 시도해주세요.');
       }).catch(function(){ nxAiToast_('올릴 폴더를 확인하지 못했습니다 — 잠시 후 다시 시도해주세요.'); });
       return;
@@ -1090,7 +1090,9 @@
           return callGas('uploadFile', payload);
         }).then(function(res){
           if (!res || res.error){ nxAiToast_('올리기 실패: ' + (res && res.error)); return; }
-          nxAiAddFileAttachment_({ id: res.id, name: res.name || file.name, type: 'file', mimeType: file.type });
+          var up = { id: res.id, name: res.name || file.name, type: 'file', mimeType: file.type };
+          nxAiAddFileAttachment_(up);
+          if (onUploaded) try { onUploaded(up); } catch (e) { /* 후속 처리 실패가 올리기를 막지 않게 */ }
           if (nxAiPvFolder && nxAiConv.caseFolderId && nxAiPvFolder.folderId === nxAiConv.caseFolderId) nxAiPvNavigate_({ folderId: nxAiConv.caseFolderId });
         });
       });
@@ -1900,10 +1902,51 @@
     }
   }
 
+  // [2026.10.10] 등기부 자동 정리 — 서버(registry_parse)가 구글 무료 OCR로 읽고 규칙으로 표제부·갑구·을구를 정리한다(AI 미사용).
+  var NXAI_REGISTRY_NAME_RE_ = /(등기|등본|부동산|집합건물|토지|건물)/;
+  var NXAI_REGISTRY_CMD_RE_ = /등기[^]{0,12}(정리|요약|표로|읽어|뽑아|보여)/;
+  function nxAiRunRegistry_(files, text){
+    nxAiPhoneTab_('chat');
+    var label = text || ('📄 등기부 PDF 받음: ' + files.map(function(f){ return f.name; }).join(', '));
+    var userMsg = { role: 'user', content: label };
+    nxAiConv.messages.push(userMsg);
+    nxAiAppendBubble_('user', label)._nxMsgRef = userMsg;
+    var bubble = nxAiAppendBubble_('assistant', '⚡ 등기부 읽는 중… (무료 글자인식, 한 건에 10~40초)');
+    var aiMsg = { role: 'assistant', content: '[⚡바로 처리] 등기부 정리' };
+    bubble._nxMsgRef = aiMsg;
+    var mds = [], regCount = 0;
+    return files.reduce(function(p, f){
+      return p.then(function(){
+        return callGas('registry_parse', { fileId: f.id }).then(function(res){
+          if (!res || res.error){ mds.push('**' + f.name + '** — 정리하지 못했습니다: ' + (res && res.error || '응답 없음')); return; }
+          if (res.isRegistry) regCount++;
+          mds.push(res.md);
+        });
+      });
+    }, Promise.resolve()).then(function(){
+      nxAiConv.messages.push(aiMsg);
+      nxAiRenderLocal_(bubble, { md: mds.join('\n\n---\n\n'), note: '[⚡바로 처리] 등기부 정리 ' + regCount + '건(무료 OCR·규칙)' }, (text || '이 등기부') + ' — 권리관계상 주의할 점을 검토해줘');
+      nxAiCountFree_('local');
+      nxAiScheduleSave_();
+    }).catch(function(err){
+      bubble.textContent = '등기부 정리 중 오류: ' + (err && err.message ? err.message : err);
+      if (typeof nxLogBug_ === 'function') nxLogBug_({ kind: 'local', where: '등기부 정리', message: String(err && err.message || err), detail: files.map(function(f){ return f.name; }).join(', ') });
+    });
+  }
+
   function nxAiSend_(){
     var input = nxAiEl_('nxAiInput');
     var text = input.value.trim();
     if (!text || nxAiAbort) return;
+    // [2026.10.10] "등기부 정리/요약/표로" + 첨부 PDF → 무료 OCR+규칙으로 정리(토큰 0). 판단("위험한지 검토")은 그 결과를 보고 AI에게.
+    if (NXAI_REGISTRY_CMD_RE_.test(text) && !/(검토|분석|판단|위험|전략|의견)/.test(text)){
+      var regFiles = nxAiPendingFiles.filter(function(a){ return a.type !== 'folder' && (/pdf|image/.test(a.mimeType || '') || /\.(pdf|png|jpe?g)$/i.test(a.name || '')); });
+      if (regFiles.length){
+        input.value = ''; input.style.height = 'auto';
+        nxAiPendingFiles = nxAiPendingFiles.filter(function(a){ return regFiles.indexOf(a) === -1; }); nxAiRenderAttachBar_();
+        return nxAiRunRegistry_(regFiles, text);
+      }
+    }
     // 첨부가 있으면 AI가 봐야 하므로 바로 처리하지 않는다.
     if (nxAiPendingFiles.length || nxAiPendingImages.length) return nxAiSendAI_();
     var intent = nxAiDetectLocal_(text);
@@ -2404,7 +2447,11 @@
         var pdfName = String(d.filename || 'document.pdf').replace(/[\\/:*?"<>|]/g, '_');
         if (!/\.pdf$/i.test(pdfName)) pdfName += '.pdf';
         nxAiToast_('확장프로그램에서 PDF를 받았습니다 — ' + (nxAiConv.caseName ? '"' + nxAiConv.caseName + '" 사건 폴더에' : '대화기록 폴더에') + ' 저장하고 첨부합니다.');
-        nxAiUploadLocalFiles_([new File([u8], pdfName, { type: 'application/pdf' })]);
+        // [2026.10.10] 등기부 PDF면 받자마자 무료 OCR+규칙으로 정리해 보여준다(토큰 0)
+        nxAiUploadLocalFiles_([new File([u8], pdfName, { type: 'application/pdf' })], (NXAI_REGISTRY_NAME_RE_.test(pdfName) || /iros\.go\.kr/i.test(String(d.url || ''))) ? function(up){
+          nxAiPendingFiles = nxAiPendingFiles.filter(function(x){ return x.id !== up.id; }); nxAiRenderAttachBar_();
+          nxAiRunRegistry_([up], '');
+        } : null);
       } catch (err) { nxAiToast_('PDF를 받지 못했습니다: ' + (err && err.message || err)); }
       return;
     }

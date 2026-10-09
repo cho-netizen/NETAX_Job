@@ -3808,6 +3808,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'ai_usage_month') return jsonResponse(ai_usageMonth_());
   if (body.action === 'ai_log_paid') return jsonResponse(ai_logPaid_(body));
   if (body.action === 'self_check_run') return jsonResponse(runSelfCheck_());
+  if (body.action === 'registry_parse') return jsonResponse(registryParseFile_(body)); // 등기부 PDF 정리(토큰 0)
   if (body.action === 'tc_extract_case_docs') return jsonResponse(tc_extractCaseDocs_(body));
   if (body.action === 'self_check_last') return jsonResponse(selfCheckLast_());
   if (body.action === 'improve_report_run') return jsonResponse(buildImprovementReport_());
@@ -24315,4 +24316,334 @@ function gh_deployApply_(body) {
     try { CacheService.getScriptCache().remove('dsc_ver_getNightlyStatus'); } catch (e) {}
     return { success: true, version: ver.versionNumber, sha: head.sha.slice(0, 7), files: files.length, message: desc };
   });
+}
+
+// =========================================================
+// [2026.10.10] 등기부 자동 정리 — 토큰 0
+// 등기소 PDF는 글자층이 깨져 있어(한글 깨짐) 구글 드라이브 무료 OCR로 읽고, 아래 규칙으로 표제부·갑구·을구를 정리한다.
+// 간단한 것부터 복잡한 것(압류·가압류 20여 건, 경매, 신탁, 상속 공유자 5명, 일부 장만 있는 문서)까지 표본 36건으로 맞췄다.
+// 원칙: 읽지 못한 값은 지어내지 않고 확인필요·경고로 남긴다.
+// =========================================================
+// 등기부(등기사항전부증명서) OCR 글자 → 구조 정리. 토큰 0(규칙만). job Code.js로 옮길 원본(ES5 + 화살표 없음).
+// 원칙: OCR이 칸을 섞어도 변하지 않는 표지 — "(소유권에 관한 사항)", 순위번호+등기목적, 접수번호 "제NNNN호",
+// 이름 뒤 주민번호 앞 6자리, "채권최고액 금", "n번…말소" — 를 기준으로 읽는다. 확신이 없으면 비우고 경고(지어내지 않음).
+var REG_CAUSES_ = ['협의분할에 의한 상속', '협의분할에의한상속', '협의분할에 의한상속', '공유물분할', '재산분할', '진정명의회복', '임의경매로 인한 매각', '임의경매로인한매각', '강제경매로 인한 매각', '강제경매로인한매각', '신탁재산귀속', '신탁', '매매', '증여', '상속', '교환', '수용', '판결', '현물출자', '대물변제', '유증', '보존', '해지', '해제', '설정계약', '변경계약', '확정채권양도', '계약양도'];
+
+function registryParse(text) {
+  var t = String(text || '')
+    .replace(/\[인터넷 ?발급\][\s\S]{0,260}?가능\s*합니다\.?/g, ' ')
+    .replace(/발급확인번호[^\n]*/g, ' ')
+    .replace(/\n\d{30,}\n/g, '\n')
+    .replace(/열람일시\s*:[^\n]*/g, ' ')
+    .replace(/관할등기소[^\n]*/g, ' ')
+    .replace(/\n\s*\d+\s*\/\s*\d+\s*\n/g, '\n')
+    .replace(/(^|\s)열(\s+|\s*\n\s*)람(\s+|\s*\n\s*)용(?=\s|$)/g, ' ')
+    .replace(/(^|\s)(열|람|용)(?=\s)/g, ' ')
+    .replace(/m'|㎡|m\s?2/g, 'm2')
+    .replace(/부동산\s*등기법[\s\S]{0,90}?전산\s*이기/g, ' ')
+    .replace(/\d{4}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일\s*행정구역\s*(?:명칭)?\s*변경[\s\S]{0,40}?등\s*[기가]/g, ' ')
+    .replace(/행정구역\s*(?:명칭)?\s*변경으로\s*인하여/g, ' ')
+    .replace(/도로명\s*주소[\s\S]{0,30}?\d{4}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일\s*등\s*[기가]/g, ' ')
+    .replace(/(^|[\s(])태(\s+\d)/g, '$1대$2');
+  var idxs = [], reId = /고유번호\s*([0-9]{4}-[0-9]{4}-[0-9]{6})/g, m;
+  while ((m = reId.exec(t))) idxs.push({ at: m.index, id: m[1] });
+  if (!idxs.length) {
+    // 법인등기부(상호·본점·임원)는 부동산 등기부가 아니다 — 이유를 알려 준다
+    if (/등기필\s*정보|등기필증|등기완료\s*통지|등기\s*신청\s*수수료|영수필/.test(t)) return { isRegistry: false, 사유: '등기필증·영수증(등기부 아님)', docs: [] };
+    if (/등기번호/.test(t) && /상\s*호/.test(t) && /본\s*점/.test(t)) return { isRegistry: false, 사유: '법인등기부(부동산 등기부 아님)', docs: [] };
+    // 일부 장만 있거나 OCR이 머리말을 뭉갠 부동산 등기부(#17 을구 1장)도 받아서 읽을 수 있는 만큼 읽고 경고를 붙인다
+    var partial = /등\s*기\s*목\s*적/.test(t) && /(근저당권|소유권|가압류|압류|전세권)/.test(t) && /제\s*\d{3,6}\s*호/.test(t);
+    if (!/(소유권에\s*관한\s*사항|표\s*제\s*부)/.test(t) && !partial) return { isRegistry: false, docs: [] };
+    idxs.push({ at: 0, id: '' });
+  }
+  var docs = [], seen = {};
+  idxs.forEach(function (x, i) {
+    var start = i === 0 ? 0 : Math.max(idxs[i - 1].at + 1, x.at - 220);
+    var end = i + 1 < idxs.length ? Math.max(x.at + 1, idxs[i + 1].at - 220) : t.length;
+    var seg = t.slice(start, end);
+    if (x.id && seen[x.id] !== undefined) { docs[seen[x.id]].text += '\n' + seg; return; }
+    if (x.id) seen[x.id] = docs.length;
+    docs.push({ id: x.id, text: seg });
+  });
+  return { isRegistry: true, docs: docs.map(function (d) { return registryParseOne_(d.id, d.text); }) };
+}
+
+function regDates_(s) { var out = [], re = /(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/g, m; while ((m = re.exec(s))) out.push({ d: m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2), at: m.index }); return out; }
+// 접수일·원인일 — 서로 80자 안에 붙어 나오는 날짜 두 개(접수일 ≥ 원인일). 하나뿐이면 접수일만.
+function regDatePair_(s) {
+  var ds = regDates_(s);
+  for (var i = 0; i + 1 < ds.length; i++) if (ds[i + 1].at - ds[i].at < 80) { var a = ds[i].d, b = ds[i + 1].d; return a >= b ? { 접수일: a, 원인일: b } : { 접수일: b, 원인일: a }; }
+  return ds.length ? { 접수일: ds[0].d, 원인일: '' } : { 접수일: '', 원인일: '' };
+}
+function regAmount_(s) {
+  var m = /금\s*([0-9,]+)\s*원/.exec(s);
+  if (m) return Number(m[1].replace(/,/g, ''));
+  m = /금\s*([일이삼사오육칠팔구십백천만억\s]+)\s*원/.exec(s);
+  if (!m) return null;
+  var k = m[1].replace(/\s/g, ''), D = { 일: 1, 이: 2, 삼: 3, 사: 4, 오: 5, 육: 6, 칠: 7, 팔: 8, 구: 9 }, U = { 십: 10, 백: 100, 천: 1000 };
+  var total = 0, sect = 0, num = 0;
+  for (var i = 0; i < k.length; i++) {
+    var ch = k[i];
+    if (D[ch]) num = D[ch];
+    else if (U[ch]) { sect += (num || 1) * U[ch]; num = 0; }
+    else if (ch === '만' || ch === '억') { sect += num; num = 0; total += sect * (ch === '만' ? 10000 : 100000000); sect = 0; }
+  }
+  return (total + sect + num) || null;
+}
+function regCause_(s) {
+  // 다른 칸 글이 끼어들어 떨어진 원인("협의분할에 [주소] 의한 상속", "임의경매로 [주소] 인한 매각")은 앞 낱말로 판단
+  if (/협의s*분할/.test(s)) return "협의분할에의한상속";
+  if (/임의s*경매로/.test(s)) return "임의경매로인한매각";
+  if (/강제s*경매로/.test(s)) return "강제경매로인한매각";
+  var best = '', pos = -1;
+  for (var c = 0; c < REG_CAUSES_.length; c++) { var p = s.indexOf(REG_CAUSES_[c]); if (p !== -1 && (pos === -1 || p < pos)) { pos = p; best = REG_CAUSES_[c].replace(/\s/g, ''); } }
+  return best;
+}
+// 권리자 — 이름 바로 뒤 주민(등록)번호 앞 6자리가 가장 믿을 만한 표지. 지분은 이름 앞 70자 안 가장 가까운 "지분 a분의 b".
+function regHolders_(s) {
+  // 장마다 반복되는 표 머리글이 이름과 주민번호 사이에 끼는 경우("이름 권리자 및 기타사항 주민번호")를 먼저 걷어낸다
+  s = String(s || '').replace(/권리자\s*및\s*기타\s*사항|순위번호|등\s*기\s*목\s*적|등\s*기\s*원\s*인|접\s*수(?=\s)/g, ' ');
+  // 신탁은 "수탁자 회사명 법인번호" — 수탁자가 곧 새 명의인. OCR이 회사명을 뭉개면 지어내지 않고 확인필요로 둔다.
+  var tm = /수탁자\s*([가-힣()]{2,40}?)\s*(?=\d|$)/.exec(s);
+  if (tm) {
+    var tn = tm[1];
+    if (/주식회사|\(주\)|신탁/.test(tn) || tn.length <= 5) return [{ 이름: tn, 지분: '', 수탁자: true }];
+    return [{ 이름: '확인필요(수탁자명 판독불가)', 지분: '', 수탁자: true }];
+  }
+  var out = [], m, re = /(주식회사\s?[가-힣]{2,20}|\(주\)\s?[가-힣]{2,20}|[가-힣]{2,30}(?:주식회사|조합|공사|공단|재단|법인|협회|은행|신탁|금고|캐피탈)|[가-힣]{2,5})\s*\d{6}\s*-\s*[\d*]/g;
+  while ((m = re.exec(s))) {
+    var nm = m[1].replace(/\s+/g, '');
+    var org = /(주식회사|\(주\)|조합|공사|공단|재단|법인|협회|은행|신탁|금고|캐피탈)/.test(nm);
+    // 상속 공유자처럼 "지분 이름 (주소) 168분의 주민번호"로 OCR 순서가 뒤섞이면 주민번호 앞이 "분의"가 된다 — 앞쪽 "지분 이름"에서 이름을 찾는다
+    if (/분의$/.test(nm)) {
+      var back = s.slice(Math.max(0, m.index - 120), m.index), bm = back.match(/지분\s*([가-힣]{2,4})\s/g);
+      if (!bm) continue;
+      nm = bm[bm.length - 1].replace(/지분|\s/g, '');
+      if (/^(전부|일부)$/.test(nm)) continue;
+    }
+    if (/[�]|분$|^분|기타|사항|열람|일시/.test(nm)) continue;
+    // 주소 끝말(동·구·호…)은 4자 이상일 때만 걸러낸다 — 3자 이름(정호·성구·현동)이 사라지지 않게
+    if (!org && /(지분|소유자|공유자|권리자|채권자|채무자|설정|이전|매매|증여|상속|지점|아파트|번지)$/.test(nm)) continue;
+    if (!org && nm.length >= 4 && /(시|구|군|동|읍|면|리|로|길|층|호)$/.test(nm)) continue;
+    var pre = s.slice(Math.max(0, m.index - 70), m.index), sh = pre.match(/지분\s*(\d+)\s*분의\s*(\d+)/g);
+    if (!out.some(function (h) { return h.이름 === nm; })) out.push({ 이름: nm, 지분: sh ? sh[sh.length - 1].replace(/지분\s*(\d+)\s*분의\s*(\d+)/, '$1분의 $2') : '' });
+  }
+  if (!out.length) {
+    var rp = /(소유자|공유자)\s*(?:지분\s*(\d+)\s*분의\s*(\d+)\s*)?([가-힣]{2,4})(?=\s)/g, pm;
+    while ((pm = rp.exec(s))) if (!/^(지분|주소)/.test(pm[4])) out.push({ 이름: pm[4], 지분: pm[2] ? pm[2] + '분의 ' + pm[3] : '' });
+  }
+  return out;
+}
+// 기재 찾기 — 순위번호(1, 2, 22-1…)로 시작해야 기재. 순위번호는 커지는 순서여야(주소 숫자·본문 속 "8번압류" 배제).
+function registryStripHeader_(t) {
+  return String(t || '').replace(/\s+/g, ' ')
+    .replace(/순위번호|등\s*기\s*목\s*적|등\s*기\s*원\s*인|권\s*리\s*자\s*및\s*기\s*타\s*사\s*항|[【\[]\s*[갑을]\s*구\s*[】\]]|(^|\s)[갑을]\s+구(?=\s)|접\s+수(?=\s)/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+function registryEvents_(s, headRe) {
+  var out = [], re = /(^|\s)(\d{1,3}(?:-\d{1,2})?)\s+(?=\S)/g, m, last = 0;
+  var refRe = /^((?:\d+\s*번\s*[가-힣]{0,14}?\s*(?:,|및|내지)?\s*)+)(지분\s*(?:전부|일부)?\s*이\s*전|근저당권\s*(?:변경|이전)|전세권\s*변경|등기명의인\s*표시(?:\s*(?:변경|경정))?)/;
+  while ((m = re.exec(s))) {
+    var rank = m[2], major = parseInt(rank, 10), bodyAt = re.lastIndex;
+    re.lastIndex = m.index + m[1].length + rank.length; // 숫자만 소비 — 다음 후보("200-24 2 소유권이전"의 2)를 놓치지 않게
+    if (major < last || major > last + 60) continue;
+    var rest = s.slice(bodyAt, bodyAt + 700);
+    var kind = '', km;
+    // "n번…, m번… (등기)말소" — 사이에 OCR이 다른 칸 글(제NNNN호·원인 등)을 끼워 넣어도 "말소"까지 번호를 모은다
+    // "n번 등기명의인표시 경정·근저당권변경·지분이전"이 먼저 — 말소 훑기가 이것들을 말소로 잘못 읽지 않게
+    km = refRe.exec(rest);
+    if (km) kind = km[0].replace(/\s+/g, '');
+    if (!kind && /^\d+\s*번/.test(rest)) {
+      var ms = /말\s*소/.exec(rest);
+      // 다음 기재(순위번호 + 목적)가 시작되거나 다른 등기목적이 나오면 거기서 멈춘다
+      var stopAt = rest.search(/\s(소유권(?:일부)?이전|소유권보존|근저당권설정|전세권설정|가압류|압류)\s|\s\d{1,3}(?:-\d{1,2})?\s+(?:\d+\s*번|소유권|가압류|압류|근저당|전세권|임의경매|강제경매)/);
+      if (ms && (stopAt === -1 || ms.index < stopAt)) {
+        var nums = (rest.slice(0, ms.index).match(/(\d+)\s*번/g) || []).map(function (x) { return x.replace(/\D/g, ''); });
+        kind = nums.join(',') + '번말소';
+      }
+    }
+    if (!kind) { km = headRe.exec(rest); if (km) kind = km[0].replace(/\s+/g, ''); }
+    if (!kind) continue;
+    last = major;
+    out.push({ rank: rank, kind: kind, at: bodyAt });
+  }
+  return out;
+}
+// 날짜 묶음(접수일·원인일) 단위로 자르기 — 등기부는 칸이 섞여도 "접수일 원인일 → 원인 → 권리자" 순서는 거의 유지된다.
+// 기재마다 "자기 위치 다음의 첫 (아직 안 쓴) 날짜 묶음"을 짝짓고, 원인·권리자·금액은 그 묶음 안에서만 읽는다(2026-10-10 표본 36건 기준).
+function registryClusters_(s, evs) {
+  var starts = (evs || []).map(function (e) { return e.at; });
+  var crosses = function (a, b) { return starts.some(function (p) { return p > a && p <= b; }); };
+  var ds = regDates_(s), cl = [];
+  for (var i = 0; i < ds.length; i++) {
+    var c = { start: ds[i].at, dates: [ds[i].d] };
+    if (i + 1 < ds.length && ds[i + 1].at - ds[i].at < 80 && !crosses(ds[i].at, ds[i + 1].at)) { c.dates.push(ds[i + 1].d); i++; }
+    cl.push(c);
+  }
+  cl.forEach(function (c, k) {
+    c.end = k + 1 < cl.length ? cl[k + 1].start : s.length;
+    c.text = s.slice(c.start, c.end);
+    var a = c.dates[0], b = c.dates[1] || '';
+    c.접수일 = b && b > a ? b : a; c.원인일 = b ? (b > a ? a : b) : '';
+  });
+  return cl;
+}
+function registryAssign_(evs, cl) {
+  var used = {};
+  return evs.map(function (e) {
+    for (var k = 0; k < cl.length; k++) if (!used[k] && cl[k].start >= e.at - 2) { used[k] = true; return cl[k]; }
+    return null;
+  });
+}
+// (예전 방식, 참고용) 기재별 본문 — 기본은 "이 기재 ~ 다음 기재". 칸이 섞인 등기부(목적만 먼저 몰려 나와 기재 뒤에 날짜가 없음)는
+// 접수번호(제NNNN호) 순서로 짝짓는다(개수가 맞을 때만). 반환 { spans:[{all, after}], warn }
+
+function registryParseOne_(id, text) {
+  var r = { 고유번호: id, 종류: '', 소재지: '', 표제부: {}, 소유권이력: [], 갑구기타: [], 소유권외: [], 경고: [] };
+  var km = /\[(집합건물|토지|건물)\]\s*([^\n]{4,120})/.exec(text);
+  if (km) { r.종류 = km[1]; r.소재지 = km[2].replace(/\s+/g, ' ').replace(/고유번호.*$/, '').trim(); }
+  // 갑구·을구 시작 — 괄호가 빠지거나(#6) 다른 칸 글이 끼어든(#25 "소유권에 수 관한 … 사항") OCR까지 대비해 단계적으로 찾는다
+  var iEul = text.search(/\(?\s*소유권\s*이외의\s*권리에\s*관한\s*사항/);
+  if (iEul < 0) iEul = text.search(/[【\[]\s*을\s*구?/);
+  var iGap = text.search(/\(?\s*소유권에\s*관한\s*사항/);
+  if (iGap < 0 || (iEul > 0 && iGap > iEul)) { var g2 = text.search(/[【\[]\s*(?:순위번호\s*\d*\s*)?갑\s*구?/); if (g2 >= 0 && (iEul < 0 || g2 < iEul)) iGap = g2; }
+  if (iGap < 0) { var g3 = text.search(/\s\d{1,2}\s+소유권(?:보존|이전|일부이전)/); if (g3 >= 0 && (iEul < 0 || g3 < iEul)) iGap = g3; }
+  var head = text.slice(0, iGap > 0 ? iGap : (iEul > 0 ? iEul : text.length));
+  var gap = iGap > 0 ? text.slice(iGap, iEul > iGap ? iEul : text.length) : '';
+  var eul = iEul > 0 ? text.slice(iEul) : '';
+  // 머리말 없이 을구 장만 있는 문서(#17) — 근저당 등이 보이면 전체를 을구로 읽는다
+  var eulOnly = iGap < 0 && iEul < 0 && /근저당권|전세권|지상권|임차권/.test(text);
+  if (eulOnly) eul = text;
+  // 표제부만 발급된 문서(#21 건물: "갑"·"소유권" 글자가 아예 없음)는 판독 실패가 아니다 — 소유자를 보려면 다른 증명서가 필요하다고 알린다
+  if (eulOnly) r.경고.push('갑구(소유권) 장이 없는 일부 문서 — 을구(근저당 등)만 읽었음, 소유자는 원문·전부 증명서로 확인');
+  else if (iGap < 0 && !/갑\s*구|소유권|소유자|근저당|압류|등\s*기\s*목\s*적/.test(text)) r.경고.push('이 문서에는 표제부만 있음(갑구·을구 없음) — 소유자·권리관계는 전부 증명서로 확인');
+  else if (iGap < 0) r.경고.push('갑구(소유권) 부분을 찾지 못함 — 원문 확인 필요');
+  // ---- 표제부 ----
+  var flat = head.replace(/\s+/g, ' ');
+  if (r.종류 === '토지') {
+    var lm, lands = [], reL = /(대|전|답|임야|잡종지|도로|구거|하천|과수원|목장용지|공장용지|학교용지|주차장|주유소용지|창고용지|철도용지|제방|유지|양어장|수도용지|공원|체육용지|유원지|종교용지|사적지|묘지|광천지|염전)\s+(?:[\d-]+\s+)?([0-9,]+(?:\.[0-9]+)?)\s*m2/g;
+    while ((lm = reL.exec(flat))) lands.push({ 지목: lm[1], 면적: Number(lm[2].replace(/,/g, '')) });
+    if (lands.length) { r.표제부.지목 = lands[lands.length - 1].지목; r.표제부.면적 = lands[lands.length - 1].면적; if (lands.length > 1) r.표제부.면적변동 = lands.map(function (x) { return x.지목 + ' ' + x.면적; }); }
+  }
+  if (r.종류 === '집합건물') {
+    var dj = flat.match(/(\d[\d,.]*)\s*분의\s*(\d[\d,.]*)/g);
+    if (dj && dj.length) { var last = dj[dj.length - 1].match(/(\d[\d,.]*)\s*분의\s*(\d[\d,.]*)/); r.표제부.대지권비율 = last[1] + '분의 ' + last[2]; if (dj.length > 1) r.표제부.대지권비율변동 = dj.map(function (x) { return x.replace(/\s+/g, ' '); }); }
+    var ji = flat.search(/전유\s*부분/), ju = ji >= 0 ? /([0-9]+(?:\.[0-9]+)?)\s*m2/.exec(flat.slice(ji)) : null;
+    if (ju) r.표제부.전유면적 = Number(ju[1]);
+  }
+  if (r.종류 === '건물') {
+    var floors = [], fm, reF = /((?:지하|지)?\s*\d+\s*층|지층|옥탑)\s*([0-9]+(?:\.[0-9]+)?)\s*m2/g;
+    while ((fm = reF.exec(flat))) { var f = fm[1].replace(/\s/g, '') + ' ' + fm[2]; if (floors.indexOf(f) === -1) floors.push(f); }
+    if (floors.length) r.표제부.층별면적 = floors.slice(0, 15);
+  }
+  // ---- 갑구 ----
+  // 장이 바뀔 때마다 반복되는 표 머리글(#25 "1 갑 구 등 기 목 적 소유권이전")이 순위번호와 목적 사이에 끼면 기재를 놓친다 — 먼저 걷어낸다
+  var g = registryStripHeader_(gap);
+  var gEv = registryEvents_(g, /^(소유권보존|소유권일부이전|소유권이전|공유자\s*전원\s*지분\s*전부\s*이\s*전|가압류|가처분|압류|임의경매개시결정|강제경매개시결정|신탁(?!재산)|등기명의인표시\s*(?:변경|경정))/);
+  var gCl = registryAssign_(gEv, registryClusters_(g, gEv));
+  // 말소 기록: 번호 → 말소 문구. 소유권 기재는 문구에 "소유권"이 있을 때만 말소로 본다(신탁등기·별도등기 말소는 소유권 말소가 아님 —
+  // #26 "1번신탁등기말소", #10 "2번 별도등기 말소"를 소유권 말소로 잘못 보면 "현재 소유자 없음"이 되는 위험한 오류).
+  var erasedG = {};
+  var markG = function (n, phrase) { erasedG[n] = (erasedG[n] ? erasedG[n] + ' ' : '') + phrase; };
+  gEv.forEach(function (e, i) {
+    var c = gCl[i] || { text: '', 접수일: '', 원인일: '' };
+    if (/말소$/.test(e.kind)) { (e.kind.replace(/번말소$/, '').match(/\d+/g) || []).forEach(function (n) { markG(n, e.kind); }); return; }
+    if (/^(소유권|공유자)|지분.*이전$/.test(e.kind)) {
+      r.소유권이력.push({ 순위: e.rank, 목적: e.kind, 접수일: c.접수일, 원인일: /보존/.test(e.kind) ? '' : c.원인일, 원인: /보존/.test(e.kind) ? '보존' : regCause_(c.text), 권리자: regHolders_(c.text) });
+    } else if (!/등기명의인표시/.test(e.kind)) {
+      r.갑구기타.push({ 순위: e.rank, 목적: e.kind, 접수일: c.접수일, 청구금액: /청구금액/.test(c.text) ? regAmount_(c.text.slice(c.text.indexOf('청구금액'))) : null });
+    }
+  });
+  // 순위번호와 떨어져 있어도 뜻이 분명한 단독 말소 문구("1번근저당권설정등기말소", "3번압류등기말소") — 사이에 숫자 없이 글자만 있을 때
+  (g.match(/(\d+)\s*번\s*[가-힣\s]{0,20}?(?:등\s*기\s*)?말\s*소/g) || []).forEach(function (x) { markG(x.match(/\d+/)[0], x.replace(/\s+/g, '')); });
+  r.갑구기타.forEach(function (x) { var p = erasedG[String(x.순위).split('-')[0]]; x.말소 = !!p && !/^[\d번\s]*(신탁|별도)/.test(p.replace(/^\d+번/, '')); });
+  r.소유권이력.forEach(function (x) { var p = erasedG[String(x.순위).split('-')[0]]; if (p && /소유권/.test(p)) x.말소 = true; else if (p && /신탁/.test(p)) x.비고 = '신탁 기재 말소(소유권은 유지)'; });
+  // ---- 을구 ----
+  var u = registryStripHeader_(eul);
+  var uEv = registryEvents_(u, /^(근저당권설정|근저당권변경|근저당권이전|전세권설정|전세권변경|임차권설정|주택임차권|지상권설정|지역권설정|질권)/);
+  var uCl = registryAssign_(uEv, registryClusters_(u, uEv));
+  var erasedU = {};
+  uEv.forEach(function (e, i) {
+    var c = uCl[i] || { text: '', 접수일: '' }, x = c.text;
+    if (/말소$/.test(e.kind)) { (e.kind.replace(/번말소$/, '').match(/\d+/g) || []).forEach(function (n) { erasedU[n] = true; }); return; }
+    var amt = /채권최고액/.test(x) ? regAmount_(x.slice(x.indexOf('채권최고액'))) : (/전세금/.test(x) ? regAmount_(x.slice(x.indexOf('전세금'))) : (/임차보증금/.test(x) ? regAmount_(x.slice(x.indexOf('임차보증금'))) : null));
+    var who = /(근저당권자|전세권자|임차권자|지상권자)\s*([가-힣()]{2,30}?)(?=\s|\d|$)/.exec(x);
+    var target = /^(\d+)번/.exec(e.kind);
+    r.소유권외.push({ 순위: e.rank, 목적: e.kind, 대상순위: target ? target[1] : '', 접수일: c.접수일, 금액: amt, 권리자: who && !/^(공동담보|채무자)/.test(who[2]) ? who[2] : '' });
+  });
+  (u.match(/(\d+)\s*번\s*[가-힣\s]{0,20}?(?:등\s*기\s*)?말\s*소/g) || []).forEach(function (x) { erasedU[x.match(/\d+/)[0]] = true; });
+  r.소유권외.forEach(function (x) { x.말소 = !!erasedU[x.대상순위 || String(x.순위).split('-')[0]]; });
+  r.소유권외.forEach(function (x) {
+    if (/(변경)$/.test(x.목적) && x.금액) { var base = x.대상순위 || String(x.순위).split('-')[0]; r.소유권외.forEach(function (y) { if (String(y.순위) === base && /설정$/.test(y.목적)) y.변경후금액 = x.금액; }); }
+  });
+  if (iGap > 0 && !r.소유권이력.length) r.경고.push('소유권 기재를 읽지 못함 — 원문 확인 필요');
+  r.소유권이력.forEach(function (x) { if (!x.접수일 || !x.권리자.length) x.확인필요 = true;
+    // 신탁인데 수탁자 문구를 못 읽었으면 잡힌 이름이 위탁자·잡글일 수 있다
+    if (/신탁/.test(x.원인) && !x.권리자.some(function (h) { return h.수탁자; })) x.확인필요 = true;
+    // 공유자인데 지분이 빠진 사람이 있으면(OCR이 숫자를 놓침) 확인
+    if (x.권리자.length > 1 && x.권리자.some(function (h) { return !h.지분; })) x.확인필요 = true; });
+  return r;
+}
+// 등기부 정리 결과 → 화면용 마크다운 표. 확인필요·말소·경고를 그대로 드러낸다(지어내지 않음).
+function registryToMarkdown_(p, fileName) {
+  var won = function (n) { return n == null || n === '' ? '' : Number(n).toLocaleString('ko-KR') + '원'; };
+  if (!p || !p.isRegistry) return '**' + (fileName || '파일') + '** — 부동산 등기부로 보이지 않습니다' + (p && p.사유 ? ' (' + p.사유 + ')' : '') + '.';
+  var out = [];
+  p.docs.forEach(function (d) {
+    out.push('### ' + (d.종류 || '등기부') + (d.소재지 ? ' · ' + d.소재지 : '') + (d.고유번호 ? ' (고유번호 ' + d.고유번호 + ')' : ''));
+    var t = d.표제부 || {}, tl = [];
+    if (t.지목) tl.push('지목 ' + t.지목);
+    if (t.면적) tl.push('면적 ' + t.면적 + '㎡');
+    if (t.면적변동) tl.push('면적 변동: ' + t.면적변동.join(' → '));
+    if (t.전유면적) tl.push('전유면적 ' + t.전유면적 + '㎡');
+    if (t.대지권비율) tl.push('대지권 ' + t.대지권비율);
+    if (t.층별면적) tl.push('층별 ' + t.층별면적.join(', '));
+    if (tl.length) out.push('표제부: ' + tl.join(' · '));
+    var cur = d.소유권이력.filter(function (x) { return !x.말소; });
+    if (cur.length) {
+      var last = cur[cur.length - 1];
+      out.push('**현재 명의(마지막 소유권 기재 기준):** ' + (last.권리자.map(function (h) { return h.이름 + (h.지분 ? '(' + h.지분 + ')' : ''); }).join(', ') || '확인필요')
+        + ' — ' + (last.접수일 || '?') + ' ' + (last.원인 || '') + (last.확인필요 ? ' ⚠확인필요' : ''));
+    }
+    var esc = function (v) { return String(v == null ? '' : v).replace(/\|/g, '/'); };
+    if (d.소유권이력.length) {
+      out.push('\n**갑구 · 소유권 이력**\n\n| 순위 | 목적 | 접수일 | 원인일 | 원인 | 명의인(지분) | 비고 |\n|---|---|---|---|---|---|---|');
+      d.소유권이력.forEach(function (x) {
+        out.push('| ' + [x.순위, x.목적, x.접수일, x.원인일, x.원인,
+          x.권리자.map(function (h) { return h.이름 + (h.지분 ? '(' + h.지분 + ')' : '') + (h.수탁자 ? '[수탁자]' : ''); }).join(', '),
+          (x.말소 ? '말소 ' : '') + (x.확인필요 ? '⚠확인필요' : '')].map(esc).join(' | ') + ' |');
+      });
+    }
+    if (d.갑구기타.length) {
+      out.push('\n**갑구 · 압류·가압류·경매·신탁 등**\n\n| 순위 | 목적 | 접수일 | 청구금액 | 비고 |\n|---|---|---|---|---|');
+      d.갑구기타.forEach(function (x) { out.push('| ' + [x.순위, x.목적, x.접수일, won(x.청구금액), x.말소 ? '말소' : '유효'].map(esc).join(' | ') + ' |'); });
+    }
+    if (d.소유권외.length) {
+      out.push('\n**을구 · 근저당·전세권 등**\n\n| 순위 | 목적 | 접수일 | 금액 | 권리자 | 비고 |\n|---|---|---|---|---|---|');
+      d.소유권외.forEach(function (x) {
+        out.push('| ' + [x.순위, x.목적, x.접수일, won(x.금액) + (x.변경후금액 ? ' → ' + won(x.변경후금액) : ''), x.권리자, x.말소 ? '말소' : '유효'].map(esc).join(' | ') + ' |');
+      });
+      var live = d.소유권외.filter(function (x) { return !x.말소 && /근저당권설정/.test(x.목적) && (x.변경후금액 || x.금액); });
+      if (live.length) out.push('\n유효 근저당 채권최고액 합계: **' + won(live.reduce(function (s, x) { return s + Number(x.변경후금액 || x.금액); }, 0)) + '** (' + live.length + '건)');
+    }
+    if (d.경고.length) out.push('\n⚠ ' + d.경고.join(' / '));
+    out.push('');
+  });
+  out.push('_구글 무료 글자인식(OCR)으로 읽고 규칙으로 정리했습니다(AI 미사용). 글자인식이 흐린 곳은 ⚠확인필요로 남겼으니 중요한 판단 전에는 원본과 대조하세요._');
+  return out.join('\n');
+}
+// [2026.10.10] 등기부 PDF → 구조화 정리(토큰 0). body.fileId (드라이브 파일)
+function registryParseFile_(body) {
+  var id = String(body && body.fileId || '');
+  if (!id) return { error: '파일이 없습니다.' };
+  var f = DriveApp.getFileById(id), name = f.getName(), mime = f.getMimeType();
+  if (!/pdf|image/.test(mime)) return { error: name + ' — PDF·이미지만 정리할 수 있습니다.' };
+  var cache = CacheService.getScriptCache(), key = 'regp_' + id + '_' + f.getLastUpdated().getTime();
+  var hit = cache.get(key);
+  if (hit) return JSON.parse(hit);
+  var text = ocrFileText_(id);
+  var p = registryParse(text);
+  var res = { ok: true, name: name, isRegistry: !!p.isRegistry, result: p, md: '**' + name + '**\n\n' + registryToMarkdown_(p, name) };
+  try { var s = JSON.stringify(res); if (s.length < 95000) cache.put(key, s, 21600); } catch (e) { /* 캐시 실패는 무시 */ }
+  return res;
 }
