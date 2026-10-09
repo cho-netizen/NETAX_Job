@@ -18366,49 +18366,6 @@ function client_extractNamesFromFilenames_(caseLabel, knownNames, fileObjs, apiK
   } catch (e) { return []; }
 }
 
-// [2026.09.19 신규] "이름외의 정보는 아예 찾지 않은 것인가?"라는 지적으로 추가 — 이름 후보가
-// 나온 파일 중 실제로 열어볼 수 있는 것(PDF·이미지, 계약서·등본 등)을 그 사람 몫으로 한 번
-// 더 열어 전화번호·주소·주민등록번호가 보이면 찾는다. 문서 하나에 여러 사람이 나올 수 있어
-// 반드시 지정한 이름 본인 것만 답하도록 못박는다. 문서 종류가 다양해 다 나오리라 기대하지
-// 않고, 찾은 것만 채운다(전부 null이면 그냥 이름·관계만 등록됨).
-function client_extractPersonDetailFromFile_(fileId, mimeType, personName, apiKey) {
-  const isPdf = /pdf/i.test(mimeType || '');
-  const isImage = /^image\//i.test(mimeType || '');
-  if (!isPdf && !isImage) return {};
-  let blob;
-  try { blob = DriveApp.getFileById(fileId).getBlob(); } catch (err) { return {}; }
-  const base64 = Utilities.base64Encode(blob.getBytes());
-  const block = isPdf
-    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
-    : { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } };
-  const prompt = '이 파일에서 "' + personName + '" 본인의 전화번호, 주소, 주민등록번호가 보이면 찾아라. ' +
-    '이 파일에 여러 사람의 정보가 섞여 있으면 반드시 "' + personName + '" 본인 것만 답하고 다른 사람 것은 답하지 마라. ' +
-    '없거나 확실하지 않으면 그 항목은 null로 답하라. 다른 설명 없이 정확히 이 형식의 JSON만 답하라: ' +
-    '{"전화번호": 문자열또는null, "주소": 문자열또는null, "주민등록번호": 문자열또는null}.';
-  const response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
-    method: 'post',
-    contentType: 'application/json',
-    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    payload: JSON.stringify({
-      model: DEFAULT_MODEL, max_tokens: 300,
-      messages: [{ role: 'user', content: [block, { type: 'text', text: prompt }] }]
-    }),
-    muteHttpExceptions: true
-  });
-  const json = JSON.parse(response.getContentText());
-  if (json.error) return {};
-  const text = (json.content && json.content[0] && json.content[0].text) || '';
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) return {};
-  try {
-    const parsed = JSON.parse(match[0]);
-    const out = {};
-    if (parsed.전화번호) out.전화번호 = String(parsed.전화번호).trim();
-    if (parsed.주소) out.주소 = String(parsed.주소).trim();
-    if (parsed.주민등록번호) out.주민등록번호 = String(parsed.주민등록번호).trim();
-    return out;
-  } catch (e) { return {}; }
-}
 
 // 사건 폴더 이름 규칙("고객명[동명이인번호](납세자)_세목_업무유형", work_generateUniqueCaseName_
 // 참고)을 그대로 파싱한다 — 작업관리 시트에 연결이 안 된(고아) 폴더라도 이 규칙만으로 고객명·
@@ -19331,38 +19288,6 @@ function findCaseForFile_(fileId) {
   return null;
 }
 
-// Claude API로 영수증 이미지/PDF 하나를 읽어서 금액·발급일자를 뽑아낸다. 이미 프로젝트
-// 전역에 있는 ANTHROPIC_API_KEY/DEFAULT_MODEL을 그대로 재사용(다른 AI 호출들과 동일한 방식).
-// [2026.10.09] 저가 모델(Haiku)로 내리지 말 것 — 실제 현금영수증 17장 비교에서 사진 영수증의 32,354,500원을
-// 32,354원으로 읽었다(Sonnet은 정확). 금액·주민번호처럼 숫자를 읽는 작업은 Sonnet 유지.
-function extractReceiptAmountViaAI_(fileId, mimeType, apiKey, model) {
-  const blob = DriveApp.getFileById(fileId).getBlob();
-  const base64 = Utilities.base64Encode(blob.getBytes());
-  const isPdf = /pdf/i.test(mimeType || '');
-  const block = isPdf
-    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
-    : { type: 'image', source: { type: 'base64', media_type: mimeType || 'image/jpeg', data: base64 } };
-  const prompt = '이 파일은 현금영수증 사진 또는 PDF다. 영수증에 적힌 결제금액(원)과 발급일자를 찾아서, ' +
-    '다른 설명 없이 정확히 이 형식의 JSON 하나만 답하라: {"amount": 숫자또는null, "date": "YYYY-MM-DD"또는null}. ' +
-    '금액을 못 찾으면 amount는 반드시 null로 답하라(추측해서 아무 숫자나 넣지 마라).';
-  const response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
-    method: 'post',
-    contentType: 'application/json',
-    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    payload: JSON.stringify({
-      model: model || DEFAULT_MODEL, max_tokens: 300,
-      messages: [{ role: 'user', content: [block, { type: 'text', text: prompt }] }]
-    }),
-    muteHttpExceptions: true
-  });
-  const json = JSON.parse(response.getContentText());
-  if (json.error) throw new Error(json.error.message || 'AI 호출 실패');
-  const text = (json.content && json.content[0] && json.content[0].text) || '';
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('AI 응답에서 금액을 읽지 못했습니다: ' + text.slice(0, 100));
-  const parsed = JSON.parse(match[0]);
-  return { amount: parsed.amount, date: parsed.date };
-}
 
 // 실제 스캔 본체 — 대시보드의 "지금 확인" 버튼(handleScanCashReceipts)과 야간 자동작업
 // (runNightlyChiefManager) 양쪽에서 그대로 호출한다.
