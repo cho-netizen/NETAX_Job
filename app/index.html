@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 13:20 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 13:25 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -18745,7 +18745,7 @@ async function runFolderAiExtraction(instructionText){
   if (!tcCurrentCase || !tcCurrentCase.id) throw new Error('먼저 위쪽에서 사건을 선택하세요 — 그 사건 폴더의 서류를 읽습니다.');
   const res = await callGas('tc_extract_case_docs', { caseId: tcCurrentCase.id, instruction: instructionText });
   if (!res || res.error) throw new Error((res && res.error) || '서류를 읽지 못했습니다.');
-  if (res.files && res.files.length) showToast('서류 ' + res.files.length + '개를 읽었습니다' + (res.skipped && res.skipped.length ? ' (못 읽은 파일 ' + res.skipped.length + '개)' : '') + (res.usd ? ' · AI 약 ' + Math.max(1, Math.round(res.usd * 1400)) + '원' : ''), 'success');
+  if (res.files && res.files.length) showToast('서류 ' + res.files.length + '개를 읽었습니다' + (res.skipped && res.skipped.length ? ' (못 읽은 파일 ' + res.skipped.length + '개)' : '') + (res.cached ? ' · 서류가 그대로라 지난 결과 재사용(0원)' : res.usd ? ' · AI 약 ' + Math.max(1, Math.round(res.usd * 1400)) + '원' : ''), 'success');
   return res.reply || '';
 }
 

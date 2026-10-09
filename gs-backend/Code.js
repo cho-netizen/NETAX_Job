@@ -15430,6 +15430,15 @@ function ai_paidLogFile_() {
   const it = folder.getFilesByName(AI_PAID_LOG_NAME_);
   return it.hasNext() ? it.next() : folder.createFile(AI_PAID_LOG_NAME_, '[]', 'application/json');
 }
+// [2026.10.09 토큰0 전수조사] 채팅 밖에서 직접 부르는 유료 AI(지침·템플릿 점검, 파일명 이름 찾기, 블로그 글감)도
+// 이번 달 사용액·유료 기록에 남겨 개선 후보 보고서가 볼 수 있게 한다(예전엔 이 비용이 어디에도 안 보였다).
+function ai_logDirect_(json, model, kind, q) {
+  try {
+    if (!json || json.error || !MODEL_CONFIG[model]) return;
+    const u = buildClaudeUsageInfo_(json, MODEL_CONFIG[model], model, null);
+    ai_logPaid_({ entry: { kind: kind, model: model, usd: u.costUsd, q: q } });
+  } catch (e) { /* 기록 실패는 무시 */ }
+}
 function ai_logPaid_(body) {
   const e = (body && body.entry) || {};
   try {
@@ -15739,6 +15748,7 @@ function runNightlySystemAudit(force) {
     }
 
     const result = JSON.parse(response.getContentText());
+    ai_logDirect_(result, DEFAULT_MODEL, 'audit', '🧾 지침 점검(버튼)');
     auditProps.setProperty('AUDIT_LAST_HASH', auditHash);
     auditProps.deleteProperty('AUDIT_PENDING');
     let text = (result.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('\n').trim();
@@ -15895,6 +15905,7 @@ function runTemplateReview_() {
       body = '# 템플릿 점검 ' + todayStr + '\n\nClaude API 오류 (status ' + response.getResponseCode() + ')\n\n' + response.getContentText().slice(0, 1000);
     } else {
       const result = JSON.parse(response.getContentText());
+      ai_logDirect_(result, DEFAULT_MODEL, 'template', '템플릿 점검(버튼)');
       const text = (result.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('\n').trim();
       body = '# 템플릿 점검 ' + todayStr + '\n\n비교한 템플릿 수: ' + comparedCount + '\n\n'
         + ((!text || text === 'NO_ISSUES')
@@ -18340,6 +18351,7 @@ function client_extractNamesFromFilenames_(caseLabel, knownNames, fileObjs, apiK
     muteHttpExceptions: true
   });
   const json = JSON.parse(response.getContentText());
+  ai_logDirect_(json, LIGHT_MODEL, 'names', '고객관리 파일명 이름 찾기 — ' + String(caseLabel || '').slice(0, 30));
   if (json.error) throw new Error(json.error.message || 'AI 호출 실패');
   const text = (json.content && json.content[0] && json.content[0].text) || '';
   const match = text.match(/\{[\s\S]*\}/);
@@ -20424,6 +20436,7 @@ function handleGenerateReportContent(body) {
       muteHttpExceptions: true
     });
     const json = JSON.parse(response.getContentText());
+    ai_logDirect_(json, LIGHT_MODEL, 'blog', '블로그 글감 만들기');
     if (json.error) return { error: json.error.message || 'AI 호출 실패' };
     const text = (json.content && json.content[0] && json.content[0].text) || '';
     if (!text) return { error: 'AI가 빈 응답을 반환했습니다.' };
@@ -24134,6 +24147,12 @@ function tc_extractCaseDocs_(body) {
   const model = DEFAULT_MODEL; // 숫자를 어느 칸에 넣을지 판단 — 정확도 우선(Sonnet). 읽기 자체는 OCR이 이미 했다.
   const system = '너는 세무사 사무실의 증빙 서류에서 세액계산 입력값을 찾아 정리하는 도우미다. 아래 서류 글자는 구글 OCR로 뽑은 것이라 줄바꿈·띄어쓰기가 어긋나거나 표가 풀어져 있을 수 있다 — 숫자와 날짜는 글자 그대로 옮기고, 서류에 없는 값은 지어내지 말고 null로 둬라. 지시받은 JSON 코드블록 하나만 답하라.';
   const user = instruction.replace(/현재 사건 폴더 안의 모든 파일을 살펴봐줘[^.。]*[.。)]?\s*/, '') + '\n\n아래는 이 사건 폴더 서류들의 글자다(' + used.length + '개 파일):\n\n' + parts.join('\n\n');
+  // [2026.10.09 토큰0 전수조사] 서류 글자·지시가 지난번과 완전히 같으면(같은 사건에서 자동계산을 다시 누른 경우) 유료 AI를
+  // 다시 부르지 않고 지난 답을 그대로 쓴다(6시간). 서류가 하나라도 바뀌거나 추가되면 글자가 달라져 새로 묻는다.
+  const tcCache = CacheService.getScriptCache();
+  const tcKey = 'tcx_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, model + '\n' + system + '\n' + user, Utilities.Charset.UTF_8));
+  const tcHit = tcCache.get(tcKey);
+  if (tcHit) return { success: true, reply: tcHit, files: used, skipped: skipped, usd: 0, cached: true };
   const res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
     method: 'post', contentType: 'application/json',
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
@@ -24146,6 +24165,7 @@ function tc_extractCaseDocs_(body) {
   let usage = null;
   try { usage = buildClaudeUsageInfo_(json, MODEL_CONFIG[model], model, null); } catch (e) {}
   try { if (usage) ai_logPaid_({ entry: { kind: 'autofill', model: model, usd: usage.costUsd, q: '세액계산 자동채우기 — ' + found.row[col.사건명] + ' (서류 ' + used.length + '개)' } }); } catch (e) {}
+  try { if (reply && reply.length < 90000) tcCache.put(tcKey, reply, 21600); } catch (e) {}
   return { success: true, reply: reply, files: used, skipped: skipped, usd: usage ? usage.costUsd : null };
 }
 
