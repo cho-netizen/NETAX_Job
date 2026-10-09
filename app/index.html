@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 14:33 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 14:45 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -38915,6 +38915,9 @@ async function saveToDrive(){
     // [2026.09 신규] 방금 저장한 내용을 스냅샷으로 남겨둔다 — rwHasUnsavedDriveChanges_가
     // "그 뒤로 또 고쳤는지"를 판단하는 기준이 된다(창 닫기/화면 이동 경고용).
     d.rwDriveSaved_ = content;
+    // [2026.10.09 버그수정] 드라이브에 실제로 저장된 파일 이름(예: "자문보고서")을 기억해 둔다 — 발행본(.html)도 같은 이름이어야
+    // 처리개요가 원본과 짝지어 "📤 발행됨"으로 보여준다. 예전엔 발행본이 화면 문서명("새 문서.html")으로 올라가 짝이 안 맞았다.
+    if (isNew) d.driveBaseName_ = name.replace(/\.(md|html?|htm)$/i, '');
     if (isNew && data.id) {
       const newDocId = 'drive-' + data.id;
       d.id = newDocId;
@@ -38955,6 +38958,10 @@ async function publishToCustomer(){
     flashSaveState('이 문서는 발행 대상이 아닙니다');
     return;
   }
+  // [2026.10.09] 📤 아이콘 한 번에 확인 없이 고객 보고서함에 바로 올라갔다(본문이 아주 짧을 때만 물었음) — 고객에게 바로
+  // 보이는 동작이라 문자 발송과 같은 기준으로 항상 한 번 확인한다.
+  const rwAgain_ = !!d0.htmlFileId;
+  if (!(await nxConfirm_((rwAgain_ ? '이미 발행한 문서입니다. 지금 내용으로 고객 보고서함의 완성본을 바꿀까요?' : '"' + (d0.name || '문서') + '"을(를) 고객에게 발행할까요?') + '\n\n고객창구(my.netax.kr) 보고서함에 바로 보입니다.'))) return;
   const btn = document.getElementById('btnPublish');
   if (btn) btn.disabled = true;
   try {
@@ -38975,7 +38982,7 @@ async function publishToCustomer(){
       return;
     }
     const finalHtml = buildStandaloneHtml(false);
-    const cleanBaseName = (d.name || '문서').replace(/\.(md|html?|htm)$/i, '');
+    const cleanBaseName = (d.driveBaseName_ || d.name || '문서').replace(/\.(md|html?|htm)$/i, '');
     const body = { name: cleanBaseName + '.html', base64Data: utf8ToBase64_(finalHtml) };
     // [2026.09 버그수정] 이미 발행된(=고객이 봤을 수 있는) 문서를 재발행하면 예전엔 그냥
     // 덮어써서 이전 버전이 흔적도 없이 사라졌다 — 덮어쓰기 전에 서버가 "이전버전" 폴더에
