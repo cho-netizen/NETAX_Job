@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 09:52 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 10:55 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -42782,6 +42782,7 @@ function goToReportWriter_(caseId, opts){
         <button type="button" class="ghost-btn" id="stBtnBugClear">🗑 기록 비우기</button>
         <button type="button" class="ghost-btn" id="stBtnSelfCheck" title="세액계산 엔진 정답 사례·사건/고객/예약/AI대화 읽기를 지금 점검합니다(AI 비용 0, 매일 밤 자동으로도 돔)">🩺 지금 자가점검</button>
         <button type="button" class="ghost-btn" id="stBtnImprove" title="최근 7일 오류·유료 AI 질문·자가점검·화면 속도를 모아 고칠 거리를 정리합니다(AI 비용 0, 매일 밤 자동으로도 돔). 고치는 건 Claude Code에게 &quot;개선 후보 처리해줘&quot;">🛠 개선 후보 보기</button>
+        <button type="button" class="ghost-btn" id="stBtnGhDeploy" title="웹 Claude Code가 깃허브에 올리고 세무사님이 승인(Merge)한 수정을 job에 반영합니다">📥 수정 반영</button>
       </div>
       <div id="stBugList" class="settings-tool-desc">불러오기를 누르면 최근 기록이 보입니다.</div>
     </div>
@@ -43047,6 +43048,26 @@ function goToReportWriter_(caseId, opts){
           + (r.headline || []).map(function(h){ return '<div style="padding:3px 0; border-top:1px solid var(--line);">' + escapeHtml(h) + '</div>'; }).join('')
           + '<div style="padding:3px 0; border-top:1px solid var(--line); color:var(--sub);">유료 AI ' + (r.paid ? r.paid.totalKrw : 0) + '원(7일) · 고치려면 Claude Code에게 "개선 후보 처리해줘" — 매주 월요일 아침엔 자동으로 분석합니다</div>';
       }).catch(function(err){ bugList.textContent = '개선 후보를 만들지 못했습니다: ' + (err && err.message ? err.message : err); });
+    });
+    // [2026.10.09] 📥 수정 반영 — 깃허브 main(승인된 수정)을 job 자신이 받아 배포한다(Code.js gh_deployApply_).
+    document.getElementById('stBtnGhDeploy').addEventListener('click', function(){
+      bugList.textContent = '📥 깃허브 확인 중…';
+      callGas('gh_deploy_status', {}).then(function(st){
+        if (!st || !st.success){ bugList.textContent = '깃허브를 확인하지 못했습니다: ' + ((st && st.error) || ''); return; }
+        var list = (st.commits || []).map(function(x){ return '<div style="padding:3px 0; border-top:1px solid var(--line);">' + escapeHtml(x.at.slice(0, 10) + ' · ' + x.msg) + '</div>'; }).join('');
+        var head = st.pending === null ? '기준이 아직 없습니다 — 처음 한 번은 지금 깃허브 최신본(' + escapeHtml(st.headMsg) + ')을 반영합니다.'
+          : st.pending ? '승인된 수정 ' + st.pending + '건이 반영을 기다립니다.' : '✅ job이 깃허브 최신본과 같습니다 — 반영할 것 없음.';
+        bugList.innerHTML = '<div style="margin-bottom:4px;"><b>' + head + '</b></div>' + list;
+        if (st.pending === 0) return;
+        nxConfirm_('📥 깃허브의 승인된 수정을 job에 반영할까요?\n\n반영하면 job이 새 버전으로 바뀝니다(1분쯤). 이상하면 Claude에게 "되돌려줘"라고 하시면 됩니다.').then(function(ok){
+          if (!ok) return;
+          bugList.textContent = '📥 반영 중… (1분쯤 걸립니다. 창을 닫지 마세요)';
+          callGas('gh_deploy_apply', { expectSha: st.head }).then(function(r){
+            if (!r || !r.success){ bugList.textContent = '반영하지 못했습니다: ' + ((r && r.error) || ''); return; }
+            bugList.innerHTML = '<b>✅ 반영 완료</b> — 버전 ' + r.version + ' · ' + escapeHtml(r.message) + '<br>화면을 새로고침하면 바뀐 화면이 보입니다.';
+          }).catch(function(err){ bugList.textContent = '반영 중 오류: ' + (err && err.message ? err.message : err); });
+        });
+      }).catch(function(err){ bugList.textContent = '확인 중 오류: ' + (err && err.message ? err.message : err); });
     });
     document.getElementById('stBtnBugClear').addEventListener('click', function(){
       nxConfirm_('오류 기록을 모두 지울까요?').then(function(ok){

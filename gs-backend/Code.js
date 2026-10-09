@@ -3812,6 +3812,9 @@ function dispatchClientAction0_(body) {
   if (body.action === 'self_check_last') return jsonResponse(selfCheckLast_());
   if (body.action === 'improve_report_run') return jsonResponse(buildImprovementReport_());
   if (body.action === 'improve_report_get') return jsonResponse(getImprovementReport_());
+  if (body.action === 'gh_deploy_status') return jsonResponse(gh_deployStatus_());
+  if (body.action === 'gh_deploy_apply') return jsonResponse(gh_deployApply_(body));
+  if (body.action === 'improve_token_get') return jsonResponse({ success: true, token: improve_readToken_() });
   if (body.action === 'ai_conv_import_work') return jsonResponse(ai_convImportWork(body));
   if (body.action === 'ai_conv_sync_work') return jsonResponse(ai_convSyncWork(body));
 
@@ -4084,6 +4087,13 @@ function doPost(e) {
     }
     if (Array.isArray(body.__manageBatch)) {
       return jsonResponse(manageApp_dispatchHttpBatch_(body.__manageBatch, body.__rid));
+    }
+
+    // [2026.10.09] 웹 Claude Code 전용 출입증 — 개선 후보 보고서 "읽기"만 된다(API_SECRET과 별개, 새도 job·고객자료는 못 건드림).
+    if (body.action === 'improve_report_public') {
+      const tok = PropertiesService.getScriptProperties().getProperty('IMPROVE_READ_TOKEN');
+      if (!tok || body.token !== tok) return jsonResponse({ error: '인증 실패' });
+      return jsonResponse(getImprovementReport_());
     }
 
     // [2026.08] 이 웹앱 배포가 "모든 사용자"(로그인 불필요) 접근으로 되어 있어서, URL만 알면
@@ -24232,4 +24242,104 @@ function getImprovementReport_() {
   try { report = JSON.parse(improve_reportFile_().getBlob().getDataAsString('UTF-8') || 'null'); } catch (e) { report = null; }
   if (report && !report.generatedAt) report = null;
   return { success: true, report: report };
+}
+
+// ============================================================
+// [2026.10.09] 깃허브 → job 자체 반영 — 세무사님 지시·허락(2026-10-09): "웹 Claude Code가 개선요구사항을 확인해 조치",
+// "job이 깃허브 main 코드를 받아 스스로 운영 배포하는 기능(📥 반영 버튼) … 허락한다".
+// 구글 로그인 정보(드라이브 전체를 열 수 있는 열쇠)를 클라우드에 맡기지 않기 위해 역할을 나눴다:
+//  · 웹 Claude Code(클라우드): 보고서 전용 출입증(IMPROVE_READ_TOKEN)으로 개선 후보를 읽고, 고친 코드를 깃허브에 수정안(PR)으로 올린다.
+//  · 세무사님: 깃허브에서 수정안을 승인(Merge)하고, job에서 📥 반영을 누른다.
+//  · job(이 코드): 깃허브 main의 gs-backend 파일을 가져와 Apps Script API로 자기 프로젝트를 갈아끼우고
+//    기존 배포 ID에 새 버전을 올린다 — 구글 안에서 세무사님 권한으로 하므로 열쇠가 밖으로 나가지 않는다(clasp push -f + deploy -i와 같음).
+// 필요 권한: script.projects·script.deployments (appsscript.json oauthScopes). 저장소는 공개라 깃허브 쪽 열쇠는 필요 없다.
+// ============================================================
+const GH_REPO_ = 'cho-netizen/NETAX_Job';
+const GH_DEPLOY_ID_ = 'AKfycbyFbvXiV6rSzCvhtc_T2WrzNF5ZxhOFWtSSsgzSavzPbjv4LBGhjXhu_Q2_8m-PDj8s';
+function improve_readToken_() {
+  const p = PropertiesService.getScriptProperties();
+  let t = p.getProperty('IMPROVE_READ_TOKEN');
+  if (!t) { t = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, ''); p.setProperty('IMPROVE_READ_TOKEN', t); }
+  return t;
+}
+function gh_fetchJson_(url) {
+  const r = UrlFetchApp.fetch(url, { muteHttpExceptions: true, headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'netax-job' } });
+  if (r.getResponseCode() !== 200) throw new Error('깃허브 응답 ' + r.getResponseCode() + (r.getResponseCode() === 403 ? ' (잠시 뒤 다시 — 깃허브 조회 한도)' : ''));
+  return JSON.parse(r.getContentText());
+}
+// 깃허브 API(api.github.com)는 로그인 없이 부르면 구글 서버처럼 여럿이 같이 쓰는 주소에서 금방 "조회 한도 초과(403)"가 난다
+// (2026-10-09 첫 시험에서 바로 발생). 그래서 API 대신 공개 "최근 커밋 피드"(commits/main.atom)로 최신 커밋을 알아낸다.
+function gh_feed_() {
+  const r = UrlFetchApp.fetch('https://github.com/' + GH_REPO_ + '/commits/main.atom?t=' + Date.now(), { muteHttpExceptions: true, headers: { 'User-Agent': 'netax-job' } });
+  if (r.getResponseCode() !== 200) throw new Error('깃허브 커밋 목록을 읽지 못했습니다(' + r.getResponseCode() + ')');
+  const root = XmlService.parse(r.getContentText()).getRootElement();
+  const ns = root.getNamespace();
+  return root.getChildren('entry', ns).map(function (en) {
+    const id = en.getChildText('id', ns) || '';
+    return { sha: id.slice(id.lastIndexOf('/') + 1), msg: String(en.getChildText('title', ns) || '').trim().slice(0, 120), at: en.getChildText('updated', ns) || '' };
+  }).filter(function (x) { return /^[0-9a-f]{40}$/.test(x.sha); });
+}
+function gh_deployStatus_() {
+  try {
+    const feed = gh_feed_();
+    if (!feed.length) throw new Error('깃허브 커밋 목록이 비어 있습니다');
+    const head = feed[0];
+    const deployed = PropertiesService.getScriptProperties().getProperty('GH_DEPLOYED_SHA') || '';
+    let commits = [], pending = null;
+    if (deployed) {
+      const idx = feed.map(function (x) { return x.sha; }).indexOf(deployed);
+      commits = (idx === -1 ? feed : feed.slice(0, idx)).map(function (x) { return { sha: x.sha.slice(0, 7), at: x.at, msg: x.msg }; });
+      pending = commits.length;
+    }
+    return { success: true, head: head.sha, headMsg: head.msg, deployed: deployed, pending: pending, commits: commits.slice(0, 30) };
+  } catch (e) { return { success: false, error: e.message }; }
+}
+// PC에서 clasp로 배포한 뒤 "지금 운영 = 깃허브 main"이라고 기준만 맞출 때(코드는 안 바꿈)
+function gh_markDeployed_(sha) { PropertiesService.getScriptProperties().setProperty('GH_DEPLOYED_SHA', sha); }
+function gh_deployApply_(body) {
+  return withLock_(30000, function () {
+    const scriptId = ScriptApp.getScriptId();
+    const token = ScriptApp.getOAuthToken();
+    const api = function (method, path, payload) {
+      const r = UrlFetchApp.fetch('https://script.googleapis.com/v1/projects/' + scriptId + path, {
+        method: method, contentType: 'application/json', muteHttpExceptions: true,
+        headers: { Authorization: 'Bearer ' + token }, payload: payload ? JSON.stringify(payload) : undefined
+      });
+      const code = r.getResponseCode();
+      if (code !== 200) {
+        const t = r.getContentText();
+        if (code === 403 && /insufficient|scope/i.test(t)) throw new Error('job에 "스크립트 수정" 권한이 아직 없습니다 — 앱스스크립트 편집기에서 권한 승인을 한 번 해 주세요.');
+        throw new Error('Apps Script API ' + code + ': ' + t.slice(0, 200));
+      }
+      return JSON.parse(r.getContentText() || '{}');
+    };
+    const head = gh_feed_()[0];
+    if (!head) throw new Error('깃허브 커밋 목록을 읽지 못했습니다');
+    if (body && body.expectSha && body.expectSha !== head.sha) return { success: false, error: '그 사이 깃허브에 새 수정이 올라왔습니다 — 목록을 새로 보고 다시 눌러 주세요.' };
+    head.commit = { message: head.msg };
+    // 파일 목록 = 지금 job 프로젝트에 있는 파일들(깃허브 API 조회 한도를 피하려고 트리 조회 대신). 새 파일을 추가하는 수정은
+    // PC에서 clasp로 한 번 올려야 한다(웹 Claude Code 지시문에도 "새 파일 만들지 말 것"으로 적어 둠).
+    const cur = api('get', '/content');
+    const extOf = { SERVER_JS: '.js', HTML: '.html', JSON: '.json' };
+    const paths = (cur.files || []).filter(function (f) { return extOf[f.type]; }).map(function (f) { return 'gs-backend/' + f.name + extOf[f.type]; });
+    if (paths.indexOf('gs-backend/Code.js') === -1 || paths.indexOf('gs-backend/appsscript.json') === -1) throw new Error('job 파일 목록에서 Code/appsscript를 찾지 못했습니다 — 반영하지 않음');
+    const reqs = paths.map(function (p) { return { url: 'https://raw.githubusercontent.com/' + GH_REPO_ + '/' + head.sha + '/' + p.split('/').map(encodeURIComponent).join('/'), muteHttpExceptions: true }; });
+    const resps = UrlFetchApp.fetchAll(reqs);
+    const files = paths.map(function (p, i) {
+      if (resps[i].getResponseCode() !== 200) throw new Error('파일을 받지 못함: ' + p);
+      const rel = p.slice('gs-backend/'.length);
+      const ext = rel.slice(rel.lastIndexOf('.') + 1);
+      return { name: rel.replace(/\.[^.]+$/, ''), type: ext === 'html' ? 'HTML' : ext === 'json' ? 'JSON' : 'SERVER_JS', source: resps[i].getContentText('UTF-8') };
+    });
+    // 안전장치: 받은 Code.js가 너무 작거나 doPost·이 반영 기능이 없으면(잘린 파일) 반영하지 않는다
+    const code = files.filter(function (f) { return f.name === 'Code'; })[0];
+    if (!code || code.source.length < 100000 || code.source.indexOf('function doPost(') === -1 || code.source.indexOf('function gh_deployApply_(') === -1) throw new Error('받은 Code.js가 비정상입니다 — 반영하지 않음');
+    api('put', '/content', { files: files });
+    const desc = ('깃허브 ' + head.sha.slice(0, 7) + ' ' + String(head.commit.message || '').split('\n')[0]).slice(0, 100);
+    const ver = api('post', '/versions', { description: desc });
+    api('put', '/deployments/' + GH_DEPLOY_ID_, { deploymentConfig: { scriptId: scriptId, versionNumber: ver.versionNumber, manifestFileName: 'appsscript', description: desc } });
+    gh_markDeployed_(head.sha);
+    try { CacheService.getScriptCache().remove('dsc_ver_getNightlyStatus'); } catch (e) {}
+    return { success: true, version: ver.versionNumber, sha: head.sha.slice(0, 7), files: files.length, message: desc };
+  });
 }
