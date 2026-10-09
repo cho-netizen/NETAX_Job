@@ -551,6 +551,15 @@ function computePairActualValue_(donorIdx, doneeIdx){
 // d.relation이 undefined로 남는다(change 이벤트 안 뜸) — run-gift의 '기타' 대체 버그와
 // 완전히 같은 부류라 여기도 반드시 같은 기본값(직계존속)으로 대체해서 비교해야 한다.
 function giftDonorEffectiveRelation_(d){ return (d && d.relation) || '직계존속'; }
+// [2026.10.09 법령보완] 관계(증여재산공제 5천만/1천만/6억, 세대생략 할증)는 "증여자-수증자 쌍"마다 다르다 — 같은 시아버지가
+// 아들(직계존속 1촌)과 며느리(기타친족)에게, 또는 할아버지가 자녀와 손자(세대생략)에게 동시에 주는 경우. 예전엔 증여자 카드에
+// 관계가 하나뿐이라 이런 사건은 두 사건으로 나눠야 했다(강정화 사건). 수증인이 2명 이상이면 쌍별로 고를 수 있게 하고(d.pairRel),
+// 지정 안 한 쌍은 증여자 카드의 관계를 그대로 쓴다.
+function giftPairRelation_(d, doneeIdx){
+  const pr = d && d.pairRel && d.pairRel[doneeIdx];
+  if (pr){ const parts = String(pr).split('|'); return { relation: parts[0] || '직계존속', genSkip: parts[1] || '0' }; }
+  return { relation: giftDonorEffectiveRelation_(d), genSkip: (d && d.genSkip) || '0' };
+}
 function giftDonorGroupPrimaryIdx_(idx){
   const d = giftDonors[idx];
   if (!d || giftDonorEffectiveRelation_(d) !== '직계존속' || !d.sameAsGroup) return idx;
@@ -7171,10 +7180,18 @@ function renderGiftDonorRegistry(){
           '<option value="직계존속" data-genskip="0"' + ((d.relation === '직계존속' || !d.relation) && d.genSkip !== '1' ? ' selected' : '') + '>직계존속(부모 등, 1촌)</option>' +
           '<option value="직계존속" data-genskip="1"' + (d.relation === '직계존속' && d.genSkip === '1' ? ' selected' : '') + '>직계존속(조부모 등, 2촌 이상 — 세대생략)</option>' +
           '<option value="직계비속" data-genskip="0"' + (d.relation === '직계비속' && d.genSkip !== '1' ? ' selected' : '') + '>직계비속(자녀 등, 1촌)</option>' +
-          '<option value="직계비속" data-genskip="0"' + (d.relation === '직계비속' && d.genSkip === '1' ? ' selected' : '') + '>직계비속(손자녀 등, 2촌 이상)</option>' +
+          '<option value="직계비속" data-genskip="1"' + (d.relation === '직계비속' && d.genSkip === '1' ? ' selected' : '') + '>직계비속(손자녀 등, 2촌 이상)</option>' +
           '<option value="기타친족"' + (d.relation === '기타친족' ? ' selected' : '') + '>기타친족</option>' +
           '<option value="기타"' + (d.relation === '기타' ? ' selected' : '') + '>그 밖의 자(상속인 아닌 자 등)</option>' +
         '</select></div>' +
+        (giftDonees.length > 1 ? '<div class="taxcalc-field" style="flex-basis:100%; max-width:none;"><label>수증인별 관계(수증인마다 다르면 지정 — 공제액·세대생략 할증이 달라짐)</label><div style="display:flex; flex-wrap:wrap; gap:6px 14px;">' +
+          giftDonees.map(function(dn, j){
+            const cur = (d.pairRel && d.pairRel[j]) || '';
+            const opt = function(v, label){ return '<option value="' + v + '"' + (cur === v ? ' selected' : '') + '>' + label + '</option>'; };
+            return '<span style="display:inline-flex; align-items:center; gap:4px;">→ ' + escapeHtml(dn.name || ('수증인 ' + (j + 1))) +
+              ' <select data-pairrel="' + j + '">' + opt('', '위 관계와 같음') + opt('배우자|0', '배우자') + opt('직계존속|0', '직계존속(1촌)') + opt('직계존속|1', '직계존속(2촌 이상·세대생략)') +
+              opt('직계비속|0', '직계비속(1촌)') + opt('직계비속|1', '직계비속(2촌 이상)') + opt('기타친족|0', '기타친족') + opt('기타|0', '그 밖의 자') + '</select></span>';
+          }).join('') + '</div></div>' : '') +
         // [2026.09.23 신규] 상증세법§47② — 직계존속이 증여자이면 그 배우자는 "동일인"으로 보아
         // 같은 수증인에게 한 증여를 합산해야 한다(관계별공제 5천만원도 부부 합쳐 1번만).
         // 증여자가 2명 이상이고 관계가 직계존속일 때만 노출 — 같은 값을 적은 증여자들끼리
@@ -7244,6 +7261,14 @@ function renderGiftDonorRegistry(){
       }
       if (key === 'paidDate') recomputeGiftUnpaidDays(idx);
       if (key === 'name' || key === 'relation' || key === 'sameAsGroup') { renderGiftDonorRegistry(); return; } // 제목·자산배분 드롭다운 라벨·동일인그룹 안내 갱신
+    });
+  });
+  container.querySelectorAll('[data-pairrel]').forEach(function(el){
+    el.addEventListener('change', function(){
+      const idx = numVal(el.closest('[data-donor-idx]').dataset.donorIdx);
+      const d = giftDonors[idx];
+      d.pairRel = Object.assign({}, d.pairRel || {});
+      if (el.value) d.pairRel[el.dataset.pairrel] = el.value; else delete d.pairRel[el.dataset.pairrel];
     });
   });
   container.querySelectorAll('[data-dfield="addressDong"]').forEach(function(el){
@@ -12189,7 +12214,7 @@ function gfBasicRecord_(donee, donor, giftDate, doneeIdx){
   b = b.concat(ihDateField_(giftDate));                        // 21 증여일자
   b = b.concat(ihPadChar_(gfDoneeRelationCode_(donor, donee), 2)); // 22 증여자와의 관계
   b = b.concat(ihPadChar_(taxCalcGiftDoneeIsMinor(doneeIdx || 0) ? 'Y' : 'N', 1)); // 23 미성년자 구분
-  b = b.concat(ihPadChar_((donor.genSkip === '1' && (donor.relation === '직계존속' || donor.relation === '직계비속')) ? 'Y' : 'N', 1)); // 24 세대를 건너뛴 구분
+  b = b.concat(ihPadChar_((donor.genSkip === '1' && donor.relation === '직계존속') ? 'Y' : 'N', 1)); // 24 세대를 건너뛴 구분(할증 대상 = 조부모 등→손자녀만, 2026.10.09 정정)
   b = b.concat(ihPadChar_(donee.resident === 'nonresident' ? 'Y' : 'N', 1)); // 25 비거주자구분
   b = b.concat(ihPadChar_('', 10));                            // 26 수증자_법정동코드(행안부, 공란)
   b = b.concat(ihPadChar_('', 196));                           // 27~34 도로명주소 계열(생략, 12+50+1+5+5+22+12+2=109) + 35 공란(87) = 196
@@ -12412,7 +12437,8 @@ function gfBuildEfileBytes_(){
   (lastGiftResults_ || []).forEach(function(item){
     if (item.result.error) return;
     const donee = giftDonees[item.doneeIdx] || {};
-    const donor = giftDonors[item.donorIdxs[0]] || {};
+    const donorRaw = giftDonors[item.donorIdxs[0]] || {};
+    const donor = Object.assign({}, donorRaw, giftPairRelation_(donorRaw, item.doneeIdx)); // 쌍별 관계(2026.10.09)
     all = all.concat(gfHeadRecord_(donee.regNo, giftDate), CRLF, gfBasicRecord_(donee, donor, giftDate, item.doneeIdx), CRLF, gfTaxCalcRecord_(item, donor), CRLF);
     gfAttach1AssetRecordsForPair_(item.donorIdxs[0], item.doneeIdx).forEach(function(r){ all = all.concat(r, CRLF); });
     const marriageBirthTotal = numVal(item.result.혼인출산증여재산공제) || 0;
@@ -15937,7 +15963,7 @@ function handleTaxCalcClick_(e){
       giftDonors.forEach(function(d, donorIdx){
         const amount = doneeCount > 1 ? computePairActualValue_(donorIdx, doneeIdx) : (doneeIdx === 0 ? (numVal(d.giftAmount) || 0) : 0);
         if (!amount) return;
-        const canGroup = giftDonors.length > 1 && giftDonorEffectiveRelation_(d) === '직계존속' && d.sameAsGroup;
+        const canGroup = giftDonors.length > 1 && giftPairRelation_(d, doneeIdx).relation === '직계존속' && d.sameAsGroup;
         const key = canGroup ? ('grp:' + doneeIdx + ':' + d.sameAsGroup) : ('solo:' + doneeIdx + ':' + donorIdx);
         if (!groupByKey[key]) { groupByKey[key] = { doneeIdx: doneeIdx, donorIdxs: [], amount: 0 }; groups.push(groupByKey[key]); }
         groupByKey[key].donorIdxs.push(donorIdx);
@@ -15960,13 +15986,14 @@ function handleTaxCalcClick_(e){
         // 아예 안 떠서 giftDonors[idx].relation이 계속 undefined로 남는다 — 그때 '기타'로
         // 대체하면 관계별 공제가 0원으로 계산되는 실제 세액 오류가 생긴다. 화면 기본값과
         // 동일하게 '직계존속'으로 대체해야 한다.
-        relation: d.relation || '직계존속',
+        relation: giftPairRelation_(d, g.doneeIdx).relation,
         debtAssumedAmount: numVal(d.debtAssumed) || 0,
         isDebtObjectivelyProven: !!d.debtObjProven,
         priorGiftAmount: numVal(d.priorAmount) || 0,
         priorPaidTax: numVal(d.priorPaidTax) || 0,
         priorRelationDeductionUsed: numVal(d.priorRelationDeductionUsed) || 0,
-        isGenerationSkip: d.genSkip === '1',
+        // 세대생략 할증(§57)은 증여자가 수증자의 직계존속(조부모 등)일 때만 — 손자녀→조부모(직계비속 2촌)는 할증 없음
+        isGenerationSkip: giftPairRelation_(d, g.doneeIdx).genSkip === '1' && giftPairRelation_(d, g.doneeIdx).relation === '직계존속',
         generationSkipOver2Billion: !!d.genSkipOver2B,
         isSubstituteGiftDueToDeath: !!d.genSkipSubstitute,
         generationSkipGiftAmount: d.genSkipAmount === '' || d.genSkipAmount == null ? undefined : numVal(d.genSkipAmount),
