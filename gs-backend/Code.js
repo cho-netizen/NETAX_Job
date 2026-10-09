@@ -17852,6 +17852,20 @@ function my_handleAdminCreateCase(params) {
 // 되돌린다(expiryDate가 null이면 만료일 칸을 비운다). reportId에 해당하는 행이 없으면
 // (my.netax.kr에 연결 안 된 사건 등) 조용히 아무 것도 하지 않는다 — 실패해도 work_ 사건
 // 완료 처리 자체를 막아서는 안 되므로 호출부에서 try/catch로 감싼다.
+// [2026.10.09] job 사건명·고객명이 바뀌면 고객창구 시트의 같은 행도 맞춘다(work_updateCase에서 호출).
+function my_setCaseNamesByReportId_(reportId, caseName, customerName) {
+  if (!reportId) return;
+  const sheet = SpreadsheetApp.openById(MY_SHEET_ID).getSheetByName(MY_SHEET_CASES);
+  const data = sheet.getDataRange().getValues();
+  const col = my_colMap_(data[0]);
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][col.report_id]).trim() === String(reportId).trim()) {
+      if (caseName && col.사건명 >= 0) sheet.getRange(i + 1, col.사건명 + 1).setValue(caseName);
+      if (customerName && col.고객명 >= 0) sheet.getRange(i + 1, col.고객명 + 1).setValue(customerName);
+      return;
+    }
+  }
+}
 function my_setExpiryByReportId_(reportId, expiryDate) {
   if (!reportId) return;
   const ss = SpreadsheetApp.openById(MY_SHEET_ID);
@@ -22851,6 +22865,11 @@ function work_updateCase(params) {
           console.log('사건명 변경 시 폴더명 동기화 실패: ' + err.message);
           folderRenameFailed = true;
         }
+      }
+      // [2026.10.09 버그수정] 사건명이 바뀌면 드라이브 폴더명은 따라 바뀌는데, 고객창구(my.netax.kr) 시트의 사건명·고객명은
+      // 옛 이름 그대로 남았다(시험사건 정리 중 발견 — 고객 화면과 job의 사건명이 어긋남). 같이 맞춘다. 실패해도 저장은 계속.
+      if (row[col.my_report_id] && (newCaseName !== oldCaseName || params.고객명 !== undefined)) {
+        try { my_setCaseNamesByReportId_(row[col.my_report_id], newCaseName, row[col.고객명]); } catch (err) { console.log('고객창구 사건명 동기화 실패: ' + err.message); }
       }
     }
     // [2026.09.18 신규] "상담 사건이 나중에 자문/신고로 발전하면 그 시점에 개별 폴더를 만들자"
