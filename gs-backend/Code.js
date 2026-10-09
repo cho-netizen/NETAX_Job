@@ -3705,7 +3705,7 @@ function getClientActionTools_(ctx) {
 // 기억하지 않는다(저장했는데 옛날 값이 보이는 짜증을 만들지 않기 위해).
 const DISPATCH_SHORT_CACHE_ = { getNightlyStatus: 1800, getGlobalLog: 120, search_emails: 90, get_calendar_events: 90 };
 // 이 작업들이 성공하면 위 기억을 지운다(예약 승인·취소 → 캘린더가 바뀜, 메일 읽음 표시 → 안읽은 메일 목록이 바뀜)
-const DISPATCH_SHORT_CACHE_BUST_ = { approve: ['get_calendar_events'], reject: ['get_calendar_events'], cancel_confirmed_booking: ['get_calendar_events'], admin_apply: ['get_calendar_events'], apply: ['get_calendar_events'], mark_email_read: ['search_emails'], work_resync_all_calendars: ['get_calendar_events'] };
+const DISPATCH_SHORT_CACHE_BUST_ = { approve: ['get_calendar_events'], reject: ['get_calendar_events'], cancel_confirmed_booking: ['get_calendar_events'], admin_apply: ['get_calendar_events'], apply: ['get_calendar_events'], mark_email_read: ['search_emails'], work_resync_all_calendars: ['get_calendar_events'], improve_report_run: ['getNightlyStatus'], self_check_run: ['getNightlyStatus'] };
 function dispatchClientAction_(body) {
   const ttl = DISPATCH_SHORT_CACHE_[body && body.action];
   const bust = DISPATCH_SHORT_CACHE_BUST_[body && body.action];
@@ -3810,6 +3810,8 @@ function dispatchClientAction0_(body) {
   if (body.action === 'self_check_run') return jsonResponse(runSelfCheck_());
   if (body.action === 'tc_extract_case_docs') return jsonResponse(tc_extractCaseDocs_(body));
   if (body.action === 'self_check_last') return jsonResponse(selfCheckLast_());
+  if (body.action === 'improve_report_run') return jsonResponse(buildImprovementReport_());
+  if (body.action === 'improve_report_get') return jsonResponse(getImprovementReport_());
   if (body.action === 'ai_conv_import_work') return jsonResponse(ai_convImportWork(body));
   if (body.action === 'ai_conv_sync_work') return jsonResponse(ai_convSyncWork(body));
 
@@ -16046,6 +16048,8 @@ function runNightlyChiefManager() {
   try { runCashReceiptScan_(); } catch (err) { console.error('현금영수증 자동 인식 실패: ' + err.message); }
   // [2026.10.09] 토큰 0 자가점검 — 세무사님이 버그로 AI와 씨름하지 않도록 job이 매일 밤 스스로 확인
   try { runSelfCheck_(); } catch (err) { console.error('자가점검 실패: ' + err.message); }
+  // [2026.10.09] 개선 후보 보고서(토큰 0) — 자가점검 다음에 만들어야 그 결과까지 담긴다
+  try { buildImprovementReport_(); } catch (err) { console.error('개선 후보 보고서 실패: ' + err.message); }
   // [2026.09.15 신규] 홈택스 매출내역 엑셀(0_NX_0 폴더)도 매일 밤 같이 확인 — 세무사님이
   // 새 파일을 올려두면 다음날 밤 자동으로 반영된다(수동 버튼도 별도로 있음).
   try { receipt_importHometaxExports_(); } catch (err) { console.error('홈택스 수금 가져오기 실패: ' + err.message); }
@@ -16093,6 +16097,21 @@ function handleGetNightlyStatus(body) {
     date: audit ? audit.date : null,
     message: audit ? audit.content.slice(0, 300) : '오늘·어제 리포트를 찾지 못했습니다 — 야간 작업이 실행되지 않았을 수 있습니다.'
   });
+
+  // [2026.10.09] 개선 후보 보고서
+  try {
+    const ir = getImprovementReport_();
+    if (ir && ir.report) {
+      const r = ir.report;
+      items.push({
+        label: '🛠 개선 후보 (AI 비용 0, 최근 7일)',
+        ok: !r.candidateCount,
+        failLabel: '개선 후보 ' + r.candidateCount + '건',
+        date: String(r.generatedAt || '').slice(0, 10),
+        message: r.candidateCount ? (r.headline || []).slice(0, 4).join('\n') + '\n→ Claude Code에게 "개선 후보 처리해줘"(매주 월요일 자동 분석도 함)' : '최근 7일 개선할 거리 없음'
+      });
+    }
+  } catch (e) { /* 보고서가 아직 없으면 생략 */ }
 
   // [2026.10.09] 토큰 0 자가점검 결과
   const sc = selfCheckLast_();
@@ -24125,4 +24144,92 @@ function tc_extractCaseDocs_(body) {
   try { usage = buildClaudeUsageInfo_(json, MODEL_CONFIG[model], model, null); } catch (e) {}
   try { if (usage) ai_logPaid_({ entry: { kind: 'autofill', model: model, usd: usage.costUsd, q: '세액계산 자동채우기 — ' + found.row[col.사건명] + ' (서류 ' + used.length + '개)' } }); } catch (e) {}
   return { success: true, reply: reply, files: used, skipped: skipped, usd: usage ? usage.costUsd : null };
+}
+
+// ============================================================
+// [2026.10.09] 개선 후보 보고서 — 세무사님 지시: "사용하면서 고치는 작업"을 자동(주1회)·수동 모두로.
+// ① 수집·정리는 job이 매일 밤(토큰 0): 오류기록·유료AI 질문기록·자가점검·화면 속도를 7일치 모아 같은 것끼리 묶고 횟수를 센다.
+// ② 대시보드 "야간 자동작업"·설정 🐞 카드에 "개선 후보 N건"으로 보인다.
+// ③④ 분석·수정은 Claude Code(세무사님 PC, 구독요금): 매주 월요일 예약작업이 이 보고서를 읽어 수정안을 준비하고,
+//    세무사님이 "진행"하면 고쳐서 실제 확인 후 반영한다(운영 반영 전 사람 확인 — 자동 수정은 하지 않음).
+//    수동은 언제든 Claude Code에게 "개선 후보 처리해줘". 읽는 도구: NETAX_Job/tools/improve-report.js
+// 시험 중 생긴 기록("[점검 중", "zz_", "[시험]")은 빼고 센다.
+// ============================================================
+const IMPROVE_REPORT_NAME_ = '_개선후보.json';
+function improve_reportFile_() {
+  const folder = ai_convFolder_();
+  const it = folder.getFilesByName(IMPROVE_REPORT_NAME_);
+  return it.hasNext() ? it.next() : folder.createFile(IMPROVE_REPORT_NAME_, '{}', 'application/json');
+}
+function improve_parseAt_(s) {
+  const m = String(s || '').match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  return m ? new Date(m[1] + '-' + m[2] + '-' + m[3] + 'T' + m[4] + ':' + m[5] + ':00+09:00').getTime() : 0;
+}
+function improve_isTestNoise_(s) { return /\[점검 중|zz_|\[시험\]|harness/.test(String(s || '')); }
+function buildImprovementReport_() {
+  const now = Date.now(), since = now - 7 * 86400000;
+  // 오류기록
+  let bugs = [];
+  try { bugs = JSON.parse(ai_bugLogFile_().getBlob().getDataAsString('UTF-8') || '[]'); } catch (e) { bugs = []; }
+  bugs = bugs.filter(function (b) { return improve_parseAt_(b.at) >= since && !improve_isTestNoise_(b.message + ' ' + b.where + ' ' + b.detail); });
+  const perfSecs = [];
+  const errGroups = {};
+  bugs.forEach(function (b) {
+    if (b.kind === 'selfcheck') return; // 자가점검 실패는 아래 selfCheck 항목으로 따로 센다(중복 방지)
+    if (b.kind === 'perf') { const m = String(b.message).match(/전체 표시 (\d+)초/); if (m) perfSecs.push(Number(m[1])); else if (/미완료/.test(b.message)) perfSecs.push(180); return; }
+    const key = [b.kind, b.where, String(b.message).replace(/\d+/g, '#').slice(0, 90)].join('|');
+    const g = errGroups[key] || (errGroups[key] = { kind: b.kind, where: b.where, view: b.view, message: String(b.message).slice(0, 300), count: 0, first: b.at, last: b.at, detail: String(b.detail || '').slice(0, 600) });
+    g.count++; g.last = b.at;
+  });
+  const errors = Object.keys(errGroups).map(function (k) { return errGroups[k]; }).sort(function (a, b) { return b.count - a.count; }).slice(0, 30);
+  // 유료 AI 질문
+  let paid = [];
+  try { paid = JSON.parse(ai_paidLogFile_().getBlob().getDataAsString('UTF-8') || '[]'); } catch (e) { paid = []; }
+  paid = paid.filter(function (p) { return improve_parseAt_(p.at) >= since && !improve_isTestNoise_(p.q); });
+  const paidTotal = paid.reduce(function (s, p) { return s + (+p.usd || 0); }, 0);
+  const qGroups = {};
+  paid.filter(function (p) { return p.kind === 'chat'; }).forEach(function (p) {
+    // 사람 이름·숫자가 달라도 같은 유형의 요청이면 묶이도록 단순화(한글 2~4자 고유명은 그대로 두되 숫자·공백 제거, 앞 18자)
+    const norm = String(p.q || '').replace(/\d+/g, '').replace(/\s+/g, '').slice(0, 18);
+    const g = qGroups[norm] || (qGroups[norm] = { pattern: norm, count: 0, usd: 0, samples: [] });
+    g.count++; g.usd += (+p.usd || 0); if (g.samples.length < 3) g.samples.push(String(p.q).slice(0, 80));
+  });
+  const paidRepeats = Object.keys(qGroups).map(function (k) { return qGroups[k]; }).filter(function (g) { return g.count >= 2; })
+    .sort(function (a, b) { return b.count - a.count; }).slice(0, 20)
+    .map(function (g) { g.usd = Math.round(g.usd * 1e4) / 1e4; return g; });
+  const paidByKind = {};
+  paid.forEach(function (p) { const k = p.kind || 'chat'; paidByKind[k] = paidByKind[k] || { n: 0, usd: 0 }; paidByKind[k].n++; paidByKind[k].usd = Math.round((paidByKind[k].usd + (+p.usd || 0)) * 1e4) / 1e4; });
+  // 자가점검
+  const sc = selfCheckLast_();
+  const scFails = sc.last ? (sc.last.items || []).filter(function (x) { return !x.ok; }).map(function (x) { return x.name + ': ' + x.msg; }) : [];
+  // 화면 속도(대시보드)
+  perfSecs.sort(function (a, b) { return a - b; });
+  const perf = perfSecs.length ? { n: perfSecs.length, median: perfSecs[Math.floor(perfSecs.length / 2)], max: perfSecs[perfSecs.length - 1] } : null;
+  const perfSlow = !!(perf && perf.median > 10);
+
+  const headline = [];
+  scFails.forEach(function (s) { headline.push('🩺 자가점검 이상 — ' + s); });
+  errors.slice(0, 5).forEach(function (e) { headline.push('🐞 ' + (e.where || e.kind) + ' — ' + e.message.slice(0, 60) + ' (' + e.count + '회)'); });
+  paidRepeats.slice(0, 5).forEach(function (g) { headline.push('💸 유료 AI로 반복된 요청 "' + g.samples[0].slice(0, 30) + '…" ' + g.count + '회 — ⚡바로 처리 후보'); });
+  if (perfSlow) headline.push('🐢 대시보드 표시 중앙값 ' + perf.median + '초(최대 ' + perf.max + '초)');
+  const candidateCount = scFails.length + errors.length + paidRepeats.length + (perfSlow ? 1 : 0);
+
+  const report = {
+    generatedAt: Utilities.formatDate(new Date(), 'Asia/Seoul', "yyyy-MM-dd HH:mm"),
+    period: '최근 7일',
+    candidateCount: candidateCount,
+    headline: headline,
+    selfCheck: { at: sc.last ? sc.last.at : null, fresh: sc.fresh, fails: scFails },
+    errors: errors,
+    paid: { totalUsd: Math.round(paidTotal * 1e4) / 1e4, totalKrw: Math.round(paidTotal * 1400), byKind: paidByKind, repeats: paidRepeats },
+    perf: perf
+  };
+  try { improve_reportFile_().setContent(JSON.stringify(report)); } catch (e) {}
+  return { success: true, report: report };
+}
+function getImprovementReport_() {
+  let report = null;
+  try { report = JSON.parse(improve_reportFile_().getBlob().getDataAsString('UTF-8') || 'null'); } catch (e) { report = null; }
+  if (report && !report.generatedAt) report = null;
+  return { success: true, report: report };
 }
