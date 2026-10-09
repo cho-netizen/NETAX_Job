@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 05:59 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 06:04 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -2555,7 +2555,16 @@
         if (res.error || res.success === false){ showToast(res.error || res.message || '저장 실패', 'error'); return; }
         if (!silent) showToast('저장했습니다.', 'success');
         if (res.warning) showToast(res.warning, 'warning');
-        loadWorkCases();
+        // [2026.10.09 버그수정] 상태를 바꾸면 자동 저장되고, 응답(수 초) 후 상세 화면 전체를 다시 그려 그 사이 다른 칸에
+        // 입력하던 내용(진행메모 등)이 지워졌다(처리개요와 같은 문제). 이미 입력 중이면 데이터만 최신으로 맞추고 목록만 갱신한다.
+        var wcActive_ = document.activeElement;
+        var wcTyping_ = wcActive_ && /^(INPUT|TEXTAREA)$/.test(wcActive_.tagName) && workCaseDetail.contains(wcActive_);
+        if (wcTyping_ && res.case){
+          Object.assign(c, res.case);
+          var wcCached_ = workCases.filter(function(x){ return x.id === c.id; })[0];
+          if (wcCached_ && wcCached_ !== c) Object.assign(wcCached_, res.case);
+          renderWorkCaseList();
+        } else loadWorkCases();
       }).catch(function(){ showToast('저장 중 오류가 발생했습니다.', 'error'); });
     }
     document.getElementById('wcSaveCase').addEventListener('click', function(){ saveCaseNow_(false); });
