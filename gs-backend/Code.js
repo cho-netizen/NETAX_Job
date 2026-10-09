@@ -3768,6 +3768,8 @@ function dispatchClientAction_(body) {
   if (body.action === 'ai_clear_bugs') return jsonResponse(ai_clearBugs());
   if (body.action === 'ai_usage_month') return jsonResponse(ai_usageMonth_());
   if (body.action === 'ai_log_paid') return jsonResponse(ai_logPaid_(body));
+  if (body.action === 'self_check_run') return jsonResponse(runSelfCheck_());
+  if (body.action === 'self_check_last') return jsonResponse(selfCheckLast_());
   if (body.action === 'ai_conv_import_work') return jsonResponse(ai_convImportWork(body));
   if (body.action === 'ai_conv_sync_work') return jsonResponse(ai_convSyncWork(body));
 
@@ -16002,6 +16004,8 @@ function runNightlyChiefManager() {
   try { generateDailyBriefing_(); } catch (err) { console.error('오늘의 요약 생성 실패: ' + err.message); }
   // [2026.09 신규] 사건 폴더 안의 현금영수증 파일을 매일 밤 훑어 자문내역에 자동 기록.
   try { runCashReceiptScan_(); } catch (err) { console.error('현금영수증 자동 인식 실패: ' + err.message); }
+  // [2026.10.09] 토큰 0 자가점검 — 세무사님이 버그로 AI와 씨름하지 않도록 job이 매일 밤 스스로 확인
+  try { runSelfCheck_(); } catch (err) { console.error('자가점검 실패: ' + err.message); }
   // [2026.09.15 신규] 홈택스 매출내역 엑셀(0_NX_0 폴더)도 매일 밤 같이 확인 — 세무사님이
   // 새 파일을 올려두면 다음날 밤 자동으로 반영된다(수동 버튼도 별도로 있음).
   try { receipt_importHometaxExports_(); } catch (err) { console.error('홈택스 수금 가져오기 실패: ' + err.message); }
@@ -16049,6 +16053,19 @@ function handleGetNightlyStatus(body) {
     date: audit ? audit.date : null,
     message: audit ? audit.content.slice(0, 300) : '오늘·어제 리포트를 찾지 못했습니다 — 야간 작업이 실행되지 않았을 수 있습니다.'
   });
+
+  // [2026.10.09] 토큰 0 자가점검 결과
+  const sc = selfCheckLast_();
+  if (sc.last) {
+    const fails = (sc.last.items || []).filter(function (x) { return !x.ok; });
+    items.push({
+      label: '🩺 자동 자가점검 (AI 비용 0)',
+      ok: sc.last.ok && sc.fresh,
+      failLabel: !sc.fresh ? '오래됨' : '이상 ' + fails.length + '건',
+      date: sc.last.at.slice(0, 10),
+      message: sc.last.at + ' — ' + (sc.last.ok ? (sc.last.items || []).length + '개 항목 모두 정상' : fails.map(function (x) { return x.name + ': ' + x.msg; }).join('\n')) + (sc.fresh ? '' : '\n(최근 이틀 안에 점검이 돌지 않았습니다)')
+    });
+  }
 
   const tpl = latestOf('_템플릿점검', '템플릿점검_');
   items.push({
@@ -18417,7 +18434,9 @@ function client_scanCaseFilesForNames(params) {
       const matchingFile = fileObjs.filter(function (f) { return f.name.indexOf(item.성명) !== -1; })[0];
       let detail = {};
       if (matchingFile) {
-        try { detail = client_extractPersonDetailFromFile_(matchingFile.id, matchingFile.mimeType, item.성명, apiKey); } catch (err) { /* 상세정보 못 찾아도 이름·관계는 남긴다 */ }
+        // [2026.10.09] Sonnet이 PDF 전체를 읽던 것을 구글 무료 OCR+규칙(parsePersonDetailText_)으로 — 비용 0원.
+        // 실제 등기부·계약서·임대차내역 20건 시험에서 이름 바로 뒤 주민번호·주소·전화를 찾음.
+        try { detail = client_extractPersonDetailOCR_(matchingFile.id, matchingFile.mimeType, item.성명); } catch (err) { /* 상세정보 못 찾아도 이름·관계는 남긴다 */ }
       }
       progress.candidates.push(Object.assign({ 사건ID: c.id, 사건명: c.사건명, 성명: item.성명, 관계: item.관계 }, detail));
     });
@@ -23809,4 +23828,102 @@ function parseReceiptText_(text) {
 }
 function extractReceiptAmountViaOCR_(fileId) {
   return parseReceiptText_(ocrFileText_(fileId));
+}
+
+// [2026.10.09] 서류 OCR 글자에서 특정인의 전화번호·주소·주민등록번호를 규칙으로 찾는다(AI 비용 0원).
+// 문서에 여러 사람이 나올 수 있어 "그 이름이 나온 바로 뒤(300자 안)"에서만 찾는다 — 이름이 문서에 없으면
+// 아무것도 채우지 않는다(남의 정보를 잘못 붙이지 않는 쪽을 택함). 찾은 것만 채우고, 후보 목록은 세무사님이 검토.
+function parsePersonDetailText_(text, personName) {
+  const t = String(text || '');
+  const name = String(personName || '').replace(/\s+/g, '');
+  if (name.length < 2) return {};
+  const nameRe = new RegExp(name.split('').join('\\s*'), 'g');
+  const out = {};
+  let m;
+  while ((m = nameRe.exec(t)) !== null) {
+    let win = t.slice(m.index + m[0].length, m.index + m[0].length + 300);
+    // 다음 사람의 주민번호가 나오면 그 앞에서 자른다 — 여러 사람이 나오는 서류에서 남의 정보를 붙이지 않게
+    const rrnAll = []; const rrnRe = /\d{6}\s*-\s*[1-8]/g; let rm;
+    while ((rm = rrnRe.exec(win)) !== null) rrnAll.push(rm.index);
+    if (rrnAll.length >= 2) win = win.slice(0, rrnAll[1]);
+    if (!out.주민등록번호) {
+      const r = win.match(/\b(\d{6})\s*-\s*([1-8][\d*]{6})/);
+      if (r) out.주민등록번호 = r[1] + '-' + r[2];
+    }
+    if (!out.전화번호) {
+      const p = win.match(/\b(01[016789])[\s.)-]*(\d{3,4})[\s.-]*(\d{4})\b/) || win.match(/\b(0\d{1,2})[)-]\s*(\d{3,4})-(\d{4})\b/);
+      if (p) out.전화번호 = p[1] + '-' + p[2] + '-' + p[3];
+    }
+    if (!out.주소) {
+      const a = win.match(/(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)[^\n]{6,70}/);
+      // 주소 뒤에 이어 붙은 전화번호·주민번호·"전화" 같은 칸 이름은 떼어낸다
+      if (a) out.주소 = a[0].split(/\s*(?:\(?(?:전화|연락처|휴대폰|핸드폰|TEL|Tel)\)?\s*[:：]?|\b0\d{1,2}[-)\s.]?\d{3,4}[-\s.]\d{4}|\d{6}\s*-\s*[1-8])/)[0].replace(/\s+/g, ' ').trim();
+    }
+    if (out.주민등록번호 && out.전화번호 && out.주소) break;
+  }
+  return out;
+}
+function client_extractPersonDetailOCR_(fileId, mimeType, personName) {
+  if (!/pdf/i.test(mimeType || '') && !/^image\//i.test(mimeType || '')) return {};
+  Utilities.sleep(1500); // 드라이브 OCR 호출 한도 대비
+  return parsePersonDetailText_(ocrFileText_(fileId), personName);
+}
+// ============================================================
+// [2026.10.09] 토큰 0 자가점검 — 세무사님 원칙: "사소한 버그로 AI와 대화하고 싶지 않다".
+// 매일 밤(runNightlyChiefManager) + 설정 화면 "🩺 지금 점검" 버튼으로 돌린다. AI를 전혀 쓰지 않는다.
+//  ① 세액계산 엔진 회귀검사 — 정답이 고정된 사례를 화면과 같은 엔진(runUiEngineCalcTool_)으로 계산해
+//     핵심 숫자가 바뀌었는지 본다(코드 수정으로 세액이 몰래 달라지는 것을 잡는다). 정답값은 2026-10-09
+//     엔진 결과를 검산 후 고정(1세대1주택 15억 → 12억 초과분 1.6억만 과세·장특공 80% 등 확인).
+//     법 개정으로 결과가 바뀌는 게 맞다면 여기 정답값을 같이 고친다.
+//  ② 자료 읽기 — 사건·고객·예약·AI 대화 저장소를 실제로 읽어 목록이 나오는지.
+// 실패하면 오류 기록(_오류기록.json, kind=selfcheck)에 남기고 대시보드 "야간 자동작업" 칸에 표시한다.
+// ============================================================
+const SELF_CHECK_CALC_CASES_ = [
+  { name: '양도세 일반(8억/5억, 11년 보유)', tool: 'calculate_transfer_tax',
+    input: { transferPrice: 800000000, acquisitionPrice: 500000000, acquisitionDate: '2015-03-10', transferDate: '2026-03-10' },
+    expect: { 과세표준: 231500000, 납부세액_합계: 74833000 } },
+  { name: '양도세 1세대1주택 고가(15억/7억, 10년 보유·거주)', tool: 'calculate_transfer_tax',
+    input: { transferPrice: 1500000000, acquisitionPrice: 700000000, acquisitionDate: '2016-05-01', transferDate: '2026-05-01', isOneHouseOneFamily: true, residenceYears: 10 },
+    expect: { 과세대상양도차익: 160000000, 과세표준: 29500000, 납부세액_합계: 3481500 } },
+  { name: '증여세 직계존속 1.5억', tool: 'calculate_gift_tax',
+    input: { giftAmount: 150000000, relation: '직계존속', giftDate: '2026-03-02' },
+    expect: { 과세표준: 100000000, 납부세액: 9700000 } },
+  { name: '상속세 과세가액 20억(배우자·자녀2)', tool: 'calculate_inheritance_tax',
+    input: { taxableEstateAmount: 2000000000, hasSpouse: true, childCount: 2 },
+    expect: { 과세표준: 995000000, 납부세액: 231345000 } }
+];
+function runSelfCheck_() {
+  const items = [];
+  function check(name, fn) {
+    try { const msg = fn(); items.push({ name: name, ok: !msg, msg: msg || '정상' }); }
+    catch (e) { items.push({ name: name, ok: false, msg: '오류: ' + String(e && e.message || e).slice(0, 200) }); }
+  }
+  SELF_CHECK_CALC_CASES_.forEach(function (tc) {
+    check('계산엔진 · ' + tc.name, function () {
+      const r = runUiEngineCalcTool_(tc.tool, tc.input);
+      if (!r) return '엔진에 이 계산 함수가 없습니다';
+      if (r.error) return '계산 오류: ' + r.error;
+      const diffs = Object.keys(tc.expect).filter(function (k) { return r[k] !== tc.expect[k]; })
+        .map(function (k) { return k + ' 기대 ' + tc.expect[k].toLocaleString() + ' / 지금 ' + (r[k] == null ? '없음' : Number(r[k]).toLocaleString()); });
+      return diffs.length ? '결과가 바뀜 — ' + diffs.join(', ') : '';
+    });
+  });
+  check('자료 · 사건 목록', function () { const r = work_getCases({}); const o = r && r.getContent ? JSON.parse(r.getContent()) : r; return o && Array.isArray(o.cases) ? '' : '사건 목록을 읽지 못함'; });
+  check('자료 · 고객 목록', function () { const r = client_getClients({}); const o = r && r.getContent ? JSON.parse(r.getContent()) : r; return o && Array.isArray(o.clients) ? '' : '고객 목록을 읽지 못함'; });
+  check('자료 · 예약 목록', function () { const r = booking_getBookings(); const o = r && r.getContent ? JSON.parse(r.getContent()) : r; return o && Array.isArray(o.bookings) ? '' : '예약 목록을 읽지 못함'; });
+  check('자료 · AI 대화 저장소', function () { const o = ai_convList(); return o && o.success ? '' : 'AI 대화 목록을 읽지 못함'; });
+
+  const ok = items.every(function (x) { return x.ok; });
+  const last = { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), ok: ok, items: items };
+  try { PropertiesService.getScriptProperties().setProperty('SELF_CHECK_LAST', JSON.stringify(last)); } catch (e) {}
+  items.filter(function (x) { return !x.ok; }).forEach(function (x) {
+    try { ai_logBug({ entry: { kind: 'selfcheck', where: x.name, message: x.msg } }); } catch (e) {}
+  });
+  return { success: true, last: last };
+}
+function selfCheckLast_() {
+  let last = null;
+  try { last = JSON.parse(PropertiesService.getScriptProperties().getProperty('SELF_CHECK_LAST') || 'null'); } catch (e) {}
+  const fresh = !!(last && (Date.now() - new Date(last.at.replace(' ', 'T') + ':00+09:00').getTime()) < 2 * 86400000);
+  return { success: true, last: last, fresh: fresh };
 }

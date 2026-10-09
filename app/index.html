@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 01:27 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 01:44 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -1431,7 +1431,7 @@
       if (!items.length){ box.innerHTML = '<div class="empty-row">확인할 항목이 없습니다.</div>'; return; }
       var html = '';
       items.forEach(function(it){
-        var badge = it.ok ? '<span style="color:var(--success); font-weight:700;">✅ 정상</span>' : '<span style="color:#a83232; font-weight:700;">⚠ 실행 안 됨</span>';
+        var badge = it.ok ? '<span style="color:var(--success); font-weight:700;">✅ 정상</span>' : '<span style="color:#a83232; font-weight:700;">⚠ ' + esc(it.failLabel || '실행 안 됨') + '</span>';
         html += '<div style="padding:8px 0; border-bottom:1px solid var(--line);">'
           + '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">'
           + '<b style="font-size:13px;">' + esc(it.label) + '</b>' + badge
@@ -1440,7 +1440,7 @@
           + '</div>';
       });
       if (!res.allOk){
-        html = '<div class="empty-row" style="color:#a83232; margin-bottom:6px;">⚠ 일부 항목이 실행되지 않았습니다 — Apps Script 편집기의 "실행" 기록에서 오류 내용을 확인해주세요.</div>' + html;
+        html = '<div class="empty-row" style="color:#a83232; margin-bottom:6px;">⚠ 확인이 필요한 항목이 있습니다 — 자가점검 이상은 설정 → 🐞 오류 기록에 자세히 남아 있고, Claude Code에게 "오류 기록 확인해줘"라고 하면 됩니다.</div>' + html;
       }
       box.innerHTML = html;
     }).catch(function(e){ document.getElementById('dashNightlyStatus').innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
@@ -42680,6 +42680,7 @@ function goToReportWriter_(caseId, opts){
       <div style="display:flex; gap:6px; margin-bottom:8px;">
         <button type="button" class="ghost-btn" id="stBtnBugRefresh">🔄 불러오기</button>
         <button type="button" class="ghost-btn" id="stBtnBugClear">🗑 기록 비우기</button>
+        <button type="button" class="ghost-btn" id="stBtnSelfCheck" title="세액계산 엔진 정답 사례·사건/고객/예약/AI대화 읽기를 지금 점검합니다(AI 비용 0, 매일 밤 자동으로도 돔)">🩺 지금 자가점검</button>
       </div>
       <div id="stBugList" class="settings-tool-desc">불러오기를 누르면 최근 기록이 보입니다.</div>
     </div>
@@ -42926,6 +42927,16 @@ function goToReportWriter_(caseId, opts){
       }).catch(function(err){ bugList.textContent = '불러오지 못했습니다: ' + (err && err.message ? err.message : err); });
     }
     document.getElementById('stBtnBugRefresh').addEventListener('click', loadBugs);
+    document.getElementById('stBtnSelfCheck').addEventListener('click', function(){
+      bugList.textContent = '🩺 자가점검 중… (30초쯤 걸립니다)';
+      callGas('self_check_run', {}).then(function(res){
+        var last = res && res.last;
+        if (!last){ bugList.textContent = '점검 결과를 받지 못했습니다.'; return; }
+        bugList.innerHTML = '<div style="margin-bottom:4px;"><b>' + (last.ok ? '✅ 모두 정상' : '⚠ 이상 있음') + '</b> · ' + escapeHtml(last.at) + '</div>' + last.items.map(function(x){
+          return '<div style="padding:3px 0; border-top:1px solid var(--line);">' + (x.ok ? '✅ ' : '⚠ ') + escapeHtml(x.name) + (x.ok ? '' : '<br><span style="color:#a83232;">' + escapeHtml(x.msg) + '</span>') + '</div>';
+        }).join('');
+      }).catch(function(err){ bugList.textContent = '자가점검을 실행하지 못했습니다: ' + (err && err.message ? err.message : err); });
+    });
     document.getElementById('stBtnBugClear').addEventListener('click', function(){
       nxConfirm_('오류 기록을 모두 지울까요?').then(function(ok){
         if (!ok) return;
@@ -43220,6 +43231,7 @@ function goToReportWriter_(caseId, opts){
         <li><b>로그인 비밀번호를 바꾸려면</b>: 현재 비밀번호·새 비밀번호(4자 이상)·새 비밀번호 확인을 입력하고 변경을 누릅니다.</li>
         <li><b>🖥 화면</b>: 🌙 다크모드를 켜고 끕니다(세액인쇄 서식·문서 미리보기·사진은 밝게 보이고, 인쇄는 항상 밝게 나옵니다). 📱 화면 배치 기준에서 자동/PC/태블릿/폰을 고정할 수 있습니다. 이 기기에만 기억됩니다.</li>
         <li><b>🐞 오류 기록</b>: 🔄 불러오기로 최근 오류를 봅니다. 고친 뒤에는 🗑 기록 비우기로 지울 수 있습니다.</li>
+        <li><b>🩺 자가점검</b>: 매일 밤 job이 스스로(AI 비용 0) 세액계산 엔진의 정답 사례 4건과 사건·고객·예약·AI 대화 읽기를 점검합니다. 결과는 대시보드 "야간 자동작업" 칸에 나오고, 이상이 있으면 🐞 오류 기록에도 남습니다. 🐞 카드의 🩺 지금 자가점검으로 바로 돌려볼 수 있습니다.</li>
         <li><b>🔗 바로가기</b>: Claude 콘솔(AI 사용요금·키 확인), Google AI Studio.</li>
       </ul>
     </section>
