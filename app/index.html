@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 05:29 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 05:55 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -40167,7 +40167,19 @@ function goToReportWriter_(caseId, opts){
           var matches = findCustomerFolderMatches_(listing.folders || [], customerName);
           if (matches.length === 1){
             var only = matches[0];
-            return nxConfirm_('기존에 "' + only.name + '" 폴더가 있습니다.\n같은 고객이 맞습니까?\n\n"취소"를 누르면 동명이인으로 보고 번호를 붙인 새 폴더를 만듭니다.').then(function(same){
+            // [2026.10.09 수정] 세무사님 지적 — "당연히 중복일 때 확인해야 하는데 왜 묻나". 예전엔 그 이름의 폴더가 하나만 있어도
+            // (= 같은 고객에게 두 번째 메모를 남기는 평범한 경우) 매번 "같은 고객이 맞습니까?"를 물었다. 실제로 헷갈릴 수 있는 건
+            // 고객관리에 같은 이름이 2명 이상(동명이인)일 때뿐이므로, 그때만 묻고 아니면 바로 그 폴더에 이어서 저장한다.
+            var norm_ = function(s){ return String(s || '').replace(/\s+/g, ''); };
+            var askNeeded = callGas('client_get_clients', {}).then(function(res){
+              var same = (res && res.clients || []).filter(function(cl){ return norm_(cl.성명) === norm_(customerName); }).length;
+              return same >= 2;
+            }).catch(function(){ return true; }); // 고객 목록을 못 읽으면 안전하게 묻는다
+            return askNeeded.then(function(needAsk){
+              return needAsk
+                ? nxConfirm_('고객관리에 "' + customerName + '" 이름이 여러 명 있습니다(동명이인).\n기존 "' + only.name + '" 폴더의 고객이 맞습니까?\n\n"취소"를 누르면 다른 사람으로 보고 번호를 붙인 새 폴더를 만듭니다.')
+                : true;
+            }).then(function(same){
               if (same){
                 return writeMemoEntry_(basePath, only.name, content, extraFile, fileName).then(function(){ return true; });
               }
