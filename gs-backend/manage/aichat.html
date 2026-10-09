@@ -1183,7 +1183,7 @@
   // ============================================================
   var NXAI_VIEW_LABELS_ = { dashboard: '대시보드', booking: '예약관리', workmanage: '작업관리', clientmanage: '고객관리', collections: '수금관리',
     casehandling: '처리개요', lawsearch: '법령조회', docs: '증빙확보', taxcalc: '세액계산', print: '세액인쇄', reportwriter: '문서작성',
-    reports: '열람관리', 'memo-text': '일반메모', reporthub: '보고서 모음' };
+    reports: '열람관리', 'memo-text': '일반메모', 'memo-hand': '필기메모', reporthub: '보고서 모음', settings: '설정', manual: '사용자메뉴얼' };
   // 각 화면의 "그 사건으로 열기" 함수(goTo*_)를 그대로 쓴다 — 화면 버튼이 하는 것과 같은 동작.
   function nxAiOpenJobView_(view, caseId, clientId, then, taxTab){
     var side = nxAiEl_('sideAI');
@@ -1616,7 +1616,8 @@
     [/처리\s*개요/, 'casehandling'], [/법령\s*조회|예규\s*판례/, 'lawsearch'], [/증빙\s*(확보|관리)|사건\s*폴더/, 'docs'],
     [/세액\s*인쇄|인쇄\s*서식|전자\s*신고\s*파일/, 'print'], [/세액\s*계산/, 'taxcalc'], [/문서\s*작성/, 'reportwriter'],
     [/작업\s*관리/, 'workmanage'], [/고객\s*관리/, 'clientmanage'], [/예약\s*관리/, 'booking'], [/수금\s*관리/, 'collections'],
-    [/대시\s*보드/, 'dashboard'], [/열람\s*관리/, 'reports'], [/일반\s*메모/, 'memo-text'], [/보고서\s*모음/, 'reporthub']
+    [/대시\s*보드/, 'dashboard'], [/열람\s*관리/, 'reports'], [/일반\s*메모|^메모\s*(장|화면|창)?\s*(열어|열기|보여|띄워|가자|가\s*줘|이동|켜)/, 'memo-text'], [/필기\s*메모/, 'memo-hand'], [/보고서\s*모음/, 'reporthub'],
+    [/^설정\s*(화면|창)?\s*(열어|열기|보여|띄워|가자|가\s*줘|이동|켜)/, 'settings'], [/사용자\s*메뉴얼|사용\s*설명서|매뉴얼|메뉴얼/, 'manual']
   ];
   var NXAI_LOCAL_OPEN_RE_ = /(열어|열기|보여|띄워|가자|가\s*줘|이동|켜\s*줘|들어가)/;
   var NXAI_LOCAL_JUDGE_RE_ = /(왜|어떻게|어떤|검토|분석|판단|의견|전략|가능(한|할|해|성)|될까|되나|맞나|맞는지|해석|비교|추천|설명|이유|위험|요약|정리해|작성해|써\s*줘|만들어|고쳐|수정해|얼마|세액은|절세|신고\s*해야)/;
@@ -1626,6 +1627,7 @@
     if (!t || t.length > 60) return null;
     // "○○ 수금 얼마 받았어?"는 판단이 아니라 합계 조회 — "얼마"만 보고 유료 AI로 보내지 않는다(2026-10-09).
     var judgeT = /(수금|입금)/.test(t) ? t.replace(/얼마(나|를)?/g, '') : t;
+    judgeT = judgeT.replace(/설명서/g, ''); // "사용설명서 열어줘"의 '설명'은 판단 요청이 아니다
     if (NXAI_LOCAL_JUDGE_RE_.test(judgeT)) return null;
     if (/자동\s*계산/.test(t)){
       var m = /(양도|증여|상속)/.exec(t);
@@ -1635,7 +1637,9 @@
     if (/오늘/.test(t) && /(할\s*일|예약|마감|뭐\s*(있|해)|업무)/.test(t)) return { kind: 'today' };
     if (/(연락처|전화\s*번호|전번|휴대\s*폰|핸드폰|주소|고객\s*정보)/.test(t) && !/(바꿔|변경|수정|등록|추가|저장|보내|문자)/.test(t)) return { kind: 'client_info' };
     if (/(진행\s*상황|진행\s*상태|어디까지|사건\s*상태|상태\s*(는|가|좀|알려|보여))/.test(t) && !/예약/.test(t)) return { kind: 'case_status' };
-    if (/예약/.test(t) && !/(승인|거절|취소|연결|등록)/.test(t) && /(보여|목록|확인|대기|몇|있어|있나|현황|알려)/.test(t)) return { kind: 'bookings' };
+    if (/예약/.test(t) && !/(승인|거절|취소|연결|등록)/.test(t) && /(보여|목록|확인|대기|몇|있어|있나|현황|알려|내일|모레|이번\s*주|다음\s*주|이번\s*달)/.test(t)) return { kind: 'bookings' };
+    // [2026.10.09] 미수금은 job이 받을 금액(보수)을 기록하지 않아 계산할 수 없다 — 유료 AI로 보내도 답이 없으므로 0원으로 바로 안내
+    if (/(미수|못\s*받|안\s*받은|받을\s*돈|외상|밀린\s*(돈|보수|수임료))/.test(t)) return { kind: 'unpaid' };
     if (/(수금|입금|상담\s*(기록|내역|이력)|자문\s*(기록|내역))/.test(t) && !/(추가|등록|기록해|입력)/.test(t)) return { kind: 'logs' };
     if (/(체크\s*리스트|제출\s*현황|증빙\s*현황)/.test(t) && !/(표시|체크해|완료로|확보로)/.test(t)) return { kind: 'checklist' };
     if (/(마감|기한|법정일)/.test(t) && /(임박|다가|이번\s*주|곧|지난|넘은|남은|보여|알려|목록)/.test(t)) return { kind: 'deadlines' };
@@ -1685,6 +1689,30 @@
     return '| ' + headers.join(' | ') + ' |\n|' + headers.map(function(){ return '---'; }).join('|') + '|\n'
       + rows.map(function(r){ return '| ' + r.map(esc).join(' | ') + ' |'; }).join('\n');
   }
+  // 문장 속 기간 → { from, to, label } (yyyy-MM-dd, to 포함). 없으면 null
+  function nxAiPeriod_(text){
+    var d = new Date(), y = d.getFullYear(), m = d.getMonth();
+    var f = function(dt){ return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0'); };
+    if (/지난\s*달|전\s*달|저번\s*달/.test(text)) return { from: f(new Date(y, m - 1, 1)), to: f(new Date(y, m, 0)), label: '지난달' };
+    if (/이번\s*달|이달|금월/.test(text)) return { from: f(new Date(y, m, 1)), to: f(new Date(y, m + 1, 0)), label: '이번 달' };
+    if (/작년|지난\s*해|전년/.test(text)) return { from: (y - 1) + '-01-01', to: (y - 1) + '-12-31', label: '작년' };
+    if (/올해|금년|이번\s*해/.test(text)) return { from: y + '-01-01', to: y + '-12-31', label: '올해' };
+    if (/이번\s*주|금주/.test(text)){ var dow = (d.getDay() + 6) % 7; return { from: f(new Date(y, m, d.getDate() - dow)), to: f(new Date(y, m, d.getDate() - dow + 6)), label: '이번 주' }; }
+    if (/오늘/.test(text)) return { from: f(d), to: f(d), label: '오늘' };
+    return null;
+  }
+  function nxAiPeriodCollections_(p){
+    return callGas('client_get_consult_logs', {}).then(function(res){
+      if (!res || !Array.isArray(res.logs)) throw new Error('수금 기록을 받지 못했습니다 — 잠시 후 다시 시도하세요.');
+      var paid = res.logs.filter(function(l){ var dt = String(l.날짜 || '').slice(0, 10); return Number(l.금액) > 0 && dt >= p.from && dt <= p.to; })
+        .sort(function(a, b){ return String(b.날짜).localeCompare(String(a.날짜)); });
+      var sum = paid.reduce(function(s, l){ return s + Number(l.금액 || 0); }, 0);
+      var md = '**' + p.label + '(' + p.from + ' ~ ' + p.to + ') 수금 ' + paid.length + '건 합계 ' + sum.toLocaleString('ko-KR') + '원**'
+        + (paid.length ? '\n\n' + nxAiMdTable_(['날짜', '고객', '금액', '증빙'], paid.slice(0, 30).map(function(l){ return [l.날짜, l.고객명, Number(l.금액).toLocaleString('ko-KR'), l.수취증빙]; })) : '')
+        + (paid.length > 30 ? '\n\n(최근 30건만 표시)' : '');
+      return { md: md, note: '[⚡바로 처리] ' + p.label + ' 수금 ' + paid.length + '건 합계 ' + sum.toLocaleString('ko-KR') + '원' };
+    });
+  }
   function nxAiTodayStr_(){ var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 
   // 실행 — 성공하면 { md: 화면에 보일 내용, note: 대화기록에 남길 한 줄, choices: [{label, run}] }, 못 하면 null(→ AI로)
@@ -1731,8 +1759,16 @@
         return { md: md, note: '[⚡바로 처리] 예약 조회 — 승인 대기 ' + waiting.length + '건, 앞으로 확정 ' + upcoming.length + '건' };
       });
     }
+    if (intent.kind === 'unpaid'){
+      return Promise.resolve({ md: 'job은 사건마다 **받을 금액(보수·수임료 약정액)을 따로 기록하지 않아** 미수금은 계산할 수 없습니다 — 유료 AI에게 물어도 같은 자료로는 답이 나오지 않습니다.\n\n지금 볼 수 있는 것: 받은 돈은 **수금관리** 화면이나 "○○ 수금 내역", 기간 합계는 "이번 달 수금 얼마"로 바로 조회됩니다. 미수금 관리가 필요하시면 설정 🐞 카드의 ✍ 개선요구사항에 적어 주세요(사건에 약정 보수 칸을 넣는 기능).',
+        note: '[⚡바로 처리] 미수금 문의 — 받을 금액 미기록 안내',
+        choices: [{ label: '💰 수금관리 열기', run: function(){ nxAiOpenJobView_('collections'); return { md: '수금관리 화면을 열었습니다.', note: '[⚡바로 처리] 수금관리 열기' }; } }] });
+    }
     if (intent.kind === 'logs'){
       return nxAiFindClient_(text).then(function(clients){
+        // [2026.10.09] 고객 이름 없이 기간만 있으면(이번 달·지난달·올해·작년·이번 주·오늘) 전체 수금 합계 — 더하기라 AI 불필요
+        var period = nxAiPeriod_(text);
+        if (!clients.length && period) return nxAiPeriodCollections_(period);
         if (clients.length !== 1) return null; // 고객을 하나로 못 정하면 AI로
         var c = clients[0];
         return callGas('client_get_consult_logs', { search: c.성명 }).then(function(res){
