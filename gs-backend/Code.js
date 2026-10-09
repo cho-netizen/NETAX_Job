@@ -64,6 +64,9 @@ const MODEL_CONFIG = {
   'gemini-3.5-flash-lite':      { provider: 'gemini', input: 0.30,  output: 2.50,  temp: true,  codeExec: true  }
 };
 const DEFAULT_MODEL = 'claude-sonnet-5';
+// [2026.10.09] AI 사용 전략 2단계 — 판단이 필요 없는 단순 읽기·뽑아내기·짧은 문구 만들기는 저가 모델로.
+// (세무사님 원칙: GAS로 되는 건 토큰 0, 단순 작업은 싼 AI, 비싼 AI는 전략·판단에만)
+const LIGHT_MODEL = 'claude-haiku-4-5-20251001';
 
 const EFFORT_MAP = {
   low:    { thinking: false, maxTokens: 1536 },
@@ -3763,6 +3766,8 @@ function dispatchClientAction_(body) {
   if (body.action === 'ai_log_bug') return jsonResponse(ai_logBug(body));
   if (body.action === 'ai_list_bugs') return jsonResponse(ai_listBugs());
   if (body.action === 'ai_clear_bugs') return jsonResponse(ai_clearBugs());
+  if (body.action === 'ai_usage_month') return jsonResponse(ai_usageMonth_());
+  if (body.action === 'ai_log_paid') return jsonResponse(ai_logPaid_(body));
   if (body.action === 'ai_conv_import_work') return jsonResponse(ai_convImportWork(body));
   if (body.action === 'ai_conv_sync_work') return jsonResponse(ai_convSyncWork(body));
 
@@ -15324,7 +15329,71 @@ function buildClaudeUsageInfo_(result, cfg, model, advisorModel) {
              + ((usage.advisor_usage.output_tokens || 0) / 1e6) * advCfg.output;
   }
 
-  return { inputTokens: inputTokens, outputTokens: outputTokens, costUsd: costUsd, model: model, webSearchUses: webSearchUses, advisorModel: advisorModel, cacheWriteTokens: cacheWriteTokens, cacheReadTokens: cacheReadTokens };
+  const info = { inputTokens: inputTokens, outputTokens: outputTokens, costUsd: costUsd, model: model, webSearchUses: webSearchUses, advisorModel: advisorModel, cacheWriteTokens: cacheWriteTokens, cacheReadTokens: cacheReadTokens };
+  ai_recordUsage_(info);
+  return info;
+}
+
+// [2026.10.09] AI 사용 전략 — "이번 달 어느 모델에 얼마 썼나"를 보이게 한다. 채팅 한 라운드마다(job·work 공용,
+// 모든 기기 합계) 모델별 호출 횟수·금액(USD)을 스크립트 속성 AI_USAGE_yyyy-MM에 더한다. 기록 실패는 답변에
+// 영향 없게 조용히 넘긴다(잠금 1.5초 못 얻으면 이번 건은 빠짐 — 근사치).
+function ai_recordUsage_(info) {
+  try {
+    if (!info || !info.costUsd) return;
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(1500)) return;
+    try {
+      const props = PropertiesService.getScriptProperties();
+      const key = 'AI_USAGE_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM');
+      const d = JSON.parse(props.getProperty(key) || '{}');
+      const m = info.model || '?';
+      d[m] = d[m] || { n: 0, usd: 0 };
+      d[m].n++;
+      d[m].usd = Math.round((d[m].usd + info.costUsd) * 1e6) / 1e6;
+      props.setProperty(key, JSON.stringify(d));
+    } finally { lock.releaseLock(); }
+  } catch (e) { /* 기록 실패는 무시 */ }
+}
+function ai_usageMonth_() {
+  const props = PropertiesService.getScriptProperties();
+  const now = new Date();
+  const thisKey = Utilities.formatDate(now, 'Asia/Seoul', 'yyyy-MM');
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 15);
+  const prevKey = Utilities.formatDate(prev, 'Asia/Seoul', 'yyyy-MM');
+  function read(k) { try { return JSON.parse(props.getProperty('AI_USAGE_' + k) || '{}'); } catch (e) { return {}; } }
+  let paid = [];
+  try { paid = JSON.parse(ai_paidLogFile_().getBlob().getDataAsString('UTF-8') || '[]'); } catch (e) { paid = []; }
+  return { success: true, thisMonth: thisKey, prevMonth: prevKey, data: read(thisKey), prevData: read(prevKey), paid: paid.slice(-40).reverse() };
+}
+
+// [2026.10.09] "유료 AI로 간 질문" 기록 — 토큰 0을 반복 개선하는 근거 자료. 단순 조회·반복 요청이 여기 쌓이면
+// 그걸 ⚡바로 처리(화면 코드)로 옮기고, 다시 쌓이는 걸 보고 또 옮기는 식으로 줄여 간다. 최근 300건만 보관.
+const AI_PAID_LOG_NAME_ = '_유료질문기록.json';
+function ai_paidLogFile_() {
+  const folder = ai_convFolder_();
+  const it = folder.getFilesByName(AI_PAID_LOG_NAME_);
+  return it.hasNext() ? it.next() : folder.createFile(AI_PAID_LOG_NAME_, '[]', 'application/json');
+}
+function ai_logPaid_(body) {
+  const e = (body && body.entry) || {};
+  try {
+    return withLock_(5000, function () {
+      const file = ai_paidLogFile_();
+      let arr = [];
+      try { arr = JSON.parse(file.getBlob().getDataAsString('UTF-8') || '[]'); } catch (err) { arr = []; }
+      arr.push({
+        at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'),
+        kind: String(e.kind || 'chat').slice(0, 20),
+        model: String(e.model || '').slice(0, 40),
+        usd: Math.round((+e.usd || 0) * 1e5) / 1e5,
+        q: String(e.q || '').slice(0, 120)
+      });
+      file.setContent(JSON.stringify(arr.slice(-300)));
+      return { success: true };
+    });
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
 }
 
 function callGemini(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
@@ -15556,7 +15625,16 @@ function runNightlySystemAudit() {
       return;
     }
 
-    const apiKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
+    // [2026.10.09] 지침 파일이 지난 점검 이후 하나도 안 바뀌었으면 AI 점검을 건너뛴다(0원) — 예전엔 매일 밤
+    // 최대 15만 자를 Sonnet에 읽혔다(세무사님 원칙: 시스템 루틴은 토큰 0). 바뀐 날에만 점검한다.
+    const auditProps = PropertiesService.getScriptProperties();
+    const auditHash = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, String(auditData.전체내용 || ''), Utilities.Charset.UTF_8));
+    if (auditProps.getProperty('AUDIT_LAST_HASH') === auditHash) {
+      saveReport('# 점검리포트 ' + today + '\n\n업무관리자·지침 파일이 지난 점검 이후 바뀌지 않아 AI 점검을 건너뛰었습니다(비용 0원).');
+      return;
+    }
+
+    const apiKey = auditProps.getProperty('ANTHROPIC_API_KEY');
     if (!apiKey) {
       saveReport('# 점검리포트 ' + today + '\n\nANTHROPIC_API_KEY가 설정되어 있지 않아 점검을 진행하지 못했습니다.');
       return;
@@ -15598,6 +15676,7 @@ function runNightlySystemAudit() {
     }
 
     const result = JSON.parse(response.getContentText());
+    auditProps.setProperty('AUDIT_LAST_HASH', auditHash);
     let text = (result.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('\n').trim();
 
     // 제안 블록이 있으면 뽑아내서 자동으로 "_제안함"에 초안을 저장하고, 보고문에서는 그 블록을 제거한다.
@@ -18161,7 +18240,7 @@ function client_extractNamesFromFilenames_(caseLabel, knownNames, fileObjs, apiK
     contentType: 'application/json',
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
     payload: JSON.stringify({
-      model: DEFAULT_MODEL, max_tokens: 500,
+      model: LIGHT_MODEL, max_tokens: 500,
       messages: [{ role: 'user', content: prompt }]
     }),
     muteHttpExceptions: true
@@ -19145,7 +19224,9 @@ function findCaseForFile_(fileId) {
 
 // Claude API로 영수증 이미지/PDF 하나를 읽어서 금액·발급일자를 뽑아낸다. 이미 프로젝트
 // 전역에 있는 ANTHROPIC_API_KEY/DEFAULT_MODEL을 그대로 재사용(다른 AI 호출들과 동일한 방식).
-function extractReceiptAmountViaAI_(fileId, mimeType, apiKey) {
+// [2026.10.09] 저가 모델(Haiku)로 내리지 말 것 — 실제 현금영수증 17장 비교에서 사진 영수증의 32,354,500원을
+// 32,354원으로 읽었다(Sonnet은 정확). 금액·주민번호처럼 숫자를 읽는 작업은 Sonnet 유지.
+function extractReceiptAmountViaAI_(fileId, mimeType, apiKey, model) {
   const blob = DriveApp.getFileById(fileId).getBlob();
   const base64 = Utilities.base64Encode(blob.getBytes());
   const isPdf = /pdf/i.test(mimeType || '');
@@ -19160,7 +19241,7 @@ function extractReceiptAmountViaAI_(fileId, mimeType, apiKey) {
     contentType: 'application/json',
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
     payload: JSON.stringify({
-      model: DEFAULT_MODEL, max_tokens: 300,
+      model: model || DEFAULT_MODEL, max_tokens: 300,
       messages: [{ role: 'user', content: [block, { type: 'text', text: prompt }] }]
     }),
     muteHttpExceptions: true
@@ -19176,10 +19257,11 @@ function extractReceiptAmountViaAI_(fileId, mimeType, apiKey) {
 
 // 실제 스캔 본체 — 대시보드의 "지금 확인" 버튼(handleScanCashReceipts)과 야간 자동작업
 // (runNightlyChiefManager) 양쪽에서 그대로 호출한다.
+// [2026.10.09] AI(Sonnet) 대신 구글 드라이브 무료 OCR + 규칙 판독(parseReceiptText_)으로 바꿨다 — 비용 0원.
+// 실제 영수증 64장 시험: 56장 검산 일치로 확정, Sonnet이 읽었던 18장과 전부 같음(Haiku가 틀린 32,354,500원도 맞춤),
+// 확정 못한 5장은 금액을 비우고 "금액 확인 필요"로 기록(틀린 숫자를 넣지 않음). 세무사님 원칙: 시스템 루틴은 토큰 0.
 function runCashReceiptScan_() {
-  const result = { scanned: 0, added: 0, skipped: 0, errors: [] };
-  const apiKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
-  if (!apiKey) { result.errors.push('ANTHROPIC_API_KEY가 설정되어 있지 않습니다.'); return result; }
+  const result = { scanned: 0, added: 0, skipped: 0, needCheck: 0, errors: [] };
 
   let files;
   try {
@@ -19215,7 +19297,10 @@ function runCashReceiptScan_() {
     const primary = group[0];
     let succeeded = false;
     try {
-      const extracted = extractReceiptAmountViaAI_(primary.file.id, primary.file.mimeType, apiKey);
+      // 드라이브 복사(OCR) 호출이 짧은 시간에 몰리면 "User rate limit exceeded"가 난다 — 파일 사이 간격을 둔다.
+      Utilities.sleep(1500);
+      const extracted = extractReceiptAmountViaOCR_(primary.file.id);
+      if (!extracted.confident) result.needCheck++;
       // [2026.09.17 버그수정] "현금영수증이 고객에만 연결되다니 말이 안 된다 — 사건에 먼저
       // 연결되고 나서 고객에 연결되어야 한다" — findCaseForFile_가 파일의 부모 폴더를 거슬러
       // 올라가 정확히 어느 사건 폴더 안에 있는지 이미 알아내고 있었는데(caseInfo.caseId), 이
@@ -19227,8 +19312,8 @@ function runCashReceiptScan_() {
         사건ID: primary.caseInfo.caseId,
         날짜: extracted.date || Utilities.formatDate(new Date(primary.file.modifiedTime), 'Asia/Seoul', 'yyyy-MM-dd'),
         유형: '수금',
-        내용: '현금영수증 파일 자동 인식(' + primary.file.name + ')',
-        금액: extracted.amount,
+        내용: '현금영수증 파일 자동 인식(' + primary.file.name + ')' + (extracted.confident ? '' : ' ⚠ 금액 확인 필요(자동 판독 못함)'),
+        금액: extracted.confident ? extracted.amount : '',
         수취증빙: '현금영수증'
       });
       result.added++;
@@ -20372,7 +20457,7 @@ function naver_generateTitleCardLines_(title, bodyPreview, apiKey) {
     method: 'post',
     contentType: 'application/json',
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    payload: JSON.stringify({ model: DEFAULT_MODEL, max_tokens: 300, messages: [{ role: 'user', content: prompt }] }),
+    payload: JSON.stringify({ model: LIGHT_MODEL, max_tokens: 300, messages: [{ role: 'user', content: prompt }] }),
     muteHttpExceptions: true
   });
   const json = JSON.parse(response.getContentText());
@@ -23675,4 +23760,53 @@ function jsonResponse(obj) {
   return ContentService
     .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// [2026.10.09] 구글 드라이브 무료 글자인식(OCR) — 이미지·PDF를 구글 문서로 복사하면 드라이브가 글자를 읽어준다.
+// AI 비용 0원. 임시 문서는 읽자마자 휴지통으로 보낸다.
+function ocrFileText_(fileId) {
+  const copy = Drive.Files.copy({ name: '_ocr_tmp_' + Date.now(), mimeType: 'application/vnd.google-apps.document' }, fileId, { ocrLanguage: 'ko', fields: 'id' });
+  try {
+    return DocumentApp.openById(copy.id).getBody().getText();
+  } finally {
+    try { DriveApp.getFileById(copy.id).setTrashed(true); } catch (e) { /* 정리 실패는 무시 */ }
+  }
+}
+
+// [2026.10.09] 현금영수증 금액·날짜를 OCR 글자에서 규칙으로 뽑는다(AI 비용 0원).
+// 스스로 검산한다: 홈택스 영수증은 "공급가액+부가세(+봉사료)=총 거래금액", 카드단말기 영수증은 "거래금액×1.1≈합계".
+// 검산이 맞거나 금액이 하나뿐일 때만 확정(confident), 아니면 금액을 비워 두고 "확인 필요"로 남긴다 — 틀린 숫자를 넣지 않는다.
+function parseReceiptText_(text) {
+  const t = String(text || '');
+  const pad = function (n) { return ('0' + n).slice(-2); };
+  let date = null;
+  const dm = t.match(/(20\d{2})\s*[-./년]\s*(\d{1,2})\s*[-./월]\s*(\d{1,2})/);
+  if (dm) date = dm[1] + '-' + pad(dm[2]) + '-' + pad(dm[3]);
+  const toNum = function (s) { return Number(String(s).replace(/[^\d]/g, '')); };
+  // ① 홈택스형 — "총 거래금액" 뒤 숫자들(공급가액, 부가세, [봉사료], 총액)
+  const i = t.search(/총\s*거래\s*금액/);
+  if (i >= 0) {
+    const seg = t.slice(i).split(/가맹점/)[0].replace(/총\s*거래\s*금액/, '');
+    const ns = (seg.match(/\d{1,3}(?:,\d{3})+|\b\d+\b/g) || []).map(toNum);
+    if (ns.length >= 2) {
+      const total = ns[ns.length - 1];
+      const parts = ns.slice(0, -1).reduce(function (a, b) { return a + b; }, 0);
+      if (total > 0 && parts === total) return { amount: total, date: date, confident: true, how: '홈택스형 검산 일치' };
+    }
+  }
+  // ② 카드단말기형 — "합계" 근처의 "N원" 금액 중 가장 큰 값, 거래금액×1.1 검산
+  if (/합\s*계|합\s*\n[\s\S]{0,40}계\s*:/.test(t)) {
+    const won = (t.match(/\d{1,3}(?:,\d{3})+\s*원/g) || []).map(toNum).filter(function (v) { return v > 0; });
+    if (won.length) {
+      const max = Math.max.apply(null, won);
+      const checked = won.some(function (v) { return v !== max && Math.abs(Math.round(v * 1.1) - max) <= 1; });
+      const uniq = won.filter(function (v, k) { return won.indexOf(v) === k; });
+      if (checked) return { amount: max, date: date, confident: true, how: '단말기형 검산 일치' };
+      if (uniq.length === 1) return { amount: max, date: date, confident: true, how: '단말기형 합계 1개' };
+    }
+  }
+  return { amount: null, date: date, confident: false, how: '금액 확정 못함 — 확인 필요' };
+}
+function extractReceiptAmountViaOCR_(fileId) {
+  return parseReceiptText_(ocrFileText_(fileId));
 }

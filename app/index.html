@@ -1,9 +1,35 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-08 13:28 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 01:27 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
+  <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
+       구글 틀 내부 주소(…googleusercontent.com/userCodeAppPanel)로 넘어가 버린다(앱 창 위에 그 주소 줄이 뜸).
+       같은 문서를 가리키는 링크·폼은 이동만 막는다(각 버튼의 원래 동작은 그대로 실행됨). -->
+  <script>
+  (function(){
+    function sameDoc(u){
+      try{ var a = new URL(u, location.href); return a.origin === location.origin && a.pathname === location.pathname; }catch(e){ return false; }
+    }
+    document.addEventListener('click', function(e){
+      var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+      if (!a) return;
+      var t = (a.getAttribute('target') || '').toLowerCase();
+      if (t === '_blank') { if (a.getAttribute('href') === '#' ) e.preventDefault(); return; }
+      if (!sameDoc(a.href)) return;
+      e.preventDefault();
+      // 사용설명서 목차(#help-…)처럼 화면 안 항목을 가리키는 링크는 그 항목으로 스크롤만 한다.
+      var id = decodeURIComponent((a.hash || '').slice(1));
+      var el = id && document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, true);
+    document.addEventListener('submit', function(e){
+      var f = e.target;
+      if (f && f.tagName === 'FORM' && sameDoc(f.action || location.href)) e.preventDefault();
+    }, true);
+  })();
+  </script>
   <!-- [2026.10.08] job.netax.kr에서 직접 열릴 때 google.script.run 대리(구글 틀 안에서는 아무 일도 안 함) -->
   <script>
   // ============================================================
@@ -43162,9 +43188,14 @@ function goToReportWriter_(caseId, opts){
           <ul>
             <li>"○○ 사건 처리개요(세액계산·세액인쇄·증빙확보·문서작성·법령조회·작업관리) 열어줘" · "대시보드" · "수금관리 열어줘"</li>
             <li>"예약 보여줘" · "○○(고객) 수금 내역" · "○○ 사건 체크리스트" · "마감 임박 사건" · "진행 중 사건 몇 건"</li>
+            <li>"오늘 할 일" · "○○ 연락처(주소)" · "○○ 사건 진행상황" · "○○ 수금 얼마 받았어?"</li>
             <li>"○○ 사건 양도세(증여세·상속세) 자동계산 해줘"</li>
           </ul>
           "왜·검토·분석·판단·전략·얼마" 같은 말이 들어간 질문, 긴 질문, 첨부가 있는 질문은 AI가 답합니다. 사건이 여러 개 걸리면 고를 수 있는 버튼이 나옵니다.</li>
+        <li><b>🧠 전략 검토(최고급 AI)</b>: 사건을 연결한 대화에서 🧠를 누르면, 화면이 사건자료(개요·처리방향·저장된 세액계산·증빙·첨부 법령)를 토큰 없이 정리해 최고급 AI(⚙에서 Fable 5 / Opus 4.8 선택)에게 넘깁니다. AI는 선택 가능한 경우의 수 2~5개를 정하고, 각 세액은 반드시 세액계산 엔진으로 계산해 비교표·추천안·위험·추가 확인사항을 보고서 형태로 답합니다. 시작 전에 예상 비용을 보여주고 확인을 받습니다. 입력창에 적어둔 요청(예: "자녀 2명에게 나눠 증여하는 안도 비교")이 있으면 함께 반영합니다.</li>
+        <li><b>누가 처리했나·얼마 들었나</b>: 유료 AI 답변 아래에 "🤖 모델 · 약 ○원"이 붙습니다. ⚙ AI 설정 맨 위에 이번 달 단계별(⚡ 바로 처리·🔮 제미니·모델별) 사용 횟수와 금액이 나옵니다(유료는 job·work·모든 기기 합계).</li>
+        <li><b>✕ · 0턴 · ⚖</b>: ✕는 입력창 비우기, 0턴~5턴은 🔮·⚖로 제미니에게 물을 때 직전 대화를 몇 개 같이 보낼지, ⚖는 같은 질문을 AI와 제미니에게 동시에 보내 서로 영향받지 않은 의견을 받습니다.</li>
+        <li><b>🔮 제미니(무료, 토큰 0)</b>: 크롬에 <b>NETAX 외부조회 커넥터</b> 확장프로그램(1.2.0 이상)이 켜져 있으면 입력창 아래 표시가 🟢로 바뀝니다. 그러면 ① 인사·잡담처럼 NX 자료가 필요 없는 짧은 질문과 "오늘 일정"·"새 메일" 같은 구글 캘린더·Gmail·드라이브 조회는 유료 AI보다 먼저 제미니에게 물어보고(실패하면 자동으로 AI가 답함), ② 🔮 버튼을 누르면 입력창 내용을 제미니에게 직접 묻고, ③ 등기부·실거래가 같은 다른 사이트에서 <b>Alt+Shift+C</b>(글자) · <b>Alt+Shift+S</b>(화면)를 누르면 그 내용이 AI 입력창으로 들어옵니다. 사건·고객·세금 질문은 제미니에 보내지 않습니다(무료 제미니는 입력 내용이 학습에 쓰일 수 있어 고객 개인정보를 보내면 안 됨). 🔌로 남아 있으면 눌러서 다시 연결하고, 확장프로그램을 갱신한 직후라면 job 화면을 새로고침(F5)하세요.</li>
         <li><b>job 기능 맡기기</b>: "대기 중인 예약 보여줘", "○○ 사건 처리개요 열어줘", "○○ 고객에게 서류 받았다고 문자 보내줘"처럼 말하면 AI가 job의 기능으로 처리합니다. 예약 승인·거절, 문자 발송, 체크리스트 표시, 사건정보 수정처럼 되돌리기 어려운 일은 AI가 <b>🟡 실행 제안</b>만 띄우고, <b>▶ 실행</b>을 눌러야 실제로 실행됩니다(<b>취소</b>를 누르면 아무 일도 안 일어남).</li>
         <li><b>세액 자동계산 맡기기</b>: "○○ 사건 양도세 자동계산 해줘"라고 하면 그 사건의 세액계산 화면이 열리고 [📄 자동계산]과 같은 동작이 시작됩니다. 증빙에서 확정하지 못한 항목은 화면이 직접 묻고, 계산은 세액계산 화면의 엔진이 합니다.</li>
         <li><b>세무 조회(옛 넥스 사용 설명서 내용)</b>: 버튼 없이 대화로 물어보면 AI가 알아서 조회합니다.
@@ -43290,6 +43321,14 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     <div class="nxai-tools">
       <button type="button" class="nxai-tool" id="nxAiAttachBtn" title="파일 첨부 (사건 자료 또는 내 컴퓨터)">📎</button>
       <button type="button" class="nxai-tool" id="nxAiPasteBtn" title="클립보드 내용을 입력창에 붙여넣기 (외부조회 사이트에서 복사한 값을 바로 가져올 때)">📋</button>
+      <button type="button" class="nxai-tool" id="nxAiStrategyBtn" title="🧠 전략 검토 — 연결된 사건을 최고급 AI가 경우의 수별로 비교하고 더 나은 대안을 제시합니다(세액은 계산엔진으로 계산, 실행 전 예상 비용 확인)">🧠</button>
+      <button type="button" class="nxai-tool" id="nxAiClearBtn" title="입력창 비우기">✕</button>
+      <select id="nxAiGemTurns" class="nxai-model" style="width:auto" title="🔮·⚖로 제미니에게 물어볼 때 직전 대화를 몇 개(턴) 같이 보낼지 (0=입력창 내용만)">
+        <option value="0">0턴</option><option value="1">1턴</option><option value="2">2턴</option><option value="3">3턴</option><option value="4">4턴</option><option value="5">5턴</option>
+      </select>
+      <button type="button" class="nxai-tool" id="nxAiGemBtn" title="입력창 내용을 제미니(무료)에게 물어보기 — NX 외부조회 커넥터 확장프로그램 필요. 고객 개인정보는 넣지 마세요">🔮</button>
+      <button type="button" class="nxai-tool" id="nxAiBothBtn" title="같은 질문을 AI와 제미니에게 동시에 묻습니다 — 서로 답을 보지 않은 독립 의견을 받고 싶을 때(AI 쪽은 토큰 사용, NX 외부조회 커넥터 필요)">⚖</button>
+      <button type="button" class="nxai-tool" id="nxAiExtBtn" title="NX 외부조회 커넥터 미연결 — 클릭하면 다시 연결합니다">🔌</button>
       <button type="button" class="nxai-tool" id="nxAiCaptureBtn" title="화면 캡처해서 첨부 (Win+Shift+S로 캡처 후 입력창에 Ctrl+V도 됩니다)">📷</button>
       <select id="nxAiModel" class="nxai-model" title="AI 모델 — F(고정)가 아니면 질문 내용에 따라 자동으로 바뀝니다(지금 값은 마지막으로 실제 쓰인 모델)">
         <option value="claude-sonnet-5">Sonnet 5</option>
@@ -43358,6 +43397,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
 <div class="nxai-overlay" id="nxAiSettingsOverlay" hidden>
   <div class="nxai-modal">
     <div class="nxai-modal-head"><b>⚙ AI 설정</b><span class="nxai-spacer"></span><button type="button" class="nxai-icon dark" id="nxAiSettingsClose">✕</button></div>
+    <div id="nxAiUsageBox" class="nxai-usage-box"></div>
     <label class="nxai-label">답변 강도 (모델을 F로 고정했을 때 적용)</label>
     <select id="nxAiSetEffort">
       <option value="low">낮음 (빠름)</option>
@@ -43376,6 +43416,11 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         <option value="claude-sonnet-5">Claude Sonnet 5</option>
       </select>
     </div>
+    <label class="nxai-label">🧠 전략 검토 모델 (최고급 — 경우의 수 비교·대안·전략에만 씀)</label>
+    <select id="nxAiSetStrategyModel">
+      <option value="claude-fable-5">Fable 5 (최고급)</option>
+      <option value="claude-opus-4-8">Opus 4.8 (약 절반 비용)</option>
+    </select>
     <label class="nxai-label">시스템 프롬프트 (비워두면 기본 프롬프트 사용)</label>
     <textarea id="nxAiSetSystemPrompt" rows="3"></textarea>
     <div class="nxai-modal-foot">
@@ -43436,6 +43481,14 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   .nxai-links{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .nxai-local-badge{ display:inline-block; font-size:11px; font-weight:700; color:#1f7a4d; background:var(--success-bg); border-radius:5px; padding:1px 7px; margin-bottom:6px; }
   html.nx-dark .nxai-local-badge{ background:#173226; color:#8fd6ac; }
+  .nxai-paid-list{ max-height:160px; overflow:auto; font-size:11.5px; line-height:1.55; opacity:.85; }
+  .nxai-usage-foot{ margin-top:6px; font-size:11px; opacity:.6; text-align:right; }
+  .nxai-usage-box{ margin:4px 0 10px; padding:8px 10px; border:1px solid rgba(127,127,127,.25); border-radius:8px; }
+  .nxai-usage-table{ width:100%; border-collapse:collapse; font-size:12px; margin:4px 0; }
+  .nxai-usage-table th, .nxai-usage-table td{ padding:3px 4px; border-bottom:1px solid rgba(127,127,127,.2); text-align:left; }
+  .nxai-usage-table td:nth-child(2), .nxai-usage-table th:nth-child(2), .nxai-usage-table td:nth-child(3), .nxai-usage-table th:nth-child(3){ text-align:right; white-space:nowrap; }
+  .nxai-local-badge.gem{ color:#5b3fa8; background:#efe9fb; }
+  html.nx-dark .nxai-local-badge.gem{ background:#2a2240; color:#c9b6f5; }
   .nxai-confirm{ margin-top:10px; border:1px solid #e8cf8a; background:#fffaf0; border-radius:9px; padding:9px 11px; white-space:normal; }
   .nxai-confirm-head{ font-weight:700; font-size:.95em; color:#7a5300; margin-bottom:4px; }
   .nxai-confirm-body{ font-size:.95em; white-space:pre-wrap; margin-bottom:8px; color:var(--ink); }
@@ -44577,7 +44630,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // AI 설정 — work chat.js와 같은 저장 키/구조(같은 브라우저면 work에서 쓰던 설정을 그대로 이어받는다)
   // ============================================================
   var NXAI_SETTINGS_KEY = 'nx_ai_settings';
-  var NXAI_DEFAULT_SETTINGS = { model: 'auto', effort: 'high', temperature: null, maxTokens: null, enableCodeExecution: false, enableAdvisor: false, advisorModel: 'claude-opus-4-8', systemPrompt: '' };
+  var NXAI_DEFAULT_SETTINGS = { model: 'auto', effort: 'high', temperature: null, maxTokens: null, enableCodeExecution: false, enableAdvisor: false, advisorModel: 'claude-opus-4-8', strategyModel: 'claude-fable-5', systemPrompt: '' };
   function nxAiLoadSettings_(){
     try{
       var raw = nxAiLs_(NXAI_SETTINGS_KEY);
@@ -44608,6 +44661,60 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxAiEl_('nxAiAdvisor').checked = !!nxAiSettings.enableAdvisor;
     nxAiEl_('nxAiAdvisorLabel').className = 'nxai-adv' + (nxAiSettings.enableAdvisor ? ' on' : '');
   }
+  // ============================================================
+  // AI 사용 단계 표시·이번 달 사용량 — 세무사님 원칙: 토큰 0(⚡) → 무료(🔮) → 저가 → 고급 순으로 쓰고,
+  // 어디에 얼마 들었는지 눈에 보이게. 유료 AI는 서버가 모델별로 쌓고(job·work·모든 기기 합계),
+  // ⚡·🔮(무료)는 이 기기 브라우저에만 횟수를 센다.
+  // ============================================================
+  var NXAI_KRW_PER_USD = 1400; // 대략 환산(표시용)
+  function nxAiModelLabel_(m){
+    var o = nxAiEl_('nxAiModel') && nxAiEl_('nxAiModel').querySelector('option[value="' + m + '"]');
+    return o ? o.textContent : (m || 'AI');
+  }
+  function nxAiWon_(usd){
+    var w = usd * NXAI_KRW_PER_USD;
+    return w < 1 ? '1원 미만' : ('약 ' + Math.round(w).toLocaleString('ko-KR') + '원');
+  }
+  function nxAiUsageFooter_(bubble, usage){
+    if (!bubble || !usage || !usage.usd) return;
+    var d = document.createElement('div');
+    d.className = 'nxai-usage-foot';
+    d.textContent = '🤖 ' + nxAiModelLabel_(usage.model) + ' · ' + nxAiWon_(usage.usd) + ' ($' + usage.usd.toFixed(4) + ')';
+    bubble.appendChild(d);
+  }
+  function nxAiFreeKey_(){ var t = new Date(); return 'nx_ai_free_' + t.getFullYear() + '-' + ('0' + (t.getMonth() + 1)).slice(-2); }
+  function nxAiCountFree_(kind){
+    try{
+      var k = nxAiFreeKey_(), d = JSON.parse(nxAiLs_(k) || '{}');
+      d[kind] = (d[kind] || 0) + 1;
+      nxAiLs_(k, JSON.stringify(d));
+    }catch(e){}
+  }
+  function nxAiLoadUsage_(){
+    var box = nxAiEl_('nxAiUsageBox'); if (!box) return;
+    var free = {}; try{ free = JSON.parse(nxAiLs_(nxAiFreeKey_()) || '{}'); }catch(e){}
+    box.innerHTML = '<div class="nxai-muted">이번 달 사용량 불러오는 중…</div>';
+    callGas('ai_usage_month', {}).then(function(res){
+      if (!res || !res.data) throw new Error('응답 이상');
+      var rows = [['⚡ 바로 처리 (토큰 0, 이 기기)', free.local || 0, '0원'], ['🔮 제미니 (무료, 이 기기)', free.gem || 0, '0원']];
+      var total = 0;
+      Object.keys(res.data).sort(function(a, b){ return res.data[b].usd - res.data[a].usd; }).forEach(function(m){
+        total += res.data[m].usd;
+        rows.push(['🤖 ' + nxAiModelLabel_(m), res.data[m].n, nxAiWon_(res.data[m].usd)]);
+      });
+      var prevTotal = 0; Object.keys(res.prevData || {}).forEach(function(m){ prevTotal += res.prevData[m].usd; });
+      box.innerHTML = '<div class="nxai-label" style="margin-top:0">📊 이번 달(' + nxAiEsc_(res.thisMonth) + ') AI 사용</div>'
+        + '<table class="nxai-usage-table"><tr><th>단계</th><th>횟수</th><th>금액</th></tr>'
+        + rows.map(function(r){ return '<tr><td>' + nxAiEsc_(r[0]) + '</td><td>' + r[1] + '</td><td>' + nxAiEsc_(r[2]) + '</td></tr>'; }).join('')
+        + '<tr><th>유료 합계</th><th></th><th>' + nxAiEsc_(nxAiWon_(total)) + '</th></tr></table>'
+        + '<div class="nxai-muted" style="font-size:11.5px">유료 AI는 job·work·모든 기기 합계(도구 단계마다 1회로 셈), 지난달 ' + nxAiEsc_(nxAiWon_(prevTotal)) + '. 2026-10-09부터 기록.</div>'
+        + (res.paid && res.paid.length ? '<div class="nxai-label">💸 유료 AI로 간 질문(최근) — 단순 조회가 반복되면 ⚡바로 처리로 옮길 후보</div><div class="nxai-paid-list">'
+          + res.paid.slice(0, 20).map(function(p){ return '<div>' + nxAiEsc_(p.at.slice(5)) + ' · ' + nxAiEsc_(p.kind === 'strategy' ? '🧠' : nxAiModelLabel_(p.model)) + ' · ' + nxAiEsc_(nxAiWon_(p.usd)) + ' — ' + nxAiEsc_(p.q) + '</div>'; }).join('') + '</div>' : '');
+    }).catch(function(err){
+      box.innerHTML = '<div class="nxai-muted">사용량을 불러오지 못했습니다: ' + nxAiEsc_(err && err.message || err) + '</div>';
+    });
+  }
+
   function nxAiBuildSettingsPayload_(text){
     var resolved = nxAiSettings.model === 'auto' ? nxAiPickAutoModel_(text) : { model: nxAiSettings.model, effort: nxAiSettings.effort };
     if (nxAiSettings.model === 'auto'){ nxAiLastAutoModel = resolved.model; nxAiRefreshModelUi_(); }
@@ -44626,8 +44733,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxAiEl_('nxAiSetMaxTokens').value = (s.maxTokens === null || s.maxTokens === undefined) ? '' : s.maxTokens;
     nxAiEl_('nxAiSetCodeExec').checked = !!s.enableCodeExecution;
     nxAiEl_('nxAiSetAdvisorModel').value = s.advisorModel;
+    nxAiEl_('nxAiSetStrategyModel').value = s.strategyModel || 'claude-fable-5';
     nxAiEl_('nxAiSetSystemPrompt').value = s.systemPrompt || '';
     nxAiEl_('nxAiSettingsOverlay').hidden = false;
+    nxAiLoadUsage_();
   }
   // 닫는 방법과 무관하게 항상 저장(work와 같은 원칙 — "체크했는데 다시 보면 꺼져 있다" 방지)
   function nxAiCloseSettings_(){
@@ -44637,6 +44746,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxAiSettings.maxTokens = m === '' ? null : Math.max(256, Math.min(64000, Math.floor(Number(m))));
     nxAiSettings.enableCodeExecution = nxAiEl_('nxAiSetCodeExec').checked;
     nxAiSettings.advisorModel = nxAiEl_('nxAiSetAdvisorModel').value;
+    nxAiSettings.strategyModel = nxAiEl_('nxAiSetStrategyModel').value;
     nxAiSettings.systemPrompt = nxAiEl_('nxAiSetSystemPrompt').value.trim();
     nxAiSaveSettings_();
     nxAiEl_('nxAiSettingsOverlay').hidden = true;
@@ -44696,6 +44806,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var turnMessages = initialMessages.slice();
     var accumulated = [];
     var round = 0;
+    var usageSum = { usd: 0, model: '' }; // 이번 질문에 든 유료 AI 비용(도구 라운드 합계)
     var step = function(){
       var forceWrapUp = round >= NXAI_MAX_ROUNDS;
       opts.thinkingBubble.textContent = round === 0 ? '생각 중…' : (forceWrapUp ? '마무리하는 중…' : '🔧 확인하는 중… (' + (round + 1) + '단계)');
@@ -44721,6 +44832,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       };
       return attempt(0).then(function(data){
         if (data.error){ opts.onError('오류: ' + data.error); return; }
+        if (data.usage){ usageSum.usd += (+data.usage.costUsd || 0); usageSum.model = data.usage.model || usageSum.model; }
         accumulated = accumulated.concat(data.clientActions || []);
         if (data.done === false){
           turnMessages = turnMessages.concat([
@@ -44730,7 +44842,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
           round++;
           return step();
         }
-        opts.onDone(data.reply || '이번 요청에 답변을 받지 못했습니다. 다시 한 번 보내주세요.', accumulated);
+        opts.onDone(data.reply || '이번 요청에 답변을 받지 못했습니다. 다시 한 번 보내주세요.', accumulated, usageSum);
       });
     };
     return step().catch(function(err){
@@ -44772,11 +44884,18 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
 
   function nxAiDetectLocal_(text){
     var t = String(text || '').trim();
-    if (!t || t.length > 60 || NXAI_LOCAL_JUDGE_RE_.test(t)) return null;
+    if (!t || t.length > 60) return null;
+    // "○○ 수금 얼마 받았어?"는 판단이 아니라 합계 조회 — "얼마"만 보고 유료 AI로 보내지 않는다(2026-10-09).
+    var judgeT = /(수금|입금)/.test(t) ? t.replace(/얼마(나|를)?/g, '') : t;
+    if (NXAI_LOCAL_JUDGE_RE_.test(judgeT)) return null;
     if (/자동\s*계산/.test(t)){
       var m = /(양도|증여|상속)/.exec(t);
       return { kind: 'autocalc', tab: m ? { 양도: 'transfer', 증여: 'gift', 상속: 'inheritance' }[m[1]] : '' };
     }
+    // "일정"은 구글 캘린더 조회(🔮 제미니)로 남겨두고, 예약·마감·할 일만 여기서 처리
+    if (/오늘/.test(t) && /(할\s*일|예약|마감|뭐\s*(있|해)|업무)/.test(t)) return { kind: 'today' };
+    if (/(연락처|전화\s*번호|전번|휴대\s*폰|핸드폰|주소|고객\s*정보)/.test(t) && !/(바꿔|변경|수정|등록|추가|저장|보내|문자)/.test(t)) return { kind: 'client_info' };
+    if (/(진행\s*상황|진행\s*상태|어디까지|사건\s*상태|상태\s*(는|가|좀|알려|보여))/.test(t) && !/예약/.test(t)) return { kind: 'case_status' };
     if (/예약/.test(t) && !/(승인|거절|취소|연결|등록)/.test(t) && /(보여|목록|확인|대기|몇|있어|있나|현황|알려)/.test(t)) return { kind: 'bookings' };
     if (/(수금|입금|상담\s*(기록|내역|이력)|자문\s*(기록|내역))/.test(t) && !/(추가|등록|기록해|입력)/.test(t)) return { kind: 'logs' };
     if (/(체크\s*리스트|제출\s*현황|증빙\s*현황)/.test(t) && !/(표시|체크해|완료로|확보로)/.test(t)) return { kind: 'checklist' };
@@ -44906,6 +45025,57 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         }, '체크리스트');
       });
     }
+    if (intent.kind === 'client_info'){
+      return nxAiFindClient_(text).then(function(clients){
+        if (!clients.length) return null;
+        var show = function(cl){
+          return callGas('work_get_cases', {}).then(function(res){
+            var cases = (res && Array.isArray(res.cases) ? res.cases : []).filter(function(k){ return k.고객ID === cl.id || nxAiNorm_(k.고객명) === nxAiNorm_(cl.성명); });
+            var md = '**' + cl.성명 + '**' + (cl.구분 ? ' (' + cl.구분 + ')' : '') + '\n\n'
+              + nxAiMdTable_(['항목', '내용'], [['전화번호', String(cl.전화번호 || '').trim() || '-'], ['추가연락처', String(cl.추가연락처 || '').trim() || '-'], ['주소', String(cl.주소 || '').trim() || '-']].concat(cl.사업자번호 ? [['사업자번호', cl.사업자번호]] : []))
+              + (cases.length ? '\n\n**관련 사건 ' + cases.length + '건**\n\n' + nxAiMdTable_(['사건', '상태', '법정일'], cases.map(function(k){ return [k.사건명 || k.고객명, k.상태, k.법정일 || '']; })) : '\n\n관련 사건 없음');
+            return { md: md, note: '[⚡바로 처리] ' + cl.성명 + ' 고객 정보·관련 사건 ' + cases.length + '건',
+              choices: [{ label: '👤 고객관리에서 열기', run: function(){ nxAiOpenJobView_('clientmanage', '', cl.id); return null; } }] };
+          });
+        };
+        if (clients.length === 1) return show(clients[0]);
+        return { md: '같은 이름의 고객이 ' + clients.length + '명입니다. 골라 주세요.', note: '[⚡바로 처리] 동명 고객 선택 대기',
+          choices: clients.slice(0, 8).map(function(cl){ return { label: cl.성명 + ' ' + (cl.전화번호 || cl.구분 || ''), run: function(){ return show(cl); } }; }) };
+      });
+    }
+    if (intent.kind === 'case_status'){
+      return nxAiFindCases_(text).then(function(found){
+        if (!found.list.length) return null;
+        return pickCase(found, function(k){
+          var log = k.작업일지;
+          var lines = Array.isArray(log) ? log.map(function(x){ return typeof x === 'string' ? x : [x.날짜 || x.date, x.내용 || x.text].filter(Boolean).join(' '); })
+            : String(log || '').split(/\n+/);
+          lines = lines.map(function(s){ return String(s).trim(); }).filter(Boolean).slice(-3);
+          var md = '**' + (k.사건명 || k.고객명) + '**\n\n'
+            + nxAiMdTable_(['항목', '내용'], [['상태', k.상태 || '-'], ['세목·업무', [({ transfer: '양도소득세', gift: '증여세', inheritance: '상속세' })[k.세목] || k.세목, k.업무유형].filter(Boolean).join(' · ') || '-'], ['담당자', k.담당자 || '-'], ['의뢰일', k.의뢰일 || '-'], ['법정일', k.법정일 || '-'], ['처리방향', String(k.처리방향 || '-').slice(0, 120)]])
+            + (lines.length ? '\n\n**최근 작업일지**\n' + lines.map(function(s){ return '- ' + s.slice(0, 100); }).join('\n') : '');
+          return { md: md, note: '[⚡바로 처리] ' + (k.사건명 || '') + ' 진행상황 — ' + (k.상태 || '') + (k.법정일 ? ', 법정일 ' + k.법정일 : ''),
+            choices: [{ label: '📋 처리개요 열기', run: function(){ nxAiOpenJobView_('casehandling', k.id); return null; } }] };
+        }, '진행상황');
+      });
+    }
+    if (intent.kind === 'today'){
+      return Promise.all([callGas('list_bookings', {}), callGas('work_get_cases', {})]).then(function(rs){
+        if (!rs[0] || !Array.isArray(rs[0].bookings)) throw new Error('예약 목록을 받지 못했습니다 — 잠시 후 다시 시도하세요.');
+        if (!rs[1] || !Array.isArray(rs[1].cases)) throw new Error('사건 목록을 받지 못했습니다 — 잠시 후 다시 시도하세요.');
+        var today = nxAiTodayStr_();
+        var bk = rs[0].bookings.filter(function(b){ return b.status === '확정' && b.reservedDate === today; }).sort(function(a, b){ return String(a.reservedTime).localeCompare(String(b.reservedTime)); });
+        var waiting = rs[0].bookings.filter(function(b){ return b.status !== '확정' && b.status !== '거절' && b.status !== '취소'; });
+        var open = rs[1].cases.filter(function(k){ return k.상태 !== '완료' && k.법정일; });
+        var dueToday = open.filter(function(k){ return k.법정일 === today; });
+        var over = open.filter(function(k){ return k.법정일 < today; });
+        var md = '**오늘(' + today + ') 예약 ' + bk.length + '건**' + (bk.length ? '\n\n' + nxAiMdTable_(['시간', '이름', '유형'], bk.map(function(b){ return [b.reservedTime, b.name, b.type]; })) : '')
+          + '\n\n**오늘 법정일 ' + dueToday.length + '건**' + (dueToday.length ? '\n\n' + nxAiMdTable_(['사건', '상태'], dueToday.map(function(k){ return [k.사건명 || k.고객명, k.상태]; })) : '')
+          + '\n\n**기한 지난 미완료 ' + over.length + '건**' + (over.length ? '\n\n' + nxAiMdTable_(['법정일', '사건'], over.slice(0, 10).map(function(k){ return ['⚠️ ' + k.법정일, k.사건명 || k.고객명]; })) : '')
+          + (waiting.length ? '\n\n예약 승인 대기 ' + waiting.length + '건이 있습니다.' : '');
+        return { md: md, note: '[⚡바로 처리] 오늘 할 일 — 예약 ' + bk.length + ', 오늘 법정일 ' + dueToday.length + ', 기한 지남 ' + over.length + ', 승인 대기 ' + waiting.length };
+      });
+    }
     if (intent.kind === 'deadlines' || intent.kind === 'active'){
       return callGas('work_get_cases', {}).then(function(res){
         if (!res || !Array.isArray(res.cases)) throw new Error('사건 목록을 받지 못했습니다 — 잠시 후 다시 시도하세요.');
@@ -44943,7 +45113,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var ask = document.createElement('button');
     ask.type = 'button'; ask.className = 'nxai-btn'; ask.textContent = '🤖 AI에게 묻기';
     ask.title = '같은 질문을 AI에게 넘깁니다(토큰 사용)';
-    ask.addEventListener('click', function(){ if (!nxAiAbort) nxAiSendAI_(text); });
+    ask.addEventListener('click', function(){ if (!nxAiAbort) nxAiSendAI_(text, { noGem: true }); });
     links.appendChild(ask);
     bubble.appendChild(links);
     // 대화기록에는 요약 한 줄 + 결과표(최대 3천 자)를 남긴다 — 이어서 "이 중 ○○ 건 검토해줘"라고 AI에게 물으면
@@ -44981,6 +45151,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       }
       nxAiConv.messages.push(aiMsg);
       nxAiRenderLocal_(bubble, res, text);
+      nxAiCountFree_('local');
       nxAiScheduleSave_();
     }).catch(function(err){
       bubble.textContent = '바로 처리 중 오류: ' + (err && err.message ? err.message : err);
@@ -44989,7 +45160,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     });
   }
 
-  function nxAiSendAI_(forcedText){
+  function nxAiSendAI_(forcedText, opts){
+    opts = opts || {};
     var input = nxAiEl_('nxAiInput');
     var text = (forcedText || input.value).trim();
     if (!text || nxAiAbort) return;
@@ -44998,7 +45170,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var files = nxAiPendingFiles.slice(), images = nxAiPendingImages.slice();
     var note = files.map(function(a){ return (a.type === 'folder' ? ' 📁' : ' 📎') + a.name; }).join('') + images.map(function(){ return ' 🖼️'; }).join('');
     nxAiPhoneTab_('chat');
-    var userBubble = nxAiAppendBubble_('user', text + note);
+    var userBubble = nxAiAppendBubble_('user', (opts.displayText || text) + note);
     input.value = ''; input.style.height = 'auto';
     nxAiPendingFiles = []; nxAiPendingImages = []; nxAiRenderAttachBar_();
 
@@ -45013,7 +45185,52 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxAiAbort = new AbortController();
     nxAiSetBusy_(true);
 
-    nxAiOpenFileMediaBlock_().then(function(mediaBlock){
+    // 1단계(무료) — 정말 간단하고 NX 자료가 필요 없는 질문, 또는 구글 캘린더·Gmail·드라이브 조회는
+    // 유료 AI보다 먼저 제미니에게 물어본다(work와 같은 규칙). 실패하면 조용히 원래 AI로 넘어간다.
+    var gemRoute = nxAiDetectGemRoute_(text);
+    var gemModelOk = nxAiSettings.model === 'auto' || nxAiSettings.model === 'claude-haiku-4-5-20251001';
+    var gemEligible = !opts.noGem && !files.length && !images.length && !openFileCtx
+      && ((gemModelOk && nxAiIsGemSafe_(text)) || !!gemRoute);
+    var gemFail = ''; // 제미니를 시도했다가 실패한 이유 — 유료 AI 답변 위에 표시한다(조용히 넘어가면 토큰이 든 줄 모름)
+    var gemStep = !gemEligible ? Promise.resolve(false) : (function(){
+      // 제미니가 오래 생각해도 중간에 끊지 않는다(50초에 끊었더니 제미니가 답을 준비하는 동안 Haiku가 대신 답해버림 —
+      // 2026-10-08 실사용 지적). 대신 경과 시간과 "유료 AI로 바로 받기" 버튼을 보여주고 기다릴지는 세무사님이 정한다.
+      var gemLabel = gemRoute ? ('🔮 먼저 무료로 확인 중 (Gemini·' + gemRoute.label + ')') : '🔮 먼저 무료로 확인 중 (Gemini)';
+      var gemId = null, gemSec = 0;
+      thinking.innerHTML = '<span class="nxai-gem-wait">' + nxAiEsc_(gemLabel) + '…</span> <button type="button" class="nxai-btn nxai-gem-skip" title="제미니를 기다리지 않고 유료 AI에게 바로 묻습니다(토큰 사용)">⏭ 유료 AI로 바로 받기</button>';
+      var waitEl = thinking.querySelector('.nxai-gem-wait');
+      thinking.querySelector('.nxai-gem-skip').addEventListener('click', function(){ nxAiGemSkip_(gemId); });
+      var gemTick = setInterval(function(){ gemSec++; if (waitEl) waitEl.textContent = gemLabel + '… ' + gemSec + '초 (제미니가 생각 중)'; }, 1000);
+      if (nxAiAbort) nxAiAbort.signal.addEventListener('abort', function(){ nxAiGemSkip_(gemId); });
+      var convAtGem = nxAiConv;
+      return nxAiAskGemSilent_(gemRoute ? ('@' + text) : text, 150000, function(id){ gemId = id; }).then(function(r){
+        var ans = r && r.answer, src = (r && r.sources) || [];
+        // 캘린더·메일·드라이브 조회인데 실제 출처가 확인 안 되면 지어낸 답일 수 있다 — 실패로 보고 AI로 넘긴다.
+        if (!ans || !ans.trim()){ gemFail = '빈 응답'; return false; }
+        if (gemRoute && !src.length){ gemFail = '구글 앱 출처 확인 안 됨'; return false; }
+        if (nxAiAbort && nxAiAbort.signal.aborted) return true;
+        var label = gemRoute ? ('🔮 Gemini · ' + gemRoute.label + ' 조회 · 무료 — ✅ ' + src.join(', ') + ' 확인됨') : '🔮 Gemini · 무료 답변(토큰 0)';
+        thinking.innerHTML = '<div class="nxai-local-badge gem">' + nxAiEsc_(label) + '</div><div class="nxai-md">' + nxAiMd_(ans) + '</div>';
+        nxAiCountFree_('gem');
+        var aiMsg = { role: 'assistant', content: ans };
+        convAtGem.messages.push(aiMsg);
+        thinking._nxMsgRef = aiMsg;
+        if (convAtGem === nxAiConv) nxAiScheduleSave_();
+        return true;
+      }).catch(function(err){
+        var m = err && err.message;
+        gemFail = m === 'not_connected' ? '' : m === 'timeout' ? '시간 초과' : m === 'skipped' ? '기다리지 않고 건너뜀' : (m || '오류'); // 확장프로그램이 없는 기기(휴대폰 등)는 시도 자체를 안 한 것이라 표시하지 않음
+        return false;
+      }).then(function(done){
+        clearInterval(gemTick);
+        if (!done) thinking.textContent = gemFail ? ('🔮 제미니 실패(' + gemFail + ') — 유료 AI가 대신 답하는 중…') : '생각 중…';
+        return done;
+      });
+    })();
+
+    gemStep.then(function(gemDone){
+    if (gemDone) return;
+    return nxAiOpenFileMediaBlock_().then(function(mediaBlock){
       var imageBlocks = images.map(function(img){ return nxAiParseDataUrl_(img.dataUrl); }).filter(Boolean)
         .map(function(p){ return { type: 'image', source: { type: 'base64', media_type: p.mimeType, data: p.base64 } }; });
       var extra = [].concat(mediaBlock ? [mediaBlock] : [], imageBlocks);
@@ -45024,9 +45241,13 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         thinkingBubble: thinking,
         signal: nxAiAbort.signal,
         context: nxAiBuildContext_({ openFile: openFileCtx, attachedItems: files }),
-        settingsPayload: nxAiBuildSettingsPayload_(text),
-        onDone: function(reply, actions){
+        settingsPayload: opts.settings || nxAiBuildSettingsPayload_(text),
+        onDone: function(reply, actions, usage){
           nxAiRenderReply_(thinking, reply, actions, editTarget);
+          nxAiUsageFooter_(thinking, usage);
+          // 유료로 간 질문을 기록 — 반복되는 단순 요청을 찾아 ⚡바로 처리로 옮기는 근거(⚙ AI 설정에서 확인)
+          if (usage && usage.usd) callGas('ai_log_paid', { entry: { kind: opts.settings ? 'strategy' : 'chat', model: usage.model, usd: usage.usd, q: opts.displayText || text } }).catch(function(){});
+          if (gemFail) thinking.insertAdjacentHTML('afterbegin', '<div class="nxai-local-badge" style="color:#a15c00;background:#fff3e0">🔮 제미니 실패(' + nxAiEsc_(gemFail) + ') → 유료 AI 답변</div>');
           var aiMsg = { role: 'assistant', content: reply };
           convAtSend.messages.push(aiMsg);
           thinking._nxMsgRef = aiMsg;
@@ -45042,6 +45263,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
           var i = convAtSend.messages.indexOf(userMsg); if (i !== -1) convAtSend.messages.splice(i, 1);
         }
       });
+    });
     }).then(function(){
       nxAiAbort = null;
       nxAiSetBusy_(false);
@@ -45177,6 +45399,245 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   }
 
   // ============================================================
+  // NX 외부조회 커넥터(크롬 확장프로그램) 연결 — 제미니(무료) 질문 + 외부 사이트 캡처 받기.
+  // job은 구글 틀(googleusercontent) 안에서 돌아서 work처럼 확장프로그램에 직접 연결할 수 없다 —
+  // 확장프로그램이 이 틀에 심는 다리(bridge-job.js)와 window.postMessage로 주고받는다.
+  // 봉투: 페이지→확장 { source:'nx-page', type }, 확장→페이지 { source:'nx-bridge', type } (work와 동일)
+  // ============================================================
+  var nxAiExtConnected = false;
+  var nxAiBridgeVer = null;  // 확장프로그램 다리가 이 화면에 있으면 그 버전(진단용)
+  var nxAiGemPending = {};   // requestId → { resolve, reject, bubble }
+  var nxAiCaptureCount = 0;
+  function nxAiExtUi_(){
+    var b = nxAiEl_('nxAiExtBtn'); if (!b) return;
+    b.textContent = nxAiExtConnected ? '🟢' : '🔌';
+    b.title = nxAiExtConnected
+      ? 'NX 외부조회 커넥터 연결됨 — 🔮 제미니(무료) 질문, 다른 사이트에서 Alt+Shift+C(글자)·Alt+Shift+S(화면) 캡처가 이 입력창으로 들어옵니다'
+      : 'NX 외부조회 커넥터 미연결(확장프로그램 미설치 또는 갱신 필요) — 클릭하면 다시 연결합니다';
+  }
+  // 다리는 job 화면 자기 창(안쪽 틀) 또는 바로 바깥 구글 틀에 있을 수 있다 — 연결 전엔 둘 다에 보내고,
+  // 먼저 답한 쪽(nxAiExtTarget)으로만 주고받는다(양쪽에 다리가 있어도 질문·캡처가 두 번 처리되지 않게).
+  var nxAiExtTarget = null;
+  function nxAiExtPost_(msg){
+    msg.source = 'nx-page';
+    var wins = nxAiExtTarget ? [nxAiExtTarget] : [window].concat(window.parent && window.parent !== window ? [window.parent] : []);
+    wins.forEach(function(w){ try{ w.postMessage(msg, '*'); }catch(e){} });
+  }
+  function nxAiExtHello_(){ nxAiExtPost_({ type: 'NX_HELLO' }); }
+  function nxAiEnsureExt_(){
+    if (nxAiExtConnected) return Promise.resolve(true);
+    nxAiExtHello_();
+    return new Promise(function(resolve){
+      var n = 0;
+      (function tick(){ if (nxAiExtConnected || ++n > 20) return resolve(nxAiExtConnected); setTimeout(tick, 100); })();
+    });
+  }
+  // 제미니에게 조용히 묻기 — 성공하면 { answer, sources }, 미연결·시간초과·오류면 실패.
+  // 기다리는 중인 제미니 질문을 그만 기다린다(⏭ 버튼·⏹ 중단) — 제미니 창의 답은 그대로 두고 job만 다음 단계로.
+  function nxAiGemSkip_(id){
+    var p = id && nxAiGemPending[id];
+    if (!p) return;
+    delete nxAiGemPending[id];
+    p.reject(new Error('skipped'));
+  }
+  function nxAiAskGemSilent_(question, timeoutMs, onId){
+    return nxAiEnsureExt_().then(function(ok){
+      if (!ok) throw new Error('not_connected');
+      return new Promise(function(resolve, reject){
+        var id = 'jobgem_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        if (onId) onId(id);
+        var timer = setTimeout(function(){ delete nxAiGemPending[id]; reject(new Error('timeout')); }, timeoutMs || 20000);
+        nxAiGemPending[id] = {
+          resolve: function(v){ clearTimeout(timer); resolve(v); },
+          reject: function(e){ clearTimeout(timer); reject(e); }
+        };
+        nxAiExtPost_({ type: 'NX_GEM_ASK', requestId: id, question: question });
+      });
+    });
+  }
+  // 🔮 버튼 — 입력창 내용을 제미니에게 직접 물어본다(자동 판단 없이, 세무사님이 고른 경우).
+  var NXAI_GEM_TURNS_KEY = 'nx_ai_gem_turns';
+  // 직전 대화 N턴을 "[참고 — 직전 대화]" 형태로 붙인다 — work chat.js buildRecentContextText_와 같은 형식.
+  function nxAiGemContext_(turns){
+    if (!turns) return '';
+    var cleaned = nxAiConv.messages.filter(function(m){
+      var c = typeof m.content === 'string' ? m.content.trim() : '';
+      return c && !/^(오류|네트워크 오류|⏹ 중단됨)/.test(c);
+    });
+    var recent = cleaned.slice(-(turns * 2));
+    if (!recent.length) return '';
+    return '[참고 — 직전 대화 ' + turns + '개]\n' + recent.map(function(m){ return (m.role === 'user' ? '나: ' : 'NX: ') + m.content.trim(); }).join('\n') + '\n\n[실제 질문]\n';
+  }
+  function nxAiAskGemManual_(q, opts){
+    opts = opts || {};
+    var input = nxAiEl_('nxAiInput');
+    if (q == null){
+      q = input.value.trim();
+      if (!q){ nxAiToast_('제미니에게 물어볼 내용을 입력창에 먼저 쓰세요.'); input.focus(); return; }
+      if (nxAiAbort) return;
+      input.value = ''; input.style.height = 'auto';
+    }
+    var turns = parseInt(nxAiEl_('nxAiGemTurns').value, 10) || 0;
+    var fullQ = nxAiGemContext_(turns) + q;
+    var label = (opts.compare ? '⚖ 동시비교 — 제미니에게' : '🔮') + (turns ? ' (직전 대화 ' + turns + '턴 포함)' : '');
+    nxAiPhoneTab_('chat');
+    // 동시비교는 질문 기록을 AI 쪽이 남기므로 여기선 말풍선만(같은 질문이 기록에 두 번 들어가지 않게).
+    var userMsg = null;
+    if (opts.compare) nxAiAppendBubble_('user', label + ': ' + q);
+    else {
+      userMsg = { role: 'user', content: '🔮 ' + q };
+      nxAiConv.messages.push(userMsg);
+      nxAiAppendBubble_('user', label + ' ' + q)._nxMsgRef = userMsg;
+    }
+    var bubble = nxAiAppendBubble_('assistant', '🔮 확장프로그램 연결 확인 중…');
+    var conv = nxAiConv;
+    nxAiEnsureExt_().then(function(ok){
+      if (!ok) throw new Error('NX 외부조회 커넥터 확장프로그램과 연결하지 못했습니다 — 🔌 버튼으로 다시 연결해보세요(확장프로그램을 갱신했다면 이 화면을 새로고침).');
+      bubble.textContent = '🔮 제미니에게 물어보는 중… (제미니 창에서 답이 끝날 때까지 잠시 기다려주세요)';
+      return nxAiAskGemSilent_(fullQ, 150000);
+    }).then(function(r){
+      var ans = (r && r.answer) || '(빈 응답)';
+      var src = (r && r.sources) || [];
+      var note = src.length ? ('✅ 실제 ' + src.join(', ') + ' 데이터 확인됨') : '⚠️ 출처 확인 안 됨 — 일반 지식으로 답했을 수 있습니다';
+      nxAiCountFree_('gem');
+      bubble.innerHTML = '<div class="nxai-local-badge gem">🔮 Gemini · 무료(토큰 0)</div><div class="nxai-md">' + nxAiMd_(ans) + '</div><div style="font-size:11.5px;opacity:.75;margin-top:6px">' + nxAiEsc_(note) + '</div>';
+      var aiMsg = { role: 'assistant', content: (opts.compare ? '[⚖ 동시비교 — 🔮 Gemini 의견]\n' : '[🔮 Gemini 답변]\n') + ans };
+      conv.messages.push(aiMsg); bubble._nxMsgRef = aiMsg;
+      if (conv === nxAiConv) nxAiScheduleSave_();
+    }).catch(function(err){
+      var m = err && err.message;
+      bubble.textContent = '🔮 제미니 자문 실패: ' + (m === 'timeout' ? '시간 초과(제미니 창을 확인해보세요)' : m === 'not_connected' ? '확장프로그램 미연결' : (m || err));
+      if (userMsg){ var i = conv.messages.indexOf(userMsg); if (i !== -1) conv.messages.splice(i, 1); }
+    });
+  }
+  // ============================================================
+  // 🧠 전략 검토 — AI 사용 전략 최상위 단계. 사건자료 정리는 화면이 토큰 0으로 하고(서버 조회),
+  // 최고급 AI는 "어떤 경우의 수를 비교할지 정하고, 계산엔진 결과를 비교·판단"하는 데만 쓴다.
+  // 세액은 반드시 calculate_* 도구(화면과 같은 계산엔진)로 — AI가 직접 셈하지 않는다.
+  // ============================================================
+  var NXAI_STRATEGY_COST_ = { 'claude-fable-5': '약 1,500~4,000원', 'claude-opus-4-8': '약 800~2,000원' };
+  function nxAiCut_(s, n){ s = String(s == null ? '' : s).trim(); return s.length > n ? s.slice(0, n) + '…(생략)' : s; }
+  function nxAiStrategyBrief_(k){
+    var TAX = { transfer: '양도소득세', gift: '증여세', inheritance: '상속세' };
+    var lines = ['[사건 기본]', '사건명: ' + (k.사건명 || ''), '세목: ' + (TAX[k.세목] || k.세목 || ''), '업무유형: ' + (k.업무유형 || ''),
+      '고객: ' + (k.고객명 || '') + (k.납세자 ? ' / 납세자: ' + k.납세자 : ''), '의뢰일: ' + (k.의뢰일 || '') + ' / 기준일: ' + (k.기준일 || '') + ' / 법정일: ' + (k.법정일 || ''), '상태: ' + (k.상태 || '')];
+    // 사건개요는 화면 입력값 객체 — 빈 칸·내부 ID는 빼고 보낸다(토큰 절약, AI에겐 의미 없음)
+    var ov = k.사건개요 || k.개요;
+    if (ov && typeof ov === 'object'){
+      var slim = {}; Object.keys(ov).forEach(function(key){ var v = ov[key]; if (/Id$/.test(key) || v === '' || v == null || (Array.isArray(v) && !v.length)) return; slim[key] = v; });
+      ov = JSON.stringify(slim);
+    }
+    if (ov) lines.push('', '[사건개요]', nxAiCut_(ov, 2500));
+    if (k.처리방향) lines.push('', '[처리방향]', nxAiCut_(k.처리방향, 1200));
+    if (k.처리대상) lines.push('', '[처리대상]', nxAiCut_(typeof k.처리대상 === 'string' ? k.처리대상 : JSON.stringify(k.처리대상), 1200));
+    var calcs = Array.isArray(k.세액계산결과) ? k.세액계산결과 : [];
+    if (calcs.length){
+      lines.push('', '[저장된 세액계산 ' + calcs.length + '건 — 화면 계산엔진 결과]');
+      calcs.slice(-4).forEach(function(e){ lines.push('- ' + (e.세목 || '') + ' ' + (e.구분 || '') + ' (' + (e.계산일 || '') + ')' + (Number.isFinite(e.최종세액) ? ' 최종세액 ' + Number(e.최종세액).toLocaleString('ko-KR') + '원' : ''), nxAiCut_(e.요약, 1500)); });
+    }
+    var ev = Array.isArray(k.증빙목록) ? k.증빙목록 : [];
+    if (ev.length) lines.push('', '[증빙 ' + ev.length + '건]', ev.slice(0, 30).map(function(x){ return '- ' + (x.label || '') + ' (' + (x.status || '') + ')' + (x.note ? ': ' + nxAiCut_(x.note, 80) : ''); }).join('\n'));
+    var law = Array.isArray(k.법령예규판례) ? k.법령예규판례 : [];
+    if (law.length) lines.push('', '[첨부된 법령·예규·판례]', law.slice(0, 15).map(function(x){ return '- ' + nxAiCut_(x.title || x.제목 || x.name || JSON.stringify(x), 120); }).join('\n'));
+    return lines.join('\n');
+  }
+  function nxAiStrategyReview_(){
+    if (nxAiAbort) return;
+    if (!nxAiConv.caseId){ nxAiToast_('🧠 전략 검토는 사건을 연결한 대화에서 씁니다 — 위쪽 🔗로 사건을 먼저 연결하세요.'); return; }
+    var model = nxAiSettings.strategyModel || 'claude-fable-5';
+    var extra = nxAiEl_('nxAiInput').value.trim();
+    nxAiConfirm_('🧠 전략 검토를 시작할까요?\n\n사건: ' + (nxAiConv.caseName || '') + '\n모델: ' + nxAiModelLabel_(model) + ' (최고급)\n예상 비용: ' + (NXAI_STRATEGY_COST_[model] || '수천 원') + ' — 경우의 수가 많을수록 늘어납니다.'
+      + (extra ? '\n\n입력창의 요청도 함께 반영합니다: ' + extra.slice(0, 80) : '')).then(function(ok){
+      if (!ok) return;
+      return callGas('work_get_cases', {}).then(function(res){
+        var k = res && Array.isArray(res.cases) ? res.cases.filter(function(x){ return x.id === nxAiConv.caseId; })[0] : null;
+        if (!k){ nxAiToast_('연결된 사건을 찾지 못했습니다 — 사건을 다시 연결해 주세요.'); return; }
+        var prompt = '[🧠 전략 검토 요청]\n아래 사건자료를 바탕으로 세무사가 고객에게 제시할 전략을 검토하라.\n\n'
+          + nxAiStrategyBrief_(k) + '\n\n[지시]\n'
+          + '1. 이 사건에서 실제로 선택 가능한 경우의 수(예: 양도·증여 시기, 증여 대상·분할, 비과세·감면 특례 적용 여부, 신고 방식)를 2~5개 정하라. 사실관계가 불명확해 결론이 갈리는 점은 가정으로 명시하라.\n'
+          + '2. 각 경우의 세액은 반드시 세액계산 도구(calculate_* 등)로 계산하라 — 직접 암산하거나 추정한 숫자를 쓰지 마라. 계산에 필요한 값이 자료에 없으면 job_lookup·사건 자료 도구로 먼저 찾고, 그래도 없으면 가정값임을 표시하라.\n'
+          + '3. 결과를 표로 비교하라(경우 | 핵심 조건 | 총 세부담 | 장점 | 위험·요건).\n'
+          + '4. 추천안과 그 이유, 요건을 놓치면 생기는 위험, 추가로 확인할 사실·서류를 정리하라. 근거 조문을 밝혀라.\n'
+          + '5. 고객 보고서에 그대로 옮길 수 있게 제목·소제목을 갖춘 문서 형태로 답하라.'
+          + (extra ? '\n\n[세무사 추가 요청]\n' + extra : '');
+        if (extra){ var inp = nxAiEl_('nxAiInput'); inp.value = ''; inp.style.height = 'auto'; }
+        var settings = { model: model, effort: 'high', maxTokens: 16000 };
+        if (nxAiSettings.systemPrompt) settings.systemPrompt = nxAiSettings.systemPrompt;
+        nxAiSendAI_(prompt, { noGem: true, settings: settings, displayText: '🧠 전략 검토 — ' + (k.사건명 || nxAiConv.caseName || '') + (extra ? ' (추가 요청: ' + extra.slice(0, 60) + ')' : '') });
+      });
+    }).catch(function(err){ nxAiToast_('전략 검토를 시작하지 못했습니다: ' + (err && err.message || err)); });
+  }
+
+  // ⚖ 동시비교 — 같은 질문을 제미니와 AI에게 "동시에" 보낸다(한쪽 답을 먼저 보고 질문을 다듬지 않게 — work와 같음).
+  // AI 요청은 보내는 순간의 대화기록으로 나가므로 제미니 답을 보지 않는다(제미니 답은 나중에 기록에 붙음).
+  function nxAiAskBoth_(){
+    var input = nxAiEl_('nxAiInput');
+    var q = input.value.trim();
+    if (!q){ nxAiToast_('AI와 제미니에게 동시에 물어볼 내용을 입력창에 먼저 쓰세요.'); input.focus(); return; }
+    if (nxAiAbort) return;
+    nxAiAskGemManual_(q, { compare: true });
+    nxAiSendAI_(q, { noGem: true });
+    input.value = ''; input.style.height = 'auto';
+  }
+  // 다른 사이트(등기부·실거래가·홈택스 등)에서 Alt+Shift+C로 보낸 글자 → 입력창에 이어 붙인다.
+  function nxAiInsertCapturedText_(text, meta){
+    if (!text || !String(text).trim()) return;
+    nxAiCaptureCount++;
+    var input = nxAiEl_('nxAiInput');
+    var chunk = '[' + nxAiCaptureCount + '] ' + ((meta && meta.title) ? (meta.title + ' ' + (meta.url || '')) : '') + '\n' + String(text).trim();
+    input.value = input.value ? (input.value + '\n\n' + chunk) : chunk;
+    input.dispatchEvent(new Event('input'));
+    nxAiToast_('확장프로그램에서 가져와 AI 입력창에 넣었습니다 (#' + nxAiCaptureCount + (meta && meta.mode === 'selection' ? ' · 선택영역' : ' · 전체 페이지') + ')');
+  }
+  window.addEventListener('message', function(event){
+    if (event.source !== window && !(window.parent !== window && event.source === window.parent)) return;
+    if (nxAiExtTarget && event.source !== nxAiExtTarget) return;
+    var d = event.data;
+    if (!d || d.source !== 'nx-bridge' || !d.type) return;
+    if (d.type === 'NX_HELLO_ACK'){ nxAiExtTarget = event.source; nxAiExtConnected = true; nxAiExtUi_(); return; }
+    if (d.type === 'NX_BRIDGE_PONG'){ nxAiBridgeVer = (d.version || '?') + (d.where === 'parent' ? '·바깥 틀' : ''); return; }
+    if (d.type === 'NX_GEM_PROGRESS') return; // 진행 문구는 생략(말풍선은 "물어보는 중" 그대로)
+    if (d.type === 'NX_GEM_ANSWER' || d.type === 'NX_GEM_ERROR'){
+      var p = nxAiGemPending[d.requestId]; if (!p) return;
+      delete nxAiGemPending[d.requestId];
+      if (d.type === 'NX_GEM_ANSWER') p.resolve({ answer: d.answer || '', sources: d.sources || [] });
+      else p.reject(new Error(d.error || 'gem_error'));
+      return;
+    }
+    if (d.type === 'NX_CAPTURE') return nxAiInsertCapturedText_(d.text, d);
+    if (d.type === 'NX_CAPTURE_IMAGE'){
+      if (d.dataUrl) nxAiAddImage_('화면캡처' + (d.title ? ' · ' + d.title : ''), d.dataUrl);
+      nxAiToast_('확장프로그램에서 화면 캡처를 받아 첨부했습니다.');
+      return;
+    }
+    if (d.type === 'NX_CAPTURE_PDF'){ nxAiToast_('PDF 자동전송은 job에서는 아직 받지 않습니다 — 사건 자료에 직접 올려주세요.'); return; }
+  });
+
+  // 제미니(무료)에 자동으로 먼저 물어볼 질문인지 — work chat.js와 같은 규칙(그대로 유지할 것).
+  // 사건·고객·세금처럼 NX 자료가 필요한 질문은 제미니가 그럴싸하게 지어낼 위험이 있어 전부 뺀다.
+  // 고객 개인정보가 무료 제미니로 나가지 않게 하는 장치이기도 하다.
+  var NXAI_GEM_UNSAFE_RE = /(파일|폴더|저장|불러|읽어|열어|찾아|검색|조회|일정|캘린더|할일|메일|이메일|보내|발송|사건|고객|상담|기억해|등록|계산|세액|세금|양도|증여|상속|취득세|재산세|법인세|소득세|부가가치세|세법|시행령|시행규칙|판례|예규|조문|비과세|감면|공제|세율|공시가격|시세|등기|사업자|주소|건축물|첨부|반영|수정|고쳐|삭제)/;
+  function nxAiIsGemSafe_(text){
+    if (!text || text.length > 200) return false;
+    if (NXAI_GEM_UNSAFE_RE.test(text)) return false;
+    if (NXAI_COMPLEX_RE.test(text)) return false;
+    return true;
+  }
+  var NXAI_GEM_ROUTES = [
+    { app: 'calendar', label: '구글캘린더', re: /(일정|캘린더|스케줄|미팅|약속|몇\s*시|언제)/ },
+    { app: 'gmail', label: 'Gmail', re: /(메일|이메일|편지함|받은편지)/ },
+    { app: 'drive', label: '드라이브', re: /(드라이브|파일|폴더|문서)/ }
+  ];
+  var NXAI_GEM_WRITE_RE = /(추가|등록|삭제|취소|변경|수정|만들어|잡아|저장|고쳐|반영|보내|발송|답장|이동|복사|공유|이름\s*바꿔)/;
+  var NXAI_GEM_STRUCT_RE = /(사건|고객|상담|기억해|계산|세액|세금|양도|증여|상속|취득세|재산세|법인세|소득세|부가가치세|세법|시행령|시행규칙|판례|예규|조문|비과세|감면|공제|세율|공시가격|시세|등기|사업자|주소|건축물|첨부)/;
+  function nxAiDetectGemRoute_(text){
+    if (!text || text.length > 200) return null;
+    if (NXAI_GEM_WRITE_RE.test(text) || NXAI_GEM_STRUCT_RE.test(text) || NXAI_COMPLEX_RE.test(text)) return null;
+    for (var i = 0; i < NXAI_GEM_ROUTES.length; i++) if (NXAI_GEM_ROUTES[i].re.test(text)) return NXAI_GEM_ROUTES[i];
+    return null;
+  }
+
+  // ============================================================
   // 이벤트 연결
   // ============================================================
   (function(){
@@ -45285,6 +45746,28 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     });
     nxAiEl_('nxAiFileInput').addEventListener('change', function(e){ nxAiUploadLocalFiles_(e.target.files); e.target.value = ''; });
     nxAiEl_('nxAiCaptureBtn').addEventListener('click', nxAiCapture_);
+    nxAiEl_('nxAiGemBtn').addEventListener('click', function(){ nxAiAskGemManual_(); });
+    nxAiEl_('nxAiBothBtn').addEventListener('click', nxAiAskBoth_);
+    nxAiEl_('nxAiStrategyBtn').addEventListener('click', nxAiStrategyReview_);
+    nxAiEl_('nxAiClearBtn').addEventListener('click', function(){ var i = nxAiEl_('nxAiInput'); i.value = ''; i.style.height = 'auto'; i.focus(); });
+    (function(){
+      var sel = nxAiEl_('nxAiGemTurns');
+      var saved = nxAiLs_(NXAI_GEM_TURNS_KEY); if (saved) sel.value = saved;
+      sel.addEventListener('change', function(){ nxAiLs_(NXAI_GEM_TURNS_KEY, sel.value); });
+    })();
+    // 🔌 — 다시 연결 + 어디서 끊겼는지 진단(다리가 이 화면에 없음 / 다리는 있는데 확장프로그램 응답 없음)
+    nxAiEl_('nxAiExtBtn').addEventListener('click', function(){
+      nxAiExtConnected = false; nxAiBridgeVer = null; nxAiExtUi_();
+      nxAiExtTarget = null;
+      nxAiExtPost_({ type: 'NX_PING' });
+      nxAiEnsureExt_().then(function(ok){
+        if (ok) return nxAiToast_('NX 외부조회 커넥터 연결됨' + (nxAiBridgeVer ? ' (다리 ' + nxAiBridgeVer + ')' : ''));
+        if (nxAiBridgeVer) return nxAiToast_('다리(' + nxAiBridgeVer + ')는 있는데 확장프로그램이 응답하지 않습니다 — chrome://extensions에서 NETAX 외부조회 커넥터를 새로고침(↻)한 뒤 이 화면을 F5 해주세요.');
+        nxAiToast_('이 화면에 확장프로그램 다리가 없습니다 — chrome://extensions에서 NETAX 외부조회 커넥터의 ↻(새로고침)를 눌러 버전이 1.2.2 이상인지 확인한 뒤 이 화면을 F5 해주세요.');
+      });
+    });
+    // 처음 열 때 몇 번 나눠서 연결을 시도한다(확장프로그램 서비스워커가 잠들어 있으면 첫 인사를 놓칠 수 있음)
+    [0, 1500, 4000, 8000].forEach(function(ms){ setTimeout(function(){ if (!nxAiExtConnected) nxAiExtHello_(); }, ms); });
     // 📋 클립보드 → 입력창(커서 위치). 구글 틀은 clipboard-read를 허용한다(허용목록 확인). 처음엔 브라우저가 허용을 묻는다.
     nxAiEl_('nxAiPasteBtn').addEventListener('click', function(){
       var inp = nxAiEl_('nxAiInput');
