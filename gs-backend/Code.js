@@ -15999,8 +15999,8 @@ function generateDailyBriefing_() {
 function runNightlyChiefManager() {
   try { runNightlySystemAudit(); } catch (err) { console.error('야간 점검 실패: ' + err.message); }
   try { processImprovementRequests(); } catch (err) { console.error('개선요구사항 처리 실패: ' + err.message); }
-  // [2026.09 신규] 매일 실행 — 비교할 새 사본이 없는 날은 API 호출 없이 짧은 리포트만 남긴다.
-  try { runTemplateReview_(); } catch (err) { console.error('템플릿 점검 실패: ' + err.message); }
+  // [2026.10.09] 템플릿 점검(Sonnet)은 야간 자동 실행을 멈추고 "템플릿다듬기" 화면 버튼으로만 돈다 —
+  // 세무사님 결정(시스템 루틴은 토큰 0). 함수·버튼은 그대로 있다.
   try { generateDailyBriefing_(); } catch (err) { console.error('오늘의 요약 생성 실패: ' + err.message); }
   // [2026.09 신규] 사건 폴더 안의 현금영수증 파일을 매일 밤 훑어 자문내역에 자동 기록.
   try { runCashReceiptScan_(); } catch (err) { console.error('현금영수증 자동 인식 실패: ' + err.message); }
@@ -16067,12 +16067,13 @@ function handleGetNightlyStatus(body) {
     });
   }
 
+  // [2026.10.09] 템플릿 점검은 버튼으로만 실행(야간 자동 중단) — 리포트가 없어도 "실행 안 됨" 경고를 띄우지 않는다.
   const tpl = latestOf('_템플릿점검', '템플릿점검_');
   items.push({
-    label: '템플릿 점검',
-    ok: !!tpl,
+    label: '템플릿 점검 (버튼으로만 실행)',
+    ok: true,
     date: tpl ? tpl.date : null,
-    message: tpl ? tpl.content.slice(0, 300) : '오늘·어제 리포트를 찾지 못했습니다.'
+    message: tpl ? tpl.content.slice(0, 300) : '야간 자동 실행을 멈췄습니다(AI 비용 절약) — 필요할 때 템플릿다듬기 화면에서 실행하세요.'
   });
 
   let briefingOk = false, briefingMsg = '파일이 아직 없습니다.', briefingDate = null;
@@ -20312,6 +20313,7 @@ const RH_CONTENT_STYLES_ = {
   google_news: { label: '구글 비즈니스 프로필 게시물', guide: '구글 비즈니스 프로필(지도・검색)에 올릴 짧은 게시물이다. 제목 없이 본문만, 150~300자 내외로 아주 간결하게 핵심만 안내하듯 써라.' }
 };
 
+// [2026.10.09] 세무사님 결정 — 글감 초안은 저가 모델(Haiku)로. 익명화 지시는 프롬프트에 그대로 있다.
 function handleGenerateReportContent(body) {
   const fileId = String((body && body.fileId) || '').trim();
   if (!fileId) return { error: '변환할 보고서를 먼저 골라주세요.' };
@@ -20342,7 +20344,7 @@ function handleGenerateReportContent(body) {
       method: 'post',
       contentType: 'application/json',
       headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      payload: JSON.stringify({ model: DEFAULT_MODEL, max_tokens: 3000, messages: [{ role: 'user', content: prompt }] }),
+      payload: JSON.stringify({ model: LIGHT_MODEL, max_tokens: 3000, messages: [{ role: 'user', content: prompt }] }),
       muteHttpExceptions: true
     });
     const json = JSON.parse(response.getContentText());
@@ -20465,28 +20467,32 @@ function handleNaverCheckConnected(body) {
 // Autofill API는 Enterprise 요금제가 있어야 실사용이 가능해(개발 중 체험판만 무료)
 // 지금 요금제로는 못 쓴다고 확인되어, 이미 이 프로젝트가 쓰고 있는(자문보고서 슬라이드
 // 템플릿) SlidesApp으로 같은 느낌의 디자인을 직접 그린다.
+// [2026.10.09] AI(Haiku) 대신 글 제목을 15자 안팎 2~3줄로 끊어 쓴다 — 비용 0원(세무사님 결정).
+// 낱말(띄어쓰기) 단위로 채워 넣고, 3줄을 넘치면 마지막 줄 끝을 "…"로 줄인다. (bodyPreview·apiKey는 예전 호출 호환용으로만 받음)
 function naver_generateTitleCardLines_(title, bodyPreview, apiKey) {
-  const prompt = '너는 세무 블로그의 썸네일(대표이미지) 카피라이터다. 아래 글의 제목과 본문을 보고, ' +
-    '정사각형 대표이미지에 큼직하게 들어갈 문구를 2~3줄로 짧게 끊어서 만들어라. ' +
-    '예시 스타일: ["어느날 갑자기", "비정기조사를 받게 되는", "가장 큰 이유는?"] 처럼 호기심을 ' +
-    '유발하는 질문형/후킹형 문장이 좋다. 각 줄은 15자 이내로 아주 짧게. ' +
-    '반드시 JSON 배열만 응답하라(다른 설명 금지). 예: ["줄1","줄2","줄3"]\n\n' +
-    '=== 글 제목 ===\n' + title + '\n\n=== 본문 일부 ===\n' + String(bodyPreview || '').slice(0, 1500);
-  const response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
-    method: 'post',
-    contentType: 'application/json',
-    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    payload: JSON.stringify({ model: LIGHT_MODEL, max_tokens: 300, messages: [{ role: 'user', content: prompt }] }),
-    muteHttpExceptions: true
+  const MAX = 15, LINES = 3;
+  const words = String(title || '').replace(/[\[\]【】「」"]/g, ' ').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+  if (!words.length) throw new Error('카드에 쓸 제목이 없습니다.');
+  const lines = [];
+  let cur = '';
+  words.forEach(function (w) {
+    while (w.length > MAX) { if (cur) { lines.push(cur); cur = ''; } lines.push(w.slice(0, MAX)); w = w.slice(MAX); }
+    if (!cur) cur = w;
+    else if ((cur + ' ' + w).length <= MAX) cur += ' ' + w;
+    else { lines.push(cur); cur = w; }
   });
-  const json = JSON.parse(response.getContentText());
-  if (json.error) throw new Error(json.error.message || 'AI 호출 실패');
-  const text = (json.content && json.content[0] && json.content[0].text) || '';
-  const match = text.match(/\[[\s\S]*\]/);
-  if (!match) throw new Error('AI가 카드 문구를 만들지 못했습니다: ' + text.slice(0, 200));
-  const lines = JSON.parse(match[0]);
-  if (!Array.isArray(lines) || !lines.length) throw new Error('AI 응답이 비어 있습니다.');
-  return lines.slice(0, 3).map(String);
+  if (cur) lines.push(cur);
+  // 한 줄짜리 짧은 제목은 두 줄로 나눠 카드가 덜 비어 보이게
+  if (lines.length === 1 && words.length >= 2) {
+    const half = Math.ceil(words.length / 2);
+    return [words.slice(0, half).join(' '), words.slice(half).join(' ')];
+  }
+  if (lines.length > LINES) {
+    const kept = lines.slice(0, LINES);
+    kept[LINES - 1] = kept[LINES - 1].slice(0, MAX - 1) + '…';
+    return kept;
+  }
+  return lines;
 }
 
 // 지금 화면 사용자의 프로필 정보(측면 세로 문구/하단 문구)는 사람마다 다를 수 있으니
@@ -20499,45 +20505,53 @@ function naver_titleCardBrandTexts_() {
   };
 }
 
+// [2026.10.09 버그수정] SlidesApp에는 setPageSize가 없어 이 함수는 처음부터 "pres.setPageSize is not a function"으로
+// 실패하고 있었다(블로그 대표이미지가 한 번도 안 만들어짐 — 토큰0 작업 중 실제 호출로 발견). 기본 와이드(16:9) 슬라이드의
+// 한가운데에 높이만 한 정사각형 영역을 잡아 그 안에 그린다. 배경이 같은 색이라 양옆 여백은 티가 나지 않고,
+// 네이버는 대표이미지를 가운데 정사각형으로 잘라 보여주므로 결과는 정사각형 카드와 같다. 글자 크기는 원래 720pt 기준을 비율로 줄인다.
 function naver_buildTitleCardImage_(lines) {
-  const SIZE = 720;
   const YELLOW = '#f2c744';
   const brand = naver_titleCardBrandTexts_();
   const pres = SlidesApp.create('_titlecard_tmp_' + Utilities.getUuid());
   const file = DriveApp.getFileById(pres.getId());
   try {
-    pres.setPageSize(SIZE, SIZE);
+    const SIZE = pres.getPageHeight();
+    const OX = (pres.getPageWidth() - SIZE) / 2; // 정사각형 영역의 왼쪽 끝
+    const K = SIZE / 720;                         // 글자 크기 비율(원래 디자인은 720pt 정사각형 기준)
     const slide = pres.getSlides()[0];
     slide.getShapes().forEach(function (s) { s.remove(); });
     slide.getBackground().setSolidFill('#1c1c1e');
 
     // 상단 가로선 + 우측 세로선 — 우상단을 감싸는 꺾쇠 장식
-    const hLine = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, SIZE * 0.09, SIZE * 0.055, SIZE * 0.82, 3);
+    const hLine = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, OX + SIZE * 0.09, SIZE * 0.055, SIZE * 0.82, 3);
     hLine.getBorder().setTransparent();
     hLine.getFill().setSolidFill(YELLOW);
-    const vLine = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, SIZE * 0.90, SIZE * 0.055, 3, SIZE * 0.84);
+    const vLine = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, OX + SIZE * 0.90, SIZE * 0.055, 3, SIZE * 0.84);
     vLine.getBorder().setTransparent();
     vLine.getFill().setSolidFill(YELLOW);
 
     // 좌측 세로 문구(경력 소개) — 가로 텍스트박스를 시계방향 90도 회전해 위→아래로 읽히게 한다.
-    const sideBox = slide.insertTextBox(brand.side, -SIZE * 0.28, SIZE * 0.42, SIZE * 0.56, SIZE * 0.09);
+    const sideBox = slide.insertTextBox(brand.side, OX + -SIZE * 0.28, SIZE * 0.42, SIZE * 0.56, SIZE * 0.09);
     sideBox.setRotation(90);
     const sideStyle = sideBox.getText().getTextStyle();
-    sideStyle.setFontSize(9).setForegroundColor('#8a8a8a').setFontFamily('Noto Sans KR');
+    sideStyle.setFontSize(Math.round(9 * K)).setForegroundColor('#8a8a8a').setFontFamily('Noto Sans KR');
 
     // 가운데 큰 제목(2~3줄)
-    const titleBox = slide.insertTextBox(lines.join('\n'), SIZE * 0.15, SIZE * 0.28, SIZE * 0.70, SIZE * 0.42);
+    const titleBox = slide.insertTextBox(lines.join('\n'), OX + SIZE * 0.15, SIZE * 0.28, SIZE * 0.70, SIZE * 0.42);
     const tRange = titleBox.getText();
-    tRange.getTextStyle().setFontSize(34).setBold(true).setForegroundColor('#ffffff').setFontFamily('Noto Sans KR');
+    tRange.getTextStyle().setFontSize(Math.round(34 * K)).setBold(true).setForegroundColor('#ffffff').setFontFamily('Noto Sans KR');
     tRange.getParagraphStyle().setParagraphAlignment(SlidesApp.ParagraphAlignment.CENTER).setLineSpacing(130);
     titleBox.setContentAlignment(SlidesApp.ContentAlignment.MIDDLE);
 
     // 하단 문구
-    const footerBox = slide.insertTextBox(brand.footer, SIZE * 0.09, SIZE * 0.905, SIZE * 0.82, SIZE * 0.06);
-    footerBox.getText().getTextStyle().setFontSize(11).setForegroundColor('#cfcfcf').setFontFamily('Noto Sans KR');
+    const footerBox = slide.insertTextBox(brand.footer, OX + SIZE * 0.09, SIZE * 0.905, SIZE * 0.82, SIZE * 0.06);
+    footerBox.getText().getTextStyle().setFontSize(Math.round(11 * K)).setForegroundColor('#cfcfcf').setFontFamily('Noto Sans KR');
 
     pres.saveAndClose();
 
+    // 슬라이드 → PNG는 Slides API 썸네일로만 확실히 된다(드라이브 "PNG로 내보내기"는 슬라이드 미지원 400,
+    // 드라이브 미리보기(thumbnailLink)는 빈 슬라이드 기준으로 먼저 만들어져 빈 그림이 나옴 — 2026-10-09 둘 다 실측).
+    // Slides API가 이 구글 프로젝트에서 꺼져 있으면(403) 켜는 방법을 그대로 안내한다.
     const presId = pres.getId();
     const pageId = SlidesApp.openById(presId).getSlides()[0].getObjectId();
     const token = ScriptApp.getOAuthToken();
@@ -20546,8 +20560,13 @@ function naver_buildTitleCardImage_(lines) {
       '/thumbnail?thumbnailProperties.mimeType=PNG&thumbnailProperties.thumbnailSize=LARGE',
       { headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true }
     );
-    const thumbJson = JSON.parse(thumbRes.getContentText());
-    if (!thumbJson.contentUrl) throw new Error('썸네일 생성 실패: ' + thumbRes.getContentText().slice(0, 300));
+    const thumbText = thumbRes.getContentText();
+    if (thumbRes.getResponseCode() === 403 && /has not been used|is disabled/.test(thumbText)) {
+      const m = thumbText.match(/https:\/\/console\.developers\.google\.com\/apis\/api\/slides\.googleapis\.com\/overview\?project=\d+/);
+      throw new Error('구글 슬라이드 API가 꺼져 있어 대표이미지를 만들 수 없습니다 — 한 번만 켜주세요: ' + (m ? m[0] : 'Google Cloud 콘솔 → API 및 서비스 → Google Slides API → 사용') + ' (켠 뒤 1~2분 후 다시 시도)');
+    }
+    const thumbJson = JSON.parse(thumbText);
+    if (!thumbJson.contentUrl) throw new Error('썸네일 생성 실패: ' + thumbText.slice(0, 300));
     const imgRes = UrlFetchApp.fetch(thumbJson.contentUrl, { muteHttpExceptions: true });
     return imgRes.getBlob().setName('title-card.png');
   } finally {
@@ -20558,10 +20577,8 @@ function naver_buildTitleCardImage_(lines) {
 function handleNaverGenerateTitleCard(body) {
   const title = String((body && body.title) || '').trim();
   if (!title) return { error: '카드에 쓸 제목이 없습니다.' };
-  const apiKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
-  if (!apiKey) return { error: 'ANTHROPIC_API_KEY가 설정되어 있지 않습니다.' };
   try {
-    const lines = naver_generateTitleCardLines_(title, body && body.body, apiKey);
+    const lines = naver_generateTitleCardLines_(title, body && body.body);
     const blob = naver_buildTitleCardImage_(lines);
     return { lines: lines, imageBase64: Utilities.base64Encode(blob.getBytes()) };
   } catch (err) {
