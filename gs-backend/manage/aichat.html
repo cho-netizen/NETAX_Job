@@ -2285,7 +2285,7 @@
     if (!nxAiConv.caseId){ nxAiToast_('🧠 전략 검토는 사건을 연결한 대화에서 씁니다 — 위쪽 🔗로 사건을 먼저 연결하세요.'); return; }
     var model = nxAiSettings.strategyModel || 'claude-fable-5';
     var extra = nxAiEl_('nxAiInput').value.trim();
-    nxAiConfirm_('🧠 전략 검토를 시작할까요?\n\n사건: ' + (nxAiConv.caseName || '') + '\n모델: ' + nxAiModelLabel_(model) + ' (최고급)\n예상 비용: ' + (NXAI_STRATEGY_COST_[model] || '수천 원') + ' — 경우의 수가 많을수록 늘어납니다.'
+    nxAiConfirm_('🧠 전략 검토를 시작할까요?\n\n사건: ' + (nxAiConv.caseName || '') + '\n모델: ' + nxAiModelLabel_(model) + (/fable|opus/.test(model) ? ' (최고급)' : '') + '\n예상 비용: ' + (NXAI_STRATEGY_COST_[model] || '수천 원') + ' — 경우의 수가 많을수록 늘어납니다.'
       + (extra ? '\n\n입력창의 요청도 함께 반영합니다: ' + extra.slice(0, 80) : '')).then(function(ok){
       if (!ok) return;
       return callGas('work_get_cases', {}).then(function(res){
