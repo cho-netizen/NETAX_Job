@@ -806,6 +806,7 @@ const DRIVE_TOOLS = [
         },
         nonHeirPriorGiftTaxableBaseTotal: { type: 'number', description: '수유자가 아닌 자에게 한 사전증여(§13①2호)로 상속재산에 가산된 증여재산의 과세표준 합계(원, 있으면). §28② 증여세액공제 정밀계산(시행령§3①1호 가목)에 반영된다 — 없으면 상속인분(1호)만 반영되어 공제액이 부정확할 수 있다.' },
         nonHeirPriorGiftAmountTotal: { type: 'number', description: '수유자가 아닌 자에게 한 사전증여(§13①2호) 재산가액 합계(원, 있으면). §28② 증여세액공제 정밀계산(시행령§3①1호 나목)에 반영된다.' },
+        nonHeirPriorGiftTaxPaidTotal: { type: 'number', description: '위 상속인 아닌 자에 대한 사전증여(§13①2호) 당시의 증여세 산출세액 합계(원). §28②에 따라 상속세산출세액×(그 증여재산 과세표준÷상속세 과세표준)을 한도로 공제된다. 없으면 생략.' },
         disclaimedShareRedistributedAmount: { type: 'number', description: '상속공제 종합한도(§24) 계산용 — 선순위 상속인의 상속포기로 다음 순위 상속인이 받은 재산가액(원). 없으면 생략.' },
         specialGiftTaxCredit: { type: 'number', description: '조특법§30의5·6(창업자금·가업승계 증여세 과세특례)에 따라 이미 납부한 증여세액공제(원). 세액 자체는 이 도구가 계산하지 않으므로 별도로 계산해서 입력한다. 없으면 생략.' },
         foreignTaxPaidAmount: { type: 'number', description: '국외재산에 대해 외국에서 이미 납부한 상속세액(원, 외국납부세액공제 §29) — 공제 한도(실제 납부액 초과 불가).' },
@@ -23946,7 +23947,24 @@ const SELF_CHECK_CALC_CASES_ = [
     expect: { 과세표준: 100000000, 납부세액: 9700000 } },
   { name: '상속세 과세가액 20억(배우자·자녀2)', tool: 'calculate_inheritance_tax',
     input: { taxableEstateAmount: 2000000000, hasSpouse: true, childCount: 2 },
-    expect: { 과세표준: 995000000, 납부세액: 231345000 } }
+    expect: { 과세표준: 995000000, 납부세액: 231345000 } },
+  // [2026.10.09] 복잡 시나리오 점검에서 법 조문 손계산과 대조해 확정한 사례들
+  { name: '양도세 8년 자경농지(9억/1억, 감면 1억 한도)', tool: 'calculate_transfer_tax',
+    input: { transferPrice: 900000000, acquisitionPrice: 100000000, acquisitionDate: '2000-01-01', transferDate: '2026-01-02', assetType: 'other', isEightYearFarmland: true },
+    expect: { 과세표준: 557500000, 자경농지감면액: 100000000, 산출세액: 98210000, 납부세액_합계: 108031000 } },
+  { name: '증여세 세대생략 미성년 3억(할증 30%)', tool: 'calculate_gift_tax',
+    input: { giftAmount: 300000000, relation: '직계존속', isMinor: true, isGenerationSkip: true, giftDate: '2026-03-02' },
+    expect: { 과세표준: 280000000, 산출세액_할증후: 59800000, 납부세액: 58006000 } },
+  { name: '증여세 부담부증여 10억(채무 4억 인정)', tool: 'calculate_gift_tax',
+    input: { giftAmount: 1000000000, relation: '직계존속', debtAssumedAmount: 400000000, isDebtObjectivelyProven: true, giftDate: '2026-03-02' },
+    expect: { 과세표준: 550000000, 납부세액: 101850000 } },
+  { name: '상속세 복합(유증·상속인/비상속인 사전증여·대습·세대생략)', tool: 'calculate_inheritance_tax',
+    input: { taxableEstateAmount: 3100000000, funeralCostAmount: 12000000, hasSpouse: true, childCount: 2, spouseActualInheritedAmount: 1000000000, spouseLegalShareRatio: 1.5 / 3.5,
+      nonHeirBequestAmount: 300000000, giftToHeirsWithin10Years: 300000000, priorGiftedAmountIncludedInEstate: 400000000, totalGrossEstateValue: 3000000000,
+      netFinancialAssets: 400000000, nonHeirPriorGiftTaxableBaseTotal: 90000000, nonHeirPriorGiftAmountTotal: 100000000, nonHeirPriorGiftTaxPaidTotal: 9000000,
+      priorGiftHeirs: [{ name: '아들', actualInheritedValue: 700000000, priorGiftAmount: 300000000, priorGiftTaxableBase: 250000000, priorGiftTaxPaid: 40000000 }, { name: '배우자', actualInheritedValue: 1000000000 }, { name: '대습손자', actualInheritedValue: 700000000 }],
+      generationSkipHeirRatio: 1 / 31, dateOfDeath: '2026-03-01' },
+    expect: { 과세표준: 1510000000, 기납부증여세액공제: 49000000, 납부세액: 387317871 } }
 ];
 function runSelfCheck_() {
   const items = [];

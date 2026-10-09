@@ -2463,8 +2463,16 @@
     // 가목·나목 산식에 정확히 반영된다.
     const priorGiftCreditResult = priorGiftTaxCreditPrecise(taxBeforePremium, taxBase, effectiveEstateAmount, priorGiftHeirs,
       Number(p.nonHeirPriorGiftTaxableBaseTotal) || 0, Number(p.nonHeirPriorGiftAmountTotal) || 0);
-    const priorGiftTaxCredit = priorGiftCreditResult.totalCredit;
     const giftCreditExcludedBySmallEstate = priorGiftCreditResult.excludedBySmallEstate;
+    // [2026.10.09 법령보완] §28② — 수증자가 상속인·수유자가 아닌 사전증여(§13①2호, 5년 이내)의 증여세액도 공제한다.
+    // 한도 = 상속세산출세액 × (가산한 그 증여재산의 과세표준 ÷ 상속세 과세표준). 예전엔 상속인분만 공제해(priorGiftHeirs)
+    // 사위·손자녀 등에게 한 사전증여의 증여세가 빠져 상속세가 그만큼 많게 나왔다(복잡 시나리오 점검에서 발견).
+    const nonHeirPriorGiftTaxPaid = Number(p.nonHeirPriorGiftTaxPaidTotal) || 0;
+    const nonHeirPriorGiftBaseForCredit = Number(p.nonHeirPriorGiftTaxableBaseTotal) || 0;
+    const nonHeirPriorGiftCreditLimit = (taxBase > 0 && nonHeirPriorGiftBaseForCredit > 0)
+      ? Math.round(taxBeforePremium * Math.min(1, nonHeirPriorGiftBaseForCredit / taxBase)) : 0;
+    const nonHeirPriorGiftTaxCredit = giftCreditExcludedBySmallEstate ? 0 : Math.min(nonHeirPriorGiftTaxPaid, nonHeirPriorGiftCreditLimit);
+    const priorGiftTaxCredit = priorGiftCreditResult.totalCredit + nonHeirPriorGiftTaxCredit;
     const specialGiftTaxCredit = Math.min(Number(p.specialGiftTaxCredit) || 0, Math.max(0, taxBeforePremium - priorGiftTaxCredit));
     // §29·시행령§21① — 외국납부세액공제 = 상속세산출세액 × (외국법령에 따라 상속세가 부과된 상속재산의
     // 과세표준(해당 외국 법령 기준) ÷ 법§25①에 따른 상속세의 과세표준). 다만 이 금액이 외국법령에 따라
@@ -2550,7 +2558,7 @@
       상속공제_합계: totalDeduction, 상속공제종합한도_적용여부: overallLimitApplied, 과세표준: taxBase,
       산출세액: calculatedTax, 세대생략가산액: generationSkipPremium,
       세대생략할증_미성년자여부확인필요: generationSkipMinorStatusUnverified,
-      기납부증여세액공제: priorGiftTaxCredit, 증여세액공제_5억이하배제: giftCreditExcludedBySmallEstate, 증여세액공제_상속인별내역: priorGiftCreditResult.perHeir,
+      기납부증여세액공제: priorGiftTaxCredit, 기납부증여세액공제_상속인외: nonHeirPriorGiftTaxCredit, 기납부증여세액공제_상속인외한도: nonHeirPriorGiftCreditLimit, 증여세액공제_5억이하배제: giftCreditExcludedBySmallEstate, 증여세액공제_상속인별내역: priorGiftCreditResult.perHeir,
       특례증여세액공제: specialGiftTaxCredit, 외국납부세액공제: foreignTaxCredit, 단기재상속세액공제: shortTermCredit, 그밖의공제: otherCreditsAmount,
       신고세액공제: reportCredit, 이자상당액: interestAmount, 영리법인면제분납부세액: forProfitPayableByHeirs,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty,

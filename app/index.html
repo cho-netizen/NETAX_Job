@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 02:57 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-09 04:46 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -11487,8 +11487,16 @@
     // 가목·나목 산식에 정확히 반영된다.
     const priorGiftCreditResult = priorGiftTaxCreditPrecise(taxBeforePremium, taxBase, effectiveEstateAmount, priorGiftHeirs,
       Number(p.nonHeirPriorGiftTaxableBaseTotal) || 0, Number(p.nonHeirPriorGiftAmountTotal) || 0);
-    const priorGiftTaxCredit = priorGiftCreditResult.totalCredit;
     const giftCreditExcludedBySmallEstate = priorGiftCreditResult.excludedBySmallEstate;
+    // [2026.10.09 법령보완] §28② — 수증자가 상속인·수유자가 아닌 사전증여(§13①2호, 5년 이내)의 증여세액도 공제한다.
+    // 한도 = 상속세산출세액 × (가산한 그 증여재산의 과세표준 ÷ 상속세 과세표준). 예전엔 상속인분만 공제해(priorGiftHeirs)
+    // 사위·손자녀 등에게 한 사전증여의 증여세가 빠져 상속세가 그만큼 많게 나왔다(복잡 시나리오 점검에서 발견).
+    const nonHeirPriorGiftTaxPaid = Number(p.nonHeirPriorGiftTaxPaidTotal) || 0;
+    const nonHeirPriorGiftBaseForCredit = Number(p.nonHeirPriorGiftTaxableBaseTotal) || 0;
+    const nonHeirPriorGiftCreditLimit = (taxBase > 0 && nonHeirPriorGiftBaseForCredit > 0)
+      ? Math.round(taxBeforePremium * Math.min(1, nonHeirPriorGiftBaseForCredit / taxBase)) : 0;
+    const nonHeirPriorGiftTaxCredit = giftCreditExcludedBySmallEstate ? 0 : Math.min(nonHeirPriorGiftTaxPaid, nonHeirPriorGiftCreditLimit);
+    const priorGiftTaxCredit = priorGiftCreditResult.totalCredit + nonHeirPriorGiftTaxCredit;
     const specialGiftTaxCredit = Math.min(Number(p.specialGiftTaxCredit) || 0, Math.max(0, taxBeforePremium - priorGiftTaxCredit));
     // §29·시행령§21① — 외국납부세액공제 = 상속세산출세액 × (외국법령에 따라 상속세가 부과된 상속재산의
     // 과세표준(해당 외국 법령 기준) ÷ 법§25①에 따른 상속세의 과세표준). 다만 이 금액이 외국법령에 따라
@@ -11574,7 +11582,7 @@
       상속공제_합계: totalDeduction, 상속공제종합한도_적용여부: overallLimitApplied, 과세표준: taxBase,
       산출세액: calculatedTax, 세대생략가산액: generationSkipPremium,
       세대생략할증_미성년자여부확인필요: generationSkipMinorStatusUnverified,
-      기납부증여세액공제: priorGiftTaxCredit, 증여세액공제_5억이하배제: giftCreditExcludedBySmallEstate, 증여세액공제_상속인별내역: priorGiftCreditResult.perHeir,
+      기납부증여세액공제: priorGiftTaxCredit, 기납부증여세액공제_상속인외: nonHeirPriorGiftTaxCredit, 기납부증여세액공제_상속인외한도: nonHeirPriorGiftCreditLimit, 증여세액공제_5억이하배제: giftCreditExcludedBySmallEstate, 증여세액공제_상속인별내역: priorGiftCreditResult.perHeir,
       특례증여세액공제: specialGiftTaxCredit, 외국납부세액공제: foreignTaxCredit, 단기재상속세액공제: shortTermCredit, 그밖의공제: otherCreditsAmount,
       신고세액공제: reportCredit, 이자상당액: interestAmount, 영리법인면제분납부세액: forProfitPayableByHeirs,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty,
@@ -24256,7 +24264,9 @@ function buildTransferCalcBasisLines(r){
   lines.push('양도소득금액 = 과세대상양도차익 - 장기보유특별공제액 = ' + won(gainForRate) + ' - ' + won(r.장기보유특별공제액) + ' = ' + won(r.양도소득금액));
   lines.push('기본공제 = ' + won(r.기본공제));
   lines.push('과세표준 = 양도소득금액 - 기본공제 = ' + won(r.양도소득금액) + ' - ' + won(r.기본공제) + ' = ' + won(r.과세표준));
-  lines.push('산출세액(' + r.적용세율_설명 + ') = ' + won(r.산출세액));
+  // [2026.10.09] 엔진의 산출세액은 감면·추징을 이미 반영한 결정세액이다 — 감면이 있으면 감면 전 금액을 먼저 보여주고 끝에 결정세액을 적는다(산출 98,210,000 다음 감면 -1억처럼 안 맞아 보이던 것).
+  const trAdjust_ = (r.자경농지감면액 || 0) + (r.수용감면액 || 0) - (r.자경농지감면_추징액 || 0) - (r.채권만기특약위반_추징액 || 0) - (r.다운계약서_감면배제_추징액 || 0);
+  lines.push('산출세액(' + r.적용세율_설명 + (trAdjust_ ? ', 감면 전' : '') + ') = ' + won(r.산출세액 + trAdjust_));
   (r.세율가산_내역 || []).forEach(function(n){ lines.push('· ' + n); });
   if (r.자경농지감면액) lines.push((r.자경농지감면_구분 || '8년 자경농지 감면(조특법§69)') + ' = -' + won(r.자경농지감면액));
   if (r.자경농지감면_요건안내) lines.push('※ ' + r.자경농지감면_요건안내);
@@ -24265,6 +24275,7 @@ function buildTransferCalcBasisLines(r){
   if (r.수용감면_요건안내) lines.push('※ ' + r.수용감면_요건안내);
   if (r.채권만기특약위반_추징액) lines.push('채권 만기특약 위반 추징(조특법§77④) = +' + won(r.채권만기특약위반_추징액));
   if (r.다운계약서_감면배제_추징액) lines.push('다운계약서 감면배제 추징(소득세법§91②) = +' + won(r.다운계약서_감면배제_추징액));
+  if (trAdjust_) lines.push('결정세액 = ' + won(r.산출세액));
   if (r.연금계좌세액공제) lines.push('연금계좌세액공제(조특법§99의14) = -' + won(r.연금계좌세액공제));
   if (r.연금계좌세액공제_추징액) lines.push('연금계좌세액공제 추징(§99의14②, 5년내 연금외수령) = +' + won(r.연금계좌세액공제_추징액));
   if (r.전자신고세액공제) lines.push('전자신고세액공제 = -' + won(r.전자신고세액공제));
@@ -26401,11 +26412,14 @@ function trRateDetailRecord_(rateClass, r, splitAmt){ // rateClass: '00'(국세 
   const 양도소득금액 = isLocal ? 0 : (r.합산소득금액 || 0);
   const 기본공제 = isLocal ? 0 : (r.기본공제 || 0);
   const 과세표준 = r.합산과세표준 || 0;
-  const 산출세액 = isLocal ? localTax : (r.산출세액_합계 || 0);
   // [2026.10.01 정정, 재검토102] 조특법 세액감면 5종(합산조특법세액감면액)도 산출세액에 이미
   // 반영돼 있는데 이 합계에서 빠져있었다 — trPrintFormPageHtml_과 동일 수정.
   const 국세감면세액 = (r.합산자경감면액 || 0) + (r.합산수용감면액 || 0) + (r.합산조특법세액감면액 || 0);
   const 감면세액 = isLocal ? Math.round(국세감면세액 * 0.1) : 국세감면세액;
+  // [2026.10.09 버그수정] 엔진의 산출세액_합계·지방소득세는 감면(자경·수용·조특법)을 이미 뺀 순액이다. 서식·전자신고의
+  // "산출세액" 칸에 그 순액을 넣고 바로 아래 "감면세액"을 또 적으면 산출−감면≠납부세액이 된다(8년 자경 9억 양도 예:
+  // 산출 98,210,000 − 감면 100,000,000 = 음수, 자진납부 98,210,000) — 홈택스 검증 불일치. 산출세액 칸은 감면 전 금액으로 적는다.
+  const 산출세액 = (isLocal ? localTax : (r.산출세액_합계 || 0)) + 감면세액;
   const 국세가산세_신고 = (r.무신고가산세 || 0) + (r.과소신고가산세 || 0);
   const 국세가산세_납부 = r.납부지연가산세 || 0;
   const 가산세_신고 = isLocal ? Math.round(국세가산세_신고 * 0.1) : 국세가산세_신고;
@@ -27410,7 +27424,7 @@ function trPrintFormPageHtml_(seller, r, buyers, assets){
       pfRow_(++n, '양도소득금액', won(r.합산소득금액)) +
       pfRow_(++n, '양도소득기본공제', won(r.기본공제)) +
       pfRow_(++n, '과세표준', won(r.합산과세표준)) +
-      pfRow_(++n, '산출세액', won(r.산출세액_합계)) +
+      pfRow_(++n, '산출세액', won((r.산출세액_합계 || 0) + nationalReduction)) + // 감면 전 금액(아래 감면세액을 빼면 결정세액)
       pfRow_(++n, '감면세액', won(nationalReduction)) +
       pfRow_(++n, '신고불성실가산세', won(r.무신고가산세 || r.과소신고가산세 ? reportPenalty : 0)) +
       pfRow_(++n, '납부지연가산세', won(latePenalty)) +
@@ -27653,7 +27667,7 @@ function wtRateDetailRecord_(r){
   b = b.concat(ihPadChar_('00', 2));                          // 5 세율구분코드(합계는 00)
   b = b.concat(ihPadNum_(taxBase, 14));                       // 6 과세표준
   b = b.concat(ihPadDec_(0, 4, 3));                           // 7 세율(신고합계행은 국세 파일과 동일하게 0 고정 — 자산별 세율구분 상세행은 미구현)
-  b = b.concat(ihPadNum_(localTax, 14));                      // 8 산출세액
+  b = b.concat(ihPadNum_(localTax + localReduction, 14));     // 8 산출세액(감면 전 — 9 감면세액을 빼면 결정세액, 2026.10.09 정정)
   b = b.concat(ihPadNum_(localReduction, 14));                // 9 감면세액
   b = b.concat(ihPadNum_(nationalForeignCredit, 14));         // 10 외국납부세액공제
   b = b.concat(ihPadNum_(0, 14));                             // 11 예정신고납부세액공제(0 고정)
@@ -27821,8 +27835,10 @@ function renderInheritancePane(){
         // 가 있으면 ①공제적용종합한도(§24 3호) 차감액과 ②증여세액공제(§28) 정밀계산이 모두
         // 이 값을 반영해야 하는데, 입력칸 자체가 없어 항상 0으로 계산되고 있었다(상속인이
         // 아닌 자에 대한 사전증여 사건에서 상속공제 한도가 과다산정되는 방향으로 작용).
-        '<div class="taxcalc-field"><label>10년내 상속인 아닌 자에게 증여한 재산가액 합계(§13①2호)</label><input type="number" id="ihNonHeirPriorGiftAmount" placeholder="원"><span class="taxcalc-field-help">손자녀·제3자 등, 없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>5년내 상속인 아닌 자에게 증여한 재산가액 합계(§13①2호)</label><input type="number" id="ihNonHeirPriorGiftAmount" placeholder="원"><span class="taxcalc-field-help">손자녀·제3자 등, 없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>위 사전증여분 증여세 과세표준 합계</label><input type="number" id="ihNonHeirPriorGiftBase" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        // [2026.10.09] §28② — 상속인 아닌 자에 대한 사전증여의 증여세도 상속세에서 공제(한도 있음). 예전엔 입력칸이 없어 공제가 빠졌다.
+        '<div class="taxcalc-field"><label>위 사전증여분 증여세 산출세액 합계(§28② 공제)</label><input type="number" id="ihNonHeirPriorGiftTaxPaid" placeholder="원"><span class="taxcalc-field-help">상속세에서 공제(한도: 산출세액×과세표준 비율), 없으면 비움</span></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>그 밖의 상속공제</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -34191,6 +34207,7 @@ function handleTaxCalcClick_(e){
       spouseTaxableBaseOfPriorGift: numVal(document.getElementById('ihSpouseGiftBase').value) || 0,
       nonHeirPriorGiftAmountTotal: numVal(document.getElementById('ihNonHeirPriorGiftAmount').value) || 0,
       nonHeirPriorGiftTaxableBaseTotal: numVal(document.getElementById('ihNonHeirPriorGiftBase').value) || 0,
+      nonHeirPriorGiftTaxPaidTotal: numVal((document.getElementById('ihNonHeirPriorGiftTaxPaid') || {}).value) || 0,
       childCount: numVal(document.getElementById('ihChildCount').value) || 0,
       minorHeirRemainingYears: numVal(document.getElementById('ihMinorYears').value) || 0,
       elderlyHeirCount: numVal(document.getElementById('ihElderlyCount').value) || 0,

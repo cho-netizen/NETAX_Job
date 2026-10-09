@@ -6608,7 +6608,9 @@ function buildTransferCalcBasisLines(r){
   lines.push('양도소득금액 = 과세대상양도차익 - 장기보유특별공제액 = ' + won(gainForRate) + ' - ' + won(r.장기보유특별공제액) + ' = ' + won(r.양도소득금액));
   lines.push('기본공제 = ' + won(r.기본공제));
   lines.push('과세표준 = 양도소득금액 - 기본공제 = ' + won(r.양도소득금액) + ' - ' + won(r.기본공제) + ' = ' + won(r.과세표준));
-  lines.push('산출세액(' + r.적용세율_설명 + ') = ' + won(r.산출세액));
+  // [2026.10.09] 엔진의 산출세액은 감면·추징을 이미 반영한 결정세액이다 — 감면이 있으면 감면 전 금액을 먼저 보여주고 끝에 결정세액을 적는다(산출 98,210,000 다음 감면 -1억처럼 안 맞아 보이던 것).
+  const trAdjust_ = (r.자경농지감면액 || 0) + (r.수용감면액 || 0) - (r.자경농지감면_추징액 || 0) - (r.채권만기특약위반_추징액 || 0) - (r.다운계약서_감면배제_추징액 || 0);
+  lines.push('산출세액(' + r.적용세율_설명 + (trAdjust_ ? ', 감면 전' : '') + ') = ' + won(r.산출세액 + trAdjust_));
   (r.세율가산_내역 || []).forEach(function(n){ lines.push('· ' + n); });
   if (r.자경농지감면액) lines.push((r.자경농지감면_구분 || '8년 자경농지 감면(조특법§69)') + ' = -' + won(r.자경농지감면액));
   if (r.자경농지감면_요건안내) lines.push('※ ' + r.자경농지감면_요건안내);
@@ -6617,6 +6619,7 @@ function buildTransferCalcBasisLines(r){
   if (r.수용감면_요건안내) lines.push('※ ' + r.수용감면_요건안내);
   if (r.채권만기특약위반_추징액) lines.push('채권 만기특약 위반 추징(조특법§77④) = +' + won(r.채권만기특약위반_추징액));
   if (r.다운계약서_감면배제_추징액) lines.push('다운계약서 감면배제 추징(소득세법§91②) = +' + won(r.다운계약서_감면배제_추징액));
+  if (trAdjust_) lines.push('결정세액 = ' + won(r.산출세액));
   if (r.연금계좌세액공제) lines.push('연금계좌세액공제(조특법§99의14) = -' + won(r.연금계좌세액공제));
   if (r.연금계좌세액공제_추징액) lines.push('연금계좌세액공제 추징(§99의14②, 5년내 연금외수령) = +' + won(r.연금계좌세액공제_추징액));
   if (r.전자신고세액공제) lines.push('전자신고세액공제 = -' + won(r.전자신고세액공제));
@@ -8753,11 +8756,14 @@ function trRateDetailRecord_(rateClass, r, splitAmt){ // rateClass: '00'(국세 
   const 양도소득금액 = isLocal ? 0 : (r.합산소득금액 || 0);
   const 기본공제 = isLocal ? 0 : (r.기본공제 || 0);
   const 과세표준 = r.합산과세표준 || 0;
-  const 산출세액 = isLocal ? localTax : (r.산출세액_합계 || 0);
   // [2026.10.01 정정, 재검토102] 조특법 세액감면 5종(합산조특법세액감면액)도 산출세액에 이미
   // 반영돼 있는데 이 합계에서 빠져있었다 — trPrintFormPageHtml_과 동일 수정.
   const 국세감면세액 = (r.합산자경감면액 || 0) + (r.합산수용감면액 || 0) + (r.합산조특법세액감면액 || 0);
   const 감면세액 = isLocal ? Math.round(국세감면세액 * 0.1) : 국세감면세액;
+  // [2026.10.09 버그수정] 엔진의 산출세액_합계·지방소득세는 감면(자경·수용·조특법)을 이미 뺀 순액이다. 서식·전자신고의
+  // "산출세액" 칸에 그 순액을 넣고 바로 아래 "감면세액"을 또 적으면 산출−감면≠납부세액이 된다(8년 자경 9억 양도 예:
+  // 산출 98,210,000 − 감면 100,000,000 = 음수, 자진납부 98,210,000) — 홈택스 검증 불일치. 산출세액 칸은 감면 전 금액으로 적는다.
+  const 산출세액 = (isLocal ? localTax : (r.산출세액_합계 || 0)) + 감면세액;
   const 국세가산세_신고 = (r.무신고가산세 || 0) + (r.과소신고가산세 || 0);
   const 국세가산세_납부 = r.납부지연가산세 || 0;
   const 가산세_신고 = isLocal ? Math.round(국세가산세_신고 * 0.1) : 국세가산세_신고;
@@ -9762,7 +9768,7 @@ function trPrintFormPageHtml_(seller, r, buyers, assets){
       pfRow_(++n, '양도소득금액', won(r.합산소득금액)) +
       pfRow_(++n, '양도소득기본공제', won(r.기본공제)) +
       pfRow_(++n, '과세표준', won(r.합산과세표준)) +
-      pfRow_(++n, '산출세액', won(r.산출세액_합계)) +
+      pfRow_(++n, '산출세액', won((r.산출세액_합계 || 0) + nationalReduction)) + // 감면 전 금액(아래 감면세액을 빼면 결정세액)
       pfRow_(++n, '감면세액', won(nationalReduction)) +
       pfRow_(++n, '신고불성실가산세', won(r.무신고가산세 || r.과소신고가산세 ? reportPenalty : 0)) +
       pfRow_(++n, '납부지연가산세', won(latePenalty)) +
@@ -10005,7 +10011,7 @@ function wtRateDetailRecord_(r){
   b = b.concat(ihPadChar_('00', 2));                          // 5 세율구분코드(합계는 00)
   b = b.concat(ihPadNum_(taxBase, 14));                       // 6 과세표준
   b = b.concat(ihPadDec_(0, 4, 3));                           // 7 세율(신고합계행은 국세 파일과 동일하게 0 고정 — 자산별 세율구분 상세행은 미구현)
-  b = b.concat(ihPadNum_(localTax, 14));                      // 8 산출세액
+  b = b.concat(ihPadNum_(localTax + localReduction, 14));     // 8 산출세액(감면 전 — 9 감면세액을 빼면 결정세액, 2026.10.09 정정)
   b = b.concat(ihPadNum_(localReduction, 14));                // 9 감면세액
   b = b.concat(ihPadNum_(nationalForeignCredit, 14));         // 10 외국납부세액공제
   b = b.concat(ihPadNum_(0, 14));                             // 11 예정신고납부세액공제(0 고정)
@@ -10173,8 +10179,10 @@ function renderInheritancePane(){
         // 가 있으면 ①공제적용종합한도(§24 3호) 차감액과 ②증여세액공제(§28) 정밀계산이 모두
         // 이 값을 반영해야 하는데, 입력칸 자체가 없어 항상 0으로 계산되고 있었다(상속인이
         // 아닌 자에 대한 사전증여 사건에서 상속공제 한도가 과다산정되는 방향으로 작용).
-        '<div class="taxcalc-field"><label>10년내 상속인 아닌 자에게 증여한 재산가액 합계(§13①2호)</label><input type="number" id="ihNonHeirPriorGiftAmount" placeholder="원"><span class="taxcalc-field-help">손자녀·제3자 등, 없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>5년내 상속인 아닌 자에게 증여한 재산가액 합계(§13①2호)</label><input type="number" id="ihNonHeirPriorGiftAmount" placeholder="원"><span class="taxcalc-field-help">손자녀·제3자 등, 없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>위 사전증여분 증여세 과세표준 합계</label><input type="number" id="ihNonHeirPriorGiftBase" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        // [2026.10.09] §28② — 상속인 아닌 자에 대한 사전증여의 증여세도 상속세에서 공제(한도 있음). 예전엔 입력칸이 없어 공제가 빠졌다.
+        '<div class="taxcalc-field"><label>위 사전증여분 증여세 산출세액 합계(§28② 공제)</label><input type="number" id="ihNonHeirPriorGiftTaxPaid" placeholder="원"><span class="taxcalc-field-help">상속세에서 공제(한도: 산출세액×과세표준 비율), 없으면 비움</span></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>그 밖의 상속공제</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -16543,6 +16551,7 @@ function handleTaxCalcClick_(e){
       spouseTaxableBaseOfPriorGift: numVal(document.getElementById('ihSpouseGiftBase').value) || 0,
       nonHeirPriorGiftAmountTotal: numVal(document.getElementById('ihNonHeirPriorGiftAmount').value) || 0,
       nonHeirPriorGiftTaxableBaseTotal: numVal(document.getElementById('ihNonHeirPriorGiftBase').value) || 0,
+      nonHeirPriorGiftTaxPaidTotal: numVal((document.getElementById('ihNonHeirPriorGiftTaxPaid') || {}).value) || 0,
       childCount: numVal(document.getElementById('ihChildCount').value) || 0,
       minorHeirRemainingYears: numVal(document.getElementById('ihMinorYears').value) || 0,
       elderlyHeirCount: numVal(document.getElementById('ihElderlyCount').value) || 0,
