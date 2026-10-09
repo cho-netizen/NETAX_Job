@@ -19236,6 +19236,11 @@ function client_addConsultLog(params) {
 // 이름 앞에 "1 "을 붙여(0_NX_0의 "0_"과 같은 원리) 진짜 사건 폴더들(고객명으로 시작)보다
 // 위쪽에 정렬되게 한다.
 const WORK_CONSULT_SHARED_FOLDER_NAME_ = '1 상담사건';
+// [2026.10.09] 고객사건 폴더 바로 밑의 특수폴더(사건이 아님) — 사건 흡수·미연결/미등록 폴더 점검이 사건으로 잘못 잡지 않게 한곳에서 관리.
+// 예전엔 0_NX_0만 이름으로 빼고 있어 '1 상담사건'이 정비 버튼에 사건으로 잡힐 수 있었다. 새 특수폴더를 고객사건 밑에 만들면 여기에 추가할 것.
+// (후속확인 과제 목록은 고객사건이 아니라 상위 '0 NETAX/_확인조치사항.md'에 둔다 — 세무사님 지정 2026-10-10)
+const WORK_SPECIAL_ROOT_FOLDERS_ = ['0_NX_0', '1 상담사건'];
+function work_isSpecialRootFolder_(name) { return WORK_SPECIAL_ROOT_FOLDERS_.indexOf(String(name || '').trim()) !== -1; }
 function getConsultSharedFolder_() {
   const root = getDefaultFolder();
   if (!root) return null;
@@ -21703,6 +21708,7 @@ function auditUnregisteredCaseFolders_() {
     const f = iter.next();
     total++;
     if (registered[f.getId()]) continue;
+    if (work_isSpecialRootFolder_(f.getName())) continue;
     let hasReportStructure = false;
     try {
       hasReportStructure = f.getFoldersByName(WORK_SUBFOLDER_INTERNAL_REPORT).hasNext() || f.getFoldersByName(MY_SUBFOLDER_REPORT).hasNext();
@@ -21786,7 +21792,7 @@ function absorbLegacyCaseFolders_() {
       const fid = f.getId();
       if (registered[fid]) continue;
       const folderName = f.getName();
-      if (folderName === '0_NX_0') continue; // 사건이 아니라 고객별로 안 나뉜 현금영수증 임시보관함 — 따로 처리
+      if (work_isSpecialRootFolder_(folderName)) continue; // 사건이 아닌 특수폴더(0_NX_0 현금영수증 보관함·1 상담사건·1 확인조치사항)
       const 고객명 = guessCustomerName_(folderName);
       const 세목 = guessSemok_(folderName);
       const clientMatch = client_findOrCreateByName_(고객명, '');
@@ -23555,7 +23561,7 @@ function work_auditUnlinkedCaseFolders_() {
   while (iter.hasNext()) {
     const f = iter.next();
     if (registered[f.getId()]) continue;
-    if (f.getName() === '0_NX_0') continue;
+    if (work_isSpecialRootFolder_(f.getName())) continue;
     candidateFolders.push({ id: f.getId(), name: f.getName(), createdDate: Utilities.formatDate(f.getDateCreated(), 'Asia/Seoul', 'yyyy-MM-dd') });
   }
 
