@@ -381,6 +381,15 @@
 <!-- [2026.09 이식] 계산기의 "신고기한 계산" 기능용 — work.netax.kr index.html과 같은 버전. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/date-fns/2.30.0/date_fns.min.js"></script>
 <script>
+  // [2026.10.09 버그수정] work(document-tools.js)에서 옮겨오며 이 함수가 빠져, 저장해둔 서명이 안 불러와지고
+  // 서명 정밀배치 페이지가 있는 PDF 내보내기가 "dataUrlToUint8 is not defined"로 실패했다(정의 안 된 이름 일괄 검사로 발견).
+  window.dataUrlToUint8 = function(dataUrl){
+    var base64 = String(dataUrl || '').split(',')[1] || '';
+    var binary = atob(base64);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  };
   // ============================================================
   // 증빙관리 — 탐색창(폴더 이동)+보기창(구글드라이브 뷰어로 새 탭에서 열기)+스캔창.
   // 스캔의 원근보정(호모그래피) 수학은 document-tools.js의 검증된 로직을 그대로 가져왔다.

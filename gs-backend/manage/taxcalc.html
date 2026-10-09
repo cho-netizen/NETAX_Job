@@ -1058,20 +1058,15 @@ function taxCalcResultRow(label, value, opts){
 // 인원수·관계유형 자체가 법정상속지분 등 계산 구조를 결정하므로, 정확한 신원을 모른다고
 // 통째로 빼버리면 안 된다. 나중에 다른 문서에서 실명이 확인되면 그 이름으로 바꿔 써라.
 const AI_EXTRACTION_PRIORITY_HINT_ = '먼저 파일명에 "의뢰내용"이 포함된 파일(사건 접수 당시 의뢰인 상담 내용을 정리한 파일)이 있으면 그것부터 읽어라 — 다른 어떤 문서보다 사건의 핵심 사실관계(누가 당사자인지, 재산이 무엇인지, 어떤 특례를 염두에 두고 있는지)를 가장 직접적으로 담고 있다. 의뢰내용은 "양도가액 5억"처럼 바로 쓸 숫자만 담고 있는 게 아니라, "배우자와 자녀3명(1명은 사망으로 대습상속)"처럼 다른 문서를 해석하는 틀이 되는 구조·범위 정보도 담고 있을 수 있다 — 정확한 성명·번호를 아직 못 찾았어도 그 구조(인원수·관계유형)는 "자녀1"·"손자녀1"처럼 코드명을 붙여서라도 반영해라(아래 heirs 스키마가 있는 지시라면 특히 중요 — 인원수·관계유형 자체가 세액 계산 구조를 바꾼다). 나중에 다른 문서에서 실명이 확인되면 그걸로 바꿔라. 의뢰내용을 읽은 뒤 나머지 문서로 교차 확인·보완해라. ';
+// [2026.10.09 버그수정] 예전엔 work에서 옮겨온 코드가 job에 없는 GAS_URL·NX_CONFIG를 써서 시작하자마자
+// "GAS_URL is not defined"로 실패했다(자동채우기 버튼 전부·AI탭 "자동계산"까지). 이제 서버(tc_extract_case_docs)가
+// 사건 폴더 서류를 무료 OCR로 읽고, AI에게는 그 글자만 한 번 보내 칸을 채운다 — 예전(AI 채팅 전체로 파일을 하나씩 여는 방식)보다 훨씬 쌈.
 async function runFolderAiExtraction(instructionText){
-  const payload = Object.assign({
-    _key: (window.NX_CONFIG && window.NX_CONFIG.API_SECRET) || '',
-    messages: [{ role: 'user', content: instructionText }],
-    context: { currentPath: tcCurrentCase ? [tcCurrentCase.사건명] : [] }
-  }, (typeof buildAiSettingsPayload === 'function') ? buildAiSettingsPayload(false) : {});
-  const res = await fetch(GAS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(payload)
-  });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error);
-  return data.reply || '';
+  if (!tcCurrentCase || !tcCurrentCase.id) throw new Error('먼저 위쪽에서 사건을 선택하세요 — 그 사건 폴더의 서류를 읽습니다.');
+  const res = await callGas('tc_extract_case_docs', { caseId: tcCurrentCase.id, instruction: instructionText });
+  if (!res || res.error) throw new Error((res && res.error) || '서류를 읽지 못했습니다.');
+  if (res.files && res.files.length) showToast('서류 ' + res.files.length + '개를 읽었습니다' + (res.skipped && res.skipped.length ? ' (못 읽은 파일 ' + res.skipped.length + '개)' : '') + (res.usd ? ' · AI 약 ' + Math.max(1, Math.round(res.usd * 1400)) + '원' : ''), 'success');
+  return res.reply || '';
 }
 
 // AI 답변 중 ```json 코드블록(없으면 첫 { ... } 블록)을 찾아 파싱한다. 못 찾으면 null.

@@ -3698,7 +3698,45 @@ function getClientActionTools_(ctx) {
 // google.script.run 경로(manageApp_call)와 기존 fetch 경로(doPost) 양쪽에서 공유해서, 액션 종류가
 // 늘어나도 여기 한 곳만 고치면 된다. 매칭되는 action이 없으면 null을 반환해서(=AI 대화 요청이라는 뜻)
 // 호출부가 이어서 처리하게 한다.
+// [2026.10.09] 대시보드 속도 — 실사용 기록상 대시보드가 다 뜨는 데 7~15초(가끔 40~80초). 8개 요청의 서버 처리시간을
+// 실측하니 합계 7.5~10.5초, 가장 긴 게 야간점검 상태 2초·메일 1.3초 — 묶어서 한 번에 보내면 오히려 느려져서(순차 합계),
+// 자주 안 바뀌는 칸만 서버가 잠깐 기억해 두고 바로 돌려준다. 사건·고객·예약처럼 저장 직후 바로 보여야 하는 자료는
+// 기억하지 않는다(저장했는데 옛날 값이 보이는 짜증을 만들지 않기 위해).
+const DISPATCH_SHORT_CACHE_ = { getNightlyStatus: 1800, getGlobalLog: 120, search_emails: 90, get_calendar_events: 90 };
+// 이 작업들이 성공하면 위 기억을 지운다(예약 승인·취소 → 캘린더가 바뀜, 메일 읽음 표시 → 안읽은 메일 목록이 바뀜)
+const DISPATCH_SHORT_CACHE_BUST_ = { approve: ['get_calendar_events'], reject: ['get_calendar_events'], cancel_confirmed_booking: ['get_calendar_events'], admin_apply: ['get_calendar_events'], apply: ['get_calendar_events'], mark_email_read: ['search_emails'], work_resync_all_calendars: ['get_calendar_events'] };
 function dispatchClientAction_(body) {
+  const ttl = DISPATCH_SHORT_CACHE_[body && body.action];
+  const bust = DISPATCH_SHORT_CACHE_BUST_[body && body.action];
+  if (!ttl) {
+    const out = dispatchClientAction0_(body);
+    if (bust) { try { const cc = CacheService.getScriptCache(); bust.forEach(function (a) { cc.remove('dsc_ver_' + a); }); } catch (e) {} }
+    return out;
+  }
+  let cache = null, key = '';
+  try {
+    cache = CacheService.getScriptCache();
+    const ver = cache.get('dsc_ver_' + body.action) || '0';
+    const copy = Object.assign({}, body); delete copy._key; delete copy.admin_code;
+    key = 'dsc_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, ver + JSON.stringify(copy))).slice(0, 22);
+    const hit = cache.get(key);
+    if (hit) return ContentService.createTextOutput(hit).setMimeType(ContentService.MimeType.JSON);
+  } catch (e) { cache = null; }
+  const out = dispatchClientAction0_(body);
+  try {
+    const text = out && out.getContent ? out.getContent() : '';
+    if (cache && text && text.length < 90000 && !/"error"/.test(text.slice(0, 200))) {
+      if (!cache.get('dsc_ver_' + body.action)) cache.put('dsc_ver_' + body.action, String(Date.now()), 21600);
+      // 버전이 방금 새로 생겼으면 키도 그 버전 기준으로 다시 만든다
+      const copy = Object.assign({}, body); delete copy._key; delete copy.admin_code;
+      const ver = cache.get('dsc_ver_' + body.action) || '0';
+      key = 'dsc_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, ver + JSON.stringify(copy))).slice(0, 22);
+      cache.put(key, text, ttl);
+    }
+  } catch (e) { /* 기억 실패는 무시 */ }
+  return out;
+}
+function dispatchClientAction0_(body) {
   // [2026.08] booking 모듈 — 원래 NETAX_Card 프로젝트에 있던 상담예약 기능(netax.kr 랜딩페이지가
   // 실제 신청 접수처, Admin이 승인·관리). card.netax.kr(명함 페이지)과는 무관해서 booking_ 접두사로
   // 분류. SMS는 이 프로젝트에 이미 있는 sendSolapiSms_/스크립트 속성을 그대로 재사용(계정 동일 확인됨).
@@ -3769,6 +3807,7 @@ function dispatchClientAction_(body) {
   if (body.action === 'ai_usage_month') return jsonResponse(ai_usageMonth_());
   if (body.action === 'ai_log_paid') return jsonResponse(ai_logPaid_(body));
   if (body.action === 'self_check_run') return jsonResponse(runSelfCheck_());
+  if (body.action === 'tc_extract_case_docs') return jsonResponse(tc_extractCaseDocs_(body));
   if (body.action === 'self_check_last') return jsonResponse(selfCheckLast_());
   if (body.action === 'ai_conv_import_work') return jsonResponse(ai_convImportWork(body));
   if (body.action === 'ai_conv_sync_work') return jsonResponse(ai_convSyncWork(body));
@@ -23943,4 +23982,94 @@ function selfCheckLast_() {
   try { last = JSON.parse(PropertiesService.getScriptProperties().getProperty('SELF_CHECK_LAST') || 'null'); } catch (e) {}
   const fresh = !!(last && (Date.now() - new Date(last.at.replace(' ', 'T') + ':00+09:00').getTime()) < 2 * 86400000);
   return { success: true, last: last, fresh: fresh };
+}
+
+// ============================================================
+// [2026.10.09] 세액계산 "AI 자동채우기" 새 경로 — 예전 경로(taxcalc.html runFolderAiExtraction)는 work에서 옮겨오며
+// job에 없는 GAS_URL·NX_CONFIG를 참조해 시작하자마자 "GAS_URL is not defined"로 실패하고 있었다(실사용 점검 중 발견).
+// 게다가 AI 채팅 전체(지시문·도구 수십 개)를 태워 AI가 파일을 하나씩 열어 읽는 비싼 방식이었다.
+// 새 방식(세무사님 원칙 — 단순 읽기는 토큰 0, AI는 판단에만):
+//  ① 사건 폴더의 서류를 구글 무료 OCR로 글자로 만든다(0원, 현금영수증 64장 시험에서 숫자 정확) — 6시간 기억해 다시 돌릴 땐 즉시.
+//  ② AI(Sonnet)에게는 그 글자와 채울 칸 목록만 한 번에 보낸다(도구·긴 지시문 없음) — "어느 숫자가 양도가액인가" 같은 판단만 맡긴다.
+// ============================================================
+const TC_EXTRACT_MAX_FILES_ = 25;
+const TC_EXTRACT_FILE_CHARS_ = 9000;
+const TC_EXTRACT_TOTAL_CHARS_ = 90000;
+function tc_docText_(f) {
+  const cache = CacheService.getScriptCache();
+  const key = 'ocrtxt_' + f.id + '_' + (f.modified || '');
+  const hit = cache.get(key);
+  if (hit !== null) return hit;
+  let text = '';
+  const mt = String(f.mimeType || '');
+  if (mt === 'application/vnd.google-apps.document') text = DocumentApp.openById(f.id).getBody().getText();
+  else if (mt === 'application/vnd.google-apps.spreadsheet') {
+    const ss = SpreadsheetApp.openById(f.id);
+    text = ss.getSheets().slice(0, 3).map(function (sh) { return sh.getName() + '\n' + sh.getDataRange().getDisplayValues().slice(0, 200).map(function (r) { return r.join('\t'); }).join('\n'); }).join('\n\n');
+  }
+  else if (/^text\/|json|csv|markdown/.test(mt)) text = DriveApp.getFileById(f.id).getBlob().getDataAsString('UTF-8');
+  else if (/pdf|^image\/|officedocument\.wordprocessingml|msword/.test(mt)) { Utilities.sleep(800); text = ocrFileText_(f.id); }
+  else return null; // 한글(hwp)·압축파일 등은 글자로 못 바꿈
+  text = String(text || '').slice(0, TC_EXTRACT_FILE_CHARS_);
+  try { cache.put(key, text, 21600); } catch (e) {}
+  return text;
+}
+function tc_extractCaseDocs_(body) {
+  const caseId = String(body.caseId || '').trim();
+  const instruction = String(body.instruction || '').trim();
+  if (!caseId || !instruction) return { error: '사건과 지시가 필요합니다.' };
+  const sheet = work_getSheet_();
+  const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+  const found = work_findCaseRow_(sheet, col, caseId);
+  if (!found) return { error: '사건을 찾지 못했습니다.' };
+  const folderId = String(found.row[col.폴더ID] || '').trim();
+  if (!folderId) return { error: '이 사건에 증빙 폴더가 연결돼 있지 않습니다 — 증빙확보에서 폴더를 먼저 만들어 주세요.' };
+  let folder;
+  try { folder = DriveApp.getFolderById(folderId); } catch (e) { return { error: '사건 폴더를 열 수 없습니다: ' + e.message }; }
+  const files = [];
+  client_listFilesRecursive_(folder, 0, 120, files);
+  // 세금 계산에 쓰일 서류를 앞으로(의뢰내용 → 계약서·등기 → 나머지), 많으면 앞에서부터 TC_EXTRACT_MAX_FILES_개
+  const rank = function (n) {
+    if (/의뢰내용/.test(n)) return 0;
+    if (/(계약|등기|등본|대장|감정|평가|영수|신고|증여|상속|양도|취득|분양|공급|확인서|가족관계|제적|사망|금융|잔액|통장)/.test(n)) return 1;
+    return 2;
+  };
+  files.sort(function (a, b) { return rank(a.name) - rank(b.name); });
+  const used = [], skipped = [];
+  let total = 0;
+  const parts = [];
+  const started = Date.now();
+  for (let i = 0; i < files.length && used.length < TC_EXTRACT_MAX_FILES_; i++) {
+    if (Date.now() - started > 240000) { skipped.push('(시간 제한으로 나머지 생략)'); break; }
+    const f = files[i];
+    try { f.modified = DriveApp.getFileById(f.id).getLastUpdated().getTime(); } catch (e) {}
+    let text = null;
+    try { text = tc_docText_(f); } catch (e) { skipped.push(f.name + '(읽기 실패)'); continue; }
+    if (text === null) { skipped.push(f.name + '(글자로 못 바꾸는 형식)'); continue; }
+    if (!text.trim()) { skipped.push(f.name + '(글자 없음)'); continue; }
+    if (total + text.length > TC_EXTRACT_TOTAL_CHARS_) { skipped.push(f.name + '(분량 초과)'); continue; }
+    total += text.length;
+    used.push(f.name);
+    parts.push('=== 파일: ' + f.name + ' ===\n' + text);
+  }
+  if (!parts.length) return { error: '사건 폴더에서 읽을 수 있는 서류를 찾지 못했습니다.' + (skipped.length ? ' (건너뜀: ' + skipped.slice(0, 5).join(', ') + ')' : '') };
+
+  const apiKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
+  if (!apiKey) return { error: 'ANTHROPIC_API_KEY가 설정되어 있지 않습니다.' };
+  const model = DEFAULT_MODEL; // 숫자를 어느 칸에 넣을지 판단 — 정확도 우선(Sonnet). 읽기 자체는 OCR이 이미 했다.
+  const system = '너는 세무사 사무실의 증빙 서류에서 세액계산 입력값을 찾아 정리하는 도우미다. 아래 서류 글자는 구글 OCR로 뽑은 것이라 줄바꿈·띄어쓰기가 어긋나거나 표가 풀어져 있을 수 있다 — 숫자와 날짜는 글자 그대로 옮기고, 서류에 없는 값은 지어내지 말고 null로 둬라. 지시받은 JSON 코드블록 하나만 답하라.';
+  const user = instruction.replace(/현재 사건 폴더 안의 모든 파일을 살펴봐줘[^.。]*[.。)]?\s*/, '') + '\n\n아래는 이 사건 폴더 서류들의 글자다(' + used.length + '개 파일):\n\n' + parts.join('\n\n');
+  const res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    method: 'post', contentType: 'application/json',
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    payload: JSON.stringify({ model: model, max_tokens: 4000, system: system, messages: [{ role: 'user', content: user }] }),
+    muteHttpExceptions: true
+  });
+  const json = JSON.parse(res.getContentText());
+  if (json.error) return { error: 'AI 호출 실패: ' + (json.error.message || '') };
+  const reply = (json.content || []).filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('\n');
+  let usage = null;
+  try { usage = buildClaudeUsageInfo_(json, MODEL_CONFIG[model], model, null); } catch (e) {}
+  try { if (usage) ai_logPaid_({ entry: { kind: 'autofill', model: model, usd: usage.costUsd, q: '세액계산 자동채우기 — ' + found.row[col.사건명] + ' (서류 ' + used.length + '개)' } }); } catch (e) {}
+  return { success: true, reply: reply, files: used, skipped: skipped, usd: usage ? usage.costUsd : null };
 }
