@@ -748,7 +748,13 @@
         if (res.success === false){ showToast(res.message || '저장 실패', 'error'); return; }
         showToast('저장했습니다.', 'success');
         if (res.warning) showToast(res.warning, 'warning');
-        loadChCases_();
+        // [2026.10.09 버그수정] 저장 응답(수 초)이 오는 사이 다른 칸(작업일지·특이사항 등)에 이미 타이핑을 시작했으면,
+        // 예전처럼 화면 전체를 다시 그리면 그 입력이 통째로 지워졌다(실사용 점검에서 확인). 그때는 사건 데이터만
+        // 조용히 최신으로 맞추고(다음 저장이 충돌 안 나게 수정일 포함) 화면은 그대로 둔다.
+        var chActive_ = document.activeElement;
+        var chTyping_ = chActive_ && /^(INPUT|TEXTAREA|SELECT)$/.test(chActive_.tagName) && document.getElementById('view-casehandling').contains(chActive_) && chActive_.id !== 'chCaseSelect';
+        if (chTyping_ && res.case){ Object.assign(c, res.case); renderChCaseSelect_(); }
+        else loadChCases_();
         if (typeof loadWorkCases === 'function') loadWorkCases();
       }).catch(function(err){ showToast('저장 중 오류: ' + (err && err.message ? err.message : err), 'error'); });
     });
