@@ -3810,6 +3810,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'self_check_run') return jsonResponse(runSelfCheck_());
   if (body.action === 'registry_parse') return jsonResponse(registryParseFile_(body)); // 등기부 PDF 정리(토큰 0)
   if (body.action === 'doc_parse') return jsonResponse(docParseFile_(body)); // 서류 PDF 정리 — 등기부·가족관계·사업자등록·접수증·납부서(토큰 0)
+  if (body.action === 'doc_parse_multi') return jsonResponse(docParseMulti_(body)); // 여러 서류 함께 정리 + 대조표(토큰 0)
   if (body.action === 'tc_extract_case_docs') return jsonResponse(tc_extractCaseDocs_(body));
   if (body.action === 'self_check_last') return jsonResponse(selfCheckLast_());
   if (body.action === 'improve_report_run') return jsonResponse(buildImprovementReport_());
@@ -25327,6 +25328,9 @@ function ldToMarkdown_(type, r) {
 }
 
 function docParseText_(text) {
+  // [2026.10.10] 첫머리에 계약서·신고필증·확인설명서·확정일자 제목이 있으면 거래 서류 — 본문에 "토지대장·등기사항증명서" 같은
+  // 첨부서류 이름이 들어 있어도 대장·등기부로 오인하지 않게 맨 먼저 본다(제목이 없으면 아래 기존 순서대로)
+  if (docDealStrong_(text)) { var deal0 = docDealParseText_(text); if (deal0) return deal0; }
   var ldt0 = ldDetect_(text); // 건축물대장·토지대장은 등기부(표제부 낱말)로 오인되기 전에 먼저
   if (ldt0) { var lr0 = ldt0 === 'bldledger' ? ldParseBuilding_(text) : ldParseLand_(text); return { type: ldt0, label: lr0.종류, result: lr0, md: ldToMarkdown_(ldt0, lr0) }; }
   var reg = registryParse(text);
@@ -25335,6 +25339,8 @@ function docParseText_(text) {
   var whs = whParseAll_(text);
   if (whs.length) return { type: 'withholding', label: whs.map(function (w) { return w.종류; }).join('·'), result: whs, md: whs.map(whToMarkdown_).join('\n\n---\n\n') };
   var type = docDetectType_(text), r = null;
+  // [2026.10.10] 매매계약서·신고필증·중개대상물 확인설명서·임대차계약서·임대차 신고서·확정일자 — 한 파일에 여러 서류가 묶여 있으면 나눠 정리하고 서로 대조
+  if (!/^(resident|family|rent)$/.test(type)) { var deal = docDealParseText_(text); if (deal) return deal; }
   if (type === 'family') r = docParseFamily_(text);
   else if (type === 'payment') r = docParsePayment_(text);
   else if (type === 'receipt') r = docParseReceipt_(text);
@@ -25374,7 +25380,7 @@ function docParseFile_(body) {
   if (!id) return { error: '파일이 없습니다.' };
   var f = DriveApp.getFileById(id), name = f.getName(), mime = f.getMimeType();
   if (!/pdf|image/.test(mime)) return { error: name + ' — PDF·이미지만 정리할 수 있습니다.' };
-  var cache = CacheService.getScriptCache(), key = 'docp2_' + id + '_' + f.getLastUpdated().getTime();
+  var cache = CacheService.getScriptCache(), key = 'docp3_' + id + '_' + f.getLastUpdated().getTime();
   var hit = cache.get(key);
   if (hit) return JSON.parse(hit);
   var p = docParseText_(docOcrRetry_(id));
@@ -26544,4 +26550,660 @@ function whToMarkdown_(r) {
   }
   if (r.경고.length) out.push('\n⚠ ' + r.경고.join(' / '));
   return out.join('\n');
+}
+
+// =========================================================
+// [2026.10.10] 매매계약서·부동산거래계약 신고필증·중개대상물 확인설명서(+중개보수 영수증) 자동 정리 — 토큰 0, ES5
+// 세 서류를 함께 읽어 금액·계약일·잔금일·면적·소재지·당사자를 서로 대조한다(세무사님: "함께 작업하면 보완이 많이 된다").
+// 원칙: 계약금+중도금+잔금=매매대금처럼 스스로 검산되는 값만 확정, 나머지는 ⚠확인필요(지어내지 않음).
+// =========================================================
+// 금액 글자 → 숫자. OCR이 천 단위 쉼표를 마침표로 읽기도 한다("184,003.296" "49.312,500").
+function ctNum_(s) {
+  var x = String(s || '').replace(/\s/g, '');
+  if (/^\d{1,3}([.,]\d{3})+$/.test(x)) return Number(x.replace(/[.,]/g, ''));
+  x = x.replace(/,/g, '');
+  return /^\d+(\.\d+)?$/.test(x) ? Number(x) : null;
+}
+// 한글 금액("일억이천오백만", "금 삼천만원정") → 숫자
+function ctKorAmt_(k) {
+  k = String(k || '').replace(/[\s금원정整]/g, '');
+  if (!/^[일이삼사오육칠팔구십백천만억영]+$/.test(k)) return null;
+  var D = { 일: 1, 이: 2, 삼: 3, 사: 4, 오: 5, 육: 6, 칠: 7, 팔: 8, 구: 9, 영: 0 }, U = { 십: 10, 백: 100, 천: 1000 };
+  var total = 0, sect = 0, num = 0;
+  for (var i = 0; i < k.length; i++) {
+    var ch = k[i];
+    if (D[ch] !== undefined) num = D[ch];
+    else if (U[ch]) { sect += (num || 1) * U[ch]; num = 0; }
+    else if (ch === '만' || ch === '억') { sect += num; num = 0; total += (sect || 1) * (ch === '만' ? 10000 : 100000000); sect = 0; }
+  }
+  return (total + sect + num) || null;
+}
+// 글 속 금액 모두: ₩123,000,000 / 123,000,000원 / 금 일억이천만원 / 1억 6500만원
+function ctMoneyList_(s) {
+  // 표준양식은 "계약금 -金이천사백만 원整"처럼 한자 金 + 한글 숫자 — OCR이 金을 "숲", 억을 "역"으로 읽기도 한다
+  // ₩를 OCR이 "#"이나 "W"로 읽기도 한다(W는 천 단위 쉼표가 있을 때만)
+  var out = [], m, re = /(?:[₩#]\s*([\d][\d,.\s]{2,18}\d)|W\s*(\d{1,3}(?:[,.]\d{3})+))|([\d]{1,3}(?:[,.]\s?\d{3}){1,4})\s*원|(?:金|숲|금|-)\s*-?\s*([일이삼사오육칠팔구십백천만억역영]{2,20}(?:\s+[일이삼사오육칠팔구십백천만억역영]{1,10}){0,3})|(\d{1,4})\s*억\s*(?:(\d{1,4})\s*천)?\s*(?:(\d{1,4})\s*만)?\s*원?/g;
+  while ((m = re.exec(s))) {
+    var v = null;
+    if (m[1]) v = ctNum_(m[1]);
+    else if (m[2]) v = ctNum_(m[2]);
+    else if (m[3]) v = ctNum_(m[3]);
+    else if (m[4]) { var kw = m[4].replace(/역/g, '억').replace(/\s+/g, ''); v = /[만억]/.test(kw) ? ctKorAmt_(kw) : null; }
+    else if (m[5]) v = Number(m[5]) * 100000000 + (m[6] ? Number(m[6]) * 10000000 : 0) + (m[7] ? Number(m[7]) * 10000 : 0);
+    if (v && v >= 10000) out.push({ v: v, at: m.index, end: re.lastIndex, won: !!(m[1] || m[2]) });
+  }
+  return out;
+}
+function ctYmd_(y, m, d) { return y + '-' + ('0' + m).slice(-2) + '-' + ('0' + d).slice(-2); }
+function ctDates_(s) {
+  var out = [], m, re = /((?:19|20)\d{2})\s*[년.\-/]\s*(\d{1,2})\s*[월.\-/]\s*(\d{1,2})\s*일?/g;
+  while ((m = re.exec(s))) { var mo = Number(m[2]), da = Number(m[3]); if (mo >= 1 && mo <= 12 && da >= 1 && da <= 31) out.push({ d: ctYmd_(m[1], mo, da), at: m.index, end: re.lastIndex }); }
+  return out;
+}
+// 이름표 뒤 첫 금액(다음 이름표 전까지)
+function ctMoneyAfter_(s, labelRe, span) {
+  var m = labelRe.exec(s);
+  if (!m) return null;
+  var seg = s.slice(m.index + m[0].length, m.index + m[0].length + (span || 120));
+  var stop = seg.search(/(매매\s*대금|계\s*약\s*금|중\s*도\s*금|잔\s*금|융\s*자\s*금|보\s*증\s*금|임대\s*보증금)/);
+  if (stop > 0) seg = seg.slice(0, stop);
+  var l = ctMoneyList_(seg);
+  return l.length ? l[0].v : null;
+}
+// 같은 이름표가 여러 번 나올 때(제목 "월세 계약서"와 칸 "월 세 -金삼십오만") 금액이 붙은 첫 자리
+function ctMoneyAfterAny_(s, labelRe, span) {
+  var re = new RegExp(labelRe.source, 'g'), m;
+  while ((m = re.exec(s))) { var v = ctMoneyAfter_(s.slice(m.index), labelRe, span); if (v) return v; }
+  return null;
+}
+// 금액 목록에서 합이 total이 되는 조합(2~5개) — 하나뿐일 때만 돌려준다(여럿이면 어느 것인지 모르므로 null)
+function ctUniqueSubset_(total, cands) {
+  // 같은 금액이 두 번 쓰인 분할(중도금 2.8억 두 번 등)도 맞추도록 금액마다 최대 2번까지 쓸 수 있게 하되, 값이 같은 조합은 하나로 센다
+  var cnt = {};
+  cands.forEach(function (x) { if (x > 0 && x < total) cnt[x] = Math.min(2, (cnt[x] || 0) + 1); });
+  var c = [];
+  Object.keys(cnt).map(Number).sort(function (a, b) { return b - a; }).slice(0, 12).forEach(function (x) { for (var k = 0; k < cnt[x]; k++) c.push(x); });
+  var sols = {}, nSol = 0;
+  (function rec(i, sum, pick) {
+    if (nSol > 1) return;
+    if (sum === total && pick.length >= 2) { var key = pick.slice().sort().join(','); if (!sols[key]) { sols[key] = pick.slice(); nSol++; } return; }
+    if (i >= c.length || sum > total || pick.length >= 5) return;
+    pick.push(c[i]); rec(i + 1, sum + c[i], pick); pick.pop(); rec(i + 1, sum, pick);
+  })(0, 0, []);
+  return nSol === 1 ? sols[Object.keys(sols)[0]] : null;
+}
+var CT_SIDO_RE_ =/([가-힣]{2,9}(?:특별시|광역시|특별자치시|특별자치도|도|시))\s+[가-힣]{1,6}(?:시|군|구)/;
+
+// ---- 서류 묶음 나누기 — 한 PDF에 계약서+확인설명서+신고필증이 같이 스캔된 경우가 많다 ----
+function ctSplit_(text) {
+  var t = String(text || ''), marks = [], m;
+  var res = [
+    ['dealreport', /부\s*동\s*산\s*거\s*래\s*계\s*약\s*신\s*고\s*필\s*증\s*(?:\n|$)/g],
+    ['brokerdesc', /중\s*개\s*대\s*상\s*물\s*확\s*인\s*[·ㆍᆞ•.]?\s*설\s*명\s*서\s*\[\s*[ⅠⅡⅢⅣIVl1-4]+\s*\]/g],
+    ['contract', /(?:^|\n)[^\n]{0,40}(?:매\s*매|공\s*급|분\s*양)\s*(?:전\s*자\s*)?계\s*약\s*서(?=\s|$)(?![^\n]{0,6}(?:를|을|에|의|상))/g]
+  ];
+  res.forEach(function (x) { while ((m = x[1].exec(t))) marks.push({ type: x[0], at: m.index }); });
+  marks.sort(function (a, b) { return a.at - b.at; });
+  // 같은 종류가 이어지면 하나로(여러 쪽짜리 서류)
+  var segs = [];
+  marks.forEach(function (k) { if (!segs.length || segs[segs.length - 1].type !== k.type) segs.push({ type: k.type, at: k.at }); });
+  if (!segs.length) return [];
+  segs[0].at = 0; // 첫 제목 앞 글(계약서 머리 등)은 첫 서류에
+  return segs.map(function (s, i) { return { type: s.type, text: t.slice(s.at, i + 1 < segs.length ? segs[i + 1].at : t.length) }; });
+}
+
+// ---- 매매계약서 ----
+function ctParseContract_(text) {
+  var t = String(text || ''), flat = t.replace(/\s+/g, ' ');
+  var r = { 종류: /공\s*급\s*계\s*약|분\s*양\s*계\s*약/.test(t) ? '분양(공급)계약서' : /손실\s*보상|보상\s*계약|협의\s*취득/.test(t) ? '보상(협의취득)계약서' : '매매계약서', 경고: [] };
+  // 소재지 — "소재지" 뒤 또는 "1. (부동산의 표시)" 뒤 첫 주소 모양
+  var sm = /소\s*재\s*지\s*[:：]?\s*([^\n]{6,80})/.exec(t);
+  if (sm && /\d/.test(sm[1]) && /(시|군|구|동|읍|면|리|로|길)\s/.test(sm[1] + ' ')) r.소재지 = sm[1].replace(/\s+/g, ' ').trim();
+  if (!r.소재지) { var am = new RegExp(CT_SIDO_RE_.source + '[^\\n]{2,60}').exec(t.slice(0, 1500)); if (am) r.소재지 = am[0].trim(); }
+  var jm = /지\s*목\s*[:：]?\s*(대|전|답|임야|잡종지|과수원|목장용지|공장용지|창고용지|도로|구거|하천|주차장|주유소용지)(?=\s|$|\d)/.exec(t);
+  if (jm) r.지목 = jm[1];
+  var areas = [], ar = /([\d][\d,.]*)\s*(?:m2|㎡|m'|평방미터|m²)/g, a;
+  while ((a = ar.exec(flat))) { var av = Number(a[1].replace(/,/g, '')); if (av > 0 && av < 1e7) areas.push(av); }
+  if (areas.length) { r.토지면적 = areas[0]; if (areas.length > 1) r.건물면적 = areas[areas.length > 2 ? 2 : 1]; }
+  var dj = /(\d[\d,.]*)\s*분의\s*(\d[\d,.]*)/.exec(flat);
+  if (dj) r.대지권비율 = dj[1] + '분의 ' + dj[2];
+  var um = /용\s*도\s*[:：]?\s*([가-힣]{2,10}(?:주택|시설|아파트|빌라|오피스텔|상가|근린생활시설))/.exec(flat);
+  if (um) r.건물용도 = um[1];
+  var gm = /구\s*조\s*[:：]?\s*([가-힣\s]{2,16}(?:조|구조))/.exec(flat);
+  if (gm) r.구조 = gm[1].replace(/\s+/g, '');
+  // 금액 — 이름표 뒤 금액, 그다음 검산
+  r.매매대금 = ctMoneyAfter_(flat, /매\s*매\s*대\s*금|공\s*급\s*(?:금액|대금)|분\s*양\s*(?:금액|대금)|총\s*(?:매매|공급|분양)\s*(?:대금|금액)|보\s*상\s*금\s*액/, 140);
+  r.계약금 = ctMoneyAfter_(flat, /계\s*약\s*금/, 120);
+  r.잔금 = ctMoneyAfter_(flat, /잔\s*금\s*[:：]?/, 140);
+  var mids = [], mr = /중\s*도\s*금/g, mm;
+  while ((mm = mr.exec(flat))) { var v = ctMoneyAfter_(flat.slice(mm.index), /중\s*도\s*금/, 100); if (v && mids.indexOf(v) === -1) mids.push(v); }
+  r.중도금 = mids;
+  // 융자금·승계보증금은 이름표 바로 뒤(25자 안)만 — 빈칸이면 다음 칸 금액을 잘못 잡는다
+  r.융자금 = ctMoneyAfter_(flat, /융\s*자\s*금\s*-?\s*/, 8);
+  r.승계보증금 = ctMoneyAfter_(flat, /(?:임대\s*)?보\s*증\s*금[^\n]{0,20}승\s*계|승\s*계[^\n]{0,20}보\s*증\s*금/, 40);
+  var all = ctMoneyList_(flat).map(function (x) { return x.v; });
+  // ₩숫자 금액(가장 믿을 만함)이 이름표로 읽은 매매대금과 다르면 — 한글 금액이 OCR에서 잘린 것("오억칠천만"→"오억")
+  var wons = ctMoneyList_(flat).filter(function (x) { return x.won; }).map(function (x) { return x.v; });
+  var wonMax = wons.length ? Math.max.apply(null, wons) : null;
+  if (wonMax && r.매매대금 && wonMax !== r.매매대금 && wonMax > r.매매대금) { r.경고.push('한글 금액(' + r.매매대금.toLocaleString('ko-KR') + ')과 숫자 금액(₩' + wonMax.toLocaleString('ko-KR') + ')이 달라 숫자 금액을 씀 — 확인'); r.매매대금 = wonMax; }
+  if (!r.매매대금 && wonMax) r.매매대금 = wonMax;
+  if (!r.매매대금 && all.length) { r.매매대금 = Math.max.apply(null, all); r.대금추정 = true; }
+  // 이름표가 총액을 잘못 잡은 경우(빈 칸 뒤 다음 금액) — 부분 금액이 총액과 같으면 버린다(일시불은 원문 확인)
+  ['계약금', '잔금', '융자금', '승계보증금'].forEach(function (f) { if (r[f] && r.매매대금 && r[f] === r.매매대금) r[f] = null; });
+  mids = mids.filter(function (x) { return x !== r.매매대금; }); r.중도금 = mids;
+  if (r.융자금 && (r.융자금 === r.잔금 || mids.indexOf(r.융자금) !== -1)) r.융자금 = null;
+  // 잔금 칸 이름표를 OCR이 놓쳐 잔금이 중도금으로 들어간 경우 — 중도금 지급일 칸이 비어 있고 중도금이 하나뿐이면 그것이 잔금
+  if (!r.잔금 && mids.length === 1 && /중\s*도\s*금[\s\S]{0,80}?년\s*월\s*일에\s*지불/.test(t)) { r.잔금 = mids[0]; mids = []; r.중도금 = mids; }
+  // 검산: 계약금 + 중도금들 + 잔금 (+융자금/승계보증금) = 매매대금
+  var parts = (r.계약금 || 0) + mids.reduce(function (s2, x) { return s2 + x; }, 0) + (r.잔금 || 0);
+  var extra = [0, r.융자금 || 0, r.승계보증금 || 0, (r.융자금 || 0) + (r.승계보증금 || 0)];
+  r.검산 = '';
+  if (r.매매대금 && r.계약금 && (r.잔금 || mids.length)) {
+    if (extra.some(function (e) { return parts + e === r.매매대금; })) r.검산 = '일치';
+    else r.검산 = '불일치(계약금+중도금+잔금 ' + parts.toLocaleString('ko-KR') + ' ≠ 매매대금)';
+  } else if (r.매매대금 && r.계약금 && !r.잔금 && !mids.length) {
+    r.잔금 = r.매매대금 - r.계약금; r.잔금계산 = true; r.검산 = '잔금은 매매대금-계약금으로 계산(원문에 숫자 없음)';
+  }
+  // 한 칸만 비었고 "매매대금-나머지" 금액이 실제로 문서에 적혀 있으면 그 칸의 값으로 확정(문서에 있는 숫자라 지어낸 것이 아님)
+  if (r.매매대금 && r.검산 !== '일치') {
+    var midSum = (r.중도금 || []).reduce(function (s2, x) { return s2 + x; }, 0);
+    var has = function (v) { return v > 0 && all.indexOf(v) !== -1; };
+    if (r.계약금 && !r.잔금 && has(r.매매대금 - r.계약금 - midSum) && (midSum || r.매매대금 - r.계약금 - midSum !== r.매매대금 - r.계약금 || true)) { r.잔금 = r.매매대금 - r.계약금 - midSum; r.검산 = '일치'; }
+    else if (!r.계약금 && r.잔금 && has(r.매매대금 - r.잔금 - midSum)) { r.계약금 = r.매매대금 - r.잔금 - midSum; r.검산 = '일치'; }
+    else if (r.계약금 && r.잔금 && !midSum && has(r.매매대금 - r.계약금 - r.잔금)) { r.중도금 = [r.매매대금 - r.계약금 - r.잔금]; r.검산 = '일치'; }
+    if (r.검산 === '일치') r.경고 = r.경고.filter(function (w) { return !/검산 불일치/.test(w); });
+  }
+  // 이름표 짝이 안 맞거나 비면(표준양식은 OCR이 ₩금액을 이름표와 떨어뜨려 읽는다) — 글 속 금액들 중 합이 매매대금이 되는
+  // 조합이 딱 하나면 그것으로 나눈다: 계약금은 가장 작은 것(계약 때 먼저 내는 돈), 잔금은 가장 큰 것, 나머지는 중도금.
+  // 이름표로 읽은 계약금이 조합에 있으면 그것을 계약금으로. 조합이 여럿이면 확정하지 않는다.
+  if (r.매매대금 && r.검산 !== '일치') {
+    var sol = ctUniqueSubset_(r.매매대금, all);
+    if (sol) {
+      sol.sort(function (a, b) { return a - b; });
+      var kye = r.계약금 && sol.indexOf(r.계약금) !== -1 ? r.계약금 : sol[0];
+      var rest = sol.slice(); rest.splice(rest.indexOf(kye), 1);
+      var jan = r.잔금 && rest.indexOf(r.잔금) !== -1 ? r.잔금 : Math.max.apply(null, rest);
+      rest.splice(rest.indexOf(jan), 1);
+      r.계약금 = kye; r.잔금 = jan; r.중도금 = rest; r.잔금계산 = false;
+      r.검산 = '일치(금액 조합으로 맞춤 — 계약금·중도금·잔금 구분은 원문 확인)'; r.구분확인필요 = true;
+      r.경고 = r.경고.filter(function (w) { return !/검산 불일치/.test(w); });
+    }
+  }
+  if (r.융자금 && (r.융자금 === r.잔금 || r.융자금 === r.계약금 || (r.중도금 || []).indexOf(r.융자금) !== -1)) r.융자금 = null;
+  // 계약금 칸만 OCR이 놓쳤고 중도금·잔금은 이름표로 읽힌 경우 — 매매대금에서 빼서 계산(⚠계산값으로 표시)
+  if (r.매매대금 && r.검산 !== '일치' && r.검산.indexOf('일치(') !== 0 && !r.계약금 && r.잔금) {
+    var rem = r.매매대금 - r.잔금 - (r.중도금 || []).reduce(function (s2, x) { return s2 + x; }, 0);
+    if (rem > 0 && rem < r.잔금) { r.계약금 = rem; r.계약금계산 = true; r.검산 = '계약금은 매매대금-중도금-잔금으로 계산(원문에서 못 읽음)'; }
+  }
+  // 중도금 칸만 놓친 경우(중도금 지급일은 적혀 있음) — 매매대금-계약금-잔금으로 계산(⚠계산값)
+  if (r.매매대금 && r.계약금 && r.잔금 && !(r.중도금 || []).length && r.검산.indexOf('불일치') === 0 && /중\s*도\s*금[\s\S]{0,160}?(?:19|20)\d{2}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일\s*에?\s*지불하며/.test(t)) {
+    var rem2 = r.매매대금 - r.계약금 - r.잔금;
+    if (rem2 > 0) { r.중도금 = [rem2]; r.중도금계산 = true; r.검산 = '중도금은 매매대금-계약금-잔금으로 계산(원문에서 못 읽음)'; r.경고 = r.경고.filter(function (w) { return !/검산 불일치/.test(w); }); }
+  }
+  // 일시 지급(계약금·중도금 칸이 비고 같은 날 전액) — 매매대금과 같은 금액이 두 번 이상 나오고 나눌 조합이 없을 때
+  if (r.매매대금 && !r.계약금 && !r.잔금 && !(r.중도금 || []).length && all.filter(function (x) { return x === r.매매대금; }).length >= 2) {
+    r.일시지급추정 = true; r.검산 = '계약금·중도금 칸이 비어 일시 지급으로 보임 — 원문 확인';
+  }
+  if (!r.매매대금) r.경고.push('매매대금을 읽지 못함');
+  else if (r.대금추정) r.경고.push('매매대금 이름표를 못 읽어 가장 큰 금액으로 잡음 — 확인필요');
+  if (r.검산.indexOf('불일치') === 0) r.경고.push('금액 검산 불일치 — 원문 확인');
+  // 날짜 — 지급일(…일에 지불/지급), 잔금일, 계약일
+  var ds = ctDates_(t);
+  var pay = ds.filter(function (d) { return /^\s*(?:에|까지)?\s*(?:지불|지급|영수)/.test(t.slice(d.end, d.end + 8)); });
+  // 잔금일 — 표준양식은 중도금 줄이 "…일에 지불하며,", 잔금 줄이 "…일에 지불한다."로 끝난다. 그 "지불한다" 날짜 중 가장 늦은 것.
+  // OCR이 줄 순서를 섞어도 문장 끝맺음은 남으므로 "잔금" 글자 근처 날짜보다 믿을 만하다.
+  // 잔금은 마지막으로 치르는 돈 — 지급 문구(지불/지급/영수)가 붙은 날짜 중 가장 늦은 날이 잔금일
+  if (pay.length) r.잔금일 = pay.map(function (d) { return d.d; }).sort().pop();
+  var jg = /잔\s*금/.exec(t);
+  if (!r.잔금일 && jg) { var after = ds.filter(function (d) { return d.at > jg.index && d.at - jg.index < 160; }); if (after.length) { r.잔금일 = after[0].d; r.잔금일확인필요 = true; } }
+  if (!r.잔금일 && pay.length) { r.잔금일 = pay.map(function (d) { return d.d; }).sort().pop(); r.잔금일확인필요 = true; }
+  // 지급일이 하나뿐인데 중도금 칸 하나에만 금액이 있고 잔금이 비었으면 — 그 금액이 잔금(중도금 칸 이름표를 OCR이 끌어 붙인 것)
+  var payDays = pay.map(function (d) { return d.d; }).filter(function (x, i, a) { return a.indexOf(x) === i; });
+  if (!r.잔금 && (r.중도금 || []).length === 1 && payDays.length <= 1) { r.잔금 = r.중도금[0]; r.중도금 = []; }
+  var jd = /중\s*도\s*금/.exec(t);
+  if (jd) { var md = ds.filter(function (d) { return d.at > jd.index && d.at - jd.index < 120 && d.d !== r.잔금일; }); if (md.length) r.중도금일 = md[0].d; }
+  var gm2 = /교부\s*일자\s*[:：]?\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t) || /계약\s*(?:체결)?\s*일\s*[:：]?\s*((?:19|20)\d{2})\s*[년.\-]\s*(\d{1,2})\s*[월.\-]\s*(\d{1,2})/.exec(t);
+  if (gm2) r.계약일 = ctYmd_(gm2[1], gm2[2], gm2[3]);
+  if (!r.계약일) {
+    // 서명란 바로 앞뒤 날짜("…각 1통씩 보관한다. 2020년 06월 29일")
+    var sg = t.search(/각\s*(?:자\s*)?(?:서명|1\s*통)|이의\s*없음을\s*확인/);
+    if (sg >= 0) { var near = ds.filter(function (d) { return d.at > sg && d.at - sg < 260; }); if (near.length) r.계약일 = near[0].d; }
+  }
+  if (!r.계약일) r.경고.push('계약일을 확정하지 못함');
+  if (r.계약일 && r.잔금일 && r.잔금일 < r.계약일) { r.경고.push('잔금일이 계약일보다 앞섬 — 날짜 확인필요'); r.잔금일확인필요 = true; }
+  // 당사자 — "매도인 ○○○" / 성명 칸. 확신 없으면 비움.
+  var nameAfter = function (re) { var x = re.exec(t); if (!x) return ''; var w = /^[\s:：]*(?:성\s*명\s*[:：|]?\s*)?([가-힣]{2,4})(?=\s|\(|$)/.exec(t.slice(x.index + x[0].length, x.index + x[0].length + 30)); return w && !/^(주소|성명|주민|등록|번호|전화|인적|사항|매수인|매도인|대리인)$/.test(w[1]) ? w[1] : ''; };
+  r.매도인 = nameAfter(/매\s*도\s*인\s*(?=[^\n]{0,4}[가-힣])/);
+  r.매수인 = nameAfter(/매\s*수\s*인\s*(?=[^\n]{0,4}[가-힣])/);
+  var tk = /특\s*약\s*사\s*항\s*[:：]?/.exec(t);
+  if (tk) {
+    var body = t.slice(tk.index + tk[0].length, tk.index + tk[0].length + 500);
+    var cut = body.search(/본\s*계약을\s*증명|이\s*계약을\s*증명|본\s*계약에\s*대하여|매\s*도\s*인\s*[:：]?\s*\n|개업\s*공인중개사\s*\n/);
+    body = (cut > 0 ? body.slice(0, cut) : body).replace(/\s+/g, ' ').trim();
+    if (body.length >= 4) r.특약 = body.slice(0, 300);
+  }
+  return r;
+}
+
+// ---- 부동산거래계약 신고필증 ----
+function ctParseDealReport_(text) {
+  var t = String(text || ''), flat = t.replace(/\s+/g, ' ');
+  var r = { 종류: '부동산거래계약 신고필증', 경고: [] };
+  var m = /관리\s*번호\s*([\d\-]{10,30})/.exec(flat); if (m) r.관리번호 = m[1];
+  m = /접수\s*일\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(flat); if (m) r.접수일 = ctYmd_(m[1], m[2], m[3]);
+  // 금액 — 신고필증 표는 OCR에서 "18,400,330 원 계약체결일 … 110,401,976원 중도금 지급일 … 55,200,990 원 잔금 지급일"처럼
+  // 금액이 다음 칸 이름표 바로 앞에 붙어 나온다. 그 짝을 먼저 쓰고, 총액 = 계약금+중도금+잔금 검산으로 확인한다.
+  var ml = ctMoneyList_(flat);
+  var before = function (labRe) { for (var q = 0; q < ml.length; q++) { var tail = flat.slice(ml[q].end, ml[q].end + 14); if (labRe.test(tail)) return ml[q].v; } return null; };
+  var tot = ctMoneyAfter_(flat, /거래\s*가격\s*\(\s*전\s*체\s*\)|총\s*실제\s*거래\s*가격|실제\s*거래\s*가격\s*\(\s*전\s*체\s*\)/, 80);
+  var freq = {}; ml.forEach(function (x) { freq[x.v] = (freq[x.v] || 0) + 1; });
+  var maxV = ml.length ? Math.max.apply(null, ml.map(function (x) { return x.v; })) : null;
+  r.총거래가격 = tot || (maxV && freq[maxV] >= 2 ? maxV : null);
+  r.계약금 = before(/^\s*원?\s*계\s*약\s*체\s*결/);
+  r.중도금 = before(/^\s*원?\s*중\s*도\s*금\s*지\s*급/);
+  r.잔금 = before(/^\s*원?\s*잔\s*금\s*지\s*급/);
+  ['계약금', '중도금', '잔금'].forEach(function (f) { if (r[f] && r[f] === r.총거래가격) r[f] = null; }); // 총액을 잘못 끌어온 칸
+  if (r.총거래가격 && !((r.계약금 || 0) + (r.중도금 || 0) + (r.잔금 || 0) === r.총거래가격)) {
+    var sol = ctUniqueSubset_(r.총거래가격, ml.map(function (x) { return x.v; }));
+    if (sol) { sol.sort(function (a, b) { return a - b; }); r.계약금 = sol[0]; r.잔금 = sol[sol.length - 1]; r.중도금 = sol.length > 2 ? sol.slice(1, -1).reduce(function (s2, x) { return s2 + x; }, 0) : null; r.구분확인필요 = true; }
+  }
+  var d = function (re) { var x = re.exec(flat); return x ? ctYmd_(x[1], x[2], x[3]) : ''; };
+  r.계약일 = d(/계약\s*체결\s*일\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+  r.중도금지급일 = d(/중도금\s*지급\s*일\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+  r.잔금지급일 = d(/잔금\s*지급\s*일\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+  // 소재지 — 거래대상 칸("종류 … 소재지/지목/면적") 쪽의 주소. 매도인·매수인 주소 칸("주소(법인소재지)")보다 뒤에 있다.
+  var lines = t.split('\n'), from = 0;
+  for (var i0 = 0; i0 < lines.length; i0++) if (/토지\s*및\s*건축물|\[\s*[^\]]?\s*\]\s*건축물|종\s*류|입주권|분양권|거래\s*대상/.test(lines[i0])) { from = i0; break; }
+  for (var j = from; j < lines.length; j++) {
+    var L = lines[j].replace(/\s+/g, ' ').trim();
+    if (CT_SIDO_RE_.test(L) && /\d/.test(L) && !/전화|사무소|중개|법무사/.test(L)) { r.소재지 = L.replace(/^.*?소재지\s*/, ''); break; }
+  }
+  var ta = /토지\s*면적\s*[^\d]{0,12}([\d][\d,.]*)\s*(?:m|㎡)/.exec(flat); if (ta) r.토지면적 = Number(ta[1].replace(/,/g, ''));
+  var ba = /건\s*축\s*물[^\d]{0,30}([\d][\d,.]*)\s*(?:m|㎡)|([\d][\d,.]*)\s*(?:m2|㎡)\s*건\s*축\s*물/.exec(flat); if (ba) r.건물면적 = Number((ba[1] || ba[2]).replace(/,/g, ''));
+  var dj = /대지권\s*비율[^\d]{0,20}([\d][\d,.]*)\s*분의\s*([\d][\d,.]*)/.exec(flat); if (dj) r.대지권비율 = dj[1] + '분의 ' + dj[2];
+  // 성명 — "매도인" 칸 앞뒤 "성명(법인명)" 다음 줄
+  var nm = []; var nr = /성\s*명\s*\(\s*법\s*인\s*명\s*\)\s*\n\s*([가-힣]{2,4}|\(주\)[가-힣]{2,20}|주식회사\s?[가-힣]{2,20}|[가-힣]{2,20}(?:주식회사|\(주\)))\s*\n/g, n2;
+  while ((n2 = nr.exec(t))) nm.push(n2[1]);
+  if (nm[0]) r.매도인 = nm[0]; if (nm[1]) r.매수인 = nm[1];
+  // 신고관청·필증 발급일 — 끝부분 날짜와 "…시장/구청장/군수"
+  var ds = ctDates_(t), last = ds.length ? ds[ds.length - 1] : null;
+  if (last && last.at > t.length * 0.6) r.발급일 = last.d;
+  var gw = /([가-힣]{2,10}(?:시장|구청장|군수))(?!\s*[·ㆍ])/.exec(t.slice(Math.floor(t.length * 0.5))); if (gw) r.신고관청 = gw[1];
+  var parts = (r.계약금 || 0) + (r.중도금 || 0) + (r.잔금 || 0);
+  if (r.총거래가격 && r.계약금 && parts === r.총거래가격) r.검산 = '일치';
+  else if (r.총거래가격 && r.계약금) { r.검산 = '불일치'; r.경고.push('계약금+중도금+잔금이 총 거래가격과 다름 — 원문 확인'); }
+  if (!r.총거래가격) r.경고.push('실제 거래가격을 읽지 못함');
+  if (!r.계약일) r.경고.push('계약체결일을 읽지 못함');
+  return r;
+}
+
+// ---- 중개대상물 확인·설명서 / 중개보수 영수증 ----
+function ctParseBroker_(text) {
+  var t = String(text || ''), flat = t.replace(/\s+/g, ' ');
+  var isReceipt = /현금\s*영수증|카드\s*영수증|영\s*수\s*증/.test(t) && !/확인\s*[·ㆍᆞ.]?\s*설명서|거래\s*예정\s*금액/.test(t);
+  var r = { 종류: isReceipt ? '중개보수 영수증' : '중개대상물 확인·설명서', 경고: [] };
+  var m;
+  if (isReceipt) {
+    var nums = (flat.match(/\d[\d,\s]{3,14}\d/g) || []).map(function (x) { return Number(x.replace(/[,\s]/g, '')); }).filter(function (x) { return x >= 10000 && x < 1e9; });
+    // 공급가액 + 부가세 = 합계 검산(단말기 영수증 숫자 칸이 "1 6 6 4 0 0 0"처럼 띄어 나오기도)
+    for (var i = 0; i < nums.length && !r.합계; i++) for (var j = 0; j < nums.length; j++) { if (i !== j && nums.indexOf(nums[i] + nums[j]) !== -1 && Math.abs(nums[j] - Math.round(nums[i] / 10)) <= 1) { r.중개보수 = nums[i]; r.부가세 = nums[j]; r.합계 = nums[i] + nums[j]; break; } }
+    if (!r.합계 && nums.length === 1) r.합계 = nums[0];
+    m = /(\d{2,4})[.\-/년]\s*(\d{1,2})[.\-/월]\s*(\d{1,2})/.exec(flat); if (m) r.거래일 = ctYmd_(m[1].length === 2 ? '20' + m[1] : m[1], m[2], m[3]);
+    m = /(\d{3}-\d{2}-\d{5})/.exec(flat); if (m) r.사업자등록번호 = m[1];
+    if (!r.합계) r.경고.push('금액을 확정하지 못함 — 원문 확인'); else if (!r.부가세) r.경고.push('공급가액·부가세 검산을 못 함 — 원문 확인');
+    return r;
+  }
+  if (/\(\s*주거용\s*건축물\s*\)/.test(t)) r.서식 = '주거용 건축물'; else if (/비\s*주거용/.test(t)) r.서식 = '비주거용 건축물'; else if (/\(\s*토지\s*\)/.test(t)) r.서식 = '토지';
+  var sm = /소\s*재\s*지\s*[:：]?\s*([^\n]{6,80})/.exec(t);
+  if (sm && /\d/.test(sm[1]) && CT_SIDO_RE_.test(sm[1])) r.소재지 = sm[1].replace(/\s+/g, ' ').trim();
+  m = /지\s*목\s*[^\n]{0,20}?(대|전|답|임야|잡종지|과수원|공장용지|창고용지|주차장)(?=\s|$)/.exec(t); if (m) r.지목 = m[1];
+  m = /전\s*용\s*면\s*적\s*\(?\s*(?:m2|㎡)?\s*\)?\s*[:：]?\s*([\d][\d,.]*)/.exec(flat); if (m) r.전용면적 = Number(m[1].replace(/,/g, ''));
+  m = /대\s*지\s*지\s*분\s*\(?\s*(?:m2|㎡)?\s*\)?\s*[:：]?\s*([\d][\d,.]*)/.exec(flat); if (m) r.대지지분 = Number(m[1].replace(/,/g, ''));
+  m = /건축물대장상\s*용도\s*[:：]?\s*([가-힣]{2,12})|용\s*도\s*건축물대장상\s*용도\s*([가-힣]{2,12})/.exec(flat); if (m) r.용도 = m[1] || m[2];
+  m = /구\s*조\s*[:：]?\s*([가-힣]{2,12}(?:조|구조))/.exec(flat); if (m) r.구조 = m[1];
+  m = /사용\s*승인\s*(?:일|연도)?[^\d]{0,12}((?:19|20)\d{2})\s*[년.\-]?\s*(\d{1,2})?/.exec(flat); if (m) r.사용승인 = m[1] + (m[2] ? '-' + ('0' + m[2]).slice(-2) : '');
+  r.거래예정금액 = ctMoneyAfter_(flat, /거\s*래\s*예\s*정\s*금\s*액/, 60);
+  m = /개별\s*공시\s*지가\s*\(?\s*(?:m2|㎡)\s*당\s*\)?\s*([\d][\d,.]*)/.exec(flat); if (m) r.공시지가 = ctNum_(m[1]);
+  m = /(?:건물\s*\(?\s*주택\s*\)?\s*)?공시\s*가격\s*([\d][\d,.]{4,})/.exec(flat); if (m) r.공시가격 = ctNum_(m[1]);
+  // 등기부 권리관계 — "소유권에 관한 사항" / "소유권 외의 권리사항"
+  m = /소유권\s*외의?\s*권리\s*사항\s*([^\n]{0,80})/.exec(t); if (m) r.권리사항 = m[1].replace(/\s+/g, ' ').trim();
+  if (/근\s*저\s*당/.test(t)) r.근저당 = '있음(원문 확인)';
+  // 중개보수 — 산출내역 "400,000,000 x 0.40%"로 검산
+  r.중개보수 = ctMoneyAfter_(flat, /중\s*개\s*보\s*수\s*(?!등에|및|는|를|:)/, 60);
+  m = /([\d][\d,.]{5,})\s*[x×*]\s*([\d.]+)\s*%/.exec(flat);
+  if (m) { var base = ctNum_(m[1]), rate = Number(m[2]); r.보수산출 = base.toLocaleString('ko-KR') + ' × ' + rate + '%'; var calc = Math.round(base * rate / 100); if (r.중개보수 && Math.abs(calc - r.중개보수) <= 10) r.보수검산 = '일치'; else if (r.중개보수) { r.보수검산 = '불일치(산출 ' + calc.toLocaleString('ko-KR') + ')'; r.경고.push('중개보수가 산출내역과 다름 — 원문 확인'); } if (!r.거래예정금액) r.거래예정금액 = base; }
+  m = /VAT\s*[:：]?\s*([\d][\d,.]*)\s*원/.exec(flat) || /부\s*가\s*세\s*[:：]?\s*([\d][\d,.]*)\s*원/.exec(flat); if (m) r.부가세 = ctNum_(m[1]);
+  m = /계\s*([\d][\d,.]{4,})\s*원/.exec(flat); if (m) r.보수합계 = ctNum_(m[1]);
+  m = /실\s*비\s*[:：]?\s*([\d][\d,.]*)\s*원/.exec(flat); if (m) r.실비 = ctNum_(m[1]);
+  // 작성일(거래당사자 서명란 위 날짜)
+  var sg = t.search(/수령합니다|수령\s*합니다/);
+  if (sg >= 0) { var dd = ctDates_(t.slice(sg, sg + 200)); if (dd.length) r.작성일 = dd[0].d; }
+  var nameAfter = function (re) { var x = re.exec(t); if (!x) return ''; var w = /^[\s:：]*(?:성\s*명\s*)?\n?\s*([가-힣]{2,4})(?=\s|$)/.exec(t.slice(x.index + x[0].length, x.index + x[0].length + 20)); return w && !/^(주소|성명|생년|월일|전화|번호|서명|날인|임대인|임차인|매수인)$/.test(w[1]) ? w[1] : ''; };
+  r.매도인 = nameAfter(/매\s*도\s*인/); r.매수인 = nameAfter(/매\s*수\s*인/);
+  if (!r.거래예정금액) r.경고.push('거래예정금액을 읽지 못함');
+  if (!r.중개보수) r.경고.push('중개보수를 읽지 못함');
+  return r;
+}
+
+// ---- 대조표 — 같은 거래의 서류들끼리 금액·날짜·면적·소재지·당사자 비교 ----
+function ctCompare_(docs) {
+  var C = docs.filter(function (d) { return d.type === 'contract'; }).map(function (d) { return d.r; });
+  var D = docs.filter(function (d) { return d.type === 'dealreport'; }).map(function (d) { return d.r; });
+  var B = docs.filter(function (d) { return d.type === 'brokerdesc'; }).map(function (d) { return d.r; });
+  if ((C.length ? 1 : 0) + (D.length ? 1 : 0) + (B.length ? 1 : 0) < 2) return null;
+  var c = C[0] || {}, d = D[0] || {}, b = B.filter(function (x) { return x.종류 !== '중개보수 영수증'; })[0] || {}, br = B.filter(function (x) { return x.종류 === '중개보수 영수증'; })[0] || {};
+  var normA = function (s) { return String(s || '').replace(/\s+/g, '').replace(/[(),.]/g, '').replace(/(특별시|광역시|특별자치시|특별자치도|도)/, ''); };
+  var rows = [];
+  var add = function (label, vals, cmp) {
+    var vs = vals.filter(function (v) { return v.v !== undefined && v.v !== null && v.v !== ''; });
+    if (vs.length < 1) return;
+    var same = vs.length < 2 ? '' : vs.every(function (v) { return (cmp || function (a, b2) { return a === b2; })(v.v, vs[0].v); }) ? '일치' : '⚠불일치';
+    rows.push({ 항목: label, 값: vals, 결과: same });
+  };
+  add('거래금액', [{ src: '계약서', v: c.매매대금 }, { src: '신고필증', v: d.총거래가격 }, { src: '확인설명서', v: b.거래예정금액 }]);
+  add('계약금', [{ src: '계약서', v: c.계약금 }, { src: '신고필증', v: d.계약금 }]);
+  add('잔금', [{ src: '계약서', v: c.잔금 }, { src: '신고필증', v: d.잔금 }]);
+  add('계약일', [{ src: '계약서', v: c.계약일 }, { src: '신고필증', v: d.계약일 }, { src: '확인설명서', v: b.작성일 }]);
+  add('잔금일', [{ src: '계약서', v: c.잔금일 }, { src: '신고필증', v: d.잔금지급일 }]);
+  add('건물(전용)면적', [{ src: '계약서', v: c.건물면적 }, { src: '신고필증', v: d.건물면적 }, { src: '확인설명서', v: b.전용면적 }], function (a, b2) { return Math.abs(Number(a) - Number(b2)) < 0.1; });
+  add('소재지', [{ src: '계약서', v: c.소재지 }, { src: '신고필증', v: d.소재지 }, { src: '확인설명서', v: b.소재지 }], function (a, b2) { var x = normA(a), y = normA(b2); return x.slice(0, 10) === y.slice(0, 10) || x.indexOf(y.slice(0, 12)) !== -1 || y.indexOf(x.slice(0, 12)) !== -1; });
+  add('매도인', [{ src: '계약서', v: c.매도인 }, { src: '신고필증', v: d.매도인 }, { src: '확인설명서', v: b.매도인 }]);
+  add('매수인', [{ src: '계약서', v: c.매수인 }, { src: '신고필증', v: d.매수인 }, { src: '확인설명서', v: b.매수인 }]);
+  add('중개보수', [{ src: '확인설명서', v: b.중개보수 }, { src: '영수증(공급가액)', v: br.중개보수 }]);
+  return rows;
+}
+
+// =========================================================
+// [2026.10.10] 임대차계약서(주택·상가, 전세·월세, 갱신) · 임대차계약 신고서/주택임대차 신고필증 · 확정일자 부여현황 — 토큰 0, ES5
+// 세무 쓰임: 부담부증여 인수채무·상속 공제채무(보증금, 그날 유효한 계약인지), 임대사업자 임대료 5% 증액 상한.
+// 검산: 계약금+중도금+잔금=보증금 / 종전 보증금+증액=새 보증금이 맞을 때만 확정, 아니면 ⚠확인필요.
+// =========================================================
+// 한국은행 기준금리 변경 이력(전월세 전환율 계산용). 표 밖 날짜는 ⚠확인필요로 표시한다.
+var LS_BOK_RATES_ = [['2014-08-14', 2.25], ['2014-10-15', 2.00], ['2015-03-12', 1.75], ['2015-06-11', 1.50], ['2016-06-09', 1.25], ['2017-11-30', 1.50], ['2018-11-30', 1.75], ['2019-07-18', 1.50], ['2019-10-16', 1.25], ['2020-03-17', 0.75], ['2020-05-28', 0.50], ['2021-08-26', 0.75], ['2021-11-25', 1.00], ['2022-01-14', 1.25], ['2022-04-14', 1.50], ['2022-05-26', 1.75], ['2022-07-13', 2.25], ['2022-08-25', 2.50], ['2022-10-12', 3.00], ['2022-11-24', 3.25], ['2023-01-13', 3.50], ['2024-10-11', 3.25], ['2024-11-28', 3.00], ['2025-02-25', 2.75], ['2025-05-29', 2.50]];
+// 주택임대차보호법 시행령 제9조 월차임 전환율(민간임대주택법 임대료 증액 비교에도 이 비율) — 10%와 아래 중 낮은 것
+//  ~2016.11.29: 기준금리×4 / 2016.11.30~2020.9.28: 기준금리+3.5%p / 2020.9.29~: 기준금리+2%p
+function lsConvRate_(ymd) {
+  var b = null, known = ymd && ymd >= LS_BOK_RATES_[0][0];
+  LS_BOK_RATES_.forEach(function (x) { if (ymd >= x[0]) b = x[1]; });
+  if (b === null) return null;
+  var r = ymd < '2016-11-30' ? b * 4 : ymd < '2020-09-29' ? b + 3.5 : b + 2;
+  return { 기준금리: b, 전환율: Math.min(10, Math.round(r * 100) / 100), 표밖: !known || ymd > '2026-06-30' };
+}
+// 환산보증금 = 보증금 + 월세×12 ÷ 전환율
+function lsConverted_(dep, rent, rate) { return Math.round((dep || 0) + (rent || 0) * 12 / (rate / 100)); }
+
+function lsParseLease_(text) {
+  var t = String(text || ''), flat = t.replace(/\s+/g, ' ');
+  var r = { 종류: '임대차계약서', 경고: [] };
+  var title = (/(?:^|\n)\s*([^\n]{0,20}(?:전세|월세|임대차|임대)\s*계약서)/.exec(t) || [])[1] || '';
+  r.구분 = /상가|점포|사무실|근린|공장|창고/.test(title + flat.slice(0, 400)) ? '상가·업무용' : '주택';
+  r.갱신 = /갱\s*신\s*계약|재\s*계약|계약\s*갱신|묵시적\s*갱신|갱신\s*요구/.test(flat);
+  var sm = /소\s*재\s*지\s*[:：]?\s*([^\n]{6,90})/.exec(t);
+  if (sm && /\d/.test(sm[1])) r.소재지 = sm[1].replace(/\s+/g, ' ').trim();
+  var pm = /임대할\s*부분\s*[:：]?\s*([^\n]{1,40})/.exec(t); if (pm && !/면적/.test(pm[1])) r.임대부분 = pm[1].trim();
+  var am = /([\d][\d,.]*)\s*(?:m2|㎡|m'|m²)/g, a, areas = []; while ((a = am.exec(flat))) areas.push(Number(a[1].replace(/,/g, '')));
+  if (areas.length) r.임대면적 = areas[areas.length - 1];
+  // 금액
+  var all = ctMoneyList_(flat), allV = all.map(function (x) { return x.v; });
+  r.보증금 = ctMoneyAfterAny_(flat, /보\s*[증장○]?\s*금\s*-?/, 120);
+  var wons = all.filter(function (x) { return x.won; }).map(function (x) { return x.v; });
+  var wonMax = wons.length ? Math.max.apply(null, wons) : null;
+  if (wonMax && (!r.보증금 || wonMax > r.보증금)) { if (r.보증금 && r.보증금 !== wonMax) r.경고.push('한글 금액과 숫자 금액이 달라 숫자(₩) 금액을 보증금으로 씀 — 확인'); r.보증금 = wonMax; }
+  r.계약금 = ctMoneyAfter_(flat, /계\s*약\s*금/, 100);
+  r.중도금 = ctMoneyAfter_(flat, /중\s*도\s*금\s*-?/, 30);
+  r.잔금 = ctMoneyAfter_(flat, /잔\s*금\s*[:：]?/, 100);
+  r.월세 = ctMoneyAfterAny_(flat, /월\s*세\s*-?|차\s*임\s*[:：]?|월\s*임\s*대\s*료/, 40);
+  if (!r.월세) { var rm = /월\s*세\s*[:：]?\s*(?:금\s*)?([\d][\d,]{2,})\s*원/.exec(flat); if (rm) r.월세 = ctNum_(rm[1]); }
+  r.관리비 = ctMoneyAfterAny_(flat, /관\s*리\s*비/, 30);
+  ['계약금', '잔금', '중도금'].forEach(function (f) { if (r[f] && r[f] === r.보증금) r[f] = null; });
+  if (r.월세 && r.보증금 && r.월세 >= r.보증금) r.월세 = null;
+  // 월세가 잔금 칸에 잘못 잡힌 경우(상가 "보증금 3백만 / 월 30만") — 잔금이 월세와 같으면 버린다
+  if (r.월세 && r.잔금 === r.월세) r.잔금 = null;
+  r.형태 = /(?:^|\n)[^\n]{0,20}월\s*세\s*계약서/.test(t) || r.월세 ? '월세(보증부)' : '전세';
+  // 검산
+  if (r.보증금) {
+    var parts = (r.계약금 || 0) + (r.중도금 || 0) + (r.잔금 || 0);
+    if (r.계약금 && parts === r.보증금) r.검산 = '일치';
+    else if (r.계약금 && !r.잔금 && allV.indexOf(r.보증금 - r.계약금 - (r.중도금 || 0)) !== -1) { r.잔금 = r.보증금 - r.계약금 - (r.중도금 || 0); r.검산 = '일치'; }
+    else if (!r.계약금 && r.잔금 && allV.indexOf(r.보증금 - r.잔금 - (r.중도금 || 0)) !== -1) { r.계약금 = r.보증금 - r.잔금 - (r.중도금 || 0); r.검산 = '일치'; }
+    else {
+      var sol = ctUniqueSubset_(r.보증금, allV.filter(function (x) { return x !== r.월세 && x !== r.관리비; }));
+      if (sol && sol.length === 2) { sol.sort(function (x, y) { return x - y; }); r.계약금 = sol[0]; r.잔금 = sol[1]; r.중도금 = null; r.검산 = '일치(금액 조합으로 맞춤 — 구분은 원문 확인)'; }
+      else if (r.계약금 || r.잔금) { r.검산 = '불일치'; r.경고.push('계약금·잔금을 확정하지 못함(합이 보증금과 다름) — 원문 확인'); }
+      else r.검산 = '계약금·잔금 칸을 읽지 못함';
+    }
+    // 합이 안 맞는 계약금·잔금은 틀린 숫자일 수 있으므로 보여주지 않는다(보증금만 남김)
+    if (!r.검산 || r.검산.indexOf('일치') !== 0) { r.계약금 = null; r.중도금 = null; r.잔금 = null; }
+    else if (r.검산 && r.검산.indexOf('일치') === 0 && r.계약금 && r.잔금 && r.계약금 > r.잔금) { r.경고.push('계약금이 잔금보다 큼 — 두 칸이 뒤바뀌었을 수 있음, 원문 확인'); r.구분확인필요 = true; }
+  } else r.경고.push('보증금을 읽지 못함');
+  // 기간 — "…상태로 2023년 11월 30일까지 임차인에게 인도하며, 임대차기간은 인도일로부터 2025년 11월 30일까지로 한다.(24개월)"
+  var d1 = /((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*까지\s*임차인에게\s*인도/.exec(flat);
+  var d2 = /인도일로부터\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*까지/.exec(flat);
+  if (d1) r.시작일 = ctYmd_(d1[1], d1[2], d1[3]);
+  if (d2) r.종료일 = ctYmd_(d2[1], d2[2], d2[3]);
+  if (!r.시작일 || !r.종료일) {
+    var pr = /((?:19|20)\d{2})\s*[년.\-]\s*(\d{1,2})\s*[월.\-]\s*(\d{1,2})\s*일?\s*(?:부터|~|-|에서)\s*((?:19|20)\d{2})\s*[년.\-]\s*(\d{1,2})\s*[월.\-]\s*(\d{1,2})/.exec(flat);
+    if (pr) { r.시작일 = r.시작일 || ctYmd_(pr[1], pr[2], pr[3]); r.종료일 = r.종료일 || ctYmd_(pr[4], pr[5], pr[6]); }
+  }
+  var mm = /\(\s*(\d{1,3})\s*개월\s*\)/.exec(flat); if (mm) r.개월 = Number(mm[1]);
+  if (r.시작일 && r.종료일 && r.개월) {
+    var s = new Date(r.시작일), e = new Date(r.종료일), months = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth());
+    if (Math.abs(months - r.개월) > 1) r.경고.push('계약기간 날짜(' + months + '개월)와 적힌 개월 수(' + r.개월 + '개월)가 다름 — 확인');
+  }
+  var gm = /교부\s*일자\s*[:：]?\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(flat);
+  if (gm) r.계약일 = ctYmd_(gm[1], gm[2], gm[3]);
+  if (!r.계약일) { var sg = t.search(/각\s*(?:자\s*)?(?:서명|1\s*통)|이의\s*없음을\s*확인/); if (sg >= 0) { var nd = ctDates_(t.slice(sg, sg + 260)); if (nd.length) r.계약일 = nd[0].d; } }
+  var hm = /확정\s*일자[^\d]{0,20}((?:19|20)\d{2})\s*[년.\-]\s*(\d{1,2})\s*[월.\-]\s*(\d{1,2})/.exec(flat); if (hm) r.확정일자 = ctYmd_(hm[1], hm[2], hm[3]);
+  // 갱신 — 특약에 "종전 보증금 ○원에서 ○원 증액" 등
+  var jm = /종\s*전\s*(?:보증금|임대보증금)?\s*(?:은|:)?\s*(?:금\s*)?([\d][\d,]{4,})\s*원?/.exec(flat); if (jm) r.종전보증금 = ctNum_(jm[1]);
+  var im = /([\d][\d,]{4,})\s*원?\s*(?:을|를)?\s*증\s*액|증\s*액\s*(?:분|금액)?\s*(?:은|:)?\s*(?:금\s*)?([\d][\d,]{4,})/.exec(flat); if (im) r.증액분 = ctNum_(im[1] || im[2]);
+  if (r.종전보증금 && r.증액분 && r.보증금) { if (r.종전보증금 + r.증액분 === r.보증금) r.증액검산 = '일치'; else { r.증액검산 = '불일치'; r.경고.push('종전 보증금+증액분이 새 보증금과 다름 — 원문 확인'); } }
+  var tk = /특\s*약\s*사\s*항\s*[:：]?/.exec(t);
+  if (tk) { var body = t.slice(tk.index + tk[0].length, tk.index + tk[0].length + 500), cut = body.search(/본\s*계약을\s*증명|이\s*계약을\s*증명|본\s*계약에\s*대하여|임\s*대\s*인\s*\n?\s*임\s*차\s*인/); body = (cut > 0 ? body.slice(0, cut) : body).replace(/\s+/g, ' ').trim(); if (body.length >= 4) r.특약 = body.slice(0, 300); }
+  if (!r.시작일 || !r.종료일) r.경고.push('계약기간을 확정하지 못함');
+  return r;
+}
+
+// 임대차계약 신고서(민간임대주택법 별지 제21호 — 임대사업자) / 주택임대차 계약 신고필증(부동산거래신고법) / 확정일자 부여현황
+function lsParseLeaseReport_(text) {
+  var t = String(text || ''), flat = t.replace(/\s+/g, ' ');
+  var r = { 경고: [] };
+  if (/확정\s*일자\s*(?:부여)?\s*현황|확정일자\s*부여\s*기관/.test(flat)) r.종류 = '확정일자 부여현황';
+  else if (/임대차\s*계약\s*신고\s*필증|주택\s*임대차\s*신고\s*필증/.test(flat)) r.종류 = '주택임대차 계약 신고필증';
+  else r.종류 = '임대차계약 신고서(임대사업자)';
+  var sm = /(?:임대차\s*(?:목적물|대상)|소재지|건물\s*주소)\s*[:：]?\s*([^\n]{0,8}?[가-힣]{2,9}(?:도|시)\s+[가-힣]{1,6}(?:시|군|구)[^\n]{4,80})/.exec(t);
+  if (!sm) sm = /\n\s*([가-힣]{2,9}(?:도|시)\s+[가-힣]{1,6}(?:시|군|구)\s[^\n]*(?:\d+\s*호|\d+\s*층)[^\n]*)/.exec(t.slice(Math.max(0, t.search(/소재지|건물\s*주소/))));
+  if (sm) r.소재지 = sm[1].replace(/\s+/g, ' ').replace(/^[:：\s]+/, '').trim();
+  // 계약 조건 줄: "2019-11-25 2020-05-25 20,000,000 350,000" — 종전·갱신 후가 차례로 나온다
+  var terms = [], tr = /((?:19|20)\d{2}-\d{2}-\d{2})\s*[~\-]?\s*((?:19|20)\d{2}-\d{2}-\d{2})\s+([\d][\d,]{3,})(?:\s+([\d][\d,]{2,}))?/g, m;
+  while ((m = tr.exec(flat))) terms.push({ 시작일: m[1], 종료일: m[2], 보증금: ctNum_(m[3]), 월세: m[4] ? ctNum_(m[4]) : 0 });
+  if (r.종류 === '확정일자 부여현황') {
+    var fm = /((?:19|20)\d{2}-\d{2}-\d{2})\s*\/\s*(\d{4,10})/.exec(flat); if (fm) { r.확정일자 = fm[1]; r.확정번호 = fm[2]; }
+    var pm = /((?:19|20)\d{2}-\d{2}-\d{2})\s*(?:[^\d]{0,6})?\s*~?\s*((?:19|20)\d{2}-\d{2}-\d{2})\s*까지/.exec(flat); if (pm) { r.시작일 = pm[1]; r.종료일 = pm[2]; }
+    r.보증금 = ctMoneyAfter_(flat, /보\s*[증○]?\s*금/, 60);
+    r.월세 = ctMoneyAfterAny_(flat, /차\s*[임○]\s*(?!\s*[○]?\s*금)/, 40);
+    if (r.월세 && r.보증금 && r.월세 >= r.보증금) r.월세 = null;
+    var qm = /((?:19|20)\d{2}-\d{2}-\d{2})\s+\d{2}:\d{2}(?::\d{2})?\s*현재/.exec(flat); if (qm) r.조회일 = qm[1];
+    if (!r.확정일자) r.경고.push('확정일자를 읽지 못함');
+    return r;
+  }
+  // 여러 쪽(여러 해·여러 집 신고서 묶음)이면 같은 조건 줄이 반복된다 — 하나로, 시작일 순
+  var seenT = {};
+  terms = terms.filter(function (x) { var k = x.시작일 + x.종료일 + x.보증금 + '/' + x.월세; if (seenT[k]) return false; seenT[k] = 1; return true; }).sort(function (a, b) { return a.시작일 < b.시작일 ? -1 : 1; });
+  // 임대주택 소재지(임대인 주소 줄은 빼고) — 여러 집이면 모두
+  var addrs = [], ar = /\n\s*([가-힣]{2,9}(?:도|시)\s+[가-힣]{1,6}(?:시|군|구)\s[^\n]*(?:\d+\s*호|\d+\s*층|\d+\s*동)[^\n]*)/g, am2;
+  var lords = t.match(/주소\s*\([^)]*\)[^\n]*\n[\s\S]{0,200}?\n\s*([가-힣]{2,9}(?:도|시)\s[^\n]+)/g) || [];
+  while ((am2 = ar.exec(t))) { var A0 = am2[1].replace(/\s+/g, ' ').trim(); if (addrs.indexOf(A0) === -1 && !lords.some(function (L) { return L.indexOf(A0) !== -1; })) addrs.push(A0); }
+  if (addrs.length) { r.소재지 = addrs.join(' / '); if (addrs.length > 1) r.경고.push('임대주택 ' + addrs.length + '곳의 신고서가 묶여 있음 — 계약 조건이 어느 집 것인지 원문 확인'); }
+  if (terms.length) {
+    r.계약조건 = terms;
+    var last = terms[terms.length - 1]; r.시작일 = last.시작일; r.종료일 = last.종료일; r.보증금 = last.보증금; r.월세 = last.월세;
+    // 앞 계약 종료 무렵(±40일) 시작한 다음 계약만 "종전→갱신"으로 본다 — 다른 집 계약끼리 비교하지 않게
+    r.증액비교 = [];
+    // 여러 집 신고서가 묶여 있으면 어느 조건이 어느 집 것인지 몰라 증액률을 계산하지 않는다
+    for (var ti = 1; ti < terms.length && addrs.length <= 1; ti++) {
+      var gap = (new Date(terms[ti].시작일) - new Date(terms[ti - 1].종료일)) / 86400000;
+      if (Math.abs(gap) <= 40) r.증액비교.push({ 종전: terms[ti - 1], 새: terms[ti] });
+    }
+    if (r.증액비교.length) r.갱신 = true;
+  } else {
+    r.보증금 = ctMoneyAfter_(flat, /보\s*증\s*금/, 60); r.월세 = ctMoneyAfter_(flat, /월\s*차\s*임|월\s*임대료|차\s*임/, 40);
+    r.경고.push('계약기간·금액 줄을 읽지 못함 — 원문 확인');
+  }
+  var dm = /((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(flat); if (dm) r.신고일 = ctYmd_(dm[1], dm[2], dm[3]);
+  var nm = /(\d{4}-\d{6,})/.exec(flat); if (nm) r.접수번호 = nm[1];
+  return r;
+}
+
+// 임대료 증액률 — 같은 주택의 앞뒤 계약(종전→새). 보증금·월세를 환산보증금으로 바꿔 비교(임대사업자 5% 상한)
+function lsIncrease_(prev, next) {
+  if (!prev || !next || !prev.보증금 || !next.보증금) return null;
+  var when = next.시작일 || next.계약일 || '';
+  var cr = lsConvRate_(when);
+  var out = { 종전: prev, 새: next, 기준일: when };
+  if (!prev.월세 && !next.월세) { out.증액률 = Math.round((next.보증금 / prev.보증금 - 1) * 10000) / 100; out.방법 = '보증금만 비교'; }
+  else if (cr) {
+    out.전환율 = cr.전환율; out.기준금리 = cr.기준금리;
+    out.종전환산 = lsConverted_(prev.보증금, prev.월세, cr.전환율); out.새환산 = lsConverted_(next.보증금, next.월세, cr.전환율);
+    out.증액률 = Math.round((out.새환산 / out.종전환산 - 1) * 10000) / 100; out.방법 = '환산보증금 비교(전환율 ' + cr.전환율 + '% = 기준금리 ' + cr.기준금리 + '% 기준)';
+    if (cr.표밖) out.경고 = '기준금리 표 밖 날짜 — 전환율 확인필요';
+  } else { out.방법 = '전환율을 정하지 못함(날짜 확인)'; }
+  if (out.증액률 != null) out.판정 = out.증액률 <= 5 ? '5% 이내' : '⚠5% 초과';
+  return out;
+}
+
+// 제목으로 거래 서류임이 분명한지(첫 400자)
+function docDealStrong_(text) {
+  var head = String(text || '').slice(0, 400);
+  return /(매\s*매|분\s*양|공\s*급|전\s*세|월\s*세|임\s*대\s*차|임\s*대)\s*(?:전\s*자\s*)?계\s*약\s*서|부\s*동\s*산\s*거\s*래\s*계\s*약\s*신\s*고\s*필\s*증|중\s*개\s*대\s*상\s*물\s*확\s*인\s*[·ㆍᆞ•.]?\s*설\s*명\s*서|확\s*정\s*일\s*자\s*(?:부여)?\s*현\s*황|임대차\s*계약\s*신고\s*(?:서|필증)|신고서\s*\([^)\n]{0,6}\)\s*\n?\s*임대차\s*계약/.test(head);
+}
+// ---- 거래 서류 판별 — 한 파일 안의 서류들(묶음 스캔)로 나눠 돌려준다 ----
+function docDealDetect_(text) {
+  var t = String(text || ''), head = t.slice(0, 400);
+  var saleHead = /(매\s*매|분\s*양|공\s*급)\s*(?:전자\s*)?계\s*약\s*서|매매\s*계약을\s*체결/.test(head);
+  // 임대차: 신고서·확정일자 현황 / 계약서 (시·군·구 임대사업자 등록증은 계약서 제목이 없어 걸리지 않는다). 매매 계약서 머리면 매매 쪽으로.
+  if (!saleHead && /확\s*정\s*일\s*자\s*(?:부여)?\s*현\s*황|임대차\s*계약\s*신고\s*(?:서|필증)|주택\s*임대차\s*신고\s*필증|신고서\s*\([^)\n]{0,6}\)\s*\n?\s*임대차\s*계약/.test(t) && !/(전세|월세|임대차|임대)\s*계약서/.test(head)) return [{ type: 'leasereport', text: t }];
+  if (!saleHead && /(?:^|\n)[^\n]{0,24}(전\s*세|월\s*세|임\s*대\s*차|임\s*대)\s*계\s*약\s*서/.test(head) || (/임\s*대\s*인/.test(t) && /임\s*차\s*인/.test(t) && /보\s*증\s*금/.test(t) && /임대차\s*(?:계약|기간)/.test(t) && !/매\s*도\s*인/.test(t))) return [{ type: 'lease', text: t }];
+  var segs = ctSplit_(t);
+  if (segs.length) return segs;
+  if (/중\s*개\s*보\s*수/.test(t) && /(영\s*수\s*증|TOTAL|합\s*계)/.test(t) && !/계\s*약\s*서/.test(head)) return [{ type: 'brokerdesc', text: t }];
+  if (/거\s*래\s*예\s*정\s*금\s*액|중개\s*보수\s*등에\s*관한\s*사항|중개\s*대상물\s*확인/.test(t) && /중\s*개\s*보\s*수/.test(t)) return [{ type: 'brokerdesc', text: t }];
+  if (!saleHead && /부\s*동\s*산\s*거\s*래\s*계\s*약\s*신\s*고\s*필\s*증/.test(t) && /거\s*래\s*가\s*격|계\s*약\s*체\s*결\s*일/.test(t)) return [{ type: 'dealreport', text: t }];
+  if ((saleHead || /(매\s*매|공\s*급|분\s*양)\s*계\s*약\s*서|부동산\s*매매\s*계약/.test(t)) && /(매\s*도\s*인|매\s*수\s*인|공급\s*받는\s*자|분양\s*받는\s*자|매\s*도\s*자)/.test(t) && ctMoneyList_(t.replace(/\s+/g, ' ')).length) return [{ type: 'contract', text: t }];
+  return [];
+}
+function docDealParseOne_(seg) {
+  if (seg.type === 'contract') return ctParseContract_(seg.text);
+  if (seg.type === 'dealreport') return ctParseDealReport_(seg.text);
+  if (seg.type === 'brokerdesc') return ctParseBroker_(seg.text);
+  if (seg.type === 'lease') return lsParseLease_(seg.text);
+  if (seg.type === 'leasereport') return lsParseLeaseReport_(seg.text);
+  return null;
+}
+function docDealMd_(type, r) {
+  var won = function (n) { return n == null || n === '' ? '' : Number(n).toLocaleString('ko-KR') + '원'; };
+  var esc = function (v) { return String(v == null ? '' : v).replace(/\|/g, '/').replace(/\n/g, ' '); };
+  var kv = function (rows) { rows = rows.filter(function (x) { return x[1] !== undefined && x[1] !== null && x[1] !== ''; }); return rows.length ? '| 항목 | 내용 |\n|---|---|\n' + rows.map(function (x) { return '| ' + esc(x[0]) + ' | ' + esc(x[1]) + ' |'; }).join('\n') : ''; };
+  var warn = function (b) { return b ? ' ⚠' : ''; };
+  var out = [];
+  if (type === 'contract') {
+    out.push('### ' + r.종류);
+    out.push(kv([['소재지', r.소재지], ['토지', [r.지목, r.토지면적 ? r.토지면적 + '㎡' : '', r.대지권비율 ? '대지권 ' + r.대지권비율 : ''].filter(Boolean).join(' · ')], ['건물', [r.건물용도, r.구조, r.건물면적 ? r.건물면적 + '㎡' : ''].filter(Boolean).join(' · ')],
+      ['매매대금', won(r.매매대금) + warn(r.대금추정)], ['계약금', won(r.계약금) + (r.계약금계산 ? ' (계산값)' : '') + warn(r.구분확인필요 || r.계약금계산)], ['중도금', (r.중도금 || []).map(won).join(' / ') + (r.중도금계산 ? ' (계산값)' : '') + warn((r.중도금 || []).length && (r.구분확인필요 || r.중도금계산))],
+      ['잔금', won(r.잔금) + warn(r.구분확인필요)], ['융자금(승계)', won(r.융자금)], ['보증금(승계)', won(r.승계보증금)], ['금액 검산', r.검산],
+      ['계약일', r.계약일], ['중도금일', r.중도금일], ['잔금일', (r.잔금일 || '') + warn(r.잔금일확인필요)], ['매도인', r.매도인], ['매수인', r.매수인], ['특약(발췌)', r.특약]]));
+  } else if (type === 'dealreport') {
+    out.push('### 부동산거래계약 신고필증');
+    out.push(kv([['소재지', r.소재지], ['실제 거래가격', won(r.총거래가격)], ['계약금', won(r.계약금) + warn(r.구분확인필요)], ['중도금', won(r.중도금)], ['잔금', won(r.잔금)], ['금액 검산', r.검산],
+      ['계약체결일', r.계약일], ['중도금 지급일', r.중도금지급일], ['잔금 지급일(예정)', r.잔금지급일], ['토지면적', r.토지면적 ? r.토지면적 + '㎡' : ''], ['건물면적', r.건물면적 ? r.건물면적 + '㎡' : ''], ['대지권비율', r.대지권비율],
+      ['매도인', r.매도인], ['매수인', r.매수인], ['접수일', r.접수일], ['신고관청', r.신고관청], ['관리번호', r.관리번호]]));
+  } else if (type === 'brokerdesc') {
+    out.push('### ' + r.종류 + (r.서식 ? ' (' + r.서식 + ')' : ''));
+    if (r.종류 === '중개보수 영수증') out.push(kv([['중개보수(공급가액)', won(r.중개보수)], ['부가세', won(r.부가세)], ['합계', won(r.합계)], ['거래일', r.거래일], ['중개사무소 사업자번호', r.사업자등록번호]]));
+    else out.push(kv([['소재지', r.소재지], ['지목', r.지목], ['전용면적', r.전용면적 ? r.전용면적 + '㎡' : ''], ['대지지분', r.대지지분 ? r.대지지분 + '㎡' : ''], ['용도', r.용도], ['구조', r.구조], ['사용승인', r.사용승인],
+      ['거래예정금액', won(r.거래예정금액)], ['공시가격', won(r.공시가격)], ['개별공시지가(㎡당)', won(r.공시지가)], ['권리사항', r.권리사항], ['근저당', r.근저당],
+      ['중개보수', won(r.중개보수) + (r.보수산출 ? ' (' + r.보수산출 + (r.보수검산 ? ', 검산 ' + r.보수검산 : '') + ')' : '')], ['부가세', won(r.부가세)], ['실비', won(r.실비)], ['보수 합계', won(r.보수합계)], ['작성일', r.작성일], ['매도인', r.매도인], ['매수인', r.매수인]]));
+    out.push('\n_중개보수는 양도소득세 필요경비 증빙입니다(실제 지급 영수증·계좌이체와 함께 보관)._');
+  } else if (type === 'lease') {
+    out.push('### ' + r.구분 + ' ' + r.형태 + ' 임대차계약서' + (r.갱신 ? ' (갱신)' : ''));
+    out.push(kv([['소재지', r.소재지], ['임대 부분', r.임대부분], ['보증금', won(r.보증금)], ['계약금', won(r.계약금) + warn(r.구분확인필요)], ['중도금', won(r.중도금)], ['잔금', won(r.잔금) + warn(r.구분확인필요)], ['금액 검산', r.검산],
+      ['월세(차임)', won(r.월세)], ['관리비', won(r.관리비)], ['계약기간', (r.시작일 || '?') + ' ~ ' + (r.종료일 || '?') + (r.개월 ? ' (' + r.개월 + '개월)' : '')], ['계약일', r.계약일], ['확정일자', r.확정일자],
+      ['종전 보증금', won(r.종전보증금)], ['증액분', won(r.증액분)], ['증액 검산', r.증액검산], ['특약(발췌)', r.특약]]));
+    out.push('\n_세무 쓰임: 부담부증여 인수채무·상속 공제채무는 증여·상속일 현재 유효한 계약의 보증금으로 확인하세요(계약기간·확정일자)._');
+  } else if (type === 'leasereport') {
+    out.push('### ' + r.종류);
+    out.push(kv([['소재지', r.소재지], ['계약기간', (r.시작일 || '?') + ' ~ ' + (r.종료일 || '?')], ['보증금', won(r.보증금)], ['월세(차임)', won(r.월세)], ['확정일자', r.확정일자 ? r.확정일자 + (r.확정번호 ? ' (번호 ' + r.확정번호 + ')' : '') : ''], ['조회일', r.조회일], ['신고일', r.신고일], ['접수번호', r.접수번호]]));
+    if (r.계약조건 && r.계약조건.length > 1) {
+      out.push('\n**신고된 계약 조건(종전 → 갱신 순)**\n\n| 기간 | 보증금 | 월세 |\n|---|---|---|');
+      r.계약조건.forEach(function (x) { out.push('| ' + x.시작일 + ' ~ ' + x.종료일 + ' | ' + won(x.보증금) + ' | ' + (won(x.월세) || '0원') + ' |'); });
+    }
+    (r.증액비교 || []).forEach(function (p) {
+      var inc = lsIncrease_(p.종전, p.새);
+      if (inc && inc.증액률 != null) out.push('\n임대료 증액률 ' + p.종전.시작일 + ' → ' + p.새.시작일 + ': **' + inc.증액률 + '%** — ' + inc.판정 + ' · ' + inc.방법 + (inc.경고 ? ' ⚠' + inc.경고 : '') + ' (앞 계약이 끝날 무렵 시작한 계약끼리 비교 — 같은 집인지 원문 확인)');
+    });
+  }
+  if (r.경고 && r.경고.length) out.push('\n⚠ ' + r.경고.join(' / '));
+  return out.join('\n');
+}
+// 여러 서류(한 파일 묶음 또는 여러 파일) 대조표 + 같은 집 임대차 앞뒤 계약 증액률
+function docDealCompareMd_(docs) {
+  var won = function (n) { return n == null || n === '' ? '' : (typeof n === 'number' ? Number(n).toLocaleString('ko-KR') + '원' : n); };
+  var out = [];
+  var rows = ctCompare_(docs);
+  if (rows && rows.length) {
+    out.push('### 매매 서류 대조(계약서·신고필증·확인설명서)\n\n| 항목 | 계약서 | 신고필증 | 확인설명서 | 결과 |\n|---|---|---|---|---|');
+    rows.forEach(function (x) {
+      var fmt = function (v) { return /금액|금$|보수/.test(x.항목) ? won(v) : /면적/.test(x.항목) ? v + '㎡' : v; };
+      var g = function (src) { var f = x.값.filter(function (v) { return v.src.indexOf(src) === 0; })[0]; return f && f.v != null && f.v !== '' ? String(fmt(f.v)).replace(/\|/g, '/') : ''; };
+      out.push('| ' + x.항목 + ' | ' + g('계약서') + ' | ' + g('신고필증') + ' | ' + (g('확인설명서') || g('영수증')) + ' | ' + (x.결과 || '') + ' |');
+    });
+  }
+  // 임대차 — 계약서와 신고서·확정일자 현황 대조, 같은 집 앞뒤 계약 증액률
+  var L = docs.filter(function (d) { return d.type === 'lease'; }).map(function (d) { return d.r; });
+  var R = docs.filter(function (d) { return d.type === 'leasereport'; }).map(function (d) { return d.r; });
+  if (L.length && R.length) {
+    out.push('\n### 임대차 서류 대조\n\n| 항목 | 계약서 | 신고서·확정일자 | 결과 |\n|---|---|---|---|');
+    var l = L[L.length - 1], q = R[R.length - 1];
+    [['보증금', l.보증금, q.보증금], ['월세', l.월세 || 0, q.월세 || 0], ['시작일', l.시작일, q.시작일], ['종료일', l.종료일, q.종료일]].forEach(function (x) {
+      if (!x[1] && !x[2]) return;
+      out.push('| ' + x[0] + ' | ' + won(x[1]) + ' | ' + won(x[2]) + ' | ' + (x[1] && x[2] ? (x[1] === x[2] ? '일치' : '⚠불일치') : '') + ' |');
+    });
+  }
+  if (L.length >= 2) {
+    var key = function (r) { return String(r.소재지 || '').replace(/\s+/g, '').slice(0, 14); };
+    var byHouse = {};
+    L.forEach(function (r) { (byHouse[key(r)] = byHouse[key(r)] || []).push(r); });
+    Object.keys(byHouse).forEach(function (k) {
+      var arr = byHouse[k].filter(function (r) { return r.보증금 && r.시작일; }).sort(function (a, b) { return a.시작일 < b.시작일 ? -1 : 1; });
+      if (arr.length < 2) return;
+      out.push('\n### 같은 집 임대료 증액률(임대사업자 5% 상한 판단)\n\n| 종전 계약 | 새 계약 | 증액률 | 판정 | 방법 |\n|---|---|---|---|---|');
+      for (var i = 1; i < arr.length; i++) {
+        var inc = lsIncrease_(arr[i - 1], arr[i]);
+        if (!inc) continue;
+        out.push('| ' + arr[i - 1].시작일 + ' ' + won(arr[i - 1].보증금) + (arr[i - 1].월세 ? '/월' + won(arr[i - 1].월세) : '') + ' | ' + arr[i].시작일 + ' ' + won(arr[i].보증금) + (arr[i].월세 ? '/월' + won(arr[i].월세) : '') + ' | ' + (inc.증액률 != null ? inc.증액률 + '%' : '') + ' | ' + (inc.판정 || '') + ' | ' + inc.방법 + (inc.경고 ? ' ⚠' + inc.경고 : '') + ' |');
+      }
+      out.push('\n_전월세 전환율은 주택임대차보호법 시행령 제9조(10%와 기준금리+2%p 중 낮은 것, 2020.9.29 이후) 기준입니다. 임대사업자 증액 제한(민간임대주택법 제44조)에 적용하기 전 계약 시점 기준금리를 확인하세요._');
+    });
+  }
+  return out.join('\n');
+}
+// 한 파일 텍스트 → 거래 서류 결과 묶음(없으면 null)
+function docDealParseText_(text) {
+  var segs = docDealDetect_(text);
+  if (!segs.length) return null;
+  var docs = segs.map(function (s) { return { type: s.type, r: docDealParseOne_(s) }; }).filter(function (d) { return d.r; });
+  if (!docs.length) return null;
+  var md = docs.map(function (d) { return docDealMd_(d.type, d.r); }).join('\n\n---\n\n');
+  var cmp = docs.length > 1 ? docDealCompareMd_(docs) : '';
+  return { type: docs[0].type, label: docs.map(function (d) { return d.r.종류 || (d.type === 'lease' ? '임대차계약서' : ''); }).join('+'), result: { docs: docs }, md: md + (cmp ? '\n\n---\n\n' + cmp : '') };
+}
+// [2026.10.10] 여러 파일을 함께 정리 — 각 파일 결과 + 거래 서류끼리 대조표(계약서↔신고필증↔확인설명서, 임대차↔신고·확정일자, 앞뒤 임대차 증액률)
+function docParseMulti_(body) {
+  var ids = (body && body.fileIds || []).slice(0, 10);
+  if (!ids.length) return { error: '파일이 없습니다.' };
+  var results = ids.map(function (id) { try { return docParseFile_({ fileId: id }); } catch (e) { return { error: String(e && e.message || e), fileId: id }; } });
+  var deal = [];
+  results.forEach(function (x) { if (x && x.result && x.result.docs) x.result.docs.forEach(function (d) { deal.push(d); }); });
+  var cmp = deal.length > 1 ? docDealCompareMd_(deal) : '';
+  return { ok: true, results: results, compareMd: cmp };
 }
