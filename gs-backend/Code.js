@@ -25335,6 +25335,9 @@ function docParseText_(text) {
   if (ldt0) { var lr0 = ldt0 === 'bldledger' ? ldParseBuilding_(text) : ldParseLand_(text); return { type: ldt0, label: lr0.종류, result: lr0, md: ldToMarkdown_(ldt0, lr0) }; }
   var reg = registryParse(text);
   if (reg.isRegistry) return { type: 'registry', label: '등기부', result: reg, md: registryToMarkdown_(reg, '') };
+  // 자경농지 감면 증빙(소득금액증명원·농업경영체 등록확인서·농지대장·자경 확인서) — 조특령 §66⑭ 연도별 제외 판정 포함
+  var fp = farmDocParse_(text);
+  if (fp) return fp;
   // 원천징수영수증·지급명세서 — 사업자등록번호·접수 같은 낱말이 있어 다른 서류로 오인되기 전에 먼저 본다
   var whs = whParseAll_(text);
   if (whs.length) return { type: 'withholding', label: whs.map(function (w) { return w.종류; }).join('·'), result: whs, md: whs.map(whToMarkdown_).join('\n\n---\n\n') };
@@ -27206,4 +27209,239 @@ function docParseMulti_(body) {
   results.forEach(function (x) { if (x && x.result && x.result.docs) x.result.docs.forEach(function (d) { deal.push(d); }); });
   var cmp = deal.length > 1 ? docDealCompareMd_(deal) : '';
   return { ok: true, results: results, compareMd: cmp };
+}
+
+// =========================================================
+// [2026.10.10] 자경농지 감면 증빙 자동 정리 — 토큰 0 (조특법 §69, 시행령 §66 — 2026.9.18 시행본 원문 확인)
+// =========================================================
+// ===== 자경농지 감면(조특법 §69, 시행령 §66) 판단 증빙 자동 정리 — 토큰 0, ES5 =====
+// 시행령 §66⑭(2026.9.18 시행본 원문 확인): 경작기간 중 피상속인(배우자 포함)·거주자 각각에 대해
+//  1호: 사업소득금액(농업·임업·부동산임대업·농가부업소득 제외, 음수는 0) + 총급여액 ≥ 3,700만원인 과세기간
+//  2호: 사업소득 총수입금액(같은 제외) ≥ 소득세법 시행령 §208⑤2호 각 목의 금액(복식부기의무자 업종별 기준)인 과세기간
+//  은 경작한 기간에서 제외. ⑬ 직접경작 = 상시 종사 또는 농작업 1/2 이상 자기 노동력. ① 재촌 = 농지 소재 시·군·구, 연접 시·군·구, 직선 30km 이내.
+// 소득금액증명원에는 사업소득 중 농업·부동산임대 소득이 따로 나오지 않으므로, 확정할 수 있는 경우만 확정하고 나머지는 확인필요로 둔다.
+
+function farmNum_(s) { return Number(String(s).replace(/[^\d]/g, '')) || 0; }
+// 근로소득공제(소득세법 §47, 2020년 귀속 이후 2천만원 한도) — 총급여와 근로소득금액 짝을 "검산"으로 찾는 데 쓴다
+function farmWageDeduction_(g) {
+  var d;
+  if (g <= 5000000) d = g * 0.7;
+  else if (g <= 15000000) d = 3500000 + (g - 5000000) * 0.4;
+  else if (g <= 45000000) d = 7500000 + (g - 15000000) * 0.15;
+  else if (g <= 100000000) d = 12000000 + (g - 45000000) * 0.05;
+  else d = 14750000 + (g - 100000000) * 0.02;
+  return Math.min(Math.floor(d), 20000000);
+}
+
+// ---- 소득금액증명원 ----
+function farmParseIncomeCert_(text) {
+  var t = String(text || '');
+  var r = { 종류: '소득금액증명원', 연도: [], 경고: [] };
+  // 쪽마다 "(2025년 귀속)" — 귀속연도별로 나눈다
+  var parts = t.split(/(?=\(\s*\d{4}\s*년\s*귀속\s*\))/);
+  parts.forEach(function (p) {
+    var ym = /\(\s*(\d{4})\s*년\s*귀속\s*\)/.exec(p);
+    if (!ym) return;
+    var y = Number(ym[1]);
+    if (r.연도.some(function (x) { return x.연도 === y; })) return;
+    var a = p.search(/구\s*분/), b = p.search(/위와\s*같이|용\s*어\s*설\s*명/);
+    var seg = p.slice(a > 0 ? a : 0, b > a ? b : p.length);
+    // 숫자 낱말 — "045,454,780"처럼 0이 붙은 것은 0과 나머지로 가른다. 쉼표 뒤 띄어쓰기("999, 999")도 붙인다.
+    var nums = [];
+    (seg.replace(/(\d),\s+(\d{3})/g, '$1,$2').match(/\d{1,3}(?:,\d{3})+|\b\d+\b/g) || []).forEach(function (x) {
+      if (/^0\d/.test(x.replace(/,/g, '')) && /,/.test(x)) { nums.push(0); nums.push(farmNum_(x.replace(/^0/, ''))); }
+      else nums.push(farmNum_(x));
+    });
+    var nz = nums.filter(function (v) { return v >= 1000; });
+    var row = { 연도: y, 총급여: null, 근로소득금액: null, 사업수입금액: null, 사업소득금액: null, 확정: false, 메모: [] };
+    // ① 총급여 ↔ 근로소득금액: 근로소득공제 공식으로 정확히 맞는 짝(±1천원)
+    for (var i = 0; i < nz.length && row.총급여 === null; i++) for (var j = 0; j < nz.length; j++) {
+      if (i === j || nz[j] >= nz[i]) continue;
+      if (Math.abs(nz[i] - farmWageDeduction_(nz[i]) - nz[j]) <= 1000) { row.총급여 = nz[i]; row.근로소득금액 = nz[j]; break; }
+    }
+    // ② 합계 검산으로 사업 찾기 — 수입금액 합계 = (사업 수입) + 총급여 (+이자·배당 등), 소득금액 합계 = 사업소득금액 + 근로소득금액
+    var used = {};
+    if (row.총급여 !== null) { used[row.총급여] = 1; used[row.근로소득금액] = 1; }
+    var others = nz.filter(function (v) { return !used[v]; });
+    var findPair = function (part, wantBigger) {
+      // part + x = s 인 x, s 를 others에서 찾는다
+      for (var p = 0; p < others.length; p++) for (var q = 0; q < others.length; q++) {
+        if (p === q) continue;
+        if (Math.abs(part + others[p] - others[q]) <= 2) return { x: others[p], s: others[q] };
+      }
+      return null;
+    };
+    if (row.총급여 !== null) {
+      var inc = findPair(row.총급여), net = findPair(row.근로소득금액);
+      if (inc) { row.사업수입금액 = inc.x; row.수입합계 = inc.s; }
+      if (net) { row.사업소득금액 = net.x; row.소득합계 = net.s; }
+      // 근로 외 다른 소득이 하나뿐이면 그것이 사업인지 이자·배당·연금·기타인지 표만으로는 확정 못 함 → 수입≥소득이면 사업으로 보되 확인 메모
+      if (inc && net && inc.x >= net.x) { row.확정 = true; if (inc.x === net.x) row.메모.push('수입금액=소득금액 — 이자·배당소득일 수 있음(원문 칸 확인)'); }
+      else if (!inc && !net) {
+        // 근로만 있는 해: 합계=총급여가 다시 나오는지
+        var again = nums.filter(function (v) { return v === row.총급여; }).length >= 2;
+        if (again) { row.사업수입금액 = 0; row.사업소득금액 = 0; row.확정 = true; }
+        else row.메모.push('근로 외 소득 칸을 확정하지 못함');
+      } else row.메모.push('사업소득 칸 검산 불일치');
+    } else {
+      // 근로소득이 없는 해: 합계가 한 번 더 나오는 금액(수입·소득 각각)을 사업으로 본다 — 두 번 나온 값 중 큰 것=수입, 작은 것=소득
+      var cnt = {}; nz.forEach(function (v) { cnt[v] = (cnt[v] || 0) + 1; });
+      var twice = Object.keys(cnt).filter(function (k) { return cnt[k] >= 2; }).map(Number).sort(function (a, b) { return b - a; });
+      if (twice.length >= 2) { row.사업수입금액 = twice[0]; row.사업소득금액 = twice[1]; row.총급여 = 0; row.메모.push('근로소득 없음으로 봄 — 사업 칸인지 원문 확인'); }
+      else if (!nz.length) { row.사업수입금액 = 0; row.사업소득금액 = 0; row.총급여 = 0; row.메모.push('소득 금액 없음(또는 글자인식 실패) — 원문 확인'); }
+      else row.메모.push('금액 칸을 확정하지 못함');
+    }
+    r.연도.push(row);
+  });
+  r.연도.sort(function (a, b) { return a.연도 - b.연도; });
+  r.연도.forEach(function (x) { farmJudgeYear_(x); });
+  if (!r.연도.length) r.경고.push('귀속연도를 찾지 못함 — 원문 확인');
+  r.경고.push('사업소득에는 농업·임업·부동산임대업·농가부업 소득이 섞여 있을 수 있음(증명원에서 구분 안 됨) — 3,700만원 판정이 "확인필요"인 해는 종합소득세 신고서의 업종별 소득으로 확인');
+  r.경고.push('§66⑭ 각 호는 신설·개정 시기 이후 양도분부터 적용 — 양도일 기준으로 적용 여부 확인');
+  return r;
+}
+// §66⑭ 판정 — 제외 항목(농업·임대 등)을 빼면 금액이 작아질 뿐이므로, 미달은 확정, 초과는 총급여만으로 넘을 때만 확정
+function farmJudgeYear_(x) {
+  var biz = Math.max(0, x.사업소득금액 || 0), wage = x.총급여 || 0, LIM = 37000000;
+  if (x.총급여 === null && x.사업소득금액 === null) { x.판정1호 = '⚠ 금액 확인필요'; }
+  else if (wage >= LIM) x.판정1호 = '제외(총급여만으로 3,700만원 이상)';
+  else if (biz + wage < LIM) x.판정1호 = '해당 없음(합계 ' + (biz + wage).toLocaleString('ko-KR') + '원)';
+  else x.판정1호 = '⚠ 합계 ' + (biz + wage).toLocaleString('ko-KR') + '원 — 사업소득 중 농업·임대 등 제외 후 다시 계산';
+  var gross = x.사업수입금액;
+  if (gross === null || gross === undefined) x.판정2호 = '⚠ 사업 수입금액 확인필요';
+  else if (gross < 75000000) x.판정2호 = '해당 없음(사업 수입 ' + gross.toLocaleString('ko-KR') + '원 < 업종별 최저 기준 7,500만원)';
+  else x.판정2호 = '⚠ 사업 수입 ' + gross.toLocaleString('ko-KR') + '원 — 업종별 복식부기 기준(3억·1.5억·7,500만원) 및 농업·임대 제외분 확인';
+  // 총급여만으로 넘은 해는 사업 칸을 못 읽어도 판정이 바뀌지 않는다
+  if (!x.확정 && !/확인필요|총급여만으로/.test(x.판정1호)) x.판정1호 = '⚠ ' + x.판정1호.replace(/^⚠\s*/, '') + ' (금액 칸 확정 못함)';
+}
+
+// ---- 농업경영체 등록확인서 ----
+var FARM_JIMOK_ = '(전|답|과수원|목장용지|임야|대|잡종지|유지|구거|하천)';
+function farmParseFarmBiz_(text) {
+  var t = String(text || '');
+  var r = { 종류: '농업경영체 등록확인서', 필지: [], 경고: [] };
+  var m = /(\d-\d{3}-\d{3}-\d{3})/.exec(t) || /경영체\s*등록\s*번호\s*[:：]?\s*([\d-]{8,20})/.exec(t);
+  if (m) r.등록번호 = m[1];
+  var lines = t.split('\n').map(function (L) { return L.replace(/\s+/g, ' ').trim(); });
+  var cur = null;
+  lines.forEach(function (L) {
+    // 필지 시작: "○○도 ○○시 ○○동 123-4" 처럼 시·도/시·군 + 읍면동리 (+지번)
+    var am = /^(?:[가-힣]{2,9}(?:도|시)\s+)?([가-힣]{1,6}(?:시|군))\s+([가-힣]{1,6}(?:읍|면|동|리|가))(?:\s+([가-힣]{1,6}리))?(?:\s+(산?\s*\d{1,5}(?:-\d{1,5})?))?/.exec(L);
+    if (am && !/(시장|군수|구청장)/.test(L) && /(읍|면|동|리)/.test(L)) {
+      cur = { 소재지: L.replace(/\s*[EDO]$/, ''), 지목: '', 소유구분: '', 면적: [], 품목: '', 날짜: [] };
+      r.필지.push(cur);
+      return;
+    }
+    if (!cur) return;
+    // 번호 칸의 (등록)/(삭제) — 삭제 필지는 더 이상 경작 등록이 아님(삭제일자 함께 확인)
+    var sm = /\(\s*(등록|삭제)\s*\)/.exec(L);
+    if (sm && !cur.상태) cur.상태 = sm[1];
+    var jm = new RegExp('(?:^|\\s)' + FARM_JIMOK_ + '(?:\\s|$)').exec(L);
+    if (jm && !cur.지목) cur.지목 = jm[1];
+    var om = /(자경|소유|임차|임대|사용대차|위탁)/.exec(L);
+    if (om && !cur.소유구분) cur.소유구분 = om[1];
+    // 한 글자 작물(배·무)은 다른 낱말 조각과 헷갈려 빼고, 줄 전체가 그 낱말일 때만 받는다
+    var pm = /(들깨|참깨|건고추|고추|감자|고구마|배추|마늘|양파|사과|포도|복숭아|인삼|과수|채소)/.exec(L) || /(?:^|\s)(벼|콩)(?=\s|$)/.exec(L) || /^(배|무)$/.exec(L);
+    if (pm && !cur.품목) cur.품목 = pm[1];
+    (L.match(/\d{1,3}(?:[.,]\d{3})*(?:[.,]\d)?/g) || []).forEach(function (x) { if (/[.,]/.test(x) || Number(x) >= 10) cur.면적.push(x); });
+    (L.match(/(?:19|20)\d{2}[\/.-]\d{1,2}(?:[\/.-]\d{1,2})?/g) || []).forEach(function (x) { cur.날짜.push(x); });
+  });
+  r.필지.forEach(function (f) {
+    // 지번이 없으면(조각난 줄) 확인필요
+    if (!/\d/.test(f.소재지)) f.확인필요 = true;
+    if (!f.소유구분) f.소유구분 = '⚠확인필요';
+    f.면적 = f.면적.slice(0, 2); // 공부면적·경작면적
+  });
+  if (!r.필지.length) r.경고.push('필지 목록을 읽지 못함 — 원문 확인');
+  r.경고.push('등록확인서 표는 칸이 섞여 읽혀 필지별 면적·품목·등록일은 원문 대조 필요 — 소재지·지목·자경/임차 구분 위주로 보세요');
+  r.경고.push('임차 필지는 본인 소유 농지가 아님 — 감면 대상 농지(양도 농지)가 "자경" 필지로 올라 있는지 확인');
+  return r;
+}
+
+// ---- 농지대장(구 농지원부) ----
+// 표본이 드라이브에 없어 법정 서식(농지법 시행규칙 농지대장) 항목 이름으로만 읽는다 — 모두 확인필요 표시
+function farmParseFarmLedger_(text) {
+  var t = String(text || '');
+  var r = { 종류: '농지대장(농지원부)', 필지: [], 경고: ['농지대장 표본이 없어 법정 서식 항목 이름으로만 읽음 — 원문과 대조 필요'] };
+  var m = /소유자[^\n]{0,10}\n?\s*([가-힣]{2,5})/.exec(t);
+  if (m) r.소유자 = m[1];
+  var lines = t.split('\n').map(function (L) { return L.replace(/\s+/g, ' ').trim(); });
+  lines.forEach(function (L, i) {
+    if (/^(?:[가-힣]{2,9}(?:도|시)\s+)?[가-힣]{1,6}(?:시|군|구)\s+[가-힣]{1,6}(?:읍|면|동)/.test(L) && /\d/.test(L)) {
+      var nx = lines.slice(i + 1, i + 6).join(' ');
+      r.필지.push({ 소재지: L, 지목: (new RegExp(FARM_JIMOK_).exec(nx) || [])[1] || '', 이용: (/(자경|임대|사용대차|위탁경영|휴경)/.exec(nx) || [])[1] || '', 날짜: (nx.match(/(?:19|20)\d{2}[.\/-]\d{1,2}[.\/-]\d{1,2}/g) || []).slice(0, 2) });
+    }
+  });
+  if (!r.필지.length) r.경고.push('필지를 읽지 못함');
+  return r;
+}
+
+// ---- 자경농지 사실확인서·농협 조합원 확인서 등 ----
+function farmParseConfirm_(text) {
+  var t = String(text || '');
+  var r = { 종류: /조합원/.test(t) ? '농협 조합원 확인서' : '자경농지 사실확인서', 경고: [] };
+  var d = t.match(/(?:19|20)\d{2}\s*[.년\/-]\s*\d{1,2}\s*[.월\/-]\s*\d{1,2}/g) || [];
+  r.날짜들 = d.slice(0, 6);
+  var pm = /(경작\s*기간|자경\s*기간|가입\s*일)[^\n]{0,40}/.exec(t);
+  if (pm) r.기간문구 = pm[0].trim();
+  var cm = /(벼|논|밭|과수|채소|인삼|고추|콩|감자|고구마)[^\n]{0,20}/.exec(t);
+  if (cm) r.작물 = cm[1];
+  r.경고.push('확인서·조합원 확인서는 양식이 제각각 — 경작기간·작물·확인자는 원문으로 확인(자경 사실의 보조 증빙)');
+  return r;
+}
+
+function farmDetect_(text) {
+  var t = String(text || '');
+  // 사진으로 찍은 증명원은 제목 글자가 한 글자씩 줄바꿈되어 나온다 — 표 이름표로도 알아본다
+  if ((/소\s*득\s*금\s*액\s*증\s*명/.test(t) || (/종합소득세/.test(t) && /수입금액/.test(t) && /소득금액/.test(t))) && /\(\s*\d{4}\s*년\s*귀\s*속/.test(t)) return 'incomecert';
+  if (/농(?:어)?업\s*경영체/.test(t) && /(확인서|경영주|등록번호|재배\s*면적)/.test(t)) return 'farmbiz';
+  if (/농\s*지\s*(대\s*장|원\s*부)/.test(t)) return 'farmledger';
+  // 조합원 확인서는 농협 것만(재건축·투자조합 조합원 서류와 구분)
+  if (/자경\s*(농지)?\s*(사실)?\s*확인서|경작\s*사실\s*확인서/.test(t) || (/조합원\s*(증명|확인)/.test(t) && /(농업협동조합|농협)/.test(t))) return 'farmconfirm';
+  return '';
+}
+// 자경농지 증빙 → 화면용 마크다운
+function farmToMarkdown_(type, r) {
+  var esc = function (v) { return String(v == null ? '' : v).replace(/\|/g, '/'); };
+  var won = function (n) { return n == null ? '⚠' : Number(n).toLocaleString('ko-KR'); };
+  var out = [];
+  if (type === 'incomecert') {
+    out.push('### 소득금액증명원 — 자경기간 제외 판정(조특령 §66⑭)');
+    out.push('| 귀속연도 | 총급여 | 사업 수입금액 | 사업소득금액 | ⑭1호(사업소득+총급여 3,700만원) | ⑭2호(사업 수입금액 복식부기 기준) | 비고 |\n|---|---|---|---|---|---|---|');
+    r.연도.forEach(function (x) {
+      out.push('| ' + [x.연도, won(x.총급여), won(x.사업수입금액), won(x.사업소득금액), x.판정1호, x.판정2호, x.메모.join(' / ')].map(esc).join(' | ') + ' |');
+    });
+    var ex = r.연도.filter(function (x) { return /^제외/.test(x.판정1호); }).map(function (x) { return x.연도; });
+    if (ex.length) out.push('\n**자경기간에서 빠지는 해(확정):** ' + ex.join(', ') + '년');
+    out.push('\n_총급여는 근로소득공제 공식으로 근로소득금액과 맞춰 본 값만 씁니다(검산). 판정은 판단 재료이며 감면 여부를 단정하지 않습니다._');
+  } else if (type === 'farmbiz') {
+    out.push('### 농업경영체 등록확인서' + (r.등록번호 ? ' (' + r.등록번호 + ')' : ''));
+    out.push('| 농지 소재지 | 상태 | 지목 | 경영형태 | 면적(공부·실경작 ㎡) | 품목 | 삭제일 |\n|---|---|---|---|---|---|---|');
+    r.필지.forEach(function (f) {
+      out.push('| ' + [f.소재지, f.상태 || '', f.지목 || '⚠', f.소유구분, f.면적.join(' / '), f.품목 || '', f.날짜.join(' ')].map(esc).join(' | ') + ' |');
+    });
+  } else if (type === 'farmledger') {
+    out.push('### 농지대장(농지원부)' + (r.소유자 ? ' · 소유자 ' + r.소유자 : ''));
+    out.push('| 소재지 | 지목 | 이용 | 날짜 |\n|---|---|---|---|');
+    r.필지.forEach(function (f) { out.push('| ' + [f.소재지, f.지목 || '⚠', f.이용 || '⚠', f.날짜.join(' ')].map(esc).join(' | ') + ' |'); });
+  } else if (type === 'farmconfirm') {
+    out.push('### ' + r.종류);
+    out.push('| 항목 | 내용 |\n|---|---|');
+    if (r.기간문구) out.push('| 기간 문구 | ' + esc(r.기간문구) + ' |');
+    if (r.작물) out.push('| 작물 | ' + esc(r.작물) + ' |');
+    if (r.날짜들 && r.날짜들.length) out.push('| 날짜 | ' + esc(r.날짜들.join(', ')) + ' |');
+  }
+  if (r.경고 && r.경고.length) out.push('\n⚠ ' + r.경고.join(' / '));
+  out.push('\n_재촌 요건(농지 소재 시·군·구, 연접 시·군·구, 직선 30km 이내 — 조특령 §66①)은 주민등록초본 정리 결과의 거주기간으로 확인하세요. 거리 판단은 자동으로 하지 않습니다._');
+  return out.join('\n');
+}
+// docParseText_에서 부르는 진입점 — 자경농지 증빙이 아니면 null
+function farmDocParse_(text) {
+  var type = farmDetect_(text), r = null;
+  if (type === 'incomecert') r = farmParseIncomeCert_(text);
+  else if (type === 'farmbiz') r = farmParseFarmBiz_(text);
+  else if (type === 'farmledger') r = farmParseFarmLedger_(text);
+  else if (type === 'farmconfirm') r = farmParseConfirm_(text);
+  if (!r) return null;
+  return { type: type, label: r.종류, result: r, md: farmToMarkdown_(type, r) };
 }
