@@ -243,10 +243,10 @@ const DRIVE_TOOLS = [
   },
   {
     name: 'read_drive_file',
-    description: '드라이브 파일 하나의 내용을 읽는다. 워드·한글제외 오피스(엑셀·파워포인트 포함, 신구버전 모두)·구글문서/시트/슬라이드·일반텍스트는 텍스트로, 이미지·PDF는 실제로 보고 판단할 수 있게 첨부된다. list_drive_folder로 얻은 파일의 fileId를 넣는다.',
+    description: '드라이브 파일 하나의 내용을 읽는다. 워드·한글제외 오피스(엑셀·파워포인트 포함, 신구버전 모두)·구글문서/시트/슬라이드·일반텍스트는 텍스트로 준다. 이미지·PDF는 등기부·계약서·신고필증·대장·가족관계·등초본·원천징수영수증·영수증 등 자동정리되는 서류면 검산된 요약을 글로 주고(토큰 절약), 그 밖의 것은 실제로 보고 판단할 수 있게 첨부한다. 요약 대신 원본을 꼭 봐야 하면 raw: true. list_drive_folder로 얻은 파일의 fileId를 넣는다.',
     input_schema: {
       type: 'object',
-      properties: { fileId: { type: 'string', description: '읽을 파일의 구글드라이브 파일 ID' } },
+      properties: { fileId: { type: 'string', description: '읽을 파일의 구글드라이브 파일 ID' }, raw: { type: 'boolean', description: 'true면 자동정리 요약 대신 PDF·이미지 원본을 첨부(특약 문구·도장·배치 확인 등 꼭 필요할 때만)' } },
       required: ['fileId']
     }
   },
@@ -15290,6 +15290,15 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
       let resultObj;
       try {
         resultObj = handleReadFile({ fileId: block.input && block.input.fileId });
+        // [2026.10.11 토큰0] PDF·이미지를 그대로 첨부하면 쪽마다 이미지 토큰이 든다. 규칙으로 정리되는 서류(등기부·계약서·대장·증명서·영수증 등)면
+        // 무료 OCR+규칙 요약(검산 ✓·확인필요 ⚠)을 글로 준다. 원본 문구·도장·배치가 꼭 필요하면 AI가 raw:true로 다시 부르면 원본 첨부.
+        if (resultObj && resultObj.kind === 'binary' && !(block.input && block.input.raw)) {
+          try {
+            const dp = docParseFile_({ fileId: block.input.fileId });
+            if (dp && dp.type && dp.md) resultObj = { name: resultObj.name, mimeType: resultObj.mimeType, kind: 'text',
+              content: dp.md + '\n\n[안내] 위는 무료 글자인식+규칙으로 정리한 요약이다(✓ 검산된 값, ⚠ 확인필요). 특약 문구·도장·표 배치 등 원본을 직접 봐야 하면 read_drive_file를 raw: true로 다시 호출하라.' };
+          } catch (e) { /* 정리 실패 — 원본 첨부 그대로 */ }
+        }
       } catch (err) {
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ error: String(err) }), is_error: true };
       }
