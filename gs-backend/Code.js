@@ -24760,6 +24760,10 @@ function docParseFamily_(text) {
 // ---- 판별 ----
 function docDetectType_(text) {
   var t = String(text || '');
+  // 주민등록표 등·초본이 먼저 — 등·초본 아래 안내문에 "가족관계증명서"라는 말이 들어 있다
+  // 제목은 OCR이 놓칠 때가 있어 표 칸 이름(세대주및관계·세대구성 사유·발생일/신고일)까지 함께 본다 — 가족관계증명서에는 없는 말들
+  var jmHits = [/주\s*민\s*등\s*록\s*표/, /세대주\s*및\s*관계/, /세대\s*구성\s*사유/, /발\s*생\s*일\s*\/?\s*신\s*고\s*일/, /개인별\s*주민등록|세대별\s*주민등록/, /변\s*동\s*사\s*유/].filter(function (re) { return re.test(t); }).length;
+  if (jmHits >= 2) return 'resident';
   if (/가족관계\s*증명서/.test(t)) return 'family';
   if (/사업자\s*등록\s*(증|증명)/.test(t) && /(개업|등록번호)/.test(t)) return 'bizreg';
   if (/접수증/.test(t) && /접수\s*번호|접수\s*일시/.test(t)) return 'receipt';
@@ -24927,11 +24931,30 @@ function docToMarkdown_(type, r) {
   } else if (type === 'bizreg') {
     out.push('### ' + r.종류 + (r.과세유형 ? ' (' + r.과세유형 + ')' : ''));
     out.push(kv([['등록번호', r.등록번호], ['상호', r.상호], ['대표자', r.대표자], ['개업연월일', r.개업연월일 ? r.개업연월일 + (r.개업일확인필요 ? ' ⚠확인필요' : '') : ''], ['생년월일', r.생년월일], ['법인등록번호', r.법인등록번호], ['사업장', r.사업장], ['업태', r.업태], ['종목', r.종목], ['공동사업자', r.공동사업자]]));
+  } else if (type === 'resident') {
+    out.push('### ' + r.종류 + (r.말소자 ? ' (말소자)' : ''));
+    out.push(kv([['성명', r.성명], ['세대주', r.세대주], ['주민번호', r.주민번호], ['발급일', r.발급일], ['세대구성', (r.세대구성사유 || '') + (r.세대구성일 ? ' ' + r.세대구성일 : '')], ['현주소', r.현주소],
+      ['과거 주소변동', r.주소변동포함], ['세대주 성명·관계', r.세대주관계포함], ['쪽수', r.쪽수]]));
+    if (r.세대원 && r.세대원.length) {
+      out.push('\n**세대원**\n\n| 관계 | 성명 | 주민번호 | 전입일 | 신고일 | 변동사유 | 상태 |\n|---|---|---|---|---|---|---|');
+      r.세대원.forEach(function (p) { out.push('| ' + [p.관계 || '⚠', p.이름 + (p.한자 ? '(' + p.한자 + ')' : ''), p.주민번호, p.전입일, p.신고일, p.변동사유, (p.상태 || '') + (p.확인필요 ? ' ⚠확인필요' : '')].map(esc).join(' | ') + ' |'); });
+    }
+    if (r.거주기간 && r.거주기간.length) {
+      out.push('\n**거주기간(전입일 기준)**\n\n| 시작 | 끝 | 기간 | 주소 | 비고 |\n|---|---|---|---|---|');
+      r.거주기간.forEach(function (x) {
+        out.push('| ' + [x.시작 || '⚠', x.끝표시, x.기간, (x.주소 || '(원문 확인)') + (x.주소변경후 ? ' → ' + x.주소변경후 : ''), (x.종료사유 || '') + (x.날짜확인필요 || x.짝확인필요 ? ' ⚠확인필요' : '')].map(esc).join(' | ') + ' |');
+      });
+    }
+    if (r.주소이력 && r.주소이력.length) {
+      out.push('\n**주소 변동 내역**\n\n| 쪽 | 변동사유 | 발생일 | 신고일 | 주소 | 비고 |\n|---|---|---|---|---|---|');
+      r.주소이력.forEach(function (x) { out.push('| ' + [x.쪽 > 999 ? '' : x.쪽, x.사유, x.발생일, x.신고일, x.주소 || '(원문 확인)', x.날짜확인필요 || x.짝확인필요 ? '⚠확인필요' : ''].map(esc).join(' | ') + ' |'); });
+    }
+    out.push('\n_정부24 등·초본 PDF는 해상도가 낮은 그림이라 글자인식이 숫자를 틀릴 수 있습니다. ⚠ 행은 원본과 대조하세요. 1세대1주택 거주기간 판단은 원본 확인 후 확정하세요._');
   }
   if (r.경고 && r.경고.length) out.push('\n⚠ ' + r.경고.join(' / '));
   return out.join('\n');
 }
-// 서류 한 장 판별 + 정리. 등기부가 먼저(등기부 규칙), 아니면 가족관계·사업자등록·접수증·납부서.
+// 서류 한 장 판별 + 정리. 등기부가 먼저(등기부 규칙), 아니면 주민등록 등·초본·가족관계·사업자등록·접수증·납부서.
 function docParseText_(text) {
   var reg = registryParse(text);
   if (reg.isRegistry) return { type: 'registry', label: '등기부', result: reg, md: registryToMarkdown_(reg, '') };
@@ -24940,9 +24963,10 @@ function docParseText_(text) {
   else if (type === 'payment') r = docParsePayment_(text);
   else if (type === 'receipt') r = docParseReceipt_(text);
   else if (type === 'bizreg') r = docParseBizReg_(text);
+  else if (type === 'resident') r = jmParse_(text);
   if (!r) {
     var why = reg.사유 ? reg.사유 : (String(text || '').replace(/\s/g, '').length < 30 ? '읽을 글자가 없음(사진·스캔 품질 확인)' : '자동 정리하는 서류 종류가 아님');
-    return { type: '', label: '', result: null, md: '자동 정리 대상이 아닙니다 — ' + why + '. (정리 가능: 등기부, 가족관계증명서, 사업자등록증, 홈택스 신고서 접수증, 국세 납부서)' };
+    return { type: '', label: '', result: null, md: '자동 정리 대상이 아닙니다 — ' + why + '. (정리 가능: 등기부, 가족관계증명서, 주민등록 등본·초본, 사업자등록증, 홈택스 신고서 접수증, 국세 납부서)' };
   }
   return { type: type, label: r.종류, result: r, md: docToMarkdown_(type, r) };
 }
@@ -24961,11 +24985,283 @@ function docParseFile_(body) {
   if (!id) return { error: '파일이 없습니다.' };
   var f = DriveApp.getFileById(id), name = f.getName(), mime = f.getMimeType();
   if (!/pdf|image/.test(mime)) return { error: name + ' — PDF·이미지만 정리할 수 있습니다.' };
-  var cache = CacheService.getScriptCache(), key = 'docp_' + id + '_' + f.getLastUpdated().getTime();
+  var cache = CacheService.getScriptCache(), key = 'docp2_' + id + '_' + f.getLastUpdated().getTime();
   var hit = cache.get(key);
   if (hit) return JSON.parse(hit);
   var p = docParseText_(docOcrRetry_(id));
   var res = { ok: true, name: name, type: p.type, label: p.label, isRegistry: p.type === 'registry', result: p.result, md: '**' + name + '**\n\n' + p.md };
   try { var s = JSON.stringify(res); if (s.length < 95000) cache.put(key, s, 21600); } catch (e) { /* 캐시 실패는 무시 */ }
   return res;
+}
+
+// =========================================================
+// [2026.10.10] 주민등록표 등본·초본 자동 정리 — 토큰 0
+// 정부24 등·초본 PDF는 72dpi 그림이라 무료 OCR이 표를 칸별로 흩어 읽는다. 쪽마다 주소·변동사유·날짜를 따로 모아
+// 사유별 날짜 개수로 짝을 맞추고, 개수가 안 맞거나 날짜가 이상하면 그 행은 확인필요로 남긴다(지어내지 않음).
+// 초본: 주소 변동 내역·거주기간·과거주소변동 포함 여부·세대주 관계 포함 여부 / 등본: 세대주·세대원(관계·전입일)·세대 주소 이력.
+// 표본 30건(등본 15·초본 15)으로 맞추고 원본 PDF 2건과 대조했다.
+// =========================================================
+// 주민등록표 등본·초본 자동 정리(토큰 0) — ES5
+// 시·도 — 이름이 바뀌어 온 것(강원특별자치도, 전북특별자치도, 2026 전남광주통합특별시 등)까지 끝말로 받는다
+// OCR이 "통합목별시"처럼 한 글자 틀려도 받도록 모양으로 본다: 첫 낱말이 …시/…도, 둘째 낱말이 …시/군/구
+var JM_SIDO_RE_ = /^(?:[가-힣]{2,9}(?:시|도)\s+[가-힣]{1,6}(?:시|군|구)|세종특별자치시\s+[가-힣]{1,6}(?:동|읍|면|로|길))\s/;
+var JM_REASON_RE_ = /(전입|전출|출생등록|행정구역변경|통반변경|도로명주소|세대주변경|세대합가|세대분리|재등록|거주불명등록|사망신고말소|국외이주신고|국외이주|말소|명칭변경|번지변경|지번변경|직권정리|직권말소|주소정정)\s*$/;
+function jmDateList_(s) { var out = [], re = /\b((?:19|20)\d{2})-(\d{2})-(\d{2})\b/g, m; while ((m = re.exec(s))) out.push(m[1] + '-' + m[2] + '-' + m[3]); return out; }
+
+// 쪽 나누기 — 쪽마다 "문서확인번호/발급확인번호"와 "n/m"이 찍힌다. 쪽 순서가 OCR에서 섞이면 n으로 다시 줄 세운다.
+function jmPages_(text) {
+  var t = String(text || '');
+  var cuts = [], re = /(문서확인번호|발급확인번호)\s*[:：]/g, m;
+  while ((m = re.exec(t))) cuts.push(m.index);
+  // 확인번호를 못 읽은 쪽도 "[다음장계속]"(쪽 끝 표시) 뒤에서 나눈다(#22: 세대원 쪽 + 주소변동 쪽)
+  var re2 = /\[\s*다음\s*장\s*계속\s*\]/g;
+  while ((m = re2.exec(t))) { var e2 = re2.lastIndex; if (!cuts.some(function (c) { return Math.abs(c - e2) < 400; })) cuts.push(e2); }
+  cuts.sort(function (a, b) { return a - b; });
+  if (!cuts.length) return [{ n: 1, text: t }];
+  var pages = [];
+  cuts.forEach(function (c, i) {
+    var seg = t.slice(i === 0 ? 0 : c, i + 1 < cuts.length ? cuts[i + 1] : t.length);
+    if (i === 0 && cuts.length > 1) seg = t.slice(0, cuts[1]);
+    var pm = /(?:^|\n)\s*(\d{1,2})\s*\/\s*(\d{1,2})\s*(?:\n|$)/.exec(seg);
+    pages.push({ n: pm ? Number(pm[1]) : 1000 + i, of: pm ? Number(pm[2]) : 0, text: seg, order: i });
+  });
+  // 같은 쪽 번호가 둘이면(한 쪽이 둘로 잘림) 원래 순서
+  pages.sort(function (a, b) { return a.n - b.n || a.order - b.order; });
+  return pages;
+}
+
+// 변동사유 낱말 — OCR이 한 글자 틀리게 읽어도("동반변경") 알아보게 편집거리로 맞춘다.
+var JM_REASONS_ = ['전입', '전출', '출생등록', '행정구역변경', '통반변경', '도로명주소', '세대주변경', '세대합가', '세대분리', '재등록', '거주불명등록', '사망신고말소', '국외이주신고', '명칭변경', '번지변경', '지번변경', '직권정리', '직권말소', '주소정정', '공동주택변경', '말소'];
+// 발생일 칸이 "----------"이고 신고일만 있는 사유(같은 집의 표시 변경)
+var JM_ONE_DATE_RE_ = /(출생등록|행정구역변경|통반변경|도로명주소|세대주변경|명칭변경|번지변경|지번변경|주소정정|직권정리|공동주택변경)/;
+function jmEdit_(a, b) {
+  var d = [], i, j;
+  for (i = 0; i <= a.length; i++) { d[i] = [i]; }
+  for (j = 0; j <= b.length; j++) d[0][j] = j;
+  for (i = 1; i <= a.length; i++) for (j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+// 한 줄에 바탕 글씨 조각("대구광 전입")·등록상태("전입 거주자")가 붙어 나와도 낱말 단위로 사유를 찾는다.
+function jmReasonOf_(line) {
+  var words = String(line || '').replace(/\b(?:19|20)\d{2}-\d{2}-\d{2}\b/g, ' ').replace(/[^가-힣\s]/g, ' ').split(/\s+/).filter(function (x) { return x; });
+  if (!words.length || words.length > 4) return '';
+  for (var i = 0; i < words.length; i++) {
+    var w = words[i];
+    if (/^(거주자|본인|등록상태|세대주|사망|말소자)$/.test(w) || /의$/.test(w)) continue;
+    if (w === '전입' || w === '전임' || w === '진입') return '전입'; // OCR이 전입을 "전임"으로 자주 읽는다
+    if (w === '전출') return '전출';
+    if (w.length < 4) continue;
+    var best = '', bd = 99;
+    JM_REASONS_.forEach(function (r) { if (r.length < 4) return; var d = jmEdit_(w, r); if (d < bd) { bd = d; best = r; } });
+    if (bd === 0 || bd <= (best.length >= 5 ? 2 : 1)) return best;
+  }
+  return '';
+}
+
+// 주소 이력 — 표가 OCR에서 칸별로 흩어져 나오므로 쪽마다 ① 주소(시·도로 시작) ② 변동사유 ③ 날짜를 따로 모은 뒤,
+// 사유마다 날짜 개수(전입류 2개: 발생일·신고일 / 표시변경류 1개: 신고일)를 맞춰 날짜를 차례로 나눠 준다(행은 날짜순).
+// 주소 수 = 사유 수이고 날짜 수 = 기대 개수일 때만 확정, 아니면 그 쪽은 확인필요.
+function jmHistory_(pages) {
+  var rows = [], unsure = 0;
+  pages.forEach(function (pg) {
+    var body = pg.text;
+    var st = body.search(/성\s*명\s*\(\s*한\s*자\s*\)/);
+    if (st < 0) st = body.search(/주민등록번호|세대주\s*및\s*관계/); // OCR이 "성명(한자)" 칸 이름을 못 읽은 쪽
+    if (st < 0 || !/세대주\s*및\s*관계|발\s*생\s*일/.test(body)) return;
+    // 표 끝 — "이하 여백" 또는 병역사항 칸(입영일 등 날짜가 주소 이력에 섞이지 않게)
+    var en = body.search(/이\s*하\s*\n?\s*여\s*백|병\s*역\s*\n?\s*사\s*항|역\s*종\s*\[|입영\s*\(/);
+    var lines = body.slice(st, en > st ? en : body.length).split('\n');
+    var addrs = [], reasons = [], dates = [];
+    for (var i = 0; i < lines.length; i++) {
+      var L = lines[i].replace(/\s+/g, ' ').trim();
+      if (!L || /^※/.test(L)) continue;
+      if (/^\[/.test(L)) continue; // [조례·법률에 의한 변경] 주석 줄
+      var a = L.replace(/^\d{1,3}\s+/, '');
+      // 위조방지 용지 바탕에 시·도 이름이 찍혀 OCR에 "경상북도" 같은 줄이 섞인다 — 시·도 뒤에 두 낱말 이상 있어야 주소
+      if (JM_SIDO_RE_.test(a + ' ') && /^\S+\s+\S+\s+\S+/.test(a) && !/(시장|구청장|군수|읍장|면장|동장)(\s|$)/.test(a)) {
+        var full = a, nx = (lines[i + 1] || '').trim();
+        if (/^\(?[^\n]{0,30}(\d+동\s*)?\d+호|^\([가-힣]+동|^\d+층/.test(nx) && !JM_SIDO_RE_.test(nx + ' ')) full += ' ' + nx;
+        addrs.push(full.replace(/\s+/g, ' ').replace(/[,.]$/, ''));
+        continue;
+      }
+      if (/주민등록번호/.test(L)) continue;
+      var ds = jmDateList_(L);
+      dates = dates.concat(ds);
+      var rs = jmReasonOf_(L);
+      if (rs) reasons.push(rs);
+    }
+    var need = reasons.reduce(function (s, r) { return s + (JM_ONE_DATE_RE_.test(r) ? 1 : 2); }, 0);
+    var datesOk = dates.length === need, addrOk = addrs.length === reasons.length && reasons.length > 0;
+    var sorted = dates.slice().sort(), k = 0;
+    if (!(datesOk && addrOk)) unsure++;
+    reasons.forEach(function (r, idx) {
+      var one = JM_ONE_DATE_RE_.test(r), occ = '', rep = '';
+      if (datesOk) { if (one) rep = sorted[k++]; else { occ = sorted[k++]; rep = sorted[k++]; } }
+      var row = { 쪽: pg.n, 사유: r, 발생일: one ? '' : occ, 신고일: rep, 주소: addrOk ? addrs[idx] : '', 날짜확인필요: !datesOk, 짝확인필요: !addrOk };
+      // 전입 신고는 이사 후 14일 안 — 발생일과 신고일이 90일 넘게 벌어지면 OCR이 숫자 하나를 잘못 읽었을 가능성(예: 2018→2015)
+      if (occ && rep && (new Date(rep) - new Date(occ)) / 86400000 > 90) row.날짜확인필요 = true;
+      rows.push(row);
+    });
+    if (!reasons.length && addrs.length) addrs.forEach(function (a) { rows.push({ 쪽: pg.n, 사유: '', 발생일: '', 신고일: '', 주소: a, 날짜확인필요: true, 짝확인필요: true }); });
+  });
+  return { rows: rows, unsurePages: unsure };
+}
+
+// 거주기간 — 전입(출생등록·재등록 포함)부터 다음 전입 전날까지. 도로명주소·통반변경·행정구역변경·세대주변경은 같은 집.
+function jmResidences_(rows, endDate) {
+  var res = [];
+  rows.forEach(function (r) {
+    var day = r.발생일 || r.신고일;
+    // 날짜를 못 읽은 이사 행 — 건너뛰면 앞 집 거주기간이 다음 집까지 늘어나 틀린 기간이 되므로, 앞뒤 기간을 끊고 확인필요로 남긴다
+    if (/^(전입|출생등록|재등록|세대합가|전출)$/.test(r.사유) && !day) {
+      if (res.length && !res[res.length - 1].끝) { res[res.length - 1].끝 = '?'; res[res.length - 1].날짜확인필요 = true; }
+      res.push({ 시작: '', 끝: '', 주소: r.주소, 짝확인필요: r.짝확인필요, 날짜확인필요: true });
+      return;
+    }
+    if (/^(전입|출생등록|재등록|세대합가)$/.test(r.사유) && day) {
+      if (res.length) { res[res.length - 1].끝 = day; if (r.날짜확인필요) res[res.length - 1].날짜확인필요 = true; }
+      res.push({ 시작: day, 끝: '', 주소: r.주소, 짝확인필요: r.짝확인필요, 날짜확인필요: !!r.날짜확인필요 });
+    } else if (res.length && r.주소 && /(도로명주소|명칭변경|행정구역변경|통반변경|지번변경|번지변경)/.test(r.사유)) {
+      res[res.length - 1].주소변경후 = r.주소;
+    } else if (/(사망신고말소|말소|국외이주)/.test(r.사유) && res.length && day) {
+      res[res.length - 1].끝 = day; res[res.length - 1].종료사유 = r.사유;
+    }
+  });
+  res.forEach(function (x) {
+    var e = x.끝 || endDate || '';
+    x.끝표시 = x.끝 === '?' ? '확인필요' : (x.끝 || (endDate ? '현재(' + endDate + ')' : '현재'));
+    if (!x.시작) x.시작표시 = '확인필요';
+    if (x.끝 === '?') e = '';
+    if (x.시작 && e) {
+      var d = Math.round((new Date(e) - new Date(x.시작)) / 86400000);
+      // 날짜가 거꾸로면(OCR이 행 날짜를 섞음) 기간을 만들지 않고 확인필요
+      if (d < 0) { x.기간 = ''; x.날짜확인필요 = true; }
+      else { x.일수 = d; x.기간 = Math.floor(d / 365.25) + '년 ' + Math.floor((d % 365.25) / 30.44) + '개월'; }
+    }
+  });
+  return res;
+}
+
+function jmParse_(text) {
+  var t = String(text || '');
+  // 등본은 "세대주 성명" · "세대구성 사유 및 일자" 칸이 있다(파일 이름보다 내용으로 판별)
+  var isCho = !/세대\s*구성\s*사유|세대주\s*성명|세대별\s*주민등록표/.test(t);
+  var r = { 종류: isCho ? '주민등록표 초본' : '주민등록표 등본', 경고: [] };
+  if (/말소된|말소자/.test(t)) r.말소자 = true;
+  var im = /(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t);
+  if (im) r.발급일 = im[1] + '-' + ('0' + im[2]).slice(-2) + '-' + ('0' + im[3]).slice(-2);
+  var nm = /성명\s*\(\s*한자\s*\)\s*\n?\s*([가-힣]{2,5})/.exec(t);
+  if (nm) r.성명 = nm[1];
+  var rq = /(\d{6})\s*-\s*([\d*]{7})/.exec(t);
+  if (rq) r.주민번호 = rq[1] + '-' + rq[2].charAt(0) + '******';
+  var pages = jmPages_(t);
+  r.쪽수 = pages.length;
+  if (isCho) {
+    var h = jmHistory_(pages);
+    r.주소이력 = h.rows;
+    r.거주기간 = jmResidences_(h.rows, r.말소자 ? '' : r.발급일);
+    if (h.unsurePages) r.경고.push(h.unsurePages + '쪽에서 주소와 날짜 짝을 확정하지 못함 — 해당 행은 원문으로 주소 확인');
+    // 과거 주소변동 포함 여부 — 발급 선택 문구가 인쇄되지 않으므로 이력 모양으로 판단
+    var mv = h.rows.filter(function (x) { return /^(전입|출생등록|재등록)$/.test(x.사유); });
+    var first = h.rows.length ? h.rows[0] : null;
+    if (h.rows.length <= 1) r.주소변동포함 = '미포함으로 보임';
+    else if (first && first.사유 === '출생등록') r.주소변동포함 = '전체 포함(출생등록부터)';
+    else if (first && first.발생일 && r.발급일 && (new Date(r.발급일) - new Date(first.발생일)) / 86400000 < 365.25 * 5 + 60 && mv.length) r.주소변동포함 = '최근 5년만 포함된 것으로 보임';
+    else r.주소변동포함 = '포함(첫 기록 ' + (first && (first.발생일 || first.신고일) || '?') + ')';
+    if (/미포함|5년/.test(r.주소변동포함)) r.경고.push('과거 주소변동사항이 ' + (/5년/.test(r.주소변동포함) ? '최근 5년만' : '빠진 채') + ' 발급된 것으로 보임 — 거주기간 판단에는 "과거의 주소 변동 사항: 전체 포함"으로 다시 발급');
+    var rel = (t.match(/(본인|배우자|자녀|의\s*처|의\s*남편|의\s*자|의\s*부|의\s*모|세대주)\s*(?:\n|거주자|$)/g) || []).length;
+    r.세대주관계포함 = rel > 0 ? '포함' : '미포함으로 보임';
+    if (!rel) r.경고.push('세대주 성명·관계가 빠진 것으로 보임 — 세대 판단이 필요하면 "세대주의 성명과 관계 포함"으로 다시 발급');
+  } else {
+    var hm = /세대주\s*성명\s*\(\s*한자\s*\)\s*\n?\s*([가-힣]{2,5})/.exec(t);
+    if (hm) r.세대주 = hm[1];
+    var cm = /세대\s*구성\s*사유\s*및\s*일자\s*\n?\s*([가-힣]{2,8})\s*\n?\s*((?:19|20)\d{2}-\d{2}-\d{2})/.exec(t);
+    if (cm) { r.세대구성사유 = cm[1]; r.세대구성일 = cm[2]; }
+    var am = /현\s*주\s*소\s*[:：]\s*\n?\s*([^\n]{4,60}(?:\n[^\n]{0,40}호[^\n]*)?)/.exec(t);
+    if (am) r.현주소 = am[1].replace(/\s*\n\s*(?:(?:19|20)\d{2}-\d{2}-\d{2}\s*\n\s*)?/g, ' ').replace(/\s+/g, ' ').trim();
+    r.세대원 = jmMembers_(t);
+    // 관계 "본인"은 세대주 자신 — 위 칸의 세대주 성명이 더 또렷하므로 그것을 쓴다
+    r.세대원.forEach(function (x) { if (x.관계 === '본인' && r.세대주 && x.이름 !== r.세대주) { x.이름 = r.세대주; if (x.관계) x.확인필요 = !x.전입일; } });
+    if (!r.세대원.length) r.경고.push('세대원 표를 읽지 못함 — 원문 확인');
+    if (r.세대원.length && r.세대원.every(function (x) { return !x.전입일; })) r.경고.push('세대원 전입일이 하나도 없음 — "세대원의 전입일/변동일 포함"으로 발급됐는지 확인');
+    else if (r.세대원.some(function (x) { return !x.전입일; })) r.경고.push('전입일을 읽지 못한 세대원이 있음 — 원문 확인');
+    // 세대 주소 이력(과거 주소변동 포함으로 뗀 등본) — 세대원 표 앞까지만 잘라 초본과 같은 방식으로 읽는다
+    // 세대구성 사유·일자 칸("전입 2015-11-04")은 주소 이력 행이 아니므로 빼고, 세대원 표(첫 주민번호 앞 머리줄)부터는 자른다
+    var dp = jmPages_(t).map(function (pg) {
+      var x = pg.text.replace(/세대\s*구성\s*사유\s*및\s*일자\s*\n?\s*[가-힣]{0,10}\s*\n?\s*(?:(?:19|20)\d{2}-\d{2}-\d{2})?/, ' ');
+      var k = x.search(JM_MEMBER_HEAD_RE_), f = x.search(/\d{6}\s*-\s*[\d*]{7}/);
+      if (k < 0 && f > 0) { var lines = x.slice(0, f).split('\n'); k = x.slice(0, f).length - lines.slice(-6).join('\n').length; }
+      return { n: pg.n, text: k > 0 ? x.slice(0, k) : x };
+    });
+    var dh = jmHistory_(dp);
+    if (dh.rows.length > 1) {
+      r.주소이력 = dh.rows;
+      r.거주기간 = jmResidences_(dh.rows, r.발급일);
+      r.주소변동포함 = '포함(세대 주소 이력 ' + dh.rows.length + '행)';
+      if (dh.unsurePages) r.경고.push('세대 주소 이력 ' + dh.unsurePages + '쪽에서 주소와 날짜 짝을 확정하지 못함 — 원문 확인');
+    } else r.주소변동포함 = '현주소만(과거 주소변동 미포함)';
+  }
+  return r;
+}
+
+// 등본 세대원 표 시작 위치 — "번호 / 세대주 / 성명(한자) / 관계 / 주민등록번호" 머리줄
+var JM_MEMBER_HEAD_RE_ = /번\s*호\s*\n\s*세대주\s*\n?\s*성명|세대주\s*\n?\s*성명\s*\(\s*한자\s*\)\s*\n\s*관계|관계\s*\n\s*주민등록번호/;
+var JM_REL_RE_ = /^(본인|세대주|배우자|자녀|부|모|손|손자|손녀|형제|자매|형|누나|오빠|언니|동생|며느리|자부|사위|처|남편|시부|시모|장인|장모|동거인|조부|조모|증손|외손|부모|계부|계모|[가-힣]{2,5}의\s*(?:처|남편|자|부|모|손|배우자|자녀))$/;
+// 등본 세대원 — 행마다 주민번호가 꼭 하나 있다(OCR 순서: 이름(漢) · 날짜 1~2개 · 번호 · 관계 · 변동사유 · 주민번호 · 등록상태).
+// 그래서 주민번호를 행의 끝으로 삼아 "앞 주민번호 뒤 ~ 이 주민번호"를 한 행으로 읽는다.
+function jmMembers_(t) {
+  // 세대원 표는 주소 표 다음 — 첫 주민번호(세대원 행에만 있음) 앞쪽부터 "이하 여백"까지
+  var f = t.search(/\d{6}\s*-\s*[\d*]{7}/);
+  if (f < 0) return [];
+  var hs = t.search(JM_MEMBER_HEAD_RE_);
+  if (hs < 0 || hs > f) { hs = Math.max(t.lastIndexOf('사 유', f), t.lastIndexOf('사유', f), t.lastIndexOf('상태', f), t.lastIndexOf('공', f), t.lastIndexOf('란', f)); if (hs < 0) hs = Math.max(0, f - 200); }
+  var s = t.slice(hs), en = s.search(/이\s*하\s*\n?\s*여\s*백|※/);
+  if (en > 0) s = s.slice(0, en);
+  var all = s.split('\n').map(function (x) { return x.replace(/\s+/g, ' ').trim(); }).filter(function (x) { return x; });
+  // 행 시작 = 이름 줄(이름 뒤 같은 줄이나 다음 줄에 "(漢字"). 바로 앞 줄이 관계·행번호면 거기서 시작(#10형: 번호·관계·이름 순)
+  var starts = [];
+  all.forEach(function (L, i) {
+    if (!/^[가-힣]{2,4}(\s*\(\s*[一-鿿]|$)/.test(L)) return;
+    if (!/\(\s*[一-鿿]/.test(L) && !/^\(\s*[一-鿿]/.test(all[i + 1] || '')) return;
+    if (JM_REL_RE_.test(L) || /^(거주자|세대주|성명|관계)$/.test(L)) return;
+    var st = i;
+    while (st > 0 && (JM_REL_RE_.test(all[st - 1]) || /^\d{1,2}$/.test(all[st - 1])) && i - st < 2) st--;
+    starts.push(st);
+  });
+  var rowsLines = [];
+  if (starts.length && starts.length === (s.match(/\d{6}\s*-\s*[\d*]{7}/g) || []).length) {
+    starts.forEach(function (st, k) { rowsLines.push(all.slice(st, k + 1 < starts.length ? starts[k + 1] : all.length)); });
+  } else {
+    // 이름 줄로 못 나누면 주민번호를 행 끝으로 삼아 나눈다(앞 주민번호 뒤 ~ 이 주민번호 + 다음 줄 상태)
+    var cur = [];
+    all.forEach(function (L) { cur.push(L); if (/\d{6}\s*-\s*[\d*]{7}/.test(L)) { rowsLines.push(cur); cur = []; } });
+    if (cur.length && rowsLines.length) rowsLines[rowsLines.length - 1] = rowsLines[rowsLines.length - 1].concat(cur);
+  }
+  var out = [];
+  rowsLines.forEach(function (lines) {
+    var joined = lines.join('\n'), m = /(\d{6})\s*-\s*([\d*]{7})/.exec(joined);
+    if (!m) return;
+    var after = joined.slice(m.index + m[0].length);
+    var p = { 관계: '', 이름: '', 한자: '', 주민번호: m[1] + '-' + m[2].charAt(0) + '******', 전입일: '', 신고일: '', 변동사유: '', 상태: '' };
+    var ds = [];
+    lines.forEach(function (L) {
+      ds = ds.concat(jmDateList_(L));
+      var w = L.replace(/\b(?:19|20)\d{2}-\d{2}-\d{2}\b/g, ' ').replace(/^\d{1,2}\s+/, '').replace(/\s+/g, ' ').trim();
+      if (!w) return;
+      if (!p.관계 && JM_REL_RE_.test(w)) { p.관계 = w.replace(/\s+/g, ''); return; }
+      var rs = jmReasonOf_(w);
+      if (!p.변동사유 && rs) { p.변동사유 = rs; return; }
+      if (/\d{6}\s*-/.test(w) || /^(거주자|거주불명자|말소자)$/.test(w)) return;
+      var nm = /^([가-힣]{2,4})(?:\s*\(\s*([一-鿿]{1,5}))?/.exec(w);
+      if (!p.이름 && nm && !/^(거주자|세대주|등록상태|변동사유|성명|관계|번호)$/.test(nm[1]) && !/^(주민|등록|발생|신고|변동|세대|사유|상태|이하|여백)/.test(nm[1])) { p.이름 = nm[1]; p.한자 = nm[2] || ''; }
+    });
+    ds.sort(); // 발생일(전입일) ≤ 신고일
+    p.전입일 = ds[0] || ''; p.신고일 = ds[1] || ds[0] || '';
+    var st = /(거주불명자|거주자|말소자|재외국민|국외이주)/.exec(joined);
+    if (st) p.상태 = st[1];
+    if (!p.관계 || !p.이름) p.확인필요 = true;
+    if (ds.length > 2) p.확인필요 = true; // 다른 행 날짜가 섞임
+    out.push(p);
+  });
+  return out;
 }
