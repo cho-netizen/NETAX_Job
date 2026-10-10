@@ -3810,6 +3810,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'self_check_run') return jsonResponse(runSelfCheck_());
   if (body.action === 'registry_parse') return jsonResponse(registryParseFile_(body)); // 등기부 PDF 정리(토큰 0)
   if (body.action === 'doc_parse') return jsonResponse(docParseFile_(body)); // 서류 PDF 정리 — 등기부·가족관계·사업자등록·접수증·납부서(토큰 0)
+  if (body.action === 'doc_parse_text') return jsonResponse(docParseCapturedText_(body)); // 확장프로그램 화면 글자(Alt+Shift+C) 정리 — OCR 없이 규칙만(토큰 0)
   if (body.action === 'doc_parse_multi') return jsonResponse(docParseMulti_(body)); // 여러 서류 함께 정리 + 대조표(토큰 0)
   if (body.action === 'tc_extract_case_docs') return jsonResponse(tc_extractCaseDocs_(body));
   if (body.action === 'self_check_last') return jsonResponse(selfCheckLast_());
@@ -24044,9 +24045,26 @@ function tc_docText_(f) {
   else if (/^text\/|json|csv|markdown/.test(mt)) text = DriveApp.getFileById(f.id).getBlob().getDataAsString('UTF-8');
   else if (/pdf|^image\/|officedocument\.wordprocessingml|msword/.test(mt)) { Utilities.sleep(800); text = ocrFileText_(f.id); }
   else return null; // 한글(hwp)·압축파일 등은 글자로 못 바꿈
-  text = String(text || '').slice(0, TC_EXTRACT_FILE_CHARS_);
+  // [2026.10.11] 글자는 잘라 쓰기 전 전체(최대 6만 자)를 기억 — 서류 자동정리 규칙은 여러 장짜리 등기부·초본 전체가 필요하다
+  text = String(text || '').slice(0, 60000);
   try { cache.put(key, text, 21600); } catch (e) {}
   return text;
+}
+// [2026.10.11 토큰0] 규칙으로 정리되는 서류(등기부·계약서·신고필증·대장·영수증 등)는 AI에게 OCR 원문 9천 자 대신
+// 규칙이 검산까지 마친 요약표 + 원문 앞부분 2천5백 자만 보낸다 — 토큰이 크게 줄고, AI는 확정된 숫자를 보고 "어느 칸인가"만 판단한다.
+// 규칙이 모르는 서류는 예전처럼 원문을 보낸다. 규칙 정리가 실패해도 원문 경로로 돌아가므로 정보가 빠지지 않는다.
+const TC_EXTRACT_RULED_RAW_CHARS_ = 1500;
+function tc_docPart_(name, text) {
+  let p = null;
+  try { p = docParseText_(text); } catch (e) { p = null; }
+  // 요약+원문 발췌가 원문보다 길어지면(짧은 서류) 원문을 그대로 보낸다 — 어떤 경우에도 예전보다 길어지지 않게
+  const budget = Math.min(text.length, TC_EXTRACT_FILE_CHARS_);
+  if (p && p.type && p.md && p.md.length + 200 < budget) {
+    const ex = Math.min(TC_EXTRACT_RULED_RAW_CHARS_, budget - p.md.length - 200);
+    return { ruled: p.label || p.type, part: '=== 파일: ' + name + ' (규칙 자동정리: ' + (p.label || p.type) + ' — ✓는 검산된 값, ⚠는 확인필요) ===\n' + p.md +
+      (ex > 300 ? '\n--- 원문 앞부분(참고) ---\n' + text.slice(0, ex) : '') };
+  }
+  return { ruled: '', part: '=== 파일: ' + name + ' ===\n' + text.slice(0, TC_EXTRACT_FILE_CHARS_) };
 }
 function tc_extractCaseDocs_(body) {
   const caseId = String(body.caseId || '').trim();
@@ -24069,8 +24087,8 @@ function tc_extractCaseDocs_(body) {
     return 2;
   };
   files.sort(function (a, b) { return rank(a.name) - rank(b.name); });
-  const used = [], skipped = [];
-  let total = 0;
+  const used = [], skipped = [], ruled = [];
+  let total = 0, rawTotal = 0;
   const parts = [];
   const started = Date.now();
   for (let i = 0; i < files.length && used.length < TC_EXTRACT_MAX_FILES_; i++) {
@@ -24081,10 +24099,13 @@ function tc_extractCaseDocs_(body) {
     try { text = tc_docText_(f); } catch (e) { skipped.push(f.name + '(읽기 실패)'); continue; }
     if (text === null) { skipped.push(f.name + '(글자로 못 바꾸는 형식)'); continue; }
     if (!text.trim()) { skipped.push(f.name + '(글자 없음)'); continue; }
-    if (total + text.length > TC_EXTRACT_TOTAL_CHARS_) { skipped.push(f.name + '(분량 초과)'); continue; }
-    total += text.length;
+    const dp = tc_docPart_(f.name, text);
+    if (total + dp.part.length > TC_EXTRACT_TOTAL_CHARS_) { skipped.push(f.name + '(분량 초과)'); continue; }
+    total += dp.part.length;
+    rawTotal += Math.min(text.length, TC_EXTRACT_FILE_CHARS_);
     used.push(f.name);
-    parts.push('=== 파일: ' + f.name + ' ===\n' + text);
+    if (dp.ruled) ruled.push(f.name + '(' + dp.ruled + ')');
+    parts.push(dp.part);
   }
   if (!parts.length) return { error: '사건 폴더에서 읽을 수 있는 서류를 찾지 못했습니다.' + (skipped.length ? ' (건너뜀: ' + skipped.slice(0, 5).join(', ') + ')' : '') };
 
@@ -24097,6 +24118,8 @@ function tc_extractCaseDocs_(body) {
   // 다시 부르지 않고 지난 답을 그대로 쓴다(6시간). 서류가 하나라도 바뀌거나 추가되면 글자가 달라져 새로 묻는다.
   const tcCache = CacheService.getScriptCache();
   const tcKey = 'tcx_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, model + '\n' + system + '\n' + user, Utilities.Charset.UTF_8));
+  // 점검용: 실제 AI를 부르지 않고 보낼 분량만 알려준다(규칙 정리 전후 글자 수 비교)
+  if (body.dryRun) return { success: true, dryRun: true, files: used, ruled: ruled, skipped: skipped, sendChars: (system + user).length, rawChars: rawTotal };
   const tcHit = tcCache.get(tcKey);
   if (tcHit) return { success: true, reply: tcHit, files: used, skipped: skipped, usd: 0, cached: true };
   const res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
@@ -25327,6 +25350,21 @@ function ldToMarkdown_(type, r) {
   return out.join('\n');
 }
 
+// [2026.10.11 토큰0] NX 커넥터로 가져온 화면 글자(홈택스·정부24·등기소·공시가격 화면 등)를 같은 규칙으로 정리.
+// 화면 글자는 HTML 그대로라 OCR 오인식이 없다. 확장프로그램이 덧붙인 "=== 구조 정리(표·항목) ===" 부분은 규칙 판별을
+// 흐리게 할 수 있어 떼어 낸 본문으로 먼저 보고, 못 알아보면 전체로 한 번 더 본다. 알아보지 못하면 type ''(→ 화면은 예전처럼 입력창에 넣음).
+function docParseCapturedText_(body) {
+  var text = String(body && body.text || '');
+  if (text.replace(/\s/g, '').length < 30) return { ok: true, type: '' };
+  if (text.length > 200000) text = text.slice(0, 200000);
+  var main = text.split(/\n=== 구조 정리\(표·항목\) ===\n/)[0];
+  var p = null;
+  try { p = docParseText_(main); } catch (e) { p = null; }
+  if (!p || !p.type) { try { p = docParseText_(text); } catch (e) { p = null; } }
+  if (!p || !p.type) return { ok: true, type: '' };
+  var title = String(body.title || '화면 캡처').slice(0, 80);
+  return { ok: true, type: p.type, label: p.label, md: '**' + title + '** (화면 글자 · 규칙 정리)\n\n' + p.md };
+}
 function docParseText_(text) {
   // [2026.10.10] 첫머리에 계약서·신고필증·확인설명서·확정일자 제목이 있으면 거래 서류 — 본문에 "토지대장·등기사항증명서" 같은
   // 첨부서류 이름이 들어 있어도 대장·등기부로 오인하지 않게 맨 먼저 본다(제목이 없으면 아래 기존 순서대로)

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-10 15:48 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-10 16:25 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -45887,6 +45887,32 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     input.value = ''; input.style.height = 'auto';
   }
   // 다른 사이트(등기부·실거래가·홈택스 등)에서 Alt+Shift+C로 보낸 글자 → 입력창에 이어 붙인다.
+  function nxAiCaptureToDoc_(d){
+    var text = String(d && d.text || '');
+    if (!text.trim()) return;
+    var done = false;
+    var fallback = function(){ if (done) return; done = true; nxAiInsertCapturedText_(text, d); };
+    var timer = setTimeout(fallback, 25000);
+    callGas('doc_parse_text', { text: text, title: d.title || '' }).then(function(res){
+      clearTimeout(timer);
+      if (done) return;
+      if (!res || res.error || !res.type){ fallback(); return; }
+      done = true;
+      nxAiPhoneTab_('chat');
+      var label = '📋 화면 캡처: ' + (d.title || '') ;
+      var userMsg = { role: 'user', content: label };
+      nxAiConv.messages.push(userMsg);
+      nxAiAppendBubble_('user', label)._nxMsgRef = userMsg;
+      var bubble = nxAiAppendBubble_('assistant', '');
+      var aiMsg = { role: 'assistant', content: '[⚡바로 처리] 화면 서류 정리' };
+      bubble._nxMsgRef = aiMsg;
+      nxAiConv.messages.push(aiMsg);
+      nxAiRenderLocal_(bubble, { md: res.md, note: '[⚡바로 처리] 화면 캡처 ' + (res.label || res.type) + ' 정리(규칙·토큰 0)' }, '이 서류 — 세무상 확인할 점을 검토해줘');
+      nxAiCountFree_('local');
+      nxAiScheduleSave_();
+      nxAiToast_('화면에서 ' + (res.label || '서류') + '를 알아보고 AI 없이 정리했습니다(토큰 0). 원문이 필요하면 다시 캡처 후 입력창에서 보내세요.');
+    }).catch(function(){ clearTimeout(timer); fallback(); });
+  }
   function nxAiInsertCapturedText_(text, meta){
     if (!text || !String(text).trim()) return;
     nxAiCaptureCount++;
@@ -45911,7 +45937,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       else p.reject(new Error(d.error || 'gem_error'));
       return;
     }
-    if (d.type === 'NX_CAPTURE') return nxAiInsertCapturedText_(d.text, d);
+    // [2026.10.11 토큰0] 화면 글자가 규칙으로 정리되는 서류(등기부·홈택스·정부24·공시가격 화면 등)면 AI에 보내지 않고 ⚡ 표로 바로 보여 준다.
+    // 못 알아보면(또는 서버 응답이 늦거나 실패하면) 예전처럼 입력창에 넣는다 — 캡처가 사라지는 일은 없다.
+    if (d.type === 'NX_CAPTURE') return nxAiCaptureToDoc_(d);
     // [2026.10.10] 도우미 창 음성 입력 — 번호 없이 입력창 뒤에 이어 붙인다(보내기는 세무사님이)
     if (d.type === 'NX_CAPTURE_VOICE'){
       var vin = nxAiEl_('nxAiInput'), vt = String(d.text || '').trim();
