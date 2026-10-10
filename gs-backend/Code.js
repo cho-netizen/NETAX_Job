@@ -25335,6 +25335,10 @@ function docParseText_(text) {
   if (ldt0) { var lr0 = ldt0 === 'bldledger' ? ldParseBuilding_(text) : ldParseLand_(text); return { type: ldt0, label: lr0.종류, result: lr0, md: ldToMarkdown_(ldt0, lr0) }; }
   var reg = registryParse(text);
   if (reg.isRegistry) return { type: 'registry', label: '등기부', result: reg, md: registryToMarkdown_(reg, '') };
+  // 상속 증빙(상속인 조회결과·사망 서류·보험증권·자동차등록증·부채증명원) — 조회결과의 "잔액"·보험 지급내역의 "소득세" 낱말 때문에
+  // 잔고증명·원천징수영수증으로 오인되기 전에 먼저 본다
+  var iht = ihDetect_(text);
+  if (iht) { var ihr = ihParse_(iht, text); return { type: iht, label: ihr.종류, result: ihr, md: ihToMarkdown_(iht, ihr) }; }
   // 자경농지 감면 증빙(소득금액증명원·농업경영체 등록확인서·농지대장·자경 확인서) — 조특령 §66⑭ 연도별 제외 판정 포함
   var fp = farmDocParse_(text);
   if (fp) return fp;
@@ -27444,4 +27448,274 @@ function farmDocParse_(text) {
   else if (type === 'farmconfirm') r = farmParseConfirm_(text);
   if (!r) return null;
   return { type: type, label: r.종류, result: r, md: farmToMarkdown_(type, r) };
+}
+
+
+// =========================================================
+// [2026.10.10] 상속 증빙 자동 정리 — 토큰 0, ES5
+// 상속인 금융거래조회·안심상속 결과, 사망 서류(사망진단서·시체검안서·기본증명서·제적등본), 보험증권·보험금 지급내역,
+// 자동차등록증·원부, 부채증명원·대출잔액증명. 상증법 §8(보험금)·§14(채무)·§15(추정상속재산)·§22(금융재산공제) 판단 재료만 정리하고 단정하지 않는다.
+// =========================================================
+function ihYmd_(y, m, d) { return y + '-' + ('0' + m).slice(-2) + '-' + ('0' + d).slice(-2); }
+function ihNum_(s) { var v = String(s == null ? '' : s).replace(/[^\d]/g, ''); return v ? Number(v) : null; }
+function ihDate_(s) {
+  var m = /((?:19|20)\d{2})\s*[-./년]\s*(\d{1,2})\s*[-./월]\s*(\d{1,2})/.exec(String(s || ''));
+  return m ? ihYmd_(m[1], m[2], m[3]) : '';
+}
+// 판별 — 다른 서류 규칙(잔고증명·장례비·가족관계)보다 먼저 본다
+function ihDetect_(text) {
+  var t = String(text || '');
+  if (/상속인\s*(?:금융\s*거래|내역)|안심\s*상속|보험\s*가입\s*내역\s*조회|미수령금|휴면\s*보험금\s*조회|상속인\s*금융\s*내역/.test(t)) return 'inhquery';
+  if (/사\s*망\s*진\s*단\s*서|시\s*체\s*검\s*안\s*서/.test(t)) return 'death';
+  if (/기\s*본\s*증\s*명\s*서/.test(t) && /사\s*망/.test(t)) return 'death';
+  if (/제\s*적\s*등\s*본|제적\s*초본/.test(t)) return 'death';
+  // 금융거래확인서(예금·대출 함께)는 잔고증명 규칙(balance)이 읽으므로 여기서는 부채증명원·대출잔액증명만
+  if (/부\s*채\s*증\s*명|대\s*출\s*잔\s*액\s*증\s*명|채\s*무\s*(?:잔액\s*)?확\s*인\s*서/.test(t)) return 'debtcert';
+  if (/자\s*동\s*차\s*등\s*록\s*(?:증|원\s*부)/.test(t)) return 'carreg';
+  if (/(보\s*험\s*증\s*권|보험금\s*지급|기\s*지\s*급|지급\s*내역서|보험\s*계약\s*사항)/.test(t) && /(계\s*약\s*자|피\s*보\s*험\s*자|수\s*익\s*자|보험\s*계약자)/.test(t)) return 'insurance';
+  return '';
+}
+
+// ---- ① 상속인 금융거래조회·안심상속 결과 ----
+var IH_ORGS_ = [
+  [/kfb\.or\.kr|은행\s*연합회/, '은행연합회(은행)'], [/fsb\.or\.kr|저축\s*은행/, '저축은행중앙회'], [/knia\.or\.kr|손해\s*보험\s*협회/, '손해보험협회'],
+  [/insure\.or\.kr|klia|생명\s*보험\s*협회|생명보험\)/, '생명보험협회'], [/epostbank|우체국/, '우체국'], [/KDIC|예금\s*보험\s*공사/, '예금보험공사'],
+  [/kofia|금융\s*투자\s*협회/, '금융투자협회(증권)'], [/새마을\s*금고/, '새마을금고'], [/신\s*협|신용\s*협동/, '신협'], [/농\s*협|수\s*협|산\s*림\s*조\s*합/, '농·수협'],
+  [/예탁\s*결제원/, '한국예탁결제원'], [/국가\s*공간\s*정보|토지\s*소유\s*현황/, '국토부(토지)'], [/국민\s*연금/, '국민연금'], [/공무원\s*연금/, '공무원연금'],
+  [/국세청|국세\s*\(/, '국세청'], [/시청|구청|군청|지방세/, '지자체(지방세·자동차)']
+];
+// 보험은 아래 보험협회형 규칙이 따로 읽는다(여기 넣으면 "구분 보험" 머리글 줄이 가짜 행이 됨)
+var IH_KINDS_RE_ = /^(예\s*금|대\s*출|카\s*드(?:\s*금액)?|보\s*증|신\s*탁|펀\s*드|외\s*화|리\s*스|할\s*부|증\s*권|수\s*익\s*증\s*권|채\s*권|출\s*자\s*금)$/;
+function ihParseQuery_(text) {
+  var t = String(text || ''), r = { 종류: '상속인 조회결과', 행: [], 없음: [], 경고: [] };
+  for (var i = 0; i < IH_ORGS_.length; i++) if (IH_ORGS_[i][0].test(t)) { r.기관 = IH_ORGS_[i][1]; break; }
+  if (/알림톡|kakao/i.test(t)) { r.접수안내 = true; r.경고.push('조회 "결과"가 아니라 접수·처리 안내(알림톡) 화면 — 결과 문서를 받으면 다시 정리'); }
+  var m = /(?:생년월일|주민등록번호)\s*[:：]?\s*\n?\s*(\d{6})/.exec(t); if (m) r.대상생년6 = m[1];
+  m = /접수\s*(?:일자|일)\s*[:：]?\s*\n?\s*((?:19|20)\d{2}[-.]\d{2}[-.]\d{2}|(?:19|20)\d{6})/.exec(t);
+  if (m) r.접수일 = m[1].length === 8 ? ihYmd_(m[1].slice(0, 4), m[1].slice(4, 6), m[1].slice(6)) : ihDate_(m[1]);
+  m = /접수\s*번호\s*[:：]?\s*\n?\s*([\d-]{8,20})/.exec(t); if (m) r.접수번호 = m[1];
+  m = /총\s*(\d+)\s*건/.exec(t); if (m) r.총건수 = Number(m[1]);
+  // 거래 없음 문구
+  var none = t.match(/(조회된\s*(?:데이터|내역)\s*가?\s*없습니다|조회된내역이없습니다|계좌\s*없음|잔액\s*없음|해당\s*사항\s*없음)/g);
+  if (none) r.없음 = none.map(function (x) { return x.replace(/\s+/g, ''); });
+  // 은행연합회형 표: 기관 / 거래종류 / 점포 / 금액 / 상환일 / 대표번호 — 거래종류 줄을 닻으로 삼는다
+  var L = t.split('\n').map(function (x) { return x.replace(/[\s　]+/g, ' ').trim(); }).filter(function (x) { return x; });
+  for (var k = 1; k < L.length; k++) {
+    if (!IH_KINDS_RE_.test(L[k])) continue;
+    var org = L[k - 1].replace(/\s+/g, '');
+    if (/^(은행|금융거래종류|구분|상품명)$/.test(org) || /\d/.test(org) || org.length > 12) continue;
+    var amt = null, due = '', j = k + 1, branch = '';
+    if (j < L.length && !/^[\d,]+$/.test(L[j]) && !IH_KINDS_RE_.test(L[j])) { branch = L[j]; j++; }
+    if (j < L.length && /^[\d,]+(?:\s*원)?$/.test(L[j])) { amt = ihNum_(L[j]); j++; }
+    if (j < L.length && /^(?:19|20)\d{2}-\d{2}-\d{2}$|^0000-00-00$/.test(L[j]) && L[j] !== '0000-00-00') due = L[j];
+    var kind = L[k].replace(/\s+/g, '');
+    r.행.push({ 기관: org, 종류: kind, 점포: branch, 금액: amt, 상환일: due, 채무: /대출|카드금액|보증|할부|리스/.test(kind) });
+  }
+  // 보험협회형 표: 상품명 줄 다음에 증권번호·계약관계(계약자/피보험자/수익자)·기간
+  var insRe = /\n\s*([A-Z0-9]{8,20})\s*\n(?:[^\n]*\n){0,2}?\s*(계약자|피보험자|수익자)\s*\n\s*((?:19|20)\d{2}-\d{2}-\d{2})\s*\n\s*((?:19|20)\d{2}-\d{2}-\d{2})/g, im;
+  while ((im = insRe.exec(t))) r.행.push({ 기관: r.기관 || '', 종류: '보험', 증권번호: im[1], 계약관계: im[2], 시작일: im[3], 종료일: im[4], 금액: null, 채무: false });
+  if (/9,999,999,999/.test(t) && r.행.some(function (x) { return x.금액 === 9999999999; })) r.경고.push('채무금액이 9,999,999,999로 표시된 행 — 금액 미확정, 해당 기관 문의 필요');
+  r.행.forEach(function (x) { if (x.금액 === 9999999999) { x.금액 = null; x.금액확인필요 = true; } });
+  var sum = 0, hasAmt = false;
+  r.행.forEach(function (x) { if (!x.채무 && x.금액) { sum += x.금액; hasAmt = true; } });
+  if (hasAmt) r.자산합계 = sum;
+  var dsum = 0, hasD = false;
+  r.행.forEach(function (x) { if (x.채무 && x.금액) { dsum += x.금액; hasD = true; } });
+  if (hasD) r.채무합계 = dsum;
+  if (r.총건수 != null && r.행.length && r.행.length !== r.총건수 && !r.행.some(function (x) { return x.종류 === '보험'; })) r.경고.push('총 ' + r.총건수 + '건 중 ' + r.행.length + '건만 읽음 — 원문 확인');
+  if (!r.행.length && !r.없음.length && !r.접수안내) r.경고.push('조회 내역 표를 읽지 못함(기관마다 화면 모양이 다름) — 원문 확인');
+  r.경고.push('조회결과의 금액은 접수일 기준·원금 기준일 수 있음 — 상속개시일 잔액은 잔고증명서로 확인(금융재산공제 §22 근거)');
+  return r;
+}
+
+// ---- ② 사망 서류 ----
+function ihParseDeath_(text) {
+  var t = String(text || ''), r = { 경고: [] };
+  r.종류 = /시\s*체\s*검\s*안\s*서/.test(t) ? '시체검안서' : /사\s*망\s*진\s*단\s*서/.test(t) ? '사망진단서' : /제\s*적/.test(t) && !/기\s*본\s*증\s*명/.test(t) ? '제적등본' : '기본증명서';
+  var m;
+  // 사망일시 — 기본증명서 "[사망일시] 2025년 12월 18일 06시 10분", 진단서 "8 사망일시 2026년05월 12일 06시15분", 검안서는 칸이 섞여 "년 04월 06일 07시 32분 이전 2026"
+  m = /사\s*망\s*일\s*시\s*\]?\s*\n?\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*(?:(\d{1,2})\s*시\s*(\d{1,2})\s*분)?/.exec(t);
+  if (m) { r.사망일 = ihYmd_(m[1], m[2], m[3]); if (m[4]) r.사망시각 = ('0' + m[4]).slice(-2) + ':' + ('0' + m[5]).slice(-2); }
+  if (!r.사망일) {
+    var w = (/사\s*망\s*일\s*시([\s\S]{0,160})/.exec(t) || [])[1] || '';
+    var mm = /(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*(\d{1,2})\s*시\s*(\d{1,2})\s*분/.exec(w), yy = /((?:19|20)\d{2})/.exec(w);
+    if (mm && yy) { r.사망일 = ihYmd_(yy[1], mm[1], mm[2]); r.사망시각 = ('0' + mm[3]).slice(-2) + ':' + ('0' + mm[4]).slice(-2); r.사망일확인필요 = true; }
+    if (/이전/.test(w)) r.사망시각비고 = '"…이전"(추정 시각)으로 기재';
+  }
+  m = /사\s*망\s*장\s*소\s*\]?\s*\n?\s*([^\n\[]{6,80})/.exec(t);
+  if (m && /[시군구]\s|로\s*\d|길\s*\d|동\s*\d/.test(m[1])) r.사망장소 = m[1].trim();
+  if (!r.사망장소) { m = /사\s*망\s*일\s*시[\s\S]{0,200}?주\s*소\s*([^\n]{6,80})/.exec(t); if (m) r.사망장소 = m[1].trim(); }
+  m = /\[\s*√\s*\]\s*(주택|의료기관|사회복지시설|도로|산업장)|[■√☑]\s*(주택|의료기관)/.exec(t); if (m) r.사망장소구분 = m[1] || m[2];
+  m = /\[\s*√\s*\]\s*(병사|외인사|기타\s*및\s*불상)/.exec(t); if (m) r.사망의종류 = m[1].replace(/\s+/g, ' ');
+  m = /(?:실제\s*생년월일|생\s*년\s*월\s*일)\s*\n?\s*((?:18|19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t); if (m) r.생년월일 = ihYmd_(m[1], m[2], m[3]);
+  m = /본인\s*([가-힣]{2,4})\s*(?:\([^)]*\))?\s*사망\s*\n?\s*((?:18|19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t); if (m && !r.생년월일) r.생년월일 = ihYmd_(m[2], m[3], m[4]);
+  m = /\[\s*신\s*고\s*일\s*\]\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t); if (m) r.신고일 = ihYmd_(m[1], m[2], m[3]);
+  m = /\[\s*폐\s*쇄\s*일\s*\]\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t); if (m) r.폐쇄일 = ihYmd_(m[1], m[2], m[3]);
+  m = /의료\s*기관\s*(?:명칭|명)\s*[:：]\s*([^\n]{2,40})/.exec(t); if (m) r.의료기관 = m[1].trim();
+  m = /(?:발행일|발\s*급\s*일)\s*[:：]?\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})/.exec(t); if (m) r.발행일 = ihYmd_(m[1], m[2], m[3]);
+  if (r.종류 === '제적등본') {
+    m = /본\s*적\s*\n?\s*([^\n]{4,60})/.exec(t); if (m) r.본적 = m[1].trim();
+    if (!r.사망일) r.경고.push('제적등본은 옛 호적(한자 기재)이라 사망일·사유를 자동으로 읽지 못함 — 원문 확인');
+  }
+  if (r.사망일) r.상속개시일 = r.사망일;
+  else if (r.종류 !== '제적등본') r.경고.push('사망일을 읽지 못함 — 원문 확인');
+  if (r.사망일확인필요) r.경고.push('사망일시 칸이 글자인식에서 흩어져 날짜를 조합해 읽음 — 원문 대조');
+  if (r.상속개시일) r.경고.push('상속개시일 ' + r.상속개시일 + ' — 신고기한(개시일이 속한 달 말일부터 6개월), 잔고증명 기준일, 추정상속재산(§15: 1년 2억·2년 5억) 기간 계산의 기준');
+  // 한 파일에 가족관계증명서가 함께 들어 있으면 그 부분도 정리
+  var fa = t.search(/가족관계\s*증명서/);
+  if (fa >= 0 && typeof docParseFamily_ === 'function') { try { r.가족관계 = docParseFamily_(t.slice(fa)); } catch (e) { /* 함께 정리 실패는 무시 */ } }
+  return r;
+}
+
+// ---- ③ 보험증권·보험금 지급내역 ----
+function ihParseInsurance_(text) {
+  var t = String(text || ''), r = { 경고: [] }, m;
+  r.종류 = /보증\s*보험|납세\s*보증/.test(t) ? '보증보험증권' : /기\s*지\s*급|지급\s*내역|보험금\s*지급/.test(t) ? '보험금 지급내역' : '보험증권';
+  m = /(?:증권|증서|계약)\s*번호\s*[:：]?\s*(?:제\s*)?([\dA-Z][\dA-Z -]{6,30}?)\s*(?:호|\n|$)/.exec(t); if (m) r.증권번호 = m[1].trim();
+  m = /(?:상\s*품\s*명?|품)\s*[:：]\s*([^\n]{2,40})/.exec(t); if (m) r.상품 = m[1].trim();
+  m = /보증\s*내용\s*([^\n]{2,40})/.exec(t); if (m) r.보증내용 = m[1].trim();
+  var who = function (lab) {
+    var x = new RegExp(lab + '\\s*[:：]?\\s*\\n?\\s*(\\d{6})\\s*-?\\s*[\\d*]').exec(t); if (x) return { 생년6: x[1] };
+    x = new RegExp(lab + '\\s*[:：]?\\s*\\n?\\s*([가-힣]{2,4})(?=\\s|\\n|\\(|$)').exec(t);
+    return x && !/^(보험|외\s*\d|관계)/.test(x[1]) ? { 이름: x[1] } : null;
+  };
+  r.계약자 = who('(?:보험\\s*)?계\\s*약\\s*자'); r.피보험자 = who('피\\s*보\\s*험\\s*자'); r.수익자 = who('수\\s*익\\s*자');
+  m = /계약\s*일자?\s*[:：]?\s*((?:19|20)\d{2}[-.]\d{2}[-.]\d{2})/.exec(t); if (m) r.계약일 = ihDate_(m[1]);
+  m = /만기\s*일자?\s*[:：]?\s*((?:19|20)\d{2}[-.]\d{2}[-.]\d{2})/.exec(t); if (m) r.만기일 = ihDate_(m[1]);
+  m = /보험\s*기간\s*((?:19|20)\d{2}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일)\s*부터\s*((?:19|20)\d{2}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일)/.exec(t);
+  if (m) { r.계약일 = r.계약일 || ihDate_(m[1]); r.만기일 = r.만기일 || ihDate_(m[2]); }
+  m = /지급\s*일자?\s*[:：]?\s*((?:19|20)\d{2}[-.]\d{2}[-.]\d{2})/.exec(t); if (m) r.지급일 = ihDate_(m[1]);
+  m = /(사망\s*(?:준비금|보험금|급여금)|만기\s*보험금|해약\s*환급금|중도\s*인출)/.exec(t); if (m) r.지급사유 = m[1].replace(/\s+/g, '');
+  m = /계약\s*상태\s*[:：]?\s*([가-힣]{2,8})/.exec(t); if (m) r.계약상태 = m[1];
+  var money = function (re) { var x = re.exec(t); return x ? ihNum_(x[1]) : null; };
+  r.총납입액 = money(/총\s*납입\s*액\s*[:：]?\s*([\d,.]{3,})/);
+  // 보증보험증권은 "금 팔천육백사십육만일천 원정 / ￦86,461,000-" 처럼 한글 금액이 함께 적힌다 — 한글 금액과 같은 숫자를 가입금액으로 확정
+  // (칸이 섞여 "보험가입금액￦486,370"처럼 보험료가 이름표 옆에 붙어 나오기도 함)
+  var kor = /금\s*([일이삼사오육칠팔구십백천만억\s]{2,30})\s*원\s*정/.exec(t), korV = null;
+  if (kor && typeof regAmount_ === 'function') { try { korV = regAmount_('금' + kor[1].replace(/\s+/g, '') + '원정'); } catch (e) { korV = null; } }
+  var wons = (t.match(/￦\s*([\d,]{4,})/g) || []).map(function (x) { return ihNum_(x); });
+  if (korV && wons.indexOf(korV) !== -1) { r.보험가입금액 = korV; var rest = wons.filter(function (v) { return v !== korV; }); if (rest.length && /보\s*험\s*료/.test(t)) r.보험료 = rest[0]; }
+  if (!r.보험가입금액) r.보험가입금액 = money(/보험\s*가입\s*금액\s*[:：]?\s*￦?\s*([\d,]{3,})/);
+  if (!r.보험료) r.보험료 = money(/(?:^|[^주])보험료\s*[:：]\s*([\d,.]{3,})/);
+  r.지급액 = money(/(?:실\s*지급\s*액|지급\s*계|기\s*지급\s*액)\s*[:：]?\s*\n?\s*([\d,.]{3,})/);
+  // 같은 금액이 두 번 이상(기지급액·지급계·실지급액) 나오면 확정, 한 번이면 확인필요
+  if (r.지급액) { var cnt = (t.replace(/\./g, ',').match(new RegExp(String(r.지급액).replace(/\B(?=(\d{3})+(?!\d))/g, ','), 'g')) || []).length; if (cnt < 2) r.지급액확인필요 = true; }
+  if (r.종류 === '보증보험증권') {
+    m = /세\s*액\s*￦?\s*([\d,]{4,})/.exec(t); if (m) r.보증세액 = ihNum_(m[1]);
+    m = /세금\s*종류\s*([가-힣]{2,8})/.exec(t); if (m) r.세목 = m[1];
+    r.경고.push('납세보증보험(연부연납 담보 등) — 상속재산이 아니라 연부연납 기간·보증금액 관리용');
+  } else {
+    r.경고.push('간주상속재산(상증법 §8) 판단: 피상속인이 보험계약자이거나 보험료를 실제 낸 사람이고 사망으로 받는 보험금이면 상속재산 후보 — 계약자·납부자·수익자를 원문으로 확인(단정하지 않음)');
+    if (r.총납입액 && r.지급액 && r.지급액 > r.총납입액 * 3) r.경고.push('지급액이 납입액보다 크게 많음 — 사망보험금 성격인지 확인');
+  }
+  if (!r.계약자 && !r.피보험자) r.경고.push('계약자·피보험자를 읽지 못함 — 원문 확인');
+  return r;
+}
+
+// ---- ④ 자동차등록증·원부 ----
+function ihParseCar_(text) {
+  var t = String(text || ''), r = { 종류: /자\s*동\s*차\s*등\s*록\s*증/.test(t) ? '자동차등록증' : '자동차등록원부', 경고: [] }, m; // 등록증 안내문에도 "원부(을)"라는 말이 있어 등록증을 먼저 본다
+  m = /(\d{2,3}\s*[가-힣]\s*\d{4})/.exec(t); if (m) r.등록번호 = m[1].replace(/\s+/g, ' ');
+  m = /차\s*종\s*([가-힣 ]{2,12})/.exec(t) || /종\s+(대형|중형|소형|경형)\s*(승용|승합|화물|특수)/.exec(t);
+  if (m) r.차종 = (m[2] ? m[1] + ' ' + m[2] : m[1]).trim();
+  m = /차\s*명\s*\n?\s*([A-Za-z0-9가-힣 -]{2,20})\s*\n/.exec(t) || /명\s*\n\s*([A-Za-z0-9가-힣 -]{2,20})\s*\n\s*\d?\s*형식/.exec(t); if (m) r.차명 = m[1].trim();
+  m = /모델\s*연도[\s\S]{0,80}?\b((?:19|20)\d{2})\b/.exec(t) || /\n\s*((?:19|20)\d{2})\s*\n[\s\S]{0,40}자동차관리법/.exec(t); if (m) r.모델연도 = m[1];
+  m = /차\s*대\s*번\s*호\s*\n?\s*([A-HJ-NPR-Z0-9]{17})/.exec(t); if (m) r.차대번호 = m[1];
+  m = /최초\s*등록\s*일\s*[:：]?\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t) || /\n\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*\n\s*제\s*\d{6}-\d+\s*호/.exec(t);
+  if (m) r.최초등록일 = ihYmd_(m[1], m[2], m[3]);
+  m = /용\s*도\s*\n?\s*(자가용|영업용|관용)/.exec(t); if (m) r.용도 = m[1];
+  m = /출고\s*\(?취득\)?\s*가격[^:\n]*[:：]\s*([\d,]{4,})/.exec(t); if (m) r.출고가격 = ihNum_(m[1]);
+  m = /(\d{6})\s*-\s*[\d*]{7}/.exec(t); if (m) r.소유자생년6 = m[1];
+  r.저당권 = /저당권\s*(?:설정|등록)[^\n]{0,30}\d{4}/.test(t) ? '설정 기록 있음(원부 을구 확인)' : '등록증에는 내역 없음(자동차등록원부 을구로 확인)';
+  r.경고.push('상속재산 평가: 차량은 시가(중고차 시세) 원칙, 없으면 지방세 시가표준액 — 모델연도·차명으로 확인');
+  if (!r.등록번호) r.경고.push('차량 등록번호를 읽지 못함');
+  return r;
+}
+
+// ---- ⑤ 부채증명원·대출잔액증명·금융거래확인서(대출) ----
+function ihParseDebt_(text) {
+  var t = String(text || ''), r = { 종류: /부\s*채\s*증\s*명/.test(t) ? '부채증명원' : /금\s*융\s*거\s*래\s*확\s*인\s*서/.test(t) ? '금융거래확인서(대출)' : '대출잔액증명서', 행: [], 경고: [] }, m;
+  var thousand = /단위\s*[:：]?\s*(?:원화\s*-\s*)?천\s*원/.test(t);
+  if (thousand) r.단위 = '천원';
+  m = /(?:작성\s*)?기준\s*일\s*[:：]?\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t) || /((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*현재/.exec(t);
+  if (m) r.기준일 = ihYmd_(m[1], m[2], m[3]);
+  m = /(?:발행일|발급일)\s*[:：]?\s*((?:19|20)\d{2}[-.]\d{2}[-.]\d{2})/.exec(t); if (m) r.발행일 = ihDate_(m[1]);
+  m = /([가-힣]{2,10}(?:은행|농협|수협|신협|금고|저축은행|캐피탈|카드|보험))(?:\s*귀하|\s+[가-힣]{0,6}지점)/.exec(t) || /발급\s*점\s*[:：]\s*([가-힣]{2,12})/.exec(t);
+  if (m) r.기관 = m[1];
+  m = /(?:채무자|주민\(?(?:법인|사업자)?\)?\s*번호)[^\n]{0,20}?(\d{6})\s*-/.exec(t); if (m) r.채무자생년6 = m[1];
+  // 계좌별 — 대출과목·대출일·대출금액·잔액·상환기일
+  var tot = /대출\s*잔액\s*\n?\s*([\d,]{4,})/.exec(t); if (tot) r.총잔액 = ihNum_(tot[1]);
+  var blocks = t.split(/계\s*좌\s*번\s*호/).slice(1);
+  blocks.forEach(function (b) {
+    var row = {};
+    var x = /^\s*\n?\s*([\d-]{8,24})/.exec(b); if (x) row.계좌 = '…' + x[1].replace(/\D/g, '').slice(-4);
+    x = /대출\s*과목\s*\n?\s*([가-힣 ]{2,20})/.exec(b); if (x) row.과목 = x[1].trim();
+    x = /대출\s*일\s*\n?\s*((?:19|20)\d{2}-\d{2}-\d{2})/.exec(b); if (x) row.대출일 = x[1];
+    x = /대출\s*금액\s*\n?\s*([\d,]{4,})/.exec(b); if (x) row.대출금액 = ihNum_(x[1]);
+    x = /대출\s*잔액\s*(?:\(\s*a\s*\))?\s*\n?\s*([\d,]{4,})/.exec(b); if (x) row.잔액 = ihNum_(x[1]);
+    x = /상환\s*기일\s*\n?\s*((?:19|20)\d{2}-\d{2}-\d{2})/.exec(b); if (x) row.상환기일 = x[1];
+    x = /소재지\s*([^\n]{6,60})/.exec(b); if (x) row.담보 = x[1].trim();
+    if (row.잔액 != null || row.대출금액 != null) r.행.push(row);
+  });
+  // 금융거래확인서형(표가 흩어짐) — 대출 종류 줄과 금액(천원)
+  if (!r.행.length) {
+    var re = /([가-힣]{2,20}대출)[\s\S]{0,120}?((?:19|20)\d{2}-\d{2}-\d{2})?[\s\S]{0,80}?\n\s*([\d,]{3,})\s*\n\s*([\d,]{3,})(?:\s+((?:19|20)\d{2}-\d{2}-\d{2}))?/g, x2;
+    while ((x2 = re.exec(t))) r.행.push({ 과목: x2[1], 대출일: x2[2] || '', 한도: ihNum_(x2[3]) * (thousand ? 1000 : 1), 잔액: ihNum_(x2[4]) * (thousand ? 1000 : 1), 상환기일: x2[5] || '', 행확인필요: true });
+  }
+  var sum = r.행.reduce(function (s, x) { return s + (x.잔액 || 0); }, 0);
+  if (r.행.length) {
+    r.잔액합계 = sum;
+    if (r.총잔액 != null) { if (r.총잔액 === sum) r.검산 = '계좌별 잔액 합 = 총 대출잔액 일치'; else { r.검산 = '불일치'; r.경고.push('계좌별 잔액 합(' + sum.toLocaleString('ko-KR') + ')과 총 대출잔액(' + r.총잔액.toLocaleString('ko-KR') + ')이 다름 — 원문 확인'); } }
+  } else r.경고.push('대출 계좌 내역을 읽지 못함 — 원문 확인');
+  if (thousand) r.경고.push('금액 단위가 천원인 서식 — 원 단위로 환산해 표시(행별 원문 대조 권장)');
+  r.경고.push('상속 채무공제(§14): 상속개시일 현재 피상속인 채무여야 함 — 기준일이 상속개시일과 같은지 확인, 담보제공자·채무자가 다르면(담보만 제공) 공제 대상 아님에 유의');
+  return r;
+}
+
+function ihParse_(type, text) {
+  if (type === 'inhquery') return ihParseQuery_(text);
+  if (type === 'death') return ihParseDeath_(text);
+  if (type === 'insurance') return ihParseInsurance_(text);
+  if (type === 'carreg') return ihParseCar_(text);
+  if (type === 'debtcert') return ihParseDebt_(text);
+  return null;
+}
+
+function ihToMarkdown_(type, r) {
+  var won = function (n) { return n == null || n === '' ? '' : Number(n).toLocaleString('ko-KR') + '원'; };
+  var esc = function (v) { return String(v == null ? '' : v).replace(/\|/g, '/').replace(/\n/g, ' '); };
+  var kv = function (rows) { rows = rows.filter(function (x) { return x[1] !== undefined && x[1] !== null && x[1] !== ''; }); return rows.length ? '| 항목 | 내용 |\n|---|---|\n' + rows.map(function (x) { return '| ' + esc(x[0]) + ' | ' + esc(x[1]) + ' |'; }).join('\n') : ''; };
+  var per = function (p) { return p ? (p.이름 || (p.생년6 ? '생년 ' + p.생년6 : '')) : ''; };
+  var out = [];
+  if (type === 'inhquery') {
+    out.push('### 상속인 조회결과' + (r.기관 ? ' · ' + r.기관 : ''));
+    out.push(kv([['조회대상 생년', r.대상생년6], ['접수일', r.접수일], ['접수번호', r.접수번호], ['총 건수', r.총건수 != null ? r.총건수 + '건' : '']]));
+    if (r.행.length) {
+      out.push('\n| 기관 | 종류 | 금액 | 비고 |\n|---|---|---|---|');
+      r.행.forEach(function (x) { out.push('| ' + [x.기관, x.종류 + (x.채무 ? '(채무)' : ''), x.금액확인필요 ? '⚠미확정' : won(x.금액), x.종류 === '보험' ? (x.계약관계 + ' ' + (x.시작일 || '') + '~' + (x.종료일 || '')) : (x.상환일 ? '상환일 ' + x.상환일 : x.점포 || '')].map(esc).join(' | ') + ' |'); });
+      if (r.자산합계 != null) out.push('\n자산 쪽 금액 합계: **' + won(r.자산합계) + '**');
+      if (r.채무합계 != null) out.push('채무 쪽 금액 합계: **' + won(r.채무합계) + '**');
+    }
+    if (r.없음.length) out.push('\n조회 내역 없음 표시: ' + r.없음.filter(function (x, i, a) { return a.indexOf(x) === i; }).join(', '));
+  } else if (type === 'death') {
+    out.push('### ' + r.종류 + (r.상속개시일 ? ' · 상속개시일 ' + r.상속개시일 : ''));
+    out.push(kv([['사망일', r.사망일 ? r.사망일 + (r.사망시각 ? ' ' + r.사망시각 : '') + (r.사망일확인필요 ? ' ⚠' : '') : ''], ['시각 비고', r.사망시각비고], ['사망장소', r.사망장소], ['장소 구분', r.사망장소구분], ['사망의 종류', r.사망의종류], ['생년월일', r.생년월일], ['사망신고일', r.신고일], ['등록부 폐쇄일', r.폐쇄일], ['의료기관', r.의료기관], ['본적', r.본적], ['발행일', r.발행일]]));
+    if (r.가족관계 && r.가족관계.가족 && r.가족관계.가족.length && typeof docToMarkdown_ === 'function') out.push('\n**같은 파일의 가족관계증명서**\n\n' + docToMarkdown_('family', r.가족관계));
+  } else if (type === 'insurance') {
+    out.push('### ' + r.종류 + (r.상품 ? ' · ' + r.상품 : ''));
+    out.push(kv([['증권번호', r.증권번호], ['보증내용', r.보증내용], ['계약자', per(r.계약자)], ['피보험자', per(r.피보험자)], ['수익자', per(r.수익자)], ['계약일', r.계약일], ['만기일', r.만기일], ['계약상태', r.계약상태], ['보험료', won(r.보험료)], ['총납입액', won(r.총납입액)], ['보험가입금액', won(r.보험가입금액)], ['지급사유', r.지급사유], ['지급일', r.지급일], ['지급액', r.지급액 ? won(r.지급액) + (r.지급액확인필요 ? ' ⚠확인필요' : '') : ''], ['보증 세목', r.세목], ['보증 세액', won(r.보증세액)]]));
+  } else if (type === 'carreg') {
+    out.push('### ' + r.종류);
+    out.push(kv([['등록번호', r.등록번호], ['차종', r.차종], ['차명', r.차명], ['모델연도', r.모델연도], ['차대번호', r.차대번호], ['최초등록일', r.최초등록일], ['용도', r.용도], ['출고가격(부가세 제외)', won(r.출고가격)], ['소유자 생년', r.소유자생년6], ['저당권', r.저당권]]));
+  } else if (type === 'debtcert') {
+    out.push('### ' + r.종류 + (r.기관 ? ' · ' + r.기관 : ''));
+    out.push(kv([['기준일', r.기준일], ['발행일', r.발행일], ['채무자 생년', r.채무자생년6], ['총 대출잔액', won(r.총잔액)], ['검산', r.검산]]));
+    if (r.행.length) {
+      out.push('\n| 계좌 | 과목 | 대출일 | 대출금액 | 잔액 | 상환기일 | 담보 |\n|---|---|---|---|---|---|---|');
+      r.행.forEach(function (x) { out.push('| ' + [x.계좌, x.과목, x.대출일, won(x.대출금액 || x.한도), won(x.잔액) + (x.행확인필요 ? ' ⚠' : ''), x.상환기일, x.담보].map(esc).join(' | ') + ' |'); });
+      out.push('\n잔액 합계: **' + won(r.잔액합계) + '**');
+    }
+  }
+  if (r.경고 && r.경고.length) out.push('\n⚠ ' + r.경고.join(' / '));
+  return out.join('\n');
 }
