@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-10 16:25 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-10 16:31 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -44484,8 +44484,37 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxAiRenderAttachBar_();
   }
   function nxAiAddImage_(name, dataUrl){
-    nxAiPendingImages.push({ id: 'img' + Date.now() + Math.random().toString(36).slice(2, 5), name: name, dataUrl: dataUrl });
+    var img = { id: 'img' + Date.now() + Math.random().toString(36).slice(2, 5), name: name, dataUrl: dataUrl };
+    nxAiPendingImages.push(img);
     nxAiRenderAttachBar_();
+    nxAiImageToDoc_(img);
+  }
+  // [2026.10.11 토큰0] 첨부된 이미지가 서류(등기부 열람 화면·홈택스 화면·영수증 사진 등)면 무료 OCR+규칙으로 정리해 ⚡ 표로 보여 주고,
+  // 그 이미지는 유료 AI 전송에서 뺀다(이미지는 가장 비싼 입력). 서류가 아니면 아무 일도 하지 않는다(첨부 그대로).
+  // 세무사님이 이미 보내기를 눌러 이미지가 전송됐으면 아무것도 하지 않는다.
+  function nxAiImageToDoc_(img){
+    var p = nxAiParseDataUrl_(img.dataUrl);
+    if (!p || !p.base64 || p.base64.length > 11000000) return;
+    callGas('doc_parse_image', { base64: p.base64, mimeType: p.mimeType || 'image/png', title: img.name }).then(function(res){
+      if (!res || res.error || !res.type) return;
+      var still = nxAiPendingImages.some(function(x){ return x.id === img.id; });
+      if (!still) return;
+      nxAiPendingImages = nxAiPendingImages.filter(function(x){ return x.id !== img.id; });
+      nxAiRenderAttachBar_();
+      nxAiPhoneTab_('chat');
+      var label = '🖼️ ' + img.name;
+      var userMsg = { role: 'user', content: label };
+      nxAiConv.messages.push(userMsg);
+      nxAiAppendBubble_('user', label)._nxMsgRef = userMsg;
+      var bubble = nxAiAppendBubble_('assistant', '');
+      var aiMsg = { role: 'assistant', content: '[⚡바로 처리] 이미지 서류 정리' };
+      bubble._nxMsgRef = aiMsg;
+      nxAiConv.messages.push(aiMsg);
+      nxAiRenderLocal_(bubble, { md: res.md, note: '[⚡바로 처리] 이미지 ' + (res.label || res.type) + ' 정리(무료 OCR·규칙)' }, '이 서류 — 세무상 확인할 점을 검토해줘');
+      nxAiCountFree_('local');
+      nxAiScheduleSave_();
+      nxAiToast_('이미지에서 ' + (res.label || '서류') + '를 알아보고 AI 없이 정리했습니다 — 이미지는 첨부에서 뺐습니다(토큰 0).');
+    }).catch(function(){ /* 실패하면 첨부 그대로 — 아무 일도 하지 않음 */ });
   }
   function nxAiRenderAttachBar_(){
     var bar = nxAiEl_('nxAiAttachBar');

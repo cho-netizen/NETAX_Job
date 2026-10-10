@@ -3810,7 +3810,8 @@ function dispatchClientAction0_(body) {
   if (body.action === 'self_check_run') return jsonResponse(runSelfCheck_());
   if (body.action === 'registry_parse') return jsonResponse(registryParseFile_(body)); // 등기부 PDF 정리(토큰 0)
   if (body.action === 'doc_parse') return jsonResponse(docParseFile_(body)); // 서류 PDF 정리 — 등기부·가족관계·사업자등록·접수증·납부서(토큰 0)
-  if (body.action === 'doc_parse_text') return jsonResponse(docParseCapturedText_(body)); // 확장프로그램 화면 글자(Alt+Shift+C) 정리 — OCR 없이 규칙만(토큰 0)
+  if (body.action === 'doc_parse_text') return jsonResponse(docParseCapturedText_(body));
+  if (body.action === 'doc_parse_image') return jsonResponse(docParseImage_(body)); // 캡처 이미지 → 무료 OCR → 규칙(토큰 0) // 확장프로그램 화면 글자(Alt+Shift+C) 정리 — OCR 없이 규칙만(토큰 0)
   if (body.action === 'doc_parse_multi') return jsonResponse(docParseMulti_(body)); // 여러 서류 함께 정리 + 대조표(토큰 0)
   if (body.action === 'tc_extract_case_docs') return jsonResponse(tc_extractCaseDocs_(body));
   if (body.action === 'self_check_last') return jsonResponse(selfCheckLast_());
@@ -25350,6 +25351,25 @@ function ldToMarkdown_(type, r) {
   return out.join('\n');
 }
 
+// [2026.10.11 토큰0] 화면 캡처·붙여넣은 이미지 — 유료 AI에 이미지로 보내면 가장 비싸다(한 장 1~2천 토큰).
+// 먼저 임시 파일로 만들어 무료 OCR → 서류 규칙 정리. 알아보는 서류면 화면이 ⚡ 표로 보여 주고 이미지를 유료 전송에서 뺀다.
+// 임시 파일은 읽자마자 휴지통으로(사건 폴더에 남기지 않음). 알아보지 못하면 type ''(이미지는 그대로 첨부된 채).
+function docParseImage_(body) {
+  var b64 = String(body && body.base64 || ''), mime = String(body && body.mimeType || 'image/png');
+  if (!b64 || !/^image\//.test(mime)) return { ok: true, type: '' };
+  if (b64.length > 11000000) return { ok: true, type: '', note: '이미지가 커서 정리 생략' };
+  var f = null;
+  try {
+    f = DriveApp.createFile(Utilities.newBlob(Utilities.base64Decode(b64), mime, '_nx_capture_ocr_' + Date.now() + '.' + (mime.split('/')[1] || 'png')));
+    var text = docOcrRetry_(f.getId());
+    var p = null;
+    try { p = docParseText_(text); } catch (e) { p = null; }
+    if (!p || !p.type) return { ok: true, type: '' };
+    return { ok: true, type: p.type, label: p.label, md: '**' + String(body.title || '화면 캡처').slice(0, 80) + '** (이미지 → 무료 글자인식 · 규칙 정리)\n\n' + p.md };
+  } finally {
+    try { if (f) f.setTrashed(true); } catch (e) { /* 정리 실패는 무시 */ }
+  }
+}
 // [2026.10.11 토큰0] NX 커넥터로 가져온 화면 글자(홈택스·정부24·등기소·공시가격 화면 등)를 같은 규칙으로 정리.
 // 화면 글자는 HTML 그대로라 OCR 오인식이 없다. 확장프로그램이 덧붙인 "=== 구조 정리(표·항목) ===" 부분은 규칙 판별을
 // 흐리게 할 수 있어 떼어 낸 본문으로 먼저 보고, 못 알아보면 전체로 한 번 더 본다. 알아보지 못하면 type ''(→ 화면은 예전처럼 입력창에 넣음).
