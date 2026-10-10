@@ -3954,6 +3954,9 @@ function dispatchClientAction0_(body) {
   if (body.action === 'migrate_case_template_names') {
     return jsonResponse(handleMigrateCaseTemplateNames_(body));
   }
+  if (body.action === 'rw_list_paragraphs') return jsonResponse(rwListParagraphs_()); // 보고서 쟁점 문단 라이브러리(토큰 0)
+  if (body.action === 'rw_statute_appendix') return jsonResponse(rwStatuteAppendix_(body)); // 적용 조문 원문 부록(무료 법령 API)
+  if (body.action === 'rw_case_doc_facts') return jsonResponse(rwCaseDocFacts_(body)); // 사건 폴더 서류 정리 결과에서 문단 빈칸용 값(초본 거주기간 등)
   if (body.action === 'getReportTemplate') {
     return jsonResponse(handleGetReportTemplate(body));
   }
@@ -4643,7 +4646,7 @@ function toolLookupStatuteArticle(lawName, articleNo) {
   if (!ocKey) return { error: 'LAW_OC(국가법령정보센터 인증키)가 스크립트 속성에 설정되어 있지 않습니다.' };
 
   // 1단계: 법령명 검색
-  let mst, efYd, matchedName;
+  let mst, efYd, matchedName, futureEfYd = '';
   try {
     const searchUrl = 'https://www.law.go.kr/DRF/lawSearch.do?OC=' + encodeURIComponent(ocKey)
       + '&target=eflaw&type=XML&query=' + encodeURIComponent(String(lawName).trim());
@@ -4657,10 +4660,25 @@ function toolLookupStatuteArticle(lawName, articleNo) {
     if (!laws.length) {
       return { error: '"' + lawName + '"으로 검색된 법령이 없습니다. 정확한 법령명(정식 명칭)인지 확인해주세요.' };
     }
-    const first = laws[0]; // 첫 검색결과(보통 가장 정확히 일치하는 현행법령)를 사용
-    mst = first.getChildText('법령일련번호');
-    efYd = first.getChildText('시행일자');
-    matchedName = first.getChildText('법령명한글');
+    // [2026.10.11 버그수정] 첫 검색결과가 "시행 예정"(미래 시행일) 판일 때가 있어(예: 소득세법 시행령 2028.1.1 시행판),
+    // 아직 시행되지 않은 조문을 현행처럼 인용하는 문제가 있었다 — 같은 법령명 중 "현행" 판(없으면 오늘 이전 시행일 중
+    // 가장 최근 판)을 고르고, 시행 예정 판이 있으면 그 시행일을 함께 알려준다.
+    const first = laws[0];
+    const firstName = first.getChildText('법령명한글');
+    const todayYmd = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMdd');
+    const same = laws.filter(function (x) { return x.getChildText('법령명한글') === firstName; });
+    let pick = same.filter(function (x) { return /현행/.test(x.getChildText('현행연혁코드') || ''); })[0];
+    if (!pick) {
+      const past = same.filter(function (x) { return String(x.getChildText('시행일자') || '') <= todayYmd; })
+        .sort(function (a, b) { return String(b.getChildText('시행일자')).localeCompare(String(a.getChildText('시행일자'))); });
+      pick = past[0] || first;
+    }
+    const future = same.filter(function (x) { return String(x.getChildText('시행일자') || '') > todayYmd; })
+      .map(function (x) { return x.getChildText('시행일자'); }).sort();
+    futureEfYd = future.length ? future[0] : '';
+    mst = pick.getChildText('법령일련번호');
+    efYd = pick.getChildText('시행일자');
+    matchedName = pick.getChildText('법령명한글');
   } catch (err) {
     return { error: '법령 검색 중 오류: ' + err.message };
   }
@@ -4713,6 +4731,7 @@ function toolLookupStatuteArticle(lawName, articleNo) {
     return {
       법령명: matchedName,
       시행일자: efYd,
+      시행예정개정: futureEfYd ? (futureEfYd + ' 시행 예정 개정판 있음 — 시행일 이후 양도·증여·상속분이면 그 판을 확인') : '',
       조문: items,
       원문링크: 'https://www.law.go.kr/DRF/lawService.do?OC=' + ocKey + '&target=eflaw&MST=' + mst
         + '&efYd=' + efYd + (jo ? '&JO=' + jo : '') + '&type=HTML'
@@ -13453,6 +13472,110 @@ function handleMigrateCaseTemplateNames_(body) {
 // 순간에 화면이 직접 물어보는 구조라 목록 조회 없이 종류 이름 하나로 바로 찾는다.
 const REPORT_TEMPLATE_SUBFOLDER_NAME = '보고서템플릿';
 
+// ============================================================
+// [2026.10.11 토큰0] 보고서 쟁점 문단 라이브러리 — 업무관리자/보고서템플릿/문단 폴더의 .md 문단을 문서작성에서 골라 넣는다.
+// 문단 맨 위 <!-- 문단정보 제목/세목/추천/조문 --> 머리말을 읽어 목록을 만들고, 본문 {변수}는 화면이 사건 값으로 채운다.
+// 세무사님이 드라이브에서 문단을 고치면 바로 반영(코드에 문단 내용을 두지 않음). "_"로 시작하는 파일(사용법)은 뺀다.
+// ============================================================
+function rwParseParagraphHeader_(text) {
+  var m = /<!--\s*문단정보([\s\S]*?)-->/.exec(text || '');
+  var h = { 제목: '', 세목: '공통', 추천: [], 조문: [] };
+  if (!m) return { head: h, body: String(text || '').trim() };
+  m[1].split('\n').forEach(function (line) {
+    var kv = /^\s*(제목|세목|추천|조문)\s*:\s*(.*)$/.exec(line);
+    if (!kv) return;
+    if (kv[1] === '제목' || kv[1] === '세목') h[kv[1]] = kv[2].trim();
+    else if (kv[1] === '추천') h.추천 = kv[2].split('|').map(function (s) { return s.trim(); }).filter(String);
+    else h.조문 = kv[2].split('|').map(function (s) {
+      var a = /^(.*?)\s+([0-9]+(?:조)?(?:의\s*[0-9]+)?)\s*$/.exec(s.trim());
+      return a ? { lawName: a[1].trim(), articleNo: a[2].replace(/조/, '').replace(/\s+/g, '') } : null;
+    }).filter(Boolean);
+  });
+  return { head: h, body: text.slice(m.index + m[0].length).trim() };
+}
+function rwListParagraphs_() {
+  try {
+    var root = getReportTemplateFolder_();
+    if (!root) return { ok: false, error: '보고서템플릿 폴더를 찾지 못했습니다.' };
+    var sub = root.getFoldersByName('문단');
+    if (!sub.hasNext()) return { ok: true, items: [], note: '보고서템플릿/문단 폴더가 없습니다.' };
+    var it = sub.next().getFiles(), items = [];
+    while (it.hasNext()) {
+      var f = it.next(), name = f.getName();
+      if (/^_/.test(name) || !/\.(md|txt)$/i.test(name)) continue;
+      var p = rwParseParagraphHeader_(f.getBlob().getDataAsString('UTF-8'));
+      items.push({ file: name, 제목: p.head.제목 || name.replace(/\.(md|txt)$/i, ''), 세목: p.head.세목, 추천: p.head.추천, 조문: p.head.조문, body: p.body });
+    }
+    var order = { 양도: 0, 증여: 1, 상속: 2, 공통: 3 };
+    items.sort(function (a, b) { return (order[a.세목] == null ? 9 : order[a.세목]) - (order[b.세목] == null ? 9 : order[b.세목]) || a.제목.localeCompare(b.제목); });
+    return { ok: true, items: items };
+  } catch (e) {
+    return { ok: false, error: '문단 목록을 읽지 못했습니다: ' + e.message };
+  }
+}
+// 적용 조문 원문 부록 — 법령 API(무료)로 받아 마크다운으로. 같은 조문은 하루 동안 기억(법령 API 호출 절약).
+function rwStatuteAppendix_(body) {
+  var laws = (body && body.laws || []).slice(0, 20), cache = CacheService.getScriptCache(), out = [], seen = {};
+  laws.forEach(function (l) {
+    if (!l || !l.lawName) return;
+    var key = l.lawName.replace(/\s+/g, '') + '|' + String(l.articleNo || '');
+    if (seen[key]) return; seen[key] = true;
+    var ck = 'rwlaw_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, key, Utilities.Charset.UTF_8));
+    var hit = cache.get(ck);
+    if (hit) { out.push(hit); return; }
+    var r = toolLookupStatuteArticle(l.lawName, l.articleNo);
+    var md;
+    if (!r || r.error) md = '### ' + l.lawName + ' 제' + l.articleNo + '조\n\n⚠ 조문을 불러오지 못했습니다' + (r && r.error ? ' — ' + r.error : '') + '\n';
+    else {
+      // 법령 API는 "제2절 …" 같은 장·절 머리도 조문단위로 돌려준다 — 항이 없는 장·절 머리는 뺀다
+      md = (r.조문 || []).filter(function (u) { return !(/^\s*제\s*\d+\s*[편장절관]/.test(u.조문내용 || '') && !(u.항 || []).length); }).map(function (u) {
+        var artLabel = '제' + String(l.articleNo).replace(/^(\d+)(?:의(\d+))?$/, function (_, a, b) { return a + '조' + (b ? '의' + b : ''); });
+        var lines = ['### ' + r.법령명 + ' ' + artLabel + (u.조문제목 ? '(' + u.조문제목 + ')' : '') + ' — 시행 ' + String(r.시행일자 || '').replace(/^(\d{4})(\d{2})(\d{2})$/, '$1.$2.$3.')];
+        if (r.시행예정개정) lines.push('', '> ⚠️ ' + r.시행예정개정.replace(/^(\d{4})(\d{2})(\d{2})/, '$1.$2.$3.'));
+        // 조문내용은 "제155조의3(제목) ①…" 꼴로 제목이 반복되므로 첫머리 조문표시는 뗀다
+        if (u.조문내용) lines.push('', u.조문내용.replace(/\s+/g, ' ').replace(/^제\d+조(?:의\d+)?\([^)]*\)\s*/, ''));
+        (u.항 || []).forEach(function (h) {
+          if (h.항내용) lines.push('', h.항내용.replace(/\s+/g, ' '));
+          (h.호 || []).forEach(function (ho) { if (ho) lines.push('   - ' + ho.replace(/\s+/g, ' ')); });
+        });
+        return lines.join('\n');
+      }).join('\n\n');
+      if (r.원문링크) md += '\n\n[국가법령정보센터 원문](' + r.원문링크.replace(/OC=[^&]+&/, '') + ')';
+      if (md.length > 12000) md = md.slice(0, 12000) + '\n\n…(이하 원문 링크 참고)';
+      try { if (md.length < 90000) cache.put(ck, md, 86400); } catch (e) {}
+    }
+    out.push(md);
+  });
+  return { ok: true, md: out.join('\n\n') };
+}
+// 문단 빈칸용 서류 값 — 사건 폴더의 주민등록초본 정리 결과에서 지정 주소의 거주기간을 찾는다(무료 OCR·규칙, 6시간 기억).
+function rwCaseDocFacts_(body) {
+  var caseId = String(body && body.caseId || '').trim();
+  if (!caseId) return { ok: false, error: '사건이 필요합니다.' };
+  var sheet = work_getSheet_(), col = work_colMap_(sheet.getDataRange().getValues()[0]);
+  var found = work_findCaseRow_(sheet, col, caseId);
+  if (!found) return { ok: false, error: '사건을 찾지 못했습니다.' };
+  var folderId = String(found.row[col.폴더ID] || '').trim();
+  if (!folderId) return { ok: true, residences: [] };
+  var files = [];
+  client_listFilesRecursive_(DriveApp.getFolderById(folderId), 0, 120, files);
+  files = files.filter(function (f) { return /초본|주민등록|등본/.test(f.name) && /pdf|^image\//.test(String(f.mimeType || '')); }).slice(0, 8);
+  var res = [], started = Date.now();
+  files.forEach(function (f) {
+    if (Date.now() - started > 200000) return;
+    try {
+      f.modified = DriveApp.getFileById(f.id).getLastUpdated().getTime();
+      var p = docParseText_(tc_docText_(f) || '');
+      if (!p || p.type !== 'resident' || !p.result) return;
+      (p.result.거주기간 || []).forEach(function (x) {
+        res.push({ 파일: f.name, 성명: p.result.성명 || '', 주소: x.주소 || '', 시작: x.시작 || '', 끝: x.끝표시 || x.끝 || '', 기간: x.기간 || '', 확인필요: !!(x.날짜확인필요 || x.짝확인필요) });
+      });
+    } catch (e) { /* 그 파일은 건너뜀 */ }
+  });
+  var loc = String(body.location || '');
+  var match = loc ? res.filter(function (x) { return x.주소 && tcLocSame_(x.주소, loc); }) : [];
+  return { ok: true, residences: res, match: match };
+}
 function getReportTemplateFolder_() {
   const folder = getBusinessManagerFolder_();
   if (!folder) return null;
