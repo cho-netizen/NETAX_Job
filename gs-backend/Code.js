@@ -25386,7 +25386,9 @@ function docParseFile_(body) {
   var id = String(body && body.fileId || '');
   if (!id) return { error: '파일이 없습니다.' };
   var f = DriveApp.getFileById(id), name = f.getName(), mime = f.getMimeType();
-  if (!/pdf|image/.test(mime)) return { error: name + ' — PDF·이미지만 정리할 수 있습니다.' };
+  // 거래내역 엑셀·CSV는 글자인식 없이 숫자를 그대로 읽어 잔액 검산(bankParseFile_)
+  if (/spreadsheet|excel|csv/i.test(mime) || /\.(xlsx|xls|csv)$/i.test(name)) return bankParseFile_(body);
+  if (!/pdf|image/.test(mime)) return { error: name + ' — PDF·이미지·엑셀(거래내역)만 정리할 수 있습니다.' };
   var cache = CacheService.getScriptCache(), key = 'docp3_' + id + '_' + f.getLastUpdated().getTime();
   var hit = cache.get(key);
   if (hit) return JSON.parse(hit);
@@ -27718,4 +27720,384 @@ function ihToMarkdown_(type, r) {
   }
   if (r.경고 && r.경고.length) out.push('\n⚠ ' + r.경고.join(' / '));
   return out.join('\n');
+}
+
+// =========================================================
+// [2026.10.10] 은행·증권 거래내역(엑셀·CSV) 자동 정리 — 토큰 0, 글자인식 안 씀
+// 세무사님: 통장 스캔본은 오류 위험이 커서 엑셀로 검토하는 게 낫다 → 은행에서 받은 엑셀·CSV만 다루고, 모든 줄을 잔액으로 검산해 오류를 숨기지 않는다.
+// 표본 114개 파일(계좌 218개·거래 44,561줄)로 맞춤: 197개 계좌 전 줄 일치, 불일치 49줄은 사무소 편집본·은행 원본의 실제 이상 줄.
+// =========================================================
+// ---- 은행·증권 거래내역(엑셀·CSV) 정리 — 토큰 0, 글자인식(OCR) 안 씀, ES5 ----
+// 오류 0 원칙: 모든 줄을 "앞 줄 잔액 - 출금 + 입금 = 이번 줄 잔액"으로 검산하고, 안 맞는 줄은 숨기지 않고 ⚠로 드러낸다.
+// 판단(증여·상속 해당 여부)은 하지 않고 거르기·합계만 한다.
+var BANK_COL_ = {
+  date: /^(거래일시|거래일자|거래일|일자|거래날짜|날짜|일시|기산일자|거래일자시간)$/,
+  time: /^(시간|거래시간|처리시각|처리시간)$/,
+  out: /^(출금|출금액|출금금액|찾으신금액|찾은금액|지급|지급액|지급금액|지급\(원\)|출금\(원\)|인출금액|찾으신금액\(원\))$/,
+  inn: /^(입금|입금액|입금금액|맡기신금액|맡긴금액|입금\(원\)|맡기신금액\(원\))$/,
+  amt: /^(거래금액|금액|거래금액\(원\))$/,
+  type: /^(구분|거래구분|입출금구분|입지구분|입출구분)$/,
+  bal: /^(잔액|거래후잔액|남은금액|표면잔액|잔고|거래후잔액\(원\)|잔액\(원\)|거래후\s*잔액)$/,
+  cp: /^(상대계좌예금주명|의뢰인\/수취인|의뢰인|수취인|받는분|보낸분|보낸분\/받는분|받는분\/보낸분|기재내용|상대방|상대예금주)$/,
+  desc: /^(적요|거래내용|내용|기록사항|거래기록사항|거래메모|메모|적요\(의뢰인등\)|비고)$/,
+  acct: /^(계좌|계좌번호)$/,
+  // "은행명"은 대개 이체 상대 은행(국민 상속조회 서식) — 계좌 은행으로 쓰면 한 계좌가 여러 조각으로 갈린다
+  bank: /^(은행|금융기관|기관)$/,
+  branch: /^(거래점|취급점|거래점명|처리점|점)$/
+};
+// 머리글 비교용 — 띄어쓰기와 단위 꼬리("(원)", "(₩)")를 떼고 본다(국민은행 "출금액(원)" 등)
+function bankHdrKey_(v) { return bankCell_(v).replace(/\s+/g, '').replace(/\((?:원|₩|KRW|천원)\)$/, ''); }
+function bankCell_(v) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); }
+function bankNum_(v) {
+  var s = bankCell_(v).replace(/[,원₩\s]/g, '');
+  if (s === '' || s === '-') return null;
+  if (/^\(.*\)$/.test(s)) s = '-' + s.slice(1, -1);
+  // 엑셀이 큰 금액을 "2.1136431E7"처럼 지수로 저장하기도 한다
+  return /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(s) ? Number(s) : NaN;
+}
+// 날짜 → "yyyy-MM-dd HH:mm:ss"(정렬 가능한 글자). 엑셀 일련번호(45123.5)도 받는다.
+function bankDate_(v, t) {
+  var s = bankCell_(v), m;
+  if (/^\d{5}(\.\d+)?$/.test(s)) {
+    var n = Number(s), d = new Date(Date.UTC(1899, 11, 30) + Math.round(n * 86400000));
+    s = d.toISOString().replace('T', ' ').slice(0, 19);
+  }
+  m = /(\d{4})[.\-\/년\s]*(\d{1,2})[.\-\/월\s]*(\d{1,2})일?(?:\D+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(s) || /^(\d{4})(\d{2})(\d{2})(?:\s*(\d{2}):?(\d{2}):?(\d{2})?)?$/.exec(s);
+  // 두 자리 연도("16-05-27") — 칸 전체가 날짜 모양일 때만
+  if (!m) { var y2 = /^(\d{2})[.\-\/](\d{2})[.\-\/](\d{2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(s); if (y2) { var yy = Number(y2[1]); m = [y2[0], (yy <= (new Date().getFullYear() % 100) ? '20' : '19') + y2[1], y2[2], y2[3], y2[4], y2[5], y2[6]]; } }
+  if (!m) return '';
+  var pad = function (x) { return ('0' + (x || 0)).slice(-2); };
+  var hh = m[4], mi = m[5], ss = m[6];
+  if (!hh && t) { var tm = /(\d{1,2}):?(\d{2}):?(\d{2})?/.exec(bankCell_(t)); if (tm) { hh = tm[1]; mi = tm[2]; ss = tm[3]; } }
+  return m[1] + '-' + pad(m[2]) + '-' + pad(m[3]) + (hh ? ' ' + pad(hh) + ':' + pad(mi) + ':' + pad(ss) : '');
+}
+function bankFindHeader_(rows) {
+  var best = -1, bestScore = 0;
+  for (var i = 0; i < Math.min(rows.length, 40); i++) {
+    var sc = 0, hasBal = false, hasDate = false;
+    (rows[i] || []).forEach(function (c) {
+      var k = bankHdrKey_(c);
+      Object.keys(BANK_COL_).forEach(function (f) { if (BANK_COL_[f].test(k)) { sc++; if (f === 'bal') hasBal = true; if (f === 'date') hasDate = true; } });
+    });
+    if (hasBal && hasDate && sc > bestScore) { bestScore = sc; best = i; }
+  }
+  return best;
+}
+// 머리글 위 계좌정보(은행·계좌·예금주·조회기간)
+function bankMeta_(rows, upto) {
+  var meta = {}, txt = rows.slice(0, Math.max(upto, 0)).map(function (r) { return (r || []).map(bankCell_).filter(function (x) { return x; }).join(' '); }).join('\n');
+  var m = /(?:계좌번호|계좌)\s*[:：]?\s*([\d-]{8,20})/.exec(txt); if (m) meta.계좌 = '…' + m[1].replace(/\D/g, '').slice(-4);
+  m = /(?:예금주|성명|고객명)\s*[:：]?\s*([가-힣()]{2,20})/.exec(txt); if (m) meta.예금주 = m[1];
+  m = /((?:19|20)\d{2}[.\-\/]\d{1,2}[.\-\/]\d{1,2})\s*~\s*((?:19|20)\d{2}[.\-\/]\d{1,2}[.\-\/]\d{1,2})/.exec(txt); if (m) meta.조회기간 = bankDate_(m[1]) + ' ~ ' + bankDate_(m[2]);
+  m = /([가-힣]{2,8}(?:은행|증권|금고|투자증권|농협|수협|신협|우체국))/.exec(txt); if (m) meta.은행 = m[1];
+  return meta;
+}
+// 머리글이 없는 시트 — 날짜 칸 + 세 숫자 칸(출금·입금·잔액)을 잔액 검산이 가장 많이 맞는 조합으로 찾는다
+function bankGuessCols_(rows) {
+  var sample = rows.filter(function (r) { return r && r.some(function (c) { return /^(19|20)\d{2}[.\-\/]\d{2}[.\-\/]\d{2}/.test(bankCell_(c)); }); }).slice(0, 400);
+  if (sample.length < 3) return null;
+  var w = Math.max.apply(null, sample.map(function (r) { return r.length; })), dateCol = -1;
+  for (var c = 0; c < w && dateCol < 0; c++) if (sample.every(function (r) { return /^(19|20)\d{2}/.test(bankCell_(r[c])); })) dateCol = c;
+  if (dateCol < 0) return null;
+  var numCols = [];
+  for (c = 0; c < w; c++) if (c !== dateCol && sample.every(function (r) { var n = bankNum_(r[c]); return n === null || !isNaN(n); }) && sample.some(function (r) { return bankNum_(r[c]); })) numCols.push(c);
+  // 여러 은행 계좌를 날짜순으로 섞어 둔 시트 — 은행 이름 칸이 있으면 은행별로 나눠 검산
+  var bankCol;
+  for (c = 0; c < w && bankCol === undefined; c++) if (c !== dateCol && sample.filter(function (r) { return /(은행|증권|농협|수협|금고|신협|우체국)/.test(bankCell_(r[c])); }).length >= sample.length * 0.8) bankCol = c;
+  var best = null, rev = sample.slice().reverse();
+  // 은행 칸이 상대은행일 수도 있으므로 "나눠서"와 "한 계좌로" 둘 다, 정순·역순(최신순) 둘 다 시험해 가장 잘 맞는 것을 고른다
+  [undefined, bankCol].forEach(function (bc, bi) { if (bi === 1 && bankCol === undefined) return; [sample, rev].forEach(function (S) {
+  numCols.forEach(function (o) { numCols.forEach(function (i) { numCols.forEach(function (b) {
+    if (o === i || i === b || o === b) return;
+    var ok = 0, last = {}, tot = 0;
+    for (var k = 0; k < S.length; k++) {
+      var key = bc !== undefined ? bankCell_(S[k][bc]) : '_', p = last[key], cur = bankNum_(S[k][b]), oo = bankNum_(S[k][o]) || 0, ii = bankNum_(S[k][i]) || 0;
+      if (p !== undefined) { tot++; if (p !== null && cur !== null && Math.abs(p - oo + ii - cur) < 0.5) ok++; }
+      last[key] = cur;
+    }
+    if (tot && (!best || ok / tot > best.ok / best.tot)) best = { ok: ok, tot: tot, date: dateCol, out: o, inn: i, bal: b, bank: bc };
+  }); }); }); }); });
+  return best && best.tot && best.ok >= best.tot * 0.9 ? best : null;
+}
+
+function bankParseRows_(rows) {
+  rows = (rows || []).map(function (r) { return (r || []).map(bankCell_); });
+  var r = { 종류: '거래내역(엑셀)', 계좌들: [], 경고: [] };
+  var hi = bankFindHeader_(rows), col = {}, guessed = false;
+  if (hi >= 0) {
+    rows[hi].forEach(function (c, idx) {
+      var k = bankHdrKey_(c);
+      Object.keys(BANK_COL_).forEach(function (f) { if (col[f] === undefined && BANK_COL_[f].test(k)) col[f] = idx; });
+    });
+  } else {
+    var g = bankGuessCols_(rows);
+    if (!g) { r.경고.push('거래내역 표(거래일·입출금·잔액 칸)를 찾지 못함 — 은행에서 받은 원본 엑셀인지 확인'); r.거래내역아님 = true; return r; }
+    col = { date: g.date, out: g.out, inn: g.inn, bal: g.bal }; if (g.bank !== undefined) col.bank = g.bank; guessed = true; hi = -1;
+    r.경고.push('머리글이 없는 시트 — 잔액 검산이 맞는 칸 조합(출금·입금·잔액)으로 칸을 정함');
+  }
+  if (col.bal === undefined || (col.out === undefined && col.inn === undefined && col.amt === undefined)) { r.경고.push('입출금·잔액 칸을 찾지 못함'); r.거래내역아님 = true; return r; }
+  var meta = bankMeta_(rows, hi);
+  // 거래 줄 모으기
+  var tx = [], curAcct = meta.계좌 || '';
+  for (var i = hi + 1; i < rows.length; i++) {
+    var row = rows[i], d = bankDate_(row[col.date], col.time !== undefined ? row[col.time] : '');
+    if (!d) {
+      // 여러 계좌를 위아래로 이어 붙인 시트 — 날짜 없는 줄에 계좌번호가 나오면 거기서 새 계좌가 시작된다
+      var am = /(\d{2,6}-\d{2,6}-\d{2,8}(?:-\d{1,3})?)/.exec(row.join(' '));
+      if (am && col.acct === undefined) curAcct = am[1];
+      continue; // 합계·빈 줄·소계
+    }
+    var o = col.out !== undefined ? bankNum_(row[col.out]) : null, n = col.inn !== undefined ? bankNum_(row[col.inn]) : null;
+    if (col.out === undefined && col.inn === undefined && col.amt !== undefined) {
+      var a = bankNum_(row[col.amt]), ty = col.type !== undefined ? row[col.type] : '';
+      // 구분 칸이 비어 있으면 같은 줄의 다른 칸에서 "입금/출금/지급" 낱말을 찾는다(사무소가 칸을 옮긴 정리본)
+      if (!/입금|맡|출금|지급|찾|인출|^입$|^출$/.test(ty)) { for (var q = 0; q < row.length; q++) if (q !== col.desc && /^(입금|출금|지급|입|출|맡김|찾음)$/.test(row[q])) { ty = row[q]; break; } }
+      if (/입금|맡|^입$/.test(ty)) n = a; else if (/출금|지급|찾|^출$|인출/.test(ty)) o = a;
+      else {
+        // 구분 낱말이 없는 줄("결산이자"·"해지" 등) — 금액·잔액은 남겨 두고, 뒤 검산에서 잔액 차이가 금액과 정확히 같을 때만 방향을 정한다
+        tx.push({ 줄: i + 1, 일시: d, 출금: 0, 입금: 0, 금액미정: isNaN(a) ? null : a, 잔액: bankNum_(row[col.bal]), 상대: col.cp !== undefined ? row[col.cp] : '', 적요: (col.desc !== undefined ? row[col.desc] : '') || ty,
+          계좌: col.acct !== undefined ? row[col.acct] : curAcct, 은행: col.bank !== undefined ? row[col.bank] : (meta.은행 || ''), bad: a === null || isNaN(a) ? '입출금 구분을 읽지 못함: ' + ty : '' });
+        continue;
+      }
+    }
+    var b = bankNum_(row[col.bal]);
+    tx.push({
+      줄: i + 1, 일시: d, 출금: o || 0, 입금: n || 0, 잔액: b,
+      상대: col.cp !== undefined ? row[col.cp] : '', 적요: col.desc !== undefined ? row[col.desc] : '',
+      계좌: col.acct !== undefined ? row[col.acct] : curAcct, 은행: col.bank !== undefined ? row[col.bank] : (meta.은행 || ''),
+      bad: (isNaN(o) || isNaN(n) || (b !== null && isNaN(b))) ? '숫자가 아닌 금액 칸' : ''
+    });
+  }
+  if (!tx.length) { r.경고.push('거래 줄이 없음'); r.거래내역아님 = true; return r; }
+  // 계좌별로 나눠 검산(사무소가 여러 계좌를 한 시트에 모은 경우)
+  var groups = {}, order = [];
+  tx.forEach(function (t) { var k = (t.은행 || '') + '|' + (t.계좌 || ''); if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(t); });
+  order.forEach(function (k) {
+    var g = groups[k];
+    // 원래 순서(최신순일 수도)로 검산해 보고, 뒤집어서도 해 본 뒤 더 많이 맞는 쪽 — 같은 날 여러 건은 시각 정렬이 불완전하므로 날짜 정렬 대신 원래 줄 순서를 쓴다
+    function check(list) {
+      var bad = [], ok = 0;
+      for (var j = 1; j < list.length; j++) {
+        var p = list[j - 1], c = list[j];
+        if (c.bad || p.bad || p.잔액 === null || c.잔액 === null || (c.금액미정 != null && !c.구분추정)) { bad.push(c); continue; }
+        if (Math.abs(p.잔액 - c.출금 + c.입금 - c.잔액) < 0.5) ok++; else bad.push(c);
+      }
+      return { ok: ok, bad: bad };
+    }
+    // 같은 날 거래는 정리본에서 순서가 섞이기도 한다 — 숫자는 그대로 두고, 같은 날짜 안에서만 잔액이 이어지는 줄을 앞으로 당겨 순서를 바로잡는다
+    function reorder(list) {
+      // 정순·역순 두 번 시험하므로 줄 객체를 복사해 서로 영향이 없게
+      list = list.map(function (t) { var o = {}; for (var kk in t) o[kk] = t[kk]; return o; });
+      for (var j = 1; j < list.length; j++) {
+        var p = list[j - 1], c = list[j];
+        // 방향 미정 줄: 앞 잔액 ± 금액이 이번 잔액과 정확히 같으면 그 방향(금액과 잔액 차이가 같다는 것 자체가 검산)
+        if (c.금액미정 != null && p.잔액 !== null && c.잔액 !== null) {
+          if (Math.abs(p.잔액 + c.금액미정 - c.잔액) < 0.5) { c.입금 = c.금액미정; c.구분추정 = true; }
+          else if (Math.abs(p.잔액 - c.금액미정 - c.잔액) < 0.5) { c.출금 = c.금액미정; c.구분추정 = true; }
+        }
+        // 잔액 칸이 빈 줄인데 앞 잔액을 전부 빼 가면 해지(잔액 0) — 계산으로 정확히 0일 때만 0으로 본다
+        if (c.잔액 === null && !c.bad && p.잔액 !== null && Math.abs(p.잔액 - c.출금 + c.입금) < 0.5 && (c.출금 || c.입금)) { c.잔액 = 0; c.해지추정 = true; continue; }
+        if (p.잔액 === null || c.잔액 === null || c.bad || p.bad) continue;
+        if (Math.abs(p.잔액 - c.출금 + c.입금 - c.잔액) < 0.5) continue;
+        var day = c.일시.slice(0, 10);
+        for (var q = j + 1; q < list.length && list[q].일시.slice(0, 10) === day; q++) {
+          var x = list[q];
+          if (!x.bad && x.잔액 !== null && Math.abs(p.잔액 - x.출금 + x.입금 - x.잔액) < 0.5) { list.splice(q, 1); list.splice(j, 0, x); break; }
+        }
+      }
+      return list;
+    }
+    var gF = reorder(g), gR = reorder(g.slice().reverse());
+    var fw = check(gF), rv = check(gR), useRev = rv.ok > fw.ok, res = useRev ? rv : fw, list = useRev ? gR : gF;
+    var badSet = {}; res.bad.forEach(function (x) { badSet[x.줄] = 1; });
+    list.forEach(function (t) { if (badSet[t.줄] || t.bad) t.검산불일치 = true; });
+    var acct = {
+      은행: list[0].은행, 계좌: list[0].계좌 ? '…' + String(list[0].계좌).replace(/\D/g, '').slice(-4) : (meta.계좌 || ''),
+      예금주: meta.예금주 || '', 조회기간: meta.조회기간 || (list[0].일시.slice(0, 10) + ' ~ ' + list[list.length - 1].일시.slice(0, 10)),
+      거래: list, 검산줄수: list.length - 1, 불일치: res.bad.length + list.filter(function (t) { return t.bad && !badSet[t.줄]; }).length,
+      최신순: useRev, 칸추정: guessed
+    };
+    acct.시작잔액 = list[0].잔액 - list[0].입금 + list[0].출금; acct.끝잔액 = list[list.length - 1].잔액;
+    acct.입금합계 = list.reduce(function (s, t) { return s + t.입금; }, 0);
+    acct.출금합계 = list.reduce(function (s, t) { return s + t.출금; }, 0);
+    // 전체 검산: 시작잔액 + 입금합계 - 출금합계 = 끝잔액
+    acct.총괄검산 = Math.abs(acct.시작잔액 + acct.입금합계 - acct.출금합계 - acct.끝잔액) < 0.5;
+    r.계좌들.push(acct);
+  });
+  r.거래수 = tx.length;
+  r.불일치수 = r.계좌들.reduce(function (s, a) { return s + a.불일치; }, 0);
+  if (r.불일치수) r.경고.push('잔액 검산이 맞지 않는 줄 ' + r.불일치수 + '개 — 칸 인식 오류이거나 원본이 편집됨(해당 줄 ⚠)');
+  var est = r.계좌들.reduce(function (s, a) { return s + a.거래.filter(function (t) { return t.구분추정; }).length; }, 0);
+  if (est) r.경고.push('입출금 구분 낱말이 없는 ' + est + '줄은 잔액 변화(금액과 정확히 같은 경우만)로 입금·출금을 정함');
+  return r;
+}
+
+// 요약 — 판단 없이 거르기·합계만. opts: { 기준금액, 상속개시일 }
+function bankSummary_(r, opts) {
+  opts = opts || {};
+  var th = opts.기준금액 || 10000000, out = { 큰거래: [], 상대별: [], 반복: [], 월별: [] };
+  var all = [];
+  r.계좌들.forEach(function (a) { a.거래.forEach(function (t) { all.push({ t: t, a: a }); }); });
+  all.forEach(function (x) { if (Math.max(x.t.입금, x.t.출금) >= th) out.큰거래.push(x); });
+  var byCp = {};
+  all.forEach(function (x) {
+    var nm = (x.t.상대 || x.t.적요 || '').replace(/\s+/g, '');
+    if (!nm) return;
+    var o = byCp[nm] || (byCp[nm] = { 상대: nm, 입금: 0, 출금: 0, 건수: 0 });
+    o.입금 += x.t.입금; o.출금 += x.t.출금; o.건수++;
+  });
+  out.상대별 = Object.keys(byCp).map(function (k) { return byCp[k]; }).filter(function (o) { return o.입금 + o.출금 >= th; }).sort(function (a, b) { return (b.입금 + b.출금) - (a.입금 + a.출금); }).slice(0, 30);
+  // 같은 상대·같은 금액이 서로 다른 달에 3번 이상(차용 이자·생활비 후보)
+  var rep = {};
+  all.forEach(function (x) {
+    var amt = x.t.출금 || x.t.입금; if (!amt || amt < 10000) return; // 수수료·소액 이자 제외
+    var k = (x.t.출금 ? '출' : '입') + '|' + amt + '|' + (x.t.상대 || x.t.적요 || '').replace(/\s+/g, '');
+    (rep[k] = rep[k] || {}); rep[k][x.t.일시.slice(0, 7)] = 1;
+  });
+  out.반복 = Object.keys(rep).filter(function (k) { return Object.keys(rep[k]).length >= 3; }).map(function (k) {
+    var p = k.split('|'); return { 방향: p[0] === '출' ? '출금' : '입금', 금액: Number(p[1]), 상대: p[2], 개월수: Object.keys(rep[k]).length, 기간: Object.keys(rep[k]).sort()[0] + ' ~ ' + Object.keys(rep[k]).sort().pop() };
+  }).sort(function (a, b) { return b.금액 * b.개월수 - a.금액 * a.개월수; }).slice(0, 20);
+  var mon = {};
+  all.forEach(function (x) { var k = x.t.일시.slice(0, 7); var o = mon[k] || (mon[k] = { 월: k, 입금: 0, 출금: 0 }); o.입금 += x.t.입금; o.출금 += x.t.출금; });
+  out.월별 = Object.keys(mon).sort().map(function (k) { return mon[k]; });
+  // 상속개시일 기준 인출 합계(상증법 §15① — 1년 이내 2억원·2년 이내 5억원 이상 인출 시 용도 입증 대상). 판정은 하지 않고 비교만.
+  if (opts.상속개시일) {
+    // 날짜는 "yyyy-MM-dd" 글자로 비교(시간대 변환으로 하루 밀리지 않게)
+    var D = opts.상속개시일, y = Number(D.slice(0, 4)), y1 = (y - 1) + D.slice(4), y2 = (y - 2) + D.slice(4);
+    var s1 = 0, s2 = 0, first = '';
+    all.forEach(function (x) {
+      var d = x.t.일시.slice(0, 10);
+      if (!first || d < first) first = d;
+      if (d <= D && d > y1) s1 += x.t.출금;
+      if (d <= D && d > y2) s2 += x.t.출금;
+    });
+    out.상속 = { 기준일: D, 인출1년: s1, 인출2년: s2, 자료시작: first, 자료부족: !first || first > y2 };
+  }
+  return out;
+}
+
+function bankToMarkdown_(r, opts) {
+  var won = function (n) { return n == null || isNaN(n) ? '' : Math.round(n).toLocaleString('ko-KR') + '원'; };
+  var esc = function (v) { return String(v == null ? '' : v).replace(/\|/g, '/'); };
+  if (r.거래내역아님) return '⚠ ' + r.경고.join(' / ');
+  var s = bankSummary_(r, opts), out = [];
+  out.push('### 거래내역 · 계좌 ' + r.계좌들.length + '개 · 거래 ' + r.거래수 + '건');
+  out.push('| 계좌 | 기간 | 시작잔액 | 입금 합계 | 출금 합계 | 끝잔액 | 잔액 검산 |\n|---|---|---|---|---|---|---|');
+  r.계좌들.forEach(function (a) {
+    out.push('| ' + [(a.은행 ? a.은행 + ' ' : '') + (a.계좌 || '(계좌 미표시)'), a.조회기간, won(a.시작잔액), won(a.입금합계), won(a.출금합계), won(a.끝잔액),
+      a.불일치 ? '⚠ ' + a.불일치 + '줄 불일치' : '✅ ' + a.검산줄수 + '줄 모두 일치' + (a.총괄검산 ? '' : ' (총괄 ⚠)')].map(esc).join(' | ') + ' |');
+  });
+  var bad = [];
+  r.계좌들.forEach(function (a) { a.거래.forEach(function (t) { if (t.검산불일치) bad.push(t); }); });
+  if (bad.length) {
+    out.push('\n**⚠ 잔액 검산 불일치 줄(원본 엑셀 ' + bad.length + '줄)** — 이 줄의 금액은 그대로 믿지 마세요\n\n| 엑셀 줄 | 일시 | 출금 | 입금 | 잔액 | 사유 |\n|---|---|---|---|---|---|');
+    bad.slice(0, 30).forEach(function (t) { out.push('| ' + [t.줄, t.일시, won(t.출금), won(t.입금), won(t.잔액), t.bad || '앞 줄 잔액과 맞지 않음'].map(esc).join(' | ') + ' |'); });
+  }
+  var th = (opts && opts.기준금액) || 10000000;
+  if (s.큰거래.length) {
+    out.push('\n**' + won(th) + ' 이상 거래 ' + s.큰거래.length + '건**\n\n| 일시 | 출금 | 입금 | 상대·내용 | 계좌 |\n|---|---|---|---|---|');
+    s.큰거래.slice(0, 60).forEach(function (x) { out.push('| ' + [x.t.일시.slice(0, 16), won(x.t.출금 || null), won(x.t.입금 || null), (x.t.상대 || x.t.적요) + (x.t.검산불일치 ? ' ⚠' : ''), x.a.계좌].map(esc).join(' | ') + ' |'); });
+    if (s.큰거래.length > 60) out.push('…외 ' + (s.큰거래.length - 60) + '건');
+  }
+  if (s.상대별.length) {
+    out.push('\n**상대방·내용별 합계(' + won(th) + ' 이상)** — 가족 간 이체 찾기용\n\n| 상대·내용 | 입금 | 출금 | 건수 |\n|---|---|---|---|');
+    s.상대별.forEach(function (o) { out.push('| ' + [o.상대, won(o.입금), won(o.출금), o.건수].map(esc).join(' | ') + ' |'); });
+  }
+  if (s.반복.length) {
+    out.push('\n**같은 금액이 3개월 이상 반복된 거래** — 차용 이자·생활비 등 후보\n\n| 방향 | 금액 | 상대·내용 | 개월 수 | 기간 |\n|---|---|---|---|---|');
+    s.반복.forEach(function (o) { out.push('| ' + [o.방향, won(o.금액), o.상대, o.개월수, o.기간].map(esc).join(' | ') + ' |'); });
+  }
+  if (s.상속) {
+    var h = s.상속;
+    out.push('\n**상속개시일(' + h.기준일 + ') 전 인출 합계** — 상증법 §15① 비교(재산 종류별 합산·용도 입증은 세무사 판단)');
+    out.push('| 기간 | 인출 합계 | 기준 |\n|---|---|---|\n| 1년 이내 | ' + won(h.인출1년) + ' | 2억원 ' + (h.인출1년 >= 200000000 ? '이상' : '미만') + ' |\n| 2년 이내 | ' + won(h.인출2년) + ' | 5억원 ' + (h.인출2년 >= 500000000 ? '이상' : '미만') + ' |');
+    if (h.자료부족) out.push('⚠ 이 엑셀은 ' + h.자료시작 + '부터라 2년 기간 전체가 들어 있지 않음 — 합계가 실제보다 작을 수 있음');
+    out.push('_이 계좌들의 출금만 더했습니다. 계좌 간 이체(본인 다른 계좌로 옮긴 돈)도 포함되어 있으니 확인하세요._');
+  }
+  if (s.월별.length > 1 && s.월별.length <= 36) {
+    out.push('\n**월별 입출금**\n\n| 월 | 입금 | 출금 |\n|---|---|---|');
+    s.월별.forEach(function (o) { out.push('| ' + o.월 + ' | ' + won(o.입금) + ' | ' + won(o.출금) + ' |'); });
+  }
+  if (r.경고.length) out.push('\n⚠ ' + r.경고.join(' / '));
+  out.push('\n_엑셀 숫자를 그대로 읽고(글자인식 없음) 모든 줄을 잔액으로 검산했습니다. 증여·상속 해당 여부는 판단하지 않았습니다._');
+  return out.join('\n');
+}
+
+// 거래내역 파일 읽기(서버) — 글자인식 없이 숫자를 그대로 읽는다.
+// xlsx·xls(진짜 엑셀)는 드라이브가 구글 시트로 바꿔 읽고 임시 시트는 바로 휴지통으로. 은행이 "xls"라며 내려주는 HTML 표·CSV는 글자 그대로 읽는다.
+function bankDecodeBlob_(blob) {
+  var s = blob.getDataAsString('UTF-8');
+  if (/�/.test(s)) { try { s = blob.getDataAsString('EUC-KR'); } catch (e) { /* 그대로 */ } }
+  return s.replace(/^﻿/, '');
+}
+function bankHtmlRows_(s) {
+  var dec = function (x) { return x.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim(); };
+  return (s.match(/<tr[\s\S]*?<\/tr>/gi) || []).map(function (tr) { return (tr.match(/<t[dh][\s\S]*?<\/t[dh]>/gi) || []).map(dec); });
+}
+function bankReadFile_(fileId) {
+  var f = DriveApp.getFileById(fileId), name = f.getName(), mime = f.getMimeType(), sheets = [];
+  var readSs = function (ss) {
+    var tz = ss.getSpreadsheetTimeZone();
+    ss.getSheets().forEach(function (sh) {
+      var rng = sh.getDataRange(); if (rng.getNumRows() < 2) return;
+      var vals = rng.getValues().map(function (r) { return r.map(function (v) {
+        if (v instanceof Date) return Utilities.formatDate(v, tz, 'yyyy-MM-dd HH:mm:ss');
+        return v === null || v === undefined ? '' : String(v);
+      }); });
+      sheets.push({ sheet: sh.getName(), rows: vals });
+    });
+  };
+  if (mime === MimeType.GOOGLE_SHEETS) { readSs(SpreadsheetApp.openById(fileId)); return { name: name, sheets: sheets }; }
+  var blob = f.getBlob(), bytes = blob.getBytes();
+  var isZip = bytes.length > 3 && bytes[0] === 0x50 && bytes[1] === 0x4B, isBiff = bytes.length > 3 && (bytes[0] & 0xFF) === 0xD0 && (bytes[1] & 0xFF) === 0xCF;
+  if (isZip || isBiff) {
+    var copy = Drive.Files.copy({ name: '_bank_tmp_' + Date.now(), mimeType: 'application/vnd.google-apps.spreadsheet' }, fileId, { fields: 'id' });
+    try { readSs(SpreadsheetApp.openById(copy.id)); } finally { try { DriveApp.getFileById(copy.id).setTrashed(true); } catch (e) { /* 정리 실패 무시 */ } }
+    return { name: name, sheets: sheets };
+  }
+  var text = bankDecodeBlob_(blob);
+  if (/<table|<tr/i.test(text.slice(0, 5000))) sheets.push({ sheet: 'html', rows: bankHtmlRows_(text) });
+  else sheets.push({ sheet: 'csv', rows: Utilities.parseCsv(text) });
+  return { name: name, sheets: sheets };
+}
+// 입력 문장에서 선택값 — "상속개시일 2025.3.4", "5천만원 이상"
+function bankOptsFromText_(text) {
+  var t = String(text || ''), o = {}, m;
+  m = /(상속\s*개시일|사망일|기준일)[^\d]{0,8}(\d{4})[.\-\/년\s]*(\d{1,2})[.\-\/월\s]*(\d{1,2})/.exec(t);
+  if (m) o.상속개시일 = m[2] + '-' + ('0' + m[3]).slice(-2) + '-' + ('0' + m[4]).slice(-2);
+  m = /(\d+(?:[.,]\d+)?)\s*(억|천만|백만|만)?\s*원?\s*이상/.exec(t);
+  if (m) { var n = Number(m[1].replace(/,/g, '')), u = { '억': 1e8, '천만': 1e7, '백만': 1e6, '만': 1e4 }[m[2]] || 1; if (n * u >= 10000) o.기준금액 = n * u; }
+  return o;
+}
+// [2026.10.10] 거래내역 엑셀·CSV 정리(토큰 0). body.fileId, body.text(입력 문장: 상속개시일·기준금액)
+function bankParseFile_(body) {
+  var id = String(body && body.fileId || '');
+  if (!id) return { error: '파일이 없습니다.' };
+  var rd = bankReadFile_(id), opts = bankOptsFromText_(body.text), merged = null, notes = [];
+  rd.sheets.forEach(function (s) {
+    var r = bankParseRows_(s.rows);
+    if (r.거래내역아님) { if (rd.sheets.length > 1) notes.push('시트 "' + s.sheet + '": 거래내역 아님'); return; }
+    // 같은 계좌를 시트만 복사해 둔 통합문서 — 기간·거래 수·시작/끝 잔액이 모두 같은 계좌는 한 번만 센다
+    var sig = function (a) { return [a.계좌, a.조회기간, a.거래.length, a.시작잔액, a.끝잔액].join('|'); };
+    if (merged) {
+      var have = {}; merged.계좌들.forEach(function (a) { have[sig(a)] = 1; });
+      var fresh = r.계좌들.filter(function (a) { return !have[sig(a)]; });
+      if (fresh.length < r.계좌들.length) notes.push('시트 "' + s.sheet + '": 앞 시트와 같은 계좌라 중복 제외');
+      r.계좌들 = fresh;
+      if (!fresh.length) return;
+    }
+    if (!merged) merged = r;
+    else {
+      merged.계좌들 = merged.계좌들.concat(r.계좌들);
+      merged.거래수 += r.계좌들.reduce(function (n, a) { return n + a.거래.length; }, 0);
+      merged.불일치수 += r.계좌들.reduce(function (n, a) { return n + a.불일치; }, 0);
+      merged.경고 = merged.경고.concat(r.경고);
+    }
+  });
+  if (!merged) {
+    var first = rd.sheets.length ? bankParseRows_(rd.sheets[0].rows) : { 경고: ['읽을 시트가 없음'] };
+    return { ok: true, name: rd.name, type: '', label: '', md: '**' + rd.name + '**\n\n⚠ ' + (first.경고 || []).join(' / ') + ' (정리 가능: 은행·증권사에서 받은 거래내역 엑셀·CSV)' };
+  }
+  merged.경고 = merged.경고.concat(notes);
+  return { ok: true, name: rd.name, type: 'bank', label: '거래내역', 검산불일치: merged.불일치수, 거래수: merged.거래수, md: '**' + rd.name + '**\n\n' + bankToMarkdown_(merged, opts) };
 }
