@@ -24978,6 +24978,9 @@ function docToMarkdown_(type, r) {
 function docParseText_(text) {
   var reg = registryParse(text);
   if (reg.isRegistry) return { type: 'registry', label: '등기부', result: reg, md: registryToMarkdown_(reg, '') };
+  // 원천징수영수증·지급명세서 — 사업자등록번호·접수 같은 낱말이 있어 다른 서류로 오인되기 전에 먼저 본다
+  var whs = whParseAll_(text);
+  if (whs.length) return { type: 'withholding', label: whs.map(function (w) { return w.종류; }).join('·'), result: whs, md: whs.map(whToMarkdown_).join('\n\n---\n\n') };
   var type = docDetectType_(text), r = null;
   if (type === 'family') r = docParseFamily_(text);
   else if (type === 'payment') r = docParsePayment_(text);
@@ -25667,5 +25670,319 @@ function valToMarkdown_(type, r) {
     out.push('\n_양도소득세 필요경비(취득부대비용) 증빙용으로 읽었습니다. 지방세 신고 검토는 범위 밖입니다._');
   }
   if (r.경고 && r.경고.length) out.push('\n⚠ ' + r.경고.join(' / '));
+  return out.join('\n');
+}
+
+
+// =========================================================
+// [2026.10.10] 원천징수영수증·지급명세서(모든 종류) 자동 정리 — 토큰 0
+// 근로(연말정산)·사업·기타·퇴직·연금·이자배당·일용·비거주자. 칸이 OCR에서 섞여도 숫자끼리 맞물릴 때만 확정:
+// 지방소득세=소득세×10%, 소득세=지급액×세율, 결정−기납부=차감징수, 계=소득세+지방소득세, 환산급여−환산급여별공제=과세표준.
+// 홈택스 "지급명세서 일괄조회" 처럼 한 PDF에 여러 서식이 있으면 서식마다 나눠 읽는다.
+// =========================================================
+// ---- 원천징수영수증·지급명세서(모든 종류) — 토큰 0, ES5 ----
+// 표 칸이 OCR에서 섞여 나오므로 금액은 "서로 맞물리는 숫자"일 때만 확정한다:
+//  · 지방소득세 = 소득세 × 10% (10원 미만 절사)
+//  · 소득세 = 지급액(또는 소득금액) × 세율 (10원 미만 절사)
+//  · 결정세액 = 기납부세액 + 차감징수세액
+// 맞지 않으면 ⚠확인필요로 두고 지어내지 않는다.
+var WH_TYPES_ = [
+  // [코드, 이름, 판별식] — 순서 중요(더 구체적인 것 먼저)
+  ['daily', '일용근로소득 지급명세서', /일용\s*근로\s*소득/],
+  ['nonres', '비거주자 소득 원천징수영수증', /비거주자의\s*[가-힣·ㆍ\s]{0,20}소득\s*(?:원천징수영수증|지급명세서)/],
+  ['fin', '이자·배당소득 원천징수영수증', /이자\s*[·.ㆍ,]?\s*배당\s*소득\s*(?:원천징수영수증|특별징수영수증|지\s*급\s*명\s*세\s*서|특별징수명세서)/],
+  ['retire', '퇴직소득 원천징수영수증', /퇴직\s*소득\s*(?:원천징수영수증|지\s*급\s*명\s*세\s*서|지급조서)/],
+  ['pension', '연금소득 원천징수영수증', /연금\s*소득\s*(?:원천징수영수증|지\s*급\s*명\s*세\s*서|지급조서)/],
+  ['labor', '근로소득 원천징수영수증', /근로\s*소득\s*(?:원천징수영수증|지\s*급\s*명\s*세\s*서|지급조서)/],
+  ['biz', '사업소득 원천징수영수증', /사업\s*소득\s*(?:원천징수영수증|지\s*급\s*명\s*세\s*서|지급조서)/],
+  ['other', '기타소득 원천징수영수증', /기타\s*소득\s*(?:원천징수영수증|지\s*급\s*명\s*세\s*서|지급조서)/]
+];
+var WH_BIZ_CODES_ = { '940100': '저술가', '940200': '화가관련', '940301': '작곡가', '940302': '배우', '940303': '모델', '940304': '가수', '940305': '성악가', '940306': '1인미디어 콘텐츠창작자',
+  '940500': '연예보조', '940600': '자문·고문', '940901': '바둑기사', '940902': '꽃꽂이교사', '940903': '학원강사', '940904': '직업운동가', '940905': '봉사료수취자', '940906': '보험설계',
+  '940907': '음료배달', '940908': '방문판매원', '940909': '기타자영업', '940910': '다단계판매', '940911': '기타모집수당', '940912': '간병인', '940913': '대리운전', '940914': '캐디',
+  '940915': '목욕관리사', '940916': '행사도우미', '940917': '심부름용역', '940918': '퀵서비스', '940919': '물품배달', '940920': '학습지 방문강사', '940921': '교육교구 방문강사',
+  '940922': '대여제품 방문점검원', '940923': '대출모집인', '940924': '신용카드 회원모집인', '940925': '방과후강사', '940926': '소프트웨어 프리랜서', '940927': '관광통역 안내사',
+  '940928': '어린이통학버스기사', '940929': '중고자동차 판매원', '851101': '병의원' };
+function whDetect_(text) {
+  var t = String(text || '').replace(/\s+/g, ' ');
+  // 원천징수이행상황신고서·간이지급명세서 접수증 등 신고 결과물(발생문서)은 대상 아님
+  if (/원천징수\s*이행\s*상황\s*신고서/.test(t) && !/원천징수영수증/.test(t)) return null;
+  if (/접수증/.test(t) && /간이\s*지급명세서/.test(t)) return null;
+  // 과세자료(지급명세서) 제출 접수증 — 제출 결과물이지 원천징수영수증이 아님
+  if (/(과세자료\s*제출|지급명세서\s*제출)\s*접수증/.test(t) || /^\s*\S{0,20}\s*접수증/.test(t.slice(0, 60))) return null;
+  for (var i = 0; i < WH_TYPES_.length; i++) if (WH_TYPES_[i][2].test(t)) return { code: WH_TYPES_[i][0], name: WH_TYPES_[i][1] };
+  if (/간이\s*지급\s*명세서/.test(t)) return { code: 'simple', name: '간이지급명세서' };
+  return null;
+}
+function whNum_(s) { var neg = /^\s*[-△▲]/.test(s); var n = Number(String(s).replace(/[^\d]/g, '')) || 0; return neg ? -n : n; }
+function whTrunc10_(x) { return x < 0 ? -Math.floor(-x / 10) * 10 : Math.floor(x / 10) * 10; }
+function whLocalOk_(inc, loc) { return Math.abs(whTrunc10_(inc / 10) - loc) <= 10; }
+function whFmt_(n) { return n == null ? '' : Number(n).toLocaleString('ko-KR') + '원'; }
+// 금액 후보(쉼표 금액·￦금액) — 날짜·번호(하이픈)는 제외
+function whAmounts_(t) {
+  // OCR이 ￦를 "\"로 읽기도 한다. 지방소득세처럼 쉼표 없는 두세 자리 금액도 받는다(묶음 검산이 잡음을 걸러 낸다).
+  var out = [], re = /(?:^|[\s￦₩\\(])(-?\d{1,3}(?:,\s?\d{3})+|-?\d{2,12})(?=$|[\s원)])/g, m;
+  while ((m = re.exec(t))) {
+    var v = whNum_(m[1]);
+    // 쉼표 없는 1900~2100은 연도일 가능성이 커서 금액으로 쓰지 않는다
+    if (!/,/.test(m[1]) && v >= 1900 && v <= 2100) continue;
+    if (Math.abs(v) >= 10) out.push(v);
+  }
+  return out;
+}
+// 연간 합계 줄은 매달 10원 미만을 잘라 낸 세액의 합이라 10%·세율 계산과 수십 원 어긋날 수 있다 — 그만큼만 허용
+function whNear_(a, b, base) { return Math.abs(a - b) <= Math.max(10, Math.abs(base) * 0.00002 + 10 * 12); }
+// 라벨 뒤 금액 묶음(소득세·지방소득세·농특세·계) — 다음 라벨 전까지 최대 n개
+function whRowAfter_(t, labelRe, n) {
+  var m = labelRe.exec(t);
+  if (!m) return null;
+  var seg = t.slice(m.index + m[0].length, m.index + m[0].length + 220);
+  // 라벨 뒤 계산식 괄호 "( 73-74-75-76 )", "(⑭-⑮-⑯)", "( 42-43 )" 안의 숫자는 금액이 아니다
+  seg = seg.replace(/^\s*\(\s*[\d\s\-–−~①-⑳㉑-㉟=+×/]*\)?/, ' ');
+  var stop = seg.search(/(결\s*정\s*세\s*액|기납부|차감\s*(?:징수|원천)|납부특례|세액공제|위의\s*원천|소득\s*공제|구\s*분|주\(현\)|종\(전\))/);
+  if (stop > 0) seg = seg.slice(0, stop);
+  var nums = [], re = /(-?\d{1,3}(?:,\d{3})+|-?\d+)(?=\s|$|원)/g, k;
+  while ((k = re.exec(seg)) && nums.length < n) nums.push(whNum_(k[1]));
+  return nums;
+}
+// 세액 묶음 검산: [소득세, 지방소득세, (농특세), (계)]
+function whTaxRow_(nums) {
+  if (!nums || nums.length < 2) return null;
+  var inc = nums[0], loc = nums[1];
+  // 1~9 같은 한 자리 값은 OCR 잡음(칸 번호 등) — 0이 아닌데 10원 미만이면 세액으로 보지 않는다
+  if ((inc !== 0 && Math.abs(inc) < 10) || (loc !== 0 && Math.abs(loc) < 10)) return { 소득세: inc, 지방소득세: loc, 확정: false };
+  var ok = whLocalOk_(inc, loc) || (inc === 0 && loc === 0);
+  // 기납부·차감징수는 매달 절사한 합이라 수십 원 차이가 날 수 있다(아래 결정−기납부=차감 검산으로 다시 확인)
+  var near = !ok && whNear_(whTrunc10_(inc / 10), loc, inc / 10);
+  return { 소득세: inc, 지방소득세: loc, 농특세: nums.length >= 4 ? nums[2] : null, 확정: ok, 근사: near };
+}
+function whLabelAmt_(t, re) { var m = re.exec(t); return m ? whNum_(m[1]) : null; }
+
+function whParse_(text) {
+  var raw = String(text || ''), t = raw.replace(/[ \t]+/g, ' ');
+  var ty = whDetect_(raw);
+  if (!ty) return null;
+  var r = { 종류: ty.name, 하위: ty.code, 경고: [] };
+  if (/비거주자\s*[①1V√✓*●]|\[\s*[V√✓]\s*\]\s*비거주자|\(\s*\*\s*\)\s*\d\.\s*비거주자/.test(t)) r.비거주자 = true;
+  // 귀속연도
+  var m = /귀\s*속\s*연\s*도[\s\S]{0,40}?((?:19|20)\d{2})/.exec(t) || /((?:19|20)\d{2})\s*년?\s*귀속/.exec(t) || /귀속\s*\n?\s*연도\s*\n?\s*((?:19|20)\d{2})/.exec(t);
+  if (m) r.귀속연도 = m[1];
+  // 원천징수의무자 — 첫 사업자등록번호와 법인명(상호)
+  m = /(\d{3}-\d{2}-[\d*]{5})/.exec(t);
+  if (m) r.의무자사업자번호 = m[1];
+  m = /법인명\s*또는\s*상호\s*([^\n①-⑳]{2,30}?)(?=\s*[③④]|\n|$)/.exec(t) || /법인명\s*\(?\s*상\s*호\s*\)?\s*[:：]?\s*([^\n①-⑳(]{2,30})/.exec(t) || /법\s*인\s*명\s*\n\s*([^\n]{2,30})/.exec(t);
+  if (m && !/영문|대표|성\s*명|등록번호|또는/.test(m[1])) r.의무자 = m[1].replace(/\s+/g, ' ').trim();
+  // 소득자 — "⑥성 명 홍길동" 꼴일 때만(칸이 섞이면 비워 둔다)
+  m = /(?:소득자[\s\S]{0,40}?)?[⑥⑨]?\s*성\s*명\s*(?:\(\s*상\s*호\s*\))?\s*[:：]?\s*([가-힣]{2,5}|주식회사\s*[가-힣]{2,20}|[가-힣]{2,20}주식회사)(?=\s|$)/.exec(t);
+  if (m && !/^(상호|주민|대표|성명|소득자|법인)/.test(m[1])) r.소득자 = m[1];
+  var rrns = t.match(/\d{6}\s*-\s*[\d*X]{7}/g) || [];
+  if (rrns.length) r.소득자생년월일6 = rrns[rrns.length > 1 ? 1 : 0].slice(0, 6);
+
+  if (ty.code === 'labor' || ty.code === 'simple') {
+    m = /근\s*무\s*기\s*간\s*\n?\s*((?:19|20)\d{2}[.\-]\d{2}[.\-]\d{2})\s*~\s*((?:(?:19|20)\d{2}[.\-])?\d{2}[.\-]\d{2})/.exec(t);
+    if (m) r.근무기간 = m[1] + ' ~ ' + m[2];
+    m = /근\s*무\s*처\s*명\s*\n?\s*([^\n]{2,30})/.exec(t);
+    if (m) r.근무처 = m[1].trim();
+    r.급여 = whLabelAmt_(t, /⑬?\s*급\s*여\s*\n?\s*(\d{1,3}(?:,\d{3})+)/);
+    r.총급여 = whLabelAmt_(t, /총\s*급\s*여[^\d\n]{0,40}(\d{1,3}(?:,\d{3})+)/) || whLabelAmt_(t, /(?:⑯|16)?\s*계\s*\n\s*(\d{1,3}(?:,\d{3})+)/);
+    r.비과세 = whLabelAmt_(t, /비과세\s*소득\s*계\s*\n?\s*(\d{1,3}(?:,\d{3})+)/);
+    r.결정세액 = whTaxRow_(whRowAfter_(t, /결\s*정\s*세\s*액(?!\s*\(\s*-)/, 4));
+    r.기납부세액 = whTaxRow_(whRowAfter_(t, /주\s*\(\s*현\s*\)\s*근무지/, 4));
+    r.차감징수세액 = whTaxRow_(whRowAfter_(t, /차\s*감\s*징\s*수\s*세\s*액/, 4));
+  } else if (ty.code === 'pension') {
+    // 총연금수령액(⑪)과 총연금액(⑭=⑪−연금제외소득−비과세)은 다른 금액
+    r.총연금수령액 = whLabelAmt_(t, /총\s*연금\s*수령\s*액[^\d\n]{0,20}\n?\s*(\d{1,3}(?:,\d{3})+)/);
+    r.총연금액 = whLabelAmt_(t, /총\s*연금\s*액\s*\(\s*=\s*(?:14|⑭)\s*\)\s*(\d{1,3}(?:,\d{3})+)/);
+    r.연금소득금액 = whLabelAmt_(t, /연금\s*소득\s*금액\s*\([^)]*\)\s*(\d{1,3}(?:,\d{3})+)/);
+    r.결정세액 = whTaxRow_(whRowAfter_(t, /결\s*정\s*세\s*액/, 4));
+    r.기납부세액 = whTaxRow_(whRowAfter_(t, /기\s*납\s*부\s*세\s*액/, 4));
+    r.차감징수세액 = whTaxRow_(whRowAfter_(t, /차\s*감\s*징\s*수\s*세\s*액/, 4));
+  } else if (ty.code === 'retire') {
+    var ds = t.match(/(?:19|20)\d{2}\.\d{2}\.\d{2}/g) || [];
+    m = /입\s*사\s*일[\s\S]{0,200}?((?:19|20)\d{2}\.\d{2}\.\d{2})\s+((?:19|20)\d{2}\.\d{2}\.\d{2})\s+((?:19|20)\d{2}\.\d{2}\.\d{2})/.exec(t);
+    if (m) { r.입사일 = m[1].replace(/\./g, '-'); r.기산일 = m[2].replace(/\./g, '-'); r.퇴사일 = m[3].replace(/\./g, '-'); }
+    // 퇴직급여 줄은 "중간지급 · 최종 · 정산" 칸 — 같은 줄 마지막 금액이 정산(합계)
+    var lastOnLine = function (re) {
+      var mm = re.exec(t); if (!mm) return null;
+      var line = t.slice(mm.index + mm[0].length).split('\n')[0];
+      var ns = line.match(/\d{1,3}(?:,\d{3})+/g);
+      return ns ? whNum_(ns[ns.length - 1]) : whLabelAmt_(t.slice(mm.index), /(\d{1,3}(?:,\d{3})+)/);
+    };
+    r.퇴직급여 = lastOnLine(/(?:15|⑮)?\s*퇴\s*직\s*급\s*여(?!\s*\(|\s*현황|제도)/);
+    r.과세대상퇴직급여 = lastOnLine(/과세\s*대상\s*퇴직\s*급여\s*(?:\([^)]*\))?/);
+    m = /정산\s*근속\s*연수[^\n]*?(\d{1,2})\s*$/m.exec(t);
+    if (m) r.근속연수 = Number(m[1]);
+    // 과세표준 계산 다섯 숫자 [퇴직소득, 근속연수공제, 환산급여, 환산급여별공제, 과세표준] — 칸이 흩어져도
+    // "환산급여 − 환산급여별공제 = 과세표준"과 "환산급여 = (퇴직소득 − 근속연수공제)×12/근속연수"가 맞는 묶음만 확정
+    var ts = (t.slice(Math.max(0, t.search(/퇴직\s*소득\s*\(/))).match(/\d{1,3}(?:,\d{3})+|(?:^|\s)0(?=\s)/g) || []).map(function (x) { return whNum_(x); });
+    for (var q = 0; q + 4 < ts.length; q++) {
+      var a5 = ts[q], b5 = ts[q + 1], c5 = ts[q + 2], d5 = ts[q + 3], e5 = ts[q + 4];
+      if (a5 <= 0 || b5 > a5 || c5 - d5 !== e5) continue;
+      // 과세표준 0인 경우 근속연수공제는 퇴직소득 한도로 깎이므로 둘이 같아야 한다(아니면 우연히 0이 이어진 것)
+      if (c5 === 0 && a5 !== b5) continue;
+      var yrs = c5 > 0 ? Math.round((a5 - b5) * 12 / c5) : null;
+      if (c5 > 0 && (yrs < 1 || yrs > 60 || Math.abs(Math.floor((a5 - b5) * 12 / yrs) - c5) > 1)) continue;
+      r.정산퇴직급여 = a5; r.근속연수공제 = b5; r.환산급여 = c5; r.환산급여별공제 = d5; r.퇴직소득과세표준 = e5;
+      if (yrs) r.근속연수 = yrs;
+      r.과표검산 = c5 > 0 ? '환산급여 검산 일치(근속 ' + yrs + '년)' : '퇴직소득 ≤ 근속연수공제 — 과세표준 0';
+      break;
+    }
+    if (r.정산퇴직급여 && r.퇴직급여 !== r.정산퇴직급여) { r.퇴직급여_중간 = r.퇴직급여; r.퇴직급여 = r.정산퇴직급여; }
+    if (!r.과표검산) { r.퇴직급여확인필요 = true; r.경고.push('정산 퇴직급여·근속연수·과세표준을 검산하지 못함(중간지급분이 있으면 첫 칸 금액일 수 있음) — 원문 확인'); }
+    r.차감원천징수세액 = whTaxRow_(whRowAfter_(t, /차감\s*원천\s*징수\s*세액[^\n\d]{0,20}/, 4));
+    r.신고대상세액 = whTaxRow_(whRowAfter_(t, /신고\s*대상\s*세액\s*\(\s*\d+\s*\)/, 4));
+    if (!r.입사일 && ds.length) r.경고.push('근속기간 날짜는 원문 확인');
+  } else {
+    // 사업소득 업종구분 코드(별지 제23호서식(1) 작성방법의 업종코드표)
+    if (ty.code === 'biz') {
+      var cm = /업\s*종\s*\n?\s*구\s*분[^\d]{0,30}?(9\s*4\s*0\s*\d\s*\d\s*\d|8\s*5\s*1\s*1\s*0\s*1)/.exec(t);
+      if (cm) { r.업종코드 = cm[1].replace(/\s/g, ''); r.업종 = WH_BIZ_CODES_[r.업종코드] || ''; }
+    }
+    // 이자·배당·사업·기타·일용·비거주자: (지급액, 소득세, 지방소득세) 검산 묶음 찾기
+    var rates = ty.code === 'biz' ? [0.03] : ty.code === 'fin' ? [0.14, 0.25, 0.09, 0.05, 0.15, 0.2, 0.3, 0.45, 0.38] : ty.code === 'other' ? [0.2, 0.08, 0.15, 0.3, 0.03, 0.05] : ty.code === 'daily' ? [0.027, 0.06] : [0.2, 0.22, 0.03, 0.14, 0.1, 0.15, 0.25];
+    var pr = t.match(/(\d{1,2}(?:\.\d{1,2})?)\s*%/g) || [];
+    pr.forEach(function (p) { var v = Number(p.replace(/[^\d.]/g, '')) / 100; if (v > 0 && v < 0.5 && rates.indexOf(v) === -1) rates.push(v); });
+    var nums = whAmounts_(t), seen = {}, trip = [];
+    for (var i = 0; i < nums.length; i++) {
+      var A = nums[i];
+      if (A < 1000) continue;
+      rates.forEach(function (rt) {
+        var B = whTrunc10_(A * rt);
+        if (B <= 0) return;
+        for (var j = 0; j < nums.length; j++) {
+          if (j === i) continue;
+          var strictB = Math.abs(nums[j] - B) <= 10, nearB = !strictB && whNear_(nums[j], B, B);
+          if (!strictB && !nearB) continue;
+          for (var k = 0; k < nums.length; k++) {
+            if (k === i || k === j) continue;
+            var strictC = whLocalOk_(nums[j], nums[k]), nearC = !strictC && whNear_(whTrunc10_(nums[j] / 10), nums[k], nums[j] / 10);
+            if (!strictC && !nearC) continue;
+            // 근사(연간 합계 줄)는 "계 = 소득세 + 지방소득세"가 문서에 있을 때만 받아들인다
+            var sum = nums[j] + nums[k], hasSum = nums.indexOf(sum) !== -1;
+            if ((nearB || nearC) && !hasSum) continue;
+            var key = A + '|' + nums[j] + '|' + nums[k];
+            if (!seen[key]) { seen[key] = 1; trip.push({ 지급액: A, 세율: Math.round(rt * 10000) / 100, 소득세: nums[j], 지방소득세: nums[k], 계확인: hasSum, 연간합계: nearB || nearC }); }
+            return;
+          }
+        }
+      });
+    }
+    trip.sort(function (a, b) { return b.지급액 - a.지급액; });
+    r.지급내역 = trip.slice(0, 20);
+    if (trip.length) {
+      r.합계 = trip[0];
+      var rest = trip.slice(1), sumA = rest.reduce(function (s, x) { return s + x.지급액; }, 0);
+      if (rest.length && sumA === trip[0].지급액) r.합계검산 = '건별 합계와 일치(' + rest.length + '건)';
+    } else {
+      // 세액이 0인 지급(소액부징수·비과세·법인 MMF 등) — "합계 = 행 금액들의 합"이 맞을 때만 지급액 확정
+      var sm = /합\s*계\s*\n?\s*[￦₩\\]?\s*(\d{1,3}(?:,\d{3})+|\d{2,12})/.exec(t);
+      var cand = whAmounts_(sm ? t.slice(0, sm.index) : t).filter(function (v) { return v >= 100; });
+      var found = null;
+      if (sm) {
+        var S = whNum_(sm[1]), uniq = cand.filter(function (v, i2) { return cand.indexOf(v) === i2 && v < S; }).slice(-12);
+        for (var a2 = 0; a2 < uniq.length && !found; a2++) for (var b2 = a2 + 1; b2 < uniq.length && !found; b2++) {
+          if (uniq[a2] + uniq[b2] === S) found = [uniq[a2], uniq[b2]];
+          for (var c2 = b2 + 1; c2 < uniq.length && !found; c2++) if (uniq[a2] + uniq[b2] + uniq[c2] === S) found = [uniq[a2], uniq[b2], uniq[c2]];
+        }
+        if (found) { r.합계 = { 지급액: S, 세율: null, 소득세: null, 지방소득세: null }; r.합계검산 = '행 금액 합(' + found.join('+') + ')과 일치'; }
+      }
+      var won = t.match(/[￦₩\\]\s*(\d{1,3}(?:,\d{3})*)/g) || [];
+      if (!found && won.length >= 2 && whNum_(won[won.length - 1]) === 0) {
+        r.합계 = { 지급액: whNum_(won[0]), 세율: null, 소득세: 0, 지방소득세: 0 };
+        r.경고.push('원천징수세액 0원(소액부징수·비과세 등) — 지급액 ' + whFmt_(r.합계.지급액) + '은 원문 확인');
+      }
+      if (!r.합계) r.경고.push('지급액·세액이 서로 맞는 묶음을 찾지 못함 — 금액은 원문 확인');
+    }
+    if (ty.code === 'fin' && r.합계) {
+      if (r.합계.지급액 > 20000000) r.경고.push('이 영수증 하나로 금융소득 2천만원 초과 — 종합과세 대상 검토');
+      else r.경고.push('금융소득은 다른 금융기관 분과 합쳐 연 2천만원 초과 시 종합과세 — 다른 영수증도 함께 확인');
+    }
+  }
+  if ((ty.code === 'labor' || ty.code === 'pension') && !r.결정세액 && !r.기납부세액) r.경고.push('세액명세(결정·기납부·차감징수)를 읽지 못함 — 원문 확인');
+  // 결정세액 − 기납부세액 = 차감징수세액(소득세·지방소득세 두 칸 모두) — 맞으면 세 줄 모두 확정(매달 절사로 생긴 근사도 인정)
+  if (r.결정세액 && r.기납부세액 && r.차감징수세액) {
+    var dI = r.결정세액.소득세 - r.기납부세액.소득세 - r.차감징수세액.소득세, dL = r.결정세액.지방소득세 - r.기납부세액.지방소득세 - r.차감징수세액.지방소득세;
+    if (Math.abs(dI) <= 10 && Math.abs(dL) <= 10 && r.결정세액.확정) { r.기납부세액.확정 = true; r.차감징수세액.확정 = true; r.세액검산 = '결정 − 기납부 = 차감징수 (소득세·지방소득세 모두 일치)'; }
+    else if (r.결정세액.확정 && r.기납부세액.확정 && r.차감징수세액.확정) r.경고.push('결정세액 ≠ 기납부세액 + 차감징수세액(종전 근무지 기납부분이 있거나 글자인식 오류) — 원문 확인');
+  }
+  // 차감징수 칸이 비어 있으면(0원) 결정 = 기납부로 검산
+  if (r.결정세액 && r.기납부세액 && !r.차감징수세액 && r.결정세액.확정 && r.결정세액.소득세 === r.기납부세액.소득세) { r.기납부세액.확정 = true; r.세액검산 = '결정 = 기납부(차감징수 0)'; }
+  ['결정세액', '기납부세액', '차감징수세액', '차감원천징수세액', '신고대상세액'].forEach(function (k) {
+    if (r[k] && !r[k].확정) r.경고.push(k + ' 숫자가 서로 맞지 않음(글자인식 오류 가능) — 원문 확인');
+  });
+  // 귀속연도 칸이 없거나 못 읽은 서식 — 근무기간·지급연월에서 추정(추정 표시)
+  if (!r.귀속연도) {
+    var gy = r.근무기간 ? /((?:19|20)\d{2})/.exec(r.근무기간) : null;
+    if (!gy) gy = /((?:19|20)\d{2})\s*[\/.-]\s*\d{2}(?:\s*[\/.-]\s*\d{2})?/.exec(t.slice(Math.max(0, t.search(/지\s*급\s*(?:내\s*역|명\s*세)|근\s*무\s*기\s*간|귀\s*속/))));
+    if (gy) { r.귀속연도 = gy[1]; r.귀속추정 = true; }
+    else r.경고.push('귀속연도를 읽지 못함');
+  }
+  return r;
+}
+// 한 PDF에 여러 서식이 들어 있는 경우(홈택스 "지급명세서 일괄조회/출력") — 서식 머리말마다 잘라 각각 읽고, 같은 내용의 사본(소득자·발행자 보관용)은 하나로
+function whParseAll_(text) {
+  var t = String(text || ''), cuts = [], re = /(?:■\s*)?소득세법\s*시행규칙\s*\[?\s*별지\s*제?\s*\d+\s*호/g, m;
+  while ((m = re.exec(t))) cuts.push(m.index);
+  var segs = [];
+  if (cuts.length <= 1) segs = [t];
+  else {
+    if (cuts[0] > 200) segs.push(t.slice(0, cuts[0]));
+    cuts.forEach(function (c, i) { segs.push(t.slice(c, i + 1 < cuts.length ? cuts[i + 1] : t.length)); });
+  }
+  // 머리말을 OCR이 못 읽은 경우 — 한 조각 안에서 서식 이름(사업소득→근로소득 등)이 바뀌는 곳에서 한 번 더 자른다
+  var titleRe = /(일용\s*근로|근로|사업|기타|퇴직|연금|이자\s*[·.ㆍ,]?\s*배당)\s*소득\s*(?:원천징수영수증|특별징수영수증|지\s*급\s*명\s*세\s*서)/g;
+  var split2 = [];
+  segs.forEach(function (s) {
+    var tm, last = null, start = 0, lastAt = 0;
+    titleRe.lastIndex = 0;
+    while ((tm = titleRe.exec(s))) {
+      var kind = tm[1].replace(/\s+/g, '');
+      if (last && kind !== last && tm.index - start > 500 && tm.index - lastAt > 300) {
+        var cut = s.lastIndexOf('\n', Math.max(start, tm.index - 120));
+        cut = cut > start ? cut : tm.index;
+        split2.push(s.slice(start, cut)); start = cut;
+      }
+      last = kind; lastAt = tm.index;
+    }
+    split2.push(s.slice(start));
+  });
+  segs = split2;
+  // 서식 이름이 없는 조각(뒷장)은 앞 서식에 붙인다
+  var merged = [];
+  segs.forEach(function (s) { if (whDetect_(s) || !merged.length) merged.push(s); else merged[merged.length - 1] += '\n' + s; });
+  var out = [], keys = {};
+  merged.forEach(function (s) {
+    var r = whParse_(s);
+    if (!r) return;
+    var key = [r.하위, r.의무자사업자번호, r.귀속연도, r.총급여, r.총연금액, r.퇴직급여, r.합계 && r.합계.지급액].join('|');
+    if (keys[key]) return;
+    keys[key] = 1; out.push(r);
+  });
+  return out;
+}
+function whToMarkdown_(r) {
+  var esc = function (v) { return String(v == null ? '' : v).replace(/\|/g, '/'); };
+  var rows = [['서식', r.종류 + (r.비거주자 ? ' (비거주자)' : '')], ['귀속연도', r.귀속연도], ['원천징수의무자', r.의무자], ['의무자 사업자번호', r.의무자사업자번호], ['소득자', r.소득자], ['소득자 생년월일(앞 6자리)', r.소득자생년월일6],
+    ['근무처', r.근무처], ['근무기간', r.근무기간], ['급여', r.급여 != null ? whFmt_(r.급여) : ''], ['총급여', r.총급여 != null ? whFmt_(r.총급여) : ''], ['비과세', r.비과세 != null ? whFmt_(r.비과세) : ''],
+    ['업종', r.업종코드 ? r.업종코드 + (r.업종 ? ' ' + r.업종 : '') : ''],
+    ['총연금수령액', r.총연금수령액 != null ? whFmt_(r.총연금수령액) : ''], ['총연금액', r.총연금액 != null ? whFmt_(r.총연금액) : ''], ['연금소득금액', r.연금소득금액 != null ? whFmt_(r.연금소득금액) : ''],
+    ['입사일', r.입사일], ['퇴사일', r.퇴사일],
+    ['퇴직급여(정산)', r.퇴직급여 != null ? whFmt_(r.퇴직급여) + (r.퇴직급여확인필요 ? ' ⚠확인필요' : '') : ''], ['중간지급 등 퇴직급여', r.퇴직급여_중간 != null ? whFmt_(r.퇴직급여_중간) : ''],
+    ['근속연수', r.근속연수 ? r.근속연수 + '년' : ''], ['근속연수공제', r.근속연수공제 != null ? whFmt_(r.근속연수공제) : ''], ['환산급여', r.환산급여 != null ? whFmt_(r.환산급여) : ''],
+    ['퇴직소득 과세표준', r.퇴직소득과세표준 != null ? whFmt_(r.퇴직소득과세표준) + (r.과표검산 ? ' ✓' : '') : '']]
+    .filter(function (x) { return x[1] !== undefined && x[1] !== null && x[1] !== ''; });
+  var out = ['### ' + r.종류, '| 항목 | 내용 |\n|---|---|\n' + rows.map(function (x) { return '| ' + esc(x[0]) + ' | ' + esc(x[1]) + ' |'; }).join('\n')];
+  var tax = [['결정세액', r.결정세액], ['기납부세액(주현)', r.기납부세액], ['차감징수세액', r.차감징수세액], ['신고대상세액', r.신고대상세액], ['차감원천징수세액', r.차감원천징수세액]].filter(function (x) { return x[1]; });
+  if (tax.length) {
+    out.push('\n| 세액 | 소득세 | 지방소득세 | 검산 |\n|---|---|---|---|');
+    tax.forEach(function (x) { out.push('| ' + x[0] + ' | ' + whFmt_(x[1].소득세) + ' | ' + whFmt_(x[1].지방소득세) + ' | ' + (x[1].확정 ? '✓' : '⚠확인필요') + ' |'); });
+    if (r.세액검산) out.push('\n✓ ' + r.세액검산);
+  }
+  if (r.지급내역 && r.지급내역.length) {
+    out.push('\n**지급·원천징수 내역(검산이 맞는 묶음만)**\n\n| 지급액 | 세율 | 소득세(법인세) | 지방소득세 |\n|---|---|---|---|');
+    r.지급내역.forEach(function (x) { out.push('| ' + whFmt_(x.지급액) + ' | ' + x.세율 + '% | ' + whFmt_(x.소득세) + ' | ' + whFmt_(x.지방소득세) + ' |'); });
+    if (r.합계) out.push('\n가장 큰 묶음(합계로 보임): 지급액 **' + whFmt_(r.합계.지급액) + '**, 소득세 ' + whFmt_(r.합계.소득세) + (r.합계검산 ? ' — ' + r.합계검산 : ''));
+  }
+  if (r.경고.length) out.push('\n⚠ ' + r.경고.join(' / '));
   return out.join('\n');
 }
