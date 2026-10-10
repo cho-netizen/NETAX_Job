@@ -24764,6 +24764,8 @@ function docDetectType_(text) {
   // 제목은 OCR이 놓칠 때가 있어 표 칸 이름(세대주및관계·세대구성 사유·발생일/신고일)까지 함께 본다 — 가족관계증명서에는 없는 말들
   var jmHits = [/주\s*민\s*등\s*록\s*표/, /세대주\s*및\s*관계/, /세대\s*구성\s*사유/, /발\s*생\s*일\s*\/?\s*신\s*고\s*일/, /개인별\s*주민등록|세대별\s*주민등록/, /변\s*동\s*사\s*유/].filter(function (re) { return re.test(t); }).length;
   if (jmHits >= 2) return 'resident';
+  // 시·군·구 임대사업자 등록증 — 국세청 사업자등록증보다 먼저(둘 다 "등록증"·"사업자")
+  if (/임대\s*사업자\s*등록증|민간\s*임대\s*주택/.test(t) && !/국세청|세무서/.test(t)) return 'rent';
   if (/가족관계\s*증명서/.test(t)) return 'family';
   if (/사업자\s*등록\s*(증|증명)/.test(t) && /(개업|등록번호)/.test(t)) return 'bizreg';
   if (/접수증/.test(t) && /접수\s*번호|접수\s*일시/.test(t)) return 'receipt';
@@ -24950,6 +24952,20 @@ function docToMarkdown_(type, r) {
       r.주소이력.forEach(function (x) { out.push('| ' + [x.쪽 > 999 ? '' : x.쪽, x.사유, x.발생일, x.신고일, x.주소 || '(원문 확인)', x.날짜확인필요 || x.짝확인필요 ? '⚠확인필요' : ''].map(esc).join(' | ') + ' |'); });
     }
     out.push('\n_정부24 등·초본 PDF는 해상도가 낮은 그림이라 글자인식이 숫자를 틀릴 수 있습니다. ⚠ 행은 원본과 대조하세요. 1세대1주택 거주기간 판단은 원본 확인 후 확정하세요._');
+  } else if (type === 'rent') {
+    out.push('### ' + r.종류);
+    out.push(kv([['등록번호', r.등록번호], ['최초등록일', r.등록일], ['성명', r.성명]]));
+    if (r.주택 && r.주택.length) {
+      out.push('\n**임대주택**\n\n| 소재지 | 종류 | 기간 | 매입/건설 | 유형 | 전용면적 | 상태 |\n|---|---|---|---|---|---|---|');
+      r.주택.forEach(function (h) {
+        var st = h.말소 ? '말소' + (h.말소일후보 ? ' ' + h.말소일후보 : '') + (h.말소확정 ? '' : ' ⚠확인필요') : '등록' + (h.앞면만 ? ' ⚠확인필요' : '');
+        out.push('| ' + [h.소재지 + (h.이전주소 ? ' (주소변경, 이전: ' + h.이전주소 + ')' : ''), h.종류, h.기간, h.구분, h.유형, h.전용면적 != null ? h.전용면적 + '㎡' : '', st].map(esc).join(' | ') + ' |');
+      });
+    }
+    if (r.말소 && r.말소.length) {
+      out.push('\n**말소 기록**');
+      r.말소.forEach(function (x) { out.push('- ' + x.구분 + ' · ' + (x.날짜후보 && x.날짜후보.length ? x.날짜후보.join(' / ') : '날짜 확인필요') + (x.주소 ? ' · ' + x.주소 : '') + (x.확정 ? '' : ' ⚠확인필요')); });
+    }
   }
   if (r.경고 && r.경고.length) out.push('\n⚠ ' + r.경고.join(' / '));
   return out.join('\n');
@@ -24964,9 +24980,15 @@ function docParseText_(text) {
   else if (type === 'receipt') r = docParseReceipt_(text);
   else if (type === 'bizreg') r = docParseBizReg_(text);
   else if (type === 'resident') r = jmParse_(text);
+  else if (type === 'rent') r = rentParse_(text);
   if (!r) {
     var why = reg.사유 ? reg.사유 : (String(text || '').replace(/\s/g, '').length < 30 ? '읽을 글자가 없음(사진·스캔 품질 확인)' : '자동 정리하는 서류 종류가 아님');
-    return { type: '', label: '', result: null, md: '자동 정리 대상이 아닙니다 — ' + why + '. (정리 가능: 등기부, 가족관계증명서, 주민등록 등본·초본, 사업자등록증, 홈택스 신고서 접수증, 국세 납부서)' };
+    return { type: '', label: '', result: null, md: '자동 정리 대상이 아닙니다 — ' + why + '. (정리 가능: 등기부, 가족관계증명서, 주민등록 등본·초본, 사업자등록증, 임대사업자 등록증, 홈택스 신고서 접수증, 국세 납부서)' };
+  }
+  // 한 PDF에 국세청 사업자등록증과 시·군·구 임대사업자 등록증이 함께 묶인 경우 — 둘 다 정리
+  if (type === 'bizreg' && /임대\s*사업자\s*등록증|민간\s*임대\s*주택/.test(text)) {
+    var r2 = rentParse_(text);
+    if (r2.주택.length) return { type: 'bizreg', label: r.종류 + '+임대사업자 등록증', result: { 사업자: r, 임대: r2 }, md: docToMarkdown_('bizreg', r) + '\n\n---\n\n' + docToMarkdown_('rent', r2) };
   }
   return { type: type, label: r.종류, result: r, md: docToMarkdown_(type, r) };
 }
@@ -25264,4 +25286,104 @@ function jmMembers_(t) {
     out.push(p);
   });
   return out;
+}
+
+// =========================================================
+// [2026.10.10] 임대사업자 등록증(시·군·구) 자동 정리 — 토큰 0
+// 주택별 종류·기간·매입/건설·유형·전용면적과 자동·자진·일부 말소 이력(감면·거주주택 특례 판단용). 표본 4건·원본 1건 대조.
+// =========================================================
+// ---- 시·군·구 임대사업자 등록증(민간임대주택특별법 시행규칙 별지 제2호) — 토큰 0, ES5 ----
+// 앞면 표는 OCR에서 칸이 뒤섞이므로, 뒷면 "변경사항" 칸의 "소재지 : … 종류 : … 유형 : … 전용면적 : …" 묶음으로 주택을 읽는다.
+// 감면·거주주택 특례에 중요한 자동말소·자진말소·일부말소와 그 날짜를 따로 뽑는다. 임대개시일은 앞면 표에만 있어 확인필요로 둔다.
+function rentNormAddr_(s) { return String(s || '').replace(/\s+/g, '').replace(/[(),.]/g, ''); }
+function rentParse_(text) {
+  var t = String(text || '');
+  var r = { 종류: '임대사업자 등록증(시·군·구)', 주택: [], 말소: [], 경고: [] };
+  var m = /(\d{4}\s*-\s*)?([가-힣]{2,6}(?:시|군|구))\s*-\s*임대사업자\s*-?\s*(\d{2,6})/.exec(t);
+  if (m) r.등록번호 = (m[1] ? m[1].replace(/\s/g, '') : '') + m[2] + '-임대사업자-' + m[3];
+  m = /등록\s*번호[\s\S]{0,40}?(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t);
+  if (m) r.등록일 = m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2);
+  m = /성명\s*\(\s*법인명\s*\)\s*\n\s*([가-힣]{2,5})\s*\n/.exec(t) || /성명\s*[:：]\s*([가-힣]{2,5})/.exec(t);
+  if (m) r.성명 = m[1];
+  m = /(\d{6})\s*-\s*[\d*]{7}/.exec(t);
+  if (m) r.생년월일6 = m[1];
+  // 주택 묶음 — "소재지 : … 종류 : 장기일반민간임대주택(8년)(매입) 유형 : 아파트 전용면적 : 84.97"
+  var flat = t.replace(/\s+/g, ' ');
+  var re = /소재지\s*[:：]\s*(.{6,90}?)\s*종류\s*[:：]\s*((?:장기\s*일반|단기|공공\s*지원|공공\s*건설|기업형)?\s*민간\s*임대\s*주택\s*\(?\s*(?:(\d{1,2})\s*년)?\s*\)?\s*\(?\s*(매입|건설)?\s*\)?)\s*(?:유형\s*[:：]\s*([가-힣()]{2,14}))?\s*(?:전용\s*면적\s*[:：]\s*([\d.]+))?/g;
+  var seen = {};
+  while ((m = re.exec(flat))) {
+    var addr = m[1].replace(/\s*(?:종류|유형)\s*[:：]?\s*$/, '').replace(/^.*소재지\s*[:：]\s*/, '').replace(/<[^>]*>/g, '').trim();
+    // 같은 집이 주소 표기 변경(지번→도로명)으로 두 번 나오므로 "종류+면적+호실"로 같은 집을 알아본다
+    var ho = (/(\d{1,4})\s*호/.exec(addr) || [])[1] || '';
+    var key = (m[2].replace(/\s+/g, '').slice(0, 6)) + '|' + (m[6] || '') + '|' + ho;
+    if (!ho || !m[6]) key = rentNormAddr_(addr).slice(0, 40);
+    var kind = m[2].replace(/\s+/g, '');
+    var kindShort = /장기일반/.test(kind) ? '장기일반' : /단기/.test(kind) ? '단기' : /공공지원/.test(kind) ? '공공지원' : /공공건설/.test(kind) ? '공공건설' : /기업형/.test(kind) ? '기업형' : '';
+    var h = { 소재지: addr, 종류: kindShort ? kindShort + '민간임대주택' : kind, 기간: m[3] ? m[3] + '년' : '', 구분: m[4] || '', 유형: (m[5] || '').replace(/[()]/g, ' ').trim(), 전용면적: m[6] ? Number(m[6]) : null };
+    // 번지·호수 없이 잘린 주소("경기도 구리시")는 새 집으로 세지 않는다 — 같은 종류의 집이 이미 있으면 그 집 기록
+    if (seen[key] === undefined && !/\d/.test(addr)) {
+      for (var z = 0; z < r.주택.length; z++) if (r.주택[z].종류.slice(0, 2) === (kindShort || kind).slice(0, 2)) { seen[key] = z; break; }
+      if (seen[key] === undefined) continue;
+    }
+    // 면적·호실이 OCR에서 잘린 중복 — 같은 종류이고 호실이 같거나 주소 앞부분이 같으면 같은 집
+    if (seen[key] === undefined) {
+      var na = rentNormAddr_(addr);
+      for (var q = 0; q < r.주택.length; q++) {
+        var e = r.주택[q], ea = rentNormAddr_(e.소재지), eho = (/(\d{1,4})\s*호/.exec(e.소재지) || [])[1] || '';
+        var sameKind = e.종류.slice(0, 2) === (kindShort || kind).slice(0, 2);
+        var samePlace = (ho && eho && ho === eho && (!h.전용면적 || !e.전용면적 || h.전용면적 === e.전용면적) && na.slice(0, 12) === ea.slice(0, 12)) || (na.length >= 14 && ea.indexOf(na.slice(0, 18)) === 0) || (ea.length >= 14 && na.indexOf(ea.slice(0, 18)) === 0);
+        if (sameKind && samePlace && (!h.전용면적 || !e.전용면적 || h.전용면적 === e.전용면적)) { seen[key] = q; break; }
+      }
+    }
+    if (seen[key] !== undefined) {
+      var o = r.주택[seen[key]];
+      ['기간', '구분', '유형', '전용면적'].forEach(function (f) { if (!o[f] && h[f]) o[f] = h[f]; });
+      if (rentNormAddr_(o.소재지) !== rentNormAddr_(addr) && addr.length >= 8) { if (!o.이전주소) o.이전주소 = o.소재지; o.소재지 = addr; }
+      continue;
+    }
+    seen[key] = r.주택.length; r.주택.push(h);
+  }
+  // 앞면만 있는 등록증(변경사항 칸 없음) — 앞면 표의 주택 주소 줄만이라도 모은다(종류·면적은 확인필요)
+  if (!r.주택.length) {
+    var fs = t.search(/민간\s*임대\s*주택의\s*소재지/), fe = t.search(/합\s*계/);
+    if (fs >= 0) {
+      t.slice(fs, fe > fs ? fe : fs + 1500).split('\n').forEach(function (L) {
+        L = L.replace(/\s+/g, ' ').trim();
+        if (/^[가-힣]{2,9}(?:시|도)\s+[가-힣]{1,6}(?:시|군|구)\s+\S+/.test(L) && /\d/.test(L)) {
+          var line = L, kind2 = /장기\s*일반/.test(t.slice(fs)) ? '장기일반민간임대주택' : /단기/.test(t.slice(fs)) ? '단기민간임대주택' : '';
+          r.주택.push({ 소재지: line, 종류: kind2 || '확인필요', 기간: '', 구분: /매입/.test(t.slice(fs)) ? '매입' : /건설/.test(t.slice(fs)) ? '건설' : '', 유형: (/(아파트|오피스텔|다세대주택|다가구주택|연립주택|단독주택|도시형생활주택)/.exec(t.slice(fs)) || [])[1] || '', 전용면적: null, 앞면만: true });
+        }
+      });
+      if (r.주택.length) r.경고.push('앞면 표에서만 읽음(변경사항 칸 없음) — 종류·면적·임대개시일은 원문 확인');
+    }
+  }
+  // 말소 — "자동말소(…)", "자진말소", "일부말소" 와 그 앞뒤 날짜·주소
+  var mr = /(자동\s*말소|자진\s*말소|일부\s*말소|직권\s*말소|등록\s*말소)/g, mm;
+  while ((mm = mr.exec(flat))) {
+    var win = flat.slice(Math.max(0, mm.index - 80), mm.index + 160);
+    var dm = win.match(/(?:19|20)\d{2}-\d{2}-\d{2}/g);
+    var am = /말소\s*[:：]\s*(.{6,80}?)(?:\s*※|\s*\d+\.|$)/.exec(flat.slice(mm.index, mm.index + 300));
+    r.말소.push({ 구분: mm[1].replace(/\s+/g, ''), 날짜후보: dm ? dm.slice(0, 2) : [], 주소: am ? am[1].trim() : '' });
+  }
+  // 말소(양도) 현황 표 — "2023-11-30 말소: 경기도 구리시 … 614호 (수택동)" (날짜와 주소가 한 줄이라 가장 믿을 만함)
+  var tr = /((?:19|20)\d{2}-\d{2}-\d{2})\s*말소\s*[:：]\s*(.{6,80}?\))/g, tm;
+  while ((tm = tr.exec(flat))) r.말소.unshift({ 구분: '말소(양도)현황', 날짜후보: [tm[1]], 주소: tm[2].trim(), 확정: true });
+  // 같은 말소가 여러 번 잡히면 하나로
+  var uniq = {}; r.말소 = r.말소.filter(function (x) { var k = x.구분 + '|' + rentNormAddr_(x.주소).slice(0, 30); if (uniq[k]) return false; uniq[k] = 1; return true; });
+  r.주택.forEach(function (h) {
+    var hk = rentNormAddr_(h.소재지).slice(0, 25);
+    // 말소 주소가 도로명이고 등록 주소가 지번이어도 같은 집을 찾게 — 시·군·구 + 호실 번호가 같으면 같은 집
+    var hHo = (/(\d{1,4})\s*호/.exec(h.소재지 + ' ' + (h.이전주소 || '')) || [])[1], hCity = (/\s([가-힣]{2,4}(?:시|군))\s/.exec(' ' + h.소재지 + ' ') || [])[1];
+    r.말소.forEach(function (x) {
+      if (!x.주소) return;
+      var xHo = (/(\d{1,4})\s*호/.exec(x.주소) || [])[1];
+      var hit = (hk && rentNormAddr_(x.주소).indexOf(hk.slice(0, 15)) !== -1) || (hHo && xHo === hHo && hCity && x.주소.indexOf(hCity) !== -1);
+      if (hit && (!h.말소 || x.확정)) { h.말소 = x.구분 === '말소(양도)현황' ? '말소' : x.구분; h.말소일후보 = x.날짜후보[0] || ''; h.말소확정 = !!x.확정; }
+    });
+  });
+  if (/단기/.test(r.주택.map(function (h) { return h.종류; }).join())) r.경고.push('단기민간임대주택(4년)이 있음 — 2020.8.18 이후 단기 유형 폐지·자동말소 대상, 감면·거주주택 특례 요건 확인');
+  if (r.말소.length) r.경고.push('말소 기록 ' + r.말소.length + '건 — 말소일과 대상 주택은 원문 변경사항 칸으로 확인');
+  if (!r.주택.length) r.경고.push('임대주택 목록을 읽지 못함 — 원문 확인');
+  r.경고.push('임대개시일·임대보증금은 앞면 표에서 칸이 섞여 읽지 않음 — 원문 확인');
+  return r;
 }
