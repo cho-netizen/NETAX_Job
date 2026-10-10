@@ -24760,6 +24760,7 @@ function docParseFamily_(text) {
 // ---- 판별 ----
 function docDetectType_(text) {
   var t = String(text || '');
+  var ldt = ldDetect_(t); if (ldt) return ldt; // 건축물대장·토지대장(임야대장)
   // 주민등록표 등·초본이 먼저 — 등·초본 아래 안내문에 "가족관계증명서"라는 말이 들어 있다
   // 제목은 OCR이 놓칠 때가 있어 표 칸 이름(세대주및관계·세대구성 사유·발생일/신고일)까지 함께 본다 — 가족관계증명서에는 없는 말들
   var jmHits = [/주\s*민\s*등\s*록\s*표/, /세대주\s*및\s*관계/, /세대\s*구성\s*사유/, /발\s*생\s*일\s*\/?\s*신\s*고\s*일/, /개인별\s*주민등록|세대별\s*주민등록/, /변\s*동\s*사\s*유/].filter(function (re) { return re.test(t); }).length;
@@ -24909,6 +24910,7 @@ function docParseBizReg_(text) {
 }
 // 서류 정리 결과 → 화면용 마크다운. 읽지 못한 칸은 비우고 ⚠로 드러낸다.
 function docToMarkdown_(type, r) {
+  if (type === 'bldledger' || type === 'landledger') return ldToMarkdown_(type, r);
   if (type === 'balance' || type === 'pubprice' || type === 'acqtax') return valToMarkdown_(type, r);
   var won = function (n) { return n == null || n === '' ? '' : Number(n).toLocaleString('ko-KR') + '원'; };
   var esc = function (v) { return String(v == null ? '' : v).replace(/\|/g, '/'); };
@@ -24975,7 +24977,358 @@ function docToMarkdown_(type, r) {
   return out.join('\n');
 }
 // 서류 한 장 판별 + 정리. 등기부가 먼저(등기부 규칙), 아니면 주민등록 등·초본·가족관계·사업자등록·접수증·납부서.
+// =========================================================
+// [2026.10.10] 건축물대장·토지대장(임야대장) 자동 정리 — 토큰 0
+// 정부24 대장은 "이름표 묶음 → 값 묶음" 순서로 OCR된다. 값은 순서로 짝짓되 스스로 검산되는 것만 확정한다:
+// 건폐율=건축면적÷대지면적·용적률=용적률산정연면적÷대지면적(±1%p), 층별 면적 합=연면적, 공시지가·공동주택가격은 기준일 수=금액 수.
+// 지목은 OCR 글자가 흐려도 표준 지목코드((08)=대)로 읽는다. 표본 30건(건축물 19·토지 11)으로 맞추고 원본 대조.
+// =========================================================
+// ---- 건축물대장·토지대장(임야대장) 자동 정리 — 토큰 0, ES5 ----
+// 정부24 대장은 OCR에서 "이름표 묶음 → 값 묶음" 순서로 나온다(같은 순서). 값은 순서로 짝짓되,
+// 스스로 검산되는 것(건폐율=건축면적÷대지면적, 용적률=용적률산정연면적÷대지면적, 층별 면적 합=연면적)만 확정한다.
+function ldNum_(s) { var v = Number(String(s).replace(/,/g, '').replace(/\s/g, '')); return isNaN(v) ? null : v; }
+function ldYmd_(y, m, d) { return y + '-' + ('0' + m).slice(-2) + '-' + ('0' + d).slice(-2); }
+// "2019.3.12." / "2019. 03. 12" / "2019년 03월 12일" → 2019-03-12
+function ldDates_(s) {
+  var out = [], re = /((?:19|20)\d{2})\s*[.년]\s*(\d{1,2})\s*[.월]\s*(\d{1,2})\s*[.일]?/g, m;
+  while ((m = re.exec(s))) { var mo = Number(m[2]), d = Number(m[3]); if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) out.push({ d: ldYmd_(m[1], m[2], m[3]), at: m.index, end: re.lastIndex }); }
+  return out;
+}
+// 면적 토큰 — "159m2", "312.48 m²", "62.9m'" (OCR이 ²를 2·9·'로 읽음)
+function ldAreas_(s) {
+  var out = [], re = /(\d{1,3}(?:,\d{3})*(?:\.\d{1,4})?|\d+(?:\.\d{1,4})?)\s*(?:m\s*[2²9']|㎡)/g, m;
+  while ((m = re.exec(s))) out.push({ v: ldNum_(m[1]), at: m.index });
+  return out;
+}
+function ldAfter_(t, labelRe, len) { var i = t.search(labelRe); return i < 0 ? '' : t.slice(i, i + (len || 400)); }
+
+// ================= 건축물대장 =================
+function ldParseBuilding_(text) {
+  var t = String(text || '');
+  var isJip = /집합\s*건축물\s*대장/.test(t), isJeon = /전유부/.test(t), isChong = /총괄\s*표제부/.test(t);
+  var r = { 종류: isJip ? ('집합건축물대장(' + (isJeon ? '전유부' : isChong ? '총괄표제부' : '표제부') + ')') : (/일반\s*건축물\s*대장/.test(t) ? '일반건축물대장' : '건축물대장'), 경고: [], 확인필요: [] };
+  if (/위반\s*건축물/.test(t.replace(/위반건축물\s*표시\s*란|위반\s*건축물\s*여부\s*[:：]?\s*(없음|미해당|해당없음)/g, ''))) { r.위반건축물 = true; r.경고.push('⚠ 위반건축물 표시가 있음 — 원문 확인(양도·임대 감면·비과세 판단에 영향)'); }
+  var m = /대지\s*위치\s*\n?\s*([^\n]{4,60})/.exec(t);
+  if (m && !/지번|도로명/.test(m[1]) && /[가-힣]{2,}(시|도|군|구)/.test(m[1])) r.대지위치 = m[1].trim();
+  if (!r.대지위치) { var m0 = /\n\s*([가-힣]{2,9}(?:특별시|광역시|특별자치시|특별자치도|도)\s+[가-힣]{1,6}(?:시|군|구)(?:\s+[가-힣]{1,6}(?:구|읍|면))?\s+[가-힣0-9]{1,8}(?:동|리|가|로))\s*\n/.exec(t); if (m0) r.대지위치 = m0[1]; }
+  m = /지번\s*\n?\s*(\d{1,5}(?:-\d{1,5})?)\s*(?:\n|$)/.exec(t) || /\n\s*(산?\d{1,5}-\d{1,5})\s*\n/.exec(t);
+  if (m) r.지번 = m[1];
+  m = /도로명\s*주소\s*\n?\s*([^\n]*(?:로|길)\s*\d[^\n]{0,40})/.exec(t);
+  if (m) r.도로명주소 = m[1].trim();
+  m = /호수\s*\/\s*가구수\s*\/\s*세대수\s*\n?\s*([\d]+\s*호\s*\/\s*\d+\s*가구\s*\/?\s*\d+\s*세대)/.exec(t);
+  if (m) r.호가구세대 = m[1].replace(/\s+/g, '');
+  var lines = t.split('\n').map(function (x) { return x.trim(); });
+
+  if (!isJeon) {
+    // 대지면적·연면적 — "※대지면적 / 연면적 / ※지역 …" 이름표 다음 첫 두 면적
+    var blk = ldAfter_(t, /대지\s*면적/, 300), a1 = ldAreas_(blk);
+    if (a1.length >= 2) { r.대지면적 = a1[0].v; r.연면적 = a1[1].v; }
+    var blk2 = ldAfter_(t, /건축\s*면적/, 300), a2 = ldAreas_(blk2);
+    if (a2.length >= 1) r.건축면적 = a2[0].v;
+    if (a2.length >= 2 && /용적률\s*산정용/.test(blk2)) r.용적률산정연면적 = a2[1].v;
+    var pc = ldAfter_(t, /건폐율/, 200).match(/(\d{1,3}(?:\.\d{1,4})?)\s*%/g) || [];
+    if (pc.length >= 1) r.건폐율 = ldNum_(pc[0].replace('%', ''));
+    if (pc.length >= 2) r.용적률 = ldNum_(pc[1].replace('%', ''));
+    // 검산: 건폐율 ≈ 건축면적/대지면적, 용적률 ≈ 용적률산정연면적/대지면적 (±1%p)
+    r.면적검산 = '';
+    if (r.대지면적 && r.건축면적 && r.건폐율 != null) {
+      var bc = r.건축면적 / r.대지면적 * 100;
+      r.면적검산 += Math.abs(bc - r.건폐율) <= 1 ? '건폐율 일치 ' : '건폐율 불일치 ';
+    }
+    if (r.대지면적 && (r.용적률산정연면적 || r.연면적) && r.용적률 != null) {
+      var fr = (r.용적률산정연면적 || r.연면적) / r.대지면적 * 100;
+      r.면적검산 += Math.abs(fr - r.용적률) <= 1 ? '용적률 일치' : '용적률 불일치';
+    }
+    if (/불일치/.test(r.면적검산) || !r.면적검산) r.확인필요.push('대지·건축·연면적(검산 ' + (r.면적검산 || '불가') + ')');
+    // 주구조·주용도·층수 — 면적 다음 줄들에서 "…조", 용도, "지하 n층, 지상 n층"
+    var k = t.search(/주\s*구조/), seg = k >= 0 ? t.slice(k, k + 400) : '';
+    m = /\n\s*([^\n]{1,30}조)\s*\n/.exec(seg); if (m && !/주구조/.test(m[1])) r.주구조 = m[1].trim();
+    m = /지하\s*[:：]?\s*(\d+)\s*층\s*,?\s*지상\s*[:：]?\s*(\d+)\s*층/.exec(t); if (m) r.층수 = '지하 ' + m[1] + '층 / 지상 ' + m[2] + '층';
+    m = /층수\s*\n(?:[^\n]*\n){0,6}?[^\n]*m\s*[2²9'][^\n]*\n(?:[^\n]*m\s*[2²9'][^\n]*\n)?[^\n]*조[^\n]*\n\s*([^\n]{2,30})\n/.exec(seg + '\n');
+    if (m && !/지하|지상|층/.test(m[1])) r.주용도 = m[1].trim();
+    // 인허가 시기 — 허가일 ≤ 착공일 ≤ 사용승인일 (날짜가 섞여 나와도 크기순)
+    var hb = ldAfter_(t, /인허가\s*시기|허가일/, 260), hd = ldDates_(hb).map(function (x) { return x.d; });
+    hd = hd.filter(function (d, i) { return hd.indexOf(d) === i || true; }).sort();
+    if (hd.length >= 3) { r.허가일 = hd[0]; r.착공일 = hd[1]; r.사용승인일 = hd[hd.length - 1]; }
+    else if (hd.length) { r.사용승인일 = hd[hd.length - 1]; r.확인필요.push('허가·착공·사용승인일 일부만 읽음'); }
+    // 층별현황 — "건축물 현황" 칸: 층(지1층·1층·옥탑) 목록, 용도 목록, 면적 목록을 각각 순서대로 짝짓고, 합계를 연면적과 비교
+    var fl = ldFloors_(t);
+    r.용도목록 = fl.용도목록 || [];
+    var sumMain = 0;
+    fl.forEach(function (f) { if (!/연면적\s*제외/.test(f.용도)) sumMain += f.면적 || 0; });
+    var ok = !fl.짝확인필요 && fl.length && r.연면적 && Math.abs(sumMain - r.연면적) <= 0.5;
+    if (ok) { r.층별 = fl; r.층별검산 = '층별 면적 합계 = 연면적(' + r.연면적 + '㎡)'; }
+    else {
+      // 층·용도·면적 짝이 확정되지 않으면 층별 표는 내지 않는다(틀린 층별 면적이 겸용주택 판단에 쓰이지 않게)
+      r.층별 = [];
+      if (fl.length || (fl.면적목록 || []).length) r.확인필요.push('층별현황(층·용도·면적 짝 확정 못함 — 원문 확인)');
+    }
+    // 주택 포함 여부(겸용주택 판단의 출발점) — 층별 용도·주용도에 주택 계열이 있는가
+    var resUse = r.용도목록.concat([r.주용도 || '']).filter(function (u) { return /주택|아파트|다가구|다세대|연립|단독|공동주택|기숙사/.test(u); });
+    var nonUse = r.용도목록.filter(function (u) { return u && !/주택|아파트|다가구|다세대|연립|단독|공동주택|기숙사|계단실|연면적\s*제외|기계실|화장실/.test(u); });
+    r.주택포함 = resUse.length ? '있음' : (r.용도목록.length ? '없음' : '');
+    if (resUse.length && nonUse.length) {
+      var res = 0, non = 0;
+      if (ok) fl.forEach(function (f) { if (/연면적\s*제외/.test(f.용도)) return; if (/주택|아파트|다가구|다세대|연립|단독|공동주택|기숙사/.test(f.용도)) res += f.면적 || 0; else non += f.면적 || 0; });
+      if (ok) { r.주택면적 = Math.round(res * 100) / 100; r.비주택면적 = Math.round(non * 100) / 100; }
+      r.경고.push('주택과 다른 용도가 섞인 건물(겸용주택)' + (ok ? ' — 주택 ' + r.주택면적 + '㎡ / 그 외 ' + r.비주택면적 + '㎡' : ' — 층별 면적은 원문으로 나눌 것') + ': 주택 면적이 더 크면 전부 주택, 아니면 주택 부분만 주택(고가주택은 전체 주택으로 봄 — 2022년 이후 양도분 확인)');
+    }
+  } else {
+    // 전유부 — 호명칭, 전유부분(층·구조·용도·면적), 공용부분 면적 합계, 공동주택가격
+    m = /호\s*명칭\s*\n(?:[^\n]*\n){0,3}?\s*([A-Za-z가-힣0-9-]*\d+\s*호)\s*\n/.exec(t) || /\n\s*(제?\s*\d+\s*동\s*)?(제?\s*\d{2,5}\s*호)\s*\n/.exec(t);
+    if (m) r.호명칭 = (m[2] ? (m[1] || '') + m[2] : m[1]).replace(/\s+/g, '');
+    var jb = ldAfter_(t, /전\s*유\s*부\s*분/, 900).split(/공\s*용\s*부\s*분/)[0];
+    var jm = /\n\s*(\d{1,3}층|지\d층)\s*\n\s*([^\n]*조)\s*\n\s*([^\n]{2,30})\s*\n/.exec(jb);
+    if (jm) { r.전유층 = jm[1]; r.전유구조 = jm[2].trim(); r.전유용도 = /이하\s*여백|^-/.test(jm[3]) ? '' : jm[3].trim(); }
+    if (!r.전유용도) { var um = /(아파트|오피스텔|다세대주택|연립주택|주택|근린생활시설|소매점|사무소|업무시설|점포|창고)/.exec(jb); if (um) { r.전유용도 = um[1]; } }
+    var ja = jb.match(/\n\s*(\d{1,4}\.\d{1,4})\s*\n/);
+    if (ja) r.전유면적 = ldNum_(ja[1]);
+    var cb = ldAfter_(t, /공\s*용\s*부\s*분/, 1200).split(/이등\(초\)본|이\s*등\(초\)본|발급일/)[0];
+    var cs = (cb.match(/\n\s*(\d{1,4}\.\d{1,4})\s*(?=\n)/g) || []).map(function (x) { return ldNum_(x); });
+    if (cs.length) r.공용면적 = Math.round(cs.reduce(function (a, b) { return a + b; }, 0) * 10000) / 10000;
+    if (!r.전유면적) r.확인필요.push('전유면적');
+    // 공동주택가격 — "기준일 / 가격" 줄(날짜 + 금액)
+    r.공동주택가격 = [];
+    // 기준일 목록과 가격 목록을 따로 모아 순서대로 짝짓는다(날짜·금액이 다른 줄로 흩어져 한 칸씩 밀리는 일을 막기 위해). 개수가 다르면 ⚠
+    var pbase = t.search(/공동\s*주택\s*\(?\s*아파트\s*\)?\s*가격|공동주택가격/);
+    if (pbase >= 0) {
+      var ps = t.slice(pbase).split(/부동산\s*가격공시에\s*관한|이하\s*여백\s*-?\s*$|변동\s*사항/)[0];
+      var pdl = [], pvl = [], pm, pdr = /((?:19|20)\d{2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})\s*\.?/g;
+      while ((pm = pdr.exec(ps))) pdl.push(ldYmd_(pm[1], pm[2], pm[3]));
+      var pvr = /(\d{1,3}(?:,\d{3}){2,})/g; while ((pm = pvr.exec(ps))) pvl.push(ldNum_(pm[1]));
+      var pbad = pdl.length !== pvl.length;
+      for (var pi = 0; pi < Math.min(pdl.length, pvl.length); pi++) r.공동주택가격.push({ 기준일: pdl[pi], 가격: pvl[pi], 확인필요: pbad });
+      if (pbad && (pdl.length || pvl.length)) r.확인필요.push('공동주택가격 기준일 ' + pdl.length + '개·가격 ' + pvl.length + '개로 짝이 맞지 않음 — 원문 확인');
+    }
+  }
+  // 소유자현황 — 변동일 + 변동원인(소유권이전·보존 등), 지분
+  r.소유자 = ldOwners_(t);
+  // 변동사항 — 날짜로 시작하는 기록. 용도변경·증축·대수선·위반·멸실은 강조
+  r.변동 = ldChanges_(t);
+  r.변동.forEach(function (c) { if (/위반/.test(c.내용) && !r.위반건축물) { r.위반건축물 = true; r.경고.push('⚠ 변동사항에 위반건축물 관련 기록 — 원문 확인'); } });
+  if (r.변동.some(function (c) { return /증축/.test(c.내용); })) r.경고.push('증축 기록이 있음 — 증축 부분 취득시기·면적을 따로 볼 것');
+  if (r.변동.some(function (c) { return /용도\s*변경/.test(c.내용); })) r.경고.push('용도변경 기록이 있음 — 양도 당시 용도(주택 여부) 확인');
+  return r;
+}
+function ldFloors_(t) {
+  var out = [], floors = [], uses = [], areas = [];
+  // 층별현황은 갑 쪽과 을(건축물현황) 쪽에 나뉘어 이어진다 — "건축물 현황" 칸마다 이하여백까지 모은다(같은 칸이 두 번 잡히면 한 번만)
+  var re = /건축물\s*현황/g, mm, blocks = [], lastEnd = -1;
+  while ((mm = re.exec(t))) {
+    if (mm.index < lastEnd) continue;
+    var b = t.slice(mm.index, mm.index + 2500), cut = b.search(/이하\s*여백|이\s*등\(초\)본|이등\(초\)본|건축물대장의\s*기재/);
+    if (cut > 0 && cut < 30) cut = b.slice(30).search(/이하\s*여백|이\s*등\(초\)본|이등\(초\)본/) + 30;
+    b = cut > 0 ? b.slice(0, cut) : b;
+    lastEnd = mm.index + b.length;
+    blocks.push(b);
+  }
+  var lines = blocks.join('\n').split('\n').map(function (x) { return x.trim(); }).filter(function (x) { return x; });
+  lines.forEach(function (L) {
+    if (/^(지\d+층|\d{1,3}층|옥탑\d?층?|지하\d+층|옥탑)$/.test(L)) floors.push(L);
+    else if (/^\d{1,5}(?:\.\d{1,4})?$/.test(L) && L.indexOf('.') !== -1) areas.push(ldNum_(L));
+    else if (/(시설|주택|사무소|점포|창고|주차장|계단실|기계실|음식점|소매점|공장|교회|학원|의원|다가구|다세대|아파트|근린|업무|숙박|판매|위락|연면적제외|화장실|기숙사)/.test(L) && !/구분|용도|층별|구조|면적/.test(L)) {
+      // 한 줄에 용도 여러 개가 붙어 나오기도 함("제2종근린생활시설(사무소) 계단실(연면적제외)")
+      var parts = L.match(/[^\s]*?(?:시설|주택|사무소|점포|창고|주차장|계단실|기계실|음식점|소매점|공장|교회|학원|의원|아파트|업무|화장실|기숙사)(?:\([^)]*\))?/g) || [L];
+      parts.forEach(function (p) { uses.push(p); });
+    }
+  });
+  var n = Math.min(floors.length, areas.length);
+  for (var i = 0; i < n; i++) out.push({ 층: floors[i], 용도: uses[i] || '', 면적: areas[i] });
+  if (floors.length !== areas.length || uses.length !== floors.length) out.짝확인필요 = true;
+  out.용도목록 = uses.filter(function (u, k) { return uses.indexOf(u) === k; });
+  out.면적목록 = areas;
+  return out;
+}
+function ldOwners_(t) {
+  // 소유자현황 행은 OCR에서 "변동일 … 주민번호 … 주소 … 지분 … 변동원인" 순으로 흩어진다 — 변동원인 낱말을 기준으로
+  // 앞쪽 250자 안의 가장 가까운 날짜와 지분(1/3 등)을 붙인다
+  var out = [], re = /(소유권\s*이전|소유권\s*보존|소유자\s*등록|등기명의인\s*표시\s*변경|소유권\s*경정|소유권\s*일부\s*이전|공유자\s*지분\s*이전)/g, m;
+  while ((m = re.exec(t))) {
+    var back = t.slice(Math.max(0, m.index - 250), m.index), ds = ldDates_(back), sh = back.match(/(?:^|\n)\s*(\d{1,3}\s*\/\s*\d{1,4})\s*(?=\n)/g);
+    if (!ds.length) continue;
+    out.push({ 변동일: ds[ds.length - 1].d, 원인: m[1].replace(/\s+/g, ''), 지분: sh ? sh[sh.length - 1].replace(/\s/g, '') : '' });
+  }
+  var seen = {};
+  return out.filter(function (x) { var k = x.변동일 + x.원인 + x.지분; if (seen[k]) return false; seen[k] = 1; return true; });
+}
+function ldChanges_(t) {
+  var s = t.search(/변동\s*내용\s*및\s*원인/), out = [];
+  if (s < 0) return out;
+  var blk = t.slice(s).split(/※\s*표시\s*항목|이하\s*여백\s*$/)[0];
+  var re = /((?:19|20)\d{2})\.(\d{1,2})\.(\d{1,2})\.?\s+([^\n]{4,160})/g, m;
+  while ((m = re.exec(blk))) { var txt = m[4].trim(); if (/^\d{4}\.\d/.test(txt)) continue; out.push({ 일자: ldYmd_(m[1], m[2], m[3]), 내용: txt }); }
+  return out.slice(0, 40);
+}
+
+// ================= 토지대장·임야대장 =================
+// 지목 코드(측량·수로조사 및 지적에 관한 법률 시행규칙 — 토지대장 지목 표기 순서)
+var LD_JIMOK_CODE_ = { 1: '전', 2: '답', 3: '과수원', 4: '목장용지', 5: '임야', 6: '광천지', 7: '염전', 8: '대', 9: '공장용지', 10: '학교용지', 11: '주차장', 12: '주유소용지', 13: '창고용지', 14: '도로', 15: '철도용지', 16: '제방', 17: '하천', 18: '구거', 19: '유지', 20: '양어장', 21: '수도용지', 22: '공원', 23: '체육용지', 24: '유원지', 25: '종교용지', 26: '사적지', 27: '묘지', 28: '잡종지' };
+var LD_JIMOK_ ='전|답|과수원|목장용지|임야|광천지|염전|대|공장용지|학교용지|주차장|주유소용지|창고용지|도로|철도용지|제방|하천|구거|유지|양어장|수도용지|공원|체육용지|유원지|종교용지|사적지|묘지|잡종지';
+function ldParseLand_(text) {
+  var t = String(text || '');
+  var r = { 종류: /임야\s*대장/.test(t) ? '임야대장' : '토지대장', 경고: [], 확인필요: [], 표시변동: [], 소유자: [], 공시지가: [] };
+  var m = /토지\s*소재\s*([^\n]{4,50})/.exec(t);
+  if (m) r.소재 = m[1].replace(/토지\s*대장|임야\s*대장/g, '').trim();
+  m = /지번\s*\n?\s*(산?\s*\d{1,5}(?:-\d{1,5})?)/.exec(t);
+  if (m) r.지번 = m[1].replace(/\s+/g, '');
+  m = /고유\s*번호\s*\n?\s*([\d-]{15,25})/.exec(t);
+  if (m) r.고유번호 = m[1];
+  // 토지 표시: "(08)대", "*159*", "(20)분할되어 본번에 -21을 부함" + 날짜
+  // 지목은 표시란에서 "(08)대  *159*"처럼 코드·지목·면적이 한 행 — OCR이 지목 글자를 틀려도("TH") 코드는 표준이라 코드로 읽는다
+  var jm, rows = [], rowRe = /\((\d{2})\)\s*([가-힣A-Za-z]{0,5})\s*\n?\s*\*\s*([\d,]+(?:\.\d+)?)\s*\*/g;
+  while ((jm = rowRe.exec(t))) {
+    var code = Number(jm[1]), name = LD_JIMOK_CODE_[code] || '';
+    rows.push({ 코드: jm[1], 지목: name || jm[2], 면적: ldNum_(jm[3]), 글자일치: !jm[2] || jm[2] === name, at: jm.index });
+  }
+  // 면적은 "*413*"처럼 별표로 감싸 있어 빠짐없이 잡힌다(행 순서 = 이력 순서). 지목은 코드 표기에서:
+  // 사유 코드(20 분할·30 합병 등)는 뒤에 날짜가, 소유자 쪽 코드(03 소유권이전·04 주소변경)는 뒤에 그 낱말이 와서 구별된다.
+  var areas = [], are = /\*\s*([\d,]+(?:\.\d+)?)\s*\*/g; while ((jm = are.exec(t))) areas.push({ v: ldNum_(jm[1]), at: jm.index });
+  var jimoks = [], jre2 = /\((\d{2})\)\s*(?!\s*(?:19|20)\d{2})([가-힣A-Za-z]{0,6})/g;
+  while ((jm = jre2.exec(t))) {
+    var c2 = Number(jm[1]), w2 = jm[2] || '';
+    if (!LD_JIMOK_CODE_[c2]) continue;
+    if (/소유|주소|성명|등기|변경|이전|보존|등록|복구|정정|분할|합병/.test(w2)) continue;
+    if (w2 && w2 !== LD_JIMOK_CODE_[c2] && w2.length > 2 && /[가-힣]/.test(w2)) continue; // 다른 낱말이면 지목 칸이 아님
+    jimoks.push({ 코드: jm[1], 지목: LD_JIMOK_CODE_[c2], 글자일치: !w2 || w2 === LD_JIMOK_CODE_[c2], at: jm.index });
+  }
+  rows = jimoks;
+  // 사유: "(51)1985년 10월 01일 ⏎ 행정관할구역변경", "(20)1993년 07월 07일 ⏎ 분할되어 본번에 -1 내지 -3을 부함"
+  var reasons = [], rre = /\((\d{2})\)\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*\n?\s*([^\n(]{2,60})/g;
+  // 사유 글이 OCR 순서 때문에 다른 칸 글("이하 여백")로 잡히면 코드로 사유를 적는다(이 표본들에서 확인한 코드만)
+  var LD_REASON_CODE_ = { 20: '분할', 30: '합병', 40: '지목변경', 50: '행정구역명칭변경', 51: '행정관할구역변경' };
+  while ((jm = rre.exec(t))) {
+    var tx = jm[5].trim();
+    if (/소유권|소유자|^\d/.test(tx)) continue;
+    if (/이하\s*여백|변동\s*원\s*인|변동\s*일\s*자|성명|주\s*소/.test(tx) || tx.length < 3) tx = LD_REASON_CODE_[Number(jm[1])] ? LD_REASON_CODE_[Number(jm[1])] + '(코드로 추정)' : '사유 원문 확인';
+    reasons.push({ 코드: jm[1], 일자: ldYmd_(jm[2], jm[3], jm[4]), 사유: tx, at: jm.index });
+  }
+  // 현재 지목·면적 = 표시란의 마지막 값(변동 이력은 위에서 아래로 쌓인다)
+  if (jimoks.length) { r.지목 = jimoks[jimoks.length - 1].지목; if (jimoks.length > 1) r.지목이력 = jimoks.map(function (x) { return x.지목; }); }
+  if (areas.length) { r.면적 = areas[areas.length - 1].v; if (areas.length > 1) r.면적이력 = areas.map(function (x) { return x.v; }); }
+  reasons.forEach(function (x) { r.표시변동.push({ 일자: x.일자, 사유: x.사유 }); });
+  if (rows.some(function (x) { return !x.글자일치; })) r.경고.push('지목 글자가 흐려 지목 코드로 읽음(원문 확인 권장)');
+  if (r.지목이력 && r.지목이력.length > 1 && r.지목이력[0] !== r.지목) r.경고.push('지목이 바뀐 이력이 있음(' + r.지목이력.join(' → ') + ') — 양도 당시·취득 당시 지목 확인(비사업용토지·감면 판단)');
+  if (r.면적이력 && r.면적이력.length > 1) r.경고.push('면적 변동 이력(' + r.면적이력.join(' → ') + '㎡) — 분할·합병 확인');
+  // 소유자 변동 — "2019년 03월 12일 (03)소유권이전"
+  var ore = /((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*\n?\s*\(\d{2}\)\s*(소유권\s*이전|소유권\s*보존|소유자\s*등록|주소\s*변경|성명\s*변경|등기명의인\s*표시\s*변경|소유권\s*일부\s*이전|공유자\s*지분\s*이전|소유자\s*복구)/g;
+  while ((jm = ore.exec(t))) r.소유자.push({ 변동일: ldYmd_(jm[1], jm[2], jm[3]), 원인: jm[4].replace(/\s+/g, '') });
+  var sq = {}; r.소유자 = r.소유자.filter(function (x) { var k = x.변동일 + x.원인; if (sq[k]) return false; sq[k] = 1; return true; }).sort(function (a, b) { return a.변동일 < b.변동일 ? -1 : 1; });
+  // 면적이 바뀐 횟수보다 분할·합병 기록이 적으면 토지 이동 기록 일부를 못 읽은 것
+  if (r.면적이력) {
+    var chg = 0; for (var ci = 1; ci < r.면적이력.length; ci++) if (r.면적이력[ci] !== r.면적이력[ci - 1]) chg++;
+    var sp = r.표시변동.filter(function (x) { return /분할|합병|등록전환|면적/.test(x.사유); }).length;
+    if (chg > sp) r.확인필요.push('토지 이동 기록 일부를 못 읽음(면적 변동 ' + chg + '회, 읽힌 분할·합병 ' + sp + '건 — 원문 사유란 확인)');
+  }
+  // 개별공시지가 — 쪽마다 "기준일 7개 줄 + 금액 7개 줄"(또는 한 줄에 날짜·금액). 쪽 안에서 날짜 목록과 금액 목록을 각각 모아
+  // 순서대로 짝짓는다. 토지등급 칸의 "…일 수정" 날짜와 3자리 등급 숫자는 빼고, 날짜가 금액보다 많으면 앞쪽(등급 칸 잔여) 날짜를 버린다.
+  var pbase = t.search(/개별\s*공시\s*지가/), unsureP = 0;
+  if (pbase >= 0) {
+    var pages = t.split(/문서확인번호/);
+    pages.forEach(function (pg) {
+      var b0 = pg.search(/개별\s*공시\s*지가/);
+      if (b0 < 0) return;
+      // 쪽 끝 금액이 "용도지역 등" 글자 뒤로 밀려 나오기도 해서 "…대장에 의하여"까지 본다
+      var ps = pg.slice(b0).split(/토지\s*대장에\s*의하여|임야\s*대장에\s*의하여/)[0].replace(/용도\s*지역\s*등/g, ' ');
+      // 첫 쪽은 "등급 수정 연월일" 칸이 공시지가 이름표 뒤에 섞여 나오므로, 마지막 "수정" 뒤부터 본다
+      var hasGrade = /수정|등\s*급/.test(ps);
+      var lastFix = ps.lastIndexOf('수정');
+      if (lastFix >= 0) ps = ps.slice(lastFix + 2);
+      var pd = [], pv = [], dm2, dr2 = /((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일(?!\s*수정)/g;
+      while ((dm2 = dr2.exec(ps))) pd.push(ldYmd_(dm2[1], dm2[2], dm2[3]));
+      var rest = ps.replace(/((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/g, ' ');
+      // 토지등급(3자리 숫자)이 섞인 쪽에서는 1,000원 이상만 금액으로 본다(임야 등 1,000원 미만 공시지가는 등급 칸 없는 쪽에서만)
+      var vm2, vr2 = hasGrade ? /(?:^|[\s\n])(\d{1,3}(?:[,.]\d{3})+|\d{4,9})(?=[\s\n]|$)/g : /(?:^|[\s\n])(\d{1,3}(?:[,.]\d{3})+|\d{2,9})(?=[\s\n]|$)/g;
+      while ((vm2 = vr2.exec(rest))) pv.push(ldNum_(vm2[1].replace(/\./g, ',')));
+      if (pd.length > pv.length) pd = pd.slice(pd.length - pv.length);
+      var bad = pd.length !== pv.length;
+      if (bad) unsureP++;
+      // 개수가 맞지 않는 쪽의 짝은 확정하지 않는다(⚠ 표시 — 기준시가 환산에 그대로 쓰면 안 됨)
+      for (var q = 0; q < Math.min(pd.length, pv.length); q++) r.공시지가.push({ 기준일: pd[q], 단가: pv[q], 확인필요: bad });
+    });
+    var pq = {}; r.공시지가 = r.공시지가.filter(function (x) { if (pq[x.기준일]) return false; pq[x.기준일] = 1; return true; }).sort(function (a, b) { return a.기준일 < b.기준일 ? -1 : 1; });
+    if (unsureP) r.확인필요.push('개별공시지가 일부 쪽(' + unsureP + '쪽)에서 기준일·금액 개수가 달라 짝 확인 필요');
+  }
+  if (!r.지목) r.확인필요.push('지목');
+  if (r.면적 == null) r.확인필요.push('면적');
+  if (pbase >= 0 && !r.공시지가.length) r.확인필요.push('개별공시지가');
+  return r;
+}
+function ldDetect_(text) {
+  var t = String(text || '');
+  if (/건축물\s*대장/.test(t) && /(대지\s*위치|건물\s*ID|전유\s*부분|건축물\s*현황)/.test(t)) return 'bldledger';
+  if (/(토\s*지\s*대\s*장|임\s*야\s*대\s*장)/.test(t) && /(토지\s*소재|지목|토\s*지\s*표\s*시)/.test(t)) return 'landledger';
+  return '';
+}
+// 건축물대장·토지대장 정리 결과 → 화면용 마크다운. 검산을 통과하지 못한 값은 ⚠로 드러낸다.
+function ldToMarkdown_(type, r) {
+  var esc = function (v) { return String(v == null ? '' : v).replace(/\|/g, '/'); };
+  var m2 = function (v) { return v == null || v === '' ? '' : Number(v).toLocaleString('ko-KR') + '㎡'; };
+  var won = function (v) { return v == null ? '' : Number(v).toLocaleString('ko-KR') + '원'; };
+  var kv = function (rows) {
+    rows = rows.filter(function (x) { return x[1] !== undefined && x[1] !== null && x[1] !== ''; });
+    return rows.length ? '| 항목 | 내용 |\n|---|---|\n' + rows.map(function (x) { return '| ' + esc(x[0]) + ' | ' + esc(x[1]) + ' |'; }).join('\n') : '';
+  };
+  var out = [];
+  if (type === 'bldledger') {
+    var areaOk = /건폐율 일치/.test(r.면적검산 || '') && /용적률 일치/.test(r.면적검산 || '');
+    var mark = areaOk ? '' : ' ⚠';
+    out.push('### ' + r.종류 + (r.위반건축물 ? ' ⚠ 위반건축물' : ''));
+    out.push(kv([
+      ['대지위치', [r.대지위치, r.지번].filter(Boolean).join(' ')], ['도로명주소', r.도로명주소], ['호수/가구/세대', r.호가구세대],
+      ['대지면적', r.대지면적 ? m2(r.대지면적) + mark : (r.대지면적 === 0 ? '기재 없음' : '')], ['건축면적', r.건축면적 != null ? m2(r.건축면적) + mark : ''],
+      ['연면적', r.연면적 != null ? m2(r.연면적) + mark : ''], ['용적률 산정용 연면적', r.용적률산정연면적 != null ? m2(r.용적률산정연면적) + mark : ''],
+      ['건폐율 / 용적률', r.건폐율 != null || r.용적률 != null ? (r.건폐율 || 0) + '% / ' + (r.용적률 || 0) + '%' : ''],
+      ['면적 검산', r.면적검산 ? r.면적검산 + (areaOk ? ' ✓' : ' ⚠') : '검산 불가(대지면적 기재 없음 등) ⚠'],
+      ['주구조', r.주구조], ['주용도', r.주용도], ['층수', r.층수], ['주택 포함', r.주택포함],
+      ['허가일', r.허가일], ['착공일', r.착공일], ['사용승인일', r.사용승인일],
+      ['호명칭', r.호명칭], ['전유부분', r.전유면적 != null ? [r.전유층, r.전유구조, r.전유용도, m2(r.전유면적)].filter(Boolean).join(' · ') : ''],
+      ['공용부분 합계', r.공용면적 != null ? m2(r.공용면적) : '']
+    ]));
+    if (r.층별 && r.층별.length) {
+      out.push('\n**층별현황** (' + (r.층별검산 || '') + ')\n\n| 층 | 용도 | 면적 |\n|---|---|---|');
+      r.층별.forEach(function (f) { out.push('| ' + [f.층, f.용도, m2(f.면적)].map(esc).join(' | ') + ' |'); });
+    } else if (r.용도목록 && r.용도목록.length) out.push('\n층별 용도(원문 순서, 면적 짝은 원문 확인): ' + r.용도목록.join(', '));
+    if (r.공동주택가격 && r.공동주택가격.length) {
+      out.push('\n**공동주택가격**\n\n| 기준일 | 가격 |\n|---|---|');
+      r.공동주택가격.forEach(function (p) { out.push('| ' + p.기준일 + ' | ' + won(p.가격) + (p.확인필요 ? ' ⚠' : '') + ' |'); });
+    }
+    if (r.소유자 && r.소유자.length) out.push('\n소유자 변동(대장 기준): ' + r.소유자.map(function (x) { return x.변동일 + ' ' + x.원인 + (x.지분 ? '(지분 ' + x.지분 + ')' : ''); }).join(', ') + ' — 소유권은 등기부가 우선');
+    if (r.변동 && r.변동.length) {
+      out.push('\n**변동사항**\n\n| 일자 | 내용 |\n|---|---|');
+      r.변동.forEach(function (c) { out.push('| ' + c.일자 + ' | ' + esc(c.내용).slice(0, 120) + (/위반|증축|용도\s*변경|대수선|멸실|철거/.test(c.내용) ? ' ⚠' : '') + ' |'); });
+    }
+  } else if (type === 'landledger') {
+    out.push('### ' + r.종류);
+    out.push(kv([
+      ['소재·지번', [r.소재, r.지번].filter(Boolean).join(' ')], ['고유번호', r.고유번호],
+      ['지목(현재)', r.지목], ['면적(현재)', r.면적 != null ? m2(r.면적) : ''],
+      ['지목 이력', r.지목이력 && r.지목이력.length > 1 ? r.지목이력.join(' → ') : ''],
+      ['면적 이력', r.면적이력 && r.면적이력.length > 1 ? r.면적이력.map(function (v) { return Number(v).toLocaleString('ko-KR'); }).join(' → ') + '㎡' : ''],
+      ['공유', r.공유 ? '공유 토지(지분 있음)' : '']
+    ]));
+    if (r.표시변동.length) {
+      out.push('\n**토지 이동(분할·합병·지목변경 등)**\n\n| 일자 | 사유 |\n|---|---|');
+      r.표시변동.forEach(function (x) { out.push('| ' + x.일자 + ' | ' + esc(x.사유) + ' |'); });
+    }
+    if (r.소유자.length) {
+      out.push('\n**소유자 변동(대장 기준, 소유권은 등기부가 우선)**\n\n| 변동일 | 원인 |\n|---|---|');
+      r.소유자.forEach(function (x) { out.push('| ' + x.변동일 + ' | ' + x.원인 + ' |'); });
+    }
+    if (r.공시지가.length) {
+      out.push('\n**개별공시지가(원/㎡)**' + (r.면적 ? ' — ×면적(' + m2(r.면적) + ') = 토지 기준시가' : '') + '\n\n| 기준일 | 원/㎡ | 토지 전체(현재 면적 기준) |\n|---|---|---|');
+      r.공시지가.forEach(function (p) { out.push('| ' + p.기준일 + ' | ' + Number(p.단가).toLocaleString('ko-KR') + (p.확인필요 ? ' ⚠' : '') + ' | ' + (r.면적 ? won(Math.round(p.단가 * r.면적)) : '') + ' |'); });
+      if (r.면적이력 && r.면적이력.length > 1) out.push('\n⚠ 면적이 바뀐 토지 — 과거 연도 기준시가는 그 당시 면적으로 다시 계산할 것');
+    }
+  }
+  var warn = (r.경고 || []).slice(), need = (r.확인필요 || []);
+  if (need.length) warn.push('확인필요: ' + need.join(', '));
+  if (warn.length) out.push('\n⚠ ' + warn.join(' / '));
+  return out.join('\n');
+}
+
 function docParseText_(text) {
+  var ldt0 = ldDetect_(text); // 건축물대장·토지대장은 등기부(표제부 낱말)로 오인되기 전에 먼저
+  if (ldt0) { var lr0 = ldt0 === 'bldledger' ? ldParseBuilding_(text) : ldParseLand_(text); return { type: ldt0, label: lr0.종류, result: lr0, md: ldToMarkdown_(ldt0, lr0) }; }
   var reg = registryParse(text);
   if (reg.isRegistry) return { type: 'registry', label: '등기부', result: reg, md: registryToMarkdown_(reg, '') };
   // 원천징수영수증·지급명세서 — 사업자등록번호·접수 같은 낱말이 있어 다른 서류로 오인되기 전에 먼저 본다
@@ -24988,6 +25341,8 @@ function docParseText_(text) {
   else if (type === 'bizreg') r = docParseBizReg_(text);
   else if (type === 'resident') r = jmParse_(text);
   else if (type === 'rent') r = rentParse_(text);
+  else if (type === 'bldledger') r = ldParseBuilding_(text);
+  else if (type === 'landledger') r = ldParseLand_(text);
   else if (type === 'balance') r = balParse_(text);
   else if (type === 'pubprice') r = ppParse_(text);
   else if (type === 'acqtax') r = acqParse_(text);
