@@ -3814,6 +3814,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'doc_parse_image') return jsonResponse(docParseImage_(body)); // 캡처 이미지 → 무료 OCR → 규칙(토큰 0) // 확장프로그램 화면 글자(Alt+Shift+C) 정리 — OCR 없이 규칙만(토큰 0)
   if (body.action === 'doc_parse_multi') return jsonResponse(docParseMulti_(body)); // 여러 서류 함께 정리 + 대조표(토큰 0)
   if (body.action === 'tc_extract_case_docs') return jsonResponse(tc_extractCaseDocs_(body));
+  if (body.action === 'tc_rule_transfer_facts') return jsonResponse(tc_ruleTransferFacts_(body)); // 양도세 자동채우기 규칙 먼저(토큰 0)
   if (body.action === 'self_check_last') return jsonResponse(selfCheckLast_());
   if (body.action === 'improve_report_run') return jsonResponse(buildImprovementReport_());
   if (body.action === 'improve_report_get') return jsonResponse(getImprovementReport_());
@@ -24146,6 +24147,154 @@ function tc_extractCaseDocs_(body) {
   try { if (usage) ai_logPaid_({ entry: { kind: 'autofill', model: model, usd: usage.costUsd, q: '세액계산 자동채우기 — ' + found.row[col.사건명] + ' (서류 ' + used.length + '개)' } }); } catch (e) {}
   try { if (reply && reply.length < 90000) tcCache.put(tcKey, reply, 21600); } catch (e) {}
   return { success: true, reply: reply, files: used, skipped: skipped, usd: usage ? usage.costUsd : null };
+}
+
+// ============================================================
+// [2026.10.11 토큰0] 양도세 자동채우기 "규칙 먼저" — 사건 폴더 서류를 규칙으로 정리한 결과만으로 거래 값을 찾는다(AI 0원).
+// 납세자 이름이 매도인인 매매계약서 = 양도, 매수인인 계약서 = 취득(같은 부동산끼리 짝). 금액은 계약금+중도금+잔금=매매대금
+// 검산이 맞은 것만, 날짜는 잔금일이 확실한 것만 넣는다(아니면 비워 둠 → 화면이 AI 자동채우기를 권함).
+// 양도·취득시기(소득세법 §98: 잔금청산일과 등기접수일 중 빠른 날)는 등기부 접수일이 더 빠르면 그날로 고친다.
+// 결과는 AI 자동채우기와 같은 모양({sellerName, transactions})이라 화면이 같은 방식으로 채운다.
+// ============================================================
+function tcLocKey_(s) {
+  // 주소 비교용 — 시·도 빼고 시군구 이하 낱말과 번지·호 숫자만
+  return String(s || '').replace(/\([^)]*\)/g, ' ').replace(/[,.·]/g, ' ').split(/\s+/).filter(function (w) {
+    return w && !/^(서울특별시|[가-힣]{2,4}광역시|[가-힣]{2,4}특별자치시|[가-힣]{2,4}특별자치도|경기도|강원도|충청북도|충청남도|전라북도|전라남도|경상북도|경상남도|제주도)$/.test(w);
+  });
+}
+function tcLocSame_(a, b) {
+  var ka = tcLocKey_(a), kb = tcLocKey_(b);
+  if (!ka.length || !kb.length) return false;
+  var shared = ka.filter(function (w) { return kb.indexOf(w) !== -1; });
+  var nums = shared.filter(function (w) { return /\d/.test(w); });
+  if (shared.length >= 3 && nums.length >= 1) return true;
+  // 공동주택은 지번·도로명 표기가 달라도(분양계약서 vs 매매계약서) 같은 시·군 + 같은 "○동 ○호"면 같은 집
+  var dong = shared.filter(function (w) { return /^\d+동$/.test(w); }), ho = shared.filter(function (w) { return /^\d+호$/.test(w); });
+  var city = shared.filter(function (w) { return /[가-힣](시|군)$/.test(w); });
+  return dong.length >= 1 && ho.length >= 1 && city.length >= 1;
+}
+// 계약서 글에서 납세자 이름이 나오는 곳마다 바로 앞(300자 안) 가장 가까운 이름표가 매도인인지 매수인인지 세어 다수로 정한다
+function tcRoleInText_(text, names) {
+  var t = String(text || ''), sell = 0, buy = 0;
+  names.forEach(function (n) {
+    if (n.length < 2) return;
+    var re = new RegExp(n.split('').join('\\s*'), 'g'), m;
+    while ((m = re.exec(t))) {
+      var back = t.slice(Math.max(0, m.index - 300), m.index);
+      var ls = back.search(/매\s*도\s*[인자](?![\s\S]*매\s*도\s*[인자])/), lb = back.search(/매\s*수\s*[인자](?![\s\S]*매\s*수\s*[인자])/);
+      if (ls > lb) sell++; else if (lb > ls) buy++;
+    }
+  });
+  if (sell > buy) return 'seller';
+  if (buy > sell) return 'buyer';
+  return '';
+}
+function tcNameIn_(field, names) {
+  var f = String(field || '').replace(/\s+/g, '');
+  return names.some(function (n) { return n.length >= 2 && f.indexOf(n) !== -1; });
+}
+function tc_ruleTransferFacts_(body) {
+  var caseId = String(body.caseId || '').trim();
+  if (!caseId) return { error: '사건이 필요합니다.' };
+  var sheet = work_getSheet_();
+  var col = work_colMap_(sheet.getDataRange().getValues()[0]);
+  var found = work_findCaseRow_(sheet, col, caseId);
+  if (!found) return { error: '사건을 찾지 못했습니다.' };
+  var folderId = String(found.row[col.폴더ID] || '').trim();
+  if (!folderId) return { error: '사건 폴더가 없습니다.' };
+  var names = [found.row[col.납세자], found.row[col.고객명]].map(function (x) { return String(x || '').replace(/\s+/g, ''); }).filter(function (x) { return x.length >= 2; });
+  var files = [];
+  client_listFilesRecursive_(DriveApp.getFolderById(folderId), 0, 120, files);
+  var rank = function (n) { return /(계약|신고필증|취득세|법무|등기|등본)/.test(n) ? 0 : 1; };
+  files.sort(function (a, b) { return rank(a.name) - rank(b.name); });
+  var contracts = [], reports = [], acqs = [], lawyers = [], regs = [], started = Date.now();
+  for (var i = 0; i < files.length && i < 40; i++) {
+    if (Date.now() - started > 240000) break;
+    var f = files[i];
+    if (!/pdf|^image\//.test(String(f.mimeType || ''))) continue;
+    try { f.modified = DriveApp.getFileById(f.id).getLastUpdated().getTime(); } catch (e) {}
+    var text = null;
+    try { text = tc_docText_(f); } catch (e) { continue; }
+    if (!text) continue;
+    var p = null;
+    try { p = docParseText_(text); } catch (e) { continue; }
+    if (!p || !p.type) continue;
+    if (p.result && p.result.docs) p.result.docs.forEach(function (d) {
+      if (d.type === 'contract') contracts.push({ file: f.name, r: d.r, role: tcRoleInText_(text, names) });
+      if (d.type === 'dealreport') reports.push({ file: f.name, r: d.r });
+    });
+    if (p.type === 'acqtax') acqs.push({ file: f.name, r: p.result });
+    if (p.type === 'lawyerfee') lawyers.push({ file: f.name, r: p.result });
+    if (p.type === 'registry') regs.push({ file: f.name, r: p.result });
+  }
+  var ok = function (c) { return /^일치/.test(String(c.r.검산 || '')) && c.r.매매대금; };
+  // 계약서 정리 결과의 매도인·매수인 칸은 서명란을 못 읽어 비는 일이 많아, 본문에서 납세자 이름 바로 앞 이름표(매도인/매수인)로 역할을 정한다
+  var sells = contracts.filter(function (c) { return c.role === 'seller' || (!c.role && tcNameIn_(c.r.매도인, names)); });
+  var buys = contracts.filter(function (c) { return c.role === 'buyer' || (!c.role && tcNameIn_(c.r.매수인, names)); });
+  var evidence = [], txs = [];
+  // 등기부 소유권 이력에서 그 부동산의 납세자 명의 취득·양도 접수일 찾기(§98 빠른 날 비교용)
+  var regDate = function (loc, mine) {
+    var best = '';
+    regs.forEach(function (g) {
+      (g.r.docs || []).forEach(function (d) {
+        if (!tcLocSame_(d.소재지, loc)) return;
+        d.소유권이력.forEach(function (x, k) {
+          var holder = (x.권리자 || []).map(function (h) { return h.이름; }).join('');
+          var isMine = tcNameIn_(holder, names);
+          if (x.말소) return;
+          if (mine === 'acq' && isMine && x.접수일 && !x.확인필요) best = x.접수일;
+          if (mine === 'sell' && !isMine && x.접수일 && !x.확인필요 && k > 0) {
+            var prev = d.소유권이력[k - 1], ph = (prev.권리자 || []).map(function (h) { return h.이름; }).join('');
+            if (tcNameIn_(ph, names)) best = x.접수일;
+          }
+        });
+      });
+    });
+    return best;
+  };
+  var earlier = function (a, b) { return !a ? b : !b ? a : (a < b ? a : b); };
+  sells.forEach(function (s) {
+    var tx = { assetLocation: s.r.소재지 || null, transferPrice: ok(s) ? s.r.매매대금 : null, transferDate: (s.r.잔금일 && !s.r.잔금일확인필요) ? s.r.잔금일 : null,
+      acquisitionPrice: null, acquisitionDate: null, acquisitionExpenses: null, transferExpensesOnly: null, provisions: {} };
+    evidence.push('양도: ' + s.file + (tx.transferPrice ? ' — 매매대금 ' + tx.transferPrice.toLocaleString('ko-KR') + '원(검산 일치)' : ' — 금액 검산 안 됨(비움)') + (tx.transferDate ? ', 잔금일 ' + tx.transferDate : ''));
+    // 신고필증으로 금액 대조·잔금일 보충
+    reports.forEach(function (rp) {
+      if (!tcLocSame_(rp.r.소재지, s.r.소재지)) return;
+      if (rp.r.총거래가격 && tx.transferPrice && rp.r.총거래가격 !== tx.transferPrice) evidence.push('⚠ 신고필증 거래가격 ' + rp.r.총거래가격.toLocaleString('ko-KR') + '원 ≠ 계약서 — 확인필요');
+      if (!tx.transferPrice && rp.r.총거래가격 && rp.r.검산) { tx.transferPrice = rp.r.총거래가격; evidence.push('양도가액은 신고필증 거래가격으로(' + rp.file + ')'); }
+      if (!tx.transferDate && rp.r.잔금지급일) { tx.transferDate = rp.r.잔금지급일; evidence.push('양도 잔금일은 신고필증 잔금지급일(' + rp.file + ')'); }
+    });
+    var rd = regDate(s.r.소재지, 'sell');
+    if (rd && tx.transferDate && rd < tx.transferDate) { evidence.push('양도시기: 등기접수일 ' + rd + '이 잔금일보다 빨라 그날로(§98)'); tx.transferDate = rd; }
+    var b = buys.filter(function (x) { return tcLocSame_(x.r.소재지, s.r.소재지); })[0];
+    if (b) {
+      tx._acqMatched = true;
+      tx.acquisitionPrice = ok(b) ? b.r.매매대금 : null;
+      tx.acquisitionDate = (b.r.잔금일 && !b.r.잔금일확인필요) ? b.r.잔금일 : null;
+      var ra = regDate(b.r.소재지, 'acq');
+      if (ra && tx.acquisitionDate && ra < tx.acquisitionDate) { evidence.push('취득시기: 등기접수일 ' + ra + '이 잔금일보다 빨라 그날로(§98)'); tx.acquisitionDate = ra; }
+      if (!tx.acquisitionDate && ra) { tx.acquisitionDate = ra; evidence.push('취득일은 등기부 접수일(' + ra + ') — 잔금일 확인 권장'); }
+      evidence.push('취득: ' + b.file + (tx.acquisitionPrice ? ' — 매매대금 ' + tx.acquisitionPrice.toLocaleString('ko-KR') + '원(검산 일치)' : ' — 금액 검산 안 됨(비움)') + (tx.acquisitionDate ? ', 취득일 ' + tx.acquisitionDate : ''));
+    } else evidence.push('취득 계약서(납세자가 매수인, 같은 소재지)를 찾지 못함 — 상속·증여 취득이면 그 서류로 직접 입력');
+    txs.push(tx);
+  });
+  // 취득 부대비용 — 거래가 하나일 때만(여러 건이면 어느 집 것인지 규칙으로 확정 못 함)
+  // 취득 계약서가 짝지어진 거래에만, 그리고 서류 주소가 그 부동산과 같을 때만 넣는다(다른 집 취득세를 붙이는 일 방지)
+  if (txs.length === 1 && txs[0]._acqMatched) {
+    var exp = 0, parts = [];
+    acqs.forEach(function (a) { if (a.r.검산 && a.r.합계 && a.r.과세물건 && tcLocSame_(a.r.과세물건, txs[0].assetLocation)) { exp += a.r.합계; parts.push('취득세 등 ' + a.r.합계.toLocaleString('ko-KR') + '원(' + a.file + ')'); } });
+    lawyers.forEach(function (l) { if (l.r.검산 && l.r.합계 && /소유권/.test(l.r.등기종류 || '') && !/근저당|전세권/.test(l.r.등기종류 || '') && l.r.소재지 && tcLocSame_(l.r.소재지, txs[0].assetLocation) && (!l.r.일자 || !txs[0].acquisitionDate || Math.abs(new Date(l.r.일자) - new Date(txs[0].acquisitionDate)) < 120 * 86400000)) { exp += l.r.합계; parts.push('법무사 소유권이전 ' + l.r.합계.toLocaleString('ko-KR') + '원(' + l.file + ')'); } });
+    if (exp) { txs[0].acquisitionExpenses = exp; evidence.push('취득 부대비용 합계 ' + exp.toLocaleString('ko-KR') + '원: ' + parts.join(', ')); }
+  }
+  if (acqs.length + lawyers.length && !(txs.length === 1 && txs[0].acquisitionExpenses)) evidence.push('취득세·법무사 서류 ' + (acqs.length + lawyers.length) + '건은 어느 거래 것인지 규칙으로 확정 못 해 넣지 않음 — 직접 확인');
+  txs.forEach(function (t) { delete t._acqMatched; });
+  if (body.debug) {
+    var mk = function (s) { s = String(s || ''); return s ? s.slice(0, 1) + '…(' + s.length + ')' : ''; };
+    return { ok: true, debug: true, names: names.map(mk), parties: contracts.map(function (c) { return { 매도인: mk(c.r.매도인), 매수인: mk(c.r.매수인), 검산: c.r.검산, 매매대금: !!c.r.매매대금, 잔금일: !!c.r.잔금일, 소재지: mk(c.r.소재지),
+      역할: c.role, 파일: c.file }; }) };
+  }
+  return { ok: true, sellerName: names[0] || null, transactions: txs, evidence: evidence,
+    counts: { 계약서: contracts.length, 신고필증: reports.length, 취득세: acqs.length, 법무사: lawyers.length, 등기부: regs.length } };
 }
 
 // ============================================================

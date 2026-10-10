@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-10 16:39 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-10 17:07 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -21105,10 +21105,28 @@ async function runAiAutoFillTransferBulk(){
     'provisions의 각 항목은 문서에 그 특례·감면·비과세에 해당한다는 명확한 근거(예: 농지원부·주택임대사업자등록증·조합원입주권 안내문·파산선고문 등)가 있으면 true, 문서 내용상 명백히 해당 없는 성격의 거래(예: 상가 매매인데 농지 관련 질문)면 false, 애매하거나 판단할 근거가 아예 없으면 null로 답해라 — 절대 임의로 지어내지 마라. 같은 거래를 서로 다른 문서에서 중복으로 찾았으면 하나로 합쳐라.)';
 
   try {
-    const reply = await runFolderAiExtraction(instruction);
-    const json = extractJsonFromReply(reply);
+    // [2026.10.11 토큰0] 규칙 먼저 — 사건 폴더 서류를 규칙으로 정리한 결과(검산된 매매대금·잔금일·등기접수일·취득세·법무사비)로
+    // 거래를 찾으면, 세무사님 확인 후 AI 없이 채운다(0원). 못 찾거나 "취소"를 누르면 예전처럼 AI 자동채우기.
+    let json = null, reply = '', ruleUsed = false;
+    if (tcCurrentCase && tcCurrentCase.id){
+      try {
+        const rf = await callGas('tc_rule_transfer_facts', { caseId: tcCurrentCase.id });
+        const rt = rf && rf.ok && Array.isArray(rf.transactions) ? rf.transactions.filter(function(t){ return t.transferPrice || t.acquisitionPrice; }) : [];
+        if (rt.length){
+          const won = function(v){ return v ? Number(v).toLocaleString('ko-KR') + '원' : '(비어 있음)'; };
+          const summary = rt.map(function(t, i){ return (i + 1) + ') ' + (t.assetLocation || '소재지 미확인') + '\n   양도 ' + won(t.transferPrice) + ' ' + (t.transferDate || '') + ' / 취득 ' + won(t.acquisitionPrice) + ' ' + (t.acquisitionDate || '') + (t.acquisitionExpenses ? ' / 취득부대비용 ' + won(t.acquisitionExpenses) : ''); }).join('\n');
+          const msg = '⚡ 서류를 규칙으로 정리해 거래 ' + rt.length + '건을 찾았습니다(AI 비용 0원).\n\n' + summary + '\n\n근거:\n- ' + (rf.evidence || []).slice(0, 8).join('\n- ') +
+            '\n\n[확인] 이 값으로 채우기(빈 칸·특례는 직접 또는 다시 눌러 AI로)\n[취소] AI 자동채우기로 진행(유료)';
+          if (window.confirm(msg)){ json = { sellerName: rf.sellerName, transactions: rt }; ruleUsed = true; }
+        }
+      } catch (e) { /* 규칙 단계 실패 — AI로 진행 */ }
+    }
+    if (!json){
+      reply = await runFolderAiExtraction(instruction);
+      json = extractJsonFromReply(reply);
+    }
     const items = Array.isArray(json) ? json : (json && Array.isArray(json.transactions) ? json.transactions : (json ? [json] : []));
-    if (!items.length) throw new Error('응답에서 거래를 찾지 못했습니다. 응답: ' + reply.slice(0, 200));
+    if (!items.length) throw new Error('응답에서 거래를 찾지 못했습니다. 응답: ' + String(reply).slice(0, 200));
     // [2026.10.07 신규, 재검토121] 양도인 본인 정보는 transferSellers[0]에 반영 — 이미 입력돼
     // 있는 값은 덮어쓰지 않는다(여러 번 돌려도 기존 수기입력이 지워지지 않도록).
     if (json && !Array.isArray(json)){
@@ -21143,11 +21161,11 @@ async function runAiAutoFillTransferBulk(){
       target._aiUncertainProvisionKeys = uncertainProvisions;
       target._aiStatus = filled.length ? 'done' : 'error';
       target._aiFilledFields = filled;
-      target._aiFileName = '증빙 일괄조회';
+      target._aiFileName = ruleUsed ? '서류 규칙 정리(토큰 0)' : '증빙 일괄조회';
       if (!filled.length) target._aiError = '이 거래는 문서에서 값을 찾지 못했습니다 — 직접 입력하세요.';
       else filledCount++;
     });
-    transferBulkAiState = { _aiStatus: 'done', _aiFilledFields: [items.length + '건 거래 인식, ' + filledCount + '건 자동입력 완료'] };
+    transferBulkAiState = { _aiStatus: 'done', _aiFilledFields: [items.length + '건 거래 인식, ' + filledCount + '건 자동입력 완료' + (ruleUsed ? ' (서류 규칙 정리 · AI 미사용, 토큰 0)' : '')] };
   } catch (err) {
     transferBulkAiState = { _aiStatus: 'error', _aiError: err && err.message ? err.message : String(err) };
   }
