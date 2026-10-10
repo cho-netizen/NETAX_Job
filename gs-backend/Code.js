@@ -3809,6 +3809,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'ai_log_paid') return jsonResponse(ai_logPaid_(body));
   if (body.action === 'self_check_run') return jsonResponse(runSelfCheck_());
   if (body.action === 'registry_parse') return jsonResponse(registryParseFile_(body)); // 등기부 PDF 정리(토큰 0)
+  if (body.action === 'doc_parse') return jsonResponse(docParseFile_(body)); // 서류 PDF 정리 — 등기부·가족관계·사업자등록·접수증·납부서(토큰 0)
   if (body.action === 'tc_extract_case_docs') return jsonResponse(tc_extractCaseDocs_(body));
   if (body.action === 'self_check_last') return jsonResponse(selfCheckLast_());
   if (body.action === 'improve_report_run') return jsonResponse(buildImprovementReport_());
@@ -24641,9 +24642,330 @@ function registryParseFile_(body) {
   var cache = CacheService.getScriptCache(), key = 'regp_' + id + '_' + f.getLastUpdated().getTime();
   var hit = cache.get(key);
   if (hit) return JSON.parse(hit);
-  var text = ocrFileText_(id);
+  var text = docOcrRetry_(id);
   var p = registryParse(text);
   var res = { ok: true, name: name, isRegistry: !!p.isRegistry, result: p, md: '**' + name + '**\n\n' + registryToMarkdown_(p, name) };
+  try { var s = JSON.stringify(res); if (s.length < 95000) cache.put(key, s, 21600); } catch (e) { /* 캐시 실패는 무시 */ }
+  return res;
+}
+
+// =========================================================
+// [2026.10.10] 국세·민원 서류 자동 정리 — 토큰 0
+// 홈택스·민원 PDF도 글자층이 없어 구글 무료 OCR로 읽고 규칙으로 정리: 가족관계증명서(사망 표시 포함), 사업자등록증(명),
+// 홈택스 신고서 접수증, 국세 납부서. 표본 48건으로 맞췄다. 지방세 납부서·지자체 임대사업자 등록증은 범위 밖으로 안내만.
+// =========================================================
+// 국세·민원 서류 자동 정리(토큰 0) — 구글 무료 OCR 글자를 규칙으로 읽는다. ES5(앱스스크립트 이식용).
+// 원칙: 확실하지 않은 값은 지어내지 않고 확인필요로 남긴다.
+
+// 주민번호 → { 생년월일, 성별 } (뒷자리 첫 숫자가 가려져 있으면 성별 없음)
+function docRrnInfo_(rrn) {
+  var m = /(\d{2})(\d{2})(\d{2})\s*-\s*([\d*])/.exec(rrn || '');
+  if (!m) return null;
+  var g = m[4], cent = /[12]/.test(g) ? '19' : /[34]/.test(g) ? '20' : /[90]/.test(g) ? '18' : /[56]/.test(g) ? '19' : /[78]/.test(g) ? '20' : '';
+  return { 생년월일: cent ? cent + m[1] + '-' + m[2] + '-' + m[3] : '', 성별: /[13579]/.test(g) ? '남' : /[02468]/.test(g) ? '여' : '' };
+}
+
+// ---- 가족관계증명서 ----
+var DOC_FAM_ROLES_ = ['본인', '부', '모', '배우자', '자녀', '양부', '양모', '친생부', '친생모'];
+var DOC_FAM_STOP_ = /^(가족관계증명서|상세|일반|등록기준지|구분|성명|성|명|출생연월일|주민등록번호|성별|본|가족사항|사망|남|여|대법원|증명서|발급|위|무인증명서발급)$/;
+function docParseFamily_(text) {
+  var t = String(text || '');
+  // 발급 안내문(맨 끝)은 잘라낸다 — 발급일·발급담당자 이름을 가족으로 읽지 않게
+  var endAt = t.search(/위\s*가족관계증명서/);
+  var body = endAt > 0 ? t.slice(0, endAt) : t;
+  var r = { 종류: '가족관계증명서', 상세: /상세/.test(t), 가족: [], 경고: [] };
+  var bm = /등록기준지\s*([^\n]{2,60})/.exec(body);
+  if (bm) r.등록기준지 = bm[1].trim();
+  // 역할 칸 찾기 — 줄 맨 앞(또는 단독)의 역할 낱말
+  var roleRe = /(^|\n)\s*(본인|부|모|배우자|자녀|양부|양모|친생부|친생모)(?=[\s(]|$)/g, m, roles = [];
+  while ((m = roleRe.exec(body))) roles.push({ role: m[2], at: m.index + m[1].length, end: roleRe.lastIndex });
+  if (!roles.length) { r.경고.push('구분(본인·부·모…) 칸을 찾지 못함 — 원문 확인 필요'); return r; }
+  // 역할마다 바로 뒤 첫 이름(한글 2~4자, 한자 괄호 있으면 함께)
+  // OCR이 "자녀 ⏎ 자녀 ⏎ 이름 ⏎ 이름"처럼 역할을 몰아 쓰면 앞 역할 칸이 비고 뒤 칸에 이름이 둘 — 비어 있던 앞 역할부터 차례로 채운다.
+  // 이름 바로 뒤 "사망"은 상속에서 중요하므로 따로 표시한다.
+  var pending = [];
+  roles.forEach(function (x, i) {
+    var seg = body.slice(x.end, i + 1 < roles.length ? roles[i + 1].at : body.length);
+    var names = [], w, wr = /([가-힣]{2,4})\s*(?:\(?([一-鿿]{1,5})\)?)?(\s*사망)?/g;
+    while ((w = wr.exec(seg))) { if (DOC_FAM_STOP_.test(w[1])) continue; names.push({ 이름: w[1], 한자: w[2] || '', 사망: !!w[3] }); }
+    var need = pending.concat([x]);
+    if (names.length >= need.length) { need.forEach(function (y, k) { y.이름 = names[k].이름; y.한자 = names[k].한자; y.사망 = names[k].사망; }); pending = []; }
+    else if (names.length) { x.이름 = names[0].이름; x.한자 = names[0].한자; x.사망 = names[0].사망; }
+    else pending.push(x);
+    if (/사망/.test(seg) && x.이름 && !x.사망 && names.length === 1) x.사망 = true;
+  });
+  // 주민번호 목록(글 순서) — 생년월일·성별을 주민번호에서 얻는다
+  var qs = [], qr = /(\d{6})\s*-\s*([\d*]{7})/g;
+  while ((m = qr.exec(body))) { var inf = docRrnInfo_(m[0]); qs.push({ rrn: m[1] + '-' + m[2], at: m.index, 생년월일: inf ? inf.생년월일 : '', 성별: inf ? inf.성별 : '' }); }
+  // 일반 증명서처럼 주민번호 뒷자리가 가려져 있으면 생년월일은 날짜 칸에서
+  // 역할과 주민번호를 짝짓기 — 글 순서를 지키되(OCR이 부·모 줄을 뒤바꾸는 경우는 둘을 바꿔 다시 시도),
+  // 성별(부=남, 모=여)·나이(부모는 본인보다 15살 이상 위, 자녀는 15살 이상 아래)가 맞는 짝을 고른다.
+  var yr = function (q) { return q && q.생년월일 ? Number(q.생년월일.slice(0, 4)) : null; };
+  function score(order, asg) {
+    var s = 0, me = null;
+    order.forEach(function (x, i) { if (x.role === '본인' && asg[i] != null) me = qs[asg[i]]; });
+    order.forEach(function (x, i) {
+      if (asg[i] == null) return;
+      var q = qs[asg[i]]; s += 1;
+      if (/^(부|양부|친생부)$/.test(x.role) && q.성별) s += q.성별 === '남' ? 1 : -3;
+      if (/^(모|양모|친생모)$/.test(x.role) && q.성별) s += q.성별 === '여' ? 1 : -3;
+      if (me && x.role !== '본인' && yr(me) && yr(q)) {
+        var d = yr(me) - yr(q);
+        if (/부|모/.test(x.role)) s += d >= 15 ? 1 : -3;
+        if (x.role === '자녀') s += d <= -15 ? 1 : -3;
+      }
+    });
+    return s;
+  }
+  // 순서 지키는 짝짓기(DP) — 역할은 건너뛸 수 있다(사망 등으로 주민번호가 없는 칸)
+  function align(order) {
+    var n = order.length, k = qs.length, best = { s: -1e9, asg: [] };
+    (function rec(i, j, asg) {
+      if (i === n) { var sc = score(order, asg); if (sc > best.s) best = { s: sc, asg: asg.slice() }; return; }
+      if (n - i > 12) return;
+      for (var jj = j; jj < k; jj++) { asg[i] = jj; rec(i + 1, jj + 1, asg); }
+      asg[i] = null; rec(i + 1, j, asg);
+      asg.length = i;
+    })(0, 0, []);
+    return best;
+  }
+  var variants = [roles];
+  var iF = -1, iM = -1;
+  roles.forEach(function (x, i) { if (x.role === '부' && iF < 0) iF = i; if (x.role === '모' && iM < 0) iM = i; });
+  if (iF >= 0 && iM >= 0) { var sw = roles.slice(); sw[iF] = roles[iM]; sw[iM] = roles[iF]; variants.push(sw); }
+  var pick = null;
+  if (qs.length && roles.length <= 12) variants.forEach(function (v) { var b = align(v); if (!pick || b.s > pick.s) pick = { s: b.s, asg: b.asg, order: v }; });
+  var order = pick ? pick.order : roles, asg = pick ? pick.asg : [];
+  // 날짜 칸(주민번호가 가려진 일반 증명서 대비)
+  var dates = [], dr = /(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/g;
+  while ((m = dr.exec(body))) dates.push(m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2));
+  var usedQ = {};
+  roles.forEach(function (x) {
+    var i = order.indexOf(x), q = asg[i] != null ? qs[asg[i]] : null;
+    if (q) usedQ[asg[i]] = true;
+    var p = { 관계: x.role, 이름: x.이름 || '', 한자: x.한자 || '', 생년월일: q ? q.생년월일 : '', 주민번호: q ? q.rrn : '', 성별: q ? q.성별 : '' };
+    if (x.사망) p.사망 = true;
+    if (!p.이름) p.확인필요 = true;
+    if (!q && /^(본인|배우자|자녀)$/.test(x.role)) p.확인필요 = true;
+    r.가족.push(p);
+  });
+  // 생년월일이 주민번호에 없으면(가려짐) 확인필요 — 날짜 칸만으로는 누구 것인지 확정 못 함
+  r.가족.forEach(function (p) { if (p.주민번호 && !p.생년월일) p.확인필요 = true; });
+  var left = qs.filter(function (q, i) { return !usedQ[i]; }).length;
+  if (left) r.경고.push('주민번호 ' + left + '개를 가족 칸에 짝짓지 못함 — 원문 확인 필요');
+  if (r.가족.some(function (p) { return /^(부|모)$/.test(p.관계) && !p.주민번호; })) r.경고.push('부·모 중 주민번호가 없는 칸이 있음(사망·기록 없음이거나 글자인식 누락)');
+  return r;
+}
+
+// ---- 판별 ----
+function docDetectType_(text) {
+  var t = String(text || '');
+  if (/가족관계\s*증명서/.test(t)) return 'family';
+  if (/사업자\s*등록\s*(증|증명)/.test(t) && /(개업|등록번호)/.test(t)) return 'bizreg';
+  if (/접수증/.test(t) && /접수\s*번호|접수\s*일시/.test(t)) return 'receipt';
+  if (/납부서/.test(t) && /(납부\s*기한|전자\s*납부\s*번호|납부\s*금액)/.test(t)) return 'payment';
+  return '';
+}
+
+// ---- 국세 납부서 ----
+var DOC_TAX_NAMES_ = ['양도소득세', '증여세', '상속세', '종합소득세', '부가가치세', '법인세', '원천세', '근로소득세', '이자소득세', '배당소득세', '사업소득세', '퇴직소득세', '기타소득세', '종합부동산세', '증권거래세', '인지세', '개별소비세', '농어촌특별세'];
+function docNum_(s) { return Number(String(s).replace(/[^\d]/g, '')) || 0; }
+function docYmd_(y, m, d) { return y + '-' + ('0' + m).slice(-2) + '-' + ('0' + d).slice(-2); }
+function docParsePayment_(text) {
+  var t = String(text || '');
+  var r = { 종류: '국세 납부서', 경고: [] };
+  // 국세 납부서는 "국세징수법 시행규칙" 서식 — 이 표시가 없으면 지방세 납부서(범위 밖)이거나 글자인식 실패
+  if (!/국세징수법|국세계좌|국세청|세무서/.test(t)) { r.국세아님 = true; r.경고.push('국세 납부서로 확인되지 않음(지방세 납부서이거나 글자인식 실패) — 정리하지 않음'); return r; }
+  var m = /전자\s*납부\s*번호\s*[:：]?\s*([\d-]{12,30})/.exec(t);
+  if (m) r.전자납부번호 = m[1];
+  m = /([가-힣]{2,6}세무서)/.exec(t);
+  if (m) r.세무서 = m[1];
+  // 세목 — 농어촌특별세는 부가 세목이라 주 세목이 따로 있으면 그것을
+  var found = DOC_TAX_NAMES_.filter(function (n) { return t.indexOf(n) !== -1; });
+  var main = found.filter(function (n) { return n !== '농어촌특별세'; });
+  r.세목 = main[0] || found[0] || '';
+  if (main.length > 1) r.경고.push('세목 후보가 여럿(' + main.join('·') + ') — 원문 확인');
+  // 납부기한 — "납부기한 2026년 05월 31일" 또는 서식 칸이 떨어져 "납부기한 년 월 일 … 2026 년 05 월 31 일"
+  m = /납부\s*기한\s*(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t) || /납부\s*기한[\s년월일]{0,20}?[\s\S]{0,40}?(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t);
+  if (m) r.납부기한 = docYmd_(m[1], m[2], m[3]);
+  m = /연도\s*\/?\s*기분[\s\S]{0,40}?(\d{4})\s*년(?:\s*(\d)\s*기)?(?:\s*(\d{1,2})\s*월)?/.exec(t);
+  if (m) r.귀속 = m[1] + '년' + (m[2] ? ' ' + m[2] + '기' : '') + (m[3] ? ' ' + m[3] + '월' : '');
+  // 납부금액 — 영수증서(납세자용)와 납부서(수납기관용) 두 장에 같은 금액이 찍힌다. 두 번 이상 나온 금액 중 가장 큰 것을 확정,
+  // 한 번뿐이면 확인필요. 옛 서식은 칸마다 숫자 하나("계 1 2 3 4 5 0 0 0")라 이어 붙여 읽는다.
+  var cands = [], cr = /(\d{1,3}(?:,\s?\d{3})+)/g; // OCR이 "21, 130"처럼 쉼표 뒤를 띄우기도 한다
+  while ((m = cr.exec(t))) cands.push(docNum_(m[1]));
+  var br = /계\s+((?:\d\s+){2,12}\d)(?!\d)/g;
+  while ((m = br.exec(t))) cands.push(docNum_(m[1]));
+  var cnt = {};
+  cands.forEach(function (v) { if (v >= 1000) cnt[v] = (cnt[v] || 0) + 1; });
+  var twice = Object.keys(cnt).filter(function (k) { return cnt[k] >= 2; }).map(Number).sort(function (a, b) { return b - a; });
+  var all = Object.keys(cnt).map(Number).sort(function (a, b) { return b - a; });
+  // "계" 칸 바로 아래 금액이 있으면 그것이 납부할 합계
+  var sums = [], sr = /(?:^|\n)\s*계\s*\n?\s*(\d{1,3}(?:,\s?\d{3})+)/g;
+  while ((m = sr.exec(t))) sums.push(docNum_(m[1]));
+  var sumTwice = sums.filter(function (v, i) { return sums.indexOf(v) !== i; });
+  if (sumTwice.length) r.납부금액 = sumTwice[0];
+  else if (twice.length) r.납부금액 = twice[0];
+  else if (all.length) { r.납부금액 = all[0]; r.금액확인필요 = true; }
+  else r.경고.push('납부금액을 읽지 못함 — 원문 확인');
+  if (!r.납부기한) r.경고.push('납부기한을 읽지 못함');
+  return r;
+}
+
+// ---- 홈택스 신고서 접수증 ----
+// 접수증은 칸 순서가 OCR에서 자주 뒤섞인다 — 이름표 바로 뒤 값 대신 값 자체의 모양으로 찾는다.
+// 금액 표는 이름표와 숫자가 섞여 나와 짝을 확정할 수 없으므로 읽지 않는다(금액은 납부서에서).
+function docParseReceipt_(text) {
+  var t = String(text || '');
+  var r = { 종류: '신고서 접수증', 경고: [] };
+  var m = /([가-힣]{2,10}세)\s*(?:[가-힣]{0,8}\s*)?신고서\s*접수증/.exec(t);
+  if (m) r.세목 = m[1];
+  m = /(\d{3})\s*[-–—]\s*(\d{4})\s*[-–—]\s*(\d)\s*[-–—]\s*(\d{12})/.exec(t); // OCR이 하이픈을 –(en dash)로 읽기도 한다
+  if (m) r.접수번호 = m[1] + '-' + m[2] + '-' + m[3] + '-' + m[4];
+  m = /(\d{4})-(\d{2})-(\d{2})\s+(\d{2}:\d{2}(?::\d{2})?)/.exec(t);
+  if (m) r.접수일시 = m[1] + '-' + m[2] + '-' + m[3] + ' ' + m[4];
+  var ra = t.search(/접수\s*결과|접수\s*여부/);
+  m = ra >= 0 ? /(정상|오류|실패|반송)/.exec(t.slice(ra)) : null;
+  if (m) r.접수결과 = m[1];
+  m = /(원천징수이행상황신고서|[가-힣]{2,10}세(?:\s*[가-힣()]{1,16})?\s*신고서)(?!\s*접수증)/.exec(t.replace(/[^\n]*접수증[^\n]*/, ''));
+  if (m) r.신고서종류 = m[1].replace(/\s+/g, ' ').trim();
+  m = /(정기\s*\(\s*확정\s*\)|예정\s*\(\s*중간예납\s*\)|기한\s*후|수정신고|경정청구)(?:\s*\/\s*([가-힣]{2,8}신고))?/.exec(t);
+  if (m) r.신고구분 = m[1].replace(/\s+/g, '') + (m[2] ? ' / ' + m[2] : '');
+  m = /인터넷\s*\(\s*(변환|작성)\s*\)/.exec(t);
+  if (m) r.접수방법 = '인터넷(' + m[1] + ')';
+  // 상호(성명) — 바로 다음 줄이 이름표가 아닌 짧은 글일 때만(칸이 뒤섞이면 비워 둔다)
+  m = /상호\s*\(\s*성명\s*\)\s*\n\s*([^\n]{1,30})\n/.exec(t);
+  if (m && !/사업자|주민|신고|접수|등록번호|\d{3}-\d{2}-\d{5}|^[)|\s]*$/.test(m[1])) r.성명 = m[1].replace(/[|]/g, '').trim();
+  m = /(\d{6})\s*-\s*[\d*]{7}/.exec(t);
+  if (m) r.생년월일6 = m[1];
+  m = /(\d{3}-\d{2}-\d{5})/.exec(t);
+  if (m) r.사업자등록번호 = m[1];
+  if (!r.접수번호) r.경고.push('접수번호를 읽지 못함');
+  if (!r.접수일시) r.경고.push('접수일시를 읽지 못함');
+  if (r.접수결과 && r.접수결과 !== '정상') r.경고.push('접수결과가 "정상"이 아님: ' + r.접수결과);
+  if (!r.접수결과) r.경고.push('접수결과(정상 여부)를 읽지 못함');
+  return r;
+}
+
+// ---- 사업자등록증 / 사업자등록증명 ----
+// 국세청 등록증은 "이름표 : 값" 꼴이라 쌍점 뒤를 읽는다. OCR이 띄어 쓴 이름표 앞 글자를 자주 잃는다("상 호"→"호", "성 명"→"명").
+// 민원24 사업자등록증명은 칸이 뒤섞여 나와 등록번호·과세유형·날짜만 확정하고 나머지는 비워 둔다.
+var DOC_SIDO_ = '(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)';
+function docParseBizReg_(text) {
+  var t = String(text || '');
+  var r = { 종류: /증명/.test(t) && !/사업자등록증\s*\(/.test(t) ? '사업자등록증명' : '사업자등록증', 경고: [] };
+  if (/임대\s*사업자|민간\s*임대\s*주택/.test(t) && !/국세청|세무서/.test(t)) {
+    r.종류 = '임대사업자 등록증(시·군·구)';
+    r.경고.push('지자체 임대사업자 등록증 — 등록일·임대주택 목록은 원문 확인(자동 정리 대상 아님)');
+    return r;
+  }
+  var m = /(\d{3}-\d{2}-\d{5})/.exec(t);
+  if (m) r.등록번호 = m[1];
+  m = /(일반과세자|간이과세자|면세사업자|법인사업자)/.exec(t);
+  if (m) r.과세유형 = m[1];
+  var line = function (re) { var x = re.exec(t); return x ? x[1].replace(/\s+/g, ' ').trim() : ''; };
+  r.상호 = line(/법인명\s*\(\s*단체명\s*\)\s*[:：]\s*([^\n]{1,40})/) || line(/(?:^|\n)\s*(?:상\s*)?호\s*[:：]\s*([^\n]{1,40})/);
+  r.대표자 = line(/(?:대\s*표\s*자|(?:^|\n)\s*(?:성\s*)?명|(?:^|\n)\s*자)\s*(?:\([^)]*\))?\s*[:：]\s*([가-힣]{2,5})(?=[\s\n]|$)/);
+  m = /개\s*업\s*연\s*월\s*일\s*[:：]?\s*(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t);
+  if (m) r.개업연월일 = docYmd_(m[1], m[2], m[3]);
+  m = /생\s*년\s*월\s*일\s*[:：]?\s*(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t);
+  if (m) r.생년월일 = docYmd_(m[1], m[2], m[3]);
+  // 개업연월일 이름표를 OCR이 잃은 경우("○ : 2015 년 03월 02일") — 생년월일 칸이 없는 등록증에서 "쌍점 + 날짜"가 하나뿐이면 그것이 개업일
+  if (!r.개업연월일 && !r.생년월일 && r.종류 === '사업자등록증') {
+    var ds = t.match(/[:：]\s*\d{4}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일/g) || [];
+    if (ds.length === 1) {
+      m = /(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})/.exec(ds[0]);
+      var dd = docYmd_(m[1], m[2], m[3]), rq = /(\d{6})\s*-\s*[\d*]/.exec(t);
+      // 주민번호 앞자리와 같은 날짜면 생년월일이다(개업일로 착각하지 않게)
+      if (rq && dd.replace(/-/g, '').slice(2) === rq[1]) r.생년월일 = dd;
+      else { r.개업연월일 = dd; r.개업일확인필요 = true; }
+    }
+  }
+  m = /법인\s*등록\s*번호\s*[:：]?\s*(\d{6}-\d{7})/.exec(t);
+  if (m) r.법인등록번호 = m[1];
+  m = new RegExp('(?:사업장\\s*소재지|소\\s*재\\s*지|(?:^|\\n)[^\\n:：]{0,12}지)\\s*[:：]\\s*\\n?\\s*(' + DOC_SIDO_ + '[^\\n]{4,80})').exec(t);
+  if (m) r.사업장 = m[1].replace(/\s+/g, ' ').trim();
+  m = /업\s*태\s+([^\n]{1,30}?)(?:\s+종\s*목|\n|$)/.exec(t);
+  if (m) r.업태 = m[1].trim();
+  m = /종\s*목\s+([^\n]{1,40})/.exec(t);
+  if (m) r.종목 = m[1].trim();
+  m = /외\s*(\d+)\s*명/.exec(t);
+  if (m) r.공동사업자 = '대표 외 ' + m[1] + '명';
+  else if (/공동\s*사업자\s*[:：][ \t]*[가-힣]{2,5}/.test(t)) r.공동사업자 = '있음(원문 확인)';
+  if (!r.등록번호) r.경고.push('등록번호를 읽지 못함');
+  if (r.종류 === '사업자등록증명') r.경고.push('사업자등록증명(민원) 서식은 칸이 뒤섞여 상호·대표자는 원문 확인');
+  else { if (!r.상호) r.경고.push('상호를 읽지 못함'); if (!r.대표자 && r.과세유형 !== '법인사업자') r.경고.push('대표자를 읽지 못함'); }
+  if (!r.개업연월일) r.경고.push('개업연월일을 읽지 못함');
+  return r;
+}
+// 서류 정리 결과 → 화면용 마크다운. 읽지 못한 칸은 비우고 ⚠로 드러낸다.
+function docToMarkdown_(type, r) {
+  var won = function (n) { return n == null || n === '' ? '' : Number(n).toLocaleString('ko-KR') + '원'; };
+  var esc = function (v) { return String(v == null ? '' : v).replace(/\|/g, '/'); };
+  var kv = function (rows) {
+    rows = rows.filter(function (x) { return x[1] !== undefined && x[1] !== null && x[1] !== ''; });
+    return rows.length ? '| 항목 | 내용 |\n|---|---|\n' + rows.map(function (x) { return '| ' + esc(x[0]) + ' | ' + esc(x[1]) + ' |'; }).join('\n') : '';
+  };
+  var out = [];
+  if (type === 'family') {
+    out.push('### 가족관계증명서' + (r.상세 ? '(상세)' : '') + (r.등록기준지 ? ' · 등록기준지 ' + r.등록기준지 : ''));
+    out.push('| 관계 | 성명 | 생년월일 | 성별 | 주민번호 | 비고 |\n|---|---|---|---|---|---|');
+    r.가족.forEach(function (p) {
+      out.push('| ' + [p.관계, p.이름 + (p.한자 ? '(' + p.한자 + ')' : ''), p.생년월일, p.성별, p.주민번호 ? p.주민번호.replace(/-(\d)\d{6}$/, '-$1******') : '',
+        (p.사망 ? '사망 ' : '') + (p.확인필요 ? '⚠확인필요' : '')].map(esc).join(' | ') + ' |');
+    });
+    var dead = r.가족.filter(function (p) { return p.사망; });
+    if (dead.length) out.push('\n사망 표시: ' + dead.map(function (p) { return p.관계 + ' ' + p.이름; }).join(', '));
+  } else if (type === 'payment') {
+    if (r.국세아님) return '⚠ ' + r.경고.join(' / ');
+    out.push('### 국세 납부서 · ' + (r.세목 || '세목 확인필요'));
+    out.push(kv([['세목', r.세목], ['납부금액', r.납부금액 ? won(r.납부금액) + (r.금액확인필요 ? ' ⚠확인필요(한 번만 읽힘)' : '') : ''], ['납부기한', r.납부기한], ['귀속', r.귀속], ['세무서', r.세무서], ['전자납부번호', r.전자납부번호]]));
+  } else if (type === 'receipt') {
+    out.push('### 신고서 접수증 · ' + (r.세목 || ''));
+    out.push(kv([['신고서 종류', r.신고서종류], ['접수번호', r.접수번호], ['접수일시', r.접수일시], ['접수결과', r.접수결과], ['신고구분', r.신고구분], ['접수방법', r.접수방법], ['상호(성명)', r.성명], ['사업자등록번호', r.사업자등록번호]]));
+    out.push('\n_접수증의 금액 표는 글자인식에서 칸이 섞여 읽지 않았습니다 — 금액은 납부서로 확인하세요._');
+  } else if (type === 'bizreg') {
+    out.push('### ' + r.종류 + (r.과세유형 ? ' (' + r.과세유형 + ')' : ''));
+    out.push(kv([['등록번호', r.등록번호], ['상호', r.상호], ['대표자', r.대표자], ['개업연월일', r.개업연월일 ? r.개업연월일 + (r.개업일확인필요 ? ' ⚠확인필요' : '') : ''], ['생년월일', r.생년월일], ['법인등록번호', r.법인등록번호], ['사업장', r.사업장], ['업태', r.업태], ['종목', r.종목], ['공동사업자', r.공동사업자]]));
+  }
+  if (r.경고 && r.경고.length) out.push('\n⚠ ' + r.경고.join(' / '));
+  return out.join('\n');
+}
+// 서류 한 장 판별 + 정리. 등기부가 먼저(등기부 규칙), 아니면 가족관계·사업자등록·접수증·납부서.
+function docParseText_(text) {
+  var reg = registryParse(text);
+  if (reg.isRegistry) return { type: 'registry', label: '등기부', result: reg, md: registryToMarkdown_(reg, '') };
+  var type = docDetectType_(text), r = null;
+  if (type === 'family') r = docParseFamily_(text);
+  else if (type === 'payment') r = docParsePayment_(text);
+  else if (type === 'receipt') r = docParseReceipt_(text);
+  else if (type === 'bizreg') r = docParseBizReg_(text);
+  if (!r) {
+    var why = reg.사유 ? reg.사유 : (String(text || '').replace(/\s/g, '').length < 30 ? '읽을 글자가 없음(사진·스캔 품질 확인)' : '자동 정리하는 서류 종류가 아님');
+    return { type: '', label: '', result: null, md: '자동 정리 대상이 아닙니다 — ' + why + '. (정리 가능: 등기부, 가족관계증명서, 사업자등록증, 홈택스 신고서 접수증, 국세 납부서)' };
+  }
+  return { type: type, label: r.종류, result: r, md: docToMarkdown_(type, r) };
+}
+// 드라이브 OCR(문서 복사)은 짧은 시간에 여러 장을 보내면 "User rate limit exceeded"가 난다 — 잠깐 쉬었다 두 번 더 시도
+function docOcrRetry_(id) {
+  for (var i = 0; ; i++) {
+    try { return ocrFileText_(id); } catch (e) {
+      if (i >= 2 || !/rate limit|rateLimit|quota/i.test(String(e && e.message))) throw e;
+      Utilities.sleep(4000 * (i + 1));
+    }
+  }
+}
+// [2026.10.10] 서류 PDF·사진 → 무료 OCR + 규칙 정리(토큰 0). body.fileId
+function docParseFile_(body) {
+  var id = String(body && body.fileId || '');
+  if (!id) return { error: '파일이 없습니다.' };
+  var f = DriveApp.getFileById(id), name = f.getName(), mime = f.getMimeType();
+  if (!/pdf|image/.test(mime)) return { error: name + ' — PDF·이미지만 정리할 수 있습니다.' };
+  var cache = CacheService.getScriptCache(), key = 'docp_' + id + '_' + f.getLastUpdated().getTime();
+  var hit = cache.get(key);
+  if (hit) return JSON.parse(hit);
+  var p = docParseText_(docOcrRetry_(id));
+  var res = { ok: true, name: name, type: p.type, label: p.label, isRegistry: p.type === 'registry', result: p.result, md: '**' + name + '**\n\n' + p.md };
   try { var s = JSON.stringify(res); if (s.length < 95000) cache.put(key, s, 21600); } catch (e) { /* 캐시 실패는 무시 */ }
   return res;
 }
