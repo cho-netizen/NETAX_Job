@@ -24764,6 +24764,9 @@ function docDetectType_(text) {
   // 제목은 OCR이 놓칠 때가 있어 표 칸 이름(세대주및관계·세대구성 사유·발생일/신고일)까지 함께 본다 — 가족관계증명서에는 없는 말들
   var jmHits = [/주\s*민\s*등\s*록\s*표/, /세대주\s*및\s*관계/, /세대\s*구성\s*사유/, /발\s*생\s*일\s*\/?\s*신\s*고\s*일/, /개인별\s*주민등록|세대별\s*주민등록/, /변\s*동\s*사\s*유/].filter(function (re) { return re.test(t); }).length;
   if (jmHits >= 2) return 'resident';
+  // 잔고증명·공시가격·취득세 — 취득세 납부서는 아래 "국세 납부서" 판별(지방세면 거절)보다 먼저 잡는다
+  var vt = valDetect_(t);
+  if (vt) return vt;
   // 시·군·구 임대사업자 등록증 — 국세청 사업자등록증보다 먼저(둘 다 "등록증"·"사업자")
   if (/임대\s*사업자\s*등록증|민간\s*임대\s*주택/.test(t) && !/국세청|세무서/.test(t)) return 'rent';
   if (/가족관계\s*증명서/.test(t)) return 'family';
@@ -24906,6 +24909,7 @@ function docParseBizReg_(text) {
 }
 // 서류 정리 결과 → 화면용 마크다운. 읽지 못한 칸은 비우고 ⚠로 드러낸다.
 function docToMarkdown_(type, r) {
+  if (type === 'balance' || type === 'pubprice' || type === 'acqtax') return valToMarkdown_(type, r);
   var won = function (n) { return n == null || n === '' ? '' : Number(n).toLocaleString('ko-KR') + '원'; };
   var esc = function (v) { return String(v == null ? '' : v).replace(/\|/g, '/'); };
   var kv = function (rows) {
@@ -24981,9 +24985,12 @@ function docParseText_(text) {
   else if (type === 'bizreg') r = docParseBizReg_(text);
   else if (type === 'resident') r = jmParse_(text);
   else if (type === 'rent') r = rentParse_(text);
+  else if (type === 'balance') r = balParse_(text);
+  else if (type === 'pubprice') r = ppParse_(text);
+  else if (type === 'acqtax') r = acqParse_(text);
   if (!r) {
     var why = reg.사유 ? reg.사유 : (String(text || '').replace(/\s/g, '').length < 30 ? '읽을 글자가 없음(사진·스캔 품질 확인)' : '자동 정리하는 서류 종류가 아님');
-    return { type: '', label: '', result: null, md: '자동 정리 대상이 아닙니다 — ' + why + '. (정리 가능: 등기부, 가족관계증명서, 주민등록 등본·초본, 사업자등록증, 임대사업자 등록증, 홈택스 신고서 접수증, 국세 납부서)' };
+    return { type: '', label: '', result: null, md: '자동 정리 대상이 아닙니다 — ' + why + '. (정리 가능: 등기부, 가족관계증명서, 주민등록 등본·초본, 사업자등록증, 임대사업자 등록증, 홈택스 신고서 접수증, 국세 납부서, 잔고·잔액증명서, 공시가격, 취득세 납부확인서)' };
   }
   // 한 PDF에 국세청 사업자등록증과 시·군·구 임대사업자 등록증이 함께 묶인 경우 — 둘 다 정리
   if (type === 'bizreg' && /임대\s*사업자\s*등록증|민간\s*임대\s*주택/.test(text)) {
@@ -25386,4 +25393,279 @@ function rentParse_(text) {
   if (!r.주택.length) r.경고.push('임대주택 목록을 읽지 못함 — 원문 확인');
   r.경고.push('임대개시일·임대보증금은 앞면 표에서 칸이 섞여 읽지 않음 — 원문 확인');
   return r;
+}
+
+// =========================================================
+// [2026.10.10] 잔고증명·공시가격·취득세 납부확인서 자동 정리 — 토큰 0
+// 상속재산 평가(기준일 잔액)·양도 기준시가(연도별 공시가격)·양도 필요경비(취득세) 증빙. 표본 29건으로 맞추고 원본 대조.
+// 계좌별 합=합계, 세목 합=합계, 출력물 총건수=읽은 행 수가 맞을 때만 확정, 아니면 ⚠.
+// =========================================================
+// ---- 예금·증권 잔고(잔액)증명서, 금융거래확인서 — 토큰 0, ES5 ----
+// 은행마다 양식이 달라 칸 이름 대신 "합계"를 기준으로 읽는다: 합계 앞의 금액들 중 더해서 합계가 되는 묶음을 찾으면 확정,
+// 못 찾으면 ⚠확인필요. (OCR이 ₩를 #·@·\로, 쉼표를 마침표로 읽는 경우를 바로잡는다)
+var BAL_BANKS_ = ['NH투자증권', 'NH농협', '농협', '국민은행', 'KB국민', 'KB증권', '신한은행', '신한투자증권', '신한금융투자', '우리은행', '하나은행', '하나증권', 'IBK기업은행', '기업은행', 'IBK', 'SC제일은행', '씨티은행', '한국씨티', '새마을금고', '신협', '우체국', '수협', '카카오뱅크', '케이뱅크', '토스뱅크', '부산은행', '대구은행', 'iM뱅크', '경남은행', '광주은행', '전북은행', '제주은행', '산업은행', '미래에셋', '삼성증권', '한국투자증권', '키움증권', '대신증권', '유안타', '메리츠', '교보증권', '하이투자', '현대차증권', 'DB금융투자', '한화투자증권', '이베스트', 'LS증권', '삼성생명', '한화생명', '교보생명'];
+function balAmt_(s) { return Number(String(s).replace(/[^\d]/g, '')) || 0; }
+function balParse_(text) {
+  var t = String(text || '');
+  var r = { 종류: /금융\s*거래\s*확인서/.test(t) ? '금융거래확인서' : (/증권|투자증권|평가금액|총잔액/.test(t) && !/은행/.test(t) ? '잔고증명서(증권)' : '잔액·잔고증명서'), 증명: [], 경고: [] };
+  var bank = '';
+  for (var i = 0; i < BAL_BANKS_.length; i++) if (t.indexOf(BAL_BANKS_[i]) !== -1) { bank = BAL_BANKS_[i]; break; }
+  if (!bank && /NH\s*NongHyup|NHBank|NH\s*Bank/i.test(t)) bank = '농협';
+  r.금융기관 = bank;
+  // 기준일 — "2026년 04월 06일 현재", "기준일자 : 2025-12-31", "2025년 12월 31일 현재"
+  var m = /(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*현재/.exec(t) || /기준\s*일(?:자|시)?\s*[:：]?\s*(\d{4})[-.](\d{1,2})[-.](\d{1,2})/.exec(t);
+  if (m) r.기준일 = m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2);
+  m = /([가-힣]{2,4}|주식회사\s*[가-힣]{2,20})\s*귀하/.exec(t) || /(?:예금주|고\s*객\s*성?\s*명)[^:：\n]{0,30}[:：]\s*([^\n(]{2,30})/.exec(t);
+  if (m) r.예금주 = m[1].trim();
+  // 금액: ₩·#·@·\·KRW 뒤 숫자, 또는 쉼표 숫자. 3자리 묶음 사이 마침표는 쉼표(OCR 오인식)
+  var norm = t.replace(/(\d)\.(\d{3})(?=[,\s\n]|$)/g, '$1,$2');
+  // 화폐기호(₩·#·@·\·KRW)가 붙은 숫자는 쉼표 없이 짧아도 금액(\674), 기호 없으면 쉼표 숫자만
+  var amtRe = /(?:(?:[#@\\₩￦]|KRW)\s*\\?\s*(\d{1,3}(?:,\d{3})*|\d{4,})|(\d{1,3}(?:,\d{3})+))(?![\d,-])/g;
+  // 구획 — "합계"(또는 Total Amount)마다 하나의 증명. 영수증·거래내역(해지 거래)은 잔액 증명이 아니므로 뺀다.
+  var cuts = [], cr = /합\s*계(?!\s*\(\s*Total)|\(\s*Total\s*Amount\s*\)|\(\s*1\s*\+\s*2\s*\)/g, c;
+  while ((c = cr.exec(norm))) cuts.push({ at: c.index, end: cr.lastIndex, kind: /1\s*\+\s*2/.test(c[0]) ? 'sum12' : 'sum' });
+  var prev = 0;
+  cuts.forEach(function (cu) {
+    var seg = norm.slice(prev, cu.at), after = norm.slice(cu.end, cu.end + 80);
+    prev = cu.end;
+    // 합계 금액은 쉼표 숫자이거나 화폐기호가 붙어야 한다(각주 번호 "1." 등을 합계로 읽지 않게)
+    var tm = /^[\s:：()원￦]*(?:(?:[#@\\₩￦]|KRW)\s*\\?\s*(\d{1,3}(?:,\d{3})*)|(\d{1,3}(?:,\d{3})+))(?![\d,])/.exec(after);
+    if (!tm) return;
+    var total = balAmt_(tm[1] || tm[2]);
+    if (!total) return; // 잔액 0인 빈 칸 합계는 증명으로 세지 않는다
+    if (cu.kind === 'sum12') { r.평가합계12 = total; return; }
+    if (/영수증|거래\s*일시|해지/.test(seg.slice(-400))) return;
+    var cands = [], am;
+    amtRe.lastIndex = 0;
+    while ((am = amtRe.exec(seg))) {
+      var raw = am[1] || am[2], v = balAmt_(raw), ctx = seg.slice(Math.max(0, am.index - 3), am.index + am[0].length + 3);
+      if (!v || /\d-\d|-\d/.test(ctx)) continue;
+      cands.push(v);
+    }
+    cands = cands.slice(-16);
+    // 더해서 합계가 되는 묶음 찾기(순서 유지, 가장 많은 항목을 쓰는 답)
+    var best = null;
+    (function dfs(k, sum, pick) {
+      if (sum === total && pick.length && (!best || pick.length > best.length)) best = pick.slice();
+      if (k >= cands.length || sum > total) return;
+      pick.push(cands[k]); dfs(k + 1, sum + cands[k], pick); pick.pop();
+      dfs(k + 1, sum, pick);
+    })(0, 0, []);
+    var accts = (seg.match(/\b\d{3,6}-\d{2,6}-\d{2,8}(?:-\d{1,6})?(?:\(\d+\))?/g) || []).filter(function (a) { return !/^0\d{1,2}-\d{3,4}-\d{4}$/.test(a) && !/^\d{3}-\d{2}-\d{5}$/.test(a); });
+    if (total === 0 && !accts.length) return;
+    var items = best ? best.map(function (v, idx) { return { 계좌: accts.length === best.length ? '…' + accts[idx].replace(/\(.*\)$/, '').replace(/-/g, '').slice(-4) : '', 금액: v }; }) : [];
+    r.증명.push({ 합계: total, 계좌별: items, 검산: !!best || total === 0, 계좌수: accts.length, 계좌뒷자리: accts.map(function (a) { return '…' + a.replace(/\(.*\)$/, '').replace(/-/g, '').slice(-4); }) });
+  });
+  if (r.평가합계12 && r.증명.length) {
+    var s12 = r.증명.reduce(function (s, x) { return s + x.합계; }, 0);
+    r.평가합계검산 = s12 === r.평가합계12;
+  }
+  r.총액 = r.평가합계12 || r.증명.reduce(function (s, x) { return s + x.합계; }, 0);
+  if (!r.증명.length) r.경고.push('합계 금액을 찾지 못함 — 원문 확인');
+  if (r.증명.some(function (x) { return !x.검산; })) r.경고.push('계좌별 금액을 더해 합계와 맞추지 못한 증명이 있음 — 원문 확인');
+  if (r.평가합계12 && r.평가합계검산 === false) r.경고.push('평가금액(1+2)과 구획 합계가 다름 — 원문 확인');
+  if (!r.기준일) r.경고.push('기준일을 읽지 못함');
+  return r;
+}
+
+// ---- 공시가격 확인서·열람 출력물(개별공시지가 / 공동주택가격 / 개별단독주택가격) — 토큰 0, ES5 ----
+// 연도별 가격표를 뽑는다(취득 당시·양도 당시 기준시가 판단용). 연도가 빠진 행은 공시일자(YYYYMMDD)에서 연도를 얻는다.
+function ppNum_(s) { return Number(String(s).replace(/[^\d.]/g, '')) || 0; }
+function ppParse_(text) {
+  var t = String(text || ''), flat = t.replace(/\s+/g, ' ');
+  var kind = /개별\s*공시\s*지가/.test(t) ? 'land' : /공동\s*주택\s*가격/.test(t) ? 'apt' : /개별\s*(?:단독)?\s*주택\s*가격/.test(t) ? 'house' : '';
+  var r = { 종류: kind === 'land' ? '개별공시지가' : kind === 'apt' ? '공동주택가격' : kind === 'house' ? '개별주택가격' : '공시가격', 가격: [], 경고: [] };
+  var m = /(?:열람지역|물건소재지)\s*[:：]\s*([^\n]{4,80}?)(?:\s+신청대상|\s+개별주택가격|\s*$|\n|\s{3,})/.exec(t);
+  if (m) r.소재지 = m[1].replace(/\s+/g, ' ').trim();
+  if (/열람용/.test(t)) r.열람용 = true;
+  if (kind === 'land') {
+    // "116,900 원/㎡ 01월01일 20260430" — 공시일자의 연도 = 가격기준연도
+    var re = /(\d{1,3}(?:,\d{3})+|\d{3,})\s*원\s*\/\s*(?:㎡|m2|m²)\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*((?:19|20)\d{2})(\d{2})(\d{2})/g;
+    while ((m = re.exec(flat))) r.가격.push({ 연도: Number(m[4]), 기준일: m[4] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2), 단가: ppNum_(m[1]), 단위: '원/㎡', 공시일: m[4] + '-' + m[5] + '-' + m[6] });
+  } else if (kind === 'house') {
+    // "2026/01/01 10 주소… 대지(전체 산정) 연면적(전체 산정) 431,000,000"
+    var anchors = [], ar = /((?:19|20)\d{2})\s*[\/.]\s*(\d{1,2})\s*[\/.]\s*(\d{1,2})/g, a;
+    while ((a = ar.exec(flat))) anchors.push({ y: Number(a[1]), d: a[1] + '-' + ('0' + a[2]).slice(-2) + '-' + ('0' + a[3]).slice(-2), at: a.index, end: ar.lastIndex });
+    anchors.forEach(function (x, i) {
+      var seg = flat.slice(x.end, i + 1 < anchors.length ? anchors[i + 1].at : x.end + 200);
+      var pm = seg.match(/\d{1,3}(?:,\d{3}){2,}/g);
+      if (!pm) return;
+      var price = ppNum_(pm[pm.length - 1]);
+      var nums = (seg.slice(0, seg.lastIndexOf(pm[pm.length - 1])).match(/\d+(?:\.\d+)?/g) || []).slice(-4);
+      var row = { 연도: x.y, 기준일: x.d, 가격: price };
+      if (nums.length === 4) { row.대지면적 = ppNum_(nums[1]); row.연면적 = ppNum_(nums[3]); }
+      r.가격.push(row);
+    });
+  } else if (kind === 'apt') {
+    // 표 순서(최근 연도부터)대로 가격이 나오고, 위쪽 몇 행은 날짜가 따로 떨어져 OCR된다 → 날짜를 내림차순 정렬해 가격과 순서로 짝짓고,
+    // 날짜가 같은 줄에 붙은 행으로 검산한다.
+    var body = flat.slice(flat.search(/단지명|공시기준/));
+    var dates = [], dr = /((?:19|20)\d{2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})(?!\d)/g, d;
+    while ((d = dr.exec(body))) dates.push({ y: Number(d[1]), d: d[1] + '-' + ('0' + d[2]).slice(-2) + '-' + ('0' + d[3]).slice(-2), at: d.index, end: dr.lastIndex });
+    var prices = [], pr = /(\d+\.\d+)\s+(\d{1,3}(?:,\d{3}){2,})/g, p;
+    while ((p = pr.exec(body))) prices.push({ 면적: ppNum_(p[1]), 가격: ppNum_(p[2]), at: p.index });
+    var uniqD = []; dates.forEach(function (x) { if (!uniqD.some(function (u) { return u.d === x.d; })) uniqD.push(x); });
+    var sorted = uniqD.slice().sort(function (a2, b2) { return a2.d < b2.d ? 1 : -1; });
+    if (sorted.length === prices.length) {
+      // 같은 줄 검산: 날짜 바로 뒤(70자 안)에 오는 가격은 그 날짜의 가격이어야 한다
+      var ok = true;
+      dates.forEach(function (x) {
+        // 사이에 다른 날짜가 끼면(위쪽 행 날짜가 따로 OCR된 경우) 같은 줄이 아니다
+        var nextDateAt = dates.filter(function (y) { return y.at > x.at; }).map(function (y) { return y.at; })[0] || Infinity;
+        var nxt = prices.filter(function (pp) { return pp.at > x.end && pp.at - x.end < 70 && pp.at < nextDateAt; })[0];
+        if (nxt) { var idx = sorted.map(function (s) { return s.d; }).indexOf(x.d); if (prices[idx] !== nxt) ok = false; }
+      });
+      sorted.forEach(function (x, i) { r.가격.push({ 연도: x.y, 기준일: x.d, 가격: prices[i].가격, 전용면적: prices[i].면적 }); });
+      if (!ok) { r.가격.forEach(function (x) { x.확인필요 = true; }); r.경고.push('연도와 가격 짝이 같은 줄 기록과 어긋남 — 원문 확인'); }
+    } else if (prices.length) {
+      r.경고.push('날짜 ' + sorted.length + '개와 가격 ' + prices.length + '개 수가 달라 연도 짝을 확정하지 못함 — 원문 확인');
+      prices.forEach(function (x) { r.가격.push({ 연도: null, 기준일: '', 가격: x.가격, 전용면적: x.면적, 확인필요: true }); });
+    }
+    m = /(\d{1,4})\s*\[\s*동\s*\]\s*(\d{1,5})\s*\[\s*호\s*\]/.exec(flat);
+    if (m) r.동호 = m[1] + '동 ' + m[2] + '호';
+  }
+  // 같은 연도 중복 제거, 최근 연도부터
+  var seen = {}; r.가격 = r.가격.filter(function (x) { var k = x.기준일 || x.연도 + '|' + x.가격; if (seen[k]) return false; seen[k] = 1; return true; });
+  r.가격.sort(function (a3, b3) { return (b3.기준일 || '') < (a3.기준일 || '') ? -1 : 1; });
+  // 연도 중복(같은 해 두 가격)이면 확인
+  var ys = {}; r.가격.forEach(function (x) { if (x.연도) { if (ys[x.연도]) { x.확인필요 = true; ys[x.연도].확인필요 = true; } ys[x.연도] = x; } });
+  // 알리미 출력물 머리의 "총 : 37개"와 읽은 행 수가 같으면 빠짐없이 읽은 것
+  var tot = /총\s*[:：]\s*(\d{1,3})\s*개/.exec(t);
+  if (tot) { r.총건수 = Number(tot[1]); r.건수일치 = r.총건수 === r.가격.length; if (!r.건수일치) r.경고.push('출력물의 총 ' + r.총건수 + '건 중 ' + r.가격.length + '건만 읽음 — 빠진 연도는 원문 확인'); }
+  if (!kind) r.경고.push('공시가격 종류를 알아보지 못함');
+  if (!r.가격.length) r.경고.push('연도별 가격을 읽지 못함(조회 화면만 있거나 표가 없음) — 원문 확인');
+  if (r.열람용) r.경고.push('열람용 출력물(법적 효력 없음) — 제출용은 시·군·구 발급 확인서');
+  return r;
+}
+
+// ---- 취득세(등록세) 납부확인서·납부서 겸 영수증 — 양도 필요경비 증빙 읽기(지방세 신고는 범위 밖), 토큰 0, ES5 ----
+// 세목 금액은 칸이 뒤섞여 OCR되므로 "취득세 + 지방교육세 + 농특세 = 합계"가 맞는 묶음을 찾아 확정한다.
+function acqNum_(s) { return Number(String(s).replace(/[^\d]/g, '')) || 0; }
+function acqParse_(text) {
+  var t = String(text || ''), flat = t.replace(/\s+/g, ' ');
+  var r = { 종류: /납부\s*확인서/.test(t) ? '취득세 납부확인서' : '취득세 납부서 겸 영수증', 경고: [] };
+  if (/등록세/.test(t) && !/취득세/.test(t)) r.종류 = '등록세 영수증';
+  var m = /주민(?:\([^)]*\))?\s*등록\s*번호\s*[:：]?\s*(\d{6})|(\d{6})\s*-\s*[*\d]{1,7}/.exec(flat);
+  if (m) r.생년월일6 = m[1] || m[2];
+  m = /(?:과세\s*원인|등기\s*\(\s*등록\s*\)\s*원인)\s*[:：]?\s*([가-힣()]{2,14})/.exec(flat);
+  if (m) r.과세원인 = m[1];
+  m = /(?:과세\s*대상|등기\s*\(\s*등록\s*\)\s*물건)\s*[:：]?\s*\[?\s*(?:\d{4}년\s*\d{1,2}월\s*취득세\(부동산\)\s*\[)?\s*([^\]\n]{4,90}?)(?:\]|\s+※|\s+신고|\s+과세표준|$)/.exec(flat);
+  if (m) r.과세물건 = m[1].trim();
+  // 과세표준(쉼표 없이 붙어 나오기도 함), 시가표준액
+  m = /과세\s*표준\s*(?:액)?\s*[:：]?\s*(\d{1,3}(?:[,.]\d{3})+|\d{5,})/.exec(flat);
+  if (m) r.과세표준 = acqNum_(m[1]);
+  m = /시가\s*표준\s*액\s*[:：]?\s*(\d{1,3}(?:[,.]\d{3})+|\d{5,})/.exec(flat);
+  if (m) r.시가표준액 = acqNum_(m[1]);
+  m = /(\d{5}-\d-\d{2}-\d{2}-[\d-]{6,12})/.exec(flat);
+  if (m) r.전자납부번호 = m[1];
+  // 납부서는 같은 내용이 3~4장(납세자용·수납기관용…) 찍혀 OCR이 장마다 다르게 읽기도 한다 → 가장 많이 나온 날짜
+  var dl = {}, dre = /납부\s*기한\s*[:：]?\s*(\d{4})\s*[.\-년]\s*(\d{1,2})\s*[.\-월]\s*(\d{1,2})/g, dm;
+  while ((dm = dre.exec(flat))) { var dk = dm[1] + '-' + ('0' + dm[2]).slice(-2) + '-' + ('0' + dm[3]).slice(-2); dl[dk] = (dl[dk] || 0) + 1; }
+  var dks = Object.keys(dl).sort(function (a, b) { return dl[b] - dl[a] || (a < b ? 1 : -1); });
+  if (dks.length) { r.납부기한 = dks[0]; if (dks.length > 1 && dl[dks[0]] === dl[dks[1]]) r.납부기한확인필요 = true; }
+  m = /납부일[\s\S]{0,120}?(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(flat) || /영수합니다\.?\s*(?:[^\d]{0,40})?(\d{4})\s*[년.\s]\s*(\d{1,2})\s*[월.\s]\s*(\d{1,2})/.exec(flat);
+  if (m) r.납부일 = m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2);
+  // 세목 금액 — 금액 후보(과세표준·시가표준액 제외) 중 a+b(+c)=합계가 되는 묶음
+  var nums = (flat.match(/\d{1,3}(?:[,.]\d{3})+|\b\d{4,10}\b/g) || []).map(acqNum_).filter(function (v) { return v >= 1000 && v !== r.과세표준 && v !== r.시가표준액 && v < 1e11; });
+  var uniq = []; nums.forEach(function (v) { if (uniq.indexOf(v) === -1) uniq.push(v); });
+  uniq = uniq.filter(function (v) { return !(v > 1e9 && String(v).length >= 10 && !/,/.test(String(v))); });
+  var best = null;
+  uniq.forEach(function (tot) {
+    var parts = uniq.filter(function (v) { return v < tot; });
+    for (var i = 0; i < parts.length; i++) for (var j = 0; j < parts.length; j++) {
+      if (i === j) continue;
+      var a = parts[i], b = parts[j];
+      if (a + b === tot && a > b && (!best || tot > best.tot)) best = { tot: tot, p: [a, b] };
+      for (var k = 0; k < parts.length; k++) {
+        if (k === i || k === j) continue;
+        var c = parts[k];
+        if (a + b + c === tot && a > b && b >= c && (!best || tot > best.tot || best.p.length < 3)) best = { tot: tot, p: [a, b, c] };
+      }
+    }
+  });
+  if (best) {
+    r.합계 = best.tot; r.취득세 = best.p[0]; r.검산 = true;
+    // 교육세·농특세는 크기로 구별할 수 없어(세율이 경우마다 다름) 이름표 바로 뒤 금액으로만 붙인다
+    var lab = function (re) { var x = re.exec(flat); return x ? acqNum_(x[1]) : null; };
+    var edu = lab(/지방\s*교육세\s*[:：]?\s*(\d{1,3}(?:[,.]\d{3})+)/), farm = lab(/농어촌\s*특별세\s*[:：]?\s*(\d{1,3}(?:[,.]\d{3})+)/);
+    var rest = best.p.slice(1);
+    if (edu != null && rest.indexOf(edu) !== -1) r.지방교육세 = edu;
+    if (farm != null && rest.indexOf(farm) !== -1 && farm !== edu) r.농어촌특별세 = farm;
+    // 이름표로 못 붙였으면 법정 비율로: 농특세 = 표준세율 2%로 계산한 취득세의 10% = 과세표준 × 0.2%(10원 미만 절사).
+    // 농특세가 없는 경우(85㎡ 이하 주택 등)도 지방교육세는 거의 항상 붙는다 → 남는 하나는 교육세.
+    if (r.지방교육세 == null && r.농어촌특별세 == null && r.과세표준) {
+      var farmCalc = Math.floor(r.과세표준 * 0.002 / 10) * 10;
+      var fHit = rest.filter(function (v) { return Math.abs(v - farmCalc) <= 10; });
+      if (fHit.length === 1) {
+        r.농어촌특별세 = fHit[0];
+        var others = rest.filter(function (v) { return v !== fHit[0]; });
+        if (others.length === 1) r.지방교육세 = others[0];
+        r.세목구분근거 = '농특세=과세표준×0.2%';
+      } else if (rest.length === 1) { r.지방교육세 = rest[0]; r.세목구분근거 = '농특세 없음(과세표준×0.2%와 다름)'; }
+    }
+    if (rest.length === 1 && r.지방교육세 == null && r.농어촌특별세 == null) { r.부가세목 = rest[0]; r.부가세목확인필요 = true; }
+    if (rest.length === 2 && (r.지방교육세 == null || r.농어촌특별세 == null)) {
+      var left = rest.filter(function (v) { return v !== r.지방교육세 && v !== r.농어촌특별세; });
+      if (left.length === 1) { if (r.지방교육세 == null) r.지방교육세 = left[0]; else r.농어촌특별세 = left[0]; }
+      else { r.부가세목 = rest.join(' + '); r.부가세목확인필요 = true; }
+    }
+  } else r.경고.push('세목 금액을 더해 합계와 맞추지 못함 — 원문 확인');
+  if (!r.과세표준) r.경고.push('과세표준을 읽지 못함');
+  // 세율 상식 검사 — 취득세/과세표준이 0.5%~13.4% 밖이면 과세표준이나 세액을 잘못 읽은 것
+  if (r.취득세 && r.과세표준) { var rate = r.취득세 / r.과세표준; r.실효세율 = Math.round(rate * 10000) / 100; if (rate < 0.005 || rate > 0.135) { r.세율이상 = true; r.경고.push('취득세÷과세표준 = ' + r.실효세율 + '% — 법정 세율 범위 밖, 과세표준 또는 세액을 원문 확인'); } }
+  if (r.부가세목확인필요) r.경고.push('지방교육세·농어촌특별세 구분은 원문 확인(합계는 검산됨)');
+  return r;
+}
+
+// 판별 — docDetectType_ 앞쪽에 넣을 세 종류(취득세가 국세 납부서 판별보다 먼저, 공시가격은 토지·건축물대장보다 뒤)
+function valDetect_(t) {
+  t = String(t || '');
+  // 중개대상물 확인·설명서·매매계약서·거래신고필증·대장류도 공시지가·취득세를 언급하므로 여기서 가로채지 않는다(각자 전용 규칙)
+  if (/중개\s*대상물|확인\s*[·ㆍ.]?\s*설명서|매\s*매\s*계\s*약\s*서|거래\s*계약\s*신고|(토지|임야|건축물)\s*대장/.test(t)) return '';
+  if (/취\s*득\s*세|등\s*록\s*세/.test(t) && /(납부\s*확인서|납부서\s*겸\s*영수증|영수필|과세\s*표준)/.test(t) && !/신고서\s*접수증|지방세법\s*시행규칙\s*\[?별지/.test(t)) return 'acqtax';
+  if (/(잔\s*액|잔\s*고)\s*증\s*명|금\s*융\s*거\s*래\s*확\s*인\s*서|Certificate\s+of\s+(?:Deposit\s+)?Balance/i.test(t)) return 'balance';
+  if (/(개별\s*공시\s*지가|공동\s*주택\s*가격|개별\s*(?:단독)?\s*주택\s*가격)/.test(t) && !/(토지|임야|건축물)\s*대장/.test(t)) return 'pubprice';
+  return '';
+}
+
+// 잔고증명·공시가격·취득세 → 화면용 마크다운(docToMarkdown_에서 부름). 검산이 안 된 값은 ⚠.
+function valToMarkdown_(type, r) {
+  var won = function (n) { return n == null || n === '' ? '' : Number(n).toLocaleString('ko-KR') + '원'; };
+  var esc = function (v) { return String(v == null ? '' : v).replace(/\|/g, '/'); };
+  var kv = function (rows) {
+    rows = rows.filter(function (x) { return x[1] !== undefined && x[1] !== null && x[1] !== ''; });
+    return rows.length ? '| 항목 | 내용 |\n|---|---|\n' + rows.map(function (x) { return '| ' + esc(x[0]) + ' | ' + esc(x[1]) + ' |'; }).join('\n') : '';
+  };
+  var out = [];
+  if (type === 'balance') {
+    out.push('### ' + r.종류 + (r.금융기관 ? ' · ' + r.금융기관 : ''));
+    out.push(kv([['기준일', r.기준일 ? r.기준일 + ' (상속개시일·증여일과 같은지 확인)' : ''], ['예금주', r.예금주], ['총액', r.총액 ? won(r.총액) + (r.평가합계12 ? (r.평가합계검산 ? ' (현금+유가증권 검산 일치)' : ' ⚠검산 불일치') : '') : '']]));
+    r.증명.forEach(function (x, i) {
+      out.push('\n**증명 ' + (i + 1) + '** — 합계 ' + won(x.합계) + (x.검산 ? ' (계좌별 금액 합 = 합계 ✓)' : ' ⚠계좌별 합과 맞추지 못함'));
+      if (x.계좌별.length) {
+        out.push('\n| 계좌(뒷자리) | 금액 |\n|---|---|');
+        x.계좌별.forEach(function (a) { out.push('| ' + esc(a.계좌 || '(원문 확인)') + ' | ' + won(a.금액) + ' |'); });
+      }
+    });
+  } else if (type === 'pubprice') {
+    out.push('### ' + r.종류 + (r.소재지 ? ' · ' + r.소재지 : '') + (r.동호 ? ' ' + r.동호 : ''));
+    if (r.총건수) out.push('출력물 총 ' + r.총건수 + '건 중 ' + r.가격.length + '건 읽음' + (r.건수일치 ? ' ✓' : ' ⚠'));
+    if (r.가격.length) {
+      var land = r.종류 === '개별공시지가';
+      out.push('\n| 기준일 | ' + (land ? '개별공시지가(원/㎡)' : '공시가격') + ' | ' + (land ? '공시일' : '면적') + ' | 비고 |\n|---|---|---|---|');
+      r.가격.forEach(function (x) {
+        var area = land ? (x.공시일 || '') : (x.전용면적 != null ? '전용 ' + x.전용면적 + '㎡' : (x.대지면적 != null ? '대지 ' + x.대지면적 + '㎡ · 연면적 ' + x.연면적 + '㎡' : ''));
+        out.push('| ' + [x.기준일 || '⚠', land ? Number(x.단가).toLocaleString('ko-KR') : won(x.가격), area, x.확인필요 ? '⚠확인필요' : ''].map(esc).join(' | ') + ' |');
+      });
+      out.push('\n_취득 당시·양도 당시 기준시가는 해당 날짜 직전 공시분을 고르세요(공동주택·개별주택 공시 기준일은 보통 1월 1일, 2019년 이전 일부는 다름)._');
+    }
+  } else if (type === 'acqtax') {
+    out.push('### ' + r.종류 + (r.과세원인 ? ' · ' + r.과세원인 : ''));
+    out.push(kv([['과세물건', r.과세물건], ['과세표준', won(r.과세표준)], ['시가표준액', won(r.시가표준액)], ['취득세', r.취득세 != null ? won(r.취득세) + (r.실효세율 != null ? ' (과세표준의 ' + r.실효세율 + '%)' : '') : ''],
+      ['지방교육세', won(r.지방교육세)], ['농어촌특별세', won(r.농어촌특별세)], ['지방교육세·농특세(구분 ⚠)', r.부가세목 != null ? (typeof r.부가세목 === 'number' ? won(r.부가세목) : r.부가세목) : ''],
+      ['합계', r.합계 != null ? won(r.합계) + (r.검산 ? ' (세목 합 = 합계 ✓)' : '') : ''], ['납부기한', r.납부기한 ? r.납부기한 + (r.납부기한확인필요 ? ' ⚠' : '') : ''], ['납부일', r.납부일], ['전자납부번호', r.전자납부번호]]));
+    out.push('\n_양도소득세 필요경비(취득부대비용) 증빙용으로 읽었습니다. 지방세 신고 검토는 범위 밖입니다._');
+  }
+  if (r.경고 && r.경고.length) out.push('\n⚠ ' + r.경고.join(' / '));
+  return out.join('\n');
 }
