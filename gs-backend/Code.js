@@ -4267,6 +4267,12 @@ function buildContextSystemPrompt(basePrompt, body) {
     if (typeof ctx.openFile.liveContent === 'string') {
       dynamicExtra += '\n\n[지금 편집기에 실시간으로 열려 있는 문서 내용 — 저장 여부와 무관하게 이게 최신 상태다. read_drive_file로 다시 읽을 필요 없음]\n'
         + '-----\n' + ctx.openFile.liveContent + '\n-----';
+      // [2026.10.11 토큰0] 📚 쟁점 문단 라이브러리로 넣은 표준 문단은 이미 확정된 내용 — AI는 빈칸만 채운다(출력 토큰 절약)
+      if (/✍️\[AI 작성|⚠\[확인필요/.test(ctx.openFile.liveContent)) {
+        dynamicExtra += '\n\n[표준 문단 빈칸 규칙] 이 문서에는 쟁점 문단 라이브러리로 넣은 표준 문단이 있다. 사용자가 "빈칸 채워줘"·"작성해줘"처럼 요청하면 '
+          + '✍️[AI 작성: …] 자리(사건 고유 판단)와 ⚠[확인필요: …] 자리(사건 값)만 채워라 — 표준 문단의 나머지 문장·표·조문 부록은 다시 쓰지 말고, '
+          + 'apply_document_edit의 edits로 그 표시가 있는 짧은 구간만 바꿔라. 사건 자료로 확인할 수 없는 값은 지어내지 말고 ⚠[확인필요]로 두고 이유를 한 줄로 적어라.';
+      }
       if (ctx.aiPanel) {
         dynamicExtra += '\n\n[job AI — 문서 수정 방식] 이 문서는 AI탭 오른쪽 미리보기 칸에 열려 있다. 고칠 때는 apply_document_edit의 edits(바꿀 부분만)를 써라 — '
           + '이 경우에 한해 위의 "content 생략 금지" 규칙은 적용되지 않는다(edits를 쓰면 content는 비워둔다). 문서를 거의 새로 쓸 때만 content를 쓴다. '

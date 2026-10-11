@@ -1037,6 +1037,7 @@
       <button data-snip="mermaid" title="순서도(Mermaid, 자문・신고보고서에서 사용 가능)">◇</button>
       <button data-snip="footnote" title="각주">¹</button>
       <button data-snip="hr" title="구분선">―</button>
+      <button id="btnRwPara" title="쟁점 문단 넣기 — 표준 검토 문단을 사건 값으로 채워 넣고 적용 조문 원문을 부록에 붙입니다(AI 미사용, 토큰 0)">📚</button>
       <span style="flex:1"></span>
       <button id="btnFindOpen" title="찾기/바꾸기 (Ctrl+F)">🔍</button>
       <button id="zoomOutEditor" title="편집창 글자 축소">−</button>
@@ -1711,6 +1712,123 @@ function rwLatestTaxAmount_(c){
   matches.sort(function(a, b){ return String(a.계산일).localeCompare(String(b.계산일)); });
   return matches[matches.length - 1].최종세액;
 }
+
+// ============================================================
+// [2026.10.11 토큰0] 📚 쟁점 문단 넣기 — 드라이브 업무관리자/보고서템플릿/문단 폴더의 표준 검토 문단을 골라
+// 사건 값({변수})으로 채워 커서 자리에 넣고, 적용 조문 원문(무료 법령 API)을 문서 끝 부록에 붙인다. AI를 부르지 않는다.
+// 채우지 못한 칸은 ⚠[확인필요: …], 사건마다 판단이 필요한 자리({AI: …})는 ✍️[AI 작성: …]로 남겨 AI 패널이 그 자리만 채우게 한다.
+// ============================================================
+var rwParaCache_ = null;
+var RW_PARA_SEMOK_ = { transfer: '양도', gift: '증여', inheritance: '상속' };
+function rwParaWon_(v){ var n = Number(String(v == null ? '' : v).replace(/[^\d.-]/g, '')); return n ? n.toLocaleString('ko-KR') + '원' : ''; }
+function rwParaPeriod_(from, to){
+  var a = new Date(from), b = new Date(to);
+  if (!from || !to || isNaN(a) || isNaN(b) || b < a) return '';
+  var months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) - (b.getDate() < a.getDate() ? 1 : 0);
+  return Math.floor(months / 12) + '년 ' + (months % 12) + '개월';
+}
+function rwParaVars_(c){
+  var v = { 작성일: new Date().toISOString().slice(0, 10) };
+  if (!c) return v;
+  var ov = (c.사건개요 && typeof c.사건개요 === 'object') ? c.사건개요 : {};
+  v.고객명 = c.고객명 || ''; v.사건명 = c.사건명 || ''; v.기준일 = c.기준일 || '';
+  v.양도인 = ov.trTransferorName || '';
+  var a0 = Array.isArray(ov.물건목록) && ov.물건목록.length ? ov.물건목록[0] : {};
+  v.소재지 = a0.assetLocation || ''; v.양도가액 = rwParaWon_(a0.양도가액); v.취득가액 = rwParaWon_(a0.취득가액); v.취득일 = a0.취득일 || '';
+  v.보유기간 = rwParaPeriod_(v.취득일, v.기준일);
+  v.증여자 = ov.giftDonorName || ''; v.수증자 = ov.giftDoneeName || ''; v.관계 = ov.giftRelation || '';
+  v.증여가액 = rwParaWon_(ov.giftAmount); v.인수채무 = rwParaWon_(ov.giftDebtAssumed); v.기증여합산액 = rwParaWon_(ov.giftPriorAmount);
+  v.피상속인 = ov.ihDeceasedName || '';
+  v.상속인 = [ov.상속인성명, ov.상속인추가명단].filter(Boolean).join(', ');
+  v.상속인수 = ov.상속인수 ? String(ov.상속인수) : '';
+  v.상속재산가액 = rwParaWon_(ov.ihEstate);
+  var tax = rwLatestTaxAmount_(c); v.최종세액 = tax != null ? Number(tax).toLocaleString('ko-KR') + '원' : '';
+  return v;
+}
+function rwParaFill_(body, vars){
+  return String(body || '')
+    .replace(/\{AI:\s*([^}]*)\}/g, function(_, what){ return '✍️[AI 작성: ' + what.trim() + ']'; })
+    .replace(/\{([가-힣A-Za-z0-9_]+)\}/g, function(_, k){ return (vars[k] != null && String(vars[k]).trim()) ? String(vars[k]) : '⚠[확인필요: ' + k + ']'; });
+}
+// 추천 — 사건 세목이 같고, 추천 낱말이 사건명·사건분류·특이사항·세액계산 요약에 있으면 위로
+function rwParaScore_(item, c){
+  if (!c) return 0;
+  var semok = RW_PARA_SEMOK_[c.세목] || '';
+  var ov = (c.사건개요 && typeof c.사건개요 === 'object') ? c.사건개요 : {};
+  var hay = [c.사건명, c.업무유형, ov.사건분류, ov.특이사항].concat((c.세액계산결과 || []).map(function(e){ return e && e.요약 || ''; })).join(' ');
+  var s = 0;
+  if (semok && item.세목 === semok) s += 2;
+  if (item.세목 === '공통') s += 1;
+  (item.추천 || []).forEach(function(w){ if (w && hay.indexOf(w) !== -1) s += 3; });
+  return s;
+}
+async function rwOpenParagraphPicker_(){
+  var ta = document.getElementById('mdInput');
+  if (!ta || ta.offsetParent === null){ showToast('문서를 마크다운 편집 상태로 연 뒤 눌러 주세요.'); return; }
+  var c = rwGetSelectedCase_();
+  var ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  var box = document.createElement('div');
+  box.style.cssText = 'background:var(--bg,#fff);color:var(--text,#222);border-radius:10px;max-width:640px;width:100%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 8px 30px rgba(0,0,0,.25);';
+  box.innerHTML = '<div style="padding:12px 16px;border-bottom:1px solid #ddd;font-weight:600;">📚 쟁점 문단 넣기 <span style="font-weight:400;font-size:12px;color:#888;">AI 미사용 · 토큰 0</span></div>'
+    + '<div id="rwParaList" style="padding:8px 16px;overflow:auto;flex:1;font-size:13.5px;">문단 목록을 불러오는 중…</div>'
+    + '<div style="padding:10px 16px;border-top:1px solid #ddd;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
+    + '<label style="font-size:12.5px;"><input type="checkbox" id="rwParaLaw" checked> 적용 조문 원문을 부록에 붙이기</label><span style="flex:1"></span>'
+    + '<button type="button" id="rwParaCancel">닫기</button><button type="button" id="rwParaOk" style="font-weight:600;">넣기</button></div>';
+  ov.appendChild(box); document.body.appendChild(ov);
+  var close = function(){ ov.remove(); };
+  box.querySelector('#rwParaCancel').onclick = close;
+  ov.addEventListener('click', function(e){ if (e.target === ov) close(); });
+  try {
+    if (!rwParaCache_){ var res = await callGas('rw_list_paragraphs', {}); if (!res || !res.ok) throw new Error(res && res.error || '응답 없음'); rwParaCache_ = res.items || []; }
+  } catch (err) { box.querySelector('#rwParaList').textContent = '문단 목록을 불러오지 못했습니다: ' + (err && err.message || err); return; }
+  var items = rwParaCache_.map(function(it, i){ return { it: it, i: i, s: rwParaScore_(it, c) }; });
+  items.sort(function(a, b){ return b.s - a.s || a.i - b.i; });
+  var esc = function(s){ return String(s).replace(/[&<>"]/g, function(ch){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); };
+  box.querySelector('#rwParaList').innerHTML = items.length ? items.map(function(x){
+    return '<label style="display:flex;gap:8px;padding:5px 0;align-items:flex-start;"><input type="checkbox" data-i="' + x.i + '"' + (x.s >= 5 ? ' checked' : '') + '>'
+      + '<span>' + (x.s >= 5 ? '⭐ ' : '') + '<b>' + esc(x.it.제목) + '</b> <span style="color:#888;font-size:12px;">' + esc(x.it.세목) + (x.it.조문 && x.it.조문.length ? ' · ' + esc(x.it.조문.map(function(l){ return l.lawName.replace(/\s/g, '').replace('상속세및증여세법', '상증법').replace('조세특례제한법', '조특법') + ' ' + l.articleNo; }).join(', ')) : '') + '</span></span></label>';
+  }).join('') + '<div style="color:#888;font-size:12px;margin-top:6px;">⭐ 사건 세목·사건분류·세액계산 결과로 추천. 문단 내용은 드라이브 "업무관리자/보고서템플릿/문단" 폴더에서 직접 고칠 수 있습니다.</div>'
+    : '드라이브 "업무관리자/보고서템플릿/문단" 폴더에 문단 파일이 없습니다.';
+  box.querySelector('#rwParaOk').onclick = async function(){
+    var picked = Array.prototype.slice.call(box.querySelectorAll('#rwParaList input[type=checkbox]:checked')).map(function(cb){ return rwParaCache_[Number(cb.dataset.i)]; });
+    if (!picked.length){ showToast('넣을 문단을 골라 주세요.'); return; }
+    var withLaw = box.querySelector('#rwParaLaw').checked;
+    this.disabled = true; this.textContent = '채우는 중…';
+    var vars = rwParaVars_(c);
+    // 거주기간은 사건 폴더의 주민등록초본 정리 결과에서(무료 OCR·규칙) — 필요한 문단이 있을 때만 서버에 묻는다
+    if (c && c.id && picked.some(function(p){ return /\{거주기간\}/.test(p.body); })){
+      try {
+        var df = await callGas('rw_case_doc_facts', { caseId: c.id, location: vars.소재지 || '' });
+        var m = df && df.ok && df.match && df.match[0];
+        if (m) vars.거주기간 = m.시작 + ' ~ ' + m.끝 + (m.기간 ? ' (' + m.기간 + ')' : '') + (m.성명 ? ', ' + m.성명 + ' 초본 기준' : '') + (m.확인필요 ? ' ⚠원문 확인' : '');
+      } catch (e) { /* 못 찾으면 확인필요로 남김 */ }
+    }
+    var md = picked.map(function(p){ return rwParaFill_(p.body, vars); }).join('\n\n---\n\n');
+    var start = ta.selectionStart, end = ta.selectionEnd, val = ta.value;
+    // 커서가 문서 맨 처음이면(편집 전) 부록 앞에, 부록이 없으면 끝에 넣는다
+    if (start === 0 && end === 0){ var ap = val.search(/\n##\s*부록/); start = end = ap > 0 ? ap : val.length; }
+    var newVal = val.slice(0, start) + '\n\n' + md + '\n\n' + val.slice(end);
+    if (withLaw){
+      var laws = []; picked.forEach(function(p){ (p.조문 || []).forEach(function(l){ laws.push(l); }); });
+      if (laws.length){
+        try {
+          var ar = await callGas('rw_statute_appendix', { laws: laws });
+          if (ar && ar.ok && ar.md){
+            var head = '## 부록 — 적용 조문 원문(국가법령정보센터, 자동 첨부)';
+            newVal = newVal.indexOf(head) !== -1 ? newVal.replace(head, head + '\n\n' + ar.md + '\n') : newVal.replace(/\s*$/, '') + '\n\n---\n\n' + head + '\n\n' + ar.md + '\n';
+          }
+        } catch (e) { showToast('조문 원문을 불러오지 못해 부록은 건너뛰었습니다.'); }
+      }
+    }
+    ta.value = newVal;
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    close();
+    var left = (md.match(/⚠\[확인필요/g) || []).length, ai = (md.match(/✍️\[AI 작성/g) || []).length;
+    showToast('📚 문단 ' + picked.length + '개를 넣었습니다(토큰 0). 확인필요 ' + left + '칸 · AI 작성 ' + ai + '칸 — AI 패널에 "빈칸 채워줘"라고 하면 그 자리만 씁니다.');
+  };
+}
+document.getElementById('btnRwPara') && document.getElementById('btnRwPara').addEventListener('click', rwOpenParagraphPicker_);
 
 async function createNewDoc(kind){
   const c = rwGetSelectedCase_();
