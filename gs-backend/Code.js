@@ -20446,18 +20446,36 @@ function migrateReportFoldersAndFilenames_() {
 
 // 템플릿다듬기: 이미 매일 밤 도는 runTemplateReview_()의 결과 파일을 그대로 읽어 보여준다
 // (새 점검 로직을 또 만들지 않고 기존 야간작업을 재사용) + "지금 다시 점검" 버튼용 즉시실행.
+// [2026.10.13] 템플릿다듬기 화면 — 먼저 야간 규칙 통계(토큰 0, 개선후보 보고서 templates)를 보여 주고, 예전 AI 점검 결과가 있으면 그 아래에.
+function tplStatsMarkdown_(tp) {
+  if (!tp || tp.error) return '## 📚 템플릿 사용 통계(야간·토큰 0)\n\n아직 통계가 없습니다' + (tp && tp.error ? ' — ' + tp.error : '') + '.\n';
+  var L = ['## 📚 템플릿 사용 통계(야간 자동·AI 미사용) — ' + tp.기간 + ' 사본 ' + tp.사본수 + '건', ''];
+  (tp.템플릿별 || []).forEach(function (x) {
+    if (!(x.공통추가제목 || []).length && !(x.늘빈칸 || []).length) return;
+    L.push('### ' + x.종류 + ' · ' + x.템플릿 + ' (사본 ' + x.사본수 + '건)');
+    if ((x.공통추가제목 || []).length) L.push('- 여러 사본에 공통으로 새로 생긴 제목(템플릿에 넣을 후보): ' + x.공통추가제목.join(', '));
+    if ((x.늘빈칸 || []).length) L.push('- 거의 늘 비어 있는 칸(뺄 후보): ' + x.늘빈칸.join(', '));
+    L.push('');
+  });
+  if ((tp.새문단후보 || []).length) L.push('### 새 쟁점 문단 후보(자주 나오는데 문단 라이브러리에 없음)', tp.새문단후보.map(function (x) { return x.낱말 + '(' + x.사본 + '건)'; }).join(', '), '');
+  if ((tp.문단사용 || []).length) L.push('### 쟁점 문단 사용 횟수', tp.문단사용.map(function (x) { return x.문단.replace(/\.md$/, '') + ' ' + x.사용 + '회'; }).join(', '), '');
+  L.push('_매주 웹 Claude Code 루틴이 이 통계로 템플릿 수정안(PR)을 올립니다 → 깃허브에서 승인(Merge) → 설정 🐞 카드 📥 반영 시 드라이브 템플릿 갱신(드라이브에서 직접 고친 파일은 덮지 않음)._');
+  return L.join('\n');
+}
 function handleGetLatestTemplateReview(body) {
+  var statsMd = '';
+  try { var rep = getImprovementReport_().report; statsMd = tplStatsMarkdown_(rep && rep.templates) + (rep && rep.generatedAt ? '\n\n_통계 생성: ' + rep.generatedAt + '_' : ''); } catch (e) {}
   const chiefFolder = getChiefManagerFolder_();
-  if (!chiefFolder) return { error: '총괄관리자 폴더가 설정되어 있지 않습니다.' };
+  if (!chiefFolder) return { date: null, content: statsMd || '총괄관리자 폴더가 설정되어 있지 않습니다.' };
   const folder = getOrCreateSubfolder_(chiefFolder, '_템플릿점검');
   const todayStr = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
   for (let back = 0; back < 35; back++) {
     const d = new Date(Date.now() - back * 86400000);
     const dateStr = Utilities.formatDate(d, 'Asia/Seoul', 'yyyy-MM-dd');
     const content = readFileIfExists_(folder, '템플릿점검_' + dateStr + '.md');
-    if (content) return { date: dateStr, content: content };
+    if (content) return { date: dateStr, content: (statsMd ? statsMd + '\n\n---\n\n## 예전 AI 점검 결과(유료, 버튼으로만 실행)\n\n' : '') + content };
   }
-  return { date: null, content: '아직 점검 결과가 없습니다 — "지금 다시 점검하기"를 눌러 새로 만들 수 있습니다.' };
+  return { date: null, content: statsMd || '아직 점검 결과가 없습니다 — "지금 다시 점검하기"를 눌러 새로 만들 수 있습니다.' };
 }
 function handleRunTemplateReviewNow(body) {
   try { runTemplateReview_(); } catch (err) { return { error: '점검 실패: ' + err.message }; }
@@ -24512,7 +24530,8 @@ function buildImprovementReport_() {
       '중복 방지: git fetch --all 후 git branch -r 과 최근 14일 main 커밋을 보고, 같은 내용을 이미 반영했거나 이미 올린 브랜치가 있으면 그 후보는 건너뛰고 이유만 적는다.',
       'auditPending(📚)은 코드 수정 대상이 아니다 — 답변에 "설정 🐞 카드 🧾 지침 점검 버튼 권장"만 적는다.',
       '새 기능에 유료 AI 호출을 넣지 않는다(꼭 필요하면 사람이 버튼을 누를 때만, PR에 예상 비용 명시). 바뀐 사용법은 gs-backend/manage/manual.html 에 한두 줄 추가.',
-      '개선요구사항에 고객 정보가 섞여 있으면 PR·커밋에는 일반화해서 쓴다(저장소 공개).'
+      '개선요구사항에 고객 정보가 섞여 있으면 PR·커밋에는 일반화해서 쓴다(저장소 공개).',
+      'templates(📚 템플릿 순환)는 매주 볼 것: 공통추가제목(사본 여럿에 공통으로 새로 생긴 제목)·늘빈칸(아무도 안 채우는 칸)·새문단후보(자주 나오는데 문단 라이브러리에 없는 쟁점)를 보고 gs-backend/templates/(보고서·의뢰서·문단 md)에 수정안을 PR로 올린다. 반드시 templates.현재원문[종류][i].text(지금 드라이브 원문)에서 출발해 고치고, gs-backend/templates/_index.txt의 그 파일 줄 두 번째 칸을 templates.현재원문의 md5로 바꾼다(📥 반영 때 드라이브가 그 값과 같아야만 덮어씀 — 세무사님 직접 수정 보호). 새 문단은 기존 문단 머리말 형식(<!-- 문단정보 제목/세목/추천/조문 -->)·{변수}·{AI: …}를 따르고, 법령 내용은 현행 조문을 확인해 쓴다. 고객 이름·금액은 넣지 않는다. 바꿀 것이 없으면 PR을 만들지 않는다.'
     ],
     requests: requests,
     auditPending: auditPending,
@@ -24521,8 +24540,125 @@ function buildImprovementReport_() {
     paid: { totalUsd: Math.round(paidTotal * 1e4) / 1e4, totalKrw: Math.round(paidTotal * 1400), byKind: paidByKind, repeats: paidRepeats },
     perf: perf
   };
+  // [2026.10.13] 템플릿 사용 통계(토큰 0) — 실패해도 보고서 나머지는 그대로
+  try { report.templates = tplBuildUsageStats_(); } catch (e) { report.templates = { error: String(e && e.message || e).slice(0, 200) }; }
+  try {
+    var tp = report.templates || {};
+    var tpCnt = (tp.템플릿별 || []).filter(function (x) { return (x.공통추가제목 || []).length || (x.늘빈칸 || []).length; }).length + (tp.새문단후보 || []).length;
+    if (tpCnt) headline.push('📚 템플릿 고도화 후보 ' + tpCnt + '건(최근 40일 사본 ' + (tp.사본수 || 0) + '건 기준) — 주간 루틴이 수정안 PR');
+  } catch (e) {}
   try { improve_reportFile_().setContent(JSON.stringify(report)); } catch (e) {}
   return { success: true, report: report };
+}
+// ============================================================
+// [2026.10.13 토큰0] 템플릿 다양화·고도화 순환 — 세무사님: "템플릿을 다양화·고도화하는 것이 필요해서 야간작업에 반영한 적이
+// 있었는데, 지금도 필요하다." 예전 runTemplateReview_(유료 AI)는 토큰0 원칙으로 버튼 전용이 됐다. 대신:
+//  ① 매일 밤 규칙만으로(AI 0원) 최근 40일 사본과 원본 템플릿을 비교한 통계를 개선후보 보고서 "templates"에 싣는다.
+//  ② 주간 웹 Claude Code 루틴이 그 통계 + 현재 드라이브 원문을 보고 gs-backend/templates/ 수정안을 PR로 올린다.
+//  ③ 세무사님이 승인(Merge)하고 📥 반영을 누르면 바뀐 템플릿만 드라이브에 덮어쓴다 — 단, 드라이브 파일이 PR 기준본 이후
+//     세무사님 손으로 바뀌었으면 덮지 않고 경고한다(직접 고친 내용 보호).
+// 고객 이름·금액은 싣지 않는다(제목에 사건 당사자 이름이 있으면 그 줄은 통계에서 뺀다).
+// ============================================================
+var TPL_ISSUE_WORDS_ = ['1세대1주택', '비과세', '일시적', '고가주택', '장기보유', '거주요건', '조정대상', '중과', '다주택', '상생임대', '자경', '감면', '분양권', '입주권', '재건축', '재개발',
+  '부담부증여', '증여재산공제', '혼인', '출산', '10년', '합산', '시가', '감정', '유사매매', '기준시가', '저가', '고가양도', '특수관계', '자금출처', '차용', '이자',
+  '배우자공제', '일괄공제', '금융재산', '동거주택', '추정상속', '사전증여', '가업', '영농', '연부연납', '물납', '세대생략', '해외', '국외', '취득가액', '필요경비', '환산', '가산세', '경정청구', '수정신고'];
+function tplMd5_(s) { return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, s, Utilities.Charset.UTF_8)); }
+function tplFolders_() {
+  var rep = getReportTemplateFolder_(), cas = getCaseTemplateFolder_(), para = null;
+  try { if (rep) { var it = rep.getFoldersByName('문단'); para = it.hasNext() ? it.next() : rep.createFolder('문단'); } } catch (e) {}
+  return { 보고서: rep, 의뢰서: cas, 문단: para };
+}
+function tplReadFolder_(folder) {
+  var out = [];
+  if (!folder) return out;
+  var it = folder.getFiles();
+  while (it.hasNext()) { var f = it.next(); if (TEXT_TEMPLATE_EXT_REGEX_.test(f.getName())) { try { out.push({ name: f.getName(), file: f, text: f.getBlob().getDataAsString('UTF-8') }); } catch (e) {} } }
+  return out;
+}
+function tplNormHead_(h) { return String(h || '').replace(/^#+\s*/, '').replace(/[✅⚠️ℹ️📌🔎①-⑳\d.()\[\]\s·:—–-]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+function tplBuildUsageStats_() {
+  var F = tplFolders_(), templates = {}, sizeCap = 6000, folderIds = [];
+  ['보고서', '의뢰서', '문단'].forEach(function (k) {
+    if (F[k]) folderIds.push(F[k].getId());
+    templates[k] = tplReadFolder_(F[k]).map(function (t) { return { name: t.name, md5: tplMd5_(t.text), chars: t.text.length, text: t.text.slice(0, sizeCap) }; });
+  });
+  // 사건 당사자 이름(통계 제목에서 빼려고) — 작업관리 고객명·납세자
+  var names = [];
+  try {
+    var sh = work_getSheet_(), vals = sh.getDataRange().getValues(), col = work_colMap_(vals[0]);
+    vals.slice(1).forEach(function (r) { [r[col.고객명], r[col.납세자]].forEach(function (v) { String(v || '').split(/[,()\s]+/).forEach(function (n) { if (n.length >= 2 && n.length <= 4) names.push(n); }); }); });
+  } catch (e) {}
+  var hasName = function (s) { return names.some(function (n) { return s.indexOf(n) !== -1; }); };
+  // 최근 40일 사본 — 보고서·의뢰서 이름이 든 .md(템플릿 폴더 자체는 제외)
+  var cutoff = Utilities.formatDate(new Date(Date.now() - 40 * 86400000), 'Asia/Seoul', "yyyy-MM-dd'T'HH:mm:ss");
+  var copies = [];
+  try {
+    var res = Drive.Files.list({ q: "name contains '.md' and trashed = false and modifiedTime > '" + cutoff + "' and (name contains '검토서' or name contains '보고서' or name contains '의뢰서' or name contains '청구서')",
+      fields: 'files(id,name,parents,modifiedTime)', pageSize: 80, orderBy: 'modifiedTime desc' });
+    (res.files || []).forEach(function (f) {
+      if ((f.parents || []).some(function (p) { return folderIds.indexOf(p) !== -1; })) return;
+      if (copies.length >= 60) return;
+      try { copies.push({ name: f.name, text: DriveApp.getFileById(f.id).getBlob().getDataAsString('UTF-8') }); } catch (e) {}
+    });
+  } catch (e) {}
+  var heads = function (t) { return (String(t).match(/^#{2,3}\s.+$/gm) || []).map(tplNormHead_).filter(function (h) { return h.length >= 2; }); };
+  var perTemplate = [];
+  ['보고서', '의뢰서'].forEach(function (k) {
+    templates[k].forEach(function (tp) {
+      var base = tp.name.replace(/\.(md|txt)$/i, '');
+      var mine = copies.filter(function (c) { return c.name.indexOf(base) !== -1 || (k === '의뢰서' && c.name.replace(/\.md$/, '') === base); });
+      if (!mine.length) return;
+      var orig = heads(tp.text), added = {}, emptyCnt = {}, labels = (tp.text.match(/^-\s*([^:\n]{1,20}):\s*$/gm) || []).map(function (x) { return x.replace(/^-\s*|:\s*$/g, ''); });
+      mine.forEach(function (c) {
+        var seen = {};
+        heads(c.text).forEach(function (h) { if (orig.indexOf(h) === -1 && !seen[h] && !hasName(h)) { seen[h] = 1; added[h] = (added[h] || 0) + 1; } });
+        labels.forEach(function (lb) { var m = new RegExp('^-\\s*' + lb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ':\\s*(.*)$', 'm').exec(c.text); if (!m || !m[1].trim()) emptyCnt[lb] = (emptyCnt[lb] || 0) + 1; });
+      });
+      var need = Math.max(2, Math.ceil(mine.length * 0.3));
+      perTemplate.push({ 종류: k, 템플릿: tp.name, 사본수: mine.length,
+        공통추가제목: Object.keys(added).filter(function (h) { return added[h] >= need; }).sort(function (a, b) { return added[b] - added[a]; }).slice(0, 15).map(function (h) { return h + ' (' + added[h] + ')'; }),
+        늘빈칸: labels.filter(function (lb) { return mine.length >= 2 && (emptyCnt[lb] || 0) >= Math.ceil(mine.length * 0.8); }) });
+    });
+  });
+  // 문단 라이브러리 사용 횟수 — 문단 첫 제목 줄이 사본에 그대로 들어 있으면 1회
+  var paraUse = templates.문단.filter(function (p) { return !/^_/.test(p.name); }).map(function (p) {
+    var h = (p.text.match(/^##\s.+$/m) || [''])[0].replace(/^##\s*/, '').trim();
+    return { 문단: p.name, 사용: h ? copies.filter(function (c) { return c.text.indexOf(h) !== -1; }).length : 0 };
+  });
+  // 자주 나오는 쟁점 낱말 — 사본 3건 이상에 나오는데 어느 문단 제목·추천어에도 없는 것 = 새 문단 후보
+  var paraWords = templates.문단.map(function (p) { return p.text.slice(0, 400); }).join(' ');
+  var issue = TPL_ISSUE_WORDS_.map(function (w) { return { 낱말: w, 사본: copies.filter(function (c) { return c.text.indexOf(w) !== -1; }).length }; })
+    .filter(function (x) { return x.사본 >= 3; }).sort(function (a, b) { return b.사본 - a.사본; });
+  var newIssue = issue.filter(function (x) { return paraWords.indexOf(x.낱말) === -1; }).slice(0, 15);
+  return { 기간: '최근 40일', 사본수: copies.length, 템플릿별: perTemplate, 문단사용: paraUse, 자주나온쟁점: issue.slice(0, 20), 새문단후보: newIssue, 현재원문: templates };
+}
+// 📥 반영 때 템플릿 동기화 — 저장소 gs-backend/templates/_index.txt(경로·PR 기준본 MD5) 목록대로 받아 드라이브와 비교.
+// 덮어쓰는 조건: 드라이브 파일 MD5가 PR 기준본(_index.txt) 또는 지난 동기화 때 기록한 값(TPL_SYNC_BASE)과 같을 때만.
+// 그 밖(세무사님이 그 뒤 드라이브에서 직접 고침)은 덮지 않고 경고로 돌려준다. 새 파일은 만든다.
+function tplSyncFromGithub_(sha) {
+  var out = { 덮어씀: [], 새로만듦: [], 같음: 0, 충돌: [] };
+  var idxRes = UrlFetchApp.fetch('https://raw.githubusercontent.com/' + GH_REPO_ + '/' + sha + '/gs-backend/templates/_index.txt', { muteHttpExceptions: true });
+  if (idxRes.getResponseCode() !== 200) return { skipped: '템플릿 목록(_index.txt)이 없음' };
+  var entries = idxRes.getContentText('UTF-8').split('\n').filter(function (l) { return l && l.charAt(0) !== '#'; }).map(function (l) { var p = l.split('\t'); return { path: p[0].trim(), base: (p[1] || '').trim() }; });
+  var props = PropertiesService.getScriptProperties(), stored = {};
+  try { stored = JSON.parse(props.getProperty('TPL_SYNC_BASE') || '{}'); } catch (e) { stored = {}; }
+  var F = tplFolders_();
+  var reqs = entries.map(function (e) { return { url: 'https://raw.githubusercontent.com/' + GH_REPO_ + '/' + sha + '/gs-backend/templates/' + e.path.split('/').map(encodeURIComponent).join('/'), muteHttpExceptions: true }; });
+  var resps = reqs.length ? UrlFetchApp.fetchAll(reqs) : [];
+  entries.forEach(function (e, i) {
+    if (resps[i].getResponseCode() !== 200) return;
+    var kind = e.path.split('/')[0], fname = e.path.split('/').slice(1).join('/'), folder = F[kind];
+    if (!folder || !fname) return;
+    var repoText = resps[i].getContentText('UTF-8'), repoMd5 = tplMd5_(repoText);
+    var it = folder.getFilesByName(fname);
+    if (!it.hasNext()) { folder.createFile(fname, repoText, MimeType.PLAIN_TEXT); stored[e.path] = repoMd5; out.새로만듦.push(e.path); return; }
+    var df = it.next(), driveText = df.getBlob().getDataAsString('UTF-8'), driveMd5 = tplMd5_(driveText);
+    if (driveMd5 === repoMd5) { stored[e.path] = repoMd5; out.같음++; return; }
+    if (driveMd5 === e.base || driveMd5 === stored[e.path]) { df.setContent(repoText); stored[e.path] = repoMd5; out.덮어씀.push(e.path); return; }
+    out.충돌.push(e.path);
+  });
+  try { props.setProperty('TPL_SYNC_BASE', JSON.stringify(stored)); } catch (e) {}
+  return out;
 }
 function getImprovementReport_() {
   let report = null;
@@ -24627,7 +24763,18 @@ function gh_deployApply_(body) {
     api('put', '/deployments/' + GH_DEPLOY_ID_, { deploymentConfig: { scriptId: scriptId, versionNumber: ver.versionNumber, manifestFileName: 'appsscript', description: desc } });
     gh_markDeployed_(head.sha);
     try { CacheService.getScriptCache().remove('dsc_ver_getNightlyStatus'); } catch (e) {}
-    return { success: true, version: ver.versionNumber, sha: head.sha.slice(0, 7), files: files.length, message: desc };
+    // [2026.10.13] 바뀐 템플릿(보고서·의뢰서·문단)을 드라이브에 — 세무사님이 드라이브에서 직접 고친 파일은 덮지 않고 경고
+    var tplSync = null;
+    try { tplSync = tplSyncFromGithub_(head.sha); } catch (e) { tplSync = { error: String(e && e.message || e).slice(0, 200) }; }
+    var tplMsg = '';
+    if (tplSync && !tplSync.error && !tplSync.skipped) {
+      var parts = [];
+      if (tplSync.덮어씀.length) parts.push('템플릿 ' + tplSync.덮어씀.length + '개 갱신');
+      if (tplSync.새로만듦.length) parts.push('새 템플릿 ' + tplSync.새로만듦.length + '개');
+      if (tplSync.충돌.length) parts.push('⚠ 드라이브에서 직접 고친 템플릿 ' + tplSync.충돌.length + '개는 덮지 않음(' + tplSync.충돌.slice(0, 3).join(', ') + ')');
+      tplMsg = parts.join(' · ');
+    }
+    return { success: true, version: ver.versionNumber, sha: head.sha.slice(0, 7), files: files.length, message: desc + (tplMsg ? ' / ' + tplMsg : ''), templates: tplSync };
   });
 }
 
