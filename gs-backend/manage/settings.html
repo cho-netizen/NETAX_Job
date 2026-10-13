@@ -46,6 +46,7 @@
         <button type="button" class="ghost-btn" id="stBtnImproveReq" title="고쳤으면 하는 점·새 기능을 적어 두면 개선 후보에 올라가고, 웹 Claude Code(매주 월·AI 탭 🛠)가 구현해 수정안으로 올립니다(AI 비용 0)">✍ 개선요구사항 적기</button>
         <button type="button" class="ghost-btn" id="stBtnSysAudit" title="업무관리자·지침 파일끼리 모순·중복이 없는지 유료 AI(Sonnet)가 점검합니다 — 지침이 바뀌면 개선 후보에 알림이 뜹니다(자동 실행 안 함)">🧾 지침 점검</button>
         <button type="button" class="ghost-btn" id="stBtnGhDeploy" title="웹 Claude Code가 깃허브에 올리고 세무사님이 승인(Merge)한 수정을 job에 반영합니다">📥 수정 반영</button>
+        <button type="button" class="ghost-btn" id="stBtnRollback" title="방금 반영한 수정 때문에 job이 이상하면, 바로 앞 버전으로 되돌립니다(주소는 그대로). 되돌린 뒤 자동으로 점검합니다">↩ 되돌리기</button>
       </div>
       <div id="stBugList" class="settings-tool-desc">불러오기를 누르면 최근 기록이 보입니다.</div>
     </div>
@@ -349,10 +350,31 @@
           bugList.textContent = '📥 반영 중… (1분쯤 걸립니다. 창을 닫지 마세요)';
           callGas('gh_deploy_apply', { expectSha: st.head }).then(function(r){
             if (!r || !r.success){ bugList.textContent = '반영하지 못했습니다: ' + ((r && r.error) || ''); return; }
-            bugList.innerHTML = '<b>✅ 반영 완료</b> — 버전 ' + r.version + ' · ' + escapeHtml(r.message) + '<br>화면을 새로고침하면 바뀐 화면이 보입니다.';
+            bugList.innerHTML = '<b>✅ 반영 완료</b> — 버전 ' + r.version + ' · ' + escapeHtml(r.message) + '<br>화면을 새로고침하면 바뀐 화면이 보입니다.' + deployCheckHtml_(r.check);
           }).catch(function(err){ bugList.textContent = '반영 중 오류: ' + (err && err.message ? err.message : err); });
         });
       }).catch(function(err){ bugList.textContent = '확인 중 오류: ' + (err && err.message ? err.message : err); });
+    });
+    // [2026.10.13 자가치유] 배포 직후 자동 점검 결과를 그려 주는 도우미 — 📥 반영·↩ 되돌리기 결과와 불러오기에서 함께 쓴다
+    function deployCheckHtml_(chk){
+      if (!chk) return '';
+      var bad = (chk.items || []).filter(function(x){ return !x.ok; });
+      return '<div style="margin-top:6px;"><b>' + (chk.ok ? '✅ 배포 직후 점검 정상' : '🚨 배포 직후 점검 이상 ' + bad.length + '건') + '</b> · ' + escapeHtml(chk.at || '')
+        + (bad.length ? bad.map(function(x){ return '<div style="padding:2px 0;">⚠ ' + escapeHtml(x.name) + ' — ' + escapeHtml(x.msg) + '</div>'; }).join('') + '<div>이상하면 ↩ 되돌리기를 누르세요.</div>' : '') + '</div>';
+    }
+    callGas('deploy_check_last', {}).then(function(r){
+      var chk = r && r.last;
+      if (chk && !chk.ok && bugList) bugList.innerHTML = deployCheckHtml_(chk) + bugList.innerHTML;
+    }).catch(function(){});
+    document.getElementById('stBtnRollback').addEventListener('click', function(){
+      nxConfirm_('↩ 바로 앞 버전으로 되돌릴까요?\n\njob 주소는 그대로이고, 1분쯤 뒤 이전 화면·기능으로 돌아갑니다. 되돌린 뒤 자동으로 점검합니다. 다시 최신으로 올리려면 📥 수정 반영을 누르면 됩니다.').then(function(ok){
+        if (!ok) return;
+        bugList.textContent = '↩ 되돌리는 중… (1~2분, 되돌린 버전 점검 포함)';
+        callGas('gh_rollback', {}).then(function(r){
+          if (!r || !r.success){ bugList.textContent = '되돌리지 못했습니다: ' + ((r && r.error) || ''); return; }
+          bugList.innerHTML = '<b>✅ 되돌림 완료</b> — 버전 ' + r.from + ' → ' + r.to + '<br>' + escapeHtml(r.message || '') + deployCheckHtml_(r.check) + '<div>화면을 새로고침하면 되돌린 화면이 보입니다.</div>';
+        }).catch(function(err){ bugList.textContent = '되돌리는 중 오류: ' + (err && err.message ? err.message : err); });
+      });
     });
     document.getElementById('stBtnBugClear').addEventListener('click', function(){
       nxConfirm_('오류 기록을 모두 지울까요?').then(function(ok){

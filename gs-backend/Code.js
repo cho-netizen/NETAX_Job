@@ -3826,9 +3826,15 @@ function dispatchClientAction0_(body) {
   if (body.action === 'improve_report_get') return jsonResponse(getImprovementReport_());
   if (body.action === 'system_audit_run') return jsonResponse(runNightlySystemAudit(true) || { success: true });
   if (body.action === 'improve_request_add') return jsonResponse(improve_addRequest_(body));
-  if (body.action === 'gh_mark_deployed') { if (!/^[0-9a-f]{40}$/.test(String(body.sha || ''))) return jsonResponse({ success: false, error: 'sha 형식 오류' }); gh_markDeployed_(body.sha); return jsonResponse({ success: true }); } // PC에서 clasp 배포·푸시 후 기준 맞춤(tools/mark-deployed.js)
+  if (body.action === 'gh_mark_deployed') { if (!/^[0-9a-f]{40}$/.test(String(body.sha || ''))) return jsonResponse({ success: false, error: 'sha 형식 오류' }); gh_markDeployed_(body.sha); let chk = null; try { chk = deploySmoke_().last; } catch (e) {} return jsonResponse({ success: true, check: chk }); } // PC에서 clasp 배포·푸시 후 기준 맞춤(tools/mark-deployed.js)
   if (body.action === 'gh_deploy_status') return jsonResponse(gh_deployStatus_());
   if (body.action === 'gh_deploy_apply') return jsonResponse(gh_deployApply_(body));
+  if (body.action === 'deploy_smoke') return jsonResponse(deploySmoke_()); // 배포 직후 자동 점검(토큰 0)
+  if (body.action === 'deploy_check_last') return jsonResponse(deployCheckLast_());
+  if (body.action === 'gh_rollback') { const rb = gh_rollback_(); rb.check = deploySmokeRemote_(); return jsonResponse(rb); } // ↩ 되돌리기 + 되돌린 버전 점검
+  if (body.action === 'doc_regress_set_baseline') return jsonResponse(docRegressSetBaseline_(body)); // 서류 회귀시험 표본 기준값
+  if (body.action === 'doc_regress_run') return jsonResponse(docRegressRunNightly_(!!body.force));
+  if (body.action === 'corr_log') return jsonResponse(corrLog_(body)); // 자동 입력값을 세무사님이 고친 기록(고객 값 없음)
   if (body.action === 'improve_token_get') return jsonResponse({ success: true, token: improve_readToken_() });
   if (body.action === 'ai_conv_import_work') return jsonResponse(ai_convImportWork(body));
   if (body.action === 'ai_conv_sync_work') return jsonResponse(ai_convSyncWork(body));
@@ -16213,6 +16219,8 @@ function runNightlyChiefManager() {
   try { runCashReceiptScan_(); } catch (err) { console.error('현금영수증 자동 인식 실패: ' + err.message); }
   // [2026.10.09] 토큰 0 자가점검 — 세무사님이 버그로 AI와 씨름하지 않도록 job이 매일 밤 스스로 확인
   try { runSelfCheck_(); } catch (err) { console.error('자가점검 실패: ' + err.message); }
+  // [2026.10.13] 서류 정리 회귀시험(토큰 0) — 밤마다 8건씩, 7일에 표본 한 바퀴
+  try { docRegressRunNightly_(false); } catch (err) { console.error('서류 회귀시험 실패: ' + err.message); }
   // [2026.10.09] 개선 후보 보고서(토큰 0) — 자가점검 다음에 만들어야 그 결과까지 담긴다
   // [2026.10.13] 환경 감시(토큰 0)는 오래 걸릴 수 있어(법령 11개·주간 정찰) 이 묶음(6분 제한) 안에서 돌리지 않고 새벽 4시 따로 돈다 —
   // 여기서는 그 시간 트리거가 있는지만 확인해 없으면 만든다. 감시가 끝나면 개선 후보 보고서를 다시 만들어 결과를 싣는다.
@@ -24168,7 +24176,137 @@ const SELF_CHECK_CALC_CASES_ = [
       netFinancialAssets: 400000000, nonHeirPriorGiftTaxableBaseTotal: 90000000, nonHeirPriorGiftAmountTotal: 100000000, nonHeirPriorGiftTaxPaidTotal: 9000000,
       priorGiftHeirs: [{ name: '아들', actualInheritedValue: 700000000, priorGiftAmount: 300000000, priorGiftTaxableBase: 250000000, priorGiftTaxPaid: 40000000 }, { name: '배우자', actualInheritedValue: 1000000000 }, { name: '대습손자', actualInheritedValue: 700000000 }],
       generationSkipHeirRatio: 1 / 31, dateOfDeath: '2026-03-01' },
-    expect: { 과세표준: 1510000000, 기납부증여세액공제: 49000000, 납부세액: 387317871 } }
+    expect: { 과세표준: 1510000000, 기납부증여세액공제: 49000000, 납부세액: 387317871 } },
+  // [2026.10.13] 법조문 손계산으로 기대값을 확정한 사례 43건(law-first — 엔진 결과를 기대값으로 쓰지 않음). law = 근거 조문
+  { name: '양도 토지 1년 미만 단기 50%(§104①3호)', law: '소득세법 §104①3호·§103', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 300000000, acquisitionPrice: 200000000, acquisitionDate: '2025-06-01', transferDate: '2026-03-02', assetType: 'other'},
+    expect: {과세표준: 97500000, 산출세액: 48750000, 납부세액_합계: 53625000} },
+  { name: '양도 토지 1~2년 단기 40%(§104①2호)', law: '소득세법 §104①2호', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 300000000, acquisitionPrice: 200000000, acquisitionDate: '2024-09-01', transferDate: '2026-03-02', assetType: 'other'},
+    expect: {과세표준: 97500000, 산출세액: 39000000, 납부세액_합계: 42900000} },
+  { name: '양도 주택 1년 미만 70%(§104①3호 주택)', law: '소득세법 §104①3호', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 600000000, acquisitionPrice: 500000000, acquisitionDate: '2025-06-01', transferDate: '2026-03-02', assetType: 'house', isOneHouseOneFamily: false},
+    expect: {과세표준: 97500000, 산출세액: 68250000, 납부세액_합계: 75075000} },
+  { name: '양도 주택 1~2년 60%(§104①2호 주택)', law: '소득세법 §104①2호', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 600000000, acquisitionPrice: 500000000, acquisitionDate: '2024-09-01', transferDate: '2026-03-02', assetType: 'house', isOneHouseOneFamily: false},
+    expect: {과세표준: 97500000, 산출세액: 58500000, 납부세액_합계: 64350000} },
+  { name: '양도 미등기 70%·장특·기본공제 배제', law: '소득세법 §104①10호·§95②단서·§103①', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 300000000, acquisitionPrice: 200000000, acquisitionDate: '2015-01-01', transferDate: '2026-03-02', assetType: 'other', isUnregisteredTransfer: true},
+    expect: {과세표준: 100000000, 산출세액: 70000000, 납부세액_합계: 77000000} },
+  { name: '양도 비사업용토지 기본세율+10%p(11년, 장특 22%)', law: '소득세법 §104①8호·§95②표1', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 400000000, acquisitionPrice: 200000000, acquisitionDate: '2015-01-01', transferDate: '2026-03-02', assetType: 'other', isNonBusinessLand: true},
+    expect: {장기보유특별공제액: 44000000, 과세표준: 153500000, 산출세액: 53740000, 납부세액_합계: 59114000} },
+  { name: '양도 1세대1주택 12억 이하 비과세', law: '소득세법 §89①3호·시행령 §154', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 1000000000, acquisitionPrice: 500000000, acquisitionDate: '2016-01-01', transferDate: '2026-03-02', assetType: 'house', isOneHouseOneFamily: true, residenceYears: 5},
+    expect: {비과세여부: true, 납부세액: 0} },
+  { name: '양도 1세대1주택 고가·거주 2년 미만 → 표1(10년 20%)', law: '소득세법 §95② 표1·단서, 시행령 §160', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 1500000000, acquisitionPrice: 700000000, acquisitionDate: '2016-01-01', transferDate: '2026-03-02', assetType: 'house', isOneHouseOneFamily: true, residenceYears: 1},
+    expect: {과세대상양도차익: 160000000, 장기보유특별공제액: 32000000, 과세표준: 125500000, 산출세액: 28485000, 납부세액_합계: 31333500} },
+  { name: '양도 1세대1주택 고가·표2(보유6년 24%+거주3년 12%)', law: '소득세법 §95② 표2', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 1500000000, acquisitionPrice: 900000000, acquisitionDate: '2020-01-01', transferDate: '2026-03-02', assetType: 'house', isOneHouseOneFamily: true, residenceYears: 3},
+    expect: {과세대상양도차익: 120000000, 장기보유특별공제액: 43200000, 과세표준: 74300000, 산출세액: 12072000, 납부세액_합계: 13279200} },
+  { name: '양도 장특 표1 15년 이상 30% 상한', law: '소득세법 §95② 표1', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 500000000, acquisitionPrice: 200000000, acquisitionDate: '2008-01-01', transferDate: '2026-03-02', assetType: 'other'},
+    expect: {장기보유특별공제액: 90000000, 과세표준: 207500000, 산출세액: 58910000, 납부세액_합계: 64801000} },
+  { name: '양도 보유 3년 미만 장특 없음', law: '소득세법 §95②', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 300000000, acquisitionPrice: 200000000, acquisitionDate: '2023-06-01', transferDate: '2026-03-02', assetType: 'other'},
+    expect: {장기보유특별공제액: 0, 과세표준: 97500000, 산출세액: 18685000, 납부세액_합계: 20553500} },
+  { name: '양도 분양권 1년 이상 60%·장특 없음', law: '소득세법 §104①1호 단서(분양권)', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 400000000, acquisitionPrice: 300000000, acquisitionDate: '2024-01-01', transferDate: '2026-03-02', assetType: 'presale_right'},
+    expect: {과세표준: 97500000, 산출세액: 58500000, 납부세액_합계: 64350000} },
+  { name: '양도 분양권 1년 미만 70%', law: '소득세법 §104①1호 단서(분양권)', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 400000000, acquisitionPrice: 300000000, acquisitionDate: '2025-06-01', transferDate: '2026-03-02', assetType: 'presale_right'},
+    expect: {과세표준: 97500000, 산출세액: 68250000, 납부세액_합계: 75075000} },
+  { name: '양도 조정지역 2주택 중과 한시배제 기간(2025.6) → 기본세율·장특', law: '소득세법 §104⑦, 시행령 §167의3①12호의2(2022.5.10~2026.5.9)', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 800000000, acquisitionPrice: 500000000, acquisitionDate: '2015-01-01', transferDate: '2025-06-02', assetType: 'house', isOneHouseOneFamily: false, multiHouseCount: 2, isAdjustedArea: true},
+    expect: {장기보유특별공제액: 60000000, 과세표준: 237500000, 산출세액: 70310000, 납부세액_합계: 77341000} },
+  { name: '양도 8년 자경 감면이 산출세액 전액(1억 이내)', law: '조특법 §69·§133①', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 300000000, acquisitionPrice: 100000000, acquisitionDate: '2010-01-01', transferDate: '2026-03-02', assetType: 'other', isEightYearFarmland: true},
+    expect: {자경농지감면액: 32685000, 납부세액_합계: 0} },
+  { name: '양도 차손이면 세액 0', law: '소득세법 §95①', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 200000000, acquisitionPrice: 300000000, acquisitionDate: '2015-01-01', transferDate: '2026-03-02', assetType: 'other'},
+    expect: {과세표준: 0, 납부세액_합계: 0} },
+  { name: '양도 일반 5년 장특 10%', law: '소득세법 §95② 표1·§55', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 800000000, acquisitionPrice: 300000000, acquisitionDate: '2021-01-01', transferDate: '2026-03-02', assetType: 'other'},
+    expect: {장기보유특별공제액: 50000000, 과세표준: 447500000, 산출세액: 153060000, 납부세액_합계: 168366000} },
+  { name: '양도 최고세율 구간 45%(10억 초과)', law: '소득세법 §55①', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 2500000000, acquisitionPrice: 500000000, acquisitionDate: '2005-01-01', transferDate: '2026-03-02', assetType: 'other'},
+    expect: {과세표준: 1397500000, 산출세액: 562935000, 납부세액_합계: 619228500} },
+  { name: '양도 필요경비 반영(6년 12%)', law: '소득세법 §97①', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 500000000, acquisitionPrice: 300000000, necessaryExpenses: 20000000, acquisitionDate: '2020-01-01', transferDate: '2026-03-02', assetType: 'other'},
+    expect: {양도차익: 180000000, 장기보유특별공제액: 21600000, 과세표준: 155900000, 산출세액: 39302000, 납부세액_합계: 43232200} },
+  { name: '양도 장특 표1 4년 8%', law: '소득세법 §95② 표1', tool: 'calculate_transfer_tax',
+    input: {transferPrice: 400000000, acquisitionPrice: 200000000, acquisitionDate: '2022-01-01', transferDate: '2026-03-02', assetType: 'other'},
+    expect: {장기보유특별공제액: 16000000, 과세표준: 181500000, 산출세액: 49030000, 납부세액_합계: 53933000} },
+  { name: '증여 직계존속 성년 5천만 이하 세액 0', law: '상증법 §53①2호', tool: 'calculate_gift_tax',
+    input: {giftAmount: 50000000, relation: '직계존속', giftDate: '2026-03-02'},
+    expect: {과세표준: 0, 납부세액: 0} },
+  { name: '증여 배우자 7억(공제 6억)', law: '상증법 §53①1호·§26·§69', tool: 'calculate_gift_tax',
+    input: {giftAmount: 700000000, relation: '배우자', giftDate: '2026-03-02'},
+    expect: {과세표준: 100000000, 산출세액_할증후: 10000000, 납부세액: 9700000} },
+  { name: '증여 배우자 6억 이하 세액 0', law: '상증법 §53①1호', tool: 'calculate_gift_tax',
+    input: {giftAmount: 600000000, relation: '배우자', giftDate: '2026-03-02'},
+    expect: {과세표준: 0, 납부세액: 0} },
+  { name: '증여 미성년 직계존속 1억(공제 2천만)', law: '상증법 §53①2호', tool: 'calculate_gift_tax',
+    input: {giftAmount: 100000000, relation: '직계존속', isMinor: true, giftDate: '2026-03-02'},
+    expect: {과세표준: 80000000, 산출세액_할증후: 8000000, 납부세액: 7760000} },
+  { name: '증여 혼인 증여재산공제 1억 추가', law: '상증법 §53의2', tool: 'calculate_gift_tax',
+    input: {giftAmount: 250000000, relation: '직계존속', isMarriageGift: true, giftDate: '2026-03-02'},
+    expect: {과세표준: 100000000, 산출세액_할증후: 10000000, 납부세액: 9700000} },
+  { name: '증여 출산 증여재산공제로 세액 0', law: '상증법 §53의2', tool: 'calculate_gift_tax',
+    input: {giftAmount: 150000000, relation: '직계존속', isBirthGift: true, giftDate: '2026-03-02'},
+    expect: {과세표준: 0, 납부세액: 0} },
+  { name: '증여 혼인·출산 공제 일부 기사용(6천만) → 4천만만', law: '상증법 §53의2③(합계 1억 한도)', tool: 'calculate_gift_tax',
+    input: {giftAmount: 150000000, relation: '직계존속', isMarriageGift: true, priorMarriageOrBirthDeductionUsed: 60000000, giftDate: '2026-03-02'},
+    expect: {과세표준: 60000000, 산출세액_할증후: 6000000, 납부세액: 5820000} },
+  { name: '증여 10년 합산·기납부세액공제', law: '상증법 §47②·§58', tool: 'calculate_gift_tax',
+    input: {giftAmount: 100000000, relation: '직계존속', priorGiftAmount: 100000000, priorGiftTaxableBase: 50000000, priorPaidTax: 5000000, giftDate: '2026-03-02'},
+    expect: {과세표준: 150000000, 기납부세액공제: 5000000, 납부세액: 14550000} },
+  { name: '증여 기타친족 1억(공제 1천만)', law: '상증법 §53①4호', tool: 'calculate_gift_tax',
+    input: {giftAmount: 100000000, relation: '기타친족', giftDate: '2026-03-02'},
+    expect: {과세표준: 90000000, 납부세액: 8730000} },
+  { name: '증여 친족 아닌 자 1억(공제 없음)', law: '상증법 §53', tool: 'calculate_gift_tax',
+    input: {giftAmount: 100000000, relation: '기타', giftDate: '2026-03-02'},
+    expect: {과세표준: 100000000, 납부세액: 9700000} },
+  { name: '증여 직계비속→부모 1억(공제 5천만)', law: '상증법 §53①3호', tool: 'calculate_gift_tax',
+    input: {giftAmount: 100000000, relation: '직계비속', giftDate: '2026-03-02'},
+    expect: {과세표준: 50000000, 납부세액: 4850000} },
+  { name: '증여 고액 직계 20억(40% 구간)', law: '상증법 §26', tool: 'calculate_gift_tax',
+    input: {giftAmount: 2000000000, relation: '직계존속', giftDate: '2026-03-02'},
+    expect: {과세표준: 1950000000, 산출세액_할증후: 620000000, 납부세액: 601400000} },
+  { name: '증여 세대생략 성년 2억(할증 30%)', law: '상증법 §57①', tool: 'calculate_gift_tax',
+    input: {giftAmount: 200000000, relation: '직계존속', isGenerationSkip: true, giftDate: '2026-03-02'},
+    expect: {과세표준: 150000000, 산출세액_할증후: 26000000, 납부세액: 25220000} },
+  { name: '증여 부담부증여 채무 1억 인정', law: '상증법 §47①', tool: 'calculate_gift_tax',
+    input: {giftAmount: 300000000, relation: '직계존속', debtAssumedAmount: 100000000, isDebtObjectivelyProven: true, giftDate: '2026-03-02'},
+    expect: {과세표준: 150000000, 납부세액: 19400000} },
+  { name: '상속 자녀 2명 10억(일괄 5억·장례 500만)', law: '상증법 §21·§14②·§26·§69', tool: 'calculate_inheritance_tax',
+    input: {taxableEstateAmount: 1000000000, hasSpouse: false, childCount: 2},
+    expect: {과세표준: 495000000, 산출세액: 89000000, 납부세액: 86330000} },
+  { name: '상속 과세가액 5억 이하 세액 0', law: '상증법 §21', tool: 'calculate_inheritance_tax',
+    input: {taxableEstateAmount: 500000000, hasSpouse: false, childCount: 1},
+    expect: {과세표준: 0, 납부세액: 0} },
+  { name: '상속 금융재산공제 20%(순금융 3억 → 6천만)', law: '상증법 §22①', tool: 'calculate_inheritance_tax',
+    input: {taxableEstateAmount: 1500000000, hasSpouse: false, childCount: 2, netFinancialAssets: 300000000},
+    expect: {금융재산상속공제: 60000000, 과세표준: 935000000, 산출세액: 220500000, 납부세액: 213885000} },
+  { name: '상속 금융재산공제 1억 이하 → 2천만', law: '상증법 §22①', tool: 'calculate_inheritance_tax',
+    input: {taxableEstateAmount: 1000000000, hasSpouse: false, childCount: 2, netFinancialAssets: 50000000},
+    expect: {금융재산상속공제: 20000000, 과세표준: 475000000, 납부세액: 82450000} },
+  { name: '상속 금융재산공제 2억 한도', law: '상증법 §22①', tool: 'calculate_inheritance_tax',
+    input: {taxableEstateAmount: 3000000000, hasSpouse: false, childCount: 2, netFinancialAssets: 1500000000},
+    expect: {금융재산상속공제: 200000000, 과세표준: 2295000000, 산출세액: 758000000, 납부세액: 735260000} },
+  { name: '상속 동거주택상속공제 3억', law: '상증법 §23의2', tool: 'calculate_inheritance_tax',
+    input: {taxableEstateAmount: 1000000000, hasSpouse: false, childCount: 1, hasCohabitingHouseDeduction: true, cohabitingHouseValue: 300000000, tenYearCohabitationRequirementMet: true, tenYearOneHouseholdRequirementMet: true, noHouseOrJointHeirRequirementMet: true},
+    expect: {동거주택상속공제: 300000000, 과세표준: 195000000, 산출세액: 29000000, 납부세액: 28130000} },
+  { name: '상속 대습상속은 세대생략 할증 없음', law: '상증법 §27 단서', tool: 'calculate_inheritance_tax',
+    input: {taxableEstateAmount: 1000000000, hasSpouse: false, childCount: 2, generationSkipHeirRatio: 1, isSubstituteInheritance: true},
+    expect: {과세표준: 495000000, 산출세액: 89000000, 납부세액: 86330000} },
+  { name: '상속 장례비 한도(1천만)+봉안시설(500만)', law: '상증법 §14①3호·시행령 §9②', tool: 'calculate_inheritance_tax',
+    input: {taxableEstateAmount: 1000000000, hasSpouse: false, childCount: 2, funeralCostAmount: 12000000, funeralNicheCostAmount: 6000000},
+    expect: {장례비용공제: 15000000, 과세표준: 485000000, 산출세액: 87000000, 납부세액: 84390000} },
+  { name: '상속 고액 50억(50% 구간)', law: '상증법 §26', tool: 'calculate_inheritance_tax',
+    input: {taxableEstateAmount: 5000000000, hasSpouse: false, childCount: 1},
+    expect: {과세표준: 4495000000, 산출세액: 1787500000, 납부세액: 1733875000} }
 ];
 function runSelfCheck_() {
   const items = [];
@@ -24183,7 +24321,7 @@ function runSelfCheck_() {
       if (r.error) return '계산 오류: ' + r.error;
       const diffs = Object.keys(tc.expect).filter(function (k) { return r[k] !== tc.expect[k]; })
         .map(function (k) { return k + ' 기대 ' + tc.expect[k].toLocaleString() + ' / 지금 ' + (r[k] == null ? '없음' : Number(r[k]).toLocaleString()); });
-      return diffs.length ? '결과가 바뀜 — ' + diffs.join(', ') : '';
+      return diffs.length ? '결과가 바뀜 — ' + diffs.join(', ') + (tc.law ? ' [근거 ' + tc.law + ']' : '') : '';
     });
   });
   check('자료 · 사건 목록', function () { const r = work_getCases({}); const o = r && r.getContent ? JSON.parse(r.getContent()) : r; return o && Array.isArray(o.cases) ? '' : '사건 목록을 읽지 못함'; });
@@ -24473,6 +24611,211 @@ function tc_ruleTransferFacts_(body) {
     counts: { 계약서: contracts.length, 신고필증: reports.length, 취득세: acqs.length, 법무사: lawyers.length, 등기부: regs.length } };
 }
 
+// =========================================================
+// [2026.10.13] 사용 중 자가치유 강화 — 세무사님 판단: 시스템 존속은 "사용 과정에서 연결고리를 확인해 버그를 잡고
+// 자원절약 대안을 찾아 치유해 나가느냐"에 달렸다. 아래는 모두 토큰 0(규칙·GAS)이고, 결과는 개선 후보 보고서에 항목으로 실려
+// 주간 웹 Claude Code 루틴이 고칠 거리로 집는다(수정은 PR → 세무사님 Merge → 📥 반영).
+//  ① 서류 정리 회귀시험(docRegression) ② 세무사님 수정 = 학습 신호(corrections) ③ 배포 직후 자동 점검(deployCheck) ④ ↩ 되돌리기
+// =========================================================
+const DOC_REGRESS_FILE_ = '_서류회귀표본.json';
+function docRegressFile_() {
+  const folder = getOrCreateSubfolder_(getChiefManagerFolder_(), '_자가치유');
+  const it = folder.getFilesByName(DOC_REGRESS_FILE_);
+  return it.hasNext() ? it.next() : folder.createFile(DOC_REGRESS_FILE_, '[]', 'application/json');
+}
+function docRegressHash_(s) {
+  return Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, String(s), Utilities.Charset.UTF_8)).slice(0, 12);
+}
+// 정리 결과의 "지문" — 종류·이름과, 결과표에 나온 1만 이상 숫자 묶음의 해시(고객 금액 자체는 저장하지 않는다).
+// 표의 글씨·꾸밈이 바뀌어도 숫자가 같으면 같은 지문이라, 규칙이 실제로 다른 값을 읽게 됐을 때만 달라진다.
+function docRegressFingerprint_(p) {
+  const nums = (String((p && p.md) || '').match(/\d{1,3}(?:,\d{3})+|\b\d{5,}\b/g) || [])
+    .map(function (n) { return n.replace(/,/g, ''); }).filter(function (n) { return Number(n) >= 10000; });
+  const uniq = nums.filter(function (n, i) { return nums.indexOf(n) === i; }).sort();
+  return { type: (p && p.type) || '', label: (p && p.label) || '', h: docRegressHash_(uniq.join('|')), n: uniq.length };
+}
+// 지금 규칙으로 새로 정리(정리 결과 캐시를 쓰지 않음 — 캐시는 예전 규칙의 결과일 수 있다). 글자(OCR)는 6시간 기억분을 쓴다.
+function docRegressParseNow_(fileId) {
+  const f = DriveApp.getFileById(fileId);
+  const text = tc_docText_({ id: fileId, mimeType: f.getMimeType(), modified: f.getLastUpdated().getTime() });
+  if (text === null) return { type: '', label: '', md: '' };
+  return docParseText_(text);
+}
+// 표본 기준값 저장 — 점검하는 사람이(또는 Claude가) 표본 파일 목록을 주면 지금 결과를 기준으로 삼는다.
+function docRegressSetBaseline_(body) {
+  const ids = (body && body.fileIds || []).slice(0, 60);
+  if (!ids.length) return { error: '표본 파일이 없습니다.' };
+  const out = [], started = Date.now();
+  for (var i = 0; i < ids.length; i++) {
+    if (Date.now() - started > 300000) break;
+    try { Utilities.sleep(1200); out.push(Object.assign({ fileId: ids[i] }, docRegressFingerprint_(docRegressParseNow_(ids[i])))); }
+    catch (e) { out.push({ fileId: ids[i], error: String(e && e.message || e).slice(0, 120) }); }
+  }
+  // append: true면 기존 표본에 더한다(한 번에 다 돌리면 서버 실행 시간 한도에 걸려 나눠 저장) — 같은 파일은 새 값으로 바꾼다
+  let all = out;
+  if (body.append) {
+    let prev = [];
+    try { prev = JSON.parse(docRegressFile_().getBlob().getDataAsString('UTF-8') || '[]'); } catch (e) { prev = []; }
+    const ids2 = out.map(function (x) { return x.fileId; });
+    all = prev.filter(function (x) { return ids2.indexOf(x.fileId) === -1; }).concat(out);
+  }
+  docRegressFile_().setContent(JSON.stringify(all));
+  PropertiesService.getScriptProperties().deleteProperty('DOC_REGRESS_CURSOR');
+  PropertiesService.getScriptProperties().deleteProperty('DOC_REGRESS_STATE');
+  return { success: true, saved: out.length, total: all.length, types: out.map(function (x) { return x.type || x.error || '?'; }) };
+}
+// 야간: 7일에 한 바퀴 — 밤마다 최대 8건씩(드라이브 OCR 한도·야간 시간 고려) 돌려 기준과 다르면 기록한다.
+function docRegressRunNightly_(force) {
+  const props = PropertiesService.getScriptProperties();
+  let base = [];
+  try { base = JSON.parse(docRegressFile_().getBlob().getDataAsString('UTF-8') || '[]'); } catch (e) { base = []; }
+  base = base.filter(function (x) { return x && x.fileId && !x.error; });
+  if (!base.length) return { skipped: '표본 없음' };
+  let st = {};
+  try { st = JSON.parse(props.getProperty('DOC_REGRESS_STATE') || '{}'); } catch (e) { st = {}; }
+  const now = Date.now();
+  if (!force && st.cycleDoneAt && now - st.cycleDoneAt < 6.5 * 86400000) return { skipped: '이번 주 점검 끝남' };
+  let cur = Number(props.getProperty('DOC_REGRESS_CURSOR') || 0);
+  if (cur === 0) { st.diffs = []; st.errors = []; st.checked = 0; st.startedAt = now; }
+  const per = force ? base.length : 8, started = Date.now();
+  for (var k = 0; k < per && cur < base.length; k++, cur++) {
+    if (Date.now() - started > 240000) break;
+    const b = base[cur];
+    try {
+      Utilities.sleep(1500);
+      const fp = docRegressFingerprint_(docRegressParseNow_(b.fileId));
+      st.checked = (st.checked || 0) + 1;
+      const what = [];
+      if (fp.type !== b.type) what.push('종류 ' + (b.type || '없음') + ' → ' + (fp.type || '못 알아봄'));
+      else if (fp.h !== b.h) what.push('읽은 숫자 묶음이 달라짐(' + b.n + '개 → ' + fp.n + '개)');
+      if (what.length) st.diffs.push({ fileId: b.fileId, label: b.label || b.type, what: what.join(', ') });
+    } catch (e) {
+      st.errors.push({ fileId: b.fileId, error: String(e && e.message || e).slice(0, 120) });
+    }
+  }
+  if (cur >= base.length) { st.cycleDoneAt = now; cur = 0; st.total = base.length; }
+  props.setProperty('DOC_REGRESS_CURSOR', String(cur));
+  props.setProperty('DOC_REGRESS_STATE', JSON.stringify(st));
+  return { success: true, checked: st.checked, diffs: (st.diffs || []).length, done: cur === 0 };
+}
+
+// ② 세무사님이 자동으로 들어간 값을 고친 기록 — 고객 값은 받지도 저장하지도 않는다(서류 종류·칸·원천·방향만).
+function corrLog_(body) {
+  const props = PropertiesService.getScriptProperties();
+  // 점검·시험으로 쌓은 기록 지우기(점검하는 사람이 시험 후 정리할 때만)
+  if (body && body.reset) { props.deleteProperty('CORR_LOG'); return { success: true, n: 0 }; }
+  const items = (body && Array.isArray(body.items) ? body.items : [body]).slice(0, 30);
+  let log = [];
+  try { log = JSON.parse(props.getProperty('CORR_LOG') || '[]'); } catch (e) { log = []; }
+  const at = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
+  items.forEach(function (x) {
+    if (!x || !x.field) return;
+    log.push({ at: at, screen: String(x.screen || '').slice(0, 20), src: String(x.src || '').slice(0, 20), docType: String(x.docType || '').slice(0, 30), field: String(x.field).slice(0, 40), kind: x.kind === 'cleared' ? 'cleared' : 'changed' });
+  });
+  if (log.length > 400) log = log.slice(-400);
+  props.setProperty('CORR_LOG', JSON.stringify(log));
+  return { success: true, n: log.length };
+}
+function corrSummary_(sinceMs) {
+  let log = [];
+  try { log = JSON.parse(PropertiesService.getScriptProperties().getProperty('CORR_LOG') || '[]'); } catch (e) { log = []; }
+  const g = {};
+  log.filter(function (x) { return improve_parseAt_(x.at) >= sinceMs; }).forEach(function (x) {
+    const key = [x.screen, x.src, x.docType, x.field].join('|');
+    const o = g[key] || (g[key] = { screen: x.screen, src: x.src, docType: x.docType, field: x.field, count: 0, changed: 0, cleared: 0, last: x.at });
+    o.count++; o[x.kind]++; o.last = x.at;
+  });
+  return Object.keys(g).map(function (k) { return g[k]; }).filter(function (o) { return o.count >= 2; }).sort(function (a, b) { return b.count - a.count; }).slice(0, 20);
+}
+
+// ③ 배포 직후 자동 점검 — 새 코드로 주요 기능을 한 바퀴 돌려 본다(토큰 0). PC 배포 후 mark-deployed와 📥 반영·↩ 되돌리기 뒤에 자동 실행.
+function deploySmoke_() {
+  const items = [];
+  const check = function (name, fn) {
+    try { const msg = fn(); items.push({ name: name, ok: !msg, msg: msg || '정상' }); }
+    catch (e) { items.push({ name: name, ok: false, msg: '오류: ' + String(e && e.message || e).slice(0, 160) }); }
+  };
+  const asObj = function (r) { return r && r.getContent ? JSON.parse(r.getContent()) : r; };
+  check('사건 목록', function () { const o = asObj(work_getCases({})); return o && Array.isArray(o.cases) ? '' : '사건 목록을 읽지 못함'; });
+  check('고객 목록', function () { const o = asObj(client_getClients({})); return o && Array.isArray(o.clients) ? '' : '고객 목록을 읽지 못함'; });
+  check('예약 목록', function () { const o = asObj(booking_getBookings()); return o && Array.isArray(o.bookings) ? '' : '예약 목록을 읽지 못함'; });
+  check('AI 대화 저장소', function () { const o = ai_convList(); return o && o.success ? '' : 'AI 대화 목록을 읽지 못함'; });
+  SELF_CHECK_CALC_CASES_.slice(0, 3).forEach(function (tc) {
+    check('계산엔진 · ' + tc.name, function () {
+      const r = runUiEngineCalcTool_(tc.tool, tc.input);
+      if (!r || r.error) return '계산 실패: ' + (r && r.error);
+      const bad = Object.keys(tc.expect).filter(function (k) { return r[k] !== tc.expect[k]; });
+      return bad.length ? '결과가 바뀜 — ' + bad.join(', ') : '';
+    });
+  });
+  check('서류 정리 규칙(국세 납부서 견본)', function () {
+    const t = '국세징수법 시행규칙 [별지 제9호서식]\n영수증서(납세자용)\n납부번호(전자납부번호:0126-1234-5-67-12345678)\n세무서명 동안양세무서\n연도/기분 2026년\n증여세\n세목명\n납부금액\n1,234,000\n납부기한 2026년 11월 02일\n계\n1,234,000\n납부서(수납기관용)\n계\n1,234,000';
+    const p = docParseText_(t);
+    return p && p.type === 'payment' && /1,234,000원/.test(p.md || '') ? '' : '견본 납부서를 알아보지 못함(' + (p && p.type) + ')';
+  });
+  check('개선 후보 보고서 만들기', function () { const r = buildImprovementReport_(); return r && r.success ? '' : '보고서를 만들지 못함'; });
+  const ok = items.every(function (x) { return x.ok; });
+  const last = { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), ok: ok, items: items };
+  try { PropertiesService.getScriptProperties().setProperty('DEPLOY_CHECK_LAST', JSON.stringify(last)); } catch (e) {}
+  if (!ok) items.filter(function (x) { return !x.ok; }).forEach(function (x) { try { ai_logBug({ entry: { kind: 'deploy', where: '배포 직후 점검 · ' + x.name, message: x.msg } }); } catch (e) {} });
+  return { success: true, last: last };
+}
+function deployCheckLast_() {
+  let last = null;
+  try { last = JSON.parse(PropertiesService.getScriptProperties().getProperty('DEPLOY_CHECK_LAST') || 'null'); } catch (e) {}
+  return { success: true, last: last };
+}
+// 배포가 바뀐 뒤 "새 코드"로 점검하려면 웹앱 주소로 다시 불러야 한다(지금 실행 중인 것은 옛 코드).
+function deploySmokeRemote_() {
+  try {
+    const secret = PropertiesService.getScriptProperties().getProperty('API_SECRET') || '';
+    const url = 'https://script.google.com/macros/s/' + GH_DEPLOY_ID_ + '/exec';
+    for (var i = 0; i < 3; i++) {
+      Utilities.sleep(i ? 15000 : 8000); // 배포 직후 1분쯤은 예전 응답이 섞일 수 있어 기다렸다 다시
+      const r = UrlFetchApp.fetch(url, { method: 'post', contentType: 'text/plain;charset=utf-8', payload: JSON.stringify({ _key: secret, action: 'deploy_smoke' }), muteHttpExceptions: true, followRedirects: true });
+      let o = null;
+      try { o = JSON.parse(r.getContentText()); } catch (e) { o = null; }
+      if (o && o.last) return o.last;
+    }
+  } catch (e) { /* 아래에서 실패로 기록 */ }
+  const last = { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), ok: false, items: [{ name: '배포 직후 점검 호출', ok: false, msg: '새 버전을 불러 점검하지 못함 — 잠시 후 설정 🐞 카드에서 다시 확인' }] };
+  try { PropertiesService.getScriptProperties().setProperty('DEPLOY_CHECK_LAST', JSON.stringify(last)); } catch (e) {}
+  return last;
+}
+
+// ④ ↩ 되돌리기 — 같은 배포 ID(주소 유지)를 바로 앞 버전으로 되돌린다(Apps Script API). PC(clasp) 배포든 📥 반영이든 상관없이
+// "지금 배포된 버전보다 번호가 작은 것 중 가장 최근"으로 돌린다. 되돌린 뒤 그 버전으로 배포 직후 점검을 다시 돌린다.
+function gh_rollback_() {
+  return withLock_(30000, function () {
+    const scriptId = ScriptApp.getScriptId(), token = ScriptApp.getOAuthToken();
+    const api = function (method, path, payload) {
+      const r = UrlFetchApp.fetch('https://script.googleapis.com/v1/projects/' + scriptId + path, {
+        method: method, contentType: 'application/json', muteHttpExceptions: true,
+        headers: { Authorization: 'Bearer ' + token }, payload: payload ? JSON.stringify(payload) : undefined
+      });
+      if (r.getResponseCode() !== 200) throw new Error('Apps Script API ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 200));
+      return JSON.parse(r.getContentText() || '{}');
+    };
+    const dep = api('get', '/deployments/' + GH_DEPLOY_ID_);
+    const curVer = dep && dep.deploymentConfig && dep.deploymentConfig.versionNumber;
+    if (!curVer) throw new Error('지금 배포된 버전 번호를 읽지 못했습니다');
+    let prev = 0, prevDesc = '', page = '';
+    for (var n = 0; n < 20; n++) {
+      const v = api('get', '/versions?pageSize=50' + (page ? '&pageToken=' + encodeURIComponent(page) : ''));
+      (v.versions || []).forEach(function (x) { if (x.versionNumber < curVer && x.versionNumber > prev) { prev = x.versionNumber; prevDesc = x.description || ''; } });
+      if (!v.nextPageToken) break;
+      page = v.nextPageToken;
+    }
+    if (!prev) throw new Error('되돌릴 이전 버전이 없습니다');
+    const desc = ('↩ 되돌리기 @' + curVer + ' → @' + prev + ' ' + prevDesc).slice(0, 100);
+    api('put', '/deployments/' + GH_DEPLOY_ID_, { deploymentConfig: { scriptId: scriptId, versionNumber: prev, manifestFileName: 'appsscript', description: desc } });
+    // 이제 운영은 깃허브 main과 다를 수 있다 — 📥가 "반영 대기"로 보이게 기준을 비운다(다시 반영하면 맞춰짐)
+    try { PropertiesService.getScriptProperties().deleteProperty('GH_DEPLOYED_SHA'); } catch (e) {}
+    try { CacheService.getScriptCache().remove('dsc_ver_getNightlyStatus'); } catch (e) {}
+    return { success: true, from: curVer, to: prev, message: desc };
+  });
+}
+
 // ============================================================
 // [2026.10.09] 개선 후보 보고서 — 세무사님 지시: "사용하면서 고치는 작업"을 자동(주1회)·수동 모두로.
 // ① 수집·정리는 job이 매일 밤(토큰 0): 오류기록·유료AI 질문기록·자가점검·화면 속도를 7일치 모아 같은 것끼리 묶고 횟수를 센다.
@@ -24592,6 +24935,22 @@ function buildImprovementReport_() {
       report.guide.push('capabilities(🛰️ 새로 가능해진 기술):docs/blocked-capabilities.md의 막힌 기능 표와 대조해, 대안이 생겼으면 시범 구현 PR(무료 범위·비용·개인정보 명시, 고객 자료를 무료 외부 AI로 보내는 대안 금지), 관련만 있으면 그 표의 관찰란 갱신.');
     }
   } catch (e) { report.envWatch = { error: String(e && e.message || e).slice(0, 200) }; }
+  // [2026.10.13] 사용 중 자가치유(토큰 0) — 서류 회귀시험·세무사님 수정 신호·배포 직후 점검
+  try {
+    var rs = {};
+    try { rs = JSON.parse(PropertiesService.getScriptProperties().getProperty('DOC_REGRESS_STATE') || '{}'); } catch (e2) { rs = {}; }
+    report.docRegression = { at: rs.cycleDoneAt ? Utilities.formatDate(new Date(rs.cycleDoneAt), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') : null, total: rs.total || 0, checked: rs.checked || 0, diffs: rs.diffs || [], errors: (rs.errors || []).slice(0, 10) };
+    (rs.diffs || []).slice(0, 5).forEach(function (d) { headline.push('🧾 서류 정리 회귀 — ' + d.label + ': ' + d.what); });
+    report.corrections = corrSummary_(since);
+    report.corrections.slice(0, 5).forEach(function (o) { headline.push('✏️ 자동 입력값을 세무사님이 ' + o.count + '번 고침 — ' + [o.screen, o.src === 'rule' ? '규칙' : o.src === 'ai' ? 'AI' : o.src, o.docType, o.field].filter(function (x) { return x; }).join(' · ')); });
+    var dc = deployCheckLast_().last;
+    report.deployCheck = dc;
+    if (dc && !dc.ok) headline.unshift('🚨 배포 직후 점검 실패(' + dc.at + ') — ' + dc.items.filter(function (x) { return !x.ok; }).map(function (x) { return x.name + ': ' + x.msg; }).join(' / ').slice(0, 160));
+    report.candidateCount += (rs.diffs || []).length + report.corrections.length + (dc && !dc.ok ? 1 : 0);
+    report.guide.push('deployCheck(🚨 배포 직후 점검 실패): 최우선. 실패 항목의 원인 커밋을 찾아 고치는 PR. 운영이 멈출 정도면 PR 본문에 "설정 🐞 카드 ↩ 되돌리기 먼저" 안내.');
+    report.guide.push('docRegression(🧾 서류 정리 회귀): 표본 서류의 정리 결과(종류 또는 읽은 숫자 묶음)가 기준과 달라졌다. 최근 서류 규칙 변경을 의심하고, 일부러 고친 결과면 PR에 "기준값 갱신 필요(doc_regress_set_baseline)"를, 아니면 규칙을 되돌리거나 고친다.');
+    report.guide.push('corrections(✏️ 수정 신호): 같은 칸을 세무사님이 반복해서 고쳤다 = 자동채우기(규칙/AI)가 그 칸을 자주 틀린다. src=rule이면 tc_ruleTransferFacts_·서류 규칙을, src=ai면 자동채우기 지시문을 고치는 PR. 고객 값은 기록에 없으니 원인은 코드로 추론.');
+  } catch (e) { report.selfHeal = { error: String(e && e.message || e).slice(0, 200) }; }
   try { improve_reportFile_().setContent(JSON.stringify(report)); } catch (e) {}
   return { success: true, report: report };
 }
@@ -24820,7 +25179,9 @@ function gh_deployApply_(body) {
       if (tplSync.충돌.length) parts.push('⚠ 드라이브에서 직접 고친 템플릿 ' + tplSync.충돌.length + '개는 덮지 않음(' + tplSync.충돌.slice(0, 3).join(', ') + ')');
       tplMsg = parts.join(' · ');
     }
-    return { success: true, version: ver.versionNumber, sha: head.sha.slice(0, 7), files: files.length, message: desc + (tplMsg ? ' / ' + tplMsg : ''), templates: tplSync };
+    // [2026.10.13] 배포 직후 자동 점검 — 새 버전을 웹앱 주소로 불러 주요 기능을 한 바퀴(실패하면 설정 🐞 카드에 경고, ↩ 되돌리기 가능)
+    const check = deploySmokeRemote_();
+    return { success: true, version: ver.versionNumber, sha: head.sha.slice(0, 7), files: files.length, message: desc + (tplMsg ? ' / ' + tplMsg : ''), templates: tplSync, check: check };
   });
 }
 

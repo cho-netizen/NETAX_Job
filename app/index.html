@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-13 14:47 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-13 23:26 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -21164,7 +21164,7 @@ async function runAiAutoFillTransferBulk(){
         if (item[key] !== null && item[key] !== undefined && item[key] !== '') {
           if (key === 'acquisitionExpenses') target.acquisitionExpenseItems = [{ label: '증빙 자동입력', amount: item[key] }];
           else if (key === 'transferExpensesOnly') target.transferExpenseItems = [{ label: '증빙 자동입력', amount: item[key] }];
-          else target[key] = item[key];
+          else { target[key] = item[key]; (target._autoVals = target._autoVals || {})[key] = item[key]; target._autoSrc = ruleUsed ? 'rule' : 'ai'; }
           filled.push(TRANSFER_AI_FIELD_LABELS[key]);
         }
       });
@@ -21196,6 +21196,45 @@ async function runAiAutoFillTransferBulk(){
 // [2026.10.07 확장, 재검토115] provisionSpecs(선택) — TRANSFER_PROVISION_SPECS_와 같은 패턴의
 // "적용 여부 자체를 판정해야 하는" 특례 목록. true면 그 자리에서 체크박스를 켜고, null/판정불가면
 // uncertainProvisionKeys로 모아서 반환한다 — 호출자가 계산 전 확인모달에서 예/아니오로 물을 수 있게.
+// [2026.10.13 자가치유] 세무사님 수정 = 학습 신호 — 자동채우기(규칙/AI)가 넣은 값을 기억해 두었다가, 계산할 때 세무사님이 바꾼 칸이면
+// "어느 화면·어느 칸·원천(규칙/AI)·바뀜/지움"만 서버에 알린다(고객 값은 보내지 않음). 같은 칸이 반복해서 고쳐지면 개선 후보에 오른다.
+var TC_AUTO_FORM_ = {};
+function tcRememberAutoField_(id, el, screen, field, src){
+  try { TC_AUTO_FORM_[id] = { v: el.type === 'checkbox' ? String(!!el.checked) : String(el.value), screen: String(screen || '').replace(/^aiStatus-/, ''), field: field, src: src, logged: false }; } catch (e) {}
+}
+function tcSendCorrections_(items){
+  if (!items.length || typeof callGas !== 'function') return;
+  try { callGas('corr_log', { items: items }).catch(function(){}); } catch (e) {}
+}
+function tcReportFormCorrections_(){
+  const items = [];
+  Object.keys(TC_AUTO_FORM_).forEach(function(id){
+    const rec = TC_AUTO_FORM_[id];
+    if (rec.logged) return;
+    const el = document.getElementById(id);
+    if (!el) return;
+    const cur = el.type === 'checkbox' ? String(!!el.checked) : String(el.value);
+    if (cur === rec.v) return;
+    rec.logged = true;
+    items.push({ screen: rec.screen, src: rec.src, field: rec.field, kind: cur === '' ? 'cleared' : 'changed' });
+  });
+  tcSendCorrections_(items);
+}
+function tcReportTransferCorrections_(assets){
+  const items = [];
+  (assets || []).forEach(function(a){
+    if (!a || !a._autoVals) return;
+    a._autoLogged = a._autoLogged || {};
+    Object.keys(a._autoVals).forEach(function(k){
+      if (a._autoLogged[k]) return;
+      const cur = a[k] === null || a[k] === undefined ? '' : String(a[k]);
+      if (cur === String(a._autoVals[k])) return;
+      a._autoLogged[k] = true;
+      items.push({ screen: 'transfer', src: a._autoSrc || '', field: k, kind: cur === '' ? 'cleared' : 'changed' });
+    });
+  });
+  tcSendCorrections_(items);
+}
 async function runAiAutoFillForm(fileName, statusElId, instruction, fieldMap, fieldLabels, provisionSpecs){
   const statusEl = document.getElementById(statusElId);
   const state = { _aiStatus: 'loading' };
@@ -21221,6 +21260,7 @@ async function runAiAutoFillForm(fileName, statusElId, instruction, fieldMap, fi
         // 'change'로 보내야 한다 — 'input'만 보내면 select는 배열에 반영되지 않는다.
         el.dispatchEvent(new Event((spec.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input', { bubbles: true }));
         filled.push(fieldLabels[key] || key);
+        tcRememberAutoField_(spec.id, el, statusElId, key, 'ai');
       }
     });
     (provisionSpecs || []).forEach(function(spec){
@@ -21337,7 +21377,7 @@ async function runAiAutoFillInheritanceFull_(){
     [['deceasedName', 'ihDeceasedName', '피상속인 성명'], ['deceasedRegNo', 'ihDeceasedRegNo', '피상속인 주민등록번호'], ['deathDate', 'ihDeathDate', '상속개시일'], ['deceasedTaxOffice', 'ihDeceasedTaxOffice', '관할세무서']].forEach(function(t){
       if (json[t[0]] !== null && json[t[0]] !== undefined && json[t[0]] !== ''){
         const el = document.getElementById(t[1]);
-        if (el){ el.value = json[t[0]]; el.dispatchEvent(new Event('input', { bubbles: true })); filled.push(t[2]); }
+        if (el){ el.value = json[t[0]]; el.dispatchEvent(new Event('input', { bubbles: true })); filled.push(t[2]); tcRememberAutoField_(t[1], el, 'inheritance', t[0], 'ai'); }
       }
     });
     if (typeof tcSyncTaxOfficeButtons_ === 'function' && typeof taxCalcInheritancePane !== 'undefined') tcSyncTaxOfficeButtons_(taxCalcInheritancePane);
@@ -32946,6 +32986,7 @@ function handleTaxCalcClick_(e){
         a.isTransferorResident = sharedIsResident;
         a.isNonResidentTwoYearException = sharedNonResidentException;
       });
+      tcReportTransferCorrections_(domesticAssets);
       const inputs = domesticAssets.map(collectTransferInput);
       const filingParams = {
         transferorName: document.getElementById('trTransferorName').value,
@@ -33722,6 +33763,7 @@ function handleTaxCalcClick_(e){
         unpaidTaxAtDesignatedDueDate: numVal(d.unpaidAtDesignated) || 0,
         reportedInTime: d.reportedInTime !== false
       });
+      tcReportFormCorrections_();
       return { donorIdxs: g.donorIdxs, doneeIdx: g.doneeIdx, amount: g.amount, priorGiftAmount: input.priorGiftAmount, result: calculateGiftTaxJS(input) };
     });
     // [2026.10.09 버그수정] 계산할 (증여자·수증인) 금액이 하나도 없으면 결과칸에 주석만 보이고 아무 설명이 없었다 —
@@ -34394,6 +34436,7 @@ function handleTaxCalcClick_(e){
       unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('ihUnpaidAtDesignated').value) || 0,
       reportedInTime: document.getElementById('ihReportedInTime').checked
     };
+    tcReportFormCorrections_();
     renderInheritanceResult(calculateInheritanceTaxJS(input));
   } else if (action === 'toggle-gift-calc-basis'){
     const b = document.getElementById('giftCalcBasis-' + numVal(btn.dataset.idx));
@@ -43088,6 +43131,7 @@ function goToReportWriter_(caseId, opts){
         <button type="button" class="ghost-btn" id="stBtnImproveReq" title="고쳤으면 하는 점·새 기능을 적어 두면 개선 후보에 올라가고, 웹 Claude Code(매주 월·AI 탭 🛠)가 구현해 수정안으로 올립니다(AI 비용 0)">✍ 개선요구사항 적기</button>
         <button type="button" class="ghost-btn" id="stBtnSysAudit" title="업무관리자·지침 파일끼리 모순·중복이 없는지 유료 AI(Sonnet)가 점검합니다 — 지침이 바뀌면 개선 후보에 알림이 뜹니다(자동 실행 안 함)">🧾 지침 점검</button>
         <button type="button" class="ghost-btn" id="stBtnGhDeploy" title="웹 Claude Code가 깃허브에 올리고 세무사님이 승인(Merge)한 수정을 job에 반영합니다">📥 수정 반영</button>
+        <button type="button" class="ghost-btn" id="stBtnRollback" title="방금 반영한 수정 때문에 job이 이상하면, 바로 앞 버전으로 되돌립니다(주소는 그대로). 되돌린 뒤 자동으로 점검합니다">↩ 되돌리기</button>
       </div>
       <div id="stBugList" class="settings-tool-desc">불러오기를 누르면 최근 기록이 보입니다.</div>
     </div>
@@ -43391,10 +43435,31 @@ function goToReportWriter_(caseId, opts){
           bugList.textContent = '📥 반영 중… (1분쯤 걸립니다. 창을 닫지 마세요)';
           callGas('gh_deploy_apply', { expectSha: st.head }).then(function(r){
             if (!r || !r.success){ bugList.textContent = '반영하지 못했습니다: ' + ((r && r.error) || ''); return; }
-            bugList.innerHTML = '<b>✅ 반영 완료</b> — 버전 ' + r.version + ' · ' + escapeHtml(r.message) + '<br>화면을 새로고침하면 바뀐 화면이 보입니다.';
+            bugList.innerHTML = '<b>✅ 반영 완료</b> — 버전 ' + r.version + ' · ' + escapeHtml(r.message) + '<br>화면을 새로고침하면 바뀐 화면이 보입니다.' + deployCheckHtml_(r.check);
           }).catch(function(err){ bugList.textContent = '반영 중 오류: ' + (err && err.message ? err.message : err); });
         });
       }).catch(function(err){ bugList.textContent = '확인 중 오류: ' + (err && err.message ? err.message : err); });
+    });
+    // [2026.10.13 자가치유] 배포 직후 자동 점검 결과를 그려 주는 도우미 — 📥 반영·↩ 되돌리기 결과와 불러오기에서 함께 쓴다
+    function deployCheckHtml_(chk){
+      if (!chk) return '';
+      var bad = (chk.items || []).filter(function(x){ return !x.ok; });
+      return '<div style="margin-top:6px;"><b>' + (chk.ok ? '✅ 배포 직후 점검 정상' : '🚨 배포 직후 점검 이상 ' + bad.length + '건') + '</b> · ' + escapeHtml(chk.at || '')
+        + (bad.length ? bad.map(function(x){ return '<div style="padding:2px 0;">⚠ ' + escapeHtml(x.name) + ' — ' + escapeHtml(x.msg) + '</div>'; }).join('') + '<div>이상하면 ↩ 되돌리기를 누르세요.</div>' : '') + '</div>';
+    }
+    callGas('deploy_check_last', {}).then(function(r){
+      var chk = r && r.last;
+      if (chk && !chk.ok && bugList) bugList.innerHTML = deployCheckHtml_(chk) + bugList.innerHTML;
+    }).catch(function(){});
+    document.getElementById('stBtnRollback').addEventListener('click', function(){
+      nxConfirm_('↩ 바로 앞 버전으로 되돌릴까요?\n\njob 주소는 그대로이고, 1분쯤 뒤 이전 화면·기능으로 돌아갑니다. 되돌린 뒤 자동으로 점검합니다. 다시 최신으로 올리려면 📥 수정 반영을 누르면 됩니다.').then(function(ok){
+        if (!ok) return;
+        bugList.textContent = '↩ 되돌리는 중… (1~2분, 되돌린 버전 점검 포함)';
+        callGas('gh_rollback', {}).then(function(r){
+          if (!r || !r.success){ bugList.textContent = '되돌리지 못했습니다: ' + ((r && r.error) || ''); return; }
+          bugList.innerHTML = '<b>✅ 되돌림 완료</b> — 버전 ' + r.from + ' → ' + r.to + '<br>' + escapeHtml(r.message || '') + deployCheckHtml_(r.check) + '<div>화면을 새로고침하면 되돌린 화면이 보입니다.</div>';
+        }).catch(function(err){ bugList.textContent = '되돌리는 중 오류: ' + (err && err.message ? err.message : err); });
+      });
     });
     document.getElementById('stBtnBugClear').addEventListener('click', function(){
       nxConfirm_('오류 기록을 모두 지울까요?').then(function(ok){
@@ -44542,6 +44607,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   var nxAiSyncBusy_ = false, nxAiLastSyncedScreenCase_ = '';
   function nxAiSyncToScreenCase_(){
     if (nxAiMode !== 'side' || nxAiSyncBusy_ || nxAiAbort) return;
+    // [2026.10.14 긴급수정] 로그인 전에는 하지 않는다 — job을 열 때 사이드바·마지막 사건이 복원되며 로그인 전에 서버를 불러
+    // "로그인이 만료되었습니다"가 로그인 창을 덮었다(2026-10-14 실사용)
+    var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+    if (!tok) return;
     var side = nxAiEl_('sideAI');
     if (!side || !side.classList.contains('expanded')) return;
     var caseId = nxAiScreenCaseId_();
@@ -46825,6 +46894,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     try{
       var key = (entry.kind || '') + '|' + (entry.message || '').slice(0, 120);
       if (nxBugSent_[key] || nxBugCount_ >= 10) return;
+      // [2026.10.14 긴급수정] 로그인 전(세션 없음)에는 서버에 보내지 않는다 — 로그인 화면에서 난 오류를 보내다 서버가 AUTH_REQUIRED로
+      // 답하면 "로그인이 만료되었습니다" 알림 → 새로고침이 되풀이되어 로그인 창이 아예 안 보였다(2026-10-14 실사용).
+      var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+      if (!tok) return;
       nxBugSent_[key] = true; nxBugCount_++;
       entry.view = entry.view || window._currentViewLabel || '';
       callGasRaw_('ai_log_bug', { entry: entry }).catch(function(){});
@@ -46856,6 +46929,13 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       google.script.run
         .withSuccessHandler(function(res){
           callGasProgress_(-1);
+          if (res && res.error === 'AUTH_REQUIRED' && action === 'ai_log_bug'){ resolve(null); return; } // 오류 기록 전송은 조용히 넘김(로그인 화면을 덮지 않게)
+          // [2026.10.14 긴급수정] 아직 로그인하지 않은 상태(세션 토큰 없음)에서 어떤 기능이 서버를 불렀다면 "만료"가 아니다 —
+          // 알림·새로고침 없이 조용히 실패시킨다(로그인 화면이 그대로 보이게). 로그인 전 서버 호출 실수가 다시 생겨도 로그인을 막지 못하게.
+          if (res && res.error === 'AUTH_REQUIRED'){
+            var hadTok = null; try { hadTok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+            if (!hadTok){ var ea = new Error('AUTH_REQUIRED'); ea.nxAction = action; reject(ea); return; }
+          }
           if (res && res.error === 'AUTH_REQUIRED'){
             // 세션 토큰이 없거나 만료됨 — 다시 로그인하도록 강제.
             try{ sessionStorage.removeItem('nxManageSessionToken'); }catch(e){}
@@ -47373,6 +47453,39 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       goToHelp_(sectionId);
     });
   }
+
+  // [2026.10.13 자가치유] 화면 배선 자가점검 — job을 열고 잠시 뒤(화면이 한가할 때) 한 번만, 하루 한 번:
+  // 왼쪽 메뉴마다 그 화면 틀(#view-이름)과 여는 함수(init…)가 실제로 있는지, 주요 화면의 핵심 함수가 정의돼 있는지 본다.
+  // 빠진 것이 있으면 오류 기록에 남긴다(→ 개선 후보 보고서 → 주간 루틴이 고침). 서버 호출은 문제가 있을 때 한 번뿐, 토큰 0.
+  (function(){
+    var INIT_BY_VIEW_ = { booking: 'initBooking', workmanage: 'initWorkManage', casehandling: 'initCaseHandling', lawsearch: 'initLawSearch',
+      clientmanage: 'initClientManage', collections: 'initCollections', docs: 'initDocs', 'memo-text': 'initMemoText', 'memo-hand': 'initMemoHand',
+      reporthub: 'initReportHub', taxcalc: 'initTaxCalc', print: 'initPrintHub', reportwriter: 'initReportWriter', reports: 'initReports',
+      settings: 'initSettings', dashboard: 'initDashboard' };
+    // 화면 안의 핵심 기능(버튼이 부르는 함수) — 이름이 바뀌거나 빠지면 버튼이 조용히 먹통이 된다
+    var CORE_FNS_ = ['callGas', 'showView', 'goToView_', 'nxLogBug_', 'runAiAutoFillTransferBulk', 'runFolderAiExtraction',
+      'calculateTransferTaxMultiJS', 'calculateGiftTaxJS', 'calculateInheritanceTaxJS', 'createNewDoc'];
+    function check_(){
+      try {
+        var today = new Date().toISOString().slice(0, 10);
+        try { if (localStorage.getItem('nxWiringCheckDay') === today) return; } catch (e) {}
+        var missing = [];
+        document.querySelectorAll('.menu-item[data-view]').forEach(function(m){
+          var v = m.getAttribute('data-view');
+          if (v === 'ai' || v === 'manual') return;
+          if (!document.getElementById('view-' + v)) missing.push('화면 틀 없음: ' + v);
+          var fn = INIT_BY_VIEW_[v];
+          if (fn && typeof window[fn] !== 'function') missing.push('여는 함수 없음: ' + v + '(' + fn + ')');
+        });
+        CORE_FNS_.forEach(function(f){ if (typeof window[f] !== 'function') missing.push('핵심 함수 없음: ' + f); });
+        try { localStorage.setItem('nxWiringCheckDay', today); } catch (e) {}
+        if (missing.length && typeof nxLogBug_ === 'function') nxLogBug_({ kind: 'wiring', where: '화면 배선 자가점검', message: missing.slice(0, 8).join(' / '), detail: missing.join('\n') });
+      } catch (e) { /* 점검 자체 실패는 화면에 영향 주지 않음 */ }
+    }
+    window.addEventListener('load', function(){
+      setTimeout(function(){ if (window.requestIdleCallback) requestIdleCallback(check_, { timeout: 10000 }); else check_(); }, 15000);
+    });
+  })();
 </script>
 
 </body>

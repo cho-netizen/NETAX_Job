@@ -101,6 +101,10 @@
     try{
       var key = (entry.kind || '') + '|' + (entry.message || '').slice(0, 120);
       if (nxBugSent_[key] || nxBugCount_ >= 10) return;
+      // [2026.10.14 긴급수정] 로그인 전(세션 없음)에는 서버에 보내지 않는다 — 로그인 화면에서 난 오류를 보내다 서버가 AUTH_REQUIRED로
+      // 답하면 "로그인이 만료되었습니다" 알림 → 새로고침이 되풀이되어 로그인 창이 아예 안 보였다(2026-10-14 실사용).
+      var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+      if (!tok) return;
       nxBugSent_[key] = true; nxBugCount_++;
       entry.view = entry.view || window._currentViewLabel || '';
       callGasRaw_('ai_log_bug', { entry: entry }).catch(function(){});
@@ -132,6 +136,13 @@
       google.script.run
         .withSuccessHandler(function(res){
           callGasProgress_(-1);
+          if (res && res.error === 'AUTH_REQUIRED' && action === 'ai_log_bug'){ resolve(null); return; } // 오류 기록 전송은 조용히 넘김(로그인 화면을 덮지 않게)
+          // [2026.10.14 긴급수정] 아직 로그인하지 않은 상태(세션 토큰 없음)에서 어떤 기능이 서버를 불렀다면 "만료"가 아니다 —
+          // 알림·새로고침 없이 조용히 실패시킨다(로그인 화면이 그대로 보이게). 로그인 전 서버 호출 실수가 다시 생겨도 로그인을 막지 못하게.
+          if (res && res.error === 'AUTH_REQUIRED'){
+            var hadTok = null; try { hadTok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+            if (!hadTok){ var ea = new Error('AUTH_REQUIRED'); ea.nxAction = action; reject(ea); return; }
+          }
           if (res && res.error === 'AUTH_REQUIRED'){
             // 세션 토큰이 없거나 만료됨 — 다시 로그인하도록 강제.
             try{ sessionStorage.removeItem('nxManageSessionToken'); }catch(e){}
@@ -649,4 +660,37 @@
       goToHelp_(sectionId);
     });
   }
+
+  // [2026.10.13 자가치유] 화면 배선 자가점검 — job을 열고 잠시 뒤(화면이 한가할 때) 한 번만, 하루 한 번:
+  // 왼쪽 메뉴마다 그 화면 틀(#view-이름)과 여는 함수(init…)가 실제로 있는지, 주요 화면의 핵심 함수가 정의돼 있는지 본다.
+  // 빠진 것이 있으면 오류 기록에 남긴다(→ 개선 후보 보고서 → 주간 루틴이 고침). 서버 호출은 문제가 있을 때 한 번뿐, 토큰 0.
+  (function(){
+    var INIT_BY_VIEW_ = { booking: 'initBooking', workmanage: 'initWorkManage', casehandling: 'initCaseHandling', lawsearch: 'initLawSearch',
+      clientmanage: 'initClientManage', collections: 'initCollections', docs: 'initDocs', 'memo-text': 'initMemoText', 'memo-hand': 'initMemoHand',
+      reporthub: 'initReportHub', taxcalc: 'initTaxCalc', print: 'initPrintHub', reportwriter: 'initReportWriter', reports: 'initReports',
+      settings: 'initSettings', dashboard: 'initDashboard' };
+    // 화면 안의 핵심 기능(버튼이 부르는 함수) — 이름이 바뀌거나 빠지면 버튼이 조용히 먹통이 된다
+    var CORE_FNS_ = ['callGas', 'showView', 'goToView_', 'nxLogBug_', 'runAiAutoFillTransferBulk', 'runFolderAiExtraction',
+      'calculateTransferTaxMultiJS', 'calculateGiftTaxJS', 'calculateInheritanceTaxJS', 'createNewDoc'];
+    function check_(){
+      try {
+        var today = new Date().toISOString().slice(0, 10);
+        try { if (localStorage.getItem('nxWiringCheckDay') === today) return; } catch (e) {}
+        var missing = [];
+        document.querySelectorAll('.menu-item[data-view]').forEach(function(m){
+          var v = m.getAttribute('data-view');
+          if (v === 'ai' || v === 'manual') return;
+          if (!document.getElementById('view-' + v)) missing.push('화면 틀 없음: ' + v);
+          var fn = INIT_BY_VIEW_[v];
+          if (fn && typeof window[fn] !== 'function') missing.push('여는 함수 없음: ' + v + '(' + fn + ')');
+        });
+        CORE_FNS_.forEach(function(f){ if (typeof window[f] !== 'function') missing.push('핵심 함수 없음: ' + f); });
+        try { localStorage.setItem('nxWiringCheckDay', today); } catch (e) {}
+        if (missing.length && typeof nxLogBug_ === 'function') nxLogBug_({ kind: 'wiring', where: '화면 배선 자가점검', message: missing.slice(0, 8).join(' / '), detail: missing.join('\n') });
+      } catch (e) { /* 점검 자체 실패는 화면에 영향 주지 않음 */ }
+    }
+    window.addEventListener('load', function(){
+      setTimeout(function(){ if (window.requestIdleCallback) requestIdleCallback(check_, { timeout: 10000 }); else check_(); }, 15000);
+    });
+  })();
 </script>
