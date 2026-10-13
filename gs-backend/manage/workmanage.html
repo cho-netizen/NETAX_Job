@@ -1,14 +1,14 @@
 <div class="view" id="view-workmanage">
   <div class="editor-toolbar">
     <button type="button" id="btnWorkCaseNew" class="save-btn">+ 새 사건</button>
-    <input type="text" id="workCaseSearchInput" placeholder="🔍 의뢰인·납세자·완료일로 찾기" style="width:180px; padding:5px 8px; border:1px solid var(--line); border-radius:6px;">
-    <div class="spacer"></div>
     <select id="workCaseFilterStatus" title="상태로 필터">
       <option value="">전체</option>
-      <option value="진행">진행</option>
+      <option value="진행" selected>진행</option>
       <option value="보류">보류</option>
       <option value="완료">완료</option>
     </select>
+    <input type="text" id="workCaseSearchInput" placeholder="🔍 의뢰인·납세자·완료일로 찾기" style="width:180px; padding:5px 8px; border:1px solid var(--line); border-radius:6px;">
+    <div class="spacer"></div>
   </div>
   <div class="manage-split">
     <div class="manage-split-list"><div id="workCaseList" class="log-list"></div></div>
@@ -370,6 +370,13 @@
 
   function renderWorkCaseList(){
     var filter = workCaseFilterStatus.value;
+    // [2026.10.13] 필터 기본값이 "진행"이라, 다른 화면에서 완료·보류 사건을 열려고 넘어오면 목록에서 안 보인다 —
+    // 그때만(goToWorkManage_로 들어온 직후 한 번) 필터를 "전체"로 넓힌다. 세무사님이 직접 필터를 바꾼 경우는 건드리지 않는다.
+    if (workJumpWidenFilter_ && workSelectedCaseId && workCases.length){
+      var jumpTo = workCases.filter(function(c){ return c.id === workSelectedCaseId; })[0];
+      workJumpWidenFilter_ = false;
+      if (jumpTo && filter && jumpTo.상태 !== filter){ workCaseFilterStatus.value = ''; filter = ''; }
+    }
     // [2026.09.18 신규] "일일이 스크롤해서 찾는 것이 너무 힘들다" — 사건 수가 늘어나면서
     // 왼쪽 목록을 눈으로 훑어 찾기 힘들어졌다는 지적. 의뢰인(고객명)뿐 아니라 납세자로도
     // 찾을 수 있어야 한다(상속은 의뢰인=상속인, 납세자=피상속인이 다른 게 정상이라 둘 중
@@ -648,6 +655,7 @@
     document.getElementById('wcGoToProcess').addEventListener('click', function(){
       if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(c.id);
     });
+    if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('wcGoToProcess'), 'workmanage', function(){ return c.id; });
 
     var newRootFormWrap = document.getElementById('wcNewRootFormWrap');
     document.getElementById('wcAddRootToggle').addEventListener('click', function(){
@@ -951,10 +959,12 @@
 
   // [2026.09.15 신규] 수금관리 등 다른 화면에서 사건명을 눌러 작업관리로 바로 이동할 때 씀
   // (casehandling.html의 goToCaseHandling_과 같은 패턴).
+  var workJumpWidenFilter_ = false;
   function goToWorkManage_(caseId){
     if (typeof goToView_ === 'function') goToView_('workmanage');
     workShowingNewForm = false;
     workSelectedCaseId = caseId;
+    workJumpWidenFilter_ = !!caseId;
     loadWorkCases();
   }
 

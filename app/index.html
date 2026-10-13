@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-13 04:16 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-13 14:45 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -1738,14 +1738,14 @@
       <div class="view" id="view-workmanage">
   <div class="editor-toolbar">
     <button type="button" id="btnWorkCaseNew" class="save-btn">+ 새 사건</button>
-    <input type="text" id="workCaseSearchInput" placeholder="🔍 의뢰인·납세자·완료일로 찾기" style="width:180px; padding:5px 8px; border:1px solid var(--line); border-radius:6px;">
-    <div class="spacer"></div>
     <select id="workCaseFilterStatus" title="상태로 필터">
       <option value="">전체</option>
-      <option value="진행">진행</option>
+      <option value="진행" selected>진행</option>
       <option value="보류">보류</option>
       <option value="완료">완료</option>
     </select>
+    <input type="text" id="workCaseSearchInput" placeholder="🔍 의뢰인·납세자·완료일로 찾기" style="width:180px; padding:5px 8px; border:1px solid var(--line); border-radius:6px;">
+    <div class="spacer"></div>
   </div>
   <div class="manage-split">
     <div class="manage-split-list"><div id="workCaseList" class="log-list"></div></div>
@@ -2107,6 +2107,13 @@
 
   function renderWorkCaseList(){
     var filter = workCaseFilterStatus.value;
+    // [2026.10.13] 필터 기본값이 "진행"이라, 다른 화면에서 완료·보류 사건을 열려고 넘어오면 목록에서 안 보인다 —
+    // 그때만(goToWorkManage_로 들어온 직후 한 번) 필터를 "전체"로 넓힌다. 세무사님이 직접 필터를 바꾼 경우는 건드리지 않는다.
+    if (workJumpWidenFilter_ && workSelectedCaseId && workCases.length){
+      var jumpTo = workCases.filter(function(c){ return c.id === workSelectedCaseId; })[0];
+      workJumpWidenFilter_ = false;
+      if (jumpTo && filter && jumpTo.상태 !== filter){ workCaseFilterStatus.value = ''; filter = ''; }
+    }
     // [2026.09.18 신규] "일일이 스크롤해서 찾는 것이 너무 힘들다" — 사건 수가 늘어나면서
     // 왼쪽 목록을 눈으로 훑어 찾기 힘들어졌다는 지적. 의뢰인(고객명)뿐 아니라 납세자로도
     // 찾을 수 있어야 한다(상속은 의뢰인=상속인, 납세자=피상속인이 다른 게 정상이라 둘 중
@@ -2385,6 +2392,7 @@
     document.getElementById('wcGoToProcess').addEventListener('click', function(){
       if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(c.id);
     });
+    if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('wcGoToProcess'), 'workmanage', function(){ return c.id; });
 
     var newRootFormWrap = document.getElementById('wcNewRootFormWrap');
     document.getElementById('wcAddRootToggle').addEventListener('click', function(){
@@ -2688,10 +2696,12 @@
 
   // [2026.09.15 신규] 수금관리 등 다른 화면에서 사건명을 눌러 작업관리로 바로 이동할 때 씀
   // (casehandling.html의 goToCaseHandling_과 같은 패턴).
+  var workJumpWidenFilter_ = false;
   function goToWorkManage_(caseId){
     if (typeof goToView_ === 'function') goToView_('workmanage');
     workShowingNewForm = false;
     workSelectedCaseId = caseId;
+    workJumpWidenFilter_ = !!caseId;
     loadWorkCases();
   }
 
@@ -3744,6 +3754,10 @@
     chSelectedId = caseId;
     loadChCases_(caseId);
   }
+  // [2026.10.13] 처리개요 머리에도 같은 "↪ 이 사건 다른 화면" 콤보박스(공용 함수는 script.html — 화면이 다 읽힌 뒤 붙인다)
+  document.addEventListener('DOMContentLoaded', function(){
+    if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('chCaseSelect'), 'casehandling', function(){ return chSelectedId; });
+  });
 
   // ============================================================
   // 3단계였던 증빙 3분류(자동확보/추가확보/요청자료)의 실제 목록·검색·추가 UI는 증빙관리
@@ -4143,6 +4157,10 @@
   document.getElementById('lsBackToCaseBtn').addEventListener('click', function(){
     if (typeof goToView_ === 'function') goToView_('casehandling');
     if (lsSelectedId && typeof goToCaseHandling_ === 'function') goToCaseHandling_(lsSelectedId);
+  });
+  // 공용 함수(script.html)는 맨 마지막에 읽히므로 화면이 다 읽힌 뒤에 붙인다
+  document.addEventListener('DOMContentLoaded', function(){
+    if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('lsBackToCaseBtn'), 'lawsearch', function(){ return lsSelectedId; });
   });
 
   function lsResultTitle_(category, item){
@@ -6629,6 +6647,7 @@
         if (typeof goToView_ === 'function') goToView_('casehandling');
         if (docsSelectedCaseId_ && typeof goToCaseHandling_ === 'function') goToCaseHandling_(docsSelectedCaseId_);
       });
+      if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('docsBackToCaseBtn'), 'docs', function(){ return docsSelectedCaseId_; });
     }
     docsGetAllCases_(true).then(function(cases){
       sel.innerHTML = buildCaseOptionsHtml_(cases);
@@ -35029,6 +35048,7 @@ function renderTcCaseBar_(){
     if (typeof goToView_ === 'function') goToView_('casehandling');
     if (tcSelectedId && typeof goToCaseHandling_ === 'function') goToCaseHandling_(tcSelectedId);
   });
+  if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('tcBackToCaseBtn'), 'taxcalc', function(){ return tcSelectedId; });
   if (tcSelectedId) renderTcSavedList_(tcCurrentCase ? (tcCurrentCase.세액계산결과 || []) : []);
   if (tcSelectedId !== tcLastAppliedCaseId_) {
     tcResetOverviewInputsForNewCase_();
@@ -39695,6 +39715,11 @@ function rwInitCaseBar_(){
       proceed();
     }
   });
+  // [2026.10.13] 이 사건의 다른 화면으로 바로 가기 — 처리개요 버튼과 같은 미저장 확인을 거친다
+  if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('rwBackToCaseBtn'), 'reportwriter', function(){ return sel.value; }, function(go){
+    if (rwHasUnsavedDriveChanges_()) nxConfirm_('드라이브에 저장하지 않은 내용이 있습니다. 그래도 다른 화면으로 이동할까요?').then(function(ok){ if (ok) go(); });
+    else go();
+  });
   return rwCasesLoadPromise_;
 }
 
@@ -42327,6 +42352,7 @@ function goToReportWriter_(caseId, opts){
     <button type="button" class="rh-subtab-btn active" data-rhtab="collect"><span class="btn-tx">📚 모아보기</span></button>
     <button type="button" class="rh-subtab-btn" data-rhtab="template"><span class="btn-tx">🛠 템플릿다듬기</span></button>
     <button type="button" class="rh-subtab-btn" data-rhtab="content"><span class="btn-tx">✏ 글감만들기</span></button>
+    <button type="button" class="rh-subtab-btn" data-rhtab="shorts"><span class="btn-tx">🐶 쇼츠</span></button>
   </div>
 
   <!-- 모아보기 -->
@@ -42392,6 +42418,22 @@ function goToReportWriter_(caseId, opts){
       실제 네이버 블로그·구글 등록은 여기서 만든 글을 복사해서 직접 올려주셔야 합니다.
     </div>
   </div>
+
+  <!-- [2026.10.13] 🐶 쇼츠 — 순돌이의 세무상식. 보고서 → 쇼츠 대본, 편별 진행(대본·녹음·영상·게시)과 파일을 한곳에.
+       파일은 드라이브 0 NETAX/콘텐츠/쇼츠/(편마다 폴더, _기준그림 폴더에 순돌이 원본 그림) -->
+  <div id="rhPaneShorts" class="rh-pane" style="display:none;">
+    <div class="memo-toolbar tb-row" style="border-top:none; flex-wrap:wrap;">
+      <select id="rhShortsSourceSelect" style="flex:1; min-width:160px;"><option value="">보고서를 골라 쇼츠 대본 만들기</option></select>
+      <button type="button" id="rhShortsMakeBtn" class="save-btn" title="고른 보고서로 순돌이 쇼츠 대본(질문·답·정리, 45~55초)을 만들어 새 편 폴더에 저장 — AI 사용(편당 수십 원)"><span class="btn-tx">🐶 대본 만들기</span></button>
+      <button type="button" id="rhShortsNewBtn" class="ghost-btn" title="대본 없이 빈 편 폴더만 만들기"><span class="btn-tx">＋ 빈 편</span></button>
+      <button type="button" id="rhShortsFolderBtn" class="ghost-btn" title="드라이브 쇼츠 폴더 열기"><span class="btn-tx">📂 쇼츠 폴더</span></button>
+      <button type="button" id="rhShortsRefreshBtn" class="ghost-btn"><span class="btn-tx">🔄 새로고침</span></button>
+    </div>
+    <div id="rhShortsWrap" style="flex:1; overflow-y:auto; padding:12px 16px;">
+      <div class="spinner">불러오는 중…</div>
+    </div>
+    <input type="file" id="rhShortsFileInput" style="display:none;" accept="audio/*,video/*,image/*,.m4a,.mp3,.wav,.mp4,.mov">
+  </div>
 </div>
 
 <script>
@@ -42410,10 +42452,11 @@ function goToReportWriter_(caseId, opts){
         document.querySelectorAll('.rh-subtab-btn').forEach(function(b){ b.classList.remove('active'); });
         btn.classList.add('active');
         var target = btn.dataset.rhtab;
-        ['collect','template','content'].forEach(function(name){
+        ['collect','template','content','shorts'].forEach(function(name){
           document.getElementById('rhPane' + name.charAt(0).toUpperCase() + name.slice(1)).style.display = (name === target) ? 'flex' : 'none';
         });
         if (target === 'template' && !rhTemplateLoaded_) { rhTemplateLoaded_ = true; rhLoadTemplateReview_(); }
+        if (target === 'shorts' && !rhShortsLoaded_) { rhShortsLoaded_ = true; rhLoadShorts_(); }
       });
     });
 
@@ -42646,7 +42689,113 @@ function goToReportWriter_(caseId, opts){
         opt.textContent = (f.고객명 ? f.고객명 + ' · ' : '') + f.name;
         sel.appendChild(opt);
       });
+      // 쇼츠 탭의 보고서 고르기도 같은 목록으로
+      var ss = document.getElementById('rhShortsSourceSelect');
+      if (ss){
+        ss.innerHTML = '<option value="">보고서를 골라 쇼츠 대본 만들기</option>' + Array.prototype.slice.call(sel.options, 1).map(function(o){ return '<option value="' + o.value + '">' + esc(o.textContent) + '</option>'; }).join('');
+      }
     }
+
+    // ---- 🐶 쇼츠 ----
+    var rhShortsLoaded_ = false, rhShortsData_ = null, rhShortsUploadTarget_ = null;
+    function rhShortsDriveFile_(id){ return 'https://drive.google.com/file/d/' + id + '/view'; }
+    function rhLoadShorts_(){
+      var wrap = document.getElementById('rhShortsWrap');
+      wrap.innerHTML = '<div class="spinner">불러오는 중…</div>';
+      callGas('shorts_list', {}).then(function(res){
+        if (!res || res.error){ wrap.innerHTML = '<div class="empty-row">쇼츠 폴더를 읽지 못했습니다: ' + esc((res && res.error) || '응답 없음') + '</div>'; return; }
+        rhShortsData_ = res;
+        var chip = function(on, label){ return '<span style="display:inline-block; padding:1px 7px; margin:1px 2px; border-radius:10px; font-size:11.5px; ' + (on ? 'background:#e6f4ea; color:#1e7b34;' : 'background:#f1f1f3; color:#999;') + '">' + (on ? '✓ ' : '') + label + '</span>'; };
+        var ref = res.ref;
+        var html = '<div style="padding:10px 12px; margin-bottom:12px; border:1px solid var(--line); border-radius:8px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">' +
+          '<b>🐶 순돌이 기준 그림</b><span style="color:var(--sub); font-size:12.5px;">' + (ref && ref.images.length ? ref.images.length + '장 — 모든 편에 같은 그림을 쓰고 클립보드 글자만 바꿉니다' : '아직 없음 — 순돌이 원본 그림을 올려 주세요') + '</span>' +
+          '<span style="flex:1;"></span>' +
+          (ref ? '<button type="button" class="ghost-btn rhShortsUp" data-folder="' + ref.folderId + '" data-kind="그림"><span class="btn-tx">⬆ 그림 올리기</span></button> <a class="ghost-btn" href="' + ref.url + '" target="_blank" rel="noopener">📂 열기</a>' : '') +
+          '</div>';
+        if (res.docs && res.docs.length) html += '<div style="margin-bottom:10px; font-size:12.5px; color:var(--sub);">📄 공통 문서: ' + res.docs.map(function(d){ return '<a href="' + rhShortsDriveFile_(d.id) + '" target="_blank" rel="noopener">' + esc(d.name) + '</a>'; }).join(' · ') + '</div>';
+        if (!res.episodes.length) html += '<div class="empty-row">아직 편이 없습니다. 위에서 보고서를 골라 "🐶 대본 만들기"를 누르거나 "＋ 빈 편"으로 시작하세요.</div>';
+        else {
+          html += '<table class="list-table"><tr><th>편</th><th>진행</th><th>단계</th><th></th></tr>';
+          res.episodes.forEach(function(e){
+            html += '<tr><td>' + esc(e.name) + '</td>' +
+              '<td>' + chip(!!e.대본, '대본') + chip(e.녹음.length > 0, '녹음') + chip(e.영상.length > 0, '영상') + chip(!!e.게시, '게시') + '</td>' +
+              '<td style="white-space:nowrap; font-size:12.5px;">' + esc(e.단계) + (e.게시 ? ' · <a href="' + esc(e.게시) + '" target="_blank" rel="noopener">보기</a>' : '') + '</td>' +
+              '<td style="white-space:nowrap;">' +
+              (e.대본 ? '<a class="ghost-btn" href="' + rhShortsDriveFile_(e.대본.id) + '" target="_blank" rel="noopener">📝 대본</a> ' : '') +
+              '<button type="button" class="ghost-btn rhShortsUp" data-folder="' + e.folderId + '" data-kind="녹음·영상"><span class="btn-tx">⬆ 녹음·영상</span></button> ' +
+              '<button type="button" class="ghost-btn rhShortsPost" data-folder="' + e.folderId + '"><span class="btn-tx">🔗 게시 링크</span></button> ' +
+              '<a class="ghost-btn" href="' + e.url + '" target="_blank" rel="noopener">📂</a></td></tr>';
+          });
+          html += '</table>';
+        }
+        html += '<div style="margin-top:14px; font-size:12.5px; color:var(--sub); line-height:1.7;">만드는 순서: ① 대본 확인·수정(📝) ② 세무사님 답변 녹음 → ⬆ 녹음·영상 ③ Vrew·CapCut으로 기준 그림 + 클립보드 글자 교체 + 자동 자막(9:16) → 완성 영상 ⬆ ④ 유튜브 쇼츠에 올린 뒤 🔗 게시 링크. 20MB가 넘는 영상은 📂 폴더에 직접 넣어 주세요.</div>';
+        wrap.innerHTML = html;
+      }).catch(function(err){ wrap.innerHTML = '<div class="empty-row">불러오기 실패: ' + esc(err && err.message || err) + '</div>'; });
+    }
+    document.getElementById('rhShortsRefreshBtn').addEventListener('click', rhLoadShorts_);
+    document.getElementById('rhShortsFolderBtn').addEventListener('click', function(){
+      if (rhShortsData_ && rhShortsData_.rootUrl) window.open(rhShortsData_.rootUrl, '_blank', 'noopener');
+      else showToast('쇼츠 폴더를 아직 불러오지 못했습니다 — 🔄 새로고침 후 다시 눌러 주세요');
+    });
+    async function rhShortsAskTitle_(def){
+      if (typeof nxPrompt_ === 'function') return await nxPrompt_('이 편의 제목(폴더 이름)을 입력하세요.', def || '');
+      return window.prompt('이 편의 제목(폴더 이름)을 입력하세요.', def || '');
+    }
+    document.getElementById('rhShortsNewBtn').addEventListener('click', async function(){
+      var title = await rhShortsAskTitle_('');
+      if (title === null || !String(title).trim()) return;
+      callGas('shorts_create_episode', { title: title }).then(function(res){
+        if (!res || res.error){ showToast('만들지 못했습니다: ' + ((res && res.error) || '')); return; }
+        showToast('"' + res.name + '" 편을 만들었습니다.'); rhLoadShorts_();
+      });
+    });
+    document.getElementById('rhShortsMakeBtn').addEventListener('click', function(){
+      var fileId = document.getElementById('rhShortsSourceSelect').value;
+      if (!fileId){ showToast('먼저 보고서를 골라 주세요 — 목록이 비어 있으면 "📚 모아보기"를 한 번 열어 주세요.'); return; }
+      var btn = this; btn.disabled = true;
+      var wrap = document.getElementById('rhShortsWrap');
+      wrap.insertAdjacentHTML('afterbegin', '<div id="rhShortsMaking" class="spinner">🐶 대본 만드는 중… (20~40초)</div>');
+      callGas('generate_report_content', { fileId: fileId, style: 'shorts' }).then(async function(res){
+        var mk = document.getElementById('rhShortsMaking'); if (mk) mk.remove();
+        if (!res || res.error || !res.content){ showToast('대본을 만들지 못했습니다: ' + ((res && res.error) || '빈 응답')); return; }
+        var m = /클립보드\s*질문\s*[:：]\s*([^\n]{2,40})/.exec(res.content);
+        var title = await rhShortsAskTitle_(m ? m[1].replace(/[?？]/g, '').trim() : '새 편');
+        if (title === null) return;
+        var cr = await callGas('shorts_create_episode', { title: String(title).trim() || '새 편', script: res.content });
+        if (!cr || cr.error){ showToast('저장하지 못했습니다: ' + ((cr && cr.error) || '')); return; }
+        showToast('"' + cr.name + '" 편에 대본을 저장했습니다 — 📝 대본에서 확인·수정하세요(세법 내용은 꼭 확인).');
+        rhLoadShorts_();
+      }).catch(function(err){ showToast('오류: ' + (err && err.message || err)); }).finally(function(){ btn.disabled = false; });
+    });
+    document.getElementById('rhShortsWrap').addEventListener('click', function(ev){
+      var up = ev.target.closest('.rhShortsUp');
+      if (up){ rhShortsUploadTarget_ = up.dataset.folder; document.getElementById('rhShortsFileInput').click(); return; }
+      var post = ev.target.closest('.rhShortsPost');
+      if (post){
+        var url = window.prompt('유튜브 쇼츠 등 게시한 주소를 붙여 넣으세요.', '');
+        if (!url || !/^https?:\/\//.test(url.trim())) return;
+        callGas('shorts_set_posted', { folderId: post.dataset.folder, url: url.trim() }).then(function(res){
+          if (!res || res.error){ showToast('저장 실패: ' + ((res && res.error) || '')); return; }
+          showToast('게시 링크를 저장했습니다.'); rhLoadShorts_();
+        });
+      }
+    });
+    document.getElementById('rhShortsFileInput').addEventListener('change', function(){
+      var file = this.files && this.files[0]; this.value = '';
+      if (!file || !rhShortsUploadTarget_) return;
+      if (file.size > 20 * 1024 * 1024){ showToast(file.name + ' — 20MB가 넘어 여기서는 올릴 수 없습니다. 📂 폴더를 열어 직접 넣어 주세요.'); return; }
+      var target = rhShortsUploadTarget_;
+      showToast(file.name + ' 올리는 중…');
+      var r = new FileReader();
+      r.onload = function(){
+        var b64 = String(r.result || '').split(',')[1] || '';
+        callGas('uploadFile', { folderId: target, name: file.name, mimeType: file.type || 'application/octet-stream', base64Data: b64 }).then(function(res){
+          if (!res || res.error){ showToast('올리기 실패: ' + ((res && res.error) || '')); return; }
+          showToast(file.name + ' 을(를) 올렸습니다.'); rhLoadShorts_();
+        });
+      };
+      r.readAsDataURL(file);
+    });
     // 네이버 블로그/소식(플레이스), 구글 블로그(Blogger), 구글 비즈니스 프로필(소식)까지
     // 4개 모두 자동 올리기 코드는 연동되어 있다 — 다만 구글 비즈니스 프로필은 API 접근이
     // 아직 구글 승인 대기중이라(케이스 2-0454000041520), 연동은 되어도 실제 게시는 승인
@@ -43545,6 +43694,25 @@ function goToReportWriter_(caseId, opts){
         <li><b>🖥 화면</b>: 🌙 다크모드를 켜고 끕니다(세액인쇄 서식·문서 미리보기·사진은 밝게 보이고, 인쇄는 항상 밝게 나옵니다). 📱 화면 배치 기준에서 자동/PC/태블릿/폰을 고정할 수 있습니다. 이 기기에만 기억됩니다.</li>
         <li><b>🐞 오류 기록</b>: 🔄 불러오기로 최근 오류를 봅니다. 고친 뒤에는 🗑 기록 비우기로 지울 수 있습니다.</li>
         <li><b>🩺 자가점검</b>: 매일 밤 job이 스스로(AI 비용 0) 세액계산 엔진의 정답 사례 4건과 사건·고객·예약·AI 대화 읽기를 점검합니다. 결과는 대시보드 "야간 자동작업" 칸에 나오고, 이상이 있으면 🐞 오류 기록에도 남습니다. 🐞 카드의 🩺 지금 자가점검으로 바로 돌려볼 수 있습니다.</li>
+        <li><b>🛰️ 환경 감시(2026.10.13, AI 비용 0)</b>: 세법·예규판례·연례 고시·기술 변화에 job이 스스로 맞춰 가도록 밤마다 살핍니다.
+          <ul>
+            <li><b>매일</b>
+              <ul>
+                <li><b>⚖️ 법령 개정</b>: 소득세법·상속세및증여세법·조세특례제한법·국세기본법과 그 시행령·시행규칙(11개)의 현행판·시행 예정판을 법제처 API로 확인합니다. 바뀐 조문과 영향받는 계산 함수를 표시합니다.</li>
+                <li><b>🔧 기술 환경</b>: AI 모델 ID가 아직 있는지, 법령·실거래가 API 키가 살아 있는지, 네이버 토큰 상태를 확인합니다.</li>
+                <li><b>📅 연례 고시 달력</b>: 건물기준시가·공시가격·기준금리·세법개정 시기를 알리고, 코드에 박힌 연도별 표가 뒤처졌으면 경고합니다.</li>
+              </ul>
+            </li>
+            <li><b>매주</b>
+              <ul>
+                <li><b>📜 판례·법령해석례·조세심판 재결·국세청 고시 신착</b>을 쟁점별로 모읍니다. 국세청 예규(txsi)는 공식 무료 API가 없어 대상이 아닙니다.</li>
+                <li><b>🛰️ 새로 가능해진 기술</b>을 모읍니다(Claude·Gemini·구글 OCR·Apps Script·크롬 내장 AI·확장프로그램·공공데이터포털의 공개 변경 내역).</li>
+              </ul>
+            </li>
+            <li><b>결과 확인</b>: 대시보드 "야간 자동작업"의 🛰️ 줄과 개선 후보 보고서에 실립니다.</li>
+            <li><b>고치는 흐름</b>: 매주 웹 Claude Code 루틴이 영향을 분석해 엔진·자가점검 사례·문단 라이브러리 수정안(PR)을 올립니다. 막힌 기능 목록(docs/blocked-capabilities.md)과 새 기술을 대조해 대안도 제안합니다. 세무사님이 Merge하신 뒤 📥로 반영됩니다.</li>
+          </ul>
+        </li>
         <li><b>🛠 개선 후보</b>: 매일 밤 job이 최근 7일의 오류 기록·유료 AI로 간 질문·자가점검·화면 속도를 모아 "고칠 거리"를 정리합니다(AI 비용 0). 대시보드 "야간 자동작업"에 "개선 후보 N건"으로 나오고, 🐞 카드의 🛠 개선 후보 보기로 지금 바로 다시 만들 수 있습니다. 실제로 고치는 건 웹 Claude Code가 합니다 — 매주 월요일 아침 자동으로, 또는 AI 탭 🛠 버튼 → 열린 화면에서 "지금 실행"을 누르면 보고서를 읽고 고쳐서 깃허브에 수정안(PR)을 올립니다. 수정안 설명을 보시고 깃허브에서 <b>Merge</b>(승인)하신 뒤, 🐞 카드의 <b>📥 수정 반영</b>을 누르면 job이 스스로 새 버전으로 바뀝니다. 승인하지 않은 수정은 절대 반영되지 않습니다.</li>
         <li><b>✍ 개선요구사항 적기</b>: 🐞 카드의 이 버튼으로 "이렇게 고쳐 달라", "이런 기능이 있으면 좋겠다"를 적어 두면 개선 후보에 올라가고, 다음 웹 Claude Code 실행 때 구현해서 수정안으로 올립니다(AI 비용 0 — 예전처럼 밤마다 유료 AI가 메모를 쓰지 않습니다).</li>
         <li><b>🧾 지침 점검</b>: 업무관리자·지침 파일이 바뀌면 밤에 "지침이 바뀜"만 개선 후보에 표시합니다(0원). 모순·중복 점검(유료 AI)은 이 버튼을 누를 때만 합니다.</li>
@@ -47065,6 +47233,59 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     document.querySelectorAll('.menu-item[data-view]').forEach(function(i){
       i.classList.toggle('active', i.getAttribute('data-view') === name);
     });
+  }
+
+  // [2026.10.13] 사건 관련 화면 바로가기 — "처리개요에서 증빙관리로 옮겨간 다음에는 처리개요로만 갈 수 있고
+  // 세액계산이나 연관작업으로 옮겨갈 수 없다"는 지적. 사건을 다루는 모든 화면 머리에 같은 콤보박스를 둬,
+  // 지금 사건을 그대로 들고 어느 관련 화면으로든 바로 간다. 각 화면의 "그 사건으로 열기" 함수(goTo*_)를 그대로 쓴다
+  // (AI 탭 nxAiOpenJobView_와 같은 동작).
+  var NX_CASE_VIEWS_ = [['casehandling', '🧭 처리개요'], ['workmanage', '🗂 작업관리'], ['docs', '📁 증빙확보'], ['taxcalc', '🧮 세액계산'],
+    ['print', '🖨 세액인쇄'], ['reportwriter', '📝 문서작성'], ['lawsearch', '⚖ 법령조회']];
+  function nxCaseJump_(view, caseId){
+    if (!caseId){ showToast('먼저 위에서 사건을 골라 주세요.'); return; }
+    if (view === 'casehandling' && typeof goToCaseHandling_ === 'function'){ goToView_('casehandling'); goToCaseHandling_(caseId); return; }
+    if (view === 'workmanage' && typeof goToWorkManage_ === 'function'){ goToWorkManage_(caseId); return; }
+    if (view === 'taxcalc' && typeof goToTaxCalc_ === 'function'){ goToTaxCalc_(caseId); return; }
+    if (view === 'print' && typeof goToTaxCalc_ === 'function'){ goToTaxCalc_(caseId); setTimeout(function(){ goToView_('print'); }, 600); return; }
+    if (view === 'reportwriter' && typeof goToReportWriter_ === 'function'){ goToReportWriter_(caseId); return; }
+    if (view === 'lawsearch' && typeof goToLawSearch_ === 'function'){ goToLawSearch_(caseId); return; }
+    if (view === 'docs'){
+      // 증빙확보는 사건 폴더ID로 연다(처리개요의 📁 증빙확보 버튼과 같은 방식 — 기본위치 이동과 겹치지 않게 docsLoaded 먼저)
+      callGas('work_get_cases', {}).then(function(res){
+        var c = ((res && res.cases) || []).filter(function(x){ return x.id === caseId; })[0];
+        if (typeof docsLoaded !== 'undefined') docsLoaded = true;
+        goToView_('docs');
+        if (c && c.폴더ID && typeof docsNavigateById_ === 'function') docsNavigateById_(c.폴더ID);
+        else showToast('이 사건의 증빙 폴더가 아직 없습니다 — 처리개요에서 폴더를 먼저 만들어 주세요.');
+      }).catch(function(){ showToast('사건 정보를 불러오지 못했습니다 — 잠시 후 다시 시도해 주세요.'); });
+      return;
+    }
+    goToView_(view);
+  }
+  // 콤보박스 만들기 — fromView(지금 화면)는 목록에서 빼고, getCaseId()로 지금 사건을 읽는다.
+  // beforeLeave(go)를 주면 이동 전에 확인(예: 문서작성의 미저장 경고) 후 go()를 부른다.
+  function nxCaseJumpSelect_(fromView, getCaseId, beforeLeave){
+    var sel = document.createElement('select');
+    sel.className = 'nx-case-jump';
+    sel.title = '이 사건의 다른 화면으로 바로 이동';
+    sel.style.maxWidth = '170px';
+    sel.innerHTML = '<option value="">↪ 이 사건 다른 화면</option>' + NX_CASE_VIEWS_.filter(function(v){ return v[0] !== fromView; })
+      .map(function(v){ return '<option value="' + v[0] + '">' + v[1] + '</option>'; }).join('');
+    sel.addEventListener('change', function(){
+      var v = sel.value; sel.value = '';
+      if (!v) return;
+      var id = getCaseId();
+      var go = function(){ nxCaseJump_(v, id); };
+      if (beforeLeave) beforeLeave(go); else go();
+    });
+    return sel;
+  }
+  // 이미 있는 버튼(예: "↩ 처리개요") 바로 뒤에 한 번만 붙인다
+  function nxCaseJumpAttach_(afterEl, fromView, getCaseId, beforeLeave){
+    if (!afterEl || !afterEl.parentNode) return;
+    var next = afterEl.nextElementSibling;
+    if (next && next.classList && next.classList.contains('nx-case-jump')) return;
+    afterEl.parentNode.insertBefore(nxCaseJumpSelect_(fromView, getCaseId, beforeLeave), afterEl.nextSibling);
   }
 
   // [2026.09 신규] 사용자메뉴얼 — 화면 오른쪽 아래 ❓ 버튼을 누르면 "지금 보고 있던 화면"에

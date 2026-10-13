@@ -566,6 +566,59 @@
     });
   }
 
+  // [2026.10.13] 사건 관련 화면 바로가기 — "처리개요에서 증빙관리로 옮겨간 다음에는 처리개요로만 갈 수 있고
+  // 세액계산이나 연관작업으로 옮겨갈 수 없다"는 지적. 사건을 다루는 모든 화면 머리에 같은 콤보박스를 둬,
+  // 지금 사건을 그대로 들고 어느 관련 화면으로든 바로 간다. 각 화면의 "그 사건으로 열기" 함수(goTo*_)를 그대로 쓴다
+  // (AI 탭 nxAiOpenJobView_와 같은 동작).
+  var NX_CASE_VIEWS_ = [['casehandling', '🧭 처리개요'], ['workmanage', '🗂 작업관리'], ['docs', '📁 증빙확보'], ['taxcalc', '🧮 세액계산'],
+    ['print', '🖨 세액인쇄'], ['reportwriter', '📝 문서작성'], ['lawsearch', '⚖ 법령조회']];
+  function nxCaseJump_(view, caseId){
+    if (!caseId){ showToast('먼저 위에서 사건을 골라 주세요.'); return; }
+    if (view === 'casehandling' && typeof goToCaseHandling_ === 'function'){ goToView_('casehandling'); goToCaseHandling_(caseId); return; }
+    if (view === 'workmanage' && typeof goToWorkManage_ === 'function'){ goToWorkManage_(caseId); return; }
+    if (view === 'taxcalc' && typeof goToTaxCalc_ === 'function'){ goToTaxCalc_(caseId); return; }
+    if (view === 'print' && typeof goToTaxCalc_ === 'function'){ goToTaxCalc_(caseId); setTimeout(function(){ goToView_('print'); }, 600); return; }
+    if (view === 'reportwriter' && typeof goToReportWriter_ === 'function'){ goToReportWriter_(caseId); return; }
+    if (view === 'lawsearch' && typeof goToLawSearch_ === 'function'){ goToLawSearch_(caseId); return; }
+    if (view === 'docs'){
+      // 증빙확보는 사건 폴더ID로 연다(처리개요의 📁 증빙확보 버튼과 같은 방식 — 기본위치 이동과 겹치지 않게 docsLoaded 먼저)
+      callGas('work_get_cases', {}).then(function(res){
+        var c = ((res && res.cases) || []).filter(function(x){ return x.id === caseId; })[0];
+        if (typeof docsLoaded !== 'undefined') docsLoaded = true;
+        goToView_('docs');
+        if (c && c.폴더ID && typeof docsNavigateById_ === 'function') docsNavigateById_(c.폴더ID);
+        else showToast('이 사건의 증빙 폴더가 아직 없습니다 — 처리개요에서 폴더를 먼저 만들어 주세요.');
+      }).catch(function(){ showToast('사건 정보를 불러오지 못했습니다 — 잠시 후 다시 시도해 주세요.'); });
+      return;
+    }
+    goToView_(view);
+  }
+  // 콤보박스 만들기 — fromView(지금 화면)는 목록에서 빼고, getCaseId()로 지금 사건을 읽는다.
+  // beforeLeave(go)를 주면 이동 전에 확인(예: 문서작성의 미저장 경고) 후 go()를 부른다.
+  function nxCaseJumpSelect_(fromView, getCaseId, beforeLeave){
+    var sel = document.createElement('select');
+    sel.className = 'nx-case-jump';
+    sel.title = '이 사건의 다른 화면으로 바로 이동';
+    sel.style.maxWidth = '170px';
+    sel.innerHTML = '<option value="">↪ 이 사건 다른 화면</option>' + NX_CASE_VIEWS_.filter(function(v){ return v[0] !== fromView; })
+      .map(function(v){ return '<option value="' + v[0] + '">' + v[1] + '</option>'; }).join('');
+    sel.addEventListener('change', function(){
+      var v = sel.value; sel.value = '';
+      if (!v) return;
+      var id = getCaseId();
+      var go = function(){ nxCaseJump_(v, id); };
+      if (beforeLeave) beforeLeave(go); else go();
+    });
+    return sel;
+  }
+  // 이미 있는 버튼(예: "↩ 처리개요") 바로 뒤에 한 번만 붙인다
+  function nxCaseJumpAttach_(afterEl, fromView, getCaseId, beforeLeave){
+    if (!afterEl || !afterEl.parentNode) return;
+    var next = afterEl.nextElementSibling;
+    if (next && next.classList && next.classList.contains('nx-case-jump')) return;
+    afterEl.parentNode.insertBefore(nxCaseJumpSelect_(fromView, getCaseId, beforeLeave), afterEl.nextSibling);
+  }
+
   // [2026.09 신규] 사용자메뉴얼 — 화면 오른쪽 아래 ❓ 버튼을 누르면 "지금 보고 있던 화면"에
   // 해당하는 설명으로 바로 이동한다. 화면마다 따로 버튼을 붙이지 않고 하나의 전역 버튼이
   // 현재 활성 메뉴(data-view)를 보고 알아서 섹션을 고르는 방식이라, 새 화면이 생겨도 이 표에

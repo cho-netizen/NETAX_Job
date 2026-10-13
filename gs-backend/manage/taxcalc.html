@@ -17353,6 +17353,7 @@ function renderTcCaseBar_(){
     if (typeof goToView_ === 'function') goToView_('casehandling');
     if (tcSelectedId && typeof goToCaseHandling_ === 'function') goToCaseHandling_(tcSelectedId);
   });
+  if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('tcBackToCaseBtn'), 'taxcalc', function(){ return tcSelectedId; });
   if (tcSelectedId) renderTcSavedList_(tcCurrentCase ? (tcCurrentCase.세액계산결과 || []) : []);
   if (tcSelectedId !== tcLastAppliedCaseId_) {
     tcResetOverviewInputsForNewCase_();

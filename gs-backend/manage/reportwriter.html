@@ -4156,6 +4156,11 @@ function rwInitCaseBar_(){
       proceed();
     }
   });
+  // [2026.10.13] 이 사건의 다른 화면으로 바로 가기 — 처리개요 버튼과 같은 미저장 확인을 거친다
+  if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('rwBackToCaseBtn'), 'reportwriter', function(){ return sel.value; }, function(go){
+    if (rwHasUnsavedDriveChanges_()) nxConfirm_('드라이브에 저장하지 않은 내용이 있습니다. 그래도 다른 화면으로 이동할까요?').then(function(ok){ if (ok) go(); });
+    else go();
+  });
   return rwCasesLoadPromise_;
 }
 

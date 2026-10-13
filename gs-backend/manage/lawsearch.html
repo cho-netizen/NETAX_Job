@@ -93,6 +93,10 @@
     if (typeof goToView_ === 'function') goToView_('casehandling');
     if (lsSelectedId && typeof goToCaseHandling_ === 'function') goToCaseHandling_(lsSelectedId);
   });
+  // 공용 함수(script.html)는 맨 마지막에 읽히므로 화면이 다 읽힌 뒤에 붙인다
+  document.addEventListener('DOMContentLoaded', function(){
+    if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('lsBackToCaseBtn'), 'lawsearch', function(){ return lsSelectedId; });
+  });
 
   function lsResultTitle_(category, item){
     if (category === 'precedent') return { title: item.사건명 || '(제목 없음)', sub: [item.사건번호, item.선고일자, item.법원명].filter(Boolean).join(' · ') };

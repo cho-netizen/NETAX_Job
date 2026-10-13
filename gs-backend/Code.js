@@ -3811,7 +3811,10 @@ function dispatchClientAction0_(body) {
   if (body.action === 'env_watch_run') return jsonResponse(runEnvWatch_({ weekly: !!body.weekly, budgetMs: 240000 })); // 환경 감시 수동 실행(토큰 0)
   if (body.action === 'env_watch_get') return jsonResponse(envWatchLast_() || { empty: true });
   if (body.action === 'env_watch_ensure_trigger') return jsonResponse(envEnsureTrigger_()); // 새벽 4시 환경 감시 트리거 만들기
-  if (body.action === 'registry_parse') return jsonResponse(registryParseFile_(body)); // 등기부 PDF 정리(토큰 0)
+  if (body.action === 'registry_parse') return jsonResponse(registryParseFile_(body));
+  if (body.action === 'shorts_list') return jsonResponse(shorts_list_()); // 🐶 쇼츠 탭(토큰 0)
+  if (body.action === 'shorts_create_episode') return jsonResponse(shorts_createEpisode_(body));
+  if (body.action === 'shorts_set_posted') return jsonResponse(shorts_setPosted_(body)); // 등기부 PDF 정리(토큰 0)
   if (body.action === 'doc_parse') return jsonResponse(docParseFile_(body)); // 서류 PDF 정리 — 등기부·가족관계·사업자등록·접수증·납부서(토큰 0)
   if (body.action === 'doc_parse_text') return jsonResponse(docParseCapturedText_(body));
   if (body.action === 'doc_parse_image') return jsonResponse(docParseImage_(body)); // 캡처 이미지 → 무료 OCR → 규칙(토큰 0) // 확장프로그램 화면 글자(Alt+Shift+C) 정리 — OCR 없이 규칙만(토큰 0)
@@ -20512,7 +20515,11 @@ const RH_CONTENT_STYLES_ = {
   naver_blog: { label: '네이버 블로그', guide: '네이버 블로그에 올릴 글이다. 제목 1개, 부제 없이 본문만, 800~1200자 내외로 자세히 설명하는 블로그 톤으로 써라.' },
   naver_news: { label: '네이버 소식(플레이스)', guide: '네이버 플레이스의 "소식" 게시글이다. 제목 없이 본문만, 200~350자 내외로 짧고 친근하게, 필요하면 이모지도 1~2개 섞어서 안내문처럼 써라.' },
   google_blog: { label: '구글 블로그(Blogger)', guide: '구글 블로그(Blogger)에 올릴 글이다. 제목 1개, 부제 없이 본문만, 800~1200자 내외로 자세히 설명하는 블로그 톤으로 써라.' },
-  google_news: { label: '구글 비즈니스 프로필 게시물', guide: '구글 비즈니스 프로필(지도・검색)에 올릴 짧은 게시물이다. 제목 없이 본문만, 150~300자 내외로 아주 간결하게 핵심만 안내하듯 써라.' }
+  google_news: { label: '구글 비즈니스 프로필 게시물', guide: '구글 비즈니스 프로필(지도・검색)에 올릴 짧은 게시물이다. 제목 없이 본문만, 150~300자 내외로 아주 간결하게 핵심만 안내하듯 써라.' },
+  // [2026.10.13] 🐶 순돌이 쇼츠 대본 — 강아지 "순돌이"가 묻고 세무사는 목소리만으로 답하는 45~55초 세로 영상
+  shorts: { label: '순돌이 쇼츠 대본', model: 'default', guide: '유튜브 쇼츠(세로, 45~55초) "순돌이의 세무상식" 대본이다. 귀여운 강아지 순돌이가 질문하고 세무사는 목소리만으로 답한다. 보고서의 핵심 쟁점 하나만 골라라. 다음 형식 그대로 써라:\n' +
+    '## 제목\n**클립보드 질문:** (화면 클립보드에 쓸 20자 안팎 질문)\n**순돌이:** "(3초 안에 읽을 질문, 일상 말투)"\n**세무사:**\n"(소리 내 읽어 35초 안팎, 짧은 문장 5~7개, 핵심 숫자·요건은 굵게)"\n**큰 자막 숫자:** (숫자·요건을 · 로 이어서)\n**순돌이 정리:** "(한 줄 요약, 느낌표)"\n> 세무사님 확인 포인트: (쇼츠에서 뺀 예외·요건과, 법령 기준일·숫자 확인이 필요한 부분)\n' +
+    '세법 숫자·요건은 현행 법령 기준으로 정확히 쓰고, 확실하지 않으면 확인 포인트에 적어라. 끝맺음 문구(※ 개별 상황…)는 쓰지 마라(영상 끝에 고지 자막이 따로 들어간다).' }
 };
 
 // [2026.10.09] 세무사님 결정 — 글감 초안은 저가 모델(Haiku)로. 익명화 지시는 프롬프트에 그대로 있다.
@@ -20546,11 +20553,12 @@ function handleGenerateReportContent(body) {
       method: 'post',
       contentType: 'application/json',
       headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      payload: JSON.stringify({ model: LIGHT_MODEL, max_tokens: 3000, messages: [{ role: 'user', content: prompt }] }),
+      // 쇼츠 대본은 세법 숫자를 짧게 압축해야 해 정확도 우선(기본 모델), 블로그 글감은 저가 모델
+      payload: JSON.stringify({ model: style.model === 'default' ? DEFAULT_MODEL : LIGHT_MODEL, max_tokens: 3000, messages: [{ role: 'user', content: prompt }] }),
       muteHttpExceptions: true
     });
     const json = JSON.parse(response.getContentText());
-    ai_logDirect_(json, LIGHT_MODEL, 'blog', '블로그 글감 만들기');
+    ai_logDirect_(json, style.model === 'default' ? DEFAULT_MODEL : LIGHT_MODEL, styleKey === 'shorts' ? 'shorts' : 'blog', styleKey === 'shorts' ? '순돌이 쇼츠 대본 만들기' : '블로그 글감 만들기');
     if (json.error) return { error: json.error.message || 'AI 호출 실패' };
     const text = (json.content && json.content[0] && json.content[0].text) || '';
     if (!text) return { error: 'AI가 빈 응답을 반환했습니다.' };
@@ -28632,4 +28640,67 @@ function bankParseFile_(body) {
   }
   merged.경고 = merged.경고.concat(notes);
   return { ok: true, name: rd.name, type: 'bank', label: '거래내역', 검산불일치: merged.불일치수, 거래수: merged.거래수, md: '**' + rd.name + '**\n\n' + bankToMarkdown_(merged, opts) };
+}
+
+// =========================================================
+// [2026.10.13] 🐶 쇼츠(순돌이의 세무상식) — 보고서 모음 "🐶 쇼츠" 탭
+// 파일은 드라이브 0 NETAX/콘텐츠/쇼츠/ 아래: _기준그림(순돌이 원본), 편마다 "NN_제목" 폴더(대본.md·녹음·영상·_상태.json).
+// 목록·폴더 만들기·게시 링크 저장은 토큰 0. 대본 초안만 AI(generate_report_content의 'shorts' 문체).
+// =========================================================
+function shorts_root_() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty('SHORTS_FOLDER_ID');
+  if (id) { try { var f0 = DriveApp.getFolderById(id); if (!f0.isTrashed()) return f0; } catch (e) { /* 다시 찾음 */ } }
+  var chief = getChiefManagerFolder_();
+  if (!chief) throw new Error('업무관리자 폴더 설정이 없습니다.');
+  var ps = chief.getParents();
+  if (!ps.hasNext()) throw new Error('0 NETAX 폴더를 찾지 못했습니다.');
+  var root = getOrCreateSubfolder_(getOrCreateSubfolder_(ps.next(), '콘텐츠'), '쇼츠');
+  getOrCreateSubfolder_(root, '_기준그림');
+  props.setProperty('SHORTS_FOLDER_ID', root.getId());
+  return root;
+}
+function shorts_list_() {
+  var root = shorts_root_(), eps = [], ref = null, it = root.getFolders();
+  while (it.hasNext()) {
+    var f = it.next(), n = f.getName();
+    if (n === '_기준그림') {
+      var imgs = [], fi = f.getFiles();
+      while (fi.hasNext()) { var g = fi.next(); if (/^image\//.test(g.getMimeType())) imgs.push({ id: g.getId(), name: g.getName() }); }
+      ref = { folderId: f.getId(), url: f.getUrl(), images: imgs };
+      continue;
+    }
+    if (!/^\d{2,3}_/.test(n)) continue;
+    var e = { folderId: f.getId(), name: n, url: f.getUrl(), 대본: null, 녹음: [], 영상: [], 그림: [], 게시: '' }, fs = f.getFiles();
+    while (fs.hasNext()) {
+      var x = fs.next(), nm = x.getName(), mt = x.getMimeType();
+      if (nm === '_상태.json') { try { e.게시 = JSON.parse(x.getBlob().getDataAsString('UTF-8')).게시 || ''; } catch (er) {} }
+      else if (/대본.*\.(md|txt)$/.test(nm) || mt === 'application/vnd.google-apps.document' && /대본/.test(nm)) e.대본 = { id: x.getId(), name: nm };
+      else if (/^audio\//.test(mt) || /\.(m4a|mp3|wav|aac|ogg)$/i.test(nm)) e.녹음.push(nm);
+      else if (/^video\//.test(mt) || /\.(mp4|mov|webm)$/i.test(nm)) e.영상.push(nm);
+      else if (/^image\//.test(mt)) e.그림.push(nm);
+    }
+    e.단계 = e.게시 ? '게시 완료' : e.영상.length ? '영상 완성' : e.녹음.length ? '녹음 완료' : e.대본 ? '대본 확인' : '시작';
+    eps.push(e);
+  }
+  eps.sort(function (a, b) { return a.name < b.name ? -1 : 1; });
+  var docs = [], rf = root.getFiles();
+  while (rf.hasNext()) { var y = rf.next(); if (/\.(md|txt)$/.test(y.getName())) docs.push({ id: y.getId(), name: y.getName() }); }
+  return { ok: true, rootUrl: root.getUrl(), rootId: root.getId(), ref: ref, episodes: eps, docs: docs };
+}
+function shorts_createEpisode_(body) {
+  var root = shorts_root_();
+  var title = String(body && body.title || '').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40) || '새 편';
+  var max = 0, it = root.getFolders();
+  while (it.hasNext()) { var m = /^(\d{2,3})_/.exec(it.next().getName()); if (m) max = Math.max(max, Number(m[1])); }
+  var f = root.createFolder(('0' + (max + 1)).slice(-2) + '_' + title.replace(/\s/g, '_'));
+  if (body && body.script) writeFileOverwrite_(f, '대본.md', String(body.script), 'text/markdown');
+  return { ok: true, folderId: f.getId(), name: f.getName(), url: f.getUrl() };
+}
+function shorts_setPosted_(body) {
+  var id = String(body && body.folderId || ''), url = String(body && body.url || '').trim();
+  if (!id || !/^https?:\/\//.test(url)) return { error: '편과 게시 주소가 필요합니다.' };
+  var f = DriveApp.getFolderById(id);
+  writeFileOverwrite_(f, '_상태.json', JSON.stringify({ 게시: url, at: new Date().toISOString() }), 'application/json');
+  return { ok: true };
 }

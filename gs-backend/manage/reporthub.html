@@ -9,6 +9,7 @@
     <button type="button" class="rh-subtab-btn active" data-rhtab="collect"><span class="btn-tx">📚 모아보기</span></button>
     <button type="button" class="rh-subtab-btn" data-rhtab="template"><span class="btn-tx">🛠 템플릿다듬기</span></button>
     <button type="button" class="rh-subtab-btn" data-rhtab="content"><span class="btn-tx">✏ 글감만들기</span></button>
+    <button type="button" class="rh-subtab-btn" data-rhtab="shorts"><span class="btn-tx">🐶 쇼츠</span></button>
   </div>
 
   <!-- 모아보기 -->
@@ -74,6 +75,22 @@
       실제 네이버 블로그·구글 등록은 여기서 만든 글을 복사해서 직접 올려주셔야 합니다.
     </div>
   </div>
+
+  <!-- [2026.10.13] 🐶 쇼츠 — 순돌이의 세무상식. 보고서 → 쇼츠 대본, 편별 진행(대본·녹음·영상·게시)과 파일을 한곳에.
+       파일은 드라이브 0 NETAX/콘텐츠/쇼츠/(편마다 폴더, _기준그림 폴더에 순돌이 원본 그림) -->
+  <div id="rhPaneShorts" class="rh-pane" style="display:none;">
+    <div class="memo-toolbar tb-row" style="border-top:none; flex-wrap:wrap;">
+      <select id="rhShortsSourceSelect" style="flex:1; min-width:160px;"><option value="">보고서를 골라 쇼츠 대본 만들기</option></select>
+      <button type="button" id="rhShortsMakeBtn" class="save-btn" title="고른 보고서로 순돌이 쇼츠 대본(질문·답·정리, 45~55초)을 만들어 새 편 폴더에 저장 — AI 사용(편당 수십 원)"><span class="btn-tx">🐶 대본 만들기</span></button>
+      <button type="button" id="rhShortsNewBtn" class="ghost-btn" title="대본 없이 빈 편 폴더만 만들기"><span class="btn-tx">＋ 빈 편</span></button>
+      <button type="button" id="rhShortsFolderBtn" class="ghost-btn" title="드라이브 쇼츠 폴더 열기"><span class="btn-tx">📂 쇼츠 폴더</span></button>
+      <button type="button" id="rhShortsRefreshBtn" class="ghost-btn"><span class="btn-tx">🔄 새로고침</span></button>
+    </div>
+    <div id="rhShortsWrap" style="flex:1; overflow-y:auto; padding:12px 16px;">
+      <div class="spinner">불러오는 중…</div>
+    </div>
+    <input type="file" id="rhShortsFileInput" style="display:none;" accept="audio/*,video/*,image/*,.m4a,.mp3,.wav,.mp4,.mov">
+  </div>
 </div>
 
 <script>
@@ -92,10 +109,11 @@
         document.querySelectorAll('.rh-subtab-btn').forEach(function(b){ b.classList.remove('active'); });
         btn.classList.add('active');
         var target = btn.dataset.rhtab;
-        ['collect','template','content'].forEach(function(name){
+        ['collect','template','content','shorts'].forEach(function(name){
           document.getElementById('rhPane' + name.charAt(0).toUpperCase() + name.slice(1)).style.display = (name === target) ? 'flex' : 'none';
         });
         if (target === 'template' && !rhTemplateLoaded_) { rhTemplateLoaded_ = true; rhLoadTemplateReview_(); }
+        if (target === 'shorts' && !rhShortsLoaded_) { rhShortsLoaded_ = true; rhLoadShorts_(); }
       });
     });
 
@@ -328,7 +346,113 @@
         opt.textContent = (f.고객명 ? f.고객명 + ' · ' : '') + f.name;
         sel.appendChild(opt);
       });
+      // 쇼츠 탭의 보고서 고르기도 같은 목록으로
+      var ss = document.getElementById('rhShortsSourceSelect');
+      if (ss){
+        ss.innerHTML = '<option value="">보고서를 골라 쇼츠 대본 만들기</option>' + Array.prototype.slice.call(sel.options, 1).map(function(o){ return '<option value="' + o.value + '">' + esc(o.textContent) + '</option>'; }).join('');
+      }
     }
+
+    // ---- 🐶 쇼츠 ----
+    var rhShortsLoaded_ = false, rhShortsData_ = null, rhShortsUploadTarget_ = null;
+    function rhShortsDriveFile_(id){ return 'https://drive.google.com/file/d/' + id + '/view'; }
+    function rhLoadShorts_(){
+      var wrap = document.getElementById('rhShortsWrap');
+      wrap.innerHTML = '<div class="spinner">불러오는 중…</div>';
+      callGas('shorts_list', {}).then(function(res){
+        if (!res || res.error){ wrap.innerHTML = '<div class="empty-row">쇼츠 폴더를 읽지 못했습니다: ' + esc((res && res.error) || '응답 없음') + '</div>'; return; }
+        rhShortsData_ = res;
+        var chip = function(on, label){ return '<span style="display:inline-block; padding:1px 7px; margin:1px 2px; border-radius:10px; font-size:11.5px; ' + (on ? 'background:#e6f4ea; color:#1e7b34;' : 'background:#f1f1f3; color:#999;') + '">' + (on ? '✓ ' : '') + label + '</span>'; };
+        var ref = res.ref;
+        var html = '<div style="padding:10px 12px; margin-bottom:12px; border:1px solid var(--line); border-radius:8px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">' +
+          '<b>🐶 순돌이 기준 그림</b><span style="color:var(--sub); font-size:12.5px;">' + (ref && ref.images.length ? ref.images.length + '장 — 모든 편에 같은 그림을 쓰고 클립보드 글자만 바꿉니다' : '아직 없음 — 순돌이 원본 그림을 올려 주세요') + '</span>' +
+          '<span style="flex:1;"></span>' +
+          (ref ? '<button type="button" class="ghost-btn rhShortsUp" data-folder="' + ref.folderId + '" data-kind="그림"><span class="btn-tx">⬆ 그림 올리기</span></button> <a class="ghost-btn" href="' + ref.url + '" target="_blank" rel="noopener">📂 열기</a>' : '') +
+          '</div>';
+        if (res.docs && res.docs.length) html += '<div style="margin-bottom:10px; font-size:12.5px; color:var(--sub);">📄 공통 문서: ' + res.docs.map(function(d){ return '<a href="' + rhShortsDriveFile_(d.id) + '" target="_blank" rel="noopener">' + esc(d.name) + '</a>'; }).join(' · ') + '</div>';
+        if (!res.episodes.length) html += '<div class="empty-row">아직 편이 없습니다. 위에서 보고서를 골라 "🐶 대본 만들기"를 누르거나 "＋ 빈 편"으로 시작하세요.</div>';
+        else {
+          html += '<table class="list-table"><tr><th>편</th><th>진행</th><th>단계</th><th></th></tr>';
+          res.episodes.forEach(function(e){
+            html += '<tr><td>' + esc(e.name) + '</td>' +
+              '<td>' + chip(!!e.대본, '대본') + chip(e.녹음.length > 0, '녹음') + chip(e.영상.length > 0, '영상') + chip(!!e.게시, '게시') + '</td>' +
+              '<td style="white-space:nowrap; font-size:12.5px;">' + esc(e.단계) + (e.게시 ? ' · <a href="' + esc(e.게시) + '" target="_blank" rel="noopener">보기</a>' : '') + '</td>' +
+              '<td style="white-space:nowrap;">' +
+              (e.대본 ? '<a class="ghost-btn" href="' + rhShortsDriveFile_(e.대본.id) + '" target="_blank" rel="noopener">📝 대본</a> ' : '') +
+              '<button type="button" class="ghost-btn rhShortsUp" data-folder="' + e.folderId + '" data-kind="녹음·영상"><span class="btn-tx">⬆ 녹음·영상</span></button> ' +
+              '<button type="button" class="ghost-btn rhShortsPost" data-folder="' + e.folderId + '"><span class="btn-tx">🔗 게시 링크</span></button> ' +
+              '<a class="ghost-btn" href="' + e.url + '" target="_blank" rel="noopener">📂</a></td></tr>';
+          });
+          html += '</table>';
+        }
+        html += '<div style="margin-top:14px; font-size:12.5px; color:var(--sub); line-height:1.7;">만드는 순서: ① 대본 확인·수정(📝) ② 세무사님 답변 녹음 → ⬆ 녹음·영상 ③ Vrew·CapCut으로 기준 그림 + 클립보드 글자 교체 + 자동 자막(9:16) → 완성 영상 ⬆ ④ 유튜브 쇼츠에 올린 뒤 🔗 게시 링크. 20MB가 넘는 영상은 📂 폴더에 직접 넣어 주세요.</div>';
+        wrap.innerHTML = html;
+      }).catch(function(err){ wrap.innerHTML = '<div class="empty-row">불러오기 실패: ' + esc(err && err.message || err) + '</div>'; });
+    }
+    document.getElementById('rhShortsRefreshBtn').addEventListener('click', rhLoadShorts_);
+    document.getElementById('rhShortsFolderBtn').addEventListener('click', function(){
+      if (rhShortsData_ && rhShortsData_.rootUrl) window.open(rhShortsData_.rootUrl, '_blank', 'noopener');
+      else showToast('쇼츠 폴더를 아직 불러오지 못했습니다 — 🔄 새로고침 후 다시 눌러 주세요');
+    });
+    async function rhShortsAskTitle_(def){
+      if (typeof nxPrompt_ === 'function') return await nxPrompt_('이 편의 제목(폴더 이름)을 입력하세요.', def || '');
+      return window.prompt('이 편의 제목(폴더 이름)을 입력하세요.', def || '');
+    }
+    document.getElementById('rhShortsNewBtn').addEventListener('click', async function(){
+      var title = await rhShortsAskTitle_('');
+      if (title === null || !String(title).trim()) return;
+      callGas('shorts_create_episode', { title: title }).then(function(res){
+        if (!res || res.error){ showToast('만들지 못했습니다: ' + ((res && res.error) || '')); return; }
+        showToast('"' + res.name + '" 편을 만들었습니다.'); rhLoadShorts_();
+      });
+    });
+    document.getElementById('rhShortsMakeBtn').addEventListener('click', function(){
+      var fileId = document.getElementById('rhShortsSourceSelect').value;
+      if (!fileId){ showToast('먼저 보고서를 골라 주세요 — 목록이 비어 있으면 "📚 모아보기"를 한 번 열어 주세요.'); return; }
+      var btn = this; btn.disabled = true;
+      var wrap = document.getElementById('rhShortsWrap');
+      wrap.insertAdjacentHTML('afterbegin', '<div id="rhShortsMaking" class="spinner">🐶 대본 만드는 중… (20~40초)</div>');
+      callGas('generate_report_content', { fileId: fileId, style: 'shorts' }).then(async function(res){
+        var mk = document.getElementById('rhShortsMaking'); if (mk) mk.remove();
+        if (!res || res.error || !res.content){ showToast('대본을 만들지 못했습니다: ' + ((res && res.error) || '빈 응답')); return; }
+        var m = /클립보드\s*질문\s*[:：]\s*([^\n]{2,40})/.exec(res.content);
+        var title = await rhShortsAskTitle_(m ? m[1].replace(/[?？]/g, '').trim() : '새 편');
+        if (title === null) return;
+        var cr = await callGas('shorts_create_episode', { title: String(title).trim() || '새 편', script: res.content });
+        if (!cr || cr.error){ showToast('저장하지 못했습니다: ' + ((cr && cr.error) || '')); return; }
+        showToast('"' + cr.name + '" 편에 대본을 저장했습니다 — 📝 대본에서 확인·수정하세요(세법 내용은 꼭 확인).');
+        rhLoadShorts_();
+      }).catch(function(err){ showToast('오류: ' + (err && err.message || err)); }).finally(function(){ btn.disabled = false; });
+    });
+    document.getElementById('rhShortsWrap').addEventListener('click', function(ev){
+      var up = ev.target.closest('.rhShortsUp');
+      if (up){ rhShortsUploadTarget_ = up.dataset.folder; document.getElementById('rhShortsFileInput').click(); return; }
+      var post = ev.target.closest('.rhShortsPost');
+      if (post){
+        var url = window.prompt('유튜브 쇼츠 등 게시한 주소를 붙여 넣으세요.', '');
+        if (!url || !/^https?:\/\//.test(url.trim())) return;
+        callGas('shorts_set_posted', { folderId: post.dataset.folder, url: url.trim() }).then(function(res){
+          if (!res || res.error){ showToast('저장 실패: ' + ((res && res.error) || '')); return; }
+          showToast('게시 링크를 저장했습니다.'); rhLoadShorts_();
+        });
+      }
+    });
+    document.getElementById('rhShortsFileInput').addEventListener('change', function(){
+      var file = this.files && this.files[0]; this.value = '';
+      if (!file || !rhShortsUploadTarget_) return;
+      if (file.size > 20 * 1024 * 1024){ showToast(file.name + ' — 20MB가 넘어 여기서는 올릴 수 없습니다. 📂 폴더를 열어 직접 넣어 주세요.'); return; }
+      var target = rhShortsUploadTarget_;
+      showToast(file.name + ' 올리는 중…');
+      var r = new FileReader();
+      r.onload = function(){
+        var b64 = String(r.result || '').split(',')[1] || '';
+        callGas('uploadFile', { folderId: target, name: file.name, mimeType: file.type || 'application/octet-stream', base64Data: b64 }).then(function(res){
+          if (!res || res.error){ showToast('올리기 실패: ' + ((res && res.error) || '')); return; }
+          showToast(file.name + ' 을(를) 올렸습니다.'); rhLoadShorts_();
+        });
+      };
+      r.readAsDataURL(file);
+    });
     // 네이버 블로그/소식(플레이스), 구글 블로그(Blogger), 구글 비즈니스 프로필(소식)까지
     // 4개 모두 자동 올리기 코드는 연동되어 있다 — 다만 구글 비즈니스 프로필은 API 접근이
     // 아직 구글 승인 대기중이라(케이스 2-0454000041520), 연동은 되어도 실제 게시는 승인

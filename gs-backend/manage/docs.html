@@ -661,6 +661,7 @@
         if (typeof goToView_ === 'function') goToView_('casehandling');
         if (docsSelectedCaseId_ && typeof goToCaseHandling_ === 'function') goToCaseHandling_(docsSelectedCaseId_);
       });
+      if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('docsBackToCaseBtn'), 'docs', function(){ return docsSelectedCaseId_; });
     }
     docsGetAllCases_(true).then(function(cases){
       sel.innerHTML = buildCaseOptionsHtml_(cases);

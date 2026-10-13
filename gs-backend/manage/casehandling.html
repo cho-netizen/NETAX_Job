@@ -999,6 +999,10 @@
     chSelectedId = caseId;
     loadChCases_(caseId);
   }
+  // [2026.10.13] 처리개요 머리에도 같은 "↪ 이 사건 다른 화면" 콤보박스(공용 함수는 script.html — 화면이 다 읽힌 뒤 붙인다)
+  document.addEventListener('DOMContentLoaded', function(){
+    if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('chCaseSelect'), 'casehandling', function(){ return chSelectedId; });
+  });
 
   // ============================================================
   // 3단계였던 증빙 3분류(자동확보/추가확보/요청자료)의 실제 목록·검색·추가 UI는 증빙관리
