@@ -229,6 +229,21 @@
   .nxai-usage-table td:nth-child(2), .nxai-usage-table th:nth-child(2), .nxai-usage-table td:nth-child(3), .nxai-usage-table th:nth-child(3){ text-align:right; white-space:nowrap; }
   .nxai-local-badge.gem{ color:#5b3fa8; background:#efe9fb; }
   html.nx-dark .nxai-local-badge.gem{ background:#2a2240; color:#c9b6f5; }
+  .nxai-cp-head{ margin:2px 0 6px; }
+  .nxai-cp-step{ border-top:1px solid var(--line); padding:6px 0; }
+  .nxai-cp-step-h{ font-size:12.5px; }
+  .nxai-cp-sum{ color:var(--sub); font-size:12px; }
+  .nxai-cp-line{ font-size:12px; color:var(--sub); margin:3px 0 0 20px; white-space:normal; }
+  .nxai-cp-item{ margin:6px 0 0 14px; padding:6px 8px; border:1px solid var(--line); border-radius:8px; font-size:12.5px; white-space:normal; }
+  .nxai-cp-item.held{ opacity:.6; }
+  .nxai-cp-kind{ font-size:11px; font-weight:700; border-radius:5px; padding:0 5px; background:var(--success-bg); }
+  .nxai-cp-kind.k-missing, .nxai-cp-kind.k-check{ background:var(--danger-bg); color:var(--danger); }
+  .nxai-cp-kind.k-judge{ background:#efe9fb; color:#5b3fa8; }
+  html.nx-dark .nxai-cp-kind.k-judge{ background:#2a2240; color:#c9b6f5; }
+  .nxai-cp-detail{ font-size:11.5px; color:var(--sub); white-space:pre-wrap; margin-top:3px; }
+  .nxai-cp-btns{ display:flex; flex-wrap:wrap; gap:5px; margin-top:5px; align-items:center; font-size:12px; }
+  .nxai-cp-foot{ border-top:1px solid var(--line); padding-top:6px; margin-top:4px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .nxai-cp-total{ font-size:12.5px; white-space:normal; }
   .nxai-confirm{ margin-top:10px; border:1px solid #e8cf8a; background:#fffaf0; border-radius:9px; padding:9px 11px; white-space:normal; }
   .nxai-confirm-head{ font-weight:700; font-size:.95em; color:#7a5300; margin-bottom:4px; }
   .nxai-confirm-body{ font-size:.95em; white-space:pre-wrap; margin-bottom:8px; color:var(--ink); }
@@ -1712,6 +1727,8 @@
     var judgeT = /(수금|입금)/.test(t) ? t.replace(/얼마(나|를)?/g, '') : t;
     judgeT = judgeT.replace(/설명서/g, ''); // "사용설명서 열어줘"의 '설명'은 판단 요청이 아니다
     if (NXAI_LOCAL_JUDGE_RE_.test(judgeT)) return null;
+    // [2026.10.14] "이 사건 처리하자" — 처리탭 도구로 단계별 점검(nxAiCaseProc_). "예약 승인 처리해줘" 같은 다른 처리 요청은 제외
+    if (NXAI_CP_RE_.test(t) && !/(예약|승인|거절|수금|입금|메모|삭제|등록)/.test(t) && (/사건/.test(t) || /^\s*(이\s*건\s*)?처리\s*(하자|합시다|해\s*줘|해)\s*[.!~]*$/.test(t))) return { kind: 'caseproc' };
     if (/자동\s*계산/.test(t)){
       var m = /(양도|증여|상속)/.exec(t);
       return { kind: 'autocalc', tab: m ? { 양도: 'transfer', 증여: 'gift', 상속: 'inheritance' }[m[1]] : '' };
@@ -2046,6 +2063,263 @@
     });
   }
 
+  // ============================================================
+  // [2026.10.14] "이 사건 처리하자" — 처리탭 도구로 사건을 단계별로 점검(트랙 2, 토큰 0)
+  // 세무사님 지적: AI가 처리탭을 안 쓰고 머릿속으로만 일한다. 이 명령은 AI를 부르지 않고 서버 caseProc_(Code.js)가
+  // 처리탭과 같은 도구(서류 무료 OCR+규칙 정리, 증빙목록, 처리개요, 세액계산 결과, 문서작성 문단)로 단계마다 점검한다.
+  // 걸린 항목은 [확인][보류][무시]로 묻고, 결정은 사건별로 서버에 저장해 다시 "처리하자" 하면 무시한 건 다시 묻지 않는다.
+  // [확인] = 그 칸이 있는 처리탭을 연다(판단 항목만 AI에게 사건 자료와 함께 묻는다 — 유료라 한 번 더 확인).
+  // ============================================================
+  var NXAI_CP_STEPS_ = [
+    { key: 'basic', title: '1 사건 기본' }, { key: 'evidence', title: '2 증빙 점검' }, { key: 'overview', title: '3 처리개요 채우기' },
+    { key: 'calc', title: '4 세액계산' }, { key: 'output', title: '5 산출물(세액인쇄·문서작성)' }, { key: 'save', title: '6 남은 일 정리' }
+  ];
+  var NXAI_CP_KIND_ = { missing: '⬜ 미확보', check: '⚠ 확인필요', judge: '🤔 판단필요', todo: '▶ 할 일' };
+  var NXAI_CP_RE_ = /처리\s*(하자|합시다|해\s*줘|해\s*주세요|해$|진행|시작)/;
+  function nxAiCaseProcResolve_(text){
+    // 문장에 사건 이름이 있으면 그 사건, 없으면 대화에 연결된 사건 → 지금 화면의 사건
+    var rest = String(text || '').replace(/[.!?~]/g, ' ').split(/\s+/).filter(function(w){
+      return w && !/^(이번|이|그|저|이건|사건(을|를|은|도)?|건|좀|지금|바로|처리.*|진행.*|시작.*|하자|해줘|해)$/.test(w);
+    }).join('');
+    var fallback = function(){
+      var id = nxAiConv.caseId || nxAiScreenCaseId_();
+      return id ? { id: id } : null;
+    };
+    if (rest.length < 2) return Promise.resolve(fallback());
+    return nxAiFindCases_(text).then(function(found){
+      if (found.list.length === 1) return found.list[0];
+      if (found.list.length > 1) return { choices: found.list.slice(0, 8) };
+      return fallback();
+    });
+  }
+  function nxAiCaseProc_(text){
+    var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+    if (!tok){ nxAiToast_('먼저 로그인해 주세요.'); return; }
+    var input = nxAiEl_('nxAiInput');
+    input.value = ''; input.style.height = 'auto';
+    nxAiPhoneTab_('chat');
+    var userMsg = { role: 'user', content: text };
+    nxAiConv.messages.push(userMsg);
+    nxAiAppendBubble_('user', text)._nxMsgRef = userMsg;
+    var bubble = nxAiAppendBubble_('assistant', '⚡ 사건을 찾는 중…');
+    var aiMsg = { role: 'assistant', content: '[⚡사건 처리] 시작' };
+    bubble._nxMsgRef = aiMsg;
+    nxAiConv.messages.push(aiMsg);
+    nxAiCaseProcResolve_(text).then(function(c){
+      if (c && c.choices){
+        nxAiRenderLocal_(bubble, { md: '어느 사건을 처리할지 골라 주세요.', note: '[⚡사건 처리] 사건 후보 ' + c.choices.length + '건 — 선택 대기',
+          choices: c.choices.map(function(k){ return { label: (k.사건명 || k.고객명) + (k.상태 === '완료' ? ' (완료)' : ''), run: function(){ nxAiCaseProcRun_(bubble, k.id); return null; } }; }) }, text);
+        return;
+      }
+      if (!c){
+        nxAiRenderLocal_(bubble, { md: '처리할 사건이 연결돼 있지 않습니다. 위쪽 **🔗 사건 연결**로 사건을 고르거나, 사건 화면(처리개요·증빙확보·세액계산 등)에서 다시 말씀해 주세요. "홍길동 사건 처리하자"처럼 이름을 넣어도 됩니다.', note: '[⚡사건 처리] 사건 미연결' }, text);
+        nxAiScheduleSave_();
+        return;
+      }
+      nxAiCaseProcRun_(bubble, c.id);
+    }).catch(function(err){ bubble.textContent = '사건을 찾지 못했습니다: ' + (err && err.message || err); });
+  }
+  function nxAiCaseProcRun_(bubble, caseId){
+    var st = { caseId: caseId, case: null, decisions: {}, steps: {}, items: [], saveTimer: null, bubble: bubble };
+    bubble.innerHTML = '<div class="nxai-local-badge">⚡ 사건 처리 · 처리탭 도구로 진행(AI 미사용, 판단 항목만 AI)</div><div class="nxai-cp-head">사건 불러오는 중…</div><div class="nxai-cp-steps"></div><div class="nxai-cp-foot"></div>';
+    var stepsEl = bubble.querySelector('.nxai-cp-steps');
+    NXAI_CP_STEPS_.forEach(function(s){
+      var row = document.createElement('div');
+      row.className = 'nxai-cp-step';
+      row.innerHTML = '<div class="nxai-cp-step-h"><span class="nxai-cp-ico">⏳</span> <b>' + nxAiEsc_(s.title) + '</b> <span class="nxai-cp-sum"></span></div><div class="nxai-cp-lines"></div><div class="nxai-cp-items"></div>';
+      stepsEl.appendChild(row);
+      st.steps[s.key] = row;
+    });
+    var run = function(key, extra){ return callGas('case_proc', Object.assign({ caseId: caseId, step: key }, extra || {})); };
+    var setStep = function(key, ico, sum){ var r = st.steps[key]; r.querySelector('.nxai-cp-ico').textContent = ico; r.querySelector('.nxai-cp-sum').textContent = sum || ''; };
+    var doStep = function(key){
+      setStep(key, '🔄', '진행 중…');
+      var loop = function(n){
+        return run(key).then(function(res){
+          if (!res || res.error) throw new Error((res && res.error) || '응답 없음');
+          if (res.more && n < 12){ setStep(key, '🔄', (res.lines || [])[0] || '계속 읽는 중…'); return loop(n + 1); }
+          return res;
+        });
+      };
+      return loop(0).then(function(res){
+        if (res.more) res.lines = (res.lines || []).concat(['서류가 많아 아직 다 못 읽었습니다 — 잠시 뒤 다시 "처리하자"를 하면 읽은 데서 이어갑니다.']);
+        nxAiCaseProcFill_(st, key, res);
+        return res;
+      }).catch(function(err){
+        setStep(key, '❌', '점검하지 못함: ' + (err && err.message || err));
+        if (typeof nxLogBug_ === 'function') nxLogBug_({ kind: 'local', where: '사건 처리(' + key + ')', message: String(err && err.message || err), detail: caseId });
+        return null;
+      });
+    };
+    doStep('basic').then(function(res){
+      if (!res){ throw new Error('사건 기본 정보를 불러오지 못했습니다.'); }
+      st.case = res.case; st.decisions = res.decisions || {};
+      bubble.querySelector('.nxai-cp-head').innerHTML = '<b>' + nxAiEsc_(res.case.사건명 || res.case.고객명 || '') + '</b>' + (res.lastRun ? ' <span class="nxai-muted">· 지난 점검 ' + nxAiEsc_(res.lastRun) + '</span>' : '');
+      nxAiCaseProcFill_(st, 'basic', res); // 결정(보류·무시)을 받은 뒤 다시 그린다
+      if (res.blocked){
+        ['evidence', 'overview', 'calc', 'output'].forEach(function(k){ setStep(k, '⏭', '증빙 폴더가 없어 건너뜀'); });
+        return;
+      }
+      return ['evidence', 'overview', 'calc', 'output'].reduce(function(p, k){ return p.then(function(){ return doStep(k); }); }, Promise.resolve());
+    }).then(function(){
+      setStep('save', '🔄', '저장 중…');
+      return nxAiCaseProcSave_(st, true).then(function(r){
+        setStep('save', r && r.ok ? '✅' : '❌', r && r.ok ? ('남은 일 ' + r.remaining + '건을 사건 기록(작업일지)에 남겼습니다') : '저장하지 못함: ' + (r && r.error || ''));
+      });
+    }).catch(function(err){
+      setStep('save', '❌', String(err && err.message || err));
+    }).then(function(){
+      nxAiCaseProcFoot_(st);
+      nxAiCountFree_('local');
+    });
+  }
+  function nxAiCaseProcFill_(st, key, res){
+    var row = st.steps[key];
+    st.items = st.items.filter(function(it){ return it.step !== key; }).concat((res.items || []).map(function(it){ it.step = key; return it; }));
+    var linesEl = row.querySelector('.nxai-cp-lines');
+    linesEl.innerHTML = '';
+    (res.lines || []).forEach(function(l){
+      var d = document.createElement('div');
+      d.className = 'nxai-cp-line';
+      d.textContent = typeof l === 'string' ? l : l.text;
+      if (l && l.act){
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'nxai-btn'; b.textContent = l.btn || '열기';
+        b.addEventListener('click', function(){ nxAiCaseProcAct_(st, { act: l.act, text: l.text }, null); });
+        d.appendChild(document.createTextNode(' ')); d.appendChild(b);
+      }
+      linesEl.appendChild(d);
+    });
+    nxAiCaseProcItems_(st, key);
+  }
+  function nxAiCaseProcItems_(st, key){
+    var row = st.steps[key];
+    var box = row.querySelector('.nxai-cp-items');
+    box.innerHTML = '';
+    var mine = st.items.filter(function(it){ return it.step === key; });
+    var ignored = 0, held = 0, open = 0;
+    mine.forEach(function(it){
+      var dec = st.decisions[it.id] && st.decisions[it.id].d;
+      if (dec === '무시'){ ignored++; return; }
+      if (dec === '보류') held++; else open++;
+      var el = document.createElement('div');
+      el.className = 'nxai-cp-item' + (dec === '보류' ? ' held' : '');
+      el.innerHTML = '<div><span class="nxai-cp-kind k-' + nxAiEsc_(it.kind) + '">' + nxAiEsc_(NXAI_CP_KIND_[it.kind] || it.kind) + '</span> ' + nxAiEsc_(it.text) + '</div>'
+        + (it.detail ? '<div class="nxai-cp-detail">' + nxAiEsc_(it.detail) + '</div>' : '') + '<div class="nxai-cp-btns"></div>';
+      var btns = el.querySelector('.nxai-cp-btns');
+      var add = function(label, fn, primary){ var b = document.createElement('button'); b.type = 'button'; b.className = 'nxai-btn' + (primary ? ' primary' : ''); b.textContent = label; b.addEventListener('click', fn); btns.appendChild(b); return b; };
+      if (dec === '보류'){
+        btns.appendChild(document.createTextNode('⏸ 보류 중 '));
+        add('↩ 다시 묻기', function(){ nxAiCaseProcDecide_(st, it, null); });
+      } else {
+        add(it.kind === 'judge' ? '확인(AI 판단)' : '확인', function(){ nxAiCaseProcAct_(st, it, el); }, true);
+        add('보류', function(){ nxAiCaseProcDecide_(st, it, '보류'); });
+        add('무시', function(){ nxAiCaseProcDecide_(st, it, '무시'); });
+        if (dec === '확인') btns.appendChild(document.createTextNode(' 👀 확인 중'));
+      }
+      box.appendChild(el);
+    });
+    if (ignored){
+      var ig = document.createElement('div');
+      ig.className = 'nxai-cp-line nxai-muted';
+      ig.textContent = '무시한 항목 ' + ignored + '건(다시 묻지 않음) ';
+      var sb = document.createElement('button'); sb.type = 'button'; sb.className = 'nxai-btn'; sb.textContent = '되살리기';
+      sb.addEventListener('click', function(){ mine.forEach(function(it){ if (st.decisions[it.id] && st.decisions[it.id].d === '무시') st.decisions[it.id] = null; }); nxAiCaseProcItems_(st, key); nxAiCaseProcQueueSave_(st); });
+      ig.appendChild(sb);
+      box.appendChild(ig);
+    }
+    var ico = row.querySelector('.nxai-cp-ico');
+    if (ico.textContent !== '❌' && ico.textContent !== '⏭' && key !== 'save'){
+      ico.textContent = open ? '⚠' : '✅';
+      row.querySelector('.nxai-cp-sum').textContent = open ? '확인할 항목 ' + open + '건' + (held ? ' · 보류 ' + held : '') : (held ? '보류 ' + held + '건' : '이상 없음');
+    }
+  }
+  function nxAiCaseProcDecide_(st, it, d){
+    st.decisions[it.id] = d ? { d: d, at: nxAiTodayStr_(), text: it.text } : null;
+    nxAiCaseProcItems_(st, it.step);
+    nxAiCaseProcQueueSave_(st);
+  }
+  function nxAiCaseProcQueueSave_(st){
+    clearTimeout(st.saveTimer);
+    st.saveTimer = setTimeout(function(){ nxAiCaseProcSave_(st, true).then(function(){ nxAiCaseProcFoot_(st); }); }, 2000);
+  }
+  function nxAiCaseProcSave_(st, writeLog){
+    var items = st.items.map(function(it){ return { id: it.id, step: it.step, kind: it.kind, text: it.text }; });
+    return callGas('case_proc', { caseId: st.caseId, step: 'save', items: items, decisions: st.decisions, writeLog: !!writeLog }).then(function(r){
+      if (r && r.ok) Object.keys(st.decisions).forEach(function(k){ if (!st.decisions[k]) delete st.decisions[k]; });
+      return r;
+    }).catch(function(err){ return { error: String(err && err.message || err) }; });
+  }
+  function nxAiCaseProcFoot_(st){
+    var foot = st.bubble.querySelector('.nxai-cp-foot');
+    var live = st.items.filter(function(it){ var d = st.decisions[it.id] && st.decisions[it.id].d; return d !== '무시'; });
+    var held = live.filter(function(it){ return st.decisions[it.id] && st.decisions[it.id].d === '보류'; });
+    var open = live.length - held.length;
+    foot.innerHTML = '<div class="nxai-cp-total">' + (open ? '남은 일 <b>' + open + '건</b>' : '남은 일 없음 ✅') + (held.length ? ' · 보류 ' + held.length + '건' : '') + ' — 처리탭에서 고친 뒤 다시 "이 사건 처리하자"를 하면 남은 것부터 이어서 점검합니다.</div>';
+    var again = document.createElement('button');
+    again.type = 'button'; again.className = 'nxai-btn'; again.textContent = '🔄 다시 점검';
+    again.addEventListener('click', function(){ nxAiCaseProcRun_(st.bubble, st.caseId); });
+    foot.appendChild(again);
+    // 대화기록에는 요약을 남긴다 — 이어서 "이 중 ○○ 검토해줘"라고 AI에게 물으면 이 결과를 보고 판단한다.
+    var ref = st.bubble._nxMsgRef;
+    if (ref){
+      ref.content = '[⚡사건 처리] ' + ((st.case && (st.case.사건명 || st.case.고객명)) || '') + ' — 남은 일 ' + open + '건' + (held.length ? ', 보류 ' + held.length + '건' : '')
+        + (live.length ? '\n' + live.slice(0, 25).map(function(it){ return '- ' + (st.decisions[it.id] && st.decisions[it.id].d === '보류' ? '(보류) ' : '') + (NXAI_CP_KIND_[it.kind] || '') + ' ' + it.text; }).join('\n') : '');
+      nxAiScheduleSave_();
+    }
+  }
+  function nxAiCaseProcAct_(st, it, el){
+    var a = it.act || {};
+    var mark = function(){ if (it.id){ st.decisions[it.id] = { d: '확인', at: nxAiTodayStr_(), text: it.text }; if (it.step) nxAiCaseProcItems_(st, it.step); nxAiCaseProcQueueSave_(st); } };
+    if (a.type === 'view'){ nxAiOpenJobView_(a.view, st.caseId); mark(); return; }
+    if (a.type === 'file'){ window.open('https://drive.google.com/file/d/' + encodeURIComponent(a.id) + '/view', '_blank', 'noopener'); mark(); return; }
+    if (a.type === 'autocalc'){
+      nxAiOpenJobView_('taxcalc', st.caseId, '', 'autocalc', a.tab);
+      mark();
+      if (el && !el.querySelector('.nxai-cp-save')){
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'nxai-btn nxai-cp-save'; b.textContent = '💾 계산 결과를 이 사건에 저장';
+        b.title = '세액계산 화면의 [이 사건에 저장]과 같은 동작 — 계산이 끝난 뒤 누르세요';
+        b.addEventListener('click', function(){
+          if (typeof tcCurrentCase !== 'undefined' && tcCurrentCase && tcCurrentCase.id === st.caseId && typeof tcSaveCurrentResult_ === 'function') tcSaveCurrentResult_();
+          else nxAiToast_('세액계산 화면에 이 사건이 열려 있지 않습니다 — 화면의 [이 사건에 저장]을 직접 눌러 주세요.');
+        });
+        el.querySelector('.nxai-cp-btns').appendChild(b);
+      }
+      return;
+    }
+    if (a.type === 'evMark'){
+      nxAiConfirm_('‘' + a.label + '’을(를) 확보됨으로 표시할까요?\n\n폴더에 있는 비슷한 서류: ' + (a.files || []).join(', ') + '\n\n(아니면 [취소] — 증빙확보 화면을 엽니다)').then(function(ok){
+        if (!ok){ nxAiOpenJobView_('docs', st.caseId); mark(); return; }
+        return callGas('work_get_cases', {}).then(function(res){
+          var c = ((res && res.cases) || []).filter(function(x){ return x.id === st.caseId; })[0];
+          if (!c) throw new Error('사건을 찾지 못했습니다.');
+          var hit = false;
+          var newList = (c.증빙목록 || []).map(function(e){ if (e.id !== a.evId) return e; hit = true; return Object.assign({}, e, { status: '확보됨', 확보일: nxAiTodayStr_() }); });
+          if (!hit) throw new Error('증빙목록에서 그 항목을 찾지 못했습니다(이미 바뀐 듯) — 다시 점검해 주세요.');
+          return callGas('work_update_case', { id: c.id, 증빙목록: newList, 기대수정일: c.수정일 }).then(function(r){
+            if (!r || r.success === false) throw new Error((r && r.message) || '저장 실패');
+            if (c.my_report_id) callGas('admin_set_checklist_status', { report_id: c.my_report_id, item: a.label, submitted: true }).catch(function(){});
+            st.items = st.items.filter(function(x){ return x !== it; });
+            nxAiCaseProcItems_(st, it.step); nxAiCaseProcQueueSave_(st);
+            nxAiToast_('‘' + a.label + '’을(를) 확보됨으로 표시했습니다.');
+          });
+        });
+      }).catch(function(err){ nxAiToast_('표시하지 못했습니다: ' + (err && err.message || err)); });
+      return;
+    }
+    if (a.type === 'judge'){
+      if (!st.case){ nxAiToast_('사건 자료를 아직 못 불러왔습니다.'); return; }
+      nxAiConfirm_('이 항목은 판단이 필요해 AI에게 묻습니다(유료). 사건 자료(사건 기본·처리개요·증빙·저장된 계산 결과)를 함께 보냅니다.\n\n' + it.text + '\n\n진행할까요?').then(function(ok){
+        if (!ok) return;
+        mark();
+        var prompt = '[판단 요청 — 사건처리 점검]\n' + (a.q || it.text) + '\n\n' + nxAiStrategyBrief_(st.case)
+          + '\n\n[지시] 위 자료에 있는 사실만 근거로 판단하고, 자료에 없는 사실은 지어내지 말고 "확인필요"로 남겨라. 세액이 필요하면 세액계산 도구로만 계산하라. 근거 조문을 밝히고, 판단에 부족한 서류·사실을 목록으로 정리하라.';
+        nxAiSendAI_(prompt, { noGem: true, displayText: '🤔 판단 요청 — ' + it.text.slice(0, 70) });
+      });
+    }
+  }
+
   function nxAiSend_(){
     var input = nxAiEl_('nxAiInput');
     var text = input.value.trim();
@@ -2063,6 +2337,7 @@
     if (nxAiPendingFiles.length || nxAiPendingImages.length) return nxAiSendAI_();
     var intent = nxAiDetectLocal_(text);
     if (!intent) return nxAiSendAI_();
+    if (intent.kind === 'caseproc') return nxAiCaseProc_(text);
     input.value = ''; input.style.height = 'auto';
     nxAiPhoneTab_('chat');
     var userMsg = { role: 'user', content: text };

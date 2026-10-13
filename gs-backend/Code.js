@@ -3821,6 +3821,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'doc_parse_multi') return jsonResponse(docParseMulti_(body)); // 여러 서류 함께 정리 + 대조표(토큰 0)
   if (body.action === 'tc_extract_case_docs') return jsonResponse(tc_extractCaseDocs_(body));
   if (body.action === 'tc_rule_transfer_facts') return jsonResponse(tc_ruleTransferFacts_(body)); // 양도세 자동채우기 규칙 먼저(토큰 0)
+  if (body.action === 'case_proc') return jsonResponse(caseProc_(body)); // '이 사건 처리하자' — 처리탭 도구로 단계별 점검(토큰 0)
   if (body.action === 'self_check_last') return jsonResponse(selfCheckLast_());
   if (body.action === 'improve_report_run') return jsonResponse(buildImprovementReport_());
   if (body.action === 'improve_report_get') return jsonResponse(getImprovementReport_());
@@ -24609,6 +24610,349 @@ function tc_ruleTransferFacts_(body) {
   }
   return { ok: true, sellerName: names[0] || null, transactions: txs, evidence: evidence,
     counts: { 계약서: contracts.length, 신고필증: reports.length, 취득세: acqs.length, 법무사: lawyers.length, 등기부: regs.length } };
+}
+
+// =========================================================
+// [2026.10.14] "이 사건 처리하자" — 처리탭 도구로 사건을 단계별로 점검(토큰 0)
+// 세무사님 지적: AI가 처리탭(처리개요·증빙관리·세액계산·세액인쇄·문서작성)을 쓰지 않고 머릿속으로만 일한다.
+// 사이드바에서 "이 사건 처리하자"라고 하면 화면(aichat.html nxAiCaseProc_)이 아래 단계를 차례로 부르고,
+// 단계마다 미확보·확인필요·판단필요 항목을 [확인][보류][무시]로 묻는다. 여기 서버 쪽은 전부 규칙·GAS(AI 0원):
+//  basic(사건 기본) → evidence(증빙: 폴더 서류를 무료 OCR+규칙으로 정리해 증빙목록과 대조, 시간이 걸리면 이어서)
+//  → overview(처리개요: 양도는 tc_ruleTransferFacts_의 검산된 값으로 "빈 칸만" 채움, 다르면 확인필요)
+//  → calc(세액계산 결과 유무·계산 뒤 서류 변경) → output(세액인쇄 준비·종합검토서·추천 쟁점 문단)
+//  → save(남은 일·결정을 사건별 파일에 저장하고 작업일지에 한 줄로 기록 — 다시 "처리하자" 하면 무시한 건 다시 안 물음)
+// 값은 지어내지 않는다 — 서류·사건 기록에 있는 것만, 모르면 확인필요 항목으로 남긴다.
+// =========================================================
+const CASEPROC_FOLDER_ = '_사건처리점검';
+const CASEPROC_TAX_LABEL_ = { transfer: '양도소득세', gift: '증여세', inheritance: '상속세' };
+function caseProc_(body) {
+  const caseId = String(body && body.caseId || '').trim();
+  if (!caseId) return { error: '사건이 필요합니다.' };
+  if (body.step === 'save') return caseProcSave_(caseId, body);
+  const sheet = work_getSheet_();
+  const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+  const found = work_findCaseRow_(sheet, col, caseId);
+  if (!found) return { error: '사건을 찾지 못했습니다.' };
+  const c = work_readRow_(col, found.row);
+  try {
+    if (body.step === 'basic') return caseProcBasic_(c);
+    if (body.step === 'evidence') return caseProcEvidence_(c);
+    if (body.step === 'overview') return caseProcOverview_(c);
+    if (body.step === 'calc') return caseProcCalc_(c);
+    if (body.step === 'output') return caseProcOutput_(c);
+  } catch (e) {
+    return { error: '이 단계를 점검하지 못했습니다: ' + (e && e.message || e) };
+  }
+  return { error: '알 수 없는 단계입니다.' };
+}
+function caseProcFile_(caseId, create) {
+  const root = getChiefManagerFolder_();
+  if (!root) return null;
+  const folder = getOrCreateSubfolder_(root, CASEPROC_FOLDER_);
+  const name = String(caseId).replace(/[^\w-]/g, '_') + '.json';
+  const it = folder.getFilesByName(name);
+  if (it.hasNext()) return it.next();
+  return create ? folder.createFile(name, '{}', 'application/json') : null;
+}
+function caseProcLoad_(caseId) {
+  try { const f = caseProcFile_(caseId, false); return f ? (JSON.parse(f.getBlob().getDataAsString('UTF-8') || '{}') || {}) : {}; } catch (e) { return {}; }
+}
+function caseProcToday_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'); }
+function caseProcFiles_(c) {
+  const out = [];
+  const folderId = String(c.폴더ID || '').trim();
+  if (!folderId) return out;
+  const walk = function (folder, depth) {
+    if (out.length >= 150 || depth > 4) return;
+    const it = folder.getFiles();
+    while (it.hasNext() && out.length < 150) { const f = it.next(); out.push({ id: f.getId(), name: f.getName(), mimeType: f.getMimeType(), modified: f.getLastUpdated().getTime() }); }
+    const subs = folder.getFolders();
+    while (subs.hasNext() && out.length < 150) walk(subs.next(), depth + 1);
+  };
+  walk(DriveApp.getFolderById(folderId), 0);
+  return out;
+}
+function caseProcItem_(id, kind, text, act, detail) {
+  const it = { id: id, kind: kind, text: text };
+  if (act) it.act = act;
+  if (detail) it.detail = detail;
+  return it;
+}
+
+// 1) 사건 기본 — 세목·업무유형·납세자·법정기한·증빙 폴더
+function caseProcBasic_(c) {
+  const items = [], lines = [];
+  const today = caseProcToday_();
+  lines.push('세목 ' + (CASEPROC_TAX_LABEL_[c.세목] || c.세목 || '—') + ' · 업무 ' + (c.업무유형 || '—') + ' · 납세자 ' + (c.납세자 || '—') + ' · 법정일 ' + (c.법정일 || '—') + ' · 상태 ' + (c.상태 || '—'));
+  if (!c.세목) items.push(caseProcItem_('basic:세목', 'missing', '세목이 비어 있습니다.', { type: 'view', view: 'workmanage' }));
+  if (!c.업무유형) items.push(caseProcItem_('basic:업무유형', 'missing', '업무유형(신고·상담 등)이 비어 있습니다.', { type: 'view', view: 'workmanage' }));
+  if (!String(c.납세자 || '').trim()) items.push(caseProcItem_('basic:납세자', 'missing', '납세자가 비어 있습니다.', { type: 'view', view: 'casehandling' }));
+  if (!c.법정일) items.push(caseProcItem_('basic:법정일', 'missing', '법정일(처리기한)이 비어 있습니다' + (WORK_MANUAL_DEADLINE_TYPES_.indexOf(c.업무유형) !== -1 ? ' — 이 업무유형은 직접 입력하는 기한입니다.' : ' — 기준일(양도일·증여일·상속개시일)을 넣으면 자동 계산됩니다.'), { type: 'view', view: 'workmanage' }));
+  else if (c.상태 !== '완료' && c.법정일 < today) items.push(caseProcItem_('basic:기한경과:' + c.법정일, 'check', '법정일(' + c.법정일 + ')이 지났습니다 — 기한후신고·기한 정정 여부 확인.', { type: 'view', view: 'workmanage' }));
+  if (!String(c.폴더ID || '').trim()) items.push(caseProcItem_('basic:폴더', 'missing', '증빙 폴더가 없습니다 — 처리개요에서 사건 폴더를 먼저 만들어야 서류를 점검할 수 있습니다.', { type: 'view', view: 'casehandling' }));
+  const saved = caseProcLoad_(c.id);
+  return { ok: true, case: c, lines: lines, items: items, blocked: !String(c.폴더ID || '').trim(), decisions: saved.decisions || {}, lastRun: saved.savedAt || '' };
+}
+
+// 2) 증빙 점검 — 폴더 서류(PDF·사진)를 무료 OCR+규칙으로 정리(tc_docText_·docParseText_, 6시간 기억)해 종류를 알아내고,
+// 증빙목록(없으면 세목별 필요증빙 틀)과 대조한다. 한 번에 다 못 읽으면 more:true — 화면이 다시 부르면 읽은 것은 기억분으로 이어간다.
+function caseProcEvRe_(label) {
+  const L = String(label || '').replace(/\(.*$/, '');
+  const table = [
+    [/증여\s*계약/, /증여\s*계약/], [/교환\s*계약/, /교환/], [/협의\s*계약|수용\s*재결/, /협의|수용|재결/],
+    [/계약서/, /계약서|매매|분양|공급/], [/전입세대/, /전입세대/], [/초본|주민등록/, /초본|주민등록/], [/가족관계/, /가족관계/],
+    [/등기/, /등기/], [/취득세/, /취득세/], [/중개|필요경비|영수증/, /중개|영수증|법무|경비|세금계산서|현금영수증|카드/],
+    [/농지원부|농지\s*대장/, /농지/], [/자경/, /자경/], [/경영체/, /경영체/], [/토지이용/, /토지이용/],
+    [/감정|평가/, /감정|평가|시가/], [/신분증/, /신분증/], [/이체|계좌/, /이체|거래내역|통장|입출금/],
+    [/사망|제적/, /사망|제적|기본증명/], [/금융|잔액|잔고/, /금융|잔액|잔고/], [/보험/, /보험/], [/부채|대출|채무/, /부채|대출|채무/],
+    [/관리처분/, /관리처분/], [/낙찰|매각결정/, /낙찰|매각/], [/배당표/, /배당/], [/건축물\s*대장/, /건축물/], [/토지\s*대장|임야\s*대장/, /대장/],
+    [/공시|기준시가/, /공시|기준시가/], [/임대차/, /임대차|전세|월세/], [/신고서|신고\s*내역/, /신고서|접수증|납부서/]
+  ];
+  for (let i = 0; i < table.length; i++) if (table[i][0].test(L)) return table[i][1];
+  const key = L.replace(/\s+/g, '');
+  return key.length >= 2 ? new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) : null;
+}
+function caseProcParsed_(f, cache, canParse) {
+  const key = 'cpp1_' + f.id + '_' + f.modified;
+  const hit = cache.get(key);
+  if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+  if (!canParse) return null;
+  let s = { t: '', l: '', w: [] };
+  try {
+    const text = tc_docText_(f);
+    if (text) {
+      const p = docParseText_(text);
+      s.t = p.type || ''; s.l = p.label || '';
+      s.w = String(p.md || '').split('\n').filter(function (x) { return /⚠/.test(x); }).map(function (x) { return x.replace(/[|*#>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140); }).filter(String).slice(0, 4);
+      s.wn = String(p.md || '').split('⚠').length - 1;
+    }
+  } catch (e) { s.err = String(e && e.message || e).slice(0, 80); }
+  try { cache.put(key, JSON.stringify(s), 21600); } catch (e) {}
+  return s;
+}
+function caseProcEvidence_(c) {
+  const items = [], lines = [];
+  const files = caseProcFiles_(c);
+  const cache = CacheService.getScriptCache();
+  const rank = function (n) { return /(계약|신고필증|취득세|법무|등기|등본|초본|가족관계|대장)/.test(n) ? 0 : 1; };
+  const docs = files.filter(function (f) { return /pdf|^image\//.test(String(f.mimeType || '')) && !/^_/.test(f.name); })
+    .sort(function (a, b) { return rank(a.name) - rank(b.name); }).slice(0, 40);
+  const started = Date.now();
+  let pending = 0;
+  docs.forEach(function (f) {
+    f.p = caseProcParsed_(f, cache, Date.now() - started < 80000);
+    if (!f.p) pending++;
+  });
+  if (pending) return { ok: true, more: true, progress: { done: docs.length - pending, total: docs.length }, lines: ['서류 읽는 중 ' + (docs.length - pending) + '/' + docs.length + '(무료 글자인식 — 처음 읽는 서류는 한 건에 10~40초)'] };
+
+  const kinds = {};
+  docs.forEach(function (f) { if (f.p && f.p.l) kinds[f.p.l] = (kinds[f.p.l] || 0) + 1; });
+  const kindTxt = Object.keys(kinds).map(function (k) { return k + ' ' + kinds[k]; }).join(', ');
+  lines.push('폴더 파일 ' + files.length + '개 · PDF·사진 ' + docs.length + '개 중 자동 정리 ' + docs.filter(function (f) { return f.p && f.p.t; }).length + '개' + (kindTxt ? ' (' + kindTxt + ')' : ''));
+
+  // 증빙목록(사건에 저장된 것) — 비어 있으면 세목별 필요증빙 틀로 대조만 한다(저장하지 않음)
+  let list = Array.isArray(c.증빙목록) ? c.증빙목록 : [];
+  let virtual = false;
+  const ov = c.사건개요 || {};
+  if (!list.length && c.업무유형 === '신고' && WORK_EVIDENCE_TEMPLATES_[c.세목]) {
+    list = work_buildEvidenceFromTemplate_(c.세목, '신고', ov.사건분류, ov.물건목록, ov.취득계약일괄, ov.양도계약일괄);
+    virtual = true;
+    lines.push('증빙목록이 아직 없어(처리개요를 처음 저장할 때 생김) 세목별 필요증빙 틀로 대조했습니다.');
+  }
+  const req = list.filter(function (e) { return e && e.source === 'requested'; });
+  const got = req.filter(function (e) { return e.status === '확보됨'; });
+  if (req.length) lines.push('필요증빙 확보 ' + got.length + '/' + req.length);
+  else if (c.업무유형 !== '신고') lines.push('업무유형이 "' + (c.업무유형 || '—') + '"이라 필요증빙 틀이 없습니다(신고 사건만 자동으로 깔림).');
+  const hay = docs.concat(files.filter(function (f) { return docs.indexOf(f) === -1; })).map(function (f) { return { f: f, s: f.name + ' ' + (f.p && f.p.l || '') }; });
+  req.forEach(function (e) {
+    if (e.status === '확보됨') return;
+    const re = caseProcEvRe_(e.label);
+    const hits = re ? hay.filter(function (h) { return re.test(h.s); }).slice(0, 3) : [];
+    const key = 'ev:' + (e.slotKey || e.label);
+    if (hits.length) {
+      items.push(caseProcItem_(key, 'check', '‘' + e.label + '’ — 폴더에 비슷한 서류가 있습니다: ' + hits.map(function (h) { return h.f.name; }).join(', ') + ' (증빙목록은 미확보)',
+        virtual ? { type: 'view', view: 'docs' } : { type: 'evMark', evId: e.id, label: e.label, files: hits.map(function (h) { return h.f.name; }) }));
+    } else {
+      items.push(caseProcItem_(key, 'missing', '미확보: ' + e.label, { type: 'view', view: 'docs' }));
+    }
+  });
+  docs.forEach(function (f) {
+    if (!f.p || !f.p.t || !(f.p.wn > 0)) return;
+    items.push(caseProcItem_('file:' + f.id + ':' + f.modified, 'check', '‘' + f.name + '’(' + f.p.l + ') 자동 정리 결과에 ⚠확인필요 ' + f.p.wn + '곳', { type: 'file', id: f.id, name: f.name }, f.p.w.join('\n')));
+  });
+  return { ok: true, lines: lines, items: items };
+}
+
+// 3) 처리개요 — 빈 칸은 확인필요로, 양도는 서류 규칙 정리(tc_ruleTransferFacts_, 검산된 값만)로 물건목록의 빈 칸만 채운다.
+const CASEPROC_OV_REQUIRED_ = {
+  transfer: [['trTransferorName', '양도인 성명']],
+  gift: [['giftDoneeName', '수증자 성명'], ['giftDonorName', '증여자 성명'], ['giftRelation', '관계'], ['giftAmount', '증여재산가액']],
+  inheritance: [['ihDeceasedName', '피상속인 성명'], ['상속인성명', '대표 상속인 성명'], ['상속인수', '상속인 수']]
+};
+function caseProcOverview_(c) {
+  const items = [], lines = [];
+  const ov = JSON.parse(JSON.stringify(c.사건개요 || {}));
+  (CASEPROC_OV_REQUIRED_[c.세목] || []).forEach(function (r) {
+    if (!String(ov[r[0]] == null ? '' : ov[r[0]]).trim()) items.push(caseProcItem_('ov:' + r[0], 'missing', '처리개요 「' + r[1] + '」이(가) 비어 있습니다.', { type: 'view', view: 'casehandling' }));
+  });
+  if (CASEPROC_TAX_LABEL_[c.세목] && !String(ov.사건분류 || '').trim()) {
+    items.push(caseProcItem_('ov:사건분류', 'judge', '사건분류(비과세·중과·감면 등 어느 경우인지)가 정해지지 않았습니다 — 판단이 필요합니다.',
+      { type: 'judge', q: '이 사건의 사건분류(비과세·중과·감면·특례 중 어느 경우인지)를 사건자료로 판단하고, 판단에 부족한 사실·서류를 알려줘.' }));
+  }
+  if (c.세목 !== 'transfer') {
+    if (CASEPROC_TAX_LABEL_[c.세목]) lines.push('증여·상속은 서류 → 처리개요 자동 채움 규칙이 아직 없습니다 — 세액계산 [자동계산]이 서류를 읽어 계산 칸을 채웁니다.');
+    lines.push('처리개요 빈 칸 ' + items.filter(function (i) { return i.kind === 'missing'; }).length + '개');
+    return { ok: true, lines: lines, items: items };
+  }
+  if (!String(c.폴더ID || '').trim()) return { ok: true, lines: lines, items: items };
+  const rf = tc_ruleTransferFacts_({ caseId: c.id });
+  if (!rf || !rf.ok) { lines.push('서류 규칙 정리 실패: ' + (rf && rf.error || '응답 없음')); return { ok: true, lines: lines, items: items }; }
+  const txs = (rf.transactions || []).filter(function (t) { return t.transferPrice || t.acquisitionPrice || t.transferDate; });
+  lines.push('서류 규칙 정리: 계약서 ' + rf.counts.계약서 + ' · 신고필증 ' + rf.counts.신고필증 + ' · 등기부 ' + rf.counts.등기부 + ' · 취득세 ' + rf.counts.취득세 + ' · 법무사 ' + rf.counts.법무사 + ' → 양도거래 ' + txs.length + '건');
+  (rf.evidence || []).filter(function (e) { return /⚠|찾지 못함|확정 못/.test(e); }).forEach(function (e) {
+    items.push(caseProcItem_('rf:' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, e, Utilities.Charset.UTF_8)).slice(0, 10), 'check', e, { type: 'view', view: 'casehandling' }));
+  });
+  if (!txs.length) return { ok: true, lines: lines, items: items };
+  const isBlankAsset = function (a) { return !a || !['assetLocation', '양도가액', '취득가액', '취득일'].some(function (k) { return String(a[k] || '').trim(); }); };
+  let assets = Array.isArray(ov.물건목록) && ov.물건목록.length ? ov.물건목록 : [];
+  if (!assets.length && (ov.assetLocation || ov.양도가액 || ov.취득가액 || ov.취득일)) assets = [{ assetType: ov.assetType || '', assetKind: ov.assetKind || '', assetLocation: ov.assetLocation || '', assetDong: ov.assetDong || '', assetHo: ov.assetHo || '', assetDongList: ov.assetDongList || [], 취득일: ov.취득일 || '', 양도가액: ov.양도가액 || '', 취득가액: ov.취득가액 || '', 취득계약구분: '', 양도계약구분: '' }];
+  const fills = [];
+  const digits = function (v) { return String(v == null ? '' : v).replace(/[^\d]/g, ''); };
+  const won = function (v) { return Number(digits(v) || 0).toLocaleString('ko-KR') + '원'; };
+  txs.forEach(function (t, i) {
+    let a = assets.filter(function (x) { return x.assetLocation && t.assetLocation && tcLocSame_(x.assetLocation, t.assetLocation); })[0];
+    if (!a) a = assets.filter(isBlankAsset)[0];
+    // 물건 수와 거래 수가 같고 그 자리 물건에 소재지가 아직 없으면 같은 순서끼리 짝(값이 다르면 아래에서 확인필요로)
+    if (!a && assets.length === txs.length && assets[i] && !String(assets[i].assetLocation || '').trim()) a = assets[i];
+    if (!a && !assets.length) { a = {}; assets.push(a); }
+    if (!a) {
+      items.push(caseProcItem_('tx:' + (t.assetLocation || i), 'check', '서류상 양도거래(' + (t.assetLocation || '소재지 미확인') + ')가 처리개요 물건목록의 어느 물건과도 연결되지 않습니다 — 물건 추가 또는 소재지 확인.', { type: 'view', view: 'casehandling' }));
+      return;
+    }
+    const n = assets.indexOf(a) + 1;
+    [['assetLocation', '소재지', t.assetLocation, false], ['양도가액', '양도가액', t.transferPrice, true], ['취득가액', '취득가액', t.acquisitionPrice, true], ['취득일', '취득일', t.acquisitionDate, false]].forEach(function (f) {
+      const v = f[2];
+      if (v === null || v === undefined || v === '') return;
+      const cur = String(a[f[0]] == null ? '' : a[f[0]]).trim();
+      if (!cur) { a[f[0]] = f[3] ? String(digits(v)) : String(v); fills.push('물건' + n + ' ' + f[1] + ' ' + (f[3] ? won(v) : v)); return; }
+      const same = f[3] ? digits(cur) === digits(v) : (f[0] === 'assetLocation' ? tcLocSame_(cur, v) || cur.replace(/\s+/g, '') === String(v).replace(/\s+/g, '') : cur === String(v));
+      if (!same) items.push(caseProcItem_('cf:' + n + ':' + f[0] + ':' + digits(v).slice(0, 12), 'check', '처리개요 물건' + n + ' ' + f[1] + ' ' + (f[3] ? won(cur) : cur) + ' ↔ 서류 ' + (f[3] ? won(v) : v) + ' — 어느 쪽이 맞는지 확인', { type: 'view', view: 'casehandling' }));
+    });
+  });
+  if (txs.length === 1 && txs[0].transferDate) {
+    if (!c.기준일) items.push(caseProcItem_('ov:기준일', 'missing', '기준일(양도일)이 비어 있습니다 — 서류상 양도시기 ' + txs[0].transferDate + '(잔금일·등기접수일 중 빠른 날). 처리개요에 넣으면 법정일이 자동 계산됩니다.', { type: 'view', view: 'casehandling' }));
+    else if (c.기준일 !== txs[0].transferDate) items.push(caseProcItem_('ov:기준일:' + txs[0].transferDate, 'check', '기준일(양도일) ' + c.기준일 + ' ↔ 서류상 양도시기 ' + txs[0].transferDate + ' — 법정일 계산에 영향, 확인 필요', { type: 'view', view: 'casehandling' }));
+  }
+  if (fills.length) {
+    ov.물건목록 = assets;
+    ov.물건수 = String(assets.length);
+    if (assets[0]) Object.assign(ov, assets[0]); // 처리개요 화면 저장과 같게 대표 물건을 옛 칸에도
+    const up = work_updateCase({ id: c.id, 사건개요: ov, 기대수정일: c.수정일 });
+    if (up && up.success !== false) lines.push('✏ 처리개요 빈 칸 채움(서류 검산 일치 값): ' + fills.join(', '));
+    else lines.push('⚠ 처리개요를 채우지 못했습니다: ' + (up && up.message || '저장 실패') + ' — 다시 "처리하자"를 하면 다시 시도합니다.');
+  } else lines.push('처리개요에 새로 채울 빈 칸 없음');
+  return { ok: true, lines: lines, items: items, filled: fills.length };
+}
+
+// 4) 세액계산 — 저장된 계산 결과가 있는지, 계산한 뒤 서류가 바뀌었는지
+function caseProcCalc_(c) {
+  const items = [], lines = [];
+  const label = CASEPROC_TAX_LABEL_[c.세목];
+  if (!label) { lines.push('세액계산 대상 세목이 아닙니다(' + (c.세목 || '—') + ').'); return { ok: true, lines: lines, items: items }; }
+  const res = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).filter(function (e) { return e && e.세목 === label; });
+  const last = res[res.length - 1];
+  if (!last) {
+    items.push(caseProcItem_('calc:none', 'todo', label + ' 계산 결과가 아직 없습니다 — [확인]을 누르면 세액계산 [자동계산]을 시작합니다(서류로 칸 채움 → 빈 칸·특례는 화면이 직접 물음 → 계산).', { type: 'autocalc', tab: c.세목 }));
+    return { ok: true, lines: lines, items: items };
+  }
+  lines.push('저장된 ' + label + ' 계산 ' + res.length + '건 — 최근 ' + (last.계산일 || '') + ' ' + (last.구분 || '') + (Number.isFinite(last.최종세액) ? ' · 최종세액 ' + Number(last.최종세액).toLocaleString('ko-KR') + '원' : ''));
+  if (!last.저장값) items.push(caseProcItem_('calc:nostate:' + (last.id || ''), 'check', '최근 계산은 인쇄 서식용 값 없이 저장된 옛 결과입니다 — 다시 계산·저장해야 세액인쇄 서식이 켜집니다.', { type: 'autocalc', tab: c.세목 }));
+  if (last.계산일 && String(c.폴더ID || '').trim()) {
+    const after = caseProcFiles_(c).filter(function (f) { return !/^_/.test(f.name) && /pdf|^image\//.test(String(f.mimeType || '')) && Utilities.formatDate(new Date(f.modified), Session.getScriptTimeZone(), 'yyyy-MM-dd') > last.계산일; });
+    if (after.length) items.push(caseProcItem_('calc:stale:' + (last.id || '') + ':' + after.length, 'check', '계산(' + last.계산일 + ') 뒤에 서류 ' + after.length + '개가 추가·수정됐습니다: ' + after.slice(0, 3).map(function (f) { return f.name; }).join(', ') + (after.length > 3 ? ' 외' : '') + ' — 다시 계산할지 확인', { type: 'autocalc', tab: c.세목 }));
+  }
+  return { ok: true, lines: lines, items: items, hasCalc: true };
+}
+
+// 5) 산출물 — 세액인쇄 준비, 종합검토서(문서작성) 초안, 추천 쟁점 문단
+function caseProcOutput_(c) {
+  const items = [], lines = [];
+  const label = CASEPROC_TAX_LABEL_[c.세목];
+  const res = label ? (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).filter(function (e) { return e && e.세목 === label; }) : [];
+  const last = res[res.length - 1];
+  if (label) {
+    if (last && last.저장값) lines.push({ text: '세액인쇄: 계산 결과로 신고서 서식이 준비돼 있습니다.', act: { type: 'view', view: 'print' }, btn: '🖨 세액인쇄 열기' });
+    else lines.push('세액인쇄: 계산 결과를 먼저 저장해야 서식이 켜집니다.');
+  }
+  const files = String(c.폴더ID || '').trim() ? caseProcFiles_(c) : [];
+  const reports = files.filter(function (f) { return /(종합검토서|검토서|의견서|보고서)/.test(f.name); });
+  const ov = c.사건개요 || {};
+  const semok = { transfer: '양도', gift: '증여', inheritance: '상속' }[c.세목] || '';
+  let paraTxt = '';
+  try {
+    const pl = rwListParagraphs_();
+    if (pl && pl.ok && pl.items && pl.items.length) {
+      const hay = [c.사건명, c.업무유형, ov.사건분류, ov.특이사항].concat(res.map(function (e) { return e.요약 || ''; })).join(' ');
+      const scored = pl.items.map(function (it) {
+        let s = 0;
+        if (semok && it.세목 === semok) s += 2;
+        if (it.세목 === '공통') s += 1;
+        (it.추천 || []).forEach(function (w) { if (w && hay.indexOf(w) !== -1) s += 3; });
+        return { t: it.제목, s: s };
+      }).filter(function (x) { return x.s >= 3; }).sort(function (a, b) { return b.s - a.s; }).slice(0, 5);
+      if (scored.length) paraTxt = '📚 이 사건에 맞을 쟁점 문단: ' + scored.map(function (x) { return x.t; }).join(', ');
+    }
+  } catch (e) {}
+  if (reports.length) {
+    lines.push({ text: '문서작성: ' + reports.slice(0, 3).map(function (f) { return f.name; }).join(', ') + (paraTxt ? ' — ' + paraTxt : ''), act: { type: 'view', view: 'reportwriter' }, btn: '✍ 문서작성 열기' });
+  } else {
+    items.push(caseProcItem_('out:report', 'todo', '종합검토서 초안이 아직 없습니다 — [확인]을 누르면 이 사건으로 문서작성을 엽니다(문단 넣기 📚에서 쟁점 문단을 고를 수 있음).', { type: 'view', view: 'reportwriter' }, paraTxt));
+  }
+  return { ok: true, lines: lines, items: items };
+}
+
+// 6) 저장 — 결정(확인·보류·무시)과 남은 일을 사건별 파일에 두고, 작업일지에 한 줄로 남긴다(같은 줄을 매번 고쳐 씀).
+function caseProcSave_(caseId, body) {
+  const f = caseProcFile_(caseId, true);
+  if (!f) return { error: '업무관리자 폴더가 설정되지 않아 결정을 저장할 수 없습니다(설정 화면 확인).' };
+  let saved = {};
+  try { saved = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '{}') || {}; } catch (e) { saved = {}; }
+  const dec = saved.decisions || {};
+  Object.keys(body.decisions || {}).forEach(function (k) {
+    const d = body.decisions[k];
+    if (!d || !d.d) delete dec[k];
+    else dec[k] = { d: String(d.d).slice(0, 4), at: String(d.at || caseProcToday_()).slice(0, 10), text: String(d.text || '').slice(0, 200) };
+  });
+  const items = (Array.isArray(body.items) ? body.items : []).slice(0, 80).map(function (it) {
+    return { id: String(it.id || '').slice(0, 200), step: String(it.step || '').slice(0, 20), kind: String(it.kind || '').slice(0, 10), text: String(it.text || '').slice(0, 300) };
+  });
+  const remain = items.filter(function (it) { return !(dec[it.id] && dec[it.id].d === '무시'); });
+  saved = { caseId: caseId, decisions: dec, remaining: remain, savedAt: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm') };
+  f.setContent(JSON.stringify(saved));
+  // 작업일지 — 'caseproc' 한 줄을 최신 상태로 고쳐 쓴다(내용이 같으면 쓰지 않음)
+  let logged = false;
+  if (body.writeLog) {
+    const held = remain.filter(function (it) { return dec[it.id] && dec[it.id].d === '보류'; });
+    const open = remain.filter(function (it) { return !(dec[it.id] && dec[it.id].d === '보류'); });
+    const text = '[사건처리 점검 ' + saved.savedAt + '] 남은 일 ' + open.length + '건' + (held.length ? ', 보류 ' + held.length + '건' : '') + (remain.length ? '\n' + open.concat(held).slice(0, 15).map(function (it) { return '- ' + (dec[it.id] && dec[it.id].d === '보류' ? '(보류) ' : '') + it.text.slice(0, 90); }).join('\n') : ' — 모두 처리됨');
+    const sheet = work_getSheet_();
+    const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+    const found = work_findCaseRow_(sheet, col, caseId);
+    if (found) {
+      let log = [];
+      try { log = JSON.parse(found.row[col.작업일지] || '[]'); } catch (e) { log = []; }
+      if (!Array.isArray(log)) log = [];
+      const old = log.filter(function (x) { return x && x.id === 'caseproc'; })[0];
+      const norm = function (s) { return String(s || '').replace(/^\[사건처리 점검 [^\]]*\]/, ''); };
+      if (!old || norm(old.text) !== norm(text)) {
+        const entry = { id: 'caseproc', date: caseProcToday_(), text: text, dueDate: '' };
+        log = log.filter(function (x) { return !(x && x.id === 'caseproc'); }).concat([entry]);
+        const up = work_updateCase({ id: caseId, 작업일지: log });
+        logged = !!(up && up.success !== false);
+      }
+    }
+  }
+  return { ok: true, savedAt: saved.savedAt, remaining: remain.length, logged: logged };
 }
 
 // =========================================================
