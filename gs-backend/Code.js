@@ -24608,16 +24608,17 @@ function tplBuildUsageStats_() {
       var base = tp.name.replace(/\.(md|txt)$/i, '');
       var mine = copies.filter(function (c) { return c.name.indexOf(base) !== -1 || (k === '의뢰서' && c.name.replace(/\.md$/, '') === base); });
       if (!mine.length) return;
-      var orig = heads(tp.text), added = {}, emptyCnt = {}, labels = (tp.text.match(/^-\s*([^:\n]{1,20}):\s*$/gm) || []).map(function (x) { return x.replace(/^-\s*|:\s*$/g, ''); });
+      var orig = heads(tp.text), added = {}, emptyCnt = {}, presentCnt = {}, labels = (tp.text.match(/^-\s*([^:\n]{1,20}):\s*$/gm) || []).map(function (x) { return x.replace(/^-\s*|:\s*$/g, ''); });
       mine.forEach(function (c) {
         var seen = {};
         heads(c.text).forEach(function (h) { if (orig.indexOf(h) === -1 && !seen[h] && !hasName(h)) { seen[h] = 1; added[h] = (added[h] || 0) + 1; } });
-        labels.forEach(function (lb) { var m = new RegExp('^-\\s*' + lb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ':\\s*(.*)$', 'm').exec(c.text); if (!m || !m[1].trim()) emptyCnt[lb] = (emptyCnt[lb] || 0) + 1; });
+        // 칸 줄 자체가 없으면(머리말을 새로 쓴 사본) 세지 않는다 — 그 줄이 있는 사본 중에서 비어 있는 비율만 본다
+        labels.forEach(function (lb) { var m = new RegExp('^-\\s*' + lb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ':\\s*(.*)$', 'm').exec(c.text); if (!m) return; presentCnt[lb] = (presentCnt[lb] || 0) + 1; if (!m[1].trim()) emptyCnt[lb] = (emptyCnt[lb] || 0) + 1; });
       });
       var need = Math.max(2, Math.ceil(mine.length * 0.3));
       perTemplate.push({ 종류: k, 템플릿: tp.name, 사본수: mine.length,
         공통추가제목: Object.keys(added).filter(function (h) { return added[h] >= need; }).sort(function (a, b) { return added[b] - added[a]; }).slice(0, 15).map(function (h) { return h + ' (' + added[h] + ')'; }),
-        늘빈칸: labels.filter(function (lb) { return mine.length >= 2 && (emptyCnt[lb] || 0) >= Math.ceil(mine.length * 0.8); }) });
+        늘빈칸: labels.filter(function (lb) { var p = presentCnt[lb] || 0; return p >= 2 && (emptyCnt[lb] || 0) >= Math.ceil(p * 0.8); }) });
     });
   });
   // 문단 라이브러리 사용 횟수 — 문단 첫 제목 줄이 사본에 그대로 들어 있으면 1회
