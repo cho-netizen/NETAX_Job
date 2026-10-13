@@ -784,6 +784,10 @@
   var nxAiSyncBusy_ = false, nxAiLastSyncedScreenCase_ = '';
   function nxAiSyncToScreenCase_(){
     if (nxAiMode !== 'side' || nxAiSyncBusy_ || nxAiAbort) return;
+    // [2026.10.14 긴급수정] 로그인 전에는 하지 않는다 — job을 열 때 사이드바·마지막 사건이 복원되며 로그인 전에 서버를 불러
+    // "로그인이 만료되었습니다"가 로그인 창을 덮었다(2026-10-14 실사용)
+    var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+    if (!tok) return;
     var side = nxAiEl_('sideAI');
     if (!side || !side.classList.contains('expanded')) return;
     var caseId = nxAiScreenCaseId_();
