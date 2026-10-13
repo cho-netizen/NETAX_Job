@@ -50,6 +50,168 @@
       </div>
       <div id="stBugList" class="settings-tool-desc">불러오기를 누르면 최근 기록이 보입니다.</div>
     </div>
+    <!-- [2026.10.13] AI 연합체·개발자 소통 — 요청 상태(접수→반영→확인), 개발자 질문, AI 자문단(무료 AI 기술 조언),
+         무료 AI 3곳 다수결, AI 명단, 무료 API 키. 서버: Federation.js. 설명: docs/ai-federation.md -->
+    <div class="card" style="max-width:720px;" id="stFedCard">
+      <h3>🤝 AI 연합체 · 개발자 소통</h3>
+      <div class="settings-tool-desc" style="margin:0 0 8px;">요청한 개선이 반영됐는지 확인하고, 개발자(웹 Claude Code)의 질문에 답하고, 여러 무료 AI에게 기술 조언을 받습니다. 고객 정보는 무료 AI로 보내지 않습니다(자동으로 막음).</div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+        <button type="button" class="ghost-btn" data-fed="req">📝 요청 상태</button>
+        <button type="button" class="ghost-btn" data-fed="q">❓ 개발자 질문</button>
+        <button type="button" class="ghost-btn" data-fed="advice">🧑‍🏫 AI 자문단</button>
+        <button type="button" class="ghost-btn" data-fed="ask" title="고객 정보 없는 일반 질문을 무료 AI 3곳에 동시에 묻고 결론이 맞는지 봅니다(0원)">🗳 무료 AI 3곳에 묻기</button>
+        <button type="button" class="ghost-btn" data-fed="reg">🤝 AI 명단</button>
+        <button type="button" class="ghost-btn" data-fed="key">🔑 무료 AI 키</button>
+      </div>
+      <div id="stFedBox" class="settings-tool-desc">버튼을 누르면 내용이 보입니다.</div>
+    </div>
+<script>
+  (function(){
+    var box = function(){ return document.getElementById('stFedBox'); };
+    var h = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+    var row = function(html){ return '<div style="padding:5px 0; border-top:1px solid var(--line);">' + html + '</div>'; };
+    var err = function(e){ box().textContent = '오류: ' + (e && e.message ? e.message : e); };
+    var lastStatus = null, lastAdvice = null;
+    var STATUS_COLOR = { '접수': 'var(--sub)', '반영됨': '#1f6feb', '확인완료': 'var(--success)', '재오픈': '#a83232' };
+    function loadStatus(){ return callGas('comm_status', {}).then(function(r){ if (!r || r.error) throw new Error((r && r.error) || '응답 없음'); lastStatus = r; return r; }); }
+    function showReq(){
+      box().textContent = '불러오는 중…';
+      loadStatus().then(function(r){
+        var list = r.requests || [];
+        if (!list.length){ box().innerHTML = '아직 적은 개선요구사항이 없습니다 — 🐞 카드의 ✍ 개선요구사항 적기로 남기세요.'; return; }
+        box().innerHTML = '<div style="margin-bottom:4px;"><b>' + (r.toConfirm ? '🔔 반영된 요청 ' + r.toConfirm + '건 — 확인해 주세요' : '요청 상태') + '</b> · 흐름: 접수 → (개발자 수정안·승인·📥 반영) → 반영됨 → 세무사님 확인</div>'
+          + list.map(function(x){
+            var btns = x.status === '반영됨' ? ' <button type="button" class="ghost-btn" data-fedok="' + h(x.id) + '">👍 잘 됨</button> <button type="button" class="ghost-btn" data-fedno="' + h(x.id) + '">↩ 다시 고쳐 주세요</button>' : '';
+            return row('<span style="color:' + (STATUS_COLOR[x.status] || 'var(--sub)') + '; font-weight:700;">[' + h(x.status) + ']</span> ' + (x.urgent ? '🚨 ' : '') + '<span style="color:var(--sub);">' + h(x.id + ' · ' + String(x.at).slice(0, 10)) + '</span><br>' + h(x.text) + btns);
+          }).join('');
+      }).catch(err);
+    }
+    function showQ(){
+      box().textContent = '불러오는 중…';
+      loadStatus().then(function(r){
+        var qs = r.questions || [];
+        if (!qs.length){ box().innerHTML = '개발자의 질문이 없습니다.'; return; }
+        box().innerHTML = qs.map(function(q){
+          return row('<b>' + h(q.id) + ' ' + h(q.title) + '</b><div style="white-space:pre-wrap; margin:3px 0;">' + h(q.body) + '</div>'
+            + (q.answer ? '<div style="color:var(--success);">✅ 답함(' + h(q.answeredAt) + '): ' + h(q.answer) + '</div>' : '')
+            + '<button type="button" class="ghost-btn" data-fedans="' + h(q.id) + '">' + (q.answer ? '답 고치기' : '✍ 답하기') + '</button>');
+        }).join('');
+      }).catch(err);
+    }
+    function showReg(){
+      box().textContent = '불러오는 중…';
+      loadStatus().then(function(r){
+        var tierName = { A: 'A 무료 API(자동)', B: 'B 무료 웹(수동 — 약관상 자동화 금지)', C: 'C 유료·기기 안(고객 자료 허용)' };
+        var html = '';
+        ['A', 'B', 'C'].forEach(function(t){
+          var list = (r.registry || []).filter(function(x){ return x.tier === t; });
+          html += '<div style="margin-top:6px;"><b>' + tierName[t] + '</b></div>' + list.map(function(x){
+            return row('<b>' + h(x.name) + '</b> <span style="color:var(--sub);">' + h(x.status) + (x.dailyFree ? ' · 오늘 ' + x.usedToday + '/' + x.dailyFree : '') + (x.clientData ? ' · 고객자료 허용' : ' · 고객자료 금지') + '</span><br>주특기: ' + h((x.specialties || []).join(', ')) + (x.tos ? '<br><span style="color:var(--sub);">약관: ' + h(x.tos) + '</span>' : '') + (x.note ? '<br><span style="color:var(--sub);">' + h(x.note) + '</span>' : ''));
+          }).join('');
+        });
+        html += '<div style="margin-top:8px;"><b>배차표(GAS 운영팀장)</b></div>' + Object.keys(r.dispatch || {}).map(function(k){ var d = r.dispatch[k]; return row(h(d.label) + ' — ' + h(d.order.join(' → ')) + (d.maxKrw ? ' · 한 번 최대 ' + d.maxKrw + '원' : ' · 0원') + (d.clientData ? '' : ' · 고객자료 없음')); }).join('');
+        box().innerHTML = html;
+      }).catch(err);
+    }
+    var KEY_HELP = {
+      GEMINI_FREE_API_KEY: 'Google AI Studio(aistudio.google.com) → Get API key → 결제 연결 없는 프로젝트로 만든 키',
+      GROQ_API_KEY: 'console.groq.com → API Keys → Create API Key',
+      OPENROUTER_API_KEY: 'openrouter.ai → Keys → Create Key(무료 모델만 씀)',
+      MISTRAL_API_KEY: 'console.mistral.ai → API Keys(무료 실험 등급)',
+      HF_TOKEN: 'huggingface.co → Settings → Access Tokens(읽기 권한)'
+    };
+    function showKey(){
+      box().textContent = '불러오는 중…';
+      loadStatus().then(function(r){
+        var reg = r.registry || [];
+        box().innerHTML = '<div style="margin-bottom:4px;">무료 API 키는 세무사님이 각 사이트에서 직접 발급해 여기에 붙여 넣습니다(Claude는 계정을 만들거나 키를 넣지 않습니다). 키는 저장만 되고 화면에 다시 보이지 않습니다.</div>'
+          + Object.keys(KEY_HELP).map(function(k){
+            var e = reg.filter(function(x){ return x.keyProp === k; })[0];
+            var set = e && !/키 없음/.test(e.status);
+            return row('<b>' + h(e ? e.name : k) + '</b> — ' + (set ? '<span style="color:var(--success);">설정됨</span>' : '<span style="color:var(--sub);">없음</span>') + '<br><span style="color:var(--sub);">' + h(KEY_HELP[k]) + '</span><br><button type="button" class="ghost-btn" data-fedkey="' + h(k) + '">🔑 ' + (set ? '바꾸기' : '넣기') + '</button>' + (set ? ' <button type="button" class="ghost-btn" data-fedkeydel="' + h(k) + '">지우기</button>' : ''));
+          }).join('');
+      }).catch(err);
+    }
+    function showAsk(){
+      nxPrompt_('고객 정보가 없는 일반 질문을 적어 주세요(예: "2026년 1세대1주택 고가주택 기준금액은?").\n무료 AI 3곳에 동시에 묻고 결론이 같은지 봅니다(0원).', '').then(function(q){
+        q = String(q || '').trim();
+        if (!q) return;
+        nxConfirm_('이 질문에 고객 이름·주민번호·전화·주소·사건 내용이 없나요?\n(무료 AI에는 고객 자료를 보내지 않습니다)').then(function(ok){
+          if (!ok) return;
+          box().textContent = '🗳 무료 AI에 묻는 중… (10~40초)';
+          callGas('ai_consensus', { question: q, noClientData: true }).then(function(r){
+            if (!r || r.error){ box().textContent = (r && r.error) || '응답 없음'; return; }
+            box().innerHTML = '<div style="margin-bottom:4px;"><b>' + h(r.verdict) + '</b>' + (r.adopted ? ' — 채택 결론: ' + h(r.adopted) : '') + '</div>'
+              + (r.answers || []).map(function(a){ return row('<b>' + h(a.name) + '</b> — 결론: ' + h(a.conclusion) + '<details><summary>전체 답</summary><div style="white-space:pre-wrap;">' + h(a.text) + '</div></details>'); }).join('')
+              + '<div style="color:var(--sub); margin-top:4px;">무료 AI 답은 참고용입니다 — 세무 판단은 법령 원문·유료 AI로 확인하세요.</div>';
+          }).catch(err);
+        });
+      });
+    }
+    function showAdvice(){
+      box().textContent = '불러오는 중…';
+      callGas('ai_advice_get', {}).then(function(r){
+        lastAdvice = r;
+        var L = r && r.latest;
+        var head = '<div style="margin-bottom:6px;">매주 월요일 밤 job이 막힌·비싼 기능과 오류를 바탕으로 기술 질문을 만들어 무료 AI들에 묻습니다(0원). 웹 AI(ChatGPT 등)는 약관상 자동으로 못 하므로 📋 복사 → 사이트에서 붙여넣어 보내기 → 답 복사 → ✍ 붙여넣기로 직접 넣습니다. 여러 AI가 같이 낸 제안은 "공통"으로 표시되고, 개발자(주간 루틴)가 공식 문서로 확인해 적용합니다.</div>'
+          + '<button type="button" class="ghost-btn" data-fedrun="1">🧑‍🏫 지금 질문 만들고 무료 AI에 묻기</button>';
+        if (!L){ box().innerHTML = head + '<div style="margin-top:6px;">아직 자문 기록이 없습니다.</div>'; return; }
+        var webs = r.registry || [];
+        var html = head + '<div style="margin-top:6px;"><b>' + h(L.week) + '</b> · ' + h(L.at) + '</div>';
+        L.questions.forEach(function(q){
+          html += row('<b>[' + h(q.topic) + ']</b> <span style="color:var(--sub);">' + h(q.id) + ' · 답 ' + q.answers.length + '개(' + h(q.answers.map(function(a){ return a.name + (a.mode === 'manual' ? '·수동' : ''); }).join(', ')) + ')</span>'
+            + '<details><summary>질문 보기</summary><div style="white-space:pre-wrap;">' + h(q.q) + '</div></details>'
+            + '<div style="margin:3px 0;">' + webs.map(function(w){ return '<button type="button" class="ghost-btn" data-fedweb="' + h(q.id) + '|' + h(w.id) + '" title="' + h(w.tos) + '">📋 ' + h(w.name) + '</button>'; }).join(' ') + '</div>'
+            + (q.suggestions || []).map(function(s, i){
+              return '<div style="padding:2px 0 2px 8px;">' + (s.common ? '⭐ 공통(' + s.ais.length + ')' : '· 단독') + ' ' + h(s.text) + ' <span style="color:var(--sub);">— ' + h(s.ais.join(', ')) + '</span>'
+                + (s.verdict ? ' <b>[' + h(s.verdict) + ']</b>' : '') + ' <button type="button" class="ghost-btn" data-fedmark="' + h(q.id) + '|' + i + '|채택">채택</button> <button type="button" class="ghost-btn" data-fedmark="' + h(q.id) + '|' + i + '|기각">기각</button></div>';
+            }).join(''));
+        });
+        var sc = r.scores || {};
+        var names = Object.keys(sc);
+        if (names.length) html += '<div style="margin-top:8px;"><b>AI 성적표</b> ' + names.map(function(n){ return h(n) + ' 채택 ' + sc[n].adopted + '/' + sc[n].proposed; }).join(' · ') + '</div>';
+        box().innerHTML = html;
+      }).catch(err);
+    }
+    document.addEventListener('click', function(ev){
+      var t = ev.target.closest && ev.target.closest('[data-fed],[data-fedok],[data-fedno],[data-fedans],[data-fedkey],[data-fedkeydel],[data-fedrun],[data-fedweb],[data-fedmark]');
+      if (!t || !document.getElementById('stFedCard') || !document.getElementById('stFedCard').contains(t)) return;
+      var d = t.dataset;
+      if (d.fed === 'req') return showReq();
+      if (d.fed === 'q') return showQ();
+      if (d.fed === 'reg') return showReg();
+      if (d.fed === 'key') return showKey();
+      if (d.fed === 'ask') return showAsk();
+      if (d.fed === 'advice') return showAdvice();
+      if (d.fedok) return callGas('comm_request_confirm', { id: d.fedok, ok: true }).then(showReq).catch(err);
+      if (d.fedno) return nxPrompt_('무엇이 아직 안 되는지 적어 주세요(다음 개발자 실행 때 다시 고칩니다).', '').then(function(note){ if (note === null) return; return callGas('comm_request_confirm', { id: d.fedno, ok: false, note: note }).then(showReq); }).catch(err);
+      if (d.fedans) return nxPrompt_('개발자 질문 ' + d.fedans + '에 대한 답을 적어 주세요.', '').then(function(a){ a = String(a || '').trim(); if (!a) return; return callGas('comm_dev_answer', { id: d.fedans, text: a }).then(showQ); }).catch(err);
+      if (d.fedkey) return nxPrompt_(d.fedkey + ' 키를 통째로 붙여 넣어 주세요(저장 후 다시 보이지 않습니다).', '').then(function(v){ v = String(v || '').trim(); if (!v) return; return callGas('ai_set_key', { name: d.fedkey, value: v }).then(function(r){ if (r && r.error) toast(r.error); showKey(); }); }).catch(err);
+      if (d.fedkeydel) return nxConfirm_(d.fedkeydel + ' 키를 지울까요?').then(function(ok){ if (!ok) return; return callGas('ai_set_key', { name: d.fedkeydel, value: '' }).then(showKey); }).catch(err);
+      if (d.fedrun){ box().textContent = '🧑‍🏫 질문을 만들고 무료 AI에 묻는 중… (1~3분)'; return callGas('ai_advice_run', { force: true }).then(function(r){ if (r && r.noFreeAi) toast('무료 AI 키가 아직 없어 자동 답은 없습니다 — 🔑 무료 AI 키를 넣거나 웹 AI에 수동으로 물어 주세요.'); showAdvice(); }).catch(err); }
+      if (d.fedweb){
+        var p = d.fedweb.split('|'), qid = p[0], ai = p[1];
+        var q = null; ((lastAdvice && lastAdvice.latest && lastAdvice.latest.questions) || []).forEach(function(x){ if (x.id === qid) q = x; });
+        var w = ((lastAdvice && lastAdvice.registry) || []).filter(function(x){ return x.id === ai; })[0];
+        if (!q || !w) return;
+        var text = q.q + '\n\n답은 번호 목록(1. 2. 3.)으로 구체적인 제안 위주로.';
+        var copy = navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject(new Error('복사 불가'));
+        copy.catch(function(){}).then(function(){
+          window.open(w.url, '_blank', 'noopener');
+          setTimeout(function(){
+            nxPrompt_('질문을 복사했습니다 — 열린 ' + w.name + ' 창에 붙여 넣어 보내고, 답을 복사해 여기에 붙여 넣어 주세요.\n(약관상 자동 수집은 하지 않습니다)', '').then(function(ans){
+              ans = String(ans || '').trim();
+              if (!ans) return;
+              callGas('ai_advice_add_manual', { qid: qid, ai: ai, text: ans }).then(showAdvice).catch(err);
+            });
+          }, 600);
+        });
+        return;
+      }
+      if (d.fedmark){ var m = d.fedmark.split('|'); return callGas('ai_advice_mark', { qid: m[0], idx: Number(m[1]), verdict: m[2] }).then(showAdvice).catch(err); }
+    });
+  })();
+</script>
     <div class="card" style="max-width:480px;">
       <h3>🔗 바로가기</h3>
       <div style="display:flex; flex-wrap:wrap; gap:8px;">

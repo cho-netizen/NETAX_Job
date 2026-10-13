@@ -59,6 +59,11 @@
       <h3>🌙 야간 자동점검 상태</h3>
       <div id="dashNightlyStatus"><div class="spinner">불러오는 중…</div></div>
     </div>
+    <!-- [2026.10.13] AI 연합체·개발자 소통 요약 — 새 기능·확인할 요청·긴급 요청·개발자 질문·AI 자문단(자세한 것은 설정 🤝 카드) -->
+    <div class="card">
+      <h3>🤝 새 기능 · 개발자 소통 · AI 자문단</h3>
+      <div id="dashFedStatus"><div class="spinner">불러오는 중…</div></div>
+    </div>
     <!-- [2026.09 신규] 증빙관리에 폴더별 "경과지" 기록판을 새로 만들면서 발견한 빈틈 — 각
          폴더 안에서만 볼 수 있고 전체를 모아 보는 곳이 없으면, 마감일 넣은 항목을 깜빡 잊고
          지나칠 수 있다(work.netax.kr의 "현황판"이 원래 이 역할을 했음). 폴더를 하나하나
@@ -83,6 +88,7 @@
     loadDashTasks_();
     loadDashCaseLog_();
     loadDashNightlyStatus_();
+    loadDashFed_();
     dashMeasureLoad_();
   }
 
@@ -525,6 +531,30 @@
   // 돌았는지 확인 — 트리거 자체가 통째로 실패하면 오늘 날짜 파일이 하나도 안 생기므로,
   // 그 사실만으로도 "어젯밤 안 돌았다"를 알 수 있다(구글 Apps Script 트리거 화면까지 직접
   // 안 들어가도 여기서 바로 보임).
+  function loadDashFed_(){
+    callGas('comm_status', {}).then(function(r){
+      var box = document.getElementById('dashFedStatus');
+      if (!box) return;
+      if (!r || r.error){ box.innerHTML = '<div class="empty-row">불러오지 못했습니다' + (r && r.error ? ': ' + esc(r.error) : '') + '</div>'; return; }
+      var html = '';
+      if (r.urgent) html += '<div style="padding:8px; margin-bottom:6px; border:2px solid #a83232; border-radius:8px;"><b style="color:#a83232;">🚨 긴급 요청 ' + r.urgent + '건</b> — 주간 실행을 기다리지 말고 <a href="https://claude.ai/code/routines/trig_01K6EHE36YV1H7sAUsNzguY3" target="_blank" rel="noopener"><b>🛠 지금 개발자 부르기</b></a>(열린 화면에서 "지금 실행")</div>';
+      if (r.toConfirm) html += '<div style="padding:6px 0;">🔔 반영된 요청 <b>' + r.toConfirm + '건</b> — 잘 되는지 확인해 주세요 <a href="#" data-dashgo="settings">설정 → 🤝 → 📝 요청 상태</a></div>';
+      var unanswered = (r.questions || []).filter(function(q){ return !q.answer; }).length;
+      if (unanswered) html += '<div style="padding:6px 0;">❓ 개발자 질문 <b>' + unanswered + '건</b> <a href="#" data-dashgo="settings">답하러 가기</a></div>';
+      var ch = (r.changes || []).slice(0, 5);
+      html += '<div style="padding:6px 0;"><b>✨ 최근 바뀐 기능</b>' + (ch.length ? ch.map(function(c){ return '<div style="font-size:12px; color:var(--sub); padding-top:2px;">' + esc(String(c.at).slice(5)) + ' · ' + esc(String(c.msg).slice(0, 90)) + '</div>'; }).join('') : '<div style="font-size:12px; color:var(--sub);">기록 없음(다음 반영부터 쌓입니다)</div>') + '</div>';
+      var a = r.advice;
+      html += '<div style="padding:6px 0;"><b>🧑‍🏫 이번 주 AI 자문단</b> ' + (a ? esc(a.week) + ' — 질문 ' + a.questions + ' · 공통 제안 ' + a.common + ' · 채택 ' + a.adopted + ' · 검토 중 ' + a.pending : '아직 없음(매주 월요일 밤, 무료 AI 키가 있으면 자동)') + ' <a href="#" data-dashgo="settings">자세히</a></div>';
+      box.innerHTML = html;
+    }).catch(function(e){ var b = document.getElementById('dashFedStatus'); if (b) b.innerHTML = '<div class="empty-row">오류: ' + esc(e.message) + '</div>'; });
+  }
+  document.addEventListener('click', function(ev){
+    var t = ev.target.closest && ev.target.closest('[data-dashgo]');
+    if (!t) return;
+    ev.preventDefault();
+    if (typeof goToView_ === 'function') goToView_(t.dataset.dashgo); else if (typeof showView === 'function') showView(t.dataset.dashgo);
+    setTimeout(function(){ var c = document.getElementById('stFedCard'); if (c) c.scrollIntoView({ behavior: 'smooth' }); }, 300);
+  });
   function loadDashNightlyStatus_(){
     callGas('getNightlyStatus', {}).then(function(res){
       var box = document.getElementById('dashNightlyStatus');

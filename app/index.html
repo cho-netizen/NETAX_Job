@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-13 23:47 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-13 23:58 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -957,6 +957,11 @@
       <h3>🌙 야간 자동점검 상태</h3>
       <div id="dashNightlyStatus"><div class="spinner">불러오는 중…</div></div>
     </div>
+    <!-- [2026.10.13] AI 연합체·개발자 소통 요약 — 새 기능·확인할 요청·긴급 요청·개발자 질문·AI 자문단(자세한 것은 설정 🤝 카드) -->
+    <div class="card">
+      <h3>🤝 새 기능 · 개발자 소통 · AI 자문단</h3>
+      <div id="dashFedStatus"><div class="spinner">불러오는 중…</div></div>
+    </div>
     <!-- [2026.09 신규] 증빙관리에 폴더별 "경과지" 기록판을 새로 만들면서 발견한 빈틈 — 각
          폴더 안에서만 볼 수 있고 전체를 모아 보는 곳이 없으면, 마감일 넣은 항목을 깜빡 잊고
          지나칠 수 있다(work.netax.kr의 "현황판"이 원래 이 역할을 했음). 폴더를 하나하나
@@ -981,6 +986,7 @@
     loadDashTasks_();
     loadDashCaseLog_();
     loadDashNightlyStatus_();
+    loadDashFed_();
     dashMeasureLoad_();
   }
 
@@ -1423,6 +1429,30 @@
   // 돌았는지 확인 — 트리거 자체가 통째로 실패하면 오늘 날짜 파일이 하나도 안 생기므로,
   // 그 사실만으로도 "어젯밤 안 돌았다"를 알 수 있다(구글 Apps Script 트리거 화면까지 직접
   // 안 들어가도 여기서 바로 보임).
+  function loadDashFed_(){
+    callGas('comm_status', {}).then(function(r){
+      var box = document.getElementById('dashFedStatus');
+      if (!box) return;
+      if (!r || r.error){ box.innerHTML = '<div class="empty-row">불러오지 못했습니다' + (r && r.error ? ': ' + esc(r.error) : '') + '</div>'; return; }
+      var html = '';
+      if (r.urgent) html += '<div style="padding:8px; margin-bottom:6px; border:2px solid #a83232; border-radius:8px;"><b style="color:#a83232;">🚨 긴급 요청 ' + r.urgent + '건</b> — 주간 실행을 기다리지 말고 <a href="https://claude.ai/code/routines/trig_01K6EHE36YV1H7sAUsNzguY3" target="_blank" rel="noopener"><b>🛠 지금 개발자 부르기</b></a>(열린 화면에서 "지금 실행")</div>';
+      if (r.toConfirm) html += '<div style="padding:6px 0;">🔔 반영된 요청 <b>' + r.toConfirm + '건</b> — 잘 되는지 확인해 주세요 <a href="#" data-dashgo="settings">설정 → 🤝 → 📝 요청 상태</a></div>';
+      var unanswered = (r.questions || []).filter(function(q){ return !q.answer; }).length;
+      if (unanswered) html += '<div style="padding:6px 0;">❓ 개발자 질문 <b>' + unanswered + '건</b> <a href="#" data-dashgo="settings">답하러 가기</a></div>';
+      var ch = (r.changes || []).slice(0, 5);
+      html += '<div style="padding:6px 0;"><b>✨ 최근 바뀐 기능</b>' + (ch.length ? ch.map(function(c){ return '<div style="font-size:12px; color:var(--sub); padding-top:2px;">' + esc(String(c.at).slice(5)) + ' · ' + esc(String(c.msg).slice(0, 90)) + '</div>'; }).join('') : '<div style="font-size:12px; color:var(--sub);">기록 없음(다음 반영부터 쌓입니다)</div>') + '</div>';
+      var a = r.advice;
+      html += '<div style="padding:6px 0;"><b>🧑‍🏫 이번 주 AI 자문단</b> ' + (a ? esc(a.week) + ' — 질문 ' + a.questions + ' · 공통 제안 ' + a.common + ' · 채택 ' + a.adopted + ' · 검토 중 ' + a.pending : '아직 없음(매주 월요일 밤, 무료 AI 키가 있으면 자동)') + ' <a href="#" data-dashgo="settings">자세히</a></div>';
+      box.innerHTML = html;
+    }).catch(function(e){ var b = document.getElementById('dashFedStatus'); if (b) b.innerHTML = '<div class="empty-row">오류: ' + esc(e.message) + '</div>'; });
+  }
+  document.addEventListener('click', function(ev){
+    var t = ev.target.closest && ev.target.closest('[data-dashgo]');
+    if (!t) return;
+    ev.preventDefault();
+    if (typeof goToView_ === 'function') goToView_(t.dataset.dashgo); else if (typeof showView === 'function') showView(t.dataset.dashgo);
+    setTimeout(function(){ var c = document.getElementById('stFedCard'); if (c) c.scrollIntoView({ behavior: 'smooth' }); }, 300);
+  });
   function loadDashNightlyStatus_(){
     callGas('getNightlyStatus', {}).then(function(res){
       var box = document.getElementById('dashNightlyStatus');
@@ -21647,6 +21677,32 @@ let giftDonees = [{}];
 // [2026.09.25 신규, 재검토77] 전자신고파일 생성용 — run-gift가 마지막으로 계산한 (증여자×수증인)
 // 쌍별 결과 배열을 보관해둔다(상속세의 lastInheritanceResult와 같은 역할).
 let lastGiftResults_ = null;
+// [2026.10.13] 🔍 2중 검증 — 엔진 계산 결과를 저가 AI가 입력값만 보고 따로 계산해 비교(다르면 ⚠). 버튼을 누를 때만, 비용 표시.
+async function tcCrossCheck_(kind){
+  let input = null, engine = null;
+  if (kind === 'transfer'){
+    const it = (lastTransferResults_ || []).filter(function(x){ return x.result && !x.result.error; })[0];
+    if (it){ input = it.assets; engine = it.result; }
+  } else if (kind === 'gift'){
+    const it = (lastGiftResults_ || []).filter(function(x){ return x.result && !x.result.error && x.input; })[0];
+    if (it){ input = it.input; engine = it.result; }
+  } else if (kind === 'inheritance'){
+    input = window.tcLastInheritanceInput_ || null; engine = lastInheritanceResult;
+  }
+  if (!input || !engine){ showToast('먼저 "세액 계산하기"를 눌러 계산을 마친 뒤 눌러 주세요.', 'warning'); return; }
+  const ok = await nxConfirm_('🔍 2중 검증을 할까요?\n\n유료 AI(Sonnet)가 입력값(금액·날짜·구분)만 보고 세액을 따로 계산해 엔진 결과와 비교합니다. 이름·주소·주민번호는 보내지 않습니다. 한 번 수십 원.\n\nAI 계산은 참고용입니다 — 다르게 나오면 어느 쪽이 맞는지 법령으로 확인하세요.');
+  if (!ok) return;
+  showToast('🔍 2중 검증 중… (20~60초)', 'info');
+  try {
+    const r = await callGas('ai_cross_check', { kind: kind, input: input, engine: engine });
+    if (!r || r.error) throw new Error((r && r.error) || '응답 없음');
+    const won = function(v){ return v == null ? '—' : Number(v).toLocaleString('ko-KR') + '원'; };
+    const lines = r.rows.map(function(x){ return (x.일치 ? '✅ ' : '⚠ ') + x.항목 + ': 엔진 ' + won(x.엔진) + ' / AI ' + won(x.AI); }).join('\n');
+    await nxConfirm_((r.allSame ? '✅ 엔진과 AI 독립 계산이 일치합니다.' : '⚠ 엔진과 AI 독립 계산이 다릅니다 — 어느 쪽이 맞는지 법령으로 확인하세요.') + '\n\n' + lines
+      + '\n\nAI 확신: ' + (r.confidence || '-') + (r.caution ? '\nAI 주의: ' + r.caution : '') + '\n비용: 약 ' + (r.krw == null ? '?' : r.krw) + '원\n\n[AI 계산 과정]\n' + String(r.steps || '').slice(0, 1800), '🔍 2중 검증 결과');
+  } catch (e) { showToast('2중 검증 실패: ' + (e && e.message ? e.message : e), 'error'); }
+}
+
 // [2026.09.30 신규, 재검토86] 세무사님 지적 계속 — 특례세율(sr)·일감몰아주기(jm)·일감떼어주기(jt)·
 // 초과배당(ed)·특정법인거래(sc) 5개 탭도 계산 결과가 화면표시에만 쓰이고 저장되지 않아 인쇄
 // 서식이 참조할 수 없었다(양도세 주식등·국외자산과 같은 결함, 재검토85). 조사 결과 이 5개
@@ -23550,7 +23606,7 @@ function renderTransferPane(){
     // 위한 안전장치일 뿐이라(데이터를 조용히 지우지 않으려고 남겨둠), 그런 자산이 없으면
     // 아예 화면에 나타나지 않는다.
     (cardsHtml ? '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>⚠ 계약이 지정되지 않은 자산(계약이 삭제됐거나 아직 안 골랐음 — 위에서 계약을 선택하세요)</b></div><div id="taxCalcTransferCards">' + cardsHtml + '</div>' : '') +
-    '<button type="button" class="taxcalc-run-btn" data-action="run-transfer">세액 계산하기</button>' +
+    '<button type="button" class="taxcalc-run-btn" data-action="run-transfer">세액 계산하기</button><button type="button" class="ghost-btn" data-action="tc-cross-check" data-kind="transfer" style="margin-left:6px;" title="계산된 세액을 AI(Sonnet)가 입력값만 보고 따로 계산해 비교합니다(이름·주소는 보내지 않음, 한 번 수십 원)">🔍 2중 검증</button>' +
     '<div id="taxCalcTransferResult"></div>' +
     // [2026.10.06 신규, 재검토113] 양도소득세 분납(§77) — 연부연납 제도가 없는 양도소득세는
     // 이 조문으로 신고기한이 지난 후 2개월 이내 세액 일부를 나눠 낼 수 있다. 엔진은 이미
@@ -28078,7 +28134,7 @@ function renderInheritancePane(){
         '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="ihUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
       '</div>' +
     '</div>' +
-    '<button type="button" class="taxcalc-run-btn" data-action="run-inheritance">세액 계산하기</button>' +
+    '<button type="button" class="taxcalc-run-btn" data-action="run-inheritance">세액 계산하기</button><button type="button" class="ghost-btn" data-action="tc-cross-check" data-kind="inheritance" style="margin-left:6px;" title="계산된 세액을 AI(Sonnet)가 입력값만 보고 따로 계산해 비교합니다(이름·주소는 보내지 않음, 한 번 수십 원)">🔍 2중 검증</button>' +
     '<div id="taxCalcInheritanceResult"></div>' +
     '<button type="button" class="taxcalc-calcbasis-btn" data-action="toggle-heir-tool" style="margin-bottom:10px;">👪 상속인별 세액 안분(상증세법§3조의2①, 실제상속재산가액 비율 근사)</button>' +
     '<div id="taxCalcHeirTool"></div>' +
@@ -29375,7 +29431,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>영농자녀 증여농지 세액감면(조특법§71)</label><input type="number" id="giftFarmlandExemption" placeholder="원"><span class="taxcalc-field-help">감면요건·한도는 별도 확인 후 입력</span></div>' +
       '</div>' +
     '</div>' +
-    '<button type="button" class="taxcalc-run-btn" data-action="run-gift">세액 계산하기</button>' +
+    '<button type="button" class="taxcalc-run-btn" data-action="run-gift">세액 계산하기</button><button type="button" class="ghost-btn" data-action="tc-cross-check" data-kind="gift" style="margin-left:6px;" title="계산된 세액을 AI(Sonnet)가 입력값만 보고 따로 계산해 비교합니다(이름·주소는 보내지 않음, 한 번 수십 원)">🔍 2중 검증</button>' +
     '<div id="taxCalcGiftResult"></div>' +
     // [2026.10.06 재구성, 재검토114] 세무대리인 정보 입력칸은 설정탭("⚙ 설정 > 세무대리인
     // 정보")으로 옮겼다 — 세무사님 지적("기본정보가 왜 증여세 탭에 있나, 저장도 안 되는데")
@@ -32966,6 +33022,8 @@ function handleTaxCalcClick_(e){
       targetEl.dispatchEvent(new Event('input', { bubbles: true }));
       showToast('비과세재산가액에 ' + won(amount) + '을 더했습니다.', 'success');
     }
+  } else if (action === 'tc-cross-check'){
+    tcCrossCheck_(btn.dataset.kind);
   } else if (action === 'run-transfer'){
     // [2026.09.23 신규] 국외자산(§118의2~8)은 국내자산 양도세와 완전히 별도 세목이라, 국내
     // 합산 계산(계약·공동양도인·다주택중과 등 전부 국내 전용 개념)에서 반드시 제외해야 한다.
@@ -33764,7 +33822,7 @@ function handleTaxCalcClick_(e){
         reportedInTime: d.reportedInTime !== false
       });
       tcReportFormCorrections_();
-      return { donorIdxs: g.donorIdxs, doneeIdx: g.doneeIdx, amount: g.amount, priorGiftAmount: input.priorGiftAmount, result: calculateGiftTaxJS(input) };
+      return { donorIdxs: g.donorIdxs, doneeIdx: g.doneeIdx, amount: g.amount, priorGiftAmount: input.priorGiftAmount, input: input, result: calculateGiftTaxJS(input) };
     });
     // [2026.10.09 버그수정] 계산할 (증여자·수증인) 금액이 하나도 없으면 결과칸에 주석만 보이고 아무 설명이 없었다 —
     // 특히 수증인이 2명 이상이면(사건개요의 "공동수증인"을 채우면 자동으로 그렇게 됨) 증여재산가액 칸을 쓰지 않고
@@ -34437,6 +34495,7 @@ function handleTaxCalcClick_(e){
       reportedInTime: document.getElementById('ihReportedInTime').checked
     };
     tcReportFormCorrections_();
+    window.tcLastInheritanceInput_ = input; // [2026.10.13] 🔍 2중 검증용 입력 보관
     renderInheritanceResult(calculateInheritanceTaxJS(input));
   } else if (action === 'toggle-gift-calc-basis'){
     const b = document.getElementById('giftCalcBasis-' + numVal(btn.dataset.idx));
@@ -43135,6 +43194,168 @@ function goToReportWriter_(caseId, opts){
       </div>
       <div id="stBugList" class="settings-tool-desc">불러오기를 누르면 최근 기록이 보입니다.</div>
     </div>
+    <!-- [2026.10.13] AI 연합체·개발자 소통 — 요청 상태(접수→반영→확인), 개발자 질문, AI 자문단(무료 AI 기술 조언),
+         무료 AI 3곳 다수결, AI 명단, 무료 API 키. 서버: Federation.js. 설명: docs/ai-federation.md -->
+    <div class="card" style="max-width:720px;" id="stFedCard">
+      <h3>🤝 AI 연합체 · 개발자 소통</h3>
+      <div class="settings-tool-desc" style="margin:0 0 8px;">요청한 개선이 반영됐는지 확인하고, 개발자(웹 Claude Code)의 질문에 답하고, 여러 무료 AI에게 기술 조언을 받습니다. 고객 정보는 무료 AI로 보내지 않습니다(자동으로 막음).</div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+        <button type="button" class="ghost-btn" data-fed="req">📝 요청 상태</button>
+        <button type="button" class="ghost-btn" data-fed="q">❓ 개발자 질문</button>
+        <button type="button" class="ghost-btn" data-fed="advice">🧑‍🏫 AI 자문단</button>
+        <button type="button" class="ghost-btn" data-fed="ask" title="고객 정보 없는 일반 질문을 무료 AI 3곳에 동시에 묻고 결론이 맞는지 봅니다(0원)">🗳 무료 AI 3곳에 묻기</button>
+        <button type="button" class="ghost-btn" data-fed="reg">🤝 AI 명단</button>
+        <button type="button" class="ghost-btn" data-fed="key">🔑 무료 AI 키</button>
+      </div>
+      <div id="stFedBox" class="settings-tool-desc">버튼을 누르면 내용이 보입니다.</div>
+    </div>
+<script>
+  (function(){
+    var box = function(){ return document.getElementById('stFedBox'); };
+    var h = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+    var row = function(html){ return '<div style="padding:5px 0; border-top:1px solid var(--line);">' + html + '</div>'; };
+    var err = function(e){ box().textContent = '오류: ' + (e && e.message ? e.message : e); };
+    var lastStatus = null, lastAdvice = null;
+    var STATUS_COLOR = { '접수': 'var(--sub)', '반영됨': '#1f6feb', '확인완료': 'var(--success)', '재오픈': '#a83232' };
+    function loadStatus(){ return callGas('comm_status', {}).then(function(r){ if (!r || r.error) throw new Error((r && r.error) || '응답 없음'); lastStatus = r; return r; }); }
+    function showReq(){
+      box().textContent = '불러오는 중…';
+      loadStatus().then(function(r){
+        var list = r.requests || [];
+        if (!list.length){ box().innerHTML = '아직 적은 개선요구사항이 없습니다 — 🐞 카드의 ✍ 개선요구사항 적기로 남기세요.'; return; }
+        box().innerHTML = '<div style="margin-bottom:4px;"><b>' + (r.toConfirm ? '🔔 반영된 요청 ' + r.toConfirm + '건 — 확인해 주세요' : '요청 상태') + '</b> · 흐름: 접수 → (개발자 수정안·승인·📥 반영) → 반영됨 → 세무사님 확인</div>'
+          + list.map(function(x){
+            var btns = x.status === '반영됨' ? ' <button type="button" class="ghost-btn" data-fedok="' + h(x.id) + '">👍 잘 됨</button> <button type="button" class="ghost-btn" data-fedno="' + h(x.id) + '">↩ 다시 고쳐 주세요</button>' : '';
+            return row('<span style="color:' + (STATUS_COLOR[x.status] || 'var(--sub)') + '; font-weight:700;">[' + h(x.status) + ']</span> ' + (x.urgent ? '🚨 ' : '') + '<span style="color:var(--sub);">' + h(x.id + ' · ' + String(x.at).slice(0, 10)) + '</span><br>' + h(x.text) + btns);
+          }).join('');
+      }).catch(err);
+    }
+    function showQ(){
+      box().textContent = '불러오는 중…';
+      loadStatus().then(function(r){
+        var qs = r.questions || [];
+        if (!qs.length){ box().innerHTML = '개발자의 질문이 없습니다.'; return; }
+        box().innerHTML = qs.map(function(q){
+          return row('<b>' + h(q.id) + ' ' + h(q.title) + '</b><div style="white-space:pre-wrap; margin:3px 0;">' + h(q.body) + '</div>'
+            + (q.answer ? '<div style="color:var(--success);">✅ 답함(' + h(q.answeredAt) + '): ' + h(q.answer) + '</div>' : '')
+            + '<button type="button" class="ghost-btn" data-fedans="' + h(q.id) + '">' + (q.answer ? '답 고치기' : '✍ 답하기') + '</button>');
+        }).join('');
+      }).catch(err);
+    }
+    function showReg(){
+      box().textContent = '불러오는 중…';
+      loadStatus().then(function(r){
+        var tierName = { A: 'A 무료 API(자동)', B: 'B 무료 웹(수동 — 약관상 자동화 금지)', C: 'C 유료·기기 안(고객 자료 허용)' };
+        var html = '';
+        ['A', 'B', 'C'].forEach(function(t){
+          var list = (r.registry || []).filter(function(x){ return x.tier === t; });
+          html += '<div style="margin-top:6px;"><b>' + tierName[t] + '</b></div>' + list.map(function(x){
+            return row('<b>' + h(x.name) + '</b> <span style="color:var(--sub);">' + h(x.status) + (x.dailyFree ? ' · 오늘 ' + x.usedToday + '/' + x.dailyFree : '') + (x.clientData ? ' · 고객자료 허용' : ' · 고객자료 금지') + '</span><br>주특기: ' + h((x.specialties || []).join(', ')) + (x.tos ? '<br><span style="color:var(--sub);">약관: ' + h(x.tos) + '</span>' : '') + (x.note ? '<br><span style="color:var(--sub);">' + h(x.note) + '</span>' : ''));
+          }).join('');
+        });
+        html += '<div style="margin-top:8px;"><b>배차표(GAS 운영팀장)</b></div>' + Object.keys(r.dispatch || {}).map(function(k){ var d = r.dispatch[k]; return row(h(d.label) + ' — ' + h(d.order.join(' → ')) + (d.maxKrw ? ' · 한 번 최대 ' + d.maxKrw + '원' : ' · 0원') + (d.clientData ? '' : ' · 고객자료 없음')); }).join('');
+        box().innerHTML = html;
+      }).catch(err);
+    }
+    var KEY_HELP = {
+      GEMINI_FREE_API_KEY: 'Google AI Studio(aistudio.google.com) → Get API key → 결제 연결 없는 프로젝트로 만든 키',
+      GROQ_API_KEY: 'console.groq.com → API Keys → Create API Key',
+      OPENROUTER_API_KEY: 'openrouter.ai → Keys → Create Key(무료 모델만 씀)',
+      MISTRAL_API_KEY: 'console.mistral.ai → API Keys(무료 실험 등급)',
+      HF_TOKEN: 'huggingface.co → Settings → Access Tokens(읽기 권한)'
+    };
+    function showKey(){
+      box().textContent = '불러오는 중…';
+      loadStatus().then(function(r){
+        var reg = r.registry || [];
+        box().innerHTML = '<div style="margin-bottom:4px;">무료 API 키는 세무사님이 각 사이트에서 직접 발급해 여기에 붙여 넣습니다(Claude는 계정을 만들거나 키를 넣지 않습니다). 키는 저장만 되고 화면에 다시 보이지 않습니다.</div>'
+          + Object.keys(KEY_HELP).map(function(k){
+            var e = reg.filter(function(x){ return x.keyProp === k; })[0];
+            var set = e && !/키 없음/.test(e.status);
+            return row('<b>' + h(e ? e.name : k) + '</b> — ' + (set ? '<span style="color:var(--success);">설정됨</span>' : '<span style="color:var(--sub);">없음</span>') + '<br><span style="color:var(--sub);">' + h(KEY_HELP[k]) + '</span><br><button type="button" class="ghost-btn" data-fedkey="' + h(k) + '">🔑 ' + (set ? '바꾸기' : '넣기') + '</button>' + (set ? ' <button type="button" class="ghost-btn" data-fedkeydel="' + h(k) + '">지우기</button>' : ''));
+          }).join('');
+      }).catch(err);
+    }
+    function showAsk(){
+      nxPrompt_('고객 정보가 없는 일반 질문을 적어 주세요(예: "2026년 1세대1주택 고가주택 기준금액은?").\n무료 AI 3곳에 동시에 묻고 결론이 같은지 봅니다(0원).', '').then(function(q){
+        q = String(q || '').trim();
+        if (!q) return;
+        nxConfirm_('이 질문에 고객 이름·주민번호·전화·주소·사건 내용이 없나요?\n(무료 AI에는 고객 자료를 보내지 않습니다)').then(function(ok){
+          if (!ok) return;
+          box().textContent = '🗳 무료 AI에 묻는 중… (10~40초)';
+          callGas('ai_consensus', { question: q, noClientData: true }).then(function(r){
+            if (!r || r.error){ box().textContent = (r && r.error) || '응답 없음'; return; }
+            box().innerHTML = '<div style="margin-bottom:4px;"><b>' + h(r.verdict) + '</b>' + (r.adopted ? ' — 채택 결론: ' + h(r.adopted) : '') + '</div>'
+              + (r.answers || []).map(function(a){ return row('<b>' + h(a.name) + '</b> — 결론: ' + h(a.conclusion) + '<details><summary>전체 답</summary><div style="white-space:pre-wrap;">' + h(a.text) + '</div></details>'); }).join('')
+              + '<div style="color:var(--sub); margin-top:4px;">무료 AI 답은 참고용입니다 — 세무 판단은 법령 원문·유료 AI로 확인하세요.</div>';
+          }).catch(err);
+        });
+      });
+    }
+    function showAdvice(){
+      box().textContent = '불러오는 중…';
+      callGas('ai_advice_get', {}).then(function(r){
+        lastAdvice = r;
+        var L = r && r.latest;
+        var head = '<div style="margin-bottom:6px;">매주 월요일 밤 job이 막힌·비싼 기능과 오류를 바탕으로 기술 질문을 만들어 무료 AI들에 묻습니다(0원). 웹 AI(ChatGPT 등)는 약관상 자동으로 못 하므로 📋 복사 → 사이트에서 붙여넣어 보내기 → 답 복사 → ✍ 붙여넣기로 직접 넣습니다. 여러 AI가 같이 낸 제안은 "공통"으로 표시되고, 개발자(주간 루틴)가 공식 문서로 확인해 적용합니다.</div>'
+          + '<button type="button" class="ghost-btn" data-fedrun="1">🧑‍🏫 지금 질문 만들고 무료 AI에 묻기</button>';
+        if (!L){ box().innerHTML = head + '<div style="margin-top:6px;">아직 자문 기록이 없습니다.</div>'; return; }
+        var webs = r.registry || [];
+        var html = head + '<div style="margin-top:6px;"><b>' + h(L.week) + '</b> · ' + h(L.at) + '</div>';
+        L.questions.forEach(function(q){
+          html += row('<b>[' + h(q.topic) + ']</b> <span style="color:var(--sub);">' + h(q.id) + ' · 답 ' + q.answers.length + '개(' + h(q.answers.map(function(a){ return a.name + (a.mode === 'manual' ? '·수동' : ''); }).join(', ')) + ')</span>'
+            + '<details><summary>질문 보기</summary><div style="white-space:pre-wrap;">' + h(q.q) + '</div></details>'
+            + '<div style="margin:3px 0;">' + webs.map(function(w){ return '<button type="button" class="ghost-btn" data-fedweb="' + h(q.id) + '|' + h(w.id) + '" title="' + h(w.tos) + '">📋 ' + h(w.name) + '</button>'; }).join(' ') + '</div>'
+            + (q.suggestions || []).map(function(s, i){
+              return '<div style="padding:2px 0 2px 8px;">' + (s.common ? '⭐ 공통(' + s.ais.length + ')' : '· 단독') + ' ' + h(s.text) + ' <span style="color:var(--sub);">— ' + h(s.ais.join(', ')) + '</span>'
+                + (s.verdict ? ' <b>[' + h(s.verdict) + ']</b>' : '') + ' <button type="button" class="ghost-btn" data-fedmark="' + h(q.id) + '|' + i + '|채택">채택</button> <button type="button" class="ghost-btn" data-fedmark="' + h(q.id) + '|' + i + '|기각">기각</button></div>';
+            }).join(''));
+        });
+        var sc = r.scores || {};
+        var names = Object.keys(sc);
+        if (names.length) html += '<div style="margin-top:8px;"><b>AI 성적표</b> ' + names.map(function(n){ return h(n) + ' 채택 ' + sc[n].adopted + '/' + sc[n].proposed; }).join(' · ') + '</div>';
+        box().innerHTML = html;
+      }).catch(err);
+    }
+    document.addEventListener('click', function(ev){
+      var t = ev.target.closest && ev.target.closest('[data-fed],[data-fedok],[data-fedno],[data-fedans],[data-fedkey],[data-fedkeydel],[data-fedrun],[data-fedweb],[data-fedmark]');
+      if (!t || !document.getElementById('stFedCard') || !document.getElementById('stFedCard').contains(t)) return;
+      var d = t.dataset;
+      if (d.fed === 'req') return showReq();
+      if (d.fed === 'q') return showQ();
+      if (d.fed === 'reg') return showReg();
+      if (d.fed === 'key') return showKey();
+      if (d.fed === 'ask') return showAsk();
+      if (d.fed === 'advice') return showAdvice();
+      if (d.fedok) return callGas('comm_request_confirm', { id: d.fedok, ok: true }).then(showReq).catch(err);
+      if (d.fedno) return nxPrompt_('무엇이 아직 안 되는지 적어 주세요(다음 개발자 실행 때 다시 고칩니다).', '').then(function(note){ if (note === null) return; return callGas('comm_request_confirm', { id: d.fedno, ok: false, note: note }).then(showReq); }).catch(err);
+      if (d.fedans) return nxPrompt_('개발자 질문 ' + d.fedans + '에 대한 답을 적어 주세요.', '').then(function(a){ a = String(a || '').trim(); if (!a) return; return callGas('comm_dev_answer', { id: d.fedans, text: a }).then(showQ); }).catch(err);
+      if (d.fedkey) return nxPrompt_(d.fedkey + ' 키를 통째로 붙여 넣어 주세요(저장 후 다시 보이지 않습니다).', '').then(function(v){ v = String(v || '').trim(); if (!v) return; return callGas('ai_set_key', { name: d.fedkey, value: v }).then(function(r){ if (r && r.error) toast(r.error); showKey(); }); }).catch(err);
+      if (d.fedkeydel) return nxConfirm_(d.fedkeydel + ' 키를 지울까요?').then(function(ok){ if (!ok) return; return callGas('ai_set_key', { name: d.fedkeydel, value: '' }).then(showKey); }).catch(err);
+      if (d.fedrun){ box().textContent = '🧑‍🏫 질문을 만들고 무료 AI에 묻는 중… (1~3분)'; return callGas('ai_advice_run', { force: true }).then(function(r){ if (r && r.noFreeAi) toast('무료 AI 키가 아직 없어 자동 답은 없습니다 — 🔑 무료 AI 키를 넣거나 웹 AI에 수동으로 물어 주세요.'); showAdvice(); }).catch(err); }
+      if (d.fedweb){
+        var p = d.fedweb.split('|'), qid = p[0], ai = p[1];
+        var q = null; ((lastAdvice && lastAdvice.latest && lastAdvice.latest.questions) || []).forEach(function(x){ if (x.id === qid) q = x; });
+        var w = ((lastAdvice && lastAdvice.registry) || []).filter(function(x){ return x.id === ai; })[0];
+        if (!q || !w) return;
+        var text = q.q + '\n\n답은 번호 목록(1. 2. 3.)으로 구체적인 제안 위주로.';
+        var copy = navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject(new Error('복사 불가'));
+        copy.catch(function(){}).then(function(){
+          window.open(w.url, '_blank', 'noopener');
+          setTimeout(function(){
+            nxPrompt_('질문을 복사했습니다 — 열린 ' + w.name + ' 창에 붙여 넣어 보내고, 답을 복사해 여기에 붙여 넣어 주세요.\n(약관상 자동 수집은 하지 않습니다)', '').then(function(ans){
+              ans = String(ans || '').trim();
+              if (!ans) return;
+              callGas('ai_advice_add_manual', { qid: qid, ai: ai, text: ans }).then(showAdvice).catch(err);
+            });
+          }, 600);
+        });
+        return;
+      }
+      if (d.fedmark){ var m = d.fedmark.split('|'); return callGas('ai_advice_mark', { qid: m[0], idx: Number(m[1]), verdict: m[2] }).then(showAdvice).catch(err); }
+    });
+  })();
+</script>
     <div class="card" style="max-width:480px;">
       <h3>🔗 바로가기</h3>
       <div style="display:flex; flex-wrap:wrap; gap:8px;">
@@ -43779,6 +44000,7 @@ function goToReportWriter_(caseId, opts){
           </ul>
         </li>
         <li><b>🛠 개선 후보</b>: 매일 밤 job이 최근 7일의 오류 기록·유료 AI로 간 질문·자가점검·화면 속도를 모아 "고칠 거리"를 정리합니다(AI 비용 0). 대시보드 "야간 자동작업"에 "개선 후보 N건"으로 나오고, 🐞 카드의 🛠 개선 후보 보기로 지금 바로 다시 만들 수 있습니다. 실제로 고치는 건 웹 Claude Code가 합니다 — 매주 월요일 아침 자동으로, 또는 AI 탭 🛠 버튼 → 열린 화면에서 "지금 실행"을 누르면 보고서를 읽고 고쳐서 깃허브에 수정안(PR)을 올립니다. 수정안 설명을 보시고 깃허브에서 <b>Merge</b>(승인)하신 뒤, 🐞 카드의 <b>📥 수정 반영</b>을 누르면 job이 스스로 새 버전으로 바뀝니다. 승인하지 않은 수정은 절대 반영되지 않습니다.</li>
+        <li><b>🤝 AI 연합체·개발자 소통·AI 자문단(2026.10.14)</b>: 설정 → <b>🤝 AI 연합체 · 개발자 소통</b> 카드. ① <b>📝 요청 상태</b> — ✍로 적은 개선요구사항이 개발자(웹 Claude Code) 수정·📥 반영을 거쳐 "반영됨"이 되면 👍 잘 됨 / ↩ 다시 고쳐 주세요를 누릅니다(다시 고쳐 달라고 하면 다음 개발자 실행 때 우선 처리). 요청 글에 "긴급"이 있으면 대시보드에 🚨와 "지금 개발자 부르기"가 뜹니다. ② <b>❓ 개발자 질문</b> — 개발자가 판단이 필요해 남긴 질문에 답하면 다음 실행 때 반영됩니다. ③ <b>🧑‍🏫 AI 자문단</b> — 매주 월요일 새벽 job이 막힌 기능·오류를 바탕으로 기술 질문을 만들어 무료 AI들에 묻고, 여러 AI가 같이 낸 제안(⭐공통)을 개발자가 공식 문서로 확인해 적용합니다(0원). ChatGPT·Gemini·Claude 등 웹 AI는 약관상 자동 조작이 금지라 📋을 누르면 질문이 복사되고 사이트가 열립니다 — 붙여 넣어 보내고 답을 복사해 넣어 주세요. 채택·기각을 누르면 AI 성적표가 쌓입니다. ④ <b>🗳 무료 AI 3곳에 묻기</b> — 고객 정보 없는 일반 질문을 무료 AI 3곳에 동시에 묻고 결론이 같은지 봅니다(참고용). ⑤ <b>🔑 무료 AI 키</b> — Google AI Studio·Groq·OpenRouter·Mistral·Hugging Face에서 직접 발급한 키를 붙여 넣으면 자문단·다수결이 자동으로 돕니다(키가 없으면 "대기"). 고객 자료는 무료 AI로 절대 보내지 않습니다(자동 차단). ⑥ 세액계산 "세액 계산하기" 옆 <b>🔍 2중 검증</b> — 계산된 세액을 유료 AI(Sonnet)가 입력값만 보고 따로 계산해 비교합니다(이름·주소는 보내지 않음, 한 번 수십 원, 다르면 ⚠). ⑦ 대시보드 <b>🤝 새 기능</b> 카드에 개발자가 최근 바꾼 기능이 보이고, AI 탭 AI도 이 목록을 알고 안내합니다. AI가 할 수 없는 일을 만나면 개발자에게 "기능 부족 신고"를 자동으로 남깁니다.</li>
         <li><b>🩹 자가치유 장치(2026.10.14, 모두 AI 비용 0)</b>: ① <b>계산 자가점검</b> — 매일 밤 양도·증여·상속 51개 사례(법조문으로 손계산한 정답, 근거 조문 포함)를 계산엔진에 돌려 하나라도 어긋나면 개선 후보에 🩺로 올립니다. ② <b>서류 정리 회귀시험</b> — 서류 종류별 표본 35건을 밤마다 8건씩, 일주일에 한 바퀴 다시 정리해 예전과 다르게 읽으면 🧾로 올립니다(고객 금액은 저장하지 않고 "숫자 묶음의 지문"만 비교). ③ <b>고친 값 = 학습 신호</b> — 세액계산 자동채우기(규칙·AI)가 넣은 값을 세무사님이 고치면 "어느 화면·어느 칸을 고쳤는지"만 기록하고, 같은 칸이 반복되면 ✏️로 올립니다. ④ <b>배포 직후 자동 점검</b> — 📥 수정 반영 직후 사건·고객·예약 목록, 계산엔진, 서류 정리 견본을 바로 돌려 보고, 이상하면 🐞 카드와 개선 후보에 🚨로 알립니다. ⑤ <b>↩ 되돌리기</b> — 반영 뒤 job이 이상하면 🐞 카드의 <b>↩ 되돌리기</b>로 바로 앞 버전으로 돌아갑니다(주소 그대로, 되돌린 뒤 자동 점검). 다시 최신으로는 📥 수정 반영. ⑥ <b>화면 배선 점검</b> — job을 열면 하루 한 번, 메뉴마다 화면과 버튼 기능이 제대로 연결돼 있는지 확인해 빠진 것을 오류 기록에 남깁니다. 올라온 후보는 매주 웹 Claude Code가 고쳐 수정안으로 올립니다.</li>
         <li><b>✍ 개선요구사항 적기</b>: 🐞 카드의 이 버튼으로 "이렇게 고쳐 달라", "이런 기능이 있으면 좋겠다"를 적어 두면 개선 후보에 올라가고, 다음 웹 Claude Code 실행 때 구현해서 수정안으로 올립니다(AI 비용 0 — 예전처럼 밤마다 유료 AI가 메모를 쓰지 않습니다).</li>
         <li><b>🧾 지침 점검</b>: 업무관리자·지침 파일이 바뀌면 밤에 "지침이 바뀜"만 개선 후보에 표시합니다(0원). 모순·중복 점검(유료 AI)은 이 버튼을 누를 때만 합니다.</li>
@@ -47176,6 +47398,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (!tok) return;
       nxBugSent_[key] = true; nxBugCount_++;
       entry.view = entry.view || window._currentViewLabel || '';
+      try {
+        var calls = (typeof nxRecentCalls_ !== 'undefined' ? nxRecentCalls_ : []).map(function(c){ return c.t + ' ' + c.a + (c.ok === null ? '(진행중)' : c.ok ? '✓' : '✗') + (c.ms != null ? ' ' + c.ms + 'ms' : ''); }).join(', ');
+        entry.detail = String(entry.detail || '').slice(0, 1100) + '\n[재현] 최근 요청: ' + (calls || '없음') + ' / 화면 ' + window.innerWidth + 'x' + window.innerHeight;
+      } catch (e2) {}
       callGasRaw_('ai_log_bug', { entry: entry }).catch(function(){});
     }catch(e){}
   }
@@ -47199,12 +47425,21 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxLogBug_({ kind: 'promise', where: r && r.nxAction ? '서버요청 ' + r.nxAction : '', message: msg, detail: r && r.stack ? String(r.stack).slice(0, 1200) : '' });
   });
 
+  // [2026.10.13] 오류 재현 묶음 — 최근 서버 요청 8개(이름·성공/실패·걸린 시간만, 입력값은 남기지 않음)를 오류 기록에 붙인다
+  var nxRecentCalls_ = [];
+  function nxRecentCallStart_(action){
+    var rec = { a: action, t: new Date().toTimeString().slice(0, 8), s: Date.now(), ok: null };
+    nxRecentCalls_.push(rec); if (nxRecentCalls_.length > 8) nxRecentCalls_.shift();
+    return function(ok){ rec.ok = ok; rec.ms = Date.now() - rec.s; };
+  }
   function callGasRaw_(action, payload){
     callGasProgress_(1);
+    var nxDone = action === 'ai_log_bug' ? function(){} : nxRecentCallStart_(action);
     return new Promise(function(resolve, reject){
       google.script.run
         .withSuccessHandler(function(res){
           callGasProgress_(-1);
+          nxDone(!(res && res.error));
           if (res && res.error === 'AUTH_REQUIRED' && action === 'ai_log_bug'){ resolve(null); return; } // 오류 기록 전송은 조용히 넘김(로그인 화면을 덮지 않게)
           // [2026.10.14 긴급수정] 아직 로그인하지 않은 상태(세션 토큰 없음)에서 어떤 기능이 서버를 불렀다면 "만료"가 아니다 —
           // 알림·새로고침 없이 조용히 실패시킨다(로그인 화면이 그대로 보이게). 로그인 전 서버 호출 실수가 다시 생겨도 로그인을 막지 못하게.
@@ -47223,6 +47458,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         })
         .withFailureHandler(function(err){
           callGasProgress_(-1);
+          nxDone(false);
           if (!(err instanceof Error)) err = new Error(String(err && err.message || err || '서버 연결 실패'));
           err.nxAction = action;
           reject(err);

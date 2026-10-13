@@ -151,7 +151,9 @@ const BASIC_TOOL_NAMES_ = new Set([
   // [2026.08] 예규·판례도 국가법령정보센터 API로 GAS가 직접 가져오게 추가 — AI가 웹서치로
   // 예규판례를 대충 찾는 대신, 조문 조회(lookup_statute_article)와 같은 방식으로 공식 원문을
   // 정확히 가져오게 하기 위함(사용자 지적: "AI가 법령조회하느라 바쁜" 비효율 해소).
-  'search_tax_precedent', 'get_tax_precedent_detail'
+  'search_tax_precedent', 'get_tax_precedent_detail',
+  // [2026.10.13] job으로 할 수 없는 요청을 개발자(주간 정비 루틴)에게 남기는 신고(Federation.js commReportGap_)
+  'report_capability_gap'
 ]);
 
 // calculate_* 92개 + 계산 관련 유틸 4개(allocate_inheritance_tax_by_heir 등) = 96개를
@@ -248,6 +250,20 @@ const DRIVE_TOOLS = [
       type: 'object',
       properties: { fileId: { type: 'string', description: '읽을 파일의 구글드라이브 파일 ID' }, raw: { type: 'boolean', description: 'true면 자동정리 요약 대신 PDF·이미지 원본을 첨부(특약 문구·도장·배치 확인 등 꼭 필요할 때만)' } },
       required: ['fileId']
+    }
+  },
+  {
+    name: 'report_capability_gap',
+    description: '사용자가 원하는 일을 지금 job 도구로 할 수 없을 때(도구가 없음·막힘·결과가 틀림) 개발자에게 남기는 기능 부족 신고. 매주 개발자(웹 Claude Code)가 보고 기능을 만든다. 고객 이름·주민번호·전화·주소 같은 개인 정보는 절대 쓰지 말고 일반화해서 쓴다. 신고 뒤 사용자에게는 "개발자에게 알렸다"고 짧게만 말하고 지금 가능한 대안을 안내한다.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        userWanted: { type: 'string', description: '사용자가 하려던 일(일반화, 개인정보 없이)' },
+        whyBlocked: { type: 'string', description: '왜 못 했는지 — 도구 없음/권한·외부 사이트 막힘/결과 부정확 등' },
+        neededTool: { type: 'string', description: '있으면 좋을 도구·기능(한 줄)' },
+        area: { type: 'string', description: '화면·분야(예: 세액계산, 증빙확보, AI 탭)' }
+      },
+      required: ['userWanted', 'whyBlocked']
     }
   },
   {
@@ -3827,6 +3843,18 @@ function dispatchClientAction0_(body) {
   if (body.action === 'improve_report_get') return jsonResponse(getImprovementReport_());
   if (body.action === 'system_audit_run') return jsonResponse(runNightlySystemAudit(true) || { success: true });
   if (body.action === 'improve_request_add') return jsonResponse(improve_addRequest_(body));
+  // [2026.10.13] AI 연합체·AI 자문단·개발자↔사용자 소통·2중 검증(Federation.js, docs/ai-federation.md)
+  if (body.action === 'comm_status') return jsonResponse(commStatus_());
+  if (body.action === 'comm_request_confirm') return jsonResponse(commRequestConfirm_(body));
+  if (body.action === 'comm_dev_answer') return jsonResponse(commDevAnswer_(body));
+  if (body.action === 'ai_registry') return jsonResponse({ success: true, registry: aiRegistryList_(), dispatch: AI_DISPATCH_TABLE_ });
+  if (body.action === 'ai_consensus') return jsonResponse(aiConsensus_(body));
+  if (body.action === 'ai_advice_get') return jsonResponse(aiAdviceGet_());
+  if (body.action === 'ai_advice_run') return jsonResponse(aiAdviceRun_(body));
+  if (body.action === 'ai_advice_add_manual') return jsonResponse(aiAdviceAddManual_(body));
+  if (body.action === 'ai_advice_mark') return jsonResponse(aiAdviceMark_(body));
+  if (body.action === 'ai_set_key') return jsonResponse(aiSetKey_(body));
+  if (body.action === 'ai_cross_check') return jsonResponse(aiCrossCheck_(body));
   if (body.action === 'gh_mark_deployed') { if (!/^[0-9a-f]{40}$/.test(String(body.sha || ''))) return jsonResponse({ success: false, error: 'sha 형식 오류' }); gh_markDeployed_(body.sha); let chk = null; try { chk = deploySmoke_().last; } catch (e) {} return jsonResponse({ success: true, check: chk }); } // PC에서 clasp 배포·푸시 후 기준 맞춤(tools/mark-deployed.js)
   if (body.action === 'gh_deploy_status') return jsonResponse(gh_deployStatus_());
   if (body.action === 'gh_deploy_apply') return jsonResponse(gh_deployApply_(body));
@@ -4233,6 +4261,9 @@ function buildContextSystemPrompt(basePrompt, body) {
   staticExtra += '\n\n[총괄관리자 — 시스템 자기점검] audit_business_managers(관리자들끼리 모순·중복 점검) / propose_new_business_manager(새 분야 관리자 초안 제안) 도구가 있다. ' +
     'propose_new_business_manager로 만든 초안은 "_제안함" 폴더에만 저장되고 자동으로 활성화되지 않는다 — 이건 의도된 안전장치이니, 마치 이미 적용된 것처럼 착각하지 말고 사용자에게 검토가 필요하다고 명확히 알려라.';
 
+  // [2026.10.13] 개발자가 최근 바꾼 기능(📥 반영 때 기록, 배포 사이엔 그대로라 캐시가 깨지지 않음) — 사용자가 물으면 안내 + 기능 부족 신고 안내
+  try { staticExtra += commRecentChangesPrompt_(); } catch (e) {}
+  staticExtra += '\n\n[기능 부족 신고] 사용자가 원하는 일을 job 도구로 할 수 없으면(도구가 없거나, 막혀 있거나, 결과가 틀리는 등) report_capability_gap 도구로 "원한 것·막힌 이유·필요한 도구"를 개발자에게 남겨라(고객 이름·번호 등은 쓰지 말 것). 그다음 사용자에게는 할 수 있는 대안을 안내하라.';
   staticExtra += '\n\n[화제 전환 처리] 이 대화에 사건·검토 관련 이전 내용이 쌓여 있더라도, 사용자의 새 메시지가 그 내용과 명백히 무관한 별개의 질문(예: 날씨, 간단한 계산, 일반 상식 등)이면 이전 화제(예: "~건 검토를 진행할까요?" 같은 직전 제안)를 다시 꺼내거나 그쪽으로 답을 끌고 가지 마라. 새 질문에만 집중해서 답하고, 답변이 끝난 뒤에도 먼저 이전 화제로 돌아가자고 제안하지 마라 — 사용자가 먼저 그 화제를 다시 꺼내면 그때 이어가라.';
 
   // [2026.08] 예전엔 이걸 화면의 "자동참조" 켜고끄기 토글로 사람이 미리 정해둬야 했다 — 다른
@@ -14493,6 +14524,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         b.name === 'list_drive_folder' ||
         b.name === 'browse_tax_calculators' ||
         b.name === 'read_drive_file' ||
+        b.name === 'report_capability_gap' ||
         b.name === 'save_file_to_folder' ||
         b.name === 'export_to_google_doc' ||
         b.name === 'send_email' ||
@@ -14756,6 +14788,11 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         const resultObj = pnu
           ? handleLookupOfficialPrice({ pnu: pnu, priceKind: input.priceKind, dong: input.dong || '', ho: input.ho || '', stdrYear: input.stdrYear || '' })
           : { error: 'admCd·mtYn·lnbrMnnm이 필요합니다(search_address 결과를 그대로 넘기세요).' };
+        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj) };
+      }
+
+      if (block.name === 'report_capability_gap') {
+        const resultObj = commReportGap_(block.input || {});
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj) };
       }
 
@@ -16226,6 +16263,8 @@ function runNightlyChiefManager() {
   // [2026.10.13] 환경 감시(토큰 0)는 오래 걸릴 수 있어(법령 11개·주간 정찰) 이 묶음(6분 제한) 안에서 돌리지 않고 새벽 4시 따로 돈다 —
   // 여기서는 그 시간 트리거가 있는지만 확인해 없으면 만든다. 감시가 끝나면 개선 후보 보고서를 다시 만들어 결과를 싣는다.
   try { envEnsureTrigger_(); } catch (err) { console.error('환경 감시 트리거 확인 실패: ' + err.message); }
+  // [2026.10.13] AI 연합체 무료 API 점검·AI 자문단(월요일)은 새벽 5시 별도 트리거(Federation.js aiFederationNightly) — 있는지만 확인
+  try { aiFedEnsureTrigger_(); } catch (err) { console.error('AI 연합체 트리거 확인 실패: ' + err.message); }
   try { buildImprovementReport_(); } catch (err) { console.error('개선 후보 보고서 실패: ' + err.message); }
   // [2026.09.15 신규] 홈택스 매출내역 엑셀(0_NX_0 폴더)도 매일 밤 같이 확인 — 세무사님이
   // 새 파일을 올려두면 다음날 밤 자동으로 반영된다(수동 버튼도 별도로 있음).
@@ -25295,6 +25334,28 @@ function buildImprovementReport_() {
     report.guide.push('docRegression(🧾 서류 정리 회귀): 표본 서류의 정리 결과(종류 또는 읽은 숫자 묶음)가 기준과 달라졌다. 최근 서류 규칙 변경을 의심하고, 일부러 고친 결과면 PR에 "기준값 갱신 필요(doc_regress_set_baseline)"를, 아니면 규칙을 되돌리거나 고친다.');
     report.guide.push('corrections(✏️ 수정 신호): 같은 칸을 세무사님이 반복해서 고쳤다 = 자동채우기(규칙/AI)가 그 칸을 자주 틀린다. src=rule이면 tc_ruleTransferFacts_·서류 규칙을, src=ai면 자동채우기 지시문을 고치는 PR. 고객 값은 기록에 없으니 원인은 코드로 추론.');
   } catch (e) { report.selfHeal = { error: String(e && e.message || e).slice(0, 200) }; }
+  // [2026.10.13] 개발자↔사용자 소통·AI 자문단(Federation.js, 토큰 0) — 요청 번호·상태, 기능 부족 신고, 개발자 질문 답, AI 자문 공통 제안
+  try {
+    var st = commRequestsLoad_(), byAt = {};
+    st.tracking.entries.forEach(function (x) { byAt[x.at] = x; });
+    report.requests = report.requests.map(function (r) { var x = byAt[r.at] || {}; return { id: x.id || '', status: x.status || '접수', urgent: !!x.urgent, at: r.at, text: r.text, reopenNote: x.reopenNote || '' }; });
+    report.requests.filter(function (r) { return r.urgent; }).forEach(function (r) { headline.unshift('🚨 긴급 요청 ' + r.id + ' — ' + String(r.text).replace(/\s+/g, ' ').slice(0, 50)); });
+    report.gaps = commRecentGaps_(14);
+    if (report.gaps.length) headline.push('🧩 job AI가 할 수 없었던 요청 ' + report.gaps.length + '건(기능 부족 신고)');
+    report.answers = commDevQuestions_().filter(function (q) { return q.answer; }).map(function (q) { return { id: q.id, title: q.title, answer: q.answer, at: q.answeredAt }; });
+    if (report.answers.length) headline.push('💬 개발자 질문에 세무사님이 답함 ' + report.answers.length + '건');
+    var adv = aiAdviceLoad_(), lastAdv = adv.rounds[adv.rounds.length - 1];
+    if (lastAdv) {
+      report.ai_advice = { week: lastAdv.week, scores: adv.scores, items: [] };
+      lastAdv.questions.forEach(function (q) { q.suggestions.forEach(function (s, i) { if ((s.common || s.verdict === '채택') && s.verdict !== '기각') report.ai_advice.items.push({ qid: q.id, idx: i, topic: q.topic, suggestion: s.text, ais: s.ais, verdict: s.verdict || '' }); }); });
+      if (report.ai_advice.items.length) headline.push('🧑‍🏫 AI 자문단 공통·채택 제안 ' + report.ai_advice.items.length + '건(' + lastAdv.week + ')');
+    }
+    report.candidateCount += report.gaps.length + report.answers.length + (report.ai_advice ? report.ai_advice.items.length : 0);
+    report.guide.push('요청 번호: requests의 id(R…)를 그 요청을 고친 커밋·PR 제목에 "[요청#R…]"으로 넣는다 — 📥 반영 때 job이 그 요청을 "반영됨"으로 바꾸고 세무사님 확인을 받는다. status=재오픈이면 reopenNote(세무사님 지적)를 우선 고친다. urgent(🚨)는 최우선.');
+    report.guide.push('gaps(🧩 기능 부족 신고): job AI가 사용자 요청을 도구가 없어 못 한 기록. 반복되거나 쉬운 것부터 도구·⚡바로처리로 만든다(유료 AI 호출 추가 금지 원칙 그대로).');
+    report.guide.push('개발자 질문: 판단이 필요하면 추측하지 말고 docs/dev-questions.md에 "## Q-YYYYMMDD-n 제목" 블록(쉬운 말, 고객 정보 없이)을 추가하는 PR을 올린다. answers에 세무사님 답이 오면 반영하고 그 블록을 지운다.');
+    report.guide.push('ai_advice(🧑‍🏫 AI 자문단): 여러 무료 AI가 공통으로 낸 기술 제안. 무료 AI 답은 틀릴 수 있으니 반드시 공식 문서로 사실 확인 → job에 적용 가능한지 작게 시험 → PR. 확인 안 되면 기각 이유를 PR 본문에 적는다. 새 AI·새 버전 편입은 docs/ai-federation.md "신규 AI 편입 절차"(고정 시험 세트, 약관 확인)대로 Federation.js AI_REGISTRY_를 고치는 PR.');
+  } catch (e) { report.federation = { error: String(e && e.message || e).slice(0, 200) }; }
   try { improve_reportFile_().setContent(JSON.stringify(report)); } catch (e) {}
   return { success: true, report: report };
 }
@@ -25467,7 +25528,12 @@ function gh_deployStatus_() {
   } catch (e) { return { success: false, error: e.message }; }
 }
 // PC에서 clasp로 배포한 뒤 "지금 운영 = 깃허브 main"이라고 기준만 맞출 때(코드는 안 바꿈)
-function gh_markDeployed_(sha) { PropertiesService.getScriptProperties().setProperty('GH_DEPLOYED_SHA', sha); }
+function gh_markDeployed_(sha) {
+  const p = PropertiesService.getScriptProperties(), prev = p.getProperty('GH_DEPLOYED_SHA') || '';
+  p.setProperty('GH_DEPLOYED_SHA', sha);
+  // [2026.10.13] 📥 반영·PC 배포(mark-deployed) 둘 다 여기를 지난다 — 새로 반영된 커밋을 "최근 바뀐 기능"으로 기록하고 [요청#ID]는 "반영됨"으로(Federation.js)
+  try { if (prev !== sha) commRecordChanges_(prev); } catch (e) { /* 기록 실패는 배포를 막지 않음 */ }
+}
 function gh_deployApply_(body) {
   return withLock_(30000, function () {
     const scriptId = ScriptApp.getScriptId();

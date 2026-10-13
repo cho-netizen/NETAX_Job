@@ -3952,6 +3952,32 @@ let giftDonees = [{}];
 // [2026.09.25 신규, 재검토77] 전자신고파일 생성용 — run-gift가 마지막으로 계산한 (증여자×수증인)
 // 쌍별 결과 배열을 보관해둔다(상속세의 lastInheritanceResult와 같은 역할).
 let lastGiftResults_ = null;
+// [2026.10.13] 🔍 2중 검증 — 엔진 계산 결과를 저가 AI가 입력값만 보고 따로 계산해 비교(다르면 ⚠). 버튼을 누를 때만, 비용 표시.
+async function tcCrossCheck_(kind){
+  let input = null, engine = null;
+  if (kind === 'transfer'){
+    const it = (lastTransferResults_ || []).filter(function(x){ return x.result && !x.result.error; })[0];
+    if (it){ input = it.assets; engine = it.result; }
+  } else if (kind === 'gift'){
+    const it = (lastGiftResults_ || []).filter(function(x){ return x.result && !x.result.error && x.input; })[0];
+    if (it){ input = it.input; engine = it.result; }
+  } else if (kind === 'inheritance'){
+    input = window.tcLastInheritanceInput_ || null; engine = lastInheritanceResult;
+  }
+  if (!input || !engine){ showToast('먼저 "세액 계산하기"를 눌러 계산을 마친 뒤 눌러 주세요.', 'warning'); return; }
+  const ok = await nxConfirm_('🔍 2중 검증을 할까요?\n\n유료 AI(Sonnet)가 입력값(금액·날짜·구분)만 보고 세액을 따로 계산해 엔진 결과와 비교합니다. 이름·주소·주민번호는 보내지 않습니다. 한 번 수십 원.\n\nAI 계산은 참고용입니다 — 다르게 나오면 어느 쪽이 맞는지 법령으로 확인하세요.');
+  if (!ok) return;
+  showToast('🔍 2중 검증 중… (20~60초)', 'info');
+  try {
+    const r = await callGas('ai_cross_check', { kind: kind, input: input, engine: engine });
+    if (!r || r.error) throw new Error((r && r.error) || '응답 없음');
+    const won = function(v){ return v == null ? '—' : Number(v).toLocaleString('ko-KR') + '원'; };
+    const lines = r.rows.map(function(x){ return (x.일치 ? '✅ ' : '⚠ ') + x.항목 + ': 엔진 ' + won(x.엔진) + ' / AI ' + won(x.AI); }).join('\n');
+    await nxConfirm_((r.allSame ? '✅ 엔진과 AI 독립 계산이 일치합니다.' : '⚠ 엔진과 AI 독립 계산이 다릅니다 — 어느 쪽이 맞는지 법령으로 확인하세요.') + '\n\n' + lines
+      + '\n\nAI 확신: ' + (r.confidence || '-') + (r.caution ? '\nAI 주의: ' + r.caution : '') + '\n비용: 약 ' + (r.krw == null ? '?' : r.krw) + '원\n\n[AI 계산 과정]\n' + String(r.steps || '').slice(0, 1800), '🔍 2중 검증 결과');
+  } catch (e) { showToast('2중 검증 실패: ' + (e && e.message ? e.message : e), 'error'); }
+}
+
 // [2026.09.30 신규, 재검토86] 세무사님 지적 계속 — 특례세율(sr)·일감몰아주기(jm)·일감떼어주기(jt)·
 // 초과배당(ed)·특정법인거래(sc) 5개 탭도 계산 결과가 화면표시에만 쓰이고 저장되지 않아 인쇄
 // 서식이 참조할 수 없었다(양도세 주식등·국외자산과 같은 결함, 재검토85). 조사 결과 이 5개
@@ -5855,7 +5881,7 @@ function renderTransferPane(){
     // 위한 안전장치일 뿐이라(데이터를 조용히 지우지 않으려고 남겨둠), 그런 자산이 없으면
     // 아예 화면에 나타나지 않는다.
     (cardsHtml ? '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>⚠ 계약이 지정되지 않은 자산(계약이 삭제됐거나 아직 안 골랐음 — 위에서 계약을 선택하세요)</b></div><div id="taxCalcTransferCards">' + cardsHtml + '</div>' : '') +
-    '<button type="button" class="taxcalc-run-btn" data-action="run-transfer">세액 계산하기</button>' +
+    '<button type="button" class="taxcalc-run-btn" data-action="run-transfer">세액 계산하기</button><button type="button" class="ghost-btn" data-action="tc-cross-check" data-kind="transfer" style="margin-left:6px;" title="계산된 세액을 AI(Sonnet)가 입력값만 보고 따로 계산해 비교합니다(이름·주소는 보내지 않음, 한 번 수십 원)">🔍 2중 검증</button>' +
     '<div id="taxCalcTransferResult"></div>' +
     // [2026.10.06 신규, 재검토113] 양도소득세 분납(§77) — 연부연납 제도가 없는 양도소득세는
     // 이 조문으로 신고기한이 지난 후 2개월 이내 세액 일부를 나눠 낼 수 있다. 엔진은 이미
@@ -10383,7 +10409,7 @@ function renderInheritancePane(){
         '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="ihUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
       '</div>' +
     '</div>' +
-    '<button type="button" class="taxcalc-run-btn" data-action="run-inheritance">세액 계산하기</button>' +
+    '<button type="button" class="taxcalc-run-btn" data-action="run-inheritance">세액 계산하기</button><button type="button" class="ghost-btn" data-action="tc-cross-check" data-kind="inheritance" style="margin-left:6px;" title="계산된 세액을 AI(Sonnet)가 입력값만 보고 따로 계산해 비교합니다(이름·주소는 보내지 않음, 한 번 수십 원)">🔍 2중 검증</button>' +
     '<div id="taxCalcInheritanceResult"></div>' +
     '<button type="button" class="taxcalc-calcbasis-btn" data-action="toggle-heir-tool" style="margin-bottom:10px;">👪 상속인별 세액 안분(상증세법§3조의2①, 실제상속재산가액 비율 근사)</button>' +
     '<div id="taxCalcHeirTool"></div>' +
@@ -11680,7 +11706,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>영농자녀 증여농지 세액감면(조특법§71)</label><input type="number" id="giftFarmlandExemption" placeholder="원"><span class="taxcalc-field-help">감면요건·한도는 별도 확인 후 입력</span></div>' +
       '</div>' +
     '</div>' +
-    '<button type="button" class="taxcalc-run-btn" data-action="run-gift">세액 계산하기</button>' +
+    '<button type="button" class="taxcalc-run-btn" data-action="run-gift">세액 계산하기</button><button type="button" class="ghost-btn" data-action="tc-cross-check" data-kind="gift" style="margin-left:6px;" title="계산된 세액을 AI(Sonnet)가 입력값만 보고 따로 계산해 비교합니다(이름·주소는 보내지 않음, 한 번 수십 원)">🔍 2중 검증</button>' +
     '<div id="taxCalcGiftResult"></div>' +
     // [2026.10.06 재구성, 재검토114] 세무대리인 정보 입력칸은 설정탭("⚙ 설정 > 세무대리인
     // 정보")으로 옮겼다 — 세무사님 지적("기본정보가 왜 증여세 탭에 있나, 저장도 안 되는데")
@@ -15271,6 +15297,8 @@ function handleTaxCalcClick_(e){
       targetEl.dispatchEvent(new Event('input', { bubbles: true }));
       showToast('비과세재산가액에 ' + won(amount) + '을 더했습니다.', 'success');
     }
+  } else if (action === 'tc-cross-check'){
+    tcCrossCheck_(btn.dataset.kind);
   } else if (action === 'run-transfer'){
     // [2026.09.23 신규] 국외자산(§118의2~8)은 국내자산 양도세와 완전히 별도 세목이라, 국내
     // 합산 계산(계약·공동양도인·다주택중과 등 전부 국내 전용 개념)에서 반드시 제외해야 한다.
@@ -16069,7 +16097,7 @@ function handleTaxCalcClick_(e){
         reportedInTime: d.reportedInTime !== false
       });
       tcReportFormCorrections_();
-      return { donorIdxs: g.donorIdxs, doneeIdx: g.doneeIdx, amount: g.amount, priorGiftAmount: input.priorGiftAmount, result: calculateGiftTaxJS(input) };
+      return { donorIdxs: g.donorIdxs, doneeIdx: g.doneeIdx, amount: g.amount, priorGiftAmount: input.priorGiftAmount, input: input, result: calculateGiftTaxJS(input) };
     });
     // [2026.10.09 버그수정] 계산할 (증여자·수증인) 금액이 하나도 없으면 결과칸에 주석만 보이고 아무 설명이 없었다 —
     // 특히 수증인이 2명 이상이면(사건개요의 "공동수증인"을 채우면 자동으로 그렇게 됨) 증여재산가액 칸을 쓰지 않고
@@ -16742,6 +16770,7 @@ function handleTaxCalcClick_(e){
       reportedInTime: document.getElementById('ihReportedInTime').checked
     };
     tcReportFormCorrections_();
+    window.tcLastInheritanceInput_ = input; // [2026.10.13] 🔍 2중 검증용 입력 보관
     renderInheritanceResult(calculateInheritanceTaxJS(input));
   } else if (action === 'toggle-gift-calc-basis'){
     const b = document.getElementById('giftCalcBasis-' + numVal(btn.dataset.idx));

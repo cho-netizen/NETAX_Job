@@ -107,6 +107,10 @@
       if (!tok) return;
       nxBugSent_[key] = true; nxBugCount_++;
       entry.view = entry.view || window._currentViewLabel || '';
+      try {
+        var calls = (typeof nxRecentCalls_ !== 'undefined' ? nxRecentCalls_ : []).map(function(c){ return c.t + ' ' + c.a + (c.ok === null ? '(진행중)' : c.ok ? '✓' : '✗') + (c.ms != null ? ' ' + c.ms + 'ms' : ''); }).join(', ');
+        entry.detail = String(entry.detail || '').slice(0, 1100) + '\n[재현] 최근 요청: ' + (calls || '없음') + ' / 화면 ' + window.innerWidth + 'x' + window.innerHeight;
+      } catch (e2) {}
       callGasRaw_('ai_log_bug', { entry: entry }).catch(function(){});
     }catch(e){}
   }
@@ -130,12 +134,21 @@
     nxLogBug_({ kind: 'promise', where: r && r.nxAction ? '서버요청 ' + r.nxAction : '', message: msg, detail: r && r.stack ? String(r.stack).slice(0, 1200) : '' });
   });
 
+  // [2026.10.13] 오류 재현 묶음 — 최근 서버 요청 8개(이름·성공/실패·걸린 시간만, 입력값은 남기지 않음)를 오류 기록에 붙인다
+  var nxRecentCalls_ = [];
+  function nxRecentCallStart_(action){
+    var rec = { a: action, t: new Date().toTimeString().slice(0, 8), s: Date.now(), ok: null };
+    nxRecentCalls_.push(rec); if (nxRecentCalls_.length > 8) nxRecentCalls_.shift();
+    return function(ok){ rec.ok = ok; rec.ms = Date.now() - rec.s; };
+  }
   function callGasRaw_(action, payload){
     callGasProgress_(1);
+    var nxDone = action === 'ai_log_bug' ? function(){} : nxRecentCallStart_(action);
     return new Promise(function(resolve, reject){
       google.script.run
         .withSuccessHandler(function(res){
           callGasProgress_(-1);
+          nxDone(!(res && res.error));
           if (res && res.error === 'AUTH_REQUIRED' && action === 'ai_log_bug'){ resolve(null); return; } // 오류 기록 전송은 조용히 넘김(로그인 화면을 덮지 않게)
           // [2026.10.14 긴급수정] 아직 로그인하지 않은 상태(세션 토큰 없음)에서 어떤 기능이 서버를 불렀다면 "만료"가 아니다 —
           // 알림·새로고침 없이 조용히 실패시킨다(로그인 화면이 그대로 보이게). 로그인 전 서버 호출 실수가 다시 생겨도 로그인을 막지 못하게.
@@ -154,6 +167,7 @@
         })
         .withFailureHandler(function(err){
           callGasProgress_(-1);
+          nxDone(false);
           if (!(err instanceof Error)) err = new Error(String(err && err.message || err || '서버 연결 실패'));
           err.nxAction = action;
           reject(err);
