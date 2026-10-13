@@ -3705,7 +3705,7 @@ function getClientActionTools_(ctx) {
 // 기억하지 않는다(저장했는데 옛날 값이 보이는 짜증을 만들지 않기 위해).
 const DISPATCH_SHORT_CACHE_ = { getNightlyStatus: 1800, getGlobalLog: 120, search_emails: 90, get_calendar_events: 90 };
 // 이 작업들이 성공하면 위 기억을 지운다(예약 승인·취소 → 캘린더가 바뀜, 메일 읽음 표시 → 안읽은 메일 목록이 바뀜)
-const DISPATCH_SHORT_CACHE_BUST_ = { approve: ['get_calendar_events'], reject: ['get_calendar_events'], cancel_confirmed_booking: ['get_calendar_events'], admin_apply: ['get_calendar_events'], apply: ['get_calendar_events'], mark_email_read: ['search_emails'], work_resync_all_calendars: ['get_calendar_events'], improve_report_run: ['getNightlyStatus'], self_check_run: ['getNightlyStatus'] };
+const DISPATCH_SHORT_CACHE_BUST_ = { approve: ['get_calendar_events'], reject: ['get_calendar_events'], cancel_confirmed_booking: ['get_calendar_events'], admin_apply: ['get_calendar_events'], apply: ['get_calendar_events'], mark_email_read: ['search_emails'], work_resync_all_calendars: ['get_calendar_events'], improve_report_run: ['getNightlyStatus'], self_check_run: ['getNightlyStatus'], env_watch_run: ['getNightlyStatus'] };
 function dispatchClientAction_(body) {
   const ttl = DISPATCH_SHORT_CACHE_[body && body.action];
   const bust = DISPATCH_SHORT_CACHE_BUST_[body && body.action];
@@ -3808,6 +3808,9 @@ function dispatchClientAction0_(body) {
   if (body.action === 'ai_usage_month') return jsonResponse(ai_usageMonth_());
   if (body.action === 'ai_log_paid') return jsonResponse(ai_logPaid_(body));
   if (body.action === 'self_check_run') return jsonResponse(runSelfCheck_());
+  if (body.action === 'env_watch_run') return jsonResponse(runEnvWatch_({ weekly: !!body.weekly, budgetMs: 240000 })); // 환경 감시 수동 실행(토큰 0)
+  if (body.action === 'env_watch_get') return jsonResponse(envWatchLast_() || { empty: true });
+  if (body.action === 'env_watch_ensure_trigger') return jsonResponse(envEnsureTrigger_()); // 새벽 4시 환경 감시 트리거 만들기
   if (body.action === 'registry_parse') return jsonResponse(registryParseFile_(body)); // 등기부 PDF 정리(토큰 0)
   if (body.action === 'doc_parse') return jsonResponse(docParseFile_(body)); // 서류 PDF 정리 — 등기부·가족관계·사업자등록·접수증·납부서(토큰 0)
   if (body.action === 'doc_parse_text') return jsonResponse(docParseCapturedText_(body));
@@ -16208,6 +16211,9 @@ function runNightlyChiefManager() {
   // [2026.10.09] 토큰 0 자가점검 — 세무사님이 버그로 AI와 씨름하지 않도록 job이 매일 밤 스스로 확인
   try { runSelfCheck_(); } catch (err) { console.error('자가점검 실패: ' + err.message); }
   // [2026.10.09] 개선 후보 보고서(토큰 0) — 자가점검 다음에 만들어야 그 결과까지 담긴다
+  // [2026.10.13] 환경 감시(토큰 0)는 오래 걸릴 수 있어(법령 11개·주간 정찰) 이 묶음(6분 제한) 안에서 돌리지 않고 새벽 4시 따로 돈다 —
+  // 여기서는 그 시간 트리거가 있는지만 확인해 없으면 만든다. 감시가 끝나면 개선 후보 보고서를 다시 만들어 결과를 싣는다.
+  try { envEnsureTrigger_(); } catch (err) { console.error('환경 감시 트리거 확인 실패: ' + err.message); }
   try { buildImprovementReport_(); } catch (err) { console.error('개선 후보 보고서 실패: ' + err.message); }
   // [2026.09.15 신규] 홈택스 매출내역 엑셀(0_NX_0 폴더)도 매일 밤 같이 확인 — 세무사님이
   // 새 파일을 올려두면 다음날 밤 자동으로 반영된다(수동 버튼도 별도로 있음).
@@ -16271,6 +16277,21 @@ function handleGetNightlyStatus(body) {
       });
     }
   } catch (e) { /* 보고서가 아직 없으면 생략 */ }
+
+  // [2026.10.13] 환경 감시(법령·예규판례·연례 고시·기술) — 경고·새 개정이 있으면 빨간 표시
+  try {
+    const ew = envWatchForReport_();
+    if (ew) {
+      const techWarn = (ew.tech && ew.tech.items || []).filter(function (t) { return t.수준 === '경고'; });
+      items.push({
+        label: '🛰️ 환경 감시 (법령·예규·기술, AI 비용 0)',
+        ok: !ew.count,
+        failLabel: '확인 ' + ew.count + '건' + (techWarn.length ? ' · 기술 경고 ' + techWarn.length : ''),
+        date: String(ew.at || '').slice(0, 10),
+        message: ew.count ? ew.head.slice(0, 5).join('\n') + '\n→ 주간 루틴(웹 Claude Code)이 영향 분석·수정안 PR' : ew.at + ' — 감시 법령 ' + ((ew.laws && ew.laws.items) || []).length + '개 변동 없음, 기술 경고 없음'
+      });
+    }
+  } catch (e) { /* 아직 한 번도 안 돌았으면 생략 */ }
 
   // [2026.10.09] 토큰 0 자가점검 결과
   const sc = selfCheckLast_();
@@ -24547,6 +24568,22 @@ function buildImprovementReport_() {
     var tpCnt = (tp.템플릿별 || []).filter(function (x) { return (x.공통추가제목 || []).length || (x.늘빈칸 || []).length; }).length + (tp.새문단후보 || []).length;
     if (tpCnt) headline.push('📚 템플릿 고도화 후보 ' + tpCnt + '건(최근 40일 사본 ' + (tp.사본수 || 0) + '건 기준) — 주간 루틴이 수정안 PR');
   } catch (e) {}
+  // [2026.10.13] 환경 감시(EnvWatch.js, 토큰 0) — 법령 개정·예규판례 신착·연례 고시·기술 환경·새로 가능해진 기술
+  try {
+    var ew = envWatchForReport_();
+    if (ew) {
+      report.laws = ew.laws; report.precedents = ew.precedents; report.calendar = ew.calendar; report.tech = ew.tech; report.capabilities = ew.capabilities;
+      report.envWatchAt = ew.at;
+      ew.head.forEach(function (h) { headline.push(h); });
+      report.candidateCount += ew.count;
+      report.guide.push('laws(⚖️·⏳ 법령 개정): 새로시행·시행예정 항목의 바뀐조문/바뀔조문을 현행 원문(법제처)으로 읽고, 영향함수(EngineLawMap 추정)와 실제 계산 로직을 대조해 엔진을 고친다. 시행일 전후로 양도·증여·상속일에 따라 옛 규정과 새 규정이 갈리면 둘 다 남기고 날짜로 분기. 고친 규정마다 SELF_CHECK_CALC_CASES_에 손계산 사례 1개 이상 추가. 바뀐 쟁점의 문단 라이브러리(gs-backend/templates 문단 md)도 같이 고친다. 영향이 없으면 PR 없이 이유만 적는다.');
+      report.guide.push('precedents(📜 예규·판례·고시 신착): 각 건이 엔진·문단 라이브러리의 판단과 어긋나는지 본다. 어긋나면 해당 계산/문단을 고치거나 경고 문구를 넣는 PR, 아니면 건너뜀. 국세청 고시(건물기준시가 등)는 연도별 표 갱신 대상.');
+      report.guide.push('calendar(📅 연례 고시): 코드확인 문구가 있는 항목은 코드의 연도별 표(DEPRECIATION_TABLE·BUILDING_BASE_PRICE_연도·LS_BOK_RATES_ 등)를 공식 고시 원문으로 갱신하는 PR. 숫자는 반드시 원문 확인(추정 금지).');
+      report.guide.push('tech(🔧 기술 환경): 모델 ID 없어짐 경고는 최우선 — 같은 등급 최신 모델로 MODEL_CONFIG·DEFAULT_MODEL·LIGHT_MODEL을 바꾸는 PR. API 키 이상은 코드 수정 대상이 아니라 PR 본문/답변에 "세무사님 확인 필요"로.');
+      report.guide.push('엔진 의존 조문 지도: Code.js·manage/taxcalc*.html을 고친 PR에는 node tools/build-engine-law-map.js 로 다시 만든 gs-backend/EngineLawMap.js도 함께 넣는다(법령 감시의 "영향 계산함수" 표시가 최신 코드를 따르게).');
+      report.guide.push('capabilities(🛰️ 새로 가능해진 기술):docs/blocked-capabilities.md의 막힌 기능 표와 대조해, 대안이 생겼으면 시범 구현 PR(무료 범위·비용·개인정보 명시, 고객 자료를 무료 외부 AI로 보내는 대안 금지), 관련만 있으면 그 표의 관찰란 갱신.');
+    }
+  } catch (e) { report.envWatch = { error: String(e && e.message || e).slice(0, 200) }; }
   try { improve_reportFile_().setContent(JSON.stringify(report)); } catch (e) {}
   return { success: true, report: report };
 }
