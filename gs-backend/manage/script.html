@@ -674,6 +674,9 @@
       'calculateTransferTaxMultiJS', 'calculateGiftTaxJS', 'calculateInheritanceTaxJS', 'createNewDoc'];
     function check_(){
       try {
+        // 로그인 전에는 하지 않는다(로그인 창 위에서 서버를 부르지 않게) — 로그인 뒤 다음 기회에 다시 본다
+        var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
+        if (!tok) { setTimeout(check_, 60000); return; }
         var today = new Date().toISOString().slice(0, 10);
         try { if (localStorage.getItem('nxWiringCheckDay') === today) return; } catch (e) {}
         var missing = [];
