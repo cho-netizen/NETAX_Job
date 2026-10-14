@@ -24577,6 +24577,16 @@ function tcRoleInText_(text, names) {
     var re = new RegExp(n.split('').join('\\s*'), 'g'), m;
     while ((m = re.exec(t))) {
       var back = t.slice(Math.max(0, m.index - 300), m.index);
+      // [2026.10.15] 서명란이 표("매도인 매수인 개업공인중개사" 머리 한 줄 + 사람별 주소·주민번호·성명)로 읽힌 경우 — 머리 줄 뒤 몇 번째 사람(주민번호 개수)인지로 역할을 정한다
+      //  (실사건: 이름표가 머리 줄에만 있어 "가장 가까운 이름표" 방식이 매도인 서명을 매수인으로 셌다)
+      //  글자인식이 머리 줄을 사람 칸 사이에 끼워 넣기도 해서, "각 1통씩 보관한다" 뒤부터 이 이름까지 나온 주민번호 개수로 센다(1번째 = 매도인, 2번째 = 매수인 — 표준 서식 순서)
+      var back2 = t.slice(Math.max(0, m.index - 1500), m.index), an = -1, am2, are = /보\s*관\s*한\s*다|각\s*1\s*통씩?\s*보\s*관/g;
+      while ((am2 = are.exec(back2))) an = am2.index;
+      if (an !== -1 && /매\s*도\s*[인자]\s*매\s*수\s*[인자]/.test(t.slice(m.index - (back2.length - an), m.index + 400))) {
+        var k = (back2.slice(an).match(/\d{6}\s*-\s*[\d*]{7}/g) || []).length;
+        if (k === 1) { sell++; continue; }
+        if (k === 2) { buy++; continue; }
+      }
       var ls = back.search(/매\s*도\s*[인자](?![\s\S]*매\s*도\s*[인자])/), lb = back.search(/매\s*수\s*[인자](?![\s\S]*매\s*수\s*[인자])/);
       if (ls > lb) sell++; else if (lb > ls) buy++;
     }
@@ -24596,9 +24606,11 @@ function tc_ruleTransferFacts_(body) {
   var col = work_colMap_(sheet.getDataRange().getValues()[0]);
   var found = work_findCaseRow_(sheet, col, caseId);
   if (!found) return { error: '사건을 찾지 못했습니다.' };
-  var folderId = String(found.row[col.폴더ID] || '').trim();
+  // [2026.10.15] 행 값은 work_readRow_로 — 🧪 정답지 점검(akSandbox_)은 found.row를 메모리 표시로 바꿔 두어 found.row[col.X]로 읽으면 "사건 폴더가 없습니다"가 났다(양도 사건 전부 서류 정리 실패)
+  var cr = work_readRow_(col, found.row) || {};
+  var folderId = String(cr.폴더ID || '').trim();
   if (!folderId) return { error: '사건 폴더가 없습니다.' };
-  var names = [found.row[col.납세자], found.row[col.고객명]].map(function (x) { return String(x || '').replace(/\s+/g, ''); }).filter(function (x) { return x.length >= 2; });
+  var names = [cr.납세자, cr.고객명].map(function (x) { return String(x || '').replace(/\s+/g, ''); }).filter(function (x) { return x.length >= 2; });
   var files = [];
   client_listFilesRecursive_(DriveApp.getFolderById(folderId), 0, 120, files);
   var rank = function (n) { return /(계약|신고필증|취득세|법무|등기|등본)/.test(n) ? 0 : 1; };
@@ -24608,6 +24620,7 @@ function tc_ruleTransferFacts_(body) {
     if (Date.now() - started > 240000) break;
     var f = files[i];
     if (!/pdf|^image\//.test(String(f.mimeType || ''))) continue;
+    if (/^_/.test(f.name) || caseProcIsOutputDoc_(f.name)) continue; // 이미 낸 신고서·명세서·납부서 숫자는 입력으로 쓰지 않는다(정답지 전용)
     try { f.modified = DriveApp.getFileById(f.id).getLastUpdated().getTime(); } catch (e) {}
     var text = null;
     try { text = tc_docText_(f); } catch (e) { continue; }
@@ -24625,9 +24638,23 @@ function tc_ruleTransferFacts_(body) {
   }
   var ok = function (c) { return /^일치/.test(String(c.r.검산 || '')) && c.r.매매대금; };
   // 계약서 정리 결과의 매도인·매수인 칸은 서명란을 못 읽어 비는 일이 많아, 본문에서 납세자 이름 바로 앞 이름표(매도인/매수인)로 역할을 정한다
+  var evidence = [];
+  // [2026.10.15] 같은 부동산의 계약서가 둘 이상이고 납세자 이름이 모두에 있으면 — 먼저 맺은 계약이 취득(납세자 = 매수인), 마지막이 양도(매도인).
+  // 서명란 글자인식 순서가 섞여 두 계약서 모두 같은 역할로 읽히는 일을 바로잡는다(역할이 이미 취득→양도 순서로 맞으면 그대로).
+  contracts.forEach(function (c0) {
+    if (c0._grouped) return;
+    var g = contracts.filter(function (x) { return x.r.소재지 && c0.r.소재지 && tcLocSame_(x.r.소재지, c0.r.소재지) && x.r.계약일; });
+    if (g.length < 2) return;
+    g.forEach(function (x) { x._grouped = true; });
+    g.sort(function (a, b) { return a.r.계약일 < b.r.계약일 ? -1 : a.r.계약일 > b.r.계약일 ? 1 : 0; });
+    if (g[0].r.계약일 === g[g.length - 1].r.계약일 || !g.every(function (x) { return x.role; })) return;
+    if (g[0].role === 'buyer' && g[g.length - 1].role === 'seller') return;
+    evidence.push('같은 부동산 계약서 ' + g.length + '건 — 계약일 순서로 역할 정함: 취득 ' + g[0].file + '(' + g[0].r.계약일 + '), 양도 ' + g[g.length - 1].file + '(' + g[g.length - 1].r.계약일 + ')');
+    g.forEach(function (x, i) { x.role = i === 0 ? 'buyer' : i === g.length - 1 ? 'seller' : x.role; });
+  });
   var sells = contracts.filter(function (c) { return c.role === 'seller' || (!c.role && tcNameIn_(c.r.매도인, names)); });
   var buys = contracts.filter(function (c) { return c.role === 'buyer' || (!c.role && tcNameIn_(c.r.매수인, names)); });
-  var evidence = [], txs = [];
+  var txs = [];
   // 등기부 소유권 이력에서 그 부동산의 납세자 명의 취득·양도 접수일 찾기(§98 빠른 날 비교용)
   var regDate = function (loc, mine) {
     var best = '';
@@ -24679,7 +24706,17 @@ function tc_ruleTransferFacts_(body) {
   if (txs.length === 1 && txs[0]._acqMatched) {
     var exp = 0, parts = [];
     acqs.forEach(function (a) { if (a.r.검산 && a.r.합계 && a.r.과세물건 && tcLocSame_(a.r.과세물건, txs[0].assetLocation)) { exp += a.r.합계; parts.push('취득세 등 ' + a.r.합계.toLocaleString('ko-KR') + '원(' + a.file + ')'); } });
-    lawyers.forEach(function (l) { if (l.r.검산 && l.r.합계 && /소유권/.test(l.r.등기종류 || '') && !/근저당|전세권/.test(l.r.등기종류 || '') && l.r.소재지 && tcLocSame_(l.r.소재지, txs[0].assetLocation) && (!l.r.일자 || !txs[0].acquisitionDate || Math.abs(new Date(l.r.일자) - new Date(txs[0].acquisitionDate)) < 120 * 86400000)) { exp += l.r.합계; parts.push('법무사 소유권이전 ' + l.r.합계.toLocaleString('ko-KR') + '원(' + l.file + ')'); } });
+    // [2026.10.15] 정산서에 소재지가 안 읽혀도(사진) 소유권이전 정산서 날짜가 취득일 30일 안이면 그 취득 것으로 본다(거래가 하나일 때만).
+    // 같은 정산서를 여러 장 찍어 둔 것(날짜·합계 같음)은 한 번만 — 실사건: 같은 정산서 사진 3장
+    var lawSeen = {};
+    lawyers.forEach(function (l) {
+      if (!(l.r.검산 && l.r.합계 && /소유권/.test(l.r.등기종류 || '') && !/근저당|전세권/.test(l.r.등기종류 || ''))) return;
+      var near = function (days) { return l.r.일자 && txs[0].acquisitionDate && Math.abs(new Date(l.r.일자) - new Date(txs[0].acquisitionDate)) < days * 86400000; };
+      var locOk = l.r.소재지 ? tcLocSame_(l.r.소재지, txs[0].assetLocation) && (!l.r.일자 || !txs[0].acquisitionDate || near(120)) : near(30);
+      var k = (l.r.일자 || '') + '|' + l.r.합계;
+      if (!locOk || lawSeen[k]) return;
+      lawSeen[k] = true; exp += l.r.합계; parts.push('법무사 소유권이전 ' + l.r.합계.toLocaleString('ko-KR') + '원(' + l.file + (l.r.소재지 ? '' : ', 소재지 없음 — 정산일 ' + l.r.일자 + '이 취득일 근처') + ')');
+    });
     if (exp) { txs[0].acquisitionExpenses = exp; evidence.push('취득 부대비용 합계 ' + exp.toLocaleString('ko-KR') + '원: ' + parts.join(', ')); }
   }
   if (acqs.length + lawyers.length && !(txs.length === 1 && txs[0].acquisitionExpenses)) evidence.push('취득세·법무사 서류 ' + (acqs.length + lawyers.length) + '건은 어느 거래 것인지 규칙으로 확정 못 해 넣지 않음 — 직접 확인');
@@ -24861,7 +24898,7 @@ function caseProcEvTypes_(label) {
   return null;
 }
 function caseProcParsed_(f, cache, canParse) {
-  const key = 'cpp9_' + f.id + '_' + f.modified; // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
+  const key = 'cpp10_' + f.id + '_' + f.modified; // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
   const hit = cache.get(key);
   if (hit) { try { return JSON.parse(hit); } catch (e) {} }
   if (!canParse) return null;
@@ -24878,7 +24915,8 @@ function caseProcParsed_(f, cache, canParse) {
       s.office = !!(p.result && !Array.isArray(p.result) && p.result.사무소발행);
       s.bd = caseProcBaseDateCands_(p);
       if (p.type === 'giftcontract' && p.result) { s.gk = p.result.재산종류 || ''; s.debt = !!p.result.부담부; }
-      if (p.type === 'registry' && p.result && p.result.docs) s.lien = p.result.docs.some(function (d) { return (d.소유권외 || []).some(function (x) { return !x.말소 && /근저당|전세권|질권|임차권|저당/.test(String(x.목적 || '')); }); });
+      if (p.type === 'registry' && p.result && p.result.docs) s.rk = p.result.docs.map(function (d) { return String(d.종류 || ''); }); // 토지·건물·집합건물
+      if (p.type === 'registry' && p.result && p.result.docs) s.lien =p.result.docs.some(function (d) { return (d.소유권외 || []).some(function (x) { return !x.말소 && /근저당|전세권|질권|임차권|저당/.test(String(x.목적 || '')); }); });
       if ((p.type === 'debtcert' && p.result && p.result.총잔액) || (p.type === 'inhquery' && p.result && p.result.채무합계)) s.debtDoc = true;
       try { s.loc = String((p.result && (p.result.소재지 || (p.result.docs && p.result.docs[0] && p.result.docs[0].소재지))) || '').slice(0, 80); } catch (e) {}
     }
@@ -24917,7 +24955,9 @@ function caseProcEvidence_(c) {
   let req = list.filter(function (e) { return e && e.source === 'requested'; });
   // 현금·예금 증여(증여계약서·사건분류로 판단)면 부동산 등기부·평가자료, 부담부가 아니면 채무인수 자료는 해당 없음 — 묻지 않는다(목록 자체는 고치지 않음)
   const gc = docs.filter(function (f) { return f.p && f.p.t === 'giftcontract'; })[0];
-  const cashGift = c.세목 === 'gift' && ((gc && gc.p.gk === '현금') || /현금|예금/.test(String(ov.사건분류 || '')));
+  // [2026.10.15] 계약서 없이 이체확인증·통장만 있고 증여 등기가 없으면 현금 증여(실사건: 부모 → 자녀 이체확인증 5장)
+  const cashGift = c.세목 === 'gift' && ((gc && gc.p.gk === '현금') || /현금|예금/.test(String(ov.사건분류 || ''))
+    || (!gc && docs.some(function (f) { return f.p && f.p.t === 'banktx'; }) && !docs.some(function (f) { return f.p && (f.p.bd || []).some(function (b) { return b.k === 'gift'; }); })));
   if (cashGift) {
     const na = req.filter(function (e) { return e.status !== '확보됨' && (/등기부|평가\s*자료|비상장|그\s*외\s*자산/.test(e.label) || (/채무\s*인수/.test(e.label) && !(gc && gc.p.debt))); });
     if (na.length) lines.push('현금 증여라 해당 없음(묻지 않음): ' + na.map(function (e) { return e.label; }).join(', '));
@@ -24929,6 +24969,23 @@ function caseProcEvidence_(c) {
     const naI = req.filter(function (e) { return e.status !== '확보됨' && noDebt && /채무\s*증빙|대출\s*잔액|부채/.test(e.label); });
     if (naI.length) lines.push('채무 없음 — 등기부 ' + regs.length + '건의 근저당·전세권 등이 모두 말소, 부채 서류 없음 → 해당 없음: ' + naI.map(function (e) { return e.label; }).join(', '));
     req = req.filter(function (e) { return naI.indexOf(e) === -1; });
+  }
+  // [2026.10.15] 양도 — 등기부가 모두 토지(주택·건물 없음)이고 처리개요 자산종류도 주택이 아니면 1세대1주택 판정용 서류(초본·가족관계·다른 주택)는 해당 없음
+  if (c.세목 === 'transfer') {
+    const rks = [].concat.apply([], docs.filter(function (f) { return f.p && f.p.t === 'registry'; }).map(function (f) { return f.p.rk || []; }));
+    const assetsT = (Array.isArray(ov.물건목록) && ov.물건목록.length ? ov.물건목록 : [ov]).map(function (a) { return String(a.assetType || ''); });
+    const landOnly = rks.length && rks.every(function (k) { return /토지/.test(k); }) && !assetsT.some(function (t) { return /house|presale/.test(t); });
+    if (landOnly) {
+      const naT = req.filter(function (e) { return e.status !== '확보됨' && /주민등록\s*초본|가족\s*관계|다른\s*주택|1세대\s*1주택/.test(e.label); });
+      if (naT.length) lines.push('토지 양도(등기부 ' + rks.length + '건 모두 토지)라 1세대1주택 판정 서류는 해당 없음(묻지 않음): ' + naT.map(function (e) { return e.label; }).join(', '));
+      req = req.filter(function (e) { return naT.indexOf(e) === -1; });
+    }
+  }
+  // [2026.10.15] 증여 10년 합산 — 처리개요 질문(「10년 안에 같은 증여자에게 받은 증여가 있나요?」)과 같은 내용이라 증빙 칸으로 또 묻지 않음(답이 정해지면 그 질문도 사라짐)
+  if (c.세목 === 'gift') {
+    const naG = req.filter(function (e) { return e.status !== '확보됨' && /10\s*년\s*이내/.test(e.label); });
+    if (naG.length) lines.push('10년 합산은 처리개요 질문 한 곳에서만 묻습니다: ' + naG.map(function (e) { return e.label; }).join(', '));
+    req = req.filter(function (e) { return naG.indexOf(e) === -1; });
   }
   const got = req.filter(function (e) { return e.status === '확보됨'; });
   if (req.length) lines.push('필요증빙 확보 ' + got.length + '/' + req.length);
@@ -25003,17 +25060,31 @@ function caseProcEvidence_(c) {
     if (hits.length) items.push(caseProcItem_('ev:' + (e.slotKey || e.label), 'check', '‘' + e.label + '’ — 폴더에 비슷한 서류가 있습니다: ' + hits.map(function (h) { return h.f.name; }).join(', ') + ' (증빙목록은 미확보)', ask));
     else items.push(caseProcItem_('ev:' + (e.slotKey || e.label), 'missing', '미확보: ' + e.label, ask));
   });
+  // [2026.10.15] ⚠ 질문은 이 세목의 세액 계산에 쓰는 서류 종류만 — 보도자료·건강보험 안내문·전세 보증보험증권·주민등록초본(상속) 같은
+  // 계산과 무관한(또는 다른 서류로 잘못 분류된) 파일의 ⚠까지 물어 신고 끝난 사건에도 질문이 10~20개씩 남았다.
+  const relevantT = CASEPROC_RELEVANT_TYPES_[c.세목];
   docs.forEach(function (f) {
     if (!f.p || !f.p.t || f.p.office || !(f.p.wn > 0)) return;
+    if (relevantT && relevantT.indexOf(f.p.t) === -1) return;
+    if (/보증\s*보험/.test(f.p.l || '')) return;
     // 상속 사건에서 상속 뒤 상속인이 낸 취득세·법무사·접수증·납부서는 상속세 계산 자료가 아님 — ⚠를 묻지 않음
     if (c.세목 === 'inheritance' && /^(acqtax|lawyerfee|receipt|payment)$/.test(f.p.t)) return;
     // 사망일 ⚠는 다른 서류(등기부 상속 원인일·분할협의서)로 확정된 날짜와 같으면 묻지 않음
     if (f.p.t === 'death' && (f.p.bd || []).some(function (b) { return b.d === c.기준일; }) && /^증빙/.test(String(((caseProcLoad_(c.id).filled || {}).기준일 || {}).src || ''))) return;
     items.push(caseProcItem_('file:' + f.id + ':' + f.modified, 'check', '‘' + f.name + '’(' + f.p.l + ') 자동 정리 결과에 ⚠확인필요 ' + f.p.wn + '곳', { mode: 'docok', fileId: f.id, name: f.name }, f.p.w.join('\n')));
   });
-  return { ok: true, lines: lines, items: items, files: pool.slice(0, 80).map(function (f) { return { id: f.id, name: f.name }; }) };
+  return { ok: true, lines: lines, items: items, files: pool.slice(0, 80).map(function (f) { return { id: f.id, name: f.name }; }),
+    srcDocs: docs.filter(function (f) { return f.p && f.p.t && !f.p.office; }).length, outDocs: outDocs.length, // 🧪 점검용: 원시서류(종류가 정리된 고객 서류) 수 · 발생문서 수
+    docTypes: docs.map(function (f) { return { name: f.name, t: (f.p && f.p.t) || '', l: (f.p && f.p.l) || '', wn: (f.p && f.p.wn) || 0 }; }) };
 }
 
+var CASEPROC_LAST_RF_ = null;
+// [2026.10.15] 세목별로 세액 계산 입력이 되는 서류 종류(docParseText_ type) — 이 밖의 종류는 ⚠확인필요를 질문으로 올리지 않는다(서류 목록·증빙 대조는 그대로)
+const CASEPROC_RELEVANT_TYPES_ = {
+  gift: ['giftcontract', 'banktx', 'appraisal', 'registry', 'family', 'pubprice', 'realprice', 'balance', 'debtcert', 'rent', 'lease', 'leasereport', 'bldledger', 'landledger', 'contract'],
+  inheritance: ['registry', 'appraisal', 'family', 'death', 'inhdivision', 'inhquery', 'funeralbill', 'funerallist', 'nichecontract', 'balance', 'debtcert', 'insurance', 'pubprice', 'realprice', 'rent', 'lease', 'leasereport', 'bldledger', 'landledger', 'carreg', 'cashreceipt', 'cardreceipt', 'giftcontract', 'banktx'],
+  transfer: ['contract', 'appraisal', 'dealreport', 'brokerdesc', 'registry', 'acqtax', 'lawyerfee', 'cashreceipt', 'cardreceipt', 'taxinvoice', 'receipt', 'pubprice', 'realprice', 'bldledger', 'landledger', 'resident', 'family', 'farmbiz', 'farmconfirm', 'farmledger', 'giftcontract', 'rent', 'lease']
+};
 // 3) 처리개요 — 빈 칸은 [확인]에서 값을 받아 채우고, 양도는 서류 규칙 정리(검산된 값)로 물건목록의 빈 칸을 채운다. 기준일은 증빙으로 확정.
 const CASEPROC_OV_REQUIRED_ = {
   transfer: [['trTransferorName', '양도인 성명', 'text']],
@@ -25071,12 +25142,14 @@ function caseProcOverview_(c) {
   if (c.세목 !== 'transfer') {
     let cc = c;
     if (c.세목 === 'gift' || c.세목 === 'inheritance') { cc = caseProcGiftInhFacts_(c, lines, items) || c; try { cc = caseProcSyncTaxpayer_(cc, lines) || cc; } catch (e) { lines.push('⚠ 납세자·사건명 맞추기 실패: ' + (e && e.message || e)); } }
+    if (c.세목 === 'gift') { try { cc = caseProcGiftClass_(cc, lines, items) || cc; } catch (e) { lines.push('⚠ 사건분류 판단 중 오류: ' + (e && e.message || e)); } }
     if (c.세목 === 'inheritance') { try { caseProcInhAssetItems_(cc, lines, items); } catch (e) { lines.push('⚠ 상속재산 정리 중 오류: ' + (e && e.message || e)); } }
     lines.push('처리개요 빈 칸 ' + items.filter(function (i) { return /^ov:/.test(i.id) && (i.kind === 'missing' || i.kind === 'judge'); }).length + '개');
     return { ok: true, lines: lines, items: items, case: cc };
   }
   if (!String(c.폴더ID || '').trim()) return { ok: true, lines: lines, items: items };
   const rf = tc_ruleTransferFacts_({ caseId: c.id });
+  CASEPROC_LAST_RF_ = { caseId: c.id, rf: rf }; // 🧪 정답지 점검이 같은 실행 안에서 필요경비·거래 목록을 다시 읽지 않고 쓰게
   if (!rf || !rf.ok) { lines.push('서류 규칙 정리 실패: ' + (rf && rf.error || '응답 없음')); return { ok: true, lines: lines, items: items }; }
   const txs = (rf.transactions || []).filter(function (t) { return t.transferPrice || t.acquisitionPrice || t.transferDate; });
   lines.push('서류 규칙 정리: 계약서 ' + rf.counts.계약서 + ' · 신고필증 ' + rf.counts.신고필증 + ' · 등기부 ' + rf.counts.등기부 + ' · 취득세 ' + rf.counts.취득세 + ' · 법무사 ' + rf.counts.법무사 + ' → 양도거래 ' + txs.length + '건');
@@ -25169,7 +25242,9 @@ function caseProcEvidenceBaseDates_(c) {
     const sm = caseProcParsed_(f, cache, false);
     (sm && sm.bd || []).forEach(function (b) {
       if (b.k !== kind) return;
-      if (who && b.who && norm(b.who).indexOf(who) === -1 && who.indexOf(norm(b.who)) === -1) return;
+      // [2026.10.15] 등기부 "상속" 원인일은 직전 소유자(피상속인)를 읽었을 때만 — 못 읽으면 다른 사람의 옛 상속(실사건: 2015년 상속 등기)을 상속개시일로 잡았다
+      if (b.via === '등기부 상속 원인일' && !b.who) return;
+      if (who && b.who &&norm(b.who).indexOf(who) === -1 && who.indexOf(norm(b.who)) === -1) return;
       cands.push(Object.assign({ file: f.name, fileId: f.id }, b));
     });
   });
@@ -25177,29 +25252,75 @@ function caseProcEvidenceBaseDates_(c) {
 }
 // 현금·예금 증여 — 증여계약서(금액·검산·증여자·수증자·계약일)와 은행 거래내역(이체일·금액·적요)으로 증여재산가액·증여일을 확정.
 // 증여일 = 상증령 §24 "인도한 날 또는 사실상 사용한 날" → 이체일이 있으면 그 날, 없으면 계약서 기준(계약일 — 이체내역 확보 시 대조).
+// [2026.10.15] 이름 비교 — 손글씨·사진 글자인식은 한 글자를 틀리게 읽는다(임세택→임세탁). exact가 아니면 같은 길이에서 한 글자까지 다른 것은 같은 사람으로 본다(성은 같아야 함)
+function caseProcNameLike_(a, b, exact) {
+  const norm = function (x) { return String(x || '').replace(/\([^)]*\)/g, '').replace(/[\s*]+/g, ''); };
+  a = norm(a); b = norm(b);
+  if (!a || !b) return false;
+  if (a === b || (a.length >= 2 && b.indexOf(a) !== -1) || (b.length >= 2 && a.indexOf(b) !== -1)) return true;
+  if (exact || a.length !== b.length || a.length < 3 || a[0] !== b[0]) return false;
+  let diff = 0; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) diff++;
+  return diff <= 1;
+}
 function caseProcCashGift_(c, parsed) {
   const ov = c.사건개요 || {};
-  const norm = function (x) { return String(x || '').replace(/\s+/g, ''); };
-  const gcs = parsed.filter(function (x) { return x.p.type === 'giftcontract'; });
+  const norm = function (x) { return String(x || '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ''); };
+  const like = caseProcNameLike_;
+  // [2026.10.15] 한 폴더에 여러 수증자의 계약서가 있다(실사건: 부부가 같은 날 각각 증여 — 남편 1.5억 계약서가 아내 사건 폴더에도 있어 아내 사건이 1.5억으로 계산됨,
+  // 형제 두 명의 계약서가 한 폴더). 사건 납세자(수증자)와 이름이 맞는 계약서만 쓰고, 다른 사람이 수증자인 계약서는 버린다. 맞는 것 중 금액 검산이 된 것을 먼저.
+  // 이름이 정확히 같은 서류가 하나라도 있으면 정확히 같은 것만(한 글자 차이 허용은 형제 이름 — 양지호·양지현 — 을 같은 사람으로 볼 수 있어 그때만 씀)
+  const who = [c.납세자 || ov.giftDoneeName].filter(function (x) { return norm(x).length >= 2; });
+  const names0 = [].concat(parsed.filter(function (x) { return x.p.type === 'giftcontract'; }).map(function (x) { return (x.p.result || {}).수증자; }),
+    [].concat.apply([], parsed.filter(function (x) { return x.p.type === 'banktx'; }).map(function (x) { return ((x.p.result || {}).거래 || []).map(function (g) { return g.받는이; }); })));
+  const exactAny = names0.some(function (n) { return who.some(function (w) { return caseProcNameLike_(w, n, true); }); });
+  const mine = function (n) { return who.some(function (w) { return like(w, n, exactAny); }); };
+  const gcsAll = parsed.filter(function (x) { return x.p.type === 'giftcontract'; });
+  let gcs = who.length ? gcsAll.filter(function (x) { return x.p.result && x.p.result.수증자 && mine(x.p.result.수증자); }) : gcsAll;
+  if (!gcs.length) gcs = gcsAll.filter(function (x) { return !(x.p.result && x.p.result.수증자); }); // 수증자를 못 읽은 계약서는 남김(다른 사람 것이라는 증거 없음)
+  const others = gcsAll.filter(function (x) { return gcs.indexOf(x) === -1; });
+  gcs.sort(function (a, b) { return (b.p.result.검산 === '일치' ? 1 : 0) - (a.p.result.검산 === '일치' ? 1 : 0) || (b.p.result.금액 ? 1 : 0) - (a.p.result.금액 ? 1 : 0); });
   const gc = gcs[0] ? Object.assign({ file: gcs[0].f.name }, gcs[0].p.result) : null;
-  const isCash = (gc && gc.재산종류 === '현금') || /현금|예금/.test(String(ov.사건분류 || ''));
-  const out = { isCash: !!isCash, contract: gc };
+  const banks = parsed.filter(function (x) { return x.p.type === 'banktx'; });
+  // 계약서가 없어도 이체확인증에 수증자가 받는 분으로 찍혀 있으면 현금 증여 자료(실사건: 아버지 → 자녀 이체확인증 5장, 계약서 없음)
+  const recv = [];
+  banks.forEach(function (x) { ((x.p.result || {}).거래 || []).forEach(function (g) { if (g.받는이 && mine(g.받는이)) recv.push(Object.assign({ file: x.f.name }, g)); }); });
+  const isCash = (gc && gc.재산종류 === '현금') || /현금|예금/.test(String(ov.사건분류 || '')) || (!gc && recv.length > 0 && !parsed.some(function (x) { return x.p.type === 'registry' && JSON.stringify(x.p.result || {}).indexOf('증여') !== -1; }));
+  const out = { isCash: !!isCash, contract: gc, otherContracts: others.map(function (x) { return x.f.name + '(수증자 ' + ((x.p.result && x.p.result.수증자) || '?') + ')'; }) };
   if (!isCash) return out;
-  const donee = norm(ov.giftDoneeName || (gc && gc.수증자) || c.납세자), donor = norm(ov.giftDonorName || (gc && gc.증여자));
+  const donee = norm(c.납세자 || ov.giftDoneeName || (gc && gc.수증자)), donor = norm((gc && gc.증여자) || ov.giftDonorName); // 서류(계약서)의 증여자가 처리개요 옛 값보다 먼저
   const amtSure = gc && gc.금액 && gc.검산 === '일치';
   // 은행 거래 — 수증자 계좌에 들어온 거래 중 증여자 이름이 적요에 있거나 계약서 금액과 같은 것
   let tx = null;
-  parsed.filter(function (x) { return x.p.type === 'banktx'; }).forEach(function (x) {
+  banks.forEach(function (x) {
     const r = x.p.result || {};
-    if (donee && r.예금주 && norm(r.예금주) !== donee) return;
+    if (donee && r.예금주 && !like(r.예금주, donee)) return;
     (r.거래 || []).forEach(function (g) {
-      const memoHit = donor && norm(g.내용 + g.적요).indexOf(donor) !== -1;
-      const amtHit = gc && gc.금액 && g.금액 === gc.금액;
+      if (g.받는이 && !mine(g.받는이)) return;
+      const memoHit = donor && (norm(g.내용 + g.적요).indexOf(donor) !== -1 || like(g.보낸이, donor));
+      // 통장 사본은 줄마다 금액을 못 짝지음 — 증여자 이름이 적힌 줄이 있고 계약서 금액이 그 통장에 있으면 그 금액으로
+      const amtHit = gc && gc.금액 && (g.금액 === gc.금액 || (g.금액 == null && memoHit && (r.금액목록 || []).indexOf(gc.금액) !== -1));
       if (!memoHit && !amtHit) return;
+      if (g.금액 == null && !amtHit) return;
       const score = (memoHit ? 2 : 0) + (amtHit ? 2 : 0);
-      if (!tx || score > tx.score) tx = Object.assign({ file: x.f.name, score: score, 예금주: r.예금주 }, g);
+      if (!tx || score > tx.score) tx = Object.assign({ file: x.f.name, score: score, 예금주: r.예금주 }, g, g.금액 == null ? { 금액: gc.금액 } : {});
     });
   });
+  // 계약서 없이 이체확인증만 — 보낸 사람이 한 사람(또는 처리개요 증여자)인 이체를 모두 더한다(같은 이체가 두 파일에 있으면 한 번)
+  if (!gc && !tx && recv.length) {
+    const senders = recv.map(function (g) { return norm(g.보낸이); }).filter(function (v, i, a) { return v && a.indexOf(v) === i; });
+    const from = donor ? senders.filter(function (s) { return like(s, donor); })[0] : (senders.length === 1 ? senders[0] : '');
+    if (from) {
+      const seen = {}, use = recv.filter(function (g) { const k = g.날짜 + ' ' + (g.시각 || '') + ' ' + g.금액; if (!like(g.보낸이, from) || seen[k]) return false; seen[k] = true; return true; });
+      const sum = use.reduce(function (a, g) { return a + g.금액; }, 0), last = use.map(function (g) { return g.날짜; }).sort().pop();
+      out.amount = sum; out.amountSure = true; out.donorFromTx = from; out.doneeFromTx = use[0].받는이;
+      out.amountSrc = '이체확인증 ' + use.length + '건 합계(' + use.map(function (g) { return g.날짜 + ' ' + g.금액.toLocaleString('ko-KR') + '원'; }).join(', ') + ' — ' + use.map(function (g) { return g.file; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(', ') + ')';
+      out.date = last; out.dateSure = use.every(function (g) { return g.날짜 === last; });
+      out.dateSrc = '이체확인증 ' + (use.length > 1 ? '마지막 이체일(' + use.length + '건 — 날짜가 다르면 각 이체일이 증여일, §47② 10년 합산)' : '이체일') + ' — 현금 인도일(상증령 §24)';
+      out.tx = null;
+      return out;
+    }
+    out.note = '이체확인증의 보낸 사람이 여러 명(' + senders.join(', ') + ') — 증여자를 정해야 합계를 낼 수 있음';
+  }
   out.tx = tx;
   if (tx && gc && gc.금액 && tx.금액 !== gc.금액) out.mismatch = '계약서 ' + gc.금액.toLocaleString('ko-KR') + '원 ≠ 이체 ' + tx.금액.toLocaleString('ko-KR') + '원(' + tx.file + ')';
   if (tx && (!gc || !gc.금액 || tx.금액 === gc.금액)) { out.amount = tx.금액; out.amountSrc = (gc ? '증여계약서(' + gc.file + ')' + (gc.검산 === '일치' ? ' 금액 검산 일치' : '') + ' · ' : '') + '이체내역(' + tx.file + ')'; out.amountSure = true; }
@@ -25350,7 +25471,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
     return out;
   };
   if (c.세목 === 'gift') {
-    const donee = ov.giftDoneeName || c.납세자 || '';
+    const donee = c.납세자 || ov.giftDoneeName || ''; // 사건 납세자(수증자)가 기준 — 처리개요 이름은 옛 값일 수 있음
     const gifts = [];
     byType('registry').forEach(function (x) {
       (x.p.result.docs || []).forEach(function (d) {
@@ -25378,19 +25499,53 @@ function caseProcGiftInhFacts_(c, lines, items) {
         add('giftDonorName', gc.증여자, '증여계약서(' + gc.file + ')', !!namesOk || nameHas([ov.giftDonorName], gc.증여자));
         add('giftDoneeName', gc.수증자, '증여계약서(' + gc.file + ')', !!namesOk || nameHas([ov.giftDoneeName, c.납세자], gc.수증자));
       }
+      if (cash.donorFromTx) add('giftDonorName', cash.donorFromTx, '이체확인증 보내는 분', true);
+      if (cash.doneeFromTx) add('giftDoneeName', cash.doneeFromTx, '이체확인증 받는 분', true);
       if (cash.amount) add('giftAmount', cash.amount, cash.amountSrc, cash.amountSure);
+      if (cash.otherContracts && cash.otherContracts.length) lines.push('다른 수증자의 증여계약서는 이 사건 계산에 쓰지 않음: ' + cash.otherContracts.join(', '));
+      if (cash.note) notes.push(cash.note);
       if (gc && !gc.부담부 && /일반/.test(String(ov.사건분류 || '')) && !((caseProcLoad_(c.id).filled || {}).사건분류)) caseProcRememberFill_(c.id, '사건분류', ov.사건분류, '증빙: 증여계약서(' + gc.file + ') — 현금 증여·부담부 문구 없음');
       caseProcPatch_(c.id, function (sv) { sv.cashGift = true; sv.cashDebt = !!(gc && gc.부담부); });
       lines.push('증여재산: 현금 ' + (cash.amount ? cash.amount.toLocaleString('ko-KR') + '원' : '(금액 미확인)') + ' — ' + (gc ? '증여계약서' + (gc.검산 === '일치' ? '(숫자·한글 금액 일치)' : '') : '증여계약서 없음') + (cash.tx ? ' · 이체내역 ' + cash.tx.날짜 + ' ' + cash.tx.금액.toLocaleString('ko-KR') + '원' : ' · 이체내역 없음') + (gc && !gc.부담부 ? ' · 부담부(채무인수) 문구 없음' : ''));
       if (cash.mismatch) items.push(caseProcItem_('ov:giftAmount:cashdiff:' + cash.mismatch.replace(/[^d]/g, '').slice(0, 20), 'check', '증여 금액이 서류끼리 다릅니다 — ' + cash.mismatch + '. 어느 금액이 맞나요?', { mode: 'choose', target: 'ov:giftAmount', input: 'money', label: '증여재산가액', cands: [{ v: String(gc.금액), src: '증여계약서' }, { v: String(cash.tx.금액), src: '이체내역' }] }));
     } else if (!gifts.length) lines.push('증여재산: 증여 등기가 있는 등기부가 폴더에 없습니다(현금·예금 증여면 증여계약서·이체내역으로 확인).');
-    const donor = ov.giftDonorName || (facts.giftDonorName && facts.giftDonorName[0].v) || '';
+    // [2026.10.15] 서류로 확정된 증여자가 있으면 그 이름으로 관계를 찾는다(처리개요의 옛 임시 이름 — 예: "임부친" — 으로 찾으면 관계를 못 찾음)
+    const donorSure = (facts.giftDonorName || []).filter(function (x) { return x.sure; }).map(function (x) { return x.v; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+    const donorList = [].concat(donorSure, (facts.giftDonorName || []).map(function (x) { return x.v; }), [ov.giftDonorName]).filter(function (v, i, a) { return v && a.indexOf(v) === i; });
+    const inFam = function (n) { return fams.some(function (x) { return ((x.p.result && x.p.result.가족) || []).some(function (q) { return nameHas([q.이름], n); }); }); };
+    const donor = donorList.filter(inFam)[0] || donorList[0] || ''; // 가족관계증명서에 실제로 있는 이름을 먼저
     if (donee && donor) {
       const r1 = relOf(donee, donor), r2 = relOf(donor, donee);
       const map1 = { 부: '직계존속(1촌, 부모 등→자녀)', 모: '직계존속(1촌, 부모 등→자녀)', 배우자: '배우자', 자녀: '직계비속(1촌, 자녀 등→부모)' };
       const map2 = { 자녀: '직계존속(1촌, 부모 등→자녀)', 배우자: '배우자', 부: '직계비속(1촌, 자녀 등→부모)', 모: '직계비속(1촌, 자녀 등→부모)' };
       if (r1) { const a = r1.split('|'); const rel = map1[a[0].replace('?', '')]; if (rel) add('giftRelation', rel, '가족관계증명서(' + a[1] + ', 수증자 기준 ' + a[0] + ')', a[0].indexOf('?') === -1); }
       else if (r2) { const b = r2.split('|'); const rel2 = map2[b[0].replace('?', '')]; if (rel2) add('giftRelation', rel2, '가족관계증명서(' + b[1] + ', 증여자 기준 ' + b[0] + ')', b[0].indexOf('?') === -1); }
+      else {
+        // [2026.10.15] 제3자(본인 = 수증자의 배우자 등)의 가족관계증명서에 증여자·수증자가 함께 있는 경우 — 실사건: 남편의 증명서에 부(증여자)·배우자(수증자)
+        //  → 시아버지→며느리 = 4촌 이내 인척 = 기타친족(§53①3호, 공제 1천만원). 계부·계모(직계존속의 배우자)는 직계존속(§53①2호), 조부모→손자녀는 2촌 이상.
+        fams.forEach(function (x) {
+          if ((facts.giftRelation || []).length) return;
+          const g = x.p.result && x.p.result.가족 || [];
+          const pos = function (n) { const q = g.filter(function (y) { return nameHas([y.이름], n); })[0]; return q ? q.관계 + (q.확인필요 ? '?' : '') : ''; };
+          const pd = pos(donor), pe = pos(donee);
+          if (!pd || !pe || /^본인/.test(pd) || /^본인/.test(pe)) return;
+          const unsure = /\?/.test(pd + pe), d0 = pd.replace('?', ''), e0 = pe.replace('?', '');
+          let rel = '';
+          if (/^(부|모)$/.test(d0) && e0 === '배우자') rel = '기타친족';                       // 배우자의 부모 → 며느리·사위(인척)
+          else if (d0 === '배우자' && /^(자녀)$/.test(e0)) rel = '직계존속(1촌, 부모 등→자녀)'; // 부모의 배우자(계부·계모)
+          else if (/^(부|모)$/.test(d0) && e0 === '자녀') rel = '직계존속(2촌 이상, 조부모 등→손자녀·세대생략)';
+          else if (d0 === '자녀' && /^(부|모)$/.test(e0)) rel = '직계비속(2촌 이상, 손자녀 등→조부모·세대생략)';
+          else if (d0 === '자녀' && e0 === '자녀') rel = '기타친족';                          // 형제자매(2촌 혈족)
+          if (rel) add('giftRelation', rel, '가족관계증명서(' + x.f.name + ', 본인 기준 증여자 ' + d0 + '·수증자 ' + e0 + ')', !unsure);
+        });
+      }
+    }
+    // [2026.10.15] 감정평가서 — 감정가액은 시가(§60⑤). 증여 등기 재산과 소재지가 맞고 금액 검산이 되면 확정(10억 초과는 2곳 이상 평균이어야 해 1곳뿐이면 후보로만)
+    const aprs = byType('appraisal').filter(function (x) { const r = x.p.result || {}; return r.감정평가액 && (!gifts.length || !r.소재지 || gifts.some(function (g) { return g.loc && tcLocSame_(g.loc, r.소재지); })); });
+    if (aprs.length) {
+      const vals = aprs.map(function (x) { return x.p.result.감정평가액; }), avg = Math.round(vals.reduce(function (a, b) { return a + b; }, 0) / vals.length);
+      const okAll = aprs.every(function (x) { return /^일치/.test(x.p.result.검산 || ''); });
+      add('giftAmount', avg, '감정평가서 ' + aprs.length + '곳' + (aprs.length > 1 ? ' 평균' : '') + '(' + aprs.map(function (x) { return x.f.name + ' ' + x.p.result.감정평가액.toLocaleString('ko-KR') + '원' + (x.p.result.기준시점 ? ', 기준시점 ' + x.p.result.기준시점 : ''); }).join(' / ') + ') — 시가(상증법 §60⑤)', okAll && (avg <= 1e9 || aprs.length >= 2));
     }
     // 평가 후보 — 공시가격(보충적 평가 §61)은 후보로만(시가·감정가·매매사례가 우선이라 판단 필요)
     byType('pubprice').forEach(function (x) {
@@ -25485,6 +25640,28 @@ function caseProcGiftInhFacts_(c, lines, items) {
 // [2026.10.14] 서류로 확정된 납세의무자(증여=수증자, 상속=피상속인)가 사건 납세자와 다르고, 사건 납세자가 비었거나 상속에서 고객명(의뢰인)으로
 // 잘못 들어가 있으면 → 납세자를 고치고 사건명·Drive 폴더명을 규칙("고객명(납세자)_세목_업무유형")대로(work_updateCase가 폴더ID 그대로 이름만 바꿈).
 // 사람이 넣은 다른 납세자는 건드리지 않는다(그 차이는 처리개요 질문으로 묻는다).
+// [2026.10.15] 증여 사건분류 — 상속과 같은 원칙: 특례·의제 유형마다 뒷받침 서류가 폴더에 없고, 증여재산·관계가 서류로 정해졌으면 "일반"
+// (세대생략은 관계로 정해짐, 10년 합산은 처리개요 질문 한 곳에서 따로 묻는다). 부담부는 계약서 채무인수 문구·살아 있는 근저당/전세가 있으면 판단 필요로 남김.
+function caseProcGiftClass_(c, lines, items) {
+  const ix = items.map(function (it) { return it.id; }).indexOf('ov:사건분류');
+  const ov = JSON.parse(JSON.stringify(c.사건개요 || {}));
+  if (ix === -1 || String(ov.사건분류 || '').trim() || !String(ov.giftAmount || '').trim() || !String(ov.giftRelation || '').trim()) return c;
+  const saved = caseProcLoad_(c.id), filled = saved.filled || {};
+  if (!(filled.giftAmount && filled.giftRelation)) return c; // 금액·관계가 서류로 확인된 때만
+  const names = caseProcFiles_(c).filter(function (x) { return !/^_/.test(x.name) && !caseProcIsOutputDoc_(x.name); }).map(function (x) { return x.name; }).join(' ');
+  const special = /명의\s*신탁|주식\s*등?\s*변동|재무\s*제표|주주\s*명부|사업\s*계획|정관|채무\s*인수|대출\s*승계|부채\s*증명/.test(names);
+  let debt = !!saved.cashDebt;
+  if (!saved.cashGift) { const cache = CacheService.getScriptCache(); caseProcFiles_(c).forEach(function (f) { if (!/pdf|^image\//.test(String(f.mimeType || ''))) return; const sm = caseProcParsed_(f, cache, false); if (sm && (sm.debt || (sm.t === 'registry' && sm.lien))) debt = true; }); }
+  if (special || debt) return c;
+  const cls = /2촌\s*이상/.test(String(ov.giftRelation)) && /^직계존속/.test(String(ov.giftRelation)) ? '세대생략증여(할증)' : '일반';
+  ov.사건분류 = cls;
+  const up = work_updateCase({ id: c.id, 사건개요: ov, 기대수정일: c.수정일 });
+  if (!(up && up.success !== false)) return c;
+  caseProcRememberFill_(c.id, '사건분류', cls, '증빙: 특례·의제 서류 없음(명의신탁·특정법인·창업·가업·채무인수 서류 없음), 증여재산·관계 서류 확인');
+  items.splice(ix, 1);
+  lines.push('✏ 사건분류 "' + cls + '" — 증여재산·관계가 서류로 확인되고 특례·의제·부담부를 뒷받침하는 서류가 없음(10년 합산은 따로 물음). 다르면 처리개요에서 고치세요.');
+  return up.case || Object.assign({}, c, { 사건개요: ov });
+}
 function caseProcSyncTaxpayer_(c, lines) {
   const field = WORK_TAXPAYER_FIELD_BY_SEMOK_[c.세목];
   if (!field) return c;
@@ -27695,17 +27872,35 @@ function docGiftContractParse_(text) {
   else if (/예\s*금|계\s*좌/.test(t)) r.재산종류 = '현금';
   var m = /증\s*여\s*자\s*[:：]?\s*([가-힣]{2,4}?)\s*(?:을|를|은|는|\(|"|“|,)/.exec(t); if (m) r.증여자 = m[1];
   m = /수\s*증\s*자\s*[:：]?\s*([가-힣]{2,4}?)\s*(?:을|를|은|는|\(|"|“|,)/.exec(t); if (m) r.수증자 = m[1];
+  // [2026.10.15] 당사자 표시가 "증여자 (부친)\n성명: ○○○" 표 형식인 계약서(실사건: 부동산 취득자금 현금 증여계약서)
+  if (!r.증여자) { m = /(?:^|\n)\s*증\s*여\s*자\s*(?:\([^)\n]{1,6}\))?\s*\n?\s*성\s*명\s*[:：]\s*([가-힣]{2,4})/.exec(t); if (m) r.증여자 = m[1]; }
+  if (!r.수증자) { m = /(?:^|\n)\s*수\s*증\s*자\s*(?:\([^)\n]{1,6}\))?\s*\n?\s*성\s*명\s*[:：]\s*([가-힣]{2,4})/.exec(t); if (m) r.수증자 = m[1]; }
   // 서명란 성명(갑·을) — 머리의 이름과 다르면 경고(손글씨 인식 차이일 수 있음)
   var signs = []; var sr = /성\s*명\s*[:：]\s*([가-힣]{2,4})/g, sm;
   while ((sm = sr.exec(t))) signs.push(sm[1]);
   if (signs.length >= 2) {
-    if (r.증여자 && signs[0] !== r.증여자) r.경고.push('서명란 갑 성명(' + signs[0] + ')이 머리의 증여자(' + r.증여자 + ')와 다르게 읽힘 — 손글씨 인식 확인');
-    if (r.수증자 && signs[1] !== r.수증자) r.경고.push('서명란 을 성명(' + signs[1] + ')이 머리의 수증자(' + r.수증자 + ')와 다르게 읽힘 — 손글씨 인식 확인');
+    // [2026.10.15] 한 글자만 다르면(손글씨 서명 글자인식 — 임종삼↔임종료) 같은 사람으로 보고 경고하지 않음
+    if (r.증여자 && signs[0] !== r.증여자 && !caseProcNameLike_(signs[0], r.증여자)) r.경고.push('서명란 갑 성명(' + signs[0] + ')이 머리의 증여자(' + r.증여자 + ')와 다르게 읽힘 — 손글씨 인식 확인');
+    if (r.수증자 && signs[1] !== r.수증자 && !caseProcNameLike_(signs[1], r.수증자)) r.경고.push('서명란 을 성명(' + signs[1] + ')이 머리의 수증자(' + r.수증자 + ')와 다르게 읽힘 — 손글씨 인식 확인');
   }
   m = /(?:₩|W|#|￦|\\)\s*\(?\s*(\d{1,3}(?:,\d{3})+|\d{5,})/.exec(t);
   if (m) r.금액 = Number(m[1].replace(/,/g, ''));
   m = /일\s*금\s*([영공일이삼사오육륙칠팔구십백천만억조\d,\s]{2,30}?)\s*원/.exec(t);
   if (m) r.한글금액 = docKrAmount_(m[1]);
+  // [2026.10.15] 글자인식이 "일금\n(# 100,000,000\n일억\n원정" 처럼 숫자 뒤에 한글 금액을 따로 줄로 내는 경우 — 숫자 금액 바로 뒤 60자 안의 한글 금액
+  if (r.금액 && r.한글금액 == null) {
+    var at = t.search(/(?:₩|W|#|￦|\\)\s*\(?\s*\d/);
+    var km = at >= 0 ? /(?:^|[^가-힣])([일이삼사오육칠팔구십백천만억조]{2,20})\s*\n?\s*원/.exec(t.slice(at, at + 80)) : null;
+    if (km) { var kv = docKrAmount_(km[1]); if (kv) r.한글금액 = kv; }
+  }
+  // [2026.10.15] 기호 없이 "실제 증여 가액(금 67,000,000 원)"처럼 증여가액 이름표가 붙은 금액 — 같은 금액이 이름표와 함께 두 곳 이상이면 검산 대신 일치로 본다
+  //  (총 매매가액·승계 보증금처럼 다른 "금 ○원"을 증여금액으로 잡지 않게 이름표가 붙은 것만)
+  if (!r.금액) {
+    var lab = /증\s*여\s*(?:가\s*액|금\s*액|할\s*금\s*액|재\s*산\s*가\s*액)(?!\s*내\s*역)(?:\s*\([^)\n]{0,8}\))?[^\d\n]{0,20}\n?\s*(?:금\s*)?(\d{1,3}(?:,\d{3})+)/g, lm, seenAmt = {};
+    while ((lm = lab.exec(t))) { var lv = Number(lm[1].replace(/,/g, '')); seenAmt[lv] = (seenAmt[lv] || 0) + 1; }
+    var keys = Object.keys(seenAmt);
+    if (keys.length === 1) { r.금액 = Number(keys[0]); if (seenAmt[keys[0]] >= 2) { r.한글금액 = r.금액; r.검산확인 = '증여가액 이름표가 붙은 같은 금액 ' + seenAmt[keys[0]] + '곳'; } }
+  }
   if (r.금액 && r.한글금액) r.검산 = r.금액 === r.한글금액 ? '일치' : '불일치 — 숫자 ' + r.금액.toLocaleString('ko-KR') + '원 ≠ 한글 ' + r.한글금액.toLocaleString('ko-KR') + '원';
   else if (r.금액 || r.한글금액) { r.금액 = r.금액 || r.한글금액; r.검산 = '한쪽만 읽힘'; }
   if (/^불일치/.test(r.검산)) r.경고.push('금액 ' + r.검산 + ' — 원문 확인');
@@ -27714,10 +27909,17 @@ function docGiftContractParse_(text) {
   if (m) { r.증여시기 = ymd(m[1], m[2], m[3]); if (m[4]) r.증여시기까지 = true; }
   m = /계\s*약\s*일\s*자?\s*[:：]?\s*(20\d{2})\s*[년.\-]\s*(\d{1,2})\s*[월.\-]\s*(\d{1,2})/.exec(t);
   if (m) r.계약일 = ymd(m[1], m[2], m[3]);
+  // [2026.10.15] "계약일" 이름표가 없으면 서명란(증여자·수증자 성명) 근처의 작성 날짜 — 계약서 끝의 "2026년 07월 30일"
+  if (!r.계약일) {
+    var tail = t.slice(Math.max(0, t.search(/보\s*관\s*한\s*다|서\s*명\s*날\s*인|각각\s*1\s*[부통]/)));
+    m = /(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(tail);
+    if (m && tail.length < t.length) { r.계약일 = ymd(m[1], m[2], m[3]); r.계약일출처 = '서명란 작성일'; }
+  }
   if (/계\s*좌[\s\S]{0,30}이\s*체|이체하는\s*방법/.test(t)) r.방법 = '계좌이체';
   else if (/현\s*금\s*으로\s*지급|직접\s*지급/.test(t)) r.방법 = '현금 지급';
   else if (/소유권\s*이전\s*등기/.test(t)) r.방법 = '소유권이전등기';
-  r.부담부 = /채\s*무\s*(?:를|을)?\s*인\s*수|부\s*담\s*부\s*증\s*여|보증금[\s\S]{0,20}(승계|인수)/.test(t);
+  // [2026.10.15] "채무인수형 부담부증여가 아님을 확인"처럼 부정하는 문구는 부담부가 아님(실사건: 승계 보증금을 뺀 차액만 현금 증여)
+  r.부담부 = /(채\s*무\s*(?:를|을)?\s*인\s*수|부\s*담\s*부\s*증\s*여|보증금[\s\S]{0,20}(승계|인수))(?![^.\n]{0,25}(아님|아니|없음|않))/.test(t.replace(/승계\s*임대\s*보증금을?\s*제외[^.\n]*/g, ''));
   r.서명날인 = /\(\s*인\s*\)|서명\s*날인/.test(t);
   if (!r.증여자 || !r.수증자) r.경고.push('증여자·수증자 이름을 읽지 못함 — 원문 확인');
   if (!r.금액 && r.재산종류 === '현금') r.경고.push('증여 금액을 읽지 못함');
@@ -27732,6 +27934,8 @@ function docGiftContractParse_(text) {
 // 은행 거래내역 출력물(입금증·거래내역조회 화면 인쇄) — 예금주·계좌·거래(날짜·내용·금액·적요·잔액). 엑셀·CSV 거래내역은 bankParseFile_.
 function docBankSlipParse_(text) {
   var t = String(text || '');
+  var tc = docTransferConfirmParse_(t); if (tc) return tc;
+  var pb = docPassbookParse_(t); if (pb) return pb;
   if (!/거\s*래\s*내\s*역|입\s*금\s*증|입\s*금\s*확\s*인/.test(t) || !/예\s*금\s*주/.test(t) || /잔\s*(액|고)\s*증\s*명/.test(t)) return null;
   if (!/(맡기신|찾으신|입금\s*액|출금\s*액|입금|출금)/.test(t)) return null;
   var r = { 종류: '은행 거래내역', 은행: '', 예금주: '', 계좌번호: '', 거래: [], 경고: [] };
@@ -27759,6 +27963,77 @@ function docBankSlipParse_(text) {
     + (r.거래.length ? '| 날짜 | 내용 | 금액 | 적요 | 잔액 |\n|---|---|---|---|---|\n' + r.거래.map(function (g) { return '| ' + [g.날짜, g.내용, won(g.금액), g.적요, won(g.잔액)].map(function (v) { return String(v).replace(/\|/g, '/'); }).join(' | ') + ' |'; }).join('\n') : '')
     + '\n\n- 입금·출금 칸 구분은 글자인식으로 확정하지 못함(적요·잔액으로 판단)' + (r.경고.length ? '\n' + r.경고.map(function (w) { return '- ⚠ ' + w; }).join('\n') : '');
   return { type: 'banktx', label: '은행 거래내역', result: r, md: md };
+}
+// [2026.10.15] 감정평가서(감정평가법인 발행) — 감정평가액(숫자 ↔ 한글 금액 검산 또는 표지·합계 두 곳 일치), 기준시점, 소재지, 의뢰인·소유자, 목적.
+// 상증법 §60⑤: 감정가액은 시가로 본다(기준금액 10억 이하는 1곳, 초과는 2곳 이상 평균).
+function docAppraisalParse_(text) {
+  var t = String(text || ''), head = t.slice(0, 600);
+  if (!/감\s*정\s*평\s*가\s*서|APPRAISAL\s*REPORT/i.test(head) || !/감\s*정\s*평\s*가\s*액/.test(t)) return null;
+  var r = { 종류: '감정평가서', 감정평가액: null, 한글금액: null, 검산: '', 기준시점: '', 소재지: '', 의뢰인: '', 소유자: '', 목적: '', 평가법인: '', 경고: [] };
+  var m = /감\s*정\s*평\s*가\s*액[\s\S]{0,60}?(?:金|금)\s*([영공일이삼사오육륙칠팔구십백천만억조\s]{2,30}?)\s*원\s*정?[\s\S]{0,10}?[₩W￦#\\]\s*([\d,]{5,})/.exec(t);
+  if (m) { r.한글금액 = docKrAmount_(m[1]); r.감정평가액 = Number(m[2].replace(/,/g, '')); }
+  var amts = {}, re = /(?:합\s*계|감\s*정\s*평\s*가\s*액)[^\d\n]{0,30}\n?[^\d\n]{0,10}([\d]{1,3}(?:,\d{3}){2,})/g, x;
+  while ((x = re.exec(t))) { var v = Number(x[1].replace(/,/g, '')); amts[v] = (amts[v] || 0) + 1; }
+  (t.match(/[₩#]\s*([\d]{1,3}(?:,\d{3}){2,})/g) || []).forEach(function (a) { var v = Number(a.replace(/[^\d]/g, '')); amts[v] = (amts[v] || 0) + 1; });
+  if (!r.감정평가액) { var ks = Object.keys(amts).sort(function (a, b) { return amts[b] - amts[a]; }); if (ks.length) r.감정평가액 = Number(ks[0]); }
+  if (r.감정평가액 && r.한글금액) r.검산 = r.감정평가액 === r.한글금액 ? '일치' : '불일치';
+  else if (r.감정평가액 && (amts[r.감정평가액] || 0) >= 2) r.검산 = '일치(같은 금액 ' + amts[r.감정평가액] + '곳)';
+  else if (r.감정평가액) r.검산 = '한쪽만 읽힘';
+  if (!/^일치/.test(r.검산)) r.경고.push('감정평가액 ' + (r.감정평가액 ? r.감정평가액.toLocaleString('ko-KR') + '원 ' : '') + '검산 안 됨 — 원문 확인');
+  m = /기\s*준\s*시\s*점[\s\S]{0,120}?(20\d{2})[.\-년]\s*(\d{1,2})[.\-월]\s*(\d{1,2})/.exec(t); if (m) r.기준시점 = docYmdKr_(m[1], m[2], m[3]);
+  m = /(?:REPORT|감\s*정\s*평\s*가\s*서)\s*\n+\s*((?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)[^\n]{4,120})/.exec(t); if (m) r.소재지 = m[1].replace(/\s*\(구분\s*$/, '').replace(/\s+/g, ' ').trim();
+  m = /의\s*뢰\s*인\s*\n?\s*[:：]?\s*\n?\s*([가-힣]{2,5})/.exec(t); if (m) r.의뢰인 = m[1];
+  m = /소\s*유\s*자\s*\n?\s*(?:감정평가\s*\n)?\s*([가-힣]{2,5})/.exec(t); if (m && !/감정|대상/.test(m[1])) r.소유자 = m[1];
+  m = /감\s*정\s*평\s*가\s*\n?\s*목\s*적\s*\n?\s*([^\n]{2,30})/.exec(t); if (m) r.목적 = m[1].trim();
+  m = /\(주\)\s*([가-힣]{2,10}감정평가법인)|([가-힣]{2,10}감정평가법인)/.exec(t); if (m) r.평가법인 = m[1] || m[2];
+  var md = '### 감정평가서\n\n' + docMdTable_([['평가법인', r.평가법인], ['소재지', r.소재지], ['감정평가액', r.감정평가액 ? r.감정평가액.toLocaleString('ko-KR') + '원' + (/^일치/.test(r.검산) ? ' ✓(' + r.검산 + ')' : ' ⚠') : ''], ['기준시점', r.기준시점], ['의뢰인', r.의뢰인], ['소유자', r.소유자], ['목적', r.목적]])
+    + (r.경고.length ? '\n\n' + r.경고.map(function (w) { return '- ⚠ ' + w; }).join('\n') : '') + '\n\n- 참고: 감정가액은 상증법 §60⑤에 따라 시가로 봄(기준금액 10억 초과는 2곳 이상 평균), 감정평가 수수료는 §25 공제(5백만원 한도)';
+  return { type: 'appraisal', label: '감정평가서', result: r, md: md };
+}
+// [2026.10.15] 이체확인증(증권·은행 앱 출력) — 한 파일에 여러 장. 장마다 "거래일시 YYYY.MM.DD hh:mm:ss … 보내는분 ○ 받는분 ○ 이체금액 ○".
+// 글자인식이 칸 순서를 섞어도(이체금액 이름표 뒤가 다른 칸) 그 장의 첫 쉼표 금액이 이체금액이다(계좌번호는 '-'라 금액으로 안 잡힘).
+// 같은 이체가 두 파일에 겹쳐 있으면(목록 장 + 낱장) 거래일시·금액으로 한 번만 센다 — 합산은 쓰는 쪽(caseProcCashGift_)에서 파일을 모아서.
+function docTransferConfirmParse_(t) {
+  if (!/이\s*체\s*확\s*인\s*증|이\s*체\s*내\s*역\s*정\s*보/.test(t) || !/보\s*내\s*는\s*분/.test(t) || !/받\s*는\s*분/.test(t)) return null;
+  var re = /거\s*래\s*일\s*시[\s\S]{0,30}?(20\d{2})[.\-](\d{2})[.\-](\d{2})\s+(\d{1,2}:\d{2}(?::\d{2})?)/g, x, starts = [];
+  while ((x = re.exec(t))) starts.push({ at: x.index, d: x[1] + '-' + x[2] + '-' + x[3], tm: x[4] });
+  if (!starts.length) return null;
+  var r = { 종류: '이체확인증', 은행: '', 예금주: '', 계좌번호: '', 거래: [], 경고: [], 이체확인증: true };
+  var seen = {};
+  starts.forEach(function (st, i) {
+    var seg = t.slice(st.at, i + 1 < starts.length ? starts[i + 1].at : Math.min(t.length, st.at + 900));
+    var from = /보\s*내\s*는\s*분\s*\n*\s*([가-힣]{2,5})/.exec(seg), to = /받\s*는\s*분\s*\n*\s*([가-힣]{2,5})/.exec(seg);
+    var am = /이\s*체\s*금\s*액\s*\n*\s*(\d{1,3}(?:,\d{3})+)/.exec(seg) || /(\d{1,3}(?:,\d{3})+)/.exec(seg);
+    if (!am || !to) return;
+    var amt = Number(am[1].replace(/,/g, '')), k = st.d + ' ' + st.tm + ' ' + amt;
+    if (seen[k]) return; seen[k] = true;
+    var memo = /받\s*는\s*[통동]\s*장\s*메\s*모\s*\n*\s*([^\n]{1,20})/.exec(seg);
+    r.거래.push({ 날짜: st.d, 시각: st.tm, 내용: '이체' + (from ? ' ' + from[1] : ''), 금액: amt, 잔액: null, 적요: memo ? memo[1].trim() : '', 보낸이: from ? from[1] : '', 받는이: to[1], 입금: true });
+  });
+  if (!r.거래.length) return null;
+  var tos = r.거래.map(function (g) { return g.받는이; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+  if (tos.length === 1) r.예금주 = tos[0];
+  var won = function (n) { return Number(n).toLocaleString('ko-KR') + '원'; };
+  var md = '### 이체확인증\n\n| 거래일시 | 보낸 분 | 받는 분 | 이체금액 | 받는 통장 메모 |\n|---|---|---|---|---|\n'
+    + r.거래.map(function (g) { return '| ' + [g.날짜 + ' ' + g.시각, g.보낸이, g.받는이, won(g.금액), g.적요].map(function (v) { return String(v).replace(/\|/g, '/'); }).join(' | ') + ' |'; }).join('\n');
+  return { type: 'banktx', label: '이체확인증', result: r, md: md };
+}
+// [2026.10.15] 통장 사본(거래하신 내용 — 맡기신 금액·찾으신 금액). 글자인식이 표를 섞어 거래 줄과 금액 칸을 짝짓지 못한다 →
+// 거래 줄은 날짜(YYMMDD, 앞에 줄번호가 붙음)·내용만, 금액은 문서에 나온 금액 목록으로 둔다. 쓰는 쪽은 "증여자 이름이 적힌 거래 줄"의 날짜와
+// "계약서 금액이 통장에 있음"을 함께 볼 때만 이체로 인정한다(금액을 지어내지 않음).
+function docPassbookParse_(t) {
+  if (!/거\s*래\s*하\s*신\s*내\s*용|맡\s*기\s*신\s*금\s*액/.test(t) || !/찾\s*으\s*신/.test(t)) return null;
+  var r = { 종류: '통장 사본', 은행: '', 예금주: '', 계좌번호: '', 거래: [], 금액목록: [], 경고: [], 통장: true };
+  var m = /(신한|국민|우리|하나|농협|기업|SC제일|씨티|카카오|토스|케이|수협|부산|대구|경남|광주|전북|제주|새마을|신협|우체국)\s*(은행|뱅크)?/.exec(t); if (m) r.은행 = m[1] + (m[2] || '');
+  m = /(\d{3,6}-\d{2,6}-\d{3,8})(?:\([\d-]+\))?\s*([가-힣]{2,5})/.exec(t); if (m) { r.계좌번호 = m[1]; r.예금주 = m[2]; }
+  var re = /(?:^|\s)(\d{0,2}?)(2\d)(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(?=[A-Z0-9]{0,3}\s|[A-Z]{1,3}|\s|$)\s*([^\s\d*\\]{0,6})?\s*([가-힣][가-힣()]{1,14})?/g, x;
+  while ((x = re.exec(t))) r.거래.push({ 날짜: '20' + x[2] + '-' + x[3] + '-' + x[4], 내용: [x[5] || '', x[6] || ''].join(' ').trim(), 금액: null, 잔액: null, 적요: '' });
+  (t.match(/\d{1,3}(?:[.,]\d{3})+/g) || []).forEach(function (a) { var v = Number(a.replace(/[.,]/g, '')); if (v >= 1000 && r.금액목록.indexOf(v) === -1) r.금액목록.push(v); });
+  if (!r.거래.length) return null;
+  r.경고.push('통장 사본은 거래 줄과 금액 칸을 글자인식으로 짝짓지 못함 — 계약서 금액·증여자 이름이 함께 있을 때만 이체로 봄');
+  var md = '### 통장 사본' + (r.은행 ? '(' + r.은행 + ')' : '') + '\n\n| 항목 | 내용 |\n|---|---|\n| 예금주 | ' + (r.예금주 || '') + ' |\n| 계좌번호 | ' + (r.계좌번호 || '') + ' |\n\n| 날짜 | 내용 |\n|---|---|\n'
+    + r.거래.map(function (g) { return '| ' + g.날짜 + ' | ' + String(g.내용).replace(/\|/g, '/') + ' |'; }).join('\n') + '\n\n- 참고: ' + r.경고[0];
+  return { type: 'banktx', label: '통장 사본', result: r, md: md };
 }
 // =========================================================
 // [2026.10.14] 상속 사건 서류 자동 정리(토큰 0) — 실제 사건 서류의 글자인식 원문으로 맞춤
@@ -27906,6 +28181,8 @@ function docParseText_(text) {
   // [2026.10.10] 첫머리에 계약서·신고필증·확인설명서·확정일자 제목이 있으면 거래 서류 — 본문에 "토지대장·등기사항증명서" 같은
   // 첨부서류 이름이 들어 있어도 대장·등기부로 오인하지 않게 맨 먼저 본다(제목이 없으면 아래 기존 순서대로)
   if (docDealStrong_(text)) { var deal0 = docDealParseText_(text); if (deal0) return deal0; }
+  // [2026.10.15] 감정평가서 — 본문의 "집합건축물대장·등기사항전부증명서" 출처 낱말 때문에 대장으로 잘못 분류되던 것(실사건: 증여 아파트 감정평가서)
+  var apr = docAppraisalParse_(text); if (apr) return apr;
   var ldt0 = ldDetect_(text); // 건축물대장·토지대장은 등기부(표제부 낱말)로 오인되기 전에 먼저
   if (ldt0) { var lr0 = ldt0 === 'bldledger' ? ldParseBuilding_(text) : ldParseLand_(text); return { type: ldt0, label: lr0.종류, result: lr0, md: ldToMarkdown_(ldt0, lr0) }; }
   var reg = registryParse(text);
