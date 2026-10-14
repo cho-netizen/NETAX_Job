@@ -3840,6 +3840,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'tc_rule_inheritance_facts') return jsonResponse(tc_ruleInheritanceFacts_(body)); // 상속세 자동채우기 규칙 먼저(토큰 0)
   if (body.action === 'case_proc') return jsonResponse(caseProc_(body)); // '이 사건 처리하자' — 처리탭 도구로 단계별 점검(토큰 0)
   if (body.action === 'answerkey_run') return jsonResponse(answerKeyRun_(body)); // 🧪 정답지 점검(토큰 0, AnswerKey.js)
+  if (body.action === 'taxpayer_bulk_fix') return jsonResponse(taxpayerBulkFix_(body)); // 🏷 납세자·사건명 일괄 정리(미리보기/적용, TaxpayerFix.js)
   if (body.action === 'answerkey_last') return jsonResponse(answerKeyLast_());
   if (body.action === 'answerkey_get') return jsonResponse(answerKeyGet_(body));
   if (body.action === 'answerkey_save') return jsonResponse(answerKeySave_(body));
@@ -22897,6 +22898,20 @@ function work_updateCase(params) {
         return { success: false, conflict: true, message: '다른 화면(또는 다른 사람)이 방금 먼저 저장해서, 지금 보고 있는 내용이 최신이 아닙니다. 화면을 최신 내용으로 새로고침했습니다 — 방금 입력하신 내용은 반영되지 않았을 수 있으니 확인 후 다시 시도해주세요.', case: work_readRow_(col, row) };
       }
     }
+    // [2026.10.14] 세무사님 지시 — 의뢰인만 알던 때 만든 사건명·폴더명을, 처리 중 납세자가 확인되면 바로 "고객명(납세자)_세목_업무유형"으로.
+    // 처리개요의 납세의무자 칸(양도인·수증자·피상속인)을 이번에 바꿔 저장했고, 사건 납세자가 비었거나 상속에서 고객명(의뢰인)으로 잘못 들어가 있으면 납세자도 같이 바꾼다.
+    if (params.사건개요 !== undefined && params.납세자 === undefined) {
+      try {
+        const tf = WORK_TAXPAYER_FIELD_BY_SEMOK_[params.세목 || row[col.세목]];
+        let newOv = params.사건개요; if (typeof newOv === 'string') newOv = JSON.parse(newOv || '{}');
+        let oldOv = {}; try { oldOv = JSON.parse(row[col.사건개요] || '{}') || {}; } catch (e0) { oldOv = {}; }
+        const nv = tf && newOv ? String(newOv[tf] || '').replace(/\([^)]*\)/g, '').trim() : '';
+        const ov0 = tf ? String(oldOv[tf] || '').replace(/\([^)]*\)/g, '').trim() : '';
+        const curTp = String(row[col.납세자] || '').trim(), cust = String(row[col.고객명] || '').trim();
+        const wrongTp = !curTp || ((params.세목 || row[col.세목]) === 'inheritance' && curTp === cust) || curTp === ov0;
+        if (nv && nv !== ov0 && nv !== curTp && wrongTp) params.납세자 = nv;
+      } catch (e) { /* 납세자 동기화 실패해도 저장은 계속 */ }
+    }
     const wasCompleted = row[col.상태] === '완료'; // 아래서 덮어쓰기 전에 미리 기억해둔다
     const oldSemok = row[col.세목]; // 세목이 실제로 바뀌었는지 판단하려고 덮어쓰기 전에 기억해둔다
     ['고객명', '사건명', '담당자', '상태', '납세자', '개요', '처리방향', '처리대상', 'my_report_id'].forEach(function (key) {
@@ -25055,7 +25070,7 @@ function caseProcOverview_(c) {
   if (c.세목 === 'gift' || c.세목 === 'inheritance') caseProcBaseDateCheck_(c, ov, lines, items);
   if (c.세목 !== 'transfer') {
     let cc = c;
-    if (c.세목 === 'gift' || c.세목 === 'inheritance') cc = caseProcGiftInhFacts_(c, lines, items) || c;
+    if (c.세목 === 'gift' || c.세목 === 'inheritance') { cc = caseProcGiftInhFacts_(c, lines, items) || c; try { cc = caseProcSyncTaxpayer_(cc, lines) || cc; } catch (e) { lines.push('⚠ 납세자·사건명 맞추기 실패: ' + (e && e.message || e)); } }
     if (c.세목 === 'inheritance') { try { caseProcInhAssetItems_(cc, lines, items); } catch (e) { lines.push('⚠ 상속재산 정리 중 오류: ' + (e && e.message || e)); } }
     lines.push('처리개요 빈 칸 ' + items.filter(function (i) { return /^ov:/.test(i.id) && (i.kind === 'missing' || i.kind === 'judge'); }).length + '개');
     return { ok: true, lines: lines, items: items, case: cc };
@@ -25391,7 +25406,11 @@ function caseProcGiftInhFacts_(c, lines, items) {
   } else {
     const deaths = byType('death').filter(function (x) { return x.p.result && x.p.result.성명; });
     deaths.forEach(function (x) { add('ihDeceasedName', x.p.result.성명, '사망 서류(' + x.f.name + ')', deaths.length === 1 && !x.p.result.사망일확인필요); });
-    const dec = ov.ihDeceasedName || (facts.ihDeceasedName && facts.ihDeceasedName[0].v) || c.납세자 || '';
+    // [2026.10.14] 피상속인 — 사망진단서 성명을 못 읽어도 "본인 사망"이 적힌 가족관계증명서·분할협의서의 피상속인으로 확정(납세자를 의뢰인 이름으로 잘못 짐작하지 않게)
+    fams.forEach(function (x) { const me = ((x.p.result && x.p.result.가족) || []).filter(function (q) { return q.관계 === '본인' && q.사망 && q.이름; })[0]; if (me) add('ihDeceasedName', norm(me.이름), '가족관계증명서(' + x.f.name + ', 본인 사망)', !me.확인필요); });
+    byType('inhdivision').forEach(function (x) { if (x.p.result && x.p.result.피상속인) add('ihDeceasedName', x.p.result.피상속인, '상속재산분할협의서(' + x.f.name + ')', true); });
+    const decs = (facts.ihDeceasedName || []).filter(function (x) { return x.sure; }).map(function (x) { return norm(x.v); }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+    const dec = ov.ihDeceasedName || (decs.length === 1 ? decs[0] : '') || (facts.ihDeceasedName && facts.ihDeceasedName[0].v) || c.납세자 || '';
     fams.forEach(function (x) {
       const g = x.p.result && x.p.result.가족 || [];
       const self = g.filter(function (q) { return q.관계 === '본인'; })[0];
@@ -25462,6 +25481,24 @@ function caseProcGiftInhFacts_(c, lines, items) {
   }
   lines.push('⚠ 처리개요를 채우지 못했습니다: ' + ((up && up.message) || '저장 실패'));
   return c;
+}
+// [2026.10.14] 서류로 확정된 납세의무자(증여=수증자, 상속=피상속인)가 사건 납세자와 다르고, 사건 납세자가 비었거나 상속에서 고객명(의뢰인)으로
+// 잘못 들어가 있으면 → 납세자를 고치고 사건명·Drive 폴더명을 규칙("고객명(납세자)_세목_업무유형")대로(work_updateCase가 폴더ID 그대로 이름만 바꿈).
+// 사람이 넣은 다른 납세자는 건드리지 않는다(그 차이는 처리개요 질문으로 묻는다).
+function caseProcSyncTaxpayer_(c, lines) {
+  const field = WORK_TAXPAYER_FIELD_BY_SEMOK_[c.세목];
+  if (!field) return c;
+  const f = ((caseProcLoad_(c.id).filled) || {})[field];
+  const v = String(((c.사건개요 || {})[field]) || '').replace(/\([^)]*\)/g, '').trim();
+  if (!v || !f || String(f.v || '').replace(/\([^)]*\)/g, '').trim() !== v || !/(서류|등기부|가족관계|계약서|사망|분할|증빙|이체)/.test(String(f.src || ''))) return c;
+  const cur = String(c.납세자 || '').trim(), cust = String(c.고객명 || '').trim();
+  if (cur === v) return c;
+  if (cur && !(c.세목 === 'inheritance' && cur === cust)) return c;
+  const log = (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: '[사건처리] 납세자 ' + (cur || '(빈칸)') + ' → ' + v + ' (' + String(f.src).slice(0, 80) + ') — 사건명·폴더명을 규칙대로 맞춤(이전 사건명 ' + (c.사건명 || '') + ')', dueDate: '' }]);
+  const up = work_updateCase({ id: c.id, 납세자: v, 작업일지: log });
+  if (!(up && up.success !== false)) { lines.push('⚠ 납세자를 ' + v + '(으)로 바꾸지 못했습니다: ' + ((up && up.message) || '저장 실패')); return c; }
+  lines.push('✏ 납세자 ' + (cur || '(빈칸)') + ' → ' + v + ' (' + f.src + ') — 사건명·폴더명: ' + (c.사건명 || '') + ' → ' + ((up.case && up.case.사건명) || ''));
+  return up.case || c;
 }
 // 상속 — 서류 규칙만으로 상속세 계산 입력(피상속인·개시일·상속인·상속재산 평가 후보·금융재산·장례비·봉안시설) 모으기. AI 없음.
 // 평가가 판단인 것(아파트 시가 vs 기준시가, 부부 봉안단 몫, 지출표 vs 영수증)은 후보로만 내고 세무사님 선택(saved.ihChoices)을 쓴다.
