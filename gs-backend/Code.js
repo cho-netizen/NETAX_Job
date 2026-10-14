@@ -24704,7 +24704,7 @@ function caseProc_(body) {
     if (body.step === 'apply') return caseProcApply_(c, body);
     if (body.step === 'draft') return caseProcDraft_(c);
     if (body.step === 'savePdf') return caseProcSavePdf_(c, body);
-    if (body.step === 'status') return caseProcStatus_(c);
+    if (body.step === 'status') return caseProcStatus_(c, body);
   } catch (e) {
     return { error: '이 단계를 처리하지 못했습니다: ' + (e && e.message || e) };
   }
@@ -24723,6 +24723,20 @@ function caseProcLoad_(caseId) {
   try { const f = caseProcFile_(caseId, false); return f ? (JSON.parse(f.getBlob().getDataAsString('UTF-8') || '{}') || {}) : {}; } catch (e) { return {}; }
 }
 function caseProcStore_(caseId, saved) { const f = caseProcFile_(caseId, true); if (f) f.setContent(JSON.stringify(saved)); }
+// [2026.10.14] 결정 파일은 이 함수로만 고친다 — 잠금 안에서 최신 내용을 읽어 고치고 바로 쓴다(동시에 도는 단계끼리 덮어쓰기 방지)
+function caseProcPatch_(caseId, mutate) {
+  const lock = LockService.getUserLock();
+  lock.waitLock(20000);
+  try {
+    const f = caseProcFile_(caseId, true);
+    if (!f) return null;
+    let saved = {};
+    try { saved = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '{}') || {}; } catch (e) { saved = {}; }
+    const out = mutate(saved);
+    f.setContent(JSON.stringify(saved));
+    return out === undefined ? saved : out;
+  } finally { lock.releaseLock(); }
+}
 function caseProcToday_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'); }
 function caseProcFiles_(c) {
   const out = [];
@@ -25175,10 +25189,7 @@ function caseProcReferenceDocs_(c) {
 // 확정한 처리개요 값과 출처 기억 — 반영 현황표의 "출처", 추정값 재질문 방지
 function caseProcRememberFill_(caseId, key, value, src) {
   try {
-    const saved = caseProcLoad_(caseId);
-    saved.filled = saved.filled || {};
-    saved.filled[key] = { v: String(value == null ? '' : value), src: String(src || '').slice(0, 120), at: caseProcToday_() };
-    caseProcStore_(caseId, saved);
+    caseProcPatch_(caseId, function (saved) { saved.filled = saved.filled || {}; saved.filled[key] = { v: String(value == null ? '' : value), src: String(src || '').slice(0, 120), at: caseProcToday_() }; });
   } catch (e) {}
 }
 // 사건 폴더 서류 전부를 규칙으로 정리한 결과(글자는 6시간 기억분 — 2단계에서 이미 읽음). 서류 사실을 모을 때 쓴다.
@@ -25246,6 +25257,8 @@ function caseProcGiftInhFacts_(c, lines, items) {
         add('giftDoneeName', gc.수증자, '증여계약서(' + gc.file + ')', !!namesOk || nameHas([ov.giftDoneeName, c.납세자], gc.수증자));
       }
       if (cash.amount) add('giftAmount', cash.amount, cash.amountSrc, cash.amountSure);
+      if (gc && !gc.부담부 && /일반/.test(String(ov.사건분류 || '')) && !((caseProcLoad_(c.id).filled || {}).사건분류)) caseProcRememberFill_(c.id, '사건분류', ov.사건분류, '증빙: 증여계약서(' + gc.file + ') — 현금 증여·부담부 문구 없음');
+      caseProcPatch_(c.id, function (sv) { sv.cashGift = true; sv.cashDebt = !!(gc && gc.부담부); });
       lines.push('증여재산: 현금 ' + (cash.amount ? cash.amount.toLocaleString('ko-KR') + '원' : '(금액 미확인)') + ' — ' + (gc ? '증여계약서' + (gc.검산 === '일치' ? '(숫자·한글 금액 일치)' : '') : '증여계약서 없음') + (cash.tx ? ' · 이체내역 ' + cash.tx.날짜 + ' ' + cash.tx.금액.toLocaleString('ko-KR') + '원' : ' · 이체내역 없음') + (gc && !gc.부담부 ? ' · 부담부(채무인수) 문구 없음' : ''));
       if (cash.mismatch) items.push(caseProcItem_('ov:giftAmount:cashdiff:' + cash.mismatch.replace(/[^d]/g, '').slice(0, 20), 'check', '증여 금액이 서류끼리 다릅니다 — ' + cash.mismatch + '. 어느 금액이 맞나요?', { mode: 'choose', target: 'ov:giftAmount', input: 'money', label: '증여재산가액', cands: [{ v: String(gc.금액), src: '증여계약서' }, { v: String(cash.tx.금액), src: '이체내역' }] }));
     } else if (!gifts.length) lines.push('증여재산: 증여 등기가 있는 등기부가 폴더에 없습니다(현금·예금 증여면 증여계약서·이체내역으로 확인).');
@@ -25329,15 +25342,13 @@ function caseProcGiftInhFacts_(c, lines, items) {
       items.push(caseProcItem_('ov:' + key + ':est:' + digits(cur), 'check', '「' + sp[1] + '」 ' + Number(digits(cur)).toLocaleString('ko-KR') + '원은 의뢰서·처리개요의 추정값입니다(증빙으로 확인 안 됨) — 이 값으로 확정할까요?', ask));
     }
   });
-  if (confirms.length) { const sv0 = caseProcLoad_(c.id); sv0.filled = sv0.filled || {}; confirms.forEach(function (x) { sv0.filled[x.key] = { v: x.v, src: x.src, at: caseProcToday_() }; }); caseProcStore_(c.id, sv0); }
+  if (confirms.length) caseProcPatch_(c.id, function (sv0) { sv0.filled = sv0.filled || {}; confirms.forEach(function (x) { sv0.filled[x.key] = { v: x.v, src: x.src, at: caseProcToday_() }; }); });
   if (!fills.length) return c;
   const log = (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: '[사건처리] 서류로 처리개요 채움: ' + fills.map(function (x) { return x.label + ' ' + x.v + '(' + x.src + ')'; }).join(', ').slice(0, 500), dueDate: '' }]);
   const up = work_updateCase({ id: c.id, 사건개요: ov, 작업일지: log, 기대수정일: c.수정일 });
   if (up && up.success !== false) {
     lines.push('✏ 서류로 처리개요 채움: ' + fills.map(function (x) { return x.label + ' ' + x.v + ' (' + x.src + ')'; }).join(', '));
-    const sv = caseProcLoad_(c.id); sv.filled = sv.filled || {};
-    fills.forEach(function (x) { sv.filled[x.key] = { v: x.v, src: x.src, at: caseProcToday_() }; });
-    caseProcStore_(c.id, sv);
+    caseProcPatch_(c.id, function (sv) { sv.filled = sv.filled || {}; fills.forEach(function (x) { sv.filled[x.key] = { v: x.v, src: x.src, at: caseProcToday_() }; }); });
     return up.case || c;
   }
   lines.push('⚠ 처리개요를 채우지 못했습니다: ' + ((up && up.message) || '저장 실패'));
@@ -25357,15 +25368,20 @@ function caseProcSavePdf_(c, body) {
   const file = folder.createFile(pdf);
   const saved = caseProcLoad_(c.id);
   const lastCalc = caseProcLastCalc_(c).last;
-  saved.printPdf = { id: file.getId(), name: name, at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm'), forms: Number(body.forms || 0), calcId: lastCalc ? String(lastCalc.id || '') : '' };
-  caseProcStore_(c.id, saved);
+  caseProcPatch_(c.id, function (sv) { sv.printPdf = { id: file.getId(), name: name, at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm'), forms: Number(body.forms || 0), calcId: lastCalc ? String(lastCalc.id || '') : '' }; });
   return { ok: true, id: file.getId(), name: name, url: file.getUrl() };
 }
 // 반영 현황표 — "이 사건 정보가 도구에 완전히 반영됐나"를 한눈에: 칸별 채움·출처·미확정, 증빙 확보, 계산·서식·검토서, 남은 질문
-function caseProcStatus_(c) {
+// 값 비교 — 금액은 쉼표·원 없이 숫자로("150,000,000"과 "150000000"은 같은 값)
+function caseProcSameVal_(a, b) { const n = function (x) { return String(x == null ? '' : x).replace(/[\s,원]/g, ''); }; return n(a) === n(b); }
+function caseProcStatus_(c, body) {
+  body = body || {};
   const saved = caseProcLoad_(c.id);
   const filled = saved.filled || {};
-  const dec = saved.decisions || {};
+  // 화면이 보낸 지금 항목·결정이 있으면 그것을 쓴다(화면 하단 "물어볼 것·보류" 집계와 같은 기준) — 없으면 마지막 저장분
+  const dec = Object.assign({}, saved.decisions || {});
+  Object.keys(body.decisions || {}).forEach(function (k) { if (body.decisions[k] && body.decisions[k].d) dec[k] = body.decisions[k]; else delete dec[k]; });
+  if (Array.isArray(body.items)) saved.remaining = body.items;
   const ov = c.사건개요 || {};
   const rows = [];
   const has = function (v) { return String(v == null ? '' : v).trim() !== ''; };
@@ -25390,9 +25406,9 @@ function caseProcStatus_(c) {
     if (!has(v)) return '⬜';
     if (open[key]) return '⚠ 확인 필요';
     if (held[key]) return '△ 보류';
-    return filled[key] && String(filled[key].v) === String(v) ? '✅' : '△ 확정 전';
+    return filled[key] && caseProcSameVal_(filled[key].v, v) ? '✅' : '△ 확정 전';
   };
-  const srcOf = function (key, v) { return filled[key] && String(filled[key].v) === String(v) ? ' — ' + filled[key].src : ''; };
+  const srcOf = function (key, v) { return filled[key] && caseProcSameVal_(filled[key].v, v) ? ' — ' + filled[key].src : ''; };
   rows.push(['사건 기본', '세목·업무유형', has(c.세목) && has(c.업무유형) ? '✅' : '⬜', (CASEPROC_TAX_LABEL_[c.세목] || c.세목 || '') + ' · ' + (c.업무유형 || '')]);
   rows.push(['사건 기본', '납세자', open.납세자 ? '⚠ 확인 필요' : (has(c.납세자) ? '✅' : '⬜'), c.납세자 || '']);
   const baseMark = mark('기준일', c.기준일);
@@ -25402,10 +25418,12 @@ function caseProcStatus_(c) {
   rows.push(['사건 기본', '법정일', !has(c.법정일) ? '⬜' : (!manual && due && due !== c.법정일 ? '⚠ 확인 필요' : (manual ? '✅' : (baseMark === '✅' ? '✅' : '⚠ 기준일 미확정'))),
     (c.법정일 || '') + (!manual && due && due !== c.법정일 ? ' — 기준일로 계산하면 ' + due : '')]);
   const keys = { transfer: [['trTransferorName', '양도인 성명'], ['사건분류', '사건분류']], gift: [['giftDoneeName', '수증자'], ['giftDonorName', '증여자'], ['giftRelation', '관계'], ['giftAmount', '증여재산가액'], ['giftDebtAssumed', '인수채무'], ['giftPriorAmount', '10년 합산'], ['사건분류', '사건분류']], inheritance: [['ihDeceasedName', '피상속인'], ['상속인성명', '대표 상속인'], ['상속인수', '상속인 수'], ['ihEstate', '상속세과세가액'], ['사건분류', '사건분류']] }[c.세목] || [];
-  let inputsOk = baseMark === '✅' || !CASEPROC_TAX_LABEL_[c.세목];
+  let inputsOk = baseMark === '✅' || !CASEPROC_TAX_LABEL_[c.세목], heldInput = '';
   keys.forEach(function (k) {
     const v = ov[k[0]], mk = mark(k[0], v);
-    if (k[0] !== '사건분류' && /^(⚠|△)/.test(mk)) inputsOk = false;
+    if (/^(⚠|△ 확정 전)/.test(mk)) inputsOk = false;
+    if (held[k[0]]) heldInput = heldInput ? heldInput + '·' + k[1] : k[1];
+    if (k[0] === 'giftDebtAssumed' && !has(v) && saved.cashGift && !saved.cashDebt) { rows.push(['처리개요', k[1], '✅', '해당 없음 — 증여계약서에 부담부(채무인수) 문구 없음']); return; }
     rows.push(['처리개요', k[1], mk, has(v) ? String(v) + srcOf(k[0], v) : '']);
   });
   if (c.세목 === 'transfer') (Array.isArray(ov.물건목록) ? ov.물건목록 : []).forEach(function (a, i) {
@@ -25414,16 +25432,18 @@ function caseProcStatus_(c) {
     if (mk !== '✅') inputsOk = false;
     rows.push(['처리개요', '물건' + (i + 1), mk, [a.assetLocation, a.양도가액 && Number(a.양도가액).toLocaleString('ko-KR') + '원', a.취득일].filter(Boolean).join(' · ')]);
   });
-  const ev = (Array.isArray(c.증빙목록) ? c.증빙목록 : []).filter(function (e) { return e && e.source === 'requested'; });
+  // 현금 증여면 부동산용 칸(등기부·평가자료, 부담부가 아니면 채무인수)은 해당 없음 — 2단계와 같은 기준으로 세지 않는다
+  const cashNa = function (e) { return saved.cashGift && e.status !== '확보됨' && (/등기부|평가\s*자료|비상장|그\s*외\s*자산/.test(e.label) || (/채무\s*인수/.test(e.label) && !saved.cashDebt)); };
+  const ev = (Array.isArray(c.증빙목록) ? c.증빙목록 : []).filter(function (e) { return e && e.source === 'requested' && !cashNa(e); });
   const got = ev.filter(function (e) { return e.status === '확보됨'; }).length;
   rows.push(['증빙', '필요증빙 확보', ev.length && got === ev.length ? '✅' : (ev.length ? '△ 일부' : '⬜'), got + '/' + ev.length]);
   const last = caseProcLastCalc_(c).last;
   const calcDateOff = last && last.기준일스냅샷 && c.기준일 && last.기준일스냅샷 !== c.기준일;
-  rows.push(['세액계산', '계산 결과 저장', !last ? '⬜' : (open.세액 || calcDateOff ? '⚠ 확인 필요' : (!last.저장값 ? '△ 옛 결과' : (inputsOk ? '✅' : '⚠ 입력값 확정 전'))),
+  rows.push(['세액계산', '계산 결과 저장', !last ? '⬜' : (open.세액 || calcDateOff ? '⚠ 확인 필요' : (!last.저장값 ? '△ 옛 결과' : (!inputsOk ? '⚠ 입력값 확정 전' : (heldInput ? '△ 보류한 입력(' + heldInput + ') 반영 전' : '✅')))),
     last ? (last.계산일 || '') + (Number.isFinite(last.최종세액) ? ' · ' + Number(last.최종세액).toLocaleString('ko-KR') + '원' : '') + (calcDateOff ? ' — 계산에 쓴 날짜 ' + last.기준일스냅샷 + ' ≠ 기준일' : '') : '']);
   const pdf = saved.printPdf;
   const pdfFresh = pdf && last && pdf.calcId === String(last.id || '');
-  rows.push(['세액인쇄', '서식 PDF 저장', !pdf ? '⬜' : (pdfFresh ? (inputsOk && !calcDateOff ? '✅' : '⚠ 계산 확정 전') : '△ 이전 계산 기준'), pdf ? pdf.name + ' (' + pdf.at + ')' : '']);
+  rows.push(['세액인쇄', '서식 PDF 저장', !pdf ? '⬜' : (pdfFresh ? (inputsOk && !calcDateOff ? (heldInput ? '△ 보류한 입력 반영 전' : '✅') : '⚠ 계산 확정 전') : '△ 이전 계산 기준'), pdf ? pdf.name + ' (' + pdf.at + ')' : '']);
   let draft = '';
   if (saved.draftFileId) { try { const df = DriveApp.getFileById(saved.draftFileId); if (!df.isTrashed()) draft = df.getName(); } catch (e) {} }
   rows.push(['문서작성', '종합검토서 초안', draft ? '✅' : '⬜', draft]);
@@ -25564,11 +25584,11 @@ function caseProcApplyBase_(caseId, date, file, what) {
 
 // 6) 저장 — 결정(보류·무시·받을 예정·확인 완료)과 남은 일을 사건별 파일에 두고, 작업일지에 한 줄로 남긴다(같은 줄을 매번 고쳐 씀).
 function caseProcSave_(caseId, body) {
-  const f = caseProcFile_(caseId, true);
-  if (!f) return { error: '업무관리자 폴더가 설정되지 않아 결정을 저장할 수 없습니다(설정 화면 확인).' };
-  let saved = {};
-  try { saved = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '{}') || {}; } catch (e) { saved = {}; }
-  const dec = body.reset ? {} : (saved.decisions || {});
+  if (!caseProcFile_(caseId, true)) return { error: '업무관리자 폴더가 설정되지 않아 결정을 저장할 수 없습니다(설정 화면 확인).' };
+  let dec = {}, remain = [], saved = {};
+  caseProcPatch_(caseId, function (sv) {
+  saved = sv;
+  dec = body.reset ? {} : (saved.decisions || {});
   Object.keys(body.decisions || {}).forEach(function (k) {
     const d = body.decisions[k];
     if (!d || !d.d) delete dec[k];
@@ -25578,9 +25598,9 @@ function caseProcSave_(caseId, body) {
     return { id: String(it.id || '').slice(0, 200), step: String(it.step || '').slice(0, 20), kind: String(it.kind || '').slice(0, 10), text: String(it.text || '').slice(0, 300) };
   });
   const gone = function (it) { const d = dec[it.id] && dec[it.id].d; return d === '무시' || d === 'done'; };
-  const remain = items.filter(function (it) { return !gone(it); });
-  saved = Object.assign(saved, { caseId: caseId, decisions: dec, remaining: body.reset ? [] : remain, savedAt: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm') });
-  f.setContent(JSON.stringify(saved));
+  remain = items.filter(function (it) { return !gone(it); });
+  Object.assign(saved, { caseId: caseId, decisions: dec, remaining: body.reset ? [] : remain, savedAt: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm') });
+  });
   let logged = false;
   if (body.writeLog) {
     const isHeld = function (it) { return dec[it.id] && /^(보류|예정)$/.test(dec[it.id].d); };
@@ -25651,9 +25671,8 @@ function caseProcDraft_(c) {
     file = folder.createFile(name.replace(/\.md$/, '_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'MMdd_HHmm') + '.md'), md, 'text/markdown'); fresh = true; // 세무사님이 고친 초안은 그대로 둔다
   } else if (file) file.setContent(md);
   else { file = folder.createFile(name, md, 'text/markdown'); fresh = true; }
-  saved.draftFileId = file.getId();
-  saved.draftHash = hash(md);
-  caseProcStore_(c.id, saved);
+  const fid = file.getId(), fh = hash(md);
+  caseProcPatch_(c.id, function (sv) { sv.draftFileId = fid; sv.draftHash = fh; });
   return { ok: true, fileId: file.getId(), name: file.getName(), fresh: fresh, extra: remain.length };
   });
 }
