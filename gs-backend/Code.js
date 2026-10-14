@@ -24703,6 +24703,8 @@ function caseProc_(body) {
     if (body.step === 'cands') return caseProcBaseCands_(c, body);
     if (body.step === 'apply') return caseProcApply_(c, body);
     if (body.step === 'draft') return caseProcDraft_(c);
+    if (body.step === 'savePdf') return caseProcSavePdf_(c, body);
+    if (body.step === 'status') return caseProcStatus_(c);
   } catch (e) {
     return { error: '이 단계를 처리하지 못했습니다: ' + (e && e.message || e) };
   }
@@ -24806,8 +24808,18 @@ function caseProcEvRe_(label) {
   const key = L.replace(/\s+/g, '');
   return key.length >= 2 ? new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) : null;
 }
+// 증빙목록 칸 이름 → 그 칸을 채우는 서류 종류(자동 정리 결과 type). 한 종류로 딱 정해지는 칸만(계약서처럼 양도·취득이 갈리는 칸은 제외)
+function caseProcEvTypes_(label) {
+  const L = String(label || '');
+  if (/·|및/.test(L.replace(/\([^)]*\)/g, ''))) return null; // "등기부등본·평가자료"처럼 서류 두 가지가 다 필요한 칸은 하나로 확보 처리하지 않음
+  const t = [[/등기/, ['registry']], [/가족\s*관계/, ['family']], [/초본|주민\s*등록/, ['resident']], [/취득세/, ['acqtax']], [/사망|기본\s*증명/, ['death']],
+    [/금융\s*거래\s*조회|안심\s*상속|상속인\s*조회/, ['inhquery']], [/부채|대출\s*잔액/, ['debtcert']], [/보험/, ['insurance']], [/자동차/, ['carreg']],
+    [/잔고|잔액\s*증명/, ['balance']], [/공시|기준시가/, ['pubprice']], [/건축물\s*대장/, ['bldledger']], [/토지\s*대장|임야\s*대장/, ['landledger']]];
+  for (let i = 0; i < t.length; i++) if (t[i][0].test(L)) return t[i][1];
+  return null;
+}
 function caseProcParsed_(f, cache, canParse) {
-  const key = 'cpp3_' + f.id + '_' + f.modified; // cpp2: 사무소 발행 표시(office), cpp3: 기준일 후보(bd)
+  const key = 'cpp4_' + f.id + '_' + f.modified; // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc)
   const hit = cache.get(key);
   if (hit) { try { return JSON.parse(hit); } catch (e) {} }
   if (!canParse) return null;
@@ -24822,6 +24834,7 @@ function caseProcParsed_(f, cache, canParse) {
       // 이 사무소(이음세무컨설팅)가 발행한 수수료 영수증·세금계산서 — 고객 증빙이 아니라 수금 기록용
       s.office = !!(p.result && !Array.isArray(p.result) && p.result.사무소발행);
       s.bd = caseProcBaseDateCands_(p);
+      try { s.loc = String((p.result && (p.result.소재지 || (p.result.docs && p.result.docs[0] && p.result.docs[0].소재지))) || '').slice(0, 80); } catch (e) {}
     }
   } catch (e) { s.err = String(e && e.message || e).slice(0, 80); }
   try { cache.put(key, JSON.stringify(s), 21600); } catch (e) {}
@@ -24862,6 +24875,31 @@ function caseProcEvidence_(c) {
   if (office.length) lines.push('사무소 발행 영수증 ' + office.length + '건 — 고객 증빙 아님(수금 기록용), 점검에서 뺌: ' + office.slice(0, 3).map(function (f) { return f.name; }).join(', ') + (office.length > 3 ? ' 외' : ''));
   const pool = files.filter(function (f) { return !(f.p && f.p.office) && !/\.json$/i.test(f.name); });
   const hay = pool.map(function (f) { return { f: f, s: f.name + ' ' + (f.p && f.p.l || '') }; });
+  // 자동 정리로 종류가 확실히 판별되고(⚠ 없음) 칸이 하나로 정해지는 서류는 증빙목록을 확보됨(근거 파일명)으로 반영
+  if (!virtual) {
+    const marks = [];
+    req.forEach(function (e) {
+      if (e.status === '확보됨') return;
+      const types = caseProcEvTypes_(e.label);
+      if (!types) return;
+      const lm = /\(([^)]*)\)\s*$/.exec(e.label);
+      const loc = lm && /\d/.test(lm[1]) ? lm[1] : '';
+      const hit = docs.filter(function (f) { return f.p && types.indexOf(f.p.t) !== -1 && !f.p.office && !(f.p.wn > 0) && (!loc || !f.p.loc || tcLocSame_(loc, f.p.loc)); });
+      if (hit.length) { e.status = '확보됨'; e._auto = hit[0].name; marks.push(e); }
+    });
+    if (marks.length) {
+      const newList = list.map(function (e) {
+        const m = marks.filter(function (x) { return x.id === e.id; })[0];
+        if (!m) return e;
+        const ne = Object.assign({}, e, { status: '확보됨', 확보일: caseProcToday_(), note: [e.note, '자동: ' + m._auto].filter(Boolean).join(' / ') });
+        delete ne._auto;
+        return ne;
+      });
+      const up = work_updateCase({ id: c.id, 증빙목록: newList, 작업일지: (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: '[사건처리] 서류 자동 정리로 증빙 확보 표시: ' + marks.map(function (x) { return x.label + '←' + x._auto; }).join(', ').slice(0, 400), dueDate: '' }]), 기대수정일: c.수정일 });
+      if (up && up.success !== false) lines.push('✏ 증빙목록 확보 표시(서류 종류 확인됨): ' + marks.map(function (x) { return x.label + ' ← ' + x._auto; }).join(', '));
+      else marks.forEach(function (x) { x.status = '미확보'; });
+    }
+  }
   req.forEach(function (e) {
     if (e.status === '확보됨') return;
     const re = caseProcEvRe_(e.label);
@@ -24890,6 +24928,7 @@ function caseProcOverview_(c) {
   const ov = JSON.parse(JSON.stringify(c.사건개요 || {}));
   (CASEPROC_OV_REQUIRED_[c.세목] || []).forEach(function (r) {
     if (String(ov[r[0]] == null ? '' : ov[r[0]]).trim()) return;
+    if (c.세목 === 'gift' || c.세목 === 'inheritance') return; // 증여·상속은 서류 사실과 함께 caseProcGiftInhFacts_에서 묻는다
     const cands = [];
     if (/Name$/.test(r[0]) && c.납세자 && (r[0] === 'giftDoneeName' || r[0] === 'trTransferorName' || r[0] === 'ihDeceasedName')) cands.push({ v: c.납세자, src: '사건 납세자' });
     items.push(caseProcItem_('ov:' + r[0], 'missing', '처리개요 「' + r[1] + '」이(가) 비어 있습니다.', { mode: 'input', target: 'ov:' + r[0], input: r[2], options: r[0] === 'giftRelation' ? CASEPROC_GIFT_RELATIONS_ : null, cands: cands, label: r[1] }));
@@ -24902,9 +24941,10 @@ function caseProcOverview_(c) {
   }
   if (c.세목 === 'gift' || c.세목 === 'inheritance') caseProcBaseDateCheck_(c, ov, lines, items);
   if (c.세목 !== 'transfer') {
-    if (CASEPROC_TAX_LABEL_[c.세목]) lines.push('증여·상속은 서류 → 처리개요 자동 채움 규칙이 아직 없습니다 — 4단계 세액계산이 화면 입력값으로 계산합니다(빈 칸은 화면이 묻습니다).');
-    lines.push('처리개요 빈 칸 ' + items.filter(function (i) { return i.kind === 'missing' && /^ov:/.test(i.id); }).length + '개');
-    return { ok: true, lines: lines, items: items };
+    let cc = c;
+    if (c.세목 === 'gift' || c.세목 === 'inheritance') cc = caseProcGiftInhFacts_(c, lines, items) || c;
+    lines.push('처리개요 빈 칸 ' + items.filter(function (i) { return /^ov:/.test(i.id) && (i.kind === 'missing' || i.kind === 'judge'); }).length + '개');
+    return { ok: true, lines: lines, items: items, case: cc };
   }
   if (!String(c.폴더ID || '').trim()) return { ok: true, lines: lines, items: items };
   const rf = tc_ruleTransferFacts_({ caseId: c.id });
@@ -25066,6 +25106,214 @@ function caseProcReferenceDocs_(c) {
   return out;
 }
 
+// 확정한 처리개요 값과 출처 기억 — 반영 현황표의 "출처", 추정값 재질문 방지
+function caseProcRememberFill_(caseId, key, value, src) {
+  try {
+    const saved = caseProcLoad_(caseId);
+    saved.filled = saved.filled || {};
+    saved.filled[key] = { v: String(value == null ? '' : value), src: String(src || '').slice(0, 120), at: caseProcToday_() };
+    caseProcStore_(caseId, saved);
+  } catch (e) {}
+}
+// 사건 폴더 서류 전부를 규칙으로 정리한 결과(글자는 6시간 기억분 — 2단계에서 이미 읽음). 서류 사실을 모을 때 쓴다.
+function caseProcParseAll_(c) {
+  const out = [], started = Date.now();
+  caseProcFiles_(c).filter(function (f) { return /pdf|^image\//.test(String(f.mimeType || '')) && !/^_/.test(f.name) && !/(신고서|계산명세서|접수증|납부서)/.test(f.name); }).slice(0, 40).forEach(function (f) {
+    if (Date.now() - started > 90000) return;
+    try { const t = tc_docText_(f); if (!t) return; const p = docParseText_(t); if (p && p.type && !(p.result && !Array.isArray(p.result) && p.result.사무소발행)) out.push({ f: f, p: p }); } catch (e) {}
+  });
+  return out;
+}
+// 증여·상속 — 기존 서류 정리 규칙(등기부·가족관계·공시가격·잔고·부채증명·사망·상속인 금융조회·장례비 영수증)의 결과만으로
+// 처리개요 칸을 채운다. 확실한 값(한 가지로 정해지고 ⚠ 없음)만 빈 칸에 넣고, 여러 후보·평가처럼 판단이 필요한 값은 [확인] 질문(후보·출처)으로.
+// 의뢰서·처리개요에 이미 있는 금액이 서류로 뒷받침되지 않으면 "추정"으로 표시하고 확정을 묻는다.
+function caseProcGiftInhFacts_(c, lines, items) {
+  const ov = JSON.parse(JSON.stringify(c.사건개요 || {}));
+  const saved = caseProcLoad_(c.id);
+  const filled = saved.filled || {};
+  const parsed = caseProcParseAll_(c);
+  const norm = function (x) { return String(x || '').replace(/\s+/g, ''); };
+  const nameHas = function (list, n) { n = norm(n); return !!n && list.some(function (x) { x = norm(x); return x && (x.indexOf(n) !== -1 || n.indexOf(x) !== -1); }); };
+  const facts = {}; // key → [{v, src, sure}]
+  const add = function (key, v, src, sure) { if (v === null || v === undefined || v === '') return; (facts[key] = facts[key] || []).push({ v: String(v), src: src, sure: !!sure }); };
+  const notes = [];
+  const byType = function (t) { return parsed.filter(function (x) { return x.p.type === t; }); };
+  const fams = byType('family');
+  const relOf = function (me, other) { // other가 me에게 어떤 관계인지 — 가족관계증명서(본인 = me)에서
+    let out = '';
+    fams.forEach(function (x) {
+      const g = x.p.result && x.p.result.가족 || [];
+      const self = g.filter(function (q) { return q.관계 === '본인'; })[0];
+      if (!self || !nameHas([self.이름], me)) return;
+      const o = g.filter(function (q) { return q.관계 !== '본인' && nameHas([q.이름], other); })[0];
+      if (o) out = o.관계 + (o.확인필요 ? '?' : '') + '|' + x.f.name;
+    });
+    return out;
+  };
+  if (c.세목 === 'gift') {
+    const donee = ov.giftDoneeName || c.납세자 || '';
+    const gifts = [];
+    byType('registry').forEach(function (x) {
+      (x.p.result.docs || []).forEach(function (d) {
+        const h = d.소유권이력 || [];
+        h.forEach(function (e, k) {
+          if (e.말소 || !/증여/.test(String(e.원인 || ''))) return;
+          const to = (e.권리자 || []).map(function (q) { return q.이름; });
+          if (donee && !nameHas(to, donee)) return;
+          let prev = null;
+          for (let j = k - 1; j >= 0; j--) if (!h[j].말소) { prev = h[j]; break; }
+          gifts.push({ file: x.f.name, to: to.join(','), from: prev ? (prev.권리자 || []).map(function (q) { return q.이름; }).join(',') : '', loc: d.소재지 || '', kind: d.종류 || '', date: e.접수일, warn: !!e.확인필요 });
+        });
+      });
+    });
+    gifts.forEach(function (g) {
+      add('giftDoneeName', g.to, '등기부 증여 기재(' + g.file + ')', !g.warn && gifts.length === 1);
+      add('giftDonorName', g.from, '등기부 직전 소유자(' + g.file + ')', !g.warn && !!g.from && gifts.length === 1 && g.from.indexOf(',') === -1);
+    });
+    if (gifts.length) lines.push('증여재산(등기부): ' + gifts.map(function (g) { return (g.kind ? g.kind + ' ' : '') + (g.loc || '소재지 미확인') + ' — ' + g.date + ' 증여 등기(' + g.from + ' → ' + g.to + ')'; }).join(' / '));
+    else lines.push('증여재산: 증여 등기가 있는 등기부가 폴더에 없습니다(현금·예금 증여면 이체내역·잔고증명으로 확인).');
+    const donor = ov.giftDonorName || (facts.giftDonorName && facts.giftDonorName[0].v) || '';
+    if (donee && donor) {
+      const r1 = relOf(donee, donor), r2 = relOf(donor, donee);
+      const map1 = { 부: '직계존속(1촌, 부모 등→자녀)', 모: '직계존속(1촌, 부모 등→자녀)', 배우자: '배우자', 자녀: '직계비속(1촌, 자녀 등→부모)' };
+      const map2 = { 자녀: '직계존속(1촌, 부모 등→자녀)', 배우자: '배우자', 부: '직계비속(1촌, 자녀 등→부모)', 모: '직계비속(1촌, 자녀 등→부모)' };
+      if (r1) { const a = r1.split('|'); const rel = map1[a[0].replace('?', '')]; if (rel) add('giftRelation', rel, '가족관계증명서(' + a[1] + ', 수증자 기준 ' + a[0] + ')', a[0].indexOf('?') === -1); }
+      else if (r2) { const b = r2.split('|'); const rel2 = map2[b[0].replace('?', '')]; if (rel2) add('giftRelation', rel2, '가족관계증명서(' + b[1] + ', 증여자 기준 ' + b[0] + ')', b[0].indexOf('?') === -1); }
+    }
+    // 평가 후보 — 공시가격(보충적 평가 §61)은 후보로만(시가·감정가·매매사례가 우선이라 판단 필요)
+    byType('pubprice').forEach(function (x) {
+      const r = x.p.result || {};
+      if (gifts.length && r.소재지 && !gifts.some(function (g) { return g.loc && tcLocSame_(g.loc, r.소재지); })) return;
+      const yr = c.기준일 ? Number(String(c.기준일).slice(0, 4)) : 9999;
+      const pr = (r.가격 || []).filter(function (q) { return q.가격 && (!q.연도 || q.연도 <= yr); }).sort(function (a, b) { return (b.연도 || 0) - (a.연도 || 0); })[0];
+      if (pr) add('giftAmount', pr.가격, '공시가격 ' + (pr.연도 || '') + '년 ' + (r.종류 || '') + '(' + x.f.name + ') — 보충적 평가, 시가·감정가 있으면 그것이 우선', false);
+      else if ((r.가격 || []).some(function (q) { return q.단가; })) notes.push('공시지가(원/㎡)만 있는 토지(' + x.f.name + ') — 면적을 곱해 평가해야 함');
+    });
+    byType('balance').forEach(function (x) { const r = x.p.result || {}; if (r.총액) add('giftAmount', r.총액, '잔고·잔액증명(' + x.f.name + (r.예금주 ? ', 예금주 ' + r.예금주 : '') + (r.기준일 ? ', ' + r.기준일 : '') + ') — 현금 증여일 때', false); });
+    byType('debtcert').forEach(function (x) { const r = x.p.result || {}; if (r.총잔액) add('giftDebtAssumed', r.총잔액, '부채증명(' + x.f.name + (r.기준일 ? ', ' + r.기준일 : '') + ') — 수증자가 인수한 채무일 때', false); });
+  } else {
+    const deaths = byType('death').filter(function (x) { return x.p.result && x.p.result.성명; });
+    deaths.forEach(function (x) { add('ihDeceasedName', x.p.result.성명, '사망 서류(' + x.f.name + ')', deaths.length === 1 && !x.p.result.사망일확인필요); });
+    const dec = ov.ihDeceasedName || (facts.ihDeceasedName && facts.ihDeceasedName[0].v) || c.납세자 || '';
+    fams.forEach(function (x) {
+      const g = x.p.result && x.p.result.가족 || [];
+      const self = g.filter(function (q) { return q.관계 === '본인'; })[0];
+      if (!self || !nameHas([self.이름], dec)) return;
+      const heirs = g.filter(function (q) { return /^(배우자|자녀)$/.test(q.관계) && !q.사망 && q.이름; });
+      if (!heirs.length) return;
+      const unsure = heirs.some(function (q) { return q.확인필요; });
+      const rep = heirs.filter(function (q) { return nameHas([q.이름], c.고객명); })[0] || heirs[0];
+      add('상속인수', heirs.length, '피상속인 가족관계증명서(' + x.f.name + ') — 배우자·자녀(직계존속·형제는 선순위가 없을 때만)', !unsure);
+      add('상속인성명', rep.이름, '피상속인 가족관계증명서(' + x.f.name + ')', !unsure);
+      add('상속인추가명단', heirs.filter(function (q) { return q !== rep; }).map(function (q) { return q.이름; }).join(', '), '피상속인 가족관계증명서(' + x.f.name + ')', !unsure);
+      lines.push('상속인(가족관계증명서): ' + heirs.map(function (q) { return q.이름 + '(' + q.관계 + (q.확인필요 ? ' ⚠' : '') + ')'; }).join(', '));
+    });
+    let asset = 0, debt = 0, fun = 0;
+    byType('inhquery').forEach(function (x) { const r = x.p.result || {}; asset += r.자산합계 || 0; debt += r.채무합계 || 0; });
+    byType('debtcert').forEach(function (x) { debt += (x.p.result || {}).총잔액 || 0; });
+    byType('funeralbill').forEach(function (x) { fun += (x.p.result || {}).합계 || 0; });
+    if (asset || debt || fun) lines.push('서류로 확인된 금액: 금융재산 ' + asset.toLocaleString('ko-KR') + '원 · 채무 ' + debt.toLocaleString('ko-KR') + '원 · 장례비 영수증 ' + fun.toLocaleString('ko-KR') + '원 — 세액계산 상속재산·채무·장례비 입력의 근거(부동산 평가는 별도)');
+  }
+  notes.forEach(function (n) { lines.push('참고: ' + n); });
+  // 칸별 반영: 빈 칸 + 확실한 값 → 채움 / 빈 칸 + 후보만 → 질문 / 있는 값 ≠ 서류 → 질문 / 금액이 서류로 뒷받침 안 됨 → 추정(확정 질문)
+  const spec = c.세목 === 'gift'
+    ? [['giftDoneeName', '수증자 성명', 'text'], ['giftDonorName', '증여자 성명', 'text'], ['giftRelation', '관계', 'select'], ['giftAmount', '증여재산가액', 'money'], ['giftDebtAssumed', '인수채무액(부담부증여)', 'money'], ['giftPriorAmount', '10년 내 같은 증여자 증여 합산액', 'money']]
+    : [['ihDeceasedName', '피상속인 성명', 'text'], ['상속인성명', '대표 상속인 성명', 'text'], ['상속인추가명단', '그 외 상속인', 'text'], ['상속인수', '상속인 수', 'number'], ['ihEstate', '상속세과세가액', 'money']];
+  const fills = [];
+  const digits = function (v) { return String(v == null ? '' : v).replace(/[^\d]/g, ''); };
+  spec.forEach(function (sp) {
+    const key = sp[0], money = sp[2] === 'money' || sp[2] === 'number';
+    const cur = String(ov[key] == null ? '' : ov[key]).trim();
+    const fs = facts[key] || [];
+    const uniq = fs.filter(function (x, i) { return fs.findIndex(function (y) { return (money ? digits(y.v) === digits(x.v) : norm(y.v) === norm(x.v)); }) === i; });
+    const sure = uniq.length === 1 && uniq[0].sure ? uniq[0] : null;
+    const ask = { mode: 'choose', target: 'ov:' + key, input: sp[2], options: key === 'giftRelation' ? CASEPROC_GIFT_RELATIONS_ : null, label: sp[1], cands: uniq.map(function (x) { return { v: money ? digits(x.v) : x.v, src: x.src }; }) };
+    const same = function (a, b) { return money ? digits(a) === digits(b) : norm(a) === norm(b); };
+    if (!cur) {
+      if (sure) { ov[key] = money ? digits(sure.v) : sure.v; fills.push({ key: key, label: sp[1], v: ov[key], src: sure.src }); return; }
+      if (key === 'giftPriorAmount') { items.push(caseProcItem_('ov:' + key, 'missing', '10년 안에 같은 증여자(배우자는 같은 사람으로 봄)에게 받은 증여가 있나요? (상증법 §47② 합산)', { mode: 'options', target: 'ov:' + key, options: [{ label: '없음(0원)', value: '0' }], input: 'money', label: sp[1], withInput: true })); return; }
+      if (key === 'giftDebtAssumed' && !uniq.length) return; // 부담부증여가 아니면 비워 둔다
+      if (key === '상속인추가명단' && !uniq.length) return;
+      items.push(caseProcItem_('ov:' + key, uniq.length ? 'check' : 'missing', '처리개요 「' + sp[1] + '」' + (uniq.length ? ' — 서류 후보가 있습니다. 어느 값인가요?' : '이(가) 비어 있습니다.'), ask));
+      return;
+    }
+    const conflict = uniq.filter(function (x) { return !same(x.v, cur); });
+    if (conflict.length && !uniq.some(function (x) { return same(x.v, cur); }) && !(filled[key] && same(filled[key].v, cur))) {
+      ask.cands = [{ v: money ? digits(cur) : cur, src: '처리개요(지금 값)' }].concat(ask.cands);
+      items.push(caseProcItem_('ov:' + key + ':diff:' + digits(cur) + norm(cur).slice(0, 10), 'check', '처리개요 「' + sp[1] + '」 ' + (money ? Number(digits(cur)).toLocaleString('ko-KR') + '원' : cur) + ' ↔ 서류 ' + conflict.map(function (x) { return (money ? Number(digits(x.v)).toLocaleString('ko-KR') + '원' : x.v); }).join(', ') + ' — 어느 값이 맞나요?', ask));
+      return;
+    }
+    // 금액이 서류로 뒷받침되지 않음(의뢰서·처리개요 예상값) → 추정, 확정을 묻는다(확정하면 다시 안 물음)
+    if (money && key !== '상속인수' && !uniq.some(function (x) { return same(x.v, cur); }) && !(filled[key] && same(filled[key].v, cur))) {
+      ask.cands = [{ v: digits(cur), src: '처리개요(추정 — 증빙 미확인)' }].concat(ask.cands);
+      items.push(caseProcItem_('ov:' + key + ':est:' + digits(cur), 'check', '「' + sp[1] + '」 ' + Number(digits(cur)).toLocaleString('ko-KR') + '원은 의뢰서·처리개요의 추정값입니다(증빙으로 확인 안 됨) — 이 값으로 확정할까요?', ask));
+    }
+  });
+  if (!fills.length) return c;
+  const log = (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: '[사건처리] 서류로 처리개요 채움: ' + fills.map(function (x) { return x.label + ' ' + x.v + '(' + x.src + ')'; }).join(', ').slice(0, 500), dueDate: '' }]);
+  const up = work_updateCase({ id: c.id, 사건개요: ov, 작업일지: log, 기대수정일: c.수정일 });
+  if (up && up.success !== false) {
+    lines.push('✏ 서류로 처리개요 채움: ' + fills.map(function (x) { return x.label + ' ' + x.v + ' (' + x.src + ')'; }).join(', '));
+    const sv = caseProcLoad_(c.id); sv.filled = sv.filled || {};
+    fills.forEach(function (x) { sv.filled[x.key] = { v: x.v, src: x.src, at: caseProcToday_() }; });
+    caseProcStore_(c.id, sv);
+    return up.case || c;
+  }
+  lines.push('⚠ 처리개요를 채우지 못했습니다: ' + ((up && up.message) || '저장 실패'));
+  return c;
+}
+// 세액인쇄 서식 PDF 저장 — 화면(세액인쇄)이 만든 서식 HTML을 PDF로 바꿔 사건 폴더 보고서_내부에 저장(같은 이름이면 바꿔 씀)
+function caseProcSavePdf_(c, body) {
+  const html = String(body.html || '');
+  if (!html || html.length > 3000000) return { ok: false, error: '서식 내용이 없거나 너무 큽니다.' };
+  const sub = work_getCaseSubfolders({ caseId: c.id });
+  if (!sub || !sub.internalFolderId) return { ok: false, error: '사건 폴더(보고서_내부)를 찾지 못했습니다.' };
+  const folder = DriveApp.getFolderById(sub.internalFolderId);
+  const name = String(c.사건명 || c.고객명 || '사건').replace(/[\\/:*?"<>|]/g, '_') + '_' + String(body.title || '신고서식').replace(/[\\/:*?"<>|]/g, '_').slice(0, 40) + '.pdf';
+  const old = folder.getFilesByName(name);
+  while (old.hasNext()) old.next().setTrashed(true);
+  const pdf = Utilities.newBlob(html, 'text/html', 'f.html').getAs('application/pdf').setName(name);
+  const file = folder.createFile(pdf);
+  const saved = caseProcLoad_(c.id);
+  saved.printPdf = { id: file.getId(), name: name, at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm'), forms: Number(body.forms || 0) };
+  caseProcStore_(c.id, saved);
+  return { ok: true, id: file.getId(), name: name, url: file.getUrl() };
+}
+// 반영 현황표 — "이 사건 정보가 도구에 완전히 반영됐나"를 한눈에: 칸별 채움·출처·미확정, 증빙 확보, 계산·서식·검토서, 남은 질문
+function caseProcStatus_(c) {
+  const saved = caseProcLoad_(c.id);
+  const filled = saved.filled || {};
+  const dec = saved.decisions || {};
+  const ov = c.사건개요 || {};
+  const rows = [];
+  const st = function (v) { return String(v == null ? '' : v).trim() ? '✅' : '⬜'; };
+  rows.push(['사건 기본', '세목·업무유형', st(c.세목 && c.업무유형), (CASEPROC_TAX_LABEL_[c.세목] || c.세목 || '') + ' · ' + (c.업무유형 || '')]);
+  rows.push(['사건 기본', '납세자', st(c.납세자), c.납세자 || '']);
+  rows.push(['사건 기본', CASEPROC_BASE_LABEL_[c.세목] || '기준일', st(c.기준일), c.기준일 || '']);
+  rows.push(['사건 기본', '법정일', st(c.법정일), (c.법정일 || '') + (c.기준일 && caseProcDue_(c, c.기준일) && caseProcDue_(c, c.기준일) !== c.법정일 ? ' ⚠ 기준일로 계산하면 ' + caseProcDue_(c, c.기준일) : '')]);
+  const keys = { transfer: [['trTransferorName', '양도인 성명'], ['사건분류', '사건분류']], gift: [['giftDoneeName', '수증자'], ['giftDonorName', '증여자'], ['giftRelation', '관계'], ['giftAmount', '증여재산가액'], ['giftDebtAssumed', '인수채무'], ['giftPriorAmount', '10년 합산'], ['사건분류', '사건분류']], inheritance: [['ihDeceasedName', '피상속인'], ['상속인성명', '대표 상속인'], ['상속인수', '상속인 수'], ['ihEstate', '상속세과세가액'], ['사건분류', '사건분류']] }[c.세목] || [];
+  keys.forEach(function (k) {
+    const v = ov[k[0]];
+    const f = filled[k[0]];
+    const has = String(v == null ? '' : v).trim();
+    rows.push(['처리개요', k[1], has ? (f && String(f.v) === String(v) ? '✅' : (/Amount|Estate|Assumed/.test(k[0]) ? '△ 추정' : '✅')) : '⬜', has ? String(v) + (f && String(f.v) === String(v) ? ' — ' + f.src : '') : '']);
+  });
+  if (c.세목 === 'transfer') (Array.isArray(ov.물건목록) ? ov.물건목록 : []).forEach(function (a, i) {
+    rows.push(['처리개요', '물건' + (i + 1), ['assetLocation', '양도가액', '취득가액', '취득일'].every(function (k) { return String(a[k] || '').trim(); }) ? '✅' : '△', [a.assetLocation, a.양도가액 && Number(a.양도가액).toLocaleString('ko-KR') + '원', a.취득일].filter(Boolean).join(' · ')]);
+  });
+  const ev = (Array.isArray(c.증빙목록) ? c.증빙목록 : []).filter(function (e) { return e && e.source === 'requested'; });
+  rows.push(['증빙', '필요증빙 확보', ev.length && ev.every(function (e) { return e.status === '확보됨'; }) ? '✅' : (ev.length ? '△' : '⬜'), ev.filter(function (e) { return e.status === '확보됨'; }).length + '/' + ev.length]);
+  const last = caseProcLastCalc_(c).last;
+  rows.push(['세액계산', '계산 결과 저장', last ? (last.저장값 ? '✅' : '△') : '⬜', last ? (last.계산일 || '') + (Number.isFinite(last.최종세액) ? ' · ' + Number(last.최종세액).toLocaleString('ko-KR') + '원' : '') + (last.기준일스냅샷 && c.기준일 && last.기준일스냅샷 !== c.기준일 ? ' ⚠ 계산 날짜 ' + last.기준일스냅샷 : '') : '']);
+  rows.push(['세액인쇄', '서식 PDF 저장', saved.printPdf ? '✅' : '⬜', saved.printPdf ? saved.printPdf.name + ' (' + saved.printPdf.at + ')' : '']);
+  let draft = '';
+  if (saved.draftFileId) { try { const df = DriveApp.getFileById(saved.draftFileId); if (!df.isTrashed()) draft = df.getName(); } catch (e) {} }
+  rows.push(['문서작성', '종합검토서 초안', draft ? '✅' : '⬜', draft]);
+  const remain = (saved.remaining || []).filter(function (it) { const d = dec[it.id] && dec[it.id].d; return d !== '무시' && d !== 'done'; });
+  const held = remain.filter(function (it) { return dec[it.id] && /^(보류|예정)$/.test(dec[it.id].d); });
+  rows.push(['남은 일', '물어볼 것 / 보류·받을 예정', remain.length - held.length ? '⚠' : '✅', (remain.length - held.length) + '건 / ' + held.length + '건']);
+  return { ok: true, rows: rows };
+}
 // 4) 세액계산 — 저장된 결과 유무·계산 뒤 서류 변경. 실제 계산은 화면(계산엔진)이 돌려 사건에 저장한다(ask.mode 'calc').
 function caseProcCalc_(c) {
   const items = [], lines = [];
@@ -25142,7 +25390,7 @@ function caseProcApply_(c, body) {
   if (target === 'evMark') {
     const list = (Array.isArray(c.증빙목록) ? c.증빙목록 : []).map(function (e) {
       if (e.id !== body.evId) return e;
-      return Object.assign({}, e, { status: '확보됨', 확보일: caseProcToday_(), note: [e.note, '파일: ' + String(body.file || '').slice(0, 80)].filter(String).join(' / ') });
+      return Object.assign({}, e, { status: '확보됨', 확보일: caseProcToday_(), note: [e.note, '파일: ' + String(body.file || '').slice(0, 80)].filter(Boolean).join(' / ') });
     });
     const up = work_updateCase({ id: c.id, 증빙목록: list, 기대수정일: c.수정일 });
     return up && up.success !== false ? { ok: true, message: '확보됨으로 표시(' + (body.file || '') + ')', my_report_id: c.my_report_id || '' } : { ok: false, error: (up && up.message) || '저장 실패' };
@@ -25168,6 +25416,7 @@ function caseProcApply_(c, body) {
       what = '처리개요 ' + (body.label || ('물건' + (i + 1) + ' ' + m2[2]));
     }
     const up = work_updateCase({ id: c.id, 사건개요: ov, 작업일지: logLine(what + ' ← ' + value + ' (' + src + ')'), 기대수정일: c.수정일 });
+    if (up && up.success !== false && m) caseProcRememberFill_(c.id, m[1], ov[m[1]], src);
     return up && up.success !== false ? { ok: true, message: what + ' ' + value + ' 반영' } : { ok: false, error: (up && up.message) || '저장 실패' };
   }
   return { ok: false, error: '반영할 곳을 알 수 없습니다.' };

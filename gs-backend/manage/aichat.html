@@ -244,6 +244,8 @@
   .nxai-cp-btns{ display:flex; flex-wrap:wrap; gap:5px; margin-top:5px; align-items:center; font-size:12px; }
   .nxai-cp-foot{ border-top:1px solid var(--line); padding-top:6px; margin-top:4px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
   .nxai-cp-total{ font-size:12.5px; white-space:normal; }
+  .nxai-cp-table{ border-collapse:collapse; font-size:11.5px; margin:4px 0 0 14px; white-space:normal; }
+  .nxai-cp-table th, .nxai-cp-table td{ border:1px solid var(--line); padding:2px 5px; text-align:left; vertical-align:top; }
   .nxai-confirm{ margin-top:10px; border:1px solid #e8cf8a; background:#fffaf0; border-radius:9px; padding:9px 11px; white-space:normal; }
   .nxai-confirm-head{ font-weight:700; font-size:.95em; color:#7a5300; margin-bottom:4px; }
   .nxai-confirm-body{ font-size:.95em; white-space:pre-wrap; margin-bottom:8px; color:var(--ink); }
@@ -2075,7 +2077,8 @@
   // ============================================================
   var NXAI_CP_STEPS_ = [
     { key: 'basic', title: '1 사건 기본' }, { key: 'evidence', title: '2 증빙' }, { key: 'overview', title: '3 처리개요·기준일' },
-    { key: 'calc', title: '4 세액계산' }, { key: 'output', title: '5 세액인쇄·참고자료 대조' }, { key: 'save', title: '6 남은 일·종합검토서 초안' }
+    { key: 'calc', title: '4 세액계산' }, { key: 'output', title: '5 세액인쇄·참고자료 대조' }, { key: 'save', title: '6 남은 일·종합검토서 초안' },
+    { key: 'status', title: '7 반영 현황표' }
   ];
   var NXAI_CP_KIND_ = { missing: '⬜ 미확보', check: '⚠ 확인필요', judge: '🤔 판단필요', todo: '▶ 할 일' };
   var CASEPROC_CALC_TABS_ = { transfer: 1, gift: 1, inheritance: 1 };
@@ -2164,6 +2167,7 @@
           if (!nxAiConv.caseId && res.case && typeof nxAiLinkCase_ === 'function') nxAiLinkCase_(res.case);
         }
         if (key === 'evidence' && res.files) st.files = res.files;
+        if (key === 'overview' && res.case) st.case = res.case; // 서류로 채운 처리개요 — 세액계산 입력에 그대로 쓴다
         nxAiCaseProcFill_(st, key, res);
         if (key === 'calc' && res.needCalc && !st.calcAuto){ st.calcAuto = true; setTimeout(function(){ nxAiCaseProcCalcRun_(st, false); }, 300); }
         return res;
@@ -2202,7 +2206,34 @@
       st.setStep('save', '✅', '남은 일 ' + r.remaining + '건을 사건 기록(작업일지)에 남겼습니다');
       nxAiCaseProcFoot_(st);
       nxAiCountFree_('local');
+      nxAiCaseProcStatus_(st);
     }).catch(function(err){ st.setStep('save', '❌', '저장하지 못함: ' + (err && err.message || err)); nxAiCaseProcFoot_(st); });
+  }
+  // 7 반영 현황표 — 사건 기본·처리개요 칸별 채움/출처/추정, 증빙 확보, 계산·서식 PDF·검토서, 남은 질문을 한 표로
+  function nxAiCaseProcStatus_(st){
+    st.setStep('status', '🔄', '정리 중…');
+    return st.run('status').then(function(r){
+      if (!r || !r.ok) throw new Error((r && r.error) || '응답 없음');
+      var box = st.steps.status.querySelector('.nxai-cp-lines');
+      var rows = r.rows || [];
+      box.innerHTML = '<table class="nxai-cp-table"><tr><th>구분</th><th>항목</th><th></th><th>값·출처</th></tr>' + rows.map(function(x){ return '<tr><td>' + nxAiEsc_(x[0]) + '</td><td>' + nxAiEsc_(x[1]) + '</td><td>' + nxAiEsc_(x[2]) + '</td><td>' + nxAiEsc_(x[3]) + '</td></tr>'; }).join('') + '</table>'
+        + '<div class="nxai-cp-line">✅ 반영됨 · △ 추정·일부 · ⬜ 비어 있음 · ⚠ 확인 필요</div>';
+      var gaps = rows.filter(function(x){ return x[2] !== '✅'; }).length;
+      st.setStep('status', gaps ? '⚠' : '✅', gaps ? '아직 완전히 반영되지 않은 항목 ' + gaps + '개' : '모두 반영됨');
+    }).catch(function(err){ st.setStep('status', '❌', '현황표를 만들지 못함: ' + (err && err.message || err)); });
+  }
+  // 세액인쇄 필수 서식을 PDF로 사건 폴더(보고서_내부)에 저장 — 세액인쇄 화면의 서식(PRINT_REGISTRY_)을 그대로 써서
+  function nxAiCaseProcSavePdf_(st, tab){
+    try {
+      var group = (typeof TC_TAB_LABELS_ !== 'undefined') ? TC_TAB_LABELS_[tab] : '';
+      if (!group || typeof PRINT_REGISTRY_ === 'undefined' || typeof printExtractPages_ !== 'function' || typeof printFormDocHtml_ !== 'function') return Promise.resolve({ ok: false, error: '세액인쇄 화면이 준비되지 않음' });
+      var rows = [];
+      PRINT_REGISTRY_.filter(function(item){ return item.group === group; }).forEach(function(item){ printExtractPages_(item).forEach(function(r){ if (r.ready && r.section === 'required' && r.html) rows.push(r); }); });
+      if (!rows.length) return Promise.resolve({ ok: false, error: '준비된 필수 서식이 없음(계산 결과 확인)' });
+      var html = printFormDocHtml_(group + ' 신고서식', rows.map(function(r){ return r.html; }).join(''))
+        .replace(/<div class="pf-toolbar">[\s\S]*?<\/div>/, '').replace('background:#e9eaee', 'background:#fff');
+      return st.run('savePdf', { html: html, title: group + ' 신고서식', forms: rows.length });
+    } catch (e) { return Promise.resolve({ ok: false, error: String(e && e.message || e) }); }
   }
   // 값을 반영한 뒤 — 영향을 받는 단계만 다시 처리하고, 저장·초안도 다시
   function nxAiCaseProcRefresh_(st, keys, recalc){
@@ -2364,6 +2395,7 @@
         }, false, r3);
       });
       if (ask.ai) btn('모름 — AI에게 근거 설명 듣기(유료)', function(){ nxAiCaseProcJudge_(st, it, ask.ai); }, false, r3);
+      if (ask.withInput){ var ie4 = inputEl(ask.input || 'text', null); btn('반영', function(){ apply(ask.target, ie4.val(), '세무사님 직접 입력', refreshAll, true); }, true, ie4.row); }
       return;
     }
     if (mode === 'evidence'){
@@ -2429,6 +2461,17 @@
     var startCalc = function(){
       var g = function(id){ var e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; };
       // 확정된 사건 기준일을 화면 날짜칸에 맞춘다(자동채우기가 다른 날을 넣어둔 경우 포함)
+      // 처리개요에서 확정된 값(서류로 채웠거나 [확인]으로 고른 값)을 세액계산 입력칸에 그대로 넣는다(화면이 "직접 고친 값"으로 보고 안 바꾸던 칸 포함)
+      try {
+        var ovv = st.case.사건개요 || {};
+        ((typeof TC_OVERVIEW_INPUT_KEYS_ !== 'undefined' && TC_OVERVIEW_INPUT_KEYS_[tab]) || []).forEach(function(k){
+          var e = document.getElementById(k), v = ovv[k];
+          if (!e || v == null || String(v).trim() === '' || /Date$/.test(k) || String(e.value) === String(v)) return;
+          e.value = v; if (typeof tcLastOverviewValues_ !== 'undefined') tcLastOverviewValues_[k] = String(v);
+          e.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        if (tab === 'gift' && ovv.giftRelation && typeof tcApplyGiftRelation_ === 'function'){ if (typeof tcLastOverviewValues_ !== 'undefined') delete tcLastOverviewValues_.giftRelation; tcApplyGiftRelation_(st.case); }
+      } catch (e) {}
       var bf = { gift: 'giftDate', inheritance: 'ihDeathDate' }[tab];
       if (bf && st.case.기준일 && g(bf) !== st.case.기준일){ var be = document.getElementById(bf); if (be){ be.value = st.case.기준일; be.dispatchEvent(new Event('input', { bubbles: true })); } }
       var boxId = (typeof TC_RESULT_BOX_IDS_ !== 'undefined') ? TC_RESULT_BOX_IDS_[tab] : '';
@@ -2450,7 +2493,15 @@
             else {
               st.setStep('calc', '🔄', '계산 끝 — 사건에 저장 중…');
               if (typeof tcSaveCurrentResult_ === 'function') tcSaveCurrentResult_();
-              setTimeout(function(){ st.calcBusy = false; nxAiCaseProcRefresh_(st, ['calc', 'output'], false); }, 5000);
+              setTimeout(function(){
+                st.setStep('calc', '🔄', '저장 끝 — 세액인쇄 서식을 PDF로 사건 폴더에 저장 중…');
+                nxAiCaseProcSavePdf_(st, tab).then(function(pr){
+                  var ln = document.createElement('div'); ln.className = 'nxai-cp-line';
+                  ln.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서_내부)' : '서식 PDF는 저장하지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
+                  st.calcBusy = false;
+                  return nxAiCaseProcRefresh_(st, ['calc', 'output'], false).then(function(){ st.steps.calc.querySelector('.nxai-cp-lines').appendChild(ln); });
+                }).catch(function(){ st.calcBusy = false; });
+              }, 5000);
               return;
             }
           }
