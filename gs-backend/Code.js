@@ -24989,7 +24989,7 @@ function caseProcOverview_(c) {
       const ap = caseProcApplyBase_(c.id, txs[0].transferDate, tdFile, '양도일');
       lines.push(ap.ok ? '✏ ' + ap.message : '⚠ 양도일을 반영하지 못했습니다: ' + ap.error);
     } else if (c.기준일 !== txs[0].transferDate) items.push(caseProcItem_('ov:기준일:' + txs[0].transferDate, 'check', '양도일: 사건 기준일 ' + c.기준일 + ' ↔ 서류상 양도시기 ' + txs[0].transferDate + '(잔금일·등기접수일 중 빠른 날, 소득세법 §98) — 어느 날이 맞나요?', { mode: 'base' }));
-    else lines.push('✅ 양도일 ' + c.기준일 + ' — 서류(잔금일·등기접수일)로 확인');
+    else { lines.push('✅ 양도일 ' + c.기준일 + ' — 서류(잔금일·등기접수일)로 확인'); caseProcRememberFill_(c.id, '기준일', c.기준일, '증빙: 계약서·등기부(규칙 정리)'); }
   }
   if (fills.length) {
     ov.물건목록 = assets;
@@ -25056,7 +25056,7 @@ function caseProcBaseDateCheck_(c, ov, lines, items) {
   }
   const d = dates[0], src = sure.filter(function (b) { return b.d === d; })[0];
   const extra = src.cause && src.cause !== d ? ' (증여계약일 ' + src.cause + '은 기준이 아님)' : '';
-  if (c.기준일 === d) { lines.push('✅ ' + what + ' ' + d + ' — 증빙(' + src.file + ', ' + basis + ')으로 확인' + extra); return; }
+  if (c.기준일 === d) { lines.push('✅ ' + what + ' ' + d + ' — 증빙(' + src.file + ', ' + basis + ')으로 확인' + extra); caseProcRememberFill_(c.id, '기준일', d, '증빙: ' + src.file); return; }
   if (!c.기준일) {
     const ap = caseProcApplyBase_(c.id, d, src.file, what);
     lines.push(ap.ok ? '✏ ' + ap.message + extra : '⚠ ' + what + '을(를) 반영하지 못했습니다: ' + ap.error);
@@ -25219,7 +25219,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
   const spec = c.세목 === 'gift'
     ? [['giftDoneeName', '수증자 성명', 'text'], ['giftDonorName', '증여자 성명', 'text'], ['giftRelation', '관계', 'select'], ['giftAmount', '증여재산가액', 'money'], ['giftDebtAssumed', '인수채무액(부담부증여)', 'money'], ['giftPriorAmount', '10년 내 같은 증여자 증여 합산액', 'money']]
     : [['ihDeceasedName', '피상속인 성명', 'text'], ['상속인성명', '대표 상속인 성명', 'text'], ['상속인추가명단', '그 외 상속인', 'text'], ['상속인수', '상속인 수', 'number'], ['ihEstate', '상속세과세가액', 'money']];
-  const fills = [];
+  const fills = [], confirms = [];
   const digits = function (v) { return String(v == null ? '' : v).replace(/[^\d]/g, ''); };
   spec.forEach(function (sp) {
     const key = sp[0], money = sp[2] === 'money' || sp[2] === 'number';
@@ -25237,6 +25237,9 @@ function caseProcGiftInhFacts_(c, lines, items) {
       items.push(caseProcItem_('ov:' + key, uniq.length ? 'check' : 'missing', '처리개요 「' + sp[1] + '」' + (uniq.length ? ' — 서류 후보가 있습니다. 어느 값인가요?' : '이(가) 비어 있습니다.'), ask));
       return;
     }
+    // 이미 있는 값이 서류와 같으면 "증빙으로 확인됨"으로 기억(금액은 확실한 서류일 때만 — 공시가격 같은 평가 후보와 같다고 확정하지 않음)
+    const agree = uniq.filter(function (x) { return same(x.v, cur) && (x.sure || !money); })[0];
+    if (agree && !(filled[key] && same(filled[key].v, cur))) confirms.push({ key: key, v: cur, src: agree.src + ' — 일치' });
     const conflict = uniq.filter(function (x) { return !same(x.v, cur); });
     if (conflict.length && !uniq.some(function (x) { return same(x.v, cur); }) && !(filled[key] && same(filled[key].v, cur))) {
       ask.cands = [{ v: money ? digits(cur) : cur, src: '처리개요(지금 값)' }].concat(ask.cands);
@@ -25249,6 +25252,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
       items.push(caseProcItem_('ov:' + key + ':est:' + digits(cur), 'check', '「' + sp[1] + '」 ' + Number(digits(cur)).toLocaleString('ko-KR') + '원은 의뢰서·처리개요의 추정값입니다(증빙으로 확인 안 됨) — 이 값으로 확정할까요?', ask));
     }
   });
+  if (confirms.length) { const sv0 = caseProcLoad_(c.id); sv0.filled = sv0.filled || {}; confirms.forEach(function (x) { sv0.filled[x.key] = { v: x.v, src: x.src, at: caseProcToday_() }; }); caseProcStore_(c.id, sv0); }
   if (!fills.length) return c;
   const log = (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: '[사건처리] 서류로 처리개요 채움: ' + fills.map(function (x) { return x.label + ' ' + x.v + '(' + x.src + ')'; }).join(', ').slice(0, 500), dueDate: '' }]);
   const up = work_updateCase({ id: c.id, 사건개요: ov, 작업일지: log, 기대수정일: c.수정일 });
@@ -25275,7 +25279,8 @@ function caseProcSavePdf_(c, body) {
   const pdf = Utilities.newBlob(html, 'text/html', 'f.html').getAs('application/pdf').setName(name);
   const file = folder.createFile(pdf);
   const saved = caseProcLoad_(c.id);
-  saved.printPdf = { id: file.getId(), name: name, at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm'), forms: Number(body.forms || 0) };
+  const lastCalc = caseProcLastCalc_(c).last;
+  saved.printPdf = { id: file.getId(), name: name, at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm'), forms: Number(body.forms || 0), calcId: lastCalc ? String(lastCalc.id || '') : '' };
   caseProcStore_(c.id, saved);
   return { ok: true, id: file.getId(), name: name, url: file.getUrl() };
 }
@@ -25286,32 +25291,68 @@ function caseProcStatus_(c) {
   const dec = saved.decisions || {};
   const ov = c.사건개요 || {};
   const rows = [];
-  const st = function (v) { return String(v == null ? '' : v).trim() ? '✅' : '⬜'; };
-  rows.push(['사건 기본', '세목·업무유형', st(c.세목 && c.업무유형), (CASEPROC_TAX_LABEL_[c.세목] || c.세목 || '') + ' · ' + (c.업무유형 || '')]);
-  rows.push(['사건 기본', '납세자', st(c.납세자), c.납세자 || '']);
-  rows.push(['사건 기본', CASEPROC_BASE_LABEL_[c.세목] || '기준일', st(c.기준일), c.기준일 || '']);
-  rows.push(['사건 기본', '법정일', st(c.법정일), (c.법정일 || '') + (c.기준일 && caseProcDue_(c, c.기준일) && caseProcDue_(c, c.기준일) !== c.법정일 ? ' ⚠ 기준일로 계산하면 ' + caseProcDue_(c, c.기준일) : '')]);
+  const has = function (v) { return String(v == null ? '' : v).trim() !== ''; };
+  // 아직 답이 없는 질문(⚠)·보류한 질문(△)이 걸린 칸 — 그 값과 거기서 나온 법정일·세액은 ✅로 보이지 않게
+  const open = {}, held = {};
+  const fieldOf = function (id) {
+    if (/^(basic:날짜|basic:법정일|base:|ov:기준일|ref:date:)/.test(id)) return '기준일';
+    if (/^basic:납세자/.test(id)) return '납세자';
+    let m = /^ov:([^:]+)/.exec(id); if (m) return m[1];
+    m = /^cf:(\d+):/.exec(id); if (m) return '물건' + m[1];
+    if (/^tx:/.test(id)) return '물건';
+    if (/^ref:tax:/.test(id)) return '세액';
+    return '';
+  };
+  (saved.remaining || []).forEach(function (it) {
+    const d = dec[it.id] && dec[it.id].d, f = fieldOf(it.id);
+    if (!f || d === '무시' || d === 'done') return;
+    if (d === '보류' || d === '예정') held[f] = true; else open[f] = true;
+  });
+  // ✅ = 증빙으로 확정됐거나 세무사님이 [확인]으로 고른 값(saved.filled), △ = 입력은 돼 있으나 확정 전, ⚠ = 확인 질문이 열려 있음, ⬜ = 비어 있음
+  const mark = function (key, v) {
+    if (!has(v)) return '⬜';
+    if (open[key]) return '⚠ 확인 필요';
+    if (held[key]) return '△ 보류';
+    return filled[key] && String(filled[key].v) === String(v) ? '✅' : '△ 확정 전';
+  };
+  const srcOf = function (key, v) { return filled[key] && String(filled[key].v) === String(v) ? ' — ' + filled[key].src : ''; };
+  rows.push(['사건 기본', '세목·업무유형', has(c.세목) && has(c.업무유형) ? '✅' : '⬜', (CASEPROC_TAX_LABEL_[c.세목] || c.세목 || '') + ' · ' + (c.업무유형 || '')]);
+  rows.push(['사건 기본', '납세자', open.납세자 ? '⚠ 확인 필요' : (has(c.납세자) ? '✅' : '⬜'), c.납세자 || '']);
+  const baseMark = mark('기준일', c.기준일);
+  rows.push(['사건 기본', CASEPROC_BASE_LABEL_[c.세목] || '기준일', baseMark, (c.기준일 || '') + srcOf('기준일', c.기준일)]);
+  const due = c.기준일 ? caseProcDue_(c, c.기준일) : '';
+  const manual = WORK_MANUAL_DEADLINE_TYPES_.indexOf(c.업무유형) !== -1;
+  rows.push(['사건 기본', '법정일', !has(c.법정일) ? '⬜' : (!manual && due && due !== c.법정일 ? '⚠ 확인 필요' : (manual ? '✅' : (baseMark === '✅' ? '✅' : '⚠ 기준일 미확정'))),
+    (c.법정일 || '') + (!manual && due && due !== c.법정일 ? ' — 기준일로 계산하면 ' + due : '')]);
   const keys = { transfer: [['trTransferorName', '양도인 성명'], ['사건분류', '사건분류']], gift: [['giftDoneeName', '수증자'], ['giftDonorName', '증여자'], ['giftRelation', '관계'], ['giftAmount', '증여재산가액'], ['giftDebtAssumed', '인수채무'], ['giftPriorAmount', '10년 합산'], ['사건분류', '사건분류']], inheritance: [['ihDeceasedName', '피상속인'], ['상속인성명', '대표 상속인'], ['상속인수', '상속인 수'], ['ihEstate', '상속세과세가액'], ['사건분류', '사건분류']] }[c.세목] || [];
+  let inputsOk = baseMark === '✅' || !CASEPROC_TAX_LABEL_[c.세목];
   keys.forEach(function (k) {
-    const v = ov[k[0]];
-    const f = filled[k[0]];
-    const has = String(v == null ? '' : v).trim();
-    rows.push(['처리개요', k[1], has ? (f && String(f.v) === String(v) ? '✅' : (/Amount|Estate|Assumed/.test(k[0]) ? '△ 추정' : '✅')) : '⬜', has ? String(v) + (f && String(f.v) === String(v) ? ' — ' + f.src : '') : '']);
+    const v = ov[k[0]], mk = mark(k[0], v);
+    if (k[0] !== '사건분류' && /^(⚠|△)/.test(mk)) inputsOk = false;
+    rows.push(['처리개요', k[1], mk, has(v) ? String(v) + srcOf(k[0], v) : '']);
   });
   if (c.세목 === 'transfer') (Array.isArray(ov.물건목록) ? ov.물건목록 : []).forEach(function (a, i) {
-    rows.push(['처리개요', '물건' + (i + 1), ['assetLocation', '양도가액', '취득가액', '취득일'].every(function (k) { return String(a[k] || '').trim(); }) ? '✅' : '△', [a.assetLocation, a.양도가액 && Number(a.양도가액).toLocaleString('ko-KR') + '원', a.취득일].filter(Boolean).join(' · ')]);
+    const full = ['assetLocation', '양도가액', '취득가액', '취득일'].every(function (k) { return has(a[k]); });
+    const mk = open['물건' + (i + 1)] || open['물건'] ? '⚠ 확인 필요' : (full ? '✅' : '△ 일부');
+    if (mk !== '✅') inputsOk = false;
+    rows.push(['처리개요', '물건' + (i + 1), mk, [a.assetLocation, a.양도가액 && Number(a.양도가액).toLocaleString('ko-KR') + '원', a.취득일].filter(Boolean).join(' · ')]);
   });
   const ev = (Array.isArray(c.증빙목록) ? c.증빙목록 : []).filter(function (e) { return e && e.source === 'requested'; });
-  rows.push(['증빙', '필요증빙 확보', ev.length && ev.every(function (e) { return e.status === '확보됨'; }) ? '✅' : (ev.length ? '△' : '⬜'), ev.filter(function (e) { return e.status === '확보됨'; }).length + '/' + ev.length]);
+  const got = ev.filter(function (e) { return e.status === '확보됨'; }).length;
+  rows.push(['증빙', '필요증빙 확보', ev.length && got === ev.length ? '✅' : (ev.length ? '△ 일부' : '⬜'), got + '/' + ev.length]);
   const last = caseProcLastCalc_(c).last;
-  rows.push(['세액계산', '계산 결과 저장', last ? (last.저장값 ? '✅' : '△') : '⬜', last ? (last.계산일 || '') + (Number.isFinite(last.최종세액) ? ' · ' + Number(last.최종세액).toLocaleString('ko-KR') + '원' : '') + (last.기준일스냅샷 && c.기준일 && last.기준일스냅샷 !== c.기준일 ? ' ⚠ 계산 날짜 ' + last.기준일스냅샷 : '') : '']);
-  rows.push(['세액인쇄', '서식 PDF 저장', saved.printPdf ? '✅' : '⬜', saved.printPdf ? saved.printPdf.name + ' (' + saved.printPdf.at + ')' : '']);
+  const calcDateOff = last && last.기준일스냅샷 && c.기준일 && last.기준일스냅샷 !== c.기준일;
+  rows.push(['세액계산', '계산 결과 저장', !last ? '⬜' : (open.세액 || calcDateOff ? '⚠ 확인 필요' : (!last.저장값 ? '△ 옛 결과' : (inputsOk ? '✅' : '⚠ 입력값 확정 전'))),
+    last ? (last.계산일 || '') + (Number.isFinite(last.최종세액) ? ' · ' + Number(last.최종세액).toLocaleString('ko-KR') + '원' : '') + (calcDateOff ? ' — 계산에 쓴 날짜 ' + last.기준일스냅샷 + ' ≠ 기준일' : '') : '']);
+  const pdf = saved.printPdf;
+  const pdfFresh = pdf && last && pdf.calcId === String(last.id || '');
+  rows.push(['세액인쇄', '서식 PDF 저장', !pdf ? '⬜' : (pdfFresh ? (inputsOk && !calcDateOff ? '✅' : '⚠ 계산 확정 전') : '△ 이전 계산 기준'), pdf ? pdf.name + ' (' + pdf.at + ')' : '']);
   let draft = '';
   if (saved.draftFileId) { try { const df = DriveApp.getFileById(saved.draftFileId); if (!df.isTrashed()) draft = df.getName(); } catch (e) {} }
   rows.push(['문서작성', '종합검토서 초안', draft ? '✅' : '⬜', draft]);
   const remain = (saved.remaining || []).filter(function (it) { const d = dec[it.id] && dec[it.id].d; return d !== '무시' && d !== 'done'; });
-  const held = remain.filter(function (it) { return dec[it.id] && /^(보류|예정)$/.test(dec[it.id].d); });
-  rows.push(['남은 일', '물어볼 것 / 보류·받을 예정', remain.length - held.length ? '⚠' : '✅', (remain.length - held.length) + '건 / ' + held.length + '건']);
+  const parked = remain.filter(function (it) { return dec[it.id] && /^(보류|예정)$/.test(dec[it.id].d); });
+  rows.push(['남은 일', '물어볼 것 / 보류·받을 예정', remain.length - parked.length ? '⚠' : '✅', (remain.length - parked.length) + '건 / ' + parked.length + '건']);
   return { ok: true, rows: rows };
 }
 // 4) 세액계산 — 저장된 결과 유무·계산 뒤 서류 변경. 실제 계산은 화면(계산엔진)이 돌려 사건에 저장한다(ask.mode 'calc').
@@ -25378,7 +25419,9 @@ function caseProcOutput_(c) {
   });
   const paras = caseProcParagraphs_(c);
   if (paras.length) lines.push('📚 이 사건에 맞을 쟁점 문단: ' + paras.map(function (p) { return p.제목; }).join(', ') + ' — 종합검토서 초안에 넣습니다.');
-  return { ok: true, lines: lines, items: items };
+  const pdf = caseProcLoad_(c.id).printPdf;
+  const needPdf = !!(last && last.저장값 && (!pdf || pdf.calcId !== String(last.id || '')));
+  return { ok: true, lines: lines, items: items, needPdf: needPdf };
 }
 
 // [확인] 반영 — 세무사님이 고른 값을 사건에 넣는다(작업일지에 무엇을·어디서 왔는지 남김). 기준일은 법정일 자동 재계산.
@@ -25438,6 +25481,7 @@ function caseProcApplyBase_(caseId, date, file, what) {
   if (c.기준일 === date && newDue && WORK_MANUAL_DEADLINE_TYPES_.indexOf(c.업무유형) === -1) p.법정일 = newDue;
   const up = work_updateCase(p);
   if (!up || up.success === false) return { ok: false, error: (up && up.message) || '저장 실패' };
+  caseProcRememberFill_(caseId, '기준일', date, String(file || '세무사님 확인'));
   return { ok: true, message: text, 법정일: up.case ? up.case.법정일 : newDue, 기준일: date };
 }
 

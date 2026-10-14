@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-14 05:20 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-14 05:29 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -46226,6 +46226,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         if (key === 'overview' && res.case) st.case = res.case; // 서류로 채운 처리개요 — 세액계산 입력에 그대로 쓴다
         nxAiCaseProcFill_(st, key, res);
         if (key === 'calc' && res.needCalc && !st.calcAuto){ st.calcAuto = true; setTimeout(function(){ nxAiCaseProcCalcRun_(st, false); }, 300); }
+        // 계산 결과는 저장돼 있는데 그 결과의 서식 PDF가 없으면 — 계산을 새로 돌리는 중이 아니면 지금 만든다(계산 중이면 계산 저장 뒤에 만듦)
+        if (key === 'output' && res.needPdf && !st.pdfTried && !st.calcBusy){ st.pdfTried = true; setTimeout(function(){ nxAiCaseProcPdfRun_(st); }, 300); }
         return res;
       }).catch(function(err){
         st.setStep(key, '❌', '처리하지 못함: ' + (err && err.message || err));
@@ -46290,6 +46292,29 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         .replace(/<div class="pf-toolbar">[\s\S]*?<\/div>/, '').replace('background:#e9eaee', 'background:#fff');
       return st.run('savePdf', { html: html, title: group + ' 신고서식', forms: rows.length });
     } catch (e) { return Promise.resolve({ ok: false, error: String(e && e.message || e) }); }
+  }
+  // 저장된 계산 결과로 세액인쇄 필수 서식 PDF 만들기 — 서식은 세액계산 화면이 그 사건의 저장 결과를 불러와야 생기므로(tcRestoreToolResults_)
+  // 그 사건으로 세액계산 화면을 열고 서식이 준비되면 PDF로 사건 폴더(보고서_내부)에 저장한다.
+  function nxAiCaseProcPdfRun_(st){
+    var tab = st.case && st.case.세목;
+    if (st.calcBusy || !CASEPROC_CALC_TABS_[tab] || typeof goToTaxCalc_ !== 'function') return;
+    var addLine = function(txt){ var ln = document.createElement('div'); ln.className = 'nxai-cp-line'; ln.textContent = txt; st.steps.output.querySelector('.nxai-cp-lines').appendChild(ln); return ln; };
+    var info = addLine('🖨 저장된 계산 결과로 서식 PDF를 만들려고 세액계산 화면을 엽니다…');
+    nxAiOpenJobView_('taxcalc', st.caseId);
+    var tries = 0;
+    var tick = function(){
+      tries++;
+      var ready = typeof tcCurrentCase !== 'undefined' && tcCurrentCase && tcCurrentCase.id === st.caseId && document.querySelector('.taxcalc-tab[data-tab="' + tab + '"]');
+      if (ready && tries === 1){ var tb = document.querySelector('.taxcalc-tab[data-tab="' + tab + '"]'); if (tb && !tb.classList.contains('active')) tb.click(); }
+      // 저장 결과가 화면에 복원되기를 기다렸다가(최대 약 40초) 저장 시도 — 서식이 아직 준비 안 됐으면 다시 기다린다
+      if (!ready || tries < 4){ if (tries < 30) return setTimeout(tick, 1500); info.textContent = '서식 PDF를 만들지 못했습니다: 세액계산 화면이 준비되지 않음 — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.'; return; }
+      nxAiCaseProcSavePdf_(st, tab).then(function(pr){
+        if (!(pr && pr.ok) && tries < 26 && /준비된 필수 서식이 없음/.test((pr && pr.error) || '')) return setTimeout(tick, 1500);
+        info.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서_내부)' : '서식 PDF를 만들지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
+        if (pr && pr.ok) nxAiCaseProcStatus_(st);
+      });
+    };
+    setTimeout(tick, 1500);
   }
   // 값을 반영한 뒤 — 영향을 받는 단계만 다시 처리하고, 저장·초안도 다시
   function nxAiCaseProcRefresh_(st, keys, recalc){
