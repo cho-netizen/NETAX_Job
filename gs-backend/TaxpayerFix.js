@@ -43,6 +43,10 @@ function tpfResolveOne_(caseId) {
       return v && f && String(f.v || '').replace(/\([^)]*\)/g, '').trim() === v ? { v: v, src: f.src } : null;
     });
   }
+  // 양도 — 매매계약서 규칙 정리의 매도인(검산된 계약서 기준, tc_ruleTransferFacts_)
+  if (real.세목 === 'transfer') {
+    try { const rf = tc_ruleTransferFacts_({ caseId: caseId }); const nm = String((rf && rf.sellerName) || '').trim(); if (nm && !/\*/.test(nm) && /^[가-힣]{2,5}$/.test(nm)) found = { v: nm, src: '매매계약서 매도인(서류 규칙 정리)' }; } catch (e) {}
+  }
   // 서류 규칙으로 못 정했으면(상속) 이미 낸 상속세 신고서의 피상속인 성명 — 신고된 사실이라 이 용도엔 근거로 쓴다
   if (!found && real.세목 === 'inheritance') {
     caseProcFiles_(real).filter(function (f) { return /pdf|^image\//.test(String(f.mimeType || '')) && caseProcIsOutputDoc_(f.name) && /상속/.test(f.name); }).slice(0, 4).forEach(function (f) {
@@ -52,7 +56,7 @@ function tpfResolveOne_(caseId) {
       if (m && m[1] !== row.고객명) found = { v: m[1], src: '상속세 신고서(' + f.name + ') 피상속인 성명' };
     });
   }
-  if (!found) { row.판단불가 = real.세목 === 'transfer' ? '양도인은 서류 규칙으로 아직 못 정함(매매계약서 매도인 자동 판정 없음)' : '서류에서 ' + (real.세목 === 'inheritance' ? '피상속인' : '수증자') + '을(를) 확정하지 못함'; return row; }
+  if (!found) { row.판단불가 = real.세목 === 'transfer' ? '매매계약서에서 매도인(양도인)을 확정하지 못함' : '서류에서 ' + (real.세목 === 'inheritance' ? '피상속인' : '수증자') + '을(를) 확정하지 못함'; return row; }
   if (found.v === row.이전납세자) { row.변경없음 = true; return row; }
   row.새납세자 = found.v; row.근거 = found.src;
   row.예상사건명 = row.고객명 + '(' + found.v + ')_' + (WORK_SEMOK_LABELS_[real.세목] || real.세목) + (real.업무유형 ? '_' + real.업무유형 : '');
