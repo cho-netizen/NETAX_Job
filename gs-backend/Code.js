@@ -24846,7 +24846,7 @@ function caseProcEvTypes_(label) {
   return null;
 }
 function caseProcParsed_(f, cache, canParse) {
-  const key = 'cpp7_' + f.id + '_' + f.modified; // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
+  const key = 'cpp8_' + f.id + '_' + f.modified; // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
   const hit = cache.get(key);
   if (hit) { try { return JSON.parse(hit); } catch (e) {} }
   if (!canParse) return null;
@@ -27780,14 +27780,15 @@ function docFuneralListParse_(text) {
     // [2026.10.14] 정산서는 확인서·집계표 두 번 나오고, "정산금액" 이름표 바로 뒤가 첫 항목 금액인 배치도 있다(실사건: 3,584,000을 합계로 읽음).
     // 항목은 첫 묶음만(첫 금액이 다시 나오면 두 번째 표), 합계는 "항목 합과 같은 금액이 문서에 있으면" 그것 — 검산으로 확정
     var tn = t.replace(/(\d)\.(\d{3})(?=[^\d]|$)/g, '$1,$2');
+    // [2026.10.14 실서버] 확인서·집계표가 같은 항목을 두 번 싣고 서버 글자인식은 순서도 달라 항목 합이 두 배가 됐다 — 금액이 같은 항목은 한 번만,
+    // 그중 "나머지 항목 합과 같은 금액"은 합계 줄이므로 항목에서 뺀다
     var items = [], ir = /\n\s*([\d]{1,3}(?:,\d{3})+)\s+([^\n]{2,30})/g, ix;
     var sum = 0, hitTotal = false;
-    while ((ix = ir.exec(tn))) {
-      var v0 = Number(ix[1].replace(/,/g, ''));
-      if (items.length && v0 === items[0].금액) break;
-      if (items.length > 1 && v0 === sum) { hitTotal = true; break; } // 앞 항목들의 합 = 합계 줄
-      items.push({ 금액: v0, 내역: ix[2].trim() }); sum += v0;
-    }
+    while ((ix = ir.exec(tn))) { var v0 = Number(ix[1].replace(/,/g, '')); if (v0 && !items.some(function (q) { return q.금액 === v0; })) items.push({ 금액: v0, 내역: ix[2].trim() }); }
+    var all0 = items.reduce(function (a, b) { return a + b.금액; }, 0);
+    var totIt = items.filter(function (q) { return items.length > 2 && q.금액 * 2 === all0; })[0];
+    if (totIt) { items = items.filter(function (q) { return q !== totIt; }); hitTotal = true; }
+    sum = items.reduce(function (a, b) { return a + b.금액; }, 0);
     var amts = (tn.match(/\d{1,3}(?:,\d{3})+/g) || []).map(function (x) { return Number(x.replace(/,/g, '')); });
     var first = Number(sm[1].replace(/,/g, ''));
     var rs = { 종류: '장례식장 정산서', 합계: items.length > 1 && (hitTotal || amts.indexOf(sum) !== -1) ? sum : first, 항목: items, 증빙: true, 경고: [] };
@@ -27847,7 +27848,7 @@ function docNicheContractParse_(text) {
   while ((x = mr.exec(t))) {
     var v = Number(x[1]) * 10000;
     var near = t.slice(Math.max(0, x.index - 30), x.index);
-    if (/20\d{2}[.\-]\s*\d{1,2}[.\-]\s*\d{1,2}/.test(near) || /\(\s*카\s*드\s*\)/.test(t.slice(x.index, x.index + 12))) { if (r.관리비.indexOf(v) === -1) r.관리비.push(v); continue; }
+    if (v < 1000000 && (/20\d{2}[.\-]\s*\d{1,2}[.\-]\s*\d{1,2}/.test(near) || /\(\s*카\s*드\s*\)/.test(t.slice(x.index, x.index + 12)))) { if (r.관리비.indexOf(v) === -1) r.관리비.push(v); continue; }
     if (r.금액후보.indexOf(v) === -1) r.금액후보.push(v);
   }
   r.금액후보 = r.금액후보.filter(function (v) { return r.관리비.indexOf(v) === -1; });

@@ -140,6 +140,13 @@ function akRunCase_(caseId, key) {
     if (hit) used[hit.id] = true; else out.missing.push(e.포함 + (e.종류 ? ' (' + e.종류 + ')' : ''));
   });
   live.forEach(function (it) { if (!used[it.id]) out.extra.push({ id: it.id, kind: it.kind, text: it.text, detail: it.detail || '' }); });
+  // ⚠ 서류 질문이 정답지에 없는 것이면 그 서류의 서버 글자인식 원문(앞 4천 자)을 남긴다 — 규칙을 실제 원문으로 고치려고(결과 파일은 업무관리자 폴더, 저장소에는 안 들어감)
+  out.ocr = {};
+  out.extra.forEach(function (x) {
+    const m = /^file:([^:]+):(\d+)$/.exec(x.id);
+    if (!m) return;
+    try { const f = DriveApp.getFileById(m[1]); out.ocr[f.getName()] = String(tc_docText_({ id: m[1], name: f.getName(), mimeType: f.getMimeType(), modified: Number(m[2]) }) || '').slice(0, 4000); } catch (e) {}
+  });
   out.engineInput = tool._engineInput || null;
   out.fails = out.rows.filter(function (r) { return !r.ok; }).length + out.extra.length + out.missing.length;
   out.pass = out.fails === 0;
