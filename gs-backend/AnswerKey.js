@@ -198,13 +198,14 @@ function answerKeyRun_(body) {
     let r;
     if (!c) r = { caseId: id, error: '사건 없음' };
     else if (!k || !k.key) r = { caseId: id, 사건명: c.사건명 || '', error: (k && k.error) || '이 사건 폴더에 ' + AK_KEY_NAME_ + '이 없습니다.' };
+    else if (!Object.keys(k.key).some(function (f) { return !/^(상태|출처|세목|근거|메모|초안판|오류)$/.test(f); })) r = { caseId: id, 사건명: c.사건명 || '', skipped: true, error: '정답지에 대조할 숫자가 없음' + (k.key.오류 ? ' — ' + k.key.오류 : '') };
     else { try { r = akRunCase_(id, k.key); } catch (e) { r = { caseId: id, 사건명: c.사건명 || '', error: '점검 중 오류: ' + (e && e.message || e) }; } }
     if (r.more) { props.setProperty(AK_STATE_PROP_, JSON.stringify(st)); return { ok: true, more: true, caseId: id, progress: r.progress, done: st.results.length, total: st.results.length + st.queue.length }; }
     st.results.push(r); st.queue.shift();
   }
   if (st.queue.length) { props.setProperty(AK_STATE_PROP_, JSON.stringify(st)); return { ok: true, more: true, done: st.results.length, total: st.results.length + st.queue.length }; }
   props.deleteProperty(AK_STATE_PROP_);
-  const result = { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), cases: st.results, pass: st.results.filter(function (r) { return r.pass; }).length, total: st.results.length };
+  const result = { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), cases: st.results, pass: st.results.filter(function (r) { return r.pass; }).length, total: st.results.filter(function (r) { return !r.skipped; }).length, skipped: st.results.filter(function (r) { return r.skipped; }).length };
   try {
     const folder = getBusinessManagerFolder_();
     if (folder) { const it = folder.getFilesByName(AK_RESULT_NAME_); if (it.hasNext()) it.next().setContent(JSON.stringify(result)); else folder.createFile(AK_RESULT_NAME_, JSON.stringify(result), 'application/json'); }
@@ -251,15 +252,41 @@ const AK_FORM_LABELS_ = {
   gift: [['과세표준', /과\s*세\s*표\s*준/], ['산출세액', /산\s*출\s*세\s*액/], ['신고세액공제', /신\s*고\s*세\s*액\s*공\s*제/], ['납부세액', /(?:자\s*진\s*)?납\s*부\s*할\s*세\s*액(?:\s*합\s*계)?/]],
   transfer: [['과세표준', /과\s*세\s*표\s*준/], ['산출세액', /산\s*출\s*세\s*액/], ['납부세액', /(?:자\s*진\s*)?납\s*부\s*할\s*세\s*액(?:\s*합\s*계)?/]]
 };
+// [2026.10.14] 서식 칸 배치는 글자인식마다 달라(숫자가 이름표 뒤가 아니라 다른 열에 몰림) "이름표 바로 뒤 숫자"는 연도(2026)·다른 칸 금액을 잘못 읽었다.
+// 이제 세법 계산이 서로 맞는 숫자 묶음만 쓴다: 과세표준 B와 산출세액 T = 누진세율(B)가 문서에 둘 다 있어야 하고,
+// 신고세액공제 = 3%(상속·증여), 납부할 세액 = 산출 − 세액공제(문서에 그 금액이 있을 때)까지 맞춰 본다. 맞는 묶음이 없으면 초안을 만들지 않는다(지어내지 않음).
+const AK_BR_GI_ = [[1e8, 0.1, 0], [5e8, 0.2, 1e7], [1e9, 0.3, 6e7], [3e9, 0.4, 1.6e8], [Infinity, 0.5, 4.6e8]];
+const AK_BR_TR_ = [[1.4e7, 0.06, 0], [5e7, 0.15, 1.26e6], [8.8e7, 0.24, 5.76e6], [1.5e8, 0.35, 1.544e7], [3e8, 0.38, 1.994e7], [5e8, 0.4, 2.594e7], [1e9, 0.42, 3.594e7], [Infinity, 0.45, 6.594e7]];
+function akProg_(b, br) { for (let i = 0; i < br.length; i++) if (b <= br[i][0]) return Math.floor(b * br[i][1] - br[i][2]); return 0; }
+const AK_FORM_TITLE_ = { inheritance: /상\s*속\s*세\s*과\s*세\s*표\s*준/, gift: /증\s*여\s*세\s*과\s*세\s*표\s*준/, transfer: /양\s*도\s*소\s*득\s*(?:세\s*)?과\s*세\s*표\s*준|양\s*도\s*소\s*득\s*세\s*(?:간\s*편\s*)?신\s*고/ };
 function akParseFormResult_(text, seMok) {
-  const t = String(text || ''), out = {};
-  (AK_FORM_LABELS_[seMok] || []).forEach(function (p) {
-    const m = p[1].exec(t);
-    if (!m) return;
-    const after = t.slice(m.index + m[0].length, m.index + m[0].length + 80);
-    const n = /([\d]{1,3}(?:,\d{3})+|\d{4,})/.exec(after);
-    if (n) out[p[0]] = Number(n[1].replace(/,/g, ''));
-  });
+  const t = String(text || '').replace(/(\d)\.(\d{3})(?=[^\d]|$)/g, '$1,$2');
+  if (!AK_FORM_TITLE_[seMok] || !AK_FORM_TITLE_[seMok].test(t)) return {}; // 다른 세목 서식(예: 양도 사건 폴더의 증여세 신고서)은 쓰지 않음
+  const nums = [], seen = {};
+  (t.match(/\d{1,3}(?:,\d{3})+/g) || []).forEach(function (x) { const v = Number(x.replace(/,/g, '')); if (v >= 1000 && !seen[v]) { seen[v] = true; nums.push(v); } });
+  const has = function (v) { return !!seen[v]; };
+  const br = seMok === 'transfer' ? AK_BR_TR_ : AK_BR_GI_;
+  const pairs = [];
+  nums.forEach(function (b) { const tx = akProg_(b, br); if (tx >= 1000 && has(tx)) pairs.push({ b: b, t: tx }); });
+  if (!pairs.length) return {};
+  // 세액공제 3%·납부세액까지 맞는 짝을 먼저(우연히 맞는 짝 — 예: 증여재산가액 1억 ↔ 공제액 1천만 — 을 거름), 같으면 큰 과세표준(합계 칸)
+  const score = function (p) { if (seMok === 'transfer') return 0; const cr = Math.floor(p.t * 0.03); return (has(cr) ? 1 : 0) + (has(p.t - cr) ? 1 : 0); };
+  pairs.forEach(function (p) { p.s = score(p); });
+  pairs.sort(function (p, q) { return (q.s - p.s) || (q.b - p.b); });
+  const out = { 과세표준: pairs[0].b, 산출세액: pairs[0].t };
+  if (seMok !== 'transfer') {
+    const cr = Math.floor(out.산출세액 * 0.03);
+    // 신고세액공제는 (산출 − 다른 공제)×3% — 다른 공제가 없으면 산출×3%, 있으면 문서의 3% 근처 값 중 납부세액과 맞는 것
+    const credit = has(cr) ? cr : nums.filter(function (v) { return v < cr && v > cr * 0.5 && has(out.산출세액 - v); })[0];
+    if (credit) { out.신고세액공제 = credit; if (has(out.산출세액 - credit)) out.납부세액 = out.산출세액 - credit; }
+    const lab = seMok === 'inheritance' ? /상\s*속\s*세\s*과\s*세\s*가\s*액/ : /증\s*여\s*세\s*과\s*세\s*가\s*액/;
+    const lm = lab.exec(t);
+    if (lm) { const g = (t.slice(lm.index, lm.index + 400).match(/\d{1,3}(?:,\d{3})+/g) || []).map(function (x) { return Number(x.replace(/,/g, '')); }).filter(function (v) { return v >= out.과세표준; })[0]; if (g) out.과세가액 = g; }
+    if (out.과세가액 && seMok === 'inheritance' && has(out.과세가액 - out.과세표준)) out.상속공제 = out.과세가액 - out.과세표준; // 감정평가수수료가 있으면 맞지 않아 안 씀
+  } else {
+    const pm = /(?:자\s*진\s*)?납\s*부\s*할\s*세\s*액/.exec(t);
+    if (pm) { const p = (t.slice(pm.index, pm.index + 300).match(/\d{1,3}(?:,\d{3})+/g) || []).map(function (x) { return Number(x.replace(/,/g, '')); }).filter(function (v) { return v <= out.산출세액 * 1.5 && v >= 1000; })[0]; if (p) out.납부세액 = p; }
+  }
   return out;
 }
 function answerKeyDraft_(body) {
@@ -270,7 +297,7 @@ function answerKeyDraft_(body) {
   for (let i = 1; i < data.length; i++) {
     const c = work_readRow_(col, data[i]);
     if (ids && ids.indexOf(String(c.id)) === -1) continue;
-    if (!ids && String(c.폴더ID || '').trim() && akKeyFile_(String(c.폴더ID).trim())) continue; // 이미 정답지가 있는 사건은 건너뜀(여러 번 눌러 이어서 진행)
+    if (!ids && String(c.폴더ID || '').trim()) { const ek = akLoadKey_(c); if (ek && ek.key && (ek.key.상태 === '확정' || ek.key.초안판 >= 2)) continue; } // 확정·새 규칙 초안은 건너뜀(여러 번 눌러 이어서 진행)
     if (Date.now() - started > 200000) { more = true; break; } // 처음 읽는 서류가 많으면 한 번에 다 못 함 — 화면이 이어서 다시 부름
     if (!ids && !CASEPROC_TAX_LABEL_[c.세목]) continue; // 신고가 끝난(완료) 사건이 정답지 원천이라 완료도 포함
     if (!String(c.폴더ID || '').trim()) continue;
@@ -279,18 +306,19 @@ function answerKeyDraft_(body) {
     files.slice(0, 6).forEach(function (f) {
       if (res) return;
       const txt = tc_docText_(f) || '';
-      if (!/과\s*세\s*표\s*준/.test(txt) || !/산\s*출\s*세\s*액/.test(txt)) return;
       const r = akParseFormResult_(txt, c.세목);
-      if (Object.keys(r).length >= 2) { res = r; src = f.name; }
+      if (r.과세표준 && r.산출세액) { res = r; src = f.name; }
     });
-    if (!res) { if (ids || files.length) made.push({ caseId: c.id, 사건명: c.사건명, error: files.length ? '신고서 PDF ' + files.length + '개(' + files.slice(0, 3).map(function (f) { return f.name; }).join(', ') + ')에서 과세표준·산출세액을 읽지 못함' : '신고서 PDF(홈택스·양도코리아)가 사건 폴더에 없음' }); continue; }
+    if (!res) {
+      const old = akLoadKey_(c);
+      if (old && old.key && old.key.상태 !== '확정' && !(old.key.초안판 >= 2)) answerKeySave_({ caseId: c.id, key: { 세목: c.세목, 상태: '초안', 초안판: 2, 오류: '신고서에서 세율 계산이 맞는 숫자를 찾지 못함 — 옛 초안 숫자는 지움' } });
+    }
+    if (!res) { if (ids || files.length) made.push({ caseId: c.id, 사건명: c.사건명, error: files.length ? '신고서 PDF ' + files.length + '개(' + files.slice(0, 3).map(function (f) { return f.name; }).join(', ') + ')에서 세율 계산이 맞는 과세표준·산출세액 짝을 찾지 못함(다른 세목 서식이거나 글자인식 불량)' : '신고서 PDF(홈택스·양도코리아)가 사건 폴더에 없음' }); continue; }
     const cur = (akLoadKey_(c) || {}).key || {};
     const confirmed = cur.상태 === '확정';
-    const key = Object.assign({}, cur);
+    const key = confirmed ? Object.assign({}, cur) : { 세목: c.세목, 상태: '초안', 초안판: 2, 출처: src };
     Object.keys(res).forEach(function (k) { if (!(confirmed && key[k] !== undefined)) key[k] = res[k]; });
-    key.세목 = key.세목 || c.세목;
-    if (!confirmed) key.상태 = '초안';
-    key.근거 = Object.assign({}, key.근거 || {}, Object.keys(res).reduce(function (o, k) { o[k] = '양도코리아 결과(' + src + ') — 글자인식·규칙 초안, 세무사님 확인 전'; return o; }, {}));
+    key.근거 = Object.assign({}, confirmed ? (key.근거 || {}) : {}, Object.keys(res).reduce(function (o, k) { o[k] = '신고서(' + src + ') — 글자인식 + 세율 검산(과세표준↔산출세액' + (k === '신고세액공제' || k === '납부세액' ? '↔세액공제↔납부' : '') + ')으로 맞는 숫자, 세무사님 확인 전'; return o; }, {}));
     answerKeySave_({ caseId: c.id, key: key });
     made.push({ caseId: c.id, 사건명: c.사건명, from: src, fields: res });
   }
