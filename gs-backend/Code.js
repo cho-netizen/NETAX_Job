@@ -22465,6 +22465,23 @@ function work_calcDeadline_(seMok, upType, baseDateStr) {
   return Utilities.formatDate(deadline, Session.getScriptTimeZone(), 'yyyy-MM-dd');
 }
 
+// [2026.10.14 버그수정] 사건 시트에 행을 통째로 다시 쓸 때 날짜 칸이 7시간씩 앞당겨지던 문제 — 사건 시트의 시간대가 스크립트(서울)와
+// 달라, 읽은 Date를 그대로 다시 쓰면 7시간 이른 시각으로 저장된다(수정일을 다시 읽으면 7시간 어긋나던 것과 같은 원인). 날짜만 있는 칸
+// (의뢰일·기준일·법정일)은 몇 번 저장되면 하루씩 당겨졌다(실측: 같은 사건 법정일 10-31→10-29→10-28→10-27, 기준일 07-11→07-10 —
+// 사건처리 점검이 작업일지를 자주 저장하면서 드러남). 쓰기 전에 Date를 서울 시각 글자로 바꾸면 시트가 같은 날짜·시각으로 읽어 들여 그대로 유지된다.
+const WORK_DATE_ONLY_COLS_ = ['의뢰일', '기준일', '법정일', '완료전법정일'];
+function work_rowForWrite_(col, row, sheet) {
+  const tz = Session.getScriptTimeZone();
+  // 날짜+시각 칸(생성일·수정일)은 UTC 시각 글자로 써야 같은 시각으로 읽힌다 — 2026-10-14 실측: 서울 시각 글자는 9시간 늦게, 시트 시간대 글자·Date는
+  // 7시간 이르게 읽혔다(이 시트는 글자 시각을 UTC로 받아들임). 날짜만 있는 칸은 서울 날짜 글자로 쓰면 같은 날짜로 읽힌다(확인함).
+  const sheetTz = 'Etc/UTC';
+  const dateOnly = {};
+  WORK_DATE_ONLY_COLS_.forEach(function (k) { if (col[k] !== undefined) dateOnly[col[k]] = true; });
+  return row.map(function (v, i) {
+    if (!(v instanceof Date) || isNaN(v.getTime())) return v;
+    return dateOnly[i] ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : Utilities.formatDate(v, sheetTz, 'yyyy-MM-dd HH:mm:ss');
+  });
+}
 function work_dateStr_(v) {
   if (!v) return '';
   if (v instanceof Date) return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
@@ -23088,7 +23105,7 @@ function work_updateCase(params) {
     }
     row[col.수정일] = new Date();
 
-    sheet.getRange(found.rowIndex, 1, 1, row.length).setValues([row]);
+    sheet.getRange(found.rowIndex, 1, 1, row.length).setValues([work_rowForWrite_(col, row, sheet)]);
     SpreadsheetApp.flush();
     // [2026.10.09 버그수정] 시트에 쓴 날짜시각은 다시 읽으면 시트 시간대 때문에 몇 시간 어긋나고 밀리초가 잘린 값으로 돌아온다.
     // 방금 만든 new Date()를 그대로 돌려주면, 화면이 그 값을 기대수정일로 보내는 다음 저장이 시트 값과 안 맞아 매번 "다른 화면이 먼저
@@ -23635,7 +23652,7 @@ function work_applyReceiptOnlyCaseCleanup(params) {
         const newCaseName = work_generateUniqueCaseName_(sheet, col, row[col.고객ID], row[col.고객명], row[col.세목], '상담', row[col.납세자]);
         row[col.사건명] = newCaseName;
         row[col.수정일] = new Date();
-        sheet.getRange(rec.rowIndex, 1, 1, row.length).setValues([row]);
+        sheet.getRange(rec.rowIndex, 1, 1, row.length).setValues([work_rowForWrite_(col, row, sheet)]);
         applied++;
         log.push('"' + rec.사건명 + '" → 상담으로 정리' + (rec.fileMoves.length ? (', 현금영수증 ' + rec.fileMoves.length + '건을 상담사건 폴더로 이동') : ' (관련파일 0건, 빈 폴더만 정리)'));
       } catch (err) {
@@ -24679,6 +24696,7 @@ function caseProc_(body) {
     if (body.step === 'overview') return caseProcOverview_(c);
     if (body.step === 'calc') return caseProcCalc_(c);
     if (body.step === 'output') return caseProcOutput_(c);
+    if (body.step === 'applyBase') return caseProcApplyBase_(c.id, body.date, body.file, body.what);
   } catch (e) {
     return { error: '이 단계를 점검하지 못했습니다: ' + (e && e.message || e) };
   }
@@ -24775,7 +24793,7 @@ function caseProcEvRe_(label) {
   return key.length >= 2 ? new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) : null;
 }
 function caseProcParsed_(f, cache, canParse) {
-  const key = 'cpp2_' + f.id + '_' + f.modified; // cpp2: 사무소 발행 표시(office) 추가
+  const key = 'cpp3_' + f.id + '_' + f.modified; // cpp2: 사무소 발행 표시(office), cpp3: 기준일 후보(bd)
   const hit = cache.get(key);
   if (hit) { try { return JSON.parse(hit); } catch (e) {} }
   if (!canParse) return null;
@@ -24789,6 +24807,7 @@ function caseProcParsed_(f, cache, canParse) {
       s.wn = String(p.md || '').split('⚠').length - 1;
       // 이 사무소(이음세무컨설팅)가 발행한 수수료 영수증·세금계산서 — 고객 증빙이 아니라 수금 기록용
       s.office = !!(p.result && !Array.isArray(p.result) && p.result.사무소발행);
+      s.bd = caseProcBaseDateCands_(p);
     }
   } catch (e) { s.err = String(e && e.message || e).slice(0, 80); }
   try { cache.put(key, JSON.stringify(s), 21600); } catch (e) {}
@@ -24865,6 +24884,7 @@ function caseProcOverview_(c) {
     items.push(caseProcItem_('ov:사건분류', 'judge', '사건분류(비과세·중과·감면 등 어느 경우인지)가 정해지지 않았습니다 — 판단이 필요합니다.',
       { type: 'judge', q: '이 사건의 사건분류(비과세·중과·감면·특례 중 어느 경우인지)를 사건자료로 판단하고, 판단에 부족한 사실·서류를 알려줘.' }));
   }
+  if (c.세목 === 'gift' || c.세목 === 'inheritance') caseProcBaseDateCheck_(c, ov, lines, items);
   if (c.세목 !== 'transfer') {
     if (CASEPROC_TAX_LABEL_[c.세목]) lines.push('증여·상속은 서류 → 처리개요 자동 채움 규칙이 아직 없습니다 — 세액계산 [자동계산]이 서류를 읽어 계산 칸을 채웁니다.');
     lines.push('처리개요 빈 칸 ' + items.filter(function (i) { return i.kind === 'missing'; }).length + '개');
@@ -24906,8 +24926,12 @@ function caseProcOverview_(c) {
     });
   });
   if (txs.length === 1 && txs[0].transferDate) {
-    if (!c.기준일) items.push(caseProcItem_('ov:기준일', 'missing', '기준일(양도일)이 비어 있습니다 — 서류상 양도시기 ' + txs[0].transferDate + '(잔금일·등기접수일 중 빠른 날). 처리개요에 넣으면 법정일이 자동 계산됩니다.', { type: 'view', view: 'casehandling' }));
-    else if (c.기준일 !== txs[0].transferDate) items.push(caseProcItem_('ov:기준일:' + txs[0].transferDate, 'check', '기준일(양도일) ' + c.기준일 + ' ↔ 서류상 양도시기 ' + txs[0].transferDate + ' — 법정일 계산에 영향, 확인 필요', { type: 'view', view: 'casehandling' }));
+    const tdFile = '매매계약서·신고필증·등기부(규칙 정리)';
+    if (!c.기준일) {
+      const ap = caseProcApplyBase_(c.id, txs[0].transferDate, tdFile, '양도일');
+      lines.push(ap.ok ? '✏ ' + ap.message : '⚠ 양도일을 반영하지 못했습니다: ' + ap.error);
+    } else if (c.기준일 !== txs[0].transferDate) items.push(caseProcItem_('ov:기준일:' + txs[0].transferDate, 'check', '양도일: 사건 기준일 ' + c.기준일 + ' ↔ 서류상 양도시기 ' + txs[0].transferDate + '(잔금일·등기접수일 중 빠른 날, 소득세법 §98) — [증빙 날짜로 반영]을 누르면 기준일을 바꾸고 법정일을 다시 계산합니다.', { type: 'applyBase', date: txs[0].transferDate, file: tdFile, what: '양도일' }));
+    else lines.push('✅ 양도일 ' + c.기준일 + ' — 서류(잔금일·등기접수일)로 확인');
   }
   if (fills.length) {
     ov.물건목록 = assets;
@@ -24920,6 +24944,80 @@ function caseProcOverview_(c) {
   return { ok: true, lines: lines, items: items, filled: fills.length };
 }
 
+// 서류 정리 결과에서 기준일 후보 — 증여: 등기부 소유권이전 원인 "증여"의 접수일(상증령 §24 — 등기·등록 대상 재산의 취득시기는
+// 소유권이전등기 접수일, 증여계약일(원인일) 아님), 상속: 사망진단서·기본증명서 등의 사망일. 판독이 불확실하면 warn.
+function caseProcBaseDateCands_(p) {
+  const out = [];
+  try {
+    if (p.type === 'registry' && p.result && p.result.docs) p.result.docs.forEach(function (d) {
+      (d.소유권이력 || []).forEach(function (x) {
+        if (x.말소 || !x.접수일 || !/증여/.test(String(x.원인 || ''))) return;
+        out.push({ k: 'gift', d: x.접수일, cause: x.원인일 || '', who: (x.권리자 || []).map(function (h) { return h.이름; }).join(','), loc: String(d.소재지 || '').slice(0, 40), warn: !!x.확인필요 });
+      });
+    });
+    if (p.type === 'death' && p.result && p.result.사망일) out.push({ k: 'death', d: p.result.사망일, who: p.result.성명 || '', warn: !!p.result.사망일확인필요 });
+  } catch (e) {}
+  return out;
+}
+// 증여일·상속개시일을 증빙으로 확정 — 같으면 확인 표시, 비었으면 증빙 값으로 채우고 법정일 자동 재계산, 다르면 덮지 않고 [증빙 날짜로 반영] 카드
+function caseProcBaseDateCheck_(c, ov, lines, items) {
+  if (!String(c.폴더ID || '').trim()) return;
+  const what = c.세목 === 'gift' ? '증여일' : '상속개시일';
+  const kind = c.세목 === 'gift' ? 'gift' : 'death';
+  const norm = function (x) { return String(x || '').replace(/\s+/g, ''); };
+  const who = norm(c.세목 === 'gift' ? (ov.giftDoneeName || c.납세자) : (ov.ihDeceasedName || c.납세자));
+  const cache = CacheService.getScriptCache();
+  const cands = [];
+  caseProcFiles_(c).forEach(function (f) {
+    if (!/pdf|^image\//.test(String(f.mimeType || '')) || /^_/.test(f.name)) return;
+    const sm = caseProcParsed_(f, cache, false);
+    (sm && sm.bd || []).forEach(function (b) {
+      if (b.k !== kind) return;
+      // 다른 사람의 증여·사망 기재는 뺀다(이름을 모르면 그대로 둠)
+      if (who && b.who && norm(b.who).indexOf(who) === -1 && who.indexOf(norm(b.who)) === -1) return;
+      cands.push(Object.assign({ file: f.name, fileId: f.id }, b));
+    });
+  });
+  const sure = cands.filter(function (b) { return !b.warn; });
+  const dates = sure.map(function (b) { return b.d; }).filter(function (d, i, a) { return a.indexOf(d) === i; });
+  const basis = c.세목 === 'gift' ? '증여 등기 접수일(상증령 §24)' : '사망일';
+  if (!dates.length) {
+    if (cands.length) items.push(caseProcItem_('base:warn:' + cands[0].d, 'check', what + ' 후보 ' + cands.map(function (b) { return b.d + '(' + b.file + ')'; }).join(', ') + ' — 서류 판독이 불확실(⚠)해 반영하지 않음, 원문 확인', { type: 'file', id: cands[0].fileId, name: cands[0].file }));
+    else if (!c.기준일) items.push(caseProcItem_('base:none', 'missing', what + '을(를) 증빙으로 확정하지 못했습니다 — ' + (c.세목 === 'gift' ? '증여를 원인으로 한 소유권이전이 기재된 등기부가 필요합니다(현금 등 등기 없는 재산은 이체일·인도일).' : '사망진단서·기본증명서(사망일 기재)가 필요합니다.'), { type: 'view', view: 'docs' }));
+    else lines.push(what + ' ' + c.기준일 + ' — 증빙(' + basis + ')으로는 아직 확인되지 않음');
+    return;
+  }
+  if (dates.length > 1) {
+    items.push(caseProcItem_('base:multi:' + dates.join('|'), 'check', '증빙상 ' + what + '이 여러 날짜입니다: ' + sure.map(function (b) { return b.d + '(' + b.file + (b.loc ? ', ' + b.loc : '') + ')'; }).join(', ') + ' — 증여가 여러 건이면 각각 신고, 사건 기준일 ' + (c.기준일 || '(없음)') + ' 확인', { type: 'view', view: 'casehandling' }));
+    return;
+  }
+  const d = dates[0], src = sure.filter(function (b) { return b.d === d; })[0];
+  const extra = src.cause && src.cause !== d ? ' (증여계약일 ' + src.cause + '은 기준이 아님)' : '';
+  if (c.기준일 === d) { lines.push('✅ ' + what + ' ' + d + ' — 증빙(' + src.file + ', ' + basis + ')으로 확인' + extra); return; }
+  if (!c.기준일) {
+    const ap = caseProcApplyBase_(c.id, d, src.file, what);
+    lines.push(ap.ok ? '✏ ' + ap.message + extra : '⚠ ' + what + '을(를) 반영하지 못했습니다: ' + ap.error);
+    return;
+  }
+  items.push(caseProcItem_('base:' + d + ':' + c.기준일, 'check', what + ': 사건 기준일 ' + c.기준일 + ' ↔ 증빙(' + src.file + ') ' + basis + ' ' + d + extra + ' — [증빙 날짜로 반영]을 누르면 기준일을 바꾸고 법정일을 다시 계산합니다.',
+    { type: 'applyBase', date: d, file: src.file, what: what }));
+}
+// 기준일 반영 — 기준일만 보내 work_updateCase의 기존 재계산 경로로 법정일을 다시 계산하고(법정일을 직접 보내지 않음), 작업일지에 근거를 남긴다.
+function caseProcApplyBase_(caseId, date, file, what) {
+  date = String(date || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: '날짜 형식이 아닙니다.' };
+  const sheet = work_getSheet_();
+  const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+  const found = work_findCaseRow_(sheet, col, caseId);
+  if (!found) return { ok: false, error: '사건을 찾지 못했습니다.' };
+  const c = work_readRow_(col, found.row);
+  const newDue = work_calcDeadline_(c.세목, c.업무유형, date);
+  const text = '증빙(' + String(file || '').slice(0, 80) + ')으로 ' + (what || '기준일') + ' ' + date + ' 반영 → 법정일 재계산' + (newDue ? ' ' + newDue : '') + (c.기준일 ? ' (이전 기준일 ' + c.기준일 + ', 법정일 ' + (c.법정일 || '') + ')' : '');
+  const log = (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: text, dueDate: '' }]);
+  const up = work_updateCase({ id: caseId, 기준일: date, 작업일지: log });
+  if (!up || up.success === false) return { ok: false, error: (up && up.message) || '저장 실패' };
+  return { ok: true, message: text, 법정일: up.case ? up.case.법정일 : newDue };
+}
 // 4) 세액계산 — 저장된 계산 결과가 있는지, 계산한 뒤 서류가 바뀌었는지
 function caseProcCalc_(c) {
   const items = [], lines = [];

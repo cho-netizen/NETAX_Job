@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-14 04:14 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-14 04:35 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -21280,6 +21280,12 @@ async function runAiAutoFillForm(fileName, statusElId, instruction, fieldMap, fi
         const spec = fieldMap[key];
         const el = document.getElementById(spec.id);
         if (!el) return;
+        // [2026.10.14] 증여일·상속개시일은 사건 기준일(증빙으로 확정해 법정일 계산에 쓰는 값)이 있으면 그 값을 쓴다 —
+        // AI가 서류에서 다른 날(예: 증여계약일)을 읽어도 덮어쓰지 않는다. 다르면 사건처리("이 사건 처리하자")에서 확인.
+        if (typeof TC_BASE_DATE_FIELD_BY_SEMOK_ !== 'undefined' && tcCurrentCase && tcCurrentCase.기준일 && spec.id === TC_BASE_DATE_FIELD_BY_SEMOK_[tcCurrentCase.세목] && String(json[key]) !== String(tcCurrentCase.기준일)){
+          filled.push((fieldLabels[key] || key) + ': 사건 기준일 ' + tcCurrentCase.기준일 + ' 유지(서류에서 읽은 ' + json[key] + '와 다름 — 확인)');
+          return;
+        }
         if (spec.type === 'checkbox') el.checked = !!json[key];
         else el.value = json[key];
         // [2026.09.23 버그수정] 증여자·수증인 카드가 배열로 바뀌면서(giftDonors/giftDonees)
@@ -46269,7 +46275,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         btns.appendChild(document.createTextNode('⏸ 보류 중 '));
         add('↩ 다시 묻기', function(){ nxAiCaseProcDecide_(st, it, null); });
       } else {
-        add(it.kind === 'judge' ? '확인(AI 판단)' : '확인', function(){ nxAiCaseProcAct_(st, it, el); }, true);
+        add(it.kind === 'judge' ? '확인(AI 판단)' : (it.act && it.act.type === 'applyBase' ? '📅 증빙 날짜로 반영' : '확인'), function(){ nxAiCaseProcAct_(st, it, el); }, true);
         add('보류', function(){ nxAiCaseProcDecide_(st, it, '보류'); });
         add('무시', function(){ nxAiCaseProcDecide_(st, it, '무시'); });
         if (dec === '확인') btns.appendChild(document.createTextNode(' 👀 확인 중'));
@@ -46363,6 +46369,19 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
           });
         });
       }).catch(function(err){ nxAiToast_('표시하지 못했습니다: ' + (err && err.message || err)); });
+      return;
+    }
+    // [2026.10.14] 기준일(양도일·증여일·상속개시일)을 증빙 날짜로 — 서버가 기준일만 바꿔 법정일을 기존 규칙으로 다시 계산하고 작업일지에 근거를 남긴다
+    if (a.type === 'applyBase'){
+      nxAiConfirm_(a.what + '을(를) 증빙 날짜 ' + a.date + '(으)로 반영할까요?\n\n근거: ' + a.file + '\n법정일은 이 날짜로 다시 계산되고, 작업일지에 근거가 남습니다.').then(function(ok){
+        if (!ok) return;
+        return callGas('case_proc', { caseId: st.caseId, step: 'applyBase', date: a.date, file: a.file, what: a.what }).then(function(r){
+          if (!r || !r.ok) throw new Error((r && (r.error || r.message)) || '반영 실패');
+          st.items = st.items.filter(function(x){ return x !== it; });
+          nxAiCaseProcItems_(st, it.step); nxAiCaseProcQueueSave_(st);
+          nxAiToast_(a.what + ' ' + a.date + ' 반영 — 법정일 ' + (r.법정일 || '') + '. 다시 점검하면 날짜 대조도 새로 합니다.');
+        });
+      }).catch(function(err){ nxAiToast_('반영하지 못했습니다: ' + (err && err.message || err)); });
       return;
     }
     if (a.type === 'judge'){

@@ -3555,6 +3555,12 @@ async function runAiAutoFillForm(fileName, statusElId, instruction, fieldMap, fi
         const spec = fieldMap[key];
         const el = document.getElementById(spec.id);
         if (!el) return;
+        // [2026.10.14] 증여일·상속개시일은 사건 기준일(증빙으로 확정해 법정일 계산에 쓰는 값)이 있으면 그 값을 쓴다 —
+        // AI가 서류에서 다른 날(예: 증여계약일)을 읽어도 덮어쓰지 않는다. 다르면 사건처리("이 사건 처리하자")에서 확인.
+        if (typeof TC_BASE_DATE_FIELD_BY_SEMOK_ !== 'undefined' && tcCurrentCase && tcCurrentCase.기준일 && spec.id === TC_BASE_DATE_FIELD_BY_SEMOK_[tcCurrentCase.세목] && String(json[key]) !== String(tcCurrentCase.기준일)){
+          filled.push((fieldLabels[key] || key) + ': 사건 기준일 ' + tcCurrentCase.기준일 + ' 유지(서류에서 읽은 ' + json[key] + '와 다름 — 확인)');
+          return;
+        }
         if (spec.type === 'checkbox') el.checked = !!json[key];
         else el.value = json[key];
         // [2026.09.23 버그수정] 증여자·수증인 카드가 배열로 바뀌면서(giftDonors/giftDonees)
