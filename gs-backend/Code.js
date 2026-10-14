@@ -24846,7 +24846,7 @@ function caseProcEvTypes_(label) {
   return null;
 }
 function caseProcParsed_(f, cache, canParse) {
-  const key = 'cpp8_' + f.id + '_' + f.modified; // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
+  const key = 'cpp9_' + f.id + '_' + f.modified; // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
   const hit = cache.get(key);
   if (hit) { try { return JSON.parse(hit); } catch (e) {} }
   if (!canParse) return null;
@@ -27782,9 +27782,11 @@ function docFuneralListParse_(text) {
     var tn = t.replace(/(\d)\.(\d{3})(?=[^\d]|$)/g, '$1,$2');
     // [2026.10.14 실서버] 확인서·집계표가 같은 항목을 두 번 싣고 서버 글자인식은 순서도 달라 항목 합이 두 배가 됐다 — 금액이 같은 항목은 한 번만,
     // 그중 "나머지 항목 합과 같은 금액"은 합계 줄이므로 항목에서 뺀다
-    var items = [], ir = /\n\s*([\d]{1,3}(?:,\d{3})+)\s+([^\n]{2,30})/g, ix;
+    // 항목은 품목별 내역("장례비용내역") 앞의 확인서·집계표에서만, 금액과 같은 줄에 붙은 설명이 있는 줄만(실서버 원문: 품목 내역 금액까지 항목으로 세어 5천만원이 됨)
+    var region = tn.split(/품\s*목\s*명/)[0]; // 품목별 내역 표(품목명·분류명·수량·금액) 앞까지
+    var items = [], ir = /\n\s*([\d]{1,3}(?:,\d{3})+)[ \t|]*([^\n\d]{2,40})/g, ix;
     var sum = 0, hitTotal = false;
-    while ((ix = ir.exec(tn))) { var v0 = Number(ix[1].replace(/,/g, '')); if (v0 && !items.some(function (q) { return q.금액 === v0; })) items.push({ 금액: v0, 내역: ix[2].trim() }); }
+    while ((ix = ir.exec(region))) { var v0 = Number(ix[1].replace(/,/g, '')); if (v0 && !items.some(function (q) { return q.금액 === v0; })) items.push({ 금액: v0, 내역: ix[2].trim() }); }
     var all0 = items.reduce(function (a, b) { return a + b.금액; }, 0);
     var totIt = items.filter(function (q) { return items.length > 2 && q.금액 * 2 === all0; })[0];
     if (totIt) { items = items.filter(function (q) { return q !== totIt; }); hitTotal = true; }
