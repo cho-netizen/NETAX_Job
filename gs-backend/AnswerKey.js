@@ -96,8 +96,36 @@ function akToolValues_(c) {
   return v;
 }
 const AK_FIELD_KIND_ = { 기준일: 'date', 법정일: 'date', 상속인수: 'number', 상속인: 'list', 금융재산: 'money', 장례비: 'money', 봉안시설: 'money', 총상속재산: 'money', 과세가액: 'money', 상속공제: 'money', 과세표준: 'money', 산출세액: 'money', 신고세액공제: 'money', 납부세액: 'money' };
+// [2026.10.14] 점검은 읽기 전용 — 사이드바와 같은 단계를 돌리되 사건 시트(work_updateCase)·결정 파일(caseProcPatch_/Store_) 쓰기는
+// 이 실행 안의 메모리에만 한다. 실사건 자료(증빙목록·처리개요·기준일·작업일지)는 바뀌지 않는다. 끝나면 원래 함수로 되돌린다.
+function akSandbox_(caseId, fn) {
+  const real = { work_updateCase: work_updateCase, work_findCaseRow_: work_findCaseRow_, work_readRow_: work_readRow_, caseProcLoad_: caseProcLoad_, caseProcPatch_: caseProcPatch_, caseProcStore_: caseProcStore_, akReadCase_: akReadCase_ };
+  const mem = { c: real.akReadCase_(caseId), saved: real.caseProcLoad_(caseId) };
+  if (!mem.c) return fn();
+  const MARK = { __akMem: true };
+  const copy = function (x) { return JSON.parse(JSON.stringify(x)); };
+  try {
+    akReadCase_ = function (id) { return String(id) === String(caseId) ? copy(mem.c) : real.akReadCase_(id); };
+    work_findCaseRow_ = function (sheet, col, id) { return String(id) === String(caseId) ? { rowIndex: -1, row: MARK } : real.work_findCaseRow_(sheet, col, id); };
+    work_readRow_ = function (col, row) { return row === MARK ? copy(mem.c) : real.work_readRow_(col, row); };
+    work_updateCase = function (p) {
+      if (String(p && p.id) !== String(caseId)) return { success: false, message: '점검 중에는 다른 사건을 고치지 않습니다.' };
+      Object.keys(p).forEach(function (k) { if (k !== 'id' && k !== '기대수정일') mem.c[k] = copy(p[k]); });
+      if (p.기준일 && !p.법정일) { try { mem.c.법정일 = work_calcDeadline_(mem.c.세목, mem.c.업무유형, p.기준일) || mem.c.법정일; } catch (e) {} }
+      return { success: true, case: copy(mem.c) };
+    };
+    caseProcLoad_ = function (id) { return String(id) === String(caseId) ? copy(mem.saved) : real.caseProcLoad_(id); };
+    caseProcPatch_ = function (id, mutate) { if (String(id) !== String(caseId)) return null; const s = copy(mem.saved); const o = mutate(s); mem.saved = s; return o === undefined ? s : o; };
+    caseProcStore_ = function (id, s) { if (String(id) === String(caseId)) mem.saved = copy(s); };
+    return fn();
+  } finally {
+    akReadCase_ = real.akReadCase_; work_findCaseRow_ = real.work_findCaseRow_; work_readRow_ = real.work_readRow_; work_updateCase = real.work_updateCase;
+    caseProcLoad_ = real.caseProcLoad_; caseProcPatch_ = real.caseProcPatch_; caseProcStore_ = real.caseProcStore_;
+  }
+}
 // 한 사건 점검 — 사이드바와 같은 서버 단계를 그대로(확인창·대화 전환 없이) 돌린 뒤 대조. 증빙 단계가 서류를 다 못 읽으면 more
-function akRunCase_(caseId, key) {
+function akRunCase_(caseId, key) { return akSandbox_(caseId, function () { return akRunCase0_(caseId, key); }); }
+function akRunCase0_(caseId, key) {
   let c = akReadCase_(caseId);
   if (!c) return { caseId: caseId, error: '사건을 찾지 못했습니다.' };
   const out = { caseId: caseId, 사건명: c.사건명 || c.고객명 || '', 상태: key.상태 || '초안', rows: [], extra: [], missing: [], steps: {} };
@@ -237,13 +265,16 @@ function akParseFormResult_(text, seMok) {
 function answerKeyDraft_(body) {
   const ids = body && body.caseId ? [String(body.caseId)] : null;
   const sheet = work_getSheet_(), data = sheet.getDataRange().getValues(), col = work_colMap_(data[0]);
-  const made = [];
+  const made = [], started = Date.now();
+  let more = false;
   for (let i = 1; i < data.length; i++) {
     const c = work_readRow_(col, data[i]);
     if (ids && ids.indexOf(String(c.id)) === -1) continue;
-    if (!ids && (c.상태 === '완료' || !CASEPROC_TAX_LABEL_[c.세목])) continue;
+    if (!ids && String(c.폴더ID || '').trim() && akKeyFile_(String(c.폴더ID).trim())) continue; // 이미 정답지가 있는 사건은 건너뜀(여러 번 눌러 이어서 진행)
+    if (Date.now() - started > 200000) { more = true; break; } // 처음 읽는 서류가 많으면 한 번에 다 못 함 — 화면이 이어서 다시 부름
+    if (!ids && !CASEPROC_TAX_LABEL_[c.세목]) continue; // 신고가 끝난(완료) 사건이 정답지 원천이라 완료도 포함
     if (!String(c.폴더ID || '').trim()) continue;
-    const files = caseProcFiles_(c).filter(function (f) { return /pdf|^image\//.test(String(f.mimeType || '')) && /양도\s*코리아|yangdo|신고서|계산서|계산명세/i.test(f.name); });
+    const files = caseProcFiles_(c).filter(function (f) { return /pdf|^image\//.test(String(f.mimeType || '')) && (/양도\s*코리아|yangdo|^양코|신고서|계산서|계산명세/i.test(f.name) && !/지방|종합소득|접수증|납부서/.test(f.name)); });
     let res = null, src = '';
     files.slice(0, 6).forEach(function (f) {
       if (res) return;
@@ -252,7 +283,7 @@ function answerKeyDraft_(body) {
       const r = akParseFormResult_(txt, c.세목);
       if (Object.keys(r).length >= 2) { res = r; src = f.name; }
     });
-    if (!res) { if (ids) made.push({ caseId: c.id, 사건명: c.사건명, error: '양도코리아 결과(과세표준·산출세액이 있는 서식 PDF)를 사건 폴더에서 찾지 못했습니다.' }); continue; }
+    if (!res) { if (ids || files.length) made.push({ caseId: c.id, 사건명: c.사건명, error: files.length ? '신고서 PDF ' + files.length + '개(' + files.slice(0, 3).map(function (f) { return f.name; }).join(', ') + ')에서 과세표준·산출세액을 읽지 못함' : '신고서 PDF(홈택스·양도코리아)가 사건 폴더에 없음' }); continue; }
     const cur = (akLoadKey_(c) || {}).key || {};
     const confirmed = cur.상태 === '확정';
     const key = Object.assign({}, cur);
@@ -263,5 +294,5 @@ function answerKeyDraft_(body) {
     answerKeySave_({ caseId: c.id, key: key });
     made.push({ caseId: c.id, 사건명: c.사건명, from: src, fields: res });
   }
-  return { ok: true, made: made };
+  return { ok: true, made: made, more: more };
 }

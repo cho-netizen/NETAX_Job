@@ -25298,7 +25298,7 @@ function caseProcRememberFill_(caseId, key, value, src) {
 // [2026.10.14] 발생문서 — 세목 신고서·명세서·계산서(양도코리아 등으로 만든 결과물). 증빙이 아니고 입력값 출처도 아니다(정답지·참고 전용)
 function caseProcIsOutputDoc_(name) {
   const n = String(name || '');
-  return /(신고서|계산명세서|접수증|납부서)/.test(n) || (/(상속세|증여세|양도소득세|양도세)/.test(n) && /(신고|명세서|계산서|공제)/.test(n));
+  return /(신고서|계산명세서|접수증|납부서)/.test(n) || /^양코_/.test(n) || (/(상속세|증여세|양도소득세|양도세)/.test(n) && /(신고|명세서|계산서|공제)/.test(n));
 }
 function caseProcParseAll_(c) {
   const out = [], started = Date.now();

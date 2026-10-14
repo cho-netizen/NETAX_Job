@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-14 11:25 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-14 11:45 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -43714,10 +43714,12 @@ function goToReportWriter_(caseId, opts){
       step(true).catch(function(err){ bugList.textContent = '정답지 점검을 하지 못했습니다: ' + (err && err.message ? err.message : err); });
     });
     document.getElementById('stBtnAnswerKeyDraft').addEventListener('click', function(){
-      bugList.textContent = '📝 양도코리아 결과로 정답지 초안 만드는 중…(진행 중인 사건만, AI 비용 0)';
-      callGas('answerkey_draft', {}).then(function(r){
+      bugList.textContent = '📝 신고서(홈택스·양도코리아)로 정답지 초안 만드는 중…(AI 비용 0)';
+      var allMade = [], rounds = 0;
+      var draftStep = function(){ return callGas('answerkey_draft', {}).then(function(r){ allMade = allMade.concat((r && r.made) || []); if (r && r.more && ++rounds < 15){ bugList.textContent = '📝 정답지 초안 만드는 중… ' + allMade.length + '건 처리(서류를 처음 읽으면 오래 걸립니다)'; return draftStep(); } return { made: allMade }; }); };
+      draftStep().then(function(r){
         var made = (r && r.made) || [];
-        bugList.innerHTML = made.length ? made.map(function(m){ return '<div style="padding:3px 0;border-top:1px solid var(--line);">' + escapeHtml(m.사건명 || m.caseId) + ' — ' + (m.error ? escapeHtml(m.error) : '초안 저장(' + escapeHtml(m.from) + '): ' + escapeHtml(Object.keys(m.fields).map(function(k){ return k + ' ' + Number(m.fields[k]).toLocaleString('ko-KR'); }).join(', '))) + '</div>'; }).join('') : '양도코리아 결과 PDF(과세표준·산출세액이 있는 서식)가 있는 진행 중 사건이 없습니다.';
+        bugList.innerHTML = made.length ? made.map(function(m){ return '<div style="padding:3px 0;border-top:1px solid var(--line);">' + escapeHtml(m.사건명 || m.caseId) + ' — ' + (m.error ? escapeHtml(m.error) : '초안 저장(' + escapeHtml(m.from) + '): ' + escapeHtml(Object.keys(m.fields).map(function(k){ return k + ' ' + Number(m.fields[k]).toLocaleString('ko-KR'); }).join(', '))) + '</div>'; }).join('') : '새로 만든 초안이 없습니다(정답지가 이미 있거나, 신고서 PDF가 없는 사건뿐).';
       }).catch(function(err){ bugList.textContent = '초안을 만들지 못했습니다: ' + (err && err.message ? err.message : err); });
     });
     document.getElementById('stBtnImprove').addEventListener('click', function(){
