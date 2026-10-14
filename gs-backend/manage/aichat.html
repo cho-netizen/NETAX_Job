@@ -2135,7 +2135,7 @@
     var doStep = function(key){
       setStep(key, '🔄', '진행 중…');
       var loop = function(n){
-        return run(key).then(function(res){
+        return run(key, key === 'basic' ? nxAiCaseProcScreenDate_(caseId) : null).then(function(res){
           if (!res || res.error) throw new Error((res && res.error) || '응답 없음');
           if (res.more && n < 12){ setStep(key, '🔄', (res.lines || [])[0] || '계속 읽는 중…'); return loop(n + 1); }
           return res;
@@ -2154,6 +2154,8 @@
     doStep('basic').then(function(res){
       if (!res){ throw new Error('사건 기본 정보를 불러오지 못했습니다.'); }
       st.case = res.case; st.decisions = res.decisions || {};
+      // 이름으로 찾았거나 화면 사건으로 처리할 때, 지금 대화가 아직 어느 사건에도 연결돼 있지 않으면 그 사건에 연결(자료 탭·🔗 표시)
+      if (!nxAiConv.caseId && res.case && typeof nxAiLinkCase_ === 'function') nxAiLinkCase_(res.case);
       bubble.querySelector('.nxai-cp-head').innerHTML = '<b>' + nxAiEsc_(res.case.사건명 || res.case.고객명 || '') + '</b>' + (res.lastRun ? ' <span class="nxai-muted">· 지난 점검 ' + nxAiEsc_(res.lastRun) + '</span>' : '');
       nxAiCaseProcFill_(st, 'basic', res); // 결정(보류·무시)을 받은 뒤 다시 그린다
       if (res.blocked){
@@ -2172,6 +2174,15 @@
       nxAiCaseProcFoot_(st);
       nxAiCountFree_('local');
     });
+  }
+  // 세액계산 화면에 같은 사건이 열려 있으면 그 화면의 증여일·상속개시일도 날짜 대조에 넣는다(값은 읽기만)
+  function nxAiCaseProcScreenDate_(caseId){
+    try {
+      if (typeof tcCurrentCase === 'undefined' || !tcCurrentCase || tcCurrentCase.id !== caseId) return null;
+      var id = { gift: 'giftDate', inheritance: 'ihDeathDate' }[tcCurrentCase.세목];
+      var el = id ? document.getElementById(id) : null;
+      return el && el.value ? { screenDate: el.value } : null;
+    } catch (e) { return null; }
   }
   function nxAiCaseProcFill_(st, key, res){
     var row = st.steps[key];

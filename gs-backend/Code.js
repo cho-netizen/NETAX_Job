@@ -24674,7 +24674,7 @@ function caseProc_(body) {
   if (!found) return { error: '사건을 찾지 못했습니다.' };
   const c = work_readRow_(col, found.row);
   try {
-    if (body.step === 'basic') return caseProcBasic_(c);
+    if (body.step === 'basic') return caseProcBasic_(c, body);
     if (body.step === 'evidence') return caseProcEvidence_(c);
     if (body.step === 'overview') return caseProcOverview_(c);
     if (body.step === 'calc') return caseProcCalc_(c);
@@ -24719,7 +24719,29 @@ function caseProcItem_(id, kind, text, act, detail) {
 }
 
 // 1) 사건 기본 — 세목·업무유형·납세자·법정기한·증빙 폴더
-function caseProcBasic_(c) {
+// 날짜 대조 — 사건 법정일 ↔ 처리개요 기준일(양도일·증여일·상속개시일)로 계산한 기한 ↔ 세액계산(저장 결과·지금 화면)의 날짜로 계산한 기한.
+// 어느 쪽이 맞는지는 정하지 않고(고치지도 않음) 세 값을 그대로 보여 확인필요로 올린다.
+function caseProcDateCheck_(c, body, items) {
+  const label = CASEPROC_TAX_LABEL_[c.세목];
+  if (!label) return;
+  const dl = { transfer: '양도일', gift: '증여일', inheritance: '상속개시일' }[c.세목];
+  const ok = function (d) { return /^\d{4}-\d{2}-\d{2}$/.test(String(d || '')); };
+  const due = function (d) { try { return ok(d) ? work_calcDeadline_(c.세목, c.업무유형, d) : ''; } catch (e) { return ''; } };
+  const srcs = [];
+  if (ok(c.기준일)) srcs.push({ what: '처리개요 기준일(' + dl + ')', d: c.기준일 });
+  const res = (Array.isArray(c.세액계산결과) ? c.세액계산결과 : []).filter(function (e) { return e && e.세목 === label; });
+  const last = res[res.length - 1];
+  if (last && ok(last.기준일스냅샷)) srcs.push({ what: '저장된 세액계산(' + (last.계산일 || '') + ') ' + dl, d: last.기준일스냅샷 });
+  if (ok(body.screenDate)) srcs.push({ what: '세액계산 화면 ' + dl, d: body.screenDate });
+  srcs.forEach(function (x) { x.due = due(x.d); });
+  const dates = srcs.map(function (x) { return x.d; }).filter(function (d, i, a) { return a.indexOf(d) === i; });
+  const dues = srcs.map(function (x) { return x.due; }).filter(function (d) { return d; });
+  const dueMismatch = c.법정일 && dues.some(function (d) { return d !== c.법정일; });
+  if (dates.length < 2 && !dueMismatch) return;
+  const txt = '날짜가 서로 맞지 않습니다 — 사건 법정일 ' + (c.법정일 || '(없음)') + ' / ' + srcs.map(function (x) { return x.what + ' ' + x.d + (x.due ? ' → 법정기한 ' + x.due : ''); }).join(' / ') + '. 어느 값이 맞는지 확인(자동으로 고치지 않음)';
+  items.push(caseProcItem_('basic:날짜:' + [c.법정일].concat(srcs.map(function (x) { return x.d; })).join('|'), 'check', txt, { type: 'view', view: 'casehandling' }));
+}
+function caseProcBasic_(c, body) {
   const items = [], lines = [];
   const today = caseProcToday_();
   lines.push('세목 ' + (CASEPROC_TAX_LABEL_[c.세목] || c.세목 || '—') + ' · 업무 ' + (c.업무유형 || '—') + ' · 납세자 ' + (c.납세자 || '—') + ' · 법정일 ' + (c.법정일 || '—') + ' · 상태 ' + (c.상태 || '—'));
@@ -24729,6 +24751,7 @@ function caseProcBasic_(c) {
   if (!c.법정일) items.push(caseProcItem_('basic:법정일', 'missing', '법정일(처리기한)이 비어 있습니다' + (WORK_MANUAL_DEADLINE_TYPES_.indexOf(c.업무유형) !== -1 ? ' — 이 업무유형은 직접 입력하는 기한입니다.' : ' — 기준일(양도일·증여일·상속개시일)을 넣으면 자동 계산됩니다.'), { type: 'view', view: 'workmanage' }));
   else if (c.상태 !== '완료' && c.법정일 < today) items.push(caseProcItem_('basic:기한경과:' + c.법정일, 'check', '법정일(' + c.법정일 + ')이 지났습니다 — 기한후신고·기한 정정 여부 확인.', { type: 'view', view: 'workmanage' }));
   if (!String(c.폴더ID || '').trim()) items.push(caseProcItem_('basic:폴더', 'missing', '증빙 폴더가 없습니다 — 처리개요에서 사건 폴더를 먼저 만들어야 서류를 점검할 수 있습니다.', { type: 'view', view: 'casehandling' }));
+  caseProcDateCheck_(c, body || {}, items);
   const saved = caseProcLoad_(c.id);
   return { ok: true, case: c, lines: lines, items: items, blocked: !String(c.폴더ID || '').trim(), decisions: saved.decisions || {}, lastRun: saved.savedAt || '' };
 }
@@ -24752,7 +24775,7 @@ function caseProcEvRe_(label) {
   return key.length >= 2 ? new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) : null;
 }
 function caseProcParsed_(f, cache, canParse) {
-  const key = 'cpp1_' + f.id + '_' + f.modified;
+  const key = 'cpp2_' + f.id + '_' + f.modified; // cpp2: 사무소 발행 표시(office) 추가
   const hit = cache.get(key);
   if (hit) { try { return JSON.parse(hit); } catch (e) {} }
   if (!canParse) return null;
@@ -24764,6 +24787,8 @@ function caseProcParsed_(f, cache, canParse) {
       s.t = p.type || ''; s.l = p.label || '';
       s.w = String(p.md || '').split('\n').filter(function (x) { return /⚠/.test(x); }).map(function (x) { return x.replace(/[|*#>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140); }).filter(String).slice(0, 4);
       s.wn = String(p.md || '').split('⚠').length - 1;
+      // 이 사무소(이음세무컨설팅)가 발행한 수수료 영수증·세금계산서 — 고객 증빙이 아니라 수금 기록용
+      s.office = !!(p.result && !Array.isArray(p.result) && p.result.사무소발행);
     }
   } catch (e) { s.err = String(e && e.message || e).slice(0, 80); }
   try { cache.put(key, JSON.stringify(s), 21600); } catch (e) {}
@@ -24802,7 +24827,9 @@ function caseProcEvidence_(c) {
   const got = req.filter(function (e) { return e.status === '확보됨'; });
   if (req.length) lines.push('필요증빙 확보 ' + got.length + '/' + req.length);
   else if (c.업무유형 !== '신고') lines.push('업무유형이 "' + (c.업무유형 || '—') + '"이라 필요증빙 틀이 없습니다(신고 사건만 자동으로 깔림).');
-  const hay = docs.concat(files.filter(function (f) { return docs.indexOf(f) === -1; })).map(function (f) { return { f: f, s: f.name + ' ' + (f.p && f.p.l || '') }; });
+  const office = docs.filter(function (f) { return f.p && f.p.office; });
+  if (office.length) lines.push('사무소 발행 영수증 ' + office.length + '건 — 고객 증빙 아님(수금 기록용), 점검에서 뺌: ' + office.slice(0, 3).map(function (f) { return f.name; }).join(', ') + (office.length > 3 ? ' 외' : ''));
+  const hay = docs.filter(function (f) { return !(f.p && f.p.office); }).concat(files.filter(function (f) { return docs.indexOf(f) === -1; })).map(function (f) { return { f: f, s: f.name + ' ' + (f.p && f.p.l || '') }; });
   req.forEach(function (e) {
     if (e.status === '확보됨') return;
     const re = caseProcEvRe_(e.label);
@@ -24816,7 +24843,7 @@ function caseProcEvidence_(c) {
     }
   });
   docs.forEach(function (f) {
-    if (!f.p || !f.p.t || !(f.p.wn > 0)) return;
+    if (!f.p || !f.p.t || f.p.office || !(f.p.wn > 0)) return;
     items.push(caseProcItem_('file:' + f.id + ':' + f.modified, 'check', '‘' + f.name + '’(' + f.p.l + ') 자동 정리 결과에 ⚠확인필요 ' + f.p.wn + '곳', { type: 'file', id: f.id, name: f.name }, f.p.w.join('\n')));
   });
   return { ok: true, lines: lines, items: items };
@@ -24907,7 +24934,8 @@ function caseProcCalc_(c) {
   lines.push('저장된 ' + label + ' 계산 ' + res.length + '건 — 최근 ' + (last.계산일 || '') + ' ' + (last.구분 || '') + (Number.isFinite(last.최종세액) ? ' · 최종세액 ' + Number(last.최종세액).toLocaleString('ko-KR') + '원' : ''));
   if (!last.저장값) items.push(caseProcItem_('calc:nostate:' + (last.id || ''), 'check', '최근 계산은 인쇄 서식용 값 없이 저장된 옛 결과입니다 — 다시 계산·저장해야 세액인쇄 서식이 켜집니다.', { type: 'autocalc', tab: c.세목 }));
   if (last.계산일 && String(c.폴더ID || '').trim()) {
-    const after = caseProcFiles_(c).filter(function (f) { return !/^_/.test(f.name) && /pdf|^image\//.test(String(f.mimeType || '')) && Utilities.formatDate(new Date(f.modified), Session.getScriptTimeZone(), 'yyyy-MM-dd') > last.계산일; });
+    const cache = CacheService.getScriptCache();
+    const after = caseProcFiles_(c).filter(function (f) { return !/^_/.test(f.name) && /pdf|^image\//.test(String(f.mimeType || '')) && Utilities.formatDate(new Date(f.modified), Session.getScriptTimeZone(), 'yyyy-MM-dd') > last.계산일 && !((caseProcParsed_(f, cache, false) || {}).office); }); // 사무소 발행 영수증은 빼고
     if (after.length) items.push(caseProcItem_('calc:stale:' + (last.id || '') + ':' + after.length, 'check', '계산(' + last.계산일 + ') 뒤에 서류 ' + after.length + '개가 추가·수정됐습니다: ' + after.slice(0, 3).map(function (f) { return f.name; }).join(', ') + (after.length > 3 ? ' 외' : '') + ' — 다시 계산할지 확인', { type: 'autocalc', tab: c.세목 }));
   }
   return { ok: true, lines: lines, items: items, hasCalc: true };
