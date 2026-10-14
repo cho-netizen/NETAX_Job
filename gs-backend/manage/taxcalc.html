@@ -3662,7 +3662,67 @@ const INHERITANCE_HEIR_RELATION_ENUM_ = ['배우자', '자녀', '손자녀(대�
 const INHERITANCE_PROVISION_SPECS_ = [
   { key: 'isSpousePropertyDivided', id: 'ihSpouseDivided', q: '배우자 상속재산을 분할기한(신고기한 다음날부터 9개월) 내 분할·등기하고 신고했나요(§19②③)?' }
 ];
+// [2026.10.14] 상속세 자동채우기 "규칙 먼저"(AI 0원) — 양도세와 같은 방식. 서버가 사건 폴더 서류를 규칙으로 정리한 값
+// (피상속인·개시일·상속인·주민번호·상속재산 평가·금융재산·장례비·봉안시설)을 보여주고, [확인]이면 그 값으로 채운다.
+// 평가가 판단인 값(아파트 시가 등)은 사건처리 [확인]에서 고른 것만 쓴다. [취소]면 예전처럼 AI 자동채우기(유료).
+// (실사용: AI 자동채우기가 빈 응답으로 두 번 실패해 상속 사건 계산이 안 됐다)
 async function runAiAutoFillInheritanceFull_(){
+  if (tcCurrentCase && tcCurrentCase.id){
+    let rf = null;
+    try { rf = await callGas('tc_rule_inheritance_facts', { caseId: tcCurrentCase.id }); } catch (e) { rf = null; }
+    if (rf && rf.ok && ((rf.heirs && rf.heirs.length) || rf.grossEstate || (rf.assets && rf.assets.length))){
+      const won = function(v){ return v || v === 0 ? Number(v).toLocaleString('ko-KR') + '원' : '(미정)'; };
+      const lines = [];
+      lines.push('피상속인 ' + (rf.deceased && rf.deceased.name || '?') + ' · 상속개시일 ' + (rf.deathDate || '?'));
+      lines.push('상속인 ' + (rf.heirs || []).length + '명: ' + (rf.heirs || []).map(function(h){ return h.name + '(' + (h.relation || '?') + ')'; }).join(', '));
+      (rf.assets || []).forEach(function(a){ lines.push('재산: ' + (a.kind || '') + ' ' + a.loc + ' — ' + (a.value ? won(a.value) : '평가 미정(사건처리 [확인]에서 고르기)')); });
+      lines.push('금융재산 ' + won(rf.financialValue) + ' · 장례비 ' + won(rf.funeral && rf.funeral.value) + (rf.niche ? ' · 봉안시설 ' + won(rf.niche.value) : ''));
+      lines.push('총상속재산가액 ' + (rf.grossEstate ? won(rf.grossEstate) : '(재산 평가가 다 정해지지 않아 비워 둠)'));
+      const msg = '⚡ 서류를 규칙으로 정리했습니다(AI 비용 0원).\n\n' + lines.join('\n') + '\n\n[확인] 이 값으로 채우기  [취소] AI 자동채우기로 진행(유료)';
+      if (window.confirm(msg)){
+        const filled = tcApplyInheritanceRule_(rf);
+        const statusEl = document.getElementById('aiStatus-inheritance');
+        if (statusEl) statusEl.innerHTML = renderAiStatusHtml({ _aiStatus: 'done', _aiFilledFields: filled.concat(['(서류 규칙 정리 · AI 미사용, 토큰 0)']), _aiFileName: '서류 규칙 정리(토큰 0)' });
+        return { uncertainProvisionKeys: INHERITANCE_PROVISION_SPECS_.map(function(s){ return s.key; }) };
+      }
+    }
+  }
+  return runAiAutoFillInheritanceAI_();
+}
+function tcApplyInheritanceRule_(rf){
+  const filled = [];
+  const setVal = function(id, v, label){ const el = document.getElementById(id); if (!el || v === null || v === undefined || v === '') return; el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); filled.push(label); tcRememberAutoField_(id, el, 'inheritance', id, 'rule'); };
+  const fullNo = function(n){ return /^\d{6}-\d{7}$/.test(String(n || '')) ? n : ''; }; // 가려진 번호(******)는 넣지 않음
+  setVal('ihDeceasedName', rf.deceased && rf.deceased.name, '피상속인 성명');
+  setVal('ihDeceasedRegNo', fullNo(rf.deceased && rf.deceased.regNo), '피상속인 주민번호');
+  setVal('ihDeathDate', rf.deathDate, '상속개시일');
+  if (rf.heirs && rf.heirs.length){
+    const old = inheritanceHeirs.slice();
+    inheritanceHeirs.length = 0;
+    rf.heirs.forEach(function(h){
+      const prev = old.filter(function(o){ return o && o.name && String(o.name).replace(/\s+/g, '') === h.name; })[0] || {};
+      const t = Object.assign({}, prev, { name: h.name });
+      if (h.relation && INHERITANCE_HEIR_RELATION_ENUM_.indexOf(h.relation) !== -1) t.relation = h.relation;
+      if (fullNo(h.regNo)) t.regNo = h.regNo;
+      inheritanceHeirs.push(t);
+    });
+    if (!inheritanceHeirs.some(function(h){ return h.isReporter; }) && inheritanceHeirs[0]) inheritanceHeirs[0].isReporter = true;
+    if (typeof recomputeHeirDerivedFields === 'function') recomputeHeirDerivedFields();
+    filled.push('상속인 명부(' + rf.heirs.length + '명, 관계·주민번호 포함)');
+  }
+  if (rf.grossEstate) setVal('ihGrossEstateGeneral', rf.grossEstate, '총상속재산가액');
+  if (rf.financialValue !== null && rf.financialValue !== undefined) setVal('ihNetFinancial', rf.financialValue, '순금융재산가액');
+  const fun = [];
+  if (rf.funeral && rf.funeral.value) fun.push({ payee: '장례비용(' + (rf.funeral.src || '증빙') + ')', category: 'general', detail: '사건처리 서류 정리', amount: rf.funeral.value });
+  if (rf.niche && rf.niche.value) fun.push({ payee: '봉안시설(' + (rf.niche.file || '') + ')', category: 'niche', detail: rf.niche.src || '', amount: rf.niche.value });
+  if (fun.length){ inheritanceFuneralItems = fun; filled.push('장례비용'); }
+  if (typeof renderHeirRegistry === 'function') renderHeirRegistry();
+  if (typeof renderHeirTool === 'function') renderHeirTool();
+  if (typeof renderFuneralItemsList === 'function') renderFuneralItemsList();
+  if (typeof renderDebtItemsList === 'function') renderDebtItemsList();
+  return filled;
+}
+async function runAiAutoFillInheritanceAI_(){
   const statusEl = document.getElementById('aiStatus-inheritance');
   const state = { _aiStatus: 'loading' };
   if (statusEl) statusEl.innerHTML = renderAiStatusHtml(state);

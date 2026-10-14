@@ -801,6 +801,8 @@
   var nxAiSyncBusy_ = false, nxAiLastSyncedScreenCase_ = '';
   function nxAiSyncToScreenCase_(){
     if (nxAiMode !== 'side' || nxAiSyncBusy_ || nxAiAbort) return;
+    // [2026.10.14] "이 사건 처리하자"가 도는 동안엔 따라가지 않는다 — 처리가 세액계산 화면을 그 사건으로 열면 대화가 다른(옛) 대화로 바뀌어 진행 중 말풍선이 사라졌다(실사용)
+    if (typeof nxAiCaseProcBusy_ === 'function' && nxAiCaseProcBusy_()) return;
     // [2026.10.14 긴급수정] 로그인 전에는 하지 않는다 — job을 열 때 사이드바·마지막 사건이 복원되며 로그인 전에 서버를 불러
     // "로그인이 만료되었습니다"가 로그인 창을 덮었다(2026-10-14 실사용)
     var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
@@ -2099,6 +2101,9 @@
       return fallback();
     });
   }
+  // 처리 중인 사건처리 — 화면 사건 따라가기(nxAiSyncToScreenCase_)를 멈추는 데 쓴다
+  var NXAI_CP_ACTIVE_ = [];
+  function nxAiCaseProcBusy_(){ return NXAI_CP_ACTIVE_.some(function(st){ return st.running || st.calcBusy || st.pdfRunning; }); }
   function nxAiCaseProc_(text){
     var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
     if (!tok){ nxAiToast_('먼저 로그인해 주세요.'); return; }
@@ -2108,6 +2113,7 @@
     var userMsg = { role: 'user', content: text };
     nxAiConv.messages.push(userMsg);
     nxAiAppendBubble_('user', text)._nxMsgRef = userMsg;
+    var wasEmpty = nxAiConv.messages.length === 0; // 방금 열린(화면 사건에 자동연결된) 빈 대화면 처리할 사건으로 다시 연결
     var bubble = nxAiAppendBubble_('assistant', '⚡ 사건을 찾는 중…');
     var aiMsg = { role: 'assistant', content: '[⚡사건 처리] 시작' };
     bubble._nxMsgRef = aiMsg;
@@ -2115,7 +2121,7 @@
     nxAiCaseProcResolve_(text).then(function(c){
       if (c && c.choices){
         nxAiRenderLocal_(bubble, { md: '어느 사건을 처리할지 골라 주세요.', note: '[⚡사건 처리] 사건 후보 ' + c.choices.length + '건 — 선택 대기',
-          choices: c.choices.map(function(k){ return { label: (k.사건명 || k.고객명) + (k.상태 === '완료' ? ' (완료)' : ''), run: function(){ nxAiCaseProcRun_(bubble, k.id); return null; } }; }) }, text);
+          choices: c.choices.map(function(k){ return { label: (k.사건명 || k.고객명) + (k.상태 === '완료' ? ' (완료)' : ''), run: function(){ nxAiCaseProcRun_(bubble, k.id, { relink: wasEmpty }); return null; } }; }) }, text);
         return;
       }
       if (!c){
@@ -2123,7 +2129,7 @@
         nxAiScheduleSave_();
         return;
       }
-      nxAiCaseProcRun_(bubble, c.id);
+      nxAiCaseProcRun_(bubble, c.id, { relink: wasEmpty });
     }).catch(function(err){ bubble.textContent = '사건을 찾지 못했습니다: ' + (err && err.message || err); });
   }
   // 세액계산 화면에 같은 사건이 열려 있으면 그 화면의 증여일·상속개시일도 날짜 대조·후보에 넣는다(값은 읽기만)
@@ -2135,8 +2141,9 @@
       return el && el.value ? { screenDate: el.value } : null;
     } catch (e) { return null; }
   }
-  function nxAiCaseProcRun_(bubble, caseId){
-    var st = { caseId: caseId, case: null, decisions: {}, steps: {}, items: [], files: [], saveTimer: null, bubble: bubble, calcBusy: false, calcAuto: false };
+  function nxAiCaseProcRun_(bubble, caseId, opts){
+    var st = { caseId: caseId, case: null, decisions: {}, steps: {}, items: [], files: [], saveTimer: null, bubble: bubble, calcBusy: false, calcAuto: false, running: true, relink: !!(opts && opts.relink) };
+    NXAI_CP_ACTIVE_ = NXAI_CP_ACTIVE_.filter(function(x){ return x.bubble !== bubble; }).concat([st]);
     bubble.innerHTML = '<div class="nxai-local-badge">⚡ 사건 처리 · 처리탭 도구로 실제 처리(AI 미사용, 판단 근거 설명만 AI)</div><div class="nxai-cp-head">사건 불러오는 중…</div><div class="nxai-cp-steps"></div><div class="nxai-cp-foot"></div>';
     var stepsEl = bubble.querySelector('.nxai-cp-steps');
     NXAI_CP_STEPS_.forEach(function(s){
@@ -2164,7 +2171,7 @@
           st.case = res.case;
           bubble.querySelector('.nxai-cp-head').innerHTML = '<b>' + nxAiEsc_(res.case.사건명 || res.case.고객명 || '') + '</b>' + (res.lastRun ? ' <span class="nxai-muted">· 지난 처리 ' + nxAiEsc_(res.lastRun) + '</span>' : '');
           // 이름으로 찾았거나 화면 사건으로 처리할 때, 지금 대화가 아직 어느 사건에도 연결돼 있지 않으면 그 사건에 연결(자료 탭·🔗 표시)
-          if (!nxAiConv.caseId && res.case && typeof nxAiLinkCase_ === 'function') nxAiLinkCase_(res.case);
+          if (res.case && typeof nxAiLinkCase_ === 'function' && (!nxAiConv.caseId || (st.relink && nxAiConv.caseId !== res.case.id))) nxAiLinkCase_(res.case);
         }
         if (key === 'evidence' && res.files) st.files = res.files;
         if (key === 'overview' && res.case) st.case = res.case; // 서류로 채운 처리개요 — 세액계산 입력에 그대로 쓴다
@@ -2206,10 +2213,11 @@
       });
     }).then(function(r){
       st.setStep('save', '✅', '남은 일 ' + r.remaining + '건을 사건 기록(작업일지)에 남겼습니다');
+      st.running = false;
       nxAiCaseProcFoot_(st);
       nxAiCountFree_('local');
       nxAiCaseProcStatus_(st);
-    }).catch(function(err){ st.setStep('save', '❌', '저장하지 못함: ' + (err && err.message || err)); nxAiCaseProcFoot_(st); });
+    }).catch(function(err){ st.running = false; st.setStep('save', '❌', '저장하지 못함: ' + (err && err.message || err)); nxAiCaseProcFoot_(st); });
   }
   // 7 반영 현황표 — 사건 기본·처리개요 칸별 채움/출처/추정, 증빙 확보, 계산·서식 PDF·검토서, 남은 질문을 한 표로
   function nxAiCaseProcStatus_(st){
@@ -2245,6 +2253,8 @@
     if (st.calcBusy || !CASEPROC_CALC_TABS_[tab] || typeof goToTaxCalc_ !== 'function') return;
     var addLine = function(txt){ var ln = document.createElement('div'); ln.className = 'nxai-cp-line'; ln.textContent = txt; st.steps.output.querySelector('.nxai-cp-lines').appendChild(ln); return ln; };
     var info = addLine('🖨 저장된 계산 결과로 서식 PDF를 만들려고 세액계산 화면을 엽니다…');
+    st.pdfRunning = true;
+    setTimeout(function(){ st.pdfRunning = false; }, 90000);
     nxAiOpenJobView_('taxcalc', st.caseId);
     var tries = 0;
     var tick = function(){
@@ -2255,6 +2265,7 @@
       if (!ready || tries < 4){ if (tries < 30) return setTimeout(tick, 1500); info.textContent = '서식 PDF를 만들지 못했습니다: 세액계산 화면이 준비되지 않음 — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.'; return; }
       nxAiCaseProcSavePdf_(st, tab).then(function(pr){
         if (!(pr && pr.ok) && tries < 26 && /준비된 필수 서식이 없음/.test((pr && pr.error) || '')) return setTimeout(tick, 1500);
+        st.pdfRunning = false;
         info.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서_내부)' : '서식 PDF를 만들지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
         if (pr && pr.ok) nxAiCaseProcStatus_(st);
       });
@@ -2365,7 +2376,10 @@
     var ask = it.ask || {};
     var pane = el.querySelector('.nxai-cp-ask');
     if (!pane.hidden && pane.childNodes.length){ pane.hidden = true; return; }
+    // [2026.10.14] 다른 항목의 열린 질문은 닫는다 — 여러 개가 열려 칸이 밀리면 다음 클릭이 엉뚱한 항목에 맞던 문제(실사용)
+    Array.prototype.forEach.call(st.bubble.querySelectorAll('.nxai-cp-ask'), function(x){ if (x !== pane){ x.hidden = true; x.innerHTML = ''; } });
     pane.hidden = false; pane.innerHTML = '';
+    setTimeout(function(){ try { pane.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} }, 0);
     var p = function(txt, cls){ var d = document.createElement('div'); d.className = cls || 'nxai-cp-line'; d.textContent = txt; pane.appendChild(d); return d; };
     var btn = function(label, fn, primary, parent){ var b = document.createElement('button'); b.type = 'button'; b.className = 'nxai-btn' + (primary ? ' primary' : ''); b.textContent = label; b.addEventListener('click', fn); (parent || pane).appendChild(b); return b; };
     var rowEl = function(){ var d = document.createElement('div'); d.className = 'nxai-cp-btns'; pane.appendChild(d); return d; };
@@ -2440,13 +2454,35 @@
       return;
     }
     if (mode === 'docok'){
-      p('자동 정리에서 ⚠ 표시된 곳(위)을 원문과 비교해 주세요.');
+      // [2026.10.14] ⚠ 줄마다 그 칸·읽은 값을 따로 묻는다(예전: 모든 서류에 같은 안내와 "예: 잔금일 2024-03-05" 고정 예시 — 실사용에서 무엇을 확인하라는지 몰랐음)
+      var warns = String(it.detail || '').split('\n').map(function(x){ return x.trim(); }).filter(String);
       var r6 = rowEl();
       btn('📄 원문 열기', function(){ window.open('https://drive.google.com/file/d/' + encodeURIComponent(ask.fileId) + '/view', '_blank', 'noopener'); }, false, r6);
-      btn('정리 결과가 맞음', function(){ nxAiCaseProcDecide_(st, it, 'done', '원문 대조 — 맞음'); }, true, r6);
-      var ie3 = inputEl('text');
-      ie3.el.placeholder = '틀린 곳(예: 잔금일 2024-03-05가 맞음)';
-      btn('틀린 곳 기록(검토서에 반영)', function(){ var v = ie3.val(); if (!v){ nxAiToast_('틀린 곳을 적어 주세요.'); return; } nxAiCaseProcDecide_(st, it, '보류', v); }, false, ie3.row);
+      if (!warns.length){
+        p('자동 정리에서 ⚠ 표시된 곳을 원문과 비교해 주세요.');
+        btn('정리 결과가 맞음', function(){ nxAiCaseProcDecide_(st, it, 'done', '원문 대조 — 맞음'); }, true, r6);
+        return;
+      }
+      p('원문(‘' + (ask.name || '') + '’)과 비교해 칸마다 골라 주세요.');
+      var answers = {};
+      var finish = function(){
+        if (Object.keys(answers).length < warns.length) return;
+        var fixes = warns.map(function(w, i){ return answers[i]; }).filter(function(a){ return a && a.fix; });
+        if (!fixes.length) nxAiCaseProcDecide_(st, it, 'done', '원문 대조 — ⚠ ' + warns.length + '곳 모두 맞음');
+        else nxAiCaseProcDecide_(st, it, '보류', fixes.map(function(a){ return a.field + ' → ' + a.fix; }).join(' / '));
+      };
+      warns.forEach(function(w, i){
+        var clean = w.replace(/⚠\s*/g, '').replace(/\s+/g, ' ').trim();
+        var m = /^(.+?)\s{1,}([\d][\d,.\-]*\s*(?:원|㎡|%|년|월|일)?|20\d{2}-\d{2}-\d{2})(?:\s|$)/.exec(clean);
+        var field = m ? m[1].trim() : clean.slice(0, 40), read = m ? m[2].trim() : '';
+        var box = document.createElement('div'); box.className = 'nxai-cp-line'; box.style.cssText = 'border-top:1px dashed var(--line,#ddd);padding-top:4px;margin-top:4px;';
+        box.textContent = (i + 1) + ') ' + clean + (read ? '  — 읽은 값: ' + read : '');
+        pane.appendChild(box);
+        var rr = rowEl();
+        var ok = btn('맞음', function(){ answers[i] = { field: field }; rr.innerHTML = ''; rr.appendChild(document.createTextNode('✅ 맞음')); finish(); }, true, rr);
+        var e = document.createElement('input'); e.type = 'text'; e.placeholder = (field.length > 20 ? field.slice(0, 20) + '…' : field) + '의 맞는 값'; if (read) e.value = read; e.style.cssText = 'flex:1;min-width:120px;'; rr.appendChild(e);
+        btn('이 값으로 기록', function(){ var v = String(e.value || '').trim(); if (!v){ nxAiToast_('맞는 값을 적어 주세요.'); return; } answers[i] = { field: field, fix: v === read ? '' : v }; rr.innerHTML = ''; rr.appendChild(document.createTextNode(v === read ? '✅ 맞음' : '✏ ' + v + ' (검토서 추가확인사항에 기록)')); finish(); }, false, rr);
+      });
       return;
     }
     if (mode === 'note'){ var r7 = rowEl(); btn('확인했음', function(){ nxAiCaseProcDecide_(st, it, 'done', '확인함'); }, true, r7); return; }
@@ -2543,7 +2579,7 @@
         st.setStep('calc', '🔄', '입력값이 갖춰져 계산엔진으로 계산 중(토큰 0)…');
         return watch();
       }
-      nxAiConfirm_('세액계산 입력값이 아직 비어 있습니다. 서류로 자동채우기를 할까요?\n\n' + (tab === 'transfer' ? '양도는 서류 규칙 정리를 먼저 씁니다(0원, 확인창이 뜹니다).' : '증여·상속은 AI 자동채우기를 씁니다(유료, 한 번 수십~수백 원).') + '\n빈 칸·특례는 세액계산 화면이 직접 묻고, 계산이 끝나면 사건에 저장합니다.').then(function(ok){
+      nxAiConfirm_('세액계산 입력값이 아직 비어 있습니다. 서류로 자동채우기를 할까요?\n\n' + (tab === 'gift' ? '증여는 AI 자동채우기를 씁니다(유료, 한 번 수십~수백 원).' : '서류 규칙 정리를 먼저 씁니다(0원, 확인창이 뜹니다 — [취소]하면 AI 자동채우기).') + '\n빈 칸·특례는 세액계산 화면이 직접 묻고, 계산이 끝나면 사건에 저장합니다.').then(function(ok){
         if (ok){ st.setStep('calc', '🔄', '자동채우기 → 계산 중(빈 칸은 화면이 묻습니다)…'); if (typeof tcRunAutoCalc_ === 'function') tcRunAutoCalc_(); }
         else st.setStep('calc', '🔄', '세액계산 화면에서 빈 칸을 채우고 [세액 계산하기]를 누르면 이어서 저장합니다.');
         watch();
@@ -3181,7 +3217,9 @@
     var body = nxAiEl_('nxAiBody');
     body.addEventListener('click', function(e){
       var b = e.target.closest('.nxai-msg');
-      if (!b || !b._nxMsgRef || e.target.closest('button, a, input, textarea')) return;
+      if (!b || !b._nxMsgRef || e.target.closest('button, a, input, textarea, select, label')) return;
+      // [2026.10.14] 사건처리 카드 안을 누를 때 "메시지를 복사했습니다"가 뜨며 클립보드를 덮어쓰던 문제 — 카드 말풍선은 누름 복사 제외(우클릭 메뉴 복사는 그대로)
+      if (b.querySelector('.nxai-cp-steps')) return;
       var sel = window.getSelection(); if (sel && sel.toString().length) return;
       if (b._nxMsgRef.role === 'assistant') nxAiCopy_(b._nxMsgRef); else nxAiRefill_(b._nxMsgRef);
     });

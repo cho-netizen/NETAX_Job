@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-14 05:55 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-14 10:13 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -21387,7 +21387,67 @@ const INHERITANCE_HEIR_RELATION_ENUM_ = ['배우자', '자녀', '손자녀(대�
 const INHERITANCE_PROVISION_SPECS_ = [
   { key: 'isSpousePropertyDivided', id: 'ihSpouseDivided', q: '배우자 상속재산을 분할기한(신고기한 다음날부터 9개월) 내 분할·등기하고 신고했나요(§19②③)?' }
 ];
+// [2026.10.14] 상속세 자동채우기 "규칙 먼저"(AI 0원) — 양도세와 같은 방식. 서버가 사건 폴더 서류를 규칙으로 정리한 값
+// (피상속인·개시일·상속인·주민번호·상속재산 평가·금융재산·장례비·봉안시설)을 보여주고, [확인]이면 그 값으로 채운다.
+// 평가가 판단인 값(아파트 시가 등)은 사건처리 [확인]에서 고른 것만 쓴다. [취소]면 예전처럼 AI 자동채우기(유료).
+// (실사용: AI 자동채우기가 빈 응답으로 두 번 실패해 상속 사건 계산이 안 됐다)
 async function runAiAutoFillInheritanceFull_(){
+  if (tcCurrentCase && tcCurrentCase.id){
+    let rf = null;
+    try { rf = await callGas('tc_rule_inheritance_facts', { caseId: tcCurrentCase.id }); } catch (e) { rf = null; }
+    if (rf && rf.ok && ((rf.heirs && rf.heirs.length) || rf.grossEstate || (rf.assets && rf.assets.length))){
+      const won = function(v){ return v || v === 0 ? Number(v).toLocaleString('ko-KR') + '원' : '(미정)'; };
+      const lines = [];
+      lines.push('피상속인 ' + (rf.deceased && rf.deceased.name || '?') + ' · 상속개시일 ' + (rf.deathDate || '?'));
+      lines.push('상속인 ' + (rf.heirs || []).length + '명: ' + (rf.heirs || []).map(function(h){ return h.name + '(' + (h.relation || '?') + ')'; }).join(', '));
+      (rf.assets || []).forEach(function(a){ lines.push('재산: ' + (a.kind || '') + ' ' + a.loc + ' — ' + (a.value ? won(a.value) : '평가 미정(사건처리 [확인]에서 고르기)')); });
+      lines.push('금융재산 ' + won(rf.financialValue) + ' · 장례비 ' + won(rf.funeral && rf.funeral.value) + (rf.niche ? ' · 봉안시설 ' + won(rf.niche.value) : ''));
+      lines.push('총상속재산가액 ' + (rf.grossEstate ? won(rf.grossEstate) : '(재산 평가가 다 정해지지 않아 비워 둠)'));
+      const msg = '⚡ 서류를 규칙으로 정리했습니다(AI 비용 0원).\n\n' + lines.join('\n') + '\n\n[확인] 이 값으로 채우기  [취소] AI 자동채우기로 진행(유료)';
+      if (window.confirm(msg)){
+        const filled = tcApplyInheritanceRule_(rf);
+        const statusEl = document.getElementById('aiStatus-inheritance');
+        if (statusEl) statusEl.innerHTML = renderAiStatusHtml({ _aiStatus: 'done', _aiFilledFields: filled.concat(['(서류 규칙 정리 · AI 미사용, 토큰 0)']), _aiFileName: '서류 규칙 정리(토큰 0)' });
+        return { uncertainProvisionKeys: INHERITANCE_PROVISION_SPECS_.map(function(s){ return s.key; }) };
+      }
+    }
+  }
+  return runAiAutoFillInheritanceAI_();
+}
+function tcApplyInheritanceRule_(rf){
+  const filled = [];
+  const setVal = function(id, v, label){ const el = document.getElementById(id); if (!el || v === null || v === undefined || v === '') return; el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); filled.push(label); tcRememberAutoField_(id, el, 'inheritance', id, 'rule'); };
+  const fullNo = function(n){ return /^\d{6}-\d{7}$/.test(String(n || '')) ? n : ''; }; // 가려진 번호(******)는 넣지 않음
+  setVal('ihDeceasedName', rf.deceased && rf.deceased.name, '피상속인 성명');
+  setVal('ihDeceasedRegNo', fullNo(rf.deceased && rf.deceased.regNo), '피상속인 주민번호');
+  setVal('ihDeathDate', rf.deathDate, '상속개시일');
+  if (rf.heirs && rf.heirs.length){
+    const old = inheritanceHeirs.slice();
+    inheritanceHeirs.length = 0;
+    rf.heirs.forEach(function(h){
+      const prev = old.filter(function(o){ return o && o.name && String(o.name).replace(/\s+/g, '') === h.name; })[0] || {};
+      const t = Object.assign({}, prev, { name: h.name });
+      if (h.relation && INHERITANCE_HEIR_RELATION_ENUM_.indexOf(h.relation) !== -1) t.relation = h.relation;
+      if (fullNo(h.regNo)) t.regNo = h.regNo;
+      inheritanceHeirs.push(t);
+    });
+    if (!inheritanceHeirs.some(function(h){ return h.isReporter; }) && inheritanceHeirs[0]) inheritanceHeirs[0].isReporter = true;
+    if (typeof recomputeHeirDerivedFields === 'function') recomputeHeirDerivedFields();
+    filled.push('상속인 명부(' + rf.heirs.length + '명, 관계·주민번호 포함)');
+  }
+  if (rf.grossEstate) setVal('ihGrossEstateGeneral', rf.grossEstate, '총상속재산가액');
+  if (rf.financialValue !== null && rf.financialValue !== undefined) setVal('ihNetFinancial', rf.financialValue, '순금융재산가액');
+  const fun = [];
+  if (rf.funeral && rf.funeral.value) fun.push({ payee: '장례비용(' + (rf.funeral.src || '증빙') + ')', category: 'general', detail: '사건처리 서류 정리', amount: rf.funeral.value });
+  if (rf.niche && rf.niche.value) fun.push({ payee: '봉안시설(' + (rf.niche.file || '') + ')', category: 'niche', detail: rf.niche.src || '', amount: rf.niche.value });
+  if (fun.length){ inheritanceFuneralItems = fun; filled.push('장례비용'); }
+  if (typeof renderHeirRegistry === 'function') renderHeirRegistry();
+  if (typeof renderHeirTool === 'function') renderHeirTool();
+  if (typeof renderFuneralItemsList === 'function') renderFuneralItemsList();
+  if (typeof renderDebtItemsList === 'function') renderDebtItemsList();
+  return filled;
+}
+async function runAiAutoFillInheritanceAI_(){
   const statusEl = document.getElementById('aiStatus-inheritance');
   const state = { _aiStatus: 'loading' };
   if (statusEl) statusEl.innerHTML = renderAiStatusHtml(state);
@@ -43196,6 +43256,8 @@ function goToReportWriter_(caseId, opts){
         <button type="button" class="ghost-btn" id="stBtnBugRefresh">🔄 불러오기</button>
         <button type="button" class="ghost-btn" id="stBtnBugClear">🗑 기록 비우기</button>
         <button type="button" class="ghost-btn" id="stBtnSelfCheck" title="세액계산 엔진 정답 사례·사건/고객/예약/AI대화 읽기를 지금 점검합니다(AI 비용 0, 매일 밤 자동으로도 돔)">🩺 지금 자가점검</button>
+        <button type="button" class="ghost-btn" id="stBtnAnswerKey" title="사건 폴더에 _정답지.json이 있는 실사건을 '이 사건 처리하자'와 같은 단계·세액계산 엔진으로 다시 처리해 정답과 칸별로 대조합니다(AI 비용 0). 결과는 업무관리자/_정답지점검결과.json, 불일치는 개선 후보에 올라감">🧪 정답지 점검</button>
+        <button type="button" class="ghost-btn" id="stBtnAnswerKeyDraft" title="사건 폴더의 양도코리아 결과 PDF(과세표준·산출세액이 있는 서식)를 무료 글자인식으로 읽어 _정답지.json 초안을 만듭니다(AI 비용 0) — 세무사님이 확인해 '확정'으로 바꿔 주세요">📝 정답지 초안</button>
         <button type="button" class="ghost-btn" id="stBtnImprove" title="최근 7일 오류·유료 AI 질문·자가점검·화면 속도를 모아 고칠 거리를 정리합니다(AI 비용 0, 매일 밤 자동으로도 돔). 고치는 건 AI 탭 🛠(웹 Claude Code)">🛠 개선 후보 보기</button>
         <button type="button" class="ghost-btn" id="stBtnImproveReq" title="고쳤으면 하는 점·새 기능을 적어 두면 개선 후보에 올라가고, 웹 Claude Code(매주 월·AI 탭 🛠)가 구현해 수정안으로 올립니다(AI 비용 0)">✍ 개선요구사항 적기</button>
         <button type="button" class="ghost-btn" id="stBtnSysAudit" title="업무관리자·지침 파일끼리 모순·중복이 없는지 유료 AI(Sonnet)가 점검합니다 — 지침이 바뀌면 개선 후보에 알림이 뜹니다(자동 실행 안 함)">🧾 지침 점검</button>
@@ -43618,6 +43680,45 @@ function goToReportWriter_(caseId, opts){
           return '<div style="padding:3px 0; border-top:1px solid var(--line);">' + (x.ok ? '✅ ' : '⚠ ') + escapeHtml(x.name) + (x.ok ? '' : '<br><span style="color:#a83232;">' + escapeHtml(x.msg) + '</span>') + '</div>';
         }).join('');
       }).catch(function(err){ bugList.textContent = '자가점검을 실행하지 못했습니다: ' + (err && err.message ? err.message : err); });
+    });
+    // [2026.10.14 토큰0] 🧪 정답지 점검 — 서버가 사건마다 기본→증빙→처리개요 단계와 세액계산 엔진을 돌려 정답지와 대조(확인창·대화 전환 없음)
+    function akRender_(res){
+      var cases = (res && res.cases) || [];
+      if (!cases.length){ bugList.innerHTML = '정답지(_정답지.json)가 있는 사건이 없습니다 — 사건 폴더에 정답지를 넣거나 📝 정답지 초안을 먼저 만드세요.'; return; }
+      var cell = 'padding:3px 6px;border-top:1px solid var(--line);vertical-align:top;';
+      var fmt = function(v){ if (Array.isArray(v)) return v.join(', '); if (typeof v === 'number') return v.toLocaleString('ko-KR'); return String(v == null ? '' : v); };
+      bugList.innerHTML = '<div style="margin-bottom:6px;"><b>🧪 정답지 점검 ' + res.pass + '/' + res.total + ' 통과</b> · ' + escapeHtml(res.at || '') + ' · AI 비용 0</div>' + cases.map(function(c){
+        var head = '<div style="margin-top:8px;"><b>' + (c.pass ? '✅ 통과' : '❌ 불일치') + ' — ' + escapeHtml(c.사건명 || c.caseId) + '</b>' + (c.상태 ? ' <span style="color:var(--sub);">(정답지 ' + escapeHtml(c.상태) + ')</span>' : '') + '</div>';
+        if (c.error) return head + '<div style="color:#a83232;">' + escapeHtml(c.error) + '</div>';
+        var rows = '<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:12px;min-width:520px;"><tr><th style="' + cell + 'text-align:left;">칸</th><th style="' + cell + 'text-align:right;">정답</th><th style="' + cell + 'text-align:right;">도구 값</th><th style="' + cell + 'text-align:left;">출처</th><th style="' + cell + '"></th></tr>'
+          + (c.rows || []).map(function(r){ return '<tr><td style="' + cell + '">' + escapeHtml(r.field) + '</td><td style="' + cell + 'text-align:right;">' + escapeHtml(fmt(r.expected)) + '</td><td style="' + cell + 'text-align:right;">' + escapeHtml(fmt(r.tool)) + '</td><td style="' + cell + 'color:var(--sub);">' + escapeHtml(r.src || '') + '</td><td style="' + cell + '">' + (r.ok ? '✅' : '❌') + '</td></tr>'; }).join('') + '</table></div>';
+        var extra = (c.extra || []).length ? '<div style="margin-top:4px;"><b>❌ 정답지에 없는 질문(결함) ' + c.extra.length + '건</b>' + c.extra.map(function(x){ return '<div style="' + cell + '">· ' + escapeHtml(x.text) + (x.detail ? '<br><span style="color:var(--sub);">' + escapeHtml(x.detail).replace(/\n/g, '<br>') + '</span>' : '') + '</div>'; }).join('') + '</div>' : '';
+        var miss = (c.missing || []).length ? '<div style="margin-top:4px;"><b>❌ 정답지엔 있는데 도구가 안 물은 것 ' + c.missing.length + '건</b>' + c.missing.map(function(x){ return '<div style="' + cell + '">· ' + escapeHtml(x) + '</div>'; }).join('') + '</div>' : '';
+        return head + rows + extra + miss;
+      }).join('');
+    }
+    document.getElementById('stBtnAnswerKey').addEventListener('click', function(){
+      var tries = 0;
+      var step = function(first){
+        return callGas('answerkey_run', first ? { reset: true } : {}).then(function(r){
+          if (r && r.error) throw new Error(r.error);
+          if (r && r.more){
+            if (++tries > 40) throw new Error('너무 오래 걸려 멈췄습니다 — 다시 누르면 이어서 합니다.');
+            bugList.textContent = '🧪 정답지 점검 중… 사건 ' + (r.done || 0) + '/' + (r.total || '?') + (r.progress ? ' · 서류 읽는 중 ' + r.progress.done + '/' + r.progress.total + '(처음 읽는 서류는 한 건에 10~40초)' : '');
+            return step(false);
+          }
+          akRender_(r && r.result);
+        });
+      };
+      bugList.textContent = '🧪 정답지 점검 중… (AI 비용 0)';
+      step(true).catch(function(err){ bugList.textContent = '정답지 점검을 하지 못했습니다: ' + (err && err.message ? err.message : err); });
+    });
+    document.getElementById('stBtnAnswerKeyDraft').addEventListener('click', function(){
+      bugList.textContent = '📝 양도코리아 결과로 정답지 초안 만드는 중…(진행 중인 사건만, AI 비용 0)';
+      callGas('answerkey_draft', {}).then(function(r){
+        var made = (r && r.made) || [];
+        bugList.innerHTML = made.length ? made.map(function(m){ return '<div style="padding:3px 0;border-top:1px solid var(--line);">' + escapeHtml(m.사건명 || m.caseId) + ' — ' + (m.error ? escapeHtml(m.error) : '초안 저장(' + escapeHtml(m.from) + '): ' + escapeHtml(Object.keys(m.fields).map(function(k){ return k + ' ' + Number(m.fields[k]).toLocaleString('ko-KR'); }).join(', '))) + '</div>'; }).join('') : '양도코리아 결과 PDF(과세표준·산출세액이 있는 서식)가 있는 진행 중 사건이 없습니다.';
+      }).catch(function(err){ bugList.textContent = '초안을 만들지 못했습니다: ' + (err && err.message ? err.message : err); });
     });
     document.getElementById('stBtnImprove').addEventListener('click', function(){
       bugList.textContent = '🛠 개선 후보 정리 중…';
@@ -44857,6 +44958,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   var nxAiSyncBusy_ = false, nxAiLastSyncedScreenCase_ = '';
   function nxAiSyncToScreenCase_(){
     if (nxAiMode !== 'side' || nxAiSyncBusy_ || nxAiAbort) return;
+    // [2026.10.14] "이 사건 처리하자"가 도는 동안엔 따라가지 않는다 — 처리가 세액계산 화면을 그 사건으로 열면 대화가 다른(옛) 대화로 바뀌어 진행 중 말풍선이 사라졌다(실사용)
+    if (typeof nxAiCaseProcBusy_ === 'function' && nxAiCaseProcBusy_()) return;
     // [2026.10.14 긴급수정] 로그인 전에는 하지 않는다 — job을 열 때 사이드바·마지막 사건이 복원되며 로그인 전에 서버를 불러
     // "로그인이 만료되었습니다"가 로그인 창을 덮었다(2026-10-14 실사용)
     var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
@@ -46155,6 +46258,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       return fallback();
     });
   }
+  // 처리 중인 사건처리 — 화면 사건 따라가기(nxAiSyncToScreenCase_)를 멈추는 데 쓴다
+  var NXAI_CP_ACTIVE_ = [];
+  function nxAiCaseProcBusy_(){ return NXAI_CP_ACTIVE_.some(function(st){ return st.running || st.calcBusy || st.pdfRunning; }); }
   function nxAiCaseProc_(text){
     var tok = null; try { tok = sessionStorage.getItem('nxManageSessionToken'); } catch (e) {}
     if (!tok){ nxAiToast_('먼저 로그인해 주세요.'); return; }
@@ -46164,6 +46270,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var userMsg = { role: 'user', content: text };
     nxAiConv.messages.push(userMsg);
     nxAiAppendBubble_('user', text)._nxMsgRef = userMsg;
+    var wasEmpty = nxAiConv.messages.length === 0; // 방금 열린(화면 사건에 자동연결된) 빈 대화면 처리할 사건으로 다시 연결
     var bubble = nxAiAppendBubble_('assistant', '⚡ 사건을 찾는 중…');
     var aiMsg = { role: 'assistant', content: '[⚡사건 처리] 시작' };
     bubble._nxMsgRef = aiMsg;
@@ -46171,7 +46278,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     nxAiCaseProcResolve_(text).then(function(c){
       if (c && c.choices){
         nxAiRenderLocal_(bubble, { md: '어느 사건을 처리할지 골라 주세요.', note: '[⚡사건 처리] 사건 후보 ' + c.choices.length + '건 — 선택 대기',
-          choices: c.choices.map(function(k){ return { label: (k.사건명 || k.고객명) + (k.상태 === '완료' ? ' (완료)' : ''), run: function(){ nxAiCaseProcRun_(bubble, k.id); return null; } }; }) }, text);
+          choices: c.choices.map(function(k){ return { label: (k.사건명 || k.고객명) + (k.상태 === '완료' ? ' (완료)' : ''), run: function(){ nxAiCaseProcRun_(bubble, k.id, { relink: wasEmpty }); return null; } }; }) }, text);
         return;
       }
       if (!c){
@@ -46179,7 +46286,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         nxAiScheduleSave_();
         return;
       }
-      nxAiCaseProcRun_(bubble, c.id);
+      nxAiCaseProcRun_(bubble, c.id, { relink: wasEmpty });
     }).catch(function(err){ bubble.textContent = '사건을 찾지 못했습니다: ' + (err && err.message || err); });
   }
   // 세액계산 화면에 같은 사건이 열려 있으면 그 화면의 증여일·상속개시일도 날짜 대조·후보에 넣는다(값은 읽기만)
@@ -46191,8 +46298,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       return el && el.value ? { screenDate: el.value } : null;
     } catch (e) { return null; }
   }
-  function nxAiCaseProcRun_(bubble, caseId){
-    var st = { caseId: caseId, case: null, decisions: {}, steps: {}, items: [], files: [], saveTimer: null, bubble: bubble, calcBusy: false, calcAuto: false };
+  function nxAiCaseProcRun_(bubble, caseId, opts){
+    var st = { caseId: caseId, case: null, decisions: {}, steps: {}, items: [], files: [], saveTimer: null, bubble: bubble, calcBusy: false, calcAuto: false, running: true, relink: !!(opts && opts.relink) };
+    NXAI_CP_ACTIVE_ = NXAI_CP_ACTIVE_.filter(function(x){ return x.bubble !== bubble; }).concat([st]);
     bubble.innerHTML = '<div class="nxai-local-badge">⚡ 사건 처리 · 처리탭 도구로 실제 처리(AI 미사용, 판단 근거 설명만 AI)</div><div class="nxai-cp-head">사건 불러오는 중…</div><div class="nxai-cp-steps"></div><div class="nxai-cp-foot"></div>';
     var stepsEl = bubble.querySelector('.nxai-cp-steps');
     NXAI_CP_STEPS_.forEach(function(s){
@@ -46220,7 +46328,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
           st.case = res.case;
           bubble.querySelector('.nxai-cp-head').innerHTML = '<b>' + nxAiEsc_(res.case.사건명 || res.case.고객명 || '') + '</b>' + (res.lastRun ? ' <span class="nxai-muted">· 지난 처리 ' + nxAiEsc_(res.lastRun) + '</span>' : '');
           // 이름으로 찾았거나 화면 사건으로 처리할 때, 지금 대화가 아직 어느 사건에도 연결돼 있지 않으면 그 사건에 연결(자료 탭·🔗 표시)
-          if (!nxAiConv.caseId && res.case && typeof nxAiLinkCase_ === 'function') nxAiLinkCase_(res.case);
+          if (res.case && typeof nxAiLinkCase_ === 'function' && (!nxAiConv.caseId || (st.relink && nxAiConv.caseId !== res.case.id))) nxAiLinkCase_(res.case);
         }
         if (key === 'evidence' && res.files) st.files = res.files;
         if (key === 'overview' && res.case) st.case = res.case; // 서류로 채운 처리개요 — 세액계산 입력에 그대로 쓴다
@@ -46262,10 +46370,11 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       });
     }).then(function(r){
       st.setStep('save', '✅', '남은 일 ' + r.remaining + '건을 사건 기록(작업일지)에 남겼습니다');
+      st.running = false;
       nxAiCaseProcFoot_(st);
       nxAiCountFree_('local');
       nxAiCaseProcStatus_(st);
-    }).catch(function(err){ st.setStep('save', '❌', '저장하지 못함: ' + (err && err.message || err)); nxAiCaseProcFoot_(st); });
+    }).catch(function(err){ st.running = false; st.setStep('save', '❌', '저장하지 못함: ' + (err && err.message || err)); nxAiCaseProcFoot_(st); });
   }
   // 7 반영 현황표 — 사건 기본·처리개요 칸별 채움/출처/추정, 증빙 확보, 계산·서식 PDF·검토서, 남은 질문을 한 표로
   function nxAiCaseProcStatus_(st){
@@ -46301,6 +46410,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     if (st.calcBusy || !CASEPROC_CALC_TABS_[tab] || typeof goToTaxCalc_ !== 'function') return;
     var addLine = function(txt){ var ln = document.createElement('div'); ln.className = 'nxai-cp-line'; ln.textContent = txt; st.steps.output.querySelector('.nxai-cp-lines').appendChild(ln); return ln; };
     var info = addLine('🖨 저장된 계산 결과로 서식 PDF를 만들려고 세액계산 화면을 엽니다…');
+    st.pdfRunning = true;
+    setTimeout(function(){ st.pdfRunning = false; }, 90000);
     nxAiOpenJobView_('taxcalc', st.caseId);
     var tries = 0;
     var tick = function(){
@@ -46311,6 +46422,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (!ready || tries < 4){ if (tries < 30) return setTimeout(tick, 1500); info.textContent = '서식 PDF를 만들지 못했습니다: 세액계산 화면이 준비되지 않음 — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.'; return; }
       nxAiCaseProcSavePdf_(st, tab).then(function(pr){
         if (!(pr && pr.ok) && tries < 26 && /준비된 필수 서식이 없음/.test((pr && pr.error) || '')) return setTimeout(tick, 1500);
+        st.pdfRunning = false;
         info.textContent = pr && pr.ok ? '🖨 서식 PDF 저장: ' + pr.name + '(보고서_내부)' : '서식 PDF를 만들지 못했습니다: ' + ((pr && pr.error) || '') + ' — 세액인쇄 화면에서 [일괄출력]으로 저장할 수 있습니다.';
         if (pr && pr.ok) nxAiCaseProcStatus_(st);
       });
@@ -46421,7 +46533,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var ask = it.ask || {};
     var pane = el.querySelector('.nxai-cp-ask');
     if (!pane.hidden && pane.childNodes.length){ pane.hidden = true; return; }
+    // [2026.10.14] 다른 항목의 열린 질문은 닫는다 — 여러 개가 열려 칸이 밀리면 다음 클릭이 엉뚱한 항목에 맞던 문제(실사용)
+    Array.prototype.forEach.call(st.bubble.querySelectorAll('.nxai-cp-ask'), function(x){ if (x !== pane){ x.hidden = true; x.innerHTML = ''; } });
     pane.hidden = false; pane.innerHTML = '';
+    setTimeout(function(){ try { pane.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} }, 0);
     var p = function(txt, cls){ var d = document.createElement('div'); d.className = cls || 'nxai-cp-line'; d.textContent = txt; pane.appendChild(d); return d; };
     var btn = function(label, fn, primary, parent){ var b = document.createElement('button'); b.type = 'button'; b.className = 'nxai-btn' + (primary ? ' primary' : ''); b.textContent = label; b.addEventListener('click', fn); (parent || pane).appendChild(b); return b; };
     var rowEl = function(){ var d = document.createElement('div'); d.className = 'nxai-cp-btns'; pane.appendChild(d); return d; };
@@ -46496,13 +46611,35 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       return;
     }
     if (mode === 'docok'){
-      p('자동 정리에서 ⚠ 표시된 곳(위)을 원문과 비교해 주세요.');
+      // [2026.10.14] ⚠ 줄마다 그 칸·읽은 값을 따로 묻는다(예전: 모든 서류에 같은 안내와 "예: 잔금일 2024-03-05" 고정 예시 — 실사용에서 무엇을 확인하라는지 몰랐음)
+      var warns = String(it.detail || '').split('\n').map(function(x){ return x.trim(); }).filter(String);
       var r6 = rowEl();
       btn('📄 원문 열기', function(){ window.open('https://drive.google.com/file/d/' + encodeURIComponent(ask.fileId) + '/view', '_blank', 'noopener'); }, false, r6);
-      btn('정리 결과가 맞음', function(){ nxAiCaseProcDecide_(st, it, 'done', '원문 대조 — 맞음'); }, true, r6);
-      var ie3 = inputEl('text');
-      ie3.el.placeholder = '틀린 곳(예: 잔금일 2024-03-05가 맞음)';
-      btn('틀린 곳 기록(검토서에 반영)', function(){ var v = ie3.val(); if (!v){ nxAiToast_('틀린 곳을 적어 주세요.'); return; } nxAiCaseProcDecide_(st, it, '보류', v); }, false, ie3.row);
+      if (!warns.length){
+        p('자동 정리에서 ⚠ 표시된 곳을 원문과 비교해 주세요.');
+        btn('정리 결과가 맞음', function(){ nxAiCaseProcDecide_(st, it, 'done', '원문 대조 — 맞음'); }, true, r6);
+        return;
+      }
+      p('원문(‘' + (ask.name || '') + '’)과 비교해 칸마다 골라 주세요.');
+      var answers = {};
+      var finish = function(){
+        if (Object.keys(answers).length < warns.length) return;
+        var fixes = warns.map(function(w, i){ return answers[i]; }).filter(function(a){ return a && a.fix; });
+        if (!fixes.length) nxAiCaseProcDecide_(st, it, 'done', '원문 대조 — ⚠ ' + warns.length + '곳 모두 맞음');
+        else nxAiCaseProcDecide_(st, it, '보류', fixes.map(function(a){ return a.field + ' → ' + a.fix; }).join(' / '));
+      };
+      warns.forEach(function(w, i){
+        var clean = w.replace(/⚠\s*/g, '').replace(/\s+/g, ' ').trim();
+        var m = /^(.+?)\s{1,}([\d][\d,.\-]*\s*(?:원|㎡|%|년|월|일)?|20\d{2}-\d{2}-\d{2})(?:\s|$)/.exec(clean);
+        var field = m ? m[1].trim() : clean.slice(0, 40), read = m ? m[2].trim() : '';
+        var box = document.createElement('div'); box.className = 'nxai-cp-line'; box.style.cssText = 'border-top:1px dashed var(--line,#ddd);padding-top:4px;margin-top:4px;';
+        box.textContent = (i + 1) + ') ' + clean + (read ? '  — 읽은 값: ' + read : '');
+        pane.appendChild(box);
+        var rr = rowEl();
+        var ok = btn('맞음', function(){ answers[i] = { field: field }; rr.innerHTML = ''; rr.appendChild(document.createTextNode('✅ 맞음')); finish(); }, true, rr);
+        var e = document.createElement('input'); e.type = 'text'; e.placeholder = (field.length > 20 ? field.slice(0, 20) + '…' : field) + '의 맞는 값'; if (read) e.value = read; e.style.cssText = 'flex:1;min-width:120px;'; rr.appendChild(e);
+        btn('이 값으로 기록', function(){ var v = String(e.value || '').trim(); if (!v){ nxAiToast_('맞는 값을 적어 주세요.'); return; } answers[i] = { field: field, fix: v === read ? '' : v }; rr.innerHTML = ''; rr.appendChild(document.createTextNode(v === read ? '✅ 맞음' : '✏ ' + v + ' (검토서 추가확인사항에 기록)')); finish(); }, false, rr);
+      });
       return;
     }
     if (mode === 'note'){ var r7 = rowEl(); btn('확인했음', function(){ nxAiCaseProcDecide_(st, it, 'done', '확인함'); }, true, r7); return; }
@@ -46599,7 +46736,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         st.setStep('calc', '🔄', '입력값이 갖춰져 계산엔진으로 계산 중(토큰 0)…');
         return watch();
       }
-      nxAiConfirm_('세액계산 입력값이 아직 비어 있습니다. 서류로 자동채우기를 할까요?\n\n' + (tab === 'transfer' ? '양도는 서류 규칙 정리를 먼저 씁니다(0원, 확인창이 뜹니다).' : '증여·상속은 AI 자동채우기를 씁니다(유료, 한 번 수십~수백 원).') + '\n빈 칸·특례는 세액계산 화면이 직접 묻고, 계산이 끝나면 사건에 저장합니다.').then(function(ok){
+      nxAiConfirm_('세액계산 입력값이 아직 비어 있습니다. 서류로 자동채우기를 할까요?\n\n' + (tab === 'gift' ? '증여는 AI 자동채우기를 씁니다(유료, 한 번 수십~수백 원).' : '서류 규칙 정리를 먼저 씁니다(0원, 확인창이 뜹니다 — [취소]하면 AI 자동채우기).') + '\n빈 칸·특례는 세액계산 화면이 직접 묻고, 계산이 끝나면 사건에 저장합니다.').then(function(ok){
         if (ok){ st.setStep('calc', '🔄', '자동채우기 → 계산 중(빈 칸은 화면이 묻습니다)…'); if (typeof tcRunAutoCalc_ === 'function') tcRunAutoCalc_(); }
         else st.setStep('calc', '🔄', '세액계산 화면에서 빈 칸을 채우고 [세액 계산하기]를 누르면 이어서 저장합니다.');
         watch();
@@ -47237,7 +47374,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var body = nxAiEl_('nxAiBody');
     body.addEventListener('click', function(e){
       var b = e.target.closest('.nxai-msg');
-      if (!b || !b._nxMsgRef || e.target.closest('button, a, input, textarea')) return;
+      if (!b || !b._nxMsgRef || e.target.closest('button, a, input, textarea, select, label')) return;
+      // [2026.10.14] 사건처리 카드 안을 누를 때 "메시지를 복사했습니다"가 뜨며 클립보드를 덮어쓰던 문제 — 카드 말풍선은 누름 복사 제외(우클릭 메뉴 복사는 그대로)
+      if (b.querySelector('.nxai-cp-steps')) return;
       var sel = window.getSelection(); if (sel && sel.toString().length) return;
       if (b._nxMsgRef.role === 'assistant') nxAiCopy_(b._nxMsgRef); else nxAiRefill_(b._nxMsgRef);
     });

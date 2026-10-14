@@ -42,6 +42,8 @@
         <button type="button" class="ghost-btn" id="stBtnBugRefresh">🔄 불러오기</button>
         <button type="button" class="ghost-btn" id="stBtnBugClear">🗑 기록 비우기</button>
         <button type="button" class="ghost-btn" id="stBtnSelfCheck" title="세액계산 엔진 정답 사례·사건/고객/예약/AI대화 읽기를 지금 점검합니다(AI 비용 0, 매일 밤 자동으로도 돔)">🩺 지금 자가점검</button>
+        <button type="button" class="ghost-btn" id="stBtnAnswerKey" title="사건 폴더에 _정답지.json이 있는 실사건을 '이 사건 처리하자'와 같은 단계·세액계산 엔진으로 다시 처리해 정답과 칸별로 대조합니다(AI 비용 0). 결과는 업무관리자/_정답지점검결과.json, 불일치는 개선 후보에 올라감">🧪 정답지 점검</button>
+        <button type="button" class="ghost-btn" id="stBtnAnswerKeyDraft" title="사건 폴더의 양도코리아 결과 PDF(과세표준·산출세액이 있는 서식)를 무료 글자인식으로 읽어 _정답지.json 초안을 만듭니다(AI 비용 0) — 세무사님이 확인해 '확정'으로 바꿔 주세요">📝 정답지 초안</button>
         <button type="button" class="ghost-btn" id="stBtnImprove" title="최근 7일 오류·유료 AI 질문·자가점검·화면 속도를 모아 고칠 거리를 정리합니다(AI 비용 0, 매일 밤 자동으로도 돔). 고치는 건 AI 탭 🛠(웹 Claude Code)">🛠 개선 후보 보기</button>
         <button type="button" class="ghost-btn" id="stBtnImproveReq" title="고쳤으면 하는 점·새 기능을 적어 두면 개선 후보에 올라가고, 웹 Claude Code(매주 월·AI 탭 🛠)가 구현해 수정안으로 올립니다(AI 비용 0)">✍ 개선요구사항 적기</button>
         <button type="button" class="ghost-btn" id="stBtnSysAudit" title="업무관리자·지침 파일끼리 모순·중복이 없는지 유료 AI(Sonnet)가 점검합니다 — 지침이 바뀌면 개선 후보에 알림이 뜹니다(자동 실행 안 함)">🧾 지침 점검</button>
@@ -464,6 +466,45 @@
           return '<div style="padding:3px 0; border-top:1px solid var(--line);">' + (x.ok ? '✅ ' : '⚠ ') + escapeHtml(x.name) + (x.ok ? '' : '<br><span style="color:#a83232;">' + escapeHtml(x.msg) + '</span>') + '</div>';
         }).join('');
       }).catch(function(err){ bugList.textContent = '자가점검을 실행하지 못했습니다: ' + (err && err.message ? err.message : err); });
+    });
+    // [2026.10.14 토큰0] 🧪 정답지 점검 — 서버가 사건마다 기본→증빙→처리개요 단계와 세액계산 엔진을 돌려 정답지와 대조(확인창·대화 전환 없음)
+    function akRender_(res){
+      var cases = (res && res.cases) || [];
+      if (!cases.length){ bugList.innerHTML = '정답지(_정답지.json)가 있는 사건이 없습니다 — 사건 폴더에 정답지를 넣거나 📝 정답지 초안을 먼저 만드세요.'; return; }
+      var cell = 'padding:3px 6px;border-top:1px solid var(--line);vertical-align:top;';
+      var fmt = function(v){ if (Array.isArray(v)) return v.join(', '); if (typeof v === 'number') return v.toLocaleString('ko-KR'); return String(v == null ? '' : v); };
+      bugList.innerHTML = '<div style="margin-bottom:6px;"><b>🧪 정답지 점검 ' + res.pass + '/' + res.total + ' 통과</b> · ' + escapeHtml(res.at || '') + ' · AI 비용 0</div>' + cases.map(function(c){
+        var head = '<div style="margin-top:8px;"><b>' + (c.pass ? '✅ 통과' : '❌ 불일치') + ' — ' + escapeHtml(c.사건명 || c.caseId) + '</b>' + (c.상태 ? ' <span style="color:var(--sub);">(정답지 ' + escapeHtml(c.상태) + ')</span>' : '') + '</div>';
+        if (c.error) return head + '<div style="color:#a83232;">' + escapeHtml(c.error) + '</div>';
+        var rows = '<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:12px;min-width:520px;"><tr><th style="' + cell + 'text-align:left;">칸</th><th style="' + cell + 'text-align:right;">정답</th><th style="' + cell + 'text-align:right;">도구 값</th><th style="' + cell + 'text-align:left;">출처</th><th style="' + cell + '"></th></tr>'
+          + (c.rows || []).map(function(r){ return '<tr><td style="' + cell + '">' + escapeHtml(r.field) + '</td><td style="' + cell + 'text-align:right;">' + escapeHtml(fmt(r.expected)) + '</td><td style="' + cell + 'text-align:right;">' + escapeHtml(fmt(r.tool)) + '</td><td style="' + cell + 'color:var(--sub);">' + escapeHtml(r.src || '') + '</td><td style="' + cell + '">' + (r.ok ? '✅' : '❌') + '</td></tr>'; }).join('') + '</table></div>';
+        var extra = (c.extra || []).length ? '<div style="margin-top:4px;"><b>❌ 정답지에 없는 질문(결함) ' + c.extra.length + '건</b>' + c.extra.map(function(x){ return '<div style="' + cell + '">· ' + escapeHtml(x.text) + (x.detail ? '<br><span style="color:var(--sub);">' + escapeHtml(x.detail).replace(/\n/g, '<br>') + '</span>' : '') + '</div>'; }).join('') + '</div>' : '';
+        var miss = (c.missing || []).length ? '<div style="margin-top:4px;"><b>❌ 정답지엔 있는데 도구가 안 물은 것 ' + c.missing.length + '건</b>' + c.missing.map(function(x){ return '<div style="' + cell + '">· ' + escapeHtml(x) + '</div>'; }).join('') + '</div>' : '';
+        return head + rows + extra + miss;
+      }).join('');
+    }
+    document.getElementById('stBtnAnswerKey').addEventListener('click', function(){
+      var tries = 0;
+      var step = function(first){
+        return callGas('answerkey_run', first ? { reset: true } : {}).then(function(r){
+          if (r && r.error) throw new Error(r.error);
+          if (r && r.more){
+            if (++tries > 40) throw new Error('너무 오래 걸려 멈췄습니다 — 다시 누르면 이어서 합니다.');
+            bugList.textContent = '🧪 정답지 점검 중… 사건 ' + (r.done || 0) + '/' + (r.total || '?') + (r.progress ? ' · 서류 읽는 중 ' + r.progress.done + '/' + r.progress.total + '(처음 읽는 서류는 한 건에 10~40초)' : '');
+            return step(false);
+          }
+          akRender_(r && r.result);
+        });
+      };
+      bugList.textContent = '🧪 정답지 점검 중… (AI 비용 0)';
+      step(true).catch(function(err){ bugList.textContent = '정답지 점검을 하지 못했습니다: ' + (err && err.message ? err.message : err); });
+    });
+    document.getElementById('stBtnAnswerKeyDraft').addEventListener('click', function(){
+      bugList.textContent = '📝 양도코리아 결과로 정답지 초안 만드는 중…(진행 중인 사건만, AI 비용 0)';
+      callGas('answerkey_draft', {}).then(function(r){
+        var made = (r && r.made) || [];
+        bugList.innerHTML = made.length ? made.map(function(m){ return '<div style="padding:3px 0;border-top:1px solid var(--line);">' + escapeHtml(m.사건명 || m.caseId) + ' — ' + (m.error ? escapeHtml(m.error) : '초안 저장(' + escapeHtml(m.from) + '): ' + escapeHtml(Object.keys(m.fields).map(function(k){ return k + ' ' + Number(m.fields[k]).toLocaleString('ko-KR'); }).join(', '))) + '</div>'; }).join('') : '양도코리아 결과 PDF(과세표준·산출세액이 있는 서식)가 있는 진행 중 사건이 없습니다.';
+      }).catch(function(err){ bugList.textContent = '초안을 만들지 못했습니다: ' + (err && err.message ? err.message : err); });
     });
     document.getElementById('stBtnImprove').addEventListener('click', function(){
       bugList.textContent = '🛠 개선 후보 정리 중…';
