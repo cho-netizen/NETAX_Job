@@ -487,10 +487,10 @@
     document.getElementById('stBtnAnswerKey').addEventListener('click', function(){
       var tries = 0;
       var step = function(first){
-        return callGas('answerkey_run', first ? { reset: true } : {}).then(function(r){
+        return callGas('answerkey_run', {}).then(function(r){ // [2026.10.15] 멈췄다 다시 누르면 처음부터가 아니라 이어서(서버가 진행 상태를 기억)
           if (r && r.error) throw new Error(r.error);
           if (r && r.more){
-            if (++tries > 40) throw new Error('너무 오래 걸려 멈췄습니다 — 다시 누르면 이어서 합니다.');
+            if (++tries > 200) throw new Error('너무 오래 걸려 멈췄습니다 — 다시 누르면 이어서 합니다.');
             bugList.textContent = '🧪 정답지 점검 중… 사건 ' + (r.done || 0) + '/' + (r.total || '?') + (r.progress ? ' · 서류 읽는 중 ' + r.progress.done + '/' + r.progress.total + '(처음 읽는 서류는 한 건에 10~40초)' : '');
             return step(false);
           }
