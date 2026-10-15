@@ -253,8 +253,10 @@ function akRunCase0_(caseId, key) {
   if (!c) return { caseId: caseId, error: '사건을 찾지 못했습니다.' };
   const out = { caseId: caseId, 사건명: c.사건명 || c.고객명 || '', 상태: key.상태 || '초안', rows: [], extra: [], missing: [], steps: {} };
   const t0 = Date.now();
+  TC_NO_NEW_OCR_ = false; // 사건마다 처음엔 켜 둔다(한 실행에서 여러 사건을 처리)
   let ev = caseProcEvidence_(c);
   if (ev.more) return { caseId: caseId, more: true, progress: ev.progress };
+  TC_NO_NEW_OCR_ = true; // 이후 단계는 새 글자인식 없이(한도 넘친 서류는 다음 점검에서 증빙 단계가 이어 읽음)
   // [2026.10.16] 서류가 많은 사건(노영환 299개)은 서류 정리만으로 몇 분이 걸려, 이어서 처리개요·두 번째 증빙까지 하면 서버 6분 한도에 걸려
   //  같은 사건을 3번 끊고 건너뛰었다. 서류 정리에 2분 넘게 걸렸으면 여기서 끊고 다음 호출에서 이어 간다(글자·정리 결과는 캐시에 남아 빨라짐).
   if (Date.now() - t0 > 120000) {

@@ -24536,6 +24536,9 @@ function tcSheetText_(ss) {
     return sh.getName() + '\n' + sh.getDataRange().getDisplayValues().map(function (r) { return r.filter(String).join('\t'); }).filter(String).join('\n');
   }).join('\n\n');
 }
+// [2026.10.16] 정답지 점검이 증빙 단계(글자인식 한도 있음)를 마친 뒤에는 새 글자인식을 하지 않게 하는 스위치 — 서류가 한도보다 많은 사건(노영환 299개)은
+//  그 뒤 상속 사실 정리·메모 읽기가 넘친 서류를 하나씩 새로 글자인식해 서버 6분 한도를 넘겼다. 기억에 있는 글자는 그대로 쓴다.
+var TC_NO_NEW_OCR_ = false;
 function tc_docText_(f) {
   const cache = CacheService.getScriptCache();
   // 표 계산기만 기억 이름을 바꿔 새 규칙(모든 시트)으로 다시 읽게 한다 — 다른 서류의 글자인식 기억은 그대로 쓴다
@@ -24549,6 +24552,7 @@ function tc_docText_(f) {
   // 비싼 변환(글자인식·엑셀·한글·파워포인트)은 영구 기억에서 먼저 찾는다(수정시각이 같을 때만)
   const costly = !!f.modified && (/pdf|^image\/|officedocument|msword|spreadsheetml|ms-excel/.test(mt) || /\.(hwpx|pptx)$/i.test(fname));
   if (costly) { const st = tcOcrStoreGet_(key); if (st !== null) { try { cache.put(key, st, 21600); } catch (e) {} return st; } }
+  if (costly && TC_NO_NEW_OCR_) return '';
   if (/\.hwpx$/i.test(fname)) text = tcHwpxText_(f.id);
   else if (/presentationml/.test(mt) || /\.pptx$/i.test(fname)) text = tcPptxText_(f.id);
   else if (mt === 'application/vnd.google-apps.document') text = DocumentApp.openById(f.id).getBody().getText();
@@ -24763,6 +24767,7 @@ function tc_ruleTransferFacts_(body) {
   var files = caseProcFiles_({ 폴더ID: folderId });
   var rank = function (n) { return /(계약|신고필증|취득세|법무|등기|등본)/.test(n) ? 0 : /(공사|인테리어|중개|이체|영수증|비용)/.test(n) ? 1 : 2; };
   files.sort(function (a, b) { return rank(a.name) - rank(b.name); });
+  var officeFees = []; // [2026.10.16] 이 사무소가 받은 양도세 신고 수수료 — 양도소득세 신고서 작성비용(시행령 §163⑤1호)
   var contracts = [], reports = [], acqs = [], lawyers = [], regs = [], expDocs = [], pubs = [], regCerts = [], comps = [], bunyang = [], giftDocs = [], realDocs = [], acqDateCands = [], acqPriceCands = [], started = Date.now(), skippedForTime = [], stmtEstNames = null;
   var docSeen = 0;
   for (var i = 0; i < files.length; i++) {
@@ -24864,6 +24869,7 @@ function tc_ruleTransferFacts_(body) {
       if (g.금액 && g.날짜 && /중개|공인|법무|공사|인테리어|샷시|새시|방수|보일러/.test(m)) expDocs.push({ file: f.name, amount: g.금액, date: g.날짜, memo: m.trim().slice(0, 30), payer: '', head: m });
     });
     if (p.type === 'banktx' && p.result && p.result.이체확인증 && p.result.거래.length === 1) { var g0 = p.result.거래[0]; expDocs.push({ file: f.name, amount: g0.금액, date: g0.날짜, memo: g0.적요 || '', payer: g0.보낸이 || '', head: String(text).slice(0, 300) }); }
+    if (/^(cashreceipt|cardreceipt|taxinvoice)$/.test(p.type) && p.result && p.result.합계 && !p.result.취소 && p.result.사무소발행 && !officeFees.some(function (o) { return o.amount === p.result.합계 && o.date === String(p.result.거래일 || '').slice(0, 10); })) officeFees.push({ file: f.name, amount: p.result.합계, date: String(p.result.거래일 || '').slice(0, 10) });
     if (/^(cashreceipt|cardreceipt|taxinvoice)$/.test(p.type) && p.result && p.result.합계 && !p.result.취소 && !p.result.사무소발행) expDocs.push({ file: f.name, amount: p.result.합계, date: String(p.result.거래일 || '').slice(0, 10), memo: p.result.상호 || '', payer: '', head: String(text).slice(0, 300) });
     // [2026.10.15 1단계 ②] 등기필증(옛 권리증) — "등기목적 소유권이전 · 접수 0000년 00월 00일"이면 납세자 취득 등기 접수일(취득시기 §98 후보).
     //  사진으로 찍힌 등기필증이 "종류 미정"으로 어느 칸에도 안 쓰였다(김금옥: 취득 계약서가 없어 취득일을 못 정함)
@@ -25043,6 +25049,11 @@ function tc_ruleTransferFacts_(body) {
     lawyers.forEach(function (l) { if (!l.r.합계) return; lawTotal = Math.max(lawTotal, l.r.합계); var lnc = lawNet(l, []); expCands.push({ kind: '취득', label: '법무사 정산서(취득세·등록 공과금·보수 포함일 수 있음' + (l.bond ? ' — ' + lnc.why : '') + ')', amount: lnc.v, date: l.r.일자 || '', file: l.file, sure: /취득/.test(l.file) || !!txs[0].acquisitionExpenses, note: '' }); });
     acqs.forEach(function (a) { if (!a.r.합계) return; var inLaw = lawTotal && a.r.합계 <= lawTotal; expCands.push({ kind: '취득', label: '취득세 등 납부', amount: a.r.합계, date: a.r.납부일 || a.r.일자 || '', file: a.file, sure: !inLaw && (/취득/.test(a.file) || !!txs[0].acquisitionExpenses), note: inLaw ? '법무사 정산서 합계에 이미 들어 있을 수 있음 — 겹치면 하나만' : '' }); });
   }
+  if (txs.length === 1) officeFees.forEach(function (o) {
+    var sureO = !!(txs[0].transferDate && o.date && o.date >= txs[0].transferDate);
+    expCands.push({ kind: '양도', label: '양도소득세 신고서 작성비용(이 사무소 수수료, 시행령 §163⑤1호)', amount: o.amount, date: o.date, file: o.file, sure: sureO, note: sureO ? '' : '양도일 전에 낸 수수료 — 상담료면 빼세요' });
+    if (sureO) { txs[0].transferExpensesOnly = (txs[0].transferExpensesOnly || 0) + o.amount; evidence.push('양도비용: 신고서 작성비용 ' + o.amount.toLocaleString('ko-KR') + '원(' + o.file + ', 이 사무소 수수료 — 시행령 §163⑤1호)'); }
+  });
   if (txs.length !== 1 && acqs.length + lawyers.length) evidence.push('취득세·법무사 서류 ' + (acqs.length + lawyers.length) + '건은 어느 거래 것인지 규칙으로 확정 못 해 넣지 않음 — 직접 확인');
   // [2026.10.15 1단계 ①②] 거래가 하나로 정해지지 않으면(0건·여러 건) 비용 서류를 말없이 버리지 않고 후보로(체크 안 함) — 김운래 사건: 재결 대응 법무법인 수수료·보상 컨설팅 세금계산서가 사라졌다
   if (txs.length !== 1) {
@@ -25116,7 +25127,7 @@ function tc_ruleTransferFacts_(body) {
       seenE[k] = 1; capSum += e.amount; capParts.push('자본적지출 ' + label);
     });
     if (acqAdd) { tx0.acquisitionExpenses = (tx0.acquisitionExpenses || 0) + acqAdd; }
-    if (capSum + trSum) tx0.transferExpensesOnly = capSum + trSum;
+    if (capSum + trSum) tx0.transferExpensesOnly = (tx0.transferExpensesOnly || 0) + capSum + trSum; // 신고서 작성비용(앞에서 더함)과 합침
     if (capParts.length + trParts.length) evidence.push('자본적지출·양도비 ' + (capSum + trSum + acqAdd).toLocaleString('ko-KR') + '원(지급 증빙 기준): ' + capParts.concat(trParts).join(', '));
   }
   // [2026.10.15] 취득가액 서류가 없을 때 공시가격(기준시가)으로 — 소득세법 §97①1호나·§114⑦·시행령§176의2, §163⑨.
@@ -25404,6 +25415,7 @@ function caseProcParsed_(f, cache, canParse) {
   let s = { t: '', l: '', w: [] };
   try {
     const text = tc_docText_(f);
+    if (TC_NO_NEW_OCR_ && !text) return null; // 새 글자인식을 멈춘 동안의 빈 글자를 "글자 없음"으로 기억하지 않는다
     if (!text || !String(text).trim()) s.nt = true; // 글자를 하나도 못 읽음(그림만·흐린 사진)
     if (text) {
       if (caseProcIsOutputText_(text)) s.out = true; // 내용으로 본 이미 낸 신고서(사진 등)
@@ -25540,10 +25552,8 @@ function caseProcEvidence_(c) {
   const office = docs.filter(function (f) { return f.p && f.p.office; });
   if (office.length) lines.push('사무소 발행 영수증 ' + office.length + '건 — 고객 증빙 아님(수금 기록용), 점검에서 뺌: ' + office.slice(0, 3).map(function (f) { return f.name; }).join(', ') + (office.length > 3 ? ' 외' : ''));
   // [2026.10.15 1:1] 양도 — 사무소가 받은 신고 수수료도 고객에겐 양도비용(신고서 작성비용, 소득세법 시행령 §163⑤1호)일 수 있다. 말없이 빼지 않고 묻는다.
-  if (office.length && c.세목 === 'transfer') office.forEach(function (f) {
-    items.push(caseProcItem_('ev:officefee:' + f.name, 'check', '‘' + f.name + '’ — 사무소가 받은 신고 수수료 영수증입니다. 양도소득세 신고서 작성비용은 양도비용(필요경비, 소득세법 시행령 §163⑤1호)입니다 — 필요경비에 넣을까요?',
-      { mode: 'options', options: [{ label: '넣음 — 처리개요 필요경비에 더하기', decide: '보류', note: '세무 수수료를 양도비용으로 — 처리개요 필요경비에 반영' }, { label: '넣지 않음', decide: 'done', note: '세무 수수료 필요경비 제외' }] }));
-  });
+  // [2026.10.16] 사무소 신고 수수료는 필요경비 후보(양도비용 — 신고서 작성비용, 시행령 §163⑤1호)로 넣고 「필요경비 확정」에서 함께 확인한다(예전: 따로 묻고 '넣음'이어도 직접 더해야 했다)
+  if (office.length && c.세목 === 'transfer') lines.push('사무소 신고 수수료 ' + office.length + '건 — 필요경비 후보(양도비용: 신고서 작성비용, 시행령 §163⑤1호)로 넣음, 「필요경비 확정」에서 확인: ' + office.map(function (f) { return f.name; }).join(', '));
   const pool = files.filter(function (f) { return !(f.p && f.p.office) && !/\.json$/i.test(f.name); });
   const hay = pool.map(function (f) { return { f: f, s: f.name + ' ' + (f.p && f.p.l || '') }; });
   // [2026.10.15 1:1] 파일 이름의 '취득'·'양도' — 취득 칸엔 이름에 양도만 있는 파일을, 양도 칸엔 이름에 취득만 있는 파일을 후보로 올리지 않는다(세무사님: 이름에 분명히 적혀 있는데 둘 다 띄움)
