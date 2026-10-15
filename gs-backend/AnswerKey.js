@@ -87,7 +87,13 @@ function akToolValues_(c) {
     put('봉안시설', f.niche && f.niche.value !== null ? f.niche.value : 0, f.niche ? (f.niche.src || (f.niche.receipt ? '영수증 ' + f.niche.receipt.amount.toLocaleString('ko-KR') + '원(공제액 선택 전)' : '공제 0 — 계약서만 있고 납부 증빙 없음')) : '봉안 서류 없음(공제 0)', 'money'); // 계산에 들어가는 공제 대상 금액
     put('총상속재산', f.grossEstate, f.grossEstate ? '부동산 평가 + 금융재산' : '평가 안 끝남', 'money');
     if (f.grossEstate) {
-      const input = { taxableEstateAmount: f.grossEstate, hasSpouse: f.heirs.some(function (h) { return h.relation === '배우자'; }), childCount: f.heirs.filter(function (h) { return h.relation === '자녀'; }).length,
+      // [2026.10.16] 과세가액 = 총상속재산 − 공과금 − 채무(§14) — 예전엔 총상속재산을 그대로 넣어 채무·공과금 있는 사건(김창호·박종헌 등)을 과다 계산했다.
+      //  채무는 세무사님이 확정한 목록, 없으면 서류로 확실한 것만. 감정평가수수료(§25①)도 화면과 같이 넣는다.
+      const debtList = Array.isArray(f.debtsConfirmed) ? f.debtsConfirmed : (f.debts || []).filter(function (d) { return d.sure; });
+      const debtSum = debtList.reduce(function (s, d) { return s + (Number(d.amount) || 0); }, 0);
+      const duesSum = (f.dues || []).reduce(function (s, d) { return s + (Number(d.amount) || 0); }, 0);
+      v._deductions = { debts: debtSum, dues: duesSum, appraisalFee: f.appraisalFee ? f.appraisalFee.value : 0 };
+      const input = { taxableEstateAmount: Math.max(0, f.grossEstate - debtSum - duesSum), appraisalFeeAmount: f.appraisalFee ? f.appraisalFee.value : 0, hasSpouse: f.heirs.some(function (h) { return h.relation === '배우자'; }), childCount: f.heirs.filter(function (h) { return h.relation === '자녀'; }).length,
         netFinancialAssets: f.financialValue || 0, funeralCostAmount: f.funeral.value || 0, funeralNicheCostAmount: (f.niche && f.niche.value) || 0 };
       const r = runUiEngineCalcTool_('calculate_inheritance_tax', input) || { error: '엔진 없음' };
       v._engineInput = input;
@@ -396,7 +402,24 @@ function answerKeyRun_(body) {
   try {
     const folder = getBusinessManagerFolder_();
     // [2026.10.15] 세무사님 지시: 점검 내용을 없애지 말고 한 파일에 통합 보관 — 새 결과를 _정답지점검_보관.md 끝에 회차로 이어 붙인다(akArchiveMd_)
-    if (folder) { try { akArchiveMd_(folder, result); } catch (e) { result.archiveError = String(e && e.message || e); } const it = folder.getFilesByName(AK_RESULT_NAME_); if (it.hasNext()) it.next().setContent(JSON.stringify(result)); else folder.createFile(AK_RESULT_NAME_, JSON.stringify(result), 'application/json'); }
+    if (folder) {
+      try { akArchiveMd_(folder, result); } catch (e) { result.archiveError = String(e && e.message || e); }
+      const it = folder.getFilesByName(AK_RESULT_NAME_);
+      // [2026.10.16] 사건 하나만 점검(caseId)한 결과로 전체 결과 파일을 덮어쓰지 않는다 — 그 사건 줄만 바꿔 끼운다
+      //  (2026-10-16 새벽: 노영환 1건 점검이 27건 결과를 덮어써 설정 🐞 카드와 오프라인 재현기의 파일 대응표가 1건만 남았다)
+      if (st.only && it.hasNext()) {
+        const file = it.next();
+        let prev = null; try { prev = JSON.parse(file.getBlob().getDataAsString('UTF-8')); } catch (e) {}
+        if (prev && Array.isArray(prev.cases)) {
+          const mine = st.results.map(function (r) { return r.caseId + '|' + (r.keyName || ''); });
+          prev.cases = prev.cases.filter(function (r) { return mine.indexOf(r.caseId + '|' + (r.keyName || '')) === -1; }).concat(st.results);
+          prev.pass = prev.cases.filter(function (r) { return r.pass; }).length;
+          prev.updatedOne = { caseId: st.only, at: result.at, ver: result.ver };
+          file.setContent(JSON.stringify(prev));
+        } else file.setContent(JSON.stringify(result));
+      } else if (it.hasNext()) it.next().setContent(JSON.stringify(result));
+      else folder.createFile(AK_RESULT_NAME_, JSON.stringify(result), 'application/json');
+    }
   } catch (e) { result.saveError = String(e && e.message || e); }
   return { ok: true, result: result };
 }

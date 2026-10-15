@@ -25397,7 +25397,7 @@ function caseProcEvTypes_(label) {
   return null;
 }
 function caseProcParsed_(f, cache, canParse) {
-  const key = 'cpp19_' + f.id + '_' + f.modified; // cpp19: 취득세 참고 경고(2026-10-16) // cpp18: 증여계약서 이름 형식 추가(2026-10-16) // cpp17: 간편계산 결과 제외(2026-10-16) // cpp16: 등기 개명·증여계약서 서명란(2026-10-16) // cpp15: 괄호 제목 분할협의서·쉼표 없는 영수증 금액(2026-10-16) // cpp14: 내용으로 본 이미 낸 신고서(out)(2026-10-15) // cpp13: 오피스텔·상업용 기준시가 표(2026-10-15) // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
+  const key = 'cpp20_' + f.id + '_' + f.modified; // cpp20: 등기 지분 상속 피상속인(2026-10-16) // cpp19: 취득세 참고 경고(2026-10-16) // cpp18: 증여계약서 이름 형식 추가(2026-10-16) // cpp17: 간편계산 결과 제외(2026-10-16) // cpp16: 등기 개명·증여계약서 서명란(2026-10-16) // cpp15: 괄호 제목 분할협의서·쉼표 없는 영수증 금액(2026-10-16) // cpp14: 내용으로 본 이미 낸 신고서(out)(2026-10-15) // cpp13: 오피스텔·상업용 기준시가 표(2026-10-15) // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
   const hit = cache.get(key);
   if (hit) { try { return JSON.parse(hit); } catch (e) {} }
   if (!canParse) return null;
@@ -26190,7 +26190,10 @@ function caseProcBaseDateCands_(p) {
       h.forEach(function (x, k) {
         if (x.말소 || !x.원인일 || !/상속/.test(String(x.원인 || ''))) return;
         let prev = null; for (let j = k - 1; j >= 0; j--) if (!h[j].말소) { prev = h[j]; break; }
-        out.push({ k: 'death', d: x.원인일, who: prev ? (prev.권리자 || []).map(function (q) { return q.이름; }).join(',') : '', warn: !!x.확인필요, via: '등기부 상속 원인일' });
+        // [2026.10.16] 공유 지분 상속은 목적에 "1번박준영지분전부이전"처럼 넘겨준 사람이 적힌다 — 그 이름이 피상속인(직전 공유자 전원이 아님).
+        //  박종헌(윤경숙): 2015년 박준영 지분 상속을 직전 공유자 목록(윤경숙 포함)으로 맞춰 윤경숙의 상속개시일 후보로 잡았다
+        const pm = /([가-힣]{2,4})\s*지\s*분\s*(?:전\s*부|일\s*부)?\s*이\s*전/.exec(String(x.목적 || ''));
+        out.push({ k: 'death', d: x.원인일, who: pm ? pm[1] : (prev ? (prev.권리자 || []).map(function (q) { return q.이름; }).join(',') : ''), warn: !!x.확인필요, via: '등기부 상속 원인일' });
       });
     });
     if (p.type === 'inhdivision' && p.result && p.result.개시일) out.push({ k: 'death', d: p.result.개시일, who: p.result.피상속인 || '', warn: false, via: '상속재산분할협의서' });
@@ -26351,7 +26354,9 @@ function caseProcBaseDateCheck_(c, ov, lines, items) {
     return;
   }
   if (dates.length > 1) {
-    items.push(caseProcItem_('base:multi:' + dates.join('|'), 'check', '증빙상 ' + what + '이 여러 날짜입니다: ' + sure.map(function (b) { return b.d + '(' + b.file + (b.loc ? ', ' + b.loc : '') + ')'; }).join(', ') + ' — 증여가 여러 건이면 각각 신고. 이 사건의 ' + what + '은?', { mode: 'base' }));
+    // [2026.10.16] 날짜 후보를 객관식으로(예전엔 후보 없이 날짜만 문장에 나열 — 후보 번호로 답할 수 없었다). 서류가 많이 가리키는 날짜를 앞에.
+    const multiCands = dates.map(function (d0) { const bs = sure.filter(function (b) { return b.d === d0; }); return { v: d0, src: bs.map(function (b) { return (b.via || '') + ' ' + b.file; }).join(', ').trim(), n: bs.length }; }).sort(function (a, b) { return b.n - a.n; }).map(function (x) { return { v: x.v, src: x.src }; });
+    items.push(caseProcItem_('base:multi:' + dates.join('|'), 'check', '증빙상 ' + what + '이 여러 날짜입니다: ' + sure.map(function (b) { return b.d + '(' + b.file + (b.loc ? ', ' + b.loc : '') + ')'; }).join(', ') + ' — 증여가 여러 건이면 각각 신고. 이 사건의 ' + what + '은?', { mode: 'base', cands: multiCands }));
     return;
   }
   const d = dates[0], src = sure.filter(function (b) { return b.d === d; })[0];
@@ -26820,6 +26825,11 @@ function caseProcGiftInhFacts_(c, lines, items) {
   } else {
     const deaths = byType('death').filter(function (x) { return x.p.result && x.p.result.성명; });
     deaths.forEach(function (x) { add('ihDeceasedName', x.p.result.성명, '사망 서류(' + x.f.name + ')', deaths.length === 1 && !x.p.result.사망일확인필요); });
+    // [2026.10.16] 사망 서류에서 성명 칸을 못 읽었어도 글에 사건 납세자 이름이 있으면 그 서류가 근거(박종헌: 시체검안서에 윤경숙이 있는데 메모의 다른 이름이 1번 후보였다)
+    if (!deaths.length && String(c.납세자 || '').trim()) {
+      const nn = norm(c.납세자);
+      byType('death').some(function (x) { let tx = ''; try { tx = tc_docText_(x.f) || ''; } catch (e) {} if (nn.length < 2 || tx.replace(/\s+/g, '').indexOf(nn) === -1) return false; add('ihDeceasedName', nn, ((x.p.result || {}).종류 || '사망 서류') + '(' + x.f.name + ')에 사건 납세자 이름', true); return true; });
+    }
     // [2026.10.14] 피상속인 — 사망진단서 성명을 못 읽어도 "본인 사망"이 적힌 가족관계증명서·분할협의서의 피상속인으로 확정(납세자를 의뢰인 이름으로 잘못 짐작하지 않게)
     fams.forEach(function (x) { const me = ((x.p.result && x.p.result.가족) || []).filter(function (q) { return q.관계 === '본인' && q.사망 && q.이름; })[0]; if (me) add('ihDeceasedName', norm(me.이름), '가족관계증명서(' + x.f.name + ', 본인 사망)', !me.확인필요); });
     byType('inhdivision').forEach(function (x) { if (x.p.result && x.p.result.피상속인) add('ihDeceasedName', x.p.result.피상속인, '상속재산분할협의서(' + x.f.name + ')', true); });
