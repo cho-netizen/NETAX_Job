@@ -17,6 +17,7 @@
 const AK_KEY_NAME_ = '_정답지.json';
 const AK_RESULT_NAME_ = '_정답지점검결과.json';
 const AK_STATE_PROP_ = 'AK_RUN_STATE';
+const AK_CODE_VER_ = '2026-10-15b'; // 점검 규칙을 바꿔 배포할 때마다 올린다 — 멈췄던 점검의 옛 결과를 새 실행에 이어 붙이지 않게
 
 function akReadCase_(caseId) {
   const sheet = work_getSheet_(), col = work_colMap_(sheet.getDataRange().getValues()[0]);
@@ -296,9 +297,11 @@ function answerKeyRun_(body) {
   const props = PropertiesService.getScriptProperties();
   let st = null;
   if (!body.reset) { try { st = JSON.parse(props.getProperty(AK_STATE_PROP_) || 'null'); } catch (e) { st = null; } }
+  // [2026.10.15] 이어서 하기는 같은 코드·3시간 안에서만 — 배포 뒤 다시 누르면 옛 코드로 낸 결과 목록을 이어 붙여 새 규칙이 1건에만 적용됐다
+  if (st && (st.ver !== AK_CODE_VER_ || Date.now() - new Date(st.startedAt).getTime() > 3 * 3600000)) st = null;
   if (!st || (body.caseId && st.only !== body.caseId)) {
     const ids = body.caseId ? [String(body.caseId)] : akCasesWithKey_();
-    st = { only: body.caseId || '', queue: ids, results: [], startedAt: new Date().toISOString() };
+    st = { only: body.caseId || '', queue: ids, results: [], startedAt: new Date().toISOString(), ver: AK_CODE_VER_ };
   }
   const started = Date.now();
   while (st.queue.length && Date.now() - started < 60000) {
