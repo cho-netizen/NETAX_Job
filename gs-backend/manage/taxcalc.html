@@ -17422,6 +17422,14 @@ function tcApplyOverviewToTransfer_(caseObj){
         transferPrice: item.양도가액 || '', acquisitionPrice: item.취득가액 || '',
         acquisitionDate: item.취득일 || '', transferDate: caseObj.기준일 || ''
       };
+      // [2026.10.15] 사건처리에서 정한 국외자산(해외 부동산) — 국외자산 카드로, 양도비·외국납부세액·5년 거주 여부까지
+      if (item.국외자산 === 'Y'){
+        a.isOverseasAsset = true;
+        a.oaTransferExpenses = item.oa양도비 || '';
+        a.oaForeignTaxPaid = item.oa외국납부세액 || '';
+        a.oaForeignTaxMethod = 'credit';
+        a.oaResident5yr = item.oa거주5년 === 'Y';
+      }
       // [2026.10.15 1:1] 사건처리에서 세무사님이 확정한 필요경비(항목별) — 그대로 비용 내역으로(예전: 처리개요에 필요경비 칸이 없어 0원으로 계산)
       if (item.필요경비확정){
         a.acquisitionExpenseItems = (item.취득비용목록 || []).map(function(x){ return { label: x.label + (x.file ? ' (' + x.file + ')' : ''), amount: x.amount }; });
@@ -17935,8 +17943,10 @@ function tcSyncOverviewAmounts_(tab){
   var updates = null;
   if (tab === 'transfer' && typeof transferAssets !== 'undefined' && transferAssets.length){
     updates = {
-      물건목록: transferAssets.map(function(a){
-        return {
+      물건목록: transferAssets.map(function(a, ai){
+        // [2026.10.15] 화면에 없는 칸(사건처리가 확정한 필요경비 목록·국외자산 표시·환율 답 등)은 지우지 않고 남긴다 — 예전엔 통째로 새로 써서 사라졌다
+        var prevItem = (tcCurrentCase.사건개요 && Array.isArray(tcCurrentCase.사건개요.물건목록) && tcCurrentCase.사건개요.물건목록[ai]) || {};
+        return Object.assign({}, prevItem, {
           assetType: a.assetType || '', assetKind: a.assetKind || '', assetLocation: a.assetLocation || '',
           assetDong: a.assetDong || '', assetHo: a.assetHo || '', assetDongList: a.assetDongList || [],
           취득일: a.acquisitionDate || '', 양도가액: a.transferPrice || '', 취득가액: a.acquisitionPrice || '',
@@ -17945,7 +17955,7 @@ function tcSyncOverviewAmounts_(tab){
           // 다루므로, 저장할 땐 연결된 계약의 이름을 다시 문자열로 풀어서 써준다.
           취득계약구분: (function(){ var c = a.acquisitionContractId ? acquisitionContracts.find(function(x){ return x.id === a.acquisitionContractId; }) : null; return c ? c.name : ''; })(),
           양도계약구분: (function(){ var c = a.transferContractId ? transferContracts.find(function(x){ return x.id === a.transferContractId; }) : null; return c ? c.name : ''; })()
-        };
+        }, a.isOverseasAsset ? { 국외자산: 'Y', oa양도비: a.oaTransferExpenses || '', oa외국납부세액: a.oaForeignTaxPaid || '', oa거주5년: a.oaResident5yr ? 'Y' : (prevItem.oa거주5년 || '') } : {});
       }),
       물건수: String(transferAssets.length)
     };

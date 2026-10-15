@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 10:47 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 11:05 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -35147,6 +35147,14 @@ function tcApplyOverviewToTransfer_(caseObj){
         transferPrice: item.양도가액 || '', acquisitionPrice: item.취득가액 || '',
         acquisitionDate: item.취득일 || '', transferDate: caseObj.기준일 || ''
       };
+      // [2026.10.15] 사건처리에서 정한 국외자산(해외 부동산) — 국외자산 카드로, 양도비·외국납부세액·5년 거주 여부까지
+      if (item.국외자산 === 'Y'){
+        a.isOverseasAsset = true;
+        a.oaTransferExpenses = item.oa양도비 || '';
+        a.oaForeignTaxPaid = item.oa외국납부세액 || '';
+        a.oaForeignTaxMethod = 'credit';
+        a.oaResident5yr = item.oa거주5년 === 'Y';
+      }
       // [2026.10.15 1:1] 사건처리에서 세무사님이 확정한 필요경비(항목별) — 그대로 비용 내역으로(예전: 처리개요에 필요경비 칸이 없어 0원으로 계산)
       if (item.필요경비확정){
         a.acquisitionExpenseItems = (item.취득비용목록 || []).map(function(x){ return { label: x.label + (x.file ? ' (' + x.file + ')' : ''), amount: x.amount }; });
@@ -35660,8 +35668,10 @@ function tcSyncOverviewAmounts_(tab){
   var updates = null;
   if (tab === 'transfer' && typeof transferAssets !== 'undefined' && transferAssets.length){
     updates = {
-      물건목록: transferAssets.map(function(a){
-        return {
+      물건목록: transferAssets.map(function(a, ai){
+        // [2026.10.15] 화면에 없는 칸(사건처리가 확정한 필요경비 목록·국외자산 표시·환율 답 등)은 지우지 않고 남긴다 — 예전엔 통째로 새로 써서 사라졌다
+        var prevItem = (tcCurrentCase.사건개요 && Array.isArray(tcCurrentCase.사건개요.물건목록) && tcCurrentCase.사건개요.물건목록[ai]) || {};
+        return Object.assign({}, prevItem, {
           assetType: a.assetType || '', assetKind: a.assetKind || '', assetLocation: a.assetLocation || '',
           assetDong: a.assetDong || '', assetHo: a.assetHo || '', assetDongList: a.assetDongList || [],
           취득일: a.acquisitionDate || '', 양도가액: a.transferPrice || '', 취득가액: a.acquisitionPrice || '',
@@ -35670,7 +35680,7 @@ function tcSyncOverviewAmounts_(tab){
           // 다루므로, 저장할 땐 연결된 계약의 이름을 다시 문자열로 풀어서 써준다.
           취득계약구분: (function(){ var c = a.acquisitionContractId ? acquisitionContracts.find(function(x){ return x.id === a.acquisitionContractId; }) : null; return c ? c.name : ''; })(),
           양도계약구분: (function(){ var c = a.transferContractId ? transferContracts.find(function(x){ return x.id === a.transferContractId; }) : null; return c ? c.name : ''; })()
-        };
+        }, a.isOverseasAsset ? { 국외자산: 'Y', oa양도비: a.oaTransferExpenses || '', oa외국납부세액: a.oaForeignTaxPaid || '', oa거주5년: a.oaResident5yr ? 'Y' : (prevItem.oa거주5년 || '') } : {});
       }),
       물건수: String(transferAssets.length)
     };
@@ -46757,7 +46767,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var nb2 = body.replace(/\s+/g, '');
       var opts = a.options || [];
       var op = nthN ? opts[nthN - 1] : null;
-      if (!op){ var oo = opts.filter(function(o){ var k = String(o.label || '').replace(/\s+/g, '').replace(/\(.*$/, '').replace(/—.*$/, ''); return k.length >= 2 && nb2.indexOf(k) !== -1; }); if (oo.length === 1) op = oo[0]; }
+      if (!op){ var oo = opts.filter(function(o){ var full = String(o.label || '').replace(/\s+/g, ''), k = full.replace(/\(.*$/, '').replace(/—.*$/, ''); return (k.length >= 2 && nb2.indexOf(k) !== -1) || (full.length >= 2 && nb2.indexOf(full) !== -1); }); if (oo.length === 1) op = oo[0]; }
+      // "예/네/맞음" · "아니오/아니요/아님" — 선택지 이름이 예·아니오로 시작하는 질문(국외자산 여부·5년 거주 등)
+      if (!op && /^(예|네|맞|그렇)/.test(nb2)){ var oy = opts.filter(function(o){ return /^예/.test(String(o.label || '')); }); if (oy.length === 1) op = oy[0]; }
+      if (!op && /^(아니|아님)/.test(nb2)){ var on = opts.filter(function(o){ return /^아니/.test(String(o.label || '')); }); if (on.length === 1) op = on[0]; }
       if (!op) return decide ? Object.assign(out, { act: 'decide', decide: decide }) : Object.assign(out, { act: 'need', msg: 'Q' + it.q + '는 고르는 질문입니다 — ' + opts.map(function(o, i){ return (i + 1) + '번 ' + o.label; }).join(' / ') + ' 중에서 "Q' + it.q + ' 2번"처럼 말씀해 주세요.' });
       if (op.mode === 'base') return Object.assign(out, { act: 'button', msg: '이 질문은 날짜를 다시 고르는 것이라 [확인]을 눌러 주세요.' });
       if (op.decide) return Object.assign(out, { act: 'decide', decide: op.decide, note: op.note || op.label, shown: op.label });
