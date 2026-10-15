@@ -24788,6 +24788,8 @@ function tc_ruleTransferFacts_(body) {
   });
   var sells = contracts.filter(function (c) { return c.role === 'seller' || (!c.role && tcNameIn_(c.r.매도인, names)); });
   var buys = contracts.filter(function (c) { return c.role === 'buyer' || (!c.role && tcNameIn_(c.r.매수인, names)); });
+  // [2026.10.15 1단계 ②] 양도도 취득도 아닌 계약서 — 말없이 버리지 않고 "참고 계약서"로 밝힌다(매매사례·다른 사람 거래 등)
+  contracts.filter(function (c) { return sells.indexOf(c) === -1 && buys.indexOf(c) === -1; }).forEach(function (c) { evidence.push('참고 계약서: ' + c.file + ' — 본문에서 납세자가 매도인·매수인으로 확인되지 않음(매매사례 등), 양도·취득 계산에 안 씀' + (c.r.소재지 ? ' (' + c.r.소재지 + ')' : '')); });
   var txs = [];
   // 등기부 소유권 이력에서 그 부동산의 납세자 명의 취득·양도 접수일 찾기(§98 빠른 날 비교용)
   var regDate = function (loc, mine) {
@@ -25297,8 +25299,34 @@ function caseProcEvidence_(c) {
   const pool = files.filter(function (f) { return !(f.p && f.p.office) && !/\.json$/i.test(f.name); });
   const hay = pool.map(function (f) { return { f: f, s: f.name + ' ' + (f.p && f.p.l || '') }; });
   // [2026.10.15 1:1] 파일 이름의 '취득'·'양도' — 취득 칸엔 이름에 양도만 있는 파일을, 양도 칸엔 이름에 취득만 있는 파일을 후보로 올리지 않는다(세무사님: 이름에 분명히 적혀 있는데 둘 다 띄움)
-  const roleOk = function (label, name) { const L = String(label || ''), n = String(name || ''); if (/취득/.test(L) && !/양도/.test(L)) return !(/양도|매도/.test(n) && !/취득|매수/.test(n)); if (/양도/.test(L) && !/취득/.test(L)) return !(/취득|매수/.test(n) && !/양도|매도/.test(n)); return true; };
-  const roleNamed = function (label, name) { const L = String(label || ''), n = String(name || ''); return (/취득/.test(L) && !/양도/.test(L) && /취득/.test(n) && !/양도/.test(n)) || (/양도/.test(L) && !/취득/.test(L) && /양도/.test(n) && !/취득/.test(n)); };
+  // [2026.10.15 1단계 ②] 계약서는 파일 이름이 아니라 본문으로 역할을 정한다(세무사님: "계약서를 읽어보면 알 수 있는데 읽어보지도 않나")
+  //  납세자가 매도인 = 양도 계약서, 매수인 = 취득 계약서, 납세자가 당사자가 아님 = 참고 계약서(매매사례 등 — 양도·취득 칸 후보에서 뺌).
+  //  같은 계약서를 양도 칸과 취득 칸 양쪽에 후보로 띄우던 것(이종식). 글자는 글자인식 기억에서 오므로 다시 인식하지 않는다.
+  const roleBody = {};
+  const pNames = [c.납세자, c.고객명].map(function (x) { return String(x || '').replace(/\s+/g, ''); }).filter(function (x, i, a) { return x.length >= 2 && a.indexOf(x) === i; });
+  if (c.세목 === 'transfer' && pNames.length) docs.forEach(function (f) {
+    if (!f.p || !(/^(contract|dealreport)$/.test(f.p.t) || /계약/.test(f.name))) return;
+    let tx = ''; try { tx = tc_docText_(f) || ''; } catch (e) { return; }
+    if (!tx) return;
+    const rl = tcRoleInText_(tx, pNames);
+    if (rl) roleBody[f.name] = rl;
+    else if (!pNames.some(function (nm) { return tx.replace(/\s+/g, '').indexOf(nm) !== -1; })) roleBody[f.name] = 'ref';
+  });
+  const roleNames = Object.keys(roleBody);
+  if (roleNames.length) lines.push('계약서 역할(본문으로 판별): ' + roleNames.map(function (n) { return n + ' = ' + ({ seller: '양도(납세자가 매도인)', buyer: '취득(납세자가 매수인)', ref: '참고(납세자가 당사자 아님 — 양도·취득 증빙에 안 씀)' })[roleBody[n]]; }).join(', '));
+  const roleOk = function (label, name) {
+    const L = String(label || ''), n = String(name || ''), rb = roleBody[n];
+    const acqOnly = /취득/.test(L) && !/양도/.test(L) && !/취득세/.test(L), sellOnly = /양도/.test(L) && !/취득/.test(L);
+    if (rb === 'ref' && (acqOnly || sellOnly)) return false;
+    if (rb && acqOnly) return rb === 'buyer';
+    if (rb && sellOnly) return rb === 'seller';
+    if (/취득/.test(L) && !/양도/.test(L)) return !(/양도|매도/.test(n) && !/취득|매수/.test(n)); if (/양도/.test(L) && !/취득/.test(L)) return !(/취득|매수/.test(n) && !/양도|매도/.test(n)); return true;
+  };
+  const roleNamed = function (label, name) {
+    const L = String(label || ''), n = String(name || ''), rb = roleBody[n];
+    if (rb) return (/취득/.test(L) && !/양도/.test(L) && rb === 'buyer') || (/양도/.test(L) && !/취득/.test(L) && rb === 'seller');
+    return (/취득/.test(L) && !/양도/.test(L) && /취득/.test(n) && !/양도/.test(n)) || (/양도/.test(L) && !/취득/.test(L) && /양도/.test(n) && !/취득/.test(n));
+  };
   // 자동 정리로 종류가 확실히 판별되고(⚠ 없음) 칸이 하나로 정해지는 서류는 증빙목록을 확보됨(근거 파일명)으로 반영
   if (!virtual) {
     const marks = [];
