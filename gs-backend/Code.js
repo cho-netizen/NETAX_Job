@@ -25146,6 +25146,11 @@ function caseProcEvidence_(c) {
   if (outDocs.length) lines.push('신고서·명세서 등 발생문서 ' + outDocs.length + '건 — 증빙 점검·입력값 출처에서 뺌(참고·정답지 전용): ' + outDocs.slice(0, 4).map(function (f) { return f.name; }).join(', '));
   const office = docs.filter(function (f) { return f.p && f.p.office; });
   if (office.length) lines.push('사무소 발행 영수증 ' + office.length + '건 — 고객 증빙 아님(수금 기록용), 점검에서 뺌: ' + office.slice(0, 3).map(function (f) { return f.name; }).join(', ') + (office.length > 3 ? ' 외' : ''));
+  // [2026.10.15 1:1] 양도 — 사무소가 받은 신고 수수료도 고객에겐 양도비용(신고서 작성비용, 소득세법 시행령 §163⑤1호)일 수 있다. 말없이 빼지 않고 묻는다.
+  if (office.length && c.세목 === 'transfer') office.forEach(function (f) {
+    items.push(caseProcItem_('ev:officefee:' + f.name, 'check', '‘' + f.name + '’ — 사무소가 받은 신고 수수료 영수증입니다. 양도소득세 신고서 작성비용은 양도비용(필요경비, 소득세법 시행령 §163⑤1호)입니다 — 필요경비에 넣을까요?',
+      { mode: 'options', options: [{ label: '넣음 — 처리개요 필요경비에 더하기', decide: '보류', note: '세무 수수료를 양도비용으로 — 처리개요 필요경비에 반영' }, { label: '넣지 않음', decide: 'done', note: '세무 수수료 필요경비 제외' }] }));
+  });
   const pool = files.filter(function (f) { return !(f.p && f.p.office) && !/\.json$/i.test(f.name); });
   const hay = pool.map(function (f) { return { f: f, s: f.name + ' ' + (f.p && f.p.l || '') }; });
   // 자동 정리로 종류가 확실히 판별되고(⚠ 없음) 칸이 하나로 정해지는 서류는 증빙목록을 확보됨(근거 파일명)으로 반영
@@ -25357,6 +25362,7 @@ function caseProcOverview_(c) {
     if (!c.기준일) {
       const ap = caseProcApplyBase_(c.id, txs[0].transferDate, tdFile, '양도일');
       lines.push(ap.ok ? '✏ ' + ap.message : '⚠ 양도일을 반영하지 못했습니다: ' + ap.error);
+      if (ap.ok) { c.기준일 = ap.기준일; if (ap.법정일) c.법정일 = ap.법정일; if (ap.수정일) c.수정일 = ap.수정일; } // [2026.10.15 1:1] 다음 처리개요 저장이 낡은 수정일로 거절되던 문제(노오섭)
     } else if (c.기준일 !== txs[0].transferDate) items.push(caseProcItem_('ov:기준일:' + txs[0].transferDate, 'check', '양도일: 사건 기준일 ' + c.기준일 + ' ↔ 서류상 양도시기 ' + txs[0].transferDate + '(잔금일·등기접수일 중 빠른 날, 소득세법 §98) — 어느 날이 맞나요?', { mode: 'base' }));
     else { lines.push('✅ 양도일 ' + c.기준일 + ' — 서류(잔금일·등기접수일)로 확인'); caseProcRememberFill_(c.id, '기준일', c.기준일, '증빙: 계약서·등기부(규칙 정리)'); }
   }
@@ -26380,7 +26386,7 @@ function caseProcApply_(c, body) {
   if (target === 'evMark') {
     const list = (Array.isArray(c.증빙목록) ? c.증빙목록 : []).map(function (e) {
       if (e.id !== body.evId) return e;
-      return Object.assign({}, e, { status: '확보됨', 확보일: caseProcToday_(), note: [e.note, '파일: ' + String(body.file || '').slice(0, 80)].filter(Boolean).join(' / ') });
+      return Object.assign({}, e, { status: '확보됨', 확보일: caseProcToday_(), note: [e.note, '파일: ' + String(body.file || '').slice(0, 400)].filter(Boolean).join(' / ') });
     });
     const up = work_updateCase({ id: c.id, 증빙목록: list, 기대수정일: c.수정일 });
     return up && up.success !== false ? { ok: true, message: '확보됨으로 표시(' + (body.file || '') + ')', my_report_id: c.my_report_id || '' } : { ok: false, error: (up && up.message) || '저장 실패' };

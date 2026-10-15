@@ -2468,11 +2468,23 @@
     if (mode === 'evidence'){
       p('‘' + (ask.label || '') + '’ 서류를 받았나요?' + (ask.evId ? '' : ' (증빙목록이 아직 없어 이 사건 기록에만 표시합니다)'));
       var mark = function(f){ if (ask.evId) apply('evMark', f.name, '폴더 파일', ['evidence'], false, { evId: ask.evId, file: f.name }); else nxAiCaseProcDecide_(st, it, 'done', '파일: ' + f.name); };
-      var r4 = rowEl();
-      (ask.suggest || []).forEach(function(f){ btn('✅ 이 파일: ' + f.name, function(){ mark(f); }, false, r4); });
-      if (st.files.length){
-        var sel = inputEl('select', st.files.map(function(f){ return f.name; }));
-        btn('이 파일로 확보', function(){ var f = st.files.filter(function(x){ return x.name === sel.el.value; })[0]; if (f) mark(f); else nxAiToast_('파일을 고르세요.'); }, true, sel.row);
+      // [2026.10.15 1:1] 한 칸에 서류가 여러 개(취득비용: 법무사 정산서·현금영수증·인지대·취득세 등) — 여러 개를 체크해 한 번에 확보 표시(예전: 하나만 고를 수 있었음)
+      var picks = {};
+      var box = document.createElement('div'); box.style.cssText = 'max-height:220px;overflow:auto;border:1px solid var(--line,#ddd);border-radius:6px;padding:4px 6px;margin:4px 0;';
+      var sugg = (ask.suggest || []).map(function(f){ return f.name; });
+      var list = sugg.concat(st.files.map(function(f){ return f.name; }).filter(function(n){ return sugg.indexOf(n) === -1; }));
+      list.forEach(function(n){
+        var lab = document.createElement('label'); lab.style.cssText = 'display:block;font-size:13px;padding:2px 0;cursor:pointer;';
+        var cb = document.createElement('input'); cb.type = 'checkbox'; cb.style.marginRight = '6px';
+        if (sugg.indexOf(n) !== -1){ cb.checked = true; picks[n] = true; }
+        cb.addEventListener('change', function(){ if (cb.checked) picks[n] = true; else delete picks[n]; });
+        lab.appendChild(cb); lab.appendChild(document.createTextNode((sugg.indexOf(n) !== -1 ? '✅ ' : '') + n)); box.appendChild(lab);
+      });
+      if (list.length){
+        p('해당하는 파일을 모두 체크하세요(✅ = 서류 내용으로 찾은 후보).');
+        pane.appendChild(box);
+        var r4 = rowEl();
+        btn('체크한 파일로 확보', function(){ var names = Object.keys(picks); if (!names.length){ nxAiToast_('파일을 하나 이상 체크하세요.'); return; } mark({ name: names.join(', ') }); }, true, r4);
       }
       var r5 = rowEl();
       btn('📥 받을 예정', function(){ nxAiCaseProcDecide_(st, it, '예정'); }, false, r5);
