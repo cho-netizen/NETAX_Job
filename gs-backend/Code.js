@@ -25523,7 +25523,18 @@ function caseProcEvidence_(c) {
     // 사망일 ⚠는 다른 서류(등기부 상속 원인일·분할협의서)로 확정된 날짜와 같으면 묻지 않음
     if (f.p.t === 'death' && (f.p.bd || []).some(function (b) { return b.d === c.기준일; }) && /^증빙/.test(String(((caseProcLoad_(c.id).filled || {}).기준일 || {}).src || ''))) return;
     // [2026.10.15] 실사용 기준 — 계산에 쓰는 값을 못 읽었거나 검산이 안 된 "막히는" ⚠만 질문으로(안내·법적 효력·계산에 안 쓰는 칸의 ⚠는 뺌)
-    const block = caseProcBlockingWarns_(f.p.t, f.p.w || []);
+    let block = caseProcBlockingWarns_(f.p.t, f.p.w || []);
+    // [2026.10.15] ⚠ 금액이 다른 서류(이체 확인·거래내역 등)에도 똑같이 있으면 서로 확인된 것 — 묻지 않고 근거를 남긴다(강정화 사건: 증여계약서 1억원 ⚠ ↔ 이체 화면 1억원)
+    block = block.filter(function (w) {
+      const am = /(\d{1,3}(?:,\d{3}){2,})\s*원/.exec(w); if (!am) return true;
+      const twin = docs.filter(function (o) { if (o === f || !o.p || o.p.office) return false; let t = ''; try { t = tc_docText_(o) || ''; } catch (e) {} return t.indexOf(am[1]) !== -1; })[0];
+      if (!twin) return true;
+      lines.push('✅ ‘' + f.name + '’ 금액 ' + am[1] + '원 — 다른 서류(' + twin.name + ')의 같은 금액으로 확인되어 ⚠ 해소');
+      f._amtOk = true;
+      return false;
+    });
+    // 금액이 다른 서류로 확인됐으면, 그 금액의 검산이 안 됐다는 설명 줄(숫자 없는 ⚠)도 함께 해소
+    if (f._amtOk) block = block.filter(function (w) { return !(/금액|검산/.test(w) && !/\d{1,3}(?:,\d{3}){2,}/.test(w)); });
     if (!block.length) return;
     items.push(caseProcItem_('file:' + f.id + ':' + f.modified, 'check', '‘' + f.name + '’(' + f.p.l + ') 자동 정리 결과에 ⚠확인필요 ' + block.length + '곳', { mode: 'docok', fileId: f.id, name: f.name }, block.join('\n')));
   });
