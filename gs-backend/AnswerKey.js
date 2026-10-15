@@ -378,7 +378,7 @@ function answerKeyRun_(body) {
   if (!body.reset) { try { st = JSON.parse(props.getProperty(AK_STATE_PROP_) || 'null'); } catch (e) { st = null; } }
   // [2026.10.15] 이어서 하기는 같은 코드·3시간 안에서만 — 배포 뒤 다시 누르면 옛 코드로 낸 결과 목록을 이어 붙여 새 규칙이 1건에만 적용됐다
   // [2026.10.16] 3시간은 '시작'이 아니라 '마지막 진행'부터 — 서류 많은 사건으로 3시간 넘게 걸린 전체 점검이 25/27에서 처음부터 다시 시작될 뻔했다
-  if (st && (st.ver !== AK_CODE_VER_ || Date.now() - new Date(st.touchedAt || st.startedAt).getTime() > 3 * 3600000)) st = null;
+  if (st && (st.ver !== AK_CODE_VER_ || st.touchedAt && Date.now() - new Date(st.touchedAt).getTime() > 3 * 3600000)) st = null; // touchedAt 없는 진행(이 규칙 전 옛 실행이 저장)은 이어 감 — 같은 코드 버전 안에서만
   if (!st || (body.caseId && st.only !== body.caseId)) {
     const ids = body.caseId ? [String(body.caseId)] : akCasesWithKey_();
     st = { only: body.caseId || '', queue: ids, results: [], startedAt: new Date().toISOString(), ver: AK_CODE_VER_ };
