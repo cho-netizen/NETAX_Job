@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 14:19 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 14:28 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -44270,7 +44270,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     <div class="nxai-talk-q" id="nxAiTalkQ"></div>
     <div class="nxai-talk-a" id="nxAiTalkA">버튼을 누르고 말씀하세요.</div>
     <button type="button" class="nxai-talk-mic" id="nxAiTalkMic" aria-label="말하기">🎤</button>
-    <div class="nxai-talk-st" id="nxAiTalkSt">누르고 말하기</div>
+    <div class="nxai-talk-st" id="nxAiTalkSt">누르고 있는 동안 말하기 · 짧게 누르면 자동</div>
+    <button type="button" class="nxai-talk-cancel" id="nxAiTalkCancel" hidden>✕ 취소(보내지 않음)</button>
   </div>
   <div class="nxai-phone-tabs" id="nxAiPhoneTabs">
     <button type="button" data-ph="list">💬 대화 목록</button>
@@ -44442,6 +44443,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   .nxai-talk-mic.listen{ background:#e5484d; color:#fff; animation:nxaiTalkPulse 1.2s ease-in-out infinite; }
   .nxai-talk-mic.busy{ background:#55607a; color:#fff; }
   .nxai-talk-mic.speak{ background:#2f9e6b; color:#fff; }
+  .nxai-talk-mic{ user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; touch-action:none; }
+  .nxai-talk-cancel{ flex-shrink:0; border:1px solid rgba(255,255,255,0.3); background:transparent; color:#fff; border-radius:7px; padding:4px 12px; font-size:12.5px; cursor:pointer; }
   .nxai-talk-st{ flex-shrink:0; font-size:12.5px; color:#c9d2e6; }
   @keyframes nxaiTalkPulse{ 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.07); } }
 
@@ -48131,11 +48134,13 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   }
   function nxAiTalkSet_(state, status){
     nxAiTalk_.state = state;
+    if (state === 'busy') nxAiTalkBeat_on_(status || '생각 중'); else nxAiTalkBeat_off_();
     var mic = nxAiEl_('nxAiTalkMic'), st = nxAiEl_('nxAiTalkSt');
     if (!mic) return;
     mic.className = 'nxai-talk-mic' + (state === 'idle' ? '' : ' ' + state);
     mic.textContent = state === 'speak' ? '⏹' : (state === 'busy' ? '⏳' : '🎤');
-    st.textContent = status || { idle: '누르고 말하기', listen: '듣는 중… (말이 끝나면 자동으로 보냄)', busy: '생각 중…', speak: '읽는 중 — 누르면 멈춤' }[state];
+    st.textContent = status || { idle: '누르고 있는 동안 말하기 · 짧게 누르면 자동', listen: '듣는 중…', busy: '생각 중…', speak: '읽는 중 — 누르면 멈춤' }[state];
+    var cc = nxAiEl_('nxAiTalkCancel'); if (cc) cc.hidden = state !== 'listen';
   }
   function nxAiTalkSpeechText_(text){
     return String(text || '')
@@ -48145,40 +48150,129 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '')
       .replace(/\s+/g, ' ').trim().slice(0, 700);
   }
-  function nxAiTalkListen_(auto){
+  // [2026.10.15] 말 끝 판단 — work(chat.js) 음성모드의 실수를 반면교사로(세무사님 지시: 따라 하지 말고 같은 실수를 하지 말 것).
+  //  work 실수 ① 음성모드를 켜면 답 뒤에도, 말이 없어도 끝없이 다시 들어 마이크가 계속 켜져 있었다
+  //    → 답을 읽은 뒤 한 번만 다시 듣고, 7초 동안 말이 없으면 끈다. 60초 상한. 화면이 꺼지거나 펼치면 즉시 끈다.
+  //  work 실수 ② 1.1초 고정 무음으로 끝을 정해 생각하느라 잠깐 멈추면 잘렸다 / ③ "~라·~줘면 0.6초" 땜질로 "정리해줘, 그리고…"도 끊겼다
+  //    → 말투로 기다림 조절(nxAiTalkWaitMs_): 이어질 말투(~고·~는데·그리고·조사 등) 2.5초, 끝난 말투(~다·~요·~줘 등) 1.2초, 그 밖 1.8초.
+  //  work 실수 ④ 브라우저가 듣기를 혼자 끝내면(onend) 들은 말이 있으면 바로 보내 버려, 말하는 중에도 잘릴 수 있었다
+  //    → 혼자 끝나면 들은 말을 붙여 둔 채 다시 켜고, 보내는 시점은 위 기다림 규칙만 정한다.
+  //  work 실수 ⑤ 언제 보내지는지·마이크가 켜졌는지 몰랐고, 잘못 들은 말을 취소할 수 없었다
+  //    → 들은 말 실시간 표시 + "몇 초 뒤 보냄" 표시, 🎤 누르면 바로 보냄, [취소]는 보내지 않고 마이크 끔.
+  //  마무리·멈춤은 abort로 즉시(stop과 달리 결과 이벤트를 더 내지 않음), 다음 듣기는 새 객체로 시작한다.
+  var NXAI_TALK_NOSPEECH_MS_ = 7000, NXAI_TALK_MAX_MS_ = 60000;
+  function nxAiTalkWaitMs_(text){
+    var s = String(text || '').replace(/[\s,.!?~]+$/, '');
+    if (/(그리고|그런데|근데|그래서|하고|이랑|랑|및|또|고|서|며|면|는데|은데|던데|지만|는|은|을|를|이|가|에|의|와|과|도|로|에서|에게|한테)$/.test(s)) return 2500;
+    if (/(다|요|줘|라|까|니|죠|지|해|네|어|아)$/.test(s)) return 1200;
+    return 1800;
+  }
+  // opts.hold: 누르고 있는 동안만 듣기(손 떼면 보냄 — 기계가 말 끝을 짐작하지 않음). 아니면 자동(아래 기다림 규칙).
+  function nxAiTalkListen_(auto, opts){
+    opts = opts || {};
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR){ nxAiTalkSet_('idle', '이 브라우저는 음성 인식을 지원하지 않습니다 — 크롬으로 열어 주세요.'); return; }
     if (nxAiAbort){ nxAiTalkSet_('busy'); return; }
     try { window.speechSynthesis && speechSynthesis.cancel(); } catch (e) {}
-    var rec = new SR();
-    rec.lang = 'ko-KR'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
-    var finalText = '', gotAny = false;
-    rec.onresult = function(ev){
-      var interim = '';
-      for (var i = ev.resultIndex; i < ev.results.length; i++){
-        if (ev.results[i].isFinal) finalText += ev.results[i][0].transcript; else interim += ev.results[i][0].transcript;
-      }
-      gotAny = true;
-      nxAiEl_('nxAiTalkQ').textContent = (finalText + interim).trim();
-    };
-    rec.onerror = function(ev){
-      nxAiTalk_.rec = null;
-      var e = ev && ev.error;
-      if (e === 'not-allowed' || e === 'service-not-allowed') nxAiTalkSet_('idle', '마이크 권한이 꺼져 있습니다 — 주소창 왼쪽 자물쇠에서 마이크를 허용해 주세요.');
-      else if (e === 'no-speech' || e === 'aborted') nxAiTalkSet_('idle');
-      else nxAiTalkSet_('idle', '음성 인식 오류(' + e + ') — 다시 눌러 주세요.');
-    };
-    rec.onend = function(){
-      nxAiTalk_.rec = null;
-      var text = finalText.trim();
-      if (!text){ if (nxAiTalk_.state === 'listen') nxAiTalkSet_('idle', auto ? '말씀이 없어 멈췄습니다 — 누르고 말하기' : null); return; }
-      nxAiTalkAsk_(text);
-    };
-    nxAiTalk_.rec = rec;
+    nxAiTalkStopRec_();
+    var sess = { done: false, finalText: '', interim: '', started: Date.now(), heard: false, rec: null, silence: null, guard: null, restarts: 0, hold: !!opts.hold };
+    nxAiTalk_.sess = sess;
+    function shown(){ return (sess.finalText + sess.interim).replace(/\s+/g, ' ').trim(); }
+    function finish(send, msg){
+      if (sess.done) return;
+      sess.done = true;
+      clearTimeout(sess.silence); clearInterval(sess.guard);
+      try { sess.rec && sess.rec.abort(); } catch (e) {}
+      sess.rec = null; nxAiTalk_.rec = null;
+      var text = shown();
+      if (send && text) nxAiTalkAsk_(text);
+      else nxAiTalkSet_('idle', msg || (auto ? '말씀이 없어 마이크를 껐습니다' : '들은 말이 없습니다 — 다시 눌러 주세요'));
+    }
+    sess.finish = finish;
+    // 자동 모드에서 보낼 시점 잡기 — 완성된 명령(⚡바로 처리로 알아듣는 말)이면 0.9초, 아니면 말투별 기다림
+    function arm(){
+      clearTimeout(sess.silence);
+      if (sess.hold || sess.done || !shown()) return;
+      var wait = nxAiTalkWaitMs_(shown());
+      try { if (!sess.interim && typeof nxAiDetectLocal_ === 'function' && nxAiDetectLocal_(shown())) wait = 900; } catch (e) {}
+      nxAiTalkSet_('listen', '말이 멈추면 ' + (wait / 1000) + '초 뒤 보냄 · 🎤 누르면 바로');
+      sess.silence = setTimeout(function(){ finish(true); }, wait);
+    }
+    sess.arm = arm;
+    function startRec(){
+      if (sess.done) return;
+      var rec = new SR();
+      rec.lang = 'ko-KR'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+      rec.onresult = function(ev){
+        if (sess.done) return;
+        clearTimeout(sess.silence);
+        var interim = '';
+        for (var i = ev.resultIndex; i < ev.results.length; i++){
+          var chunk = ev.results[i][0].transcript;
+          if (ev.results[i].isFinal) sess.finalText += chunk; else interim += chunk;
+        }
+        sess.interim = interim;
+        if (!shown()) return;
+        sess.heard = true;
+        nxAiEl_('nxAiTalkQ').textContent = shown();
+        if (sess.hold) nxAiTalkSet_('listen', '듣는 중 — 손을 떼면 보냄'); else arm();
+      };
+      rec.onerror = function(ev){
+        var e = ev && ev.error;
+        if (e === 'not-allowed' || e === 'service-not-allowed' || e === 'audio-capture'){
+          sess.done = true; clearTimeout(sess.silence); clearInterval(sess.guard); nxAiTalk_.rec = null;
+          nxAiTalkSet_('idle', e === 'audio-capture' ? '마이크를 쓸 수 없습니다 — 다른 앱이 마이크를 쓰고 있는지 확인해 주세요.' : '마이크 권한이 꺼져 있습니다 — 주소창 왼쪽 자물쇠에서 마이크를 허용해 주세요.');
+        }
+        // no-speech(아무 말 없음)·network·aborted는 흔하다 — onend에서 이어 처리
+      };
+      rec.onend = function(){
+        if (sess.done) return;
+        // 브라우저가 혼자 끝냄 — 보내지 않는다(work 실수 ④). 들은 말을 붙여 둔 채 다시 켜고, 보내는 시점은 기다림 규칙·손 떼기만 정한다.
+        if (sess.interim){ sess.finalText += sess.interim; sess.interim = ''; }
+        if (sess.finalText && !/\s$/.test(sess.finalText)) sess.finalText += ' '; // 다시 켠 뒤 들은 말과 띄어 쓰기
+        if (++sess.restarts > 40){ finish(!!shown()); return; } // 비정상 반복 방지
+        setTimeout(startRec, 120);
+      };
+      sess.rec = rec; nxAiTalk_.rec = rec;
+      try { rec.start(); } catch (e) { setTimeout(function(){ if (!sess.done) startRec(); }, 400); }
+    }
+    sess.guard = setInterval(function(){
+      if (sess.done) return;
+      var now = Date.now();
+      if (!sess.hold && !sess.heard && now - sess.started > NXAI_TALK_NOSPEECH_MS_) finish(false, '7초 동안 말씀이 없어 마이크를 껐습니다');
+      else if (now - sess.started > NXAI_TALK_MAX_MS_) finish(true);
+    }, 300);
     if (!auto) nxAiEl_('nxAiTalkQ').textContent = '';
-    nxAiTalkSet_('listen');
-    try { rec.start(); } catch (e) { nxAiTalk_.rec = null; nxAiTalkSet_('idle', '음성 인식을 시작하지 못했습니다 — 다시 눌러 주세요.'); }
+    nxAiTalkSet_('listen', sess.hold ? '듣는 중 — 손을 떼면 보냄' : (auto ? '이어서 말씀하세요 (7초 동안 말이 없으면 마이크 끔)' : null));
+    startRec();
   }
+  // 듣기를 완전히 끈다(보내지 않음) — 화면 펼침·읽기 시작·새 듣기 직전
+  function nxAiTalkStopRec_(){
+    var s = nxAiTalk_.sess;
+    if (s && !s.done){ s.done = true; clearTimeout(s.silence); clearInterval(s.guard); try { s.rec && s.rec.abort(); } catch (e) {} }
+    nxAiTalk_.rec = null;
+  }
+  // "생각 중" 살아있음 표시 — work 음성모드와 같이 점이 늘었다 줄고, 4초마다 아주 작은 "틱" 소리(멈춘 건지 구분되게)
+  var nxAiTalkBeat_ = { dots: null, tick: null, ctx: null };
+  function nxAiTalkTick_(){
+    try {
+      var ctx = nxAiTalkBeat_.ctx || (nxAiTalkBeat_.ctx = new (window.AudioContext || window.webkitAudioContext)());
+      if (ctx.state === 'suspended') ctx.resume();
+      var osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.type = 'sine'; osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.05, ctx.currentTime + 0.02);
+      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.15);
+      osc.connect(gain); gain.connect(ctx.destination); osc.start(); osc.stop(ctx.currentTime + 0.16);
+    } catch (e) {}
+  }
+  function nxAiTalkBeat_on_(label){
+    nxAiTalkBeat_off_();
+    var n = 0, st = nxAiEl_('nxAiTalkSt');
+    nxAiTalkBeat_.dots = setInterval(function(){ n = (n + 1) % 4; if (st) st.textContent = label + '.'.repeat(n); }, 550);
+    nxAiTalkBeat_.tick = setInterval(nxAiTalkTick_, 4000);
+  }
+  function nxAiTalkBeat_off_(){ clearInterval(nxAiTalkBeat_.dots); clearInterval(nxAiTalkBeat_.tick); nxAiTalkBeat_.dots = nxAiTalkBeat_.tick = null; }
   function nxAiTalkAsk_(text){
     nxAiEl_('nxAiTalkQ').textContent = text;
     nxAiEl_('nxAiTalkA').textContent = '';
@@ -48234,6 +48328,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   function nxAiTalkSpeak_(text){
     var say = nxAiTalkSpeechText_(text);
     if (!say || !window.speechSynthesis){ nxAiTalkSet_('idle'); return; }
+    nxAiTalkStopRec_(); // 읽기 직전 마이크를 확실히 끈다 — AI 목소리를 다시 듣는 사고 방지(work 버그#6)
     var u = new SpeechSynthesisUtterance(say);
     u.lang = 'ko-KR'; u.rate = 1.05;
     var ko = (speechSynthesis.getVoices() || []).filter(function(v){ return /^ko/i.test(v.lang); })[0];
@@ -48253,17 +48348,53 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       nxAiTalkSyncMode_();
       if (nxAiTalk_.state === 'speak' && nxAiTalkMode_() === 'text'){ nxAiTalkSet_('idle'); try { speechSynthesis.cancel(); } catch (err) {} }
     });
-    mic.addEventListener('click', function(){
+    // 🎤 누르는 방식 두 가지 — ① 누르고 있는 동안 듣고 떼면 보냄(말 끝을 기계가 짐작하지 않음) ② 짧게 누르면 자동(말이 멈추면 보냄).
+    // 누르는 순간 바로 듣기 시작해 첫마디를 놓치지 않고, 0.4초 안에 떼면 자동 모드로 바꾼다.
+    // 듣는 중(자동) 누르면 바로 보냄, 읽는 중 누르면 읽기 멈춤.
+    var HOLD_MS = 400, downAt = 0, holding = false;
+    mic.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+    mic.addEventListener('pointerdown', function(e){
+      e.preventDefault();
       var s = nxAiTalk_.state;
-      if (s === 'listen'){ try { nxAiTalk_.rec && nxAiTalk_.rec.stop(); } catch (e) {} return; }
-      if (s === 'speak'){ nxAiTalkSet_('idle'); try { speechSynthesis.cancel(); } catch (e) {} return; }
+      if (s === 'listen'){ if (nxAiTalk_.sess && nxAiTalk_.sess.finish) nxAiTalk_.sess.finish(true); return; }
+      if (s === 'speak'){ nxAiTalkSet_('idle'); try { speechSynthesis.cancel(); } catch (err) {} return; }
       if (s === 'busy') return;
-      nxAiTalkListen_(false);
+      try { mic.setPointerCapture(e.pointerId); } catch (err) {}
+      downAt = Date.now(); holding = true;
+      nxAiTalkListen_(false, { hold: true });
+    });
+    function release(){
+      if (!holding) return;
+      holding = false;
+      var sess = nxAiTalk_.sess;
+      if (!sess || sess.done) return;
+      if (Date.now() - downAt < HOLD_MS){
+        sess.hold = false;                       // 짧게 누름 → 자동 모드로 계속 듣기
+        if (sess.arm) sess.arm();
+        if (!sess.heard) nxAiTalkSet_('listen', '말씀하세요 — 말이 멈추면 보냄 (7초 동안 말이 없으면 마이크 끔)');
+        sess.started = Date.now();
+      } else {
+        sess.finish(true, '들은 말이 없습니다 — 누르고 있는 동안 말씀하세요'); // 손 뗌 → 바로 보냄
+      }
+    }
+    mic.addEventListener('pointerup', release);
+    mic.addEventListener('pointercancel', release);
+    nxAiEl_('nxAiTalkCancel').addEventListener('click', function(){
+      var sess = nxAiTalk_.sess;
+      if (sess && sess.finish) sess.finish(false, '취소했습니다 — 마이크를 껐습니다');
+    });
+    // 화면이 꺼지거나 다른 앱으로 가면 마이크·읽기를 즉시 끈다(마이크가 몰래 켜져 있지 않게)
+    document.addEventListener('visibilitychange', function(){
+      if (!document.hidden) return;
+      nxAiTalkStopRec_();
+      try { window.speechSynthesis && speechSynthesis.cancel(); } catch (err) {}
+      clearInterval(nxAiTalk_.watch);
+      if (nxAiTalk_.state === 'listen' || nxAiTalk_.state === 'speak') nxAiTalkSet_('idle', '화면이 꺼져 마이크를 껐습니다');
     });
     // 커버화면을 벗어나면(펼침) 듣기·읽기를 멈춘다
     document.addEventListener('nx-cover-change', function(){
       if (window.nxCover) return;
-      try { nxAiTalk_.rec && nxAiTalk_.rec.abort(); } catch (e) {}
+      nxAiTalkStopRec_();
       try { window.speechSynthesis && speechSynthesis.cancel(); } catch (e) {}
       clearInterval(nxAiTalk_.watch);
       nxAiTalkSet_('idle');
