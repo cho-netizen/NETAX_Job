@@ -24448,6 +24448,12 @@ function tc_docText_(f) {
   }
   else if (/^text\/|json|csv|markdown/.test(mt)) text = DriveApp.getFileById(f.id).getBlob().getDataAsString('UTF-8');
   else if (/pdf|^image\/|officedocument\.wordprocessingml|msword/.test(mt)) { Utilities.sleep(800); text = ocrFileText_(f.id); }
+  // [2026.10.15 1:1] 엑셀(.xlsx·.xls) — 구글 시트로 바꿔 읽는다(세무사님: "폴더 안 파일은 스펀지처럼 다 흡수" — 상담 메모 엑셀을 말없이 건너뛰던 문제)
+  else if (/spreadsheetml|ms-excel/.test(mt)) {
+    const cp = Drive.Files.copy({ name: '_xls_tmp_' + Date.now(), mimeType: 'application/vnd.google-apps.spreadsheet' }, f.id, { fields: 'id' });
+    try { const ss = SpreadsheetApp.openById(cp.id); text = ss.getSheets().slice(0, 3).map(function (sh) { return sh.getName() + '\n' + sh.getDataRange().getDisplayValues().slice(0, 200).map(function (r) { return r.filter(String).join('\t'); }).filter(String).join('\n'); }).join('\n\n'); }
+    finally { try { DriveApp.getFileById(cp.id).setTrashed(true); } catch (e) {} }
+  }
   else return null; // 한글(hwp)·압축파일 등은 글자로 못 바꿈
   // [2026.10.11] 글자는 잘라 쓰기 전 전체(최대 6만 자)를 기억 — 서류 자동정리 규칙은 여러 장짜리 등기부·초본 전체가 필요하다
   text = String(text || '').slice(0, 60000);
@@ -24505,6 +24511,8 @@ function tc_extractCaseDocs_(body) {
     try { text = tc_docText_(f); } catch (e) { skipped.push(f.name + '(읽기 실패)'); continue; }
     if (text === null) { skipped.push(f.name + '(글자로 못 바꾸는 형식)'); continue; }
     if (!text.trim()) { skipped.push(f.name + '(글자 없음)'); continue; }
+    // [2026.10.15 1:1] 엑셀·문서 메모의 "세액계산"(과세표준·산출세액·납부세액) 부분은 결과물(정답지와 같음) — 입력으로 보내지 않는다
+    if (!/pdf|^image\//.test(String(f.mimeType || ''))) { const cut = text.search(/ㅇ?\s*세\s*액\s*계\s*산|과\s*세\s*표\s*준|산\s*출\s*세\s*액/); if (cut >= 0) text = text.slice(0, cut); if (!text.trim()) { skipped.push(f.name + '(세액계산 결과물만 있음)'); continue; } }
     const dp = tc_docPart_(f.name, text);
     if (total + dp.part.length > TC_EXTRACT_TOTAL_CHARS_) { skipped.push(f.name + '(분량 초과)'); continue; }
     total += dp.part.length;
@@ -25083,6 +25091,12 @@ function caseProcEvidence_(c) {
   docs.forEach(function (f) { if (f.p && f.p.l) kinds[f.p.l] = (kinds[f.p.l] || 0) + 1; });
   const kindTxt = Object.keys(kinds).map(function (k) { return k + ' ' + kinds[k]; }).join(', ');
   lines.push('폴더 파일 ' + files.length + '개 · PDF·사진 ' + docs.length + '개 중 자동 정리 ' + docs.filter(function (f) { return f.p && f.p.t; }).length + '개' + (kindTxt ? ' (' + kindTxt + ')' : ''));
+  // [2026.10.15 1:1] 그 밖의 파일도 전부 — 읽은 것·못 읽은 것을 이름으로(말없이 건너뛰지 않음)
+  try {
+    const mm = caseProcMemoTexts_(c);
+    if (mm.read.length) lines.push('그 밖의 파일 읽음: ' + mm.read.map(function (x) { return x.file + (x.cutCalc ? '(아래 세액계산 부분은 결과물이라 입력에서 뺌)' : ''); }).join(', '));
+    if (mm.unread.length) lines.push('⚠ 못 읽은 파일: ' + mm.unread.join(', ') + ' — 내용이 필요하면 PDF로 저장해 폴더에 넣어 주세요.');
+  } catch (e) { lines.push('⚠ 그 밖의 파일을 읽지 못함: ' + (e && e.message || e)); }
   let list = Array.isArray(c.증빙목록) ? c.증빙목록 : [];
   let virtual = false;
   const ov = c.사건개요 || {};
@@ -25576,9 +25590,14 @@ function caseProcBaseCands_(c, body) {
 // 이미 낸 신고서·계산명세서 — 참고자료로만 읽는다(입력값으로 쓰지 않음). 기준일(증여일자 등)과 금액들을 글자에서 찾는다.
 function caseProcReferenceDocs_(c) {
   if (!String(c.폴더ID || '').trim()) return [];
+  // [2026.10.15 1:1] 처리 중에는 이미 낸 신고서(양도코리아 출력물 = 정답지)를 읽지 않는다 — 세무사님: "아직도 정답지를 읽고 있다".
+  //  이미 낸 신고서 자체가 처리 대상인 업무(경정청구·수정신고·기한후·불복)만 예외(그때 신고서는 원시자료).
+  if (!/경정|수정|기한\s*후|불복|이의|심판|심사/.test(String(c.업무유형 || '') + ' ' + String(c.사건명 || ''))) return [];
   const label = { transfer: '양\\s*도\\s*(?:일\\s*자|연\\s*월\\s*일)', gift: '증\\s*여\\s*일\\s*자?', inheritance: '상\\s*속\\s*개\\s*시\\s*일' }[c.세목];
   const out = [];
-  caseProcFiles_(c).filter(function (f) { return /(신고서|계산명세서)/.test(f.name) && !/접수증/.test(f.name) && /pdf|^image\//.test(String(f.mimeType || '')); }).slice(0, 3).forEach(function (f) {
+  // [2026.10.15 1:1] 도구가 만든 세액인쇄 서식 PDF(…_신고서식.pdf, 보고서_내부)는 '이미 낸 신고서'가 아니다 — 예전 계산(옛 증여일)으로 만든 서식이 증여일 질문을 열던 문제
+  const ownPdf = String((caseProcLoad_(c.id).printPdf || {}).name || '');
+  caseProcFiles_(c).filter(function (f) { return /(신고서|계산명세서)/.test(f.name) && !/접수증/.test(f.name) && !/신고서식\.pdf$/.test(f.name) && f.name !== ownPdf && /pdf|^image\//.test(String(f.mimeType || '')); }).slice(0, 3).forEach(function (f) {
     let t = '';
     try { t = tc_docText_(f) || ''; } catch (e) { return; }
     const r = { file: f.name, date: '', amounts: [] };
@@ -25619,6 +25638,32 @@ function caseProcIsOutputDoc_(name) {
   // [2026.10.15] "양도소득 과세표준 신고 및 납부계산서", "…금액계산명서"(오타), "필요경비명세서", "평가명세서", "추가자진납부", "세액계산"도 이미 낸(또는 세무사가 만든) 발생문서 —
   //  입력으로 읽으면 신고 숫자를 그대로 베끼게 된다. 거래처가 준 "거래명세서"는 원시증빙이라 제외하지 않는다.
   return /(신고서|계산명세|계산명서|(?<!세금)계산서|접수증|납부서|과세표준|세액계산|자진납부|평가명세서|경비명세서|금액명세서)/.test(n.replace(/\s+/g, '')) || /^양코_/.test(n) || (/(상속세|증여세|양도소득세|양도세)/.test(n) && /(신고|명세서|계산서|공제)/.test(n));
+}
+// 한글 금액 문장 → 원("3억원" 300000000, "410백만원" 410000000, "1억 5천만원", "300,000,000")
+function caseProcKrAmount_(s) {
+  s = String(s || '');
+  let m = /(\d+(?:\.\d+)?)\s*억(?:\s*(\d+)\s*천\s*만)?\s*원?/.exec(s); if (m) return Math.round(Number(m[1]) * 1e8 + (m[2] ? Number(m[2]) * 1e7 : 0));
+  m = /(\d+)\s*백\s*만\s*원?/.exec(s); if (m) return Number(m[1]) * 1e6;
+  m = /(\d+)\s*천\s*만\s*원?/.exec(s); if (m) return Number(m[1]) * 1e7;
+  m = /\d{1,3}(?:,\d{3}){2,}/.exec(s); if (m) return Number(m[0].replace(/,/g, ''));
+  return 0;
+}
+// [2026.10.15 1:1] PDF·사진이 아닌 파일(엑셀·문서·메모) — 상담 메모·의뢰 내용을 읽는다. 아래쪽 "세액계산"(과세표준·산출세액 등) 부분은 결과물이라 잘라낸다(입력으로 쓰지 않음).
+//  돌려주는 것: { read: [{file, text}], unread: [이름(사유)], skipped: [이름(사유)] }
+function caseProcMemoTexts_(c) {
+  const out = { read: [], unread: [], skipped: [] };
+  caseProcFiles_(c).forEach(function (f) {
+    const n = f.name, mt = String(f.mimeType || '');
+    if (/pdf|^image\//.test(mt) || /^_|^~\$/.test(n)) return; // ~$ = 엑셀을 열어 둘 때 생기는 임시 파일
+    if (/종합검토서_초안|^계산기\.json|_검토서_/.test(n) || caseProcIsOutputDoc_(n)) { out.skipped.push(n + '(도구·신고 결과물)'); return; }
+    if (/zip|x-7z|rar|octet-stream/.test(mt) || /\.(zip|7z|rar|hwp|hwpx)$/i.test(n)) { out.unread.push(n + '(' + (/\.hwpx?$/i.test(n) ? '한글 파일' : '압축 파일') + ' — 글자로 못 바꿈)'); return; }
+    let t = null;
+    try { t = tc_docText_(f); } catch (e) { out.unread.push(n + '(읽기 실패)'); return; }
+    if (t === null || !String(t).trim()) { out.unread.push(n + '(글자 없음·형식)'); return; }
+    const cut = String(t).search(/ㅇ?\s*세\s*액\s*계\s*산|과\s*세\s*표\s*준|산\s*출\s*세\s*액/);
+    out.read.push({ file: n, text: (cut > 0 ? String(t).slice(0, cut) : (cut === 0 ? '' : String(t))).trim(), cutCalc: cut >= 0 });
+  });
+  return out;
 }
 function caseProcParseAll_(c) {
   const out = [], started = Date.now();
@@ -25677,6 +25722,13 @@ function caseProcGiftInhFacts_(c, lines, items) {
     });
     if (gifts.length) lines.push('증여재산(등기부): ' + gifts.map(function (g) { return (g.kind ? g.kind + ' ' : '') + (g.loc || '소재지 미확인') + ' — ' + g.date + ' 증여 등기(' + g.from + ' → ' + g.to + ')'; }).join(' / '));
     const cash = caseProcCashGift_(c, parsed);
+    let memos = []; try { memos = caseProcMemoTexts_(c).read.filter(function (m) { return m.text; }); } catch (e) {}
+    // [2026.10.15 1:1] 상담 메모에 "이전에 조금씩 자금지원" 같은 말이 있으면 10년 합산 대상일 수 있다 — 따로 묻는다(10년 합산 일반 질문을 [무시]했어도, 메모 근거가 새로 나왔으므로)
+    if (!String(ov.giftPriorAmount || '').trim()) memos.forEach(function (m) {
+      const hit = m.text.split(/[\n,]+/).map(function (x) { return x.trim(); }).filter(function (x) { return /(이전|예전|그동안|과거|조금씩|수차례|여러\s*번)/.test(x) && /(지원|증여|받|보태|도와)/.test(x); })[0];
+      if (hit) items.push(caseProcItem_('gift:memoprior:' + m.file, 'check', '상담 메모(' + m.file + ')에 "' + hit.slice(0, 60) + '" — 10년 안에 같은 증여자(배우자 포함)에게서 받은 돈이 있으면 합산합니다(§47②). 이 이전 지원이 증여인가요?',
+        { mode: 'options', target: 'ov:giftPriorAmount', options: [{ label: '증여 아님·없음(0원)', value: '0' }], input: 'money', label: '10년 내 같은 증여자 증여 합산액', withInput: true }));
+    });
     if (cash.isCash) {
       const gc = cash.contract;
       if (gc) {
@@ -25704,7 +25756,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
             + '\n합계 ' + won(sum) + (cash.listTotal ? (cash.listTotal === sum ? ' — 이체 목록 장의 총 이체금액과 일치' : ' ⚠ 이체 목록 장의 총 이체금액 ' + won(cash.listTotal) + '과 다름') : '');
           lines.push('이체내역(참고 — 증여 내용 아님): ' + rows.length + '건 합계 ' + won(sum) + ', ' + rows.map(function (g) { return g.날짜 + ' ' + won(g.금액); }).join(' / '));
           // 객관식 후보 — 서류에서 나온 것만(출처 표시). 맞는 게 없으면 화면에서 직접 입력(주관식).
-          const uq = function (arr) { const seen = {}; return arr.filter(function (x) { if (!x.v || seen[x.v]) return false; seen[x.v] = true; return true; }); };
+          const uq = function (arr) { const seen = {}; return arr.filter(function (x) { if (!x.v) return false; if (seen[x.v]) { if (x.src && seen[x.v].src.indexOf(x.src) === -1) seen[x.v].src += ' · ' + x.src; return false; } seen[x.v] = x; return true; }); }; // 같은 값은 출처를 합친다
           const famPeople = [].concat.apply([], fams.map(function (x) { return ((x.p.result && x.p.result.가족) || []).map(function (q) { return { 이름: norm(q.이름), 관계: q.관계, file: x.f.name }; }); }));
           const byDate = {}; rows.forEach(function (g) { byDate[g.날짜] = (byDate[g.날짜] || 0) + g.금액; });
           const dates = Object.keys(byDate).sort();
@@ -25715,8 +25767,20 @@ function caseProcGiftInhFacts_(c, lines, items) {
             kind: [{ v: '현금(계좌이체)', src: '이체내역' }, { v: '부동산', src: '' }, { v: '주식 등 유가증권', src: '' }, { v: '그 밖의 재산', src: '' }],
             amount: uq([{ v: String(sum), src: '이체 ' + rows.length + '건 합계' }].concat(dates.length > 1 ? dates.map(function (d) { return { v: String(byDate[d]), src: d + ' 이체분만' }; }) : []))
           };
+          // [2026.10.15 1:1] 상담 메모(엑셀·문서)도 근거로 — 증여 금액·증여자(부친 등) 후보와 메모 원문을 함께 보여준다(확정하지 않음)
+          let memoDetail = '';
+          memos.forEach(function (m) {
+            const sents = m.text.split(/[\n,]+/).map(function (x) { return x.trim(); }).filter(function (x) { return x.length > 3; });
+            memoDetail += '\n상담 메모(' + m.file + '): ' + sents.join(' / ').slice(0, 500);
+            sents.filter(function (x) { return /증여|수증/.test(x); }).forEach(function (x) {
+              const a = caseProcKrAmount_(x); if (a) cands.amount.push({ v: String(a), src: '상담 메모: "' + x.slice(0, 40) + '"' });
+              const fam = /부친|아버지|아빠/.test(x) ? '부' : /모친|어머니|엄마/.test(x) ? '모' : '';
+              if (fam) famPeople.filter(function (p) { return p.관계 === fam; }).forEach(function (p) { cands.donor.unshift({ v: p.이름, src: '상담 메모 "' + (x.match(/부친|아버지|아빠|모친|어머니|엄마/) || [''])[0] + '" + 가족관계증명서 ' + fam }); });
+            });
+          });
+          cands.donor = uq(cands.donor); cands.amount = uq(cands.amount);
           items.push(caseProcItem_('gift:deal', 'missing', '증여 내용을 정하는 서류(증여계약서 등)가 없습니다 — 이체내역은 돈이 건너간 사실만 보여줍니다. 증여자·수증자·증여일·증여대상(무엇을 얼마나)을 확인해 주세요.',
-            { mode: 'giftdeal', target: 'giftdeal', label: '증여 내용', cands: cands }, detail));
+            { mode: 'giftdeal', target: 'giftdeal', label: '증여 내용', cands: cands }, detail + memoDetail));
         }
       } else {
         if (cash.donorFromTx) add('giftDonorName', cash.donorFromTx, '이체확인증 보내는 분', true);
@@ -25726,7 +25790,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
       if (cash.otherContracts && cash.otherContracts.length) lines.push('다른 수증자의 증여계약서는 이 사건 계산에 쓰지 않음: ' + cash.otherContracts.join(', '));
       if (cash.note) notes.push(cash.note);
       if (gc && !gc.부담부 && /일반/.test(String(ov.사건분류 || '')) && !((caseProcLoad_(c.id).filled || {}).사건분류)) caseProcRememberFill_(c.id, '사건분류', ov.사건분류, '증빙: 증여계약서(' + gc.file + ') — 현금 증여·부담부 문구 없음');
-      caseProcPatch_(c.id, function (sv) { sv.cashGift = true; sv.cashDebt = !!(gc && gc.부담부); });
+      caseProcPatch_(c.id, function (sv) { sv.cashGift = true; sv.cashDebt = !!(gc && gc.부담부); sv.cashContract = !!gc; });
       if (!(cash.txOnly && !gc)) lines.push('증여재산: 현금 ' + (cash.amount ? cash.amount.toLocaleString('ko-KR') + '원' : '(금액 미확인)') + ' — ' + (gc ?'증여계약서' + (gc.검산 === '일치' ? '(숫자·한글 금액 일치)' : '') : '증여계약서 없음') + (cash.tx ? ' · 이체내역 ' + cash.tx.날짜 + ' ' + cash.tx.금액.toLocaleString('ko-KR') + '원' : ' · 이체내역 없음') + (gc && !gc.부담부 ? ' · 부담부(채무인수) 문구 없음' : ''));
       if (cash.mismatch) items.push(caseProcItem_('ov:giftAmount:cashdiff:' + cash.mismatch.replace(/[^d]/g, '').slice(0, 20), 'check', '증여 금액이 서류끼리 다릅니다 — ' + cash.mismatch + '. 어느 금액이 맞나요?', { mode: 'choose', target: 'ov:giftAmount', input: 'money', label: '증여재산가액', cands: [{ v: String(gc.금액), src: '증여계약서' }, { v: String(cash.tx.금액), src: '이체내역' }] }));
     } else if (!gifts.length) {
@@ -25876,6 +25940,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
     if (/RegNo$|Address$/.test(key) && !uniq.length) return;
     if (!cur) {
       if (sure) { ov[key] = money ? digits(sure.v) : sure.v; fills.push({ key: key, label: sp[1], v: ov[key], src: sure.src }); return; }
+      if (key === 'giftPriorAmount' && items.some(function (it) { return /^gift:memoprior:/.test(it.id); })) return; // 상담 메모 근거 질문이 같은 칸을 이미 묻는다
       if (key === 'giftPriorAmount') { items.push(caseProcItem_('ov:' + key, 'missing', '10년 안에 같은 증여자(배우자는 같은 사람으로 봄)에게 받은 증여가 있나요? (상증법 §47② 합산)', { mode: 'options', target: 'ov:' + key, options: [{ label: '없음(0원)', value: '0' }], input: 'money', label: sp[1], withInput: true })); return; }
       if (key === 'giftDebtAssumed' && !uniq.length) return; // 부담부증여가 아니면 비워 둔다
       if (key === '상속인추가명단' && !uniq.length) return;
@@ -26183,7 +26248,9 @@ function caseProcStatus_(c, body) {
     const v = ov[k[0]], mk = mark(k[0], v);
     if (/^(⚠|△ 확정 전)/.test(mk)) inputsOk = false;
     if (held[k[0]]) heldInput = heldInput ? heldInput + '·' + k[1] : k[1];
-    if (k[0] === 'giftDebtAssumed' && !has(v) && saved.cashGift && !saved.cashDebt) { rows.push(['처리개요', k[1], '✅', '해당 없음 — 증여계약서에 부담부(채무인수) 문구 없음']); return; }
+    if (k[0] === 'giftDebtAssumed' && !has(v) && saved.cashGift && !saved.cashDebt) { rows.push(['처리개요', k[1], '✅', '해당 없음 — ' + (saved.cashContract ? '증여계약서에 부담부(채무인수) 문구 없음' : '현금 이체 증여, 채무인수를 보여주는 서류 없음')]); return; }
+    // [2026.10.15 1:1] 세무사님이 [무시]한 질문의 칸은 완전히 뺀다(비어 있어도 ⬜로 보이지 않게)
+    if (!has(v) && dec['ov:' + k[0]] && dec['ov:' + k[0]].d === '무시') { rows.push(['처리개요', k[1], '✅', '질문 제외 — 세무사님 [무시]' + (k[0] === 'giftPriorAmount' ? '(합산할 증여 없음으로 계산)' : '')]); return; }
     rows.push(['처리개요', k[1], mk, has(v) ? String(v) + srcOf(k[0], v) : '']);
   });
   if (c.세목 === 'transfer') (Array.isArray(ov.물건목록) ? ov.물건목록 : []).forEach(function (a, i) {
@@ -26259,7 +26326,9 @@ function caseProcParagraphs_(c) {
       let s = 0;
       if (semok && it.세목 === semok) s += 2;
       if (it.세목 === '공통') s += 1;
-      (it.추천 || []).forEach(function (w) { if (w && hay.indexOf(w) !== -1) s += 3; });
+      // [2026.10.15 1:1] 증여 사건에 '배우자 상속공제' 같은 다른 세목 문단이 붙던 문제 — 다른 세목 문단은 빼고, 세목·업무 같은 흔한 낱말은 추천 근거로 안 씀
+      if (it.세목 && it.세목 !== semok && it.세목 !== '공통') return { it: it, s: 0 };
+      (it.추천 || []).forEach(function (w) { if (w && !/^(증여|상속|양도|신고|상담|일반|세금|세액)$/.test(w) && hay.indexOf(w) !== -1) s += 3; });
       return { it: it, s: s };
     }).filter(function (x) { return x.s >= 3; }).sort(function (a, b) { return b.s - a.s; }).slice(0, 5).map(function (x) { return x.it; });
   } catch (e) { return []; }
@@ -26279,7 +26348,8 @@ function caseProcOutput_(c) {
     if (r.date) rows.push(dl + ' — 신고서 ' + r.date + ' / 사건 ' + (c.기준일 || '(없음)') + (r.date === c.기준일 ? ' ✓' : ' ≠'));
     if (last && Number.isFinite(last.최종세액)) {
       const inDoc = r.amounts.indexOf(last.최종세액) !== -1 || r.pay === last.최종세액;
-      rows.push('납부세액 — 도구 ' + Number(last.최종세액).toLocaleString('ko-KR') + '원 / 신고서 ' + (r.pay ? r.pay.toLocaleString('ko-KR') + '원' : (inDoc ? '같은 금액 있음' : '같은 금액 없음')) + (inDoc ? ' ✓' : ' ≠'));
+      // [2026.10.15 1:1] 신고서 납부 칸(분납 등)이 도구 세액과 다르면 그 사실을 그대로 보여준다(다른 금액 옆에 ✓만 붙던 문제)
+      rows.push('납부세액 — 도구 ' + Number(last.최종세액).toLocaleString('ko-KR') + '원 / 신고서 ' + (r.pay && r.pay !== last.최종세액 ? '납부 칸 ' + r.pay.toLocaleString('ko-KR') + '원(분납 등)' + (inDoc ? ' · 같은 금액 ' + Number(last.최종세액).toLocaleString('ko-KR') + '원도 있음' : '') : (r.pay ? r.pay.toLocaleString('ko-KR') + '원' : (inDoc ? '같은 금액 있음' : '같은 금액 없음'))) + (inDoc ? ' ✓' : ' ≠'));
       if (!inDoc) items.push(caseProcItem_('ref:tax:' + r.file + ':' + last.최종세액 + ':' + (r.pay || ''), 'check', '이미 낸 신고서(' + r.file + ')와 도구 계산 납부세액이 다릅니다 — 도구 ' + Number(last.최종세액).toLocaleString('ko-KR') + '원' + (r.pay ? ' / 신고서 ' + r.pay.toLocaleString('ko-KR') + '원' : ''),
         { mode: 'options', options: [{ label: '도구 계산이 맞음 — 신고서 정정(경정청구·수정신고) 검토', decide: '보류', note: '도구 계산이 맞음 — 신고서 정정 검토' }, { label: '신고서가 맞음 — 도구 입력값을 다시 확인', decide: '보류', note: '신고서가 맞음 — 세액계산 입력값 재확인' }, { label: '차이 이유를 알고 있음(정상)', decide: 'done', note: '차이 이유 확인함' }] }));
     } else if (label) rows.push('도구 계산 결과가 아직 없어 금액은 대조 전');
