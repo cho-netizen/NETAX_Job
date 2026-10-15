@@ -24804,6 +24804,13 @@ function tc_ruleTransferFacts_(body) {
     });
     if (exp) { txs[0].acquisitionExpenses = exp; evidence.push('취득 부대비용 합계 ' + exp.toLocaleString('ko-KR') + '원: ' + parts.join(', ')); }
   }
+  // [2026.10.15 1:1] 필요경비 후보 목록 — 규칙이 확정한 것(sure)과 판단이 필요한 것을 모두 항목별로 돌려준다(말없이 버리지 않음). 처리개요에서 세무사님이 체크해 확정.
+  var expCands = [];
+  if (txs.length === 1) {
+    var lawTotal = 0;
+    lawyers.forEach(function (l) { if (!l.r.합계) return; lawTotal = Math.max(lawTotal, l.r.합계); expCands.push({ kind: '취득', label: '법무사 정산서(취득세·등록 공과금·보수 포함일 수 있음)', amount: l.r.합계, date: l.r.일자 || '', file: l.file, sure: /취득/.test(l.file) || !!txs[0].acquisitionExpenses, note: '' }); });
+    acqs.forEach(function (a) { if (!a.r.합계) return; var inLaw = lawTotal && a.r.합계 <= lawTotal; expCands.push({ kind: '취득', label: '취득세 등 납부', amount: a.r.합계, date: a.r.납부일 || a.r.일자 || '', file: a.file, sure: !inLaw && (/취득/.test(a.file) || !!txs[0].acquisitionExpenses), note: inLaw ? '법무사 정산서 합계에 이미 들어 있을 수 있음 — 겹치면 하나만' : '' }); });
+  }
   if (acqs.length + lawyers.length && !(txs.length === 1 && txs[0].acquisitionExpenses)) evidence.push('취득세·법무사 서류 ' + (acqs.length + lawyers.length) + '건은 어느 거래 것인지 규칙으로 확정 못 해 넣지 않음 — 직접 확인');
   // [2026.10.15] 자본적지출·양도비(소득세법 §97①2·3호, 시행령§163③④) — 거래가 하나일 때만, 실제 지급 증빙(이체확인증·현금영수증·카드전표·세금계산서)만.
   //  견적서는 지급 증빙이 아니라 넣지 않는다. 용도는 파일 이름·적요·본문 앞부분의 말로: 공사·인테리어·샷시·확장·보일러·방수 등 = 자본적지출
@@ -24814,6 +24821,13 @@ function tc_ruleTransferFacts_(body) {
     var days = function (a, b) { return a && b ? Math.abs(new Date(a) - new Date(b)) / 86400000 : 1e9; };
     expDocs.forEach(function (e) {
       if (/견\s*적/.test(e.file)) return;
+      // [2026.10.15 1:1] 항목별 후보(아래 자동 판정과 별개 — 판단이 필요한 것은 체크 안 된 채로 묻는다)
+      if (e.amount && !expCands.some(function (x) { return x.amount === e.amount && x.date === e.date; })) {
+        var pp = e.file + ' ' + e.memo + ' ' + e.head, other = e.payer && !tcNameIn_(e.payer, names);
+        var kind = /중개\s*(보수|수수료)|복비|부동산\s*수수료/.test(pp) ? (days(e.date, tx0.transferDate) <= 90 ? '양도' : '취득') : /세무|신고\s*대행/.test(pp) ? '양도' : /인지|채권|취득세|법무/.test(pp) ? '취득' : '자본적지출';
+        expCands.push({ kind: kind, label: (kind === '자본적지출' ? '공사·수선비(자본적지출인지 판단)' : kind === '양도' ? '양도비용' : '취득 부대비용') + ' — ' + String(e.memo || '').slice(0, 30), amount: e.amount, date: e.date, file: e.file, sure: kind !== '자본적지출' && !other,
+          note: other ? '지급인 ' + e.payer + ' — 납세자 본인이 낸 돈인지 확인' : (kind === '자본적지출' ? '자본적지출(가치 증가·내용연수 연장)이면 넣고, 수선·유지(수익적지출)면 뺌 — 시행령 §163③' : '') });
+      }
       var purpose = e.file + ' ' + e.memo + ' ' + e.head;
       var k = e.date + '|' + e.amount;
       if (!e.amount || !e.date || seenE[k]) return;
@@ -24872,7 +24886,7 @@ function tc_ruleTransferFacts_(body) {
     return { ok: true, debug: true, names: names.map(mk), parties: contracts.map(function (c) { return { 매도인: mk(c.r.매도인), 매수인: mk(c.r.매수인), 검산: c.r.검산, 매매대금: !!c.r.매매대금, 잔금일: !!c.r.잔금일, 소재지: mk(c.r.소재지),
       역할: c.role, 파일: c.file }; }) };
   }
-  return { ok: true, sellerName: names[0] || null, transactions: txs, evidence: evidence,
+  return { ok: true, sellerName: names[0] || null, transactions: txs, evidence: evidence, expCands: expCands,
     counts: { 계약서: contracts.length, 신고필증: reports.length, 취득세: acqs.length, 법무사: lawyers.length, 등기부: regs.length } };
 }
 
@@ -25379,6 +25393,16 @@ function caseProcOverview_(c) {
     if (up && up.success !== false) lines.push('✏ 처리개요 빈 칸 채움(서류 검산 일치 값): ' + fills.join(', '));
     else lines.push('⚠ 처리개요를 채우지 못했습니다: ' + (up && up.message || '저장 실패') + ' — 다시 "처리하자"를 하면 다시 시도합니다.');
   } else lines.push('처리개요에 새로 채울 빈 칸 없음');
+  // [2026.10.15 1:1] 필요경비 — 서류에서 찾은 비용을 항목별로 보여주고 세무사님이 체크해 확정(규칙이 확정한 것은 미리 체크, 판단이 필요한 것은 체크 안 함).
+  //  확정 전엔 계산하지 않는다(필요경비 0원으로 세액을 내던 문제 — 노오섭).
+  const cands = (rf.expCands || []).filter(function (x) { return x.amount; });
+  const a0 = (Array.isArray(ov.물건목록) && ov.물건목록[0]) || {};
+  if (txs.length === 1 && !a0.필요경비확정) {
+    const won = function (n) { return Number(n).toLocaleString('ko-KR') + '원'; };
+    if (cands.length) lines.push('필요경비 후보 ' + cands.length + '건(서류): ' + cands.map(function (x) { return x.kind + ' ' + won(x.amount) + '(' + x.file + ')'; }).join(', '));
+    items.push(caseProcItem_('tr:expenses', 'missing', '필요경비(취득 부대비용·자본적지출·양도비용)를 확정해 주세요 — 서류에서 ' + cands.length + '건을 찾았습니다. 넣을 것만 체크하고, 없는 비용은 직접 더하세요.',
+      { mode: 'expenses', target: 'expenses', label: '필요경비', cands: cands }, cands.map(function (x) { return (x.sure ? '☑ ' : '☐ ') + x.kind + ' · ' + x.label + ' · ' + won(x.amount) + (x.date ? ' · ' + x.date : '') + ' · ' + x.file + (x.note ? ' — ' + x.note : ''); }).join('\n')));
+  } else if (a0.필요경비확정) lines.push('✅ 필요경비(세무사님 확정): 취득 ' + Number(a0.취득비용합계 || 0).toLocaleString('ko-KR') + '원 · 자본적지출·양도비 ' + Number(a0.양도비용합계 || 0).toLocaleString('ko-KR') + '원');
   return { ok: true, lines: lines, items: items, filled: fills.length };
 }
 // 서류 정리 결과에서 기준일 후보 — 증여: 등기부 소유권이전 원인 "증여"의 접수일(상증령 §24 — 등기·등록 대상 재산의 취득시기는
@@ -26302,6 +26326,11 @@ function caseProcCalc_(c) {
   const items = [], lines = [];
   const label = CASEPROC_TAX_LABEL_[c.세목];
   if (!label) { lines.push('세액계산 대상 세목이 아닙니다(' + (c.세목 || '—') + ').'); return { ok: true, lines: lines, items: items }; }
+  // [2026.10.15 1:1] 양도 — 필요경비를 확정하기 전엔 자동 계산하지 않는다(필요경비 0원으로 세액을 내던 문제 — 노오섭)
+  if (c.세목 === 'transfer') {
+    const a0 = ((c.사건개요 || {}).물건목록 || [])[0];
+    if (a0 && !a0.필요경비확정 && !caseProcLastCalc_(c).last) { lines.push('필요경비를 확정한 뒤 계산합니다 — 처리개요의 「필요경비 확정」을 먼저 답해 주세요.'); return { ok: true, lines: lines, items: items, needCalc: false }; }
+  }
   // [2026.10.15 1:1] 증여 내용 확인 전(계약서 없이 이체내역만) — 계산하지 않는다(추정값으로 세액을 내지 않게)
   if (c.세목 === 'gift' && String(c.폴더ID || '').trim()) {
     let cg = null; try { cg = caseProcCashGift_(c, caseProcParseAll_(c)); } catch (e) {}
@@ -26395,6 +26424,19 @@ function caseProcApply_(c, body) {
     });
     const up = work_updateCase({ id: c.id, 증빙목록: list, 기대수정일: c.수정일 });
     return up && up.success !== false ? { ok: true, message: '확보됨으로 표시(' + (body.file || '') + ')', my_report_id: c.my_report_id || '' } : { ok: false, error: (up && up.message) || '저장 실패' };
+  }
+  // [2026.10.15 1:1] 양도 필요경비 확정 — 체크한 항목(취득 부대비용 / 자본적지출·양도비용)을 물건1 카드에 목록·합계로 저장
+  if (target === 'expenses') {
+    let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { d = null; }
+    const list = (d && Array.isArray(d.items) ? d.items : []).map(function (x) { return { kind: String(x.kind || ''), label: String(x.label || '').slice(0, 60), amount: Number(String(x.amount || '').replace(/[^\d]/g, '')) || 0, file: String(x.file || '').slice(0, 80), date: String(x.date || '') }; }).filter(function (x) { return x.amount > 0; });
+    const ov = JSON.parse(JSON.stringify(c.사건개요 || {}));
+    if (!Array.isArray(ov.물건목록) || !ov.물건목록.length) return { ok: false, error: '처리개요에 물건이 없습니다 — 먼저 "처리하자"로 물건을 채워 주세요.' };
+    const acq = list.filter(function (x) { return x.kind === '취득'; }), tr = list.filter(function (x) { return x.kind !== '취득'; });
+    const sum = function (a) { return a.reduce(function (s, x) { return s + x.amount; }, 0); };
+    Object.assign(ov.물건목록[0], { 필요경비확정: true, 취득비용목록: acq, 양도비용목록: tr, 취득비용합계: String(sum(acq)), 양도비용합계: String(sum(tr)) });
+    const txt = '필요경비 확정 ← 취득 ' + sum(acq).toLocaleString('ko-KR') + '원(' + acq.length + '건) · 자본적지출·양도비 ' + sum(tr).toLocaleString('ko-KR') + '원(' + tr.length + '건) (' + src + ')';
+    const up = work_updateCase({ id: c.id, 사건개요: ov, 작업일지: logLine(txt), 기대수정일: c.수정일 });
+    return up && up.success !== false ? { ok: true, message: txt.replace(/^필요경비 확정 ← /, '') } : { ok: false, error: (up && up.message) || '저장 실패' };
   }
   // [2026.10.15 1:1] 증여 내용 확인 — 증여자·수증자·증여일·증여대상(종류·금액)을 한 번에 정한다(증여계약서 없이 이체내역만 있는 사건)
   if (target === 'giftdeal') {

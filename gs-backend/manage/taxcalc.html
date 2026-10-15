@@ -17420,6 +17420,11 @@ function tcApplyOverviewToTransfer_(caseObj){
         transferPrice: item.양도가액 || '', acquisitionPrice: item.취득가액 || '',
         acquisitionDate: item.취득일 || '', transferDate: caseObj.기준일 || ''
       };
+      // [2026.10.15 1:1] 사건처리에서 세무사님이 확정한 필요경비(항목별) — 그대로 비용 내역으로(예전: 처리개요에 필요경비 칸이 없어 0원으로 계산)
+      if (item.필요경비확정){
+        a.acquisitionExpenseItems = (item.취득비용목록 || []).map(function(x){ return { label: x.label + (x.file ? ' (' + x.file + ')' : ''), amount: x.amount }; });
+        a.transferExpenseItems = (item.양도비용목록 || []).map(function(x){ return { label: x.label + (x.file ? ' (' + x.file + ')' : ''), amount: x.amount }; });
+      }
       var acqTag = String(item.취득계약구분 || '').trim();
       if (acqTag) {
         if (!acqTagToContract[acqTag]) {

@@ -2452,6 +2452,35 @@
       }, true, rs);
       return;
     }
+    // [2026.10.15 1:1] 양도 필요경비 — 서류에서 찾은 비용을 체크(규칙이 확정한 것은 미리 체크), 금액은 고칠 수 있고, 없는 비용은 직접 더한다
+    if (mode === 'expenses'){
+      var rows = (ask.cands || []).map(function(c){ return { kind: c.kind, label: c.label, amount: c.amount, file: c.file, date: c.date, on: !!c.sure, note: c.note }; });
+      var list = document.createElement('div'); pane.appendChild(list);
+      var draw = function(){
+        list.innerHTML = '';
+        rows.forEach(function(r){
+          var d = document.createElement('div'); d.style.cssText = 'display:flex;gap:6px;align-items:flex-start;font-size:13px;padding:3px 0;border-bottom:1px dashed var(--line,#ddd);';
+          var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = r.on; cb.addEventListener('change', function(){ r.on = cb.checked; });
+          var sel = document.createElement('select'); ['취득', '자본적지출', '양도'].forEach(function(k){ var o = document.createElement('option'); o.textContent = k; if (k === r.kind) o.selected = true; sel.appendChild(o); }); sel.addEventListener('change', function(){ r.kind = sel.value; });
+          var am = document.createElement('input'); am.type = 'text'; am.inputMode = 'numeric'; am.value = Number(r.amount || 0).toLocaleString('ko-KR'); am.style.width = '110px'; am.addEventListener('input', function(){ r.amount = Number(String(am.value).replace(/[^\d]/g, '')) || 0; });
+          var tx = document.createElement('div'); tx.style.flex = '1'; tx.textContent = r.label + (r.date ? ' · ' + r.date : '') + (r.file ? ' · ' + r.file : '') + (r.note ? ' — ⚠ ' + r.note : '');
+          d.appendChild(cb); d.appendChild(sel); d.appendChild(am); d.appendChild(tx); list.appendChild(d);
+        });
+      };
+      draw();
+      p('없는 비용 더하기(주관식): 구분 · 내용 · 금액');
+      var ra = rowEl();
+      var ks = document.createElement('select'); ['취득', '자본적지출', '양도'].forEach(function(k){ var o = document.createElement('option'); o.textContent = k; ks.appendChild(o); }); ra.appendChild(ks);
+      var lb = document.createElement('input'); lb.type = 'text'; lb.placeholder = '내용(예: 샷시 교체)'; lb.style.flex = '1'; ra.appendChild(lb);
+      var am2 = document.createElement('input'); am2.type = 'text'; am2.inputMode = 'numeric'; am2.placeholder = '금액(원)'; am2.style.width = '110px'; ra.appendChild(am2);
+      btn('더하기', function(){ var v = Number(String(am2.value).replace(/[^\d]/g, '')) || 0; if (!lb.value.trim() || !v){ nxAiToast_('내용과 금액을 넣어 주세요.'); return; } rows.push({ kind: ks.value, label: lb.value.trim(), amount: v, file: '', date: '', on: true, note: '세무사님 직접 입력' }); lb.value = ''; am2.value = ''; draw(); }, false, ra);
+      var rs2 = rowEl();
+      btn('체크한 것으로 필요경비 확정', function(){
+        var items = rows.filter(function(r){ return r.on && r.amount > 0; }).map(function(r){ return { kind: r.kind, label: r.label, amount: r.amount, file: r.file, date: r.date }; });
+        apply('expenses', JSON.stringify({ items: items }), '세무사님 확인', refreshAll, true);
+      }, true, rs2);
+      return;
+    }
     if (mode === 'options'){
       var r3 = rowEl();
       (ask.options || []).forEach(function(o){
@@ -2545,8 +2574,10 @@
   function nxAiCaseProcCalcRun_(st, manual){
     if (st.calcBusy) return;
     // [2026.10.15 1:1] 증여 내용(증여자·수증자·증여일·증여대상)을 아직 안 정했으면 계산하지 않는다 — 추정값으로 세액을 내지 않게
-    var dealOpen = (st.items || []).some(function(it){ var d = nxAiCaseProcDec_(st, it); return it.id === 'gift:deal' && d !== 'done' && d !== '무시'; });
-    if (dealOpen){ st.setStep('calc', '⏸', '「증여 내용 확인」을 먼저 답해 주세요 — 증여 내용이 정해지면 계산합니다.'); return; }
+    // 양도 필요경비·사건분류(비과세·중과 판단)도 정해지기 전엔 계산하지 않는다(필요경비 0원·사건분류 미정으로 계산하던 문제 — 노오섭)
+    var blockers = { 'gift:deal': '「증여 내용 확인」', 'tr:expenses': '「필요경비 확정」', 'ov:사건분류': '「사건분류」' };
+    var open = (st.items || []).filter(function(it){ var d = nxAiCaseProcDec_(st, it); return blockers[it.id] && d !== 'done' && d !== '무시'; });
+    if (open.length && !manual){ st.setStep('calc', '⏸', open.map(function(it){ return blockers[it.id]; }).join('·') + '을(를) 먼저 정해 주세요 — 정해지면 계산합니다(지금 계산하려면 [▶ 지금 계산]).'); return; }
     var tab = st.case && st.case.세목;
     if (!{ transfer: 1, gift: 1, inheritance: 1 }[tab] || typeof goToTaxCalc_ !== 'function') return;
     st.calcBusy = true;
