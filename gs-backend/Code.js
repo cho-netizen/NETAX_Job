@@ -25812,6 +25812,11 @@ function caseProcEvidence_(c) {
   const relevantT = CASEPROC_RELEVANT_TYPES_[c.세목];
   if (typeof akTrace_ === 'function') akTrace_('증빙: 판독 질문 만들기 전'); // [2026.10.16] 진단
   const docokSeen = {};
+  // [2026.10.16] 서류 많은 사건(노영환 226개) 속도 — ⚠ 금액마다 모든 서류 글자를 다시 꺼내던 것(이 단계만 90초+)을 한 번만, 사건 저장 기록도 한 번만 읽는다
+  const textMemo = {};
+  const textOf = function (o) { if (textMemo[o.id] === undefined) { let t = ''; try { t = tc_docText_(o) || ''; } catch (e) {} textMemo[o.id] = t; } return textMemo[o.id]; };
+  let baseSrcMemo = null;
+  const baseByEvidence = function () { if (baseSrcMemo === null) baseSrcMemo = /^증빙/.test(String(((caseProcLoad_(c.id).filled || {}).기준일 || {}).src || '')); return baseSrcMemo; };
   docs.forEach(function (f) {
     if (!f.p || !f.p.t || f.p.office || !(f.p.wn > 0)) return;
     if (relevantT && relevantT.indexOf(f.p.t) === -1) return;
@@ -25826,15 +25831,15 @@ function caseProcEvidence_(c) {
     // 상속 사건에서 상속 뒤 상속인이 낸 취득세·법무사·접수증·납부서는 상속세 계산 자료가 아님 — ⚠를 묻지 않음
     if (c.세목 === 'inheritance' && /^(acqtax|lawyerfee|receipt|payment)$/.test(f.p.t)) return;
     // 사망일 ⚠는 다른 서류(등기부 상속 원인일·분할협의서)로 확정된 날짜와 같으면 묻지 않음
-    if (f.p.t === 'death' && (f.p.bd || []).some(function (b) { return b.d === c.기준일; }) && /^증빙/.test(String(((caseProcLoad_(c.id).filled || {}).기준일 || {}).src || ''))) return;
+    if (f.p.t === 'death' && (f.p.bd || []).some(function (b) { return b.d === c.기준일; }) && baseByEvidence()) return;
     // [2026.10.15] 실사용 기준 — 계산에 쓰는 값을 못 읽었거나 검산이 안 된 "막히는" ⚠만 질문으로(안내·법적 효력·계산에 안 쓰는 칸의 ⚠는 뺌)
     let block = caseProcBlockingWarns_(f.p.t, f.p.w || []);
     // [2026.10.16] 분할협의서에서 사망일을 못 읽었어도 상속개시일이 다른 증빙(사망진단서·기본증명서·등기부)으로 이미 정해졌으면 묻지 않음(사망일은 그 칸에 안 씀)
-    if (f.p.t === 'inhdivision' && c.기준일 && /^증빙/.test(String(((caseProcLoad_(c.id).filled || {}).기준일 || {}).src || ''))) block = block.filter(function (w) { return !/상속개시일\(사망일\)을 읽지 못함/.test(w); });
+    if (f.p.t === 'inhdivision' && c.기준일 && baseByEvidence()) block = block.filter(function (w) { return !/상속개시일\(사망일\)을 읽지 못함/.test(w); });
     // [2026.10.15] ⚠ 금액이 다른 서류(이체 확인·거래내역 등)에도 똑같이 있으면 서로 확인된 것 — 묻지 않고 근거를 남긴다(강정화 사건: 증여계약서 1억원 ⚠ ↔ 이체 화면 1억원)
     block = block.filter(function (w) {
       const am = /(\d{1,3}(?:,\d{3}){2,})\s*원/.exec(w); if (!am) return true;
-      const twin = docs.filter(function (o) { if (o === f || !o.p || o.p.office) return false; let t = ''; try { t = tc_docText_(o) || ''; } catch (e) {} return t.indexOf(am[1]) !== -1; })[0];
+      const twin = docs.filter(function (o) { if (o === f || !o.p || o.p.office) return false; return textOf(o).indexOf(am[1]) !== -1; })[0];
       if (!twin) return true;
       lines.push('✅ ‘' + f.name + '’ 금액 ' + am[1] + '원 — 다른 서류(' + twin.name + ')의 같은 금액으로 확인되어 ⚠ 해소');
       f._amtOk = true;
@@ -27131,7 +27136,17 @@ function caseProcSyncTaxpayer_(c, lines) {
 }
 // 상속 — 서류 규칙만으로 상속세 계산 입력(피상속인·개시일·상속인·상속재산 평가 후보·금융재산·장례비·봉안시설) 모으기. AI 없음.
 // 평가가 판단인 것(아파트 시가 vs 기준시가, 부부 봉안단 몫, 지출표 vs 영수증)은 후보로만 내고 세무사님 선택(saved.ihChoices)을 쓴다.
+// [2026.10.16] 한 실행 안에서 같은 사건 상속 사실 정리를 여러 번(증빙 칸 대조·봉안·처리개요) 하던 것 — 같은 기준일·같은 수정 상태면 2분 안에는 한 번만(서류 226개 노영환: 한 번에 30~50초)
+var CASEPROC_INHFACTS_MEMO_ = null;
 function caseProcInhFacts_(c, parsed) {
+  if (parsed) return caseProcInhFacts0_(c, parsed);
+  const mk = c.id + '|' + (c.기준일 || '') + '|' + (c.수정일 || '') + '|' + JSON.stringify(c.사건개요 || {}).length;
+  if (CASEPROC_INHFACTS_MEMO_ && CASEPROC_INHFACTS_MEMO_.k === mk && Date.now() - CASEPROC_INHFACTS_MEMO_.at < 120000) return JSON.parse(CASEPROC_INHFACTS_MEMO_.json);
+  const o = caseProcInhFacts0_(c);
+  try { CASEPROC_INHFACTS_MEMO_ = { k: mk, at: Date.now(), json: JSON.stringify(o) }; } catch (e) { CASEPROC_INHFACTS_MEMO_ = null; }
+  return o;
+}
+function caseProcInhFacts0_(c, parsed) {
   parsed = parsed || caseProcParseAll_(c);
   const saved = caseProcLoad_(c.id), choices = saved.ihChoices || {};
   const by = function (t) { return parsed.filter(function (x) { return x.p.type === t; }); };
