@@ -377,7 +377,7 @@ function answerKeyRun_(body) {
   //  점검끼리만 겹치지 않게 캐시 표시(7분 뒤 자동 해제 — 서버 실행 한도 6분보다 길게)로 대신한다.
   const akCache = CacheService.getScriptCache(), AK_RUN_FLAG = 'ak_running';
   if (akCache.get(AK_RUN_FLAG)) return { ok: true, more: true, busy: true, done: st.results.length, total: st.results.length + st.queue.length };
-  akCache.put(AK_RUN_FLAG, String(Date.now()), 420);
+  akCache.put(AK_RUN_FLAG, String(Date.now()), 380); // 서버 한도 6분 + 20초 — 끊긴 실행이 남긴 표시가 오래 막지 않게
   const lock = { releaseLock: function () { try { akCache.remove(AK_RUN_FLAG); } catch (e) {} } };
   try {
   const started = Date.now();

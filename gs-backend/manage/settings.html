@@ -493,6 +493,11 @@
         return callGas('answerkey_run', {}).then(function(r){ // [2026.10.15] 멈췄다 다시 누르면 처음부터가 아니라 이어서(서버가 진행 상태를 기억)
           if (r && r.error) throw new Error(r.error);
           netFails = 0;
+          // [2026.10.16] 서버가 앞선 실행(끊긴 실행이 남긴 표시 포함)으로 "바쁨"이면 20초 쉬고 다시 — 쉬지 않고 수백 번 부르다 400번 한도로 멈추던 것
+          if (r && r.more && r.busy){
+            bugList.textContent = '🧪 정답지 점검 중… 사건 ' + (r.done || 0) + '/' + (r.total || '?') + ' · 서버가 앞 사건을 처리 중이라 20초 뒤 이어서 부릅니다';
+            return new Promise(function(res){ setTimeout(res, 20000); }).then(function(){ return step(false); });
+          }
           if (r && r.more){
             if (++tries > 400) throw new Error('너무 오래 걸려 멈췄습니다 — 다시 누르면 이어서 합니다.');
             bugList.textContent = '🧪 정답지 점검 중… 사건 ' + (r.done || 0) + '/' + (r.total || '?') + (r.progress ? ' · 서류 읽는 중 ' + r.progress.done + '/' + r.progress.total + '(처음 읽는 서류는 한 건에 10~40초)' : '');
