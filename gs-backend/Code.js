@@ -24967,7 +24967,8 @@ function caseProcBasic_(c, body) {
     items.push(caseProcItem_('basic:납세자', 'missing', '납세자가 비어 있습니다.', { mode: 'input', target: 'case:납세자', input: 'text', cands: nm.map(function (n) { return { v: n, src: '사건 기록' }; }) }));
   }
   const manual = WORK_MANUAL_DEADLINE_TYPES_.indexOf(c.업무유형) !== -1;
-  if (!c.법정일) items.push(caseProcItem_('basic:법정일', 'missing', '법정일(처리기한)이 비어 있습니다.', manual ? { mode: 'input', target: 'case:법정일', input: 'date' } : { mode: 'base' }));
+  // [2026.10.15] 법정일은 기준일에서 계산된다 — 기준일이 아직 없으면 기준일 질문 하나로 충분(같은 일을 두 번 묻지 않음)
+  if (!c.법정일 && (manual || c.기준일)) items.push(caseProcItem_('basic:법정일', 'missing', '법정일(처리기한)이 비어 있습니다.', manual ? { mode: 'input', target: 'case:법정일', input: 'date' } : { mode: 'base' }));
   else if (c.상태 !== '완료' && c.법정일 < today) items.push(caseProcItem_('basic:기한경과:' + c.법정일, 'check', '법정일(' + c.법정일 + ')이 지났습니다.', { mode: 'options', options: [{ label: '기한후신고로 진행', decide: 'done', note: '기한후신고로 진행' }, { label: '법정일이 틀림 — 기준일부터 확인', mode: 'base' }] }));
   if (!manual) caseProcDateCheck_(c, body || {}, items);
   if (!String(c.폴더ID || '').trim()) items.push(caseProcItem_('basic:폴더', 'missing', '증빙 폴더가 없습니다 — 폴더가 있어야 서류를 읽고 처리할 수 있습니다.', { mode: 'folder' }));
@@ -25194,6 +25195,9 @@ function caseProcEvidence_(c) {
     if (!f.p || !f.p.t || f.p.office || !(f.p.wn > 0)) return;
     if (relevantT && relevantT.indexOf(f.p.t) === -1) return;
     if (/보증\s*보험/.test(f.p.l || '')) return;
+    // [2026.10.15] 실사용 기준 — 견적서(지출 증빙이 아니라 계산에 안 씀)와, 값은 정상인데 덧붙인 안내뿐인 ⚠(항목 이름을 안 붙임 등)는 질문으로 세우지 않는다
+    if (/견\s*적/.test(f.p.l || '') || /견\s*적/.test(f.name)) return;
+    if ((f.p.w || []).every(function (w) { return /항목별 이름|견적서는 실제 지출|참고용|원문과 대조/.test(w) && !/읽지 못|검산 (안|못)|맞추지 못/.test(w); })) return;
     // 상속 사건에서 상속 뒤 상속인이 낸 취득세·법무사·접수증·납부서는 상속세 계산 자료가 아님 — ⚠를 묻지 않음
     if (c.세목 === 'inheritance' && /^(acqtax|lawyerfee|receipt|payment)$/.test(f.p.t)) return;
     // 사망일 ⚠는 다른 서류(등기부 상속 원인일·분할협의서)로 확정된 날짜와 같으면 묻지 않음

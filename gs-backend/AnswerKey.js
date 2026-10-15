@@ -17,7 +17,7 @@
 const AK_KEY_NAME_ = '_정답지.json';
 const AK_RESULT_NAME_ = '_정답지점검결과.json';
 const AK_STATE_PROP_ = 'AK_RUN_STATE';
-const AK_CODE_VER_ = '2026-10-15g'; // 점검 규칙을 바꿔 배포할 때마다 올린다 — 멈췄던 점검의 옛 결과를 새 실행에 이어 붙이지 않게
+const AK_CODE_VER_ = '2026-10-15h'; // 점검 규칙을 바꿔 배포할 때마다 올린다 — 멈췄던 점검의 옛 결과를 새 실행에 이어 붙이지 않게
 
 function akReadCase_(caseId) {
   const sheet = work_getSheet_(), col = work_colMap_(sheet.getDataRange().getValues()[0]);
@@ -191,6 +191,7 @@ function akQuestionKind_(it) {
   if (/^ov:.*:(diff|est|cashdiff)/.test(id) || /^cf:/.test(id)) return '처리개요↔서류 다름';
   if (/^ov:/.test(id)) return it.kind === 'missing' ? '처리개요 빈 칸' : '처리개요 후보 선택';
   if (/^base:/.test(id)) return '기준일';
+  if (/^basic:업무유형/.test(id)) return '사건 관리'; // 세액과 무관한 사건 관리 칸 — 질문이 아니라 할 일로 센다
   if (/^basic:/.test(id)) return '사건 기본정보';
   if (/^(rf|tx):/.test(id)) return '양도 서류 정리';
   if (/^ih:/.test(id)) return '상속재산 평가';
@@ -268,7 +269,7 @@ function akRunCase0_(caseId, key) {
     out.rows.push({ field: field, expected: exp, tool: t.v === undefined || t.v === null ? '' : t.v, src: t.src, ok: akSame_(exp, t.v, kind || t.kind || AK_FIELD_KIND_[field]) });
   };
   Object.keys(key).forEach(function (k) {
-    if (/^(상태|출처|세목|남은항목|근거|메모|재산|초안판|오류|납세자)$/.test(k)) return;
+    if (/^(상태|출처|세목|남은항목|근거|메모|재산|초안판|오류|납세자)$/.test(k) || /^답_/.test(k)) return; // 답_ = 질문의 답으로만 쓰는 신고서 입력값(대조 칸 아님)
     if (k === '상속인수') { row('상속인수', key[k], tool.상속인수, 'number'); row('처리개요 상속인수', key[k], tool['처리개요 상속인수'], 'number'); return; }
     row(k, key[k], tool[k] || tool['처리개요 ' + k], AK_FIELD_KIND_[k]);
   });
@@ -312,6 +313,7 @@ function akRunCase0_(caseId, key) {
   out.noSourceDocs = !ev.srcDocs;
   out.fails = out.rows.filter(function (r) { return !r.ok; }).length + out.extra.length + out.missing.length;
   out.pass = out.fails === 0;
+  try { out.usable = akUsable_(c, key, out, tool); } catch (e) { out.usable = { ok: false, defects: ['판정 오류: ' + (e && e.message || e)] }; }
   out.taxOk = out.rows.length > 0 && out.rows.every(function (r) { return r.ok; }); // 세액 칸은 모두 맞음(질문은 따로 셈)
   return out;
 }
@@ -344,6 +346,11 @@ function answerKeyRun_(body) {
   if (st.queue.length) { props.setProperty(AK_STATE_PROP_, JSON.stringify(st)); return { ok: true, more: true, done: st.results.length, total: st.results.length + st.queue.length }; }
   props.deleteProperty(AK_STATE_PROP_);
   const result = { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), ver: AK_CODE_VER_, cases: st.results, pass: st.results.filter(function (r) { return r.pass; }).length, total: st.results.filter(function (r) { return !r.skipped; }).length, skipped: st.results.filter(function (r) { return r.skipped; }).length };
+  // [2026.10.15] 실사용 가능 n/m — 개발용(규칙을 맞춰 본) 사건과 처음 보는 사건을 나눠 센다
+  const usableOf = function (dev) { const xs = st.results.filter(function (r) { return !r.skipped && (r.rows || []).length && (AK_DEV_CASES_.indexOf(r.caseId) !== -1) === dev; }); return { ok: xs.filter(function (r) { return r.usable && r.usable.ok; }).length, n: xs.length }; };
+  result.usableDev = usableOf(true); result.usableNew = usableOf(false);
+  const dc = {}; st.results.forEach(function (r) { ((r.usable && r.usable.defects) || []).forEach(function (d) { const k = d.replace(/[(—].*$/, '').replace(/\s*\d+건/, '').trim(); dc[k] = (dc[k] || 0) + 1; }); });
+  result.defectTop = Object.keys(dc).sort(function (a, b) { return dc[b] - dc[a]; }).slice(0, 5).map(function (k) { return k + ' ' + dc[k] + '건'; });
   try {
     const folder = getBusinessManagerFolder_();
     // [2026.10.15] 세무사님 지시: 점검 내용을 없애지 말고 한 파일에 통합 보관 — 새 결과를 _정답지점검_보관.md 끝에 회차로 이어 붙인다(akArchiveMd_)
@@ -429,6 +436,25 @@ function akParseFormResult_(text, seMok) {
     if (lm) { const g = (t.slice(lm.index, lm.index + 400).match(/\d{1,3}(?:,\d{3})+/g) || []).map(function (x) { return Number(x.replace(/,/g, '')); }).filter(function (v) { return v >= out.과세표준; })[0]; if (g) out.과세가액 = g; }
     if (out.과세가액 && seMok === 'inheritance' && has(out.과세가액 - out.과세표준)) out.상속공제 = out.과세가액 - out.과세표준; // 감정평가수수료가 있으면 맞지 않아 안 씀
   } else {
+    // [2026.10.15] 초안 6판 — 신고서의 입력값(양도가액·취득가액·필요경비)도 "질문의 답" 전용으로(답_ 칸) 읽는다. 세법 관계가 맞는 숫자 묶음만:
+    //  양도소득금액 = 과세표준 + 기본공제 250만, 양도차익 = 소득금액 + 장기보유특별공제(0일 수 있음), 양도가액 − 취득가액 − 필요경비 = 양도차익.
+    //  여러 묶음이 맞으면 양도가액이 가장 큰 것, 같으면 취득가액이 큰 것(취득가액과 필요경비가 서로 바뀌어 맞는 경우). 안 맞으면 넣지 않음(지어내지 않음). 대조 칸이 아니라 실사용 판정 ③에서 질문에 답할 때만 쓴다.
+    const inc = out.과세표준 + 2500000;
+    if (has(inc)) {
+      let best = null;
+      nums.filter(function (g) { return g >= inc && (g === inc || has(g - inc)); }).forEach(function (g) {
+        nums.forEach(function (tp) {
+          if (tp <= g) return;
+          nums.forEach(function (ap) {
+            if (ap >= tp) return;
+            const ex = tp - ap - g;
+            if (ex < 0 || (ex > 0 && !has(ex))) return;
+            if (!best || tp > best.tp || (tp === best.tp && ap > best.ap)) best = { tp: tp, ap: ap, ex: ex, g: g };
+          });
+        });
+      });
+      if (best) { out.답_양도가액 = best.tp; out.답_취득가액 = best.ap; out.답_필요경비 = best.ex; out.답_양도차익 = best.g; }
+    }
     const pm = /(?:자\s*진\s*)?납\s*부\s*할\s*세\s*액/.exec(t);
     if (pm) { const p = (t.slice(pm.index, pm.index + 300).match(/\d{1,3}(?:,\d{3})+/g) || []).map(function (x) { return Number(x.replace(/,/g, '')); }).filter(function (v) { return v <= out.산출세액 * 1.5 && v >= 1000; })[0]; if (p) out.납부세액 = p; }
   }
@@ -480,12 +506,12 @@ function answerKeyDraft_(body) {
     if (!ids && !CASEPROC_TAX_LABEL_[c.세목]) continue; // 신고가 끝난(완료) 사건이 정답지 원천이라 완료도 포함
     if (!String(c.폴더ID || '').trim()) continue;
     const ek = akLoadKey_(c);
-    if (!ids && ek && ek.key && (ek.key.상태 === '확정' || ek.key.초안판 >= 5)) continue; // 확정·5판 초안은 건너뜀(여러 번 눌러 이어서 진행)
+    if (!ids && ek && ek.key && (ek.key.상태 === '확정' || ek.key.초안판 >= 6)) continue; // 확정·5판 초안은 건너뜀(여러 번 눌러 이어서 진행)
     if (Date.now() - started > 200000) { more = true; break; } // 처음 읽는 서류가 많으면 한 번에 다 못 함 — 화면이 이어서 다시 부름
     const all = caseProcFiles_(c).filter(function (f) { return /pdf|^image\//.test(String(f.mimeType || '')); });
     const files = all.filter(function (f) { return /양도\s*코리아|yangdo|^양코|신고서|계산서|계산명세/i.test(f.name) && !/지방|종합소득|접수증|납부서/.test(f.name); });
     // 3판 초안에 숫자가 있고 신고서가 하나뿐이면 다시 읽지 않는다(세율 검산 규칙은 그대로) — 4판 표시만
-    if (!ids && ek && ek.key && ek.key.초안판 >= 3 && !ek.key.오류 && files.length <= 1 && !(c.세목 === 'gift' && all.some(function (f) { return /납부서/.test(f.name); }) && files.length > 1)) { ek.key.초안판 = 5; answerKeySave_({ caseId: c.id, key: ek.key }); continue; }
+    if (!ids && ek && ek.key && ek.key.초안판 >= 3 && !ek.key.오류 && files.length <= 1 && c.세목 !== 'transfer' && !(c.세목 === 'gift' && all.some(function (f) { return /납부서/.test(f.name); }) && files.length > 1)) { ek.key.초안판 = 6; answerKeySave_({ caseId: c.id, key: ek.key }); continue; }
     const found = []; // {owner, res, src, why}
     files.slice(0, 8).forEach(function (f) {
       const txt = tc_docText_(f) || '';
@@ -501,7 +527,7 @@ function answerKeyDraft_(body) {
       pays.forEach(function (f) { if (found.length) return; const v = akPaySlipAmount_(tc_docText_(f) || '', c.세목); if (v) found.push({ owner: '', res: { 납부세액: v }, src: f.name, why: '신고서가 폴더에 없어 국세 납부서의 ' + CASEPROC_TAX_LABEL_[c.세목] + ' 납부금액만(분납이면 1회차만일 수 있음)' }); });
     }
     if (!found.length) {
-      if (ek && ek.key && ek.key.상태 !== '확정') answerKeySave_({ caseId: c.id, key: { 세목: c.세목, 상태: '초안', 초안판: 5, 오류: files.length ? '신고서에서 세율 계산이 맞는 숫자를 찾지 못함' : '신고서·국세 납부서가 폴더에 없음 — 신고서 PDF를 사건 폴더에 저장해 주세요' } });
+      if (ek && ek.key && ek.key.상태 !== '확정') answerKeySave_({ caseId: c.id, key: { 세목: c.세목, 상태: '초안', 초안판: 6, 오류: files.length ? '신고서에서 세율 계산이 맞는 숫자를 찾지 못함' : '신고서·국세 납부서가 폴더에 없음 — 신고서 PDF를 사건 폴더에 저장해 주세요' } });
       if (ids || files.length) made.push({ caseId: c.id, 사건명: c.사건명, error: files.length ? '신고서 PDF ' + files.length + '개(' + files.slice(0, 3).map(function (f) { return f.name; }).join(', ') + ')에서 세율 계산이 맞는 과세표준·산출세액 짝을 찾지 못함(다른 세목 서식이거나 글자인식 불량)' : '신고서 PDF(홈택스·양도코리아)가 사건 폴더에 없음' });
       continue;
     }
@@ -513,7 +539,7 @@ function answerKeyDraft_(body) {
       const name = own ? '_정답지(' + own + ').json' : AK_KEY_NAME_;
       const cur = (akLoadKey_(c, name) || {}).key || {};
       const confirmed = cur.상태 === '확정';
-      const key = confirmed ? Object.assign({}, cur) : { 세목: c.세목, 상태: '초안', 초안판: 5, 출처: x.src };
+      const key = confirmed ? Object.assign({}, cur) : { 세목: c.세목, 상태: '초안', 초안판: 6, 출처: x.src };
       if (own) key.납세자 = own;
       Object.keys(x.res).forEach(function (f) { if (!(confirmed && key[f] !== undefined)) key[f] = x.res[f]; });
       key.근거 = Object.assign({}, confirmed ? (key.근거 || {}) : {}, Object.keys(x.res).reduce(function (o, f) { o[f] = (x.why ? x.why + ' — ' : '') + '신고서(' + x.src + ')' + (x.why ? '' : ' — 글자인식 + 세율 검산(과세표준↔산출세액' + (f === '신고세액공제' || f === '납부세액' ? '↔세액공제↔납부' : '') + ')으로 맞는 숫자') + ', 세무사님 확인 전'; return o; }, {}));
@@ -531,12 +557,14 @@ function akArchiveMd_(folder, result) {
   const won = function (v) { return typeof v === 'number' ? v.toLocaleString('ko-KR') : (v === '' || v == null ? '' : String(v)); };
   const cell = function (v) { return String(v == null ? '' : v).replace(/\|/g, '/').replace(/\n/g, ' '); };
   const cs = result.cases || [];
-  const out = ['', '## 회차: 규칙판 ' + (result.ver || '') + ' (' + result.at + ', 통과 ' + result.pass + '/' + result.total + ')', '',
+  const out = ['', '## 회차: 규칙판 ' + (result.ver || '') + ' (' + result.at + ', 통과 ' + result.pass + '/' + result.total + (result.usableNew ? ', 실사용 가능 개발 ' + result.usableDev.ok + '/' + result.usableDev.n + ' · 처음 ' + result.usableNew.ok + '/' + result.usableNew.n : '') + ')', '', (result.defectTop || []).length ? '남은 결함 유형: ' + result.defectTop.join(', ') : '', '',
     '보관본: `' + AK_RESULT_NAME_ + '`의 이 회차 내용 (블라인드 점검 — 사건에 저장된 값 무시, 폴더 원시서류만으로 계산)', '', '### 목차'];
-  cs.forEach(function (c, i) { out.push((i + 1) + '. ' + (c.pass ? '✅' : '❌') + ' ' + (c.사건명 || c.caseId)); });
+  cs.forEach(function (c, i) { out.push((i + 1) + '. ' + (c.usable && c.usable.ok ? '✅' : '❌') + ' ' + (c.사건명 || c.caseId) + (AK_DEV_CASES_.indexOf(c.caseId) !== -1 ? ' (개발용)' : '')); });
   cs.forEach(function (c, i) {
     out.push('', '---', '', '### ' + (i + 1) + '. ' + (c.pass ? '✅ 통과' : '❌ 불통과') + ' — ' + (c.사건명 || c.caseId), '');
     if (c.skipped || c.error) { out.push('건너뜀: ' + cell(c.error || c.why || '')); return; }
+    const u = c.usable || {};
+    if (c.usable) out.push('**실사용 ' + (u.ok ? '가능 ✅' : '불가 ❌') + '** — ① 서류값 ' + (u.s1 ? '✅' : '❌') + ' · ② 질문 ' + (u.s2 ? '✅' : '❌') + '(필요 ' + u.need + ' · 불필요 ' + u.noise + ' · 증빙 할 일 ' + u.todo + ') · ③ 답하고 재계산 ' + (u.s3 === 'ok' ? '✅' : u.s3) + (u.s3why ? ' — ' + cell(u.s3why) : '') + ((u.defects || []).length ? ' · 결함: ' + u.defects.map(cell).join(' / ') : ''), '');
     out.push('원시서류 ' + (c.srcDocs || 0) + '개 · 발생문서(신고서 등, 정답지 전용) ' + (c.outDocs || 0) + '개' + (c.judge ? ' · 판단 필요' : '') + (c.noSourceDocs ? ' · 원시서류 없음' : ''), '');
     if ((c.rows || []).length) {
       out.push('| 항목 | 정답(신고서) | 도구 값 | 일치 | 도구 값 출처·사유 |', '|---|---|---|---|---|');
@@ -556,3 +584,95 @@ function akArchiveMd_(folder, result) {
   if (it.hasNext()) { const f = it.next(); f.setContent(f.getBlob().getDataAsString('UTF-8') + '\n' + out.join('\n') + '\n'); }
   else folder.createFile(AK_ARCHIVE_NAME_, '# 정답지 점검 보관 — 회차별 통합 기록\n' + out.join('\n') + '\n', 'text/markdown');
 }
+
+// =========================================================
+// [2026.10.15] '실사용 가능' 판정(세무사님 기준) — 사건 통과 = ①②③ 모두:
+//  ① 폴더 원시서류로 채운 값이 맞다(도구가 값을 냈는데 정답과 다르면 결함 "서류값 잘못 읽음/계산 틀림")
+//  ② 서류로 못 정한 값마다 질문이 떠 있고(없으면 "물어야 할 걸 안 물음"), 쓸데없는 질문이 없다(판독 ⚠·사건 기본정보·기타 = "불필요 질문")
+//     — 미확보 서류 목록(서류 없음·비슷한 파일)은 질문이 아니라 증빙 할 일로 따로 센다
+//  ③ 떠 있는 질문에 정답지(신고서) 값으로 답했다고 치고 다시 계산하면 세액이 일치한다. 정답지 값은 "그 질문의 답"으로만 쓴다 —
+//     질문이 없던 칸에는 넣지 않는다. 정답지에 그 답이 없어 확인할 수 없으면 '확인불가'(실사용 가능으로 세지 않음).
+// =========================================================
+const AK_NEED_CATS_ = { '처리개요 빈 칸': 1, '처리개요 후보 선택': 1, '처리개요↔서류 다름': 1, '사건분류 판단': 1, '10년 합산': 1, '기준일': 1, '양도 서류 정리': 1, '상속재산 평가': 1 };
+const AK_NOISE_CATS_ = { '판독 ⚠': 1, '사건 기본정보': 1, '기타': 1 };
+function akUsable_(c, key, out, tool) {
+  const qs = [].concat(out.extra || [], out.needed || []);
+  const need = qs.filter(function (q) { return AK_NEED_CATS_[q.cat]; }), noise = qs.filter(function (q) { return AK_NOISE_CATS_[q.cat]; });
+  const todo = qs.filter(function (q) { return !AK_NEED_CATS_[q.cat] && !AK_NOISE_CATS_[q.cat]; });
+  const tax = (out.rows || []).filter(function (r) { return /^(과세가액|과세표준|산출세액|신고세액공제|납부세액|상속공제)$/.test(r.field); });
+  const filled = tax.filter(function (r) { return r.tool !== '' && r.tool !== null && r.tool !== undefined; });
+  const defects = [];
+  // ①
+  const wrong = filled.filter(function (r) { return !r.ok; });
+  const s1 = !wrong.length && !out.judge || (!!out.judge && !wrong.length);
+  if (wrong.length) defects.push('서류값 잘못 읽음/계산 틀림(' + wrong.map(function (r) { return r.field; }).join('·') + ')');
+  // ②
+  const blank = tax.length && filled.length < tax.length;
+  const s2cover = !blank || need.length > 0 || !!out.judge;
+  if (!s2cover) defects.push('물어야 할 걸 안 물음(값이 비었는데 질문 없음)');
+  if (noise.length) defects.push('불필요 질문 ' + noise.length + '건(' + noise.map(function (q) { return q.cat; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join('·') + ')');
+  const s2 = s2cover && !noise.length;
+  // ③
+  let s3 = 'ok', s3why = '';
+  const exp = {}; tax.forEach(function (r) { exp[r.field] = r.expected; });
+  const cmp = function (got) { const bad = tax.filter(function (r) { return got[r.field] !== undefined && !akSame_(r.expected, got[r.field], 'money'); }); return bad.length ? bad.map(function (r) { return r.field + ' ' + r.expected + '≠' + got[r.field]; }).join(', ') : ''; };
+  if (!tax.length) { s3 = '확인불가'; s3why = '정답지에 세액 칸 없음'; }
+  else if (filled.length === tax.length && !wrong.length) { s3 = 'ok'; }
+  else if (out.judge && tool._ref) {
+    // 판단 질문(사건분류)에 정답지대로 "일반 과세"로 답한 경우 — 도구의 일반 과세 계산값과 비교
+    const d = cmp({ 과세표준: tool._ref.과세표준, 산출세액: tool._ref.산출세액 });
+    s3 = d ? '불일치' : 'ok'; s3why = d ? '사건분류를 정답지대로(일반) 답해도 다름: ' + d : '사건분류 질문에 "일반"으로 답하면 일치';
+  } else if (c.세목 === 'gift') {
+    const ov = c.사건개요 || {}, dg = function (x) { return Number(String(x == null ? '' : x).replace(/[^\d]/g, '')) || 0; };
+    const has = function (re) { return need.some(function (q) { return re.test(q.id || ''); }); };
+    let amt = dg(ov.giftAmount), rel = String(ov.giftRelation || ''), prior = dg(ov.giftPriorAmount);
+    const tv = dg(exp.과세가액), tb = dg(exp.과세표준);
+    if ((!amt || has(/^ov:giftAmount/)) && has(/^ov:giftAmount/) && tv) amt = tv;              // 증여재산가액 질문 → 정답지 과세가액
+    if (!rel && has(/^ov:giftRelation/) && tv && exp.과세표준 !== undefined) {               // 관계 질문 → 정답지 (과세가액 − 과세표준) = 증여재산공제
+      const ded = tv - tb; rel = ded >= 600000000 ? '배우자' : ded >= 50000000 ? '직계존속' : ded >= 20000000 ? '직계존속' : ded >= 10000000 ? '기타친족' : ded === 0 ? '기타' : '';
+    }
+    if (has(/^ov:giftPriorAmount/) && tv && amt && tv > amt && !prior) prior = tv - amt;       // 10년 합산 질문 → 정답지 과세가액 − 이번 증여
+    if (!amt || !rel) { s3 = '확인불가'; s3why = '정답지로 답할 수 없는 질문이 남음(' + (!amt ? '증여재산가액' : '관계') + ')'; }
+    else {
+      const input = { giftAmount: amt, relation: /배우자/.test(rel) ? '배우자' : /직계존속/.test(rel) ? '직계존속' : /직계비속/.test(rel) ? '직계비속' : /기타친족/.test(rel) ? '기타친족' : '기타', giftDate: c.기준일 || undefined };
+      if (prior) input.priorGiftAmount = prior;
+      if (dg(ov.giftDebtAssumed)) { input.debtAssumedAmount = dg(ov.giftDebtAssumed); input.isDebtObjectivelyProven = true; }
+      const r = runUiEngineCalcTool_('calculate_gift_tax', input) || { error: '엔진 없음' };
+      if (r.error) { s3 = '확인불가'; s3why = '엔진 오류: ' + r.error; }
+      else {
+        const got = { 과세표준: r.과세표준, 산출세액: r.산출세액_할증후 != null ? r.산출세액_할증후 : r.산출세액, 신고세액공제: r.신고세액공제, 납부세액: r.납부세액,
+          과세가액: (r.과세표준 || 0) + (r.증여재산공제 || 0) + (r.혼인출산증여재산공제 || 0) + (r.감정평가수수료공제 || 0) + (r.재해손실공제 || 0) };
+        const d = cmp(got); s3 = d ? '불일치' : 'ok'; s3why = (d ? '질문에 정답지 값으로 답해도 다름: ' + d : '질문에 정답지 값으로 답하면 일치') + ' (답한 값: ' + JSON.stringify(input) + ')';
+      }
+    }
+  } else if (c.세목 === 'transfer' && (key.답_양도가액 || key.답_취득가액)) {
+    // 양도 — 처리개요 물건이 하나이고 도구가 비워 둔(=질문한) 칸만 정답지 신고서 입력값으로 채워 다시 계산. 사건분류는 정답지 세율(일반)대로 답한 것으로 본다.
+    const dg = function (x) { return Number(String(x == null ? '' : x).replace(/[^\d]/g, '')) || 0; };
+    const c2 = JSON.parse(JSON.stringify(c)), ov2 = c2.사건개요 = c2.사건개요 || {};
+    let list = Array.isArray(ov2.물건목록) && ov2.물건목록.length ? ov2.물건목록 : null;
+    if (!list && !(ov2.양도가액 || ov2.취득가액 || ov2.취득일 || ov2.assetLocation)) { ov2.물건목록 = [{}]; list = ov2.물건목록; }
+    const a = list ? list[0] : ov2;
+    const asked = need.length > 0, answered = [];
+    if (list && list.length > 1) { s3 = '확인불가'; s3why = '물건이 여럿 — 신고서 입력값을 물건별로 나눌 수 없음'; }
+    else if (!asked) { s3 = '확인불가'; s3why = '값이 비었는데 질문이 없음'; }
+    else {
+      if (!dg(a.양도가액) && key.답_양도가액) { a.양도가액 = String(key.답_양도가액); answered.push('양도가액'); }
+      if (!dg(a.취득가액) && key.답_취득가액) { a.취득가액 = String(key.답_취득가액); answered.push('취득가액'); }
+      if (!a.취득일 || !(a.양도일 || c2.기준일)) { s3 = '확인불가'; s3why = '취득일·양도일이 비어 신고서 금액만으로 다시 계산할 수 없음'; }
+      else {
+        const tr = akTransferEngine_(c2, dg);
+        if (!tr.result || tr.result.error) { s3 = '확인불가'; s3why = '다시 계산 못 함: ' + ((tr.result && tr.result.error) || tr.why || ''); }
+        else {
+          const got = { 과세표준: tr.result.과세표준 != null ? tr.result.과세표준 : tr.result.합산과세표준, 산출세액: tr.result.산출세액 != null ? tr.result.산출세액 : tr.result.산출세액_합계 };
+          const d = cmp(got); s3 = d ? '불일치' : 'ok';
+          s3why = (d ? '질문에 정답지 값으로 답해도 다름: ' + d : '질문에 정답지 값으로 답하면 일치') + (answered.length ? ' (답한 칸: ' + answered.join('·') + ')' : ' (사건분류만 "일반"으로 답함)');
+        }
+      }
+    }
+  } else { s3 = '확인불가'; s3why = '정답지(신고서)에 질문의 답(양도·취득가액, 재산 평가액 등 입력값)이 없음'; }
+  if (s3 === '불일치') defects.push('다 채웠는데 계산 틀림(' + s3why + ')');
+  if (s3 === '확인불가' && !defects.length) defects.push('③ 확인불가 — ' + s3why);
+  return { ok: !!(s1 && s2 && s3 === 'ok'), s1: !!s1, s2: !!s2, s3: s3, s3why: s3why, need: need.length, noise: noise.length, todo: todo.length, defects: defects };
+}
+// 규칙을 맞춰 보며 고친(개발용) 사건 — 실사용 가능 비율은 이 사건들과 처음 보는 사건을 나눠 센다(사건 ID만, 이름 없음)
+const AK_DEV_CASES_ = ['17483541-9f88-4c08-8e44-16f78024dbab', '382b2d21-98cc-43e8-8a80-d97cda98704c', '51604c63-cde5-4713-833b-2853c1b5e21f', '8464652a-014a-4085-9091-5332d96ee2c1', '9a41c4cf-8f88-4a6f-b5a4-7b4def36fdaa', 'f945ea9d-e6ff-4f2c-a6fd-7481a34f4c5c'];
