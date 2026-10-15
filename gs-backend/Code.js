@@ -25623,11 +25623,17 @@ function caseProcEvidence_(c) {
     if (rb === 'ref' && (acqOnly || sellOnly)) return false;
     if (rb && acqOnly) return rb === 'buyer';
     if (rb && sellOnly) return rb === 'seller';
+    // [2026.10.16] 계약서인데 본문으로 역할(매도인/매수인)을 못 정했고 파일 이름에도 역할이 없으면 양도·취득 계약서 칸을 채우지 않는다 —
+    //  김환식: 신규주택 계약서 사진(KakaoTalk_…_01.jpg) 한 장이 '양도 매매계약서'와 '취득 당시 매매계약서'를 둘 다 확보로 표시했다
+    if (!rb && (acqOnly || sellOnly) && /계약서/.test(L) && !/양도|매도|취득|매수/.test(n)) return false;
+    // 신규·대체 주택 계약서는 판 집의 양도·취득 계약서가 아님(일시적 2주택 판정 참고) — 양도 사실 정리의 newHome과 같은 기준
+    if ((acqOnly || sellOnly) && /계약서/.test(L) && /신규\s*주택|대체\s*주택|새\s*집/.test(n)) return false;
     if (/취득/.test(L) && !/양도/.test(L)) return !(/양도|매도/.test(n) && !/취득|매수/.test(n)); if (/양도/.test(L) && !/취득/.test(L)) return !(/취득|매수/.test(n) && !/양도|매도/.test(n)); return true;
   };
   const roleNamed = function (label, name) {
     const L = String(label || ''), n = String(name || '');
     // [2026.10.16] 파일 이름에 역할이 분명하면(양도·매도 / 취득·매수) 본문 판독보다 이름 — 양도 사실 정리와 같은 기준(노오섭: "1 양도 계약서.pdf"가 있는데 본문 판독이 매수인이라 "미확보"로 물었다)
+    if (/계약서/.test(L) && /신규\s*주택|대체\s*주택|새\s*집/.test(n)) return false; // 신규·대체 주택 계약서는 판 집의 계약서가 아님
     const nameRole = /양도|매도/.test(n) && !/취득|매수/.test(n) ? 'seller' : /취득|매수/.test(n) && !/양도|매도/.test(n) ? 'buyer' : '';
     const rb = nameRole || roleBody[n];
     if (rb) return (/취득/.test(L) && !/양도/.test(L) && rb === 'buyer') || (/양도/.test(L) && !/취득/.test(L) && rb === 'seller');
