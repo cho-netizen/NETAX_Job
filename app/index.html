@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 11:05 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 14:04 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -815,6 +815,25 @@
   body.lay-phone .taxcalc-asset-head span{ flex-wrap:wrap; }
   body.lay-phone .taxcalc-grid > .taxcalc-field{ flex-basis:100% !important; }
 
+  /* ===== [2026.10.15] 접는 폰 커버화면(body.lay-cover, script.html nxIsCoverScreen_) ==========
+     세무사님 결정: 커버화면에서는 약식 대시보드 ↔ AI 두 화면만 아래 버튼으로 오간다. 왼쪽 메뉴·오른쪽 AI 패널·
+     도움말 버튼은 숨기고, 대시보드는 할일·일정·마감임박·상담신청 카드(.dash-cover)만 촘촘하게 보인다. */
+  #nxCoverBar{ display:none; }
+  body.lay-cover #appRoot.shown ~ #nxCoverBar{ display:flex; position:fixed; left:0; right:0; bottom:0; z-index:60; gap:6px;
+    padding:5px 8px calc(5px + env(safe-area-inset-bottom)); background:var(--navy); }
+  #nxCoverBar button{ flex:1; border:none; border-radius:8px; padding:9px 0; font-size:14px; font-weight:600; background:rgba(255,255,255,0.08); color:#fff; cursor:pointer; }
+  #nxCoverBar button.on{ background:var(--gold); color:var(--navy); }
+  body.lay-cover #appRoot.shown{ height:calc(100% - 48px - env(safe-area-inset-bottom)); }
+  body.lay-cover #sideMenu, body.lay-cover #sideAI, body.lay-cover #globalHelpBtn{ display:none !important; }
+  body.lay-cover #view-dashboard .card:not(.dash-cover){ display:none; }
+  body.lay-cover #view-dashboard .view-head{ padding:8px 10px 4px; }
+  body.lay-cover #view-dashboard .view-head h2{ font-size:15px; }
+  body.lay-cover #view-dashboard .view-body{ padding:0 8px 8px; }
+  body.lay-cover #view-dashboard .card{ padding:9px 10px; margin-bottom:8px; font-size:13px; }
+  body.lay-cover #view-dashboard .card h3{ font-size:14px; margin:0 0 6px; }
+  body.lay-cover #view-dashboard .card h3 a,
+  body.lay-cover #view-dashboard .card > div:has(> #dashCalRangeBefore){ display:none !important; }
+
   /* ===== [2026.10.08] 다크모드(설정 탭) ==========================================
      - 업무 화면들(#centerWork의 각 .view)은 색이 화면마다 직접 박혀 있어(630곳) 하나씩 바꾸면 빠지는
        곳이 생긴다 — 화면 전체를 반전(invert + hue-rotate로 색상은 유지, 밝기만 뒤집음)해서 빠짐없이 적용한다.
@@ -901,7 +920,7 @@
   <div class="view-body">
     <!-- [2026.09] 사용자 요청 — 할일을 대시보드 맨 위로. 마감일 입력·수정·삭제도 여기서
          바로 되도록 카드를 다시 만듦(구글 태스크, get/add/update/delete_google_task). -->
-    <div class="card">
+    <div class="card dash-cover">
       <h3>✅ 할일
         <a href="https://tasks.google.com/tasks/" target="_blank" rel="noopener" class="ghost-btn" style="float:right; font-size:11px; padding:2px 8px; text-decoration:none;">🔗 구글 태스크 열기</a>
       </h3>
@@ -917,7 +936,7 @@
     <!-- [2026.09.16] 세무사님 요청 — 할일 바로 다음으로 순서 이동, 타이틀 "오늘~7일 일정"을
          그냥 "일정"으로 줄이고, 구글캘린더로 바로 가는 링크와 조회기간(전/후 며칠)을
          직접 지정하는 기능을 추가한다. 기본값은 전 0일·후 7일(기존과 동일한 범위). -->
-    <div class="card">
+    <div class="card dash-cover">
       <h3>📅 일정
         <a href="https://calendar.google.com/calendar/" target="_blank" rel="noopener" class="ghost-btn" style="float:right; font-size:11px; padding:2px 8px; text-decoration:none;">🔗 구글 캘린더 열기</a>
       </h3>
@@ -926,11 +945,11 @@
       </div>
       <div id="dashCalendar"><div class="spinner">불러오는 중…</div></div>
     </div>
-    <div class="card">
+    <div class="card dash-cover">
       <h3>⏰ 마감임박 작업</h3>
       <div id="dashDeadlines"><div class="spinner">불러오는 중…</div></div>
     </div>
-    <div class="card">
+    <div class="card dash-cover">
       <h3>📅 대기중인 상담신청</h3>
       <div id="dashBookings"><div class="spinner">불러오는 중…</div></div>
     </div>
@@ -43720,16 +43739,26 @@ function goToReportWriter_(caseId, opts){
       }).join('');
     }
     document.getElementById('stBtnAnswerKey').addEventListener('click', function(){
-      var tries = 0;
+      var tries = 0, netFails = 0;
       var step = function(first){
         return callGas('answerkey_run', {}).then(function(r){ // [2026.10.15] 멈췄다 다시 누르면 처음부터가 아니라 이어서(서버가 진행 상태를 기억)
           if (r && r.error) throw new Error(r.error);
+          netFails = 0;
           if (r && r.more){
-            if (++tries > 200) throw new Error('너무 오래 걸려 멈췄습니다 — 다시 누르면 이어서 합니다.');
+            if (++tries > 400) throw new Error('너무 오래 걸려 멈췄습니다 — 다시 누르면 이어서 합니다.');
             bugList.textContent = '🧪 정답지 점검 중… 사건 ' + (r.done || 0) + '/' + (r.total || '?') + (r.progress ? ' · 서류 읽는 중 ' + r.progress.done + '/' + r.progress.total + '(처음 읽는 서류는 한 건에 10~40초)' : '');
             return step(false);
           }
           akRender_(r && r.result);
+        }, function(err){
+          // [2026.10.15] 서버 호출 하나가 오래 걸려 화면 쪽 요청만 끊긴 경우(시간 초과·연결 끊김) — 서버는 진행 상태를 저장하므로 잠깐 쉬고 이어서 다시 부른다
+          //  (예전: 한 번 끊기면 점검 전체가 "signal is aborted"로 멈춰 밤새 기다려도 진행이 없었다)
+          var msg = String(err && err.message || err);
+          if (/abort|Failed to fetch|NetworkError|timeout|시간|응답 없음|network|load failed/i.test(msg) && ++netFails <= 30){
+            bugList.textContent = '🧪 정답지 점검 — 서버 응답이 늦어 연결이 끊겼습니다. 20초 뒤 이어서 다시 부릅니다(' + netFails + '번째)…';
+            return new Promise(function(res){ setTimeout(res, 20000); }).then(function(){ return step(false); });
+          }
+          throw err;
         });
       };
       bugList.textContent = '🧪 정답지 점검 중… (AI 비용 0)';
@@ -44231,6 +44260,14 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   ============================================================
 -->
 <div id="nxAi" class="nxai mode-side ph-chat">
+  <!-- [2026.10.15] 접는 폰 커버화면 전용 토킹모드 — 화면이 작아 글자 대화는 빼고, 말로 묻고 답을 소리로 듣는다.
+       body.lay-cover일 때만 보이고 나머지 AI 화면은 숨긴다(아래 nxAiTalk* 함수). 같은 대화(nxAiConv)에 그대로 쌓인다. -->
+  <div class="nxai-talk" id="nxAiTalk">
+    <div class="nxai-talk-q" id="nxAiTalkQ"></div>
+    <div class="nxai-talk-a" id="nxAiTalkA">버튼을 누르고 말씀하세요.</div>
+    <button type="button" class="nxai-talk-mic" id="nxAiTalkMic" aria-label="말하기">🎤</button>
+    <div class="nxai-talk-st" id="nxAiTalkSt">누르고 말하기</div>
+  </div>
   <div class="nxai-phone-tabs" id="nxAiPhoneTabs">
     <button type="button" data-ph="list">💬 대화 목록</button>
     <button type="button" data-ph="chat" class="on">🤖 대화</button>
@@ -44387,6 +44424,20 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
 </div>
 
 <style>
+  /* ===== [2026.10.15] 커버화면 토킹모드 ===== */
+  .nxai-talk{ display:none; }
+  body.lay-cover #nxAi > :not(#nxAiTalk){ display:none !important; }
+  body.lay-cover #nxAiTalk{ display:flex; flex-direction:column; align-items:center; gap:8px; width:100%; height:100%; min-height:0;
+    padding:10px 12px; box-sizing:border-box; background:var(--navy); color:#fff; }
+  .nxai-talk-q{ align-self:stretch; font-size:12.5px; color:var(--gold-light); max-height:3.2em; overflow:hidden; line-height:1.6; }
+  .nxai-talk-a{ align-self:stretch; flex:1; min-height:0; overflow-y:auto; font-size:15px; line-height:1.6; white-space:pre-wrap; }
+  .nxai-talk-mic{ flex-shrink:0; width:84px; height:84px; border-radius:50%; border:none; background:var(--gold); color:var(--navy); font-size:34px; cursor:pointer; }
+  .nxai-talk-mic.listen{ background:#e5484d; color:#fff; animation:nxaiTalkPulse 1.2s ease-in-out infinite; }
+  .nxai-talk-mic.busy{ background:#55607a; color:#fff; }
+  .nxai-talk-mic.speak{ background:#2f9e6b; color:#fff; }
+  .nxai-talk-st{ flex-shrink:0; font-size:12.5px; color:#c9d2e6; }
+  @keyframes nxaiTalkPulse{ 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.07); } }
+
   /* ===== 공통 ===== */
   .nxai{ --nxai-font:13.5px; display:flex; height:100%; min-height:0; width:100%; font-size:var(--nxai-font); }
   .nxai [hidden]{ display:none !important; }
@@ -45919,13 +45970,13 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   function nxAiBuildContext_(extra){
     return Object.assign({
       currentView: nxAiCurrentViewLabel_(),
-      aiPanel: nxAiMode,
+      aiPanel: window.nxCover ? 'side' : nxAiMode, // 커버화면 토킹모드는 짧은 답(사이드바 규칙)
+      voiceTurn: !!window.nxCover,
       currentPath: nxAiCurrentPath_(),
       linkedCase: nxAiConv.caseId ? { id: nxAiConv.caseId, name: nxAiConv.caseName } : null,
       openFile: nxAiOpenFileContext_(),
       attachedItems: [],
-      attachedTexts: [],
-      voiceTurn: false
+      attachedTexts: []
     }, extra || {});
   }
 
@@ -48057,9 +48108,136 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     }
   })();
 </script>
+<script>
+  // ============================================================
+  // [2026.10.15] 커버화면 토킹모드 — 말로 묻고(브라우저 음성인식) 답을 소리로 듣는다(브라우저 음성합성).
+  // 세무사님 지시: "커버화면은 채팅은 못 하니 토킹모드". 휴대폰은 job.netax.kr/app(구글 틀 밖)으로 쓰므로 마이크가 열린다.
+  // 들은 말은 입력창에 넣어 평소 보내기(nxAiSend_)로 보낸다 — ⚡바로 처리·사건처리 말로 답하기·AI가 그대로 동작하고
+  // 같은 대화에 쌓인다. 답이 끝나면(진행 중 요청 없음 + 마지막 답 글자가 잠시 그대로) 그 답을 읽어 준다.
+  // 읽기가 끝나면 한 번 더 듣는다(손 안 대고 이어 말하기) — 아무 말 없으면 멈춘다. 말하는 중에 누르면 멈춘다.
+  // ============================================================
+  var nxAiTalk_ = { state: 'idle', rec: null, watch: null, lastSpoken: null };
+  function nxAiTalkSet_(state, status){
+    nxAiTalk_.state = state;
+    var mic = nxAiEl_('nxAiTalkMic'), st = nxAiEl_('nxAiTalkSt');
+    if (!mic) return;
+    mic.className = 'nxai-talk-mic' + (state === 'idle' ? '' : ' ' + state);
+    mic.textContent = state === 'speak' ? '⏹' : (state === 'busy' ? '⏳' : '🎤');
+    st.textContent = status || { idle: '누르고 말하기', listen: '듣는 중… (말이 끝나면 자동으로 보냄)', busy: '생각 중…', speak: '읽는 중 — 누르면 멈춤' }[state];
+  }
+  function nxAiTalkSpeechText_(text){
+    return String(text || '')
+      .replace(/```[\s\S]*?```/g, ' ')
+      .replace(/\|/g, ' ').replace(/[#*_`>~]+/g, ' ')
+      .replace(/https?:\/\/\S+/g, '링크')
+      .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '')
+      .replace(/\s+/g, ' ').trim().slice(0, 700);
+  }
+  function nxAiTalkListen_(auto){
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR){ nxAiTalkSet_('idle', '이 브라우저는 음성 인식을 지원하지 않습니다 — 크롬으로 열어 주세요.'); return; }
+    if (nxAiAbort){ nxAiTalkSet_('busy'); return; }
+    try { window.speechSynthesis && speechSynthesis.cancel(); } catch (e) {}
+    var rec = new SR();
+    rec.lang = 'ko-KR'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+    var finalText = '', gotAny = false;
+    rec.onresult = function(ev){
+      var interim = '';
+      for (var i = ev.resultIndex; i < ev.results.length; i++){
+        if (ev.results[i].isFinal) finalText += ev.results[i][0].transcript; else interim += ev.results[i][0].transcript;
+      }
+      gotAny = true;
+      nxAiEl_('nxAiTalkQ').textContent = (finalText + interim).trim();
+    };
+    rec.onerror = function(ev){
+      nxAiTalk_.rec = null;
+      var e = ev && ev.error;
+      if (e === 'not-allowed' || e === 'service-not-allowed') nxAiTalkSet_('idle', '마이크 권한이 꺼져 있습니다 — 주소창 왼쪽 자물쇠에서 마이크를 허용해 주세요.');
+      else if (e === 'no-speech' || e === 'aborted') nxAiTalkSet_('idle');
+      else nxAiTalkSet_('idle', '음성 인식 오류(' + e + ') — 다시 눌러 주세요.');
+    };
+    rec.onend = function(){
+      nxAiTalk_.rec = null;
+      var text = finalText.trim();
+      if (!text){ if (nxAiTalk_.state === 'listen') nxAiTalkSet_('idle', auto ? '말씀이 없어 멈췄습니다 — 누르고 말하기' : null); return; }
+      nxAiTalkAsk_(text);
+    };
+    nxAiTalk_.rec = rec;
+    if (!auto) nxAiEl_('nxAiTalkQ').textContent = '';
+    nxAiTalkSet_('listen');
+    try { rec.start(); } catch (e) { nxAiTalk_.rec = null; nxAiTalkSet_('idle', '음성 인식을 시작하지 못했습니다 — 다시 눌러 주세요.'); }
+  }
+  function nxAiTalkAsk_(text){
+    nxAiEl_('nxAiTalkQ').textContent = text;
+    nxAiEl_('nxAiTalkA').textContent = '';
+    nxAiTalkSet_('busy');
+    var body = nxAiEl_('nxAiBody');
+    var before = body.querySelectorAll('.nxai-msg.ai').length;
+    var input = nxAiEl_('nxAiInput');
+    input.value = text;
+    try { nxAiSend_(); } catch (e) { nxAiTalkSet_('idle', '보내지 못했습니다: ' + (e && e.message || e)); return; }
+    // 답이 끝났는지 지켜본다 — 진행 중 요청(nxAiAbort)이 없고, 새 답 말풍선 글자가 1.5초 동안 그대로면 끝.
+    var lastText = null, stableTicks = 0, started = Date.now();
+    clearInterval(nxAiTalk_.watch);
+    nxAiTalk_.watch = setInterval(function(){
+      var bubbles = body.querySelectorAll('.nxai-msg.ai');
+      var b = bubbles.length > before ? bubbles[bubbles.length - 1] : null;
+      var t = b ? (b.innerText || b.textContent || '').trim() : '';
+      if (b) nxAiEl_('nxAiTalkA').textContent = t;
+      var pending = !b || nxAiAbort || /처리 중…$|생각 중|^…$/.test(t);
+      if (!pending && t === lastText) stableTicks++; else stableTicks = 0;
+      lastText = t;
+      if (stableTicks >= 3){
+        clearInterval(nxAiTalk_.watch);
+        nxAiTalkSpeak_(t);
+      } else if (Date.now() - started > 180000){
+        clearInterval(nxAiTalk_.watch);
+        nxAiTalkSet_('idle', '답이 너무 오래 걸립니다 — 화면을 펼쳐 확인해 주세요.');
+      }
+    }, 500);
+  }
+  function nxAiTalkSpeak_(text){
+    var say = nxAiTalkSpeechText_(text);
+    if (!say || !window.speechSynthesis){ nxAiTalkSet_('idle'); return; }
+    var u = new SpeechSynthesisUtterance(say);
+    u.lang = 'ko-KR'; u.rate = 1.05;
+    var ko = (speechSynthesis.getVoices() || []).filter(function(v){ return /^ko/i.test(v.lang); })[0];
+    if (ko) u.voice = ko;
+    u.onend = function(){ if (nxAiTalk_.state === 'speak') nxAiTalkListen_(true); };
+    u.onerror = function(){ if (nxAiTalk_.state === 'speak') nxAiTalkSet_('idle'); };
+    nxAiTalkSet_('speak');
+    try { speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (e) { nxAiTalkSet_('idle'); }
+  }
+  (function(){
+    var mic = nxAiEl_('nxAiTalkMic');
+    if (!mic) return;
+    mic.addEventListener('click', function(){
+      var s = nxAiTalk_.state;
+      if (s === 'listen'){ try { nxAiTalk_.rec && nxAiTalk_.rec.stop(); } catch (e) {} return; }
+      if (s === 'speak'){ nxAiTalkSet_('idle'); try { speechSynthesis.cancel(); } catch (e) {} return; }
+      if (s === 'busy') return;
+      nxAiTalkListen_(false);
+    });
+    // 커버화면을 벗어나면(펼침) 듣기·읽기를 멈춘다
+    document.addEventListener('nx-cover-change', function(){
+      if (window.nxCover) return;
+      try { nxAiTalk_.rec && nxAiTalk_.rec.abort(); } catch (e) {}
+      try { window.speechSynthesis && speechSynthesis.cancel(); } catch (e) {}
+      clearInterval(nxAiTalk_.watch);
+      nxAiTalkSet_('idle');
+    });
+    try { window.speechSynthesis && speechSynthesis.getVoices(); } catch (e) {}
+  })();
+</script>
 
       </div>
     </aside>
+  </div>
+
+  <!-- [2026.10.15] 접는 폰 커버화면 전용 전환 버튼 — 약식 대시보드 ↔ AI (script.html nxCoverOnEnter_) -->
+  <div id="nxCoverBar">
+    <button type="button" data-cover-view="dashboard">📊 요약</button>
+    <button type="button" data-cover-view="ai">🤖 AI</button>
   </div>
 
   <div class="toast" id="toast"></div>
@@ -48170,11 +48348,27 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var w = window.innerWidth;
     return w < 600 ? 'phone' : (w < 900 ? 'tablet' : 'pc');
   }
+  // [2026.10.15] 접는 폰(Z플립) 커버화면 — 세무사님 결정: 커버화면에서는 기존 화면을 줄여 보이지 말고
+  // "약식 대시보드 ↔ AI" 두 화면만 오가게 한다(나머지 기능은 펼쳐서). 폭·높이(innerWidth/Height)로 판정하면
+  // 펼친 화면에서 키보드가 올라와 높이가 줄 때 커버로 잘못 바뀌므로, 화면 자체 크기(screen)로 판정한다.
+  // 커버화면은 긴 쪽도 640 이하(Z플립5·6 약 330~370, Z플립7 약 410~460), 일반 휴대폰은 긴 쪽 700 이상.
+  // 폰 배치(lay-phone)는 그대로 두고 lay-cover만 덧붙인다(설정에서 배치를 직접 고정하면 커버 화면 안 씀).
+  function nxIsCoverScreen_(){
+    if (nxLayoutOverride_() !== 'auto') return false;
+    var sw = (window.screen && screen.width) || window.innerWidth, sh = (window.screen && screen.height) || window.innerHeight;
+    return Math.max(sw, sh) <= 640 && Math.min(sw, sh) >= 240;
+  }
   function nxApplyLayout_(){
     var st = nxLayoutStage_();
     var changed = window.nxLayout !== st;
     window.nxLayout = st;
     ['pc', 'tablet', 'phone'].forEach(function(s){ document.body.classList.toggle('lay-' + s, s === st); });
+    var cover = st === 'phone' && nxIsCoverScreen_();
+    var coverChanged = !!window.nxCover !== cover;
+    window.nxCover = cover;
+    document.body.classList.toggle('lay-cover', cover);
+    if (coverChanged && typeof nxCoverOnEnter_ === 'function') try{ nxCoverOnEnter_(cover); }catch(e){}
+    if (coverChanged){ try{ document.dispatchEvent(new CustomEvent('nx-cover-change', { detail: cover })); }catch(e){} }
     if (changed){ try{ document.dispatchEvent(new CustomEvent('nx-layout-change', { detail: st })); }catch(e){} }
   }
   function nxSetLayoutOverride_(value){ nxLs_(NX_LAYOUT_KEY_, value); nxApplyLayout_(); }
@@ -48696,6 +48890,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       window._currentViewLabel = VIEW_LABELS_[name] || name;
       // [2026.10.08] AI 화면 하나를 AI탭 ↔ 오른쪽 사이드바로 옮긴다(aichat.html nxAiOnViewChange_)
       if (typeof nxAiOnViewChange_ === 'function') nxAiOnViewChange_(name);
+      nxCoverSync_();
       tbCollapseAllDebounced_();
       if (name === 'booking' && typeof initBooking === 'function') initBooking();
       if (name === 'workmanage' && typeof initWorkManage === 'function') initWorkManage();
@@ -48739,6 +48934,34 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       i.classList.toggle('active', i.getAttribute('data-view') === name);
     });
   }
+
+  // [2026.10.15] 커버화면(nxApplyLayout_의 lay-cover) — 약식 대시보드와 AI 두 화면만 아래 버튼으로 오간다.
+  // 커버화면으로 바뀌는 순간 그 둘이 아닌 화면을 보고 있었으면 요약(대시보드)으로 옮긴다. 펼치면 원래 화면 그대로.
+  function nxCoverActiveView_(){
+    var v = document.querySelector('#centerWork > .view.active');
+    return v ? v.id.replace(/^view-/, '') : '';
+  }
+  function nxCoverSync_(){
+    var cur = nxCoverActiveView_();
+    document.querySelectorAll('#nxCoverBar [data-cover-view]').forEach(function(b){
+      b.classList.toggle('on', b.getAttribute('data-cover-view') === cur);
+    });
+  }
+  function nxCoverOnEnter_(cover){
+    var root = document.getElementById('appRoot');
+    if (cover && root && root.classList.contains('shown')){
+      var cur = nxCoverActiveView_();
+      if (cur !== 'dashboard' && cur !== 'ai') goToView_('dashboard');
+    }
+    nxCoverSync_();
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('#nxCoverBar [data-cover-view]');
+    if (!b) return;
+    var name = b.getAttribute('data-cover-view');
+    if (nxCoverActiveView_() !== name) goToView_(name);
+    nxCoverSync_();
+  });
 
   // [2026.10.13] 사건 관련 화면 바로가기 — "처리개요에서 증빙관리로 옮겨간 다음에는 처리개요로만 갈 수 있고
   // 세액계산이나 연관작업으로 옮겨갈 수 없다"는 지적. 사건을 다루는 모든 화면 머리에 같은 콤보박스를 둬,
