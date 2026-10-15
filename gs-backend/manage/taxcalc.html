@@ -3716,6 +3716,8 @@ function tcApplyInheritanceRule_(rf){
   if (rf.funeral && rf.funeral.value) fun.push({ payee: '장례비용(' + (rf.funeral.src || '증빙') + ')', category: 'general', detail: '사건처리 서류 정리', amount: rf.funeral.value });
   if (rf.niche && rf.niche.value) fun.push({ payee: '봉안시설(' + (rf.niche.file || '') + ')', category: 'niche', detail: rf.niche.src || '', amount: rf.niche.value });
   if (fun.length){ inheritanceFuneralItems = fun; filled.push('장례비용'); }
+  // [2026.10.15] 사건처리에서 확정한 상속 채무(부채증명원·임대보증금 등) — 채무 칸에 항목별로
+  if (rf.debts && rf.debts.length){ inheritanceDebtItems = rf.debts.map(function(d){ return { debtType: d.debtType === 'other' ? 'other' : 'loan', creditorName: d.creditorName || '', amount: d.amount }; }); filled.push('채무 ' + rf.debts.length + '건'); }
   if (typeof renderHeirRegistry === 'function') renderHeirRegistry();
   if (typeof renderHeirTool === 'function') renderHeirTool();
   if (typeof renderFuneralItemsList === 'function') renderFuneralItemsList();

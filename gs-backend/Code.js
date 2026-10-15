@@ -26458,6 +26458,30 @@ function caseProcInhFacts_(c, parsed) {
     if (!out.niche.receipt) out.niche.payments = [].concat.apply([], ncs.map(function (x) { return (x.p.result.납부 || []).filter(function (q) { return fees.indexOf(q.금액) === -1; }).map(function (q) { return q.일자 + ' ' + q.금액.toLocaleString('ko-KR') + '원(' + x.f.name + ')'; }); }));
   }
   out.grossEstate = out.assets.every(function (a) { return a.value; }) && out.financialValue !== null ? out.assets.reduce(function (t, a) { return t + a.value; }, 0) + out.financialValue : null;
+  // [2026.10.15 1단계 ②] 상속 채무(상증법 §14) — 서류에서 채무 후보를 모은다(부채증명원·안심상속 조회 채무·피상속인이 임대인인 임대보증금·미지급 영수증).
+  //  김창호 사건: 부채증명원·대출 납입증명·미지급 진료비·월세계약서가 어느 칸에도 안 쓰였고, 세액계산 채무 칸도 채워지지 않았다.
+  //  확정은 세무사님(사건처리 「상속 채무 확정」) — 확정한 목록만 세액계산 채무 칸으로 간다.
+  out.debts = [];
+  const dName = nm(out.deceased.name);
+  by('debtcert').forEach(function (x) { const r = x.p.result || {}; if (!r.총잔액) return; const amt = r.단위 === '천원' ? r.총잔액 * 1000 : r.총잔액;
+    out.debts.push({ debtType: 'loan', creditorName: r.기관 || '', amount: amt, file: x.f.name, src: (r.종류 || '부채증명') + (r.기준일 ? ' ' + r.기준일 + ' 기준' : ''), sure: !(r.경고 || []).length && (!r.기준일 || !base || r.기준일 === base), note: r.기준일 && base && r.기준일 !== base ? '기준일(' + r.기준일 + ')이 상속개시일(' + base + ')과 다름 — 개시일 현재 잔액 확인' : '' }); });
+  by('inhquery').forEach(function (x) { const r = x.p.result || {}; if (r.채무합계) out.debts.push({ debtType: 'loan', creditorName: '안심상속 조회 채무 합계', amount: r.채무합계, file: x.f.name, src: '상속인 금융거래 조회', sure: false, note: '부채증명원과 겹칠 수 있음 — 겹치면 하나만' }); });
+  if (dName) parsed.forEach(function (x) {
+    if (!/^(lease|rent)$/.test(x.p.type) || !x.p.result || !x.p.result.보증금) return;
+    let tx = ''; try { tx = tc_docText_(x.f) || ''; } catch (e) { return; }
+    const flat = tx.replace(/\s+/g, '');
+    const li = flat.search(/임대인/), ni = flat.indexOf(dName);
+    if (li === -1 || ni === -1 || Math.abs(ni - li) > 120) return; // 피상속인이 임대인일 때만(임차인이면 보증금은 받을 돈 = 재산)
+    out.debts.push({ debtType: 'other', creditorName: '임차인(임대보증금)', amount: x.p.result.보증금, file: x.f.name, src: '임대차계약서 보증금' + (x.p.result.소재지 ? '(' + x.p.result.소재지 + ')' : ''), sure: false, note: '피상속인이 임대인 — 상속개시일 현재 유효한 계약인지(만기·갱신) 확인' });
+  });
+  parsed.forEach(function (x) {
+    if (!/미\s*지\s*급/.test(x.f.name) || !/^(cashreceipt|cardreceipt|receipt|taxinvoice)$/.test(x.p.type) || !x.p.result || !x.p.result.합계) return;
+    const sh = String(x.p.result.상호 || '');
+    const shOk = sh && !/소재지|주소|사업장|가맹점|대표자/.test(sh); // 상호 칸에 표 머리말이 읽힌 경우
+    out.debts.push({ debtType: 'other', creditorName: shOk ? sh : x.f.name.replace(/\.[A-Za-z]{2,5}$/, ''), amount: x.p.result.합계, file: x.f.name, src: '미지급 영수증', sure: false, note: '사망 전에 생긴 비용을 상속인이 낸 것만 채무(§14①3호)' + (shOk ? '' : ' · 상호·금액을 원문과 대조') });
+  });
+  const dch = choices.debts;
+  out.debtsConfirmed = dch && Array.isArray(dch.items) ? dch.items : null;
   return out;
 }
 // 세액계산 화면 상속세 자동채우기 "규칙 먼저"(AI 0원) — 화면이 이 값으로 칸을 채우고, 판단이 남은 값은 사건처리 [확인]에서 고른다
@@ -26471,7 +26495,8 @@ function tc_ruleInheritanceFacts_(body) {
   if (!String(c.폴더ID || '').trim()) return { error: '사건 폴더가 없습니다.' };
   const f = caseProcInhFacts_(c);
   return { ok: true, deathDate: c.기준일 || '', deceased: f.deceased, heirs: f.heirs, assets: f.assets.map(function (a) { return { kind: a.kind, loc: a.loc, area: a.area, value: a.value, valueSrc: a.valueSrc, sure: a.sure, cands: a.cands }; }),
-    financialValue: f.financialValue, financialSrc: f.financialSrc, grossEstate: f.grossEstate, funeral: f.funeral, niche: f.niche, notes: f.notes };
+    financialValue: f.financialValue, financialSrc: f.financialSrc, grossEstate: f.grossEstate, funeral: f.funeral, niche: f.niche, notes: f.notes,
+    debts: f.debtsConfirmed || [] }; // [2026.10.15] 세무사님이 사건처리에서 확정한 채무만(확정 전엔 빈 목록)
 }
 // 처리개요 단계(상속) — 상속재산 평가·금융재산·장례비·봉안시설 질문(판단이 필요한 것만), 확정된 것은 정보줄
 function caseProcInhAssetItems_(c, lines, items, parsed) {
@@ -26499,7 +26524,15 @@ function caseProcInhAssetItems_(c, lines, items, parsed) {
       { mode: 'choose', target: 'ih:niche', input: 'money', label: '봉안시설 비용', cands: [{ v: String(big), src: '계약 금액 전부' }].concat(f.niche.couple ? [{ v: String(Math.round(big / 2)), src: '부부단 — 절반' }] : []).concat([{ v: '0', src: '공제 안 함' }]) })); }
   }
   f.notes.forEach(function (n) { lines.push('참고: ' + n); });
-  caseProcPatch_(c.id, function (sv) { sv.ihSummary = { assets: f.assets.length, valued: f.assets.filter(function (a) { return a.value; }).length, financial: f.financialValue !== null && !f.financialDiff, funeral: !!f.funeral.value, gross: f.grossEstate }; });
+  // [2026.10.15 1단계 ②③] 상속 채무 — 서류에서 찾은 후보를 체크해 확정(필요경비와 같은 방식). 확정한 것만 세액계산 채무 칸으로.
+  if (f.debtsConfirmed) lines.push('✅ 상속 채무(세무사님 확정): ' + f.debtsConfirmed.length + '건 ' + won(f.debtsConfirmed.reduce(function (s, d) { return s + Number(d.amount || 0); }, 0)));
+  else if ((f.debts || []).length) {
+    lines.push('상속 채무 후보 ' + f.debts.length + '건(서류): ' + f.debts.map(function (d) { return (d.creditorName || d.src) + ' ' + won(d.amount) + '(' + d.file + ')'; }).join(', '));
+    items.push(caseProcItem_('ih:debts', 'missing', '상속 채무(상증법 §14)를 확정해 주세요 — 서류에서 ' + f.debts.length + '건을 찾았습니다. 넣을 것만 체크하고, 없는 채무는 직접 더하세요.',
+      { mode: 'debts', target: 'ihdebts', label: '상속 채무', cands: f.debts },
+      f.debts.map(function (d) { return (d.sure ? '☑ ' : '☐ ') + (d.creditorName || '') + ' · ' + d.src + ' · ' + won(d.amount) + ' · ' + d.file + (d.note ? ' — ' + d.note : ''); }).join('\n')));
+  }
+  caseProcPatch_(c.id, function (sv) { sv.ihSummary = { assets: f.assets.length, valued: f.assets.filter(function (a) { return a.value; }).length, financial: f.financialValue !== null && !f.financialDiff, funeral: !!f.funeral.value, gross: f.grossEstate, debts: f.debtsConfirmed ? 'ok' : ((f.debts || []).length ? 'cand' : 'none') }; });
   return f;
 }
 // 세액인쇄 서식 PDF 저장 — 화면(세액인쇄)이 만든 서식 HTML을 PDF로 바꿔 사건 폴더 보고서_내부에 저장(같은 이름이면 바꿔 씀)
@@ -26595,6 +26628,8 @@ function caseProcStatus_(c, body) {
     rows.push(['상속재산', '부동산 평가', sm.assets && sm.valued === sm.assets ? (open['ih'] ? '⚠ 확인 필요' : '✅') : (sm.assets ? '⚠ 평가 선택 필요' : '⬜'), sm.valued + '/' + sm.assets + '건' + (sm.gross ? ' · 총상속재산(부동산+금융) ' + Number(sm.gross).toLocaleString('ko-KR') + '원' : '')]);
     rows.push(['상속재산', '금융재산', sm.financial ? '✅' : '⚠ 확인 필요', '']);
     rows.push(['상속재산', '장례비용', sm.funeral ? '✅' : '⚠ 확인 필요', '']);
+    rows.push(['상속재산', '채무', sm.debts === 'ok' ? '✅' : (sm.debts === 'cand' ? '⚠ 확정 필요' : '✅'), sm.debts === 'none' ? '서류에서 채무 없음' : (sm.debts === 'cand' ? '서류에서 찾은 채무 후보 — 「상속 채무 확정」' : '세무사님 확정')]);
+    if (sm.debts === 'cand') inputsOk = false;
     if (!(sm.assets && sm.valued === sm.assets && sm.financial)) inputsOk = false;
   }
   const ev = (Array.isArray(c.증빙목록) ? c.증빙목록 : []).filter(function (e) { return e && e.source === 'requested' && !cashNa(e); });
@@ -26816,6 +26851,15 @@ function caseProcApply_(c, body) {
   const target = String(body.target || ''), value = body.value, src = String(body.src || '세무사님 확인').slice(0, 80);
   const logLine = function (txt) { return (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: '[사건처리 확인] ' + txt, dueDate: '' }]); };
   if (target === 'base') return caseProcApplyBase_(c.id, value, src, CASEPROC_BASE_LABEL_[c.세목] || '기준일');
+  // [2026.10.15 1단계] 상속 채무 확정 — 체크한 채무 목록을 사건처리 결정(ihChoices.debts)에 저장, 세액계산 자동채우기가 채무 칸에 넣는다
+  if (target === 'ihdebts') {
+    let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { d = null; }
+    const list = (d && Array.isArray(d.items) ? d.items : []).map(function (x) { return { debtType: x.debtType === 'other' ? 'other' : 'loan', creditorName: String(x.creditorName || '').slice(0, 60), amount: Number(String(x.amount || '').replace(/[^\d]/g, '')) || 0, file: String(x.file || '').slice(0, 80), src: String(x.src || '').slice(0, 80) }; }).filter(function (x) { return x.amount > 0; });
+    caseProcPatch_(c.id, function (sv) { sv.ihChoices = sv.ihChoices || {}; sv.ihChoices.debts = { items: list, src: src, at: caseProcToday_() }; });
+    const tot = list.reduce(function (s, x) { return s + x.amount; }, 0);
+    work_updateCase({ id: c.id, 작업일지: logLine('상속 채무 확정 ← ' + list.length + '건 ' + tot.toLocaleString('ko-KR') + '원 (' + src + ')') });
+    return { ok: true, message: '상속 채무 ' + list.length + '건 ' + tot.toLocaleString('ko-KR') + '원 확정' };
+  }
   const im = /^ih:(.+)$/.exec(target);
   if (im) {
     const v = String(value == null ? '' : value).replace(/[^\d]/g, '');

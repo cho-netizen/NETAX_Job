@@ -2416,7 +2416,7 @@
     [/증여일/, /증여\s*일/], [/상속개시일/, /상속\s*개시\s*일|사망\s*일/],
     [/증여재산가액|증여\s*내용/, /증여\s*(재산)?\s*가액|증여\s*금액|증여\s*재산/],
     [/수증자|증여\s*내용/, /수증자|받은\s*사람/], [/증여자|증여\s*내용/, /증여자|준\s*사람/], [/관계/, /관계(?!\s*증명)/],
-    [/필요경비/, /필요\s*경비|경비/], [/사건분류/, /사건\s*분류|특례|비과세|중과|감면/],
+    [/필요경비/, /필요\s*경비|경비/], [/상속\s*채무/, /채무|부채|빚/],[/사건분류/, /사건\s*분류|특례|비과세|중과|감면/],
     [/납세자/, /납세자/], [/법정일/, /법정\s*일|신고\s*기한|처리\s*기한/],
     [/양도인/, /양도인|매도인/], [/피상속인/, /피상속인/], [/상속인\s*수/, /상속인\s*수|상속인\s*\d+\s*명/], [/대표\s*상속인/, /대표\s*상속인/]
   ];
@@ -2587,6 +2587,14 @@
       var fix = clean(body);
       if (fix) return Object.assign(out, { act: 'decide', decide: '보류', note: '원문 대조 — ' + fix.slice(0, 120) + '(사이드바)', shown: '고친 값 기록: ' + fix.slice(0, 60) });
       return Object.assign(out, { act: 'need', msg: 'Q' + it.q + ' — "맞음" 또는 맞는 값을 말씀해 주세요. 예: "Q' + it.q + ' 맞음", "Q' + it.q + ' 잔금일 2024.3.5가 맞음"' });
+    }
+    // 상속 채무 — 필요경비와 같은 말("그대로 확정", "없음")
+    if (mode === 'debts'){
+      if (decide) return Object.assign(out, { act: 'decide', decide: decide });
+      var dsure = (a.cands || []).filter(function(c){ return c.sure && c.amount; }).map(function(c){ return { debtType: c.debtType, creditorName: c.creditorName, amount: c.amount, file: c.file, src: c.src }; });
+      if (/(없음|없다|없어|0\s*원|영\s*원)/.test(body)) return Object.assign(out, { act: 'apply', target: 'ihdebts', value: JSON.stringify({ items: [] }), src: srcTxt, shown: '상속 채무 없음' });
+      if (/(그대로|확정|맞음|체크한\s*대로|후보대로)/.test(body)) return Object.assign(out, { act: 'apply', target: 'ihdebts', value: JSON.stringify({ items: dsure }), src: srcTxt, shown: '서류 후보 중 확실한 ' + dsure.length + '건 ' + dsure.reduce(function(s, c){ return s + Number(c.amount || 0); }, 0).toLocaleString('ko-KR') + '원으로 확정' });
+      return Object.assign(out, { act: 'need', msg: 'Q' + it.q + ' 상속 채무 — "그대로 확정"(서류에서 확실한 ' + dsure.length + '건), "채무 없음"으로 말씀하시거나, 항목을 고르려면 [확인]을 눌러 주세요.' });
     }
     // 필요경비 — "그대로 확정"(서류에서 확실하다고 본 것만), "없음/0원"
     if (mode === 'expenses'){
@@ -2780,6 +2788,35 @@
       }, true, rs2);
       return;
     }
+    // [2026.10.15 1단계] 상속 채무 — 서류에서 찾은 채무 후보를 체크(확실한 것은 미리 체크), 금액은 고칠 수 있고, 없는 채무는 직접 더한다
+    if (mode === 'debts'){
+      var drows = (ask.cands || []).map(function(c){ return { debtType: c.debtType || 'loan', creditorName: c.creditorName || '', amount: c.amount, file: c.file, src: c.src, on: !!c.sure, note: c.note }; });
+      var dlist = document.createElement('div'); pane.appendChild(dlist);
+      var ddraw = function(){
+        dlist.innerHTML = '';
+        drows.forEach(function(r){
+          var d = document.createElement('div'); d.style.cssText = 'display:flex;gap:6px;align-items:flex-start;font-size:13px;padding:3px 0;border-bottom:1px dashed var(--line,#ddd);';
+          var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = r.on; cb.addEventListener('change', function(){ r.on = cb.checked; });
+          var am = document.createElement('input'); am.type = 'text'; am.inputMode = 'numeric'; am.value = Number(r.amount || 0).toLocaleString('ko-KR'); am.style.width = '120px'; am.addEventListener('input', function(){ r.amount = Number(String(am.value).replace(/[^\d]/g, '')) || 0; });
+          var tx = document.createElement('div'); tx.style.flex = '1'; tx.textContent = (r.creditorName || '') + ' · ' + (r.src || '') + (r.file ? ' · ' + r.file : '') + (r.note ? ' — ⚠ ' + r.note : '');
+          d.appendChild(cb); d.appendChild(am); d.appendChild(tx); if (r.file) eye(r.file, d); dlist.appendChild(d);
+        });
+      };
+      ddraw();
+      p('없는 채무 더하기: 채권자·금액을 넣으세요(근거 파일이 있으면 고르기).');
+      var dra = rowEl();
+      var dcr = document.createElement('input'); dcr.type = 'text'; dcr.placeholder = '채권자(예: OO은행, 임차인)'; dcr.style.flex = '1'; dra.appendChild(dcr);
+      var dam = document.createElement('input'); dam.type = 'text'; dam.inputMode = 'numeric'; dam.placeholder = '금액(원)'; dam.style.width = '120px'; dra.appendChild(dam);
+      var dps = pickSrc();
+      btn('더하기', function(){ var v = Number(String(dam.value).replace(/[^\d]/g, '')) || 0; if (!dcr.value.trim() || !v){ nxAiToast_('채권자와 금액을 넣어 주세요.'); return; } drows.push({ debtType: 'other', creditorName: dcr.value.trim(), amount: v, file: '', src: dps.src('세무사님 직접 추가'), on: true }); dcr.value = ''; dam.value = ''; ddraw(); }, false, dra);
+      var drs = rowEl();
+      btn('체크한 것으로 채무 확정', function(){
+        var items = drows.filter(function(r){ return r.on && r.amount > 0; }).map(function(r){ return { debtType: r.debtType, creditorName: r.creditorName, amount: r.amount, file: r.file, src: r.src }; });
+        apply('ihdebts', JSON.stringify({ items: items }), '세무사님 확인', refreshAll, true);
+      }, true, drs);
+      btn('채무 없음', function(){ apply('ihdebts', JSON.stringify({ items: [] }), '세무사님 확인(채무 없음)', refreshAll, true); }, false, drs);
+      return;
+    }
     if (mode === 'options'){
       var r3 = rowEl();
       (ask.options || []).forEach(function(o){
@@ -2875,7 +2912,7 @@
     if (st.calcBusy) return;
     // [2026.10.15 1:1] 증여 내용(증여자·수증자·증여일·증여대상)을 아직 안 정했으면 계산하지 않는다 — 추정값으로 세액을 내지 않게
     // 양도 필요경비·사건분류(비과세·중과 판단)도 정해지기 전엔 계산하지 않는다(필요경비 0원·사건분류 미정으로 계산하던 문제 — 노오섭)
-    var blockers = { 'gift:deal': '「증여 내용 확인」', 'tr:expenses': '「필요경비 확정」', 'ov:사건분류': '「사건분류」' };
+    var blockers = { 'gift:deal': '「증여 내용 확인」', 'tr:expenses': '「필요경비 확정」', 'ov:사건분류': '「사건분류」', 'ih:debts': '「상속 채무 확정」' };
     // [2026.10.15 일괄점검 ③] 위 셋만이 아니라 — 계산 입력 칸(처리개요 값·기준일)을 묻는 질문에 아직 답하지 않았으면 자동 계산하지 않는다(보류는 "진행"이라 막지 않음)
     var isInputQ = function(it){ var a = it.ask || {}; return (it.step === 'overview' || it.step === 'basic') && (it.kind === 'missing' || a.mode === 'base' || /^(ov:|ovAsset:)/.test(String(a.target || ''))); };
     var open = (st.items || []).filter(function(it){ var d = nxAiCaseProcDec_(st, it); return blockers[it.id] ? (d !== 'done' && d !== '무시') : (isInputQ(it) && !d); });
