@@ -24899,7 +24899,8 @@ function tc_ruleTransferFacts_(body) {
     if (p.type === 'giftcontract' && p.result) giftDocs.push({ file: f.name, r: p.result, text: String(text).replace(/\s+/g, '') });
     if (p.type === 'realprice' && p.result && (p.result.사례 || []).length) realDocs.push({ file: f.name, r: p.result });
     if (p.type === 'pubprice' && p.result) pubs.push({ file: f.name, r: p.result });
-    if (p.type === 'acqtax') acqs.push({ file: f.name, r: p.result });
+    // [2026.10.16] 지방세 세목별 과세증명서는 납부일 대신 부과연월(YYYY-MM)만 있다 — 취득일 직후 납부인지 보는 근거로 함께 둔다(이종식: 2012-02 신고분)
+    if (p.type === 'acqtax') { var aym = /과\s*세\s*증\s*명/.test(text) ? /(?:부과\s*연월|Year-Month)[\s\S]{0,120}?((?:19|20)\d{2})-(\d{2})/.exec(text) : null; acqs.push({ file: f.name, r: p.result, ym: aym ? aym[1] + '-' + aym[2] : '' }); }
     if (p.type === 'lawyerfee') {
       // [2026.10.16] 정산서 합계 안의 국민주택채권 매입액(필요경비는 매각차손만, 시행령 §163③)과 할인 비용 — 이우석: 매입액 739만원이 통째로 취득비용에 들어갔다
       var lt = String(text || '').replace(/\s+/g, ' ');
@@ -25065,7 +25066,11 @@ function tc_ruleTransferFacts_(body) {
   if (txs.length === 1) {
     var lawTotal = 0;
     lawyers.forEach(function (l) { if (!l.r.합계) return; lawTotal = Math.max(lawTotal, l.r.합계); var lnc = lawNet(l, []); expCands.push({ kind: '취득', label: '법무사 정산서(취득세·등록 공과금·보수 포함일 수 있음' + (l.bond ? ' — ' + lnc.why : '') + ')', amount: lnc.v, date: l.r.일자 || '', file: l.file, sure: /취득/.test(l.file) || !!txs[0].acquisitionExpenses, note: '' }); });
-    acqs.forEach(function (a) { if (!a.r.합계) return; var inLaw = lawTotal && a.r.합계 <= lawTotal; expCands.push({ kind: '취득', label: '취득세 등 납부', amount: a.r.합계, date: a.r.납부일 || a.r.일자 || '', file: a.file, sure: !inLaw && (/취득/.test(a.file) || !!txs[0].acquisitionExpenses), note: inLaw ? '법무사 정산서 합계에 이미 들어 있을 수 있음 — 겹치면 하나만' : '' }); });
+    // [2026.10.16] 취득세 영수증 납부일이 이 물건 취득일 직후(신고·납부 기한 안 — 매매 60일, 증여 3개월, 상속 6개월)면 이 물건의 취득세 — 파일 이름에 '취득'이 없어도 확실
+    //  (이종식: 2012-02-22 증여 취득의 취득세 1,389,820원 "지방세납부증명.jpg"를 확실 0건으로 두었다)
+    var acqDay = String(txs[0].acquisitionDate || '').slice(0, 10);
+    var nearAcq = function (d) { d = String(d || '').slice(0, 10); if (!acqDay || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return false; var g = (new Date(d) - new Date(acqDay)) / 86400000; return g >= -30 && g <= 200; };
+    acqs.forEach(function (a) { if (!a.r.합계) return; var inLaw = lawTotal && a.r.합계 <= lawTotal; var pd = a.r.납부일 || a.r.일자 || (a.ym ? a.ym + '-01' : ''); expCands.push({ kind: '취득', label: '취득세 등 납부', amount: a.r.합계, date: pd, file: a.file, sure: !inLaw && (/취득/.test(a.file) || !!txs[0].acquisitionExpenses || nearAcq(pd)), note: inLaw ? '법무사 정산서 합계에 이미 들어 있을 수 있음 — 겹치면 하나만' : (nearAcq(pd) && !/취득/.test(a.file) ? '납부일 ' + String(pd).slice(0, 10) + ' — 취득일 ' + acqDay + ' 직후(신고·납부 기한 안)라 이 물건의 취득세로 봄' : '') }); });
   }
   if (txs.length === 1) officeFees.forEach(function (o) {
     var sureO = !!(txs[0].transferDate && o.date && o.date >= txs[0].transferDate);
