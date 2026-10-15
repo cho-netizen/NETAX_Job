@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 14:36 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 14:41 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -821,16 +821,16 @@
   #nxCoverBar{ display:none; }
   body.lay-cover #appRoot.shown ~ #nxCoverBar{ display:flex; position:fixed; left:0; right:0; bottom:0; z-index:60; gap:6px;
     padding:5px 8px calc(5px + env(safe-area-inset-bottom)); background:var(--navy); }
-  #nxCoverBar button{ flex:1; border:none; border-radius:8px; padding:9px 0; font-size:14px; font-weight:600; background:rgba(255,255,255,0.08); color:#fff; cursor:pointer; }
+  #nxCoverBar button{ flex:1; height:48px; border:none; border-radius:8px; padding:0; font-size:16px; font-weight:600; background:rgba(255,255,255,0.08); color:#fff; cursor:pointer; }
   #nxCoverBar button.on{ background:var(--gold); color:var(--navy); }
-  body.lay-cover #appRoot.shown{ height:calc(100% - 48px - env(safe-area-inset-bottom)); }
+  body.lay-cover #appRoot.shown{ height:calc(100% - 58px - env(safe-area-inset-bottom)); }
   body.lay-cover #sideMenu, body.lay-cover #sideAI, body.lay-cover #globalHelpBtn{ display:none !important; }
   body.lay-cover #view-dashboard .card:not(.dash-cover){ display:none; }
   body.lay-cover #view-dashboard .view-head{ padding:8px 10px 4px; }
-  body.lay-cover #view-dashboard .view-head h2{ font-size:15px; }
+  body.lay-cover #view-dashboard .view-head h2{ font-size:17px; }
   body.lay-cover #view-dashboard .view-body{ padding:0 8px 8px; }
-  body.lay-cover #view-dashboard .card{ padding:9px 10px; margin-bottom:8px; font-size:13px; }
-  body.lay-cover #view-dashboard .card h3{ font-size:14px; margin:0 0 6px; }
+  body.lay-cover #view-dashboard .card{ padding:10px 12px; margin-bottom:8px; font-size:15px; }
+  body.lay-cover #view-dashboard .card h3{ font-size:16px; margin:0 0 6px; }
   body.lay-cover #view-dashboard .card h3 a,
   body.lay-cover #view-dashboard .card > div:has(> #dashCalRangeBefore){ display:none !important; }
 
@@ -44270,7 +44270,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     <div class="nxai-talk-q" id="nxAiTalkQ"></div>
     <div class="nxai-talk-a" id="nxAiTalkA"></div>
     <!-- [2026.10.15] 누르고 말하는 방식이라 버튼을 화면 대부분으로 키움(세무사님) — 상태 문구도 버튼 안에 -->
-    <button type="button" class="nxai-talk-mic" id="nxAiTalkMic" aria-label="말하기"><span class="nxai-talk-ic" id="nxAiTalkIc">🎤</span><span class="nxai-talk-st" id="nxAiTalkSt">누르고 있는 동안 말하기 · 짧게 누르면 자동</span></button>
+    <button type="button" class="nxai-talk-mic" id="nxAiTalkMic" aria-label="말하기"><span class="nxai-talk-ic" id="nxAiTalkIc">🎤</span><span class="nxai-talk-st" id="nxAiTalkSt"></span></button>
     <button type="button" class="nxai-talk-cancel" id="nxAiTalkCancel" hidden>✕ 취소(보내지 않음)</button>
   </div>
   <div class="nxai-phone-tabs" id="nxAiPhoneTabs">
@@ -44435,20 +44435,20 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   body.lay-cover #nxAiTalk{ display:flex; flex-direction:column; align-items:center; gap:8px; width:100%; height:100%; min-height:0;
     padding:10px 12px; box-sizing:border-box; background:var(--navy); color:#fff; }
   .nxai-talk-mode{ display:flex; gap:6px; align-self:stretch; flex-shrink:0; }
-  .nxai-talk-mode button{ flex:1; border:1px solid rgba(255,255,255,0.25); background:transparent; color:#c9d2e6; border-radius:7px; padding:5px 0; font-size:12.5px; cursor:pointer; }
+  .nxai-talk-mode button{ flex:1; height:48px; border:1px solid rgba(255,255,255,0.25); background:transparent; color:#c9d2e6; border-radius:8px; padding:0; font-size:16px; font-weight:600; cursor:pointer; }
   .nxai-talk-mode button.on{ background:var(--gold); border-color:var(--gold); color:var(--navy); font-weight:700; }
-  .nxai-talk-q{ align-self:stretch; font-size:12.5px; color:var(--gold-light); max-height:3.2em; overflow:hidden; line-height:1.6; }
-  .nxai-talk-a{ align-self:stretch; flex:0 1 auto; max-height:34%; min-height:0; overflow-y:auto; font-size:15px; line-height:1.55; white-space:pre-wrap; }
+  .nxai-talk-q{ align-self:stretch; font-size:14px; color:var(--gold-light); max-height:3.2em; overflow:hidden; line-height:1.6; }
+  .nxai-talk-a{ align-self:stretch; flex:0 1 auto; max-height:34%; min-height:0; overflow-y:auto; font-size:17px; line-height:1.55; white-space:pre-wrap; }
   .nxai-talk-a:empty{ display:none; }
   .nxai-talk-mic{ flex:1 1 auto; align-self:stretch; min-height:110px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
     border:none; border-radius:18px; background:var(--gold); color:var(--navy); cursor:pointer; padding:8px; }
   .nxai-talk-ic{ font-size:48px; line-height:1; }
-  .nxai-talk-mic .nxai-talk-st{ color:inherit; font-size:13px; font-weight:600; text-align:center; line-height:1.4; }
+  .nxai-talk-mic .nxai-talk-st{ color:inherit; font-size:15px; font-weight:600; text-align:center; line-height:1.4; }
   .nxai-talk-mic.listen{ background:#e5484d; color:#fff; animation:nxaiTalkPulse 1.2s ease-in-out infinite; }
   .nxai-talk-mic.busy{ background:#55607a; color:#fff; }
   .nxai-talk-mic.speak{ background:#2f9e6b; color:#fff; }
   .nxai-talk-mic{ user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; touch-action:none; }
-  .nxai-talk-cancel{ flex-shrink:0; border:1px solid rgba(255,255,255,0.3); background:transparent; color:#fff; border-radius:7px; padding:4px 12px; font-size:12.5px; cursor:pointer; }
+  .nxai-talk-cancel{ flex-shrink:0; align-self:stretch; height:48px; border:1px solid rgba(255,255,255,0.3); background:transparent; color:#fff; border-radius:8px; font-size:16px; font-weight:600; cursor:pointer; }
   @keyframes nxaiTalkPulse{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.18); } }
 
   /* ===== 공통 ===== */
@@ -48142,7 +48142,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     if (!mic) return;
     mic.className = 'nxai-talk-mic' + (state === 'idle' ? '' : ' ' + state);
     nxAiEl_('nxAiTalkIc').textContent = state === 'speak' ? '⏹' : (state === 'busy' ? '⏳' : '🎤');
-    st.textContent = status || { idle: '누르고 있는 동안 말하기 · 짧게 누르면 자동', listen: '듣는 중…', busy: '생각 중…', speak: '읽는 중 — 누르면 멈춤' }[state];
+    st.textContent = status || { idle: '', listen: '듣는 중', busy: '생각 중…', speak: '읽는 중 — 누르면 멈춤' }[state];
     var cc = nxAiEl_('nxAiTalkCancel'); if (cc) cc.hidden = state !== 'listen';
   }
   function nxAiTalkSpeechText_(text){
@@ -48198,7 +48198,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (sess.hold || sess.done || !shown()) return;
       var wait = nxAiTalkWaitMs_(shown());
       try { if (!sess.interim && typeof nxAiDetectLocal_ === 'function' && nxAiDetectLocal_(shown())) wait = 900; } catch (e) {}
-      nxAiTalkSet_('listen', '말이 멈추면 ' + (wait / 1000) + '초 뒤 보냄 · 🎤 누르면 바로');
+      nxAiTalkSet_('listen', '듣는 중 · ' + (wait / 1000) + '초 뒤 보냄');
       sess.silence = setTimeout(function(){ finish(true); }, wait);
     }
     sess.arm = arm;
@@ -48218,7 +48218,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         if (!shown()) return;
         sess.heard = true;
         nxAiEl_('nxAiTalkQ').textContent = shown();
-        if (sess.hold) nxAiTalkSet_('listen', '듣는 중 — 손을 떼면 보냄'); else arm();
+        if (sess.hold) nxAiTalkSet_('listen', '듣는 중'); else arm();
       };
       rec.onerror = function(ev){
         var e = ev && ev.error;
@@ -48246,7 +48246,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       else if (now - sess.started > NXAI_TALK_MAX_MS_) finish(true);
     }, 300);
     if (!auto) nxAiEl_('nxAiTalkQ').textContent = '';
-    nxAiTalkSet_('listen', sess.hold ? '듣는 중 — 손을 떼면 보냄' : (auto ? '이어서 말씀하세요 (7초 동안 말이 없으면 마이크 끔)' : null));
+    nxAiTalkSet_('listen', sess.hold ? '듣는 중' : (auto ? '이어서 말씀하세요' : null));
     startRec();
   }
   // 듣기를 완전히 끈다(보내지 않음) — 화면 펼침·읽기 시작·새 듣기 직전
@@ -48312,7 +48312,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // 답이 다 나왔을 때 — 문자 답이면 화면에만, 음성 답이면 서버(ai_voice_brief)가 핵심만 한두 문장으로 줄인 것을 읽는다.
   // 이미 아주 짧은 답(70자 이하·한 줄)은 줄이지 않고 그대로 읽는다(비용 0). 줄이기 실패하면 첫 문장만 읽는다.
   function nxAiTalkAnswer_(question, answer, prev, seq){
-    if (nxAiTalkMode_() === 'text'){ nxAiTalkSet_('idle', '문자 답 — 다시 물으려면 누르세요'); return; }
+    if (nxAiTalkMode_() === 'text'){ nxAiTalkSet_('idle'); return; }
     var plain = nxAiTalkSpeechText_(answer);
     if (plain.length <= 70 && answer.trim().indexOf('\n') === -1) return nxAiTalkSpeak_(plain);
     nxAiTalkSet_('busy', '핵심만 줄이는 중…');
@@ -48374,7 +48374,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (Date.now() - downAt < HOLD_MS){
         sess.hold = false;                       // 짧게 누름 → 자동 모드로 계속 듣기
         if (sess.arm) sess.arm();
-        if (!sess.heard) nxAiTalkSet_('listen', '말씀하세요 — 말이 멈추면 보냄 (7초 동안 말이 없으면 마이크 끔)');
+        if (!sess.heard) nxAiTalkSet_('listen', '듣는 중');
         sess.started = Date.now();
       } else {
         sess.finish(true, '들은 말이 없습니다 — 누르고 있는 동안 말씀하세요'); // 손 뗌 → 바로 보냄
