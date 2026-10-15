@@ -24812,7 +24812,8 @@ function tc_ruleTransferFacts_(body) {
       continue;
     }
     if (p.result && p.result.docs) p.result.docs.forEach(function (d) {
-      if (d.type === 'contract') contracts.push({ file: f.name, r: d.r, role: tcRoleInText_(text, names) || tcRoleInFileName_(f.name) });
+      // [2026.10.16] 본문 판별과 파일 이름(매도계약서·취득계약서)이 다르면 파일 이름을 따른다 — 글자인식 순서가 꼬여 본문 판별이 틀리는 일이 있다(방영교 사건: "매도계약서"를 매수로 판정해 양도 거래가 없었다)
+      if (d.type === 'contract') { var tRole = tcRoleInText_(text, names), fRole = tcRoleInFileName_(f.name); contracts.push({ file: f.name, r: d.r, role: (fRole && tRole && fRole !== tRole) ? fRole : (tRole || fRole), fRole: fRole, roleConflict: !!(fRole && tRole && fRole !== tRole) }); }
       if (d.type === 'dealreport') reports.push({ file: f.name, r: d.r });
     });
     // 지급 증빙(자본적지출·양도비 후보) — 이체확인증은 한 장에 한 건일 때만(여러 건이면 어느 것이 공사비인지 모름)
@@ -24840,6 +24841,19 @@ function tc_ruleTransferFacts_(body) {
   var ok = function (c) { return /^일치/.test(String(c.r.검산 || '')) && c.r.매매대금; };
   // 계약서 정리 결과의 매도인·매수인 칸은 서명란을 못 읽어 비는 일이 많아, 본문에서 납세자 이름 바로 앞 이름표(매도인/매수인)로 역할을 정한다
   var evidence = [];
+  // [2026.10.16] 같은 계약서의 사본(소재지·매매대금·계약일이 같음 — 사진·PDF 두 벌) — 역할을 하나로(파일 이름에 역할이 적힌 쪽을 따름), 두 번째부터는 사본으로 표시
+  contracts.forEach(function (c0, i) {
+    if (c0._dupOf) return;
+    contracts.slice(i + 1).forEach(function (c1) {
+      if (c1._dupOf || !c0.r.매매대금 || c0.r.매매대금 !== c1.r.매매대금 || (c0.r.계약일 || '') !== (c1.r.계약일 || '') || !(c0.r.소재지 && c1.r.소재지 && tcLocSame_(c0.r.소재지, c1.r.소재지))) return;
+      var named = c0.fRole ? c0 : (c1.fRole ? c1 : null);
+      if (named) { c0.role = named.fRole; c1.role = named.fRole; }
+      c1._dupOf = c0.file;
+      evidence.push('같은 계약서 사본: ' + c1.file + ' = ' + c0.file + (named ? ' — 역할은 파일 이름(' + named.file + ')대로 ' + (named.fRole === 'seller' ? '양도' : '취득') : ''));
+    });
+  });
+  contracts = contracts.filter(function (x) { return !x._dupOf; });
+  contracts.forEach(function (x) { if (x.roleConflict) evidence.push('⚠ ' + x.file + ' — 본문 판독(납세자 위치)과 파일 이름의 역할이 달라 파일 이름(' + (x.fRole === 'seller' ? '매도·양도' : '매수·취득') + ')을 따름 — 원문 확인'); });
   // [2026.10.15] 같은 부동산의 계약서가 둘 이상이고 납세자 이름이 모두에 있으면 — 먼저 맺은 계약이 취득(납세자 = 매수인), 마지막이 양도(매도인).
   // 서명란 글자인식 순서가 섞여 두 계약서 모두 같은 역할로 읽히는 일을 바로잡는다(역할이 이미 취득→양도 순서로 맞으면 그대로).
   contracts.forEach(function (c0) {
@@ -24890,7 +24904,7 @@ function tc_ruleTransferFacts_(body) {
     return best;
   };
   sells.forEach(function (s) {
-    var tx = { assetLocation: s.r.소재지 || null, transferPrice: ok(s) ? s.r.매매대금 : null, transferDate: (s.r.잔금일 && !s.r.잔금일확인필요) ? s.r.잔금일 : null,
+    var tx = { assetLocation: s.r.소재지 || null, transferPrice: ok(s) ? s.r.매매대금 : null, transferPriceCand: !ok(s) && s.r.매매대금 ? { v: s.r.매매대금, file: s.file } : null, transferDate: (s.r.잔금일 && !s.r.잔금일확인필요) ? s.r.잔금일 : null,
       acquisitionPrice: null, acquisitionDate: null, acquisitionExpenses: null, transferExpensesOnly: null, provisions: {} };
     evidence.push('양도: ' + s.file + (tx.transferPrice ? ' — 매매대금 ' + tx.transferPrice.toLocaleString('ko-KR') + '원(검산 일치)' : ' — 금액 검산 안 됨(비움)') + (tx.transferDate ? ', 잔금일 ' + tx.transferDate : ''));
     // 신고필증으로 금액 대조·잔금일 보충
@@ -24906,6 +24920,7 @@ function tc_ruleTransferFacts_(body) {
     if (b) {
       tx._acqMatched = true;
       tx.acquisitionPrice = ok(b) ? b.r.매매대금 : null;
+      if (!ok(b) && b.r.매매대금) tx.acquisitionPriceCand = { v: b.r.매매대금, file: b.file }; // 검산 안 된 매매대금은 확정하지 않고 후보로
       tx.acquisitionDate = (b.r.잔금일 && !b.r.잔금일확인필요) ? b.r.잔금일 : null;
       var ra = regDate(b.r.소재지, 'acq');
       if (ra && tx.acquisitionDate && ra < tx.acquisitionDate) { evidence.push('취득시기: 등기접수일 ' + ra + '이 잔금일보다 빨라 그날로(§98)'); tx.acquisitionDate = ra; }
@@ -25599,7 +25614,7 @@ const CASEPROC_OV_REQUIRED_ = {
 const CASEPROC_GIFT_RELATIONS_ = ['배우자', '직계존속(1촌, 부모 등→자녀)', '직계존속(2촌 이상, 조부모 등→손자녀·세대생략)', '직계비속(1촌, 자녀 등→부모)', '직계비속(2촌 이상, 손자녀 등→조부모·세대생략)', '기타친족', '기타(상속인 아닌 자 등)'];
 // [2026.10.15 일괄점검 ②] 상담 메모(엑셀·문서·의뢰서)에 적힌 값을 그 칸 질문의 후보로 붙인다(확정하지 않음 — 출처 줄을 보여 주고 고르게).
 //  예전엔 메모를 "읽음"으로만 표시하고 증여 현금 사건 말고는 어느 칸에도 쓰지 않았다.
-const CASEPROC_MEMO_SYN_ = { 양도가액: ['양도가액', '양도금액', '매도금액', '매도가', '양도가'], 취득가액: ['취득가액', '취득금액', '매수금액', '매입가', '취득가'], 취득일: ['취득일', '매수일', '취득시기', '취득일자'], 소재지: ['소재지', '물건지', '주소'], 증여재산가액: ['증여재산가액', '증여가액', '증여금액'], 양도인성명: ['양도인', '매도인'], 피상속인성명: ['피상속인'] };
+const CASEPROC_MEMO_SYN_ = { 양도가액: ['양도가액', '양도금액', '매도금액', '매도가', '양도가'], 취득가액: ['취득가액', '취득금액', '매수금액', '매입가', '취득가'], 취득일: ['취득일', '매수일', '취득시기', '취득일자'], 소재지: ['소재지', '물건지', '주소'], 증여재산가액: ['증여재산가액', '증여가액', '증여금액'], 양도인성명: ['양도인', '매도인'], 피상속인성명: ['피상속인'], 관계: ['관계', '시아버지', '시어머니', '며느리', '사위', '장인', '장모', '아버지', '어머니', '부친', '모친', '아빠', '엄마', '할아버지', '할머니', '남편', '아내', '부인', '배우자'] };
 function caseProcMemoCands_(c, res) {
   if (!res || !Array.isArray(res.items)) return res;
   const targets = res.items.filter(function (it) { return it.ask && /^(input|choose)$/.test(it.ask.mode) && it.ask.label; });
@@ -25626,6 +25641,14 @@ function caseProcMemoCands_(c, res) {
       let v = '';
       if (type === 'money') { const m = /\d{1,3}(?:,\d{3}){2,}|\d{7,}/.exec(rest); v = m ? m[0].replace(/,/g, '') : String(caseProcKrAmount_(rest) || ''); if (v === '0') v = ''; }
       else if (type === 'date') { const m = /(20\d{2}|19\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})/.exec(rest); if (m) v = m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2); }
+      else if (type === 'select' && /관계/.test(core)) {
+        // [2026.10.16] 증여 관계 — 메모의 호칭(시아버지·며느리·아버지·남편 등)을 증여재산공제 관계 선택지로(강정화(임세택) 사건: 가족관계증명서로 못 정함)
+        const rel = /(시아버지|시어머니|장인|장모|며느리|사위|시부모|처부모)/.test(rest + x.l) ? '기타친족'
+          : /(할아버지|할머니|조부|조모)/.test(x.l) ? '직계존속(2촌 이상, 조부모 등→손자녀·세대생략)'
+          : /(아버지|어머니|부친|모친|아빠|엄마)/.test(x.l) ? '직계존속(1촌, 부모 등→자녀)'
+          : /(남편|아내|부인|배우자)/.test(x.l) ? '배우자' : '';
+        v = rel && (it.ask.options || []).indexOf(rel) !== -1 ? rel : '';
+      }
       else if (type === 'select') {
         // 고르는 칸(관계 등)은 정해진 선택지 중 하나일 때만 후보로 — 메모 문장 조각("는 의뢰인 진술에 근거…")을 후보로 넣던 것(3대 기준 점검)
         const nr = rest.replace(/\s+/g, '');
@@ -25778,7 +25801,12 @@ function caseProcMemoCross_(c, res) {
     });
     if (!found.length) return;
     const same = function (v) { return s[1] === 'money' ? digits(v) === digits(cur) : v === cur; };
-    const agree = found.filter(function (f) { return same(f.v); }), diff = found.filter(function (f) { return !same(f.v); });
+    const agree = found.filter(function (f) { return same(f.v); });
+    // [2026.10.16] 메모에 수증자가 여럿이면(한 메모에 두 사람 금액·합계) 다른 사람 몫을 "다르다"고 물었다(양성용·강정화) —
+    //  하나라도 같으면 일치로 보고, 증여는 그 줄에 이 사건 납세자(수증자) 이름이 있을 때만 다르다고 묻는다
+    const me = String(c.납세자 || '').replace(/\s+/g, '');
+    let diff = agree.length ? [] : found.filter(function (f) { return !same(f.v); });
+    if (c.세목 === 'gift') diff = diff.filter(function (f) { return me.length >= 2 && String(f.line).replace(/\s+/g, '').indexOf(me) !== -1; });
     if (agree.length) res.lines.push('✅ ' + s[4] + ' ' + (s[1] === 'money' ? won(cur) : cur) + ' — 상담 메모(' + agree[0].file + ')와 일치');
     if (diff.length) res.items.push(caseProcItem_('memo:' + s[3] + ':' + diff[0].v, 'check', s[4] + ': 처리개요 ' + (s[1] === 'money' ? won(cur) : cur) + ' ↔ 상담 메모 ' + diff.map(function (f) { return (s[1] === 'money' ? won(f.v) : f.v) + '(' + f.file + ')'; }).join(', ') + ' — 어느 값이 맞나요?',
       { mode: 'choose', target: s[3], input: s[1], label: s[4], cands: [{ v: s[1] === 'money' ? digits(cur) : cur, src: '처리개요(지금 값)' }].concat(diff.map(function (f) { return { v: f.v, src: '상담 메모(' + f.file + '): "' + f.line + '"' }; })) }));
@@ -25969,7 +25997,7 @@ function caseProcTrAskBasics_(c, ov, lines, items, rf, txs, noExpenses) {
       // 국외자산 질문(환율·지분)이 걸려 있으면 금액·날짜는 그 답으로 후보를 만든다 — "서류에서 정하지 못했다"로 따로 묻지 않음
       if (i === 0 && f[0] !== 'assetLocation' && items.some(function (x) { return /^oa:/.test(x.id); })) return;
       items.push(caseProcItem_('ov:asset:' + i + ':' + f[0], 'missing', '물건' + (i + 1) + ' 「' + f[1] + '」을(를) 서류에서 정하지 못했습니다 — 정해 주세요(계산 전 필수).',
-        (i === 0 && f[0] === 'assetLocation' && rf && (rf.locCands || []).length) ? { mode: 'choose', target: 'ovAsset:0:assetLocation', input: 'text', label: '물건1 소재지', cands: rf.locCands.map(function (x) { return { v: x.v, src: x.src }; }) } : { mode: 'input', target: 'ovAsset:' + i + ':' + f[0], input: f[2], label: '물건' + (i + 1) + ' ' + f[1], cands: [] }));
+        (txs && txs[i] && ((f[0] === '양도가액' && txs[i].transferPriceCand) || (f[0] === '취득가액' && txs[i].acquisitionPriceCand))) ? { mode: 'choose', target: 'ovAsset:' + i + ':' + f[0], input: 'money', label: '물건' + (i + 1) + ' ' + f[1], cands: [(function (pc) { return { v: String(pc.v), src: '계약서 매매대금 — ' + pc.file + '(계약금·잔금 검산 안 됨 — 원문 확인)' }; })(f[0] === '양도가액' ? txs[i].transferPriceCand : txs[i].acquisitionPriceCand)] } : (i === 0 && f[0] === 'assetLocation' && rf && (rf.locCands || []).length) ? { mode: 'choose', target: 'ovAsset:0:assetLocation', input: 'text', label: '물건1 소재지', cands: rf.locCands.map(function (x) { return { v: x.v, src: x.src }; }) } : { mode: 'input', target: 'ovAsset:' + i + ':' + f[0], input: f[2], label: '물건' + (i + 1) + ' ' + f[1], cands: [] }));
     });
   });
   if (!c.기준일 && !items.some(function (x) { return /^ov:기준일/.test(x.id); })) items.push(caseProcItem_('ov:기준일:none', 'missing', '양도일(잔금일·등기접수일 중 빠른 날, 소득세법 §98)을 서류에서 정하지 못했습니다 — 정해 주세요.', { mode: 'base' }));
@@ -26718,6 +26746,9 @@ function caseProcInhFacts_(c, parsed) {
   out.deceased.name = (dv && dv.피상속인) || (famSelf && nm(famSelf.me.이름)) || '';
   out.deceased.regNo = famSelf && famSelf.me.주민번호 ? famSelf.me.주민번호 : '';
   out.deceased.src = dv && dv.피상속인 ? '상속재산분할협의서(' + dv.file + ')' : (famSelf ? '가족관계증명서(' + famFile + ')' : '');
+  // [2026.10.16] 서류로 피상속인을 못 찾으면(가족관계·기본증명서 사진이 글자인식 실패) 사건 납세자 칸 — 상속 사건은 "고객명(피상속인)_상속" 규칙이라 납세자 = 피상속인.
+  //  노영환(조용녀) 사건: 피상속인을 못 찾아 피상속인 명의 등기부·임대보증금·병원비가 전부 연결되지 않았다
+  if (!out.deceased.name && String(c.납세자 || '').trim()) { out.deceased.name = nm(c.납세자); out.deceased.src = '사건 납세자 칸(서류로 확인 못 함 — 기본증명서·가족관계증명서로 확인 필요)'; out.deceased.unsure = true; }
   // 상속인 — 피상속인 가족관계증명서의 생존 배우자·자녀(1순위). 주민번호는 분할협의서(전체 번호)가 있으면 그것, 없으면 증명서(가려진 번호)
   const divNo = {}; (dv && dv.상속인 || []).forEach(function (h) { divNo[nm(h.이름)] = h.주민번호; });
   if (famSelf) famSelf.g.forEach(function (q) {
@@ -26868,6 +26899,8 @@ function caseProcInhFacts_(c, parsed) {
     const unitOf = function (s) { const n = String(s || '').replace(/\s+/g, '').replace(/제(?=\d)/g, ''); const d = /(\d+)동/.exec(n.replace(/제/g, '')), h = /(\d+)호/.exec(n.replace(/제/g, '')); return { d: d ? d[1] : '', h: h ? h[1] : '', n: n }; };
     const sameUnit = function (a, b) { const ua = unitOf(a), ub = unitOf(b); if (!ua.h || ua.h !== ub.h || ua.d !== ub.d) return false; const ks = ua.n.match(/[가-힣]{3,}/g) || []; return ks.some(function (k) { return !/(경기도|특별시|광역시|아파트|오전동)$/.test(k) && k.length >= 3 && ub.n.indexOf(k.slice(-4)) !== -1; }); };
     if (!landlord && x.p.result.소재지) landlord = out.assets.some(function (a) { return a.loc && (tcLocSame_(a.loc, x.p.result.소재지) || sameUnit(a.loc, x.p.result.소재지)); });
+    // 세무사님이 "임대보증금" 폴더에 모아 둔 계약서 — 피상속인이 임대인인 계약(서명란·소재지가 안 읽혀도)
+    if (!landlord) { try { const ps0 = DriveApp.getFileById(x.f.id).getParents(); while (ps0.hasNext()) if (/임대\s*보증금|보증금/.test(ps0.next().getName())) landlord = true; } catch (e) {} }
     if (!landlord) return;
     const st0 = x.p.result.시작일 || '', en0 = x.p.result.종료일 || '';
     const live = base && st0 && en0 && st0 <= base && base <= en0;
@@ -26894,6 +26927,29 @@ function caseProcInhFacts_(c, parsed) {
         out.notes.push('장기요양급여비 납부확인서(' + f0.name + ') — 사망(' + (base || '상속개시일') + ') 전 이용분을 사망 뒤에 낸 금액이 있으면 「상속 채무 확정」에서 채무로 직접 더하세요(§14①3호)');
       }
     });
+  } catch (e) {}
+  // [2026.10.16] 병원비 서류(진료비 영수증·진료내역서·약제비) — 사망 전 3개월 안 진료분은 미지급 채무 후보(체크 안 함), 그보다 오래된 것은 이미 낸 것으로 보고 알림만.
+  //  노영환 사건: "병원비" 폴더의 진료비·진료내역서 10여 장이 어느 칸에도 안 쓰였다
+  try {
+    const baseD = base ? new Date(base) : null, medOld = [];
+    caseProcFiles_(c).forEach(function (f0) {
+      if (!/pdf|^image\//.test(String(f0.mimeType || ''))) return;
+      let t0 = ''; try { t0 = tc_docText_(f0) || ''; } catch (e) { return; }
+      const fl = t0.replace(/\s+/g, ' ');
+      if (!(/병원|진료|약제|의원/.test(f0.name) || /진\s*료\s*(내\s*역|비)|약\s*제\s*비/.test(fl.slice(0, 120)))) return;
+      if (/장기\s*요양\s*급여비?\s*납부\s*확인/.test(fl)) return; // 위에서 따로 알림
+      if (/운구|장례|장지|화장|빈소|수의|조문|안치|봉안|납골|영정|상복|환의/.test(f0.name + ' ' + fl.slice(0, 200))) return; // 장례비용 쪽 서류(병원 장례식장·운구) — 병원비가 아님
+      if (out.debts.some(function (d) { return d.file === f0.name; })) return;
+      const ds = (fl.slice(0, 1500).match(/(?:19|20)\d{2}[.\-]\d{1,2}[.\-]\d{1,2}/g) || []).map(function (s) { const p = s.split(/[.\-]/); return p[0] + '-' + ('0' + p[1]).slice(-2) + '-' + ('0' + p[2]).slice(-2); }).filter(function (d) { return d.slice(5, 7) <= '12'; }).sort();
+      const last = ds[ds.length - 1] || '';
+      const am = /(?:환자\s*부담\s*총액|본인\s*부담\s*총액|납부할\s*금액|수납\s*금액|합\s*계)[^\d]{0,30}(\d{1,3}(?:,\d{3})+)/.exec(fl);
+      const hosp = (/([가-힣]{2,15}(?:병원|의원|약국))/.exec(fl) || /([가-힣]{2,15}(?:병원|의원|약국))/.exec(f0.name) || [])[1] || f0.name.replace(/\.[A-Za-z]{2,5}$/, '');
+      const recent = baseD && last && (baseD - new Date(last)) / 86400000 <= 92;
+      if (recent && am) out.debts.push({ debtType: 'other', creditorName: hosp, amount: Number(am[1].replace(/,/g, '')), file: f0.name, src: '병원비(진료 ' + (ds[0] || '') + '~' + last + ')', sure: false, note: '사망 전 3개월 안 진료분 — 사망 당시 못 낸 금액(상속인이 나중에 낸 것)만 채무(§14①3호)' });
+      else if (recent) out.notes.push('병원비 서류(' + f0.name + ', ' + hosp + ' ' + last + ') — 사망 직전 진료분, 금액을 읽지 못함: 사망 뒤에 낸 금액이면 「상속 채무 확정」에서 직접 더하세요');
+      else medOld.push(f0.name + (last ? '(' + last + ')' : ''));
+    });
+    if (medOld.length) out.notes.push('병원비 서류 ' + medOld.length + '건은 사망 3개월 전보다 오래된 진료분이라 이미 낸 것으로 봄(채무 아님): ' + medOld.join(', '));
   } catch (e) {}
   const dch = choices.debts;
   out.debtsConfirmed = dch && Array.isArray(dch.items) ? dch.items : null;
@@ -31224,6 +31280,13 @@ function lsParseLease_(text) {
   var wons = all.filter(function (x) { return x.won; }).map(function (x) { return x.v; });
   var wonMax = wons.length ? Math.max.apply(null, wons) : null;
   if (wonMax && (!r.보증금 || wonMax > r.보증금)) { if (r.보증금 && r.보증금 !== wonMax) r.경고.push('한글 금액과 숫자 금액이 달라 숫자(₩) 금액을 보증금으로 씀 — 확인'); r.보증금 = wonMax; }
+  // [2026.10.16] 옛 검인 양식("전세(보증금) … 팔천만 … 원정 월세금 일백육십만") — 보증금 칸의 한글 금액에 "금" 표시가 없어 못 읽고 월세(월세금의 '금')를 보증금으로 읽던 것(노영환 사건)
+  var oldF = /전\s*세\s*\(\s*보\s*증\s*금\s*\)([\s\S]{0,90}?)월\s*세\s*금/.exec(flat);
+  if (oldF) {
+    var kws = (oldF[1].match(/[일이삼사오육칠팔구십백천만억역]{2,12}/g) || []).map(function (x) { return ctKorAmt_(x.replace(/역/g, '억')); }).filter(function (v) { return v && v >= 1000000; });
+    if (kws.length) { var v0 = kws[kws.length - 1]; if (r.보증금 !== v0) { if (r.보증금) r.경고.push('보증금 칸의 한글 금액(' + v0.toLocaleString('ko-KR') + '원)으로 고침 — 앞서 읽은 ' + r.보증금.toLocaleString('ko-KR') + '원은 월세 칸 금액'); r.보증금 = v0; } }
+    var mw = /월\s*세\s*금\s*-?\s*금?\s*([일이삼사오육칠팔구십백천만억]{2,12})/.exec(flat); if (mw && !r.월세) { var mv = ctKorAmt_(mw[1]); if (mv) r.월세 = mv; }
+  }
   r.계약금 = ctMoneyAfter_(flat, /계\s*약\s*금/, 100);
   r.중도금 = ctMoneyAfter_(flat, /중\s*도\s*금\s*-?/, 30);
   r.잔금 = ctMoneyAfter_(flat, /잔\s*금\s*[:：]?/, 100);
@@ -31738,8 +31801,10 @@ function ihDate_(s) {
 function ihDetect_(text) {
   var t = String(text || '');
   if (/상속인\s*(?:금융\s*거래|내역)|안심\s*상속|보험\s*가입\s*내역\s*조회|미수령금|휴면\s*보험금\s*조회|상속인\s*금융\s*내역/.test(t)) return 'inhquery';
-  if (/사\s*망\s*진\s*단\s*서|시\s*체\s*검\s*안\s*서/.test(t)) return 'death';
-  if (/기\s*본\s*증\s*명\s*서/.test(t) && /사\s*망/.test(t)) return 'death';
+  // [2026.10.16] 병원 진료내역서·진료비 영수증 안의 "사망진단서(제증명료)" 항목 때문에 사망진단서로 오인하던 것 — 첫머리가 진료비 서류면 아님(노영환 사건)
+  var medHead = /진\s*료\s*(내\s*역|비)|약\s*제\s*비|계\s*산\s*서\s*[·.]?\s*영\s*수\s*증/.test(t.slice(0, 80));
+  if (!medHead && /사\s*망\s*진\s*단\s*서|시\s*체\s*검\s*안\s*서/.test(t)) return 'death';
+  if (!medHead && /기\s*본\s*증\s*명\s*서/.test(t) && /사\s*망/.test(t)) return 'death';
   if (/제\s*적\s*등\s*본|제적\s*초본/.test(t)) return 'death';
   // 금융거래확인서(예금·대출 함께)는 잔고증명 규칙(balance)이 읽으므로 여기서는 부채증명원·대출잔액증명만
   if (/부\s*채\s*증\s*명|대\s*출\s*잔\s*액\s*증\s*명|채\s*무\s*(?:잔액\s*)?확\s*인\s*서/.test(t)) return 'debtcert';
