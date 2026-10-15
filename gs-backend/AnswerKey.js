@@ -17,7 +17,7 @@
 const AK_KEY_NAME_ = '_정답지.json';
 const AK_RESULT_NAME_ = '_정답지점검결과.json';
 const AK_STATE_PROP_ = 'AK_RUN_STATE';
-const AK_CODE_VER_ = '2026-10-15b'; // 점검 규칙을 바꿔 배포할 때마다 올린다 — 멈췄던 점검의 옛 결과를 새 실행에 이어 붙이지 않게
+const AK_CODE_VER_ = '2026-10-15c'; // 점검 규칙을 바꿔 배포할 때마다 올린다 — 멈췄던 점검의 옛 결과를 새 실행에 이어 붙이지 않게
 
 function akReadCase_(caseId) {
   const sheet = work_getSheet_(), col = work_colMap_(sheet.getDataRange().getValues()[0]);
@@ -419,8 +419,14 @@ function akReturnOwner_(f, all) {
   const pay = all.filter(function (x) { return x !== f && head(x.name) === h && /납부서|접수증/.test(x.name) && !/지방/.test(x.name); })[0];
   if (!pay) return '';
   const t = String(tc_docText_(pay) || '');
-  const m = /\(\s*성\s*명\s*\)\s*(?:상\s*호)?\s*\n?\s*([가-힣]{2,4})/.exec(t) || /성\s*명\s*[:：]?\s*([가-힣]{2,4})/.exec(t);
-  return m ? m[1] : '';
+  const m0 = /\(\s*성\s*명\s*\)\s*(?:상\s*호)?\s*\n?\s*([가-힣]{2,4})/.exec(t) || /성\s*명\s*[:：]?\s*([가-힣]{2,4})/.exec(t);
+  const bad = /^(사업|상호|주민|등록|주소|성명|납세|세목)/; // 이름 칸 대신 다음 이름표를 읽은 경우
+  const m = m0 && !bad.test(m0[1]) ? m0 : (/([가-힣]{2,4})\s*사\s*업\s*자\s*등\s*록\s*번\s*호/.exec(t) || null);
+  if (m && !bad.test(m[1])) return m[1];
+  // 납부서에서 이름을 못 읽으면 — 폴더의 이름 파일(예: "양지현.pdf", "주민등본_양지현.pdf") 중 머리글자("현")가 이름 끝 글자와 맞는 사람이 한 명이면 그 사람
+  const people = all.map(function (x) { const s = x.name.replace(/\.[^.]+$/, '').split(/[_\-\s]/).pop(); return /^[가-힣]{3,4}$/.test(s) ? s : ''; }).filter(function (v, i, a) { return v && a.indexOf(v) === i; });
+  const hit = people.filter(function (p) { return p.slice(-h.length) === h; });
+  return hit.length === 1 ? hit[0] : '';
 }
 function akZeroReturn_(text, seMok) {
   const t = String(text || '');
@@ -449,12 +455,12 @@ function answerKeyDraft_(body) {
     if (!ids && !CASEPROC_TAX_LABEL_[c.세목]) continue; // 신고가 끝난(완료) 사건이 정답지 원천이라 완료도 포함
     if (!String(c.폴더ID || '').trim()) continue;
     const ek = akLoadKey_(c);
-    if (!ids && ek && ek.key && (ek.key.상태 === '확정' || ek.key.초안판 >= 4)) continue; // 확정·4판 초안은 건너뜀(여러 번 눌러 이어서 진행)
+    if (!ids && ek && ek.key && (ek.key.상태 === '확정' || ek.key.초안판 >= 5)) continue; // 확정·5판 초안은 건너뜀(여러 번 눌러 이어서 진행)
     if (Date.now() - started > 200000) { more = true; break; } // 처음 읽는 서류가 많으면 한 번에 다 못 함 — 화면이 이어서 다시 부름
     const all = caseProcFiles_(c).filter(function (f) { return /pdf|^image\//.test(String(f.mimeType || '')); });
     const files = all.filter(function (f) { return /양도\s*코리아|yangdo|^양코|신고서|계산서|계산명세/i.test(f.name) && !/지방|종합소득|접수증|납부서/.test(f.name); });
     // 3판 초안에 숫자가 있고 신고서가 하나뿐이면 다시 읽지 않는다(세율 검산 규칙은 그대로) — 4판 표시만
-    if (!ids && ek && ek.key && ek.key.초안판 >= 3 && !ek.key.오류 && files.length <= 1) { ek.key.초안판 = 4; answerKeySave_({ caseId: c.id, key: ek.key }); continue; }
+    if (!ids && ek && ek.key && ek.key.초안판 >= 3 && !ek.key.오류 && files.length <= 1 && !(c.세목 === 'gift' && all.some(function (f) { return /납부서/.test(f.name); }) && files.length > 1)) { ek.key.초안판 = 5; answerKeySave_({ caseId: c.id, key: ek.key }); continue; }
     const found = []; // {owner, res, src, why}
     files.slice(0, 8).forEach(function (f) {
       const txt = tc_docText_(f) || '';
@@ -470,7 +476,7 @@ function answerKeyDraft_(body) {
       pays.forEach(function (f) { if (found.length) return; const v = akPaySlipAmount_(tc_docText_(f) || '', c.세목); if (v) found.push({ owner: '', res: { 납부세액: v }, src: f.name, why: '신고서가 폴더에 없어 국세 납부서의 ' + CASEPROC_TAX_LABEL_[c.세목] + ' 납부금액만(분납이면 1회차만일 수 있음)' }); });
     }
     if (!found.length) {
-      if (!(ek && ek.key && ek.key.상태 === '확정')) answerKeySave_({ caseId: c.id, key: { 세목: c.세목, 상태: '초안', 초안판: 4, 오류: files.length ? '신고서에서 세율 계산이 맞는 숫자를 찾지 못함' : '신고서·국세 납부서가 폴더에 없음 — 신고서 PDF를 사건 폴더에 저장해 주세요' } });
+      if (ek && ek.key && ek.key.상태 !== '확정') answerKeySave_({ caseId: c.id, key: { 세목: c.세목, 상태: '초안', 초안판: 5, 오류: files.length ? '신고서에서 세율 계산이 맞는 숫자를 찾지 못함' : '신고서·국세 납부서가 폴더에 없음 — 신고서 PDF를 사건 폴더에 저장해 주세요' } });
       if (ids || files.length) made.push({ caseId: c.id, 사건명: c.사건명, error: files.length ? '신고서 PDF ' + files.length + '개(' + files.slice(0, 3).map(function (f) { return f.name; }).join(', ') + ')에서 세율 계산이 맞는 과세표준·산출세액 짝을 찾지 못함(다른 세목 서식이거나 글자인식 불량)' : '신고서 PDF(홈택스·양도코리아)가 사건 폴더에 없음' });
       continue;
     }
@@ -482,7 +488,7 @@ function answerKeyDraft_(body) {
       const name = own ? '_정답지(' + own + ').json' : AK_KEY_NAME_;
       const cur = (akLoadKey_(c, name) || {}).key || {};
       const confirmed = cur.상태 === '확정';
-      const key = confirmed ? Object.assign({}, cur) : { 세목: c.세목, 상태: '초안', 초안판: 4, 출처: x.src };
+      const key = confirmed ? Object.assign({}, cur) : { 세목: c.세목, 상태: '초안', 초안판: 5, 출처: x.src };
       if (own) key.납세자 = own;
       Object.keys(x.res).forEach(function (f) { if (!(confirmed && key[f] !== undefined)) key[f] = x.res[f]; });
       key.근거 = Object.assign({}, confirmed ? (key.근거 || {}) : {}, Object.keys(x.res).reduce(function (o, f) { o[f] = (x.why ? x.why + ' — ' : '') + '신고서(' + x.src + ')' + (x.why ? '' : ' — 글자인식 + 세율 검산(과세표준↔산출세액' + (f === '신고세액공제' || f === '납부세액' ? '↔세액공제↔납부' : '') + ')으로 맞는 숫자') + ', 세무사님 확인 전'; return o; }, {}));
