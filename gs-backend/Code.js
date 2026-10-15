@@ -24720,7 +24720,7 @@ function tc_ruleTransferFacts_(body) {
   var files = caseProcFiles_({ 폴더ID: folderId });
   var rank = function (n) { return /(계약|신고필증|취득세|법무|등기|등본)/.test(n) ? 0 : /(공사|인테리어|중개|이체|영수증|비용)/.test(n) ? 1 : 2; };
   files.sort(function (a, b) { return rank(a.name) - rank(b.name); });
-  var contracts = [], reports = [], acqs = [], lawyers = [], regs = [], expDocs = [], pubs = [], regCerts = [], comps = [], started = Date.now(), skippedForTime = [];
+  var contracts = [], reports = [], acqs = [], lawyers = [], regs = [], expDocs = [], pubs = [], regCerts = [], comps = [], bunyang = [], started = Date.now(), skippedForTime = [];
   var docSeen = 0;
   for (var i = 0; i < files.length; i++) {
     var f = files[i];
@@ -24731,6 +24731,13 @@ function tc_ruleTransferFacts_(body) {
     try { text = tc_docText_(f); } catch (e) { continue; }
     if (!text) continue;
     if (!caseProcIsAmend_(cr) && caseProcIsOutputText_(text)) continue; // [2026.10.15] 내용으로 본 이미 낸 신고서(사진 신고서 등) — 입력으로 안 씀
+    // [2026.10.15 1단계 ②] 분양가 내역표(분양 취득 — "소유권이전등기비용내역" 등): 분양가 줄의 금액들을 취득가액 후보로(어느 호실 값인지는 판단 — 정하지 않음).
+    //  김금옥 사건: 취득 계약서가 없고 분양가 표 사진만 있어 취득가액을 못 정했는데, 그 사진이 "종류 미정"으로 안 쓰였다.
+    var bym = /분\s*양\s*가([\s\S]{0,400}?)(?:부\s*가\s*세|과\s*표|합\s*계)/.exec(text);
+    if (bym && /등\s*기\s*비\s*용|과\s*표|분\s*양/.test(text)) {
+      var bps = (bym[1].match(/\d{1,3}(?:[,.]\d{3}){2,}/g) || []).map(function (x) { return Number(x.replace(/[,.]/g, '')); }).filter(function (v) { return v >= 10000000; });
+      if (bps.length) bunyang.push({ file: f.name, prices: bps.filter(function (v, i, a) { return a.indexOf(v) === i; }).slice(0, 12) });
+    }
     // [2026.10.15 1단계 ②] 수용 보상금 내역서(토지·물건) — 합계를 읽어 양도가액 질문의 후보로(어느 금액이 양도가액인지는 판단 — 정하지 않음).
     //  김운래 사건: 보상금내역-토지/지장물이 "종류 미정"으로 어느 칸에도 안 쓰였다.
     if (/보\s*상\s*금\s*내\s*역/.test(text)) {
@@ -24998,7 +25005,8 @@ function tc_ruleTransferFacts_(body) {
   });
   if (skippedForTime.length) evidence.push('⚠ 서류가 많거나 시간이 모자라 ' + skippedForTime.length + '개를 이번에 못 읽음(다시 처리하면 기억분으로 이어 읽음): ' + skippedForTime.slice(0, 8).join(', ') + (skippedForTime.length > 8 ? ' 외' : ''));
   comps.forEach(function (x) { evidence.push('수용 보상금 내역: ' + x.file + ' — ' + x.kind + ' 합계 ' + x.total.toLocaleString('ko-KR') + '원' + (x.count ? '(' + x.count + ')' : '') + (x.project ? ', ' + x.project : '') + (x.unsure ? ' — 합계 줄 위치로 읽음, 원문 확인' : '')); });
-  return { ok: true, sellerName: names[0] || null, transactions: txs, evidence: evidence, expCands: expCands, comps: comps,
+  bunyang.forEach(function (x) { evidence.push('분양가 내역: ' + x.file + ' — 분양가 ' + x.prices.length + '개(' + x.prices.map(function (v) { return v.toLocaleString('ko-KR'); }).join(', ') + '원) — 어느 호실 값인지 확인 필요'); });
+  return { ok: true, sellerName: names[0] || null, transactions: txs, evidence: evidence, expCands: expCands, comps: comps, bunyang: bunyang,
     counts: { 계약서: contracts.length, 신고필증: reports.length, 취득세: acqs.length, 법무사: lawyers.length, 등기부: regs.length } };
 }
 
@@ -25610,6 +25618,17 @@ function caseProcOverview0_(c) {
       if (rf.comps.length > 1) cc.push({ v: String(rf.comps.reduce(function (s, x) { return s + x.total; }, 0)), src: '보상금 합계 전부(' + rf.comps.map(function (x) { return x.kind; }).join('+') + ')' });
       items.push(caseProcItem_('tr:comp', 'judge', '수용 보상금 내역서에서 읽은 금액입니다 — 물건1 양도가액에 어느 금액을 넣을까요? (지장물 보상 중 건물·구축물은 양도, 수목·시설 이전비·영업보상은 양도가 아닐 수 있어 판단이 필요합니다. 이의재결로 늘어난 금액이 있으면 그 금액으로)',
         { mode: 'choose', target: 'ovAsset:0:양도가액', input: 'money', label: '물건1 양도가액', cands: cc }));
+    }
+  }
+  // [2026.10.15 1단계 ②③] 분양가 내역표 — 취득가액이 비어 있으면 표의 분양가를 객관식 후보로(이 호실 평형·층 값을 고르게)
+  if ((rf.bunyang || []).length) {
+    const a0b = (Array.isArray(ov.물건목록) && ov.물건목록[0]) || ov;
+    const txA = (rf.transactions || [])[0] || {};
+    if (!String(a0b.취득가액 || '').trim() && !txA.acquisitionPrice) {
+      const bc = [];
+      rf.bunyang.forEach(function (x) { x.prices.forEach(function (v, i) { bc.push({ v: String(v), src: '분양가 내역표 ' + (i + 1) + '번째 값 — ' + x.file }); }); });
+      items.push(caseProcItem_('tr:bunyang', 'judge', '분양가 내역표에서 분양가 ' + bc.length + '개를 읽었습니다 — 이 호실(평형·층)의 분양가를 골라 주세요(취득가액). 부가가치세는 분양가와 별도 줄이라 넣지 않았습니다.',
+        { mode: 'choose', target: 'ovAsset:0:취득가액', input: 'money', label: '물건1 취득가액', cands: bc }));
     }
   }
   const txs = (rf.transactions || []).filter(function (t) { return t.transferPrice || t.acquisitionPrice || t.transferDate; });
