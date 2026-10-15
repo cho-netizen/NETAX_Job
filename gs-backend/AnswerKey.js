@@ -376,7 +376,8 @@ function answerKeyRun_(body) {
   //  세무사님의 일반 저장(withLock_)과 📥 수정 반영까지 "다른 저장 작업이 진행 중"으로 25분간 막혔다(2026-10-16 새벽).
   //  점검끼리만 겹치지 않게 캐시 표시(7분 뒤 자동 해제 — 서버 실행 한도 6분보다 길게)로 대신한다.
   const akCache = CacheService.getScriptCache(), AK_RUN_FLAG = 'ak_running';
-  if (akCache.get(AK_RUN_FLAG)) return { ok: true, more: true, busy: true, done: st.results.length, total: st.results.length + st.queue.length };
+  const akFlag = akCache.get(AK_RUN_FLAG);
+  if (akFlag) return { ok: true, more: true, busy: true, busyAge: Math.round((Date.now() - Number(akFlag)) / 1000), tries: st.tries && st.queue[0] ? st.tries[String(st.queue[0])] || 0 : 0, done: st.results.length, total: st.results.length + st.queue.length }; // busyAge: 지금 점검이 몇 초 전에 시작됐는지(진단용)
   akCache.put(AK_RUN_FLAG, String(Date.now()), 380); // 서버 한도 6분 + 20초 — 끊긴 실행이 남긴 표시가 오래 막지 않게
   const lock = { releaseLock: function () { try { akCache.remove(AK_RUN_FLAG); } catch (e) {} } };
   try {
