@@ -359,6 +359,17 @@ function akProcessAudit_(c, ev, ovr, live) {
   return { 파일: files.length, 정리됨: dt.filter(function (d) { return d.t; }).length, 종류미정: dt.filter(function (d) { return !d.t; }).length, 메모읽음: memo.read.length,
     못읽음: memo.unread, 제외: memo.skipped.length + (ev.outDocs || 0), 말없이건너뜀: silent, 질문: q, truncated: !!all.truncated };
 }
+// [2026.10.16] 점검 진행 저장 — 같은 점검(startedAt)을 다른 실행이 더 많이 진행해 두었으면 덮어쓰지 않는다(진행 수가 25→20으로 되돌아간 일).
+//  저장할 때마다 touchedAt(마지막 진행 시각)을 남긴다. 덮어쓰지 않았으면 false.
+function akSaveSt_(props, st) {
+  try {
+    const cur = JSON.parse(props.getProperty(AK_STATE_PROP_) || 'null');
+    if (cur && cur.startedAt === st.startedAt && (cur.results || []).length > (st.results || []).length) return false;
+  } catch (e) {}
+  st.touchedAt = new Date().toISOString();
+  props.setProperty(AK_STATE_PROP_, JSON.stringify(st));
+  return true;
+}
 // 🧪 정답지 점검 실행 — {caseId?, reset?}. 사건이 많거나 처음 읽는 서류가 많으면 more:true(화면이 이어서 다시 부름)
 function answerKeyRun_(body) {
   body = body || {};
@@ -366,7 +377,8 @@ function answerKeyRun_(body) {
   let st = null;
   if (!body.reset) { try { st = JSON.parse(props.getProperty(AK_STATE_PROP_) || 'null'); } catch (e) { st = null; } }
   // [2026.10.15] 이어서 하기는 같은 코드·3시간 안에서만 — 배포 뒤 다시 누르면 옛 코드로 낸 결과 목록을 이어 붙여 새 규칙이 1건에만 적용됐다
-  if (st && (st.ver !== AK_CODE_VER_ || Date.now() - new Date(st.startedAt).getTime() > 3 * 3600000)) st = null;
+  // [2026.10.16] 3시간은 '시작'이 아니라 '마지막 진행'부터 — 서류 많은 사건으로 3시간 넘게 걸린 전체 점검이 25/27에서 처음부터 다시 시작될 뻔했다
+  if (st && (st.ver !== AK_CODE_VER_ || Date.now() - new Date(st.touchedAt || st.startedAt).getTime() > 3 * 3600000)) st = null;
   if (!st || (body.caseId && st.only !== body.caseId)) {
     const ids = body.caseId ? [String(body.caseId)] : akCasesWithKey_();
     st = { only: body.caseId || '', queue: ids, results: [], startedAt: new Date().toISOString(), ver: AK_CODE_VER_ };
@@ -387,7 +399,7 @@ function answerKeyRun_(body) {
     // [2026.10.16] 서버 실행 한도(6분)에 걸려 강제 종료되면 진행이 저장되지 않아 같은 사건을 밤새 반복했다 —
     //  시작 전에 시도 횟수를 저장하고, 진행 없이 3번 끊기면 그 사건은 이유를 밝히고 건너뛴다
     st.tries = st.tries || {}; st.tries[q] = (st.tries[q] || 0) + 1;
-    props.setProperty(AK_STATE_PROP_, JSON.stringify(st));
+    if (!akSaveSt_(props, st)) return { ok: true, more: true, busy: true, stale: true, done: st.results.length, total: st.results.length + st.queue.length }; // 다른 실행이 더 앞서 있음 — 그 진행을 덮어쓰지 않음
     const c = akReadCase_(id);
     const k = c ? akLoadKey_(c, keyName) : null;
     let r;
@@ -397,10 +409,10 @@ function answerKeyRun_(body) {
     else if (!Object.keys(k.key).some(function (f) { return !/^(상태|출처|세목|근거|메모|초안판|오류|납세자)$/.test(f); })) r = { caseId: id, 사건명: c.사건명 || '', skipped: true, error: '정답지에 대조할 숫자가 없음' + (k.key.오류 ? ' — ' + k.key.오류 : '') };
     else { try { r = akRunCase_(id, k.key); } catch (e) { r = { caseId: id, 사건명: c.사건명 || '', error: '점검 중 오류: ' + (e && e.message || e) }; } }
     if (r && keyName !== AK_KEY_NAME_) { r.keyName = keyName; r.수증자 = r.수증자 || k && k.key && k.key.납세자; }
-    if (r.more) { st.tries[q] = 0; props.setProperty(AK_STATE_PROP_, JSON.stringify(st)); return { ok: true, more: true, caseId: id, progress: r.progress, done: st.results.length, total: st.results.length + st.queue.length }; } // 진행이 있었으니 시도 횟수는 처음부터
+    if (r.more) { st.tries[q] = 0; akSaveSt_(props, st); return { ok: true, more: true, caseId: id, progress: r.progress, done: st.results.length, total: st.results.length + st.queue.length }; } // 진행이 있었으니 시도 횟수는 처음부터
     st.results.push(r); st.queue.shift();
   }
-  if (st.queue.length) { props.setProperty(AK_STATE_PROP_, JSON.stringify(st)); return { ok: true, more: true, done: st.results.length, total: st.results.length + st.queue.length }; }
+  if (st.queue.length) { akSaveSt_(props, st); return { ok: true, more: true, done: st.results.length, total: st.results.length + st.queue.length }; }
   } finally { lock.releaseLock(); }
   props.deleteProperty(AK_STATE_PROP_);
   const result = { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), ver: AK_CODE_VER_, cases: st.results, pass: st.results.filter(function (r) { return r.pass; }).length, total: st.results.filter(function (r) { return !r.skipped; }).length, skipped: st.results.filter(function (r) { return r.skipped; }).length };
