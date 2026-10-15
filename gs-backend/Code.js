@@ -27140,7 +27140,9 @@ function caseProcSyncTaxpayer_(c, lines) {
 var CASEPROC_INHFACTS_MEMO_ = null;
 function caseProcInhFacts_(c, parsed) {
   if (parsed) return caseProcInhFacts0_(c, parsed);
-  const mk = c.id + '|' + (c.기준일 || '') + '|' + (c.수정일 || '') + '|' + JSON.stringify(c.사건개요 || {}).length;
+  // 답한 결정·채운 값·평가 선택(caseProcLoad_)도 키에 — 빼먹어 답한 뒤 2분간 답 전 결과(채무 확정 등 질문 재등장)를 돌려주던 퇴보 수정(재현기 cand1: 박종헌 12→14 등)
+  let sv0 = {}; try { sv0 = caseProcLoad_(c.id) || {}; } catch (e) {}
+  const mk = c.id + '|' + (c.기준일 || '') + '|' + (c.수정일 || '') + '|' + JSON.stringify(c.사건개요 || {}) + '|' + JSON.stringify([sv0.decisions || {}, sv0.filled || {}, sv0.ihChoices || {}]);
   if (CASEPROC_INHFACTS_MEMO_ && CASEPROC_INHFACTS_MEMO_.k === mk && Date.now() - CASEPROC_INHFACTS_MEMO_.at < 120000) return JSON.parse(CASEPROC_INHFACTS_MEMO_.json);
   const o = caseProcInhFacts0_(c);
   try { CASEPROC_INHFACTS_MEMO_ = { k: mk, at: Date.now(), json: JSON.stringify(o) }; } catch (e) { CASEPROC_INHFACTS_MEMO_ = null; }
