@@ -2532,6 +2532,16 @@
       };
       var hits = find(noSrc);
       if (!hits.length && src) hits = find(rest);
+      // [2026.10.16] 이름 사전에 없는 증빙·판독 질문 — 서류 이름("주민등록초본 받을 예정")이나 파일 이름("증여계약서.pdf 맞음")으로 찾는다(3대 기준: 79개가 이름으로 못 불림)
+      if (!hits.length){
+        var nt = rest.replace(/\s+/g, '');
+        hits = live.filter(function(x){
+          var ax = x.ask || {};
+          if (ax.mode === 'evidence'){ var ws = String(ax.label || '').replace(/\([^)]*\)/g, ' ').split(/[·,\s]+|또는|등\s/).map(function(w){ return w.replace(/\s+/g, ''); }).filter(function(w){ return w.length >= 4; }); return ws.some(function(w){ return nt.indexOf(w) !== -1; }); }
+          if (ax.mode === 'docok'){ var fm = /‘([^’]+)’/.exec(x.text || ''); var fn = fm ? fm[1].replace(/\.[A-Za-z0-9]{2,5}$/, '').replace(/\s+/g, '') : ''; return fn.length >= 3 && nt.indexOf(fn) !== -1; }
+          return false;
+        });
+      }
       var mo = /물건\s*(\d+)/.exec(rest);
       if (mo && hits.length > 1){ var h2 = hits.filter(function(x){ return new RegExp('물건\\s*' + mo[1] + '(?!\\d)').test(nxAiCaseProcName_(x, tax)); }); if (h2.length) hits = h2; }
       // 질문 이름(칸 이름)이 바로 그 말인 질문을 먼저 — "양도가액 5억"이 증빙 질문 문구 속 '양도가액'에 걸려 애매해지던 것(점검 72건)
