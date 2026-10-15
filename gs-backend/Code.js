@@ -25153,6 +25153,9 @@ function caseProcEvidence_(c) {
   });
   const pool = files.filter(function (f) { return !(f.p && f.p.office) && !/\.json$/i.test(f.name); });
   const hay = pool.map(function (f) { return { f: f, s: f.name + ' ' + (f.p && f.p.l || '') }; });
+  // [2026.10.15 1:1] 파일 이름의 '취득'·'양도' — 취득 칸엔 이름에 양도만 있는 파일을, 양도 칸엔 이름에 취득만 있는 파일을 후보로 올리지 않는다(세무사님: 이름에 분명히 적혀 있는데 둘 다 띄움)
+  const roleOk = function (label, name) { const L = String(label || ''), n = String(name || ''); if (/취득/.test(L) && !/양도/.test(L)) return !(/양도|매도/.test(n) && !/취득|매수/.test(n)); if (/양도/.test(L) && !/취득/.test(L)) return !(/취득|매수/.test(n) && !/양도|매도/.test(n)); return true; };
+  const roleNamed = function (label, name) { const L = String(label || ''), n = String(name || ''); return (/취득/.test(L) && !/양도/.test(L) && /취득/.test(n) && !/양도/.test(n)) || (/양도/.test(L) && !/취득/.test(L) && /양도/.test(n) && !/취득/.test(n)); };
   // 자동 정리로 종류가 확실히 판별되고(⚠ 없음) 칸이 하나로 정해지는 서류는 증빙목록을 확보됨(근거 파일명)으로 반영
   if (!virtual) {
     const marks = [];
@@ -25162,7 +25165,9 @@ function caseProcEvidence_(c) {
       if (!types) return;
       const lm = /\(([^)]*)\)\s*$/.exec(e.label);
       const loc = lm && /\d/.test(lm[1]) ? lm[1] : '';
-      const hit = docs.filter(function (f) { return f.p && types.indexOf(f.p.t) !== -1 && !f.p.office && !(f.p.wn > 0) && (!loc || !f.p.loc || tcLocSame_(loc, f.p.loc)); });
+      let hit = docs.filter(function (f) { return f.p && types.indexOf(f.p.t) !== -1 && !f.p.office && !(f.p.wn > 0) && roleOk(e.label, f.name) && (!loc || !f.p.loc || tcLocSame_(loc, f.p.loc)); });
+      // 종류가 맞고 파일 이름에 칸의 취득/양도가 분명히 적혀 있으면 판독 ⚠가 있어도 확보로(⚠는 그 서류 칸에서 따로 묻는다)
+      if (!hit.length) hit = docs.filter(function (f) { return f.p && types.indexOf(f.p.t) !== -1 && !f.p.office && roleNamed(e.label, f.name); });
       if (hit.length) { e.status = '확보됨'; e._auto = hit[0].name; marks.push(e); }
     });
     // 내용으로 정리하지 않는 파일(엑셀·CSV 거래내역, 검토 문서)로 채우는 칸 — 파일 이름으로(상속: 피상속인 금융거래내역·사전증여 검토 자료)
@@ -25221,7 +25226,7 @@ function caseProcEvidence_(c) {
     // [2026.10.15] 신분증·위임장·인감증명은 신고 제출용일 뿐 세액·판단과 무관 — ⚠ 질문으로 세우지 않고 안내 한 줄로(정답지 점검에서 불필요 질문으로 반복 검출)
     if (/신분증|위임장|인감/.test(e.label)) { lines.push('제출용 서류(세액과 무관, 신고 전 받기): ' + e.label + ' 미확보'); return; }
     const re = caseProcEvRe_(e.label);
-    const hits = re ? hay.filter(function (h) { return re.test(h.s); }).slice(0, 3) : [];
+    const hits = re ? hay.filter(function (h) { return re.test(h.s) && roleOk(e.label, h.f.name); }).slice(0, 3) : [];
     const ask = { mode: 'evidence', evId: virtual ? '' : e.id, label: e.label, suggest: hits.map(function (h) { return { id: h.f.id, name: h.f.name }; }) };
     if (hits.length) items.push(caseProcItem_('ev:' + (e.slotKey || e.label), 'check', '‘' + e.label + '’ — 폴더에 비슷한 서류가 있습니다: ' + hits.map(function (h) { return h.f.name; }).join(', ') + ' (증빙목록은 미확보)', ask));
     else items.push(caseProcItem_('ev:' + (e.slotKey || e.label), 'missing', '미확보: ' + e.label, ask));
