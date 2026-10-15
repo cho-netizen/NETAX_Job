@@ -407,7 +407,7 @@
   // 않은 변수를 참조해 TypeError가 나고, 그 여파로 initDashboard 등 나머지 초기화가 전부
   // 실행되지 않는 버그가 실제로 발생했었다).
   var VIEW_LABELS_ = {
-    ai: 'AI', dashboard: '대시보드', booking: '예약관리', workmanage: '작업관리', casehandling: '처리개요', lawsearch: '법령조회', clientmanage: '고객관리',
+    ai: 'AI', dashboard: '대시보드', consult: '상담 녹음', booking: '예약관리', workmanage: '작업관리', casehandling: '처리개요', lawsearch: '법령조회', clientmanage: '고객관리',
     collections: '수금관리',
     docs: '증빙확보', taxcalc: '세액계산', print: '세액인쇄', reportwriter: '문서작성', reports: '열람관리',
     'memo-text': '일반메모', 'memo-hand': '필기메모', reporthub: '보고서 모음', settings: '설정', manual: '사용자메뉴얼'
@@ -597,6 +597,7 @@
       if (typeof nxAiOnViewChange_ === 'function') nxAiOnViewChange_(name);
       nxCoverSync_();
       tbCollapseAllDebounced_();
+      if (name === 'consult' && typeof nxCmOpen_ === 'function') nxCmOpen_();
       if (name === 'booking' && typeof initBooking === 'function') initBooking();
       if (name === 'workmanage' && typeof initWorkManage === 'function') initWorkManage();
       if (name === 'casehandling' && typeof initCaseHandling === 'function') initCaseHandling();
@@ -656,7 +657,7 @@
     var root = document.getElementById('appRoot');
     if (cover && root && root.classList.contains('shown')){
       var cur = nxCoverActiveView_();
-      if (cur !== 'dashboard' && cur !== 'ai') goToView_('dashboard');
+      if (cur !== 'dashboard' && cur !== 'ai' && cur !== 'consult') goToView_('dashboard');
     }
     nxCoverSync_();
   }
@@ -671,6 +672,7 @@
   // [2026.10.15] 커버화면 밀기(세무사님 제안) — 위로 밀면 요약 ↔ AI, AI 화면에서 왼쪽으로 밀면 음성 ↔ 문자(aichat.html).
   // 요약은 목록을 위아래로 넘기므로, 넘길 것이 남아 있으면 넘기기를 우선하고 끝(맨 위·맨 아래)에서 더 밀 때만 바꾼다.
   // AI 화면의 말하기 버튼은 누르고 있는 동안 듣는데, 누른 채 크게 밀면 말하기가 아니라 밀기로 본다(aichat.html 쪽에서 듣기 취소).
+  var nxCoverBackView_ = 'dashboard';
   (function(){
     var sx = 0, sy = 0, st = 0, edgeTop = false, edgeBottom = false, on = false;
     function scroller_(el, root){
@@ -698,10 +700,16 @@
       if (dt > 900) return;
       var view = nxCoverActiveView_();
       // [세무사님 정정] 한 방향만 토글 — 위로 밀기: 요약 ↔ AI / 왼쪽으로 밀기(AI 화면): 음성 ↔ 문자.
-      // 아래로·오른쪽으로 밀기는 다른 화면용으로 비워 둔다(무엇을 넣을지 검토 중).
+      // 아래로 밀기: 상담 녹음 화면(consultmemo.html) — 거기서 위로 밀면 원래 화면으로. 오른쪽 밀기는 비워 둠.
       if (dy < -60 && Math.abs(dy) > Math.abs(dx) * 1.5){
+        if (view === 'consult'){ goToView_(nxCoverBackView_ || 'dashboard'); nxCoverSync_(); return; }
         if (view !== 'ai' && !edgeBottom) return; // 요약은 넘길 목록이 남았으면 넘기기 우선
         goToView_(view === 'ai' ? 'dashboard' : 'ai');
+        nxCoverSync_();
+      } else if (dy > 60 && Math.abs(dy) > Math.abs(dx) * 1.5 && view !== 'consult'){
+        if (view !== 'ai' && !edgeTop) return; // 요약은 맨 위에서 더 끌어내릴 때만
+        nxCoverBackView_ = view;
+        goToView_('consult');
         nxCoverSync_();
       } else if (dx < -60 && Math.abs(dx) > Math.abs(dy) * 1.5 && view === 'ai'){
         if (typeof nxAiTalkToggleMode_ === 'function') nxAiTalkToggleMode_();

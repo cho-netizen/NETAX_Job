@@ -3820,6 +3820,10 @@ function dispatchClientAction0_(body) {
   if (body.action === 'ai_work_histories') return jsonResponse(ai_workHistories(body));
   if (body.action === 'ai_log_bug') return jsonResponse(ai_logBug(body));
   if (body.action === 'ai_voice_brief') return jsonResponse(ai_voiceBrief_(body)); // 커버화면 토킹모드 음성 답변(핵심만 최대 축약)
+  // 커버화면 상담 음성메모(Consult.js) — 녹음 조각 받기 / 합쳐 저장·받아쓰기 예약 / 진행 상황
+  if (body.action === 'consult_chunk') return jsonResponse(consult_chunk_(body));
+  if (body.action === 'consult_finish') return jsonResponse(withLock_(20000, function () { return consult_finish_(body); }));
+  if (body.action === 'consult_status') return jsonResponse(consult_status_(body));
   if (body.action === 'ai_list_bugs') return jsonResponse(ai_listBugs());
   if (body.action === 'ai_clear_bugs') return jsonResponse(ai_clearBugs());
   if (body.action === 'ai_usage_month') return jsonResponse(ai_usageMonth_());

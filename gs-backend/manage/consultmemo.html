@@ -1,0 +1,344 @@
+<!--
+  [2026.10.15] 상담 음성메모 — 접는 폰 커버화면에서 아래로 밀면 열리는 화면(세무사님 요청).
+  ① 사건 고르기: 고객 이름을 말하면(또는 최근 사건에서) 후보 사건을 큰 버튼으로 보여 주고 눌러서 확정한다 —
+     말로 들은 대로 자동 연결하지 않는다(잘못 연결되면 다른 사건 폴더에 상담내용이 들어가므로). 없으면 "사건 없이"(보관함).
+  ② 녹음: 시작 · 일시정지 · 다시 시작 · 종료. 휴대폰 녹음 기능(MediaRecorder)을 쓰고, 5초마다 이 기기(IndexedDB)에도
+     조각을 저장해 두어 앱이 꺼지거나 새로고침돼도 녹음이 사라지지 않는다. 녹음 중엔 화면이 꺼지지 않게 잡아 둔다.
+  ③ 종료: 2MB씩 서버로 올리고(끊기면 그 조각만 다시) → 서버(Consult.js)가 사건 폴더/상담녹음에 원본 저장, 제미니로
+     10분씩 받아쓰고 요약해 상담내용_날짜_시각.md를 사건 폴더에 저장. 휴대폰을 꺼도 서버 처리는 계속되고, 화면은 진행만 본다.
+-->
+<div class="view" id="view-consult">
+  <div class="cm" id="cmRoot">
+    <div class="cm-head"><b>🎙 상담 녹음</b><span id="cmCase" class="cm-case"></span></div>
+    <div class="cm-body" id="cmBody"></div>
+  </div>
+</div>
+<style>
+  #view-consult{ background:var(--navy); color:#fff; }
+  .cm{ display:flex; flex-direction:column; height:100%; min-height:0; padding:10px 12px; box-sizing:border-box; gap:8px; }
+  .cm-head{ display:flex; align-items:center; gap:8px; font-size:16px; flex-shrink:0; }
+  .cm-case{ flex:1; min-width:0; text-align:right; color:var(--gold-light); font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cm-body{ flex:1; min-height:0; display:flex; flex-direction:column; gap:8px; overflow-y:auto; }
+  .cm-btn{ border:none; border-radius:12px; background:rgba(255,255,255,0.1); color:#fff; font-size:16px; font-weight:600; padding:0 12px; min-height:52px; cursor:pointer; text-align:left; }
+  .cm-btn small{ display:block; font-size:12.5px; font-weight:400; color:#c9d2e6; }
+  .cm-btn.gold{ background:var(--gold); color:var(--navy); text-align:center; }
+  .cm-btn.red{ background:#e5484d; text-align:center; }
+  .cm-btn.green{ background:#2f9e6b; text-align:center; }
+  .cm-btn.big{ flex:1; min-height:90px; font-size:20px; }
+  .cm-row{ display:flex; gap:8px; }
+  .cm-row > .cm-btn{ flex:1; }
+  .cm-msg{ font-size:14px; color:#c9d2e6; line-height:1.5; }
+  .cm-timer{ font-size:44px; font-weight:700; text-align:center; letter-spacing:1px; font-variant-numeric:tabular-nums; }
+  .cm-timer.paused{ color:var(--gold-light); }
+  .cm-dot{ display:inline-block; width:12px; height:12px; border-radius:50%; background:#e5484d; margin-right:6px; animation:cmBlink 1s infinite; }
+  @keyframes cmBlink{ 50%{ opacity:.2; } }
+  .cm-brief{ font-size:15px; line-height:1.6; white-space:pre-wrap; background:rgba(255,255,255,0.06); border-radius:10px; padding:10px; }
+  .cm-btn{ user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+  /* 녹음 중이면 커버화면 아래 표시줄의 메모 칸에 빨간 점 */
+  #nxCoverBar [data-cover-view="consult"].rec::before{ content:'● '; color:#e5484d; }
+</style>
+<script>
+  var nxCm_ = { st: 'pick', rec: null, stream: null, chunks: [], id: '', mime: '', caseId: '', caseName: '', startedAt: 0,
+    activeMs: 0, runFrom: 0, tick: null, wake: null, cases: null, poll: null, stopArm: 0 };
+  var NXCM_PART_ = 2097152; // 2MB — 서버가 드라이브에 이어 올릴 때 256KB의 배수여야 함
+  function nxCmEl_(id){ return document.getElementById(id); }
+  function nxCmEsc_(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function nxCmFmt_(ms){ var s = Math.floor(ms / 1000); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60; return (h ? h + ':' + ('0' + m).slice(-2) : m) + ':' + ('0' + ss).slice(-2); }
+  function nxCmActiveMs_(){ return nxCm_.activeMs + (nxCm_.runFrom ? Date.now() - nxCm_.runFrom : 0); }
+  function nxCmRecDot_(on){ var b = document.querySelector('#nxCoverBar [data-cover-view="consult"]'); if (b) b.classList.toggle('rec', !!on); }
+
+  // ---------- 이 기기 임시 저장(IndexedDB) — 녹음 중 앱이 꺼져도 남는다 ----------
+  function nxCmDb_(){
+    return new Promise(function(res, rej){
+      var r = indexedDB.open('nxConsult', 1);
+      r.onupgradeneeded = function(){ var db = r.result; if (!db.objectStoreNames.contains('chunks')) db.createObjectStore('chunks', { autoIncrement: true }); if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath: 'id' }); };
+      r.onsuccess = function(){ res(r.result); }; r.onerror = function(){ rej(r.error); };
+    });
+  }
+  function nxCmDbDo_(store, mode, fn){
+    return nxCmDb_().then(function(db){ return new Promise(function(res, rej){
+      var tx = db.transaction(store, mode), out; out = fn(tx.objectStore(store));
+      tx.oncomplete = function(){ res(out && out.result !== undefined ? out.result : out); }; tx.onerror = function(){ rej(tx.error); };
+    }); });
+  }
+  function nxCmSaveMeta_(extra){
+    var m = Object.assign({ id: nxCm_.id, mime: nxCm_.mime, caseId: nxCm_.caseId, caseName: nxCm_.caseName, startedAt: nxCm_.startedAt, activeMs: nxCmActiveMs_() }, extra || {});
+    return nxCmDbDo_('meta', 'readwrite', function(s){ s.put(m); }).catch(function(){});
+  }
+  function nxCmLoadLeft_(){
+    return nxCmDbDo_('meta', 'readonly', function(s){ return s.getAll(); }).then(function(r){ return (r || [])[0] || null; }).catch(function(){ return null; });
+  }
+  function nxCmLoadChunks_(id){
+    return nxCmDbDo_('chunks', 'readonly', function(s){ return s.getAll(); }).then(function(all){ return (all || []).filter(function(c){ return c.id === id; }).map(function(c){ return c.blob; }); });
+  }
+  function nxCmClearDb_(){
+    return Promise.all([nxCmDbDo_('chunks', 'readwrite', function(s){ s.clear(); }), nxCmDbDo_('meta', 'readwrite', function(s){ s.clear(); })]).catch(function(){});
+  }
+
+  // ---------- ① 사건 고르기 ----------
+  function nxCmLoadCases_(){
+    if (nxCm_.cases) return Promise.resolve(nxCm_.cases);
+    return callGas('work_get_cases', {}).then(function(r){
+      nxCm_.cases = (r && r.cases || []).filter(function(c){ return c.폴더ID; }).map(function(c){
+        return { id: c.id, name: String(c.사건명 || ''), client: String(c.고객명 || ''), payer: String(c.납세자 || ''), status: String(c.상태 || ''), mod: String(c.수정일 || c.생성일 || '') };
+      }).sort(function(a, b){ var da = a.status === '완료' ? 1 : 0, db = b.status === '완료' ? 1 : 0; return da - db || b.mod.localeCompare(a.mod); });
+      return nxCm_.cases;
+    });
+  }
+  // 말한 이름과 고객명·납세자·사건명을 비교 — 이름이 그대로 들어 있으면 높게, 글자 일부만 맞으면 낮게(받아쓰기 오인식 대비)
+  function nxCmMatch_(said){
+    var q = String(said || '').replace(/\s+/g, '').replace(/(사건|고객|님|씨|상담|녹음|으로|로|에)$/g, '');
+    if (!q) return [];
+    return (nxCm_.cases || []).map(function(c){
+      var hay = (c.client + c.payer + c.name).replace(/\s+/g, '');
+      var score = 0;
+      if (c.client && q.indexOf(c.client.replace(/\s+/g, '')) !== -1) score += 10;
+      if (hay.indexOf(q) !== -1) score += 8;
+      var common = 0; for (var i = 0; i < q.length; i++) if (hay.indexOf(q[i]) !== -1) common++;
+      score += common / Math.max(q.length, 1) * 4;
+      if (c.status === '완료') score -= 1;
+      return { c: c, score: score };
+    }).filter(function(x){ return x.score >= 4; }).sort(function(a, b){ return b.score - a.score; }).slice(0, 3).map(function(x){ return x.c; });
+  }
+  function nxCmCaseBtn_(c){
+    return '<button type="button" class="cm-btn" data-cm-case="' + nxCmEsc_(c.id) + '">' + nxCmEsc_(c.name || c.client) + '<small>' + nxCmEsc_(c.client + (c.status ? ' · ' + c.status : '')) + '</small></button>';
+  }
+  function nxCmRenderPick_(list, note){
+    nxCm_.st = 'pick';
+    nxCmEl_('cmCase').textContent = '';
+    var linked = (typeof nxAiConv !== 'undefined' && nxAiConv && nxAiConv.caseId) ? { id: nxAiConv.caseId, name: nxAiConv.caseName || '', client: '연결된 사건', status: '' } : null;
+    var shown = list || [];
+    if (!list && linked) shown = [linked];
+    nxCmEl_('cmBody').innerHTML =
+      '<button type="button" class="cm-btn gold big" id="cmSay">🎤 고객 이름 말하기</button>' +
+      (note ? '<div class="cm-msg">' + note + '</div>' : '') +
+      shown.map(nxCmCaseBtn_).join('') +
+      '<button type="button" class="cm-btn" id="cmNoCase">사건 없이 녹음<small>보관함에 저장, 나중에 사건으로 옮김</small></button>';
+  }
+  function nxCmSay_(){
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR){ nxCmRenderPick_(null, '이 브라우저는 음성 인식이 안 됩니다 — 크롬으로 열어 주세요.'); return; }
+    var btn = nxCmEl_('cmSay'); if (btn){ btn.textContent = '듣는 중… 고객 이름을 말씀하세요'; btn.classList.remove('gold'); btn.classList.add('red'); }
+    var rec = new SR(); rec.lang = 'ko-KR'; rec.interimResults = false; rec.maxAlternatives = 3;
+    var heard = [];
+    rec.onresult = function(ev){ for (var i = 0; i < ev.results[0].length; i++) heard.push(ev.results[0][i].transcript); };
+    rec.onend = function(){
+      if (!heard.length){ nxCmRenderPick_(null, '이름을 듣지 못했습니다 — 다시 눌러 주세요.'); return; }
+      nxCmRenderPick_([], '사건 찾는 중… (' + nxCmEsc_(heard[0]) + ')');
+      nxCmLoadCases_().then(function(){
+        var found = [];
+        heard.forEach(function(h){ nxCmMatch_(h).forEach(function(c){ if (found.indexOf(c) === -1) found.push(c); }); });
+        found = found.slice(0, 3);
+        nxCmRenderPick_(found, found.length ? '"' + nxCmEsc_(heard[0]) + '" — 맞는 사건을 누르세요' : '"' + nxCmEsc_(heard[0]) + '"에 맞는 사건이 없습니다 — 다시 말하거나 사건 없이 녹음하세요.');
+      }, function(err){ nxCmRenderPick_(null, '사건 목록을 못 불러왔습니다: ' + nxCmEsc_(err && err.message || err)); });
+    };
+    rec.onerror = function(){};
+    try { rec.start(); } catch (e) { nxCmRenderPick_(null, '음성 인식을 시작하지 못했습니다.'); }
+  }
+
+  // ---------- ② 녹음 ----------
+  function nxCmPickMime_(){
+    var c = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+    for (var i = 0; i < c.length; i++) if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(c[i])) return c[i];
+    return '';
+  }
+  function nxCmWake_(on){
+    try {
+      if (on && navigator.wakeLock){ navigator.wakeLock.request('screen').then(function(w){ nxCm_.wake = w; }).catch(function(){}); }
+      else if (!on && nxCm_.wake){ nxCm_.wake.release(); nxCm_.wake = null; }
+    } catch (e) {}
+  }
+  function nxCmStart_(caseId, caseName){
+    if (typeof nxAiTalkStopRec_ === 'function') nxAiTalkStopRec_(); // 토킹모드 마이크와 겹치지 않게
+    nxCm_.caseId = caseId || ''; nxCm_.caseName = caseName || '';
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }).then(function(stream){
+      nxCm_.stream = stream;
+      nxCm_.mime = nxCmPickMime_();
+      var rec = new MediaRecorder(stream, nxCm_.mime ? { mimeType: nxCm_.mime, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 });
+      nxCm_.mime = rec.mimeType || nxCm_.mime || 'audio/webm';
+      nxCm_.rec = rec; nxCm_.chunks = [];
+      nxCm_.id = 'cm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      nxCm_.startedAt = Date.now(); nxCm_.activeMs = 0; nxCm_.runFrom = Date.now();
+      rec.ondataavailable = function(e){
+        if (!e.data || !e.data.size) return;
+        nxCm_.chunks.push(e.data);
+        var id = nxCm_.id;
+        nxCmDbDo_('chunks', 'readwrite', function(s){ s.add({ id: id, blob: e.data, at: Date.now() }); }).catch(function(){});
+        nxCmSaveMeta_();
+      };
+      rec.onstop = function(){ nxCmAfterStop_(); };
+      rec.start(5000); // 5초마다 조각 — 이 기기에 바로바로 저장
+      nxCmClearDb_().then(function(){ nxCmSaveMeta_(); });
+      nxCm_.st = 'rec';
+      nxCmWake_(true); nxCmRecDot_(true);
+      nxCmRenderRec_();
+      clearInterval(nxCm_.tick);
+      nxCm_.tick = setInterval(function(){ var t = nxCmEl_('cmTimer'); if (t) t.textContent = nxCmFmt_(nxCmActiveMs_()); }, 500);
+    }).catch(function(err){
+      nxCmRenderPick_(null, '마이크를 쓸 수 없습니다(' + nxCmEsc_(err && err.name || err) + ') — 마이크 권한을 허용해 주세요.');
+    });
+  }
+  function nxCmRenderRec_(){
+    var paused = nxCm_.st === 'paused';
+    nxCmEl_('cmCase').textContent = nxCm_.caseName || '사건 없음';
+    nxCmEl_('cmBody').innerHTML =
+      '<div class="cm-timer' + (paused ? ' paused' : '') + '">' + (paused ? '⏸ ' : '<span class="cm-dot"></span>') + '<span id="cmTimer">' + nxCmFmt_(nxCmActiveMs_()) + '</span></div>' +
+      '<div class="cm-row" style="flex:1">' +
+        (paused ? '<button type="button" class="cm-btn green big" id="cmResume">▶ 다시 시작</button>' : '<button type="button" class="cm-btn gold big" id="cmPause">⏸ 일시정지</button>') +
+        '<button type="button" class="cm-btn red big" id="cmStop">⏹ 종료</button>' +
+      '</div>';
+  }
+  function nxCmPause_(){
+    if (!nxCm_.rec || nxCm_.rec.state !== 'recording') return;
+    nxCm_.rec.pause(); nxCm_.activeMs += Date.now() - nxCm_.runFrom; nxCm_.runFrom = 0; nxCm_.st = 'paused';
+    nxCmSaveMeta_(); nxCmRenderRec_();
+  }
+  function nxCmResume_(){
+    if (!nxCm_.rec || nxCm_.rec.state !== 'paused') return;
+    nxCm_.rec.resume(); nxCm_.runFrom = Date.now(); nxCm_.st = 'rec'; nxCmRenderRec_();
+  }
+  // 종료는 실수로 누르지 않게 한 번 더 눌러야 한다(3초 안에)
+  function nxCmStop_(){
+    var b = nxCmEl_('cmStop');
+    if (Date.now() - nxCm_.stopArm > 3000){ nxCm_.stopArm = Date.now(); if (b) b.textContent = '한 번 더 누르면 종료'; setTimeout(function(){ var bb = nxCmEl_('cmStop'); if (bb && nxCm_.st !== 'up') bb.textContent = '⏹ 종료'; }, 3000); return; }
+    if (!nxCm_.rec) return;
+    if (nxCm_.runFrom){ nxCm_.activeMs += Date.now() - nxCm_.runFrom; nxCm_.runFrom = 0; }
+    nxCm_.st = 'up';
+    clearInterval(nxCm_.tick);
+    try { nxCm_.rec.stop(); } catch (e) { nxCmAfterStop_(); }
+  }
+  function nxCmAfterStop_(){
+    try { nxCm_.stream && nxCm_.stream.getTracks().forEach(function(t){ t.stop(); }); } catch (e) {}
+    nxCmWake_(false); nxCmRecDot_(false);
+    nxCmSaveMeta_({ stopped: true });
+    nxCmUpload_(new Blob(nxCm_.chunks, { type: nxCm_.mime }), { id: nxCm_.id, mime: nxCm_.mime, caseId: nxCm_.caseId, caseName: nxCm_.caseName, startedAt: nxCm_.startedAt, activeMs: nxCm_.activeMs });
+  }
+
+  // ---------- ③ 올리기 → 서버 처리 지켜보기 ----------
+  function nxCmB64_(blob){
+    return new Promise(function(res, rej){ var fr = new FileReader(); fr.onload = function(){ var s = String(fr.result); res(s.slice(s.indexOf(',') + 1)); }; fr.onerror = function(){ rej(fr.error); }; fr.readAsDataURL(blob); });
+  }
+  function nxCmMsg_(html){ nxCmEl_('cmBody').innerHTML = html; }
+  function nxCmUpload_(blob, meta){
+    nxCm_.st = 'up';
+    nxCmEl_('cmCase').textContent = meta.caseName || '사건 없음';
+    var total = Math.max(1, Math.ceil(blob.size / NXCM_PART_)), i = 0;
+    function show(){ nxCmMsg_('<div class="cm-timer" style="font-size:28px">⬆ ' + Math.round(i / total * 100) + '%</div><div class="cm-msg">녹음 올리는 중 (' + i + '/' + total + ') — ' + nxCmFmt_(meta.activeMs) + '</div>'); }
+    function sendPart(tries){
+      if (i >= total) return finish(0);
+      show();
+      return nxCmB64_(blob.slice(i * NXCM_PART_, Math.min(blob.size, (i + 1) * NXCM_PART_))).then(function(b64){
+        return callGas('consult_chunk', { id: meta.id, index: i, base64: b64 });
+      }).then(function(r){
+        if (!r || r.error) throw new Error((r && r.error) || '응답 없음');
+        i++; return sendPart(0);
+      }).catch(function(err){
+        if (tries < 3) return new Promise(function(r){ setTimeout(r, 3000 * (tries + 1)); }).then(function(){ return sendPart(tries + 1); });
+        nxCmFail_('녹음을 올리지 못했습니다: ' + (err && err.message || err) + '<br>녹음은 이 휴대폰에 남아 있습니다.', blob, meta);
+      });
+    }
+    function finish(tries){
+      nxCmMsg_('<div class="cm-msg">서버에 맡기는 중…</div>');
+      return callGas('consult_finish', { id: meta.id, total: total, mimeType: meta.mime, startedAt: meta.startedAt, durationSec: Math.round(meta.activeMs / 1000), caseId: meta.caseId }).then(function(r){
+        if (!r || r.error){
+          if (r && r.missing !== undefined){ i = r.missing; return sendPart(0); }
+          throw new Error((r && r.error) || '응답 없음');
+        }
+        try { localStorage.setItem('nxConsultJob', JSON.stringify({ id: meta.id, caseName: meta.caseName })); } catch (e) {}
+        nxCmClearDb_();
+        nxCmWatch_(meta.id, meta.caseName);
+      }).catch(function(err){
+        if (tries < 3) return new Promise(function(r){ setTimeout(r, 4000); }).then(function(){ return finish(tries + 1); });
+        nxCmFail_('서버에 맡기지 못했습니다: ' + (err && err.message || err) + '<br>녹음은 이 휴대폰에 남아 있습니다.', blob, meta);
+      });
+    }
+    sendPart(0);
+  }
+  function nxCmFail_(msg, blob, meta){
+    nxCm_.st = 'fail';
+    nxCmMsg_('<div class="cm-msg">' + msg + '</div><button type="button" class="cm-btn gold big" id="cmRetry">다시 올리기</button>');
+    nxCm_.retry = function(){ nxCmUpload_(blob, meta); };
+  }
+  function nxCmWatch_(id, caseName){
+    nxCm_.st = 'wait';
+    nxCmEl_('cmCase').textContent = caseName || '사건 없음';
+    clearInterval(nxCm_.poll);
+    var check = function(){
+      callGas('consult_status', { id: id }).then(function(r){
+        var j = r && r.job;
+        if (!j){ nxCmMsg_('<div class="cm-msg">진행 상황을 확인하지 못했습니다 — 잠시 후 다시 확인합니다.</div>'); return; }
+        if (j.status === 'done'){
+          clearInterval(nxCm_.poll);
+          try { localStorage.removeItem('nxConsultJob'); } catch (e) {}
+          nxCm_.st = 'done';
+          nxCmMsg_('<div class="cm-msg">✅ 사건 폴더에 상담내용을 저장했습니다</div>' +
+            '<div class="cm-brief">' + nxCmEsc_(j.brief || '') + '</div>' +
+            '<div class="cm-row"><button type="button" class="cm-btn" id="cmHear">🔊 요약 듣기</button><button type="button" class="cm-btn gold" id="cmNew">새 녹음</button></div>');
+          nxCm_.lastBrief = j.brief || '';
+        } else if (j.status === 'error'){
+          clearInterval(nxCm_.poll);
+          try { localStorage.removeItem('nxConsultJob'); } catch (e) {}
+          nxCm_.st = 'done';
+          nxCmMsg_('<div class="cm-msg">⚠ 요약하지 못했습니다: ' + nxCmEsc_(j.error) + '<br>원본 녹음은 사건 폴더의 "상담녹음"에 저장돼 있습니다.</div><button type="button" class="cm-btn gold" id="cmNew">새 녹음</button>');
+        } else {
+          nxCmMsg_('<div class="cm-timer" style="font-size:24px">⏳ ' + nxCmEsc_(j.step || '처리 중') + '</div><div class="cm-msg">' + nxCmFmt_((j.durationSec || 0) * 1000) + ' 녹음 · 서버가 받아쓰고 요약합니다. 휴대폰을 꺼도 계속됩니다.</div>');
+        }
+      }).catch(function(){});
+    };
+    check();
+    nxCm_.poll = setInterval(check, 8000);
+  }
+
+  // ---------- 화면 열 때 — 진행 중 녹음·처리·남은 녹음 이어서 ----------
+  function nxCmOpen_(){
+    if (nxCm_.st === 'rec' || nxCm_.st === 'paused'){ nxCmRenderRec_(); return; }
+    if (nxCm_.st === 'up' || nxCm_.st === 'wait' || nxCm_.st === 'fail' || nxCm_.st === 'done') return;
+    var job = null; try { job = JSON.parse(localStorage.getItem('nxConsultJob') || 'null'); } catch (e) {}
+    if (job && job.id){ nxCmWatch_(job.id, job.caseName); return; }
+    nxCmLoadLeft_().then(function(left){
+      if (!left || !left.id){ nxCmRenderPick_(); return; }
+      nxCmLoadChunks_(left.id).then(function(chunks){
+        if (!chunks.length){ nxCmClearDb_(); nxCmRenderPick_(); return; }
+        nxCm_.st = 'left';
+        nxCmEl_('cmCase').textContent = left.caseName || '사건 없음';
+        nxCmMsg_('<div class="cm-msg">올리지 못한 녹음이 이 휴대폰에 남아 있습니다 (' + nxCmFmt_(left.activeMs || 0) + ').</div>' +
+          '<button type="button" class="cm-btn gold big" id="cmLeftUp">⬆ 올려서 요약하기</button><button type="button" class="cm-btn" id="cmLeftDrop">버리기</button>');
+        nxCm_.left = { blob: new Blob(chunks, { type: left.mime || 'audio/webm' }), meta: left };
+      });
+    });
+  }
+
+  document.addEventListener('click', function(e){
+    var t = e.target.closest && e.target.closest('#view-consult button');
+    if (!t) return;
+    var id = t.id, cid = t.getAttribute('data-cm-case');
+    if (id === 'cmSay') return nxCmSay_();
+    if (cid){
+      var c = (nxCm_.cases || []).filter(function(x){ return String(x.id) === cid; })[0];
+      var name = c ? (c.name || c.client) : (typeof nxAiConv !== 'undefined' && nxAiConv && String(nxAiConv.caseId) === cid ? nxAiConv.caseName : '');
+      return nxCmStart_(cid, name);
+    }
+    if (id === 'cmNoCase') return nxCmStart_('', '');
+    if (id === 'cmPause') return nxCmPause_();
+    if (id === 'cmResume') return nxCmResume_();
+    if (id === 'cmStop') return nxCmStop_();
+    if (id === 'cmRetry' && nxCm_.retry) return nxCm_.retry();
+    if (id === 'cmNew'){ nxCm_.st = 'pick'; return nxCmRenderPick_(); }
+    if (id === 'cmHear' && nxCm_.lastBrief && window.speechSynthesis){
+      var u = new SpeechSynthesisUtterance(nxCm_.lastBrief); u.lang = 'ko-KR'; speechSynthesis.cancel(); speechSynthesis.speak(u); return;
+    }
+    if (id === 'cmLeftUp' && nxCm_.left){
+      var m = nxCm_.left.meta;
+      return nxCmUpload_(nxCm_.left.blob, { id: m.id, mime: m.mime, caseId: m.caseId, caseName: m.caseName, startedAt: m.startedAt, activeMs: m.activeMs || 0 });
+    }
+    if (id === 'cmLeftDrop'){ nxCmConfirmDrop_(t); }
+  });
+  function nxCmConfirmDrop_(btn){
+    if (btn.getAttribute('data-arm') !== '1'){ btn.setAttribute('data-arm', '1'); btn.textContent = '한 번 더 누르면 녹음을 지웁니다'; return; }
+    nxCmClearDb_().then(function(){ nxCm_.st = 'pick'; nxCmRenderPick_(); });
+  }
+  // 녹음 중 화면이 다시 보이면 화면 꺼짐 방지를 다시 건다(다른 앱 갔다 오면 풀림)
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden && (nxCm_.st === 'rec' || nxCm_.st === 'paused')) nxCmWake_(true); });
+  // 녹음 중 창을 닫으려 하면 한 번 묻는다(이미 이 기기에 저장 중이라 닫아도 다음에 올릴 수 있음)
+  window.addEventListener('beforeunload', function(e){ if (nxCm_.st === 'rec' || nxCm_.st === 'paused'){ e.preventDefault(); e.returnValue = ''; } });
+</script>

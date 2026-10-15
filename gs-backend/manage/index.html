@@ -116,6 +116,7 @@
       <!-- [2026.10.08] AI탭 — aichat.html의 AI 화면(#nxAi)이 이 메뉴를 열면 여기로, 다른 메뉴에선 오른쪽 사이드바로 옮겨간다 -->
       <div class="view" id="view-ai"><div id="nxAiTabHost"></div></div>
       <?!= include_('manage/dashboard') ?>
+      <?!= include_('manage/consultmemo') ?>
       <?!= include_('manage/booking') ?>
       <?!= include_('manage/workmanage') ?>
       <?!= include_('manage/casehandling') ?>
@@ -209,6 +210,7 @@
   <div id="nxCoverBar">
     <button type="button" data-cover-view="dashboard">📊 요약</button>
     <button type="button" data-cover-view="ai">🤖 AI</button>
+    <button type="button" data-cover-view="consult">🎙 녹음</button>
   </div>
 
   <div class="toast" id="toast"></div>
