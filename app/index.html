@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 08:45 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 10:17 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -46707,12 +46707,27 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (!hits.length && src) hits = find(rest);
       var mo = /물건\s*(\d+)/.exec(rest);
       if (mo && hits.length > 1){ var h2 = hits.filter(function(x){ return new RegExp('물건\\s*' + mo[1] + '(?!\\d)').test(nxAiCaseProcName_(x, tax)); }); if (h2.length) hits = h2; }
+      // 질문 이름(칸 이름)이 바로 그 말인 질문을 먼저 — "양도가액 5억"이 증빙 질문 문구 속 '양도가액'에 걸려 애매해지던 것(점검 72건)
+      if (hits.length > 1){
+        var labelOf = function(x){ var ax = x.ask || {}; return String(ax.label || (ax.mode === 'base' ? (NXAI_CP_BASE_LABEL_[tax] || '기준일') : '')); };
+        var strong = hits.filter(function(x){ return NXAI_CP_SYN_.some(function(s){ return s[1].test(rest) && s[0].test(labelOf(x)); }); });
+        if (strong.length) hits = strong;
+      }
+      // 그래도 여럿이면 답의 모양으로 — "받았음·받을 예정·파일"이면 증빙 질문, 값(금액·날짜·이름)이면 증빙이 아닌 질문
+      if (hits.length > 1){
+        var evSay = /(받았|받음|받을|예정|확보|파일|서류\s*있)/.test(rest);
+        var pref = hits.filter(function(x){ return ((x.ask || {}).mode === 'evidence') === evSay; });
+        if (pref.length) hits = pref;
+      }
       if (hits.length > 1) return { matched: true, ambiguous: hits };
       it = hits[0] || null;
       if (!it) return { matched: false };
     }
     var a = it.ask || {}, mode = a.mode || '';
-    var body = (synHit ? noSrc.replace(synHit, ' ') : noSrc).replace(/물건\s*\d+/g, ' ');
+    // 글자로 답하는 칸(이름·소재지)은 "근거"라고 밝히지 않았으면 파일 이름과 겹쳐도 값에서 떼지 않는다("Q9 이종식" — 파일 이름에 이종식이 있어 값이 비던 것)
+    var keepWords = (a.input || 'text') === 'text' && mode !== 'base' && !/(근거|증빙|출처)/.test(rest);
+    var body0 = keepWords ? rest : noSrc;
+    var body = (synHit ? body0.replace(synHit, ' ') : body0).replace(/물건\s*\d+/g, ' ');
     var decide = /(보류|나중에)/.test(body) ? '보류' : (/(무시|해당\s*없|필요\s*없|빼\s*(줘|자|라)|제외)/.test(body) ? '무시' : '');
     var srcTxt = '세무사님 답(사이드바)' + (src ? ' — 근거: ' + (src.files.length === 1 ? src.files[0].name : src.tk + '(파일 ' + src.files.length + '개)') : '');
     var nth = /(\d)\s*번\s*(후보|째|선택)?|(첫|두|세|네)\s*번\s*째|후보\s*(\d)/.exec(body);
@@ -46756,6 +46771,33 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var miss = [['donor', '증여자'], ['donee', '수증자'], ['date', '증여일'], ['kind', '증여대상'], ['amount', '금액']].filter(function(x){ return !g[x[0]]; }).map(function(x){ return x[1]; });
       if (miss.length) return decide ? Object.assign(out, { act: 'decide', decide: decide }) : Object.assign(out, { act: 'need', msg: '증여 내용은 다섯 가지를 함께 말씀해 주세요 — 빠진 것: ' + miss.join('·') + '. 예: "Q' + it.q + ' 증여자 홍길동 수증자 홍철수 2024.3.5 현금 5천만원"' });
       return Object.assign(out, { act: 'apply', target: 'giftdeal', value: JSON.stringify(g), src: srcTxt, shown: g.donor + ' → ' + g.donee + ' · ' + g.date + ' · ' + g.kind + ' ' + Number(g.amount).toLocaleString('ko-KR') + '원' });
+    }
+    // 증빙 받았나요 — "받았음 매매계약서", "제시한 파일 맞음/확인", "받을 예정", "필요 없음"(점검: 말로 못 답한 질문 151건이 이 종류)
+    if (mode === 'evidence'){
+      if (/(받을\s*예정|나중에\s*받|요청\s*했|받기로)/.test(body)) return Object.assign(out, { act: 'decide', decide: '예정', note: '받을 예정(사이드바)' });
+      if (decide) return Object.assign(out, { act: 'decide', decide: decide });
+      var picked = src ? src.files.map(function(f){ return f.name; }) : [];
+      if (!picked.length && (a.suggest || []).length && /(확인|맞|받았|받음|있음|있다|확보|그\s*파일|그거)/.test(body)) picked = a.suggest.map(function(f){ return f.name; });
+      if (!picked.length) return Object.assign(out, { act: 'need', msg: 'Q' + it.q + ' 「' + (a.label || '') + '」 — 받은 파일 이름 일부를 함께 말씀해 주세요. 예: "Q' + it.q + ' 받았음 매매계약서", "Q' + it.q + ' 받을 예정", "Q' + it.q + ' 필요 없음"' });
+      var names = picked.slice(0, 6).join(', ');
+      if (a.evId) return Object.assign(out, { act: 'apply', target: 'evMark', value: names, src: '폴더 파일(사이드바)', shown: '확보 — ' + names, extra: { evId: a.evId, file: names } });
+      return Object.assign(out, { act: 'decide', decide: 'done', note: '파일: ' + names, shown: '확보 — ' + names });
+    }
+    // 서류 자동 정리 ⚠ 원문 대조 — "맞음" 또는 고친 값(→ 보류로 검토서 추가확인사항에)
+    if (mode === 'docok'){
+      if (decide) return Object.assign(out, { act: 'decide', decide: decide });
+      if (/(맞음|맞다|맞아|정확|이상\s*없)/.test(body)) return Object.assign(out, { act: 'decide', decide: 'done', note: '원문 대조 — 맞음(사이드바)', shown: '원문과 맞음' });
+      var fix = clean(body);
+      if (fix) return Object.assign(out, { act: 'decide', decide: '보류', note: '원문 대조 — ' + fix.slice(0, 120) + '(사이드바)', shown: '고친 값 기록: ' + fix.slice(0, 60) });
+      return Object.assign(out, { act: 'need', msg: 'Q' + it.q + ' — "맞음" 또는 맞는 값을 말씀해 주세요. 예: "Q' + it.q + ' 맞음", "Q' + it.q + ' 잔금일 2024.3.5가 맞음"' });
+    }
+    // 필요경비 — "그대로 확정"(서류에서 확실하다고 본 것만), "없음/0원"
+    if (mode === 'expenses'){
+      if (decide) return Object.assign(out, { act: 'decide', decide: decide });
+      var sure = (a.cands || []).filter(function(c){ return c.sure && c.amount; }).map(function(c){ return { kind: c.kind, label: c.label, amount: c.amount, file: c.file, date: c.date }; });
+      if (/(없음|없다|없어|0\s*원|영\s*원)/.test(body)) return Object.assign(out, { act: 'apply', target: 'expenses', value: JSON.stringify({ items: [] }), src: srcTxt, shown: '필요경비 없음(0원)' });
+      if (/(그대로|확정|맞음|체크한\s*대로|후보대로)/.test(body)) return Object.assign(out, { act: 'apply', target: 'expenses', value: JSON.stringify({ items: sure }), src: srcTxt, shown: '서류 후보 중 확실한 ' + sure.length + '건 ' + sure.reduce(function(s, c){ return s + Number(c.amount || 0); }, 0).toLocaleString('ko-KR') + '원으로 확정' });
+      return Object.assign(out, { act: 'need', msg: 'Q' + it.q + ' 필요경비 — "그대로 확정"(서류에서 확실한 ' + sure.length + '건), "없음"으로 말씀하시거나, 항목을 고치려면 [확인]을 눌러 주세요.' });
     }
     if (mode === 'note' && /(확인|알았|봤)/.test(body)) return Object.assign(out, { act: 'decide', decide: 'done', note: '확인함(사이드바)' });
     if (decide) return Object.assign(out, { act: 'decide', decide: decide });
@@ -46801,7 +46843,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       show('Q' + it.q + ' 「' + r.label + '」 → ' + (r.decide === '보류' ? '⏸ 보류(처리는 계속, 종합검토서 "추가로 확인할 사항"에 들어감)' : r.decide === '무시' ? '무시(다시 묻지 않음)' : '✅ ' + (r.shown || '확인함')));
       return true;
     }
-    st.run('apply', { target: r.target, value: r.value, src: String(r.src).slice(0, 80), label: r.label }).then(function(res){
+    st.run('apply', Object.assign({ target: r.target, value: r.value, src: String(r.src).slice(0, 80), label: r.label }, r.extra || {})).then(function(res){
       if (!res || !res.ok) throw new Error((res && (res.error || res.message)) || '반영 실패');
       var shown = (it.ask && it.ask.input === 'money' && /^\d+$/.test(String(r.shown))) ? Number(r.shown).toLocaleString('ko-KR') + '원' : String(r.shown || r.value);
       show('Q' + it.q + ' 「' + r.label + '」 ← **' + shown + '** 반영했습니다 (' + r.src + ').\n\n영향 받는 단계를 다시 처리하고 세액을 다시 계산합니다 — 위 사건 처리 칸에서 진행을 볼 수 있습니다.');

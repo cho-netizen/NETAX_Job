@@ -24720,7 +24720,7 @@ function tc_ruleTransferFacts_(body) {
   var files = caseProcFiles_({ 폴더ID: folderId });
   var rank = function (n) { return /(계약|신고필증|취득세|법무|등기|등본)/.test(n) ? 0 : /(공사|인테리어|중개|이체|영수증|비용)/.test(n) ? 1 : 2; };
   files.sort(function (a, b) { return rank(a.name) - rank(b.name); });
-  var contracts = [], reports = [], acqs = [], lawyers = [], regs = [], expDocs = [], pubs = [], started = Date.now(), skippedForTime = [];
+  var contracts = [], reports = [], acqs = [], lawyers = [], regs = [], expDocs = [], pubs = [], regCerts = [], started = Date.now(), skippedForTime = [];
   var docSeen = 0;
   for (var i = 0; i < files.length; i++) {
     var f = files[i];
@@ -24758,6 +24758,12 @@ function tc_ruleTransferFacts_(body) {
     });
     if (p.type === 'banktx' && p.result && p.result.이체확인증 && p.result.거래.length === 1) { var g0 = p.result.거래[0]; expDocs.push({ file: f.name, amount: g0.금액, date: g0.날짜, memo: g0.적요 || '', payer: g0.보낸이 || '', head: String(text).slice(0, 300) }); }
     if (/^(cashreceipt|cardreceipt|taxinvoice)$/.test(p.type) && p.result && p.result.합계 && !p.result.취소 && !p.result.사무소발행) expDocs.push({ file: f.name, amount: p.result.합계, date: String(p.result.거래일 || '').slice(0, 10), memo: p.result.상호 || '', payer: '', head: String(text).slice(0, 300) });
+    // [2026.10.15 1단계 ②] 등기필증(옛 권리증) — "등기목적 소유권이전 · 접수 0000년 00월 00일"이면 납세자 취득 등기 접수일(취득시기 §98 후보).
+    //  사진으로 찍힌 등기필증이 "종류 미정"으로 어느 칸에도 안 쓰였다(김금옥: 취득 계약서가 없어 취득일을 못 정함)
+    if (!p.type && /(등|동)\s*기\s*필\s*증/.test(text) && /소\s*유\s*권\s*이\s*전/.test(text) && (!names.length || names.some(function (nm) { return String(text).replace(/\s+/g, '').indexOf(nm) !== -1; }))) {
+      var rcm = /접\s*수\s*[:：]?\s*(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(text);
+      if (rcm) regCerts.push({ file: f.name, date: rcm[1] + '-' + ('0' + rcm[2]).slice(-2) + '-' + ('0' + rcm[3]).slice(-2) });
+    }
     if (p.type === 'pubprice' && p.result) pubs.push({ file: f.name, r: p.result });
     if (p.type === 'acqtax') acqs.push({ file: f.name, r: p.result });
     if (p.type === 'lawyerfee') lawyers.push({ file: f.name, r: p.result });
@@ -24967,6 +24973,16 @@ function tc_ruleTransferFacts_(body) {
   // [2026.10.15 1:1] 법무사 정산서 합계 안에 들어 있을 금액(보수 현금영수증·취득세 납부서 등)은 미리 체크하지 않고 겹칠 수 있다고 알린다(이중 계상 방지 — 노오섭: 보수 242,000원이 정산서 2,728,918원에 포함)
   var lawC = expCands.filter(function (x) { return /법무사 정산서/.test(x.label); })[0];
   if (lawC) expCands.forEach(function (x) { if (x !== lawC && x.kind === '취득' && x.amount < lawC.amount && /법무|취득세|인지|채권/.test(x.file + ' ' + x.label)) { x.sure = false; if (!/겹치면/.test(x.note)) x.note = (x.note ? x.note + ' · ' : '') + '법무사 정산서 합계에 이미 들어 있을 수 있음 — 겹치면 하나만'; } });
+  // 등기부·계약서로 취득일을 못 정한 거래 — 등기필증의 소유권이전 접수일(등기필증이 하나뿐일 때만; 여럿이면 어느 부동산 것인지 모름). 매도 계약서 경로·등기부 경로 모두
+  txs.forEach(function (tx) {
+    if (tx.acquisitionDate) {
+      // 이미 정한 취득일과 등기필증 접수일 대조(교차확인) — 같으면 근거로 남기고, 다르면 묻는다
+      regCerts.forEach(function (x) { evidence.push(x.date === tx.acquisitionDate ? '취득일 ' + x.date + ' — 등기필증(' + x.file + ') 접수일과 일치' : '⚠ 등기필증(' + x.file + ') 접수일 ' + x.date + ' ≠ 정한 취득일 ' + tx.acquisitionDate + ' — 확인필요'); });
+      return;
+    }
+    if (regCerts.length === 1) { tx.acquisitionDate = regCerts[0].date; evidence.push('취득일은 등기필증 접수일(' + regCerts[0].file + ', ' + regCerts[0].date + ') — 잔금일이 더 빠르면 그날(§98), 확인 권장'); }
+    else if (regCerts.length > 1) evidence.push('⚠ 등기필증이 ' + regCerts.length + '장(' + regCerts.map(function (x) { return x.file + ' ' + x.date; }).join(', ') + ') — 어느 것이 이 부동산 취득인지 확정 못 함');
+  });
   if (skippedForTime.length) evidence.push('⚠ 서류가 많거나 시간이 모자라 ' + skippedForTime.length + '개를 이번에 못 읽음(다시 처리하면 기억분으로 이어 읽음): ' + skippedForTime.slice(0, 8).join(', ') + (skippedForTime.length > 8 ? ' 외' : ''));
   return { ok: true, sellerName: names[0] || null, transactions: txs, evidence: evidence, expCands: expCands,
     counts: { 계약서: contracts.length, 신고필증: reports.length, 취득세: acqs.length, 법무사: lawyers.length, 등기부: regs.length } };
@@ -25419,6 +25435,12 @@ function caseProcMemoCands_(c, res) {
       let v = '';
       if (type === 'money') { const m = /\d{1,3}(?:,\d{3}){2,}|\d{7,}/.exec(rest); v = m ? m[0].replace(/,/g, '') : String(caseProcKrAmount_(rest) || ''); if (v === '0') v = ''; }
       else if (type === 'date') { const m = /(20\d{2}|19\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})/.exec(rest); if (m) v = m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2); }
+      else if (type === 'select') {
+        // 고르는 칸(관계 등)은 정해진 선택지 중 하나일 때만 후보로 — 메모 문장 조각("는 의뢰인 진술에 근거…")을 후보로 넣던 것(3대 기준 점검)
+        const nr = rest.replace(/\s+/g, '');
+        const hit = (it.ask.options || []).filter(function (o) { const k = String(o).replace(/\s+/g, '').replace(/\(.*$/, ''); return k && nr.indexOf(k) !== -1; });
+        v = hit.length === 1 ? hit[0] : '';
+      }
       else { const m = /^\s*[:：\t]?\s*([^\t]{2,40})/.exec(rest); if (m) v = m[1].trim(); }
       if (!v || have.indexOf(v) !== -1 || add.some(function (y) { return y.v === v; })) return;
       add.push({ v: v, src: '상담 메모(' + x.file + '): "' + x.l.slice(0, 50) + '"' });
@@ -29638,8 +29660,18 @@ function acqParse_(text) {
       if (left.length === 1) { if (r.지방교육세 == null) r.지방교육세 = left[0]; else r.농어촌특별세 = left[0]; }
       else { r.부가세목 = rest.join(' + '); r.부가세목확인필요 = true; }
     }
-  } else r.경고.push('세목 금액을 더해 합계와 맞추지 못함 — 원문 확인');
-  if (!r.과세표준) r.경고.push('과세표준을 읽지 못함');
+  } else {
+    // [2026.10.15 1단계 ②] 옛 "납세고지서 영수증(자납분)" — 세목이 하나(취득세만)라 더할 금액이 없다: "납기내 … 까지 금액"을 그 세액으로(⚠ 원문 확인)
+    var nk = /자\s*납\s*분|납\s*세\s*고\s*지\s*서/.test(flat) ? /납\s*기\s*내[\s\S]{0,40}?까지\s*(\d{1,3}(?:,\d{3})+)/.exec(flat) : null;
+    if (nk) {
+      r.종류 = /등\s*록\s*세/.test(t) && !/취\s*득\s*세\s*납\s*세/.test(t) ? '등록세 납세고지서 영수증(자납분)' : '취득세 납세고지서 영수증(자납분)';
+      r.합계 = acqNum_(nk[1]); if (/취\s*득\s*세\s*납\s*세/.test(t)) r.취득세 = r.합계;
+      r.경고.push('옛 고지서 양식 — 납기내 금액 ' + r.합계.toLocaleString('ko-KR') + '원을 세액으로 읽음(세목 나눔 없음), 원문 확인');
+      m = /납\s*기\s*내\s*(\d{4})\s*[.\-]\s*(\d{1,2})\s*[.\-]\s*(\d{1,2})/.exec(flat); if (m) r.납부기한 = m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2);
+      m = /과\s*세\s*대\s*상\s*([^※\n]{4,60}?)(?:\s+납기|\s+일반|\s*$)/.exec(flat); if (m && !r.과세물건) r.과세물건 = m[1].trim();
+    } else r.경고.push('세목 금액을 더해 합계와 맞추지 못함 — 원문 확인');
+  }
+  if (!r.과세표준 && !/자납분/.test(r.종류)) r.경고.push('과세표준을 읽지 못함');
   // 세율 상식 검사 — 취득세/과세표준이 0.5%~13.4% 밖이면 과세표준이나 세액을 잘못 읽은 것
   if (r.취득세 && r.과세표준) { var rate = r.취득세 / r.과세표준; r.실효세율 = Math.round(rate * 10000) / 100; if (rate < 0.005 || rate > 0.135) { r.세율이상 = true; r.경고.push('취득세÷과세표준 = ' + r.실효세율 + '% — 법정 세율 범위 밖, 과세표준 또는 세액을 원문 확인'); } }
   if (r.부가세목확인필요) r.경고.push('지방교육세·농어촌특별세 구분은 원문 확인(합계는 검산됨)');
@@ -29656,7 +29688,8 @@ function valDetect_(t) {
   if (rk === 'cash' || rk === 'card') return rk === 'cash' ? 'cashreceipt' : 'cardreceipt';
   // 법무사 이름이 OCR에서 빠져도 "보수액 + 공과금" 표면 법무사 정산서
   if ((/법\s*무\s*사/.test(t) && /(보\s*수|공\s*과\s*금|증\s*지|등\s*기\s*신\s*청\s*수\s*수\s*료|인\s*지\s*대)/.test(t) || /보\s*수\s*액/.test(t) && /공\s*과\s*금/.test(t)) && !/납부\s*확인서|납부서\s*겸\s*영수증/.test(t)) return 'lawyerfee';
-  if (/취\s*득\s*세|등\s*록\s*세/.test(t) && /(납부\s*확인서|납부서\s*겸\s*영수증|영수필|과세\s*표준)/.test(t) && !/신고서\s*접수증|지방세법\s*시행규칙\s*\[?별지/.test(t)) return 'acqtax';
+  // [2026.10.15 1단계 ②] 옛 양식(2000년대 "취득세 납세고지서 영수증(자납분)")도 — 김금옥 사건 사진이 "종류 미정"으로 어느 칸에도 안 쓰였다
+  if (/취\s*득\s*세|등\s*록\s*세/.test(t) && /(납부\s*확인서|납부서\s*겸\s*영수증|영수필|과세\s*표준|납\s*세\s*고\s*지\s*서[\s\S]{0,30}영\s*수\s*증|자\s*납\s*분)/.test(t) && !/신고서\s*접수증|지방세법\s*시행규칙\s*\[?별지/.test(t)) return 'acqtax';
   if (rk === 'taxinvoice' || rk === 'invoice') return 'taxinvoice';
   if (rk === 'funeral') return 'funeralbill';
   if (/(잔\s*액|잔\s*고)\s*증\s*명|금\s*융\s*거\s*래\s*확\s*인\s*서|Certificate\s+of\s+(?:Deposit\s+)?Balance/i.test(t)) return 'balance';
