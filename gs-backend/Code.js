@@ -24643,7 +24643,7 @@ function tc_ruleTransferFacts_(body) {
   client_listFilesRecursive_(DriveApp.getFolderById(folderId), 0, 120, files);
   var rank = function (n) { return /(계약|신고필증|취득세|법무|등기|등본)/.test(n) ? 0 : /(공사|인테리어|중개|이체|영수증|비용)/.test(n) ? 1 : 2; };
   files.sort(function (a, b) { return rank(a.name) - rank(b.name); });
-  var contracts = [], reports = [], acqs = [], lawyers = [], regs = [], expDocs = [], started = Date.now();
+  var contracts = [], reports = [], acqs = [], lawyers = [], regs = [], expDocs = [], pubs = [], started = Date.now();
   for (var i = 0; i < files.length && i < 40; i++) {
     if (Date.now() - started > 240000) break;
     var f = files[i];
@@ -24663,6 +24663,7 @@ function tc_ruleTransferFacts_(body) {
     // 지급 증빙(자본적지출·양도비 후보) — 이체확인증은 한 장에 한 건일 때만(여러 건이면 어느 것이 공사비인지 모름)
     if (p.type === 'banktx' && p.result && p.result.이체확인증 && p.result.거래.length === 1) { var g0 = p.result.거래[0]; expDocs.push({ file: f.name, amount: g0.금액, date: g0.날짜, memo: g0.적요 || '', payer: g0.보낸이 || '', head: String(text).slice(0, 300) }); }
     if (/^(cashreceipt|cardreceipt|taxinvoice)$/.test(p.type) && p.result && p.result.합계 && !p.result.취소 && !p.result.사무소발행) expDocs.push({ file: f.name, amount: p.result.합계, date: String(p.result.거래일 || '').slice(0, 10), memo: p.result.상호 || '', payer: '', head: String(text).slice(0, 300) });
+    if (p.type === 'pubprice' && p.result) pubs.push({ file: f.name, r: p.result });
     if (p.type === 'acqtax') acqs.push({ file: f.name, r: p.result });
     if (p.type === 'lawyerfee') lawyers.push({ file: f.name, r: p.result });
     if (p.type === 'registry') regs.push({ file: f.name, r: p.result });
@@ -24809,6 +24810,40 @@ function tc_ruleTransferFacts_(body) {
     if (acqAdd) { tx0.acquisitionExpenses = (tx0.acquisitionExpenses || 0) + acqAdd; }
     if (capSum + trSum) tx0.transferExpensesOnly = capSum + trSum;
     if (capParts.length + trParts.length) evidence.push('자본적지출·양도비 ' + (capSum + trSum + acqAdd).toLocaleString('ko-KR') + '원(지급 증빙 기준): ' + capParts.concat(trParts).join(', '));
+  }
+  // [2026.10.15] 취득가액 서류가 없을 때 공시가격(기준시가)으로 — 소득세법 §97①1호나·§114⑦·시행령§176의2, §163⑨.
+  //  매매 취득 = 환산취득가액(양도가액 × 취득당시 기준시가 ÷ 양도당시 기준시가) + 필요경비 개산공제(취득당시 기준시가 × 3%, §163⑥),
+  //   단 자본적지출·양도비 합계가 (환산취득가액 + 개산공제)보다 크면 그쪽(§97② 2호 단서).
+  //  상속·증여 취득 = 그때의 상증법 평가액 — 시가·감정가가 없을 때의 보충적 평가(기준시가)를 넣고 ⚠로 남긴다(신고가액·감정가 있으면 그것).
+  //  공시가격은 그 부동산(소재지 같음) 것만, 고시 전(4월 말 이전) 날짜는 전년도 가격. 토지 단가(원/㎡)는 등기부 면적을 곱한다. 못 맞추면 아무것도 안 넣음.
+  if (txs.length === 1 && pubs.length && !txs[0].acquisitionPrice && txs[0].acquisitionDate) {
+    var t1 = txs[0];
+    var areaOf = function () { var a = null; regs.forEach(function (g) { (g.r.docs || []).forEach(function (d) { if (tcLocSame_(d.소재지, t1.assetLocation) && d.표제부) a = a || d.표제부.전유면적 || d.표제부.면적 || null; }); }); return a; };
+    var stdAt = function (date) {
+      if (!date) return null;
+      var y0 = Number(String(date).slice(0, 4)), y = y0 - (String(date).slice(5) < '04-30' ? 1 : 0), best = null;
+      pubs.forEach(function (pb) {
+        if (pb.r.소재지 && t1.assetLocation && !tcLocSame_(pb.r.소재지, t1.assetLocation)) return;
+        (pb.r.가격 || []).forEach(function (q) {
+          if (!q.연도 || q.연도 > (q.jan ? y0 : y) || (best && best.연도 >= q.연도)) return;
+          var v = q.가격 || (q.단가 && areaOf() ? Math.floor(q.단가 * areaOf()) : 0);
+          if (v) best = { 연도: q.연도, v: v, file: pb.file, unit: !q.가격 };
+        });
+      });
+      return best;
+    };
+    var sa = stdAt(t1.acquisitionDate), st = stdAt(t1.transferDate);
+    var aCause = (evidence.filter(function (e) { return /^취득: /.test(e); }).slice(-1)[0] || '');
+    if (sa && /상속|증여/.test(aCause)) {
+      t1.acquisitionPrice = sa.v;
+      evidence.push('⚠ 취득가액 = 취득당시 공시가격 ' + sa.v.toLocaleString('ko-KR') + '원(' + sa.연도 + '년, ' + sa.file + (sa.unit ? ', 단가×등기부 면적' : '') + ') — 상속·증여 당시 시가·감정가·신고가액이 있으면 그것으로 고치세요(§163⑨)');
+    } else if (sa && st && t1.transferPrice && sa.연도 <= st.연도 && st.v > 0) {
+      var conv = Math.floor(t1.transferPrice * sa.v / st.v), est = Math.floor(sa.v * 0.03), actual = (t1.transferExpensesOnly || 0);
+      t1.acquisitionPrice = conv;
+      if (actual > conv + est) { t1.acquisitionPrice = 0; t1.acquisitionExpenses = 0; t1.transferExpensesOnly = actual; evidence.push('취득가액 환산(' + conv.toLocaleString('ko-KR') + '원)+개산공제보다 자본적지출·양도비가 커서 그것만 필요경비로(§97② 2호 단서)'); }
+      else { t1.acquisitionExpenses = est; t1.transferExpensesOnly = null; }
+      evidence.push('⚠ 취득가액 = 환산취득가액 ' + conv.toLocaleString('ko-KR') + '원(양도가액 × ' + sa.v.toLocaleString('ko-KR') + '[' + sa.연도 + '] ÷ ' + st.v.toLocaleString('ko-KR') + '[' + st.연도 + '], ' + sa.file + ') · 개산공제 ' + est.toLocaleString('ko-KR') + '원 — 취득 계약서가 나오면 실지거래가액으로 고치세요(§114⑦, 환산시 가산세 §114의2 검토)');
+    }
   }
   txs.forEach(function (t) { delete t._acqMatched; });
   if (body.debug) {
@@ -24988,7 +25023,7 @@ function caseProcEvTypes_(label) {
   return null;
 }
 function caseProcParsed_(f, cache, canParse) {
-  const key = 'cpp12_' + f.id + '_' + f.modified; // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
+  const key = 'cpp13_' + f.id + '_' + f.modified; // cpp13: 오피스텔·상업용 기준시가 표(2026-10-15) // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
   const hit = cache.get(key);
   if (hit) { try { return JSON.parse(hit); } catch (e) {} }
   if (!canParse) return null;
@@ -28339,6 +28374,7 @@ function docParseText_(text) {
   var idp = docInhDivisionParse_(text); if (idp) return idp;
   var flp = docFuneralListParse_(text); if (flp) return flp;
   var rpp = docRealPriceParse_(text); if (rpp) return rpp;
+  var ofp = docOfficetelStdParse_(text); if (ofp) return ofp;
   var ncp = docNicheContractParse_(text); if (ncp) return ncp;
   var bsp = docBankSlipParse_(text); if (bsp) return bsp;
   var type = docDetectType_(text), r = null;
@@ -28847,6 +28883,20 @@ function balParse_(text) {
 // ---- 공시가격 확인서·열람 출력물(개별공시지가 / 공동주택가격 / 개별단독주택가격) — 토큰 0, ES5 ----
 // 연도별 가격표를 뽑는다(취득 당시·양도 당시 기준시가 판단용). 연도가 빠진 행은 공시일자(YYYYMMDD)에서 연도를 얻는다.
 function ppNum_(s) { return Number(String(s).replace(/[^\d.]/g, '')) || 0; }
+// [2026.10.15] 국세청 기준시가(상업용 건물/오피스텔) 조회 — "고시일자 단위면적당 기준시가 건물면적" 연도별 표. 토지 포함 기준시가 = 단가 × 면적.
+// 고시일(매년 1월 1일)부터 적용(공동주택·공시지가의 4월 말 고시와 다름 → 행에 jan 표시)
+function docOfficetelStdParse_(text) {
+  var t = String(text || '');
+  if (!/기\s*준\s*시\s*가\s*\(\s*상\s*업\s*용\s*건\s*물\s*\/?\s*오\s*피\s*스\s*텔/.test(t)) return null;
+  var r = { 종류: '기준시가(상업용 건물/오피스텔)', 가격: [], 경고: [] };
+  var m = /상\s*세\s*주\s*소\s*\n+\s*([^\n]{6,80})\n+\s*([^\n]{2,40}호)/.exec(t.replace(/입\s*력\s*주\s*소\s*\n+\s*상\s*세\s*주\s*소/, '상세주소'));
+  if (m) r.소재지 = (m[1] + ' ' + m[2]).replace(/\s+/g, ' ').trim();
+  var re = /((?:19|20)\d{2})\.01\.01\s+(\d{1,3}(?:,\d{3})+)\s+(\d{1,4}(?:\.\d+)?)/g, x;
+  while ((x = re.exec(t))) r.가격.push({ 연도: Number(x[1]), 기준일: x[1] + '-01-01', 단가: ppNum_(x[2]), 면적: Number(x[3]), 가격: Math.floor(ppNum_(x[2]) * Number(x[3])), jan: true });
+  if (!r.가격.length) return null;
+  var md = '### ' + r.종류 + (r.소재지 ? ' · ' + r.소재지 : '') + '\n\n| 고시일 | ㎡당 | 면적 | 기준시가 |\n|---|---|---|---|\n' + r.가격.map(function (q) { return '| ' + q.기준일 + ' | ' + q.단가.toLocaleString('ko-KR') + ' | ' + q.면적 + ' | ' + q.가격.toLocaleString('ko-KR') + ' |'; }).join('\n');
+  return { type: 'pubprice', label: r.종류, result: r, md: md };
+}
 function ppParse_(text) {
   var t = String(text || ''), flat = t.replace(/\s+/g, ' ');
   var kind = /개별\s*공시\s*지가/.test(t) ? 'land' : /공동\s*주택\s*가격/.test(t) ? 'apt' : /개별\s*(?:단독)?\s*주택\s*가격/.test(t) ? 'house' : '';

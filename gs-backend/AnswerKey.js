@@ -17,7 +17,7 @@
 const AK_KEY_NAME_ = '_정답지.json';
 const AK_RESULT_NAME_ = '_정답지점검결과.json';
 const AK_STATE_PROP_ = 'AK_RUN_STATE';
-const AK_CODE_VER_ = '2026-10-15d'; // 점검 규칙을 바꿔 배포할 때마다 올린다 — 멈췄던 점검의 옛 결과를 새 실행에 이어 붙이지 않게
+const AK_CODE_VER_ = '2026-10-15g'; // 점검 규칙을 바꿔 배포할 때마다 올린다 — 멈췄던 점검의 옛 결과를 새 실행에 이어 붙이지 않게
 
 function akReadCase_(caseId) {
   const sheet = work_getSheet_(), col = work_colMap_(sheet.getDataRange().getValues()[0]);
@@ -343,10 +343,11 @@ function answerKeyRun_(body) {
   }
   if (st.queue.length) { props.setProperty(AK_STATE_PROP_, JSON.stringify(st)); return { ok: true, more: true, done: st.results.length, total: st.results.length + st.queue.length }; }
   props.deleteProperty(AK_STATE_PROP_);
-  const result = { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), cases: st.results, pass: st.results.filter(function (r) { return r.pass; }).length, total: st.results.filter(function (r) { return !r.skipped; }).length, skipped: st.results.filter(function (r) { return r.skipped; }).length };
+  const result = { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), ver: AK_CODE_VER_, cases: st.results, pass: st.results.filter(function (r) { return r.pass; }).length, total: st.results.filter(function (r) { return !r.skipped; }).length, skipped: st.results.filter(function (r) { return r.skipped; }).length };
   try {
     const folder = getBusinessManagerFolder_();
-    if (folder) { const it = folder.getFilesByName(AK_RESULT_NAME_); if (it.hasNext()) it.next().setContent(JSON.stringify(result)); else folder.createFile(AK_RESULT_NAME_, JSON.stringify(result), 'application/json'); }
+    // [2026.10.15] 세무사님 지시: 점검 내용을 없애지 말고 한 파일에 통합 보관 — 새 결과를 _정답지점검_보관.md 끝에 회차로 이어 붙인다(akArchiveMd_)
+    if (folder) { try { akArchiveMd_(folder, result); } catch (e) { result.archiveError = String(e && e.message || e); } const it = folder.getFilesByName(AK_RESULT_NAME_); if (it.hasNext()) it.next().setContent(JSON.stringify(result)); else folder.createFile(AK_RESULT_NAME_, JSON.stringify(result), 'application/json'); }
   } catch (e) { result.saveError = String(e && e.message || e); }
   return { ok: true, result: result };
 }
@@ -521,4 +522,37 @@ function answerKeyDraft_(body) {
     });
   }
   return { ok: true, made: made, more: more };
+}
+
+// [2026.10.15] 🧪 결과를 업무관리자/_정답지점검_보관.md 한 파일에 회차로 이어 붙인다(세무사님 지시: 사건별·회차별 파일 말고 통합 보관).
+// 형식: "## 회차: 규칙판 (일시, 통과 n/m)" + 목차 + 사건별 상세(칸 대조표·계산 입력값·서류 분류·증빙 메모·질문). 앞 회차는 건드리지 않는다.
+const AK_ARCHIVE_NAME_ = '_정답지점검_보관.md';
+function akArchiveMd_(folder, result) {
+  const won = function (v) { return typeof v === 'number' ? v.toLocaleString('ko-KR') : (v === '' || v == null ? '' : String(v)); };
+  const cell = function (v) { return String(v == null ? '' : v).replace(/\|/g, '/').replace(/\n/g, ' '); };
+  const cs = result.cases || [];
+  const out = ['', '## 회차: 규칙판 ' + (result.ver || '') + ' (' + result.at + ', 통과 ' + result.pass + '/' + result.total + ')', '',
+    '보관본: `' + AK_RESULT_NAME_ + '`의 이 회차 내용 (블라인드 점검 — 사건에 저장된 값 무시, 폴더 원시서류만으로 계산)', '', '### 목차'];
+  cs.forEach(function (c, i) { out.push((i + 1) + '. ' + (c.pass ? '✅' : '❌') + ' ' + (c.사건명 || c.caseId)); });
+  cs.forEach(function (c, i) {
+    out.push('', '---', '', '### ' + (i + 1) + '. ' + (c.pass ? '✅ 통과' : '❌ 불통과') + ' — ' + (c.사건명 || c.caseId), '');
+    if (c.skipped || c.error) { out.push('건너뜀: ' + cell(c.error || c.why || '')); return; }
+    out.push('원시서류 ' + (c.srcDocs || 0) + '개 · 발생문서(신고서 등, 정답지 전용) ' + (c.outDocs || 0) + '개' + (c.judge ? ' · 판단 필요' : '') + (c.noSourceDocs ? ' · 원시서류 없음' : ''), '');
+    if ((c.rows || []).length) {
+      out.push('| 항목 | 정답(신고서) | 도구 값 | 일치 | 도구 값 출처·사유 |', '|---|---|---|---|---|');
+      c.rows.forEach(function (r) { out.push('| ' + [cell(r.field), cell(won(r.expected)), cell(won(r.tool)), r.ok ? '✅' : '❌', cell(r.src || '')].join(' | ') + ' |'); });
+    }
+    if (c.why) out.push('', '**값이 빈 이유:** ' + cell(c.why));
+    if (c.engineInput) out.push('', '**계산에 넣은 값(서류에서 읽음):** `' + JSON.stringify(c.engineInput) + '`');
+    if ((c.docTypes || []).length) { out.push('', '**서류 자동 분류(' + c.docTypes.length + '건):**'); c.docTypes.forEach(function (d) { out.push('- ' + d.name + ' → ' + (d.l || '미분류') + (d.wn ? ' (⚠' + d.wn + ')' : '')); }); }
+    const st = c.steps || {};
+    if ((st.evidence || []).length) { out.push('', '**증빙 점검 단계 메모:**'); st.evidence.forEach(function (x) { out.push('- ' + cell(String(x).slice(0, 160))); }); }
+    if ((st.overview || []).length) { out.push('', '**처리개요 단계 메모:**'); st.overview.forEach(function (x) { out.push('- ' + cell(String(x).slice(0, 300))); }); }
+    if ((c.extra || []).length) { out.push('', '**도구가 낸 질문(정답지에 없는 것 ' + c.extra.length + '건):**'); c.extra.forEach(function (q) { out.push('- [' + q.cat + '] ' + cell(q.text)); }); }
+    if ((c.missing || []).length) { out.push('', '**정답지에 있는데 도구가 안 물은 것:**'); c.missing.forEach(function (q) { out.push('- ' + cell(q)); }); }
+    if ((c.needed || []).length) { out.push('', '**서류로 정할 수 없어 묻는 게 맞는 질문:**'); c.needed.forEach(function (q) { out.push('- ' + cell(q.text)); }); }
+  });
+  const it = folder.getFilesByName(AK_ARCHIVE_NAME_);
+  if (it.hasNext()) { const f = it.next(); f.setContent(f.getBlob().getDataAsString('UTF-8') + '\n' + out.join('\n') + '\n'); }
+  else folder.createFile(AK_ARCHIVE_NAME_, '# 정답지 점검 보관 — 회차별 통합 기록\n' + out.join('\n') + '\n', 'text/markdown');
 }
