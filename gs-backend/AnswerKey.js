@@ -248,13 +248,27 @@ function akSandbox_(caseId, fn, override) {
 }
 // 한 사건 점검 — 사이드바와 같은 서버 단계를 그대로(확인창·대화 전환 없이) 돌린 뒤 대조. 증빙 단계가 서류를 다 못 읽으면 more
 function akRunCase_(caseId, key) { return akSandbox_(caseId, function () { return akRunCase0_(caseId, key); }, key && key.납세자 ? { 납세자: key.납세자 } : null); }
+// [2026.10.16] 진단 기록 — 사건 하나 처리의 단계별 경과 초를 스크립트 속성에 남긴다(서버 6분 한도로 강제 종료돼도 어디까지 갔는지 보이게). answerkey_trace로 읽음
+var AK_TRACE_ = null;
+function akTrace_(phase, extra) {
+  try {
+    if (!AK_TRACE_) return;
+    AK_TRACE_.steps.push([phase, Math.round((Date.now() - AK_TRACE_.t0) / 1000)].concat(extra !== undefined ? [extra] : []));
+    if (AK_TRACE_.steps.length > 80) AK_TRACE_.steps.splice(1, AK_TRACE_.steps.length - 80);
+    PropertiesService.getScriptProperties().setProperty('AK_TRACE', JSON.stringify(AK_TRACE_));
+  } catch (e) {}
+}
+function answerKeyTrace_() { try { return { ok: true, trace: JSON.parse(PropertiesService.getScriptProperties().getProperty('AK_TRACE') || 'null') }; } catch (e) { return { error: String(e) }; } }
 function akRunCase0_(caseId, key) {
+  AK_TRACE_ = { caseId: caseId, at: new Date().toISOString(), t0: Date.now(), steps: [] };
+  akTrace_('시작');
   let c = akReadCase_(caseId);
   if (!c) return { caseId: caseId, error: '사건을 찾지 못했습니다.' };
   const out = { caseId: caseId, 사건명: c.사건명 || c.고객명 || '', 상태: key.상태 || '초안', rows: [], extra: [], missing: [], steps: {} };
   const t0 = Date.now();
   TC_NO_NEW_OCR_ = false; // 사건마다 처음엔 켜 둔다(한 실행에서 여러 사건을 처리)
   let ev = caseProcEvidence_(c);
+  akTrace_('증빙1 끝', ev.more ? ev.progress : 'done');
   if (ev.more) return { caseId: caseId, more: true, progress: ev.progress };
   TC_NO_NEW_OCR_ = true; // 이후 단계는 새 글자인식 없이(한도 넘친 서류는 다음 점검에서 증빙 단계가 이어 읽음)
   // [2026.10.16] 서류가 많은 사건(노영환 299개)은 서류 정리만으로 몇 분이 걸려, 이어서 처리개요·두 번째 증빙까지 하면 서버 6분 한도에 걸려
@@ -266,12 +280,15 @@ function akRunCase0_(caseId, key) {
   AK_LAST_EV_ = { caseId: c.id, srcDocs: ev.srcDocs, outDocs: ev.outDocs };
   c = akReadCase_(caseId);
   const ovr = caseProcOverview_(c);
+  akTrace_('처리개요 끝');
   c = akReadCase_(caseId);
   // [2026.10.15] 블라인드에선 처음 증빙 단계 때 기준일이 비어 있다(처리개요 단계가 서류로 정함) — 사이드바에서 "처리하자"를 한 번 더 한 것처럼 증빙 단계를 다시 돌려 그 기준일로 평가·대조
   const ev2 = caseProcEvidence_(c);
+  akTrace_('증빙2 끝');
   if (!ev2.more) { ev = Object.assign({}, ev2, { lines: (ev.lines || []).concat(ev2.lines && ev2.lines.length ? ['— 기준일 확정 뒤 다시 대조 —'].concat(ev2.lines) : []) }); c = akReadCase_(caseId); }
   const basic = caseProcBasic_(c, {});
   const calc = caseProcCalc_(c);
+  akTrace_('계산 끝');
   const decisions = (caseProcLoad_(caseId).decisions) || {};
   const live = [].concat(basic.items || [], ev.items || [], ovr.items || [], calc.items || []).filter(function (it) { const d = decisions[it.id]; return !(d && (d.d === '무시' || d.d === 'done')); })
     .filter(function (it) { return !/^calc:/.test(it.id); }); // 세액 재계산 안내는 화면이 하는 일 — 정답 대조는 아래 엔진 계산으로

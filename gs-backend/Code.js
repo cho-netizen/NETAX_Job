@@ -3847,6 +3847,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'answerkey_run') return jsonResponse(answerKeyRun_(body)); // 🧪 정답지 점검(토큰 0, AnswerKey.js)
   if (body.action === 'taxpayer_bulk_fix') return jsonResponse(taxpayerBulkFix_(body)); // 🏷 납세자·사건명 일괄 정리(미리보기/적용, TaxpayerFix.js)
   if (body.action === 'answerkey_last') return jsonResponse(answerKeyLast_());
+  if (body.action === 'answerkey_trace') return jsonResponse(answerKeyTrace_()); // [2026.10.16] 정답지 점검 진단 기록(단계별 경과 초)
   if (body.action === 'answerkey_get') return jsonResponse(answerKeyGet_(body));
   if (body.action === 'answerkey_save') return jsonResponse(answerKeySave_(body));
   if (body.action === 'answerkey_draft') return jsonResponse(answerKeyDraft_(body)); // 양도코리아 결과 PDF → 정답지 초안(토큰 0)
@@ -25523,9 +25524,12 @@ function caseProcEvidence_(c) {
   docs.forEach(function (f) {
     // [2026.10.16] 보도자료·홍보물은 사건 서류가 아님 — 가격 자료 등으로 읽어 값·⚠ 질문을 만들지 않는다(장부에 '참고+이유'로 남김)
     if (/보도\s*(참고)?\s*자료|홍보\s*(자료|물)/.test(f.name)) { f.p = null; return; }
+    const tp = Date.now();
     f.p = caseProcParsed_(f, cache, Date.now() - started < 80000);
     if (!f.p) pending++;
+    if (typeof akTrace_ === 'function' && Date.now() - tp > 15000) akTrace_('서류 오래 걸림', f.name + ' ' + Math.round((Date.now() - tp) / 1000) + '초'); // [2026.10.16] 진단: 한 서류에 15초 넘게 걸리면 기록
   });
+  if (typeof akTrace_ === 'function') akTrace_('증빙 서류 읽기', (docs.length - pending) + '/' + docs.length);
   if (pending) return { ok: true, more: true, progress: { done: docs.length - pending, total: docs.length }, lines: ['서류 읽는 중 ' + (docs.length - pending) + '/' + docs.length + '(무료 글자인식 — 처음 읽는 서류는 한 건에 10~40초)'] };
   // [2026.10.15 1단계] 이름이 아니라 내용으로 이미 낸 신고서(사진으로 찍힌 신고서·계산명세서 등)를 입력에서 뺀다 — 경정·수정·불복 사건은 그것이 작업 재료라 빼지 않음
   if (!caseProcIsAmend_(c)) {
