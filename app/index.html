@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 07:38 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 07:50 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -46608,6 +46608,18 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         return nxAiCaseProcRefresh_(st, refreshKeys, recalc);
       }).catch(function(err){ pane.innerHTML = ''; p('반영하지 못했습니다: ' + (err && err.message || err), 'nxai-warn'); });
     };
+    // [2026.10.15 일괄점검 ③] 묻는 방식 공통 — 후보(객관식)는 근거 파일을 👁로 바로 열고, 직접 입력(주관식)은 근거 파일을 골라 함께 남긴다
+    var srcFile = function(src){ var s0 = String(src || ''), best = null; (st.files || []).forEach(function(f){ if (f.name && s0.indexOf(f.name) !== -1 && (!best || f.name.length > best.name.length)) best = f; }); return best; };
+    var openFile = function(f){ window.open('https://drive.google.com/file/d/' + encodeURIComponent(f.id) + '/view', '_blank', 'noopener'); };
+    var eye = function(src, parent){ var f = srcFile(src); if (!f) return; var b = btn('👁', function(e){ if (e) e.stopPropagation(); openFile(f); }, false, parent); b.title = '근거 파일 열기: ' + f.name; };
+    var pickSrc = function(){
+      if (!(st.files || []).length) return { src: function(base){ return base; } };
+      var r = rowEl(), sel = document.createElement('select'); sel.style.cssText = 'flex:1;min-width:160px;';
+      sel.innerHTML = '<option value="">(근거 파일 고르기 — 없으면 비워 둠)</option>' + (st.files || []).map(function(f){ return '<option>' + nxAiEsc_(f.name) + '</option>'; }).join('');
+      r.appendChild(sel);
+      btn('👁 열기', function(){ var f = (st.files || []).filter(function(x){ return x.name === sel.value; })[0]; if (!f){ nxAiToast_('파일을 고르세요.'); return; } openFile(f); }, false, r);
+      return { src: function(base){ return sel.value ? base + ' — 근거: ' + sel.value : base; } };
+    };
     var refreshAll = ['basic', 'overview', 'calc', 'output'];
     var mode = ask.mode;
     if (mode === 'base'){
@@ -46617,19 +46629,22 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         if (!r || !r.ok) throw new Error((r && r.error) || '후보를 못 불러옴');
         p('맞는 ' + r.what + '을(를) 고르세요 — 고르면 사건 기준일로 반영하고 법정일을 다시 계산한 뒤 세액도 다시 계산합니다. 이미 낸 신고서의 날짜는 참고용입니다. (지금 법정일 ' + (r.법정일 || '없음') + ')');
         var r1 = rowEl();
-        (r.cands || []).forEach(function(cd){ btn(cd.v + ' — ' + cd.src + (cd.due ? ' (→ 법정기한 ' + cd.due + ')' : ''), function(){ apply('base', cd.v, cd.src, refreshAll, true); }, false, r1); });
-        if (!(r.cands || []).length) p('자료에서 찾은 날짜가 없습니다 — 아래에 직접 넣어 주세요.');
+        (r.cands || []).forEach(function(cd){ btn(cd.v + ' — ' + cd.src + (cd.due ? ' (→ 법정기한 ' + cd.due + ')' : ''), function(){ apply('base', cd.v, cd.src, refreshAll, true); }, false, r1); eye(cd.src, r1); });
+        if (!(r.cands || []).length) p('자료에서 찾은 날짜가 없습니다 — 아래에 직접 넣고, 근거 파일이 있으면 골라 주세요.');
         var ie = inputEl('date');
-        btn('이 날짜로 반영', function(){ apply('base', ie.val(), '세무사님 직접 입력', refreshAll, true); }, true, ie.row);
+        var ps = pickSrc();
+        btn('이 날짜로 반영', function(){ apply('base', ie.val(), ps.src('세무사님 직접 입력'), refreshAll, true); }, true, ie.row);
       }).catch(function(err){ pane.innerHTML = ''; p('후보를 불러오지 못했습니다: ' + (err && err.message || err), 'nxai-warn'); });
       return;
     }
     if (mode === 'input' || mode === 'choose'){
       p((ask.label ? ask.label + ' — ' : '') + (mode === 'choose' ? '어느 값이 맞나요? 고르거나 직접 입력하세요.' : '값을 고르거나 입력하세요.'));
       var r2 = rowEl();
-      (ask.cands || []).forEach(function(cd){ btn(fmt(cd.v, ask.input) + ' — ' + cd.src, function(){ apply(ask.target, cd.v, cd.src, refreshAll, true); }, false, r2); });
+      (ask.cands || []).forEach(function(cd){ btn(fmt(cd.v, ask.input) + ' — ' + cd.src, function(){ apply(ask.target, cd.v, cd.src, refreshAll, true); }, false, r2); eye(cd.src, r2); });
+      if (!(ask.cands || []).length) p('서류에서 찾은 값이 없습니다 — 직접 넣고, 근거 파일이 있으면 골라 주세요.');
       var ie2 = inputEl(ask.input || 'text', ask.options);
-      btn('반영', function(){ apply(ask.target, ie2.val(), '세무사님 직접 입력', refreshAll, true); }, true, ie2.row);
+      var ps2 = pickSrc();
+      btn('반영', function(){ apply(ask.target, ie2.val(), ps2.src('세무사님 직접 입력'), refreshAll, true); }, true, ie2.row);
       return;
     }
     // [2026.10.15 1:1] 증여 내용 확인 — 증여자·수증자·증여일·증여대상·금액을 칸마다 고르거나(객관식, 서류 후보) 직접 입력(주관식)한 뒤 한 번에 확정
@@ -46645,6 +46660,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         vals[fd[0]] = ie;
         (cd0[fd[0]] || []).forEach(function(c){
           btn(fmt(c.v, fd[2]) + (c.src ? ' — ' + c.src : ''), function(){ ie.el.value = fd[2] === 'money' ? Number(c.v).toLocaleString('ko-KR') : c.v; Array.prototype.forEach.call(rb.querySelectorAll('button'), function(b){ b.classList.remove('primary'); }); this.classList.add('primary'); }, false, rb);
+          eye(c.src, rb);
         });
         if (!(cd0[fd[0]] || []).length) rb.remove();
       });
@@ -46704,7 +46720,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         }, false, r3);
       });
       if (ask.ai) btn('모름 — AI에게 근거 설명 듣기(유료)', function(){ nxAiCaseProcJudge_(st, it, ask.ai); }, false, r3);
-      if (ask.withInput){ var ie4 = inputEl(ask.input || 'text', null); btn('반영', function(){ apply(ask.target, ie4.val(), '세무사님 직접 입력', refreshAll, true); }, true, ie4.row); }
+      if (ask.fileId) btn('📄 원문 열기', function(){ openFile({ id: ask.fileId }); }, false, r3);
+      if (ask.withInput){ var ie4 = inputEl(ask.input || 'text', null); var ps4 = pickSrc(); btn('반영', function(){ apply(ask.target, ie4.val(), ps4.src('세무사님 직접 입력'), refreshAll, true); }, true, ie4.row); }
       return;
     }
     if (mode === 'evidence'){
@@ -46789,8 +46806,11 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     // [2026.10.15 1:1] 증여 내용(증여자·수증자·증여일·증여대상)을 아직 안 정했으면 계산하지 않는다 — 추정값으로 세액을 내지 않게
     // 양도 필요경비·사건분류(비과세·중과 판단)도 정해지기 전엔 계산하지 않는다(필요경비 0원·사건분류 미정으로 계산하던 문제 — 노오섭)
     var blockers = { 'gift:deal': '「증여 내용 확인」', 'tr:expenses': '「필요경비 확정」', 'ov:사건분류': '「사건분류」' };
-    var open = (st.items || []).filter(function(it){ var d = nxAiCaseProcDec_(st, it); return blockers[it.id] && d !== 'done' && d !== '무시'; });
-    if (open.length && !manual){ st.setStep('calc', '⏸', open.map(function(it){ return blockers[it.id]; }).join('·') + '을(를) 먼저 정해 주세요 — 정해지면 계산합니다(지금 계산하려면 [▶ 지금 계산]).'); return; }
+    // [2026.10.15 일괄점검 ③] 위 셋만이 아니라 — 계산 입력 칸(처리개요 값·기준일)을 묻는 질문에 아직 답하지 않았으면 자동 계산하지 않는다(보류는 "진행"이라 막지 않음)
+    var isInputQ = function(it){ var a = it.ask || {}; return (it.step === 'overview' || it.step === 'basic') && (it.kind === 'missing' || a.mode === 'base' || /^(ov:|ovAsset:)/.test(String(a.target || ''))); };
+    var open = (st.items || []).filter(function(it){ var d = nxAiCaseProcDec_(st, it); return blockers[it.id] ? (d !== 'done' && d !== '무시') : (isInputQ(it) && !d); });
+    var qName = function(it){ return blockers[it.id] || ('「' + String((it.ask && it.ask.label) || it.text || '').slice(0, 24) + '」'); };
+    if (open.length && !manual){ st.setStep('calc', '⏸', open.slice(0, 4).map(qName).join('·') + (open.length > 4 ? ' 외 ' + (open.length - 4) + '건' : '') + '을(를) 먼저 정해 주세요 — 정해지면 계산합니다(지금 계산하려면 [▶ 지금 계산]).'); return; }
     var tab = st.case && st.case.세목;
     if (!{ transfer: 1, gift: 1, inheritance: 1 }[tab] || typeof goToTaxCalc_ !== 'function') return;
     st.calcBusy = true;

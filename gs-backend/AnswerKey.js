@@ -17,7 +17,7 @@
 const AK_KEY_NAME_ = '_정답지.json';
 const AK_RESULT_NAME_ = '_정답지점검결과.json';
 const AK_STATE_PROP_ = 'AK_RUN_STATE';
-const AK_CODE_VER_ = '2026-10-15i'; // 점검 규칙을 바꿔 배포할 때마다 올린다 — 멈췄던 점검의 옛 결과를 새 실행에 이어 붙이지 않게
+const AK_CODE_VER_ = '2026-10-15j'; // 점검 규칙을 바꿔 배포할 때마다 올린다 — 멈췄던 점검의 옛 결과를 새 실행에 이어 붙이지 않게
 
 function akReadCase_(caseId) {
   const sheet = work_getSheet_(), col = work_colMap_(sheet.getDataRange().getValues()[0]);
@@ -315,7 +315,33 @@ function akRunCase0_(caseId, key) {
   out.pass = out.fails === 0;
   try { out.usable = akUsable_(c, key, out, tool); } catch (e) { out.usable = { ok: false, defects: ['판정 오류: ' + (e && e.message || e)] }; }
   out.taxOk = out.rows.length > 0 && out.rows.every(function (r) { return r.ok; }); // 세액 칸은 모두 맞음(질문은 따로 셈)
+  try { out.process = akProcessAudit_(c, ev, ovr, live); } catch (e) { out.process = { error: String(e && e.message || e) }; }
   return out;
+}
+// [2026.10.15 일괄점검] 과정 점검(세무사님 공통 약점 3가지) — 정답과 무관하게 처리 과정만 본다.
+//  ① 수집: 폴더 파일마다 정리됨/종류 미정/글자 못 읽음/못 읽음/결과물 제외 — 어디에도 이름이 안 나온 파일 = "말없이 건너뜀"
+//  ③ 묻는 방식: 질문마다 객관식(후보·선택지)/주관식(직접 입력)/확인 — 계산 입력 칸을 묻는 질문 수
+function akProcessAudit_(c, ev, ovr, live) {
+  const all = caseProcFiles_(c);
+  const files = all.filter(function (f) { return !/^_|^~\$/.test(f.name) && !/\.json$/i.test(f.name); });
+  const memo = caseProcMemoTexts_(c);
+  const said = {};
+  (ev.docTypes || []).forEach(function (d) { said[d.name] = true; });
+  memo.read.forEach(function (m) { said[m.file] = true; });
+  const listed = memo.unread.concat(memo.skipped); // "이름(사유)"
+  files.forEach(function (f) { if (listed.some(function (x) { return String(x).indexOf(f.name + '(') === 0; })) said[f.name] = true; });
+  const hay = [].concat(ev.lines || [], ovr.lines || [], (live || []).map(function (it) { return it.text + ' ' + (it.detail || ''); })).join('\n');
+  const silent = files.filter(function (f) { return !said[f.name] && hay.indexOf(f.name) === -1; }).map(function (f) { return f.name; });
+  const dt = ev.docTypes || [];
+  const q = { 객관식: 0, 주관식: 0, 확인: 0, 입력칸: 0 };
+  (live || []).forEach(function (it) {
+    const a = it.ask || {};
+    const choice = /^(choose|options|giftdeal|expenses|base)$/.test(a.mode) || (a.cands && a.cands.length) || (a.mode === 'evidence' && (a.suggest || []).length);
+    if (a.mode === 'input' && !(a.cands || []).length) q.주관식++; else if (choice) q.객관식++; else q.확인++;
+    if (a.mode === 'base' || /^(ov:|ovAsset:)/.test(String(a.target || ''))) q.입력칸++;
+  });
+  return { 파일: files.length, 정리됨: dt.filter(function (d) { return d.t; }).length, 종류미정: dt.filter(function (d) { return !d.t; }).length, 메모읽음: memo.read.length,
+    못읽음: memo.unread, 제외: memo.skipped.length + (ev.outDocs || 0), 말없이건너뜀: silent, 질문: q, truncated: !!all.truncated };
 }
 // 🧪 정답지 점검 실행 — {caseId?, reset?}. 사건이 많거나 처음 읽는 서류가 많으면 more:true(화면이 이어서 다시 부름)
 function answerKeyRun_(body) {
@@ -571,6 +597,10 @@ function akArchiveMd_(folder, result) {
       out.push('| 항목 | 정답(신고서) | 도구 값 | 일치 | 도구 값 출처·사유 |', '|---|---|---|---|---|');
       c.rows.forEach(function (r) { out.push('| ' + [cell(r.field), cell(won(r.expected)), cell(won(r.tool)), r.ok ? '✅' : '❌', cell(r.src || '')].join(' | ') + ' |'); });
     }
+    const pr = c.process;
+    if (pr && !pr.error) out.push('', '**과정 점검:** 파일 ' + pr.파일 + '개 · 서류 정리 ' + pr.정리됨 + ' · 종류 미정 ' + pr.종류미정 + ' · 메모·문서 읽음 ' + pr.메모읽음 + ' · 못 읽음 ' + (pr.못읽음 || []).length + ' · 결과물 제외 ' + pr.제외
+      + ' · ' + ((pr.말없이건너뜀 || []).length ? '⚠ 말없이 건너뜀 ' + pr.말없이건너뜀.length + '개(' + cell(pr.말없이건너뜀.slice(0, 8).join(', ')) + ')' : '말없이 건너뛴 파일 없음 ✅')
+      + ' · 질문 객관식 ' + pr.질문.객관식 + ' / 주관식 ' + pr.질문.주관식 + ' / 확인 ' + pr.질문.확인 + ' (계산 입력 칸 질문 ' + pr.질문.입력칸 + ')' + ((pr.못읽음 || []).length ? ' · 못 읽은 파일: ' + cell(pr.못읽음.slice(0, 6).join(', ')) : ''));
     if (c.why) out.push('', '**값이 빈 이유:** ' + cell(c.why));
     if (c.engineInput) out.push('', '**계산에 넣은 값(서류에서 읽음):** `' + JSON.stringify(c.engineInput) + '`');
     if ((c.docTypes || []).length) { out.push('', '**서류 자동 분류(' + c.docTypes.length + '건):**'); c.docTypes.forEach(function (d) { out.push('- ' + d.name + ' → ' + (d.l || '미분류') + (d.wn ? ' (⚠' + d.wn + ')' : '')); }); }
