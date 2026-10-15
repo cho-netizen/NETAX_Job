@@ -357,8 +357,13 @@ function answerKeyRun_(body) {
     st = { only: body.caseId || '', queue: ids, results: [], startedAt: new Date().toISOString(), ver: AK_CODE_VER_ };
   }
   // [2026.10.16] 한 번에 하나만 — 화면이 연결 끊김으로 다시 부를 때 앞선 실행이 아직 돌고 있으면 겹쳐 같은 사건을 처리했다
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(1000)) return { ok: true, more: true, busy: true, done: st.results.length, total: st.results.length + st.queue.length };
+  // [2026.10.16] 공용 스크립트 잠금(LockService)은 쓰지 않는다 — 점검이 사건 하나를 몇 분씩 처리하는 동안 잠금을 쥐어,
+  //  세무사님의 일반 저장(withLock_)과 📥 수정 반영까지 "다른 저장 작업이 진행 중"으로 25분간 막혔다(2026-10-16 새벽).
+  //  점검끼리만 겹치지 않게 캐시 표시(7분 뒤 자동 해제 — 서버 실행 한도 6분보다 길게)로 대신한다.
+  const akCache = CacheService.getScriptCache(), AK_RUN_FLAG = 'ak_running';
+  if (akCache.get(AK_RUN_FLAG)) return { ok: true, more: true, busy: true, done: st.results.length, total: st.results.length + st.queue.length };
+  akCache.put(AK_RUN_FLAG, String(Date.now()), 420);
+  const lock = { releaseLock: function () { try { akCache.remove(AK_RUN_FLAG); } catch (e) {} } };
   try {
   const started = Date.now();
   while (st.queue.length && Date.now() - started < 60000) {
