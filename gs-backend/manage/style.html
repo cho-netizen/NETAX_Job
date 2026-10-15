@@ -666,15 +666,11 @@
   body.lay-phone .taxcalc-grid > .taxcalc-field{ flex-basis:100% !important; }
 
   /* ===== [2026.10.15] 접는 폰 커버화면(body.lay-cover, script.html nxIsCoverScreen_) ==========
-     세무사님 결정: 커버화면에서는 약식 대시보드 ↔ AI 두 화면만 아래 버튼으로 오간다. 왼쪽 메뉴·오른쪽 AI 패널·
+     세무사님 결정: 커버화면은 요약·AI·상담 녹음·고객 카드를 탭 버튼 없이 밀기로만 오간다(script.html 커버화면 밀기). 왼쪽 메뉴·오른쪽 AI 패널·
      도움말 버튼은 숨기고, 대시보드는 할일·일정·마감임박·상담신청 카드(.dash-cover)만 촘촘하게 보인다. */
-  #nxCoverBar{ display:none; }
-  body.lay-cover #appRoot.shown ~ #nxCoverBar{ display:flex; position:fixed; left:0; right:0; bottom:0; z-index:60; gap:6px;
-    padding:5px 8px calc(5px + env(safe-area-inset-bottom)); background:var(--navy); }
-  /* 밀기로 바꾸므로 탭은 지금 위치를 알려 주는 얇은 표시(눌러도 됨) — 위 [음성/문자]와 같은 36 높이 */
-  #nxCoverBar button{ flex:1; height:36px; border:none; border-radius:8px; padding:0; font-size:15px; font-weight:600; background:rgba(255,255,255,0.08); color:#fff; cursor:pointer; }
-  #nxCoverBar button.on{ background:var(--gold); color:var(--navy); }
-  body.lay-cover #appRoot.shown{ height:calc(100% - 46px - env(safe-area-inset-bottom)); }
+  /* 탭 버튼 없음 — 밀기로만 바꾼다. 녹음 중 다른 화면에 있으면 오른쪽 위에 작은 빨간 표시(누르면 녹음 화면) */
+  #nxCmRecBadge{ position:fixed; top:6px; right:8px; z-index:70; border:none; border-radius:14px; background:#e5484d; color:#fff; font-size:13px; font-weight:700; padding:4px 10px; cursor:pointer; }
+  #nxCmRecBadge[hidden]{ display:none; }
   body.lay-cover #sideMenu, body.lay-cover #sideAI, body.lay-cover #globalHelpBtn{ display:none !important; }
   body.lay-cover #view-dashboard .card:not(.dash-cover){ display:none; }
   body.lay-cover #view-dashboard .view-head{ padding:8px 10px 4px; }

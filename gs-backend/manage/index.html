@@ -207,13 +207,8 @@
     </aside>
   </div>
 
-  <!-- [2026.10.15] 접는 폰 커버화면 전용 전환 버튼 — 약식 대시보드 ↔ AI (script.html nxCoverOnEnter_) -->
-  <div id="nxCoverBar">
-    <button type="button" data-cover-view="dashboard">📊 요약</button>
-    <button type="button" data-cover-view="ai">🤖 AI</button>
-    <button type="button" data-cover-view="consult">🎙 녹음</button>
-    <button type="button" data-cover-view="clientcard">👤 고객</button>
-  </div>
+  <!-- [2026.10.16] 커버화면은 탭 버튼 없이 밀기로만 화면을 바꾼다(세무사님) — 녹음 중일 때만 작은 표시(누르면 녹음 화면) -->
+  <button type="button" id="nxCmRecBadge" hidden>● 녹음 중</button>
 
   <div class="toast" id="toast"></div>
 

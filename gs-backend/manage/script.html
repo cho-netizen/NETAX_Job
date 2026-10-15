@@ -649,6 +649,7 @@
     return v ? v.id.replace(/^view-/, '') : '';
   }
   function nxCoverSync_(){
+    if (typeof nxCmRecDot_ === 'function') nxCmRecDot_(); // 녹음 중 표시(consultmemo.html)
     var cur = nxCoverActiveView_();
     document.querySelectorAll('#nxCoverBar [data-cover-view]').forEach(function(b){
       b.classList.toggle('on', b.getAttribute('data-cover-view') === cur);

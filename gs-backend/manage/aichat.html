@@ -19,14 +19,10 @@
   <!-- [2026.10.15] 접는 폰 커버화면 전용 토킹모드 — 화면이 작아 글자 대화는 빼고, 말로 묻고 답을 소리로 듣는다.
        body.lay-cover일 때만 보이고 나머지 AI 화면은 숨긴다(아래 nxAiTalk* 함수). 같은 대화(nxAiConv)에 그대로 쌓인다. -->
   <div class="nxai-talk" id="nxAiTalk">
-    <div class="nxai-talk-mode" id="nxAiTalkMode">
-      <button type="button" data-talk-mode="voice">🔊 음성</button>
-      <button type="button" data-talk-mode="text">📝 문자</button>
-    </div>
     <div class="nxai-talk-q" id="nxAiTalkQ"></div>
     <div class="nxai-talk-a" id="nxAiTalkA"></div>
     <!-- [2026.10.15] 누르고 말하는 방식이라 버튼을 화면 대부분으로 키움(세무사님) — 상태 문구도 버튼 안에 -->
-    <button type="button" class="nxai-talk-mic" id="nxAiTalkMic" aria-label="말하기"><span class="nxai-talk-ic" id="nxAiTalkIc">🎤</span><span class="nxai-talk-st" id="nxAiTalkSt"></span></button>
+    <button type="button" class="nxai-talk-mic" id="nxAiTalkMic" aria-label="말하기"><span class="nxai-talk-md" id="nxAiTalkMd"></span><span class="nxai-talk-ic" id="nxAiTalkIc">🎤</span><span class="nxai-talk-st" id="nxAiTalkSt"></span></button>
     <button type="button" class="nxai-talk-cancel" id="nxAiTalkCancel" hidden>✕ 취소(보내지 않음)</button>
   </div>
   <div class="nxai-phone-tabs" id="nxAiPhoneTabs">
@@ -190,9 +186,9 @@
   body.lay-cover #nxAi > :not(#nxAiTalk){ display:none !important; }
   body.lay-cover #nxAiTalk{ display:flex; flex-direction:column; align-items:center; gap:8px; width:100%; height:100%; min-height:0;
     padding:10px 12px; box-sizing:border-box; background:var(--navy); color:#fff; }
-  .nxai-talk-mode{ display:flex; gap:6px; align-self:stretch; flex-shrink:0; }
-  .nxai-talk-mode button{ flex:1; height:36px; border:1px solid rgba(255,255,255,0.25); background:transparent; color:#c9d2e6; border-radius:8px; padding:0; font-size:15px; font-weight:600; cursor:pointer; }
-  .nxai-talk-mode button.on{ background:var(--gold); border-color:var(--gold); color:var(--navy); font-weight:700; }
+  /* 음성/문자는 탭 없이 왼쪽으로 밀어 바꾼다 — 지금 방식은 말하기 버튼 왼쪽 위 작은 아이콘으로만 */
+  .nxai-talk-mic{ position:relative; }
+  .nxai-talk-md{ position:absolute; top:8px; left:10px; font-size:18px; opacity:.85; }
   .nxai-talk-q{ align-self:stretch; font-size:14px; color:var(--gold-light); max-height:3.2em; overflow:hidden; line-height:1.6; }
   .nxai-talk-a{ align-self:stretch; flex:0 1 auto; max-height:34%; min-height:0; overflow-y:auto; font-size:17px; line-height:1.55; white-space:pre-wrap; }
   .nxai-talk-a:empty{ display:none; }
@@ -3889,7 +3885,7 @@
   function nxAiTalkMode_(){ return nxAiLs_('nxAiTalkMode') === 'text' ? 'text' : 'voice'; }
   function nxAiTalkSyncMode_(){
     var m = nxAiTalkMode_();
-    Array.prototype.forEach.call(document.querySelectorAll('#nxAiTalkMode [data-talk-mode]'), function(b){ b.classList.toggle('on', b.getAttribute('data-talk-mode') === m); });
+    var md = nxAiEl_('nxAiTalkMd'); if (md) md.textContent = m === 'text' ? '📝' : '🔊';
   }
   // 좌우로 밀기(script.html 커버화면 밀기)·표시 누르기로 음성 ↔ 문자 바꾸기
   function nxAiTalkToggleMode_(){
@@ -4107,12 +4103,6 @@
     var mic = nxAiEl_('nxAiTalkMic');
     if (!mic) return;
     nxAiTalkSyncMode_();
-    nxAiEl_('nxAiTalkMode').addEventListener('click', function(e){
-      var b = e.target.closest('[data-talk-mode]'); if (!b) return;
-      nxAiLs_('nxAiTalkMode', b.getAttribute('data-talk-mode'));
-      nxAiTalkSyncMode_();
-      if (nxAiTalk_.state === 'speak' && nxAiTalkMode_() === 'text'){ nxAiTalkSet_('idle'); try { speechSynthesis.cancel(); } catch (err) {} }
-    });
     // 🎤 누르는 방식 두 가지 — ① 누르고 있는 동안 듣고 떼면 보냄(말 끝을 기계가 짐작하지 않음) ② 짧게 누르면 자동(말이 멈추면 보냄).
     // 누르는 순간 바로 듣기 시작해 첫마디를 놓치지 않고, 0.4초 안에 떼면 자동 모드로 바꾼다.
     // 듣는 중(자동) 누르면 바로 보냄, 읽는 중 누르면 읽기 멈춤.

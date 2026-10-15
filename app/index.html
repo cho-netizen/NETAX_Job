@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 15:31 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 15:48 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -816,15 +816,11 @@
   body.lay-phone .taxcalc-grid > .taxcalc-field{ flex-basis:100% !important; }
 
   /* ===== [2026.10.15] 접는 폰 커버화면(body.lay-cover, script.html nxIsCoverScreen_) ==========
-     세무사님 결정: 커버화면에서는 약식 대시보드 ↔ AI 두 화면만 아래 버튼으로 오간다. 왼쪽 메뉴·오른쪽 AI 패널·
+     세무사님 결정: 커버화면은 요약·AI·상담 녹음·고객 카드를 탭 버튼 없이 밀기로만 오간다(script.html 커버화면 밀기). 왼쪽 메뉴·오른쪽 AI 패널·
      도움말 버튼은 숨기고, 대시보드는 할일·일정·마감임박·상담신청 카드(.dash-cover)만 촘촘하게 보인다. */
-  #nxCoverBar{ display:none; }
-  body.lay-cover #appRoot.shown ~ #nxCoverBar{ display:flex; position:fixed; left:0; right:0; bottom:0; z-index:60; gap:6px;
-    padding:5px 8px calc(5px + env(safe-area-inset-bottom)); background:var(--navy); }
-  /* 밀기로 바꾸므로 탭은 지금 위치를 알려 주는 얇은 표시(눌러도 됨) — 위 [음성/문자]와 같은 36 높이 */
-  #nxCoverBar button{ flex:1; height:36px; border:none; border-radius:8px; padding:0; font-size:15px; font-weight:600; background:rgba(255,255,255,0.08); color:#fff; cursor:pointer; }
-  #nxCoverBar button.on{ background:var(--gold); color:var(--navy); }
-  body.lay-cover #appRoot.shown{ height:calc(100% - 46px - env(safe-area-inset-bottom)); }
+  /* 탭 버튼 없음 — 밀기로만 바꾼다. 녹음 중 다른 화면에 있으면 오른쪽 위에 작은 빨간 표시(누르면 녹음 화면) */
+  #nxCmRecBadge{ position:fixed; top:6px; right:8px; z-index:70; border:none; border-radius:14px; background:#e5484d; color:#fff; font-size:13px; font-weight:700; padding:4px 10px; cursor:pointer; }
+  #nxCmRecBadge[hidden]{ display:none; }
   body.lay-cover #sideMenu, body.lay-cover #sideAI, body.lay-cover #globalHelpBtn{ display:none !important; }
   body.lay-cover #view-dashboard .card:not(.dash-cover){ display:none; }
   body.lay-cover #view-dashboard .view-head{ padding:8px 10px 4px; }
@@ -1540,8 +1536,6 @@
   @keyframes cmBlink{ 50%{ opacity:.2; } }
   .cm-brief{ font-size:15px; line-height:1.6; white-space:pre-wrap; background:rgba(255,255,255,0.06); border-radius:10px; padding:10px; }
   .cm-btn{ user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
-  /* 녹음 중이면 커버화면 아래 표시줄의 메모 칸에 빨간 점 */
-  #nxCoverBar [data-cover-view="consult"].rec::before{ content:'● '; color:#e5484d; }
 </style>
 <script>
   var nxCm_ = { st: 'pick', rec: null, stream: null, chunks: [], id: '', mime: '', caseId: '', caseName: '', startedAt: 0,
@@ -1551,7 +1545,14 @@
   function nxCmEsc_(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function nxCmFmt_(ms){ var s = Math.floor(ms / 1000); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60; return (h ? h + ':' + ('0' + m).slice(-2) : m) + ':' + ('0' + ss).slice(-2); }
   function nxCmActiveMs_(){ return nxCm_.activeMs + (nxCm_.runFrom ? Date.now() - nxCm_.runFrom : 0); }
-  function nxCmRecDot_(on){ var b = document.querySelector('#nxCoverBar [data-cover-view="consult"]'); if (b) b.classList.toggle('rec', !!on); }
+  // 녹음 중인데 다른 화면에 가 있으면 오른쪽 위 작은 빨간 표시(누르면 녹음 화면) — 탭 버튼이 없어서 마이크가 켜져 있는지 알게
+  function nxCmRecDot_(){
+    var b = document.getElementById('nxCmRecBadge'); if (!b) return;
+    var v = document.querySelector('#centerWork > .view.active');
+    b.hidden = !((nxCm_.st === 'rec' || nxCm_.st === 'paused') && (!v || v.id !== 'view-consult'));
+    b.textContent = nxCm_.st === 'paused' ? '⏸ 녹음 멈춤' : '● 녹음 중';
+  }
+  document.addEventListener('click', function(e){ if (e.target && e.target.id === 'nxCmRecBadge'){ goToView_('consult'); nxCoverSync_(); } });
 
   // ---------- 이 기기 임시 저장(IndexedDB) — 녹음 중 앱이 꺼져도 남는다 ----------
   function nxCmDb_(){
@@ -1709,11 +1710,11 @@
   function nxCmPause_(){
     if (!nxCm_.rec || nxCm_.rec.state !== 'recording') return;
     nxCm_.rec.pause(); nxCm_.activeMs += Date.now() - nxCm_.runFrom; nxCm_.runFrom = 0; nxCm_.st = 'paused';
-    nxCmSaveMeta_(); nxCmRenderRec_();
+    nxCmSaveMeta_(); nxCmRenderRec_(); nxCmRecDot_();
   }
   function nxCmResume_(){
     if (!nxCm_.rec || nxCm_.rec.state !== 'paused') return;
-    nxCm_.rec.resume(); nxCm_.runFrom = Date.now(); nxCm_.st = 'rec'; nxCmRenderRec_();
+    nxCm_.rec.resume(); nxCm_.runFrom = Date.now(); nxCm_.st = 'rec'; nxCmRenderRec_(); nxCmRecDot_();
   }
   // 종료는 실수로 누르지 않게 한 번 더 눌러야 한다(3초 안에)
   function nxCmStop_(){
@@ -44796,14 +44797,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   <!-- [2026.10.15] 접는 폰 커버화면 전용 토킹모드 — 화면이 작아 글자 대화는 빼고, 말로 묻고 답을 소리로 듣는다.
        body.lay-cover일 때만 보이고 나머지 AI 화면은 숨긴다(아래 nxAiTalk* 함수). 같은 대화(nxAiConv)에 그대로 쌓인다. -->
   <div class="nxai-talk" id="nxAiTalk">
-    <div class="nxai-talk-mode" id="nxAiTalkMode">
-      <button type="button" data-talk-mode="voice">🔊 음성</button>
-      <button type="button" data-talk-mode="text">📝 문자</button>
-    </div>
     <div class="nxai-talk-q" id="nxAiTalkQ"></div>
     <div class="nxai-talk-a" id="nxAiTalkA"></div>
     <!-- [2026.10.15] 누르고 말하는 방식이라 버튼을 화면 대부분으로 키움(세무사님) — 상태 문구도 버튼 안에 -->
-    <button type="button" class="nxai-talk-mic" id="nxAiTalkMic" aria-label="말하기"><span class="nxai-talk-ic" id="nxAiTalkIc">🎤</span><span class="nxai-talk-st" id="nxAiTalkSt"></span></button>
+    <button type="button" class="nxai-talk-mic" id="nxAiTalkMic" aria-label="말하기"><span class="nxai-talk-md" id="nxAiTalkMd"></span><span class="nxai-talk-ic" id="nxAiTalkIc">🎤</span><span class="nxai-talk-st" id="nxAiTalkSt"></span></button>
     <button type="button" class="nxai-talk-cancel" id="nxAiTalkCancel" hidden>✕ 취소(보내지 않음)</button>
   </div>
   <div class="nxai-phone-tabs" id="nxAiPhoneTabs">
@@ -44967,9 +44964,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   body.lay-cover #nxAi > :not(#nxAiTalk){ display:none !important; }
   body.lay-cover #nxAiTalk{ display:flex; flex-direction:column; align-items:center; gap:8px; width:100%; height:100%; min-height:0;
     padding:10px 12px; box-sizing:border-box; background:var(--navy); color:#fff; }
-  .nxai-talk-mode{ display:flex; gap:6px; align-self:stretch; flex-shrink:0; }
-  .nxai-talk-mode button{ flex:1; height:36px; border:1px solid rgba(255,255,255,0.25); background:transparent; color:#c9d2e6; border-radius:8px; padding:0; font-size:15px; font-weight:600; cursor:pointer; }
-  .nxai-talk-mode button.on{ background:var(--gold); border-color:var(--gold); color:var(--navy); font-weight:700; }
+  /* 음성/문자는 탭 없이 왼쪽으로 밀어 바꾼다 — 지금 방식은 말하기 버튼 왼쪽 위 작은 아이콘으로만 */
+  .nxai-talk-mic{ position:relative; }
+  .nxai-talk-md{ position:absolute; top:8px; left:10px; font-size:18px; opacity:.85; }
   .nxai-talk-q{ align-self:stretch; font-size:14px; color:var(--gold-light); max-height:3.2em; overflow:hidden; line-height:1.6; }
   .nxai-talk-a{ align-self:stretch; flex:0 1 auto; max-height:34%; min-height:0; overflow-y:auto; font-size:17px; line-height:1.55; white-space:pre-wrap; }
   .nxai-talk-a:empty{ display:none; }
@@ -48666,7 +48663,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   function nxAiTalkMode_(){ return nxAiLs_('nxAiTalkMode') === 'text' ? 'text' : 'voice'; }
   function nxAiTalkSyncMode_(){
     var m = nxAiTalkMode_();
-    Array.prototype.forEach.call(document.querySelectorAll('#nxAiTalkMode [data-talk-mode]'), function(b){ b.classList.toggle('on', b.getAttribute('data-talk-mode') === m); });
+    var md = nxAiEl_('nxAiTalkMd'); if (md) md.textContent = m === 'text' ? '📝' : '🔊';
   }
   // 좌우로 밀기(script.html 커버화면 밀기)·표시 누르기로 음성 ↔ 문자 바꾸기
   function nxAiTalkToggleMode_(){
@@ -48884,12 +48881,6 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var mic = nxAiEl_('nxAiTalkMic');
     if (!mic) return;
     nxAiTalkSyncMode_();
-    nxAiEl_('nxAiTalkMode').addEventListener('click', function(e){
-      var b = e.target.closest('[data-talk-mode]'); if (!b) return;
-      nxAiLs_('nxAiTalkMode', b.getAttribute('data-talk-mode'));
-      nxAiTalkSyncMode_();
-      if (nxAiTalk_.state === 'speak' && nxAiTalkMode_() === 'text'){ nxAiTalkSet_('idle'); try { speechSynthesis.cancel(); } catch (err) {} }
-    });
     // 🎤 누르는 방식 두 가지 — ① 누르고 있는 동안 듣고 떼면 보냄(말 끝을 기계가 짐작하지 않음) ② 짧게 누르면 자동(말이 멈추면 보냄).
     // 누르는 순간 바로 듣기 시작해 첫마디를 놓치지 않고, 0.4초 안에 떼면 자동 모드로 바꾼다.
     // 듣는 중(자동) 누르면 바로 보냄, 읽는 중 누르면 읽기 멈춤.
@@ -48961,13 +48952,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     </aside>
   </div>
 
-  <!-- [2026.10.15] 접는 폰 커버화면 전용 전환 버튼 — 약식 대시보드 ↔ AI (script.html nxCoverOnEnter_) -->
-  <div id="nxCoverBar">
-    <button type="button" data-cover-view="dashboard">📊 요약</button>
-    <button type="button" data-cover-view="ai">🤖 AI</button>
-    <button type="button" data-cover-view="consult">🎙 녹음</button>
-    <button type="button" data-cover-view="clientcard">👤 고객</button>
-  </div>
+  <!-- [2026.10.16] 커버화면은 탭 버튼 없이 밀기로만 화면을 바꾼다(세무사님) — 녹음 중일 때만 작은 표시(누르면 녹음 화면) -->
+  <button type="button" id="nxCmRecBadge" hidden>● 녹음 중</button>
 
   <div class="toast" id="toast"></div>
 
@@ -49705,6 +49691,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     return v ? v.id.replace(/^view-/, '') : '';
   }
   function nxCoverSync_(){
+    if (typeof nxCmRecDot_ === 'function') nxCmRecDot_(); // 녹음 중 표시(consultmemo.html)
     var cur = nxCoverActiveView_();
     document.querySelectorAll('#nxCoverBar [data-cover-view]').forEach(function(b){
       b.classList.toggle('on', b.getAttribute('data-cover-view') === cur);

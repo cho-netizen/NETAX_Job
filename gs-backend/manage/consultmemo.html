@@ -34,8 +34,6 @@
   @keyframes cmBlink{ 50%{ opacity:.2; } }
   .cm-brief{ font-size:15px; line-height:1.6; white-space:pre-wrap; background:rgba(255,255,255,0.06); border-radius:10px; padding:10px; }
   .cm-btn{ user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
-  /* 녹음 중이면 커버화면 아래 표시줄의 메모 칸에 빨간 점 */
-  #nxCoverBar [data-cover-view="consult"].rec::before{ content:'● '; color:#e5484d; }
 </style>
 <script>
   var nxCm_ = { st: 'pick', rec: null, stream: null, chunks: [], id: '', mime: '', caseId: '', caseName: '', startedAt: 0,
@@ -45,7 +43,14 @@
   function nxCmEsc_(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function nxCmFmt_(ms){ var s = Math.floor(ms / 1000); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60; return (h ? h + ':' + ('0' + m).slice(-2) : m) + ':' + ('0' + ss).slice(-2); }
   function nxCmActiveMs_(){ return nxCm_.activeMs + (nxCm_.runFrom ? Date.now() - nxCm_.runFrom : 0); }
-  function nxCmRecDot_(on){ var b = document.querySelector('#nxCoverBar [data-cover-view="consult"]'); if (b) b.classList.toggle('rec', !!on); }
+  // 녹음 중인데 다른 화면에 가 있으면 오른쪽 위 작은 빨간 표시(누르면 녹음 화면) — 탭 버튼이 없어서 마이크가 켜져 있는지 알게
+  function nxCmRecDot_(){
+    var b = document.getElementById('nxCmRecBadge'); if (!b) return;
+    var v = document.querySelector('#centerWork > .view.active');
+    b.hidden = !((nxCm_.st === 'rec' || nxCm_.st === 'paused') && (!v || v.id !== 'view-consult'));
+    b.textContent = nxCm_.st === 'paused' ? '⏸ 녹음 멈춤' : '● 녹음 중';
+  }
+  document.addEventListener('click', function(e){ if (e.target && e.target.id === 'nxCmRecBadge'){ goToView_('consult'); nxCoverSync_(); } });
 
   // ---------- 이 기기 임시 저장(IndexedDB) — 녹음 중 앱이 꺼져도 남는다 ----------
   function nxCmDb_(){
@@ -203,11 +208,11 @@
   function nxCmPause_(){
     if (!nxCm_.rec || nxCm_.rec.state !== 'recording') return;
     nxCm_.rec.pause(); nxCm_.activeMs += Date.now() - nxCm_.runFrom; nxCm_.runFrom = 0; nxCm_.st = 'paused';
-    nxCmSaveMeta_(); nxCmRenderRec_();
+    nxCmSaveMeta_(); nxCmRenderRec_(); nxCmRecDot_();
   }
   function nxCmResume_(){
     if (!nxCm_.rec || nxCm_.rec.state !== 'paused') return;
-    nxCm_.rec.resume(); nxCm_.runFrom = Date.now(); nxCm_.st = 'rec'; nxCmRenderRec_();
+    nxCm_.rec.resume(); nxCm_.runFrom = Date.now(); nxCm_.st = 'rec'; nxCmRenderRec_(); nxCmRecDot_();
   }
   // 종료는 실수로 누르지 않게 한 번 더 눌러야 한다(3초 안에)
   function nxCmStop_(){
