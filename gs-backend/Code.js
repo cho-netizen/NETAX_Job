@@ -27174,6 +27174,9 @@ function caseProcInhFacts_(c, parsed) {
     if (out.niche.value === null && !out.niche.receipt && out.niche.fee) { out.niche.value = out.niche.fee.amount; out.niche.src = out.niche.fee.src + ' — 사용료 영수증은 미확보'; }
     if (!out.niche.receipt) out.niche.payments = [].concat.apply([], ncs.map(function (x) { return (x.p.result.납부 || []).filter(function (q) { return fees.indexOf(q.금액) === -1; }).map(function (q) { return q.일자 + ' ' + q.금액.toLocaleString('ko-KR') + '원(' + x.f.name + ')'; }); }));
   }
+  // [2026.10.16] 금융재산 서류(잔액증명·분할협의서 금융 목록)가 하나도 없으면 0원으로 보고 계산을 진행한다(근거를 밝힘) — 예전엔 값이 비어
+  //  총상속재산 계산 자체가 막혔다(김창호: 부동산 평가·채무까지 다 됐는데 "평가 안 끝남"). 예금이 있으면 잔액증명을 넣으면 그 값으로 바뀐다.
+  if (out.financialValue === null && !out.financial.length && !out.financialDiff) { out.financialValue = 0; out.financialSrc = '금융재산 서류 없음 — 0원으로 봄(예금·보험 등이 있으면 잔액증명을 폴더에 넣어 주세요)'; out.financialAssumedZero = true; }
   out.grossEstate = out.assets.every(function (a) { return a.value; }) && out.financialValue !== null ? out.assets.reduce(function (t, a) { return t + a.value; }, 0) + out.financialValue : null;
   // [2026.10.15 1단계 ②] 상속 채무(상증법 §14) — 서류에서 채무 후보를 모은다(부채증명원·안심상속 조회 채무·피상속인이 임대인인 임대보증금·미지급 영수증).
   //  김창호 사건: 부채증명원·대출 납입증명·미지급 진료비·월세계약서가 어느 칸에도 안 쓰였고, 세액계산 채무 칸도 채워지지 않았다.
@@ -27181,7 +27184,7 @@ function caseProcInhFacts_(c, parsed) {
   out.debts = [];
   const dName = nm(out.deceased.name);
   by('debtcert').forEach(function (x) { const r = x.p.result || {}; if (!r.총잔액) return; const amt = r.단위 === '천원' ? r.총잔액 * 1000 : r.총잔액;
-    out.debts.push({ debtType: 'loan', creditorName: r.기관 || '', amount: amt, file: x.f.name, src: (r.종류 || '부채증명') + (r.기준일 ? ' ' + r.기준일 + ' 기준' : ''), sure: !(r.경고 || []).length && (!r.기준일 || !base || r.기준일 === base), note: r.기준일 && base && r.기준일 !== base ? '기준일(' + r.기준일 + ')이 상속개시일(' + base + ')과 다름 — 개시일 현재 잔액 확인' : '' }); });
+    out.debts.push({ debtType: 'loan', creditorName: r.기관 || '', amount: amt, file: x.f.name, src: (r.종류 || '부채증명') + (r.기준일 ? ' ' + r.기준일 + ' 기준' : ''), sure: !(r.경고 || []).filter(function (w) { return !/채무\s*공제\s*\(§\s*14\)/.test(w); }).length && (!r.기준일 || !base || r.기준일 === base), note: r.기준일 && base && r.기준일 !== base ? '기준일(' + r.기준일 + ')이 상속개시일(' + base + ')과 다름 — 개시일 현재 잔액 확인' : '' }); });
   by('inhquery').forEach(function (x) { const r = x.p.result || {}; if (r.채무합계) out.debts.push({ debtType: 'loan', creditorName: '안심상속 조회 채무 합계', amount: r.채무합계, file: x.f.name, src: '상속인 금융거래 조회', sure: false, note: '부채증명원과 겹칠 수 있음 — 겹치면 하나만' }); });
   // 임대차계약서 — 정리 결과가 한 건(lease)이거나, 계약서 묶음(result.docs 안에 lease)이거나
   const leaseList = [];
