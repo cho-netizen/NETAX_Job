@@ -25495,9 +25495,52 @@ function caseProcMemoCands_(c, res) {
   });
   return res;
 }
+// [2026.10.15 1단계 ②] 상담 메모 대조 — 메모에 적힌 값과 이미 채워진 처리개요 칸을 맞춰 본다.
+//  같으면 "메모와 일치"(교차확인 근거), 다르면 어느 값이 맞는지 묻는다. 예전엔 메모를 빈 칸 질문의 후보로만 써서, 칸이 차 있으면 메모를 읽고도 아무 데도 안 썼다.
+function caseProcMemoCross_(c, res) {
+  if (!res || !res.ok || !String(c.폴더ID || '').trim()) return;
+  let memos = [];
+  try { memos = caseProcMemoTexts_(c).read.filter(function (m) { return m.text; }); } catch (e) { return; }
+  if (!memos.length) return;
+  const ov = (res.case && res.case.사건개요) || (function () { try { return akReadCase_(c.id).사건개요 || {}; } catch (e) { return c.사건개요 || {}; } })() || {};
+  const a0 = (Array.isArray(ov.물건목록) && ov.물건목록[0]) || ov;
+  const slots = {
+    transfer: [['양도가액', 'money', a0.양도가액, 'ovAsset:0:양도가액', '물건1 양도가액'], ['취득가액', 'money', a0.취득가액, 'ovAsset:0:취득가액', '물건1 취득가액'], ['취득일', 'date', a0.취득일, 'ovAsset:0:취득일', '물건1 취득일']],
+    gift: [['증여재산가액', 'money', ov.giftAmount, 'ov:giftAmount', '증여재산가액']],
+    inheritance: []
+  }[c.세목] || [];
+  const digits = function (v) { return String(v == null ? '' : v).replace(/[^\d]/g, ''); };
+  const won = function (v) { return Number(digits(v) || 0).toLocaleString('ko-KR') + '원'; };
+  slots.forEach(function (s) {
+    const cur = String(s[2] == null ? '' : s[2]).trim();
+    if (!cur) return; // 빈 칸은 caseProcMemoCands_가 질문 후보로 붙인다
+    if (res.items.some(function (it) { return it.ask && it.ask.target === s[3]; })) return; // 이미 묻는 칸
+    const syn = CASEPROC_MEMO_SYN_[s[0]] || [s[0]];
+    const found = [];
+    memos.forEach(function (m) {
+      String(m.text).split(/\n+/).forEach(function (l) {
+        l = l.trim(); if (l.length < 3 || l.length > 300) return;
+        const n0 = l.replace(/\s+/g, ''), w = syn.filter(function (x) { return n0.indexOf(x) !== -1; })[0];
+        if (!w) return;
+        const mm = new RegExp(w.split('').join('\\s*')).exec(l), rest = mm ? l.slice(mm.index + mm[0].length) : l;
+        let v = '';
+        if (s[1] === 'money') { const k = /\d{1,3}(?:,\d{3}){2,}|\d{7,}/.exec(rest); v = k ? k[0].replace(/,/g, '') : String(caseProcKrAmount_(rest) || ''); if (v === '0') v = ''; }
+        else { const k = /(20\d{2}|19\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})/.exec(rest); if (k) v = k[1] + '-' + ('0' + k[2]).slice(-2) + '-' + ('0' + k[3]).slice(-2); }
+        if (v && !found.some(function (f) { return f.v === v; })) found.push({ v: v, file: m.file, line: l.slice(0, 60) });
+      });
+    });
+    if (!found.length) return;
+    const same = function (v) { return s[1] === 'money' ? digits(v) === digits(cur) : v === cur; };
+    const agree = found.filter(function (f) { return same(f.v); }), diff = found.filter(function (f) { return !same(f.v); });
+    if (agree.length) res.lines.push('✅ ' + s[4] + ' ' + (s[1] === 'money' ? won(cur) : cur) + ' — 상담 메모(' + agree[0].file + ')와 일치');
+    if (diff.length) res.items.push(caseProcItem_('memo:' + s[3] + ':' + diff[0].v, 'check', s[4] + ': 처리개요 ' + (s[1] === 'money' ? won(cur) : cur) + ' ↔ 상담 메모 ' + diff.map(function (f) { return (s[1] === 'money' ? won(f.v) : f.v) + '(' + f.file + ')'; }).join(', ') + ' — 어느 값이 맞나요?',
+      { mode: 'choose', target: s[3], input: s[1], label: s[4], cands: [{ v: s[1] === 'money' ? digits(cur) : cur, src: '처리개요(지금 값)' }].concat(diff.map(function (f) { return { v: f.v, src: '상담 메모(' + f.file + '): "' + f.line + '"' }; })) }));
+  });
+}
 function caseProcOverview_(c) {
   const r = caseProcOverview0_(c);
   try { caseProcMemoCands_(c, r); } catch (e) {}
+  try { caseProcMemoCross_(c, r); } catch (e) {}
   try { caseProcNoteUsed_(c, r); } catch (e) {} // [2026.10.15 1단계 ②] 사실장부 "쓰인 곳"
   return r;
 }
@@ -25932,7 +25975,7 @@ function caseProcBlockingWarns_(type, warns) {
 // [2026.10.15 일괄점검] 이전 작업(옛 채팅·검토)이 만든 보고서 — 결론·세액이 들어 있어 입력으로 읽으면 답을 베끼게 된다. 원시자료(의뢰서·상담 메모·번역본)는 읽는다.
 function caseProcIsPriorReport_(name) {
   const n = String(name || '').replace(/\s+/g, '');
-  return /(종합검토서|신고보고서|검토서|자문보고서|경과지|작업진행|체크리스트|계산근거)/.test(n) && !/의뢰서/.test(n);
+  return /(종합검토서|신고보고서|검토서|검토내용|자문보고서|경과지|작업진행|체크리스트|계산근거|추징\s*예상|예상\s*세액|해명\s*자료)/.test(n) && !/의뢰서/.test(n);
 }
 // [2026.10.15 1단계] 글자 내용으로 본 "이미 낸 신고서·명세서" — 파일 이름이 KakaoTalk_….jpg처럼 아무 말도 없는 사진 신고서(박미영 사건 7장)를 잡는다
 function caseProcIsOutputText_(text) {
@@ -26726,6 +26769,13 @@ function caseProcLedger_(c, saved) {
     else if (r.kind === '메모·문서' || /^메모/.test(r.kind)) r.use = saved.memoUsed && saved.memoUsed.indexOf(n) !== -1 ? '질문 후보로 씀' : '';
     // 이 세목 계산과 무관한 종류(보도자료·안내문 등)는 "안 쓰임"으로 세지 않는다
     if (!r.use && r.t && relevant && relevant.indexOf(r.t) === -1) r.use = '이 세목 계산과 무관한 종류';
+    // [2026.10.15] 계산 입력이 아닌 서류를 이름으로 밝힌다(말없이 "안 쓰임"으로 섞지 않게) — 무엇인지와 이유를 적는다
+    if (!r.use) {
+      if ((c.세목 === 'inheritance' || c.세목 === 'gift') && /국민\s*주택\s*채권|등기\s*필\s*(통지|정보)|등기\s*완료/.test(n)) r.use = '참고 — 상속·증여 뒤 등기 서류(이 세목 계산과 무관)';
+      else if (/판례|법령|시행령|시행규칙|예규|질의\s*회신|해석\s*사례|법률/.test(n)) r.use = '참고 — 법령·판례 자료(입력 아님)';
+      else if (/신분증|주민등록증|운전면허/.test(n)) r.use = '참고 — 제출용 신분증(계산과 무관)';
+      else if (caseProcIsPriorReport_(n)) r.use = '참고 — 이전 작업 결과물(결론이 들어 있어 입력으로 안 씀)';
+    }
     return r;
   });
   const cnt = function (s) { return rows.filter(function (r) { return r.st === s; }).length; };
