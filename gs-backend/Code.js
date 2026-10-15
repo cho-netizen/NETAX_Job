@@ -4555,12 +4555,15 @@ function toolListDriveFolder(pathArr) {
     : handleListFolder({ path: pathArr });
 
   if (result && Array.isArray(result.folders)) {
+    // [2026.10.15] "양도코리아" = 이미 낸 신고서·정답지 보관 폴더 — AI 목록에서 아예 뺀다(caseIsFiledReturnFolder_)
+    result.folders = result.folders.filter(function (f) { return !caseIsFiledReturnFolder_(f.name); });
     result.folders.forEach(function (f) {
       if (f.name && f.name.indexOf(AUTO_REF_EXCLUDE_PREFIX) === 0) {
         f.자동참조제외 = true;
       }
     });
   }
+  if (result && Array.isArray(result.path) && result.path.some(caseIsFiledReturnFolder_)) return { error: '"양도코리아" 폴더(이미 낸 신고서 보관)는 열지 않습니다 — 처리는 원시서류로만 합니다.' };
   return result;
 }
 
@@ -15474,6 +15477,10 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ status: 'ok', navigated: true }) };
       }
 
+      // [2026.10.15] 사건 폴더의 "양도코리아"(이미 낸 신고서·정답지 보관) 폴더 파일은 AI도 읽지 않는다(caseIsFiledReturnFolder_)
+      if (caseFileInFiledFolder_(block.input && block.input.fileId)) {
+        return { type: 'tool_result', tool_use_id: block.id, is_error: true, content: '이 파일은 사건 폴더의 "양도코리아"(이미 낸 신고서·납부서·접수증 보관) 폴더에 있어 읽지 않습니다 — 처리는 원시서류로만 합니다.' };
+      }
       let resultObj;
       try {
         resultObj = handleReadFile({ fileId: block.input && block.input.fileId });
@@ -18530,7 +18537,7 @@ function client_expandScanUnitsStep_(queue, units, knownFolderIds, startTime, ti
     let folder;
     try { folder = DriveApp.getFolderById(fid); } catch (err) { continue; } // 삭제되었거나 접근 불가한 폴더는 건너뜀
     const subfolders = folder.getFolders();
-    while (subfolders.hasNext()) queue.push(subfolders.next().getId());
+    while (subfolders.hasNext()) { const sf = subfolders.next(); if (!caseIsFiledReturnFolder_(sf.getName())) queue.push(sf.getId()); }
   }
   return { done: true };
 }
@@ -18544,7 +18551,9 @@ function client_listFilesRecursive_(folder, depth, maxFiles, out) {
   }
   const subfolders = folder.getFolders();
   while (subfolders.hasNext() && out.length < maxFiles) {
-    client_listFilesRecursive_(subfolders.next(), depth + 1, maxFiles, out);
+    const sf = subfolders.next();
+    if (caseIsFiledReturnFolder_(sf.getName())) continue; // 이미 낸 신고서 보관 폴더 — 읽지 않음(caseIsFiledReturnFolder_)
+    client_listFilesRecursive_(sf, depth + 1, maxFiles, out);
   }
 }
 
@@ -20199,7 +20208,9 @@ function rh_collectReportFilesInFolder_(folder, out, caseId, 고객명, 사건�
   }
   const subIter = folder.getFolders();
   while (subIter.hasNext()) {
-    rh_collectReportFilesInFolder_(subIter.next(), out, caseId, 고객명, 사건명);
+    const sf = subIter.next();
+    if (caseIsFiledReturnFolder_(sf.getName())) continue; // 이미 낸 신고서 보관 폴더(보고서 아님)
+    rh_collectReportFilesInFolder_(sf, out, caseId, 고객명, 사건명);
   }
 }
 
@@ -20222,7 +20233,9 @@ function rh_collectAllCandidateFilesInFolder_(folder, out) {
   }
   const subIter = folder.getFolders();
   while (subIter.hasNext()) {
-    rh_collectAllCandidateFilesInFolder_(subIter.next(), out);
+    const sf = subIter.next();
+    if (caseIsFiledReturnFolder_(sf.getName())) continue; // 이미 낸 신고서 보관 폴더 — 이름 바꾸기 대상 아님
+    rh_collectAllCandidateFilesInFolder_(sf, out);
   }
 }
 function rh_guessReportTypeLabelFromName_(base) {
@@ -24972,16 +24985,26 @@ function caseProcPatch_(caseId, mutate) {
   } finally { lock.releaseLock(); }
 }
 function caseProcToday_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'); }
-function caseProcFiles_(c) {
+// [2026.10.15] 사건 폴더 안 "양도코리아" 하위폴더 = 이미 낸 신고서·납부서·접수증·계산명세서(정답지) 보관 자리.
+//  도구(사건처리·세액계산 자동채우기·고객이름 조사·보고서 모음 등)는 이 폴더를 절대 읽지 않는다 — 신고 숫자를 베끼는 꿰맞추기 방지.
+//  🧪 정답지 점검기의 정답지 초안(answerKeyDraft_)만 { includeFiled: true }로 읽는다.
+function caseIsFiledReturnFolder_(name) { return /^\s*양도\s*코리아\s*$/.test(String(name || '')); }
+function caseFileInFiledFolder_(fileId) {
+  if (!fileId) return false;
+  try { const ps = DriveApp.getFileById(String(fileId)).getParents(); while (ps.hasNext()) if (caseIsFiledReturnFolder_(ps.next().getName())) return true; } catch (e) {}
+  return false;
+}
+function caseProcFiles_(c, opt) {
   const out = [];
   const folderId = String(c.폴더ID || '').trim();
   if (!folderId) return out;
+  const includeFiled = !!(opt && opt.includeFiled);
   const walk = function (folder, depth) {
     if (out.length >= 150 || depth > 4) return;
     const it = folder.getFiles();
     while (it.hasNext() && out.length < 150) { const f = it.next(); out.push({ id: f.getId(), name: f.getName(), mimeType: f.getMimeType(), modified: f.getLastUpdated().getTime() }); }
     const subs = folder.getFolders();
-    while (subs.hasNext() && out.length < 150) walk(subs.next(), depth + 1);
+    while (subs.hasNext() && out.length < 150) { const sf = subs.next(); if (!includeFiled && caseIsFiledReturnFolder_(sf.getName())) continue; walk(sf, depth + 1); }
   };
   walk(DriveApp.getFolderById(folderId), 0);
   return out;
@@ -25644,7 +25667,7 @@ function caseProcReferenceDocs_(c) {
   const out = [];
   // [2026.10.15 1:1] 도구가 만든 세액인쇄 서식 PDF(…_신고서식.pdf, 보고서_내부)는 '이미 낸 신고서'가 아니다 — 예전 계산(옛 증여일)으로 만든 서식이 증여일 질문을 열던 문제
   const ownPdf = String((caseProcLoad_(c.id).printPdf || {}).name || '');
-  caseProcFiles_(c).filter(function (f) { return /(신고서|계산명세서)/.test(f.name) && !/접수증/.test(f.name) && !/신고서식\.pdf$/.test(f.name) && f.name !== ownPdf && /pdf|^image\//.test(String(f.mimeType || '')); }).slice(0, 3).forEach(function (f) {
+  caseProcFiles_(c, { includeFiled: true }).filter(function (f) { return /(신고서|계산명세서)/.test(f.name) && !/접수증/.test(f.name) && !/신고서식\.pdf$/.test(f.name) && f.name !== ownPdf && /pdf|^image\//.test(String(f.mimeType || '')); }).slice(0, 3).forEach(function (f) {
     let t = '';
     try { t = tc_docText_(f) || ''; } catch (e) { return; }
     const r = { file: f.name, date: '', amounts: [] };

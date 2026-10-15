@@ -892,6 +892,10 @@
       imp.addEventListener('click', function(){ nxAiImportWorkHistory_(workHistory); });
       box.appendChild(imp);
     }
+    // [2026.10.15] "양도코리아" = 이미 낸 신고서·납부서·접수증(정답지) 보관 폴더 — 사건 자료 칸에서 숨긴다(도구도 읽지 않음, Code.js caseIsFiledReturnFolder_)
+    var filedHidden = (res.folders || []).filter(function(f){ return /^\s*양도\s*코리아\s*$/.test(f.name || ''); });
+    res.folders = (res.folders || []).filter(function(f){ return filedHidden.indexOf(f) === -1; });
+    if (filedHidden.length) box.insertAdjacentHTML('beforeend', '<div class="nxai-muted" style="margin:0 4px 6px">📁 양도코리아(이미 낸 신고서 보관) — 처리에 쓰지 않아 숨김</div>');
     (res.folders || []).forEach(function(f){
       var row = document.createElement('div');
       row.className = 'nxai-file';

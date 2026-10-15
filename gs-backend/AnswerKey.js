@@ -503,7 +503,7 @@ function answerKeyDraft_(body) {
     const ek = akLoadKey_(c);
     if (!ids && ek && ek.key && (ek.key.상태 === '확정' || ek.key.초안판 >= 7)) continue; // 확정·5판 초안은 건너뜀(여러 번 눌러 이어서 진행)
     if (Date.now() - started > 200000) { more = true; break; } // 처음 읽는 서류가 많으면 한 번에 다 못 함 — 화면이 이어서 다시 부름
-    const all = caseProcFiles_(c).filter(function (f) { return /pdf|^image\//.test(String(f.mimeType || '')); });
+    const all = caseProcFiles_(c, { includeFiled: true }).filter(function (f) { return /pdf|^image\//.test(String(f.mimeType || '')); });
     const files = all.filter(function (f) { return /양도\s*코리아|yangdo|^양코|신고서|계산서|계산명세/i.test(f.name) && !/지방|종합소득|접수증|납부서/.test(f.name); });
     // 3판 초안에 숫자가 있고 신고서가 하나뿐이면 다시 읽지 않는다(세율 검산 규칙은 그대로) — 4판 표시만
     if (!ids && ek && ek.key && ek.key.초안판 >= 3 && !ek.key.오류 && files.length <= 1 && c.세목 !== 'transfer' && !(c.세목 === 'gift' && all.some(function (f) { return /납부서/.test(f.name); }) && files.length > 1)) { ek.key.초안판 = 7; answerKeySave_({ caseId: c.id, key: ek.key }); continue; }
