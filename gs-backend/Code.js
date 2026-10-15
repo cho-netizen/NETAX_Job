@@ -25389,7 +25389,8 @@ function caseProcEvRe_(label) {
 function caseProcEvTypes_(label) {
   const L = String(label || '');
   if (/·|및/.test(L.replace(/\([^)]*\)/g, ''))) return null; // "등기부등본·평가자료"처럼 서류 두 가지가 다 필요한 칸은 하나로 확보 처리하지 않음
-  const t = [[/증여\s*계약서/, ['giftcontract']], [/이체\s*내역|거래\s*내역|입출금|입금\s*증/, ['banktx']], [/등기/, ['registry']], [/가족\s*관계/, ['family']], [/초본|주민\s*등록/, ['resident']], [/취득세/, ['acqtax']], [/사망|기본\s*증명/, ['death']],
+  // [2026.10.16] 매매계약서·필요경비 영수증 칸이 대응표에 없어 계약서가 정확히 읽혀도 자동 확보가 안 됐다(이우석 "1 양도계약서.pdf" 등 — 양도/취득은 본문 역할 판정으로 가림)
+  const t = [[/증여\s*계약서/, ['giftcontract']], [/매매\s*계약서/, ['contract']], [/중개\s*보수|필요\s*경비\s*영수증/, ['cashreceipt', 'cardreceipt', 'taxinvoice', 'receipt', 'brokerdesc', 'lawyerfee']], [/이체\s*내역|거래\s*내역|입출금|입금\s*증/, ['banktx']], [/등기/, ['registry']], [/가족\s*관계/, ['family']], [/초본|주민\s*등록/, ['resident']], [/취득세/, ['acqtax']], [/사망|기본\s*증명/, ['death']],
     [/금융\s*거래\s*조회|안심\s*상속|상속인\s*조회/, ['inhquery']], [/부채|대출\s*잔액/, ['debtcert']], [/보험/, ['insurance']], [/자동차/, ['carreg']],
     [/잔고|잔액\s*증명/, ['balance']], [/공시|기준시가/, ['pubprice']], [/건축물\s*대장/, ['bldledger']], [/토지\s*대장|임야\s*대장/, ['landledger']]];
   for (let i = 0; i < t.length; i++) if (t[i][0].test(L)) return t[i][1];
@@ -25606,6 +25607,8 @@ function caseProcEvidence_(c) {
         if (/가족\s*관계/.test(L) && ofType('family').length) hit = ofType('family')[0].name;
         else if (/봉안|자연\s*장/.test(L)) { if (facts().niche && facts().niche.receipt) hit = facts().niche.receipt.file; }
         else if (/제\s*적/.test(L) && ofType('family').length && facts().deceased.regNo) hit = ofType('family')[0].name + '(피상속인 본인 사망이 적힌 가족관계증명서(상세)로 대신 — 2008년 이후 사망은 제적등본 대신 가족관계등록부)';
+        // [2026.10.16] 제적등본 — 2008년 이후 사망은 제적등본이 없고 기본증명서(상세)·사망진단서로 사망을 확인한다(노영환·박종헌: 기본증명서·시체검안서가 있는데 "제적등본"을 물었다)
+        else if (/제\s*적/.test(L) && ofType('death').length && (!c.기준일 || String(c.기준일) >= '2008')) hit = ofType('death')[0].name + '(2008년 이후 사망 — 제적등본 대신 기본증명서·사망진단서로 확인)';
         else if (/사망/.test(L) && (ofType('death').length || (facts().deceased.name && ofType('family').length))) hit = (ofType('death')[0] || ofType('family')[0]).name;
         else if (/등기부/.test(L) && /평가/.test(L) && facts().assets.length && facts().assets.every(function (a) { return a.value; })) hit = facts().assets.map(function (a) { return a.file; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(', ') + ' + 평가자료';
         else if (/그\s*외\s*재산|예금\s*잔액/.test(L) && ofType('balance').length) hit = ofType('balance')[0].name;
@@ -25653,6 +25656,18 @@ function caseProcEvidence_(c) {
     if (c.세목 === 'gift' && /증여\s*계약서/.test(e.label)) {
       let cg = null; try { cg = caseProcCashGift_(c, caseProcParseAll_(c)); } catch (err) {}
       if (cg && cg.isCash && cg.txOnly) { lines.push('증여계약서 없음 — 이체내역만 있음: 증여 내용은 처리개요 「증여 내용 확인」에서 묻습니다.'); return; }
+    }
+    // [2026.10.16] 1세대1주택 판정 서류(주민등록초본·다른 주택 보유현황·세대원 가족관계증명서) — 판 물건이 국내 주택이 아니면(토지·상가·국외자산) 필요 없다
+    //  (김운래 수용 토지·이종식 농지·박길서 국외 주택에서 매번 3가지를 미확보로 물었다). 판 물건 소재지를 아직 모르면 그대로 묻는다.
+    if (c.세목 === 'transfer' && /(주민\s*등록\s*초본|다른\s*주택|세대원)/.test(e.label)) {
+      const ov1 = c.사건개요 || {}, a1 = (Array.isArray(ov1.물건목록) && ov1.물건목록[0]) || ov1;
+      const loc1 = String(a1.assetLocation || a1.소재지 || '');
+      const overseas = a1.국외자산 === 'Y' || /^[A-Za-z0-9\s,.#-]+$/.test(loc1.trim()) && /[A-Za-z]{3,}/.test(loc1);
+      // 국내는 확실한 근거가 있을 때만: 그 소재지 등기부가 토지 등기부뿐(건물·집합건물 없음)이거나, 수용 보상 서류가 있는 토지
+      const regs1 = docs.filter(function (f) { return f.p && f.p.t === 'registry' && f.p.loc && tcLocSame_(f.p.loc, loc1); });
+      const landOnly = regs1.length && regs1.every(function (f) { return (f.p.rk || []).length && f.p.rk.every(function (k) { return /^토지/.test(k); }); });
+      const expro = files.some(function (f) { return /보상금|재결|수용/.test(f.name); }) && !/아파트|빌라|주택|연립|다세대|\d+\s*호/.test(loc1);
+      if (loc1 && (overseas || landOnly || expro)) { lines.push('해당 없음: ' + e.label + ' — 판 물건이 ' + (overseas ? '국외자산(1세대1주택 비과세 대상 아님)' : landOnly ? '토지(등기부가 토지뿐 — ' + loc1.slice(0, 40) + ')' : '수용 보상 토지(' + loc1.slice(0, 40) + ')')); return; }
     }
     // [2026.10.16] 수용 사건 — 매매계약서가 없다(보상금 내역서·재결서·공탁서가 양도가액·양도일 근거). 김운래: "미확보: 양도 매매계약서"로 물었다
     if (c.세목 === 'transfer' && /양도\s*매매\s*계약서/.test(e.label) && files.some(function (f) { return /보상금|재결|수용|공탁/.test(f.name); })) { lines.push('해당 없음: ' + e.label + ' — 수용(보상금 내역서·재결서·공탁서로 양도가액·양도일 확인)'); return; }
@@ -26750,6 +26765,29 @@ function caseProcGiftInhFacts_(c, lines, items) {
       if (pr) add('giftAmount', pr.가격, '공시가격 ' + (pr.연도 || '') + '년 ' + (r.종류 || '') + '(' + x.f.name + ') — 보충적 평가, 시가·감정가 있으면 그것이 우선', false);
       else if ((r.가격 || []).some(function (q) { return q.단가; })) notes.push('공시지가(원/㎡)만 있는 토지(' + x.f.name + ') — 면적을 곱해 평가해야 함');
     });
+    // [2026.10.16] 상가·사무실 등(국세청 일괄 고시가 아닌 건물) — 보충적 평가 = 토지 개별공시지가 × 대지권 면적 + 건물 기준시가(§61①1·2호).
+    //  정원식(김세정): 건물 기준시가 계산서(25,515,000원)와 공시지가 표가 있는데 후보는 메모의 "기준시가" 하나뿐이었다. 일괄 고시 대상이면 그 값이 우선이라 확정하지 않음.
+    try {
+      let bld = 0, bldFile = '', share = 0, shareFile = '';
+      parsed.forEach(function (x) {
+        if (bld && share) return;
+        let tx = ''; try { tx = String(tc_docText_(x.f) || ''); } catch (e) {}
+        const fl = tx.replace(/\s+/g, ' ');
+        const bm = /건물\s*기준\s*시가\s*=\s*[\d,]+\s*원\s*\/\s*m\s*2?\s*[xX×]\s*[\d.]+\s*m\s*2?\s*=\s*([\d,]+)\s*원/.exec(fl);
+        if (!bld && bm) { bld = Number(bm[1].replace(/,/g, '')); bldFile = x.f.name; }
+        const sm = /대\s*지\s*권\s*의?\s*비\s*율\s*[:：]?\s*([\d.]+)\s*분\s*의\s*([\d.]+)/.exec(fl);
+        if (!share && sm && (x.p.type === 'giftcontract' || x.p.type === 'registry')) { share = Number(sm[2]); shareFile = x.f.name; }
+      });
+      if (bld && share) {
+        const yr = c.기준일 ? Number(String(c.기준일).slice(0, 4)) : 9999;
+        let unit = null;
+        byType('pubprice').forEach(function (x) { ((x.p.result || {}).가격 || []).forEach(function (q) { if (q.단가 && (!q.연도 || q.연도 <= yr) && (!unit || (q.연도 || 0) > (unit.연도 || 0))) unit = { v: q.단가, 연도: q.연도, file: x.f.name }; }); });
+        if (unit) {
+          const land = Math.floor(unit.v * share);
+          add('giftAmount', land + bld, '보충적 평가: 토지 ' + unit.v.toLocaleString('ko-KR') + '원/㎡(' + (unit.연도 || '') + '년 공시지가, ' + unit.file + ') × 대지권 ' + share + '㎡(' + shareFile + ') = ' + land.toLocaleString('ko-KR') + '원 + 건물 기준시가 ' + bld.toLocaleString('ko-KR') + '원(' + bldFile + ') — 국세청 일괄 고시(오피스텔·상업용 건물) 대상이면 그 값이 우선', false);
+        }
+      }
+    } catch (e) {}
     // [2026.10.15] 매매사례가액(상증법 §60②·시행령§49) — 평가기준일 전 6개월~후 3개월 매매계약, 해제 안 된 것, 증여 부동산 전용면적 ±5% 안에서
     // 평가기준일에 가장 가까운 사례를 후보로(기준시가 차이 5% 등 유사성은 세무사 확인이라 확정하지 않음). 감정가액이 있으면 그것이 우선.
     byType('realprice').forEach(function (x) {
