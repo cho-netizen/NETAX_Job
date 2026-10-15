@@ -4557,6 +4557,8 @@ function toolListDriveFolder(pathArr) {
   if (result && Array.isArray(result.folders)) {
     // [2026.10.15] "양도코리아" = 이미 낸 신고서·정답지 보관 폴더 — AI 목록에서 아예 뺀다(caseIsFiledReturnFolder_)
     result.folders = result.folders.filter(function (f) { return !caseIsFiledReturnFolder_(f.name); });
+    // 🧪 정답지(_정답지*.json·점검 결과)도 AI 목록에서 뺀다 — 처리 중 AI가 정답을 보고 맞추지 않게
+    if (Array.isArray(result.files)) result.files = result.files.filter(function (f) { return !caseIsAnswerKeyFile_(f.name); });
     result.folders.forEach(function (f) {
       if (f.name && f.name.indexOf(AUTO_REF_EXCLUDE_PREFIX) === 0) {
         f.자동참조제외 = true;
@@ -15478,8 +15480,8 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
       }
 
       // [2026.10.15] 사건 폴더의 "양도코리아"(이미 낸 신고서·정답지 보관) 폴더 파일은 AI도 읽지 않는다(caseIsFiledReturnFolder_)
-      if (caseFileInFiledFolder_(block.input && block.input.fileId)) {
-        return { type: 'tool_result', tool_use_id: block.id, is_error: true, content: '이 파일은 사건 폴더의 "양도코리아"(이미 낸 신고서·납부서·접수증 보관) 폴더에 있어 읽지 않습니다 — 처리는 원시서류로만 합니다.' };
+      if (caseFileInFiledFolder_(block.input && block.input.fileId) || caseIsAnswerKeyFileId_(block.input && block.input.fileId)) {
+        return { type: 'tool_result', tool_use_id: block.id, is_error: true, content: '이 파일은 이미 낸 신고서 보관 폴더("양도코리아")에 있거나 점검용 정답지라 읽지 않습니다 — 처리는 원시서류로만 합니다.' };
       }
       let resultObj;
       try {
@@ -25034,6 +25036,8 @@ function caseProcToday_() { return Utilities.formatDate(new Date(), Session.getS
 //  도구(사건처리·세액계산 자동채우기·고객이름 조사·보고서 모음 등)는 이 폴더를 절대 읽지 않는다 — 신고 숫자를 베끼는 꿰맞추기 방지.
 //  🧪 정답지 점검기의 정답지 초안(answerKeyDraft_)만 { includeFiled: true }로 읽는다.
 function caseIsFiledReturnFolder_(name) { return /^\s*양도\s*코리아\s*$/.test(String(name || '')); }
+function caseIsAnswerKeyFile_(name) { return /^_정답지/.test(String(name || '')); }
+function caseIsAnswerKeyFileId_(fileId) { if (!fileId) return false; try { return caseIsAnswerKeyFile_(DriveApp.getFileById(String(fileId)).getName()); } catch (e) { return false; } }
 function caseFileInFiledFolder_(fileId) {
   if (!fileId) return false;
   try { const ps = DriveApp.getFileById(String(fileId)).getParents(); while (ps.hasNext()) if (caseIsFiledReturnFolder_(ps.next().getName())) return true; } catch (e) {}
