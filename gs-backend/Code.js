@@ -24746,6 +24746,18 @@ function tcRegAcqFill_(tx, x, evidence) {
   } else return false;
   return !!tx.acquisitionDate;
 }
+// [2026.10.16] 분양(공급)계약서의 분양금액표(토지·건물·부가가치세·합계) — 네 금액이 검산(토지+건물+부가세=합계)으로 맞을 때만. 없으면 null
+//  돌려주는 것: { land, bldg, vat, total, buyer(매수인 성명, 못 읽으면 '') }
+function caseProcSupplyOf_(text) {
+  text = String(text || '');
+  if (!/분\s*양\s*계\s*약/.test(text)) return null;
+  var spm = /분\s*양\s*금\s*액[\s\S]{0,300}?토\s*지[\s\S]{0,60}?건\s*물[\s\S]{0,60}?부\s*가\s*(?:가\s*치\s*)?세[\s\S]{0,60}?합\s*계([\s\S]{0,240})/.exec(text);
+  if (!spm) return null;
+  var spn = (spm[1].match(/\d{1,3}(?:,\d{3}){2,}/g) || []).slice(0, 4).map(function (x) { return Number(x.replace(/,/g, '')); });
+  if (spn.length !== 4 || spn[0] + spn[1] + spn[2] !== spn[3]) return null;
+  var spb = /매\s*수\s*인[\s\S]{0,240}?성\s*명\s*:?\s*([가-힣]\s*[가-힣]\s*[가-힣]?)/.exec(text.slice(spm.index));
+  return { land: spn[0], bldg: spn[1], vat: spn[2], total: spn[3], buyer: spb ? spb[1].replace(/\s+/g, '') : '' };
+}
 function tcNameIn_(field, names) {
   var f = String(field || '').replace(/\s+/g, '');
   return names.some(function (n) { return n.length >= 2 && f.indexOf(n) !== -1; });
@@ -24769,6 +24781,7 @@ function tc_ruleTransferFacts_(body) {
   files.sort(function (a, b) { return rank(a.name) - rank(b.name); });
   var officeFees = []; // [2026.10.16] 이 사무소가 받은 양도세 신고 수수료 — 양도소득세 신고서 작성비용(시행령 §163⑤1호)
   var contracts = [], reports = [], acqs = [], lawyers = [], regs = [], expDocs = [], pubs = [], regCerts = [], comps = [], bunyang = [], giftDocs = [], realDocs = [], acqDateCands = [], acqPriceCands = [], started = Date.now(), skippedForTime = [], stmtEstNames = null;
+  var supplies = [], vatDocs = []; // [2026.10.16] 분양(공급)계약서의 분양금액표 · 납세자의 부가가치세 신고 자료(매입세액 공제 여부 판단 근거)
   var docSeen = 0;
   for (var i = 0; i < files.length; i++) {
     var f = files[i];
@@ -24786,6 +24799,11 @@ function tc_ruleTransferFacts_(body) {
       var bps = (bym[1].match(/\d{1,3}(?:[,.]\d{3}){2,}/g) || []).map(function (x) { return Number(x.replace(/[,.]/g, '')); }).filter(function (v) { return v >= 10000000; });
       if (bps.length) bunyang.push({ file: f.name, prices: bps.filter(function (v, i, a) { return a.indexOf(v) === i; }).slice(0, 12) });
     }
+    // [2026.10.16] 분양(공급)계약서의 분양금액표(토지·건물·부가가치세·합계) — 네 금액이 검산(토지+건물+부가세=합계)으로 맞을 때만 취득가액 후보로.
+    //  김금옥 사건: "매매계약서 스캔.pdf"에 양도 계약서와 함께 2000년 분양계약서(토지 44,830,000·건물 79,011,000·부가세 7,901,000)가 들어 있는데 못 읽어 "취득가액을 서류에서 찾지 못함"으로 물었다.
+    var spx = caseProcSupplyOf_(text);
+    if (spx) supplies.push(Object.assign({ file: f.name }, spx));
+    if (/부\s*가\s*가\s*치\s*세\s*(?:신\s*고|확\s*정|예\s*정)|매\s*입\s*처\s*별\s*세\s*금\s*계\s*산\s*서\s*합\s*계\s*표/.test(text)) vatDocs.push(f.name);
     // [2026.10.15 1단계 ②] 수용 보상금 내역서(토지·물건) — 합계를 읽어 양도가액 질문의 후보로(어느 금액이 양도가액인지는 판단 — 정하지 않음).
     //  김운래 사건: 보상금내역-토지/지장물이 "종류 미정"으로 어느 칸에도 안 쓰였다.
     if (/보\s*상\s*금\s*내\s*역/.test(text)) {
@@ -25090,6 +25108,17 @@ function tc_ruleTransferFacts_(body) {
     if (b.r.잔금일) acqDateCands.push({ v: b.r.잔금일, src: '취득 계약서 잔금일 — ' + b.file + (b.r.소재지 ? ' (' + b.r.소재지 + ')' : '') });
     if (ok(b)) acqPriceCands.push({ v: String(b.r.매매대금), src: '취득 계약서 매매대금(검산 일치) — ' + b.file + (b.r.소재지 ? ' (' + b.r.소재지 + ')' : '') });
   });
+  // [2026.10.16] 분양 취득 — 분양계약서 분양금액을 취득가액 후보로(거래가 하나이고 취득가액이 비었을 때, 매수인이 납세자일 때만).
+  //  부가가치세: 매입세액을 공제(환급)받았으면 취득가액에 넣지 않고, 못 받았으면 넣는다 — 납세자의 부가가치세 신고 자료가 폴더에 있으면 공제받은 쪽을 1번으로.
+  if (supplies.length && txs.length <= 1 && !(txs[0] || {}).acquisitionPrice) {
+    supplies.filter(function (s) { return !s.buyer || tcNameIn_(s.buyer, names); }).slice(0, 1).forEach(function (s) {
+      var exV = { v: String(s.land + s.bldg), src: '분양계약서 분양금액 토지 ' + s.land.toLocaleString('ko-KR') + ' + 건물 ' + s.bldg.toLocaleString('ko-KR') + '(부가가치세 ' + s.vat.toLocaleString('ko-KR') + ' 제외 — 매입세액을 공제·환급받은 경우' + (vatDocs.length ? ', 폴더에 부가가치세 신고 자료 있음: ' + vatDocs.slice(0, 2).join(', ') : '') + ') — ' + s.file };
+      var inV = { v: String(s.total), src: '분양계약서 분양금액 합계(부가가치세 포함 — 매입세액을 공제받지 않은 경우) — ' + s.file };
+      if (vatDocs.length) acqPriceCands.push(exV, inV); else acqPriceCands.push(inV, exV);
+      evidence.push('분양계약서: ' + s.file + ' — 분양금액 ' + s.total.toLocaleString('ko-KR') + '원(토지 ' + s.land.toLocaleString('ko-KR') + ' · 건물 ' + s.bldg.toLocaleString('ko-KR') + ' · 부가세 ' + s.vat.toLocaleString('ko-KR') + ', 검산 일치) → 취득가액 후보');
+    });
+    if (acqPriceCands.some(function (x) { return /분양계약서/.test(x.src); })) evidence = evidence.filter(function (l) { return !/^⚠ 취득가액을 서류에서 찾지 못함/.test(l); });
+  }
   // [2026.10.15] 자본적지출·양도비(소득세법 §97①2·3호, 시행령§163③④) — 거래가 하나일 때만, 실제 지급 증빙(이체확인증·현금영수증·카드전표·세금계산서)만.
   //  견적서는 지급 증빙이 아니라 넣지 않는다. 용도는 파일 이름·적요·본문 앞부분의 말로: 공사·인테리어·샷시·확장·보일러·방수 등 = 자본적지출
   //  (도배·장판·페인트·청소·수리 = 수익적지출이라 제외, ⚠로 알림), 중개보수 = 양도일 앞뒤 90일이면 양도비, 취득일 앞뒤 90일이면 취득 부대비용.
@@ -25616,7 +25645,17 @@ function caseProcEvidence_(c) {
       let hit = docs.filter(function (f) { return f.p && types.indexOf(f.p.t) !== -1 && !f.p.office && !(f.p.wn > 0) && roleOk(e.label, f.name) && (!loc || !f.p.loc || tcLocSame_(loc, f.p.loc)); });
       // 종류가 맞고 파일 이름에 칸의 취득/양도가 분명히 적혀 있으면 판독 ⚠가 있어도 확보로(⚠는 그 서류 칸에서 따로 묻는다)
       if (!hit.length) hit = docs.filter(function (f) { return f.p && types.indexOf(f.p.t) !== -1 && !f.p.office && roleNamed(e.label, f.name); });
+      // [2026.10.16] 양도·취득 역할이 갈리지 않는 서류(취득세 영수증·등기부·가족관계 등)는 판독 ⚠가 있어도 서류 자체는 있는 것 — 확보로(⚠는 판독 질문에서 따로 묻는다).
+      //  김금옥: 2003년 취득세 영수증 사진 2장이 판독 ⚠로 따로 물어지는데 증빙 칸도 "비슷한 파일 있음"으로 한 번 더 물었다
+      if (!hit.length && types.indexOf('contract') === -1 && types.indexOf('giftcontract') === -1) hit = docs.filter(function (f) { return f.p && types.indexOf(f.p.t) !== -1 && !f.p.office && roleOk(e.label, f.name) && (!loc || !f.p.loc || tcLocSame_(loc, f.p.loc)); });
       if (hit.length) { e.status = '확보됨'; e._auto = hit[0].name; marks.push(e); }
+    });
+    // [2026.10.16] 분양계약서(분양금액표 검산 일치, 매수인 = 납세자)가 든 파일은 '취득 당시 매매계약서 또는 취득가액 증빙' 확보 — 김금옥(양도 계약서와 한 파일이라 역할 판정이 양도로만 됨)
+    if (c.세목 === 'transfer') req.forEach(function (e) {
+      if (e.status === '확보됨' || !/취득\s*당시|취득\s*가액\s*증빙/.test(e.label)) return;
+      const nm = [c.납세자, c.고객명].map(function (x) { return String(x || '').replace(/\s+/g, ''); }).filter(function (x) { return x.length >= 2; });
+      const sf = docs.filter(function (f) { if (!f.p || f.p.t !== 'contract' || f.p.office) return false; let t = ''; try { t = tc_docText_(f) || ''; } catch (err) {} const s = caseProcSupplyOf_(t); return !!(s && (!s.buyer || tcNameIn_(s.buyer, nm))); })[0];
+      if (sf) { e.status = '확보됨'; e._auto = sf.name + '(분양계약서)'; marks.push(e); }
     });
     // 내용으로 정리하지 않는 파일(엑셀·CSV 거래내역, 검토 문서)로 채우는 칸 — 파일 이름으로(상속: 피상속인 금융거래내역·사전증여 검토 자료)
     req.forEach(function (e) {
@@ -26089,10 +26128,10 @@ function caseProcOverview0_(c) {
     if ((rf.acqDateCands || []).length && !String(a0g.취득일 || '').trim() && !txG.acquisitionDate)
       items.push(caseProcItem_('tr:giftAcqDate', 'judge', isGiftC(rf.acqDateCands) ? '증여로 받은 부동산입니다 — 취득일(증여받은 날: 증여 등기 접수일이 원칙)을 골라 주세요.' : '취득 계약서에서 읽은 날짜입니다 — 이 물건의 취득일을 골라 주세요(잔금일·등기접수일 중 빠른 날, §98).', { mode: 'choose', target: 'ovAsset:0:취득일', input: 'date', label: '물건1 취득일', cands: rf.acqDateCands }));
     if ((rf.acqPriceCands || []).length && !String(a0g.취득가액 || '').trim() && !txG.acquisitionPrice)
-      items.push(caseProcItem_('tr:giftAcqPrice', 'judge', isGiftC(rf.acqPriceCands) ? '증여로 받은 부동산의 취득가액은 증여 당시 평가액입니다(소득세법 시행령 §163⑨ — 증여세 신고·결정가액이 있으면 그 금액). 증여일 평가기간 안의 매매사례를 찾았습니다 — 맞는 금액을 고르거나 증여세 신고가액을 직접 넣어 주세요.' : '취득 계약서에서 읽은 매매대금입니다 — 이 물건의 취득가액이면 고르세요(여러 물건이면 어느 물건 것인지 확인).', { mode: 'choose', target: 'ovAsset:0:취득가액', input: 'money', label: '물건1 취득가액', cands: rf.acqPriceCands }));
+      items.push(caseProcItem_('tr:giftAcqPrice', 'judge', isGiftC(rf.acqPriceCands) ? '증여로 받은 부동산의 취득가액은 증여 당시 평가액입니다(소득세법 시행령 §163⑨ — 증여세 신고·결정가액이 있으면 그 금액). 증여일 평가기간 안의 매매사례를 찾았습니다 — 맞는 금액을 고르거나 증여세 신고가액을 직접 넣어 주세요.' : (rf.acqPriceCands.some(function (x) { return /분양계약서/.test(x.src); }) ? '분양계약서의 분양금액입니다 — 부가가치세 매입세액을 공제·환급받았으면 부가세를 뺀 금액, 받지 않았으면 부가세를 넣은 금액을 고르세요(공제받은 매입세액은 취득가액이 아님).' : '취득 계약서에서 읽은 매매대금입니다 — 이 물건의 취득가액이면 고르세요(여러 물건이면 어느 물건 것인지 확인).'), { mode: 'choose', target: 'ovAsset:0:취득가액', input: 'money', label: '물건1 취득가액', cands: rf.acqPriceCands }));
   }
   // [2026.10.15 1단계 ②③] 분양가 내역표 — 취득가액이 비어 있으면 표의 분양가를 객관식 후보로(이 호실 평형·층 값을 고르게)
-  if ((rf.bunyang || []).length) {
+  if ((rf.bunyang || []).length && !(rf.acqPriceCands || []).some(function (x) { return /분양계약서/.test(x.src); })) { // 분양계약서 금액이 있으면 그것이 이 호실 값 — 분양가 표에서 고르게 하지 않음
     const a0b = (Array.isArray(ov.물건목록) && ov.물건목록[0]) || ov;
     const txA = (rf.transactions || [])[0] || {};
     if (!String(a0b.취득가액 || '').trim() && !txA.acquisitionPrice) {
