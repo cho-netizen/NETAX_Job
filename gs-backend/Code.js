@@ -25663,6 +25663,16 @@ function caseProcEvidence_(c) {
       const sf = docs.filter(function (f) { if (!f.p || f.p.t !== 'contract' || f.p.office) return false; let t = ''; try { t = tc_docText_(f) || ''; } catch (err) {} const s = caseProcSupplyOf_(t); return !!(s && (!s.buyer || tcNameIn_(s.buyer, nm))); })[0];
       if (sf) { e.status = '확보됨'; e._auto = sf.name + '(분양계약서)'; marks.push(e); }
     });
+    // [2026.10.16] 여러 서류를 한 파일로 묶어 이름에 나열한 경우("관양동 192 매매계약서, 취득세 등록세.pdf") — 서류 종류는 첫 서류(계약서)로만 정리돼
+    //  취득세 영수증 칸이 "비슷한 파일 있음"으로 남았다(김운래). 역할이 갈리지 않는 칸(취득세·등기부 등)은 묶음 파일 이름에 그 서류 이름이 있으면 확보로.
+    req.forEach(function (e) {
+      if (e.status === '확보됨') return;
+      const types = caseProcEvTypes_(e.label);
+      const docRe = types && types.length === 1 ? ({ acqtax: /취득세/, registry: /등기부|등기사항/, family: /가족\s*관계/, resident: /초본/, bldledger: /건축물\s*대장/, landledger: /토지\s*대장|임야\s*대장/ })[types[0]] : null;
+      if (!docRe) return;
+      const bf = files.filter(function (f) { const n = String(f.name || ''); return !/^_/.test(n) && /[,·+&]|및/.test(n) && docRe.test(n) && !caseProcIsOutputDoc_(n); })[0];
+      if (bf) { e.status = '확보됨'; e._auto = bf.name + '(묶음 파일 이름)'; marks.push(e); }
+    });
     // 내용으로 정리하지 않는 파일(엑셀·CSV 거래내역, 검토 문서)로 채우는 칸 — 파일 이름으로(상속: 피상속인 금융거래내역·사전증여 검토 자료)
     req.forEach(function (e) {
       if (e.status === '확보됨' || c.세목 !== 'inheritance' || !/사전\s*증여|금융\s*거래\s*내역/.test(e.label)) return;
