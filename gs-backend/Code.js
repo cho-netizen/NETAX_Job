@@ -24730,6 +24730,7 @@ function tc_ruleTransferFacts_(body) {
     var text = null;
     try { text = tc_docText_(f); } catch (e) { continue; }
     if (!text) continue;
+    if (!caseProcIsAmend_(cr) && caseProcIsOutputText_(text)) continue; // [2026.10.15] 내용으로 본 이미 낸 신고서(사진 신고서 등) — 입력으로 안 씀
     // [2026.10.15] 은행 앱 거래내역 화면(날짜 줄 → 시각 → 적요 → … → "-금액원" → 잔액) — 적요에 공사·중개보수 말이 있는 출금만 지급 증빙 후보로
     if (/거\s*래\s*내\s*역\s*조\s*회/.test(text)) {
       var hl = String(text).split('\n'), hd = '';
@@ -25171,7 +25172,7 @@ function caseProcEvTypes_(label) {
   return null;
 }
 function caseProcParsed_(f, cache, canParse) {
-  const key = 'cpp13_' + f.id + '_' + f.modified; // cpp13: 오피스텔·상업용 기준시가 표(2026-10-15) // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
+  const key = 'cpp14_' + f.id + '_' + f.modified; // cpp14: 내용으로 본 이미 낸 신고서(out)(2026-10-15) // cpp13: 오피스텔·상업용 기준시가 표(2026-10-15) // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
   const hit = cache.get(key);
   if (hit) { try { return JSON.parse(hit); } catch (e) {} }
   if (!canParse) return null;
@@ -25180,6 +25181,7 @@ function caseProcParsed_(f, cache, canParse) {
     const text = tc_docText_(f);
     if (!text || !String(text).trim()) s.nt = true; // 글자를 하나도 못 읽음(그림만·흐린 사진)
     if (text) {
+      if (caseProcIsOutputText_(text)) s.out = true; // 내용으로 본 이미 낸 신고서(사진 등)
       const p = docParseText_(text);
       s.t = p.type || ''; s.l = p.label || '';
       const realLines = String(p.md || '').split('\n').filter(function (x) { return !/^\s*_.*_\s*$/.test(x) && !/⚠\s*확인필요로\s*남겼/.test(x) && !/부·모 중 주민번호가 없는 칸/.test(x); }); // 안내 문구·부모 주민번호 빈칸 안내 제외
@@ -25207,7 +25209,7 @@ function caseProcEvidence_(c) {
   const outDocs = files.filter(function (f) { return /pdf|^image\//.test(String(f.mimeType || '')) && caseProcIsOutputDoc_(f.name); });
   const docsAll = files.filter(function (f) { return /pdf|^image\//.test(String(f.mimeType || '')) && !/^_/.test(f.name) && !caseProcIsOutputDoc_(f.name); })
     .sort(function (a, b) { return rank(a.name) - rank(b.name); });
-  const docs = docsAll.slice(0, CASEPROC_DOC_MAX_), docsOver = docsAll.slice(CASEPROC_DOC_MAX_); // [2026.10.15 일괄점검 ①] 40개에서 말없이 자르던 것을 늘리고, 그래도 넘으면 이름을 밝힌다
+  let docs = docsAll.slice(0, CASEPROC_DOC_MAX_); const docsOver = docsAll.slice(CASEPROC_DOC_MAX_); // [2026.10.15 일괄점검 ①] 40개에서 말없이 자르던 것을 늘리고, 그래도 넘으면 이름을 밝힌다
   const started = Date.now();
   let pending = 0;
   docs.forEach(function (f) {
@@ -25215,6 +25217,11 @@ function caseProcEvidence_(c) {
     if (!f.p) pending++;
   });
   if (pending) return { ok: true, more: true, progress: { done: docs.length - pending, total: docs.length }, lines: ['서류 읽는 중 ' + (docs.length - pending) + '/' + docs.length + '(무료 글자인식 — 처음 읽는 서류는 한 건에 10~40초)'] };
+  // [2026.10.15 1단계] 이름이 아니라 내용으로 이미 낸 신고서(사진으로 찍힌 신고서·계산명세서 등)를 입력에서 뺀다 — 경정·수정·불복 사건은 그것이 작업 재료라 빼지 않음
+  if (!caseProcIsAmend_(c)) {
+    const outByText = docs.filter(function (f) { return f.p && f.p.out; });
+    if (outByText.length) { outByText.forEach(function (f) { outDocs.push(f); }); docs = docs.filter(function (f) { return !(f.p && f.p.out); }); }
+  }
 
   const kinds = {};
   docs.forEach(function (f) { if (f.p && f.p.l) kinds[f.p.l] = (kinds[f.p.l] || 0) + 1; });
@@ -25878,6 +25885,13 @@ function caseProcIsPriorReport_(name) {
   const n = String(name || '').replace(/\s+/g, '');
   return /(종합검토서|신고보고서|검토서|자문보고서|경과지|작업진행|체크리스트|계산근거)/.test(n) && !/의뢰서/.test(n);
 }
+// [2026.10.15 1단계] 글자 내용으로 본 "이미 낸 신고서·명세서" — 파일 이름이 KakaoTalk_….jpg처럼 아무 말도 없는 사진 신고서(박미영 사건 7장)를 잡는다
+function caseProcIsOutputText_(text) {
+  const t = String(text || '').slice(0, 3000);
+  return /양도\s*소득\s*과세\s*표준\s*(예정\s*|확정\s*)?신고\s*및\s*(자진\s*)?납부\s*계산서|양도\s*소득\s*금액\s*계산\s*명세서|취득\s*가액\s*및\s*필요\s*경비\s*계산\s*상세\s*명세서|개인\s*지방\s*소득세\s*과세\s*표준\s*(예정\s*|확정\s*)?신고|(상속|증여)세\s*과세\s*표준\s*신고\s*및\s*자진\s*납부\s*계산서|공과금\s*[·ㆍ.]?\s*장례\s*비용\s*및\s*상속\s*공제\s*명세서|증여\s*재산\s*(및\s*)?평가\s*명세서|별지\s*제\s*84\s*호\s*서식/.test(t);
+}
+// 경정청구·수정신고·불복 사건 — 이미 낸 신고서가 작업 재료(입력)다
+function caseProcIsAmend_(c) { return /경정|수정\s*신고|불복|심판|이의\s*신청|심사\s*청구/.test(String((c && c.업무유형) || '') + ' ' + String((c && c.사건명) || '')); }
 function caseProcIsOutputDoc_(name) {
   const n = String(name || '');
   // [2026.10.15] "양도소득 과세표준 신고 및 납부계산서", "…금액계산명서"(오타), "필요경비명세서", "평가명세서", "추가자진납부", "세액계산"도 이미 낸(또는 세무사가 만든) 발생문서 —
@@ -25930,7 +25944,7 @@ function caseProcParseAll0_(c) {
   const out = [], started = Date.now();
   caseProcFiles_(c).filter(function (f) { return /pdf|^image\//.test(String(f.mimeType || '')) && !/^_/.test(f.name) && !caseProcIsOutputDoc_(f.name); }).slice(0, CASEPROC_DOC_MAX_).forEach(function (f) {
     if (Date.now() - started > 150000) return;
-    try { const t = tc_docText_(f); if (!t) return; const p = docParseText_(t); if (p && p.type && !(p.result && !Array.isArray(p.result) && p.result.사무소발행)) out.push({ f: f, p: p }); } catch (e) {}
+    try { const t = tc_docText_(f); if (!t) return; if (!caseProcIsAmend_(c) && caseProcIsOutputText_(t)) return; const p = docParseText_(t); if (p && p.type && !(p.result && !Array.isArray(p.result) && p.result.사무소발행)) out.push({ f: f, p: p }); } catch (e) {}
   });
   return out;
 }
@@ -26611,6 +26625,7 @@ function caseProcLedger_(c, saved) {
       if (!p && Date.now() - started < 90000 && tcOcrStoreGet_('ocrtxt_' + f.id + '_' + f.modified) !== null) p = caseProcParsed_(f, cache, true);
       if (!p) { r.st = '대기'; r.why = '아직 글자인식 전 — 다시 처리하면 읽음'; return r; }
       if (p.office) { r.st = '제외'; r.why = '사무소 발행 영수증(수금 기록용)'; return r; }
+      if (p.out && !caseProcIsAmend_(c)) { r.st = '제외'; r.why = '이미 낸 신고서·명세서(내용으로 확인) — 입력으로 쓰지 않음, 양도코리아 폴더로 옮길 대상'; return r; }
       if (p.err) { r.st = '못읽음'; r.why = '읽기 오류: ' + p.err; return r; }
       if (p.nt) { r.st = '못읽음'; r.why = '글자 없음(그림만·흐린 사진) — 선명한 PDF로 다시 넣어 주세요'; return r; }
       if (!p.t) { r.st = '일부'; r.kind = '종류 미정'; r.why = '글자는 읽었지만 이 종류의 서류 규칙이 없어 칸에 자동으로 넣지 못함'; }
