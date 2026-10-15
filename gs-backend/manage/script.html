@@ -21,11 +21,27 @@
     var w = window.innerWidth;
     return w < 600 ? 'phone' : (w < 900 ? 'tablet' : 'pc');
   }
+  // [2026.10.15] 접는 폰(Z플립) 커버화면 — 세무사님 결정: 커버화면에서는 기존 화면을 줄여 보이지 말고
+  // "약식 대시보드 ↔ AI" 두 화면만 오가게 한다(나머지 기능은 펼쳐서). 폭·높이(innerWidth/Height)로 판정하면
+  // 펼친 화면에서 키보드가 올라와 높이가 줄 때 커버로 잘못 바뀌므로, 화면 자체 크기(screen)로 판정한다.
+  // 커버화면은 긴 쪽도 640 이하(Z플립5·6 약 330~370, Z플립7 약 410~460), 일반 휴대폰은 긴 쪽 700 이상.
+  // 폰 배치(lay-phone)는 그대로 두고 lay-cover만 덧붙인다(설정에서 배치를 직접 고정하면 커버 화면 안 씀).
+  function nxIsCoverScreen_(){
+    if (nxLayoutOverride_() !== 'auto') return false;
+    var sw = (window.screen && screen.width) || window.innerWidth, sh = (window.screen && screen.height) || window.innerHeight;
+    return Math.max(sw, sh) <= 640 && Math.min(sw, sh) >= 240;
+  }
   function nxApplyLayout_(){
     var st = nxLayoutStage_();
     var changed = window.nxLayout !== st;
     window.nxLayout = st;
     ['pc', 'tablet', 'phone'].forEach(function(s){ document.body.classList.toggle('lay-' + s, s === st); });
+    var cover = st === 'phone' && nxIsCoverScreen_();
+    var coverChanged = !!window.nxCover !== cover;
+    window.nxCover = cover;
+    document.body.classList.toggle('lay-cover', cover);
+    if (coverChanged && typeof nxCoverOnEnter_ === 'function') try{ nxCoverOnEnter_(cover); }catch(e){}
+    if (coverChanged){ try{ document.dispatchEvent(new CustomEvent('nx-cover-change', { detail: cover })); }catch(e){} }
     if (changed){ try{ document.dispatchEvent(new CustomEvent('nx-layout-change', { detail: st })); }catch(e){} }
   }
   function nxSetLayoutOverride_(value){ nxLs_(NX_LAYOUT_KEY_, value); nxApplyLayout_(); }
@@ -547,6 +563,7 @@
       window._currentViewLabel = VIEW_LABELS_[name] || name;
       // [2026.10.08] AI 화면 하나를 AI탭 ↔ 오른쪽 사이드바로 옮긴다(aichat.html nxAiOnViewChange_)
       if (typeof nxAiOnViewChange_ === 'function') nxAiOnViewChange_(name);
+      nxCoverSync_();
       tbCollapseAllDebounced_();
       if (name === 'booking' && typeof initBooking === 'function') initBooking();
       if (name === 'workmanage' && typeof initWorkManage === 'function') initWorkManage();
@@ -590,6 +607,34 @@
       i.classList.toggle('active', i.getAttribute('data-view') === name);
     });
   }
+
+  // [2026.10.15] 커버화면(nxApplyLayout_의 lay-cover) — 약식 대시보드와 AI 두 화면만 아래 버튼으로 오간다.
+  // 커버화면으로 바뀌는 순간 그 둘이 아닌 화면을 보고 있었으면 요약(대시보드)으로 옮긴다. 펼치면 원래 화면 그대로.
+  function nxCoverActiveView_(){
+    var v = document.querySelector('#centerWork > .view.active');
+    return v ? v.id.replace(/^view-/, '') : '';
+  }
+  function nxCoverSync_(){
+    var cur = nxCoverActiveView_();
+    document.querySelectorAll('#nxCoverBar [data-cover-view]').forEach(function(b){
+      b.classList.toggle('on', b.getAttribute('data-cover-view') === cur);
+    });
+  }
+  function nxCoverOnEnter_(cover){
+    var root = document.getElementById('appRoot');
+    if (cover && root && root.classList.contains('shown')){
+      var cur = nxCoverActiveView_();
+      if (cur !== 'dashboard' && cur !== 'ai') goToView_('dashboard');
+    }
+    nxCoverSync_();
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('#nxCoverBar [data-cover-view]');
+    if (!b) return;
+    var name = b.getAttribute('data-cover-view');
+    if (nxCoverActiveView_() !== name) goToView_(name);
+    nxCoverSync_();
+  });
 
   // [2026.10.13] 사건 관련 화면 바로가기 — "처리개요에서 증빙관리로 옮겨간 다음에는 처리개요로만 갈 수 있고
   // 세액계산이나 연관작업으로 옮겨갈 수 없다"는 지적. 사건을 다루는 모든 화면 머리에 같은 콤보박스를 둬,

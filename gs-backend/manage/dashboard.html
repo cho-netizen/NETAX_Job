@@ -3,7 +3,7 @@
   <div class="view-body">
     <!-- [2026.09] 사용자 요청 — 할일을 대시보드 맨 위로. 마감일 입력·수정·삭제도 여기서
          바로 되도록 카드를 다시 만듦(구글 태스크, get/add/update/delete_google_task). -->
-    <div class="card">
+    <div class="card dash-cover">
       <h3>✅ 할일
         <a href="https://tasks.google.com/tasks/" target="_blank" rel="noopener" class="ghost-btn" style="float:right; font-size:11px; padding:2px 8px; text-decoration:none;">🔗 구글 태스크 열기</a>
       </h3>
@@ -19,7 +19,7 @@
     <!-- [2026.09.16] 세무사님 요청 — 할일 바로 다음으로 순서 이동, 타이틀 "오늘~7일 일정"을
          그냥 "일정"으로 줄이고, 구글캘린더로 바로 가는 링크와 조회기간(전/후 며칠)을
          직접 지정하는 기능을 추가한다. 기본값은 전 0일·후 7일(기존과 동일한 범위). -->
-    <div class="card">
+    <div class="card dash-cover">
       <h3>📅 일정
         <a href="https://calendar.google.com/calendar/" target="_blank" rel="noopener" class="ghost-btn" style="float:right; font-size:11px; padding:2px 8px; text-decoration:none;">🔗 구글 캘린더 열기</a>
       </h3>
@@ -28,11 +28,11 @@
       </div>
       <div id="dashCalendar"><div class="spinner">불러오는 중…</div></div>
     </div>
-    <div class="card">
+    <div class="card dash-cover">
       <h3>⏰ 마감임박 작업</h3>
       <div id="dashDeadlines"><div class="spinner">불러오는 중…</div></div>
     </div>
-    <div class="card">
+    <div class="card dash-cover">
       <h3>📅 대기중인 상담신청</h3>
       <div id="dashBookings"><div class="spinner">불러오는 중…</div></div>
     </div>

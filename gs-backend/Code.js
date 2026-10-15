@@ -3819,6 +3819,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'ai_conv_delete') return jsonResponse(ai_convDelete(body));
   if (body.action === 'ai_work_histories') return jsonResponse(ai_workHistories(body));
   if (body.action === 'ai_log_bug') return jsonResponse(ai_logBug(body));
+  if (body.action === 'ai_voice_brief') return jsonResponse(ai_voiceBrief_(body)); // 커버화면 토킹모드 음성 답변(핵심만 최대 축약)
   if (body.action === 'ai_list_bugs') return jsonResponse(ai_listBugs());
   if (body.action === 'ai_clear_bugs') return jsonResponse(ai_clearBugs());
   if (body.action === 'ai_usage_month') return jsonResponse(ai_usageMonth_());
@@ -15643,6 +15644,40 @@ function ai_paidLogFile_() {
 }
 // [2026.10.09 토큰0 전수조사] 채팅 밖에서 직접 부르는 유료 AI(지침·템플릿 점검, 파일명 이름 찾기, 블로그 글감)도
 // 이번 달 사용액·유료 기록에 남겨 개선 후보 보고서가 볼 수 있게 한다(예전엔 이 비용이 어디에도 안 보였다).
+// [2026.10.15] 커버화면 토킹모드 "음성 답변" — 세무사님 지적: 글자 답을 그대로 읽으니 전혀 알아들을 수 없다.
+// 글자 답(⚡바로 처리 표·제미니 답·AI 답 무엇이든)을 직전 대화 흐름에 맞춰 "귀로 듣는 한두 문장"으로 줄인다.
+// 가벼운 모델(LIGHT_MODEL) 1회·짧은 지시문이라 비용이 아주 작고, 비용은 유료질문 기록(kind 'voice')에 남는다.
+function ai_voiceBrief_(body) {
+  const q = String(body.question || '').slice(0, 500);
+  const a = String(body.answer || '').slice(0, 6000);
+  if (!a.trim()) return { error: '줄일 답변이 없습니다.' };
+  const prev = (Array.isArray(body.prev) ? body.prev : []).slice(-4).map(function (m) {
+    return (m.role === 'user' ? '사용자: ' : '비서: ') + String(m.text || '').slice(0, 300);
+  }).join('\n');
+  const apiKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
+  if (!apiKey) return { error: 'AI 열쇠가 설정되지 않았습니다.' };
+  const prompt = '너는 세무사의 업무 비서다. 세무사가 휴대폰 커버화면에서 말로 물었고, 아래 "글자 답변"을 소리로 들려줘야 한다. ' +
+    '글자 답변을 귀로 한 번에 알아듣게 최대한 줄여라.\n' +
+    '- 대화 흐름(직전 대화)에 맞춰 물은 것에 대한 결론과 핵심 숫자·이름·날짜만. 한 문장, 길어도 두 문장, 60자 안팎.\n' +
+    '- 말하듯이: 표·목록·기호·괄호·링크·이모지 금지. 날짜는 "10월 20일", 금액은 "1억 5천만 원"처럼 읽기 쉬운 말로.\n' +
+    '- 여러 건이면 건수와 가장 중요한 한두 건만 말하고 "나머지는 화면에 있습니다"로 끝내라.\n' +
+    '- 실행 승인·확인이 필요한 답이면 "화면을 펼쳐 확인해 주세요"로 끝내라.\n' +
+    '- 글자 답변에 없는 내용은 절대 만들지 마라. 줄인 문장만 출력하라.\n\n' +
+    (prev ? '[직전 대화]\n' + prev + '\n\n' : '') +
+    '[이번 질문]\n' + q + '\n\n[글자 답변]\n' + a;
+  const res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    payload: JSON.stringify({ model: LIGHT_MODEL, max_tokens: 200, messages: [{ role: 'user', content: prompt }] })
+  });
+  let json;
+  try { json = JSON.parse(res.getContentText()); } catch (e) { return { error: '음성 요약 응답을 읽지 못했습니다.' }; }
+  ai_logDirect_(json, LIGHT_MODEL, 'voice', '토킹모드 음성 요약 — ' + q.slice(0, 40));
+  if (json.error) return { error: (json.error && json.error.message) || '음성 요약 실패' };
+  const text = ((json.content && json.content[0] && json.content[0].text) || '').trim();
+  return text ? { success: true, text: text } : { error: '음성 요약이 비었습니다.' };
+}
+
 function ai_logDirect_(json, model, kind, q) {
   try {
     if (!json || json.error || !MODEL_CONFIG[model]) return;

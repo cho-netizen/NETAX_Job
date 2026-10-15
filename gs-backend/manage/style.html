@@ -665,6 +665,25 @@
   body.lay-phone .taxcalc-asset-head span{ flex-wrap:wrap; }
   body.lay-phone .taxcalc-grid > .taxcalc-field{ flex-basis:100% !important; }
 
+  /* ===== [2026.10.15] 접는 폰 커버화면(body.lay-cover, script.html nxIsCoverScreen_) ==========
+     세무사님 결정: 커버화면에서는 약식 대시보드 ↔ AI 두 화면만 아래 버튼으로 오간다. 왼쪽 메뉴·오른쪽 AI 패널·
+     도움말 버튼은 숨기고, 대시보드는 할일·일정·마감임박·상담신청 카드(.dash-cover)만 촘촘하게 보인다. */
+  #nxCoverBar{ display:none; }
+  body.lay-cover #appRoot.shown ~ #nxCoverBar{ display:flex; position:fixed; left:0; right:0; bottom:0; z-index:60; gap:6px;
+    padding:5px 8px calc(5px + env(safe-area-inset-bottom)); background:var(--navy); }
+  #nxCoverBar button{ flex:1; border:none; border-radius:8px; padding:9px 0; font-size:14px; font-weight:600; background:rgba(255,255,255,0.08); color:#fff; cursor:pointer; }
+  #nxCoverBar button.on{ background:var(--gold); color:var(--navy); }
+  body.lay-cover #appRoot.shown{ height:calc(100% - 48px - env(safe-area-inset-bottom)); }
+  body.lay-cover #sideMenu, body.lay-cover #sideAI, body.lay-cover #globalHelpBtn{ display:none !important; }
+  body.lay-cover #view-dashboard .card:not(.dash-cover){ display:none; }
+  body.lay-cover #view-dashboard .view-head{ padding:8px 10px 4px; }
+  body.lay-cover #view-dashboard .view-head h2{ font-size:15px; }
+  body.lay-cover #view-dashboard .view-body{ padding:0 8px 8px; }
+  body.lay-cover #view-dashboard .card{ padding:9px 10px; margin-bottom:8px; font-size:13px; }
+  body.lay-cover #view-dashboard .card h3{ font-size:14px; margin:0 0 6px; }
+  body.lay-cover #view-dashboard .card h3 a,
+  body.lay-cover #view-dashboard .card > div:has(> #dashCalRangeBefore){ display:none !important; }
+
   /* ===== [2026.10.08] 다크모드(설정 탭) ==========================================
      - 업무 화면들(#centerWork의 각 .view)은 색이 화면마다 직접 박혀 있어(630곳) 하나씩 바꾸면 빠지는
        곳이 생긴다 — 화면 전체를 반전(invert + hue-rotate로 색상은 유지, 밝기만 뒤집음)해서 빠짐없이 적용한다.
