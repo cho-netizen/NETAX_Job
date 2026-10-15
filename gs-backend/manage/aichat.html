@@ -2532,6 +2532,9 @@
   // 입력이 이미 다 있으면 [세액 계산하기]만 누르고(토큰 0), 모자라면 화면의 [자동계산](서류로 채우기 → 빈 칸은 화면이 직접 물음)을 쓴다.
   function nxAiCaseProcCalcRun_(st, manual){
     if (st.calcBusy) return;
+    // [2026.10.15 1:1] 증여 내용(증여자·수증자·증여일·증여대상)을 아직 안 정했으면 계산하지 않는다 — 추정값으로 세액을 내지 않게
+    var dealOpen = (st.items || []).some(function(it){ var d = nxAiCaseProcDec_(st, it); return it.id === 'gift:deal' && d !== 'done' && d !== '무시'; });
+    if (dealOpen){ st.setStep('calc', '⏸', '「증여 내용 확인」을 먼저 답해 주세요 — 증여 내용이 정해지면 계산합니다.'); return; }
     var tab = st.case && st.case.세목;
     if (!{ transfer: 1, gift: 1, inheritance: 1 }[tab] || typeof goToTaxCalc_ !== 'function') return;
     st.calcBusy = true;

@@ -25695,6 +25695,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
           lines.push('증여 내용(세무사님 확인): ' + deal.donor + ' → ' + deal.donee + ' · ' + deal.date + ' · ' + (deal.kind || '') + ' ' + Number(deal.amount).toLocaleString('ko-KR') + '원');
         } else {
           dealPending = true;
+          if (c.납세자) add('giftDoneeName', norm(c.납세자), '사건 납세자(수증자)', true);
           const rows = cash.txRows || [];
           const sum = rows.reduce(function (a, g) { return a + g.금액; }, 0);
           const last = rows.map(function (g) { return g.날짜; }).sort().pop() || '';
@@ -25867,7 +25868,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
     const ask = { mode: 'choose', target: 'ov:' + key, input: sp[2], options: key === 'giftRelation' ? CASEPROC_GIFT_RELATIONS_ : null, label: sp[1], cands: uniq.map(function (x) { return { v: money ? digits(x.v) : x.v, src: x.src }; }) };
     const same = function (a, b) { return money ? digits(a) === digits(b) : norm(a) === norm(b); };
     // [2026.10.15 1:1] 증여 내용 확인 전 — 이 칸들은 「증여 내용 확인」 한 질문으로 묻는다. 예전 실행이 이체내역으로 넣어 둔 추정값은 지운다(계산에 쓰이지 않게).
-    if (dealPending && /^(giftDonorName|giftDoneeName|giftAmount|giftRelation)$/.test(key)) {
+    if (dealPending && /^(giftDonorName|giftAmount|giftRelation)$/.test(key)) { // 수증자는 사건 납세자라 지우지 않음
       if (cur && filled[key] && /이체/.test(String(filled[key].src || ''))) { ov[key] = ''; fills.push({ key: key, label: sp[1], v: '(비움)', src: '증여 내용 확인 전 — 이체내역 추정값 지움' }); }
       return;
     }
@@ -26223,6 +26224,11 @@ function caseProcCalc_(c) {
   const items = [], lines = [];
   const label = CASEPROC_TAX_LABEL_[c.세목];
   if (!label) { lines.push('세액계산 대상 세목이 아닙니다(' + (c.세목 || '—') + ').'); return { ok: true, lines: lines, items: items }; }
+  // [2026.10.15 1:1] 증여 내용 확인 전(계약서 없이 이체내역만) — 계산하지 않는다(추정값으로 세액을 내지 않게)
+  if (c.세목 === 'gift' && String(c.폴더ID || '').trim()) {
+    let cg = null; try { cg = caseProcCashGift_(c, caseProcParseAll_(c)); } catch (e) {}
+    if (cg && cg.isCash && cg.txOnly && !cg.contract && !caseProcLoad_(c.id).giftDeal) { lines.push('증여 내용(증여자·수증자·증여일·증여대상)을 정한 뒤 계산합니다 — 처리개요의 「증여 내용 확인」을 먼저 답해 주세요.'); return { ok: true, lines: lines, items: items, needCalc: false }; }
+  }
   const lc = caseProcLastCalc_(c), res = lc.list, last = lc.last;
   if (!last) {
     items.push(caseProcItem_('calc:none', 'todo', label + ' 계산 결과가 아직 없습니다 — 세액계산 엔진으로 계산해 사건에 저장합니다.', { mode: 'calc', tab: c.세목 }));
