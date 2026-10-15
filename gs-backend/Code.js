@@ -25551,6 +25551,7 @@ function caseProcEvidence_(c) {
   if (unkind.length) lines.push('종류를 정하지 못한 서류 ' + unkind.length + '개(글자는 읽음 — 서류 규칙이 없어 칸에 자동으로 넣지 않음, 필요하면 [확인]에서 근거 파일로 고르세요): ' + unkind.slice(0, 10).map(function (f) { return f.name; }).join(', ') + (unkind.length > 10 ? ' 외 ' + (unkind.length - 10) + '개' : ''));
   // [2026.10.15 1:1] 그 밖의 파일도 전부 — 읽은 것·못 읽은 것을 이름으로(말없이 건너뛰지 않음)
   try {
+  if (typeof akTrace_ === 'function') akTrace_('증빙: 메모 읽기 전'); // [2026.10.16] 진단
     const mm = caseProcMemoTexts_(c);
     if (mm.read.length) lines.push('그 밖의 파일 읽음: ' + mm.read.map(function (x) { return x.file + (x.cutCalc ? '(아래 세액계산 부분은 결과물이라 입력에서 뺌)' : ''); }).join(', '));
     if (mm.unread.length) lines.push('⚠ 못 읽은 파일: ' + mm.unread.join(', ') + ' — 내용이 필요하면 PDF로 저장해 폴더에 넣어 주세요.');
@@ -25634,6 +25635,7 @@ function caseProcEvidence_(c) {
   //  같은 계약서를 양도 칸과 취득 칸 양쪽에 후보로 띄우던 것(이종식). 글자는 글자인식 기억에서 오므로 다시 인식하지 않는다.
   const roleBody = {};
   const pNames = [c.납세자, c.고객명].map(function (x) { return String(x || '').replace(/\s+/g, ''); }).filter(function (x, i, a) { return x.length >= 2 && a.indexOf(x) === i; });
+  if (typeof akTrace_ === 'function') akTrace_('증빙: 메모·장부 끝(계약서 역할 전)'); // [2026.10.16] 진단
   if (c.세목 === 'transfer' && pNames.length) docs.forEach(function (f) {
     if (!f.p || !(/^(contract|dealreport)$/.test(f.p.t) || /계약/.test(f.name))) return;
     let tx = ''; try { tx = tc_docText_(f) || ''; } catch (e) { return; }
@@ -25754,6 +25756,7 @@ function caseProcEvidence_(c) {
     }
   }
   let inhNiche = null;
+  if (typeof akTrace_ === 'function') akTrace_('증빙: 칸 대조 끝(봉안 전)'); // [2026.10.16] 진단
   if (c.세목 === 'inheritance' && req.some(function (e) { return e.status !== '확보됨' && /봉안|자연\s*장/.test(e.label); })) { try { inhNiche = caseProcInhFacts_(c).niche; } catch (err) { inhNiche = null; } }
   req.forEach(function (e) {
     if (e.status === '확보됨') return;
@@ -25807,6 +25810,7 @@ function caseProcEvidence_(c) {
   // [2026.10.15] ⚠ 질문은 이 세목의 세액 계산에 쓰는 서류 종류만 — 보도자료·건강보험 안내문·전세 보증보험증권·주민등록초본(상속) 같은
   // 계산과 무관한(또는 다른 서류로 잘못 분류된) 파일의 ⚠까지 물어 신고 끝난 사건에도 질문이 10~20개씩 남았다.
   const relevantT = CASEPROC_RELEVANT_TYPES_[c.세목];
+  if (typeof akTrace_ === 'function') akTrace_('증빙: 판독 질문 만들기 전'); // [2026.10.16] 진단
   const docokSeen = {};
   docs.forEach(function (f) {
     if (!f.p || !f.p.t || f.p.office || !(f.p.wn > 0)) return;
