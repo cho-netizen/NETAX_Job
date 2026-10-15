@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 14:28 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 14:36 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -44268,9 +44268,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       <button type="button" data-talk-mode="text">📝 문자 답</button>
     </div>
     <div class="nxai-talk-q" id="nxAiTalkQ"></div>
-    <div class="nxai-talk-a" id="nxAiTalkA">버튼을 누르고 말씀하세요.</div>
-    <button type="button" class="nxai-talk-mic" id="nxAiTalkMic" aria-label="말하기">🎤</button>
-    <div class="nxai-talk-st" id="nxAiTalkSt">누르고 있는 동안 말하기 · 짧게 누르면 자동</div>
+    <div class="nxai-talk-a" id="nxAiTalkA"></div>
+    <!-- [2026.10.15] 누르고 말하는 방식이라 버튼을 화면 대부분으로 키움(세무사님) — 상태 문구도 버튼 안에 -->
+    <button type="button" class="nxai-talk-mic" id="nxAiTalkMic" aria-label="말하기"><span class="nxai-talk-ic" id="nxAiTalkIc">🎤</span><span class="nxai-talk-st" id="nxAiTalkSt">누르고 있는 동안 말하기 · 짧게 누르면 자동</span></button>
     <button type="button" class="nxai-talk-cancel" id="nxAiTalkCancel" hidden>✕ 취소(보내지 않음)</button>
   </div>
   <div class="nxai-phone-tabs" id="nxAiPhoneTabs">
@@ -44438,15 +44438,18 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   .nxai-talk-mode button{ flex:1; border:1px solid rgba(255,255,255,0.25); background:transparent; color:#c9d2e6; border-radius:7px; padding:5px 0; font-size:12.5px; cursor:pointer; }
   .nxai-talk-mode button.on{ background:var(--gold); border-color:var(--gold); color:var(--navy); font-weight:700; }
   .nxai-talk-q{ align-self:stretch; font-size:12.5px; color:var(--gold-light); max-height:3.2em; overflow:hidden; line-height:1.6; }
-  .nxai-talk-a{ align-self:stretch; flex:1; min-height:0; overflow-y:auto; font-size:15px; line-height:1.6; white-space:pre-wrap; }
-  .nxai-talk-mic{ flex-shrink:0; width:84px; height:84px; border-radius:50%; border:none; background:var(--gold); color:var(--navy); font-size:34px; cursor:pointer; }
+  .nxai-talk-a{ align-self:stretch; flex:0 1 auto; max-height:34%; min-height:0; overflow-y:auto; font-size:15px; line-height:1.55; white-space:pre-wrap; }
+  .nxai-talk-a:empty{ display:none; }
+  .nxai-talk-mic{ flex:1 1 auto; align-self:stretch; min-height:110px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+    border:none; border-radius:18px; background:var(--gold); color:var(--navy); cursor:pointer; padding:8px; }
+  .nxai-talk-ic{ font-size:48px; line-height:1; }
+  .nxai-talk-mic .nxai-talk-st{ color:inherit; font-size:13px; font-weight:600; text-align:center; line-height:1.4; }
   .nxai-talk-mic.listen{ background:#e5484d; color:#fff; animation:nxaiTalkPulse 1.2s ease-in-out infinite; }
   .nxai-talk-mic.busy{ background:#55607a; color:#fff; }
   .nxai-talk-mic.speak{ background:#2f9e6b; color:#fff; }
   .nxai-talk-mic{ user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; touch-action:none; }
   .nxai-talk-cancel{ flex-shrink:0; border:1px solid rgba(255,255,255,0.3); background:transparent; color:#fff; border-radius:7px; padding:4px 12px; font-size:12.5px; cursor:pointer; }
-  .nxai-talk-st{ flex-shrink:0; font-size:12.5px; color:#c9d2e6; }
-  @keyframes nxaiTalkPulse{ 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.07); } }
+  @keyframes nxaiTalkPulse{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.18); } }
 
   /* ===== 공통 ===== */
   .nxai{ --nxai-font:13.5px; display:flex; height:100%; min-height:0; width:100%; font-size:var(--nxai-font); }
@@ -48138,7 +48141,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var mic = nxAiEl_('nxAiTalkMic'), st = nxAiEl_('nxAiTalkSt');
     if (!mic) return;
     mic.className = 'nxai-talk-mic' + (state === 'idle' ? '' : ' ' + state);
-    mic.textContent = state === 'speak' ? '⏹' : (state === 'busy' ? '⏳' : '🎤');
+    nxAiEl_('nxAiTalkIc').textContent = state === 'speak' ? '⏹' : (state === 'busy' ? '⏳' : '🎤');
     st.textContent = status || { idle: '누르고 있는 동안 말하기 · 짧게 누르면 자동', listen: '듣는 중…', busy: '생각 중…', speak: '읽는 중 — 누르면 멈춤' }[state];
     var cc = nxAiEl_('nxAiTalkCancel'); if (cc) cc.hidden = state !== 'listen';
   }
