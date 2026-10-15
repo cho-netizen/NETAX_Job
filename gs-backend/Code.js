@@ -24791,7 +24791,7 @@ function tc_ruleTransferFacts_(body) {
     var text = null;
     try { text = tc_docText_(f); } catch (e) { continue; }
     if (!text) continue;
-    if (!caseProcIsAmend_(cr) && caseProcIsOutputText_(text)) continue; // [2026.10.15] 내용으로 본 이미 낸 신고서(사진 신고서 등) — 입력으로 안 씀
+    if (!caseProcIsAmend_(cr) && caseProcIsOutputText_(text, 'transfer')) continue; // 양도 사실 정리 — 증여·상속세 신고서는 취득가액 근거(입력) // [2026.10.15] 내용으로 본 이미 낸 신고서(사진 신고서 등) — 입력으로 안 씀
     // [2026.10.15 1단계 ②] 분양가 내역표(분양 취득 — "소유권이전등기비용내역" 등): 분양가 줄의 금액들을 취득가액 후보로(어느 호실 값인지는 판단 — 정하지 않음).
     //  김금옥 사건: 취득 계약서가 없고 분양가 표 사진만 있어 취득가액을 못 정했는데, 그 사진이 "종류 미정"으로 안 쓰였다.
     var bym = /분\s*양\s*가([\s\S]{0,400}?)(?:부\s*가\s*세|과\s*표|합\s*계)/.exec(text);
@@ -25456,7 +25456,7 @@ function caseProcEvTypes_(label) {
 // [2026.10.16] 판독 실패가 아니라 늘 붙는 안내문 — "⚠ 확인필요" 판독 질문으로 세지 않는다(정답지 사건 25건에서 40건 가까이: 법무사 정산서 항목명 안내, 납세보증보험, 통장 사본 안내, 열람용 출력물, 유족 지출표·§8·§14 안내 등)
 var CASEPROC_ADVISORY_RE_ = /표\s*칸이\s*섞여\s*붙이지\s*않음|납세보증보험|통장\s*사본은\s*거래\s*줄과|열람용\s*출력물|유족이\s*정리한\s*지출표|채무\s*공제\s*\(§\s*14\)|간주상속재산\(상증법\s*§8\)\s*판단|§66⑭\s*적용\s*시기|사업소득에는\s*농업/;
 function caseProcParsed_(f, cache, canParse) {
-  const key = 'cpp21_' + f.id + '_' + f.modified; // cpp21: 안내문은 판독 경고에서 뺌(2026-10-16) // cpp20: 등기 지분 상속 피상속인(2026-10-16) // cpp19: 취득세 참고 경고(2026-10-16) // cpp18: 증여계약서 이름 형식 추가(2026-10-16) // cpp17: 간편계산 결과 제외(2026-10-16) // cpp16: 등기 개명·증여계약서 서명란(2026-10-16) // cpp15: 괄호 제목 분할협의서·쉼표 없는 영수증 금액(2026-10-16) // cpp14: 내용으로 본 이미 낸 신고서(out)(2026-10-15) // cpp13: 오피스텔·상업용 기준시가 표(2026-10-15) // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
+  const key = 'cpp22_' + f.id + '_' + f.modified; // cpp22: 증여·상속세 서식은 outGI(양도 사건에선 입력)(2026-10-16) // cpp21: 안내문은 판독 경고에서 뺌(2026-10-16) // cpp20: 등기 지분 상속 피상속인(2026-10-16) // cpp19: 취득세 참고 경고(2026-10-16) // cpp18: 증여계약서 이름 형식 추가(2026-10-16) // cpp17: 간편계산 결과 제외(2026-10-16) // cpp16: 등기 개명·증여계약서 서명란(2026-10-16) // cpp15: 괄호 제목 분할협의서·쉼표 없는 영수증 금액(2026-10-16) // cpp14: 내용으로 본 이미 낸 신고서(out)(2026-10-15) // cpp13: 오피스텔·상업용 기준시가 표(2026-10-15) // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
   const hit = cache.get(key);
   if (hit) { try { return JSON.parse(hit); } catch (e) {} }
   if (!canParse) return null;
@@ -25466,7 +25466,7 @@ function caseProcParsed_(f, cache, canParse) {
     if (TC_NO_NEW_OCR_ && !text) return null; // 새 글자인식을 멈춘 동안의 빈 글자를 "글자 없음"으로 기억하지 않는다
     if (!text || !String(text).trim()) s.nt = true; // 글자를 하나도 못 읽음(그림만·흐린 사진)
     if (text) {
-      if (caseProcIsOutputText_(text)) s.out = true; // 내용으로 본 이미 낸 신고서(사진 등)
+      const ok_ = caseProcOutputKind_(text); if (ok_ === 'own') s.out = true; else if (ok_ === 'gi') s.outGI = true; // 내용으로 본 이미 낸 신고서(사진 등) — 증여·상속세 서식은 양도 사건에선 입력(outGI)
       const p = docParseText_(text);
       s.t = p.type || ''; s.l = p.label || '';
       const realLines = String(p.md || '').split('\n').filter(function (x) { return !/^\s*_.*_\s*$/.test(x) && !/⚠\s*확인필요로\s*남겼/.test(x) && !/부·모 중 주민번호가 없는 칸/.test(x) && !CASEPROC_ADVISORY_RE_.test(x); }); // 안내 문구·부모 주민번호 빈칸 안내 제외
@@ -25512,8 +25512,9 @@ function caseProcEvidence_(c) {
   if (pending) return { ok: true, more: true, progress: { done: docs.length - pending, total: docs.length }, lines: ['서류 읽는 중 ' + (docs.length - pending) + '/' + docs.length + '(무료 글자인식 — 처음 읽는 서류는 한 건에 10~40초)'] };
   // [2026.10.15 1단계] 이름이 아니라 내용으로 이미 낸 신고서(사진으로 찍힌 신고서·계산명세서 등)를 입력에서 뺀다 — 경정·수정·불복 사건은 그것이 작업 재료라 빼지 않음
   if (!caseProcIsAmend_(c)) {
-    const outByText = docs.filter(function (f) { return f.p && f.p.out; });
-    if (outByText.length) { outByText.forEach(function (f) { outDocs.push(f); }); docs = docs.filter(function (f) { return !(f.p && f.p.out); }); }
+    const isOutP = function (p) { return !!(p && (p.out || (p.outGI && c.세목 !== 'transfer'))); };
+    const outByText = docs.filter(function (f) { return isOutP(f.p); });
+    if (outByText.length) { outByText.forEach(function (f) { outDocs.push(f); }); docs = docs.filter(function (f) { return !isOutP(f.p); }); }
   }
 
   const kinds = {};
@@ -26546,11 +26547,20 @@ function caseProcIsPriorReport_(name) {
   return /(종합검토서|신고보고서|검토서|검토내용|검토\s*자료|검토\s*보고서|자문보고서|경과지|작업진행|체크리스트|계산근거|추징\s*예상|예상\s*세액|해명\s*자료|(상속|증여|양도)세\s*계산|구비\s*서류)/.test(n) && !/의뢰서/.test(n);
 }
 // [2026.10.15 1단계] 글자 내용으로 본 "이미 낸 신고서·명세서" — 파일 이름이 KakaoTalk_….jpg처럼 아무 말도 없는 사진 신고서(박미영 사건 7장)를 잡는다
-function caseProcIsOutputText_(text) {
+// [2026.10.16] tax를 주면 그 세목 기준 — 양도 사건에서 증여세·상속세 신고서(증여·상속받은 부동산의 취득가액 근거, 시행령 §163⑨)는 이미 낸 결과물이 아니라 입력
+//  (이종식: "매매계약서, 증여세신고서.pdf" — 2012년 증여세 신고서·평가명세서가 취득가액 근거인데 신고서 내용 때문에 계약서까지 통째로 버릴 뻔했다)
+function caseProcIsOutputText_(text, tax) {
+  const k = caseProcOutputKind_(text);
+  return k === 'own' || (k === 'gi' && tax !== 'transfer');
+}
+// '' = 결과물 아님 · 'own' = 양도세 신고서·간편계산 등(어느 세목이든 결과물) · 'gi' = 증여세·상속세 신고 서식(양도 사건에선 입력)
+function caseProcOutputKind_(text) {
   const t = String(text || '').slice(0, 3000);
   // [2026.10.16] 홈택스 "양도소득세 간편계산 결과 조회" — 이전에 해 본 계산 결과(김금옥: 양도가액 3억4,500만원이 영수증처럼 경비 후보가 됐다)
-  if (/양\s*도\s*소\s*득\s*세\s*간\s*편\s*계\s*산/.test(t)) return true;
-  return /양도\s*소득\s*과세\s*표준\s*(예정\s*|확정\s*)?신고\s*및\s*(자진\s*)?납부\s*계산서|양도\s*소득\s*금액\s*계산\s*명세서|취득\s*가액\s*및\s*필요\s*경비\s*계산\s*상세\s*명세서|개인\s*지방\s*소득세\s*과세\s*표준\s*(예정\s*|확정\s*)?신고|(상속|증여)세\s*과세\s*표준\s*신고\s*및\s*자진\s*납부\s*계산서|공과금\s*[·ㆍ.]?\s*장례\s*비용\s*및\s*상속\s*공제\s*명세서|증여\s*재산\s*(및\s*)?평가\s*명세서|별지\s*제\s*84\s*호\s*서식|연부\s*연납\s*(허가\s*)?신청서|납세\s*담보\s*제공서|납세\s*보증서|상속인별\s*납부할\s*세액|(상속|증여|양도소득)세?\s*결정\s*(결의서|통지)/.test(t); // [2026.10.16] 연부연납·납세담보·결정통지 등 신고 뒤 절차 서류도
+  if (/양\s*도\s*소\s*득\s*세\s*간\s*편\s*계\s*산/.test(t)) return 'own';
+  if (/양도\s*소득\s*과세\s*표준\s*(예정\s*|확정\s*)?신고\s*및\s*(자진\s*)?납부\s*계산서|양도\s*소득\s*금액\s*계산\s*명세서|취득\s*가액\s*및\s*필요\s*경비\s*계산\s*상세\s*명세서|개인\s*지방\s*소득세\s*과세\s*표준\s*(예정\s*|확정\s*)?신고|별지\s*제\s*84\s*호\s*서식|양도\s*소득\s*세?\s*결정\s*(결의서|통지)/.test(t)) return 'own';
+  if (/(상속|증여)세\s*과세\s*표준\s*신고\s*및\s*자진\s*납부\s*계산서|공과금\s*[·ㆍ.]?\s*장례\s*비용\s*및\s*상속\s*공제\s*명세서|증여\s*재산\s*(및\s*)?평가\s*명세서|연부\s*연납\s*(허가\s*)?신청서|납세\s*담보\s*제공서|납세\s*보증서|상속인별\s*납부할\s*세액|(상속|증여)세?\s*결정\s*(결의서|통지)/.test(t)) return 'gi'; // [2026.10.16] 연부연납·납세담보·결정통지 등 신고 뒤 절차 서류도
+  return '';
 }
 // 경정청구·수정신고·불복 사건 — 이미 낸 신고서가 작업 재료(입력)다
 function caseProcIsAmend_(c) { return /경정|수정\s*신고|불복|심판|이의\s*신청|심사\s*청구/.test(String((c && c.업무유형) || '') + ' ' + String((c && c.사건명) || '')); }
@@ -26670,7 +26680,7 @@ function caseProcParseAll0_(c) {
   const out = [], started = Date.now();
   caseProcFiles_(c).filter(function (f) { return /pdf|^image\//.test(String(f.mimeType || '')) && !/^_/.test(f.name) && !caseProcIsOutputDoc_(f.name); }).slice(0, CASEPROC_DOC_MAX_).forEach(function (f) {
     if (Date.now() - started > 150000) return;
-    try { const t = tc_docText_(f); if (!t) return; if (!caseProcIsAmend_(c) && caseProcIsOutputText_(t)) return; const p = docParseText_(t); if (p && p.type && !(p.result && !Array.isArray(p.result) && p.result.사무소발행)) out.push({ f: f, p: p }); } catch (e) {}
+    try { const t = tc_docText_(f); if (!t) return; if (!caseProcIsAmend_(c) && caseProcIsOutputText_(t, c.세목)) return; const p = docParseText_(t); if (p && p.type && !(p.result && !Array.isArray(p.result) && p.result.사무소발행)) out.push({ f: f, p: p }); } catch (e) {}
   });
   return out;
 }
@@ -27629,7 +27639,7 @@ function caseProcLedger_(c, saved) {
       if (!p && Date.now() - started < 90000 && tcOcrStoreGet_('ocrtxt_' + f.id + '_' + f.modified) !== null) p = caseProcParsed_(f, cache, true);
       if (!p) { r.st = '대기'; r.why = '아직 글자인식 전 — 다시 처리하면 읽음'; return r; }
       if (p.office) { r.st = '제외'; r.why = '사무소 발행 영수증(수금 기록용)'; return r; }
-      if (p.out && !caseProcIsAmend_(c)) { r.st = '제외'; r.why = '이미 낸 신고서·명세서(내용으로 확인) — 입력으로 쓰지 않음, 양도코리아 폴더로 옮길 대상'; return r; }
+      if ((p.out || (p.outGI && c.세목 !== 'transfer')) && !caseProcIsAmend_(c)) { r.st = '제외'; r.why = '이미 낸 신고서·명세서(내용으로 확인) — 입력으로 쓰지 않음, 양도코리아 폴더로 옮길 대상'; return r; }
       if (p.err) { r.st = '못읽음'; r.why = '읽기 오류: ' + p.err; return r; }
       if (p.nt) { r.st = '못읽음'; r.why = '글자 없음(그림만·흐린 사진) — 선명한 PDF로 다시 넣어 주세요'; return r; }
       if (!p.t && memo.read.some(function (x) { return x.file === n && x.photo; })) { r.st = '읽음'; r.kind = '메모(고객이 적어 보낸 설명 사진)'; }
