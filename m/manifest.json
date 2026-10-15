@@ -4,7 +4,7 @@
   "short_name": "NETAX job",
   "description": "job 바로 열기 · 다른 앱에서 공유한 파일을 job(드라이브)으로 받기",
   "start_url": "/m/?launch=1",
-  "scope": "/m/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#0D1B3D",
   "theme_color": "#0D1B3D",
