@@ -170,7 +170,7 @@ function akTransferEngine_(c, digits) {
     const n = assets.length > 1 ? '물건' + (i + 1) + ' ' : '';
     if (!tp) missing.push(n + '양도가액'); if (!ap) missing.push(n + '취득가액'); if (!ad) missing.push(n + '취득일'); if (!td) missing.push(n + '양도일');
     const t = txs.filter(function (x) { return x.assetLocation && a.assetLocation && tcLocSame_(x.assetLocation, a.assetLocation); })[0] || (txs.length === 1 && assets.length === 1 ? txs[0] : null);
-    const exp = (t && t.acquisitionExpenses) || 0;
+    const exp = ((t && t.acquisitionExpenses) || 0) + ((t && t.transferExpensesOnly) || 0); // 취득 부대비용 + 자본적지출·양도비
     expAll += exp;
     inputs.push({ transferPrice: tp, acquisitionPrice: ap, acquisitionDate: ad, transferDate: td, necessaryExpenses: exp, assetType: /house|presale_right/.test(String(a.assetType || '')) ? a.assetType : 'other' });
   });

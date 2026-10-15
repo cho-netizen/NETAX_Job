@@ -24641,9 +24641,9 @@ function tc_ruleTransferFacts_(body) {
   var names = [cr.납세자, cr.고객명].map(function (x) { return String(x || '').replace(/\s+/g, ''); }).filter(function (x) { return x.length >= 2; });
   var files = [];
   client_listFilesRecursive_(DriveApp.getFolderById(folderId), 0, 120, files);
-  var rank = function (n) { return /(계약|신고필증|취득세|법무|등기|등본)/.test(n) ? 0 : 1; };
+  var rank = function (n) { return /(계약|신고필증|취득세|법무|등기|등본)/.test(n) ? 0 : /(공사|인테리어|중개|이체|영수증|비용)/.test(n) ? 1 : 2; };
   files.sort(function (a, b) { return rank(a.name) - rank(b.name); });
-  var contracts = [], reports = [], acqs = [], lawyers = [], regs = [], started = Date.now();
+  var contracts = [], reports = [], acqs = [], lawyers = [], regs = [], expDocs = [], started = Date.now();
   for (var i = 0; i < files.length && i < 40; i++) {
     if (Date.now() - started > 240000) break;
     var f = files[i];
@@ -24660,6 +24660,9 @@ function tc_ruleTransferFacts_(body) {
       if (d.type === 'contract') contracts.push({ file: f.name, r: d.r, role: tcRoleInText_(text, names) || tcRoleInFileName_(f.name) });
       if (d.type === 'dealreport') reports.push({ file: f.name, r: d.r });
     });
+    // 지급 증빙(자본적지출·양도비 후보) — 이체확인증은 한 장에 한 건일 때만(여러 건이면 어느 것이 공사비인지 모름)
+    if (p.type === 'banktx' && p.result && p.result.이체확인증 && p.result.거래.length === 1) { var g0 = p.result.거래[0]; expDocs.push({ file: f.name, amount: g0.금액, date: g0.날짜, memo: g0.적요 || '', payer: g0.보낸이 || '', head: String(text).slice(0, 300) }); }
+    if (/^(cashreceipt|cardreceipt|taxinvoice)$/.test(p.type) && p.result && p.result.합계 && !p.result.취소 && !p.result.사무소발행) expDocs.push({ file: f.name, amount: p.result.합계, date: String(p.result.거래일 || '').slice(0, 10), memo: p.result.상호 || '', payer: '', head: String(text).slice(0, 300) });
     if (p.type === 'acqtax') acqs.push({ file: f.name, r: p.result });
     if (p.type === 'lawyerfee') lawyers.push({ file: f.name, r: p.result });
     if (p.type === 'registry') regs.push({ file: f.name, r: p.result });
@@ -24780,6 +24783,33 @@ function tc_ruleTransferFacts_(body) {
     if (exp) { txs[0].acquisitionExpenses = exp; evidence.push('취득 부대비용 합계 ' + exp.toLocaleString('ko-KR') + '원: ' + parts.join(', ')); }
   }
   if (acqs.length + lawyers.length && !(txs.length === 1 && txs[0].acquisitionExpenses)) evidence.push('취득세·법무사 서류 ' + (acqs.length + lawyers.length) + '건은 어느 거래 것인지 규칙으로 확정 못 해 넣지 않음 — 직접 확인');
+  // [2026.10.15] 자본적지출·양도비(소득세법 §97①2·3호, 시행령§163③④) — 거래가 하나일 때만, 실제 지급 증빙(이체확인증·현금영수증·카드전표·세금계산서)만.
+  //  견적서는 지급 증빙이 아니라 넣지 않는다. 용도는 파일 이름·적요·본문 앞부분의 말로: 공사·인테리어·샷시·확장·보일러·방수 등 = 자본적지출
+  //  (도배·장판·페인트·청소·수리 = 수익적지출이라 제외, ⚠로 알림), 중개보수 = 양도일 앞뒤 90일이면 양도비, 취득일 앞뒤 90일이면 취득 부대비용.
+  //  자본적지출은 보유기간(취득일~양도일) 안의 지급만. 같은 날짜·금액은 한 번만(같은 증빙을 사진·PDF로 둘 다 둔 경우).
+  if (txs.length === 1 && expDocs.length) {
+    var tx0 = txs[0], seenE = {}, capSum = 0, trSum = 0, acqAdd = 0, capParts = [], trParts = [];
+    var days = function (a, b) { return a && b ? Math.abs(new Date(a) - new Date(b)) / 86400000 : 1e9; };
+    expDocs.forEach(function (e) {
+      if (/견\s*적/.test(e.file)) return;
+      var purpose = e.file + ' ' + e.memo + ' ' + e.head;
+      var k = e.date + '|' + e.amount;
+      if (!e.amount || !e.date || seenE[k]) return;
+      var label = e.file + ' ' + e.amount.toLocaleString('ko-KR') + '원(' + e.date + (e.payer && !tcNameIn_(e.payer, names) ? ', 지급인 ' + e.payer + ' — 납세자 본인 아님, 확인' : '') + ')';
+      if (/중개\s*(보수|수수료)|복비|부동산\s*수수료/.test(purpose)) {
+        if (days(e.date, tx0.transferDate) <= 90) { seenE[k] = 1; trSum += e.amount; trParts.push('양도 중개보수 ' + label); }
+        else if (days(e.date, tx0.acquisitionDate) <= 90 && tx0.acquisitionDate) { seenE[k] = 1; acqAdd += e.amount; capParts.push('취득 중개보수 ' + label); }
+        return;
+      }
+      if (/도배|장판|페인트|도색|청소|수리|보수\s*공사/.test(purpose) && !/확장|샷시|새시|보일러|방수|물막이|증축|리모델링/.test(purpose)) { evidence.push('⚠ 수익적지출로 보여 필요경비에서 뺌(§163③ — 자본적지출이면 넣으세요): ' + label); return; }
+      if (!/공사|인테리어|샷시|새시|창호|확장|보일러|발코니|방수|물막이|시공|리모델링|증축|개량/.test(purpose)) return;
+      if (tx0.acquisitionDate && e.date < tx0.acquisitionDate || tx0.transferDate && e.date > tx0.transferDate) return;
+      seenE[k] = 1; capSum += e.amount; capParts.push('자본적지출 ' + label);
+    });
+    if (acqAdd) { tx0.acquisitionExpenses = (tx0.acquisitionExpenses || 0) + acqAdd; }
+    if (capSum + trSum) tx0.transferExpensesOnly = capSum + trSum;
+    if (capParts.length + trParts.length) evidence.push('자본적지출·양도비 ' + (capSum + trSum + acqAdd).toLocaleString('ko-KR') + '원(지급 증빙 기준): ' + capParts.concat(trParts).join(', '));
+  }
   txs.forEach(function (t) { delete t._acqMatched; });
   if (body.debug) {
     var mk = function (s) { s = String(s || ''); return s ? s.slice(0, 1) + '…(' + s.length + ')' : ''; };
@@ -24958,7 +24988,7 @@ function caseProcEvTypes_(label) {
   return null;
 }
 function caseProcParsed_(f, cache, canParse) {
-  const key = 'cpp11_' + f.id + '_' + f.modified; // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
+  const key = 'cpp12_' + f.id + '_' + f.modified; // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
   const hit = cache.get(key);
   if (hit) { try { return JSON.parse(hit); } catch (e) {} }
   if (!canParse) return null;
@@ -25649,7 +25679,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
       const r = x.p.result || {};
       if (gifts.length && r.소재지 && !gifts.some(function (g) { return g.loc && tcLocSame_(g.loc, r.소재지); })) return;
       const base = c.기준일 ? new Date(c.기준일) : null, area = (gifts.filter(function (g) { return g.area; })[0] || {}).area;
-      if (!base) return;
+      if (!base || aprs.length) return; // 감정가액이 있으면 매매사례는 후보로도 내지 않는다(후보가 둘이 되면 확정된 감정가까지 질문으로 바뀜)
       const lo = new Date(base.getFullYear(), base.getMonth() - 6, base.getDate()), hi = new Date(base.getFullYear(), base.getMonth() + 3, base.getDate());
       const cs = (r.사례 || []).filter(function (q) { const d = q.계약일 ? new Date(q.계약일) : null; return q.금액 && !q.해제 && !q.월확인필요 && d && d >= lo && d <= hi && (!area || Math.abs(q.면적 - area) / area <= 0.05); });
       if (!cs.length) return;
@@ -28098,7 +28128,8 @@ function docAppraisalParse_(text) {
 // 같은 이체가 두 파일에 겹쳐 있으면(목록 장 + 낱장) 거래일시·금액으로 한 번만 센다 — 합산은 쓰는 쪽(caseProcCashGift_)에서 파일을 모아서.
 function docTransferConfirmParse_(t) {
   if (!/이\s*체\s*확\s*인\s*증|이\s*체\s*내\s*역\s*정\s*보/.test(t) || !/보\s*내\s*는\s*분/.test(t) || !/받\s*는\s*분/.test(t)) return null;
-  var re = /거\s*래\s*일\s*시[\s\S]{0,30}?(20\d{2})[.\-](\d{2})[.\-](\d{2})\s+(\d{1,2}:\d{2}(?::\d{2})?)/g, x, starts = [];
+  // [2026.10.15] 은행 앱 화면(이체금액 → 이체일시 → 보내는 분 순서)도 — "이체일시"를 거래 시작으로, 금액이 날짜 앞에 있으면 아래에서 앞쪽도 본다
+  var re = /(?:거\s*래|이\s*체)\s*일\s*시[\s\S]{0,30}?(20\d{2})[.\-](\d{2})[.\-](\d{2})\s+(\d{1,2}:\d{2}(?::\d{2})?)/g, x, starts = [];
   while ((x = re.exec(t))) starts.push({ at: x.index, d: x[1] + '-' + x[2] + '-' + x[3], tm: x[4] });
   if (!starts.length) return null;
   var r = { 종류: '이체확인증', 은행: '', 예금주: '', 계좌번호: '', 거래: [], 경고: [], 이체확인증: true };
@@ -28106,7 +28137,7 @@ function docTransferConfirmParse_(t) {
   starts.forEach(function (st, i) {
     var seg = t.slice(st.at, i + 1 < starts.length ? starts[i + 1].at : Math.min(t.length, st.at + 900));
     var from = /보\s*내\s*는\s*분\s*\n*\s*([가-힣]{2,5})/.exec(seg), to = /받\s*는\s*분\s*\n*\s*([가-힣]{2,5})/.exec(seg);
-    var am = /이\s*체\s*금\s*액\s*\n*\s*(\d{1,3}(?:,\d{3})+)/.exec(seg) || /(\d{1,3}(?:,\d{3})+)/.exec(seg);
+    var am = /이\s*체\s*금\s*액\s*\n*\s*(\d{1,3}(?:,\d{3})+)/.exec(seg) || (starts.length === 1 && /이\s*체\s*금\s*액[^\d]{0,20}?(\d{1,3}(?:,\d{3})+)/.exec(t.slice(Math.max(0, st.at - 200), st.at))) || /(\d{1,3}(?:,\d{3})+)/.exec(seg);
     if (!am || !to) return;
     var amt = Number(am[1].replace(/,/g, '')), k = st.d + ' ' + st.tm + ' ' + amt;
     if (seen[k]) return; seen[k] = true;
