@@ -355,21 +355,31 @@ function answerKeyRun_(body) {
     const ids = body.caseId ? [String(body.caseId)] : akCasesWithKey_();
     st = { only: body.caseId || '', queue: ids, results: [], startedAt: new Date().toISOString(), ver: AK_CODE_VER_ };
   }
+  // [2026.10.16] 한 번에 하나만 — 화면이 연결 끊김으로 다시 부를 때 앞선 실행이 아직 돌고 있으면 겹쳐 같은 사건을 처리했다
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) return { ok: true, more: true, busy: true, done: st.results.length, total: st.results.length + st.queue.length };
+  try {
   const started = Date.now();
   while (st.queue.length && Date.now() - started < 60000) {
     const q = String(st.queue[0]), id = q.split('|')[0], keyName = q.split('|')[1] || AK_KEY_NAME_;
+    // [2026.10.16] 서버 실행 한도(6분)에 걸려 강제 종료되면 진행이 저장되지 않아 같은 사건을 밤새 반복했다 —
+    //  시작 전에 시도 횟수를 저장하고, 진행 없이 3번 끊기면 그 사건은 이유를 밝히고 건너뛴다
+    st.tries = st.tries || {}; st.tries[q] = (st.tries[q] || 0) + 1;
+    props.setProperty(AK_STATE_PROP_, JSON.stringify(st));
     const c = akReadCase_(id);
     const k = c ? akLoadKey_(c, keyName) : null;
     let r;
-    if (!c) r = { caseId: id, error: '사건 없음' };
+    if (st.tries[q] > 3) r = { caseId: id, 사건명: c && c.사건명 || '', error: '서버 실행 시간 한도(6분)를 3번 넘겨 이 사건은 건너뜀 — 서류가 너무 많거나 한 서류 읽기가 오래 걸림(사건처리 화면에서 따로 처리하세요)' };
+    else if (!c) r = { caseId: id, error: '사건 없음' };
     else if (!k || !k.key) r = { caseId: id, 사건명: c.사건명 || '', error: (k && k.error) || '이 사건 폴더에 ' + keyName + '이 없습니다.' };
     else if (!Object.keys(k.key).some(function (f) { return !/^(상태|출처|세목|근거|메모|초안판|오류|납세자)$/.test(f); })) r = { caseId: id, 사건명: c.사건명 || '', skipped: true, error: '정답지에 대조할 숫자가 없음' + (k.key.오류 ? ' — ' + k.key.오류 : '') };
     else { try { r = akRunCase_(id, k.key); } catch (e) { r = { caseId: id, 사건명: c.사건명 || '', error: '점검 중 오류: ' + (e && e.message || e) }; } }
     if (r && keyName !== AK_KEY_NAME_) { r.keyName = keyName; r.수증자 = r.수증자 || k && k.key && k.key.납세자; }
-    if (r.more) { props.setProperty(AK_STATE_PROP_, JSON.stringify(st)); return { ok: true, more: true, caseId: id, progress: r.progress, done: st.results.length, total: st.results.length + st.queue.length }; }
+    if (r.more) { st.tries[q] = 0; props.setProperty(AK_STATE_PROP_, JSON.stringify(st)); return { ok: true, more: true, caseId: id, progress: r.progress, done: st.results.length, total: st.results.length + st.queue.length }; } // 진행이 있었으니 시도 횟수는 처음부터
     st.results.push(r); st.queue.shift();
   }
   if (st.queue.length) { props.setProperty(AK_STATE_PROP_, JSON.stringify(st)); return { ok: true, more: true, done: st.results.length, total: st.results.length + st.queue.length }; }
+  } finally { lock.releaseLock(); }
   props.deleteProperty(AK_STATE_PROP_);
   const result = { at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), ver: AK_CODE_VER_, cases: st.results, pass: st.results.filter(function (r) { return r.pass; }).length, total: st.results.filter(function (r) { return !r.skipped; }).length, skipped: st.results.filter(function (r) { return r.skipped; }).length };
   // [2026.10.15] 실사용 가능 n/m — 개발용(규칙을 맞춰 본) 사건과 처음 보는 사건을 나눠 센다
