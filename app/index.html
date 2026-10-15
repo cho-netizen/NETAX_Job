@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 21:02 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 21:18 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -47389,6 +47389,11 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         var rt = rest.replace(/\s+/g, '');
         var full = hits.filter(function(x){ var ws = String((x.ask || {}).label || '').split(/\s+/).filter(function(w){ return w.length >= 2; }); return ws.length && ws.every(function(w){ return rt.indexOf(w) !== -1; }); });
         if (full.length === 1) hits = full;
+      }
+      // [2026.10.16] "증여자 홍길동 수증자 홍철수 2024.3.5 현금 5천만원"처럼 증여자·수증자를 함께 말하면 증여 내용 질문(한 번에 정하는 질문)으로
+      if (hits.length > 1 && /증여자/.test(rest) && /수증자/.test(rest)){
+        var gd = hits.filter(function(x){ return (x.ask || {}).mode === 'giftdeal'; });
+        if (gd.length === 1) hits = gd;
       }
       // [2026.10.16] 값이 날짜 모양("취득일 2015-07-07")이면 날짜 칸·기준일 질문을 우선 — 「취득일 기준환율」로 가지 않게
       if (hits.length > 1 && /(19|20)\d{2}\s*[-.\/년]\s*\d{1,2}\s*[-.\/월]\s*\d{1,2}/.test(rest)){
