@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 07:50 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 08:45 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -44443,6 +44443,11 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   .nxai-cp-kind.k-missing, .nxai-cp-kind.k-check{ background:var(--danger-bg); color:var(--danger); }
   .nxai-cp-kind.k-judge{ background:#efe9fb; color:#5b3fa8; }
   html.nx-dark .nxai-cp-kind.k-judge{ background:#2a2240; color:#c9b6f5; }
+  .nxai-cp-q{ font-size:11px; font-weight:700; color:var(--primary,#2563eb); cursor:help; }
+  .nxai-cp-q:empty{ display:none; }
+  .nxai-cp-ledger{ margin-top:6px; font-size:12px; }
+  .nxai-cp-ledger summary{ cursor:pointer; padding:3px 0; }
+  .nxai-cp-ledger table{ max-height:none; }
   .nxai-cp-detail{ font-size:11.5px; color:var(--sub); white-space:pre-wrap; margin-top:3px; }
   .nxai-cp-btns{ display:flex; flex-wrap:wrap; gap:5px; margin-top:5px; align-items:center; font-size:12px; }
   .nxai-cp-foot{ border-top:1px solid var(--line); padding-top:6px; margin-top:4px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
@@ -46435,10 +46440,26 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var box = st.steps.status.querySelector('.nxai-cp-lines');
       var rows = r.rows || [];
       box.innerHTML = '<table class="nxai-cp-table"><tr><th>구분</th><th>항목</th><th></th><th>값·출처</th></tr>' + rows.map(function(x){ return '<tr><td>' + nxAiEsc_(x[0]) + '</td><td>' + nxAiEsc_(x[1]) + '</td><td>' + nxAiEsc_(x[2]) + '</td><td>' + nxAiEsc_(x[3]) + '</td></tr>'; }).join('') + '</table>'
-        + '<div class="nxai-cp-line">✅ 반영됨 · △ 추정·일부 · ⬜ 비어 있음 · ⚠ 확인 필요</div>';
+        + '<div class="nxai-cp-line">✅ 반영됨 · △ 추정·일부 · ⬜ 비어 있음 · ⚠ 확인 필요</div>' + nxAiCaseProcLedgerHtml_(r.ledger);
       var gaps = rows.filter(function(x){ return x[2] !== '✅'; }).length;
       st.setStep('status', gaps ? '⚠' : '✅', gaps ? '아직 완전히 반영되지 않은 항목 ' + gaps + '개' : '모두 반영됨');
     }).catch(function(err){ st.setStep('status', '❌', '현황표를 만들지 못함: ' + (err && err.message || err)); });
+  }
+  // [2026.10.15 1단계 ①②] 사실장부 — 폴더 파일마다 한 줄(읽음·일부·못 읽음·제외·대기 + 이유 + 쓰인 곳). 손볼 줄(못 읽음·대기·안 쓰임)을 위로.
+  function nxAiCaseProcLedgerHtml_(lg){
+    if (!lg) return '';
+    if (lg.error) return '<div class="nxai-cp-line nxai-warn">사실장부를 만들지 못함: ' + nxAiEsc_(lg.error) + '</div>';
+    var s = lg.sum || {}, rows = lg.rows || [];
+    var ico = { '읽음': '✅', '일부': '△', '못읽음': '⚠', '대기': '⏳', '제외': '—' };
+    var need = function(r){ return r.st === '못읽음' || r.st === '대기' ? 0 : ((r.st === '읽음' || r.st === '일부') && !r.use ? 1 : (r.st === '일부' ? 2 : (r.st === '읽음' ? 3 : 4))); };
+    var sorted = rows.slice().sort(function(a, b){ return need(a) - need(b); });
+    return '<details class="nxai-cp-ledger"' + (s.silent || s.못읽음 || s.대기 ? ' open' : '') + '><summary>📒 사실장부 — 폴더 파일 ' + s.files + '개 = 장부 ' + s.rows + '줄'
+      + ' · 읽음 ' + s.읽음 + ' · 일부 ' + s.일부 + ' · 못 읽음 ' + s.못읽음 + ' · 대기 ' + s.대기 + ' · 제외 ' + s.제외 + (s.unused ? ' · <b>처리 기록에 안 나온 서류 ' + s.unused + '</b>' : '') + (s.truncated ? ' · ⚠ 파일이 너무 많아 일부 못 봄' : '') + '</summary>'
+      + '<table class="nxai-cp-table"><tr><th></th><th>파일</th><th>종류·이유</th><th>쓰인 곳</th></tr>'
+      + sorted.map(function(r){
+        var unused = (r.st === '읽음' || r.st === '일부') && !r.use;
+        return '<tr><td>' + (ico[r.st] || '?') + '</td><td>' + nxAiEsc_((r.dir ? r.dir + '/' : '') + r.n) + '</td><td>' + nxAiEsc_([r.kind, r.why].filter(Boolean).join(' — ') || r.st) + '</td><td>' + (unused ? '<span class="nxai-warn">안 나옴</span>' : nxAiEsc_(r.use || '')) + '</td></tr>';
+      }).join('') + '</table></details>';
   }
   // 세액인쇄 필수 서식을 PDF로 사건 폴더(보고서_내부)에 저장 — 세액인쇄 화면의 서식(PRINT_REGISTRY_)을 그대로 써서
   function nxAiCaseProcSavePdf_(st, tab){
@@ -46520,7 +46541,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (parked) held++; else open++;
       var el = document.createElement('div');
       el.className = 'nxai-cp-item' + (parked ? ' held' : '');
-      el.innerHTML = '<div><span class="nxai-cp-kind k-' + nxAiEsc_(it.kind) + '">' + nxAiEsc_(NXAI_CP_KIND_[it.kind] || it.kind) + '</span> ' + nxAiEsc_(it.text) + '</div>'
+      it._el = el;
+      el.innerHTML = '<div><span class="nxai-cp-q" title="입력창에 이 번호로 답할 수 있습니다 — 예) Q2 5억 매매계약서 / Q2 보류"></span> <span class="nxai-cp-kind k-' + nxAiEsc_(it.kind) + '">' + nxAiEsc_(NXAI_CP_KIND_[it.kind] || it.kind) + '</span> ' + nxAiEsc_(it.text) + '</div>'
         + (it.detail ? '<div class="nxai-cp-detail">' + nxAiEsc_(it.detail) + '</div>' : '') + '<div class="nxai-cp-btns"></div><div class="nxai-cp-ask" hidden></div>';
       var btns = el.querySelector('.nxai-cp-btns');
       var add = function(label, fn, primary){ var b = document.createElement('button'); b.type = 'button'; b.className = 'nxai-btn' + (primary ? ' primary' : ''); b.textContent = label; b.addEventListener('click', fn); btns.appendChild(b); return b; };
@@ -46537,6 +46559,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       }
       box.appendChild(el);
     });
+    nxAiCaseProcRenumber_(st); // [2026.10.15 1단계 ③] 질문 번호(Q1…) — 입력창에 말로 답할 때 부르는 번호
     var ico = row.querySelector('.nxai-cp-ico');
     if (ico.textContent !== '❌' && ico.textContent !== '⏭' && key !== 'save' && !(key === 'calc' && st.calcBusy)){
       ico.textContent = open ? '⚠' : '✅';
@@ -46565,7 +46588,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var live = st.items.filter(function(it){ var d = nxAiCaseProcDec_(st, it); return d !== '무시' && d !== 'done'; });
     var held = live.filter(function(it){ return /^(보류|예정)$/.test(nxAiCaseProcDec_(st, it) || ''); });
     var open = live.length - held.length;
-    foot.innerHTML = '<div class="nxai-cp-total">' + (open ? '물어볼 것 <b>' + open + '건</b>' : '물어볼 것 없음 ✅') + (held.length ? ' · 보류·받을 예정 ' + held.length + '건(검토서에 반영)' : '') + ' — [확인]으로 값을 고르면 반영하고 이어서 다시 계산합니다.</div>';
+    foot.innerHTML = '<div class="nxai-cp-total">' + (open ? '물어볼 것 <b>' + open + '건</b>' : '물어볼 것 없음 ✅') + (held.length ? ' · 보류·받을 예정 ' + held.length + '건(검토서에 반영)' : '') + ' — [확인]으로 값을 고르면 반영하고 이어서 다시 계산합니다.'
+      + (open ? '<br>💬 아래 입력창에 말로 답해도 됩니다: <b>"Q2 5억 2천만원 매매계약서"</b>, <b>"Q3 2024.3.5"</b>, <b>"Q4 보류"</b>, "남은 질문 보여줘"' : '') + '</div>';
     var again = document.createElement('button');
     again.type = 'button'; again.className = 'nxai-btn'; again.textContent = '🔄 처음부터 다시 처리';
     again.addEventListener('click', function(){ nxAiCaseProcRun_(st.bubble, st.caseId); });
@@ -46577,6 +46601,213 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         + (live.length ? '\n' + live.slice(0, 25).map(function(it){ var d = nxAiCaseProcDec_(st, it); return '- ' + (d ? '(' + d + ') ' : '') + (NXAI_CP_KIND_[it.kind] || '') + ' ' + it.text; }).join('\n') : '');
       nxAiScheduleSave_();
     }
+  }
+  // ============================================================
+  // [2026.10.15 1단계 ③ 소통] 사이드바 입력창에 말로 답하기 — 토큰 0(글자 규칙). 세무사님: "사이드바를 소통도 못하게 해 놓았다."
+  //  열린 질문마다 번호(Q1, Q2…)를 붙이고, 입력창에 "Q2 5억 매매계약서", "양도가액 5억 2천만원", "Q3 보류", "증여일 2024.3.5"처럼
+  //  말하면 어느 질문인지·값·근거 파일·보류/무시를 알아듣고 [확인]과 똑같이 반영한다(반영 → 다시 처리·계산).
+  //  어느 질문인지 모르겠으면 AI로 넘기지 않고 후보 질문을 번호로 되묻는다. 질문을 부르지 않은 말은 평소대로(바로 처리·AI) 간다.
+  // ============================================================
+  var NXAI_CP_BASE_LABEL_ = { transfer: '양도일', gift: '증여일', inheritance: '상속개시일' };
+  // [질문 이름(라벨·문구)에 맞는 규칙, 세무사님이 그 질문을 부를 때 쓰는 말]
+  var NXAI_CP_SYN_ = [
+    [/양도가액/, /양도\s*가(액)?|양도\s*금액|매도\s*(가|금액|대금)|판\s*값|판\s*금액/],
+    [/취득가액/, /취득\s*가(액)?|취득\s*금액|매수\s*(가|금액|대금)|매입\s*(가|금액)|산\s*값/],
+    [/취득일/, /취득\s*일|매수\s*일|산\s*날/],
+    [/양도일/, /양도\s*일|매도\s*일|잔금\s*일|판\s*날/],
+    [/소재지/, /소재지|주소|물건지/],
+    [/증여일/, /증여\s*일/], [/상속개시일/, /상속\s*개시\s*일|사망\s*일/],
+    [/증여재산가액|증여\s*내용/, /증여\s*(재산)?\s*가액|증여\s*금액|증여\s*재산/],
+    [/수증자|증여\s*내용/, /수증자|받은\s*사람/], [/증여자|증여\s*내용/, /증여자|준\s*사람/], [/관계/, /관계(?!\s*증명)/],
+    [/필요경비/, /필요\s*경비|경비/], [/사건분류/, /사건\s*분류|특례|비과세|중과|감면/],
+    [/납세자/, /납세자/], [/법정일/, /법정\s*일|신고\s*기한|처리\s*기한/],
+    [/양도인/, /양도인|매도인/], [/피상속인/, /피상속인/], [/상속인\s*수/, /상속인\s*수|상속인\s*\d+\s*명/], [/대표\s*상속인/, /대표\s*상속인/]
+  ];
+  function nxAiCaseProcName_(it, tax){
+    var a = it.ask || {};
+    return String((a.label || '') + ' ' + (a.mode === 'base' ? (NXAI_CP_BASE_LABEL_[tax] || '기준일') + ' ' : '') + (it.text || ''));
+  }
+  // 살아 있는 질문(무시·확인완료 제외, 보류 포함) — 단계 순서대로, 같은 단계 안에서는 나온 순서대로
+  function nxAiCaseProcLive_(st){
+    var order = NXAI_CP_STEPS_.map(function(s){ return s.key; });
+    var live = st.items.filter(function(it){ var d = nxAiCaseProcDec_(st, it); return d !== '무시' && d !== 'done'; });
+    return live.map(function(it, i){ return { it: it, i: i }; }).sort(function(a, b){ return (order.indexOf(a.it.step) - order.indexOf(b.it.step)) || (a.i - b.i); }).map(function(x){ return x.it; });
+  }
+  function nxAiCaseProcRenumber_(st){
+    nxAiCaseProcLive_(st).forEach(function(it, i){
+      it.q = i + 1;
+      var b = it._el && it._el.querySelector('.nxai-cp-q');
+      if (b) b.textContent = 'Q' + it.q;
+    });
+  }
+  // 한글 금액 → 원: "5억", "5.2억", "5억 2천", "5억2천만원", "5억 2500만", "3500만원", "3천만", "520,000,000"
+  function nxAiKrMoney_(s){
+    s = String(s || '').replace(/,/g, '').replace(/\s+/g, '');
+    var m = /(\d+(?:\.\d+)?)억(?:(\d+(?:\.\d+)?)(천만|천|백만|백|만)?)?/.exec(s);
+    if (m){
+      var v = Number(m[1]) * 1e8;
+      if (m[2]){ var u = { '천만': 1e7, '천': 1e7, '백만': 1e6, '백': 1e6, '만': 1e4 }[m[3] || '']; if (!u) u = Number(m[2]) < 10 ? 1e7 : 1e4; v += Number(m[2]) * u; }
+      return Math.round(v);
+    }
+    m = /(\d+(?:\.\d+)?)(천만|백만|만)원?/.exec(s); if (m) return Math.round(Number(m[1]) * { '천만': 1e7, '백만': 1e6, '만': 1e4 }[m[2]]);
+    m = /(\d+(?:\.\d+)?)천원/.exec(s); if (m) return Math.round(Number(m[1]) * 1e3);
+    m = /\d{4,}/.exec(s); if (m) return Number(m[0]);
+    return 0;
+  }
+  // 날짜 → yyyy-mm-dd: "2024.3.5", "2024-03-05", "2024년 3월 5일", "24.3.5"
+  function nxAiKrDate_(s){
+    var m = /((?:19|20)\d{2}|\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})(?!\d)/.exec(String(s || ''));
+    if (!m) return '';
+    var y = m[1];
+    if (y.length === 2){ var yy = new Date().getFullYear() % 100; y = (Number(y) > yy ? '19' : '20') + y; }
+    var mo = Number(m[2]), d = Number(m[3]);
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return '';
+    return y + '-' + ('0' + mo).slice(-2) + '-' + ('0' + d).slice(-2);
+  }
+  // 말 속의 근거 파일 — "근거 매매계약서", "계약서로", 파일 이름 일부. 가장 길게 맞는 말로 고른다.
+  function nxAiCaseProcSrc_(body, files){
+    var norm = function(s){ return String(s || '').replace(/\s+/g, '').toLowerCase(); };
+    var words = String(body || '').split(/[\s,·]+/).filter(String);
+    var toks = words.concat(words.slice(1).map(function(w, i){ return words[i] + ' ' + w; })); // "취득 계약서"처럼 두 낱말로 된 이름도
+    var mk = /(?:근거|증빙|출처)\s*(?:는|은|:|=)?\s*(\S+(?:\s\S+)?)/.exec(body || '');
+    if (mk) toks = [mk[1], mk[1].split(/\s/)[0]].concat(toks);
+    var best = null;
+    toks.forEach(function(tk){
+      var k = norm(tk).replace(/(입니다|이다|이고|이며|에서|으로|로|에|파일|참고|임)$/, '');
+      if (k.length < 2 || /^[\d.,\-/억천백만원년월일번q]+$/.test(k) || /^(근거|증빙|출처|보류|무시|물건\d*)$/.test(k)) return;
+      var fs = (files || []).filter(function(f){ return norm(f.name).indexOf(k) !== -1; });
+      if (fs.length && (!best || k.length > best.k.length)) best = { k: k, tk: tk, files: fs };
+    });
+    return best;
+  }
+  // 말 하나를 풀이한다(화면을 건드리지 않는 순수 함수 — 시험하기 쉽게). live = 번호(q)가 붙은 질문들.
+  //  돌려줌: { matched:false } = 질문을 부르지 않은 말 / { ambiguous:[질문…] } / { it, act:'apply'|'decide'|'button'|'need', target, value, src, label, decide, note, msg }
+  function nxAiCaseProcParseReply_(text, live, files, tax){
+    var t = String(text || '').trim();
+    if (!t || !live.length) return { matched: false };
+    var it = null, rest = t;
+    var qm = /(?:^|[^A-Za-z가-힣])(?:Q|q|질문)\s*(\d{1,2})(?!\d)/.exec(t) || /^\s*(\d{1,2})\s*번(?=\s|$|[은는:,])/.exec(t);
+    if (qm){
+      it = live.filter(function(x){ return x.q === Number(qm[1]); })[0];
+      if (!it) return { matched: true, msg: 'Q' + qm[1] + '번 질문이 없습니다 — 지금 질문은 Q1~Q' + live.length + '입니다.' };
+      rest = t.replace(qm[0], ' ');
+    }
+    // 번호 없이 묻는 말("양도가액이 얼마야?", "사건분류 왜 이래")은 답이 아니라 질문 — 평소대로(바로 처리·AI)
+    if (!it && /[?？]|얼마|뭐야|무엇|왜|어떻게|설명|알려|맞나|인가요|인지|뭐지|검토/.test(t)) return { matched: false };
+    var src = nxAiCaseProcSrc_(rest, files);
+    var noSrc = src ? rest.replace(src.tk, ' ') : rest;
+    var synHit = null;
+    if (!it){
+      var find = function(txt){
+        var hits = [];
+        NXAI_CP_SYN_.forEach(function(s){ var mm = s[1].exec(txt); if (!mm) return; live.forEach(function(x){ if (s[0].test(nxAiCaseProcName_(x, tax)) && hits.indexOf(x) === -1){ hits.push(x); if (!synHit) synHit = mm[0]; } }); });
+        return hits;
+      };
+      var hits = find(noSrc);
+      if (!hits.length && src) hits = find(rest);
+      var mo = /물건\s*(\d+)/.exec(rest);
+      if (mo && hits.length > 1){ var h2 = hits.filter(function(x){ return new RegExp('물건\\s*' + mo[1] + '(?!\\d)').test(nxAiCaseProcName_(x, tax)); }); if (h2.length) hits = h2; }
+      if (hits.length > 1) return { matched: true, ambiguous: hits };
+      it = hits[0] || null;
+      if (!it) return { matched: false };
+    }
+    var a = it.ask || {}, mode = a.mode || '';
+    var body = (synHit ? noSrc.replace(synHit, ' ') : noSrc).replace(/물건\s*\d+/g, ' ');
+    var decide = /(보류|나중에)/.test(body) ? '보류' : (/(무시|해당\s*없|필요\s*없|빼\s*(줘|자|라)|제외)/.test(body) ? '무시' : '');
+    var srcTxt = '세무사님 답(사이드바)' + (src ? ' — 근거: ' + (src.files.length === 1 ? src.files[0].name : src.tk + '(파일 ' + src.files.length + '개)') : '');
+    var nth = /(\d)\s*번\s*(후보|째|선택)?|(첫|두|세|네)\s*번\s*째|후보\s*(\d)/.exec(body);
+    var nthN = nth ? (nth[1] ? Number(nth[1]) : nth[4] ? Number(nth[4]) : ({ 첫: 1, 두: 2, 세: 3, 네: 4 })[nth[3]]) : 0;
+    var label = a.label || (mode === 'base' ? (NXAI_CP_BASE_LABEL_[tax] || '기준일') : String(it.text || '').slice(0, 30));
+    var out = { matched: true, it: it, label: label, src: srcTxt };
+    var input = mode === 'base' ? 'date' : (a.input || 'text');
+    var clean = function(s){ return String(s || '').replace(/(?:Q|q|질문)\s*\d+/g, ' ').replace(/(?:근거|증빙|출처)\s*(?:는|은|:|=)?/g, ' ').replace(/^[\s:：은는이가을를=]+/, '').replace(/\s*(입니다|이에요|예요|이다|이야|야|요|으로|로)?\s*(해\s*(줘|주세요)|반영(해\s*줘)?|넣어\s*(줘|주세요)|하자|맞(아|음|습니다))?[.!\s]*$/, '').replace(/\s+/g, ' ').trim(); };
+    var pickVal = function(){
+      if (input === 'money'){ var v = nxAiKrMoney_(body.replace(/((?:19|20)\d{2})\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}/g, ' ')); return v ? String(v) : ''; }
+      if (input === 'number'){ var n = /(\d+)\s*(명|개|건)?/.exec(body); return n ? n[1] : ''; }
+      if (input === 'date') return nxAiKrDate_(body);
+      if (input === 'select'){ var nb = body.replace(/\s+/g, ''); var o = (a.options || []).filter(function(x){ var k = String(x).replace(/\s+/g, '').replace(/\(.*$/, ''); return k && nb.indexOf(k) !== -1; }); return o.length === 1 ? o[0] : (nthN && a.options && a.options[nthN - 1]) || ''; }
+      return clean(body);
+    };
+    if (mode === 'input' || mode === 'choose' || mode === 'base'){
+      var cands = a.cands || [];
+      if (nthN && cands[nthN - 1] && !(input === 'money' && nxAiKrMoney_(body) >= 10000)) return Object.assign(out, { act: 'apply', target: mode === 'base' ? 'base' : a.target, value: String(cands[nthN - 1].v), src: cands[nthN - 1].src || srcTxt, shown: cands[nthN - 1].v });
+      var v = pickVal();
+      if (!v) return decide ? Object.assign(out, { act: 'decide', decide: decide }) : Object.assign(out, { act: 'need', msg: 'Q' + it.q + ' 「' + label + '」의 값을 알아듣지 못했습니다 — ' + ({ money: '예: "Q' + it.q + ' 5억 2천만원 매매계약서"', date: '예: "Q' + it.q + ' 2024.3.5 계약서"', number: '예: "Q' + it.q + ' 3명"', select: '예: "Q' + it.q + ' ' + ((a.options || [])[0] || '') + '"' }[input] || '예: "Q' + it.q + ' 홍길동"') });
+      var same = cands.filter(function(c){ return String(c.v) === v; })[0];
+      return Object.assign(out, { act: 'apply', target: mode === 'base' ? 'base' : a.target, value: v, src: same && !src ? (same.src || srcTxt) : srcTxt, shown: v });
+    }
+    if (mode === 'options'){
+      var nb2 = body.replace(/\s+/g, '');
+      var opts = a.options || [];
+      var op = nthN ? opts[nthN - 1] : null;
+      if (!op){ var oo = opts.filter(function(o){ var k = String(o.label || '').replace(/\s+/g, '').replace(/\(.*$/, '').replace(/—.*$/, ''); return k.length >= 2 && nb2.indexOf(k) !== -1; }); if (oo.length === 1) op = oo[0]; }
+      if (!op) return decide ? Object.assign(out, { act: 'decide', decide: decide }) : Object.assign(out, { act: 'need', msg: 'Q' + it.q + '는 고르는 질문입니다 — ' + opts.map(function(o, i){ return (i + 1) + '번 ' + o.label; }).join(' / ') + ' 중에서 "Q' + it.q + ' 2번"처럼 말씀해 주세요.' });
+      if (op.mode === 'base') return Object.assign(out, { act: 'button', msg: '이 질문은 날짜를 다시 고르는 것이라 [확인]을 눌러 주세요.' });
+      if (op.decide) return Object.assign(out, { act: 'decide', decide: op.decide, note: op.note || op.label, shown: op.label });
+      return Object.assign(out, { act: 'apply', target: a.target, value: op.value, src: '세무사님 선택(사이드바)', shown: op.label });
+    }
+    if (mode === 'giftdeal'){
+      var g = {}, gb = ' ' + body + ' ';
+      var nm = function(re){ var m = re.exec(gb); return m ? m[1] : ''; };
+      g.donor = nm(/(?:증여자|준\s*사람)\s*[:은는이가]?\s*([가-힣]{2,5})/); g.donee = nm(/(?:수증자|받은\s*사람)\s*[:은는이가]?\s*([가-힣]{2,5})/);
+      var ft = /([가-힣]{2,5})\s*(?:→|->|에서|이|가)\s*([가-힣]{2,5})\s*(?:에게|한테)/.exec(gb); if (ft){ g.donor = g.donor || ft[1]; g.donee = g.donee || ft[2]; }
+      g.date = nxAiKrDate_(gb); g.kind = nm(/(현금|예금|주식|상장주식|비상장주식|아파트|주택|토지|건물|부동산|채권)/);
+      var am = nxAiKrMoney_(gb.replace(/((?:19|20)\d{2})\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}/g, ' ')); g.amount = am ? String(am) : '';
+      var miss = [['donor', '증여자'], ['donee', '수증자'], ['date', '증여일'], ['kind', '증여대상'], ['amount', '금액']].filter(function(x){ return !g[x[0]]; }).map(function(x){ return x[1]; });
+      if (miss.length) return decide ? Object.assign(out, { act: 'decide', decide: decide }) : Object.assign(out, { act: 'need', msg: '증여 내용은 다섯 가지를 함께 말씀해 주세요 — 빠진 것: ' + miss.join('·') + '. 예: "Q' + it.q + ' 증여자 홍길동 수증자 홍철수 2024.3.5 현금 5천만원"' });
+      return Object.assign(out, { act: 'apply', target: 'giftdeal', value: JSON.stringify(g), src: srcTxt, shown: g.donor + ' → ' + g.donee + ' · ' + g.date + ' · ' + g.kind + ' ' + Number(g.amount).toLocaleString('ko-KR') + '원' });
+    }
+    if (mode === 'note' && /(확인|알았|봤)/.test(body)) return Object.assign(out, { act: 'decide', decide: 'done', note: '확인함(사이드바)' });
+    if (decide) return Object.assign(out, { act: 'decide', decide: decide });
+    return Object.assign(out, { act: 'button', msg: 'Q' + it.q + '는 목록에서 고르는 질문이라 말로는 보류·무시만 됩니다 — [확인]을 눌러 주세요.' });
+  }
+  // 지금 대화에서 답을 받을 사건처리(같은 사건, 화면에 남아 있는 것 중 마지막)
+  function nxAiCaseProcForReply_(){
+    var id = nxAiConv.caseId;
+    var c = NXAI_CP_ACTIVE_.filter(function(st){ return st.bubble && document.body.contains(st.bubble) && st.case && (!id || st.caseId === id); });
+    return c[c.length - 1] || null;
+  }
+  function nxAiCaseProcReply_(st, text){
+    var tax = st.case && st.case.세목;
+    nxAiCaseProcRenumber_(st);
+    var live = nxAiCaseProcLive_(st);
+    var listQ = /(질문|물어\s*볼\s*것|확인\s*할\s*것).{0,8}(뭐|목록|남|보여|알려)/.test(text);
+    var r = listQ ? { matched: true, list: true } : nxAiCaseProcParseReply_(text, live, st.files, tax);
+    if (!r.matched) return false;
+    var input = nxAiEl_('nxAiInput');
+    input.value = ''; input.style.height = 'auto';
+    nxAiPhoneTab_('chat');
+    var userMsg = { role: 'user', content: text };
+    nxAiConv.messages.push(userMsg);
+    nxAiAppendBubble_('user', text)._nxMsgRef = userMsg;
+    var bubble = nxAiAppendBubble_('assistant', '⚡ 답을 반영하는 중…');
+    var aiMsg = { role: 'assistant', content: '' };
+    bubble._nxMsgRef = aiMsg;
+    nxAiConv.messages.push(aiMsg);
+    var qline = function(x){ return 'Q' + x.q + ' ' + (NXAI_CP_KIND_[x.kind] || '') + ' ' + String(x.text || '').slice(0, 70) + (/^(보류|예정)$/.test(nxAiCaseProcDec_(st, x) || '') ? ' (보류 중)' : ''); };
+    var show = function(md, note){ aiMsg.content = '[⚡사건 처리 답] ' + md; nxAiRenderLocal_(bubble, { md: md, note: note || '[⚡사건 처리] 사이드바 답 풀이(AI 미사용)' }, text); nxAiCountFree_('local'); nxAiScheduleSave_(); };
+    var howTo = '\n\n말로 답하는 법: "Q번호 값 근거파일" — 예) "Q2 5억 2천만원 매매계약서", "Q3 2024.3.5", "Q4 보류", "Q5 무시". 질문 이름으로 "양도가액 5억"이라고 해도 됩니다.';
+    if (r.list){ show(live.length ? '남은 질문 ' + live.length + '건입니다.\n\n' + live.map(function(x){ return '- ' + qline(x); }).join('\n') + howTo : '남은 질문이 없습니다 ✅'); return true; }
+    if (r.ambiguous){ show('어느 질문에 대한 답인지 정하지 못했습니다 — 번호를 붙여 다시 말씀해 주세요.\n\n' + r.ambiguous.map(function(x){ return '- ' + qline(x); }).join('\n') + '\n\n예) "Q' + r.ambiguous[0].q + ' ' + text.replace(/^\s*/, '') + '"'); return true; }
+    if (!r.it){ show(r.msg || '알아듣지 못했습니다.' + howTo); return true; }
+    var it = r.it;
+    if (r.act === 'need' || r.act === 'button'){
+      show(r.msg + (r.act === 'button' ? '' : howTo));
+      if (it._el){ try { it._el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} }
+      return true;
+    }
+    if (r.act === 'decide'){
+      nxAiCaseProcDecide_(st, it, r.decide, r.note || '사이드바 답');
+      show('Q' + it.q + ' 「' + r.label + '」 → ' + (r.decide === '보류' ? '⏸ 보류(처리는 계속, 종합검토서 "추가로 확인할 사항"에 들어감)' : r.decide === '무시' ? '무시(다시 묻지 않음)' : '✅ ' + (r.shown || '확인함')));
+      return true;
+    }
+    st.run('apply', { target: r.target, value: r.value, src: String(r.src).slice(0, 80), label: r.label }).then(function(res){
+      if (!res || !res.ok) throw new Error((res && (res.error || res.message)) || '반영 실패');
+      var shown = (it.ask && it.ask.input === 'money' && /^\d+$/.test(String(r.shown))) ? Number(r.shown).toLocaleString('ko-KR') + '원' : String(r.shown || r.value);
+      show('Q' + it.q + ' 「' + r.label + '」 ← **' + shown + '** 반영했습니다 (' + r.src + ').\n\n영향 받는 단계를 다시 처리하고 세액을 다시 계산합니다 — 위 사건 처리 칸에서 진행을 볼 수 있습니다.');
+      return nxAiCaseProcRefresh_(st, ['basic', 'overview', 'calc', 'output'], true);
+    }).catch(function(err){ show('Q' + it.q + ' 「' + r.label + '」을(를) 반영하지 못했습니다: ' + (err && err.message || err) + ' — [확인] 버튼으로 다시 해 주세요.'); });
+    return true;
   }
   // [확인] — 항목 아래에 질문을 펼친다(후보 값·직접 입력·선택지). 고르면 사건에 반영하고 영향을 받는 단계를 다시 처리한다.
   function nxAiCaseProcAsk_(st, it, el){
@@ -46909,6 +47140,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     }
     // 첨부가 있으면 AI가 봐야 하므로 바로 처리하지 않는다.
     if (nxAiPendingFiles.length || nxAiPendingImages.length) return nxAiSendAI_();
+    // [2026.10.15 1단계 ③] 사건처리 질문에 말로 답하기(토큰 0) — 질문을 부른 말이면 여기서 반영하고, 아니면 평소대로
+    var cpSt = nxAiCaseProcForReply_();
+    if (cpSt && !/처리\s*(하자|합시다|해\s*줘|해\s*주세요)/.test(text)){ try { if (nxAiCaseProcReply_(cpSt, text)) return; } catch (e) { if (typeof nxLogBug_ === 'function') nxLogBug_({ kind: 'local', where: '사건처리 말로 답하기', message: String(e && e.message || e), detail: text }); } }
     var intent = nxAiDetectLocal_(text);
     if (!intent) return nxAiSendAI_();
     if (intent.kind === 'caseproc') return nxAiCaseProc_(text);
