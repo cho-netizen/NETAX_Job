@@ -25397,7 +25397,7 @@ function caseProcEvTypes_(label) {
   return null;
 }
 function caseProcParsed_(f, cache, canParse) {
-  const key = 'cpp17_' + f.id + '_' + f.modified; // cpp17: 간편계산 결과 제외(2026-10-16) // cpp16: 등기 개명·증여계약서 서명란(2026-10-16) // cpp15: 괄호 제목 분할협의서·쉼표 없는 영수증 금액(2026-10-16) // cpp14: 내용으로 본 이미 낸 신고서(out)(2026-10-15) // cpp13: 오피스텔·상업용 기준시가 표(2026-10-15) // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
+  const key = 'cpp18_' + f.id + '_' + f.modified; // cpp18: 증여계약서 이름 형식 추가(2026-10-16) // cpp17: 간편계산 결과 제외(2026-10-16) // cpp16: 등기 개명·증여계약서 서명란(2026-10-16) // cpp15: 괄호 제목 분할협의서·쉼표 없는 영수증 금액(2026-10-16) // cpp14: 내용으로 본 이미 낸 신고서(out)(2026-10-15) // cpp13: 오피스텔·상업용 기준시가 표(2026-10-15) // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
   const hit = cache.get(key);
   if (hit) { try { return JSON.parse(hit); } catch (e) {} }
   if (!canParse) return null;
@@ -26116,6 +26116,13 @@ function caseProcOverview0_(c) {
       if (ap.ok) { c.기준일 = ap.기준일; if (ap.법정일) c.법정일 = ap.법정일; if (ap.수정일) c.수정일 = ap.수정일; } // [2026.10.15 1:1] 다음 처리개요 저장이 낡은 수정일로 거절되던 문제(노오섭)
     } else if (c.기준일 !== txs[0].transferDate) items.push(caseProcItem_('ov:기준일:' + txs[0].transferDate, 'check', '양도일: 사건 기준일 ' + c.기준일 + ' ↔ 서류상 양도시기 ' + txs[0].transferDate + '(잔금일·등기접수일 중 빠른 날, 소득세법 §98) — 어느 날이 맞나요?', { mode: 'base' }));
     else { lines.push('✅ 양도일 ' + c.기준일 + ' — 서류(잔금일·등기접수일)로 확인'); caseProcRememberFill_(c.id, '기준일', c.기준일, '증빙: 계약서·등기부(규칙 정리)'); }
+  }
+  // [2026.10.16] 양도인 성명 — 양도 계약서에서 납세자가 매도인으로 확인됐으면 사건 납세자로 채운다(12건에서 "양도인 성명이 비어 있습니다"를 물었다)
+  if (!String(ov.trTransferorName || '').trim() && String(c.납세자 || '').trim() && (rf.evidence || []).some(function (e) { return /^양도: /.test(e); })) {
+    ov.trTransferorName = String(c.납세자).replace(/\s+/g, '');
+    fills.push('양도인 성명 ' + ov.trTransferorName + '(양도 계약서 매도인 = 사건 납세자)');
+    for (let qi = items.length - 1; qi >= 0; qi--) if (items[qi].id === 'ov:trTransferorName') items.splice(qi, 1);
+    try { caseProcRememberFill_(c.id, 'trTransferorName', ov.trTransferorName, '증빙: 양도 계약서 매도인 = 사건 납세자'); } catch (e) {}
   }
   if (fills.length) {
     ov.물건목록 = assets;
@@ -29628,6 +29635,10 @@ function docGiftContractParse_(text) {
   if (!r.증여자) { m = /(?:^|\n)\s*증\s*여\s*자\s*(?:\([^)\n]{1,6}\))?\s*\n?\s*성\s*명\s*[:：]\s*([가-힣]{2,4})/.exec(t); if (m) r.증여자 = m[1]; }
   if (!r.수증자) { m = /(?:^|\n)\s*수\s*증\s*자\s*(?:\([^)\n]{1,6}\))?\s*\n?\s*성\s*명\s*[:：]\s*([가-힣]{2,4})/.exec(t); if (m) r.수증자 = m[1]; }
   // [2026.10.16] 법률사무소 양식 — "위 부동산은 증여자 임미경 의 소유인 바 이를 수증자 임세택 에게 증여할 것을 확약"(강정화(임세택): 이름을 못 읽어 관계를 못 정함)
+  // [2026.10.16] "증여자 정원식 수증자 김세정사이에 다음과 같은 내용의 증여계약을 체결한다"(이름 뒤에 '사이에'가 붙음), 서명란 "증여자 정원식"(줄 끝)
+  if (!r.증여자 || !r.수증자) { m = /증\s*여\s*자\s+([가-힣]{2,4})\s+수\s*증\s*자\s+([가-힣]{2,4}?)\s*(?:사\s*이|간\s*에|와|과|\n)/.exec(t); if (m) { r.증여자 = r.증여자 || m[1]; r.수증자 = r.수증자 || m[2]; } }
+  if (!r.증여자) { m = /(?:^|\n)\s*증\s*여\s*자\s+([가-힣]{2,4})\s*(?:\n|$)/.exec(t); if (m) r.증여자 = m[1]; }
+  if (!r.수증자) { m = /(?:^|\n)\s*수\s*증\s*자\s+([가-힣]{2,4})\s*(?:\n|$)/.exec(t); if (m) r.수증자 = m[1]; }
   if (!r.증여자) { m = /증\s*여\s*자\s+([가-힣]{2,4})\s+의\s/.exec(t); if (m) r.증여자 = m[1]; }
   if (!r.수증자) { m = /수\s*증\s*자\s+([가-힣]{2,4})\s*에\s*게/.exec(t); if (m) r.수증자 = m[1]; }
   // 서명란 "증여인 수증인 … 이름 (주민번호) 주소 … 이름 주민번호" — 이름 바로 뒤 주민번호가 붙은 것만, 앞이 증여인·뒤가 수증인. 본문보다 믿을 만해(본문 글자인식 "안비택") 있으면 이것을 쓴다
