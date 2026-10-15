@@ -26711,6 +26711,17 @@ function caseProcNoteUsed_(c, r) {
     (a.suggest || []).forEach(function (x) { parts.push(String(x.name || '')); });
     if (a.name) parts.push(a.name);
   });
+  // [2026.10.15] 상속·증여 — 서류 사실 정리(caseProcInhFacts_·caseProcParseAll_)가 실제로 쓴 서류도 "쓰인 곳"으로(파일 이름을 기록에 안 남겨 "안 쓰임"으로 잘못 나오던 것: 신수호 18건)
+  try {
+    if (c.세목 === 'inheritance') {
+      const fx = caseProcInhFacts_(c);
+      parts.push(JSON.stringify(fx));
+      if ((fx.deceased && fx.deceased.name) || (fx.heirs || []).length) caseProcParseAll_(c).forEach(function (x) { if (/^(family|death|inhdivision|inhquery)$/.test(x.p.type)) parts.push(x.f.name); });
+    } else if (c.세목 === 'gift') {
+      const sv0 = caseProcLoad_(c.id);
+      if (Object.keys(sv0.filled || {}).length || sv0.giftDeal) caseProcParseAll_(c).forEach(function (x) { if (/^(giftcontract|banktx|family|registry|pubprice|realprice|appraisal|balance)$/.test(x.p.type)) parts.push(x.f.name); });
+    }
+  } catch (e) {}
   const rf = CASEPROC_LAST_RF_ && CASEPROC_LAST_RF_.caseId === c.id ? CASEPROC_LAST_RF_.rf : null;
   if (rf) { parts.push((rf.evidence || []).join('\n'), JSON.stringify(rf.transactions || []), (rf.expCands || []).map(function (x) { return x.file; }).join('\n')); }
   const memoUsed = [];
