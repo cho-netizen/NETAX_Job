@@ -17,7 +17,7 @@
 const AK_KEY_NAME_ = '_정답지.json';
 const AK_RESULT_NAME_ = '_정답지점검결과.json';
 const AK_STATE_PROP_ = 'AK_RUN_STATE';
-const AK_CODE_VER_ = '2026-10-15c'; // 점검 규칙을 바꿔 배포할 때마다 올린다 — 멈췄던 점검의 옛 결과를 새 실행에 이어 붙이지 않게
+const AK_CODE_VER_ = '2026-10-15d'; // 점검 규칙을 바꿔 배포할 때마다 올린다 — 멈췄던 점검의 옛 결과를 새 실행에 이어 붙이지 않게
 
 function akReadCase_(caseId) {
   const sheet = work_getSheet_(), col = work_colMap_(sheet.getDataRange().getValues()[0]);
@@ -120,7 +120,7 @@ function akToolValues_(c) {
       v._engineInput = input;
       if (r.error) put('계산', '', '엔진 오류: ' + r.error);
       else {
-        const src = '화면 엔진(처리개요: 증여재산가액 ' + input.giftAmount.toLocaleString('ko-KR') + '원 · ' + input.relation + (input.debtAssumedAmount ? ' · 인수채무' : '') + (input.priorGiftAmount ? ' · 10년 합산' : '') + ')';
+        const src = '화면 엔진(처리개요: 증여재산가액 ' + input.giftAmount.toLocaleString('ko-KR') + '원 · ' + input.relation + (input.debtAssumedAmount ? ' · 인수채무' : '') + (input.priorGiftAmount ? ' · 10년 합산' : (String(ov.giftPriorAmount || '').trim() ? '' : ' · 10년 합산 없음 가정(서류 없음, 질문 남음)')) + ')';
         put('과세표준', r.과세표준, src, 'money'); put('산출세액', r.산출세액_할증후 != null ? r.산출세액_할증후 : r.산출세액, src, 'money');
         put('신고세액공제', r.신고세액공제, src, 'money'); put('납부세액', r.납부세액, src, 'money');
         // 증여세 과세가액 = 과세표준 + 공제(증여재산공제·혼인출산·감정평가수수료·재해손실) — 신고서 과세가액 칸과 같은 정의
@@ -132,7 +132,13 @@ function akToolValues_(c) {
     if (c.세목 === 'transfer') {
       const tr = akTransferEngine_(c, digits);
       if (tr.input) v._engineInput = tr.input;
-      if (tr.result && !tr.result.error) {
+      // [2026.10.15] 1세대1주택·중과·감면·비사업용토지 여부(사건분류)가 서류로 안 정해졌으면 "일반 과세 가정" 계산값을 도구 값으로 내지 않는다 — 판단 필요(질문)로 분류
+      if (tr.result && !tr.result.error && !String(ov.사건분류 || '').trim()) {
+        const base0 = tr.result.과세표준 != null ? tr.result.과세표준 : tr.result.합산과세표준, tax0 = tr.result.산출세액 != null ? tr.result.산출세액 : tr.result.산출세액_합계;
+        v._judge = true;
+        v._why = '판단 필요 — 1세대1주택 비과세·다주택 중과·감면·비사업용토지 여부(사건분류)가 서류로 안 정해짐. 참고: 서류 값으로 일반 과세 계산하면 과세표준 ' + Number(base0 || 0).toLocaleString('ko-KR') + '원 · 산출세액 ' + Number(tax0 || 0).toLocaleString('ko-KR') + '원';
+        v._ref = { 과세표준: base0, 산출세액: tax0 };
+      } else if (tr.result && !tr.result.error) {
         put('과세표준', tr.result.과세표준 != null ? tr.result.과세표준 : tr.result.합산과세표준, tr.src, 'money');
         put('산출세액', tr.result.산출세액 != null ? tr.result.산출세액 : tr.result.산출세액_합계, tr.src, 'money');
         // 엔진의 납부세액_합계에는 지방소득세(10%)가 들어 있다 — 신고서 "납부할 세액"(국세)과 맞추려고 뺀다
@@ -140,8 +146,7 @@ function akToolValues_(c) {
         put('납부세액', tot != null ? tot - (tr.result.지방소득세 || tr.result.지방소득세_합계 || 0) : '', tr.src, 'money');
       } else if (tr.why) v._why = tr.why;
     }
-    const lc = caseProcLastCalc_(c).last;
-    if (lc && !v.납부세액) put('납부세액', lc.최종세액, '저장된 계산(' + (lc.계산일 || '') + ')', 'money');
+    // [2026.10.15] 블라인드 — 저장된 세액계산 결과는 도구 값으로 쓰지 않는다(이전 세션이 그 사건만 따로 계산해 둔 값이 "통과"로 잡혔다)
     if (!v.납부세액) put('납부세액', '', v._why || (c.세목 === 'transfer' ? '양도 거래 값이 처리개요에 없음' : '처리개요에 증여재산가액이 없어 계산 못 함'), 'money');
     if (v._why) ['과세표준', '산출세액'].forEach(function (k) { if (!v[k]) put(k, '', v._why, 'money'); });
   }
@@ -198,6 +203,12 @@ function akSandbox_(caseId, fn, override) {
   const real = { work_updateCase: work_updateCase, work_findCaseRow_: work_findCaseRow_, work_readRow_: work_readRow_, caseProcLoad_: caseProcLoad_, caseProcPatch_: caseProcPatch_, caseProcStore_: caseProcStore_, akReadCase_: akReadCase_ };
   const mem = { c: real.akReadCase_(caseId), saved: real.caseProcLoad_(caseId) };
   if (!mem.c) return fn();
+  // [2026.10.15] 블라인드 점검 — 사람·세션이 이전에 넣은 값(처리개요·기준일·법정일·증빙목록 표시·작업일지·세액계산결과·사건처리 결정/채움)을 전부 지우고
+  // 사건 폴더 원시서류만으로 처음부터 돌린다. 남기는 것은 사건의 정체(세목·업무유형·고객명·납세자·폴더)뿐. 세무사님 지적: 통과 2건은 그 사건만 따로
+  // 처리해 저장해 둔 값 덕분이었고 서류만으로 낸 결과가 아니었다.
+  mem.c.사건개요 = {}; mem.c.기준일 = ''; mem.c.법정일 = ''; mem.c.작업일지 = []; mem.c.세액계산결과 = [];
+  try { mem.c.증빙목록 = mem.c.업무유형 === '신고' && WORK_EVIDENCE_TEMPLATES_[mem.c.세목] ? work_buildEvidenceFromTemplate_(mem.c.세목, '신고', '', null, '', '') : []; } catch (e) { mem.c.증빙목록 = []; }
+  mem.saved = { filled: {}, decisions: {} };
   // [2026.10.15] 한 폴더에 수증자가 여럿(정답지가 수증자별로 하나씩) — 이 실행만 납세자를 그 수증자로 바꾸고, 다른 수증자 몫일 수 있는 처리개요 값은 비운 채 서류로 다시 채운다(메모리에서만)
   if (override && override.납세자) {
     mem.c.납세자 = override.납세자;
@@ -233,12 +244,15 @@ function akRunCase0_(caseId, key) {
   let c = akReadCase_(caseId);
   if (!c) return { caseId: caseId, error: '사건을 찾지 못했습니다.' };
   const out = { caseId: caseId, 사건명: c.사건명 || c.고객명 || '', 상태: key.상태 || '초안', rows: [], extra: [], missing: [], steps: {} };
-  const ev = caseProcEvidence_(c);
+  let ev = caseProcEvidence_(c);
   if (ev.more) return { caseId: caseId, more: true, progress: ev.progress };
   AK_LAST_EV_ = { caseId: c.id, srcDocs: ev.srcDocs, outDocs: ev.outDocs };
   c = akReadCase_(caseId);
   const ovr = caseProcOverview_(c);
   c = akReadCase_(caseId);
+  // [2026.10.15] 블라인드에선 처음 증빙 단계 때 기준일이 비어 있다(처리개요 단계가 서류로 정함) — 사이드바에서 "처리하자"를 한 번 더 한 것처럼 증빙 단계를 다시 돌려 그 기준일로 평가·대조
+  const ev2 = caseProcEvidence_(c);
+  if (!ev2.more) { ev = Object.assign({}, ev2, { lines: (ev.lines || []).concat(ev2.lines && ev2.lines.length ? ['— 기준일 확정 뒤 다시 대조 —'].concat(ev2.lines) : []) }); c = akReadCase_(caseId); }
   const basic = caseProcBasic_(c, {});
   const calc = caseProcCalc_(c);
   const decisions = (caseProcLoad_(caseId).decisions) || {};
@@ -286,9 +300,11 @@ function akRunCase0_(caseId, key) {
   });
   out.engineInput = tool._engineInput || null;
   out.why = tool._why || '';
+  out.judge = !!tool._judge; if (tool._ref) out.ref = tool._ref;
   out.noSourceDocs = !ev.srcDocs;
   out.fails = out.rows.filter(function (r) { return !r.ok; }).length + out.extra.length + out.missing.length;
   out.pass = out.fails === 0;
+  out.taxOk = out.rows.length > 0 && out.rows.every(function (r) { return r.ok; }); // 세액 칸은 모두 맞음(질문은 따로 셈)
   return out;
 }
 // 🧪 정답지 점검 실행 — {caseId?, reset?}. 사건이 많거나 처음 읽는 서류가 많으면 more:true(화면이 이어서 다시 부름)
@@ -423,7 +439,7 @@ function akReturnOwner_(f, all) {
   const bad = /^(사업|상호|주민|등록|주소|성명|납세|세목)/; // 이름 칸 대신 다음 이름표를 읽은 경우
   const m = m0 && !bad.test(m0[1]) ? m0 : (/([가-힣]{2,4})\s*사\s*업\s*자\s*등\s*록\s*번\s*호/.exec(t) || null);
   if (m && !bad.test(m[1])) return m[1];
-  // 납부서에서 이름을 못 읽으면 — 폴더의 이름 파일(예: "양지현.pdf", "주민등본_양지현.pdf") 중 머리글자("현")가 이름 끝 글자와 맞는 사람이 한 명이면 그 사람
+  // 납부서에서 이름을 못 읽으면 — 폴더의 이름 파일(예: "홍길순.pdf", "주민등본_홍길순.pdf") 중 머리글자("순")가 이름 끝 글자와 맞는 사람이 한 명이면 그 사람
   const people = all.map(function (x) { const s = x.name.replace(/\.[^.]+$/, '').split(/[_\-\s]/).pop(); return /^[가-힣]{3,4}$/.test(s) ? s : ''; }).filter(function (v, i, a) { return v && a.indexOf(v) === i; });
   const hit = people.filter(function (p) { return p.slice(-h.length) === h; });
   return hit.length === 1 ? hit[0] : '';

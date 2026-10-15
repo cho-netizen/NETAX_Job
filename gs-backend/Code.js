@@ -25252,7 +25252,7 @@ function caseProcEvidenceBaseDates_(c) {
 }
 // 현금·예금 증여 — 증여계약서(금액·검산·증여자·수증자·계약일)와 은행 거래내역(이체일·금액·적요)으로 증여재산가액·증여일을 확정.
 // 증여일 = 상증령 §24 "인도한 날 또는 사실상 사용한 날" → 이체일이 있으면 그 날, 없으면 계약서 기준(계약일 — 이체내역 확보 시 대조).
-// [2026.10.15] 이름 비교 — 손글씨·사진 글자인식은 한 글자를 틀리게 읽는다(임세택→임세탁). exact가 아니면 같은 길이에서 한 글자까지 다른 것은 같은 사람으로 본다(성은 같아야 함)
+// [2026.10.15] 이름 비교 — 손글씨·사진 글자인식은 한 글자를 틀리게 읽는다(홍길동→홍길돔). exact가 아니면 같은 길이에서 한 글자까지 다른 것은 같은 사람으로 본다(성은 같아야 함)
 function caseProcNameLike_(a, b, exact) {
   const norm = function (x) { return String(x || '').replace(/\([^)]*\)/g, '').replace(/[\s*]+/g, ''); };
   a = norm(a); b = norm(b);
@@ -25268,7 +25268,7 @@ function caseProcCashGift_(c, parsed) {
   const like = caseProcNameLike_;
   // [2026.10.15] 한 폴더에 여러 수증자의 계약서가 있다(실사건: 부부가 같은 날 각각 증여 — 남편 1.5억 계약서가 아내 사건 폴더에도 있어 아내 사건이 1.5억으로 계산됨,
   // 형제 두 명의 계약서가 한 폴더). 사건 납세자(수증자)와 이름이 맞는 계약서만 쓰고, 다른 사람이 수증자인 계약서는 버린다. 맞는 것 중 금액 검산이 된 것을 먼저.
-  // 이름이 정확히 같은 서류가 하나라도 있으면 정확히 같은 것만(한 글자 차이 허용은 형제 이름 — 양지호·양지현 — 을 같은 사람으로 볼 수 있어 그때만 씀)
+  // 이름이 정확히 같은 서류가 하나라도 있으면 정확히 같은 것만(한 글자 차이 허용은 형제 이름 — 홍길동·홍길순 — 을 같은 사람으로 볼 수 있어 그때만 씀)
   const who = [c.납세자 || ov.giftDoneeName].filter(function (x) { return norm(x).length >= 2; });
   const names0 = [].concat(parsed.filter(function (x) { return x.p.type === 'giftcontract'; }).map(function (x) { return (x.p.result || {}).수증자; }),
     [].concat.apply([], parsed.filter(function (x) { return x.p.type === 'banktx'; }).map(function (x) { return ((x.p.result || {}).거래 || []).map(function (g) { return g.받는이; }); })));
@@ -25509,7 +25509,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
       lines.push('증여재산: 현금 ' + (cash.amount ? cash.amount.toLocaleString('ko-KR') + '원' : '(금액 미확인)') + ' — ' + (gc ? '증여계약서' + (gc.검산 === '일치' ? '(숫자·한글 금액 일치)' : '') : '증여계약서 없음') + (cash.tx ? ' · 이체내역 ' + cash.tx.날짜 + ' ' + cash.tx.금액.toLocaleString('ko-KR') + '원' : ' · 이체내역 없음') + (gc && !gc.부담부 ? ' · 부담부(채무인수) 문구 없음' : ''));
       if (cash.mismatch) items.push(caseProcItem_('ov:giftAmount:cashdiff:' + cash.mismatch.replace(/[^d]/g, '').slice(0, 20), 'check', '증여 금액이 서류끼리 다릅니다 — ' + cash.mismatch + '. 어느 금액이 맞나요?', { mode: 'choose', target: 'ov:giftAmount', input: 'money', label: '증여재산가액', cands: [{ v: String(gc.금액), src: '증여계약서' }, { v: String(cash.tx.금액), src: '이체내역' }] }));
     } else if (!gifts.length) lines.push('증여재산: 증여 등기가 있는 등기부가 폴더에 없습니다(현금·예금 증여면 증여계약서·이체내역으로 확인).');
-    // [2026.10.15] 서류로 확정된 증여자가 있으면 그 이름으로 관계를 찾는다(처리개요의 옛 임시 이름 — 예: "임부친" — 으로 찾으면 관계를 못 찾음)
+    // [2026.10.15] 서류로 확정된 증여자가 있으면 그 이름으로 관계를 찾는다(처리개요의 옛 임시 이름 — 예: "○부친" — 으로 찾으면 관계를 못 찾음)
     const donorSure = (facts.giftDonorName || []).filter(function (x) { return x.sure; }).map(function (x) { return x.v; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
     const donorList = [].concat(donorSure, (facts.giftDonorName || []).map(function (x) { return x.v; }), [ov.giftDonorName]).filter(function (v, i, a) { return v && a.indexOf(v) === i; });
     const inFam = function (n) { return fams.some(function (x) { return ((x.p.result && x.p.result.가족) || []).some(function (q) { return nameHas([q.이름], n); }); }); };
@@ -27879,7 +27879,7 @@ function docGiftContractParse_(text) {
   var signs = []; var sr = /성\s*명\s*[:：]\s*([가-힣]{2,4})/g, sm;
   while ((sm = sr.exec(t))) signs.push(sm[1]);
   if (signs.length >= 2) {
-    // [2026.10.15] 한 글자만 다르면(손글씨 서명 글자인식 — 임종삼↔임종료) 같은 사람으로 보고 경고하지 않음
+    // [2026.10.15] 한 글자만 다르면(손글씨 서명 글자인식 — 홍길동↔홍길돔) 같은 사람으로 보고 경고하지 않음
     if (r.증여자 && signs[0] !== r.증여자 && !caseProcNameLike_(signs[0], r.증여자)) r.경고.push('서명란 갑 성명(' + signs[0] + ')이 머리의 증여자(' + r.증여자 + ')와 다르게 읽힘 — 손글씨 인식 확인');
     if (r.수증자 && signs[1] !== r.수증자 && !caseProcNameLike_(signs[1], r.수증자)) r.경고.push('서명란 을 성명(' + signs[1] + ')이 머리의 수증자(' + r.수증자 + ')와 다르게 읽힘 — 손글씨 인식 확인');
   }
