@@ -24653,6 +24653,19 @@ function tc_ruleTransferFacts_(body) {
     var text = null;
     try { text = tc_docText_(f); } catch (e) { continue; }
     if (!text) continue;
+    // [2026.10.15] 은행 앱 거래내역 화면(날짜 줄 → 시각 → 적요 → … → "-금액원" → 잔액) — 적요에 공사·중개보수 말이 있는 출금만 지급 증빙 후보로
+    if (/거\s*래\s*내\s*역\s*조\s*회/.test(text)) {
+      var hl = String(text).split('\n'), hd = '';
+      for (var hi = 0; hi < hl.length; hi++) {
+        var dm = /(20\d{2})\.(\d{2})\.(\d{2})\s*\(/.exec(hl[hi]); if (dm) { hd = dm[1] + '-' + dm[2] + '-' + dm[3]; continue; }
+        if (!hd || !/공사|인테리어|샷시|새시|확장|보일러|방수|물막이|중개\s*(보수|수수료)|복비/.test(hl[hi])) continue;
+        for (var hj = hi + 1; hj < Math.min(hl.length, hi + 8); hj++) {
+          var amx = /^\s*-\s*(\d{1,3}(?:,\d{3})+)\s*원?\s*$/.exec(hl[hj]);
+          if (amx) { expDocs.push({ file: f.name, amount: Number(amx[1].replace(/,/g, '')), date: hd, memo: hl[hi].trim(), payer: '', head: hl[hi] }); break; }
+          if (/(20\d{2})\.(\d{2})\.(\d{2})\s*\(/.test(hl[hj])) break;
+        }
+      }
+    }
     var p = null;
     try { p = docParseText_(text); } catch (e) { continue; }
     if (!p || !p.type) continue;
@@ -25202,7 +25215,10 @@ function caseProcEvidence_(c) {
     if (c.세목 === 'inheritance' && /^(acqtax|lawyerfee|receipt|payment)$/.test(f.p.t)) return;
     // 사망일 ⚠는 다른 서류(등기부 상속 원인일·분할협의서)로 확정된 날짜와 같으면 묻지 않음
     if (f.p.t === 'death' && (f.p.bd || []).some(function (b) { return b.d === c.기준일; }) && /^증빙/.test(String(((caseProcLoad_(c.id).filled || {}).기준일 || {}).src || ''))) return;
-    items.push(caseProcItem_('file:' + f.id + ':' + f.modified, 'check', '‘' + f.name + '’(' + f.p.l + ') 자동 정리 결과에 ⚠확인필요 ' + f.p.wn + '곳', { mode: 'docok', fileId: f.id, name: f.name }, f.p.w.join('\n')));
+    // [2026.10.15] 실사용 기준 — 계산에 쓰는 값을 못 읽었거나 검산이 안 된 "막히는" ⚠만 질문으로(안내·법적 효력·계산에 안 쓰는 칸의 ⚠는 뺌)
+    const block = caseProcBlockingWarns_(f.p.t, f.p.w || []);
+    if (!block.length) return;
+    items.push(caseProcItem_('file:' + f.id + ':' + f.modified, 'check', '‘' + f.name + '’(' + f.p.l + ') 자동 정리 결과에 ⚠확인필요 ' + block.length + '곳', { mode: 'docok', fileId: f.id, name: f.name }, block.join('\n')));
   });
   return { ok: true, lines: lines, items: items, files: pool.slice(0, 80).map(function (f) { return { id: f.id, name: f.name }; }),
     srcDocs: docs.filter(function (f) { return f.p && f.p.t && !f.p.office; }).length, outDocs: outDocs.length, // 🧪 점검용: 원시서류(종류가 정리된 고객 서류) 수 · 발생문서 수
@@ -25563,6 +25579,18 @@ function caseProcRememberFill_(caseId, key, value, src) {
 }
 // 사건 폴더 서류 전부를 규칙으로 정리한 결과(글자는 6시간 기억분 — 2단계에서 이미 읽음). 서류 사실을 모을 때 쓴다.
 // [2026.10.14] 발생문서 — 세목 신고서·명세서·계산서(양도코리아 등으로 만든 결과물). 증빙이 아니고 입력값 출처도 아니다(정답지·참고 전용)
+// [2026.10.15] 서류 판독 ⚠ 중 세액 계산을 막는 것만 고른다. 빼는 것: 안내문(열람용·법적 효력·위반건축물·표제부만·채무공제 요건 안내),
+// 계산에 쓰지 않는 칸(건축물·토지대장 면적·층별, 임대차 계약기간, 주민등록 초본·등본 판독), 등기부의 지난 소유권 기재(현재 명의 줄은 남김).
+function caseProcBlockingWarns_(type, warns) {
+  if (/^(resident|bldledger|landledger)$/.test(type || '')) return [];
+  return (warns || []).filter(function (w) {
+    w = String(w || '');
+    if (/열람용|법적\s*효력|위반건축물|표제부만|갑구\(소유권\) 장이 없는|담보제공자|채무공제\(§14\)|대지면적 기재 없음|층별현황|계약기간/.test(w)) return false;
+    if (type === 'registry' && /^\s*\d+\s*소유권/.test(w) && !/현재\s*명의/.test(w)) return false;
+    if (type === 'contract' && /^(계약금|중도금|잔금)\s/.test(w)) return false; // 매매대금 검산이 따로 있음(계약금·잔금 칸 판독은 금액 확정에 안 씀)
+    return /읽지 못|찾지 못|검산\s*(안|못|불가)|맞추지 못|확정하지 못|확인필요|⚠/.test(w);
+  });
+}
 function caseProcIsOutputDoc_(name) {
   const n = String(name || '');
   // [2026.10.15] "양도소득 과세표준 신고 및 납부계산서", "…금액계산명서"(오타), "필요경비명세서", "평가명세서", "추가자진납부", "세액계산"도 이미 낸(또는 세무사가 만든) 발생문서 —

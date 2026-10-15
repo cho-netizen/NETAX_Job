@@ -17,7 +17,7 @@
 const AK_KEY_NAME_ = '_정답지.json';
 const AK_RESULT_NAME_ = '_정답지점검결과.json';
 const AK_STATE_PROP_ = 'AK_RUN_STATE';
-const AK_CODE_VER_ = '2026-10-15h'; // 점검 규칙을 바꿔 배포할 때마다 올린다 — 멈췄던 점검의 옛 결과를 새 실행에 이어 붙이지 않게
+const AK_CODE_VER_ = '2026-10-15i'; // 점검 규칙을 바꿔 배포할 때마다 올린다 — 멈췄던 점검의 옛 결과를 새 실행에 이어 붙이지 않게
 
 function akReadCase_(caseId) {
   const sheet = work_getSheet_(), col = work_colMap_(sheet.getDataRange().getValues()[0]);
@@ -124,7 +124,7 @@ function akToolValues_(c) {
         put('과세표준', r.과세표준, src, 'money'); put('산출세액', r.산출세액_할증후 != null ? r.산출세액_할증후 : r.산출세액, src, 'money');
         put('신고세액공제', r.신고세액공제, src, 'money'); put('납부세액', r.납부세액, src, 'money');
         // 증여세 과세가액 = 과세표준 + 공제(증여재산공제·혼인출산·감정평가수수료·재해손실) — 신고서 과세가액 칸과 같은 정의
-        put('과세가액', (r.과세표준 || 0) + (r.증여재산공제 || 0) + (r.혼인출산증여재산공제 || 0) + (r.감정평가수수료공제 || 0) + (r.재해손실공제 || 0), src, 'money');
+        put('과세가액', akGiftTaxable_(input, r), src, 'money');
       }
     }
     // [2026.10.15] 양도 — 사건처리가 서류로 채운 처리개요 물건(양도가액·취득가액·취득일)과 서류 규칙 정리의 취득 부대비용으로 화면 엔진을 직접 돌린다.
@@ -439,22 +439,7 @@ function akParseFormResult_(text, seMok) {
     // [2026.10.15] 초안 6판 — 신고서의 입력값(양도가액·취득가액·필요경비)도 "질문의 답" 전용으로(답_ 칸) 읽는다. 세법 관계가 맞는 숫자 묶음만:
     //  양도소득금액 = 과세표준 + 기본공제 250만, 양도차익 = 소득금액 + 장기보유특별공제(0일 수 있음), 양도가액 − 취득가액 − 필요경비 = 양도차익.
     //  여러 묶음이 맞으면 양도가액이 가장 큰 것, 같으면 취득가액이 큰 것(취득가액과 필요경비가 서로 바뀌어 맞는 경우). 안 맞으면 넣지 않음(지어내지 않음). 대조 칸이 아니라 실사용 판정 ③에서 질문에 답할 때만 쓴다.
-    const inc = out.과세표준 + 2500000;
-    if (has(inc)) {
-      let best = null;
-      nums.filter(function (g) { return g >= inc && (g === inc || has(g - inc)); }).forEach(function (g) {
-        nums.forEach(function (tp) {
-          if (tp <= g) return;
-          nums.forEach(function (ap) {
-            if (ap >= tp) return;
-            const ex = tp - ap - g;
-            if (ex < 0 || (ex > 0 && !has(ex))) return;
-            if (!best || tp > best.tp || (tp === best.tp && ap > best.ap)) best = { tp: tp, ap: ap, ex: ex, g: g };
-          });
-        });
-      });
-      if (best) { out.답_양도가액 = best.tp; out.답_취득가액 = best.ap; out.답_필요경비 = best.ex; out.답_양도차익 = best.g; }
-    }
+    Object.assign(out, akTransferInputs_(nums, out.과세표준));
     const pm = /(?:자\s*진\s*)?납\s*부\s*할\s*세\s*액/.exec(t);
     if (pm) { const p = (t.slice(pm.index, pm.index + 300).match(/\d{1,3}(?:,\d{3})+/g) || []).map(function (x) { return Number(x.replace(/,/g, '')); }).filter(function (v) { return v <= out.산출세액 * 1.5 && v >= 1000; })[0]; if (p) out.납부세액 = p; }
   }
@@ -506,12 +491,12 @@ function answerKeyDraft_(body) {
     if (!ids && !CASEPROC_TAX_LABEL_[c.세목]) continue; // 신고가 끝난(완료) 사건이 정답지 원천이라 완료도 포함
     if (!String(c.폴더ID || '').trim()) continue;
     const ek = akLoadKey_(c);
-    if (!ids && ek && ek.key && (ek.key.상태 === '확정' || ek.key.초안판 >= 6)) continue; // 확정·5판 초안은 건너뜀(여러 번 눌러 이어서 진행)
+    if (!ids && ek && ek.key && (ek.key.상태 === '확정' || ek.key.초안판 >= 7)) continue; // 확정·5판 초안은 건너뜀(여러 번 눌러 이어서 진행)
     if (Date.now() - started > 200000) { more = true; break; } // 처음 읽는 서류가 많으면 한 번에 다 못 함 — 화면이 이어서 다시 부름
     const all = caseProcFiles_(c).filter(function (f) { return /pdf|^image\//.test(String(f.mimeType || '')); });
     const files = all.filter(function (f) { return /양도\s*코리아|yangdo|^양코|신고서|계산서|계산명세/i.test(f.name) && !/지방|종합소득|접수증|납부서/.test(f.name); });
     // 3판 초안에 숫자가 있고 신고서가 하나뿐이면 다시 읽지 않는다(세율 검산 규칙은 그대로) — 4판 표시만
-    if (!ids && ek && ek.key && ek.key.초안판 >= 3 && !ek.key.오류 && files.length <= 1 && c.세목 !== 'transfer' && !(c.세목 === 'gift' && all.some(function (f) { return /납부서/.test(f.name); }) && files.length > 1)) { ek.key.초안판 = 6; answerKeySave_({ caseId: c.id, key: ek.key }); continue; }
+    if (!ids && ek && ek.key && ek.key.초안판 >= 3 && !ek.key.오류 && files.length <= 1 && c.세목 !== 'transfer' && !(c.세목 === 'gift' && all.some(function (f) { return /납부서/.test(f.name); }) && files.length > 1)) { ek.key.초안판 = 7; answerKeySave_({ caseId: c.id, key: ek.key }); continue; }
     const found = []; // {owner, res, src, why}
     files.slice(0, 8).forEach(function (f) {
       const txt = tc_docText_(f) || '';
@@ -527,9 +512,15 @@ function answerKeyDraft_(body) {
       pays.forEach(function (f) { if (found.length) return; const v = akPaySlipAmount_(tc_docText_(f) || '', c.세목); if (v) found.push({ owner: '', res: { 납부세액: v }, src: f.name, why: '신고서가 폴더에 없어 국세 납부서의 ' + CASEPROC_TAX_LABEL_[c.세목] + ' 납부금액만(분납이면 1회차만일 수 있음)' }); });
     }
     if (!found.length) {
-      if (ek && ek.key && ek.key.상태 !== '확정') answerKeySave_({ caseId: c.id, key: { 세목: c.세목, 상태: '초안', 초안판: 6, 오류: files.length ? '신고서에서 세율 계산이 맞는 숫자를 찾지 못함' : '신고서·국세 납부서가 폴더에 없음 — 신고서 PDF를 사건 폴더에 저장해 주세요' } });
+      if (ek && ek.key && ek.key.상태 !== '확정') answerKeySave_({ caseId: c.id, key: { 세목: c.세목, 상태: '초안', 초안판: 7, 오류: files.length ? '신고서에서 세율 계산이 맞는 숫자를 찾지 못함' : '신고서·국세 납부서가 폴더에 없음 — 신고서 PDF를 사건 폴더에 저장해 주세요' } });
       if (ids || files.length) made.push({ caseId: c.id, 사건명: c.사건명, error: files.length ? '신고서 PDF ' + files.length + '개(' + files.slice(0, 3).map(function (f) { return f.name; }).join(', ') + ')에서 세율 계산이 맞는 과세표준·산출세액 짝을 찾지 못함(다른 세목 서식이거나 글자인식 불량)' : '신고서 PDF(홈택스·양도코리아)가 사건 폴더에 없음' });
       continue;
+    }
+    // [2026.10.15] 양도 입력값(답_)이 신고서 한 장에서 안 나오면 신고서·계산명세서 숫자를 합쳐 다시 찾는다(입력값은 명세서 쪽에 있는 경우가 많다)
+    if (c.세목 === 'transfer' && found[0] && found[0].res.과세표준 && !found[0].res.답_양도가액) {
+      const pool = [], pseen = {};
+      files.slice(0, 8).forEach(function (f) { (String(tc_docText_(f) || '').replace(/(\d)\.(\d{3})(?=[^\d]|$)/g, '$1,$2').match(/\d{1,3}(?:,\d{3})+/g) || []).forEach(function (x) { const v = Number(x.replace(/,/g, '')); if (v >= 1000 && !pseen[v]) { pseen[v] = true; pool.push(v); } }); });
+      Object.assign(found[0].res, akTransferInputs_(pool.slice(0, 400), found[0].res.과세표준));
     }
     const me = String(c.납세자 || '').replace(/\s+/g, '');
     let mainDone = false;
@@ -539,7 +530,7 @@ function answerKeyDraft_(body) {
       const name = own ? '_정답지(' + own + ').json' : AK_KEY_NAME_;
       const cur = (akLoadKey_(c, name) || {}).key || {};
       const confirmed = cur.상태 === '확정';
-      const key = confirmed ? Object.assign({}, cur) : { 세목: c.세목, 상태: '초안', 초안판: 6, 출처: x.src };
+      const key = confirmed ? Object.assign({}, cur) : { 세목: c.세목, 상태: '초안', 초안판: 7, 출처: x.src };
       if (own) key.납세자 = own;
       Object.keys(x.res).forEach(function (f) { if (!(confirmed && key[f] !== undefined)) key[f] = x.res[f]; });
       key.근거 = Object.assign({}, confirmed ? (key.근거 || {}) : {}, Object.keys(x.res).reduce(function (o, f) { o[f] = (x.why ? x.why + ' — ' : '') + '신고서(' + x.src + ')' + (x.why ? '' : ' — 글자인식 + 세율 검산(과세표준↔산출세액' + (f === '신고세액공제' || f === '납부세액' ? '↔세액공제↔납부' : '') + ')으로 맞는 숫자') + ', 세무사님 확인 전'; return o; }, {}));
@@ -641,7 +632,7 @@ function akUsable_(c, key, out, tool) {
       if (r.error) { s3 = '확인불가'; s3why = '엔진 오류: ' + r.error; }
       else {
         const got = { 과세표준: r.과세표준, 산출세액: r.산출세액_할증후 != null ? r.산출세액_할증후 : r.산출세액, 신고세액공제: r.신고세액공제, 납부세액: r.납부세액,
-          과세가액: (r.과세표준 || 0) + (r.증여재산공제 || 0) + (r.혼인출산증여재산공제 || 0) + (r.감정평가수수료공제 || 0) + (r.재해손실공제 || 0) };
+          과세가액: akGiftTaxable_(input, r) };
         const d = cmp(got); s3 = d ? '불일치' : 'ok'; s3why = (d ? '질문에 정답지 값으로 답해도 다름: ' + d : '질문에 정답지 값으로 답하면 일치') + ' (답한 값: ' + JSON.stringify(input) + ')';
       }
     }
@@ -676,3 +667,29 @@ function akUsable_(c, key, out, tool) {
 }
 // 규칙을 맞춰 보며 고친(개발용) 사건 — 실사용 가능 비율은 이 사건들과 처음 보는 사건을 나눠 센다(사건 ID만, 이름 없음)
 const AK_DEV_CASES_ = ['17483541-9f88-4c08-8e44-16f78024dbab', '382b2d21-98cc-43e8-8a80-d97cda98704c', '51604c63-cde5-4713-833b-2853c1b5e21f', '8464652a-014a-4085-9091-5332d96ee2c1', '9a41c4cf-8f88-4a6f-b5a4-7b4def36fdaa', 'f945ea9d-e6ff-4f2c-a6fd-7481a34f4c5c'];
+// [2026.10.15] 신고서 숫자 목록에서 양도 입력값(답 전용) 찾기 — 세법 관계가 맞는 묶음만:
+//  양도소득금액 = 과세표준 + 기본공제 250만(그 해 이미 썼으면 0), 양도차익 − 장기보유특별공제(0일 수 있음) = 소득금액, 양도가액 − 취득가액 − 필요경비 = 양도차익.
+//  여러 묶음이 맞으면 양도가액이 가장 큰 것, 같으면 취득가액이 큰 것. 숫자는 신고서·계산명세서를 합친 목록(입력값은 명세서에 있는 경우가 많다).
+function akTransferInputs_(nums, base) {
+  const seen = {}; nums.forEach(function (v) { seen[v] = true; });
+  const has = function (v) { return !!seen[v]; };
+  let best = null;
+  [base + 2500000, base].forEach(function (inc) {
+    if (best || !has(inc)) return;
+    nums.filter(function (g) { return g >= inc && (g === inc || has(g - inc)); }).forEach(function (g) {
+      nums.forEach(function (tp) {
+        if (tp <= g) return;
+        nums.forEach(function (ap) {
+          if (ap >= tp) return;
+          const ex = tp - ap - g;
+          if (ex < 0 || (ex > 0 && !has(ex))) return;
+          if (!best || tp > best.tp || (tp === best.tp && ap > best.ap)) best = { tp: tp, ap: ap, ex: ex, g: g };
+        });
+      });
+    });
+  });
+  return best ? { 답_양도가액: best.tp, 답_취득가액: best.ap, 답_필요경비: best.ex, 답_양도차익: best.g } : {};
+}
+
+// [2026.10.15] 증여세 과세가액(상증법 §47) = 증여재산가액 + 10년 합산 − 인수채무. 예전 식(과세표준 + 공제)은 공제가 증여액보다 크면(배우자 6억 등) 과세가액을 부풀렸다.
+function akGiftTaxable_(input, r) { const v = (input.giftAmount || 0) + (input.priorGiftAmount || 0) - (input.debtAssumedAmount || 0); return v > 0 ? v : (r.과세표준 || 0); }
