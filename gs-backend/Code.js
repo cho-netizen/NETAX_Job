@@ -25798,6 +25798,8 @@ function caseProcEvidence_(c) {
     if (f.p.t === 'death' && (f.p.bd || []).some(function (b) { return b.d === c.기준일; }) && /^증빙/.test(String(((caseProcLoad_(c.id).filled || {}).기준일 || {}).src || ''))) return;
     // [2026.10.15] 실사용 기준 — 계산에 쓰는 값을 못 읽었거나 검산이 안 된 "막히는" ⚠만 질문으로(안내·법적 효력·계산에 안 쓰는 칸의 ⚠는 뺌)
     let block = caseProcBlockingWarns_(f.p.t, f.p.w || []);
+    // [2026.10.16] 분할협의서에서 사망일을 못 읽었어도 상속개시일이 다른 증빙(사망진단서·기본증명서·등기부)으로 이미 정해졌으면 묻지 않음(사망일은 그 칸에 안 씀)
+    if (f.p.t === 'inhdivision' && c.기준일 && /^증빙/.test(String(((caseProcLoad_(c.id).filled || {}).기준일 || {}).src || ''))) block = block.filter(function (w) { return !/상속개시일\(사망일\)을 읽지 못함/.test(w); });
     // [2026.10.15] ⚠ 금액이 다른 서류(이체 확인·거래내역 등)에도 똑같이 있으면 서로 확인된 것 — 묻지 않고 근거를 남긴다(강정화 사건: 증여계약서 1억원 ⚠ ↔ 이체 화면 1억원)
     block = block.filter(function (w) {
       const am = /(\d{1,3}(?:,\d{3}){2,})\s*원/.exec(w); if (!am) return true;
@@ -26528,6 +26530,8 @@ function caseProcBlockingWarns_(type, warns) {
     if (/열람용|법적\s*효력|위반건축물|표제부만|갑구\(소유권\) 장이 없는|담보제공자|채무공제\(§14\)|대지면적 기재 없음|층별현황|계약기간/.test(w)) return false;
     if (type === 'registry' && /^\s*\d+\s*소유권/.test(w) && !/현재\s*명의/.test(w)) return false;
     if (type === 'contract' && /^(계약금|중도금|잔금)\s/.test(w)) return false; // 매매대금 검산이 따로 있음(계약금·잔금 칸 판독은 금액 확정에 안 씀)
+    // [2026.10.16] 취득세 영수증 — 지방교육세·농특세 나눔이 불확실해도 필요경비에는 합계만 쓴다. 깨진 취득세 숫자를 합계로 맞추고 원문 숫자열에서도 같은 숫자를 찾은 것은 확인된 값
+    if (type === 'acqtax' && (/구분\s*⚠/.test(w) || /원문\s*숫자열에\s*같은\s*숫자\s*있음/.test(w))) return false;
     return /읽지 못|찾지 못|검산\s*(안|못|불가)|맞추지 못|확정하지 못|확인필요|⚠/.test(w);
   });
 }
