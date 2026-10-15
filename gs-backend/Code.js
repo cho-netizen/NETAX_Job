@@ -25591,7 +25591,10 @@ function caseProcEvidence_(c) {
     if (/취득/.test(L) && !/양도/.test(L)) return !(/양도|매도/.test(n) && !/취득|매수/.test(n)); if (/양도/.test(L) && !/취득/.test(L)) return !(/취득|매수/.test(n) && !/양도|매도/.test(n)); return true;
   };
   const roleNamed = function (label, name) {
-    const L = String(label || ''), n = String(name || ''), rb = roleBody[n];
+    const L = String(label || ''), n = String(name || '');
+    // [2026.10.16] 파일 이름에 역할이 분명하면(양도·매도 / 취득·매수) 본문 판독보다 이름 — 양도 사실 정리와 같은 기준(노오섭: "1 양도 계약서.pdf"가 있는데 본문 판독이 매수인이라 "미확보"로 물었다)
+    const nameRole = /양도|매도/.test(n) && !/취득|매수/.test(n) ? 'seller' : /취득|매수/.test(n) && !/양도|매도/.test(n) ? 'buyer' : '';
+    const rb = nameRole || roleBody[n];
     if (rb) return (/취득/.test(L) && !/양도/.test(L) && rb === 'buyer') || (/양도/.test(L) && !/취득/.test(L) && rb === 'seller');
     return (/취득/.test(L) && !/양도/.test(L) && /취득/.test(n) && !/양도/.test(n)) || (/양도/.test(L) && !/취득/.test(L) && /양도/.test(n) && !/취득/.test(n));
   };
