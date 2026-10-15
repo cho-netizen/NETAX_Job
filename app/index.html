@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 21:18 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 23:17 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -44281,7 +44281,8 @@ function goToReportWriter_(caseId, opts){
     document.getElementById('stBtnAnswerKey').addEventListener('click', function(){
       var tries = 0, netFails = 0;
       var step = function(first){
-        return callGas('answerkey_run', {}).then(function(r){ // [2026.10.15] 멈췄다 다시 누르면 처음부터가 아니라 이어서(서버가 진행 상태를 기억)
+        // [2026.10.16] 이어 부르기(cont)는 새 점검을 시작하지 않는다 — 끝난 결과 응답을 놓치고 다시 부르면 끝난 점검을 처음부터 또 돌렸다(08:14 완료 → 08:15 1/27 재시작)
+        return callGas('answerkey_run', first ? {} : { cont: true }).then(function(r){ // [2026.10.15] 멈췄다 다시 누르면 처음부터가 아니라 이어서(서버가 진행 상태를 기억)
           if (r && r.error) throw new Error(r.error);
           netFails = 0;
           // [2026.10.16] 서버가 앞선 실행(끊긴 실행이 남긴 표시 포함)으로 "바쁨"이면 20초 쉬고 다시 — 쉬지 않고 수백 번 부르다 400번 한도로 멈추던 것
