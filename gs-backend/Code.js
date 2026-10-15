@@ -24720,7 +24720,7 @@ function tc_ruleTransferFacts_(body) {
   var files = caseProcFiles_({ 폴더ID: folderId });
   var rank = function (n) { return /(계약|신고필증|취득세|법무|등기|등본)/.test(n) ? 0 : /(공사|인테리어|중개|이체|영수증|비용)/.test(n) ? 1 : 2; };
   files.sort(function (a, b) { return rank(a.name) - rank(b.name); });
-  var contracts = [], reports = [], acqs = [], lawyers = [], regs = [], expDocs = [], pubs = [], regCerts = [], started = Date.now(), skippedForTime = [];
+  var contracts = [], reports = [], acqs = [], lawyers = [], regs = [], expDocs = [], pubs = [], regCerts = [], comps = [], started = Date.now(), skippedForTime = [];
   var docSeen = 0;
   for (var i = 0; i < files.length; i++) {
     var f = files[i];
@@ -24731,6 +24731,16 @@ function tc_ruleTransferFacts_(body) {
     try { text = tc_docText_(f); } catch (e) { continue; }
     if (!text) continue;
     if (!caseProcIsAmend_(cr) && caseProcIsOutputText_(text)) continue; // [2026.10.15] 내용으로 본 이미 낸 신고서(사진 신고서 등) — 입력으로 안 씀
+    // [2026.10.15 1단계 ②] 수용 보상금 내역서(토지·물건) — 합계를 읽어 양도가액 질문의 후보로(어느 금액이 양도가액인지는 판단 — 정하지 않음).
+    //  김운래 사건: 보상금내역-토지/지장물이 "종류 미정"으로 어느 칸에도 안 쓰였다.
+    if (/보\s*상\s*금\s*내\s*역/.test(text)) {
+      var cpj = /\]\s*([^\(\n\]]{4,40}?사업)\s*\(?\s*(\d)?\s*차?\s*\)?/.exec(text);
+      var ctm = /토\s*지\s*합\s*계\s*(\d+)\s*필\s*지\s*(\d{1,3}(?:,\d{3}){2,})/.exec(text);
+      var com = /물\s*건\s*의?\s*합\s*계[\s\S]{0,400}?(\d{1,3}(?:,\d{3}){2,})/.exec(text);
+      var cnt = /물\s*건\s*의?\s*합\s*계\s*(\d+)\s*건/.exec(text);
+      if (ctm) comps.push({ file: f.name, kind: '토지', total: Number(ctm[2].replace(/,/g, '')), count: Number(ctm[1]) + '필지', project: cpj ? cpj[1].trim() + (cpj[2] ? '(' + cpj[2] + '차)' : '') : '' });
+      else if (com) comps.push({ file: f.name, kind: '물건(지장물)', total: Number(com[1].replace(/,/g, '')), count: cnt ? cnt[1] + '건' : '', project: cpj ? cpj[1].trim() + (cpj[2] ? '(' + cpj[2] + '차)' : '') : '', unsure: true });
+    }
     // [2026.10.15] 은행 앱 거래내역 화면(날짜 줄 → 시각 → 적요 → … → "-금액원" → 잔액) — 적요에 공사·중개보수 말이 있는 출금만 지급 증빙 후보로
     if (/거\s*래\s*내\s*역\s*조\s*회/.test(text)) {
       var hl = String(text).split('\n'), hd = '';
@@ -24987,7 +24997,8 @@ function tc_ruleTransferFacts_(body) {
     else if (regCerts.length > 1) evidence.push('⚠ 등기필증이 ' + regCerts.length + '장(' + regCerts.map(function (x) { return x.file + ' ' + x.date; }).join(', ') + ') — 어느 것이 이 부동산 취득인지 확정 못 함');
   });
   if (skippedForTime.length) evidence.push('⚠ 서류가 많거나 시간이 모자라 ' + skippedForTime.length + '개를 이번에 못 읽음(다시 처리하면 기억분으로 이어 읽음): ' + skippedForTime.slice(0, 8).join(', ') + (skippedForTime.length > 8 ? ' 외' : ''));
-  return { ok: true, sellerName: names[0] || null, transactions: txs, evidence: evidence, expCands: expCands,
+  comps.forEach(function (x) { evidence.push('수용 보상금 내역: ' + x.file + ' — ' + x.kind + ' 합계 ' + x.total.toLocaleString('ko-KR') + '원' + (x.count ? '(' + x.count + ')' : '') + (x.project ? ', ' + x.project : '') + (x.unsure ? ' — 합계 줄 위치로 읽음, 원문 확인' : '')); });
+  return { ok: true, sellerName: names[0] || null, transactions: txs, evidence: evidence, expCands: expCands, comps: comps,
     counts: { 계약서: contracts.length, 신고필증: reports.length, 취득세: acqs.length, 법무사: lawyers.length, 등기부: regs.length } };
 }
 
@@ -25548,6 +25559,16 @@ function caseProcOverview0_(c) {
   const rf = tc_ruleTransferFacts_({ caseId: c.id });
   CASEPROC_LAST_RF_ = { caseId: c.id, rf: rf }; // 🧪 정답지 점검이 같은 실행 안에서 필요경비·거래 목록을 다시 읽지 않고 쓰게
   if (!rf || !rf.ok) { lines.push('서류 규칙 정리 실패: ' + (rf && rf.error || '응답 없음')); caseProcTrAskBasics_(c, ov, lines, items, null, []); return { ok: true, lines: lines, items: items }; }
+  // [2026.10.15 1단계 ②③] 수용 보상금 내역서 — 읽은 합계를 양도가액 객관식 후보로(근거 파일과 함께). 어느 금액이 양도가액인지는 세무사님 판단.
+  if ((rf.comps || []).length) {
+    const a0c = (Array.isArray(ov.물건목록) && ov.물건목록[0]) || ov;
+    if (!String(a0c.양도가액 || '').trim()) {
+      const cc = rf.comps.map(function (x) { return { v: String(x.total), src: x.kind + ' 보상금 합계' + (x.count ? '(' + x.count + ')' : '') + ' — ' + x.file + (x.unsure ? ' ⚠원문 확인' : '') }; });
+      if (rf.comps.length > 1) cc.push({ v: String(rf.comps.reduce(function (s, x) { return s + x.total; }, 0)), src: '보상금 합계 전부(' + rf.comps.map(function (x) { return x.kind; }).join('+') + ')' });
+      items.push(caseProcItem_('tr:comp', 'judge', '수용 보상금 내역서에서 읽은 금액입니다 — 물건1 양도가액에 어느 금액을 넣을까요? (지장물 보상 중 건물·구축물은 양도, 수목·시설 이전비·영업보상은 양도가 아닐 수 있어 판단이 필요합니다. 이의재결로 늘어난 금액이 있으면 그 금액으로)',
+        { mode: 'choose', target: 'ovAsset:0:양도가액', input: 'money', label: '물건1 양도가액', cands: cc }));
+    }
+  }
   const txs = (rf.transactions || []).filter(function (t) { return t.transferPrice || t.acquisitionPrice || t.transferDate; });
   lines.push('서류 규칙 정리: 계약서 ' + rf.counts.계약서 + ' · 신고필증 ' + rf.counts.신고필증 + ' · 등기부 ' + rf.counts.등기부 + ' · 취득세 ' + rf.counts.취득세 + ' · 법무사 ' + rf.counts.법무사 + ' → 양도거래 ' + txs.length + '건');
   (rf.evidence || []).filter(function (e) { return /⚠|찾지 못함|확정 못/.test(e); }).forEach(function (e) {
