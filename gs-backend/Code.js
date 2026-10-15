@@ -26864,6 +26864,28 @@ function caseProcGiftInhFacts_(c, lines, items) {
           if (rel) add('giftRelation', rel, '가족관계증명서(' + x.f.name + ', 본인 기준 증여자 ' + d0 + '·수증자 ' + e0 + ')', !unsure);
         });
       }
+      // [2026.10.16] 가족관계증명서로 관계를 못 찾았으면 상담 메모 등 서류 글자에서 수증자 이름과 함께 "모친 하영애"처럼 호칭+증여자 이름을 찾아 후보로
+      //  (확정 아님 — 가족관계증명서로 확인할 것). 하영애(이인원): 상담 메모 "이인원 … 모친 하영애와 함께 방문"인데 관계를 빈칸으로 물었다
+      if (!(facts.giftRelation || []).length) {
+        const dnm = norm(donor).split('').join('\\s*');
+        const relRe = new RegExp('(부친|모친|아버지|어머니|엄마|아빠|배우자|남편|아내|아들|딸|장남|장녀|차남|차녀)\\s*[:：]?\\s*' + dnm);
+        const relMap = { 부친: '직계존속(1촌, 부모 등→자녀)', 모친: '직계존속(1촌, 부모 등→자녀)', 아버지: '직계존속(1촌, 부모 등→자녀)', 어머니: '직계존속(1촌, 부모 등→자녀)', 엄마: '직계존속(1촌, 부모 등→자녀)', 아빠: '직계존속(1촌, 부모 등→자녀)', 배우자: '배우자', 남편: '배우자', 아내: '배우자', 아들: '직계비속(1촌, 자녀 등→부모)', 딸: '직계비속(1촌, 자녀 등→부모)', 장남: '직계비속(1촌, 자녀 등→부모)', 장녀: '직계비속(1촌, 자녀 등→부모)', 차남: '직계비속(1촌, 자녀 등→부모)', 차녀: '직계비속(1촌, 자녀 등→부모)' };
+        let memoHit = null;
+        const tryText = function (t, name) {
+          t = String(t || '');
+          if (!t || !nameHas([t.replace(/\s+/g, '')], donee)) return false;
+          const m = relRe.exec(t); if (!m) return false;
+          memoHit = { rel: relMap[m[1]], word: m[0].replace(/\s+/g, ' '), file: name }; return true;
+        };
+        try { (caseProcMemoTexts_(c).read || []).some(function (x) { return tryText(x.text, x.file); }); } catch (e) {} // 엑셀·문서 상담 메모
+        if (!memoHit) try {
+          caseProcFiles_(c).filter(function (f) { return /pdf|^image\//.test(String(f.mimeType || '')) && !/^_/.test(f.name) && !caseProcIsOutputDoc_(f.name); }).slice(0, 60).some(function (f) {
+            let t = ''; try { t = tc_docText_(f) || ''; } catch (e) {}
+            return tryText(t, f.name);
+          });
+        } catch (e) {}
+        if (memoHit && memoHit.rel) add('giftRelation', memoHit.rel, '서류 글자(' + memoHit.file + ')의 "' + memoHit.word + '" — 수증자 기준 호칭, 가족관계증명서로 확인 필요', false);
+      }
     }
     // [2026.10.15 1:1] 인적사항 — 주민번호는 가족관계증명서(13자리 그대로, 등본은 뒷자리가 가려짐), 주소는 주민등록등본(그 사람이 세대주·세대원인 등본의 현주소).
     //  신고서 인적사항 칸용(세액과 무관) — 못 찾으면 묻지 않고 비워 둔다. 세액계산 화면이 이 값을 그대로 받는다(유료 자동채우기로 다시 읽지 않게).
