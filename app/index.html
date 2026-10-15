@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 15:48 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 16:21 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -21994,12 +21994,17 @@ function tcApplyInheritanceRule_(rf){
   if (rf.funeral && rf.funeral.value) fun.push({ payee: '장례비용(' + (rf.funeral.src || '증빙') + ')', category: 'general', detail: '사건처리 서류 정리', amount: rf.funeral.value });
   if (rf.niche && rf.niche.value) fun.push({ payee: '봉안시설(' + (rf.niche.file || '') + ')', category: 'niche', detail: rf.niche.src || '', amount: rf.niche.value });
   if (fun.length){ inheritanceFuneralItems = fun; filled.push('장례비용'); }
+  // [2026.10.16] 감정평가수수료(§25①, 시행령 §20의3 — 500만원 한도) — 감정평가법인 영수증 합계
+  if (rf.appraisalFee && rf.appraisalFee.value) setVal('ihAppraisalFee', rf.appraisalFee.value, '감정평가수수료');
   // [2026.10.15] 사건처리에서 확정한 상속 채무(부채증명원·임대보증금 등) — 채무 칸에 항목별로
   if (rf.debts && rf.debts.length){ inheritanceDebtItems = rf.debts.map(function(d){ return { debtType: d.debtType === 'other' ? 'other' : 'loan', creditorName: d.creditorName || '', amount: d.amount }; }); filled.push('채무 ' + rf.debts.length + '건'); }
+  // [2026.10.16] 공과금(피상속인 명의 세금 중 개시일에 기한이 남은 것, §14①1호) — 납부서별로
+  if (rf.dues && rf.dues.length){ inheritanceDuesItems = rf.dues.map(function(d){ return { duesType: d.duesType === 'local' ? 'local' : 'national', year: String(d.year || '').replace(/[^0-9]/g, '').slice(0, 4), amount: d.amount }; }); filled.push('공과금 ' + rf.dues.length + '건'); }
   if (typeof renderHeirRegistry === 'function') renderHeirRegistry();
   if (typeof renderHeirTool === 'function') renderHeirTool();
   if (typeof renderFuneralItemsList === 'function') renderFuneralItemsList();
   if (typeof renderDebtItemsList === 'function') renderDebtItemsList();
+  if (typeof renderDuesItemsList === 'function') renderDuesItemsList();
   return filled;
 }
 async function runAiAutoFillInheritanceAI_(){
@@ -47345,7 +47350,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (input === 'money'){ var v = nxAiKrMoney_(body.replace(/((?:19|20)\d{2})\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}/g, ' ')); return v ? String(v) : ''; }
       if (input === 'number'){ var n = /(\d+)\s*(명|개|건)?/.exec(body); return n ? n[1] : ''; }
       if (input === 'date') return nxAiKrDate_(body);
-      if (input === 'select'){ var nb = body.replace(/\s+/g, ''); var o = (a.options || []).filter(function(x){ var k = String(x).replace(/\s+/g, '').replace(/\(.*$/, ''); return k && nb.indexOf(k) !== -1; }); return o.length === 1 ? o[0] : (nthN && a.options && a.options[nthN - 1]) || ''; }
+      if (input === 'select'){ var nb = body.replace(/\s+/g, ''); var o = (a.options || []).filter(function(x){ var k = String(x).replace(/\s+/g, '').replace(/\(.*$/, ''); return k && nb.indexOf(k) !== -1; }); var kl = function(x){ return String(x).replace(/\s+/g, '').replace(/\(.*$/, '').length; }; if (o.length > 1){ var mx = Math.max.apply(null, o.map(kl)); o = o.filter(function(x){ return kl(x) === mx; }); } /* '기타친족'이 '기타'에도 걸리면 더 길게 맞는 쪽 */ return o.length === 1 ? o[0] : (nthN && a.options && a.options[nthN - 1]) || ''; }
       return clean(body);
     };
     if (mode === 'input' || mode === 'choose' || mode === 'base'){

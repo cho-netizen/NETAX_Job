@@ -2567,7 +2567,7 @@
       if (input === 'money'){ var v = nxAiKrMoney_(body.replace(/((?:19|20)\d{2})\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}/g, ' ')); return v ? String(v) : ''; }
       if (input === 'number'){ var n = /(\d+)\s*(명|개|건)?/.exec(body); return n ? n[1] : ''; }
       if (input === 'date') return nxAiKrDate_(body);
-      if (input === 'select'){ var nb = body.replace(/\s+/g, ''); var o = (a.options || []).filter(function(x){ var k = String(x).replace(/\s+/g, '').replace(/\(.*$/, ''); return k && nb.indexOf(k) !== -1; }); return o.length === 1 ? o[0] : (nthN && a.options && a.options[nthN - 1]) || ''; }
+      if (input === 'select'){ var nb = body.replace(/\s+/g, ''); var o = (a.options || []).filter(function(x){ var k = String(x).replace(/\s+/g, '').replace(/\(.*$/, ''); return k && nb.indexOf(k) !== -1; }); var kl = function(x){ return String(x).replace(/\s+/g, '').replace(/\(.*$/, '').length; }; if (o.length > 1){ var mx = Math.max.apply(null, o.map(kl)); o = o.filter(function(x){ return kl(x) === mx; }); } /* '기타친족'이 '기타'에도 걸리면 더 길게 맞는 쪽 */ return o.length === 1 ? o[0] : (nthN && a.options && a.options[nthN - 1]) || ''; }
       return clean(body);
     };
     if (mode === 'input' || mode === 'choose' || mode === 'base'){
