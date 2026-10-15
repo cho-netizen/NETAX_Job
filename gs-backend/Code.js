@@ -24895,6 +24895,9 @@ function tc_ruleTransferFacts_(body) {
     return { ok: true, debug: true, names: names.map(mk), parties: contracts.map(function (c) { return { 매도인: mk(c.r.매도인), 매수인: mk(c.r.매수인), 검산: c.r.검산, 매매대금: !!c.r.매매대금, 잔금일: !!c.r.잔금일, 소재지: mk(c.r.소재지),
       역할: c.role, 파일: c.file }; }) };
   }
+  // [2026.10.15 1:1] 법무사 정산서 합계 안에 들어 있을 금액(보수 현금영수증·취득세 납부서 등)은 미리 체크하지 않고 겹칠 수 있다고 알린다(이중 계상 방지 — 노오섭: 보수 242,000원이 정산서 2,728,918원에 포함)
+  var lawC = expCands.filter(function (x) { return /법무사 정산서/.test(x.label); })[0];
+  if (lawC) expCands.forEach(function (x) { if (x !== lawC && x.kind === '취득' && x.amount < lawC.amount && /법무|취득세|인지|채권/.test(x.file + ' ' + x.label)) { x.sure = false; if (!/겹치면/.test(x.note)) x.note = (x.note ? x.note + ' · ' : '') + '법무사 정산서 합계에 이미 들어 있을 수 있음 — 겹치면 하나만'; } });
   return { ok: true, sellerName: names[0] || null, transactions: txs, evidence: evidence, expCands: expCands,
     counts: { 계약서: contracts.length, 신고필증: reports.length, 취득세: acqs.length, 법무사: lawyers.length, 등기부: regs.length } };
 }
