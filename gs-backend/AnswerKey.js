@@ -252,8 +252,15 @@ function akRunCase0_(caseId, key) {
   let c = akReadCase_(caseId);
   if (!c) return { caseId: caseId, error: '사건을 찾지 못했습니다.' };
   const out = { caseId: caseId, 사건명: c.사건명 || c.고객명 || '', 상태: key.상태 || '초안', rows: [], extra: [], missing: [], steps: {} };
+  const t0 = Date.now();
   let ev = caseProcEvidence_(c);
   if (ev.more) return { caseId: caseId, more: true, progress: ev.progress };
+  // [2026.10.16] 서류가 많은 사건(노영환 299개)은 서류 정리만으로 몇 분이 걸려, 이어서 처리개요·두 번째 증빙까지 하면 서버 6분 한도에 걸려
+  //  같은 사건을 3번 끊고 건너뛰었다. 서류 정리에 2분 넘게 걸렸으면 여기서 끊고 다음 호출에서 이어 간다(글자·정리 결과는 캐시에 남아 빨라짐).
+  if (Date.now() - t0 > 120000) {
+    const sc = CacheService.getScriptCache(), sk = 'ak_split_' + caseId; // 사건마다 한 번만 끊는다(10분) — 계속 끊기만 하는 반복 방지
+    if (!sc.get(sk)) { sc.put(sk, '1', 600); return { caseId: caseId, more: true, progress: '서류 정리 끝(' + Math.round((Date.now() - t0) / 1000) + '초) — 다음 호출에서 처리개요' }; }
+  }
   AK_LAST_EV_ = { caseId: c.id, srcDocs: ev.srcDocs, outDocs: ev.outDocs };
   c = akReadCase_(caseId);
   const ovr = caseProcOverview_(c);
