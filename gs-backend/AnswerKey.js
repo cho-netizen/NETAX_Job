@@ -435,6 +435,16 @@ function akParseFormResult_(text, seMok) {
     const lm = lab.exec(t);
     if (lm) { const g = (t.slice(lm.index, lm.index + 400).match(/\d{1,3}(?:,\d{3})+/g) || []).map(function (x) { return Number(x.replace(/,/g, '')); }).filter(function (v) { return v >= out.과세표준; })[0]; if (g) out.과세가액 = g; }
     if (out.과세가액 && seMok === 'inheritance' && has(out.과세가액 - out.과세표준)) out.상속공제 = out.과세가액 - out.과세표준; // 감정평가수수료가 있으면 맞지 않아 안 씀
+    // [2026.10.15 1:1] 증여 — 질문의 답 전용(답_) 입력값: ⑰ 증여재산가액, ㉓ 증여재산가산액(10년 합산), ⑩ 증여일자. 신고서에 적힌 값만 —
+    //  예전엔 10년 합산 질문에 "정답지 과세가액 − 이번 증여"를 답으로 지어냈다(꿰맞추기, 세무사님 지적). ⑰ + ㉓ − 채무 = 과세가액이 맞을 때만 넣는다.
+    if (seMok === 'gift' && out.과세가액) {
+      const after = function (re, span) { const m = re.exec(t); if (!m) return null; const n = (t.slice(m.index + m[0].length, m.index + m[0].length + (span || 80)).match(/\d{1,3}(?:,\d{3})+|(?:^|\s)0(?=\s|$)/) || [])[0]; return n == null ? null : Number(String(n).replace(/[^\d]/g, '')); };
+      const g17 = after(/증\s*여\s*재\s*산\s*가\s*액(?!\s*\()/), g23 = after(/증\s*여\s*재\s*산\s*가\s*산\s*액/, 120), debt = after(/(?:㉒|22)\s*채\s*무/, 60) || 0;
+      if (g17 && g23 != null && g17 + g23 - debt === out.과세가액) { out.답_증여재산가액 = g17; out.답_가산액 = g23; }
+      else if (g17 && g17 - debt === out.과세가액) { out.답_증여재산가액 = g17; out.답_가산액 = 0; }
+      const dm = /증\s*여\s*일\s*자?[^\d]{0,30}(20\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})/.exec(t);
+      if (dm) out.답_증여일 = dm[1] + '-' + ('0' + dm[2]).slice(-2) + '-' + ('0' + dm[3]).slice(-2);
+    }
   } else {
     // [2026.10.15] 초안 6판 — 신고서의 입력값(양도가액·취득가액·필요경비)도 "질문의 답" 전용으로(답_ 칸) 읽는다. 세법 관계가 맞는 숫자 묶음만:
     //  양도소득금액 = 과세표준 + 기본공제 250만, 양도차익 = 소득금액 + 장기보유특별공제(0일 수 있음), 양도가액 − 취득가액 − 필요경비 = 양도차익.
@@ -618,12 +628,16 @@ function akUsable_(c, key, out, tool) {
     const has = function (re) { return need.some(function (q) { return re.test(q.id || ''); }); };
     let amt = dg(ov.giftAmount), rel = String(ov.giftRelation || ''), prior = dg(ov.giftPriorAmount);
     const tv = dg(exp.과세가액), tb = dg(exp.과세표준);
-    if ((!amt || has(/^ov:giftAmount/)) && has(/^ov:giftAmount/) && tv) amt = tv;              // 증여재산가액 질문 → 정답지 과세가액
-    if (!rel && has(/^ov:giftRelation/) && tv && exp.과세표준 !== undefined) {               // 관계 질문 → 정답지 (과세가액 − 과세표준) = 증여재산공제
+    // [2026.10.15 1:1] 증여 내용 확인 질문(gift:deal) → 신고서의 증여재산가액·증여일로 답한다(신고서에 그 칸이 읽혀 있을 때만)
+    if (has(/^gift:deal/)) { amt = dg(key.답_증여재산가액); if (key.답_증여일) c.기준일 = key.답_증여일; }
+    if ((!amt || has(/^ov:giftAmount/)) && has(/^ov:giftAmount/)) amt = dg(key.답_증여재산가액) || tv;     // 증여재산가액 질문 → 신고서 증여재산가액(없으면 과세가액)
+    if (!rel && (has(/^ov:giftRelation/) || has(/^gift:deal/)) && tv && exp.과세표준 !== undefined) {               // 관계 질문 → 정답지 (과세가액 − 과세표준) = 증여재산공제
       const ded = tv - tb; rel = ded >= 600000000 ? '배우자' : ded >= 50000000 ? '직계존속' : ded >= 20000000 ? '직계존속' : ded >= 10000000 ? '기타친족' : ded === 0 ? '기타' : '';
     }
-    if (has(/^ov:giftPriorAmount/) && tv && amt && tv > amt && !prior) prior = tv - amt;       // 10년 합산 질문 → 정답지 과세가액 − 이번 증여
-    if (!amt || !rel) { s3 = '확인불가'; s3why = '정답지로 답할 수 없는 질문이 남음(' + (!amt ? '증여재산가액' : '관계') + ')'; }
+    // 10년 합산 질문 → 신고서 ㉓ 증여재산가산액(읽혀 있을 때만). 예전의 "과세가액 − 이번 증여" 역산은 꿰맞추기라 없앰(2026.10.15 1:1).
+    let priorUnknown = false;
+    if (has(/^ov:giftPriorAmount/) && !prior) { if (key.답_가산액 != null) prior = dg(key.답_가산액); else priorUnknown = true; }
+    if (!amt || !rel || priorUnknown) { s3 = '확인불가'; s3why = '정답지로 답할 수 없는 질문이 남음(' + (!amt ? '증여재산가액(신고서에서 못 읽음)' : !rel ? '관계' : '10년 합산(신고서 증여재산가산액을 못 읽음)') + ')'; }
     else {
       const input = { giftAmount: amt, relation: /배우자/.test(rel) ? '배우자' : /직계존속/.test(rel) ? '직계존속' : /직계비속/.test(rel) ? '직계비속' : /기타친족/.test(rel) ? '기타친족' : '기타', giftDate: c.기준일 || undefined };
       if (prior) input.priorGiftAmount = prior;

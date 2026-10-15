@@ -17043,7 +17043,8 @@ var TC_OVERVIEW_INPUT_KEYS_ = {
   // 게다가 casehandling.html의 값 형식("직계존속(1촌, 부모 등→자녀)")과 이 select의 값
   // 형식("직계존속" + 세대생략 여부는 별도 data-genskip)이 달라 단순 대입도 안 통한다 —
   // 전용 변환 함수 tcApplyGiftRelation_로 별도 처리한다(아래).
-  gift: ['giftDoneeName', 'giftDonorName', 'giftAmount', 'giftDebtAssumed', 'giftPriorAmount', 'giftDate'],
+  // [2026.10.15 1:1] 주민번호·주소 — 사건처리가 가족관계증명서(13자리)·등본에서 읽어 처리개요에 둔 값을 그대로(유료 자동채우기로 다시 읽어 뒷자리 잘린 번호가 들어가던 문제)
+  gift: ['giftDoneeName', 'giftDonorName', 'giftAmount', 'giftDebtAssumed', 'giftPriorAmount', 'giftDate', 'giftDoneeRegNo', 'giftDoneeAddress', 'giftDonorRegNo', 'giftDonorAddress'],
   inheritance: ['ihDeceasedName', 'ihEstate', 'ihDeathDate']
 };
 // [2026.09 버그수정] 사건개요서(casehandling.html)에서 입력한 증여일·상속개시일은 사건개요

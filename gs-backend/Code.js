@@ -24982,7 +24982,7 @@ function caseProcBasic_(c, body) {
   const manual = WORK_MANUAL_DEADLINE_TYPES_.indexOf(c.업무유형) !== -1;
   // [2026.10.15] 법정일은 기준일에서 계산된다 — 기준일이 아직 없으면 기준일 질문 하나로 충분(같은 일을 두 번 묻지 않음)
   if (!c.법정일 && (manual || c.기준일)) items.push(caseProcItem_('basic:법정일', 'missing', '법정일(처리기한)이 비어 있습니다.', manual ? { mode: 'input', target: 'case:법정일', input: 'date' } : { mode: 'base' }));
-  else if (c.상태 !== '완료' && c.법정일 < today) items.push(caseProcItem_('basic:기한경과:' + c.법정일, 'check', '법정일(' + c.법정일 + ')이 지났습니다.', { mode: 'options', options: [{ label: '기한후신고로 진행', decide: 'done', note: '기한후신고로 진행' }, { label: '법정일이 틀림 — 기준일부터 확인', mode: 'base' }] }));
+  else if (c.법정일 && c.상태 !== '완료' && c.법정일 < today) items.push(caseProcItem_('basic:기한경과:' + c.법정일, 'check', '법정일(' + c.법정일 + ')이 지났습니다.', { mode: 'options', options: [{ label: '기한후신고로 진행', decide: 'done', note: '기한후신고로 진행' }, { label: '법정일이 틀림 — 기준일부터 확인', mode: 'base' }] }));
   if (!manual) caseProcDateCheck_(c, body || {}, items);
   if (!String(c.폴더ID || '').trim()) items.push(caseProcItem_('basic:폴더', 'missing', '증빙 폴더가 없습니다 — 폴더가 있어야 서류를 읽고 처리할 수 있습니다.', { mode: 'folder' }));
   const saved = caseProcLoad_(c.id);
@@ -25192,6 +25192,12 @@ function caseProcEvidence_(c) {
       const why = '계약서(' + inhNiche.file + (inhNiche.couple ? ', 부부단' : '') + (inhNiche.cands && inhNiche.cands.length ? ' ' + inhNiche.cands.map(function (v) { return v.toLocaleString('ko-KR') + '원'; }).join('·') : '') + ')는 있으나 피상속인 몫 사용료를 낸 영수증·이체내역이 없음' + (inhNiche.payments && inhNiche.payments.length ? '(폴더의 납부 기록 ' + inhNiche.payments.join(', ') + '은 계약 사용대금과 금액이 달라 관리비·다른 고인 몫으로 봄)' : '');
       items.push(caseProcItem_('ev:' + (e.slotKey || e.label), 'missing', '미확보: 봉안시설 사용료 납부 증빙 — ' + why + ' → 받기 전엔 봉안시설 공제 0(상증령 §9②: 장례비 1천만원과 별도 5백만원 한도)', { mode: 'evidence', evId: virtual ? '' : e.id, label: e.label, suggest: [] }));
       return;
+    }
+    // [2026.10.15] 현금 증여인데 증여계약서가 없고 이체내역만 있으면 — 계약서를 받으라고 따로 묻지 않는다. 증여 내용(증여자·수증자·증여일·증여대상)은
+    //  처리개요 "증여 내용 확인" 질문 한 곳에서 묻는다(세무사님 1:1: 이체내역은 돈이 간 사실만 보여주니 증여 내용을 물어서 처리).
+    if (c.세목 === 'gift' && /증여\s*계약서/.test(e.label)) {
+      let cg = null; try { cg = caseProcCashGift_(c, caseProcParseAll_(c)); } catch (err) {}
+      if (cg && cg.isCash && cg.txOnly) { lines.push('증여계약서 없음 — 이체내역만 있음: 증여 내용은 처리개요 「증여 내용 확인」에서 묻습니다.'); return; }
     }
     // [2026.10.15] 신분증·위임장·인감증명은 신고 제출용일 뿐 세액·판단과 무관 — ⚠ 질문으로 세우지 않고 안내 한 줄로(정답지 점검에서 불필요 질문으로 반복 검출)
     if (/신분증|위임장|인감/.test(e.label)) { lines.push('제출용 서류(세액과 무관, 신고 전 받기): ' + e.label + ' 미확보'); return; }
@@ -25438,7 +25444,8 @@ function caseProcCashGift_(c, parsed) {
   const amtSure = gc && gc.금액 && gc.검산 === '일치';
   // 은행 거래 — 수증자 계좌에 들어온 거래 중 증여자 이름이 적요에 있거나 계약서 금액과 같은 것
   let tx = null;
-  banks.forEach(function (x) {
+  // [2026.10.15 1:1] 계약서 없이 이체확인증(받는 분이 수증자)만 있으면 한 건을 고르지 않는다 — 아래에서 모두 모아 후보로(증여자 이름을 정한 뒤에 1건만 골라 "현금 1천만원"으로 되돌아가던 문제)
+  if (gc || !recv.length) banks.forEach(function (x) {
     const r = x.p.result || {};
     if (donee && r.예금주 && !like(r.예금주, donee)) return;
     (r.거래 || []).forEach(function (g) {
@@ -25464,6 +25471,11 @@ function caseProcCashGift_(c, parsed) {
       out.date = last; out.dateSure = use.every(function (g) { return g.날짜 === last; });
       out.dateSrc = '이체확인증 ' + (use.length > 1 ? '마지막 이체일(' + use.length + '건 — 날짜가 다르면 각 이체일이 증여일, §47② 10년 합산)' : '이체일') + ' — 현금 인도일(상증령 §24)';
       out.tx = null;
+      // [2026.10.15 1:1] 계약서 없이 이체내역만 — 돈이 간 사실일 뿐 증여 내용(증여인지·무엇을 얼마나·언제)은 아니다. 위 값은 "후보"로만 쓰고 세무사님께 묻는다.
+      out.txOnly = true; out.amountSure = false; out.dateSure = false;
+      out.txRows = use.slice().sort(function (a, b) { return (a.날짜 + (a.시각 || '')).localeCompare(b.날짜 + (b.시각 || '')); }).map(function (g) { return { 날짜: g.날짜, 시각: g.시각 || '', 금액: g.금액, 보낸이: g.보낸이, 받는이: g.받는이, 메모: g.적요 || '', file: g.file }; });
+      const lt = banks.map(function (x) { return (x.p.result || {}).목록합계; }).filter(function (v) { return v; })[0];
+      if (lt) out.listTotal = lt;
       return out;
     }
     out.note = '이체확인증의 보낸 사람이 여러 명(' + senders.join(', ') + ') — 증여자를 정해야 합계를 낼 수 있음';
@@ -25483,7 +25495,18 @@ function caseProcBaseDateCheck_(c, ov, lines, items) {
   if (c.세목 === 'gift') {
     const cash = caseProcCashGift_(c, caseProcParseAll_(c));
     if (cash.isCash) {
-      const filled = (caseProcLoad_(c.id).filled || {});
+      const sv0 = caseProcLoad_(c.id);
+      // [2026.10.15 1:1] 이체내역만 있는 현금 증여 — 증여일은 "증여 내용 확인"에서 세무사님이 정한 날. 정하기 전엔 이체일을 사건 기준일로 넣지 않는다.
+      if (cash.txOnly && !cash.contract) {
+        const deal = sv0.giftDeal;
+        if (!deal || !caseProcIsDate_(deal.date)) { lines.push('증여일: 증여계약서가 없어 이체일만으로 정하지 않음 — 「증여 내용 확인」에서 정합니다(이체일 후보 ' + (cash.txRows || []).map(function (g) { return g.날짜; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(', ') + ').'); return; }
+        if (c.기준일 === deal.date) { lines.push('✅ 증여일 ' + deal.date + ' — 세무사님 확인(증여 내용)'); return; }
+        const apd = caseProcApplyBase_(c.id, deal.date, '세무사님 확인(증여 내용)', '증여일');
+        lines.push(apd.ok ? '✏ ' + apd.message : '⚠ 증여일을 반영하지 못했습니다: ' + apd.error);
+        if (apd.ok) { c.기준일 = apd.기준일; if (apd.법정일) c.법정일 = apd.법정일; if (apd.수정일) c.수정일 = apd.수정일; }
+        return;
+      }
+      const filled = (sv0.filled || {});
       const userSet = filled.기준일 && filled.기준일.v === c.기준일 && !/^증빙|이체내역|증여계약서|계약서/.test(String(filled.기준일.src || ''));
       if (!cash.date) {
         if (!c.기준일) items.push(caseProcItem_('base:none', 'missing', '현금 증여일을 확정할 서류가 없습니다 — 증여계약서(계약일) 또는 수증자 계좌 이체내역이 필요합니다.', { mode: 'base' }));
@@ -25494,7 +25517,7 @@ function caseProcBaseDateCheck_(c, ov, lines, items) {
       if (cash.dateSure && !userSet) {
         const ap = caseProcApplyBase_(c.id, cash.date, '증빙: ' + cash.dateSrc, '증여일');
         lines.push(ap.ok ? '✏ ' + ap.message : '⚠ 증여일을 반영하지 못했습니다: ' + ap.error);
-        if (ap.ok) { c.기준일 = ap.기준일; if (ap.법정일) c.법정일 = ap.법정일; }
+        if (ap.ok) { c.기준일 = ap.기준일; if (ap.법정일) c.법정일 = ap.법정일; if (ap.수정일) c.수정일 = ap.수정일; }
         return;
       }
       items.push(caseProcItem_('base:cash:' + cash.date + ':' + c.기준일, 'check', '증여일: ' + (userSet ? '세무사님이 정한 ' : '사건 기준일 ') + c.기준일 + ' ↔ ' + cash.dateSrc + ' ' + cash.date + (cash.mismatch ? ' (' + cash.mismatch + ')' : '') + ' — 어느 날이 맞나요?', { mode: 'base' }));
@@ -25523,7 +25546,7 @@ function caseProcBaseDateCheck_(c, ov, lines, items) {
   if (!c.기준일 || !userSet0) {
     const ap = caseProcApplyBase_(c.id, d, '증빙: ' + src.file + (src.via ? '(' + src.via + ')' : ''), what);
     lines.push(ap.ok ? '✏ ' + ap.message + extra : '⚠ ' + what + '을(를) 반영하지 못했습니다: ' + ap.error);
-    if (ap.ok) { c.기준일 = ap.기준일; if (ap.법정일) c.법정일 = ap.법정일; } // 같은 실행의 다음 판단도 새 기준일로
+    if (ap.ok) { c.기준일 = ap.기준일; if (ap.법정일) c.법정일 = ap.법정일; if (ap.수정일) c.수정일 = ap.수정일; } // 같은 실행의 다음 판단도 새 기준일로
     return;
   }
   items.push(caseProcItem_('base:' + d + ':' + c.기준일, 'check', what + ': 사건 기준일 ' + c.기준일 + ' ↔ 증빙(' + src.file + ') ' + basis + ' ' + d + extra + ' — 어느 날이 맞나요?', { mode: 'base' }));
@@ -25618,6 +25641,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
   const facts = {}; // key → [{v, src, sure}]
   const add = function (key, v, src, sure) { if (v === null || v === undefined || v === '') return; (facts[key] = facts[key] || []).push({ v: String(v), src: src, sure: !!sure }); };
   const notes = [];
+  let dealPending = false; // [2026.10.15 1:1] 증여 내용 확인 전 — 증여자·수증자·금액·관계 칸은 그 질문 하나로 묻는다
   const byType = function (t) { return parsed.filter(function (x) { return x.p.type === t; }); };
   const fams = byType('family');
   const relOf = function (me, other) { // other가 me에게 어떤 관계인지 — 가족관계증명서(본인 = me)에서
@@ -25660,14 +25684,49 @@ function caseProcGiftInhFacts_(c, lines, items) {
         add('giftDonorName', gc.증여자, '증여계약서(' + gc.file + ')', !!namesOk || nameHas([ov.giftDonorName], gc.증여자));
         add('giftDoneeName', gc.수증자, '증여계약서(' + gc.file + ')', !!namesOk || nameHas([ov.giftDoneeName, c.납세자], gc.수증자));
       }
-      if (cash.donorFromTx) add('giftDonorName', cash.donorFromTx, '이체확인증 보내는 분', true);
-      if (cash.doneeFromTx) add('giftDoneeName', cash.doneeFromTx, '이체확인증 받는 분', true);
-      if (cash.amount) add('giftAmount', cash.amount, cash.amountSrc, cash.amountSure);
+      if (cash.txOnly && !gc) {
+        // [2026.10.15 1:1] 증여계약서 없이 이체내역만 — 이체 목록은 참고 후보로 보여주고 증여자·수증자·증여일·증여대상을 한 번에 묻는다.
+        //  세무사님이 정한 뒤(saved.giftDeal)에는 그 값이 확정값.
+        const deal = saved.giftDeal;
+        if (deal) {
+          add('giftDonorName', deal.donor, '세무사님 확인(증여 내용)', true);
+          add('giftDoneeName', deal.donee, '세무사님 확인(증여 내용)', true);
+          add('giftAmount', deal.amount, '세무사님 확인(증여 내용' + (deal.kind ? ': ' + deal.kind : '') + ')', true);
+          lines.push('증여 내용(세무사님 확인): ' + deal.donor + ' → ' + deal.donee + ' · ' + deal.date + ' · ' + (deal.kind || '') + ' ' + Number(deal.amount).toLocaleString('ko-KR') + '원');
+        } else {
+          dealPending = true;
+          const rows = cash.txRows || [];
+          const sum = rows.reduce(function (a, g) { return a + g.금액; }, 0);
+          const last = rows.map(function (g) { return g.날짜; }).sort().pop() || '';
+          const won = function (n) { return Number(n).toLocaleString('ko-KR') + '원'; };
+          const detail = rows.map(function (g) { return g.날짜 + ' ' + g.시각 + ' · ' + (g.보낸이 || '?') + ' → ' + (g.받는이 || '?') + ' · ' + won(g.금액) + (g.메모 ? ' · 메모 ' + g.메모 : '') + ' (' + g.file + ')'; }).join('\n')
+            + '\n합계 ' + won(sum) + (cash.listTotal ? (cash.listTotal === sum ? ' — 이체 목록 장의 총 이체금액과 일치' : ' ⚠ 이체 목록 장의 총 이체금액 ' + won(cash.listTotal) + '과 다름') : '');
+          lines.push('이체내역(참고 — 증여 내용 아님): ' + rows.length + '건 합계 ' + won(sum) + ', ' + rows.map(function (g) { return g.날짜 + ' ' + won(g.금액); }).join(' / '));
+          // 객관식 후보 — 서류에서 나온 것만(출처 표시). 맞는 게 없으면 화면에서 직접 입력(주관식).
+          const uq = function (arr) { const seen = {}; return arr.filter(function (x) { if (!x.v || seen[x.v]) return false; seen[x.v] = true; return true; }); };
+          const famPeople = [].concat.apply([], fams.map(function (x) { return ((x.p.result && x.p.result.가족) || []).map(function (q) { return { 이름: norm(q.이름), 관계: q.관계, file: x.f.name }; }); }));
+          const byDate = {}; rows.forEach(function (g) { byDate[g.날짜] = (byDate[g.날짜] || 0) + g.금액; });
+          const dates = Object.keys(byDate).sort();
+          const cands = {
+            donor: uq(rows.map(function (g) { return { v: g.보낸이, src: '이체 보낸 분' }; }).concat(famPeople.filter(function (p) { return !nameHas([p.이름], c.납세자 || donee); }).map(function (p) { return { v: p.이름, src: '가족관계증명서 ' + p.관계 }; }))),
+            donee: uq([{ v: norm(c.납세자 || ''), src: '사건 납세자' }].concat(rows.map(function (g) { return { v: g.받는이, src: '이체 받는 분' }; }))),
+            date: dates.map(function (d) { return { v: d, src: '이체일(' + won(byDate[d]) + ')' + (d === last ? ' · 마지막 이체일' : '') }; }),
+            kind: [{ v: '현금(계좌이체)', src: '이체내역' }, { v: '부동산', src: '' }, { v: '주식 등 유가증권', src: '' }, { v: '그 밖의 재산', src: '' }],
+            amount: uq([{ v: String(sum), src: '이체 ' + rows.length + '건 합계' }].concat(dates.length > 1 ? dates.map(function (d) { return { v: String(byDate[d]), src: d + ' 이체분만' }; }) : []))
+          };
+          items.push(caseProcItem_('gift:deal', 'missing', '증여 내용을 정하는 서류(증여계약서 등)가 없습니다 — 이체내역은 돈이 건너간 사실만 보여줍니다. 증여자·수증자·증여일·증여대상(무엇을 얼마나)을 확인해 주세요.',
+            { mode: 'giftdeal', target: 'giftdeal', label: '증여 내용', cands: cands }, detail));
+        }
+      } else {
+        if (cash.donorFromTx) add('giftDonorName', cash.donorFromTx, '이체확인증 보내는 분', true);
+        if (cash.doneeFromTx) add('giftDoneeName', cash.doneeFromTx, '이체확인증 받는 분', true);
+        if (cash.amount) add('giftAmount', cash.amount, cash.amountSrc, cash.amountSure);
+      }
       if (cash.otherContracts && cash.otherContracts.length) lines.push('다른 수증자의 증여계약서는 이 사건 계산에 쓰지 않음: ' + cash.otherContracts.join(', '));
       if (cash.note) notes.push(cash.note);
       if (gc && !gc.부담부 && /일반/.test(String(ov.사건분류 || '')) && !((caseProcLoad_(c.id).filled || {}).사건분류)) caseProcRememberFill_(c.id, '사건분류', ov.사건분류, '증빙: 증여계약서(' + gc.file + ') — 현금 증여·부담부 문구 없음');
       caseProcPatch_(c.id, function (sv) { sv.cashGift = true; sv.cashDebt = !!(gc && gc.부담부); });
-      lines.push('증여재산: 현금 ' + (cash.amount ? cash.amount.toLocaleString('ko-KR') + '원' : '(금액 미확인)') + ' — ' + (gc ? '증여계약서' + (gc.검산 === '일치' ? '(숫자·한글 금액 일치)' : '') : '증여계약서 없음') + (cash.tx ? ' · 이체내역 ' + cash.tx.날짜 + ' ' + cash.tx.금액.toLocaleString('ko-KR') + '원' : ' · 이체내역 없음') + (gc && !gc.부담부 ? ' · 부담부(채무인수) 문구 없음' : ''));
+      if (!(cash.txOnly && !gc)) lines.push('증여재산: 현금 ' + (cash.amount ? cash.amount.toLocaleString('ko-KR') + '원' : '(금액 미확인)') + ' — ' + (gc ?'증여계약서' + (gc.검산 === '일치' ? '(숫자·한글 금액 일치)' : '') : '증여계약서 없음') + (cash.tx ? ' · 이체내역 ' + cash.tx.날짜 + ' ' + cash.tx.금액.toLocaleString('ko-KR') + '원' : ' · 이체내역 없음') + (gc && !gc.부담부 ? ' · 부담부(채무인수) 문구 없음' : ''));
       if (cash.mismatch) items.push(caseProcItem_('ov:giftAmount:cashdiff:' + cash.mismatch.replace(/[^d]/g, '').slice(0, 20), 'check', '증여 금액이 서류끼리 다릅니다 — ' + cash.mismatch + '. 어느 금액이 맞나요?', { mode: 'choose', target: 'ov:giftAmount', input: 'money', label: '증여재산가액', cands: [{ v: String(gc.금액), src: '증여계약서' }, { v: String(cash.tx.금액), src: '이체내역' }] }));
     } else if (!gifts.length) {
       // [2026.10.15] 증여 등기 전에 뗀 등기부(신고 준비 때 흔함) — 등기부에 증여 기재가 없어도, 증여계약서의 증여자(없으면 사건 고객) 명의로
@@ -25723,6 +25782,15 @@ function caseProcGiftInhFacts_(c, lines, items) {
           if (rel) add('giftRelation', rel, '가족관계증명서(' + x.f.name + ', 본인 기준 증여자 ' + d0 + '·수증자 ' + e0 + ')', !unsure);
         });
       }
+    }
+    // [2026.10.15 1:1] 인적사항 — 주민번호는 가족관계증명서(13자리 그대로, 등본은 뒷자리가 가려짐), 주소는 주민등록등본(그 사람이 세대주·세대원인 등본의 현주소).
+    //  신고서 인적사항 칸용(세액과 무관) — 못 찾으면 묻지 않고 비워 둔다. 세액계산 화면이 이 값을 그대로 받는다(유료 자동채우기로 다시 읽지 않게).
+    {
+      // 수증자는 사건 납세자라 증여 내용 확인 전에도 채운다. 증여자는 증여 내용이 정해진 뒤에만.
+      const donorNm = dealPending ? '' : ((facts.giftDonorName || []).filter(function (x) { return x.sure; }).map(function (x) { return x.v; })[0] || ov.giftDonorName || '');
+      const regNoOf = function (n) { let v = '', src = ''; fams.forEach(function (x) { ((x.p.result && x.p.result.가족) || []).forEach(function (q) { if (!v && n && nameHas([q.이름], n) && /^\d{6}-\d{7}$/.test(String(q.주민번호 || ''))) { v = q.주민번호; src = '가족관계증명서(' + x.f.name + ')'; } }); }); return { v: v, src: src }; };
+      const addrOf = function (n) { let v = '', src = ''; byType('resident').forEach(function (x) { const r = x.p.result || {}; if (v || !n || !r.현주소) return; if (nameHas([r.성명, r.세대주], n) || (r.세대원 || []).some(function (q) { return nameHas([q.이름], n); })) { v = r.현주소; src = '주민등록등본(' + x.f.name + ')'; } }); return { v: v, src: src }; };
+      [['giftDoneeRegNo', regNoOf(donee)], ['giftDoneeAddress', addrOf(donee)], ['giftDonorRegNo', regNoOf(donorNm)], ['giftDonorAddress', addrOf(donorNm)]].forEach(function (p) { if (p[1].v) add(p[0], p[1].v, p[1].src, true); });
     }
     // [2026.10.15] 감정평가서 — 감정가액은 시가(§60⑤). 증여 등기 재산과 소재지가 맞고 금액 검산이 되면 확정(10억 초과는 2곳 이상 평균이어야 해 1곳뿐이면 후보로만)
     const aprs = byType('appraisal').filter(function (x) { const r = x.p.result || {}; return r.감정평가액 && (!gifts.length || !r.소재지 || gifts.some(function (g) { return g.loc && tcLocSame_(g.loc, r.소재지); })); });
@@ -25785,7 +25853,8 @@ function caseProcGiftInhFacts_(c, lines, items) {
   notes.forEach(function (n) { lines.push('참고: ' + n); });
   // 칸별 반영: 빈 칸 + 확실한 값 → 채움 / 빈 칸 + 후보만 → 질문 / 있는 값 ≠ 서류 → 질문 / 금액이 서류로 뒷받침 안 됨 → 추정(확정 질문)
   const spec = c.세목 === 'gift'
-    ? [['giftDoneeName', '수증자 성명', 'text'], ['giftDonorName', '증여자 성명', 'text'], ['giftRelation', '관계', 'select'], ['giftAmount', '증여재산가액', 'money'], ['giftDebtAssumed', '인수채무액(부담부증여)', 'money'], ['giftPriorAmount', '10년 내 같은 증여자 증여 합산액', 'money']]
+    ? [['giftDoneeName', '수증자 성명', 'text'], ['giftDonorName', '증여자 성명', 'text'], ['giftRelation', '관계', 'select'], ['giftAmount', '증여재산가액', 'money'], ['giftDebtAssumed', '인수채무액(부담부증여)', 'money'], ['giftPriorAmount', '10년 내 같은 증여자 증여 합산액', 'money'],
+      ['giftDoneeRegNo', '수증자 주민등록번호', 'text'], ['giftDoneeAddress', '수증자 주소', 'text'], ['giftDonorRegNo', '증여자 주민등록번호', 'text'], ['giftDonorAddress', '증여자 주소', 'text']]
     : [['ihDeceasedName', '피상속인 성명', 'text'], ['상속인성명', '대표 상속인 성명', 'text'], ['상속인추가명단', '그 외 상속인', 'text'], ['상속인수', '상속인 수', 'number']]; // 과세가액(예상)은 계산 결과라 묻지 않음
   const fills = [], confirms = [];
   const digits = function (v) { return String(v == null ? '' : v).replace(/[^\d]/g, ''); };
@@ -25797,6 +25866,13 @@ function caseProcGiftInhFacts_(c, lines, items) {
     const sure = uniq.length === 1 && uniq[0].sure ? uniq[0] : null;
     const ask = { mode: 'choose', target: 'ov:' + key, input: sp[2], options: key === 'giftRelation' ? CASEPROC_GIFT_RELATIONS_ : null, label: sp[1], cands: uniq.map(function (x) { return { v: money ? digits(x.v) : x.v, src: x.src }; }) };
     const same = function (a, b) { return money ? digits(a) === digits(b) : norm(a) === norm(b); };
+    // [2026.10.15 1:1] 증여 내용 확인 전 — 이 칸들은 「증여 내용 확인」 한 질문으로 묻는다. 예전 실행이 이체내역으로 넣어 둔 추정값은 지운다(계산에 쓰이지 않게).
+    if (dealPending && /^(giftDonorName|giftDoneeName|giftAmount|giftRelation)$/.test(key)) {
+      if (cur && filled[key] && /이체/.test(String(filled[key].src || ''))) { ov[key] = ''; fills.push({ key: key, label: sp[1], v: '(비움)', src: '증여 내용 확인 전 — 이체내역 추정값 지움' }); }
+      return;
+    }
+    // 인적사항(주민번호·주소)은 신고서 칸용 — 서류에 없으면 묻지 않는다
+    if (/RegNo$|Address$/.test(key) && !uniq.length) return;
     if (!cur) {
       if (sure) { ov[key] = money ? digits(sure.v) : sure.v; fills.push({ key: key, label: sp[1], v: ov[key], src: sure.src }); return; }
       if (key === 'giftPriorAmount') { items.push(caseProcItem_('ov:' + key, 'missing', '10년 안에 같은 증여자(배우자는 같은 사람으로 봄)에게 받은 증여가 있나요? (상증법 §47② 합산)', { mode: 'options', target: 'ov:' + key, options: [{ label: '없음(0원)', value: '0' }], input: 'money', label: sp[1], withInput: true })); return; }
@@ -25841,6 +25917,8 @@ function caseProcGiftInhFacts_(c, lines, items) {
 // (세대생략은 관계로 정해짐, 10년 합산은 처리개요 질문 한 곳에서 따로 묻는다). 부담부는 계약서 채무인수 문구·살아 있는 근저당/전세가 있으면 판단 필요로 남김.
 function caseProcGiftClass_(c, lines, items) {
   const ix = items.map(function (it) { return it.id; }).indexOf('ov:사건분류');
+  // [2026.10.15 1:1] 증여 내용(무엇을 얼마나)을 아직 안 정했으면 사건분류는 그 뒤에 — 미리 묻지 않는다
+  if (ix !== -1 && items.some(function (it) { return it.id === 'gift:deal'; })) { items.splice(ix, 1); lines.push('사건분류: 「증여 내용 확인」 뒤에 정합니다.'); return c; }
   const ov = JSON.parse(JSON.stringify(c.사건개요 || {}));
   if (ix === -1 || String(ov.사건분류 || '').trim() || !String(ov.giftAmount || '').trim() || !String(ov.giftRelation || '').trim()) return c;
   const saved = caseProcLoad_(c.id), filled = saved.filled || {};
@@ -26231,6 +26309,25 @@ function caseProcApply_(c, body) {
     const up = work_updateCase({ id: c.id, 증빙목록: list, 기대수정일: c.수정일 });
     return up && up.success !== false ? { ok: true, message: '확보됨으로 표시(' + (body.file || '') + ')', my_report_id: c.my_report_id || '' } : { ok: false, error: (up && up.message) || '저장 실패' };
   }
+  // [2026.10.15 1:1] 증여 내용 확인 — 증여자·수증자·증여일·증여대상(종류·금액)을 한 번에 정한다(증여계약서 없이 이체내역만 있는 사건)
+  if (target === 'giftdeal') {
+    let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { d = null; }
+    d = d || {};
+    const deal = { donor: String(d.donor || '').trim(), donee: String(d.donee || '').trim(), date: String(d.date || '').trim(), kind: String(d.kind || '').trim(), amount: String(d.amount || '').replace(/[^\d]/g, ''), note: String(d.note || '').trim().slice(0, 200), src: src, at: caseProcToday_() };
+    const miss = [['증여자', deal.donor], ['수증자', deal.donee], ['증여일', caseProcIsDate_(deal.date) ? deal.date : ''], ['증여대상', deal.kind], ['증여재산가액', deal.amount]].filter(function (x) { return !x[1]; }).map(function (x) { return x[0]; });
+    if (miss.length) return { ok: false, error: miss.join('·') + '을(를) 정해 주세요.' };
+    const ov = JSON.parse(JSON.stringify(c.사건개요 || {}));
+    ov.giftDonorName = deal.donor; ov.giftDoneeName = deal.donee; ov.giftAmount = deal.amount; ov.증여재산종류 = deal.kind;
+    const txt = '증여 내용 ← ' + deal.donor + ' → ' + deal.donee + ' · ' + deal.date + ' · ' + deal.kind + ' ' + Number(deal.amount).toLocaleString('ko-KR') + '원' + (deal.note ? ' · ' + deal.note : '') + ' (' + src + ')';
+    const up = work_updateCase({ id: c.id, 사건개요: ov, 작업일지: logLine(txt), 기대수정일: c.수정일 });
+    if (!up || up.success === false) return { ok: false, error: (up && up.message) || '저장 실패' };
+    caseProcPatch_(c.id, function (sv) {
+      sv.giftDeal = deal; sv.filled = sv.filled || {};
+      [['giftDonorName', deal.donor], ['giftDoneeName', deal.donee], ['giftAmount', deal.amount]].forEach(function (x) { sv.filled[x[0]] = { v: x[1], src: '세무사님 확인(증여 내용)', at: caseProcToday_() }; });
+    });
+    const ap = caseProcApplyBase_(c.id, deal.date, '세무사님 확인(증여 내용)', '증여일');
+    return ap.ok ? { ok: true, message: txt.replace(/^증여 내용 ← /, '') } : { ok: false, error: '증여 내용은 저장했으나 증여일 반영 실패: ' + ap.error };
+  }
   let m = /^case:(납세자|법정일)$/.exec(target);
   if (m) {
     const p = { id: c.id, 작업일지: logLine(m[1] + ' ← ' + value + ' (' + src + ')') };
@@ -26275,7 +26372,7 @@ function caseProcApplyBase_(caseId, date, file, what) {
   const up = work_updateCase(p);
   if (!up || up.success === false) return { ok: false, error: (up && up.message) || '저장 실패' };
   caseProcRememberFill_(caseId, '기준일', date, String(file || '세무사님 확인'));
-  return { ok: true, message: text, 법정일: up.case ? up.case.법정일 : newDue, 기준일: date };
+  return { ok: true, message: text, 법정일: up.case ? up.case.법정일 : newDue, 기준일: date, 수정일: up.case ? up.case.수정일 : '' }; // [2026.10.15] 수정일 — 같은 실행의 다음 저장이 낡은 수정일로 "다른 화면이 먼저 저장" 거절되던 문제(1:1 실사건)
 }
 
 // 6) 저장 — 결정(보류·무시·받을 예정·확인 완료)과 남은 일을 사건별 파일에 두고, 작업일지에 한 줄로 남긴다(같은 줄을 매번 고쳐 씀).
@@ -28198,9 +28295,36 @@ function docTransferConfirmParse_(t) {
   // [2026.10.15] 은행 앱 화면(이체금액 → 이체일시 → 보내는 분 순서)도 — "이체일시"를 거래 시작으로, 금액이 날짜 앞에 있으면 아래에서 앞쪽도 본다
   var re = /(?:거\s*래|이\s*체)\s*일\s*시[\s\S]{0,30}?(20\d{2})[.\-](\d{2})[.\-](\d{2})\s+(\d{1,2}:\d{2}(?::\d{2})?)/g, x, starts = [];
   while ((x = re.exec(t))) starts.push({ at: x.index, d: x[1] + '-' + x[2] + '-' + x[3], tm: x[4] });
-  if (!starts.length) return null;
   var r = { 종류: '이체확인증', 은행: '', 예금주: '', 계좌번호: '', 거래: [], 경고: [], 이체확인증: true };
   var seen = {};
+  var push = function (g) { var k = g.날짜 + ' ' + g.시각 + ' ' + g.금액; if (seen[k]) return; seen[k] = true; r.거래.push(g); };
+  // [2026.10.15] 서버 글자인식은 칸 순서를 섞는다(실사건: "거래일시 / 출금계좌번호 / 보내는분 김형민 / 이체금액 260,000,000 / 2026.03.24 11:17:45" —
+  //  날짜가 금액 뒤에 와서 아래 "거래일시 30자 안 날짜" 규칙이 5장 중 3장을 놓쳤다). 장("이체내역 정보")마다 잘라 그 장 안의 날짜·시각·보내는분·받는분·이체금액을 찾는다.
+  t.split(/이\s*체\s*내\s*역\s*정\s*보/).forEach(function (blk) {
+    if (!/보\s*내\s*는\s*분/.test(blk) || !/받\s*는\s*분/.test(blk)) return;
+    var dt = /(20\d{2})[.\-](\d{2})[.\-](\d{2})\s+(\d{1,2}:\d{2}(?::\d{2})?)/.exec(blk);
+    var from = /보\s*내\s*는\s*분\s*\n*\s*([가-힣]{2,5})/.exec(blk), to = /받\s*는\s*분\s*\n*\s*([가-힣]{2,5})/.exec(blk);
+    var am = /이\s*체\s*금\s*액\s*\n*\s*(\d{1,3}(?:,\d{3})+)/.exec(blk) || /(\d{1,3}(?:,\d{3})+)/.exec(blk.replace(/\d{2,6}-\d{2,6}-\d{3,8}/g, ' '));
+    if (!dt || !to || !am) return;
+    var memo = /받\s*는\s*[통동]\s*장\s*메\s*모\s*\n*\s*(?:\d+\s*\n+\s*)?([가-힣][^\n]{0,19})/.exec(blk);
+    push({ 날짜: dt[1] + '-' + dt[2] + '-' + dt[3], 시각: dt[4], 내용: '이체' + (from ? ' ' + from[1] : ''), 금액: Number(am[1].replace(/,/g, '')), 잔액: null, 적요: memo ? memo[1].trim() : '', 보낸이: from ? from[1] : '', 받는이: to[1], 입금: true });
+  });
+  // 이체 목록 장("총 이체건 : N건 · 총 이체금액") — 줄마다 날짜 / 은행 / 받는 분 / 금액 / 시각 / 계좌 / 받는통장메모. 보내는 분 칸이 없어 낱장의 보낸 분(한 사람일 때)을 쓴다.
+  var tot = /총\s*이\s*[체제]\s*건\s*[:：]?\s*(\d+)\s*건[\s\S]{0,20}?총\s*이\s*[체제]\s*금\s*액\s*[:：]?\s*([\d,]+)/.exec(t);
+  if (tot) {
+    var head = t.slice(0, tot.index), rows = [], rr = /(?:^|\n)\s*(20\d{2})[.\-](\d{2})[.\-](\d{2})\s*(?=\n)/g, y;
+    while ((y = rr.exec(head))) rows.push({ at: y.index, d: y[1] + '-' + y[2] + '-' + y[3] });
+    var senders = r.거래.map(function (g) { return g.보낸이; }).filter(function (v, i, a) { return v && a.indexOf(v) === i; });
+    rows.forEach(function (row, i) {
+      var seg = head.slice(row.at, i + 1 < rows.length ? rows[i + 1].at : head.length);
+      var amt = /(\d{1,3}(?:,\d{3}){2,})/.exec(seg), tm = /(\d{1,2}:\d{2}:\d{2})/.exec(seg);
+      var nm = seg.replace(/[가-힣]+은행|우리|정상|이[체처]확인증|수수료|처리결과/g, ' ').match(/[가-힣]{2,6}/g) || [];
+      if (!amt || !tm) return;
+      push({ 날짜: row.d, 시각: tm[1], 내용: '이체(목록)', 금액: Number(amt[1].replace(/,/g, '')), 잔액: null, 적요: nm[1] || '', 보낸이: senders.length === 1 ? senders[0] : '', 받는이: nm[0] || '', 입금: true, 목록: true });
+    });
+    r.목록합계 = Number(tot[2].replace(/,/g, '')); r.목록건수 = Number(tot[1]);
+  }
+  if (!starts.length && !r.거래.length) return null;
   starts.forEach(function (st, i) {
     var seg = t.slice(st.at, i + 1 < starts.length ? starts[i + 1].at : Math.min(t.length, st.at + 900));
     var from = /보\s*내\s*는\s*분\s*\n*\s*([가-힣]{2,5})/.exec(seg), to = /받\s*는\s*분\s*\n*\s*([가-힣]{2,5})/.exec(seg);
@@ -28455,12 +28579,17 @@ function docParseFile_(body) {
   if (!/pdf|image/.test(mime)) return { error: name + ' — PDF·이미지·엑셀(거래내역)만 정리할 수 있습니다.' };
   // [2026.10.14] 규칙을 만들고 고칠 때 — 글자인식 원문을 그대로 돌려준다(정리하지 않음). 파일 내려받기(readFile)와 같은 권한.
   if (body.withText) return { ok: true, name: name, text: String(tc_docText_({ id: id, mimeType: mime, modified: f.getLastUpdated().getTime() }) || '') };
-  var cache = CacheService.getScriptCache(), key = 'docp3_' + id + '_' + f.getLastUpdated().getTime();
+  var cache = CacheService.getScriptCache(), key = 'docp4_' + id + '_' + f.getLastUpdated().getTime();
   var hit = cache.get(key);
   if (hit) return JSON.parse(hit);
-  var p = docParseText_(docOcrRetry_(id));
+  // [2026.10.15 1:1] 글자는 사건처리와 같은 기억분(tc_docText_)으로 — 따로 글자인식하다 한 번 빈 글자가 나오면 "읽을 글자 없음"을 6시간 기억해
+  //  가족관계증명서가 멀쩡한데도 자동 정리 화면엔 "정리 대상 아님"으로 보였다(사건처리 쪽은 정상으로 읽음). 정리 못 한 결과는 기억하지 않는다.
+  var text = '';
+  try { text = tc_docText_({ id: id, mimeType: mime, modified: f.getLastUpdated().getTime() }) || ''; } catch (e) { text = ''; }
+  if (!text.trim()) text = docOcrRetry_(id);
+  var p = docParseText_(text);
   var res = { ok: true, name: name, type: p.type, label: p.label, isRegistry: p.type === 'registry', result: p.result, md: '**' + name + '**\n\n' + p.md };
-  try { var s = JSON.stringify(res); if (s.length < 95000) cache.put(key, s, 21600); } catch (e) { /* 캐시 실패는 무시 */ }
+  try { var s = JSON.stringify(res); if (p.type && s.length < 95000) cache.put(key, s, 21600); } catch (e) { /* 캐시 실패는 무시 */ }
   return res;
 }
 

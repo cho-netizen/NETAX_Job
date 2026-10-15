@@ -2425,6 +2425,33 @@
       btn('반영', function(){ apply(ask.target, ie2.val(), '세무사님 직접 입력', refreshAll, true); }, true, ie2.row);
       return;
     }
+    // [2026.10.15 1:1] 증여 내용 확인 — 증여자·수증자·증여일·증여대상·금액을 칸마다 고르거나(객관식, 서류 후보) 직접 입력(주관식)한 뒤 한 번에 확정
+    if (mode === 'giftdeal'){
+      var cd0 = ask.cands || {};
+      if (it.detail){ p('참고 — 폴더 이체내역(증여 내용을 정하는 서류 아님):'); String(it.detail).split('\n').forEach(function(l){ p('· ' + l); }); }
+      var fields = [['donor', '증여자', 'text'], ['donee', '수증자', 'text'], ['date', '증여일', 'date'], ['kind', '증여대상', 'text'], ['amount', '증여재산가액', 'money']];
+      var vals = {};
+      fields.forEach(function(fd){
+        p(fd[1] + ' — 고르거나 직접 입력하세요.', 'nxai-cp-line');
+        var rb = rowEl();
+        var ie = inputEl(fd[2]);
+        vals[fd[0]] = ie;
+        (cd0[fd[0]] || []).forEach(function(c){
+          btn(fmt(c.v, fd[2]) + (c.src ? ' — ' + c.src : ''), function(){ ie.el.value = fd[2] === 'money' ? Number(c.v).toLocaleString('ko-KR') : c.v; Array.prototype.forEach.call(rb.querySelectorAll('button'), function(b){ b.classList.remove('primary'); }); this.classList.add('primary'); }, false, rb);
+        });
+        if (!(cd0[fd[0]] || []).length) rb.remove();
+      });
+      p('메모(용도·차용 여부 등, 선택)');
+      var note = inputEl('text');
+      var rs = rowEl();
+      btn('이 내용으로 확정', function(){
+        var v = {}; Object.keys(vals).forEach(function(k){ v[k] = vals[k].val(); }); v.note = note.val();
+        var miss = fields.filter(function(fd){ return !v[fd[0]]; }).map(function(fd){ return fd[1]; });
+        if (miss.length){ nxAiToast_(miss.join('·') + '을(를) 정해 주세요.'); return; }
+        apply('giftdeal', JSON.stringify(v), '세무사님 확인', refreshAll, true);
+      }, true, rs);
+      return;
+    }
     if (mode === 'options'){
       var r3 = rowEl();
       (ask.options || []).forEach(function(o){
