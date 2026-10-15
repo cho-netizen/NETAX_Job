@@ -24682,6 +24682,11 @@ function tc_ruleTransferFacts_(body) {
       if (d.type === 'dealreport') reports.push({ file: f.name, r: d.r });
     });
     // 지급 증빙(자본적지출·양도비 후보) — 이체확인증은 한 장에 한 건일 때만(여러 건이면 어느 것이 공사비인지 모름)
+    // [2026.10.15 1:1] 통장 거래내역(여러 줄) — 적요에 중개·법무사·공사·인테리어가 있는 출금 줄도 비용 후보로(노오섭: 취득 중개수수료가 통장 내역에만 있음)
+    if (p.type === 'banktx' && p.result && !p.result.이체확인증 && Array.isArray(p.result.거래)) p.result.거래.forEach(function (g) {
+      var m = String(g.내용 || '') + ' ' + String(g.적요 || '');
+      if (g.금액 && g.날짜 && /중개|공인|법무|공사|인테리어|샷시|새시|방수|보일러/.test(m)) expDocs.push({ file: f.name, amount: g.금액, date: g.날짜, memo: m.trim().slice(0, 30), payer: '', head: m });
+    });
     if (p.type === 'banktx' && p.result && p.result.이체확인증 && p.result.거래.length === 1) { var g0 = p.result.거래[0]; expDocs.push({ file: f.name, amount: g0.금액, date: g0.날짜, memo: g0.적요 || '', payer: g0.보낸이 || '', head: String(text).slice(0, 300) }); }
     if (/^(cashreceipt|cardreceipt|taxinvoice)$/.test(p.type) && p.result && p.result.합계 && !p.result.취소 && !p.result.사무소발행) expDocs.push({ file: f.name, amount: p.result.합계, date: String(p.result.거래일 || '').slice(0, 10), memo: p.result.상호 || '', payer: '', head: String(text).slice(0, 300) });
     if (p.type === 'pubprice' && p.result) pubs.push({ file: f.name, r: p.result });
@@ -24811,7 +24816,7 @@ function tc_ruleTransferFacts_(body) {
     lawyers.forEach(function (l) { if (!l.r.합계) return; lawTotal = Math.max(lawTotal, l.r.합계); expCands.push({ kind: '취득', label: '법무사 정산서(취득세·등록 공과금·보수 포함일 수 있음)', amount: l.r.합계, date: l.r.일자 || '', file: l.file, sure: /취득/.test(l.file) || !!txs[0].acquisitionExpenses, note: '' }); });
     acqs.forEach(function (a) { if (!a.r.합계) return; var inLaw = lawTotal && a.r.합계 <= lawTotal; expCands.push({ kind: '취득', label: '취득세 등 납부', amount: a.r.합계, date: a.r.납부일 || a.r.일자 || '', file: a.file, sure: !inLaw && (/취득/.test(a.file) || !!txs[0].acquisitionExpenses), note: inLaw ? '법무사 정산서 합계에 이미 들어 있을 수 있음 — 겹치면 하나만' : '' }); });
   }
-  if (acqs.length + lawyers.length && !(txs.length === 1 && txs[0].acquisitionExpenses)) evidence.push('취득세·법무사 서류 ' + (acqs.length + lawyers.length) + '건은 어느 거래 것인지 규칙으로 확정 못 해 넣지 않음 — 직접 확인');
+  if (txs.length !== 1 && acqs.length + lawyers.length) evidence.push('취득세·법무사 서류 ' + (acqs.length + lawyers.length) + '건은 어느 거래 것인지 규칙으로 확정 못 해 넣지 않음 — 직접 확인');
   // [2026.10.15] 자본적지출·양도비(소득세법 §97①2·3호, 시행령§163③④) — 거래가 하나일 때만, 실제 지급 증빙(이체확인증·현금영수증·카드전표·세금계산서)만.
   //  견적서는 지급 증빙이 아니라 넣지 않는다. 용도는 파일 이름·적요·본문 앞부분의 말로: 공사·인테리어·샷시·확장·보일러·방수 등 = 자본적지출
   //  (도배·장판·페인트·청소·수리 = 수익적지출이라 제외, ⚠로 알림), 중개보수 = 양도일 앞뒤 90일이면 양도비, 취득일 앞뒤 90일이면 취득 부대비용.
@@ -24822,7 +24827,11 @@ function tc_ruleTransferFacts_(body) {
     expDocs.forEach(function (e) {
       if (/견\s*적/.test(e.file)) return;
       // [2026.10.15 1:1] 항목별 후보(아래 자동 판정과 별개 — 판단이 필요한 것은 체크 안 된 채로 묻는다)
-      if (e.amount && !expCands.some(function (x) { return x.amount === e.amount && x.date === e.date; })) {
+      // 같은 날 같은 이름의 증빙(사진·PDF 둘 다)은 하나만 — 은행앱 화면 사진은 잔액을 금액으로 잘못 읽기 쉬워 작은 금액(실제 출금)을 남긴다
+      var base = function (n) { return String(n || '').replace(/\.[a-z0-9]+$/i, '').replace(/^[\d\-\s]+/, '').replace(/\s+/g, ''); };
+      var twin = expCands.filter(function (x) { return x.date === e.date && base(x.file) === base(e.file); })[0];
+      if (twin) { if (e.amount < twin.amount) { twin.amount = e.amount; twin.file = e.file; } return; }
+      if (e.amount && !expCands.some(function (x) { return x.amount === e.amount && (x.date === e.date || !x.date || !e.date); })) {
         var pp = e.file + ' ' + e.memo + ' ' + e.head, other = e.payer && !tcNameIn_(e.payer, names);
         var kind = /중개\s*(보수|수수료)|복비|부동산\s*수수료/.test(pp) ? (days(e.date, tx0.transferDate) <= 90 ? '양도' : '취득') : /세무|신고\s*대행/.test(pp) ? '양도' : /인지|채권|취득세|법무/.test(pp) ? '취득' : '자본적지출';
         expCands.push({ kind: kind, label: (kind === '자본적지출' ? '공사·수선비(자본적지출인지 판단)' : kind === '양도' ? '양도비용' : '취득 부대비용') + ' — ' + String(e.memo || '').slice(0, 30), amount: e.amount, date: e.date, file: e.file, sure: kind !== '자본적지출' && !other,
