@@ -74,6 +74,12 @@
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
   function fmtSize(n) { if (n < 1024) return n + 'B'; if (n < 1048576) return Math.round(n / 1024) + 'KB'; return (n / 1048576).toFixed(1) + 'MB'; }
+  // 앱 창 안에서 구글 job 주소를 열면 휴대폰에서 "페이지를 찾을 수 없음"이 떠서(2026-10-15 실기기),
+  // 안드로이드 앱 창에서는 크롬 앱으로 넘겨 연다(크롬이 없으면 원래 주소로).
+  function jobHref() {
+    if (!/Android/i.test(navigator.userAgent) || !isStandalone()) return JOB_URL;
+    return 'intent://' + JOB_URL.replace(/^https:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=' + encodeURIComponent(JOB_URL) + ';end';
+  }
   function isStandalone() { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; }
   function msg(kind, text) { return '<div class="msg ' + kind + '">' + text + '</div>'; }
   function icon(type, name) {
@@ -187,7 +193,7 @@
     readShared().then(function (sh) {
       if (!sh.items.length) {
         root.innerHTML = '<div class="card">' + msg('info', '받은 파일이 없습니다. 다른 앱에서 <b>공유 → NETAX job</b>을 고르면 여기로 들어옵니다.') +
-          '<a class="btn" href="' + JOB_URL + '">job 열기</a><a class="btn sub" href="/m/?inbox=1">보관함 파일 사건에 넣기</a></div>';
+          '<a class="btn" href="' + jobHref() + '">job 열기</a><a class="btn sub" href="/m/?inbox=1">보관함 파일 사건에 넣기</a></div>';
         return;
       }
       var html = '<div class="card"><b>받은 것 ' + sh.items.length + '개</b><div class="muted">job 드라이브의 「' + INBOX_NAME + '」 폴더에 먼저 올린 뒤, 넣을 사건을 고릅니다.</div><div id="items" style="margin-top:8px">';
@@ -271,7 +277,7 @@
   function showCasePicker(box, files) {
     box.innerHTML = '<div class="card"><b>어느 사건에 넣을까요?</b><div class="muted">고르면 ' + files.length + '개 파일이 그 사건 폴더로 옮겨집니다. 나중에 정해도 됩니다(보관함에 그대로 남음).</div>' +
       '<input type="search" id="q" placeholder="고객명·사건명 검색" style="margin-top:10px"><div id="caseList">' + msg('info', '사건 목록 불러오는 중…(구글 서버라 10~30초 걸릴 수 있습니다)') + '</div>' +
-      '<div id="mvOut"></div><a class="btn sub" href="' + JOB_URL + '">나중에 정하기 — job 열기</a></div>';
+      '<div id="mvOut"></div><a class="btn sub" href="' + jobHref() + '">나중에 정하기 — job 열기</a></div>';
     var list = box.querySelector('#caseList'), q = box.querySelector('#q'), mvOut = box.querySelector('#mvOut');
     var all = [];
     function render() {
@@ -313,7 +319,7 @@
       return inboxFolderId().then(function (id) { return call('listFolder', { folderId: id }); });
     }).then(function (res) {
       var files = res.files || [], ib = document.getElementById('ib');
-      if (!files.length) { ib.innerHTML = msg('ok', '보관함이 비어 있습니다.') + '<a class="btn" href="' + JOB_URL + '">job 열기</a>'; return; }
+      if (!files.length) { ib.innerHTML = msg('ok', '보관함이 비어 있습니다.') + '<a class="btn" href="' + jobHref() + '">job 열기</a>'; return; }
       ib.innerHTML = '<div class="muted" style="margin:6px 0">사건에 넣을 파일을 고르세요.</div>' + files.map(function (f, i) {
         return '<div class="item"><label class="chk"><input type="checkbox" data-i="' + i + '" checked><span class="nm">' + icon(f.mimeType || '', f.name) + ' ' + esc(f.name) + '</span></label><div class="st">' + esc((f.modifiedDate || '').slice(5, 16)) + '</div></div>';
       }).join('') + '<button id="pick">고른 파일 사건에 넣기</button>';
@@ -343,7 +349,7 @@
     root.innerHTML = '<div class="card"><b>휴대폰에 앱으로 설치</b><div class="muted" style="margin-top:6px">설치하면 <b>앱 목록·홈 화면</b>에 "NETAX job"이 생기고, 다른 앱(카카오톡·갤러리·파일·크롬)의 <b>공유 → NETAX job</b>으로 파일을 job 드라이브에 바로 보낼 수 있습니다. 앱을 누르면 지금 쓰는 job이 그대로 열립니다.</div>' +
       '<button id="installBtn" class="hidden">앱 설치</button><div id="installOut"></div>' +
       '<div class="muted" id="manualHint" style="margin-top:10px">설치 버튼이 안 보이면: 크롬 오른쪽 위 <b>⋮</b> → <b>앱 설치</b>(또는 <b>홈 화면에 추가</b>)를 누르세요. 삼성 인터넷은 아래쪽 <b>≡</b> → <b>현재 페이지 추가</b> → <b>홈 화면</b>.</div></div>' +
-      '<div class="card"><a class="btn sub" href="' + JOB_URL + '" style="margin-top:0">설치 없이 job 열기</a><a class="btn sub" href="/m/?inbox=1">보관함 파일 사건에 넣기</a></div>';
+      '<div class="card"><a class="btn sub" href="' + jobHref() + '" style="margin-top:0">설치 없이 job 열기</a><a class="btn sub" href="/m/?inbox=1">보관함 파일 사건에 넣기</a></div>';
     var b = document.getElementById('installBtn');
     if (deferredPrompt) b.classList.remove('hidden');
     b.onclick = function () {
@@ -353,15 +359,21 @@
     };
   }
 
+  // ---------- 화면: 앱으로 열었을 때 ----------
+  function showLaunch() {
+    root.innerHTML = '<div class="card"><a class="btn" style="margin-top:0;padding:18px;font-size:18px" href="' + jobHref() + '">job 열기</a>' +
+      '<div class="muted" style="margin-top:8px">크롬에서 job이 열립니다.</div></div>' +
+      '<div class="card"><a class="btn sub" style="margin-top:0" href="/m/?inbox=1">받은 파일 사건에 넣기</a></div>';
+  }
+
   // ---------- 시작 ----------
   if (params.get('share')) { history.replaceState(null, '', '/m/?share=1'); showShare(); }
   else if (params.get('inbox')) showInbox();
   else if (params.get('launch') || isStandalone()) {
-    // 앱 아이콘으로 열었을 때 — 곧바로 지금의 job으로(뒤로가기에 이 화면이 안 남게 replace).
-    // 공유받고 아직 못 올린 것이 남아 있으면 그것부터 보여 준다.
-    readShared().then(function (sh) {
-      if (sh.items.length) showShare(); else location.replace(JOB_URL);
-    }, function () { location.replace(JOB_URL); });
+    // 앱 아이콘으로 열었을 때. [2026-10-15 실기기 실패] 처음엔 이 앱 창 안에서 곧바로 구글 job 주소로
+    // 넘겼는데, 휴대폰에서 "페이지를 찾을 수 없음"이 떴다(PC에서는 정상). 그래서 앱 창 안에서는 구글 주소를
+    // 열지 않고, 버튼으로 크롬(평소 job이 잘 열리는 곳)에서 연다. 공유받고 못 올린 것이 있으면 그것부터.
+    readShared().then(function (sh) { if (sh.items.length) showShare(); else showLaunch(); }, showLaunch);
   }
   else showInstall();
 })();
