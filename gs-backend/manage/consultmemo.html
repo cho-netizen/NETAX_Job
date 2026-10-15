@@ -150,6 +150,18 @@
   }
   function nxCmStart_(caseId, caseName){
     if (typeof nxAiTalkStopRec_ === 'function') nxAiTalkStopRec_(); // 토킹모드 마이크와 겹치지 않게
+    // 이 휴대폰에 아직 못 올린 녹음이 있으면 새로 시작하지 않는다 — 새 녹음이 임시 저장소를 비우면 그 녹음이 사라진다
+    // (고객 카드의 🎙처럼 사건 고르기 화면을 거치지 않고 바로 시작하는 길이 있어서 여기서 막는다)
+    nxCm_.st = 'starting';
+    nxCmLoadLeft_().then(function(left){
+      if (!left || !left.id) return nxCmStartRec_(caseId, caseName);
+      return nxCmLoadChunks_(left.id).then(function(chunks){
+        if (chunks.length){ nxCm_.st = 'pick'; nxCmOpen_(); return; } // 남은 녹음부터 처리하게
+        return nxCmClearDb_().then(function(){ nxCmStartRec_(caseId, caseName); });
+      });
+    });
+  }
+  function nxCmStartRec_(caseId, caseName){
     nxCm_.caseId = caseId || ''; nxCm_.caseName = caseName || '';
     navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }).then(function(stream){
       nxCm_.stream = stream;
@@ -292,12 +304,14 @@
   // ---------- 화면 열 때 — 진행 중 녹음·처리·남은 녹음 이어서 ----------
   function nxCmOpen_(){
     if (nxCm_.st === 'rec' || nxCm_.st === 'paused'){ nxCmRenderRec_(); return; }
-    if (nxCm_.st === 'up' || nxCm_.st === 'wait' || nxCm_.st === 'fail' || nxCm_.st === 'done') return;
+    if (nxCm_.st === 'up' || nxCm_.st === 'wait' || nxCm_.st === 'fail' || nxCm_.st === 'done' || nxCm_.st === 'starting') return;
     var job = null; try { job = JSON.parse(localStorage.getItem('nxConsultJob') || 'null'); } catch (e) {}
     if (job && job.id){ nxCmWatch_(job.id, job.caseName); return; }
     nxCmLoadLeft_().then(function(left){
+      if (nxCm_.st !== 'pick' && nxCm_.st !== 'left') return; // 그 사이 녹음이 시작됨 — 화면을 덮지 않는다
       if (!left || !left.id){ nxCmRenderPick_(); return; }
       nxCmLoadChunks_(left.id).then(function(chunks){
+        if (nxCm_.st !== 'pick' && nxCm_.st !== 'left') return;
         if (!chunks.length){ nxCmClearDb_(); nxCmRenderPick_(); return; }
         nxCm_.st = 'left';
         nxCmEl_('cmCase').textContent = left.caseName || '사건 없음';
