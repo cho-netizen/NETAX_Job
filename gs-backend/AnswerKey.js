@@ -17,7 +17,7 @@
 const AK_KEY_NAME_ = '_정답지.json';
 const AK_RESULT_NAME_ = '_정답지점검결과.json';
 const AK_STATE_PROP_ = 'AK_RUN_STATE';
-const AK_CODE_VER_ = '2026-10-15j'; // 점검 규칙을 바꿔 배포할 때마다 올린다 — 멈췄던 점검의 옛 결과를 새 실행에 이어 붙이지 않게
+const AK_CODE_VER_ = '2026-10-16a'; // 점검 규칙을 바꿔 배포할 때마다 올린다 — 멈췄던 점검의 옛 결과를 새 실행에 이어 붙이지 않게
 
 function akReadCase_(caseId) {
   const sheet = work_getSheet_(), col = work_colMap_(sheet.getDataRange().getValues()[0]);
@@ -116,6 +116,7 @@ function akToolValues_(c) {
         isGenerationSkip: /2촌 이상/.test(rel), giftDate: c.기준일 || undefined };
       if (digits(ov.giftDebtAssumed)) { input.debtAssumedAmount = digits(ov.giftDebtAssumed); input.isDebtObjectivelyProven = true; }
       if (digits(ov.giftPriorAmount)) input.priorGiftAmount = digits(ov.giftPriorAmount);
+      if (digits(ov.giftAppraisalFee)) input.appraisalFeeAmount = digits(ov.giftAppraisalFee); // [2026.10.16] 감정평가수수료(§55①)
       const r = runUiEngineCalcTool_('calculate_gift_tax', input) || { error: '엔진 없음' };
       v._engineInput = input;
       if (r.error) put('계산', '', '엔진 오류: ' + r.error);
@@ -682,6 +683,7 @@ function akUsable_(c, key, out, tool) {
       const input = { giftAmount: amt, relation: /배우자/.test(rel) ? '배우자' : /직계존속/.test(rel) ? '직계존속' : /직계비속/.test(rel) ? '직계비속' : /기타친족/.test(rel) ? '기타친족' : '기타', giftDate: c.기준일 || undefined };
       if (prior) input.priorGiftAmount = prior;
       if (dg(ov.giftDebtAssumed)) { input.debtAssumedAmount = dg(ov.giftDebtAssumed); input.isDebtObjectivelyProven = true; }
+      if (dg(ov.giftAppraisalFee)) input.appraisalFeeAmount = dg(ov.giftAppraisalFee);
       const r = runUiEngineCalcTool_('calculate_gift_tax', input) || { error: '엔진 없음' };
       if (r.error) { s3 = '확인불가'; s3why = '엔진 오류: ' + r.error; }
       else {
@@ -735,6 +737,8 @@ function akTransferInputs_(nums, base) {
         if (tp <= g) return;
         nums.forEach(function (ap) {
           if (ap >= tp) return;
+          // [2026.10.16] "양도소득금액 − 기본공제 250만 = 과세표준"을 "양도가액 − 취득가액 = 양도차익"으로 짝짓던 것(김운래·김금옥·노오섭 정답지의 취득가액 250만원)
+          if (ap === 2500000 && tp === base + 2500000) return;
           const ex = tp - ap - g;
           if (ex < 0 || (ex > 0 && !has(ex))) return;
           if (!best || tp > best.tp || (tp === best.tp && ap > best.ap)) best = { tp: tp, ap: ap, ex: ex, g: g };

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 16:21 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 16:42 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -3450,6 +3450,7 @@
       { key: '고객추가명단', label: '공동의뢰인(대표 외, 쉼표로 구분)', type: 'text', beforeAsset: true },
       { key: 'giftRelation', label: '관계(수증자 기준)', type: 'select', options: ['', '배우자', '직계존속(1촌, 부모 등→자녀)', '직계존속(2촌 이상, 조부모 등→손자녀·세대생략)', '직계비속(1촌, 자녀 등→부모)', '직계비속(2촌 이상, 손자녀 등→조부모·세대생략)', '기타친족', '기타(상속인 아닌 자 등)'] },
       { key: 'giftAmount', label: '증여재산가액(전체, 채무 차감 전)', type: 'money' },
+      { key: 'giftAppraisalFee', label: '감정평가수수료(500만원 한도 공제)', type: 'money' },
       { key: 'giftDebtAssumed', label: '인수채무액(부담부증여, 없으면 비움)', type: 'money' },
       { key: 'giftPriorAmount', label: '10년내 동일인 기증여합산액', type: 'money' },
       { key: '사건분류', label: '사건분류', type: 'select', dynamicClassification: true },
@@ -35329,7 +35330,7 @@ var TC_OVERVIEW_INPUT_KEYS_ = {
   // 형식("직계존속" + 세대생략 여부는 별도 data-genskip)이 달라 단순 대입도 안 통한다 —
   // 전용 변환 함수 tcApplyGiftRelation_로 별도 처리한다(아래).
   // [2026.10.15 1:1] 주민번호·주소 — 사건처리가 가족관계증명서(13자리)·등본에서 읽어 처리개요에 둔 값을 그대로(유료 자동채우기로 다시 읽어 뒷자리 잘린 번호가 들어가던 문제)
-  gift: ['giftDoneeName', 'giftDonorName', 'giftAmount', 'giftDebtAssumed', 'giftPriorAmount', 'giftDate', 'giftDoneeRegNo', 'giftDoneeAddress', 'giftDonorRegNo', 'giftDonorAddress'],
+  gift: ['giftDoneeName', 'giftDonorName', 'giftAmount', 'giftDebtAssumed', 'giftPriorAmount', 'giftDate', 'giftDoneeRegNo', 'giftDoneeAddress', 'giftDonorRegNo', 'giftDonorAddress', 'giftAppraisalFee'], // giftAppraisalFee: 사건처리가 감정평가 영수증으로 채운 수수료(2026.10.16)
   inheritance: ['ihDeceasedName', 'ihEstate', 'ihDeathDate']
 };
 // [2026.09 버그수정] 사건개요서(casehandling.html)에서 입력한 증여일·상속개시일은 사건개요
@@ -47345,7 +47346,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var label = a.label || (mode === 'base' ? (NXAI_CP_BASE_LABEL_[tax] || '기준일') : String(it.text || '').slice(0, 30));
     var out = { matched: true, it: it, label: label, src: srcTxt };
     var input = mode === 'base' ? 'date' : (a.input || 'text');
-    var clean = function(s){ return String(s || '').replace(/(?:Q|q|질문)\s*\d+/g, ' ').replace(/(?:근거|증빙|출처)\s*(?:는|은|:|=)?/g, ' ').replace(/^[\s:：은는이가을를=]+/, '').replace(/\s*(입니다|이에요|예요|이다|이야|야|요|으로|로)?\s*(해\s*(줘|주세요)|반영(해\s*줘)?|넣어\s*(줘|주세요)|하자|맞(아|음|습니다))?[.!\s]*$/, '').replace(/\s+/g, ' ').trim(); };
+    var clean = function(s){ return String(s || '').replace(/(?:Q|q|질문)\s*\d+/g, ' ').replace(/(?:근거|증빙|출처)\s*(?:는|은|:|=)?/g, ' ').replace(/^\s*(?:[은는이가을를](?=[\s:：=])|[:：=])[\s:：=]*/, '').replace(/^\s+/, '') /* 조사는 띄어 쓴 것만 — "Q1 이종식"의 '이'를 떼어 "종식"이 되던 것 */.replace(/\s*(입니다|이에요|예요|이다|이야|야|요|으로|로)?\s*(해\s*(줘|주세요)|반영(해\s*줘)?|넣어\s*(줘|주세요)|하자|맞(아|음|습니다))?[.!\s]*$/, '').replace(/\s+/g, ' ').trim(); };
     var pickVal = function(){
       if (input === 'money'){ var v = nxAiKrMoney_(body.replace(/((?:19|20)\d{2})\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}/g, ' ')); return v ? String(v) : ''; }
       if (input === 'number'){ var n = /(\d+)\s*(명|개|건)?/.exec(body); return n ? n[1] : ''; }
@@ -47357,6 +47358,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var cands = a.cands || [];
       if (nthN && cands[nthN - 1] && !(input === 'money' && nxAiKrMoney_(body) >= 10000)) return Object.assign(out, { act: 'apply', target: mode === 'base' ? 'base' : a.target, value: String(cands[nthN - 1].v), src: cands[nthN - 1].src || srcTxt, shown: cands[nthN - 1].v });
       var v = pickVal();
+      // 글자 칸 — 질문 이름의 낱말이 값 앞에 남으면 뗀다("양도인 성명 이종식" → "성명 이종식"이 들어가던 것)
+      if (input === 'text' && v){ String(label).split(/\s+/).filter(function(w){ return w.length >= 2; }).forEach(function(w){ var v2 = v.replace(new RegExp('^\\s*' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*'), ''); if (v2) v = v2; }); }
       if (!v) return decide ? Object.assign(out, { act: 'decide', decide: decide }) : Object.assign(out, { act: 'need', msg: 'Q' + it.q + ' 「' + label + '」의 값을 알아듣지 못했습니다 — ' + ({ money: '예: "Q' + it.q + ' 5억 2천만원 매매계약서"', date: '예: "Q' + it.q + ' 2024.3.5 계약서"', number: '예: "Q' + it.q + ' 3명"', select: '예: "Q' + it.q + ' ' + ((a.options || [])[0] || '') + '"' }[input] || '예: "Q' + it.q + ' 홍길동"') });
       var same = cands.filter(function(c){ return String(c.v) === v; })[0];
       return Object.assign(out, { act: 'apply', target: mode === 'base' ? 'base' : a.target, value: v, src: same && !src ? (same.src || srcTxt) : srcTxt, shown: v });

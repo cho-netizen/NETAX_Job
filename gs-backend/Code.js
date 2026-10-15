@@ -25342,7 +25342,7 @@ function caseProcEvTypes_(label) {
   return null;
 }
 function caseProcParsed_(f, cache, canParse) {
-  const key = 'cpp15_' + f.id + '_' + f.modified; // cpp15: 괄호 제목 분할협의서·쉼표 없는 영수증 금액(2026-10-16) // cpp14: 내용으로 본 이미 낸 신고서(out)(2026-10-15) // cpp13: 오피스텔·상업용 기준시가 표(2026-10-15) // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
+  const key = 'cpp16_' + f.id + '_' + f.modified; // cpp16: 등기 개명·증여계약서 서명란(2026-10-16) // cpp15: 괄호 제목 분할협의서·쉼표 없는 영수증 금액(2026-10-16) // cpp14: 내용으로 본 이미 낸 신고서(out)(2026-10-15) // cpp13: 오피스텔·상업용 기준시가 표(2026-10-15) // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
   const hit = cache.get(key);
   if (hit) { try { return JSON.parse(hit); } catch (e) {} }
   if (!canParse) return null;
@@ -25559,6 +25559,19 @@ function caseProcEvidence_(c) {
         if (hit) { e.status = '확보됨'; e._auto = hit; marks.push(e); }
       });
     }
+    // [2026.10.16] 증여 — "증여재산(부동산) 등기부등본·평가자료(감정가액 등)"처럼 서류 두 가지를 묶은 칸은 등기부 + 평가자료(감정평가서·공시가격·실거래가)가 둘 다 있으면 확보
+    //  (강정화(임세택): 등기부등본.pdf·감정평가서.pdf가 있는데 "미확보"로 물었다), 증여계약서는 판독 ⚠가 있어도 종류가 맞으면 확보(⚠는 그 서류 칸에서 따로 묻는다)
+    if (c.세목 === 'gift') {
+      const ofT = function (ts) { return docs.filter(function (f) { return f.p && ts.indexOf(f.p.t) !== -1 && !f.p.office; }); };
+      req.forEach(function (e) {
+        if (e.status === '확보됨' || marks.indexOf(e) !== -1) return;
+        const L = String(e.label || '');
+        let hit = '';
+        if (/등기부/.test(L) && /평가/.test(L) && ofT(['registry']).length && ofT(['appraisal', 'pubprice', 'realprice']).length) hit = ofT(['registry'])[0].name + ' + ' + ofT(['appraisal', 'pubprice', 'realprice'])[0].name;
+        else if (/증여\s*계약서/.test(L) && ofT(['giftcontract']).length) hit = ofT(['giftcontract'])[0].name;
+        if (hit) { e.status = '확보됨'; e._auto = hit; marks.push(e); }
+      });
+    }
     if (marks.length) {
       const newList = list.map(function (e) {
         const m = marks.filter(function (x) { return x.id === e.id; })[0];
@@ -25586,6 +25599,18 @@ function caseProcEvidence_(c) {
     if (c.세목 === 'gift' && /증여\s*계약서/.test(e.label)) {
       let cg = null; try { cg = caseProcCashGift_(c, caseProcParseAll_(c)); } catch (err) {}
       if (cg && cg.isCash && cg.txOnly) { lines.push('증여계약서 없음 — 이체내역만 있음: 증여 내용은 처리개요 「증여 내용 확인」에서 묻습니다.'); return; }
+    }
+    // [2026.10.16] 증여 — 조건부 칸("현금증여 입증", "부담부증여인 경우", "해당 시")은 그 경우가 아니면 묻지 않고 한 줄로 밝힌다(강정화(임세택): 부동산 증여인데 이체내역·채무인수 자료를 미확보로 물음)
+    if (c.세목 === 'gift' && /(현금\s*증여|부담부|해당\s*시)/.test(e.label)) {
+      let all0 = []; try { all0 = caseProcParseAll_(c); } catch (err) {}
+      let cg = null; try { cg = caseProcCashGift_(c, all0); } catch (err) {}
+      const ov0 = c.사건개요 || {};
+      const realGift = all0.some(function (x) { return x.p.type === 'registry' || (x.p.type === 'giftcontract' && /부동산/.test(String((x.p.result || {}).재산종류 || ''))); });
+      const debt = !!String(ov0.giftDebtAssumed || '').replace(/[^\d]/g, '') || all0.some(function (x) { return x.p.type === 'giftcontract' && (x.p.result || {}).부담부; });
+      const why = /현금\s*증여/.test(e.label) ? (!(cg && cg.isCash) && realGift ? '부동산 증여(현금 증여 아님)' : '')
+        : /부담부/.test(e.label) ? (!debt ? '부담부증여 아님(증여계약서·처리개요에 인수채무 없음)' : '')
+        : (re0 => re0 && !hay.some(function (h) { return re0.test(h.s) && !/감정\s*평가/.test(h.f.name); }) ? '해당 서류 없음(해당 시에만 필요)' : '')(caseProcEvRe_(e.label));
+      if (why) { lines.push('해당 없음: ' + e.label + ' — ' + why); return; }
     }
     // [2026.10.15] 신분증·위임장·인감증명은 신고 제출용일 뿐 세액·판단과 무관 — ⚠ 질문으로 세우지 않고 안내 한 줄로(정답지 점검에서 불필요 질문으로 반복 검출)
     if (/신분증|위임장|인감/.test(e.label)) { lines.push('제출용 서류(세액과 무관, 신고 전 받기): ' + e.label + ' 미확보'); return; }
@@ -25850,7 +25875,35 @@ function caseProcOverview_(c) {
   try { caseProcMemoCands_(c, r); } catch (e) {}
   try { caseProcMemoCross_(c, r); } catch (e) {}
   try { caseProcNoteUsed_(c, r); } catch (e) {} // [2026.10.15 1단계 ②] 사실장부 "쓰인 곳"
+  try { caseProcCleanCands_(r); } catch (e) {}
   return r;
+}
+// [2026.10.16 후보 1번 점검] 이름·소재지 질문의 후보 중 그 칸 값이 될 수 없는 문장 조각을 뺀다 —
+//  메모·영문 서류에서 "의 6녀의 남편)", "및 관계:", "(주소):", "를 두거나 183일 이상의 거소…", "(SELLER/TRANSFEROR) | GIL SEO PARK (박길서)"가 1번 후보가 되던 것.
+//  이름은 한글 2~5자(괄호 안 한글 이름이 있으면 그것), 소재지는 행정구역·도로명·번지나 영문 주소 형태만.
+function caseProcCleanName_(v) {
+  const s = String(v == null ? '' : v).trim();
+  if (/^[가-힣]{2,5}$/.test(s.replace(/\s+/g, ''))) return s.replace(/\s+/g, '');
+  const p = /\(\s*([가-힣]{2,5})\s*\)/.exec(s); // "GIL SEO PARK (박길서)" → 박길서
+  return p ? p[1] : '';
+}
+function caseProcLooksAddr_(v) {
+  const s = String(v == null ? '' : v).trim();
+  if (s.length < 5 || s.length > 120) return false;
+  if (/[가-힣]/.test(s)) return /(시|도|군|구|읍|면|동|리|로|길|가)\s*\d/.test(s) || /(특별시|광역시|특별자치|도\s)[\s\S]*(구|군|시)/.test(s);
+  return /\d{2,}/.test(s) && /[A-Za-z]{2,}/.test(s) && /(ST|AVE|RD|BLVD|DR|LN|WAY|CA|NY|TX|COYOTES|STREET|ROAD|\d{5})/i.test(s);
+}
+function caseProcCleanCands_(r) {
+  (r && r.items || []).forEach(function (it) {
+    const a = it.ask; if (!a || !Array.isArray(a.cands) || !a.cands.length || (a.input && a.input !== 'text')) return;
+    const lab = String(a.label || '');
+    let fix = null;
+    if (/(성명|이름)/.test(lab)) fix = function (x) { const n = caseProcCleanName_(x.v); return n ? Object.assign({}, x, { v: n }) : null; };
+    else if (/(소재지|주소)/.test(lab)) fix = function (x) { return caseProcLooksAddr_(x.v) ? x : null; };
+    if (!fix) return;
+    const seen = {};
+    a.cands = a.cands.map(fix).filter(function (x) { if (!x || seen[x.v]) return false; seen[x.v] = 1; return true; });
+  });
 }
 function caseProcOverview0_(c) {
   const items = [], lines = [];
@@ -26320,6 +26373,7 @@ function caseProcIsOutputDoc_(name) {
   const n = String(name || '');
   // [2026.10.15] "양도소득 과세표준 신고 및 납부계산서", "…금액계산명서"(오타), "필요경비명세서", "평가명세서", "추가자진납부", "세액계산"도 이미 낸(또는 세무사가 만든) 발생문서 —
   //  입력으로 읽으면 신고 숫자를 그대로 베끼게 된다. 거래처가 준 "거래명세서"는 원시증빙이라 제외하지 않는다.
+  if (caseProcIsPriorReport_(n)) return true; // [2026.10.16] 이전 작업이 만든 검토자료·해명자료도 입력으로 읽지 않는다(김창호: 해명자료 제출서·신고 검토자료를 원시서류로 읽어 판독 질문)
   return /(신고서|계산명세|계산명서|(?<!세금)계산서|접수증|납부서|과세표준|세액계산|자진납부|평가명세서|경비명세서|금액명세서|납세담보제공|연부연납신청)/.test(n.replace(/\s+/g, '')) || /^양코_/.test(n) || (/(상속세|증여세|양도소득세|양도세)/.test(n) && /(신고|명세서|계산서|공제)/.test(n));
 }
 // 한글 금액 문장 → 원("3억원" 300000000, "410백만원" 410000000, "1억 5천만원", "300,000,000")
@@ -26576,6 +26630,10 @@ function caseProcGiftInhFacts_(c, lines, items) {
       if (gifts.length) lines.push('증여재산(증여 등기 전 등기부 — 후보): ' + gifts.map(function (g) { return (g.kind ? g.kind + ' ' : '') + (g.loc || '소재지 미확인') + ' — 현재 소유자 ' + g.from; }).join(' / ') + (gc ? ' · 증여계약서 ' + gc.file : ''));
       else lines.push('증여재산: 증여 등기가 있는 등기부가 폴더에 없습니다(현금·예금 증여면 증여계약서·이체내역으로 확인).');
     }
+    // [2026.10.16] 감정평가수수료 — 증여재산을 감정평가법인이 평가한 수수료는 500만원 한도로 과세표준에서 뺀다(§55①, 시행령 §20의3). 강정화(임세택): 93만5천원 영수증이 계산에 안 들어가 과세표준이 그만큼 컸다
+    const apf = [];
+    ['cashreceipt', 'cardreceipt', 'receipt', 'taxinvoice'].forEach(function (t) { byType(t).forEach(function (x) { const rr = x.p.result || {}, payee = String(rr.상호 || rr.공급자 || ''), amt = Number(rr.합계 || rr.금액 || 0); if (!amt || !/감정\s*평가/.test(payee + ' ' + x.f.name + ' ' + String(rr.품명 || rr.용도 || ''))) return; if (apf.some(function (q) { return q.amt === amt && q.payee === payee; })) return; apf.push({ amt: amt, payee: payee || x.f.name, file: x.f.name }); }); });
+    if (apf.length) { const tot = apf.reduce(function (s, q) { return s + q.amt; }, 0); add('giftAppraisalFee', String(Math.min(tot, 5000000)), '감정평가수수료 영수증(' + apf.map(function (q) { return q.payee + ' ' + q.amt.toLocaleString('ko-KR') + '원 ' + q.file; }).join(', ') + (tot > 5000000 ? ' — 500만원 한도' : '') + ')', true); }
     // [2026.10.15] 서류로 확정된 증여자가 있으면 그 이름으로 관계를 찾는다(처리개요의 옛 임시 이름 — 예: "○부친" — 으로 찾으면 관계를 못 찾음)
     const donorSure = (facts.giftDonorName || []).filter(function (x) { return x.sure; }).map(function (x) { return x.v; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
     const donorList = [].concat(donorSure, (facts.giftDonorName || []).map(function (x) { return x.v; }), [ov.giftDonorName]).filter(function (v, i, a) { return v && a.indexOf(v) === i; });
@@ -26677,7 +26735,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
   notes.forEach(function (n) { lines.push('참고: ' + n); });
   // 칸별 반영: 빈 칸 + 확실한 값 → 채움 / 빈 칸 + 후보만 → 질문 / 있는 값 ≠ 서류 → 질문 / 금액이 서류로 뒷받침 안 됨 → 추정(확정 질문)
   const spec = c.세목 === 'gift'
-    ? [['giftDoneeName', '수증자 성명', 'text'], ['giftDonorName', '증여자 성명', 'text'], ['giftRelation', '관계', 'select'], ['giftAmount', '증여재산가액', 'money'], ['giftDebtAssumed', '인수채무액(부담부증여)', 'money'], ['giftPriorAmount', '10년 내 같은 증여자 증여 합산액', 'money'],
+    ? [['giftDoneeName', '수증자 성명', 'text'], ['giftDonorName', '증여자 성명', 'text'], ['giftRelation', '관계', 'select'], ['giftAmount', '증여재산가액', 'money'], ['giftDebtAssumed', '인수채무액(부담부증여)', 'money'], ['giftPriorAmount', '10년 내 같은 증여자 증여 합산액', 'money'], ['giftAppraisalFee', '감정평가수수료', 'money'],
       ['giftDoneeRegNo', '수증자 주민등록번호', 'text'], ['giftDoneeAddress', '수증자 주소', 'text'], ['giftDonorRegNo', '증여자 주민등록번호', 'text'], ['giftDonorAddress', '증여자 주소', 'text']]
     : [['ihDeceasedName', '피상속인 성명', 'text'], ['상속인성명', '대표 상속인 성명', 'text'], ['상속인추가명단', '그 외 상속인', 'text'], ['상속인수', '상속인 수', 'number']]; // 과세가액(예상)은 계산 결과라 묻지 않음
   const fills = [], confirms = [];
@@ -26702,6 +26760,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
       if (key === 'giftPriorAmount' && items.some(function (it) { return /^gift:memoprior:/.test(it.id); })) return; // 상담 메모 근거 질문이 같은 칸을 이미 묻는다
       if (key === 'giftPriorAmount') { items.push(caseProcItem_('ov:' + key, 'missing', '10년 안에 같은 증여자(배우자는 같은 사람으로 봄)에게 받은 증여가 있나요? (상증법 §47② 합산)', { mode: 'options', target: 'ov:' + key, options: [{ label: '없음(0원)', value: '0' }], input: 'money', label: sp[1], withInput: true })); return; }
       if (key === 'giftDebtAssumed' && !uniq.length) return; // 부담부증여가 아니면 비워 둔다
+      if (key === 'giftAppraisalFee' && !uniq.length) return; // 감정평가를 안 했으면 비워 둔다
       if (key === '상속인추가명단' && !uniq.length) return;
       items.push(caseProcItem_('ov:' + key, uniq.length ? 'check' : 'missing', '처리개요 「' + sp[1] + '」' + (uniq.length ? ' — 서류 후보가 있습니다. 어느 값인가요?' : '이(가) 비어 있습니다.'), ask));
       return;
@@ -26792,12 +26851,17 @@ function caseProcInhFacts_(c, parsed) {
   // 피상속인
   let famSelf = null, famFile = '';
   by('family').forEach(function (x) { const g = (x.p.result && x.p.result.가족) || []; const me = g.filter(function (q) { return q.관계 === '본인' && q.사망; })[0]; if (me && !famSelf) { famSelf = { me: me, g: g }; famFile = x.f.name; } });
-  out.deceased.name = (dv && dv.피상속인) || (famSelf && nm(famSelf.me.이름)) || '';
+  const dvAny = by('inhdivision').map(function (x) { return x.p.result || {}; }).filter(function (r) { return r.피상속인; })[0] || null; // 피상속인은 어느 분할협의서에서든
+  out.deceased.name = (dv && dv.피상속인) || (dvAny && dvAny.피상속인) || (famSelf && nm(famSelf.me.이름)) || '';
   out.deceased.regNo = famSelf && famSelf.me.주민번호 ? famSelf.me.주민번호 : '';
   out.deceased.src = dv && dv.피상속인 ? '상속재산분할협의서(' + dv.file + ')' : (famSelf ? '가족관계증명서(' + famFile + ')' : '');
   // [2026.10.16] 서류로 피상속인을 못 찾으면(가족관계·기본증명서 사진이 글자인식 실패) 사건 납세자 칸 — 상속 사건은 "고객명(피상속인)_상속" 규칙이라 납세자 = 피상속인.
   //  노영환(조용녀) 사건: 피상속인을 못 찾아 피상속인 명의 등기부·임대보증금·병원비가 전부 연결되지 않았다
-  if (!out.deceased.name && String(c.납세자 || '').trim()) { out.deceased.name = nm(c.납세자); out.deceased.src = '사건 납세자 칸(서류로 확인 못 함 — 기본증명서·가족관계증명서로 확인 필요)'; out.deceased.unsure = true; }
+  if (!out.deceased.name && String(c.납세자 || '').trim()) {
+    out.deceased.name = nm(c.납세자); out.deceased.src = '사건 납세자 칸(서류로 확인 못 함 — 기본증명서·가족관계증명서로 확인 필요)'; out.deceased.unsure = true;
+    // [2026.10.16] 사망진단서·시체검안서 글에 같은 이름이 있으면 그 서류가 근거(박종헌: 시체검안서에 윤경숙이 있는데 메모의 다른 이름이 1번 후보였다)
+    by('death').some(function (x) { let tx = ''; try { tx = tc_docText_(x.f) || ''; } catch (e) {} if (tx.replace(/\s+/g, '').indexOf(out.deceased.name) === -1) return false; out.deceased.src = ((x.p.result || {}).종류 || '사망 서류') + '(' + x.f.name + ')에 같은 이름'; out.deceased.unsure = false; return true; });
+  }
   // 상속인 — 피상속인 가족관계증명서의 생존 배우자·자녀(1순위). 주민번호는 분할협의서(전체 번호)가 있으면 그것, 없으면 증명서(가려진 번호)
   const divNo = {}; (dv && dv.상속인 || []).forEach(function (h) { divNo[nm(h.이름)] = h.주민번호; });
   if (famSelf) famSelf.g.forEach(function (q) {
@@ -26903,10 +26967,12 @@ function caseProcInhFacts_(c, parsed) {
   out.financialDiff = !finCh && !finAt.length && out.financial.length > 1 && out.financial.some(function (q) { return q.v !== out.financial[0].v; });
   if (!finCh && finExtra.length) {
     // 잔액증명 없는 계좌가 있으면 확정하지 않고 묻는다 — 후보: 잔액증명 + 목록의 나머지 계좌 / 잔액증명만
-    const certSum = finAt.length ? finAt.reduce(function (t, q) { return t + q.v; }, 0) : 0;
+    // 기준일이 아직 안 정해졌으면(개시일 기준 잔액증명인지 모름) 잔액증명 전부를 더한다 — 빼면 증명된 계좌가 통째로 빠진 후보가 1번이 된다
+    const certs = finAt.length ? finAt : out.financial.filter(function (q) { return q.bd !== undefined; });
+    const certSum = certs.reduce(function (t, q) { return t + q.v; }, 0);
     const exSum = finExtra.reduce(function (t, e) { return t + e.v; }, 0);
-    out.financial = [{ v: certSum + exSum, src: (finAt.length ? finAt.map(function (q) { return q.src; }).join(' + ') + ' + ' : '') + '잔액증명 없는 계좌 ' + finExtra.map(function (e) { return e.src; }).join(', ') + ' — 그 기관 잔액증명을 받으면 그 금액으로' }]
-      .concat(finAt.length ? [{ v: certSum, src: '잔액증명만(' + finAt.map(function (q) { return q.file; }).join(', ') + ') — 목록의 다른 기관 계좌 빠짐' }] : []);
+    out.financial = [{ v: certSum + exSum, src: (certs.length ? certs.map(function (q) { return q.src; }).join(' + ') + ' + ' : '') + '잔액증명 없는 계좌 ' + finExtra.map(function (e) { return e.src; }).join(', ') + ' — 그 기관 잔액증명을 받으면 그 금액으로' }]
+      .concat(certs.length ? [{ v: certSum, src: '잔액증명만(' + certs.map(function (q) { return q.file; }).join(', ') + ') — 목록의 다른 기관 계좌 빠짐' }] : []);
     out.financialValue = null; out.financialSrc = ''; out.financialDiff = true;
   }
   if (!finCh && !finAt.length && out.financial.length === 1) { out.financialValue = out.financial[0].v; out.financialSrc = out.financial[0].src + ' (개시일 기준 잔액증명 없음)'; }
@@ -27326,6 +27392,7 @@ function caseProcLedger_(c, saved) {
     if (/^~\$/.test(n)) { r.st = '제외'; r.why = '엑셀을 열어 둘 때 생기는 임시 파일'; return r; }
     if (/^_/.test(n)) { r.st = '제외'; r.why = caseIsAnswerKeyFile_(n) ? '점검용 정답지' : '도구가 만든 파일(_로 시작)'; return r; }
     if (/pdf|^image\//.test(mt)) {
+      if (caseProcIsPriorReport_(n)) { r.st = '제외'; r.why = '이전 작업이 만든 보고서·검토자료(결론이 들어 있어 입력으로 안 씀)'; return r; }
       if (caseProcIsOutputDoc_(n)) { r.st = '제외'; r.why = '신고서·명세서·납부서 등 발생문서 — 입력으로 쓰지 않음(정답지·참고 전용)'; return r; }
       docIdx++;
       if (docIdx > CASEPROC_DOC_MAX_) { r.st = '대기'; r.why = 'PDF·사진이 ' + CASEPROC_DOC_MAX_ + '개를 넘어 읽지 않음'; return r; }
@@ -28606,6 +28673,13 @@ function registryParseOne_(id, text) {
     const merged = x.권리자.concat(hs.filter(function (h) { return !x.권리자.some(function (o) { return o.이름 === h.이름; }); }));
     if (merged.length > x.권리자.length && (!x.권리자.length || frac(merged) <= 1.001)) x.권리자 = merged;
   });
+  // [2026.10.16] 등기명의인표시 변경(개명) — "임복순의 성명(명칭) 임미경 변경 … 개명": 그 소유자의 지금 이름으로 바꾸고 옛 이름은 남긴다
+  //  (강정화(임세택): 증여자를 옛 이름 "임복순"으로 읽어 가족관계증명서의 "임미경"과 맞추지 못해 관계를 못 정함)
+  (g.match(/[가-힣]{2,4}\s*의\s*성\s*명\s*\(?\s*명\s*칭\s*\)?\s*[가-힣]{2,4}/g) || []).forEach(function (s) {
+    var mm = /([가-힣]{2,4})\s*의\s*성\s*명\s*\(?\s*명\s*칭\s*\)?\s*([가-힣]{2,4})/.exec(s);
+    if (!mm || mm[1] === mm[2] || /^(변경|경정)$/.test(mm[2])) return;
+    r.소유권이력.forEach(function (x) { (x.권리자 || []).forEach(function (h) { if (h.이름 === mm[1]) { h.옛이름 = mm[1]; h.이름 = mm[2]; } }); });
+  });
   r.갑구기타.forEach(function (x) { var p = erasedG[String(x.순위).split('-')[0]]; x.말소 = !!p && !/^[\d번\s]*(신탁|별도)/.test(p.replace(/^\d+번/, '')); });
   r.소유권이력.forEach(function (x) { var p = erasedG[String(x.순위).split('-')[0]]; if (p && /소유권/.test(p)) x.말소 = true; else if (p && /신탁/.test(p)) x.비고 = '신탁 기재 말소(소유권은 유지)'; });
   // ---- 을구 ----
@@ -29448,6 +29522,24 @@ function docGiftContractParse_(text) {
   // [2026.10.15] 당사자 표시가 "증여자 (부친)\n성명: ○○○" 표 형식인 계약서(실사건: 부동산 취득자금 현금 증여계약서)
   if (!r.증여자) { m = /(?:^|\n)\s*증\s*여\s*자\s*(?:\([^)\n]{1,6}\))?\s*\n?\s*성\s*명\s*[:：]\s*([가-힣]{2,4})/.exec(t); if (m) r.증여자 = m[1]; }
   if (!r.수증자) { m = /(?:^|\n)\s*수\s*증\s*자\s*(?:\([^)\n]{1,6}\))?\s*\n?\s*성\s*명\s*[:：]\s*([가-힣]{2,4})/.exec(t); if (m) r.수증자 = m[1]; }
+  // [2026.10.16] 법률사무소 양식 — "위 부동산은 증여자 임미경 의 소유인 바 이를 수증자 임세택 에게 증여할 것을 확약"(강정화(임세택): 이름을 못 읽어 관계를 못 정함)
+  if (!r.증여자) { m = /증\s*여\s*자\s+([가-힣]{2,4})\s+의\s/.exec(t); if (m) r.증여자 = m[1]; }
+  if (!r.수증자) { m = /수\s*증\s*자\s+([가-힣]{2,4})\s*에\s*게/.exec(t); if (m) r.수증자 = m[1]; }
+  // 서명란 "증여인 수증인 … 이름 (주민번호) 주소 … 이름 주민번호" — 이름 바로 뒤 주민번호가 붙은 것만, 앞이 증여인·뒤가 수증인. 본문보다 믿을 만해(본문 글자인식 "안비택") 있으면 이것을 쓴다
+  var sigAt = t.search(/증\s*여\s*인\s*\n?\s*수\s*증\s*인/);
+  if (sigAt >= 0) {
+    var sre = /([가-힣]{2,4})\s+(?:[가-힣]{1,3}\s+)?\(?\s*1?\d{6}\s*-\s*\d{6,7}/g, sg, sig = [];
+    var st2 = t.slice(sigAt + 4);
+    while ((sg = sre.exec(st2)) && sig.length < 2) if (!/^(주소|성명|증여|수증)/.test(sg[1])) sig.push(sg[1]);
+    if (sig.length === 2 && sig[0] !== sig[1]) {
+      // 본문과 다르게 읽혔으면 비고로만(서명란은 주민번호가 붙어 있어 믿을 만함 — ⚠로 묻지 않음)
+      var bg = [];
+      if (r.증여자 && r.증여자 !== sig[0]) bg.push('증여자 본문 ' + r.증여자 + ' → 서명란 ' + sig[0]);
+      if (r.수증자 && r.수증자 !== sig[1]) bg.push('수증자 본문 ' + r.수증자 + ' → 서명란 ' + sig[1]);
+      if (bg.length) r.비고 = '이름을 서명란(주민번호 옆)으로 씀: ' + bg.join(', ');
+      r.증여자 = sig[0]; r.수증자 = sig[1];
+    }
+  }
   // 서명란 성명(갑·을) — 머리의 이름과 다르면 경고(손글씨 인식 차이일 수 있음)
   var signs = []; var sr = /성\s*명\s*[:：]\s*([가-힣]{2,4})/g, sm;
   while ((sm = sr.exec(t))) signs.push(sm[1]);
@@ -29651,6 +29743,8 @@ function docInhDivisionParse_(text) {
   var m = /(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*([가-힣]{2,4}?)\s*의\s*사\s*망/.exec(t);
   if (m) { r.개시일 = docYmdKr_(m[1], m[2], m[3]); r.피상속인 = m[4]; }
   if (!r.피상속인) { m = /피\s*상\s*속\s*인\s*[:：]?\s*(?:망\s*)?([가-힣]{2,4})(?![가-힣])/.exec(t); if (m && !/[의은는이가]$/.test(m[1])) r.피상속인 = m[1]; }
+  if (!r.피상속인) { m = /망\s*([가-힣]{2,4})\s*의\s*사\s*망/.exec(t); if (m) r.피상속인 = m[1]; } // "망 윤경숙의 사망으로 인하여"(박종헌 금융자산 협의서)
+  if (!r.개시일) { m = /(20\d{2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})\s*\.?\s*사\s*망/.exec(t); if (m) r.개시일 = docYmdKr_(m[1], m[2], m[3]); } // "2026. 4. 6. 사망하였는바"
   // [2026.10.14] 서명란 글자인식은 이름·번호·주소 순서가 섞인다(실사건: 한 장은 어떤 상속인 이름 다음 줄에 다른 상속인 번호). 이름은 "공동상속인 ○○"마다 모으고,
   // 번호는 이름 바로 뒤에 붙은 것만 — 여러 장에서 같은 이름에 다른 번호가 나오면 비워 둔다(가족관계증명서 번호를 쓴다)
   var nums = {}, names = [], hr = /공\s*동\s*상\s*속\s*인\s*([가-힣]{2,4})(?![가-힣])(\s*\n?\s*\(?\s*(\d{6})\s*-\s*(\d{7}))?/g, h;

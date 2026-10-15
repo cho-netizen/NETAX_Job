@@ -2562,7 +2562,7 @@
     var label = a.label || (mode === 'base' ? (NXAI_CP_BASE_LABEL_[tax] || '기준일') : String(it.text || '').slice(0, 30));
     var out = { matched: true, it: it, label: label, src: srcTxt };
     var input = mode === 'base' ? 'date' : (a.input || 'text');
-    var clean = function(s){ return String(s || '').replace(/(?:Q|q|질문)\s*\d+/g, ' ').replace(/(?:근거|증빙|출처)\s*(?:는|은|:|=)?/g, ' ').replace(/^[\s:：은는이가을를=]+/, '').replace(/\s*(입니다|이에요|예요|이다|이야|야|요|으로|로)?\s*(해\s*(줘|주세요)|반영(해\s*줘)?|넣어\s*(줘|주세요)|하자|맞(아|음|습니다))?[.!\s]*$/, '').replace(/\s+/g, ' ').trim(); };
+    var clean = function(s){ return String(s || '').replace(/(?:Q|q|질문)\s*\d+/g, ' ').replace(/(?:근거|증빙|출처)\s*(?:는|은|:|=)?/g, ' ').replace(/^\s*(?:[은는이가을를](?=[\s:：=])|[:：=])[\s:：=]*/, '').replace(/^\s+/, '') /* 조사는 띄어 쓴 것만 — "Q1 이종식"의 '이'를 떼어 "종식"이 되던 것 */.replace(/\s*(입니다|이에요|예요|이다|이야|야|요|으로|로)?\s*(해\s*(줘|주세요)|반영(해\s*줘)?|넣어\s*(줘|주세요)|하자|맞(아|음|습니다))?[.!\s]*$/, '').replace(/\s+/g, ' ').trim(); };
     var pickVal = function(){
       if (input === 'money'){ var v = nxAiKrMoney_(body.replace(/((?:19|20)\d{2})\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}/g, ' ')); return v ? String(v) : ''; }
       if (input === 'number'){ var n = /(\d+)\s*(명|개|건)?/.exec(body); return n ? n[1] : ''; }
@@ -2574,6 +2574,8 @@
       var cands = a.cands || [];
       if (nthN && cands[nthN - 1] && !(input === 'money' && nxAiKrMoney_(body) >= 10000)) return Object.assign(out, { act: 'apply', target: mode === 'base' ? 'base' : a.target, value: String(cands[nthN - 1].v), src: cands[nthN - 1].src || srcTxt, shown: cands[nthN - 1].v });
       var v = pickVal();
+      // 글자 칸 — 질문 이름의 낱말이 값 앞에 남으면 뗀다("양도인 성명 이종식" → "성명 이종식"이 들어가던 것)
+      if (input === 'text' && v){ String(label).split(/\s+/).filter(function(w){ return w.length >= 2; }).forEach(function(w){ var v2 = v.replace(new RegExp('^\\s*' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*'), ''); if (v2) v = v2; }); }
       if (!v) return decide ? Object.assign(out, { act: 'decide', decide: decide }) : Object.assign(out, { act: 'need', msg: 'Q' + it.q + ' 「' + label + '」의 값을 알아듣지 못했습니다 — ' + ({ money: '예: "Q' + it.q + ' 5억 2천만원 매매계약서"', date: '예: "Q' + it.q + ' 2024.3.5 계약서"', number: '예: "Q' + it.q + ' 3명"', select: '예: "Q' + it.q + ' ' + ((a.options || [])[0] || '') + '"' }[input] || '예: "Q' + it.q + ' 홍길동"') });
       var same = cands.filter(function(c){ return String(c.v) === v; })[0];
       return Object.assign(out, { act: 'apply', target: mode === 'base' ? 'base' : a.target, value: v, src: same && !src ? (same.src || srcTxt) : srcTxt, shown: v });
