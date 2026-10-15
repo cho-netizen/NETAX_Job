@@ -671,9 +671,10 @@
   #nxCoverBar{ display:none; }
   body.lay-cover #appRoot.shown ~ #nxCoverBar{ display:flex; position:fixed; left:0; right:0; bottom:0; z-index:60; gap:6px;
     padding:5px 8px calc(5px + env(safe-area-inset-bottom)); background:var(--navy); }
-  #nxCoverBar button{ flex:1; height:48px; border:none; border-radius:8px; padding:0; font-size:16px; font-weight:600; background:rgba(255,255,255,0.08); color:#fff; cursor:pointer; }
+  /* 밀기로 바꾸므로 탭은 지금 위치를 알려 주는 얇은 표시(눌러도 됨) — 위 [음성/문자]와 같은 36 높이 */
+  #nxCoverBar button{ flex:1; height:36px; border:none; border-radius:8px; padding:0; font-size:15px; font-weight:600; background:rgba(255,255,255,0.08); color:#fff; cursor:pointer; }
   #nxCoverBar button.on{ background:var(--gold); color:var(--navy); }
-  body.lay-cover #appRoot.shown{ height:calc(100% - 58px - env(safe-area-inset-bottom)); }
+  body.lay-cover #appRoot.shown{ height:calc(100% - 46px - env(safe-area-inset-bottom)); }
   body.lay-cover #sideMenu, body.lay-cover #sideAI, body.lay-cover #globalHelpBtn{ display:none !important; }
   body.lay-cover #view-dashboard .card:not(.dash-cover){ display:none; }
   body.lay-cover #view-dashboard .view-head{ padding:8px 10px 4px; }

@@ -191,7 +191,7 @@
   body.lay-cover #nxAiTalk{ display:flex; flex-direction:column; align-items:center; gap:8px; width:100%; height:100%; min-height:0;
     padding:10px 12px; box-sizing:border-box; background:var(--navy); color:#fff; }
   .nxai-talk-mode{ display:flex; gap:6px; align-self:stretch; flex-shrink:0; }
-  .nxai-talk-mode button{ flex:1; height:48px; border:1px solid rgba(255,255,255,0.25); background:transparent; color:#c9d2e6; border-radius:8px; padding:0; font-size:16px; font-weight:600; cursor:pointer; }
+  .nxai-talk-mode button{ flex:1; height:36px; border:1px solid rgba(255,255,255,0.25); background:transparent; color:#c9d2e6; border-radius:8px; padding:0; font-size:15px; font-weight:600; cursor:pointer; }
   .nxai-talk-mode button.on{ background:var(--gold); border-color:var(--gold); color:var(--navy); font-weight:700; }
   .nxai-talk-q{ align-self:stretch; font-size:14px; color:var(--gold-light); max-height:3.2em; overflow:hidden; line-height:1.6; }
   .nxai-talk-a{ align-self:stretch; flex:0 1 auto; max-height:34%; min-height:0; overflow-y:auto; font-size:17px; line-height:1.55; white-space:pre-wrap; }
@@ -3891,6 +3891,12 @@
     var m = nxAiTalkMode_();
     Array.prototype.forEach.call(document.querySelectorAll('#nxAiTalkMode [data-talk-mode]'), function(b){ b.classList.toggle('on', b.getAttribute('data-talk-mode') === m); });
   }
+  // 좌우로 밀기(script.html 커버화면 밀기)·표시 누르기로 음성 ↔ 문자 바꾸기
+  function nxAiTalkToggleMode_(){
+    nxAiLs_('nxAiTalkMode', nxAiTalkMode_() === 'text' ? 'voice' : 'text');
+    nxAiTalkSyncMode_();
+    if (nxAiTalk_.state === 'speak' && nxAiTalkMode_() === 'text'){ nxAiTalkSet_('idle'); try { speechSynthesis.cancel(); } catch (e) {} }
+  }
   function nxAiTalkSet_(state, status){
     nxAiTalk_.state = state;
     if (state === 'busy') nxAiTalkBeat_on_(status || '생각 중'); else nxAiTalkBeat_off_();
@@ -4136,6 +4142,18 @@
         sess.finish(true, '들은 말이 없습니다 — 누르고 있는 동안 말씀하세요'); // 손 뗌 → 바로 보냄
       }
     }
+    // 누른 채 크게 밀면 말하기가 아니라 밀기 — 듣기를 조용히 취소한다(화면 전환은 script.html의 밀기 처리가 함)
+    var downX = 0, downY = 0;
+    mic.addEventListener('pointerdown', function(e){ downX = e.clientX; downY = e.clientY; }, true);
+    mic.addEventListener('pointermove', function(e){
+      if (!holding) return;
+      if (Math.abs(e.clientX - downX) > 40 || Math.abs(e.clientY - downY) > 40){
+        holding = false;
+        var sess = nxAiTalk_.sess;
+        if (sess && sess.finish) sess.finish(false, '');
+        nxAiTalkSet_('idle');
+      }
+    });
     mic.addEventListener('pointerup', release);
     mic.addEventListener('pointercancel', release);
     nxAiEl_('nxAiTalkCancel').addEventListener('click', function(){

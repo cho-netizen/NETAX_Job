@@ -668,6 +668,46 @@
     nxCoverSync_();
   });
 
+  // [2026.10.15] 커버화면 밀기(세무사님 제안) — 위아래로 밀면 요약 ↔ AI, AI 화면에서 좌우로 밀면 음성 ↔ 문자(aichat.html).
+  // 요약은 목록을 위아래로 넘기므로, 넘길 것이 남아 있으면 넘기기를 우선하고 끝(맨 위·맨 아래)에서 더 밀 때만 바꾼다.
+  // AI 화면의 말하기 버튼은 누르고 있는 동안 듣는데, 누른 채 크게 밀면 말하기가 아니라 밀기로 본다(aichat.html 쪽에서 듣기 취소).
+  (function(){
+    var sx = 0, sy = 0, st = 0, edgeTop = false, edgeBottom = false, on = false;
+    function scroller_(el, root){
+      for (var n = el; n && n !== root.parentNode; n = n.parentNode){
+        if (n.nodeType !== 1) continue;
+        var oy = getComputedStyle(n).overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight + 2) return n;
+      }
+      return null;
+    }
+    document.addEventListener('touchstart', function(e){
+      on = !!window.nxCover && e.touches.length === 1 && !!(e.target.closest && e.target.closest('#centerWork'));
+      if (!on) return;
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY; st = Date.now();
+      var view = document.querySelector('#centerWork > .view.active');
+      var sc = view ? scroller_(e.target, view) : null;
+      edgeTop = !sc || sc.scrollTop <= 1;
+      edgeBottom = !sc || sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 2;
+    }, { passive: true });
+    document.addEventListener('touchend', function(e){
+      if (!on || !window.nxCover) return;
+      on = false;
+      var t = e.changedTouches && e.changedTouches[0]; if (!t) return;
+      var dx = t.clientX - sx, dy = t.clientY - sy, dt = Date.now() - st;
+      if (dt > 900) return;
+      var view = nxCoverActiveView_();
+      if (Math.abs(dy) > 60 && Math.abs(dy) > Math.abs(dx) * 1.5){
+        var ok = view === 'ai' || (dy < 0 ? edgeBottom : edgeTop);
+        if (!ok) return;
+        goToView_(view === 'ai' ? 'dashboard' : 'ai');
+        nxCoverSync_();
+      } else if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5 && view === 'ai'){
+        if (typeof nxAiTalkToggleMode_ === 'function') nxAiTalkToggleMode_();
+      }
+    }, { passive: true });
+  })();
+
   // [2026.10.13] 사건 관련 화면 바로가기 — "처리개요에서 증빙관리로 옮겨간 다음에는 처리개요로만 갈 수 있고
   // 세액계산이나 연관작업으로 옮겨갈 수 없다"는 지적. 사건을 다루는 모든 화면 머리에 같은 콤보박스를 둬,
   // 지금 사건을 그대로 들고 어느 관련 화면으로든 바로 간다. 각 화면의 "그 사건으로 열기" 함수(goTo*_)를 그대로 쓴다
