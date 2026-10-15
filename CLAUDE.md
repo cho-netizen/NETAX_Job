@@ -30,6 +30,13 @@ google.script.run 대신 doPost의 `__manage` 입구(Code.js `manageApp_dispatch
 1. `node tools/build-app.js` — `app/index.html` 다시 만들기 (직접 고치지 말 것, 자동 생성 파일)
 2. git commit/push — 깃허브 페이지에 올라가야 job.netax.kr/app/에 반영된다(커밋 승인은 전역 규칙대로)
 
+## [2026.10.15] 휴대폰 창구 — `m/` (job.netax.kr/m/)
+구조 전환을 보류한 대신, 휴대폰 앱 설치·"공유하기"만 담당하는 작은 정적 창구. 설치하면 앱 목록·공유 메뉴에
+"NETAX job"이 뜨고, 앱으로 열면 곧바로 지금의 job(구글 주소)으로 넘어간다. 공유받은 파일은 `m/sw.js`가
+받아 두고 `m/index.html`이 job 비밀번호 로그인(12시간 세션 토큰) 후 기존 `__manage` 입구의
+listFolder/createFolder/uploadFile/moveItem/work_get_cases로 기본폴더 아래 `_휴대폰받은파일`에 올린 뒤
+사건 폴더로 옮긴다. **서버(Code.js) 변경 없음** — 이 폴더만 고쳤으면 clasp 절차는 필요 없고 git push만 하면 된다.
+
 ## GS(Apps Script) 코드 수정 시 반드시 지킬 절차
 `gs-backend` 폴더 안의 `.js`/`.html`/`appsscript.json` 파일을 수정했다면, 코드 수정만으로는
 실제 서비스에 반영되지 않는다. 아래 순서를 매번 빠짐없이 실행한다 (사용자에게 각 단계를 할지
