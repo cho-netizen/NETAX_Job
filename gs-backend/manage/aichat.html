@@ -2544,6 +2544,11 @@
       }
       var mo = /물건\s*(\d+)/.exec(rest);
       if (mo && hits.length > 1){ var h2 = hits.filter(function(x){ return new RegExp('물건\\s*' + mo[1] + '(?!\\d)').test(nxAiCaseProcName_(x, tax)); }); if (h2.length) hits = h2; }
+      // [2026.10.16] "받을 예정·받았음·확보"는 증빙 질문에만 맞는 답 — 증빙 질문이 걸려 있으면 그것부터("필요경비 받을 예정"이 필요경비 확정 질문으로 가던 것)
+      if (hits.length > 1 && /(받았|받음|받을|예정|확보)/.test(rest)){
+        var evh = hits.filter(function(x){ return (x.ask || {}).mode === 'evidence'; });
+        if (evh.length) hits = evh;
+      }
       // 질문 이름(칸 이름)이 바로 그 말인 질문을 먼저 — "양도가액 5억"이 증빙 질문 문구 속 '양도가액'에 걸려 애매해지던 것(점검 72건)
       if (hits.length > 1){
         var labelOf = function(x){ var ax = x.ask || {}; return String(ax.label || (ax.mode === 'base' ? (NXAI_CP_BASE_LABEL_[tax] || '기준일') : '')); };
