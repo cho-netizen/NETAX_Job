@@ -289,7 +289,10 @@ function akRunCase0_(caseId, key) {
     const hit = live.filter(function (it) { return !used[it.id] && words.every(function (w) { return it.text.indexOf(w) !== -1; }) && (!e.종류 || it.kind === e.종류); })[0];
     if (hit) used[hit.id] = true; else out.missing.push(e.포함 + (e.종류 ? ' (' + e.종류 + ')' : ''));
   });
-  live.forEach(function (it) { if (!used[it.id]) out.extra.push({ id: it.id, kind: it.kind, cat: akQuestionKind_(it), text: it.text, detail: it.detail || '' }); });
+  // [2026.10.15] 서류로는 원래 알 수 없는 사실(10년 안 동일인 증여 — 국세청 자료로만 확인)을 묻는 질문은 결함이 아니라 필요한 질문 —
+  // out.needed로 따로 두고 불합격으로 세지 않는다(정답지가 신고서라 남은항목이 비어 이 질문이 늘 "정답지에 없는 질문"으로 잡혔다)
+  out.needed = [];
+  live.forEach(function (it) { if (used[it.id]) return; const q = { id: it.id, kind: it.kind, cat: akQuestionKind_(it), text: it.text, detail: it.detail || '' }; (q.cat === '10년 합산' ? out.needed : out.extra).push(q); });
   out.qcats = {}; out.extra.forEach(function (x) { out.qcats[x.cat] = (out.qcats[x.cat] || 0) + 1; });
   // ⚠ 서류 질문이 정답지에 없는 것이면 그 서류의 서버 글자인식 원문(앞 4천 자)을 남긴다 — 규칙을 실제 원문으로 고치려고(결과 파일은 업무관리자 폴더, 저장소에는 안 들어감)
   out.ocr = {};
@@ -297,6 +300,11 @@ function akRunCase0_(caseId, key) {
     const m = /^file:([^:]+):(\d+)$/.exec(x.id);
     if (!m) return;
     try { const f = DriveApp.getFileById(m[1]); out.ocr[f.getName()] = String(tc_docText_({ id: m[1], name: f.getName(), mimeType: f.getMimeType(), modified: Number(m[2]) }) || '').slice(0, 4000); } catch (e) {}
+  });
+  // [2026.10.15] 종류를 못 정한(미분류) 서류도 원문 앞부분을 남긴다 — 다음 묶음에서 새 서류 규칙을 실제 원문으로 만들려고(사건당 6개·1천5백 자)
+  (out.docTypes || []).filter(function (d) { return !d.t && d.id && !caseProcIsOutputDoc_(d.name); }).slice(0, 6).forEach(function (d) {
+    if (out.ocr[d.name]) return;
+    try { const f = DriveApp.getFileById(d.id); out.ocr['미분류:' + d.name] = String(tc_docText_({ id: d.id, name: d.name, mimeType: f.getMimeType(), modified: f.getLastUpdated().getTime() }) || '').slice(0, 1500); } catch (e) {}
   });
   out.engineInput = tool._engineInput || null;
   out.why = tool._why || '';
