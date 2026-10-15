@@ -668,7 +668,7 @@
     nxCoverSync_();
   });
 
-  // [2026.10.15] 커버화면 밀기(세무사님 제안) — 위아래로 밀면 요약 ↔ AI, AI 화면에서 좌우로 밀면 음성 ↔ 문자(aichat.html).
+  // [2026.10.15] 커버화면 밀기(세무사님 제안) — 위로 밀면 요약 ↔ AI, AI 화면에서 왼쪽으로 밀면 음성 ↔ 문자(aichat.html).
   // 요약은 목록을 위아래로 넘기므로, 넘길 것이 남아 있으면 넘기기를 우선하고 끝(맨 위·맨 아래)에서 더 밀 때만 바꾼다.
   // AI 화면의 말하기 버튼은 누르고 있는 동안 듣는데, 누른 채 크게 밀면 말하기가 아니라 밀기로 본다(aichat.html 쪽에서 듣기 취소).
   (function(){
@@ -697,12 +697,13 @@
       var dx = t.clientX - sx, dy = t.clientY - sy, dt = Date.now() - st;
       if (dt > 900) return;
       var view = nxCoverActiveView_();
-      if (Math.abs(dy) > 60 && Math.abs(dy) > Math.abs(dx) * 1.5){
-        var ok = view === 'ai' || (dy < 0 ? edgeBottom : edgeTop);
-        if (!ok) return;
+      // [세무사님 정정] 한 방향만 토글 — 위로 밀기: 요약 ↔ AI / 왼쪽으로 밀기(AI 화면): 음성 ↔ 문자.
+      // 아래로·오른쪽으로 밀기는 다른 화면용으로 비워 둔다(무엇을 넣을지 검토 중).
+      if (dy < -60 && Math.abs(dy) > Math.abs(dx) * 1.5){
+        if (view !== 'ai' && !edgeBottom) return; // 요약은 넘길 목록이 남았으면 넘기기 우선
         goToView_(view === 'ai' ? 'dashboard' : 'ai');
         nxCoverSync_();
-      } else if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5 && view === 'ai'){
+      } else if (dx < -60 && Math.abs(dx) > Math.abs(dy) * 1.5 && view === 'ai'){
         if (typeof nxAiTalkToggleMode_ === 'function') nxAiTalkToggleMode_();
       }
     }, { passive: true });
