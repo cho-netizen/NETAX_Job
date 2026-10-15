@@ -26263,6 +26263,17 @@ function caseProcTrAskBasics_(c, ov, lines, items, rf, txs, noExpenses) {
         (txs && txs[i] && ((f[0] === '양도가액' && txs[i].transferPriceCand) || (f[0] === '취득가액' && txs[i].acquisitionPriceCand))) ? { mode: 'choose', target: 'ovAsset:' + i + ':' + f[0], input: 'money', label: '물건' + (i + 1) + ' ' + f[1], cands: [(function (pc) { return { v: String(pc.v), src: '계약서 매매대금 — ' + pc.file + '(계약금·잔금 검산 안 됨 — 원문 확인)' }; })(f[0] === '양도가액' ? txs[i].transferPriceCand : txs[i].acquisitionPriceCand)] } : (i === 0 && f[0] === 'assetLocation' && rf && (rf.locCands || []).length) ? { mode: 'choose', target: 'ovAsset:0:assetLocation', input: 'text', label: '물건1 소재지', cands: rf.locCands.map(function (x) { return { v: x.v, src: x.src }; }) } : { mode: 'input', target: 'ovAsset:' + i + ':' + f[0], input: f[2], label: '물건' + (i + 1) + ' ' + f[1], cands: [] }));
     });
   });
+  // [2026.10.16] 같은 빈칸을 두 번 묻지 않음 — "⚠ … 양도가액(취득가액)을 서류에서 찾지 못함" 알림은 그 칸을 정하는 질문이 있으면 그 질문의 설명으로 붙이고 따로 세우지 않는다(이종식·김금옥)
+  ['양도가액', '취득가액'].forEach(function (k) {
+    const q = items.filter(function (x) { return x.id === 'ov:asset:0:' + k || (x.ask && x.ask.target === 'ovAsset:0:' + k); })[0];
+    if (!q) return;
+    for (let qi = items.length - 1; qi >= 0; qi--) {
+      const x = items[qi];
+      if (!/^rf:/.test(x.id) || x.text.indexOf(k + '을 서류에서 찾지 못함') === -1) continue;
+      q.detail = (q.detail ? q.detail + '\n' : '') + x.text;
+      items.splice(qi, 1);
+    }
+  });
   if (!c.기준일 && !items.some(function (x) { return /^ov:기준일/.test(x.id); })) items.push(caseProcItem_('ov:기준일:none', 'missing', (rf && (rf.comps || []).length ? '양도일(수용: 보상금 받은 날·수용개시일·수용 등기 접수일 중 빠른 날, 소득세법 시행령 §162①7호)' : '양도일(잔금일·등기접수일 중 빠른 날, 소득세법 §98)') + '을 서류에서 정하지 못했습니다 — 정해 주세요.', { mode: 'base', cands: (function () { const cs = (rf && rf.trDateCands || []).slice(); lines.forEach(function (l) { const m = /^양도일 후보: 정산서 종결일 (\d{4}-\d{2}-\d{2})\((.+?)\)/.exec(String(l)); if (m && !cs.some(function (q) { return q.v === m[1]; })) cs.push({ v: m[1], src: '국외 매도 정산서 종결일(' + m[2] + ') — 대금 수령일·등기일과 다르면 고치세요' }); }); return cs.length ? cs : undefined; })() }));
   const a0 = assets[0] || {};
   if (!noExpenses && !a0.필요경비확정 && !items.some(function (x) { return x.id === 'tr:expenses' || /^oa:/.test(x.id); }) && a0.국외자산 !== 'Y') { // 국외자산은 양도비를 따로 묻는다(oa:te)
