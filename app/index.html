@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 07:10 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 07:23 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -46671,12 +46671,18 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         });
       };
       draw();
-      p('없는 비용 더하기(주관식): 구분 · 내용 · 금액');
+      // 도구가 못 찾았거나 판단이 안 된 비용 — 폴더 파일을 골라(미리보기로 확인) 구분·금액과 함께 더한다
+      p('없는 비용 더하기: 증빙 파일을 고르고(👁로 내용 확인) 구분·내용·금액을 넣으세요.');
+      var rf0 = rowEl();
+      var fs0 = document.createElement('select'); fs0.style.cssText = 'flex:1;min-width:160px;';
+      fs0.innerHTML = '<option value="">(증빙 파일 고르기 — 없으면 비워 둠)</option>' + (st.files || []).map(function(f){ return '<option>' + nxAiEsc_(f.name) + '</option>'; }).join('');
+      rf0.appendChild(fs0);
+      btn('👁 열기', function(){ var f = (st.files || []).filter(function(x){ return x.name === fs0.value; })[0]; if (!f){ nxAiToast_('파일을 고르세요.'); return; } window.open('https://drive.google.com/file/d/' + encodeURIComponent(f.id) + '/view', '_blank', 'noopener'); }, false, rf0);
       var ra = rowEl();
       var ks = document.createElement('select'); ['취득', '자본적지출', '양도'].forEach(function(k){ var o = document.createElement('option'); o.textContent = k; ks.appendChild(o); }); ra.appendChild(ks);
-      var lb = document.createElement('input'); lb.type = 'text'; lb.placeholder = '내용(예: 샷시 교체)'; lb.style.flex = '1'; ra.appendChild(lb);
+      var lb = document.createElement('input'); lb.type = 'text'; lb.placeholder = '내용(예: 취득 중개수수료)'; lb.style.flex = '1'; ra.appendChild(lb);
       var am2 = document.createElement('input'); am2.type = 'text'; am2.inputMode = 'numeric'; am2.placeholder = '금액(원)'; am2.style.width = '110px'; ra.appendChild(am2);
-      btn('더하기', function(){ var v = Number(String(am2.value).replace(/[^\d]/g, '')) || 0; if (!lb.value.trim() || !v){ nxAiToast_('내용과 금액을 넣어 주세요.'); return; } rows.push({ kind: ks.value, label: lb.value.trim(), amount: v, file: '', date: '', on: true, note: '세무사님 직접 입력' }); lb.value = ''; am2.value = ''; draw(); }, false, ra);
+      btn('더하기', function(){ var v = Number(String(am2.value).replace(/[^\d]/g, '')) || 0; var lbl = lb.value.trim() || fs0.value; if (!lbl || !v){ nxAiToast_('파일이나 내용, 그리고 금액을 넣어 주세요.'); return; } rows.push({ kind: ks.value, label: lbl, amount: v, file: fs0.value, date: '', on: true, note: '세무사님 직접 추가' }); lb.value = ''; am2.value = ''; fs0.value = ''; draw(); }, false, ra);
       var rs2 = rowEl();
       btn('체크한 것으로 필요경비 확정', function(){
         var items = rows.filter(function(r){ return r.on && r.amount > 0; }).map(function(r){ return { kind: r.kind, label: r.label, amount: r.amount, file: r.file, date: r.date }; });
