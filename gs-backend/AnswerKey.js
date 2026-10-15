@@ -17,7 +17,7 @@
 const AK_KEY_NAME_ = '_정답지.json';
 const AK_RESULT_NAME_ = '_정답지점검결과.json';
 const AK_STATE_PROP_ = 'AK_RUN_STATE';
-const AK_CODE_VER_ = '2026-10-16a'; // 점검 규칙을 바꿔 배포할 때마다 올린다 — 멈췄던 점검의 옛 결과를 새 실행에 이어 붙이지 않게
+const AK_CODE_VER_ = '2026-10-16b'; // 점검 규칙을 바꿔 배포할 때마다 올린다 — 멈췄던 점검의 옛 결과를 새 실행에 이어 붙이지 않게
 
 function akReadCase_(caseId) {
   const sheet = work_getSheet_(), col = work_colMap_(sheet.getDataRange().getValues()[0]);

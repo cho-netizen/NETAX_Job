@@ -24710,6 +24710,14 @@ function tcRoleInText_(text, names) {
         if (k === 1) { sell++; continue; }
         if (k === 2) { buy++; continue; }
       }
+      // [2026.10.16] 서명란 이름표가 세로 글자("매 / 도 / 주 / 소" — '인' 없이)로 읽히면 본문 조항("매도인 또는 매수인이…")의 마지막 '매수인'이 가장 가까운 이름표가 되어
+      //  매도인 서명을 매수인으로 셌다(이종식 "매매계약서, 증여세신고서.pdf"). "서명 날인한다" 뒤(서명란)에 이름표가 있으면 그 안에서만, '인' 없는 세로 이름표도 센다.
+      var sg = -1, sgm, sgre = /날\s*인\s*한\s*다|서\s*명\s*한\s*다|기\s*명\s*날\s*인/g;
+      while ((sgm = sgre.exec(back))) sg = sgm.index + sgm[0].length;
+      if (sg !== -1) {
+        var sig = back.slice(sg), ss = sig.search(/매\s*도(?![\s\S]*매\s*도)/), sb = sig.search(/매\s*수(?![\s\S]*매\s*수)/);
+        if (ss !== -1 || sb !== -1) { if (ss > sb) sell++; else if (sb > ss) buy++; continue; }
+      }
       var ls = back.search(/매\s*도\s*[인자](?![\s\S]*매\s*도\s*[인자])/), lb = back.search(/매\s*수\s*[인자](?![\s\S]*매\s*수\s*[인자])/);
       if (ls > lb) sell++; else if (lb > ls) buy++;
     }
@@ -24992,6 +25000,15 @@ function tc_ruleTransferFacts_(body) {
     var tx = { assetLocation: s.r.소재지 || null, transferPrice: ok(s) ? s.r.매매대금 : null, transferPriceCand: !ok(s) && s.r.매매대금 ? { v: s.r.매매대금, file: s.file } : null, transferDate: (s.r.잔금일 && !s.r.잔금일확인필요) ? s.r.잔금일 : null,
       acquisitionPrice: null, acquisitionDate: null, acquisitionExpenses: null, transferExpensesOnly: null, provisions: {} };
     evidence.push('양도: ' + s.file + (tx.transferPrice ? ' — 매매대금 ' + tx.transferPrice.toLocaleString('ko-KR') + '원(검산 일치)' : ' — 금액 검산 안 됨(비움)') + (tx.transferDate ? ', 잔금일 ' + tx.transferDate : ''));
+    // [2026.10.16] 여러 필지 일괄 계약서 — 등기부가 있는 필지를 이 거래의 소재지로(등기부 양도·취득 기재와 공시가격을 그 필지로 찾는다). 매매대금은 필지 합계라 알린다.
+    var sLoc = s.r.소재지;
+    if ((s.r.소재지목록 || []).length >= 2) {
+      var regLoc = '';
+      regs.forEach(function (g) { (g.r.docs || []).forEach(function (d) { if (!regLoc && d.소재지 && s.r.소재지목록.some(function (l) { return tcLocSame_(l, d.소재지); })) regLoc = d.소재지; }); });
+      if (regLoc) { sLoc = regLoc; tx.assetLocation = regLoc; }
+      if (tx.transferPriceCand) tx.transferPriceCand.note = s.r.소재지목록.length + '필지 합계';
+      evidence.push(s.file + '은(는) ' + s.r.소재지목록.length + '필지 일괄 계약(' + s.r.소재지목록.join(' / ') + ')' + (s.r.매매대금 ? ' — 매매대금 ' + s.r.매매대금.toLocaleString('ko-KR') + '원은 필지 합계' : '') + ', 필지별 등기부·취득가액 확인');
+    }
     // 신고필증으로 금액 대조·잔금일 보충
     reports.forEach(function (rp) {
       if (!tcLocSame_(rp.r.소재지, s.r.소재지)) return;
@@ -24999,7 +25016,7 @@ function tc_ruleTransferFacts_(body) {
       if (!tx.transferPrice && rp.r.총거래가격 && rp.r.검산) { tx.transferPrice = rp.r.총거래가격; evidence.push('양도가액은 신고필증 거래가격으로(' + rp.file + ')'); }
       if (!tx.transferDate && rp.r.잔금지급일) { tx.transferDate = rp.r.잔금지급일; evidence.push('양도 잔금일은 신고필증 잔금지급일(' + rp.file + ')'); }
     });
-    var rd = regDate(s.r.소재지, 'sell');
+    var rd = regDate(sLoc, 'sell');
     if (rd && tx.transferDate && rd < tx.transferDate) { evidence.push('양도시기: 등기접수일 ' + rd + '이 잔금일보다 빨라 그날로(§98)'); tx.transferDate = rd; }
     var b = buys.filter(function (x) { return tcLocSame_(x.r.소재지, s.r.소재지); })[0];
     if (b) {
@@ -25011,7 +25028,7 @@ function tc_ruleTransferFacts_(body) {
       if (ra && tx.acquisitionDate && ra < tx.acquisitionDate) { evidence.push('취득시기: 등기접수일 ' + ra + '이 잔금일보다 빨라 그날로(§98)'); tx.acquisitionDate = ra; }
       if (!tx.acquisitionDate && ra) { tx.acquisitionDate = ra; evidence.push('취득일은 등기부 접수일(' + ra + ') — 잔금일 확인 권장'); }
       evidence.push('취득: ' + b.file + (tx.acquisitionPrice ? ' — 매매대금 ' + tx.acquisitionPrice.toLocaleString('ko-KR') + '원(검산 일치)' : ' — 금액 검산 안 됨(비움)') + (tx.acquisitionDate ? ', 취득일 ' + tx.acquisitionDate : ''));
-    } else if (!tcRegAcqFill_(tx, regAcq(s.r.소재지), evidence)) evidence.push('취득 계약서(납세자가 매수인, 같은 소재지)를 찾지 못함 — 상속·증여 취득이면 그 서류로 직접 입력');
+    } else if (!tcRegAcqFill_(tx, regAcq(sLoc), evidence)) evidence.push('취득 계약서(납세자가 매수인, 같은 소재지)를 찾지 못함 — 상속·증여 취득이면 그 서류로 직접 입력');
     txs.push(tx);
   });
   // [2026.10.15] 매도 계약서가 없는 양도(수용·경매·계약서 미제출)는 등기부 소유권 이력으로 거래를 세운다 —
@@ -26260,7 +26277,7 @@ function caseProcTrAskBasics_(c, ov, lines, items, rf, txs, noExpenses) {
       // 국외자산 질문(환율·지분)이 걸려 있으면 금액·날짜는 그 답으로 후보를 만든다 — "서류에서 정하지 못했다"로 따로 묻지 않음
       if (i === 0 && f[0] !== 'assetLocation' && items.some(function (x) { return /^oa:/.test(x.id); })) return;
       items.push(caseProcItem_('ov:asset:' + i + ':' + f[0], 'missing', '물건' + (i + 1) + ' 「' + f[1] + '」을(를) 서류에서 정하지 못했습니다 — 정해 주세요(계산 전 필수).',
-        (txs && txs[i] && ((f[0] === '양도가액' && txs[i].transferPriceCand) || (f[0] === '취득가액' && txs[i].acquisitionPriceCand))) ? { mode: 'choose', target: 'ovAsset:' + i + ':' + f[0], input: 'money', label: '물건' + (i + 1) + ' ' + f[1], cands: [(function (pc) { return { v: String(pc.v), src: '계약서 매매대금 — ' + pc.file + '(계약금·잔금 검산 안 됨 — 원문 확인)' }; })(f[0] === '양도가액' ? txs[i].transferPriceCand : txs[i].acquisitionPriceCand)] } : (i === 0 && f[0] === 'assetLocation' && rf && (rf.locCands || []).length) ? { mode: 'choose', target: 'ovAsset:0:assetLocation', input: 'text', label: '물건1 소재지', cands: rf.locCands.map(function (x) { return { v: x.v, src: x.src }; }) } : { mode: 'input', target: 'ovAsset:' + i + ':' + f[0], input: f[2], label: '물건' + (i + 1) + ' ' + f[1], cands: [] }));
+        (txs && txs[i] && ((f[0] === '양도가액' && txs[i].transferPriceCand) || (f[0] === '취득가액' && txs[i].acquisitionPriceCand))) ? { mode: 'choose', target: 'ovAsset:' + i + ':' + f[0], input: 'money', label: '물건' + (i + 1) + ' ' + f[1], cands: [(function (pc) { return { v: String(pc.v), src: '계약서 매매대금' + (pc.note ? '(' + pc.note + ')' : '') + ' — ' + pc.file + '(계약금·잔금 검산 안 됨 — 원문 확인)' }; })(f[0] === '양도가액' ? txs[i].transferPriceCand : txs[i].acquisitionPriceCand)] } : (i === 0 && f[0] === 'assetLocation' && rf && (rf.locCands || []).length) ? { mode: 'choose', target: 'ovAsset:0:assetLocation', input: 'text', label: '물건1 소재지', cands: rf.locCands.map(function (x) { return { v: x.v, src: x.src }; }) } : { mode: 'input', target: 'ovAsset:' + i + ':' + f[0], input: f[2], label: '물건' + (i + 1) + ' ' + f[1], cands: [] }));
     });
   });
   // [2026.10.16] 같은 빈칸을 두 번 묻지 않음 — "⚠ … 양도가액(취득가액)을 서류에서 찾지 못함" 알림은 그 칸을 정하는 질문이 있으면 그 질문의 설명으로 붙이고 따로 세우지 않는다(이종식·김금옥)
@@ -31597,6 +31614,11 @@ function ctParseContract_(text) {
   var sm = /소\s*재\s*지\s*[:：]?\s*([^\n]{6,80})/.exec(t);
   if (sm && /\d/.test(sm[1]) && /(시|군|구|동|읍|면|리|로|길)\s/.test(sm[1] + ' ')) r.소재지 = sm[1].replace(/\s+/g, ' ').trim();
   if (!r.소재지) { var am = new RegExp(CT_SIDO_RE_.source + '[^\\n]{2,60}').exec(t.slice(0, 1500)); if (am) r.소재지 = am[0].trim(); }
+  // [2026.10.16] 여러 필지를 한 계약서로 판 경우(이종식: 511-1·511-3·511-4 답 3필지 일괄 5천만원) — 부동산 표시(제1조 앞)의 주소를 모두 모은다.
+  //  첫 필지만 소재지로 잡아 등기부(511-3) 거래와 짝이 안 맞고 양도거래가 2건으로 갈라졌다.
+  var hEnd = t.search(/계\s*약\s*내\s*용|제\s*1\s*조/), head = t.slice(0, hEnd > 0 ? hEnd : 1500), lre = new RegExp(CT_SIDO_RE_.source + '[^\\n]{2,60}', 'g'), lm, locs = [];
+  while ((lm = lre.exec(head))) { var lv = lm[0].replace(/\s+/g, ' ').trim(); if (/\d/.test(lv) && locs.indexOf(lv) === -1) locs.push(lv); }
+  if (locs.length >= 2) r.소재지목록 = locs;
   var jm = /지\s*목\s*[:：]?\s*(대|전|답|임야|잡종지|과수원|목장용지|공장용지|창고용지|도로|구거|하천|주차장|주유소용지)(?=\s|$|\d)/.exec(t);
   if (jm) r.지목 = jm[1];
   var areas = [], ar = /([\d][\d,.]*)\s*(?:m2|㎡|m'|평방미터|m²)/g, a;
