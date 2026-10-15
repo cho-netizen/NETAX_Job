@@ -25297,6 +25297,14 @@ function caseProcToday_() { return Utilities.formatDate(new Date(), Session.getS
 // [2026.10.15] 사건 폴더 안 "양도코리아" 하위폴더 = 이미 낸 신고서·납부서·접수증·계산명세서(정답지) 보관 자리.
 //  도구(사건처리·세액계산 자동채우기·고객이름 조사·보고서 모음 등)는 이 폴더를 절대 읽지 않는다 — 신고 숫자를 베끼는 꿰맞추기 방지.
 //  🧪 정답지 점검기의 정답지 초안(answerKeyDraft_)만 { includeFiled: true }로 읽는다.
+function caseProcHasFiled_(c) {
+  try {
+    if (!String(c.폴더ID || '').trim()) return false;
+    const it = DriveApp.getFolderById(c.폴더ID).getFolders();
+    while (it.hasNext()) { const f = it.next(); if (caseIsFiledReturnFolder_(f.getName()) && f.getFiles().hasNext()) return true; }
+  } catch (e) {}
+  return false;
+}
 function caseIsFiledReturnFolder_(name) { return /^\s*양도\s*코리아\s*$/.test(String(name || '')); }
 function caseIsAnswerKeyFile_(name) { return /^_정답지/.test(String(name || '')); }
 function caseIsAnswerKeyFileId_(fileId) { if (!fileId) return false; try { return caseIsAnswerKeyFile_(DriveApp.getFileById(String(fileId)).getName()); } catch (e) { return false; } }
@@ -25352,6 +25360,8 @@ function caseProcBasic_(c, body) {
   const manual = WORK_MANUAL_DEADLINE_TYPES_.indexOf(c.업무유형) !== -1;
   // [2026.10.15] 법정일은 기준일에서 계산된다 — 기준일이 아직 없으면 기준일 질문 하나로 충분(같은 일을 두 번 묻지 않음)
   if (!c.법정일 && (manual || c.기준일)) items.push(caseProcItem_('basic:법정일', 'missing', '법정일(처리기한)이 비어 있습니다.', manual ? { mode: 'input', target: 'case:법정일', input: 'date' } : { mode: 'base' }));
+  // [2026.10.16] 사건 폴더에 "양도코리아"(이미 낸 신고서 보관) 폴더가 있으면 신고를 마친 사건 — 기한 경과를 묻지 않는다(정답지 점검 25건 모두에서 불필요 질문)
+  else if (c.법정일 && c.상태 !== '완료' && c.법정일 < today && caseProcHasFiled_(c)) { /* 신고 완료 — 묻지 않음 */ }
   else if (c.법정일 && c.상태 !== '완료' && c.법정일 < today) items.push(caseProcItem_('basic:기한경과:' + c.법정일, 'check', '법정일(' + c.법정일 + ')이 지났습니다.', { mode: 'options', options: [{ label: '기한후신고로 진행', decide: 'done', note: '기한후신고로 진행' }, { label: '법정일이 틀림 — 기준일부터 확인', mode: 'base' }] }));
   if (!manual) caseProcDateCheck_(c, body || {}, items);
   if (!String(c.폴더ID || '').trim()) items.push(caseProcItem_('basic:폴더', 'missing', '증빙 폴더가 없습니다 — 폴더가 있어야 서류를 읽고 처리할 수 있습니다.', { mode: 'folder' }));
