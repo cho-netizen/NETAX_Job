@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 14:16 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 14:19 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -48407,6 +48407,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     // 고정 크기 대신 모양으로 판정한다.
     var touch = false; try { touch = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0; } catch (e) {}
     if (!touch) return false;
+    // 기종도 본다(세무사님: 태블릿 화면 나누기처럼 크기·비율만 맞는 큰 기기에서 뜨면 안 됨) — 크롬이 알려 주는 기종명이
+    // 있으면 갤럭시 Z플립(SM-F7…)일 때만. 기종명을 못 받는 브라우저면 아래 크기·비율 기준으로만 판단한다.
+    if (window.nxDeviceModel && !/^SM-F7/i.test(window.nxDeviceModel)) return false;
     function squareSmall(w, h){ var s = Math.min(w, h), l = Math.max(w, h); return s >= 240 && s <= 640 && l <= 760 && l / s <= 1.45; }
     // 화면 크기(screen) 값은 접고 펼칠 때 늦게 바뀌어(시험에서 펼친 크기인데 커버로 판정) 쓰지 않고 실제 창 크기만 본다.
     return squareSmall(window.innerWidth, window.innerHeight);
@@ -48443,6 +48446,14 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var s = window.innerWidth + 'x' + window.innerHeight;
       if (s !== lastSize){ lastSize = s; nxApplyLayout_(); }
     }
+    // 기종명(안드로이드 크롬만 알려 줌) — 받으면 커버화면 판정을 다시 한다(nxIsCoverScreen_)
+    try {
+      if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues){
+        navigator.userAgentData.getHighEntropyValues(['model']).then(function(v){
+          if (v && v.model){ window.nxDeviceModel = String(v.model); nxApplyLayout_(); }
+        }).catch(function(){});
+      }
+    } catch (e) {}
     document.addEventListener('visibilitychange', function(){ if (!document.hidden) nxCheckSize_(); });
     window.addEventListener('pageshow', nxCheckSize_);
     setInterval(nxCheckSize_, 1500);
