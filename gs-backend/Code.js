@@ -24763,7 +24763,15 @@ function tc_ruleTransferFacts_(body) {
     }
     var p = null;
     try { p = docParseText_(text); } catch (e) { continue; }
-    if (!p || !p.type) continue;
+    if (!p) continue;
+    // [2026.10.15] 종류를 정하지 못한 서류 중 등기필증(옛 권리증)은 여기서 — 예전엔 아래 판별에 닿기 전에 건너뛰어 등기필증 규칙이 한 번도 작동하지 않았다
+    if (!p.type) {
+      if (/(등|동)\s*기\s*필\s*증/.test(text) && /소\s*유\s*권\s*이\s*전/.test(text) && (!names.length || names.some(function (nm) { return String(text).replace(/\s+/g, '').indexOf(nm) !== -1; }))) {
+        var rcm0 = /접\s*수\s*[:：]?\s*(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(text);
+        if (rcm0) regCerts.push({ file: f.name, date: rcm0[1] + '-' + ('0' + rcm0[2]).slice(-2) + '-' + ('0' + rcm0[3]).slice(-2) });
+      }
+      continue;
+    }
     if (p.result && p.result.docs) p.result.docs.forEach(function (d) {
       if (d.type === 'contract') contracts.push({ file: f.name, r: d.r, role: tcRoleInText_(text, names) || tcRoleInFileName_(f.name) });
       if (d.type === 'dealreport') reports.push({ file: f.name, r: d.r });
@@ -24919,7 +24927,11 @@ function tc_ruleTransferFacts_(body) {
   if (txs.length !== 1) {
     var seenM = {};
     expDocs.concat(acqs.map(function (a) { return { file: a.file, amount: a.r.합계, date: a.r.납부일 || a.r.일자 || '', memo: '취득세 등', head: '' }; }), lawyers.map(function (l) { return { file: l.file, amount: l.r.합계, date: l.r.일자 || '', memo: '법무사 정산서', head: '' }; })).forEach(function (e) {
-      if (!e.amount || seenM[e.date + '|' + e.amount]) return; seenM[e.date + '|' + e.amount] = 1;
+      if (!e.amount) return;
+      // 같은 날·같은 금액 = 같은 비용을 두 파일로 둔 것 — 한 번만, 어느 파일과 같은지 남김
+      var amtKey = String(e.amount), dupOf = seenM[e.date + '|' + e.amount] || Object.keys(seenM).filter(function (k) { return k.split('|')[1] === amtKey; }).map(function (k) { return seenM[k]; })[0];
+      if (dupOf) { evidence.push('같은 비용: ' + e.file + ' = ' + dupOf + '(' + e.amount.toLocaleString('ko-KR') + '원) — 한 번만 셈'); return; }
+      seenM[e.date + '|' + e.amount] = e.file;
       var s = String(e.file || '') + ' ' + String(e.memo || '') + ' ' + String(e.head || '').slice(0, 300);
       var kind = /취득세|법무사|취득/.test(s) ? '취득' : /공사|인테리어|샷시|새시|확장|보일러|방수/.test(s) ? '자본적지출' : '양도';
       expCands.push({ kind: kind, label: (kind === '양도' ? '양도비용 후보' : kind === '취득' ? '취득 부대비용 후보' : '자본적지출 후보') + ' — ' + String(e.memo || e.file).slice(0, 30), amount: e.amount, date: String(e.date || '').slice(0, 10), file: e.file, sure: false,
@@ -24931,8 +24943,9 @@ function tc_ruleTransferFacts_(body) {
   if (!txs.length) regs.forEach(function (g) { (g.r.docs || []).forEach(function (d) {
     var h = (d.소유권이력 || []).filter(function (x) { return !x.말소; }), last = h[h.length - 1];
     if (!last || !tcNameIn_(regHolder(last), names) || !d.소재지) return;
-    if (locCands.some(function (x) { return tcLocSame_(x.v, d.소재지); })) return;
-    locCands.push({ v: d.소재지, src: '등기부 — 지금 납세자 명의(' + (last.원인 || '') + ' ' + (last.접수일 || '') + ') — ' + g.file, acqDate: last.접수일 || '', cause: last.원인 || '' });
+    var same = locCands.filter(function (x) { return tcLocSame_(x.v, d.소재지); })[0];
+    if (same) { if (same.src.indexOf(g.file) === -1) same.src += ', ' + g.file + '(' + (d.종류 || '') + ')'; return; } // 같은 지번의 토지·건물 등기부 — 하나로, 파일은 함께 적음
+    locCands.push({ v: d.소재지, src: '등기부 — 지금 납세자 명의(' + (last.원인 || '') + ' ' + (last.접수일 || '') + ') — ' + g.file + '(' + (d.종류 || '') + ')', acqDate: last.접수일 || '', cause: last.원인 || '' });
   }); });
   if (locCands.length) evidence.push('납세자 명의 부동산(등기부) ' + locCands.length + '건: ' + locCands.map(function (x) { return x.v + '(' + x.src.split(' — ').pop() + ')'; }).join(', ') + (comps.length ? ' — 수용 보상 대상이면 물건마다 처리개요에 넣으세요' : ''));
   // 거래를 못 세웠을 때 — 납세자가 매수인인 계약서를 취득일·취득가액 후보로(어느 물건 것인지는 확인)
@@ -25273,6 +25286,12 @@ function caseProcParsed_(f, cache, canParse) {
 const CASEPROC_DOC_MAX_ = 300;
 function caseProcEvidence_(c) {
   const items = [], lines = [];
+  // [2026.10.15 1단계 ①] 압축 파일은 먼저 풀어 둔다(처음 한 번) — 풀린 파일도 아래 목록에 들어와 함께 읽는다
+  try {
+    const uz = caseProcUnzipAll_(c);
+    if (uz.done.length) lines.push('✏ 압축 파일을 풀어 사건 폴더에 넣음(원본은 그대로): ' + uz.done.join(', '));
+    if (uz.fail.length) lines.push('⚠ 풀지 못한 압축 파일: ' + uz.fail.join(', ') + ' — 암호를 풀어 다시 넣어 주세요');
+  } catch (e) { lines.push('⚠ 압축 풀기 중 오류: ' + (e && e.message || e)); }
   const files = caseProcFiles_(c);
   const cache = CacheService.getScriptCache();
   const rank = function (n) { return /(계약|신고필증|취득세|법무|등기|등본|초본|가족관계|대장)/.test(n) ? 0 : 1; };
@@ -26177,7 +26196,7 @@ function caseProcBlockingWarns_(type, warns) {
 // [2026.10.15 일괄점검] 이전 작업(옛 채팅·검토)이 만든 보고서 — 결론·세액이 들어 있어 입력으로 읽으면 답을 베끼게 된다. 원시자료(의뢰서·상담 메모·번역본)는 읽는다.
 function caseProcIsPriorReport_(name) {
   const n = String(name || '').replace(/\s+/g, '');
-  return /(종합검토서|신고보고서|검토서|검토내용|자문보고서|경과지|작업진행|체크리스트|계산근거|추징\s*예상|예상\s*세액|해명\s*자료)/.test(n) && !/의뢰서/.test(n);
+  return /(종합검토서|신고보고서|검토서|검토내용|검토\s*자료|검토\s*보고서|자문보고서|경과지|작업진행|체크리스트|계산근거|추징\s*예상|예상\s*세액|해명\s*자료)/.test(n) && !/의뢰서/.test(n);
 }
 // [2026.10.15 1단계] 글자 내용으로 본 "이미 낸 신고서·명세서" — 파일 이름이 KakaoTalk_….jpg처럼 아무 말도 없는 사진 신고서(박미영 사건 7장)를 잡는다
 function caseProcIsOutputText_(text) {
@@ -26203,6 +26222,47 @@ function caseProcKrAmount_(s) {
 }
 // [2026.10.15 1:1] PDF·사진이 아닌 파일(엑셀·문서·메모) — 상담 메모·의뢰 내용을 읽는다. 아래쪽 "세액계산"(과세표준·산출세액 등) 부분은 결과물이라 잘라낸다(입력으로 쓰지 않음).
 //  돌려주는 것: { read: [{file, text}], unread: [이름(사유)], skipped: [이름(사유)] }
+// [2026.10.15 1단계 ①] 압축 파일(zip)을 도구가 직접 풀어 같은 폴더의 「압축풀기_이름」 하위폴더에 넣는다(원본 zip은 그대로).
+//  예전엔 "풀어서 폴더에 넣으면 읽음"이라고 안내만 하고 안의 서류(은행 거래내역·PDF 등 13개 압축)를 읽지 않았다. 암호 걸린 압축은 못 푼다고 밝힌다.
+//  압축 안 한글 이름이 깨진 경우(옛 윈도 압축)는 "압축이름_순번.확장자"로 이름을 붙인다. 한 압축당 60개·파일 하나 20MB까지.
+function caseProcUnzipFolderOf_(f) {
+  const file = DriveApp.getFileById(f.id), ps = file.getParents();
+  if (!ps.hasNext()) return null;
+  const it = ps.next().getFoldersByName('압축풀기_' + f.name.replace(/\.(zip|7z|rar)$/i, ''));
+  return it.hasNext() ? it.next() : null;
+}
+function caseProcUnzipAll_(c) {
+  const done = [], fail = [];
+  caseProcFiles_(c).forEach(function (f) {
+    const n = f.name, mt = String(f.mimeType || '');
+    if (!/\.zip$/i.test(n) && !/zip/.test(mt)) return;
+    if (/\.(hwpx|docx|xlsx|pptx)$/i.test(n) || /^_/.test(n)) return;
+    try {
+      if (caseProcUnzipFolderOf_(f)) return; // 이미 풀었음
+      const file = DriveApp.getFileById(f.id);
+      let blobs;
+      try { blobs = Utilities.unzip(file.getBlob().setContentType('application/zip')); } catch (e) { fail.push(n + '(암호가 걸렸거나 열 수 없음)'); return; }
+      const base = n.replace(/\.zip$/i, '');
+      const parent = file.getParents().next();
+      const dest = parent.createFolder('압축풀기_' + base);
+      let k = 0;
+      blobs.slice(0, 60).forEach(function (b) {
+        const raw = String(b.getName() || ''), leaf = raw.split('/').pop();
+        if (!leaf || /^__MACOSX|\/$/.test(raw) || /^\./.test(leaf)) return;
+        const bytes = b.getBytes(); if (!bytes.length || bytes.length > 20 * 1024 * 1024) return;
+        const head = bytes.slice(0, 4).map(function (x) { return (x & 0xff).toString(16); }).join(' ');
+        const ext = /^25 50 44 46/.test(head) ? 'pdf' : /^ff d8/.test(head) ? 'jpg' : /^89 50 4e 47/.test(head) ? 'png' : ((/\.([A-Za-z0-9]{2,5})$/.exec(leaf) || [])[1] || 'bin');
+        const garbled = /�|[^ -~가-힣ㄱ-ㆎ()\[\]_\-.]/.test(leaf);
+        k++;
+        const nm = garbled ? base + '_' + ('0' + k).slice(-2) + '.' + ext : leaf;
+        const mime = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xls: 'application/vnd.ms-excel', hwpx: 'application/haansofthwpx', txt: 'text/plain', csv: 'text/csv' }[ext.toLowerCase()] || b.getContentType() || 'application/octet-stream';
+        dest.createFile(Utilities.newBlob(bytes, mime, nm));
+      });
+      done.push(n + ' → ' + dest.getName() + '(' + k + '개)');
+    } catch (e) { fail.push(n + '(' + String(e && e.message || e).slice(0, 60) + ')'); }
+  });
+  return { done: done, fail: fail };
+}
 function caseProcMemoTexts_(c) {
   const out = { read: [], unread: [], skipped: [] };
   caseProcFiles_(c).forEach(function (f) {
@@ -26212,7 +26272,11 @@ function caseProcMemoTexts_(c) {
     if (caseProcIsPriorReport_(n)) { out.skipped.push(n + '(이전 작업이 만든 보고서 — 결론이 들어 있어 입력으로 안 씀)'); return; }
     if (/\.html?$/i.test(n)) { out.skipped.push(n + '(화면용 사본 — 같은 이름 문서로 읽음)'); return; }
     // [2026.10.15 일괄점검 ①] 압축 파일은 안에 든 파일 이름까지 알려 준다(풀어서 폴더에 넣으면 읽음), 옛 한글(hwp)은 이유를 밝힌다. hwpx는 이제 읽는다.
-    if (/zip|x-7z|rar/.test(mt) || /\.(zip|7z|rar)$/i.test(n)) {
+    // hwpx·docx·xlsx·pptx는 속이 압축 형식이라 압축 검사에 걸리면 안 된다(예전: hwpx를 "압축 파일"로 분류해 안 읽음 — 노영환 사건 5개)
+    if ((/zip|x-7z|rar/.test(mt) || /\.(zip|7z|rar)$/i.test(n)) && !/\.(hwpx|docx|xlsx|pptx)$/i.test(n)) {
+      // 도구가 이미 풀어 둔 압축 — 그 폴더 안 파일로 읽는다
+      let unz = null; try { unz = caseProcUnzipFolderOf_(f); } catch (e) {}
+      if (unz) { out.skipped.push(n + '(압축 — 「' + unz.getName() + '」 폴더에 풀어 둔 파일로 읽음)'); return; }
       let inside = '';
       try { const bs = Utilities.unzip(DriveApp.getFileById(f.id).getBlob().setContentType('application/zip')); inside = bs.length + '개: ' + bs.slice(0, 6).map(function (b) { return b.getName().split('/').pop(); }).join(', ') + (bs.length > 6 ? ' 외' : ''); } catch (e) { inside = '암호가 걸렸거나 열 수 없음'; }
       out.unread.push(n + '(압축 파일 — 안에 ' + inside + ' · 풀어서 폴더에 넣으면 읽음)'); return;
@@ -26686,8 +26750,10 @@ function caseProcInhFacts_(c, parsed) {
   const fch = choices.funeral;
   // 장례식장 정산서(증빙)가 있으면 그것이 장례비(개별 영수증은 정산서 안에 포함), 없으면 영수증 합계. 유족 지출표는 참고.
   // 같은 정산서를 스캔·사진으로 두 번 넣은 경우(실사건: PDF + 사진) 한 번만 — 정산금액·항목이 같으면 같은 정산서
-  const settle = by('funerallist').filter(function (x) { return x.p.result && x.p.result.증빙 && x.p.result.합계; })
-    .filter(function (x, i, arr) { return !arr.slice(0, i).some(function (y) { return y.p.result.합계 === x.p.result.합계; }); });
+  const settleAll = by('funerallist').filter(function (x) { return x.p.result && x.p.result.증빙 && x.p.result.합계; });
+  const settle = settleAll.filter(function (x, i, arr) { return !arr.slice(0, i).some(function (y) { return y.p.result.합계 === x.p.result.합계; }); });
+  // 같은 정산서를 두 파일로 둔 것(합계 같음) — 한 번만 세고, 어느 파일과 같은지 남긴다(사실장부 "쓰인 곳")
+  settleAll.filter(function (x) { return settle.indexOf(x) === -1; }).forEach(function (x) { const twin = settle.filter(function (y) { return y.p.result.합계 === x.p.result.합계; })[0]; out.notes.push('장례식장 정산서 ' + x.f.name + ' = ' + (twin ? twin.f.name : '') + '과 같은 정산서(합계 ' + x.p.result.합계.toLocaleString('ko-KR') + '원) — 한 번만 셈'); });
   out.funeral.settle = settle.map(function (x) { return { amount: x.p.result.합계, file: x.f.name }; });
   if (!fch && settle.length) { out.funeral.value = settle.reduce(function (t, x) { return t + x.p.result.합계; }, 0); out.funeral.src = '장례식장 정산서(' + settle.map(function (x) { return x.f.name; }).join(', ') + ') — 증빙' + (receipts.length ? ', 개별 영수증 ' + receipts.length + '건은 정산서에 포함' : ''); }
   else { out.funeral.value = fch ? Number(fch.v) : (out.funeral.listTotal ? null : out.funeral.receiptTotal || null); out.funeral.src = fch ? fch.src : (out.funeral.value ? '영수증 ' + receipts.length + '건 합계' : ''); }
@@ -26697,6 +26763,25 @@ function caseProcInhFacts_(c, parsed) {
     // 납부 증빙 — 사용내역·영수증의 금액이 계약 사용대금(부부단이면 그 절반도)과 같고 상속개시일 뒤에 낸 것만(관리비·다른 고인 몫 제외)
     const want = (nc.p.result.금액후보 || []).concat(nc.p.result.부부단 ? (nc.p.result.금액후보 || []).map(function (v) { return Math.round(v / 2); }) : []);
     ncs.forEach(function (x) { (x.p.result.납부 || []).forEach(function (q) { if (!out.niche.receipt && want.indexOf(q.금액) !== -1 && (!base || !q.일자 || q.일자 >= base)) out.niche.receipt = { amount: q.금액, date: q.일자, file: x.f.name }; }); });
+    // [2026.10.15 1단계 ②] 계약서 밖의 결제 화면(홈택스 사용내역·카드·현금영수증 사진)도 납부 증빙 후보 — 신수호 사건: 안치단관리비영수증(홈택스 화면)이 안 쓰였다
+    if (!out.niche.receipt) {
+      const others = [];
+      try {
+        caseProcFiles_(c).forEach(function (f0) {
+          if (!/pdf|^image\//.test(String(f0.mimeType || '')) || ncs.some(function (x) { return x.f.name === f0.name; })) return;
+          if (!/관리비|영수증|사용\s*내역|봉안|안치|추모|납골/.test(f0.name)) return;
+          let t0 = ''; try { t0 = tc_docText_(f0) || ''; } catch (e) { return; }
+          if (!/메모리얼|추모|봉안|납골|안치/.test(t0)) return;
+          const fl = t0.replace(/\s+/g, ' '); let mm; const re = /(\d{4}-\d{2}-\d{2})[^원]{0,60}?(\d{1,3}(?:,\d{3})+)원/g;
+          while ((mm = re.exec(fl))) {
+            const amt = Number(mm[2].replace(/,/g, '')), d = mm[1];
+            if (!out.niche.receipt && want.indexOf(amt) !== -1 && (!base || d >= base)) out.niche.receipt = { amount: amt, date: d, file: f0.name };
+            else if (!others.some(function (o) { return o.amount === amt && o.date === d; })) others.push({ amount: amt, date: d, file: f0.name });
+          }
+        });
+      } catch (e) {}
+      if (!out.niche.receipt && others.length) out.notes.push('봉안시설 쪽 결제 내역: ' + others.map(function (o) { return o.date + ' ' + o.amount.toLocaleString('ko-KR') + '원(' + o.file + ')'; }).join(', ') + ' — 계약 사용대금(' + want.map(function (v) { return v.toLocaleString('ko-KR'); }).join('/') + '원)과 금액이 달라 사용료 영수증으로 보지 않음(관리비·다른 고인 몫일 수 있음). 사용료가 맞으면 봉안시설 [확인]에서 금액을 직접 넣으세요');
+    }
     const fees = [].concat.apply([], ncs.map(function (x) { return x.p.result.관리비 || []; }));
     const feePaid = [].concat.apply([], ncs.map(function (x) { return (x.p.result.납부 || []).filter(function (q) { return fees.indexOf(q.금액) !== -1 && (!base || !q.일자 || q.일자 >= base); }).map(function (q) { return { amount: q.금액, date: q.일자, file: x.f.name }; }); }))
       .filter(function (q, i, arr) { return !arr.slice(0, i).some(function (o) { return o.amount === q.amount && o.date === q.date; }); });
@@ -27012,8 +27097,39 @@ function caseProcLedger_(c, saved) {
       else if (/판례|법령|시행령|시행규칙|예규|질의\s*회신|해석\s*사례|법률/.test(n)) r.use = '참고 — 법령·판례 자료(입력 아님)';
       else if (/신분증|주민등록증|운전면허/.test(n)) r.use = '참고 — 제출용 신분증(계산과 무관)';
       else if (caseProcIsPriorReport_(n)) r.use = '참고 — 이전 작업 결과물(결론이 들어 있어 입력으로 안 씀)';
+      else if (/세무사님?께|요구\s*자료|요청\s*자료|안내문/.test(n)) r.use = '참고 — 의뢰인과 주고받은 글(요청·안내)';
+      else if (r.kind && /메모/.test(r.kind) && (saved.memoChecked || []).indexOf(n) !== -1) r.use = '읽은 문서(메모·번역본) — 칸 질문 후보·값 대조에 씀(이 문서에서 넣을 값은 없었음)';
+    }
+    // 그래도 남으면 글 내용으로 무엇인지 밝힌다(토큰 0 — 글자인식 기억에서)
+    if (!r.use && (r.st === '읽음' || r.st === '일부') && /pdf|^image\//.test(mt)) {
+      let tx = ''; try { tx = tc_docText_(f) || ''; } catch (e) {}
+      const fl = tx.replace(/\s+/g, ' ');
+      f._norm = fl.replace(/[^가-힣0-9A-Za-z]/g, '').slice(0, 400);
+      const hangul = (fl.match(/[가-힣]/g) || []).length;
+      if (/특별\s*송달|배송\s*조회|우편물|등기\s*우편|보상금\s*지급\s*및\s*정보\s*공개|재결\s*담당자/.test(fl)) r.use = '참고 — 우편 송달·재결 안내 표지(금액은 보상금 내역서에서)';
+      else if (/부가\s*가치세[\s\S]{0,80}신고서|세금\s*계산서\s*합계표/.test(fl)) r.use = '참고 — 부가가치세 신고 자료(이 세목 계산 입력 아님)';
+      else if (/과세\s*시가\s*표준|시가\s*표준\s*액/.test(fl) && c.세목 === 'transfer') r.use = '참고 — 취득 당시 시가표준액(취득세 과세표준 근거, 취득가액 아님)';
+      else if (/Notarial|공증|인증문|Apostille|아포스티유/i.test(fl)) r.use = '참고 — 공증·인증 문서(서명 인증, 계산 입력 아님)';
+      else if (c.세목 === 'inheritance' && /법무사/.test(n + fl) && /^(cashreceipt|cardreceipt|receipt)$/.test(r.t || '')) r.use = '참고 — 상속 등기 비용(상속세 계산과 무관)';
+      else if (c.세목 === 'inheritance' && /거래\s*내역|계좌/.test(n)) r.use = '참고 — 금융거래내역(사전증여·인출 검토용 — 세무사님 검토 자료)';
+      else if (c.세목 === 'gift' && /거래\s*(금액|내역)/.test(fl) && /(\d{1,3}(?:,\d{3}){2,})\s*원/.test(fl)) r.use = '증여 금액 이체 화면 — ' + /(\d{1,3}(?:,\d{3}){2,})\s*원/.exec(fl)[1] + '원(증여 내용 근거)';
+      else if (/^제\s*\d+\s*조|^\s*\d+\s*\.\s*/.test(fl.trim()) && /계\s*약/.test(fl) && !/계\s*약\s*서\s*$/.test(fl.slice(0, 30))) r.use = '계약서 뒷장(본문이 이어지는 장 — 앞장과 함께 읽음)';
+      else if (hangul < 60 && (fl.match(/\d+-\d+/g) || []).length >= 5) r.use = '도면·지도 — 지번 표시 그림(서류 내용 아님)';
+      else if (hangul < 15) r.use = '사진 — 글자가 거의 없어 서류 내용을 판별할 수 없음(현장·설비 사진 등, 필요하면 직접 확인)';
+      else if (/^(bldledger|landledger)$/.test(r.t || '')) r.use = '참고 — 건축물·토지대장(면적·용도 확인용, 계산 입력 아님)';
+      else if (/^(pubprice|realprice)$/.test(r.t || '')) r.use = '참고 — 가격 자료(평가·환산 근거 — 해당 칸이 이미 정해졌거나 다른 물건·다른 호수 것)';
     }
     return r;
+  });
+  // 같은 내용의 사본(사진·PDF로 같은 서류를 두 번 둔 경우) — 다른 파일과 글이 같으면 "사본"으로
+  rows.forEach(function (r, i) {
+    if (r.use || !(r.st === '읽음' || r.st === '일부')) return;
+    const me = all[i];
+    let norm = me._norm;
+    if (norm === undefined) { try { norm = String(tc_docText_(me) || '').replace(/[^가-힣0-9A-Za-z]/g, '').slice(0, 400); } catch (e) { norm = ''; } }
+    if (!norm || norm.length < 60) return;
+    const twin = all.filter(function (o, j) { if (j === i || !(rows[j].st === '읽음' || rows[j].st === '일부')) return false; let on = o._norm; if (on === undefined) { try { on = String(tc_docText_(o) || '').replace(/[^가-힣0-9A-Za-z]/g, '').slice(0, 400); o._norm = on; } catch (e) { on = ''; } } if (!on) return false; const a1 = on.slice(0, 200), b1 = norm.slice(0, 200); if (a1 === b1) return true; let eq = 0; for (let q = 0; q < Math.min(a1.length, b1.length); q++) if (a1[q] === b1[q]) eq++; return Math.min(a1.length, b1.length) >= 150 && eq >= Math.min(a1.length, b1.length) * 0.95; })[0]; // 글자인식이 몇 글자 다르게 읽은 같은 사진도 사본
+    if (twin) r.use = '사본 — ' + twin.name + '과(와) 같은 내용';
   });
   const cnt = function (s) { return rows.filter(function (r) { return r.st === s; }).length; };
   const unusedRows = rows.filter(function (r) { return (r.st === '읽음' || r.st === '일부') && !r.use; });
@@ -27037,7 +27153,12 @@ function caseProcNoteUsed_(c, r) {
   try {
     if (c.세목 === 'inheritance') {
       const fx = caseProcInhFacts_(c);
-      parts.push(JSON.stringify(fx));
+      // 정리 결과 안의 파일 이름만 뽑아 남긴다(결과 전체를 넣으면 매매사례 목록 때문에 길어져 뒤쪽이 잘려 "안 쓰임"으로 잘못 나왔다)
+      const fxs = JSON.stringify(fx);
+      const fnames = [];
+      const walk = function (o) { if (!o || typeof o !== 'object') return; Object.keys(o).forEach(function (k) { const v = o[k]; if (typeof v === 'string' && /file/i.test(k) && v) fnames.push(v); else if (typeof v === 'string' && /src/i.test(k)) fnames.push(v); else if (v && typeof v === 'object') walk(v); }); };
+      walk(fx);
+      parts.unshift(fnames.concat(fxs.match(/[^"(),:\\]+\.(?:pdf|jpe?g|png|md|txt|xlsx?|hwpx?)/gi) || []).filter(function (v, i, a) { return a.indexOf(v) === i; }).join('\n'));
       if ((fx.deceased && fx.deceased.name) || (fx.heirs || []).length) caseProcParseAll_(c).forEach(function (x) { if (/^(family|death|inhdivision|inhquery)$/.test(x.p.type)) parts.push(x.f.name); });
     } else if (c.세목 === 'gift') {
       const sv0 = caseProcLoad_(c.id);
@@ -27049,7 +27170,8 @@ function caseProcNoteUsed_(c, r) {
   const memoUsed = [];
   (r.items || []).forEach(function (it) { ((it.ask && Array.isArray(it.ask.cands)) ? it.ask.cands : []).forEach(function (x) { const m = /^상담 메모\((.+?)\):/.exec(String(x.src || '')); if (m && memoUsed.indexOf(m[1]) === -1) memoUsed.push(m[1]); }); });
   const text = parts.join('\n').slice(0, 40000);
-  caseProcPatch_(c.id, function (sv) { sv.usedText = text; sv.memoUsed = memoUsed; });
+  let memoChecked = []; try { memoChecked = caseProcMemoTexts_(c).read.map(function (m) { return m.file; }); } catch (e) {}
+  caseProcPatch_(c.id, function (sv) { sv.usedText = text; sv.memoUsed = memoUsed; sv.memoChecked = memoChecked; });
 }
 // 4) 세액계산 — 저장된 결과 유무·계산 뒤 서류 변경. 실제 계산은 화면(계산엔진)이 돌려 사건에 저장한다(ask.mode 'calc').
 function caseProcCalc_(c) {
