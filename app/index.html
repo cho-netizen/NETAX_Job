@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 18:09 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 18:27 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -47333,6 +47333,17 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         var labelOf = function(x){ var ax = x.ask || {}; return String(ax.label || (ax.mode === 'base' ? (NXAI_CP_BASE_LABEL_[tax] || '기준일') : '')); };
         var strong = hits.filter(function(x){ return NXAI_CP_SYN_.some(function(s){ return s[1].test(rest) && s[0].test(labelOf(x)); }); });
         if (strong.length) hits = strong;
+      }
+      // [2026.10.16] 그래도 여럿이면 질문 이름의 낱말이 답에 모두 들어 있는 질문 — "증여자 성명 홍길동"은 「증여자 성명」(「10년 내 같은 증여자 …」가 아니라)
+      if (hits.length > 1){
+        var rt = rest.replace(/\s+/g, '');
+        var full = hits.filter(function(x){ var ws = String((x.ask || {}).label || '').split(/\s+/).filter(function(w){ return w.length >= 2; }); return ws.length && ws.every(function(w){ return rt.indexOf(w) !== -1; }); });
+        if (full.length === 1) hits = full;
+      }
+      // 값이 숫자 없는 이름 모양("증여자 홍길동")이면 글자(이름) 칸 질문을 우선
+      if (hits.length > 1 && !/\d/.test(rest) && !/(없|있|아니|해당|보류|무시|맞|예정|받았|받음)/.test(rest) && /[가-힣]{2,4}/.test(synHit ? rest.replace(synHit, ' ') : rest)){
+        var txt = hits.filter(function(x){ var ax = x.ask || {}; return (ax.mode === 'input' || ax.mode === 'choose') && (ax.input || 'text') === 'text'; });
+        if (txt.length === 1) hits = txt;
       }
       // 그래도 여럿이면 답의 모양으로 — "받았음·받을 예정·파일"이면 증빙 질문, 값(금액·날짜·이름)이면 증빙이 아닌 질문
       if (hits.length > 1){
