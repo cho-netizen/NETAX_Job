@@ -25470,6 +25470,8 @@ function caseProcEvidence_(c) {
   const started = Date.now();
   let pending = 0;
   docs.forEach(function (f) {
+    // [2026.10.16] 보도자료·홍보물은 사건 서류가 아님 — 가격 자료 등으로 읽어 값·⚠ 질문을 만들지 않는다(장부에 '참고+이유'로 남김)
+    if (/보도\s*(참고)?\s*자료|홍보\s*(자료|물)/.test(f.name)) { f.p = null; return; }
     f.p = caseProcParsed_(f, cache, Date.now() - started < 80000);
     if (!f.p) pending++;
   });
@@ -25723,9 +25725,14 @@ function caseProcEvidence_(c) {
   // [2026.10.15] ⚠ 질문은 이 세목의 세액 계산에 쓰는 서류 종류만 — 보도자료·건강보험 안내문·전세 보증보험증권·주민등록초본(상속) 같은
   // 계산과 무관한(또는 다른 서류로 잘못 분류된) 파일의 ⚠까지 물어 신고 끝난 사건에도 질문이 10~20개씩 남았다.
   const relevantT = CASEPROC_RELEVANT_TYPES_[c.세목];
+  const docokSeen = {};
   docs.forEach(function (f) {
     if (!f.p || !f.p.t || f.p.office || !(f.p.wn > 0)) return;
     if (relevantT && relevantT.indexOf(f.p.t) === -1) return;
+    // [2026.10.16] 같은 파일이 두 번 잡히면 질문은 한 번만 — 김운래 수용재결 영수증이 Q5·Q6 두 번 나오던 것
+    if (docokSeen[f.id]) return; docokSeen[f.id] = 1;
+    // 보도자료·홍보물은 사건 서류가 아님 — ⚠를 묻지 않음
+    if (/보도\s*(참고)?\s*자료|홍보\s*(자료|물)/.test(f.name)) return;
     if (/보증\s*보험/.test(f.p.l || '')) return;
     // [2026.10.15] 실사용 기준 — 견적서(지출 증빙이 아니라 계산에 안 씀)와, 값은 정상인데 덧붙인 안내뿐인 ⚠(항목 이름을 안 붙임 등)는 질문으로 세우지 않는다
     if (/견\s*적/.test(f.p.l || '') || /견\s*적/.test(f.name)) return;
@@ -25883,13 +25890,13 @@ function caseProcOverseasItems_(c, ov, lines, items, of) {
   const has = function (k) { return String(a0[k] == null ? '' : a0[k]).trim() !== ''; };
   lines.push('국외자산 서류(번역본): ' + [of.sale ? '매도 정산서 ' + usd(of.sale.price) + ' 종결 ' + of.sale.date + '(' + of.sale.file + ')' : '', of.deed ? '증여증서 ' + of.deed.date + '(' + of.deed.file + ')' : '', of.appraisal ? '감정평가 ' + usd(of.appraisal.usd) + (of.appraisal.date ? ' ' + of.appraisal.date + ' 기준' : '') + '(' + of.appraisal.file + ')' : '', of.buy ? '매수 정산서 ' + usd(of.buy.price) + '(' + of.buy.file + ')' : '', of.taxes.map(function (x) { return x.who + ' ' + usd(x.usd) + ' ' + x.date + '(' + x.file + ')'; }).join(', ')].filter(Boolean).join(' · '));
   if (a0.국외자산 !== 'Y') items.push(caseProcItem_('oa:flag', 'judge', '해외 부동산 양도 서류가 있습니다(' + (of.sale ? of.sale.loc : '') + ') — 국외자산 양도소득세(소득세법 §118의2~8, 국내자산과 별도 계산)로 처리할까요?',
-    { mode: 'options', target: 'ovAsset:0:국외자산', options: [{ label: '예 — 국외자산으로 계산', value: 'Y' }, { label: '아니오', value: 'N' }] }));
+    { mode: 'options', target: 'ovAsset:0:국외자산', label: '국외자산 여부', options: [{ label: '예 — 국외자산으로 계산', value: 'Y' }, { label: '아니오', value: 'N' }] }));
   if (a0.국외자산 === 'N') return;
   if (of.sale && of.sale.loc && !has('assetLocation')) items.push(caseProcItem_('oa:loc', 'missing', '물건1 소재지 — 매도 정산서의 부동산 주소입니다.', { mode: 'choose', target: 'ovAsset:0:assetLocation', input: 'text', label: '물건1 소재지', cands: [{ v: of.sale.loc.replace(/\s+/g, ' ').trim(), src: '매도 정산서 PROPERTY — ' + of.sale.file }] }));
   let resDocs = [];
   try { resDocs = caseProcFiles_(c).filter(function (f) { return /출입국|주민\s*등록|거소|체류/.test(f.name); }).map(function (f) { return f.name; }); } catch (e) {}
   if (!has('oa거주5년')) items.push(caseProcItem_('oa:res5', 'judge', '양도일까지 계속 5년 이상 국내에 주소·거소를 둔 거주자인가요? (국외자산 양도세 납세의무 §118의2 — 아니면 신고 대상 아님)' + (resDocs.length ? ' 근거 서류: ' + resDocs.join(', ') : ' 근거 서류(출입국 사실증명·주민등록초본)가 폴더에 없습니다.'),
-    { mode: 'options', target: 'ovAsset:0:oa거주5년', options: [{ label: '예(5년 이상 거주자)', value: 'Y' }, { label: '아니오', value: 'N' }] }));
+    { mode: 'options', target: 'ovAsset:0:oa거주5년', label: '5년 이상 거주', options: [{ label: '예(5년 이상 거주자)', value: 'Y' }, { label: '아니오', value: 'N' }] }));
   const fxT = num(ov.fx양도), fxA = num(ov.fx취득), share = num(a0.oa지분) || 0;
   if (of.sale && !fxT) items.push(caseProcItem_('oa:fxT', 'missing', '양도일(' + (of.sale.date || '종결일') + ') 미국 달러 기준환율(원/달러)을 알려 주세요 — 양도가액 ' + usd(of.sale.price) + '을 원화로 바꿉니다(시행령 §178의5①).',
     { mode: 'input', target: 'ov:fx양도', input: 'text', label: '양도일 기준환율', cands: [] }));
@@ -25897,7 +25904,7 @@ function caseProcOverseasItems_(c, ov, lines, items, of) {
   if ((of.appraisal || of.buy) && !fxA) items.push(caseProcItem_('oa:fxA', 'missing', '취득일(' + (acqDate || '취득대금 지급일') + ') 미국 달러 기준환율(원/달러)을 알려 주세요 — 취득가액을 원화로 바꿉니다.',
     { mode: 'input', target: 'ov:fx취득', input: 'text', label: '취득일 기준환율', cands: [] }));
   if (of.sale && /\band\b|,|&|·/.test(of.sale.sellers || '') && !share) items.push(caseProcItem_('oa:share', 'judge', '매도인이 여럿입니다(' + of.sale.sellers + ') — 납세자 지분(%)을 알려 주세요. 양도가액·취득가액·양도비·외국납부세액에 지분을 곱합니다.',
-    { mode: 'options', target: 'ovAsset:0:oa지분', withInput: true, input: 'text', options: [{ label: '50%', value: '50' }, { label: '100%(단독)', value: '100' }] }));
+    { mode: 'options', target: 'ovAsset:0:oa지분', label: '납세자 지분', withInput: true, input: 'text', options: [{ label: '50%', value: '50' }, { label: '100%(단독)', value: '100' }] }));
   const sh = share ? share / 100 : 1;
   const shTxt = share ? ' × 지분 ' + share + '%' : '';
   if (of.sale && fxT && !has('양도가액')) items.push(caseProcItem_('oa:tp', 'judge', '양도가액 — 매도 정산서 총 매매대금 ' + usd(of.sale.price) + ' × ' + fxT + shTxt + (of.sale.discount ? ' (정산서의 할인 ' + usd(of.sale.discount) + '는 비용 쪽 조정이라 매매대금에 넣지 않음)' : ''),
@@ -27609,6 +27616,7 @@ function caseProcLedger_(c, saved) {
       // [2026.10.16] 연락처 명함(전화·팩스·메일이 여럿, 글이 짧음 — 노영환 "회계사무소연락처"), 이름이 제도 설명 자료인 것(김환식 "상속주택특례와 일시2주택특례")
       else if ((fl.match(/TEL|전화|FAX|팩스|E-?mail|이메일|휴대폰/gi) || []).length >= 2 && hangul < 120) r.use = '참고 — 연락처·명함(계산 입력 아님)';
       else if (/특례|해설|안내서|가이드|제도\s*설명|요건/.test(n) && !/계약|등기|증명|영수|확인서|신고서/.test(n)) r.use = '참고 — 법령·제도 설명 자료(입력 아님)';
+      else if (/보도\s*(참고)?\s*자료|홍보\s*(자료|물)/.test(n)) r.use = '참고 — 보도자료·홍보물(사건 서류 아님, 입력 아님)';
       else if (c.세목 === 'transfer' && /성\s*과\s*보\s*수/.test(fl) && /재\s*결|소\s*송|법\s*무\s*법\s*인|변\s*호\s*사/.test(fl)) r.use = '수용보상금 증액(이의재결·소송) 변호사 성과보수 — 양도비용 후보이나 금액을 못 읽음: 넣으려면 금액을 말로 알려 주세요';
       else if (/통\s*장\s*발\s*행|가\s*입\s*하\s*신\s*날/.test(fl) && /계\s*좌\s*번\s*호/.test(fl)) r.use = '참고 — 통장 표지(입금 계좌 확인용, 금액 없음)';
       // [2026.10.16] 상속 — 이미 낸 진료비 연간 확인서(노영환), 피상속인 종합소득세 신고서·신고 대행 수수료 안내(박종헌)

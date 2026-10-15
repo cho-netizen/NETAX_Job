@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 19:26 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-15 20:04 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -47233,6 +47233,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     [/양도일/, /양도\s*일|매도\s*일|잔금\s*일|판\s*날/],
     [/소재지/, /소재지|주소|물건지/],
     [/증여일/, /증여\s*일/], [/상속개시일/, /상속\s*개시\s*일|사망\s*일/],
+    [/10년\s*내|사전\s*증여|합산액/, /사전\s*증여|10\s*년\s*(내|이내|안)|합산\s*(액|증여)|재차\s*증여/],
+    [/국외\s*자산/, /국외\s*자산|해외\s*(부동산|자산)/], [/5년\s*(이상\s*)?거주/, /5\s*년\s*(이상\s*)?거주|거주자/], [/지분/, /지분/],
     [/증여재산가액|증여\s*내용/, /증여\s*(재산)?\s*가액|증여\s*금액|증여\s*재산/],
     [/수증자|증여\s*내용/, /수증자|받은\s*사람/], [/증여자|증여\s*내용/, /증여자|준\s*사람/], [/관계/, /관계(?!\s*증명)/],
     [/필요경비/, /필요\s*경비|경비/], [/상속\s*채무/, /채무|부채|빚/],[/사건분류/, /사건\s*분류|특례|비과세|중과|감면/],
@@ -47322,14 +47324,47 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var hits = find(noSrc);
       if (!hits.length && src) hits = find(rest);
       // [2026.10.16] 이름 사전에 없는 증빙·판독 질문 — 서류 이름("주민등록초본 받을 예정")이나 파일 이름("증여계약서.pdf 맞음")으로 찾는다(3대 기준: 79개가 이름으로 못 불림)
-      if (!hits.length){
-        var nt = rest.replace(/\s+/g, '');
-        hits = live.filter(function(x){
+      // [2026.10.16] 서류 이름이 칸 이름 낱말("매매계약서(양도가액·양도일)"의 양도가액)에 먼저 걸려도, 답이 "받았음·확인했음·맞음" 모양이면 서류 이름으로 찾은 질문을 우선
+      var nt = rest.replace(/\s+/g, '');
+      var docHits = live.filter(function(x){
+        var ax = x.ask || {};
+        if (ax.mode === 'evidence'){
+          var lb = String(ax.label || '').replace(/\([^)]*\)/g, ' ');
+          var whole = lb.replace(/\s+/g, '');
+          if (whole.length >= 4 && nt.indexOf(whole) !== -1) return true;   // "취득세 영수증"처럼 낱말이 짧은 서류 이름
+          var ws = lb.split(/[·,\s]+|또는|등\s/).map(function(w){ return w.replace(/\s+/g, ''); }).filter(function(w){ return w.length >= 4; });
+          // 괄호 속 서류 이름("비상장주식 평가자료")도 — 단 칸 이름 낱말(양도가액·양도일 등)은 빼고
+          var inner = (String(ax.label || '').match(/\(([^)]*)\)/g) || []).join(' ').replace(/[()]/g, ' ').split(/[·,\s]+|또는|등\s/).filter(function(w){ return w.length >= 4 && !NXAI_CP_SYN_.some(function(sy){ return sy[1].test(w); }); });
+          return ws.concat(inner).some(function(w){ return nt.indexOf(w) !== -1; });
+        }
+        if (ax.mode === 'docok'){ var fm = /‘([^’]+)’/.exec(x.text || ''); var fn = fm ? fm[1].replace(/\.[A-Za-z0-9]{2,5}$/, '').replace(/\s+/g, '') : ''; return fn.length >= 3 && nt.indexOf(fn) !== -1; }
+        return false;
+      });
+      // 파일 이름이 겹치면("증여계약서"와 "증여계약서2") 더 길게 맞은 파일 쪽
+      var fnOf = function(x){ var fm = /‘([^’]+)’/.exec(x.text || ''); return fm ? fm[1].replace(/\.[A-Za-z0-9]{2,5}$/, '').replace(/\s+/g, '') : ''; };
+      var dk = docHits.filter(function(x){ return (x.ask || {}).mode === 'docok'; });
+      if (dk.length > 1){ var mx = Math.max.apply(null, dk.map(function(x){ return fnOf(x).length; })); docHits = docHits.filter(function(x){ return (x.ask || {}).mode !== 'docok' || fnOf(x).length === mx; }); }
+      if (!hits.length) hits = docHits;
+      else if (docHits.length && /(받았|받음|받을|예정|확보|확인했|맞음|맞아|맞습)/.test(rest)){
+        // 서류 이름이 더 길게(구체적으로) 맞은 질문만 — "양도가액 확인했습니다"까지 증빙으로 끌어가지 않도록
+        var docOnly = docHits.filter(function(x){ return hits.indexOf(x) === -1 || (x.ask || {}).mode === 'evidence' || (x.ask || {}).mode === 'docok'; });
+        var synLen = synHit ? String(synHit).replace(/\s+/g, '').length : 0;
+        var gotSay = /(받았|받음|받을|예정|확보)/.test(rest);   // 받았음·받을 예정은 증빙 질문에만 맞는 말 — 같은 길이로 맞아도 증빙 쪽
+        var longer = docOnly.filter(function(x){
           var ax = x.ask || {};
-          if (ax.mode === 'evidence'){ var ws = String(ax.label || '').replace(/\([^)]*\)/g, ' ').split(/[·,\s]+|또는|등\s/).map(function(w){ return w.replace(/\s+/g, ''); }).filter(function(w){ return w.length >= 4; }); return ws.some(function(w){ return nt.indexOf(w) !== -1; }); }
-          if (ax.mode === 'docok'){ var fm = /‘([^’]+)’/.exec(x.text || ''); var fn = fm ? fm[1].replace(/\.[A-Za-z0-9]{2,5}$/, '').replace(/\s+/g, '') : ''; return fn.length >= 3 && nt.indexOf(fn) !== -1; }
-          return false;
+          if (ax.mode === 'docok') return true;
+          var lb = String(ax.label || '').replace(/\([^)]*\)/g, ' ');
+          var ws = [lb.replace(/\s+/g, '')].concat(lb.split(/[·,\s]+|또는|등\s/).map(function(w){ return w.replace(/\s+/g, ''); }));
+          return ws.some(function(w){ return w.length >= 2 && (gotSay ? w.length >= synLen : w.length > synLen) && nt.indexOf(w) !== -1; });
         });
+        if (longer.length) hits = longer;
+      }
+      // 증빙 질문 여럿이 같은 서류 이름("매매계약서")에 걸리면 서류 이름 낱말이 더 많이 들어 있는 쪽 — "양도 매매계약서"/"취득 매매계약서"
+      if (hits.length > 1 && hits.every(function(x){ return (x.ask || {}).mode === 'evidence'; })){
+        var score = function(x){ return String((x.ask || {}).label || '').replace(/\([^)]*\)/g, ' ').split(/[·,\s]+/).filter(function(w){ return w.length >= 2 && w !== '또는'; }).filter(function(w){ return nt.indexOf(w) !== -1; }).length; };
+        var best = Math.max.apply(null, hits.map(score));
+        var top = hits.filter(function(x){ return score(x) === best; });
+        if (top.length === 1) hits = top;
       }
       var mo = /물건\s*(\d+)/.exec(rest);
       if (mo && hits.length > 1){ var h2 = hits.filter(function(x){ return new RegExp('물건\\s*' + mo[1] + '(?!\\d)').test(nxAiCaseProcName_(x, tax)); }); if (h2.length) hits = h2; }
@@ -47349,6 +47384,11 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         var rt = rest.replace(/\s+/g, '');
         var full = hits.filter(function(x){ var ws = String((x.ask || {}).label || '').split(/\s+/).filter(function(w){ return w.length >= 2; }); return ws.length && ws.every(function(w){ return rt.indexOf(w) !== -1; }); });
         if (full.length === 1) hits = full;
+      }
+      // [2026.10.16] 값이 날짜 모양("취득일 2015-07-07")이면 날짜 칸·기준일 질문을 우선 — 「취득일 기준환율」로 가지 않게
+      if (hits.length > 1 && /(19|20)\d{2}\s*[-.\/년]\s*\d{1,2}\s*[-.\/월]\s*\d{1,2}/.test(rest)){
+        var dh = hits.filter(function(x){ var ax = x.ask || {}; return ax.mode === 'base' || ax.input === 'date'; });
+        if (dh.length) hits = dh;
       }
       // 값이 숫자 없는 이름 모양("증여자 홍길동")이면 글자(이름) 칸 질문을 우선
       if (hits.length > 1 && !/\d/.test(rest) && !/(없|있|아니|해당|보류|무시|맞|예정|받았|받음)/.test(rest) && /[가-힣]{2,4}/.test(synHit ? rest.replace(synHit, ' ') : rest)){
