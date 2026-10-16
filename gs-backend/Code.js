@@ -32227,6 +32227,11 @@ function ctParseContract_(text) {
   var sm = /소\s*재\s*지\s*[:：]?\s*([^\n]{6,80})/.exec(t);
   if (sm && /\d/.test(sm[1]) && /(시|군|구|동|읍|면|리|로|길)\s/.test(sm[1] + ' ')) r.소재지 = sm[1].replace(/\s+/g, ' ').trim();
   if (!r.소재지) { var am = new RegExp(CT_SIDO_RE_.source + '[^\\n]{2,60}').exec(t.slice(0, 1500)); if (am) r.소재지 = am[0].trim(); }
+  // [2026.10.17] 표의 같은 줄에 이어진 칸 이름(토지·지목·면적·구조·용도·대지권)까지 소재지로 읽던 것을 자른다(김금옥: "…1421호 토 지지목 대"가 계산기 소재지 칸에 들어감)
+  if (r.소재지) r.소재지 = r.소재지.replace(/^(.*?(?:\d|호|번지))\s+(?:토\s*지|지\s*목|면\s*적|구\s*조|용\s*도|대\s*지\s*권)(?=\s|$|[가-힣:：]).*$/, '$1');
+  // [2026.10.17] 집합건물 계약서 — 소재지 줄은 "…빌라 제3동"(1동 건물 표시)에서 끝나고 호수는 "건물의 번호: 제3동 제3층 제301호" 줄에 따로 있다(방영교).
+  //  공동주택가격·건축물대장 조회는 동·호가 있어야 그 호를 찾으므로, 소재지에 호가 없으면 건물의 번호 줄의 층·호를 붙인다
+  if (r.소재지 && !/\d\s*호(?![가-힣])/.test(r.소재지)) { var bno = /건\s*물\s*의\s*번\s*호\s*[:：]?\s*[^\n\[]{0,20}?((?:제?\s*\d{1,3}\s*층\s*)?제?\s*\d{1,5}\s*호)(?![가-힣])/.exec(t); if (bno) r.소재지 += ' ' + bno[1].replace(/\s+/g, ' ').trim(); }
   // [2026.10.16] 여러 필지를 한 계약서로 판 경우(이종식: 511-1·511-3·511-4 답 3필지 일괄 5천만원) — 부동산 표시(제1조 앞)의 주소를 모두 모은다.
   //  첫 필지만 소재지로 잡아 등기부(511-3) 거래와 짝이 안 맞고 양도거래가 2건으로 갈라졌다.
   var hEnd = t.search(/계\s*약\s*내\s*용|제\s*1\s*조/), head = t.slice(0, hEnd > 0 ? hEnd : 1500), lre = new RegExp(CT_SIDO_RE_.source + '[^\\n]{2,60}', 'g'), lm, locs = [];
@@ -34133,8 +34138,15 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
   // 6) 특례 — 사건분류(비과세·중과·감면)는 거래내용 뒤에. 고르면 계산기 자산·양도인 체크로 들어간다
   if (!ans.사건분류) {
     const tpl = WORK_EVIDENCE_TEMPLATES_.transfer && WORK_EVIDENCE_TEMPLATES_.transfer.사건분류 ? Object.keys(WORK_EVIDENCE_TEMPLATES_.transfer.사건분류) : [];
-    q('ov:사건분류', 'judge', '사건분류(비과세·중과·감면 등 어느 경우인지)를 정해 주세요 — 고른 것은 계산기 자산 카드의 해당 체크(1세대1주택·비사업용토지·미등기 등)와 양도인 카드 주택 수로 들어갑니다.',
-      { mode: 'options', target: 'ov:사건분류', label: '사건분류', options: tpl.map(function (k) { return { label: k, value: k }; }).concat([{ label: '일반(해당 특례 없음)', value: '일반' }]), ai: '이 사건의 사건분류(비과세·중과·감면·특례 중 어느 경우인지)를 사건자료로 판단하고, 판단에 부족한 사실·서류를 알려줘.' });
+    // [2026.10.17 객관식 소통 3] 고르는 데 쓸 사실을 서류에서 읽은 그대로 근거로 붙인다(정하지는 않음 — 주택 수·거주 등은 서류로 다 알 수 없음)
+    const cf = [], a0 = st.transferAssets[0] || {};
+    const kindTxt = { house: '주택', other: '주택 아님', land: '토지', building: '건물' };
+    if (a0.assetType || a0.assetKind || S.facts.officetel) cf.push('판 물건: ' + (a0.assetLocation || '') + ' — ' + [a0.assetType ? '과세대상 ' + (kindTxt[a0.assetType] || a0.assetType) : S.facts.officetel ? '오피스텔(주택으로 볼지는 「과세대상 구분」 질문에서)' : '', a0.assetKind ? '자산구분 ' + (kindTxt[a0.assetKind] || a0.assetKind) : ''].filter(Boolean).join(' · ') + (S.src['a0.assetType'] ? ' (근거: ' + S.src['a0.assetType'] + ')' : ''));
+    if (a0.acquisitionDate && c.기준일) { const yrs = Math.floor(((new Date(c.기준일) - new Date(a0.acquisitionDate)) / 864e5) / 365.25 * 10) / 10; cf.push('보유기간: 취득일 ' + a0.acquisitionDate + ' ~ 양도일 ' + c.기준일 + ' — 약 ' + yrs + '년' + (yrs < 2 ? ' (2년 미만 — 1세대1주택 비과세 보유요건·단기 세율 확인)' : '')); }
+    (rf.evidence || []).filter(function (e) { return /신규 주택|납세자 명의 부동산|오피스텔|증여|수용|보상금|필지 일괄|주민등록|초본|세대원|농지|자경|미등기|경매/.test(e) && !/^⚠/.test(e); }).slice(0, 6).forEach(function (e) { cf.push('서류: ' + e); });
+    if (!cf.length) cf.push('서류에서 사건분류를 가를 사실(주택 여부·보유 주택 수·거주기간·취득 원인)을 읽지 못했습니다 — 상담 내용으로 골라 주세요.');
+    q('ov:사건분류', 'judge', '사건분류(비과세·중과·감면 등 어느 경우인지)를 정해 주세요 — 고른 것은 계산기 자산 카드의 해당 체크(1세대1주택·비사업용토지·미등기 등)와 양도인 카드 주택 수로 들어가 세율·공제가 달라집니다. 서류에서 읽은 관련 사실을 아래에 적었습니다(보유 주택 수·세대 구성은 서류만으로 다 알 수 없어 정하지 않았습니다).',
+      { mode: 'options', target: 'ov:사건분류', label: '사건분류', options: tpl.map(function (k) { return { label: k, value: k }; }).concat([{ label: '일반(해당 특례 없음)', value: '일반' }]), ai: '이 사건의 사건분류(비과세·중과·감면·특례 중 어느 경우인지)를 사건자료로 판단하고, 판단에 부족한 사실·서류를 알려줘.' }, cf);
   }
 }
 // 취득당시 기준시가 질문 — 증빙의 공시가격·개별공시지가·건물기준시가 출력물을 근거로(§164⑦: 공동주택가격 최초 공시 전 취득분)
