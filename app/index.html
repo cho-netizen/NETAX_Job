@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 15:52 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 15:59 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -22012,6 +22012,7 @@ function tcApplyInheritanceRule_(rf){
   setVal('ihDeceasedName', rf.deceased && rf.deceased.name, '피상속인 성명');
   setVal('ihDeceasedRegNo', fullNo(rf.deceased && rf.deceased.regNo), '피상속인 주민번호');
   setVal('ihDeathDate', rf.deathDate, '상속개시일');
+  setVal('ihDeceasedAddress', rf.deceased && rf.deceased.address, '피상속인 주소'); // [2026.10.17] 주민등록 등본·초본(이름이 같고 주소가 하나일 때만)
   if (rf.heirs && rf.heirs.length){
     const old = inheritanceHeirs.slice();
     inheritanceHeirs.length = 0;
@@ -22020,6 +22021,7 @@ function tcApplyInheritanceRule_(rf){
       const t = Object.assign({}, prev, { name: h.name });
       if (h.relation && INHERITANCE_HEIR_RELATION_ENUM_.indexOf(h.relation) !== -1) t.relation = h.relation;
       if (fullNo(h.regNo)) t.regNo = h.regNo;
+      if (h.address && !t.address) t.address = h.address; // [2026.10.17] 상속인 주소 — 주민등록 등본·초본
       inheritanceHeirs.push(t);
     });
     if (!inheritanceHeirs.some(function(h){ return h.isReporter; }) && inheritanceHeirs[0]) inheritanceHeirs[0].isReporter = true;

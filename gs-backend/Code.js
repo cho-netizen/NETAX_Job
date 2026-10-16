@@ -27541,12 +27541,12 @@ function caseProcSyncTaxpayer_(c, lines) {
 // [2026.10.16] 한 실행 안에서 같은 사건 상속 사실 정리를 여러 번(증빙 칸 대조·봉안·처리개요) 하던 것 — 같은 기준일·같은 수정 상태면 2분 안에는 한 번만(서류 226개 노영환: 한 번에 30~50초)
 var CASEPROC_INHFACTS_MEMO_ = null;
 function caseProcInhFacts_(c, parsed) {
-  if (parsed) return caseProcInhFacts0_(c, parsed);
+  if (parsed) return caseProcInhAddr_(c, caseProcInhFacts0_(c, parsed), parsed);
   // 답한 결정·채운 값·평가 선택(caseProcLoad_)도 키에 — 빼먹어 답한 뒤 2분간 답 전 결과(채무 확정 등 질문 재등장)를 돌려주던 퇴보 수정(재현기 cand1: 박종헌 12→14 등)
   let sv0 = {}; try { sv0 = caseProcLoad_(c.id) || {}; } catch (e) {}
   const mk = c.id + '|' + (c.기준일 || '') + '|' + (c.수정일 || '') + '|' + JSON.stringify(c.사건개요 || {}) + '|' + JSON.stringify([sv0.decisions || {}, sv0.filled || {}, sv0.ihChoices || {}]);
   if (CASEPROC_INHFACTS_MEMO_ && CASEPROC_INHFACTS_MEMO_.k === mk && Date.now() - CASEPROC_INHFACTS_MEMO_.at < 120000) return JSON.parse(CASEPROC_INHFACTS_MEMO_.json);
-  const o = caseProcInhFacts0_(c);
+  const o = caseProcInhAddr_(c, caseProcInhFacts0_(c));
   try { CASEPROC_INHFACTS_MEMO_ = { k: mk, at: Date.now(), json: JSON.stringify(o) }; } catch (e) { CASEPROC_INHFACTS_MEMO_ = null; }
   return o;
 }
@@ -34191,4 +34191,31 @@ function trcEngineInputs_(st, transferDate) {
       isOneHouseOneFamily: !!a.isOneHouseOneFamily, isNonBusinessLand: !!a.isNonBusinessLand, isUnregisteredTransfer: !!a.isUnregisteredTransfer, multiHouseCount: Number(s0.multiHouseCount) || 0, isTransferorResident: s0.isTransferorResident !== false,
       donorRelation: a.donorRelation && a.donorRelation !== 'none' ? a.donorRelation : '', giftReceivedDate: a.giftReceivedDate || '', doneeOwnAcquisitionPrice: Number(a.doneeOwnAcquisitionPrice) || 0 });
   });
+}
+
+// [2026.10.17] 상속 — 계산기 「피상속인 주소(사망 당시 주소지=납세지)」·상속인 카드 「주소」를 주민등록 등본·초본에서(이름이 정확히 같은 사람, 주소가 하나로 정해질 때만).
+//  예전엔 서류가 있어도 이 칸을 채우지 않아 신고서 인적사항이 비었다. 못 정하면 비워 둔다(추정하지 않음)
+function caseProcInhAddr_(c, o, parsed) {
+  try {
+    if (!o) return o;
+    const docs = (parsed || caseProcParseAll_(c)).filter(function (x) { return x.p && x.p.type === 'resident' && x.p.result; });
+    if (!docs.length) return o;
+    const nm = function (x) { return String(x || '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ''); };
+    const addrOf = function (name) {
+      const n = nm(name); if (n.length < 2) return null;
+      const hits = [];
+      docs.forEach(function (x) {
+        const r = x.p.result;
+        let a = '';
+        if (nm(r.성명) === n) { const hist = (r.거주기간 || []).filter(function (h) { return h.주소; }); a = r.현주소 || (hist.length ? hist[hist.length - 1].주소 : ''); }
+        else if (r.현주소 && (nm(r.세대주) === n || (r.세대원 || []).some(function (q) { return nm(q.이름) === n; }))) a = r.현주소;
+        if (a) hits.push({ a: String(a).replace(/\s+/g, ' ').trim().replace(/[,\s]+$/, ''), file: x.f.name });
+      });
+      const uniq = hits.filter(function (h, i) { return hits.findIndex(function (k) { return k.a === h.a; }) === i; });
+      return uniq.length === 1 ? uniq[0] : null;
+    };
+    if (o.deceased && o.deceased.name && !o.deceased.address) { const d = addrOf(o.deceased.name); if (d) { o.deceased.address = d.a; o.deceased.addressSrc = '주민등록(' + d.file + ')'; } }
+    (o.heirs || []).forEach(function (h) { if (h && h.name && !h.address) { const d = addrOf(h.name); if (d) { h.address = d.a; h.addressSrc = '주민등록(' + d.file + ')'; } } });
+  } catch (e) {}
+  return o;
 }
