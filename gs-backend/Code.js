@@ -25623,7 +25623,7 @@ function caseProc_(body) {
   const c = work_readRow_(col, found.row);
   try {
     if (body.step === 'basic') return caseProcBasic_(c, body);
-    if (body.step === 'evidence') return caseProcEvidence_(c);
+    if (body.step === 'evidence') return caseProcEvidence_(c, body);
     if (body.step === 'overview') return caseProcOverview_(c);
     if (body.step === 'calc') return caseProcCalc_(c);
     if (body.step === 'output') return caseProcOutput_(c);
@@ -25633,7 +25633,7 @@ function caseProc_(body) {
     if (body.step === 'savePdf') return caseProcSavePdf_(c, body);
     if (body.step === 'status') return caseProcStatus_(c, body);
     if (body.step === 'calcin') return caseProcCalcIn_(c);
-    if (body.step === 'scanCands') return caseProcScanCands_(c); // [2026.10.17] 원근보정할 사진 후보
+    if (body.step === 'scanCands') return caseProcScanCands_(c, body); // [2026.10.17] 원근보정할 사진 후보
     if (body.step === 'scanSaved') return caseProcScanSaved_(c, body); // 원근보정본 짝 기록
     if (body.step === 'splitCands') return caseProcSplitCands_(c); // 한 파일에 든 여러 서류 나눌 후보
     if (body.step === 'splitPages') return caseProcSplitPages_(c, body); // 쪽별 종류·묶음
@@ -25729,6 +25729,7 @@ function caseProcBasic_(c, body) {
   const items = [], lines = [];
   const today = caseProcToday_();
   lines.push('세목 ' + (CASEPROC_TAX_LABEL_[c.세목] || c.세목 || '—') + ' · 업무 ' + (c.업무유형 || '—') + ' · 납세자 ' + (c.납세자 || '—') + ' · 기준일 ' + (c.기준일 || '—') + ' · 법정일 ' + (c.법정일 || '—') + ' · 상태 ' + (c.상태 || '—'));
+  try { caseProcGrasp_(c).lines.forEach(function (l) { lines.push(l); }); } catch (e) { lines.push('⚠ 사건파악 가설을 세우지 못함: ' + (e && e.message || e)); } // [2026.10.17 재설계] 작업관리는 가설의 한 출처일 뿐
   if (!c.세목) items.push(caseProcItem_('basic:세목', 'missing', '세목이 비어 있습니다.', { mode: 'view', view: 'workmanage', label: '작업관리에서 세목 정하기' }));
   if (!c.업무유형) items.push(caseProcItem_('basic:업무유형', 'missing', '업무유형(신고·상담 등)이 비어 있습니다.', { mode: 'view', view: 'workmanage', label: '작업관리에서 업무유형 정하기' }));
   const ov = c.사건개요 || {};
@@ -25833,7 +25834,7 @@ function caseProcParsed_(f, cache, canParse) {
   return s;
 }
 const CASEPROC_DOC_MAX_ = 300;
-function caseProcEvidence_(c) {
+function caseProcEvidence_(c, body) {
   const items = [], lines = [];
   // [2026.10.15 1단계 ①] 압축 파일은 먼저 풀어 둔다(처음 한 번) — 풀린 파일도 아래 목록에 들어와 함께 읽는다
   try {
@@ -25860,6 +25861,8 @@ function caseProcEvidence_(c) {
   });
   if (typeof akTrace_ === 'function') akTrace_('증빙 서류 읽기', (docs.length - pending) + '/' + docs.length);
   if (pending) return { ok: true, more: true, progress: { done: docs.length - pending, total: docs.length }, lines: ['서류 읽는 중 ' + (docs.length - pending) + '/' + docs.length + '(무료 글자인식 — 처음 읽는 서류는 한 건에 10~40초)'] };
+  // [2026.10.17 재설계] 읽기만(phase read) — 사이드바가 먼저 글자만 읽게 하고, 그 결과로 서류 나누기·원근보정을 한 뒤에 증빙 대조·증빙목록 표시를 한 번만 한다(예전: 대조·표시를 먼저 하고 보정 뒤 또 했다)
+  if (body && body.phase === 'read') return { ok: true, readOnly: true, lines: ['폴더 서류 ' + docs.length + '개 글자 읽기 끝 — 서류 나누기·사진 보정을 먼저 하고 대조합니다'] };
   // [2026.10.15 1단계] 이름이 아니라 내용으로 이미 낸 신고서(사진으로 찍힌 신고서·계산명세서 등)를 입력에서 뺀다 — 경정·수정·불복 사건은 그것이 작업 재료라 빼지 않음
   if (!caseProcIsAmend_(c)) {
     const isOutP = function (p) { return !!(p && (p.out || p.calc || (p.outGI && c.세목 !== 'transfer'))); };
@@ -25896,59 +25899,6 @@ function caseProcEvidence_(c) {
     lines.push('증빙목록이 아직 없어(처리개요를 처음 저장할 때 생김) 세목별 필요증빙 틀로 대조했습니다.');
   }
   let req = list.filter(function (e) { return e && e.source === 'requested'; });
-  // 현금·예금 증여(증여계약서·사건분류로 판단)면 부동산 등기부·평가자료, 부담부가 아니면 채무인수 자료는 해당 없음 — 묻지 않는다(목록 자체는 고치지 않음)
-  const gc = docs.filter(function (f) { return f.p && f.p.t === 'giftcontract'; })[0];
-  // [2026.10.15] 계약서 없이 이체확인증·통장만 있고 증여 등기가 없으면 현금 증여(실사건: 부모 → 자녀 이체확인증 5장)
-  const cashGift = c.세목 === 'gift' && ((gc && gc.p.gk === '현금') || /현금|예금/.test(String(ov.사건분류 || ''))
-    || (!gc && docs.some(function (f) { return f.p && f.p.t === 'banktx'; }) && !docs.some(function (f) { return f.p && (f.p.bd || []).some(function (b) { return b.k === 'gift'; }); })));
-  if (cashGift) {
-    const na = req.filter(function (e) { return e.status !== '확보됨' && (/등기부|평가\s*자료|비상장|그\s*외\s*자산/.test(e.label) || (/채무\s*인수/.test(e.label) && !(gc && gc.p.debt))); });
-    if (na.length) lines.push('현금 증여라 해당 없음(묻지 않음): ' + na.map(function (e) { return e.label; }).join(', '));
-    req = req.filter(function (e) { return na.indexOf(e) === -1; });
-  }
-  if (c.세목 === 'inheritance') {
-    const regs = docs.filter(function (f) { return f.p && f.p.t === 'registry'; });
-    const noDebt = regs.length && !regs.some(function (f) { return f.p.lien; }) && !docs.some(function (f) { return f.p && f.p.debtDoc; });
-    const naI = req.filter(function (e) { return e.status !== '확보됨' && noDebt && /채무\s*증빙|대출\s*잔액|부채/.test(e.label); });
-    if (naI.length) lines.push('채무 없음 — 등기부 ' + regs.length + '건의 근저당·전세권 등이 모두 말소, 부채 서류 없음 → 해당 없음: ' + naI.map(function (e) { return e.label; }).join(', '));
-    req = req.filter(function (e) { return naI.indexOf(e) === -1; });
-  }
-  // [2026.10.15] 양도 — 등기부가 모두 토지(주택·건물 없음)이고 처리개요 자산종류도 주택이 아니면 1세대1주택 판정용 서류(초본·가족관계·다른 주택)는 해당 없음
-  if (c.세목 === 'transfer') {
-    const rks = [].concat.apply([], docs.filter(function (f) { return f.p && f.p.t === 'registry'; }).map(function (f) { return f.p.rk || []; }));
-    const assetsT = (Array.isArray(ov.물건목록) && ov.물건목록.length ? ov.물건목록 : [ov]).map(function (a) { return String(a.assetType || ''); });
-    const landOnly = rks.length && rks.every(function (k) { return /토지/.test(k); }) && !assetsT.some(function (t) { return /house|presale/.test(t); });
-    if (landOnly) {
-      const naT = req.filter(function (e) { return e.status !== '확보됨' && /주민등록\s*초본|가족\s*관계|다른\s*주택|1세대\s*1주택/.test(e.label); });
-      if (naT.length) lines.push('토지 양도(등기부 ' + rks.length + '건 모두 토지)라 1세대1주택 판정 서류는 해당 없음(묻지 않음): ' + naT.map(function (e) { return e.label; }).join(', '));
-      req = req.filter(function (e) { return naT.indexOf(e) === -1; });
-    }
-  }
-  // [2026.10.15 1단계] 국외자산(해외 부동산) — 국내 양도용 증빙틀(취득세 영수증·주민등록초본·다른 주택·등기부)은 해당 없음,
-  //  매매계약서·취득가액 증빙·중개보수 영수증은 해외 서류(매도·매수 정산서·증여증서·감정평가서)로 대신한다(박길서 사건: 국내 증빙 질문 8개가 그대로 떴다)
-  if (c.세목 === 'transfer') {
-    const a0o = (Array.isArray(ov.물건목록) && ov.물건목록[0]) || {};
-    let ofx = null;
-    if (a0o.국외자산 !== 'N') { try { ofx = caseProcOverseasFacts_(c); } catch (e) { ofx = null; } }
-    if (ofx && (ofx.sale || a0o.국외자산 === 'Y')) {
-      const cover = function (label) {
-        if (/양도.*계약|매매\s*계약서.*양도|양도가액/.test(label) && ofx.sale) return '매도 정산서(' + ofx.sale.file + ')';
-        if (/취득.*(계약|증빙)|취득가액/.test(label) && (ofx.deed || ofx.appraisal || ofx.buy)) return [ofx.deed && '증여증서(' + ofx.deed.file + ')', ofx.appraisal && '감정평가서(' + ofx.appraisal.file + ')', ofx.buy && '매수 정산서(' + ofx.buy.file + ')'].filter(Boolean).join('·');
-        if (/중개|필요\s*경비|영수증/.test(label) && !/취득세/.test(label) && ofx.sale) return '매도 정산서 비용 항목(' + ofx.sale.file + ')';
-        return '';
-      };
-      // 주민등록초본은 남긴다 — 국외자산은 "양도일까지 계속 5년 이상 국내 거주"(§118의2)를 가리는 근거라 해당 없음이 아님
-      const naO = req.filter(function (e) { return e.status !== '확보됨' && !/주민등록/.test(e.label) && (/취득세|가족\s*관계|다른\s*주택|1세대|등기부/.test(e.label) || cover(e.label)); });
-      if (naO.length) lines.push('국외자산 — 국내 양도용 증빙은 해당 없음/해외 서류로 대신(묻지 않음): ' + naO.map(function (e) { const cv = cover(e.label); return e.label + (cv ? ' → ' + cv : ' → 해당 없음'); }).join(', '));
-      req = req.filter(function (e) { return naO.indexOf(e) === -1; });
-    }
-  }
-  // [2026.10.15] 증여 10년 합산 — 처리개요 질문(「10년 안에 같은 증여자에게 받은 증여가 있나요?」)과 같은 내용이라 증빙 칸으로 또 묻지 않음(답이 정해지면 그 질문도 사라짐)
-  if (c.세목 === 'gift') {
-    const naG = req.filter(function (e) { return e.status !== '확보됨' && /10\s*년\s*이내/.test(e.label); });
-    if (naG.length) lines.push('10년 합산은 처리개요 질문 한 곳에서만 묻습니다: ' + naG.map(function (e) { return e.label; }).join(', '));
-    req = req.filter(function (e) { return naG.indexOf(e) === -1; });
-  }
   const got = req.filter(function (e) { return e.status === '확보됨'; });
   if (req.length) lines.push('필요증빙 확보 ' + got.length + '/' + req.length);
   else if (c.업무유형 !== '신고') lines.push('업무유형이 "' + (c.업무유형 || '—') + '"이라 필요증빙 틀이 없습니다(신고 사건만 자동으로 깔림).');
@@ -25962,7 +25912,6 @@ function caseProcEvidence_(c) {
   // [2026.10.16] 사무소 신고 수수료는 필요경비 후보(양도비용 — 신고서 작성비용, 시행령 §163⑤1호)로 넣고 「필요경비 확정」에서 함께 확인한다(예전: 따로 묻고 '넣음'이어도 직접 더해야 했다)
   if (office.length && c.세목 === 'transfer') lines.push('사무소 신고 수수료 ' + office.length + '건 — 필요경비 후보(양도비용: 신고서 작성비용, 시행령 §163⑤1호)로 넣음, 「필요경비 확정」에서 확인: ' + office.map(function (f) { return f.name; }).join(', '));
   const pool = files.filter(function (f) { return !(f.p && f.p.office) && !/\.json$/i.test(f.name); });
-  const hay = pool.map(function (f) { return { f: f, s: f.name + ' ' + (f.p && f.p.l || '') }; });
   // [2026.10.15 1:1] 파일 이름의 '취득'·'양도' — 취득 칸엔 이름에 양도만 있는 파일을, 양도 칸엔 이름에 취득만 있는 파일을 후보로 올리지 않는다(세무사님: 이름에 분명히 적혀 있는데 둘 다 띄움)
   // [2026.10.15 1단계 ②] 계약서는 파일 이름이 아니라 본문으로 역할을 정한다(세무사님: "계약서를 읽어보면 알 수 있는데 읽어보지도 않나")
   //  납세자가 매도인 = 양도 계약서, 매수인 = 취득 계약서, 납세자가 당사자가 아님 = 참고 계약서(매매사례 등 — 양도·취득 칸 후보에서 뺌).
@@ -26089,84 +26038,19 @@ function caseProcEvidence_(c) {
       else marks.forEach(function (x) { x.status = '미확보'; });
     }
   }
-  let inhNiche = null;
-  if (typeof akTrace_ === 'function') akTrace_('증빙: 칸 대조 끝(봉안 전)'); // [2026.10.16] 진단
-  if (c.세목 === 'inheritance' && req.some(function (e) { return e.status !== '확보됨' && /봉안|자연\s*장/.test(e.label); })) { try { inhNiche = caseProcInhFacts_(c).niche; } catch (err) { inhNiche = null; } }
-  req.forEach(function (e) {
-    if (e.status === '확보됨') return;
-    if (inhNiche && /봉안|자연\s*장/.test(e.label)) {
+  // [2026.10.17 재설계 — 목적에서 거꾸로] 필요증빙 틀의 미확보 칸을 질문으로 세우지 않는다. 어떤 서류가 필요한지는 세액계산기가 원하는 칸이 정한다
+  //  (필요 칸 질문이 그 칸의 근거 서류를 말한다). 예전엔 틀의 칸마다 "미확보: X"를 묻고, 사건마다 안 맞는 칸을 예외로 걷어내는 규칙이 쌓였다.
+  //  증빙목록은 확보 표시(되먹임)만 하고 미확보는 한 줄로 알린다. 예외 하나: 상속 봉안시설 — 계약서는 있는데 납부 증빙이 없으면 그 공제가 0이라 계산 칸과 직결
+  const missEv = req.filter(function (e) { return e.status !== '확보됨'; });
+  if (missEv.length) lines.push('증빙목록 미확보 ' + missEv.length + '건(질문은 세액계산기가 필요로 하는 칸에서만 합니다): ' + missEv.slice(0, 12).map(function (e) { return e.label; }).join(', ') + (missEv.length > 12 ? ' 외 ' + (missEv.length - 12) + '건' : ''));
+  const nicheEv = c.세목 === 'inheritance' ? missEv.filter(function (e) { return /봉안|자연\s*장/.test(e.label); })[0] : null;
+  if (nicheEv) {
+    let inhNiche = null; try { inhNiche = caseProcInhFacts_(c).niche; } catch (err) { inhNiche = null; }
+    if (inhNiche) {
       const why = '계약서(' + inhNiche.file + (inhNiche.couple ? ', 부부단' : '') + (inhNiche.cands && inhNiche.cands.length ? ' ' + inhNiche.cands.map(function (v) { return v.toLocaleString('ko-KR') + '원'; }).join('·') : '') + ')는 있으나 피상속인 몫 사용료를 낸 영수증·이체내역이 없음' + (inhNiche.payments && inhNiche.payments.length ? '(폴더의 납부 기록 ' + inhNiche.payments.join(', ') + '은 계약 사용대금과 금액이 달라 관리비·다른 고인 몫으로 봄)' : '');
-      items.push(caseProcItem_('ev:' + (e.slotKey || e.label), 'missing', '미확보: 봉안시설 사용료 납부 증빙 — ' + why + ' → 받기 전엔 봉안시설 공제 0(상증령 §9②: 장례비 1천만원과 별도 5백만원 한도)', { mode: 'evidence', evId: virtual ? '' : e.id, label: e.label, suggest: [] }));
-      return;
+      items.push(caseProcItem_('ev:' + (nicheEv.slotKey || nicheEv.label), 'missing', '미확보: 봉안시설 사용료 납부 증빙 — ' + why + ' → 받기 전엔 봉안시설 공제 0(상증령 §9②: 장례비 1천만원과 별도 5백만원 한도)', { mode: 'evidence', evId: virtual ? '' : nicheEv.id, label: nicheEv.label, suggest: [] }));
     }
-    // [2026.10.15] 현금 증여인데 증여계약서가 없고 이체내역만 있으면 — 계약서를 받으라고 따로 묻지 않는다. 증여 내용(증여자·수증자·증여일·증여대상)은
-    //  처리개요 "증여 내용 확인" 질문 한 곳에서 묻는다(세무사님 1:1: 이체내역은 돈이 간 사실만 보여주니 증여 내용을 물어서 처리).
-    if (c.세목 === 'gift' && /증여\s*계약서/.test(e.label)) {
-      let cg = null; try { cg = caseProcCashGift_(c, caseProcParseAll_(c)); } catch (err) {}
-      if (cg && cg.isCash && cg.txOnly) { lines.push('증여계약서 없음 — 이체내역만 있음: 증여 내용은 처리개요 「증여 내용 확인」에서 묻습니다.'); return; }
-    }
-    // [2026.10.16] 1세대1주택 판정 서류(주민등록초본·다른 주택 보유현황·세대원 가족관계증명서) — 판 물건이 국내 주택이 아니면(토지·상가·국외자산) 필요 없다
-    //  (김운래 수용 토지·이종식 농지·박길서 국외 주택에서 매번 3가지를 미확보로 물었다). 판 물건 소재지를 아직 모르면 그대로 묻는다.
-    if (c.세목 === 'transfer' && /(주민\s*등록\s*초본|다른\s*주택|세대원)/.test(e.label)) {
-      const ov1 = c.사건개요 || {}, a1 = (Array.isArray(ov1.물건목록) && ov1.물건목록[0]) || ov1;
-      const loc1 = String(a1.assetLocation || a1.소재지 || '');
-      const overseas = a1.국외자산 === 'Y' || /^[A-Za-z0-9\s,.#-]+$/.test(loc1.trim()) && /[A-Za-z]{3,}/.test(loc1);
-      // 국내는 확실한 근거가 있을 때만: 그 소재지 등기부가 토지 등기부뿐(건물·집합건물 없음)이거나, 수용 보상 서류가 있는 토지
-      const regs1 = docs.filter(function (f) { return f.p && f.p.t === 'registry' && f.p.loc && tcLocSame_(f.p.loc, loc1); });
-      const landOnly = regs1.length && regs1.every(function (f) { return (f.p.rk || []).length && f.p.rk.every(function (k) { return /^토지/.test(k); }); });
-      const expro = files.some(function (f) { return /보상금|재결|수용/.test(f.name); }) && !/아파트|빌라|주택|연립|다세대|\d+\s*호/.test(loc1);
-      if (loc1 && (overseas || landOnly || expro)) { lines.push('해당 없음: ' + e.label + ' — 판 물건이 ' + (overseas ? '국외자산(1세대1주택 비과세 대상 아님)' : landOnly ? '토지(등기부가 토지뿐 — ' + loc1.slice(0, 40) + ')' : '수용 보상 토지(' + loc1.slice(0, 40) + ')')); return; }
-    }
-    // [2026.10.16] 상속 봉안시설·자연장지 공제는 쓴 경우에만 — 폴더에 봉안 관련 서류가 전혀 없으면 묻지 않는다(장례비 정산서에 봉안 항목이 있으면 그대로 물음)
-    if (c.세목 === 'inheritance' && /봉안|자연\s*장/.test(e.label) && !inhNiche && !hay.some(function (h) { return /봉안|납골|추모|자연\s*장|수목장/.test(h.s); })) { lines.push('해당 없음: ' + e.label + ' — 봉안시설·자연장지 관련 서류 없음(사용했으면 계약서·영수증을 넣어 주세요)'); return; }
-    // [2026.10.16] 수용 사건 — 매매계약서가 없다(보상금 내역서·재결서·공탁서가 양도가액·양도일 근거). 김운래: "미확보: 양도 매매계약서"로 물었다
-    if (c.세목 === 'transfer' && /양도\s*매매\s*계약서/.test(e.label) && files.some(function (f) { return /보상금|재결|수용|공탁/.test(f.name); })) { lines.push('해당 없음: ' + e.label + ' — 수용(보상금 내역서·재결서·공탁서로 양도가액·양도일 확인)'); return; }
-    // [2026.10.16] 증여 — 조건부 칸("현금증여 입증", "부담부증여인 경우", "해당 시")은 그 경우가 아니면 묻지 않고 한 줄로 밝힌다(강정화(임세택): 부동산 증여인데 이체내역·채무인수 자료를 미확보로 물음)
-    if (c.세목 === 'gift' && /(현금\s*증여|부담부|해당\s*시)/.test(e.label)) {
-      let all0 = []; try { all0 = caseProcParseAll_(c); } catch (err) {}
-      let cg = null; try { cg = caseProcCashGift_(c, all0); } catch (err) {}
-      const ov0 = c.사건개요 || {};
-      const realGift = all0.some(function (x) { return x.p.type === 'registry' || (x.p.type === 'giftcontract' && /부동산/.test(String((x.p.result || {}).재산종류 || ''))); });
-      const debt = !!String(ov0.giftDebtAssumed || '').replace(/[^\d]/g, '') || all0.some(function (x) { return x.p.type === 'giftcontract' && (x.p.result || {}).부담부; });
-      const why = /현금\s*증여/.test(e.label) ? (!(cg && cg.isCash) && realGift ? '부동산 증여(현금 증여 아님)' : '')
-        : /부담부/.test(e.label) ? (!debt ? '부담부증여 아님(증여계약서·처리개요에 인수채무 없음)' : '')
-        : (re0 => re0 && !hay.some(function (h) { return re0.test(h.s) && !/감정\s*평가/.test(h.f.name); }) ? '해당 서류 없음(해당 시에만 필요)' : '')(caseProcEvRe_(e.label));
-      if (why) { lines.push('해당 없음: ' + e.label + ' — ' + why); return; }
-    }
-    // [2026.10.16 1:1 김금옥 — 세무사님 원칙] 양도의 가족관계증명서는 양수인과 특수관계라는 내용이 확인될 때만 받는다(특수관계 사건분류는 '거래상대방 가족관계증명서'가 따로 깔림)
-    if (c.세목 === 'transfer' && /가족\s*관계/.test(e.label) && !/거래\s*상대방/.test(e.label) && !/특수관계|이월과세|우회/.test(String((c.사건개요 || {}).사건분류 || ''))) {
-      const re1 = caseProcEvRe_(e.label);
-      if (!(re1 && hay.some(function (h) { return re1.test(h.s); }))) { lines.push('지금은 받지 않음: ' + e.label + ' — 양수인과 특수관계라는 내용이 서류에 없음(특수관계가 확인될 때만 받음)'); return; }
-    }
-    // [2026.10.16 1:1 김금옥 — 세무사님 원칙] 양도의 주민등록초본이 없으면 — 양도 계약서 서명란의 매도인 주민등록사항(주민번호·주소)을 보여주고
-    //  "이대로(계약서로 갈음) / 추가로 받기"를 묻는다(예전: "미확보: 주민등록초본"만 물어 무엇을 근거로 판단할지 없었음)
-    if (c.세목 === 'transfer' && /주민\s*등록\s*초본/.test(e.label)) {
-      const re2 = caseProcEvRe_(e.label);
-      if (!(re2 && hay.some(function (h) { return re2.test(h.s); }))) {
-        const nm2 = String(c.납세자 || '').replace(/\s+/g, '');
-        let hit2 = null;
-        docs.some(function (f) {
-          if (!f.p || f.p.t !== 'contract') return false;
-          let tx2 = ''; try { tx2 = tc_docText_(f) || ''; } catch (err) {}
-          const p2 = tcContractParties_(tx2).filter(function (x) { return nm2 && tcNameIn_(x.seller.name, [nm2]); })[0];
-          if (p2 && (p2.seller.regNo || p2.seller.addr)) hit2 = { f: f, s: p2.seller };
-          return !!hit2;
-        });
-        if (hit2) {
-          items.push(caseProcItem_('ev:' + (e.slotKey || e.label), 'missing', '미확보: ' + e.label + ' — 양도 계약서(' + hit2.f.name + ') 매도인란 주민등록사항: ' + hit2.s.name + (hit2.s.regNo ? ' ' + hit2.s.regNo : '') + (hit2.s.addr ? ', 주소 ' + hit2.s.addr : '') +
-            '. 이대로 하려면 계약서를 체크해 [체크한 파일로 확보], 초본을 추가로 받으려면 [받을 예정]', { mode: 'evidence', evId: virtual ? '' : e.id, label: e.label, suggest: [{ id: hit2.f.id, name: hit2.f.name }] }));
-          return;
-        }
-      }
-    }
-    // [2026.10.15] 신분증·위임장·인감증명은 신고 제출용일 뿐 세액·판단과 무관 — ⚠ 질문으로 세우지 않고 안내 한 줄로(정답지 점검에서 불필요 질문으로 반복 검출)
-    if (/신분증|위임장|인감/.test(e.label)) { lines.push('제출용 서류(세액과 무관, 신고 전 받기): ' + e.label + ' 미확보'); return; }
-    const re = caseProcEvRe_(e.label);
-    const hits = re ? hay.filter(function (h) { return re.test(h.s) && roleOk(e.label, h.f.name); }).slice(0, 3) : [];
-    const ask = { mode: 'evidence', evId: virtual ? '' : e.id, label: e.label, suggest: hits.map(function (h) { return { id: h.f.id, name: h.f.name }; }) };
-    if (hits.length) items.push(caseProcItem_('ev:' + (e.slotKey || e.label), 'check', '‘' + e.label + '’ — 폴더에 비슷한 서류가 있습니다: ' + hits.map(function (h) { return h.f.name; }).join(', ') + ' (증빙목록은 미확보)', ask));
-    else items.push(caseProcItem_('ev:' + (e.slotKey || e.label), 'missing', '미확보: ' + e.label, ask));
-  });
+  }
   // [2026.10.15] ⚠ 질문은 이 세목의 세액 계산에 쓰는 서류 종류만 — 보도자료·건강보험 안내문·전세 보증보험증권·주민등록초본(상속) 같은
   // 계산과 무관한(또는 다른 서류로 잘못 분류된) 파일의 ⚠까지 물어 신고 끝난 사건에도 질문이 10~20개씩 남았다.
   const relevantT = CASEPROC_RELEVANT_TYPES_[c.세목];
@@ -26247,12 +26131,12 @@ function caseProcMemoCands_(c, res) {
   const targets = res.items.filter(function (it) { return it.ask && /^(input|choose)$/.test(it.ask.mode) && it.ask.label; });
   if (!targets.length || !String(c.폴더ID || '').trim()) return res;
   let memos = [];
-  try { memos = caseProcMemoTexts_(c).read.filter(function (m) { return m.text; }); } catch (e) { return res; }
+  try { memos = caseProcHypTexts_(c); } catch (e) { return res; } // [2026.10.17 재설계] 상담 메모·의뢰서 + 대화기록(가설 출처)
   if (!memos.length) return res;
   const lineList = [];
-  memos.forEach(function (m) { String(m.text).split(/\n+/).forEach(function (l) { l = l.trim(); if (l.length >= 3 && l.length <= 300) lineList.push({ file: m.file, l: l, n: l.replace(/\s+/g, '') }); }); });
+  memos.forEach(function (m) { String(m.text).split(/\n+/).forEach(function (l) { l = l.trim(); if (l.length >= 3 && l.length <= 300) lineList.push({ file: m.file, l: l, n: l.replace(/\s+/g, ''), chat: !!m.chat }); }); });
   targets.forEach(function (it) {
-    const core = String(it.ask.label).replace(/^물건\d+\s*/, '').replace(/\s+/g, '');
+    const core = String(it.ask.label).replace(/^(물건|자산)\d+\s*|^양도계약\s*\d+\s*|^국외자산\s*/, '').replace(/\s+/g, ''); // 계산기 질문 이름(양도계약 01 양도가액·자산2 취득일)도
     const syn = CASEPROC_MEMO_SYN_[core] || [core];
     const type = it.ask.input || 'text';
     const have = (it.ask.cands || []).map(function (x) { return String(x.v); });
@@ -26284,7 +26168,7 @@ function caseProcMemoCands_(c, res) {
       }
       else { const m = /^\s*[:：\t]?\s*([^\t]{2,40})/.exec(rest); if (m) v = m[1].replace(/\*+|`+/g, '').replace(/^\s*[:：]\s*/, '').trim(); } // 메모의 마크다운 굵게(**소재지:**) 기호는 값이 아님
       if (!v || have.indexOf(v) !== -1 || add.some(function (y) { return y.v === v; })) return;
-      add.push({ v: v, src: '상담 메모(' + x.file + '): "' + x.l.slice(0, 50) + '"' });
+      add.push({ v: v, src: (x.chat ? x.file : '상담 메모(' + x.file + ')') + ': "' + x.l.slice(0, 50) + '"' });
     });
     if (add.length) { it.ask.cands = (it.ask.cands || []).concat(add); if (it.ask.mode === 'input') it.ask.mode = 'choose'; }
   });
@@ -26343,66 +26227,20 @@ function caseProcOverseasFacts_(c) {
   return (out.sale || out.appraisal || out.deed || out.taxes.length) ? out : null;
 }
 // 처리개요 단계 — 국외자산 질문(환율·지분·5년 거주) + 서류 달러 금액 × 답한 환율 = 원화 후보
-function caseProcOverseasItems_(c, ov, lines, items, of) {
-  if (!of) return;
-  const won = function (v) { return Math.round(v).toLocaleString('ko-KR') + '원'; };
-  const usd = function (v) { return '$' + Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }); };
-  const num = function (v) { const n = Number(String(v == null ? '' : v).replace(/[^\d.]/g, '')); return n > 0 ? n : 0; };
-  const a0 = (Array.isArray(ov.물건목록) && ov.물건목록[0]) || {};
-  const has = function (k) { return String(a0[k] == null ? '' : a0[k]).trim() !== ''; };
-  lines.push('국외자산 서류(번역본): ' + [of.sale ? '매도 정산서 ' + usd(of.sale.price) + ' 종결 ' + of.sale.date + '(' + of.sale.file + ')' : '', of.deed ? '증여증서 ' + of.deed.date + '(' + of.deed.file + ')' : '', of.appraisal ? '감정평가 ' + usd(of.appraisal.usd) + (of.appraisal.date ? ' ' + of.appraisal.date + ' 기준' : '') + '(' + of.appraisal.file + ')' : '', of.buy ? '매수 정산서 ' + usd(of.buy.price) + '(' + of.buy.file + ')' : '', of.taxes.map(function (x) { return x.who + ' ' + usd(x.usd) + ' ' + x.date + '(' + x.file + ')'; }).join(', ')].filter(Boolean).join(' · '));
-  if (a0.국외자산 !== 'Y') items.push(caseProcItem_('oa:flag', 'judge', '해외 부동산 양도 서류가 있습니다(' + (of.sale ? of.sale.loc : '') + ') — 국외자산 양도소득세(소득세법 §118의2~8, 국내자산과 별도 계산)로 처리할까요?',
-    { mode: 'options', target: 'ovAsset:0:국외자산', label: '국외자산 여부', options: [{ label: '예 — 국외자산으로 계산', value: 'Y' }, { label: '아니오', value: 'N' }] }));
-  if (a0.국외자산 === 'N') return;
-  if (of.sale && of.sale.loc && !has('assetLocation')) items.push(caseProcItem_('oa:loc', 'missing', '물건1 소재지 — 매도 정산서의 부동산 주소입니다.', { mode: 'choose', target: 'ovAsset:0:assetLocation', input: 'text', label: '물건1 소재지', cands: [{ v: of.sale.loc.replace(/\s+/g, ' ').trim(), src: '매도 정산서 PROPERTY — ' + of.sale.file }] }));
-  let resDocs = [];
-  try { resDocs = caseProcFiles_(c).filter(function (f) { return /출입국|주민\s*등록|거소|체류/.test(f.name); }).map(function (f) { return f.name; }); } catch (e) {}
-  if (!has('oa거주5년')) items.push(caseProcItem_('oa:res5', 'judge', '양도일까지 계속 5년 이상 국내에 주소·거소를 둔 거주자인가요? (국외자산 양도세 납세의무 §118의2 — 아니면 신고 대상 아님)' + (resDocs.length ? ' 근거 서류: ' + resDocs.join(', ') : ' 근거 서류(출입국 사실증명·주민등록초본)가 폴더에 없습니다.'),
-    { mode: 'options', target: 'ovAsset:0:oa거주5년', label: '5년 이상 거주', options: [{ label: '예(5년 이상 거주자)', value: 'Y' }, { label: '아니오', value: 'N' }] }));
-  const fxT = num(ov.fx양도), fxA = num(ov.fx취득), share = num(a0.oa지분) || 0;
-  if (of.sale && !fxT) items.push(caseProcItem_('oa:fxT', 'missing', '양도일(' + (of.sale.date || '종결일') + ') 미국 달러 기준환율(원/달러)을 알려 주세요 — 양도가액 ' + usd(of.sale.price) + '을 원화로 바꿉니다(시행령 §178의5①).',
-    { mode: 'input', target: 'ov:fx양도', input: 'text', label: '양도일 기준환율', cands: [] }));
-  const acqDate = (of.deed && of.deed.date) || (of.appraisal && of.appraisal.date) || '';
-  if ((of.appraisal || of.buy) && !fxA) items.push(caseProcItem_('oa:fxA', 'missing', '취득일(' + (acqDate || '취득대금 지급일') + ') 미국 달러 기준환율(원/달러)을 알려 주세요 — 취득가액을 원화로 바꿉니다.',
-    { mode: 'input', target: 'ov:fx취득', input: 'text', label: '취득일 기준환율', cands: [] }));
-  if (of.sale && /\band\b|,|&|·/.test(of.sale.sellers || '') && !share) items.push(caseProcItem_('oa:share', 'judge', '매도인이 여럿입니다(' + of.sale.sellers + ') — 납세자 지분(%)을 알려 주세요. 양도가액·취득가액·양도비·외국납부세액에 지분을 곱합니다.',
-    { mode: 'options', target: 'ovAsset:0:oa지분', label: '납세자 지분', withInput: true, input: 'text', options: [{ label: '50%', value: '50' }, { label: '100%(단독)', value: '100' }] }));
-  const sh = share ? share / 100 : 1;
-  const shTxt = share ? ' × 지분 ' + share + '%' : '';
-  if (of.sale && fxT && !has('양도가액')) items.push(caseProcItem_('oa:tp', 'judge', '양도가액 — 매도 정산서 총 매매대금 ' + usd(of.sale.price) + ' × ' + fxT + shTxt + (of.sale.discount ? ' (정산서의 할인 ' + usd(of.sale.discount) + '는 비용 쪽 조정이라 매매대금에 넣지 않음)' : ''),
-    { mode: 'choose', target: 'ovAsset:0:양도가액', input: 'money', label: '물건1 양도가액', cands: [{ v: String(Math.round(of.sale.price * fxT * sh)), src: '매도 정산서 ' + usd(of.sale.price) + ' × ' + fxT + shTxt + ' — ' + of.sale.file }] }));
-  if (of.sale && of.sale.date && !has('양도일')) lines.push('양도일 후보: 정산서 종결일 ' + of.sale.date + '(' + of.sale.file + ') — 대금 수령일·등기일과 다르면 [기준일]에서 고치세요');
-  if (acqDate && !has('취득일')) items.push(caseProcItem_('oa:ad', 'judge', '취득일 — 증여로 취득했으면 증여일(증여증서 날짜), 매수했으면 매수 정산서 날짜입니다.',
-    { mode: 'choose', target: 'ovAsset:0:취득일', input: 'date', label: '물건1 취득일', cands: [of.deed && of.deed.date ? { v: of.deed.date, src: '증여증서 날짜 — ' + of.deed.file } : null, of.buy && of.buy.date ? { v: of.buy.date, src: '매수 정산서 — ' + of.buy.file } : null].filter(Boolean) }));
-  if (fxA && !has('취득가액')) {
-    const cc = [];
-    if (of.appraisal) cc.push({ v: String(Math.round(of.appraisal.usd * fxA * sh)), src: '증여 취득 = 증여일 시가 — 감정평가 ' + usd(of.appraisal.usd) + ' × ' + fxA + shTxt + ' — ' + of.appraisal.file });
-    if (of.buy && of.buy.price) cc.push({ v: String(Math.round(of.buy.price * fxA * sh)), src: '매수 취득 — 매수 정산서 ' + usd(of.buy.price) + ' × ' + fxA + shTxt + '(이 환율이 매수일 환율일 때만) — ' + of.buy.file });
-    if (cc.length) items.push(caseProcItem_('oa:ap', 'judge', '취득가액 — 증여로 받았으면 증여일 현재 시가(감정평가액), 직접 샀으면 매수가액입니다. 맞는 것을 고르세요.', { mode: 'choose', target: 'ovAsset:0:취득가액', input: 'money', label: '물건1 취득가액', cands: cc }));
-  }
-  if (of.sale && fxT && !has('oa양도비')) {
-    const sure = of.sale.exp.filter(function (x) { return x.sure; }), sumU = sure.reduce(function (s, x) { return s + x.usd; }, 0) - (of.sale.discount || 0);
-    items.push(caseProcItem_('oa:te', 'judge', '양도비 — 정산서 비용 중 중개·에스크로·권원보험·이전세·등록 수수료 ' + sure.length + '건 ' + usd(sumU) + (of.sale.discount ? '(할인 ' + usd(of.sale.discount) + ' 차감)' : '') + ' × ' + fxT + shTxt + '. 대출 상환·이자·재산세 안분은 양도비가 아니라 뺐습니다. 보증보험·매수인 크레딧 등은 넣지 않았습니다(넣으려면 직접 입력).',
-      { mode: 'choose', target: 'ovAsset:0:oa양도비', input: 'money', label: '물건1 양도비', cands: [{ v: String(Math.round(sumU * fxT * sh)), src: '정산서 양도비 ' + sure.length + '건 ' + usd(sumU) + ' × ' + fxT + shTxt + ' — ' + of.sale.file }] },
-      of.sale.exp.map(function (x) { return (x.sure ? '☑ ' : '☐ ') + x.label + ' ' + usd(x.usd); }).join('\n')));
-  }
-  if (of.taxes.length && fxT && !has('oa외국납부세액')) {
-    const tU = of.taxes.reduce(function (s, x) { return s + x.usd; }, 0);
-    items.push(caseProcItem_('oa:ft', 'judge', '외국납부세액 — ' + of.taxes.map(function (x) { return x.who + ' ' + usd(x.usd) + '(' + x.date + (x.payer ? ', 납부 계정 ' + x.payer : '') + ')'; }).join(' + ') + ' = ' + usd(tU) + (of.taxes.some(function (x) { return x.payer; }) ? '. 납부한 사람이 납세자와 다르면 공제 대상인지 확인하세요' : '') + '. 예납세액은 확정 전 금액이라 미국 확정신고 뒤 실제 세액으로 바뀔 수 있습니다. 환율은 납부일 환율이 원칙인데 여기선 양도일 환율(' + fxT + ')로 계산했습니다.',
-      { mode: 'choose', target: 'ovAsset:0:oa외국납부세액', input: 'money', label: '물건1 외국납부세액', cands: [{ v: String(Math.round(tU * fxT * sh)), src: '예납 ' + usd(tU) + ' × ' + fxT + shTxt + ' — ' + of.taxes.map(function (x) { return x.file; }).join(', ') }] }));
-  }
-}
 // [2026.10.15 1단계 ②] 상담 메모 대조 — 메모에 적힌 값과 이미 채워진 처리개요 칸을 맞춰 본다.
 //  같으면 "메모와 일치"(교차확인 근거), 다르면 어느 값이 맞는지 묻는다. 예전엔 메모를 빈 칸 질문의 후보로만 써서, 칸이 차 있으면 메모를 읽고도 아무 데도 안 썼다.
 function caseProcMemoCross_(c, res) {
   if (!res || !res.ok || !String(c.폴더ID || '').trim()) return;
   let memos = [];
-  try { memos = caseProcMemoTexts_(c).read.filter(function (m) { return m.text; }); } catch (e) { return; }
+  try { memos = caseProcHypTexts_(c); } catch (e) { return; } // [2026.10.17 재설계] 상담 메모·의뢰서 + 대화기록(가설 출처)
   if (!memos.length) return;
   const ov = (res.case && res.case.사건개요) || (function () { try { return akReadCase_(c.id).사건개요 || {}; } catch (e) { return c.사건개요 || {}; } })() || {};
-  const a0 = (Array.isArray(ov.물건목록) && ov.물건목록[0]) || ov;
+  // [2026.10.17 재설계] 양도 — 대조 대상은 세액계산기 입력(증빙 검산·세무사님 답으로 채운 값). 가설(메모·대화)이 그 값과 다르면 묻지 않고 밝힌다:
+  //  서류로 확인된 값이 메모보다 앞선다(노오섭: 처리개요 2.07억 ↔ 메모 2억). 계산기 칸이 비어 있으면 메모 값은 그 칸 질문의 후보로 쓰인다(caseProcMemoCands_)
+  const tc = c.세목 === 'transfer' ? ((caseProcLoad_(c.id) || {}).trCalc || {}) : {};
+  const ts = tc.state || {}, tsrc = tc.src || {}, tc0 = (ts.transferContracts || [])[0] || {}, ta0 = (ts.transferAssets || [])[0] || {};
   const slots = {
-    transfer: [['양도가액', 'money', a0.양도가액, 'ovAsset:0:양도가액', '물건1 양도가액'], ['취득가액', 'money', a0.취득가액, 'ovAsset:0:취득가액', '물건1 취득가액'], ['취득일', 'date', a0.취득일, 'ovAsset:0:취득일', '물건1 취득일']],
+    transfer: [['양도가액', 'money', tc0.totalPrice || ta0.transferPrice, 'calc:c0.totalPrice', '양도가액', tsrc['c0.totalPrice'] || tsrc['a0.transferPrice']], ['취득가액', 'money', ta0.acquisitionPrice, 'calc:a0.acquisitionPrice', '취득가액', tsrc['a0.acquisitionPrice']], ['취득일', 'date', ta0.acquisitionDate, 'calc:a0.acquisitionDate', '취득일', tsrc['a0.acquisitionDate']]],
     gift: [['증여재산가액', 'money', ov.giftAmount, 'ov:giftAmount', '증여재산가액']],
     inheritance: []
   }[c.세목] || [];
@@ -26434,13 +26272,20 @@ function caseProcMemoCross_(c, res) {
     const me = String(c.납세자 || '').replace(/\s+/g, '');
     let diff = agree.length ? [] : found.filter(function (f) { return !same(f.v); });
     if (c.세목 === 'gift') diff = diff.filter(function (f) { return me.length >= 2 && String(f.line).replace(/\s+/g, '').indexOf(me) !== -1; });
-    if (agree.length) res.lines.push('✅ ' + s[4] + ' ' + (s[1] === 'money' ? won(cur) : cur) + ' — 상담 메모(' + agree[0].file + ')와 일치');
+    if (agree.length) res.lines.push('✅ ' + s[4] + ' ' + (s[1] === 'money' ? won(cur) : cur) + ' — 가설(' + agree[0].file + ')과 서류가 일치');
+    if (diff.length && c.세목 === 'transfer') { res.lines.push('🧭 가설 ↔ 서류: ' + s[4] + ' — ' + diff.map(function (f) { return (s[1] === 'money' ? won(f.v) : f.v) + '(' + f.file + ': "' + f.line.slice(0, 30) + '")'; }).join(', ') + ' ↔ 계산기 ' + (s[1] === 'money' ? won(cur) : cur) + '(' + (s[5] || '서류') + ') — 서류로 확인된 값으로 둡니다(메모·대화는 들은 말이라 참고)'); return; }
     if (diff.length) res.items.push(caseProcItem_('memo:' + s[3] + ':' + diff[0].v, 'check', s[4] + ': 처리개요 ' + (s[1] === 'money' ? won(cur) : cur) + ' ↔ 상담 메모 ' + diff.map(function (f) { return (s[1] === 'money' ? won(f.v) : f.v) + '(' + f.file + ')'; }).join(', ') + ' — 어느 값이 맞나요?',
       { mode: 'choose', target: s[3], input: s[1], label: s[4], cands: [{ v: s[1] === 'money' ? digits(cur) : cur, src: '처리개요(지금 값)' }].concat(diff.map(function (f) { return { v: f.v, src: '상담 메모(' + f.file + '): "' + f.line + '"' }; })) }));
   });
 }
 function caseProcOverview_(c) {
+  // [2026.10.17 재설계] 사건파악 가설을 서류로 확인·반박하고(작업관리 빈 칸 되먹임·다르면 질문), 그 뒤 세액계산기가 원하는 칸을 채운다
+  const gl = [], gi = [];
+  let gc = { changed: false };
+  try { gc = caseProcGraspCheck_(c, gl, gi); } catch (e) { gl.push('⚠ 사건파악 확인 중 오류: ' + (e && e.message || e)); }
   const r = caseProcOverview0_(c);
+  if (r && r.ok) { r.lines = gl.concat(r.lines || []); r.items = gi.concat(r.items || []); if (gc.changed) r.loop = Object.assign({}, r.loop || {}, { again: '사건파악으로 작업관리 값을 고침 — 증빙 대조를 그 값으로 다시' }); }
+  if (r && r.ok && c.세목 !== 'transfer' && CASEPROC_TAX_LABEL_[c.세목]) { try { const cc = r.case || c, nd = giNeeds_(cc), ns = trcNeedsSummary_(nd); r.needs = ns; r.lines.push('🎯 세액계산기 필수 칸 ' + ns.total + '개 — 채움 ' + ns.filled + '개(근거 있음 ' + ns.withSrc + ')' + (ns.missing.length ? ' · 남음: ' + ns.missing.join(', ') : ' · 모두 채움')); caseProcPatch_(c.id, function (sv) { sv.needs = { at: new Date().toISOString(), list: nd, sum: ns }; }); } catch (e) {} }
   try { caseProcMemoCands_(c, r); } catch (e) {}
   try { caseProcMemoCross_(c, r); } catch (e) {}
   try { caseProcNoteUsed_(c, r); } catch (e) {} // [2026.10.15 1단계 ②] 사실장부 "쓰인 곳"
@@ -26493,15 +26338,8 @@ function caseProcGiWhy_(key, label, uniq) {
 function caseProcOverview0_(c) {
   const items = [], lines = [];
   const ov = JSON.parse(JSON.stringify(c.사건개요 || {}));
-  (CASEPROC_OV_REQUIRED_[c.세목] || []).forEach(function (r) {
-    if (String(ov[r[0]] == null ? '' : ov[r[0]]).trim()) return;
-    if (c.세목 === 'gift' || c.세목 === 'inheritance') return; // 증여·상속은 서류 사실과 함께 caseProcGiftInhFacts_에서 묻는다
-    if (c.세목 === 'transfer' && String(c.폴더ID || '').trim()) return; // [2026.10.17] 양도는 계산기 칸 질문(trc:seller.name)으로
-    const cands = [];
-    if (/Name$/.test(r[0]) && c.납세자 && (r[0] === 'giftDoneeName' || r[0] === 'trTransferorName' || r[0] === 'ihDeceasedName')) cands.push({ v: c.납세자, src: '사건 납세자' });
-    items.push(caseProcItem_('ov:' + r[0], 'missing', '처리개요 「' + r[1] + '」이(가) 비어 있습니다.', { mode: 'input', target: 'ov:' + r[0], input: r[2], options: r[0] === 'giftRelation' ? CASEPROC_GIFT_RELATIONS_ : null, cands: cands, label: r[1] }));
-  });
-  if (CASEPROC_TAX_LABEL_[c.세목] && !String(ov.사건분류 || '').trim() && !(c.세목 === 'transfer' && String(c.폴더ID || '').trim())) { // [2026.10.17] 양도는 계산기 순서(특례는 맨 뒤)로 trcQuestions_에서
+  // [2026.10.17 재설계] 필수 칸 질문은 세목마다 한 곳에서 — 양도는 세액계산기 칸 질문(trcQuestions_), 증여·상속은 서류 사실과 함께(caseProcGiftInhFacts_)
+  if (CASEPROC_TAX_LABEL_[c.세목] && !String(ov.사건분류 || '').trim() && c.세목 !== 'transfer') { // [2026.10.17] 양도는 계산기 순서(특례는 맨 뒤)로 trcQuestions_에서
     let tpl = WORK_EVIDENCE_TEMPLATES_[c.세목] && WORK_EVIDENCE_TEMPLATES_[c.세목].사건분류 ? Object.keys(WORK_EVIDENCE_TEMPLATES_[c.세목].사건분류) : [];
     let ruled = '';
     // [2026.10.14] 상속 — 서류로 이미 아닌 것이 확실한 분류는 빼고, 남은 판단만 묻는다(배우자 사망·상속포기 아님 등은 묻지 않음)
@@ -26545,282 +26383,14 @@ function caseProcOverview0_(c) {
     lines.push('처리개요 빈 칸 ' + items.filter(function (i) { return /^ov:/.test(i.id) && (i.kind === 'missing' || i.kind === 'judge'); }).length + '개');
     return { ok: true, lines: lines, items: items, case: cc };
   }
-  if (!String(c.폴더ID || '').trim()) { caseProcTrAskBasics_(c, ov, lines, items, null, []); return { ok: true, lines: lines, items: items }; }
-  const rf = tc_ruleTransferFacts_({ caseId: c.id });
-  CASEPROC_LAST_RF_ = { caseId: c.id, rf: rf }; // 🧪 정답지 점검이 같은 실행 안에서 필요경비·거래 목록을 다시 읽지 않고 쓰게
-  if (!rf || !rf.ok) { lines.push('서류 규칙 정리 실패: ' + (rf && rf.error || '응답 없음')); caseProcTrAskBasics_(c, ov, lines, items, null, []); return { ok: true, lines: lines, items: items }; }
-  // [2026.10.15 1단계 ②③] 국외자산(해외 부동산) 번역본 서류 — 달러 금액·날짜를 읽고 환율·지분·5년 거주를 물어 원화 후보로
-  try { caseProcOverseasItems_(c, ov, lines, items, caseProcOverseasFacts_(c)); } catch (e) { lines.push('⚠ 국외자산 서류 정리 오류: ' + (e && e.message || e)); }
-  // [2026.10.17 세무사님 지시] 증빙 → 세액계산기 입력(계산기 모양) 직접, 질문은 계산기 카드 순서, 처리개요는 요약만 — trcOverview_(Code.js 끝)
-  if (!items.some(function (x) { return /^oa:/.test(x.id); })) return trcOverview_(c, ov, rf, lines, items);
-  // [2026.10.15 1단계 ②③] 수용 보상금 내역서 — 읽은 합계를 양도가액 객관식 후보로(근거 파일과 함께). 어느 금액이 양도가액인지는 세무사님 판단.
-  if ((rf.comps || []).length) {
-    const a0c = (Array.isArray(ov.물건목록) && ov.물건목록[0]) || ov;
-    if (!String(a0c.양도가액 || '').trim()) {
-      const cc = rf.comps.map(function (x) { return { v: String(x.total), src: x.kind + ' 보상금 합계' + (x.count ? '(' + x.count + ')' : '') + ' — ' + x.file + (x.unsure ? ' ⚠원문 확인' : '') }; });
-      if (rf.comps.length > 1) cc.push({ v: String(rf.comps.reduce(function (s, x) { return s + x.total; }, 0)), src: '보상금 합계 전부(' + rf.comps.map(function (x) { return x.kind; }).join('+') + ')' });
-      items.push(caseProcItem_('tr:comp', 'judge', '수용 보상금 내역서에서 읽은 금액입니다 — 물건1 양도가액에 어느 금액을 넣을까요? (지장물 보상 중 건물·구축물은 양도, 수목·시설 이전비·영업보상은 양도가 아닐 수 있어 판단이 필요합니다. 이의재결로 늘어난 금액이 있으면 그 금액으로)',
-        { mode: 'choose', target: 'ovAsset:0:양도가액', input: 'money', label: '물건1 양도가액', cands: cc }));
-    }
-  }
-  // [2026.10.15 1단계 ②③] 증여 취득 — 증여계약서 날짜·평가기간 안 매매사례를 취득일·취득가액 객관식 후보로
-  {
-    const a0g = (Array.isArray(ov.물건목록) && ov.물건목록[0]) || ov, txG = (rf.transactions || [])[0] || {};
-    const isGiftC = function (l) { return (l || []).some(function (x) { return /증여|매매사례/.test(x.src); }); };
-    if ((rf.acqDateCands || []).length && !String(a0g.취득일 || '').trim() && !txG.acquisitionDate)
-      items.push(caseProcItem_('tr:giftAcqDate', 'judge', isGiftC(rf.acqDateCands) ? '증여로 받은 부동산입니다 — 취득일을 골라 주세요(후보: 증여계약일 = 등기부 등기원인일, 증여 등기 접수일 · 증여세 신고서 증여일).' : '취득 계약서에서 읽은 날짜입니다 — 이 물건의 취득일을 골라 주세요(잔금일·등기접수일 중 빠른 날, §98).', { mode: 'choose', target: 'ovAsset:0:취득일', input: 'date', label: '물건1 취득일', cands: rf.acqDateCands }));
-    if ((rf.acqPriceCands || []).length && !String(a0g.취득가액 || '').trim() && !txG.acquisitionPrice)
-      items.push(caseProcItem_('tr:giftAcqPrice', 'judge', (rf.acqPriceCands || []).some(function (x) { return /증여세 신고서/.test(x.src); }) ? '증여로 받은 부동산입니다 — 증여세 신고서에 이 필지의 평가액(1번 후보)이 적혀 있습니다. 취득가액은 증여세 신고·결정가액이므로(소득세법 시행령 §163⑨) 맞으면 고르고, 결정가액이 다르면 직접 넣어 주세요.' : isGiftC(rf.acqPriceCands) ? '증여로 받은 부동산의 취득가액은 증여 당시 평가액입니다(소득세법 시행령 §163⑨ — 증여세 신고·결정가액이 있으면 그 금액). 증여일 평가기간 안의 매매사례를 찾았습니다 — 맞는 금액을 고르거나 증여세 신고가액을 직접 넣어 주세요.' : (rf.acqPriceCands.some(function (x) { return /분양계약서/.test(x.src); }) ? '분양계약서의 분양금액입니다 — 부가가치세 매입세액을 공제·환급받았으면 부가세를 뺀 금액, 받지 않았으면 부가세를 넣은 금액을 고르세요(공제받은 매입세액은 취득가액이 아님).' : '취득 계약서에서 읽은 매매대금입니다 — 이 물건의 취득가액이면 고르세요(여러 물건이면 어느 물건 것인지 확인).'), { mode: 'choose', target: 'ovAsset:0:취득가액', input: 'money', label: '물건1 취득가액', cands: rf.acqPriceCands }));
-  }
-  // [2026.10.15 1단계 ②③] 분양가 내역표 — 취득가액이 비어 있으면 표의 분양가를 객관식 후보로(이 호실 평형·층 값을 고르게)
-  if ((rf.bunyang || []).length && !(rf.acqPriceCands || []).some(function (x) { return /분양계약서/.test(x.src); })) { // 분양계약서 금액이 있으면 그것이 이 호실 값 — 분양가 표에서 고르게 하지 않음
-    const a0b = (Array.isArray(ov.물건목록) && ov.물건목록[0]) || ov;
-    const txA = (rf.transactions || [])[0] || {};
-    if (!String(a0b.취득가액 || '').trim() && !txA.acquisitionPrice) {
-      const bc = [];
-      rf.bunyang.forEach(function (x) { x.prices.forEach(function (v, i) { bc.push({ v: String(v), src: '분양가 내역표 ' + (i + 1) + '번째 값 — ' + x.file }); }); });
-      items.push(caseProcItem_('tr:bunyang', 'judge', '분양가 내역표에서 분양가 ' + bc.length + '개를 읽었습니다 — 이 호실(평형·층)의 분양가를 골라 주세요(취득가액). 부가가치세는 분양가와 별도 줄이라 넣지 않았습니다.',
-        { mode: 'choose', target: 'ovAsset:0:취득가액', input: 'money', label: '물건1 취득가액', cands: bc }));
-    }
-  }
-  const txs = (rf.transactions || []).filter(function (t) { return t.transferPrice || t.acquisitionPrice || t.transferDate; });
-  lines.push('서류 규칙 정리: 계약서 ' + rf.counts.계약서 + ' · 신고필증 ' + rf.counts.신고필증 + ' · 등기부 ' + rf.counts.등기부 + ' · 취득세 ' + rf.counts.취득세 + ' · 법무사 ' + rf.counts.법무사 + ' → 양도거래 ' + txs.length + '건');
-  (rf.evidence || []).filter(function (e) { return /⚠|찾지 못함|확정 못/.test(e); })
-    .filter(function (e) { return !(/^취득 계약서\(납세자가 매수인/.test(e) && txs.length === 1 && txs[0].stdConv && txs[0].stdConv.transfer); }) // [2026.10.16] 환산용 기준시가 질문이 같은 일을 묻는다(중복)
-    .forEach(function (e) {
-    items.push(caseProcItem_('rf:' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, e, Utilities.Charset.UTF_8)).slice(0, 10), 'check', e, { mode: 'note' }));
-  });
-  // [2026.10.15 일괄점검 ③] 서류에서 거래를 못 찾았으면(서류 없음·판독 실패) 말없이 끝내지 않고 계산에 꼭 필요한 칸을 직접 묻는다
-  if (!txs.length) { lines.push('서류에서 양도거래를 찾지 못했습니다 — 계산에 필요한 칸을 아래 질문으로 정해 주세요.'); caseProcTrAskBasics_(c, ov, lines, items, rf, txs); return { ok: true, lines: lines, items: items }; }
-  const isBlankAsset = function (a) { return !a || !['assetLocation', '양도가액', '취득가액', '취득일'].some(function (k) { return String(a[k] || '').trim(); }); };
-  let assets = Array.isArray(ov.물건목록) && ov.물건목록.length ? ov.물건목록 : [];
-  if (!assets.length && (ov.assetLocation || ov.양도가액 || ov.취득가액 || ov.취득일)) assets = [{ assetType: ov.assetType || '', assetKind: ov.assetKind || '', assetLocation: ov.assetLocation || '', assetDong: ov.assetDong || '', assetHo: ov.assetHo || '', assetDongList: ov.assetDongList || [], 취득일: ov.취득일 || '', 양도가액: ov.양도가액 || '', 취득가액: ov.취득가액 || '', 취득계약구분: '', 양도계약구분: '' }];
-  const fills = [], fillSrc = []; // fillSrc: [물건 순번, 칸, 값, 근거 파일] — 반영 현황표에 칸마다 근거 파일을 보이게(2026-10-15 1단계 ②)
-  // 거래 i번째의 양도·취득 근거 파일 — 서류 규칙 정리 기록("양도: 파일 — …", "취득: 파일 — …")에서
-  const evFile = function (kind, i) {
-    const ls = (rf.evidence || []).filter(function (e) { return e.indexOf(kind + ': ') === 0; });
-    const l = ls[i] || (ls.length === 1 ? ls[0] : '');
-    const m = /매도 계약서 없음 → 등기부\((.+?)\)\s/.exec(l) || /^[^:]+:\s*(.+?)(?:\s+—|,\s|$)/.exec(l); // 파일 이름에 괄호가 있어도 되게
-    return m ? m[1].trim() : '';
-  };
-  const digits = function (v) { return String(v == null ? '' : v).replace(/[^\d]/g, ''); };
-  const won = function (v) { return Number(digits(v) || 0).toLocaleString('ko-KR') + '원'; };
-  txs.forEach(function (t, i) {
-    let a = assets.filter(function (x) { return x.assetLocation && t.assetLocation && tcLocSame_(x.assetLocation, t.assetLocation); })[0];
-    if (!a) a = assets.filter(isBlankAsset)[0];
-    // 물건 수와 거래 수가 같고 그 자리 물건에 소재지가 아직 없으면 같은 순서끼리 짝(값이 다르면 아래에서 확인필요로)
-    if (!a && assets.length === txs.length && assets[i] && !String(assets[i].assetLocation || '').trim()) a = assets[i];
-    if (!a && !assets.length) { a = {}; assets.push(a); }
-    if (!a) {
-      items.push(caseProcItem_('tx:' + (t.assetLocation || i), 'check', '서류상 양도거래(' + (t.assetLocation || '소재지 미확인') + ')가 처리개요 물건목록의 어느 물건과도 연결되지 않습니다.', { mode: 'view', view: 'casehandling', label: '처리개요에서 물건 추가·소재지 고치기' }));
-      return;
-    }
-    const n = assets.indexOf(a) + 1;
-    [['assetLocation', '소재지', t.assetLocation, 'text'], ['양도가액', '양도가액', t.transferPrice, 'money'], ['취득가액', '취득가액', t.acquisitionPrice, 'money'], ['취득일', '취득일', t.acquisitionDate, 'date']].forEach(function (f) {
-      const v = f[2];
-      if (v === null || v === undefined || v === '') return;
-      const money = f[3] === 'money';
-      const cur = String(a[f[0]] == null ? '' : a[f[0]]).trim();
-      if (!cur) { a[f[0]] = money ? String(digits(v)) : String(v); fills.push('물건' + n + ' ' + f[1] + ' ' + (money ? won(v) : v)); fillSrc.push([n - 1, f[0], a[f[0]], evFile(/^취득/.test(f[0]) ? '취득' : '양도', i)]); return; }
-      const same = money ? digits(cur) === digits(v) : (f[0] === 'assetLocation' ? tcLocSame_(cur, v) || cur.replace(/\s+/g, '') === String(v).replace(/\s+/g, '') : cur === String(v));
-      if (!same) items.push(caseProcItem_('cf:' + n + ':' + f[0] + ':' + digits(v).slice(0, 12), 'check', '처리개요 물건' + n + ' ' + f[1] + ' ' + (money ? won(cur) : cur) + ' ↔ 서류 ' + (money ? won(v) : v) + ' — 어느 값이 맞나요?',
-        { mode: 'choose', target: 'ovAsset:' + (n - 1) + ':' + f[0], input: f[3], label: '물건' + n + ' ' + f[1], cands: [{ v: money ? digits(cur) : cur, src: '처리개요(지금 값)' }, { v: money ? String(digits(v)) : String(v), src: '서류(규칙 정리, 검산 일치)' }] }));
-    });
-  });
-  if (txs.length === 1 && txs[0].transferDate) {
-    const tdFile = '매매계약서·신고필증·등기부(규칙 정리)';
-    if (!c.기준일) {
-      const ap = caseProcApplyBase_(c.id, txs[0].transferDate, tdFile, '양도일');
-      lines.push(ap.ok ? '✏ ' + ap.message : '⚠ 양도일을 반영하지 못했습니다: ' + ap.error);
-      if (ap.ok) { c.기준일 = ap.기준일; if (ap.법정일) c.법정일 = ap.법정일; if (ap.수정일) c.수정일 = ap.수정일; } // [2026.10.15 1:1] 다음 처리개요 저장이 낡은 수정일로 거절되던 문제(노오섭)
-    } else if (c.기준일 !== txs[0].transferDate) items.push(caseProcItem_('ov:기준일:' + txs[0].transferDate, 'check', '양도일: 사건 기준일 ' + c.기준일 + ' ↔ 서류상 양도시기 ' + txs[0].transferDate + '(잔금일·등기접수일 중 빠른 날, 소득세법 §98) — 어느 날이 맞나요?', { mode: 'base' }));
-    else { lines.push('✅ 양도일 ' + c.기준일 + ' — 서류(잔금일·등기접수일)로 확인'); caseProcRememberFill_(c.id, '기준일', c.기준일, '증빙: 계약서·등기부(규칙 정리)'); }
-  }
-  // [2026.10.16] 양도인 성명 — 양도 계약서에서 납세자가 매도인으로 확인됐으면 사건 납세자로 채운다(12건에서 "양도인 성명이 비어 있습니다"를 물었다)
-  //  [2026.10.16 1:1 김금옥] 이미 같은 이름이 들어 있으면(예전 처리·직접 입력) 근거만 기록한다 — 기록이 없어 반영 현황표에 "△ 확정 전"으로 나왔다
-  const trSeller = (rf.evidence || []).some(function (e) { return /^양도: /.test(e); }) ? String(c.납세자 || '').replace(/\s+/g, '') : '';
-  if (trSeller && String(ov.trTransferorName || '').replace(/\s+/g, '') === trSeller) {
-    try { caseProcRememberFill_(c.id, 'trTransferorName', ov.trTransferorName, '증빙: 양도 계약서 매도인 = 사건 납세자'); } catch (e) {}
-  }
-  if (!String(ov.trTransferorName || '').trim() && trSeller) {
-    ov.trTransferorName = trSeller;
-    fills.push('양도인 성명 ' + ov.trTransferorName + '(양도 계약서 매도인 = 사건 납세자)');
-    for (let qi = items.length - 1; qi >= 0; qi--) if (items[qi].id === 'ov:trTransferorName') items.splice(qi, 1);
-    try { caseProcRememberFill_(c.id, 'trTransferorName', ov.trTransferorName, '증빙: 양도 계약서 매도인 = 사건 납세자'); } catch (e) {}
-  }
-  // [2026.10.16 1:1 김금옥] 양도인 주민번호·주소, 양수인 성명·주민번호 — 양도 계약서 서명란(신고서 인적사항 칸용, 세액과 무관). 빈 칸만 채운다.
-  //  양도인 주소는 계약 당시 주소라 신고 때 주소와 다를 수 있다(주민등록 서류가 있으면 그쪽이 우선) — 근거에 적어 둔다.
-  if (rf.parties) {
-    const pf = rf.parties.file, ps = rf.parties.seller || {}, pb = rf.parties.buyer || {};
-    [['trTransferorRegNo', ps.regNo, '양도인 주민번호', '양도 계약서 서명란 매도인(' + pf + ')'],
-     ['trTransferorAddress', ps.addr, '양도인 주소', '양도 계약서 서명란 매도인 주소(' + pf + ') — 계약 당시 주소, 주민등록 서류가 있으면 그쪽 우선'],
-     ['trBuyerName', pb.name, '양수인 성명', '양도 계약서 서명란 매수인(' + pf + ')'],
-     ['trBuyerRegNo', pb.regNo, '양수인 주민번호', '양도 계약서 서명란 매수인(' + pf + ')']].forEach(function (p) {
-      if (!p[1] || String(ov[p[0]] || '').trim()) return;
-      ov[p[0]] = p[1];
-      fills.push(p[2] + ' ' + p[1] + '(' + p[3] + ')');
-      try { caseProcRememberFill_(c.id, p[0], p[1], '증빙: ' + p[3]); } catch (e) {}
-    });
-  }
-  if (fills.length) {
-    ov.물건목록 = assets;
-    ov.물건수 = String(assets.length);
-    if (assets[0]) Object.assign(ov, assets[0]); // 처리개요 화면 저장과 같게 대표 물건을 옛 칸에도
-    const up = work_updateCase({ id: c.id, 사건개요: ov, 기대수정일: c.수정일 });
-    if (up && up.success !== false) {
-      lines.push('✏ 처리개요 빈 칸 채움(서류 검산 일치 값): ' + fills.join(', '));
-      fillSrc.forEach(function (x) { caseProcRememberFill_(c.id, 'ovAsset:' + x[0] + ':' + x[1], x[2], '증빙: ' + (x[3] || '서류 규칙 정리(검산 일치)')); });
-    }
-    else lines.push('⚠ 처리개요를 채우지 못했습니다: ' + (up && up.message || '저장 실패') + ' — 다시 "처리하자"를 하면 다시 시도합니다.');
-  } else lines.push('처리개요에 새로 채울 빈 칸 없음');
-  // [2026.10.15 1:1] 필요경비 — 서류에서 찾은 비용을 항목별로 보여주고 세무사님이 체크해 확정(규칙이 확정한 것은 미리 체크, 판단이 필요한 것은 체크 안 함).
-  //  확정 전엔 계산하지 않는다(필요경비 0원으로 세액을 내던 문제 — 노오섭).
-  const cands = (rf.expCands || []).filter(function (x) { return x.amount; });
-  const a0 = (Array.isArray(ov.물건목록) && ov.물건목록[0]) || {};
-  if (txs.length === 1 && !a0.필요경비확정) {
-    const won = function (n) { return Number(n).toLocaleString('ko-KR') + '원'; };
-    if (cands.length) lines.push('필요경비 후보 ' + cands.length + '건(서류): ' + cands.map(function (x) { return x.kind + ' ' + won(x.amount) + '(' + x.file + ')'; }).join(', '));
-    items.push(caseProcItem_('tr:expenses', 'missing', '필요경비(취득 부대비용·자본적지출·양도비용)를 확정해 주세요 — 서류에서 ' + cands.length + '건을 찾았습니다. 넣을 것만 체크하고, 없는 비용은 직접 더하세요.',
-      { mode: 'expenses', target: 'expenses', label: '필요경비', cands: cands }, cands.map(function (x) { return (x.sure ? '☑ ' : '☐ ') + x.kind + ' · ' + x.label + ' · ' + won(x.amount) + (x.date ? ' · ' + x.date : '') + ' · ' + x.file + (x.note ? ' — ' + x.note : ''); }).join('\n')));
-  } else if (a0.필요경비확정) {
-    lines.push('✅ 필요경비(세무사님 확정): 취득 ' + Number(a0.취득비용합계 || 0).toLocaleString('ko-KR') + '원 · 자본적지출·양도비 ' + Number(a0.양도비용합계 || 0).toLocaleString('ko-KR') + '원');
-    // [2026.10.16 1:1 김금옥] 확정할 때 본 서류 값이 그 뒤 판독 개선으로 달라졌으면(같은 파일인데 금액·구분이 다름) 다시 묻는다 —
-    //  법무사 정산서를 입금액 4,930,170원으로 읽은 채 확정해 두어, 실제 쓴 돈(4,561,210원)으로 고친 뒤에도 옛 금액이 그대로 계산에 쓰였다
-    const won2 = function (n) { return Number(n).toLocaleString('ko-KR') + '원'; };
-    const conf = [].concat((a0.취득비용목록 || []).map(function (x) { return Object.assign({ side: '취득' }, x); }), (a0.양도비용목록 || []).map(function (x) { return Object.assign({ side: '양도' }, x); }));
-    const diffs = [];
-    conf.forEach(function (x) {
-      if (!x.file) return;
-      const same = cands.filter(function (y) { return y.file && String(x.file).split(', ').indexOf(y.file) !== -1; });
-      if (!same.length || same.some(function (y) { return Number(y.amount) === Number(x.amount) && (!x.kind || y.kind === x.kind); })) return;
-      diffs.push(x.file + ': 확정 ' + (x.kind ? x.kind + ' ' : '') + won2(x.amount) + ' ↔ 지금 서류 ' + same.map(function (y) { return y.kind + ' ' + won2(y.amount); }).join(', '));
-    });
-    if (diffs.length) items.push(caseProcItem_('tr:expenses:recheck:' + diffs.length + ':' + cands.map(function (y) { return y.amount; }).join('-'), 'check', '확정해 둔 필요경비가 지금 서류에서 읽은 값과 다릅니다(판독이 고쳐짐) — 다시 확정해 주세요: ' + diffs.join(' / '),
-      { mode: 'expenses', target: 'expenses', label: '필요경비', cands: cands }, cands.map(function (y) { return (y.sure ? '☑ ' : '☐ ') + y.kind + ' · ' + y.label + ' · ' + won2(y.amount) + (y.date ? ' · ' + y.date : '') + ' · ' + y.file + (y.note ? ' — ' + y.note : ''); }).join('\n')));
-  }
-  // [2026.10.16 1:1 방영교] 취득가액을 서류로 못 정한 거래 — 환산취득가액(§97②, 시행령 §176의2②2호)용 기준시가를 근거와 함께 고르게(취득 연도별 후보)
-  const sc = txs.length === 1 && txs[0].stdConv;
-  const a0s = (Array.isArray(ov.물건목록) && ov.물건목록[0]) || {};
-  // [2026.10.16 1:1 방영교] 예전 후보(틀린 계산)로 확정해 둔 값은 다시 계산한 값과 다르면 다시 묻는다 — 직접 입력한 값은 그대로 둔다
-  if (sc && sc.transfer && sc.ing && a0s.취득일 && !String(a0s.취득가액 || '').trim() && (!a0s.환산기준시가확인 || a0s.환산기준시가출처 !== 'direct')) {
-    // [2026.10.16 1:1 방영교] 취득일이 정해졌으면 §164⑦을 그 날짜로: 토지 = 취득일·최초 공시일에 공시돼 있던 개별공시지가 × 대지권 면적, 건물 = 그 연도 건물기준시가
-    const g = sc.ing, w = function (n) { return Math.round(n).toLocaleString('ko-KR'); };
-    const landAt = function (d) { let hit = null; (g.landList || []).forEach(function (q) { if (q.d && q.d <= d && (!hit || q.d > hit.d)) hit = q; }); return hit; };
-    const ay = Number(String(a0s.취득일).slice(0, 4)), fy = g.first && g.first.연도, firstDay = fy ? fy + '-04-30' : '';
-    const notes = [], opts2 = [];
-    if (fy && String(a0s.취득일) < firstDay) {
-      const bA = (g.blds || []).filter(function (b) { return b.y === ay; })[0], bF = (g.blds || []).filter(function (b) { return b.y === fy; })[0];
-      const lA = landAt(String(a0s.취득일)), lF = landAt(firstDay);
-      if (bA && bF && lA && lF && g.land) {
-        const sumA = bA.v + Math.floor(lA.v * g.land), sumF = bF.v + Math.floor(lF.v * g.land), v = Math.floor(g.first.가격 * sumA / sumF);
-        notes.push('취득 ' + a0s.취득일 + ' — §164⑦: 최초 공시가격 ' + w(g.first.가격) + '원(' + fy + ') × [토지 ' + w(lA.v) + '원/㎡(' + lA.y + '년, 공시 ' + lA.d + ') × ' + g.land.toFixed(2) + '㎡ + 건물 ' + w(bA.v) + '원(' + ay + ')] ÷ [토지 ' + w(lF.v) + '원/㎡(' + lF.y + '년) × ' + g.land.toFixed(2) + '㎡ + 건물 ' + w(bF.v) + '원(' + fy + ')] = ' + w(v) + '원');
-        opts2.push({ label: '취득당시 ' + w(v) + '원 · 양도당시 ' + w(sc.transfer.v) + '원(위 계산)', value: JSON.stringify({ acq: v, tr: sc.transfer.v, y: ay }) });
-        if (a0s.환산기준시가확인 && Number(a0s.취득기준시가) !== v) notes.unshift('⚠ 전에 확정한 취득당시 기준시가 ' + w(Number(a0s.취득기준시가) || 0) + '원은 예전 계산(홈택스 계산서의 공시지가 그대로) — 법령대로 다시 계산하면 ' + w(v) + '원입니다. 다시 골라 주세요');
-        sc._recalc = v;
-        [[bA, lA], [bF, lF]].forEach(function (pr) { if (pr[0].unit && pr[0].unit !== pr[1].v) notes.push('⚠ 건물기준시가 계산서(' + pr[0].file + ')는 ㎡당 공시지가 ' + w(pr[0].unit) + '원으로 위치지수를 정했습니다 — 그 날짜에 적용할 공시지가는 ' + w(pr[1].v) + '원(' + pr[1].y + '년)이라 위치지수·건물기준시가가 달라질 수 있습니다'); });
-      } else notes.push('§164⑦ 계산 재료가 모자랍니다: ' + [!bA && ay + '년 건물기준시가', !bF && fy + '년 건물기준시가', !lA && '취득일 개별공시지가', !lF && '최초 공시일 개별공시지가', !g.land && '대지권 면적'].filter(Boolean).join(', '));
-      const sts = (g.blds || []).map(function (b) { return b.st; }).filter(Boolean);
-      if (g.cStruct && sts.length && sts.some(function (st) { return g.cStruct.replace(/\s+/g, '').indexOf(st.replace(/\(.*?\)/g, '').replace(/조$/, '')) === -1; })) notes.push('⚠ 건물기준시가 계산서의 구조(' + sts.filter(function (x, i, a) { return a.indexOf(x) === i; }).join(', ') + ')가 계약서 구조(' + g.cStruct + ')와 다릅니다 — 구조지수·잔가율이 달라 건물기준시가가 달라집니다. 맞는 구조로 다시 계산한 취득당시 기준시가를 직접 넣어 주세요');
-    } else notes.push('취득일 ' + a0s.취득일 + '은 공동주택가격 최초 공시(' + (firstDay || '?') + ') 뒤 — 그때 공시돼 있던 공동주택가격을 씁니다');
-    if (!(a0s.환산기준시가확인 && sc._recalc && Number(a0s.취득기준시가) === sc._recalc)) items.push(caseProcItem_('tr:stdconv2:' + a0s.취득일 + ':' + opts2.length + ':' + (sc._recalc || 0), 'judge', '취득 계약서가 없어 환산취득가액(양도가액 × 취득당시 기준시가 ÷ 양도당시 기준시가)으로 계산합니다 — 취득일(' + a0s.취득일 + ') 기준 취득당시 기준시가입니다. 계산이 맞으면 고르고, 아니면 취득당시 기준시가를 직접 넣어 주세요.',
-      { mode: 'options', target: 'trStdConv:' + sc.transfer.v, options: opts2, input: 'money', withInput: true, label: '취득당시 기준시가' }, ['양도당시: ' + sc.transfer.src].concat(notes).join('\n')));
-  } else if (sc && sc.transfer && !String(a0s.취득가액 || '').trim() && !a0s.환산기준시가확인) {
-    const opts = sc.acq.filter(function (a) { return a.v; }).map(function (a) { return { label: a.y + '년 취득: 취득당시 ' + a.v.toLocaleString('ko-KR') + '원 · 양도당시 ' + sc.transfer.v.toLocaleString('ko-KR') + '원', value: JSON.stringify({ acq: a.v, tr: sc.transfer.v, y: a.y }) }; });
-    items.push(caseProcItem_('tr:stdconv:' + sc.acq.length, 'judge', '취득 계약서가 없습니다 — 환산취득가액(양도가액 × 취득당시 기준시가 ÷ 양도당시 기준시가)용 기준시가입니다. 취득 연도(취득일)에 맞는 줄을 고르세요.',
-      { mode: 'options', target: 'trStdConv', options: opts, input: 'money', label: '환산용 기준시가' }, ['양도당시: ' + sc.transfer.src].concat(sc.acq.map(function (a) { return '취득당시 ' + a.src; })).join('\n')));
-  }
-  // [2026.10.16 1:1 이종식 — 세무사님 지시] 여러 필지 일괄 양도 — 세액계산기의 양도계약 하나(계약 총액)에 필지별 물건을 넣어 기준시가로 안분한다.
-  //  필지별 소재지·면적(계약서), 개별공시지가(양도시·취득시), 취득가액 후보(증여세 신고서)를 모두 보여주고 [이대로 필지별로]를 고르면 물건을 만든다
-  const pcs = (txs.length === 1 && Array.isArray(txs[0].parcels) && txs[0].parcels.length >= 2 && !ov.일괄필지반영) ? txs[0].parcels : null;
-  if (pcs && (!Array.isArray(ov.물건목록) || ov.물건목록.length < pcs.length)) {
-    const wonP = function (n) { return Number(n || 0).toLocaleString('ko-KR'); };
-    const lines2 = pcs.map(function (pc, k) { return '①②③④⑤⑥⑦⑧⑨'.charAt(k) + ' ' + pc.loc + (pc.kind ? ' ' + pc.kind : '') + ' ' + pc.area + '㎡ · 공시지가 양도시 ' + (pc.unitT ? wonP(pc.unitT) + '원/㎡' : '?') + ' · 취득시 ' + (pc.unitA ? wonP(pc.unitA) + '원/㎡' : '?') + ' · 취득가액 후보 ' + (pc.acq ? wonP(pc.acq) + '원(' + pc.acqSrc + ')' : '?'); });
-    const val = JSON.stringify({ total: txs[0].contractTotal || (txs[0].transferPriceCand || {}).v || txs[0].transferPrice || 0, parcels: pcs.map(function (pc) { return { loc: pc.loc, area: pc.area, unitT: pc.unitT, unitA: pc.unitA, acq: pc.acq || 0 }; }) });
-    items.push(caseProcItem_('tr:parcels:' + pcs.length, 'judge', pcs.length + '필지 일괄 양도입니다(계약서 매매대금 ' + wonP(txs[0].contractTotal || (txs[0].transferPriceCand || {}).v) + '원) — 세액계산기의 양도계약 하나에 필지별 물건 ' + pcs.length + '개로 넣고, 양도가액은 계약 총액을 기준시가 비율로 나눕니다(시행령 §166④). 필지별 값은 아래와 같습니다.',
-      { mode: 'options', target: 'trParcels', options: [{ label: '이대로 필지별 물건 ' + pcs.length + '개로', value: val }], label: '일괄 양도 필지' }, lines2.join('\n')));
-  }
-  // [2026.10.16 1:1 이종식 — 세무사님: "관계가 의심스러우면 확인대상으로 띄워야지"] 양수인이 양도인과 성이 같으면 관계를 확인 대상으로 묻는다
-  //  (특수관계면 저가양도 부당행위계산 §101·가족관계증명서 대상). 성이 같다는 것은 의심일 뿐이라 정하지 않고 묻는다
-  if (rf.parties && rf.parties.buyer && rf.parties.seller && !ov.trBuyerRelation) {
-    const bn = String(rf.parties.buyer.name || ''), sn = String(rf.parties.seller.name || '');
-    if (bn.length >= 2 && sn.length >= 2 && bn.charAt(0) === sn.charAt(0) && bn !== sn) items.push(caseProcItem_('tr:buyerrel', 'check', '양수인 ' + bn + (rf.parties.buyer.regNo ? '(' + rf.parties.buyer.regNo.slice(0, 6) + '-…)' : '') + '이(가) 양도인 ' + sn + '과(와) 성이 같습니다 — 특수관계인지 확인해 주세요. 특수관계면 시가와의 차이로 부당행위계산(소득세법 §101) 검토, 가족관계증명서를 받습니다(근거: ' + rf.parties.file + ' 서명란).',
-      { mode: 'options', target: 'ov:trBuyerRelation', options: [{ label: '특수관계 없음', value: 'none' }, { label: '형제자매', value: 'sibling' }, { label: '직계존비속', value: 'lineal' }, { label: '배우자', value: 'spouse' }, { label: '기타 친족', value: 'relative' }], label: '양수인과의 관계' }));
-  }
-  // [2026.10.16 1:1 김금옥 — 세무사님 지시] 양도 신고 세무비용(이 사무소 신고 수수료 등)이 서류에 없으면 금액을 입력받는다(양도비용, 시행령 §163⑤1호).
-  //  정답지와 330,000원 차이 — 신고 때 발행한 사무소 현금영수증은 원시서류 폴더에 없었다
-  if (txs.length === 1 && !a0.신고수수료확인 && !cands.some(function (x) { return /이 사무소 수수료/.test(x.label); })) {
-    items.push(caseProcItem_('tr:taxfee', 'missing', '양도소득세 신고 세무비용(이 사무소 신고 수수료 등) 영수증이 폴더에 없습니다 — 금액을 넣어 주세요(없으면 "없음"). 양도비용으로 넣습니다(시행령 §163⑤1호).',
-      { mode: 'options', target: 'trTaxFee', options: [{ label: '없음(0원)', value: '0' }], input: 'money', label: '신고 세무비용', withInput: true }));
-  }
-  // [2026.10.16 1:1 김금옥 — 세무사님 지시] 판 물건이 오피스텔이면 주택(주거용)인지 관련 내용을 모두 보여주고 고르게 한다.
-  //  김금옥: 대장·등기부는 업무시설(오피스텔), 계약서 특약 "주소전입가능한 호실" → 세무사님은 일반주택으로 신고
-  if (txs.length === 1 && !a0.주택판단) {
-    const ev = [];
-    let isOfficetel = false;
-    try {
-      caseProcParseAll_(c).forEach(function (x) {
-        const ty = x.p && x.p.type;
-        if (!/^(registry|bldledger|contract)$/.test(ty || '')) return;
-        let tx = ''; try { tx = String(tc_docText_(x.f) || ''); } catch (e) {}
-        const fl = tx.replace(/\s+/g, ' ');
-        if (ty !== 'contract') {
-          const om = /(업\s*무\s*시\s*설\s*\(\s*오\s*피\s*스\s*텔\s*\)|주\s*용\s*도[^가-힣]{0,6}[가-힣]{0,8}\s*오\s*피\s*스\s*텔)/.exec(fl); // 용도 칸만(주소 속 "○○오피스텔"은 아님)
-          if (om) { isOfficetel = true; if (!ev.some(function (e) { return e.indexOf(x.f.name) !== -1; })) ev.push((ty === 'registry' ? '등기부' : '건축물대장') + '(' + x.f.name + '): ' + om[1].replace(/\s+/g, '') + ' 표시'); }
-        } else {
-          if (/오\s*피\s*스\s*텔/.test(fl)) isOfficetel = true;
-          const cm = /[^.\d]{0,40}(주\s*소\s*전\s*입|전\s*입\s*(?:신\s*고\s*)?가\s*능|주\s*거\s*용|주\s*택\s*임\s*대)[^.]{0,50}/.exec(fl);
-          if (cm) ev.push('계약서(' + x.f.name + ') 문구: "' + cm[0].trim().replace(/\s+\d+$/, '').slice(0, 90) + '"');
-          const um = /용\s*도\s*[:：]?\s*(업무\s*시설|주거\s*용|근린\s*생활)/.exec(fl);
-          if (um) ev.push('계약서(' + x.f.name + ') 용도 칸: ' + um[1].replace(/\s+/g, ''));
-        }
-      });
-    } catch (e) {}
-    if (isOfficetel) {
-      if ((rf.vatDocs || []).length) ev.push('납세자의 부가가치세 신고 자료(' + rf.vatDocs.slice(0, 2).join(', ') + ') — 일반과세 사업자로 매입세액을 환급받았다면 업무용 근거일 수 있음');
-      items.push(caseProcItem_('tr:house', 'judge', '판 물건이 오피스텔입니다 — 주택(주거용)으로 볼지 정해 주세요. 주택으로 보면 신고서 자산종류가 주택이 되고 주택 수(1세대1주택·다주택) 판단 대상입니다. 근거는 아래 목록과 같습니다.',
-        { mode: 'options', target: 'ovAsset:0:주택판단', options: [{ label: '주택(주거용 오피스텔)', value: 'house' }, { label: '주택 아님(업무용 오피스텔)', value: 'other' }], label: '물건1 주택 여부' }, (ev.length ? ev : ['서류에 오피스텔 표시만 있음']).map(function (e, i) { return '①②③④⑤⑥'.charAt(i) + ' ' + e; }).join('\n')));
-    }
-  }
-  // [2026.10.15 일괄점검 ③] 서류로 채우지 못한 계산 필수 칸(소재지·양도가액·취득가액·취득일·양도일)은 질문으로 — 빈 채로 계산하지 않게
-  caseProcTrAskBasics_(c, ov, lines, items, rf, txs, true);
-  return { ok: true, lines: lines, items: items, filled: fills.length };
-}
-// 양도 계산 필수 칸이 비어 있으면 묻는다(주관식 — 근거 파일은 화면에서 고름, 상담 메모의 값은 caseProcMemoCands_가 후보로 붙임).
-//  noExpenses: 위에서 필요경비 질문을 이미 다룬 경우(거래가 있는 정상 경로)
-function caseProcTrAskBasics_(c, ov, lines, items, rf, txs, noExpenses) {
-  const assets = Array.isArray(ov.물건목록) && ov.물건목록.length ? ov.물건목록 : [ov];
-  const keys = [['assetLocation', '소재지', 'text'], ['양도가액', '양도가액', 'money'], ['취득가액', '취득가액', 'money'], ['취득일', '취득일', 'date']];
-  assets.forEach(function (a, i) {
-    keys.forEach(function (f) {
-      if (String((a || {})[f[0]] == null ? '' : a[f[0]]).trim()) return;
-      if (f[0] === '취득가액' && a && a.환산기준시가확인) return; // 환산취득가액(세액계산기 계산, 2026-10-16)
-      if (f[0] === '양도가액' && i > 0 && ov.양도계약일괄) return; // 일괄 계약 — 계약 총액(물건1)을 기준시가로 안분(2026-10-16)
-      if (items.some(function (x) { return x.ask && x.ask.target === 'ovAsset:' + i + ':' + f[0]; })) return;
-      // 국외자산 질문(환율·지분)이 걸려 있으면 금액·날짜는 그 답으로 후보를 만든다 — "서류에서 정하지 못했다"로 따로 묻지 않음
-      if (i === 0 && f[0] !== 'assetLocation' && items.some(function (x) { return /^oa:/.test(x.id); })) return;
-      const pcand = txs && txs[i] && f[0] === '양도가액' ? txs[i].transferPriceCand : (txs && txs[i] && f[0] === '취득가액' ? txs[i].acquisitionPriceCand : null); // [2026.10.16 1:1 이종식] 후보가 있으면 문장에 적는다
-      items.push(caseProcItem_('ov:asset:' + i + ':' + f[0], 'missing', pcand ? '물건' + (i + 1) + ' 「' + f[1] + '」 — 계약서 매매대금 ' + Number(pcand.v).toLocaleString('ko-KR') + '원' + (pcand.note ? '(' + pcand.note + ')' : '') + '이 있습니다(' + pcand.file + '). 이 물건 값이 맞으면 고르고, 여러 필지 합계이면 이 물건 몫을 직접 넣어 주세요.' : '물건' + (i + 1) + ' 「' + f[1] + '」을(를) 서류에서 정하지 못했습니다 — 정해 주세요(계산 전 필수).',
-        (txs && txs[i] && ((f[0] === '양도가액' && txs[i].transferPriceCand) || (f[0] === '취득가액' && txs[i].acquisitionPriceCand))) ? { mode: 'choose', target: 'ovAsset:' + i + ':' + f[0], input: 'money', label: '물건' + (i + 1) + ' ' + f[1], cands: [(function (pc) { return { v: String(pc.v), src: '계약서 매매대금' + (pc.note ? '(' + pc.note + ')' : '') + ' — ' + pc.file + '(계약금·잔금 검산 안 됨 — 원문 확인)' }; })(f[0] === '양도가액' ? txs[i].transferPriceCand : txs[i].acquisitionPriceCand)] } : (i === 0 && f[0] === 'assetLocation' && rf && (rf.locCands || []).length) ? { mode: 'choose', target: 'ovAsset:0:assetLocation', input: 'text', label: '물건1 소재지', cands: rf.locCands.map(function (x) { return { v: x.v, src: x.src }; }) } : { mode: 'input', target: 'ovAsset:' + i + ':' + f[0], input: f[2], label: '물건' + (i + 1) + ' ' + f[1], cands: [] }));
-    });
-  });
-  // [2026.10.16] 같은 빈칸을 두 번 묻지 않음 — "⚠ … 양도가액(취득가액)을 서류에서 찾지 못함" 알림은 그 칸을 정하는 질문이 있으면 그 질문의 설명으로 붙이고 따로 세우지 않는다(이종식·김금옥)
-  ['양도가액', '취득가액'].forEach(function (k) {
-    const q = items.filter(function (x) { return x.id === 'ov:asset:0:' + k || (x.ask && x.ask.target === 'ovAsset:0:' + k); })[0];
-    if (!q) return;
-    for (let qi = items.length - 1; qi >= 0; qi--) {
-      const x = items[qi];
-      if (!/^rf:/.test(x.id) || x.text.indexOf(k + '을 서류에서 찾지 못함') === -1) continue;
-      q.detail = (q.detail ? q.detail + '\n' : '') + x.text;
-      items.splice(qi, 1);
-    }
-  });
-  if (!c.기준일 && !items.some(function (x) { return /^ov:기준일/.test(x.id); })) items.push(caseProcItem_('ov:기준일:none', 'missing', (rf && (rf.comps || []).length ? '양도일(수용: 보상금 받은 날·수용개시일·수용 등기 접수일 중 빠른 날, 소득세법 시행령 §162①7호)' : '양도일(잔금일·등기접수일 중 빠른 날, 소득세법 §98)') + '을 서류에서 정하지 못했습니다 — 정해 주세요.', { mode: 'base', cands: (function () { const cs = (rf && rf.trDateCands || []).slice(); lines.forEach(function (l) { const m = /^양도일 후보: 정산서 종결일 (\d{4}-\d{2}-\d{2})\((.+?)\)/.exec(String(l)); if (m && !cs.some(function (q) { return q.v === m[1]; })) cs.push({ v: m[1], src: '국외 매도 정산서 종결일(' + m[2] + ') — 대금 수령일·등기일과 다르면 고치세요' }); }); return cs.length ? cs : undefined; })() }));
-  const a0 = assets[0] || {};
-  if (!noExpenses && !a0.필요경비확정 && !items.some(function (x) { return x.id === 'tr:expenses' || /^oa:/.test(x.id); }) && a0.국외자산 !== 'Y') { // 국외자산은 양도비를 따로 묻는다(oa:te)
-    const cands = ((rf && rf.expCands) || []).filter(function (x) { return x.amount; });
-    items.push(caseProcItem_('tr:expenses', 'missing', '필요경비(취득 부대비용·자본적지출·양도비용)를 확정해 주세요 — 서류에서 ' + cands.length + '건을 찾았습니다. 넣을 것만 체크하고, 없는 비용은 근거 파일을 골라 직접 더하세요(없으면 체크 없이 확정 = 0원).',
-      { mode: 'expenses', target: 'expenses', label: '필요경비', cands: cands }));
-  }
+  // [2026.10.17 재설계] 양도는 한 길뿐 — 증빙(서류 규칙 정리) → 세액계산기 입력 → 계산기가 원하는 칸 질문 → 처리개요 요약(trcOverview_).
+  //  예전 길(처리개요 물건목록에 값을 채우고 국외자산·서류 없음·정리 실패 때 따로 묻던 caseProcTrAskBasics_ 등)은 걷어냈다.
+  const rf0 = String(c.폴더ID || '').trim() ? tc_ruleTransferFacts_({ caseId: c.id }) : null;
+  CASEPROC_LAST_RF_ = { caseId: c.id, rf: rf0 }; // 🧪 정답지 점검이 같은 실행 안에서 필요경비·거래 목록을 다시 읽지 않고 쓰게
+  if (rf0 && !rf0.ok) lines.push('서류 규칙 정리 실패: ' + (rf0.error || '응답 없음') + ' — 계산기 필요 칸을 질문으로 받습니다');
+  if (!rf0) lines.push('증빙 폴더가 없어 서류를 읽지 못했습니다 — 계산기 필요 칸을 질문으로 받습니다');
+  const rf = rf0 && rf0.ok ? rf0 : { ok: true, counts: { 계약서: 0, 신고필증: 0, 등기부: 0, 취득세: 0, 법무사: 0 }, evidence: [], transactions: [], expCands: [] };
+  return trcOverview_(c, ov, rf, lines, items);
 }
 // 서류 정리 결과에서 기준일 후보 — 증여: 등기부 소유권이전 원인 "증여"의 접수일(상증령 §24 — 등기·등록 대상 재산의 취득시기는
 // 소유권이전등기 접수일, 증여계약일(원인일) 아님), 상속: 사망진단서·기본증명서 등의 사망일. 판독이 불확실하면 warn.
@@ -28183,17 +27753,7 @@ function caseProcStatus_(c, body) {
     if (!has(v) && dec['ov:' + k[0]] && dec['ov:' + k[0]].d === '무시') { rows.push(['처리개요', k[1], '✅', '질문 제외 — 세무사님 [무시]' + (k[0] === 'giftPriorAmount' ? '(합산할 증여 없음으로 계산)' : '')]); return; }
     rows.push(['처리개요', k[1], mk, has(v) ? String(v) + srcOf(k[0], v) : '']);
   });
-  if (c.세목 === 'transfer') (Array.isArray(ov.물건목록) ? ov.물건목록 : []).forEach(function (a, i) {
-    const full = ['assetLocation', '양도가액', '취득가액', '취득일'].every(function (k) { return has(a[k]) || (k === '취득가액' && has(a.취득기준시가) && has(a.양도기준시가)); }); // 환산취득가액이면 기준시가 둘로(2026-10-16)
-    let mk = open['물건' + (i + 1)] || open['물건'] ? '⚠ 확인 필요' : (full ? '✅' : '△ 일부');
-    if (mk !== '✅') inputsOk = false;
-    // [2026.10.15 1단계 ②] 칸마다 근거 — 서류로 채웠거나 세무사님이 답한 기록(filled)이 같은 값이면 근거를 보이고, 없으면 "근거 기록 없음"
-    const fk = [['assetLocation', '소재지'], ['양도가액', '양도가액'], ['취득가액', '취득가액'], ['취득일', '취득일']].filter(function (k) { return has(a[k[0]]); });
-    const srcTxt = fk.map(function (k) { const fl = filled['ovAsset:' + i + ':' + k[0]]; return k[1] + ' ' + (fl && caseProcSameVal_(fl.v, a[k[0]]) ? '← ' + String(fl.src).replace(/^증빙:\s*/, '') : '(근거 기록 없음)'); });
-    const noSrc = fk.filter(function (k) { const fl = filled['ovAsset:' + i + ':' + k[0]]; return !(fl && caseProcSameVal_(fl.v, a[k[0]])); }).map(function (k) { return k[1]; });
-    if (mk === '✅' && noSrc.length) mk = '△ 근거 없음(' + noSrc.join('·') + ')';
-    rows.push(['처리개요', '물건' + (i + 1), mk, [a.assetLocation, a.양도가액 && Number(a.양도가액).toLocaleString('ko-KR') + '원', a.취득일].filter(Boolean).join(' · ') + (srcTxt.length ? ' — ' + srcTxt.join(' / ') : '')]);
-  });
+  // [2026.10.17 재설계] 양도 물건 칸은 아래 「계산기 필요 칸」으로(처리개요는 요약일 뿐)
   // 현금 증여면 부동산용 칸(등기부·평가자료, 부담부가 아니면 채무인수)은 해당 없음 — 2단계와 같은 기준으로 세지 않는다
   const cashNa = function (e) { return saved.cashGift && e.status !== '확보됨' && (/등기부|평가\s*자료|비상장|그\s*외\s*자산/.test(e.label) || (/채무\s*인수/.test(e.label) && !saved.cashDebt)); };
   if (c.세목 === 'inheritance' && saved.ihSummary) {
@@ -28205,6 +27765,12 @@ function caseProcStatus_(c, body) {
     if (sm.debts === 'cand') inputsOk = false;
     if (!(sm.assets && sm.valued === sm.assets && sm.financial)) inputsOk = false;
   }
+  // [2026.10.17 재설계] 양도 — 세액계산기가 지금 원하는 칸(갈림길을 따라 뽑은 목록)과 칸마다 근거. 증여·상속은 위 처리개요 칸이 곧 계산기 칸
+  if (c.세목 === 'transfer' && saved.needs && Array.isArray(saved.needs.list)) saved.needs.list.forEach(function (n) {
+    const mk = n.later ? '— 지금 불필요' : (n.ok ? (n.src ? (open.기준일 && /\.date$/.test(n.p) ? '⚠ 확인 필요' : '✅') : '△ 근거 없음') : '⬜');
+    if (!n.later && !n.ok) inputsOk = false;
+    rows.push(['계산기 필요 칸', n.l, mk, n.later ? n.later : (n.ok ? String(n.src || '').replace(/^증빙:\s*/, '') : '비어 있음 — ' + (n.why || ''))]);
+  });
   const ev = (Array.isArray(c.증빙목록) ? c.증빙목록 : []).filter(function (e) { return e && e.source === 'requested' && !cashNa(e); });
   const got = ev.filter(function (e) { return e.status === '확보됨'; }).length;
   rows.push(['증빙', '필요증빙 확보', ev.length && got === ev.length ? '✅' : (ev.length ? '△ 일부' : '⬜'), got + '/' + ev.length]);
@@ -28224,8 +27790,8 @@ function caseProcStatus_(c, body) {
   let ledger = null;
   try { ledger = caseProcLedger_(c, saved); } catch (e) { ledger = { error: String(e && e.message || e) }; }
   if (ledger && ledger.sum) {
-    rows.push(['사실장부', '폴더 파일 = 장부 줄', ledger.sum.silent ? '⚠' : '✅', ledger.sum.files + '개 = ' + ledger.sum.rows + '줄' + (ledger.sum.truncated ? ' (파일이 너무 많아 일부 못 봄)' : '')]);
-    rows.push(['사실장부', '읽었지만 처리 기록(칸·질문·증빙목록)에 이름이 안 나온 서류', ledger.sum.unused ? '⚠' : '✅', ledger.sum.unused + '개 — 아래 장부에서 「쓰인 곳」이 빈 줄']);
+    rows.push(['폴더 파일 점검', '폴더 파일 = 점검 줄', ledger.sum.silent ? '⚠' : '✅', ledger.sum.files + '개 = ' + ledger.sum.rows + '줄' + (ledger.sum.truncated ? ' (파일이 너무 많아 일부 못 봄)' : '')]);
+    rows.push(['폴더 파일 점검', '읽었지만 처리 기록(칸·질문·증빙목록)에 이름이 안 나온 서류', ledger.sum.unused ? '⚠' : '✅', ledger.sum.unused + '개 — 아래 장부에서 「쓰인 곳」이 빈 줄']);
     try { caseProcPatch_(c.id, function (sv) { sv.ledgerSum = Object.assign({ at: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm') }, ledger.sum); }); } catch (e) {}
   }
   return { ok: true, rows: rows, ledger: ledger };
@@ -28530,63 +28096,6 @@ function caseProcApply_(c, body) {
     const up = work_updateCase({ id: c.id, 증빙목록: list, 기대수정일: c.수정일 });
     return up && up.success !== false ? { ok: true, message: '확보됨으로 표시(' + (body.file || '') + ')', my_report_id: c.my_report_id || '' } : { ok: false, error: (up && up.message) || '저장 실패' };
   }
-  // [2026.10.15 1:1] 양도 필요경비 확정 — 체크한 항목(취득 부대비용 / 자본적지출·양도비용)을 물건1 카드에 목록·합계로 저장
-  if (target === 'expenses') {
-    let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { d = null; }
-    const list = (d && Array.isArray(d.items) ? d.items : []).map(function (x) { return { kind: String(x.kind || ''), label: String(x.label || '').slice(0, 60), amount: Number(String(x.amount || '').replace(/[^\d]/g, '')) || 0, file: String(x.file || '').slice(0, 80), date: String(x.date || '') }; }).filter(function (x) { return x.amount > 0; });
-    const ov = JSON.parse(JSON.stringify(c.사건개요 || {}));
-    if (!Array.isArray(ov.물건목록) || !ov.물건목록.length) { ov.물건목록 = [{}]; ov.물건수 = '1'; } // 물건을 아직 못 채웠어도 필요경비는 첫 물건에 저장
-    const acq = list.filter(function (x) { return x.kind === '취득'; }), tr = list.filter(function (x) { return x.kind !== '취득'; });
-    const sum = function (a) { return a.reduce(function (s, x) { return s + x.amount; }, 0); };
-    (ov.물건목록[0].양도비용목록 || []).filter(function (x) { return x.taxFee; }).forEach(function (x) { if (!tr.some(function (y) { return y.taxFee; })) tr.push(x); }); // [2026.10.16] 신고 세무비용 유지
-    Object.assign(ov.물건목록[0], { 필요경비확정: true, 취득비용목록: acq, 양도비용목록: tr, 취득비용합계: String(sum(acq)), 양도비용합계: String(sum(tr)) });
-    const txt = '필요경비 확정 ← 취득 ' + sum(acq).toLocaleString('ko-KR') + '원(' + acq.length + '건) · 자본적지출·양도비 ' + sum(tr).toLocaleString('ko-KR') + '원(' + tr.length + '건) (' + src + ')';
-    const up = work_updateCase({ id: c.id, 사건개요: ov, 작업일지: logLine(txt), 기대수정일: c.수정일 });
-    return up && up.success !== false ? { ok: true, message: txt.replace(/^필요경비 확정 ← /, '') } : { ok: false, error: (up && up.message) || '저장 실패' };
-  }
-  // [2026.10.16 1:1 김금옥] 양도 신고 세무비용 — 물건1 양도비용 목록에 넣는다(0원이면 "없음"으로 확인만)
-  if (target === 'trTaxFee') {
-    const amt = Number(String(value == null ? '' : value).replace(/[^\d]/g, '')) || 0;
-    const ov = JSON.parse(JSON.stringify(c.사건개요 || {}));
-    if (!Array.isArray(ov.물건목록) || !ov.물건목록.length) { ov.물건목록 = [{}]; ov.물건수 = '1'; }
-    const a = ov.물건목록[0];
-    const tr = (a.양도비용목록 || []).filter(function (x) { return !x.taxFee; });
-    if (amt) tr.push({ kind: '양도', label: '양도소득세 신고 세무비용(세무사님 입력)', amount: amt, file: '', date: '', taxFee: true });
-    a.양도비용목록 = tr; a.양도비용합계 = String(tr.reduce(function (t, x) { return t + (Number(x.amount) || 0); }, 0)); a.신고수수료확인 = true;
-    const txt = '신고 세무비용 ← ' + (amt ? amt.toLocaleString('ko-KR') + '원(양도비용)' : '없음') + ' (' + src + ')';
-    const up = work_updateCase({ id: c.id, 사건개요: ov, 작업일지: logLine(txt), 기대수정일: c.수정일 });
-    return up && up.success !== false ? { ok: true, message: txt.replace(/^신고 세무비용 ← /, '신고 세무비용 ') } : { ok: false, error: (up && up.message) || '저장 실패' };
-  }
-  // [2026.10.16 1:1 방영교] 환산용 기준시가(취득당시·양도당시) — 물건1에 넣고 세액계산기가 환산취득가액을 계산한다
-  if (target === 'trStdConv' || /^trStdConv:\d+$/.test(target)) {
-    let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { d = null; }
-    if (typeof d === 'number' || (d == null && /^\s*[\d,]+\s*$/.test(String(value)))) d = { acq: Number(String(value).replace(/[^\d]/g, '')), tr: Number(String(target).split(':')[1] || 0) }; // 직접 입력한 취득당시 기준시가(2026-10-16)
-    if (!d || !d.acq || !d.tr) return { ok: false, error: '기준시가를 고르지 못했습니다.' };
-    const ov = JSON.parse(JSON.stringify(c.사건개요 || {}));
-    if (!Array.isArray(ov.물건목록) || !ov.물건목록.length) { ov.물건목록 = [{}]; ov.물건수 = '1'; }
-    Object.assign(ov.물건목록[0], { 취득기준시가: String(d.acq), 양도기준시가: String(d.tr), 환산기준시가확인: true, 환산기준시가출처: d.y ? 'cand' : 'direct' });
-    const txt = '환산용 기준시가 ← 취득당시 ' + Number(d.acq).toLocaleString('ko-KR') + '원(' + (d.y || '') + '년) · 양도당시 ' + Number(d.tr).toLocaleString('ko-KR') + '원 (' + src + ')';
-    const up = work_updateCase({ id: c.id, 사건개요: ov, 작업일지: logLine(txt), 기대수정일: c.수정일 });
-    return up && up.success !== false ? { ok: true, message: txt.replace(/^환산용 기준시가 ← /, '') } : { ok: false, error: (up && up.message) || '저장 실패' };
-  }
-  // [2026.10.16 1:1 이종식] 일괄 양도 필지별 물건 — 물건1의 날짜·필요경비·판단은 그대로 두고 필지마다 물건을 만든다, 양도계약 하나(일괄)
-  if (target === 'trParcels') {
-    let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { d = null; }
-    if (!d || !Array.isArray(d.parcels) || d.parcels.length < 2) return { ok: false, error: '필지 목록이 없습니다 — 다시 처리하자를 해 주세요.' };
-    const ov = JSON.parse(JSON.stringify(c.사건개요 || {}));
-    const first = (Array.isArray(ov.물건목록) && ov.물건목록[0]) || {};
-    const keep = ['필요경비확정', '취득비용목록', '양도비용목록', '취득비용합계', '양도비용합계', '신고수수료확인', '주택판단'];
-    ov.물건목록 = d.parcels.map(function (pc, k) {
-      const a = { assetType: first.assetType || 'other', assetKind: 'land', assetLocation: pc.loc, 취득일: first.취득일 || '', 양도가액: k === 0 ? String(d.total || first.양도가액 || '') : '', 취득가액: pc.acq ? String(pc.acq) : '', 면적: String(pc.area || ''), 공시지가양도: String(pc.unitT || ''), 공시지가취득: String(pc.unitA || ''), 양도계약구분: '일괄', 취득계약구분: '' };
-      if (k === 0) keep.forEach(function (key) { if (first[key] != null) a[key] = first[key]; });
-      return a;
-    });
-    ov.물건수 = String(ov.물건목록.length); ov.양도계약일괄 = true; ov.일괄필지반영 = true;
-    Object.assign(ov, ov.물건목록[0]);
-    const txt = '일괄 양도 필지별 물건 ' + ov.물건목록.length + '개 ← ' + ov.물건목록.map(function (a) { return a.assetLocation + (a.취득가액 ? ' 취득 ' + Number(a.취득가액).toLocaleString('ko-KR') : ''); }).join(' / ') + ' (' + src + ')';
-    const up = work_updateCase({ id: c.id, 사건개요: ov, 작업일지: logLine(txt), 기대수정일: c.수정일 });
-    return up && up.success !== false ? { ok: true, message: txt.replace(/^일괄 양도 /, '') } : { ok: false, error: (up && up.message) || '저장 실패' };
-  }
   // [2026.10.15 1:1] 증여 내용 확인 — 증여자·수증자·증여일·증여대상(종류·금액)을 한 번에 정한다(증여계약서 없이 이체내역만 있는 사건)
   if (target === 'giftdeal') {
     let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { d = null; }
@@ -28606,7 +28115,7 @@ function caseProcApply_(c, body) {
     const ap = caseProcApplyBase_(c.id, deal.date, '세무사님 확인(증여 내용)', '증여일');
     return ap.ok ? { ok: true, message: txt.replace(/^증여 내용 ← /, '') } : { ok: false, error: '증여 내용은 저장했으나 증여일 반영 실패: ' + ap.error };
   }
-  let m = /^case:(납세자|법정일)$/.exec(target);
+  let m = /^case:(납세자|법정일|세목|업무유형)$/.exec(target);
   if (m) {
     const p = { id: c.id, 작업일지: logLine(m[1] + ' ← ' + value + ' (' + src + ')') };
     p[m[1]] = String(value || '').trim();
@@ -33919,7 +33428,7 @@ function trcFromEvidence_(c, rf, txs, ans) {
     const ct = { id: cid, name: '양도계약 ' + trcPad_(k + 1), date: '', totalPrice: 0, totalExpenseItems: [], externalMembers: [], buyers: [{}] };
     const base = 'c' + k;
     if (t.transferDate) { ct.date = t.transferDate; src[base + '.date'] = '잔금일·등기접수일 중 빠른 날(규칙 정리)'; }
-    if (one && c.기준일) ct.date = c.기준일; // 사건 기준일 = 양도일(질문 base로 정함)
+    if (one && c.기준일) { ct.date = c.기준일; src[base + '.date'] = '사건 기준일(양도일' + (((caseProcLoad_(c.id) || {}).filled || {}).기준일 ? ' — ' + String(caseProcLoad_(c.id).filled.기준일.src || '').slice(0, 60) : '') + ')'; } // 사건 기준일 = 양도일(질문 base로 정함)
     const price = t.transferPrice || (t.parcels ? t.contractTotal : 0);
     if (t.transferPrice) { ct.totalPrice = t.transferPrice; src[base + '.totalPrice'] = '계약서·신고필증(검산 일치)'; }
     if (!t.transferPrice && t.transferPriceCand) cands[base + '.totalPrice'] = [{ v: String(t.transferPriceCand.v), src: '계약서 매매대금' + (t.transferPriceCand.note ? '(' + t.transferPriceCand.note + ')' : '') + ' — ' + t.transferPriceCand.file + '(계약금·잔금 검산 안 됨 — 원문 확인)' }];
@@ -33987,7 +33496,7 @@ function trcApplyAns_(S, ans) {
     return false;
   };
   Object.keys(ans || {}).forEach(function (path) {
-    const x = ans[path]; if (!x || /^(costs|taxfee|split|사건분류)$/.test(path)) return;
+    const x = ans[path]; if (!x || /^(costs|taxfee|split|사건분류)$/.test(path) || /^oa\.|^a\d+\.(isOverseasAsset|oaResident5yr)$/.test(path)) return; // 국외자산 판단·환율은 trcOverseas_가 쓴다
     if (setP(path, x.v)) S.src[path] = x.src;
   });
   const grp = S.facts && S.facts.splitGroup;
@@ -34068,7 +33577,7 @@ function trcSummaryToOv_(c, S, lines) {
   ov.물건목록 = st.transferAssets.map(function (a, i) {
     const ct = st.transferContracts.filter(function (x) { return x.id === a.transferContractId; })[0] || {};
     const firstOfCt = st.transferAssets.filter(function (x) { return x.transferContractId === a.transferContractId; })[0] === a;
-    return { assetType: a.assetType || '', assetKind: a.assetKind || '', assetLocation: a.assetLocation || '', assetDong: a.assetDong || '', assetHo: a.assetHo || '', 취득일: a.acquisitionDate || '', 양도가액: firstOfCt && ct.totalPrice ? String(ct.totalPrice) : '', 취득가액: a.acquisitionPrice ? String(a.acquisitionPrice) : '', 면적: a.assetArea ? String(a.assetArea) : '', 양도계약구분: st.transferAssets.length > 1 && st.transferContracts.length === 1 ? '일괄' : '', 취득계약구분: '' };
+    return { assetType: a.assetType || '', assetKind: a.assetKind || '', assetLocation: a.assetLocation || '', assetDong: a.assetDong || '', assetHo: a.assetHo || '', 취득일: a.acquisitionDate || '', 양도가액: firstOfCt && ct.totalPrice ? String(ct.totalPrice) : (a.transferPrice ? String(a.transferPrice) : ''), 취득가액: a.acquisitionPrice ? String(a.acquisitionPrice) : '', 면적: a.assetArea ? String(a.assetArea) : '', 양도계약구분: st.transferAssets.length > 1 && st.transferContracts.length === 1 ? '일괄' : '', 취득계약구분: '', 국외자산: a.isOverseasAsset ? 'Y' : '' };
   });
   ov.물건수 = String(ov.물건목록.length);
   ov.양도계약일괄 = st.transferAssets.length > 1 && st.transferContracts.length === 1;
@@ -34136,7 +33645,7 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
   const splitPending = !!(S.facts.parcels && !ans.split);
   if (splitPending) lines.push('일괄 필지 계약 — 필지별 자산으로 나눌지 정한 뒤 자산 칸(소재지·취득일·취득가액)을 묻습니다');
   // 3) 양도자산 카드 — 소재지·과세대상 구분(오피스텔은 근거를 보여주고 고른다)
-  if (!splitPending) st.transferAssets.forEach(function (a, i) {
+  if (!splitPending && !S.facts.overseas) st.transferAssets.forEach(function (a, i) {
     const p = 'a' + i, lab = st.transferAssets.length > 1 ? '자산' + (i + 1) + ' ' : '';
     if (!has(a.assetLocation) && !asked('calc:' + p + '.assetLocation')) q('trc:' + p + '.assetLocation', 'missing', '양도자산 ' + lab + '「소재지」를 서류에서 정하지 못했습니다 — 신고서 자산 표시와 공시가격·건축물대장 조회(기준시가·주택 여부 판단)에 쓰는 필수 칸입니다. 등기부등본의 지번 주소(집합건물은 동·호까지)를 넣어 주세요.', i === 0 && (rf.locCands || []).length ? { mode: 'choose', target: 'calc:' + p + '.assetLocation', input: 'text', label: lab + '소재지', cands: rf.locCands.map(function (x) { return { v: x.v, src: x.src }; }) } : { mode: 'input', target: 'calc:' + p + '.assetLocation', input: 'text', label: lab + '소재지', cands: [] });
   });
@@ -34146,7 +33655,7 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
       { mode: 'options', target: 'calc:a0.assetType', options: [{ label: '주택(주거용 오피스텔)', value: 'house' }, { label: '주택 아님(업무용 오피스텔)', value: 'other' }], label: '과세대상 구분' }, (ev.length ? ev : ['서류에 오피스텔 표시만 있음']).map(function (e, i) { return '①②③④⑤⑥'.charAt(i) + ' ' + e; }).join('\n'));
   }
   // 4) 취득정보 — 취득일, 취득가액(없으면 계산기가 쓰는 다른 칸: 기준시가)
-  if (!splitPending) st.transferAssets.forEach(function (a, i) {
+  if (!splitPending && !S.facts.overseas) st.transferAssets.forEach(function (a, i) {
     const p = 'a' + i, lab = st.transferAssets.length > 1 ? '자산' + (i + 1) + ' ' : '';
     const giftC = (rf.acqDateCands || []).some(function (x) { return /증여|매매사례/.test(x.src); });
     if (!has(a.acquisitionDate) && !asked('calc:' + p + '.acquisitionDate')) {
@@ -34187,7 +33696,10 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
   });
   // 5) 비용 — 취득비용(자산 카드)·양도비용(계약 카드). 서류에서 찾은 것을 보여주고 세무사님이 체크해 확정
   const cands = (rf.expCands || []).filter(function (x) { return x.amount; });
-  if (txs.length <= 1) {
+  // [2026.10.17 재설계] 비용은 계산기의 실지거래가액 갈래에서만 쓰인다 — 취득가액(실가)이 아직 없으면 묻지 않고 이유만(계산기가 추계면 개산공제, §97②)
+  const costNeed = (S.needs || []).filter(function (n) { return n.p === 'costs'; })[0];
+  if (costNeed && costNeed.later && txs.length <= 1) lines.push('비용(취득비용·양도비용·신고 세무비용)은 지금 묻지 않음 — ' + costNeed.later + (cands.length ? '. 서류에서 찾은 비용 ' + cands.length + '건: ' + cands.map(function (x) { return x.kind + ' ' + won(x.amount) + '(' + x.file + ')'; }).join(', ') : ''));
+  if (txs.length <= 1 && !S.facts.overseas && costNeed && !costNeed.later) {
     const list = function (cs) { return cs.map(function (x) { return (x.sure ? '☑ ' : '☐ ') + x.kind + ' · ' + x.label + ' · ' + won(x.amount) + (x.date ? ' · ' + x.date : '') + ' · ' + x.file + (x.note ? ' — ' + x.note : ''); }).join('\n'); };
     if (!ans.costs) q('tr:expenses', 'missing', cands.length ? '취득비용(자산 카드)·양도비용(계약 카드)을 확정해 주세요 — 서류에서 ' + cands.length + '건을 찾았습니다. 넣을 것만 체크하고, 없는 비용은 직접 더하세요(없으면 체크 없이 확정 = 0원).'
       : '취득비용(자산 카드)·양도비용(계약 카드) — 폴더에서 취득세 영수증·법무사 비용·중개보수 영수증 등 비용 서류를 찾지 못했습니다. 실지거래가액으로 계산하면 이 비용이 양도차익을 줄이므로(환산취득가액이면 계산기가 개산공제만 씀) 영수증이 있으면 폴더에 넣거나 금액을 직접 더하고, 비용이 없으면 체크 없이 확정(0원)해 주세요.', { mode: 'expenses', target: 'expenses', label: '필요경비', cands: cands }, list(cands));
@@ -34298,7 +33810,13 @@ function trcOverview_(c, ov, rf, lines, items) {
     }
   }
   const ryr = trcResYears_(c, S); S.facts.resYears = ryr.y; S.facts.resRows = ryr.rows; // 1세대1주택 거주연수(초본)
+  try { trcOverseas_(c, S, ans, rf, lines, items); } catch (e) { lines.push('⚠ 국외자산 서류 정리 오류: ' + (e && e.message || e)); } // 국외자산이면 계산기 국외자산 카드로
   trcApplyAns_(S, ans);
+  // [2026.10.17 재설계] 이 사무소가 처리한 증여세 사건 — 증여로 받은 자산의 취득가액 후보(§163⑨ 증여세 신고·결정가액)
+  if ((S.facts.gift || []).length && !S.facts.overseas) {
+    const oc = trcOtherCaseGiftCands_(c, (S.state.transferSellers[0] || {}).name || c.납세자);
+    if (oc.length) { const p0 = S.facts.gift[0].p + '.acquisitionPrice'; S.cands[p0] = (S.cands[p0] || []).concat(oc); lines.push('같은 사무소 증여세 사건에서 찾은 취득가액 후보: ' + oc.map(function (x) { return Number(x.v).toLocaleString('ko-KR') + '원(' + x.src.split(' 처리개요')[0] + ')'; }).join(', ')); }
+  }
   // 답 ↔ 지금 서류가 다르면 다시 묻는다(판독이 고쳐졌거나 서류가 추가됨) — 답을 말없이 덮지 않는다
   ['a0.acquisitionPrice', 'a0.acquisitionDate', 'a0.assetLocation', 'c0.totalPrice'].forEach(function (pth) {
     const x = ans[pth]; if (!x) return;
@@ -34309,12 +33827,18 @@ function trcOverview_(c, ov, rf, lines, items) {
     if (!same) items.push(caseProcItem_('cf:' + pth + ':' + trcDigits_(evv).slice(0, 12), 'check', '계산기 「' + lbl + '」 — 세무사님 답 ' + (money ? Number(trcDigits_(x.v)).toLocaleString('ko-KR') + '원' : x.v) + ' ↔ 지금 서류 ' + (money ? Number(trcDigits_(evv)).toLocaleString('ko-KR') + '원' : evv) + ' — 어느 값이 맞나요?',
       { mode: 'choose', target: 'calc:' + pth, input: money ? 'money' : (/Date/.test(pth) ? 'date' : 'text'), label: lbl, cands: [{ v: money ? trcDigits_(x.v) : String(x.v), src: '세무사님 답(' + x.src + ')' }, { v: money ? trcDigits_(evv) : String(evv), src: '서류(규칙 정리, 검산 일치)' }] }));
   });
+  // [2026.10.17 재설계] 세액계산기가 지금 원하는 칸(갈림길을 따라) — 질문은 이 목록에서 빈 칸만, 비용은 실지거래가액 갈래에서만
+  const needs = trcNeeds_(c, S, ans);
+  S.needs = needs;
   trcQuestions_(c, rf, txs, S, ans, lines, items);
   const h = trcStore_(c, S);
-  const filledN = Object.keys(S.src).length;
-  lines.push('세액계산기 입력: 양도인 ' + S.state.transferSellers.length + ' · 양도계약 ' + S.state.transferContracts.length + ' · 양도자산 ' + S.state.transferAssets.length + ' — 채운 칸 ' + filledN + '개(증빙·답), 남은 질문 ' + items.filter(function (x) { return x.kind !== 'check' || x.ask; }).length + '개');
+  const ns = trcNeedsSummary_(needs);
+  lines.push('🎯 세액계산기가 지금 원하는 칸 ' + ns.total + '개 — 증빙·답으로 채움 ' + ns.filled + '개(근거 있음 ' + ns.withSrc + ')' + (ns.missing.length ? ' · 남음: ' + ns.missing.join(', ') : ' · 모두 채움') + (ns.later.length ? ' · 지금은 필요 없음: ' + ns.later.join(' / ') : ''));
+  lines.push('세액계산기 입력: 양도인 ' + S.state.transferSellers.length + ' · 양도계약 ' + S.state.transferContracts.length + ' · 양도자산 ' + S.state.transferAssets.length + ' — 채운 칸 ' + Object.keys(S.src).length + '개(증빙·답), 남은 질문 ' + items.filter(function (x) { return x.kind !== 'check' || x.ask; }).length + '개');
   trcSummaryToOv_(c, S, lines);
-  return { ok: true, lines: lines, items: items, case: c, calcHash: h };
+  const focus = ns.missing.length ? trcNeedScanFocus_(c, needs) : [];
+  try { caseProcPatch_(c.id, function (sv) { sv.needs = { at: new Date().toISOString(), list: needs, sum: ns }; }); } catch (e) {}
+  return { ok: true, lines: lines, items: items, case: c, calcHash: h, needs: ns, loop: focus.length ? { scan: focus.map(function (f) { return f.id; }), why: '필요한 칸(' + ns.missing.slice(0, 3).join('·') + ')의 근거가 될 사진 판독이 나쁨: ' + focus.map(function (f) { return f.name + '(' + f.why + ')'; }).join(', ') } : null };
 }
 // 오피스텔 근거(대장·등기부 용도, 계약서 문구, 부가세 신고 자료) — 오피스텔이 아니면 null
 function trcOfficetel_(c, rf, txs) {
@@ -34426,7 +33950,7 @@ function trcApply_(c, body) {
 // ── 정답지 점검기 — 계산기와 같은 입력으로 계산(계산기 run-transfer와 같은 조립: 계약 안분 → 자산별 엔진 입력 → 합산) ──
 function trcEngineInputs_(st, transferDate) {
   const eng = getUiCalcEngine_();
-  const assets = JSON.parse(JSON.stringify(st.transferAssets || []));
+  const assets = JSON.parse(JSON.stringify((st.transferAssets || []).filter(function (a) { return !a.isOverseasAsset; }))); // 국외자산은 계산기도 따로 계산(국외자산 카드)
   const sum = function (l) { return (l || []).reduce(function (s, x) { return s + (Number(x.amount) || 0); }, 0); };
   (st.transferContracts || []).forEach(function (ct) {
     const mem = assets.filter(function (a) { return a.transferContractId === ct.id; });
@@ -34615,7 +34139,7 @@ function caseProcScanSeq_(n) {
 //  [세무사님 지시] 한 서류가 여러 장 사진으로 나뉘어 있으면 하나의 PDF로 합친다 — 같은 묶음 앞부분·이어지는 번호이고,
 //  읽은 종류가 같거나 앞 장에 "뒷장 빠짐" 경고가 있고 다음 장이 종류 미정(이어지는 쪽)일 때만. 종류가 다르면 합치지 않는다
 //  같이: 일련번호 이름으로 저장된 보정본이 이제 종류가 읽혔으면 내용에 맞는 이름으로 바꾼다
-function caseProcScanCands_(c) {
+function caseProcScanCands_(c, body) {
   const out = [], renamed = [];
   try {
     const files = caseProcFiles_(c, { raw: true }), cache = CacheService.getScriptCache();
@@ -34644,6 +34168,9 @@ function caseProcScanCands_(c) {
          (!caseProcScanSerial_(x.f.name) && !x.p.t && !!g[0].p.t));
       if (cont) g.push(x); else groups.push([x]);
     });
+    // [2026.10.17 재설계] 세액계산기가 원하는 칸의 근거가 될 사진(사건처리 3단계가 알려 준 것)을 먼저 — 한 번에 5묶음까지라 순서가 곧 우선순위
+    const focus = (body && Array.isArray(body.focus)) ? body.focus.map(String) : [];
+    if (focus.length) groups.sort(function (a, b) { const fa = a.some(function (x) { return focus.indexOf(x.f.id) !== -1; }) ? 0 : 1, fb = b.some(function (x) { return focus.indexOf(x.f.id) !== -1; }) ? 0 : 1; return fa - fb; });
     const usedNames = {}; // 같은 묶음 안에서 저장 이름이 겹치지 않게
     groups.forEach(function (g) {
       if (out.length >= 5) return;
@@ -34914,4 +34441,342 @@ function cpRealCases_(loc, area, base, before, after) {
   const tname = { apt_detail: '아파트', row_house: '연립다세대', officetel: '오피스텔' }[type];
   if (!cases.length) return { error: '국토교통부 ' + tname + ' 실거래가에 평가기간(' + before + '개월 전~' + after + '개월 후) 안 같은 단지' + (area ? '·비슷한 면적(±5%)' : '') + ' 거래가 없음' + (errs.length ? ' / 조회 실패 달: ' + errs.slice(0, 3).join(', ') : '') };
   return { cases: cases.slice(0, 5), src: '국토교통부 ' + tname + ' 실거래가 조회(' + umd + ' ' + jibun + ')' };
+}
+
+// =========================================================
+// [2026.10.17 세무사님 원칙 — 사건처리 재설계] 목적에서 거꾸로, 서로 물고 물리는 흐름
+//  ① 사건파악은 가설이다: 작업관리·처리개요·사건명·폴더 이름·상담 메모·대화기록은 빈약하고 서로 안 맞거나 사실과 다를 수 있다.
+//     모두 모아 "누가 무엇을 말했나"를 출처와 함께 가설로 세우고(caseProcGrasp_, 1단계), 증빙을 읽은 뒤 서류로 확인·반박한다(caseProcGraspCheck_, 3단계 앞).
+//     확인된 사실은 따로 장부를 두지 않고 제자리로 되먹인다: 세목·업무유형·납세자 → 작업관리(빈 칸만 — 다르면 서류 근거와 함께 묻는다).
+//     임시 기록(가설·필요 칸 진행)은 사건처리 기록 파일(sv.grasp·sv.needs)에 둔다.
+//  ② 필요한 칸은 세액계산기가 정한다: 계산기 갈림길(실가/추계, 증여 취득 → 이월과세, 1세대1주택 → 거주연수 …)을 따라
+//     "지금 필요한 칸"을 뽑고(trcNeeds_), 그 목록이 더 줄지 않을 때까지 증빙 정리·조회·읽기를 되풀이한다(사이드바 nxAiCaseProcRun_).
+//     계산방법(실가·환산·개산공제)은 묻지도 정하지도 않는다 — 실지거래가액이 아직 없으면 비용 칸은 "지금 필요 없음"(계산기가 추계면 개산공제).
+// =========================================================
+const CASEPROC_SEMOK_WORD_ = { 양도: 'transfer', 증여: 'gift', 상속: 'inheritance' };
+const CASEPROC_AMEND_RE_ = /경\s*정\s*청\s*구|경\s*정|수\s*정\s*신\s*고|기\s*한\s*후\s*신\s*고|불\s*복|심\s*판\s*청\s*구|이\s*의\s*신\s*청|심\s*사\s*청\s*구/;
+const CASEPROC_REL_WORDS_ = '모친|부친|어머니|아버지|엄마|아빠|배우자|남편|아내|부인|아들|딸|자녀|시아버지|시어머니|시부|시모|장인|장모|며느리|사위|할아버지|할머니|조부|조모|손자|손녀|형제|자매|형|누나|오빠|언니|동생';
+function caseProcNm_(v) { return String(v == null ? '' : v).replace(/\s+/g, ''); }
+// 폴더·사건 이름 규칙 "고객명(납세자)_세목_업무유형[번호]"에서 읽은 가설
+function caseProcNameClaims_(name, src) {
+  const out = [], m = /^(.+?)\((.+?)\)_([^_]+)(?:_([^_\d]+)\d*)?/.exec(String(name || '').trim());
+  if (!m) return out;
+  out.push({ f: '납세자', v: caseProcNm_(m[2]), src: src });
+  const sm = CASEPROC_SEMOK_WORD_[String(m[3]).replace(/세$/, '')];
+  if (sm) out.push({ f: '세목', v: sm, src: src });
+  if (m[4]) out.push({ f: '업무유형', v: String(m[4]).trim(), src: src });
+  return out;
+}
+// 대화기록(이 사건에 연결된 job AI 대화 · work 시절 사건 폴더 _대화기록.json)의 세무사님 말 — 사건 설명·값이 들어 있을 수 있다.
+//  사이드바 답("Q3 …")·처리 명령("처리하자")은 이미 반영된 것이라 뺀다. 못 읽으면 조용히 빈 목록(가설 출처일 뿐).
+function caseProcChatTexts_(c) {
+  const out = [];
+  const take = function (msgs, label) {
+    const said = (Array.isArray(msgs) ? msgs : []).filter(function (m) { return m && m.role === 'user' && typeof m.content === 'string'; })
+      .map(function (m) { return String(m.content).trim(); })
+      .filter(function (t) { return t.length >= 4 && !/^Q\s*\d/.test(t) && !/처리\s*(하자|합시다|해\s*줘|해\s*주세요)/.test(t); });
+    if (said.length) out.push({ file: label, text: said.join('\n').slice(0, 6000), chat: true });
+  };
+  try {
+    const folder = ai_convFolder_();
+    ai_convReadIndex_(folder).list.filter(function (e) { return e && e.caseId === c.id && e.fileId; }).slice(0, 3).forEach(function (e) {
+      try { take((JSON.parse(DriveApp.getFileById(e.fileId).getBlob().getDataAsString('UTF-8')) || {}).messages, '대화기록(' + String(e.title || e.id || '').slice(0, 20) + ')'); } catch (err) {}
+    });
+  } catch (e) {}
+  try {
+    if (String(c.폴더ID || '').trim()) { const it = DriveApp.getFolderById(c.폴더ID).getFilesByName('_대화기록.json'); if (it.hasNext()) { const j = JSON.parse(it.next().getBlob().getDataAsString('UTF-8') || '{}'); take(Array.isArray(j) ? j : (j.messages || j.msgs), 'work 대화기록(_대화기록.json)'); } }
+  } catch (e) {}
+  return out;
+}
+// 가설 출처 글(상담 메모·의뢰서 + 대화기록) — 질문 후보·메모 대조가 같이 쓴다
+var CASEPROC_HYPTEXT_MEMO_ = null;
+function caseProcHypTexts_(c) {
+  if (CASEPROC_HYPTEXT_MEMO_ && CASEPROC_HYPTEXT_MEMO_.id === c.id && Date.now() - CASEPROC_HYPTEXT_MEMO_.at < 120000) return CASEPROC_HYPTEXT_MEMO_.out;
+  let out = [];
+  try { out = caseProcMemoTexts_(c).read.filter(function (m) { return m.text; }); } catch (e) {}
+  try { out = out.concat(caseProcChatTexts_(c)); } catch (e) {}
+  CASEPROC_HYPTEXT_MEMO_ = { id: c.id, at: Date.now(), out: out };
+  return out;
+}
+// 1단계 — 사건파악 가설. 값을 바꾸지 않는다(서류를 읽기 전이라). 출처별로 누가 무엇을 말했는지와, 가설끼리 다른 곳을 밝힌다.
+function caseProcGrasp_(c) {
+  const claims = [], lines = [];
+  const add = function (f, v, src) { v = String(v == null ? '' : v).trim(); if (v) claims.push({ f: f, v: v, src: src }); };
+  add('세목', c.세목, '작업관리'); add('업무유형', c.업무유형, '작업관리'); add('납세자', caseProcNm_(c.납세자), '작업관리'); add('기준일', c.기준일, '작업관리');
+  caseProcNameClaims_(c.사건명, '사건명').forEach(function (x) { claims.push(x); });
+  let folderName = '';
+  try { if (String(c.폴더ID || '').trim()) folderName = DriveApp.getFolderById(c.폴더ID).getName(); } catch (e) {}
+  if (folderName && folderName !== c.사건명) caseProcNameClaims_(folderName, '폴더 이름(' + folderName + ')').forEach(function (x) { claims.push(x); });
+  const ov = c.사건개요 || {};
+  const who = { transfer: 'trTransferorName', gift: 'giftDoneeName', inheritance: 'ihDeceasedName' }[c.세목];
+  if (who && ov[who]) add('납세자', caseProcNm_(ov[who]), '처리개요');
+  if (ov.giftDonorName) add('상대방', caseProcNm_(ov.giftDonorName), '처리개요 증여자');
+  if (ov.giftRelation) add('관계', ov.giftRelation, '처리개요');
+  const texts = String(c.폴더ID || '').trim() ? caseProcHypTexts_(c) : [];
+  const relRe = new RegExp('(?:^|[\\s,(·])(' + CASEPROC_REL_WORDS_ + ')\\s*[:：]?\\s+([가-힣]{2,4})(?=$|[\\s,.)·님씨])|([가-힣]{2,4})\\s*\\(\\s*(' + CASEPROC_REL_WORDS_ + ')\\s*\\)', 'g');
+  const STOP = /증여|상속|양도|소유|명의|사망|부동산|아파트|주택|토지|매매|계약|세금|신고|재산|금액|지분|에게|으로|부터|까지|한테|에서|께서|중에|이고|이며|들이|들은|이랑|하고|님이|님은|명이|분이|모두|함께|각각|소유자|^(중|및|외|등)/;
+  texts.forEach(function (m) {
+    const t = String(m.text || '');
+    // 업무유형은 "그 일을 해 달라"는 말일 때만 — 검토서·의뢰서 본문의 "불복까지 가도", "경정처분" 같은 설명 낱말은 아님(박길서 의뢰서)
+    const am = /(경\s*정\s*청\s*구|수\s*정\s*신\s*고|기\s*한\s*후\s*신\s*고|불\s*복|심\s*판\s*청\s*구|이\s*의\s*신\s*청|심\s*사\s*청\s*구)\s*(?:을|를|으로|로)?\s*(?:의뢰|요청|진행|부탁|하려|하고\s*싶|해\s*주|해\s*줘|건\b)/.exec(t) || /^\s*[-*#]*\s*(?:업무|의뢰\s*내용|요청\s*사항|건\s*명|구분)\s*[:：][^\n]{0,12}?(경\s*정\s*청\s*구|경\s*정|수\s*정\s*신\s*고|기\s*한\s*후\s*신\s*고|불\s*복)/m.exec(t);
+    if (am) add('업무유형', am[1].replace(/\s+/g, ''), m.file);
+    let r; relRe.lastIndex = 0; let n = 0;
+    while ((r = relRe.exec(t)) && n < 6) { const rel = r[1] || r[4], nm = r[2] || r[3]; if (nm && !STOP.test(nm)) { add('관계', rel + ' ' + nm, m.file); n++; } }
+    const sm = /양\s*도\s*(?:소\s*득\s*)?세/.test(t) ? 'transfer' : /증\s*여\s*세/.test(t) ? 'gift' : /상\s*속\s*세/.test(t) ? 'inheritance' : '';
+    if (sm) add('세목', sm, m.file);
+  });
+  const hyp = {};
+  claims.forEach(function (x) { const h = hyp[x.f] = hyp[x.f] || []; const e = h.filter(function (y) { return y.v === x.v; })[0]; if (e) { if (e.srcs.indexOf(x.src) === -1) e.srcs.push(x.src); } else h.push({ v: x.v, srcs: [x.src] }); });
+  const lab = function (f, v) { return f === '세목' ? (CASEPROC_TAX_LABEL_[v] || v) : v; };
+  const show = function (f) { return (hyp[f] || []).map(function (e) { return lab(f, e.v) + '[' + e.srcs.join('·') + ']'; }).join(' / '); };
+  lines.push('🧭 사건파악(가설 — 증빙을 읽으며 확인): ' + ['세목', '업무유형', '납세자', '기준일'].filter(function (f) { return hyp[f]; }).map(function (f) { return f + ' ' + show(f); }).join(' · '));
+  if (hyp.상대방 || hyp.관계) lines.push('🧭 가설(메모·대화·처리개요): ' + ['상대방', '관계'].filter(function (f) { return hyp[f]; }).map(function (f) { return f + ' ' + show(f); }).join(' · ') + ' — 가족관계증명서·계약서·등기부로 확인 전');
+  const split = ['세목', '업무유형', '납세자'].filter(function (f) { return (hyp[f] || []).length > 1; });
+  if (split.length) lines.push('⚠ 가설끼리 다른 곳: ' + split.map(function (f) { return f + ' ' + show(f); }).join(' · ') + ' — 증빙을 읽은 뒤 서류로 가립니다');
+  if (texts.length) lines.push('가설 출처 글: ' + texts.map(function (m) { return m.file; }).join(', '));
+  try { caseProcPatch_(c.id, function (sv) { sv.grasp = { at: new Date().toISOString(), hyp: hyp }; }); } catch (e) {}
+  return { lines: lines, hyp: hyp };
+}
+// 서류에서 읽은 당사자·원인(등기부 소유권 이력, 계약서 서명란, 증여계약서, 사망 서류·분할협의서)
+function caseProcEvidenceParties_(c) {
+  const ev = { sellers: [], buyers: [], donees: [], donors: [], deceased: [], heirs: [], giftReg: [], inhReg: [], kinds: {} };
+  const push = function (list, v, file) { v = caseProcNm_(v); if (v.length >= 2 && v.length <= 12 && !/확인필요/.test(v) && !list.some(function (x) { return x.v === v && x.file === file; })) list.push({ v: v, file: file }); };
+  caseProcParseAll_(c).forEach(function (x) {
+    const t = x.p.type, r = x.p.result || {}, fn = x.f.name;
+    ev.kinds[t] = (ev.kinds[t] || 0) + 1;
+    if (t === 'contract') { let tx = ''; try { tx = tc_docText_(x.f) || ''; } catch (e) {} try { tcContractParties_(tx).forEach(function (pp) { if (pp.seller && pp.seller.name) push(ev.sellers, pp.seller.name, fn); if (pp.buyer && pp.buyer.name) push(ev.buyers, pp.buyer.name, fn); }); } catch (e) {} }
+    if (t === 'giftcontract' && !Array.isArray(r)) { if (r.수증자) push(ev.donees, r.수증자, fn); if (r.증여자) push(ev.donors, r.증여자, fn); }
+    if (t === 'registry' && r.docs) r.docs.forEach(function (d) {
+      (d.소유권이력 || []).forEach(function (h) {
+        if (h.말소) return;
+        const names = (h.권리자 || []).map(function (q) { return q.이름; });
+        if (/증여/.test(String(h.원인 || ''))) names.forEach(function (n) { push(ev.giftReg, n, fn + (h.접수일 ? ' ' + h.접수일 : '')); });
+        if (/상속/.test(String(h.원인 || ''))) names.forEach(function (n) { push(ev.inhReg, n, fn); });
+      });
+    });
+    if (t === 'death' && !Array.isArray(r) && r.성명) push(ev.deceased, r.성명, fn);
+    if (t === 'inhdivision' && !Array.isArray(r)) { if (r.피상속인) push(ev.deceased, r.피상속인, fn); (r.상속인 || []).forEach(function (h) { push(ev.heirs, h.이름, fn); }); }
+  });
+  return ev;
+}
+// 3단계 앞 — 가설을 서류로 확인·반박. 작업관리 빈 칸은 서류로 채우고(되먹임), 다르면 서류 근거와 함께 묻는다(객관식).
+//  돌려주는 것: { changed: 작업관리를 고쳤으면 true(증빙 대조를 그 값으로 다시 해야 함) }
+function caseProcGraspCheck_(c, lines, items) {
+  if (!String(c.폴더ID || '').trim()) return { changed: false };
+  let ev; try { ev = caseProcEvidenceParties_(c); } catch (e) { return { changed: false }; }
+  const hyp = ((caseProcLoad_(c.id) || {}).grasp || {}).hyp || {};
+  const me = caseProcNm_(c.납세자);
+  const files = function (l) { return l.map(function (x) { return x.file; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).slice(0, 3).join(', '); };
+  const names = function (l) { return l.map(function (x) { return x.v; }).filter(function (v, i, a) { return a.indexOf(v) === i; }); };
+  const inL = function (l, n) { return n.length >= 2 && l.some(function (x) { return x.v.indexOf(n) !== -1 || n.indexOf(x.v) !== -1; }); };
+  // 세목 — 서류가 가리키는 쪽. 양도 사건의 증여계약서·증여 등기는 취득 원인일 수 있어 "서류가 그 세목만 가리킬 때"만 다르다고 본다
+  const support = {
+    transfer: (me && inL(ev.sellers, me)) ? '양도 계약서 매도인 = ' + me + '(' + files(ev.sellers.filter(function (x) { return x.v.indexOf(me) !== -1 || me.indexOf(x.v) !== -1; })) + ')' : '',
+    gift: (me && (inL(ev.donees, me) || inL(ev.giftReg, me))) ? '증여 수증자 = ' + me + '(' + files(ev.donees.concat(ev.giftReg).filter(function (x) { return x.v.indexOf(me) !== -1 || me.indexOf(x.v) !== -1; })) + ')' : '',
+    inheritance: ev.deceased.length ? '사망 서류·분할협의서 피상속인 ' + names(ev.deceased).join('·') + '(' + files(ev.deceased) + ')' : ''
+  };
+  const cur = c.세목;
+  const others = Object.keys(support).filter(function (k) { return k !== cur && support[k]; });
+  if (CASEPROC_TAX_LABEL_[cur] && support[cur]) lines.push('✅ 사건파악 확인 — 세목 ' + CASEPROC_TAX_LABEL_[cur] + ': ' + support[cur]);
+  else if (!cur && others.length === 1) {
+    const up = work_updateCase({ id: c.id, 세목: others[0], 기대수정일: c.수정일 });
+    if (up && up.success !== false) { c.세목 = others[0]; if (up.case && up.case.수정일) c.수정일 = up.case.수정일; lines.push('✏ 작업관리 세목 ← ' + CASEPROC_TAX_LABEL_[others[0]] + '(' + support[others[0]] + ')'); return { changed: true }; }
+  } else if (CASEPROC_TAX_LABEL_[cur] && others.length === 1 && !(cur === 'transfer' && others[0] === 'gift') && !(cur === 'transfer' && others[0] === 'inheritance')) {
+    // 양도 사건에서 증여·상속 서류는 취득 원인이라 흔하다 — 양도 근거가 없을 때도 묻지 않는다(취득 원인 질문에서 다룸)
+    items.push(caseProcItem_('grasp:세목:' + others[0], 'check', '사건파악 — 작업관리 세목은 ' + CASEPROC_TAX_LABEL_[cur] + '인데 서류는 ' + CASEPROC_TAX_LABEL_[others[0]] + '를 가리킵니다(' + support[others[0]] + '). ' + CASEPROC_TAX_LABEL_[cur] + ' 근거(' + ({ transfer: '납세자가 매도인인 계약서', gift: '납세자가 수증자인 증여계약서·증여 등기', inheritance: '사망 서류·분할협의서' })[cur] + ')는 폴더에서 찾지 못했습니다. 세목에 따라 필요한 서류·계산기가 달라집니다 — 맞는 세목을 고르세요.',
+      { mode: 'options', target: 'case:세목', label: '세목', options: [{ label: CASEPROC_TAX_LABEL_[cur] + '(작업관리 그대로)', value: cur }, { label: CASEPROC_TAX_LABEL_[others[0]] + '(서류)', value: others[0] }] }));
+  }
+  // 업무유형 — 메모·대화·폴더가 경정·수정신고 등을 말하는데 작업관리는 "신고"면: 경정·수정·불복은 이미 낸 신고서가 입력이라 처리 방식이 달라진다
+  const amend = (hyp.업무유형 || []).filter(function (e) { return CASEPROC_AMEND_RE_.test(e.v) && e.srcs.indexOf('작업관리') === -1; });
+  if (amend.length && !caseProcIsAmend_(c)) {
+    const v0 = /경정/.test(amend[0].v) ? '경정청구' : /수정/.test(amend[0].v) ? '수정신고' : /기한/.test(amend[0].v) ? '기한후신고' : amend[0].v;
+    items.push(caseProcItem_('grasp:업무유형:' + v0, 'check', '사건파악 — 작업관리 업무유형은 「' + (c.업무유형 || '—') + '」인데 ' + amend.map(function (e) { return e.srcs.join('·') + '에 「' + e.v + '」'; }).join(', ') + '라고 적혀 있습니다. 경정·수정·불복이면 이미 낸 신고서가 처리의 입력이 됩니다(지금은 신고서를 입력에서 뺌) — 맞는 업무유형을 고르세요.',
+      { mode: 'options', target: 'case:업무유형', label: '업무유형', options: [{ label: (c.업무유형 || '신고') + '(작업관리 그대로)', value: c.업무유형 || '신고' }, { label: v0 + '(메모·대화)', value: v0 }] }));
+  }
+  // 납세자 — 서류의 당사자(양도: 매도인, 증여: 수증자, 상속: 피상속인)
+  const party = { transfer: ev.sellers, gift: ev.donees.length ? ev.donees : ev.giftReg, inheritance: ev.deceased }[c.세목] || [];
+  const pn = names(party);
+  if (!me && pn.length === 1) {
+    const up = work_updateCase({ id: c.id, 납세자: pn[0], 기대수정일: c.수정일 });
+    if (up && up.success !== false) { c.납세자 = pn[0]; if (up.case && up.case.수정일) c.수정일 = up.case.수정일; lines.push('✏ 작업관리 납세자 ← ' + pn[0] + '(' + files(party) + ')'); return { changed: true }; }
+  } else if (!me && pn.length > 1) {
+    items.push(caseProcItem_('grasp:납세자', 'missing', '사건파악 — 작업관리 납세자가 비어 있습니다. 서류의 ' + ({ transfer: '매도인', gift: '수증자', inheritance: '피상속인' })[c.세목] + '이 여럿입니다(' + files(party) + ') — 이 사건의 납세자를 고르세요.',
+      { mode: 'choose', target: 'case:납세자', input: 'text', label: '납세자', cands: pn.map(function (n) { return { v: n, src: '서류(' + files(party.filter(function (x) { return x.v === n; })) + ')' }; }) }));
+  } else if (me && pn.length && !inL(party, me)) {
+    // 다른 사람 이름만 있다 — 사건 폴더 안에 다른 사람 사건 서류가 섞였거나(송호식 폴더의 최은진 증여처럼) 작업관리 납세자가 틀렸을 수 있다. 정하지 않고 알린다
+    lines.push('⚠ 사건파악 — 작업관리 납세자 ' + me + '이(가) 서류의 ' + ({ transfer: '매도인', gift: '수증자', inheritance: '피상속인' })[c.세목] + '(' + pn.slice(0, 4).join('·') + ' — ' + files(party) + ')에 없습니다. 폴더에 다른 사람 사건 서류가 섞였는지, 납세자가 맞는지 확인하세요(계산은 작업관리 납세자 기준으로 진행).');
+  } else if (me && inL(party, me)) lines.push('✅ 사건파악 확인 — 납세자 ' + me + ': 서류 ' + ({ transfer: '매도인', gift: '수증자', inheritance: '피상속인' })[c.세목] + '(' + files(party.filter(function (x) { return x.v.indexOf(me) !== -1 || me.indexOf(x.v) !== -1; })) + ')');
+  // 상대방·관계 가설(메모·대화) — 서류로 확인되는지만 밝힌다(값은 해당 칸 질문의 후보로 쓰임)
+  (hyp.관계 || []).filter(function (e) { return e.srcs.indexOf('처리개요') === -1; }).slice(0, 3).forEach(function (e) {
+    const nm = String(e.v).split(' ').pop();
+    const seen = inL(ev.donors, nm) || inL(ev.deceased, nm) || inL(ev.heirs, nm) || inL(ev.sellers, nm) || inL(ev.buyers, nm);
+    lines.push((seen ? '✅' : '△') + ' 가설 「' + e.v + '」(' + e.srcs.join('·') + ') — ' + (seen ? '서류 당사자에 ' + nm + ' 있음' : '서류 당사자에서 확인 못 함(가족관계증명서가 있으면 그것으로) — 관계 질문의 후보로만 씀'));
+  });
+  return { changed: false };
+}
+
+// ── 세액계산기가 지금 원하는 칸(양도) — 계산기 갈림길을 따라 ──
+//  { p: 칸 경로, l: 이름, ok: 채워짐, src: 근거, why: 왜 필요한지, later: 지금은 불필요(이유) }
+function trcNeeds_(c, S, ans) {
+  const st = S.state, out = [];
+  const has = function (v) { return v != null && String(v).trim() !== '' && String(v) !== '0'; };
+  const need = function (p, l, v, why, later) { out.push({ p: p, l: l, ok: !later && has(v), src: S.src[p] || '', why: why, later: later || '' }); };
+  const s0 = st.transferSellers[0] || {};
+  need('seller.name', '양도인 성명', s0.name, '신고서 양도인란');
+  if (S.facts.overseas) {
+    // 국외자산 카드 갈래 — 국외자산 여부를 정하기 전엔 그 판단 하나만, 정한 뒤엔 국외자산 카드 칸
+    const oa = st.transferAssets[0] || {};
+    if (S.facts.overseasPending) { out.push({ p: 'a0.isOverseasAsset', l: '국외자산 여부', ok: false, src: '', why: '국외자산 카드(§118의2~8)로 계산할지', later: '' }); return out; }
+    need('a0.transferDate', '양도일', oa.transferDate || c.기준일, '국외자산 보유기간·신고기한');
+    need('a0.assetLocation', '국외자산 소재지', oa.assetLocation, '신고서 자산 표시');
+    need('a0.transferPrice', '국외자산 양도가액(원화)', oa.transferPrice, '양도차익의 출발점');
+    need('a0.acquisitionDate', '국외자산 취득일', oa.acquisitionDate, '보유기간');
+    need('a0.acquisitionPrice', '국외자산 취득가액(원화)', oa.acquisitionPrice, '양도차익 = 양도가액 − 취득가액');
+    out.push({ p: 'a0.oaResident5yr', l: '5년 이상 국내 거주', ok: !!ans['a0.oaResident5yr'], src: ans['a0.oaResident5yr'] ? ans['a0.oaResident5yr'].src : '', why: '납세의무(§118의2)', later: '' });
+    need('a0.oaTransferExpenses', '국외자산 양도비', oa.oaTransferExpenses, '필요경비');
+    out.push({ p: '사건분류', l: '사건분류(특례)', ok: !!ans.사건분류, src: ans.사건분류 ? ans.사건분류.src : '', why: '비과세·중과·감면 체크', later: '' });
+    return out;
+  }
+  st.transferContracts.forEach(function (ct, k) {
+    const nm = st.transferContracts.length > 1 ? ct.name + ' ' : '';
+    need('c' + k + '.date', nm + '양도일', ct.date || (k === 0 ? c.기준일 : ''), '보유기간·세율·신고기한');
+    need('c' + k + '.totalPrice', nm + '양도가액', ct.totalPrice, '양도차익의 출발점');
+  });
+  st.transferAssets.forEach(function (a, i) {
+    const lab = st.transferAssets.length > 1 ? '자산' + (i + 1) + ' ' : '', p = 'a' + i;
+    need(p + '.assetLocation', lab + '소재지', a.assetLocation, '신고서 자산 표시·기준시가 조회');
+    need(p + '.acquisitionDate', lab + '취득일', a.acquisitionDate, '보유기간(장기보유특별공제·세율)');
+    const real = has(a.acquisitionPrice);
+    const est = has(a.comparableTransactionPrice) || has(a.appraisalValue) || (has(a.acquisitionStandardPriceForExpense) && has(a.transferStandardPriceForConversion));
+    out.push({ p: p + '.acquisitionPrice', l: lab + '취득가액(없으면 계산기가 매매사례·감정·환산 기준시가로)', ok: real || est, src: S.src[p + '.acquisitionPrice'] || S.src[p + '.acquisitionStandardPriceForExpense'] || S.src[p + '.comparableTransactionPrice'] || S.src[p + '.appraisalValue'] || '', why: '양도차익 = 양도가액 − 취득가액', later: '' });
+    if (i === 0 && st.transferAssets.length >= 1) {
+      // 비용은 실지거래가액 갈래에서만 쓴다 — 취득가액이 추계(매매사례·감정·환산)면 계산기가 개산공제를 쓰므로 지금은 묻지 않는다
+      const later = real ? '' : '취득가액(실지거래가액)이 아직 없음 — 추계면 계산기가 개산공제를 씀, 실지거래가액이 정해지면 다시 봄';
+      out.push({ p: 'costs', l: '취득비용·양도비용', ok: !later && !!ans.costs, src: ans.costs ? ans.costs.src : '', why: '실지거래가액 갈래의 필요경비', later: later });
+      out.push({ p: 'taxfee', l: '신고 세무비용', ok: !later && !!ans.taxfee, src: ans.taxfee ? ans.taxfee.src : '', why: '양도비용(시행령 §163⑤1호)', later: later });
+    }
+    if (a.isOneHouseOneFamily) need(p + '.residenceYears', lab + '거주연수', a.residenceYears, '1세대1주택 장기보유특별공제 표2');
+  });
+  (S.facts.gift || []).forEach(function (g) {
+    const a = st.transferAssets[Number(g.p.slice(1))]; if (!a) return;
+    need(g.p + '.donorRelation', '증여자와의 관계', a.donorRelation || (ans[g.p + '.donorRelation'] ? ans[g.p + '.donorRelation'].v : ''), '이월과세·우회양도 판정(증여 취득)');
+    if (/^(spouse|lineal)$/.test(String(a.donorRelation || '')) && a.giftReceivedDate) {
+      need(g.p + '.donorAcquisitionDate', '증여자 취득일', a.donorAcquisitionDate, '이월과세 비교(10년 안)');
+      need(g.p + '.donorAcquisitionPrice', '증여자 취득가액', a.donorAcquisitionPrice, '이월과세 비교(10년 안)');
+    }
+  });
+  if (S.facts.officetel) need('a0.assetType', '과세대상 구분(오피스텔)', st.transferAssets[0] && st.transferAssets[0].assetType, '주택 수·비과세 판단');
+  out.push({ p: '사건분류', l: '사건분류(특례)', ok: !!ans.사건분류, src: ans.사건분류 ? ans.사건분류.src : '', why: '비과세·중과·감면 체크', later: '' });
+  return out;
+}
+function trcNeedsSummary_(needs) {
+  const now = needs.filter(function (n) { return !n.later; }), ok = now.filter(function (n) { return n.ok; }), miss = now.filter(function (n) { return !n.ok; }), later = needs.filter(function (n) { return n.later; });
+  return { total: now.length, filled: ok.length, withSrc: ok.filter(function (n) { return n.src; }).length, missing: miss.map(function (n) { return n.l; }), later: (function () { const g = {}; later.forEach(function (n) { (g[n.later] = g[n.later] || []).push(n.l); }); return Object.keys(g).map(function (k) { return g[k].join('·') + ' — ' + k; }); })() }; // 같은 이유는 한 번만
+}
+// 필요한데 빈 칸의 근거가 될 서류 중 판독이 나쁜 사진 — 질문하기 전에 원근보정·다시 읽기로 돌아간다(사이드바가 이 파일부터 보정)
+const TRC_NEED_DOC_TYPES_ = { totalPrice: ['contract', 'dealreport'], date: ['contract', 'dealreport', 'registry'], assetLocation: ['registry', 'contract', 'bldledger'], acquisitionDate: ['contract', 'registry', 'acqtax', 'giftcontract'], acquisitionPrice: ['contract', 'registry', 'acqtax'], donorAcquisitionDate: ['registry'], donorAcquisitionPrice: ['registry', 'contract'], residenceYears: ['resident'], name: ['contract', 'resident'] };
+function trcNeedScanFocus_(c, needs) {
+  const want = {};
+  needs.filter(function (n) { return !n.ok && !n.later; }).forEach(function (n) { const k = String(n.p).split('.').pop(); (TRC_NEED_DOC_TYPES_[k] || []).forEach(function (t) { want[t] = true; }); });
+  if (!Object.keys(want).length) return [];
+  const out = [];
+  try {
+    const sv = caseProcLoad_(c.id) || {}, done = {}, cache = CacheService.getScriptCache();
+    Object.keys(sv.scanPairs || {}).forEach(function (k) { [].concat(sv.scanPairs[k]).forEach(function (id) { done[id] = true; }); });
+    caseProcFiles_(c, { raw: true }).forEach(function (f) {
+      if (out.length >= 5 || done[f.id] || !/^image\//.test(String(f.mimeType || '')) || /^_/.test(f.name) || caseProcIsOutputDoc_(f.name)) return;
+      const p = caseProcParsed_(f, cache, false);
+      if (!p || p.office || p.out || p.calc) return;
+      if ((p.t && want[p.t] && (p.wn || 0) > 0) || (!p.t && (p.nt || p.err))) out.push({ id: f.id, name: f.name, why: p.t ? (CASEPROC_SCAN_TYPE_NAME_[p.t] || p.t) + ' ⚠' + p.wn : '글자를 못 읽은 사진' });
+    });
+  } catch (e) {}
+  return out;
+}
+// 같은 사무소의 다른 사건 — 증여로 받은 자산을 판 경우, 이 사무소가 그 증여세 사건을 처리했으면 그 사건 처리개요의 증여재산가액이 취득가액(§163⑨ 증여세 신고·결정가액)의 후보
+function trcOtherCaseGiftCands_(c, donee) {
+  const out = [], me = caseProcNm_(donee);
+  if (me.length < 2) return out;
+  try {
+    (work_getCases({}).cases || []).forEach(function (k) {
+      if (!k || k.id === c.id || k.세목 !== 'gift') return;
+      const ov = k.사건개요 || {}, dn = caseProcNm_(ov.giftDoneeName || k.납세자);
+      if (dn !== me || !String(ov.giftAmount || '').replace(/[^\d]/g, '')) return;
+      out.push({ v: String(ov.giftAmount).replace(/[^\d]/g, ''), src: '이 사무소 증여세 사건 「' + (k.사건명 || k.id) + '」 처리개요 증여재산가액' + (k.기준일 ? '(증여일 ' + k.기준일 + ')' : '') + (ov.giftDonorName ? ', 증여자 ' + ov.giftDonorName : '') + ' — 신고·결정가액인지, 이 자산 몫인지 확인' });
+    });
+  } catch (e) {}
+  return out.slice(0, 3);
+}
+// 증여·상속 — 계산기 필수 칸(처리개요 칸 이름 = 계산기 칸 이름)이 근거와 함께 찼는지
+function giNeeds_(c) {
+  const ov = c.사건개요 || {}, filled = (caseProcLoad_(c.id) || {}).filled || {};
+  const req = (CASEPROC_OV_REQUIRED_[c.세목] || []).concat([['기준일', CASEPROC_BASE_LABEL_[c.세목] || '기준일']]);
+  return req.map(function (r) {
+    const v = r[0] === '기준일' ? c.기준일 : ov[r[0]], ok = String(v == null ? '' : v).trim() !== '';
+    return { p: r[0], l: r[1], ok: ok, src: ok && filled[r[0]] && caseProcSameVal_(filled[r[0]].v, v) ? filled[r[0]].src : '', why: '', later: '' };
+  });
+}
+// ── 국외자산(해외 부동산) — 세액계산기 국외자산 카드(isOverseasAsset: 양도·취득가액·날짜·oa양도비·oa외국납부세액·oa5년거주)로 직접 ──
+//  번역본 서류(매도·매수 정산서·감정평가서·증여증서·예납세액 확인서)의 달러 금액·날짜는 서류에서 읽고, 원화 환산(기준환율, 시행령 §178의5①)·지분·5년 거주는 판단이라 묻는다.
+//  답(oa.fxT·oa.fxA·oa.share)이 오면 원화 후보를 계산해 보여 준다(토큰 0). 국외자산 여부를 정하기 전엔 국내 양도계약 칸을 묻지 않는다.
+//  돌려주는 것: null(국외 서류 없음·"국외 아님") 또는 { asset } — S.state는 국외자산 카드 하나로 바뀐다
+function trcOverseas_(c, S, ans, rf, lines, items) {
+  let of = null; try { of = caseProcOverseasFacts_(c); } catch (e) { of = null; }
+  if (!of) return null;
+  const av = function (p) { return ans[p] ? ans[p].v : ''; };
+  const flag = String(av('a0.isOverseasAsset'));
+  if (flag === 'N') { lines.push('국외자산 서류가 있으나 세무사님이 "국외자산 아님"으로 정함 — 국내 양도로 처리'); return null; }
+  const usd = function (v) { return '$' + Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }); };
+  const num = function (v) { const n = Number(String(v == null ? '' : v).replace(/[^\d.]/g, '')); return n > 0 ? n : 0; };
+  const q = function (id, kind, text, ask, detail) { items.push(caseProcItem_(id, kind, text, ask, detail)); };
+  lines.push('국외자산 서류(번역본): ' + [of.sale ? '매도 정산서 ' + usd(of.sale.price) + ' 종결 ' + of.sale.date + '(' + of.sale.file + ')' : '', of.deed ? '증여증서 ' + of.deed.date + '(' + of.deed.file + ')' : '', of.appraisal ? '감정평가 ' + usd(of.appraisal.usd) + (of.appraisal.date ? ' ' + of.appraisal.date + ' 기준' : '') + '(' + of.appraisal.file + ')' : '', of.buy ? '매수 정산서 ' + usd(of.buy.price) + '(' + of.buy.file + ')' : '', of.taxes.map(function (x) { return x.who + ' ' + usd(x.usd) + ' ' + x.date + '(' + x.file + ')'; }).join(', ')].filter(Boolean).join(' · '));
+  // 계산기 국외자산 카드 하나(양도계약 카드에 묶이지 않는 자산) — 국내 계약 자리를 비운다
+  let resDocs0 = []; try { resDocs0 = caseProcFiles_(c).filter(function (f) { return /출입국|거소|체류/.test(f.name); }).map(function (f) { return f.name; }); } catch (e) {}
+  if (resDocs0.length) lines.push('국외자산 「양도일까지 계속 5년 이상 국내 거주」(§118의2) 근거 서류: ' + resDocs0.join(', '));
+  const a = { id: 'trc_oa1', isOverseasAsset: true, oaForeignTaxMethod: 'credit', assetLocation: '', transferDate: c.기준일 || '', transferPrice: '', acquisitionDate: '', acquisitionPrice: '', oaTransferExpenses: '', oaForeignTaxPaid: '', oaResident5yr: false };
+  S.state.transferContracts = []; S.state.transferAssets = [a]; S.facts.overseas = true; S.facts.gift = []; S.facts.parcels = null;
+  if (c.기준일) S.src['a0.transferDate'] = '사건 기준일(양도일)';
+  if (of.sale && of.sale.date && rf) { rf.trDateCands = (rf.trDateCands || []).concat([{ v: of.sale.date, src: '국외 매도 정산서 종결일(' + of.sale.file + ') — 대금 수령일·등기일과 다르면 고치세요' }]); }
+  if (flag !== 'Y') {
+    q('oa:flag', 'judge', '해외 부동산 양도 서류가 있습니다(' + (of.sale ? of.sale.loc : '') + ') — 세액계산기 국외자산 카드(소득세법 §118의2~8, 국내자산과 별도 계산)로 처리할까요?',
+      { mode: 'options', target: 'calc:a0.isOverseasAsset', label: '국외자산 여부', options: [{ label: '예 — 국외자산으로 계산', value: 'Y' }, { label: '아니오', value: 'N' }] });
+    S.facts.overseasPending = true;
+    return { asset: a, pending: true };
+  }
+  S.src['a0.isOverseasAsset'] = ans['a0.isOverseasAsset'].src;
+  const fxT = num(av('oa.fxT')), fxA = num(av('oa.fxA')), share = num(av('oa.share'));
+  const sh = share ? share / 100 : 1, shTxt = share ? ' × 지분 ' + share + '%' : '';
+  const take = function (p, key) { if (ans[p] && String(ans[p].v).trim() !== '') { a[key] = ans[p].v; S.src[p] = ans[p].src; return true; } return false; };
+  take('a0.assetLocation', 'assetLocation'); take('a0.transferPrice', 'transferPrice'); take('a0.acquisitionDate', 'acquisitionDate'); take('a0.acquisitionPrice', 'acquisitionPrice'); take('a0.oaTransferExpenses', 'oaTransferExpenses'); take('a0.oaForeignTaxPaid', 'oaForeignTaxPaid');
+  if (take('a0.oaResident5yr', 'oaResident5yr')) a.oaResident5yr = String(a.oaResident5yr) === 'Y';
+  if (!a.assetLocation && of.sale && of.sale.loc) q('oa:loc', 'missing', '국외자산 카드 「소재지」 — 매도 정산서의 부동산 주소입니다.', { mode: 'choose', target: 'calc:a0.assetLocation', input: 'text', label: '국외자산 소재지', cands: [{ v: of.sale.loc.replace(/\s+/g, ' ').trim(), src: '매도 정산서 PROPERTY — ' + of.sale.file }] });
+  let resDocs = []; try { resDocs = caseProcFiles_(c).filter(function (f) { return /출입국|주민\s*등록|거소|체류/.test(f.name); }).map(function (f) { return f.name; }); } catch (e) {}
+  if (!ans['a0.oaResident5yr']) q('oa:res5', 'judge', '국외자산 카드 「양도일까지 계속 5년 이상 국내 거주」 — 아니면 국외자산 양도세 납세의무가 없습니다(§118의2).' + (resDocs.length ? ' 근거 서류: ' + resDocs.join(', ') : ' 근거 서류(출입국 사실증명·주민등록초본)가 폴더에 없습니다.'),
+    { mode: 'options', target: 'calc:a0.oaResident5yr', label: '5년 이상 거주', options: [{ label: '예(5년 이상 거주자)', value: 'Y' }, { label: '아니오', value: 'N' }] });
+  if (of.sale && !fxT) q('oa:fxT', 'missing', '양도일(' + (of.sale.date || '종결일') + ') 미국 달러 기준환율(원/달러)을 알려 주세요 — 양도가액 ' + usd(of.sale.price) + '을 원화로 바꿉니다(시행령 §178의5①).', { mode: 'input', target: 'calc:oa.fxT', input: 'text', label: '양도일 기준환율', cands: [] });
+  const acqDate = (of.deed && of.deed.date) || (of.appraisal && of.appraisal.date) || '';
+  if ((of.appraisal || of.buy) && !fxA) q('oa:fxA', 'missing', '취득일(' + (acqDate || '취득대금 지급일') + ') 미국 달러 기준환율(원/달러)을 알려 주세요 — 취득가액을 원화로 바꿉니다.', { mode: 'input', target: 'calc:oa.fxA', input: 'text', label: '취득일 기준환율', cands: [] });
+  if (of.sale && /\band\b|,|&|·/.test(of.sale.sellers || '') && !share) q('oa:share', 'judge', '매도인이 여럿입니다(' + of.sale.sellers + ') — 납세자 지분(%)을 알려 주세요. 양도가액·취득가액·양도비·외국납부세액에 지분을 곱합니다.',
+    { mode: 'options', target: 'calc:oa.share', label: '납세자 지분', withInput: true, input: 'text', options: [{ label: '50%', value: '50' }, { label: '100%(단독)', value: '100' }] });
+  if (of.sale && fxT && !a.transferPrice) q('oa:tp', 'judge', '국외자산 카드 「양도가액」 — 매도 정산서 총 매매대금 ' + usd(of.sale.price) + ' × ' + fxT + shTxt + (of.sale.discount ? ' (정산서의 할인 ' + usd(of.sale.discount) + '는 비용 쪽 조정이라 매매대금에 넣지 않음)' : ''),
+    { mode: 'choose', target: 'calc:a0.transferPrice', input: 'money', label: '국외자산 양도가액', cands: [{ v: String(Math.round(of.sale.price * fxT * sh)), src: '매도 정산서 ' + usd(of.sale.price) + ' × ' + fxT + shTxt + ' — ' + of.sale.file }] });
+  if (acqDate && !a.acquisitionDate) q('oa:ad', 'judge', '국외자산 카드 「취득일」 — 증여로 취득했으면 증여일(증여증서 날짜), 매수했으면 매수 정산서 날짜입니다.',
+    { mode: 'choose', target: 'calc:a0.acquisitionDate', input: 'date', label: '국외자산 취득일', cands: [of.deed && of.deed.date ? { v: of.deed.date, src: '증여증서 날짜 — ' + of.deed.file } : null, of.buy && of.buy.date ? { v: of.buy.date, src: '매수 정산서 — ' + of.buy.file } : null].filter(Boolean) });
+  if (fxA && !a.acquisitionPrice) {
+    const cc = [];
+    if (of.appraisal) cc.push({ v: String(Math.round(of.appraisal.usd * fxA * sh)), src: '증여 취득 = 증여일 시가 — 감정평가 ' + usd(of.appraisal.usd) + ' × ' + fxA + shTxt + ' — ' + of.appraisal.file });
+    if (of.buy && of.buy.price) cc.push({ v: String(Math.round(of.buy.price * fxA * sh)), src: '매수 취득 — 매수 정산서 ' + usd(of.buy.price) + ' × ' + fxA + shTxt + '(이 환율이 매수일 환율일 때만) — ' + of.buy.file });
+    if (cc.length) q('oa:ap', 'judge', '국외자산 카드 「취득가액」 — 증여로 받았으면 증여일 현재 시가(감정평가액), 직접 샀으면 매수가액입니다. 맞는 것을 고르세요.', { mode: 'choose', target: 'calc:a0.acquisitionPrice', input: 'money', label: '국외자산 취득가액', cands: cc });
+  }
+  if (of.sale && fxT && !a.oaTransferExpenses) {
+    const sure = of.sale.exp.filter(function (x) { return x.sure; }), sumU = sure.reduce(function (s, x) { return s + x.usd; }, 0) - (of.sale.discount || 0);
+    q('oa:te', 'judge', '국외자산 카드 「양도비」 — 정산서 비용 중 중개·에스크로·권원보험·이전세·등록 수수료 ' + sure.length + '건 ' + usd(sumU) + (of.sale.discount ? '(할인 ' + usd(of.sale.discount) + ' 차감)' : '') + ' × ' + fxT + shTxt + '. 대출 상환·이자·재산세 안분은 양도비가 아니라 뺐습니다. 보증보험·매수인 크레딧 등은 넣지 않았습니다(넣으려면 직접 입력).',
+      { mode: 'choose', target: 'calc:a0.oaTransferExpenses', input: 'money', label: '국외자산 양도비', cands: [{ v: String(Math.round(sumU * fxT * sh)), src: '정산서 양도비 ' + sure.length + '건 ' + usd(sumU) + ' × ' + fxT + shTxt + ' — ' + of.sale.file }] },
+      of.sale.exp.map(function (x) { return (x.sure ? '☑ ' : '☐ ') + x.label + ' ' + usd(x.usd); }).join('\n'));
+  }
+  if (of.taxes.length && fxT && !a.oaForeignTaxPaid) {
+    const tU = of.taxes.reduce(function (s, x) { return s + x.usd; }, 0);
+    q('oa:ft', 'judge', '국외자산 카드 「외국납부세액」 — ' + of.taxes.map(function (x) { return x.who + ' ' + usd(x.usd) + '(' + x.date + (x.payer ? ', 납부 계정 ' + x.payer : '') + ')'; }).join(' + ') + ' = ' + usd(tU) + (of.taxes.some(function (x) { return x.payer; }) ? '. 납부한 사람이 납세자와 다르면 공제 대상인지 확인하세요' : '') + '. 예납세액은 확정 전 금액이라 미국 확정신고 뒤 실제 세액으로 바뀔 수 있습니다. 환율은 납부일 환율이 원칙인데 여기선 양도일 환율(' + fxT + ')로 계산했습니다.',
+      { mode: 'choose', target: 'calc:a0.oaForeignTaxPaid', input: 'money', label: '국외자산 외국납부세액', cands: [{ v: String(Math.round(tU * fxT * sh)), src: '예납 ' + usd(tU) + ' × ' + fxT + shTxt + ' — ' + of.taxes.map(function (x) { return x.file; }).join(', ') }] });
+  }
+  return { asset: a, pending: false };
 }
