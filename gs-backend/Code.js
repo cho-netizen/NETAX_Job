@@ -34109,6 +34109,16 @@ function trcOverview_(c, ov, rf, lines, items) {
     if (hs && !a00.assetType) { a00.assetType = 'house'; S.src['a0.assetType'] = hs; }
     // 주택으로 고시·표시된 물건은 건물(계산기 자산구분 — 아파트 등 구분소유 건물도 건물)
     if (hs && !a00.assetKind) { a00.assetKind = 'building'; S.src['a0.assetKind'] = hs; }
+    // [2026.10.17] 등기부·대장 서류로 못 정했으면 건축물대장 조회(건축HUB)로 — 주용도가 주택이면 과세대상 주택, 호가 있으면 전유면적. 오피스텔(업무시설)은 주택으로 넣지 않음
+    if (a00.assetLocation && a00.assetKind !== 'land' && (!a00.assetType || !a00.assetArea)) {
+      const bd = cpBuilding_(a00.assetLocation);
+      if (bd && !bd.error) {
+        if (!a00.assetType && /공동\s*주택|단독\s*주택|아파트|다세대|연립|다가구/.test(bd.purpose)) { a00.assetType = 'house'; S.src['a0.assetType'] = bd.src + ' 주용도 ' + bd.purpose; }
+        if (!a00.assetKind) { a00.assetKind = 'building'; S.src['a0.assetKind'] = bd.src; }
+        if (!a00.assetArea && bd.area) { a00.assetArea = bd.area; S.src['a0.assetArea'] = bd.src; }
+        if (/업무\s*시설|오피스텔/.test(bd.purpose) && S.facts.officetel) S.facts.officetel.push(bd.src + ': 주용도 ' + bd.purpose);
+      } else if (bd && bd.error) lines.push('건축물대장 조회(세액계산기와 같은 기능): ' + bd.error);
+    }
   }
   const ryr = trcResYears_(c, S); S.facts.resYears = ryr.y; S.facts.resRows = ryr.rows; // 1세대1주택 거주연수(초본)
   trcApplyAns_(S, ans);
@@ -34567,4 +34577,39 @@ function trcOfficialStd_(c, rf, txs, lines) {
     });
   } catch (e) { notes.push('공시가격 조회 중 오류: ' + (e && e.message || e)); }
   if (notes.length) lines.push('공시가격 조회(세액계산기와 같은 기능): ' + notes.slice(0, 5).join(' / '));
+}
+
+// [2026.10.17] 건축물대장 조회(세액계산기·AI가 쓰는 toolLookupBuildingRegister — 건축HUB) — 주용도·구조·사용승인일, 동·호가 있으면 그 호의 전유면적.
+//  { purpose, structure, approval, area, src } 또는 { error }. 6시간 기억
+function cpBuilding_(loc) {
+  const geo = cpGeo_(loc);
+  if (!geo || geo.error) return { error: geo ? geo.error : '주소 없음' };
+  const key = 'cpbld_' + geo.pnu + '_' + (geo.dong || '') + '_' + (geo.ho || '');
+  const cache = CacheService.getScriptCache(), hit = cache.get(key);
+  if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+  let out;
+  try {
+    const sg = geo.pnu.slice(0, 5), bj = geo.pnu.slice(5, 10), plat = geo.pnu.charAt(10) === '2' ? '1' : '0', bun = geo.pnu.slice(11, 15), ji = geo.pnu.slice(15, 19);
+    const t = toolLookupBuildingRegister('titleInfo', sg, bj, plat, bun, ji);
+    if (!t || t.error || (t.items && t.items.error)) out = { error: (t && (t.error || (t.items && t.items.error))) || '건축물대장 조회 실패' };
+    else {
+      const items = Array.isArray(t.items) ? t.items : [];
+      const dongKey = String(geo.dong || '').replace(/동$/, '');
+      const it = items.filter(function (x) { return !dongKey || String(x.dongNm || '').replace(/동$/, '') === dongKey; })[0] || items[0];
+      if (!it) out = { error: '건축물대장 표제부가 없음' };
+      else {
+        out = { purpose: it.mainPurpsCdNm || '', structure: it.strctCdNm || '', approval: String(it.useAprDay || '').replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3'), area: 0, src: '건축물대장 조회(건축HUB, ' + geo.jibun + (it.dongNm ? ' ' + it.dongNm : '') + ')' };
+        if (geo.ho) {
+          const a = toolLookupBuildingRegister('areaInfo', sg, bj, plat, bun, ji);
+          const rows = a && Array.isArray(a.items) ? a.items : [];
+          const hoKey = String(geo.ho).replace(/호$/, '');
+          const mine = rows.filter(function (x) { return String(x.hoNm || '').replace(/호$/, '') === hoKey && (!dongKey || String(x.dongNm || '').replace(/동$/, '') === dongKey) && /전유/.test(String(x.exposPubuseGbCdNm || '')); });
+          const ar = mine.reduce(function (s, x) { return s + (Number(x.area) || 0); }, 0);
+          if (ar) { out.area = Math.round(ar * 100) / 100; out.src += ' ' + geo.ho + '호 전유면적'; if (mine[0] && mine[0].mainPurpsCdNm) out.purpose = mine[0].mainPurpsCdNm; }
+        }
+      }
+    }
+  } catch (e) { out = { error: '건축물대장 조회 실패: ' + (e && e.message || e) }; }
+  try { cache.put(key, JSON.stringify(out), 21600); } catch (e) {}
+  return out;
 }
