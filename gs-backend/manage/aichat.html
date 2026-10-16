@@ -2241,6 +2241,8 @@
       st.loopNotes = []; st.scanFocusTried = false;
       return st.doStep('evidence', { phase: 'read' }).then(function(r){ if (!r) return 0; return NXAI_SPLIT_.run(st).catch(function(){ return 0; }).then(function(n1){ return NXAI_SCAN_.run(st).catch(function(){ return 0; }).then(function(n2){ return n1 + n2; }); }); })
         .then(function(){ return st.doStep('evidence'); })
+        // 판독 ⚠가 남은 사진 중 아직 보정해 보지 않은 것(한 번에 5묶음 한도로 밀린 것) — 묻기 전에 보정하고 다시 대조
+        .then(function(r){ var lp = r && r.loop; if (!lp || !lp.scan || !lp.scan.length) return; return NXAI_SCAN_.run(st, { focus: lp.scan }).catch(function(){ return 0; }).then(function(){ return st.doStep('evidence'); }); })
         .then(function(){ return nxAiCaseProcLoop_(st, 0); })
         .then(function(){ return ['calc', 'output'].reduce(function(p, k){ return p.then(function(){ return st.doStep(k); }); }, Promise.resolve()); });
     }).then(function(){ return nxAiCaseProcFinish_(st); }).catch(function(err){ st.setStep('save', '❌', String(err && err.message || err)); });
