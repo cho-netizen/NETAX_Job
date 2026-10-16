@@ -17416,6 +17416,24 @@ function tcFillTransferPartiesIfEmpty_(caseObj){
   });
   if (changed && typeof renderTransferPane === 'function') renderTransferPane();
 }
+// [2026.10.16 1:1 김금옥] 사건처리 재계산 직전 — 저장된 계산을 복원한 자산 카드(물건 1건)에 처리개요의 확정값을 다시 넣는다.
+//  세무사님이 필요경비를 다시 확정했는데 복원된 옛 카드(필요경비 6,827,670원)로 계산하던 문제. 물건이 여럿이면 건드리지 않는다.
+function tcSyncOverviewToTransferAssets_(caseObj){
+  if (!caseObj || caseObj.세목 !== 'transfer' || typeof transferAssets === 'undefined') return false;
+  var ov = caseObj.사건개요 || {}, list = Array.isArray(ov.물건목록) ? ov.물건목록 : [];
+  if (list.length !== 1 || transferAssets.length !== 1 || !transferAssets[0]) return false;
+  var item = list[0], a = transferAssets[0], changed = false;
+  var put = function(k, v){ if (v != null && String(v).trim() !== '' && String(a[k] == null ? '' : a[k]) !== String(v)) { a[k] = v; changed = true; } };
+  put('transferPrice', item.양도가액); put('acquisitionPrice', item.취득가액); put('acquisitionDate', item.취득일);
+  if (item.필요경비확정){
+    var acq = (item.취득비용목록 || []).map(function(x){ return { label: x.label + (x.file ? ' (' + x.file + ')' : ''), amount: x.amount }; });
+    var trx = (item.양도비용목록 || []).map(function(x){ return { label: x.label + (x.file ? ' (' + x.file + ')' : ''), amount: x.amount }; });
+    if (JSON.stringify(acq) !== JSON.stringify(a.acquisitionExpenseItems || [])) { a.acquisitionExpenseItems = acq; changed = true; }
+    if (JSON.stringify(trx) !== JSON.stringify(a.transferExpenseItems || [])) { a.transferExpenseItems = trx; changed = true; }
+  }
+  if (changed && typeof renderTransferPane === 'function') renderTransferPane();
+  return changed;
+}
 function tcApplyOverviewToTransfer_(caseObj){
   if (!caseObj || caseObj.세목 !== 'transfer' || typeof transferAssets === 'undefined') return;
   var overview = caseObj.사건개요 || {};

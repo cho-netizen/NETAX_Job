@@ -3056,6 +3056,7 @@
           e.value = v; if (typeof tcLastOverviewValues_ !== 'undefined') tcLastOverviewValues_[k] = String(v);
           e.dispatchEvent(new Event('input', { bubbles: true }));
         });
+        if (tab === 'transfer' && typeof tcSyncOverviewToTransferAssets_ === 'function') tcSyncOverviewToTransferAssets_(st.case); // [2026.10.16 1:1 김금옥] 다시 확정한 필요경비 등
         if (tab === 'gift' && ovv.giftRelation && typeof tcApplyGiftRelation_ === 'function'){ if (typeof tcLastOverviewValues_ !== 'undefined') delete tcLastOverviewValues_.giftRelation; tcApplyGiftRelation_(st.case); }
       } catch (e) {}
       var bf = { gift: 'giftDate', inheritance: 'ihDeathDate' }[tab];

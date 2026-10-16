@@ -24941,7 +24941,7 @@ function tc_ruleTransferFacts_(body) {
       var bond = bm ? Number(bm[1].replace(/,/g, '')) : 0, disc = dm ? Number(dm[1].replace(/[.,]/g, '')) : 0;
       if (!(bond && (p.result.구성금액 || []).indexOf(bond) !== -1)) bond = 0; // 합계에 실제로 들어간 금액일 때만
       if (disc >= bond) disc = 0;
-      lawyers.push({ file: f.name, r: p.result, bond: bond, disc: disc });
+      lawyers.push({ file: f.name, r: p.result, bond: bond, disc: disc, amts: (lt.match(/d{1,3}(?:,d{3})+/g) || []).map(function (v) { return Number(v.replace(/,/g, '')); }) }); // amts: 정산서에 적힌 금액들(겹침 판단용, 2026-10-16)
     }
     if (p.type === 'registry') regs.push({ file: f.name, r: p.result });
   }
@@ -25248,7 +25248,10 @@ function tc_ruleTransferFacts_(body) {
   }
   // [2026.10.15 1:1] 법무사 정산서 합계 안에 들어 있을 금액(보수 현금영수증·취득세 납부서 등)은 미리 체크하지 않고 겹칠 수 있다고 알린다(이중 계상 방지 — 노오섭: 보수 242,000원이 정산서 2,728,918원에 포함)
   var lawC = expCands.filter(function (x) { return /법무사 정산서/.test(x.label); })[0];
-  if (lawC) expCands.forEach(function (x) { if (x !== lawC && x.kind === '취득' && x.amount < lawC.amount && /법무|취득세|인지|채권/.test(x.file + ' ' + x.label)) { x.sure = false; if (!/겹치면/.test(x.note)) x.note = (x.note ? x.note + ' · ' : '') + '법무사 정산서 합계에 이미 들어 있을 수 있음 — 겹치면 하나만'; } });
+  // [2026.10.16 1:1 김금옥] 정산서 글에 그 금액이 실제로 적혀 있을 때만 겹친다고 본다 — 정산서에 없는 취득세(2,527,410원, 따로 낸 고지서)까지 "겹칠 수 있음"으로 체크를 풀었다
+  var lawRec = lawC ? lawyers.filter(function (l) { return l.file === lawC.file; })[0] : null;
+  var inLaw = function (v) { return !lawRec || !(lawRec.amts || []).length || lawRec.amts.indexOf(Number(v)) !== -1; };
+  if (lawC) expCands.forEach(function (x) { if (x !== lawC && x.kind === '취득' && x.amount < lawC.amount && /법무|취득세|인지|채권/.test(x.file + ' ' + x.label) && inLaw(x.amount)) { x.sure = false; if (!/겹치면/.test(x.note)) x.note = (x.note ? x.note + ' · ' : '') + '법무사 정산서 합계에 이미 들어 있을 수 있음 — 겹치면 하나만'; } });
   // 등기부·계약서로 취득일을 못 정한 거래 — 등기필증의 소유권이전 접수일(등기필증이 하나뿐일 때만; 여럿이면 어느 부동산 것인지 모름). 매도 계약서 경로·등기부 경로 모두
   txs.forEach(function (tx) {
     if (tx.acquisitionDate) {
@@ -26356,7 +26359,8 @@ function caseProcOverview0_(c) {
   if (txs.length === 1 && !a0.필요경비확정) {
     const won = function (n) { return Number(n).toLocaleString('ko-KR') + '원'; };
     if (cands.length) lines.push('필요경비 후보 ' + cands.length + '건(서류): ' + cands.map(function (x) { return x.kind + ' ' + won(x.amount) + '(' + x.file + ')'; }).join(', '));
-    items.push(caseProcItem_('tr:expenses', 'missing', '필요경비(취득 부대비용·자본적지출·양도비용)를 확정해 주세요 — 서류에서 ' + cands.length + '건을 찾았습니다. 넣을 것만 체크하고, 없는 비용은 직접 더하세요.',
+    items.push(caseProcItem_('tr:expenses', 'missing', '필요경비(취득 부대비용·자본적지출·양도비용)를 확정해 주세요 — 서류에서 ' + cands.length + '건을 찾았습니다. 넣을 것만 체크하고, 없는 비용은 직접 더하세요.'
+      + (cands.some(function (x) { return /이 사무소 수수료/.test(x.label); }) ? '' : ' (이 사무소 양도세 신고 수수료 영수증이 폴더에 없습니다 — 받으셨으면 양도비용으로 직접 더하세요, 시행령 §163⑤1호)'),
       { mode: 'expenses', target: 'expenses', label: '필요경비', cands: cands }, cands.map(function (x) { return (x.sure ? '☑ ' : '☐ ') + x.kind + ' · ' + x.label + ' · ' + won(x.amount) + (x.date ? ' · ' + x.date : '') + ' · ' + x.file + (x.note ? ' — ' + x.note : ''); }).join('\n')));
   } else if (a0.필요경비확정) {
     lines.push('✅ 필요경비(세무사님 확정): 취득 ' + Number(a0.취득비용합계 || 0).toLocaleString('ko-KR') + '원 · 자본적지출·양도비 ' + Number(a0.양도비용합계 || 0).toLocaleString('ko-KR') + '원');
@@ -26369,7 +26373,7 @@ function caseProcOverview0_(c) {
       if (!x.file) return;
       const same = cands.filter(function (y) { return y.file && String(x.file).split(', ').indexOf(y.file) !== -1; });
       if (!same.length || same.some(function (y) { return Number(y.amount) === Number(x.amount) && (!x.kind || y.kind === x.kind); })) return;
-      diffs.push(x.file + ': 확정 ' + won2(x.amount) + ' ↔ 지금 서류 ' + same.map(function (y) { return y.kind + ' ' + won2(y.amount); }).join(', '));
+      diffs.push(x.file + ': 확정 ' + (x.kind ? x.kind + ' ' : '') + won2(x.amount) + ' ↔ 지금 서류 ' + same.map(function (y) { return y.kind + ' ' + won2(y.amount); }).join(', '));
     });
     if (diffs.length) items.push(caseProcItem_('tr:expenses:recheck:' + diffs.length + ':' + cands.map(function (y) { return y.amount; }).join('-'), 'check', '확정해 둔 필요경비가 지금 서류에서 읽은 값과 다릅니다(판독이 고쳐짐) — 다시 확정해 주세요: ' + diffs.join(' / '),
       { mode: 'expenses', target: 'expenses', label: '필요경비', cands: cands }, cands.map(function (y) { return (y.sure ? '☑ ' : '☐ ') + y.kind + ' · ' + y.label + ' · ' + won2(y.amount) + (y.date ? ' · ' + y.date : '') + ' · ' + y.file + (y.note ? ' — ' + y.note : ''); }).join('\n')));
@@ -27966,6 +27970,21 @@ function caseProcCalc_(c) {
   let need = false;
   if (!last.저장값) { need = true; items.push(caseProcItem_('calc:nostate:' + (last.id || ''), 'check', '최근 계산은 인쇄 서식용 값 없이 저장된 옛 결과입니다 — 다시 계산해 저장합니다.', { mode: 'calc', tab: c.세목 })); }
   if (last.기준일스냅샷 && c.기준일 && last.기준일스냅샷 !== c.기준일) { need = true; items.push(caseProcItem_('calc:base:' + (last.id || '') + ':' + c.기준일, 'check', '저장된 계산의 ' + CASEPROC_BASE_LABEL_[c.세목] + '(' + last.기준일스냅샷 + ')이 사건 기준일(' + c.기준일 + ')과 다릅니다 — 사건 기준일로 다시 계산합니다.', { mode: 'calc', tab: c.세목 })); }
+  // [2026.10.16 1:1 김금옥] 저장된 계산의 입력값(양도가액·취득가액·취득일·필요경비)이 지금 처리개요와 다르면 다시 계산 —
+  //  필요경비를 다시 확정(6,827,670원 → 8,986,120원)했는데 옛 계산(37,686,474원)이 그대로 "완료"로 남았다
+  if (c.세목 === 'transfer' && last.저장값 && Array.isArray(last.저장값.transferResults)) {
+    const ov0 = c.사건개요 || {}, list0 = Array.isArray(ov0.물건목록) ? ov0.물건목록 : [];
+    const sa = [].concat.apply([], last.저장값.transferResults.map(function (r) { return r.assets || []; }));
+    const num = function (v) { return Number(String(v == null ? '' : v).replace(/[^\d]/g, '')) || 0; };
+    if (list0.length === 1 && sa.length === 1) {
+      const a = list0[0], s = sa[0], dif = [];
+      if (num(a.양도가액) && num(a.양도가액) !== num(s.transferPrice)) dif.push('양도가액');
+      if (num(a.취득가액) && num(a.취득가액) !== num(s.acquisitionPrice)) dif.push('취득가액');
+      if (a.취득일 && s.acquisitionDate && a.취득일 !== s.acquisitionDate) dif.push('취득일');
+      if (a.필요경비확정 && num(a.취득비용합계) + num(a.양도비용합계) !== num(s.necessaryExpenses)) dif.push('필요경비(' + (num(s.necessaryExpenses)).toLocaleString('ko-KR') + '원 → ' + (num(a.취득비용합계) + num(a.양도비용합계)).toLocaleString('ko-KR') + '원)');
+      if (dif.length) { need = true; items.push(caseProcItem_('calc:input:' + (last.id || '') + ':' + dif.join(','), 'check', '저장된 계산 뒤에 처리개요 값이 바뀌었습니다(' + dif.join(', ') + ') — 지금 값으로 다시 계산해 저장합니다.', { mode: 'calc', tab: c.세목 })); }
+    }
+  }
   if (last.계산일 && String(c.폴더ID || '').trim()) {
     const cache = CacheService.getScriptCache();
     const after = caseProcFiles_(c).filter(function (f) { return !/^_/.test(f.name) && /pdf|^image\//.test(String(f.mimeType || '')) && !caseProcIsOutputDoc_(f.name) && Utilities.formatDate(new Date(f.modified), Session.getScriptTimeZone(), 'yyyy-MM-dd') > last.계산일 && !((caseProcParsed_(f, cache, false) || {}).office); });
