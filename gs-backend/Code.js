@@ -25121,6 +25121,21 @@ function tc_ruleTransferFacts_(body) {
   };
   var earlier = function (a, b) { return !a ? b : !b ? a : (a < b ? a : b); };
   var regHolder = function (x) { return (x.권리자 || []).map(function (h) { return h.이름; }).join(''); };
+  // [2026.10.17] 등기부 거래가액(2006년부터 매매 등기에 적힘) — 'sell'은 납세자 명의 다음 기재(넘긴 등기), 'acq'는 납세자가 얻은 기재
+  var regTradeOf_ = function (loc, mine) {
+    var hit = null;
+    regs.forEach(function (g) { (g.r.docs || []).forEach(function (d) {
+      if (!tcLocSame_(d.소재지, loc)) return;
+      var h = (d.소유권이력 || []).filter(function (x) { return !x.말소 && !x.확인필요; });
+      h.forEach(function (x, k) {
+        if (!x.거래가액) return;
+        var isMine = tcNameIn_(regHolder(x), names);
+        if (mine === 'acq' && isMine) hit = { v: x.거래가액, file: g.file, date: x.접수일 };
+        if (mine === 'sell' && !isMine && k > 0 && tcNameIn_(regHolder(h[k - 1]), names)) hit = { v: x.거래가액, file: g.file, date: x.접수일 };
+      });
+    }); });
+    return hit;
+  };
   // 그 부동산 등기부에서 납세자가 소유권을 얻은 마지막 기재(말소·확인필요 제외)
   var regAcq = function (loc) {
     var best = null;
@@ -25150,10 +25165,33 @@ function tc_ruleTransferFacts_(body) {
       evidence.push(s.file + '은(는) ' + s.r.소재지목록.length + '필지 일괄 계약(' + s.r.소재지목록.join(' / ') + ')' + (s.r.매매대금 ? ' — 매매대금 ' + s.r.매매대금.toLocaleString('ko-KR') + '원은 필지 합계' : '') + ', 필지별 등기부·취득가액 확인');
     }
     // 신고필증으로 금액 대조·잔금일 보충
+    // [2026.10.17 상충 판단 1] 양도가액 — 계약서 매매대금·실거래 신고필증 거래가격·등기부 거래가액(양도 등기 기재)을 함께 본다.
+    //  둘 이상이 같으면 그 금액(두 공적 기록 = 신고필증·등기부가 같고 계약서만 다르면 변경계약·특약 가능성 — 공적 기록 쪽), 모두 갈리면 정하지 않고 출처와 함께 묻는다
+    var rpHit = reports.filter(function (rp) { return tcLocSame_(rp.r.소재지, s.r.소재지) && rp.r.총거래가격; })[0];
+    var gSell = regTradeOf_(sLoc, 'sell');
+    var pv = [];
+    if (s.r.매매대금) pv.push({ v: s.r.매매대금, src: '계약서 매매대금(' + s.file + (ok(s) ? ', 계약금·잔금 검산 일치' : ', 검산 안 됨') + ')', sure: ok(s) });
+    if (rpHit) pv.push({ v: rpHit.r.총거래가격, src: '실거래 신고필증 거래가격(' + rpHit.file + (rpHit.r.검산 ? ', 검산 일치' : '') + ')', sure: !!rpHit.r.검산 });
+    if (gSell && gSell.v) pv.push({ v: gSell.v, src: '등기부 거래가액(' + gSell.file + ', 양도 등기 ' + (gSell.date || '') + ')', sure: true });
+    if (pv.length >= 2 && !(s.r.소재지목록 && s.r.소재지목록.length >= 2 && Object.keys(landJb).length >= 2)) {
+      var cnt = {}; pv.forEach(function (x) { cnt[x.v] = (cnt[x.v] || 0) + 1; });
+      var agree = Object.keys(cnt).filter(function (k) { return cnt[k] >= 2; }).map(Number)[0];
+      if (agree) {
+        if (tx.transferPrice !== agree) evidence.push('양도가액 ' + agree.toLocaleString('ko-KR') + '원 — ' + pv.filter(function (x) { return x.v === agree; }).map(function (x) { return x.src; }).join('·') + '이 같음' + (pv.some(function (x) { return x.v !== agree; }) ? '(다른 금액: ' + pv.filter(function (x) { return x.v !== agree; }).map(function (x) { return x.src + ' ' + x.v.toLocaleString('ko-KR') + '원'; }).join(', ') + ' — 변경계약·특약 확인)' : ''));
+        tx.transferPrice = agree; tx.transferPriceCand = null;
+      } else if (pv.filter(function (x) { return x.sure; }).map(function (x) { return x.v; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).length === 1 && pv.some(function (x) { return !x.sure; })) {
+        // 검산이 맞는(확실한) 값이 하나뿐이고 나머지는 검산 안 된 글자 — 확실한 쪽(계약서 글자인식이 흐린 경우 등)
+        var sv1 = pv.filter(function (x) { return x.sure; })[0];
+        evidence.push('양도가액 ' + sv1.v.toLocaleString('ko-KR') + '원 — ' + sv1.src + '(다른 서류 금액은 검산이 안 된 글자: ' + pv.filter(function (x) { return !x.sure; }).map(function (x) { return x.src + ' ' + x.v.toLocaleString('ko-KR') + '원'; }).join(', ') + ')');
+        tx.transferPrice = sv1.v; tx.transferPriceCand = null;
+      } else if (Object.keys(cnt).length >= 2) {
+        tx.transferPrice = null; tx.transferPriceCand = null; tx.transferPriceConflict = pv;
+        evidence.push('⚠ 양도가액이 서류마다 다름 — ' + pv.map(function (x) { return x.src + ' ' + x.v.toLocaleString('ko-KR') + '원'; }).join(' / ') + ' — 질문으로 확인');
+      }
+    }
     reports.forEach(function (rp) {
       if (!tcLocSame_(rp.r.소재지, s.r.소재지)) return;
-      if (rp.r.총거래가격 && tx.transferPrice && rp.r.총거래가격 !== tx.transferPrice) evidence.push('⚠ 신고필증 거래가격 ' + rp.r.총거래가격.toLocaleString('ko-KR') + '원 ≠ 계약서 — 확인필요');
-      if (!tx.transferPrice && rp.r.총거래가격 && rp.r.검산) { tx.transferPrice = rp.r.총거래가격; evidence.push('양도가액은 신고필증 거래가격으로(' + rp.file + ')'); }
+      if (!tx.transferPrice && !tx.transferPriceConflict && rp.r.총거래가격 && rp.r.검산) { tx.transferPrice = rp.r.총거래가격; evidence.push('양도가액은 신고필증 거래가격으로(' + rp.file + ')'); }
       if (!tx.transferDate && rp.r.잔금지급일) { tx.transferDate = rp.r.잔금지급일; evidence.push('양도 잔금일은 신고필증 잔금지급일(' + rp.file + ')'); }
     });
     var rd = regDate(sLoc, 'sell');
@@ -25163,6 +25201,12 @@ function tc_ruleTransferFacts_(body) {
       tx._acqMatched = true;
       tx.acquisitionPrice = ok(b) ? b.r.매매대금 : null;
       if (!ok(b) && b.r.매매대금) tx.acquisitionPriceCand = { v: b.r.매매대금, file: b.file }; // 검산 안 된 매매대금은 확정하지 않고 후보로
+      // [2026.10.17 상충 판단 2] 취득가액 — 취득 계약서 ↔ 등기부 거래가액(취득 등기 기재): 같으면 확정(검산 안 된 계약서도), 다르면 정하지 않고 출처와 함께 묻는다
+      var gAcq = regTradeOf_(b.r.소재지, 'acq');
+      if (gAcq && gAcq.v && b.r.매매대금) {
+        if (gAcq.v === b.r.매매대금) { if (!tx.acquisitionPrice) evidence.push('취득가액 ' + gAcq.v.toLocaleString('ko-KR') + '원 — 취득 계약서와 등기부 거래가액(' + gAcq.file + ')이 같음'); tx.acquisitionPrice = gAcq.v; tx.acquisitionPriceCand = null; }
+        else { tx.acquisitionPrice = null; tx.acquisitionPriceCand = null; tx.acquisitionPriceConflict = [{ v: b.r.매매대금, src: '취득 계약서 매매대금(' + b.file + (ok(b) ? ', 검산 일치' : ', 검산 안 됨') + ')' }, { v: gAcq.v, src: '등기부 거래가액(' + gAcq.file + ', 취득 등기 ' + (gAcq.date || '') + ')' }]; evidence.push('⚠ 취득가액이 서류마다 다름 — 계약서 ' + b.r.매매대금.toLocaleString('ko-KR') + '원 / 등기부 거래가액 ' + gAcq.v.toLocaleString('ko-KR') + '원 — 질문으로 확인'); }
+      }
       tx.acquisitionDate = (b.r.잔금일 && !b.r.잔금일확인필요) ? b.r.잔금일 : null;
       var ra = regDate(b.r.소재지, 'acq');
       if (ra && tx.acquisitionDate && ra < tx.acquisitionDate) { evidence.push('취득시기: 등기접수일 ' + ra + '이 잔금일보다 빨라 그날로(§98)'); tx.acquisitionDate = ra; }
@@ -33775,6 +33819,7 @@ function trcFromEvidence_(c, rf, txs, ans) {
     const price = t.transferPrice || (t.parcels ? t.contractTotal : 0);
     if (t.transferPrice) { ct.totalPrice = t.transferPrice; src[base + '.totalPrice'] = '계약서·신고필증(검산 일치)'; }
     if (!t.transferPrice && t.transferPriceCand) cands[base + '.totalPrice'] = [{ v: String(t.transferPriceCand.v), src: '계약서 매매대금' + (t.transferPriceCand.note ? '(' + t.transferPriceCand.note + ')' : '') + ' — ' + t.transferPriceCand.file + '(계약금·잔금 검산 안 됨 — 원문 확인)' }];
+    if (!t.transferPrice && t.transferPriceConflict) { cands[base + '.totalPrice'] = t.transferPriceConflict.map(function (x) { return { v: String(x.v), src: x.src }; }); facts.conflict = facts.conflict || {}; facts.conflict[base + '.totalPrice'] = true; }
     if (k === 0 && (rf.comps || []).length) {
       ct.transferCause = 'expropriation'; src[base + '.transferCause'] = '수용 보상금 내역서';
       if (!ct.totalPrice) cands[base + '.totalPrice'] = rf.comps.map(function (x) { return { v: String(x.total), src: x.kind + ' 보상금 합계' + (x.count ? '(' + x.count + ')' : '') + ' — ' + x.file + (x.unsure ? ' ⚠원문 확인' : '') }; })
@@ -33804,6 +33849,7 @@ function trcFromEvidence_(c, rf, txs, ans) {
       if (t.acquisitionDate) src[p + '.acquisitionDate'] = '취득 계약서 잔금일·등기접수일(규칙 정리)';
       if (t.acquisitionPrice) src[p + '.acquisitionPrice'] = '취득 계약서·등기부 거래가액(검산 일치)';
       if (!t.acquisitionPrice && t.acquisitionPriceCand) cands[p + '.acquisitionPrice'] = [{ v: String(t.acquisitionPriceCand.v), src: '계약서 매매대금 — ' + t.acquisitionPriceCand.file + '(계약금·잔금 검산 안 됨 — 원문 확인)' }];
+      if (!t.acquisitionPrice && t.acquisitionPriceConflict) { cands[p + '.acquisitionPrice'] = t.acquisitionPriceConflict.map(function (x) { return { v: String(x.v), src: x.src }; }); facts.conflict = facts.conflict || {}; facts.conflict[p + '.acquisitionPrice'] = true; }
       if (t.assetKind) { a.assetKind = t.assetKind; src[p + '.assetKind'] = t.assetInfoSrc; }
       if (t.assetArea) { a.assetArea = t.assetArea; src[p + '.assetArea'] = t.assetInfoSrc; }
       if (t.assetSubType) { a.assetSubType = t.assetSubType; src[p + '.assetSubType'] = t.assetInfoSrc; }
