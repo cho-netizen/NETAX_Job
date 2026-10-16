@@ -25579,7 +25579,9 @@ function caseProcEvidence_(c) {
   if (docsOver.length) lines.push('⚠ PDF·사진이 ' + docsAll.length + '개라 ' + CASEPROC_DOC_MAX_ + '개까지만 읽음 — 안 읽은 파일: ' + docsOver.slice(0, 10).map(function (f) { return f.name; }).join(', ') + (docsOver.length > 10 ? ' 외 ' + (docsOver.length - 10) + '개' : ''));
   const noText = docs.filter(function (f) { return f.p && !f.p.t && f.p.nt && !f.p.office; });
   if (noText.length) lines.push('⚠ 글자를 못 읽은 서류(그림만·흐린 사진) ' + noText.length + '개: ' + noText.slice(0, 8).map(function (f) { return f.name; }).join(', ') + (noText.length > 8 ? ' 외' : '') + ' — 내용이 필요하면 선명한 PDF로 다시 넣어 주세요.');
-  const unkind = docs.filter(function (f) { return f.p && !f.p.t && !f.p.nt && !f.p.office; });
+  const unkind = docs.filter(function (f) { return f.p && !f.p.t && !f.p.nt && !f.p.office && !f.p.vat; });
+  const vatDocs0 = docs.filter(function (f) { return f.p && !f.p.t && f.p.vat; }); // [2026.10.16 1:1 김금옥]
+  if (vatDocs0.length) lines.push('부가가치세 신고 자료 ' + vatDocs0.length + '개(매입세액 공제·환급 여부 — 분양 취득가액의 부가세 판단 근거): ' + vatDocs0.map(function (f) { return f.name; }).join(', '));
   if (unkind.length) lines.push('종류를 정하지 못한 서류 ' + unkind.length + '개(글자는 읽음 — 서류 규칙이 없어 칸에 자동으로 넣지 않음, 필요하면 [확인]에서 근거 파일로 고르세요): ' + unkind.slice(0, 10).map(function (f) { return f.name; }).join(', ') + (unkind.length > 10 ? ' 외 ' + (unkind.length - 10) + '개' : ''));
   // [2026.10.15 1:1] 그 밖의 파일도 전부 — 읽은 것·못 읽은 것을 이름으로(말없이 건너뛰지 않음)
   try {
@@ -25653,7 +25655,10 @@ function caseProcEvidence_(c) {
   const got = req.filter(function (e) { return e.status === '확보됨'; });
   if (req.length) lines.push('필요증빙 확보 ' + got.length + '/' + req.length);
   else if (c.업무유형 !== '신고') lines.push('업무유형이 "' + (c.업무유형 || '—') + '"이라 필요증빙 틀이 없습니다(신고 사건만 자동으로 깔림).');
-  if (outDocs.length) lines.push('신고서·명세서 등 발생문서 ' + outDocs.length + '건 — 증빙 점검·입력값 출처에서 뺌(참고·정답지 전용): ' + outDocs.slice(0, 4).map(function (f) { return f.name; }).join(', '));
+  // [2026.10.16 1:1 김금옥] 이전에 해 본 간편계산 결과는 신고서가 아니라 참고자료로 따로 밝힌다
+  const calcRefs = outDocs.filter(function (f) { return f.p && f.p.calc; }), outReal = outDocs.filter(function (f) { return !(f.p && f.p.calc); });
+  if (outReal.length) lines.push('신고서·명세서 등 발생문서 ' + outReal.length + '건 — 증빙 점검·입력값 출처에서 뺌(참고·정답지 전용): ' + outReal.slice(0, 4).map(function (f) { return f.name; }).join(', '));
+  if (calcRefs.length) lines.push('참고자료(이전에 해 본 홈택스 간편계산 결과 — 신고서 아님, 입력 출처로 안 씀) ' + calcRefs.length + '건: ' + calcRefs.map(function (f) { return f.name; }).join(', '));
   const office = docs.filter(function (f) { return f.p && f.p.office; });
   if (office.length) lines.push('사무소 발행 영수증 ' + office.length + '건 — 고객 증빙 아님(수금 기록용), 점검에서 뺌: ' + office.slice(0, 3).map(function (f) { return f.name; }).join(', ') + (office.length > 3 ? ' 외' : ''));
   // [2026.10.15 1:1] 양도 — 사무소가 받은 신고 수수료도 고객에겐 양도비용(신고서 작성비용, 소득세법 시행령 §163⑤1호)일 수 있다. 말없이 빼지 않고 묻는다.
@@ -26350,7 +26355,22 @@ function caseProcOverview0_(c) {
     if (cands.length) lines.push('필요경비 후보 ' + cands.length + '건(서류): ' + cands.map(function (x) { return x.kind + ' ' + won(x.amount) + '(' + x.file + ')'; }).join(', '));
     items.push(caseProcItem_('tr:expenses', 'missing', '필요경비(취득 부대비용·자본적지출·양도비용)를 확정해 주세요 — 서류에서 ' + cands.length + '건을 찾았습니다. 넣을 것만 체크하고, 없는 비용은 직접 더하세요.',
       { mode: 'expenses', target: 'expenses', label: '필요경비', cands: cands }, cands.map(function (x) { return (x.sure ? '☑ ' : '☐ ') + x.kind + ' · ' + x.label + ' · ' + won(x.amount) + (x.date ? ' · ' + x.date : '') + ' · ' + x.file + (x.note ? ' — ' + x.note : ''); }).join('\n')));
-  } else if (a0.필요경비확정) lines.push('✅ 필요경비(세무사님 확정): 취득 ' + Number(a0.취득비용합계 || 0).toLocaleString('ko-KR') + '원 · 자본적지출·양도비 ' + Number(a0.양도비용합계 || 0).toLocaleString('ko-KR') + '원');
+  } else if (a0.필요경비확정) {
+    lines.push('✅ 필요경비(세무사님 확정): 취득 ' + Number(a0.취득비용합계 || 0).toLocaleString('ko-KR') + '원 · 자본적지출·양도비 ' + Number(a0.양도비용합계 || 0).toLocaleString('ko-KR') + '원');
+    // [2026.10.16 1:1 김금옥] 확정할 때 본 서류 값이 그 뒤 판독 개선으로 달라졌으면(같은 파일인데 금액·구분이 다름) 다시 묻는다 —
+    //  법무사 정산서를 입금액 4,930,170원으로 읽은 채 확정해 두어, 실제 쓴 돈(4,561,210원)으로 고친 뒤에도 옛 금액이 그대로 계산에 쓰였다
+    const won2 = function (n) { return Number(n).toLocaleString('ko-KR') + '원'; };
+    const conf = [].concat((a0.취득비용목록 || []).map(function (x) { return Object.assign({ side: '취득' }, x); }), (a0.양도비용목록 || []).map(function (x) { return Object.assign({ side: '양도' }, x); }));
+    const diffs = [];
+    conf.forEach(function (x) {
+      if (!x.file) return;
+      const same = cands.filter(function (y) { return y.file && String(x.file).split(', ').indexOf(y.file) !== -1; });
+      if (!same.length || same.some(function (y) { return Number(y.amount) === Number(x.amount) && (!x.kind || y.kind === x.kind); })) return;
+      diffs.push(x.file + ': 확정 ' + won2(x.amount) + ' ↔ 지금 서류 ' + same.map(function (y) { return y.kind + ' ' + won2(y.amount); }).join(', '));
+    });
+    if (diffs.length) items.push(caseProcItem_('tr:expenses:recheck:' + diffs.length + ':' + cands.map(function (y) { return y.amount; }).join('-'), 'check', '확정해 둔 필요경비가 지금 서류에서 읽은 값과 다릅니다(판독이 고쳐짐) — 다시 확정해 주세요: ' + diffs.join(' / '),
+      { mode: 'expenses', target: 'expenses', label: '필요경비', cands: cands }, cands.map(function (y) { return (y.sure ? '☑ ' : '☐ ') + y.kind + ' · ' + y.label + ' · ' + won2(y.amount) + (y.date ? ' · ' + y.date : '') + ' · ' + y.file + (y.note ? ' — ' + y.note : ''); }).join('\n')));
+  }
   // [2026.10.15 일괄점검 ③] 서류로 채우지 못한 계산 필수 칸(소재지·양도가액·취득가액·취득일·양도일)은 질문으로 — 빈 채로 계산하지 않게
   caseProcTrAskBasics_(c, ov, lines, items, rf, txs, true);
   return { ok: true, lines: lines, items: items, filled: fills.length };

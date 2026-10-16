@@ -17398,6 +17398,24 @@ var TC_CASE_CLASSIFICATION_TO_TRANSFER_FLAGS_ = {
   '비사업용 토지(중과)': { isNonBusinessLand: true },
   '미등기양도': { isUnregisteredTransfer: true }
 };
+// [2026.10.16 1:1 김금옥] 저장된 계산을 복원(tcRestoreToolResults_)하면 그때 비어 있던 인적사항 칸이 처리개요 값을 다시 덮어쓴다 —
+//  복원 뒤에도 빈 칸이면 사건처리가 계약서에서 읽은 양도인 주민번호·주소, 양수인 성명·주민번호를 채운다(직접 입력한 값은 그대로)
+function tcFillTransferPartiesIfEmpty_(caseObj){
+  if (!caseObj || caseObj.세목 !== 'transfer') return;
+  var ov = caseObj.사건개요 || {};
+  ['trTransferorRegNo', 'trTransferorAddress'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el && !el.value && ov[id]) { el.value = ov[id]; tcLastOverviewValues_[id] = String(ov[id]); el.dispatchEvent(new Event('input', { bubbles: true })); }
+  });
+  if (typeof transferAssets === 'undefined' || !(ov.trBuyerName || ov.trBuyerRegNo)) return;
+  var changed = false;
+  transferAssets.forEach(function(a){
+    if (!a) return;
+    if (!a.buyerName && ov.trBuyerName) { a.buyerName = ov.trBuyerName; changed = true; }
+    if (!a.buyerRegNo && ov.trBuyerRegNo) { a.buyerRegNo = ov.trBuyerRegNo; changed = true; }
+  });
+  if (changed && typeof renderTransferPane === 'function') renderTransferPane();
+}
 function tcApplyOverviewToTransfer_(caseObj){
   if (!caseObj || caseObj.세목 !== 'transfer' || typeof transferAssets === 'undefined') return;
   var overview = caseObj.사건개요 || {};
@@ -17540,6 +17558,7 @@ function renderTcCaseBar_(){
     tcApplySpecialGiftProvisionDefaults_(tcCurrentCase);
     tcApplyGiftRelation_(tcCurrentCase);
     tcRestoreToolResults_(tcCurrentCase);
+    tcFillTransferPartiesIfEmpty_(tcCurrentCase);
   }
   tcRenderCaseFactsBanner_(tcCurrentCase);
 }
