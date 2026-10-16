@@ -3054,7 +3054,9 @@
     // [2026.10.17] 양도 — 계산 직전에 사건처리 계산기 입력(증빙·답, 계산기 모양)을 그대로 불러온다
     var startCalc = function(){
       if (tab === 'transfer' && typeof tcLoadTransferCalcIn_ === 'function') tcLoadTransferCalcIn_(st.case).then(function(ok){ st.calcInLoaded = !!ok; startCalc0(); });
-      else startCalc0();
+      // [2026.10.17] 상속 — 서류 규칙 정리(사건처리 답 포함, 토큰 0) 결과를 확인창 없이 계산기에 바로 넣는다(예전: "자동채우기를 할까요?" 확인을 눌러야 했다)
+      else if (tab === 'inheritance' && typeof tcApplyInheritanceRule_ === 'function') callGas('tc_rule_inheritance_facts', { caseId: st.caseId }).then(function(rf){ if (rf && rf.ok) { try { tcApplyInheritanceRule_(rf); st.calcInLoaded = true; } catch (e) {} } startCalc0(); }).catch(function(){ startCalc0(); });
+      else { if (tab === 'gift') st.calcInLoaded = true; startCalc0(); } // 증여 — 처리개요의 계산기 칸 값(아래)으로
     };
     var startCalc0 = function(){
       var g = function(id){ var e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; };
@@ -3117,7 +3119,11 @@
         st.setStep('calc', '🔄', '입력값이 갖춰져 계산엔진으로 계산 중(토큰 0)…');
         return watch();
       }
-      if (tab === 'transfer' && st.calcInLoaded){ st.calcBusy = false; st.setStep('calc', '⏸', '세액계산기 입력에 아직 빈 칸이 있습니다(양도가액·취득일·취득가액 또는 기준시가) — 위 질문에 답하면 다시 계산합니다.'); return; } // [2026.10.17] 다른 길(자동채우기)로 가지 않음
+      // [2026.10.17] 사건처리 입력을 넣었는데도 빈 칸이 있으면 다른 길(자동채우기·유료 AI)로 가지 않고 비어 있는 칸을 알려 질문으로 받는다
+      if (st.calcInLoaded){
+        var emptyL = tab === 'transfer' ? '양도가액·취득일·취득가액 또는 기준시가' : tab === 'gift' ? Object.keys(GIFT_AUTOCALC_REQUIRED_).filter(function(k){ return !g(GIFT_AUTOCALC_REQUIRED_[k].id); }).map(function(k){ return GIFT_AUTOCALC_REQUIRED_[k].label; }).join('·') : [!g('ihDeceasedName') && '피상속인 성명', !g('ihDeathDate') && '상속개시일', !g('ihGrossEstateGeneral') && '총상속재산가액(재산 평가)', !inheritanceHeirs.some(function(h){ return h && h.name && h.relation; }) && '상속인(성명·관계)'].filter(Boolean).join('·');
+        st.calcBusy = false; st.setStep('calc', '⏸', '세액계산기에 아직 빈 칸이 있습니다(' + emptyL + ') — 위 질문에 답하면 다시 계산합니다.'); return;
+      }
       nxAiConfirm_('세액계산 입력값이 아직 비어 있습니다. 서류로 자동채우기를 할까요?\n\n' + (tab === 'gift' ? '증여는 AI 자동채우기를 씁니다(유료, 한 번 수십~수백 원).' : '서류 규칙 정리를 먼저 씁니다(0원, 확인창이 뜹니다 — [취소]하면 AI 자동채우기).') + '\n빈 칸·특례는 세액계산 화면이 직접 묻고, 계산이 끝나면 사건에 저장합니다.').then(function(ok){
         if (ok){ st.setStep('calc', '🔄', '자동채우기 → 계산 중(빈 칸은 화면이 묻습니다)…'); if (typeof tcRunAutoCalc_ === 'function') tcRunAutoCalc_(); }
         else st.setStep('calc', '🔄', '세액계산 화면에서 빈 칸을 채우고 [세액 계산하기]를 누르면 이어서 저장합니다.');

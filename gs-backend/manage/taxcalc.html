@@ -1322,6 +1322,9 @@ function recomputeContractAllocation_(contractId, kind){
     : window.calculateProportionalAllocationJS({ assets: assetsForCalc, totalTransferPrice: contract.totalPrice || 0, method: useVat ? 'standard_price_vat' : 'standard_price' });
   if (!result || result.error){ contract._lastError = (result && result.error) || ''; return; }
   contract._lastVatTotal = useVat ? result.자산별_안분결과.reduce(function(s, r){ return s + (r.부가세 || 0); }, 0) : 0;
+  // [2026.10.17] 계약 양도비용 안분 — 반올림으로 합계가 1원씩 어긋나지 않게 차이는 가장 큰 몫이 흡수(이종식: 150,000원이 149,999원으로 나뉘었다)
+  const trShares_ = kind === 'transfer' ? memberIdxs.map(function(i, k){ return totalExpense ? Math.round(totalExpense * result.자산별_안분결과[k].안분비율_양도) : 0; }) : [];
+  if (kind === 'transfer' && totalExpense){ const d_ = totalExpense - trShares_.reduce(function(t, x){ return t + x; }, 0); if (d_){ let big_ = 0; trShares_.forEach(function(x, k){ if (x > trShares_[big_]) big_ = k; }); trShares_[big_] += d_; } }
   memberIdxs.forEach(function(i, k){
     const asset = transferAssets[i];
     const row = result.자산별_안분결과[k];
@@ -1330,7 +1333,7 @@ function recomputeContractAllocation_(contractId, kind){
       tcSetContractCostItem_(asset, listKey, shareLabel, row.취득비용_안분액);
     } else {
       asset.transferPrice = row.양도가액_부가세제외 !== undefined ? row.양도가액_부가세제외 : row.양도가액_안분액;
-      tcSetContractCostItem_(asset, listKey, shareLabel, totalExpense ? Math.round(totalExpense * row.안분비율_양도) : 0);
+      tcSetContractCostItem_(asset, listKey, shareLabel, trShares_[k]);
     }
   });
 }

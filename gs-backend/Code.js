@@ -34158,7 +34158,9 @@ function trcEngineInputs_(st, transferDate) {
     const r = eng.calculateProportionalAllocationJS({ assets: mem.map(function (a) { return { label: a.assetLocation || '', standardPriceAcquisition: Math.round((Number(a.landPricePerSqmAcquisition) || 0) * (Number(a.assetArea) || 0)), standardPriceTransfer: Math.round((Number(a.landPricePerSqmTransfer) || 0) * (Number(a.assetArea) || 0)), isBuilding: a.assetKind === 'building' }; }), totalTransferPrice: ct.totalPrice || 0, method: 'standard_price' });
     if (!r || r.error) return;
     const te = sum(ct.totalExpenseItems);
-    mem.forEach(function (a, k) { const row = r.자산별_안분결과[k]; a.transferPrice = row.양도가액_안분액; a.transferExpenseItems = te ? [{ label: '양도 관련 비용(계약 안분)', amount: Math.round(te * row.안분비율_양도) }] : []; });
+    const shares = mem.map(function (a, k) { return te ? Math.round(te * r.자산별_안분결과[k].안분비율_양도) : 0; });
+    if (te) { const d = te - shares.reduce(function (t, x) { return t + x; }, 0); if (d) { let big = 0; shares.forEach(function (x, k) { if (x > shares[big]) big = k; }); shares[big] += d; } } // 합계가 계약 양도비용과 정확히 같게(계산기와 같은 규칙)
+    mem.forEach(function (a, k) { const row = r.자산별_안분결과[k]; a.transferPrice = row.양도가액_안분액; a.transferExpenseItems = te ? [{ label: '양도 관련 비용(계약 안분)', amount: shares[k] }] : []; });
   });
   const s0 = (st.transferSellers || [])[0] || {};
   const NUMK = /(Price|Value|Expenses|ExpensesOnly|Paid|Count|Years|Ratio|Amount|Sqm|Contribution)$/;
