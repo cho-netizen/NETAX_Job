@@ -25552,7 +25552,10 @@ function caseProc_(body) {
     if (body.step === 'status') return caseProcStatus_(c, body);
     if (body.step === 'calcin') return caseProcCalcIn_(c);
     if (body.step === 'scanCands') return caseProcScanCands_(c); // [2026.10.17] 원근보정할 사진 후보
-    if (body.step === 'scanSaved') return caseProcScanSaved_(c, body); // 원근보정본 짝 기록 // [2026.10.17] 양도 세액계산기 입력(계산기 모양 그대로)
+    if (body.step === 'scanSaved') return caseProcScanSaved_(c, body); // 원근보정본 짝 기록
+    if (body.step === 'splitCands') return caseProcSplitCands_(c); // 한 파일에 든 여러 서류 나눌 후보
+    if (body.step === 'splitPages') return caseProcSplitPages_(c, body); // 쪽별 종류·묶음
+    if (body.step === 'splitSaved') return caseProcSplitSaved_(c, body); // 나눈 파일 기록 // [2026.10.17] 양도 세액계산기 입력(계산기 모양 그대로)
   } catch (e) {
     return { error: '이 단계를 처리하지 못했습니다: ' + (e && e.message || e) };
   }
@@ -34612,4 +34615,62 @@ function cpBuilding_(loc) {
   } catch (e) { out = { error: '건축물대장 조회 실패: ' + (e && e.message || e) }; }
   try { cache.put(key, JSON.stringify(out), 21600); } catch (e) {}
   return out;
+}
+
+// [2026.10.17 세무사님 지시 — "하나의 파일에 2개의 문서가 있을 때에는 가급적 문서별로 분리"] 이름에 서류가 둘 이상 적힌 PDF
+//  ("매매계약서, 증여세신고서.pdf")를 사이드바가 쪽별 임시 파일(_로 시작 — 처리에서 빠짐)로 올리면, 서버가 쪽마다 글자인식해 종류를 정하고
+//  같은 종류로 이어지는 쪽끼리 묶어 이름을 정해 준다(종류 모르는 쪽은 앞 쪽에 붙임). 임시 파일은 휴지통으로. 원본은 그대로
+function caseProcSplitCands_(c) {
+  const out = [];
+  try {
+    const sv = caseProcLoad_(c.id) || {}, done = sv.scanSplits || {}, tried = sv.splitTried || {};
+    caseProcFiles_(c, { raw: true }).forEach(function (f) {
+      if (out.length >= 2 || !/pdf/.test(String(f.mimeType || '')) || /^_/.test(f.name) || done[f.id] || tried[f.id + '_' + f.modified] || caseProcIsOutputDoc_(f.name)) return;
+      const b = caseProcScanBase_(f.name);
+      // 괄호 안(사람 이름 "신수호&신경은")은 보지 않고, 쉼표·+·"및"으로 나뉜 각 부분이 모두 서류 이름처럼 보일 때만("관련 판례 및 판단 기준" 같은 제목 하나는 아님)
+      const DOCW = /(계약서|신고서|영수증|등본|초본|대장|증명|내역|재결서|명세서|고지서|납부서|정산서|확인서|통지서|증서|평가서|세금계산서|등록세|취득세|신고필증|필증)/;
+      const parts = b.replace(/\([^)]*\)/g, ' ').split(/\s*(?:,|，|\+|및)\s*/).filter(function (x) { return x.replace(/[\d\s_\-()]/g, '').length >= 2; });
+      if (parts.length < 2 || !parts.every(function (x) { return DOCW.test(x); })) return;
+      let folderId = '';
+      try { const it = DriveApp.getFileById(f.id).getParents(); if (it.hasNext()) folderId = it.next().getId(); } catch (e) {}
+      if (folderId) out.push({ id: f.id, name: f.name, folderId: folderId, names: parts, modified: f.modified });
+    });
+  } catch (e) {}
+  return { ok: true, cands: out };
+}
+// 쪽별 임시 파일 → 종류·묶음. body: { fileId(원본), folderId, pages: [임시 파일ID…] }
+function caseProcSplitPages_(c, body) {
+  const pages = Array.isArray(body.pages) ? body.pages.slice(0, 12) : [];
+  const types = [];
+  pages.forEach(function (id, i) {
+    let t = '', l = '';
+    try {
+      const df = DriveApp.getFileById(id);
+      const text = tc_docText_({ id: id, name: df.getName(), mimeType: 'application/pdf', modified: df.getLastUpdated().getTime() });
+      const p = text ? docParseText_(text) : null;
+      t = (p && p.type) || ''; l = caseProcScanName_({ t: t, l: (p && p.label) || '' });
+    } catch (e) {}
+    types.push({ i: i, t: t, l: l });
+  });
+  pages.forEach(function (id) { try { DriveApp.getFileById(id).setTrashed(true); } catch (e) {} }); // 임시 쪽 파일은 휴지통으로
+  const groups = [];
+  types.forEach(function (x) {
+    const g = groups[groups.length - 1];
+    if (g && (!x.t || x.t === g.t)) g.pages.push(x.i); else groups.push({ t: x.t, l: x.l, pages: [x.i] });
+  });
+  if (groups.length < 2 || groups.filter(function (g) { return g.t; }).length < 2) {
+    caseProcPatch_(c.id, function (sv) { sv.splitTried = sv.splitTried || {}; sv.splitTried[body.fileId + '_' + (body.modified || '')] = true; });
+    return { ok: true, groups: [], why: '쪽마다 읽은 서류 종류가 둘 이상으로 갈리지 않아 나누지 않음(' + types.map(function (x) { return (x.i + 1) + '쪽 ' + (x.l || '종류 미정'); }).join(', ') + ')' };
+  }
+  const used = {};
+  groups.forEach(function (g) {
+    let n = caseProcScanUnique_(body.folderId, (g.l || '서류') + '.pdf'), k = 2; const b0 = n.replace(/\.pdf$/i, '');
+    while (used[n]) n = b0 + '(' + (k++) + ').pdf';
+    used[n] = 1; g.name = n;
+  });
+  return { ok: true, groups: groups };
+}
+function caseProcSplitSaved_(c, body) {
+  caseProcPatch_(c.id, function (sv) { sv.scanSplits = sv.scanSplits || {}; if (body.orig && Array.isArray(body.parts) && body.parts.length) sv.scanSplits[String(body.orig)] = body.parts.map(String); });
+  return { ok: true };
 }

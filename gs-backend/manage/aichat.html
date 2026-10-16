@@ -2234,7 +2234,7 @@
       if (!res) throw new Error('사건 기본 정보를 불러오지 못했습니다.');
       if (res.blocked){ ['evidence', 'overview', 'calc', 'output'].forEach(function(k){ st.setStep(k, '⏭', '증빙 폴더가 없어 건너뜀'); }); return; }
       // [2026.10.17] 증빙 단계 뒤 — 판독이 나쁜 사진을 원근보정(여러 장이면 한 서류로 합쳐) 저장했으면 증빙을 한 번 더 읽는다(보정본으로)
-      return st.doStep('evidence').then(function(){ return NXAI_SCAN_.run(st).catch(function(){ return 0; }); }).then(function(n){ return n ? st.doStep('evidence') : null; })
+      return st.doStep('evidence').then(function(){ return NXAI_SPLIT_.run(st).catch(function(){ return 0; }); }).then(function(n1){ return NXAI_SCAN_.run(st).catch(function(){ return 0; }).then(function(n2){ return n1 + n2; }); }).then(function(n){ return n ? st.doStep('evidence') : null; })
         .then(function(){ return ['overview', 'calc', 'output'].reduce(function(p, k){ return p.then(function(){ return st.doStep(k); }); }, Promise.resolve()); });
     }).then(function(){ return nxAiCaseProcFinish_(st); }).catch(function(err){ st.setStep('save', '❌', String(err && err.message || err)); });
   }
@@ -3096,6 +3096,42 @@
       return saved.length;
     }
     return { run: run, correct: correct };
+  })();
+  // [2026.10.17 세무사님 지시 — "하나의 파일에 2개의 문서가 있을 때에는 가급적 문서별로 분리"] 이름에 서류가 둘 이상 적힌 PDF를 쪽별로 잘라
+  //  서버가 쪽마다 종류를 정해 묶어 주면, 묶음마다 PDF로 같은 폴더에 저장한다(원본은 그대로 — 서버가 나눈 파일이 다 읽히면 나눈 쪽으로 읽음)
+  var NXAI_SPLIT_ = (function(){
+    function b64ToBytes(b64){ var bin = atob(b64), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+    function bytesToB64(u){ var s = '', CH = 0x8000; for (var i = 0; i < u.length; i += CH) s += String.fromCharCode.apply(null, u.subarray(i, i + CH)); return btoa(s); }
+    async function pagesPdf(src, idxs){ var d = await PDFLib.PDFDocument.create(); var cp = await d.copyPages(src, idxs); cp.forEach(function(p){ d.addPage(p); }); return await d.save(); }
+    async function run(st){
+      if (typeof PDFLib === 'undefined' || typeof callGas !== 'function') return 0;
+      var r = await callGas('case_proc', { caseId: st.caseId, step: 'splitCands' }).catch(function(){ return null; });
+      var cands = (r && r.cands) || [];
+      var done = [], notes = [];
+      for (var i = 0; i < cands.length; i++){
+        var c = cands[i];
+        st.setStep('evidence', '🔄', '한 파일에 든 서류 나누는 중(' + (i + 1) + '/' + cands.length + ') — ' + c.name);
+        try {
+          var fb = await callGas('readFileBinary', { fileId: c.id });
+          if (!fb || fb.error || !fb.base64) { notes.push(c.name + '(불러오기 실패)'); continue; }
+          var src = await PDFLib.PDFDocument.load(b64ToBytes(fb.base64), { ignoreEncryption: true });
+          var n = Math.min(src.getPageCount(), 12);
+          if (n < 2) { notes.push(c.name + '(한 쪽뿐 — 나누지 않음)'); continue; }
+          var tmp = [];
+          for (var k = 0; k < n; k++){ var one = await pagesPdf(src, [k]); var up = await callGas('uploadFile', { folderId: c.folderId, name: '_쪽임시_' + (k + 1) + '_' + c.name, mimeType: 'application/pdf', base64Data: bytesToB64(one) }); if (up && up.id) tmp.push(up.id); }
+          if (tmp.length !== n) { notes.push(c.name + '(쪽 나누기 저장 실패)'); continue; }
+          var g = await callGas('case_proc', { caseId: st.caseId, step: 'splitPages', fileId: c.id, modified: c.modified, folderId: c.folderId, pages: tmp });
+          if (!g || !g.groups || !g.groups.length){ notes.push(c.name + '(' + ((g && g.why) || '나누지 않음') + ')'); continue; }
+          var parts = [];
+          for (var q = 0; q < g.groups.length; q++){ var gp = g.groups[q]; var pdf = await pagesPdf(src, gp.pages); var u2 = await callGas('uploadFile', { folderId: c.folderId, name: gp.name, mimeType: 'application/pdf', base64Data: bytesToB64(pdf) }); if (u2 && u2.id) parts.push({ id: u2.id, name: u2.name || gp.name, pages: gp.pages.map(function(x){ return x + 1; }).join(',') }); }
+          if (parts.length){ await callGas('case_proc', { caseId: st.caseId, step: 'splitSaved', orig: c.id, parts: parts.map(function(p){ return p.id; }) }).catch(function(){}); done.push(c.name + ' → ' + parts.map(function(p){ return p.name + '(' + p.pages + '쪽)'; }).join(' + ')); }
+        } catch (e) { notes.push(c.name + '(' + (e && e.message || e) + ')'); }
+      }
+      var box = st.steps.evidence && st.steps.evidence.querySelector('.nxai-cp-lines');
+      if (box && (done.length || notes.length)){ var ln = document.createElement('div'); ln.className = 'nxai-cp-line'; ln.textContent = '📑 한 파일에 든 여러 서류를 서류별로 나눔(원본은 그대로): ' + (done.length ? done.join(' / ') : '') + (notes.length ? (done.length ? ' · ' : '') + '나누지 않음 ' + notes.join(' / ') : ''); box.appendChild(ln); }
+      return done.length;
+    }
+    return { run: run };
   })();
   // 4단계 실제 계산 — 세액계산 화면(계산엔진)을 이 사건으로 열어 계산하고, 결과가 나오면 사건에 저장한다.
   // 입력이 이미 다 있으면 [세액 계산하기]만 누르고(토큰 0), 모자라면 화면의 [자동계산](서류로 채우기 → 빈 칸은 화면이 직접 물음)을 쓴다.
