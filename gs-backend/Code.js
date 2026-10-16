@@ -33814,6 +33814,13 @@ function trcApplyAns_(S, ans) {
     if (f && f.seller) Object.assign(st.transferSellers[0], f.seller);
     S.src['사건분류'] = ans.사건분류.src;
   }
+  // [2026.10.17] 1세대1주택 — 계산기 「거주연수」(장기보유특별공제 표2). 답이 없으면 초본 이력에서 그 자산 주소에 산 기간(trcResYears_), 못 정하면 질문
+  st.transferAssets.forEach(function (a, i) {
+    const p = 'a' + i + '.residenceYears';
+    if (!a.isOneHouseOneFamily || ans[p]) return;
+    const ry = S.facts && S.facts.resYears && S.facts.resYears[i];
+    if (ry) { a.residenceYears = ry.y; S.src[p] = ry.src; }
+  });
   // 증여 취득 — 증여자와의 관계를 정했으면 계산기 「이월과세·우회양도」 칸을 채운다. 계산기는 증여받은 날이 있으면 그 칸의 수증자 기준 값(증여 당시 평가액·필요경비)으로
   //  계산하므로 수증자 값도 같이 넣는다(비우면 취득가액 0원으로 계산됨). 관계가 "특수관계 없음"이면 이 칸을 쓰지 않는다
   (S.facts && S.facts.gift || []).forEach(function (g) {
@@ -33992,6 +33999,13 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
     if (!ans.taxfee && !cands.some(function (x) { return /이 사무소 수수료/.test(x.label); })) q('tr:taxfee', 'missing', '양도소득세 신고 세무비용(이 사무소 신고 수수료 등) 영수증이 폴더에 없습니다 — 금액을 넣어 주세요(없으면 "없음"). 양도계약 카드 양도비용으로 넣습니다(시행령 §163⑤1호).',
       { mode: 'options', target: 'trTaxFee', options: [{ label: '없음(0원)', value: '0' }], input: 'money', label: '신고 세무비용', withInput: true });
   }
+  // 1세대1주택이면 거주연수 — 초본으로 못 정했으면 묻는다(근거: 읽은 초본 이력)
+  st.transferAssets.forEach(function (a, i) {
+    if (!a.isOneHouseOneFamily || has(a.residenceYears)) return;
+    const rs = (S.facts.resRows || {})[i] || [];
+    q('trc:a' + i + '.residenceYears', 'missing', '1세대1주택 — 계산기 「거주연수」(장기보유특별공제 표2: 보유 연 4% + 거주 연 4%)를 정해 주세요' + (rs.length ? '. 초본에서 이 주소 기록을 찾았지만 기간을 확정하지 못했습니다' : '. 초본에서 이 주소 거주 기록을 찾지 못했습니다(뒷장이 빠졌거나 초본 없음)') + '.',
+      { mode: 'input', target: 'calc:a' + i + '.residenceYears', input: 'number', label: '거주연수', cands: [] }, rs.join('\n'));
+  });
   // 6) 특례 — 사건분류(비과세·중과·감면)는 거래내용 뒤에. 고르면 계산기 자산·양도인 체크로 들어간다
   if (!ans.사건분류) {
     const tpl = WORK_EVIDENCE_TEMPLATES_.transfer && WORK_EVIDENCE_TEMPLATES_.transfer.사건분류 ? Object.keys(WORK_EVIDENCE_TEMPLATES_.transfer.사건분류) : [];
@@ -34049,6 +34063,7 @@ function trcOverview_(c, ov, rf, lines, items) {
   S.facts.officetel = trcOfficetel_(c, rf, txs);
   // 오피스텔이 아닌 주택(대장·등기부 용도가 아파트·다세대·연립·단독·다가구)이면 과세대상 구분 = 주택
   if (!S.facts.officetel && txs.length === 1 && S.state.transferAssets.length === 1) { const hs = trcHouseUse_(c); if (hs && !S.state.transferAssets[0].assetType) { S.state.transferAssets[0].assetType = 'house'; S.src['a0.assetType'] = hs; } }
+  const ryr = trcResYears_(c, S); S.facts.resYears = ryr.y; S.facts.resRows = ryr.rows; // 1세대1주택 거주연수(초본)
   trcApplyAns_(S, ans);
   // 답 ↔ 지금 서류가 다르면 다시 묻는다(판독이 고쳐졌거나 서류가 추가됨) — 답을 말없이 덮지 않는다
   ['a0.acquisitionPrice', 'a0.acquisitionDate', 'a0.assetLocation', 'c0.totalPrice'].forEach(function (pth) {
@@ -34224,4 +34239,37 @@ function caseProcInhAddr_(c, o, parsed) {
     (o.heirs || []).forEach(function (h) { if (h && h.name && !h.address) { const d = addrOf(h.name); if (d) { h.address = d.a; h.addressSrc = '주민등록(' + d.file + ')'; } } });
   } catch (e) {}
   return o;
+}
+
+// [2026.10.17] 1세대1주택 거주연수 — 양도인 주민등록초본 이력에서 그 자산 주소(tcLocSame_)에 산 기간을 더한다.
+//  뒷장이 빠진 초본(이하 여백 없음)은 쓰지 않는다. 기간 끝이 "현재"면 양도일까지. 만 연수(내림)만 넣고, 못 정하면 질문(trcQuestions_)
+function trcResYears_(c, S) {
+  const out = { y: {}, rows: {} };
+  try {
+    const sn = String((S.state.transferSellers[0] || {}).name || '').replace(/\s+/g, '');
+    if (sn.length < 2) return out;
+    const docs = caseProcParseAll_(c).filter(function (x) { return x.p && x.p.type === 'resident' && x.p.result && String(x.p.result.성명 || '').replace(/\s+/g, '') === sn; });
+    const td = String(c.기준일 || '');
+    S.state.transferAssets.forEach(function (a, i) {
+      if (!a.assetLocation) return;
+      const per = [], rows = [];
+      docs.forEach(function (x) {
+        const r = x.p.result;
+        (r.거주기간 || []).forEach(function (h) {
+          if (!h.주소 || !tcLocSame_(h.주소, a.assetLocation)) return;
+          rows.push('초본(' + x.f.name + ') ' + (h.시작 || '?') + ' ~ ' + (h.끝 || h.끝표시 || '?') + ' ' + h.주소 + (r.뒷장없음 ? ' ⚠ 뒷장 빠짐' : ''));
+          if (r.뒷장없음 || !h.시작) return;
+          const end = h.끝 || (/현재/.test(String(h.끝표시 || '')) ? td : '');
+          if (!end || end < h.시작) return;
+          if (!per.some(function (q) { return q[0] === h.시작 && q[1] === end; })) per.push([h.시작, end]);
+        });
+      });
+      out.rows[i] = rows;
+      if (!per.length) return;
+      const days = per.reduce(function (t, q) { return t + Math.round((new Date(q[1]) - new Date(q[0])) / 86400000); }, 0);
+      const y = Math.floor(days / 365.2425);
+      out.y[i] = { y: y, src: '주민등록초본 이력(' + per.map(function (q) { return q[0] + '~' + q[1]; }).join(', ') + ') — 이 자산 주소 거주 만 ' + y + '년' };
+    });
+  } catch (e) {}
+  return out;
 }
