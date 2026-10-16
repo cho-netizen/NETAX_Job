@@ -4275,8 +4275,9 @@ function buildContextSystemPrompt(basePrompt, body) {
     'propose_new_business_manager로 만든 초안은 "_제안함" 폴더에만 저장되고 자동으로 활성화되지 않는다 — 이건 의도된 안전장치이니, 마치 이미 적용된 것처럼 착각하지 말고 사용자에게 검토가 필요하다고 명확히 알려라.';
 
   // [2026.10.13] 개발자가 최근 바꾼 기능(📥 반영 때 기록, 배포 사이엔 그대로라 캐시가 깨지지 않음) — 사용자가 물으면 안내 + 기능 부족 신고 안내
-  try { staticExtra += commRecentChangesPrompt_(); } catch (e) {}
-  staticExtra += '\n\n[기능 부족 신고] 사용자가 원하는 일을 job 도구로 할 수 없으면(도구가 없거나, 막혀 있거나, 결과가 틀리는 등) report_capability_gap 도구로 "원한 것·막힌 이유·필요한 도구"를 개발자에게 남겨라(고객 이름·번호 등은 쓰지 말 것). 그다음 사용자에게는 할 수 있는 대안을 안내하라.';
+  // [2026.10.16] job 화면에서만 — 같은 서버를 쓰는 work.netax.kr AI에게 job 안내·신고 지시를 하지 않는다
+  if (ctx.aiPanel || ctx.currentView) try { staticExtra += commRecentChangesPrompt_(); } catch (e) {}
+  if (ctx.aiPanel || ctx.currentView) staticExtra += '\n\n[기능 부족 신고] 사용자가 원하는 일을 job 도구로 할 수 없으면(도구가 없거나, 막혀 있거나, 결과가 틀리는 등) report_capability_gap 도구로 "원한 것·막힌 이유·필요한 도구"를 개발자에게 남겨라(고객 이름·번호 등은 쓰지 말 것). 그다음 사용자에게는 할 수 있는 대안을 안내하라.';
   staticExtra += '\n\n[화제 전환 처리] 이 대화에 사건·검토 관련 이전 내용이 쌓여 있더라도, 사용자의 새 메시지가 그 내용과 명백히 무관한 별개의 질문(예: 날씨, 간단한 계산, 일반 상식 등)이면 이전 화제(예: "~건 검토를 진행할까요?" 같은 직전 제안)를 다시 꺼내거나 그쪽으로 답을 끌고 가지 마라. 새 질문에만 집중해서 답하고, 답변이 끝난 뒤에도 먼저 이전 화제로 돌아가자고 제안하지 마라 — 사용자가 먼저 그 화제를 다시 꺼내면 그때 이어가라.';
 
   // [2026.08] 예전엔 이걸 화면의 "자동참조" 켜고끄기 토글로 사람이 미리 정해둬야 했다 — 다른
@@ -4555,14 +4556,15 @@ function resolveOrCreateFolderByPath_(pathArr) {
 // 아래에서 표시만 붙이고 실제 "들어가지 않기"는 도구 설명·시스템프롬프트의 지침이 담당한다).
 const AUTO_REF_EXCLUDE_PREFIX = '_';
 
-function toolListDriveFolder(pathArr) {
+function toolListDriveFolder(pathArr, isJob) {
   const result = (pathArr === undefined || pathArr === null)
     ? handleListFolder({})
     : handleListFolder({ path: pathArr });
 
   if (result && Array.isArray(result.folders)) {
     // [2026.10.15] "양도코리아" = 이미 낸 신고서·정답지 보관 폴더 — AI 목록에서 아예 뺀다(caseIsFiledReturnFolder_)
-    result.folders = result.folders.filter(function (f) { return !caseIsFiledReturnFolder_(f.name); });
+    // [2026.10.16] job 화면에서만 — 같은 서버를 쓰는 work.netax.kr AI는 예전처럼 기신고서 폴더도 본다
+    if (isJob) result.folders = result.folders.filter(function (f) { return !caseIsFiledReturnFolder_(f.name); });
     // 🧪 정답지(_정답지*.json·점검 결과)도 AI 목록에서 뺀다 — 처리 중 AI가 정답을 보고 맞추지 않게
     if (Array.isArray(result.files)) result.files = result.files.filter(function (f) { return !caseIsAnswerKeyFile_(f.name); });
     result.folders.forEach(function (f) {
@@ -4571,7 +4573,7 @@ function toolListDriveFolder(pathArr) {
       }
     });
   }
-  if (result && Array.isArray(result.path) && result.path.some(caseIsFiledReturnFolder_)) return { error: '"양도코리아" 폴더(이미 낸 신고서 보관)는 열지 않습니다 — 처리는 원시서류로만 합니다.' };
+  if (isJob && result && Array.isArray(result.path) && result.path.some(caseIsFiledReturnFolder_)) return { error: '"양도코리아" 폴더(이미 낸 신고서 보관)는 열지 않습니다 — 처리는 원시서류로만 합니다.' };
   return result;
 }
 
@@ -14720,7 +14722,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
       }
 
       if (block.name === 'list_drive_folder') {
-        const resultObj = toolListDriveFolder(block.input && block.input.path);
+        const resultObj = toolListDriveFolder(block.input && block.input.path, isJobPanel_);
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj) };
       }
 
@@ -15486,7 +15488,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
       }
 
       // [2026.10.15] 사건 폴더의 "양도코리아"(이미 낸 신고서·정답지 보관) 폴더 파일은 AI도 읽지 않는다(caseIsFiledReturnFolder_)
-      if (caseFileInFiledFolder_(block.input && block.input.fileId) || caseIsAnswerKeyFileId_(block.input && block.input.fileId)) {
+      if ((isJobPanel_ && caseFileInFiledFolder_(block.input && block.input.fileId)) || caseIsAnswerKeyFileId_(block.input && block.input.fileId)) {
         return { type: 'tool_result', tool_use_id: block.id, is_error: true, content: '이 파일은 이미 낸 신고서 보관 폴더("양도코리아")에 있거나 점검용 정답지라 읽지 않습니다 — 처리는 원시서류로만 합니다.' };
       }
       let resultObj;
@@ -15494,7 +15496,8 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         resultObj = handleReadFile({ fileId: block.input && block.input.fileId });
         // [2026.10.11 토큰0] PDF·이미지를 그대로 첨부하면 쪽마다 이미지 토큰이 든다. 규칙으로 정리되는 서류(등기부·계약서·대장·증명서·영수증 등)면
         // 무료 OCR+규칙 요약(검산 ✓·확인필요 ⚠)을 글로 준다. 원본 문구·도장·배치가 꼭 필요하면 AI가 raw:true로 다시 부르면 원본 첨부.
-        if (resultObj && resultObj.kind === 'binary' && !(block.input && block.input.raw)) {
+        // [2026.10.16] job 화면에서만 — work.netax.kr AI에 요약만 주니 서류를 못 보고 엉뚱하게 답했다(work는 원본 첨부로 되돌림)
+        if (isJobPanel_ && resultObj && resultObj.kind === 'binary' && !(block.input && block.input.raw)) {
           try {
             const dp = docParseFile_({ fileId: block.input.fileId });
             if (dp && dp.type && dp.md) resultObj = { name: resultObj.name, mimeType: resultObj.mimeType, kind: 'text',
