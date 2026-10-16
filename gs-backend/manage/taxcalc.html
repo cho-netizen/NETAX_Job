@@ -17420,6 +17420,17 @@ var TC_CASE_CLASSIFICATION_TO_TRANSFER_FLAGS_ = {
 // [2026.10.17 세무사님 지시 — "처리개요는 요약"] 양도: 사건처리가 증빙·답으로 만든 세액계산기 입력(양도인·양도계약·양도자산·취득계약, 계산기 모양 그대로)을
 //  그대로 불러온다. 처리개요를 거쳐 칸을 맞추던 연결(tcApplyOverviewToTransfer_·tcSync…)은 이 입력이 아직 없는 사건에만 쓰인다.
 var tcCalcInHash_ = {};
+// [2026.10.17] 증여 — 사건처리가 등기부에서 읽은 증여재산(종류·소재지·면적, 재산이 하나면 증여재산가액)을 계산기 재산평가 목록에(신고서 증여재산 명세용).
+//  이미 평가액을 넣어 둔 목록은 건드리지 않는다
+function tcApplyGiftAssets_(assets){
+  if (!Array.isArray(assets) || !assets.length || typeof valuationAssets === 'undefined') return false;
+  var mine = valuationAssets.filter(function(a){ return a && a.taxType !== 'inheritance'; });
+  if (mine.some(function(a){ return numVal(a.directValue) || a.landPrice || a.housePrice || (a.method && a.method !== 'direct'); })) return false;
+  var rows = assets.map(function(a){ return { taxType: 'gift', method: 'direct', assetKind: /토지/.test(String(a.kind || '')) ? 'land' : 'building', assetLocation: a.loc || '', directValue: a.value ? String(a.value) : '', valuationSrc: a.value ? (a.valueSrc || '사건처리') : '' }; });
+  valuationAssets = valuationAssets.filter(function(a){ return a && a.taxType === 'inheritance'; }).concat(rows);
+  if (typeof renderValuationAssetList === 'function') renderValuationAssetList('giftValuationList', giftValuationAssets_());
+  return true;
+}
 function tcLoadTransferCalcIn_(caseObj){
   if (!caseObj || caseObj.세목 !== 'transfer' || typeof callGas !== 'function') return Promise.resolve(false);
   return callGas('case_proc', { caseId: caseObj.id, step: 'calcin' }).then(function(r){

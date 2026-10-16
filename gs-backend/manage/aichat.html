@@ -3060,7 +3060,7 @@
     };
     // [2026.10.17] 증여·상속 — 이 계산이 쓴 입력의 해시를 받아 저장에 남긴다(답으로 값이 바뀌면 사건처리가 다시 계산)
     var giHash = function(){
-      return callGas('case_proc', { caseId: st.caseId, step: 'calcin' }).then(function(r){ if (r && r.giHash && typeof tcCalcInHash_ !== 'undefined') tcCalcInHash_[st.caseId] = r.giHash; }).catch(function(){});
+      return callGas('case_proc', { caseId: st.caseId, step: 'calcin' }).then(function(r){ if (r && r.giHash && typeof tcCalcInHash_ !== 'undefined') tcCalcInHash_[st.caseId] = r.giHash; if (r && r.giftAssets && typeof tcApplyGiftAssets_ === 'function') { try { tcApplyGiftAssets_(r.giftAssets); } catch (e) {} } }).catch(function(){});
     };
     var startCalc0 = function(){
       var g = function(id){ var e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; };

@@ -24845,7 +24845,9 @@ function tcContractParties1_(s) {
   }
   // [2026.10.17] 법인 당사자 — 법인등록번호는 그대로(계산기 양수인 번호 칸), 법인명은 글자인식 띄어쓰기가 섞여 확정하지 않고 후보(corpName)로만(방영교: 정비사업조합)
   var cnm = (s.match(/[가-힣\d][가-힣\d\s]{1,40}?(?:조\s*합|주\s*식\s*회\s*사|㈜|\(\s*주\s*\)|유\s*한\s*회\s*사|공\s*사|재\s*단|법\s*인)(?![가-힣])/g) || []).filter(function (x) { return !/법\s*인\s*등\s*록|등\s*록\s*번\s*호/.test(x); }).pop() || '';
-  var who = function (i) { return { name: corp[i] ? '' : (nms[i] || ''), regNo: regs[i] || '', addr: addrs[i] || '', corp: !!corp[i], corpName: corp[i] ? cnm.replace(/\s+/g, ' ').trim() : '' }; };
+  // [2026.10.17] 전화 — 서명란 전화번호가 정확히 둘(매도인·매수인)일 때만 순서대로(중개사 번호가 섞여 셋 이상이면 정하지 않음)
+  var phs = []; (s.match(/0\d{1,2}[-)\s]?\d{3,4}[-\s]?\d{4}(?!\d)/g) || []).forEach(function (p) { p = p.replace(/[)\s]/g, '-').replace(/-+/g, '-'); if (phs.indexOf(p) === -1) phs.push(p); });
+  var who = function (i) { return { name: corp[i] ? '' : (nms[i] || ''), regNo: regs[i] || '', addr: addrs[i] || '', corp: !!corp[i], corpName: corp[i] ? cnm.replace(/\s+/g, ' ').trim() : '', phone: phs.length === 2 ? phs[i] : '' }; };
   return { seller: who(0), buyer: who(1) };
 }
 // [2026.10.15] 본문으로 역할을 못 정한 계약서는 파일 이름의 말(매도·양도 → 매도인, 매수·취득·분양 → 매수인)로 — 둘 다 있으면 정하지 않음
@@ -33722,6 +33724,7 @@ function trcFromEvidence_(c, rf, txs, ans) {
   if (pt) {
     const ps = pt.seller || {};
     if (ps.regNo) { seller.regNo = ps.regNo; src['seller.regNo'] = '양도 계약서 서명란 매도인(' + pt.file + ')'; }
+    if (ps.phone) { seller.phone = ps.phone; src['seller.phone'] = '양도 계약서 서명란 매도인 전화(' + pt.file + ')'; } // [2026.10.17] 계산기 양도인 카드 전화번호
     if (ps.addr) { seller.address = ps.addr; src['seller.address'] = '양도 계약서 서명란 매도인 주소(' + pt.file + ') — 계약 당시 주소'; }
   }
   // [2026.10.17] 양도인 주소(납세지) — 주민등록 등본·초본이 있으면 그 현재 주소가 우선(세무사님 원칙: 주민등록 서류가 없을 때만 계약서 주소). 이름이 같고 주소가 하나일 때만
@@ -33870,7 +33873,8 @@ function giCalcHash_(c) {
   return Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, JSON.stringify(o), Utilities.Charset.UTF_8)).slice(0, 16);
 }
 function caseProcCalcIn_(c) {
-  if (c.세목 === 'gift' || c.세목 === 'inheritance') return { ok: true, giHash: giCalcHash_(c) };
+  if (c.세목 === 'gift') return { ok: true, giHash: giCalcHash_(c), giftAssets: giGiftAssets_(c) }; // 증여재산 목록(등기부)
+  if (c.세목 === 'inheritance') return { ok: true, giHash: giCalcHash_(c) };
   if (c.세목 !== 'transfer') return { ok: true, none: true };
   const sv = caseProcLoad_(c.id) || {};
   return sv.trCalc ? { ok: true, state: sv.trCalc.state, src: sv.trCalc.src, hash: sv.trCalc.hash, at: sv.trCalc.at } : { ok: true, none: true };
@@ -34287,6 +34291,30 @@ function trcResYears_(c, S) {
       const y = Math.floor(days / 365.2425);
       out.y[i] = { y: y, src: '주민등록초본 이력(' + per.map(function (q) { return q[0] + '~' + q[1]; }).join(', ') + ') — 이 자산 주소 거주 만 ' + y + '년' };
     });
+  } catch (e) {}
+  return out;
+}
+
+// [2026.10.17] 증여 — 계산기 재산평가 목록(신고서 증여재산 명세)에 넣을 증여재산: 등기부에서 수증자(사건 납세자)에게 증여로 넘어온 부동산(말소 아님).
+//  평가액은 증여재산이 하나이고 처리개요 증여재산가액이 정해졌을 때만 그 금액(여럿이면 재산별 평가는 계산기에서 — 나누지 않음)
+function giGiftAssets_(c) {
+  const out = [];
+  try {
+    const donee = String(c.납세자 || (c.사건개요 || {}).giftDoneeName || '').replace(/\([^)]*\)/g, '').replace(/\s+/g, '');
+    if (donee.length < 2) return out;
+    caseProcParseAll_(c).filter(function (x) { return x.p && x.p.type === 'registry'; }).forEach(function (x) {
+      ((x.p.result || {}).docs || []).forEach(function (d) {
+        (d.소유권이력 || []).forEach(function (e) {
+          if (e.말소 || !/증여/.test(String(e.원인 || ''))) return;
+          if (!(e.권리자 || []).some(function (q) { return String(q.이름 || '').replace(/\s+/g, '') === donee; })) return;
+          if (out.some(function (o) { return o.loc === d.소재지; })) return;
+          const pb = d.표제부 || {};
+          out.push({ loc: d.소재지 || '', kind: d.종류 || '', area: d.종류 === '토지' ? (pb.면적 || '') : (pb.전유면적 || ''), date: e.접수일 || '', file: x.f.name });
+        });
+      });
+    });
+    const amt = String((c.사건개요 || {}).giftAmount || '').replace(/[^\d]/g, '');
+    if (out.length === 1 && amt) { out[0].value = amt; out[0].valueSrc = '처리개요 증여재산가액(재산 하나)'; }
   } catch (e) {}
   return out;
 }
