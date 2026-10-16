@@ -26288,6 +26288,8 @@ function caseProcOverview_(c) {
   try { gc = caseProcGraspCheck_(c, gl, gi); } catch (e) { gl.push('⚠ 사건파악 확인 중 오류: ' + (e && e.message || e)); }
   const r = caseProcOverview0_(c);
   if (r && r.ok) { r.lines = gl.concat(r.lines || []); r.items = gi.concat(r.items || []); if (gc.changed) r.loop = Object.assign({}, r.loop || {}, { again: '사건파악으로 작업관리 값을 고침 — 증빙 대조를 그 값으로 다시' }); }
+  // 상속 — 감정가액이 이상한 감정서(검산 안 됨·감정서끼리 30% 넘게 차이)는 질문 전에 사이드바가 그 파일부터 보정·다시 읽기
+  if (r && r.ok && c.세목 === 'inheritance') { try { const rr = (caseProcInhFacts_(c).reread || []); if (rr.length) r.loop = Object.assign({}, r.loop || {}, { scan: rr.map(function (z) { return z.id; }), why: '감정가액 다시 읽기 — ' + rr.map(function (z) { return z.name + '(' + z.why + ')'; }).join(', ') }); } catch (e) {} }
   if (r && r.ok && c.세목 !== 'transfer' && CASEPROC_TAX_LABEL_[c.세목]) { try { const cc = r.case || c, nd = giNeeds_(cc), ns = trcNeedsSummary_(nd); r.needs = ns; r.lines.push('🎯 세액계산기 필수 칸 ' + ns.total + '개 — 채움 ' + ns.filled + '개(근거 있음 ' + ns.withSrc + ')' + (ns.missing.length ? ' · 남음: ' + ns.missing.join(', ') : ' · 모두 채움')); caseProcPatch_(c.id, function (sv) { sv.needs = { at: new Date().toISOString(), list: nd, sum: ns }; }); } catch (e) {} }
   try { caseProcMemoCands_(c, r); } catch (e) {}
   try { caseProcMemoCross_(c, r); } catch (e) {}
@@ -27368,6 +27370,12 @@ function caseProcInhFacts0_(c, parsed) {
       apps.push({ v: r.감정평가액, src: '감정평가 ' + (r.평가법인 || x.f.name) + (r.기준시점 ? ' ' + r.기준시점 + ' 기준' : '') + ' — 시가(§60⑤)' + (why ? ' ⚠ ' + why : ''), kind: why ? '시가(확인)' : '시가', days: r.기준시점 && base ? Math.abs(new Date(r.기준시점) - new Date(base)) / 86400000 : 0, file: x.f.name });
     });
     apps.forEach(function (q) { a.cands.push(q); });
+    // [2026.10.17 재설계] 감정가액이 이상하면 묻기 전에 그 감정서부터 다시 보정·판독 — 검산 안 됨이거나, 같은 물건 감정서끼리 30% 넘게 차이 남(두 감정은 보통 몇 % 안에서 맞음)
+    out.reread = out.reread || [];
+    const rr = function (q, why) { const f0 = by('appraisal').filter(function (x) { return x.f.name === q.file; })[0]; if (f0 && !out.reread.some(function (z) { return z.id === f0.f.id; })) out.reread.push({ id: f0.f.id, name: q.file, why: why }); };
+    apps.filter(function (q) { return /검산 안 됨/.test(q.src); }).forEach(function (q) { rr(q, '감정가액 검산 안 됨'); });
+    const okv = apps.filter(function (q) { return !/검산 안 됨/.test(q.src); });
+    if (okv.length >= 2) { const vs = okv.map(function (q) { return q.v; }), mx = Math.max.apply(null, vs), mn = Math.min.apply(null, vs); if (mn > 0 && (mx - mn) / mn > 0.3) okv.forEach(function (q) { rr(q, '같은 물건 감정서끼리 ' + Math.round((mx - mn) / mn * 100) + '% 차이'); }); }
     const appsOk = apps.filter(function (q) { return q.kind === '시가'; });
     // 검산은 맞지만 어느 물건 것인지(합계인지) 몰라 묻는 감정서가 둘 이상이면, 고를 수 있게 평균도 후보로(시행령 §49①2)
     const appsAmb = apps.filter(function (q) { return q.kind === '시가(확인)' && !/검산 안 됨/.test(q.src); });
@@ -33743,7 +33751,7 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
     if (co.cut.length) cf.push('서류로 해당 없어 뺀 선택지: ' + co.cut.join(', '));
     tpl = co.options;
     q('ov:사건분류', 'judge', '사건분류(비과세·중과·감면 등 어느 경우인지)를 정해 주세요 — 고른 것은 계산기 자산 카드의 해당 체크(1세대1주택·비사업용토지·미등기 등)와 양도인 카드 주택 수로 들어가 세율·공제가 달라집니다. 서류에서 읽은 관련 사실을 아래에 적었습니다(보유 주택 수·세대 구성은 서류만으로 다 알 수 없어 정하지 않았습니다).',
-      { mode: 'options', target: 'ov:사건분류', label: '사건분류', options: tpl.map(function (k) { return { label: k, value: k }; }).concat([{ label: '일반(해당 특례 없음)', value: '일반' }]), ai: '이 사건의 사건분류(비과세·중과·감면·특례 중 어느 경우인지)를 사건자료로 판단하고, 판단에 부족한 사실·서류를 알려줘.' }, cf);
+      { mode: 'options', target: 'ov:사건분류', label: '사건분류', options: tpl.map(function (k) { return { label: k + (co.fit[k] ? ' — 서류: ' + co.fit[k] : ''), value: k }; }).concat([{ label: '일반(해당 특례 없음)', value: '일반' }]), ai: '이 사건의 사건분류(비과세·중과·감면·특례 중 어느 경우인지)를 사건자료로 판단하고, 판단에 부족한 사실·서류를 알려줘.' }, cf);
   }
 }
 // 취득당시 기준시가 질문 — 증빙의 공시가격·개별공시지가·건물기준시가 출력물을 근거로(§164⑦: 공동주택가격 최초 공시 전 취득분)
@@ -34190,12 +34198,18 @@ function caseProcScanCands_(c, body) {
     });
     // [2026.10.17 재설계] 세액계산기가 원하는 칸의 근거가 될 사진(사건처리 3단계가 알려 준 것)을 먼저 — 한 번에 5묶음까지라 순서가 곧 우선순위
     const focus = (body && Array.isArray(body.focus)) ? body.focus.map(String) : [];
+    // [2026.10.17 재설계] 계산기가 원하는 칸의 근거인데 판독이 나쁜 PDF(스캔본) — 사이드바가 쪽마다 그림으로 펼쳐 같은 보정을 한다(필요한 것만: 비싸다)
+    files.forEach(function (f) {
+      if (focus.indexOf(f.id) === -1 || !/pdf/.test(String(f.mimeType || '')) || origDone[f.id] || have[caseProcScanBase_(f.name)] || /^_/.test(f.name)) return;
+      const p = caseProcParsed_(f, cache, false);
+      if (p && !p.office && !p.out && !p.calc) groups.unshift([{ f: f, p: p, s: { pre: '', no: 0 }, dir: f.dir || '' }]);
+    });
     if (focus.length) groups.sort(function (a, b) { const fa = a.some(function (x) { return focus.indexOf(x.f.id) !== -1; }) ? 0 : 1, fb = b.some(function (x) { return focus.indexOf(x.f.id) !== -1; }) ? 0 : 1; return fa - fb; });
     const usedNames = {}; // 같은 묶음 안에서 저장 이름이 겹치지 않게
     groups.forEach(function (g) {
       if (out.length >= 5) return;
       const why = g.map(function (x) { return bad(x.p); }).filter(String);
-      if (!why.length && g.length < 2) return; // 한 장이고 잘 읽혔으면 그대로
+      if (!why.length && g.length < 2 && !g.some(function (x) { return focus.indexOf(x.f.id) !== -1; })) return; // 한 장이고 잘 읽혔으면 그대로(값이 이상해 다시 읽으라는 사진은 보정)
       let folderId = '';
       try { const it = DriveApp.getFileById(g[0].f.id).getParents(); if (it.hasNext()) folderId = it.next().getId(); } catch (e) {}
       if (!folderId) return;
@@ -34711,7 +34725,7 @@ function trcNeedScanFocus_(c, needs) {
     const sv = caseProcLoad_(c.id) || {}, done = {}, cache = CacheService.getScriptCache();
     Object.keys(sv.scanPairs || {}).forEach(function (k) { [].concat(sv.scanPairs[k]).forEach(function (id) { done[id] = true; }); });
     caseProcFiles_(c, { raw: true }).forEach(function (f) {
-      if (out.length >= 5 || done[f.id] || !/^image\//.test(String(f.mimeType || '')) || /^_/.test(f.name) || caseProcIsOutputDoc_(f.name)) return;
+      if (out.length >= 5 || done[f.id] || !/^image\/|pdf/.test(String(f.mimeType || '')) || /_보정(\(\d+\))?\.pdf$/i.test(f.name) || /^_/.test(f.name) || caseProcIsOutputDoc_(f.name)) return; // 사진·스캔 PDF(보정본은 빼고)
       const p = caseProcParsed_(f, cache, false);
       if (!p || p.office || p.out || p.calc) return;
       if ((p.t && want[p.t] && (p.wn || 0) > 0) || (!p.t && (p.nt || p.err))) out.push({ id: f.id, name: f.name, why: p.t ? (CASEPROC_SCAN_TYPE_NAME_[p.t] || p.t) + ' ⚠' + p.wn : '글자를 못 읽은 사진' });
@@ -34880,5 +34894,14 @@ function trcClassOptions_(S, tpl, ans) {
     else if (/특수관계자/.test(k) && rel === 'none') why = '양수인과 특수관계 없음(세무사님 답)';
     if (why) cut.push(k + '(' + why + ')'); else out.push(k);
   });
-  return { options: out, cut: cut };
+  // 서류 사실이 가리키는 갈래는 이유를 붙여 앞에 둔다(정하지는 않음)
+  const fit = {};
+  out.forEach(function (k) {
+    if (/수용/.test(k) && cause === 'expropriation') fit[k] = '양도원인 수용(보상금 서류)';
+    else if (/경매|공매/.test(k) && cause === 'auction') fit[k] = '양도원인 경매·공매';
+    else if (/^교환/.test(k) && cause === 'exchange') fit[k] = '양도원인 교환';
+    else if (/이월과세/.test(k) && (S.state.transferAssets || []).some(function (a) { return a.giftReceivedDate && /^(spouse|lineal)$/.test(String(a.donorRelation || '')); })) fit[k] = '배우자·직계존비속에게 증여받고 10년 안에 양도';
+  });
+  out.sort(function (x, y) { return (fit[x] ? 0 : 1) - (fit[y] ? 0 : 1); });
+  return { options: out, cut: cut, fit: fit };
 }

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 23:48 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 23:57 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -36393,6 +36393,8 @@ function tcSaveCurrentResult_(){
   // 대신 명시적으로 한 번 더 확인한다.
   var proceedSaveResult_ = function(){
   var boxId = TC_RESULT_BOX_IDS_[tab];
+  // [2026.10.17] 국외자산만 계산한 사건 — 결과가 국외자산 결과 칸에만 있으면 그것을 저장한다(예전: 국내 결과 칸이 비어 "먼저 계산"으로 막힘)
+  if (tab === 'transfer') { var dBox_ = document.getElementById(boxId), oBox_ = document.getElementById('taxCalcOverseasAssetTransferResult'); if ((!dBox_ || !dBox_.innerText.trim()) && oBox_ && oBox_.innerText.trim()) boxId = 'taxCalcOverseasAssetTransferResult'; }
   var box = boxId ? document.getElementById(boxId) : null;
   var text = box ? box.innerText.trim() : '';
   if (!text){ showToast('먼저 세액 계산을 실행해주세요.', 'warning'); return; }
@@ -48134,6 +48136,21 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     }
     function b64ToBytes(b64){ var bin = atob(b64), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
     function bytesToB64(u){ var s = '', CH = 0x8000; for (var i = 0; i < u.length; i += CH) s += String.fromCharCode.apply(null, u.subarray(i, i + CH)); return btoa(s); }
+    // PDF 쪽 → JPEG 바이트(문서작성 화면이 싣는 pdf.js로, 긴 변 약 2000px)
+    async function pdfToJpgs(bytes){
+      if (typeof pdfjsLib === 'undefined') return [];
+      var doc = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
+      if (doc.numPages > 6) return [];
+      var out = [];
+      for (var p = 1; p <= doc.numPages; p++){
+        var pg = await doc.getPage(p), vp0 = pg.getViewport({ scale: 1 }), sc = Math.min(3, 2000 / Math.max(vp0.width, vp0.height)), vp = pg.getViewport({ scale: sc });
+        var cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+        var cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+        await pg.render({ canvasContext: cx, viewport: vp }).promise;
+        out.push(await new Promise(function(res){ cv.toBlob(function(b){ b.arrayBuffer().then(function(buf){ res(new Uint8Array(buf)); }); }, 'image/jpeg', 0.92); }));
+      }
+      return out;
+    }
     // 사건의 판독 나쁜 사진을 보정해 저장 — 저장한 장 수를 돌려준다
     async function run(st, opts){
       if (typeof PDFLib === 'undefined' || typeof callGas !== 'function') return 0;
@@ -48146,7 +48163,12 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         st.setStep('evidence', '🔄', '판독이 나쁜 사진 원근보정 중(' + (i + 1) + '/' + cands.length + ') — ' + c.name);
         try {
           var pages = [];
-          for (var j = 0; j < c.files.length; j++){ var fb = await callGas('readFileBinary', { fileId: c.files[j].id }); if (!fb || fb.error || !fb.base64) throw new Error(c.files[j].name + ' 불러오기 실패'); pages.push({ bytes: b64ToBytes(fb.base64), mime: c.files[j].mimeType }); }
+          for (var j = 0; j < c.files.length; j++){
+            var fb = await callGas('readFileBinary', { fileId: c.files[j].id }); if (!fb || fb.error || !fb.base64) throw new Error(c.files[j].name + ' 불러오기 실패');
+            // [2026.10.17] 판독이 나쁜 스캔 PDF — 쪽마다 그림으로 펼쳐 사진과 같은 보정을 한다(6쪽까지)
+            if (/pdf/.test(String(c.files[j].mimeType || ''))) { var pj = await pdfToJpgs(b64ToBytes(fb.base64)); if (!pj.length) throw new Error(c.files[j].name + ' PDF 쪽을 펼치지 못함(PDF 도구 없음 또는 6쪽 넘음)'); pj.forEach(function(b){ pages.push({ bytes: b, mime: 'image/jpeg' }); }); }
+            else pages.push({ bytes: b64ToBytes(fb.base64), mime: c.files[j].mimeType });
+          }
           var res = await correct(pages);
           var up = await callGas('uploadFile', { folderId: c.folderId, name: c.saveAs, mimeType: 'application/pdf', base64Data: bytesToB64(res.pdf) });
           if (up && !up.error && up.id){ pairs.push({ corr: up.id, orig: c.files.map(function(f){ return f.id; }) }); saved.push(c.name + ' → ' + (up.name || c.saveAs) + '(' + c.why + (res.found.some(function(n){ return n < 4; }) ? ', 모서리를 못 찾은 변은 사진 전체로' : '') + ')'); }
@@ -48252,11 +48274,16 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var bf = { gift: 'giftDate', inheritance: 'ihDeathDate' }[tab];
       if (bf && st.case.기준일 && g(bf) !== st.case.기준일){ var be = document.getElementById(bf); if (be){ be.value = st.case.기준일; be.dispatchEvent(new Event('input', { bubbles: true })); } }
       var boxId = (typeof TC_RESULT_BOX_IDS_ !== 'undefined') ? TC_RESULT_BOX_IDS_[tab] : '';
+      // [2026.10.17] 국외자산만 있는 양도 — 계산기 국외자산 카드는 따로 [세액 계산하기(국외자산)]로 계산하고 결과도 국외자산 결과 칸에 나온다
+      var ovsOnly = false;
+      try { ovsOnly = tab === 'transfer' && transferAssets.length > 0 && transferAssets.every(function(a){ return a && a.isOverseasAsset; }); } catch (e) {}
+      if (ovsOnly) boxId = 'taxCalcOverseasAssetTransferResult';
       var box = boxId ? document.getElementById(boxId) : null;
       var before = box ? box.innerText : '';
       var filled = false;
       try {
-        if (tab === 'gift') filled = Object.keys(GIFT_AUTOCALC_REQUIRED_).every(function(k){ return g(GIFT_AUTOCALC_REQUIRED_[k].id); });
+        if (ovsOnly) filled = transferAssets.every(function(a){ return a.transferPrice && a.acquisitionPrice && a.acquisitionDate && (a.transferDate || st.case.기준일); });
+        else if (tab === 'gift') filled = Object.keys(GIFT_AUTOCALC_REQUIRED_).every(function(k){ return g(GIFT_AUTOCALC_REQUIRED_[k].id); });
         // [2026.10.16 1:1 방영교] 취득가액이 비어도 환산용 기준시가(취득당시·양도당시)가 있으면 계산할 수 있다(환산취득가액) — 예전엔 "입력값이 비어 있다"며 유료 자동채우기를 권했다
         else if (tab === 'transfer') filled = transferAssets.length > 0 && transferAssets.every(function(a){ return Object.keys(TRANSFER_AUTOCALC_REQUIRED_).every(function(k){ return a[k] || (k === 'acquisitionPrice' && (a.comparableTransactionPrice || a.appraisalValue || (a.acquisitionStandardPriceForExpense && a.transferStandardPriceForConversion))); }); }); // 엔진 요구와 같게(2026-10-17)
         else filled = !!(g('ihDeceasedName') && g('ihDeathDate') && g('ihGrossEstateGeneral') && inheritanceHeirs.some(function(h){ return h && h.name && h.relation; }));
@@ -48291,7 +48318,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (filled){
         var run = function(sel){ var b = document.querySelector(sel); if (b) b.click(); };
         if (tab === 'inheritance') run('[data-action="apply-ih-estate-auto"]');
-        run('[data-action="run-' + tab + '"]');
+        if (ovsOnly){ transferAssets.forEach(function(a){ if (!a.transferDate && st.case.기준일) a.transferDate = st.case.기준일; }); var sub = document.querySelector('[data-action="switch-transfer-subtab"][data-subtab="overseas"]'); if (sub) sub.click(); }
+        run(ovsOnly ? '[data-action="run-overseas-transfer"]' : '[data-action="run-' + tab + '"]');
         st.setStep('calc', '🔄', '입력값이 갖춰져 계산엔진으로 계산 중(토큰 0)…');
         return watch();
       }

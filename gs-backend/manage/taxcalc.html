@@ -18012,6 +18012,8 @@ function tcSaveCurrentResult_(){
   // 대신 명시적으로 한 번 더 확인한다.
   var proceedSaveResult_ = function(){
   var boxId = TC_RESULT_BOX_IDS_[tab];
+  // [2026.10.17] 국외자산만 계산한 사건 — 결과가 국외자산 결과 칸에만 있으면 그것을 저장한다(예전: 국내 결과 칸이 비어 "먼저 계산"으로 막힘)
+  if (tab === 'transfer') { var dBox_ = document.getElementById(boxId), oBox_ = document.getElementById('taxCalcOverseasAssetTransferResult'); if ((!dBox_ || !dBox_.innerText.trim()) && oBox_ && oBox_.innerText.trim()) boxId = 'taxCalcOverseasAssetTransferResult'; }
   var box = boxId ? document.getElementById(boxId) : null;
   var text = box ? box.innerText.trim() : '';
   if (!text){ showToast('먼저 세액 계산을 실행해주세요.', 'warning'); return; }
