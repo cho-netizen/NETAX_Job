@@ -3716,6 +3716,18 @@ function tcApplyInheritanceRule_(rf){
     filled.push('상속인 명부(' + rf.heirs.length + '명, 관계·주민번호 포함)');
   }
   if (rf.grossEstate) setVal('ihGrossEstateGeneral', rf.grossEstate, '총상속재산가액');
+  // [2026.10.17] 상속재산 — 사건처리가 읽은 재산(등기부·분할협의서의 소재지·면적, 서류로 확정됐거나 세무사님이 고른 평가액)을 계산기 재산평가 목록에(신고서 상속재산 명세용).
+  //  예전엔 합계만 넣고 목록은 비어 있었다. 평가액이 미정인 재산은 소재지만 넣고 평가는 계산기에서(추정하지 않음). 이미 평가액을 넣어 둔 목록은 건드리지 않는다
+  if (Array.isArray(rf.assets) && rf.assets.length && typeof valuationAssets !== 'undefined'){
+    const mine = valuationAssets.filter(function(a){ return a && a.taxType === 'inheritance'; });
+    const touched = mine.some(function(a){ return numVal(a.directValue) || a.landPrice || a.housePrice || (a.method && a.method !== 'direct'); });
+    if (!touched){
+      const rows = rf.assets.map(function(a){ return { taxType: 'inheritance', method: 'direct', assetKind: /토지/.test(String(a.kind || '')) ? 'land' : 'building', assetLocation: a.loc || '', directValue: a.value ? String(a.value) : '', valuationSrc: a.value ? (a.valueSrc || '사건처리') : '' }; });
+      valuationAssets = valuationAssets.filter(function(a){ return !(a && a.taxType === 'inheritance'); }).concat(rows);
+      if (typeof renderValuationAssetList === 'function') renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets_());
+      filled.push('상속재산 목록(' + rows.length + '건' + (rows.some(function(r){ return !r.directValue; }) ? ', 평가액 미정 ' + rows.filter(function(r){ return !r.directValue; }).length + '건' : '') + ')');
+    }
+  }
   if (rf.financialValue !== null && rf.financialValue !== undefined) setVal('ihNetFinancial', rf.financialValue, '순금융재산가액');
   const fun = [];
   if (rf.funeral && rf.funeral.value) fun.push({ payee: '장례비용(' + (rf.funeral.src || '증빙') + ')', category: 'general', detail: '사건처리 서류 정리', amount: rf.funeral.value });

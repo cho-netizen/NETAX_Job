@@ -24843,7 +24843,9 @@ function tcContractParties1_(s) {
       nms = tw.slice(0, 2);
     }
   }
-  var who = function (i) { return { name: corp[i] ? '' : (nms[i] || ''), regNo: corp[i] ? '' : (regs[i] || ''), addr: addrs[i] || '', corp: !!corp[i] }; };
+  // [2026.10.17] 법인 당사자 — 법인등록번호는 그대로(계산기 양수인 번호 칸), 법인명은 글자인식 띄어쓰기가 섞여 확정하지 않고 후보(corpName)로만(방영교: 정비사업조합)
+  var cnm = (s.match(/[가-힣\d][가-힣\d\s]{1,40}?(?:조\s*합|주\s*식\s*회\s*사|㈜|\(\s*주\s*\)|유\s*한\s*회\s*사|공\s*사|재\s*단|법\s*인)(?![가-힣])/g) || []).filter(function (x) { return !/법\s*인\s*등\s*록|등\s*록\s*번\s*호/.test(x); }).pop() || '';
+  var who = function (i) { return { name: corp[i] ? '' : (nms[i] || ''), regNo: regs[i] || '', addr: addrs[i] || '', corp: !!corp[i], corpName: corp[i] ? cnm.replace(/\s+/g, ' ').trim() : '' }; };
   return { seller: who(0), buyer: who(1) };
 }
 // [2026.10.15] 본문으로 역할을 못 정한 계약서는 파일 이름의 말(매도·양도 → 매도인, 매수·취득·분양 → 매수인)로 — 둘 다 있으면 정하지 않음
@@ -33770,6 +33772,8 @@ function trcFromEvidence_(c, rf, txs, ans) {
       if (t.assetArea) { a.assetArea = t.assetArea; src[p + '.assetArea'] = t.assetInfoSrc; }
       if (t.assetSubType) { a.assetSubType = t.assetSubType; src[p + '.assetSubType'] = t.assetInfoSrc; }
       if (t.isHouse) { a.assetType = 'house'; src[p + '.assetType'] = t.isHouse; }
+      // [2026.10.17] 등기부가 없어도 소재지에 호수(제101호 등)가 있으면 구분소유 건물 — 계산기 자산구분 "건물"(주택·상가 여부는 서류가 없으면 정하지 않음)
+      if (!a.assetKind && /\d\s*호(?![가-힣])/.test(String(t.assetLocation || ''))) { a.assetKind = 'building'; src[p + '.assetKind'] = '소재지에 호수(구분소유 건물) — ' + t.assetLocation; }
       // 환산용 기준시가 — 양도당시는 그 날짜에 공시돼 있던 가격(증빙 공시가격표)이면 칸에 넣고, 취득당시는 후보로만(근거와 함께 묻는다)
       const sc = t.stdConv;
       if (sc && sc.transfer && sc.transfer.v) { a.transferStandardPriceForConversion = sc.transfer.v; src[p + '.transferStandardPriceForConversion'] = sc.transfer.src; }
@@ -33919,6 +33923,9 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
     if (!has(ct.totalPrice) && !asked('calc:' + p)) q('trc:' + p, cd ? 'judge' : 'missing', ct.name + ' 「계약 전체 양도가액」' + (cd ? ' — 서류에서 읽은 금액입니다. 맞는 금액을 고르거나 직접 넣어 주세요.' + ((rf.comps || []).length && k === 0 ? ' (수용: 지장물 보상 중 건물·구축물은 양도, 수목·시설 이전비·영업보상은 양도가 아닐 수 있습니다. 이의재결로 늘어난 금액이 있으면 그 금액)' : '') : '을 서류에서 정하지 못했습니다 — 정해 주세요(계산 전 필수).'),
       { mode: cd ? 'choose' : 'input', target: 'calc:' + p, input: 'money', label: ct.name + ' 양도가액', cands: cd || [] });
     const b = (ct.buyers || [])[0] || {};
+    // [2026.10.17] 양수인이 법인 — 법인등록번호는 넣었고, 법인명은 글자인식 띄어쓰기가 섞여 후보로 보여주고 확인받는다
+    if (k === 0 && rf.parties && rf.parties.buyer && rf.parties.buyer.corp && !has(b.name)) q('trc:c0.buyer.name', 'judge', '양수인이 법인입니다(법인등록번호 ' + (rf.parties.buyer.regNo || '?') + ', ' + rf.parties.file + ' 서명란) — 계산기 양도계약 카드 양수인 「성명」에 넣을 법인명을 확인해 주세요(글자인식이 띄어쓰기를 섞어 정확한 명칭은 원문 확인).',
+      { mode: 'choose', target: 'calc:c0.buyer.name', input: 'text', label: '양수인 법인명', cands: rf.parties.buyer.corpName ? [{ v: rf.parties.buyer.corpName, src: '계약서 서명란 글자(원문 확인)' }] : [] });
     if (k === 0 && rf.parties && rf.parties.buyer && rf.parties.seller && !has(b.relation)) {
       const bn = String(rf.parties.buyer.name || ''), sn = String(rf.parties.seller.name || '');
       if (bn.length >= 2 && sn.length >= 2 && bn.charAt(0) === sn.charAt(0) && bn !== sn) q('tr:buyerrel', 'check', '양수인 ' + bn + (rf.parties.buyer.regNo ? '(' + rf.parties.buyer.regNo.slice(0, 6) + '-…)' : '') + '이(가) 양도인 ' + sn + '과(와) 성이 같습니다 — 특수관계인지 확인해 주세요(양도계약 카드 양수인 「관계」, 근거: ' + rf.parties.file + ' 서명란).',
@@ -34062,7 +34069,12 @@ function trcOverview_(c, ov, rf, lines, items) {
   S.ans = ans; S.baseDate = c.기준일 || '';
   S.facts.officetel = trcOfficetel_(c, rf, txs);
   // 오피스텔이 아닌 주택(대장·등기부 용도가 아파트·다세대·연립·단독·다가구)이면 과세대상 구분 = 주택
-  if (!S.facts.officetel && txs.length === 1 && S.state.transferAssets.length === 1) { const hs = trcHouseUse_(c); if (hs && !S.state.transferAssets[0].assetType) { S.state.transferAssets[0].assetType = 'house'; S.src['a0.assetType'] = hs; } }
+  if (!S.facts.officetel && txs.length === 1 && S.state.transferAssets.length === 1) {
+    const a00 = S.state.transferAssets[0], hs = trcHouseUse_(c, a00.assetLocation);
+    if (hs && !a00.assetType) { a00.assetType = 'house'; S.src['a0.assetType'] = hs; }
+    // 주택으로 고시·표시된 물건은 건물(계산기 자산구분 — 아파트 등 구분소유 건물도 건물)
+    if (hs && !a00.assetKind) { a00.assetKind = 'building'; S.src['a0.assetKind'] = hs; }
+  }
   const ryr = trcResYears_(c, S); S.facts.resYears = ryr.y; S.facts.resRows = ryr.rows; // 1세대1주택 거주연수(초본)
   trcApplyAns_(S, ans);
   // 답 ↔ 지금 서류가 다르면 다시 묻는다(판독이 고쳐졌거나 서류가 추가됨) — 답을 말없이 덮지 않는다
@@ -34109,15 +34121,20 @@ function trcOfficetel_(c, rf, txs) {
   return ev;
 }
 // 주택 용도 근거(등기부·건축물대장 건물 내역의 용도) — 없으면 ''
-function trcHouseUse_(c) {
+function trcHouseUse_(c, loc) {
   let hit = '';
+  const USE = /(아\s*파\s*트|다\s*세\s*대\s*주\s*택|연\s*립\s*주\s*택|단\s*독\s*주\s*택|다\s*가\s*구\s*주\s*택|공\s*동\s*주\s*택)/;
   try {
     caseProcParseAll_(c).some(function (x) {
-      const ty = x.p && x.p.type;
+      const ty = x.p && x.p.type, r = (x.p && x.p.result) || {};
+      // [2026.10.17] 같은 소재지의 공동주택가격·개별주택가격 공시 = 주택으로 고시된 물건
+      if (ty === 'pubprice') { if (loc && r.소재지 && /공\s*동\s*주\s*택|개\s*별\s*주\s*택/.test(String(r.종류 || '')) && [String(r.소재지)].concat((String(r.소재지).match(/\(([^)]+)\)/) || []).slice(1)).some(function (l) { return tcLocSame_(l, loc); })) hit = '공시가격(' + x.f.name + '): ' + String(r.종류).replace(/\s+/g, '') + ' 고시 물건'; return !!hit; }
       if (!/^(registry|bldledger)$/.test(ty || '')) return false;
       let tx = ''; try { tx = String(tc_docText_(x.f) || ''); } catch (e) {}
-      const m = /(아\s*파\s*트|다\s*세\s*대\s*주\s*택|연\s*립\s*주\s*택|단\s*독\s*주\s*택|다\s*가\s*구\s*주\s*택|공\s*동\s*주\s*택)/.exec(tx);
-      if (m) hit = (ty === 'registry' ? '등기부' : '건축물대장') + '(' + x.f.name + ') 건물 용도: ' + m[1].replace(/\s+/g, '');
+      // 등기부는 표제부(갑구 앞)만, 건축물대장은 용도 칸 근처만 — 소유자 주소의 "○○아파트"를 용도로 보지 않게(2026-10-17)
+      if (ty === 'registry') { const g = tx.search(/갑\s*구|소\s*유\s*권\s*에\s*관\s*한/); if (g > 0) tx = tx.slice(0, g); }
+      const m = ty === 'bldledger' ? new RegExp('용\\s*도[^가-힣]{0,6}[가-힣\\s]{0,10}?' + USE.source).exec(tx) : USE.exec(tx);
+      if (m) hit = (ty === 'registry' ? '등기부 표제부' : '건축물대장') + '(' + x.f.name + ') 건물 용도: ' + m[m.length - 1].replace(/\s+/g, '');
       return !!hit;
     });
   } catch (e) {}
