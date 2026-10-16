@@ -24766,18 +24766,20 @@ function tcGiftReturnParse_(text) {
 //  서명란 머리(매도인 … 매수인 순서)가 안 보이면 정하지 않는다. 주민번호는 13자리가 다 보일 때만, 주소는 시·도로 시작하는 것만.
 //  한 파일에 계약서가 여럿(매매계약서 + 옛 분양계약서 사본 등)이면 서명란마다 하나씩 돌려준다 — 부르는 쪽이 매도인이 납세자인 것을 고른다.
 function tcContractParties_(text) {
-  var t = String(text || ''), m, re = /보\s*관\s*한\s*다|각\s*1\s*통씩?\s*보\s*관|서\s*명\s*(?:또는|및)\s*날\s*인/g, starts = [];
+  var t = String(text || ''), m, re = /보\s*관\s*한\s*다|각\s*1\s*통씩?\s*보\s*관|서\s*명\s*(?:또는|및)?\s*날\s*인/g, starts = []; // "서명 날인한다"도(2026-10-16 이종식)
   while ((m = re.exec(t))) { var e = m.index + m[0].length; if (!starts.length || e - starts[starts.length - 1] > 120) starts.push(e); else starts[starts.length - 1] = e; }
   return starts.map(function (st) { return tcContractParties1_(t.slice(st, st + 1500)); }).filter(function (x) { return x; });
 }
 function tcContractParties1_(s) {
-  var m, hs = s.slice(0, 300).search(/매\s*도/), hb = s.slice(0, 300).search(/매\s*수/);
+  // [2026.10.16 1:1 이종식] 세로 이름표("매/주/수/소", "성/이종식")·하이픈 없는 주민번호("490402 1117818")·주소 앞 날짜도 읽는다
+  var m, hs = s.slice(0, 300).search(/매\s*도/), hb = s.slice(0, 400).search(/매\s*(?:주\s*)?수/);
   if (hs === -1 || hb === -1 || hs > hb) return null;
   var regs = [], addrs = [], nms = [];
-  var rr = /(\d{6})\s*-\s*([\d*]{7})/g; while ((m = rr.exec(s))) regs.push(/^\d{7}$/.test(m[2]) ? m[1] + '-' + m[2] : '');
-  var ar = /주\s*소\s*[:：]?\s*((?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)[^\n]*?)(?=\s*(?:인\s*)?주\s*민\s*등\s*록|\s+전\s*화|\s+매\s*주|\s*\n|\s*$)/g;
+  var rr = /(?:^|[^\d])(\d{6})\s*[-–―]?\s*([\d*]{7})(?![\d])/g; while ((m = rr.exec(s))) regs.push(/^\d{7}$/.test(m[2]) ? m[1] + '-' + m[2] : '');
+  var ar = /주\s*(?:[수도]\s*)?소\s*[:：]?\s*(?:(?:19|20)\d{2}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일\s*)?((?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)[^\n]*?)(?=\s*(?:인\s*)?주\s*민\s*등\s*록|\s+전\s*화|\s+매\s*주|\s*\n|\s*$)/g;
   while ((m = ar.exec(s))) addrs.push(m[1].replace(/\s+/g, ' ').trim());
-  var nr = /성\s*명\s*[:：]?\s*([가-힣]{2,4})(?=\s|\(|$)/g; while ((m = nr.exec(s))) nms.push(m[1]);
+  var nr = /성\s*(?:명)?\s*[:：|]?\s*(?:명\s*)?\n?\s*([가-힣]{2,4})(?=\s|\(|$)/g;
+  while ((m = nr.exec(s))) if (!/^(주소|성명|주민|등록|번호|전화|매수|매도|명|인|법무사|사무소|대표)$/.test(m[1])) nms.push(m[1]);
   var who = function (i) { return { name: nms[i] || '', regNo: regs[i] || '', addr: addrs[i] || '' }; };
   return { seller: who(0), buyer: who(1) };
 }
@@ -24798,8 +24800,13 @@ function tcRegAcqFill_(tx, x, evidence) {
     evidence.push('취득: ' + src + ' ' + cause + ' — 취득일 = 상속개시일 ' + (tx.acquisitionDate || '?') + '(시행령§162①5호)');
     evidence.push('⚠ 상속 취득 — 취득가액은 상속 당시 평가액(§163⑨: 상속세 신고·결정가액, 감정가액, 기준시가 등) 확인 필요');
   } else if (/증여/.test(cause)) {
-    tx.acquisitionDate = x.접수일 || x.원인일 || null;
-    evidence.push('취득: ' + src + ' 증여 — 취득일 ' + (tx.acquisitionDate || '?') + '(증여받은 날)');
+    // [2026.10.16 1:1 이종식 — 세무사님: "취득일을 증여계약서에서 찾아야 하는데"] 증여 취득일은 증여계약일(= 등기부 등기원인일)을 1번 후보로,
+    //  등기 접수일을 2번 후보로 묻는다(예전: 접수일을 바로 칸에 넣음). 원인일이 없으면 접수일을 그대로 쓴다
+    if (x.원인일 && x.접수일 && x.원인일 !== x.접수일 && Array.isArray(tx._acqDateCands)) {
+      tx.acquisitionDate = null; tx._acqDatePending = x.원인일;
+      tx._acqDateCands.push({ v: x.원인일, src: '증여계약일 — ' + src + ' 등기원인 "' + x.원인일 + ' 증여"(증여계약서 날짜)' }, { v: x.접수일, src: '증여 등기 접수일 — ' + src });
+    } else tx.acquisitionDate = x.접수일 || x.원인일 || null;
+    evidence.push('취득: ' + src + ' 증여 — 취득일 ' + (tx.acquisitionDate || (x.원인일 + '(증여계약일) 또는 ' + x.접수일 + '(등기 접수일) — 질문')) + '(증여받은 날)');
     evidence.push('⚠ 증여 취득 — 취득가액은 증여 당시 평가액(§163⑨: 증여세 신고·결정가액) 확인 필요, 배우자·직계존비속에게서 10년 안에 받았으면 이월과세(§97의2) 검토');
   } else if (/매매|경매|매각|교환|보존/.test(cause)) {
     tx.acquisitionDate = x.접수일 || null;
@@ -24807,7 +24814,7 @@ function tcRegAcqFill_(tx, x, evidence) {
     evidence.push('취득: 취득 계약서 없음 → ' + src + ' ' + cause + ' 접수일 ' + (tx.acquisitionDate || '?') + (tx.acquisitionPrice ? ' · 등기부 거래가액 ' + tx.acquisitionPrice.toLocaleString('ko-KR') + '원' : '') + ' — 잔금일이 더 빠르면 고치세요');
     if (!tx.acquisitionPrice) evidence.push('⚠ 취득가액을 서류에서 찾지 못함 — ' + (cause === '보존' ? '신축 공사비·사용승인일' : '취득 계약서·신고필증') + ' 확인(없으면 환산취득가액)');
   } else return false;
-  return !!tx.acquisitionDate;
+  return !!tx.acquisitionDate || !!tx._acqDatePending; // [2026.10.16] 증여 취득일을 후보로 묻는 중이면 "찾지 못함"이 아님
 }
 // [2026.10.16] 분양(공급)계약서의 분양금액표(토지·건물·부가가치세·합계) — 네 금액이 검산(토지+건물+부가세=합계)으로 맞을 때만. 없으면 null
 //  돌려주는 것: { land, bldg, vat, total, buyer(매수인 성명, 못 읽으면 '') }
@@ -25064,6 +25071,9 @@ function tc_ruleTransferFacts_(body) {
       regs.forEach(function (g) { (g.r.docs || []).forEach(function (d) { if (!regLoc && d.소재지 && s.r.소재지목록.some(function (l) { return tcLocSame_(l, d.소재지); })) regLoc = d.소재지; }); });
       if (regLoc) { sLoc = regLoc; tx.assetLocation = regLoc; }
       if (tx.transferPriceCand) tx.transferPriceCand.note = s.r.소재지목록.length + '필지 합계';
+      // [2026.10.16 1:1 이종식 — 세무사님: "3필지 일괄양도는 세액계산기에 반영되어 있다"] 필지별 소재지·면적을 달아 두고, 처리개요에서 필지별 물건(양도계약 하나)으로 만든다
+      tx.parcels = s.r.소재지목록.map(function (l) { var am = /([\d][\d,.]*)\s*(?:m2|㎡|m²)/.exec(l); return { loc: String(l).replace(/\s+(?:답|전|대|임야|과수원|잡종지|도로|구거|목장용지|공장용지|창고용지)\s+[\d,.]+\s*(?:m2|㎡|m²).*$/, '').trim(), area: am ? Number(am[1].replace(/,/g, '')) : 0, kind: (/\s(답|전|대|임야|과수원|잡종지|도로|구거)\s/.exec(l + ' ') || [])[1] || '' }; });
+      tx.contractTotal = s.r.매매대금 || null;
       evidence.push(s.file + '은(는) ' + s.r.소재지목록.length + '필지 일괄 계약(' + s.r.소재지목록.join(' / ') + ')' + (s.r.매매대금 ? ' — 매매대금 ' + s.r.매매대금.toLocaleString('ko-KR') + '원은 필지 합계' : '') + ', 필지별 등기부·취득가액 확인');
     }
     // 신고필증으로 금액 대조·잔금일 보충
@@ -25085,7 +25095,7 @@ function tc_ruleTransferFacts_(body) {
       if (ra && tx.acquisitionDate && ra < tx.acquisitionDate) { evidence.push('취득시기: 등기접수일 ' + ra + '이 잔금일보다 빨라 그날로(§98)'); tx.acquisitionDate = ra; }
       if (!tx.acquisitionDate && ra) { tx.acquisitionDate = ra; evidence.push('취득일은 등기부 접수일(' + ra + ') — 잔금일 확인 권장'); }
       evidence.push('취득: ' + b.file + (tx.acquisitionPrice ? ' — 매매대금 ' + tx.acquisitionPrice.toLocaleString('ko-KR') + '원(검산 일치)' : ' — 금액 검산 안 됨(비움)') + (tx.acquisitionDate ? ', 취득일 ' + tx.acquisitionDate : ''));
-    } else if (!tcRegAcqFill_(tx, regAcq(sLoc), evidence)) evidence.push('취득 계약서(납세자가 매수인, 같은 소재지)를 찾지 못함 — 상속·증여 취득이면 그 서류로 직접 입력');
+    } else if ((tx._acqDateCands = acqDateCands, !tcRegAcqFill_(tx, regAcq(sLoc), evidence))) evidence.push('취득 계약서(납세자가 매수인, 같은 소재지)를 찾지 못함 — 상속·증여 취득이면 그 서류로 직접 입력');
     txs.push(tx);
   });
   // [2026.10.15] 매도 계약서가 없는 양도(수용·경매·계약서 미제출)는 등기부 소유권 이력으로 거래를 세운다 —
@@ -25105,7 +25115,7 @@ function tc_ruleTransferFacts_(body) {
           acquisitionPrice: null, acquisitionDate: null, acquisitionExpenses: null, transferExpensesOnly: null, provisions: {} };
         evidence.push('양도: 매도 계약서 없음 → 등기부(' + g.file + ') ' + (d.소재지 || '') + ' ' + nx.원인 + '(' + td + ')' + (tx.transferPrice ? ' — 등기부 거래가액 ' + tx.transferPrice.toLocaleString('ko-KR') + '원' : ''));
         if (!tx.transferPrice) evidence.push('⚠ ' + (d.소재지 || '양도 부동산') + ' 양도가액을 서류에서 찾지 못함 — ' + (/수용/.test(nx.원인) ? '수용 재결서·보상금 내역의 보상금' : '매도 계약서·실거래 신고필증') + ' 확인');
-        tcRegAcqFill_(tx, cur, evidence);
+        tx._acqDateCands = acqDateCands; tcRegAcqFill_(tx, cur, evidence);
         txs.push(tx);
       }
     });
@@ -25244,7 +25254,7 @@ function tc_ruleTransferFacts_(body) {
   //   단 자본적지출·양도비 합계가 (환산취득가액 + 개산공제)보다 크면 그쪽(§97② 2호 단서).
   //  상속·증여 취득 = 그때의 상증법 평가액 — 시가·감정가가 없을 때의 보충적 평가(기준시가)를 넣고 ⚠로 남긴다(신고가액·감정가 있으면 그것).
   //  공시가격은 그 부동산(소재지 같음) 것만, 고시 전(4월 말 이전) 날짜는 전년도 가격. 토지 단가(원/㎡)는 등기부 면적을 곱한다. 못 맞추면 아무것도 안 넣음.
-  if (txs.length === 1 && pubs.length && !txs[0].acquisitionPrice && txs[0].acquisitionDate) {
+  if (txs.length === 1 && pubs.length && !txs[0].acquisitionPrice && (txs[0].acquisitionDate || txs[0]._acqDatePending)) { // 증여 취득일을 묻는 중이어도(2026-10-16)
     var t1 = txs[0];
     var areaOf = function () { var a = null; regs.forEach(function (g) { (g.r.docs || []).forEach(function (d) { if (tcLocSame_(d.소재지, t1.assetLocation) && d.표제부) a = a || d.표제부.전유면적 || d.표제부.면적 || null; }); }); return a; };
     var stdAt = function (date) {
@@ -25260,7 +25270,7 @@ function tc_ruleTransferFacts_(body) {
       });
       return best;
     };
-    var sa = stdAt(t1.acquisitionDate), st = stdAt(t1.transferDate);
+    var sa = stdAt(t1.acquisitionDate || t1._acqDatePending), st = stdAt(t1.transferDate); // 취득일을 묻는 중이면 그 1번 후보(증여계약일) 기준
     var aCause = (evidence.filter(function (e) { return /^취득: /.test(e); }).slice(-1)[0] || '');
     if (sa && /상속|증여/.test(aCause)) {
       // [2026.10.16 1:1 이종식] 공시가격을 칸에 바로 넣지 않는다(묻지 않고 확정하던 것) — 증여세 신고서 평가액이 있으면 그 다음 후보로
@@ -25354,6 +25364,25 @@ function tc_ruleTransferFacts_(body) {
     var g = giftRets[0];
     return '증여 취득 — 증여세 신고서(' + g.file + '): 증여일 ' + (g.증여일 || '?') + ', 증여재산가액 ' + (g.합계 ? g.합계.toLocaleString('ko-KR') + '원' : '?') + (Object.keys(g.필지).length ? '(' + Object.keys(g.필지).map(function (k) { return k + ' ' + g.필지[k].toLocaleString('ko-KR') + '원'; }).join(' / ') + ')' : '') + ' → 취득일·취득가액 후보로 올림(§163⑨). 배우자·직계존비속에게서 10년 안에 받았으면 이월과세(§97의2) 검토';
   });
+  // [2026.10.16 1:1 이종식] 필지별 개별공시지가(원/㎡) — 양도일·취득일 시점(4월 말 이전이면 전년도) — 세액계산기 계약 안분(시행령 §166④)용, 증여세 신고서 필지별 평가액
+  txs.forEach(function (t) {
+    if (!Array.isArray(t.parcels)) return;
+    var unitAt = function (loc, date) {
+      if (!date) return 0;
+      var y0 = Number(String(date).slice(0, 4)), y = y0 - (String(date).slice(5) < '04-30' ? 1 : 0), best = null;
+      pubs.forEach(function (pb) { if (!pb.r.소재지 || !tcLocSame_(pb.r.소재지, loc)) return; (pb.r.가격 || []).forEach(function (q) { if (!q.단가 || !q.연도 || q.연도 > (q.jan ? y0 : y) || (best && best.연도 >= q.연도)) return; best = { 연도: q.연도, v: q.단가, file: pb.file }; }); });
+      return best;
+    };
+    var acqD = t.acquisitionDate || t._acqDatePending;
+    t.parcels.sort(function (x, y) { return (tcLocSame_(y.loc, t.assetLocation) ? 1 : 0) - (tcLocSame_(x.loc, t.assetLocation) ? 1 : 0); }); // 등기부가 있는(이 거래) 필지를 물건1로
+    t.parcels.forEach(function (pc) {
+      var uT = unitAt(pc.loc, t.transferDate), uA = unitAt(pc.loc, acqD);
+      pc.unitT = uT ? uT.v : 0; pc.unitA = uA ? uA.v : 0; pc.unitFile = (uT || uA || {}).file || '';
+      var jb = (String(pc.loc).match(/\d{1,5}-\d{1,5}/g) || []).slice(-1)[0] || '';
+      giftRets.forEach(function (g) { if (jb && g.필지[jb] && !pc.acq) { pc.acq = g.필지[jb]; pc.acqSrc = '증여세 신고서 평가액(' + g.file + ')'; } });
+    });
+  });
+  txs.forEach(function (t) { delete t._acqDateCands; delete t._acqDatePending; });
   return { ok: true, trDateCands: trDateCands, sellerName: names[0] || null, parties: parties, transactions: txs, evidence: evidence, expCands: expCands, comps: comps, bunyang: bunyang, acqDateCands: acqDateCands, acqPriceCands: acqPriceCands, locCands: locCands,
     vatDocs: vatDocs, // [2026.10.16 1:1 김금옥] 주택 여부 질문의 근거
     counts: { 계약서: contracts.length, 신고필증: reports.length, 취득세: acqs.length, 법무사: lawyers.length, 등기부: regs.length } };
@@ -25952,6 +25981,12 @@ function caseProcEvidence_(c) {
     let block = caseProcBlockingWarns_(f.p.t, f.p.w || []);
     // [2026.10.16] 분할협의서에서 사망일을 못 읽었어도 상속개시일이 다른 증빙(사망진단서·기본증명서·등기부)으로 이미 정해졌으면 묻지 않음(사망일은 그 칸에 안 씀)
     if (f.p.t === 'inhdivision' && c.기준일 && baseByEvidence()) block = block.filter(function (w) { return !/상속개시일\(사망일\)을 읽지 못함/.test(w); });
+    // [2026.10.16 1:1 이종식 — 세무사님: "주민등록등본에서 증여내용을 찾으려고 하는가?"] 양도 사건의 증여계약서는 취득 원인·날짜 근거일 뿐,
+    //  증여자·수증자 이름은 양도세 계산에 쓰지 않는다(이름은 등기부·증여세 신고서로 확인) — 손글씨 이름을 못 읽었다고 묻지 않고 한 줄로 밝힌다
+    if (c.세목 === 'transfer' && f.p.t === 'giftcontract' && block.some(function (w) { return /증여자.{0,3}수증자 이름/.test(w); })) {
+      block = block.filter(function (w) { return !/증여자.{0,3}수증자 이름/.test(w); });
+      lines.push('참고: ‘' + f.name + '’ 안의 증여계약서 — 손글씨 이름은 못 읽었지만 양도세 계산엔 쓰지 않음(증여 사실·날짜는 등기부·증여세 신고서로 확인)');
+    }
     // [2026.10.15] ⚠ 금액이 다른 서류(이체 확인·거래내역 등)에도 똑같이 있으면 서로 확인된 것 — 묻지 않고 근거를 남긴다(강정화 사건: 증여계약서 1억원 ⚠ ↔ 이체 화면 1억원)
     block = block.filter(function (w) {
       const am = /(\d{1,3}(?:,\d{3}){2,})\s*원/.exec(w); if (!am) return true;
@@ -26296,7 +26331,7 @@ function caseProcOverview0_(c) {
     const a0g = (Array.isArray(ov.물건목록) && ov.물건목록[0]) || ov, txG = (rf.transactions || [])[0] || {};
     const isGiftC = function (l) { return (l || []).some(function (x) { return /증여|매매사례/.test(x.src); }); };
     if ((rf.acqDateCands || []).length && !String(a0g.취득일 || '').trim() && !txG.acquisitionDate)
-      items.push(caseProcItem_('tr:giftAcqDate', 'judge', isGiftC(rf.acqDateCands) ? '증여로 받은 부동산입니다 — 취득일(증여받은 날: 증여 등기 접수일이 원칙)을 골라 주세요.' : '취득 계약서에서 읽은 날짜입니다 — 이 물건의 취득일을 골라 주세요(잔금일·등기접수일 중 빠른 날, §98).', { mode: 'choose', target: 'ovAsset:0:취득일', input: 'date', label: '물건1 취득일', cands: rf.acqDateCands }));
+      items.push(caseProcItem_('tr:giftAcqDate', 'judge', isGiftC(rf.acqDateCands) ? '증여로 받은 부동산입니다 — 취득일을 골라 주세요(후보: 증여계약일 = 등기부 등기원인일, 증여 등기 접수일 · 증여세 신고서 증여일).' : '취득 계약서에서 읽은 날짜입니다 — 이 물건의 취득일을 골라 주세요(잔금일·등기접수일 중 빠른 날, §98).', { mode: 'choose', target: 'ovAsset:0:취득일', input: 'date', label: '물건1 취득일', cands: rf.acqDateCands }));
     if ((rf.acqPriceCands || []).length && !String(a0g.취득가액 || '').trim() && !txG.acquisitionPrice)
       items.push(caseProcItem_('tr:giftAcqPrice', 'judge', (rf.acqPriceCands || []).some(function (x) { return /증여세 신고서/.test(x.src); }) ? '증여로 받은 부동산입니다 — 증여세 신고서에 이 필지의 평가액(1번 후보)이 적혀 있습니다. 취득가액은 증여세 신고·결정가액이므로(소득세법 시행령 §163⑨) 맞으면 고르고, 결정가액이 다르면 직접 넣어 주세요.' : isGiftC(rf.acqPriceCands) ? '증여로 받은 부동산의 취득가액은 증여 당시 평가액입니다(소득세법 시행령 §163⑨ — 증여세 신고·결정가액이 있으면 그 금액). 증여일 평가기간 안의 매매사례를 찾았습니다 — 맞는 금액을 고르거나 증여세 신고가액을 직접 넣어 주세요.' : (rf.acqPriceCands.some(function (x) { return /분양계약서/.test(x.src); }) ? '분양계약서의 분양금액입니다 — 부가가치세 매입세액을 공제·환급받았으면 부가세를 뺀 금액, 받지 않았으면 부가세를 넣은 금액을 고르세요(공제받은 매입세액은 취득가액이 아님).' : '취득 계약서에서 읽은 매매대금입니다 — 이 물건의 취득가액이면 고르세요(여러 물건이면 어느 물건 것인지 확인).'), { mode: 'choose', target: 'ovAsset:0:취득가액', input: 'money', label: '물건1 취득가액', cands: rf.acqPriceCands }));
   }
@@ -26424,6 +26459,23 @@ function caseProcOverview0_(c) {
     if (diffs.length) items.push(caseProcItem_('tr:expenses:recheck:' + diffs.length + ':' + cands.map(function (y) { return y.amount; }).join('-'), 'check', '확정해 둔 필요경비가 지금 서류에서 읽은 값과 다릅니다(판독이 고쳐짐) — 다시 확정해 주세요: ' + diffs.join(' / '),
       { mode: 'expenses', target: 'expenses', label: '필요경비', cands: cands }, cands.map(function (y) { return (y.sure ? '☑ ' : '☐ ') + y.kind + ' · ' + y.label + ' · ' + won2(y.amount) + (y.date ? ' · ' + y.date : '') + ' · ' + y.file + (y.note ? ' — ' + y.note : ''); }).join('\n')));
   }
+  // [2026.10.16 1:1 이종식 — 세무사님 지시] 여러 필지 일괄 양도 — 세액계산기의 양도계약 하나(계약 총액)에 필지별 물건을 넣어 기준시가로 안분한다.
+  //  필지별 소재지·면적(계약서), 개별공시지가(양도시·취득시), 취득가액 후보(증여세 신고서)를 모두 보여주고 [이대로 필지별로]를 고르면 물건을 만든다
+  const pcs = (txs.length === 1 && Array.isArray(txs[0].parcels) && txs[0].parcels.length >= 2 && !ov.일괄필지반영) ? txs[0].parcels : null;
+  if (pcs && (!Array.isArray(ov.물건목록) || ov.물건목록.length < pcs.length)) {
+    const wonP = function (n) { return Number(n || 0).toLocaleString('ko-KR'); };
+    const lines2 = pcs.map(function (pc, k) { return '①②③④⑤⑥⑦⑧⑨'.charAt(k) + ' ' + pc.loc + (pc.kind ? ' ' + pc.kind : '') + ' ' + pc.area + '㎡ · 공시지가 양도시 ' + (pc.unitT ? wonP(pc.unitT) + '원/㎡' : '?') + ' · 취득시 ' + (pc.unitA ? wonP(pc.unitA) + '원/㎡' : '?') + ' · 취득가액 후보 ' + (pc.acq ? wonP(pc.acq) + '원(' + pc.acqSrc + ')' : '?'); });
+    const val = JSON.stringify({ total: txs[0].contractTotal || (txs[0].transferPriceCand || {}).v || txs[0].transferPrice || 0, parcels: pcs.map(function (pc) { return { loc: pc.loc, area: pc.area, unitT: pc.unitT, unitA: pc.unitA, acq: pc.acq || 0 }; }) });
+    items.push(caseProcItem_('tr:parcels:' + pcs.length, 'judge', pcs.length + '필지 일괄 양도입니다(계약서 매매대금 ' + wonP(txs[0].contractTotal || (txs[0].transferPriceCand || {}).v) + '원) — 세액계산기의 양도계약 하나에 필지별 물건 ' + pcs.length + '개로 넣고, 양도가액은 계약 총액을 기준시가 비율로 나눕니다(시행령 §166④). 필지별 값은 아래와 같습니다.',
+      { mode: 'options', target: 'trParcels', options: [{ label: '이대로 필지별 물건 ' + pcs.length + '개로', value: val }], label: '일괄 양도 필지' }, lines2.join('\n')));
+  }
+  // [2026.10.16 1:1 이종식 — 세무사님: "관계가 의심스러우면 확인대상으로 띄워야지"] 양수인이 양도인과 성이 같으면 관계를 확인 대상으로 묻는다
+  //  (특수관계면 저가양도 부당행위계산 §101·가족관계증명서 대상). 성이 같다는 것은 의심일 뿐이라 정하지 않고 묻는다
+  if (rf.parties && rf.parties.buyer && rf.parties.seller && !ov.trBuyerRelation) {
+    const bn = String(rf.parties.buyer.name || ''), sn = String(rf.parties.seller.name || '');
+    if (bn.length >= 2 && sn.length >= 2 && bn.charAt(0) === sn.charAt(0) && bn !== sn) items.push(caseProcItem_('tr:buyerrel', 'check', '양수인 ' + bn + (rf.parties.buyer.regNo ? '(' + rf.parties.buyer.regNo.slice(0, 6) + '-…)' : '') + '이(가) 양도인 ' + sn + '과(와) 성이 같습니다 — 특수관계인지 확인해 주세요. 특수관계면 시가와의 차이로 부당행위계산(소득세법 §101) 검토, 가족관계증명서를 받습니다(근거: ' + rf.parties.file + ' 서명란).',
+      { mode: 'options', target: 'ov:trBuyerRelation', options: [{ label: '특수관계 없음', value: 'none' }, { label: '형제자매', value: 'sibling' }, { label: '직계존비속', value: 'lineal' }, { label: '배우자', value: 'spouse' }, { label: '기타 친족', value: 'relative' }], label: '양수인과의 관계' }));
+  }
   // [2026.10.16 1:1 김금옥 — 세무사님 지시] 양도 신고 세무비용(이 사무소 신고 수수료 등)이 서류에 없으면 금액을 입력받는다(양도비용, 시행령 §163⑤1호).
   //  정답지와 330,000원 차이 — 신고 때 발행한 사무소 현금영수증은 원시서류 폴더에 없었다
   if (txs.length === 1 && !a0.신고수수료확인 && !cands.some(function (x) { return /이 사무소 수수료/.test(x.label); })) {
@@ -26471,6 +26523,7 @@ function caseProcTrAskBasics_(c, ov, lines, items, rf, txs, noExpenses) {
   assets.forEach(function (a, i) {
     keys.forEach(function (f) {
       if (String((a || {})[f[0]] == null ? '' : a[f[0]]).trim()) return;
+      if (f[0] === '양도가액' && i > 0 && ov.양도계약일괄) return; // 일괄 계약 — 계약 총액(물건1)을 기준시가로 안분(2026-10-16)
       if (items.some(function (x) { return x.ask && x.ask.target === 'ovAsset:' + i + ':' + f[0]; })) return;
       // 국외자산 질문(환율·지분)이 걸려 있으면 금액·날짜는 그 답으로 후보를 만든다 — "서류에서 정하지 못했다"로 따로 묻지 않음
       if (i === 0 && f[0] !== 'assetLocation' && items.some(function (x) { return /^oa:/.test(x.id); })) return;
@@ -28058,6 +28111,7 @@ function caseProcCalc_(c) {
     const ov0 = c.사건개요 || {}, list0 = Array.isArray(ov0.물건목록) ? ov0.물건목록 : [];
     const sa = [].concat.apply([], last.저장값.transferResults.map(function (r) { return r.assets || []; }));
     const num = function (v) { return Number(String(v == null ? '' : v).replace(/[^\d]/g, '')) || 0; };
+    if (list0.length && sa.length && list0.length !== sa.length) { need = true; items.push(caseProcItem_('calc:input:' + (last.id || '') + ':n' + list0.length, 'check', '저장된 계산의 물건 수(' + sa.length + '개)가 처리개요(' + list0.length + '개)와 다릅니다 — 지금 처리개요로 다시 계산해 저장합니다.', { mode: 'calc', tab: c.세목 })); }
     if (list0.length === 1 && sa.length === 1) {
       const a = list0[0], s = sa[0], dif = [];
       if (num(a.양도가액) && num(a.양도가액) !== num(s.transferPrice)) dif.push('양도가액');
@@ -28183,6 +28237,24 @@ function caseProcApply_(c, body) {
     const txt = '신고 세무비용 ← ' + (amt ? amt.toLocaleString('ko-KR') + '원(양도비용)' : '없음') + ' (' + src + ')';
     const up = work_updateCase({ id: c.id, 사건개요: ov, 작업일지: logLine(txt), 기대수정일: c.수정일 });
     return up && up.success !== false ? { ok: true, message: txt.replace(/^신고 세무비용 ← /, '신고 세무비용 ') } : { ok: false, error: (up && up.message) || '저장 실패' };
+  }
+  // [2026.10.16 1:1 이종식] 일괄 양도 필지별 물건 — 물건1의 날짜·필요경비·판단은 그대로 두고 필지마다 물건을 만든다, 양도계약 하나(일괄)
+  if (target === 'trParcels') {
+    let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { d = null; }
+    if (!d || !Array.isArray(d.parcels) || d.parcels.length < 2) return { ok: false, error: '필지 목록이 없습니다 — 다시 처리하자를 해 주세요.' };
+    const ov = JSON.parse(JSON.stringify(c.사건개요 || {}));
+    const first = (Array.isArray(ov.물건목록) && ov.물건목록[0]) || {};
+    const keep = ['필요경비확정', '취득비용목록', '양도비용목록', '취득비용합계', '양도비용합계', '신고수수료확인', '주택판단'];
+    ov.물건목록 = d.parcels.map(function (pc, k) {
+      const a = { assetType: first.assetType || 'other', assetKind: 'land', assetLocation: pc.loc, 취득일: first.취득일 || '', 양도가액: k === 0 ? String(d.total || first.양도가액 || '') : '', 취득가액: pc.acq ? String(pc.acq) : '', 면적: String(pc.area || ''), 공시지가양도: String(pc.unitT || ''), 공시지가취득: String(pc.unitA || ''), 양도계약구분: '일괄', 취득계약구분: '' };
+      if (k === 0) keep.forEach(function (key) { if (first[key] != null) a[key] = first[key]; });
+      return a;
+    });
+    ov.물건수 = String(ov.물건목록.length); ov.양도계약일괄 = true; ov.일괄필지반영 = true;
+    Object.assign(ov, ov.물건목록[0]);
+    const txt = '일괄 양도 필지별 물건 ' + ov.물건목록.length + '개 ← ' + ov.물건목록.map(function (a) { return a.assetLocation + (a.취득가액 ? ' 취득 ' + Number(a.취득가액).toLocaleString('ko-KR') : ''); }).join(' / ') + ' (' + src + ')';
+    const up = work_updateCase({ id: c.id, 사건개요: ov, 작업일지: logLine(txt), 기대수정일: c.수정일 });
+    return up && up.success !== false ? { ok: true, message: txt.replace(/^일괄 양도 /, '') } : { ok: false, error: (up && up.message) || '저장 실패' };
   }
   // [2026.10.15 1:1] 증여 내용 확인 — 증여자·수증자·증여일·증여대상(종류·금액)을 한 번에 정한다(증여계약서 없이 이체내역만 있는 사건)
   if (target === 'giftdeal') {

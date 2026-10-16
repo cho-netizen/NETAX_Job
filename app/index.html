@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 06:06 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 08:25 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -35702,11 +35702,14 @@ function tcFillTransferPartiesIfEmpty_(caseObj){
 function tcSyncOverviewToTransferAssets_(caseObj){
   if (!caseObj || caseObj.세목 !== 'transfer' || typeof transferAssets === 'undefined') return false;
   var ov = caseObj.사건개요 || {}, list = Array.isArray(ov.물건목록) ? ov.물건목록 : [];
+  // [2026.10.16 1:1 이종식] 처리개요의 물건 수가 바뀌었으면(일괄 양도를 필지별로 나눔 등) 카드를 처리개요로 다시 만든다
+  if (list.length >= 2 && list.length !== transferAssets.length) { transferAssets = [{}]; acquisitionContracts = []; transferContracts = []; tcApplyOverviewToTransfer_(caseObj); return true; }
   if (list.length !== 1 || transferAssets.length !== 1 || !transferAssets[0]) return false;
   var item = list[0], a = transferAssets[0], changed = false;
   var put = function(k, v){ if (v != null && String(v).trim() !== '' && String(a[k] == null ? '' : a[k]) !== String(v)) { a[k] = v; changed = true; } };
   put('transferPrice', item.양도가액); put('acquisitionPrice', item.취득가액); put('acquisitionDate', item.취득일);
   if (item.주택판단) put('assetType', item.주택판단 === 'house' ? 'house' : 'other'); // [2026.10.16 1:1 김금옥] 오피스텔 주택 여부(세무사님 선택)
+  if (ov.trBuyerRelation) put('buyerRelation', ov.trBuyerRelation); // [2026.10.16 1:1 이종식] 양수인과의 관계(세무사님 확인)
   if (item.필요경비확정){
     var acq = (item.취득비용목록 || []).map(function(x){ return { label: x.label + (x.file ? ' (' + x.file + ')' : ''), amount: x.amount }; });
     var trx = (item.양도비용목록 || []).map(function(x){ return { label: x.label + (x.file ? ' (' + x.file + ')' : ''), amount: x.amount }; });
@@ -35777,6 +35780,12 @@ function tcApplyOverviewToTransfer_(caseObj){
         a.transferContractId = trTagToContract[trKey].id;
       }
       if (classificationFlags) Object.assign(a, classificationFlags);
+      // [2026.10.16 1:1 이종식] 일괄 양도 필지 — 면적·개별공시지가(양도시·취득시)로 계약 안분, 오피스텔 주택 여부, 양수인과의 관계
+      if (item.면적) a.assetArea = item.면적;
+      if (item.공시지가양도) a.landPricePerSqmTransfer = item.공시지가양도;
+      if (item.공시지가취득) a.landPricePerSqmAcquisition = item.공시지가취득;
+      if (item.주택판단) a.assetType = item.주택판단 === 'house' ? 'house' : 'other';
+      if (overview.trBuyerRelation) a.buyerRelation = overview.trBuyerRelation;
       // [2026.10.16 1:1 김금옥] 양수인 성명·주민번호 — 사건처리가 양도 계약서 서명란에서 읽은 값
       if (overview.trBuyerName) a.buyerName = overview.trBuyerName;
       if (overview.trBuyerRegNo) a.buyerRegNo = overview.trBuyerRegNo;
