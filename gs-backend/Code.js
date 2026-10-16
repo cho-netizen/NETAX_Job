@@ -24847,7 +24847,7 @@ function tcContractParties1_(s) {
   var cnm = (s.match(/[가-힣\d][가-힣\d\s]{1,40}?(?:조\s*합|주\s*식\s*회\s*사|㈜|\(\s*주\s*\)|유\s*한\s*회\s*사|공\s*사|재\s*단|법\s*인)(?![가-힣])/g) || []).filter(function (x) { return !/법\s*인\s*등\s*록|등\s*록\s*번\s*호/.test(x); }).pop() || '';
   // [2026.10.17] 전화 — 서명란 전화번호가 정확히 둘(매도인·매수인)일 때만 순서대로(중개사 번호가 섞여 셋 이상이면 정하지 않음)
   var phs = []; (s.match(/0\d{1,2}[-)\s]?\d{3,4}[-\s]?\d{4}(?!\d)/g) || []).forEach(function (p) { p = p.replace(/[)\s]/g, '-').replace(/-+/g, '-'); if (phs.indexOf(p) === -1) phs.push(p); });
-  var who = function (i) { return { name: corp[i] ? '' : (nms[i] || ''), regNo: regs[i] || '', addr: addrs[i] || '', corp: !!corp[i], corpName: corp[i] ? cnm.replace(/\s+/g, ' ').trim() : '', phone: phs.length === 2 ? phs[i] : '' }; };
+  var who = function (i) { return { name: corp[i] ? '' : (nms[i] || ''), regNo: regs[i] || '', addr: addrs[i] || '', corp: !!corp[i], corpName: corp[i] ? (function (x) { var t = x.replace(/^[\s\S]*(?:\d|번\s*지)\s+/, '').replace(/\s+/g, ''); return t.length >= 4 ? t : x.replace(/\s+/g, ' ').trim(); })(cnm) : '', phone: phs.length === 2 ? phs[i] : '' }; };
   return { seller: who(0), buyer: who(1) };
 }
 // [2026.10.15] 본문으로 역할을 못 정한 계약서는 파일 이름의 말(매도·양도 → 매도인, 매수·취득·분양 → 매수인)로 — 둘 다 있으면 정하지 않음
@@ -25325,8 +25325,8 @@ function tc_ruleTransferFacts_(body) {
   if (newHome.length) evidence.push('신규 주택 매수 계약서: ' + buys.filter(isNewHome).map(function (b) { return b.file; }).join(', ') + ' — 판 집의 취득 근거가 아님(일시적 2주택·대체주택 특례 판정 참고, 신규 주택 취득일 ' + (newHome[0].r.잔금일 || '?') + ')');
   if (!txs.length) buys.forEach(function (b) {
     if (isNewHome(b)) return;
-    if (b.r.잔금일) acqDateCands.push({ v: b.r.잔금일, src: '취득 계약서 잔금일 — ' + b.file + (b.r.소재지 ? ' (' + b.r.소재지 + ')' : '') });
-    if (ok(b)) acqPriceCands.push({ v: String(b.r.매매대금), src: '취득 계약서 매매대금(검산 일치) — ' + b.file + (b.r.소재지 ? ' (' + b.r.소재지 + ')' : '') });
+    if (b.r.잔금일) acqDateCands.push({ v: b.r.잔금일, src: '취득 계약서 잔금일 — ' + b.file + (b.r.소재지 ? ' (' + b.r.소재지 + ')' : ''), nomatch: true });
+    if (ok(b)) acqPriceCands.push({ v: String(b.r.매매대금), src: '취득 계약서 매매대금(검산 일치) — ' + b.file + (b.r.소재지 ? ' (' + b.r.소재지 + ')' : ''), nomatch: true });
   });
   // [2026.10.16] 분양 취득 — 분양계약서 분양금액을 취득가액 후보로(거래가 하나이고 취득가액이 비었을 때, 매수인이 납세자일 때만).
   //  부가가치세: 매입세액을 공제(환급)받았으면 취득가액에 넣지 않고, 못 받았으면 넣는다 — 납세자의 부가가치세 신고 자료가 폴더에 있으면 공제받은 쪽을 1번으로.
@@ -33806,6 +33806,14 @@ function trcAnsSet_(c, path, value, src) {
 
 // ── 증빙 → 계산기 입력 ──
 //  돌려주는 것: { state, src(칸 경로 → 근거), cands(칸 경로 → 후보 목록), facts(질문 문장에 쓸 사실) }
+// [2026.10.17 객관식 소통 2] 수용 보상금 후보 — 같은 내역서가 여러 파일(원본·사본·사진)로 있으면 같은 금액이 여러 번 떴고, "합계 전부"가 그것까지 더해 부풀었다(김운래 195억).
+//  같은 종류·같은 금액은 후보 하나로 묶고 출처 파일을 모두 적는다. 합계 전부는 서로 다른 내역만 더한다
+function trcCompCands_(comps) {
+  const u = [];
+  (comps || []).forEach(function (x) { const h = u.filter(function (y) { return y.total === x.total && y.kind.split(' ')[0] === x.kind.split(' ')[0]; })[0]; if (h) { if (h.files.indexOf(x.file) === -1) h.files.push(x.file); h.unsure = h.unsure && x.unsure; } else u.push({ kind: x.kind, total: x.total, count: x.count, files: [x.file], unsure: !!x.unsure }); });
+  return u.map(function (x) { return { v: String(x.total), src: x.kind + ' 보상금 합계' + (x.count ? '(' + x.count + ')' : '') + ' — ' + x.files.join(', ') + (x.files.length > 1 ? '(같은 금액 서류 ' + x.files.length + '개)' : '') + (x.unsure ? ' ⚠원문 확인' : '') }; })
+    .concat(u.length > 1 ? [{ v: String(u.reduce(function (s, x) { return s + x.total; }, 0)), src: '서로 다른 보상금 내역을 모두 더한 값(' + u.map(function (x) { return x.kind; }).join(' + ') + ') — 같은 내역의 사본은 한 번만 셈' }] : []);
+}
 function trcFromEvidence_(c, rf, txs, ans) {
   const st = { transferSellers: [{}], transferContracts: [], transferAssets: [], acquisitionContracts: [] };
   const src = {}, cands = {}, facts = { gift: [], parcels: null };
@@ -33837,8 +33845,7 @@ function trcFromEvidence_(c, rf, txs, ans) {
     if (!t.transferPrice && t.transferPriceConflict) { cands[base + '.totalPrice'] = t.transferPriceConflict.map(function (x) { return { v: String(x.v), src: x.src }; }); facts.conflict = facts.conflict || {}; facts.conflict[base + '.totalPrice'] = true; }
     if (k === 0 && (rf.comps || []).length) {
       ct.transferCause = 'expropriation'; src[base + '.transferCause'] = '수용 보상금 내역서';
-      if (!ct.totalPrice) cands[base + '.totalPrice'] = rf.comps.map(function (x) { return { v: String(x.total), src: x.kind + ' 보상금 합계' + (x.count ? '(' + x.count + ')' : '') + ' — ' + x.file + (x.unsure ? ' ⚠원문 확인' : '') }; })
-        .concat(rf.comps.length > 1 ? [{ v: String(rf.comps.reduce(function (s, x) { return s + x.total; }, 0)), src: '보상금 합계 전부(' + rf.comps.map(function (x) { return x.kind; }).join('+') + ')' }] : []);
+      if (!ct.totalPrice) cands[base + '.totalPrice'] = trcCompCands_(rf.comps);
     } else if (t.transferCause) { ct.transferCause = t.transferCause; src[base + '.transferCause'] = t.transferCauseSrc || '서류'; }
     if (k === 0 && pt && pt.buyer) {
       if (pt.buyer.name) { ct.buyers[0].name = pt.buyer.name; src[base + '.buyer.name'] = '양도 계약서 서명란 매수인(' + pt.file + ')'; }
@@ -33882,8 +33889,7 @@ function trcFromEvidence_(c, rf, txs, ans) {
     st.transferContracts.push({ id: 'trc_c1', name: '양도계약 01', date: c.기준일 || '', totalPrice: 0, totalExpenseItems: [], externalMembers: [], buyers: [{}] }); st.transferAssets.push({ id: 'trc_a1_1', transferContractId: 'trc_c1' });
     if ((rf.comps || []).length) {
       st.transferContracts[0].transferCause = 'expropriation'; src['c0.transferCause'] = '수용 보상금 내역서';
-      cands['c0.totalPrice'] = rf.comps.map(function (x) { return { v: String(x.total), src: x.kind + ' 보상금 합계' + (x.count ? '(' + x.count + ')' : '') + ' — ' + x.file + (x.unsure ? ' ⚠원문 확인' : '') }; })
-        .concat(rf.comps.length > 1 ? [{ v: String(rf.comps.reduce(function (s, x) { return s + x.total; }, 0)), src: '보상금 합계 전부(' + rf.comps.map(function (x) { return x.kind; }).join('+') + ')' }] : []);
+      cands['c0.totalPrice'] = trcCompCands_(rf.comps);
     }
   }
   return { state: st, src: src, cands: cands, facts: facts };
@@ -34024,6 +34030,7 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
     const pConf = !!(S.facts.conflict && S.facts.conflict[p]), pUnsure = cd && cd.length === 1 && /검산 안 됨/.test(cd[0].src) && !(rf.comps || []).length;
     const pWhy = pConf ? ' — 서류마다 금액이 달라 자동으로 정하지 않았습니다(아래 출처별 금액). 양도가액은 실제로 주고받은 금액(실지거래가액, 소득세법 §96)이라 잔금 영수증·통장 입금과 맞는 쪽, 변경계약서·특약이 있으면 그 금액을 고르세요. 고른 금액만큼 양도차익이 그대로 달라집니다.'
       : pUnsure ? ' — 계약서에서 읽은 금액이지만 계약금·중도금·잔금을 더한 값이 매매대금과 맞지 않아(글자인식이 흐렸을 수 있음) 자동으로 넣지 않았습니다. 계약서 원문 금액과 같으면 고르고, 다르면 원문 금액을 직접 넣어 주세요.'
+      : (rf.comps || []).length && k === 0 ? ' — 수용 보상금 내역서·재결서에서 읽은 금액입니다(매도 계약서가 없는 수용 — 양도가액 = 받은 보상금). 아래는 서류별 보상금이고, 같은 내역의 사본은 하나로 묶었습니다. 이 사건에서 수용된 물건의 보상금을 고르세요.'
       : ' — 서류에서 읽은 금액입니다. 맞는 금액을 고르거나 직접 넣어 주세요.';
     if (!has(ct.totalPrice) && !asked('calc:' + p)) q('trc:' + p, cd ? 'judge' : 'missing', ct.name + ' 「계약 전체 양도가액」' + (cd ? pWhy + ((rf.comps || []).length && k === 0 ? ' (수용: 지장물 보상 중 건물·구축물은 양도, 수목·시설 이전비·영업보상은 양도가 아닐 수 있습니다. 이의재결로 늘어난 금액이 있으면 그 금액)' : '') : '을 서류에서 정하지 못했습니다 — 정해 주세요(계산 전 필수).'),
       { mode: cd ? 'choose' : 'input', target: 'calc:' + p, input: 'money', label: ct.name + ' 양도가액', cands: cd || [] });
@@ -34062,7 +34069,8 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
     const p = 'a' + i, lab = st.transferAssets.length > 1 ? '자산' + (i + 1) + ' ' : '';
     const giftC = (rf.acqDateCands || []).some(function (x) { return /증여|매매사례/.test(x.src); });
     if (!has(a.acquisitionDate) && !asked('calc:' + p + '.acquisitionDate')) {
-      if (i === 0 && (rf.acqDateCands || []).length) q('tr:giftAcqDate', 'judge', giftC ? '증여로 받은 부동산입니다 — 취득일을 골라 주세요(후보: 증여계약일 = 등기부 등기원인일, 증여 등기 접수일 · 증여세 신고서 증여일).' : '취득 계약서에서 읽은 날짜입니다 — 이 물건의 취득일을 골라 주세요(잔금일·등기접수일 중 빠른 날, §98).', { mode: 'choose', target: 'calc:' + p + '.acquisitionDate', input: 'date', label: lab + '취득일', cands: rf.acqDateCands });
+      if (i === 0 && (rf.acqDateCands || []).length) q('tr:giftAcqDate', 'judge', giftC ? '증여로 받은 부동산입니다 — 취득일을 골라 주세요(후보: 증여계약일 = 등기부 등기원인일, 증여 등기 접수일 · 증여세 신고서 증여일).' : (rf.acqDateCands || []).some(function (x) { return x.nomatch; }) ? '취득일 — 판 물건과 소재지로 짝지은 취득 계약서·등기부 기재를 찾지 못해(매도 계약서가 없는 수용·계약서 미제출 등) 납세자가 산 계약서의 잔금일을 후보로 보여드립니다. 판 물건과 같은 부동산의 계약서면 고르세요 — 취득일은 잔금일·등기접수일 중 빠른 날(§98)이고, 보유기간(장기보유특별공제·세율)이 이 날부터 셉니다.'
+        : '취득 계약서에서 읽은 날짜입니다 — 이 물건의 취득일을 골라 주세요(잔금일·등기접수일 중 빠른 날, §98).', { mode: 'choose', target: 'calc:' + p + '.acquisitionDate', input: 'date', label: lab + '취득일', cands: rf.acqDateCands });
       else q('trc:' + p + '.acquisitionDate', 'missing', '취득정보 ' + lab + '「취득일」을 서류에서 정하지 못했습니다 — 정해 주세요(계산 전 필수).', { mode: 'input', target: 'calc:' + p + '.acquisitionDate', input: 'date', label: lab + '취득일', cands: [] });
     }
     if (has(a.acquisitionPrice) || has(a.comparableTransactionPrice) || has(a.appraisalValue) || (has(a.acquisitionStandardPriceForExpense) && has(a.transferStandardPriceForConversion))) return;
@@ -34073,6 +34081,8 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
     const sc = i === 0 && txs.length === 1 && txs[0].stdConv;
     const why = S.facts.conflict && S.facts.conflict[p + '.acquisitionPrice'] ? '취득 계약서와 등기부 거래가액이 서로 달라 자동으로 정하지 않았습니다(아래 출처별 금액). 취득가액은 실제로 치른 금액(실지거래가액)이라 계약서 원문·잔금 영수증과 맞는 쪽을 고르세요 — 등기부 거래가액은 실거래 신고가액이 옮겨 적힌 것이라 다운계약 등으로 다를 수 있습니다. 고른 금액만큼 양도차익이 반대로 달라집니다.'
       : cd.length === 1 && /검산 안 됨/.test(cd[0].src) ? '취득 계약서에서 읽은 금액이지만 계약금·중도금·잔금을 더한 값이 매매대금과 맞지 않아(글자인식이 흐렸을 수 있음) 자동으로 넣지 않았습니다 — 원문 금액과 같으면 고르고, 다르면 직접 넣어 주세요. 비워 두면 계산기는 매매사례가액·감정가액·환산 순서로 정합니다.'
+      : i === 0 && (rf.acqPriceCands || []).some(function (x) { return x.nomatch; }) ? '판 물건과 소재지로 짝지은 취득 계약서를 찾지 못해(매도 계약서가 없는 수용·계약서 미제출 등) 납세자가 산 계약서의 매매대금(검산 일치)을 후보로 보여드립니다 — 판 물건과 같은 부동산의 계약서면 고르세요. 아니면 비워 두세요(계산기가 매매사례가액·감정가액·환산 순서로 정합니다).'
+      : cd.some(function (x) { return /^매매사례/.test(x.src); }) && !cd.some(function (x) { return /증여세 신고서/.test(x.src); }) ? '증여로 받은 자산의 취득가액은 증여세 신고·결정가액(소득세법 시행령 §163⑨)인데 증여세 신고서가 폴더에 없어, 증여일 전후 평가기간 안의 같은 면적 매매사례가액(상증법 §60②)을 후보로 보여드립니다 — 증여세 신고·결정가액을 알면 그 금액을 직접 넣고, 모르면 증여일에 가장 가까운 사례를 고르세요(지분 증여면 지분만큼).'
       : cd.some(function (x) { return /증여세 신고서/.test(x.src); }) ? '증여로 받은 부동산 — 취득가액은 증여세 신고·결정가액(소득세법 시행령 §163⑨). 신고서 평가액이 맞으면 고르고, 결정가액이 다르면 직접 넣어 주세요.'
       : cd.some(function (x) { return /분양계약서/.test(x.src); }) ? '분양계약서의 분양금액입니다 — 부가가치세 매입세액을 공제·환급받았으면 부가세를 뺀 금액, 받지 않았으면 부가세를 넣은 금액을 고르세요.'
       : cd.length ? '서류에서 읽은 금액입니다 — 이 자산의 취득가액이면 고르고, 아니면 직접 넣어 주세요.'
