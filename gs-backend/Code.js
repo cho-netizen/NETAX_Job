@@ -33722,6 +33722,11 @@ function trcFromEvidence_(c, rf, txs, ans) {
     if (ps.regNo) { seller.regNo = ps.regNo; src['seller.regNo'] = '양도 계약서 서명란 매도인(' + pt.file + ')'; }
     if (ps.addr) { seller.address = ps.addr; src['seller.address'] = '양도 계약서 서명란 매도인 주소(' + pt.file + ') — 계약 당시 주소'; }
   }
+  // [2026.10.17] 양도인 주소(납세지) — 주민등록 등본·초본이 있으면 그 현재 주소가 우선(세무사님 원칙: 주민등록 서류가 없을 때만 계약서 주소). 이름이 같고 주소가 하나일 때만
+  if (seller.name) {
+    const ra = caseProcInhAddr_(c, { deceased: { name: seller.name }, heirs: [] });
+    if (ra && ra.deceased && ra.deceased.address) { seller.address = ra.deceased.address; src['seller.address'] = ra.deceased.addressSrc + ' — 현재 주소'; }
+  }
   const one = txs.length === 1;
   txs.forEach(function (t, k) {
     const cid = 'trc_c' + (k + 1);
@@ -34207,7 +34212,8 @@ function caseProcInhAddr_(c, o, parsed) {
       docs.forEach(function (x) {
         const r = x.p.result;
         let a = '';
-        if (nm(r.성명) === n) { const hist = (r.거주기간 || []).filter(function (h) { return h.주소; }); a = r.현주소 || (hist.length ? hist[hist.length - 1].주소 : ''); }
+        // 초본 이력은 끝 날짜 없이 "현재"인 줄만, 뒷장이 빠진 초본(이하 여백 없음)은 마지막 줄이 지금 주소가 아닐 수 있어 쓰지 않는다(방영교: 1991년 이천군 주소가 "현재"로 읽혔다)
+        if (nm(r.성명) === n) { const hist = (r.거주기간 || []).filter(function (h) { return h.주소; }), last = hist[hist.length - 1]; a = r.현주소 || (!r.뒷장없음 && last && !last.끝 && /현재/.test(String(last.끝표시 || '')) ? last.주소 : ''); }
         else if (r.현주소 && (nm(r.세대주) === n || (r.세대원 || []).some(function (q) { return nm(q.이름) === n; }))) a = r.현주소;
         if (a) hits.push({ a: String(a).replace(/\s+/g, ' ').trim().replace(/[,\s]+$/, ''), file: x.f.name });
       });
