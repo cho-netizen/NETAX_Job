@@ -17043,7 +17043,8 @@ function tcSwitchToTab_(semok){
 // transferAssets 배열 안이 아니라 이 화면과 마찬가지로 단순 id 입력칸이라(1780행) 여기에
 // 추가하는 것만으로 그대로 채워진다.
 var TC_OVERVIEW_INPUT_KEYS_ = {
-  transfer: ['trTransferorName'],
+  // [2026.10.16 1:1 김금옥] 양도인 주민번호·주소 — 사건처리가 양도 계약서 서명란에서 읽어 처리개요에 둔 값
+  transfer: ['trTransferorName', 'trTransferorRegNo', 'trTransferorAddress'],
   // [2026.09 버그수정] giftRelation은 여기 있으면 안 됐다 — select인데 이 목록의 "el.value가
   // 비어있을 때만 채운다"는 전제(텍스트 입력칸용)가 select엔 안 맞아(옵션이 항상 선택돼
   // 있어 el.value가 절대 빈 문자열이 아님) 사건개요서 값이 단 한 번도 반영된 적이 없었다.
@@ -17458,6 +17459,9 @@ function tcApplyOverviewToTransfer_(caseObj){
         a.transferContractId = trTagToContract[trKey].id;
       }
       if (classificationFlags) Object.assign(a, classificationFlags);
+      // [2026.10.16 1:1 김금옥] 양수인 성명·주민번호 — 사건처리가 양도 계약서 서명란에서 읽은 값
+      if (overview.trBuyerName) a.buyerName = overview.trBuyerName;
+      if (overview.trBuyerRegNo) a.buyerRegNo = overview.trBuyerRegNo;
       return a;
     });
     if (typeof renderTransferPane === 'function') renderTransferPane();
@@ -17474,6 +17478,8 @@ function tcApplyOverviewToTransfer_(caseObj){
   if (!a.acquisitionPrice && overview.취득가액) { a.acquisitionPrice = overview.취득가액; changed = true; }
   if (!a.acquisitionDate && overview.취득일) { a.acquisitionDate = overview.취득일; changed = true; }
   if (!a.transferDate && caseObj.기준일) { a.transferDate = caseObj.기준일; changed = true; }
+  if (!a.buyerName && overview.trBuyerName) { a.buyerName = overview.trBuyerName; changed = true; }
+  if (!a.buyerRegNo && overview.trBuyerRegNo) { a.buyerRegNo = overview.trBuyerRegNo; changed = true; }
   if (classificationFlags) {
     Object.keys(classificationFlags).forEach(function(key){
       if (!a[key]) { a[key] = classificationFlags[key]; changed = true; }
