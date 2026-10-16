@@ -5230,14 +5230,21 @@ function convertAndExtractOfficeFile(fileId, mimeType) {
  */
 function withLock_(waitMs, fn) {
   const lock = LockService.getScriptLock();
+  // [2026.10.16] 잠금을 쥔 작업 이름·시각을 남겨, 막혔을 때 "무엇이 쥐고 있는지" 알린다(📥 수정 반영이 이유 없이 거듭 막혔음)
+  let holder = '';
+  try { holder = (String(new Error().stack || '').split('\n').map(function (l) { const m = /at\s+([A-Za-z_$][\w$]*)/.exec(l); return m ? m[1] : ''; }).filter(function (n) { return n && n !== 'withLock_' && n !== 'Error'; })[0]) || ''; } catch (e) {}
   try {
     lock.waitLock(waitMs || 8000);
   } catch (err) {
-    return { error: '다른 저장 작업이 진행 중입니다. 잠시 후 다시 시도해주세요.' };
+    let who = '';
+    try { const h = JSON.parse(CacheService.getScriptCache().get('nx_lock_holder') || 'null'); if (h) who = ' (지금 잠금을 쥔 작업: ' + h.who + ', ' + Math.round((Date.now() - h.at) / 1000) + '초째)'; } catch (e) {}
+    return { error: '다른 저장 작업이 진행 중입니다. 잠시 후 다시 시도해주세요.' + who };
   }
+  try { CacheService.getScriptCache().put('nx_lock_holder', JSON.stringify({ who: holder || '알 수 없음', at: Date.now() }), 600); } catch (e) {}
   try {
     return fn();
   } finally {
+    try { CacheService.getScriptCache().remove('nx_lock_holder'); } catch (e) {}
     lock.releaseLock();
   }
 }
@@ -28800,8 +28807,16 @@ function gh_markDeployed_(sha) {
   // [2026.10.13] 📥 반영·PC 배포(mark-deployed) 둘 다 여기를 지난다 — 새로 반영된 커밋을 "최근 바뀐 기능"으로 기록하고 [요청#ID]는 "반영됨"으로(Federation.js)
   try { if (prev !== sha) commRecordChanges_(prev); } catch (e) { /* 기록 실패는 배포를 막지 않음 */ }
 }
+function ghDeployGuard_(fn) {
+  const cache = CacheService.getScriptCache();
+  if (cache.get('gh_deploying')) return { error: '다른 📥 수정 반영이 진행 중입니다 — 1~2분 뒤 다시 눌러 주세요.' };
+  cache.put('gh_deploying', String(Date.now()), 300);
+  try { return fn(); } finally { try { cache.remove('gh_deploying'); } catch (e) {} }
+}
 function gh_deployApply_(body) {
-  return withLock_(30000, function () {
+  // [2026.10.16] 공용 저장 잠금(withLock_) 대신 배포 전용 표시만 — 다른 저장·대화 저장이 잠금을 쥐면 📥가 거듭 "다른 저장 작업이 진행 중"으로 막혔다
+  //  (배포는 시트 데이터를 고치지 않으므로 공용 잠금이 필요 없음, 같은 배포가 두 번 도는 것만 막는다)
+  return ghDeployGuard_(function () {
     const scriptId = ScriptApp.getScriptId();
     const token = ScriptApp.getOAuthToken();
     const api = function (method, path, payload) {
