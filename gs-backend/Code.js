@@ -16575,7 +16575,18 @@ const MANAGE_APP_HTTP_FUNCS_ = {
   manageApp_getApiSecret: function (a) { return manageApp_getApiSecret(a[0]); },
   manageApp_getRptAdminCode: function (a) { return manageApp_getRptAdminCode(a[0]); },
   manageApp_changePassword: function (a) { return manageApp_changePassword(a[0], a[1]); },
-  manageApp_call: function (a) { return manageApp_call(a[0], a[1], a[2]); }
+  manageApp_call: function (a) { return manageApp_call(a[0], a[1], a[2]); },
+  // [2026.10.17] 관리 서버(gs-light)가 화면의 세션 토큰이 맞는지 물을 때 — 맞다/아니다만 답한다(비밀값은 안 내보냄).
+  manageApp_checkToken: function (a) { return { ok: manageApp_verifySessionToken_(a[0]) }; },
+  // [2026.10.17] 부가서비스 서버(gs-extra)용 — 토큰이 맞으면 폴더 위치 설정(비밀값 아님)만 함께 준다. 부가서비스 서버는 이 값이
+  // 없으면 기본 폴더 대신 드라이브 맨 위에 새 폴더를 만들 수 있어서, 받기 전에는 아무 조회도 하지 않는다.
+  manageApp_extraConfig: function (a) {
+    if (!manageApp_verifySessionToken_(a[0])) return { ok: false };
+    const p = PropertiesService.getScriptProperties();
+    const props = {};
+    [DEFAULT_FOLDER_ID_PROPERTY, BUSINESS_MANAGER_FOLDER_ID_PROPERTY, NETAX_ROOT_FOLDER_ID_PROPERTY, CHIEF_MANAGER_FOLDER_ID_PROPERTY].forEach(function (k) { props[k] = p.getProperty(k) || ''; });
+    return { ok: true, props: props };
+  }
 };
 function manageApp_dispatchHttp_(req) {
   const fn = req && MANAGE_APP_HTTP_FUNCS_[req.fn];

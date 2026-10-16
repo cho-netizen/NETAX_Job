@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 17:11 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 22:40 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -64,9 +64,77 @@
     // 서버가 "앞 요청이 아직 처리 중"(__pending)이라고 답하면 같은 요청번호로 계속 묻는다 — 다시 실행되지 않으므로 안전.
     // 그래도 4분이 지나면(서버 실행이 6분 한도로 죽었을 수 있음) 포기한다.
     var PENDING_GIVE_UP_MS = 240000, PENDING_DELAY_MS = 1000;
+    // [2026.10.17] 작은 조회 서버 2개 — 세무사님 그림(관리 / 처리 / 부가서비스 3분할). 처리는 job 서버 그대로.
+    // job 서버는 코드가 3MB라 빈 호출도 3~5초, 무거운 일과 겹치면 10~60초씩 튀었다(작은 프로젝트는 1.2~2초, 2026-10-17 측정).
+    //  - 관리 서버(NETAX_Job/gs-light): 사건·고객·자문내역·예약 목록
+    //  - 부가서비스 서버(NETAX_Job/gs-extra): 폴더 보기·메모 목록·서식(템플릿)·보고서 모음·서식 점검 결과
+    // 저장·수정과 비밀값이 필요한 일은 전부 job 서버. 작은 서버가 오류·이상한 답·12초 무응답이면 같은 요청을 그대로 job 서버로
+    // 보낸다(조회라 두 번 해도 안전) — 그래서 작은 서버가 멈춰도 예전처럼 동작한다. 로그인 만료 판단도 언제나 job 서버가 한다.
+    // 두 번 연달아 실패하면 그 화면에서는 그 서버를 끈다. 조회마다 한 번, 뒤에서 job 서버 답과 똑같은지 비교해 다르면 오류 기록에
+    // 남기고 그 서버를 끈다(SHADOW_CHECK). 작은 서버 코드는 📥로 바뀌지 않고 PC에서 clasp로만 올라가므로(gs-light/README.md),
+    // Code.js의 조회 함수가 바뀌었는데 작은 서버를 안 올렸어도 이 비교가 잡아 job 서버로 돌아간다 — 끄지 말 것.
+    var SIDE_SERVERS = [
+      { name: '관리 서버', url: 'https://script.google.com/macros/s/AKfycbxnruhEVQURJupt1eM7K8Iyn_EDDwSJ6mcmdvQhGqxF7rxB1VLxZkxJMi5jAYuj8e9woQ/exec',
+        actions: { work_get_cases: 1, client_get_clients: 1, client_get_consult_logs: 1, list_bookings: 1 } },
+      { name: '부가서비스 서버', url: 'https://script.google.com/macros/s/AKfycbxZhdrTsjYg5NaX1lg3YnLozI0d3pGcLmXVVfZTC52qkmIhMSiujgfwo3IoxXO-6SPB/exec',
+        actions: { listFolder: 1, getNetaxRootPath: 1, listCaseTemplates: 1, getCaseTemplateContent: 1, listGeneralMemos: 1, get_latest_template_review: 1,
+          list_all_reports: function(payload){ return !(payload && payload.forceRebuild); } } } // 다시 만들기는 목록 파일을 고쳐 써서 job 서버로
+    ];
+    var SIDE_TIMEOUT_MS = 12000, SHADOW_CHECK = true;
+    SIDE_SERVERS.forEach(function(sv){ sv.off = false; sv.fails = 0; sv.shadowDone = {}; });
+    function sideLog(sv, message, detail){
+      try { console.warn('[' + sv.name + '] ' + message); } catch (e) {}
+      try { if (typeof nxLogBug_ === 'function') nxLogBug_({ kind: 'light', where: sv.name, message: message, detail: String(detail || '').slice(0, 1000) }); } catch (e) {}
+    }
+    function sideServerFor(fnName, args){
+      if (fnName !== 'manageApp_call' || !args) return null;
+      for (var i = 0; i < SIDE_SERVERS.length; i++){
+        var sv = SIDE_SERVERS[i], rule = sv.actions[args[0]];
+        if (!sv.off && rule && (rule === 1 || rule(args[1]))) return sv;
+      }
+      return null;
+    }
+    function viaSide(sv, item){
+      var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, SIDE_TIMEOUT_MS) : null;
+      var body = JSON.stringify({ __manageBatch: [{ fn: item.fn, args: item.args }] });
+      return fetch(sv.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body, signal: ctrl ? ctrl.signal : undefined })
+        .then(function(res){ return res.text(); })
+        .then(function(text){
+          clearTimeout(timer);
+          var data = null; try { data = JSON.parse(text); } catch (e) {}
+          var r = data && Array.isArray(data.__results) ? data.__results[0] : null;
+          if (!r || !('__result' in r) || r.error || (r.__result && r.__result.error)) throw new Error((r && r.error) || (r && r.__result && r.__result.error) || '응답 이상');
+          return r.__result;
+        }, function(err){ clearTimeout(timer); throw err; });
+    }
+    function shadowCheck(sv, item, sideResult){
+      var action = item.args[0];
+      if (!SHADOW_CHECK || sv.shadowDone[action]) return;
+      sv.shadowDone[action] = true;
+      var a = JSON.stringify(sideResult);
+      send([{ fn: item.fn, args: item.args, resolve: function(mainResult){
+        var b = JSON.stringify(mainResult);
+        if (a !== b){
+          sv.off = true;
+          sideLog(sv, action + ' 결과가 job 서버와 다름 — 이 화면에서는 ' + sv.name + '를 끔', sv.name + ' ' + a.length + '자 / job ' + b.length + '자, 처음 다른 곳: ' + (function(){ for (var i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return i + ' [' + a.slice(Math.max(0, i - 40), i + 40) + '] vs [' + b.slice(Math.max(0, i - 40), i + 40) + ']'; return '길이만 다름'; })());
+        }
+      }, reject: function(){} }]);
+    }
     var queue = [], flushTimer = null;
     function post(fnName, args){
       return new Promise(function(resolve, reject){
+        var sv = sideServerFor(fnName, args);
+        if (sv){
+          var item = { fn: fnName, args: args, resolve: resolve, reject: reject };
+          viaSide(sv, item).then(function(r){ sv.fails = 0; resolve(r); shadowCheck(sv, item, r); }, function(err){
+            // 두 번 연달아 실패하면 이 화면에서는 그 서버를 끈다(설치 전·장애 중에 매번 헛걸음하지 않게)
+            if (++sv.fails >= 2) sv.off = true;
+            sideLog(sv, args[0] + ' 실패 → job 서버로', err && err.message);
+            send([item]);
+          });
+          return;
+        }
         if (fnName === 'manageApp_call' && args && SOLO_ACTIONS[args[0]]){
           send([{ fn: fnName, args: args, resolve: resolve, reject: reject }]);
           return;
