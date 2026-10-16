@@ -25550,7 +25550,9 @@ function caseProc_(body) {
     if (body.step === 'draft') return caseProcDraft_(c);
     if (body.step === 'savePdf') return caseProcSavePdf_(c, body);
     if (body.step === 'status') return caseProcStatus_(c, body);
-    if (body.step === 'calcin') return caseProcCalcIn_(c); // [2026.10.17] 양도 세액계산기 입력(계산기 모양 그대로)
+    if (body.step === 'calcin') return caseProcCalcIn_(c);
+    if (body.step === 'scanCands') return caseProcScanCands_(c); // [2026.10.17] 원근보정할 사진 후보
+    if (body.step === 'scanSaved') return caseProcScanSaved_(c, body); // 원근보정본 짝 기록 // [2026.10.17] 양도 세액계산기 입력(계산기 모양 그대로)
   } catch (e) {
     return { error: '이 단계를 처리하지 못했습니다: ' + (e && e.message || e) };
   }
@@ -25618,6 +25620,8 @@ function caseProcFiles_(c, opt) {
     while (subs.hasNext()) { const sf = subs.next(); if (!includeFiled && caseIsFiledReturnFolder_(sf.getName())) continue; walk(sf, depth + 1); }
   };
   walk(DriveApp.getFolderById(folderId), 0);
+  // [2026.10.17] 원근보정본(_보정.pdf)과 원본 사진이 함께 있으면 더 잘 읽힌 쪽 하나만(같은 서류를 두 번 세지 않게) — raw면 그대로
+  if (!(opt && opt.raw)) { const dropS = caseProcScanPairs_(out, null, c.id); if (Object.keys(dropS).length) { const kept = out.filter(function (f) { return !dropS[f.id]; }); kept.truncated = out.truncated; return kept; } }
   return out;
 }
 // ask = [확인]을 눌렀을 때 화면이 띄울 질문(mode: base·input·choose·options·evidence·docok·note·calc·draft·folder·view)
@@ -28104,9 +28108,11 @@ function caseProcLedger_(c, saved) {
   const relevant = CASEPROC_RELEVANT_TYPES_[c.세목] || null;
   const started = Date.now();
   let docIdx = 0;
+  const scanDrop = caseProcScanPairs_(all, cache, c.id); // [2026.10.17] 원근보정본과 원본 사진 중 뺀 쪽
   const rows = all.map(function (f) {
     const n = f.name, mt = String(f.mimeType || '');
     const r = { n: n, dir: f.dir, st: '', kind: '', why: '', use: '' };
+    if (scanDrop[f.id]) { r.st = '제외'; r.why = scanDrop[f.id]; return r; }
     if (f.dir.split('/').some(caseIsFiledReturnFolder_)) { r.st = '제외'; r.why = '정답지 보관(양도코리아) — 처리에 쓰지 않음'; return r; }
     if (/^~\$/.test(n)) { r.st = '제외'; r.why = '엑셀을 열어 둘 때 생기는 임시 파일'; return r; }
     if (/^_/.test(n)) { r.st = '제외'; r.why = caseIsAnswerKeyFile_(n) ? '점검용 정답지' : '도구가 만든 파일(_로 시작)'; return r; }
@@ -34318,3 +34324,136 @@ function giGiftAssets_(c) {
   } catch (e) {}
   return out;
 }
+
+// =========================================================
+// [2026.10.17 세무사님 지시 — "증빙관리의 스캔·PDF관리 기능은 세액계산을 잘 하기 위한 도구"] 판독이 나쁜 사진(글자 없음·⚠·종류 미정)을
+//  사이드바가 증빙관리 스캔 도구와 같은 원근보정(모서리 찾기 → 펴기 → 흑백·대비)으로 고쳐 PDF로 같은 폴더에 저장한다. 원본은 지우지 않는다.
+//  원본·보정본 짝은 사건처리 기록(sv.scanPairs: 보정본ID → 원본ID)에 남기고, 둘 다 있으면 더 잘 읽힌 쪽 하나만 읽는다(같은 서류를 두 번 세지 않게).
+//  [세무사님 지시] 카카오톡 받은 파일처럼 일련번호 이름인 사진은 서류 내용에 맞는 이름으로(예: 주민등록초본_보정.pdf) — 종류를 모르면 보정본을 읽은 뒤 바꾼다
+// =========================================================
+function caseProcScanBase_(n) { return String(n || '').replace(/\.[A-Za-z0-9]{2,5}$/, '').replace(/_보정$/, ''); }
+// 일련번호처럼 뜻 없는 이름(카카오톡 받은 사진·휴대폰 카메라·스크린샷·숫자만)
+function caseProcScanSerial_(n) {
+  const b = caseProcScanBase_(n);
+  if (/^(kakaotalk|img|dsc|pxl|photo|image|screenshot|scan|스크린샷|사진|캡처|캡쳐|제목\s*없음)[\s_\-]?/i.test(b)) return true;
+  const d = b.replace(/\D/g, '');
+  return d.length >= 8 && d.length >= b.length * 0.6;
+}
+const CASEPROC_SCAN_TYPE_NAME_ = { resident: '주민등록초본', registry: '등기부등본', contract: '매매계약서', family: '가족관계증명서', acqtax: '취득세 영수증', lawyerfee: '법무사 정산서', cashreceipt: '현금영수증', cardreceipt: '카드영수증', receipt: '영수증', taxinvoice: '세금계산서', pubprice: '공시가격', bldledger: '건축물대장', giftcontract: '증여계약서', death: '사망 서류', inhdivision: '상속재산분할협의서', balance: '잔고증명', debtcert: '부채증명', banktx: '이체내역', payment: '납부서', realprice: '실거래가', appraisal: '감정평가서', bldstd: '건물기준시가 계산서' };
+// 서류 내용에 맞는 이름(파일 이름에 못 쓰는 글자 뺌) — 모르면 ''
+function caseProcScanName_(p) {
+  if (!p) return '';
+  const nm = String(p.l || CASEPROC_SCAN_TYPE_NAME_[p.t] || '').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+  return nm;
+}
+function caseProcScanUnique_(folderId, name) {
+  try {
+    const f = DriveApp.getFolderById(folderId), base = name.replace(/\.pdf$/i, '');
+    let n = name, k = 2;
+    while (f.getFilesByName(n).hasNext() && k < 20) { n = base + '(' + k + ').pdf'; k++; }
+    return n;
+  } catch (e) { return name; }
+}
+// 원본 ↔ 보정본 짝에서 뺄 쪽 — { 파일ID: 이유 }. 짝 기록: sv.scanPairs[보정본ID] = [원본ID…](여러 장을 합친 것)
+//  [2026.10.17] 한 파일을 서류별로 나눈 것: sv.scanSplits[원본ID] = [나눈 파일ID…] — 나눈 파일이 다 읽혔고 하나라도 종류가 정해졌으면 나눈 쪽으로
+function caseProcScanPairs_(files, cache, caseId) {
+  const drop = {};
+  try {
+    let sv = {};
+    if (caseId) { try { sv = caseProcLoad_(caseId) || {}; } catch (e) {} }
+    const pairs = sv.scanPairs || {}, splits = sv.scanSplits || {};
+    const byId = {}; files.forEach(function (f) { byId[f.id] = f; });
+    const list = [];
+    Object.keys(pairs).forEach(function (cid) { const os = [].concat(pairs[cid]).map(function (id) { return byId[id]; }).filter(Boolean); if (byId[cid] && os.length) list.push([byId[cid], os]); });
+    // 기록이 없는(예전·다른 화면에서 만든) "<원본>_보정.pdf"는 이름으로 짝
+    files.filter(function (f) { return /_보정(\(\d+\))?\.pdf$/i.test(f.name) && !pairs[f.id]; }).forEach(function (cf) {
+      const base = caseProcScanBase_(cf.name.replace(/\(\d+\)\.pdf$/i, '.pdf'));
+      const orig = files.filter(function (f) { return f !== cf && /^image\//.test(String(f.mimeType || '')) && caseProcScanBase_(f.name) === base; })[0];
+      if (orig) list.push([cf, [orig]]);
+    });
+    cache = cache || CacheService.getScriptCache();
+    list.forEach(function (pr) {
+      const cf = pr[0], os = pr[1];
+      const pc = caseProcParsed_(cf, cache, false), pos = os.map(function (o) { return caseProcParsed_(o, cache, false); });
+      const onames = os.map(function (o) { return o.name; }).join(', ');
+      if (!pc) { drop[cf.id] = '원근보정본(원본 ' + onames + ') — 아직 글자인식 전, 원본으로 읽음'; return; }
+      const worst = { nt: pos.some(function (p) { return !p || p.nt || p.err; }), t: pos.some(function (p) { return p && p.t; }), wn: pos.reduce(function (s, p) { return s + ((p && p.wn) || 0); }, 0) };
+      const better = !pc.nt && !pc.err && (worst.nt || (!worst.t && pc.t) || os.length > 1 || (pc.t && (pc.wn || 0) <= worst.wn));
+      if (better) os.forEach(function (o) { drop[o.id] = '원근보정' + (os.length > 1 ? '·한 문서로 합친' : '한') + ' 「' + cf.name + '」로 읽음(원본은 그대로 둠)'; });
+      else drop[cf.id] = '원근보정본이 원본(' + onames + ')보다 잘 읽히지 않아 원본으로 읽음';
+    });
+    Object.keys(splits).forEach(function (oid) {
+      const parts = [].concat(splits[oid]).map(function (id) { return byId[id]; }).filter(Boolean);
+      if (!byId[oid] || !parts.length) return;
+      const ps = parts.map(function (f) { return caseProcParsed_(f, cache, false); });
+      if (ps.every(function (p) { return p && !p.err; }) && ps.some(function (p) { return p.t; })) drop[oid] = '서류별로 나눈 ' + parts.map(function (f) { return '「' + f.name + '」'; }).join('·') + '로 읽음(원본은 그대로 둠)';
+      else parts.forEach(function (f) { drop[f.id] = '서류별로 나눈 파일 — 아직 다 읽히지 않아 원본 「' + byId[oid].name + '」으로 읽음'; });
+    });
+  } catch (e) {}
+  return drop;
+}
+// 일련번호 묶음 앞부분(카카오톡 "…_01_.jpg"·"…(2).jpg"·"IMG_0012" 등의 끝 번호 뺀 것)과 번호
+function caseProcScanSeq_(n) {
+  // 쪽 번호는 끝의 1~3자리이고 바로 앞이 숫자가 아닐 때만("지방세 2025"의 2025는 연도 — 쪽 번호 아님)
+  const b = caseProcScanBase_(n), m = /^(.*?\D)?[\s_\-(]*(\d{1,3})[\s_)]*$/.exec(b);
+  if (m && /\d$/.test(String(m[1] || '').replace(/[\s_\-(]+$/, ''))) return { pre: b, no: 0 };
+  return m ? { pre: m[1], no: Number(m[2]) } : { pre: b, no: 0 };
+}
+// 보정할 사진 후보 — 이미 글자인식한 사진 중 판독이 나쁜 것(새 글자인식은 하지 않음), 보정본이 아직 없는 것, 한 번에 5묶음까지.
+//  [세무사님 지시] 한 서류가 여러 장 사진으로 나뉘어 있으면 하나의 PDF로 합친다 — 같은 묶음 앞부분·이어지는 번호이고,
+//  읽은 종류가 같거나 앞 장에 "뒷장 빠짐" 경고가 있고 다음 장이 종류 미정(이어지는 쪽)일 때만. 종류가 다르면 합치지 않는다
+//  같이: 일련번호 이름으로 저장된 보정본이 이제 종류가 읽혔으면 내용에 맞는 이름으로 바꾼다
+function caseProcScanCands_(c) {
+  const out = [], renamed = [];
+  try {
+    const files = caseProcFiles_(c, { raw: true }), cache = CacheService.getScriptCache();
+    const sv = caseProcLoad_(c.id) || {}, pairs = sv.scanPairs || {};
+    const origDone = {}; Object.keys(pairs).forEach(function (k) { [].concat(pairs[k]).forEach(function (id) { origDone[id] = true; }); });
+    const have = {}; files.forEach(function (f) { if (/_보정(\(\d+\))?\.pdf$/i.test(f.name)) have[caseProcScanBase_(f.name)] = true; });
+    files.forEach(function (f) {
+      if (pairs[f.id] && caseProcScanSerial_(f.name)) { // 보정본 이름 고치기
+        const pc = caseProcParsed_(f, cache, false), nm = caseProcScanName_(pc);
+        if (nm) { try { const df = DriveApp.getFileById(f.id), pid = df.getParents().hasNext() ? df.getParents().next().getId() : ''; const nn = caseProcScanUnique_(pid, nm + '_보정.pdf'); df.setName(nn); renamed.push(f.name + ' → ' + nn); } catch (e) {} }
+      }
+    });
+    const imgs = files.filter(function (f) { return /^image\/(jpeg|jpg|png|webp)/.test(String(f.mimeType || '')) && !/^_/.test(f.name) && !caseProcIsOutputDoc_(f.name) && !origDone[f.id] && !have[caseProcScanBase_(f.name)]; })
+      .map(function (f) { return { f: f, p: caseProcParsed_(f, cache, false), s: caseProcScanSeq_(f.name), dir: f.dir || '' }; })
+      .filter(function (x) { return x.p && !x.p.office && !x.p.calc && !x.p.out && !x.p.vat; })
+      .sort(function (a, b) { return (a.dir + a.s.pre).localeCompare(b.dir + b.s.pre) || a.s.no - b.s.no; });
+    const bad = function (p) { return p.nt ? '글자를 못 읽음' : p.err ? '읽기 오류' : (p.wn || 0) > 0 ? '⚠ 확인필요 ' + p.wn + '곳' : !p.t ? '종류를 못 정함' : ''; };
+    const groups = [];
+    imgs.forEach(function (x) {
+      const g = groups[groups.length - 1], last = g && g[g.length - 1];
+      // 번호 없는 첫 장("소득금액증명원.jpg") 다음에 같은 이름 2번("소득금액증명원2.jpg")이 오면 그 첫 장이 1쪽
+      const lastNo = last && last.s.no === 0 && x.s.no === 2 && last.s.pre === x.s.pre ? 1 : last && last.s.no;
+      const cont = last && last.dir === x.dir && last.s.pre && last.s.pre === x.s.pre && x.s.no === lastNo + 1 &&
+        ((last.p.t && last.p.t === x.p.t) || (/뒷장/.test((last.p.w || []).join(' ')) && (!x.p.t || x.p.t === last.p.t)) ||
+         // 뜻 있는 같은 이름에 쪽 번호만 이어지면("증여계약서(강정화)1·2") 다음 장이 종류 미정이어도 이어지는 쪽 — 일련번호 이름(카카오톡 등)은 이 규칙을 쓰지 않음
+         (!caseProcScanSerial_(x.f.name) && !x.p.t && !!g[0].p.t));
+      if (cont) g.push(x); else groups.push([x]);
+    });
+    const usedNames = {}; // 같은 묶음 안에서 저장 이름이 겹치지 않게
+    groups.forEach(function (g) {
+      if (out.length >= 5) return;
+      const why = g.map(function (x) { return bad(x.p); }).filter(String);
+      if (!why.length && g.length < 2) return; // 한 장이고 잘 읽혔으면 그대로
+      let folderId = '';
+      try { const it = DriveApp.getFileById(g[0].f.id).getParents(); if (it.hasNext()) folderId = it.next().getId(); } catch (e) {}
+      if (!folderId) return;
+      const typed = g.filter(function (x) { return x.p.t; })[0];
+      const nm = caseProcScanSerial_(g[0].f.name) && typed ? caseProcScanName_(typed.p) : '';
+      out.push({ files: g.map(function (x) { return { id: x.f.id, name: x.f.name, mimeType: x.f.mimeType }; }), name: g.map(function (x) { return x.f.name; }).join(' + '), folderId: folderId,
+        why: (g.length > 1 ? g.length + '장이 한 서류(' + (typed ? caseProcScanName_(typed.p) : '같은 묶음') + ')라 하나로 합침' : '') + (why.length ? (g.length > 1 ? ' · ' : '') + why.filter(function (w, i, a) { return a.indexOf(w) === i; }).join('·') : ''),
+        saveAs: (function () { let n0 = caseProcScanUnique_(folderId, (nm || caseProcScanBase_(g[0].f.name)) + '_보정.pdf'), k = 2; const b0 = n0.replace(/\.pdf$/i, ''); while (usedNames[folderId + '|' + n0]) n0 = b0 + '(' + (k++) + ').pdf'; usedNames[folderId + '|' + n0] = 1; return n0; })() });
+    });
+  } catch (e) {}
+  return { ok: true, cands: out, renamed: renamed };
+}
+// 사이드바가 보정본을 저장한 뒤 — 원본·보정본 짝 기록(합친 것은 원본 여러 개)
+function caseProcScanSaved_(c, body) {
+  const list = Array.isArray(body.pairs) ? body.pairs : [];
+  caseProcPatch_(c.id, function (sv) { sv.scanPairs = sv.scanPairs || {}; list.forEach(function (p) { if (p && p.corr && p.orig) sv.scanPairs[String(p.corr)] = [].concat(p.orig).map(String); }); });
+  return { ok: true, n: list.length };
+}
+
+

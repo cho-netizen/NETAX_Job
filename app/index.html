@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 16:30 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 16:52 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -47197,7 +47197,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     st.doStep('basic').then(function(res){
       if (!res) throw new Error('사건 기본 정보를 불러오지 못했습니다.');
       if (res.blocked){ ['evidence', 'overview', 'calc', 'output'].forEach(function(k){ st.setStep(k, '⏭', '증빙 폴더가 없어 건너뜀'); }); return; }
-      return ['evidence', 'overview', 'calc', 'output'].reduce(function(p, k){ return p.then(function(){ return st.doStep(k); }); }, Promise.resolve());
+      // [2026.10.17] 증빙 단계 뒤 — 판독이 나쁜 사진을 원근보정(여러 장이면 한 서류로 합쳐) 저장했으면 증빙을 한 번 더 읽는다(보정본으로)
+      return st.doStep('evidence').then(function(){ return NXAI_SCAN_.run(st).catch(function(){ return 0; }); }).then(function(n){ return n ? st.doStep('evidence') : null; })
+        .then(function(){ return ['overview', 'calc', 'output'].reduce(function(p, k){ return p.then(function(){ return st.doStep(k); }); }, Promise.resolve()); });
     }).then(function(){ return nxAiCaseProcFinish_(st); }).catch(function(err){ st.setStep('save', '❌', String(err && err.message || err)); });
   }
   // 6단계 — 결정·남은 일 저장(작업일지 한 줄) + 종합검토서 초안(보류 = 추가로 확인할 사항)
@@ -47988,6 +47990,77 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       nxAiSendAI_(prompt, { noGem: true, displayText: '🤔 판단 근거 요청 — ' + it.text.slice(0, 70) });
     });
   }
+  // [2026.10.17 세무사님 지시 — "증빙관리의 스캔·PDF관리 기능은 세액계산을 잘 하기 위한 도구"] 판독이 나쁜 사진을 스캔 도구와 같은 원근보정
+  //  (모서리 찾기 → 호모그래피로 펴기 → 흑백·대비)으로 고쳐 "<원본>_보정.pdf"로 같은 폴더에 저장한다. 원본은 그대로 두고, 서버가 더 잘 읽힌 쪽 하나만 읽는다.
+  //  [세무사님 지시] 모서리는 가급적 서류의 모서리를 찾고, 못 찾은 변은 사진 전체 가장자리로(네 변 다 못 찾으면 사진 전체 — 흑백·대비만). 수학은 netax.kr/shared/scan-tool.js와 같다.
+  var NXAI_SCAN_ = (function(){
+    function gray(d){ var g = new Float32Array(d.width * d.height); for (var i = 0, p = 0; i < d.data.length; i += 4, p++) g[p] = 0.299 * d.data[i] + 0.587 * d.data[i + 1] + 0.114 * d.data[i + 2]; return g; }
+    function edge(getVal, len){ var skip = Math.floor(len * 0.03), maxD = 0, best = -1; for (var i = skip + 1; i < len * 0.5; i++){ var df = Math.abs(getVal(i) - getVal(i - 1)); if (df > maxD){ maxD = df; best = i; } } return { idx: best, s: maxD }; }
+    function inset(g, w, h){
+      function med(getVal, perp, along){ var hits = []; for (var s = 1; s <= 7; s++){ var a = Math.round(s / 8 * (along - 1)); var r = edge(function(p){ return getVal(a, p); }, perp); if (r.s > 15 && r.idx >= 0 && r.idx < perp * 0.35) hits.push(r.idx); } if (hits.length < 3) return null; hits.sort(function(x, y){ return x - y; }); return hits[Math.floor(hits.length / 2)]; }
+      return { top: med(function(a, p){ return g[p * w + a]; }, h, w), bottom: med(function(a, p){ return g[(h - 1 - p) * w + a]; }, h, w), left: med(function(a, p){ return g[a * w + p]; }, w, h), right: med(function(a, p){ return g[a * w + (w - 1 - p)]; }, w, h) };
+    }
+    function solve(A, B){ var n = B.length; for (var i = 0; i < n; i++) A[i] = A[i].concat([B[i]]); for (var col = 0; col < n; col++){ var mr = col; for (var r = col + 1; r < n; r++) if (Math.abs(A[r][col]) > Math.abs(A[mr][col])) mr = r; var t = A[col]; A[col] = A[mr]; A[mr] = t; var pv = A[col][col]; if (Math.abs(pv) < 1e-12) continue; for (var r2 = 0; r2 < n; r2++){ if (r2 === col) continue; var f = A[r2][col] / pv; for (var c = col; c <= n; c++) A[r2][c] -= f * A[col][c]; } } var x = []; for (var k = 0; k < n; k++) x.push(A[k][n] / (A[k][k] || 1e-12)); return x; }
+    function homo(src, dst){ var A = [], B = []; for (var i = 0; i < 4; i++){ var sx = src[i].x, sy = src[i].y, dx = dst[i].x, dy = dst[i].y; A.push([sx, sy, 1, 0, 0, 0, -dx * sx, -dx * sy]); B.push(dx); A.push([0, 0, 0, sx, sy, 1, -dy * sx, -dy * sy]); B.push(dy); } var s = solve(A, B); return [s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7], 1]; }
+    function inv(m){ var a = m[0], b = m[1], c = m[2], d = m[3], e = m[4], f = m[5], g = m[6], h = m[7], i = m[8]; var C00 = e * i - f * h, C01 = -(d * i - f * g), C02 = d * h - e * g, C10 = -(b * i - c * h), C11 = a * i - c * g, C12 = -(a * h - b * g), C20 = b * f - c * e, C21 = -(a * f - c * d), C22 = a * e - b * d; var det = a * C00 + b * C01 + c * C02, k = 1 / (det || 1e-12); return [C00 * k, C10 * k, C20 * k, C01 * k, C11 * k, C21 * k, C02 * k, C12 * k, C22 * k]; }
+    function sample(im, sx, sy){ var w = im.width, h = im.height, d = im.data; if (sx < 0 || sy < 0 || sx > w - 1 || sy > h - 1) return [255, 255, 255]; var x0 = Math.floor(sx), y0 = Math.floor(sy), x1 = Math.min(x0 + 1, w - 1), y1 = Math.min(y0 + 1, h - 1), fx = sx - x0, fy = sy - y0; var i00 = (y0 * w + x0) * 4, i10 = (y0 * w + x1) * 4, i01 = (y1 * w + x0) * 4, i11 = (y1 * w + x1) * 4, r = []; for (var k = 0; k < 3; k++){ var t = d[i00 + k] * (1 - fx) + d[i10 + k] * fx, b = d[i01 + k] * (1 - fx) + d[i11 + k] * fx; r.push(t * (1 - fy) + b * fy); } return r; }
+    function loadImg(bytes, mime){ return new Promise(function(res, rej){ var url = URL.createObjectURL(new Blob([bytes], { type: mime || 'image/jpeg' })); var img = new Image(); img.onload = function(){ URL.revokeObjectURL(url); res(img); }; img.onerror = function(){ URL.revokeObjectURL(url); rej(new Error('사진을 열지 못함')); }; img.src = url; }); }
+    // 사진 바이트 → 보정한 JPEG 바이트 + 모서리를 찾은 변 수
+    async function correctJpg(bytes, mime){
+      var img = await loadImg(bytes, mime), iw = img.naturalWidth, ih = img.naturalHeight;
+      var sc = Math.min(1, 800 / Math.max(iw, ih)), dw = Math.max(1, Math.round(iw * sc)), dh = Math.max(1, Math.round(ih * sc));
+      var c0 = document.createElement('canvas'); c0.width = dw; c0.height = dh; var x0 = c0.getContext('2d'); x0.drawImage(img, 0, 0, dw, dh);
+      var ins = inset(gray(x0.getImageData(0, 0, dw, dh)), dw, dh);
+      var found = ['top', 'bottom', 'left', 'right'].filter(function(k){ return ins[k] !== null; }).length;
+      ['top', 'bottom', 'left', 'right'].forEach(function(k){ if (ins[k] === null) ins[k] = 0; }); // 못 찾은 변 = 사진 가장자리
+      var k = 1 / sc, src = [{ x: ins.left * k, y: ins.top * k }, { x: iw - ins.right * k, y: ins.top * k }, { x: iw - ins.right * k, y: ih - ins.bottom * k }, { x: ins.left * k, y: ih - ins.bottom * k }];
+      var dist = function(a, b){ return Math.hypot(a.x - b.x, a.y - b.y); };
+      var ow = Math.round(Math.max(dist(src[0], src[1]), dist(src[3], src[2]))), oh = Math.round(Math.max(dist(src[0], src[3]), dist(src[1], src[2])));
+      if (ow > 2000 || oh > 2000){ var s2 = 2000 / Math.max(ow, oh); ow = Math.round(ow * s2); oh = Math.round(oh * s2); }
+      ow = Math.max(50, ow); oh = Math.max(50, oh);
+      var Mi = inv(homo(src, [{ x: 0, y: 0 }, { x: ow, y: 0 }, { x: ow, y: oh }, { x: 0, y: oh }]));
+      var cs = document.createElement('canvas'); cs.width = iw; cs.height = ih; var xs = cs.getContext('2d'); xs.drawImage(img, 0, 0); var sd = xs.getImageData(0, 0, iw, ih);
+      var co = document.createElement('canvas'); co.width = ow; co.height = oh; var xo = co.getContext('2d'); var od = xo.createImageData(ow, oh);
+      var cf = (259 * (24 + 255)) / (255 * (259 - 24)); // 대비 30%(스캔 도구 식: 30/100×80 = 24)
+      for (var Y = 0; Y < oh; Y++) for (var X = 0; X < ow; X++){ var w = Mi[6] * X + Mi[7] * Y + Mi[8], rgb = sample(sd, (Mi[0] * X + Mi[1] * Y + Mi[2]) / w, (Mi[3] * X + Mi[4] * Y + Mi[5]) / w), gv = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2], v = Math.max(0, Math.min(255, cf * (gv - 128) + 128)), di = (Y * ow + X) * 4; od.data[di] = od.data[di + 1] = od.data[di + 2] = v; od.data[di + 3] = 255; }
+      xo.putImageData(od, 0, 0);
+      var jpg = await new Promise(function(res){ co.toBlob(function(b){ b.arrayBuffer().then(function(buf){ res(new Uint8Array(buf)); }); }, 'image/jpeg', 0.9); });
+      return { jpg: jpg, found: found };
+    }
+    // 여러 장(한 서류) → PDF 하나
+    async function correct(pages){
+      var doc = await PDFLib.PDFDocument.create(), found = [];
+      for (var i = 0; i < pages.length; i++){ var r = await correctJpg(pages[i].bytes, pages[i].mime); found.push(r.found); var emb = await doc.embedJpg(r.jpg), pg = doc.addPage([emb.width, emb.height]); pg.drawImage(emb, { x: 0, y: 0, width: emb.width, height: emb.height }); }
+      return { pdf: await doc.save(), found: found };
+    }
+    function b64ToBytes(b64){ var bin = atob(b64), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+    function bytesToB64(u){ var s = '', CH = 0x8000; for (var i = 0; i < u.length; i += CH) s += String.fromCharCode.apply(null, u.subarray(i, i + CH)); return btoa(s); }
+    // 사건의 판독 나쁜 사진을 보정해 저장 — 저장한 장 수를 돌려준다
+    async function run(st){
+      if (typeof PDFLib === 'undefined' || typeof callGas !== 'function') return 0;
+      var r = await callGas('case_proc', { caseId: st.caseId, step: 'scanCands' }).catch(function(){ return null; });
+      var cands = (r && r.cands) || [];
+      if (!cands.length) return 0;
+      var saved = [], skipped = [], pairs = [];
+      for (var i = 0; i < cands.length; i++){
+        var c = cands[i];
+        st.setStep('evidence', '🔄', '판독이 나쁜 사진 원근보정 중(' + (i + 1) + '/' + cands.length + ') — ' + c.name);
+        try {
+          var pages = [];
+          for (var j = 0; j < c.files.length; j++){ var fb = await callGas('readFileBinary', { fileId: c.files[j].id }); if (!fb || fb.error || !fb.base64) throw new Error(c.files[j].name + ' 불러오기 실패'); pages.push({ bytes: b64ToBytes(fb.base64), mime: c.files[j].mimeType }); }
+          var res = await correct(pages);
+          var up = await callGas('uploadFile', { folderId: c.folderId, name: c.saveAs, mimeType: 'application/pdf', base64Data: bytesToB64(res.pdf) });
+          if (up && !up.error && up.id){ pairs.push({ corr: up.id, orig: c.files.map(function(f){ return f.id; }) }); saved.push(c.name + ' → ' + (up.name || c.saveAs) + '(' + c.why + (res.found.some(function(n){ return n < 4; }) ? ', 모서리를 못 찾은 변은 사진 전체로' : '') + ')'); }
+          else skipped.push(c.name + '(저장 실패)');
+        } catch (e) { skipped.push(c.name + '(' + (e && e.message || e) + ')'); }
+      }
+      if (pairs.length) await callGas('case_proc', { caseId: st.caseId, step: 'scanSaved', pairs: pairs }).catch(function(){});
+      var box = st.steps.evidence && st.steps.evidence.querySelector('.nxai-cp-lines');
+      if (box && (saved.length || skipped.length)){ var ln = document.createElement('div'); ln.className = 'nxai-cp-line'; ln.textContent = '📷 판독이 나쁜 사진 원근보정(증빙관리 스캔 도구와 같은 보정, 원본은 그대로): ' + (saved.length ? '저장 ' + saved.length + '장 — ' + saved.join(' / ') : '') + (skipped.length ? (saved.length ? ' · ' : '') + '건너뜀 ' + skipped.join(' / ') : ''); box.appendChild(ln); }
+      return saved.length;
+    }
+    return { run: run, correct: correct };
+  })();
   // 4단계 실제 계산 — 세액계산 화면(계산엔진)을 이 사건으로 열어 계산하고, 결과가 나오면 사건에 저장한다.
   // 입력이 이미 다 있으면 [세액 계산하기]만 누르고(토큰 0), 모자라면 화면의 [자동계산](서류로 채우기 → 빈 칸은 화면이 직접 물음)을 쓴다.
   function nxAiCaseProcCalcRun_(st, manual){
