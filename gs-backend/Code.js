@@ -6099,7 +6099,7 @@ const EXCESS_DIVIDEND_INCOME_TAX_ESTIMATE_BRACKETS = [
 function calcProgressiveTax_(base, brackets) {
   if (!base || base <= 0) return 0;
   const bracket = brackets.find(function (b) { return base <= b.max; }) || brackets[brackets.length - 1];
-  return Math.max(0, Math.round(base * bracket.rate - bracket.deduction));
+  return Math.max(0, Math.floor(base * bracket.rate - bracket.deduction + 1e-6)); // [2026.10.16] 원 미만 버림(국고금 관리법 §47) — 화면 엔진과 같게
 }
 
 // 만 나이 계산과 동일한 방식의 정확한 경과연수(달력 기준 만년수). 365.25일 평균으로 나누면
@@ -26416,8 +26416,8 @@ function caseProcOverview0_(c) {
     } catch (e) {}
     if (isOfficetel) {
       if ((rf.vatDocs || []).length) ev.push('납세자의 부가가치세 신고 자료(' + rf.vatDocs.slice(0, 2).join(', ') + ') — 일반과세 사업자로 매입세액을 환급받았다면 업무용 근거일 수 있음');
-      items.push(caseProcItem_('tr:house', 'judge', '판 물건이 오피스텔입니다 — 주택(주거용)으로 볼지 정해 주세요. 주택으로 보면 신고서 자산종류가 주택이 되고 주택 수(1세대1주택·다주택) 판단 대상입니다. 근거: ' + (ev.length ? ev.map(function (e, i) { return '①②③④⑤⑥'.charAt(i) + ' ' + e; }).join(' ') : '서류에 오피스텔 표시만 있음'),
-        { mode: 'options', target: 'ovAsset:0:주택판단', options: [{ label: '주택(주거용 오피스텔)', value: 'house' }, { label: '주택 아님(업무용 오피스텔)', value: 'other' }], label: '물건1 주택 여부' }, ev.join('\n')));
+      items.push(caseProcItem_('tr:house', 'judge', '판 물건이 오피스텔입니다 — 주택(주거용)으로 볼지 정해 주세요. 주택으로 보면 신고서 자산종류가 주택이 되고 주택 수(1세대1주택·다주택) 판단 대상입니다. 근거는 아래 목록과 같습니다.',
+        { mode: 'options', target: 'ovAsset:0:주택판단', options: [{ label: '주택(주거용 오피스텔)', value: 'house' }, { label: '주택 아님(업무용 오피스텔)', value: 'other' }], label: '물건1 주택 여부' }, (ev.length ? ev : ['서류에 오피스텔 표시만 있음']).map(function (e, i) { return '①②③④⑤⑥'.charAt(i) + ' ' + e; }).join('\n')));
     }
   }
   // [2026.10.15 일괄점검 ③] 서류로 채우지 못한 계산 필수 칸(소재지·양도가액·취득가액·취득일·양도일)은 질문으로 — 빈 채로 계산하지 않게

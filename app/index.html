@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 05:44 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 06:06 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -9684,7 +9684,9 @@
   function progressiveTax(base, brackets) {
     if (!base || base <= 0) return 0;
     const bracket = brackets.find(function (b) { return base <= b.max; }) || brackets[brackets.length - 1];
-    return Math.max(0, Math.round(base * bracket.rate - bracket.deduction));
+    // [2026.10.16 1:1 김금옥] 원 미만은 버린다(국고금 관리법 §47 끝수 처리) — 반올림해 정답지(33,650,760원)보다 1원 많게(33,650,761원) 나왔다.
+    //  곱셈 오차(…999.9999)로 1원이 빠지지 않게 아주 작은 값을 더한 뒤 버린다
+    return Math.max(0, Math.floor(base * bracket.rate - bracket.deduction + 1e-6));
   }
 
   // 초과배당 소득세상당액 최초신고시 추정율표 (상증세법시행령§31의2③2호, 시행규칙§10의3①) — 초과배당금액에
@@ -47049,7 +47051,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         if (key === 'evidence' && res.files) st.files = res.files;
         if (key === 'overview' && res.case) st.case = res.case; // 서류로 채운 처리개요 — 세액계산 입력에 그대로 쓴다
         nxAiCaseProcFill_(st, key, res);
-        if (key === 'calc' && res.needCalc && !st.calcAuto){ st.calcAuto = true; setTimeout(function(){ nxAiCaseProcCalcRun_(st, false); }, 300); }
+        // [2026.10.16 1:1 김금옥] 다시 계산할 이유가 새로 생기면(입력값 변경 등 — 질문 id가 달라짐) 한 처리 안에서도 다시 자동 계산한다.
+        //  예전: 처리마다 한 번만 자동 계산해서, 질문에 답한 뒤 "▶ 지금 계산"을 따로 눌러야 했다
+        var calcKey = key === 'calc' ? (res.items || []).map(function(x){ return x.id; }).join('|') : '';
+        if (key === 'calc' && res.needCalc && (!st.calcAuto || st.calcAutoKey !== calcKey)){ st.calcAuto = true; st.calcAutoKey = calcKey; setTimeout(function(){ nxAiCaseProcCalcRun_(st, false); }, 300); }
         // 계산 결과는 저장돼 있는데 그 결과의 서식 PDF가 없으면 — 계산을 새로 돌리는 중이 아니면 지금 만든다(계산 중이면 계산 저장 뒤에 만듦)
         if (key === 'output' && res.needPdf && !st.pdfTried && !st.calcBusy){ st.pdfTried = true; setTimeout(function(){ nxAiCaseProcPdfRun_(st); }, 300); }
         return res;

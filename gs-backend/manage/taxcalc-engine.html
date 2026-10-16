@@ -37,7 +37,9 @@
   function progressiveTax(base, brackets) {
     if (!base || base <= 0) return 0;
     const bracket = brackets.find(function (b) { return base <= b.max; }) || brackets[brackets.length - 1];
-    return Math.max(0, Math.round(base * bracket.rate - bracket.deduction));
+    // [2026.10.16 1:1 김금옥] 원 미만은 버린다(국고금 관리법 §47 끝수 처리) — 반올림해 정답지(33,650,760원)보다 1원 많게(33,650,761원) 나왔다.
+    //  곱셈 오차(…999.9999)로 1원이 빠지지 않게 아주 작은 값을 더한 뒤 버린다
+    return Math.max(0, Math.floor(base * bracket.rate - bracket.deduction + 1e-6));
   }
 
   // 초과배당 소득세상당액 최초신고시 추정율표 (상증세법시행령§31의2③2호, 시행규칙§10의3①) — 초과배당금액에
