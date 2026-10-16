@@ -28263,6 +28263,10 @@ function caseProcCalc_(c) {
   if (!last.저장값) { need = true; items.push(caseProcItem_('calc:nostate:' + (last.id || ''), 'check', '최근 계산은 인쇄 서식용 값 없이 저장된 옛 결과입니다 — 다시 계산해 저장합니다.', { mode: 'calc', tab: c.세목 })); }
   if (last.기준일스냅샷 && c.기준일 && last.기준일스냅샷 !== c.기준일) { need = true; items.push(caseProcItem_('calc:base:' + (last.id || '') + ':' + c.기준일, 'check', '저장된 계산의 ' + CASEPROC_BASE_LABEL_[c.세목] + '(' + last.기준일스냅샷 + ')이 사건 기준일(' + c.기준일 + ')과 다릅니다 — 사건 기준일로 다시 계산합니다.', { mode: 'calc', tab: c.세목 })); }
   // [2026.10.17] 양도 — 저장된 계산이 쓴 계산기 입력(해시)이 지금 사건처리가 만든 계산기 입력과 다르면 다시 계산(예전: 처리개요 칸마다 비교 줄을 덧붙임)
+  if (c.세목 === 'gift' || c.세목 === 'inheritance') {
+    const gh = giCalcHash_(c);
+    if (gh && last.계산입력해시 && last.계산입력해시 !== gh) { need = true; items.push(caseProcItem_('calc:input:' + (last.id || '') + ':' + gh, 'check', '저장된 계산 뒤에 세액계산기 입력(증빙·답)이 바뀌었습니다 — 지금 입력으로 다시 계산해 저장합니다.', { mode: 'calc', tab: c.세목 })); }
+  }
   if (c.세목 === 'transfer') {
     const tc0 = (caseProcLoad_(c.id) || {}).trCalc;
     if (tc0 && tc0.hash && last.계산입력해시 !== tc0.hash) { need = true; items.push(caseProcItem_('calc:input:' + (last.id || '') + ':' + tc0.hash, 'check', last.계산입력해시 ? '저장된 계산 뒤에 세액계산기 입력(증빙·답)이 바뀌었습니다 — 지금 입력으로 다시 계산해 저장합니다.' : '저장된 계산은 예전 방식(처리개요 경유) 입력으로 한 것입니다 — 지금 세액계산기 입력으로 다시 계산해 저장합니다.', { mode: 'calc', tab: c.세목 })); }
@@ -33835,7 +33839,22 @@ function trcStore_(c, S) {
   caseProcPatch_(c.id, function (s) { s.trCalc = { state: S.state, src: S.src, hash: h, at: new Date().toISOString() }; });
   return h;
 }
+// [2026.10.17] 증여·상속 — 처리개요 칸 이름이 곧 세액계산기 칸 이름(TC_OVERVIEW_INPUT_KEYS_)이라 값은 그대로 넘어간다. 계산이 쓴 입력을 해시로 남겨,
+//  사이드바 답으로 값이 바뀌면 저장된 계산을 다시 하게 한다(예전엔 증여·상속은 답이 바뀌어도 옛 계산이 "완료"로 남았다)
+const GI_CALC_KEYS_ = {
+  gift: ['giftDoneeName', 'giftDonorName', 'giftRelation', 'giftAmount', 'giftDebtAssumed', 'giftPriorAmount', 'giftAppraisalFee', 'giftDoneeRegNo', 'giftDoneeAddress', 'giftDonorRegNo', 'giftDonorAddress', 'giftDoneeExtraNames', 'giftDonorExtraNames', '사건분류'],
+  inheritance: ['ihDeceasedName', 'ihDeathDate', '상속인성명', '상속인추가명단', '상속인수', '상속인목록', '사건분류']
+};
+function giCalcHash_(c) {
+  const keys = GI_CALC_KEYS_[c.세목]; if (!keys) return '';
+  const ov = c.사건개요 || {}, sv = caseProcLoad_(c.id) || {}, o = { 기준일: c.기준일 || '' };
+  keys.forEach(function (k) { if (ov[k] != null && String(ov[k]) !== '') o[k] = ov[k]; });
+  if (c.세목 === 'inheritance') o.ihChoices = sv.ihChoices || null;
+  if (c.세목 === 'gift') o.giftDeal = sv.giftDeal || null;
+  return Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, JSON.stringify(o), Utilities.Charset.UTF_8)).slice(0, 16);
+}
 function caseProcCalcIn_(c) {
+  if (c.세목 === 'gift' || c.세목 === 'inheritance') return { ok: true, giHash: giCalcHash_(c) };
   if (c.세목 !== 'transfer') return { ok: true, none: true };
   const sv = caseProcLoad_(c.id) || {};
   return sv.trCalc ? { ok: true, state: sv.trCalc.state, src: sv.trCalc.src, hash: sv.trCalc.hash, at: sv.trCalc.at } : { ok: true, none: true };

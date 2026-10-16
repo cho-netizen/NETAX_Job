@@ -3055,8 +3055,12 @@
     var startCalc = function(){
       if (tab === 'transfer' && typeof tcLoadTransferCalcIn_ === 'function') tcLoadTransferCalcIn_(st.case).then(function(ok){ st.calcInLoaded = !!ok; startCalc0(); });
       // [2026.10.17] 상속 — 서류 규칙 정리(사건처리 답 포함, 토큰 0) 결과를 확인창 없이 계산기에 바로 넣는다(예전: "자동채우기를 할까요?" 확인을 눌러야 했다)
-      else if (tab === 'inheritance' && typeof tcApplyInheritanceRule_ === 'function') callGas('tc_rule_inheritance_facts', { caseId: st.caseId }).then(function(rf){ if (rf && rf.ok) { try { tcApplyInheritanceRule_(rf); st.calcInLoaded = true; } catch (e) {} } startCalc0(); }).catch(function(){ startCalc0(); });
-      else { if (tab === 'gift') st.calcInLoaded = true; startCalc0(); } // 증여 — 처리개요의 계산기 칸 값(아래)으로
+      else if (tab === 'inheritance' && typeof tcApplyInheritanceRule_ === 'function') giHash().then(function(){ return callGas('tc_rule_inheritance_facts', { caseId: st.caseId }); }).then(function(rf){ if (rf && rf.ok) { try { tcApplyInheritanceRule_(rf); st.calcInLoaded = true; } catch (e) {} } startCalc0(); }).catch(function(){ startCalc0(); });
+      else giHash().then(function(){ if (tab === 'gift') st.calcInLoaded = true; startCalc0(); }); // 증여 — 처리개요의 계산기 칸 값(아래)으로
+    };
+    // [2026.10.17] 증여·상속 — 이 계산이 쓴 입력의 해시를 받아 저장에 남긴다(답으로 값이 바뀌면 사건처리가 다시 계산)
+    var giHash = function(){
+      return callGas('case_proc', { caseId: st.caseId, step: 'calcin' }).then(function(r){ if (r && r.giHash && typeof tcCalcInHash_ !== 'undefined') tcCalcInHash_[st.caseId] = r.giHash; }).catch(function(){});
     };
     var startCalc0 = function(){
       var g = function(id){ var e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; };

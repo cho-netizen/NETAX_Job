@@ -18018,7 +18018,7 @@ function tcSaveCurrentResult_(){
     계산일: new Date().toISOString().slice(0, 10)
   };
   if (dateSnapshot_) entry.기준일스냅샷 = dateSnapshot_;
-  if (tab === 'transfer' && tcCalcInHash_[tcCurrentCase.id]) entry.계산입력해시 = tcCalcInHash_[tcCurrentCase.id]; // [2026.10.17] 이 계산이 쓴 사건처리 계산기 입력
+  if (tcCalcInHash_[tcCurrentCase.id]) entry.계산입력해시 = tcCalcInHash_[tcCurrentCase.id]; // [2026.10.17] 이 계산이 쓴 사건처리 계산기 입력(양도: 계산기 입력, 증여·상속: 계산기 칸 값)
   // [2026.10.06 추가] 이 탭(양도/증여/상속)의 본계산 구조화 결과도 같이 저장 — 사건을 다시
   // 열었을 때 tcRestoreToolResults_가 이걸로 lastTransferResults_ 등을 복원해 별지84호·9호·
   // 10호 인쇄가 바로 켜지게 한다(TC_TOOL_STATE_의 tr/ih/gf 항목 참고).
