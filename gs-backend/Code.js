@@ -25462,6 +25462,7 @@ function tc_ruleTransferFacts_(body) {
         acqPriceCands.push({ v: String(q.금액), src: '매매사례 ' + q.계약일 + ' ' + (q.면적 ? q.면적 + '㎡ ' : '') + q.금액.toLocaleString('ko-KR') + '원 — ' + rd.file + ' (증여일 ' + g.r.계약일 + ' 평가기간 안' + (share ? ', 증여 지분 ' + share[1] + '분의 ' + share[2] + '이면 그만큼만' : '') + ')' });
       }); });
       if (!acqPriceCands.length && realDocs.length) evidence.push('⚠ 실거래가 자료는 있으나 증여일(' + g.r.계약일 + ') 평가기간(전 6개월~후 3개월) 안의 매매사례가 없음');
+      if (!realDocs.length) tx._giftReal = { date: g.r.계약일, share: share }; // 폴더에 실거래가 자료가 없으면 아래(면적을 안 뒤)에서 실거래가 조회로
     }
   });
   if (skippedForTime.length) evidence.push('⚠ 서류가 많거나 시간이 모자라 ' + skippedForTime.length + '개를 이번에 못 읽음(다시 처리하면 기억분으로 이어 읽음): ' + skippedForTime.slice(0, 8).join(', ') + (skippedForTime.length > 8 ? ' 외' : ''));
@@ -25566,6 +25567,17 @@ function tc_ruleTransferFacts_(body) {
       else if (pb.전유면적) t.assetArea = pb.전유면적;
       return true;
     }); });
+  });
+  // [2026.10.17] 증여 취득인데 폴더에 실거래가 자료가 없으면 세액계산기 매매사례 조회와 같은 국토교통부 실거래가로 평가기간(증여일 전 6개월~후 3개월) 안 같은 단지·비슷한 면적 거래를 후보로
+  txs.forEach(function (t) {
+    var gr = t._giftReal; delete t._giftReal;
+    if (!gr || t.acquisitionPrice || !t.assetLocation || t.assetKind === 'land') return;
+    try {
+      var rc = cpRealCases_(t.assetLocation, Number(t.assetArea) || 0, gr.date, 6, 3);
+      if (rc.error) { evidence.push('매매사례 조회(세액계산기와 같은 국토교통부 실거래가): ' + rc.error); return; }
+      rc.cases.forEach(function (q) { acqPriceCands.push({ v: String(q.v), src: '매매사례 ' + q.date + ' ' + (q.name ? q.name + ' ' : '') + q.area + '㎡ ' + (q.floor ? q.floor + '층 ' : '') + q.v.toLocaleString('ko-KR') + '원 — ' + rc.src + ' (증여일 ' + gr.date + ' 평가기간 안' + (gr.share ? ', 증여 지분 ' + gr.share[1] + '분의 ' + gr.share[2] + '이면 그만큼만' : '') + ', 면적·층 유사성 확인)' }); });
+      evidence.push('매매사례 조회: ' + rc.src + ' — 평가기간 안 ' + rc.cases.length + '건을 취득가액 후보로');
+    } catch (e) {}
   });
   return { ok: true, trDateCands: trDateCands, sellerName: names[0] || null, parties: parties, transactions: txs, evidence: evidence, expCands: expCands, comps: comps, bunyang: bunyang, acqDateCands: acqDateCands, acqPriceCands: acqPriceCands, locCands: locCands,
     vatDocs: vatDocs, // [2026.10.16 1:1 김금옥] 주택 여부 질문의 근거
@@ -26184,7 +26196,8 @@ function caseProcEvidence_(c) {
     // [2026.10.15] ⚠ 금액이 다른 서류(이체 확인·거래내역 등)에도 똑같이 있으면 서로 확인된 것 — 묻지 않고 근거를 남긴다(강정화 사건: 증여계약서 1억원 ⚠ ↔ 이체 화면 1억원)
     block = block.filter(function (w) {
       const am = /(\d{1,3}(?:,\d{3}){2,})\s*원/.exec(w); if (!am) return true;
-      const twin = docs.filter(function (o) { if (o === f || !o.p || o.p.office) return false; return textOf(o).indexOf(am[1]) !== -1; })[0];
+      // [2026.10.17] 감정가액은 다른 감정서로만 확인 — 노영환: 잘못 읽은 1,100,000원이 대출 거래내역의 같은 금액으로 "확인"됐다(우연히 같은 금액)
+      const twin = docs.filter(function (o) { if (o === f || !o.p || o.p.office) return false; if (f.p.t === 'appraisal' && o.p.t !== 'appraisal') return false; return textOf(o).indexOf(am[1]) !== -1; })[0];
       if (!twin) return true;
       lines.push('✅ ‘' + f.name + '’ 금액 ' + am[1] + '원 — 다른 서류(' + twin.name + ')의 같은 금액으로 확인되어 ⚠ 해소');
       f._amtOk = true;
@@ -27497,6 +27510,14 @@ function caseProcGiftInhFacts_(c, lines, items) {
       cs.sort(function (a, b) { return Math.abs(new Date(a.계약일) - base) - Math.abs(new Date(b.계약일) - base); });
       add('giftAmount', cs[0].금액, '매매사례가액(' + x.f.name + ', ' + cs[0].계약일 + ' 계약 · 전용 ' + cs[0].면적 + '㎡) — §60②·시행령§49, 기준시가 차이 5% 이내 등 유사성 확인', false);
     });
+    // [2026.10.17] 폴더에 실거래가 자료·감정평가서가 없으면 세액계산기 매매사례 조회와 같은 국토교통부 실거래가로 — 평가기간(증여일 전 6개월~후 3개월) 안 같은 단지·비슷한 면적(±5%) 거래를 후보로만
+    if (c.기준일 && !aprs.length && !byType('realprice').length && gifts.length === 1 && gifts[0].loc && !/토지/.test(gifts[0].kind || '')) {
+      try {
+        const rc = cpRealCases_(gifts[0].loc, Number(gifts[0].area) || 0, c.기준일, 6, 3);
+        if (rc.error) notes.push('매매사례 조회(세액계산기와 같은 국토교통부 실거래가): ' + rc.error);
+        else rc.cases.slice(0, 3).forEach(function (q) { add('giftAmount', q.v, '매매사례가액(' + rc.src + ', ' + q.date + ' 계약 · ' + (q.name ? q.name + ' ' : '') + '전용 ' + q.area + '㎡' + (q.floor ? ' · ' + q.floor + '층' : '') + ') — 증여일 평가기간 안, §60②·시행령§49, 기준시가 차이 5% 이내 등 유사성 확인', false); });
+      } catch (e) {}
+    }
     byType('balance').forEach(function (x) { const r = x.p.result || {}; if (r.총액) add('giftAmount', r.총액, '잔고·잔액증명(' + x.f.name + (r.예금주 ? ', 예금주 ' + r.예금주 : '') + (r.기준일 ? ', ' + r.기준일 : '') + ') — 현금 증여일 때', false); });
     byType('debtcert').forEach(function (x) { const r = x.p.result || {}; if (r.총잔액) add('giftDebtAssumed', r.총잔액, '부채증명(' + x.f.name + (r.기준일 ? ', ' + r.기준일 : '') + ') — 수증자가 인수한 채무일 때', false); });
   } else {
@@ -27735,16 +27756,34 @@ function caseProcInhFacts0_(c, parsed) {
         a.cands.push({ v: q.금액, src: '매매사례 ' + q.계약일 + ' 계약 ' + (r.단지 || '') + ' ' + q.면적 + '㎡' + (q.등기일 ? ' (등기 ' + q.등기일 + ')' : '') + ' — 시가(§60②, 시행령 §49)', kind: '시가', days: Math.abs(new Date(q.계약일) - new Date(base)) / 86400000, file: x.f.name });
       });
     });
+    // [2026.10.17] 폴더에 실거래가 자료가 없으면 세액계산기 매매사례 조회와 같은 국토교통부 실거래가로 — 상속개시일 전후 6개월 같은 단지·비슷한 면적(±5%) 거래.
+    //  서류로 받은 매매사례와 달리 자동으로 평가액에 넣지 않고(종류 '시가(조회)') 후보로 보여 고르게 한다(유사성은 세무사 판단)
+    if (a.kind !== '토지' && base && a.loc && !by('realprice').length && !by('appraisal').length) {
+      try {
+        const rc = cpRealCases_(a.loc, Number(a.area) || 0, base, 6, 6);
+        if (rc.error) out.notes.push(a.loc + ' 매매사례 조회(국토교통부 실거래가): ' + rc.error);
+        else rc.cases.slice(0, 3).forEach(function (q) { a.cands.push({ v: q.v, src: '매매사례 ' + q.date + ' 계약 ' + (q.name || '') + ' ' + q.area + '㎡' + (q.floor ? ' ' + q.floor + '층' : '') + ' — ' + rc.src + ', 상속개시일 전후 6개월 — 시가 후보(§60②, 시행령 §49), 면적·층 유사성 확인', kind: '시가(조회)', days: Math.abs(new Date(q.date) - new Date(base)) / 86400000, file: '' }); });
+      } catch (e) {}
+    }
     // [2026.10.16] 감정평가서 — 감정가액은 시가(§60⑤). 두 곳 이상이면 평균(시행령 §49①2). 박종헌 사건: 감정평가서 2부가 어느 칸에도 안 쓰였다
     const apps = [];
     by('appraisal').forEach(function (x) {
       const r = x.p.result || {};
       if (r.소재지 && a.loc && !tcLocSame_(r.소재지, a.loc) && nm(a.loc).indexOf(nm(r.소재지)) === -1 && out.assets.length > 1) return;
       if (!r.감정평가액) { out.notes.push('감정평가서(' + x.f.name + ') — 감정가액을 읽지 못함(글자인식 흐림): 원문의 감정가액을 처리개요 평가에 직접 넣으세요'); return; }
-      apps.push({ v: r.감정평가액, src: '감정평가 ' + (r.평가법인 || x.f.name) + (r.기준시점 ? ' ' + r.기준시점 + ' 기준' : '') + ' — 시가(§60⑤)', kind: '시가', days: r.기준시점 && base ? Math.abs(new Date(r.기준시점) - new Date(base)) / 86400000 : 0, file: x.f.name });
+      // [2026.10.17 상충 판단 4] 노영환: 정안 감정서(실제 약 29억)를 1,100,000원으로 잘못 읽고(검산 안 됨) 예인 2,940,088,250원과 평균 내 14.7억을 만들었고,
+      //  두 감정서 모두 소재지를 못 읽어 그 평균이 토지·건물 두 물건에 똑같이 들어갔다(같은 감정을 두 번 셈).
+      //  ① 검산이 안 된 감정가액은 평균에 넣지 않고 후보로만  ② 물건이 여럿인데 소재지를 못 읽은 감정서는 어느 물건 것인지(또는 여러 물건 합계인지) 몰라 자동으로 넣지 않고 묻는다
+      const unsure = (r.경고 || []).length > 0 || /한쪽만|안 됨/.test(String(r.검산 || ''));
+      const noLoc = !r.소재지 && out.assets.length > 1;
+      const why = [unsure ? '감정가액 검산 안 됨(' + (r.검산 || '글자인식') + ') — 원문 확인' : '', noLoc ? '감정서 소재지를 읽지 못해 이 물건만의 값인지 여러 물건 합계인지 모름 — 원문 확인' : ''].filter(Boolean).join(' · ');
+      out._apNote = out._apNote || {};
+      if (why && !out._apNote[x.f.name]) { out._apNote[x.f.name] = 1; out.notes.push('감정평가서(' + x.f.name + ') ' + r.감정평가액.toLocaleString('ko-KR') + '원 — ' + why + ' → 자동으로 평가액에 넣지 않고 물건별 질문의 후보로'); }
+      apps.push({ v: r.감정평가액, src: '감정평가 ' + (r.평가법인 || x.f.name) + (r.기준시점 ? ' ' + r.기준시점 + ' 기준' : '') + ' — 시가(§60⑤)' + (why ? ' ⚠ ' + why : ''), kind: why ? '시가(확인)' : '시가', days: r.기준시점 && base ? Math.abs(new Date(r.기준시점) - new Date(base)) / 86400000 : 0, file: x.f.name });
     });
     apps.forEach(function (q) { a.cands.push(q); });
-    if (apps.length >= 2) a.cands.push({ v: Math.round(apps.reduce(function (t, q) { return t + q.v; }, 0) / apps.length), src: '감정가액 ' + apps.length + '곳 평균 — 시가(시행령 §49①2)', kind: '시가', days: -1, file: apps.map(function (q) { return q.file; }).join(', ') });
+    const appsOk = apps.filter(function (q) { return q.kind === '시가'; });
+    if (appsOk.length >= 2) a.cands.push({ v: Math.round(appsOk.reduce(function (t, q) { return t + q.v; }, 0) / appsOk.length), src: '감정가액 ' + appsOk.length + '곳 평균 — 시가(시행령 §49①2)', kind: '시가', days: -1, file: appsOk.map(function (q) { return q.file; }).join(', ') });
     const market = a.cands.filter(function (q) { return q.kind === '시가'; }).sort(function (p1, p2) { return p1.days - p2.days; });
     if (market.length) market[0].recommended = true; else if (a.cands.length === 1) a.cands[0].recommended = true;
     const ch = choices[a.key];
@@ -28019,8 +28058,10 @@ function caseProcInhAssetItems_(c, lines, items, parsed) {
   f.assets.forEach(function (a) {
     const label = (a.kind ? a.kind + ' ' : '') + a.loc + (a.area ? ' ' + a.area + '㎡' : '');
     if (a.value) { lines.push('✅ 상속재산 ' + label + ' — ' + won(a.value) + ' (' + a.valueSrc + ')'); return; }
-    if (!a.cands.length) { items.push(caseProcItem_('ih:' + a.key + ':none', 'missing', '상속재산 ' + label + ' — 평가 자료(매매사례·감정가·공시가격)가 폴더에 없습니다. 금액을 정해 주세요.', { mode: 'input', target: 'ih:' + a.key, input: 'money', label: '상속재산 ' + a.loc })); return; }
-    items.push(caseProcItem_('ih:' + a.key, 'judge', '상속재산 ' + label + ' — 평가액을 골라 주세요(시가 우선, 없으면 보충적 평가). ' + (a.cands.some(function (q) { return q.recommended; }) ? '⭐는 평가기준일에 가장 가까운 사례' : ''),
+    if (!a.cands.length) { items.push(caseProcItem_('ih:' + a.key + ':none', 'missing', '상속재산 ' + label + ' — 평가 자료(매매사례·감정가·공시가격)가 폴더에 없습니다. 상속세 과세가액의 기초라 계산 전 필수입니다 — 감정평가서·매매사례·공시가격 서류를 넣거나 평가액을 직접 넣어 주세요(시가 우선, 없으면 공시가격 등 보충적 평가 §61).', { mode: 'input', target: 'ih:' + a.key, input: 'money', label: '상속재산 ' + a.loc })); return; }
+    items.push(caseProcItem_('ih:' + a.key, 'judge', '상속재산 ' + label + ' — 평가액을 골라 주세요(시가 우선, 없으면 보충적 평가). ' + (a.cands.some(function (q) { return q.recommended; }) ? '⭐는 평가기준일에 가장 가까운 사례' : '')
+      + (f.assets.length > 1 && a.cands.some(function (q) { return /여러 물건 합계/.test(q.src); }) ? ' ⚠ 소재지를 못 읽은 감정서는 이 물건만의 값인지 여러 물건(토지·건물 등) 합계인지 모릅니다 — 합계면 한 물건에만 넣고 다른 물건에는 감정서의 물건별 금액을 넣어 주세요(같은 감정가를 물건마다 넣으면 상속재산이 그만큼 두 번 잡힙니다).' : '')
+      + (a.cands.some(function (q) { return q.kind === '시가(조회)'; }) ? ' 국토교통부 실거래가 조회로 찾은 같은 단지 매매사례는 면적·층·기준시가 차이(5% 이내, 시행령 §49④) 등 유사성을 보고 고르세요.' : ''),
       { mode: 'choose', target: 'ih:' + a.key, input: 'money', label: '상속재산 ' + a.loc, cands: a.cands.map(function (q) { return { v: String(q.v), src: (q.recommended ? '⭐ ' : '') + q.src }; }) }));
   });
   if (f.financialValue !== null && !f.financialDiff) lines.push('✅ 금융재산 ' + won(f.financialValue) + ' (' + f.financialSrc + ' — 평가기준일 현재 잔액)' + (f.financialOther && f.financialOther.length ? ' · 참고: ' + f.financialOther.map(function (q) { return won(q.v) + '(' + q.src + ')'; }).join(', ') + '는 개시일 뒤 이자·입금 등이 더해진 금액일 수 있음' : ''));
@@ -34787,4 +34828,71 @@ function caseProcSplitPages_(c, body) {
 function caseProcSplitSaved_(c, body) {
   caseProcPatch_(c.id, function (sv) { sv.scanSplits = sv.scanSplits || {}; if (body.orig && Array.isArray(body.parts) && body.parts.length) sv.scanSplits[String(body.orig)] = body.parts.map(String); });
   return { ok: true };
+}
+// =========================================================
+// [2026.10.17] 매매사례가액 — 세액계산기 🔍 매매사례 조회와 같은 국토교통부 실거래가 API(MOLIT_API_KEY, REAL_ESTATE_ENDPOINTS)로
+//  평가기간 안 같은 단지(같은 읍면동·같은 지번)·비슷한 전용면적(±5%) 거래를 찾는다. 해제된 거래는 뺀다.
+//  돌려주는 것은 후보뿐 — 시가로 쓸지(유사성: 면적·층·기준시가 차이 5%, 시행령 §49④)는 세무사님이 고른다.
+//  세액계산기 조회는 한 달 100건만 받아 거래가 많은 구에서는 사례가 빠질 수 있어, 여기서는 쪽을 넘겨 다 받는다(같은 API·같은 키).
+//  { cases: [{ date, v, area, floor, name }], src } 또는 { error }. 달마다 6시간 기억
+// =========================================================
+function cpRealType_(loc) {
+  const b = cpBuilding_(loc), pu = String((b && b.purpose) || '');
+  if (/오피스텔/.test(pu)) return 'officetel';
+  if (/연립|다세대/.test(pu)) return 'row_house';
+  if (/아파트/.test(pu)) return 'apt_detail';
+  return /\d\s*호(?![가-힣])/.test(String(loc || '')) && !(b && b.purpose) ? 'apt_detail' : '';
+}
+function cpRealMonth_(type, lawd, ym, umd, jibun) { // 기억은 그 단지(읍면동·지번) 거래만 — 구 전체 한 달치는 기억 한도(100KB)를 넘는다
+  const key = 'cprt_' + type + '_' + lawd + '_' + ym + '_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, umd + jibun, Utilities.Charset.UTF_8)).slice(0, 10), cache = CacheService.getScriptCache();
+  const hit = cache.get(key);
+  if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+  const apiKey = PropertiesService.getScriptProperties().getProperty('MOLIT_API_KEY');
+  if (!apiKey) return { error: 'MOLIT_API_KEY(실거래가 조회 키)가 스크립트 속성에 없음' };
+  const out = [];
+  try {
+    for (let pg = 1; pg <= 5; pg++) {
+      const res = UrlFetchApp.fetch(REAL_ESTATE_ENDPOINTS[type] + '?serviceKey=' + apiKey + '&LAWD_CD=' + lawd + '&DEAL_YMD=' + ym + '&numOfRows=1000&pageNo=' + pg, { muteHttpExceptions: true });
+      if (res.getResponseCode() !== 200) return { error: '실거래가 조회 실패(status ' + res.getResponseCode() + ')' };
+      const items = parseXmlItems(res.getContentText('UTF-8'));
+      if (!Array.isArray(items)) return { error: (items && items.error) || '실거래가 응답을 읽지 못함' };
+      items.forEach(function (it) {
+        if (String(it.cdealType || '').trim()) return; // 해제된 거래
+        if (String(it.umdNm || '').trim() !== umd || String(it.jibun || '').trim() !== jibun) return;
+        out.push({ u: String(it.umdNm || '').trim(), j: String(it.jibun || '').trim(), n: String(it.aptNm || it.mhouseNm || it.offiNm || '').trim(), a: Number(it.excluUseAr) || 0, f: String(it.floor || '').trim(),
+          d: (it.dealYear || '') + '-' + ('0' + (it.dealMonth || '')).slice(-2) + '-' + ('0' + (it.dealDay || '')).slice(-2), v: (Number(String(it.dealAmount || '').replace(/[^\d]/g, '')) || 0) * 10000 });
+      });
+      if (items.length < 1000) break;
+    }
+  } catch (e) { return { error: '실거래가 조회 오류: ' + (e && e.message || e) }; }
+  try { cache.put(key, JSON.stringify(out), 21600); } catch (e) {}
+  return out;
+}
+// loc 물건의 매매사례 — base(평가기준일) 전 before개월 ~ 후 after개월(오늘 이후 달은 아직 없음)
+function cpRealCases_(loc, area, base, before, after) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(base || ''))) return { error: '평가기준일 없음' };
+  const type = cpRealType_(loc);
+  if (!type) return { error: '아파트·연립다세대·오피스텔이 아니거나 건물 용도를 몰라 매매사례를 조회하지 않음' };
+  const geo = cpGeo_(loc);
+  if (!geo || geo.error) return { error: geo ? geo.error : '주소 없음' };
+  const jm = /([가-힣\d]+(?:동|리|가))\s+(산?\s*\d{1,5}(?:-\d{1,5})?)/.exec(String(geo.jibun || ''));
+  if (!jm) return { error: '지번 주소에서 읍면동·지번을 찾지 못함(' + geo.jibun + ')' };
+  const umd = jm[1], jibun = jm[2].replace(/\s+/g, ''), lawd = String(geo.admCd).slice(0, 5);
+  const b = new Date(base), lo = new Date(b.getFullYear(), b.getMonth() - before, b.getDate()), hi = new Date(b.getFullYear(), b.getMonth() + after, b.getDate()), now = new Date();
+  const cases = [], errs = [];
+  for (let m = new Date(lo.getFullYear(), lo.getMonth(), 1); m <= hi && m <= now; m = new Date(m.getFullYear(), m.getMonth() + 1, 1)) {
+    const ym = m.getFullYear() + ('0' + (m.getMonth() + 1)).slice(-2);
+    const rows = cpRealMonth_(type, lawd, ym, umd, jibun);
+    if (!Array.isArray(rows)) { errs.push(ym + ' ' + rows.error); continue; }
+    rows.forEach(function (r) {
+      const d = new Date(r.d);
+      if (r.u !== umd || r.j !== jibun || !r.v || d < lo || d > hi) return;
+      if (area && Math.abs(r.a - area) / area > 0.05) return;
+      cases.push({ date: r.d, v: r.v, area: r.a, floor: r.f, name: r.n });
+    });
+  }
+  cases.sort(function (x, y) { return Math.abs(new Date(x.date) - b) - Math.abs(new Date(y.date) - b); });
+  const tname = { apt_detail: '아파트', row_house: '연립다세대', officetel: '오피스텔' }[type];
+  if (!cases.length) return { error: '국토교통부 ' + tname + ' 실거래가에 평가기간(' + before + '개월 전~' + after + '개월 후) 안 같은 단지' + (area ? '·비슷한 면적(±5%)' : '') + ' 거래가 없음' + (errs.length ? ' / 조회 실패 달: ' + errs.slice(0, 3).join(', ') : '') };
+  return { cases: cases.slice(0, 5), src: '국토교통부 ' + tname + ' 실거래가 조회(' + umd + ' ' + jibun + ')' };
 }
