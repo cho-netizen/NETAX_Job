@@ -24705,6 +24705,11 @@ function tcLocSame_(a, b) {
 }
 // 계약서 글에서 납세자 이름이 나오는 곳마다 바로 앞(300자 안) 가장 가까운 이름표가 매도인인지 매수인인지 세어 다수로 정한다
 function tcRoleInText_(text, names) {
+  // [2026.10.16 1:1 방영교] 서명란 표에서 매도인·매수인 이름을 직접 읽으면 그것으로 정한다("매도계약서"를 취득으로 판별했다)
+  try {
+    var pp = tcContractParties_(text);
+    for (var pi = 0; pi < pp.length; pi++) { if (tcNameIn_(pp[pi].seller.name, names)) return 'seller'; if (tcNameIn_(pp[pi].buyer.name, names)) return 'buyer'; }
+  } catch (e) {}
   var t = String(text || ''), sell = 0, buy = 0;
   names.forEach(function (n) {
     if (n.length < 2) return;
@@ -24766,21 +24771,37 @@ function tcGiftReturnParse_(text) {
 //  서명란 머리(매도인 … 매수인 순서)가 안 보이면 정하지 않는다. 주민번호는 13자리가 다 보일 때만, 주소는 시·도로 시작하는 것만.
 //  한 파일에 계약서가 여럿(매매계약서 + 옛 분양계약서 사본 등)이면 서명란마다 하나씩 돌려준다 — 부르는 쪽이 매도인이 납세자인 것을 고른다.
 function tcContractParties_(text) {
-  var t = String(text || ''), m, re = /보\s*관\s*한\s*다|각\s*1\s*통씩?\s*보\s*관|서\s*명\s*(?:또는|및)?\s*날\s*인/g, starts = []; // "서명 날인한다"도(2026-10-16 이종식)
+  var t = String(text || ''), m, re = /보\s*관\s*한\s*다|각\s*1\s*통씩?\s*보\s*관|서\s*명\s*(?:또는|및)?\s*날\s*인|날\s*인\s*한\s*다/g, starts = []; // "서명 날인한다"도(2026-10-16 이종식), 사진 글자인식이 "서명"과 "날인한다"를 떼어 놓은 것도(방영교)
   while ((m = re.exec(t))) { var e = m.index + m[0].length; if (!starts.length || e - starts[starts.length - 1] > 120) starts.push(e); else starts[starts.length - 1] = e; }
-  return starts.map(function (st) { return tcContractParties1_(t.slice(st, st + 1500)); }).filter(function (x) { return x; });
+  // [2026.10.16 1:1 방영교] 사진 글자인식은 서명란 첫 줄(매도인 주소·주민번호)을 "날인한다" 앞에 끼워 넣기도 한다 — 맺음 문구 바로 앞 본문(조항·특약) 끝까지 거슬러 함께 본다
+  return starts.map(function (st) {
+    var back = t.slice(Math.max(0, st - 400), st), cut = -1, bm, bre = /제\s*\d+\s*조|특\s*약|증\s*명\s*하\s*기\s*위/g;
+    while ((bm = bre.exec(back))) cut = bm.index;
+    var from = cut === -1 ? st : Math.max(0, st - 400) + cut;
+    return tcContractParties1_(t.slice(from, st + 1500));
+  }).filter(function (x) { return x; });
 }
 function tcContractParties1_(s) {
   // [2026.10.16 1:1 이종식] 세로 이름표("매/주/수/소", "성/이종식")·하이픈 없는 주민번호("490402 1117818")·주소 앞 날짜도 읽는다
   var m, hs = s.slice(0, 300).search(/매\s*도/), hb = s.slice(0, 400).search(/매\s*(?:주\s*)?수/);
   if (hs === -1 || hb === -1 || hs > hb) return null;
   var regs = [], addrs = [], nms = [];
-  var rr = /(?:^|[^\d])(\d{6})\s*[-–―]?\s*([\d*]{7})(?![\d])/g; while ((m = rr.exec(s))) regs.push(/^\d{7}$/.test(m[2]) ? m[1] + '-' + m[2] : '');
+  var corp = [];
+  var rr = /(?:^|[^\d])(\d{6})\s*[-–―]?\s*([\d*]{7})(?![\d])/g; while ((m = rr.exec(s))) { regs.push(/^\d{7}$/.test(m[2]) ? m[1] + '-' + m[2] : ''); corp.push(/법\s*인\s*등\s*록/.test(s.slice(Math.max(0, m.index - 60), m.index))); } // 법인 매수인(조합 등)은 사람 이름을 붙이지 않음
   var ar = /주\s*(?:[수도]\s*)?소\s*[:：]?\s*(?:(?:19|20)\d{2}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일\s*)?((?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)[^\n]*?)(?=\s*(?:인\s*)?주\s*민\s*등\s*록|\s+전\s*화|\s+매\s*주|\s*\n|\s*$)/g;
   while ((m = ar.exec(s))) addrs.push(m[1].replace(/\s+/g, ' ').trim());
-  var nr = /성\s*(?:명)?\s*[:：|]?\s*(?:명\s*)?\n?\s*([가-힣]{2,4})(?=\s|\(|$)/g;
+  var nr = /(?:^|[^가-힣])성\s*(?:명)?\s*[:：|]?\s*(?:명\s*)?\n?\s*([가-힣]{2,4})(?=\s|\(|$)/g; // '성'이 낱말 첫 글자일 때만("작성하여"의 '성' 아님)
   while ((m = nr.exec(s))) if (!/^(주소|성명|주민|등록|번호|전화|매수|매도|명|인|법무사|사무소|대표)$/.test(m[1])) nms.push(m[1]);
-  var who = function (i) { return { name: nms[i] || '', regNo: regs[i] || '', addr: addrs[i] || '' }; };
+  // [2026.10.16 1:1 방영교] 이름표만 줄줄이 나오고("성명 / 성명") 이름이 뒤에 몰려 나오는 표 — 마지막 이름표 뒤의 단어(앞뒤가 한글이 아닌 2~4글자)를 순서대로, 같은 이름이 잇달면(서명) 하나로
+  if (!nms.length) {
+    var lb = s.search(/성\s*명(?![\s\S]*성\s*명)/);
+    if (lb !== -1) {
+      var tail = s.slice(lb).replace(/^성\s*명/, ''), tw = [], tm, tre = /(?:^|[^가-힣])([가-힣]{2,4})(?![가-힣])/g;
+      while ((tm = tre.exec(tail))) { var w = tm[1]; if (/^(주소|성명|주민|등록|번호|전화|매수|매도|조합장|대표|비고|법무사|사무소)$/.test(w) || /(시|군|구|동|읍|면|리|번지|조합)$/.test(w)) continue; if (tw[tw.length - 1] !== w) tw.push(w); }
+      nms = tw.slice(0, 2);
+    }
+  }
+  var who = function (i) { return { name: corp[i] ? '' : (nms[i] || ''), regNo: corp[i] ? '' : (regs[i] || ''), addr: addrs[i] || '', corp: !!corp[i] }; };
   return { seller: who(0), buyer: who(1) };
 }
 // [2026.10.15] 본문으로 역할을 못 정한 계약서는 파일 이름의 말(매도·양도 → 매도인, 매수·취득·분양 → 매수인)로 — 둘 다 있으면 정하지 않음
@@ -25066,7 +25087,9 @@ function tc_ruleTransferFacts_(body) {
     evidence.push('양도: ' + s.file + (tx.transferPrice ? ' — 매매대금 ' + tx.transferPrice.toLocaleString('ko-KR') + '원(검산 일치)' : ' — 금액 검산 안 됨(비움)') + (tx.transferDate ? ', 잔금일 ' + tx.transferDate : ''));
     // [2026.10.16] 여러 필지 일괄 계약서 — 등기부가 있는 필지를 이 거래의 소재지로(등기부 양도·취득 기재와 공시가격을 그 필지로 찾는다). 매매대금은 필지 합계라 알린다.
     var sLoc = s.r.소재지;
-    if ((s.r.소재지목록 || []).length >= 2) {
+    // [2026.10.16 1:1 방영교] 집합건물 계약서의 "1동 건물 / 도로명 / 대지권 토지" 세 줄을 3필지로 잘못 봤다 — 지목·면적이 붙은 토지 줄의 지번이 2개 이상일 때만 여러 필지
+    var landJb = {}; (s.r.소재지목록 || []).forEach(function (l) { if (/\s(?:답|전|대|임야|과수원|잡종지|도로|구거|목장용지|공장용지|창고용지)\s+[\d,.]+\s*(?:m2|㎡|m²)/.test(l + ' ')) { var jb = (String(l).match(/\d{1,5}-\d{1,5}|\d{1,5}(?=\s+(?:답|전|대|임야|과수원|잡종지|도로|구거))/g) || []).slice(-1)[0]; if (jb) landJb[jb] = 1; } });
+    if ((s.r.소재지목록 || []).length >= 2 && Object.keys(landJb).length >= 2) {
       var regLoc = '';
       regs.forEach(function (g) { (g.r.docs || []).forEach(function (d) { if (!regLoc && d.소재지 && s.r.소재지목록.some(function (l) { return tcLocSame_(l, d.소재지); })) regLoc = d.소재지; }); });
       if (regLoc) { sLoc = regLoc; tx.assetLocation = regLoc; }
