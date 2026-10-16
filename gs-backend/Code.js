@@ -26450,6 +26450,22 @@ function caseProcCleanCands_(r) {
     a.cands = a.cands.map(fix).filter(function (x) { if (!x || seen[x.v]) return false; seen[x.v] = 1; return true; });
   });
 }
+// [2026.10.17 주관식 소통 2] 증여·상속 필수 칸 질문 — "처리개요 「X」이(가) 비어 있습니다"만 말하던 것을, 그 칸이 계산·신고서 어디에 쓰여 왜 필요한지와
+//  찾아본 서류, (후보가 있으면) 왜 정하지 않았는지까지 말한다
+const CASEPROC_GI_WHY_ = {
+  giftDoneeName: ['증여세 신고서 수증자(납세의무자)란에 들어가는 필수 칸입니다', '증여계약서·등기부(증여 등기 권리자)·가족관계증명서'],
+  giftDonorName: ['증여자와의 관계(증여재산공제 한도)와 10년 합산 대상을 가르는 필수 칸입니다', '증여계약서·등기부(증여 전 소유자)·이체내역(보낸 사람)'],
+  giftRelation: ['증여재산공제(배우자 6억·직계존속 5천만·직계비속 5천만·기타친족 1천만원)와 세대생략 할증(30%)을 정하는 필수 칸입니다', '가족관계증명서'],
+  giftAmount: ['과세표준의 출발점(시가 → 보충적 평가 순서, 상증법 §60·§61)이라 계산 전 필수입니다', '증여계약서·감정평가서·매매사례가액·공시가격·이체내역'],
+  ihDeceasedName: ['상속세 신고서 피상속인란과 사전증여·금융재산 대조의 기준이 되는 필수 칸입니다', '기본증명서·가족관계증명서·제적등본·사망진단서'],
+  상속인성명: ['신고인(상속인 대표)란에 들어가는 칸입니다', '가족관계증명서·상속재산분할협의서'],
+  상속인수: ['인적공제(자녀 1인당 5천만원)·일괄공제(5억) 비교와 상속인별 지분 계산에 쓰이는 필수 칸입니다', '피상속인 기준 가족관계증명서·제적등본']
+};
+function caseProcGiWhy_(key, label, uniq) {
+  const w = CASEPROC_GI_WHY_[key];
+  if (!uniq.length) return '「' + label + '」 — ' + (w ? w[0] + '. 폴더의 서류(' + w[1] + ')에서 찾지 못했습니다 — 그 서류를 넣거나 직접 넣어 주세요.' : '서류에서 찾지 못했습니다 — 직접 넣어 주세요.');
+  return '「' + label + '」 — ' + (w ? w[0] + '. ' : '') + (uniq.length >= 2 ? '서류마다 다른 값이 있어(아래 출처별 후보) 자동으로 정하지 않았습니다 — 맞는 값을 고르거나 직접 넣어 주세요.' : '서류에서 후보를 찾았지만 확실하지 않아(글자인식·추정 근거) 자동으로 넣지 않았습니다 — 아래 출처를 보고 맞으면 고르고, 아니면 직접 넣어 주세요.');
+}
 function caseProcOverview0_(c) {
   const items = [], lines = [];
   const ov = JSON.parse(JSON.stringify(c.사건개요 || {}));
@@ -27541,11 +27557,11 @@ function caseProcGiftInhFacts_(c, lines, items) {
     if (!cur) {
       if (sure) { ov[key] = money ? digits(sure.v) : sure.v; fills.push({ key: key, label: sp[1], v: ov[key], src: sure.src }); return; }
       if (key === 'giftPriorAmount' && items.some(function (it) { return /^gift:memoprior:/.test(it.id); })) return; // 상담 메모 근거 질문이 같은 칸을 이미 묻는다
-      if (key === 'giftPriorAmount') { items.push(caseProcItem_('ov:' + key, 'missing', '10년 안에 같은 증여자(배우자는 같은 사람으로 봄)에게 받은 증여가 있나요? (상증법 §47② 합산)', { mode: 'options', target: 'ov:' + key, options: [{ label: '없음(0원)', value: '0' }], input: 'money', label: sp[1], withInput: true })); return; }
+      if (key === 'giftPriorAmount') { items.push(caseProcItem_('ov:' + key, 'missing', '10년 안에 같은 증여자(배우자는 같은 사람으로 봄)에게 받은 증여가 있나요? — 있으면 그 금액을 이번 증여재산가액에 더해 세율을 적용하고 그때 낸 세액을 뺍니다(상증법 §47②·§58). 폴더에 이전 증여세 신고서·상담 메모 기록이 없어 서류로는 알 수 없습니다 — 있으면 합산액을, 없으면 「없음」을 골라 주세요.', { mode: 'options', target: 'ov:' + key, options: [{ label: '없음(0원)', value: '0' }], input: 'money', label: sp[1], withInput: true })); return; }
       if (key === 'giftDebtAssumed' && !uniq.length) return; // 부담부증여가 아니면 비워 둔다
       if (key === 'giftAppraisalFee' && !uniq.length) return; // 감정평가를 안 했으면 비워 둔다
       if (key === '상속인추가명단' && !uniq.length) return;
-      items.push(caseProcItem_('ov:' + key, uniq.length ? 'check' : 'missing', '처리개요 「' + sp[1] + '」' + (uniq.length ? ' — 서류 후보가 있습니다. 어느 값인가요?' : '이(가) 비어 있습니다.'), ask));
+      items.push(caseProcItem_('ov:' + key, uniq.length ? 'check' : 'missing', caseProcGiWhy_(key, sp[1], uniq), ask));
       return;
     }
     // 이미 있는 값이 서류와 같으면 "증빙으로 확인됨"으로 기억(금액은 확실한 서류일 때만 — 공시가격 같은 평가 후보와 같다고 확정하지 않음)
