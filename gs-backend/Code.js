@@ -27928,7 +27928,7 @@ function caseProcStatus_(c, body) {
     rows.push(['처리개요', k[1], mk, has(v) ? String(v) + srcOf(k[0], v) : '']);
   });
   if (c.세목 === 'transfer') (Array.isArray(ov.물건목록) ? ov.물건목록 : []).forEach(function (a, i) {
-    const full = ['assetLocation', '양도가액', '취득가액', '취득일'].every(function (k) { return has(a[k]); });
+    const full = ['assetLocation', '양도가액', '취득가액', '취득일'].every(function (k) { return has(a[k]) || (k === '취득가액' && has(a.취득기준시가) && has(a.양도기준시가)); }); // 환산취득가액이면 기준시가 둘로(2026-10-16)
     let mk = open['물건' + (i + 1)] || open['물건'] ? '⚠ 확인 필요' : (full ? '✅' : '△ 일부');
     if (mk !== '✅') inputsOk = false;
     // [2026.10.15 1단계 ②] 칸마다 근거 — 서류로 채웠거나 세무사님이 답한 기록(filled)이 같은 값이면 근거를 보이고, 없으면 "근거 기록 없음"

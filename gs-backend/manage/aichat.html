@@ -3072,7 +3072,8 @@
       var filled = false;
       try {
         if (tab === 'gift') filled = Object.keys(GIFT_AUTOCALC_REQUIRED_).every(function(k){ return g(GIFT_AUTOCALC_REQUIRED_[k].id); });
-        else if (tab === 'transfer') filled = transferAssets.length > 0 && transferAssets.every(function(a){ return Object.keys(TRANSFER_AUTOCALC_REQUIRED_).every(function(k){ return a[k]; }); });
+        // [2026.10.16 1:1 방영교] 취득가액이 비어도 환산용 기준시가(취득당시·양도당시)가 있으면 계산할 수 있다(환산취득가액) — 예전엔 "입력값이 비어 있다"며 유료 자동채우기를 권했다
+        else if (tab === 'transfer') filled = transferAssets.length > 0 && transferAssets.every(function(a){ return Object.keys(TRANSFER_AUTOCALC_REQUIRED_).every(function(k){ return a[k] || (k === 'acquisitionPrice' && a.acquisitionStandardPriceForExpense && a.transferStandardPriceForConversion); }); });
         else filled = !!(g('ihDeceasedName') && g('ihDeathDate') && g('ihGrossEstateGeneral') && inheritanceHeirs.some(function(h){ return h && h.name && h.relation; }));
       } catch (e) { filled = false; }
       var watch = function(){
