@@ -28112,6 +28112,18 @@ function caseProcCalc_(c) {
     const sa = [].concat.apply([], last.저장값.transferResults.map(function (r) { return r.assets || []; }));
     const num = function (v) { return Number(String(v == null ? '' : v).replace(/[^\d]/g, '')) || 0; };
     if (list0.length && sa.length && list0.length !== sa.length) { need = true; items.push(caseProcItem_('calc:input:' + (last.id || '') + ':n' + list0.length, 'check', '저장된 계산의 물건 수(' + sa.length + '개)가 처리개요(' + list0.length + '개)와 다릅니다 — 지금 처리개요로 다시 계산해 저장합니다.', { mode: 'calc', tab: c.세목 })); }
+    // [2026.10.16 1:1 이종식] 물건 여러 개(일괄 계약) — 필요경비 합계·양수인 관계가 저장된 계산과 다르면 다시 계산
+    if (list0.length >= 2 && list0.length === sa.length) {
+      const difM = [];
+      const want = list0.reduce(function (t, a) { return t + (a.필요경비확정 ? num(a.취득비용합계) + num(a.양도비용합계) : 0); }, 0);
+      const got = sa.reduce(function (t, s) { return t + num(s.necessaryExpenses); }, 0);
+      if (list0.some(function (a) { return a.필요경비확정; }) && want !== got) difM.push('필요경비 합계(' + got.toLocaleString('ko-KR') + '원 → ' + want.toLocaleString('ko-KR') + '원)');
+      const relWant = !!ov0.trBuyerRelation && ov0.trBuyerRelation !== 'none';
+      const savedC = Array.isArray(last.저장값.transferContracts) ? last.저장값.transferContracts : [];
+      const relGot = savedC.length ? savedC.some(function (k) { return (k.buyers || []).some(function (b) { return b && b.relation && b.relation !== 'none'; }); }) : sa.some(function (s) { return s.buyerRelation && s.buyerRelation !== 'none'; });
+      if (ov0.trBuyerRelation && relGot !== relWant) difM.push('양수인 관계');
+      if (difM.length) { need = true; items.push(caseProcItem_('calc:input:' + (last.id || '') + ':' + difM.join(','), 'check', '저장된 계산 뒤에 처리개요 값이 바뀌었습니다(' + difM.join(', ') + ') — 지금 값으로 다시 계산해 저장합니다.', { mode: 'calc', tab: c.세목 })); }
+    }
     if (list0.length === 1 && sa.length === 1) {
       const a = list0[0], s = sa[0], dif = [];
       if (num(a.양도가액) && num(a.양도가액) !== num(s.transferPrice)) dif.push('양도가액');

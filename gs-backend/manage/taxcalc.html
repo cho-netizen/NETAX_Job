@@ -17423,6 +17423,20 @@ function tcSyncOverviewToTransferAssets_(caseObj){
   var ov = caseObj.사건개요 || {}, list = Array.isArray(ov.물건목록) ? ov.물건목록 : [];
   // [2026.10.16 1:1 이종식] 처리개요의 물건 수가 바뀌었으면(일괄 양도를 필지별로 나눔 등) 카드를 처리개요로 다시 만든다
   if (list.length >= 2 && list.length !== transferAssets.length) { transferAssets = [{}]; acquisitionContracts = []; transferContracts = []; tcApplyOverviewToTransfer_(caseObj); return true; }
+  // [2026.10.16 1:1 이종식] 물건 여러 개가 양도계약 하나로 묶여 있으면 — 양수인(관계 포함)과 확정한 양도비용은 계약 카드에 맞춘다
+  if (list.length >= 2 && typeof transferContracts !== 'undefined' && transferContracts.length === 1) {
+    var tcx = transferContracts[0], chg = false;
+    var trx2 = [].concat.apply([], list.map(function(it){ return it.필요경비확정 ? (it.양도비용목록 || []).map(function(x){ return { label: x.label + (x.file ? ' (' + x.file + ')' : ''), amount: x.amount }; }) : []; }));
+    if (list.some(function(it){ return it.필요경비확정; }) && JSON.stringify(trx2) !== JSON.stringify(tcx.totalExpenseItems || [])) { tcx.totalExpenseItems = trx2; chg = true; }
+    if (ov.trBuyerName || ov.trBuyerRegNo) {
+      var b0 = (Array.isArray(tcx.buyers) && tcx.buyers[0]) || {};
+      var want = { name: b0.name || ov.trBuyerName || '', regNo: b0.regNo || ov.trBuyerRegNo || '', relation: ov.trBuyerRelation || b0.relation || 'none' };
+      if (JSON.stringify(want) !== JSON.stringify({ name: b0.name || '', regNo: b0.regNo || '', relation: b0.relation || 'none' })) { tcx.buyers = [want].concat((tcx.buyers || []).slice(1)); chg = true; }
+    }
+    transferAssets.forEach(function(a){ if (a && (a.transferExpenseItems || []).length && a.transferContractId === tcx.id) { a.transferExpenseItems = []; chg = true; } });
+    if (chg && typeof renderTransferPane === 'function') renderTransferPane();
+    return chg;
+  }
   if (list.length !== 1 || transferAssets.length !== 1 || !transferAssets[0]) return false;
   var item = list[0], a = transferAssets[0], changed = false;
   var put = function(k, v){ if (v != null && String(v).trim() !== '' && String(a[k] == null ? '' : a[k]) !== String(v)) { a[k] = v; changed = true; } };
@@ -17499,6 +17513,16 @@ function tcApplyOverviewToTransfer_(caseObj){
         a.transferContractId = trTagToContract[trKey].id;
       }
       if (classificationFlags) Object.assign(a, classificationFlags);
+      // [2026.10.16 1:1 이종식] 양도계약에 묶인 물건은 세액계산기가 양수인·양도비용을 계약 카드에서 읽는다 — 물건의 양도비용은 계약 총비용으로 옮기고 양수인은 계약에 넣는다
+      if (a.transferContractId) {
+        var tc0 = transferContracts.filter(function(x){ return x.id === a.transferContractId; })[0];
+        if (tc0) {
+          if ((a.transferExpenseItems || []).length) { tc0.totalExpenseItems = (tc0.totalExpenseItems || []).concat(a.transferExpenseItems); a.transferExpenseItems = []; }
+          if (!Array.isArray(tc0.buyers) || !tc0.buyers.length || !(tc0.buyers[0].name || tc0.buyers[0].regNo)) {
+            if (overview.trBuyerName || overview.trBuyerRegNo) tc0.buyers = [{ name: overview.trBuyerName || '', regNo: overview.trBuyerRegNo || '', relation: overview.trBuyerRelation || 'none' }];
+          }
+        }
+      }
       // [2026.10.16 1:1 이종식] 일괄 양도 필지 — 면적·개별공시지가(양도시·취득시)로 계약 안분, 오피스텔 주택 여부, 양수인과의 관계
       if (item.면적) a.assetArea = item.면적;
       if (item.공시지가양도) a.landPricePerSqmTransfer = item.공시지가양도;
