@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 10:13 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 10:17 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -44937,6 +44937,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       <button type="button" class="nxai-icon" id="nxAiFontDown" title="글자 작게">가-</button>
       <button type="button" class="nxai-icon" id="nxAiFontUp" title="글자 크게">가+</button>
       <button type="button" class="nxai-icon" id="nxAiOpenTab" title="AI탭으로 크게 보기">⤢</button>
+      <button type="button" class="nxai-icon" id="nxAiPin" title="사이드바 고정 — 켜면 바깥을 눌러도 접히지 않고, 화면을 새로 열어도 펼쳐진 채로 시작합니다(이 기기에 기억)">📌</button>
       <button type="button" class="nxai-icon" id="nxAiCollapse" title="접기">≫</button>
       <button type="button" class="nxai-icon nxai-fold" id="nxAiPvShow" title="미리보기 칸 열기">«</button>
     </div>
@@ -45247,7 +45248,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   #nxAiTabHost{ flex:1; min-width:0; height:100%; display:flex; }
   .nxai.mode-tab{ background:var(--panel); color:var(--ink); }
   .nxai.mode-tab .nxai-list, .nxai.mode-tab .nxai-preview{ display:flex; }
-  .nxai.mode-tab #nxAiCollapse, .nxai.mode-tab #nxAiOpenTab, .nxai.mode-tab #nxAiNewBtnSide, .nxai.mode-tab .nxai-resize{ display:none; }
+  #nxAiPin.on{ background:var(--gold, #c9a227); color:#111; border-radius:6px; }
+  .nxai.mode-tab #nxAiPin, .nxai.mode-tab #nxAiCollapse, .nxai.mode-tab #nxAiOpenTab, .nxai.mode-tab #nxAiNewBtnSide, .nxai.mode-tab .nxai-resize{ display:none; }
   .nxai.mode-tab .nxai-body{ padding:18px 22px; }
   .nxai.mode-tab .nxai-msg.ai{ max-width:880px; }
   #sideAI.nxai-away{ display:none; }
@@ -48678,6 +48680,15 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
 
     nxAiEl_('nxAiOpenTab').addEventListener('click', function(e){ e.stopPropagation(); if (typeof goToView_ === 'function') goToView_('ai'); });
     nxAiEl_('nxAiCollapse').addEventListener('click', function(e){ e.stopPropagation(); var s = nxAiEl_('sideAI'); if (s) s.classList.remove('expanded'); });
+    // [2026.10.16 세무사님: "점검 내내 사이드바가 열려 있도록"] 📌 고정 — 바깥 클릭·다른 메뉴 펼침에도 접히지 않고, 다시 열 때도 펼친 채로
+    (function(){
+      var pin = nxAiEl_('nxAiPin'); if (!pin) return;
+      var isOn = function(){ try { return localStorage.getItem('nx_side_pin') === '1'; } catch (e) { return false; } };
+      var paint = function(){ pin.classList.toggle('on', isOn()); pin.title = (isOn() ? '사이드바 고정 켜짐 — 누르면 해제' : '사이드바 고정 — 켜면 바깥을 눌러도 접히지 않습니다'); };
+      pin.addEventListener('click', function(e){ e.stopPropagation(); try { localStorage.setItem('nx_side_pin', isOn() ? '0' : '1'); } catch (er) {} paint(); var s = nxAiEl_('sideAI'); if (s && isOn()) s.classList.add('expanded'); });
+      paint();
+      var s0 = nxAiEl_('sideAI'); if (s0 && isOn() && !s0.classList.contains('nxai-away')) s0.classList.add('expanded');
+    })();
     nxAiEl_('nxAiFontDown').addEventListener('click', function(e){ e.stopPropagation(); nxAiApplyFont_((parseFloat(nxAiLs_(NXAI_FONT_KEY)) || 13.5) - 1); });
     nxAiEl_('nxAiFontUp').addEventListener('click', function(e){ e.stopPropagation(); nxAiApplyFont_((parseFloat(nxAiLs_(NXAI_FONT_KEY)) || 13.5) + 1); });
     var savedFont = parseFloat(nxAiLs_(NXAI_FONT_KEY)); if (savedFont) nxAiApplyFont_(savedFont);
@@ -49165,6 +49176,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       el.addEventListener('click', function(e){
         if (!el.classList.contains('expanded')){
           SIDE_PANEL_IDS_.forEach(function(otherId){
+            if (otherId === 'sideAI' && nxSidePinned_()) return; // 📌 고정된 사이드바는 접지 않음(2026-10-16)
             if (otherId !== id) document.getElementById(otherId).classList.remove('expanded');
           });
           el.classList.add('expanded');
@@ -49172,8 +49184,10 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         }
       });
     });
+    function nxSidePinned_(){ try { return localStorage.getItem('nx_side_pin') === '1'; } catch (e) { return false; } }
     document.addEventListener('click', function(e){
       ['sideMenu', 'sideAI'].forEach(function(id){
+        if (id === 'sideAI' && nxSidePinned_()) return; // 📌 고정
         var el = document.getElementById(id);
         if (el.classList.contains('expanded') && !el.contains(e.target)) el.classList.remove('expanded');
       });
