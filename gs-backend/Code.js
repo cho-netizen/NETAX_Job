@@ -27769,23 +27769,28 @@ function caseProcInhFacts0_(c, parsed) {
     const apps = [];
     by('appraisal').forEach(function (x) {
       const r = x.p.result || {};
-      if (r.소재지 && a.loc && !tcLocSame_(r.소재지, a.loc) && nm(a.loc).indexOf(nm(r.소재지)) === -1 && out.assets.length > 1) return;
+      if (r.소재지 && a.loc && !tcLocSame_(r.소재지, a.loc) && nm(a.loc).indexOf(nm(r.소재지)) === -1 && out.assets.length > 1 && r.대상 !== '토지·건물') return; // 토지·건물 일괄 감정은 건물 쪽 질문에도 후보로
       if (!r.감정평가액) { out.notes.push('감정평가서(' + x.f.name + ') — 감정가액을 읽지 못함(글자인식 흐림): 원문의 감정가액을 처리개요 평가에 직접 넣으세요'); return; }
       // [2026.10.17 상충 판단 4] 노영환: 정안 감정서(실제 약 29억)를 1,100,000원으로 잘못 읽고(검산 안 됨) 예인 2,940,088,250원과 평균 내 14.7억을 만들었고,
       //  두 감정서 모두 소재지를 못 읽어 그 평균이 토지·건물 두 물건에 똑같이 들어갔다(같은 감정을 두 번 셈).
       //  ① 검산이 안 된 감정가액은 평균에 넣지 않고 후보로만  ② 물건이 여럿인데 소재지를 못 읽은 감정서는 어느 물건 것인지(또는 여러 물건 합계인지) 몰라 자동으로 넣지 않고 묻는다
       const unsure = (r.경고 || []).length > 0 || /한쪽만|안 됨/.test(String(r.검산 || ''));
-      const noLoc = !r.소재지 && out.assets.length > 1;
-      const why = [unsure ? '감정가액 검산 안 됨(' + (r.검산 || '글자인식') + ') — 원문 확인' : '', noLoc ? '감정서 소재지를 읽지 못해 이 물건만의 값인지 여러 물건 합계인지 모름 — 원문 확인' : ''].filter(Boolean).join(' · ');
+      //  ③ 감정서 소재지에 맞는 물건이 둘 이상(같은 지번의 토지·건물)이거나 "부동산(토지·건물)" 일괄 감정이면 역시 합계일 수 있어 묻는다
+      const hitN = r.소재지 ? out.assets.filter(function (b) { return b.loc && (tcLocSame_(r.소재지, b.loc) || nm(b.loc).indexOf(nm(r.소재지)) !== -1); }).length : 0;
+      const noLoc = out.assets.length > 1 && (!r.소재지 || hitN > 1 || (r.대상 === '토지·건물' && hitN !== out.assets.length));
+      const why = [unsure ? '감정가액 검산 안 됨(' + (r.검산 || '글자인식') + ') — 원문 확인' : '', noLoc ? (r.소재지 ? '감정서(' + r.소재지 + (r.대상 ? ' ' + r.대상 : '') + ')가 여러 물건을 함께 감정한 것일 수 있어' : '감정서 소재지를 읽지 못해') + ' 이 물건만의 값인지 여러 물건 합계인지 모름 — 원문 확인' : ''].filter(Boolean).join(' · ');
       out._apNote = out._apNote || {};
       if (why && !out._apNote[x.f.name]) { out._apNote[x.f.name] = 1; out.notes.push('감정평가서(' + x.f.name + ') ' + r.감정평가액.toLocaleString('ko-KR') + '원 — ' + why + ' → 자동으로 평가액에 넣지 않고 물건별 질문의 후보로'); }
       apps.push({ v: r.감정평가액, src: '감정평가 ' + (r.평가법인 || x.f.name) + (r.기준시점 ? ' ' + r.기준시점 + ' 기준' : '') + ' — 시가(§60⑤)' + (why ? ' ⚠ ' + why : ''), kind: why ? '시가(확인)' : '시가', days: r.기준시점 && base ? Math.abs(new Date(r.기준시점) - new Date(base)) / 86400000 : 0, file: x.f.name });
     });
     apps.forEach(function (q) { a.cands.push(q); });
     const appsOk = apps.filter(function (q) { return q.kind === '시가'; });
+    // 검산은 맞지만 어느 물건 것인지(합계인지) 몰라 묻는 감정서가 둘 이상이면, 고를 수 있게 평균도 후보로(시행령 §49①2)
+    const appsAmb = apps.filter(function (q) { return q.kind === '시가(확인)' && !/검산 안 됨/.test(q.src); });
+    if (appsAmb.length >= 2) a.cands.push({ v: Math.round(appsAmb.reduce(function (t, q) { return t + q.v; }, 0) / appsAmb.length), src: '감정가액 ' + appsAmb.length + '곳 평균(시행령 §49①2) — ⚠ 여러 물건을 함께 감정한 합계일 수 있음, 원문 확인', kind: '시가(확인)', days: -1, file: appsAmb.map(function (q) { return q.file; }).join(', ') });
     if (appsOk.length >= 2) a.cands.push({ v: Math.round(appsOk.reduce(function (t, q) { return t + q.v; }, 0) / appsOk.length), src: '감정가액 ' + appsOk.length + '곳 평균 — 시가(시행령 §49①2)', kind: '시가', days: -1, file: appsOk.map(function (q) { return q.file; }).join(', ') });
     const market = a.cands.filter(function (q) { return q.kind === '시가'; }).sort(function (p1, p2) { return p1.days - p2.days; });
-    if (market.length) market[0].recommended = true; else if (a.cands.length === 1) a.cands[0].recommended = true;
+    if (market.length) market[0].recommended = true; else if (a.cands.length === 1 && /^(시가|기준시가)$/.test(a.cands[0].kind)) a.cands[0].recommended = true; // 확인이 필요한 후보(시가(확인)·시가(조회))에는 ⭐를 달지 않음
     const ch = choices[a.key];
     a.value = ch ? Number(ch.v) : null; a.valueSrc = ch ? ch.src : '';
     // 시가(매매사례)가 있으면 평가기준일에 가장 가까운 날의 가액(시행령 §49②) — 날짜가 같은 다른 금액이 있으면 판단 필요
@@ -28060,7 +28065,7 @@ function caseProcInhAssetItems_(c, lines, items, parsed) {
     if (a.value) { lines.push('✅ 상속재산 ' + label + ' — ' + won(a.value) + ' (' + a.valueSrc + ')'); return; }
     if (!a.cands.length) { items.push(caseProcItem_('ih:' + a.key + ':none', 'missing', '상속재산 ' + label + ' — 평가 자료(매매사례·감정가·공시가격)가 폴더에 없습니다. 상속세 과세가액의 기초라 계산 전 필수입니다 — 감정평가서·매매사례·공시가격 서류를 넣거나 평가액을 직접 넣어 주세요(시가 우선, 없으면 공시가격 등 보충적 평가 §61).', { mode: 'input', target: 'ih:' + a.key, input: 'money', label: '상속재산 ' + a.loc })); return; }
     items.push(caseProcItem_('ih:' + a.key, 'judge', '상속재산 ' + label + ' — 평가액을 골라 주세요(시가 우선, 없으면 보충적 평가). ' + (a.cands.some(function (q) { return q.recommended; }) ? '⭐는 평가기준일에 가장 가까운 사례' : '')
-      + (f.assets.length > 1 && a.cands.some(function (q) { return /여러 물건 합계/.test(q.src); }) ? ' ⚠ 소재지를 못 읽은 감정서는 이 물건만의 값인지 여러 물건(토지·건물 등) 합계인지 모릅니다 — 합계면 한 물건에만 넣고 다른 물건에는 감정서의 물건별 금액을 넣어 주세요(같은 감정가를 물건마다 넣으면 상속재산이 그만큼 두 번 잡힙니다).' : '')
+      + (f.assets.length > 1 && a.cands.some(function (q) { return /여러 물건 합계/.test(q.src); }) ? ' ⚠ 이 감정서는 이 물건만의 값인지 여러 물건(토지·건물 등)을 함께 감정한 합계인지 서류로 가르지 못했습니다 — 합계면 감정서의 물건별 금액(토지·건물 내역)을 각 물건에 넣거나 한 물건에만 합계를 넣어 주세요(같은 감정가를 물건마다 넣으면 상속재산이 그만큼 두 번 잡힙니다).' : '')
       + (a.cands.some(function (q) { return q.kind === '시가(조회)'; }) ? ' 국토교통부 실거래가 조회로 찾은 같은 단지 매매사례는 면적·층·기준시가 차이(5% 이내, 시행령 §49④) 등 유사성을 보고 고르세요.' : ''),
       { mode: 'choose', target: 'ih:' + a.key, input: 'money', label: '상속재산 ' + a.loc, cands: a.cands.map(function (q) { return { v: String(q.v), src: (q.recommended ? '⭐ ' : '') + q.src }; }) }));
   });
@@ -30572,11 +30577,12 @@ function docAppraisalParse_(text) {
   var t = String(text || ''), head = t.slice(0, 600);
   if (!/감\s*정\s*평\s*가\s*서|APPRAISAL\s*REPORT/i.test(head) || !/감\s*정\s*평\s*가\s*액/.test(t)) return null;
   var r = { 종류: '감정평가서', 감정평가액: null, 한글금액: null, 검산: '', 기준시점: '', 소재지: '', 의뢰인: '', 소유자: '', 목적: '', 평가법인: '', 경고: [] };
-  var m = /감\s*정\s*평\s*가\s*액[\s\S]{0,60}?(?:金|금)\s*([영공일이삼사오육륙칠팔구십백천만억조\s]{2,30}?)\s*원\s*정?[\s\S]{0,10}?[₩W￦#\\]\s*([\d,]{5,})/.exec(t);
+  // [2026.10.17] 金이 글자인식에서 깨지면(노영환 정안: "缚이십구억…원정(￦2,956,712,250.-)") 金/금 없이도 — 한글 금액 뒤 숫자 금액이 붙어 있는 것으로 확인
+  var m = /감\s*정\s*평\s*가\s*액[\s\S]{0,60}?(?:金|금)?\s*([영공일이삼사오육륙칠팔구십백천만억조\s]{2,30}?)\s*원\s*[정整]?[\s\S]{0,10}?[₩W￦#\\(（]\s*[₩W￦]?\s*([\d,]{5,})/.exec(t);
   if (m) { r.한글금액 = docKrAmount_(m[1]); r.감정평가액 = Number(m[2].replace(/,/g, '')); }
   var amts = {}, re = /(?:합\s*계|감\s*정\s*평\s*가\s*액)[^\d\n]{0,30}\n?[^\d\n]{0,10}([\d]{1,3}(?:,\d{3}){2,})/g, x;
   while ((x = re.exec(t))) { var v = Number(x[1].replace(/,/g, '')); amts[v] = (amts[v] || 0) + 1; }
-  (t.match(/[₩#]\s*([\d]{1,3}(?:,\d{3}){2,})/g) || []).forEach(function (a) { var v = Number(a.replace(/[^\d]/g, '')); amts[v] = (amts[v] || 0) + 1; });
+  (t.match(/[₩￦#\\]\s*([\d]{1,3}(?:,\d{3}){2,})/g) || []).forEach(function (a) { var v = Number(a.replace(/[^\d]/g, '')); amts[v] = (amts[v] || 0) + 1; });
   if (!r.감정평가액) { var ks = Object.keys(amts).sort(function (a, b) { return amts[b] - amts[a]; }); if (ks.length) r.감정평가액 = Number(ks[0]); }
   if (r.감정평가액 && r.한글금액) r.검산 = r.감정평가액 === r.한글금액 ? '일치' : '불일치';
   else if (r.감정평가액 && (amts[r.감정평가액] || 0) >= 2) r.검산 = '일치(같은 금액 ' + amts[r.감정평가액] + '곳)';
@@ -30584,6 +30590,8 @@ function docAppraisalParse_(text) {
   if (!/^일치/.test(r.검산)) r.경고.push('감정평가액 ' + (r.감정평가액 ? r.감정평가액.toLocaleString('ko-KR') + '원 ' : '') + '검산 안 됨 — 원문 확인');
   m = /기\s*준\s*시\s*점[\s\S]{0,120}?(20\d{2})[.\-년]\s*(\d{1,2})[.\-월]\s*(\d{1,2})/.exec(t); if (m) r.기준시점 = docYmdKr_(m[1], m[2], m[3]);
   m = /(?:REPORT|감\s*정\s*평\s*가\s*서)\s*\n+\s*((?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)[^\n]{4,120})/.exec(t); if (m) r.소재지 = m[1].replace(/\s*\(구분\s*$/, '').replace(/\s+/g, ' ').trim();
+  if (!r.소재지) { m = /(?:^|\n)\s*((?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)[^\n]{4,140}?)\s*소\s*재(?![가-힣]{0,1}지)/.exec(t.slice(0, 1500)); if (m) { var lc = m[1].replace(/\s+/g, ' ').trim(), hf = lc.split(' '); for (var k2 = 1; k2 < hf.length; k2++) if (hf.slice(0, k2).join(' ') === hf.slice(k2).join(' ')) { lc = hf.slice(0, k2).join(' '); break; } r.소재지 = lc; } }
+  if (/부\s*동\s*산\s*\(?\s*토\s*지\s*[·ㆍ,]\s*건\s*물/.test(t.slice(0, 1500))) r.대상 = '토지·건물';
   m = /의\s*뢰\s*인\s*\n?\s*[:：]?\s*\n?\s*([가-힣]{2,5})/.exec(t); if (m) r.의뢰인 = m[1];
   m = /소\s*유\s*자\s*\n?\s*(?:감정평가\s*\n)?\s*([가-힣]{2,5})/.exec(t); if (m && !/감정|대상/.test(m[1])) r.소유자 = m[1];
   m = /감\s*정\s*평\s*가\s*\n?\s*목\s*적\s*\n?\s*([^\n]{2,30})/.exec(t); if (m) r.목적 = m[1].trim();
