@@ -25195,6 +25195,20 @@ function tc_ruleTransferFacts_(body) {
       if (!tx.transferDate && rp.r.잔금지급일) { tx.transferDate = rp.r.잔금지급일; evidence.push('양도 잔금일은 신고필증 잔금지급일(' + rp.file + ')'); }
     });
     var rd = regDate(sLoc, 'sell');
+    // [2026.10.17 상충 판단 3] 잔금일 — 계약서 잔금일과 신고필증 잔금지급일이 다르면(잔금일 변경·글자인식 오류) 어느 쪽이 실제 잔금일인지 서류로 못 정한다.
+    //  다만 양도시기는 잔금일·등기접수일 중 빠른 날(§98)이라, 등기접수일이 두 잔금일보다 모두 빠르거나 같으면 어느 쪽이든 결론이 같아 등기접수일로 정한다. 아니면 출처와 함께 묻는다
+    var dC = (s.r.잔금일 && !s.r.잔금일확인필요) ? s.r.잔금일 : '', dR = rpHit && rpHit.r.잔금지급일 ? rpHit.r.잔금지급일 : '';
+    if (dC && dR && dC !== dR) {
+      if (rd && rd <= dC && rd <= dR) { tx.transferDate = rd; evidence.push('잔금일이 서류마다 다르지만(계약서 ' + dC + ' / 신고필증 ' + dR + ') 등기접수일 ' + rd + '이 둘 다보다 빠르거나 같아 양도일은 등기접수일(§98)'); }
+      else {
+        tx.transferDate = null;
+        tx.transferDateConflict = [[dC, '계약서 잔금일(' + s.file + ')'], [dR, '실거래 신고필증 잔금지급일(' + rpHit.file + ')']].map(function (x) {
+          var v = rd && rd < x[0] ? rd : x[0];
+          return { v: v, src: x[1] + ' ' + x[0] + (v !== x[0] ? ' → 등기접수일 ' + rd + '이 더 빨라 그날' : rd ? ' (등기접수일 ' + rd + '보다 빠름)' : '') + ' — 실제로 잔금을 받은 날 쪽을 고르세요' };
+        });
+        evidence.push('⚠ 잔금일이 서류마다 다름 — 계약서 ' + dC + ' / 신고필증 ' + dR + (rd ? ' / 등기접수일 ' + rd : '') + ' — 양도일 질문으로 확인');
+      }
+    }
     if (rd && tx.transferDate && rd < tx.transferDate) { evidence.push('양도시기: 등기접수일 ' + rd + '이 잔금일보다 빨라 그날로(§98)'); tx.transferDate = rd; }
     var b = buys.filter(function (x) { return tcLocSame_(x.r.소재지, s.r.소재지); })[0];
     if (b) {
@@ -25465,6 +25479,7 @@ function tc_ruleTransferFacts_(body) {
       });
     });
   }); });
+  txs.forEach(function (t) { (t.transferDateConflict || []).forEach(function (x) { if (!trDateCands.some(function (q) { return q.v === x.v; })) trDateCands.push(x); }); }); // 상충 판단 3 — 잔금일이 갈린 거래의 후보
   trDateCands.sort(function (a, b) { return String(a.v).localeCompare(String(b.v)); });
   // [2026.10.16 1:1 김금옥] 양도 계약서 서명란의 양도인(= 납세자로 확인될 때만)·양수인 인적사항 — 신고서 칸용
   var parties = null;
@@ -34132,7 +34147,7 @@ function trcStdQuestion_(c, a, sc, p, lab, items) {
 
 // ── 처리개요 단계(양도) — 증빙 → 계산기 입력 → 질문(계산기 순서) → 요약 ──
 function trcOverview_(c, ov, rf, lines, items) {
-  const txs = (rf.transactions || []).filter(function (t) { return t.transferPrice || t.acquisitionPrice || t.transferDate || t.transferPriceCand || t.parcels; });
+  const txs = (rf.transactions || []).filter(function (t) { return t.transferPrice || t.acquisitionPrice || t.transferDate || t.transferPriceCand || t.transferPriceConflict || t.transferDateConflict || t.parcels; });
   lines.push('서류 규칙 정리: 계약서 ' + rf.counts.계약서 + ' · 신고필증 ' + rf.counts.신고필증 + ' · 등기부 ' + rf.counts.등기부 + ' · 취득세 ' + rf.counts.취득세 + ' · 법무사 ' + rf.counts.법무사 + ' → 양도거래 ' + txs.length + '건');
   (rf.evidence || []).filter(function (e) { return /⚠|찾지 못함|확정 못/.test(e); }).forEach(function (e) {
     items.push(caseProcItem_('rf:' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, e, Utilities.Charset.UTF_8)).slice(0, 10), 'check', e, { mode: 'note' }));
