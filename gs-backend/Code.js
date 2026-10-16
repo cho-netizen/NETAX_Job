@@ -26258,7 +26258,7 @@ function caseProcMemoCands_(c, res) {
         const hit = (it.ask.options || []).filter(function (o) { const k = String(o).replace(/\s+/g, '').replace(/\(.*$/, ''); return k && nr.indexOf(k) !== -1; });
         v = hit.length === 1 ? hit[0] : '';
       }
-      else { const m = /^\s*[:：\t]?\s*([^\t]{2,40})/.exec(rest); if (m) v = m[1].trim(); }
+      else { const m = /^\s*[:：\t]?\s*([^\t]{2,40})/.exec(rest); if (m) v = m[1].replace(/\*+|`+/g, '').replace(/^\s*[:：]\s*/, '').trim(); } // 메모의 마크다운 굵게(**소재지:**) 기호는 값이 아님
       if (!v || have.indexOf(v) !== -1 || add.some(function (y) { return y.v === v; })) return;
       add.push({ v: v, src: '상담 메모(' + x.file + '): "' + x.l.slice(0, 50) + '"' });
     });
@@ -34024,11 +34024,11 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
   const q = function (id, kind, text, ask, detail) { items.push(caseProcItem_(id, kind, text, ask, detail)); };
   // 1) 양도인 카드
   const s0 = st.transferSellers[0];
-  if (!has(s0.name)) q('trc:seller.name', 'missing', '양도인 카드 「성명」을 서류에서 정하지 못했습니다.', { mode: 'input', target: 'calc:seller.name', input: 'text', label: '양도인 성명', cands: c.납세자 ? [{ v: c.납세자, src: '사건 납세자' }] : [] });
+  if (!has(s0.name)) q('trc:seller.name', 'missing', '양도인 카드 「성명」 — 신고서 양도인란·전자신고 파일에 들어가는 필수 칸입니다. 매도 계약서 서명란·등기부 소유자 기재에서 납세자 이름을 확인하지 못했습니다(계약서가 없거나 서명란을 읽지 못함) — 성명을 넣어 주세요.', { mode: 'input', target: 'calc:seller.name', input: 'text', label: '양도인 성명', cands: c.납세자 ? [{ v: c.납세자, src: '사건 납세자' }] : [] });
   // 2) 양도계약 카드 — 양도일·양도가액·양수인 관계
   const dConf = txs.some(function (t) { return t.transferDateConflict; });
   if (!c.기준일 && !items.some(function (x) { return /^ov:기준일/.test(x.id); })) q('ov:기준일:none', dConf ? 'judge' : 'missing', dConf ? '양도일 — 계약서 잔금일과 실거래 신고필증 잔금지급일이 서로 달라 자동으로 정하지 않았습니다(잔금일 변경 또는 글자인식 오류). 양도일은 실제 잔금일과 등기접수일 중 빠른 날(소득세법 §98)이고, 보유기간(장기보유특별공제·단기 세율)과 신고기한이 이 날로 정해집니다 — 실제로 잔금을 받은 날 쪽 후보를 고르세요' + (txs.some(function (t) { return (t.transferDateConflict || []).some(function (x) { return /등기접수일/.test(x.src); }); }) ? '(후보마다 등기접수일과 견준 결과를 적었습니다).' : '.')
-    : (rf && (rf.comps || []).length ? '양도일(수용: 보상금 받은 날·수용개시일·수용 등기 접수일 중 빠른 날, 소득세법 시행령 §162①7호)' : '양도일(잔금일·등기접수일 중 빠른 날, 소득세법 §98)') + '을 서류에서 정하지 못했습니다 — 정해 주세요.', { mode: 'base', cands: (rf && rf.trDateCands || []).length ? rf.trDateCands : undefined });
+    : (rf && (rf.comps || []).length ? '양도일(수용: 보상금 받은 날·수용개시일·수용 등기 접수일 중 빠른 날, 소득세법 시행령 §162①7호)' : '양도일(잔금일·등기접수일 중 빠른 날, 소득세법 §98)') + '을 서류에서 정하지 못했습니다 — 신고기한(양도일이 속한 달 말일부터 2개월)·보유기간(장기보유특별공제·단기 세율)이 이 날로 정해져 계산 전 필수입니다. 매도 계약서 잔금일·신고필증 잔금지급일·등기부 양도 등기 접수일을 찾지 못했으니 그 서류를 폴더에 넣거나 날짜를 직접 넣어 주세요.', { mode: 'base', cands: (rf && rf.trDateCands || []).length ? rf.trDateCands : undefined });
   st.transferContracts.forEach(function (ct, k) {
     const p = 'c' + k + '.totalPrice', cd = S.cands[p];
     // [2026.10.17 객관식 소통 1] 왜 묻는지 — 서류끼리 갈림 / 검산 안 된 글자 / 그 밖의 후보를 구분해 말한다(후보마다 출처는 cands.src)
@@ -34037,7 +34037,7 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
       : pUnsure ? ' — 계약서에서 읽은 금액이지만 계약금·중도금·잔금을 더한 값이 매매대금과 맞지 않아(글자인식이 흐렸을 수 있음) 자동으로 넣지 않았습니다. 계약서 원문 금액과 같으면 고르고, 다르면 원문 금액을 직접 넣어 주세요.'
       : (rf.comps || []).length && k === 0 ? ' — 수용 보상금 내역서·재결서에서 읽은 금액입니다(매도 계약서가 없는 수용 — 양도가액 = 받은 보상금). 아래는 서류별 보상금이고, 같은 내역의 사본은 하나로 묶었습니다. 이 사건에서 수용된 물건의 보상금을 고르세요.'
       : ' — 서류에서 읽은 금액입니다. 맞는 금액을 고르거나 직접 넣어 주세요.';
-    if (!has(ct.totalPrice) && !asked('calc:' + p)) q('trc:' + p, cd ? 'judge' : 'missing', ct.name + ' 「계약 전체 양도가액」' + (cd ? pWhy + ((rf.comps || []).length && k === 0 ? ' (수용: 지장물 보상 중 건물·구축물은 양도, 수목·시설 이전비·영업보상은 양도가 아닐 수 있습니다. 이의재결로 늘어난 금액이 있으면 그 금액)' : '') : '을 서류에서 정하지 못했습니다 — 정해 주세요(계산 전 필수).'),
+    if (!has(ct.totalPrice) && !asked('calc:' + p)) q('trc:' + p, cd ? 'judge' : 'missing', ct.name + ' 「계약 전체 양도가액」' + (cd ? pWhy + ((rf.comps || []).length && k === 0 ? ' (수용: 지장물 보상 중 건물·구축물은 양도, 수목·시설 이전비·영업보상은 양도가 아닐 수 있습니다. 이의재결로 늘어난 금액이 있으면 그 금액)' : '') : '을 서류에서 정하지 못했습니다 — 양도차익 계산의 출발점이라 계산 전 필수입니다. 매도 계약서 매매대금·실거래 신고필증 거래가격·등기부 거래가액(양도 등기)을 찾지 못했으니 그 서류를 폴더에 넣거나 금액을 직접 넣어 주세요.'),
       { mode: cd ? 'choose' : 'input', target: 'calc:' + p, input: 'money', label: ct.name + ' 양도가액', cands: cd || [] });
     const b = (ct.buyers || [])[0] || {};
     // [2026.10.17] 양수인이 법인 — 법인등록번호는 넣었고, 법인명은 글자인식 띄어쓰기가 섞여 후보로 보여주고 확인받는다
@@ -34062,7 +34062,7 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
   // 3) 양도자산 카드 — 소재지·과세대상 구분(오피스텔은 근거를 보여주고 고른다)
   if (!splitPending) st.transferAssets.forEach(function (a, i) {
     const p = 'a' + i, lab = st.transferAssets.length > 1 ? '자산' + (i + 1) + ' ' : '';
-    if (!has(a.assetLocation) && !asked('calc:' + p + '.assetLocation')) q('trc:' + p + '.assetLocation', 'missing', '양도자산 ' + lab + '「소재지」를 서류에서 정하지 못했습니다.', i === 0 && (rf.locCands || []).length ? { mode: 'choose', target: 'calc:' + p + '.assetLocation', input: 'text', label: lab + '소재지', cands: rf.locCands.map(function (x) { return { v: x.v, src: x.src }; }) } : { mode: 'input', target: 'calc:' + p + '.assetLocation', input: 'text', label: lab + '소재지', cands: [] });
+    if (!has(a.assetLocation) && !asked('calc:' + p + '.assetLocation')) q('trc:' + p + '.assetLocation', 'missing', '양도자산 ' + lab + '「소재지」를 서류에서 정하지 못했습니다 — 신고서 자산 표시와 공시가격·건축물대장 조회(기준시가·주택 여부 판단)에 쓰는 필수 칸입니다. 등기부등본의 지번 주소(집합건물은 동·호까지)를 넣어 주세요.', i === 0 && (rf.locCands || []).length ? { mode: 'choose', target: 'calc:' + p + '.assetLocation', input: 'text', label: lab + '소재지', cands: rf.locCands.map(function (x) { return { v: x.v, src: x.src }; }) } : { mode: 'input', target: 'calc:' + p + '.assetLocation', input: 'text', label: lab + '소재지', cands: [] });
   });
   if (S.facts.officetel && !ans['a0.assetType']) {
     const ev = S.facts.officetel;
@@ -34076,7 +34076,7 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
     if (!has(a.acquisitionDate) && !asked('calc:' + p + '.acquisitionDate')) {
       if (i === 0 && (rf.acqDateCands || []).length) q('tr:giftAcqDate', 'judge', giftC ? '증여로 받은 부동산입니다 — 취득일을 골라 주세요(후보: 증여계약일 = 등기부 등기원인일, 증여 등기 접수일 · 증여세 신고서 증여일).' : (rf.acqDateCands || []).some(function (x) { return x.nomatch; }) ? '취득일 — 판 물건과 소재지로 짝지은 취득 계약서·등기부 기재를 찾지 못해(매도 계약서가 없는 수용·계약서 미제출 등) 납세자가 산 계약서의 잔금일을 후보로 보여드립니다. 판 물건과 같은 부동산의 계약서면 고르세요 — 취득일은 잔금일·등기접수일 중 빠른 날(§98)이고, 보유기간(장기보유특별공제·세율)이 이 날부터 셉니다.'
         : '취득 계약서에서 읽은 날짜입니다 — 이 물건의 취득일을 골라 주세요(잔금일·등기접수일 중 빠른 날, §98).', { mode: 'choose', target: 'calc:' + p + '.acquisitionDate', input: 'date', label: lab + '취득일', cands: rf.acqDateCands });
-      else q('trc:' + p + '.acquisitionDate', 'missing', '취득정보 ' + lab + '「취득일」을 서류에서 정하지 못했습니다 — 정해 주세요(계산 전 필수).', { mode: 'input', target: 'calc:' + p + '.acquisitionDate', input: 'date', label: lab + '취득일', cands: [] });
+      else q('trc:' + p + '.acquisitionDate', 'missing', '취득정보 ' + lab + '「취득일」을 서류에서 정하지 못했습니다 — 보유기간(장기보유특별공제율·단기 세율·1세대1주택 2년 요건)을 세는 시작일이라 계산 전 필수입니다. 취득 계약서 잔금일·등기부 소유권 이전 접수일을 찾지 못했으니 그 서류를 넣거나 잔금일·등기접수일 중 빠른 날(§98)을 직접 넣어 주세요(상속은 상속개시일, 증여는 증여 등기 접수일).', { mode: 'input', target: 'calc:' + p + '.acquisitionDate', input: 'date', label: lab + '취득일', cands: [] });
     }
     if (has(a.acquisitionPrice) || has(a.comparableTransactionPrice) || has(a.appraisalValue) || (has(a.acquisitionStandardPriceForExpense) && has(a.transferStandardPriceForConversion))) return;
     // 취득가액 후보(증여세 신고서·분양계약서·검산 안 된 계약서 등)
@@ -34091,7 +34091,7 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
       : cd.some(function (x) { return /증여세 신고서/.test(x.src); }) ? '증여로 받은 부동산 — 취득가액은 증여세 신고·결정가액(소득세법 시행령 §163⑨). 신고서 평가액이 맞으면 고르고, 결정가액이 다르면 직접 넣어 주세요.'
       : cd.some(function (x) { return /분양계약서/.test(x.src); }) ? '분양계약서의 분양금액입니다 — 부가가치세 매입세액을 공제·환급받았으면 부가세를 뺀 금액, 받지 않았으면 부가세를 넣은 금액을 고르세요.'
       : cd.length ? '서류에서 읽은 금액입니다 — 이 자산의 취득가액이면 고르고, 아니면 직접 넣어 주세요.'
-      : '취득가액(실지거래가액)을 서류에서 찾지 못했습니다 — 알면 넣어 주세요. 모르면 계산기는 매매사례가액 → 감정가액 → 환산(취득당시·양도당시 기준시가) 순서로 정합니다' + (sc ? '(아래 기준시가 질문)' : '') + '.';
+      : '취득가액(실지거래가액)을 서류(취득 계약서·등기부 거래가액·증여세 신고서·분양계약서)에서 찾지 못했습니다 — 양도차익 = 양도가액 − 취득가액이라 값이 있어야 계산됩니다. 알면 넣어 주세요. 모르면 계산기는 매매사례가액 → 감정가액 → 환산(취득당시·양도당시 기준시가) 순서로 정합니다' + (sc ? '(아래 기준시가 질문)' : '') + '.';
     if (cd.length || !sc) q('trc:' + p + '.acquisitionPrice', cd.length ? 'judge' : 'missing', '취득정보 ' + lab + '「취득가액」 — ' + why, { mode: cd.length ? 'choose' : 'input', target: 'calc:' + p + '.acquisitionPrice', input: 'money', label: lab + '취득가액', cands: cd });
     // 기준시가(취득당시) — 계산기 칸이 원하는 숫자. 증빙(공시가격표·개별공시지가·건물기준시가 출력물)을 근거로 후보를 보여주고 고르거나 직접 넣는다
     if (sc && sc.transfer && !has(a.acquisitionStandardPriceForExpense)) trcStdQuestion_(c, a, sc, p, lab, items);
@@ -34107,13 +34107,14 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
     const a = st.transferAssets[Number(g.p.slice(1))];
     if (!a || !/^(spouse|lineal)$/.test(String(a.donorRelation || '')) || !a.giftReceivedDate || !c.기준일) return; // giftReceivedDate는 10년 안일 때만 채워진다
     if (!has(a.donorAcquisitionDate)) q('trc:' + g.p + '.donorAcquisitionDate', 'missing', '이월과세 칸 「증여자 취득일」 — 증여받은 날(' + a.giftReceivedDate + ')부터 10년 안에 판 배우자·직계존비속 증여 자산이라 계산기가 증여자 기준으로도 계산해 비교합니다' + (g.info.donor ? '(증여자 ' + g.info.donor + ')' : '') + '. 등기부의 증여자 취득 기재를 보고 넣어 주세요.', { mode: 'input', target: 'calc:' + g.p + '.donorAcquisitionDate', input: 'date', label: '증여자 취득일', cands: g.info.donorAcqDate ? [{ v: g.info.donorAcqDate, src: g.info.src }] : [] });
-    if (!has(a.donorAcquisitionPrice)) q('trc:' + g.p + '.donorAcquisitionPrice', 'missing', '이월과세 칸 「증여자 취득가액」을 넣어 주세요(증여자가 처음 산 값).', { mode: 'input', target: 'calc:' + g.p + '.donorAcquisitionPrice', input: 'money', label: '증여자 취득가액', cands: g.info.donorAcqPrice ? [{ v: String(g.info.donorAcqPrice), src: g.info.src }] : [] });
+    if (!has(a.donorAcquisitionPrice)) q('trc:' + g.p + '.donorAcquisitionPrice', 'missing', '이월과세 칸 「증여자 취득가액」 — 증여자가 처음 산 값입니다. 이월과세(소득세법 §97의2)는 이 값을 취득가액으로 다시 계산한 세액과 비교하므로, 비워 두면 비교 계산을 못 합니다. 폴더에 증여자의 취득 계약서·취득세 영수증이 없어 찾지 못했습니다 — 서류를 넣거나 금액을 직접 넣어 주세요.', { mode: 'input', target: 'calc:' + g.p + '.donorAcquisitionPrice', input: 'money', label: '증여자 취득가액', cands: g.info.donorAcqPrice ? [{ v: String(g.info.donorAcqPrice), src: g.info.src }] : [] });
   });
   // 5) 비용 — 취득비용(자산 카드)·양도비용(계약 카드). 서류에서 찾은 것을 보여주고 세무사님이 체크해 확정
   const cands = (rf.expCands || []).filter(function (x) { return x.amount; });
   if (txs.length <= 1) {
     const list = function (cs) { return cs.map(function (x) { return (x.sure ? '☑ ' : '☐ ') + x.kind + ' · ' + x.label + ' · ' + won(x.amount) + (x.date ? ' · ' + x.date : '') + ' · ' + x.file + (x.note ? ' — ' + x.note : ''); }).join('\n'); };
-    if (!ans.costs) q('tr:expenses', 'missing', '취득비용(자산 카드)·양도비용(계약 카드)을 확정해 주세요 — 서류에서 ' + cands.length + '건을 찾았습니다. 넣을 것만 체크하고, 없는 비용은 직접 더하세요(없으면 체크 없이 확정 = 0원).', { mode: 'expenses', target: 'expenses', label: '필요경비', cands: cands }, list(cands));
+    if (!ans.costs) q('tr:expenses', 'missing', cands.length ? '취득비용(자산 카드)·양도비용(계약 카드)을 확정해 주세요 — 서류에서 ' + cands.length + '건을 찾았습니다. 넣을 것만 체크하고, 없는 비용은 직접 더하세요(없으면 체크 없이 확정 = 0원).'
+      : '취득비용(자산 카드)·양도비용(계약 카드) — 폴더에서 취득세 영수증·법무사 비용·중개보수 영수증 등 비용 서류를 찾지 못했습니다. 실지거래가액으로 계산하면 이 비용이 양도차익을 줄이므로(환산취득가액이면 계산기가 개산공제만 씀) 영수증이 있으면 폴더에 넣거나 금액을 직접 더하고, 비용이 없으면 체크 없이 확정(0원)해 주세요.', { mode: 'expenses', target: 'expenses', label: '필요경비', cands: cands }, list(cands));
     else {
       const conf = [].concat((ans.costs.v.acq || []).map(function (x) { return Object.assign({ side: '취득' }, x); }), (ans.costs.v.tr || []).map(function (x) { return Object.assign({ side: '양도' }, x); }));
       const diffs = [];
