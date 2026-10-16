@@ -17400,6 +17400,24 @@ var TC_CASE_CLASSIFICATION_TO_TRANSFER_FLAGS_ = {
 };
 // [2026.10.16 1:1 김금옥] 저장된 계산을 복원(tcRestoreToolResults_)하면 그때 비어 있던 인적사항 칸이 처리개요 값을 다시 덮어쓴다 —
 //  복원 뒤에도 빈 칸이면 사건처리가 계약서에서 읽은 양도인 주민번호·주소, 양수인 성명·주민번호를 채운다(직접 입력한 값은 그대로)
+// [2026.10.17 세무사님 지시 — "처리개요는 요약"] 양도: 사건처리가 증빙·답으로 만든 세액계산기 입력(양도인·양도계약·양도자산·취득계약, 계산기 모양 그대로)을
+//  그대로 불러온다. 처리개요를 거쳐 칸을 맞추던 연결(tcApplyOverviewToTransfer_·tcSync…)은 이 입력이 아직 없는 사건에만 쓰인다.
+var tcCalcInHash_ = {};
+function tcLoadTransferCalcIn_(caseObj){
+  if (!caseObj || caseObj.세목 !== 'transfer' || typeof callGas !== 'function') return Promise.resolve(false);
+  return callGas('case_proc', { caseId: caseObj.id, step: 'calcin' }).then(function(r){
+    if (!r || !r.state || !Array.isArray(r.state.transferAssets) || !r.state.transferAssets.length) return false;
+    if (!tcCurrentCase || tcCurrentCase.id !== caseObj.id) return false;
+    var st = JSON.parse(JSON.stringify(r.state));
+    transferSellers = Array.isArray(st.transferSellers) && st.transferSellers.length ? st.transferSellers : [{}];
+    transferContracts = Array.isArray(st.transferContracts) ? st.transferContracts : [];
+    transferAssets = st.transferAssets;
+    acquisitionContracts = Array.isArray(st.acquisitionContracts) ? st.acquisitionContracts : [];
+    tcCalcInHash_[caseObj.id] = r.hash || '';
+    if (typeof renderTransferPane === 'function') renderTransferPane();
+    return true;
+  }).catch(function(){ return false; });
+}
 function tcFillTransferPartiesIfEmpty_(caseObj){
   if (!caseObj || caseObj.세목 !== 'transfer') return;
   var ov = caseObj.사건개요 || {};
@@ -17625,6 +17643,7 @@ function renderTcCaseBar_(){
     tcRestoreToolResults_(tcCurrentCase);
     tcFillTransferPartiesIfEmpty_(tcCurrentCase);
     tcSyncContractParties_(tcCurrentCase); // [2026.10.16 1:1 이종식] 일괄 계약 — 양수인·양도비용을 계약 카드에
+    tcLoadTransferCalcIn_(tcCurrentCase); // [2026.10.17] 사건처리 계산기 입력이 있으면 그것으로(위 처리개요 연결 값을 덮는다)
   }
   tcRenderCaseFactsBanner_(tcCurrentCase);
 }
@@ -17727,7 +17746,7 @@ const TC_TOOL_STATE_ = {
       if (!((lastTransferResults_ && lastTransferResults_.length) || lastStockTransferResult_ || lastOverseasTransferResult_)) return null;
       return {
         transferResults: lastTransferResults_, stockResult: lastStockTransferResult_, overseasResult: lastOverseasTransferResult_,
-        transferAssets: transferAssets, transferContracts: transferContracts, transferSellers: transferSellers
+        transferAssets: transferAssets, transferContracts: transferContracts, transferSellers: transferSellers, acquisitionContracts: acquisitionContracts // [2026.10.17] 취득계약 — 빠져 있어 다시 열면 자산의 취득계약 연결이 끊겼다
       };
     },
     set: function(saved){
@@ -17737,6 +17756,7 @@ const TC_TOOL_STATE_ = {
       if (Array.isArray(saved.transferAssets)) transferAssets = saved.transferAssets;
       if (Array.isArray(saved.transferContracts)) transferContracts = saved.transferContracts;
       if (Array.isArray(saved.transferSellers)) transferSellers = saved.transferSellers;
+      if (Array.isArray(saved.acquisitionContracts)) acquisitionContracts = saved.acquisitionContracts;
       if (typeof renderTransferPane === 'function') renderTransferPane();
     }
   },
@@ -17995,6 +18015,7 @@ function tcSaveCurrentResult_(){
     계산일: new Date().toISOString().slice(0, 10)
   };
   if (dateSnapshot_) entry.기준일스냅샷 = dateSnapshot_;
+  if (tab === 'transfer' && tcCalcInHash_[tcCurrentCase.id]) entry.계산입력해시 = tcCalcInHash_[tcCurrentCase.id]; // [2026.10.17] 이 계산이 쓴 사건처리 계산기 입력
   // [2026.10.06 추가] 이 탭(양도/증여/상속)의 본계산 구조화 결과도 같이 저장 — 사건을 다시
   // 열었을 때 tcRestoreToolResults_가 이걸로 lastTransferResults_ 등을 복원해 별지84호·9호·
   // 10호 인쇄가 바로 켜지게 한다(TC_TOOL_STATE_의 tr/ih/gf 항목 참고).

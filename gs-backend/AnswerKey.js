@@ -163,6 +163,15 @@ var AK_LAST_EV_ = null; // 이 실행의 증빙 단계 결과(원시서류 수 �
 function akNoSourceDocs_(c) { return !!(AK_LAST_EV_ && AK_LAST_EV_.caseId === c.id && !AK_LAST_EV_.srcDocs); }
 // [2026.10.15] 양도 — 처리개요 물건 + 서류 규칙 정리(취득 부대비용)로 화면 엔진 계산. 값이 비면 계산하지 않고 이유(어느 칸이 비었는지·서류가 없는지)를 돌려준다.
 function akTransferEngine_(c, digits) {
+  // [2026.10.17] 사건처리가 만든 세액계산기 입력(계산기 모양)이 있으면 그것으로, 계산기 run-transfer와 같은 조립(trcEngineInputs_)으로 계산한다.
+  //  예전엔 처리개요에서 양도가액·취득가액·취득일·필요경비 네 칸만 뽑아 "일반 과세" 가정으로 따로 계산해 계산기 결과와 달랐다
+  const tcIn = (caseProcLoad_(c.id) || {}).trCalc;
+  if (tcIn && tcIn.state && (tcIn.state.transferAssets || []).length) {
+    const inputs = trcEngineInputs_(tcIn.state, c.기준일);
+    const r0 = runUiEngineCalcTool_('calculate_transfer_tax_multi', { transactions: inputs }) || { error: '엔진 없음' };
+    if (!r0.error) { r0.과세표준 = r0.합산과세표준 != null ? r0.합산과세표준 : r0.과세표준; }
+    return { input: { transactions: inputs }, result: r0, src: '세액계산기 입력(사건처리: 증빙·답 — 계산기와 같은 조립, 자산 ' + inputs.length + '건)', why: r0.error ? '계산기 입력으로 계산 못 함: ' + r0.error : '' };
+  }
   const ov = c.사건개요 || {};
   const rf = CASEPROC_LAST_RF_ && CASEPROC_LAST_RF_.caseId === c.id ? CASEPROC_LAST_RF_.rf : null;
   const txs = (rf && rf.transactions) || [];

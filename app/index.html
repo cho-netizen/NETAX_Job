@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 15:16 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 15:40 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -35702,6 +35702,24 @@ var TC_CASE_CLASSIFICATION_TO_TRANSFER_FLAGS_ = {
 };
 // [2026.10.16 1:1 김금옥] 저장된 계산을 복원(tcRestoreToolResults_)하면 그때 비어 있던 인적사항 칸이 처리개요 값을 다시 덮어쓴다 —
 //  복원 뒤에도 빈 칸이면 사건처리가 계약서에서 읽은 양도인 주민번호·주소, 양수인 성명·주민번호를 채운다(직접 입력한 값은 그대로)
+// [2026.10.17 세무사님 지시 — "처리개요는 요약"] 양도: 사건처리가 증빙·답으로 만든 세액계산기 입력(양도인·양도계약·양도자산·취득계약, 계산기 모양 그대로)을
+//  그대로 불러온다. 처리개요를 거쳐 칸을 맞추던 연결(tcApplyOverviewToTransfer_·tcSync…)은 이 입력이 아직 없는 사건에만 쓰인다.
+var tcCalcInHash_ = {};
+function tcLoadTransferCalcIn_(caseObj){
+  if (!caseObj || caseObj.세목 !== 'transfer' || typeof callGas !== 'function') return Promise.resolve(false);
+  return callGas('case_proc', { caseId: caseObj.id, step: 'calcin' }).then(function(r){
+    if (!r || !r.state || !Array.isArray(r.state.transferAssets) || !r.state.transferAssets.length) return false;
+    if (!tcCurrentCase || tcCurrentCase.id !== caseObj.id) return false;
+    var st = JSON.parse(JSON.stringify(r.state));
+    transferSellers = Array.isArray(st.transferSellers) && st.transferSellers.length ? st.transferSellers : [{}];
+    transferContracts = Array.isArray(st.transferContracts) ? st.transferContracts : [];
+    transferAssets = st.transferAssets;
+    acquisitionContracts = Array.isArray(st.acquisitionContracts) ? st.acquisitionContracts : [];
+    tcCalcInHash_[caseObj.id] = r.hash || '';
+    if (typeof renderTransferPane === 'function') renderTransferPane();
+    return true;
+  }).catch(function(){ return false; });
+}
 function tcFillTransferPartiesIfEmpty_(caseObj){
   if (!caseObj || caseObj.세목 !== 'transfer') return;
   var ov = caseObj.사건개요 || {};
@@ -35927,6 +35945,7 @@ function renderTcCaseBar_(){
     tcRestoreToolResults_(tcCurrentCase);
     tcFillTransferPartiesIfEmpty_(tcCurrentCase);
     tcSyncContractParties_(tcCurrentCase); // [2026.10.16 1:1 이종식] 일괄 계약 — 양수인·양도비용을 계약 카드에
+    tcLoadTransferCalcIn_(tcCurrentCase); // [2026.10.17] 사건처리 계산기 입력이 있으면 그것으로(위 처리개요 연결 값을 덮는다)
   }
   tcRenderCaseFactsBanner_(tcCurrentCase);
 }
@@ -36029,7 +36048,7 @@ const TC_TOOL_STATE_ = {
       if (!((lastTransferResults_ && lastTransferResults_.length) || lastStockTransferResult_ || lastOverseasTransferResult_)) return null;
       return {
         transferResults: lastTransferResults_, stockResult: lastStockTransferResult_, overseasResult: lastOverseasTransferResult_,
-        transferAssets: transferAssets, transferContracts: transferContracts, transferSellers: transferSellers
+        transferAssets: transferAssets, transferContracts: transferContracts, transferSellers: transferSellers, acquisitionContracts: acquisitionContracts // [2026.10.17] 취득계약 — 빠져 있어 다시 열면 자산의 취득계약 연결이 끊겼다
       };
     },
     set: function(saved){
@@ -36039,6 +36058,7 @@ const TC_TOOL_STATE_ = {
       if (Array.isArray(saved.transferAssets)) transferAssets = saved.transferAssets;
       if (Array.isArray(saved.transferContracts)) transferContracts = saved.transferContracts;
       if (Array.isArray(saved.transferSellers)) transferSellers = saved.transferSellers;
+      if (Array.isArray(saved.acquisitionContracts)) acquisitionContracts = saved.acquisitionContracts;
       if (typeof renderTransferPane === 'function') renderTransferPane();
     }
   },
@@ -36297,6 +36317,7 @@ function tcSaveCurrentResult_(){
     계산일: new Date().toISOString().slice(0, 10)
   };
   if (dateSnapshot_) entry.기준일스냅샷 = dateSnapshot_;
+  if (tab === 'transfer' && tcCalcInHash_[tcCurrentCase.id]) entry.계산입력해시 = tcCalcInHash_[tcCurrentCase.id]; // [2026.10.17] 이 계산이 쓴 사건처리 계산기 입력
   // [2026.10.06 추가] 이 탭(양도/증여/상속)의 본계산 구조화 결과도 같이 저장 — 사건을 다시
   // 열었을 때 tcRestoreToolResults_가 이걸로 lastTransferResults_ 등을 복원해 별지84호·9호·
   // 10호 인쇄가 바로 켜지게 한다(TC_TOOL_STATE_의 tr/ih/gf 항목 참고).
@@ -47359,6 +47380,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     [/수증자|증여\s*내용/, /수증자|받은\s*사람/], [/증여자|증여\s*내용/, /증여자|준\s*사람/], [/관계/, /관계(?!\s*증명)/],
     [/필요경비/, /필요\s*경비|경비/], [/상속\s*채무/, /채무|부채|빚/],[/사건분류/, /사건\s*분류|특례|비과세|중과|감면/],
     [/납세자/, /납세자/], [/법정일/, /법정\s*일|신고\s*기한|처리\s*기한/],
+    // [2026.10.17] 양도 계산기 칸 질문 이름 — 신고 세무비용·과세대상 구분(주택 여부)·기준시가·일괄 필지
+    [/세무\s*비용|신고\s*수수료/, /세무\s*비용|신고\s*(?:세무)?\s*(?:비용|수수료)|세무사\s*수수료/], [/과세대상\s*구분|주택\s*여부/, /주택|과세\s*대상/], [/기준시가/, /기준\s*시가/], [/일괄\s*양도\s*필지/, /필지/],
     [/양도인/, /양도인|매도인/], [/피상속인/, /피상속인/], [/상속인\s*수/, /상속인\s*수|상속인\s*\d+\s*명/], [/대표\s*상속인/, /대표\s*상속인/]
   ];
   function nxAiCaseProcName_(it, tax){
@@ -47934,7 +47957,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     // 양도 필요경비·사건분류(비과세·중과 판단)도 정해지기 전엔 계산하지 않는다(필요경비 0원·사건분류 미정으로 계산하던 문제 — 노오섭)
     var blockers = { 'gift:deal': '「증여 내용 확인」', 'tr:expenses': '「필요경비 확정」', 'ov:사건분류': '「사건분류」', 'ih:debts': '「상속 채무 확정」' };
     // [2026.10.15 일괄점검 ③] 위 셋만이 아니라 — 계산 입력 칸(처리개요 값·기준일)을 묻는 질문에 아직 답하지 않았으면 자동 계산하지 않는다(보류는 "진행"이라 막지 않음)
-    var isInputQ = function(it){ var a = it.ask || {}; return (it.step === 'overview' || it.step === 'basic') && (it.kind === 'missing' || a.mode === 'base' || /^(ov:|ovAsset:)/.test(String(a.target || ''))); };
+    var isInputQ = function(it){ var a = it.ask || {}; return (it.step === 'overview' || it.step === 'basic') && (it.kind === 'missing' || a.mode === 'base' || /^(ov:|ovAsset:|calc:)/.test(String(a.target || ''))); };
     var open = (st.items || []).filter(function(it){ var d = nxAiCaseProcDec_(st, it); return blockers[it.id] ? (d !== 'done' && d !== '무시') : (isInputQ(it) && !d); });
     var qName = function(it){ return blockers[it.id] || ('「' + String((it.ask && it.ask.label) || it.text || '').slice(0, 24) + '」'); };
     if (open.length && !manual){ st.setStep('calc', '⏸', open.slice(0, 4).map(qName).join('·') + (open.length > 4 ? ' 외 ' + (open.length - 4) + '건' : '') + '을(를) 먼저 정해 주세요 — 정해지면 계산합니다(지금 계산하려면 [▶ 지금 계산]).'); return; }
@@ -47953,19 +47976,24 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (!tabBtn.classList.contains('active')) tabBtn.click();
       setTimeout(startCalc, 900);
     };
+    // [2026.10.17] 양도 — 계산 직전에 사건처리 계산기 입력(증빙·답, 계산기 모양)을 그대로 불러온다
     var startCalc = function(){
+      if (tab === 'transfer' && typeof tcLoadTransferCalcIn_ === 'function') tcLoadTransferCalcIn_(st.case).then(function(ok){ st.calcInLoaded = !!ok; startCalc0(); });
+      else startCalc0();
+    };
+    var startCalc0 = function(){
       var g = function(id){ var e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; };
       // 확정된 사건 기준일을 화면 날짜칸에 맞춘다(자동채우기가 다른 날을 넣어둔 경우 포함)
       // 처리개요에서 확정된 값(서류로 채웠거나 [확인]으로 고른 값)을 세액계산 입력칸에 그대로 넣는다(화면이 "직접 고친 값"으로 보고 안 바꾸던 칸 포함)
       try {
         var ovv = st.case.사건개요 || {};
-        ((typeof TC_OVERVIEW_INPUT_KEYS_ !== 'undefined' && TC_OVERVIEW_INPUT_KEYS_[tab]) || []).forEach(function(k){
+        ((typeof TC_OVERVIEW_INPUT_KEYS_ !== 'undefined' && TC_OVERVIEW_INPUT_KEYS_[tab] && !(tab === 'transfer' && st.calcInLoaded)) || []).forEach(function(k){
           var e = document.getElementById(k), v = ovv[k];
           if (!e || v == null || String(v).trim() === '' || /Date$/.test(k) || String(e.value) === String(v)) return;
           e.value = v; if (typeof tcLastOverviewValues_ !== 'undefined') tcLastOverviewValues_[k] = String(v);
           e.dispatchEvent(new Event('input', { bubbles: true }));
         });
-        if (tab === 'transfer' && typeof tcSyncOverviewToTransferAssets_ === 'function') tcSyncOverviewToTransferAssets_(st.case); // [2026.10.16 1:1 김금옥] 다시 확정한 필요경비 등
+        if (tab === 'transfer' && !st.calcInLoaded && typeof tcSyncOverviewToTransferAssets_ === 'function') tcSyncOverviewToTransferAssets_(st.case); // 계산기 입력이 아직 없는 사건만(예전 경로)
         if (tab === 'gift' && ovv.giftRelation && typeof tcApplyGiftRelation_ === 'function'){ if (typeof tcLastOverviewValues_ !== 'undefined') delete tcLastOverviewValues_.giftRelation; tcApplyGiftRelation_(st.case); }
       } catch (e) {}
       var bf = { gift: 'giftDate', inheritance: 'ihDeathDate' }[tab];
@@ -47977,7 +48005,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       try {
         if (tab === 'gift') filled = Object.keys(GIFT_AUTOCALC_REQUIRED_).every(function(k){ return g(GIFT_AUTOCALC_REQUIRED_[k].id); });
         // [2026.10.16 1:1 방영교] 취득가액이 비어도 환산용 기준시가(취득당시·양도당시)가 있으면 계산할 수 있다(환산취득가액) — 예전엔 "입력값이 비어 있다"며 유료 자동채우기를 권했다
-        else if (tab === 'transfer') filled = transferAssets.length > 0 && transferAssets.every(function(a){ return Object.keys(TRANSFER_AUTOCALC_REQUIRED_).every(function(k){ return a[k] || (k === 'acquisitionPrice' && a.acquisitionStandardPriceForExpense && a.transferStandardPriceForConversion); }); });
+        else if (tab === 'transfer') filled = transferAssets.length > 0 && transferAssets.every(function(a){ return Object.keys(TRANSFER_AUTOCALC_REQUIRED_).every(function(k){ return a[k] || (k === 'acquisitionPrice' && (a.comparableTransactionPrice || a.appraisalValue || (a.acquisitionStandardPriceForExpense && a.transferStandardPriceForConversion))); }); }); // 엔진 요구와 같게(2026-10-17)
         else filled = !!(g('ihDeceasedName') && g('ihDeathDate') && g('ihGrossEstateGeneral') && inheritanceHeirs.some(function(h){ return h && h.name && h.relation; }));
       } catch (e) { filled = false; }
       var watch = function(){
@@ -48014,6 +48042,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         st.setStep('calc', '🔄', '입력값이 갖춰져 계산엔진으로 계산 중(토큰 0)…');
         return watch();
       }
+      if (tab === 'transfer' && st.calcInLoaded){ st.calcBusy = false; st.setStep('calc', '⏸', '세액계산기 입력에 아직 빈 칸이 있습니다(양도가액·취득일·취득가액 또는 기준시가) — 위 질문에 답하면 다시 계산합니다.'); return; } // [2026.10.17] 다른 길(자동채우기)로 가지 않음
       nxAiConfirm_('세액계산 입력값이 아직 비어 있습니다. 서류로 자동채우기를 할까요?\n\n' + (tab === 'gift' ? '증여는 AI 자동채우기를 씁니다(유료, 한 번 수십~수백 원).' : '서류 규칙 정리를 먼저 씁니다(0원, 확인창이 뜹니다 — [취소]하면 AI 자동채우기).') + '\n빈 칸·특례는 세액계산 화면이 직접 묻고, 계산이 끝나면 사건에 저장합니다.').then(function(ok){
         if (ok){ st.setStep('calc', '🔄', '자동채우기 → 계산 중(빈 칸은 화면이 묻습니다)…'); if (typeof tcRunAutoCalc_ === 'function') tcRunAutoCalc_(); }
         else st.setStep('calc', '🔄', '세액계산 화면에서 빈 칸을 채우고 [세액 계산하기]를 누르면 이어서 저장합니다.');
