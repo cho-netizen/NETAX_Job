@@ -16629,6 +16629,46 @@ function manageApp_dispatchHttpOnce_(req, rid) {
 // 실패했다(실측). 한 번 실행 안에서 차례로 처리하면 서버 코드 적재도 1번이고 결과 받기도 1번이다.
 // 같은 요청번호로 다시 오면 항목별로 기억해둔 결과를 쓰고(쓰기 작업이 두 번 실행되지 않게), 기억 못 한
 // 큰 결과(대부분 조회)만 다시 실행한다. 한 항목이 오류여도 나머지는 그대로 돌려준다.
+// [2026.10.17 버그수정] 사건 목록이 45초 넘게 "불러오는 중"에서 멈추던 원인 두 가지를 고쳤다.
+// ① 앞 묶음이 아직 실행 중일 때 25초를 기다린 뒤에도 안 끝나 있으면, 기다리기를 그만두고 아직 결과가 없는
+//    항목을 "다시 실행"했다 — 첫 실행이 55초 넘게 걸리는 묶음에 저장이 들어 있으면 같은 저장이 두 번 됐다.
+//    이제는 다시 실행하지 않고 15초만 기다린 뒤 { __pending: true }(아직 처리 중)를 돌려준다. 화면은 같은
+//    요청번호로 다시 묻는다(화면이 25초에 끊기 전에 답이 가도록 15초).
+// ② 결과 기억이 한 칸 95,000자까지라(그것도 한글은 3바이트라 실제론 100KB 한도를 넘어 실패) 사건 목록처럼
+//    큰 결과는 기억되지 않아, 재시도 때마다 처음부터 다시 실행됐다. 이제 30,000자씩 나눠 최대 20칸에 기억한다.
+const MANAGE_RID_WAIT_MS_ = 15000;
+const MANAGE_RID_CHUNK_ = 30000;
+const MANAGE_RID_MAX_CHUNKS_ = 20;
+function manageApp_ridPut_(cache, key, value) {
+  let text;
+  try { text = JSON.stringify(value); } catch (err) { return; }
+  if (typeof text !== 'string') return;
+  const n = Math.ceil(text.length / MANAGE_RID_CHUNK_) || 1;
+  if (n > MANAGE_RID_MAX_CHUNKS_) return;
+  const parts = {};
+  for (let i = 0; i < n; i++) parts[key + '_c' + i] = text.slice(i * MANAGE_RID_CHUNK_, (i + 1) * MANAGE_RID_CHUNK_);
+  try {
+    cache.putAll(parts, 600);
+    cache.put(key, '__chunks__' + n, 600); // 조각을 다 넣은 뒤에 표시 — 반쯤 들어간 결과를 읽지 않게
+  } catch (err) { }
+}
+function manageApp_ridGet_(cache, key) {
+  const head = cache.get(key);
+  if (!head) return null;
+  const m = /^__chunks__(\d+)$/.exec(head);
+  if (!m) { try { return { value: JSON.parse(head) }; } catch (err) { return null; } }
+  const n = Number(m[1]);
+  const keys = [];
+  for (let i = 0; i < n; i++) keys.push(key + '_c' + i);
+  const got = cache.getAll(keys);
+  let text = '';
+  for (let i = 0; i < n; i++) {
+    const part = got[keys[i]];
+    if (part == null) return null; // 조각 하나라도 사라졌으면(캐시에서 밀려남) 기억 없음으로
+    text += part;
+  }
+  try { return { value: JSON.parse(text) }; } catch (err) { return null; }
+}
 function manageApp_dispatchHttpBatch_(items, rid) {
   const list = (items || []).slice(0, 30);
   const cache = CacheService.getScriptCache();
@@ -16636,22 +16676,24 @@ function manageApp_dispatchHttpBatch_(items, rid) {
   const batchKey = useRid ? 'mridb_' + rid : null;
   const PENDING = '__pending__';
   if (batchKey && cache.get(batchKey) === PENDING) {
-    // 같은 묶음이 아직 실행 중 — 끝날 때까지(최대 25초) 기다렸다가 항목별 기억을 쓴다.
-    for (let i = 0; i < 25 && cache.get(batchKey) === PENDING; i++) Utilities.sleep(1000);
+    // 같은 묶음이 아직 실행 중 — 최대 15초 기다린다. 그래도 안 끝났으면 다시 실행하지 않고 "처리 중"이라고만 답한다.
+    const until = Date.now() + MANAGE_RID_WAIT_MS_;
+    while (cache.get(batchKey) === PENDING) {
+      if (Date.now() >= until) return { __pending: true };
+      Utilities.sleep(500);
+    }
   }
   if (batchKey) cache.put(batchKey, PENDING, 600);
   const results = list.map(function (req, i) {
     const itemKey = useRid ? 'mrid_' + rid + '_' + i : null;
     if (itemKey) {
-      const saved = cache.get(itemKey);
-      if (saved) { try { return JSON.parse(saved); } catch (err) { } }
+      const saved = manageApp_ridGet_(cache, itemKey);
+      if (saved) return saved.value;
     }
     let r;
     try { r = manageApp_dispatchHttp_(req); }
     catch (err) { r = { error: '서버 처리 중 오류: ' + (err && err.message ? err.message : err) }; }
-    if (itemKey) {
-      try { const text = JSON.stringify(r); if (text.length < 95000) cache.put(itemKey, text, 600); } catch (err) { }
-    }
+    if (itemKey) manageApp_ridPut_(cache, itemKey, r);
     return r;
   });
   if (batchKey) cache.put(batchKey, 'done', 600);

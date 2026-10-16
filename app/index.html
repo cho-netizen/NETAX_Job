@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 14:09 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 15:16 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -57,9 +57,20 @@
     // 보내면 구글 서버가 각각 22~31초 걸리고 결과 받기도 대부분 실패했다(2026-10-08 실측). 서버는 한 번
     // 실행 안에서 차례로 처리해 결과를 배열로 돌려준다(Code.js manageApp_dispatchHttpBatch_).
     var BATCH_WAIT_MS = 40, BATCH_MAX = 12;
+    // [2026.10.17] 사건 목록·고객 목록(여러 화면이 기다리는 조회)과 사건처리(한 번에 수십 초 걸릴 수 있음)는 묶지 않고 따로
+    // 보낸다 — 서버는 묶음 안을 차례로 처리하므로, 사이드바가 사건처리·예약목록과 같이 묶으면 사건 목록도 가장 느린 것이
+    // 끝날 때까지 못 받았다(2026-10-16 1:1 점검에서 "불러오는 중" 45초 이상).
+    var SOLO_ACTIONS = { work_get_cases: 1, client_get_clients: 1, case_proc: 1 };
+    // 서버가 "앞 요청이 아직 처리 중"(__pending)이라고 답하면 같은 요청번호로 계속 묻는다 — 다시 실행되지 않으므로 안전.
+    // 그래도 4분이 지나면(서버 실행이 6분 한도로 죽었을 수 있음) 포기한다.
+    var PENDING_GIVE_UP_MS = 240000, PENDING_DELAY_MS = 1000;
     var queue = [], flushTimer = null;
     function post(fnName, args){
       return new Promise(function(resolve, reject){
+        if (fnName === 'manageApp_call' && args && SOLO_ACTIONS[args[0]]){
+          send([{ fn: fnName, args: args, resolve: resolve, reject: reject }]);
+          return;
+        }
         queue.push({ fn: fnName, args: args, resolve: resolve, reject: reject });
         if (queue.length >= BATCH_MAX){ flush(); return; }
         if (!flushTimer) flushTimer = setTimeout(flush, BATCH_WAIT_MS);
@@ -69,7 +80,10 @@
       clearTimeout(flushTimer); flushTimer = null;
       var items = queue.splice(0, queue.length);
       if (!items.length) return;
-      var rid = newRid();
+      send(items);
+    }
+    function send(items){
+      var rid = newRid(), startedAt = Date.now();
       var body = JSON.stringify({ __manageBatch: items.map(function(it){ return { fn: it.fn, args: it.args }; }), __rid: rid });
       var failAll = function(err){ items.forEach(function(it){ it.reject(err); }); };
       var attempt = function(n){
@@ -86,6 +100,13 @@
           .then(function(text){
             var data = null;
             try{ data = JSON.parse(text); }catch(e){ data = null; }
+            if (data && data.__pending){
+              // 앞서 보낸 같은 요청이 서버에서 아직 실행 중 — 재시도 횟수를 쓰지 않고 다시 묻는다.
+              if (Date.now() - startedAt < PENDING_GIVE_UP_MS){
+                return new Promise(function(r){ setTimeout(r, PENDING_DELAY_MS); }).then(function(){ return attempt(n); });
+              }
+              throw new Error('서버가 4분 넘게 처리 중입니다. 화면을 새로고침해 결과가 반영됐는지 확인하세요.');
+            }
             if (!data || !Array.isArray(data.__results)){
               if (data && data.error) throw new Error(data.error);
               if (n < RETRY_DELAYS.length) return retry();
