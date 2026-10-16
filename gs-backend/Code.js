@@ -16575,7 +16575,9 @@ const MANAGE_APP_HTTP_FUNCS_ = {
   manageApp_getApiSecret: function (a) { return manageApp_getApiSecret(a[0]); },
   manageApp_getRptAdminCode: function (a) { return manageApp_getRptAdminCode(a[0]); },
   manageApp_changePassword: function (a) { return manageApp_changePassword(a[0], a[1]); },
-  manageApp_call: function (a) { return manageApp_call(a[0], a[1], a[2]); }
+  manageApp_call: function (a) { return manageApp_call(a[0], a[1], a[2]); },
+  // [2026.10.17] 관리 서버(gs-light)가 화면의 세션 토큰이 맞는지 물을 때 — 맞다/아니다만 답한다(비밀값은 안 내보냄).
+  manageApp_checkToken: function (a) { return { ok: manageApp_verifySessionToken_(a[0]) }; }
 };
 function manageApp_dispatchHttp_(req) {
   const fn = req && MANAGE_APP_HTTP_FUNCS_[req.fn];

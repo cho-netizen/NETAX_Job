@@ -31,9 +31,61 @@
     // 서버가 "앞 요청이 아직 처리 중"(__pending)이라고 답하면 같은 요청번호로 계속 묻는다 — 다시 실행되지 않으므로 안전.
     // 그래도 4분이 지나면(서버 실행이 6분 한도로 죽었을 수 있음) 포기한다.
     var PENDING_GIVE_UP_MS = 240000, PENDING_DELAY_MS = 1000;
+    // [2026.10.17] 관리 서버 — 화면을 열 때마다 기다리는 조회 4가지는 작은 구글 프로젝트(NETAX_Job/gs-light)에 먼저 묻는다.
+    // job 서버는 코드가 3MB라 빈 호출도 3~5초, 무거운 일과 겹치면 10~30초씩 튀었다(작은 프로젝트는 1.5초 안팎, 2026-10-17 측정).
+    // 관리 서버가 오류·이상한 답·12초 무응답이면 같은 요청을 그대로 job 서버로 보낸다(조회라 두 번 해도 안전) — 그래서 관리
+    // 서버가 멈춰도 예전처럼 동작한다. 로그인 만료 판단도 언제나 job 서버가 한다(관리 서버는 확인 못 하면 오류로만 답함).
+    // 화면을 열 때 조회마다 한 번, 뒤에서 job 서버 답과 똑같은지 비교해 다르면 오류 기록에 남기고 이 화면에서는 관리 서버를 더
+    // 쓰지 않는다(LIGHT_SHADOW_CHECK). 관리 서버 코드는 📥로 바뀌지 않고 PC에서 clasp로만 올라가므로(gs-light/README), Code.js의
+    // 조회 함수가 바뀌었는데 관리 서버를 안 올렸어도 이 비교가 잡아 job 서버로 돌아간다 — 끄지 말 것.
+    var LIGHT_URL = 'https://script.google.com/macros/s/AKfycbxnruhEVQURJupt1eM7K8Iyn_EDDwSJ6mcmdvQhGqxF7rxB1VLxZkxJMi5jAYuj8e9woQ/exec';
+    var LIGHT_ACTIONS = { work_get_cases: 1, client_get_clients: 1, client_get_consult_logs: 1, list_bookings: 1 };
+    var LIGHT_TIMEOUT_MS = 12000, LIGHT_SHADOW_CHECK = true;
+    var lightOff = false, lightShadowDone = {}, lightFails = 0;
+    function lightLog(message, detail){
+      try { console.warn('[관리 서버] ' + message); } catch (e) {}
+      try { if (typeof nxLogBug_ === 'function') nxLogBug_({ kind: 'light', where: '관리 서버', message: message, detail: String(detail || '').slice(0, 1000) }); } catch (e) {}
+    }
+    function viaLight(item){
+      var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, LIGHT_TIMEOUT_MS) : null;
+      var body = JSON.stringify({ __manageBatch: [{ fn: item.fn, args: item.args }] });
+      return fetch(LIGHT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body, signal: ctrl ? ctrl.signal : undefined })
+        .then(function(res){ return res.text(); })
+        .then(function(text){
+          clearTimeout(timer);
+          var data = null; try { data = JSON.parse(text); } catch (e) {}
+          var r = data && Array.isArray(data.__results) ? data.__results[0] : null;
+          if (!r || !('__result' in r) || r.error || (r.__result && r.__result.error)) throw new Error((r && r.error) || (r && r.__result && r.__result.error) || '관리 서버 응답 이상');
+          return r.__result;
+        }, function(err){ clearTimeout(timer); throw err; });
+    }
+    function shadowCheck(item, lightResult){
+      var action = item.args[0];
+      if (!LIGHT_SHADOW_CHECK || lightShadowDone[action]) return;
+      lightShadowDone[action] = true;
+      var a = JSON.stringify(lightResult);
+      send([{ fn: item.fn, args: item.args, resolve: function(mainResult){
+        var b = JSON.stringify(mainResult);
+        if (a !== b){
+          lightOff = true;
+          lightLog(action + ' 결과가 job 서버와 다름 — 이 화면에서는 관리 서버를 끔', '관리 ' + a.length + '자 / job ' + b.length + '자, 처음 다른 곳: ' + (function(){ for (var i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return i + ' [' + a.slice(Math.max(0, i - 40), i + 40) + '] vs [' + b.slice(Math.max(0, i - 40), i + 40) + ']'; return '길이만 다름'; })());
+        }
+      }, reject: function(){} }]);
+    }
     var queue = [], flushTimer = null;
     function post(fnName, args){
       return new Promise(function(resolve, reject){
+        if (!lightOff && fnName === 'manageApp_call' && args && LIGHT_ACTIONS[args[0]]){
+          var item = { fn: fnName, args: args, resolve: resolve, reject: reject };
+          viaLight(item).then(function(r){ lightFails = 0; resolve(r); shadowCheck(item, r); }, function(err){
+            // 두 번 연달아 실패하면 이 화면에서는 관리 서버를 끈다(설치 전·장애 중에 매번 헛걸음하지 않게)
+            if (++lightFails >= 2) lightOff = true;
+            lightLog(args[0] + ' 관리 서버 실패 → job 서버로', err && err.message);
+            send([item]);
+          });
+          return;
+        }
         if (fnName === 'manageApp_call' && args && SOLO_ACTIONS[args[0]]){
           send([{ fn: fnName, args: args, resolve: resolve, reject: reject }]);
           return;
