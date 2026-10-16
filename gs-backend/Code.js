@@ -25426,6 +25426,12 @@ function tc_ruleTransferFacts_(body) {
       if (am && rm) { land = Number(am[1].replace(/,/g, '')) * Number(rm[2].replace(/,/g, '')) / Number(rm[1].replace(/,/g, '')); return true; }
       return false;
     });
+    // [2026.10.16 1:1 방영교 — 양도코리아 계산근거 대조] 토지는 그 날짜에 공시돼 있던 개별공시지가(공시일 전이면 직전 연도), 건물은 그 연도 건물기준시가.
+    //  홈택스 계산서의 ㎡당 공시지가·구조는 입력한 사람이 고른 값이라 그대로 믿지 않는다 — 처리개요에서 취득일로 다시 계산하고 다르면 알린다
+    var landPub = pubs.filter(function (pb) { return /개별\s*공시\s*지가/.test(String(pb.r.종류 || '')) && (pb.r.가격 || []).some(function (q) { return q.단가 && q.공시일; }); })[0];
+    var cStruct = ''; contracts.some(function (c0) { var mm = /구\s*조\s*및\s*면\s*적\s*[:：]\s*([^\d\n]{2,30}?)\s*[\d.]+\s*(?:㎡|m2|m²)/.exec(String(c0.text || '')); if (mm) cStruct = mm[1].replace(/\s+/g, ' ').trim(); return !!cStruct; });
+    out.ing = { first: out.first, land: land, landList: landPub ? landPub.r.가격.filter(function (q) { return q.단가 && q.공시일; }).map(function (q) { return { y: q.연도, d: q.공시일, v: q.단가 }; }) : [], landFile: landPub ? landPub.file : '',
+      blds: bldStds.filter(function (b) { return b.r.취득연도 && b.r.취득건물기준시가; }).map(function (b) { return { y: b.r.취득연도, v: b.r.취득건물기준시가, unit: b.r.취득공시지가단가 || 0, st: b.r.취득구조 || '', file: b.file }; }), cStruct: cStruct };
     out.acq = [];
     bldStds.forEach(function (b) {
       var y = b.r.취득연도; if (!y || !b.r.취득건물기준시가) return;
@@ -25645,7 +25651,7 @@ function caseProcEvTypes_(label) {
 // [2026.10.16] 판독 실패가 아니라 늘 붙는 안내문 — "⚠ 확인필요" 판독 질문으로 세지 않는다(정답지 사건 25건에서 40건 가까이: 법무사 정산서 항목명 안내, 납세보증보험, 통장 사본 안내, 열람용 출력물, 유족 지출표·§8·§14 안내 등)
 var CASEPROC_ADVISORY_RE_ = /표\s*칸이\s*섞여\s*붙이지\s*않음|납세보증보험|통장\s*사본은\s*거래\s*줄과|열람용\s*출력물|유족이\s*정리한\s*지출표|채무\s*공제\s*\(§\s*14\)|간주상속재산\(상증법\s*§8\)\s*판단|§66⑭\s*적용\s*시기|사업소득에는\s*농업/;
 function caseProcParsed_(f, cache, canParse) {
-  const key = 'cpp25_' + f.id + '_' + f.modified; // cpp25: 초본 최초작성·지번정정 사유·뒷장 없음(2026-10-16) // cpp24: 공동주택가격 공시기준일·건물기준시가 계산서(2026-10-16 1:1 방영교) // cpp23: 간편계산 결과는 참고(calc)·손글씨 목록은 입력(2026-10-16 1:1) // cpp22: 증여·상속세 서식은 outGI(양도 사건에선 입력)(2026-10-16) // cpp21: 안내문은 판독 경고에서 뺌(2026-10-16) // cpp20: 등기 지분 상속 피상속인(2026-10-16) // cpp19: 취득세 참고 경고(2026-10-16) // cpp18: 증여계약서 이름 형식 추가(2026-10-16) // cpp17: 간편계산 결과 제외(2026-10-16) // cpp16: 등기 개명·증여계약서 서명란(2026-10-16) // cpp15: 괄호 제목 분할협의서·쉼표 없는 영수증 금액(2026-10-16) // cpp14: 내용으로 본 이미 낸 신고서(out)(2026-10-15) // cpp13: 오피스텔·상업용 기준시가 표(2026-10-15) // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
+  const key = 'cpp26_' + f.id + '_' + f.modified; // cpp26: 건물기준시가 계산서 구조(2026-10-16) // cpp25: 초본 최초작성·지번정정 사유·뒷장 없음(2026-10-16) // cpp24: 공동주택가격 공시기준일·건물기준시가 계산서(2026-10-16 1:1 방영교) // cpp23: 간편계산 결과는 참고(calc)·손글씨 목록은 입력(2026-10-16 1:1) // cpp22: 증여·상속세 서식은 outGI(양도 사건에선 입력)(2026-10-16) // cpp21: 안내문은 판독 경고에서 뺌(2026-10-16) // cpp20: 등기 지분 상속 피상속인(2026-10-16) // cpp19: 취득세 참고 경고(2026-10-16) // cpp18: 증여계약서 이름 형식 추가(2026-10-16) // cpp17: 간편계산 결과 제외(2026-10-16) // cpp16: 등기 개명·증여계약서 서명란(2026-10-16) // cpp15: 괄호 제목 분할협의서·쉼표 없는 영수증 금액(2026-10-16) // cpp14: 내용으로 본 이미 낸 신고서(out)(2026-10-15) // cpp13: 오피스텔·상업용 기준시가 표(2026-10-15) // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
   const hit = cache.get(key);
   if (hit) { try { return JSON.parse(hit); } catch (e) {} }
   if (!canParse) return null;
@@ -26525,7 +26531,27 @@ function caseProcOverview0_(c) {
   // [2026.10.16 1:1 방영교] 취득가액을 서류로 못 정한 거래 — 환산취득가액(§97②, 시행령 §176의2②2호)용 기준시가를 근거와 함께 고르게(취득 연도별 후보)
   const sc = txs.length === 1 && txs[0].stdConv;
   const a0s = (Array.isArray(ov.물건목록) && ov.물건목록[0]) || {};
-  if (sc && sc.transfer && !String(a0s.취득가액 || '').trim() && !a0s.환산기준시가확인) {
+  if (sc && sc.transfer && sc.ing && a0s.취득일 && !String(a0s.취득가액 || '').trim() && !a0s.환산기준시가확인) {
+    // [2026.10.16 1:1 방영교] 취득일이 정해졌으면 §164⑦을 그 날짜로: 토지 = 취득일·최초 공시일에 공시돼 있던 개별공시지가 × 대지권 면적, 건물 = 그 연도 건물기준시가
+    const g = sc.ing, w = function (n) { return Math.round(n).toLocaleString('ko-KR'); };
+    const landAt = function (d) { let hit = null; (g.landList || []).forEach(function (q) { if (q.d && q.d <= d && (!hit || q.d > hit.d)) hit = q; }); return hit; };
+    const ay = Number(String(a0s.취득일).slice(0, 4)), fy = g.first && g.first.연도, firstDay = fy ? fy + '-04-30' : '';
+    const notes = [], opts2 = [];
+    if (fy && String(a0s.취득일) < firstDay) {
+      const bA = (g.blds || []).filter(function (b) { return b.y === ay; })[0], bF = (g.blds || []).filter(function (b) { return b.y === fy; })[0];
+      const lA = landAt(String(a0s.취득일)), lF = landAt(firstDay);
+      if (bA && bF && lA && lF && g.land) {
+        const sumA = bA.v + Math.floor(lA.v * g.land), sumF = bF.v + Math.floor(lF.v * g.land), v = Math.floor(g.first.가격 * sumA / sumF);
+        notes.push('취득 ' + a0s.취득일 + ' — §164⑦: 최초 공시가격 ' + w(g.first.가격) + '원(' + fy + ') × [토지 ' + w(lA.v) + '원/㎡(' + lA.y + '년, 공시 ' + lA.d + ') × ' + g.land.toFixed(2) + '㎡ + 건물 ' + w(bA.v) + '원(' + ay + ')] ÷ [토지 ' + w(lF.v) + '원/㎡(' + lF.y + '년) × ' + g.land.toFixed(2) + '㎡ + 건물 ' + w(bF.v) + '원(' + fy + ')] = ' + w(v) + '원');
+        opts2.push({ label: '취득당시 ' + w(v) + '원 · 양도당시 ' + w(sc.transfer.v) + '원(위 계산)', value: JSON.stringify({ acq: v, tr: sc.transfer.v, y: ay }) });
+        [[bA, lA], [bF, lF]].forEach(function (pr) { if (pr[0].unit && pr[0].unit !== pr[1].v) notes.push('⚠ 건물기준시가 계산서(' + pr[0].file + ')는 ㎡당 공시지가 ' + w(pr[0].unit) + '원으로 위치지수를 정했습니다 — 그 날짜에 적용할 공시지가는 ' + w(pr[1].v) + '원(' + pr[1].y + '년)이라 위치지수·건물기준시가가 달라질 수 있습니다'); });
+      } else notes.push('§164⑦ 계산 재료가 모자랍니다: ' + [!bA && ay + '년 건물기준시가', !bF && fy + '년 건물기준시가', !lA && '취득일 개별공시지가', !lF && '최초 공시일 개별공시지가', !g.land && '대지권 면적'].filter(Boolean).join(', '));
+      const sts = (g.blds || []).map(function (b) { return b.st; }).filter(Boolean);
+      if (g.cStruct && sts.length && sts.some(function (st) { return g.cStruct.replace(/\s+/g, '').indexOf(st.replace(/\(.*?\)/g, '').replace(/조$/, '')) === -1; })) notes.push('⚠ 건물기준시가 계산서의 구조(' + sts.filter(function (x, i, a) { return a.indexOf(x) === i; }).join(', ') + ')가 계약서 구조(' + g.cStruct + ')와 다릅니다 — 구조지수·잔가율이 달라 건물기준시가가 달라집니다. 맞는 구조로 다시 계산한 취득당시 기준시가를 직접 넣어 주세요');
+    } else notes.push('취득일 ' + a0s.취득일 + '은 공동주택가격 최초 공시(' + (firstDay || '?') + ') 뒤 — 그때 공시돼 있던 공동주택가격을 씁니다');
+    items.push(caseProcItem_('tr:stdconv2:' + a0s.취득일 + ':' + opts2.length, 'judge', '취득 계약서가 없어 환산취득가액(양도가액 × 취득당시 기준시가 ÷ 양도당시 기준시가)으로 계산합니다 — 취득일(' + a0s.취득일 + ') 기준 취득당시 기준시가입니다. 계산이 맞으면 고르고, 아니면 취득당시 기준시가를 직접 넣어 주세요.',
+      { mode: 'options', target: 'trStdConv:' + sc.transfer.v, options: opts2, input: 'money', withInput: true, label: '취득당시 기준시가' }, ['양도당시: ' + sc.transfer.src].concat(notes).join('\n')));
+  } else if (sc && sc.transfer && !String(a0s.취득가액 || '').trim() && !a0s.환산기준시가확인) {
     const opts = sc.acq.filter(function (a) { return a.v; }).map(function (a) { return { label: a.y + '년 취득: 취득당시 ' + a.v.toLocaleString('ko-KR') + '원 · 양도당시 ' + sc.transfer.v.toLocaleString('ko-KR') + '원', value: JSON.stringify({ acq: a.v, tr: sc.transfer.v, y: a.y }) }; });
     items.push(caseProcItem_('tr:stdconv:' + sc.acq.length, 'judge', '취득 계약서가 없습니다 — 환산취득가액(양도가액 × 취득당시 기준시가 ÷ 양도당시 기준시가)용 기준시가입니다. 취득 연도(취득일)에 맞는 줄을 고르세요.',
       { mode: 'options', target: 'trStdConv', options: opts, input: 'money', label: '환산용 기준시가' }, ['양도당시: ' + sc.transfer.src].concat(sc.acq.map(function (a) { return '취득당시 ' + a.src; })).join('\n')));
@@ -28323,8 +28349,9 @@ function caseProcApply_(c, body) {
     return up && up.success !== false ? { ok: true, message: txt.replace(/^신고 세무비용 ← /, '신고 세무비용 ') } : { ok: false, error: (up && up.message) || '저장 실패' };
   }
   // [2026.10.16 1:1 방영교] 환산용 기준시가(취득당시·양도당시) — 물건1에 넣고 세액계산기가 환산취득가액을 계산한다
-  if (target === 'trStdConv') {
+  if (target === 'trStdConv' || /^trStdConv:\d+$/.test(target)) {
     let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { d = null; }
+    if (typeof d === 'number' || (d == null && /^\s*[\d,]+\s*$/.test(String(value)))) d = { acq: Number(String(value).replace(/[^\d]/g, '')), tr: Number(String(target).split(':')[1] || 0) }; // 직접 입력한 취득당시 기준시가(2026-10-16)
     if (!d || !d.acq || !d.tr) return { ok: false, error: '기준시가를 고르지 못했습니다.' };
     const ov = JSON.parse(JSON.stringify(c.사건개요 || {}));
     if (!Array.isArray(ov.물건목록) || !ov.물건목록.length) { ov.물건목록 = [{}]; ov.물건수 = '1'; }
@@ -31182,6 +31209,7 @@ function docBldStdCalcParse_(text) {
   var tr = line(/양\s*도\s*당\s*시\s*\(\s*((?:19|20)\d{2})\s*\)\s*건\s*물\s*기\s*준\s*시\s*가/); if (tr) { r.양도연도 = tr.y; r.양도건물기준시가 = tr.v; }
   var aq = line(/취\s*득\s*당\s*시\s*\(\s*((?:19|20)\d{2})\s*\)\s*건\s*물\s*기\s*준\s*시\s*가/); if (aq) { r.취득연도 = aq.y; r.취득건물기준시가 = aq.v; }
   m = /건\s*물\s*면\s*적\s*\n?\s*([\d.]+)\s*(?:m2|㎡|m²)/.exec(t); if (m) r.건물면적 = Number(m[1]);
+  m = /취\s*득\s*당\s*시\s*건\s*물\s*구\s*조\s*\n?\s*([^\n]{2,30}?조)/.exec(t); if (m) r.취득구조 = m[1].replace(/\s+/g, '');
   m = /취\s*득\s*당\s*시\s*m2?\s*당?\s*개\s*별\s*공\s*시\s*지\s*가[^\d]{0,20}(\d{1,3}(?:,\d{3})+)/.exec(t.replace(/㎡/g, 'm2')); if (m) r.취득공시지가단가 = num(m[1]);
   m = /양\s*도\s*당\s*시\s*m2?\s*당?\s*개\s*별\s*공\s*시\s*지\s*가[^\d]{0,20}(\d{1,3}(?:,\d{3})+)/.exec(t.replace(/㎡/g, 'm2')); if (m) r.양도공시지가단가 = num(m[1]);
   if (!r.취득건물기준시가) r.경고.push('취득당시 건물기준시가를 읽지 못함 — 원문 확인');
