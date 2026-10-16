@@ -27363,6 +27363,19 @@ function caseProcGiftInhFacts_(c, lines, items) {
       if (pr) add('giftAmount', pr.가격, '공시가격 ' + (pr.연도 || '') + '년 ' + (r.종류 || '') + '(' + x.f.name + ') — 보충적 평가, 시가·감정가 있으면 그것이 우선', false);
       else if ((r.가격 || []).some(function (q) { return q.단가; })) notes.push('공시지가(원/㎡)만 있는 토지(' + x.f.name + ') — 면적을 곱해 평가해야 함');
     });
+    // [2026.10.17] 폴더에 공시가격 서류가 없으면 세액계산기 🔍 공시가격 자동조회와 같은 기능으로 — 증여일 현재 공시된 가격(보충적 평가 §61, 후보로만: 시가·감정가가 우선)
+    if (c.기준일 && gifts.length === 1 && !byType('pubprice').length && gifts[0].loc) {
+      try {
+        const g0 = gifts[0], kind = /토지/.test(g0.kind) ? 'land' : (/집합/.test(g0.kind) || /\d\s*호(?![가-힣])/.test(g0.loc)) ? 'apartment' : '';
+        let area = 0;
+        if (kind === 'land') byType('registry').forEach(function (x) { ((x.p.result || {}).docs || []).forEach(function (d) { if (!area && d.소재지 === g0.loc && d.표제부 && d.표제부.면적) area = d.표제부.면적; }); });
+        if (kind && (kind !== 'land' || area)) {
+          const r = cpOfficialPrice_(cpGeo_(g0.loc), kind, cpOfficialYear_(c.기준일, kind));
+          if (r.v) add('giftAmount', Math.floor(r.v * (kind === 'land' ? area : 1)), r.src + (kind === 'land' ? ' × ' + area + '㎡' : '') + ' — 증여일 현재 공시가격, 보충적 평가(§61) — 시가·감정가액이 있으면 그것이 우선', false);
+          else notes.push(g0.loc + ' 공시가격 조회: ' + r.error);
+        }
+      } catch (e) {}
+    }
     // [2026.10.16] 상가·사무실 등(국세청 일괄 고시가 아닌 건물) — 보충적 평가 = 토지 개별공시지가 × 대지권 면적 + 건물 기준시가(§61①1·2호).
     //  정원식(김세정): 건물 기준시가 계산서(25,515,000원)와 공시지가 표가 있는데 후보는 메모의 "기준시가" 하나뿐이었다. 일괄 고시 대상이면 그 값이 우선이라 확정하지 않음.
     try {
@@ -27625,6 +27638,17 @@ function caseProcInhFacts0_(c, parsed) {
         if (row2) a.cands.push({ v: row2.가격, src: (r.종류 || '공시가격') + ' ' + (row2.연도 || '') + '년 — 보충적 평가(§61)', kind: '기준시가', file: x.f.name });
       }
     });
+    // [2026.10.17] 폴더에 공시가격 서류가 없으면 세액계산기 🔍 공시가격 자동조회와 같은 기능으로 — 상속개시일 현재 공시된 가격(보충적 평가 §61)
+    if (base && a.loc && !a.cands.some(function (q) { return q.kind === '기준시가'; })) {
+      try {
+        const kind = a.kind === '토지' ? 'land' : (a.kind === '집합건물' || /\d\s*호(?![가-힣])/.test(a.loc)) ? 'apartment' : '';
+        if (kind && (kind !== 'land' || a.area)) {
+          const r = cpOfficialPrice_(cpGeo_(a.loc), kind, cpOfficialYear_(base, kind));
+          if (r.v) a.cands.push({ v: Math.floor(r.v * (kind === 'land' ? Number(a.area) : 1)), src: r.src + (kind === 'land' ? ' × ' + a.area + '㎡' : '') + ' — 상속개시일 현재 공시가격, 보충적 평가(§61)', kind: '기준시가', file: '' });
+          else out.notes.push(a.loc + ' 공시가격 조회: ' + r.error);
+        }
+      } catch (e) {}
+    }
     // 아파트 등 — 같은 단지·같은 면적의 매매사례(평가기준일 전후 6개월, 해제 거래 제외). 가장 가까운 날 거래를 추천(시행령 §49②)
     if (a.kind !== '토지') by('realprice').forEach(function (x) {
       const r = x.p.result || {};
@@ -34074,6 +34098,7 @@ function trcOverview_(c, ov, rf, lines, items) {
     } else if (c.기준일 !== txs[0].transferDate) items.push(caseProcItem_('ov:기준일:' + txs[0].transferDate, 'check', '양도일: 사건 기준일 ' + c.기준일 + ' ↔ 서류상 양도시기 ' + txs[0].transferDate + '(잔금일·등기접수일 중 빠른 날, 소득세법 §98) — 어느 날이 맞나요?', { mode: 'base' }));
     else { lines.push('✅ 양도일 ' + c.기준일 + ' — 서류(잔금일·등기접수일)로 확인'); caseProcRememberFill_(c.id, '기준일', c.기준일, '증빙: 계약서·등기부(규칙 정리)'); }
   }
+  trcOfficialStd_(c, rf, txs, lines); // [2026.10.17] 공시가격 조회(세액계산기 🔍 자동조회와 같은 기능) — 환산용 기준시가·필지 공시지가
   const ans = trcAnsLoad_(c);
   const S = trcFromEvidence_(c, rf, txs, ans);
   S.ans = ans; S.baseDate = c.기준일 || '';
@@ -34456,4 +34481,90 @@ function caseProcScanSaved_(c, body) {
   return { ok: true, n: list.length };
 }
 
-
+// =========================================================
+// [2026.10.17 세무사님 지적 — "공시가격 기능을 사용하지 않았다고?"] 사건처리도 세액계산기 화면의 🔍 주소검색·공시가격 자동조회와 같은 서버 기능
+//  (handleSearchAddress — 도로명주소 API, handleLookupOfficialPrice — 브이월드 개별공시지가·개별주택가격·공동주택가격)을 쓴다.
+//  그 날짜의 기준시가 = 그날 현재 공시돼 있던 가격: 개별공시지가는 5.31. 공시, 개별주택·공동주택가격은 4.30. 공시 — 그 전 날짜면 전년도 가격.
+//  조회 결과는 6시간 기억(같은 처리 반복 때 다시 부르지 않음). 키가 없거나 실패하면 이유만 남기고 지나간다(값을 지어내지 않음)
+// =========================================================
+function cpOfficialYear_(date, kind) {
+  const d = String(date || ''); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return 0;
+  const y = Number(d.slice(0, 4)), md = d.slice(5);
+  return kind === 'land' ? (md >= '05-31' ? y : y - 1) : (md >= '04-30' ? y : y - 1);
+}
+// 소재지 글 → 주소검색으로 지번 고유번호(PNU)·동·호
+function cpGeo_(loc) {
+  const key = 'cpgeo_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, String(loc || ''), Utilities.Charset.UTF_8)).slice(0, 16);
+  const cache = CacheService.getScriptCache(), hit = cache.get(key);
+  if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+  let out = null;
+  try {
+    const s = String(loc || '').replace(/\s+/g, ' ').trim();
+    const dm = /(?:제\s*)?([0-9A-Za-z가-힣]+)\s*동\s*(?:제\s*)?(\d{1,5})\s*호/.exec(s);
+    const hm = dm ? null : /(?:제\s*)?(\d{1,5})\s*호/.exec(s);
+    // 검색어는 시·군·구 + 읍면동 + 지번까지(건물명·동호 빼고)
+    const jm = /^(.*?(?:동|리|가|로|길)\s*\d{1,5}(?:-\d{1,5})?)/.exec(s.replace(/외\s*\d+\s*필지.*$/, ''));
+    const kw = (jm ? jm[1] : s).replace(/\s*제?\d+층.*$/, '').trim();
+    const r = handleSearchAddress({ keyword: kw });
+    if (r && r.error) out = { error: r.error };
+    else {
+      const js = (r && r.juso) || [];
+      const j = js.filter(function (x) { return tcLocSame_(x.jibunAddr || '', s) || tcLocSame_(x.jibunAddr || '', kw); })[0] || (js.length === 1 ? js[0] : null);
+      if (!j || !j.admCd || !j.lnbrMnnm) out = { error: '주소 검색에서 이 소재지(' + kw + ')를 찾지 못함' };
+      else out = { pnu: j.admCd + (j.mtYn === '1' ? '2' : '1') + ('0000' + j.lnbrMnnm).slice(-4) + ('0000' + (j.lnbrSlno || '0')).slice(-4), admCd: j.admCd, jibun: j.jibunAddr, bdNm: j.bdNm || '', dong: dm ? dm[1] : '', ho: dm ? dm[2] : (hm ? hm[1] : '') };
+    }
+  } catch (e) { out = { error: '주소 검색 실패: ' + (e && e.message || e) }; }
+  try { cache.put(key, JSON.stringify(out), 21600); } catch (e) {}
+  return out;
+}
+// 공시가격 하나(kind: land 원/㎡, house·apartment 원) — { v, year, src } 또는 { error }
+function cpOfficialPrice_(geo, kind, year) {
+  if (!geo || geo.error) return { error: geo ? geo.error : '주소 없음' };
+  const key = 'cpofp_' + geo.pnu + '_' + kind + '_' + year + '_' + (geo.dong || '') + '_' + (geo.ho || '');
+  const cache = CacheService.getScriptCache(), hit = cache.get(key);
+  if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+  let out;
+  try {
+    const r = handleLookupOfficialPrice({ pnu: geo.pnu, priceKind: kind, dong: geo.dong || '', ho: geo.ho || '', stdrYear: String(year) });
+    out = r && !r.error && r.price ? { v: Number(r.price), year: Number(r.stdrYear || year), src: (kind === 'land' ? '개별공시지가' : kind === 'house' ? '개별주택가격' : '공동주택가격') + ' ' + (r.stdrYear || year) + '년 공시(브이월드 조회, ' + geo.jibun + (geo.ho ? ' ' + (geo.dong ? geo.dong + '동 ' : '') + geo.ho + '호' : '') + ')' } : { error: (r && r.error) || '가격 없음' };
+  } catch (e) { out = { error: '공시가격 조회 실패: ' + (e && e.message || e) }; }
+  try { cache.put(key, JSON.stringify(out), 21600); } catch (e) {}
+  return out;
+}
+// 양도 — 취득가액(실지거래가액)이 없는 자산의 환산용 기준시가를 공시가격 조회로(폴더에 공시가격 서류가 없을 때), 일괄 필지의 ㎡당 공시지가 빈 칸
+//  돌려주는 것: 거래마다 t.stdConv가 없으면 { transfer: {v, src}, acq: [{y, v, src}] }를 달아 준다(trcStdQuestion_이 후보로 묻는다)
+function trcOfficialStd_(c, rf, txs, lines) {
+  const notes = [];
+  try {
+    txs.forEach(function (t) {
+      // 일괄 필지 — ㎡당 개별공시지가(양도시·취득시)가 비면 조회
+      (t.parcels || []).forEach(function (pc) {
+        if (pc.unitT && pc.unitA) return;
+        const geo = cpGeo_(pc.loc);
+        if (geo && geo.error) { notes.push(pc.loc + ': ' + geo.error); return; }
+        if (!pc.unitT && t.transferDate) { const r = cpOfficialPrice_(geo, 'land', cpOfficialYear_(t.transferDate, 'land')); if (r.v) { pc.unitT = r.v; pc.unitSrc = r.src; } else notes.push(pc.loc + ' 양도시 공시지가: ' + r.error); }
+        const ad = t.acquisitionDate || t._acqDatePending;
+        if (!pc.unitA && ad && Number(String(ad).slice(0, 4)) >= 1990) { const r = cpOfficialPrice_(geo, 'land', cpOfficialYear_(ad, 'land')); if (r.v) pc.unitA = r.v; else notes.push(pc.loc + ' 취득시 공시지가: ' + r.error); }
+      });
+      if (t.acquisitionPrice || (t.stdConv && t.stdConv.transfer) || !t.assetLocation || !t.transferDate || (t.parcels && t.parcels.length >= 2)) return;
+      const loc = t.assetLocation, unit = /\d\s*호(?![가-힣])/.test(loc);
+      const kind = t.assetKind === 'land' ? 'land' : unit ? 'apartment' : (t.assetKind === 'building' && trcHouseUse_(c, loc) ? 'house' : '');
+      if (!kind) { notes.push(loc + ': 토지·공동주택·단독주택 중 어느 공시가격인지 정하지 못해 조회하지 않음'); return; }
+      const geo = cpGeo_(loc);
+      if (geo && geo.error) { notes.push(loc + ': ' + geo.error); return; }
+      const area = kind === 'land' ? Number(t.assetArea) || 0 : 1;
+      if (kind === 'land' && !area) { notes.push(loc + ': 토지 면적을 몰라 공시지가 × 면적을 계산하지 않음'); return; }
+      const tr = cpOfficialPrice_(geo, kind, cpOfficialYear_(t.transferDate, kind));
+      if (!tr.v) { notes.push(loc + ' 양도당시: ' + tr.error); return; }
+      const sc = { transfer: { v: Math.floor(tr.v * area), src: tr.src + (kind === 'land' ? ' × ' + area + '㎡' : '') + ' — 양도일 ' + t.transferDate + '에 공시돼 있던 가격' }, acq: [] };
+      const ad = t.acquisitionDate || t._acqDatePending, first = kind === 'land' ? 1990 : kind === 'house' ? 2005 : 2006;
+      if (ad && cpOfficialYear_(ad, kind) >= first) {
+        const ar = cpOfficialPrice_(geo, kind, cpOfficialYear_(ad, kind));
+        if (ar.v) sc.acq.push({ y: Number(String(ad).slice(0, 4)), v: Math.floor(ar.v * area), src: ar.src + (kind === 'land' ? ' × ' + area + '㎡' : '') + ' — 취득일 ' + ad + '에 공시돼 있던 가격' });
+        else notes.push(loc + ' 취득당시: ' + ar.error);
+      } else if (ad) notes.push(loc + ' 취득당시: 취득일(' + ad + ')이 ' + (kind === 'land' ? '개별공시지가' : kind === 'house' ? '개별주택가격' : '공동주택가격') + ' 최초 공시(' + first + ') 전 — 시행령 §164⑦ 등 별도 환산 필요');
+      t.stdConv = sc;
+    });
+  } catch (e) { notes.push('공시가격 조회 중 오류: ' + (e && e.message || e)); }
+  if (notes.length) lines.push('공시가격 조회(세액계산기와 같은 기능): ' + notes.slice(0, 5).join(' / '));
+}
