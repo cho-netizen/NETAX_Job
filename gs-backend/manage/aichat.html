@@ -3951,6 +3951,8 @@
           if (caseWatch_){ clearInterval(caseWatch_); caseWatch_ = null; }
         }
       }).observe(side, { attributes: true, attributeFilter: ['class'] });
+      // [2026.10.16] 📌 고정으로 처음부터 펼쳐져 있으면 위 감시가 펼침을 못 보므로 여기서 사건 따라가기를 시작한다(점검 중 사이드바가 화면 사건을 안 따라감)
+      if (side.classList.contains('expanded') && !caseWatch_) caseWatch_ = setInterval(nxAiSyncToScreenCase_, 1500);
       handle.addEventListener('pointerdown', function(e){
         if (nxAiMode !== 'side') return;
         e.preventDefault(); e.stopPropagation();

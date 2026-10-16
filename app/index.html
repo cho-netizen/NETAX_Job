@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 13:51 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-16 14:09 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -48834,6 +48834,8 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
           if (caseWatch_){ clearInterval(caseWatch_); caseWatch_ = null; }
         }
       }).observe(side, { attributes: true, attributeFilter: ['class'] });
+      // [2026.10.16] 📌 고정으로 처음부터 펼쳐져 있으면 위 감시가 펼침을 못 보므로 여기서 사건 따라가기를 시작한다(점검 중 사이드바가 화면 사건을 안 따라감)
+      if (side.classList.contains('expanded') && !caseWatch_) caseWatch_ = setInterval(nxAiSyncToScreenCase_, 1500);
       handle.addEventListener('pointerdown', function(e){
         if (nxAiMode !== 'side') return;
         e.preventDefault(); e.stopPropagation();
