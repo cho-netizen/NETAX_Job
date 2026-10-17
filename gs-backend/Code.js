@@ -32875,8 +32875,11 @@ function ihParseCar_(text) {
 // ---- ⑤ 부채증명원·대출잔액증명·금융거래확인서(대출) ----
 function ihParseDebt_(text) {
   var t = String(text || ''), r = { 종류: /부\s*채\s*증\s*명/.test(t) ? '부채증명원' : /금\s*융\s*거\s*래\s*확\s*인\s*서/.test(t) ? '금융거래확인서(대출)' : '대출잔액증명서', 행: [], 경고: [] }, m;
-  var thousand = /단위\s*[:：]?\s*(?:원화\s*-\s*)?천\s*원/.test(t);
-  if (thousand) r.단위 = '천원';
+  // [2026.10.17 조사 보고] 단위는 서식(쪽)마다 따로 — 팩스 묶음(금융거래확인서는 천원, 부채증명원은 원)에서 한 번 정한 천원을 전체에 곱해
+  //  450,000,000원을 4,500억으로 읽었다(노영환). 금액 위치 바로 앞의 "단위" 표시를 따르고, 금액은 여기서 원 단위로 바꿔 둔다(r.단위는 두지 않음)
+  var unitMarks = []; (function () { var ur = /단\s*위\s*[:：]?\s*\(?\s*(?:원\s*화\s*-?\s*)?(천\s*원|백\s*만\s*원|원)/g, um; while ((um = ur.exec(t))) unitMarks.push({ at: um.index, k: um[1].replace(/\s+/g, '') }); })();
+  var mulAt = function (pos) { var k = ''; unitMarks.forEach(function (u) { if (u.at < pos) k = u.k; }); return k === '천원' ? 1000 : k === '백만원' ? 1000000 : 1; };
+  var thousand = unitMarks.some(function (u) { return u.k === '천원'; });
   m = /(?:작성\s*)?기준\s*일\s*[:：]?\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t) || /((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*현재/.exec(t);
   if (m) r.기준일 = ihYmd_(m[1], m[2], m[3]);
   m = /(?:발행일|발급일)\s*[:：]?\s*((?:19|20)\d{2}[-.]\d{2}[-.]\d{2})/.exec(t); if (m) r.발행일 = ihDate_(m[1]);
@@ -32884,7 +32887,7 @@ function ihParseDebt_(text) {
   if (m) r.기관 = m[1];
   m = /(?:채무자|주민\(?(?:법인|사업자)?\)?\s*번호)[^\n]{0,20}?(\d{6})\s*-/.exec(t); if (m) r.채무자생년6 = m[1];
   // 계좌별 — 대출과목·대출일·대출금액·잔액·상환기일
-  var tot = /대출\s*잔액\s*\n?\s*([\d,]{4,})/.exec(t); if (tot) r.총잔액 = ihNum_(tot[1]);
+  var tot = /대출\s*잔액\s*\n?\s*([\d,]{4,})/.exec(t); if (tot) r.총잔액 = ihNum_(tot[1]) * mulAt(tot.index);
   var blocks = t.split(/계\s*좌\s*번\s*호/).slice(1);
   blocks.forEach(function (b) {
     var row = {};
@@ -32900,7 +32903,7 @@ function ihParseDebt_(text) {
   // 금융거래확인서형(표가 흩어짐) — 대출 종류 줄과 금액(천원)
   if (!r.행.length) {
     var re = /([가-힣]{2,20}대출)[\s\S]{0,120}?((?:19|20)\d{2}-\d{2}-\d{2})?[\s\S]{0,80}?\n\s*([\d,]{3,})\s*\n\s*([\d,]{3,})(?:\s+((?:19|20)\d{2}-\d{2}-\d{2}))?/g, x2;
-    while ((x2 = re.exec(t))) r.행.push({ 과목: x2[1], 대출일: x2[2] || '', 한도: ihNum_(x2[3]) * (thousand ? 1000 : 1), 잔액: ihNum_(x2[4]) * (thousand ? 1000 : 1), 상환기일: x2[5] || '', 행확인필요: true });
+    while ((x2 = re.exec(t))) { var mu = mulAt(x2.index); r.행.push({ 과목: x2[1], 대출일: x2[2] || '', 한도: ihNum_(x2[3]) * mu, 잔액: ihNum_(x2[4]) * mu, 상환기일: x2[5] || '', 행확인필요: true }); }
   }
   var sum = r.행.reduce(function (s, x) { return s + (x.잔액 || 0); }, 0);
   if (r.행.length) {
