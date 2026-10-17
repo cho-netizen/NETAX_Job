@@ -26263,8 +26263,8 @@ function caseProcEvidence_(c, body) {
 var CASEPROC_LAST_RF_ = null;
 // [2026.10.15] 세목별로 세액 계산 입력이 되는 서류 종류(docParseText_ type) — 이 밖의 종류는 ⚠확인필요를 질문으로 올리지 않는다(서류 목록·증빙 대조는 그대로)
 const CASEPROC_RELEVANT_TYPES_ = {
-  gift: ['giftcontract', 'banktx', 'appraisal', 'registry', 'family', 'pubprice', 'realprice', 'balance', 'debtcert', 'rent', 'lease', 'leasereport', 'bldledger', 'landledger', 'contract'],
-  inheritance: ['registry', 'appraisal', 'family', 'death', 'inhdivision', 'inhquery', 'funeralbill', 'funerallist', 'nichecontract', 'balance', 'debtcert', 'insurance', 'pubprice', 'realprice', 'rent', 'lease', 'leasereport', 'bldledger', 'landledger', 'carreg', 'cashreceipt', 'cardreceipt', 'giftcontract', 'banktx'],
+  gift: ['giftcontract', 'banktx', 'appraisal', 'registry', 'family', 'pubprice', 'realprice', 'balance', 'debtcert', 'rent', 'lease', 'leasereport', 'leaselist', 'bldledger', 'landledger', 'contract'],
+  inheritance: ['registry', 'appraisal', 'family', 'death', 'inhdivision', 'inhquery', 'funeralbill', 'funerallist', 'nichecontract', 'balance', 'debtcert', 'insurance', 'pubprice', 'realprice', 'rent', 'lease', 'leasereport', 'leaselist', 'bldledger', 'landledger', 'carreg', 'cashreceipt', 'cardreceipt', 'giftcontract', 'banktx'],
   transfer: ['contract', 'appraisal', 'dealreport', 'brokerdesc', 'registry', 'acqtax', 'lawyerfee', 'cashreceipt', 'cardreceipt', 'taxinvoice', 'receipt', 'pubprice', 'realprice', 'bldledger', 'landledger', 'resident', 'family', 'farmbiz', 'farmconfirm', 'farmledger', 'giftcontract', 'rent', 'lease']
 };
 // 3) 처리개요 — 빈 칸은 [확인]에서 값을 받아 채우고, 양도는 서류 규칙 정리(검산된 값)로 물건목록의 빈 칸을 채운다. 기준일은 증빙으로 확정.
@@ -27888,9 +27888,16 @@ function caseProcInhFacts0_(c, parsed) {
   // 임대차계약서 — 정리 결과가 한 건(lease)이거나, 계약서 묶음(result.docs 안에 lease)이거나
   const leaseList = [];
   parsed.forEach(function (x) {
-    if (/^(lease|rent)$/.test(x.p.type) && x.p.result && x.p.result.보증금) leaseList.push({ f: x.f, p: x.p });
-    else if (x.p.result && Array.isArray(x.p.result.docs)) x.p.result.docs.forEach(function (d) { if (d && d.type === 'lease' && d.r && d.r.보증금) leaseList.push({ f: x.f, p: { type: 'lease', result: d.r } }); });
+    if (/^(lease|rent)$/.test(x.p.type) && x.p.result && x.p.result.보증금) leaseList.push({ f: x.f, p: x.p, n: 1 });
+    else if (x.p.result && Array.isArray(x.p.result.docs)) { const ds0 = x.p.result.docs.filter(function (d) { return d && d.type === 'lease' && d.r && d.r.보증금; }); ds0.forEach(function (d) { leaseList.push({ f: x.f, p: { type: 'lease', result: d.r }, n: ds0.length }); }); }
   });
+  // [2026.10.17 임대보증금] 임대 명세표(부가세 부동산임대공급가액명세서·임대차 현황표) — 계약서 보증금의 검산표
+  const leaseTables = [];
+  parsed.forEach(function (x) {
+    if (x.p.type === 'leaselist' && x.p.result && Array.isArray(x.p.result.행)) leaseTables.push({ f: x.f, r: x.p.result });
+    else if (x.p.result && Array.isArray(x.p.result.docs)) x.p.result.docs.forEach(function (d) { if (d && d.type === 'leaselist' && d.r) leaseTables.push({ f: x.f, r: d.r, inBundle: true }); });
+  });
+  const landLeases = [];
   if (dName) leaseList.forEach(function (x) {
     let tx = ''; try { tx = tc_docText_(x.f) || ''; } catch (e) { return; }
     const flat = tx.replace(/\s+/g, '');
@@ -27908,10 +27915,120 @@ function caseProcInhFacts0_(c, parsed) {
     // 세무사님이 "임대보증금" 폴더에 모아 둔 계약서 — 피상속인이 임대인인 계약(서명란·소재지가 안 읽혀도)
     if (!landlord) { try { const ps0 = DriveApp.getFileById(x.f.id).getParents(); while (ps0.hasNext()) if (/임대\s*보증금|보증금/.test(ps0.next().getName())) landlord = true; } catch (e) {} }
     if (!landlord) return;
-    const st0 = x.p.result.시작일 || '', en0 = x.p.result.종료일 || '';
-    const live = base && st0 && en0 && st0 <= base && base <= en0;
-    out.debts.push({ debtType: 'other', creditorName: '임차인(임대보증금)', amount: x.p.result.보증금, file: x.f.name, src: '임대보증금' + (x.p.result.소재지 ? '(' + x.p.result.소재지 + ')' : '') + (st0 ? ' 계약기간 ' + st0 + '~' + en0 : ''), sure: !!live, note: live ? '상속개시일(' + base + ')이 계약기간 안' : '계약기간이 상속개시일을 포함하지 않음 — 갱신 계약이 있으면 그것으로' });
+    landLeases.push({ f: x.f, r: x.p.result, n: x.n, files: [x.f.name] });
   });
+  // [2026.10.17 세무사님 원칙 — 내용 항목별로·서류끼리 대조해 한 번만] 임대보증금 — 예전엔 계약서 파일마다 채무 하나라 같은 호실의 사본(jpg/pdf)·재계약·
+  //  묶음 PDF가 전부 따로 채무가 됐다(노영환 9건 = 신고 6건의 1.4배, 김창호 같은 집 3건). 이제:
+  //  ① 같은 계약 사본(보증금·월세가 같고 계약일·기간이 어긋나지 않음 — 날짜가 하나도 없으면 층까지)은 한 건, 낱장 파일 쪽을 대표로
+  //  ② 같은 집(아파트 동·호, 파일 이름 앞 호실 "B01-·101-", 임대할 부분의 "○○호")의 다른 계약은 상속개시일을 포함하는 계약만(없으면 가장 최근 계약 + 묵시적 갱신 확인)
+  //  ③ 임대 명세표(개시일이 든 과세기간의 부동산임대공급가액명세서·임대차 현황표)와 대조 — 기간이 끝난 계약이라도 명세표에 같은 보증금으로 있으면
+  //     개시일에 계속 임대 중(묵시적 갱신, 상가임대차법 §10④·주택임대차법 §6), 명세표에만 있고 계약서가 없는 호실은 후보(확인)로, 합계가 다르면 알림
+  //  ④ 공유 부동산이면 등기부의 피상속인 지분만큼(노영환 1/2 — 신고 595,000,000×50%)
+  const unitOfL = function (s) { const n = String(s || '').replace(/\s+/g, '').replace(/제(?=\d)/g, ''); const d = /(\d+)동/.exec(n), h = /(\d+)호/.exec(n); return d && h ? d[1] + '동' + h[1] + '호' : ''; };
+  const unitKeyL = function (L) {
+    // 파일 이름 앞 호실 "B01-알파"·"101-압구정김밥"(호실 3자리·지하 B+숫자, 뒤에 이름) — "2023-06 계약서" 같은 연도·"05 채무-…" 같은 순번은 아님
+    const fm = /^(B\d{1,3}|\d{3})\s*[-_]\s*[가-힣A-Za-z]/i.exec(L.f.name); if (fm) return '#' + fm[1].toUpperCase();
+    const u = unitOfL(L.r.소재지); if (u) return u;
+    const hm = /(\d{2,4})\s*호/.exec(String(L.r.임대부분 || '')); if (hm) return '#' + hm[1];
+    return '';
+  };
+  const near = function (a, b) { return !a || !b || a === b; };
+  const leaseGroups = [];
+  landLeases.forEach(function (L) {
+    const r = L.r;
+    const hit = leaseGroups.filter(function (G) {
+      const q = G.r;
+      if (q.보증금 !== r.보증금 || !near(q.월세, r.월세)) return false;
+      if (!near(q.계약일, r.계약일) || !near(q.시작일, r.시작일) || !near(q.종료일, r.종료일)) return false;
+      const anyDate = (q.계약일 && q.계약일 === r.계약일) || (q.시작일 && q.시작일 === r.시작일) || (q.종료일 && q.종료일 === r.종료일);
+      const ku = unitKeyL(G.L0), kr = unitKeyL(L);
+      if (ku && kr && ku !== kr) return false;
+      return anyDate || (!q.계약일 && !q.시작일 && !q.종료일 && !r.계약일 && !r.시작일 && !r.종료일 && near(q.층, r.층) && (q.층 || r.층 || ku || kr));
+    })[0];
+    if (hit) {
+      hit.files.push(L.f.name);
+      // 대표: 낱장 파일 > 묶음 / 기간을 더 많이 읽은 쪽
+      const score = function (x) { return (x.n === 1 ? 4 : 0) + (x.r.시작일 ? 1 : 0) + (x.r.종료일 ? 1 : 0) + (x.r.계약일 ? 1 : 0) + (unitKeyL(x) ? 1 : 0); };
+      if (score(L) > score(hit.L0)) { hit.L0 = L; hit.r = L.r; }
+      ['시작일', '종료일', '계약일', '층', '소재지'].forEach(function (k) { if (!hit.r[k] && r[k]) hit.r = Object.assign({}, hit.r, (function () { const o = {}; o[k] = r[k]; return o; })()); });
+    } else leaseGroups.push({ L0: L, r: r, files: [L.f.name] });
+  });
+  // 같은 집의 다른 계약 — 열쇠별로 개시일 유효 계약 하나만 채무, 나머지는 참고
+  const liveOf = function (r) { return !!(base && r.종료일 && base <= r.종료일 && (r.시작일 ? r.시작일 <= base : (!r.계약일 || r.계약일 <= base))); };
+  const byUnit = {}, leaseFinal = [];
+  leaseGroups.forEach(function (G) { const k = unitKeyL(G.L0) || unitKeyL({ f: { name: '' }, r: G.r }); G.unit = k; if (k) (byUnit[k] = byUnit[k] || []).push(G); else leaseFinal.push(G); });
+  Object.keys(byUnit).forEach(function (k) {
+    const arr = byUnit[k];
+    if (arr.length === 1) { leaseFinal.push(arr[0]); return; }
+    const lv = arr.filter(function (G) { return liveOf(G.r); });
+    const when = function (G) { return G.r.시작일 || G.r.계약일 || ''; };
+    const pick = lv.length ? lv.sort(function (a, b) { return when(b) < when(a) ? -1 : 1; })[0] : arr.filter(function (G) { return !base || !when(G) || when(G) <= base; }).sort(function (a, b) { return when(b) < when(a) ? -1 : 1; })[0] || arr[0];
+    leaseFinal.push(pick);
+    arr.forEach(function (G) { if (G !== pick) out.notes.push('임대보증금 ' + k.replace(/^#/, '') + ': ' + G.files.join('·') + '(' + (G.r.보증금 || 0).toLocaleString('ko-KR') + '원' + (G.r.시작일 || G.r.계약일 ? ' ' + (G.r.시작일 || G.r.계약일) + '~' + (G.r.종료일 || '') : '') + ')는 같은 집의 다른 계약 — ' + (lv.length ? '상속개시일(' + base + ') 계약 ' : '가장 최근 계약 ') + pick.files[0] + '만 채무로'); });
+  });
+  // 명세표 — 개시일이 든 과세기간(없으면 기간 없는 현황표)
+  const tbl = leaseTables.filter(function (T) { return T.r.시작일 && base && T.r.시작일 <= base && base <= T.r.종료일 && (!T.r.소유자 || caseProcNameLike_(nm(T.r.소유자), dName)); })[0] ||
+    leaseTables.filter(function (T) { return !T.r.시작일 && (T.inBundle ? landLeases.some(function (L) { return L.f.id === T.f.id; }) : true); })[0] || null;
+  leaseTables.forEach(function (T) { if (T !== tbl) out.notes.push('임대 명세표 ' + T.f.name + (T.r.과세기간 ? '(' + T.r.과세기간 + ')' : '') + '는 상속개시일(' + base + ')이 든 기간이 아니라 참고만'); });
+  const tblRows = tbl ? tbl.r.행.map(function (x) { return Object.assign({ used: false }, x); }) : [];
+  if (tbl) leaseFinal.forEach(function (G) {
+    const u = (G.unit || '').replace(/^#/, '');
+    let row = tblRows.filter(function (x) { return !x.used && x.호 && u && x.호.toUpperCase() === u; })[0];
+    if (!row) { const same = tblRows.filter(function (x) { return !x.used && x.보증금 === G.r.보증금; }); if (same.length) row = same[0]; }
+    if (row) { row.used = true; if (row.보증금 === G.r.보증금) G.tblRow = row; else G.tblDiff = row; }
+  });
+  // 지분 — 등기부에서 피상속인 몫(건물 등기부 우선). 소재지가 없는 계약은 피상속인 등기부 지분이 하나로 같을 때만.
+  const shareFor = function (loc) {
+    const found = [];
+    by('registry').forEach(function (x) { (x.p.result.docs || []).forEach(function (d) {
+      if (loc && d.소재지 && !tcLocSame_(d.소재지, loc)) return;
+      const h = d.소유권이력 || [];
+      for (let j = h.length - 1; j >= 0; j--) {
+        if (h[j].말소) continue;
+        const ps = h[j].권리자 || [], q = ps.filter(function (p) { return caseProcNameLike_(nm(p.이름), dName); })[0];
+        if (!q) continue;
+        const m = /(\d+)\s*분의\s*([\d.]+)/.exec(String(q.지분 || ''));
+        const v = m ? Number(m[2]) / Number(m[1]) : (ps.length === 1 ? 1 : null);
+        if (v !== null && v > 0 && v <= 1) found.push({ v: v, txt: m ? m[1] + '분의 ' + m[2] : '단독', bld: /건물/.test(String(d.종류 || '')), file: x.f.name });
+        break;
+      }
+    }); });
+    // 보증금은 건물 임대의 채무 — 건물(집합건물) 등기부 지분만 곱한다. 토지 등기부 지분만 있으면 곱하지 않고 알린다(박종헌: 토지 1/2만 있고 건물 등기부 없음 → 검토서도 260,000,000 전액)
+    const pool = found.filter(function (s) { return s.bld; });
+    if (!pool.length) { const lands = found.filter(function (s) { return s.v < 1; }); return lands.length ? { v: 1, landOnly: lands[0].txt, file: lands[0].file } : null; }
+    return pool.every(function (s) { return s.v === pool[0].v; }) ? pool[0] : null;
+  };
+  let leaseSum = 0;
+  leaseFinal.forEach(function (G) {
+    const r = G.r, st0 = r.시작일 || '', en0 = r.종료일 || '';
+    const live = liveOf(r), viaTbl = !!base && !live && !!G.tblRow;
+    // 계약서 소재지가 도로명(경희대로 15)이라 등기부 지번과 대조가 안 되면 — 피상속인 등기부 지분이 모두 같을 때만 그 지분(노영환 201호)
+    let sh = shareFor(r.소재지), shLoose = false;
+    if ((!sh || sh.landOnly) && r.소재지) { const sh2 = shareFor(''); if (sh2 && !sh2.landOnly) { sh = sh2; shLoose = true; } else sh = sh || sh2; }
+    else if (!sh) sh = shareFor('');
+    const amt = sh && sh.v < 1 ? Math.round(r.보증금 * sh.v) : r.보증금;
+    leaseSum += r.보증금;
+    const unitTxt = G.unit ? ' ' + (G.unit.charAt(0) === '#' ? G.unit.slice(1) + '호' : G.unit) : '';
+    const notes = [];
+    if (live) notes.push('상속개시일(' + base + ')이 계약기간 안');
+    else if (!base) notes.push('상속개시일이 아직 정해지지 않아 계약기간 대조 전');
+    else if (viaTbl) notes.push((en0 ? '계약기간(' + (st0 || '?') + '~' + en0 + ')은 끝났지만' : '계약기간은 읽지 못했지만') + ' ' + tbl.f.name + '에 같은 보증금으로 임대 중' + (en0 ? ' — 묵시적 갱신으로 봄' : ''));
+    else notes.push(en0 ? '계약기간이 상속개시일을 포함하지 않음 — 갱신 계약이 있으면 그것으로' : '계약기간을 읽지 못함 — 상속개시일에 유효한 계약인지 확인');
+    if (G.tblDiff) notes.push('⚠ ' + tbl.f.name + '에는 보증금 ' + G.tblDiff.보증금.toLocaleString('ko-KR') + '원 — 계약서와 다름, 개시일 현재 보증금 확인');
+    if (G.files.length > 1) notes.push('같은 계약 ' + G.files.length + '부(' + G.files.join('·') + ') — 한 번만');
+    if (sh && sh.v < 1) notes.push('보증금 ' + r.보증금.toLocaleString('ko-KR') + '원 × 피상속인 지분 ' + sh.txt + '(' + sh.file + (shLoose ? ' — 계약서 소재지와 지번 대조는 못 함, 피상속인 등기부 지분이 모두 같음' : '') + ')');
+    else if (sh && sh.landOnly) notes.push('피상속인 토지 지분 ' + sh.landOnly + '(' + sh.file + ')만 확인, 건물 등기부가 없어 보증금 전액으로 둠 — 건물이 공유면 지분만큼만');
+    out.debts.push({ debtType: 'other', creditorName: '임차인(임대보증금' + unitTxt + ')', amount: amt, file: G.L0.f.name, dupFiles: G.files.join(', '), src: '임대보증금' + (r.소재지 ? '(' + r.소재지 + ')' : '') + (st0 || en0 ? ' 계약기간 ' + st0 + '~' + en0 : ''), sure: !!(live || viaTbl), note: notes.join(' · ') });
+  });
+  if (tbl) {
+    const sh0 = shareFor('');
+    tblRows.filter(function (x) { return !x.used; }).forEach(function (x) {
+      const amt = sh0 && sh0.v < 1 ? Math.round(x.보증금 * sh0.v) : x.보증금;
+      out.debts.push({ debtType: 'other', creditorName: '임차인(임대보증금' + (x.호 ? ' ' + x.호 + '호' : '') + (x.상호 ? ' ' + x.상호 : '') + ')', amount: amt, file: tbl.f.name, src: tbl.r.종류 + (tbl.r.과세기간 ? '(' + tbl.r.과세기간 + ')' : ''), sure: false, note: '명세표에만 있고 계약서가 없음 — 계약서로 보증금·기간 확인' + (sh0 && sh0.v < 1 ? ' · 보증금 ' + x.보증금.toLocaleString('ko-KR') + '원 × 피상속인 지분 ' + sh0.txt : '') });
+    });
+    const tot = tbl.r.보증금합계;
+    out.notes.push('임대보증금 검산: 계약서 ' + leaseFinal.length + '건 보증금 합 ' + leaseSum.toLocaleString('ko-KR') + '원 ↔ ' + tbl.f.name + ' 보증금 합계 ' + tot.toLocaleString('ko-KR') + '원' + (leaseSum === tot ? ' — 일치' : ' — ⚠ 차이 ' + (tot - leaseSum).toLocaleString('ko-KR') + '원(계약서가 빠졌거나 보증금이 바뀐 호실 확인)'));
+  }
   const medTx = function (f0) { try { return tc_docText_(f0) || ''; } catch (e) { return ''; } };
   parsed.forEach(function (x) {
     if (!/미\s*지\s*급/.test(x.f.name) || !/^(cashreceipt|cardreceipt|receipt|taxinvoice)$/.test(x.p.type) || !x.p.result || !x.p.result.합계) return;
@@ -31054,6 +31171,10 @@ function docParseText_(text) {
   var ofp = docOfficetelStdParse_(text); if (ofp) return ofp;
   var ncp = docNicheContractParse_(text); if (ncp) return ncp;
   var bsp = docBankSlipParse_(text); if (bsp) return bsp;
+  // [2026.10.17 임대보증금] 부가세 부동산임대공급가액명세서·임대차 현황표(계약서 없이 표만 있는 파일) — 임대보증금 검산표(노영환 "임대명세서 2025.pdf": 종류 없음이던 것)
+  if (/부\s*동\s*산\s*임\s*대\s*공\s*급\s*가\s*액\s*명\s*세\s*서/.test(String(text || '').slice(0, 300)) || (/임\s*대\s*차?\s*(?:계\s*약\s*)?현\s*황/.test(String(text || '').slice(0, 200)) && !/계\s*약\s*서/.test(String(text || '')))) {
+    var llr = lsParseLeaseList_(text); if (llr) return { type: 'leaselist', label: llr.종류, result: llr, md: docDealMd_('leaselist', llr) };
+  }
   var type = docDetectType_(text), r = null;
   // [2026.10.10] 매매계약서·신고필증·중개대상물 확인설명서·임대차계약서·임대차 신고서·확정일자 — 한 파일에 여러 서류가 묶여 있으면 나눠 정리하고 서로 대조
   if (!/^(resident|family|rent)$/.test(type)) { var deal = docDealParseText_(text); if (deal) return deal; }
@@ -32841,16 +32962,22 @@ function lsParseLease_(text) {
   var wonMax = wons.length ? Math.max.apply(null, wons) : null;
   if (wonMax && (!r.보증금 || wonMax > r.보증금)) { if (r.보증금 && r.보증금 !== wonMax) r.경고.push('한글 금액과 숫자 금액이 달라 숫자(₩) 금액을 보증금으로 씀 — 확인'); r.보증금 = wonMax; }
   // [2026.10.16] 옛 검인 양식("전세(보증금) … 팔천만 … 원정 월세금 일백육십만") — 보증금 칸의 한글 금액에 "금" 표시가 없어 못 읽고 월세(월세금의 '금')를 보증금으로 읽던 것(노영환 사건)
-  var oldF = /전\s*세\s*\(\s*보\s*증\s*금\s*\)([\s\S]{0,90}?)월\s*세\s*금/.exec(flat);
+  var oldF = /전\s*세\s*\(\s*보\s*증\s*금\s*\)([\s\S]{0,90}?)월\s*세\s*금/.exec(flat), oldRent = null;
   if (oldF) {
-    var kws = (oldF[1].match(/[일이삼사오육칠팔구십백천만억역]{2,12}/g) || []).map(function (x) { return ctKorAmt_(x.replace(/역/g, '억')); }).filter(function (v) { return v && v >= 1000000; });
+    // [2026.10.17 임대보증금] 글자인식이 "일억"의 '억'을 '어'로 읽는 일이 잦다(노영환 B01-알파.pdf·201-공간네일재계약.pdf "금 일어") — 보증금 칸 안에서 숫자 한글 바로 뒤 '어'만 '억'으로
+    var kws = (oldF[1].replace(/([일이삼사오육칠팔구십백천])\s*어(?![가-힣])/g, '$1억').match(/[일이삼사오육칠팔구십백천만억역]{2,12}/g) || []).map(function (x) { return ctKorAmt_(x.replace(/역/g, '억')); }).filter(function (v) { return v && v >= 1000000; });
     if (kws.length) { var v0 = kws[kws.length - 1]; if (r.보증금 !== v0) { if (r.보증금) r.경고.push('보증금 칸의 한글 금액(' + v0.toLocaleString('ko-KR') + '원)으로 고침 — 앞서 읽은 ' + r.보증금.toLocaleString('ko-KR') + '원은 월세 칸 금액'); r.보증금 = v0; } }
     var mw = /월\s*세\s*금\s*-?\s*금?\s*([일이삼사오육칠팔구십백천만억]{2,12})/.exec(flat); if (mw && !r.월세) { var mv = ctKorAmt_(mw[1]); if (mv) r.월세 = mv; }
+    // 월세 칸이 "390만"처럼 숫자+만(201-공간네일재계약.pdf)
+    if (!r.월세) { var mw2 = /월\s*세\s*금\s*-?\s*금?\s*(\d{1,4}(?:,\d{3})?)\s*만\s*(?:원|$|\s)/.exec(flat); if (mw2) r.월세 = Number(mw2[1].replace(/,/g, '')) * 10000; }
+    oldRent = r.월세 || null;
   }
+  // [2026.10.17 임대보증금] 표준 상가 계약서 칸 "임대차보증금 … 금 2000만원정 차임(월세) 금 300만원정"(숫자+만) — 보증금 칸 뒤 첫 "금 ○만원"(박종헌 오다헤어: 못 읽던 것)
+  if (!r.보증금) { var bm2 = /보\s*증\s*금([\s\S]{0,80}?)금\s*(\d{1,5}(?:,\d{3})?)\s*만\s*원/.exec(flat); if (bm2 && !/차\s*임|월\s*세/.test(bm2[1])) r.보증금 = Number(bm2[2].replace(/,/g, '')) * 10000; }
   r.계약금 = ctMoneyAfter_(flat, /계\s*약\s*금/, 100);
   r.중도금 = ctMoneyAfter_(flat, /중\s*도\s*금\s*-?/, 30);
   r.잔금 = ctMoneyAfter_(flat, /잔\s*금\s*[:：]?/, 100);
-  r.월세 = ctMoneyAfterAny_(flat, /월\s*세\s*-?|차\s*임\s*[:：]?|월\s*임\s*대\s*료/, 40);
+  r.월세 = ctMoneyAfterAny_(flat, /월\s*세\s*-?|차\s*임\s*[:：]?|월\s*임\s*대\s*료/, 40) || oldRent;
   if (!r.월세) { var rm = /월\s*세\s*[:：]?\s*(?:금\s*)?([\d][\d,]{2,})\s*원/.exec(flat); if (rm) r.월세 = ctNum_(rm[1]); }
   r.관리비 = ctMoneyAfterAny_(flat, /관\s*리\s*비/, 30);
   ['계약금', '잔금', '중도금'].forEach(function (f) { if (r[f] && r[f] === r.보증금) r[f] = null; });
@@ -32898,6 +33025,30 @@ function lsParseLease_(text) {
   if (r.종전보증금 && r.증액분 && r.보증금) { if (r.종전보증금 + r.증액분 === r.보증금) r.증액검산 = '일치'; else { r.증액검산 = '불일치'; r.경고.push('종전 보증금+증액분이 새 보증금과 다름 — 원문 확인'); } }
   var tk = /특\s*약\s*사\s*항\s*[:：]?/.exec(t);
   if (tk) { var body = t.slice(tk.index + tk[0].length, tk.index + tk[0].length + 500), cut = body.search(/본\s*계약을\s*증명|이\s*계약을\s*증명|본\s*계약에\s*대하여|임\s*대\s*인\s*\n?\s*임\s*차\s*인/); body = (cut > 0 ? body.slice(0, cut) : body).replace(/\s+/g, ' ').trim(); if (body.length >= 4) r.특약 = body.slice(0, 300); }
+  // [2026.10.17 임대보증금] 계약기간 서식 두 가지 더 — 상속 채무는 "상속개시일에 유효한 계약"만이라 기간이 꼭 필요하다(노영환·박종헌 계약서 전부 "기간 못 읽음")
+  //  ① 표 칸 "임대차 기간 2024 년 8 월 29 일 2026 년 8 월 29 일"(사이 기호 없음)
+  //  ② 옛 검인 양식 "제3조 부동산의 명도는 2024년 1월 27일로 … 제4조 … 명도한 날로부터 (24)개월" / "…일에 … 인도 … 인도일로부터 24개월"
+  //     → 시작=명도(인도)일, 끝=시작+개월−1일. 명도일이 계약일과 1년 넘게 떨어지면(글자인식이 2020을 2026으로 읽는 등) 쓰지 않고 알린다.
+  if (!r.시작일 || !r.종료일) {
+    var pk = /임\s*대\s*차\s*기\s*간\s*[:：]?\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*(?:부터|~|-|에서)?\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(flat);
+    if (pk) { r.시작일 = r.시작일 || ctYmd_(pk[1], pk[2], pk[3]); r.종료일 = r.종료일 || ctYmd_(pk[4], pk[5], pk[6]); }
+  }
+  if (!r.시작일 || !r.종료일) {
+    var md0 = /명\s*도\s*는\s*((?:19|20)\d{2})\s*년\s*\(?\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(flat) || /((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*에\s*위\s*부동산을\s*인도/.exec(flat);
+    var mn0 = /(?:명도한\s*날|인도일)\s*로\s*부\s*터\s*\(?\s*(\d{1,3})\s*\)?\s*개\s*월/.exec(flat);
+    if (md0 && mn0) {
+      var sY = ctYmd_(md0[1], md0[2], md0[3]), nMon = Number(mn0[1]);
+      var far = r.계약일 && Math.abs(new Date(sY) - new Date(r.계약일)) > 400 * 86400000;
+      if (far) r.경고.push('명도(인도)일 ' + sY + '이 계약일 ' + r.계약일 + '과 1년 넘게 떨어짐 — 글자인식 오류일 수 있어 기간에 쓰지 않음, 원문 확인');
+      else if (nMon > 0 && nMon <= 120) {
+        var ed = new Date(sY + 'T00:00:00Z'); ed.setUTCMonth(ed.getUTCMonth() + nMon); ed.setUTCDate(ed.getUTCDate() - 1);
+        r.시작일 = r.시작일 || sY; r.종료일 = r.종료일 || Utilities.formatDate(ed, 'UTC', 'yyyy-MM-dd'); r.개월 = r.개월 || nMon; r.기간계산 = '명도(인도)일+' + nMon + '개월';
+      }
+    }
+  }
+  // 층·호 표시(머리말 "지하 1층", "3층 오름학원", 임대할 부분 "지하 1층 전체") — 같은 계약 사본끼리 묶을 때 쓴다
+  var fl0 = /(지\s*하\s*\d\s*층|\d{1,2}\s*층)/.exec((r.임대부분 || '') + ' ' + t.slice(0, 300));
+  if (fl0) r.층 = fl0[1].replace(/\s+/g, '').replace(/^지하/, 'B');
   if (!r.시작일 || !r.종료일) r.경고.push('계약기간을 확정하지 못함');
   return r;
 }
@@ -32970,6 +33121,75 @@ function lsIncrease_(prev, next) {
   return out;
 }
 
+// [2026.10.17 임대보증금] 한 파일에 임대차계약서 여러 건(세무사님이 모아 스캔한 "05 채무-임대보증금.pdf" 6건, 박종헌 "06 임대차내역계약서.pdf" 현황표+5건) —
+//  예전엔 통째로 계약서 한 건으로 읽어 보증금 하나만 나왔다. 제목("…임대차계약서", "월세 계약서")마다 나누고, 제목 앞 머리말 줄(별지 서식 번호·팩스 머리·"3층 오름학원")은
+//  다음 계약서에 붙인다. 나눈 조각마다 보증금 낱말이 있어야 나눈 것으로 본다(본문에 "임대차계약서"가 한 번 더 나오는 한 건짜리 계약서는 그대로).
+//  첫 제목 앞 글(임대차 현황표 등)은 'leaselist' 조각으로 — 현황표가 아니면 버린다.
+function lsSplitLeases_(t) {
+  var re = /(?:^|\n)[^\n]{0,30}?(?:전\s*세|월\s*세|임\s*대\s*차|임\s*대)\s*(?:\(\s*월\s*세\s*\)\s*)?계\s*약\s*서/g, m, pos = [];
+  while ((m = re.exec(t))) pos.push(m.index + (t.charAt(m.index) === '\n' ? 1 : 0));
+  if (pos.length < 2) return [{ type: 'lease', text: t }];
+  // 제목 앞 머리말 줄(최대 4줄·250자)을 그 계약서 쪽으로 당긴다
+  var starts = pos.map(function (p, i) {
+    if (i === 0) return p;
+    var lo = pos[i - 1], s = p;
+    for (var k = 0; k < 6; k++) {
+      var prevNl = t.lastIndexOf('\n', s - 2);
+      if (prevNl < lo || p - prevNl > 250) break;
+      var line = t.slice(prevNl + 1, s);
+      if (/\S/.test(line) && !/별\s*지|서\s*식|FAX|인\s*쇄|\d\s*층|No\b|^\s*\d{1,2}\/\d{1,2}\s+(?:19|20)\d{2}/.test(line)) break;
+      s = prevNl + 1; // 빈 줄은 건너뛰며 계속 본다
+    }
+    return s;
+  });
+  var parts = starts.map(function (s, i) { return t.slice(s, i + 1 < starts.length ? starts[i + 1] : t.length); });
+  if (!parts.every(function (x) { return /보\s*[증중]\s*금/.test(x) && x.replace(/\s+/g, '').length >= 200; })) return [{ type: 'lease', text: t }];
+  var out = parts.map(function (x) { return { type: 'lease', text: x }; });
+  var pre = t.slice(0, starts[0]);
+  if (lsParseLeaseList_(pre)) out.unshift({ type: 'leaselist', text: pre });
+  return out;
+}
+// [2026.10.17 임대보증금] 임대 명세표 — 부가세 「부동산임대공급가액명세서」(별지 제25호, 층·호·상호·보증금·월임대료) · 임대차 계약 현황표(임차인·보증금·월세)
+//  상속 채무(임대보증금)의 검산표로 쓴다: 계약서 합 = 명세표 보증금 합. 명세서는 과세기간(예: 2025년 제2기 7.1~12.31)이 상속개시일을 포함할 때 그날의 임대 현황.
+//  행을 확정하지 못하면 합계만(합계 = 나머지 금액 합으로 검산될 때만) 남긴다 — 지어내지 않음.
+function lsParseLeaseList_(text) {
+  var t = String(text || ''), flat = t.replace(/\s+/g, ' ');
+  var vat = /부\s*동\s*산\s*임\s*대\s*공\s*급\s*가\s*액\s*명\s*세\s*서/.test(t);
+  var cur = /임\s*대\s*차?\s*(?:계\s*약\s*)?현\s*황|임\s*대\s*내\s*역|임\s*대\s*명\s*세/.test(t) && /보\s*증\s*금/.test(t);
+  if (!vat && !cur) return null;
+  var r = { 종류: vat ? '부동산임대공급가액명세서' : '임대차 계약 현황표', 행: [], 경고: [] };
+  if (vat) {
+    var pm = /((?:19|20)\d{2})\s*년\s*제\s*([12])\s*기/.exec(flat);
+    if (pm) { r.과세기간 = pm[1] + '년 제' + pm[2] + '기'; r.시작일 = pm[1] + (pm[2] === '1' ? '-01-01' : '-07-01'); r.종료일 = pm[1] + (pm[2] === '1' ? '-06-30' : '-12-31'); }
+    var om = /\(\s*([가-힣]{2,4})\s*\)\s*③?\s*사\s*업\s*자/.exec(t); if (om) r.소유자 = om[1];
+    var sm = /(?:^|\n)\s*([^\n]{0,12}(?:특별시|광역시|도)[^\n]{4,60})\n/.exec(t); if (sm) r.소재지 = sm[1].trim();
+    // 행: 층 / 호 / (면적·상호 0~3줄) / 사업자등록번호 / (빈 줄) / 보증금 / 월임대료
+    // (빈 줄이 많은 표라 \s*\n(?:\s*\n)* 같은 겹친 반복은 되돌아가기가 폭증한다 — 빈칸 반복은 한 덩어리 \s+로만)
+    var rr = /(?:^|\n)[ \t]*(B?\d{1,2})[ \t]*\n[ \t]*(B?\d{2,4})[ \t]*\n((?:[^\n]*\n){0,3}?)[ \t]*(\d{3}-\d{2}-\d{5}|\d{6}-\d{7})\s+([\d,]{6,})\s+([\d,]{5,})/g, m;
+    while ((m = rr.exec(t))) {
+      var mid = m[3].replace(/\s+/g, ' ').trim(), nmM = /([가-힣A-Za-z()（）][가-힣A-Za-z()（）\s]{1,30})$/.exec(mid);
+      r.행.push({ 층: m[1], 호: m[2], 상호: nmM ? nmM[1].trim() : '', 보증금: Number(m[5].replace(/,/g, '')), 월세: Number(m[6].replace(/,/g, '')) });
+    }
+  } else {
+    // 현황표: "보증금" 머리부터 "월세" 머리 사이의 금액 열 — 가장 큰 금액이 나머지 합이면 그것이 합계(계)
+    var b0 = t.search(/보\s*증\s*금/), w0 = t.slice(b0 + 3).search(/월\s*세|차\s*임/);
+    var seg = w0 > 0 ? t.slice(b0, b0 + 3 + w0) : t.slice(b0, b0 + 400);
+    var nums = (seg.match(/\d{1,3}(?:,\d{3}){2,}/g) || []).map(function (x) { return Number(x.replace(/,/g, '')); });
+    if (nums.length >= 2) {
+      var mx = Math.max.apply(null, nums), rest = nums.slice(); rest.splice(rest.indexOf(mx), 1);
+      if (rest.reduce(function (a, b) { return a + b; }, 0) === mx) { r.보증금합계 = mx; r.행 = rest.map(function (v) { return { 보증금: v }; }); r.검산 = '일치(건별 합 = 계)'; }
+      else r.경고.push('보증금 열의 합계를 확정하지 못함 — 원문 확인');
+    }
+  }
+  if (r.행.length && r.보증금합계 == null) {
+    r.보증금합계 = r.행.reduce(function (a, x) { return a + x.보증금; }, 0);
+    // 표 머리의 합계 칸(같은 금액이 글자에 있음)으로 검산
+    r.검산 = flat.indexOf(r.보증금합계.toLocaleString('en-US')) !== -1 ? '일치(행 합 = 합계 칸)' : '합계 칸을 찾지 못함 — 행 합만';
+    if (r.검산.indexOf('일치') !== 0) r.경고.push('보증금 행 합(' + r.보증금합계.toLocaleString('ko-KR') + '원)을 합계 칸과 대조하지 못함 — 원문 확인');
+  }
+  if (r.보증금합계 == null) return null;
+  return r;
+}
 // 제목으로 거래 서류임이 분명한지(첫 400자)
 function docDealStrong_(text) {
   var head = String(text || '').slice(0, 400);
@@ -32981,7 +33201,7 @@ function docDealDetect_(text) {
   var saleHead = /(매\s*매|분\s*양|공\s*급)\s*(?:전자\s*)?계\s*약\s*서|매매\s*계약을\s*체결/.test(head);
   // 임대차: 신고서·확정일자 현황 / 계약서 (시·군·구 임대사업자 등록증은 계약서 제목이 없어 걸리지 않는다). 매매 계약서 머리면 매매 쪽으로.
   if (!saleHead && /확\s*정\s*일\s*자\s*(?:부여)?\s*현\s*황|임대차\s*계약\s*신고\s*(?:서|필증)|주택\s*임대차\s*신고\s*필증|신고서\s*\([^)\n]{0,6}\)\s*\n?\s*임대차\s*계약/.test(t) && !/(전세|월세|임대차|임대)\s*계약서/.test(head)) return [{ type: 'leasereport', text: t }];
-  if (!saleHead && /(?:^|\n)[^\n]{0,24}(전\s*세|월\s*세|임\s*대\s*차|임\s*대)\s*계\s*약\s*서/.test(head) || (/임\s*대\s*인/.test(t) && /임\s*차\s*인/.test(t) && /보\s*증\s*금/.test(t) && /임대차\s*(?:계약|기간)/.test(t) && !/매\s*도\s*인/.test(t))) return [{ type: 'lease', text: t }];
+  if (!saleHead && /(?:^|\n)[^\n]{0,24}(전\s*세|월\s*세|임\s*대\s*차|임\s*대)\s*계\s*약\s*서/.test(head) || (/임\s*대\s*인/.test(t) && /임\s*차\s*인/.test(t) && /보\s*증\s*금/.test(t) && /임대차\s*(?:계약|기간)/.test(t) && !/매\s*도\s*인/.test(t))) return lsSplitLeases_(t);
   var segs = ctSplit_(t);
   if (segs.length) return segs;
   if (/중\s*개\s*보\s*수/.test(t) && /(영\s*수\s*증|TOTAL|합\s*계)/.test(t) && !/계\s*약\s*서/.test(head)) return [{ type: 'brokerdesc', text: t }];
@@ -32996,6 +33216,7 @@ function docDealParseOne_(seg) {
   if (seg.type === 'brokerdesc') return ctParseBroker_(seg.text);
   if (seg.type === 'lease') return lsParseLease_(seg.text);
   if (seg.type === 'leasereport') return lsParseLeaseReport_(seg.text);
+  if (seg.type === 'leaselist') return lsParseLeaseList_(seg.text);
   return null;
 }
 function docDealMd_(type, r) {
@@ -33035,6 +33256,11 @@ function docDealMd_(type, r) {
       out.push('\n**신고된 계약 조건(종전 → 갱신 순)**\n\n| 기간 | 보증금 | 월세 |\n|---|---|---|');
       r.계약조건.forEach(function (x) { out.push('| ' + x.시작일 + ' ~ ' + x.종료일 + ' | ' + won(x.보증금) + ' | ' + (won(x.월세) || '0원') + ' |'); });
     }
+  } else if (type === 'leaselist') {
+    out.push('### ' + r.종류 + (r.과세기간 ? ' (' + r.과세기간 + ')' : ''));
+    out.push(kv([['소재지', r.소재지], ['소유자', r.소유자], ['기간', r.시작일 ? r.시작일 + ' ~ ' + r.종료일 : ''], ['보증금 합계', won(r.보증금합계)], ['검산', r.검산]]));
+    if (r.행.length && r.행[0].호) { out.push('\n| 층 | 호 | 상호 | 보증금 | 월임대료 |\n|---|---|---|---|---|'); r.행.forEach(function (x) { out.push('| ' + esc(x.층) + ' | ' + esc(x.호) + ' | ' + esc(x.상호) + ' | ' + won(x.보증금) + ' | ' + won(x.월세) + ' |'); }); }
+    out.push('\n_세무 쓰임: 상속·증여일 현재 임대보증금(채무)의 검산표 — 계약서 보증금 합과 대조합니다._');
     (r.증액비교 || []).forEach(function (p) {
       var inc = lsIncrease_(p.종전, p.새);
       if (inc && inc.증액률 != null) out.push('\n임대료 증액률 ' + p.종전.시작일 + ' → ' + p.새.시작일 + ': **' + inc.증액률 + '%** — ' + inc.판정 + ' · ' + inc.방법 + (inc.경고 ? ' ⚠' + inc.경고 : '') + ' (앞 계약이 끝날 무렵 시작한 계약끼리 비교 — 같은 집인지 원문 확인)');
@@ -33069,7 +33295,8 @@ function docDealCompareMd_(docs) {
     });
   }
   if (L.length >= 2) {
-    var key = function (r) { return String(r.소재지 || '').replace(/\s+/g, '').slice(0, 14); };
+    // [2026.10.17 임대보증금] 묶음 PDF를 계약서별로 나누면서 한 건물의 다른 호실이 "같은 집"으로 비교되지 않게 층·임대 부분까지 열쇠로
+    var key = function (r) { return String(r.소재지 || '').replace(/\s+/g, '').slice(0, 14) + '|' + (r.층 || '') + '|' + String(r.임대부분 || '').replace(/\s+/g, ''); };
     var byHouse = {};
     L.forEach(function (r) { (byHouse[key(r)] = byHouse[key(r)] || []).push(r); });
     Object.keys(byHouse).forEach(function (k) {
@@ -33094,7 +33321,9 @@ function docDealParseText_(text) {
   if (!docs.length) return null;
   var md = docs.map(function (d) { return docDealMd_(d.type, d.r); }).join('\n\n---\n\n');
   var cmp = docs.length > 1 ? docDealCompareMd_(docs) : '';
-  return { type: docs[0].type, label: docs.map(function (d) { return d.r.종류 || (d.type === 'lease' ? '임대차계약서' : ''); }).join('+'), result: { docs: docs }, md: md + (cmp ? '\n\n---\n\n' + cmp : '') };
+  // 파일 종류는 첫 서류 — 단 임대 현황표가 계약서 묶음 앞에 붙은 것이면 계약서(lease)로(2026.10.17)
+  var main = docs.filter(function (d) { return d.type !== 'leaselist'; })[0] || docs[0];
+  return { type: main.type, label: docs.map(function (d) { return d.r.종류 || (d.type === 'lease' ? '임대차계약서' : ''); }).join('+'), result: { docs: docs }, md: md + (cmp ? '\n\n---\n\n' + cmp : '') };
 }
 // [2026.10.10] 여러 파일을 함께 정리 — 각 파일 결과 + 거래 서류끼리 대조표(계약서↔신고필증↔확인설명서, 임대차↔신고·확정일자, 앞뒤 임대차 증액률)
 function docParseMulti_(body) {
