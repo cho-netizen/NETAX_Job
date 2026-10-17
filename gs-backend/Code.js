@@ -24964,7 +24964,10 @@ function tc_ruleTransferFacts_(body) {
       var ctm = /토\s*지\s*합\s*계\s*(\d+)\s*필\s*지\s*(\d{1,3}(?:,\d{3}){2,})/.exec(text);
       var com = /물\s*건\s*의?\s*합\s*계[\s\S]{0,400}?(\d{1,3}(?:,\d{3}){2,})/.exec(text);
       var cnt = /물\s*건\s*의?\s*합\s*계\s*(\d+)\s*건/.exec(text);
-      if (ctm) comps.push({ file: f.name, kind: '토지', total: Number(ctm[2].replace(/,/g, '')), count: Number(ctm[1]) + '필지', project: cpj ? cpj[1].trim() + (cpj[2] ? '(' + cpj[2] + '차)' : '') : '' });
+      // [2026.10.17 세무사님 원칙 — 내용 항목별로] 토지 보상금 내역은 필지마다 "면적 × 단가(× 지분) = 금액" 줄 — 합이 토지합계와 맞으면 필지별 항목으로
+      var cRows = null;
+      if (ctm) { try { var ci = text.search(/보\s*상\s*금\s*내\s*역\s*\(?\s*토\s*지/); var cslice = ci >= 0 ? text.slice(ci) : text; var CR = tcAreaUnitRows_(cslice, { total: Number(ctm[2].replace(/,/g, '')) }); if (CR.ok) { var cflat = cslice.replace(/\s+/g, ' '), prevAt = 0; cRows = CR.rows.map(function (rw) { var win = cflat.slice(prevAt, rw.at), jm = win.match(/\d{1,4}-\d{1,4}(?![\d,])|\b\d{3}\b(?=\s*[대전답임도잡하구유공철제창학주목과광염체종사묘천양원])/g); prevAt = rw.at + 1; return { jibun: jm ? jm[jm.length - 1] : '', area: rw.a, unit: rw.u, share: rw.f, v: rw.v }; }); } } catch (e) { cRows = null; } }
+      if (ctm) comps.push({ file: f.name, kind: '토지', total: Number(ctm[2].replace(/,/g, '')), count: Number(ctm[1]) + '필지', project: cpj ? cpj[1].trim() + (cpj[2] ? '(' + cpj[2] + '차)' : '') : '', rows: cRows });
       else if (com) comps.push({ file: f.name, kind: '물건(지장물)', total: Number(com[1].replace(/,/g, '')), count: cnt ? cnt[1] + '건' : '', project: cpj ? cpj[1].trim() + (cpj[2] ? '(' + cpj[2] + '차)' : '') : '', unsure: true });
     }
     // [2026.10.16] 금전 공탁통지서 — 사업시행자가 보상금을 공탁한 것(수용재결·이의재결 보상금). 공탁금도 보상금(양도가액)의 일부라 후보로(김운래 사건: 1,614만원 공탁통지서가 안 쓰였다)
@@ -25497,6 +25500,12 @@ function tc_ruleTransferFacts_(body) {
   txs.forEach(function (t) { (t.transferDateConflict || []).forEach(function (x) { if (!trDateCands.some(function (q) { return q.v === x.v; })) trDateCands.push(x); }); }); // 상충 판단 3 — 잔금일이 갈린 거래의 후보
   trDateCands.sort(function (a, b) { return String(a.v).localeCompare(String(b.v)); });
   // [2026.10.16 1:1 김금옥] 양도 계약서 서명란의 양도인(= 납세자로 확인될 때만)·양수인 인적사항 — 신고서 칸용
+  // [2026.10.17 세무사님 원칙 — 모든 서류는 내용 항목별로] 양도·취득 계약서 — 매매대금의 구성 항목(승계 보증금·융자, 부가세 조건, 매수인 부담 양도세, 토지·건물 구분)
+  contracts.forEach(function (c0) {
+    if (c0._dupOf || !/^(seller|buyer)$/.test(c0.role || '')) return;
+    var cit = null; try { cit = tcContractItems_(c0.text, c0.r); } catch (e) { cit = null; }
+    if (cit && cit.lines.length) evidence.push((cit.buyerTax && c0.role === 'seller' ? '⚠ ' : '') + (c0.role === 'seller' ? '양도' : '취득') + ' 계약서 항목(' + c0.file + '): ' + cit.lines.map(function (l) { return l.replace(/^⚠\s*/, ''); }).join(' · '));
+  });
   var parties = null;
   sells.some(function (c) {
     var p = tcContractParties_(c.text).filter(function (x) { return tcNameIn_(x.seller.name, names); })[0];
@@ -27312,6 +27321,24 @@ function caseProcInhFacts0_(c, parsed) {
     });
   });
   if (!out.assets.length && dv) dv.부동산.forEach(function (a) { out.assets.push({ key: keyOf(a.소재지), kind: a.지목 === '집합건물' ? '집합건물' : '토지', loc: a.소재지, area: a.면적, file: dv.file, cands: [] }); });
+  // [2026.10.17 세무사님 원칙 — 내용 항목별로] 감정평가표에 토지·건물 두 줄이 있는데 상속재산 목록에 건물이 없으면(건물 등기부가 폴더에 없음) —
+  //  같은 지번 건축물대장이 있을 때 그 건물을 상속재산에 더한다(박종헌: 사당동 139-43 감정서 건물 378.05㎡ 줄, 건축물대장 있음, 토지 등기부만 있음)
+  try {
+    by('appraisal').forEach(function (x) {
+      const r = x.p.result || {}; if (!r.감정평가액 || !r.소재지) return;
+      const same = out.assets.filter(function (b) { return b.loc && (tcLocSame_(r.소재지, b.loc) || nm(b.loc).indexOf(nm(r.소재지)) !== -1); });
+      if (!same.length || out.assets.some(function (b) { return /건물/.test(b.kind); })) return;
+      let tx = ''; try { tx = tc_docText_(x.f) || ''; } catch (e) {}
+      const R = tcAreaUnitRows_(tx, { total: r.감정평가액 });
+      if (!R.ok || R.rows.length !== 2) return;
+      const jb = (String(r.소재지).match(/\d{1,5}(?:-\d{1,5})?/g) || []).slice(-1)[0];
+      const led = by('bldledger').filter(function (y) { return jb && (y.f.name.indexOf(jb) !== -1 || String((y.p.result || {}).소재지 || '').indexOf(jb) !== -1); })[0];
+      if (!led) return;
+      const lo = R.rows[0].u <= R.rows[1].u ? R.rows[0] : R.rows[1];
+      out.assets.push({ key: keyOf(same[0].loc) + '#건물', kind: '건물', loc: same[0].loc, area: lo.a, file: led.f.name, cands: [] });
+      out.notes.push('상속재산에 건물을 더함: ' + same[0].loc + ' 건물 ' + lo.a + '㎡ — 감정평가표(' + x.f.name + ')에 건물 줄이 있고 같은 지번 건축물대장(' + led.f.name + ')이 있음(건물 등기부는 폴더에 없음 — 받으면 그것으로 확인)');
+    });
+  } catch (e) {}
   const inWin = function (d, months) { if (!d || !base) return false; const a = new Date(d), b = new Date(base); return Math.abs(a - b) <= months * 30.5 * 86400000; };
   out.assets.forEach(function (a) {
     // 토지 — 개별공시지가(평가기준일 현재 공시된 것) × 면적
@@ -27358,6 +27385,10 @@ function caseProcInhFacts0_(c, parsed) {
     const apps = [];
     by('appraisal').forEach(function (x) {
       const r = x.p.result || {};
+      // [2026.10.17 세무사님 원칙 — 모든 서류는 내용 항목별로] 감정평가표의 물건별 줄(면적 × 단가 = 금액, 줄의 합 = 감정평가액)에서 이 물건 몫을 찾는다.
+      //  찾으면 합계를 두고 "어느 물건 값인지 모름"으로 묻지 않고 그 줄 값으로(박종헌: 정안·예인 모두 토지·건물 두 줄). 소재지 거르기보다 먼저(건물 소재지가 감정서 지번과 다를 수 있음)
+      const own = r.감정평가액 ? tcApprItemFor_(x, a, out.assets) : null;
+      if (own) { apps.push({ v: own.v, src: '감정평가 ' + (r.평가법인 || x.f.name) + ' 물건별 내역 — ' + own.why + (r.기준시점 ? ' · ' + r.기준시점 + ' 기준' : '') + ' — 시가(§60⑤)', kind: '시가', days: r.기준시점 && base ? Math.abs(new Date(r.기준시점) - new Date(base)) / 86400000 : 0, file: x.f.name }); return; }
       if (r.소재지 && a.loc && !tcLocSame_(r.소재지, a.loc) && nm(a.loc).indexOf(nm(r.소재지)) === -1 && out.assets.length > 1 && r.대상 !== '토지·건물') return; // 토지·건물 일괄 감정은 건물 쪽 질문에도 후보로
       if (!r.감정평가액) { out.notes.push('감정평가서(' + x.f.name + ') — 감정가액을 읽지 못함(글자인식 흐림): 원문의 감정가액을 처리개요 평가에 직접 넣으세요'); return; }
       // [2026.10.17 상충 판단 4] 노영환: 정안 감정서(실제 약 29억)를 1,100,000원으로 잘못 읽고(검산 안 됨) 예인 2,940,088,250원과 평균 내 14.7억을 만들었고,
@@ -27453,7 +27484,23 @@ function caseProcInhFacts0_(c, parsed) {
   // 같은 정산서를 두 파일로 둔 것(합계 같음) — 한 번만 세고, 어느 파일과 같은지 남긴다(사실장부 "쓰인 곳")
   settleAll.filter(function (x) { return settle.indexOf(x) === -1; }).forEach(function (x) { const twin = settle.filter(function (y) { return y.p.result.합계 === x.p.result.합계; })[0]; out.notes.push('장례식장 정산서 ' + x.f.name + ' = ' + (twin ? twin.f.name : '') + '과 같은 정산서(합계 ' + x.p.result.합계.toLocaleString('ko-KR') + '원) — 한 번만 셈'); });
   out.funeral.settle = settle.map(function (x) { return { amount: x.p.result.합계, file: x.f.name }; });
-  if (!fch && settle.length) { out.funeral.value = settle.reduce(function (t, x) { return t + x.p.result.합계; }, 0); out.funeral.src = '장례식장 정산서(' + settle.map(function (x) { return x.f.name; }).join(', ') + ') — 증빙' + (receipts.length ? ', 개별 영수증 ' + receipts.length + '건은 정산서에 포함' : ''); }
+  // [2026.10.17 세무사님 원칙 — 모든 서류는 내용 항목별로] 장례비 — 정산서 합계·영수증 합계·지출표 총액 중 하나를 고르지 않고 항목으로:
+  //  정산서 항목(협력업체별) + 정산서에 없는 개별 영수증(화장장·묘지 등). 영수증 금액·상호가 정산서 항목과 같으면 같은 항목(한 번만).
+  //  항목마다 장례비인지 판단 — 헌금·감사·사례·49재·삼우제·제사는 장례에 직접 든 비용이 아님(상증령 §9②: 사망일~장례일, 장례에 직접 소요), 봉안시설은 따로(5백만원 한도)
+  const fItems = [];
+  const notFuneral = function (s) { return /헌\s*금|감\s*사|사\s*례|49\s*재|사\s*십\s*구\s*재|삼\s*우|제\s*사|탈\s*상|답\s*례/.test(s); };
+  const isNiche = function (s) { return /봉\s*안|납\s*골|자\s*연\s*장|수\s*목\s*장/.test(s); };
+  settle.forEach(function (x) { ((x.p.result || {}).항목 || []).forEach(function (q) { if (q.금액) fItems.push({ name: String(q.내역 || '정산서 항목').slice(0, 30), v: q.금액, srcs: [x.f.name], from: '정산서' }); }); if (!((x.p.result || {}).항목 || []).length) fItems.push({ name: '장례식장 정산금액', v: x.p.result.합계, srcs: [x.f.name], from: '정산서' }); });
+  out.funeral.receipts.forEach(function (q) {
+    const same = fItems.filter(function (it) { return it.v === q.amount || (q.payee && it.name && (it.name.indexOf(String(q.payee).slice(0, 4)) !== -1 || String(q.payee).indexOf(it.name.slice(0, 4)) !== -1) && Math.abs(it.v - q.amount) <= 1000); })[0];
+    if (same) { if (same.srcs.indexOf(q.file) === -1) same.srcs.push(q.file); same.conf = true; }
+    else fItems.push({ name: String(q.payee || '영수증').slice(0, 30), v: q.amount, srcs: [q.file], from: '영수증' });
+  });
+  fItems.forEach(function (it) { it.ok = notFuneral(it.name) ? 'no' : isNiche(it.name) ? 'niche' : 'yes'; });
+  out.funeral.items = fItems;
+  const fYes = fItems.filter(function (it) { return it.ok === 'yes'; }), fSum = fYes.reduce(function (t, it) { return t + it.v; }, 0);
+  if (fItems.length) out.notes.push('장례비 항목표: ' + fItems.map(function (it) { return (it.ok === 'no' ? '[장례비 아님] ' : it.ok === 'niche' ? '[봉안시설 — 따로] ' : '') + it.name + ' ' + it.v.toLocaleString('ko-KR') + '원(' + it.srcs.join(' = ') + ')'; }).join(', ') + ' → 장례비 항목 합 ' + fSum.toLocaleString('ko-KR') + '원' + (out.funeral.listTotal ? ' · 유족 지출표 총액 ' + out.funeral.listTotal.toLocaleString('ko-KR') + '원은 증빙이 아니라 참고' : ''));
+  if (!fch && fYes.length) { out.funeral.value = fSum; out.funeral.src = '장례비 항목 ' + fYes.length + '개 합(정산서 항목 + 정산서에 없는 영수증, 겹치는 영수증은 한 번만) — ' + fYes.map(function (it) { return it.name + ' ' + it.v.toLocaleString('ko-KR') + '원'; }).join(' + '); }
   else { out.funeral.value = fch ? Number(fch.v) : (out.funeral.listTotal ? null : out.funeral.receiptTotal || null); out.funeral.src = fch ? fch.src : (out.funeral.value ? '영수증 ' + receipts.length + '건 합계' : ''); }
   // [2026.10.16] 감정평가수수료 — 상속재산을 감정평가법인이 평가한 수수료는 500만원 한도로 과세표준에서 뺀다(§25①, 시행령 §20의3①).
   //  박종헌 사건: 감정평가법인 두 곳의 현금영수증(각 230만원)이 어느 칸에도 안 쓰였다. 같은 영수증의 사본(같은 상호·금액)은 한 번만.
@@ -33490,7 +33537,21 @@ function trcFromEvidence_(c, rf, txs, ans) {
       if (k === 0 && t.parcels && t.parcels.length >= 2) facts.parcels = { t: t, list: t.parcels };
     }
   });
-  if (!txs.length) {
+  // [2026.10.17 세무사님 원칙 — 내용 항목별로] 수용 토지 보상금 내역서의 필지별 줄 — 세무사님이 필지별로 넣기로 했으면 필지마다 양도계약(양도가액 = 그 필지 보상금)
+  const crow = !txs.length ? (rf.comps || []).filter(function (x) { return x.kind === '토지' && Array.isArray(x.rows) && x.rows.length >= 2; })[0] : null;
+  if (crow) facts.compRows = { total: crow.total, file: crow.file, rows: crow.rows.map(function (r) { const lc = (rf.locCands || []).filter(function (l) { return r.jibun && new RegExp('(^|[^\\d-])' + r.jibun.replace(/-/g, '\\-') + '($|[^\\d-])').test(String(l.v)); })[0]; return Object.assign({}, r, { loc: lc ? lc.v : '', acqDate: lc ? lc.acqDate || '' : '', acqCause: lc ? lc.cause || '' : '', regSrc: lc ? String(lc.src || '').split(' — ').pop() : '' }); }) };
+  const csp = !txs.length && ans.compSplit && Array.isArray(ans.compSplit.v) ? ans.compSplit.v : null;
+  if (csp) {
+    csp.forEach(function (r, k) {
+      const cid = 'trc_c' + (k + 1);
+      st.transferContracts.push({ id: cid, name: '양도계약 ' + trcPad_(k + 1), date: c.기준일 || '', totalPrice: Number(r.v) || 0, transferCause: 'expropriation', totalExpenseItems: [], externalMembers: [], buyers: [{}] });
+      st.transferAssets.push({ id: 'trc_a' + (k + 1) + '_1', transferContractId: cid, assetKind: 'land', assetLocation: r.loc || (r.jibun ? r.jibun : ''), assetArea: Math.round(Number(r.area) * Number(r.share || 1) * 100) / 100 });
+      const reg = (facts.compRows && facts.compRows.rows || []).filter(function (q) { return q.v === r.v && q.jibun === r.jibun; })[0] || {};
+      if (reg.acqDate) { st.transferAssets[st.transferAssets.length - 1].acquisitionDate = reg.acqDate; src['a' + k + '.acquisitionDate'] = '등기부 — 지금 납세자 명의가 된 소유권 이전 접수일' + (reg.acqCause ? '(원인 ' + reg.acqCause + ')' : '') + ' — ' + reg.regSrc; } // 필지마다 그 등기부의 취득 기재
+      const why = '수용 보상금 내역서(토지) 필지별 줄 ' + r.area + '㎡' + (Number(r.share) !== 1 ? ' × 지분' : '') + ' × ' + Number(r.unit).toLocaleString('ko-KR') + '원 = ' + Number(r.v).toLocaleString('ko-KR') + '원(' + ans.compSplit.src + ')';
+      src['c' + k + '.totalPrice'] = why; src['c' + k + '.transferCause'] = '수용 보상금 내역서'; if (r.loc || r.jibun) src['a' + k + '.assetLocation'] = r.loc ? '등기부(납세자 명의) — 보상금 내역서 지번 ' + r.jibun : '보상금 내역서 지번(소재지 전체는 등기부로 확인)'; src['a' + k + '.assetArea'] = why;
+    });
+  } else if (!txs.length) {
     st.transferContracts.push({ id: 'trc_c1', name: '양도계약 01', date: c.기준일 || '', totalPrice: 0, totalExpenseItems: [], externalMembers: [], buyers: [{}] }); st.transferAssets.push({ id: 'trc_a1_1', transferContractId: 'trc_c1' });
     if ((rf.comps || []).length) {
       st.transferContracts[0].transferCause = 'expropriation'; src['c0.transferCause'] = '수용 보상금 내역서';
@@ -33511,7 +33572,7 @@ function trcApplyAns_(S, ans) {
     return false;
   };
   Object.keys(ans || {}).forEach(function (path) {
-    const x = ans[path]; if (!x || /^(costs|taxfee|split|사건분류)$/.test(path) || /^oa\.|^a\d+\.(isOverseasAsset|oaResident5yr)$/.test(path)) return; // 국외자산 판단·환율은 trcOverseas_가 쓴다
+    const x = ans[path]; if (!x || /^(costs|taxfee|split|compSplit|사건분류)$/.test(path) || /^oa\.|^a\d+\.(isOverseasAsset|oaResident5yr)$/.test(path)) return; // 국외자산 판단·환율은 trcOverseas_가 쓴다
     if (setP(path, x.v)) S.src[path] = x.src;
   });
   const grp = S.facts && S.facts.splitGroup;
@@ -33637,7 +33698,7 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
       : pUnsure ? ' — 계약서에서 읽은 금액이지만 계약금·중도금·잔금을 더한 값이 매매대금과 맞지 않아(글자인식이 흐렸을 수 있음) 자동으로 넣지 않았습니다. 계약서 원문 금액과 같으면 고르고, 다르면 원문 금액을 직접 넣어 주세요.'
       : (rf.comps || []).length && k === 0 ? ' — 수용 보상금 내역서·재결서에서 읽은 금액입니다(매도 계약서가 없는 수용 — 양도가액 = 받은 보상금). 아래는 서류별 보상금이고, 같은 내역의 사본은 하나로 묶었습니다. 이 사건에서 수용된 물건의 보상금을 고르세요.'
       : ' — 서류에서 읽은 금액입니다. 맞는 금액을 고르거나 직접 넣어 주세요.';
-    if (!has(ct.totalPrice) && !asked('calc:' + p)) q('trc:' + p, cd ? 'judge' : 'missing', ct.name + ' 「계약 전체 양도가액」' + (cd ? pWhy + ((rf.comps || []).length && k === 0 ? ' (수용: 지장물 보상 중 건물·구축물은 양도, 수목·시설 이전비·영업보상은 양도가 아닐 수 있습니다. 이의재결로 늘어난 금액이 있으면 그 금액)' : '') : '을 서류에서 정하지 못했습니다 — 양도차익 계산의 출발점이라 계산 전 필수입니다. 매도 계약서 매매대금·실거래 신고필증 거래가격·등기부 거래가액(양도 등기)을 찾지 못했으니 그 서류를 폴더에 넣거나 금액을 직접 넣어 주세요.'),
+    if (!has(ct.totalPrice) && !asked('calc:' + p) && !(S.facts.compRows && !ans.compSplit)) q('trc:' + p, cd ? 'judge' : 'missing', ct.name + ' 「계약 전체 양도가액」' + (cd ? pWhy + ((rf.comps || []).length && k === 0 ? ' (수용: 지장물 보상 중 건물·구축물은 양도, 수목·시설 이전비·영업보상은 양도가 아닐 수 있습니다. 이의재결로 늘어난 금액이 있으면 그 금액)' : '') : '을 서류에서 정하지 못했습니다 — 양도차익 계산의 출발점이라 계산 전 필수입니다. 매도 계약서 매매대금·실거래 신고필증 거래가격·등기부 거래가액(양도 등기)을 찾지 못했으니 그 서류를 폴더에 넣거나 금액을 직접 넣어 주세요.'),
       { mode: cd ? 'choose' : 'input', target: 'calc:' + p, input: 'money', label: ct.name + ' 양도가액', cands: cd || [] });
     const b = (ct.buyers || [])[0] || {};
     // [2026.10.17] 양수인이 법인 — 법인등록번호는 넣었고, 법인명은 글자인식 띄어쓰기가 섞여 후보로 보여주고 확인받는다
@@ -33649,6 +33710,14 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
         { mode: 'options', target: 'calc:c0.buyer.relation', options: [{ label: '특수관계 없음', value: 'none' }, { label: '형제자매', value: 'sibling' }, { label: '직계존비속', value: 'lineal' }, { label: '배우자', value: 'spouse' }, { label: '기타 친족', value: 'relative' }], label: '양수인과의 관계' });
     }
   });
+  // [2026.10.17 세무사님 원칙 — 내용 항목별로] 수용 토지 보상금 내역서의 필지별 줄(면적 × 단가 = 금액, 합 = 토지합계) — 서류 합계 하나를 고르게 하지 않고 필지마다 양도자산으로
+  const compRows = S.facts.compRows;
+  if (compRows && !ans.compSplit) {
+    const w = function (n) { return Number(n || 0).toLocaleString('ko-KR'); };
+    q('tr:compsplit:' + compRows.rows.length, 'judge', '수용 토지 보상금 내역서에 필지가 ' + compRows.rows.length + '개입니다(합 ' + w(compRows.total) + '원 = 토지합계, ' + compRows.file + ') — 필지마다 보상금이 정해져 있어 안분 없이 필지별 양도자산(양도가액 = 그 필지 보상금, 양도원인 수용)으로 넣습니다. 지장물(건물·시설·수목) 보상금은 따로 판단합니다.',
+      { mode: 'options', target: 'trCompSplit', options: [{ label: '이대로 필지별 양도자산 ' + compRows.rows.length + '개로', value: JSON.stringify({ rows: compRows.rows }) }], label: '수용 필지별 자산' },
+      compRows.rows.map(function (r, k) { return (k + 1) + ') ' + (r.loc || (r.jibun ? '지번 ' + r.jibun : '지번 못 읽음')) + ' — ' + r.area + '㎡' + (r.share !== 1 ? ' × 지분 ' + (Math.round(r.share * 1000) / 1000) : '') + ' × ' + w(r.unit) + '원 = ' + w(r.v) + '원'; }).join('\n'));
+  }
   // 일괄 필지 계약 — 세액계산기의 양도계약 하나에 필지별 자산(계약 총액을 기준시가 비율로 안분, 시행령 §166④)
   if (S.facts.parcels && !ans.split) {
     const t = S.facts.parcels.t, pcs = S.facts.parcels.list, w = function (n) { return Number(n || 0).toLocaleString('ko-KR'); };
@@ -33657,7 +33726,7 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
       { mode: 'options', target: 'trParcels', options: [{ label: '이대로 필지별 자산 ' + pcs.length + '개로', value: val }], label: '일괄 양도 필지' },
       pcs.map(function (pc, k) { return '①②③④⑤⑥⑦⑧⑨'.charAt(k) + ' ' + pc.loc + (pc.kind ? ' ' + pc.kind : '') + ' ' + pc.area + '㎡ · 공시지가 양도시 ' + (pc.unitT ? w(pc.unitT) + '원/㎡' : '?') + ' · 취득시 ' + (pc.unitA ? w(pc.unitA) + '원/㎡' : '?') + ' · 취득가액 후보 ' + (pc.acq ? w(pc.acq) + '원(' + pc.acqSrc + ')' : '?'); }).join('\n'));
   }
-  const splitPending = !!(S.facts.parcels && !ans.split);
+  const splitPending = !!(S.facts.parcels && !ans.split) || !!(S.facts.compRows && !ans.compSplit); // 필지별로 나눌지 정한 뒤 자산 칸을 묻는다
   if (splitPending) lines.push('일괄 필지 계약 — 필지별 자산으로 나눌지 정한 뒤 자산 칸(소재지·취득일·취득가액)을 묻습니다');
   // 3) 양도자산 카드 — 소재지·과세대상 구분(오피스텔은 근거를 보여주고 고른다)
   if (!splitPending && !S.facts.overseas) st.transferAssets.forEach(function (a, i) {
@@ -33788,6 +33857,8 @@ function trcStdQuestion_(c, a, sc, p, lab, items) {
 function trcOverview_(c, ov, rf, lines, items) {
   const txs = (rf.transactions || []).filter(function (t) { return t.transferPrice || t.acquisitionPrice || t.transferDate || t.transferPriceCand || t.transferPriceConflict || t.transferDateConflict || t.parcels; });
   lines.push('서류 규칙 정리: 계약서 ' + rf.counts.계약서 + ' · 신고필증 ' + rf.counts.신고필증 + ' · 등기부 ' + rf.counts.등기부 + ' · 취득세 ' + rf.counts.취득세 + ' · 법무사 ' + rf.counts.법무사 + ' → 양도거래 ' + txs.length + '건');
+  // [2026.10.17 내용 항목별] 서류를 항목으로 쪼갠 결과(계약서 항목·비용 항목표·정산서 검산·지급 확인 등)는 사이드바에 보이게
+  (rf.evidence || []).filter(function (e) { return !/^⚠/.test(e) && /계약서 항목|비용 항목표|법무사 정산서|등기 세금 서류|지급 확인|견적서·비교표|정산서 사본/.test(e); }).forEach(function (e) { lines.push('🧾 ' + e); });
   (rf.evidence || []).filter(function (e) { return /⚠|찾지 못함|확정 못/.test(e) && !/질문으로 확인$/.test(e); }).forEach(function (e) { // 질문으로 묻는 상충은 알림을 따로 띄우지 않는다(같은 말 두 번)
     items.push(caseProcItem_('rf:' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, e, Utilities.Charset.UTF_8)).slice(0, 10), 'check', e, { mode: 'note' }));
   });
@@ -33944,6 +34015,12 @@ function trcApply_(c, body) {
     const amt = trcNum_(value);
     trcAnsSet_(c, 'taxfee', amt, src);
     return done('신고 세무비용 ← ' + (amt ? amt.toLocaleString('ko-KR') + '원(양도계약 카드 양도비용)' : '없음'));
+  }
+  if (target === 'trCompSplit') { // [2026.10.17] 수용 토지 보상금 필지별 양도자산
+    let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { d = null; }
+    if (!d || !Array.isArray(d.rows) || d.rows.length < 2) return { ok: false, error: '필지 목록이 없습니다 — 다시 처리하자를 해 주세요.' };
+    trcAnsSet_(c, 'compSplit', d.rows, src);
+    return done('수용 필지별 양도자산 ' + d.rows.length + '개 ← ' + d.rows.map(function (r) { return (r.loc || r.jibun || '?') + ' ' + Number(r.v).toLocaleString('ko-KR'); }).join(' / '));
   }
   if (target === 'trParcels') {
     let d = value; try { if (typeof d === 'string') d = JSON.parse(d); } catch (e) { d = null; }
@@ -35174,4 +35251,125 @@ function tcCostLedger_(o) {
   });
   if (cands.length) { const yes = cands.filter(function (c) { return c.deduct === 'yes'; }); lines.push('비용 항목표: ' + cands.length + '줄(공제 ' + yes.length + ' · 공제 안 됨 ' + cands.filter(function (c) { return c.deduct === 'no'; }).length + ' · 판단 ' + cands.filter(function (c) { return c.deduct === 'judge'; }).length + ') — 공제 항목 합 ' + won(yes.reduce(function (s, c) { return s + c.amount; }, 0))); }
   return { cands: cands, consumed: consumed, lines: lines };
+}
+
+// =========================================================
+// [2026.10.17 세무사님 원칙 — 모든 서류는 내용 항목별로] 표 속 "면적 × 단가 = 금액" 줄을 찾아 항목으로 쪼갠다(감정평가서 토지·건물, 수용 보상금 필지별 등).
+//  줄마다 곱셈이 맞는지(지분이 있으면 지분까지) 확인하고, 줄을 더한 값이 서류의 합계와 맞으면 ok — 서류 합계 하나만 보고 "어느 물건 값인지 모름"으로 묻지 않게.
+//  돌려주는 것: { rows: [{ a: 면적, u: 단가, f: 지분, v: 금액, at: 글자 위치 }], total, ok }
+// =========================================================
+function tcAreaUnitRows_(text, opt) {
+  const flat = String(text || '').replace(/\s+/g, ' ').replace(/(\d)\.(\d{3})(?=,\d{3})/g, '$1,$2');
+  const toks = [], fr = [];
+  const re = /(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?/g; let m;
+  while ((m = re.exec(flat))) {
+    const s = m[1].replace(/,/g, ''), v = Number(s + (m[2] || ''));
+    const prev = flat.charAt(m.index - 1), next = flat.charAt(re.lastIndex);
+    if (prev === '-' && /\d/.test(flat.charAt(m.index - 2))) continue; // 지번·날짜 뒷부분
+    toks.push({ v: v, at: m.index, dec: !!m[2], comma: /,/.test(m[1]) });
+  }
+  // 지분·면적 식: "150×1/2", "x43/88"
+  const fre = /(?:(\d+(?:\.\d+)?)\s*[x×*]\s*)?(\d{1,4})\s*\/\s*(\d{1,5})/g; let fm;
+  while ((fm = fre.exec(flat))) { const p = Number(fm[2]), q = Number(fm[3]); if (q && p < q) { fr.push(p / q); if (fm[1]) toks.push({ v: Number(fm[1]) * p / q, at: fm.index, dec: true, expr: true }); } }
+  const amounts = {}; toks.forEach(function (t) { if (t.v >= 10000 && Number.isInteger(t.v)) (amounts[t.v] = amounts[t.v] || []).push(t); });
+  const rows = [], used = {};
+  const fracs = [1].concat(fr.filter(function (x, i, a) { return a.indexOf(x) === i; }));
+  for (let i = 0; i < toks.length; i++) {
+    const a = toks[i]; if (!(a.v > 0 && a.v < 1e6) || a.v === 1) continue;
+    for (let j = 0; j < toks.length; j++) {
+      const u = toks[j]; if (j === i || !(u.v >= 1000) || !Number.isInteger(u.v)) continue;
+      for (let k = 0; k < fracs.length; k++) {
+        const prod = a.v * u.v * fracs[k], vv = Math.round(prod), hits = (amounts[vv] || []).concat(amounts[Math.floor(prod)] || []);
+        const h = hits.filter(function (t) { return !used[t.at] && t.at !== a.at && t.at !== u.at && t.v !== u.v; })[0];
+        if (h && Math.abs(prod - h.v) <= Math.max(1, h.v * 1e-7)) { rows.push({ a: a.v, u: u.v, f: fracs[k], v: h.v, at: h.at }); used[h.at] = 1; break; }
+      }
+    }
+  }
+  rows.sort(function (x, y) { return x.at - y.at; });
+  const uniq = []; rows.forEach(function (r) { if (!uniq.some(function (q) { return q.v === r.v && q.a === r.a; })) uniq.push(r); });
+  const sum = uniq.reduce(function (s, r) { return s + r.v; }, 0);
+  const tre = /(?:토\s*지\s*)?합\s*계\s*(?:\d+\s*필\s*지\s*)?[^\d]{0,30}(\d{1,3}(?:,\d{3})+)|감\s*정\s*평\s*가\s*액[^\d]{0,60}?(\d{1,3}(?:,\d{3}){2,})/g; let tm, total = 0;
+  while ((tm = tre.exec(flat))) { const v = Number(String(tm[1] || tm[2]).replace(/,/g, '')); if (v === sum) total = v; else if (!total) total = v; }
+  if (opt && opt.total) total = opt.total;
+  if (total && sum !== total && uniq.length <= 14) {
+    // 뒤쪽 비교 사례·산출 근거의 곱셈 줄이 섞이면 — 더해서 합계가 되는 줄 묶음(앞쪽에 있는 것 우선)만 그 서류의 물건별 내역으로
+    let best = null;
+    for (let mask = 1; mask < (1 << uniq.length); mask++) {
+      let s = 0, last = 0, cnt = 0;
+      for (let b = 0; b < uniq.length; b++) if (mask & (1 << b)) { s += uniq[b].v; last = uniq[b].at; cnt++; }
+      if (s === total && cnt >= 1 && (!best || last < best.last)) best = { mask: mask, last: last };
+    }
+    if (best) { const pick = uniq.filter(function (_, b) { return best.mask & (1 << b); }); return { rows: pick, total: total, ok: true, dropped: uniq.length - pick.length }; }
+  }
+  return { rows: uniq, total: total, ok: uniq.length >= 1 && !!total && sum === total };
+}
+
+// 감정평가서 한 부의 물건별 줄 → 그 감정서가 다루는 물건(같은 소재지의 토지·건물 등)에 짝짓기. 이 물건(a)의 줄이 정해지면 { v, why }, 아니면 null
+var TC_APPR_ITEM_MEMO_ = {};
+function tcApprItemFor_(x, a, assets) {
+  const r = x.p.result || {};
+  const key = x.f.id + '|' + (r.감정평가액 || '') + '|' + assets.map(function (b) { return b.key; }).join(',');
+  let map = TC_APPR_ITEM_MEMO_[key];
+  if (map === undefined) {
+    map = null;
+    try {
+      let text = ''; try { text = tc_docText_(x.f) || ''; } catch (e) {}
+      const R = tcAreaUnitRows_(text, { total: r.감정평가액 });
+      const nm = function (s) { return String(s || '').replace(/\s+/g, ''); };
+      const seenK = {}, uniqA = assets.filter(function (b) { if (seenK[b.key]) return false; seenK[b.key] = 1; return true; }); // 같은 등기부 사본으로 같은 물건이 두 번 들어온 경우
+      const mine = r.소재지 ? uniqA.filter(function (b) { return b.loc && (tcLocSame_(r.소재지, b.loc) || nm(b.loc).indexOf(nm(r.소재지)) !== -1 || nm(r.소재지).indexOf(nm(b.loc)) !== -1); }) : [];
+      // 감정서는 토지 지번으로 적히는데 건물 등기부 소재지가 다른 지번까지 걸쳐 있으면(노영환: 토지 42-1, 건물 36-25외 1필지) — 상속재산 중 건물이 하나뿐이면 그 건물
+      const bldAll = uniqA.filter(function (b) { return /건물/.test(b.kind); });
+      if (mine.length === 1 && mine[0].kind === '토지' && bldAll.length === 1 && R.rows.length === 2 && mine.indexOf(bldAll[0]) === -1) mine.push(bldAll[0]);
+      if (R.ok && R.rows.length >= 2 && mine.length === R.rows.length) {
+        const left = R.rows.slice(), pair = {};
+        const sameA = function (row, b) { const ar = Number(b.area) || 0; return ar && (Math.abs(row.a - ar) < 0.01 || Math.abs(row.a * row.f - ar) < 0.01); };
+        mine.forEach(function (b) { const k = left.findIndex(function (row) { return sameA(row, b); }); if (k !== -1) { pair[b.key] = { row: left[k], how: '면적 ' + left[k].a + '㎡가 등기부와 같음' }; left.splice(k, 1); } });
+        // 면적으로 못 정한 것 — 토지와 건물 한 줄씩 남으면 ㎡당 단가가 큰 쪽이 토지(감정평가표의 토지 단가는 건물 단가보다 훨씬 큼)
+        const rest = mine.filter(function (b) { return !pair[b.key]; });
+        if (rest.length === 2 && left.length === 2 && rest.some(function (b) { return b.kind === '토지'; }) && rest.some(function (b) { return /건물/.test(b.kind); })) {
+          const hi = left[0].u >= left[1].u ? left[0] : left[1], lo = hi === left[0] ? left[1] : left[0];
+          rest.forEach(function (b) { pair[b.key] = { row: b.kind === '토지' ? hi : lo, how: '토지·건물 한 줄씩 — ㎡당 단가가 큰 줄을 토지로' }; });
+        } else if (rest.length === 1 && left.length === 1) pair[rest[0].key] = { row: left[0], how: '남은 한 줄' };
+        if (mine.every(function (b) { return pair[b.key]; })) map = pair;
+      }
+    } catch (e) { map = null; }
+    TC_APPR_ITEM_MEMO_[key] = map;
+  }
+  const p = map && map[a.key];
+  if (!p) return null;
+  const w = function (n) { return Number(n).toLocaleString('ko-KR'); };
+  return { v: p.row.v, why: (a.kind || '물건') + ' ' + p.row.a + '㎡' + (p.row.f !== 1 ? ' × 지분 ' + (Math.round(p.row.f * 1000) / 1000) : '') + ' × ' + w(p.row.u) + '원 = ' + w(p.row.v) + '원(감정평가액 ' + w(r.감정평가액) + '원 = 물건별 줄 합계 검산 일치, ' + p.how + ')' };
+}
+
+// =========================================================
+// [2026.10.17 세무사님 원칙 — 모든 서류는 내용 항목별로] 매매계약서 — 매매대금 한 덩어리가 아니라 구성 항목(승계하는 임대보증금·융자, 부가가치세 조건,
+//  매수인이 부담하는 양도소득세, 토지·건물 가액 구분)으로 읽어 계산기 칸에 어떻게 반영할지 판단한다.
+//  돌려주는 것: { lines: [근거 문장], deposit, vat: '없음'|'별도'|'포함'|..., buyerTax, landPrice, bldgPrice }
+// =========================================================
+function tcKrMoney_(s) {
+  s = String(s || '').replace(/\s+/g, '');
+  let m = /(\d+)억(?:(\d{1,4})만)?/.exec(s); if (m) return Number(m[1]) * 1e8 + (m[2] ? Number(m[2]) * 1e4 : 0);
+  m = /(\d{1,4})만원?/.exec(s); if (m) return Number(m[1]) * 1e4;
+  m = /\d{1,3}(?:,\d{3}){2,}/.exec(s); if (m) return Number(m[0].replace(/,/g, ''));
+  return 0;
+}
+function tcContractItems_(text, r) {
+  const t = String(text || '').replace(/\s+/g, ' '), out = { lines: [] };
+  const w = function (n) { return Number(n).toLocaleString('ko-KR') + '원'; };
+  // 승계하는 임대(전세)보증금 — 매매대금의 일부(그만큼 현금 대신 채무를 넘김). 양도가액·취득가액은 승계분을 넣은 매매대금 그대로
+  const dm = /(?:전\s*세|임\s*대\s*차?|현)\s*(?:계\s*약\s*)?(?:\(\s*)?보\s*증\s*금[^.]{0,30}?((?:금\s*)?\d+\s*억(?:\s*\d{1,4}\s*만)?\s*원?|(?:금\s*)?\d{1,3}(?:,\d{3}){2,}\s*원?)[\s\S]{0,90}?승\s*계/.exec(t) || /승\s*계[^.]{0,60}?보\s*증\s*금[^.]{0,20}?((?:금\s*)?\d+\s*억(?:\s*\d{1,4}\s*만)?\s*원?|(?:금\s*)?\d{1,3}(?:,\d{3}){2,}\s*원?)/.exec(t);
+  const dep = dm ? tcKrMoney_(dm[1]) : (r && r.승계보증금) || 0;
+  if (dep) { out.deposit = dep; const repl = /중\s*도\s*금\s*으\s*로\s*대\s*체|잔\s*금\s*으\s*로\s*대\s*체/.exec(t.slice(dm ? dm.index : 0, (dm ? dm.index : 0) + 200)); out.lines.push('승계하는 임대보증금 ' + w(dep) + (repl ? '(' + repl[0].replace(/\s+/g, '') + ')' : '') + ' — 매매대금 ' + (r && r.매매대금 ? w(r.매매대금) : '') + '에 들어 있는 금액(현금 대신 보증금 반환채무를 넘김, 별도로 더하지 않음)'); }
+  if (r && r.융자금) { out.loan = r.융자금; out.lines.push('승계하는 융자금 ' + w(r.융자금) + ' — 매매대금에 들어 있는 금액(별도로 더하지 않음)'); }
+  // 부가가치세 조건 — 건물분 부가세는 양도가액이 아님(사업자 매매). "없음"이면 주거용 등으로 과세 안 됨
+  const vm = /(?:건\s*물\s*분\s*)?부\s*가\s*(?:가\s*치\s*)?세\s*(?:는|은|:)?\s*(없\s*음|별\s*도|불\s*포\s*함|포\s*함|면\s*세)/.exec(t);
+  if (vm) { out.vat = vm[1].replace(/\s+/g, ''); out.lines.push('부가가치세 ' + out.vat + '(특약: "' + t.slice(Math.max(0, vm.index - 30), vm.index + vm[0].length + 10).trim() + '")' + (out.vat === '포함' ? ' — 매매대금에 부가세가 들어 있으면 양도가액은 부가세를 뺀 금액' : out.vat === '별도' || out.vat === '불포함' ? ' — 양도가액은 부가세를 뺀 매매대금(지금 값 그대로)' : '')); }
+  // 매수인이 양도소득세를 부담 — 그 세액도 양도대가(양도가액에 더함)
+  const bt = /양\s*도\s*소\s*득\s*세[^.]{0,30}매\s*수\s*(?:인|자)[^.]{0,12}부\s*담|매\s*수\s*(?:인|자)[^.]{0,12}양\s*도\s*소\s*득\s*세[^.]{0,12}부\s*담/.exec(t);
+  if (bt) { out.buyerTax = true; out.lines.push('⚠ 매수인이 양도소득세를 부담하는 특약("' + bt[0].trim().slice(0, 50) + '") — 매수인이 내 주는 양도소득세도 양도대가라 양도가액에 더해야 함(금액 확인)'); }
+  // 토지·건물 가액을 계약서에 나눠 적었으면 그 금액(기준시가 안분 대신, 소득세법 시행령 §166⑥ — 구분이 불분명할 때만 안분)
+  const lb = /토\s*지\s*(?:대\s*금|가\s*액|분)\s*[:：]?\s*(?:금\s*)?(\d{1,3}(?:,\d{3}){2,})[^.]{0,60}?건\s*물\s*(?:대\s*금|가\s*액|분)\s*[:：]?\s*(?:금\s*)?(\d{1,3}(?:,\d{3}){2,})/.exec(t);
+  if (lb) { const L = Number(lb[1].replace(/,/g, '')), B = Number(lb[2].replace(/,/g, '')); if (!r || !r.매매대금 || L + B === r.매매대금 || L + B <= r.매매대금) { out.landPrice = L; out.bldgPrice = B; out.lines.push('토지 ' + w(L) + ' · 건물 ' + w(B) + '로 나눠 적힘' + (r && r.매매대금 && L + B === r.매매대금 ? '(합 = 매매대금)' : '') + ' — 토지·건물을 따로 계산할 때 안분 대신 이 금액'); } }
+  return out;
 }
