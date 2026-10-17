@@ -25157,7 +25157,7 @@ function tc_ruleTransferFacts_(body) {
     ctE.type = p.type || (p.result && p.result.docs ? 'deal' : ''); ctE.office = !!(p.result && !Array.isArray(p.result) && p.result.사무소발행);
     // [2026.10.15] 종류를 정하지 못한 서류 중 등기필증(옛 권리증)은 여기서 — 예전엔 아래 판별에 닿기 전에 건너뛰어 등기필증 규칙이 한 번도 작동하지 않았다
     if (!p.type) {
-      if (/(등|동)\s*기\s*필\s*증/.test(text) && /소\s*유\s*권\s*이\s*전/.test(text) && (!names.length || names.some(function (nm) { return String(text).replace(/\s+/g, '').indexOf(nm) !== -1; }))) {
+      if (/(등|동)\s*기\s*필\s*증/.test(text) && /소\s*유\s*권\s*이\s*전/.test(text) && (!names.length || names.some(function (nm) { return String(tcBundleHay_(f, text)).replace(/\s+/g, '').indexOf(nm) !== -1; }))) {
         var rcm0 = /접\s*수\s*[:：]?\s*(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(text);
         if (rcm0) regCerts.push({ file: f.name, date: rcm0[1] + '-' + ('0' + rcm0[2]).slice(-2) + '-' + ('0' + rcm0[3]).slice(-2) });
       }
@@ -25207,7 +25207,7 @@ function tc_ruleTransferFacts_(body) {
     if (/^(cashreceipt|cardreceipt|taxinvoice)$/.test(p.type) && p.result && p.result.합계 && !p.result.취소 && !p.result.사무소발행) expDocs.push({ file: f.name, amount: p.result.합계, date: String(p.result.거래일 || '').slice(0, 10), memo: p.result.상호 || '', payer: '', head: String(text).slice(0, 300) });
     // [2026.10.15 1단계 ②] 등기필증(옛 권리증) — "등기목적 소유권이전 · 접수 0000년 00월 00일"이면 납세자 취득 등기 접수일(취득시기 §98 후보).
     //  사진으로 찍힌 등기필증이 "종류 미정"으로 어느 칸에도 안 쓰였다(김금옥: 취득 계약서가 없어 취득일을 못 정함)
-    if (!p.type && /(등|동)\s*기\s*필\s*증/.test(text) && /소\s*유\s*권\s*이\s*전/.test(text) && (!names.length || names.some(function (nm) { return String(text).replace(/\s+/g, '').indexOf(nm) !== -1; }))) {
+    if (!p.type && /(등|동)\s*기\s*필\s*증/.test(text) && /소\s*유\s*권\s*이\s*전/.test(text) && (!names.length || names.some(function (nm) { return String(tcBundleHay_(f, text)).replace(/\s+/g, '').indexOf(nm) !== -1; }))) {
       var rcm = /접\s*수\s*[:：]?\s*(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(text);
       if (rcm) regCerts.push({ file: f.name, date: rcm[1] + '-' + ('0' + rcm[2]).slice(-2) + '-' + ('0' + rcm[3]).slice(-2) });
     }
@@ -25652,6 +25652,11 @@ function tc_ruleTransferFacts_(body) {
   });
   // 증여 취득 — 취득일·취득가액을 못 정한 거래에 증여계약서 날짜와 증여일 평가기간(전 6개월~후 3개월, 상증법 §60·시행령 §49) 안 매매사례를 후보로
   txs.forEach(function (tx) {
+    // [2026.10.17] 취득일·가액이 이미 다른 서류(증여세 신고서 등)로 정해졌어도 증여계약서와 대조 — 수증자가 납세자면 증여 취득과 맞음을 근거로 남긴다
+    //  (이종식: 묶음 PDF를 나누자 증여계약서 구간이 따로 읽혔지만 어디에도 대조되지 않아 "안 쓰임"이었다)
+    var lk0 = String(tx.assetLocation || '').match(/\d+-\d+|\d{2,}호/g) || [];
+    var g0 = giftDocs.filter(function (x) { return !lk0.length || lk0.some(function (k) { return x.text.indexOf(k.replace(/\s+/g, '')) !== -1; }); })[0];
+    if (g0 && g0.r.수증자 && tcNameIn_(g0.r.수증자, names)) evidence.push('대조: 증여계약서(' + g0.file + ') 증여자 ' + (g0.r.증여자 || '?') + ' → 수증자 ' + g0.r.수증자 + '(납세자)' + (g0.r.계약일 ? ' · 계약일 ' + g0.r.계약일 : '') + ' — 이 물건을 증여로 취득한 것과 맞음' + (tx.acquisitionDate ? '(취득일 ' + tx.acquisitionDate + ')' : ''));
     if (tx.acquisitionDate && tx.acquisitionPrice) return;
     var locKey = String(tx.assetLocation || '').match(/\d+-\d+|\d{2,}호/g) || [];
     var g = giftDocs.filter(function (x) { return !locKey.length || locKey.some(function (k) { return x.text.indexOf(k.replace(/\s+/g, '')) !== -1; }); })[0];
@@ -26025,6 +26030,47 @@ function caseProcJoinPages_(files, cache) {
     files.forEach(function (f) { if (!used[f.id]) res.files.push(f); else if (first[f.id]) res.files.push(first[f.id]); }); // 이어 붙인 것은 첫 쪽 자리에
   } catch (e) {}
   return res;
+}
+// [2026.10.17 세무사님 원칙 — 거래 단위로] 예금 해약·만기 "이자계산서"(우체국 등) — 한 계좌의 해약 한 건: 원금 · 발생이자 · 원천세(소득세·지방소득세·농특세) · 실지급액.
+//  검산: 원금 + 이자 = 합계(1), 원천세 합 = 공제 합계(2), (1) − (2) = 실지급액 — 셋이 다 맞는 묶음만. 상속 예금 평가(상증령 §63④: 예입총액 + 경과이자 − 원천징수세액)의 근거이지만
+//  해약일이 상속개시일 뒤면 개시일 뒤 이자가 섞여 있어 금융재산 대조표에는 참고로만 둔다(박종헌 우체국 정기예금 300,000,000 → 실지급 306,673,560)
+function docInterestCalcParse_(text) {
+  var t = String(text || '');
+  if (!/이\s*자\s*계\s*산\s*서/.test(t.slice(0, 300)) || !/원\s*금/.test(t) || !/실\s*지\s*급/.test(t)) return null;
+  var norm = t.replace(/(\d)\.(\d{3})(?=[.,\s\n]|$)/g, '$1,$2').replace(/(\d)\.(\d{3})(?=[.,\s\n]|$)/g, '$1,$2');
+  var A = [], am, re = /(?:[#@\\₩￦]|W(?=\d))\s*(\d{1,3}(?:,\d{3})+|\d{1,3})(?![\d,])/g;
+  while ((am = re.exec(norm))) { var v = Number(am[1].replace(/,/g, '')); if (v > 0 && A.indexOf(v) === -1) A.push(v); }
+  var best = null;
+  A.forEach(function (S1) { A.forEach(function (N) {
+    if (N >= S1) return;
+    var T = S1 - N; if (A.indexOf(T) === -1) return;
+    var pi = A.filter(function (x) { return x < S1 && A.indexOf(S1 - x) !== -1 && x > S1 - x; })[0];
+    if (!pi) return;
+    var parts = A.filter(function (x) { return x < T; }), taxes = null;
+    for (var i = 0; i < parts.length && !taxes; i++) for (var j = 0; j < parts.length && !taxes; j++) { if (i !== j && parts[i] > parts[j] && parts[i] + parts[j] === T) taxes = [parts[i], parts[j]]; }
+    if (T >= S1 - pi || !taxes) return; // 원천세는 이자보다 작고 세목(소득세 + 지방소득세·농특세)으로 나뉘어야 한다 — "원금 = 실지급" 같은 우연한 짝 배제
+    if (!best || S1 > best.S1) best = { S1: S1, N: N, T: T, P: pi, I: S1 - pi, taxes: taxes };
+  }); });
+  if (!best) return null;
+  var r = { 종류: '이자계산서(예금 해약·지급)', 원금: best.P, 이자: best.I, 합계: best.S1, 원천세: best.T, 실지급액: best.N, 검산: true, 경고: [] };
+  if (best.taxes) { r.소득세 = best.taxes[0]; r.농특세등 = best.taxes[1]; }
+  var m = /계\s*좌\s*번\s*호\s*[:：]?\s*(\d{3,6}-\d{2,6}-\d{2,8})/.exec(t); if (m) r.계좌번호 = m[1];
+  m = /예\s*입\s*\(?\s*가\s*입\s*\)?\s*일[^\d]{0,10}(\d{4}-\d{2}-\d{2})/.exec(t); if (m) r.예입일 = m[1];
+  m = /지\s*급\s*\(?\s*해\s*약\s*\)?\s*일[^\d]{0,10}(\d{4}-\d{2}-\d{2})/.exec(t); if (m) r.지급일 = m[1];
+  m = /(중\s*도\s*해\s*약|만\s*기\s*해\s*약|만\s*기)/.exec(t); if (m) r.구분 = m[1].replace(/\s+/g, '');
+  m = /예\s*금\s*종\s*류\s*[:：]?\s*([^\n]{2,20}?)\s*(?:과\s*세|\n)/.exec(t); if (m) r.예금종류 = m[1].trim();
+  m = /([가-힣]{2,4})\s*님\s*\n?\s*귀\s*하/.exec(t); if (m) r.예금주 = m[1];
+  for (var k = 0; k < BAL_BANKS_.length; k++) if (t.indexOf(BAL_BANKS_[k]) !== -1) { r.금융기관 = BAL_BANKS_[k]; break; }
+  var won = function (n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; };
+  var md = '### 이자계산서(예금 해약·지급)\n\n' + docMdTable_([['금융기관', r.금융기관 || ''], ['계좌', (r.계좌번호 || '') + (r.예금종류 ? ' ' + r.예금종류 : '')], ['예입일 → 지급(해약)일', (r.예입일 || '') + ' → ' + (r.지급일 || '') + (r.구분 ? ' (' + r.구분 + ')' : '')],
+    ['원금', won(r.원금)], ['발생 이자', won(r.이자)], ['원금 + 이자', won(r.합계)], ['원천세', won(r.원천세) + (r.소득세 ? ' (' + won(r.소득세) + ' + ' + won(r.농특세등) + ')' : '')], ['실지급액', won(r.실지급액) + ' (원금 + 이자 − 원천세 ✓)']]);
+  return { type: 'interest', label: r.종류, result: r, md: md };
+}
+// [2026.10.17] 이름 확인용 글 — 묶음 파일을 나눈 구간이면 원본 파일 전체 글(구간 경계에서 쪽 머리의 "신청인 : 김금옥"이 앞 구간에 붙어 등기필증 구간엔 이름이 없었다).
+//  같은 파일(그 사람의 권리증 묶음) 안이라 이름 확인에는 써도 되고, 값(접수일 등)은 구간 글에서만 읽는다
+function tcBundleHay_(f, text) {
+  if (!f || !f.bundleOf) return text;
+  try { return tc_docText_({ id: String(f.id).split('#s')[0], name: f.bundleOf, mimeType: f.mimeType, modified: f.modified }) || text; } catch (e) { return text; }
 }
 // 본문의 네 자리 이상 숫자(금액·날짜·번호)를 숫자만 남겨 겹치지 않게 정렬한 목록(200개까지 — 넘으면 사본 판정에 안 씀)
 function caseProcNumPrint_(text) {
@@ -26558,7 +26604,7 @@ var CASEPROC_LAST_RF_ = null;
 // [2026.10.15] 세목별로 세액 계산 입력이 되는 서류 종류(docParseText_ type) — 이 밖의 종류는 ⚠확인필요를 질문으로 올리지 않는다(서류 목록·증빙 대조는 그대로)
 const CASEPROC_RELEVANT_TYPES_ = {
   gift: ['giftcontract', 'banktx', 'appraisal', 'registry', 'family', 'pubprice', 'realprice', 'balance', 'debtcert', 'rent', 'lease', 'leasereport', 'leaselist', 'bldledger', 'landledger', 'contract', 'loan'], // loan: 차용증(차입인지 증여인지)
-  inheritance: ['registry', 'appraisal', 'family', 'death', 'inhdivision', 'inhquery', 'funeralbill', 'funerallist', 'nichecontract', 'balance', 'debtcert', 'insurance', 'pubprice', 'realprice', 'rent', 'lease', 'leasereport', 'leaselist', 'bldledger', 'landledger', 'carreg', 'cashreceipt', 'cardreceipt', 'giftcontract', 'banktx', 'loan', 'propquery'], // loan: 대여금 채권·채무, propquery: 재산조회 회보서
+  inheritance: ['registry', 'appraisal', 'family', 'death', 'inhdivision', 'inhquery', 'funeralbill', 'funerallist', 'nichecontract', 'balance', 'debtcert', 'insurance', 'pubprice', 'realprice', 'rent', 'lease', 'leasereport', 'leaselist', 'bldledger', 'landledger', 'carreg', 'cashreceipt', 'cardreceipt', 'giftcontract', 'banktx', 'loan', 'propquery', 'interest'], // interest: 예금 해약 이자계산서(2026.10.17) // loan: 대여금 채권·채무, propquery: 재산조회 회보서
   transfer: ['contract', 'appraisal', 'dealreport', 'brokerdesc', 'registry', 'acqtax', 'lawyerfee', 'cashreceipt', 'cardreceipt', 'taxinvoice', 'receipt', 'pubprice', 'realprice', 'bldledger', 'landledger', 'resident', 'family', 'farmbiz', 'farmconfirm', 'farmledger', 'giftcontract', 'rent', 'lease', 'leasehist', 'expropcert'] // leasehist: 임대주택 요건(증액 5%), expropcert: 수용사실 확인서
 };
 // 3) 처리개요 — 빈 칸은 [확인]에서 값을 받아 채우고, 양도는 서류 규칙 정리(검산된 값)로 물건목록의 빈 칸을 채운다. 기준일은 증빙으로 확정.
@@ -28355,6 +28401,12 @@ function caseProcInhFacts0_(c, parsed) {
     if (perAcc) (r.증명 || []).forEach(function (z) { z.계좌별.forEach(function (q) { accOf(accKey(q.계좌), org, (r.금융기관 || '') + ' ' + q.계좌).srcs.push({ kind: 'cert', v: q.금액, atBase: atBase, file: x.f.name, why: src0 }); }); });
     else insts.push({ org: org, kind: 'cert', v: r.총액, atBase: atBase, file: x.f.name, label: (r.금융기관 || '잔액증명') + (acc ? ' …' + acc.split(',').map(function (a) { return a.slice(-4); }).join('·…') : ''), why: src0 });
   });
+  // ①-2 [2026.10.17] 예금 해약 이자계산서 — 그 계좌의 해약 한 건(원금·이자·원천세·실지급). 계좌 줄에 참고로만 붙인다(고르는 값 아님 — 해약일까지 이자라 개시일 잔액이 아닐 수 있음)
+  by('interest').forEach(function (x) {
+    const r = x.p.result || {}, l4 = accKey(r.계좌번호); if (!l4 || !r.실지급액) return;
+    const after = !!(base && r.지급일 && r.지급일 > base);
+    accOf(l4, finOrg_(r.금융기관), (r.금융기관 || '') + ' ' + r.계좌번호).srcs.push({ kind: 'int', v: r.실지급액, file: x.f.name, why: '이자계산서(' + x.f.name + ') ' + (r.구분 || '지급') + ' ' + (r.지급일 || '') + ': 원금 ' + won0(r.원금) + ' + 이자 ' + won0(r.이자) + ' − 원천세 ' + won0(r.원천세) + ' = ' + won0(r.실지급액) + (after ? ' — 상속개시일(' + base + ') 뒤 해약이라 개시일 뒤 이자가 섞임(참고)' : '') });
+  });
   // ② 거래내역 증명서·거래내역 조회 — 개시일 직전 검산된 줄의 잔액, 통장 사본은 마지막 기록 잔액(참고)
   by('banktx').forEach(function (x) {
     const r = x.p.result || {};
@@ -28428,7 +28480,7 @@ function caseProcInhFacts0_(c, parsed) {
   // 계좌별 대조표 — 사실장부 "쓰인 곳"에도 파일 이름이 남는다
   const rowsTxt = [];
   accs.forEach(function (a) {
-    const s = a.srcs.map(function (q) { return ({ cert: '잔액증명', hist: '거래내역 개시일 잔액', div: '협의서 잔액', book: '통장 마지막 잔액' })[q.kind] + ' ' + won0(q.v) + (q.kind === 'div' && q.pay && q.pay !== q.v ? '(지급액 ' + won0(q.pay) + ')' : '') + '(' + q.file + (q.kind === 'cert' && !q.atBase && base ? ', 기준일 다름' : '') + ')'; });
+    const s = a.srcs.map(function (q) { return ({ cert: '잔액증명', hist: '거래내역 개시일 잔액', div: '협의서 잔액', book: '통장 마지막 잔액', int: '이자계산서 실지급(참고)' })[q.kind] + ' ' + won0(q.v) + (q.kind === 'div' && q.pay && q.pay !== q.v ? '(지급액 ' + won0(q.pay) + ')' : '') + '(' + q.file + (q.kind === 'cert' && !q.atBase && base ? ', 기준일 다름' : '') + ')'; });
     rowsTxt.push((a.label || (a.org + ' …' + a.l4)).trim() + ': ' + s.join(' · ') + (a.pick ? ' → ' + won0(a.pick.v) : ' → 참고만'));
   });
   insts.forEach(function (z) { rowsTxt.push(z.label + ': ' + ({ query: '안심상속 조회', div: '협의서 금액', cert: '잔액증명(계좌 구분 없음)', hist: '거래내역 개시일 잔액' })[z.kind] + ' ' + won0(z.v) + '(' + (z.files || [z.file]).join(' = ') + ')'); });
@@ -31643,6 +31695,10 @@ function docGiftContractParse_(text) {
   if (!r.수증자) { m = /(?:^|\n)\s*수\s*증\s*자\s+([가-힣]{2,4})\s*(?:\n|$)/.exec(t); if (m) r.수증자 = m[1]; }
   if (!r.증여자) { m = /증\s*여\s*자\s+([가-힣]{2,4})\s+의\s/.exec(t); if (m) r.증여자 = m[1]; }
   if (!r.수증자) { m = /수\s*증\s*자\s+([가-힣]{2,4})\s*에\s*게/.exec(t); if (m) r.수증자 = m[1]; }
+  // [2026.10.17] 옛 검인 양식 "위 부동산은 증여자 이 석경소유인바 이를 수증자 이종식에 증여할 것을 약정" — 이름 사이 띄어쓰기(글자인식), '의'·'에게' 없이 소유·에 증여.
+  //  서명란은 이름이 한 글자씩 흩어져("이 / 종 / 식") 못 읽는다(이종식: 묶음 PDF를 나누자 증여계약서 구간이 "이름을 읽지 못함"으로 남았다)
+  if (!r.증여자) { m = /증\s*여\s*자\s+([가-힣](?:\s?[가-힣]){1,3}?)\s*(?:의\s*)?소\s*유/.exec(t); if (m) r.증여자 = m[1].replace(/\s+/g, ''); }
+  if (!r.수증자) { m = /수\s*증\s*자\s+([가-힣](?:\s?[가-힣]){1,3}?)\s*에\s*(?:게\s*)?증\s*여/.exec(t); if (m) r.수증자 = m[1].replace(/\s+/g, ''); }
   // 서명란 "증여인 수증인 … 이름 (주민번호) 주소 … 이름 주민번호" — 이름 바로 뒤 주민번호가 붙은 것만, 앞이 증여인·뒤가 수증인. 본문보다 믿을 만해(본문 글자인식 "안비택") 있으면 이것을 쓴다
   var sigAt = t.search(/증\s*여\s*인\s*\n?\s*수\s*증\s*인/);
   if (sigAt >= 0) {
@@ -32989,15 +33045,16 @@ var DOC_BUNDLE_TITLES_ = [
   ['biz', /^사업자등록증(?:명)?$/],
   ['inc', /^소득금액증명(?:원)?$/]
 ];
-var DOC_BUNDLE_TYPE_FAM_ = { contract: 'deal', dealreport: 'deal', lease: 'deal', leaselist: 'deal', giftcontract: 'gift', resident: 'resident', family: 'family', death: 'family|death', bldledger: 'bld', landledger: 'land', registry: 'registry', cashreceipt: 'cash', taxinvoice: 'taxinv', payment: 'pay', acqtax: 'pay', filedret: 'ret', balance: 'bal', banktx: 'bank', debtcert: 'debt|bank', bizreg: 'biz', insurance: 'ins' };
+var DOC_BUNDLE_TYPE_FAM_ = { interest: 'int', contract: 'deal', dealreport: 'deal', lease: 'deal', leaselist: 'deal', giftcontract: 'gift', resident: 'resident', family: 'family', death: 'family|death', bldledger: 'bld', landledger: 'land', registry: 'registry', cashreceipt: 'cash', taxinvoice: 'taxinv', payment: 'pay', acqtax: 'pay', filedret: 'ret', balance: 'bal', banktx: 'bank', debtcert: 'debt|bank', bizreg: 'biz', insurance: 'ins' };
 var DOC_BUNDLE_PAGE_KW_ =[['resident', /주민등록표|등본은세대별|초본은/], ['family', /가족관계증명서|기본증명서|혼인관계증명서/], ['bld', /건축물대장/], ['land', /토지대장|임야대장/], ['registry', /등기사항(?:전부|일부)증명서/]];
 function docBundleTitleFam_(line) {
   var s = String(line || '').replace(/\s+/g, '');
   if (s.length < 3 || s.length > 34) return null;
   if (/^[\d①-⑳※*\-•·|)\]>:.]|^[가-하][).]/.test(s)) return null; // 번호 매긴 첨부서류 목록("2. 검인 계약서")·안내 줄
   if (/원본|사본|\d통|첨부|번호|문의|무효|보관하|사용할|기재|의거|명시|틀림없|에관한|에대한|열람용|규칙|별지|서식|참조|해당|위와|아래/.test(s)) return null;
-  var s2 = s.replace(/(?:\([^)]{0,10}\))+$/, ''); // 끝의 "(자납분)(납세자보관용)" 같은 괄호는 떼고도 본다
-  for (var i = 0; i < DOC_BUNDLE_TITLES_.length; i++) if (DOC_BUNDLE_TITLES_[i][1].test(s) || (s2 !== s && DOC_BUNDLE_TITLES_[i][1].test(s2))) return { fam: DOC_BUNDLE_TITLES_[i][0], title: s.replace(/^.*[\]√]/, '').replace(/\([^)]*\)/g, '').slice(0, 16) }; // 체크 칸("[√]입원")·괄호는 뺀 제목
+  // 끝의 "(자납분)(납세자보관용)" 같은 괄호, 지방세 고지서 머리의 관청·번호 꼬리("(보장) 동안구| 173" — 김운래 등록세 납부서)는 떼고도 본다
+  var s2 = s.replace(/[가-힣]{1,5}(?:구|시|군)\|?\d{1,5}$/, '').replace(/(?:\([^)]{0,10}\))+$/, '');
+  for (var i = 0; i < DOC_BUNDLE_TITLES_.length; i++) if (DOC_BUNDLE_TITLES_[i][1].test(s) || (s2 !== s && DOC_BUNDLE_TITLES_[i][1].test(s2))) return { fam: DOC_BUNDLE_TITLES_[i][0], title: (DOC_BUNDLE_TITLES_[i][1].test(s) ? s : s2).replace(/^.*[\]√]/, '').replace(/\([^)]*\)/g, '').slice(0, 16) }; // 체크 칸("[√]입원")·괄호는 뺀 제목
   return null;
 }
 function docBundleCuts_(text) {
@@ -33045,7 +33102,12 @@ function docBundleCuts_(text) {
     if (cur.fam === 'medical' && x.fam === 'cash') return; // 진료비 영수증 아래의 "현금영수증" 칸은 같은 영수증의 결제 정보
     // 자르는 자리는 그 쪽의 머리부터 — 제목 앞 6줄 안에 쪽 머리("1/2"·"문서확인번호"·"정부24")가 있으면 거기서
     var ci = x.i;
-    for (var b = x.i - 1; b > Math.max(cur.i, x.i - 7); b--) if (/^\s*\d{1,2}\s*\/\s*\d{1,2}\s*$|(?:문\s*서|발\s*급)\s*확\s*인\s*번\s*호|정\s*부\s*24/.test(lines[b])) ci = b;
+    //  [2026.10.17] 쪽 끝 표시("1/1" — 앞 쪽의 끝)만 있으면 그 바로 다음 줄부터: 우체국 잔액증명의 머리(주소·"○○우체국장")가 앞 보험 구간에 붙어 금융기관을 못 읽었다(박종헌).
+    //  더 앞에 쪽 머리(문서확인번호)가 있으면 그쪽이 이긴다(정부24는 "문서확인번호 … 1/1"이 쪽 머리)
+    for (var b = x.i - 1; b > Math.max(cur.i, x.i - 9); b--) {
+      if (/(?:문\s*서|발\s*급)\s*확\s*인\s*번\s*호|정\s*부\s*24/.test(lines[b])) ci = b;
+      else if (/^\s*\d{1,2}\s*\/\s*\d{1,2}\s*$/.test(lines[b])) ci = b + 1;
+    }
     segs.push({ i: cur.i, j: ci, fam: cur.fam, title: cur.title, newPay: cur.newPay });
     cur = { i: ci, fam: x.fam, title: x.title, newPay: newPay };
   });
@@ -33342,6 +33404,7 @@ function docParseText_(text) {
   var bscp = docBldStdCalcParse_(text); if (bscp) return bscp; // [2026.10.16 1:1 방영교]
   var ofp = docOfficetelStdParse_(text); if (ofp) return ofp;
   var ncp = docNicheContractParse_(text); if (ncp) return ncp;
+  var icp = docInterestCalcParse_(text); if (icp) return icp; // [2026.10.17] 예금 해약 이자계산서
   var bsp = docBankSlipParse_(text); if (bsp) return bsp;
   // [2026.10.17 임대보증금] 부가세 부동산임대공급가액명세서·임대차 현황표(계약서 없이 표만 있는 파일) — 임대보증금 검산표(노영환 "임대명세서 2025.pdf": 종류 없음이던 것)
   if (/부\s*동\s*산\s*임\s*대\s*공\s*급\s*가\s*액\s*명\s*세\s*서/.test(String(text || '').slice(0, 300)) || (/임\s*대\s*차?\s*(?:계\s*약\s*)?현\s*황/.test(String(text || '').slice(0, 200)) && !/계\s*약\s*서/.test(String(text || '')))) {
@@ -34199,6 +34262,16 @@ function balParse_(text) {
     var items = best ? best.map(function (v, idx) { return { 계좌: accts.length === best.length ? '…' + accts[idx].replace(/\(.*\)$/, '').replace(/-/g, '').slice(-4) : '', 금액: v }; }) : [];
     r.증명.push({ 합계: total, 계좌별: items, 검산: !!best || total === 0, 계좌수: accts.length, 계좌뒷자리: accts.map(function (a) { return '…' + a.replace(/\(.*\)$/, '').replace(/-/g, '').slice(-4); }) });
   });
+  // [2026.10.17 세무사님 원칙 — 거래 단위로] "합계" 칸이 없는 서식(우체국 "예금잔액증명서 CERTIFICATE OF DEPOSIT BALANCE": 종류·계좌번호·잔액·미결제·질권·압류 칸이 계좌마다 한 줄) —
+  //  계좌번호 바로 뒤(줄 셋 안)의 화폐기호 금액이 그 계좌 잔액. 계좌마다 한 줄로 두고 증명 합계는 그 합(합계 칸이 없어 검산할 것이 없음 — 계좌 줄 그대로)
+  if (!r.증명.length) {
+    var rowRe = /(?:^|\n)[^\n]{0,30}?(\d{3,6}-\d{2,6}-\d{2,8})[^\n]*\n(?:[^\n]*\n){0,2}?[^\n\d]*(?:[#@\\₩￦]|W(?=\d))\s*(\d{1,3}(?:,\d{3})+|\d{1,3})(?![\d,])/g, rw, rows0 = [];
+    while ((rw = rowRe.exec(norm))) { if (/^0\d{1,2}-\d{3,4}-\d{4}$/.test(rw[1]) || /^\d{3}-\d{2}-\d{5}$/.test(rw[1])) continue; rows0.push({ 계좌: rw[1], 금액: balAmt_(rw[2]) }); }
+    if (rows0.length && /잔\s*액\s*증\s*명|DEPOSIT\s*BALANCE/i.test(t)) {
+      var tot0 = rows0.reduce(function (s, x) { return s + x.금액; }, 0);
+      r.증명.push({ 합계: tot0, 계좌별: rows0.map(function (x) { return { 계좌: '…' + x.계좌.replace(/-/g, '').slice(-4), 금액: x.금액 }; }), 검산: true, 합계칸없음: true, 계좌수: rows0.length, 계좌뒷자리: rows0.map(function (x) { return '…' + x.계좌.replace(/-/g, '').slice(-4); }) });
+    }
+  }
   if (r.평가합계12 && r.증명.length) {
     var s12 = r.증명.reduce(function (s, x) { return s + x.합계; }, 0);
     r.평가합계검산 = s12 === r.평가합계12;
@@ -34355,8 +34428,9 @@ function acqParse_(text) {
   m = /(?:과세\s*대상|등기\s*\(\s*등록\s*\)\s*물건)\s*[:：]?\s*\[?\s*(?:\d{4}년\s*\d{1,2}월\s*취득세\(부동산\)\s*\[)?\s*([^\]\n]{4,90}?)(?:\]|\s+※|\s+신고|\s+과세표준|$)/.exec(flat);
   if (m) r.과세물건 = m[1].trim();
   // 과세표준(쉼표 없이 붙어 나오기도 함), 시가표준액
-  m = /과세\s*표준\s*(?:액)?\s*[:：]?\s*(\d{1,3}(?:[,.]\d{3})+|\d{5,})/.exec(flat) || /\(\s*과\s*표\s*\)[^\d]{0,6}(\d{1,3}(?:[,.]\d{3}){2,})/.exec(flat); // [2026.10.17] 옛 고지서 "부과내역 (과표) 비 114,882,800"
-  if (m) r.과세표준 = acqNum_(m[1]);
+  m = /과세\s*표준\s*(?:액)?\s*[:：]?\s*(\d{1,3}(?:[,.]\d{3})+|\d{5,})(?:\s+(\d{1,3}(?:[,.]\d{3})+|\d{5,}))?/.exec(flat) || /\(\s*과\s*표\s*\)[^\d]{0,6}(\d{1,3}(?:[,.]\d{3}){2,})/.exec(flat); // [2026.10.17] 옛 고지서 "부과내역 (과표) 비 114,882,800"
+  // [2026.10.17] 쉼표 없는 옛 고지서 "과세표준액 5500000 550000000" — 이름표 뒤 첫 숫자가 세액(표 칸 순서가 섞임)이고 바로 뒤 열 배 넘는 숫자가 과세표준(김운래 2009 취득세)
+  if (m) r.과세표준 = m[2] && acqNum_(m[2]) >= acqNum_(m[1]) * 10 ? acqNum_(m[2]) : acqNum_(m[1]);
   m = /시가\s*표준\s*액\s*[:：]?\s*(\d{1,3}(?:[,.]\d{3})+|\d{5,})/.exec(flat);
   if (m) r.시가표준액 = acqNum_(m[1]);
   m = /(\d{5}-\d-\d{2}-\d{2}-[\d-]{6,12})/.exec(flat);
@@ -34398,6 +34472,15 @@ function acqParse_(text) {
       }
       if (best) r.경고.push('취득세 숫자가 깨져 읽혀 합계−교육세−농특세로 맞춤(원문 숫자열에 같은 숫자 있음) — 원문 확인');
     }
+  }
+  // [2026.10.17] 세목이 취득세 하나뿐인 고지서(농특세 0) — 더할 금액이 없어 a+b=합계 검산이 안 된다. 취득세 이름표 뒤 금액이 합계 칸 등에 세 번 이상 되풀이되고
+  //  농특세 칸이 0이면 그 금액이 취득세 = 합계(김운래 2009 "취득세 5500000 농특세 0 5500000 5500000" — 쉼표 없는 금액)
+  if (!best && !regMode) {
+    //  표 머리가 "취득세 농특세" 두 이름표 뒤에 값 "5500000 ᄆᄆ 0"이 이어지는 판(같은 서류의 다른 글자인식)도
+    var one = /취\s*득\s*세\s*[:：]?\s*(?:농\s*특\s*세\s*)?(\d{1,3}(?:[,.]\d{3})+|\d{4,10})(?![\d,])/.exec(flat);
+    var v1 = one ? acqNum_(one[1]) : 0;
+    var farm0 = /(?:농어촌\s*특별세|농\s*특\s*세)[^\d]{0,8}0(?![\d,])/.test(flat) || /취\s*득\s*세\s*농\s*특\s*세\s*(?:\d{1,3}(?:[,.]\d{3})+|\d{4,10})\s+(?:\S{1,4}\s+)?0(?![\d,])/.test(flat);
+    if (v1 >= 1000 && v1 !== r.과세표준 && nums.filter(function (v) { return v === v1; }).length >= 3 && farm0) { best = { tot: v1, p: [v1] }; r.세목구분근거 = '세목 하나(농특세 0) — 취득세 = 합계'; }
   }
   if (best && regMode) {
     // 등록세 고지서: 큰 것이 등록세, 남는 하나는 등록세분 지방교육세(등록세의 20%) — 비율이 맞지 않으면 구분은 원문 확인
