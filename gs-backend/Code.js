@@ -24944,7 +24944,7 @@ function tc_ruleTransferFacts_(body) {
     try { text = tc_docText_(f); } catch (e) { continue; }
     if (!text) continue;
     if (!caseProcIsAmend_(cr) && caseProcIsOutputText_(text, 'transfer')) continue; // 양도 사실 정리
-    costTexts.push({ file: f.name, id: f.id, mime: f.mimeType, text: String(text).slice(0, 8000) }); // (위 줄 이어서) 양도 사실 정리 — 증여·상속세 신고서는 취득가액 근거(입력) // [2026.10.15] 내용으로 본 이미 낸 신고서(사진 신고서 등) — 입력으로 안 씀
+    var ctE = { file: f.name, id: f.id, mime: f.mimeType, text: String(text).slice(0, 8000) }; costTexts.push(ctE); // (위 줄 이어서) 양도 사실 정리 — 증여·상속세 신고서는 취득가액 근거(입력) // [2026.10.15] 내용으로 본 이미 낸 신고서(사진 신고서 등) — 입력으로 안 씀
     // [2026.10.15 1단계 ②] 분양가 내역표(분양 취득 — "소유권이전등기비용내역" 등): 분양가 줄의 금액들을 취득가액 후보로(어느 호실 값인지는 판단 — 정하지 않음).
     //  김금옥 사건: 취득 계약서가 없고 분양가 표 사진만 있어 취득가액을 못 정했는데, 그 사진이 "종류 미정"으로 안 쓰였다.
     var bym = /분\s*양\s*가([\s\S]{0,400}?)(?:부\s*가\s*세|과\s*표|합\s*계)/.exec(text);
@@ -25002,6 +25002,8 @@ function tc_ruleTransferFacts_(body) {
     var p = null;
     try { p = docParseText_(text); } catch (e) { continue; }
     if (!p) continue;
+    // [2026.10.17] 비용 장부(tcCostLedger_)가 이름표 쪼개기·대조를 비용 서류에만 쓰도록 서류 종류와 "이 사무소 발행"을 함께 넘긴다
+    ctE.type = p.type || (p.result && p.result.docs ? 'deal' : ''); ctE.office = !!(p.result && !Array.isArray(p.result) && p.result.사무소발행);
     // [2026.10.15] 종류를 정하지 못한 서류 중 등기필증(옛 권리증)은 여기서 — 예전엔 아래 판별에 닿기 전에 건너뛰어 등기필증 규칙이 한 번도 작동하지 않았다
     if (!p.type) {
       if (/(등|동)\s*기\s*필\s*증/.test(text) && /소\s*유\s*권\s*이\s*전/.test(text) && (!names.length || names.some(function (nm) { return String(text).replace(/\s+/g, '').indexOf(nm) !== -1; }))) {
@@ -31096,6 +31098,10 @@ function acqParse_(text) {
   var t = String(text || ''), flat = t.replace(/\s+/g, ' ');
   var r = { 종류: /납부\s*확인서/.test(t) ? '취득세 납부확인서' : '취득세 납부서 겸 영수증', 경고: [] };
   if (/등록세/.test(t) && !/취득세/.test(t)) r.종류 = '등록세 영수증';
+  // [2026.10.17] 옛 "등록세 납세고지서·납부서 겸 영수증" — 안내문에 "취득세는 납기경과시 가산세" 같은 말이 있어도 제목(앞부분)이 등록세면 등록세 영수증.
+  //  세목 금액을 취득세가 아니라 등록세로 붙인다(김금옥: 등록세 3,446,480원이 "취득세"로 들어가 분양 취득세 영수증과 부딪혔다)
+  var regMode = /등\s*록\s*[세체]\s*(?:납\s*세\s*고\s*지\s*서|납\s*부\s*서|신\s*고)/.test(String(t).replace(/\s+/g, ' ').slice(0, 400)) && !/취\s*[득독]\s*세\s*(?:납\s*세\s*고\s*지\s*서|납\s*부\s*서)/.test(String(t).replace(/\s+/g, ' ').slice(0, 400));
+  if (regMode) r.종류 = '등록세 납세고지서·영수증';
   var m = /주민(?:\([^)]*\))?\s*등록\s*번호\s*[:：]?\s*(\d{6})|(\d{6})\s*-\s*[*\d]{1,7}/.exec(flat);
   if (m) r.생년월일6 = m[1] || m[2];
   m = /(?:과세\s*원인|등기\s*\(\s*등록\s*\)\s*원인)\s*[:：]?\s*([가-힣()]{2,14})/.exec(flat);
@@ -31103,7 +31109,7 @@ function acqParse_(text) {
   m = /(?:과세\s*대상|등기\s*\(\s*등록\s*\)\s*물건)\s*[:：]?\s*\[?\s*(?:\d{4}년\s*\d{1,2}월\s*취득세\(부동산\)\s*\[)?\s*([^\]\n]{4,90}?)(?:\]|\s+※|\s+신고|\s+과세표준|$)/.exec(flat);
   if (m) r.과세물건 = m[1].trim();
   // 과세표준(쉼표 없이 붙어 나오기도 함), 시가표준액
-  m = /과세\s*표준\s*(?:액)?\s*[:：]?\s*(\d{1,3}(?:[,.]\d{3})+|\d{5,})/.exec(flat);
+  m = /과세\s*표준\s*(?:액)?\s*[:：]?\s*(\d{1,3}(?:[,.]\d{3})+|\d{5,})/.exec(flat) || /\(\s*과\s*표\s*\)[^\d]{0,6}(\d{1,3}(?:[,.]\d{3}){2,})/.exec(flat); // [2026.10.17] 옛 고지서 "부과내역 (과표) 비 114,882,800"
   if (m) r.과세표준 = acqNum_(m[1]);
   m = /시가\s*표준\s*액\s*[:：]?\s*(\d{1,3}(?:[,.]\d{3})+|\d{5,})/.exec(flat);
   if (m) r.시가표준액 = acqNum_(m[1]);
@@ -31147,11 +31153,17 @@ function acqParse_(text) {
       if (best) r.경고.push('취득세 숫자가 깨져 읽혀 합계−교육세−농특세로 맞춤(원문 숫자열에 같은 숫자 있음) — 원문 확인');
     }
   }
-  if (best) {
+  if (best && regMode) {
+    // 등록세 고지서: 큰 것이 등록세, 남는 하나는 등록세분 지방교육세(등록세의 20%) — 비율이 맞지 않으면 구분은 원문 확인
+    r.합계 = best.tot; r.등록세 = best.p[0]; r.검산 = true;
+    var restR = best.p.slice(1);
+    if (restR.length === 1 && Math.abs(restR[0] - r.등록세 * 0.2) <= Math.max(10, r.등록세 * 0.002)) { r.지방교육세 = restR[0]; r.세목구분근거 = '교육세 = 등록세 × 20%'; }
+    else { r.부가세목 = restR.join(' + '); r.부가세목확인필요 = true; }
+  } else if (best) {
     r.합계 = best.tot; r.취득세 = best.p[0]; r.검산 = true;
     // 교육세·농특세는 크기로 구별할 수 없어(세율이 경우마다 다름) 이름표 바로 뒤 금액으로만 붙인다
     var lab = function (re) { var x = re.exec(flat); return x ? acqNum_(x[1]) : null; };
-    var edu = lab(/지방\s*교육세\s*[:：]?\s*(\d{1,3}(?:[,.]\d{3})+)/), farm = lab(/농어촌\s*특별세\s*[:：]?\s*(\d{1,3}(?:[,.]\d{3})+)/);
+    var edu = lab(/지방\s*교육세\s*[:：]?\s*(\d{1,3}(?:[,.]\d{3})+)/), farm = lab(/(?:농어촌\s*특별세|농\s*특\s*세)\s*[:：]?\s*(\d{1,3}(?:[,.]\d{3})+)/);
     var rest = best.p.slice(1);
     if (edu != null && rest.indexOf(edu) !== -1) r.지방교육세 = edu;
     if (farm != null && rest.indexOf(farm) !== -1 && farm !== edu) r.농어촌특별세 = farm;
@@ -31178,7 +31190,7 @@ function acqParse_(text) {
     var nk = /자\s*납\s*분|납\s*세\s*고\s*지\s*서/.test(flat) ? /납\s*기\s*내[\s\S]{0,40}?까지\s*(\d{1,3}(?:,\d{3})+)/.exec(flat) : null;
     if (nk) {
       r.종류 = /등\s*록\s*세/.test(t) && !/취\s*득\s*세\s*납\s*세/.test(t) ? '등록세 납세고지서 영수증(자납분)' : '취득세 납세고지서 영수증(자납분)';
-      r.합계 = acqNum_(nk[1]); if (/취\s*득\s*세\s*납\s*세/.test(t)) r.취득세 = r.합계;
+      r.합계 = acqNum_(nk[1]); if (regMode) r.등록세 = r.합계; else if (/취\s*득\s*세\s*납\s*세/.test(t)) r.취득세 = r.합계;
       r.경고.push('옛 고지서 양식 — 납기내 금액 ' + r.합계.toLocaleString('ko-KR') + '원을 세액으로 읽음(세목 나눔 없음), 원문 확인');
       m = /납\s*기\s*내\s*(\d{4})\s*[.\-]\s*(\d{1,2})\s*[.\-]\s*(\d{1,2})/.exec(flat); if (m) r.납부기한 = m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2);
       m = /과\s*세\s*대\s*상\s*([^※\n]{4,60}?)(?:\s+납기|\s+일반|\s*$)/.exec(flat); if (m && !r.과세물건) r.과세물건 = m[1].trim();
@@ -31205,7 +31217,10 @@ function valDetect_(t) {
   if ((/법\s*무\s*사/.test(t) && /(보\s*수|공\s*과\s*금|증\s*지|등\s*기\s*신\s*청\s*수\s*수\s*료|인\s*지\s*대)/.test(t) || /보\s*수\s*액/.test(t) && /공\s*과\s*금/.test(t)) && !/납부\s*확인서|납부서\s*겸\s*영수증/.test(t)) return 'lawyerfee';
   // [2026.10.15 1단계 ②] 옛 양식(2000년대 "취득세 납세고지서 영수증(자납분)")도 — 김금옥 사건 사진이 "종류 미정"으로 어느 칸에도 안 쓰였다
   //  [2026.10.16 1:1 김금옥] 금액(세 자리 쉼표 숫자)이 하나도 없으면 영수증이 아니다 — 고객 손글씨 자료 목록("4. 취득세 납세 고지서(영수증) 1부")을 취득세 영수증으로 읽었다
-  if (/취\s*득\s*세|등\s*록\s*세/.test(t) && /\d{1,3}(?:,\d{3})+/.test(t) && /(납부\s*확인서|납부서\s*겸\s*영수증|영수필|과세\s*표준|납\s*세\s*고\s*지\s*서[\s\S]{0,30}영\s*수\s*증|자\s*납\s*분)/.test(t) && !/신고서\s*접수증|지방세법\s*시행규칙\s*\[?별지/.test(t)) return 'acqtax';
+  //  [2026.10.17] 옛 지자체 "취득세 납부서 겸 영수증"(시청 OCR 양식)은 금액이 쉼표 없이 찍힌다("1570000") — 그 제목이 있으면 쉼표 없는 금액도 인정
+  //   (김환식·박영수: 국세 납부서로 넘어가 "국세 아님 — 정리하지 않음"으로 버려졌다). 홈택스 양도세 간편계산·상담 시트는 "취득세" 낱말이 있어도 영수증이 아니다(김금옥)
+  var acqLocal = /납\s*부\s*서\s*겸\s*영\s*수\s*증|납\s*세\s*고\s*지\s*서|과\s*세\s*증\s*명\s*서/.test(t) && /(?:^|\D)\d{5,9}(?:\D|$)/.test(t);
+  if (/취\s*득\s*세|등\s*록\s*세/.test(t) && (/\d{1,3}(?:,\d{3})+/.test(t) || acqLocal) && /(납부\s*확인서|납\s*부\s*서\s*겸\s*영\s*수\s*증|영수필|과세\s*표준|납\s*세\s*고\s*지\s*서[\s\S]{0,30}영\s*수\s*증|자\s*납\s*분|과\s*세\s*증\s*명\s*서)/.test(t) && !/신고서\s*접수증|지방세법\s*시행규칙\s*\[?별지/.test(t) && !/간\s*편\s*계\s*산|양\s*도\s*소\s*득\s*금\s*액|장\s*기\s*보\s*유\s*특\s*별\s*공\s*제|(?:^|\s)Sheet\d|ㅇ\s*의\s*뢰\s*인/.test(t)) return 'acqtax';
   if (rk === 'taxinvoice' || rk === 'invoice') return 'taxinvoice';
   if (rk === 'funeral') return 'funeralbill';
   if (/(잔\s*액|잔\s*고)\s*증\s*명|금\s*융\s*거\s*래\s*확\s*인\s*서|Certificate\s+of\s+(?:Deposit\s+)?Balance/i.test(t)) return 'balance';
@@ -35020,12 +35035,16 @@ function trcClassOptions_(S, tpl, ans) {
 //        ③ 항목마다 공제가 맞는지 법령으로 판단한다(취득가액 포함 §89①1호 / 양도비용 §163⑤ / 공제 안 됨) — 질문 목록은 이 항목 줄
 // =========================================================
 var TC_COST_ITEMS_ = [
-  ['acqTaxAgent', '취득세 신고·납부 대행료', /취\s*득\s*세\s*(?:신\s*고\s*)?납\s*부\s*대\s*행|지\s*방\s*세\s*신\s*고\s*대\s*행/, 'fee'],
+  ['acqTaxAgent', '취득세 신고·납부 대행료', /취\s*득\s*세\s*(?:신\s*고\s*)?납\s*부\s*대\s*행|취\s*득\s*세\s*신\s*고\s*(?:대\s*행|비)|등\s*록\s*세\s*신\s*고\s*(?:대\s*행|비)|지\s*방\s*세\s*신\s*고\s*대\s*행/, 'fee'],
+  // [2026.10.17 옛 법무사 영수증] 한 칸에 세목 둘을 묶어 적은 이름표("취득세. 교육세 1,837,000" · "등록세, 교육세 4,135,770") — 취득세·교육세 칸보다 먼저 잡아
+  //  묶음 금액을 한쪽 세목에 붙이지 않는다. 장부에서 취득세(등록세) 영수증의 세목 합과 같으면 그 세목들로 나눠 확인한다(김동일·김금옥)
+  ['acqEduTax', '취득세·지방교육세(한 칸에 묶음)', /취\s*[득독]\s*세\s*(?:[.,·]|및)\s*(?:지\s*방\s*)?교\s*육\s*세/, 'tax'],
+  ['regEduTax', '등록세·지방교육세(한 칸에 묶음)', /등\s*록\s*세\s*(?:[.,·]|및)\s*(?:지\s*방\s*)?교\s*육\s*세/, 'tax'],
   ['bondAgent', '채권 매입 대행료', /채\s*권\s*매\s*입\s*대\s*행/, 'fee'],
   ['bondBuy', '국민주택채권 매입액', /(?:국\s*민\s*주\s*택\s*)?채\s*권\s*매\s*입\s*(?:비\s*용|금\s*액|액)?/, 'bondbuy'],
-  ['bondLoss', '국민주택채권 할인료(매각차손)', /\(\s*(?:할|합|팀|힐)\s*인\s*(?:시|율|습|을)?\s*(?:적\s*용|비\s*용|금\s*액)?\s*\)|채\s*권\s*(?:할\s*인|매\s*각)\s*(?:료|비\s*용|비|액|차\s*손|손\s*실)?/, 'bondloss'],
-  ['bond', '국민주택채권', /국\s*민\s*주\s*택\s*채\s*권/, 'bond'],
-  ['stampReg', '증지대·인지대', /[증승중]\s*지\s*대?\s*(?:및|,|·)\s*인\s*지\s*대?/, 'stampreg'],
+  ['bondLoss', '국민주택채권 할인료(매각차손)', /\(\s*(?:할|합|팀|힐)\s*인\s*(?:시|율|습|을)?\s*(?:적\s*용|비\s*용|금\s*액)?\s*\)|채\s*권\s*(?:할\s*인|매\s*각)\s*(?:료|비\s*용|비|액|차\s*손|손\s*실)?|채\s*권\s*료/, 'bondloss'],
+  ['bond', '국민주택채권', /국\s*민\s*주\s*택\s*채\s*권|채\s*권(?!\s*(?:매\s*입|할\s*인|매\s*각|료|자|\d+\s*\/))/, 'bond'], // 옛 영수증 "2 채 권 114,540" — 매입액인지 할인료인지는 장부에서 과세표준 대비 크기로
+  ['stampReg', '증지대·인지대', /[증승중]\s*지\s*대?\s*(?:및|,|·)\s*인\s*지\s*대?|인\s*지\s*대?\s*(?:및|,|·)\s*[증승중]\s*지\s*대?/, 'stampreg'],
   ['regFee', '등기신청수수료(증지)', /등\s*기\s*신\s*청\s*수\s*수\s*료|대\s*법\s*원\s*수\s*입\s*증\s*지|증\s*지\s*대?/, 'regfee'],
   ['stamp', '인지대(인지세)', /인\s*지\s*(?:대|세)?/, 'stamp'],
   ['acqTax', '취득세', /취\s*[득독]\s*세/, 'tax'],
@@ -35034,20 +35053,26 @@ var TC_COST_ITEMS_ = [
   ['ruralTax', '농어촌특별세', /농\s*(?:어\s*촌\s*)?특\s*(?:별\s*)?세|농\s*륙\s*세/, 'tax'],
   ['feeProg', '법무사 누진보수', /(?:수\s*수\s*료\s*)?누\s*진(?:\s*보\s*수)?|수\s*수\s*료\s*진/, 'fee'],
   ['feeBase', '법무사 기본보수', /(?:수\s*수\s*료\s*)?기\s*본(?:\s*보\s*수)?/, 'fee'],
-  ['deedDraft', '원인증서 작성료', /원\s*인\s*증\s*서\s*작\s*성/, 'fee'],
+  ['deedDraft', '원인증서 작성료', /원\s*인\s*(?:증\s*서|서\s*류)\s*작\s*성/, 'fee'],
   ['inspect', '검인·거래신고 대행료', /(?:원\s*인\s*증\s*서\s*)?검\s*인(?:\s*[등동들])?|부\s*동\s*산\s*거\s*래\s*신\s*고/, 'fee'],
   ['confirm', '확인서면 작성료', /확\s*인\s*서\s*면/, 'fee'],
   ['contractDraft', '계약서 작성료', /계\s*약\s*서\s*작\s*성/, 'fee'],
-  ['etcAgent', '기타 업무대행료', /기\s*타\s*업\s*무\s*대\s*행|허\s*가\s*승\s*낙\s*서\s*류\s*작\s*성/, 'fee'],
+  ['etcAgent', '기타 업무대행료', /기\s*타\s*업\s*무\s*대\s*행|허\s*가\s*승\s*낙\s*서\s*류\s*작\s*성|신\s*탁\s*등\s*기\s*말\s*소/, 'fee'],
   ['cert', '제증명·등본 발급비', /제\s*증\s*명(?:\s*및\s*등\s*본\s*발\s*급)?|등\s*본\s*발\s*급/, 'fee'],
-  ['travel', '교통비·일당', /교\s*통\s*비\s*[,.]?\s*(?:[일임]\s*당|당)?|[일임]\s*당/, 'fee'],
-  ['vat', '부가가치세(보수분)', /부\s*가\s*(?:가\s*치\s*)?세/, 'vat']
+  ['regView', '등본 열람·목록 작성비', /등\s*본\s*(?:및\s*)?열\s*람\s*(?:비|료)?|열\s*람\s*(?:비|료)|목\s*록\s*비/, 'fee'], // 김동일 영수증: "등본및열람비 8,400"과 "제증명료 10,000"이 따로 있음
+  ['travel', '교통비·일당', /교\s*통\s*비\s*[,.]?\s*(?:[일임]\s*당|당)?|[일임]\s*당\s*(?:및\s*)?(?:여\s*비)?|여\s*비/, 'fee'],
+  ['vat', '부가가치세(보수분)', /부\s*가\s*(?:가\s*치\s*)?세/, 'vat'],
+  // [2026.10.17 옛 법무사 영수증] "보수료 130,000"·"4 수수료 152,900" — 기본보수를 "기본"이라 적지 않은 서식(김동일·김금옥). 맨 끝에 두어
+  //  등기신청수수료·수수료 기본/누진·수수료 계(소계)를 먼저 잡게 한다(앞 글자가 한글이면 다른 낱말의 일부 — 중개수수료 등)
+  ['feeBase', '법무사 기본보수', /보\s*수\s*료|(?<![가-힣])수\s*수\s*료(?!\s*(?:소\s*)?계|\s*기\s*본|\s*누\s*진|\s*진)/, 'fee']
 ];
 // 소계·합계 이름표 — 그 뒤 금액은 항목에 붙이지 않는다
-var TC_COST_SUBTOTAL_RE_ = /공\s*과\s*(?:금\s*)?(?:보\s*수\s*)?(?:소\s*)?(?:합\s*)?계\s*\(?[\d+\s]*\)?|수\s*수\s*료\s*(?:소\s*)?계|보\s*수\s*액?\s*(?:소\s*)?계\s*\d?|세\s*액\s*합\s*계|합\s*계|총\s*계|신\s*고\s*(?:금\s*)?액|과\s*세\s*표\s*준\s*액?|의\s*뢰\s*가\s*액|시\s*가\s*표\s*준\s*액/g;
+//  [2026.10.17] 단독 "계 2,389,770"·"일금"(영수 총액)·"공급가액"(현금영수증 가로표 머리)·"환불금"도 소계로 — 그 금액이 앞 이름표 항목에 붙지 않게
+var TC_COST_SUBTOTAL_RE_ = /공\s*과\s*(?:금\s*)?(?:보\s*수\s*)?(?:소\s*)?(?:합\s*)?계\s*\(?[\d+\s]*\)?|수\s*수\s*료\s*(?:소\s*)?계|보\s*수\s*액?\s*(?:소\s*)?계\s*\d?|세\s*액\s*합\s*계|합\s*계|총\s*계|신\s*고\s*(?:금\s*)?액|과\s*세\s*표\s*준\s*액?|의\s*뢰\s*가\s*액|시\s*가\s*표\s*준\s*액|(?:^|\s)계(?=\s*\d)|일\s*금|공\s*급\s*(?:가\s*액|대\s*가)|환\s*불\s*(?:금|액)/g;
 // 글자 → 항목 목록 { key, name, group, amount } (0원 항목은 빼고), 이름표가 붙은 금액만
 function tcCostTextItems_(text) {
-  const flat = String(text || '').replace(/\s+/g, ' ').replace(/(\d)\.(\d{3})(?=[,\s원]|$)/g, '$1,$2').replace(/(\d)\.(\d{3})\.(\d{3})/g, '$1,$2,$3').replace(/이\s*원/g, '0원');
+  // [2026.10.17] 점 두 개짜리 금액("4.497.262")을 먼저 바꾼다 — 한 점짜리를 먼저 바꾸면 "4.497,262"가 되어 497,262만 남고 앞이 '.'이라 버려졌다(황인택 국민주택채권)
+  const flat = String(text || '').replace(/\s+/g, ' ').replace(/(\d)\.(\d{3})\.(\d{3})(?!\d)/g, '$1,$2,$3').replace(/(\d)\.(\d{3})(?=[,\s원]|$)/g, '$1,$2').replace(/이\s*원/g, '0원');
   const marks = [];
   const taken = function (s, e) { return marks.some(function (m) { return s < m.e && e > m.s; }); };
   TC_COST_ITEMS_.forEach(function (it) {
@@ -35057,13 +35082,20 @@ function tcCostTextItems_(text) {
   const sre = new RegExp(TC_COST_SUBTOTAL_RE_.source, 'g'); let sm;
   while ((sm = sre.exec(flat))) { if (!sm[0].trim()) { sre.lastIndex++; continue; } if (!taken(sm.index, sm.index + sm[0].length)) marks.push({ s: sm.index, e: sm.index + sm[0].length, key: '_sub' }); }
   marks.sort(function (a, b) { return a.s - b.s; });
-  const nre = /(\d{1,3}(?:,\d{3})+|\d{4,})\s*원?|(?:^|[^\d.,%])(0)(?=\s*원|\s|$)/g, nums = []; let nm;
+  // 금액 — "- 원정"처럼 빈 칸을 줄표로 적은 것도 0원 자리로 넣는다(빠지면 다음 금액이 앞 이름표로 당겨짐: 김동일 "확인서면작성료 - 원정 원인서류작성료 30,000")
+  const nre = /(\d{1,3}(?:,\d{3})+|\d{4,})\s*원?|(?:^|[^\d.,%])(0)(?=\s*원|\s|$)|(?:^|\s)[-–—](?=\s*원)/g, nums = []; let nm;
   while ((nm = nre.exec(flat))) {
     const after = flat.slice(nre.lastIndex, nre.lastIndex + 2), before = flat.charAt(nm.index - 1);
-    if (/^\s*[%m㎡년월일호동]/.test(after) || /[-/.]/.test(before)) continue;
+    if ((nm[1] || nm[2]) && (/^\s*[%m㎡년월일호동]/.test(after) || /[-/.]/.test(before))) continue;
     const v = nm[1] ? Number(nm[1].replace(/,/g, '')) : 0;
     if (nm[1] && /^\d{4,}$/.test(nm[1]) && !/원/.test(nm[0]) && v < 100000) continue; // 쉼표 없는 작은 숫자(번호)는 원이 붙어야 금액
-    nums.push({ s: nm.index + (nm[1] ? 0 : nm[0].indexOf('0')), v: v });
+    // [2026.10.17] 번호는 금액이 아니다 — 쉼표 없는 10자리 이상(전자납부·과세·접수번호 → 5.7e28원), 영문자 바로 뒤(승인번호 "C30037460"),
+    //  "…번호" 이름표 바로 뒤, 주민번호 앞자리("540623 - 1…" → 등록세 540,623으로 읽던 것)
+    if (nm[1] && /^\d{10,}$/.test(nm[1])) continue;
+    if (nm[1] && /[A-Za-z]/.test(before)) continue;
+    if (nm[1] && /번\s*호\s*[:：]?\s*$/.test(flat.slice(Math.max(0, nm.index - 10), nm.index))) continue;
+    if (nm[1] && /^\d{6}$/.test(nm[1]) && /^\s*-\s*[\d*]/.test(flat.slice(nm.index + nm[1].length, nm.index + nm[1].length + 4))) continue;
+    nums.push({ s: nm.index + (nm[1] ? 0 : Math.max(0, nm[0].search(/[0\-–—]/))), v: v });
   }
   const out = [];
   // 이름표가 바로 이어 붙고(표의 두 칸 머리) 금액이 그 뒤에 차례로 오는 경우("제증명 및 등본발급 교통비, 일당 19,260원 40,000원") — 이름표 묶음과 금액을 순서대로 짝
@@ -35104,6 +35136,28 @@ function tcCostTextItems_(text) {
       }
     }
   }
+  // [2026.10.17 2열 서식] 보수 칸·공과금 칸이 나란히 있는 정산서는 OCR이 두 열을 섞어 이름표가 한 칸씩 밀린다(박종헌 "누진료 420,000"이 취득세로,
+  //  이우석 PDF "증지대 및 인지대 5,400,000"). 상식 검산이 틀리면 항목끼리 금액을 맞바꿔 보고, 모든 검산이 맞는 배치가 될 때만 그 배치를 쓴다
+  //  (금액 묶음은 그대로라 합계 검산은 변하지 않음). 바꾼 것은 out.swapped에 남겨 장부가 "판독만으로 읽은 금액"으로 다루게 한다.
+  if (out.length >= 3 && tcCostSane_(out).length) {
+    const keep = out.map(function (o) { return o.amount; }), moved = [];
+    let bad = tcCostSane_(out).length;
+    for (let round = 0; round < 6 && bad; round++) {
+      let bestBad = bad, bestPair = null;
+      for (let i = 0; i < out.length; i++) for (let j = i + 1; j < out.length; j++) {
+        if (out[i].amount === out[j].amount) continue;
+        const a0 = out[i].amount; out[i].amount = out[j].amount; out[j].amount = a0;
+        const b = tcCostSane_(out).length;
+        out[j].amount = out[i].amount; out[i].amount = a0;
+        if (b < bestBad) { bestBad = b; bestPair = [i, j]; }
+      }
+      if (!bestPair) break;
+      const p0 = out[bestPair[0]], p1 = out[bestPair[1]], a1 = p0.amount;
+      p0.amount = p1.amount; p1.amount = a1; bad = bestBad;
+      moved.push(p0.name + '↔' + p1.name);
+    }
+    if (bad) out.forEach(function (o, i) { o.amount = keep[i]; }); else out.swapped = moved;
+  }
   return out;
 }
 // 항목 이름표가 맞는지 상식 검산 — 합계가 맞아도 이름표가 한 칸씩 밀릴 수 있다(노오섭: 인지 150,000이 "검인"에 붙음)
@@ -35116,8 +35170,16 @@ function tcCostSane_(its) {
   if (et && (at || rt) && !((at && (near(et, at * 0.1) || near(et, at * 0.2))) || (rt && near(et, rt * 0.2)))) bad.push('지방교육세가 취득세(등록세)의 10%·20%가 아님');
   if (g('stamp') && TC_STAMP_AMTS_.indexOf(g('stamp')) === -1) bad.push('인지대가 법정 인지세액이 아님');
   if (g('stampReg') && !TC_STAMP_AMTS_.some(function (v) { const r = g('stampReg') - v; return r >= 0 && r <= 50000; })) bad.push('증지대·인지대가 인지세액 + 증지가 아님');
-  ['inspect', 'deedDraft', 'confirm', 'contractDraft', 'acqTaxAgent', 'bondAgent', 'cert', 'travel'].forEach(function (k) { if (g(k) > 300000) bad.push(k + ' 대행료가 너무 큼'); });
+  ['inspect', 'deedDraft', 'confirm', 'contractDraft', 'acqTaxAgent', 'bondAgent', 'cert', 'regView', 'travel'].forEach(function (k) { if (g(k) > 300000) bad.push(k + ' 대행료가 너무 큼'); });
+  // [2026.10.17] 부가세는 보수(수수료·실비)의 10%를 넘지 않는다 — 두 열이 섞여 큰 공과금이 부가세 칸에 붙은 것(이우석 PDF 5,400,000)
+  const feeAll = its.filter(function (o) { return o.group === 'fee'; }).reduce(function (s, o) { return s + o.amount; }, 0);
+  if (g('vat') && feeAll && g('vat') > feeAll * 0.1 + 10) bad.push('부가세가 보수의 10%보다 큼');
   if (g('regFee') > 100000) bad.push('등기신청수수료가 너무 큼');
+  // [2026.10.17] 세목 크기 순서(취득세 ≥ 교육세·농특세)·채권(할인료 < 매입액)·보수 상한 — 두 열이 섞여 큰 금액이 작은 칸에 붙은 것을 잡는다
+  if (at && (et > at || g('ruralTax') > at)) bad.push('교육세·농특세가 취득세보다 큼');
+  if (rt && et > rt) bad.push('교육세가 등록세보다 큼');
+  if (g('bondLoss') && g('bondBuy') && g('bondLoss') >= g('bondBuy')) bad.push('채권 할인료가 매입액보다 큼');
+  if (g('feeBase') > 3000000 || g('feeProg') > 10000000) bad.push('법무사 보수가 너무 큼');
   return bad;
 }
 // 항목의 공제 판단(양도소득세) — side: 취득(그 물건을 살 때 든 비용) / 양도
@@ -35129,7 +35191,7 @@ function tcCostVerdict_(key, group, side, docKind) {
     if (group === 'stamp') return { ok: 'yes', kind: '양도', why: '양도 계약서 인지대 — 양도비용(시행령 §163⑤1호 다목)' };
     return { ok: 'judge', kind: '양도', why: '양도 때 든 등기·법무 비용 — 양도를 위해 직접 쓴 비용이면 양도비용(§163⑤1호), 매수인 부담분·근저당 말소 비용이면 아님' };
   }
-  if (group === 'tax') return { ok: 'yes', kind: '취득', why: (key === 'acqTax' ? '취득세' : key === 'regTax' ? '등록세' : key === 'eduTax' ? '지방교육세(취득·등록세분)' : '농어촌특별세(취득세분)') + ' — 취득가액에 포함(시행령 §89①1호: 매입가액 + 취득세 등 부대비용)' };
+  if (group === 'tax') return { ok: 'yes', kind: '취득', why: (key === 'acqTax' ? '취득세' : key === 'regTax' ? '등록세' : key === 'eduTax' ? '지방교육세(취득·등록세분)' : key === 'acqEduTax' ? '취득세·지방교육세(한 칸에 묶음)' : key === 'regEduTax' ? '등록세·지방교육세(한 칸에 묶음)' : /^acqTax(Rest|Sum)$/.test(key) ? '취득세 영수증의 세목' : '농어촌특별세(취득세분)') + ' — 취득가액에 포함(시행령 §89①1호: 매입가액 + 취득세 등 부대비용)' };
   if (group === 'stamp' || group === 'stampreg' || group === 'regfee') return { ok: 'yes', kind: '취득', why: '취득 계약·등기에 든 인지대·등기신청수수료 — 취득부대비용(시행령 §89①1호)' };
   if (group === 'vat') return { ok: 'yes', kind: '취득', why: '법무사 보수의 부가가치세 — 취득부대비용(§89①1호). 사업자로 매입세액을 공제받았으면 빼야 함' };
   return { ok: 'yes', kind: '취득', why: '소유권 이전 등기에 든 법무사 보수·실비 — 취득부대비용(시행령 §89①1호)' };
@@ -35141,9 +35203,16 @@ function tcCostLedger_(o) {
   const textOf = function (file) { const x = (o.costTexts || []).filter(function (t) { return t.file === file; })[0]; return x ? x.text : ''; };
   const has = function (text, v) { const t = String(text || '').replace(/(\d)\.(\d{3})(?=[,\s원]|$)/g, '$1,$2'), d = t.replace(/[,\s]/g, ''); return t.indexOf(cm(v)) !== -1 || d.indexOf(dg(v)) !== -1; };
   const lines = [], consumed = {}, items = {}; // items: side|key → { side, key, name, group, amount, srcs:[], conf:[], docKind, ok, alts:[] }
-  const add = function (side, it, src, docKind, trusted) {
-    const k = side + '|' + it.key, cur = items[k];
-    if (!cur) { items[k] = { side: side, key: it.key, name: it.name, group: it.group, amount: it.amount, srcs: [src], conf: [], docKind: docKind || '', trusted: !!trusted, alts: [] }; return; }
+  // [2026.10.17] rid = 그 세금을 낸 영수증(전자납부번호·납부일+합계). 같은 세목이라도 다른 영수증(분양 취득세 2003-03 + 이전 등록세 2003-05 …)이면
+  //  "서류마다 금액이 다름"으로 부딪히게 하지 않고 줄을 따로 둔다. 같은 영수증의 사본(사진·PDF)과 정산서의 같은 금액은 한 줄로 합친다(김금옥)
+  const add = function (side, it, src, docKind, trusted, rid) {
+    const base = side + '|' + it.key;
+    const same = Object.keys(items).filter(function (k) { return k === base || k.indexOf(base + '#') === 0; }).map(function (k) { return items[k]; });
+    const hit = same.filter(function (x) { return x.amount === it.amount; })[0];
+    if (hit) { if (hit.srcs.indexOf(src) === -1) hit.srcs.push(src); hit.trusted = hit.trusted || !!trusted; if (rid && !hit.rid) hit.rid = rid; return; }
+    if (rid && same.length && same.every(function (x) { return x.rid && x.rid !== rid; })) { items[base + '#' + rid] = { side: side, key: it.key, name: it.name, group: it.group, amount: it.amount, srcs: [src], conf: [], docKind: docKind || '', trusted: !!trusted, alts: [], rid: rid }; return; }
+    const k = base, cur = items[k];
+    if (!cur) { items[k] = { side: side, key: it.key, name: it.name, group: it.group, amount: it.amount, srcs: [src], conf: [], docKind: docKind || '', trusted: !!trusted, alts: [], rid: rid || '' }; return; }
     if (cur.amount === it.amount) { if (cur.srcs.indexOf(src) === -1) cur.srcs.push(src); cur.trusted = cur.trusted || !!trusted; return; }
     if (trusted && !cur.trusted) { cur.alts.push({ v: cur.amount, src: cur.srcs.join(', ') }); cur.amount = it.amount; cur.srcs = [src]; cur.trusted = true; return; }
     if (!cur.alts.some(function (a) { return a.v === it.amount; })) cur.alts.push({ v: it.amount, src: src });
@@ -35162,15 +35231,19 @@ function tcCostLedger_(o) {
     if (/견\s*적/.test(String(l.r.종류 || '')) || l.r.비교표) { lines.push('견적서·비교표는 실제 지출이 아니라 비용에서 뺌: ' + l.file + (l.r.합계 ? ' ' + won(l.r.합계) : '')); return; }
     if (o.newHomeCost && o.newHomeCost(l.file, l.r.소재지, l.r.일자)) { lines.push('신규 주택 취득 비용으로 보여 판 집 비용에서 뺌: ' + l.file); return; }
     let its = tcCostTextItems_(textOf(l.file));
+    const swapped = its.swapped || null;
     // 이름표 없는 "국민주택채권" 금액 — 과세표준의 1% 이하면 매입액이 아니라 할인료(바로 판 손실)로 본다
-    const base = Number(l.r.과세표준) || Number(o.acqPrice) || 0;
+    //  [2026.10.17] 과세표준을 못 읽었으면 정산서의 "의뢰가액·신고금액"으로(노오섭: 의뢰가액 207,000,000원 — 채권 46,918원은 0.02%라 할인료)
+    const baseM = /(?:의\s*뢰\s*가\s*액|신\s*고\s*금\s*액|과\s*세\s*표\s*준\s*액?)[\s\S]{0,80}?(\d{1,3}(?:[,.]\d{3}){2,})/.exec(String(textOf(l.file)).replace(/\s+/g, ' '));
+    const baseAcq = Math.max.apply(null, [0].concat((o.acqs || []).map(function (a) { return Number(a.r && a.r.과세표준) || 0; }))); // 같은 사건 취득세 영수증의 과세표준
+    const base = Number(l.r.과세표준) || (baseM ? Number(baseM[1].replace(/[,.]/g, '')) : 0) || Number(o.acqPrice) || baseAcq || 0;
     its = its.map(function (x) { if (x.key !== 'bond') return x; const loss = !its.some(function (y) { return y.key === 'bondBuy'; }) && base && x.amount <= base * 0.01; return Object.assign({}, x, loss ? { key: 'bondLoss', name: '국민주택채권 할인료(매각차손)', group: 'bondloss', note: '정산서에 "국민주택채권"으로만 적힘 — 과세표준의 ' + (x.amount / base * 100).toFixed(2) + '%라 매입액이 아니라 바로 판 할인료로 봄' } : { key: 'bondBuy', name: '국민주택채권 매입액', group: 'bondbuy' }); });
     const T = Number(l.r.합계) || 0;
     const sumAll = its.reduce(function (s, x) { return s + x.amount; }, 0), sumNoLoss = its.filter(function (x) { return x.key !== 'bondLoss'; }).reduce(function (s, x) { return s + x.amount; }, 0);
     const sane = tcCostSane_(its);
     const ok = !!T && its.length >= 2 && (sumAll === T || sumNoLoss === T) && !sane.length;
     if ((sumAll === T || sumNoLoss === T) && sane.length) lines.push('△ 법무사 정산서 ' + l.file + ' — 합계는 맞지만 이름표가 밀린 것으로 보임(' + sane.join(', ') + ') — 항목 이름을 믿지 않음');
-    law.push({ l: l, its: its, ok: ok, T: T, side: sideOf(l.r.일자, l.file) || (/소유권|매매|이전|증여|상속/.test(l.r.등기종류 || '') ? '취득' : ''), kind: l.r.등기종류 || '' });
+    law.push({ l: l, its: its, ok: ok, T: T, side: sideOf(l.r.일자, l.file) || (/소유권|매매|이전|증여|상속/.test(l.r.등기종류 || '') ? '취득' : ''), kind: l.r.등기종류 || '', swapped: swapped });
   });
   // 같은 정산서의 사본(날짜가 같음 — 사진·PDF)이 둘 다 검산이 안 되면, 두 판독을 합쳐(한쪽이 못 읽은 이름표는 다른 쪽에서, 서로 다른 금액은 합계가 맞는 쪽으로) 다시 검산
   const byDate = {};
@@ -35196,7 +35269,9 @@ function tcCostLedger_(o) {
   law.sort(function (a, b) { return (b.ok ? 1 : 0) - (a.ok ? 1 : 0); });
   law.forEach(function (d) {
     const side = d.side || '취득', src = d.l.file;
-    if (d.ok) { d.its.forEach(function (x) { add(side, x, src + (x.note ? ' — ' + x.note : ''), d.kind, true); }); lines.push('법무사 정산서 ' + src + ' — 항목 ' + d.its.length + '개로 나눔(항목 합 ' + won(d.its.filter(function (x) { return x.key !== 'bondLoss' || d.its.reduce(function (s, y) { return s + y.amount; }, 0) === d.T; }).reduce(function (s, x) { return s + x.amount; }, 0)) + ' = 정산서 합계 ' + won(d.T) + '): ' + d.its.map(function (x) { return x.name + ' ' + won(x.amount); }).join(', ')); }
+    // [2026.10.17 2열 서식] 상식 검산으로 이름표를 다시 짝지은 정산서는 판독만으로 믿지 않는다(다른 서류로 확인될 때 확실)
+    if (d.ok && d.swapped) lines.push('△ 법무사 정산서 ' + src + ' — 보수·공과금 두 열이 섞여 이름표를 상식 검산(교육세 비율·법정 인지세액 등)으로 다시 짝지음(' + d.swapped.join(', ') + ') — 다른 서류와 맞는 항목만 확실');
+    if (d.ok) { d.its.forEach(function (x) { add(side, x, src + (x.note ? ' — ' + x.note : ''), d.kind, !d.swapped); }); lines.push('법무사 정산서 ' + src + ' — 항목 ' + d.its.length + '개로 나눔(항목 합 ' + won(d.its.filter(function (x) { return x.key !== 'bondLoss' || d.its.reduce(function (s, y) { return s + y.amount; }, 0) === d.T; }).reduce(function (s, x) { return s + x.amount; }, 0)) + ' = 정산서 합계 ' + won(d.T) + '): ' + d.its.map(function (x) { return x.name + ' ' + won(x.amount); }).join(', ')); }
     else {
       const twin = law.filter(function (e) { return e !== d && e.ok && (e.T === d.T || d.its.filter(function (x) { return e.its.some(function (y) { return y.key === x.key && y.amount === x.amount; }); }).length >= 3); })[0];
       if (twin) { twin.its.forEach(function (y) { if (has(textOf(src), y.amount)) add(side, y, src, d.kind, false); }); lines.push('법무사 정산서 ' + src + ' — 글자 칸이 섞여 항목 검산이 안 됨, 같은 정산서 ' + twin.l.file + '의 항목으로 셈(금액이 같은 것만 함께 근거로)'); }
@@ -35211,32 +35286,65 @@ function tcCostLedger_(o) {
     if (d.T) consumed[src + '|' + d.T] = true;
   });
   // ② 취득세 납부확인서·영수증 — 세목별로(그 물건 것일 때만 확실)
-  (o.acqs || []).forEach(function (a) {
+  // 세목 이름을 더 많이 읽은 사본부터 — 같은 영수증의 다른 사본이 "나머지 세목"으로 따로 세지지 않게
+  const named = function (a) { const r = a.r || {}; return ['취득세', '지방교육세', '농어촌특별세', '등록세'].filter(function (k) { return r[k]; }).length; };
+  (o.acqs || []).slice().sort(function (a, b) { return named(b) - named(a); }).forEach(function (a) {
     const r = a.r || {}; if (!r.합계) return;
     if (o.newHomeCost && o.newHomeCost(a.file, r.과세물건, r.납부일 || r.일자)) { lines.push('신규 주택 취득세로 보여 판 집 비용에서 뺌: ' + a.file); return; }
+    // [2026.10.17] 취득세 영수증이 아닌 표(홈택스 양도세 간편계산·상담 시트)가 숫자 셋이 우연히 "합계 = 앞 + 나머지"로 맞아 취득세로 들어온 것 — 항목표에 넣지 않는다
+    //  (김금옥: 간편계산 화면이 취득세 206,896,790원이 됨). 과세표준을 못 읽었는데 1억 이상이거나, 세율이 법정 범위 밖인데 1억 이상이면 영수증으로 보지 않음
+    const aTx = String(textOf(a.file)).slice(0, 2000);
+    if (/간\s*편\s*계\s*산|양\s*도\s*소\s*득\s*금\s*액|장\s*기\s*보\s*유\s*특\s*별\s*공\s*제|양\s*도\s*차\s*익|(?:^|\s)Sheet\d|의\s*뢰\s*인\s*[:：]?/.test(aTx) || (Number(r.합계) >= 1e8 && (!r.과세표준 || r.세율이상))) { lines.push('△ 취득세 영수증으로 보기 어려움(양도세 계산표·상담 자료이거나 세율이 맞지 않음) — 비용표에 넣지 않음: ' + a.file + ' ' + won(r.합계)); consumed[a.file + '|' + r.합계] = true; return; }
     const pd0 = String(r.납부일 || r.일자 || '').slice(0, 10), gap0 = pd0 && o.acqDay ? (new Date(pd0) - new Date(o.acqDay)) / 86400000 : null;
     const mine = (r.과세물건 && o.loc && tcLocSame_(r.과세물건, o.loc)) || /취득/.test(a.file) || (gap0 !== null && gap0 >= -30 && gap0 <= 200); // 납부일이 취득일 직후(신고·납부 기한 안)면 그 물건 것
     const src = a.file + (mine ? '' : ' — 과세물건이 판 집인지 확인');
-    [['acqTax', '취득세', r.취득세], ['eduTax', '지방교육세', r.지방교육세], ['ruralTax', '농어촌특별세', r.농어촌특별세], ['regTax', '등록세(등록면허세)', r.등록세 || r.등록면허세]].forEach(function (q) { if (q[2]) add('취득', { key: q[0], name: q[1], group: 'tax', amount: Number(q[2]) }, src, '', mine && !!r.검산); });
+    const rid = String(r.전자납부번호 || ((r.납부일 || r.납부기한 || '') + '/' + r.합계)); // 같은 영수증의 사본은 같은 rid
+    const tr0 = mine && !!r.검산 && !r.세율이상;
+    [['acqTax', '취득세', r.취득세], ['eduTax', '지방교육세', r.지방교육세], ['ruralTax', '농어촌특별세', r.농어촌특별세], ['regTax', '등록세(등록면허세)', r.등록세 || r.등록면허세]].forEach(function (q) { if (q[2]) add('취득', { key: q[0], name: q[1], group: 'tax', amount: Number(q[2]) }, src, '', tr0, rid); });
     const known = (Number(r.취득세) || 0) + (Number(r.지방교육세) || 0) + (Number(r.농어촌특별세) || 0) + (Number(r.등록세 || r.등록면허세) || 0);
-    if (known && Number(r.합계) > known) add('취득', { key: 'acqTaxRest', name: '취득세 영수증의 나머지 세목(교육세·농특세 등 — 세목 이름 못 읽음)', group: 'tax', amount: Number(r.합계) - known }, src + ' — 합계 ' + won(r.합계) + ' − 읽은 세목 ' + won(known), '', false);
-    if (!r.취득세 && !r.지방교육세) add('취득', { key: 'acqTaxSum', name: '취득세 등(세목 구분 못 읽음)', group: 'tax', amount: Number(r.합계) }, src, '', false);
+    // [2026.10.17] 이름 못 읽은 나머지 세목이 이미 있는 교육세·농특세 줄(정산서·같은 영수증의 다른 사본)과 같은 금액이면 그 줄의 근거로만 — 두 번 세지 않는다(김환식 157,000)
+    const restV = Number(r.합계) - known, restTwin = known && restV > 0 ? Object.keys(items).map(function (k) { return items[k]; }).filter(function (x) { return x.side === '취득' && /^(eduTax|ruralTax)$/.test(x.key) && x.amount === restV; })[0] : null;
+    if (restTwin) { if (restTwin.srcs.indexOf(src) === -1) restTwin.srcs.push(src); }
+    else if (known && Number(r.합계) > known) add('취득', { key: 'acqTaxRest', name: '취득세 영수증의 나머지 세목(교육세·농특세 등 — 세목 이름 못 읽음)', group: 'tax', amount: Number(r.합계) - known }, src + ' — 합계 ' + won(r.합계) + ' − 읽은 세목 ' + won(known), '', false, rid);
+    if (!r.취득세 && !r.지방교육세 && !r.등록세 && !r.등록면허세) add('취득', { key: 'acqTaxSum', name: '취득세 등(세목 구분 못 읽음)', group: 'tax', amount: Number(r.합계) }, src, '', false, rid);
     consumed[a.file + '|' + r.합계] = true;
   });
   // ③ 등기신청서·등록세 신고서·수입인지 등 그 밖의 서류 — 세금 이름표 금액의 합이 그 서류의 세액 합계와 맞을 때만
   (o.costTexts || []).forEach(function (t) {
     if ((o.lawyers || []).some(function (l) { return l.file === t.file; }) || (o.acqs || []).some(function (a) { return a.file === t.file; })) return;
+    // [2026.10.17] 이름표 쪼개기는 비용 서류에만 — 종류가 정해진 다른 서류(국세 납부서·신고서·주민등록·가족관계·진료비 영수증·현금영수증 …)와
+    //  이 사무소가 발행한 현금영수증은 넣지 않는다(납부서의 "농어촌특별세" 칸·초본의 "증지"가 비용으로 잡히던 것)
+    if (t.office || (t.type && !/^(lawyerfee|acqtax)$/.test(t.type))) return;
     const tx = t.text;
     const sm = /수\s*입\s*인\s*지/.test(tx) && /인\s*지\s*금\s*액|Stamp\s*Duty/i.test(tx) ? /(\d{1,3}(?:,\d{3})+)\s*원/.exec(tx.replace(/\s+/g, ' ')) : null;
     if (sm) { const v = Number(sm[1].replace(/,/g, '')); const it0 = items['취득|stamp'] || items['취득|stampReg']; add('취득', { key: it0 && it0.key === 'stampReg' && it0.amount !== v ? 'stamp' : (it0 ? it0.key : 'stamp'), name: it0 ? it0.name : '인지대(인지세)', group: it0 ? it0.group : 'stamp', amount: it0 && it0.key === 'stampReg' && it0.amount !== v ? v : (it0 ? it0.amount : v) }, t.file + ' — 전자수입인지 ' + won(v), '', true); if (it0 && it0.key === 'stampReg' && it0.amount !== v) { delete items['취득|stamp']; it0.conf.push('수입인지 ' + won(v) + '(' + t.file + ') — 나머지 ' + won(it0.amount - v) + '는 등기신청수수료(증지)'); } consumed[t.file + '|' + v] = true; return; }
     if (!/등\s*기\s*신\s*청\s*서|등\s*록\s*세|세\s*액\s*합\s*계/.test(tx)) return;
     const its = tcCostTextItems_(tx).filter(function (x) { return x.group === 'tax' || x.group === 'regfee' || /^bond/.test(x.group); });
     const taxes = its.filter(function (x) { return x.group === 'tax'; }), tsum = taxes.reduce(function (s, x) { return s + x.amount; }, 0);
-    const totM = /세\s*액\s*합\s*계[^\d]{0,12}(\d{1,3}(?:,\d{3})+)/.exec(tx.replace(/\s+/g, ' '));
-    if (taxes.length >= 2 && totM && Number(totM[1].replace(/,/g, '')) === tsum) {
+    // [2026.10.17] "등록세 교육세 세액 합계 금 3,446,480 원 금 689,290 원 금 4,135,770 원"처럼 이름표가 한 줄에 나열되고 금액이 뒤따르는 서식 —
+    //  "세액 합계" 뒤 첫 금액이 아니라, 뒤 120자 안의 금액 중 세목 합과 같은 것이 있으면 검산 일치(김금옥 등록세 신청서)
+    const totZone = /세\s*액\s*합\s*계([\s\S]{0,120})/.exec(tx.replace(/\s+/g, ' '));
+    const totM = totZone && (totZone[1].match(/\d{1,3}(?:,\d{3})+/g) || []).some(function (s) { return Number(s.replace(/,/g, '')) === tsum; });
+    if (taxes.length >= 2 && totM) {
       its.forEach(function (x) { add('취득', x.group === 'bond' ? Object.assign({}, x, { key: 'bondBuy', name: '국민주택채권 매입액', group: 'bondbuy' }) : x, t.file + ' — 등기신청서·등록세 서류(세액 합계 ' + won(tsum) + ' 검산 일치)', '', false); });
       lines.push('등기 세금 서류 ' + t.file + ' — ' + taxes.map(function (x) { return x.name + ' ' + won(x.amount); }).join(', ') + ' (세액 합계 검산 일치)');
     }
+  });
+  // [2026.10.17 옛 법무사 영수증] 한 칸에 묶인 "취득세·교육세"·"등록세·교육세" — 취득세(등록세) 영수증의 세목 둘·셋을 더한 값과 같으면 그 세목 줄로 확인하고
+  //  묶음 줄은 지운다(같은 세금을 두 번 세지 않게). 영수증이 없으면 묶음 줄을 그대로 둔다(세목은 못 나눔)
+  Object.keys(items).forEach(function (k) {
+    const c = items[k]; if (!c || !/^(acqEduTax|regEduTax)$/.test(c.key)) return;
+    const parts = Object.keys(items).map(function (k2) { return items[k2]; }).filter(function (x) { return x !== c && x.side === c.side && x.group === 'tax' && /^(acqTax|regTax|eduTax|ruralTax|acqTaxRest)$/.test(x.key); });
+    let pick = null;
+    for (let i = 0; i < parts.length && !pick; i++) for (let j = 0; j < parts.length && !pick; j++) {
+      if (i === j || parts[i].rid !== parts[j].rid) continue;
+      if (parts[i].amount + parts[j].amount === c.amount) pick = [parts[i], parts[j]];
+      for (let q = 0; q < parts.length && !pick; q++) if (q !== i && q !== j && parts[q].rid === parts[i].rid && parts[i].amount + parts[j].amount + parts[q].amount === c.amount) pick = [parts[i], parts[j], parts[q]];
+    }
+    if (!pick) return;
+    pick.forEach(function (x) { x.conf.push(c.srcs[0].split(' — ')[0] + '의 "' + c.name.replace(/\(.*$/, '') + '" ' + won(c.amount) + ' = ' + pick.map(function (y) { return y.name + ' ' + won(y.amount); }).join(' + ')); });
+    lines.push('법무사 영수증의 한 칸 "' + c.name.replace(/\(.*$/, '') + '" ' + won(c.amount) + ' = ' + pick.map(function (y) { return y.name + ' ' + won(y.amount); }).join(' + ') + '(세금 영수증) — 세목 줄로 셈');
+    delete items[k];
   });
   // ④ 다른 서류로 대조 — 법무사 현금영수증(보수 + 부가세), 통장 출금·메모(정산서 합계)
   const feeItems = Object.keys(items).map(function (k) { return items[k]; }).filter(function (x) { return x.side === '취득' && x.group === 'fee'; });
@@ -35260,17 +35368,19 @@ function tcCostLedger_(o) {
     if (!titleRe) return;
     (o.costTexts || []).forEach(function (t) {
       if (x.srcs.some(function (s) { return s.indexOf(t.file) === 0; }) || (o.lawyers || []).some(function (l) { return l.file === t.file; }) || /중\s*개\s*보\s*수|송\s*금|이\s*체/.test(t.text.slice(0, 300))) return;
+      if (t.office || (t.type && t.type !== 'acqtax')) return; // [2026.10.17] 국세 납부서·신고서·이 사무소 영수증의 같은 숫자는 확인으로 치지 않음
       if (titleRe.test(t.text.slice(0, 1500)) && has(t.text, x.amount) && !x.conf.some(function (c) { return c.indexOf(t.file) !== -1; })) x.conf.push(t.file);
     });
   });
   // ⑤ 항목 줄 → 비용 질문 후보(넣을 것만 체크). 공제 안 되는 항목도 이유와 함께 보여 준다(말없이 버리지 않음)
-  const order = ['acqTax', 'regTax', 'eduTax', 'ruralTax', 'acqTaxRest', 'acqTaxSum', 'stamp', 'stampReg', 'regFee', 'bondBuy', 'bondLoss', 'feeBase', 'feeProg', 'acqTaxAgent', 'bondAgent', 'deedDraft', 'inspect', 'confirm', 'contractDraft', 'etcAgent', 'cert', 'travel', 'vat'];
+  const order = ['acqTax', 'regTax', 'acqEduTax', 'regEduTax', 'eduTax', 'ruralTax', 'acqTaxRest', 'acqTaxSum', 'stamp', 'stampReg', 'regFee', 'bondBuy', 'bondLoss', 'feeBase', 'feeProg', 'acqTaxAgent', 'bondAgent', 'deedDraft', 'inspect', 'confirm', 'contractDraft', 'etcAgent', 'cert', 'regView', 'travel', 'vat'];
   const cands = [];
   Object.keys(items).map(function (k) { return items[k]; }).sort(function (a, b) { const ia = order.indexOf(a.key), ib = order.indexOf(b.key); return (a.side === b.side ? 0 : a.side === '취득' ? -1 : 1) || ((ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)); }).forEach(function (x) {
     const v = x.group === 'unknown' ? { ok: 'judge', kind: '취득', why: '정산서 합계에서 읽은 항목을 뺀 나머지 — 무슨 비용인지 원문 확인(보수·공과금이면 취득부대비용, 채권 매입액이면 아님)' } : tcCostVerdict_(x.key, x.group, x.side, x.docKind);
     const confirmed = x.srcs.length > 1 || x.conf.length > 0;
     const sure = v.ok === 'yes' && (x.trusted || confirmed) && !x.alts.length && !/확인$|확인 필요/.test(x.srcs.join(' '));
-    cands.push({ kind: v.kind, label: (v.ok === 'no' ? '[공제 안 됨] ' : v.ok === 'judge' ? '[판단 필요] ' : '') + x.name + (x.side === '양도' ? '(양도 때)' : ''), amount: x.amount, date: '', file: x.srcs.map(function (s) { return s.split(' — ')[0]; }).filter(function (s, i, a) { return a.indexOf(s) === i; }).join(', '), sure: sure, item: x.key, deduct: v.ok,
+    const twinKey = Object.keys(items).filter(function (k2) { return items[k2].side === x.side && items[k2].key === x.key; }).length > 1; // 같은 세목을 다른 영수증으로 따로 낸 줄 — 어느 영수증인지 이름에 붙임
+    cands.push({ kind: v.kind, label: (v.ok === 'no' ? '[공제 안 됨] ' : v.ok === 'judge' ? '[판단 필요] ' : '') + x.name + (x.side === '양도' ? '(양도 때)' : '') + (twinKey ? '(' + x.srcs[0].split(' — ')[0] + ')' : ''), amount: x.amount, date: '', file: x.srcs.map(function (s) { return s.split(' — ')[0]; }).filter(function (s, i, a) { return a.indexOf(s) === i; }).join(', '), sure: sure, item: x.key, deduct: v.ok,
       note: v.why + (confirmed ? ' · 서로 일치: ' + x.srcs.concat(x.conf).map(function (s) { return s.split(' — ')[0]; }).filter(function (s, i, a) { return a.indexOf(s) === i; }).join(' = ') : '') + (x.alts.length ? ' · ⚠ 서류마다 금액이 다름: ' + x.alts.map(function (a) { return won(a.v) + '(' + a.src + ')'; }).join(', ') + ' — 맞는 금액 확인' : '') + (!x.trusted && !confirmed ? ' · 글자 판독만으로 읽은 금액 — 원문 확인' : '') });
   });
   if (cands.length) { const yes = cands.filter(function (c) { return c.deduct === 'yes'; }); lines.push('비용 항목표: ' + cands.length + '줄(공제 ' + yes.length + ' · 공제 안 됨 ' + cands.filter(function (c) { return c.deduct === 'no'; }).length + ' · 판단 ' + cands.filter(function (c) { return c.deduct === 'judge'; }).length + ') — 공제 항목 합 ' + won(yes.reduce(function (s, c) { return s + c.amount; }, 0))); }
