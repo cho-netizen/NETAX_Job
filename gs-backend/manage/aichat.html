@@ -2915,7 +2915,9 @@
           var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = r.on; cb.addEventListener('change', function(){ r.on = cb.checked; });
           var sel = document.createElement('select'); ['취득', '자본적지출', '양도'].forEach(function(k){ var o = document.createElement('option'); o.textContent = k; if (k === r.kind) o.selected = true; sel.appendChild(o); }); sel.addEventListener('change', function(){ r.kind = sel.value; });
           var am = document.createElement('input'); am.type = 'text'; am.inputMode = 'numeric'; am.value = Number(r.amount || 0).toLocaleString('ko-KR'); am.style.width = '110px'; am.addEventListener('input', function(){ r.amount = Number(String(am.value).replace(/[^\d]/g, '')) || 0; });
-          var tx = document.createElement('div'); tx.style.flex = '1'; tx.textContent = r.label + (r.date ? ' · ' + r.date : '') + (r.file ? ' · ' + r.file : '') + (r.note ? ' — ⚠ ' + r.note : '');
+          // [2026.10.17] 세부 항목별 줄 — 항목 이름 · 근거 서류 · 공제 판단(조문). 공제 안 되는 항목은 흐리게(넣으려면 체크)
+          var tx = document.createElement('div'); tx.style.flex = '1'; tx.textContent = r.label + (r.date ? ' · ' + r.date : '') + (r.file ? ' · 근거: ' + r.file : '') + (r.note ? ' — ' + r.note : '');
+          if (/^\[공제 안 됨\]/.test(r.label)) d.style.opacity = '0.6';
           d.appendChild(cb); d.appendChild(sel); d.appendChild(am); d.appendChild(tx); list.appendChild(d);
         });
       };
