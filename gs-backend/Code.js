@@ -25642,9 +25642,10 @@ function tc_ruleTransferFacts_(body) {
       var gd = new Date(g.r.계약일), from = new Date(gd), to = new Date(gd); from.setMonth(from.getMonth() - 6); to.setMonth(to.getMonth() + 3);
       var seen = {};
       realDocs.forEach(function (rd) { (rd.r.사례 || []).forEach(function (q) {
-        if (!q.금액 || q.해제 || !q.계약일) return;
-        var qd = new Date(q.계약일); if (qd < from || qd > to || seen[q.계약일 + q.금액]) return; seen[q.계약일 + q.금액] = 1;
-        acqPriceCands.push({ v: String(q.금액), src: '매매사례 ' + q.계약일 + ' ' + (q.면적 ? q.면적 + '㎡ ' : '') + q.금액.toLocaleString('ko-KR') + '원 — ' + rd.file + ' (증여일 ' + g.r.계약일 + ' 평가기간 안' + (share ? ', 증여 지분 ' + share[1] + '분의 ' + share[2] + '이면 그만큼만' : '') + ')' });
+        // [2026.10.17 2차 실거래가] 계약월을 못 정한 사례(계약일후보)는 가능한 날이 모두 평가기간 안일 때만
+        var qds = rpCaseDates_(q); if (!q.금액 || q.해제 || !qds.length) return;
+        if (qds.some(function (s) { var qd = new Date(s); return qd < from || qd > to; }) || seen[qds.join('/') + q.금액]) return; seen[qds.join('/') + q.금액] = 1;
+        acqPriceCands.push({ v: String(q.금액), src: '매매사례 ' + (q.계약일 || qds.join(' 또는 ') + '(계약월 원문 확인)') + ' ' + (q.면적 ? q.면적 + '㎡ ' : '') + q.금액.toLocaleString('ko-KR') + '원 — ' + rd.file + ' (증여일 ' + g.r.계약일 + ' 평가기간 안' + (share ? ', 증여 지분 ' + share[1] + '분의 ' + share[2] + '이면 그만큼만' : '') + ')' });
       }); });
       if (!acqPriceCands.length && realDocs.length) evidence.push('⚠ 실거래가 자료는 있으나 증여일(' + g.r.계약일 + ') 평가기간(전 6개월~후 3개월) 안의 매매사례가 없음');
       if (!realDocs.length) tx._giftReal = { date: g.r.계약일, share: share }; // 폴더에 실거래가 자료가 없으면 아래(면적을 안 뒤)에서 실거래가 조회로
@@ -27339,17 +27340,24 @@ function caseProcGiftInhFacts_(c, lines, items) {
       if (aprs.length) return; // 감정가액이 있으면 매매사례는 후보로도 내지 않는다(후보가 둘이 되면 확정된 감정가까지 질문으로 바뀜)
       if (!base) {
         // [2026.10.16] 증여일(평가기준일)이 아직 안 정해졌으면(증여 등기 전 등기부만 있음 — 하영애) 같은 면적 사례를 최근 계약부터 후보로 — 증여일이 정해지면 평가기간(전 6개월~후 3개월) 안 것인지 확인
-        (r.사례 || []).filter(function (q) { return q.금액 && !q.해제 && q.계약일 && (!area || Math.abs(q.면적 - area) / area <= 0.05); })
+        (r.사례 || []).filter(function (q) { return q.금액 && !q.해제 && q.계약일 && !q.직거래 && (!area || Math.abs(q.면적 - area) / area <= 0.05); }) // 직거래는 최근 사례 추천에서 뺌(특수관계 거래 가능 — 2차 실거래가)
           .sort(function (a, b) { return String(b.계약일).localeCompare(String(a.계약일)); }).slice(0, 3)
           .forEach(function (q) { add('giftAmount', q.금액, '매매사례가액(' + x.f.name + ', ' + q.계약일 + ' 계약 · 전용 ' + q.면적 + '㎡ · ' + (q.층 ? q.층 + '층' : '') + ') — 증여일이 정해지지 않아 평가기간(전 6개월~후 3개월) 안인지 확인 필요, §60②·시행령§49', false); });
         return;
       }
       const lo = new Date(base.getFullYear(), base.getMonth() - 6, base.getDate()), hi = new Date(base.getFullYear(), base.getMonth() + 3, base.getDate());
-      const cs = (r.사례 || []).filter(function (q) { const d = q.계약일 ? new Date(q.계약일) : null; return q.금액 && !q.해제 && !q.월확인필요 && d && d >= lo && d <= hi && (!area || Math.abs(q.면적 - area) / area <= 0.05); });
+      // [2026.10.17 2차 실거래가] 계약월을 못 정한 사례(계약일후보)도 가능한 날이 모두 평가기간 안이면 넣고, 기준일과의 거리는 가장 먼 날로 잰다(유리하게 고르지 않음)
+      const far = function (q) { return Math.max.apply(null, rpCaseDates_(q).map(function (s) { return Math.abs(new Date(s) - base); })); };
+      const cs = (r.사례 || []).filter(function (q) { const ds = rpCaseDates_(q); return q.금액 && !q.해제 && ds.length && ds.every(function (s) { const d = new Date(s); return d >= lo && d <= hi; }) && (!area || Math.abs(q.면적 - area) / area <= 0.05); });
       if (!cs.length) return;
-      cs.sort(function (a, b) { return Math.abs(new Date(a.계약일) - base) - Math.abs(new Date(b.계약일) - base); });
-      add('giftAmount', cs[0].금액, '매매사례가액(' + x.f.name + ', ' + cs[0].계약일 + ' 계약 · 전용 ' + cs[0].면적 + '㎡) — §60②·시행령§49, 기준시가 차이 5% 이내 등 유사성 확인', false);
+      cs.sort(function (a, b) { return far(a) - far(b); });
+      add('giftAmount', cs[0].금액, '매매사례가액(' + x.f.name + ', ' + (cs[0].계약일 || rpCaseDates_(cs[0]).join(' 또는 ') + '(계약월 원문 확인)') + ' 계약 · 전용 ' + cs[0].면적 + '㎡' + (cs[0].동 ? ' · ' + cs[0].동 + '동' : '') + (cs[0].층 != null ? ' ' + cs[0].층 + '층' : '') + (cs[0].직거래 ? ' · 직거래 — 특수관계 거래인지 확인' : '') + ') — §60②·시행령§49, 기준시가 차이 5% 이내 등 유사성 확인', false);
     });
+    // [2026.10.17 2차 실거래가] 감정평가서 거래사례 ↔ 실거래가 출력물 — 같은 거래를 찾아 한 번만 세고, 대조 결과를 줄로(황인택·강정화)
+    try {
+      const apC = byType('appraisal').filter(function (x) { return ((x.p.result || {}).비교사례 || []).length; }).map(function (x) { return { file: x.f.name, r: x.p.result }; });
+      if (apC.length) rpApprCompare_(apC, byType('realprice').map(function (x) { return { file: x.f.name, r: x.p.result || {} }; })).lines.forEach(function (s) { lines.push('🔗 ' + s); });
+    } catch (e) {}
     // [2026.10.17] 폴더에 실거래가 자료·감정평가서가 없으면 세액계산기 매매사례 조회와 같은 국토교통부 실거래가로 — 평가기간(증여일 전 6개월~후 3개월) 안 같은 단지·비슷한 면적(±5%) 거래를 후보로만
     if (c.기준일 && !aprs.length && !byType('realprice').length && gifts.length === 1 && gifts[0].loc && !/토지/.test(gifts[0].kind || '')) {
       try {
@@ -27703,13 +27711,23 @@ function caseProcInhFacts0_(c, parsed) {
       } catch (e) {}
     }
     // 아파트 등 — 같은 단지·같은 면적의 매매사례(평가기준일 전후 6개월, 해제 거래 제외). 가장 가까운 날 거래를 추천(시행령 §49②)
-    if (a.kind !== '토지') by('realprice').forEach(function (x) {
-      const r = x.p.result || {};
-      if (r.소재지 && a.loc && nm(a.loc).indexOf(nm(r.소재지).replace(/^[가-힣]+(?:도|특별시|광역시)/, '')) === -1 && !tcLocSame_(r.소재지, a.loc)) return;
-      (r.사례 || []).filter(function (q) { return !q.해제 && q.계약일 && inWin(q.계약일, 6) && (!a.area || Math.abs(q.면적 - a.area) < 1); }).forEach(function (q) {
-        a.cands.push({ v: q.금액, src: '매매사례 ' + q.계약일 + ' 계약 ' + (r.단지 || '') + ' ' + q.면적 + '㎡' + (q.등기일 ? ' (등기 ' + q.등기일 + ')' : '') + ' — 시가(§60②, 시행령 §49)', kind: '시가', days: Math.abs(new Date(q.계약일) - new Date(base)) / 86400000, file: x.f.name });
+    // [2026.10.17 2차 실거래가] ① 같은 조회를 이름만 바꿔 둔 출력물(김창호 84A형 = 84점9116)의 같은 거래는 한 번만 ② 계약월을 못 정한 사례는 가능한 날이 모두 기간 안일 때만(거리는 가장 먼 날)
+    //  ③ 직거래는 특수관계 거래일 수 있어 확인 후보(시가(확인))로 ④ 감정평가서 거래사례와 같은 거래면 표시(같은 거래를 두 근거로 세지 않게)
+    if (a.kind !== '토지') {
+      const rds = by('realprice').filter(function (x) { const r = x.p.result || {}; return !(r.소재지 && a.loc && nm(a.loc).indexOf(nm(r.소재지).replace(/^[가-힣]+(?:도|특별시|광역시)/, '')) === -1 && !tcLocSame_(r.소재지, a.loc)); }).map(function (x) { return { file: x.f.name, r: x.p.result || {} }; });
+      let sameAp = {};
+      try {
+        const apC = by('appraisal').filter(function (x) { return ((x.p.result || {}).비교사례 || []).length; }).map(function (x) { return { file: x.f.name, r: x.p.result }; });
+        if (apC.length && rds.length) { const cmp = rpApprCompare_(apC, rds); sameAp = cmp.same; out._rpCmp = out._rpCmp || {}; cmp.lines.forEach(function (s) { if (!out._rpCmp[s]) { out._rpCmp[s] = 1; out.notes.push(s); } }); }
+      } catch (e) {}
+      rpDedupDocs_(rds).forEach(function (h) {
+        const q = h.q, ds = rpCaseDates_(q), r = h.d.r;
+        if (q.해제 || !ds.length || !ds.every(function (s) { return inWin(s, 6); }) || (a.area && Math.abs(q.면적 - a.area) >= 1)) return;
+        const dd = Math.max.apply(null, ds.map(function (s) { return Math.abs(new Date(s) - new Date(base)) / 86400000; }));
+        const sm = sameAp[h.d.file + '|' + h.i];
+        a.cands.push({ v: q.금액, src: '매매사례 ' + (q.계약일 || ds.join(' 또는 ') + '(계약월 원문 확인)') + ' 계약 ' + (r.단지 || '') + ' ' + q.면적 + '㎡' + (q.동 ? ' ' + q.동 + '동' : '') + (q.층 != null ? ' ' + q.층 + '층' : '') + (q.등기일 ? ' (등기 ' + q.등기일 + ')' : '') + (q.직거래 ? ' · 직거래 — 특수관계 거래면 시가 아님(시행령 §49①), 확인' : '') + (sm ? ' · ' + sm : '') + ' — 시가(§60②, 시행령 §49)', kind: q.직거래 || !q.계약일 ? '시가(확인)' : '시가', days: dd, file: h.d.file });
       });
-    });
+    }
     // [2026.10.17] 폴더에 실거래가 자료가 없으면 세액계산기 매매사례 조회와 같은 국토교통부 실거래가로 — 상속개시일 전후 6개월 같은 단지·비슷한 면적(±5%) 거래.
     //  서류로 받은 매매사례와 달리 자동으로 평가액에 넣지 않고(종류 '시가(조회)') 후보로 보여 고르게 한다(유사성은 세무사 판단)
     if (a.kind !== '토지' && base && a.loc && !by('realprice').length && !by('appraisal').length) {
@@ -31236,7 +31254,9 @@ function docAppraisalParse_(text) {
   m = /소\s*유\s*자\s*\n?\s*(?:감정평가\s*\n)?\s*([가-힣]{2,5})/.exec(t); if (m && !/감정|대상/.test(m[1])) r.소유자 = m[1];
   m = /감\s*정\s*평\s*가\s*\n?\s*목\s*적\s*\n?\s*([^\n]{2,30})/.exec(t); if (m) r.목적 = m[1].trim();
   m = /\(주\)\s*([가-힣]{2,10}감정평가법인)|([가-힣]{2,10}감정평가법인)/.exec(t); if (m) r.평가법인 = m[1] || m[2];
+  try { r.비교사례 = docApprCompCases_(t, r.기준시점); } catch (e) { r.비교사례 = []; } // [2026.10.17 2차 실거래가] 거래사례 표 — 실거래가 출력물과 같은 거래 대조용
   var md = '### 감정평가서\n\n' + docMdTable_([['평가법인', r.평가법인], ['소재지', r.소재지], ['감정평가액', r.감정평가액 ? r.감정평가액.toLocaleString('ko-KR') + '원' + (/^일치/.test(r.검산) ? ' ✓(' + r.검산 + ')' : ' ⚠') : ''], ['기준시점', r.기준시점], ['의뢰인', r.의뢰인], ['소유자', r.소유자], ['목적', r.목적]])
+    + (r.비교사례.length ? '\n\n거래사례(비준가액 근거): ' + r.비교사례.map(function (c) { return c.기호 + ' ' + [c.동 ? c.동 + '동' : '', c.층 != null ? c.층 + '층' : ''].filter(String).join(' ') + ' ' + c.면적 + '㎡ ' + c.금액.toLocaleString('ko-KR') + '원' + (c.시점 ? ' ' + c.시점 : '') + (c.단가 ? ' (@' + c.단가.toLocaleString('ko-KR') + ', ' + c.검산 + ')' : ''); }).join(' / ') : '')
     + (r.경고.length ? '\n\n' + r.경고.map(function (w) { return '- ⚠ ' + w; }).join('\n') : '') + '\n\n- 참고: 감정가액은 상증법 §60⑤에 따라 시가로 봄(기준금액 10억 초과는 2곳 이상 평균), 감정평가 수수료는 §25 공제(5백만원 한도)';
   return { type: 'appraisal', label: '감정평가서', result: r, md: md };
 }
@@ -31962,6 +31982,13 @@ function docRealPriceParse_(text) {
   var m = /\[\s*아파트\s*\]\s*([^\s]+(?:\([^)]*\))?)\s*([가-힣]+(?:시|군|구)\s+(?:[가-힣]+구\s+)?[가-힣0-9]+(?:동|읍|면|리|가)\s*\d+(?:-\d+)?)/.exec(t);
   if (m) { r.단지 = m[1]; r.소재지 = m[2]; }
   m = /매\s*매\s*(20\d{2})\s*년/.exec(t); if (m) r.연도 = Number(m[1]);
+  // [2026.10.17 2차 실거래가] 출력물 종류(아파트·오피스텔·연립다세대)와 상관없이 한 번에 읽는다 — 단지·소재지는 검색조건 머리줄에서(띄어쓴 단지명·"경기도" 같은 도 이름도),
+  //  거래 줄은 "면적 [대지권] 일 해제 해제일 [등기일] 금액(만원) [동] 층"으로 일반화(면적 "84.9"처럼 소수 한 자리도 — 황인택 출력물이 0건이던 원인),
+  //  계약월은 월 머리("07월")와 표 머리("발생일 등기일자 거래금액")의 순서로 정하되, 쪽이 바뀌며 같은 월 머리가 두 번 찍힌 것을 한 번으로 본다
+  //  (김창호 84.9681: 07월이 두 번 읽혀 06월 이후 거래가 모두 한 달씩 늦게 붙었다 — 계약 2025-07-06인데 등기 2025-07-03처럼 등기가 계약보다 앞섬).
+  //  정한 계약일은 등기일·해제일보다 늦을 수 없다는 것으로 검산하고, 맞지 않거나 순서로 못 정하면 계약일을 비우고 가능한 달(월후보)만 남긴다(지어내지 않음).
+  var rpNew = docRealPriceRows_(t, r);
+  if (rpNew) return rpNew;
   var heads = t.split(/발생일\s*등기일자\s*거래금액/);
   var months = (t.match(/(?:^|\n)\s*(\d{2})\s*월/g) || []).map(function (x) { return Number(x.replace(/[^\d]/g, '')); });
   var rowRe = /(\d{2,3}\.\d{2,4})\s+(\d{1,2})\s+([Y-])?\s*(?:-\s*|(\d{2}\.\d{2}\.\d{2})\s*)(?:-\s*|(\d{2}\.\d{2}\.\d{2})\s*)(\d{1,3},\d{3})/g;
@@ -32003,6 +32030,184 @@ function docRealPriceParse_(text) {
     + '\n\n- 참고: 매매사례가액은 평가기준일 전후 6개월(상속) 안, 면적·위치·용도가 같거나 유사한 재산의 거래가(시행령 §49) — 해제된 거래는 제외'
     + (r.경고.length ? '\n' + r.경고.map(function (w) { return '- ⚠ ' + w; }).join('\n') : '');
   return { type: 'realprice', label: '실거래가(매매사례)', result: r, md: md };
+}
+// [2026.10.17 2차 실거래가] 실거래가 출력물 거래 줄 읽기(종류 공통) — 위 docRealPriceParse_가 부른다. 거래 줄을 하나도 못 찾으면 null(예전 읽기로)
+function docRealPriceRows_(t, r) {
+  var hm = /\[\s*(아파트|오피스텔|연립\s*다세대|단독\s*다가구)\s*\]\s*([^\n\[]{1,40}?)\s+((?:[가-힣]+(?:특별시|광역시|특별자치시|특별자치도|도)\s+)?[가-힣]+(?:시|군|구)\s+(?:[가-힣]+구\s+)?[가-힣0-9]+(?:동|읍|면|리|가)\s*(\d+(?:-\d+)?))(\.\d)?/.exec(t);
+  if (hm) { r.물건 = hm[1].replace(/\s+/g, ''); r.단지 = hm[2].replace(/\s*지번$/, '').trim(); r.소재지 = hm[3].replace(/\s+/g, ' ').trim(); r._붙은면적 = !!hm[5]; }
+  // 한 PDF에 출력물 여러 장(면적별 조회 — 박종헌 래미안슈르 84.946·84.961·84.964)이 이어 붙어 있으면 "물건 매매구분 기준년월" 머리마다 따로 읽는다(월 머리·표 머리가 출력물마다 따로라)
+  var starts = [], sx, secRe = /물\s*건\s*매\s*매\s*구\s*분\s*기\s*준\s*년\s*월/g;
+  while ((sx = secRe.exec(t))) starts.push(sx.index);
+  var secs = [];
+  if (starts.length < 2) secs.push(t); else { starts[0] = 0; starts.forEach(function (s0, k) { secs.push(t.slice(s0, k + 1 < starts.length ? starts[k + 1] : t.length)); }); }
+  var yy = function (s) { return s && s !== '-' ? '20' + s.replace(/\./g, '-') : ''; };
+  var rows = [], hows = [], amb = 0, noMon = false, firstArea = null;
+  secs.forEach(function (ts) {
+    // 거래 줄 — 면적 [대지권면적] 계약일(일) 해제(Y|-) 해제사유발생일(날짜|-) [등기일자(날짜|-)] 거래금액(만원) [동(숫자|-)] 층
+    var rowRe = /(?<![\d.,])(\d{1,3}\.\d{1,4})\s+(?:(\d{1,3}\.\d{1,4})\s+)?(\d{1,2})\s+(Y|-)\s*(\d{2}\.\d{2}\.\d{2}|-)\s*(?:(\d{2}\.\d{2}\.\d{2}|-)\s*)?(\d{1,3}(?:,\d{3})+)(?:\s+(\d{1,4}|-)(?=\s+-?\d))?\s+(-?\d{1,3}|-)(?![\d,.])/g;
+    var headRe = /발생일\s*등기일자\s*거래금액|\(\s*만\s*원\s*\)\s*층/g, heads = [], x, sr = [];
+    while ((x = headRe.exec(ts))) heads.push(x.index);
+    while ((x = rowRe.exec(ts))) {
+      var day = Number(x[3]); if (day < 1 || day > 31) continue;
+      var seg = -1; for (var i = 0; i < heads.length; i++) if (heads[i] < x.index) seg = i;
+      var tail = ts.slice(x.index + x[0].length, x.index + x[0].length + 40), nx = tail.search(/\d{1,3}\.\d{1,4}\s+\d{1,2}\s+[Y-]/);
+      if (nx !== -1) tail = tail.slice(0, nx);
+      sr.push({ 면적: Number(x[1]), 대지권: x[2] ? Number(x[2]) : null, 일: day, 해제: x[4] === 'Y', 해제일: yy(x[5]), 등기일: yy(x[6]), 금액: Number(x[7].replace(/,/g, '')) * 10000,
+        동: x[8] && x[8] !== '-' ? x[8] : '', 층: x[9] && x[9] !== '-' ? Number(x[9]) : null, 직거래: /직\s*거\s*래/.test(tail), _seg: seg });
+    }
+    if (!sr.length) return;
+    if (firstArea === null) firstArea = sr[0].면적;
+    // 월 머리 — 같은 달이 두 번(쪽 바뀜) 찍히면 한 번으로, 출력물은 최근 달부터라 내림차순
+    var mons = [];
+    (ts.match(/(?:^|\n)[ \t]*(\d{1,2})[ \t]*월(?=[ \t]*(?:\n|전\s*용|$))/g) || []).forEach(function (s) { var v = Number(s.replace(/[^\d]/g, '')); if (v >= 1 && v <= 12 && mons.indexOf(v) === -1) mons.push(v); });
+    mons.sort(function (a, b) { return b - a; });
+    var ym = /매\s*매\s*(20\d{2})\s*년/.exec(ts);
+    var Y = ym ? Number(ym[1]) : r.연도, ymd = function (mo, d) { return Y ? docYmdKr_(Y, mo, d) : ''; };
+    var okDate = function (q, mo) {
+      if (!Y) return true;
+      var dt = new Date(Y, mo - 1, q.일); if (dt.getMonth() !== mo - 1) return false; // 2월 30일 같은 없는 날
+      var s = ymd(mo, q.일);
+      return (!q.등기일 || s <= q.등기일) && (!q.해제일 || s <= q.해제일);
+    };
+    var how = '', bad = 0;
+    if (mons.length && heads.length === mons.length && sr.every(function (q) { return q._seg >= 0; })) {
+      how = '표 머리 순서';
+      sr.forEach(function (q) { q.월후보 = [mons[q._seg]]; if (!okDate(q, mons[q._seg])) bad++; });
+    }
+    if ((!how || bad) && mons.length && sr.length >= mons.length) {
+      // 표 머리 수와 월 수가 안 맞거나 검산이 틀리면 — 거래 줄 순서(최근 달부터, 같은 달 안은 날짜 내림차순)·달마다 거래 1건 이상·계약일 ≤ 등기일·해제일로 가능한 달을 모두 찾는다
+      var prevA = sr.map(function (q) { return q.월후보; }), howA = how;
+      how = '거래 순서·등기일 검산';
+      var N = sr.length, M = mons.length, fw = [], bw = [];
+      for (var i2 = 0; i2 < N; i2++) { fw.push({}); for (var g = 0; g < M; g++) {
+        if (!okDate(sr[i2], mons[g])) continue;
+        if (i2 === 0) { if (g === 0) fw[i2][g] = true; continue; }
+        if ((fw[i2 - 1][g] && sr[i2].일 <= sr[i2 - 1].일) || (g > 0 && fw[i2 - 1][g - 1])) fw[i2][g] = true;
+      } }
+      for (var i3 = N - 1; i3 >= 0; i3--) { bw[i3] = {}; for (var g2 = 0; g2 < M; g2++) {
+        if (!fw[i3][g2]) continue;
+        if (i3 === N - 1) { if (g2 === M - 1) bw[i3][g2] = true; continue; }
+        if ((bw[i3 + 1][g2] && sr[i3 + 1].일 <= sr[i3].일) || bw[i3 + 1][g2 + 1]) bw[i3][g2] = true;
+      } }
+      sr.forEach(function (q, k) { q.월후보 = Object.keys(bw[k]).map(function (g3) { return mons[Number(g3)]; }); });
+      if (bad) {
+        // 검산으로도 맞는 배치가 하나도 없으면(월 머리를 일부 못 읽음 등) 표 머리 순서 배치로 돌아가 맞지 않는 줄만 비운다
+        if (sr.every(function (q) { return !q.월후보.length; })) { how = howA + '(일부 검산 안 맞음)'; sr.forEach(function (q, k) { q.월후보 = prevA[k]; }); r.경고.push('표 머리 순서로 붙인 계약월 ' + bad + '건이 등기일·해제일보다 늦어 그 줄만 계약일을 비움 — 원문의 월 확인'); }
+        else r.경고.push('표 머리 순서로 붙인 계약월 ' + bad + '건이 등기일·해제일보다 늦어 거래 순서·등기일 검산으로 다시 정함');
+      }
+    } else if (!how) sr.forEach(function (q) { q.월후보 = []; });
+    sr.forEach(function (q) {
+      var cand = (q.월후보 || []).filter(function (mo) { return okDate(q, mo); });
+      if (cand.length === 1 && Y) { q.계약일 = ymd(cand[0], q.일); q.월확인필요 = false; }
+      else {
+        q.계약일 = ''; q.월확인필요 = true; if (cand.length > 1) amb++;
+        q.계약일후보 = Y ? cand.map(function (mo) { return ymd(mo, q.일); }) : [];
+        if (!q.계약일후보.length) noMon = true;
+      }
+      delete q._seg; delete q.월후보;
+      if (!q.대지권) delete q.대지권;
+      rows.push(q);
+    });
+    if (hows.indexOf(how || '월 머리를 못 읽음') === -1) hows.push(how || '월 머리를 못 읽음');
+  });
+  if (!rows.length) return null;
+  // 붙어 읽힌 지번·면적("호계동 81384.99")에서 면적 정수부를 떼어 낸다 — 머리줄에서 지번 바로 뒤가 소수점일 때만
+  if (r._붙은면적 && r.소재지) { var ip = String(Math.floor(firstArea)); if (new RegExp('\\d' + ip + '$').test(r.소재지)) r.소재지 = r.소재지.slice(0, -ip.length); }
+  delete r._붙은면적;
+  var how = hows.join(' / ') + (secs.length > 1 ? ' (출력물 ' + secs.length + '장)' : '');
+  r.사례 = rows; r.월정한방법 = how;
+  if (amb) r.경고.push('계약월 ' + amb + '건은 출력물 배치로 한 달을 정하지 못해 가능한 달만 남김(계약일후보) — 원문의 월 확인');
+  if (noMon) r.경고.push('일부 사례의 계약월을 출력물 배치로 정하지 못함 — 원문 확인');
+  // 직거래는 서류 판독 문제가 아니라 사례 판단 문제라 ⚠(서류 확인 질문)로 두지 않고 참고로 — 평가 후보에서 '시가(확인)'으로 따로 묻는다
+  var nDirect = rows.filter(function (q) { return q.직거래 && !q.해제; }).length;
+  var won = function (n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; };
+  var md = '### 실거래가(매매사례) · ' + (r.단지 || '') + ' ' + (r.소재지 || '') + '\n\n'
+    + '| 계약일 | 전용면적 | 금액 | 동·층 | 해제 | 등기일 | 거래유형 |\n|---|---|---|---|---|---|---|\n'
+    + rows.map(function (q) { return '| ' + (q.계약일 || ((q.계약일후보 || []).length ? q.계약일후보.join(' 또는 ') + ' ⚠' : '?월 ' + q.일 + '일')) + ' | ' + q.면적 + '㎡' + (q.대지권 ? '(대지권 ' + q.대지권 + '㎡)' : '') + ' | ' + won(q.금액) + ' | ' + [q.동 ? q.동 + '동' : '', q.층 != null ? q.층 + '층' : ''].filter(String).join(' ') + ' | ' + (q.해제 ? '해제됨(사례 아님)' + (q.해제일 ? ' ' + q.해제일 : '') : '') + ' | ' + (q.등기일 || '') + ' | ' + (q.직거래 ? '직거래' : '') + ' |'; }).join('\n')
+    + '\n\n- 계약월: ' + (how || '월 머리를 못 읽음') + (r.연도 ? ' · 기준년도 ' + r.연도 : '')
+    + '\n- 참고: 매매사례가액은 평가기준일 전후 6개월(상속)·전 6개월~후 3개월(증여) 안, 면적·위치·용도가 같거나 유사한 재산의 거래가(시행령 §49) — 해제된 거래는 제외'
+    + (nDirect ? '\n- 참고: 직거래 ' + nDirect + '건 — 특수관계인 거래 등 시가로 보기 어려울 수 있어 평가 후보에서는 확인 후보로 따로 둠(시행령 §49①)' : '')
+    + (r.경고.length ? '\n' + r.경고.map(function (w) { return '- ⚠ ' + w; }).join('\n') : '');
+  return { type: 'realprice', label: '실거래가(매매사례)', result: r, md: md };
+}
+// [2026.10.17 2차 실거래가] 매매사례의 계약일(정해졌으면 하나, 월을 못 정했으면 가능한 날들)
+function rpCaseDates_(q) { return q && q.계약일 ? [q.계약일] : ((q && q.계약일후보) || []); }
+// [2026.10.17 2차 실거래가] 같은 거래가 여러 출력물에 실린 것(같은 조회를 이름만 바꿔 두 번 저장 — 김창호 84A형 = 84점9116)은 한 번만 —
+//  한 출력물 안의 같은 줄 두 개(같은 날·같은 동·층·금액 두 세대)는 서로 다른 거래라 그대로 둔다. 파일마다 같은 줄 수를 세어 가장 많은 수만 남김
+function rpDedupDocs_(docs) {
+  var keep = {}, out = [];
+  docs.forEach(function (d) {
+    var cnt = {};
+    ((d.r || {}).사례 || []).forEach(function (q, i) {
+      var k = [q.면적, q.일, rpCaseDates_(q).join('/'), q.금액, q.동 || '', q.층 == null ? '' : q.층, q.해제 ? 'Y' : ''].join('|');
+      cnt[k] = (cnt[k] || 0) + 1;
+      if (cnt[k] > (keep[k] || 0)) { keep[k] = cnt[k]; out.push({ d: d, q: q, i: i }); }
+    });
+  });
+  return out;
+}
+// [2026.10.17 2차 실거래가] 감정평가서 "인근 유사부동산의 거래사례" 표(구분건물 비준가액) — 사례별 동/층/호·전유면적·거래금액·거래단가·거래시점.
+//  글자인식이 표 칸 순서를 섞어도 "거래금액 ÷ 전유면적 = 거래단가" 검산으로 사례마다 금액·면적을 짝짓는다(강정화 (a) 116/19/1904 84.846㎡ 570,000,000원 @6,718,053).
+//  같은 감정서 뒤쪽의 "평가사례"(다른 감정 금액, 거래 아님)는 읽지 않는다
+function docApprCompCases_(t, base) {
+  t = String(t || '');
+  var st = t.search(/인근\s*(?:지역\s*내\s*)?유사\s*부동산의?\s*거래\s*사례|인근\s*지역\s*내\s*거래\s*사례/);
+  if (st === -1) return [];
+  var sec = t.slice(st, st + 4000), en = sec.slice(10).search(/\(\s*2\s*\)\s*비\s*교\s*사\s*례|비교\s*사례\s*의?\s*선정|사\s*정\s*보\s*정|평\s*가\s*사\s*례/);
+  if (en !== -1) sec = sec.slice(0, en + 10);
+  if (!/\d{1,4}\s*\/\s*\d{1,3}\s*\//.test(sec)) return []; // 동/층/호가 없으면 구분건물 사례표가 아님(토지 사례는 이 규칙 밖)
+  var grab = function (re, f) { var a = [], x; re.lastIndex = 0; while ((x = re.exec(sec))) a.push(f(x)); return a; };
+  var dhs = grab(/(\d{1,4})\s*\/\s*(\d{1,3})\s*\/\s*(\d{1,5})?/g, function (x) { return { 동: x[1], 층: Number(x[2]), 호: x[3] || '' }; });
+  var areas = grab(/(?<![\d.,@])(\d{2,3}\.\d{1,4})(?![\d.])/g, function (x) { return Number(x[1]); });
+  var units = grab(/@\s*(\d{1,3}(?:,\d{3})+)/g, function (x) { return Number(x[1].replace(/,/g, '')); });
+  var amts = grab(/(?<![@\d,])(\d{1,3}(?:,\d{3}){2,})(?![\d,])/g, function (x) { return Number(x[1].replace(/,/g, '')); }).filter(function (v) { return v >= 10000000 && units.indexOf(v) === -1; });
+  var dates = grab(/((?:19|20)\d{2})\s*[.\-]\s*(\d{1,2})\s*[.\-]\s*(\d{1,2})/g, function (x) { return docYmdKr_(x[1], Number(x[2]), Number(x[3])); });
+  var out = [], usedA = {}, usedS = {};
+  units.forEach(function (u) {
+    for (var i = 0; i < amts.length; i++) { if (usedA[i]) continue; for (var j = 0; j < areas.length; j++) { if (usedS[j]) continue;
+      if (Math.abs(amts[i] / areas[j] - u) <= Math.max(2, u * 0.0005)) { usedA[i] = usedS[j] = true; out.push({ 금액: amts[i], 면적: areas[j], 단가: u, 검산: '금액÷면적=단가 일치' }); return; }
+    } }
+  });
+  if (!out.length && amts.length && amts.length === areas.length) amts.forEach(function (v, i) { out.push({ 금액: v, 면적: areas[i], 단가: null, 검산: '단가 없음 — 순서로 짝지음' }); });
+  if (!out.length) return [];
+  if (dhs.length === out.length) out.forEach(function (c, i) { c.동 = dhs[i].동; c.층 = dhs[i].층; c.호 = dhs[i].호; });
+  // 거래시점 — 사용승인일(오래된 날)과 섞여 있다: 기준시점 3년 전~1개월 뒤 날짜만 거래시점으로, 수가 사례 수와 같을 때만 순서대로
+  var b = base ? new Date(base) : (dates.length ? new Date(dates.slice().sort().pop()) : null);
+  if (b) {
+    var lo = new Date(b.getFullYear() - 3, b.getMonth(), b.getDate()), hi = new Date(b.getFullYear(), b.getMonth() + 1, b.getDate());
+    var ds = dates.filter(function (d) { var dd = new Date(d); return dd >= lo && dd <= hi && d !== base; });
+    if (ds.length === out.length) out.forEach(function (c, i) { c.시점 = ds[i]; });
+  }
+  var marks = sec.match(/\(\s*([a-h]|[가나다라마바사])\s*\)|(?:^|\n)\s*([가나다라마바사])\s*(?=\n|$)/g) || []; // 기호 "(a)"·"가" — "(원)"·"(m2)" 같은 단위 괄호는 아님
+  out.forEach(function (c, i) { c.기호 = marks.length === out.length ? marks[i].replace(/[()\s]/g, '') : String(i + 1); });
+  return out;
+}
+// [2026.10.17 2차 실거래가] 감정평가서 거래사례 ↔ 실거래가 출력물 — 같은 거래(금액 같음·전용면적 0.1㎡ 안·계약일/층/동이 있으면 같음)를 찾아 한 번만 세게 표시.
+//  돌려주는 lines는 사람이 읽는 대조 줄, same은 "출력물 파일명|사례 순번" → 감정서 사례 표시
+function rpApprCompare_(apprs, reals) {
+  var lines = [], same = {};
+  apprs.forEach(function (ap) {
+    (((ap.r || {}).비교사례) || []).forEach(function (c) {
+      var hits = [];
+      reals.forEach(function (rd) { (((rd.r || {}).사례) || []).forEach(function (q, i) {
+        if (q.해제 || q.금액 !== c.금액 || Math.abs(q.면적 - c.면적) > 0.1) return;
+        if (c.시점 && rpCaseDates_(q).length && rpCaseDates_(q).indexOf(c.시점) === -1) return;
+        if (c.층 != null && q.층 != null && c.층 !== q.층) return;
+        if (c.동 && q.동 && String(c.동) !== String(q.동)) return;
+        hits.push({ rd: rd, q: q, i: i });
+      }); });
+      var lab = '감정평가서(' + ap.file + ') 거래사례 ' + c.기호 + ' — ' + [c.동 ? c.동 + '동' : '', c.층 != null ? c.층 + '층' : '', c.호 ? c.호 + '호' : '', c.면적 + '㎡', c.금액.toLocaleString('ko-KR') + '원', c.시점 || ''].filter(String).join(' ');
+      if (hits.length) {
+        hits.forEach(function (h) { same[h.rd.file + '|' + h.i] = '감정평가서 거래사례 ' + c.기호 + '와 같은 거래(' + ap.file + ')'; });
+        lines.push(lab + ' ↔ 실거래가 출력물(' + hits.map(function (h) { return h.rd.file; }).filter(function (v, k, a) { return a.indexOf(v) === k; }).join(', ') + ')의 같은 거래 — 한 번만 셈(감정가액은 이 거래를 시점·개별요인 보정한 값)');
+      } else {
+        var yrs = reals.map(function (rd) { return (rd.r || {}).연도; }).filter(Boolean);
+        var outYr = c.시점 && yrs.length && yrs.indexOf(Number(c.시점.slice(0, 4))) === -1;
+        lines.push(lab + ' — ' + (outYr ? '실거래가 출력물(' + yrs.filter(function (v, k, a) { return a.indexOf(v) === k; }).join('·') + '년) 기간 밖이라 대조 못 함' : '실거래가 출력물에 같은 거래 없음 — 금액·면적·층 원문 확인'));
+      }
+    });
+  });
+  return { lines: lines, same: same };
 }
 // 봉안시설(안치단·납골당) 사용계약서 — 사용 대금(봉안시설 비용, 상증령 §9② 5백만원 한도). 부부단이면 피상속인 몫 판단 필요.
 function docNicheContractParse_(text) {
