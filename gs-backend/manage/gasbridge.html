@@ -119,13 +119,16 @@
     }
     function send(items){
       var rid = newRid(), startedAt = Date.now();
+      // [2026.10.18] 사건처리(case_proc)는 서류 읽기 한 번에 서버가 80초까지 일한다. 25초에 끊으면 같은 요청번호로 다시 묻는 동안
+      //  기다리기만 하는 서버 실행이 여러 개 생겨 job 서버를 더 붐비게 했다 — 사건처리는 100초까지 기다린다.
+      var abortMs = items.some(function(it){ return it.fn === 'manageApp_call' && it.args && it.args[0] === 'case_proc'; }) ? 100000 : 25000;
       var body = JSON.stringify({ __manageBatch: items.map(function(it){ return { fn: it.fn, args: it.args }; }), __rid: rid });
       var failAll = function(err){ items.forEach(function(it){ it.reject(err); }); };
       var attempt = function(n){
         // 결과 받기 단계가 멈추면 15~30초 뒤에야 실패가 오므로, 25초에서 끊고 같은 요청번호로 다시 묻는다
         // (서버는 항목별로 기억해둔 결과를 쓰고, 묶음이 아직 실행 중이면 끝날 때까지 기다렸다가 준다).
         var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-        var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, 25000) : null;
+        var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, abortMs) : null;
         var retry = function(){
           return new Promise(function(r){ setTimeout(r, RETRY_DELAYS[n]); }).then(function(){ return attempt(n + 1); });
         };

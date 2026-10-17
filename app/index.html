@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-17 09:05 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-17 19:38 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -152,13 +152,16 @@
     }
     function send(items){
       var rid = newRid(), startedAt = Date.now();
+      // [2026.10.18] 사건처리(case_proc)는 서류 읽기 한 번에 서버가 80초까지 일한다. 25초에 끊으면 같은 요청번호로 다시 묻는 동안
+      //  기다리기만 하는 서버 실행이 여러 개 생겨 job 서버를 더 붐비게 했다 — 사건처리는 100초까지 기다린다.
+      var abortMs = items.some(function(it){ return it.fn === 'manageApp_call' && it.args && it.args[0] === 'case_proc'; }) ? 100000 : 25000;
       var body = JSON.stringify({ __manageBatch: items.map(function(it){ return { fn: it.fn, args: it.args }; }), __rid: rid });
       var failAll = function(err){ items.forEach(function(it){ it.reject(err); }); };
       var attempt = function(n){
         // 결과 받기 단계가 멈추면 15~30초 뒤에야 실패가 오므로, 25초에서 끊고 같은 요청번호로 다시 묻는다
         // (서버는 항목별로 기억해둔 결과를 쓰고, 묶음이 아직 실행 중이면 끝날 때까지 기다렸다가 준다).
         var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-        var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, 25000) : null;
+        var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, abortMs) : null;
         var retry = function(){
           return new Promise(function(r){ setTimeout(r, RETRY_DELAYS[n]); }).then(function(){ return attempt(n + 1); });
         };
@@ -47228,12 +47231,26 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       stepsEl.appendChild(row);
       st.steps[s.key] = row;
     });
-    st.run = function(key, extra){ return callGas('case_proc', Object.assign({ caseId: caseId, step: key }, extra || {})); };
+    // [2026.10.18] 사건처리 속도 — 부를 때마다 걸린 시간(화면에서 잰 전체 / 서버가 실제로 일한 _ms)을 모아 현황표 아래에 보여 준다.
+    //  job 서버는 한 번 부를 때 바닥 비용이 3~5초라, 사이에 화면 처리가 없는 단계는 runMany로 한 번에 부른다(Code.js caseProcTimed_).
+    st.timing = []; st.t0 = Date.now();
+    st.run = function(key, extra){
+      var t0 = Date.now();
+      return callGas('case_proc', Object.assign({ caseId: caseId, step: key }, extra || {})).then(function(res){ st.timing.push({ k: key, ms: Date.now() - t0, sv: (res && res._ms) || 0 }); return res; });
+    };
+    st.runMany = function(list){
+      var t0 = Date.now();
+      return callGas('case_proc', { caseId: caseId, step: 'multi', steps: list }).then(function(res){
+        st.timing.push({ k: list.map(function(x){ return x.step; }).join('+'), ms: Date.now() - t0, sv: (res && res._ms) || 0 });
+        if (!res || !Array.isArray(res.results) || res.results.length !== list.length) throw new Error((res && res.error) || '응답 없음');
+        return res.results;
+      });
+    };
     st.setStep = function(key, ico, sum){ var r = st.steps[key]; r.querySelector('.nxai-cp-ico').textContent = ico; r.querySelector('.nxai-cp-sum').textContent = sum || ''; };
-    st.doStep = function(key, extra){
+    st.doStep = function(key, extra, pre){
       st.setStep(key, '🔄', '진행 중…');
       var loop = function(n){
-        return st.run(key, (key === 'basic') ? nxAiCaseProcScreenDate_(caseId) : extra).then(function(res){
+        return ((n === 0 && pre) ? Promise.resolve(pre) : st.run(key, (key === 'basic') ? nxAiCaseProcScreenDate_(caseId) : extra)).then(function(res){
           if (!res || res.error) throw new Error((res && res.error) || '응답 없음');
           if (res.more && n < 12){ st.setStep(key, '🔄', (res.lines || [])[0] || '계속 읽는 중…'); return loop(n + 1); }
           return res;
@@ -47278,7 +47295,12 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         // 판독 ⚠가 남은 사진 중 아직 보정해 보지 않은 것(한 번에 5묶음 한도로 밀린 것) — 묻기 전에 보정하고 다시 대조
         .then(function(r){ var lp = r && r.loop; if (!lp || !lp.scan || !lp.scan.length) return; return NXAI_SCAN_.run(st, { focus: lp.scan }).catch(function(){ return 0; }).then(function(){ return st.doStep('evidence'); }); })
         .then(function(){ return nxAiCaseProcLoop_(st, 0); })
-        .then(function(){ return ['calc', 'output'].reduce(function(p, k){ return p.then(function(){ return st.doStep(k); }); }, Promise.resolve()); });
+        .then(function(){
+          ['calc', 'output'].forEach(function(k){ st.setStep(k, '🔄', '진행 중…'); });
+          return st.runMany([{ step: 'calc' }, { step: 'output' }]).then(function(rs){
+            return st.doStep('calc', undefined, rs[0]).then(function(){ return new Promise(function(r){ setTimeout(r, 350); }); }).then(function(){ return st.doStep('output', undefined, rs[1]); });
+          }, function(){ return st.doStep('calc').then(function(){ return st.doStep('output'); }); }); // 한 번에 부르기가 안 되면 예전처럼 따로
+        });
     }).then(function(){ return nxAiCaseProcFinish_(st); }).catch(function(err){ st.setStep('save', '❌', String(err && err.message || err)); });
   }
   // 6단계 — 결정·남은 일 저장(작업일지 한 줄) + 종합검토서 초안(보류 = 추가로 확인할 사항)
@@ -47287,7 +47309,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     return nxAiCaseProcSave_(st, true).then(function(r){
       if (!r || !r.ok) throw new Error((r && r.error) || '저장 실패');
       if (!st.case || !st.case.폴더ID) return r;
-      return st.run('draft').then(function(d){
+      return st.runMany([{ step: 'draft' }, nxAiCaseProcStatusReq_(st)]).then(function(rs){ st.preStatus = rs[1]; return rs[0]; }, function(){ return st.run('draft'); }).then(function(d){
         var linesEl = st.steps.save.querySelector('.nxai-cp-lines');
         linesEl.innerHTML = '';
         var line = document.createElement('div'); line.className = 'nxai-cp-line';
@@ -47309,15 +47331,34 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     }).catch(function(err){ st.running = false; st.setStep('save', '❌', '저장하지 못함: ' + (err && err.message || err)); nxAiCaseProcFoot_(st); });
   }
   // 7 반영 현황표 — 사건 기본·처리개요 칸별 채움/출처/추정, 증빙 확보, 계산·서식 PDF·검토서, 남은 질문을 한 표로
+  // 화면 하단 집계와 같은 기준이 되게 — 지금 보이는 항목·결정을 그대로 보낸다
+  function nxAiCaseProcStatusReq_(st){
+    return { step: 'status', items: st.items.map(function(it){ return { id: it.id, step: it.step, kind: it.kind, text: it.text }; }), decisions: st.decisions };
+  }
+  // 이번 처리에서 서버를 부른 시간 — 단계별 합계(화면에서 잰 전체 / 그중 서버가 실제로 일한 시간)
+  function nxAiCaseProcTimingHtml_(st){
+    var list = st.timing || [];
+    if (!list.length) return '';
+    var name = { basic: '사건파악', evidence: '증빙', overview: '처리개요', calc: '계산', output: '인쇄', save: '저장', draft: '검토서', status: '현황표', apply: '답 반영', cands: '후보', savePdf: '서식PDF', calcin: '계산 입력', scanCands: '사진보정', scanSaved: '사진보정', splitCands: '서류나누기', splitPages: '서류나누기', splitSaved: '서류나누기' };
+    var agg = {}, order = [], all = 0, sv = 0;
+    list.forEach(function(x){
+      var label = String(x.k).split('+').map(function(k){ return name[k] || k; }).join('+');
+      if (!agg[label]){ agg[label] = { n: 0, ms: 0, sv: 0 }; order.push(label); }
+      agg[label].n++; agg[label].ms += x.ms; agg[label].sv += x.sv; all += x.ms; sv += x.sv;
+    });
+    var sec = function(ms){ return (Math.round(ms / 100) / 10) + '초'; };
+    return '<div class="nxai-cp-line nxai-muted">⏱ 서버 부르기 ' + list.length + '번 · 합계 ' + sec(all) + '(서버가 실제로 일한 시간 ' + sec(sv) + ', 오가며 기다린 시간 ' + sec(Math.max(0, all - sv)) + ') — '
+      + order.map(function(l){ var a = agg[l]; return l + ' ' + sec(a.ms) + (a.n > 1 ? '(' + a.n + '번)' : ''); }).join(' · ') + '</div>';
+  }
   function nxAiCaseProcStatus_(st){
     st.setStep('status', '🔄', '정리 중…');
-    // 화면 하단 집계와 같은 기준이 되게 — 지금 보이는 항목·결정을 그대로 보낸다
-    return st.run('status', { items: st.items.map(function(it){ return { id: it.id, step: it.step, kind: it.kind, text: it.text }; }), decisions: st.decisions }).then(function(r){
+    var pre = st.preStatus; st.preStatus = null; // 검토서 초안과 함께 받아 둔 현황표가 있으면 그것을 쓴다
+    return (pre ? Promise.resolve(pre) : st.run('status', nxAiCaseProcStatusReq_(st))).then(function(r){
       if (!r || !r.ok) throw new Error((r && r.error) || '응답 없음');
       var box = st.steps.status.querySelector('.nxai-cp-lines');
       var rows = r.rows || [];
       box.innerHTML = '<table class="nxai-cp-table"><tr><th>구분</th><th>항목</th><th></th><th>값·출처</th></tr>' + rows.map(function(x){ return '<tr><td>' + nxAiEsc_(x[0]) + '</td><td>' + nxAiEsc_(x[1]) + '</td><td>' + nxAiEsc_(x[2]) + '</td><td>' + nxAiEsc_(x[3]) + '</td></tr>'; }).join('') + '</table>'
-        + '<div class="nxai-cp-line">✅ 반영됨 · △ 추정·일부 · ⬜ 비어 있음 · ⚠ 확인 필요</div>' + nxAiCaseProcLedgerHtml_(r.ledger);
+        + '<div class="nxai-cp-line">✅ 반영됨 · △ 추정·일부 · ⬜ 비어 있음 · ⚠ 확인 필요</div>' + nxAiCaseProcLedgerHtml_(r.ledger) + nxAiCaseProcTimingHtml_(st);
       var gaps = rows.filter(function(x){ return x[2] !== '✅'; }).length;
       st.setStep('status', gaps ? '⚠' : '✅', gaps ? '아직 완전히 반영되지 않은 항목 ' + gaps + '개' : '모두 반영됨');
     }).catch(function(err){ st.setStep('status', '❌', '현황표를 만들지 못함: ' + (err && err.message || err)); });

@@ -3843,7 +3843,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'tc_extract_case_docs') return jsonResponse(tc_extractCaseDocs_(body));
   if (body.action === 'tc_rule_transfer_facts') return jsonResponse(tc_ruleTransferFacts_(body)); // 양도세 자동채우기 규칙 먼저(토큰 0)
   if (body.action === 'tc_rule_inheritance_facts') return jsonResponse(tc_ruleInheritanceFacts_(body)); // 상속세 자동채우기 규칙 먼저(토큰 0)
-  if (body.action === 'case_proc') return jsonResponse(caseProc_(body)); // '이 사건 처리하자' — 처리탭 도구로 단계별 점검(토큰 0)
+  if (body.action === 'case_proc') return jsonResponse(caseProcTimed_(body)); // '이 사건 처리하자' — 처리탭 도구로 단계별 점검(토큰 0)
   if (body.action === 'answerkey_run') return jsonResponse(answerKeyRun_(body)); // 🧪 정답지 점검(토큰 0, AnswerKey.js)
   if (body.action === 'taxpayer_bulk_fix') return jsonResponse(taxpayerBulkFix_(body)); // 🏷 납세자·사건명 일괄 정리(미리보기/적용, TaxpayerFix.js)
   if (body.action === 'answerkey_last') return jsonResponse(answerKeyLast_());
@@ -25877,6 +25877,28 @@ function tc_ruleTransferFacts_(body) {
 const CASEPROC_FOLDER_ = '_사건처리점검';
 const CASEPROC_TAX_LABEL_ = { transfer: '양도소득세', gift: '증여세', inheritance: '상속세' };
 const CASEPROC_BASE_LABEL_ = { transfer: '양도일', gift: '증여일', inheritance: '상속개시일' };
+// [2026.10.18] 사건처리 속도 — "처리하자" 한 번에 서버를 10번 넘게 불렀고, job 서버는 한 번 부를 때마다 바닥 비용이 3~5초라
+//  기다림만 40~50초였다. ① 응답마다 서버에서 실제로 걸린 시간(_ms)을 실어 화면이 단계별 시간을 보여 주고(어디가 느린지 숫자로),
+//  ② 사이에 화면 처리가 없는 단계들은 한 번에 부른다(step 'multi', steps: [{step:'calc'}, {step:'output'}] — 차례대로 실행해 결과 배열).
+//  단계 자체(caseProc_)는 그대로 — 따로 부를 때와 결과가 같다.
+function caseProcTimed_(body) {
+  const t0 = Date.now();
+  let r;
+  if (body && body.step === 'multi') {
+    const steps = Array.isArray(body.steps) ? body.steps.slice(0, 6) : [];
+    r = {
+      ok: true, results: steps.map(function (st) {
+        const t = Date.now();
+        let x;
+        try { x = caseProc_(Object.assign({}, st || {}, { caseId: body.caseId })); } catch (e) { x = { error: '이 단계를 처리하지 못했습니다: ' + (e && e.message || e) }; }
+        if (x && typeof x === 'object' && !Array.isArray(x)) x._ms = Date.now() - t;
+        return x;
+      })
+    };
+  } else r = caseProc_(body);
+  if (r && typeof r === 'object' && !Array.isArray(r)) r._ms = Date.now() - t0;
+  return r;
+}
 function caseProc_(body) {
   const caseId = String(body && body.caseId || '').trim();
   if (!caseId) return { error: '사건이 필요합니다.' };
