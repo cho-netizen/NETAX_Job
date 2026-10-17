@@ -25012,7 +25012,7 @@ function tc_ruleTransferFacts_(body) {
           if (!outAmt || outAmt < 50000) continue;
           var isBiz = /공인\s*중개|중개|부동산|법무|인테리어|공사|설비|건설|시공|창호|샷시|새시|보일러|방수|철거/.test(who);
           var isEst = estNames.some(function (nm0) { return who.indexOf(nm0) !== -1; });
-          if (isBiz || isEst) expDocs.push({ file: f.name, amount: outAmt, date: rm[1], memo: who + (/공인s*중개|중개|부동산/.test(who) ? ' 중개수수료' : isEst ? ' — 견적서 업체 공사' : '') + ' (통장 출금)', payer: '', head: who, stmt: true });
+          if (isBiz || isEst) expDocs.push({ file: f.name, amount: outAmt, date: rm[1], memo: who + (/공인\s*중개|중개|부동산/.test(who) ? ' 중개수수료' : isEst ? ' — 견적서 업체 공사' : '') + ' (통장 출금)', payer: '', head: who, stmt: true });
         }
       }
       else if (/지출|계좌|입금|송금|이체|인지|성과\s*보수|보수\s*청구|청구서|영수|납부/.test(payName) && !/견\s*적/.test(payName) && !/표지/.test(f.name)) {
@@ -25062,7 +25062,7 @@ function tc_ruleTransferFacts_(body) {
       var bond = bm ? Number(bm[1].replace(/,/g, '')) : 0, disc = dm ? Number(dm[1].replace(/[.,]/g, '')) : 0;
       if (!(bond && (p.result.구성금액 || []).indexOf(bond) !== -1)) bond = 0; // 합계에 실제로 들어간 금액일 때만
       if (disc >= bond) disc = 0;
-      lawyers.push({ file: f.name, r: p.result, bond: bond, disc: disc, amts: (lt.match(/d{1,3}(?:,d{3})+/g) || []).map(function (v) { return Number(v.replace(/,/g, '')); }) }); // amts: 정산서에 적힌 금액들(겹침 판단용, 2026-10-16)
+      lawyers.push({ file: f.name, r: p.result, bond: bond, disc: disc, amts: (lt.match(/\d{1,3}(?:,\d{3})+/g) || []).map(function (v) { return Number(v.replace(/,/g, '')); }) }); // amts: 정산서에 적힌 금액들(겹침 판단용, 2026-10-16)
     }
     if (p.type === 'registry') regs.push({ file: f.name, r: p.result });
   }
@@ -25296,7 +25296,8 @@ function tc_ruleTransferFacts_(body) {
     //  (이종식: 2012-02-22 증여 취득의 취득세 1,389,820원 "지방세납부증명.jpg"를 확실 0건으로 두었다)
     var acqDay = String(txs[0].acquisitionDate || '').slice(0, 10);
     var nearAcq = function (d) { d = String(d || '').slice(0, 10); if (!acqDay || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return false; var g = (new Date(d) - new Date(acqDay)) / 86400000; return g >= -30 && g <= 200; };
-    acqs.forEach(function (a) { if (!a.r.합계) return; var inLaw = lawTotal && a.r.합계 <= lawTotal; var pd = a.r.납부일 || a.r.일자 || (a.ym ? a.ym + '-01' : ''); expCands.push({ kind: '취득', label: '취득세 등 납부', amount: a.r.합계, date: pd, file: a.file, sure: !inLaw && (/취득/.test(a.file) || !!txs[0].acquisitionExpenses || nearAcq(pd)), note: inLaw ? '법무사 정산서 합계에 이미 들어 있을 수 있음 — 겹치면 하나만' : (nearAcq(pd) && !/취득/.test(a.file) ? '납부일 ' + String(pd).slice(0, 10) + ' — 취득일 ' + acqDay + ' 직후(신고·납부 기한 안)라 이 물건의 취득세로 봄' : '') }); });
+    // [2026.10.17 세무사님 결정] 과세증명서의 부과연월(납부일 아님)만으로는 미리 체크하지 않는다 — 날짜가 가깝다는 짐작이라 근거와 함께 후보로만(체크는 세무사님)
+    acqs.forEach(function (a) { if (!a.r.합계) return; var inLaw = lawTotal && a.r.합계 <= lawTotal; var fromYm = !a.r.납부일 && !a.r.일자 && !!a.ym; var pd = a.r.납부일 || a.r.일자 || (a.ym ? a.ym + '-01' : ''); expCands.push({ kind: '취득', label: '취득세 등 납부', amount: a.r.합계, date: pd, file: a.file, sure: !inLaw && (/취득/.test(a.file) || !!txs[0].acquisitionExpenses || (nearAcq(pd) && !fromYm)), note: inLaw ? '법무사 정산서 합계에 이미 들어 있을 수 있음 — 겹치면 하나만' : (nearAcq(pd) && !/취득/.test(a.file) ? (fromYm ? '과세증명서 부과연월 ' + a.ym + ' — 취득일 ' + acqDay + ' 직후라 이 물건의 취득세일 수 있음(납부 영수증이 아님 — 맞으면 체크)' : '납부일 ' + String(pd).slice(0, 10) + ' — 취득일 ' + acqDay + ' 직후(신고·납부 기한 안)라 이 물건의 취득세로 봄') : '') }); });
   }
   if (txs.length === 1) officeFees.forEach(function (o) {
     var sureO = !!(txs[0].transferDate && o.date && o.date >= txs[0].transferDate);
