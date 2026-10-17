@@ -27088,24 +27088,35 @@ function caseProcNewDocChecks_(c, docs) {
     const p = parsedOf(f); if (!p || !p.result) return; const r = p.result, head = '차용증 대조(' + f.name + '): ';
     const L = nm(r.대여인), B = nm(r.차용인), rows = bankRows();
     if (r.초안) out.push(head + '서명 전 초안(당사자·날짜 빈칸) — 실제 차용 증빙으로 쓰려면 서명된 원본과 송금 내역이 필요');
-    let reps = [];
+    // [2026.10.17 세무사님 원칙 — 거래 단위로 쪼갠 뒤 적재적소, 집계는 맨 나중] 통장 한 줄씩: 대여 송금(원금 구성) · 이자(원금 아님 — 받은 이자는 대여인 소득,
+    //  개시일 현재 못 받은 이자만 채권) · 원금 상환(채권 감소) · 적요로 못 가른 입금(묻기) · 상속개시일 뒤 거래(개시일 현재 채권 계산에서 뺌)로 나누고, 줄마다 남은 원금을 적은 뒤 끝에 합한다
+    let led = [];
     if (r.원금 && B && rows.length) {
       const from = r.대여일 || '', to = from ? addD(from, 366) : '';
-      const outs = rows.filter(function (x) { return x.in === false && x.who.indexOf(B) !== -1 && (!from || (x.d >= from && x.d <= to)); }).sort(function (a, b) { return a.d < b.d ? -1 : 1; });
-      const so = sumV(outs);
-      if (outs.length) out.push(head + (outs.length > 1 ? '대여 송금 — 차용인(' + B + ') 앞 출금 ' + outs.length + '회 합 ' : '대여 송금 — 차용인(' + B + ') 앞 출금 ') + won(so) + '(' + outs[0].d + (outs.length > 1 ? '~' + outs[outs.length - 1].d : '') + ', ' + outs.map(function (x) { return x.file; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join('·') + ')' + (so === r.원금 ? ' = 원금 ' + won(r.원금) + ' ✅' : ' ≠ 원금 ' + won(r.원금) + ' — ⚠ 차액 ' + won(Math.abs(r.원금 - so)) + '(다른 계좌·현금 지급 확인)'));
-      else out.push(head + '⚠ 통장에서 차용인(' + B + ') 앞 대여 송금을 찾지 못함' + (from ? '(대여일 ' + from + ' 뒤 1년)' : '') + ' — 대여인 계좌 거래내역 확인');
-      const ins = rows.filter(function (x) { return x.in === true && x.who.indexOf(B) !== -1 && (!from || x.d >= from); }).sort(function (a, b) { return a.d < b.d ? -1 : 1; });
-      if (ins.length) {
-        const intr = ins.filter(function (x) { return /이자/.test(x.who); }); reps = ins.filter(function (x) { return /상환|원금|변제/.test(x.who) && !/이자/.test(x.who); });
-        const etc = ins.filter(function (x) { return intr.indexOf(x) === -1 && reps.indexOf(x) === -1; });
-        out.push(head + '차용인이 보낸 입금 ' + ins.length + '회 ' + won(sumV(ins)) + ' — 적요 "이자" ' + intr.length + '회 ' + won(sumV(intr)) + ' · "상환" ' + reps.length + '회 ' + won(sumV(reps)) + (etc.length ? ' · 적요 없음 ' + etc.length + '회 ' + won(sumV(etc)) : '') + ' [' + ins.slice(0, 10).map(function (x) { return x.d + ' ' + won(x.v); }).join(', ') + (ins.length > 10 ? ' 외' : '') + ']');
-      }
+      rows.forEach(function (x) {
+        if (x.who.indexOf(B) === -1 || (from && x.d < from)) return;
+        let k = '';
+        if (x.in === false && (!to || x.d <= to)) k = '대여 송금';
+        else if (x.in === true) k = /이자/.test(x.who) ? '이자' : /상환|원금|변제/.test(x.who) ? '원금 상환' : '구분 불명';
+        if (k) led.push({ d: x.d, v: x.v, k: k, file: x.file, after: !!(base && x.d > base) });
+      });
+      led.sort(function (a, b) { return a.d < b.d ? -1 : a.d > b.d ? 1 : (a.k === '대여 송금' ? -1 : 1); });
+      let bal = 0;
+      led.forEach(function (x) { if (x.after) return; if (x.k === '대여 송금') bal += x.v; else if (x.k === '원금 상환') bal -= x.v; x.bal = bal; });
+      if (!led.some(function (x) { return x.k === '대여 송금'; })) out.push(head + '⚠ 통장에서 차용인(' + B + ') 앞 대여 송금을 찾지 못함' + (from ? '(대여일 ' + from + ' 뒤 1년)' : '') + ' — 대여인 계좌 거래내역 확인');
+      if (led.length) out.push(head + '거래 ' + led.length + '건(한 건씩, ' + led.map(function (x) { return x.file; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join('·') + '): ' + led.map(function (x) { return x.d + ' ' + x.k + ' ' + won(x.v) + (x.after ? '(개시일 뒤 — 뺌)' : x.k === '대여 송금' || x.k === '원금 상환' ? ' → 남은 원금 ' + won(x.bal) : ''); }).join(' / '));
+      // 집계(맨 나중) — 종류별 합과 원금 검산
+      const of = function (k, aft) { return led.filter(function (x) { return x.k === k && !!x.after === !!aft; }); };
+      const lent = sumV(of('대여 송금'));
+      if (lent) out.push(head + '집계: 대여 송금 ' + of('대여 송금').length + '건 ' + won(lent) + (lent === r.원금 ? ' = 원금 ' + won(r.원금) + ' ✅' : ' ≠ 원금 ' + won(r.원금) + ' — ⚠ 차액 ' + won(Math.abs(r.원금 - lent)) + '(다른 계좌·현금 지급 확인)')
+        + ' · 원금 상환 ' + of('원금 상환').length + '건 ' + won(sumV(of('원금 상환'))) + ' · 이자 ' + of('이자').length + '건 ' + won(sumV(of('이자')))
+        + (of('구분 불명').length ? ' · ⚠ 적요로 원금·이자를 못 가른 입금 ' + of('구분 불명').length + '건 ' + won(sumV(of('구분 불명'))) : '')
+        + (led.some(function (x) { return x.after; }) ? ' · 상속개시일 뒤 거래 ' + led.filter(function (x) { return x.after; }).length + '건(뺌)' : ''));
     }
     // 사건과의 관계 — 세목·납세자(상속: 피상속인, 증여: 수증자)
     if (c.세목 === 'inheritance' && L && tp && caseProcNameLike_(L, tp)) {
-      const repB = reps.filter(function (x) { return !base || x.d <= base; }), left = r.원금 ? r.원금 - sumV(repB) : 0;
-      out.push(head + '대여인 = 피상속인 → 상속개시일' + (base ? '(' + base + ')' : '') + ' 현재 받지 못한 원금(+ 받을 이자)이 상속재산(대여금 채권). 원금 ' + won(r.원금) + (repB.length ? ' − 개시일 전 적요 "상환" 입금 ' + won(sumV(repB)) + ' = ' + won(left) + '(상환 입금이 모두 원금일 때 — 이자가 섞였으면 그만큼 더 남음)' : '') + ' — 금액은 [확인]에서 정하세요(값을 넣지 않음)');
+      const last = led.filter(function (x) { return !x.after && x.bal !== undefined; }).slice(-1)[0];
+      out.push(head + '대여인 = 피상속인 → 상속개시일' + (base ? '(' + base + ')' : '') + ' 현재 받지 못한 원금(+ 받을 이자)이 상속재산(대여금 채권).' + (last ? ' 거래 장부상 남은 원금 ' + won(last.bal) + '(적요 "상환" 입금을 원금으로 본 값 — 상환 입금에 이자가 섞였으면 그만큼 더 남음)' : ' 원금 ' + won(r.원금)) + ' — 금액은 [확인]에서 정하세요(값을 넣지 않음)');
     } else if (c.세목 === 'inheritance' && B && tp && caseProcNameLike_(B, tp)) {
       out.push(head + '차용인 = 피상속인 → 상속개시일 현재 남은 원금은 채무 공제 후보(상증법 §14①3호 — 이 차용증과 송금 내역이 입증 자료)');
     } else if (c.세목 === 'gift' && B && tp && caseProcNameLike_(B, tp)) {
