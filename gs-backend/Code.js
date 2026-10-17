@@ -25948,7 +25948,7 @@ function caseProcEvTypes_(label) {
 // [2026.10.17 묶음11] 견적서 안내("실제 지출 증빙이 아님")도 — 법무사 견적 항목을 이름과 함께 읽게 되면서 이 안내가 홀로 남아 ⚠ 판독 질문이 될 수 있었다
 var CASEPROC_ADVISORY_RE_ = /표\s*칸이\s*섞여\s*붙이지\s*않음|견적서는\s*실제\s*지출\s*증빙이\s*아님|납세보증보험|통장\s*사본은\s*거래\s*줄과|열람용\s*출력물|유족이\s*정리한\s*지출표|채무\s*공제\s*\(§\s*14\)|간주상속재산\(상증법\s*§8\)\s*판단|§66⑭\s*적용\s*시기|사업소득에는\s*농업/;
 function caseProcParsed_(f, cache, canParse) {
-  const key = 'cpp27_' + f.id + '_' + f.modified; // cpp27: 우리 메모 PDF(memo)·준비서류 안내·건물기준시가(상속/증여)·법무사 항목 이름(2026-10-17 묶음11) // cpp26: 건물기준시가 계산서 구조(2026-10-16) // cpp25: 초본 최초작성·지번정정 사유·뒷장 없음(2026-10-16) // cpp24: 공동주택가격 공시기준일·건물기준시가 계산서(2026-10-16 1:1 방영교) // cpp23: 간편계산 결과는 참고(calc)·손글씨 목록은 입력(2026-10-16 1:1) // cpp22: 증여·상속세 서식은 outGI(양도 사건에선 입력)(2026-10-16) // cpp21: 안내문은 판독 경고에서 뺌(2026-10-16) // cpp20: 등기 지분 상속 피상속인(2026-10-16) // cpp19: 취득세 참고 경고(2026-10-16) // cpp18: 증여계약서 이름 형식 추가(2026-10-16) // cpp17: 간편계산 결과 제외(2026-10-16) // cpp16: 등기 개명·증여계약서 서명란(2026-10-16) // cpp15: 괄호 제목 분할협의서·쉼표 없는 영수증 금액(2026-10-16) // cpp14: 내용으로 본 이미 낸 신고서(out)(2026-10-15) // cpp13: 오피스텔·상업용 기준시가 표(2026-10-15) // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
+  const key = 'cpp28_' + f.id + '_' + f.modified; // cpp28: 증여계약서 계약일·검인일 증여일 후보 + 가지 합침(2026-10-17) // cpp27: 우리 메모 PDF(memo)·준비서류 안내·건물기준시가(상속/증여)·법무사 항목 이름(2026-10-17 묶음11) // cpp26: 건물기준시가 계산서 구조(2026-10-16) // cpp25: 초본 최초작성·지번정정 사유·뒷장 없음(2026-10-16) // cpp24: 공동주택가격 공시기준일·건물기준시가 계산서(2026-10-16 1:1 방영교) // cpp23: 간편계산 결과는 참고(calc)·손글씨 목록은 입력(2026-10-16 1:1) // cpp22: 증여·상속세 서식은 outGI(양도 사건에선 입력)(2026-10-16) // cpp21: 안내문은 판독 경고에서 뺌(2026-10-16) // cpp20: 등기 지분 상속 피상속인(2026-10-16) // cpp19: 취득세 참고 경고(2026-10-16) // cpp18: 증여계약서 이름 형식 추가(2026-10-16) // cpp17: 간편계산 결과 제외(2026-10-16) // cpp16: 등기 개명·증여계약서 서명란(2026-10-16) // cpp15: 괄호 제목 분할협의서·쉼표 없는 영수증 금액(2026-10-16) // cpp14: 내용으로 본 이미 낸 신고서(out)(2026-10-15) // cpp13: 오피스텔·상업용 기준시가 표(2026-10-15) // cpp12: 은행 앱 이체확인증(이체일시)(2026-10-15) // cpp11: 등기부 거래가액·분할협의서 제목 변형(2026-10-15) // cpp10: 이체확인증·통장 사본·증여계약서 표 형식(2026-10-15) // cpp9: 정산서 항목은 품목명 표 앞에서만 // cpp8: 정산서 중복 항목·봉안 관리비 규칙 고침(옛 정리 결과 버림) // cpp7: 살아 있는 담보(lien)·부채(debt) 표시 — 이하 이전 표시 // cpp6: 안내 문구 ⚠ 제외 — 이하 이전 표시 // cpp2: 사무소 발행(office), cpp3: 기준일 후보(bd), cpp4: 소재지(loc), cpp5: 증여재산 종류(gk)
   const hit = cache.get(key);
   if (hit) { try { return JSON.parse(hit); } catch (e) {} }
   if (!canParse) return null;
@@ -26557,6 +26557,12 @@ function caseProcBaseDateCands_(p) {
         out.push({ k: 'gift', d: x.접수일, cause: x.원인일 || '', who: (x.권리자 || []).map(function (h) { return h.이름; }).join(','), loc: String(d.소재지 || '').slice(0, 40), warn: !!x.확인필요 });
       });
     });
+    // [2026.10.17 증여일 — 정원식 0/4] 증여계약서 계약일(·검인일)도 증여일 후보 — 다만 부동산 증여의 취득시기는 등기 접수일(상증령 §24①1)이라 2순위(con):
+    //  등기부에 증여 접수일이 있으면 그것을 쓰고 계약일은 대조로만, 증여 등기 전이면 계약일을 객관식 후보로 묻는다(자동 반영하지 않음)
+    if (p.type === 'giftcontract' && p.result && p.result.재산종류 !== '현금') {
+      if (p.result.계약일) out.push({ k: 'gift', d: p.result.계약일, who: p.result.수증자 || '', warn: false, con: true, via: '증여계약서 계약일' + (p.result.계약일출처 ? '(' + p.result.계약일출처 + ')' : '') });
+      if (p.result.검인일) out.push({ k: 'gift', d: p.result.검인일, who: p.result.수증자 || '', warn: false, con: true, via: '증여계약서 검인일' });
+    }
     if (p.type === 'death' && p.result && p.result.사망일) out.push({ k: 'death', d: p.result.사망일, who: p.result.성명 || '', warn: !!p.result.사망일확인필요 });
     // 등기부의 "…상속" 원인일 = 상속개시일(직전 소유자 = 피상속인), 상속재산분할협의서의 "○년○월○일 ○○의 사망으로 개시된 상속"
     if (p.type === 'registry' && p.result && p.result.docs) p.result.docs.forEach(function (d) {
@@ -26717,10 +26723,21 @@ function caseProcBaseDateCheck_(c, ov, lines, items) {
       return;
     }
   }
-  const cands = caseProcEvidenceBaseDates_(c);
+  const cands0 = caseProcEvidenceBaseDates_(c);
+  // [2026.10.17 증여일] 증여계약서 계약일·검인일(con)은 2순위 — 등기 접수일 후보가 하나라도 있으면 그것으로 정하고 계약일은 대조 문구로만
+  const cons = cands0.filter(function (b) { return b.con; }), cands = cands0.filter(function (b) { return !b.con; });
   const sure = cands.filter(function (b) { return !b.warn; });
   const dates = sure.map(function (b) { return b.d; }).filter(function (d, i, a) { return a.indexOf(d) === i; });
   const basis = c.세목 === 'gift' ? '증여 등기 접수일(상증령 §24)' : '사망일';
+  if (!dates.length && cons.length && c.세목 === 'gift') {
+    // 증여 등기 전(등기부에 증여 기재 없음) — 증여계약서 계약일을 1번 후보로 객관식. 등기를 마쳤으면 등기 접수일이 증여일(상증령 §24①1)이라 세무사님이 고르거나 접수일을 적는다
+    //  판독이 불확실(⚠)한 등기 접수일이 있으면 그것을 1번 후보로(법정 기준), 계약일은 그 다음
+    const conCands = cands.map(function (b) { return { v: b.d, src: '증여 등기 접수일 ⚠판독 불확실 — ' + b.file }; }).filter(function (x, i, a) { return a.map(function (y) { return y.v; }).indexOf(x.v) === i; }).concat(cons.filter(function (b) { return !cands.some(function (q) { return q.d === b.d; }); }).map(function (b) { return b.d; }).filter(function (d, i, a) { return a.indexOf(d) === i; }).map(function (d0) { return { v: d0, src: cons.filter(function (b) { return b.d === d0; }).map(function (b) { return b.via + ' — ' + b.file; }).join(', ') + ' (증여 등기 접수일이 있으면 그 날이 증여일)' }; }));
+    if (c.기준일 && !cands.length && conCands.some(function (x) { return x.v === c.기준일; })) { lines.push('✅ ' + what + ' ' + c.기준일 + ' — ' + conCands.filter(function (x) { return x.v === c.기준일; })[0].src.replace(/ \(증여 등기.*$/, '') + ' (증여 등기부 확보 시 접수일과 대조)'); return; }
+    if (c.기준일 && !conCands.some(function (x) { return x.v === c.기준일; })) conCands.push({ v: c.기준일, src: '사건 기준일(지금 값)' });
+    items.push(caseProcItem_('base:con:' + conCands.map(function (x) { return x.v; }).join('|'), 'check', what + ': ' + (cands.length ? '등기부 증여 접수일 ' + cands.map(function (b) { return b.d + '(' + b.file + ')'; }).join(', ') + '은 판독이 불확실(⚠)하고, 증여계약서 날짜는 ' : '증여 등기가 기재된 등기부가 없어 증여계약서 날짜만 있습니다 — ') + cons.map(function (b) { return b.d + '(' + b.via + ', ' + b.file + ')'; }).join(', ') + '. 부동산 증여일은 소유권이전 등기 접수일(상증령 §24①1)입니다 — 등기 전이면 계약일, 등기를 마쳤으면 접수일. 이 사건의 ' + what + '은?', { mode: 'base', cands: conCands }));
+    return;
+  }
   if (!dates.length) {
     if (cands.length) items.push(caseProcItem_('base:warn:' + cands[0].d, 'check', what + ' 후보 ' + cands.map(function (b) { return b.d + '(' + b.file + ')'; }).join(', ') + ' — 서류 판독이 불확실(⚠)해 반영하지 않았습니다.', { mode: 'base' }));
     else if (!c.기준일) items.push(caseProcItem_('base:none', 'missing', what + '을(를) 증빙으로 확정하지 못했습니다 — ' + (c.세목 === 'gift' ? '증여를 원인으로 한 소유권이전이 기재된 등기부가 필요합니다(현금 등 등기 없는 재산은 이체일·인도일).' : '사망진단서·기본증명서(사망일 기재)가 필요합니다.'), { mode: 'base' }));
@@ -26734,7 +26751,9 @@ function caseProcBaseDateCheck_(c, ov, lines, items) {
     return;
   }
   const d = dates[0], src = sure.filter(function (b) { return b.d === d; })[0];
-  const extra = (src.cause && src.cause !== d ? ' (증여계약일 ' + src.cause + '은 기준이 아님)' : '') + (sure.length > 1 ? ' — 서류 ' + sure.length + '건 일치(' + sure.map(function (b) { return b.via || b.file; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join('·') + ')' : '');
+  // [2026.10.17 증여일] 증여계약서 계약일이 등기 접수일과 다르면 출처와 함께 대조 문구로(접수일이 1순위 — 상증령 §24①1)
+  const conDiff = cons.filter(function (b) { return b.d !== d && b.d !== src.cause; }).map(function (b) { return b.d + '(' + b.via + ', ' + b.file + ')'; });
+  const extra = (src.cause && src.cause !== d ? ' (증여계약일 ' + src.cause + '은 기준이 아님)' : '') + (conDiff.length ? ' (증여계약서 날짜 ' + conDiff.join(', ') + ' — 부동산 증여일은 등기 접수일이라 기준이 아님)' : '') + (sure.length > 1 ? ' — 서류 ' + sure.length + '건 일치(' + sure.map(function (b) { return b.via || b.file; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join('·') + ')' : '');
   const fb0 = (caseProcLoad_(c.id).filled || {}).기준일;
   const userSet0 = fb0 && fb0.v === c.기준일 && !/^증빙/.test(String(fb0.src || ''));
   if (c.기준일 === d) { lines.push('✅ ' + what + ' ' + d + ' — 증빙(' + src.file + ', ' + basis + ')으로 확인' + extra); caseProcRememberFill_(c.id, '기준일', d, '증빙: ' + src.file); return; }
@@ -26760,7 +26779,7 @@ function caseProcBaseCands_(c, body) {
   const last = caseProcLastCalc_(c).last;
   if (last) add(last.기준일스냅샷, '저장된 세액계산(' + (last.계산일 || '') + ')');
   add(body.screenDate, '세액계산 화면');
-  caseProcEvidenceBaseDates_(c).forEach(function (b) { add(b.d, '증빙: ' + b.file + (b.warn ? ' ⚠판독 불확실' : '')); });
+  caseProcEvidenceBaseDates_(c).forEach(function (b) { add(b.d, '증빙: ' + b.file + (b.con ? '(' + b.via + ' — 등기 접수일이 있으면 2순위)' : '') + (b.warn ? ' ⚠판독 불확실' : '')); });
   if (c.세목 === 'gift') { try { const cg = caseProcCashGift_(c, caseProcParseAll_(c)); if (cg.isCash) { if (cg.tx) add(cg.tx.날짜, '증빙: 이체내역(' + cg.tx.file + ') — 현금 인도일'); if (cg.contract && cg.contract.계약일) add(cg.contract.계약일, '증빙: 증여계약서 계약일'); } } catch (e) {} }
   if (c.세목 === 'transfer' && String(c.폴더ID || '').trim()) {
     try { const rf = tc_ruleTransferFacts_({ caseId: c.id }); (rf && rf.transactions || []).forEach(function (t) { add(t.transferDate, '증빙: 계약서·등기부(잔금일·등기접수일 중 빠른 날)'); }); } catch (e) {}
@@ -27270,6 +27289,26 @@ function caseProcGiftInhFacts_(c, lines, items) {
     }
     byType('balance').forEach(function (x) { const r = x.p.result || {}; if (r.총액) add('giftAmount', r.총액, '잔고·잔액증명(' + x.f.name + (r.예금주 ? ', 예금주 ' + r.예금주 : '') + (r.기준일 ? ', ' + r.기준일 : '') + ') — 현금 증여일 때', false); });
     byType('debtcert').forEach(function (x) { const r = x.p.result || {}; if (r.총잔액) add('giftDebtAssumed', r.총잔액, '부채증명(' + x.f.name + (r.기준일 ? ', ' + r.기준일 : '') + ') — 수증자가 인수한 채무일 때', false); });
+    // [2026.10.17 증여일] 부동산 증여계약서 항목 — 계약일·증여자·수증자·목적물·지분·채무인수를 한 줄로 보여 주고, 부담부증여면 인수채무를 종류별 항목으로 후보에 올린다.
+    //  같은 채무가 부채증명·임대차계약서에도 있으면(금액 같음) 한 번만, 채권최고액은 실제 채무가 아니라 후보로도 내지 않는다.
+    //  부담부증여의 채무 부분은 증여자에게 양도(소득세법 §88①)라 양도세 신고가 따로 필요할 수 있음 — 연결은 후보 안내로만(양도 사건을 만들지 않음)
+    byType('giftcontract').forEach(function (x) {
+      const r = x.p.result || {};
+      if (r.재산종류 === '현금' || (donee && r.수증자 && !nameHas([r.수증자], donee))) return;
+      const mo = r.부동산표시 || {}; // 부동산의 표시 블록은 docGiftPropertyBlock_(impl-rest)이 읽음 — 합치기 전엔 비어 "표시 못 읽음"
+      lines.push('증여계약서 항목(' + x.f.name + '): ' + [r.계약일 ? '계약일 ' + r.계약일 + (r.계약일출처 ? '(' + r.계약일출처 + ')' : '') : '계약일 못 읽음', r.검인일 ? '검인일 ' + r.검인일 : '', '증여자 ' + (r.증여자 || '?'), '수증자 ' + (r.수증자 || '?'),
+        '목적물 ' + ([mo.소재지, mo.건물번호, mo.고유번호 ? '고유번호 ' + mo.고유번호 : '', mo.전유면적 ? mo.전유면적 + '㎡' : '', mo.대지권비율 ? '대지권 ' + mo.대지권비율 : ''].filter(Boolean).join(' ') || '표시 못 읽음'), r.지분 ? '지분 ' + r.지분 : '', r.부담부 ? '부담부(채무인수) 있음' : '부담부 문구 없음'].filter(Boolean).join(' · '));
+      if (!r.부담부) return;
+      const have = (facts.giftDebtAssumed || []).map(function (q) { return Number(q.v); });
+      (r.인수채무 || []).forEach(function (d) {
+        if (!d.금액) { notes.push('부담부증여 — 증여계약서(' + x.f.name + ')에 인수채무 「' + d.종류 + '」가 있으나 금액이 없습니다(임대차계약서·부채증명원으로 확인)'); return; }
+        if (d.최고액) { notes.push('부담부증여 — ' + d.종류 + ' 채권최고액 ' + d.금액.toLocaleString('ko-KR') + '원은 실제 채무가 아님(증여일 현재 부채증명원 잔액으로)'); return; }
+        if (have.indexOf(d.금액) !== -1) return;
+        add('giftDebtAssumed', d.금액, '증여계약서 인수채무 — ' + d.종류 + '(' + x.f.name + ')', false);
+      });
+      byType('lease').concat(byType('rent')).forEach(function (y) { const lr = y.p.result || {}; if (!lr.보증금 || (mo.소재지 && lr.소재지 && !tcLocSame_(mo.소재지, lr.소재지))) return; if ((facts.giftDebtAssumed || []).some(function (q) { return Number(q.v) === Number(lr.보증금); })) return; add('giftDebtAssumed', lr.보증금, '임대보증금 — 임대차계약서(' + y.f.name + (lr.소재지 ? ', ' + lr.소재지 : '') + ') · 증여계약서 채무인수 문구', false); });
+      lines.push('부담부증여: 인수채무(' + ((facts.giftDebtAssumed || []).map(function (q) { return Number(q.v).toLocaleString('ko-KR') + '원 ' + q.src; }).join(' / ') || '금액 미확인') + ') — 채무 부분은 증여자에게 양도(소득세법 §88①)라 양도세 신고 대상일 수 있음(후보 — 세무사님 판단)');
+    });
   } else {
     const deaths = byType('death').filter(function (x) { return x.p.result && x.p.result.성명; });
     deaths.forEach(function (x) { add('ihDeceasedName', x.p.result.성명, '사망 서류(' + x.f.name + ')', deaths.length === 1 && !x.p.result.사망일확인필요); });
@@ -30485,18 +30524,53 @@ function docGiftContractParse_(text) {
     m = /(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(tail);
     if (m && tail.length < t.length) { r.계약일 = ymd(m[1], m[2], m[3]); r.계약일출처 = '서명란 작성일'; }
   }
+  // [2026.10.17 증여일] 검인 도장 날짜는 계약일이 아니다 — 따로 적어 두고(증여일 후보 대조용), 계약일 후보에서 뺀다
+  var gim = /검\s*인[\s\S]{0,60}?(20\d{2})\s*[년.\-]\s*(\d{1,2})\s*[월.\-]\s*(\d{1,2})/.exec(t);
+  if (gim) r.검인일 = ymd(gim[1], gim[2], gim[3]);
+  // [2026.10.17 증여일 — 정원식 0/4] "계약일" 이름표·"보관한다" 문구가 없는 계약서("… 2026년 6월 11일 증여자 정원식"으로 끝남) — 바로 뒤에 증여자·수증자 서명란이
+  //  붙은 날짜가 작성일(계약일). 그것도 없으면 검인·접수·발급 날짜를 뺀 본문 날짜가 하나뿐일 때만 그 날짜(여러 개면 지어내지 않음)
+  if (!r.계약일) {
+    var dre = /(20\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/g, dm, dl = [];
+    while ((dm = dre.exec(t))) {
+      var before = t.slice(Math.max(0, dm.index - 20), dm.index).split('\n').pop(), after = t.slice(dm.index + dm[0].length, dm.index + dm[0].length + 30);
+      if (/검\s*인|접\s*수|발\s*급|출\s*력|열\s*람/.test(before)) continue;
+      if (/증\s*여\s*시\s*기[\s\S]{0,120}$/.test(t.slice(Math.max(0, dm.index - 120), dm.index)) && r.증여시기 === ymd(dm[1], dm[2], dm[3])) continue;
+      dl.push({ v: ymd(dm[1], dm[2], dm[3]), sig: /^\s*[\n(]?\s*(?:위\s*)?(?:증\s*여\s*[자인]|수\s*증\s*[자인]|갑|을)/.test(after) });
+    }
+    var sigD = dl.filter(function (x) { return x.sig; }), uniqD = dl.map(function (x) { return x.v; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+    if (sigD.length) { r.계약일 = sigD[sigD.length - 1].v; r.계약일출처 = '서명란 앞 작성일'; }
+    else if (uniqD.length === 1) { r.계약일 = uniqD[0]; r.계약일출처 = '본문의 유일한 날짜'; }
+  }
+  if (r.계약일 && r.검인일 === r.계약일) delete r.검인일;
+  // [2026.10.17 증여일] 검인은 계약 뒤에 받는다(부동산등기특별조치법 §3) — 계약일 앞이거나 60일 넘게 뒤면 도장 날짜 판독이 틀린 것(강정화(임세택): 도장 "2025.04.27" ↔ 계약일 2026-04-25) — 후보로 쓰지 않고 참고만
+  if (r.계약일 && r.검인일) { var gdd = (new Date(r.검인일) - new Date(r.계약일)) / 864e5; if (!(gdd >= 0 && gdd <= 60)) { r.비고 = (r.비고 ? r.비고 + ' / ' : '') + '검인 도장 날짜 ' + r.검인일 + '은(는) 계약일 ' + r.계약일 + '과 맞지 않아 판독 오류로 보고 증여일 후보에서 뺌'; r.검인일판독의심 = r.검인일; delete r.검인일; } }
+  // [2026.10.17 증여일] 목적물(부동산의 표시: 소재지·고유번호·전유면적·대지권)은 impl-rest의 docGiftPropertyBlock_(r.부동산표시)이 읽는다 — 여기선 겹쳐 읽지 않음
+  // [2026.10.17 증여일] 지분 증여 — "지분 1/2", "2분의 1 지분", "공유지분 중 ○분의 ○"(대지권 비율과 구분: 대지권 줄은 뺀다)
+  m = /(?:지\s*분\s*[:：]?\s*(\d{1,4})\s*\/\s*(\d{1,4}))|(?:(\d{1,4})\s*분\s*의\s*(\d{1,4})\s*(?:지\s*분|공\s*유))|(?:(\d{1,4})\s*\/\s*(\d{1,4})\s*지\s*분)/.exec(t.replace(/대\s*지\s*권[^\n]*/g, ''));
+  if (m) r.지분 = m[1] ? m[2] + '분의 ' + m[1] : m[3] ? m[3] + '분의 ' + m[4] : m[6] + '분의 ' + m[5];
   if (/계\s*좌[\s\S]{0,30}이\s*체|이체하는\s*방법/.test(t)) r.방법 = '계좌이체';
   else if (/현\s*금\s*으로\s*지급|직접\s*지급/.test(t)) r.방법 = '현금 지급';
   else if (/소유권\s*이전\s*등기/.test(t)) r.방법 = '소유권이전등기';
   // [2026.10.15] "채무인수형 부담부증여가 아님을 확인"처럼 부정하는 문구는 부담부가 아님(실사건: 승계 보증금을 뺀 차액만 현금 증여)
   r.부담부 = /(채\s*무\s*(?:를|을)?\s*인\s*수|부\s*담\s*부\s*증\s*여|보증금[\s\S]{0,20}(승계|인수))(?![^.\n]{0,25}(아님|아니|없음|않))/.test(t.replace(/승계\s*임대\s*보증금을?\s*제외[^.\n]*/g, ''));
+  // [2026.10.17 증여일] 부담부증여면 인수하는 채무를 종류별 항목으로(임대보증금·근저당 채무·대출금) — 금액이 계약서에 있을 때만, 없으면 종류만 남겨 서류(임대차계약서·부채증명)와 대조
+  if (r.부담부) {
+    var debts = [], dseen = {};
+    var dpat = [['임대보증금', /(?:임\s*대\s*)?보\s*증\s*금[^\d\n]{0,30}(?:금\s*)?(\d{1,3}(?:,\d{3})+)/g], ['근저당 채무', /(?:근\s*저\s*당|피\s*담\s*보\s*채\s*무|채\s*권\s*최\s*고\s*액)[^\d\n]{0,30}(?:금\s*)?(\d{1,3}(?:,\d{3})+)/g], ['대출금', /(?:대\s*출\s*금|대\s*출\s*채\s*무|차\s*입\s*금|채\s*무\s*액)[^\d\n]{0,30}(?:금\s*)?(\d{1,3}(?:,\d{3})+)/g]];
+    dpat.forEach(function (q) { var dm2; while ((dm2 = q[1].exec(t))) { var dv = Number(dm2[1].replace(/,/g, '')); if (!dv || dseen[q[0] + dv]) continue; dseen[q[0] + dv] = 1; debts.push({ 종류: q[0], 금액: dv, 최고액: /최\s*고\s*액/.test(dm2[0]) }); } });
+    if (!debts.length) ['임대보증금', '근저당', '대출'].forEach(function (k) { if (new RegExp(k.split('').join('\\s*')).test(t)) debts.push({ 종류: k === '근저당' ? '근저당 채무' : k === '대출' ? '대출금' : k, 금액: null }); });
+    r.인수채무 = debts;
+    if (debts.some(function (d) { return d.최고액; })) r.경고.push('채권최고액은 실제 채무액이 아님 — 부채증명원(증여일 현재 잔액)으로 확인');
+  }
   r.서명날인 = /\(\s*인\s*\)|서명\s*날인/.test(t);
   if (!r.증여자 || !r.수증자) r.경고.push('증여자·수증자 이름을 읽지 못함 — 원문 확인');
   if (!r.금액 && r.재산종류 === '현금') r.경고.push('증여 금액을 읽지 못함');
   var won = function (n) { return n == null ? '' : Number(n).toLocaleString('ko-KR') + '원'; };
   var md = '### 증여계약서\n\n| 항목 | 내용 |\n|---|---|\n' + [
     ['증여자', r.증여자], ['수증자', r.수증자], ['증여재산 종류', r.재산종류], ['금액', r.금액 ? won(r.금액) + (r.검산 === '일치' ? ' ✓(한글 금액과 일치)' : ' ⚠') : ''],
-    ['증여시기', r.증여시기 ? r.증여시기 + (r.증여시기까지 ? '까지' : '') : ''], ['계약일', r.계약일], ['증여방법', r.방법], ['부담부(채무인수)', r.부담부 ? '있음 ⚠ 인수채무 확인' : '문구 없음'], ['서명·날인', r.서명날인 ? '있음' : '확인 안 됨']
+    ['증여시기', r.증여시기 ? r.증여시기 + (r.증여시기까지 ? '까지' : '') : ''], ['계약일', r.계약일 ? r.계약일 + (r.계약일출처 ? ' (' + r.계약일출처 + ')' : '') : ''], ['검인일', r.검인일],
+    ['지분', r.지분],
+    ['증여방법', r.방법], ['부담부(채무인수)', r.부담부 ? '있음 ⚠ 인수채무 확인' + ((r.인수채무 || []).length ? ' — ' + r.인수채무.map(function (d) { return d.종류 + (d.금액 ? ' ' + won(d.금액) + (d.최고액 ? '(최고액)' : '') : ''); }).join(', ') : '') : '문구 없음'], ['서명·날인', r.서명날인 ? '있음' : '확인 안 됨']
   ].filter(function (x) { return x[1]; }).map(function (x) { return '| ' + x[0] + ' | ' + String(x[1]).replace(/\|/g, '/') + ' |'; }).join('\n')
     + (r.경고.length ? '\n\n' + r.경고.map(function (w) { return /^서명란/.test(w) ? '- 참고: ' + w : '- ⚠ ' + w; }).join('\n') : '');
   md += docGiftPropertyBlock_(t, r); // [2026.10.17 묶음11] 부동산 표시(고유번호·전유면적·대지권) + 부담부 문구 넓히기
