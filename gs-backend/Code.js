@@ -25049,7 +25049,7 @@ function tc_ruleTransferFacts_(body) {
   var officeFees = []; // [2026.10.16] 이 사무소가 받은 양도세 신고 수수료 — 양도소득세 신고서 작성비용(시행령 §163⑤1호)
   var giftRets = []; // [2026.10.16 1:1 이종식] 증여세 신고서(증여일·평가액)
   var bldStds = []; // [2026.10.16 1:1 방영교] 홈택스 건물기준시가 계산 결과
-  var contracts = [], reports = [], acqs = [], lawyers = [], regs = [], expDocs = [], pubs = [], regCerts = [], comps = [], bunyang = [], giftDocs = [], realDocs = [], acqDateCands = [], acqPriceCands = [], started = Date.now(), skippedForTime = [], stmtEstNames = null;
+  var contracts = [], reports = [], acqs = [], lawyers = [], regs = [], expDocs = [], pubs = [], regCerts = [], comps = [], objDetails = [], bunyang = [],giftDocs = [], realDocs = [], acqDateCands = [], acqPriceCands = [], started = Date.now(), skippedForTime = [], stmtEstNames = null;
   var costTexts = []; // [2026.10.17 세무사님 지시] 비용을 서류별이 아니라 세부 항목별로 — 항목을 다른 서류(취득세 영수증·수입인지·현금영수증·등기신청서)로 대조할 때 쓰는 글자
   var supplies = [], vatDocs = []; // [2026.10.16] 분양(공급)계약서의 분양금액표 · 납세자의 부가가치세 신고 자료(매입세액 공제 여부 판단 근거)
   var docSeen = 0;
@@ -25079,8 +25079,13 @@ function tc_ruleTransferFacts_(body) {
     if (/\d{1,3}(?:,\s?\d{3})+/.test(text) && /부\s*가\s*가\s*치\s*세\s*(?:신\s*고|확\s*정|예\s*정)|매\s*입\s*처\s*별\s*세\s*금\s*계\s*산\s*서\s*합\s*계\s*표/.test(text)) vatDocs.push(f.name); // 금액 없는 자료 목록 메모는 제외(2026-10-16)
     // [2026.10.15 1단계 ②] 수용 보상금 내역서(토지·물건) — 합계를 읽어 양도가액 질문의 후보로(어느 금액이 양도가액인지는 판단 — 정하지 않음).
     //  김운래 사건: 보상금내역-토지/지장물이 "종류 미정"으로 어느 칸에도 안 쓰였다.
-    if (/보\s*상\s*금\s*내\s*역/.test(text)) {
-      var cpj = /\]\s*([^\(\n\]]{4,40}?사업)\s*\(?\s*(\d)?\s*차?\s*\)?/.exec(text);
+    // [2026.10.17 수용·감정 보완] 이의재결 개인별 세부내역 — 필지별 수용재결 → 이의재결·증액(보상금 내역서와 대조용, 양도가액 후보를 새로 만들지는 않음)
+    var odt = null; try { odt = tcObjectionDetail_(text); } catch (e) { odt = null; }
+    if (odt) objDetails.push(Object.assign({ file: f.name }, odt));
+    // [2026.10.17 수용·감정 보완] 협의 "지장물 등의 손실보상 계약서"(보상금 내역서 글자 없음 — 3733)도 수용 서류로: 줄마다 보상종별 칸으로 묶음을 나눈다
+    var cAgree = !/보\s*상\s*금\s*내\s*역/.test(text) && /손\s*실\s*보\s*상\s*계\s*약\s*서/.test(text.slice(0, 600));
+    if (/보\s*상\s*금\s*내\s*역/.test(text) || cAgree) {
+      var cpj =/\]\s*([^\(\n\]]{4,40}?사업)\s*\(?\s*(\d)?\s*차?\s*\)?/.exec(text);
       var ctm = /토\s*지\s*합\s*계\s*(\d+)\s*필\s*지\s*(\d{1,3}(?:,\d{3}){2,})/.exec(text);
       var com = /물\s*건\s*의?\s*합\s*계[\s\S]{0,400}?(\d{1,3}(?:,\d{3}){2,})/.exec(text);
       var cnt = /물\s*건\s*의?\s*합\s*계\s*(\d+)\s*건/.exec(text);
@@ -25092,8 +25097,10 @@ function tc_ruleTransferFacts_(body) {
         // [2026.10.17 세무사님 원칙 — 내용 항목별로] 지장물 내역은 "일괄" 묶음별로(건물(수용)·구축물·수목·영업시설), 묶음 합 = 물건의 합계일 때만. 소유자(○○ 귀하)도 함께.
         //  "물건의 합계" 금액이 이름표 앞에 적힌 서식도 있어(이의재결서 별지) 묶음 쪽 검산으로도 합계를 찾는다
         var oG = null, oOwner = '', oTot = com ? Number(com[1].replace(/,/g, '')) : 0;
-        try { var oi = text.search(/보\s*상\s*금\s*내\s*역\s*\(?\s*물\s*건/); if (oi >= 0 || com) { var osl = oi >= 0 ? text.slice(oi) : text; var OG = tcCompObjGroups_(osl); if (!OG.ok && oTot) OG = tcCompObjGroups_(osl, { total: oTot }); if (OG.ok) { oG = OG.groups; oTot = OG.total; } var om = /([가-힣]{2,4})\s*귀\s*하/.exec(osl); oOwner = om ? om[1] : ''; } } catch (e) { oG = null; }
-        if (oTot) comps.push({ file: f.name, kind: '물건(지장물)', total: oTot, count: cnt ? cnt[1] + '건' : '', project: cpj ? cpj[1].trim() + (cpj[2] ? '(' + cpj[2] + '차)' : '') : '', unsure: !oG, groups: oG, owner: oOwner });
+        var oNoTot = false;
+        try { var oi = text.search(/보\s*상\s*금\s*내\s*역\s*\(?\s*물\s*건/); if (oi >= 0 || com || cAgree) { var osl = oi >= 0 ? text.slice(oi) : text; var OG = tcCompObjGroups_(osl); if (!OG.ok && oTot) OG = tcCompObjGroups_(osl, { total: oTot }); if (OG.ok) { oG = OG.groups; oTot = OG.total; } else if (cAgree && OG.byKind && OG.groups.length && !OG.total) { oG = OG.groups; oTot = OG.sum; oNoTot = true; } var om = /([가-힣]{2,4})\s*귀\s*하/.exec(osl); oOwner = om ? om[1] : ''; } } catch (e) { oG = null; }
+        // 협의 계약서가 여러 장으로 나뉘어 합계 줄이 없는 장은 읽은 줄의 합(검산 상대 없음 — ⚠원문 확인)
+        if (oTot) comps.push({ file: f.name, kind: '물건(지장물)', total: oTot, count: cnt ? cnt[1] + '건' : (oNoTot ? oG.length + '묶음, 합계 줄 없음' : ''), project: cpj ? cpj[1].trim() + (cpj[2] ? '(' + cpj[2] + '차)' : '') : (cAgree ? '협의 손실보상 계약' : ''), unsure: !oG || oNoTot, groups: oG, owner: oOwner, agree: cAgree || undefined });
       }
     }
     // [2026.10.16] 금전 공탁통지서 — 사업시행자가 보상금을 공탁한 것(수용재결·이의재결 보상금). 공탁금도 보상금(양도가액)의 일부라 후보로(김운래 사건: 1,614만원 공탁통지서가 안 쓰였다)
@@ -25636,6 +25643,17 @@ function tc_ruleTransferFacts_(body) {
     }
   });
   if (skippedForTime.length) evidence.push('⚠ 서류가 많거나 시간이 모자라 ' + skippedForTime.length + '개를 이번에 못 읽음(다시 처리하면 기억분으로 이어 읽음): ' + skippedForTime.slice(0, 8).join(', ') + (skippedForTime.length > 8 ? ' 외' : ''));
+  // [2026.10.17 수용·감정 보완] 이의재결 개인별 세부내역 — 필지별 수용재결 → 이의재결(▲증액)과, 보상금 내역서(토지) 필지 줄·합계와의 대조
+  objDetails.forEach(function (o) {
+    const w = function (n) { return Number(n).toLocaleString('ko-KR'); };
+    const land = comps.filter(function (x) { return x.kind === '토지' && Array.isArray(x.rows); })[0], obj = comps.filter(function (x) { return /지장물/.test(x.kind); })[0];
+    const hit = o.kind === '토지' && land ? o.rows.filter(function (r) { return land.rows.some(function (q) { return q.v === r.b; }); }).length : 0;
+    const totHit = o.kind === '토지' ? comps.some(function (x) { return x.kind === '토지' && x.total === o.sumB; }) : comps.some(function (x) { return /지장물/.test(x.kind) && x.total === o.sumB; });
+    evidence.push('이의재결 개인별 세부내역: ' + o.file + ' — ' + o.kind + (o.project ? '(' + o.project + ')' : '') + ' ' + o.rows.length + '줄, 수용재결 ' + w(o.sumA) + '원 → 이의재결 ' + w(o.sumB) + '원(▲' + w(o.sumD) + '원)' + (o.ok ? ' = 소계 검산 일치' : ' — 소계 검산 안 됨, 원문 확인')
+      + (o.kind === '토지' ? ': ' + o.rows.map(function (r) { return (r.jibun || '지번?') + ' ' + w(r.a) + '→' + w(r.b); }).join(', ') : '')
+      + (totHit ? ' · 보상금 내역서 ' + o.kind + ' 합계와 같음' + (hit ? '(필지 줄 ' + hit + '/' + o.rows.length + '개 금액 일치)' : '') : (o.kind === '토지' && land) || (o.kind !== '토지' && obj) ? ' · ⚠ 보상금 내역서 합계와 다름 — 확인' : '')
+      + ' — 양도가액은 이의재결 금액(증액분 포함). 당초 신고를 수용재결 금액으로 했다면 증액 ▲' + w(o.sumD) + '원이 수정신고 대상');
+  });
   comps.forEach(function (x) { evidence.push('수용 보상금 내역: ' + x.file + ' — ' + x.kind + ' 합계 ' + x.total.toLocaleString('ko-KR') + '원' + (x.count ? '(' + x.count + ')' : '') + (x.project ? ', ' + x.project : '') + (x.unsure ? ' — 합계 줄 위치로 읽음, 원문 확인' : '')); });
   bunyang.forEach(function (x) { evidence.push('분양가 내역: ' + x.file + ' — 분양가 ' + x.prices.length + '개(' + x.prices.map(function (v) { return v.toLocaleString('ko-KR'); }).join(', ') + '원) — 어느 호실 값인지 확인 필요'); });
   // [2026.10.16] 수용 — 등기부에서 납세자 다음 소유권이 "수용"으로 넘어간 등기의 접수일·원인일(수용개시일)을 양도일 후보로(시행령 §162①7호: 대금청산일·수용개시일·소유권이전등기 접수일 중 빠른 날)
@@ -25757,7 +25775,7 @@ function tc_ruleTransferFacts_(body) {
     } catch (e) {}
   });
   try { tcWorkLink_(expCands, costTexts, evidence); } catch (e) {} // [2026.10.17 내용 항목별] 공사 견적·내역서를 공사 내용 항목으로 나눠 지급 증빙에 붙임
-  return { ok: true, trDateCands: trDateCands, sellerName: names[0] || null, parties: parties, transactions: txs, evidence: evidence, expCands: expCands, comps: comps, bunyang: bunyang, acqDateCands: acqDateCands, acqPriceCands: acqPriceCands, locCands: locCands,
+  return { ok: true, trDateCands: trDateCands, sellerName: names[0] || null, parties: parties, transactions: txs, evidence: evidence, expCands: expCands, comps: comps, objDetails: objDetails, bunyang: bunyang, acqDateCands: acqDateCands, acqPriceCands: acqPriceCands, locCands: locCands,
     vatDocs: vatDocs, // [2026.10.16 1:1 김금옥] 주택 여부 질문의 근거
     counts: { 계약서: contracts.length, 신고필증: reports.length, 취득세: acqs.length, 법무사: lawyers.length, 등기부: regs.length } };
 }
@@ -27702,6 +27720,7 @@ function caseProcInhFacts0_(c, parsed) {
       const own = r.감정평가액 ? tcApprItemFor_(x, a, out.assets) : null;
       if (own) { apps.push({ v: own.v, src: '감정평가 ' + (r.평가법인 || x.f.name) + ' 물건별 내역 — ' + own.why + (r.기준시점 ? ' · ' + r.기준시점 + ' 기준' : '') + ' — 시가(§60⑤)', kind: '시가', days: r.기준시점 && base ? Math.abs(new Date(r.기준시점) - new Date(base)) / 86400000 : 0, file: x.f.name }); return; }
       if (r.소재지 && a.loc && !tcLocSame_(r.소재지, a.loc) && nm(a.loc).indexOf(nm(r.소재지)) === -1 && out.assets.length > 1 && r.대상 !== '토지·건물') return; // 토지·건물 일괄 감정은 건물 쪽 질문에도 후보로
+      if (!r.감정평가액 && r.통화) { out.notes.push('감정평가서(' + x.f.name + ') — 외화 감정가액 ' + r.통화 + ' ' + Number(r.외화감정가액 || 0).toLocaleString('en-US') + (r.기준시점 ? '(' + r.기준시점 + ' 기준)' : '') + ': 기준일 환율로 원화 환산 뒤 처리개요 평가에 넣으세요'); return; }
       if (!r.감정평가액) { out.notes.push('감정평가서(' + x.f.name + ') — 감정가액을 읽지 못함(글자인식 흐림): 원문의 감정가액을 처리개요 평가에 직접 넣으세요'); return; }
       // [2026.10.17 상충 판단 4] 노영환: 정안 감정서(실제 약 29억)를 1,100,000원으로 잘못 읽고(검산 안 됨) 예인 2,940,088,250원과 평균 내 14.7억을 만들었고,
       //  두 감정서 모두 소재지를 못 읽어 그 평균이 토지·건물 두 물건에 똑같이 들어갔다(같은 감정을 두 번 셈).
@@ -31121,6 +31140,20 @@ function docBankSlipParse_(text) {
 // 상증법 §60⑤: 감정가액은 시가로 본다(기준금액 10억 이하는 1곳, 초과는 2곳 이상 평균).
 function docAppraisalParse_(text) {
   var t = String(text || ''), head = t.slice(0, 600);
+  // [2026.10.17 수용·감정 보완] 국외 부동산 감정평가보고서(영문 원본·한국어 번역본) — 원화 "감정평가액" 칸이 없고 달러 금액만 있어 종류 없음으로 빠졌다(박길서: 미국 주거용 소급감정 $900,000, 2015.07.15 기준).
+  //  외화 금액·기준일만 읽고 원화 감정가액은 비워 둔다 — 기준일 환율로 환산해야 함(지어내지 않음). 감정이 토지·건물을 나누지 않으면(비교사례법만) 그 사실도 경고로
+  if (/감\s*정\s*평\s*가\s*보\s*고\s*서|APPRAISAL\s*REPORT/i.test(head) && !/감\s*정\s*평\s*가\s*액/.test(t) && /\$\s?\d{1,3}(?:,\d{3})+/.test(t)) {
+    var ft = t.replace(/\s+/g, ' ');
+    var fm = /정의된\s*가치[^$]{0,80}\(\s*\$\s*([\d,]{5,})\s*\)/.exec(ft) || /단일값\s*\$\s*([\d,]{5,})/.exec(ft) || /(?:defined\s*value|market\s*value)[^$]{0,80}\$\s*([\d,]{5,})/i.exec(ft) || /시산가액\s*[:：]?\s*\$\s*([\d,]{5,})/.exec(ft);
+    if (fm) {
+      var fd = /((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*(?:\(\s*감정평가\s*기준일\s*\)\s*)?기준/.exec(ft) || /((?:19|20)\d{2})\.(\d{1,2})\.(\d{1,2})\s*기준/.exec(ft);
+      var fl = /(?:부동산\s*주소|감정평가하였습니다\s*:)\s*([0-9][^,]{3,60},\s*[A-Za-z .]{2,30},\s*[A-Z]{2}\s*\d{5})/.exec(ft);
+      var fr = { 종류: '감정평가서(국외)', 감정평가액: null, 통화: 'USD', 외화감정가액: Number(fm[1].replace(/,/g, '')), 검산: '', 기준시점: fd ? docYmdKr_(fd[1], fd[2], fd[3]) : '', 소재지: fl ? fl[1].trim() : '', 의뢰인: '', 소유자: '', 목적: /소급\s*감정|Retrospective/i.test(ft) ? '소급감정' : '', 참고: [], 평가법인: (/([A-Z][A-Za-z.&\s]{2,40}?Appraisals?,?\s*Inc\.?)/.exec(ft) || [])[1] || '', 경고: [] };
+      fr.참고.push('외화(USD) 감정가액 $' + fr.외화감정가액.toLocaleString('en-US') + ' — 기준일' + (fr.기준시점 ? '(' + fr.기준시점 + ')' : '') + ' 환율로 원화 환산 필요(국외자산 취득가액은 취득일 기준환율, 소득세법 시행령 §178의5)');
+      if (/원가법[^.]{0,40}(?:적용하지|미적용|생략)|COST\s*APPROACH[^.]{0,60}(?:not|N\/A)/i.test(ft) || /비교사례법에\s*의한\s*시산가액/.test(ft) && !/원가법에\s*의한\s*시산가액\s*[:：]?\s*\$/.test(ft)) fr.참고.push('비교사례법만 적용 — 토지·건물 가액을 나누지 않음');
+      return { type: 'appraisal', label: '감정평가서(국외)', result: fr, md: '### 감정평가서(국외)\n\n' + docMdTable_([['평가법인', fr.평가법인], ['소재지', fr.소재지], ['감정가액', '$' + fr.외화감정가액.toLocaleString('en-US') + ' (원화 환산 전)'], ['기준시점', fr.기준시점], ['목적', fr.목적]]) + '\n\n' + fr.참고.map(function (w) { return '- 참고: ' + w; }).join('\n') };
+    }
+  }
   if (!/감\s*정\s*평\s*가\s*서|APPRAISAL\s*REPORT/i.test(head) || !/감\s*정\s*평\s*가\s*액/.test(t)) return null;
   var r = { 종류: '감정평가서', 감정평가액: null, 한글금액: null, 검산: '', 기준시점: '', 소재지: '', 의뢰인: '', 소유자: '', 목적: '', 평가법인: '', 경고: [] };
   // [2026.10.17] 金이 글자인식에서 깨지면(노영환 정안: "缚이십구억…원정(￦2,956,712,250.-)") 金/금 없이도 — 한글 금액 뒤 숫자 금액이 붙어 있는 것으로 확인
@@ -35062,6 +35095,15 @@ function trcFromEvidence_(c, rf, txs, ans) {
       const byJ = {}; facts.compRows.rows.forEach(function (r) { if (r.jibun) byJ[r.jibun] = r; });
       facts.compObj = { file: obj.file, total: obj.total, groups: obj.groups };
       obj.groups.filter(function (g) { return g.cat === '건물(수용)'; }).forEach(function (g) { const land = byJ[g.jibun] || {}; facts.compRows.rows.push({ kind: 'bldg', jibun: g.jibun, area: 0, unit: 0, share: 1, v: g.v, loc: land.loc || '', acqDate: land.acqDate || '', acqCause: land.acqCause || '', regSrc: land.regSrc || '', label: g.head, file: obj.file }); });
+      // [2026.10.17 수용·감정 보완] 구축물 토지관련은 그 필지 토지 줄에, 건물관련은 그 지번 건물 줄에 더한 안(세무사님 검토표 방식)도 만들어 선택지로 — 같은 지번 줄이 없으면 더하지 않음
+      const plus = facts.compRows.rows.map(function (r) { return Object.assign({}, r); }); let added = 0;
+      obj.groups.forEach(function (g) {
+        const mm = /구축물\((토지|건물)관련\)/.exec(g.cat); if (!mm || !g.jibun) return;
+        const tgt = plus.filter(function (r) { return r.jibun === g.jibun && (mm[1] === '건물' ? r.kind === 'bldg' : r.kind !== 'bldg'); })[0]; if (!tgt) return;
+        tgt.plus = (tgt.plus || 0) + g.v; tgt.plusN = (tgt.plusN || 0) + 1; tgt.plusKind = '구축물(' + mm[1] + '관련)'; added += g.v;
+      });
+      plus.forEach(function (r) { if (r.plus) { r.v0 = r.v; r.v = r.v + r.plus; } });
+      if (added) facts.compRowsPlus = { rows: plus, added: added };
     }
   }
   const csp = !txs.length && ans.compSplit && Array.isArray(ans.compSplit.v) ? ans.compSplit.v : null;
@@ -35071,9 +35113,10 @@ function trcFromEvidence_(c, rf, txs, ans) {
       st.transferContracts.push({ id: cid, name: '양도계약 ' + trcPad_(k + 1), date: c.기준일 || '', totalPrice: Number(r.v) || 0, transferCause: 'expropriation', totalExpenseItems: [], externalMembers: [], buyers: [{}] });
       const isB = r.kind === 'bldg';
       st.transferAssets.push(Object.assign({ id: 'trc_a' + (k + 1) + '_1', transferContractId: cid, assetKind: isB ? 'building' : 'land', assetLocation: r.loc || (r.jibun ? r.jibun : '') }, isB ? {} : { assetArea: Math.round(Number(r.area) * Number(r.share || 1) * 100) / 100 }));
-      const reg = (facts.compRows && facts.compRows.rows || []).filter(function (q) { return q.v === r.v && q.jibun === r.jibun; })[0] || {};
+      const reg = (facts.compRows && facts.compRows.rows || []).filter(function (q) { return q.v === (r.v0 || r.v) && q.jibun === r.jibun; })[0] || {};
       if (reg.acqDate && !isB) { st.transferAssets[st.transferAssets.length - 1].acquisitionDate = reg.acqDate; src['a' + k + '.acquisitionDate'] = '등기부 — 지금 납세자 명의가 된 소유권 이전 접수일' + (reg.acqCause ? '(원인 ' + reg.acqCause + ')' : '') + ' — ' + reg.regSrc; } // 필지마다 그 등기부의 취득 기재
-      const why = isB ? '수용 지장물 보상금 내역서 건물(수용) 묶음 ' + String(r.label || '').slice(0, 30) + ' ' + Number(r.v).toLocaleString('ko-KR') + '원(묶음 합 = 물건의 합계 검산 일치, ' + ans.compSplit.src + ')' : '수용 보상금 내역서(토지) 필지별 줄 ' + r.area + '㎡' + (Number(r.share) !== 1 ? ' × 지분' : '') + ' × ' + Number(r.unit).toLocaleString('ko-KR') + '원 = ' + Number(r.v).toLocaleString('ko-KR') + '원(' + ans.compSplit.src + ')';
+      const base0 = Number(r.v0 || r.v), plusW = r.plus ? ' + ' + r.plusKind + ' ' + (r.plusN || 1) + '묶음 ' + Number(r.plus).toLocaleString('ko-KR') + '원(지장물 내역서 — 함께 넘어간 정착물) = ' + Number(r.v).toLocaleString('ko-KR') + '원' : '';
+      const why = isB ? '수용 지장물 보상금 내역서 건물(수용) 묶음 ' + String(r.label || '').slice(0, 30) + ' ' + base0.toLocaleString('ko-KR') + '원' + plusW + '(묶음 합 = 물건의 합계 검산 일치, ' + ans.compSplit.src + ')' : '수용 보상금 내역서(토지) 필지별 줄 ' + r.area + '㎡' + (Number(r.share) !== 1 ? ' × 지분' : '') + ' × ' + Number(r.unit).toLocaleString('ko-KR') + '원 = ' + base0.toLocaleString('ko-KR') + '원' + plusW + '(' + ans.compSplit.src + ')';
       src['c' + k + '.totalPrice'] = why; src['c' + k + '.transferCause'] = '수용 보상금 내역서'; if (r.loc || r.jibun) src['a' + k + '.assetLocation'] = r.loc ? '등기부(납세자 명의) — 보상금 내역서 지번 ' + r.jibun : '보상금 내역서 지번(소재지 전체는 등기부로 확인)'; if (!isB) src['a' + k + '.assetArea'] = why;
     });
   } else if (!txs.length) {
@@ -35241,8 +35284,10 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
     const w = function (n) { return Number(n || 0).toLocaleString('ko-KR'); };
     const lands = compRows.rows.filter(function (r) { return r.kind !== 'bldg'; }), blds = compRows.rows.filter(function (r) { return r.kind === 'bldg'; }), ob = S.facts.compObj;
     const catSum = {}; (ob ? ob.groups : []).forEach(function (g) { catSum[g.cat] = (catSum[g.cat] || 0) + g.v; });
-    q('tr:compsplit:' + compRows.rows.length, 'judge', '수용 보상금 내역서를 항목으로 나눴습니다 — 토지 ' + lands.length + '필지(합 ' + w(compRows.total) + '원 = 토지합계, ' + compRows.file + ')' + (blds.length ? ' + 지장물 중 건물(수용) ' + blds.length + '동(' + blds.map(function (b) { return b.jibun + ' ' + w(b.v) + '원'; }).join(', ') + ')' : '') + '. 필지·건물마다 보상금이 정해져 있어 안분 없이 각각 양도자산(양도가액 = 그 보상금, 양도원인 수용)으로 넣습니다.' + (ob ? ' 지장물 나머지는 양도가액에 넣지 않습니다: ' + Object.keys(catSum).filter(function (k) { return k !== '건물(수용)'; }).map(function (k) { return k + ' ' + w(catSum[k]) + '원'; }).join(', ') + '(아래 묶음별 판단 — 구축물을 양도로 보려면 직접 더하세요).' : ''),
-      { mode: 'options', target: 'trCompSplit', options: [{ label: '이대로 토지 ' + lands.length + '필지' + (blds.length ? ' + 건물 ' + blds.length + '동' : '') + '을 각각 양도자산으로', value: JSON.stringify({ rows: compRows.rows }) }].concat(blds.length ? [{ label: '토지 ' + lands.length + '필지만(건물은 빼고)', value: JSON.stringify({ rows: lands }) }] : []), label: '수용 필지별 자산' },
+    const cplus = S.facts.compRowsPlus || null;
+    q('tr:compsplit:' + compRows.rows.length, 'judge', '수용 보상금 내역서를 항목으로 나눴습니다 — 토지 ' + lands.length + '필지(합 ' + w(compRows.total) + '원 = 토지합계, ' + compRows.file + ')' + (blds.length ? ' + 지장물 중 건물(수용) ' + blds.length + '동(' + blds.map(function (b) { return b.jibun + ' ' + w(b.v) + '원'; }).join(', ') + ')' : '') + '. 필지·건물마다 보상금이 정해져 있어 안분 없이 각각 양도자산(양도가액 = 그 보상금, 양도원인 수용)으로 넣습니다.' + (ob ? ' 지장물 나머지: ' + Object.keys(catSum).filter(function (k) { return k !== '건물(수용)'; }).map(function (k) { return k + ' ' + w(catSum[k]) + '원'; }).join(', ') + '(아래 묶음별 판단).' : '')
+      + (cplus ? ' 구축물 중 토지관련(담장·바닥포장 등)은 그 필지 토지에, 건물관련(테라스·차양·보일러실·외부조명 등)은 그 지번 건물에 더한 안(합 ' + w(cplus.added) + '원)을 첫 선택지로 둡니다 — 영업시설·수목·기타 이전 보상은 양도가액에 넣지 않습니다.' : (ob ? ' 구축물을 양도로 보려면 직접 더하세요.' : '')),
+      { mode: 'options', target: 'trCompSplit', options: (cplus ? [{ label: '구축물(토지관련·건물관련 ' + w(cplus.added) + '원)을 그 필지 토지·건물에 더해 토지 ' + lands.length + '필지' + (blds.length ? ' + 건물 ' + blds.length + '동' : '') + '으로', value: JSON.stringify({ rows: cplus.rows }) }] : []).concat([{ label: '이대로 토지 ' + lands.length + '필지' + (blds.length ? ' + 건물 ' + blds.length + '동' : '') + '을 각각 양도자산으로' + (cplus ? '(구축물은 빼고)' : ''), value: JSON.stringify({ rows: compRows.rows }) }]).concat(blds.length ? [{ label: '토지 ' + lands.length + '필지만(건물은 빼고)', value: JSON.stringify({ rows: lands }) }] : []), label: '수용 필지별 자산' },
       compRows.rows.map(function (r, k) { return (k + 1) + ') ' + (r.kind === 'bldg' ? '[건물(수용)] ' : '') + (r.loc || (r.jibun ? '지번 ' + r.jibun : '지번 못 읽음')) + ' — ' + (r.kind === 'bldg' ? String(r.label || '').slice(0, 30) + ' ' + w(r.v) + '원(지장물 묶음)' : r.area + '㎡' + (r.share !== 1 ? ' × 지분 ' + (Math.round(r.share * 1000) / 1000) : '') + ' × ' + w(r.unit) + '원 = ' + w(r.v) + '원'); }).join('\n')
       + (ob ? '\n— 지장물 묶음별 판단(묶음 합 ' + w(ob.groups.reduce(function (s, g) { return s + g.v; }, 0)) + '원 = 물건의 합계 ' + w(ob.total) + '원, ' + ob.file + ')\n' + ob.groups.map(function (g) { return '· ' + (g.jibun || '') + ' ' + g.cat + ' ' + w(g.v) + '원 — ' + g.why; }).join('\n') : ''));
   }
@@ -36882,6 +36927,10 @@ function tcCostLedger_(o) {
 //  돌려주는 것: { rows: [{ a: 면적, u: 단가, f: 지분, v: 금액, at: 글자 위치 }], total, ok }
 // =========================================================
 function tcAreaUnitRows_(text, opt) {
+  // [2026.10.17 수용·감정 보완] 등기부·공시가격 조회 출력에는 "면적 × 단가 = 금액" 표가 없다 — 채권최고액·지분·연도 같은 숫자로 헛행을 만들던 것
+  //  (조사_묶음12: 김기범 샛별아파트 등기부 "3㎡ × 400,000,000 × 1/5 = 240,000,000", 상속물납 101호 15행, 이종식 511-3 기준시가)
+  const head0 = String(text || '').slice(0, 400).replace(/\s+/g, '');
+  if (/등기사항(?:전부|일부)증명서|등기부등본|개별공시지가|공동주택가격|개별주택가격|토지특성/.test(head0) && !/감정평가|보상금내역|보상금내역서/.test(head0)) return { rows: [], total: 0, ok: false };
   const flat = String(text || '').replace(/\s+/g, ' ').replace(/(\d)\.(\d{3})(?=,\d{3})/g, '$1,$2');
   const toks = [], fr = [];
   const re = /(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?/g; let m;
@@ -36901,6 +36950,7 @@ function tcAreaUnitRows_(text, opt) {
     const a = toks[i]; if (!(a.v > 0 && a.v < 1e6) || a.v === 1) continue;
     for (let j = 0; j < toks.length; j++) {
       const u = toks[j]; if (j === i || !(u.v >= 1000) || !Number.isInteger(u.v)) continue;
+      if (!u.comma && u.v >= 1900 && u.v <= 2099) continue; // [2026.10.17] 쉼표 없는 1900~2099는 연도(가격기준년도·사용승인 연도) — 단가가 아님
       for (let k = 0; k < fracs.length; k++) {
         const prod = a.v * u.v * fracs[k], vv = Math.round(prod), hits = (amounts[vv] || []).concat(amounts[Math.floor(prod)] || []);
         const h = hits.filter(function (t) { return !used[t.at] && t.at !== a.at && t.at !== u.at && t.v !== u.v; })[0];
@@ -36923,6 +36973,25 @@ function tcAreaUnitRows_(text, opt) {
       if (s === total && cnt >= 1 && (!best || last < best.last)) best = { mask: mask, last: last };
     }
     if (best) { const pick = uniq.filter(function (_, b) { return best.mask & (1 << b); }); return { rows: pick, total: total, ok: true, dropped: uniq.length - pick.length }; }
+  }
+  // [2026.10.17 수용·감정 보완] 감정평가표가 물건 한 줄을 "단가 -"로 일괄 평가한 서식 — 면적×단가 줄이 없다(조사_수용감정평가서류 2·3-1).
+  //  ① 구분건물 1세대(아파트 1개호): 토지·건물을 나누지 않은 일체 평가(강정화: "구분건물 1세대 … 625,000,000", 산출근거 7,372,064원/㎡ × 전유 84.846㎡ = 625,000,000 — 끝수 정리라 곱이 정확히 안 맞음)
+  //  ② 토지 일괄(사정 토지 한 줄, 단가 "-"): 공부 필지가 여러 줄이어도 감정은 한 덩어리(홍흥기)
+  //  감정평가표 합계와 같은 금액 한 줄로 돌려준다(lump) — 토지·건물 나눔이 필요한 계산이면 감정서가 배분하지 않았다는 사실을 함께 넘김(기준시가 안분 대상)
+  if (total && !(uniq.length && sum === total)) {
+    const tbl = /감\s*정\s*평\s*가\s*표/.exec(flat), tAt = tbl ? tbl.index : -1;
+    const sec = tAt >= 0 ? flat.slice(tAt, tAt + 1500) : '';
+    const wTot = String(total).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    if (sec && sec.indexOf(wTot) !== -1) {
+      const gb = /구\s*분\s*건\s*물\s*\(?\s*1\s*(?:세\s*대|개\s*호|호)/.test(sec);
+      const dash = /(?:\d[\d,.]*\s*(?:㎡|m2|m'|m²)?\s*)[-—–]\s*(?:[₩W#]\s*)?\d{1,3}(?:,\d{3}){2,}/.test(sec) && /(?:\(\s*토\s*지\s*\)|토\s*지\s*\))\s*감\s*정\s*평\s*가\s*표|일\s*괄/.test(flat.slice(Math.max(0, tAt - 30), tAt + 1500));
+      if (gb || dash) {
+        // 산출근거의 "㎡당 단가 면적" 짝 중 곱이 감정가액의 ±1% 안인 것(10만·100만 단위 끝수 정리) — 근거로만 붙임
+        let a = 0, u = 0; const pre = /(\d{1,3}(?:,\d{3}){1,2})\s+(?:\(\s*원\s*\/\s*m2?\s*\)\s*)?(\d{1,4}\.\d{1,4})(?![\d,])/g; let pm;
+        while (gb && (pm = pre.exec(flat))) { const pu = Number(pm[1].replace(/,/g, '')), pa = Number(pm[2]); if (pa > 0 && Math.abs(pa * pu - total) <= total * 0.01) { a = pa; u = pu; break; } }
+        return { rows: [{ a: a, u: u, f: 1, v: total, at: tAt, lump: gb ? '구분건물 1개호 일체(토지·건물 배분 없음)' : '토지 일괄(단가 없이 한 줄)' }], total: total, ok: true, lump: true };
+      }
+    }
   }
   return { rows: uniq, total: total, ok: uniq.length >= 1 && !!total && sum === total };
 }
@@ -36956,12 +37025,15 @@ function tcApprItemFor_(x, a, assets) {
         } else if (rest.length === 1 && left.length === 1) pair[rest[0].key] = { row: left[0], how: '남은 한 줄' };
         if (mine.every(function (b) { return pair[b.key]; })) map = pair;
       }
+      // [2026.10.17 수용·감정 보완] 일괄 한 줄(구분건물 1개호·토지 일괄) — 감정서 소재지에 맞는 물건이 하나뿐이면 그 물건 값
+      if (!map && R.ok && R.lump && mine.length === 1) { map = {}; map[mine[0].key] = { row: R.rows[0], how: R.rows[0].lump }; }
     } catch (e) { map = null; }
     TC_APPR_ITEM_MEMO_[key] = map;
   }
   const p = map && map[a.key];
   if (!p) return null;
   const w = function (n) { return Number(n).toLocaleString('ko-KR'); };
+  if (p.row.lump) return { v: p.row.v, lump: true, why: (a.kind || '물건') + ' ' + p.row.lump + ' ' + w(p.row.v) + '원 = 감정평가표 합계' + (p.row.u ? '(산출근거 ' + w(p.row.u) + '원/㎡ × 전유 ' + p.row.a + '㎡ — 끝수 정리, ±1% 안)' : '') + (/구분건물/.test(p.row.lump) ? ' — 감정서가 토지·건물로 나누지 않음: 나눠야 하는 계산이면 기준시가로 안분' : '') };
   return { v: p.row.v, why: (a.kind || '물건') + ' ' + p.row.a + '㎡' + (p.row.f !== 1 ? ' × 지분 ' + (Math.round(p.row.f * 1000) / 1000) : '') + ' × ' + w(p.row.u) + '원 = ' + w(p.row.v) + '원(감정평가액 ' + w(r.감정평가액) + '원 = 물건별 줄 합계 검산 일치, ' + p.how + ')' };
 }
 
@@ -37023,17 +37095,102 @@ function tcContractItems_(text, r) {
 //   구축물(담장·포장·테라스 등) = 토지·건물과 함께 넘어간 정착물이면 양도, 옮기거나 철거하는 보상이면 아님 → 판단
 //  돌려주는 것: { groups: [{ jibun, head, v, cat, why }], total, ok }
 // =========================================================
+// [2026.10.17 수용·감정 보완] 묶음 분류(첫 줄로 먼저, 못 가르면 묶음 안 줄들로). 구축물은 토지관련/건물관련으로 나눈다 — 세무사님 검토표(김운래)가
+//  담장·외부 바닥포장 = 토지관련(그 필지 토지 양도가액에 더함), 외부테라스·차양·보일러실(달아내기)·외부조명 = 건물관련(그 지번 건물 양도가액에 더함)으로 씀
+function tcCompObjCat_(s) {
+  if (/\(\s*수\s*용\s*\)/.test(s) && /주\s*택|근\s*린|생\s*활\s*시\s*설|창\s*고|사\s*무\s*실|공\s*장|점\s*포|축\s*사|건\s*물/.test(s)) return ['건물(수용)', '사업시행자가 취득한 건물 — 양도소득세 대상(그 지번 건물의 양도가액)'];
+  if (/인\s*테\s*리\s*어|에\s*어\s*컨|냉\s*장|조\s*리|간\s*판|자\s*판\s*기|덕\s*트|씽\s*크|테\s*이\s*블|수\s*족\s*관|가\s*스|온\s*풍|정\s*수\s*기|영\s*업\s*장|업\s*소\s*용|덤\s*웨\s*이\s*터|호\s*출\s*벨|청\s*소|창\s*고|하\s*우\s*스|관\s*정|지\s*하\s*수/.test(s)) return ['영업시설', '영업용 시설·설비 이전 보상 — 양도가액 아님(사업자면 사업소득 쪽 판단)'];
+  if (/나\s*무|화\s*분|단\s*풍|철\s*쭉|넝\s*쿨|주\s*목|회\s*양\s*목|소\s*나\s*무|관\s*상|피\s*라\s*칸\s*다|\d+\s*년\s*생/.test(s)) return ['수목', '수목 이전·손실 보상 — 양도가액 아님'];
+  if (/테\s*라\s*스|보\s*일\s*러\s*실|달\s*아\s*내\s*기|차\s*양|외\s*벽|조\s*명|태\s*양\s*열|다\s*락|데\s*크/.test(s)) return ['구축물(건물관련)', '건물에 딸린 부속물(테라스·차양·보일러실·달아내기·외부조명 등) — 그 지번 건물과 함께 넘어가 건물 양도가액에 더함(세무사님 검토표 기준), 따로 옮기는 보상이면 아님'];
+  if (/담\s*장|포\s*장|옹\s*벽|석\s*축|계\s*단|배\s*수|진\s*입\s*로|쇄\s*석|보\s*도\s*블|가\s*로\s*등|공\s*원\s*등|수\s*도|배\s*관|정\s*원|화\s*단/.test(s)) return ['구축물(토지관련)', '토지에 딸린 정착물(담장·바닥포장·옹벽 등) — 그 필지 토지와 함께 넘어가 토지 양도가액에 더함(세무사님 검토표 기준), 따로 옮기는 보상이면 아님'];
+  return null;
+}
+// 영업 필지(같은 지번에 간판·인테리어 등 영업시설 묶음이 있음)의 보안설비·가로등·조명은 영업장 시설 — 단어만 보고 구축물/그 밖으로 가르던 것(김운래 189-8 가로등 7식·보안설비 1식, 세무사님 = 사업소득)
+function tcCompObjBizLot_(groups) {
+  const biz = {}; groups.forEach(function (g) { if (g.cat === '영업시설' && g.jibun) biz[g.jibun] = 1; });
+  groups.forEach(function (g) {
+    if (!g.jibun || !biz[g.jibun] || g.cat === '영업시설' || g.cat === '건물(수용)' || g.cat === '수목') return;
+    if (g.cat === '그 밖의 물건' || /가\s*로\s*등|보\s*안|조\s*명|C\s*C\s*T\s*V|L\s*E\s*D|인\s*테\s*리\s*어/.test(g.head)) { g.cat = '영업시설'; g.why = '같은 지번(' + g.jibun + ')에 영업시설 묶음이 있는 영업 필지의 시설 — 영업장 시설 이전 보상: 양도가액 아님(사업자면 사업소득 쪽 판단)'; }
+  });
+}
+// [2026.10.17 수용·감정 보완] 협의 "지장물 등의 손실보상 계약서"(3733) — "일괄" 표시가 없고 줄마다 보상종별 칸(건(축)물·공작물·기타·수목)이 있다.
+//  금액 칸이 "건물에 포함"·"↑"인 줄은 바로 위 금액 줄의 묶음. 보상종별 칸을 그대로 분류로 쓴다(공작물은 위 토지관련/건물관련으로 한 번 더).
+function tcCompObjByKind_(flat, opt) {
+  const kre = /(건\s*\(?\s*축\s*\)?\s*물|공\s*작\s*물|기\s*타|수\s*목)\s+(?=[가-힣]{1,4}\s*[시군구]\s)/g; const starts = []; let m;
+  while ((m = kre.exec(flat))) starts.push({ at: m.index, kind: m[1].replace(/\s+/g, '') });
+  if (starts.length < 2) return null;
+  const groups = []; let lastG = null;
+  starts.forEach(function (s, i) {
+    const row = flat.slice(s.at, i + 1 < starts.length ? starts[i + 1].at : Math.min(flat.length, s.at + 300));
+    const jm = /(\d{1,5}(?:-\d{1,5})?)(?=\s+(?:대|전|답|임|잡|과|목|창|공|하|구|유|제|학|주|철|광|염|체|종|사|묘|양|천|원|도)\s)/.exec(row);
+    const after = jm ? row.slice(jm.index + jm[0].length).replace(/^\s*\S\s*/, '') : row.slice(s.kind.length);
+    const amts = (row.match(/\d{1,3}(?:,\d{3})+/g) || []).map(function (a) { return Number(a.replace(/,/g, '')); });
+    const incl = /에\s*포\s*함|↑/.test(row);
+    if (!amts.length || (incl && !amts.length)) { if (lastG) lastG.members.push(after.slice(0, 20).trim()); return; }
+    let cw;
+    if (/건/.test(s.kind)) cw = ['건물(수용)', '보상종별 건(축)물 — 사업시행자가 (협의)취득한 건물: 양도소득세 대상(그 지번 건물의 양도가액)'];
+    else if (/수목/.test(s.kind)) cw = ['수목', '보상종별 수목 — 수목 이전·손실 보상: 양도가액 아님'];
+    else if (/기타/.test(s.kind)) cw = ['그 밖의 물건', '보상종별 기타(보일러·전기·건조기 등 설비) — 옮기거나 다시 설치하는 보상: 양도가액 아님(판단)'];
+    else { const c2 = tcCompObjCat_(after.slice(0, 30)); cw = c2 && /구축물/.test(c2[0]) ? c2 : ['구축물', '보상종별 공작물 — 토지·건물과 함께 넘어간 정착물이면 양도, 옮기는 보상이면 아님(판단)']; }
+    lastG = { jibun: jm ? jm[1] : (lastG ? lastG.jibun : ''), head: (s.kind + ' ' + after).trim().slice(0, 40), v: amts[amts.length - 1], cat: cw[0], why: cw[1], members: [] };
+    groups.push(lastG);
+  });
+  groups.forEach(function (g) { if (g.members.length) g.why += ' · 함께 묶인 줄: ' + g.members.filter(Boolean).join(', '); delete g.members; });
+  const sum = groups.reduce(function (a, g) { return a + g.v; }, 0);
+  const tm = /합\s*계[^\d]{0,30}(\d{1,3}(?:,\d{3})+)/.exec(flat);
+  const total = (opt && opt.total) || (tm ? Number(tm[1].replace(/,/g, '')) : 0);
+  return { groups: groups, total: total, ok: !!total && sum === total, byKind: true, sum: sum };
+}
+// [2026.10.17 수용·감정 보완] 이의재결(손실보상금) 개인별 세부내역(법무법인 작성 — 김운래) — 필지(또는 지장물)마다 수용재결 평가금액 → 이의재결 평가금액, ▲증액금.
+//  글자인식이 표 칸 순서를 섞어 내므로(한 필지의 이의재결 금액이 다음 필지 뒤에 나옴) 위치가 아니라 검산으로 짝짓는다: 수용재결 + ▲증액 = 이의재결인 금액 셋.
+//  짝들의 합이 소계(수용재결·이의재결·증액)와 모두 맞으면 ok. 지번은 그 줄 수용재결 금액 앞에 "○○동 지번"으로 적힌 것.
+//  쓸모: 양도가액은 이의재결 금액(증액 포함), 당초 신고(수용재결 금액)와의 차이 = 수정신고 대상 — 보상금 내역서 필지 줄과 서로 확인.
+//  돌려주는 것: { kind: '토지'|'지장물', project, rows: [{ jibun, a: 수용재결, b: 이의재결, d: 증액 }], sumA, sumB, sumD, ok } | null
+function tcObjectionDetail_(text) {
+  const flat = String(text || '').replace(/\s+/g, ' ');
+  const at = flat.search(/개\s*인\s*별\s*세\s*부\s*내\s*역/); if (at < 0) return null;
+  const sub = flat.slice(at), sm = /소\s*계[^▲]{0,160}▲\s*(\d{1,3}(?:,\d{3})+)/.exec(sub); if (!sm) return null;
+  const body = sub.slice(0, sm.index), tail = sm[0];
+  const toks = []; const re = /(▲\s*)?(\d{1,3}(?:,\d{3})+)(?!\s*%|[\d.])/g; let m;
+  while ((m = re.exec(body))) { const v = Number(m[2].replace(/,/g, '')); if (v >= 10000) toks.push({ v: v, inc: !!m[1], at: m.index }); }
+  const plain = toks.filter(function (t) { return !t.inc; }), used = {}, rows = [];
+  toks.filter(function (t) { return t.inc; }).forEach(function (d) {
+    let best = null;
+    plain.forEach(function (a) { if (used[a.at]) return; plain.forEach(function (b) { if (used[b.at] || b === a || b.v - a.v !== d.v) return; const sc = Math.abs(d.at - b.at) + Math.abs(b.at - a.at); if (!best || sc < best.sc) best = { a: a, b: b, sc: sc }; }); });
+    if (best) { used[best.a.at] = used[best.b.at] = 1; rows.push({ a: best.a.v, b: best.b.v, d: d.v, at: best.a.at }); }
+  });
+  if (!rows.length) return null;
+  rows.sort(function (x, y) { return x.at - y.at; });
+  const jre = /[동리가]\s+(\d{1,4}(?:-\d{1,4})?)(?![\d,.])/g, js = []; let jm; while ((jm = jre.exec(body))) js.push({ v: jm[1], at: jm.index });
+  rows.forEach(function (r) { const j = js.filter(function (x) { return x.at < r.at; }).pop(); r.jibun = j ? j.v : ''; delete r.at; });
+  const tv = (tail.match(/\d{1,3}(?:,\d{3})+/g) || []).map(function (s) { return Number(s.replace(/,/g, '')); });
+  const sumA = rows.reduce(function (s, r) { return s + r.a; }, 0), sumB = rows.reduce(function (s, r) { return s + r.b; }, 0), sumD = rows.reduce(function (s, r) { return s + r.d; }, 0);
+  const pj = /<\s*([^<>]{4,40}?)\s*>/.exec(flat.slice(Math.max(0, at - 80), at + 10));
+  return { kind: /지\s*장\s*물/.test(body) ? '지장물' : '토지', project: pj ? pj[1].trim() : '', rows: rows, sumA: sumA, sumB: sumB, sumD: sumD, ok: tv.indexOf(sumA) !== -1 && tv.indexOf(sumB) !== -1 && tv.indexOf(sumD) !== -1 };
+}
 function tcCompObjGroups_(text, opt) {
   const flat = String(text || '').replace(/\s+/g, ' ');
   const marks = []; const mre = /일\s*[괄식삭]/g; let m;
   while ((m = mre.exec(flat))) marks.push(m.index);
-  if (!marks.length) return { groups: [], total: 0, ok: false };
+  if (!marks.length) return tcCompObjByKind_(flat, opt) || { groups: [], total: 0, ok: false };
   const amtRe = /\d{1,3}(?:,\d{3})+/g;
   const groups = [];
+  // [2026.10.17 수용·감정 보완] 지번 후보 — 도로명 주소의 건물번호("안양판교로 35-1")는 지번이 아님(사본에서 둘째 필지 묶음 6개가 "35-10"으로 붙었다).
+  //  하이픈 없는 세 자리는 문서 안에 두 번 넘게 따로 적혔거나 "동 192"·"(192"처럼 지번 자리에 적힌 것만(사진 잡글자 "494"를 지번으로 잡던 것 — 김운래 2026-07-14 스캔)
+  const jibun3 = {}, cnt3 = {};
+  (flat.match(/(?:[동리가]\s+|\(\s*)\d{3}(?![\d,.\-])/g) || []).forEach(function (s) { jibun3[s.replace(/[^\d]/g, '')] = 1; });
+  (flat.match(/(?:^|[\s(])\d{3}(?=[\s)]|$)/g) || []).forEach(function (s) { const k = s.replace(/[^\d]/g, ''); cnt3[k] = (cnt3[k] || 0) + 1; if (cnt3[k] >= 2) jibun3[k] = 1; });
+  const jibunsIn = function (s) {
+    const out = [], re = /(?:^|[\s(])(\d{2,4}-\d{1,4}|\d{3})(?=[\s)]|$)/g; let j;
+    while ((j = re.exec(s))) { const v = j[1], before = s.slice(0, j.index + (j[0].length - v.length)); if (/[로길]\s*$/.test(before)) continue; if (v.indexOf('-') === -1 && !jibun3[v]) continue; out.push(v); }
+    return out;
+  };
   // 묶음의 첫 줄 = "일괄" 바로 앞 — 앞 묶음의 금액·"↑" 줄 뒤부터
   const headStart = function (at) {
     let s = 0; const back = flat.slice(0, at);
-    const lastArrow = Math.max(back.lastIndexOf('↑'), back.lastIndexOf('→'), back.search(/포\s*함(?!.*포\s*함)/) >= 0 ? back.search(/포\s*함(?!.*포\s*함)/) + 2 : -1); // "건물에 포함"·"영업보상에 포함" 줄은 앞 묶음 것
+    // "건물에 포함"·"영업보상에 포함" 줄은 앞 묶음 것 — "1, 2층 포함"(인테리어 등 1식의 설명)은 아님(사본마다 묶음 첫 줄이 잘려 분류가 달라지던 것)
+    const pAt = back.search(/에\s*포\s*함(?!.*에\s*포\s*함)/);
+    const lastArrow = Math.max(back.lastIndexOf('↑'), back.lastIndexOf('→'), pAt >= 0 ? back.indexOf('함', pAt) + 1 : -1);
     amtRe.lastIndex = 0; let a, lastAmt = -1; while ((a = amtRe.exec(back))) lastAmt = a.index + a[0].length;
     s = Math.max(lastArrow + 1, lastAmt, at - 120, 0);
     return s;
@@ -37045,24 +37202,20 @@ function tcCompObjGroups_(text, opt) {
     const headFrom = headStart(at), head = flat.slice(headFrom, at);
     const body = flat.slice(am.index + am[0].length, i + 1 < marks.length ? Math.max(am.index, headStart(next)) : flat.length);
     const all = head + ' ' + body;
-    const jm = (flat.slice(headFrom, am.index).match(/(?:^|\s)(\d{2,4}-\d{1,4}|\d{3})(?=\s|$)/g) || []).map(function (s) { return s.trim(); });
+    const jm = jibunsIn(flat.slice(headFrom, am.index));
     const v = Number(am[0].replace(/,/g, ''));
     // 묶음의 첫 줄(일괄 바로 앞)로 먼저 가르고, 거기서 못 가르면 묶음 안 줄들로
-    const catOf = function (s) {
-      if (/\(\s*수\s*용\s*\)/.test(s) && /주\s*택|근\s*린|생\s*활\s*시\s*설|창\s*고|사\s*무\s*실|공\s*장|점\s*포|축\s*사|건\s*물/.test(s)) return ['건물(수용)', '사업시행자가 취득한 건물 — 양도소득세 대상(그 지번 건물의 양도가액)'];
-      if (/인\s*테\s*리\s*어|에\s*어\s*컨|냉\s*장|조\s*리|간\s*판|자\s*판\s*기|덕\s*트|씽\s*크|테\s*이\s*블|수\s*족\s*관|가\s*스|온\s*풍|정\s*수\s*기|영\s*업\s*장|업\s*소\s*용|덤\s*웨\s*이\s*터|호\s*출\s*벨|청\s*소|창\s*고|하\s*우\s*스|관\s*정|지\s*하\s*수/.test(s)) return ['영업시설', '영업용 시설·설비 이전 보상 — 양도가액 아님(사업자면 사업소득 쪽 판단)'];
-      if (/나\s*무|화\s*분|단\s*풍|철\s*쭉|넝\s*쿨|주\s*목|회\s*양\s*목|소\s*나\s*무|관\s*상|피\s*라\s*칸\s*다|\d+\s*년\s*생/.test(s)) return ['수목', '수목 이전·손실 보상 — 양도가액 아님'];
-      if (/담\s*장|포\s*장|옹\s*벽|계\s*단|테\s*라\s*스|보\s*일\s*러\s*실|달\s*아\s*내\s*기|차\s*양|외\s*벽|조\s*명|가\s*로\s*등|수\s*도|배\s*관/.test(s)) return ['구축물', '담장·포장·테라스 등 구축물 — 토지·건물과 함께 넘어간 정착물이면 양도, 옮기거나 철거하는 보상이면 아님(판단)'];
-      return null;
-    };
-    const cw = catOf(head) || catOf(all) || ['그 밖의 물건', '무엇인지 서류로 가르지 못함 — 원문 확인'];
+    const cw = tcCompObjCat_(head) || tcCompObjCat_(all) || ['그 밖의 물건', '무엇인지 서류로 가르지 못함 — 원문 확인'];
     const cat = cw[0], why = cw[1];
     groups.push({ jibun: jm.length ? jm[jm.length - 1] : '', head: head.trim().slice(0, 40), v: v, cat: cat, why: why });
   });
   groups.forEach(function (g, i) { if (!g.jibun && i) g.jibun = groups[i - 1].jibun; }); // 지번 칸이 빈 묶음은 앞 묶음과 같은 필지
+  tcCompObjBizLot_(groups);
   const tm = /([\d,]{7,})\s*물\s*건\s*의?\s*합\s*계|물\s*건\s*의?\s*합\s*계\s*(?:\d+\s*건\s*)?[^\d]{0,20}([\d,]{7,})/.exec(flat);
-  const total = (opt && opt.total) || (tm ? Number(String(tm[1] || tm[2]).replace(/,/g, '')) : 0);
   const sum = groups.reduce(function (s, g) { return s + g.v; }, 0);
+  let total = (opt && opt.total) || (tm ? Number(String(tm[1] || tm[2]).replace(/,/g, '')) : 0);
+  // [2026.10.17] "물건의 합계 197건" 뒤에 다른 줄 글자가 끼어 금액이 멀리 떨어진 사본 — 합계 글자 앞뒤 300자 안에 묶음 합과 같은 금액이 있으면 그것이 합계(검산으로 확인된 값만)
+  if (!(opt && opt.total) && total !== sum) { const hi = flat.search(/물\s*건\s*의?\s*합\s*계/); if (hi >= 0 && (flat.slice(Math.max(0, hi - 300), hi + 300).match(/\d{1,3}(?:,\d{3}){2,}/g) || []).some(function (a) { return Number(a.replace(/,/g, '')) === sum; })) total = sum; }
   return { groups: groups, total: total, ok: !!total && sum === total };
 }
 
