@@ -27435,47 +27435,150 @@ function caseProcInhFacts0_(c, parsed) {
   // [2026.10.16] 보험금 지급내역 — 피상속인이 보험료를 낸 생명보험금은 간주상속재산(§8)이자 금융재산(§22). 금액·근거를 알린다(박종헌 사건: 3장이 안 쓰였다)
   const pn = function (v) { return v && typeof v === 'object' ? String(v.이름 || v.name || '') : String(v || ''); };
   by('insurance').forEach(function (x) { const r = x.p.result || {}; if (r.종류 === '보증보험증권') return; out.notes.push('보험(' + x.f.name + ') ' + (r.종류 || '') + (r.지급액 ? ' 지급액 ' + Number(r.지급액).toLocaleString('ko-KR') + '원' : '') + (pn(r.피보험자) ? ' · 피보험자 ' + pn(r.피보험자) : '') + (pn(r.계약자) ? ' · 계약자 ' + pn(r.계약자) : '') + ' — 피상속인이 보험료를 낸 생명보험금이면 간주상속재산(§8)·금융재산(§22): 세액계산 보험금 칸에 넣을지 확인'); });
-  // 금융재산 — 상속개시일 기준 잔액증명이 확정, 분할협의서 금액은 대조
-  // [2026.10.16] 같은 잔액증명서를 두 파일로 둔 것(같은 기준일·같은 총액·같은 계좌)은 한 번만 — 박종헌 사건: 사본 두 개를 더해 금융재산이 두 배(3억3천만원)가 됐다
-  const covered = [];
+  // 금융재산 — [2026.10.17 조사 보고 · 세무사님 원칙: 서류 합계가 아니라 내용 항목(계좌)별로] 계좌번호(끝 4자리)를 열쇠로 한 계좌별 대조표.
+  //  잔액증명(개시일 기준) · 거래내역 증명서(개시일 직전 줄 잔액) · 분할협의서 별지 금융목록(잔액·지급액) · 안심상속 조회결과(기관별 금액) · 통장 사본(참고)을
+  //  같은 계좌·같은 기관끼리 맞춰 한 번만 센다. 값은 계좌마다 개시일 잔액(잔액증명·거래내역) > 분할협의서 잔액, 계좌를 모르는 기관은 조회결과 금액 > 분할협의서 금액.
+  //  모든 기관이 개시일 잔액으로 확인되면 확정, 아니면 묻는다(후보마다 어느 서류 값인지 출처를 밝힌 객관식).
+  //  예전엔 안심상속 조회결과(노영환: 5개 기관 2,155,375원)가 금융재산 후보로 이어지지 않아 "서류 없음 — 0원"으로 끝났고, 새마을금고 거래내역 증명서(김창호)는 분류조차 안 됐다.
+  const won0 = function (n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; };
+  const accKey = function (acct) { const s = String(acct || ''), tail = s.slice(s.lastIndexOf('*') + 1), d = tail.replace(/\D/g, ''); return d.length >= 4 ? d.slice(-4) : ''; };
+  const orgSame = function (a, b) { return !a || !b || a === b || (/농협/.test(a) && /농협/.test(b)); };
+  const accs = [], insts = [], certList = [];
+  const accOf = function (l4, org, label) {
+    let a = accs.filter(function (z) { return z.l4 === l4 && orgSame(z.org, org); })[0];
+    if (!a) { a = { l4: l4, org: org || '', label: label || '', srcs: [] }; accs.push(a); }
+    if (!a.org && org) a.org = org;
+    if (label && String(label).length > String(a.label).length) a.label = label;
+    return a;
+  };
+  const isBaseSrc = function (q) { return q.kind === 'hist' || (q.kind === 'cert' && (q.atBase || !base)); };
+  // ① 잔액증명 — 같은 잔액증명서를 두 파일로 둔 것(같은 기준일·같은 총액·같은 계좌)은 한 번만(박종헌: 사본 두 개를 더해 두 배가 됐다)
   by('balance').forEach(function (x) {
     const r = x.p.result || {}; if (!r.총액) return;
     const acc = [].concat.apply([], (r.증명 || []).map(function (z) { return z.계좌뒷자리 || []; })).map(function (a) { return String(a).replace(/\D/g, ''); }).sort().join(',');
-    const twin = out.financial.filter(function (q) { return q.v === r.총액 && q.bd === (r.기준일 || '') && q.acc === acc; })[0];
+    const twin = certList.filter(function (q) { return q.v === r.총액 && q.bd === (r.기준일 || '') && q.acc === acc; })[0];
     if (twin) { out.notes.push('잔액증명 ' + x.f.name + ' = ' + twin.file + '의 사본(같은 기준일·계좌·금액 — 한 번만 셈)'); return; }
-    acc.split(',').forEach(function (a) { if (a) covered.push(a.slice(-4)); });
-    out.financial.push({ v: r.총액, src: '잔액증명(' + x.f.name + (r.기준일 ? ', ' + r.기준일 + ' 기준' : '') + ')', atBase: !!(r.기준일 && r.기준일 === base), bd: r.기준일 || '', acc: acc, file: x.f.name });
+    certList.push({ v: r.총액, bd: r.기준일 || '', acc: acc, file: x.f.name });
+    const org = finOrg_(r.금융기관), atBase = !!(r.기준일 && r.기준일 === base), src0 = '잔액증명(' + x.f.name + (r.기준일 ? ', ' + r.기준일 + ' 기준' : '') + ')';
+    const perAcc = !r.평가합계12 && (r.증명 || []).length && (r.증명 || []).every(function (z) { return (z.계좌별 || []).length && z.계좌별.every(function (q) { return q.계좌; }); });
+    if (perAcc) (r.증명 || []).forEach(function (z) { z.계좌별.forEach(function (q) { accOf(accKey(q.계좌), org, (r.금융기관 || '') + ' ' + q.계좌).srcs.push({ kind: 'cert', v: q.금액, atBase: atBase, file: x.f.name, why: src0 }); }); });
+    else insts.push({ org: org, kind: 'cert', v: r.총액, atBase: atBase, file: x.f.name, label: (r.금융기관 || '잔액증명') + (acc ? ' …' + acc.split(',').map(function (a) { return a.slice(-4); }).join('·…') : ''), why: src0 });
   });
-  (dv && dv.금융 || []).forEach(function (q) { out.financial.push({ v: q.금액, src: '상속재산분할협의서(' + dv.file + ') ' + q.기관 + ' ' + q.종류, atBase: false }); });
-  // [2026.10.16] 분할협의서 별지 금융자산 목록 중 잔액증명이 없는 계좌(계좌번호 끝 4자리로 대조) — 개시일 잔액증명이 있는 기관만 더하면 나머지 기관 예금이 통째로 빠진다
-  const finExtra = [], finIns = [];
+  // ② 거래내역 증명서·거래내역 조회 — 개시일 직전 검산된 줄의 잔액, 통장 사본은 마지막 기록 잔액(참고)
+  by('banktx').forEach(function (x) {
+    const r = x.p.result || {};
+    if (r.거래내역서) {
+      const h = finHistBalanceAt_(r, base), l4 = accKey(r.계좌번호), label = (r.은행 || '') + ' ' + (r.계좌번호 || '');
+      if (h && l4) accOf(l4, r.기관, label).srcs.push({ kind: 'hist', v: h.v, atBase: true, file: x.f.name, why: '거래내역(' + x.f.name + ') ' + h.why });
+      else if (h) insts.push({ org: r.기관, kind: 'hist', v: h.v, atBase: true, file: x.f.name, label: label, why: '거래내역(' + x.f.name + ') ' + h.why });
+      else if (base) out.notes.push('거래내역 ' + x.f.name + (r.계좌번호 ? '(' + r.계좌번호 + ')' : '') + ' — 상속개시일(' + base + ') 잔액을 알 수 없음' + (r.기간끝 && r.기간끝 < base ? '(조회기간이 ' + r.기간끝 + '에 끝남 — 개시일까지의 거래내역·잔액증명 필요)' : '(개시일 앞뒤 거래 줄의 잔액이 검산되지 않음)'));
+    } else if (r.통장 && r.마지막잔액 != null) {
+      const l4 = accKey(r.계좌번호);
+      if (l4) accOf(l4, finOrg_(r.은행), (r.은행 || '') + ' ' + r.계좌번호).srcs.push({ kind: 'book', v: r.마지막잔액, file: x.f.name, why: '통장 사본(' + x.f.name + ') 마지막 기록 잔액' + (r.마지막거래일 ? '(' + r.마지막거래일 + ')' : '') + ' — 그 뒤 거래가 있었을 수 있어 참고' });
+    }
+  });
+  // ③ 분할협의서 별지 금융목록(계좌별 잔액·지급액) · 본문 금융 금액(계좌 없음)
+  const finIns = [];
   by('inhdivision').forEach(function (x) {
-    ((x.p.result || {}).금융목록 || []).forEach(function (q) {
-      const l4 = String(q.계좌).replace(/\D/g, '').slice(-4);
-      if (q.보험) { finIns.push(q); out.notes.push('분할협의서(' + x.f.name + ') 보험 ' + q.기관 + ' ' + q.계좌 + ' ' + Number(q.잔액).toLocaleString('ko-KR') + '원 — 피상속인이 보험료를 낸 보험금이면 간주상속재산(§8)·금융재산(§22)'); return; }
-      if (covered.indexOf(l4) !== -1) return;
-      if (finExtra.some(function (e) { return e.l4 === l4 && e.v === q.잔액; })) return;
-      finExtra.push({ l4: l4, v: q.잔액, src: q.기관 + ' ' + q.계좌 + ' ' + Number(q.잔액).toLocaleString('ko-KR') + '원(' + x.f.name + ' 별지 목록, 이자 포함)' });
+    const r = x.p.result || {};
+    (r.금융목록 || []).forEach(function (q) {
+      if (q.보험) { if (!finIns.some(function (z) { return z.계좌 === q.계좌 && z.잔액 === q.잔액; })) { finIns.push(q); out.notes.push('분할협의서(' + x.f.name + ') 보험 ' + q.기관 + ' ' + q.계좌 + ' ' + won0(q.잔액) + ' — 피상속인이 보험료를 낸 보험금이면 간주상속재산(§8)·금융재산(§22)'); } return; }
+      const a = accOf(accKey(q.계좌), finOrg_(q.기관), q.기관 + ' ' + q.계좌);
+      if (a.srcs.some(function (z) { return z.kind === 'div' && z.v === q.잔액; })) return;
+      a.srcs.push({ kind: 'div', v: q.잔액, pay: q.지급액, file: x.f.name, why: '분할협의서(' + x.f.name + ') 별지 잔액(이자 포함)' + (q.지급액 && q.지급액 !== q.잔액 ? ' · 지급액 ' + won0(q.지급액) : '') });
+    });
+    if (!(r.금융목록 || []).length) (r.금융 || []).forEach(function (q) {
+      const org = finOrg_(q.기관);
+      if (insts.some(function (z) { return z.kind === 'div' && z.org === org && z.v === q.금액; })) return;
+      insts.push({ org: org, kind: 'div', v: q.금액, file: x.f.name, label: q.기관 + ' ' + (q.종류 || ''), why: '상속재산분할협의서(' + x.f.name + ') ' + q.기관 + ' ' + (q.종류 || '') });
     });
   });
-  const finAt = out.financial.filter(function (q) { return q.atBase; });
+  // ④ 안심상속 조회결과 — 기관별 금액(조회 기준일 금액·원금 기준일 수 있음). PDF와 화면 캡처에 같은 행이 겹치면 한 번만. 조회 대상이 피상속인이 아니면 쓰지 않는다
+  const qNone = [];
+  by('inhquery').forEach(function (x) {
+    const r = x.p.result || {};
+    if (r.대상이름 && dec && !caseProcNameLike_(nm(r.대상이름), dec)) { out.notes.push('안심상속 조회결과 ' + x.f.name + ' — 조회 대상(' + r.대상이름 + ')이 피상속인(' + dec + ')과 달라 금융재산에 쓰지 않음(원문 확인)'); return; }
+    (r.행 || []).forEach(function (q) {
+      if (q.채무 || q.종류 === '보험' || !q.금액) return;
+      const org = finOrg_(q.기관);
+      const same = insts.filter(function (z) { return z.kind === 'query' && z.org === org && z.v === q.금액; })[0];
+      if (same) { if (same.files.indexOf(x.f.name) === -1) same.files.push(x.f.name); return; }
+      insts.push({ org: org, kind: 'query', v: q.금액, file: x.f.name, files: [x.f.name], label: q.기관 + ' ' + q.종류 + (q.점포 ? '(' + q.점포 + ')' : ''), why: '안심상속 조회(' + x.f.name + (r.조사기준일 ? ', 조사기준일 ' + r.조사기준일 : '') + ')' });
+    });
+    if (!(r.행 || []).length && (r.없음 || []).length) qNone.push((r.기관 || x.f.name) + '(' + x.f.name + ')');
+  });
+  insts.forEach(function (z) { if (z.kind === 'query' && z.files.length > 1) z.why = '안심상속 조회(' + z.files.join(' = ') + ')'; });
+  if (qNone.length) out.notes.push('안심상속 조회 — 거래 없음으로 확인된 기관: ' + qNone.join(', '));
+  // 계좌마다 쓸 값: 개시일 잔액증명 > 거래내역 개시일 잔액 > (기준일 다른) 잔액증명 > 분할협의서 잔액. 통장 사본은 참고만
+  accs.forEach(function (a) {
+    const s = a.srcs;
+    a.pick = s.filter(function (q) { return q.kind === 'cert' && q.atBase; })[0] || s.filter(function (q) { return q.kind === 'hist'; })[0] || s.filter(function (q) { return q.kind === 'cert'; })[0] || s.filter(function (q) { return q.kind === 'div'; })[0] || null;
+  });
+  // 기관마다: 계좌별 값의 합(계좌를 아는 기관) / 계좌 없는 잔액증명·거래내역 / 조회결과 / 분할협의서 금액 순
+  const orgs = [];
+  accs.filter(function (a) { return a.pick; }).forEach(function (a) { if (orgs.indexOf(a.org) === -1) orgs.push(a.org); });
+  insts.forEach(function (z) { if (orgs.indexOf(z.org) === -1) orgs.push(z.org); });
+  const groups = orgs.map(function (o) {
+    const ar = accs.filter(function (a) { return a.pick && (a.org === o || (!a.org && !o)); });
+    const iz = insts.filter(function (z) { return z.org === o; });
+    const ib = iz.filter(function (z) { return z.kind === 'hist' || z.kind === 'cert'; });
+    const iq = iz.filter(function (z) { return z.kind === 'query'; }), idv = iz.filter(function (z) { return z.kind === 'div'; });
+    const g = { org: o || '기관 미상', parts: [], base: true, refs: [] };
+    if (ar.length || ib.length) {
+      ar.forEach(function (a) { g.parts.push({ v: a.pick.v, why: (a.l4 ? '…' + a.l4 + ' ' : '') + a.pick.why, base: isBaseSrc(a.pick), src: a.pick }); });
+      ib.forEach(function (z) { g.parts.push({ v: z.v, why: z.why, base: isBaseSrc(z), src: z }); });
+      g.refs = iq.concat(idv);
+    } else if (iq.length) { iq.forEach(function (z) { g.parts.push({ v: z.v, why: z.why + ' — 조회 기준 금액, 개시일 잔액증명으로 확정 필요', base: false, src: z }); }); g.refs = idv; }
+    else idv.forEach(function (z) { g.parts.push({ v: z.v, why: z.why, base: false, src: z }); });
+    g.v = g.parts.reduce(function (t, p) { return t + p.v; }, 0);
+    g.base = g.parts.length > 0 && g.parts.every(function (p) { return p.base; });
+    return g;
+  }).filter(function (g) { return g.parts.length; });
+  // 계좌별 대조표 — 사실장부 "쓰인 곳"에도 파일 이름이 남는다
+  const rowsTxt = [];
+  accs.forEach(function (a) {
+    const s = a.srcs.map(function (q) { return ({ cert: '잔액증명', hist: '거래내역 개시일 잔액', div: '협의서 잔액', book: '통장 마지막 잔액' })[q.kind] + ' ' + won0(q.v) + (q.kind === 'div' && q.pay && q.pay !== q.v ? '(지급액 ' + won0(q.pay) + ')' : '') + '(' + q.file + (q.kind === 'cert' && !q.atBase && base ? ', 기준일 다름' : '') + ')'; });
+    rowsTxt.push((a.label || (a.org + ' …' + a.l4)).trim() + ': ' + s.join(' · ') + (a.pick ? ' → ' + won0(a.pick.v) : ' → 참고만'));
+  });
+  insts.forEach(function (z) { rowsTxt.push(z.label + ': ' + ({ query: '안심상속 조회', div: '협의서 금액', cert: '잔액증명(계좌 구분 없음)', hist: '거래내역 개시일 잔액' })[z.kind] + ' ' + won0(z.v) + '(' + (z.files || [z.file]).join(' = ') + ')'); });
+  if (rowsTxt.length) out.notes.push('금융재산 계좌별 대조표(같은 계좌·기관은 한 번만): ' + rowsTxt.join(' / '));
+  out.finTable = { accs: accs.map(function (a) { return { l4: a.l4, org: a.org, label: a.label, pick: a.pick ? a.pick.v : null, srcs: a.srcs.map(function (q) { return q.kind + ' ' + q.v + ' ' + q.file; }) }; }), insts: insts.map(function (z) { return z.kind + ' ' + z.org + ' ' + z.v + ' ' + z.file; }), groups: groups.map(function (g) { return g.org + ' ' + g.v + (g.base ? ' (개시일 확인)' : ''); }) };
+  // 후보 — A 계좌별 대조표 합 / B 개시일 잔액이 확인된 것만 / C 조회결과 금액 기준 / D 분할협의서 금액 기준 (값이 같은 후보는 하나로)
+  const sumA = groups.reduce(function (t, g) { return t + g.v; }, 0);
+  const cands = [];
+  const addCand = function (v, src) { if (!cands.some(function (q) { return q.v === v; })) cands.push({ v: v, src: src }); };
+  if (groups.length) addCand(sumA, '계좌별 대조표 합 — ' + groups.map(function (g) { return g.org + ' ' + won0(g.v) + '[' + g.parts.map(function (p) { return p.why; }).join(' + ') + ']'; }).join(' + '));
+  const baseParts = [].concat.apply([], groups.map(function (g) { return g.parts.filter(function (p) { return p.base; }); }));
+  if (baseParts.length && baseParts.length < [].concat.apply([], groups.map(function (g) { return g.parts; })).length) addCand(baseParts.reduce(function (t, p) { return t + p.v; }, 0), '개시일 잔액이 확인된 계좌만(잔액증명·거래내역 — ' + baseParts.map(function (p) { return p.src.file; }).filter(function (v, i, a0) { return a0.indexOf(v) === i; }).join(', ') + ') — 나머지 기관 빠짐');
+  const qOrgs = groups.filter(function (g) { return insts.some(function (z) { return z.kind === 'query' && z.org === g.org; }); });
+  if (qOrgs.length) addCand(groups.reduce(function (t, g) { const q = insts.filter(function (z) { return z.kind === 'query' && z.org === g.org; }); return t + (q.length ? q.reduce(function (s, z) { return s + z.v; }, 0) : g.v); }, 0), '안심상속 조회 금액 기준(조회한 기관은 조회 금액 — 조사기준일 금액이라 개시일 잔액과 다를 수 있음)');
+  const hasDiv = accs.some(function (a) { return a.srcs.some(function (q) { return q.kind === 'div'; }); }) || insts.some(function (z) { return z.kind === 'div'; });
+  if (hasDiv) addCand(groups.reduce(function (t, g) {
+    const dvs = accs.filter(function (a) { return a.pick && a.org === g.org; }).map(function (a) { const d = a.srcs.filter(function (q) { return q.kind === 'div'; })[0]; return d ? d.v : a.pick.v; });
+    const di = insts.filter(function (z) { return z.kind === 'div' && z.org === g.org; });
+    return t + (di.length && !dvs.length ? di.reduce(function (s, z) { return s + z.v; }, 0) : dvs.length ? dvs.reduce(function (s, v) { return s + v; }, 0) : g.v);
+  }, 0), '분할협의서 금액 기준(협의서에 적힌 계좌·기관은 협의서 금액 — 개시일 뒤 이자가 붙은 금액일 수 있음)');
   const finCh = choices.financial;
-  out.financialValue = finCh ? Number(finCh.v) : (finAt.length ? finAt.reduce(function (t, q) { return t + q.v; }, 0) : null);
-  out.financialSrc = finCh ? finCh.src : (finAt.length ? finAt.map(function (q) { return q.src; }).join(' + ') : '');
-  // 금융재산은 평가기준일(상속개시일) 현재 잔액 — 개시일 기준 잔액증명이 있으면 그것으로 확정, 다른 서류 금액은 참고로만
-  out.financialDiff = !finCh && !finAt.length && out.financial.length > 1 && out.financial.some(function (q) { return q.v !== out.financial[0].v; });
-  if (!finCh && finExtra.length) {
-    // 잔액증명 없는 계좌가 있으면 확정하지 않고 묻는다 — 후보: 잔액증명 + 목록의 나머지 계좌 / 잔액증명만
-    // 기준일이 아직 안 정해졌으면(개시일 기준 잔액증명인지 모름) 잔액증명 전부를 더한다 — 빼면 증명된 계좌가 통째로 빠진 후보가 1번이 된다
-    const certs = finAt.length ? finAt : out.financial.filter(function (q) { return q.bd !== undefined; });
-    const certSum = certs.reduce(function (t, q) { return t + q.v; }, 0);
-    const exSum = finExtra.reduce(function (t, e) { return t + e.v; }, 0);
-    out.financial = [{ v: certSum + exSum, src: (certs.length ? certs.map(function (q) { return q.src; }).join(' + ') + ' + ' : '') + '잔액증명 없는 계좌 ' + finExtra.map(function (e) { return e.src; }).join(', ') + ' — 그 기관 잔액증명을 받으면 그 금액으로' }]
-      .concat(certs.length ? [{ v: certSum, src: '잔액증명만(' + certs.map(function (q) { return q.file; }).join(', ') + ') — 목록의 다른 기관 계좌 빠짐' }] : []);
-    out.financialValue = null; out.financialSrc = ''; out.financialDiff = true;
+  const allBase = groups.length > 0 && groups.every(function (g) { return g.base; });
+  const nSrc = accs.reduce(function (t, a) { return t + a.srcs.filter(function (q) { return q.kind !== 'book'; }).length; }, 0) + insts.length;
+  out.financial = cands;
+  out.financialValue = null; out.financialSrc = ''; out.financialDiff = false; out.financialOther = [];
+  if (finCh) { out.financialValue = Number(finCh.v); out.financialSrc = finCh.src; }
+  else if (allBase) {
+    // 모든 기관이 개시일 잔액으로 확인됨 — 확정. 다른 서류 금액(협의서·조회)은 참고(개시일 뒤 이자·입금 등)
+    out.financialValue = sumA; out.financialSrc = cands[0].src.replace(/^계좌별 대조표 합 — /, '');
+    groups.forEach(function (g) {
+      const ref = g.refs.filter(function (z) { return z.v !== g.v; }).map(function (z) { return { v: z.v, src: z.why }; });
+      accs.filter(function (a) { return a.pick && a.org === g.org; }).forEach(function (a) { a.srcs.forEach(function (q) { if (q !== a.pick && q.v !== a.pick.v && q.kind !== 'book') ref.push({ v: q.v, src: q.why }); }); });
+      out.financialOther = out.financialOther.concat(ref);
+    });
+  } else if (nSrc === 1 && cands.length === 1 && !insts.some(function (z) { return z.kind === 'query'; })) {
+    out.financialValue = cands[0].v; out.financialSrc = groups[0].parts[0].why + ' (개시일 기준 잔액증명 없음)';
+  } else if (cands.length) {
+    out.financialDiff = true;
+    const notBase = groups.filter(function (g) { return !g.base; }).map(function (g) { return g.org; });
+    out.financialAsk = '금융재산 — 계좌별 대조표로 같은 계좌·기관은 한 번만 셌습니다. ' + (notBase.length ? '개시일 잔액이 서류로 확인되지 않은 기관: ' + notBase.join(', ') + '(그 기관 잔액증명을 받으면 그 금액으로 바뀝니다). ' : '') + (cands.length > 1 ? '서류마다 금액이 달라 ' : '') + '상속개시일 기준 금액을 골라 주세요(각 후보에 어느 서류 값인지 적었습니다).';
   }
-  if (!finCh && !finAt.length && out.financial.length === 1) { out.financialValue = out.financial[0].v; out.financialSrc = out.financial[0].src + ' (개시일 기준 잔액증명 없음)'; }
-  out.financialOther = finAt.length ? out.financial.filter(function (q) { return !q.atBase && q.v !== out.financialValue; }) : [];
   // 장례비 — 영수증(증빙) 합계와 유족 지출표 총액
   const receipts = by('funeralbill').filter(function (x) { return x.p.result && x.p.result.합계; });
   out.funeral.receipts = receipts.map(function (x) { return { payee: x.p.result.상호 || x.p.result.공급자번호 || x.f.name, amount: x.p.result.합계, file: x.f.name }; });
@@ -27567,8 +27670,31 @@ function caseProcInhFacts0_(c, parsed) {
   //  확정은 세무사님(사건처리 「상속 채무 확정」) — 확정한 목록만 세액계산 채무 칸으로 간다.
   out.debts = [];
   const dName = nm(out.deceased.name);
-  by('debtcert').forEach(function (x) { const r = x.p.result || {}; if (!r.총잔액) return; const amt = r.단위 === '천원' ? r.총잔액 * 1000 : r.총잔액;
-    out.debts.push({ debtType: 'loan', creditorName: r.기관 || '', amount: amt, file: x.f.name, src: (r.종류 || '부채증명') + (r.기준일 ? ' ' + r.기준일 + ' 기준' : ''), sure: !(r.경고 || []).filter(function (w) { return !/채무\s*공제\s*\(§\s*14\)/.test(w); }).length && (!r.기준일 || !base || r.기준일 === base), note: r.기준일 && base && r.기준일 !== base ? '기준일(' + r.기준일 + ')이 상속개시일(' + base + ')과 다름 — 개시일 현재 잔액 확인' : '' }); });
+  // [2026.10.17 조사 보고] 부채증명의 채무자가 피상속인이 아니면(상속인·다른 사람 명의 대출에 피상속인 부동산을 담보로 준 경우 등) 자동으로 공제하지 않고 묻는다 —
+  //  §14 채무공제는 피상속인이 진 채무만. 노영환: 하나은행 대출 채무자 구순애(540820)인데 피상속인 조용녀(291121) 채무로 볼 뻔했다(신고는 실사용분 × 지분으로 따로 계산).
+  //  피상속인 생년은 가족관계·사망서류·안심상속 조회 중 아는 것으로. 총잔액이 없고 행만 읽힌 서식은 행마다 후보(같은 기관·같은 잔액은 여러 파일이어도 한 번)
+  const decB6 = (function () {
+    const rn = String(out.deceased.regNo || '').replace(/[^\d]/g, ''); if (rn.length >= 6) return rn.slice(0, 6);
+    const dd = by('death').map(function (x) { return String((x.p.result || {}).생년월일 || ''); }).filter(Boolean)[0]; if (dd) return dd.replace(/-/g, '').slice(2, 8);
+    const q = by('inhquery').map(function (x) { return (x.p.result || {}).대상생년6; }).filter(Boolean)[0]; return q || '';
+  })();
+  by('debtcert').forEach(function (x) {
+    const r = x.p.result || {};
+    const rows = r.총잔액 ? [{ v: r.총잔액, what: '' }] : (r.행 || []).filter(function (q) { return q.잔액; }).map(function (q) { return { v: q.잔액, what: (q.과목 || '대출') + (q.상환기일 ? ' 기한 ' + q.상환기일 : ''), rowUnsure: !!q.행확인필요 }; });
+    const otherB = r.채무자생년6 && decB6 && r.채무자생년6 !== decB6, otherN = r.채무자 && dName && !caseProcNameLike_(nm(r.채무자), dName);
+    const notDec = otherB || otherN;
+    rows.forEach(function (row) {
+      const dup = out.debts.filter(function (d) { return d.debtType === 'loan' && d.creditorName === (r.기관 || '') && d.amount === row.v && d.fromCert; })[0];
+      if (dup) { if (dup.note.indexOf(x.f.name) === -1) dup.note += ' · 같은 대출이 ' + x.f.name + '에도 있음(한 번만)'; return; }
+      const baseNote = r.기준일 && base && r.기준일 !== base ? '기준일(' + r.기준일 + ')이 상속개시일(' + base + ')과 다름 — 개시일 현재 잔액 확인' : '';
+      const decNote = notDec ? '⚠ 채무자 ' + (r.채무자 || '') + (r.채무자생년6 ? '(' + r.채무자생년6 + ')' : '') + '이(가) 피상속인' + (dName ? '(' + dName + (decB6 ? ', ' + decB6 : '') + ')' : '') + '이 아님 — 피상속인 채무가 아니면 공제 안 됨(§14). 피상속인은 담보만 제공했는지, 피상속인이 실제로 쓴 돈(실사용분·지분)이 있는지 확인해 넣을 몫만 체크·직접 입력' : '';
+      out.debts.push({ debtType: 'loan', creditorName: r.기관 || '', amount: row.v, file: x.f.name, fromCert: true,
+        src: (r.종류 || '부채증명') + (row.what ? ' ' + row.what : '') + (r.기준일 ? ' ' + r.기준일 + ' 기준' : '') + (r.채무자 ? ' · 채무자 ' + r.채무자 : ''),
+        sure: !notDec && !row.rowUnsure && !(r.경고 || []).filter(function (w) { return !/채무\s*공제\s*\(§\s*14\)/.test(w); }).length && (!r.기준일 || !base || r.기준일 === base),
+        note: [decNote, row.rowUnsure ? '표가 흩어진 서식에서 읽은 행 — 금액을 원문과 대조' : '', baseNote].filter(Boolean).join(' · ') });
+    });
+  });
+  out.debts.forEach(function (d) { delete d.fromCert; });
   by('inhquery').forEach(function (x) { const r = x.p.result || {}; if (r.채무합계) out.debts.push({ debtType: 'loan', creditorName: '안심상속 조회 채무 합계', amount: r.채무합계, file: x.f.name, src: '상속인 금융거래 조회', sure: false, note: '부채증명원과 겹칠 수 있음 — 겹치면 하나만' }); });
   // 임대차계약서 — 정리 결과가 한 건(lease)이거나, 계약서 묶음(result.docs 안에 lease)이거나
   const leaseList = [];
@@ -27720,7 +27846,7 @@ function caseProcInhAssetItems_(c, lines, items, parsed) {
       { mode: 'choose', target: 'ih:' + a.key, input: 'money', label: '상속재산 ' + a.loc, cands: a.cands.map(function (q) { return { v: String(q.v), src: (q.recommended ? '⭐ ' : '') + q.src }; }) }));
   });
   if (f.financialValue !== null && !f.financialDiff) lines.push('✅ 금융재산 ' + won(f.financialValue) + ' (' + f.financialSrc + ' — 평가기준일 현재 잔액)' + (f.financialOther && f.financialOther.length ? ' · 참고: ' + f.financialOther.map(function (q) { return won(q.v) + '(' + q.src + ')'; }).join(', ') + '는 개시일 뒤 이자·입금 등이 더해진 금액일 수 있음' : ''));
-  else if (f.financial.length) items.push(caseProcItem_('ih:financial:' + f.financial.map(function (q) { return q.v; }).join('|'), 'check', '금융재산 금액이 서류마다 다릅니다 — ' + f.financial.map(function (q) { return won(q.v) + '(' + q.src + ')'; }).join(' / ') + '. 상속개시일 기준 금액은?',
+  else if (f.financial.length) items.push(caseProcItem_('ih:financial:' + f.financial.map(function (q) { return q.v; }).join('|'), 'check', f.financialAsk ? f.financialAsk + ' — ' + f.financial.map(function (q) { return won(q.v) + '(' + q.src + ')'; }).join(' / ') : '금융재산 금액이 서류마다 다릅니다 — ' + f.financial.map(function (q) { return won(q.v) + '(' + q.src + ')'; }).join(' / ') + '. 상속개시일 기준 금액은?',
     { mode: 'choose', target: 'ih:financial', input: 'money', label: '금융재산', cands: f.financial.map(function (q) { return { v: String(q.v), src: q.src }; }) }));
   if ((f.dues || []).length) lines.push('✅ 공과금 ' + won(f.dues.reduce(function (t, d) { return t + d.amount; }, 0)) + ' (' + f.dues.map(function (d) { return d.src + ' ' + won(d.amount) + ' — ' + d.file; }).join(', ') + ' — 상속개시일 현재 낼 의무가 있던 세금, §14①1호)');
   if (f.appraisalFee) lines.push('✅ 감정평가수수료 ' + won(f.appraisalFee.value) + ' (' + f.appraisalFee.src + ' — §25①·시행령 §20의3, 500만원 한도)');
@@ -30132,6 +30258,7 @@ function docBankSlipParse_(text) {
   var t = String(text || '');
   var tc = docTransferConfirmParse_(t); if (tc) return tc;
   var pb = docPassbookParse_(t); if (pb) return pb;
+  var ah = docAcctHistoryParse_(t); if (ah) return ah;
   if (!/거\s*래\s*내\s*역|입\s*금\s*증|입\s*금\s*확\s*인/.test(t) || !/예\s*금\s*주/.test(t) || /잔\s*(액|고)\s*증\s*명/.test(t)) return null;
   if (!/(맡기신|찾으신|입금\s*액|출금\s*액|입금|출금)/.test(t)) return null;
   var r = { 종류: '은행 거래내역', 은행: '', 예금주: '', 계좌번호: '', 거래: [], 경고: [] };
@@ -30245,6 +30372,119 @@ function docTransferConfirmParse_(t) {
     + r.거래.map(function (g) { return '| ' + [g.날짜 + ' ' + g.시각, g.보낸이, g.받는이, won(g.금액), g.적요].map(function (v) { return String(v).replace(/\|/g, '/'); }).join(' | ') + ' |'; }).join('\n');
   return { type: 'banktx', label: '이체확인증', result: r, md: md };
 }
+// [2026.10.17 조사 보고 — 금융재산 계좌별 대조] 금융기관 이름을 한 가지로(서류마다 "NH농협·농협은행·농협", "남서울농협·지역농축협" 등으로 적힘)
+//  농협은행(중앙회)과 지역 농·축협은 다른 기관 — 안심상속 조회도 "농협"과 "지역농축협"을 따로 낸다
+function finOrg_(s) {
+  var t = String(s || '').replace(/\s+/g, '');
+  if (!t) return '';
+  if (/지역농축협|[가-힣]{2,}(?:농협|축협)(?!은행)/.test(t) && !/^(NH|엔에이치)?농협(은행)?$/.test(t)) return '지역농협';
+  var L = [[/NH|농협/, '농협은행'], [/KB|국민/, '국민'], [/신한/, '신한'], [/우리/, '우리'], [/하나/, '하나'], [/IBK|기업/, '기업'], [/새마을/, '새마을금고'], [/신협|신용협동/, '신협'], [/우체국|우정/, '우체국'], [/수협/, '수협'],
+    [/SC|제일/, 'SC제일'], [/씨티/, '씨티'], [/카카오/, '카카오뱅크'], [/케이뱅크/, '케이뱅크'], [/토스/, '토스뱅크'], [/부산/, '부산'], [/대구|iM/, '대구'], [/경남/, '경남'], [/광주/, '광주'], [/전북/, '전북'], [/제주/, '제주'], [/산림/, '산림조합'], [/저축은행/, '저축은행']];
+  for (var i = 0; i < L.length; i++) if (L[i][0].test(t)) return L[i][1];
+  return t.slice(0, 12);
+}
+// [2026.10.17 조사 보고 — 금융재산 계좌별 대조] 거래내역 증명서·거래내역 조회 출력물(새마을금고 "회원 거래계좌별 내역 증명서", 은행 "기간별(입·출금) 거래내역",
+//  "요구불계좌거래내역조회", "거래후잔액" 칸이 있는 거래내역) — 예전엔 예금주 칸이 없어 종류 없음으로 버려졌다(김창호 새마을금고).
+//  거래 줄마다 거래금액·거래 뒤 잔액을 읽되, 글자인식이 칸을 섞으므로 "앞 줄 잔액 ± 이 줄 금액 = 이 줄 잔액"으로 검산된 잔액만 쓴다(숫자를 지어내지 않음).
+//  상속에서는 개시일 직전 줄의 잔액이 그 계좌의 개시일 잔액(조회기간이 개시일을 지나는 서류만 — finHistBalanceAt_)
+function docAcctHistoryParse_(t) {
+  var head = t.slice(0, 700);
+  if (!/거\s*래\s*계\s*좌\s*별\s*내\s*역|기\s*간\s*별\s*\(?\s*입\s*[·ㆍ.]?\s*출\s*금\s*\)?\s*거\s*래\s*내\s*역|요\s*구\s*불\s*계\s*좌\s*거\s*래\s*내\s*역|거\s*래\s*내\s*역\s*(?:조\s*회|증\s*명|확\s*인)|거\s*래\s*후\s*잔\s*액|남\s*은\s*금\s*액/.test(head)) return null;
+  var ymd = function (y, mo, d) { return y + '-' + ('0' + mo).slice(-2) + '-' + ('0' + d).slice(-2); };
+  var r = { 종류: '거래내역(잔액 포함)', 은행: '', 기관: '', 예금주: '', 계좌번호: '', 거래: [], 경고: [], 거래내역서: true };
+  var m = /(새마을\s*금고|신\s*협|신용협동조합|[가-힣]{2,6}농협|농협|우체국|수협|(?:신한|국민|KB국민|우리|하나|기업|IBK기업|SC제일|씨티|카카오|케이|토스|부산|대구|경남|광주|전북|제주)\s*(?:은행|뱅크)?)/.exec(t);
+  if (m) { r.은행 = m[1].replace(/\s+/g, ''); r.기관 = finOrg_(r.은행); }
+  m = /계\s*좌\s*번\s*호\s*[:：]?\s*\[?\s*\n?\s*([\d*]{2,6}(?:-[\d*]{1,8}){1,4})/.exec(t) || /([\d]{3,6}-[\d*]{2,8}-[\d*]{2,8}(?:-\d{1,4})?)/.exec(head);
+  if (m) r.계좌번호 = m[1];
+  m = /(?:고\s*객\s*명|예\s*금\s*주)\s*[:：]?\s*\n?\s*\[?\s*([가-힣]{2,5})/.exec(t) || /\]\s*\[\s*([가-힣]{2,5})\s*\]/.exec(head) || /(?:^|\n)\s*([가-힣]{2,4})\s*귀\s*하/.exec(head);
+  if (m) r.예금주 = m[1];
+  // 조회기간 — "2015년 02월 16일부터 2025 년 02월 16일까지", "조회기간: 2016/01/19 — 2026/01/19", "[20131118] ~ [20250218]", "2015-11-02 ~ 2026-01-15"
+  var D = '((?:19|20)\\d{2})\\s*[-./년]\\s*(\\d{1,2})\\s*[-./월]\\s*(\\d{1,2})\\s*일?|\\[?\\s*((?:19|20)\\d{2})(\\d{2})(\\d{2})\\s*\\]?';
+  m = new RegExp('(?:' + D + ')\\s*(?:부\\s*터|~|∼|—|–|-)\\s*\\n?\\s*(?:' + D + ')').exec(t.slice(0, 1500));
+  if (m) { r.기간시작 = m[1] ? ymd(m[1], m[2], m[3]) : ymd(m[4], m[5], m[6]); r.기간끝 = m[7] ? ymd(m[7], m[8], m[9]) : ymd(m[10], m[11], m[12]); }
+  m = /발\s*급\s*일\s*현\s*재\s*잔\s*액\s*\n?\s*([\d,]+)/.exec(t); if (m) r.발급일잔액 = Number(m[1].replace(/,/g, ''));
+  // 거래 줄 — 날짜로 시작하는 덩어리. 조회기간·발급일·신규일 같은 머리 날짜는 뺀다
+  var re = /((?:19|20)\d{2})[-./](\d{2})[-./](\d{2})/g, x, rows = [];
+  while ((x = re.exec(t))) {
+    var before = t.slice(Math.max(0, x.index - 16), x.index), after = t.slice(re.lastIndex, re.lastIndex + 6);
+    if (/(조\s*회|기\s*간|일\s*자\s*[:：]|일\s*시|발\s*급|발\s*행|출\s*력|신\s*규\s*일|만\s*기\s*일|해\s*지\s*일|현\s*재|[~∼—–]\s*\[?)\s*\n?\s*$/.test(before) || /^\s*\]?\s*(?:~|∼|—|–|부\s*터|까\s*지)/.test(after)) continue;
+    var dd = ymd(x[1], x[2], x[3]);
+    if (r.기간끝 && dd > r.기간끝) continue; // 조회기간 뒤 날짜는 발급·출력 일시(쪽 머리) — 거래 줄이 아님
+    rows.push({ at: x.index, end: re.lastIndex, d: dd });
+  }
+  rows.forEach(function (row, i) {
+    var seg = t.slice(row.end, i + 1 < rows.length ? rows[i + 1].at : Math.min(t.length, row.end + 300));
+    var clean = seg.replace(/\d{1,2}:\d{2}(?::\d{2})?/g, ' ').replace(/[\d*]+(?:-[\d*]+){1,}/g, ' ');
+    var nums = clean.split(/[^\d,]+/).filter(function (w) { return /^\d{1,3}(?:,\d{3})+$|^\d{1,10}$/.test(w); }).map(function (w) { return Number(w.replace(/,/g, '')); });
+    var seen = {}; row.nums = nums.filter(function (v) { if (seen[v]) return false; seen[v] = 1; return true; }).slice(0, 14);
+    row.memo = (seg.match(/[가-힣][가-힣()·:]{1,20}/g) || []).slice(0, 3).join(' ');
+  });
+  if (rows.length < 2) return null;
+  // 시간 순서로(최근 일자부터 적힌 서류는 뒤집는다)
+  if (rows[0].d > rows[rows.length - 1].d) rows.reverse();
+  // 검산 사슬 — L[k][b] = 잔액 b로 끝나는, 앞 줄과 "잔액 차이 = 이 줄 금액"으로 이어진 가장 긴 사슬 길이
+  var L = rows.map(function () { return {}; });
+  rows.forEach(function (row, k) {
+    if (!k) return;
+    var prev = rows[k - 1];
+    row.nums.forEach(function (b) {
+      prev.nums.forEach(function (p) {
+        var a = Math.abs(b - p);
+        if (!a || row.nums.indexOf(a) === -1 || (a === b && p === 0 && !(L[k - 1][0] >= 1))) return;
+        var len = (L[k - 1][p] || 0) + 1;
+        if (!(L[k][b] >= len)) L[k][b] = len;
+      });
+    });
+  });
+  // 뒤에서부터 가장 긴 사슬을 따라 잔액을 정한다(사슬이 끊긴 곳(쪽 바뀜·흐린 줄)은 그 앞에서 새로 시작)
+  var bal = rows.map(function () { return null; }), k = rows.length - 1;
+  while (k > 0) {
+    var bestB = null, bestL = 0;
+    Object.keys(L[k]).forEach(function (b) { if (L[k][b] > bestL) { bestL = L[k][b]; bestB = Number(b); } });
+    if (bestB === null) { k--; continue; }
+    bal[k] = bestB;
+    while (k > 0 && bal[k] !== null) {
+      var cur = bal[k], need = L[k][cur] - 1, pick = null;
+      rows[k - 1].nums.forEach(function (p) { var a = Math.abs(cur - p); if (pick === null && a && rows[k].nums.indexOf(a) !== -1 && (L[k - 1][p] || 0) === need) pick = p; });
+      if (pick === null) break;
+      bal[k - 1] = pick; k--;
+      if (need === 0) break;
+    }
+    k--;
+  }
+  var ok = 0;
+  rows.forEach(function (row, i) {
+    var b = bal[i], p = i > 0 ? bal[i - 1] : null;
+    var amt = b !== null && p !== null ? Math.abs(b - p) : null;
+    if (b !== null) ok++;
+    r.거래.push({ 날짜: row.d, 내용: row.memo.split(' ')[0] || '', 금액: amt, 잔액: b, 적요: row.memo, 입금: amt !== null ? b > p : null, 검산: b !== null });
+  });
+  if (ok < 3) return null; // 검산되는 잔액이 거의 없으면 이 서식이 아님 — 다른 규칙에 넘긴다
+  r.검산줄 = ok;
+  // 검산 안 된 줄은 잔액을 비워 둘 뿐 값을 지어내지 않으므로 ⚠(확인 질문)가 아니라 참고 — 개시일 잔액은 finHistBalanceAt_가 그 앞뒤 줄이 검산될 때만 쓴다
+  r.참고 = ok < rows.length ? ['거래 ' + rows.length + '줄 중 ' + ok + '줄 잔액 검산됨(앞 잔액 ± 금액 = 잔액) — 나머지 줄은 글자인식이 흐려 잔액을 비움'] : [];
+  var last = r.거래.filter(function (g) { return g.잔액 !== null; }).slice(-1)[0];
+  if (last && r.발급일잔액 != null && last.잔액 !== r.발급일잔액) r.경고.push('마지막 거래 뒤 잔액(' + last.잔액.toLocaleString('ko-KR') + ')과 "발급일 현재 잔액"(' + r.발급일잔액.toLocaleString('ko-KR') + ')이 다름 — 원문 확인');
+  var won = function (n) { return n == null ? '' : Number(n).toLocaleString('ko-KR') + '원'; };
+  var md = '### 거래내역' + (r.은행 ? '(' + r.은행 + ')' : '') + '\n\n' + docMdTable_([['예금주', r.예금주], ['계좌번호', r.계좌번호], ['조회기간', r.기간시작 ? r.기간시작 + ' ~ ' + (r.기간끝 || '') : ''], ['발급일 현재 잔액', won(r.발급일잔액)], ['잔액 검산', ok + '/' + rows.length + '줄']])
+    + '\n\n| 날짜 | 내용 | 금액 | 잔액 |\n|---|---|---|---|\n' + r.거래.map(function (g) { return '| ' + [g.날짜, g.적요, g.금액 == null ? '' : (g.입금 ? '+' : '−') + won(g.금액), won(g.잔액)].map(function (v) { return String(v).replace(/\|/g, '/'); }).join(' | ') + ' |'; }).join('\n')
+    + (r.경고.length || r.참고.length ? '\n' : '') + r.참고.map(function (w) { return '\n- 참고: ' + w; }).join('') + r.경고.map(function (w) { return '\n- ⚠ ' + w; }).join('');
+  return { type: 'banktx', label: '거래내역(잔액 포함)', result: r, md: md };
+}
+// [2026.10.17] 거래내역의 기준일 현재 잔액 — 기준일 이전 마지막 검산된 줄의 잔액. 조회기간(또는 거래 줄)이 기준일을 지나야 그 뒤 거래가 없다고 볼 수 있다
+function finHistBalanceAt_(r, base) {
+  if (!r || !base || !Array.isArray(r.거래)) return null;
+  var g = r.거래.filter(function (x) { return x.잔액 !== null && x.잔액 !== undefined && x.날짜 && x.날짜 <= base; });
+  if (!g.length) return null;
+  var last = g[g.length - 1], idx = r.거래.indexOf(last);
+  // 마지막 검산 줄과 기준일 사이에 검산 안 된 거래 줄이 있으면 그 잔액이 기준일 잔액인지 모름
+  if (r.거래.slice(idx + 1).some(function (x) { return x.날짜 <= base && (x.잔액 === null || x.잔액 === undefined); })) return null;
+  // 기준일 뒤 거래 줄이 있거나, 조회기간이 기준일을 지나고 "발급일 현재 잔액"이 마지막 잔액과 같아야(여러 쪽 중 앞쪽만 찍은 사진은 뒤 거래가 빠졌을 수 있다)
+  var lastAll = r.거래.filter(function (x) { return x.잔액 !== null && x.잔액 !== undefined; }).slice(-1)[0];
+  var covers = r.거래.some(function (x) { return x.날짜 > base && x.잔액 !== null && x.잔액 !== undefined; }) || (r.기간끝 && r.기간끝 >= base && r.발급일잔액 != null && lastAll === last && r.발급일잔액 === last.잔액);
+  if (!covers) return null;
+  return { v: last.잔액, date: last.날짜, why: last.날짜 + ' 거래 뒤 잔액' + (r.기간끝 ? '(조회기간 ~' + r.기간끝 + ')' : '') };
+}
 // [2026.10.15] 통장 사본(거래하신 내용 — 맡기신 금액·찾으신 금액). 글자인식이 표를 섞어 거래 줄과 금액 칸을 짝짓지 못한다 →
 // 거래 줄은 날짜(YYMMDD, 앞에 줄번호가 붙음)·내용만, 금액은 문서에 나온 금액 목록으로 둔다. 쓰는 쪽은 "증여자 이름이 적힌 거래 줄"의 날짜와
 // "계약서 금액이 통장에 있음"을 함께 볼 때만 이체로 인정한다(금액을 지어내지 않음).
@@ -30257,9 +30497,23 @@ function docPassbookParse_(t) {
   while ((x = re.exec(t))) r.거래.push({ 날짜: '20' + x[2] + '-' + x[3] + '-' + x[4], 내용: [x[5] || '', x[6] || ''].join(' ').trim(), 금액: null, 잔액: null, 적요: '' });
   (t.match(/\d{1,3}(?:[.,]\d{3})+/g) || []).forEach(function (a) { var v = Number(a.replace(/[.,]/g, '')); if (v >= 1000 && r.금액목록.indexOf(v) === -1) r.금액목록.push(v); });
   if (!r.거래.length) return null;
+  // [2026.10.17 조사 보고] 통장 금액은 "*1,000,000"처럼 별표가 앞에 붙는다(금액 위변조 방지 표시) — 별표 금액을 적힌 순서대로 모으고,
+  //  "앞 잔액 ± 이 금액 = 다음 잔액"으로 이어지는 별표 금액을 잔액으로 본다(노영환 신한 통장: *13,366,600 → *12,366,600 → … 찾으신 *1,000,000씩).
+  //  거래 줄과 짝은 여전히 못 지으므로 잔액은 참고(마지막 잔액이 어느 날짜 것인지는 통장 마지막 거래일로만 안다)
+  var stars = (t.replace(/(\d)\.(\d{3})(?!\d)/g, '$1,$2').match(/[*＊]\s*\d{1,3}(?:,\d{3})+/g) || []).map(function (a) { return Number(a.replace(/[^\d]/g, '')); });
+  if (stars.length) {
+    r.별표금액 = stars;
+    var sset = {}; stars.forEach(function (v) { sset[v] = 1; });
+    var best = stars.map(function () { return 1; }), from = stars.map(function () { return -1; });
+    for (var j = 1; j < stars.length; j++) for (var i = Math.max(0, j - 12); i < j; i++) { var dv = Math.abs(stars[j] - stars[i]); if (dv && sset[dv] && dv !== stars[j] && best[i] + 1 > best[j]) { best[j] = best[i] + 1; from[j] = i; } }
+    var top = 0; best.forEach(function (v, i2) { if (v >= best[top]) top = i2; });
+    if (best[top] >= 3) { var ch = []; for (var q = top; q !== -1; q = from[q]) ch.unshift(stars[q]); r.잔액사슬 = ch; r.마지막잔액 = ch[ch.length - 1]; }
+    r.마지막거래일 = r.거래.map(function (g) { return g.날짜; }).sort().slice(-1)[0] || '';
+  }
   r.경고.push('통장 사본은 거래 줄과 금액 칸을 글자인식으로 짝짓지 못함 — 계약서 금액·증여자 이름이 함께 있을 때만 이체로 봄');
   var md = '### 통장 사본' + (r.은행 ? '(' + r.은행 + ')' : '') + '\n\n| 항목 | 내용 |\n|---|---|\n| 예금주 | ' + (r.예금주 || '') + ' |\n| 계좌번호 | ' + (r.계좌번호 || '') + ' |\n\n| 날짜 | 내용 |\n|---|---|\n'
-    + r.거래.map(function (g) { return '| ' + g.날짜 + ' | ' + String(g.내용).replace(/\|/g, '/') + ' |'; }).join('\n') + '\n\n- 참고: ' + r.경고[0];
+    + r.거래.map(function (g) { return '| ' + g.날짜 + ' | ' + String(g.내용).replace(/\|/g, '/') + ' |'; }).join('\n') + '\n\n- 참고: ' + r.경고[0]
+    + (r.잔액사슬 ? '\n- 잔액(별표 금액끼리 앞 잔액 ± 금액 = 다음 잔액으로 이어진 것): ' + r.잔액사슬.map(function (v) { return v.toLocaleString('ko-KR'); }).join(' → ') + '원 — 마지막 거래일 ' + r.마지막거래일 : '');
   return { type: 'banktx', label: '통장 사본', result: r, md: md };
 }
 // =========================================================
@@ -32729,14 +32983,17 @@ var IH_KINDS_RE_ = /^(예\s*금|대\s*출|카\s*드(?:\s*금액)?|보\s*증|신\
 function ihParseQuery_(text) {
   var t = String(text || ''), r = { 종류: '상속인 조회결과', 행: [], 없음: [], 경고: [] };
   for (var i = 0; i < IH_ORGS_.length; i++) if (IH_ORGS_[i][0].test(t)) { r.기관 = IH_ORGS_[i][1]; break; }
-  if (/알림톡|kakao/i.test(t)) { r.접수안내 = true; r.경고.push('조회 "결과"가 아니라 접수·처리 안내(알림톡) 화면 — 결과 문서를 받으면 다시 정리'); }
-  var m = /(?:생년월일|주민등록번호)\s*[:：]?\s*\n?\s*(\d{6})/.exec(t); if (m) r.대상생년6 = m[1];
+  // [2026.10.17 조사 보고] 조회 "결과" 문서 본문의 안내문("…알림톡 또는 문자메시지 등을 통하여 확인")에도 알림톡 낱말이 있다 — 결과 문구가 있으면 접수 안내 화면이 아님(노영환 04 금융자산 조회서)
+  if (/알림톡|kakao/i.test(t) && !/조\s*회\s*결\s*과|조회\s*된\s*정\s*보|의뢰\s*조회\s*결과/.test(t)) { r.접수안내 = true; r.경고.push('조회 "결과"가 아니라 접수·처리 안내(알림톡) 화면 — 결과 문서를 받으면 다시 정리'); }
+  var m = /피\s*상\s*속\s*인\s*(?:성\s*명)?\s*[:：]\s*([가-힣]{2,5})/.exec(t) || /조회\s*대상자[\s\S]{0,60}?성\s*명\s*\n(?:[^\n]*\n){0,3}?\s*([가-힣]{2,5})\s*\n/.exec(t); if (m) r.대상이름 = m[1];
+  m = /조\s*사\s*기\s*준\s*일\s*\n?\s*((?:19|20)\d{2}-\d{2}-\d{2})/.exec(t); if (m) r.조사기준일 = m[1];
+  m = /(?:생년월일|주민등록번호)\s*[:：]?\s*\n?\s*(\d{6})(?!\d)/.exec(t) || /주민등록번호[\s\S]{0,80}?(\d{6})\s*-\s*[\d*]/.exec(t); if (m) r.대상생년6 = m[1];
   m = /접수\s*(?:일자|일)\s*[:：]?\s*\n?\s*((?:19|20)\d{2}[-.]\d{2}[-.]\d{2}|(?:19|20)\d{6})/.exec(t);
   if (m) r.접수일 = m[1].length === 8 ? ihYmd_(m[1].slice(0, 4), m[1].slice(4, 6), m[1].slice(6)) : ihDate_(m[1]);
   m = /접수\s*번호\s*[:：]?\s*\n?\s*([\d-]{8,20})/.exec(t); if (m) r.접수번호 = m[1];
   m = /총\s*(\d+)\s*건/.exec(t); if (m) r.총건수 = Number(m[1]);
   // 거래 없음 문구
-  var none = t.match(/(조회된\s*(?:데이터|내역)\s*가?\s*없습니다|조회된내역이없습니다|계좌\s*없음|잔액\s*없음|해당\s*사항\s*없음)/g);
+  var none = t.match(/(조회된\s*(?:데이터|내역)\s*가?\s*없습니다|조회된내역이없습니다|계좌\s*없음|잔액\s*없음|해당\s*사항\s*없음|존재하지\s*않습니다|가입\s*사항이\s*없습니다)/g);
   if (none) r.없음 = none.map(function (x) { return x.replace(/\s+/g, ''); });
   // 은행연합회형 표: 기관 / 거래종류 / 점포 / 금액 / 상환일 / 대표번호 — 거래종류 줄을 닻으로 삼는다
   var L = t.split('\n').map(function (x) { return x.replace(/[\s　]+/g, ' ').trim(); }).filter(function (x) { return x; });
@@ -32886,6 +33143,10 @@ function ihParseDebt_(text) {
   m = /([가-힣]{2,10}(?:은행|농협|수협|신협|금고|저축은행|캐피탈|카드|보험))(?:\s*귀하|\s+[가-힣]{0,6}지점)/.exec(t) || /발급\s*점\s*[:：]\s*([가-힣]{2,12})/.exec(t);
   if (m) r.기관 = m[1];
   m = /(?:채무자|주민\(?(?:법인|사업자)?\)?\s*번호)[^\n]{0,20}?(\d{6})\s*-/.exec(t); if (m) r.채무자생년6 = m[1];
+  // [2026.10.17 조사 보고] 채무자 이름·생년 — 피상속인 채무인지 가르려고(노영환: 부채증명원 채무자 구순애 540820, 피상속인 조용녀 291121 — 피상속인은 담보만 제공)
+  m = /채\s*무\s*자\s*명?\s*\n?(?:\s*(?:주\s*소|성\s*명)\s*\n)?\s*([가-힣]{2,5})\s*\n/.exec(t) || /고\s*객\s*명\s*[:：]\s*([가-힣]{2,5})/.exec(t) || /(?:^|\n)\s*([가-힣]{2,4})\s*귀\s*하/.exec(t);
+  if (m && !/^(주소|성명|실명|용도)|(은행|농협|수협|신협|금고|조합)$/.test(m[1])) r.채무자 = m[1];
+  if (!r.채무자생년6) { m = /(?:실\s*명\s*번\s*호|주민\s*\(?\s*(?:법인|사업자)?\s*\)?\s*번\s*호)\s*[:：]?\s*\n?\s*(\d{6})\s*-/.exec(t); if (m) r.채무자생년6 = m[1]; }
   // 계좌별 — 대출과목·대출일·대출금액·잔액·상환기일
   var tot = /대출\s*잔액\s*\n?\s*([\d,]{4,})/.exec(t); if (tot) r.총잔액 = ihNum_(tot[1]) * mulAt(tot.index);
   var blocks = t.split(/계\s*좌\s*번\s*호/).slice(1);
@@ -32904,6 +33165,9 @@ function ihParseDebt_(text) {
   if (!r.행.length) {
     var re = /([가-힣]{2,20}대출)[\s\S]{0,120}?((?:19|20)\d{2}-\d{2}-\d{2})?[\s\S]{0,80}?\n\s*([\d,]{3,})\s*\n\s*([\d,]{3,})(?:\s+((?:19|20)\d{2}-\d{2}-\d{2}))?/g, x2;
     while ((x2 = re.exec(t))) { var mu = mulAt(x2.index); r.행.push({ 과목: x2[1], 대출일: x2[2] || '', 한도: ihNum_(x2[3]) * mu, 잔액: ihNum_(x2[4]) * mu, 상환기일: x2[5] || '', 행확인필요: true }); }
+    // [2026.10.17] 팩스 묶음은 같은 대출이 여러 쪽에 다시 나온다 — 같은 잔액 행은 한 번만(노영환: 450,000,000원이 세 번 읽혀 행 합계가 18억)
+    var nRow = r.행.length; r.행 = r.행.filter(function (x, i, a) { return !a.slice(0, i).some(function (y) { return y.잔액 === x.잔액; }); });
+    if (r.행.length < nRow) r.경고.push('같은 잔액의 대출 행이 여러 쪽에 나옴 — 한 번만 셈(같은 대출이 서식마다 다른 금액으로 적혔으면 원문 확인)');
   }
   var sum = r.행.reduce(function (s, x) { return s + (x.잔액 || 0); }, 0);
   if (r.행.length) {
@@ -32952,7 +33216,7 @@ function ihToMarkdown_(type, r) {
     out.push(kv([['등록번호', r.등록번호], ['차종', r.차종], ['차명', r.차명], ['모델연도', r.모델연도], ['차대번호', r.차대번호], ['최초등록일', r.최초등록일], ['용도', r.용도], ['출고가격(부가세 제외)', won(r.출고가격)], ['소유자 생년', r.소유자생년6], ['저당권', r.저당권]]));
   } else if (type === 'debtcert') {
     out.push('### ' + r.종류 + (r.기관 ? ' · ' + r.기관 : ''));
-    out.push(kv([['기준일', r.기준일], ['발행일', r.발행일], ['채무자 생년', r.채무자생년6], ['총 대출잔액', won(r.총잔액)], ['검산', r.검산]]));
+    out.push(kv([['기준일', r.기준일], ['발행일', r.발행일], ['채무자', r.채무자], ['채무자 생년', r.채무자생년6], ['총 대출잔액', won(r.총잔액)], ['검산', r.검산]]));
     if (r.행.length) {
       out.push('\n| 계좌 | 과목 | 대출일 | 대출금액 | 잔액 | 상환기일 | 담보 |\n|---|---|---|---|---|---|---|');
       r.행.forEach(function (x) { out.push('| ' + [x.계좌, x.과목, x.대출일, won(x.대출금액 || x.한도), won(x.잔액) + (x.행확인필요 ? ' ⚠' : ''), x.상환기일, x.담보].map(esc).join(' | ') + ' |'); });
