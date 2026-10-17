@@ -26627,10 +26627,213 @@ function caseProcMemoCands_(c, res) {
 //  국외자산 원화 환산: 양도가액은 양도대금 받은 날, 취득가액은 취득대금 지급일의 기준환율(소득세법 시행령 §178의5①).
 // =========================================================
 function caseProcUsd_(s) { const m = /\$?\s*(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+\.\d{2})/.exec(String(s || '')); return m ? Number(m[1].replace(/,/g, '')) : 0; }
-function caseProcKrDate_(s) { const m = /((?:19|20)\d{2})\s*[년.\-]\s*(\d{1,2})\s*[월.\-]\s*(\d{1,2})/.exec(String(s || '')); return m ? m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2) : ''; }
+// [2026.10.17 묶음10 국외 원문] 미국식 날짜도 읽는다 — 번역본 표의 "07/18/2012"를 못 읽고 본문 앞 안분 기간 "2012.7.1"을 매수 종결일로 집던 것(박길서)
+function caseProcKrDate_(s) { const m = /((?:19|20)\d{2})\s*[년.\-]\s*(\d{1,2})\s*[월.\-]\s*(\d{1,2})/.exec(String(s || '')); return m ? m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2) : ovUsDate_(s); }
+// 미국식 날짜 → YYYY-MM-DD: "07/18/2012"·"7/6/2026"·"07/15/15"(등록일 두 자리 연도)·"07-06-2026"·"May 6, 2026"·"JULY 07, 2015". 없으면 ''
+function ovUsDate_(s) {
+  s = String(s || '');
+  const ymd = function (y, mo, d) { y = Number(y); if (y < 100) y += y <= 50 ? 2000 : 1900; mo = Number(mo); d = Number(d); if (!(mo >= 1 && mo <= 12 && d >= 1 && d <= 31)) return ''; return y + '-' + ('0' + mo).slice(-2) + '-' + ('0' + d).slice(-2); };
+  const MON = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+  const a = /\b(\d{1,2})[\/\-](\d{1,2})[\/\-]((?:19|20)\d{2}|\d{2})\b/.exec(s);
+  const b = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2}),?\s+((?:19|20)\d{2})\b/i.exec(s);
+  if (a && (!b || a.index <= b.index)) return ymd(a[3], a[1], a[2]);
+  if (b) return ymd(b[3], MON[b[1].slice(0, 3).toLowerCase()], b[2]);
+  return '';
+}
+// 문자열 안의 미국식 날짜 전부(나온 순서대로, YYYY-MM-DD)
+function ovUsDates_(s) {
+  const re = /\b\d{1,2}[\/\-]\d{1,2}[\/\-](?:(?:19|20)\d{2}|\d{2})\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+(?:19|20)\d{2}\b/gi, out = []; let m;
+  while ((m = re.exec(String(s || '')))) { const d = ovUsDate_(m[0]); if (d) out.push(d); }
+  return out;
+}
+// =========================================================
+// [2026.10.17 묶음10 국외 원문] 영문 국외부동산 서류 원문(OCR 글자)을 직접 정리한다 — 예전엔 번역본 .md가 있어야만 읽었다(원문만 있으면 0).
+//  매도·매수 정산서(Settlement/Closing Statement)는 거래 한 줄씩(매매대금·대출 상환·안분·중개·권원·이전세·에스크로…) 쪼개고 "매매대금 − 순수령액 = 차감 합" 검산,
+//  증여증서(Grant Deed)는 등록일(Recorded)·서명일·양도인·양수인·공유 형태, 미국 세금 납부확인서(IRS Direct Pay·FTB Web Pay)는 금액·납부일·확인번호·납부자,
+//  감정평가서(URAR)는 감정가·기준일. 한글이 많은 글자(번역본 PDF)는 여기서 읽지 않는다(번역본은 .md로 따로 읽어 원문과 대조).
+// =========================================================
+function docOverseasParse_(text) {
+  const t = String(text || ''), head = t.slice(0, 2500);
+  const hn = (t.match(/[가-힣]/g) || []).length, ln = (t.match(/[A-Za-z]/g) || []).length;
+  if (hn > 40 && hn > ln * 0.15) return null;
+  let r = null;
+  if (/SETTLEMENT\s+STATEMENT|CLOSING\s+STATEMENT|BUYER\s*\/\s*BORROWER\s+STATEMENT|SELLER'?S\s+(?:FINAL\s+)?STATEMENT/i.test(head) && /DEBITS|CREDITS|ESCROW/i.test(t)) r = ovParseSettlement_(t);
+  else if (/\b(?:GRANT|QUITCLAIM|WARRANTY|GIFT)\s+DEED\b/i.test(head) && /RECORD/i.test(head)) r = ovParseDeed_(t);
+  else if (/Direct\s*Pay|EFTPS|Franchise\s+Tax\s+Board|ftb\.ca\.gov/i.test(t) && /Payment|Estimated\s+Tax|Withholding/i.test(t)) r = ovParseTaxPay_(t);
+  else if (/Uniform\s+Residential\s+Appraisal|APPRAISAL\s+REPORT/i.test(t) && /market\s+value|appraised\s+value|opinion\s+of\s+value/i.test(t)) r = ovParseAppraisal_(t);
+  if (!r) return null;
+  return { type: 'overseas', label: r.종류, result: r, md: ovToMarkdown_(r) };
+}
+// 금액 문자열 → 숫자(부호·$·쉼표 처리). "(1,350.00)"은 음수
+function ovNum_(s) { s = String(s || '').trim(); const neg = /^-|^\(.*\)$/.test(s); const n = Number(s.replace(/[^\d.]/g, '')); return n ? (neg ? -n : n) : 0; }
+const OV_AMT_RE_ = /\(?-?\$?\s*\d{1,3}(?:,\d{3})*\.\d{2}\)?/g;
+// 정산서 구획 머리(이 줄 아래 항목들의 성격) — 세무상 쓰임: sure = 양도비(취득비) 후보로 미리 체크, judge = 판단(체크 안 함), no = 비용 아님
+const OV_SECTIONS_ = [
+  [/^FINANCIAL\s+CONSIDERATION/i, 'price', 'no', '매매대금'],
+  [/^PAYOFF\s+CHARGES/i, 'payoff', 'no', '대출 상환'],
+  [/^PRORATIONS?\s*\/?\s*ADJUSTMENTS?/i, 'proration', 'no', '안분·조정'],
+  [/^COMMISSION\s+CHARGES/i, 'commission', 'sure', '중개수수료'],
+  [/^H\.?\s*O\.?\s*A\.?\s*\/\s*MANAGEMENT/i, 'hoa', 'sure', '관리단 명의이전'],
+  [/^OTHER\s+DEBITS\s*\/\s*CREDITS/i, 'other', 'judge', '그 밖의 비용'],
+  [/^TITLE\s*\/\s*TAXES\s*\/\s*RECORDING|^TITLE\s+CHARGES/i, 'title', 'sure', '권원보험·이전세·등록'],
+  [/^ESCROW\s+CHARGES/i, 'escrow', 'sure', '에스크로 수수료'],
+  [/^LENDER\s+CHARGES|^NEW\s+LOAN/i, 'lender', 'no', '대출(새 융자) 비용'],
+  [/^ADDITIONAL\s+DISBURSEMENTS/i, 'other', 'judge', '그 밖의 지급']
+];
+function ovParseSettlement_(t) {
+  const buy = /BUYER\s*\/\s*BORROWER|BUYER'?S\s+(?:FINAL\s+)?(?:SETTLEMENT\s+)?STATEMENT/i.test(t.slice(0, 2500)) && !/SELLER'?S\s+(?:FINAL\s+)?(?:SETTLEMENT\s+)?STATEMENT/i.test(t.slice(0, 2500));
+  const r = { 종류: buy ? '미국 매수인 정산서(Buyer Statement)' : '미국 매도인 정산서(Seller Settlement Statement)', kind: buy ? 'buy' : 'sale', 통화: 'USD', 경고: [] };
+  const lines = t.split(/\n/).map(function (l) { return l.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
+  const isSec = function (l) { for (let i = 0; i < OV_SECTIONS_.length; i++) if (OV_SECTIONS_[i][0].test(l)) return OV_SECTIONS_[i]; return null; };
+  const isPriceLbl = function (l) { return /^(?:Total\s+Consideration|TOTAL\s+CONSIDERATION|Sales?\s+Price|Contract\s+Sales?\s+Price)\b/i.test(l); };
+  let start = lines.findIndex(function (l) { return isSec(l) || isPriceLbl(l); });
+  if (start === -1) start = lines.length;
+  // ── 머리(거래 정보): 부동산·매도인/매수인·에스크로 번호·작성일/종결일
+  const hd = lines.slice(0, start).join('\n');
+  const esc = /\b(\d{5,}-[A-Z]{1,4})\b/.exec(hd); if (esc) r.에스크로번호 = esc[1];
+  const lbls = [], lre = /(Closing\s+Date|Date)\s*:/gi; let lm; while ((lm = lre.exec(hd))) lbls.push(/closing/i.test(lm[1]) ? 'closing' : 'date');
+  const dts = ovUsDates_(hd);
+  if (dts.length && lbls.length === dts.length) lbls.forEach(function (k, i) { if (k === 'closing') r.종결일 = dts[i]; else r.작성일 = dts[i]; });
+  else if (dts.length) { r.종결일 = dts[dts.length - 1]; if (dts.length > 1) r.경고.push('머리의 날짜(' + dts.join(', ') + ') 중 어느 것이 종결일인지 칸 이름과 짝이 안 맞아 마지막 날짜를 종결일로 봄 — 원문 확인'); }
+  const pl = lines.slice(0, start).findIndex(function (l) { return /^PROPERTY\s*:/i.test(l); });
+  let loc = pl !== -1 ? lines[pl].replace(/^PROPERTY\s*:\s*/i, '') : '';
+  if (loc && !/,\s*[A-Z]{2}\s+\d{5}/.test(loc)) { const cl = lines.slice(pl + 1, start).filter(function (l) { return /^[A-Za-z .]+,\s*[A-Z]{2}\s+\d{5}/.test(l); })[0]; if (cl) loc += ' ' + cl; }
+  if (!loc) { const a2 = /\d+\s+[A-Za-z .]+,\s*[A-Za-z .]+,\s*[A-Z]{2}\s+\d{5}/.exec(hd); if (a2) loc = a2[0]; }
+  r.부동산 = loc.trim();
+  const who = function (re) { const i = lines.slice(0, start).findIndex(function (l) { return re.test(l); }); if (i === -1) return ''; const rest = lines[i].replace(re, '').replace(/^\s*:\s*/, '').trim(); if (rest && !/:\s*$/.test(rest)) return rest; const nx = lines[i + 1] || ''; return /:\s*$|^\d|^(?:Property|Seller|Buyer)/i.test(nx) ? '' : nx; };
+  r.매도인 = who(/^SELLER\s*:/i); r.매수인 = who(/^Buyer\s*\/\s*Borrower\s*:|^BUYER\s*:/i);
+  // ── 항목: 이름표 줄과 금액 줄을 따로 모아 나온 순서대로 짝짓는다(OCR이 표의 왼쪽 칸 이름표를 먼저, 오른쪽 금액 칸을 나중에 내보냄)
+  const labels = [], amts = [], paired = [];
+  let sec = null, secLine = -9;
+  for (let i = start; i < lines.length; i++) {
+    let l = lines[i];
+    const s = isSec(l);
+    if (s) { sec = s; secLine = i; if (s[1] === 'payoff') { const tp = /Total\s+Payoff\s*\$?\s*([\d,]+\.\d{2})/i.exec(l + ' ' + (lines[i + 1] || '')); if (tp) r.대출상환합계 = ovNum_(tp[1]); } continue; }
+    if (/^\[\s*Total\s+Payoff/i.test(l)) { const tp = /([\d,]+\.\d{2})/.exec(l); if (tp) r.대출상환합계 = ovNum_(tp[1]); continue; }
+    if (/^(?:DEBITS|CREDITS|DEBITS\s+CREDITS|DESCRIPTION)$/i.test(l)) continue;
+    if (i === secLine + 1 && /^(?:COMPANY|INC\.?|LLC\.?|CORP\.?|CO\.)$/i.test(l)) continue; // 구획 머리가 두 줄로 끊긴 것("… CHICAGO TITLE / COMPANY")
+    const noAmt = l.replace(OV_AMT_RE_, '').replace(/[\s$]/g, '');
+    if (!noAmt) { (l.match(OV_AMT_RE_) || []).forEach(function (a) { amts.push(ovNum_(a)); }); continue; }
+    if (/^(?:THIS\s+IS\s+A\s+FINAL|TOTALS?\s*(?:$|[\d$(\-]))/i.test(l)) { if (/^TOTALS?\b/i.test(l)) { const tt = l.match(OV_AMT_RE_); if (tt) r.합계 = ovNum_(tt[0]); } continue; }
+    // 날짜만 있는 줄 = 앞 이름표의 기간 끝("… from 04/01/2026 to" / "05/06/2026")
+    if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(l) && labels.length) { labels[labels.length - 1].label += ' ' + l; continue; }
+    // 한 줄에 이름표 두 개가 붙은 것("HOA at … 06/01/2026 Seller Credit to Buyer")
+    const parts = l.split(/\s+(?=(?:Seller|Buyer)'?s?\s+[Cc]redit\b)/);
+    parts.forEach(function (p) {
+      const tail = /^(.*?[A-Za-z)].*?)\s+(-?\$?\s*\d{1,3}(?:,\d{3})*\.\d{2}|\(\$?\s*\d{1,3}(?:,\d{3})*\.\d{2}\))$/.exec(p); // 이름표 뒤에 금액이 같은 줄로 붙은 것
+      const cls = /Withholding|FTB\s*593|FIRPTA|Form\s*593/i.test(p) ? 'withholding' : /Net\s+Proceeds|BALANCE\s+DUE|Cash\s+(?:to|from)\s+(?:Seller|Buyer|Borrower)/i.test(p) ? 'net' : isPriceLbl(p) ? 'price' : /Earnest\s+Money|Deposit/i.test(p) ? 'deposit' : sec ? sec[1] : 'other';
+      // 매수인에게 준 크레딧(Seller Credit to Buyer)은 대출·안분이 아니라 실질 매매대금 할인일 수 있어 판단으로
+      const it = { label: p.replace(/^Title\s*-\s*/i, '').trim(), cls: cls, use: cls === 'withholding' ? 'tax' : /Seller'?s?\s+Credit\s+to\s+Buyer/i.test(p) ? 'judge' : sec && cls === sec[1] ? sec[2] : (cls === 'other' ? 'judge' : 'no') };
+      if (tail && !/\/(?:day|month|monthly)|\bper\b|@|for\s+[\d,]+\.\d{2}/i.test(tail[1].slice(-12))) { it.label = tail[1].replace(/^Title\s*-\s*/i, '').trim(); it.usd = ovNum_(tail[2]); paired.push(it); }
+      else labels.push(it);
+    });
+  }
+  // 짝짓기 — 이름표 수와 금액 수가 같을 때만(다르면 어느 금액이 어느 항목인지 모름 → 항목은 비우고 경고)
+  let items = null;
+  if (labels.length && labels.length === amts.length) {
+    items = labels.map(function (x, i) { return Object.assign({}, x, { usd: amts[i] }); }).concat(paired);
+    // 사진 OCR은 같은 구획 안에서 이름표·금액 순서가 엇갈릴 수 있다(박길서 사진: "Courtesy Discount"에 35, 다른 수수료에 −1,350) — 음수 금액은 할인·크레딧 이름표로 옮긴다(구획 합계는 그대로)
+    items.forEach(function (x) {
+      if (!(x.usd < 0) || /Discount|Credit|Refund/i.test(x.label)) return;
+      const d = items.filter(function (y) { return y.cls === x.cls && y.usd > 0 && /Discount|Credit|Refund/i.test(y.label); })[0];
+      if (d) { const v = d.usd; d.usd = x.usd; x.usd = v; r.경고.push('같은 구획(' + x.cls + ') 안에서 이름표·금액 순서가 엇갈려 음수 금액을 "' + d.label + '"로 옮김 — 구획 합계는 확실, 개별 짝은 원문 확인'); }
+    });
+  }
+  else if (paired.length && !labels.length) items = paired;
+  else r.경고.push('이름표 ' + labels.length + '개와 금액 ' + amts.length + '개의 수가 달라 항목별로 짝짓지 못함 — 매매대금·순수령액만 읽음(원문·번역본 확인)');
+  const firstAfter = function (re) { const i = lines.findIndex(function (l) { return re.test(l); }); if (i === -1) return 0; for (let j = i; j < Math.min(lines.length, i + 8); j++) { if (/^\[|Payoff|\/day|\/month|\bper\b|@/i.test(lines[j])) continue; const m = lines[j].replace(/for\s+[\d,]+\.\d{2}/ig, '').match(OV_AMT_RE_); if (m && (j > i ? !lines[j].replace(OV_AMT_RE_, '').replace(/[\s$]/g, '') : /\d\.\d{2}\s*$/.test(lines[j]))) return ovNum_(m[0]); } return 0; };
+  if (items) {
+    const p = items.filter(function (x) { return x.cls === 'price'; })[0], n = items.filter(function (x) { return x.cls === 'net'; }).slice(-1)[0];
+    r.매매대금 = p ? p.usd : firstAfter(/Total\s+Consideration|Sales?\s+Price/i);
+    if (n) r.순수령액 = n.usd;
+    r.항목 = items.filter(function (x) { return x.cls !== 'price' && x.cls !== 'net'; });
+  } else {
+    r.매매대금 = firstAfter(/Total\s+Consideration|Sales?\s+Price/i);
+    const ni = lines.map(function (l, i) { return /Net\s+Proceeds/i.test(l) ? i : -1; }).filter(function (i) { return i !== -1; }).pop();
+    if (ni != null) { const am = lines.slice(ni).join(' ').match(OV_AMT_RE_); if (am) r.순수령액 = ovNum_(am[am.length - 1]); }
+  }
+  // 검산(매도 정산서) — 매매대금 − 순수령액 = 차감 합. 안분·크레딧은 매도인 부담(−)인지 환급(+)인지 표에서 칸(차변·대변)이 안 보여 부호를 맞춰 본다
+  if (!buy && r.매매대금 && r.순수령액 && r.항목) {
+    const D = Math.round((r.매매대금 - r.순수령액) * 100);
+    const fixed = r.항목.filter(function (x) { return x.cls !== 'proration' && x.cls !== 'deposit'; }).reduce(function (s, x) { return s + Math.round(x.usd * 100); }, 0);
+    const pr = r.항목.filter(function (x) { return x.cls === 'proration'; });
+    let found = null;
+    if (pr.length <= 12) for (let mask = 0; mask < (1 << pr.length) && !found; mask++) { let s = fixed; pr.forEach(function (x, k) { s += (mask & (1 << k) ? -1 : 1) * Math.round(x.usd * 100); }); if (Math.abs(s - D) <= 1) found = mask; }
+    if (found !== null) { pr.forEach(function (x, k) { x.side = found & (1 << k) ? '매도인 환급(대변)' : '매도인 부담(차변)'; }); r.검산 = true; }
+    else { r.검산 = false; r.경고.push('검산 안 맞음: 매매대금 − 순수령액 = $' + (D / 100).toLocaleString('en-US') + ' ↔ 항목 차감 합이 다름 — 항목 짝이 틀렸거나 빠진 줄이 있음(원문 확인)'); }
+  }
+  return r;
+}
+function ovParseDeed_(t) {
+  const r = { 종류: '미국 부동산 증서(' + ((/\b(GRANT|QUITCLAIM|WARRANTY|GIFT)\s+DEED/i.exec(t) || [])[1] || '').toUpperCase() + ' DEED)', kind: 'deed', 경고: [] };
+  const rec = /(\d{1,2}:\d{2}\s*[ap]\.?m\.?)\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/i.exec(t) || /Recorded[^\n]{0,120}?(\d{1,2}\/\d{1,2}\/\d{2,4})/i.exec(t);
+  if (rec) r.등록일 = ovUsDate_(rec[2] || rec[1]);
+  const dn = /\b((?:19|20)\d{11})\b/.exec(t); if (dn) r.등록번호 = dn[1];
+  const dd = /Dated\s*:?\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4})/i.exec(t); if (dd) r.서명일 = ovUsDate_(dd[1]);
+  const g = /acknowledged,?\s*([\s\S]{2,160}?)\s+hereby\s+GRANT\(?s?\)?\s+to\s+([\s\S]{2,300}?)\s+the\s+following/i.exec(t);
+  if (g) {
+    r.양도인 = g[1].split(/,\s*(?:A|AN)\s+/i)[0].trim();
+    const nre = /([A-Z][A-Z.'-]*(?:\s+[A-Z][A-Z.'-]*){1,4}),\s*(?:A|AN)\s+(?:MARRIED|SINGLE|UNMARRIED|WIDOW)/g; let nm; r.양수인 = [];
+    while ((nm = nre.exec(g[2]))) r.양수인.push(nm[1].trim());
+    if (!r.양수인.length) r.양수인 = [g[2].replace(/\s+/g, ' ').slice(0, 80)];
+    const ten = /AS\s+(JOINT\s+TENANTS|TENANTS\s+IN\s+COMMON|COMMUNITY\s+PROPERTY)/i.exec(g[2]); if (ten) r.공유형태 = ten[1].toUpperCase().replace(/\s+/g, ' ');
+  }
+  r.무상 = /BONA\s+FIDE\s+GIFT|RECEIVED\s+NOTHING\s+IN\s+RETURN/i.test(t) || /Documentary\s+Transfer\s+Tax\s+is\s+\$?\s*\[?\s*NONE/i.test(t);
+  const ad = /COMMONLY\s+KNOWN\s+AS\s*:?\s*([^\n]{5,80})/i.exec(t); if (ad) r.부동산 = ad[1].replace(/["']/g, '').trim();
+  if (!r.등록일 && !r.서명일) r.경고.push('등록일·서명일을 읽지 못함');
+  return r;
+}
+function ovParseTaxPay_(t) {
+  const r = { 종류: '미국 세금 납부확인서', kind: 'tax', 경고: [] };
+  r.기관 = /Direct\s*Pay|EFTPS|\bIRS\b/i.test(t) && !/Franchise\s+Tax|ftb\.ca\.gov/i.test(t) ? '미국 연방(IRS)' : '캘리포니아주(FTB)';
+  r.구분 = /Withholding/i.test(t) ? '원천징수' : /Estimated\s+Tax/i.test(t) ? '예납(Estimated Tax)' : '';
+  const a1 = /Payment\s+Amount\s*:?\s*\$\s*([\d,]+\.\d{2})/i.exec(t), tri = /\$\s*([\d,]+\.\d{2})\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{6,})/.exec(t);
+  r.금액 = a1 ? ovNum_(a1[1]) : tri ? ovNum_(tri[1]) : 0;
+  const pd = /Payment\s+Date\s*:?\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{4})/i.exec(t);
+  r.납부일 = pd ? ovUsDate_(pd[1]) : tri ? ovUsDate_(tri[2]) : '';
+  const cf = /Confirmation\s+Number\s*:?\s*([\d][\d-]{5,})/i.exec(t); r.확인번호 = cf ? cf[1] : tri ? tri[3] : '';
+  const ty = /Tax\s+(?:Year|Period\s+for\s+Payment)[^\d]{0,30}((?:19|20)\d{2})/i.exec(t); if (ty) r.과세연도 = ty[1];
+  const sg = /Signed\s+in\s+as\s*:?\s*([A-Z][A-Za-z .]{2,40})/.exec(t) || /(?<!Bank\s)(?<!RDP'?s\s)\bName\s*\n\s*([A-Z][A-Z .]{2,40})\n/.exec(t);
+  if (sg) r.납부자 = sg[1].trim();
+  const sp = /Spouse\s*\/?\s*RDP'?s\s+Name\s*\n?\s*([A-Z][A-Z .]{2,40})/.exec(t); if (sp) r.배우자 = sp[1].trim();
+  if (!r.금액 && !r.납부자) return null;
+  if (!r.금액) r.경고.push('금액이 이 쪽에 없음(여러 쪽짜리 확인서의 한 쪽) — 같은 기관·연도의 다른 쪽과 합쳐 봄');
+  return r;
+}
+function ovParseAppraisal_(t) {
+  const r = { 종류: '미국 감정평가서(Appraisal Report)', kind: 'appraisal', 경고: [] };
+  // "In my opinion, the defined value of the property as of is: July 15, 2015 / $900,000"(OCR이 날짜를 "is:" 뒤로 보냄)
+  const v = /(?:market|defined)\s+value[\s\S]{0,300}?as\s+of[\s\S]{0,40}?(\d{1,2}\/\d{1,2}\/\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4})[\s\S]{0,120}?\$\s*([\d,]{5,})/i.exec(t)
+    || /appraised\s+value[^$]{0,120}\$\s*([\d,]{5,})/i.exec(t);
+  if (v) { if (v[2]) { r.기준일 = ovUsDate_(v[1]); r.감정가 = ovNum_(v[2]); } else r.감정가 = ovNum_(v[1]); }
+  if (!r.기준일) { const ef = /(?:effective\s+date|date\s+of\s+(?:value|appraisal))[^\d\n]{0,40}(\d{1,2}\/\d{1,2}\/\d{2,4})/i.exec(t); if (ef) r.기준일 = ovUsDate_(ef[1]); }
+  if (!r.감정가) return null;
+  // 작성(서명)일 — 기준일보다 한참 뒤면 소급감정(retrospective). 평가기간 밖에 만든 감정이 시가로 인정되는지는 판단이라 밝힌다
+  const sd = /Date\s+of\s+Signature[^\n]*\n\s*(\d{1,2}\/\d{1,2}\/\d{4})/i.exec(t); if (sd) r.서명일 = ovUsDate_(sd[1]);
+  if (/retrospective/i.test(t) || (r.서명일 && r.기준일 && r.서명일.slice(0, 4) - r.기준일.slice(0, 4) >= 1)) { r.소급감정 = true; r.경고.push('소급감정 — 기준일 ' + (r.기준일 || '?') + '의 가치를 ' + (r.서명일 || '나중') + '에 평가(' + (/desktop\s+appraisal/i.test(t) ? '현장 확인 없는 탁상감정, ' : '') + '평가기간 밖 감정을 시가로 쓸 수 있는지 판단 필요)'); }
+  return r;
+}
+function ovToMarkdown_(r) {
+  const u = function (v) { return '$' + Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+  const out = ['### ' + r.종류];
+  const kv = function (k, v) { if (v !== undefined && v !== null && v !== '') out.push('- ' + k + ': ' + v); };
+  if (r.kind === 'sale' || r.kind === 'buy') {
+    kv('부동산', r.부동산); kv('매도인', r.매도인); kv('매수인', r.매수인); kv('에스크로 번호', r.에스크로번호); kv('작성일', r.작성일); kv('종결일(Closing Date)', r.종결일);
+    kv('매매대금', r.매매대금 ? u(r.매매대금) : ''); kv('순수령액(Net Proceeds)', r.순수령액 ? u(r.순수령액) : ''); kv('대출 상환 합계', r.대출상환합계 ? u(r.대출상환합계) : '');
+    if (r.검산 !== undefined) kv('검산(매매대금 − 순수령액 = 항목 차감 합)', r.검산 ? '✓' : '⚠ 안 맞음');
+    if (r.항목 && r.항목.length) { out.push('', '| 구분 | 항목 | 금액 | 세무 쓰임 |', '|---|---|---|---|'); r.항목.forEach(function (x) { const sc = OV_SECTIONS_.filter(function (s) { return s[1] === x.cls; })[0]; out.push('| ' + (sc ? sc[3] : x.cls === 'withholding' ? '원천징수' : x.cls === 'deposit' ? '계약금' : '기타') + ' | ' + x.label + ' | ' + u(x.usd) + (x.side ? ' (' + x.side + ')' : '') + ' | ' + (x.use === 'sure' ? (r.kind === 'buy' ? '취득부대비용 후보' : '양도비 후보') : x.use === 'judge' ? '판단 필요' : x.use === 'tax' ? '외국납부세액 후보' : '비용 아님') + ' |'); }); }
+  } else if (r.kind === 'deed') {
+    kv('등록일(Recorded)', r.등록일); kv('등록번호', r.등록번호); kv('서명일(Dated)', r.서명일); kv('양도인(Grantor)', r.양도인); kv('양수인(Grantee)', (r.양수인 || []).join(', ')); kv('공유 형태', r.공유형태); kv('무상(증여) 표시', r.무상 ? '예' : ''); kv('부동산', r.부동산);
+  } else if (r.kind === 'tax') {
+    kv('기관', r.기관); kv('구분', r.구분); kv('금액', r.금액 ? u(r.금액) : ''); kv('납부일', r.납부일); kv('확인번호', r.확인번호); kv('과세연도', r.과세연도); kv('납부자', r.납부자); kv('배우자', r.배우자);
+  } else if (r.kind === 'appraisal') { kv('감정가', u(r.감정가)); kv('기준일', r.기준일); kv('작성(서명)일', r.서명일); }
+  (r.경고 || []).forEach(function (w) { out.push('⚠ ' + w); });
+  out.push('', '_달러 금액·날짜만 서류에서 읽었습니다. 원화 환산(기준환율)·지분·양도비 범위는 판단이라 처리개요에서 묻습니다._');
+  return out.join('\n');
+}
 function caseProcOverseasFacts_(c) {
   let memos = [];
-  try { memos = caseProcMemoTexts_(c).read.filter(function (m) { return m.text; }); } catch (e) { return null; }
+  try { memos = caseProcMemoTexts_(c).read.filter(function (m) { return m.text; }); } catch (e) { memos = []; } // 메모를 못 읽어도 영문 원문은 본다
   const out = { sale: null, buy: null, appraisal: null, deed: null, taxes: [] };
   memos.forEach(function (m) {
     const t = String(m.text), rows = t.split('\n').filter(function (l) { return /^\s*\|/.test(l); }).map(function (l) { return l.split('|').slice(1, -1).map(function (x) { return x.replace(/\*\*/g, '').trim(); }); });
@@ -26670,7 +26873,91 @@ function caseProcOverseasFacts_(c) {
       if (amt) out.taxes.push({ file: m.file, usd: amt, date: dt, payer: pm ? pm[1].trim().slice(0, 40) : '', who: /IRS|연방/i.test(t) ? '미국 연방(IRS)' : /FTB|Franchise|캘리포니아/i.test(t) ? '캘리포니아주(FTB)' : '외국' });
     }
   });
+  try { caseProcOverseasOrig_(c, out); } catch (e) {}
   return (out.sale || out.appraisal || out.deed || out.taxes.length) ? out : null;
+}
+// [2026.10.17 묶음10 국외 원문] 영문 원문 서류(docOverseasParse_로 정리된 OCR 글자)를 번역본에서 읽은 값과 대조해 같은 서류는 한 번만 쓴다 —
+//  번역본이 없으면 원문 값으로 채우고, 둘 다 있으면 금액·날짜를 맞춰 보고(다르면 밝힘) 번역본에 없는 것(증여 등기일·양수인·공유 형태·납부자 배우자)을 보탠다.
+//  같은 원문이 여러 벌(PDF·사진·쪽별 파일)이면 에스크로 번호·등록번호·확인번호로 묶는다.
+function caseProcOverseasOrig_(c, out) {
+  out.checks = out.checks || []; out.origFiles = out.origFiles || [];
+  let orig = [];
+  try { orig = caseProcParseAll_(c).filter(function (x) { return x.p.type === 'overseas' && x.p.result; }); } catch (e) { return; }
+  if (!orig.length) return;
+  const usd = function (v) { return '$' + Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 2 }); };
+  const same = function (a, b) { return Math.abs((Number(a) || 0) - (Number(b) || 0)) < 0.01; };
+  const names = function (xs) { return xs.map(function (x) { return x.f.name; }); };
+  const of = function (k) { return orig.filter(function (x) { return x.p.result.kind === k; }); };
+  const sureSum = function (exp) { return (exp || []).filter(function (x) { return x.sure; }).reduce(function (s, x) { return s + x.usd; }, 0); };
+  // 정산서(매도·매수) — 검산 맞는 것 → PDF(글자층 순서가 표 순서) → 항목 많은 것
+  ['sale', 'buy'].forEach(function (k) {
+    const docs = of(k); if (!docs.length) return;
+    const score = function (x) { const r = x.p.result; return (r.검산 ? 100 : 0) + (/pdf/.test(String(x.f.mimeType || '')) ? 10 : 0) + ((r.항목 || []).length ? 5 : 0) + (r.매매대금 ? 1 : 0); };
+    const best = docs.slice().sort(function (a, b) { return score(b) - score(a); })[0], r = best.p.result;
+    out.origFiles = out.origFiles.concat(names(docs));
+    const exp = (r.항목 || []).filter(function (x) { return x.use === 'sure' || x.use === 'judge'; }).map(function (x) { return { label: x.label, usd: x.usd, sure: x.use === 'sure' }; });
+    const o = { file: best.f.name, price: r.매매대금 || 0, date: r.종결일 || r.작성일 || '', loc: r.부동산 || '', sellers: r.매도인 || '', buyer: r.매수인 || '', escrow: r.에스크로번호 || '', exp: exp, discount: 0, net: r.순수령액 || 0, check: r.검산, orig: true,
+      taxes: (r.항목 || []).filter(function (x) { return x.use === 'tax'; }) };
+    const kn = k === 'sale' ? '매도' : '매수';
+    const cur = out[k];
+    if (!cur) {
+      out[k] = o;
+      out.checks.push(kn + ' 정산서 — 번역본 없음, 영문 원문(' + names(docs).join(', ') + ')으로 읽음: 매매대금 ' + usd(o.price) + (o.date ? ' · 종결일 ' + o.date : '') + (k === 'sale' && o.check !== undefined ? ' · 검산(매매대금 − 순수령액 = 항목 차감 합) ' + (o.check ? '✓' : '⚠ 안 맞음') : '') + (r.경고 && r.경고.length ? ' · ⚠ ' + r.경고.join(' / ') : ''));
+    } else {
+      const bits = [];
+      bits.push('매매대금 ' + (same(cur.price, o.price) ? '일치(' + usd(o.price) + ')' : '다름 — 원문 ' + usd(o.price) + ' ↔ 번역본 ' + usd(cur.price) + ' — 원문 확인'));
+      if (o.date && cur.date !== o.date) { bits.push('종결일 번역본 ' + (cur.date || '못 읽음') + ' → 원문 ' + o.date + '(원문 Closing Date로 고침)'); cur.date = o.date; }
+      else if (o.date) bits.push('종결일 일치(' + o.date + ')');
+      if (k === 'sale' && o.exp.length && cur.exp) { const a = sureSum(cur.exp) - (cur.discount || 0), b = sureSum(o.exp); bits.push('양도비 후보 합 ' + (same(a, b) ? '일치(' + usd(b) + ')' : '다름 — 번역본 ' + usd(a) + ' ↔ 원문 ' + usd(b))); }
+      if (k === 'sale' && o.check !== undefined) bits.push('원문 검산(매매대금 − 순수령액 = 항목 차감 합) ' + (o.check ? '✓' : '⚠ 안 맞음'));
+      out.checks.push(kn + ' 정산서 원문(' + names(docs).join(', ') + ') ↔ 번역본(' + cur.file + ') 대조 — ' + bits.join(' · ') + ' — 같은 서류라 한 번만 셈');
+      cur.buyer = cur.buyer || o.buyer; cur.escrow = o.escrow; cur.net = cur.net || o.net; cur.check = o.check; cur.origFile = best.f.name; cur.taxes = o.taxes;
+      if (!cur.loc && o.loc) cur.loc = o.loc;
+      if (!cur.sellers && o.sellers) cur.sellers = o.sellers;
+    }
+    // 정산서에 적힌 원천징수(FTB 593·FIRPTA) — 외국납부세액 후보
+    (o.taxes || []).forEach(function (x) { if (!out.taxes.some(function (y) { return same(y.usd, x.usd); })) out.taxes.push({ file: best.f.name, usd: x.usd, date: o.date, payer: o.sellers, who: '정산서 원천징수(' + x.label.slice(0, 40) + ')' }); });
+  });
+  // 증서(Grant Deed) — 등록번호로 묶고 칸이 많은 것
+  const deeds = of('deed');
+  if (deeds.length) {
+    const d = deeds.slice().sort(function (a, b) { return Object.keys(b.p.result).length - Object.keys(a.p.result).length; })[0], r = d.p.result;
+    out.origFiles = out.origFiles.concat(names(deeds));
+    if (!out.deed) out.deed = { file: d.f.name, date: r.서명일 || r.등록일 || '' };
+    const dd = out.deed;
+    dd.recDate = r.등록일 || ''; dd.signDate = r.서명일 || dd.date; dd.grantor = r.양도인 || ''; dd.grantees = r.양수인 || []; dd.tenancy = r.공유형태 || ''; dd.gift = !!r.무상; dd.origFile = d.f.name;
+    out.checks.push('증여증서 원문(' + names(deeds).join(', ') + '): 등록일(Recorded) ' + (r.등록일 || '못 읽음') + ' · 서명일(Dated) ' + (r.서명일 || '못 읽음') + (dd.file !== d.f.name && dd.date ? '(번역본 날짜 ' + dd.date + ')' : '') + ' · ' + (r.양도인 || '?') + ' → ' + (r.양수인 || []).join(', ') + (r.공유형태 ? '(' + r.공유형태 + ')' : '') + (r.무상 ? ' · 무상(증여) 표시' : ''));
+  }
+  // 감정평가서
+  const aps = of('appraisal');
+  if (aps.length) {
+    const a = aps[0].p.result;
+    out.origFiles = out.origFiles.concat(names(aps));
+    if (a.소급감정) out.checks.push('감정평가서 원문(' + aps[0].f.name + '): ' + (a.경고 || []).filter(function (w) { return /소급/.test(w); }).join(' '));
+    if (!out.appraisal) { out.appraisal = { file: aps[0].f.name, usd: a.감정가, date: a.기준일 || '' }; out.checks.push('감정평가서 — 번역본 없음, 영문 원문(' + aps[0].f.name + ')으로 읽음: ' + usd(a.감정가) + (a.기준일 ? ' · ' + a.기준일 + ' 기준' : '')); }
+    else out.checks.push('감정평가서 원문(' + names(aps).join(', ') + ') ↔ 번역본 대조 — 감정가 ' + (same(out.appraisal.usd, a.감정가) ? '일치(' + usd(a.감정가) + ')' : '다름 — 원문 ' + usd(a.감정가) + ' ↔ 번역본 ' + usd(out.appraisal.usd)) + (a.기준일 ? ' · 기준일 ' + (a.기준일 === out.appraisal.date ? '일치' : '원문 ' + a.기준일 + ' ↔ 번역본 ' + (out.appraisal.date || '없음')) : ''));
+    if (a.소급감정) { out.appraisal.retro = true; out.appraisal.signDate = a.서명일 || ''; }
+  }
+  // 미국 세금 납부확인서 — 확인번호로 묶고, 금액 없는 쪽(납부자만 있는 1쪽)은 같은 기관·연도에 붙인다
+  const tx = of('tax');
+  if (tx.length) {
+    out.origFiles = out.origFiles.concat(names(tx));
+    const groups = [];
+    tx.filter(function (x) { return x.p.result.금액; }).forEach(function (x) {
+      const r = x.p.result, g = groups.filter(function (g) { return (r.확인번호 && g.conf === r.확인번호) || (g.who === r.기관 && same(g.usd, r.금액) && g.date === r.납부일); })[0];
+      if (g) { g.files.push(x.f.name); if (!g.payer && r.납부자) g.payer = r.납부자; if (!g.spouse && r.배우자) g.spouse = r.배우자; if (!g.year && r.과세연도) g.year = r.과세연도; return; }
+      groups.push({ who: r.기관, usd: r.금액, date: r.납부일, conf: r.확인번호, payer: r.납부자 || '', spouse: r.배우자 || '', year: r.과세연도 || '', kind: r.구분 || '', files: [x.f.name] });
+    });
+    tx.filter(function (x) { return !x.p.result.금액; }).forEach(function (x) {
+      const r = x.p.result, g = groups.filter(function (g) { return g.who === r.기관 && (!r.과세연도 || !g.year || g.year === r.과세연도); })[0];
+      if (g) { g.files.push(x.f.name); if (!g.payer && r.납부자) g.payer = r.납부자; if (!g.spouse && r.배우자) g.spouse = r.배우자; }
+    });
+    groups.forEach(function (g) {
+      const m = out.taxes.filter(function (y) { return y.who === g.who && same(y.usd, g.usd); })[0];
+      if (m) { if (g.spouse) m.spouse = g.spouse; if (!m.payer && g.payer) m.payer = g.payer; m.origFiles = g.files; out.checks.push(g.who + ' ' + usd(g.usd) + ' 원문 ' + g.files.length + '벌(' + g.files.join(', ') + ') ↔ 번역본(' + m.file + ') 같은 납부 — 한 번만 셈' + (g.conf ? '(확인번호 ' + g.conf + ')' : '') + (g.spouse ? ' · 배우자 ' + g.spouse + '와 함께 낸 납부(부부 합산 신고분일 수 있음)' : '')); }
+      else { out.taxes.push({ file: g.files[0], usd: g.usd, date: g.date, payer: g.payer + (g.spouse ? ' · 배우자 ' + g.spouse : ''), who: g.who, spouse: g.spouse, origFiles: g.files }); out.checks.push(g.who + ' ' + usd(g.usd) + ' — 번역본 없음, 영문 원문 ' + g.files.length + '벌(' + g.files.join(', ') + ')로 읽음' + (g.conf ? '(확인번호 ' + g.conf + ')' : '')); }
+    });
+  }
 }
 // 처리개요 단계 — 국외자산 질문(환율·지분·5년 거주) + 서류 달러 금액 × 답한 환율 = 원화 후보
 // [2026.10.15 1단계 ②] 상담 메모 대조 — 메모에 적힌 값과 이미 채워진 처리개요 칸을 맞춰 본다.
@@ -33303,6 +33590,8 @@ function docParseText_(text) {
   // [2026.10.17 묶음11] 준비서류·구비서류 안내(서류 이름 목록, 금액 없음) — 목록 속 "가족관계증명서·인감증명서" 낱말로 그 서류로 잘못 읽었다
   //  (정원식: 법무사가 보낸 "증여등기관련 준비서류" 사진이 법무사 정산서 → 가족관계증명서로). 서류가 아니라 안내라 정리하지 않는다.
   if (docIsChecklist_(text)) return { type: '', label: '', result: null, md: '자동 정리 대상이 아닙니다 — 준비서류(구비서류) 안내 목록입니다(증빙 아님).' };
+  // [2026.10.17 묶음10 국외 원문] 영문 국외부동산 서류(정산서·증서·미국 세금 납부확인서·감정평가서) — 한글 서식 규칙에 걸리기 전에(영문 제목이 있을 때만)
+  var ovp = docOverseasParse_(text); if (ovp) return ovp;
   // [2026.10.17 2차 새 서류] 차용증·재산조회 회보서·임대차계약 신고이력 확인서·토지등 수용사실 확인서 — 서류 머리 제목으로만(회보서 "건축물 정보"가 건축물대장으로, 신고이력의 "민간임대주택"이 임대사업자 등록증으로 오인되기 전에)
   var ndk = docNewKindsParse_(text); if (ndk) return ndk;
   // [2026.10.10] 첫머리에 계약서·신고필증·확인설명서·확정일자 제목이 있으면 거래 서류 — 본문에 "토지대장·등기사항증명서" 같은
@@ -38415,7 +38704,9 @@ function trcOverseas_(c, S, ans, rf, lines, items) {
   const usd = function (v) { return '$' + Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }); };
   const num = function (v) { const n = Number(String(v == null ? '' : v).replace(/[^\d.]/g, '')); return n > 0 ? n : 0; };
   const q = function (id, kind, text, ask, detail) { items.push(caseProcItem_(id, kind, text, ask, detail)); };
-  lines.push('국외자산 서류(번역본): ' + [of.sale ? '매도 정산서 ' + usd(of.sale.price) + ' 종결 ' + of.sale.date + '(' + of.sale.file + ')' : '', of.deed ? '증여증서 ' + of.deed.date + '(' + of.deed.file + ')' : '', of.appraisal ? '감정평가 ' + usd(of.appraisal.usd) + (of.appraisal.date ? ' ' + of.appraisal.date + ' 기준' : '') + '(' + of.appraisal.file + ')' : '', of.buy ? '매수 정산서 ' + usd(of.buy.price) + '(' + of.buy.file + ')' : '', of.taxes.map(function (x) { return x.who + ' ' + usd(x.usd) + ' ' + x.date + '(' + x.file + ')'; }).join(', ')].filter(Boolean).join(' · '));
+  // [2026.10.17 묶음10 국외 원문] 원문↔번역본 대조 결과(같은 서류는 한 번만), 번역본에 없던 증여 등기일·양수인·납부자 배우자
+  (of.checks || []).forEach(function (l) { lines.push('🔎 ' + l); });
+  lines.push('국외자산 서류: ' + [of.sale ? '매도 정산서 ' + usd(of.sale.price) + ' 종결 ' + of.sale.date + '(' + of.sale.file + ')' : '', of.deed ? '증여증서 ' + of.deed.date + '(' + of.deed.file + ')' : '', of.appraisal ? '감정평가 ' + usd(of.appraisal.usd) + (of.appraisal.date ? ' ' + of.appraisal.date + ' 기준' : '') + '(' + of.appraisal.file + ')' : '', of.buy ? '매수 정산서 ' + usd(of.buy.price) + '(' + of.buy.file + ')' : '', of.taxes.map(function (x) { return x.who + ' ' + usd(x.usd) + ' ' + x.date + '(' + x.file + ')'; }).join(', ')].filter(Boolean).join(' · '));
   // 계산기 국외자산 카드 하나(양도계약 카드에 묶이지 않는 자산) — 국내 계약 자리를 비운다
   let resDocs0 = []; try { resDocs0 = caseProcFiles_(c).filter(function (f) { return /출입국|거소|체류/.test(f.name); }).map(function (f) { return f.name; }); } catch (e) {}
   if (resDocs0.length) lines.push('국외자산 「양도일까지 계속 5년 이상 국내 거주」(§118의2) 근거 서류: ' + resDocs0.join(', '));
@@ -38440,18 +38731,23 @@ function trcOverseas_(c, S, ans, rf, lines, items) {
   if (!ans['a0.oaResident5yr']) q('oa:res5', 'judge', '국외자산 카드 「양도일까지 계속 5년 이상 국내 거주」 — 아니면 국외자산 양도세 납세의무가 없습니다(§118의2).' + (resDocs.length ? ' 근거 서류: ' + resDocs.join(', ') : ' 근거 서류(출입국 사실증명·주민등록초본)가 폴더에 없습니다.'),
     { mode: 'options', target: 'calc:a0.oaResident5yr', label: '5년 이상 거주', options: [{ label: '예(5년 이상 거주자)', value: 'Y' }, { label: '아니오', value: 'N' }] });
   if (of.sale && !fxT) q('oa:fxT', 'missing', '양도일(' + (of.sale.date || '종결일') + ') 미국 달러 기준환율(원/달러)을 알려 주세요 — 양도가액 ' + usd(of.sale.price) + '을 원화로 바꿉니다(시행령 §178의5①).', { mode: 'input', target: 'calc:oa.fxT', input: 'text', label: '양도일 기준환율', cands: [] });
-  const acqDate = (of.deed && of.deed.date) || (of.appraisal && of.appraisal.date) || '';
+  const acqDate = (of.deed && (of.deed.recDate || of.deed.date)) || (of.appraisal && of.appraisal.date) || '';
   if ((of.appraisal || of.buy) && !fxA) q('oa:fxA', 'missing', '취득일(' + (acqDate || '취득대금 지급일') + ') 미국 달러 기준환율(원/달러)을 알려 주세요 — 취득가액을 원화로 바꿉니다.', { mode: 'input', target: 'calc:oa.fxA', input: 'text', label: '취득일 기준환율', cands: [] });
-  if (of.sale && /\band\b|,|&|·/.test(of.sale.sellers || '') && !share) q('oa:share', 'judge', '매도인이 여럿입니다(' + of.sale.sellers + ') — 납세자 지분(%)을 알려 주세요. 양도가액·취득가액·양도비·외국납부세액에 지분을 곱합니다.',
+  // [2026.10.17 묶음10 국외 원문] 증여증서 원문의 양수인·공유 형태(JOINT TENANTS = 공동 균등 소유)를 지분 판단 근거로 함께 보인다
+  const dTen = of.deed && of.deed.grantees && of.deed.grantees.length > 1 ? ' 증여증서 원문: ' + of.deed.grantees.join(', ') + ' ' + of.deed.grantees.length + '명에게 증여' + (of.deed.tenancy ? '(' + of.deed.tenancy + (/JOINT/.test(of.deed.tenancy) ? ' — 공동 균등 소유, 1인당 ' + Math.round(100 / of.deed.grantees.length) + '%로 보는 것이 보통' : '') + ')' : '') + ' — ' + (of.deed.origFile || of.deed.file) + '.' : '';
+  if (of.sale && /\band\b|,|&|·/.test(of.sale.sellers || '') && !share) q('oa:share', 'judge', '매도인이 여럿입니다(' + of.sale.sellers + ') — 납세자 지분(%)을 알려 주세요. 양도가액·취득가액·양도비·외국납부세액에 지분을 곱합니다.' + dTen,
     { mode: 'options', target: 'calc:oa.share', label: '납세자 지분', withInput: true, input: 'text', options: [{ label: '50%', value: '50' }, { label: '100%(단독)', value: '100' }] });
   if (of.sale && fxT && !a.transferPrice) q('oa:tp', 'judge', '국외자산 카드 「양도가액」 — 매도 정산서 총 매매대금 ' + usd(of.sale.price) + ' × ' + fxT + shTxt + (of.sale.discount ? ' (정산서의 할인 ' + usd(of.sale.discount) + '는 비용 쪽 조정이라 매매대금에 넣지 않음)' : ''),
     { mode: 'choose', target: 'calc:a0.transferPrice', input: 'money', label: '국외자산 양도가액', cands: [{ v: String(Math.round(of.sale.price * fxT * sh)), src: '매도 정산서 ' + usd(of.sale.price) + ' × ' + fxT + shTxt + ' — ' + of.sale.file }] });
   if (acqDate && !a.acquisitionDate) q('oa:ad', 'judge', '국외자산 카드 「취득일」 — 증여로 취득했으면 증여일(증여증서 날짜), 매수했으면 매수 정산서 날짜입니다.',
-    { mode: 'choose', target: 'calc:a0.acquisitionDate', input: 'date', label: '국외자산 취득일', cands: [of.deed && of.deed.date ? { v: of.deed.date, src: '증여증서 날짜 — ' + of.deed.file } : null, of.buy && of.buy.date ? { v: of.buy.date, src: '매수 정산서 — ' + of.buy.file } : null].filter(Boolean) });
+    // [2026.10.17 묶음10 국외 원문] 증여는 증여받은 날(등기가 필요한 재산은 등기 접수일 — 소득세법 시행령 §162①5호, 상증법 시행령 §24①1호)이라 원문 등록일(Recorded)을 먼저, 서명일은 다음 후보
+    { mode: 'choose', target: 'calc:a0.acquisitionDate', input: 'date', label: '국외자산 취득일', cands: [of.deed && of.deed.recDate ? { v: of.deed.recDate, src: '증여증서 등록일(Recorded) — 증여 취득일은 등기 접수일 — ' + (of.deed.origFile || of.deed.file) } : null, of.deed && (of.deed.signDate || of.deed.date) && (of.deed.signDate || of.deed.date) !== of.deed.recDate ? { v: of.deed.signDate || of.deed.date, src: '증여증서 서명일(Dated) — ' + of.deed.file } : null, of.buy && of.buy.date ? { v: of.buy.date, src: '매수 정산서 종결일(Closing Date) — ' + (of.buy.origFile || of.buy.file) + (of.buy.buyer ? '(매수인 ' + of.buy.buyer + ')' : '') } : null].filter(Boolean) });
   if (fxA && !a.acquisitionPrice) {
     const cc = [];
-    if (of.appraisal) cc.push({ v: String(Math.round(of.appraisal.usd * fxA * sh)), src: '증여 취득 = 증여일 시가 — 감정평가 ' + usd(of.appraisal.usd) + ' × ' + fxA + shTxt + ' — ' + of.appraisal.file });
-    if (of.buy && of.buy.price) cc.push({ v: String(Math.round(of.buy.price * fxA * sh)), src: '매수 취득 — 매수 정산서 ' + usd(of.buy.price) + ' × ' + fxA + shTxt + '(이 환율이 매수일 환율일 때만) — ' + of.buy.file });
+    if (of.appraisal) cc.push({ v: String(Math.round(of.appraisal.usd * fxA * sh)), src: '증여 취득 = 증여일 시가 — 감정평가 ' + usd(of.appraisal.usd) + ' × ' + fxA + shTxt + (of.appraisal.retro ? ' — ⚠ 소급감정(' + (of.appraisal.signDate || '나중') + ' 작성), 시가 인정 여부 판단' : '') + ' — ' + of.appraisal.file });
+    // 매수 정산서의 매수인이 증여증서의 양도인(증여자)이면 그 매수가는 증여자의 취득가 — 납세자 취득가액 후보가 아니라 참고(이월과세·부당행위 판단용)
+    const buyIsDonor = of.buy && of.buy.buyer && of.deed && of.deed.grantor && String(of.buy.buyer).replace(/\s+/g, '').toUpperCase() === String(of.deed.grantor).replace(/\s+/g, '').toUpperCase();
+    if (of.buy && of.buy.price) cc.push({ v: String(Math.round(of.buy.price * fxA * sh)), src: (buyIsDonor ? '참고 — 매수인 ' + of.buy.buyer + '은 증여자(증여증서 양도인)라 증여자의 취득가: ' : '매수 취득 — ') + '매수 정산서 ' + usd(of.buy.price) + ' × ' + fxA + shTxt + '(이 환율이 매수일 환율일 때만) — ' + of.buy.file });
     if (cc.length) q('oa:ap', 'judge', '국외자산 카드 「취득가액」 — 증여로 받았으면 증여일 현재 시가(감정평가액), 직접 샀으면 매수가액입니다. 맞는 것을 고르세요.', { mode: 'choose', target: 'calc:a0.acquisitionPrice', input: 'money', label: '국외자산 취득가액', cands: cc });
   }
   if (of.sale && fxT && !a.oaTransferExpenses) {
@@ -38462,8 +38758,8 @@ function trcOverseas_(c, S, ans, rf, lines, items) {
   }
   if (of.taxes.length && fxT && !a.oaForeignTaxPaid) {
     const tU = of.taxes.reduce(function (s, x) { return s + x.usd; }, 0);
-    q('oa:ft', 'judge', '국외자산 카드 「외국납부세액」 — ' + of.taxes.map(function (x) { return x.who + ' ' + usd(x.usd) + '(' + x.date + (x.payer ? ', 납부 계정 ' + x.payer : '') + ')'; }).join(' + ') + ' = ' + usd(tU) + (of.taxes.some(function (x) { return x.payer; }) ? '. 납부한 사람이 납세자와 다르면 공제 대상인지 확인하세요' : '') + '. 예납세액은 확정 전 금액이라 미국 확정신고 뒤 실제 세액으로 바뀔 수 있습니다. 환율은 납부일 환율이 원칙인데 여기선 양도일 환율(' + fxT + ')로 계산했습니다.',
-      { mode: 'choose', target: 'calc:a0.oaForeignTaxPaid', input: 'money', label: '국외자산 외국납부세액', cands: [{ v: String(Math.round(tU * fxT * sh)), src: '예납 ' + usd(tU) + ' × ' + fxT + shTxt + ' — ' + of.taxes.map(function (x) { return x.file; }).join(', ') }] });
+    q('oa:ft', 'judge', '국외자산 카드 「외국납부세액」 — ' + of.taxes.map(function (x) { return x.who + ' ' + usd(x.usd) + '(' + x.date + (x.payer ? ', 납부 계정 ' + x.payer : '') + (x.spouse && String(x.payer || '').indexOf(x.spouse) === -1 ? ' · 배우자 ' + x.spouse : '') + ')'; }).join(' + ') + ' = ' + usd(tU) + (of.taxes.some(function (x) { return x.payer; }) ? '. 납부한 사람이 납세자와 다르면 공제 대상인지 확인하세요' : '') + '. 예납세액은 확정 전 금액이라 미국 확정신고 뒤 실제 세액으로 바뀔 수 있습니다. 환율은 납부일 환율이 원칙인데 여기선 양도일 환율(' + fxT + ')로 계산했습니다.',
+      { mode: 'choose', target: 'calc:a0.oaForeignTaxPaid', input: 'money', label: '국외자산 외국납부세액', cands: [{ v: String(Math.round(tU * fxT * sh)), src: '예납 ' + usd(tU) + ' × ' + fxT + shTxt + ' — ' + of.taxes.map(function (x) { return [x.file].concat(x.origFiles || []).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(', '); }).join(', ') }] });
   }
   return { asset: a, pending: false };
 }
