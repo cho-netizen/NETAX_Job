@@ -24929,6 +24929,8 @@ function tcMedBillParse_(text) {
     var bre = /본\s*인\s*부\s*담\s*금\s*[:：]\s*(\d{1,3}(?:[.,]\d{3})+)/g; while ((m = bre.exec(fl))) r.환자부담 += num(m[1]);
     m = /총\s*진\s*료\s*비\s*[:：]\s*(\d{1,3}(?:[.,]\d{3})+)/.exec(fl); if (m) r.총액 = num(m[1]);
   } else {
+    // [2026.10.17] 연도별 수급자 부담 총계("총계(=3) 1,273,830") — 병원비 집계표의 여러 해 합과 대조용(노영환 더섬김 2020~2022 = 5,672,870원)
+    r.연총계 = []; var ytre = /총\s*계\s*\(\s*=\s*3\s*\)\s*(\d{1,3}(?:[.,]\d{3})+)/g; while ((m = ytre.exec(fl))) r.연총계.push(num(m[1]));
     // 납부확인서 — 날짜 줄마다 그 날짜 뒤 첫 금액(다음 날짜 전까지). 서식마다 금액이 날짜 앞에 오기도 해 확정은 부르는 쪽이 사망일 뒤 줄만 쓴다
     var dts = [], ddre = /((?:19|20)\d{2})-(\d{2})-(\d{2})/g;
     while ((m = ddre.exec(fl))) dts.push({ d: m[0], at: m.index, end: m.index + m[0].length });
@@ -28974,14 +28976,23 @@ function caseProcInhFacts0_(c, parsed) {
     const twoY = baseD ? new Date(baseD.getTime() - 730 * 86400000).toISOString().slice(0, 10) : '';
     const bankRows = [];
     by('banktx').forEach(function (x) { ((x.p.result || {}).거래 || []).forEach(function (q) { if (q.출금액) bankRows.push({ q: q, file: x.f.name }); }); });
+    const sumSeen = [];
     medSums.forEach(function (S) {
+      // 같은 집계표의 사본(줄 수·합계 같음 — 노영환 "병원비 집계.pdf" = "금융자산 지출내역 병원비.pdf")은 한 번만
+      const tw = sumSeen.filter(function (o) { return o.r.합계 === S.r.합계 && o.r.줄.length === S.r.줄.length; })[0];
+      if (tw) { out.notes.push('병원비 집계표 ' + S.f.name + ' = ' + tw.f.name + '와 같은 표(' + S.r.줄.length + '줄 합 ' + won(S.r.합계) + ') — 한 번만'); return; }
+      sumSeen.push(S);
       const parts = S.r.줄.map(function (row) {
         const docs = medDocs.filter(function (d) { return sameH(row.병원, d.r.병원 || d.f.name) || sameH(row.병원, d.f.name); });
         const hit = docs.filter(function (d) { return row.계 && amtRe(row.계).test(d.text); })[0] || docs.filter(function (d) { return row.본인부담 && row.비보험 && amtRe(row.본인부담).test(d.text) && amtRe(row.비보험).test(d.text); })[0];
+        // 여러 해에 걸친 줄 — 장기요양 납부확인서 연도별 수급자 부담 총계(사본·묶음에 같은 해가 또 나오면 한 번만)의 합이 그 줄 금액과 같은지
+        const yt = []; docs.forEach(function (d) { (d.r.연총계 || []).forEach(function (v) { if (yt.indexOf(v) === -1) yt.push(v); }); });
+        const ytSum = yt.reduce(function (t, v) { return t + v; }, 0);
+        const ytOk = !hit && yt.length >= 2 && ytSum === row.계;
         const outs = bankRows.filter(function (b) { const hay = String(b.q.내용 || '') + String(b.q.적요 || '') + String(b.q.상대 || ''); return sameH(row.병원, hay) || (row.계 && b.q.출금액 === row.계); });
         const inWin = !twoY || row.까지 >= twoY;
         return row.병원 + ' ' + row.부터 + '~' + row.까지 + ' ' + won(row.계) + (row.검산 ? '' : '(⚠ 본인부담+비보험≠계)') + (inWin ? '' : '(사망 2년 전보다 앞)') + ' — '
-          + (hit ? hit.f.name + '에 같은 금액 ✓' : docs.length ? '원시증빙 ' + docs.map(function (d) { return d.f.name; }).slice(0, 4).join(', ') + '에서 같은 금액을 못 찾음(연도별·월별 합인지 원문 확인)' : '원시증빙 없음')
+          + (hit ? hit.f.name + '에 같은 금액 ✓' : ytOk ? '연도별 납부확인서 수급자 부담 총계 ' + yt.map(won).join(' + ') + ' = ' + won(ytSum) + ' ✓(' + docs.map(function (d) { return d.f.name; }).slice(0, 4).join(', ') + ')' : docs.length ? '원시증빙 ' + docs.map(function (d) { return d.f.name; }).slice(0, 4).join(', ') + '에서 같은 금액을 못 찾음(연도별·월별 합인지 원문 확인)' : '원시증빙 없음')
           + (outs.length ? ' · 은행 출금 ' + outs.map(function (b) { return (b.q.날짜 || '') + ' ' + won(b.q.출금액) + '(' + b.file + ')'; }).slice(0, 4).join(', ') : '');
       });
       out.notes.push('사전 인출 용도 검토 자료(§15 — 채무 아님): ' + S.f.name + ' 병원비 ' + S.r.줄.length + '줄 합 ' + won(S.r.합계) + (S.r.검산 ? '(표 합계와 일치)' : '(⚠ 표 합계와 대조 안 됨)') + ' — ' + parts.join(' / ') + (bankRows.length ? '' : ' · 은행 거래내역을 거래 줄로 못 읽어 출금 대조는 못 함'));
