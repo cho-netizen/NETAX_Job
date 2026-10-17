@@ -25091,6 +25091,14 @@ function tc_ruleTransferFacts_(body) {
       evidence.push('같은 계약서 사본: ' + c1.file + ' = ' + c0.file + (named ? ' — 역할은 파일 이름(' + named.file + ')대로 ' + (named.fRole === 'seller' ? '양도' : '취득') : ''));
     });
   });
+  // [2026.10.17 세무사님 원칙 — 같은 항목은 한 번만] 따로 스캔된 종전토지 매매계약서("입주권 계약서의 내용에 따른다") — 조합원입주권 계약서와 같은 거래라 양도로 따로 세지 않는다(김동일: 9.59억 토지 계약이 두 번째 양도로 잡힐 뻔함)
+  contracts.forEach(function (c) {
+    if (c._dupOf || !c.r.종전토지부속) return;
+    var main = contracts.filter(function (x) { return x !== c && !x._dupOf && x.r.입주권; })[0], ip = main && main.r.입주권;
+    c._dupOf = main ? main.file : '(입주권 계약서 없음)';
+    evidence.push(main ? '종전토지 계약서 ' + c.file + ' = ' + main.file + '의 부속 계약서(같은 거래)' + (ip && ip.권리가액 && ip.프리미엄 && c.r.매매대금 ? ' — 토지 매매대금 ' + c.r.매매대금.toLocaleString('ko-KR') + '원 ' + (c.r.매매대금 === ip.권리가액 + ip.프리미엄 ? '= ' : '≠ ') + '권리가액 + 프리미엄 ' + (ip.권리가액 + ip.프리미엄).toLocaleString('ko-KR') + '원' : '') + ', 금액을 따로 세지 않음'
+      : '⚠ 종전토지 계약서 ' + c.file + ' — "입주권 계약서의 내용에 따른다"는 부속 계약서인데 주 계약서(조합원입주권 계약서)를 찾지 못함: 이 계약서 금액만으로 양도가액을 정하지 않음 — 입주권 계약서 확인');
+  });
   contracts = contracts.filter(function (x) { return !x._dupOf; });
   contracts.forEach(function (x) { if (x.roleConflict) evidence.push('⚠ ' + x.file + ' — 본문 판독(납세자 위치)과 파일 이름의 역할이 달라 파일 이름(' + (x.fRole === 'seller' ? '매도·양도' : '매수·취득') + ')을 따름 — 원문 확인'); });
   // [2026.10.15] 같은 부동산의 계약서가 둘 이상이고 납세자 이름이 모두에 있으면 — 먼저 맺은 계약이 취득(납세자 = 매수인), 마지막이 양도(매도인).
@@ -25106,8 +25114,9 @@ function tc_ruleTransferFacts_(body) {
     evidence.push('같은 부동산 계약서 ' + g.length + '건 — 계약일 순서로 역할 정함: 취득 ' + g[0].file + '(' + g[0].r.계약일 + '), 양도 ' + g[g.length - 1].file + '(' + g[g.length - 1].r.계약일 + ')');
     g.forEach(function (x, i) { x.role = i === 0 ? 'buyer' : i === g.length - 1 ? 'seller' : x.role; });
   });
-  var sells = contracts.filter(function (c) { return c.role === 'seller' || (!c.role && tcNameIn_(c.r.매도인, names)); });
-  var buys = contracts.filter(function (c) { return c.role === 'buyer' || (!c.role && tcNameIn_(c.r.매수인, names)); });
+  // [2026.10.17] 조합원 공급계약서(분양가·권리가·분담금)는 매매가 아니다 — 분양가를 취득가액으로 쓰지 않도록 양도·취득 계약에서 빼고 항목 줄로만 알린다
+  var sells = contracts.filter(function (c) { return !c.r.조합원분양 && (c.role === 'seller' || (!c.role && tcNameIn_(c.r.매도인, names))); });
+  var buys = contracts.filter(function (c) { return !c.r.조합원분양 && (c.role === 'buyer' || (!c.role && tcNameIn_(c.r.매수인, names))); });
   var newHome = buys.filter(function (b) { return /신규|대체\s*주택|새\s*집|신축\s*분양/.test(b.file); });
   var isNewHome = function (b) { return newHome.indexOf(b) !== -1 || newHome.some(function (n) { return n.r.매매대금 && n.r.매매대금 === b.r.매매대금 && n.r.잔금일 === b.r.잔금일; }); };
   // 신규 주택 취득 비용(그 집 소재지의 취득세, 잔금일 앞뒤 60일의 법무사·취득세 서류) — 판 집의 필요경비가 아님
@@ -25119,7 +25128,7 @@ function tc_ruleTransferFacts_(body) {
   };
 
   // [2026.10.15 1단계 ②] 양도도 취득도 아닌 계약서 — 말없이 버리지 않고 "참고 계약서"로 밝힌다(매매사례·다른 사람 거래 등)
-  contracts.filter(function (c) { return sells.indexOf(c) === -1 && buys.indexOf(c) === -1; }).forEach(function (c) { evidence.push('참고 계약서: ' + c.file + ' — 본문에서 납세자가 매도인·매수인으로 확인되지 않음(매매사례 등), 양도·취득 계산에 안 씀' + (c.r.소재지 ? ' (' + c.r.소재지 + ')' : '')); });
+  contracts.filter(function (c) { return sells.indexOf(c) === -1 && buys.indexOf(c) === -1 && !c.r.조합원분양; }).forEach(function (c) { evidence.push('참고 계약서: ' + c.file + ' — 본문에서 납세자가 매도인·매수인으로 확인되지 않음(매매사례 등), 양도·취득 계산에 안 씀' + (c.r.소재지 ? ' (' + c.r.소재지 + ')' : '')); });
   var txs = [];
   // 등기부 소유권 이력에서 그 부동산의 납세자 명의 취득·양도 접수일 찾기(§98 빠른 날 비교용)
   var regDate = function (loc, mine) {
@@ -25211,6 +25220,16 @@ function tc_ruleTransferFacts_(body) {
         evidence.push('⚠ 양도가액이 서류마다 다름 — ' + pv.map(function (x) { return x.src + ' ' + x.v.toLocaleString('ko-KR') + '원'; }).join(' / ') + ' — 질문으로 확인');
       }
     }
+    // [2026.10.17 세무사님 원칙 — 내용 항목별로] 조합원입주권·분양권 양도 — 매매대금 안의 승계 분담금(매수인이 앞으로 조합에 낼 미납 분담금)은 매도인이 받은 대가가 아니다.
+    //  서류끼리 금액이 같아도(신고필증도 매매대금) 이것은 판독 상충이 아니라 무엇을 양도가액으로 볼지의 판단이라 두 후보로 묻는다(김동일: 12.8억 − 1.925억 = 10.87475억)
+    var ipx = s.r.입주권;
+    if (ipx && ipx.승계분담금 && s.r.매매대금 && ok(s)) {
+      var recv = s.r.매매대금 - ipx.승계분담금, ww = function (n) { return Number(n).toLocaleString('ko-KR') + '원'; };
+      tx.transferPrice = null; tx.transferPriceCand = null;
+      tx.transferPriceConflict = [{ v: recv, src: '매도인이 받은 대가 = 매매대금 ' + ww(s.r.매매대금) + ' − 매수인이 승계한 미납 분담금 ' + ww(ipx.승계분담금) + (s.r.융자금 ? '(현금 ' + ww(recv - s.r.융자금) + ' + 승계 융자 ' + ww(s.r.융자금) + ')' : '') + ' — 미납 분담금은 매수인이 조합에 낼 돈(' + s.file + ')' }, { v: s.r.매매대금, src: '계약서 매매대금 그대로(미납 분담금 승계분 포함, ' + s.file + ')' }];
+      tx.rights = { 권리가액: ipx.권리가액 || null, 납부분담금: ipx.납부분담금 != null ? ipx.납부분담금 : null, 승계분담금: ipx.승계분담금, 프리미엄: ipx.프리미엄 || null, file: s.file };
+      evidence.push('⚠ 조합원입주권 양도가액 — 매매대금 ' + ww(s.r.매매대금) + ' 중 승계 분담금 ' + ww(ipx.승계분담금) + '은 매수인이 조합에 낼 미납 분담금: 받은 대가 ' + ww(recv) + ' / 매매대금 그대로 ' + ww(s.r.매매대금) + ' — 질문으로 확인');
+    }
     reports.forEach(function (rp) {
       if (!tcLocSame_(rp.r.소재지, s.r.소재지)) return;
       if (!tx.transferPrice && !tx.transferPriceConflict && rp.r.총거래가격 && rp.r.검산) { tx.transferPrice = rp.r.총거래가격; evidence.push('양도가액은 신고필증 거래가격으로(' + rp.file + ')'); }
@@ -25233,6 +25252,8 @@ function tc_ruleTransferFacts_(body) {
     }
     if (rd && tx.transferDate && rd < tx.transferDate) { evidence.push('양도시기: 등기접수일 ' + rd + '이 잔금일보다 빨라 그날로(§98)'); tx.transferDate = rd; }
     var b = buys.filter(function (x) { return tcLocSame_(x.r.소재지, s.r.소재지); })[0];
+    // [2026.10.17] 입주권 양도의 취득 계약서는 새 아파트(동·호)가 아니라 종전 부동산 주소 — 입주권 계약서 "종전토지 소재지"로 짝짓는다(김동일: 2015 내손동 661-13 빌라)
+    if (!b && ipx && ipx.종전소재지) { b = buys.filter(function (x) { return tcLocSame_(x.r.소재지, ipx.종전소재지); })[0]; if (b) evidence.push('입주권 취득: ' + b.file + ' — 종전 부동산(' + ipx.종전소재지 + ') 취득 계약서로 짝지음(입주권 계약서 종전토지 소재지)'); }
     if (b) {
       tx._acqMatched = true;
       tx.acquisitionPrice = ok(b) ? b.r.매매대금 : null;
@@ -25508,9 +25529,9 @@ function tc_ruleTransferFacts_(body) {
   // [2026.10.16 1:1 김금옥] 양도 계약서 서명란의 양도인(= 납세자로 확인될 때만)·양수인 인적사항 — 신고서 칸용
   // [2026.10.17 세무사님 원칙 — 모든 서류는 내용 항목별로] 양도·취득 계약서 — 매매대금의 구성 항목(승계 보증금·융자, 부가세 조건, 매수인 부담 양도세, 토지·건물 구분)
   contracts.forEach(function (c0) {
-    if (c0._dupOf || !/^(seller|buyer)$/.test(c0.role || '')) return;
+    if (c0._dupOf || (!/^(seller|buyer)$/.test(c0.role || '') && !c0.r.조합원분양)) return;
     var cit = null; try { cit = tcContractItems_(c0.text, c0.r); } catch (e) { cit = null; }
-    if (cit && cit.lines.length) evidence.push((cit.buyerTax && c0.role === 'seller' ? '⚠ ' : '') + (c0.role === 'seller' ? '양도' : '취득') + ' 계약서 항목(' + c0.file + '): ' + cit.lines.map(function (l) { return l.replace(/^⚠\s*/, ''); }).join(' · '));
+    if (cit && cit.lines.length) evidence.push((cit.buyerTax && c0.role === 'seller' ? '⚠ ' : '') + (c0.r.조합원분양 ? '조합원 공급' : c0.role === 'seller' ? '양도' : '취득') + ' 계약서 항목(' + c0.file + '): ' + cit.lines.map(function (l) { return l.replace(/^⚠\s*/, ''); }).join(' · '));
   });
   var parties = null;
   sells.some(function (c) {
@@ -31876,13 +31897,25 @@ function ctSplit_(text) {
 // ---- 매매계약서 ----
 function ctParseContract_(text) {
   var t = String(text || ''), flat = t.replace(/\s+/g, ' ');
-  var r = { 종류: /공\s*급\s*계\s*약|분\s*양\s*계\s*약/.test(t) ? '분양(공급)계약서' : /손실\s*보상|보상\s*계약|협의\s*취득/.test(t) ? '보상(협의취득)계약서' : '매매계약서', 경고: [] };
+  // [2026.10.17 세무사님 원칙 — 내용 항목별로] 조합원입주권·분양권 매매계약서(협회 서식) — 분양금액·권리가액·추가분담금·납부분담금·프리미엄 표와 승계 융자·승계 분담금을 항목으로 읽는다(김동일).
+  //  같은 PDF 뒤에 붙은 "종전토지 매매계약서"(입주권 계약서의 내용에 따른다)는 같은 거래의 부속 계약서라 따로 읽어 대조만 하고 금액을 겹쳐 세지 않는다
+  var ipHead = t.slice(0, 600), isIpju = /조\s*합\s*원\s*입\s*주\s*권[^\n]{0,8}매\s*매/.test(ipHead) || (/입\s*주\s*권/.test(ipHead) && /권\s*리\s*가\s*액/.test(t) && /프\s*리\s*미\s*엄/.test(t)), isBunGwon = !isIpju && /분\s*양\s*권[^\n]{0,8}(?:매\s*매|전\s*매)/.test(ipHead);
+  var annexRe = /종\s*전\s*토\s*지\s*계\s*약\s*서|입\s*주\s*권\s*계\s*약\s*서\s*의\s*내\s*용\s*에\s*따/, annex = null;
+  if (isIpju || isBunGwon) {
+    var anm = /(?:^|\n|\s)[^\n]{0,12}매\s*매\s*계\s*약\s*서/g, an; anm.lastIndex = 200;
+    while ((an = anm.exec(t))) { if (annexRe.test(t.slice(an.index))) { annex = ctParseContract_(t.slice(an.index)); t = t.slice(0, an.index); flat = t.replace(/\s+/g, ' '); break; } }
+  }
+  var r = { 종류: isIpju ? '조합원입주권 매매계약서' : isBunGwon ? '분양권 매매계약서' : /공\s*급\s*계\s*약|분\s*양\s*계\s*약/.test(t) ? '분양(공급)계약서' : /손실\s*보상|보상\s*계약|협의\s*취득/.test(t) ? '보상(협의취득)계약서' : '매매계약서', 경고: [] };
+  if (!isIpju && !isBunGwon && annexRe.test(t)) r.종전토지부속 = true; // 따로 스캔된 종전토지 계약서 — 부르는 쪽이 입주권 계약서와 묶는다
+  if (annex) r.종전토지계약 = { 매매대금: annex.매매대금 || null, 계약금: annex.계약금 || null, 잔금: annex.잔금 || null, 잔금일: annex.잔금일 || '', 소재지: annex.소재지 || '' };
   // 소재지 — "소재지" 뒤 또는 "1. (부동산의 표시)" 뒤 첫 주소 모양
   var sm = /소\s*재\s*지\s*[:：]?\s*([^\n]{6,80})/.exec(t);
   if (sm && /\d/.test(sm[1]) && /(시|군|구|동|읍|면|리|로|길)\s/.test(sm[1] + ' ')) r.소재지 = sm[1].replace(/\s+/g, ' ').trim();
   if (!r.소재지) { var am = new RegExp(CT_SIDO_RE_.source + '[^\\n]{2,60}').exec(t.slice(0, 1500)); if (am) r.소재지 = am[0].trim(); }
   // [2026.10.17] 표의 같은 줄에 이어진 칸 이름(토지·지목·면적·구조·용도·대지권)까지 소재지로 읽던 것을 자른다(김금옥: "…1421호 토 지지목 대"가 계산기 소재지 칸에 들어감)
   if (r.소재지) r.소재지 = r.소재지.replace(/^(.*?(?:\d|호|번지))\s+(?:토\s*지|지\s*목|면\s*적|구\s*조|용\s*도|대\s*지\s*권)(?=\s|$|[가-힣:：]).*$/, '$1');
+  // [2026.10.17] 입주권·분양 계약서의 물건 표시 줄은 "…113동 2504호 TYPE 74 계약면적 169.33㎡ 분양면적 …"처럼 평형·면적 칸이 이어진다 — 호수에서 자른다(김동일)
+  if (r.소재지) r.소재지 = r.소재지.replace(/^(.*?\d\s*호)\s+(?:TYPE|타\s*입|계\s*약\s*면\s*적|분\s*양\s*면\s*적|전\s*용\s*면\s*적|공\s*급\s*면\s*적|\d{2,3}\s*[A-Z]?\s*(?:형|타입)|\d[\d.,]*\s*(?:㎡|m2|m²))(?=\s|$|\d|[가-힣]).*$/i, '$1');
   // [2026.10.17] 집합건물 계약서 — 소재지 줄은 "…빌라 제3동"(1동 건물 표시)에서 끝나고 호수는 "건물의 번호: 제3동 제3층 제301호" 줄에 따로 있다(방영교).
   //  공동주택가격·건축물대장 조회는 동·호가 있어야 그 호를 찾으므로, 소재지에 호가 없으면 건물의 번호 줄의 층·호를 붙인다
   if (r.소재지 && !/\d\s*호(?![가-힣])/.test(r.소재지)) { var bno = /건\s*물\s*의\s*번\s*호\s*[:：]?\s*[^\n\[]{0,20}?((?:제?\s*\d{1,3}\s*층\s*)?제?\s*\d{1,5}\s*호)(?![가-힣])/.exec(t); if (bno) r.소재지 += ' ' + bno[1].replace(/\s+/g, ' ').trim(); }
@@ -31903,15 +31936,86 @@ function ctParseContract_(text) {
   var gm = /구\s*조\s*[:：]?\s*([가-힣\s]{2,16}(?:조|구조))/.exec(flat);
   if (gm) r.구조 = gm[1].replace(/\s+/g, '');
   // 금액 — 이름표 뒤 금액, 그다음 검산
-  r.매매대금 = ctMoneyAfter_(flat, /매\s*매\s*대\s*금|공\s*급\s*(?:금액|대금)|분\s*양\s*(?:금액|대금)|총\s*(?:매매|공급|분양)\s*(?:대금|금액)|보\s*상\s*금\s*액/, 140);
+  // [2026.10.17] 입주권·분양권 계약서는 표의 "분양금액"이 "매매대금"보다 앞에 있다 — 매매대금 이름표를 먼저(김동일: 분양금액 5.047억을 매매대금으로 읽었다)
+  r.매매대금 = ((isIpju || isBunGwon) ? ctMoneyAfterAny_(flat, /매\s*매\s*대\s*금/, 140) : null) || ctMoneyAfter_(flat, /매\s*매\s*대\s*금|공\s*급\s*(?:금액|대금)|분\s*양\s*(?:금액|대금)|총\s*(?:매매|공급|분양)\s*(?:대금|금액)|보\s*상\s*금\s*액/, 140);
   r.계약금 = ctMoneyAfter_(flat, /계\s*약\s*금/, 120);
   r.잔금 = ctMoneyAfter_(flat, /잔\s*금\s*[:：]?/, 140);
   var mids = [], mr = /중\s*도\s*금/g, mm;
   while ((mm = mr.exec(flat))) { var v = ctMoneyAfter_(flat.slice(mm.index), /중\s*도\s*금/, 100); if (v && mids.indexOf(v) === -1) mids.push(v); }
   r.중도금 = mids;
-  // 융자금·승계보증금은 이름표 바로 뒤(25자 안)만 — 빈칸이면 다음 칸 금액을 잘못 잡는다
-  r.융자금 = ctMoneyAfter_(flat, /융\s*자\s*금\s*-?\s*/, 8);
+  // 융자금·승계보증금은 그 칸 안의 금액만 — 빈칸이면 다음 칸 금액을 잘못 잡는다.
+  // [2026.10.17] 칸 끝(원정·원整·승계)까지 읽고 ₩숫자를 먼저 쓴다 — 8자만 보던 때는 "금 일억이천팔백만원(₩128,000,000)"을 "일억이천"에서 잘라 100,002,800으로 읽었다(김동일)
+  var cellMoney = function (labelRe) {
+    var lm0 = labelRe.exec(flat); if (!lm0) return null;
+    var seg = flat.slice(lm0.index + lm0[0].length, lm0.index + lm0[0].length + 80), stop = seg.search(/매\s*매\s*대\s*금|계\s*약\s*금|중\s*도\s*금|잔\s*금|보\s*증\s*금|특\s*약|제\s*\d+\s*조/);
+    if (stop >= 0) seg = seg.slice(0, stop);
+    var close = /원\s*[정整은]|승\s*계/.exec(seg); if (close) seg = seg.slice(0, close.index + close[0].length);
+    var l = ctMoneyList_(seg), w = l.filter(function (x) { return x.won; })[0] || l[0];
+    return w ? w.v : null;
+  };
+  r.융자금 = cellMoney(/융\s*자\s*금\s*-?\s*/);
   r.승계보증금 = ctMoneyAfter_(flat, /(?:임대\s*)?보\s*증\s*금[^\n]{0,20}승\s*계|승\s*계[^\n]{0,20}보\s*증\s*금/, 40);
+  // [2026.10.17] 대금표의 보증금 칸 "보 증 금 -金 일억구천만(₩190,000,000) … 원은 현상태에서 승계한다"(노오섭) — 칸 안 금액(₩ 먼저, 한글 숫자도)
+  if (!r.승계보증금) { var bsm = /보\s*증\s*금\s*[-:：]?\s*(?:[金금숲]\s*-?\s*)?([^.]{0,70}?)(?:현\s*상\s*태\s*(?:에\s*서|대\s*로|로)?|그\s*대\s*로)?\s*(?:매\s*수\s*인\s*이\s*)?승\s*계(?!\s*하\s*지|\s*(?:불|없|안\s*함))/.exec(flat); if (bsm && !/중\s*도\s*금|잔\s*금|계\s*약\s*금/.test(bsm[1])) { var bl = ctMoneyList_('금 ' + bsm[1]), bw = bl.filter(function (x) { return x.won; })[0] || bl[0]; if (bw) { r.승계보증금 = bw.v; r.승계방식 = '보증금 승계'; } } }
+  //  표 서식은 글자인식이 칸 이름(보증금 …)과 칸 끝 문구("원은 현상태에서 승계한다")를 떼어 놓는다 — 보증금 칸 금액 + 뒤 250자 안 "승계" + 계약금·중도금·잔금·보증금 합 = 매매대금 검산이 맞을 때만(노오섭: 5천만 + 2.9억 + 1.9억 = 5.3억; 예전엔 1.9억을 중도금으로 읽음)
+  var tgtW = ctMoneyList_(flat).filter(function (x) { return x.won; }).map(function (x) { return x.v; }), tgt = r.매매대금 || (tgtW.length ? Math.max.apply(null, tgtW) : 0); // 매매대금 이름표를 못 읽었으면 ₩금액 중 가장 큰 것(아래 대금 보정과 같은 기준)
+  if (!r.승계보증금 && tgt) {
+    var btm = /보\s*증\s*금\s*[-:：]?\s*/.exec(flat), btv = btm ? ctMoneyAfter_(flat.slice(btm.index), /보\s*증\s*금\s*[-:：]?\s*/, 40) : null;
+    if (btv && /승\s*계/.test(flat.slice(btm.index, btm.index + 250)) && (r.계약금 || 0) + mids.reduce(function (s2, x) { return s2 + x; }, 0) + (r.잔금 || 0) + btv === tgt) { r.승계보증금 = btv; r.승계방식 = '대금표 보증금 칸 — 현상태에서 승계'; }
+  }
+  // [2026.10.17] "중도금은 현전세보증금으로 대체하기로 한다(임대보증금:100,000,000원)"(나성은) · "중도금은 현재 전세금으로 한다"(조만덕) — 승계 문구 없이 중도금(잔금)을 임차인 보증금으로 갈음한 것도 승계보증금.
+  //  금액이 괄호로 적혀 있으면 그 금액, 없으면 그 중도금(잔금) 칸 금액
+  if (!r.승계보증금) {
+    var rpm = /(중\s*도\s*금|잔\s*금)\s*(?:은|는)?\s*[^.\n]{0,12}?(?:현\s*(?:재\s*)?)?(?:의\s*)?(?:전\s*세|임\s*대\s*차?|임\s*차)\s*(?:보\s*증\s*)?금\s*((?:금\s*)?[\d,]{1,12}\s*억?\s*[\d,]{0,5}\s*천?\s*[\d,]{0,5}\s*만?\s*원?)?\s*(?:으\s*로)?\s*(?:대\s*체|갈\s*음|한\s*다|승\s*계)/.exec(flat);
+    if (rpm) {
+      // 금액이 문장 안("전세보증금 1억9천만원으로 대체" — 노오섭 특약) 또는 뒤 괄호("(임대보증금:100,000,000원)")에 있으면 그 금액
+      var rpp = /^[^(（]{0,16}[(（]([^)）]{0,40})/.exec(flat.slice(rpm.index + rpm[0].length, rpm.index + rpm[0].length + 60)), rpl = rpm[2] ? ctMoneyList_(rpm[2]) : [];
+      if (!rpl.length && rpp) rpl = ctMoneyList_(rpp[1]);
+      var rpv = rpl.length ? rpl[0].v : (/중/.test(rpm[1]) ? (mids.length === 1 ? mids[0] : null) : r.잔금);
+      if (rpv) { r.승계보증금 = rpv; r.승계방식 = rpm[1].replace(/\s+/g, '') + '을 임대보증금으로 대체'; }
+    }
+  }
+  // 입주권·분양권 표 항목 — 이름표 뒤 그 칸 금액(₩ 먼저)
+  if (isIpju || isBunGwon) {
+    var ipLab = /분\s*양\s*금\s*액|권\s*리\s*가\s*액|추\s*가\s*분\s*담\s*금|납\s*부\s*분\s*담\s*금|납\s*부\s*옵\s*션|옵\s*션\s*비\s*용|프\s*리\s*미\s*엄|매\s*매\s*대\s*금|계\s*약\s*내\s*용|제\s*\d+\s*조/;
+    var ipAmt = function (labelRe) { // 같은 이름표가 제목("2. 종전토지 및 분양금액·프리미엄 등에 관한 내역")에도 있어 금액이 붙은 첫 자리
+      var g = new RegExp(labelRe.source, 'g'), lm1;
+      while ((lm1 = g.exec(flat))) {
+        var seg = flat.slice(lm1.index + lm1[0].length, lm1.index + lm1[0].length + 90), stop = seg.search(ipLab); if (stop >= 0) seg = seg.slice(0, stop);
+        var l = ctMoneyList_(seg), w = l.filter(function (x) { return x.won; })[0] || l[0];
+        if (w) return w.v;
+        if (/\(\s*₩\s*0\s*\)|₩\s*0(?!\d)/.test(seg)) return 0;
+      }
+      return null;
+    };
+    var ip = { 분양금액: ipAmt(/분\s*양\s*(?:금\s*액|가)/), 권리가액: ipAmt(/권\s*리\s*가\s*액/), 추가분담금: ipAmt(/추\s*가\s*분\s*담\s*금/), 납부분담금: ipAmt(/납\s*부\s*분\s*담\s*금/), 프리미엄: ipAmt(/프\s*리\s*미\s*엄\s*(?:금\s*액)?/) };
+    // 잔금 중 매수인이 승계하는 분담금(조합에 앞으로 낼 미납 분담금) — "위 잔금 중 금 …(₩192,525,000)원정은 납부하여야 할 분담금 등으로 매수인이 승계"
+    var sbm = /잔\s*금\s*중\s*([^.]{0,80}?)(?:은|는)?\s*(?:납\s*부\s*하\s*여\s*야\s*할\s*)?(?:분\s*담\s*금|청\s*산\s*금|중\s*도\s*금)[^.]{0,30}?승\s*계/.exec(flat);
+    if (sbm) { var sl = ctMoneyList_(sbm[1]), sw = sl.filter(function (x) { return x.won; })[0] || sl[0]; if (sw) ip.승계분담금 = sw.v; }
+    var jsm = /종\s*전\s*(?:토\s*지|자\s*산|부\s*동\s*산)[\s\S]{0,60}?소\s*재\s*지\s*[:：]?\s*([^\n]{6,60}?)(?=\s+(?:지\s*목|토\s*지\s*면\s*적|면\s*적|대\s*지\s*권|건\s*물)|\n|$)/.exec(t);
+    if (jsm && /\d/.test(jsm[1])) ip.종전소재지 = jsm[1].replace(/\s+/g, ' ').trim();
+    var ck = [];
+    if (ip.분양금액 && ip.권리가액 && ip.추가분담금 != null) ck.push('분양금액 − 권리가액 = 추가분담금 ' + (ip.분양금액 - ip.권리가액 === ip.추가분담금 ? '일치' : '불일치'));
+    if (r.매매대금 && ip.분양금액 && ip.프리미엄) ck.push('분양금액 + 프리미엄 = 매매대금 ' + (ip.분양금액 + ip.프리미엄 === r.매매대금 ? '일치' : '불일치'));
+    if (ip.추가분담금 && ip.납부분담금 != null && ip.승계분담금) ck.push('추가분담금 − 납부분담금 = 승계 분담금 ' + (ip.추가분담금 - ip.납부분담금 === ip.승계분담금 ? '일치' : '불일치'));
+    if (annex && annex.매매대금 && ip.권리가액 && ip.프리미엄) ck.push('종전토지 계약 매매대금 = 권리가액 + 프리미엄 ' + (annex.매매대금 === ip.권리가액 + ip.프리미엄 ? '일치' : '불일치'));
+    ip.검산 = ck;
+    if (ck.some(function (x) { return /불일치$/.test(x); })) r.경고.push('입주권 표 검산 불일치(' + ck.filter(function (x) { return /불일치$/.test(x); }).join(', ') + ') — 원문 확인');
+    r.입주권 = ip; if (ip.승계분담금) r.승계분담금 = ip.승계분담금;
+  } else {
+    // [2026.10.17] 조합원(토지등소유자) 공급계약서 — "분양가(A) · 권리가(B) · 분담금(C)=(A−B)" 표(김동하)·"분양금액 권리금액 분담금 및 환급금" 표(김동일 공급계약서).
+    //  세 금액이 A − B = C로 맞을 때만. 뒤따르는 분담금 납부 회차 금액들이 분담금과 맞으면 회차로 쪼갠다. 권리가 = 종전 부동산 평가액(취득가액 아님), 분담금 = 새 집 취득에 더 낸 돈
+    var abm = /분\s*양\s*(?:가|금\s*액)[\s\S]{0,160}?권\s*리\s*(?:가\s*액|금\s*액|가)[\s\S]{0,220}?분\s*담\s*금([\s\S]{0,500})/.exec(flat);
+    if (abm) {
+      var ns = (abm[1].match(/\d{1,3}(?:,\d{3}){2,}/g) || []).map(function (x) { return Number(x.replace(/,/g, '')); });
+      for (var ai = 0; ai + 2 < Math.min(ns.length, 8); ai++) {
+        if (ns[ai] - ns[ai + 1] !== ns[ai + 2] || !ns[ai + 2]) continue;
+        var jo = { 분양가: ns[ai], 권리가액: ns[ai + 1], 분담금: ns[ai + 2], 검산: '분양가 − 권리가 = 분담금 일치' }, rest2 = ns.slice(ai + 3).filter(function (x) { return x >= 100000; }), acc = 0;
+        for (var aj = 0; aj < Math.min(rest2.length, 10); aj++) { acc += rest2[aj]; if (acc === jo.분담금 && aj >= 1) { jo.납부 = rest2.slice(0, aj + 1); break; } if (acc > jo.분담금) break; }
+        r.조합원분양 = jo; r.종류 = '조합원 공급계약서(분양가·권리가·분담금)'; break;
+      }
+    }
+  }
   var all = ctMoneyList_(flat).map(function (x) { return x.v; });
   // ₩숫자 금액(가장 믿을 만함)이 이름표로 읽은 매매대금과 다르면 — 한글 금액이 OCR에서 잘린 것("오억칠천만"→"오억")
   var wons = ctMoneyList_(flat).filter(function (x) { return x.won; }).map(function (x) { return x.v; });
@@ -31975,7 +32079,7 @@ function ctParseContract_(text) {
   if (r.매매대금 && !r.계약금 && !r.잔금 && !(r.중도금 || []).length && all.filter(function (x) { return x === r.매매대금; }).length >= 2) {
     r.일시지급추정 = true; r.검산 = '계약금·중도금 칸이 비어 일시 지급으로 보임 — 원문 확인';
   }
-  if (!r.매매대금) r.경고.push('매매대금을 읽지 못함');
+  if (!r.매매대금 && !r.조합원분양) r.경고.push('매매대금을 읽지 못함'); // 조합원 공급계약서는 매매대금이 아니라 분양가·권리가·분담금
   else if (r.대금추정) r.경고.push('매매대금 이름표를 못 읽어 가장 큰 금액으로 잡음 — 확인필요');
   if (r.검산.indexOf('불일치') === 0) r.경고.push('금액 검산 불일치 — 원문 확인');
   // 날짜 — 지급일(…일에 지불/지급), 잔금일, 계약일
@@ -32000,12 +32104,28 @@ function ctParseContract_(text) {
     var sg = t.search(/각\s*(?:자\s*)?(?:서명|1\s*통)|이의\s*없음을\s*확인/);
     if (sg >= 0) { var near = ds.filter(function (d) { return d.at > sg && d.at - sg < 260; }); if (near.length) r.계약일 = near[0].d; }
   }
+  // [2026.10.17] 서명란 머리 날짜 — 맺음 문구 없이 "…무효로 함. 2015년 8월 29일 매도인 매수인 김동일"(김동일 취득)·"2018년 10월 25일 매도인 성명 …"(나성은)처럼 날짜 바로 뒤에 당사자 이름표가 오면 그 날짜가 계약일.
+  //  지급일(…일에 지불) 문구가 붙은 날짜는 빼고, 당사자 이름표가 바로 뒤(20자 안)에 오는 마지막 날짜
+  if (!r.계약일) {
+    var sgd = ds.filter(function (d) { return !/^\s*(?:에|까지)?\s*(?:지불|지급|영수)/.test(t.slice(d.end, d.end + 8)) && /^[\s.,:：]{0,4}(?:\(?\s*[월화수목금토일]\s*\)?\s*)?(?:매\s*도\s*(?:인|자)|매\s*수\s*(?:인|자)|공\s*급\s*(?:자|받\s*는\s*자)|양\s*도\s*인|양\s*수\s*인|계\s*약\s*자)/.test(t.slice(d.end, d.end + 20)); });
+    if (sgd.length) r.계약일 = sgd[sgd.length - 1].d;
+  }
   if (!r.계약일) r.경고.push('계약일을 확정하지 못함');
   if (r.계약일 && r.잔금일 && r.잔금일 < r.계약일) { r.경고.push('잔금일이 계약일보다 앞섬 — 날짜 확인필요'); r.잔금일확인필요 = true; }
   // 당사자 — "매도인 ○○○" / 성명 칸. 확신 없으면 비움.
-  var nameAfter = function (re) { var x = re.exec(t); if (!x) return ''; var w = /^[\s:：]*(?:성\s*명\s*[:：|]?\s*)?([가-힣]{2,4})(?=\s|\(|$)/.exec(t.slice(x.index + x[0].length, x.index + x[0].length + 30)); return w && !/^(주소|성명|주민|등록|번호|전화|인적|사항|매수인|매도인|대리인)$/.test(w[1]) ? w[1] : ''; };
+  // [2026.10.17] 서식 머리말("매도인과 매수인 쌍방은 …")의 낱말을 이름으로 잡던 것(나성은: 매수인 = "쌍방은") — 이름표가 여러 번 나오면 차례로 보며 이름이 아닌 낱말은 건너뛴다
+  var notName = /^(주소|성명|주민|등록|번호|전화|인적|사항|매수인|매도인|대리인|쌍방|쌍방은|쌍방간|쌍방이|상호|상호간|양측|양자|당사자|합의|합의하여|다음과|아래와|아래|본인|공동명의인|공동명의|명의인|부담|부담한다|부담하며|승계|승계한다|승계함|은|는|에게|측|측은|간에|사이|으로|에게서|이|가|의|과|와)$/;
+  //  첫 이름표 뒤 낱말이 이름이 아니면(머리말) 서명란(맺음 문구 뒤 매도인 → 매수인 순서, tcContractParties_)의 이름으로 — 서명란도 못 읽으면 비움
+  var hdrHit = false, nameAfter = function (re) { var x = re.exec(t); if (!x) return ''; var w = /^[\s:：]*(?:성\s*명\s*[:：|]?\s*)?([가-힣]{2,4})(?=\s|\(|$)/.exec(t.slice(x.index + x[0].length, x.index + x[0].length + 30)); if (w && notName.test(w[1]) && !/^(주소|성명|주민|등록|번호|전화)$/.test(w[1])) hdrHit = true; return w && !notName.test(w[1]) ? w[1] : ''; };
   r.매도인 = nameAfter(/매\s*도\s*인\s*(?=[^\n]{0,4}[가-힣])/);
   r.매수인 = nameAfter(/매\s*수\s*인\s*(?=[^\n]{0,4}[가-힣])/);
+  if (hdrHit && (!r.매도인 || !r.매수인)) { try { var pp0 = tcContractParties_(t)[0]; if (pp0) { if (!r.매도인 && pp0.seller && pp0.seller.name) r.매도인 = pp0.seller.name; if (!r.매수인 && pp0.buyer && pp0.buyer.name) r.매수인 = pp0.buyer.name; } } catch (e) {} }
+  //  서명란 맺음 문구가 없는 서식 — 글 끝 400자(서명란) 안의 이름표 뒤 낱말만(본문 조항의 "매수인 명의로" 같은 낱말을 이름으로 잡지 않게)
+  if (hdrHit && (!r.매도인 || !r.매수인)) {
+    var tail0 = Math.max(0, t.length - 400), sigName = function (re) { var g = new RegExp(re.source, 'g'), x, last = ''; g.lastIndex = tail0; while ((x = g.exec(t))) { var w = /^[\s:：]*(?:(?:주\s*소|성\s*명)[^\n]{0,40}?성\s*명\s*[:：|]?\s*|성\s*명\s*[:：|]?\s*)?([가-힣]{2,4})(?=\s|\(|$)/.exec(t.slice(x.index + x[0].length, x.index + x[0].length + 60)); if (w && !notName.test(w[1])) last = w[1]; } return last; };
+    if (!r.매도인) r.매도인 = sigName(/매\s*도\s*인\s*/);
+    if (!r.매수인) r.매수인 = sigName(/매\s*수\s*인\s*/);
+  }
   var tk = /특\s*약\s*사\s*항\s*[:：]?/.exec(t);
   if (tk) {
     var body = t.slice(tk.index + tk[0].length, tk.index + tk[0].length + 500);
@@ -32328,6 +32448,8 @@ function docDealDetect_(text) {
   if (/거\s*래\s*예\s*정\s*금\s*액|중개\s*보수\s*등에\s*관한\s*사항|중개\s*대상물\s*확인/.test(t) && /중\s*개\s*보\s*수/.test(t)) return [{ type: 'brokerdesc', text: t }];
   if (!saleHead && /부\s*동\s*산\s*거\s*래\s*계\s*약\s*신\s*고\s*필\s*증/.test(t) && /거\s*래\s*가\s*격|계\s*약\s*체\s*결\s*일/.test(t)) return [{ type: 'dealreport', text: t }];
   if ((saleHead || /(매\s*매|공\s*급|분\s*양)\s*계\s*약\s*서|부동산\s*매매\s*계약/.test(t)) && /(매\s*도\s*인|매\s*수\s*인|공급\s*받는\s*자|분양\s*받는\s*자|매\s*도\s*자)/.test(t) && ctMoneyList_(t.replace(/\s+/g, ' ')).length) return [{ type: 'contract', text: t }];
+  // [2026.10.17] 조합원(토지등소유자) 공급계약서 — 당사자 칸 이름이 "조합·조합원"이라 위 조건에 안 걸렸다(김동하: 분양가·권리가·분담금 표)
+  if (/(공\s*급|분\s*양)\s*계\s*약\s*서/.test(head) && /분\s*담\s*금/.test(t) && /권\s*리\s*(?:가|금\s*액)/.test(t) && /\d{1,3}(?:,\d{3}){2,}/.test(t)) return [{ type: 'contract', text: t }];
   return [];
 }
 function docDealParseOne_(seg) {
@@ -35373,9 +35495,13 @@ function tcApprItemFor_(x, a, assets) {
 // =========================================================
 function tcKrMoney_(s) {
   s = String(s || '').replace(/\s+/g, '');
-  let m = /(\d+)억(?:(\d{1,4})만)?/.exec(s); if (m) return Number(m[1]) * 1e8 + (m[2] ? Number(m[2]) * 1e4 : 0);
+  // [2026.10.17] ₩숫자(괄호 안)가 있으면 그것이 가장 믿을 만함 — "금 일억구천만(₩190,000,000)"(노오섭)
+  let m = /[₩]\s*(\d{1,3}(?:,\d{3})+)/.exec(s); if (m) return Number(m[1].replace(/,/g, ''));
+  m = /(\d+)억(?:(\d{1,4})만)?/.exec(s); if (m) return Number(m[1]) * 1e8 + (m[2] ? Number(m[2]) * 1e4 : 0);
   m = /(\d{1,4})만원?/.exec(s); if (m) return Number(m[1]) * 1e4;
   m = /\d{1,3}(?:,\d{3}){2,}/.exec(s); if (m) return Number(m[0].replace(/,/g, ''));
+  // [2026.10.17] 한글 숫자 금액("일억구천만원") — 대금표 보증금 칸이 한글로만 적힌 계약서
+  m = /([일이삼사오육칠팔구십백천만억]{2,20})원?/.exec(s); if (m && /[만억]/.test(m[1])) { const kv = ctKorAmt_(m[1]); if (kv) return kv; }
   return 0;
 }
 function tcContractItems_(text, r) {
@@ -35384,8 +35510,23 @@ function tcContractItems_(text, r) {
   // 승계하는 임대(전세)보증금 — 매매대금의 일부(그만큼 현금 대신 채무를 넘김). 양도가액·취득가액은 승계분을 넣은 매매대금 그대로
   const dm = /(?:전\s*세|임\s*대\s*차?|현)\s*(?:계\s*약\s*)?(?:\(\s*)?보\s*증\s*금[^.]{0,30}?((?:금\s*)?\d+\s*억(?:\s*\d{1,4}\s*만)?\s*원?|(?:금\s*)?\d{1,3}(?:,\d{3}){2,}\s*원?)[\s\S]{0,90}?승\s*계/.exec(t) || /승\s*계[^.]{0,60}?보\s*증\s*금[^.]{0,20}?((?:금\s*)?\d+\s*억(?:\s*\d{1,4}\s*만)?\s*원?|(?:금\s*)?\d{1,3}(?:,\d{3}){2,}\s*원?)/.exec(t);
   const dep = dm ? tcKrMoney_(dm[1]) : (r && r.승계보증금) || 0;
-  if (dep) { out.deposit = dep; const repl = /중\s*도\s*금\s*으\s*로\s*대\s*체|잔\s*금\s*으\s*로\s*대\s*체/.exec(t.slice(dm ? dm.index : 0, (dm ? dm.index : 0) + 200)); out.lines.push('승계하는 임대보증금 ' + w(dep) + (repl ? '(' + repl[0].replace(/\s+/g, '') + ')' : '') + ' — 매매대금 ' + (r && r.매매대금 ? w(r.매매대금) : '') + '에 들어 있는 금액(현금 대신 보증금 반환채무를 넘김, 별도로 더하지 않음)'); }
-  if (r && r.융자금) { out.loan = r.융자금; out.lines.push('승계하는 융자금 ' + w(r.융자금) + ' — 매매대금에 들어 있는 금액(별도로 더하지 않음)'); }
+  if (dep) { out.deposit = dep; const repl = /중\s*도\s*금\s*으\s*로\s*대\s*체|잔\s*금\s*으\s*로\s*대\s*체/.exec(t.slice(dm ? dm.index : 0, (dm ? dm.index : 0) + 200)); const how = repl ? repl[0].replace(/\s+/g, '') : (r && r.승계방식) || ''; out.lines.push('승계하는 임대보증금 ' + w(dep) + (how ? '(' + how + ')' : '') + ' — 매매대금 ' + (r && r.매매대금 ? w(r.매매대금) : '') + '에 들어 있는 금액(현금 대신 보증금 반환채무를 넘김, 별도로 더하지 않음)'); }
+  if (r && r.융자금) { out.loan = r.융자금; out.lines.push('승계하는 융자금 ' + w(r.융자금) + (r.입주권 && r.입주권.납부분담금 === r.융자금 ? '(= 이미 낸 분담금 — 분담금을 대출로 낸 것을 매수인이 넘겨받음)' : '') + ' — 매매대금에 들어 있는 금액(별도로 더하지 않음)'); }
+  // [2026.10.17 세무사님 원칙 — 내용 항목별로] 조합원입주권·분양권 — 표 항목으로 양도가액·취득가액을 가른다(김동일)
+  if (r && r.입주권) {
+    const ip = r.입주권; out.rights = ip;
+    out.lines.push((/분양권/.test(r.종류 || '') ? '분양권' : '조합원입주권') + ' 항목: ' + [ip.분양금액 ? '분양금액 ' + w(ip.분양금액) : '', ip.권리가액 ? '권리가액 ' + w(ip.권리가액) + '(종전 부동산 평가액 — 취득가액 아님)' : '', ip.추가분담금 ? '추가분담금 ' + w(ip.추가분담금) + (ip.납부분담금 != null ? '(이미 냄 ' + w(ip.납부분담금) + (ip.승계분담금 ? ' · 매수인 승계 ' + w(ip.승계분담금) : '') + ')' : '') : '', ip.프리미엄 ? '프리미엄 ' + w(ip.프리미엄) : ''].filter(Boolean).join(' · ') + (ip.검산 && ip.검산.length ? ' [검산: ' + ip.검산.join(', ') + ']' : ''));
+    if (ip.승계분담금 && r.매매대금) out.lines.push('⚠ 양도가액 판단 — 매매대금 ' + w(r.매매대금) + ' 중 승계 분담금 ' + w(ip.승계분담금) + '은 매수인이 앞으로 조합에 낼 미납 분담금(매도인이 받은 대가가 아님) → 매도인이 받은 대가 ' + w(r.매매대금 - ip.승계분담금) + (r.융자금 ? '(현금 ' + w(r.매매대금 - ip.승계분담금 - r.융자금) + ' + 승계 융자 ' + w(r.융자금) + ')' : '') + ' — 어느 금액을 양도가액으로 할지 질문');
+    if (ip.납부분담금) out.lines.push('취득가액 — 이미 낸 분담금 ' + w(ip.납부분담금) + '은 입주권 취득에 들인 돈이라 종전 부동산 취득가액에 더함(소득세법 시행령 §166, 계산기 조합원입주권 "권리가액 ' + (ip.권리가액 ? w(ip.권리가액) : '') + '·분담금 납부액" 칸)');
+  }
+  if (r && r.종전토지계약 && r.종전토지계약.매매대금) out.lines.push('같은 서류 뒤의 종전토지 매매계약서(매매대금 ' + w(r.종전토지계약.매매대금) + (r.종전토지계약.계약금 ? ', 계약금 ' + w(r.종전토지계약.계약금) : '') + ') — 입주권 계약서의 내용에 따르는 같은 거래의 부속 계약서' + (r.입주권 && r.입주권.권리가액 && r.입주권.프리미엄 ? '(권리가액 + 프리미엄 = ' + w(r.입주권.권리가액 + r.입주권.프리미엄) + (r.입주권.권리가액 + r.입주권.프리미엄 === r.종전토지계약.매매대금 ? ' 일치' : ' 불일치 — 원문 확인') + ')' : '') + ', 금액을 따로 세지 않음');
+  if (r && r.조합원분양) { const jo = r.조합원분양; out.lines.push('조합원 공급계약서: 분양가 ' + w(jo.분양가) + ' − 권리가 ' + w(jo.권리가액) + ' = 분담금 ' + w(jo.분담금) + '(검산 일치) — 권리가는 종전 부동산 평가액(취득가액 아님), 분담금은 새 집을 받으려 더 내는 돈(낸 만큼 취득가액에 더함)' + (jo.납부 ? ' · 분담금 납부 ' + jo.납부.length + '회 ' + jo.납부.map(w).join(' + ') : '') + ' — 매매 계약으로 세지 않음'); }
+  // 특약 — 매도인이 부담하는 추가분담금(비례율 변경 등) — 받은 대가를 줄이는 돈인지 판단
+  const sad = /추\s*가\s*분\s*담\s*금\s*(?:은|는)?\s*매\s*도\s*(?:인|자)\s*(?:이|가)?\s*[^.]{0,20}?(?:납\s*부|부\s*담)/.exec(t);
+  if (sad) { const sam = /추\s*가\s*분\s*담\s*금\s*[:：]\s*(\d{1,3}(?:,\d{3})+)/.exec(t.slice(sad.index, sad.index + 300)); out.lines.push('⚠ 특약: 추가분담금' + (sam ? ' ' + sam[1] + '원' : '') + '은 매도인 부담("' + sad[0].trim().slice(0, 40) + '") — 받은 대가에서 빼는지(양도가액 감액) 판단'); }
+  // 현금청산 — 분양신청을 하지 않은 토지등소유자가 정비사업 조합(사업시행자)에 넘긴 것(방영교)
+  const cs = /분\s*양\s*신\s*청\s*을?\s*(?:하\s*지\s*(?:아\s*니\s*한|않\s*은)|안\s*한)|현\s*금\s*청\s*산/.exec(t);
+  if (cs && /조\s*합|사\s*업\s*시\s*행\s*자/.test(t)) { out.cashSettle = true; out.lines.push('현금청산("' + t.slice(Math.max(0, cs.index - 10), cs.index + cs[0].length + 10).trim() + '") — 분양신청을 안 한 토지등소유자가 사업시행자(조합)에 넘긴 양도: 양도시기는 잔금일·등기접수일 중 빠른 날(협의), 수용재결이면 수용. 도시정비법 정비구역 사업이면 공익사업용 토지 감면(조특법 §77) 검토 — 소규모주택정비법 사업(가로주택 등)은 해당 여부 확인'); }
   // 부가가치세 조건 — 건물분 부가세는 양도가액이 아님(사업자 매매). "없음"이면 주거용 등으로 과세 안 됨
   const vm = /(?:건\s*물\s*분\s*)?부\s*가\s*(?:가\s*치\s*)?세\s*(?:는|은|:)?\s*(없\s*음|별\s*도|불\s*포\s*함|포\s*함|면\s*세)/.exec(t);
   if (vm) { out.vat = vm[1].replace(/\s+/g, ''); out.lines.push('부가가치세 ' + out.vat + '(특약: "' + t.slice(Math.max(0, vm.index - 30), vm.index + vm[0].length + 10).trim() + '")' + (out.vat === '포함' ? ' — 매매대금에 부가세가 들어 있으면 양도가액은 부가세를 뺀 금액' : out.vat === '별도' || out.vat === '불포함' ? ' — 양도가액은 부가세를 뺀 매매대금(지금 값 그대로)' : '')); }
