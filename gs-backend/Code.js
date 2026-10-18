@@ -24638,7 +24638,7 @@ function ocrbWalk_(folder, rel, depth, out, opt) {
   const subs = folder.getFolders();
   while (subs.hasNext()) {
     const sf = subs.next(), sn = sf.getName();
-    if (/^_/.test(sn) || (!opt.includeFiled && caseIsFiledReturnFolder_(sn)) || caseProcRefDirName_(sn)) { out.skipDirs = (out.skipDirs || 0) + 1; continue; }
+    if (/^_/.test(sn) || (!opt.includeFiled && caseIsFiledReturnFolder_(sn)) || (!opt.includeRef && caseProcRefDirName_(sn))) { out.skipDirs = (out.skipDirs || 0) + 1; continue; } // 2차(pass2)는 양도코리아·판례·참고 폴더도
     ocrbWalk_(sf, rel ? rel + '/' + sn : sn, depth + 1, out, opt);
   }
 }
@@ -24680,15 +24680,18 @@ function cpOcrBatch_(body) {
     if (st.phase === 'scan') {
       const have = {};
       const it = fo.getFiles(); while (it.hasNext()) have[it.next().getName().replace(/(\s*\(\d+\))?\.txt$/, '')] = 1;
+      const inQ = {}; if (st.pass2) st.queue.forEach(function (q) { inQ[q.id] = 1; });
       while (st.fi < st.folders.length && Date.now() - started < budget - 30000) {
         const fid = st.folders[st.fi++];
         let folder = null; try { folder = DriveApp.getFolderById(fid); } catch (e) { st.fails.push({ c: fid, n: '', why: '폴더를 열 수 없음' }); continue; }
         const cname = folder.getName(), files = [];
         try { ocrbWalk_(folder, '', 0, files, st); } catch (e) { st.fails.push({ c: cname, n: '', why: '폴더 읽기 실패: ' + String(e && e.message || e).slice(0, 80) }); }
         const cs = st.cases[cname] = st.cases[cname] || { 파일: 0, 기억있음: 0, 읽을것: 0, 못바꿈: 0, 읽음: 0, 빈글자: 0, 실패: 0, 못바꿈이유: {} };
-        st.sum.건너뛴폴더 += files.skipDirs || 0;
+        if (!st.pass2) st.sum.건너뛴폴더 += files.skipDirs || 0;
         files.forEach(function (f) {
           if (/^~\$/.test(f.name)) return;
+          // [2026.10.18] 2차 훑기 — 1차에서 건너뛴 폴더(양도코리아 당초 신고서·판례·참고)와 그사이 읽을 수 있게 된 형식(옛 hwp 등)에서 기억에 없고 대기열에도 없는 것만 더한다
+          if (st.pass2) { if (inQ[f.id] || !ocrbKind_(f).ok || have[tcOcrKey_(f)]) return; cs.읽을것++; st.sum.읽을것++; st.sum.추가 = (st.sum.추가 || 0) + 1; inQ[f.id] = 1; st.queue.push({ id: f.id, n: f.name, mt: f.mimeType, mod: f.modified, c: cname, sz: f.size || 0, p2: true }); return; }
           cs.파일++; st.sum.파일++;
           const k = ocrbKind_(f);
           if (!k.ok) { cs.못바꿈++; st.sum.못바꿈++; cs.못바꿈이유[k.why] = (cs.못바꿈이유[k.why] || 0) + 1; return; }
@@ -24713,6 +24716,17 @@ function cpOcrBatch_(body) {
       rest.forEach(function (q) { delete q._i; });
       st.queue = st.queue.slice(0, st.qi).concat(rest); st.sorted = true;
     }
+    // [2026.10.18] 드라이브 사용 한도 초과(User rate limit)로 실패한 서류는 실패가 아니라 "미룸" — 예전 실행이 실패로 남긴 것도 한 번 미룸으로 옮긴다(시험 묶음 이종혁·최영환 등기부 등 8건)
+    if (st.phase === 'ocr' && !st.migrated) {
+      st.retry = st.retry || []; const keep = [];
+      (st.fails || []).forEach(function (fl) {
+        if (!/rate\s*limit|quota|429/i.test(String(fl.why))) { keep.push(fl); return; }
+        const q = st.queue.slice(0, st.qi).filter(function (x) { return x.c === fl.c && x.n === fl.n; })[0];
+        if (!q) { keep.push(fl); return; }
+        st.retry.push(q); st.sum.실패 = Math.max(0, (st.sum.실패 || 0) - 1); if (st.cases[fl.c]) st.cases[fl.c].실패 = Math.max(0, (st.cases[fl.c].실패 || 0) - 1); st.sum.미룸 = (st.sum.미룸 || 0) + 1;
+      });
+      st.fails = keep; st.migrated = true;
+    }
     // 2) 읽기 — 기억에 없는 서류만 tc_docText_로(읽은 글자는 tc_docText_가 기억 폴더에 남긴다). 정리·저장은 하지 않는다
     while (st.qi < st.queue.length && Date.now() - started < budget - OCRB_ITEM_MARGIN_MS_) {
       const q = st.queue[st.qi++], cs = st.cases[q.c] || (st.cases[q.c] = { 파일: 0, 기억있음: 0, 읽을것: 0, 못바꿈: 0, 읽음: 0, 빈글자: 0, 실패: 0, 못바꿈이유: {} });
@@ -24725,12 +24739,18 @@ function cpOcrBatch_(body) {
         cs.읽음++; st.sum.읽음++;
         if (/pdf/.test(String(q.mt))) { const pg = ocrbPdfPages_(q.id, q.sz); if (pg > 10) st.long.push({ c: q.c, n: q.n, 쪽: pg, 글자: String(t).length }); }
       } catch (e) {
-        cs.실패++; st.sum.실패++; st.fails.push({ c: q.c, n: q.n, why: String(e && e.message || e).slice(0, 120) });
+        const msg = String(e && e.message || e);
+        if (/rate\s*limit|quota|429/i.test(msg) && (q.tries || 0) < 3) { q.tries = (q.tries || 0) + 1; (st.retry = st.retry || []).push(q); st.sum.미룸 = (st.sum.미룸 || 0) + 1; try { Utilities.sleep(3000); } catch (e2) {} break; } // 한도 초과 — 미루고 이번 호출은 쉼
+        cs.실패++; st.sum.실패++; st.fails.push({ c: q.c, n: q.n, why: msg.slice(0, 120) });
       }
     }
-    if (st.qi >= st.queue.length) { st.phase = 'done'; st.doneAt = new Date().toISOString(); st.queue = []; }
+    if (st.qi >= st.queue.length) {
+      if ((st.retry || []).length) { st.queue = st.queue.concat(st.retry); st.sum.미룸 = Math.max(0, (st.sum.미룸 || 0) - st.retry.length); st.retry = []; } // 미룬 것 다시
+      else if (!st.pass2 && !st.dryRun) { st.pass2 = true; st.phase = 'scan'; st.fi = 0; st.includeFiled = true; st.includeRef = true; st.sorted = false; } // 2차 훑기
+      else { st.phase = 'done'; st.doneAt = new Date().toISOString(); st.queue = []; }
+    }
     ocrbSave_(fo, st);
-    if (st.phase !== 'done') return { ok: true, more: true, phase: 'ocr', done: st.qi, total: st.queue.length, sum: st.sum };
+    if (st.phase !== 'done') return { ok: true, more: true, phase: st.phase, done: st.phase === 'scan' ? st.fi : st.qi, total: st.phase === 'scan' ? st.folders.length : st.queue.length, sum: st.sum };
     try { ocrbTrigger_({ on: false }); } catch (e) {}
     return { ok: true, phase: 'done', sum: st.sum, cases: st.cases, fails: st.fails, long: st.long };
   } finally { try { cache.remove(FLAG); } catch (e) {} }
