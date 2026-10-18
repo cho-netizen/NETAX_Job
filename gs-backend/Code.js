@@ -6258,7 +6258,7 @@ function giftPropertyDeduction_(relation, isMinor) {
 function spouseInheritanceLimit_(estateValueForLimit, nonHeirBequestAmount, giftToHeirsWithin10Years, spouseLegalShareRatio, spouseTaxableBaseOfPriorGift) {
   if (!(spouseLegalShareRatio > 0)) return Infinity;
   const base = (Number(estateValueForLimit) || 0) - (Number(nonHeirBequestAmount) || 0) + (Number(giftToHeirsWithin10Years) || 0);
-  return Math.max(0, base * spouseLegalShareRatio - (Number(spouseTaxableBaseOfPriorGift) || 0));
+  return Math.max(0, Math.floor(base * spouseLegalShareRatio - (Number(spouseTaxableBaseOfPriorGift) || 0))); // [engine-fix] 원 미만 버림
 }
 
 // 배우자 상속공제 (상증세법 §19) — 최소 5억, 최대 30억이며 (실제 상속액, 한도액) 중 작은 값.
@@ -6387,7 +6387,8 @@ function financialAssetInheritanceDeduction_(netFinancialAssets) {
   const net = Number(netFinancialAssets) || 0;
   if (net <= 0) return 0;
   if (net <= 20000000) return net;
-  return Math.min(200000000, Math.max(net * 0.2, 20000000));
+  // [2026.10.19 engine-fix] 원 미만 버림 — 비율 공제(금융재산 20%·배우자 법정상속분)에서 생긴 끝수가 과세표준·신고서 칸까지 가던 것(박종헌: 과세표준 2,744,401,611.4)
+  return Math.floor(Math.min(200000000, Math.max(net * 0.2, 20000000)));
 }
 
 // 사업관련자산가액 비율 (상증세법 시행령 §15⑤2호가목~마목 — 가업상속공제·영농상속공제·조특법 가업승계 증여세 특례에 공통 사용)
@@ -8214,7 +8215,7 @@ function toolCalculateInheritanceTax(p) {
   if (overallLimitApplied) limitedDeduction = overallDeductionLimit;
   const totalDeduction = limitedDeduction + appraisalFeeDeduction + funeralDeduction;
 
-  const taxBase = Math.max(0, effectiveEstateAmount - totalDeduction);
+  const taxBase = Math.max(0, Math.floor(effectiveEstateAmount - totalDeduction)); // [engine-fix] 과세표준 원 미만 버림
   let calculatedTax = calcProgressiveTax_(taxBase, GIFT_INHERIT_TAX_BRACKETS);
   // §28②·§29(시행령§21①)·§30 등 세액공제류는 §69①과 달리 "산출세액에 가산하는 금액을 포함한다"는
   // 명문이 없으므로, 이 공제들의 계산·한도 기준은 세대생략할증(§27) 가산 전(前)의 taxBeforePremium이다.
