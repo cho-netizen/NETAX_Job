@@ -29817,6 +29817,7 @@ function cpfFile_(c, f, cache, tbank, opt) {
   const how = /\.(hwpx?|hwp)$/i.test(n) ? '한글' : /spreadsheet|ms-excel|csv/.test(mt) || /\.(xlsx?|xlsm|csv)$/i.test(n) ? '엑셀' : /pdf|^image\//.test(mt) ? '글자인식' : '글자';
   const part = f.bundleOf ? (/\(묶음\s*([^)]+)\)/.exec(n) || [0, ''])[1] : '';
   const src = { fileId: String(f.id), file: f.bundleOf || n, docType: '', where: '' }; if (part) src.part = '묶음 ' + part;
+  if (f.dir) src.dir = String(f.dir); // [2026.10.19 1번 밤작업] 하위 폴더가 다른 같은 이름 파일 — 묶는 쪽은 fileId(+dir)로
   const docFact = function (value, conf, note) { return { kind: '서류', value: value, raw: n, src: Object.assign({}, src, { where: '파일 전체', docType: value }), keys: {}, role: '', read: { how: how, conf: conf, note: note || '' } }; };
   if (/^~\$/.test(n)) return [docFact('제외', '확실', '엑셀 임시 파일')];
   if (/종합검토서_초안|^계산기\.json|_검토서_|^_/.test(n)) return [docFact('제외', '확실', '도구가 만든 파일')];
@@ -29894,6 +29895,8 @@ function cpfFile_(c, f, cache, tbank, opt) {
   let lists = [];
   if (/목\s*록\s*번\s*호/.test(text)) { try { lists = cpfRegLists_(text, base); } catch (e) {} }
   ruled = ruled.concat(lists);
+  // 등기부 대상 부동산(머리 줄) — 규칙이 이미 같은 자산 열쇠의 소재지를 냈으면 건너뜀
+  try { const have = {}; ruled.forEach(function (x) { if (x.kind === '소재지' && x.keys && x.keys.asset) have[x.keys.asset] = 1; }); ruled = ruled.concat(cpfRegHeads_(text, base).filter(function (x) { return !have[x.keys.asset]; })); } catch (e) {}
   const ruledVals = {};
   ruled.forEach(function (x) { ruledVals['*|' + JSON.stringify(x.value)] = 1; if (x.value && typeof x.value === 'object') Object.keys(x.value).forEach(function (q) { const v = x.value[q]; ruledVals['*|' + JSON.stringify(typeof v === 'string' ? (cpfDate_(v) || v) : v)] = 1; }); });
   const rowy = ruled.filter(function (x) { return x.value && typeof x.value === 'object' && !('n' in x.value); }).length >= 30; // 통장처럼 줄 사실이 많은 서류는 공통 뽑기에서 열쇠만
@@ -29926,6 +29929,22 @@ function cpfFile_(c, f, cache, tbank, opt) {
   facts[0].read.note = [typeDoubt, exclude ? '제외 후보: ' + exclude + ' — 사실은 뽑았고 read.use로 표시(쓸지 2번이 정함)' : '', p && p.type ? '' : '서류 규칙이 없는 종류 — 글자에서 공통 뽑기·글자 줄만 함', warn.length ? '서류 정리 경고: ' + warn.slice(0, 3).join(' / ').slice(0, 200) : '', cut ? '글자 상한에서 잘림 — 뒤쪽은 못 읽음' : '', trunc.length ? '잘림·못 함: ' + trunc.join(' / ') : ''].filter(String).join(' · ');
   if (exclude) facts[0].src.docType = label;
   return facts.concat(all);
+}
+// [2026.10.19 1번 밤작업 — 2번 넘김 3-2] 등기부 대상 부동산 — 등기사항증명서 머리 줄 "[토지] 경기도 … 원문동 4"·"[집합건물] … 101동 501호"(쪽마다 되풀이).
+//  사진으로 찍은 등기부·여러 등기부를 묶은 PDF는 서류 정리 규칙이 표제부를 못 읽어 구조화된 소재지가 없었다(글에는 있음). 머리 줄은 서식이 정한 대상 부동산이라 "확실"로,
+//  같은 주소가 쪽마다 되풀이되면 한 번만. 권리자·채권자 주소와 섞이지 않게 머리 줄의 대괄호 표시 뒤만 본다
+function cpfRegHeads_(text, base) {
+  const t = String(text || ''), out = [], seen = {};
+  if (!/등\s*기\s*사\s*항|등\s*기\s*부|표\s*제\s*부|갑\s*구|을\s*구/.test(t)) return out;
+  const re = /\[\s*(토\s*지|건\s*물|집\s*합\s*건\s*물)\s*\]\s*([가-힣][^\n\[\]]{5,90})/g; let m, k = 0;
+  while ((m = re.exec(t))) {
+    let addr = m[2].replace(/\s*(고유번호|\d{4}-\d{4}-\d{6}|발행번호|열람일시|\(\s*\d+\s*\/\s*\d+\s*\)).*$/, '').replace(/\s+/g, ' ').trim();
+    const ak = cpfAssetKey_(addr); if (!ak || seen[ak]) continue; seen[ak] = 1;
+    const kind = m[1].replace(/\s+/g, ''), keys = { asset: ak }; const af = cpfAssetFullKey_(addr); if (af) keys.assetFull = af;
+    const um = /(\d{1,4})\s*동\s*(?:제?\s*\d{1,3}\s*층\s*)?제?\s*(\d{1,5})\s*호/.exec(addr); if (um) keys.unit = um[1] + '동' + um[2] + '호';
+    out.push(cpfKeysFinish_({ kind: '소재지', value: addr, raw: m[0].replace(/\s+/g, ' ').slice(0, 200), src: Object.assign({}, base.src, { where: '등기부 머리 줄 [' + kind + ']', rec: 'regHead' + (++k) }), keys: keys, role: '대상 부동산', read: { how: base.how, conf: '확실', note: '등기사항증명서 머리 줄의 대상 부동산(' + kind + ') — 서식이 정한 칸', ocrConf: cpfOcrConf_(base.how, null) } }));
+  }
+  return out;
 }
 // 등기부 뒤쪽의 매매목록·공동담보목록 — 서류 정리 규칙(registryParse)이 읽지 않던 부분(방향점검: 이종식·김운래).
 //  매매목록은 여러 필지를 한 계약으로 판 거래가액과 필지마다 순위·원인일, 공동담보목록은 한 근저당이 함께 잡은 부동산 목록. 표가 풀려 필지 줄은 불확실(거래가액은 확실)
