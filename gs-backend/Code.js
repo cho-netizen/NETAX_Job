@@ -3851,6 +3851,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'ocr_batch_status') return jsonResponse(cpOcrBatchStatus_());
   if (body.action === 'ocr_batch_trigger') return jsonResponse(ocrbTrigger_(body)); // 10분마다 자동 이어 읽기 켜기/끄기
   if (body.action === 'ocr_probe') return jsonResponse(cpOcrProbe_(body)); // [2026.10.18 3번 세션] 읽기 실험 — 한 쪽을 여러 방법으로 글자인식해 "_3번실험" 폴더에 남김(사건·기억 안 건드림)
+  if (body.action === 'pdf_sample') return jsonResponse(cpPdfSample_(body)); // [2026.10.19 3번 세션] 사진→PDF 견본 — "_3번실험/PDF견본"에만(고객 폴더·원본 안 건드림)
   if (body.action === 'answerkey_run') return jsonResponse(answerKeyRun_(body)); // 🧪 정답지 점검(토큰 0, AnswerKey.js)
   if (body.action === 'taxpayer_bulk_fix') return jsonResponse(taxpayerBulkFix_(body)); // 🏷 납세자·사건명 일괄 정리(미리보기/적용, TaxpayerFix.js)
   if (body.action === 'answerkey_last') return jsonResponse(answerKeyLast_());
@@ -3966,7 +3967,10 @@ function dispatchClientAction0_(body) {
     return jsonResponse(handleGetNetaxRootPath(body));
   }
   if (body.action === 'uploadFile') {
-    return jsonResponse(handleUploadFile(body));
+    // [2026.10.19 3번 세션] 사건 폴더에 새로 올린 사진은 대기 목록 → 90초 뒤 서류별 PDF로(같이 올린 사진끼리 묶음)
+    const up = handleUploadFile(body);
+    try { if (up && up.id && !up.updated) tcPdfConvQueue_(up.id); } catch (e) {}
+    return jsonResponse(up);
   }
   if (body.action === 'deleteItem') {
     return jsonResponse(handleDeleteItem(body));
@@ -3998,7 +4002,9 @@ function dispatchClientAction0_(body) {
   // [2026.09 신규] 증빙확보 탐색기 우클릭 메뉴(이동/공유) — 종전 work.netax.kr의 explorer.js에
   // 있던 기능인데 job.netax.kr에는 화면이 없었다(뒷단도 이 두 개는 아예 없었음).
   if (body.action === 'moveItem') {
-    return jsonResponse(handleMoveItem(body));
+    const mv = handleMoveItem(body);
+    try { if (mv && mv.success && body.type !== 'folder') tcPdfConvQueue_(body.id); } catch (e) {} // [2026.10.19 3번 세션] 휴대폰 공유 → 사건 폴더로 옮긴 사진도 PDF로
+    return jsonResponse(mv);
   }
   if (body.action === 'shareItem') {
     return jsonResponse(handleShareItem(body));
@@ -25520,6 +25526,376 @@ function tcCopyMarks_(items) {
   }
   return marks;
 }
+// =========================================================
+// [2026.10.19 3번 세션 — 문서 정리] 사진 → 서류별 PDF (maps/설계_3번_PDF변환.md, 세무사님: "이미지파일은 모두 pdf로 변환해서 관리해야 하는 것이 기본이다",
+//  "6가지 모두 수행하라"). ① 원본 사진은 지우지 않고 같은 폴더 "_원본사진"으로 옮겨 보관 ② 원본 화질 그대로 담고 큰 장·큰 PDF만 드라이브 축소본
+//  (기준값은 스크립트 속성으로 바꿈) ③ 이름 서류종류_사람_날짜.pdf ④ 합치기 후보 '약함'은 객관식으로 묻기 ⑤ 화면·카톡 캡처도 PDF로 ⑥ 원근보정은 미리 보기의 단추(화면).
+//  그림은 다시 압축하지 않고 PDF에 그대로 담는다(JPEG 바이트 그대로, 휴대폰 회전 표시는 쪽 방향으로) — 화질 손실 없음.
+//  새 PDF의 글자 기억(ocrtxt_·ocrpage1_·ocrvis1_)은 원본 사진 기억을 쪽 순서로 옮겨 다시 글자인식·Vision하지 않는다(비용 0원).
+//  원본 사진을 입력에서 빼는 것은 "_원본사진"이라는 이름 때문이 아니라 _변환기록.json에 짝이 있고 그 PDF가 살아 있을 때만(tcPdfConvDropIn_) —
+//  세무사님: "무조건 제외하면 안되고 pdf로 변환한 경우 원본을 <_원본사진>으로 보내서 제외하는것은 가능하다"
+// =========================================================
+var PDFCONV_ORIG_DIR_ = '_원본사진', PDFCONV_LOG_ = '_변환기록.json', PDFCONV_SUBMIT_DIR_ = '_신고제출';
+// 기준값(스크립트 속성으로 바꿈): 한 장 MB(넘으면 축소본), PDF 한 개 MB(넘으면 큰 장부터 축소본), 축소본 긴 변 점 수, 홈택스 첨부 한 파일 MB·한 번 파일 수
+function tcPdfConvCfg_() {
+  const p = PropertiesService.getScriptProperties(), num = function (k, d) { const v = Number(p.getProperty(k)); return v > 0 ? v : d; };
+  return { pageMB: num('PDFCONV_PAGE_MB', 4), pdfMB: num('PDFCONV_PDF_MB', 10), thumbPx: num('PDFCONV_THUMB_PX', 2400), htFileMB: num('HOMETAX_FILE_MB', 10), htFiles: num('HOMETAX_MAX_FILES', 20) };
+}
+// 폴더 이름 판정 — 앞의 "_ < [ ( 번호 . -"·띄어쓰기는 무시(1번 일괄 4dba929와 같은 규칙)
+function tcFolderKey_(name) { return String(name || '').replace(/^[\s_<\[(\d.\-]+/, '').replace(/[\s>\])]+/g, ''); }
+function tcIsOrigPhotoDir_(name) { return /^원본사진/.test(tcFolderKey_(name)); }
+function tcIsSubmitDir_(name) { return /^신고제출/.test(tcFolderKey_(name)); }
+// "_원본사진" 폴더 안에서 입력에서 뺄 사진 — {사진ID: {pdfId, pdfName, why}}. _변환기록.json의 짝 + PDF가 휴지통·삭제가 아니어야 함.
+//  사건처리 파일 목록(caseProcFiles_)과 1번 일괄이 같은 이 함수를 쓴다
+function tcPdfConvDropIn_(origFolder) {
+  const out = {};
+  try {
+    const it = origFolder.getFilesByName(PDFCONV_LOG_); if (!it.hasNext()) return out;
+    const log = JSON.parse(it.next().getBlob().getDataAsString('UTF-8') || '{}');
+    (log.items || []).forEach(function (r) {
+      if (!r || !r.pdfId || r.undone) return;
+      let alive = false, nm = r.pdfName || '';
+      try { const pf = DriveApp.getFileById(r.pdfId); alive = !pf.isTrashed(); nm = pf.getName(); } catch (e) { alive = false; }
+      if (!alive) return;
+      (r.src || []).forEach(function (s) { out[s.id] = { pdfId: r.pdfId, pdfName: nm, why: 'PDF 「' + nm + '」로 바꿈 — 원본 사진은 보관만(그 PDF로 읽음)' }; });
+    });
+  } catch (e) {}
+  return out;
+}
+// JPEG 휴대폰 회전 표시(EXIF Orientation) → 시계 방향 쪽 회전 각도
+function tcExifRotate_(u) {
+  if (!(u[0] === 0xFF && u[1] === 0xD8)) return 0;
+  let i = 2;
+  while (i < u.length - 10) {
+    if (u[i] !== 0xFF) { i++; continue; }
+    const mk = u[i + 1], L = (u[i + 2] << 8) | u[i + 3];
+    if (mk === 0xE1 && u[i + 4] === 0x45 && u[i + 5] === 0x78 && u[i + 6] === 0x69 && u[i + 7] === 0x66) {
+      const t = i + 10, le = u[t] === 0x49;
+      const r16 = function (o) { return le ? (u[o] | (u[o + 1] << 8)) : ((u[o] << 8) | u[o + 1]); };
+      const r32 = function (o) { return le ? ((u[o] | (u[o + 1] << 8) | (u[o + 2] << 16) | (u[o + 3] << 24)) >>> 0) : (((u[o] << 24) | (u[o + 1] << 16) | (u[o + 2] << 8) | u[o + 3]) >>> 0); };
+      const ifd = t + r32(t + 4), n = r16(ifd);
+      for (let k = 0; k < n; k++) { const e = ifd + 2 + k * 12; if (r16(e) === 0x0112) { const o = r16(e + 8); return o === 6 ? 90 : o === 8 ? 270 : o === 3 ? 180 : 0; } }
+      return 0;
+    }
+    if (mk === 0xDA) break;
+    i += 2 + L;
+  }
+  return 0;
+}
+// 드라이브 축소본(JPEG) 바이트 — 긴 변 px
+function tcThumbBytes_(fileId, px) {
+  const meta = Drive.Files.get(fileId, { fields: 'thumbnailLink' });
+  const link = meta && meta.thumbnailLink; if (!link) throw new Error('축소본 없음');
+  const res = UrlFetchApp.fetch(String(link).replace(/=s\d+(-[a-z0-9-]+)?$/i, '') + '=s' + px, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) throw new Error('축소본 받기 실패 ' + res.getResponseCode());
+  const b = res.getBlob().getBytes(), u = new Uint8Array(b.length); for (let k = 0; k < b.length; k++) u[k] = b[k] & 255; return u;
+}
+// 사진 한 장 → PDF 쪽 하나의 재료 {u, img, rot, shrunk, bytes}. 원본 그대로가 기본, JPEG·PNG(RGB)가 아니거나 한 장 기준 MB를 넘으면 축소본
+function tcImgPage_(fileId, cfg, forceThumb) {
+  const f = DriveApp.getFileById(fileId), size = f.getSize();
+  let u = null, img = null, shrunk = false;
+  if (!forceThumb && size <= cfg.pageMB * 1024 * 1024) {
+    const s = f.getBlob().getDataAsString('ISO-8859-1'); u = new Uint8Array(s.length); for (let k = 0; k < s.length; k++) u[k] = s.charCodeAt(k) & 255;
+    img = tcImgFileSrc_(u);
+  }
+  const rot0 = u ? tcExifRotate_(u) : 0;
+  if (!img) { u = tcThumbBytes_(fileId, cfg.thumbPx); img = tcImgFileSrc_(u); shrunk = true; if (!img) throw new Error('그림 형식을 옮기지 못함'); }
+  // 축소본은 드라이브가 이미 바로 세워 주므로 회전 표시를 쓰지 않음
+  return { u: u, img: img, rot: shrunk ? 0 : rot0, shrunk: shrunk, bytes: img.len };
+}
+// 여러 쪽 PDF — 쪽마다 그림 하나를 원래 바이트 그대로(200dpi 크기 기준), 쪽 방향(/Rotate)으로 바로 세움. 돌려주는 것: GAS 바이트 배열(-128~127)
+function tcPdfFromImages_(pgs) {
+  const out = [], offs = []; let pos = 0;
+  const put = function (s) { for (let k = 0; k < s.length; k++) out.push(s.charCodeAt(k) & 255); pos += s.length; };
+  const n = pgs.length, objPage = function (i) { return 3 + i * 3; };
+  const kids = pgs.map(function (p, i) { return objPage(i) + ' 0 R'; }).join(' ');
+  const parts = [];
+  parts.push(['1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n']);
+  parts.push(['2 0 obj\n<< /Type /Pages /Kids [' + kids + '] /Count ' + n + ' >>\nendobj\n']);
+  pgs.forEach(function (p, i) {
+    const k = 72 / 200, W = Math.round(p.img.w * k * 100) / 100, H = Math.round(p.img.h * k * 100) / 100, d = p.img.d;
+    const dp = d.DecodeParms ? ' /DecodeParms << /Predictor 15 /Colors ' + d.DecodeParms.D.Colors + ' /BitsPerComponent 8 /Columns ' + d.DecodeParms.D.Columns + ' >>' : '';
+    const body = 'q ' + W + ' 0 0 ' + H + ' 0 0 cm /Im0 Do Q';
+    parts.push([objPage(i) + ' 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + W + ' ' + H + ']' + (p.rot ? ' /Rotate ' + p.rot : '') + ' /Resources << /XObject << /Im0 ' + (objPage(i) + 2) + ' 0 R >> >> /Contents ' + (objPage(i) + 1) + ' 0 R >>\nendobj\n']);
+    parts.push([(objPage(i) + 1) + ' 0 obj\n<< /Length ' + body.length + ' >>\nstream\n' + body + '\nendstream\nendobj\n']);
+    parts.push([(objPage(i) + 2) + ' 0 obj\n<< /Type /XObject /Subtype /Image /Width ' + p.img.w + ' /Height ' + p.img.h + ' /ColorSpace /' + d.ColorSpace.N + ' /BitsPerComponent 8 /Filter /' + d.Filter.N + dp + ' /Length ' + p.img.len + ' >>\nstream\n', p]);
+    parts.push(['\nendstream\nendobj\n', null, true]);
+  });
+  put('%PDF-1.4\n');
+  parts.forEach(function (pt) {
+    if (!pt[2]) offs.push(pos);
+    put(pt[0]);
+    const p = pt[1];
+    if (p) { const src = p.img.bytes || p.u, st0 = p.img.bytes ? 0 : p.img.start; for (let k = 0; k < p.img.len; k++) out.push(src[st0 + k]); pos += p.img.len; }
+  });
+  const pad = function (v) { return ('0000000000' + v).slice(-10); };
+  put('xref\n0 ' + (offs.length + 1) + '\n0000000000 65535 f \n' + offs.map(function (o) { return pad(o) + ' 00000 n \n'; }).join('') + 'trailer\n<< /Size ' + (offs.length + 1) + ' /Root 1 0 R >>\nstartxref\n' + pos + '\n%%EOF\n');
+  for (let k = 0; k < out.length; k++) if (out[k] > 127) out[k] -= 256;
+  return out;
+}
+// 이름 서류종류_사람_날짜.pdf — 서류종류는 정리 규칙의 이름표(caseProcScanName_), 사람은 서류 속 성명 중 사건 폴더 이름에 든 사람 먼저,
+//  날짜는 발급일·작성일·발행일 등 이름 붙은 날짜 먼저(없으면 첫 날짜). 모르는 것은 뺌, 종류도 모르면 원래 이름(뜻 없는 이름이면 "사진_촬영일")
+function tcPdfConvName_(c, first, texts, p) {
+  const caseNames = (String(c && (c.사건명 || '') || '') + ' ' + String((c && c.폴더명) || '')).match(/[가-힣]{2,4}/g) || [];
+  const t = texts.join('\n');
+  const kind = caseProcScanName_(p) || '';
+  let person = '';
+  const ns = []; let m; const re = /성\s*명\s*[:：]?\s*([가-힣]\s?[가-힣]\s?[가-힣]?)(?![가-힣])/g;
+  while ((m = re.exec(t)) && ns.length < 10) ns.push(m[1].replace(/\s+/g, ''));
+  person = ns.filter(function (x) { return caseNames.indexOf(x) !== -1; })[0] || ns[0] || '';
+  const ymd = function (y, mo, d) { return y + ('0' + mo).slice(-2) + ('0' + d).slice(-2); };
+  let date = '';
+  const dl = /(?:발\s*급\s*일|작\s*성\s*일|발\s*행\s*일|거\s*래\s*일|계\s*약\s*일|접\s*수\s*일)[^\d\n]{0,12}((?:19|20)\d{2})\s*[년.\-/]\s*(\d{1,2})\s*[월.\-/]\s*(\d{1,2})/.exec(t)
+    || /((?:19|20)\d{2})\s*[년.\-/]\s*(\d{1,2})\s*[월.\-/]\s*(\d{1,2})\s*일?/.exec(t);
+  if (dl && Number(dl[2]) <= 12 && Number(dl[3]) <= 31) date = ymd(dl[1], dl[2], dl[3]);
+  const base = String(first.name || '').replace(/\.[A-Za-z0-9]{2,5}$/, '');
+  let name = kind ? [kind, person, date].filter(String).join('_') : (caseProcScanSerial_(first.name) ? '사진_' + Utilities.formatDate(new Date(Number(first.modified) || Date.now()), 'Asia/Seoul', 'yyyyMMdd_HHmm') : base);
+  return name.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+}
+// 사건 폴더의 사진 목록(도구 폴더·이미 PDF로 바꾼 사진·양도코리아·신고제출 빼고) — [{id,name,mimeType,modified,dir,size,folderId}]
+function tcPdfConvPhotos_(c) {
+  const root = DriveApp.getFolderById(String(c.폴더ID || '').trim()), out = [];
+  const walk = function (folder, rel, depth) {
+    if (depth > 6 || out.length > 1500) return;
+    const it = folder.getFiles();
+    while (it.hasNext()) {
+      const f = it.next(), n = f.getName(), mt = f.getMimeType();
+      if (/^image\//.test(mt) || /\.(jpe?g|png|heic|heif|webp|bmp|tiff?|gif)$/i.test(n)) out.push({ id: f.getId(), name: n, mimeType: mt, modified: f.getLastUpdated().getTime(), dir: rel, size: f.getSize(), folderId: folder.getId() });
+    }
+    const subs = folder.getFolders();
+    while (subs.hasNext()) {
+      const sf = subs.next(), sn = sf.getName();
+      if (tcIsOrigPhotoDir_(sn) || tcIsSubmitDir_(sn) || caseIsFiledReturnFolder_(sn) || caseProcRefDirName_(sn) || /^_(글자인식기억|3번실험)/.test(sn)) continue;
+      walk(sf, rel ? rel + '/' + sn : sn, depth + 1);
+    }
+  };
+  walk(root, '', 0);
+  return out;
+}
+// 미리 보기 — 고객 폴더에 아무것도 쓰지 않는다. 묶음마다 {gid, ids(쪽 순서), names, name(제안), conf, ask, why, pages, estMB, shrink}
+function caseProcPdfPlan_(c, body) {
+  const cfg = tcPdfConvCfg_(), photos = tcPdfConvPhotos_(c), cache = CacheService.getScriptCache();
+  const prevNo = TC_NO_NEW_OCR_; TC_NO_NEW_OCR_ = true; // 미리 보기에서는 새 글자인식을 하지 않음(기억만)
+  try {
+    const withText = photos.map(function (f) {
+      let text = ''; try { text = String(tc_docText_(f) || ''); } catch (e) {}
+      let p = null; try { p = caseProcParsed_(f, cache, false); } catch (e) {}
+      return Object.assign({}, f, { text: text, type: (p && (p.l || p.t)) || '', p: p });
+    });
+    const byId = {}; withText.forEach(function (f) { byId[f.id] = f; });
+    const used = {}, groups = [];
+    // 폴더별로 합치기 후보
+    const dirs = {}; withText.forEach(function (f) { (dirs[f.dir] = dirs[f.dir] || []).push(f); });
+    Object.keys(dirs).forEach(function (d) {
+      tcJoinCands_(dirs[d]).forEach(function (g) {
+        if (g.merged) return;
+        if (g.ids.some(function (id) { return used[id] || !byId[id]; })) return;
+        g.ids.forEach(function (id) { used[id] = 1; });
+        groups.push({ ids: g.ids, conf: g.conf, why: g.why, ask: g.conf === '약함' });
+      });
+    });
+    withText.forEach(function (f) { if (!used[f.id]) groups.push({ ids: [f.id], conf: '한 장', why: [], ask: false }); });
+    groups.forEach(function (g, i) {
+      const fs = g.ids.map(function (id) { return byId[id]; });
+      g.gid = 'g' + (i + 1);
+      g.names = fs.map(function (f) { return f.name; });
+      g.dir = fs[0].dir;
+      g.pages = fs.length;
+      const mb = fs.reduce(function (s, f) { return s + (f.size || 0); }, 0) / 1048576;
+      g.shrink = fs.filter(function (f) { return (f.size || 0) > cfg.pageMB * 1048576 || !/jpe?g|png/i.test(String(f.mimeType || '') + f.name); }).map(function (f) { return f.name; });
+      g.estMB = Math.round(mb * 10) / 10;
+      g.name = tcPdfConvName_(c, fs[0], fs.map(function (f) { return f.text; }), fs[0].p) + (fs.length > 1 ? '(' + fs.length + '쪽)' : '') + '.pdf';
+      if (g.ask) g.question = { q: '「' + g.names.join('」·「') + '」 — 한 서류의 이어지는 쪽입니까?', options: ['한 서류로 합치기(이 순서)', '사진마다 따로 PDF', '직접 고르기'] };
+    });
+    const plan = { at: new Date().toISOString(), cfg: cfg, groups: groups, photos: photos.length };
+    caseProcPatch_(c.id, function (sv) { sv.pdfPlan = plan; });
+    return Object.assign({ ok: true }, plan);
+  } finally { TC_NO_NEW_OCR_ = prevNo; }
+}
+// 기록 파일(_원본사진/_변환기록.json) 읽고 쓰기
+function tcPdfConvLog_(origFolder, fn) {
+  const it = origFolder.getFilesByName(PDFCONV_LOG_), f = it.hasNext() ? it.next() : null;
+  let log = { items: [] }; if (f) { try { log = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '{}'); log.items = log.items || []; } catch (e) { log = { items: [] }; } }
+  fn(log);
+  const s = JSON.stringify(log, null, 1);
+  if (f) f.setContent(s); else origFolder.createFile(PDFCONV_LOG_, s, 'application/json');
+}
+function tcOrigFolderOf_(folder) { const it = folder.getFoldersByName(PDFCONV_ORIG_DIR_); return it.hasNext() ? it.next() : folder.createFolder(PDFCONV_ORIG_DIR_); }
+// 묶음 하나 적용: PDF 만들기 → 같은 폴더에 저장 → 원본을 _원본사진으로 옮김 → 기억 이어 주기 → 기록. 돌려주는 것 {pdfId, name, pages, shrunk}
+function tcPdfConvApplyOne_(c, ids, name, cfg) {
+  const files = ids.map(function (id) { return DriveApp.getFileById(id); });
+  const parent = files[0].getParents().next();
+  // 한 PDF가 기준 MB를 넘으면 큰 장부터 축소본으로
+  let pgs = ids.map(function (id) { return tcImgPage_(id, cfg, false); });
+  let tot = pgs.reduce(function (s, p) { return s + p.bytes; }, 0);
+  const order = pgs.map(function (p, i) { return i; }).sort(function (a, b) { return pgs[b].bytes - pgs[a].bytes; });
+  for (let k = 0; k < order.length && tot > cfg.pdfMB * 1048576; k++) { const i = order[k]; if (pgs[i].shrunk) continue; const np = tcImgPage_(ids[i], cfg, true); tot += np.bytes - pgs[i].bytes; pgs[i] = np; }
+  const bytes = tcPdfFromImages_(pgs);
+  let nm = name.replace(/\.pdf$/i, '') + '.pdf', k2 = 2; while (parent.getFilesByName(nm).hasNext() && k2 < 30) { nm = name.replace(/\.pdf$/i, '') + '(' + (k2++) + ').pdf'; }
+  const pdf = parent.createFile(Utilities.newBlob(bytes, 'application/pdf', nm));
+  const pmod = pdf.getLastUpdated().getTime(), pid = pdf.getId();
+  // 기억 이어 주기 — 같은 그림이므로 사진 기억을 쪽 순서로(추가 글자인식·Vision 0원)
+  const pageTexts = {}, vis = {}; let allVis = true;
+  files.forEach(function (f, i) {
+    const key = 'ocrtxt_' + f.getId() + '_' + f.getLastUpdated().getTime();
+    const t = tcOcrStoreGet_(key); pageTexts[String(i + 1)] = t === null ? '' : t;
+    let v = null; try { v = JSON.parse(tcOcrStoreGet_('ocrvis1_' + f.getId() + '_' + f.getLastUpdated().getTime()) || 'null'); } catch (e) {}
+    if (v && v.pages && v.pages['1'] !== undefined) vis[String(i + 1)] = v.pages['1']; else allVis = false;
+  });
+  const joined = ids.length === 1 ? pageTexts['1'] : Object.keys(pageTexts).map(function (k) { return '[' + k + '쪽]\n' + pageTexts[k]; }).join('\n');
+  if (Object.keys(pageTexts).some(function (k) { return pageTexts[k]; })) {
+    tcOcrStoreSet_('ocrtxt_' + pid + '_' + pmod, joined);
+    tcOcrStoreSet_('ocrpage1_' + pid + '_' + pmod, JSON.stringify({ n: ids.length, pages: pageTexts, done: Object.keys(pageTexts).every(function (k) { return pageTexts[k]; }), from: 'photo' }));
+  }
+  if (Object.keys(vis).length) tcOcrStoreSet_('ocrvis1_' + pid + '_' + pmod, JSON.stringify({ n: ids.length, pages: vis, done: allVis, from: 'photo' }));
+  // 원본 옮기기 + 기록
+  const orig = tcOrigFolderOf_(parent);
+  const src = files.map(function (f) { return { id: f.getId(), name: f.getName(), from: parent.getId() }; });
+  files.forEach(function (f) { f.moveTo(orig); });
+  const rec = { pdfId: pid, pdfName: nm, src: src, at: new Date().toISOString(), pages: ids.length, shrunk: pgs.filter(function (p) { return p.shrunk; }).length };
+  tcPdfConvLog_(orig, function (log) { log.items.push(rec); });
+  if (c && c.id) caseProcPatch_(c.id, function (sv) { (sv.pdfConv = sv.pdfConv || []).push(rec); });
+  return { pdfId: pid, name: nm, pages: ids.length, shrunk: rec.shrunk };
+}
+// 적용 — body.groups: [{ids(쪽 순서), name}] (미리 보기에서 세무사님이 승인·고친 것). 약함 묶음을 "따로"로 답했으면 화면이 사진마다 한 묶음으로 보냄
+function caseProcPdfApply_(c, body) {
+  const cfg = tcPdfConvCfg_(), gs = Array.isArray(body.groups) ? body.groups : [], done = [], errors = [], started = Date.now();
+  for (let i = 0; i < gs.length; i++) {
+    const g = gs[i];
+    if (Date.now() - started > 240000) { errors.push({ gid: g.gid, why: '시간 — 남은 묶음은 다시 적용' }); continue; }
+    try { const r = tcPdfConvApplyOne_(c, [].concat(g.ids || []), String(g.name || 'PDF'), cfg); r.gid = g.gid; done.push(r); }
+    catch (e) { errors.push({ gid: g.gid, why: String(e && e.message || e).slice(0, 150) }); }
+  }
+  return { ok: true, done: done, errors: errors };
+}
+// 되돌리기 — 원본을 원래 폴더로, PDF는 휴지통(완전 삭제 아님), 기록에 undone
+function caseProcPdfUndo_(c, body) {
+  const pdfId = String(body.pdfId || ''); if (!pdfId) return { error: 'pdfId 필요' };
+  let parent = null; try { parent = DriveApp.getFileById(pdfId).getParents().next(); } catch (e) { return { error: 'PDF를 찾지 못함' }; }
+  const orig = tcOrigFolderOf_(parent); let rec = null;
+  tcPdfConvLog_(orig, function (log) { log.items.forEach(function (r) { if (r.pdfId === pdfId && !r.undone) { rec = r; r.undone = new Date().toISOString(); } }); });
+  if (!rec) return { error: '변환 기록이 없음' };
+  const back = [];
+  rec.src.forEach(function (s) { try { const f = DriveApp.getFileById(s.id); f.moveTo(DriveApp.getFolderById(s.from)); back.push(s.name); } catch (e) {} });
+  try { DriveApp.getFileById(pdfId).setTrashed(true); } catch (e) {}
+  if (c && c.id) caseProcPatch_(c.id, function (sv) { (sv.pdfConv || []).forEach(function (r) { if (r.pdfId === pdfId) r.undone = true; }); });
+  return { ok: true, back: back };
+}
+// 새로 들어온 사진 바로 변환 — 한 번에 올린 사진들(fileIds)끼리 합치기 후보로 묶어 강함·보통·한 장은 바로, 약함은 사진마다 PDF + 객관식 질문 기록.
+//  글자는 기억에 있는 것만 씀(올린 직후라 없으면 이름은 원래 이름·서류종류 미정으로). 사건(c)을 모르면 이름에 사건 정보 없이
+function tcPdfConvNew_(c, fileIds) {
+  const cfg = tcPdfConvCfg_(), files = [];
+  (fileIds || []).forEach(function (id) {
+    try { const f = DriveApp.getFileById(id), n = f.getName(), mt = f.getMimeType();
+      if (/^image\//.test(mt) || /\.(jpe?g|png|heic|heif|webp|bmp|tiff?|gif)$/i.test(n)) files.push({ id: id, name: n, mimeType: mt, modified: f.getLastUpdated().getTime(), dir: f.getParents().next().getId(), size: f.getSize() }); } catch (e) {}
+  });
+  if (!files.length) return { ok: true, done: [] };
+  const done = [], asks = [], used = {};
+  const withText = files.map(function (f) { let text = ''; try { text = String(tcOcrStoreGet_('ocrtxt_' + f.id + '_' + f.modified) || ''); } catch (e) {} return Object.assign({}, f, { text: text }); });
+  tcJoinCands_(withText).forEach(function (g) {
+    if (g.merged || g.ids.some(function (id) { return used[id]; })) return;
+    if (g.conf === '약함') { asks.push({ ids: g.ids, names: g.names, q: '「' + g.names.join('」·「') + '」 — 한 서류의 이어지는 쪽입니까?' }); return; }
+    g.ids.forEach(function (id) { used[id] = 1; });
+    const f0 = withText.filter(function (f) { return f.id === g.ids[0]; })[0];
+    try { done.push(tcPdfConvApplyOne_(c, g.ids, tcPdfConvName_(c || {}, f0, [f0.text], null) + '(' + g.ids.length + '쪽).pdf', cfg)); } catch (e) {}
+  });
+  withText.forEach(function (f) { if (used[f.id]) return; try { done.push(tcPdfConvApplyOne_(c, [f.id], tcPdfConvName_(c || {}, f, [f.text], null) + '.pdf', cfg)); } catch (e) {} });
+  if (asks.length && c && c.id) caseProcPatch_(c.id, function (sv) { (sv.pdfAsk = sv.pdfAsk || []).push.apply(sv.pdfAsk, asks.map(function (a) { a.at = new Date().toISOString(); return a; })); });
+  return { ok: true, done: done, asks: asks };
+}
+// 견본 — 개발용 사진 몇 장으로 만든 PDF를 업무관리자 "_글자인식기억/_3번실험/PDF견본"에(고객 폴더 안 바꿈, 원본도 그대로)
+function cpPdfSample_(body) {
+  const fo = tcOcrStoreFolder_(); if (!fo) return { error: '"_글자인식기억" 폴더 없음' };
+  const ex = (function () { const it = fo.getFoldersByName('_3번실험'); return it.hasNext() ? it.next() : fo.createFolder('_3번실험'); })();
+  const sf = (function () { const it = ex.getFoldersByName('PDF견본'); return it.hasNext() ? it.next() : ex.createFolder('PDF견본'); })();
+  const cfg = tcPdfConvCfg_(), out = [];
+  [].concat(body.groups || []).slice(0, 10).forEach(function (g) {
+    try {
+      const pgs = [].concat(g.ids).map(function (id) { return tcImgPage_(id, cfg, !!g.thumb); });
+      const b = tcPdfFromImages_(pgs), nm = String(g.name || 'sample') + '.pdf';
+      const f = sf.createFile(Utilities.newBlob(b, 'application/pdf', nm));
+      out.push({ name: nm, id: f.getId(), pages: pgs.length, mb: Math.round(b.length / 104857.6) / 10, shrunk: pgs.filter(function (p) { return p.shrunk; }).length });
+    } catch (e) { out.push({ name: g.name, error: String(e && e.message || e).slice(0, 150) }); }
+  });
+  return { ok: true, folderId: sf.getId(), results: out };
+}
+// =========================================================
+// [2026.10.19 3번 세션] 신고제출 묶음 만들기 — 세무사님: "앞으로는 문서별pdf파일을 기본으로 하고 신고를 위한 파일은 <신고제출>이라는 폴더에 따로 복사해서
+//  홈택스첨부기준에 맞춰 제출하는 것을 하자", "<신고제출>폴더도 <_신고제출>로 변경해야 하겠구나". 사건 폴더의 문서별 PDF 중 고른 것을 종류별로 묶어
+//  홈택스 첨부 기준(한 파일 MB·파일 수 — 스크립트 속성 HOMETAX_FILE_MB·HOMETAX_MAX_FILES, 세무사님께 여쭐 값)에 맞추고 이름 앞에 첨부 일련번호("01 기본증명.pdf").
+//  원본 PDF는 그대로(복사). 글자층 PDF를 합치는 것은 서버에서 못 하므로(쪽을 옮기려면 PDF를 다시 써야 함) 화면(pdf-lib)이 합치고 서버는 묶음 계획·저장 자리만 맡는다
+// =========================================================
+// 묶음 계획 — body.ids(넣을 PDF, 순서대로)·body.groups(선택: [{title, ids}]) → [{no, title, ids, mb}] 한 파일 MB를 넘으면 같은 종류를 둘로 나눔(01-1, 01-2)
+function caseProcSubmitPlan_(c, body) {
+  const cfg = tcPdfConvCfg_(), cache = CacheService.getScriptCache();
+  const ids = [].concat(body.ids || []);
+  const info = ids.map(function (id) { try { const f = DriveApp.getFileById(id); const x = { id: id, name: f.getName(), mimeType: f.getMimeType(), modified: f.getLastUpdated().getTime(), size: f.getSize() }; let p = null; try { p = caseProcParsed_(x, cache, false); } catch (e) {} x.kind = caseProcScanName_(p) || x.name.replace(/\.[A-Za-z0-9]{2,5}$/, '').replace(/_.*$/, ''); return x; } catch (e) { return null; } }).filter(Boolean);
+  let groups = Array.isArray(body.groups) && body.groups.length ? body.groups : null;
+  if (!groups) { const by = {}; info.forEach(function (x) { (by[x.kind] = by[x.kind] || []).push(x.id); }); groups = Object.keys(by).map(function (k) { return { title: k, ids: by[k] }; }); }
+  const lim = cfg.htFileMB * 1048576, out = [];
+  groups.forEach(function (g, gi) {
+    const xs = g.ids.map(function (id) { return info.filter(function (x) { return x.id === id; })[0]; }).filter(Boolean);
+    let cur = [], sz = 0, part = 0;
+    const flush = function () { if (!cur.length) return; part++; out.push({ no: ('0' + (gi + 1)).slice(-2), part: part, title: g.title, ids: cur.map(function (x) { return x.id; }), names: cur.map(function (x) { return x.name; }), mb: Math.round(sz / 104857.6) / 10 }); cur = []; sz = 0; };
+    xs.forEach(function (x) { if (cur.length && sz + x.size > lim) flush(); cur.push(x); sz += x.size; });
+    flush();
+  });
+  // 같은 번호가 둘로 나뉘면 01-1·01-2
+  out.forEach(function (o) { const many = out.filter(function (y) { return y.no === o.no; }).length > 1; o.file = o.no + (many ? '-' + o.part : '') + ' ' + o.title + '.pdf'; });
+  return { ok: true, cfg: { htFileMB: cfg.htFileMB, htFiles: cfg.htFiles }, files: out, overFiles: out.length > cfg.htFiles, note: '홈택스 첨부 기준(한 파일 ' + cfg.htFileMB + 'MB·' + cfg.htFiles + '개)은 세무사님 확인 전 임시값 — 스크립트 속성 HOMETAX_FILE_MB·HOMETAX_MAX_FILES로 바꿈' };
+}
+// 저장 — 화면이 합친 PDF(base64)를 사건 폴더 "_신고제출"에. body.files: [{file, b64}]. 같은 이름은 바꿔 씀
+function caseProcSubmitSave_(c, body) {
+  const root = DriveApp.getFolderById(String(c.폴더ID || '').trim());
+  const it = root.getFoldersByName(PDFCONV_SUBMIT_DIR_), dir = it.hasNext() ? it.next() : root.createFolder(PDFCONV_SUBMIT_DIR_);
+  const saved = [];
+  [].concat(body.files || []).forEach(function (x) {
+    const nm = String(x.file || 'submit.pdf').replace(/[\\/:*?"<>|]/g, ' ');
+    const old = dir.getFilesByName(nm); while (old.hasNext()) old.next().setTrashed(true);
+    const f = dir.createFile(Utilities.newBlob(Utilities.base64Decode(String(x.b64 || '')), 'application/pdf', nm));
+    saved.push({ id: f.getId(), name: nm });
+  });
+  return { ok: true, folderId: dir.getId(), saved: saved };
+}
+// 새 사진 대기 — 올리기·옮기기마다 한 장씩 들어오므로 바로 바꾸면 여러 장 서류가 낱장 PDF가 된다. 사건 폴더("고객사건" 아래)의 사진만 대기 목록
+//  (스크립트 속성 PDFCONV_PENDING {폴더ID: [파일ID…]})에 넣고 90초 뒤 한 번 도는 트리거가 폴더별로 묶어 바꾼다(그사이 같이 올린 사진끼리 한 묶음)
+function tcPdfConvQueue_(fileId) {
+  try {
+    const f = DriveApp.getFileById(fileId), n = f.getName(), mt = f.getMimeType();
+    if (!(/^image\//.test(mt) || /\.(jpe?g|png|heic|heif|webp|bmp|tiff?|gif)$/i.test(n))) return false;
+    const p0 = f.getParents(); if (!p0.hasNext()) return false;
+    const parent = p0.next();
+    if (tcIsOrigPhotoDir_(parent.getName()) || tcIsSubmitDir_(parent.getName())) return false;
+    // 고객사건 아래인가(6단계까지)
+    let cur = parent, inCase = false;
+    for (let k = 0; k < 6 && cur; k++) { if (/^\s*고객사건\s*$/.test(cur.getName())) { inCase = true; break; } const ps = cur.getParents(); cur = ps.hasNext() ? ps.next() : null; }
+    if (!inCase) return false;
+    const lock = LockService.getScriptLock(); lock.waitLock(10000);
+    try {
+      const props = PropertiesService.getScriptProperties();
+      let pend = {}; try { pend = JSON.parse(props.getProperty('PDFCONV_PENDING') || '{}'); } catch (e) { pend = {}; }
+      const k = parent.getId(); pend[k] = (pend[k] || []).concat([fileId]).filter(function (v, i, a) { return a.indexOf(v) === i; });
+      props.setProperty('PDFCONV_PENDING', JSON.stringify(pend));
+      if (!ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'tcPdfConvPendingTick'; })) ScriptApp.newTrigger('tcPdfConvPendingTick').timeBased().after(90 * 1000).create();
+    } finally { lock.releaseLock(); }
+    return true;
+  } catch (e) { return false; }
+}
+// 트리거가 부르는 이름(끝에 _ 없음) — 대기 사진을 폴더별로 바꾼다. 사건은 작업관리 시트의 폴더ID가 그 폴더이거나 조상인 행
+function tcPdfConvPendingTick() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'tcPdfConvPendingTick') ScriptApp.deleteTrigger(t); });
+  const props = PropertiesService.getScriptProperties(), lock = LockService.getScriptLock();
+  let pend = {};
+  lock.waitLock(10000);
+  try { try { pend = JSON.parse(props.getProperty('PDFCONV_PENDING') || '{}'); } catch (e) { pend = {}; } props.deleteProperty('PDFCONV_PENDING'); } finally { lock.releaseLock(); }
+  let rows = null;
+  try { const sheet = work_getSheet_(), data = sheet.getDataRange().getValues(), col = work_colMap_(data[0]); rows = data.slice(1).map(function (r) { return work_readRow_(col, r); }); } catch (e) { rows = []; }
+  Object.keys(pend).forEach(function (fid) {
+    let c = null;
+    try { let cur = DriveApp.getFolderById(fid); for (let k = 0; k < 7 && cur && !c; k++) { const id = cur.getId(); c = rows.filter(function (r) { return r && String(r.폴더ID || '').trim() === id; })[0] || null; const ps = cur.getParents(); cur = ps.hasNext() ? ps.next() : null; } } catch (e) {}
+    try { tcPdfConvNew_(c, pend[fid]); } catch (e) {}
+  });
+}
 // 큰 사진 → 드라이브가 만든 축소본(thumbnailLink, =s3000)을 받아 글자인식. 축소본이 없으면 원래 오류를 낸다
 function tcOcrBigImage_(fileId) {
   const meta = Drive.Files.get(fileId, { fields: 'thumbnailLink' });
@@ -27856,6 +28232,12 @@ function caseProc_(body) {
     if (body.step === 'status') return caseProcStatus_(c, body);
     if (body.step === 'calcin') return caseProcCalcIn_(c);
     if (body.step === 'scanCands') return caseProcScanCands_(c, body); // [2026.10.17] 원근보정할 사진 후보
+    // [2026.10.19 3번 세션] 사진 → 서류별 PDF(미리 보기 → 승인 → 적용·되돌리기)와 신고제출 묶음(계획 → 화면이 합침 → 저장)
+    if (body.step === 'pdfPlan') return caseProcPdfPlan_(c, body);
+    if (body.step === 'pdfApply') return caseProcPdfApply_(c, body);
+    if (body.step === 'pdfUndo') return caseProcPdfUndo_(c, body);
+    if (body.step === 'submitPlan') return caseProcSubmitPlan_(c, body);
+    if (body.step === 'submitSave') return caseProcSubmitSave_(c, body);
     if (body.step === 'scanSaved') return caseProcScanSaved_(c, body); // 원근보정본 짝 기록
     if (body.step === 'splitCands') return caseProcSplitCands_(c); // 한 파일에 든 여러 서류 나눌 후보
     if (body.step === 'splitPages') return caseProcSplitPages_(c, body); // 쪽별 종류·묶음
@@ -27931,12 +28313,18 @@ function caseProcFiles_(c, opt) {
     list.forEach(function (sf) {
       const sn = sf.getName(), sr = rel ? rel + '/' + sn : sn;
       if (!includeFiled && caseIsFiledReturnFolder_(sn)) return;
+      // [2026.10.19 3번 세션] "_신고제출"은 문서별 PDF를 복사해 묶은 제출용 사본 — 같은 서류를 두 번 세지 않게 뺀다(경정·수정·불복 등 includeFiled면 읽음).
+      //  "_원본사진"은 폴더째 빼지 않는다 — 그 안 사진 중 PDF가 실제로 있는 것만 아래에서 뺀다(tcPdfConvDropIn_)
+      if (!includeFiled && tcIsSubmitDir_(sn)) return;
+      if (tcIsOrigPhotoDir_(sn)) origDirs.push(sf);
       if (!includeFiled && caseProcRefDirName_(sn)) { refDirs.push(sr); return; } // [2026.10.17] 판례·불복사례 폴더 — 사건 증빙이 아니라 400개 한도만 잡아먹었다(송기종 불복사례 약 70건)
       walk(sf, depth + 1, sr);
     });
   };
-  const appealW = caseProcIsAppeal_(c);
+  const appealW = caseProcIsAppeal_(c), origDirs = [];
   walk(DriveApp.getFolderById(folderId), 0, '');
+  // [2026.10.19 3번 세션] PDF로 바꾼 원본 사진(_변환기록.json에 짝이 있고 PDF가 살아 있음)만 뺀다 — 짝이 없거나 PDF가 휴지통이면 사진을 그대로 읽음
+  if (origDirs.length) { const dropO = {}; origDirs.forEach(function (sf) { Object.assign(dropO, tcPdfConvDropIn_(sf)); }); for (let i = out.length - 1; i >= 0; i--) if (dropO[out[i].id]) out.splice(i, 1); }
   // [2026.10.17 별건 하위폴더] 사건 폴더 안의 다른 사건(박연경 상속 폴더의 "양도/" — 같은 의뢰인의 양도 문의)은 섞지 않는다.
   //  [확인]에서 "이 사건 자료로 씀"을 고른 폴더만 다시 넣는다(질문은 증빙 단계가 만든다).
   let res = out;
