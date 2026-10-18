@@ -28272,6 +28272,14 @@ const CASEPROC_BASE_LABEL_ = { transfer: '양도일', gift: '증여일', inherit
 function caseProcTimed_(body) {
   const t0 = Date.now();
   let r;
+  CP_SECURED_LOG_ = []; // [2026.10.19] 이번 실행의 조회 결과(확보자료) — 끝에서 cpSecuredFlush_가 사건 폴더/확보자료/에 남긴다
+  try { r = caseProcTimedRun_(body, t0); } finally {
+    try { const n = cpSecuredFlush_(String(body && body.caseId || '').trim()); if (n && r && typeof r === 'object' && !Array.isArray(r)) r._securedSaved = n; } catch (e) { console.log('확보자료 저장 실패: ' + (e && e.message || e)); }
+  }
+  return r;
+}
+function caseProcTimedRun_(body, t0) {
+  let r;
   if (body && body.step === 'multi') {
     const steps = Array.isArray(body.steps) ? body.steps.slice(0, 6) : [];
     r = {
@@ -28366,6 +28374,13 @@ function caseProcHasFiled_(c) {
   return false;
 }
 function caseIsFiledReturnFolder_(name) { return /^\s*양도\s*코리아\s*$/.test(String(name || '')); }
+// [2026.10.19] 사건 폴더의 표준 하위폴더 두 개(WORK_SUBFOLDER_FILING_·WORK_SUBFOLDER_SECURED_) — 위 양도코리아와 섞지 않는다(그 판정은
+//  "기신고서 있는 사건" 신호(caseProcHasFiled_)·AI 폴더 목록 숨기기에도 쓰여, 섞으면 모든 신고 사건이 이미 신고한 사건으로 보이고 폴더가 화면에서 사라진다).
+//  · 신고제출 = 홈택스 첨부용 사본 → 사건처리 입력에서 뺀다. 경정·수정·불복(업무유형·사건명)은 기신고서가 입력이라 읽는다(caseProcFilingCopyIsInput_).
+//  · 확보자료 = 시스템이 조회해 남긴 공시가격·매매사례·건축물대장 PDF(cpSecuredFlush_) → 이미 값을 아는 자료라 사건처리·일괄 글자인식에서 항상 뺀다.
+function caseIsFilingCopyFolder_(name) { return /^\s*신고\s*제출\s*$/.test(String(name || '')); }
+function caseIsSecuredFolder_(name) { return /^\s*확보\s*자료\s*$/.test(String(name || '')); }
+function caseProcFilingCopyIsInput_(c) { return !!c && CASEPROC_AMEND_RE_.test(String(c.업무유형 || '') + ' ' + String(c.사건명 || '')); }
 function caseIsAnswerKeyFile_(name) { return /^_정답지/.test(String(name || '')); }
 function caseIsAnswerKeyFileId_(fileId) { if (!fileId) return false; try { return caseIsAnswerKeyFile_(DriveApp.getFileById(String(fileId)).getName()); } catch (e) { return false; } }
 function caseFileInFiledFolder_(fileId) {
@@ -44518,6 +44533,102 @@ function caseProcScanSaved_(c, body) {
 //  그 날짜의 기준시가 = 그날 현재 공시돼 있던 가격: 개별공시지가는 5.31. 공시, 개별주택·공동주택가격은 4.30. 공시 — 그 전 날짜면 전년도 가격.
 //  조회 결과는 6시간 기억(같은 처리 반복 때 다시 부르지 않음). 키가 없거나 실패하면 이유만 남기고 지나간다(값을 지어내지 않음)
 // =========================================================
+// [2026.10.19 세무사님 지시] "<확보자료>폴더 … 거기에 시스템이 확보하는 매매실례가, 공동주택가격, 개별주택가격, 개별공시지가, 건물기준시가 등의
+//  확보자료를 넣도록 하자." — 아래 조회(cpOfficialPrice_·cpRealCases_·cpBuilding_)가 값을 얻으면 이 실행의 목록(CP_SECURED_LOG_)에 적고,
+//  사건처리 입구(caseProcTimed_) 끝에서 cpSecuredFlush_가 그 사건 폴더/확보자료/에 PDF로 남긴다(출처·조회일·조건을 맨 위 표에).
+//  · 같은 대상·같은 기준(연도·기준일)은 같은 이름 → 결과가 바뀌었을 때만 새로 만들고 옛 파일은 휴지통(조회 일시는 파일 안에). 기준이 다르면 따로 남는다.
+//  · 확보자료 폴더는 사건처리 입력·일괄 글자인식에서 뺀다(caseIsSecuredFolder_) — 시스템이 이미 값을 아는 자료라 두 번 세지 않게.
+//  · 한 번에 최대 6개, 실패해도 사건처리 결과는 그대로.
+var CP_SECURED_LOG_ = [];
+function cpSecuredNote_(rec) { try { if (rec && rec.name) CP_SECURED_LOG_.push(rec); } catch (e) {} return rec; }
+function cpSecuredShortLoc_(geo, loc) {
+  const j = String((geo && geo.jibun) || loc || '').trim().split(/\s+/);
+  const base = j.length > 2 ? j.slice(-2).join(' ') : j.join(' ');
+  const dh = geo && geo.ho ? ' ' + (geo.dong ? geo.dong + '동 ' : '') + geo.ho + '호' : '';
+  return (base + dh).trim();
+}
+function cpSecuredFileName_(s) { return String(s || '').replace(/[\\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) + '.pdf'; }
+function cpSecuredOfficial_(geo, kind, year, out) {
+  if (out && out.v && geo && !geo.error) {
+    const label = kind === 'land' ? '개별공시지가' : kind === 'house' ? '개별주택가격' : '공동주택가격';
+    cpSecuredNote_({
+      name: cpSecuredFileName_(label + '_' + cpSecuredShortLoc_(geo) + '_' + (out.year || year) + '년'), kind: label,
+      target: String(geo.jibun || '') + (geo.bdNm ? ' (' + geo.bdNm + ')' : '') + (geo.ho ? ' ' + (geo.dong ? geo.dong + '동 ' : '') + geo.ho + '호' : ''),
+      cond: '기준연도 ' + (out.year || year) + '년 공시 · 지번 고유번호(PNU) ' + geo.pnu,
+      site: '브이월드(국토교통부 공간정보 오픈플랫폼) 공시가격 조회 — 세액계산기 공시가격 자동조회와 같은 기능',
+      head: ['기준연도', label + (kind === 'land' ? '(원/㎡)' : '(원)')], rows: [[String(out.year || year), Number(out.v).toLocaleString('ko-KR')]]
+    });
+  }
+  return out;
+}
+function cpSecuredReal_(loc, geo, tname, base, before, after, area, cases) {
+  if (!cases || !cases.length) return;
+  cpSecuredNote_({
+    name: cpSecuredFileName_('매매사례_' + cpSecuredShortLoc_(geo, loc) + '_기준일' + base), kind: '매매사례(' + tname + ' 실거래가)',
+    target: String((geo && geo.jibun) || loc || '') + (geo && geo.bdNm ? ' (' + geo.bdNm + ')' : ''),
+    cond: '평가기준일 ' + base + ' · 기간 ' + before + '개월 전 ~ ' + after + '개월 후 · 같은 단지(읍면동·지번)' + (area ? ' · 전용면적 ' + area + '㎡ ±5%' : ''),
+    site: '국토교통부 실거래가 공개시스템(공공데이터포털 ' + tname + ' 매매 실거래가 API) — 세액계산기 매매사례 조회와 같은 기능',
+    head: ['계약일', '단지명', '전용면적(㎡)', '층', '거래금액(원)'],
+    rows: cases.slice(0, 30).map(function (q) { return [q.date, q.name || '', String(q.area), q.floor ? String(q.floor) : '', Number(q.v).toLocaleString('ko-KR')]; })
+  });
+}
+function cpSecuredBuilding_(loc, geo, out) {
+  if (out && !out.error && geo && !geo.error) {
+    cpSecuredNote_({
+      name: cpSecuredFileName_('건축물대장_' + cpSecuredShortLoc_(geo, loc)), kind: '건축물대장(표제부' + (out.area ? '·전유부' : '') + ')',
+      target: String(geo.jibun || loc || '') + (geo.bdNm ? ' (' + geo.bdNm + ')' : '') + (geo.ho ? ' ' + (geo.dong ? geo.dong + '동 ' : '') + geo.ho + '호' : ''),
+      cond: '지번 고유번호(PNU) ' + geo.pnu, site: '건축HUB 건축물대장 정보 서비스(국토교통부) — 세액계산기 건축물대장 조회와 같은 기능',
+      head: ['항목', '값'], rows: [['주용도', out.purpose || ''], ['주구조', out.structure || ''], ['사용승인일', out.approval || ''], ['전유면적(㎡)', out.area ? String(out.area) : '(호 없음 또는 못 찾음)']]
+    });
+  }
+  return out;
+}
+function cpSecuredFlush_(caseId) {
+  const recs = CP_SECURED_LOG_; CP_SECURED_LOG_ = [];
+  if (!recs.length || !caseId) return 0;
+  const sheet = work_getSheet_();
+  const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+  const found = work_findCaseRow_(sheet, col, caseId);
+  const fid = found && String(found.row[col.폴더ID] || '').trim();
+  if (!fid) return 0;
+  const uniq = {};
+  recs.forEach(function (r) { uniq[r.name] = r; }); // 같은 이름은 마지막 조회만
+  const cache = CacheService.getScriptCache();
+  let folder = null, saved = 0;
+  // 최근 6시간 안에 같은 결과를 이미 남긴 것은 빼고(cache), 남은 것 중 앞의 6개만 — 나머지는 다음 실행에서
+  const todo = Object.keys(uniq).map(function (name) {
+    const r = uniq[name];
+    const sig = Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, JSON.stringify([r.kind, r.target, r.cond, r.rows]), Utilities.Charset.UTF_8)).slice(0, 22);
+    return { name: name, r: r, sig: sig, ck: 'cpsec_' + String(caseId).slice(0, 40) + '_' + sig };
+  }).filter(function (x) { return !cache.get(x.ck); }).slice(0, 6);
+  todo.forEach(function (x) {
+    const name = x.name, r = x.r, sig = x.sig, ck = x.ck;
+    try {
+      if (!folder) folder = work_caseSubfolder_(DriveApp.getFolderById(fid), WORK_SUBFOLDER_SECURED_);
+      const olds = [], it = folder.getFilesByName(name);
+      let same = false;
+      while (it.hasNext()) { const f = it.next(); if (String(f.getDescription() || '') === 'nx-secured:' + sig) same = true; else olds.push(f); }
+      if (!same) {
+        const now = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
+        const e = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); };
+        const html = '<html><head><meta charset="utf-8"><style>body{font-family:sans-serif;font-size:11pt}table{border-collapse:collapse;width:100%;margin:8px 0}td,th{border:1px solid #999;padding:4px 6px;text-align:left}th{background:#eee}</style></head><body>' +
+          '<h2>' + e(r.kind) + '</h2>' +
+          '<table><tr><th style="width:22%">대상</th><td>' + e(r.target) + '</td></tr><tr><th>조회 조건</th><td>' + e(r.cond) + '</td></tr>' +
+          '<tr><th>조회 사이트</th><td>' + e(r.site) + '</td></tr><tr><th>조회 일시</th><td>' + e(now) + '</td></tr>' +
+          '<tr><th>사건</th><td>' + e(found.row[col.사건명]) + '</td></tr><tr><th>만든 곳</th><td>job 사건처리 자동 조회(사람이 입력한 값 아님) — 이 폴더는 사건처리 입력에서 다시 읽지 않습니다</td></tr></table>' +
+          '<table><tr>' + r.head.map(function (h) { return '<th>' + e(h) + '</th>'; }).join('') + '</tr>' +
+          r.rows.map(function (row) { return '<tr>' + row.map(function (v) { return '<td>' + e(v) + '</td>'; }).join('') + '</tr>'; }).join('') + '</table></body></html>';
+        const pdf = Utilities.newBlob(html, 'text/html', 'secured.html').getAs('application/pdf').setName(name);
+        const nf = folder.createFile(pdf);
+        nf.setDescription('nx-secured:' + sig);
+        olds.forEach(function (f) { try { f.setTrashed(true); } catch (e2) {} });
+        saved++;
+      }
+      cache.put(ck, '1', 21600);
+    } catch (err) { console.log('확보자료 저장 실패(' + name + '): ' + (err && err.message || err)); }
+  });
+  return saved;
+}
 function cpOfficialYear_(date, kind) {
   const d = String(date || ''); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return 0;
   const y = Number(d.slice(0, 4)), md = d.slice(5);
@@ -44553,14 +44664,14 @@ function cpOfficialPrice_(geo, kind, year) {
   if (!geo || geo.error) return { error: geo ? geo.error : '주소 없음' };
   const key = 'cpofp_' + geo.pnu + '_' + kind + '_' + year + '_' + (geo.dong || '') + '_' + (geo.ho || '');
   const cache = CacheService.getScriptCache(), hit = cache.get(key);
-  if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+  if (hit) { try { return cpSecuredOfficial_(geo, kind, year, JSON.parse(hit)); } catch (e) {} } // 확보자료 기록(아래 cpSecured*)
   let out;
   try {
     const r = handleLookupOfficialPrice({ pnu: geo.pnu, priceKind: kind, dong: geo.dong || '', ho: geo.ho || '', stdrYear: String(year) });
     out = r && !r.error && r.price ? { v: Number(r.price), year: Number(r.stdrYear || year), src: (kind === 'land' ? '개별공시지가' : kind === 'house' ? '개별주택가격' : '공동주택가격') + ' ' + (r.stdrYear || year) + '년 공시(브이월드 조회, ' + geo.jibun + (geo.ho ? ' ' + (geo.dong ? geo.dong + '동 ' : '') + geo.ho + '호' : '') + ')' } : { error: (r && r.error) || '가격 없음' };
   } catch (e) { out = { error: '공시가격 조회 실패: ' + (e && e.message || e) }; }
   try { cache.put(key, JSON.stringify(out), 21600); } catch (e) {}
-  return out;
+  return cpSecuredOfficial_(geo, kind, year, out);
 }
 // 양도 — 취득가액(실지거래가액)이 없는 자산의 환산용 기준시가를 공시가격 조회로(폴더에 공시가격 서류가 없을 때), 일괄 필지의 ㎡당 공시지가 빈 칸
 //  돌려주는 것: 거래마다 t.stdConv가 없으면 { transfer: {v, src}, acq: [{y, v, src}] }를 달아 준다(trcStdQuestion_이 후보로 묻는다)
@@ -44612,7 +44723,7 @@ function cpBuilding_(loc) {
   if (!geo || geo.error) return { error: geo ? geo.error : '주소 없음' };
   const key = 'cpbld_' + geo.pnu + '_' + (geo.dong || '') + '_' + (geo.ho || '');
   const cache = CacheService.getScriptCache(), hit = cache.get(key);
-  if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+  if (hit) { try { return cpSecuredBuilding_(loc, geo, JSON.parse(hit)); } catch (e) {} } // 확보자료 기록
   let out;
   try {
     const sg = geo.pnu.slice(0, 5), bj = geo.pnu.slice(5, 10), plat = geo.pnu.charAt(10) === '2' ? '1' : '0', bun = geo.pnu.slice(11, 15), ji = geo.pnu.slice(15, 19);
@@ -44637,7 +44748,7 @@ function cpBuilding_(loc) {
     }
   } catch (e) { out = { error: '건축물대장 조회 실패: ' + (e && e.message || e) }; }
   try { cache.put(key, JSON.stringify(out), 21600); } catch (e) {}
-  return out;
+  return cpSecuredBuilding_(loc, geo, out);
 }
 
 // [2026.10.17 세무사님 지시 — "하나의 파일에 2개의 문서가 있을 때에는 가급적 문서별로 분리"] 이름에 서류가 둘 이상 적힌 PDF
@@ -44762,6 +44873,7 @@ function cpRealCases_(loc, area, base, before, after) {
   cases.sort(function (x, y) { return Math.abs(new Date(x.date) - b) - Math.abs(new Date(y.date) - b); });
   const tname = { apt_detail: '아파트', row_house: '연립다세대', officetel: '오피스텔' }[type];
   if (!cases.length) return { error: '국토교통부 ' + tname + ' 실거래가에 평가기간(' + before + '개월 전~' + after + '개월 후) 안 같은 단지' + (area ? '·비슷한 면적(±5%)' : '') + ' 거래가 없음' + (errs.length ? ' / 조회 실패 달: ' + errs.slice(0, 3).join(', ') : '') };
+  cpSecuredReal_(loc, geo, tname, base, before, after, area, cases); // 확보자료 기록(찾은 거래 전부, 최대 30)
   return { cases: cases.slice(0, 5), src: '국토교통부 ' + tname + ' 실거래가 조회(' + umd + ' ' + jibun + ')' };
 }
 
