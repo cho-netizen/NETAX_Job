@@ -29658,7 +29658,7 @@ function cpfKeysFinish_(f) {
   if (!k.unit && /^(소재지|주소|동호|기타:도로명주소|주소 대응)$/.test(f.kind)) { const um = /(\d{1,4})\s*동\s*(?:제?\s*\d{1,3}\s*층\s*)?제?\s*(\d{1,5})\s*호/.exec(typeof v === 'string' ? v + ' ' + (f.raw || '') : String(f.raw || '')); if (um) k.unit = um[1] + '동' + um[2] + '호'; }
   // [2026.10.19 1번 밤작업 엇묶임] 금액 열쇠는 날짜·사람·자산(지번·도로명·동호)·계좌 열쇠 중 하나와 함께일 때만 둔다 — 금액만 같은 다른 대상(채권최고액이 같은 다른 집 근저당)이
   //  금액 하나로 이어지던 것. 잇는 쪽은 금액과 짝 열쇠가 함께 같을 때만 잇는다(금액 값은 value에 그대로)
-  if (k.amount !== undefined && !(k.date || k.person || k.personGuess || k.asset || k.assetFull || k.road || k.unit || k.account)) delete k.amount;
+  if (k.amount !== undefined && !(k.date || k.person || k.personGuess || k.asset || k.assetFull || k.road || k.unit || k.account || k.party)) delete k.amount;
   return f;
 }
 // 칸 하나(이름 key, 값 v) → 정규화 값과 종류. docType으로 (서류 종류, 칸 이름) 대응을 먼저 본다
@@ -30324,8 +30324,11 @@ function cpfFile_(c, f, cache, tbank, opt) {
   ruled.forEach(function (x) { ruledVals['*|' + JSON.stringify(x.value)] = 1; if (x.value && typeof x.value === 'object') Object.keys(x.value).forEach(function (q) { const v = x.value[q]; ruledVals['*|' + JSON.stringify(typeof v === 'string' ? (cpfDate_(v) || v) : v)] = 1; }); });
   const rowy = ruled.filter(function (x) { return x.value && typeof x.value === 'object' && !('n' in x.value); }).length >= 30; // 통장처럼 줄 사실이 많은 서류는 공통 뽑기에서 열쇠만
   const common = cpfCommon_(text, base, ruledVals, rowy);
-  // 종류 미정 서류의 날짜·금액 줄(상2)
+  // 종류 미정 서류의 날짜·금액 줄(상2). [2026.10.19 1번 밤작업 — 거래 단위로 쪼개기] 규칙이 정한 서류라도 줄 사실(통장 거래·회차·품목·명세 줄 등 값이 객체인 사실)을
+  //  하나도 내지 않았으면 글자 줄도 뽑는다 — 진료비 계산서·감정평가서·소득금액증명원·토지대장·기준시가 계산·법무사 정산서처럼 표 모양인데 규칙은 합계만 내던 서류(개발용 2~5사건씩)
   let lines = [];
+  const ruleRows = ruled.filter(function (x) { return x.value && typeof x.value === 'object' && !('n' in x.value) && !('d' in x.value); }).length;
+  if (p && p.type && !ruleRows) { lines = cpfTextRows_(text, base); lines.forEach(function (x) { x.read.note = '서류 규칙은 줄을 내지 않음 — 날짜·지번·순번과 금액이 함께 있는 글자 줄을 한 건으로(칸 뜻은 모름)'; }); }
   if (!(p && p.type)) { lines = cpfTextRows_(text, base); if (lines.length < 3 && common.filter(function (x) { return typeof x.value === 'number'; }).length >= 5) trunc.push('표가 풀려 줄 연결 없음 — 금액·날짜가 줄 없이 따로 있음(표 구조는 3번 읽기 세션 몫)'); }
   // 엑셀 표(통장이 아닌 것) — 머리 줄을 찾아 한 줄 = 사실 한 건. 표 글이 없으면 밝힌다(상3)
   let table = [];
@@ -30347,6 +30350,16 @@ function cpfFile_(c, f, cache, tbank, opt) {
   // [2026.10.19 1번 밤작업 — 2번 요청] 이 파일(구간)의 증명서 기준 인물이 하나뿐이면 글자에서 뽑은 사실에도 같은 기준 인물을 단다(여럿이면 어느 증명서 글인지 몰라 안 닮)
   { const subs = {}; ruled.forEach(function (x) { if (x.keys && x.keys.subject) subs[x.keys.subject] = 1; }); const sk = Object.keys(subs);
     if (sk.length === 1) table.concat(piped, lines, common).forEach(function (x) { x.keys = x.keys || {}; if (!x.keys.subject) x.keys.subject = sk[0]; }); }
+  // [2026.10.19 1번 밤작업 — 거래 단위로 쪼개기] 서류 날짜·상대 — 날짜가 없는 줄 항목·금액(법무사 정산서 항목, 영수증 품목 금액 등)에 그 서류의 날짜와 상대(상호·사업자번호)를 대조 열쇠로 붙인다.
+  //  통장 거래 한 줄과 "같은 날·같은 금액·같은 상대"로 맞대는 재료. 서류 날짜는 규칙이 낸 거래일·발행일·작성일·영수일·납부일·수납일·발급일 중 하나뿐일 때만(여럿이면 어느 날 거래인지 몰라 안 붙임)
+  { const dk = /^(거래일|발행일|작성일|영수일|납부일|수납일|발급일|결제일|지급일)$/, ds = {}; ruled.forEach(function (x) { if (dk.test(String(x.kind).replace(/^기타:/, '')) && /^\d{4}-\d{2}-\d{2}$/.test(String(x.value).slice(0, 10))) ds[String(x.value).slice(0, 10)] = 1; });
+    const dl = Object.keys(ds), party = (ruled.filter(function (x) { return /^(상호|사업자번호|의료기관|금융기관)$/.test(x.kind); })[0] || {}).value;
+    if (dl.length === 1 || party) common.concat(lines).forEach(function (x) {
+      x.keys = x.keys || {};
+      if (dl.length === 1 && !x.keys.date && typeof x.value === 'number') { x.keys.date = dl[0]; x.keys.dateFrom = '서류 날짜'; }
+      if (party && typeof x.value === 'number' && !x.keys.party) x.keys.party = String(party).replace(/\s+/g, '').slice(0, 40);
+      if (typeof x.value === 'number' && x.keys.amount === undefined && Math.abs(x.value) >= 1000 && !/면적|비율|번호|생년|기준|연도/.test(x.kind) && (x.keys.date || x.keys.party)) x.keys.amount = x.value; /* 짝 열쇠가 생겼으니 금액 열쇠도 */
+    }); }
   const all = ruled.concat(table, piped, lines, common);
   if (exclude) all.forEach(function (x) { x.read.use = '제외 후보(' + exclude.replace(/ — .*$/, '') + ')'; });
   facts[0].read.note = [typeDoubt, exclude ? '제외 후보: ' + exclude + ' — 사실은 뽑았고 read.use로 표시(쓸지 2번이 정함)' : '', p && p.type ? '' : '서류 규칙이 없는 종류 — 글자에서 공통 뽑기·글자 줄만 함', warn.length ? '서류 정리 경고: ' + warn.slice(0, 3).join(' / ').slice(0, 200) : '', cut ? '글자 상한에서 잘림 — 뒤쪽은 못 읽음' : '', trunc.length ? '잘림·못 함: ' + trunc.join(' / ') : ''].filter(String).join(' · ');
