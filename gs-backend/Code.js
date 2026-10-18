@@ -831,6 +831,14 @@ const DRIVE_TOOLS = [
             }
           }
         },
+        // [2026.10.19 engine-fix] 상속인별 사전증여 목록 — 화면 엔진은 이 칸으로 §24 공제한도와 §28 증여세액공제를 계산하는데 AI 도구 설명에 없어서
+        //  AI는 공제한도를 계산할 수 없었다(김창호 상속: 사전증여 칸이 있든 없든 같은 결과). 화면(taxcalc.html priorGiftHeirs)과 같은 모양
+        priorGiftHeirs: { type: 'array', description: '상속인별 10년 이내 사전증여(§13①1호) 목록 — §24 공제한도(과세가액 5억 초과 때 증여세 과세표준만큼 공제한도를 줄임)와 §28 증여세액공제에 쓴다. 사전증여가 있으면 반드시 넣을 것(없으면 공제한도가 줄지 않아 세액이 과소). 증여받지 않은 상속인도 actualInheritedValue와 함께 넣어야 증여세액공제 안분이 맞다.', items: { type: 'object', properties: {
+          name: { type: 'string', description: '상속인 이름' },
+          actualInheritedValue: { type: 'number', description: '그 상속인이 실제 받는(받을) 상속재산가액(원, 채무 차감 전) — §28② 상속인별 안분 비율. 모든 상속인 합이 0이면 증여세액공제가 0이 되고 결과에 증여세액공제_상속분입력필요=true가 뜬다' },
+          priorGiftAmount: { type: 'number', description: '그 상속인이 받은 사전증여 재산가액 합계(원, 과세가액에 가산한 금액)' },
+          priorGiftTaxableBase: { type: 'number', description: '그 사전증여의 증여세 과세표준(원) = 증여재산가액 − 증여재산공제(§53·§53의2·§54) — §24 3호 공제한도 차감액' },
+          priorGiftTaxPaid: { type: 'number', description: '증여 당시 그 증여재산에 대한 증여세 산출세액(원, §28① — 실제 낸 금액이 아니라 산출세액)' } } } },
         nonHeirPriorGiftTaxableBaseTotal: { type: 'number', description: '수유자가 아닌 자에게 한 사전증여(§13①2호)로 상속재산에 가산된 증여재산의 과세표준 합계(원, 있으면). §28② 증여세액공제 정밀계산(시행령§3①1호 가목)에 반영된다 — 없으면 상속인분(1호)만 반영되어 공제액이 부정확할 수 있다.' },
         nonHeirPriorGiftAmountTotal: { type: 'number', description: '수유자가 아닌 자에게 한 사전증여(§13①2호) 재산가액 합계(원, 있으면). §28② 증여세액공제 정밀계산(시행령§3①1호 나목)에 반영된다.' },
         nonHeirPriorGiftTaxPaidTotal: { type: 'number', description: '위 상속인 아닌 자에 대한 사전증여(§13①2호) 당시의 증여세 산출세액 합계(원). §28②에 따라 상속세산출세액×(그 증여재산 과세표준÷상속세 과세표준)을 한도로 공제된다. 없으면 생략.' },
@@ -8196,9 +8204,11 @@ function toolCalculateInheritanceTax(p) {
   // 해당 입력을 생략하면(모두 0) 사실상 과세가액 전체가 한도가 되어 예전처럼 제한 없이 동작한다.
   // §24단서 — "제3호(사전증여재산 과세표준상당액)는 상속세 과세가액이 5억원을 초과하는 경우에만
   // 적용한다" — 5억 이하면 1호·2호만 차감하고 3호(사전증여분)는 차감하지 않는다.
-  const overallDeductionLimit = Math.max(0, effectiveEstateAmount
+  // [2026.10.19 engine-fix] 화면 엔진(taxcalc-engine.html)과 같은 고침 — §24·§13①: 한도의 기준·5억 판정은 장례비까지 뺀 과세가액
+  const estateTaxableAfterFuneral = Math.max(0, effectiveEstateAmount - funeralDeduction);
+  const overallDeductionLimit = Math.max(0, estateTaxableAfterFuneral
     - (Number(p.nonHeirBequestAmount) || 0)
-    - (effectiveEstateAmount > 500000000 ? priorGiftTaxableBaseTotal : 0)
+    - (estateTaxableAfterFuneral > 500000000 ? priorGiftTaxableBaseTotal : 0)
     - (Number(p.disclaimedShareRedistributedAmount) || 0));
   const overallLimitApplied = limitedDeduction > overallDeductionLimit;
   if (overallLimitApplied) limitedDeduction = overallDeductionLimit;
@@ -8231,7 +8241,7 @@ function toolCalculateInheritanceTax(p) {
   // §28 증여세액공제 — 상속인별 정밀 계산(위 priorGiftTaxCreditPrecise_ 참고). nonHeirPriorGiftTaxableBaseTotal·
   // nonHeirPriorGiftAmountTotal(§13①2호, 수유자 아닌 자에 대한 사전증여 합계)을 입력하면 시행령§3①1호
   // 가목·나목 산식에 정확히 반영된다.
-  const priorGiftCreditResult = priorGiftTaxCreditPrecise_(taxBeforePremium, taxBase, effectiveEstateAmount, priorGiftHeirs,
+  const priorGiftCreditResult = priorGiftTaxCreditPrecise_(taxBeforePremium, taxBase, estateTaxableAfterFuneral, priorGiftHeirs, // [engine-fix] §28① 5억 판정도 §13 과세가액
     Number(p.nonHeirPriorGiftTaxableBaseTotal) || 0, Number(p.nonHeirPriorGiftAmountTotal) || 0);
   const priorGiftTaxCredit = priorGiftCreditResult.totalCredit;
   const giftCreditExcludedBySmallEstate = priorGiftCreditResult.excludedBySmallEstate;

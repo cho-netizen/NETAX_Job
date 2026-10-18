@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-18 22:16 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 01:46 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -10252,7 +10252,10 @@
       totalCredit += credit;
       return { 성명: h.name || '', 공제액: credit, 한도: limit, 상속인별과세표준상당액: Math.round(taxableBaseEquivalent), 안분산출세액: Math.round(grossTaxShare) };
     });
-    return { totalCredit: Math.round(totalCredit), excludedBySmallEstate: false, perHeir: perHeir };
+    // [2026.10.19 engine-fix] 낸 증여세가 있는데 상속인별 실제 상속분(actualInheritedValue)이 하나도 없으면 안분 비율을 못 구해
+    //  공제가 말없이 0이 됐다 — 계산식은 그대로 두고, 입력이 모자란다는 표시를 돌려준다(화면·AI가 안내)
+    const needsActualValue = totalActualValue <= 0 && heirs.some(function (h) { return (Number(h.priorGiftTaxPaid) || 0) > 0 && (Number(h.priorGiftTaxableBase) || 0) > 0; });
+    return { totalCredit: Math.round(totalCredit), excludedBySmallEstate: false, perHeir: perHeir, needsActualValue: needsActualValue };
   }
 
   // 상속개시전 처분재산 등 산입액 (상증세법 §15, [별지 제9호서식] 부표4) — gs-backend와 동일 로직.
@@ -12481,9 +12484,15 @@
 
     // §24단서 — "제3호(사전증여재산 과세표준상당액)는 상속세 과세가액이 5억원을 초과하는 경우에만
     // 적용한다" — 5억 이하면 1호·2호만 차감하고 3호(사전증여분)는 차감하지 않는다.
-    const overallDeductionLimit = Math.max(0, effectiveEstateAmount
+    // [2026.10.19 engine-fix] §24 본문 "제13조에 따른 상속세 과세가액"·단서 "상속세 과세가액이 5억원을 초과" —
+    //  §13①은 과세가액을 "상속재산의 가액에서 제14조에 따른 것(공과금·장례비용·채무)을 뺀 후" 사전증여를 더한 금액으로 정한다.
+    //  이 계산기의 effectiveEstateAmount(입력 taxableEstateAmount)는 장례비를 빼기 전 금액이고 장례비는 아래에서 공제 쪽에 더하므로,
+    //  한도의 기준·5억 판정에는 장례비를 뺀 금액을 써야 한다. 예전엔 빼기 전 금액을 써서 한도가 걸리는 사건의 과세표준이
+    //  장례비만큼 적게 나왔다(김창호 상속 추징예상: 엔진 314,746,412 ↔ 국세청식 328,757,412, 차이 = 장례비 14,011,000).
+    const estateTaxableAfterFuneral = Math.max(0, effectiveEstateAmount - funeralDeduction);
+    const overallDeductionLimit = Math.max(0, estateTaxableAfterFuneral
       - (Number(p.nonHeirBequestAmount) || 0)
-      - (effectiveEstateAmount > 500000000 ? priorGiftTaxableBaseTotal : 0)
+      - (estateTaxableAfterFuneral > 500000000 ? priorGiftTaxableBaseTotal : 0)
       - (Number(p.disclaimedShareRedistributedAmount) || 0));
     const overallLimitApplied = limitedDeduction > overallDeductionLimit;
     if (overallLimitApplied) limitedDeduction = overallDeductionLimit;
@@ -12514,7 +12523,9 @@
     // §28 증여세액공제 — 상속인별 정밀 계산(위 priorGiftTaxCreditPrecise 참고). nonHeirPriorGiftTaxableBaseTotal·
     // nonHeirPriorGiftAmountTotal(§13①2호, 수유자 아닌 자에 대한 사전증여 합계)을 입력하면 시행령§3①1호
     // 가목·나목 산식에 정확히 반영된다.
-    const priorGiftCreditResult = priorGiftTaxCreditPrecise(taxBeforePremium, taxBase, effectiveEstateAmount, priorGiftHeirs,
+    // [2026.10.19 engine-fix] §28① 단서 "상속세 과세가액이 5억원 이하인 경우" 판정과 시행령§3①1호 나목·다목의 "상속세과세가액"도
+    //  §13①의 과세가액(장례비까지 뺀 금액) — 위 §24와 같은 이유로 estateTaxableAfterFuneral을 넘긴다.
+    const priorGiftCreditResult = priorGiftTaxCreditPrecise(taxBeforePremium, taxBase, estateTaxableAfterFuneral, priorGiftHeirs,
       Number(p.nonHeirPriorGiftTaxableBaseTotal) || 0, Number(p.nonHeirPriorGiftAmountTotal) || 0);
     const giftCreditExcludedBySmallEstate = priorGiftCreditResult.excludedBySmallEstate;
     // [2026.10.09 법령보완] §28② — 수증자가 상속인·수유자가 아닌 사전증여(§13①2호, 5년 이내)의 증여세액도 공제한다.
@@ -12611,7 +12622,7 @@
       상속공제_합계: totalDeduction, 상속공제종합한도_적용여부: overallLimitApplied, 과세표준: taxBase,
       산출세액: calculatedTax, 세대생략가산액: generationSkipPremium,
       세대생략할증_미성년자여부확인필요: generationSkipMinorStatusUnverified,
-      기납부증여세액공제: priorGiftTaxCredit, 기납부증여세액공제_상속인외: nonHeirPriorGiftTaxCredit, 기납부증여세액공제_상속인외한도: nonHeirPriorGiftCreditLimit, 증여세액공제_5억이하배제: giftCreditExcludedBySmallEstate, 증여세액공제_상속인별내역: priorGiftCreditResult.perHeir,
+      기납부증여세액공제: priorGiftTaxCredit, 증여세액공제_상속분입력필요: !!priorGiftCreditResult.needsActualValue, 기납부증여세액공제_상속인외: nonHeirPriorGiftTaxCredit, 기납부증여세액공제_상속인외한도: nonHeirPriorGiftCreditLimit, 증여세액공제_5억이하배제: giftCreditExcludedBySmallEstate, 증여세액공제_상속인별내역: priorGiftCreditResult.perHeir,
       특례증여세액공제: specialGiftTaxCredit, 외국납부세액공제: foreignTaxCredit, 단기재상속세액공제: shortTermCredit, 그밖의공제: otherCreditsAmount,
       신고세액공제: reportCredit, 이자상당액: interestAmount, 영리법인면제분납부세액: forProfitPayableByHeirs,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty,
