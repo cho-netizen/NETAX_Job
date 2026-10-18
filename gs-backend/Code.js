@@ -24424,9 +24424,18 @@ function ocrFileText_(fileId, tblKey) {
     // [2026.10.19 3번 읽기 — 확보율 재측정] 글자가 모양(그림)으로만 찍힌 PDF — "Microsoft Print to PDF"로 저장한 웹 화면(국세법령정보 예규 등)은 글꼴은 있는데
     //  글자 표가 깨져 드라이브가 그 깨진 글자층을 그대로 써서 0자가 된다(개발용 22개 — 최동규 관련예규 9·신선경 5·김환식 4). 서버는 PDF를 그림으로 못 그리므로
     //  드라이브가 만든 첫 쪽 그림(축소본 2400px)을 글자인식(0원)한다 — 첫 쪽만이라 표시를 붙임. 일괄 안에서만(사이드바는 느려지지 않게)
-    if (TC_BATCH_READ_ && String(got || '').replace(/[^가-힣0-9]/g, '').length < 30) {
+    //  쪽당 글자로 본다 — 깨진 글자층에서 몇십 자만 건지는 것(김성년 질의회신 20여 개, 2~5쪽에 46~120자)도 같은 경우라 쪽당 30자 미만이면
+    const gotN = String(got || '').replace(/[^가-힣0-9]/g, '').length;
+    let lowPdf = false;
+    if (TC_BATCH_READ_ && gotN < 150) {
       try {
-        if (/pdf/.test(String(DriveApp.getFileById(fileId).getMimeType() || ''))) {
+        const df0 = DriveApp.getFileById(fileId);
+        if (/pdf/.test(String(df0.getMimeType() || ''))) { const np = (df0.getBlob().getDataAsString('ISO-8859-1').match(/\/Type\s*\/Page(?![s\w])/g) || []).length || 1; lowPdf = gotN < 30 || gotN / np < 30; }
+      } catch (e) {}
+    }
+    if (lowPdf) {
+      try {
+        {
           const th = tcThumbBytes_(fileId, 2400), tb2 = [];
           for (let k = 0; k < th.length; k++) tb2.push(th[k] > 127 ? th[k] - 256 : th[k]);
           const tt = String(tcOcrBlob_(Utilities.newBlob(tb2, th[0] === 0x89 ? 'image/png' : 'image/jpeg', 'p1')) || '').trim();
