@@ -23241,6 +23241,21 @@ function work_updateCase(params) {
       if (row[col.my_report_id] && (newCaseName !== oldCaseName || params.고객명 !== undefined)) {
         try { my_setCaseNamesByReportId_(row[col.my_report_id], newCaseName, row[col.고객명]); } catch (err) { console.log('고객창구 사건명 동기화 실패: ' + err.message); }
       }
+      // [2026.10.18 탭연결 12번] 보고서 모음 목록(_보고서인덱스)의 사건명·고객명도 같이 맞춘다 — 예전엔 밤 재정리 때까지 옛 사건명으로 보였다
+      // (사건 삭제 때 목록에서 바로 빼는 work_deleteCase와 같은 방식). 실패해도 저장은 계속.
+      if (newCaseName !== oldCaseName || params.고객명 !== undefined) {
+        try {
+          const idxList = rh_loadReportIndex_();
+          if (idxList) {
+            let changed = false;
+            idxList.forEach(function (x) {
+              if (x.caseId !== params.id) return;
+              if (x.사건명 !== newCaseName || x.고객명 !== row[col.고객명]) { x.사건명 = newCaseName; x.고객명 = row[col.고객명]; changed = true; }
+            });
+            if (changed) rh_saveReportIndex_(idxList);
+          }
+        } catch (err) { console.log('사건명 변경 시 보고서 목록 동기화 실패: ' + err.message); }
+      }
     }
     // [2026.09.18 신규] "상담 사건이 나중에 자문/신고로 발전하면 그 시점에 개별 폴더를 만들자"
     // — 상담일 때는 폴더ID가 비어있었는데, 업무유형이 자문·신고로 바뀌면(검토서·보고서를 쓰게
