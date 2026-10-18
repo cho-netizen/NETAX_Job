@@ -26400,6 +26400,32 @@ function caseProcJoinPages_(files, cache) {
       g.forEach(function (x) { used[x.f.id] = o.name; });
       add.push(o); res.merged.push({ name: o.name, parts: g.map(function (x) { return x.f.name; }), of: of });
     });
+    // [2026.10.18 정밀분석 원인10 ③] 쪽 표시 없는 종이 초본 — 같은 성명·같은 발급일이고 행번호가 이어지며(앞 장 끝 번호 + 1~2 = 다음 장 첫 번호),
+    //  끝 표시("이하 여백"·"다음장없음")는 마지막 장에만 있을 때 한 서류로 잇는다. 같은 범위가 두 번이면 사본이라 잇지 않는다.
+    //  예전엔 못 이어 1·2쪽에 가짜 "뒷장 빠짐" 경고가 붙고 거주기간 근거에서 빠졌다(지은자 윤편이 초본 사진 3장)
+    const jg = {};
+    files.forEach(function (f) {
+      if (used[f.id] || !/pdf|^image\//.test(String(f.mimeType || '')) || /#[sm]/.test(String(f.id)) || /^_/.test(String(f.name || ''))) return;
+      const p = f.p || caseProcParsed_(f, cache, false);
+      if (!p || !p.jm || p.pg) return;
+      const k = String(p.jm.nm).replace(/\s+/g, '') + '|' + p.jm.iss;
+      (jg[k] = jg[k] || []).push({ f: f, a: p.jm.a, b: p.jm.b, end: !!p.jm.end, cont: !!p.jm.cont });
+    });
+    Object.keys(jg).forEach(function (k) {
+      const g = jg[k].sort(function (x, y) { return x.a - y.a; });
+      if (g.length < 2 || g.some(function (x, i) { return i && x.a === g[i - 1].a; })) return;
+      const chain = [g[0]];
+      for (let i = 1; i < g.length; i++) { const pv = chain[chain.length - 1]; if (!pv.end && g[i].a > pv.b && g[i].a - pv.b <= 2) chain.push(g[i]); else break; }
+      if (chain.length < 2) return;
+      const f0 = chain[0].f, o = {};
+      Object.keys(f0).forEach(function (key) { if (key !== 'p') o[key] = f0[key]; });
+      o.id = 'm#' + chain.map(function (x) { return x.f.id + '~' + x.f.modified; }).join('+'); o.mimeType = 'application/pdf';
+      o.modified = Math.max.apply(null, chain.map(function (x) { return Number(x.f.modified) || 0; }));
+      o.joinParts = chain.map(function (x) { return { id: x.f.id, name: x.f.name, mimeType: x.f.mimeType, modified: x.f.modified }; });
+      o.name = String(f0.name || '').replace(/(\.[A-Za-z0-9]{2,5})?$/, ' (이어 붙인 초본 ' + chain.length + '장' + (chain[chain.length - 1].end ? '' : ' — 끝 표시 없음') + ')$1');
+      chain.forEach(function (x) { used[x.f.id] = o.name; });
+      add.push(o); res.merged.push({ name: o.name, parts: chain.map(function (x) { return x.f.name; }), of: chain.length, paper: true });
+    });
     if (!add.length) return res;
     const first = {}; add.forEach(function (a) { first[a.joinParts[0].id] = a; });
     res.files = []; res.used = used;
@@ -26644,6 +26670,11 @@ function caseProcParsed_(f, cache, canParse) {
       // [2026.10.17] 한 파일에 서로 다른 서류가 여럿이면 구간 [시작, 끝, 제목] — 파일 목록이 서류별 구간으로 펼친다(caseProcExpandBundles_)
       if (!/#s\d/.test(String(f.id))) { const sg = docBundleSplit_(text, p.type); if (sg.length >= 2) s.sg = sg; }
       if (!/#[sm]/.test(String(f.id))) { const pg = caseProcPageMark_(text); if (pg) s.pg = pg; } // [2026.10.17] 한 서류가 쪽마다 다른 파일 — 문서 번호·쪽 표시
+      // [2026.10.18 정밀분석 원인10 ③] 쪽 표시("n/N")·발급번호가 안 보이는 종이 초본 사진(머리가 접힘 — 지은자 윤편이 3장) — 성명·발급일·행번호 범위·끝 표시로 잇는다(caseProcJoinPages_)
+      if (!s.pg && !/#[sm]/.test(String(f.id)) && p.type === 'resident' && p.result && /초본/.test(String(p.result.종류 || '')) && p.result.성명) {
+        const nos = (p.result.주소이력 || []).map(function (x) { return x.번호; }).filter(function (n) { return n; });
+        if (nos.length) s.jm = { nm: p.result.성명, iss: p.result.발급일 || '', a: nos[0], b: nos[nos.length - 1], end: /이\s*하\s*\n?\s*여\s*백|다음\s*장\s*없\s*음/.test(text), cont: /다음\s*장\s*계\s*속/.test(text) };
+      }
       s.nums = caseProcNumPrint_(text); // [2026.10.17] 본문 숫자 지문 — 이름이 다른 같은 서류 사본(사진·PDF·두 폴더)을 한 번만 세는 데
       // [2026.10.17 묶음12] 서식 제목으로 찾은 신고서·결정 통지(위 낱말 판별에 없는 "과세표준 및 세액 계산내용 통지" 등)도 같은 결과물 표시 — 경정·불복이 아닌 사건에선 입력에서 뺀다
       if (p.type === 'filedret' && !s.out && !s.outGI && !s.calc) { if (p.result && p.result.세목 === 'transfer') s.out = true; else s.outGI = true; }
@@ -27515,8 +27546,11 @@ function caseProcOverview0_(c) {
         const f = caseProcInhFacts_(c), out = [];
         const all = caseProcParseAll_(c), fams = all.filter(function (x) { return x.p.type === 'family'; });
         const signed = [].concat.apply([], all.filter(function (x) { return x.p.type === 'inhdivision'; }).map(function (x) { return ((x.p.result && x.p.result.상속인) || []).map(function (h) { return h.이름; }); }));
-        const spouseDead = fams.some(function (x) { return ((x.p.result && x.p.result.가족) || []).some(function (q) { return q.관계 === '배우자' && q.사망; }); });
-        if (f.heirs.length && !f.heirs.some(function (h) { return h.relation === '배우자'; }) && spouseDead) { out.push('배우자공제(배우자 사망 — 가족관계증명서)'); tpl = tpl.filter(function (k) { return !/배우자/.test(k); }); }
+        const spouseDead0 = fams.some(function (x) { return ((x.p.result && x.p.result.가족) || []).some(function (q) { return q.관계 === '배우자' && q.사망; }); });
+        // [2026.10.18 정밀분석 원인10 ②] 피상속인 증명서에 배우자 칸이 아예 없어도(이월순·조용녀) 배우자상속공제 해당 없음 — 사망 서류 묶음 안 증명서 포함
+        let spouseNone = false, spouseDead = spouseDead0; // 배우자 사망은 피상속인 본인 증명서에서만(묶음 안 상속인들 증명서의 배우자 사망과 섞지 않게)
+        try { const HS = caseProcInhHeirSet_(fams, (f.deceased && f.deceased.name) || c.납세자 || ''); if (HS.cert) { spouseDead = HS.spouseDead && !HS.spouse; spouseNone = !HS.spouse && HS.noSpouseRow; } } catch (e) {}
+        if (f.heirs.length && !f.heirs.some(function (h) { return h.relation === '배우자'; }) && (spouseDead || spouseNone)) { out.push('배우자공제(' + (spouseDead ? '배우자 사망' : '배우자 칸 없음') + ' — 피상속인 가족관계증명서)'); tpl = tpl.filter(function (k) { return !/배우자/.test(k); }); }
         if (f.heirs.length && f.heirs.every(function (h) { return signed.indexOf(h.name) !== -1; })) { tpl = tpl.filter(function (k) { return !/상속포기|한정승인/.test(k); }); out.push('상속포기·한정승인(상속인 전원이 분할협의서에 공동상속인으로 서명)'); }
         if (out.length) ruled = ' 서류로 해당 없음: ' + out.join(', ') + '.';
         // 남은 특례마다 뒷받침 서류가 폴더에 하나도 없으면 "일반" — 특례는 서류가 있어야 적용된다(사전증여는 증여세 신고서·증여계약서, 가업은 사업자·주주명부 등).
@@ -27580,6 +27614,8 @@ function caseProcBaseDateCands_(p) {
       if (p.result.검인일) out.push({ k: 'gift', d: p.result.검인일, who: p.result.수증자 || '', warn: false, con: true, via: '증여계약서 검인일' });
     }
     if (p.type === 'death' && p.result && p.result.사망일) out.push({ k: 'death', d: p.result.사망일, who: p.result.성명 || '', warn: !!p.result.사망일확인필요 });
+    // [2026.10.18 정밀분석 원인10 ③] 말소자 초본의 「사망신고말소」 발생일 = 사망일(본인 = 초본 성명) — 사망진단서가 없는 사건(김희연: 2026-07-05 사망신고말소)의 상속개시일 후보
+    if (p.type === 'resident' && p.result && p.result.사망신고말소일) out.push({ k: 'death', d: p.result.사망신고말소일, who: p.result.성명 || '', warn: !!p.result.사망말소확인필요, via: '말소자 초본 사망신고말소' });
     // 등기부의 "…상속" 원인일 = 상속개시일(직전 소유자 = 피상속인), 상속재산분할협의서의 "○년○월○일 ○○의 사망으로 개시된 상속"
     if (p.type === 'registry' && p.result && p.result.docs) p.result.docs.forEach(function (d) {
       const h = d.소유권이력 || [];
@@ -27612,7 +27648,8 @@ function caseProcEvidenceBaseDates_(c) {
       if (b.k !== kind) return;
       // [2026.10.15] 등기부 "상속" 원인일은 직전 소유자(피상속인)를 읽었을 때만 — 못 읽으면 다른 사람의 옛 상속(실사건: 2015년 상속 등기)을 상속개시일로 잡았다
       if (b.via === '등기부 상속 원인일' && !b.who) return;
-      if (who && b.who &&norm(b.who).indexOf(who) === -1 && who.indexOf(norm(b.who)) === -1) return;
+      // [2026.10.18 정밀분석 원인10 ②] 사망 서류 성명을 이제 읽으므로 글자인식·표기 한 글자 차이(성백례↔성백예, 禮)는 같은 사람으로
+      if (who && b.who &&norm(b.who).indexOf(who) === -1 && who.indexOf(norm(b.who)) === -1 && !(kind === 'death' && caseProcNameLike_(b.who, who))) return;
       cands.push(Object.assign({ file: f.name, fileId: f.id }, b));
     });
   });
@@ -28737,7 +28774,11 @@ function caseProcParseAll0_(c) {
   const out = [], started = Date.now();
   caseProcFiles_(c).filter(function (f) { return /pdf|^image\//.test(String(f.mimeType || '')) && !/^_/.test(f.name) && !caseProcIsOutputDocFor_(c, f.name, f.dir); }).sort(function (a, b) { return caseProcDocRank_(c, a.name) - caseProcDocRank_(c, b.name); }).slice(0, CASEPROC_DOC_MAX_).forEach(function (f) { // 시간 한도가 걸려도 계산기 근거 서류부터
     if (Date.now() - started > 150000) return;
-    try { const t = tc_docText_(f); if (!t) return; if (caseProcIsOutputTextFor_(c, t)) return; /* [2026.10.18 정밀분석 원인1] 이 사건 세목의 결과물만 뺌 */ const p = docParseText_(t); if (p && p.type && !(p.result && !Array.isArray(p.result) && p.result.사무소발행)) out.push({ f: f, p: p }); } catch (e) {}
+    try { const t = tc_docText_(f); if (!t) return; if (caseProcIsOutputTextFor_(c, t)) return; /* [2026.10.18 정밀분석 원인1] 이 사건 세목의 결과물만 뺌 */ const p = docParseText_(t); if (p && p.type && !(p.result && !Array.isArray(p.result) && p.result.사무소발행)) { out.push({ f: f, p: p });
+      // [2026.10.18 정밀분석 원인10 ②] 한 파일 안 가족관계증명서는 파일 대표 종류와 상관없이 가족관계로 집계 — 사망 서류 묶음(시체검안서 + 기본증명서 + 피상속인·상속인별 가족관계증명서)을
+      //  "시체검안서" 하나로 판정해 그 안의 가족관계가 상속인 판단에 안 쓰였다(노영환: 자녀 5명을 정확히 읽고도 "상속인 수를 찾지 못했다", 박종헌: 자녀 3명). famKey로 증명서마다 따로 구별
+      if (p.type === 'death' && p.result && Array.isArray(p.result.가족관계목록)) p.result.가족관계목록.forEach(function (fr, k) { out.push({ f: f, p: { type: 'family', label: '가족관계증명서', result: fr, embedded: true }, famKey: (f.id || f.name) + '#fam' + k }); });
+    } } catch (e) {}
   });
   // [2026.10.18 정밀분석 원인2] 엑셀·csv 통장도 통장 서류로(계좌마다 거래 한 줄씩) — 상속 금융재산·§13·§15, 불복 통장 대조, 차용증 대조가 같은 길로 받는다
   try { caseProcTableBankDocs_(c).forEach(function (x) { out.push(x); }); } catch (e) {}
@@ -28961,9 +29002,18 @@ function caseProcGiftInhFacts_(c, lines, items) {
     {
       // 수증자는 사건 납세자라 증여 내용 확인 전에도 채운다. 증여자는 증여 내용이 정해진 뒤에만.
       const donorNm = dealPending ? '' : ((facts.giftDonorName || []).filter(function (x) { return x.sure; }).map(function (x) { return x.v; })[0] || ov.giftDonorName || '');
-      const regNoOf = function (n) { let v = '', src = ''; fams.forEach(function (x) { ((x.p.result && x.p.result.가족) || []).forEach(function (q) { if (!v && n && nameHas([q.이름], n) && /^\d{6}-\d{7}$/.test(String(q.주민번호 || ''))) { v = q.주민번호; src = '가족관계증명서(' + x.f.name + ')'; } }); }); return { v: v, src: src }; };
+      const regNoOf0 = function (n) { let v = '', src = ''; fams.forEach(function (x) { ((x.p.result && x.p.result.가족) || []).forEach(function (q) { if (!v && n && nameHas([q.이름], n) && /^\d{6}-\d{7}$/.test(String(q.주민번호 || ''))) { v = q.주민번호; src = '가족관계증명서(' + x.f.name + ')'; } }); }); return { v: v, src: src }; };
+      // [2026.10.18 정밀분석 원인10 ①] 가족관계증명서 번호를 등기부·증여계약서·분할협의서의 같은 이름 옆 주민번호 앞자리와 대조 — 다르면 확정하지 않고 후보로(신고서 인적사항이 틀리지 않게)
+      const regNoOf = function (n) {
+        const o = regNoOf0(n); if (!o.v) return o;
+        const famNames = [].concat.apply([], fams.map(function (x) { return ((x.p.result && x.p.result.가족) || []).map(function (q) { return norm(q.이름); }); })).filter(function (v) { return v && !nameHas([v], n); });
+        const cx = caseProcRrnCross_(parsed, n, o.v, famNames);
+        if (cx.bad.length) { o.sure = false; o.src += ' ⚠ ' + cx.bad.map(function (b) { return b.file + '에는 이 이름 옆 번호 앞자리 ' + b.front; }).join(', ') + ' — 서로 다름(원문 확인)'; lines.push('⚠ ' + n + ' 주민번호 앞자리가 서류끼리 다름: 가족관계증명서 ' + o.v.slice(0, 6) + ' / ' + cx.bad.map(function (b) { return b.file + ' ' + b.front; }).join(', ')); }
+        else if (cx.ok.length) o.src += ' · ' + cx.ok.join(', ') + '와 앞자리 일치';
+        return o;
+      };
       const addrOf = function (n) { let v = '', src = ''; byType('resident').forEach(function (x) { const r = x.p.result || {}; if (v || !n || !r.현주소) return; if (nameHas([r.성명, r.세대주], n) || (r.세대원 || []).some(function (q) { return nameHas([q.이름], n); })) { v = r.현주소; src = '주민등록등본(' + x.f.name + ')'; } }); return { v: v, src: src }; };
-      [['giftDoneeRegNo', regNoOf(donee)], ['giftDoneeAddress', addrOf(donee)], ['giftDonorRegNo', regNoOf(donorNm)], ['giftDonorAddress', addrOf(donorNm)]].forEach(function (p) { if (p[1].v) add(p[0], p[1].v, p[1].src, true); });
+      [['giftDoneeRegNo', regNoOf(donee)], ['giftDoneeAddress', addrOf(donee)], ['giftDonorRegNo', regNoOf(donorNm)], ['giftDonorAddress', addrOf(donorNm)]].forEach(function (p) { if (p[1].v) add(p[0], p[1].v, p[1].src, p[1].sure !== false); });
     }
     // [2026.10.15] 감정평가서 — 감정가액은 시가(§60⑤). 증여 등기 재산과 소재지가 맞고 금액 검산이 되면 확정(10억 초과는 2곳 이상 평균이어야 해 1곳뿐이면 후보로만)
     const aprs = byType('appraisal').filter(function (x) { const r = x.p.result || {}; return r.감정평가액 && (!gifts.length || !r.소재지 || gifts.some(function (g) { return g.loc && tcLocSame_(g.loc, r.소재지); })); });
@@ -29105,7 +29155,11 @@ function caseProcGiftInhFacts_(c, lines, items) {
     } catch (e) { notes.push('증여재산 담보 대조 중 오류: ' + e.message); }
   } else {
     const deaths = byType('death').filter(function (x) { return x.p.result && x.p.result.성명; });
-    deaths.forEach(function (x) { add('ihDeceasedName', x.p.result.성명, '사망 서류(' + x.f.name + ')', deaths.length === 1 && !x.p.result.사망일확인필요); });
+    // [2026.10.18 정밀분석 원인10 ②] 사망 서류가 여럿이어도(시체검안서 + 같은 내용 묶음 사본 — 박종헌) 성명이 모두 같으면 확정
+    const deathNames = deaths.map(function (x) { return norm(x.p.result.성명); }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+    // 가족관계증명서 본인(사망)과 주민번호가 같으면 이름 한 글자 차이(禮 례/예)도 같은 사람 — 후보 출처에 함께 적는다(김창호: 성백례·성백예)
+    const famRrn = {}; fams.forEach(function (y) { ((y.p.result && y.p.result.가족) || []).forEach(function (q) { if (q.관계 === '본인' && q.사망 && /^\d{6}-/.test(String(q.주민번호 || ''))) famRrn[String(q.주민번호).slice(0, 6)] = norm(q.이름); }); });
+    deaths.forEach(function (x) { const r0 = x.p.result, fr = r0.주민번호 && famRrn[String(r0.주민번호).slice(0, 6)]; add('ihDeceasedName', r0.성명, '사망 서류(' + x.f.name + (r0.주민번호 ? ', 주민번호 ' + String(r0.주민번호).slice(0, 6) + '-' : '') + ')' + (fr && fr !== norm(r0.성명) ? ' — 가족관계증명서 본인(사망) ' + fr + '과 주민번호가 같은 같은 사람(이름 표기만 다름)' : ''), deathNames.length === 1); }); // 성명 칸은 사망일시 칸과 따로 읽으므로 사망일 조합 표시(사망일확인필요)와 상관없이
     // [2026.10.16] 사망 서류에서 성명 칸을 못 읽었어도 글에 사건 납세자 이름이 있으면 그 서류가 근거(박종헌: 시체검안서에 윤경숙이 있는데 메모의 다른 이름이 1번 후보였다)
     if (!deaths.length && String(c.납세자 || '').trim()) {
       const nn = norm(c.납세자);
@@ -29114,7 +29168,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
     // [2026.10.14] 피상속인 — 사망진단서 성명을 못 읽어도 "본인 사망"이 적힌 가족관계증명서·분할협의서의 피상속인으로 확정(납세자를 의뢰인 이름으로 잘못 짐작하지 않게)
     // [2026.10.18 정밀분석 07_3] 별건 상속(다른 사람의 옛 상속) 협의서·그 피상속인의 가족관계증명서는 후보에서 뺀다 — 박영수(홍순자): 2013년 박창길 협의서가 피상속인 후보가 됐다
     let sepD = {}, sepF = {}; try { const si = caseProcInhSepDiv_(c, parsed); sepD = si.sep; sepF = si.famSep; } catch (e) {}
-    fams.forEach(function (x) { const me = ((x.p.result && x.p.result.가족) || []).filter(function (q) { return q.관계 === '본인' && q.사망 && q.이름; })[0]; if (me && !sepF[x.f.id || x.f.name]) add('ihDeceasedName', norm(me.이름), '가족관계증명서(' + x.f.name + ', 본인 사망)', !me.확인필요); });
+    fams.forEach(function (x) { const me = ((x.p.result && x.p.result.가족) || []).filter(function (q) { return q.관계 === '본인' && q.사망 && q.이름; })[0]; if (me && !sepF[x.famKey || x.f.id || x.f.name]) add('ihDeceasedName', norm(me.이름), '가족관계증명서(' + x.f.name + ', 본인 사망)', !me.확인필요); });
     byType('inhdivision').forEach(function (x) { if (x.p.result && x.p.result.피상속인 && !sepD[x.f.id || x.f.name]) add('ihDeceasedName', x.p.result.피상속인, '상속재산분할협의서(' + x.f.name + ')', true); });
     // [2026.10.18 정밀분석 원인1] 입력으로 남긴 이미 낸 상속세 신고서(물납·연부연납·경정 — 상속물납: 신고서를 빼 놓고 "피상속인을 찾지 못했다"고 물음) — 피상속인 성명 후보(확정은 사망 서류)
     byType('filedret').filter(function (x) { return x.p.result && x.p.result.세목 === 'inheritance'; }).forEach(function (x) {
@@ -29124,19 +29178,42 @@ function caseProcGiftInhFacts_(c, lines, items) {
     });
     const decs = (facts.ihDeceasedName || []).filter(function (x) { return x.sure; }).map(function (x) { return norm(x.v); }).filter(function (v, i, a) { return a.indexOf(v) === i; });
     const dec = ov.ihDeceasedName || (decs.length === 1 ? decs[0] : '') || (facts.ihDeceasedName && facts.ihDeceasedName[0].v) || c.납세자 || '';
-    fams.forEach(function (x) {
-      const g = x.p.result && x.p.result.가족 || [];
-      const self = g.filter(function (q) { return q.관계 === '본인'; })[0];
-      if (!self || !nameHas([self.이름], dec)) return;
-      const heirs = g.filter(function (q) { return /^(배우자|자녀)$/.test(q.관계) && !q.사망 && q.이름; });
+    // [2026.10.18 정밀분석 원인10 ②] 상속인 — 사망 서류 묶음 안의 가족관계증명서까지(fams에 들어 있음), 먼저 사망한 자녀는 대습상속(민법 §1001) 후보를 다른 증명서에서 찾는다.
+    //  인적공제 근거(배우자 유무 §19·자녀 수 §20①1·65세 이상 §20①3·미성년 §20①2)를 한 줄로 남긴다 — 계산기는 상속인 명부(관계·주민번호)로 다시 센다
+    (function () {
+      const H = caseProcInhHeirSet_(fams.filter(function (x) { return !sepF[x.famKey || x.f.id || x.f.name]; }), dec);
+      if (!H.cert) return;
+      const x = H.cert, file = x.f.name;
+      const sub = [].concat.apply([], H.subst.map(function (s) { return s.heirs; }));
+      const heirs = H.living.map(function (q) { return { 이름: norm(q.이름), 관계: q.관계, 생년월일: q.생년월일 || '', 확인필요: !!q.확인필요 }; })
+        .concat(sub.map(function (h) { return { 이름: h.이름, 관계: '손자녀(대습)', 생년월일: h.생년월일, 확인필요: h.확인필요 }; }));
       if (!heirs.length) return;
-      const unsure = heirs.some(function (q) { return q.확인필요; });
-      const rep = heirs.filter(function (q) { return nameHas([q.이름], c.고객명); })[0] || heirs[0];
-      add('상속인수', heirs.length, '피상속인 가족관계증명서(' + x.f.name + ') — 배우자·자녀(직계존속·형제는 선순위가 없을 때만)', !unsure);
-      add('상속인성명', rep.이름, '피상속인 가족관계증명서(' + x.f.name + ')', !unsure);
-      add('상속인추가명단', heirs.filter(function (q) { return q !== rep; }).map(function (q) { return q.이름; }).join(', '), '피상속인 가족관계증명서(' + x.f.name + ')', !unsure);
-      lines.push('상속인(가족관계증명서): ' + heirs.map(function (q) { return q.이름 + '(' + q.관계 + (q.확인필요 ? ' ⚠' : '') + ')'; }).join(', '));
-    });
+      const pending = H.deadKids.length > 0; // 먼저 사망한 자녀 — 사망 시점(상속개시 전·후)·그 배우자 확인 전엔 확정하지 않음
+      const unsure = pending || heirs.some(function (q) { return q.확인필요; });
+      const rep = heirs.filter(function (q) { return nameHas([q.이름], c.고객명); })[0] || heirs.filter(function (q) { return /^(배우자|자녀)$/.test(q.관계); })[0] || heirs[0];
+      const src = '피상속인 가족관계증명서(' + file + (x.p.embedded ? ' 안' : '') + ')';
+      const dk = H.subst.map(function (s) { return s.dead.이름 + '(사망) → ' + (s.heirs.length ? s.heirs.map(function (h) { return h.이름 + '(' + h.file + ')'; }).join('·') : '직계비속 증명서 없음') + (s.spouseNames.length ? ' · 그 배우자 ' + s.spouseNames.join('·') + '(생존·재혼 여부에 따라 함께 대습, 민법 §1003②)' : ''); }).join(' / ');
+      add('상속인수', heirs.length, src + ' — 생존 배우자·자녀' + (sub.length ? ' + 먼저 사망한 자녀의 직계비속(대습상속 민법 §1001: ' + dk + ')' : '') + (pending ? ' — 사망한 자녀가 상속개시 전에 사망했을 때' : '') + '(직계존속·형제는 선순위가 없을 때만)', !unsure);
+      if (pending) add('상속인수', H.living.length + H.deadKids.length, src + ' — 사망한 자녀(' + H.deadKids.map(function (q) { return q.이름; }).join('·') + ')가 상속개시 뒤에 사망했다면 그 자녀가 상속인(재상속 — 그 몫은 그 자녀의 상속인에게)', false);
+      add('상속인성명', rep.이름, src, !(rep.확인필요));
+      add('상속인추가명단', heirs.filter(function (q) { return q !== rep; }).map(function (q) { return q.이름; }).join(', '), src + (sub.length ? ' · 대습상속 후보 포함' : ''), !unsure);
+      lines.push('상속인(가족관계증명서' + (x.p.embedded ? ' — ' + file + ' 안' : '') + '): ' + heirs.map(function (q) { return q.이름 + '(' + q.관계 + (q.확인필요 ? ' ⚠' : '') + ')'; }).join(', ') + (pending ? ' · 먼저 사망한 자녀: ' + dk : ''));
+      // 인적공제 근거 — 상속개시일 기준 나이(배우자는 미성년·연로자공제 대상 아님 §20①2·3)
+      const base = c.기준일 || '';
+      const kids = heirs.filter(function (q) { return q.관계 === '자녀'; });
+      const ageOf = function (q) { return caseProcAgeAt_(q.생년월일, base); };
+      const nonSp = heirs.filter(function (q) { return q.관계 !== '배우자'; });
+      const old = nonSp.filter(function (q) { const a = ageOf(q); return a !== null && a >= 65; }), minor = nonSp.filter(function (q) { const a = ageOf(q); return a !== null && a < 19; });
+      const unk = nonSp.filter(function (q) { return ageOf(q) === null; });
+      lines.push('인적공제 근거(' + src + '): 배우자 ' + (H.spouse ? norm(H.spouse.이름) + ' 생존 — 배우자상속공제(§19) 대상' : H.spouseDead ? '사망 — 배우자상속공제(§19) 없음' : H.noSpouseRow ? '칸 없음 — 배우자상속공제(§19) 없음' : '확인 필요') + ' · 자녀 ' + kids.length + '명(§20①1)'
+        + (base ? ' · 65세 이상 ' + old.length + '명' + (old.length ? '(' + old.map(function (q) { return q.이름; }).join('·') + ')' : '') + '(§20①3) · 미성년 ' + minor.length + '명(§20①2)' + (unk.length ? ' · 생년월일 모름 ' + unk.map(function (q) { return q.이름; }).join('·') : '') + ' — 상속개시일 ' + base + ' 기준' : ''));
+      // 분할협의서·등기부 협의분할 상속인 중 위 상속인에 없는 사람 — 먼저 사망한 자녀(2008년 전 사망은 가족관계증명서에 안 나옴)의 대습상속인일 수 있어 제적등본으로 확인
+      const known = heirs.map(function (q) { return q.이름; }).concat(H.subst.map(function (s) { return norm(s.dead.이름); }));
+      const others = [];
+      byType('inhdivision').forEach(function (y) { if (sepD[y.f.id || y.f.name]) return; ((y.p.result || {}).상속인 || []).forEach(function (h) { const n = norm(h.이름); if (n.length >= 2 && n.length <= 4 && CASEPROC_SURNAME_RE_.test(n) && known.indexOf(n) === -1 && !others.some(function (o) { return o.n === n; })) others.push({ n: n, file: y.f.name }); }); });
+      byType('registry').forEach(function (y) { ((y.p.result || {}).docs || []).forEach(function (d0) { const hh = d0.소유권이력 || []; hh.forEach(function (e, k) { if (e.말소 || !/상속/.test(String(e.원인 || '')) || !k) return; let prev = null; for (let j = k - 1; j >= 0; j--) if (!hh[j].말소) { prev = hh[j]; break; } if (!prev || !(prev.권리자 || []).some(function (q) { return nameHas([q.이름], dec); })) return; (e.권리자 || []).forEach(function (q) { const n = norm(q.이름); if (n.length >= 2 && n.length <= 4 && CASEPROC_SURNAME_RE_.test(n) && known.indexOf(n) === -1 && !others.some(function (o) { return o.n === n; })) others.push({ n: n, file: y.f.name }); }); }); }); });
+      if (others.length) notes.push('상속인 확인: ' + others.map(function (o) { return o.n + '(' + o.file + ')'; }).join(', ') + ' — 분할협의서·상속 등기의 상속인인데 피상속인 가족관계증명서의 배우자·자녀(대습 후보 포함)에 없음. 먼저 사망한 자녀의 대습상속인(민법 §1001·§1003②)이면 제적등본(2008년 전 사망)으로 관계를 확인해야 상속인 수가 정해짐');
+    })();
     let asset = 0, debt = 0, fun = 0;
     byType('inhquery').forEach(function (x) { const r = x.p.result || {}; asset += r.자산합계 || 0; debt += r.채무합계 || 0; });
     byType('debtcert').forEach(function (x) { debt += (x.p.result || {}).총잔액 || 0; });
@@ -29435,9 +29512,88 @@ function caseProcSamePlace_(la, ka, lb, kb) {
   if (da || db) return da === db && (!pa || !pb || pa === pb);
   return (!!pa && pa === pb) || tcLocSame_(la, lb);
 }
+// [2026.10.18 정밀분석 원인10 ②] 피상속인 가족관계증명서(본인 = 피상속인) 하나와 폴더의 다른 가족관계증명서들로 상속인 집합을 정한다(민법 §1000·§1001·§1003).
+//  · 1순위: 생존 배우자·자녀 · 먼저 사망한 자녀(사망 표시)의 직계비속 = 대습상속인 후보 — 다른 증명서에서 부·모 칸에 그 자녀(이름이 같고 사망 표시 또는 생년월일 같음)가 있는 본인
+//    (그 자녀가 상속개시 뒤에 사망했으면 대습이 아니라 그 자녀가 상속인 — 사망일은 이 증명서들로 알 수 없어 확정하지 않는다)
+//  · 대습상속인의 다른 부모(먼저 사망한 자녀의 배우자)는 생존·재혼 여부에 따라 함께 대습상속(민법 §1003②) — 확인 대상으로만
+//  · 배우자 칸이 아예 없거나 사망이면 배우자상속공제(상증법 §19) 해당 없음
+function caseProcInhHeirSet_(fams, dec) {
+  const nm = function (x) { return String(x || '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ''); };
+  // 형제끼리는 이름이 한 글자만 다른 일이 흔하다(임미경·임미영, 조순옥·조은옥) — 친족 대조는 이름이 같거나, 한 글자 차이면 생년월일까지 같을 때만
+  const same = function (a, b, ba, bb) { a = nm(a); b = nm(b); if (!a || !b) return false; if (a === b) return true; return !!(ba && bb && ba === bb && typeof caseProcNameLike_ === 'function' && caseProcNameLike_(a, b)); };
+  const out = { cert: null, self: null, living: [], spouse: null, spouseDead: false, noSpouseRow: false, deadKids: [], subst: [] };
+  const d = nm(dec); if (d.length < 2) return out;
+  // 피상속인 증명서 — 본인 이름이 같은 것, 없으면 글자인식 한 글자 차이(성백예↔성백례)이면서 본인 사망인 것
+  const pickSelf = function (strict) {
+    return (fams || []).some(function (x) {
+      const g = (x.p && x.p.result && x.p.result.가족) || [];
+      const self = g.filter(function (q) { return q.관계 === '본인'; })[0];
+      if (!self || !(nm(self.이름) === d || (!strict && self.사망 && typeof caseProcNameLike_ === 'function' && caseProcNameLike_(self.이름, d)))) return false;
+      out.cert = x; out.self = self; out.g = g; return true;
+    });
+  };
+  if (!pickSelf(true)) pickSelf(false);
+  if (!out.cert) return out;
+  const g = out.g;
+  out.living = g.filter(function (q) { return /^(배우자|자녀)$/.test(q.관계) && !q.사망 && q.이름; });
+  out.spouse = g.filter(function (q) { return q.관계 === '배우자' && !q.사망 && q.이름; })[0] || null;
+  out.spouseDead = g.some(function (q) { return q.관계 === '배우자' && q.사망; });
+  out.noSpouseRow = !g.some(function (q) { return q.관계 === '배우자'; }) && g.some(function (q) { return q.관계 === '자녀'; });
+  out.deadKids = g.filter(function (q) { return q.관계 === '자녀' && q.사망 && q.이름; });
+  out.deadKids.forEach(function (k) {
+    const s = { dead: k, heirs: [], spouseNames: [] };
+    (fams || []).forEach(function (x) {
+      if (x === out.cert) return;
+      const gg = (x.p && x.p.result && x.p.result.가족) || [];
+      const me = gg.filter(function (q) { return q.관계 === '본인' && q.이름; })[0];
+      const par = gg.filter(function (q) { return /^(부|모)$/.test(q.관계) && same(q.이름, k.이름, q.생년월일, k.생년월일) && (q.사망 || (q.생년월일 && q.생년월일 === k.생년월일)); })[0];
+      if (!me || !par || nm(me.이름) === d) return;
+      if (!s.heirs.some(function (h) { return nm(h.이름) === nm(me.이름); })) s.heirs.push({ 이름: nm(me.이름), 생년월일: me.생년월일 || '', 주민번호: me.주민번호 || '', 성별: me.성별 || '', file: x.f.name, 확인필요: !!me.확인필요 });
+      const other = gg.filter(function (q) { return /^(부|모)$/.test(q.관계) && q !== par && q.이름; })[0];
+      if (other && s.spouseNames.indexOf(nm(other.이름)) === -1) s.spouseNames.push(nm(other.이름) + (other.사망 ? '(사망)' : ''));
+    });
+    out.subst.push(s);
+  });
+  return out;
+}
+// 상속개시일 기준 만 나이(생년월일 'YYYY-MM-DD')
+function caseProcAgeAt_(birth, base) {
+  const b = String(birth || ''), e = String(base || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(b) || !/^\d{4}-\d{2}-\d{2}$/.test(e)) return null;
+  let a = Number(e.slice(0, 4)) - Number(b.slice(0, 4));
+  if (e.slice(5) < b.slice(5)) a--;
+  return a;
+}
+// [2026.10.18 정밀분석 원인10 ①] 같은 이름 바로 뒤 주민번호 앞자리를 다른 서류(등기부·증여계약서·분할협의서·매매계약서)와 대조 — { ok: [파일], bad: [{ file, front }] }.
+//  글자인식 한 자리 차이는 같은 번호로 본다(증여계약서 "310311" ↔ 가족관계증명서 "710311"). 이름 뒤에 다른 가족 이름이 먼저 나오면 그 사람 번호라 보지 않는다.
+function caseProcRrnCross_(parsed, name, rrn, others) {
+  const out = { ok: [], bad: [] };
+  try {
+    const n = String(name || '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ''), front = String(rrn || '').slice(0, 6);
+    if (n.length < 2 || !/^\d{6}$/.test(front)) return out;
+    const ham = function (a, b) { let d = 0; for (let i = 0; i < 6; i++) if (a.charAt(i) !== b.charAt(i)) d++; return d; };
+    const flex = function (s) { return String(s).split('').join('\\s*'); };
+    const otherRe = (others || []).filter(function (o) { return String(o || '').length >= 2; }).map(function (o) { return new RegExp(flex(o) + '(?![가-힣])'); });
+    (parsed || []).forEach(function (x) {
+      if (!x.p || !/^(registry|giftcontract|inhdivision|contract)$/.test(x.p.type)) return;
+      let t = ''; try { t = String(tc_docText_(x.f) || ''); } catch (e) { return; }
+      const re = new RegExp(flex(n) + '(?![가-힣])', 'g'), fronts = [];
+      let m;
+      while ((m = re.exec(t))) {
+        let w = t.slice(m.index + m[0].length, m.index + m[0].length + 40);
+        otherRe.forEach(function (o) { const k = w.search(o); if (k >= 0) w = w.slice(0, k); });
+        const q = /(\d{6})\s*-\s*[\d*]/.exec(w); if (q) fronts.push(q[1]);
+      }
+      if (!fronts.length) return;
+      if (fronts.some(function (f) { return ham(f, front) <= 1; })) { if (out.ok.indexOf(x.f.name) === -1) out.ok.push(x.f.name); }
+      else out.bad.push({ file: x.f.name, front: fronts[0] });
+    });
+  } catch (e) {}
+  return out;
+}
 function caseProcInhSepDiv_(c, parsed) {
   const nm = function (x) { return String(x || '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ''); };
-  const key = function (x) { return x.f.id || x.f.name; };
+  const key = function (x) { return x.famKey || x.f.id || x.f.name; }; // famKey: 사망 서류 묶음 안 가족관계증명서(증명서마다)
   const out = { sep: {}, famSep: {}, list: [], notes: [] };
   const famDead = (parsed || []).filter(function (x) { return x.p && x.p.type === 'family'; }).map(function (x) { const me = (((x.p.result || {}).가족) || []).filter(function (q) { return q.관계 === '본인' && q.사망 && q.이름; })[0]; return me ? { x: x, name: nm(me.이름) } : null; }).filter(Boolean);
   let anchor = nm(c.납세자), anchorSrc = '사건 납세자 칸';
@@ -29467,7 +29623,7 @@ function caseProcInhFacts0_(c, parsed) {
   // [2026.10.18 정밀분석 07_3] 한 사건에 피상속인은 한 사람 — 사건 사망 서류·납세자와 피상속인·개시일이 다른 분할협의서(다른 사람의 옛 상속)는 '별건 상속(참고)'으로 빼고
   //  아래 모든 대조(피상속인·상속인·재산·분할 귀속·금융 목록)에서 보지 않는다(sepDiv). 박영수(홍순자): 2013년 부친 박창길 상속 협의서가 피상속인 자리를 차지해 교동·주문진 토지가 섞였다
   const sepInfo = caseProcInhSepDiv_(c, parsed), sepDiv = sepInfo.sep;
-  const by = function (t) { return parsed.filter(function (x) { return x.p.type === t && !(t === 'inhdivision' && sepDiv[x.f.id || x.f.name]) && !(t === 'family' && sepInfo.famSep[x.f.id || x.f.name]); }); };
+  const by = function (t) { return parsed.filter(function (x) { return x.p.type === t && !(t === 'inhdivision' && sepDiv[x.f.id || x.f.name]) && !(t === 'family' && sepInfo.famSep[x.famKey || x.f.id || x.f.name]); }); };
   const nm = function (x) { return String(x || '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ''); };
   const base = c.기준일 || '';
   const out = { deceased: {}, heirs: [], assets: [], financial: [], funeral: {}, niche: null, notes: [] };
@@ -29499,6 +29655,26 @@ function caseProcInhFacts0_(c, parsed) {
     out.heirs.push({ name: nm(q.이름), relation: q.관계, regNo: fullFam ? q.주민번호 : (dnOk ? dn : (q.주민번호 || '')), birth: q.생년월일 || '', src: '가족관계증명서(' + famFile + ')' + (divNo[nm(q.이름)] ? ' · 주민번호는 분할협의서' : ''), unsure: !!q.확인필요 });
   });
   else (dv && dv.상속인 || []).forEach(function (h) { out.heirs.push({ name: nm(h.이름), relation: '', regNo: h.주민번호, src: '상속재산분할협의서(' + dv.file + ')', unsure: true }); });
+  // [2026.10.18 정밀분석 원인10 ②] 먼저 사망한 자녀의 직계비속 — 다른 가족관계증명서(부·모 칸에 그 자녀, 사망)의 본인을 대습상속인 후보로 상속인 명부에(민법 §1001, 계산기 관계 「손자녀(대습상속)」).
+  //  그 자녀가 상속개시 뒤에 사망했으면 대습이 아니므로 확인 표시(unsure) — 사건처리 질문(상속인 수)에서 세무사님이 정한다
+  if (famSelf) {
+    try {
+      const H = caseProcInhHeirSet_(by('family'), nm(famSelf.me.이름));
+      H.subst.forEach(function (s) { s.heirs.forEach(function (h) {
+        if (out.heirs.some(function (o) { return o.name === h.이름; })) return;
+        const dn = divNo[h.이름] || '';
+        out.heirs.push({ name: h.이름, relation: '손자녀(대습상속 — 부모가 먼저 사망·결격)', regNo: /^\d{6}-\d{7}$/.test(h.주민번호) ? h.주민번호 : (dn || h.주민번호 || ''), birth: h.생년월일 || '', substitutionGroup: nm(s.dead.이름) + '대습', src: '가족관계증명서(' + h.file + ', 모·부 ' + nm(s.dead.이름) + ' 사망) — 대습상속 후보(' + nm(s.dead.이름) + '이(가) 상속개시 전에 사망했을 때)', unsure: true });
+      }); });
+      if (H.subst.length) out.notes.push('대습상속 후보: ' + H.subst.map(function (s) { return nm(s.dead.이름) + '(피상속인의 자녀, 사망) → ' + (s.heirs.map(function (h) { return h.이름; }).join('·') || '직계비속 서류 없음') + (s.spouseNames.length ? ' · 배우자 ' + s.spouseNames.join('·') + '(생존·재혼 안 했으면 함께 대습, 민법 §1003②)' : ''); }).join(' / ') + ' — 사망한 자녀의 사망일이 상속개시일 전인지 기본증명서로 확인');
+    } catch (e) {}
+  }
+  // [2026.10.18 정밀분석 원인10 ②·④] 피상속인 주민번호·주소 — 가족관계증명서에 없으면 사망진단서·시체검안서의 칸(주소 = 사망 당시 주소, 납세지 §6)
+  by('death').forEach(function (x) {
+    const r0 = x.p.result || {};
+    if (!r0.성명 || (out.deceased.name && !caseProcNameLike_(r0.성명, out.deceased.name))) return;
+    if (!/^\d{6}-\d{7}$/.test(out.deceased.regNo || '') && /^\d{6}-\d{7}$/.test(r0.주민번호 || '')) { out.deceased.regNo = r0.주민번호; out.deceased.regNoSrc = (r0.종류 || '사망 서류') + '(' + x.f.name + ')'; }
+    if (r0.주소 && !out.deceased.deathAddr) { out.deceased.deathAddr = r0.주소; out.deceased.deathAddrSrc = (r0.종류 || '사망 서류') + '(' + x.f.name + ')'; }
+  });
   if (dv && dv.미취득.length) out.notes.push('분할협의서상 재산을 받지 않는 상속인: ' + dv.미취득.join(', ') + ' (상속포기와 다름 — 상속인 수·공제에는 포함)');
   // 부동산 — 피상속인 명의였다가 상속으로 넘어간 등기부(없으면 분할협의서 목록)
   const dec = nm(out.deceased.name);
@@ -32661,6 +32837,51 @@ function docParseFamily_(text) {
   var pick = null;
   if (qs.length && roles.length <= 12) variants.forEach(function (v) { var b = align(v); if (!pick || b.s > pick.s) pick = { s: b.s, asg: b.asg, order: v }; });
   var order = pick ? pick.order : roles, asg = pick ? pick.asg : [];
+  // 발급 안내문 뒤로 밀려 나온 주민번호(김창호: 표 오른쪽 칸이 안내문 다음에 인식됨) — 짝짓기 뒤 빈 칸 채우기에만 쓴다
+  if (endAt > 0) { var tr = /(\d{6})\s*-\s*([\d*]{7})/g, tm; while ((tm = tr.exec(t.slice(endAt)))) { var ti = docRrnInfo_(tm[0]); qs.push({ rrn: tm[1] + '-' + tm[2], at: endAt + tm.index, 생년월일: ti ? ti.생년월일 : '', 성별: ti ? ti.성별 : '', tail: true }); } }
+  // [2026.10.18 정밀분석 원인10 ①] 같은 구분(자녀) 여러 명의 주민번호 짝 바로잡기 — 표 칸이 섞여 뒷사람 생년월일이 먼저 나오면(강정화(임세택): 임미경·임미영 번호가 서로 뒤바뀌어
+  //  신고서 증여자 주민번호가 틀림) 글 순서 짝짓기는 자녀끼리 점수가 같아 그대로 받는다. 가족관계증명서는 자녀를 출생순으로 적으므로(가족관계등록 예규 — 증명서 자녀란 출생 연월일 순)
+  //  자녀 칸에는 주민번호를 생년월일 순으로 다시 나눠 준다. 글 순서 밖으로 밀린 번호(김창호: 모·배우자·셋째 번호가 맨 뒤에 나옴)는 구분 조건(성별·나이)에 맞는 칸이 하나뿐일 때만 채운다.
+  (function () {
+    var slot = roles.map(function (x) { var i = order.indexOf(x); return asg[i] != null ? asg[i] : null; });
+    var used0 = {}; slot.forEach(function (j) { if (j != null) used0[j] = true; });
+    var meQ = null; roles.forEach(function (x, i) { if (x.role === '본인' && slot[i] != null) meQ = qs[slot[i]]; });
+    var free = function () { return qs.map(function (q, j) { return j; }).filter(function (j) { return !used0[j]; }); };
+    var kids = []; roles.forEach(function (x, i) { if (x.role === '자녀') kids.push(i); });
+    if (kids.length >= 1) {
+      var have = kids.filter(function (i) { return slot[i] != null; }).map(function (i) { return slot[i]; });
+      var lack = kids.length - have.length;
+      // 빈 자녀 칸 — 본인보다 15살 이상 아래인 남는 번호가 빈 칸 수와 같을 때만 보탠다
+      if (lack > 0 && meQ && yr(meQ)) {
+        var fit = free().filter(function (j) { return yr(qs[j]) && yr(qs[j]) - yr(meQ) >= 15; });
+        if (fit.length === lack) { have = have.concat(fit); fit.forEach(function (j) { used0[j] = true; }); }
+      }
+      if (have.length === kids.length && kids.length >= 2) {
+        var srt = have.slice().sort(function (a, b) { var A = qs[a].생년월일 || '', B = qs[b].생년월일 || ''; return A < B ? -1 : A > B ? 1 : qs[a].at - qs[b].at; }); // 쌍둥이(같은 날)는 글 순서
+        var moved = kids.some(function (i, k) { return slot[i] !== srt[k]; });
+        kids.forEach(function (i, k) { slot[i] = srt[k]; });
+        if (moved) r.참고 = (r.참고 || []).concat(['자녀 ' + kids.length + '명의 주민번호를 출생순(증명서 기재 순서)으로 다시 짝지음 — 글자인식에서 표 칸 순서가 섞였음']);
+      } else if (have.length === kids.length && kids.length === 1) slot[kids[0]] = have[0];
+    }
+    // 부·모·배우자 빈 칸 — 남는 번호 중 그 칸 조건(부=남·모=여, 15살 이상 위 / 배우자=본인과 성별 다름·15살 미만 차이)에 맞는 것이 딱 하나이고 다른 빈 칸에는 안 맞을 때만
+    if (meQ && yr(meQ)) {
+      var okFor = function (role, q) {
+        if (!yr(q)) return false; var d = yr(meQ) - yr(q);
+        if (/^(부|양부|친생부)$/.test(role)) return q.성별 === '남' && d >= 15;
+        if (/^(모|양모|친생모)$/.test(role)) return q.성별 === '여' && d >= 15;
+        if (role === '배우자') return !!(q.성별 && meQ.성별 && q.성별 !== meQ.성별) && Math.abs(d) < 15;
+        return false;
+      };
+      var empty = []; roles.forEach(function (x, i) { if (slot[i] == null && /^(부|모|양부|양모|친생부|친생모|배우자)$/.test(x.role)) empty.push(i); });
+      empty.forEach(function (i) {
+        var c = free().filter(function (j) { return okFor(roles[i].role, qs[j]); });
+        if (c.length !== 1) return;
+        if (empty.some(function (e) { return e !== i && slot[e] == null && okFor(roles[e].role, qs[c[0]]); })) return;
+        slot[i] = c[0]; used0[c[0]] = true;
+      });
+    }
+    order = roles; asg = slot;
+  })();
   // 날짜 칸(주민번호가 가려진 일반 증명서 대비)
   var dates = [], dr = /(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/g;
   while ((m = dr.exec(body))) dates.push(m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2));
@@ -36246,7 +36467,7 @@ function jmPages_(text) {
 }
 
 // 변동사유 낱말 — OCR이 한 글자 틀리게 읽어도("동반변경") 알아보게 편집거리로 맞춘다.
-var JM_REASONS_ = ['전입', '전출', '출생등록', '행정구역변경', '통반변경', '도로명주소', '세대주변경', '세대합가', '세대분리', '재등록', '거주불명등록', '사망신고말소', '국외이주신고', '명칭변경', '번지변경', '지번변경', '직권정리', '직권말소', '주소정정', '공동주택변경', '말소', '최초작성', '지번정정'];
+var JM_REASONS_ = ['전입', '전출', '출생등록', '행정구역변경', '통반변경', '도로명주소', '세대주변경', '세대합가', '세대분리', '재등록', '거주불명등록', '사망신고말소', '국외이주신고', '명칭변경', '번지변경', '지번변경', '직권정리', '직권말소', '주소정정', '공동주택변경', '말소', '최초작성', '지번정정', '세대분가']; // [2026.10.18 정밀분석 원인10 ④] 세대분가 — 목록에 없어 편집거리로 '세대합가'로 바뀌었다(양성용 등본)
 // 발생일 칸이 "----------"이고 신고일만 있는 사유(같은 집의 표시 변경)
 var JM_ONE_DATE_RE_ = /(출생등록|행정구역변경|통반변경|도로명주소|세대주변경|명칭변경|번지변경|지번변경|지번정정|최초작성|주소정정|직권정리|공동주택변경)/; // 최초작성·지번정정(2026-10-16 방영교 초본: 이 두 사유를 못 알아봐 쪽 전체 주소·날짜 짝을 못 지었다)
 function jmEdit_(a, b) {
@@ -36276,6 +36497,121 @@ function jmReasonOf_(line) {
 // 주소 이력 — 표가 OCR에서 칸별로 흩어져 나오므로 쪽마다 ① 주소(시·도로 시작) ② 변동사유 ③ 날짜를 따로 모은 뒤,
 // 사유마다 날짜 개수(전입류 2개: 발생일·신고일 / 표시변경류 1개: 신고일)를 맞춰 날짜를 차례로 나눠 준다(행은 날짜순).
 // 주소 수 = 사유 수이고 날짜 수 = 기대 개수일 때만 확정, 아니면 그 쪽은 확인필요.
+// [2026.10.18 정밀분석 원인10 ③] 초본 주소 이력을 행번호(1·2·3…) 기준으로 다시 조립 — 예전엔 쪽마다 주소·사유·날짜를 따로 모아 개수가 하나라도 안 맞으면 그 쪽 전체를 비웠고
+//  (김창호 초본 1쪽 10줄 전부 빈칸), 날짜를 정렬해 나눠 발생일·신고일이 뒤바뀌었으며(1988-05-14/05-13), 둘째 줄(단지명·동-호)이 다른 줄 뒤로 밀리면 빠졌다(47줄 중 41줄 틀림).
+//  글자인식은 표를 위에서 아래로 읽어 한 행이 "주소 1줄·발생일 → 행번호 → 주소 2줄·신고일·사유·세대주및관계" 순으로 나온다. 그래서
+//   ① 시·도로 시작하는 주소 줄 = 행의 시작(아직 주소가 없는 행이면 그 행, 있으면 다음 행번호를 기다리는 머리) ② 행번호가 나오면 기다리던 머리가 그 행
+//   ③ 같은 행의 날짜는 정렬하지 않고 칸 위치대로 — 사유와 같은 줄의 날짜 = 신고일(아래 칸), 따로 선 날짜 = 발생일(위 칸)
+//   ④ 사유가 뒤 행으로 몰려 나오면(앞 행들은 사유 없음) 앞의 사유부터 앞 행에 돌려준다 ⑤ "[조례… 변경]" 주석 행은 이력이 아님
+//  행번호를 2개 이상 못 찾은 쪽은 예전 방식으로 읽는다. 행마다 확인 표시를 따로 남겨 한 행이 틀려도 쪽 전체를 버리지 않는다.
+var JM_ROWREL_RE_ = /^[가-힣]{2,5}의\s*[가-힣]{1,5}$/;
+var JM_ADDR2_RE_ = /(\d+\s*-\s*\d+|\d+\s*동(?![가-힣])|\d+\s*호|아파트|빌라|연립|맨션|타운|단지|오피스텔|빌딩|하우스|주택|\(\s*[가-힣]+동)/;
+function jmRowReason_(L) {
+  var r = jmReasonOf_(L); if (r) return r;
+  var w = String(L || '').replace(/\b(?:19|20)\d{2}-\d{2}-\d{2}\b/g, ' ').replace(/[^가-힣\s]/g, ' ').trim().split(/\s+/).filter(function (x) { return x; });
+  if (!w.length || w.length > 3) return '';
+  for (var j = 0; j < w.length; j++) if (JM_REASONS_.indexOf(w[j]) !== -1) return w[j]; // 짧은 사유(재등록·말소)는 편집거리 비교에서 빠지므로 그대로 같은 낱말로
+  for (var i = 0; i < w.length; i++) if (/^[가-힣]{2,16}(말소|정리|정정|완료|분가|합가|분리)$/.test(w[i])) return w[i]; // 사유표에 없는 사유(무단전출직권말소·가족관계등록사항에의한정리·구획정리완료 등)는 원문 그대로
+  return '';
+}
+function jmHistoryByRowNo_(pg, lines) {
+  var isAddr = function (a) { return JM_SIDO_RE_.test(a + ' ') && /^\S+\s+\S+\s+\S+/.test(a) && !/(시장|구청장|군수|읍장|면장|동장)(\s|$)/.test(a); };
+  var rows = [], cur = null, pend = [], lastN = null, nums = 0, seenAddr = false;
+  var newTop = function () { var t = { n: null, lines: [], addr: '', addr2: '', ann: false }; pend.push(t); return t; };
+  var clean = lines.map(function (x) { return String(x).replace(/\s+/g, ' ').trim().replace(/^[iIl|]\s+(?=[가-힣]{2,9}(?:시|도)\s)/, '1 '); }); // 행번호 1을 "i"로 읽은 줄(성백례 말소자초본)
+  for (var i = 0; i < clean.length; i++) {
+    var L = clean[i];
+    if (!L || /^※/.test(L) || /주민등록번호|^(번호|주|소|동|사|유|변|등록상태)$/.test(L)) continue;
+    if (/^\[/.test(L)) { // 주석 행 — 주소가 아직 없는 행이면 그 행이 주석, 아니면 다음 행번호의 머리가 주석
+      if (pend.length) { if (!pend[pend.length - 1].addr) pend[pend.length - 1].ann = true; else newTop().ann = true; }
+      else if (cur && !cur.addr) cur.ann = true; else newTop().ann = true;
+      continue;
+    }
+    var nm = /^(\d{1,3})(?:\s+(.*))?$/.exec(L);
+    if (nm && !/\d{4}-\d{2}-\d{2}/.test(L)) {
+      var N = Number(nm[1]), rest = nm[2] || '';
+      var fits = lastN === null ? (N >= 1 && N <= 300 && (seenAddr || clean.slice(i + 1, i + 5).some(function (x) { return isAddr(x.replace(/^\d{1,3}\s+/, '')); }) || (rest && isAddr(rest)))) : (N > lastN && N <= lastN + 3);
+      if (lastN !== null && N === lastN) continue; // 같은 번호가 두 번(행이 두 줄 높이)
+      if (fits) {
+        nums++;
+        if (pend.length) { var top = pend.pop(); pend.forEach(function (p) { p.noNum = true; p.lines.forEach(function (o) { o.top = false; }); rows.push(p); }); pend = []; top.n = N; rows.push(top); cur = top; }
+        else { cur = { n: N, lines: [], addr: '', addr2: '', ann: false }; rows.push(cur); }
+        lastN = N;
+        if (!rest) continue;
+        L = rest;
+      } else if (!rest && lastN !== null && isAddr((clean[i + 1] || '').replace(/^\d{1,3}\s+/, '')) && !pend.length && cur && cur.addr) {
+        // 순서에 안 맞는 숫자인데 바로 다음 줄이 새 주소 — 행번호를 잘못 읽은 것(방영교 사진: 9를 6으로) → 다음 번호로 본다
+        nums++; cur = { n: lastN + 1, lines: [], addr: '', addr2: '', ann: false, numGuess: true }; rows.push(cur); lastN = lastN + 1; continue;
+      } else if (!rest) continue; // 순서에 안 맞는 숫자 한 줄(바탕 글씨·쪽 조각)
+    }
+    if (isAddr(L)) {
+      seenAddr = true;
+      var tg;
+      if (pend.length) { var lp = pend[pend.length - 1]; tg = (lp.addr || lp.ann) ? newTop() : lp; }
+      else if (cur && !cur.addr && !cur.ann) tg = cur; else tg = newTop();
+      tg.addr = L; continue;
+    }
+    var tgt = pend.length ? pend[pend.length - 1] : cur;
+    if (!tgt) continue; // 표 머리
+    if (!/(?:19|20)\d{2}-\d{2}-\d{2}/.test(L) && tgt.addr && !tgt.addr2 && L.length >= 3 && JM_ADDR2_RE_.test(L) && !JM_ROWREL_RE_.test(L) && !jmRowReason_(L) && !/발생일|신고일|세대주|등록상태|www|정부24/.test(L)) { tgt.addr2 = L; continue; }
+    tgt.lines.push({ L: L, top: tgt !== cur }); // top: 행번호가 나오기 전(행의 위 칸) 줄
+  }
+  pend.forEach(function (p) { p.noNum = true; p.lines.forEach(function (o) { o.top = false; }); rows.push(p); });
+  if (nums < 2) return null;
+  // 행마다 사유(같은 줄 날짜 = 신고일)·따로 선 날짜·세대주및관계. 행번호 뒤에서 사유 앞에 따로 선 날짜는 그 사유의 날짜(사유가 여럿 몰린 행 — 방영교: "1990-05-01 ⏎ 행정구역변경 ⏎ 1991-04-11 ⏎ 1991-04-22 ⏎ 전입"),
+  //  행번호 앞(위 칸)의 날짜와 마지막 사유 뒤에 남은 날짜는 그 행 자신(마지막 사유)의 날짜
+  rows.forEach(function (rw) {
+    rw.ev = []; rw.ds = []; rw.rel = [];
+    var buf = [];
+    rw.lines.forEach(function (o) {
+      var L = o.L, ds = jmDateList_(L), rs = jmRowReason_(L);
+      if (rs) { rw.ev.push({ r: rs, same: ds, pre: buf }); buf = []; }
+      else if (JM_ROWREL_RE_.test(L)) rw.rel.push(L);
+      else if (ds.length) { if (o.top) rw.ds = rw.ds.concat(ds); else buf = buf.concat(ds); }
+    });
+    if (rw.ev.length) rw.ev[rw.ev.length - 1].pre = rw.ev[rw.ev.length - 1].pre.concat(buf); else rw.ds = rw.ds.concat(buf);
+    // 사유가 여럿인 행 — 한 사유가 쓸 날짜 수(표시변경·말소·재등록 1개, 전입류 2개)보다 앞 날짜가 많으면 남는 날짜는 다음 사유 것
+    //  (신유호: "2011-11-22 ⏎ 2011-10-31 도로명주소 ⏎ 2011-11-22 ⏎ 전입" — 첫 날짜는 전입의 발생일). 같은 줄 날짜로 다 찼으면 앞 날짜는 모두 다음 사유로
+    for (var e = 0; e + 1 < rw.ev.length; e++) {
+      var E = rw.ev[e], need = (JM_ONE_DATE_RE_.test(E.r) || /(재등록|말소|정리|정정|완료)$/.test(E.r)) ? 1 : 2;
+      var keep = Math.max(0, need - E.same.length);
+      // 같은 줄 날짜로 찬 때만(날짜만 몰린 줄은 누구 것인지 몰라 그대로 두고 확인 표시)
+      if (E.same.length >= need && E.pre.length > keep) { rw.ev[e + 1].pre = E.pre.slice(keep).concat(rw.ev[e + 1].pre); E.pre = E.pre.slice(0, keep); }
+    }
+  });
+  var live = rows.filter(function (rw) { return !(rw.ann && !rw.addr); });
+  // ④ 사유가 뒤로 몰린 행 — 바로 앞의 사유 없는 행들에 앞쪽 사유부터 돌려준다(세대주및관계 줄도 같은 방식)
+  live.forEach(function (rw, i) {
+    ['ev', 'rel'].forEach(function (k) {
+      if (rw[k].length < 2) return;
+      var empt = [];
+      for (var j = i - 1; j >= 0 && !live[j][k].length; j--) empt.unshift(live[j]);
+      var m = Math.min(rw[k].length - 1, empt.length);
+      empt = empt.slice(empt.length - m);
+      for (var q = 0; q < m; q++) empt[q][k].push(rw[k].shift());
+    });
+  });
+  var out = [];
+  live.forEach(function (rw) {
+    var ev = rw.ev.length ? rw.ev[rw.ev.length - 1] : null, r = ev ? ev.r : '';
+    var S = ev ? ev.same : [], D = rw.ds.concat(ev ? ev.pre : []), tot = S.length + D.length, occ = '', rep = '', bad = rw.ev.length > 1;
+    var one = JM_ONE_DATE_RE_.test(r);
+    if (one) { rep = S[0] || D[D.length - 1] || ''; if (tot !== 1) bad = true; }
+    else if (r) {
+      if (S.length && D.length) { occ = D[0]; rep = S[0]; }
+      else if (S.length >= 2) { occ = S[0]; rep = S[1]; }
+      else if (D.length >= 2) { occ = D[0]; rep = D[1]; }
+      else if (tot === 1) { if (/(재등록|말소|정리|정정|완료)$/.test(r)) rep = S[0] || D[0]; else { occ = S[0] || D[0]; bad = true; } } // 재등록·말소·표시정리는 신고일 하나로도 적힌다, 전입인데 날짜 하나면 확인
+      if (tot > 2) bad = true;
+    } else if (tot) bad = true;
+    var addr = (rw.addr + (rw.addr2 ? ' ' + rw.addr2 : '')).replace(/\s+/g, ' ').replace(/\s*,\s*$/, '').replace(/[,.]$/, '').trim();
+    var row = { 쪽: pg.n, 번호: rw.n, 사유: r, 발생일: one ? '' : occ, 신고일: rep, 주소: addr, 날짜확인필요: bad || !(occ || rep), 짝확인필요: !addr || !r || !!rw.noNum };
+    if (rw.rel.length) row.세대주관계 = rw.rel[0];
+    if (occ && rep && (new Date(rep) - new Date(occ)) / 86400000 > 90) row.날짜확인필요 = true;
+    out.push(row);
+  });
+  return out;
+}
 function jmHistory_(pages) {
   var rows = [], unsure = 0;
   pages.forEach(function (pg) {
@@ -36286,6 +36622,8 @@ function jmHistory_(pages) {
     // 표 끝 — "이하 여백" 또는 병역사항 칸(입영일 등 날짜가 주소 이력에 섞이지 않게)
     var en = body.search(/이\s*하\s*\n?\s*여\s*백|병\s*역\s*\n?\s*사\s*항|역\s*종\s*\[|입영\s*\(/);
     var lines = body.slice(st, en > st ? en : body.length).split('\n');
+    var byNo = null; try { byNo = jmHistoryByRowNo_(pg, lines); } catch (e) { byNo = null; }
+    if (byNo && byNo.length) { if (byNo.some(function (x) { return x.날짜확인필요 || x.짝확인필요; })) unsure++; byNo.forEach(function (x) { rows.push(x); }); return; }
     var addrs = [], reasons = [], dates = [];
     for (var i = 0; i < lines.length; i++) {
       var L = lines[i].replace(/\s+/g, ' ').trim();
@@ -36335,7 +36673,7 @@ function jmResidences_(rows, endDate) {
     }
     if (/^(전입|출생등록|재등록|세대합가)$/.test(r.사유) && day) {
       if (res.length) { res[res.length - 1].끝 = day; if (r.날짜확인필요) res[res.length - 1].날짜확인필요 = true; }
-      res.push({ 시작: day, 끝: '', 주소: r.주소, 짝확인필요: r.짝확인필요, 날짜확인필요: !!r.날짜확인필요 });
+      res.push({ 시작: day, 끝: '', 주소: r.주소, 짝확인필요: r.짝확인필요, 날짜확인필요: !!r.날짜확인필요, 세대주관계: r.세대주관계 || '' }); // [2026.10.18 정밀분석 원인10 ③] 세대주및관계(「신재억의 자녀」 = 피상속인 세대 동거 — §23의2·혼인합가 판단 근거)
     } else if (res.length && r.주소 && /(도로명주소|명칭변경|행정구역변경|통반변경|지번변경|번지변경)/.test(r.사유)) {
       res[res.length - 1].주소변경후 = r.주소;
     } else if (/(사망신고말소|말소|국외이주)/.test(r.사유) && res.length && day) {
@@ -36366,6 +36704,9 @@ function jmParse_(text) {
   var im = /(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t);
   if (im) r.발급일 = im[1] + '-' + ('0' + im[2]).slice(-2) + '-' + ('0' + im[3]).slice(-2);
   var nm = /성명\s*\(\s*한자\s*\)\s*\n?\s*([가-힣]{2,5})/.exec(t);
+  // [2026.10.18 정밀분석 원인10 ③] 닫는 괄호를 놓친 "성명(한자 ⏎ 이혜숙"·"성명(한지)"도(방영교: 성명이 비어 이름 대조에서 초본이 빠짐)
+  if (!nm) nm = /성\s*명\s*\(\s*한\s*[자지]\s*\)?\s*\n?\s*([가-힣]{2,5})(?![가-힣])/.exec(t);
+  if (nm && /^(주민|등록|한자|한지)/.test(nm[1])) nm = null;
   if (nm) r.성명 = nm[1];
   var rq = /(\d{6})\s*-\s*([\d*]{7})/.exec(t);
   if (rq) r.주민번호 = rq[1] + '-' + rq[2].charAt(0) + '******';
@@ -36381,7 +36722,11 @@ function jmParse_(text) {
     // 과거 주소변동 포함 여부 — 발급 선택 문구가 인쇄되지 않으므로 이력 모양으로 판단
     var mv = h.rows.filter(function (x) { return /^(전입|출생등록|재등록)$/.test(x.사유); });
     var first = h.rows.length ? h.rows[0] : null;
-    if (h.rows.length <= 1) r.주소변동포함 = '미포함으로 보임';
+    // [2026.10.18 정밀분석 원인10 ③] 앞장 빠짐 — 첫 행번호가 1이 아니면(신유호: 2/2쪽만, 11번부터) 앞 이력이 없는 초본이라 "포함"으로 판정하지 않는다
+    var firstNo = h.rows.map(function (x) { return x.번호; }).filter(function (n) { return n; })[0];
+    //  1번 행번호만 못 읽은 경우와 가르려고 2번이면 쪽 표시(n/m의 n>1)까지 본다
+    if (firstNo && firstNo > 1 && (firstNo >= 3 || (pages[0] && pages[0].n > 1 && pages[0].n < 1000))) { r.앞장없음 = true; r.경고.push('초본 첫 행번호가 ' + firstNo + '번 — 앞장이 빠졌음(그 전 주소 이력 확인 불가, 전체 쪽을 다시 받으세요)'); r.주소변동포함 = '확인 불가(앞장 빠짐 — ' + firstNo + '번부터)'; }
+    else if (h.rows.length <= 1) r.주소변동포함 = '미포함으로 보임';
     else if (first && first.사유 === '출생등록') r.주소변동포함 = '전체 포함(출생등록부터)';
     else if (first && first.발생일 && r.발급일 && (new Date(r.발급일) - new Date(first.발생일)) / 86400000 < 365.25 * 5 + 60 && mv.length) r.주소변동포함 = '최근 5년만 포함된 것으로 보임';
     else r.주소변동포함 = '포함(첫 기록 ' + (first && (first.발생일 || first.신고일) || '?') + ')';
@@ -36396,6 +36741,40 @@ function jmParse_(text) {
     if (cm) { r.세대구성사유 = cm[1]; r.세대구성일 = cm[2]; }
     var am = /현\s*주\s*소\s*[:：]\s*\n?\s*([^\n]{4,60}(?:\n[^\n]{0,40}호[^\n]*)?)/.exec(t);
     if (am) r.현주소 = am[1].replace(/\s*\n\s*(?:(?:19|20)\d{2}-\d{2}-\d{2}\s*\n\s*)?/g, ' ').replace(/\s+/g, ' ').trim();
+    // [2026.10.18 정밀분석 원인10 ④] 현주소 칸 다시 조립 — 글자인식이 "도로명 줄 ⏎ 날짜 ⏎ 현주소: ⏎ 동·호 줄"(정원식: 처리개요 수증자·증여자 주소가 「101동 307호 (평촌동, 꿈마을아파트)」로 잘림)이나
+    //  "현주소: ⏎ 도로명 줄 ⏎ 날짜 ⏎ 동·호 줄"(박종헌: 동·호 빠짐)로 흩어진다. 앞뒤 몇 줄에서 시·도 주소 줄 + 동·호 줄을 잇고, 옆 날짜·사유(전입 등)를 현주소 전입일로 남긴다
+    (function () {
+      var hk = t.search(/현\s*주\s*소\s*[:：]/); if (hk < 0) return;
+      var trim = function (x) { return String(x || '').replace(/\s+/g, ' ').trim(); };
+      var isDateOnly = function (L) { return jmDateList_(L).length && !L.replace(/\b(?:19|20)\d{2}-\d{2}-\d{2}\b/g, '').trim(); };
+      var isSido = function (L) { return JM_SIDO_RE_.test(L + ' ') && /^\S+\s+\S+\s+\S+/.test(L); };
+      var before = t.slice(Math.max(0, hk - 300), hk).split('\n').map(trim).filter(function (x) { return x; }).slice(-4);
+      var after = t.slice(hk).replace(/^현\s*주\s*소\s*[:：]\s*/, '').split('\n').map(trim).slice(0, 9);
+      var parts = [], ds = [], reason = '', done = false;
+      for (var i = 0; i < after.length; i++) {
+        var L = after[i]; if (!L || /^(유|사|동|변|발|!+|=+)$/.test(L)) continue; // 표 칸 이름 조각
+        if (isDateOnly(L)) { ds = ds.concat(jmDateList_(L)); continue; }
+        var rs = jmReasonOf_(L);
+        if (rs) { reason = rs; ds = ds.concat(jmDateList_(L)); break; }
+        if (/세대주|성명|주민등록번호|^(공|란|번호)$/.test(L)) break;
+        if (done) { if (isSido(L)) break; continue; }
+        if (!parts.length) { if (isSido(L) || JM_ADDR2_RE_.test(L)) parts.push(L); else break; }
+        else if (parts.length === 1 && isSido(parts[0]) && !isSido(L) && JM_ADDR2_RE_.test(L)) { parts.push(L); done = true; }
+        else break;
+      }
+      if (parts.length && !isSido(parts[0])) { // 동·호 줄만 뒤에 — 바로 앞쪽의 시·도 주소 줄을 앞에 붙인다(그 사이 날짜는 현주소 날짜)
+        for (var j = before.length - 1; j >= 0; j--) {
+          if (isDateOnly(before[j])) { ds = jmDateList_(before[j]).concat(ds); continue; }
+          if (isSido(before[j])) { parts.unshift(before[j]); break; }
+          break;
+        }
+      }
+      if (!parts.length || !isSido(parts[0])) return;
+      r.현주소 = parts.join(' ').replace(/(\d)\.\s/g, '$1, ').replace(/\s+/g, ' ').replace(/[,.\s]+$/, '').trim();
+      if (ds.length && reason) { r.현주소일자 = ds[0]; if (ds[1]) r.현주소신고일 = ds[1]; } // 사유가 함께 있을 때만(세대원 표 날짜가 섞이지 않게)
+      if (reason) r.현주소사유 = reason;
+      if (ds.length && /^(전입|세대합가|출생등록|재등록)$/.test(reason)) r.현주소전입일 = ds[0];
+    })();
     r.세대원 = jmMembers_(t);
     // 관계 "본인"은 세대주 자신 — 위 칸의 세대주 성명이 더 또렷하므로 그것을 쓴다
     r.세대원.forEach(function (x) { if (x.관계 === '본인' && r.세대주 && x.이름 !== r.세대주) { x.이름 = r.세대주; if (x.관계) x.확인필요 = !x.전입일; } });
@@ -36417,6 +36796,12 @@ function jmParse_(text) {
       r.주소변동포함 = '포함(세대 주소 이력 ' + dh.rows.length + '행)';
       if (dh.unsurePages) r.경고.push('세대 주소 이력 ' + dh.unsurePages + '쪽에서 주소와 날짜 짝을 확정하지 못함 — 원문 확인');
     } else r.주소변동포함 = '현주소만(과거 주소변동 미포함)';
+  }
+  // [2026.10.18 정밀분석 원인10 ③] 말소자 등·초본의 「사망신고말소」 — 발생일 = 사망일(신고는 그 뒤라 두 날짜 중 빠른 것), 상속개시일 후보(caseProcBaseDateCands_)
+  if (r.말소자) {
+    var dm = (r.주소이력 || []).filter(function (x) { return x.사유 === '사망신고말소' && (x.발생일 || x.신고일); }).pop();
+    if (dm) { var dd = [dm.발생일, dm.신고일].filter(function (x) { return x; }).sort(); r.사망신고말소일 = dd[0]; if (dd[1]) r.사망신고일 = dd[1]; if (dm.날짜확인필요 || dd.length < 2) r.사망말소확인필요 = true; }
+    else if (r.현주소사유 === '사망신고말소' && r.현주소일자) { var d2 = [r.현주소일자, r.현주소신고일].filter(function (x) { return x; }).sort(); r.사망신고말소일 = d2[0]; if (d2[1]) r.사망신고일 = d2[1]; r.사망말소확인필요 = d2.length < 2; }
   }
   return r;
 }
@@ -38797,9 +39182,51 @@ function ihParseDeath_(text) {
   else if (r.종류 !== '제적등본') r.경고.push('사망일을 읽지 못함 — 원문 확인');
   if (r.사망일확인필요) r.경고.push('사망일시 칸이 글자인식에서 흩어져 날짜를 조합해 읽음 — 원문 대조');
   if (r.상속개시일) r.참고 = (r.참고 || []).concat(['상속개시일 ' + r.상속개시일 + ' — 신고기한(개시일이 속한 달 말일부터 6개월), 잔고증명 기준일, 추정상속재산(§15: 1년 2억·2년 5억) 기간 계산의 기준']); // [2026.10.14] 안내라 ⚠ 아님(실사용: 안내가 ⚠로 세어져 질문이 됨)
+  // [2026.10.18 정밀분석 원인10 ②·④] 사망진단서·시체검안서의 성명·주민번호·주소 — 예전엔 성명·주소 칸을 읽지 않아 피상속인을 사건 납세자 이름 우회로로만 정했고
+  //  피상속인 주소(납세지 §6)가 비었다(김창호·신수호·박종헌). 칸이 "1 성 ⏎ 명 ⏎ 성백례"처럼 쪼개져도, "병록 번호" 줄이 끼어도 이름만 있는 줄을 찾는다.
+  //  주소는 진단서 앞부분(사망원인 칸 전)에서 시·도로 시작하는 첫 주소 줄 — "주소 …"로 시작하는 줄은 사망장소(병원) 주소라 뺀다.
+  var head = t.slice(0, (function () { var k = t.search(/사\s*망\s*의?\s*원\s*인|직\s*접\s*사\s*인|가족관계\s*증명서|기본\s*증명서\s*\(/); return k > 0 ? k : Math.min(t.length, 1500); })());
+  if (r.종류 === '사망진단서' || r.종류 === '시체검안서' || /사\s*망\s*진\s*단\s*서|시\s*체\s*검\s*안\s*서/.test(head)) {
+    var ns = head.search(/(?:^|\n)[ \t]*\d?[ \t]*성[ \t]*(?:\n|명)/); // "1 성명" · "1 성 ⏎ 명" · "1 성 ⏎ 3 주민등록번호 … ⏎ 명 ⏎ 조용녀"
+    if (ns >= 0) {
+      var nl = head.slice(ns).split('\n').slice(1, 11).map(function (x) { return x.trim(); });
+      var nm0 = /^(?:\d\s*)?성\s*명\s*[:：]?\s*([가-힣]{2,4})$/.exec(head.slice(ns).split('\n')[0].trim());
+      var hit = nm0 ? nm0[1] : (nl.filter(function (x) { return /^[가-힣]{2,4}$/.test(x) && !/^(성별|직업|주소|명|성명|연번호|병록|번호|생년월일|실제생년월일|사망진단서|시체검안서|원본대조필|원부대조필|등록기준지)$/.test(x); })[0] || '');
+      if (hit) r.성명 = hit;
+    }
+    var rr = /주\s*민\s*등\s*록\s*번\s*호\s*[,:：]?\s*(\d{6})\s*-\s*(\d{7})/.exec(head);
+    if (!rr) rr = /(\d{6})\s*-\s*(\d{7})/.exec(head); // 칸 이름과 번호 사이에 등록번호·연번호가 끼면 앞부분의 첫 주민번호(진단서에는 고인 번호뿐)
+    if (rr) r.주민번호 = rr[1] + '-' + rr[2];
+    var sido = /^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)[가-힣]*\s+\S/;
+    var al = head.split('\n').map(function (x) { return x.replace(/\s+/g, ' ').trim(); }).filter(function (x) { return sido.test(x) && /(로|길|동|리|읍|면|가)\s*\d/.test(x); })[0];
+    if (al) r.주소 = al.replace(/\(\s*전화[\s\S]*$/, '').replace(/[,.\s]+$/, '').replace(/(\d)\.\s/g, '$1, ').trim();
+  }
   // 한 파일에 가족관계증명서가 함께 들어 있으면 그 부분도 정리
-  var fa = t.search(/가족관계\s*증명서/);
-  if (fa >= 0 && typeof docParseFamily_ === 'function') { try { r.가족관계 = docParseFamily_(t.slice(fa)); } catch (e) { /* 함께 정리 실패는 무시 */ } }
+  // [2026.10.18 정밀분석 원인10 ②] 사망 서류 묶음(기본증명서·피상속인 가족관계증명서 + 상속인별 가족관계증명서 — 노영환 01 기본증명.pdf 약 30종)에서
+  //  첫 번째 증명서만 읽던 것을 증명서 머리마다 나눠 모두 읽는다(r.가족관계목록). 같은 본인(이름·생년)의 증명서가 두 번 나오면 한 번만.
+  if (typeof docParseFamily_ === 'function') {
+    var heads = [], hre = /(?:^|\n)[ \t]*가족관계\s*증명서\s*(?:\((?:상세|일반|특정)\))?[ \t]*(?=\n)/g, hm;
+    while ((hm = hre.exec(t))) heads.push(hm.index);
+    var list = [], seenMe = {};
+    heads.forEach(function (a, i) {
+      try {
+        var fr = docParseFamily_(t.slice(a, i + 1 < heads.length ? heads[i + 1] : t.length));
+        var me = (fr.가족 || []).filter(function (q) { return q.관계 === '본인'; })[0];
+        if (!me || !me.이름) return;
+        var k = me.이름 + '|' + (me.생년월일 || '');
+        if (seenMe[k]) return; seenMe[k] = 1;
+        list.push(fr);
+      } catch (e) { /* 함께 정리 실패는 무시 */ }
+    });
+    if (list.length) {
+      r.가족관계목록 = list;
+      // 대표(예전 r.가족관계 자리) — 본인 사망이 적힌 증명서(피상속인), 없으면 첫 증명서
+      r.가족관계 = list.filter(function (fr) { return (fr.가족 || []).some(function (q) { return q.관계 === '본인' && q.사망; }); })[0] || list[0];
+    } else {
+      var fa = t.search(/가족관계\s*증명서/);
+      if (fa >= 0) { try { r.가족관계 = docParseFamily_(t.slice(fa)); } catch (e) { /* 함께 정리 실패는 무시 */ } }
+    }
+  }
   return r;
 }
 
@@ -40271,7 +40698,9 @@ function caseProcInhAddr_(c, o, parsed) {
   try {
     if (!o) return o;
     const docs = (parsed || caseProcParseAll_(c)).filter(function (x) { return x.p && x.p.type === 'resident' && x.p.result; });
-    if (!docs.length) return o;
+    // [2026.10.18 정밀분석 원인10 ④] 피상속인 등·초본이 없으면 사망진단서·시체검안서의 주소 칸(사망 당시 주소지 = 납세지 §6) — 신수호: 초본이 없어 「피상속인 주소」가 비었다
+    const deathFallback = function () { if (o.deceased && !o.deceased.address && o.deceased.deathAddr) { o.deceased.address = o.deceased.deathAddr; o.deceased.addressSrc = o.deceased.deathAddrSrc || '사망 서류'; } };
+    if (!docs.length) { deathFallback(); return o; }
     const nm = function (x) { return String(x || '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ''); };
     const addrOf = function (name) {
       const n = nm(name); if (n.length < 2) return null;
@@ -40280,7 +40709,7 @@ function caseProcInhAddr_(c, o, parsed) {
         const r = x.p.result;
         let a = '';
         // 초본 이력은 끝 날짜 없이 "현재"인 줄만, 뒷장이 빠진 초본(이하 여백 없음)은 마지막 줄이 지금 주소가 아닐 수 있어 쓰지 않는다(방영교: 1991년 이천군 주소가 "현재"로 읽혔다)
-        if (nm(r.성명) === n) { const hist = (r.거주기간 || []).filter(function (h) { return h.주소; }), last = hist[hist.length - 1]; a = r.현주소 || (!r.뒷장없음 && last && !last.끝 && /현재/.test(String(last.끝표시 || '')) ? last.주소 : ''); }
+        if (nm(r.성명) === n) { const hist = (r.거주기간 || []).filter(function (h) { return h.주소; }), last = hist[hist.length - 1]; a = r.현주소 || (!r.뒷장없음 && last && !last.끝 && /현재/.test(String(last.끝표시 || '')) ? (last.주소변경후 || last.주소) : ''); } // [2026.10.18 정밀분석 원인10 ④] 같은 집의 도로명·동호 표기 변경(주소변경후)이 지금 주소
         else if (r.현주소 && (nm(r.세대주) === n || (r.세대원 || []).some(function (q) { return nm(q.이름) === n; }))) a = r.현주소;
         if (a) hits.push({ a: String(a).replace(/\s+/g, ' ').trim().replace(/[,\s]+$/, ''), file: x.f.name });
       });
@@ -40289,6 +40718,7 @@ function caseProcInhAddr_(c, o, parsed) {
     };
     if (o.deceased && o.deceased.name && !o.deceased.address) { const d = addrOf(o.deceased.name); if (d) { o.deceased.address = d.a; o.deceased.addressSrc = '주민등록(' + d.file + ')'; } }
     (o.heirs || []).forEach(function (h) { if (h && h.name && !h.address) { const d = addrOf(h.name); if (d) { h.address = d.a; h.addressSrc = '주민등록(' + d.file + ')'; } } });
+    deathFallback();
   } catch (e) {}
   return o;
 }
