@@ -26088,12 +26088,13 @@ function caseProcBundlePlan_(c, body) {
     }).filter(function (x) { return x.text.replace(/\s/g, '').length >= 80; });
   } finally { TC_NO_NEW_OCR_ = prev; }
   const used = {};
+  // 낱장 사본 표시는 한 번에(구간끼리는 같은 묶음이라 서로 견주지 않음 — tcCopyMarks_가 bundleOf가 같으면 건너뜀)
+  const marks = tcCopyMarks_(loose.concat(secs.map(function (s, i) { return { id: 'sec' + i, name: name + ' ' + tcPagesLabel_(s.pages), text: s.text, type: '', bundleOf: name }; })));
   const out = secs.map(function (s, i) {
     let p = null; try { p = docParseText_(s.text); } catch (e) {}
     const pt = { t: (p && p.type) || '', l: (p && p.label) || s.title };
     let nm = tcPdfConvName_(c, { name: s.title + '.pdf', modified: mod }, [s.text], pt) || s.title;
     if (used[nm]) nm += '_' + tcPagesLabel_(s.pages).replace(/쪽$/, '쪽'); used[nm] = 1;
-    const marks = tcCopyMarks_(loose.concat([{ id: 'sec' + i, name: name + ' ' + tcPagesLabel_(s.pages), text: s.text, type: pt.t, bundleOf: name }]));
     const cm = marks['sec' + i];
     return { no: i + 1, pages: s.pages, pagesLabel: tcPagesLabel_(s.pages), title: s.title, label: caseProcScanName_(pt) || s.title, name: nm + '.pdf', shared: s.shared, copyOf: cm ? cm.keepName : '', copyWhy: cm ? cm.why : '' };
   });
