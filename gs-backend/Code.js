@@ -30423,7 +30423,10 @@ function cpfFile_(c, f, cache, tbank, opt) {
     //  ④ 상대 후보가 여럿(서로 다른 사업자번호 둘 이상이고 상호·기관 이름이 하나로 안 정해짐)이면 추정(keys.partyGuess — 금액 짝 열쇠 아님). 상호·기관 이름이 하나면 그 이름
     //  ② 신고서 부표·공제명세서·신고 검토자료(종류가 영수증류로 잘못 정해진 발생 문서)에는 안 붙임
     const dsrc = {}; ruled.forEach(function (x) { const kk = String(x.kind).replace(/^기타:/, ''); if (dk.test(kk) && /^\d{4}-\d{2}-\d{2}$/.test(String(x.value).slice(0, 10))) (dsrc[String(x.value).slice(0, 10)] = dsrc[String(x.value).slice(0, 10)] || {})[kk] = 1; });
-    const dl = Object.keys(ds), dGuess = dl.length === 1 && Object.keys(dsrc[dl[0]]).every(function (kk) { return kk === '발행일'; }) && !/현금영수증|세금계산서|전표|간이영수증/.test(label);
+    const dl = Object.keys(ds);
+    let dGuess = dl.length === 1 && Object.keys(dsrc[dl[0]]).every(function (kk) { return kk === '발행일'; }) && !/현금영수증|세금계산서|전표|간이영수증/.test(label);
+    /* [새 열쇠 점검 ⑧] 시각 붙은 거래 날짜가 서류 날짜와 다르면(묶음 파일·서류 날짜가 거래 날짜 아님) 추정 */
+    if (dl.length === 1 && !dGuess) { const tre = /((?:19|20)\d{2})\s*[.\/-]\s*(\d{1,2})\s*[.\/-]\s*(\d{1,2})\s*\.?\s*\(?[월화수목금토일]?\)?\s+\d{1,2}:\d{2}/g; let tm; while ((tm = tre.exec(String(text)))) { const td = tm[1] + '-' + ('0' + tm[2]).slice(-2) + '-' + ('0' + tm[3]).slice(-2); if (td !== dl[0]) { dGuess = true; break; } } }
     const pNames = {}, pBiz = {}; ruled.forEach(function (x) { if (/^(상호|의료기관|금융기관)$/.test(x.kind) && String(x.value).replace(/[^가-힣A-Za-z]/g, '').length >= 2 && !/^(?:상호|법인명|성명|대표자|사업장명|가맹점명?|상호법인명)$/.test(String(x.value).replace(/[\s()（）]/g, ''))) pNames[String(x.value).replace(/\s+/g, '')] = 1; if (x.kind === '사업자번호') pBiz[String(x.value)] = 1; });
     const pn = Object.keys(pNames), pb = Object.keys(pBiz);
     let party = pn.length === 1 ? pn[0] : pb.length === 1 ? pb[0] : '', pGuess = '';
@@ -30434,7 +30437,7 @@ function cpfFile_(c, f, cache, tbank, opt) {
     if (!derived && (dl.length === 1 || party || pGuess)) common.concat(lines).forEach(function (x) {
       x.keys = x.keys || {};
       if (typeof x.value === 'number' && /면적|비율|번호|생년|기준|연도|지분|수량|일수|쪽|안내 문구/.test(x.kind)) return; /* 금액 아닌 숫자·안내 문구 */
-      if (dl.length === 1 && !x.keys.date && !x.keys.dateGuess && typeof x.value === 'number') { if (dGuess) { x.keys.dateGuess = dl[0]; x.keys.dateFrom = '서류 발행일(추정 — 거래 날짜가 아닐 수 있음)'; } else { x.keys.date = dl[0]; x.keys.dateFrom = '서류 날짜'; } }
+      if (dl.length === 1 && !x.keys.date && !x.keys.dateGuess && typeof x.value === 'number') { if (dGuess) { x.keys.dateGuess = dl[0]; x.keys.dateFrom = '서류 날짜(추정 — 발행일이거나 묶음 파일이라 거래 날짜가 아닐 수 있음)'; } else { x.keys.date = dl[0]; x.keys.dateFrom = '서류 날짜'; } }
       if (party && typeof x.value === 'number' && !x.keys.party) x.keys.party = String(party).replace(/\s+/g, '').slice(0, 40);
       if (!party && pGuess && typeof x.value === 'number' && !x.keys.party && !x.keys.partyGuess) x.keys.partyGuess = String(pGuess).replace(/\s+/g, '').slice(0, 40);
       if (typeof x.value === 'number' && x.keys.amount === undefined && Math.abs(x.value) >= 1000 && !/면적|비율|번호|생년|기준|연도/.test(x.kind) && (x.keys.date || x.keys.party)) x.keys.amount = x.value; /* 짝 열쇠가 생겼으니 금액 열쇠도 */
