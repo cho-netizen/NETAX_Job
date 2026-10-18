@@ -791,7 +791,7 @@
   // 지금 사건을 그대로 들고 어느 관련 화면으로든 바로 간다. 각 화면의 "그 사건으로 열기" 함수(goTo*_)를 그대로 쓴다
   // (AI 탭 nxAiOpenJobView_와 같은 동작).
   var NX_CASE_VIEWS_ = [['casehandling', '🧭 처리개요'], ['workmanage', '🗂 작업관리'], ['docs', '📁 증빙확보'], ['taxcalc', '🧮 세액계산'],
-    ['print', '🖨 세액인쇄'], ['reportwriter', '📝 문서작성'], ['lawsearch', '⚖ 법령조회']];
+    ['print', '🖨 세액인쇄'], ['reportwriter', '📝 문서작성'], ['lawsearch', '⚖ 법령조회'], ['reports', '📖 열람관리']]; // 열람관리: 탭연결 9번
   function nxCaseJump_(view, caseId){
     if (!caseId){ showToast('먼저 위에서 사건을 골라 주세요.'); return; }
     if (view === 'casehandling' && typeof goToCaseHandling_ === 'function'){ goToView_('casehandling'); goToCaseHandling_(caseId); return; }
@@ -800,6 +800,7 @@
     if (view === 'print' && typeof goToTaxCalc_ === 'function'){ goToTaxCalc_(caseId); setTimeout(function(){ goToView_('print'); }, 600); return; }
     if (view === 'reportwriter' && typeof goToReportWriter_ === 'function'){ goToReportWriter_(caseId); return; }
     if (view === 'lawsearch' && typeof goToLawSearch_ === 'function'){ goToLawSearch_(caseId); return; }
+    if (view === 'reports' && typeof goToReports_ === 'function'){ goToReports_(caseId); return; } // 탭연결 9번 — 그 사건을 고른 채 열람관리 등록 칸을 연다
     if (view === 'docs'){
       // 증빙확보는 사건 폴더ID로 연다(처리개요의 📁 증빙확보 버튼과 같은 방식 — 기본위치 이동과 겹치지 않게 docsLoaded 먼저)
       // [2026.10.18 탭연결 1번] 폴더가 없는 상담 사건이면 막다른 안내 대신 업무유형을 물어 폴더를 만든 뒤 연다(nxOpenCaseDocs_)

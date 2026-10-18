@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-18 13:49 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-18 13:50 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -41112,6 +41112,14 @@ function goToReportWriter_(caseId, opts){
     <div id="repTab-issue">
     <div class="card">
       <h3>새 보고서 등록</h3>
+      <!-- [2026.10.18 탭연결 9번] 사건을 고르면 고객명이 채워지고 그 사건 보고서 폴더의 파일을 골라 링크를 넣는다. 등록하면 그 사건 작업일지에 열람번호가 남는다. -->
+      <div style="font-size:12px; color:var(--sub); margin-bottom:8px;">진행 중인 사건 고객에게는 처리개요의 <b>고객창구(my.netax.kr)</b>로 보고서를 보여주는 것이 기본입니다. 이곳(rpt.netax.kr 열람번호)은 고객창구가 없는 예전 고객·단건 발급용입니다.</div>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; margin-bottom:8px;">
+        <div style="flex:1; min-width:220px;"><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">사건(선택)</label>
+          <select id="repNewCase" style="width:100%;"><option value="">사건 없이 등록</option></select></div>
+        <div style="flex:1; min-width:220px;"><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">그 사건의 보고서 파일</label>
+          <select id="repNewCaseFile" style="width:100%;" disabled><option value="">사건을 먼저 고르세요</option></select></div>
+      </div>
       <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end;">
         <div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">고객명 *</label>
           <input type="text" id="repNewName" style="width:120px;" placeholder="예: 홍길동"></div>
@@ -41164,9 +41172,69 @@ function goToReportWriter_(caseId, opts){
   });
   var reportsLoaded = false;
   function initReports(){
+    repLoadCaseOptions_();
     if (reportsLoaded) return;
     reportsLoaded = true;
     loadReportList();
+  }
+
+  // [2026.10.18 탭연결 9번] 열람관리 ↔ 사건 — 예전엔 고객명·드라이브 링크를 손으로 넣고, 그 기록이 사건 화면에 남지 않았다.
+  var repCases_ = [], repWantCaseId_ = '';
+  function repLoadCaseOptions_(){
+    var sel = document.getElementById('repNewCase');
+    if (!sel) return;
+    callGas('work_get_cases', {}).then(function(res){
+      repCases_ = (res && res.cases) || [];
+      var keep = repWantCaseId_ || sel.value;
+      sel.innerHTML = buildCaseOptionsHtml_(repCases_.filter(function(c){ return c.폴더ID; }), { placeholder: '사건 없이 등록', selectedId: keep });
+      if (keep && sel.value !== keep) sel.value = '';
+      repWantCaseId_ = '';
+      repOnCaseChange_();
+    }).catch(function(){});
+  }
+  function repOnCaseChange_(){
+    var sel = document.getElementById('repNewCase'), fileSel = document.getElementById('repNewCaseFile');
+    var c = repCases_.filter(function(x){ return x.id === sel.value; })[0];
+    if (!c){ fileSel.innerHTML = '<option value="">사건을 먼저 고르세요</option>'; fileSel.disabled = true; return; }
+    document.getElementById('repNewName').value = c.고객명 || '';
+    fileSel.disabled = true;
+    fileSel.innerHTML = '<option value="">불러오는 중…</option>';
+    callGas('get_case_subfolders', { caseId: c.id }).then(function(sub){
+      if (!sub || sub.error) throw new Error((sub && sub.error) || '');
+      return Promise.all([callGas('listFolder', { folderId: sub.reportFolderId }), callGas('listFolder', { folderId: sub.internalFolderId })]);
+    }).then(function(rs){
+      var files = [];
+      [['발행', rs[0]], ['내부', rs[1]]].forEach(function(p){ ((p[1] && p[1].files) || []).forEach(function(f){ files.push({ kind: p[0], f: f }); }); });
+      fileSel.innerHTML = '<option value="">' + (files.length ? '파일을 고르면 링크가 채워집니다' : '보고서 폴더에 파일이 없습니다') + '</option>' +
+        files.map(function(x){ return '<option value="' + escapeHtml(x.f.id) + '" data-url="' + escapeHtml(x.f.url || ('https://drive.google.com/file/d/' + x.f.id + '/view')) + '">[' + x.kind + '] ' + escapeHtml(x.f.name) + '</option>'; }).join('');
+      fileSel.disabled = !files.length;
+    }).catch(function(err){ fileSel.innerHTML = '<option value="">보고서 폴더를 읽지 못했습니다' + (err && err.message ? ' — ' + escapeHtml(err.message) : '') + '</option>'; });
+  }
+  document.getElementById('repNewCase').addEventListener('change', repOnCaseChange_);
+  document.getElementById('repNewCaseFile').addEventListener('change', function(){
+    var opt = this.options[this.selectedIndex];
+    if (!opt || !opt.value) return;
+    document.getElementById('repNewLink').value = opt.getAttribute('data-url') || '';
+    if (!document.getElementById('repNewTitle').value.trim()) document.getElementById('repNewTitle').value = opt.textContent.replace(/^\[[^\]]*\]\s*/, '').replace(/\.[^.]+$/, '');
+  });
+  // 위 탭 버튼 옆에 "↪ 이 사건 다른 화면" 상자(고른 사건 기준) — 공용 함수는 script.html이라 화면이 다 읽힌 뒤 붙인다
+  document.addEventListener('DOMContentLoaded', function(){
+    if (typeof nxCaseJumpAttach_ === 'function') nxCaseJumpAttach_(document.getElementById('repMainTabBtn-lawref'), 'reports', function(){ return document.getElementById('repNewCase').value; });
+  });
+  // 다른 화면("↪ 이 사건 다른 화면")에서 그 사건을 들고 열람관리로 올 때
+  function goToReports_(caseId){
+    repWantCaseId_ = caseId || '';
+    if (typeof goToView_ === 'function') goToView_('reports');
+    repSwitchMainTab_('issue');
+  }
+  // 등록한 열람번호를 그 사건 작업일지에 남긴다(실패해도 등록 자체는 그대로)
+  function repLogToCase_(caseId, text){
+    callGas('work_get_cases', {}).then(function(res){
+      var c = ((res && res.cases) || []).filter(function(x){ return x.id === caseId; })[0];
+      if (!c) return;
+      var log = (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: new Date().toISOString().slice(0, 10), text: text, dueDate: '' }]);
+      return callGas('work_update_case', { id: c.id, 작업일지: log, 기대수정일: c.수정일 });
+    }).catch(function(){});
   }
 
   function loadReportList(){
@@ -41307,6 +41375,8 @@ function goToReportWriter_(caseId, opts){
     }).then(function(res){
       if (res.error){ toast('등록 실패: ' + res.error); return; }
       toast('등록했습니다 — 열람번호 ' + res.report_id + (res.공유설정 ? ' · ' + res.공유설정 : ''));
+      var regCaseId = document.getElementById('repNewCase').value;
+      if (regCaseId) repLogToCase_(regCaseId, '[열람관리] rpt.netax.kr 열람번호 ' + res.report_id + ' 발급: ' + (document.getElementById('repNewTitle').value.trim() || '보고서') + ' (' + link + ')');
       document.getElementById('repNewName').value = '';
       document.getElementById('repNewTitle').value = '';
       document.getElementById('repNewType').value = '';
@@ -50794,7 +50864,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   // 지금 사건을 그대로 들고 어느 관련 화면으로든 바로 간다. 각 화면의 "그 사건으로 열기" 함수(goTo*_)를 그대로 쓴다
   // (AI 탭 nxAiOpenJobView_와 같은 동작).
   var NX_CASE_VIEWS_ = [['casehandling', '🧭 처리개요'], ['workmanage', '🗂 작업관리'], ['docs', '📁 증빙확보'], ['taxcalc', '🧮 세액계산'],
-    ['print', '🖨 세액인쇄'], ['reportwriter', '📝 문서작성'], ['lawsearch', '⚖ 법령조회']];
+    ['print', '🖨 세액인쇄'], ['reportwriter', '📝 문서작성'], ['lawsearch', '⚖ 법령조회'], ['reports', '📖 열람관리']]; // 열람관리: 탭연결 9번
   function nxCaseJump_(view, caseId){
     if (!caseId){ showToast('먼저 위에서 사건을 골라 주세요.'); return; }
     if (view === 'casehandling' && typeof goToCaseHandling_ === 'function'){ goToView_('casehandling'); goToCaseHandling_(caseId); return; }
@@ -50803,6 +50873,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     if (view === 'print' && typeof goToTaxCalc_ === 'function'){ goToTaxCalc_(caseId); setTimeout(function(){ goToView_('print'); }, 600); return; }
     if (view === 'reportwriter' && typeof goToReportWriter_ === 'function'){ goToReportWriter_(caseId); return; }
     if (view === 'lawsearch' && typeof goToLawSearch_ === 'function'){ goToLawSearch_(caseId); return; }
+    if (view === 'reports' && typeof goToReports_ === 'function'){ goToReports_(caseId); return; } // 탭연결 9번 — 그 사건을 고른 채 열람관리 등록 칸을 연다
     if (view === 'docs'){
       // 증빙확보는 사건 폴더ID로 연다(처리개요의 📁 증빙확보 버튼과 같은 방식 — 기본위치 이동과 겹치지 않게 docsLoaded 먼저)
       // [2026.10.18 탭연결 1번] 폴더가 없는 상담 사건이면 막다른 안내 대신 업무유형을 물어 폴더를 만든 뒤 연다(nxOpenCaseDocs_)
