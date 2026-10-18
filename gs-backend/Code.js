@@ -30424,7 +30424,7 @@ function cpfFile_(c, f, cache, tbank, opt) {
     //  ② 신고서 부표·공제명세서·신고 검토자료(종류가 영수증류로 잘못 정해진 발생 문서)에는 안 붙임
     const dsrc = {}; ruled.forEach(function (x) { const kk = String(x.kind).replace(/^기타:/, ''); if (dk.test(kk) && /^\d{4}-\d{2}-\d{2}$/.test(String(x.value).slice(0, 10))) (dsrc[String(x.value).slice(0, 10)] = dsrc[String(x.value).slice(0, 10)] || {})[kk] = 1; });
     const dl = Object.keys(ds), dGuess = dl.length === 1 && Object.keys(dsrc[dl[0]]).every(function (kk) { return kk === '발행일'; }) && !/현금영수증|세금계산서|전표|간이영수증/.test(label);
-    const pNames = {}, pBiz = {}; ruled.forEach(function (x) { if (/^(상호|의료기관|금융기관)$/.test(x.kind) && String(x.value).replace(/[\s()]/g, '').length >= 2) pNames[String(x.value).replace(/\s+/g, '')] = 1; if (x.kind === '사업자번호') pBiz[String(x.value)] = 1; });
+    const pNames = {}, pBiz = {}; ruled.forEach(function (x) { if (/^(상호|의료기관|금융기관)$/.test(x.kind) && String(x.value).replace(/[^가-힣A-Za-z]/g, '').length >= 2 && !/^(?:상호|법인명|성명|대표자|사업장명|가맹점명?|상호법인명)$/.test(String(x.value).replace(/[\s()（）]/g, ''))) pNames[String(x.value).replace(/\s+/g, '')] = 1; if (x.kind === '사업자번호') pBiz[String(x.value)] = 1; });
     const pn = Object.keys(pNames), pb = Object.keys(pBiz);
     let party = pn.length === 1 ? pn[0] : pb.length === 1 ? pb[0] : '', pGuess = '';
     if (!party && (pn.length || pb.length)) pGuess = pn[0] || pb[0];
