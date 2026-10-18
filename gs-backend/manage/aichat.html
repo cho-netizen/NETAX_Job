@@ -3758,7 +3758,7 @@
       var seen = {};
       // 처음 목록 — 방금 만든 PDF + 이번 사건처리가 읽은 증빙 목록의 PDF(서버를 더 부르지 않음)
       (st.pdfConvMade || []).concat(st.files || []).forEach(function(f){
-        if (!f || !f.id || seen[f.id] || !/\.pdf$/i.test(String(f.name || ''))) return;
+        if (!f || !f.id || seen[f.id] || !(/\.pdf$/i.test(String(f.name || '')) || /pdf/i.test(String(f.mimeType || '')))) return; // 확장자 없는 PDF(황인택 「등기부등본1」 등)도
         seen[f.id] = 1; S.list.push({ id: f.id, name: f.name, dir: f.dir || '', on: false });
       });
       var top = el('div', 'nxai-cp-line'); top.style.marginLeft = '0'; P.body.appendChild(top);

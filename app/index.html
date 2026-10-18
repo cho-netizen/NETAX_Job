@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-18 17:40 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-18 18:05 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -49411,7 +49411,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       var seen = {};
       // 처음 목록 — 방금 만든 PDF + 이번 사건처리가 읽은 증빙 목록의 PDF(서버를 더 부르지 않음)
       (st.pdfConvMade || []).concat(st.files || []).forEach(function(f){
-        if (!f || !f.id || seen[f.id] || !/\.pdf$/i.test(String(f.name || ''))) return;
+        if (!f || !f.id || seen[f.id] || !(/\.pdf$/i.test(String(f.name || '')) || /pdf/i.test(String(f.mimeType || '')))) return; // 확장자 없는 PDF(황인택 「등기부등본1」 등)도
         seen[f.id] = 1; S.list.push({ id: f.id, name: f.name, dir: f.dir || '', on: false });
       });
       var top = el('div', 'nxai-cp-line'); top.style.marginLeft = '0'; P.body.appendChild(top);
