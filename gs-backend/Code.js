@@ -42235,7 +42235,11 @@ function ctParseContract_(text) {
   var hdrHit = false, nameAfter = function (re) { var x = re.exec(t); if (!x) return ''; var w = /^[\s:：]*(?:성\s*명\s*[:：|]?\s*)?([가-힣]{2,4})(?=\s|\(|$)/.exec(t.slice(x.index + x[0].length, x.index + x[0].length + 30)); if (w && notName.test(w[1]) && !/^(주소|성명|주민|등록|번호|전화)$/.test(w[1])) hdrHit = true; return w && !notName.test(w[1]) ? w[1] : ''; };
   r.매도인 = nameAfter(/매\s*도\s*인\s*(?=[^\n]{0,4}[가-힣])/);
   r.매수인 = nameAfter(/매\s*수\s*인\s*(?=[^\n]{0,4}[가-힣])/);
+  // [2026.10.19 3번 읽기 — 시험 묶음 종류별 정확도 "계약서 당사자 표 54%"] 머리말 낱말이 없어도("매도인과 매수인은 …") 이름표 바로 뒤에 이름이 없으면 서명란 표를 본다 — 개발용 매매계약서 48개 중 매도인 34·매수인 39가 비어 있었다
   if (hdrHit && (!r.매도인 || !r.매수인)) { try { var pp0 = tcContractParties_(t)[0]; if (pp0) { if (!r.매도인 && pp0.seller && pp0.seller.name) r.매도인 = pp0.seller.name; if (!r.매수인 && pp0.buyer && pp0.buyer.name) r.매수인 = pp0.buyer.name; } } catch (e) {} }
+  //   그 밖(머리말 낱말 없음)은 확실할 때만: 분양·공급 계약서는 빼고(매도인이 회사 — 위 서명란 규칙이 따로 봄, 한 파일에 매매·분양이 같이 든 김금옥 스캔에서 매매 서명란이 분양에 붙었다),
+  //   이름이 글 안에 두 번 넘게 나올 때만(서명·계좌·특약에 되풀이 — 한 번뿐인 "노하"·"실히" 같은 글자인식 조각은 버림)
+  else if ((!r.매도인 || !r.매수인) && !/분양|공급/.test(String(r.종류 || ''))) { try { var pp1 = tcContractParties_(t)[0], rep1 = function (nm) { return !!nm && t.split(nm).length - 1 >= 2; }; if (pp1) { if (!r.매도인 && pp1.seller && rep1(pp1.seller.name)) r.매도인 = pp1.seller.name; if (!r.매수인 && pp1.buyer && rep1(pp1.buyer.name) && pp1.buyer.name !== r.매도인) r.매수인 = pp1.buyer.name; } } catch (e) {} }
   //  서명란 맺음 문구가 없는 서식 — 글 끝 400자(서명란) 안의 이름표 뒤 낱말만(본문 조항의 "매수인 명의로" 같은 낱말을 이름으로 잡지 않게)
   if (hdrHit && (!r.매도인 || !r.매수인)) {
     var tail0 = Math.max(0, t.length - 400), sigName = function (re) { var g = new RegExp(re.source, 'g'), x, last = ''; g.lastIndex = tail0; while ((x = g.exec(t))) { var w = /^[\s:：]*(?:(?:주\s*소|성\s*명)[^\n]{0,40}?성\s*명\s*[:：|]?\s*|성\s*명\s*[:：|]?\s*)?([가-힣]{2,4})(?=\s|\(|$)/.exec(t.slice(x.index + x[0].length, x.index + x[0].length + 60)); if (w && !notName.test(w[1])) last = w[1]; } return last; };
