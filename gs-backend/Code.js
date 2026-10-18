@@ -29263,7 +29263,7 @@ function cpfAssetParts_(addr) {
   const h = /제?\s*(\d{1,4})\s*동\s*(?:제?\s*\d{1,3}\s*층\s*)?제?\s*(\d{1,5})\s*호/.exec(s) || /(?:^|\s)(\d{1,4})-(\d{3,5})(?:호|$|\s)/.exec(s.slice(m.index + m[0].length));
   if (h) dh = h[1] + '동' + h[2] + '호';
   else { const h2 = /제?\s*(\d{1,5})\s*호(?!\s*서식)/.exec(s.slice(m.index + m[0].length)); if (h2) dh = h2[1] + '호'; }
-  const sgg = m[1].replace(/(?:특별시|광역시|특별자치시|도)\s+/, ' ').replace(/^[가-힣]+(?:특별시|광역시|특별자치시)\s*/, '').replace(/\s+/g, ' ').trim();
+  const sgg = m[1].replace(/^([가-힣]+?)(?:특별시|광역시|특별자치시)\s+/, '$1 ').replace(/^[가-힣]+(?:특별자치도|도)\s+/, '').replace(/\s+/g, ' ').trim(); // [2026.10.19 1번 밤작업] 광역·특별시는 짧은 이름("광주 동구" — 동구는 여러 곳), 도는 통째로 뺌("경상북도"가 "경상북"으로 남던 것)
   return { dong: m[2], jb: jb, dh: dh, sgg: sgg };
 }
 function cpfAssetKey_(addr) { const p = cpfAssetParts_(addr); return p ? p.dong + ' ' + p.jb + (p.dh ? '|' + p.dh : '') : ''; }
