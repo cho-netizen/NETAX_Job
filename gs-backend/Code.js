@@ -30018,6 +30018,8 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
   while ((m = re.exec(t))) {
     if (pn >= CPF_LIMITS_.role) { roleCut++; continue; }
     if (m.index < pairSkip) continue;
+    /* 문장 속 역할 낱말 나열("매도인, 매수인, 개업공인중개사가 …", "매도인 및 매수인") — 역할 칸이 아님 */
+    { const aftR = m.index + m[0].indexOf(m[1]) + m[1].length; if (/^\s*[,·및와과]\s*(?:매\s*도\s*인|매\s*수\s*인|임\s*대\s*인|임\s*차\s*인|증\s*여\s*자|수\s*증\s*자|양\s*도\s*인|양\s*수\s*인|위\s*임\s*인|수\s*임\s*인|개\s*업\s*공\s*인|중\s*개)/.test(t.slice(aftR, aftR + 16)) || /[,·]\s*$/.test(t.slice(Math.max(0, m.index - 2), m.index)) && /(?:매\s*도\s*인|매\s*수\s*인|임\s*대\s*인|임\s*차\s*인)\s*[,·]\s*$/.test(t.slice(Math.max(0, m.index - 12), m.index))) continue; }
     let nm = m[2] || '';
     // [2026.10.19 1번 밤작업 — 2번 9바퀴] 서명란 표처럼 역할 칸 머리가 나란하면(이 역할 뒤 20자 안에 다음 역할 낱말, 그 사이 이름 없음) 뒤따르는 "성명" 칸을 칸 순서대로 나눈다.
     //  서식에서 누구 칸인지 확정되지 않으므로 불확실 + "AI 확인" — 예전엔 두 역할이 같은 첫 이름을 함께 가져가 같은 사람이 매도인·매수인 양쪽으로 읽혔다(개발용 3사건)
@@ -30444,6 +30446,7 @@ function cpfPipeRows_(text, base, from, docType) {
     if (h === -1) return;
     const head = b.rows[h].map(function (x, i) { return x.replace(/\s+/g, '') || ('칸' + (i + 1)); });
     b.rows.slice(h + 1).forEach(function (r, i) {
+      if (r.slice(1).every(function (x) { return /^[\s\-–—_.·]*$/.test(x); })) return; /* 첫 칸 빼고 모두 빈 칸·"-"인 줄(메모 표의 빈 줄) — 개발용 4사건 */
       if (++n > CPF_LIMITS_.sheet) return;
       const val = {}; let k = 0;
       r.forEach(function (x, j) { const s0 = String(x).trim(); if (!s0) return; const u = cpfUnitAmounts_(s0); val[head[j] || ('칸' + (j + 1))] = cpfNum_(s0) !== null ? cpfNum_(s0) : (u.length === 1 && u[0].raw.length >= s0.replace(/\s+/g, '').length - 1 ? u[0].value : (cpfDate_(s0) && s0.length <= 14 ? cpfDate_(s0) : s0)); k++; });
