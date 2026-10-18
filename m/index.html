@@ -272,8 +272,9 @@
   var casesPromise = null;
   function loadCases() {
     if (!casesPromise) casesPromise = call('work_get_cases', {}, 60000).then(function (r) {
-      return (r.cases || []).filter(function (c) { return c.폴더ID; }).map(function (c) {
-        return { id: c.id, name: String(c.사건명 || ''), client: String(c.고객명 || ''), status: String(c.상태 || ''), folderId: c.폴더ID, modified: String(c.수정일 || c.생성일 || '') };
+      // [2026.10.18 탭연결 1번] 폴더 없는 상담 사건도 목록에 넣는다 — 고르면 업무유형을 물어 폴더를 만든 뒤 옮긴다(ensureFolder)
+      return (r.cases || []).filter(function (c) { return c.폴더ID || String(c.업무유형 || '') === '상담'; }).map(function (c) {
+        return { id: c.id, name: String(c.사건명 || ''), client: String(c.고객명 || ''), status: String(c.상태 || ''), folderId: c.폴더ID || '', upType: String(c.업무유형 || ''), semok: String(c.세목 || ''), modified: String(c.수정일 || c.생성일 || '') };
       }).sort(function (a, b) {
         var da = a.status === '완료' ? 1 : 0, db = b.status === '완료' ? 1 : 0;
         if (da !== db) return da - db;
@@ -293,19 +294,33 @@
       var words = q.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
       var hits = all.filter(function (c) { var s = (c.client + ' ' + c.name).toLowerCase(); return words.every(function (w) { return s.indexOf(w) !== -1; }); }).slice(0, 80);
       list.innerHTML = hits.length ? hits.map(function (c, i) {
-        return '<div class="case" data-i="' + all.indexOf(c) + '"><b>' + esc(c.name || c.client) + '</b><span>' + esc(c.client) + (c.status ? ' · ' + esc(c.status) : '') + '</span></div>';
+        return '<div class="case" data-i="' + all.indexOf(c) + '"><b>' + esc(c.name || c.client) + '</b><span>' + esc(c.client) + (c.status ? ' · ' + esc(c.status) : '') + (c.folderId ? '' : ' · 상담(폴더 없음)') + '</span></div>';
       }).join('') : msg('info', '맞는 사건이 없습니다.');
     }
     q.addEventListener('input', render);
     list.addEventListener('click', function (ev) {
       var el = ev.target.closest('.case'); if (!el) return;
       var c = all[Number(el.getAttribute('data-i'))];
-      if (!confirm('「' + (c.name || c.client) + '」 사건 폴더로 ' + files.length + '개 파일을 옮길까요?')) return;
+      // [2026.10.18 탭연결 1번] 상담 사건은 폴더가 없다 — 업무유형을 물어(신고·자문) 바꾸면 서버가 사건명·폴더·고객창구를 함께 만든다
+      var upType = '';
+      if (!c.folderId) {
+        var ans = prompt('「' + (c.name || c.client) + '」은(는) 상담 사건이라 파일을 넣을 사건 폴더가 없습니다.\n' +
+          '업무유형을 정하면 사건 폴더가 만들어집니다(업무유형·사건명도 바뀜).\n\n1 = 신고(신고서 작성)\n2 = 자문(검토서·보고서 작성)\n\n번호를 입력하세요(취소하면 그대로 둡니다).', '1');
+        if (ans === null) return;
+        upType = ({ '1': '신고', '2': '자문', '신고': '신고', '자문': '자문' })[String(ans).trim()];
+        if (!upType) { alert('1(신고) 또는 2(자문)를 입력해 주세요.'); return; }
+      } else if (!confirm('「' + (c.name || c.client) + '」 사건 폴더로 ' + files.length + '개 파일을 옮길까요?')) return;
       list.classList.add('hidden'); q.classList.add('hidden');
-      mvOut.innerHTML = msg('info', '옮기는 중…');
-      var seq = Promise.resolve(), moved = 0, errs = [];
+      mvOut.innerHTML = msg('info', upType ? '업무유형을 "' + upType + '"(으)로 바꾸고 폴더 만드는 중…' : '옮기는 중…');
+      var seq = c.folderId ? Promise.resolve() : call('work_update_case', { id: c.id, 업무유형: upType }, 60000).then(function (r) {
+        if (!r || r.success === false || !r.case || !r.case.폴더ID) throw new Error((r && r.message) || '사건 폴더를 만들지 못했습니다.');
+        c.folderId = r.case.폴더ID; c.name = String(r.case.사건명 || c.name); c.upType = upType;
+        casesPromise = null; // 다음에 사건 목록을 다시 받게
+      });
+      var moved = 0, errs = [];
+      seq = seq.catch(function (err) { errs.push('업무유형 변경: ' + err.message); });
       files.forEach(function (f) {
-        seq = seq.then(function () { return call('moveItem', { id: f.id, type: 'file', destFolderId: c.folderId }); })
+        seq = seq.then(function () { if (!c.folderId) throw new Error('사건 폴더가 없어 옮기지 않았습니다'); return call('moveItem', { id: f.id, type: 'file', destFolderId: c.folderId }); })
           .then(function () { moved++; }, function (err) { errs.push(f.name + ': ' + err.message); });
       });
       seq.then(function () {

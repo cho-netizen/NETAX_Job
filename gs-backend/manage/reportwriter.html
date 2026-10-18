@@ -4185,6 +4185,14 @@ function rwRenderCaseReports_(caseId){
   box.textContent = '불러오는 중…';
   rwActiveCaseSubfolders_ = null; // 조회 끝날 때까지는 엉뚱한 사건에 연결되지 않도록 비워둔다
   callGas('get_case_subfolders', { caseId: caseId }).then(function(sub){
+    // [2026.10.18 탭연결 1번] 폴더 없는 상담 사건 — 막다른 오류 대신 업무유형을 정해 폴더를 만드는 버튼을 준다(script.html nxEnsureCaseFolder_)
+    if (sub.noFolder && typeof nxEnsureCaseFolder_ === 'function'){
+      box.innerHTML = '<span>' + escapeHtml(sub.error) + '</span> <button type="button" class="ghost-btn" id="rwMakeCaseFolderBtn">업무유형 정하고 폴더 만들기</button>';
+      document.getElementById('rwMakeCaseFolderBtn').addEventListener('click', function(){
+        nxEnsureCaseFolder_(c, '문서').then(function(cc){ if (cc && cc.폴더ID) rwRenderCaseReports_(caseId); });
+      });
+      return;
+    }
     if (sub.error){ box.textContent = sub.error; return; }
     return Promise.all([
       callGas('listFolder', { folderId: sub.internalFolderId }),

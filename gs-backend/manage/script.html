@@ -741,16 +741,83 @@
     if (view === 'lawsearch' && typeof goToLawSearch_ === 'function'){ goToLawSearch_(caseId); return; }
     if (view === 'docs'){
       // 증빙확보는 사건 폴더ID로 연다(처리개요의 📁 증빙확보 버튼과 같은 방식 — 기본위치 이동과 겹치지 않게 docsLoaded 먼저)
+      // [2026.10.18 탭연결 1번] 폴더가 없는 상담 사건이면 막다른 안내 대신 업무유형을 물어 폴더를 만든 뒤 연다(nxOpenCaseDocs_)
       callGas('work_get_cases', {}).then(function(res){
         var c = ((res && res.cases) || []).filter(function(x){ return x.id === caseId; })[0];
-        if (typeof docsLoaded !== 'undefined') docsLoaded = true;
-        goToView_('docs');
-        if (c && c.폴더ID && typeof docsNavigateById_ === 'function') docsNavigateById_(c.폴더ID);
-        else showToast('이 사건의 증빙 폴더가 아직 없습니다 — 처리개요에서 폴더를 먼저 만들어 주세요.');
+        if (!c){ showToast('사건을 찾지 못했습니다 — 목록을 새로고침해 주세요.'); return; }
+        nxOpenCaseDocs_(c);
       }).catch(function(){ showToast('사건 정보를 불러오지 못했습니다 — 잠시 후 다시 시도해 주세요.'); });
       return;
     }
     goToView_(view);
+  }
+
+  // [2026.10.18 탭연결 1번] 세무사님 지시 — "상담사건이 증빙을 올리려면 안내를 하면서 자동으로 유형을 물어서 수정되도록 해야 한다."
+  // 상담 사건은 파일이 없는 사건이라 드라이브 폴더를 만들지 않는다(Code.js work_createCase). 그런데 증빙을 올리려는 순간
+  // 그 전제가 깨지므로, 그때 업무유형(신고·자문 등)을 물어 고르면 작업관리와 똑같이 work_update_case로 업무유형을 바꾼다 —
+  // 서버가 그 저장 안에서 사건명·폴더·고객창구 연결을 함께 만든다(work_updateCase). 돌려주는 값: 폴더가 생긴 최신 사건 객체
+  // (취소하면 null). 폴더가 이미 있으면 묻지 않고 그대로 돌려준다.
+  function nxEnsureCaseFolder_(c, purpose){
+    if (!c) return Promise.resolve(null);
+    if (c.폴더ID) return Promise.resolve(c);
+    if (String(c.업무유형 || '') !== '상담'){
+      // 상담이 아닌데 폴더가 없는 옛 사건 — 업무유형은 그대로 두고 폴더만 만든다(처리개요 고객창구 [연결]과 같은 ensure_case_folder)
+      return callGas('ensure_case_folder', { id: c.id }).then(function(r){
+        if (!r || r.success === false || !r.folderId){ showToast((r && r.message) || '사건 폴더를 만들지 못했습니다.'); return null; }
+        c.폴더ID = r.folderId;
+        return c;
+      });
+    }
+    var opts = (typeof WORK_UPTYPE_OPTIONS_ !== 'undefined' && (WORK_UPTYPE_OPTIONS_[c.세목] || WORK_UPTYPE_OPTIONS_.transfer)) || ['신고', '자문'];
+    opts = opts.filter(function(u){ return u !== '상담'; });
+    var buttons = opts.map(function(u){ return { label: u, value: u, className: 'save-btn' }; });
+    buttons.push({ label: '취소', value: null, className: 'ghost-btn', isCancel: true, primary: true });
+    return nxDialog_({
+      title: '업무유형 정하기',
+      message: '"' + (c.사건명 || '이 사건') + '"은(는) 상담 사건이라 ' + (purpose || '증빙') + '을(를) 올릴 사건 폴더가 없습니다.\n\n' +
+        (purpose || '증빙') + '을(를) 올리려면 이 사건의 업무유형을 골라 주세요. 고르면 업무유형이 바뀌고(사건명도 함께), 사건 폴더가 만들어지며 고객창구(my.netax.kr)도 연결됩니다.\n\n' +
+        '· 신고 — 신고서를 작성하는 사건(법정기한 자동 계산)\n· 자문 — 검토서·보고서를 작성하는 사건',
+      buttons: buttons
+    }).then(function(upType){
+      if (!upType) return null;
+      return callGas('work_update_case', { id: c.id, 업무유형: upType, 기대수정일: c.수정일 }).then(function(res){
+        if (!res || res.error || res.success === false){ showToast((res && (res.message || res.error)) || '업무유형을 바꾸지 못했습니다.'); return null; }
+        Object.assign(c, res.case || {});
+        if (!c.폴더ID){ showToast('업무유형은 "' + upType + '"(으)로 바꿨지만 폴더를 만들지 못했습니다 — 잠시 후 다시 시도해 주세요.'); return null; }
+        showToast('업무유형을 "' + upType + '"(으)로 바꾸고 사건 폴더를 만들었습니다.');
+        if (res.warning) showToast(res.warning);
+        // 작업관리가 들고 있는 옛 사건 정보(업무유형·폴더 없음)를 다음에 열 때 새로 받게 한다(지금 열려 있으면 바로)
+        try {
+          var wmEl = document.getElementById('view-workmanage');
+          if (wmEl && wmEl.classList.contains('active') && typeof loadWorkCases === 'function') loadWorkCases();
+          else if (typeof workManageLoaded !== 'undefined') workManageLoaded = false;
+        } catch (e) {}
+        return c;
+      });
+    });
+  }
+  // 사건의 증빙확보(사건 폴더)를 연다 — 처리개요 📁 증빙확보·📝 메모, "↪ 이 사건 다른 화면", 증빙확보 사건 고르기, AI가 같이 쓴다.
+  // 폴더 없는 상담 사건이면 nxEnsureCaseFolder_로 업무유형을 먼저 묻는다. onReady(c)는 폴더가 생긴 뒤 화면이 자기 정보를 고칠 때 쓴다.
+  function nxOpenCaseDocs_(c, onReady){
+    if (!c) return;
+    var go = function(cc){
+      if (typeof docsLoaded !== 'undefined') docsLoaded = true; // initDocs의 기본위치 이동과 겹치지 않게
+      goToView_('docs');
+      if (cc.폴더ID && typeof docsNavigateById_ === 'function') docsNavigateById_(cc.폴더ID);
+    };
+    if (c.폴더ID){ go(c); return; }
+    // 폴더ID가 없는 옛 사건(상담 아님) 중엔 이름이 같은 폴더가 이미 있는 경우가 있어, 예전처럼 이름 경로로 먼저 찾아간다
+    if (String(c.업무유형 || '') !== '상담' && typeof getCustomerRootPath_ === 'function' && typeof docsNavigate === 'function'){
+      if (typeof docsLoaded !== 'undefined') docsLoaded = true;
+      goToView_('docs');
+      getCustomerRootPath_().then(function(basePath){ docsNavigate(basePath.concat([String(c.사건명 || '').trim()])); });
+      return;
+    }
+    nxEnsureCaseFolder_(c).then(function(cc){
+      if (!cc) return;
+      if (onReady) { try { onReady(cc); } catch (e) {} }
+      go(cc);
+    });
   }
   // 콤보박스 만들기 — fromView(지금 화면)는 목록에서 빼고, getCaseId()로 지금 사건을 읽는다.
   // beforeLeave(go)를 주면 이동 전에 확인(예: 문서작성의 미저장 경고) 후 go()를 부른다.

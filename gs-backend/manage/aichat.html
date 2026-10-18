@@ -1357,6 +1357,8 @@
       if (view === 'docs'){
         callGas('work_get_cases', {}).then(function(res){
           var c = (res.cases || []).filter(function(x){ return x.id === caseId; })[0];
+          // [2026.10.18 탭연결 1번] 폴더 없는 상담 사건이면 업무유형을 물어 폴더를 만든 뒤 연다(script.html nxOpenCaseDocs_)
+          if (c && !c.폴더ID && typeof nxOpenCaseDocs_ === 'function'){ nxOpenCaseDocs_(c); openSide(); return; }
           if (typeof docsLoaded !== 'undefined') docsLoaded = true; // initDocs의 기본위치 이동과 겹치지 않게(처리개요 화면과 같은 처리)
           goToView_('docs');
           if (c && c.폴더ID && typeof docsNavigateById_ === 'function') docsNavigateById_(c.폴더ID);

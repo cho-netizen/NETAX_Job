@@ -652,6 +652,14 @@
           // 보고 경로를 다시 만들면, 나중에 고객명 등이 바뀌어 사건명이 달라진 사건은 실제
           // Drive 폴더(이름은 그대로)를 못 찾는다. 폴더ID가 없는 옛날 사건만 이름으로 대체한다.
           if (c.폴더ID) { docsNavigateById_(c.폴더ID); return; }
+          // [2026.10.18 탭연결 1번] 폴더 없는 상담 사건 — 업무유형을 물어 폴더를 만든 뒤 연다(취소하면 고르기 칸을 비운다)
+          if (String(c.업무유형 || '') === '상담' && typeof nxEnsureCaseFolder_ === 'function'){
+            nxEnsureCaseFolder_(c).then(function(cc){
+              if (cc && cc.폴더ID) docsNavigateById_(cc.폴더ID);
+              else sel.value = docsSelectedCaseId_ || '';
+            });
+            return;
+          }
           getCustomerRootPath_().then(function(basePath){
             docsNavigate(basePath.concat([String(c.사건명 || '').trim()]));
           });

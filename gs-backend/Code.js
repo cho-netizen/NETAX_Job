@@ -23245,7 +23245,27 @@ function work_updateCase(params) {
     // 쌓여있을 수 있어 폴더를 지우지 않는다 — 그대로 둔다.
     if (upType !== '상담' && !row[col.폴더ID] && row[col.사건명]) {
       const newFolderId = work_getOrCreateCaseFolder_(row[col.사건명]);
-      if (newFolderId) row[col.폴더ID] = newFolderId;
+      if (newFolderId) {
+        row[col.폴더ID] = newFolderId;
+        // [2026.10.18 탭연결 1번] 상담 사건에서 증빙을 올리려다 업무유형을 정해 폴더가 생긴 경우(script.html nxOpenCaseDocs_)에도
+        // 처음부터 자문·신고로 만든 사건과 똑같이 고객창구(my.netax.kr)를 바로 연결한다(work_createCase와 같은 호출) — 그래야
+        // 고객도 바로 자료를 올릴 수 있다. 실패해도 저장은 계속(처리개요 고객창구 카드의 [연결]로 다시 할 수 있음).
+        if (!row[col.my_report_id]) {
+          try {
+            const myResult = my_handleAdminCreateCase({
+              admin_code: PropertiesService.getScriptProperties().getProperty('ADMIN_CODE'),
+              name: row[col.고객명],
+              case_name: row[col.사건명],
+              checklist: [],
+              permission: '허용',
+              folder_id: newFolderId
+            });
+            if (myResult.success !== false && myResult.report_id) row[col.my_report_id] = myResult.report_id;
+          } catch (err) {
+            console.log('상담→' + upType + ' 전환 시 고객창구 자동연결 실패: ' + err.message);
+          }
+        }
+      }
     }
     row[col.수정일] = new Date();
 
@@ -24049,7 +24069,8 @@ function work_getCaseSubfolders(params) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][col.id] === caseId) { folderId = data[i][col.폴더ID]; break; }
   }
-  if (!folderId) return { error: '이 사건의 드라이브 폴더를 찾을 수 없습니다.' };
+  // [2026.10.18 탭연결 1번] 상담 사건은 일부러 폴더를 만들지 않는다 — 막다른 오류 대신 할 일을 알려주고, 화면은 noFolder를 보고 업무유형 묻기를 띄운다
+  if (!folderId) return { error: '이 사건은 아직 드라이브 폴더가 없습니다(상담 사건은 폴더를 만들지 않습니다) — 업무유형을 자문·신고 등으로 정하면 폴더가 생깁니다.', noFolder: true };
   try {
     const caseFolder = DriveApp.getFolderById(folderId);
     const internalFolder = my_getOrCreateSubfolder_(caseFolder, WORK_SUBFOLDER_INTERNAL_REPORT);
