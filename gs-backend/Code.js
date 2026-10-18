@@ -18670,7 +18670,7 @@ function client_listFilesRecursive_(folder, depth, maxFiles, out) {
   const subfolders = folder.getFolders();
   while (subfolders.hasNext() && out.length < maxFiles) {
     const sf = subfolders.next();
-    if (caseIsFiledReturnFolder_(sf.getName())) continue; // 이미 낸 신고서 보관 폴더 — 읽지 않음(caseIsFiledReturnFolder_)
+    if (caseIsFiledReturnFolder_(sf.getName()) || tcIsSubmitDir_(sf.getName())) continue; // 이미 낸 신고서 보관 폴더 — 읽지 않음(caseIsFiledReturnFolder_) · [2026.10.19] _신고제출 사본도(3번 판정)
     client_listFilesRecursive_(sf, depth + 1, maxFiles, out);
   }
 }
@@ -22769,8 +22769,10 @@ const WORK_SUBFOLDER_INTERNAL_REPORT = '보고서_내부';
 //  · 이름에 꺾쇠(<>)는 넣지 않는다 — J: 드라이브(구글 드라이브 PC 동기화)는 윈도 이름 규칙이라 < > 를 못 쓴다.
 //  · 신고제출 = 신고 사건(업무유형 '신고')만, 확보자료 = 폴더가 있는 모든 사건. 사건 폴더가 처음 생길 때·업무유형이 신고로 바뀔 때 만든다.
 //    이미 있는 사건 폴더에는 일괄로 만들지 않는다 — 설정 🛠 「📂 신고제출·확보자료 폴더 점검」(미리 보기 → 고른 것만 만들기).
-//  · 둘 다 사건처리 입력이 아니다(caseIsFilingCopyFolder_·caseIsSecuredFolder_ 주석). 3번(신고제출 묶음)도 이 상수를 쓴다.
-const WORK_SUBFOLDER_FILING_ = '신고제출';
+//  · 입력 규칙은 3번 판정 함수 하나로(tcIsSubmitDir_ — _신고제출만 뺌, 밑줄 없는 지난 사건의 "신고제출"은 입력 / tcIsOrigPhotoDir_·tcPdfConvDropIn_ —
+//    PDF로 바뀐 원본 사진만 뺌). 확보자료는 데이터 확보 대상 — 입력이다(세무사님 "확보자료는 제외하면 안된다"). 3번(신고제출 묶음)도 이 상수를 쓴다.
+// [2026.10.19 세무사님] "<신고제출>폴더도 <_신고제출>로 변경해야 하겠구나" — 밑줄 하나 + 신고제출(꺾쇠 없음). 확보자료는 말씀 없어 그대로.
+const WORK_SUBFOLDER_FILING_ = '_신고제출';
 const WORK_SUBFOLDER_SECURED_ = '확보자료';
 function work_isFilingUpType_(upType) { return String(upType || '').trim() === '신고'; }
 // 사건 폴더 안 표준 하위폴더(이미 있으면 그대로 — 새로 만든 이름만 돌려줌)
@@ -28374,13 +28376,6 @@ function caseProcHasFiled_(c) {
   return false;
 }
 function caseIsFiledReturnFolder_(name) { return /^\s*양도\s*코리아\s*$/.test(String(name || '')); }
-// [2026.10.19] 사건 폴더의 표준 하위폴더 두 개(WORK_SUBFOLDER_FILING_·WORK_SUBFOLDER_SECURED_) — 위 양도코리아와 섞지 않는다(그 판정은
-//  "기신고서 있는 사건" 신호(caseProcHasFiled_)·AI 폴더 목록 숨기기에도 쓰여, 섞으면 모든 신고 사건이 이미 신고한 사건으로 보이고 폴더가 화면에서 사라진다).
-//  · 신고제출 = 홈택스 첨부용 사본 → 사건처리 입력에서 뺀다. 경정·수정·불복(업무유형·사건명)은 기신고서가 입력이라 읽는다(caseProcFilingCopyIsInput_).
-//  · 확보자료 = 시스템이 조회해 남긴 공시가격·매매사례·건축물대장 PDF(cpSecuredFlush_) → 이미 값을 아는 자료라 사건처리·일괄 글자인식에서 항상 뺀다.
-function caseIsFilingCopyFolder_(name) { return /^\s*신고\s*제출\s*$/.test(String(name || '')); }
-function caseIsSecuredFolder_(name) { return /^\s*확보\s*자료\s*$/.test(String(name || '')); }
-function caseProcFilingCopyIsInput_(c) { return !!c && CASEPROC_AMEND_RE_.test(String(c.업무유형 || '') + ' ' + String(c.사건명 || '')); }
 function caseIsAnswerKeyFile_(name) { return /^_정답지/.test(String(name || '')); }
 function caseIsAnswerKeyFileId_(fileId) { if (!fileId) return false; try { return caseIsAnswerKeyFile_(DriveApp.getFileById(String(fileId)).getName()); } catch (e) { return false; } }
 function caseFileInFiledFolder_(fileId) {
@@ -30168,7 +30163,7 @@ function caseProcDocSignals_(c) {
     const subs = folder.getFolders();
     while (subs.hasNext()) {
       const sf = subs.next(), sn = sf.getName();
-      if (caseIsFiledReturnFolder_(sn) || caseProcRefDirName_(sn) || /보\s*고\s*서\s*_?\s*내\s*부/.test(sn)) continue;
+      if (caseIsFiledReturnFolder_(sn) || tcIsSubmitDir_(sn) || caseProcRefDirName_(sn) || /보\s*고\s*서\s*_?\s*내\s*부/.test(sn)) continue; // [2026.10.19] _신고제출 사본의 신고서를 "이미 신고함" 신호로 보지 않게(3번 판정)
       look(sn, rel, true, null);
       walk(sf, depth + 1, rel ? rel + '/' + sn : sn);
     }
@@ -44537,7 +44532,8 @@ function caseProcScanSaved_(c, body) {
 //  확보자료를 넣도록 하자." — 아래 조회(cpOfficialPrice_·cpRealCases_·cpBuilding_)가 값을 얻으면 이 실행의 목록(CP_SECURED_LOG_)에 적고,
 //  사건처리 입구(caseProcTimed_) 끝에서 cpSecuredFlush_가 그 사건 폴더/확보자료/에 PDF로 남긴다(출처·조회일·조건을 맨 위 표에).
 //  · 같은 대상·같은 기준(연도·기준일)은 같은 이름 → 결과가 바뀌었을 때만 새로 만들고 옛 파일은 휴지통(조회 일시는 파일 안에). 기준이 다르면 따로 남는다.
-//  · 확보자료 폴더는 사건처리 입력·일괄 글자인식에서 뺀다(caseIsSecuredFolder_) — 시스템이 이미 값을 아는 자료라 두 번 세지 않게.
+//  · 확보자료 폴더는 사건처리 입력이다(데이터 확보 대상, 세무사님 2026.10.19). 같은 값을 두 번 세지 않게 PDF에 「근거」(시스템 조회 값의 출처 글 src와
+//    같은 글)와 「근거키」(NX확보|종류|지번 고유번호|…|기준)를 적는다 — 서류로 읽은 값과 시스템 조회 값을 같은 근거로 묶는 쪽(교차검증)이 이 글을 쓴다.
 //  · 한 번에 최대 6개, 실패해도 사건처리 결과는 그대로.
 var CP_SECURED_LOG_ = [];
 function cpSecuredNote_(rec) { try { if (rec && rec.name) CP_SECURED_LOG_.push(rec); } catch (e) {} return rec; }
@@ -44554,19 +44550,19 @@ function cpSecuredOfficial_(geo, kind, year, out) {
     cpSecuredNote_({
       name: cpSecuredFileName_(label + '_' + cpSecuredShortLoc_(geo) + '_' + (out.year || year) + '년'), kind: label,
       target: String(geo.jibun || '') + (geo.bdNm ? ' (' + geo.bdNm + ')' : '') + (geo.ho ? ' ' + (geo.dong ? geo.dong + '동 ' : '') + geo.ho + '호' : ''),
-      cond: '기준연도 ' + (out.year || year) + '년 공시 · 지번 고유번호(PNU) ' + geo.pnu,
+      cond: '기준연도 ' + (out.year || year) + '년 공시 · 지번 고유번호(PNU) ' + geo.pnu, basis: out.src || '', key: ['NX확보', label, geo.pnu, geo.dong || '', geo.ho || '', out.year || year].join('|'),
       site: '브이월드(국토교통부 공간정보 오픈플랫폼) 공시가격 조회 — 세액계산기 공시가격 자동조회와 같은 기능',
       head: ['기준연도', label + (kind === 'land' ? '(원/㎡)' : '(원)')], rows: [[String(out.year || year), Number(out.v).toLocaleString('ko-KR')]]
     });
   }
   return out;
 }
-function cpSecuredReal_(loc, geo, tname, base, before, after, area, cases) {
+function cpSecuredReal_(loc, geo, tname, base, before, after, area, cases, src) {
   if (!cases || !cases.length) return;
   cpSecuredNote_({
     name: cpSecuredFileName_('매매사례_' + cpSecuredShortLoc_(geo, loc) + '_기준일' + base), kind: '매매사례(' + tname + ' 실거래가)',
     target: String((geo && geo.jibun) || loc || '') + (geo && geo.bdNm ? ' (' + geo.bdNm + ')' : ''),
-    cond: '평가기준일 ' + base + ' · 기간 ' + before + '개월 전 ~ ' + after + '개월 후 · 같은 단지(읍면동·지번)' + (area ? ' · 전용면적 ' + area + '㎡ ±5%' : ''),
+    cond: '평가기준일 ' + base + ' · 기간 ' + before + '개월 전 ~ ' + after + '개월 후 · 같은 단지(읍면동·지번)' + (area ? ' · 전용면적 ' + area + '㎡ ±5%' : ''), basis: src || '', key: ['NX확보', '매매사례', (geo && geo.pnu) || '', base, before, after, area || ''].join('|'),
     site: '국토교통부 실거래가 공개시스템(공공데이터포털 ' + tname + ' 매매 실거래가 API) — 세액계산기 매매사례 조회와 같은 기능',
     head: ['계약일', '단지명', '전용면적(㎡)', '층', '거래금액(원)'],
     rows: cases.slice(0, 30).map(function (q) { return [q.date, q.name || '', String(q.area), q.floor ? String(q.floor) : '', Number(q.v).toLocaleString('ko-KR')]; })
@@ -44577,7 +44573,7 @@ function cpSecuredBuilding_(loc, geo, out) {
     cpSecuredNote_({
       name: cpSecuredFileName_('건축물대장_' + cpSecuredShortLoc_(geo, loc)), kind: '건축물대장(표제부' + (out.area ? '·전유부' : '') + ')',
       target: String(geo.jibun || loc || '') + (geo.bdNm ? ' (' + geo.bdNm + ')' : '') + (geo.ho ? ' ' + (geo.dong ? geo.dong + '동 ' : '') + geo.ho + '호' : ''),
-      cond: '지번 고유번호(PNU) ' + geo.pnu, site: '건축HUB 건축물대장 정보 서비스(국토교통부) — 세액계산기 건축물대장 조회와 같은 기능',
+      cond: '지번 고유번호(PNU) ' + geo.pnu, basis: out.src || '', key: ['NX확보', '건축물대장', geo.pnu, geo.dong || '', geo.ho || ''].join('|'), site: '건축HUB 건축물대장 정보 서비스(국토교통부) — 세액계산기 건축물대장 조회와 같은 기능',
       head: ['항목', '값'], rows: [['주용도', out.purpose || ''], ['주구조', out.structure || ''], ['사용승인일', out.approval || ''], ['전유면적(㎡)', out.area ? String(out.area) : '(호 없음 또는 못 찾음)']]
     });
   }
@@ -44615,7 +44611,8 @@ function cpSecuredFlush_(caseId) {
           '<h2>' + e(r.kind) + '</h2>' +
           '<table><tr><th style="width:22%">대상</th><td>' + e(r.target) + '</td></tr><tr><th>조회 조건</th><td>' + e(r.cond) + '</td></tr>' +
           '<tr><th>조회 사이트</th><td>' + e(r.site) + '</td></tr><tr><th>조회 일시</th><td>' + e(now) + '</td></tr>' +
-          '<tr><th>사건</th><td>' + e(found.row[col.사건명]) + '</td></tr><tr><th>만든 곳</th><td>job 사건처리 자동 조회(사람이 입력한 값 아님) — 이 폴더는 사건처리 입력에서 다시 읽지 않습니다</td></tr></table>' +
+          '<tr><th>사건</th><td>' + e(found.row[col.사건명]) + '</td></tr><tr><th>만든 곳</th><td>job 사건처리 자동 조회(사람이 입력한 값 아님)</td></tr>' +
+          '<tr><th>근거</th><td>' + e(r.basis || '') + '</td></tr><tr><th>근거키</th><td>' + e(r.key || '') + '</td></tr></table>' +
           '<table><tr>' + r.head.map(function (h) { return '<th>' + e(h) + '</th>'; }).join('') + '</tr>' +
           r.rows.map(function (row) { return '<tr>' + row.map(function (v) { return '<td>' + e(v) + '</td>'; }).join('') + '</tr>'; }).join('') + '</table></body></html>';
         const pdf = Utilities.newBlob(html, 'text/html', 'secured.html').getAs('application/pdf').setName(name);
@@ -44873,7 +44870,7 @@ function cpRealCases_(loc, area, base, before, after) {
   cases.sort(function (x, y) { return Math.abs(new Date(x.date) - b) - Math.abs(new Date(y.date) - b); });
   const tname = { apt_detail: '아파트', row_house: '연립다세대', officetel: '오피스텔' }[type];
   if (!cases.length) return { error: '국토교통부 ' + tname + ' 실거래가에 평가기간(' + before + '개월 전~' + after + '개월 후) 안 같은 단지' + (area ? '·비슷한 면적(±5%)' : '') + ' 거래가 없음' + (errs.length ? ' / 조회 실패 달: ' + errs.slice(0, 3).join(', ') : '') };
-  cpSecuredReal_(loc, geo, tname, base, before, after, area, cases); // 확보자료 기록(찾은 거래 전부, 최대 30)
+  cpSecuredReal_(loc, geo, tname, base, before, after, area, cases, '국토교통부 ' + tname + ' 실거래가 조회(' + umd + ' ' + jibun + ')'); // 확보자료 기록(찾은 거래 전부, 최대 30) — src는 아래 돌려주는 값과 같은 글
   return { cases: cases.slice(0, 5), src: '국토교통부 ' + tname + ' 실거래가 조회(' + umd + ' ' + jibun + ')' };
 }
 

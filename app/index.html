@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-18 15:29 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-18 15:30 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -44798,8 +44798,8 @@ function goToReportWriter_(caseId, opts){
           <div class="settings-tool-desc">사건 폴더를 열어봤는데 현금영수증 파일 하나뿐이거나 아무 파일도 없으면(=서류 작업 없이 상담만 하고 끝난 경우), 영수증은 상담용 공용 폴더로 옮기고 사건 종류를 "상담"으로 바꿉니다. 원래 폴더는 완전삭제가 아니라 휴지통으로만 보냅니다.</div>
         </div>
         <div class="settings-tool-item">
-          <button type="button" id="stBtnStdSubfolders" class="ghost-btn">📂 신고제출·확보자료 폴더 점검</button>
-          <div class="settings-tool-desc">[2026.10.19] 이제 새 사건 폴더에는 「확보자료」(모든 사건)와 「신고제출」(신고 사건)이 자동으로 생깁니다. 그 전에 만든 사건 폴더 중 이 폴더가 없는 사건을 먼저 보여주고, 고른 사건에만 빈 폴더를 만듭니다(다른 파일·폴더는 건드리지 않음).</div>
+          <button type="button" id="stBtnStdSubfolders" class="ghost-btn">📂 _신고제출·확보자료 폴더 점검</button>
+          <div class="settings-tool-desc">[2026.10.19] 이제 새 사건 폴더에는 「확보자료」(모든 사건)와 「_신고제출」(신고 사건)이 자동으로 생깁니다. 그 전에 만든 사건 폴더 중 이 폴더가 없는 사건을 먼저 보여주고, 고른 사건에만 빈 폴더를 만듭니다(다른 파일·폴더는 건드리지 않음).</div>
         </div>
         <div class="settings-tool-item">
           <button type="button" id="stBtnBackfillPartyClients" class="ghost-btn">👥 관계자 고객등록 일괄 반영</button>
@@ -44976,13 +44976,13 @@ function goToReportWriter_(caseId, opts){
     wire('stBtnDocsFolderNameAudit', function(){ docsOpenFolderNameAuditModal_(); });
     wire('stBtnDocsUnlinkedFolderAudit', function(){ docsOpenUnlinkedFolderAuditModal_(); });
   }
-  // [2026.10.19] 📂 신고제출·확보자료 폴더 점검 — 미리 보기(없는 사건 목록) → 고른 것만 [만들기]. 이미 있는 사건 폴더에 일괄로 만들지 않기 위한 도구.
+  // [2026.10.19] 📂 _신고제출·확보자료 폴더 점검 — 미리 보기(없는 사건 목록) → 고른 것만 [만들기]. 이미 있는 사건 폴더에 일괄로 만들지 않기 위한 도구.
   function settingsOpenStdSubfoldersModal_(){
     var overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     overlay.style.display = 'flex';
     overlay.innerHTML = '<div class="modal-panel" style="width:min(720px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
-      '<div class="modal-head"><span>📂 신고제출·확보자료 폴더 점검</span><span class="modal-close" data-x="1">✕</span></div>' +
+      '<div class="modal-head"><span>📂 _신고제출·확보자료 폴더 점검</span><span class="modal-close" data-x="1">✕</span></div>' +
       '<div class="modal-body" style="overflow-y:auto;" id="stSfBody"><div class="spinner">사건 폴더를 확인하는 중… (사건이 많으면 1~4분)</div></div></div>';
     document.body.appendChild(overlay);
     var close = function(){ overlay.remove(); };
