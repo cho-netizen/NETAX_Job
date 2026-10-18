@@ -29548,6 +29548,7 @@ function cpfUnitAmounts_(text) {
     for (;;) {
       tok.lastIndex = i; const q = tok.exec(t); if (!q) break;
       const isNum = !!q[1], n = isNum ? (/\d/.test(q[1]) ? Number(q[1].replace(/,/g, '')) : CPF_HAN_DIGIT_[q[1]]) : 0;
+      if (isNum && n >= 1e7 && (q[2] === '만' || q[2] === '억')) { nums = 0; break; } /* "450,000,000 만원" — 이미 원 단위로 다 적힌 숫자(숫자 금액이 그대로 읽음) */
       if (isNum) { nums++; if (/\d/.test(q[1])) digit = true; }
       if (SMALL[q[2]]) sec += (isNum ? n : 1) * SMALL[q[2]];
       else { sec += isNum ? n : 0; if (!sec) sec = 1; total += sec * BIG[q[2]]; sec = 0; lastBig = q[2]; }
@@ -29775,8 +29776,8 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
     add('기타:' + label(m.index), ('0' + mo).slice(-2) + '-' + ('0' + dd).slice(-2) + '(연도 없음)', m[0], m.index, {}, { note: '연도 없이 월·일만' });
   }
   // 금액(세 자리 쉼표, 1,000 이상) — keys.amount. [2026.10.19 1번 밤작업 ②] 뒤에 단위 낱말(만·억·천·백)이 붙은 숫자는 여기서 빼고 아래 단위 금액으로("6,548만원" → 65,480,000)
-  re = /(?<![\d\-])(-?\d{1,3}(?:,\d{3})+)(?![\d,]*\.\d)(?!\s*(?:㎡|m2|제곱|억|만|천|백|십))/g;
-  while ((m = re.exec(t))) { const v = Number(m[1].replace(/,/g, '')); if (Math.abs(v) < 1000) continue; const lb = label(m.index), lk = cpfLabelKind_(lb); add(lk || '기타:' + lb, v, m[0], m.index, { amount: v }, lk ? { note: '앞 낱말 「' + lb + '」로 정한 종류' } : null); }
+  re = /(?<![\d\-])(-?\d{1,3}(?:,\d{3})+)(?![\d,]*\.\d)(?!\s*(?:㎡|m2|제곱))/g;
+  while ((m = re.exec(t))) { const v = Number(m[1].replace(/,/g, '')); if (Math.abs(v) < 1000) continue; if (Math.abs(v) < 1e7 && /^\s*(?:억|만|천|백|십)/.test(t.slice(re.lastIndex, re.lastIndex + 3))) continue; /* 단위 낱말 앞 작은 숫자는 아래 단위 금액이 읽음 */ const lb = label(m.index), lk = cpfLabelKind_(lb); add(lk || '기타:' + lb, v, m[0], m.index, { amount: v }, lk ? { note: '앞 낱말 「' + lb + '」로 정한 종류' } : null); }
   // [2026.10.19 1번 밤작업 ②] 단위 낱말 금액("6,548만원"·"440백만원"·"5억2천5백만원"·"이억칠천만원정") — 한글 수만으로 된 것은 예전처럼 "기타:한글금액"(숫자 금액과 맞대는 재료)
   cpfUnitAmounts_(t).forEach(function (u) { const lb = label(u.at), lk = u.han ? '' : cpfLabelKind_(lb); add(u.han ? '기타:한글금액' : (lk || '기타:' + lb), u.value, u.raw, u.at, { amount: u.value }, (u.note || lk) ? { note: [u.note, lk ? '앞 낱말 「' + lb + '」로 정한 종류' : ''].filter(String).join(' · ') } : null); });
   // [2026.10.19 1번 밤작업 ②] 비율(%) — 세율·지분율·공제율·이자율 등(앞 낱말이 칸 이름)
@@ -29951,7 +29952,8 @@ function cpfRegHeads_(text, base) {
   if (!/등\s*기\s*사\s*항|등\s*기\s*부|표\s*제\s*부|갑\s*구|을\s*구/.test(t)) return out;
   const re = /\[\s*(토\s*지|건\s*물|집\s*합\s*건\s*물)\s*\]\s*([가-힣][^\n\[\]]{5,90})/g; let m, k = 0;
   while ((m = re.exec(t))) {
-    let addr = m[2].replace(/\s*(고유번호|\d{4}-\d{4}-\d{6}|발행번호|열람일시|\(\s*\d+\s*\/\s*\d+\s*\)).*$/, '').replace(/\s+/g, ' ').trim();
+    let addr = m[2].replace(/\s*(고유번호|\d{4}-\d{4}-\d{6}|발행번호|열람일시|목\s*록\s*번\s*호|순\s*위|접\s*수|\(\s*\d+\s*\/\s*\d+\s*\)|\s\d{1,3}\s+(?:19|20)\d{2}\s*년|(?:19|20)\d{2}\s*년\s*\d{1,2}\s*월).*$/, '').replace(/\s+/g, ' ').trim();
+    { const hm = /^(.*?\d{1,5}(?:-\d{1,5})?(?:[^\d\n]{0,40}?제?\s*\d{1,4}\s*동\s*(?:제?\s*\d{1,3}\s*층\s*)?제?\s*\d{1,5}\s*호)?)(?:\s+\d{1,3})?\s*$/.exec(addr); if (hm) addr = hm[1].trim(); } /* 지번(동호) 뒤 순번 숫자 꼬리 */
     const ak = cpfAssetKey_(addr); if (!ak || seen[ak]) continue; seen[ak] = 1;
     const kind = m[1].replace(/\s+/g, ''), keys = { asset: ak }; const af = cpfAssetFullKey_(addr); if (af) keys.assetFull = af;
     const um = /(\d{1,4})\s*동\s*(?:제?\s*\d{1,3}\s*층\s*)?제?\s*(\d{1,5})\s*호/.exec(addr); if (um) keys.unit = um[1] + '동' + um[2] + '호';
