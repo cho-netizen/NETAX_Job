@@ -1043,6 +1043,11 @@
       <h3>📅 대기중인 상담신청</h3>
       <div id="dashBookings"><div class="spinner">불러오는 중…</div></div>
     </div>
+    <!-- [2026.10.18 탭연결 14번] 고객이 고객창구(my.netax.kr)로 자료를 올려도 알림이 없어, 사건마다 증빙확보·작업관리를 열어 봐야 했다 -->
+    <div class="card">
+      <h3>📤 고객이 올린 자료(확인 대기)</h3>
+      <div id="dashUploads"><div class="spinner">불러오는 중…</div></div>
+    </div>
     <div class="card">
       <h3>💰 최근 수금내역
         <button type="button" id="dashScanReceiptsBtn" title="사건 폴더의 현금영수증 파일을 지금 확인해서 자동으로 기록합니다" style="float:right; font-size:11px; padding:2px 8px; border-radius:5px; border:1px solid var(--line); background:#f3f4f7; cursor:pointer;">🧾 지금 확인</button>
@@ -1089,6 +1094,7 @@
     dashboardLoaded = true;
     loadDashDeadlines();
     loadDashBookings();
+    loadDashUploads_();
     loadDashPayments();
     loadDashCalendar_();
     loadDashEmails_();
@@ -1197,6 +1203,51 @@
     var caseId = tr.getAttribute('data-pay-case');
     if (caseId && typeof goToCaseHandling_ === 'function'){ goToCaseHandling_(caseId); return; }
     if (typeof goToView_ === 'function') goToView_('collections');
+  });
+
+  // [2026.10.18 탭연결 14번] 고객창구 제출 중 아직 확인(확보완료) 안 한 것 — 체크리스트 항목은 증빙확보 요청자료가 '확보됨'이
+  // 아닌 것만, 체크리스트 밖 "기타 제출"은 최근 14일 것만. 줄을 누르면 그 사건 증빙확보로 가서 확인 후 [확보완료]를 누른다.
+  function loadDashUploads_(){
+    var box = document.getElementById('dashUploads');
+    Promise.all([callGas('work_get_cases', {}), callGas('admin_list', { module: 'my' })]).then(function(rs){
+      var cases = (rs[0] && rs[0].cases) || [];
+      var byReport = {};
+      ((rs[1] && rs[1].cases) || []).forEach(function(mc){ byReport[mc.report_id] = mc; });
+      var since = Date.now() - 14 * 86400000;
+      var rows = [];
+      cases.forEach(function(c){
+        if (!c.my_report_id || c.상태 === '완료') return;
+        var mc = byReport[c.my_report_id];
+        if (!mc) return;
+        var st = mc.submission_status || {};
+        var gotLabels = {};
+        (c.증빙목록 || []).forEach(function(e){ if (e.status === '확보됨') gotLabels[e.label || ''] = 1; });
+        var items = [], latest = '';
+        Object.keys(st).forEach(function(k){
+          if (k === '_extra') return;
+          var s = st[k];
+          if (!s || !s.submitted || gotLabels[k]) return;
+          items.push(k);
+          if (String(s.uploadedAt || '') > latest) latest = String(s.uploadedAt || '');
+        });
+        var extra = (Array.isArray(st._extra) ? st._extra : []).filter(function(x){ return x && x.uploadedAt && new Date(x.uploadedAt).getTime() >= since; });
+        extra.forEach(function(x){ if (String(x.uploadedAt) > latest) latest = String(x.uploadedAt); });
+        if (!items.length && !extra.length) return;
+        rows.push({ c: c, items: items, extra: extra.length, latest: latest });
+      });
+      if (!rows.length){ box.innerHTML = '<div class="empty-row">확인할 고객 제출 자료가 없습니다.</div>'; return; }
+      rows.sort(function(a, b){ return b.latest.localeCompare(a.latest); });
+      box.innerHTML = '<table class="list-table"><tr><th>올린 날</th><th>사건명</th><th>자료</th></tr>' + rows.map(function(r){
+        var what = r.items.slice(0, 3).join(', ') + (r.items.length > 3 ? ' 외 ' + (r.items.length - 3) + '건' : '') + (r.extra ? (r.items.length ? ' · ' : '') + '기타 제출 ' + r.extra + '개' : '');
+        return '<tr data-up-case="' + esc(r.c.id) + '" style="cursor:pointer;" title="눌러서 이 사건 증빙확보에서 확인"><td style="white-space:nowrap;">' + esc(String(r.latest).slice(0, 10)) + '</td><td>' + esc(r.c.사건명 || '') + '</td><td>' + esc(what) + '</td></tr>';
+      }).join('') + '</table>';
+    }).catch(function(e){ box.innerHTML = '<div class="empty-row">오류: ' + esc(e && e.message ? e.message : e) + '</div>'; });
+  }
+  document.getElementById('dashUploads').addEventListener('click', function(e){
+    var tr = e.target.closest('tr[data-up-case]');
+    if (!tr) return;
+    var caseId = tr.getAttribute('data-up-case');
+    if (typeof nxCaseJump_ === 'function') nxCaseJump_('docs', caseId);
   });
 
   function loadDashBookings(){
