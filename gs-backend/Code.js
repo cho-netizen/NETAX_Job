@@ -40466,6 +40466,14 @@ function jmHistory_(pages) {
     // 표 끝 — "이하 여백" 또는 병역사항 칸(입영일 등 날짜가 주소 이력에 섞이지 않게)
     var en = body.search(/이\s*하\s*\n?\s*여\s*백|병\s*역\s*\n?\s*사\s*항|역\s*종\s*\[|입영\s*\(/);
     var lines = body.slice(st, en > st ? en : body.length).split('\n');
+    // [2026.10.19 3번 읽기 — 시험 묶음 종류별 정확도 "초본 주소이력 표 줄 50%"] 스캔 글자인식이 오른쪽 칸(발생일/신고일·변동사유)을 표 끝 "이하 여백" 뒤로 미뤄 읽으면
+    //  끝 쪽 행들의 날짜·사유가 통째로 빠졌다(김동일 등본 2쪽: 4~6번 도로명주소·전입·전입이 "이하 여백" 뒤에). 표 끝 표시와 안내문("※ 1.") 사이가 날짜·사유뿐(주소 줄 없음)이면 표에 붙인다
+    if (en > st && /이\s*하\s*\n?\s*여\s*백/.test(body.slice(en, en + 12))) {
+      var mk = /이\s*하\s*\n?\s*여\s*백\s*(?:\n?\s*=+)?/.exec(body.slice(en)), from = en + (mk ? mk[0].length : 0);
+      var fn = body.slice(from).search(/※\s*1\s*\.|\n\s*※/), tailT = body.slice(from, fn >= 0 ? from + fn : body.length);
+      var tl = tailT.split('\n').map(function (z) { return z.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
+      if (tl.length && tl.length <= 40 && jmDateList_(tailT).length && !tl.some(function (z) { return JM_SIDO_RE_.test(z.replace(/^\d{1,3}\s+/, '') + ' ') && /^\S+\s+\S+\s+\S+/.test(z); })) lines = lines.concat(tl);
+    }
     var byNo = null; try { byNo = jmHistoryByRowNo_(pg, lines); } catch (e) { byNo = null; }
     if (byNo && byNo.length) { if (byNo.some(function (x) { return x.날짜확인필요 || x.짝확인필요; })) unsure++; byNo.forEach(function (x) { rows.push(x); }); return; }
     var addrs = [], reasons = [], dates = [];
@@ -40628,6 +40636,15 @@ function jmParse_(text) {
     else if (r.세대원.some(function (x) { return !x.전입일; })) r.경고.push('전입일을 읽지 못한 세대원이 있음 — 원문 확인');
     // 세대 주소 이력(과거 주소변동 포함으로 뗀 등본) — 세대원 표 앞까지만 잘라 초본과 같은 방식으로 읽는다
     // 세대구성 사유·일자 칸("전입 2015-11-04")은 주소 이력 행이 아니므로 빼고, 세대원 표(첫 주민번호 앞 머리줄)부터는 자른다
+    // 머리 칸 "세대 구성 사유 및 일자"는 쪽마다 같다 — 쪽마다 칸 이름 "발생일" 앞 날짜 모음의 교집합이 하나면 그것이 머리 칸 날짜(김동일 등본: 1쪽 {2020-06-19, 2008-12-24} ∩ 2쪽 {2008-12-24})
+    var jmHeadSets = jmPages_(t).map(function (pg) {
+      var hm0 = /세대\s*구성\s*사유\s*및\s*일자\s*\n?\s*[가-힣]{0,10}\s*\n?\s*((?:19|20)\d{2}-\d{2}-\d{2})?/.exec(pg.text); if (!hm0) return null;
+      if (hm0[1]) return [hm0[1]];
+      var rest = pg.text.slice(hm0.index + hm0[0].length), h0 = rest.search(/발\s*생\s*일/);
+      return h0 > 0 ? (rest.slice(0, h0).match(/(?:19|20)\d{2}-\d{2}-\d{2}/g) || []) : null;
+    }).filter(function (s) { return s && s.length; });
+    var jmHeadDate = '';
+    if (jmHeadSets.length >= 2) { var inter = jmHeadSets[0].filter(function (d) { return jmHeadSets.every(function (s) { return s.indexOf(d) !== -1; }); }).filter(function (d, i, a) { return a.indexOf(d) === i; }); if (inter.length === 1) jmHeadDate = inter[0]; }
     var dp = jmPages_(t).map(function (pg) {
       var x = pg.text, hm = /세대\s*구성\s*사유\s*및\s*일자\s*\n?\s*[가-힣]{0,10}\s*\n?\s*((?:19|20)\d{2}-\d{2}-\d{2})?/.exec(x);
       if (hm) {
@@ -40636,7 +40653,7 @@ function jmParse_(text) {
         //  1번 전입 행 날짜로 잡혀 거주 시작이 2013 → 2015로) — 칸 이름 "발생일/신고일" 앞에 처음 나오는 날짜 하나가 머리 칸 날짜. 발생일 > 신고일 자체는 원본에도 있음(김창호 16번·방영교 3번)
         //  그 사이 날짜가 딱 하나일 때만 — 둘 이상이면(김동일 등본: 현주소 전입 2020-06-19와 세대구성 2008-12-24가 같이 앞에 옴) 어느 것이 머리 칸 것인지 몰라 그대로(확인필요)
         var hd = x.search(/발\s*생\s*일/), seg0 = !hm[1] && hd > hm.index ? x.slice(hm.index, hd) : '', dl = seg0.match(/(?:19|20)\d{2}-\d{2}-\d{2}/g) || [];
-        var dm = dl.length === 1 ? /(?:19|20)\d{2}-\d{2}-\d{2}/.exec(seg0) : null;
+        var dm = dl.length === 1 ? /(?:19|20)\d{2}-\d{2}-\d{2}/.exec(seg0) : (dl.length > 1 && jmHeadDate && dl.indexOf(jmHeadDate) !== -1 ? new RegExp(jmHeadDate).exec(seg0) : null);
         if (dm) x = x.slice(0, hm.index + dm.index) + ' ' + x.slice(hm.index + dm.index + dm[0].length);
       }
       var k = x.search(JM_MEMBER_HEAD_RE_), f = x.search(/\d{6}\s*-\s*[\d*]{7}/);
@@ -40644,6 +40661,16 @@ function jmParse_(text) {
       return { n: pg.n, text: k > 0 ? x.slice(0, k) : x };
     });
     var dh = jmHistory_(dp);
+    // [2026.10.19 3번 읽기] 등본 1쪽 "현주소" 칸(번호 없는 행)은 주소변동 표의 마지막 행과 같은 일 — 번호 행 중 같은 사유·같은 날짜가 있으면 빼고, 없으면 맨 뒤로
+    //  (김동일 등본: 1쪽 현주소 전입 2020-06-19가 맨 앞에 놓여 거주기간이 "2020-06-19 ~ 2008-12-24"로 거꾸로 생겼다)
+    if (dh.rows.some(function (x) { return x.번호; })) {
+      var cur0 = dh.rows.filter(function (x) { return !x.번호 && x.쪽 === (dp[0] && dp[0].n); }); // 날짜 없는 현주소 행도 같이(차례 그대로)
+      cur0.forEach(function (x) {
+        var dup = (x.발생일 || x.신고일) && dh.rows.some(function (y) { return y !== x && y.번호 && y.사유 === x.사유 && (y.발생일 || y.신고일) === (x.발생일 || x.신고일); });
+        dh.rows.splice(dh.rows.indexOf(x), 1);
+        if (!dup) dh.rows.push(x);
+      });
+    }
     if (dh.rows.length > 1) {
       r.주소이력 = dh.rows;
       r.거주기간 = jmResidences_(dh.rows, r.발급일);
