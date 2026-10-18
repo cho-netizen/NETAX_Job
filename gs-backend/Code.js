@@ -29971,6 +29971,13 @@ function caseProcMemoTexts_(c) {
     let t = null;
     try { t = tc_docText_(f); } catch (e) { out.unread.push(n + '(읽기 실패)'); return; }
     if (t === null || !String(t).trim()) { out.unread.push(n + '(글자 없음·형식)'); return; }
+    // [2026.10.18 3번 세션 — 21건 비교에서 찾음] 한글·워드로 된 세무 서식("[별지 제11호서식] … 연부연납허가신청서")은 사무소가 쓰는 신고·신청 초안이다
+    //  (고객은 신고서를 홈택스 PDF로 준다). 옛 hwp를 이제 읽게 되어 노영환 「_신고서/상속세(증여세) 연부연납 허가신청서.hwp」가 메모로 들어왔다 —
+    //  같은 폴더 PDF는 내용 판정으로 빠지는데 이 hwp는 판정을 안 받았다. 경정·수정·불복 등 기신고서가 입력인 사건은 그대로 읽는다
+    if (/\.(hwpx?|docx?)$/i.test(n) && !caseProcPriorIsInput_(c)) {
+      const hd = String(t).slice(0, 600), hn = hd.replace(/\s+/g, '');
+      if (/\[\s*별\s*지\s*제?\s*\d+\s*호/.test(hd) && /(신고서|신청서|명세서|계산서|납부서)/.test(hn)) { out.skipped.push(n + '(세무 서식 — 사무소가 쓰는 신고·신청 초안, 입력으로 안 씀)'); return; }
+    }
     // [2026.10.17 사무소 계산표·검토표] 우리 사무소가 만든 계산표·검토표(노오섭.xlsx "ㅇ 자본적지출 검토 … ㅇ 양도소득세 계산 … 총부담세액", 박연경 검토메모.md·자산평가)는
     //  고객 증빙·의뢰 메모가 아니라 이전 작업 결과 — 결론·계산이 들어 있어 입력·가설로 읽으면 답을 베낀다. 참고로만 밝힌다.
     { const rk = docIsReferenceText_(t); if (rk) { out.skipped.push(n + '(참고자료 — ' + rk + ': 사건 증빙이 아님)'); return; } } // [2026.10.18 정밀분석 12]
