@@ -25265,6 +25265,16 @@ function tcVisionOcr_(blob) {
   });
   return out;
 }
+// 큰 사진 → 드라이브가 만든 축소본(thumbnailLink, =s3000)을 받아 글자인식. 축소본이 없으면 원래 오류를 낸다
+function tcOcrBigImage_(fileId) {
+  const meta = Drive.Files.get(fileId, { fields: 'thumbnailLink' });
+  const link = meta && meta.thumbnailLink; if (!link) throw new Error('큰 사진 — 축소본 없음');
+  const url = String(link).replace(/=s\d+(-[a-z0-9-]+)?$/i, '') + '=s3000';
+  const res = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) throw new Error('큰 사진 — 축소본 받기 실패 ' + res.getResponseCode());
+  const b = res.getBlob(); b.setName('big.jpg');
+  return tcOcrBlob_(b);
+}
 // [2026.10.18 3번 세션 — 읽기] PDF 쪽마다 따로 읽은 글 — 스캔 PDF는 드라이브 글자인식이 쪽 경계 없이 한 덩어리로 돌려준다
 //  (3쪽 넘는 스캔 PDF 216개 1,569쪽 — 문서정리_연구.md). 서류 나누기·쪽 순서·빈 쪽 찾기·사실의 쪽 번호(src.page)의 바탕.
 //  그림 쪽(넓이 합 30만 점 이상)만 그 쪽 그림을 한 쪽 PDF로 옮겨 글자인식, 글자층 쪽은 false(원래 글에 있음). 기억 ocrpage1_<id>_<수정시각>(JSON
@@ -25808,7 +25818,13 @@ function tc_docText_(f) {
   }
   else if (/^text\/|json|csv|markdown/.test(mt) || /\.(mmd|url|txt|csv|md)$/i.test(fname)) { const b = DriveApp.getFileById(f.id).getBlob(); text = b.getDataAsString('UTF-8'); if (text.indexOf('�') !== -1) text = b.getDataAsString('MS949'); } // 옛 한국어 인코딩 글도
   else if (/pdf|^image\/|officedocument\.wordprocessingml|msword/.test(mt)) {
-    Utilities.sleep(800); text = ocrFileText_(f.id, f.modified ? 'ocrtbl1_' + f.id + '_' + f.modified : '');
+    Utilities.sleep(800);
+    try { text = ocrFileText_(f.id, f.modified ? 'ocrtbl1_' + f.id + '_' + f.modified : ''); }
+    catch (e) {
+      // [2026.10.18 3번 세션] 너무 큰 사진(노오섭 「지선영.jpg」 13MB — "Request Too Large")은 드라이브 축소본(긴 변 3,000점)으로 읽는다. 글자 크기는 충분
+      if (!/^image\//.test(mt) || !/Too Large|too large|크기/.test(String(e && e.message || e))) throw e;
+      text = tcOcrBigImage_(f.id);
+    }
     // [2026.10.18 3번 세션] 글자층 PDF 속 스캔 그림 쪽 보충 — 일괄 안에서만(1분까지, 남은 쪽은 ⚠ 줄로 남기고 일괄 뒷단계가 이어서). 사이드바에서는 하지 않는다
     if (/pdf/.test(mt) && TC_BATCH_READ_) { try { text = tcPdfImgFill_(f.id, text, Date.now() + 60000); } catch (e) {} }
   }
