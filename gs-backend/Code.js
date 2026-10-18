@@ -24589,7 +24589,9 @@ function tcOcrStorePut_(key, text) {
 // =========================================================
 var OCRB_STATE_NAME_ = '_일괄글자인식_상태.json';
 var OCRB_VER_ = 1;
-var OCRB_BUDGET_MS_ = 270000; // 4분 30초 — 이 안에서 끊는다
+// [2026.10.18] 부른 곳에 따라 한 번 예산을 나눈다 — 화면(callGas)은 4분에서 끊으므로(gasbridge PENDING_GIVE_UP) 화면 호출은 2분 30초(서류 하나 여유 45초 → 실제 끝은 3분 안쪽),
+//  시간 트리거(cpOcrBatchTick)는 화면과 상관없어 5분(서버 한도 6분). 예전엔 화면 호출도 4분 30초를 써 첫 호출에서 "서버가 4분 넘게 처리 중"으로 화면 반복이 끊겼다
+var OCRB_BUDGET_MS_ = 150000, OCRB_TRIGGER_BUDGET_MS_ = 300000;
 var OCRB_ITEM_MARGIN_MS_ = 45000; // 서류 하나에 길면 40초 — 남은 시간이 이보다 적으면 새 서류를 시작하지 않는다
 // tc_docText_와 같은 기억 이름(엑셀만 ocrtxt3_) — 기억이 있는지 볼 때 쓴다
 function tcOcrKey_(f) {
@@ -24658,8 +24660,8 @@ function cpOcrBatch_(body) {
   const cache = CacheService.getScriptCache(), FLAG = 'ocrb_running';
   const flag = cache.get(FLAG);
   if (flag) { const st0 = ocrbLoad_(fo); return { ok: true, more: true, busy: true, busyAge: Math.round((Date.now() - Number(flag)) / 1000), sum: st0 && st0.sum, phase: st0 && st0.phase }; }
-  cache.put(FLAG, String(Date.now()), 330); // 서버 한도 6분보다 조금 짧게 — 끊긴 실행의 표시가 오래 막지 않게
-  const started = Date.now();
+  cache.put(FLAG, String(Date.now()), 380); // 서버 한도 6분 + 20초 — 시간 트리거(5분+서류 하나)가 도는 동안 화면 호출과 겹치지 않게, 끊긴 실행의 표시는 오래 막지 않게
+  const started = Date.now(), budget = body._trigger ? OCRB_TRIGGER_BUDGET_MS_ : OCRB_BUDGET_MS_;
   try {
     let st = body.reset ? null : ocrbLoad_(fo);
     if (st && st.ver !== OCRB_VER_) st = null;
@@ -24678,7 +24680,7 @@ function cpOcrBatch_(body) {
     if (st.phase === 'scan') {
       const have = {};
       const it = fo.getFiles(); while (it.hasNext()) have[it.next().getName().replace(/(\s*\(\d+\))?\.txt$/, '')] = 1;
-      while (st.fi < st.folders.length && Date.now() - started < OCRB_BUDGET_MS_ - 30000) {
+      while (st.fi < st.folders.length && Date.now() - started < budget - 30000) {
         const fid = st.folders[st.fi++];
         let folder = null; try { folder = DriveApp.getFolderById(fid); } catch (e) { st.fails.push({ c: fid, n: '', why: '폴더를 열 수 없음' }); continue; }
         const cname = folder.getName(), files = [];
@@ -24712,7 +24714,7 @@ function cpOcrBatch_(body) {
       st.queue = st.queue.slice(0, st.qi).concat(rest); st.sorted = true;
     }
     // 2) 읽기 — 기억에 없는 서류만 tc_docText_로(읽은 글자는 tc_docText_가 기억 폴더에 남긴다). 정리·저장은 하지 않는다
-    while (st.qi < st.queue.length && Date.now() - started < OCRB_BUDGET_MS_ - OCRB_ITEM_MARGIN_MS_) {
+    while (st.qi < st.queue.length && Date.now() - started < budget - OCRB_ITEM_MARGIN_MS_) {
       const q = st.queue[st.qi++], cs = st.cases[q.c] || (st.cases[q.c] = { 파일: 0, 기억있음: 0, 읽을것: 0, 못바꿈: 0, 읽음: 0, 빈글자: 0, 실패: 0, 못바꿈이유: {} });
       const f = { id: q.id, name: q.n, mimeType: q.mt, modified: q.mod };
       ocrbSave_(fo, st); // 시작 전에 저장 — 이 서류에서 실행이 끊기면 다음 번엔 다음 서류부터(같은 서류에서 매번 멈추지 않게)
@@ -24749,7 +24751,7 @@ function ocrbTrigger_(body) {
 function cpOcrBatchTick() { // 시간 트리거가 부르는 이름(끝에 _가 없어야 트리거가 부를 수 있음)
   const fo = tcOcrStoreFolder_(); const st = fo ? ocrbLoad_(fo) : null;
   if (!st || st.phase === 'done') { try { ocrbTrigger_({ on: false }); } catch (e) {} return; }
-  cpOcrBatch_({ cont: true });
+  cpOcrBatch_({ cont: true, _trigger: true });
 }
 // 한글 hwpx(압축된 XML) — 본문 section*.xml의 글자만 꺼낸다(무료, 변환 없음). 옛 hwp(이진 파일)는 못 읽음.
 function tcHwpxText_(fileId) {

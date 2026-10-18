@@ -562,8 +562,9 @@
           ocrbRender_(r, (dryRun ? '🔤 미리 세기 결과' : '🔤 글자인식 일괄 결과') + (r && r.already ? '(지난 결과)' : ''));
         }, function(err){
           var msg = String(err && err.message || err);
-          if (/abort|Failed to fetch|NetworkError|timeout|시간|응답 없음|network|load failed/i.test(msg) && ++netFails <= 30){
-            bugList.textContent = label + ' — 서버 응답이 늦어 연결이 끊겼습니다. 20초 뒤 이어서 다시 부릅니다(' + netFails + '번째)…';
+          // [2026.10.18] "서버가 4분 넘게 처리 중"도 끊긴 것으로 보고 이어 부른다 — 서버는 진행을 기억하고 계속 돌고 있을 수 있다(첫 호출에서 반복이 멈추던 것)
+          if (/abort|Failed to fetch|NetworkError|timeout|시간|응답 없음|network|load failed|4분 넘게|처리 중/i.test(msg) && ++netFails <= 30){
+            bugList.textContent = label + ' — 서버 응답이 늦어 연결이 끊겼습니다(서버는 계속 읽는 중일 수 있음). 20초 뒤 이어서 다시 부릅니다(' + netFails + '번째)…';
             return new Promise(function(res){ setTimeout(res, 20000); }).then(function(){ return step(false); });
           }
           throw err;
