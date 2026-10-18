@@ -669,7 +669,7 @@ const DRIVE_TOOLS = [
       properties: {
         isOffshoreTransaction: { type: 'boolean', description: '국세기본법§47의2·§47의3의 역외거래 부정행위(무신고·과소신고)에 해당하는지 — true면 가산세율이 40%(국내)가 아니라 60%로 적용된다.' },
         giftAmount: { type: 'number', description: '이번 증여재산가액(원, 채무인수분 포함 총액 — 부담부증여면 debtAssumedAmount로 채무액을 따로 알려줄 것). 이 금액을 정할 때는 반드시 다음 순서로 확인하라: ① list_drive_folder/read_drive_file로 지금 사건 폴더 안에 계약서·감정평가서 등 시가를 알 수 있는 문서가 있는지 먼저 찾는다 ② 없으면 lookup_real_estate_price로 유사 매매사례가 있는지 조회한다 ③ 그래도 없으면 부동산은 토지=개별공시지가×면적, 건물=calculate_building_standard_price(보충적평가방법)로 계산하고, 비상장주식은 calculate_unlisted_stock_value로 계산한다 ④ 이 중 어느 것도 확인할 수 없는 값(공시지가 자체, 감정평가액 등)은 사용자에게 직접 물어봐라. 각 단계를 시도했는지, 어느 단계에서 값을 확정했는지 답변에서 밝혀라.' },
-        relation: { type: 'string', enum: ['배우자', '직계존속', '직계비속', '기타친족', '기타'], description: '증여자와 수증자의 관계 (수증자 기준)' },
+        relation: { type: 'string', enum: ['배우자', '직계존속', '직계비속', '기타친족', '기타'], description: '증여자와 수증자의 관계 (수증자 기준 — "증여한 사람이 받는 사람에게 누구인가"). 부모·조부모가 자녀·손자녀에게 준 증여는 "직계존속"이다("직계비속"은 자녀가 부모에게 준 증여). 혼인·출산증여재산공제는 "직계존속"일 때만 적용된다.' },
         isMinor: { type: 'boolean', description: '수증자가 미성년자인지 (relation이 직계존속일 때 공제액에 영향)' },
         isDoneeResident: { type: 'boolean', description: '§53 본문·§53의2①②는 둘 다 "거주자가... 증여를 받은 경우"로 한정되어 있어, 수증자가 비거주자면 증여재산공제(§53)도 혼인·출산증여재산공제(§53의2)도 받을 수 없다. 생략하면 거주자로 간주한다.' },
         debtAssumedAmount: { type: 'number', description: '부담부증여로 수증자가 인수한 채무액(원). 증여재산가액에서 제외되어 증여세만 줄어들고, 그만큼은 증여자에게 별도로 양도소득세가 과세되므로 calculate_transfer_tax를 함께 호출해야 한다. 단 relation이 배우자·직계존속·직계비속이면 §47③에 따라 isDebtObjectivelyProven이 true가 아닌 한 이 금액은 공제되지 않는다(인수 안 된 것으로 추정).' },
@@ -682,7 +682,7 @@ const DRIVE_TOOLS = [
         generationSkipOver2Billion: { type: 'boolean', description: '세대생략 증여재산가액이 20억원을 초과하는 경우. isMinor와 함께 true여야 할증률 40%(§57① 괄호), 아니면 30%.' },
         generationSkipGiftAmount: { type: 'number', description: '시행령§46의3② — 수증자의 부모를 제외한 직계존속(조부모 등 세대생략 증여자)으로부터 증여받은 재산가액(원). giftAmount·priorGiftAmount에 부모분과 조부모분이 섞여 있을 때, 할증세액을 (이 값/총증여재산가액) 비율만큼만 매기기 위한 값이다. 생략하면 증여재산 전액이 세대생략분이라고 보아 비율 100%로 계산한다.' },
         priorPaidGenerationSkipPremium: { type: 'number', description: '시행령§46의3② — 10년 합산 대상 기증여분에 대해 이미 납부한 세대생략 할증과세액(원). 이번 할증세액에서 차감한다. 없으면 생략.' },
-        isMarriageGift: { type: 'boolean', description: '혼인일 전후 2년 이내의 증여(혼인증여재산공제 대상)인지' },
+        isMarriageGift: { type: 'boolean', description: '혼인일 전후 2년 이내의 증여(혼인증여재산공제 대상)인지. 부모·조부모가 준 증여만 대상이므로 relation은 "직계존속"으로 넣어야 공제된다.' },
         isBirthGift: { type: 'boolean', description: '자녀 출생일·입양일부터 2년 이내의 증여(출산증여재산공제 대상)인지' },
         priorMarriageOrBirthDeductionUsed: { type: 'number', description: '이 수증자가 과거에 이미 받은 혼인·출산증여재산공제 누적액(원). 혼인+출산 합쳐 평생통산 1억원 한도이므로, 이미 쓴 만큼 이번 공제 한도가 줄어든다.' },
         priorRelationDeductionUsed: { type: 'number', description: '동일인(직계존속 증여는 그 배우자 포함)으로부터 증여받기 전 10년 이내에 이미 받은 증여재산공제(§53, 배우자6억/직계존속·직계비속5천만·기타친족1천만) 누적액(원). 관계별 한도도 10년 합산 기준이라 이미 쓴 만큼 이번 공제 한도가 줄어든다. 없으면 생략.' },
@@ -8047,7 +8047,10 @@ function toolCalculateGiftTax(p) {
     가업승계납부유예세액: businessSuccessionDeferredTaxAmount,
     영농자녀증여농지세액감면: farmlandGiftTaxExemptionAmount,
     납부세액: finalTax,
-    안내: (debtAssumedAmount > 0
+    안내: ((p.isMarriageGift || p.isBirthGift) && relation !== '직계존속' && !p.isExcludedFromAggregation
+      ? '⚠ 혼인·출산증여재산공제가 0원입니다 — 이 공제는 부모·조부모(직계존속)로부터 받은 증여만 대상인데 relation이 "' + relation + '"로 들어왔습니다. 부모가 자녀에게 준 증여라면 relation을 "직계존속"으로 바꿔 다시 계산하세요(relation은 수증자 기준 — 증여자가 수증자의 누구인지). '
+      : '') +
+      (debtAssumedAmount > 0
       ? '부담부증여로 전제해 인수채무액 ' + debtAssumedAmount + '원을 증여재산가액에서 제외했습니다 — 이 채무액에 상당하는 부분은 증여자에게 별도로 양도소득세가 과세되니 calculate_transfer_tax로 반드시 함께 계산하세요. '
       : '') +
       '10년 이내 동일인(직계존속 증여는 그 배우자 포함)으로부터 받은 기증여재산은 합산과세 대상입니다. priorGiftAmount·priorPaidTax를 정확히 넣지 않으면 결과가 부정확할 수 있으니 사안별로 재확인하세요. ' +
