@@ -25329,42 +25329,76 @@ function tcVisionOcr_(blob) {
 //  files: [{id, name, dir, text, type}] → [{ids:[쪽 순서], names, why:[…], conf:'강함'|'보통'|'약함'}]
 // =========================================================
 function tcJoinCands_(files) {
+  // [2026.10.18 3번 세션 원본 대조 반영 — 3번_합치기후보_대조(A·B·C).md] 이름 일련번호만 보고 묶은 '보통' 46묶음 중 맞은 것 29개(63%) —
+  //  이어지는 쪽으로 맞은 것은 거의 "n/N" 쪽 번호·발급번호가 찍힌 공문서였고, "같은 이름+끝 번호"·카카오톡 순번은 같은 종류의 다른 서류
+  //  (송금증 4건·시공계약서 12건·일직동 비139호·비140호 등기부·84.94㎡/84.99㎡ 실례가)가 많았다. 그래서 이름은 후보를 모으기만 하고,
+  //  '강함'은 글 근거(쪽 번호 n/N·같은 발급번호)가 있을 때만. 끝 번호가 2부터면 번호 없는 원래 이름이 실제 1쪽인 일이 많았다(초본-박영수.pdf 등) —
+  //  그 파일을 첫 장으로 넣되, 그 파일 글이 다른 장 글을 이미 다 담고 있으면 이미 합친 파일(증여계약서(강정화).pdf)이라 후보에서 뺀다.
   const fam = function (f) {
     const n = String(f.name || ''), b = n.replace(/\.[A-Za-z0-9]{2,5}$/, ''), d = String(f.dir || '');
     let m;
     // 스캐너 한 번 스캔: Scan_20260122_092407(.jpg) → _001, _002 … (기본 이름이 첫 장)
-    if ((m = /^(.*?Scan_\d{8}_\d{6})(?:_(\d{3}))?(?:_\d)?$/i.exec(b))) return { k: d + '|scan|' + m[1], no: m[2] ? Number(m[2]) : 0, w: 3, how: '스캐너 한 번 스캔(같은 이름·_001 순번)' };
-    if ((m = /^(.*?)\s*\(Page\s*(\d+)\)$/i.exec(b))) return { k: d + '|page|' + m[1], no: Number(m[2]), w: 3, how: '이름의 (PageN)' };
-    // 카카오톡 사진 묶음: KakaoTalk_Photo_2026-08-31-15-01-43_01_ — 같은 분에 보낸 것끼리(서로 다른 서류일 수도 있어 약함)
-    if ((m = /^KakaoTalk_(?:Photo_)?(\d{4}-\d\d-\d\d-\d\d-\d\d)-\d\d_(\d+)_?$/i.exec(b))) return { k: d + '|kakao|' + m[1], no: Number(m[2]), w: 1, how: '카카오톡 한 번에 보낸 사진 순번' };
+    if ((m = /^(.*?Scan_\d{8}_\d{6})(?:_(\d{3}))?(?:_\d)?$/i.exec(b))) return { k: d + '|scan|' + m[1], no: m[2] ? Number(m[2]) : 0, w: 2, how: '스캐너 한 번 스캔(같은 이름·_001 순번)' };
+    if ((m = /^(.*?)\s*\(Page\s*(\d+)\)$/i.exec(b))) return { k: d + '|page|' + m[1], no: Number(m[2]), w: 2, how: '이름의 (PageN)' };
+    // 카카오톡 사진 묶음 — 서로 다른 서류를 한꺼번에 보낸 것이 많다(원본 대조: 거의 틀림)
+    if ((m = /^KakaoTalk_(?:Photo_)?(\d{4}-\d\d-\d\d-\d\d-\d\d)-\d\d_(\d+)_?$/i.exec(b))) return { k: d + '|kakao|' + m[1], no: Number(m[2]), w: -1, how: '카카오톡 한 번에 보낸 사진 순번' };
     if (/\d-\d{1,3}$/.test(b)) return null; // 219-3·교로리 144-14 같은 지번 — 쪽 번호가 아님
-    if ((m = /^(.*?\D)[ _-]?(\d{1,2})$/.exec(b)) && m[1].replace(/[\s_\-]/g, '').length >= 2) return { k: d + '|tail|' + m[1].replace(/[\s_\-]+$/, ''), no: Number(m[2]), w: 2, how: '같은 이름 + 끝 번호' };
+    if ((m = /^(.*?\D)[ _-]?(\d{1,2})$/.exec(b)) && m[1].replace(/[\s_\-]/g, '').length >= 2) return { k: d + '|tail|' + m[1].replace(/[\s_\-]+$/, ''), no: Number(m[2]), w: 0, how: '같은 이름 + 끝 번호', base: m[1].replace(/[\s_\-]+$/, '') };
     return null;
   };
+  const norm = function (s) { return String(s || '').replace(/[\s ]+/g, ''); };
+  const pageMark = function (t) { // 쪽 끝머리 "3/5"·"3 / 5"
+    const m = /(?:^|\n)[ \t]*(\d{1,2})[ \t]*\/[ \t]*(\d{1,2})[ \t]*(?=\n|$)/.exec(String(t || '').slice(-600)) || /(?:^|\n)[ \t]*(\d{1,2})[ \t]*\/[ \t]*(\d{1,2})[ \t]*(?=\n|$)/.exec(String(t || '').slice(0, 300));
+    return m && Number(m[1]) >= 1 && Number(m[1]) <= Number(m[2]) ? { no: Number(m[1]), of: Number(m[2]) } : null;
+  };
+  const docNo = function (t) { const m = /(?:문\s*서\s*확\s*인\s*번\s*호|발\s*급\s*번\s*호|확\s*인\s*번\s*호|고\s*유\s*번\s*호)\s*[:：]?\s*([0-9A-Z][0-9A-Z\-]{7,})/.exec(String(t || '')); return m ? m[1] : ''; };
+  const all = (files || []).filter(function (f) { return /pdf|^image\//.test(String(f.mimeType || 'image/')); });
   const groups = {};
-  (files || []).forEach(function (f) { if (!/pdf|^image\//.test(String(f.mimeType || 'image/'))) return; const r = fam(f); if (r) (groups[r.k] = groups[r.k] || []).push({ f: f, r: r }); });
+  all.forEach(function (f) { const r = fam(f); if (r) (groups[r.k] = groups[r.k] || []).push({ f: f, r: r }); });
   const out = [];
   Object.keys(groups).forEach(function (k) {
-    const g = groups[k].sort(function (a, b) { return a.r.no - b.r.no; });
+    let g = groups[k].sort(function (a, b) { return a.r.no - b.r.no; });
+    const why = [g[0].r.how];
+    let score = g[0].r.w, merged = '';
+    // 끝 번호가 2부터 — 같은 폴더의 번호 없는 원래 이름(초본-박영수.pdf)이 1쪽일 수 있다
+    if (g[0].r.base && g[0].r.no >= 2) {
+      const d0 = String(g[0].f.dir || ''), bn = norm(g[0].r.base);
+      const b0 = all.filter(function (f) { return String(f.dir || '') === d0 && norm(String(f.name || '').replace(/\.[A-Za-z0-9]{2,5}$/, '')) === bn; })[0];
+      if (b0) {
+        const bt = norm(b0.text);
+        const inside = bt.length > 200 && g.every(function (x) { const h = norm(x.f.text).slice(0, 80); return h.length >= 40 && bt.indexOf(h) !== -1; });
+        if (inside) merged = b0.name; else { g = [{ f: b0, r: { no: 1 } }].concat(g); why.push('번호 없는 「' + b0.name + '」를 첫 장으로'); }
+      }
+    }
     if (g.length < 2) return;
-    // 같은 번호가 둘 이상이면 사본·다른 묶음 — 후보에서 뺌
-    if (g.some(function (x, i) { return i && x.r.no === g[i - 1].r.no; })) return;
-    const why = [g[0].r.how], t = g.map(function (x) { return String(x.f.text || ''); });
-    let score = g[0].r.w;
-    const types = g.map(function (x) { return x.f.type || ''; });
-    const typed = types.filter(String);
+    if (g.some(function (x, i) { return i && x.r.no === g[i - 1].r.no; })) return; // 같은 번호 둘 — 사본·다른 묶음
+    if (merged) { why.push('이미 합친 파일 「' + merged + '」이 같은 내용을 담고 있음 — 합치면 사본이 생김'); score -= 3; }
+    const t = g.map(function (x) { return String(x.f.text || ''); });
+    // 글 근거 ① 쪽 번호 n/N — 모든 장에 있고 같은 N, 1..N이 겹치지 않으면 강한 근거(순서도 쪽 번호로)
+    const pms = t.map(pageMark);
+    if (pms.every(Boolean) && pms.every(function (p) { return p.of === pms[0].of; }) && g.length <= pms[0].of) {
+      const nos = pms.map(function (p) { return p.no; });
+      if (nos.filter(function (v, i, a) { return a.indexOf(v) === i; }).length === nos.length) {
+        score += 3; why.push('장마다 쪽 번호(' + nos.join(',') + '/' + pms[0].of + ')');
+        const ord = g.map(function (x, i) { return { x: x, p: nos[i] }; }).sort(function (a, b) { return a.p - b.p; });
+        if (ord.some(function (o, i) { return o.x !== g[i]; })) { g = ord.map(function (o) { return o.x; }); why.push('쪽 번호 순서로 다시 놓음'); }
+      }
+    } else if (pms.filter(Boolean).length >= 2 && pms.filter(Boolean).some(function (p) { return p.of !== pms.filter(Boolean)[0].of; })) { score -= 2; why.push('쪽 번호의 전체 쪽 수가 서로 다름 — 다른 서류가 섞임'); }
+    // ② 같은 발급번호·문서확인번호
+    const dn = t.map(docNo);
+    if (dn.every(Boolean) && dn.every(function (v) { return v === dn[0]; })) { score += 2; why.push('같은 문서번호(' + dn[0] + ')'); }
+    else if (dn.filter(Boolean).length >= 2 && dn.filter(Boolean).some(function (v) { return v !== dn.filter(Boolean)[0]; })) { score -= 2; why.push('문서번호가 서로 다름 — 다른 서류'); }
+    const types = g.map(function (x) { return x.f.type || ''; }), typed = types.filter(String);
     if (typed.length && typed.every(function (y) { return y === typed[0]; }) && typed.length < g.length) { score++; why.push('첫 장만 서류 종류가 정해지고 나머지는 같은 종류이거나 미정(' + typed[0] + ')'); }
-    // 장마다 같은 종류가 정해짐 = 장마다 서류 첫머리가 있음(송기종 「계약서-01~12」는 계약서 12건) — 따로 서류일 수 있음
-    if (typed.length === g.length && typed.every(function (y) { return y === typed[0]; })) { score--; why.push('장마다 서류 종류(' + typed[0] + ')가 따로 정해짐 — 같은 종류의 다른 서류일 수 있음'); }
+    // 장마다 같은 종류가 따로 정해짐 = 장마다 서류 첫머리(송기종 계약서 12건·송금증 4건) — 쪽 번호 근거가 없으면 따로 서류로 봄
+    if (typed.length === g.length && typed.every(function (y) { return y === typed[0]; }) && !/쪽 번호\(/.test(why.join())) { score -= 2; why.push('장마다 서류 종류(' + typed[0] + ')가 따로 정해짐 — 같은 종류의 다른 서류일 수 있음'); }
     if (g.some(function (x, i) { return i && x.r.no - g[i - 1].r.no > 1; })) { score--; why.push('번호가 건너뜀(' + g.map(function (x) { return x.r.no; }).join(',') + ')'); }
     if (typed.length > 1 && typed.some(function (y) { return y !== typed[0]; })) { score -= 2; why.push('서류 종류가 서로 다름(' + typed.filter(function (y, i, a) { return a.indexOf(y) === i; }).join('·') + ') — 다른 서류일 수 있음'); }
     const endRe = /이\s*하\s*여\s*백|다\s*음\s*장\s*없\s*음|이\s*하\s*빈\s*칸|-\s*끝\s*-|\(끝\)/;
     const ends = t.map(function (x) { return endRe.test(x.slice(-400)); });
     if (ends[ends.length - 1] && ends.slice(0, -1).every(function (e) { return !e; })) { score++; why.push('끝 표시(이하 여백 등)가 마지막 장에만'); }
-    else if (ends.slice(0, -1).some(Boolean)) { score--; why.push('중간 장에 끝 표시 — 서류가 거기서 끝났을 수 있음'); }
-    const pm = t.map(function (x) { const m = /(?:^|\n)\s*-?\s*(\d{1,2})\s*(?:\/\s*(\d{1,2})|쪽|-)\s*(?:\n|$)/.exec(x.slice(-300)); return m ? Number(m[1]) : 0; });
-    if (pm.every(function (p, i) { return p === i + 1; })) { score++; why.push('쪽 번호가 1부터 차례로'); }
-    out.push({ ids: g.map(function (x) { return x.f.id; }), names: g.map(function (x) { return x.f.name; }), why: why, conf: score >= 4 ? '강함' : score >= 2 ? '보통' : '약함' });
+    else if (ends.slice(0, -1).some(Boolean)) { score -= 2; why.push('중간 장에 끝 표시 — 서류가 거기서 끝났을 수 있음'); }
+    out.push({ ids: g.map(function (x) { return x.f.id; }), names: g.map(function (x) { return x.f.name; }), why: why, conf: score >= 4 ? '강함' : score >= 2 ? '보통' : '약함', merged: merged || undefined });
   });
   return out;
 }
