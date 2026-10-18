@@ -27000,6 +27000,31 @@ function caseProcEvidence_(c, body) {
     if (rb) return (/취득/.test(L) && !/양도/.test(L) && rb === 'buyer') || (/양도/.test(L) && !/취득/.test(L) && rb === 'seller');
     return (/취득/.test(L) && !/양도/.test(L) && /취득/.test(n) && !/양도/.test(n)) || (/양도/.test(L) && !/취득/.test(L) && /양도/.test(n) && !/취득/.test(n));
   };
+  // [2026.10.18 3차 수정 N] 상속 — 가족관계증명서 칸은 "피상속인(사망)이 적힌 증명서"만 확보로. 종류(family)만 보고 폴더의 첫 증명서를 붙이던 것
+  //  (노영환: 상속인의 며느리 구순애 본인의 가족관계증명서가 「제적등본(피상속인)」·「사망사실이 기재된 가족관계증명서」 확보로 표시됐다 — 피상속인 사망 기재 없음).
+  //  사망 서류 묶음 안 증명서(caseProcParseAll_의 embedded)도 같은 기준. self = 본인이 피상속인(사망)인 증명서 파일, files = 가족 칸 어디에든 피상속인(사망)이 있는 증명서 파일
+  let famDec0 = null;
+  const famDecInfo = function () {
+    if (famDec0) return famDec0;
+    famDec0 = { self: '', any: '', files: {}, known: false };
+    if (c.세목 !== 'inheritance') return famDec0;
+    try {
+      const dn = String((caseProcInhFacts_(c).deceased || {}).name || '').replace(/\([^)]*\)/g, '').replace(/\s+/g, '');
+      if (dn.length < 2) return famDec0;
+      famDec0.known = true;
+      caseProcParseAll_(c).forEach(function (x) {
+        if (!x.p || x.p.type !== 'family') return;
+        const g = (x.p.result && x.p.result.가족) || [];
+        const hit = g.filter(function (q) { return q.사망 && caseProcNameLike_(String(q.이름 || '').replace(/\s+/g, ''), dn); })[0];
+        if (!hit) return;
+        famDec0.files[x.f.name] = 1;
+        if (hit.관계 === '본인' && !famDec0.self) famDec0.self = x.f.name;
+        if (!famDec0.any) famDec0.any = x.f.name;
+      });
+    } catch (err) {}
+    return famDec0;
+  };
+  const famOk = function (f) { if (c.세목 !== 'inheritance' || !f.p || f.p.t !== 'family') return true; const d = famDecInfo(); return !d.known || !!d.files[f.name]; };
   // 자동 정리로 종류가 확실히 판별되고(⚠ 없음) 칸이 하나로 정해지는 서류는 증빙목록을 확보됨(근거 파일명)으로 반영
   if (!virtual) {
     const marks = [];
@@ -27009,12 +27034,12 @@ function caseProcEvidence_(c, body) {
       if (!types) return;
       const lm = /\(([^)]*)\)\s*$/.exec(e.label);
       const loc = lm && /\d/.test(lm[1]) ? lm[1] : '';
-      let hit = docs.filter(function (f) { return f.p && types.indexOf(f.p.t) !== -1 && !f.p.office && !(f.p.wn > 0) && roleOk(e.label, f.name) && (!loc || !f.p.loc || tcLocSame_(loc, f.p.loc)); });
+      let hit = docs.filter(function (f) { return f.p && types.indexOf(f.p.t) !== -1 && !f.p.office && !(f.p.wn > 0) && roleOk(e.label, f.name) && famOk(f) && (!loc || !f.p.loc || tcLocSame_(loc, f.p.loc)); });
       // 종류가 맞고 파일 이름에 칸의 취득/양도가 분명히 적혀 있으면 판독 ⚠가 있어도 확보로(⚠는 그 서류 칸에서 따로 묻는다)
-      if (!hit.length) hit = docs.filter(function (f) { return f.p && types.indexOf(f.p.t) !== -1 && !f.p.office && roleNamed(e.label, f.name); });
+      if (!hit.length) hit = docs.filter(function (f) { return f.p && types.indexOf(f.p.t) !== -1 && !f.p.office && roleNamed(e.label, f.name) && famOk(f); });
       // [2026.10.16] 양도·취득 역할이 갈리지 않는 서류(취득세 영수증·등기부·가족관계 등)는 판독 ⚠가 있어도 서류 자체는 있는 것 — 확보로(⚠는 판독 질문에서 따로 묻는다).
       //  김금옥: 2003년 취득세 영수증 사진 2장이 판독 ⚠로 따로 물어지는데 증빙 칸도 "비슷한 파일 있음"으로 한 번 더 물었다
-      if (!hit.length && types.indexOf('contract') === -1 && types.indexOf('giftcontract') === -1) hit = docs.filter(function (f) { return f.p && types.indexOf(f.p.t) !== -1 && !f.p.office && roleOk(e.label, f.name) && (!loc || !f.p.loc || tcLocSame_(loc, f.p.loc)); });
+      if (!hit.length && types.indexOf('contract') === -1 && types.indexOf('giftcontract') === -1) hit = docs.filter(function (f) { return f.p && types.indexOf(f.p.t) !== -1 && !f.p.office && roleOk(e.label, f.name) && famOk(f) && (!loc || !f.p.loc || tcLocSame_(loc, f.p.loc)); });
       if (hit.length) { e.status = '확보됨'; e._auto = hit[0].name; marks.push(e); }
     });
     // [2026.10.16] 분양계약서(분양금액표 검산 일치, 매수인 = 납세자)가 든 파일은 '취득 당시 매매계약서 또는 취득가액 증빙' 확보 — 김금옥(양도 계약서와 한 파일이라 역할 판정이 양도로만 됨)
@@ -27045,13 +27070,16 @@ function caseProcEvidence_(c, body) {
       let inh = null;
       const facts = function () { if (!inh) { try { inh = caseProcInhFacts_(c); } catch (err) { inh = { assets: [], heirs: [], deceased: {}, funeral: {} }; } } return inh; };
       const ofType = function (t) { return docs.filter(function (f) { return f.p && f.p.t === t && !f.p.office; }); };
+      // [2026.10.18 3차 수정 N] 가족관계증명서 칸은 피상속인(사망)이 적힌 증명서만(famDecInfo — 위 설명)
+      const famHit = function (selfOnly) { const d = famDecInfo(); if (!d.known) return ofType('family').length ? ofType('family')[0].name : ''; return selfOnly ? d.self : (d.self || d.any); };
       req.forEach(function (e) {
         if (e.status === '확보됨') return;
         const L = String(e.label || '');
         let hit = '';
-        if (/가족\s*관계/.test(L) && ofType('family').length) hit = ofType('family')[0].name;
+        if (/사망/.test(L) && /가족\s*관계/.test(L)) { hit = ofType('death').length ? ofType('death')[0].name : famHit(false); } // "사망진단서 또는 사망사실이 기재된 가족관계증명서"
+        else if (/가족\s*관계/.test(L)) hit = famHit(false);
         else if (/봉안|자연\s*장/.test(L)) { if (facts().niche && facts().niche.receipt) hit = facts().niche.receipt.file; }
-        else if (/제\s*적/.test(L) && ofType('family').length && facts().deceased.regNo) hit = ofType('family')[0].name + '(피상속인 본인 사망이 적힌 가족관계증명서(상세)로 대신 — 2008년 이후 사망은 제적등본 대신 가족관계등록부)';
+        else if (/제\s*적/.test(L) && facts().deceased.regNo && famHit(true)) hit = famHit(true) + '(피상속인 본인 사망이 적힌 가족관계증명서(상세)로 대신 — 2008년 이후 사망은 제적등본 대신 가족관계등록부)';
         // [2026.10.16] 제적등본 — 2008년 이후 사망은 제적등본이 없고 기본증명서(상세)·사망진단서로 사망을 확인한다(노영환·박종헌: 기본증명서·시체검안서가 있는데 "제적등본"을 물었다)
         else if (/제\s*적/.test(L) && ofType('death').length && (!c.기준일 || String(c.기준일) >= '2008')) hit = ofType('death')[0].name + '(2008년 이후 사망 — 제적등본 대신 기본증명서·사망진단서로 확인)';
         else if (/사망/.test(L) && (ofType('death').length || (facts().deceased.name && ofType('family').length))) hit = (ofType('death')[0] || ofType('family')[0]).name;
@@ -27164,7 +27192,7 @@ var CASEPROC_LAST_RF_ = null;
 // [2026.10.15] 세목별로 세액 계산 입력이 되는 서류 종류(docParseText_ type) — 이 밖의 종류는 ⚠확인필요를 질문으로 올리지 않는다(서류 목록·증빙 대조는 그대로)
 const CASEPROC_RELEVANT_TYPES_ = {
   gift: ['giftcontract', 'banktx', 'appraisal', 'registry', 'family', 'pubprice', 'realprice', 'balance', 'debtcert', 'rent', 'lease', 'leasereport', 'leaselist', 'bldledger', 'landledger', 'contract', 'loan'], // loan: 차용증(차입인지 증여인지)
-  inheritance: ['registry', 'appraisal', 'family', 'death', 'inhdivision', 'inhquery', 'funeralbill', 'funerallist', 'nichecontract', 'medbill', 'balance', 'debtcert', 'insurance', 'pubprice', 'realprice', 'rent', 'lease', 'leasereport', 'leaselist', 'bldledger', 'landledger', 'carreg', 'cashreceipt', 'cardreceipt', 'giftcontract', 'banktx', 'loan', 'propquery', 'interest', 'remit', 'settlement', 'simplereceipt'], // [2026.10.18 3차 M] remit·settlement·simplereceipt: 대출 사용처 표(송금증·합의서·간이영수증) — 쓰였는데 "무관한 종류"로 표시되던 것 // interest: 예금 해약 이자 · medbill: 진료비 계산서·영수증 · loan: 대여금 채권·채무계산서(2026.10.17) // loan: 대여금 채권·채무, propquery: 재산조회 회보서
+  inheritance: ['registry', 'appraisal', 'family', 'death', 'inhdivision', 'inhquery', 'funeralbill', 'funerallist', 'nichecontract', 'medbill', 'balance', 'debtcert', 'insurance', 'pubprice', 'realprice', 'rent', 'lease', 'leasereport', 'leaselist', 'bldledger', 'landledger', 'carreg', 'cashreceipt', 'cardreceipt', 'giftcontract', 'banktx', 'loan', 'propquery', 'interest', 'remit', 'settlement', 'simplereceipt', 'ownchange', 'heiragree'], // [2026.10.18 3차 수정 N] ownchange: 협의분할 지분표 · heiragree: 상속인 약정서 // [2026.10.18 3차 M] remit·settlement·simplereceipt: 대출 사용처 표(송금증·합의서·간이영수증) — 쓰였는데 "무관한 종류"로 표시되던 것 // interest: 예금 해약 이자 · medbill: 진료비 계산서·영수증 · loan: 대여금 채권·채무계산서(2026.10.17) // loan: 대여금 채권·채무, propquery: 재산조회 회보서
   transfer: ['workcontract', 'contract', 'appraisal', 'dealreport', 'brokerdesc','registry', 'acqtax', 'lawyerfee', 'cashreceipt', 'cardreceipt', 'taxinvoice', 'receipt', 'pubprice', 'realprice', 'bldledger', 'landledger', 'resident', 'family', 'farmbiz', 'farmconfirm', 'farmledger', 'giftcontract', 'rent', 'lease', 'leasehist', 'expropcert', 'entryexit', 'residencecard', 'installment', 'simplereceipt'] // installment: 분양대금 납부확인서(정밀분석 14) · leasehist: 임대주택 요건(증액 5%), expropcert: 수용사실, entryexit·residencecard: 국외자산 5년 거주(§118의2) 확인서
 };
 // 3) 처리개요 — 빈 칸은 [확인]에서 값을 받아 채우고, 양도는 서류 규칙 정리(검산된 값)로 물건목록의 빈 칸을 채운다. 기준일은 증빙으로 확정.
@@ -29134,6 +29162,7 @@ function caseProcGiftInhFacts_(c, lines, items) {
   const facts = {}; // key → [{v, src, sure}]
   const add = function (key, v, src, sure) { if (v === null || v === undefined || v === '') return; (facts[key] = facts[key] || []).push({ v: String(v), src: src, sure: !!sure }); };
   const notes = [];
+  const inhHeirLists = {}; // [2026.10.18 3차 수정 N] 상속인 수 후보마다 상속인 명부(이름·관계·주민번호) — 상속인 수가 정해지면 처리개요 「상속인목록」(계산기 상속인 명부)으로
   let dealPending = false; // [2026.10.15 1:1] 증여 내용 확인 전 — 증여자·수증자·금액·관계 칸은 그 질문 하나로 묻는다
   const byType = function (t) { return parsed.filter(function (x) { return x.p.type === t; }); };
   const fams = byType('family');
@@ -29519,7 +29548,20 @@ function caseProcGiftInhFacts_(c, lines, items) {
     //  인적공제 근거(배우자 유무 §19·자녀 수 §20①1·65세 이상 §20①3·미성년 §20①2)를 한 줄로 남긴다 — 계산기는 상속인 명부(관계·주민번호)로 다시 센다
     (function () {
       const H = caseProcInhHeirSet_(fams.filter(function (x) { return !sepF[x.famKey || x.f.id || x.f.name]; }), dec);
-      if (!H.cert) return;
+      // [2026.10.18 3차 수정 N] 상속 등기(이번 상속분)·소유권 변동 현황·상속인 약정서·분할협의서의 상속인 — 가족관계증명서로 못 찾는 상속인 확인용
+      let D = { list: [], prior: {}, rep: [], agree: [] };
+      try { D = caseProcInhDeedHeirs_(parsed, dec, c.기준일 || '', sepD); } catch (e) {}
+      const regOf = function (n, q) { const r0 = String(q && q.주민번호 || ''); if (/^\d{6}-\d{7}$/.test(r0)) return r0; const a = D.agree.filter(function (z) { return z.n === n && /^\d{6}-\d{7}$/.test(z.regNo); })[0]; return a ? a.regNo : r0; };
+      if (!H.cert) {
+        // 피상속인 가족관계증명서가 없을 때 — 등기·지분표·약정서·분할협의서의 상속인을 후보로만(가족관계증명서로 확정)
+        if (D.list.length) {
+          const dsrc = '상속 서류의 상속인(' + D.list.map(function (o) { return o.n + ' — ' + o.srcs[0]; }).join(', ') + ') — 피상속인 가족관계증명서로 확인 필요';
+          add('상속인수', D.list.length, dsrc, false);
+          D.rep.forEach(function (r0) { add('상속인성명', r0.n, r0.why, false); });
+          add('상속인추가명단', D.list.filter(function (o) { return !D.rep.length || o.n !== D.rep[0].n; }).map(function (o) { return o.n; }).join(', '), dsrc, false);
+        }
+        return;
+      }
       const x = H.cert, file = x.f.name;
       const sub = [].concat.apply([], H.subst.map(function (s) { return s.heirs; }));
       const heirs = H.living.map(function (q) { return { 이름: norm(q.이름), 관계: q.관계, 생년월일: q.생년월일 || '', 확인필요: !!q.확인필요 }; })
@@ -29530,10 +29572,48 @@ function caseProcGiftInhFacts_(c, lines, items) {
       const rep = heirs.filter(function (q) { return nameHas([q.이름], c.고객명); })[0] || heirs.filter(function (q) { return /^(배우자|자녀)$/.test(q.관계); })[0] || heirs[0];
       const src = '피상속인 가족관계증명서(' + file + (x.p.embedded ? ' 안' : '') + ')';
       const dk = H.subst.map(function (s) { return s.dead.이름 + '(사망) → ' + (s.heirs.length ? s.heirs.map(function (h) { return h.이름 + '(' + h.file + ')'; }).join('·') : '직계비속 증명서 없음') + (s.spouseNames.length ? ' · 그 배우자 ' + s.spouseNames.join('·') + '(생존·재혼 여부에 따라 함께 대습, 민법 §1003②)' : ''); }).join(' / ');
+      // [2026.10.18 3차 수정 N] 상속 등기·지분표·약정서·분할협의서의 상속인 중 위 명단(대습 후보 포함)에 없는 사람 — 2008년 전에 먼저 사망한 자녀는 가족관계증명서에 안 나온다.
+      //  그 사람의 가족관계증명서 부·모 칸과 앞선 상속 등기(그 부·모의 지분을 상속)로 "먼저 사망한 자녀 P → 대습상속인" 줄을 만들고, 그들을 더한 상속인 수를 첫 후보로 낸다
+      //  (노영환: 생존 자녀 4 + 조순옥 대습 박준희·박정수 + 등기·지분표의 조시호·조시진(부 조정휘 — 2006-09-30 조정휘 지분 상속, 피상속인 증명서에 없음) = 8). 확정은 제적등본으로(질문 후보)
+      const known = heirs.map(function (q) { return q.이름; }).concat(H.subst.map(function (s) { return norm(s.dead.이름); }));
+      const others = D.list.filter(function (o) { return known.indexOf(o.n) === -1; });
+      const decKids = (H.g || []).filter(function (q) { return q.관계 === '자녀'; }).map(function (q) { return norm(q.이름); });
+      const famOf = function (n) { let me = null; fams.forEach(function (y) { if (me) return; const g = (y.p.result && y.p.result.가족) || []; const s0 = g.filter(function (q) { return q.관계 === '본인' && norm(q.이름) === n; })[0]; if (s0) me = { self: s0, g: g, file: y.f.name }; }); return me; };
+      const og = [];
+      others.forEach(function (o) {
+        const fm = famOf(o.n), pr = D.prior[o.n];
+        const pars = fm ? fm.g.filter(function (q) { return /^(부|모)$/.test(q.관계) && q.이름 && decKids.indexOf(norm(q.이름)) === -1 && !caseProcNameLike_(norm(q.이름), dec); }) : [];
+        let P = pr ? pr.from : '', parQ = null;
+        if (P) parQ = pars.filter(function (q) { return norm(q.이름) === P; })[0] || null;
+        else { parQ = pars.filter(function (q) { return q.사망; })[0] || null; if (parQ) P = norm(parQ.이름); }
+        o.fam = fm; o.P = P;
+        o.regNo = regOf(o.n, fm && fm.self);
+        o.birth = fm && fm.self.생년월일 || '';
+        let g0 = og.filter(function (z) { return z.P === P; })[0];
+        if (!g0) { g0 = { P: P, heirs: [], spouse: [], why: [] }; og.push(g0); }
+        g0.heirs.push(o);
+        if (pr && g0.why.indexOf('앞선 상속 등기 ' + pr.date + ' ' + P + ' 지분 상속(' + pr.file + ')') === -1) g0.why.push('앞선 상속 등기 ' + pr.date + ' ' + P + ' 지분 상속(' + pr.file + ')');
+        if (parQ && fm) { const w = fm.file + ' ' + parQ.관계 + ' ' + P; if (g0.why.indexOf(w) === -1) g0.why.push(w); const oth = fm.g.filter(function (q) { return /^(부|모)$/.test(q.관계) && q !== parQ && q.이름; })[0]; if (oth && g0.spouse.indexOf(norm(oth.이름)) === -1 && others.every(function (z) { return z.n !== norm(oth.이름); })) g0.spouse.push(norm(oth.이름)); }
+        if (pr) pr.co.forEach(function (s0) { const n0 = s0.split(' ')[0]; if (n0 !== o.n && others.every(function (z) { return z.n !== n0; }) && known.indexOf(n0) === -1 && g0.spouse.indexOf(n0) === -1) g0.spouse.push(n0); });
+      });
+      const ogTxt = og.map(function (g0) { return (g0.P ? g0.P + '(피상속인 가족관계증명서에 없음 — 2008년 전에 먼저 사망한 자녀일 수 있음' + (g0.why.length ? ': ' + g0.why.join(', ') : '') + ')' : '관계 미확인') + ' → ' + g0.heirs.map(function (o) { return o.n + '(' + o.srcs[0] + ')'; }).join('·') + (g0.spouse.length ? ' · 그 배우자 ' + g0.spouse.join('·') + '(생존·재혼 안 했으면 함께 대습, 민법 §1003② — 상속 등기·지분표엔 없음)' : ''); }).join(' / ');
+      const listOf = function (arr) { return arr.map(function (q) { return { name: q.name, relation: q.relation, regNo: q.regNo || '', substitutionGroup: q.substitutionGroup || '' }; }); };
+      const baseList = H.living.map(function (q) { return { name: norm(q.이름), relation: q.관계 === '배우자' ? '배우자' : '자녀', regNo: regOf(norm(q.이름), q) }; })
+        .concat([].concat.apply([], H.subst.map(function (s) { return s.heirs.map(function (h) { return { name: h.이름, relation: '손자녀(대습상속 — 부모가 먼저 사망·결격)', regNo: regOf(h.이름, h), substitutionGroup: norm(s.dead.이름) + '대습' }; }); })));
+      inhHeirLists[heirs.length] = listOf(baseList);
+      if (others.length) {
+        const uni = heirs.length + others.length;
+        inhHeirLists[uni] = listOf(baseList.concat(others.map(function (o) { return { name: o.n, relation: o.P ? '손자녀(대습상속 — 부모가 먼저 사망·결격)' : '', regNo: o.regNo, substitutionGroup: o.P ? o.P + '대습' : '' }; })));
+        add('상속인수', uni, '상속 등기·지분표·약정서의 상속인까지 — ' + src + '의 ' + heirs.length + '명 + ' + ogTxt + ' (먼저 사망한 자녀의 대습상속인일 때, 민법 §1001 — 제적등본으로 확인)', false);
+        add('상속인추가명단', heirs.map(function (q) { return q.이름; }).concat(others.map(function (o) { return o.n; })).filter(function (n) { return n !== rep.이름; }).join(', '), src + ' + 상속 등기·지분표·약정서의 상속인(' + others.map(function (o) { return o.n; }).join('·') + ' — 대습상속 확인)', false);
+      }
       add('상속인수', heirs.length, src + ' — 생존 배우자·자녀' + (sub.length ? ' + 먼저 사망한 자녀의 직계비속(대습상속 민법 §1001: ' + dk + ')' : '') + (pending ? ' — 사망한 자녀가 상속개시 전에 사망했을 때' : '') + '(직계존속·형제는 선순위가 없을 때만)', !unsure);
       if (pending) add('상속인수', H.living.length + H.deadKids.length, src + ' — 사망한 자녀(' + H.deadKids.map(function (q) { return q.이름; }).join('·') + ')가 상속개시 뒤에 사망했다면 그 자녀가 상속인(재상속 — 그 몫은 그 자녀의 상속인에게)', false);
       add('상속인성명', rep.이름, src, !(rep.확인필요));
+      // 약정서의 관리·처분 대표 상속인(같은 사람이면 위 근거와 한 후보로 합쳐짐)
+      D.rep.forEach(function (r0) { if (heirs.some(function (q) { return q.이름 === r0.n; }) || others.some(function (o) { return o.n === r0.n; })) add('상속인성명', r0.n, r0.why, false); });
       add('상속인추가명단', heirs.filter(function (q) { return q !== rep; }).map(function (q) { return q.이름; }).join(', '), src + (sub.length ? ' · 대습상속 후보 포함' : ''), !unsure);
+      if (pending) inhHeirLists[H.living.length + H.deadKids.length] = inhHeirLists[H.living.length + H.deadKids.length] || H.living.concat(H.deadKids).map(function (q) { return { name: norm(q.이름), relation: q.관계 === '배우자' ? '배우자' : '자녀', regNo: regOf(norm(q.이름), q), substitutionGroup: '' }; });
       lines.push('상속인(가족관계증명서' + (x.p.embedded ? ' — ' + file + ' 안' : '') + '): ' + heirs.map(function (q) { return q.이름 + '(' + q.관계 + (q.확인필요 ? ' ⚠' : '') + ')'; }).join(', ') + (pending ? ' · 먼저 사망한 자녀: ' + dk : ''));
       // 인적공제 근거 — 상속개시일 기준 나이(배우자는 미성년·연로자공제 대상 아님 §20①2·3)
       const base = c.기준일 || '';
@@ -29544,12 +29624,11 @@ function caseProcGiftInhFacts_(c, lines, items) {
       const unk = nonSp.filter(function (q) { return ageOf(q) === null; });
       lines.push('인적공제 근거(' + src + '): 배우자 ' + (H.spouse ? norm(H.spouse.이름) + ' 생존 — 배우자상속공제(§19) 대상' : H.spouseDead ? '사망 — 배우자상속공제(§19) 없음' : H.noSpouseRow ? '칸 없음 — 배우자상속공제(§19) 없음' : '확인 필요') + ' · 자녀 ' + kids.length + '명(§20①1)'
         + (base ? ' · 65세 이상 ' + old.length + '명' + (old.length ? '(' + old.map(function (q) { return q.이름; }).join('·') + ')' : '') + '(§20①3) · 미성년 ' + minor.length + '명(§20①2)' + (unk.length ? ' · 생년월일 모름 ' + unk.map(function (q) { return q.이름; }).join('·') : '') + ' — 상속개시일 ' + base + ' 기준' : ''));
-      // 분할협의서·등기부 협의분할 상속인 중 위 상속인에 없는 사람 — 먼저 사망한 자녀(2008년 전 사망은 가족관계증명서에 안 나옴)의 대습상속인일 수 있어 제적등본으로 확인
-      const known = heirs.map(function (q) { return q.이름; }).concat(H.subst.map(function (s) { return norm(s.dead.이름); }));
-      const others = [];
-      byType('inhdivision').forEach(function (y) { if (sepD[y.f.id || y.f.name]) return; ((y.p.result || {}).상속인 || []).forEach(function (h) { const n = norm(h.이름); if (n.length >= 2 && n.length <= 4 && CASEPROC_SURNAME_RE_.test(n) && known.indexOf(n) === -1 && !others.some(function (o) { return o.n === n; })) others.push({ n: n, file: y.f.name }); }); });
-      byType('registry').forEach(function (y) { ((y.p.result || {}).docs || []).forEach(function (d0) { const hh = d0.소유권이력 || []; hh.forEach(function (e, k) { if (e.말소 || !/상속/.test(String(e.원인 || '')) || !k) return; let prev = null; for (let j = k - 1; j >= 0; j--) if (!hh[j].말소) { prev = hh[j]; break; } if (!prev || !(prev.권리자 || []).some(function (q) { return nameHas([q.이름], dec); })) return; (e.권리자 || []).forEach(function (q) { const n = norm(q.이름); if (n.length >= 2 && n.length <= 4 && CASEPROC_SURNAME_RE_.test(n) && known.indexOf(n) === -1 && !others.some(function (o) { return o.n === n; })) others.push({ n: n, file: y.f.name }); }); }); }); });
-      if (others.length) notes.push('상속인 확인: ' + others.map(function (o) { return o.n + '(' + o.file + ')'; }).join(', ') + ' — 분할협의서·상속 등기의 상속인인데 피상속인 가족관계증명서의 배우자·자녀(대습 후보 포함)에 없음. 먼저 사망한 자녀의 대습상속인(민법 §1001·§1003②)이면 제적등본(2008년 전 사망)으로 관계를 확인해야 상속인 수가 정해짐');
+      // 분할협의서·상속 등기·지분표·약정서의 상속인 중 위 상속인에 없는 사람 — 먼저 사망한 자녀(2008년 전 사망은 가족관계증명서에 안 나옴)의 대습상속인일 수 있어 제적등본으로 확인
+      if (others.length) notes.push('상속인 확인: ' + ogTxt + ' — 상속 서류의 상속인인데 피상속인 가족관계증명서의 배우자·자녀(대습 후보 포함)에 없음. 먼저 사망한 자녀의 대습상속인(민법 §1001·§1003②)이면 제적등본(2008년 전 사망)으로 관계를 확인해야 상속인 수가 정해짐 — 「상속인 수」 질문의 첫 후보가 이 사람들을 넣은 수');
+      // [2026.10.18 3차 수정 N] 피상속인 주소(사망 당시 주소지 = 상속세 납세지 §6) — 사망 서류 주소 칸. 세액계산기 「서류 규칙 자동채우기」가 이 값을 피상속인 주소 칸에 넣는다
+      const dAddr = byType('death').map(function (y) { const r0 = y.p.result || {}; return r0.주소 && (!r0.성명 || caseProcNameLike_(norm(r0.성명), dec)) ? { a: r0.주소, file: y.f.name } : null; }).filter(Boolean)[0];
+      if (dAddr) lines.push('피상속인 주소(사망 당시, 납세지 §6): ' + dAddr.a + ' (' + dAddr.file + ' 주소 칸)');
     })();
     let asset = 0, debt = 0, fun = 0;
     byType('inhquery').forEach(function (x) { const r = x.p.result || {}; asset += r.자산합계 || 0; debt += r.채무합계 || 0; });
@@ -29618,13 +29697,27 @@ function caseProcGiftInhFacts_(c, lines, items) {
       items.push(caseProcItem_('ov:' + key + ':est:' + digits(cur), 'check', '「' + sp[1] + '」 ' + Number(digits(cur)).toLocaleString('ko-KR') + '원은 의뢰서·처리개요의 추정값입니다(증빙으로 확인 안 됨) — 이 값으로 확정할까요?', ask));
     }
   });
+  // [2026.10.18 3차 수정 N] 상속인 명부 — 상속인 수가 정해지면(서류로 확정 또는 세무사님 답) 그 수의 후보 명단(이름·관계·주민번호·대습 그룹)을 처리개요 「상속인목록」으로.
+  //  세액계산기는 명부가 비어 있을 때 이 목록으로 상속인 카드를 만들고, 자녀 수(§20①1)·65세 이상(§20①3)·미성년(§20①2)을 관계·주민번호로 센다
+  //  (예전엔 인적공제 근거가 처리개요 참고 줄에만 있고 계산기 칸으로는 안 갔다). 계산기에서 고친 명부(지난번에 넣은 것과 다름)는 건드리지 않는다
+  if (c.세목 === 'inheritance') {
+    const want = Number(digits(ov.상속인수));
+    const lst = want ? inhHeirLists[want] : null;
+    const curL = Array.isArray(ov.상속인목록) ? ov.상속인목록 : null;
+    const hashL = function (a) { return JSON.stringify((a || []).map(function (q) { return [q && q.name || '', q && q.relation || '', q && q.regNo || '', q && q.substitutionGroup || '']; })); };
+    const mineBefore = !curL || !curL.length || (filled.상속인목록 && filled.상속인목록.h === hashL(curL));
+    if (lst && lst.length === want && mineBefore && hashL(lst) !== hashL(curL)) {
+      ov.상속인목록 = lst;
+      fills.push({ key: '상속인목록', label: '상속인 명부', v: lst.map(function (q) { return q.name + '(' + (q.relation || '관계 확인') + ')'; }).join(', '), h: hashL(lst), src: '상속인 수 ' + want + '명 후보의 명단 — 관계·주민번호는 가족관계증명서' + (lst.some(function (q) { return q.substitutionGroup; }) ? '(대습상속 그룹 포함)' : '') });
+    }
+  }
   if (confirms.length) caseProcPatch_(c.id, function (sv0) { sv0.filled = sv0.filled || {}; confirms.forEach(function (x) { sv0.filled[x.key] = { v: x.v, src: x.src, at: caseProcToday_() }; }); });
   if (!fills.length) return c;
   const log = (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: '[사건처리] 서류로 처리개요 채움: ' + fills.map(function (x) { return x.label + ' ' + x.v + '(' + x.src + ')'; }).join(', ').slice(0, 500), dueDate: '' }]);
   const up = work_updateCase({ id: c.id, 사건개요: ov, 작업일지: log, 기대수정일: c.수정일 });
   if (up && up.success !== false) {
     lines.push('✏ 서류로 처리개요 채움: ' + fills.map(function (x) { return x.label + ' ' + x.v + ' (' + x.src + ')'; }).join(', '));
-    caseProcPatch_(c.id, function (sv) { sv.filled = sv.filled || {}; fills.forEach(function (x) { sv.filled[x.key] = { v: x.v, src: x.src, at: caseProcToday_() }; }); });
+    caseProcPatch_(c.id, function (sv) { sv.filled = sv.filled || {}; fills.forEach(function (x) { sv.filled[x.key] = { v: x.v, src: x.src, at: caseProcToday_() }; if (x.h) sv.filled[x.key].h = x.h; }); });
     return up.case || c;
   }
   lines.push('⚠ 처리개요를 채우지 못했습니다: ' + ((up && up.message) || '저장 실패'));
@@ -29895,6 +29988,41 @@ function caseProcInhHeirSet_(fams, dec) {
   });
   return out;
 }
+// [2026.10.18 3차 수정 N] 등기·지분표·약정서·분할협의서에 상속인으로 나오는 사람(서류마다 출처) — 피상속인 가족관계증명서로 못 찾는 상속인(2008년 전에 먼저 사망한 자녀의 대습상속인 등)을 잡는다.
+//  등기부: 이번 상속의 이전 등기만 — 목적 「N번 (피상속인)지분전부이전」이거나 등기원인일 = 상속개시일. 예전엔 "직전 등기에 피상속인이 있으면" 모두 받아
+//  노영환 회기동 42-1의 2006년 「1번조정휘지분전부이전」(조정휘의 상속: 구순애·조시호·조시진)까지 이번 상속인 후보로 섞었다.
+//  prior: 그 사람이 이번 상속 전에 다른 사람(P)의 지분을 상속으로 받은 등기 — P가 피상속인보다 먼저 사망한 자녀면 이번 상속에서 대습상속인(민법 §1001)일 수 있다는 근거
+function caseProcInhDeedHeirs_(parsed, dec, base, sepD) {
+  const nm = function (x) { return String(x || '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ''); };
+  const d = nm(dec), out = { list: [], prior: {}, rep: [], agree: [] };
+  if (d.length < 2) return out;
+  const okName = function (n) { return n.length >= 2 && n.length <= 4 && CASEPROC_SURNAME_RE_.test(n) && !caseProcNameLike_(n, d); };
+  const push = function (n, file, src, share) { n = nm(n); if (!okName(n)) return; const o = out.list.filter(function (q) { return q.n === n; })[0]; if (o) { if (o.srcs.indexOf(src) === -1) o.srcs.push(src); return; } out.list.push({ n: n, file: file, srcs: [src], share: share || '' }); };
+  (parsed || []).forEach(function (y) {
+    const t = y.p && y.p.type, r = (y.p && y.p.result) || {};
+    if (t === 'registry') (r.docs || []).forEach(function (d0) {
+      const hh = d0.소유권이력 || [];
+      hh.forEach(function (e, k) {
+        if (e.말소 || !/상속/.test(String(e.원인 || ''))) return;
+        const who = /\d+\s*번\s*([가-힣]{2,4})\s*지\s*분/.exec(String(e.목적 || '')); // "1번조정휘지분전부이전" → 조정휘의 지분
+        let prev = null; for (let j = k - 1; j >= 0; j--) if (!hh[j].말소) { prev = hh[j]; break; }
+        const prevDec = !!(prev && (prev.권리자 || []).some(function (q) { return caseProcNameLike_(nm(q.이름), d); }));
+        const mine = who ? caseProcNameLike_(who[1], d) : ((base && e.원인일 === base) || (prevDec && (prev.권리자 || []).length === 1));
+        if (mine) { (e.권리자 || []).forEach(function (q) { push(q.이름, y.f.name, '등기부 ' + (e.원인 || '상속') + '(' + y.f.name + ' 갑구 ' + e.순위 + ')', q.지분); }); return; }
+        // 다른 사람(P)의 지분 상속 — 그 상속인들의 앞선 상속 근거(대습 확인용)
+        const P = who ? who[1] : '';
+        if (P && (!base || !e.원인일 || e.원인일 < base)) (e.권리자 || []).forEach(function (q) { const n = nm(q.이름); if (!okName(n)) return; if (!out.prior[n]) out.prior[n] = { from: P, date: e.원인일 || e.접수일 || '', file: y.f.name, co: (e.권리자 || []).map(function (z) { return nm(z.이름) + (z.지분 ? ' ' + z.지분 : ''); }).filter(function (s) { return okName(s.split(' ')[0]); }) }; });
+      });
+    });
+    else if (t === 'ownchange' && (!r.피상속인 || caseProcNameLike_(nm(r.피상속인), d))) (r.받은사람 || []).forEach(function (n) { const row = (r.행 || []).filter(function (x) { return x.이름 === n; })[0] || {}; push(n, y.f.name, '소유권 변동 현황(' + y.f.name + (row.증가 ? ', 증가 ' + row.증가 : '') + ')', row.증가 || ''); });
+    else if (t === 'heiragree' && (!r.피상속인 || caseProcNameLike_(nm(r.피상속인), d))) {
+      (r.상속인 || []).forEach(function (h) { push(h.이름, y.f.name, '약정서(' + y.f.name + ')'); out.agree.push({ n: nm(h.이름), regNo: h.주민번호 || '', file: y.f.name }); });
+      if (r.대표) out.rep.push({ n: nm(r.대표), file: y.f.name, why: '약정서(' + y.f.name + ') 관리·처분 대표' + (r.명의 && nm(r.명의) === nm(r.대표) ? '·등기 명의 상속인' : '') });
+    }
+    else if (t === 'inhdivision' && !(sepD && sepD[y.f.id || y.f.name])) (r.상속인 || []).forEach(function (h) { push(h.이름, y.f.name, '분할협의서(' + y.f.name + ')'); });
+  });
+  return out;
+}
 // 상속개시일 기준 만 나이(생년월일 'YYYY-MM-DD')
 function caseProcAgeAt_(birth, base) {
   const b = String(birth || ''), e = String(base || '');
@@ -30066,6 +30194,18 @@ function caseProcInhFacts0_(c, parsed) {
         out.heirs.push({ name: h.이름, relation: '손자녀(대습상속 — 부모가 먼저 사망·결격)', regNo: /^\d{6}-\d{7}$/.test(h.주민번호) ? h.주민번호 : (dn || h.주민번호 || ''), birth: h.생년월일 || '', substitutionGroup: nm(s.dead.이름) + '대습', src: '가족관계증명서(' + h.file + ', 모·부 ' + nm(s.dead.이름) + ' 사망) — 대습상속 후보(' + nm(s.dead.이름) + '이(가) 상속개시 전에 사망했을 때)', unsure: true });
       }); });
       if (H.subst.length) out.notes.push('대습상속 후보: ' + H.subst.map(function (s) { return nm(s.dead.이름) + '(피상속인의 자녀, 사망) → ' + (s.heirs.map(function (h) { return h.이름; }).join('·') || '직계비속 서류 없음') + (s.spouseNames.length ? ' · 배우자 ' + s.spouseNames.join('·') + '(생존·재혼 안 했으면 함께 대습, 민법 §1003②)' : ''); }).join(' / ') + ' — 사망한 자녀의 사망일이 상속개시일 전인지 기본증명서로 확인');
+      // [2026.10.18 3차 수정 N] 상속 등기·지분표·약정서의 상속인 중 가족관계증명서로 못 찾은 사람(2008년 전 먼저 사망한 자녀의 대습상속인 후보) — 상속인 명부에 확인 표시로(계산기 명부·법정지분)
+      const D = caseProcInhDeedHeirs_(parsed, nm(famSelf.me.이름), base, sepDiv);
+      const knownN = out.heirs.map(function (h) { return h.name; }).concat(H.deadKids.map(function (q) { return nm(q.이름); }));
+      const decKidsN = famSelf.g.filter(function (q) { return q.관계 === '자녀'; }).map(function (q) { return nm(q.이름); });
+      D.list.filter(function (o) { return knownN.indexOf(o.n) === -1; }).forEach(function (o) {
+        let fm = null; by('family').forEach(function (y) { if (fm) return; const g = (y.p.result && y.p.result.가족) || []; const s0 = g.filter(function (q) { return q.관계 === '본인' && nm(q.이름) === o.n; })[0]; if (s0) fm = { self: s0, g: g, file: y.f.name }; });
+        const pr = D.prior[o.n];
+        let P = pr ? pr.from : '';
+        if (!P && fm) { const pq = fm.g.filter(function (q) { return /^(부|모)$/.test(q.관계) && q.사망 && q.이름 && decKidsN.indexOf(nm(q.이름)) === -1; })[0]; if (pq) P = nm(pq.이름); }
+        const rn = fm && /^\d{6}-\d{7}$/.test(String(fm.self.주민번호 || '')) ? fm.self.주민번호 : ((D.agree.filter(function (z) { return z.n === o.n && z.regNo; })[0] || {}).regNo || divNo[o.n] || '');
+        out.heirs.push({ name: o.n, relation: P ? '손자녀(대습상속 — 부모가 먼저 사망·결격)' : '', regNo: rn, birth: fm && fm.self.생년월일 || '', substitutionGroup: P ? P + '대습' : '', src: o.srcs.join(' · ') + (P ? ' — ' + P + '(피상속인 가족관계증명서에 없음' + (pr ? ', ' + pr.date + ' ' + P + ' 지분 상속 등기' : '') + ')의 대습상속 후보(제적등본으로 확인)' : ' — 피상속인과의 관계 확인 필요'), unsure: true });
+      });
     } catch (e) {}
   }
   // [2026.10.18 정밀분석 원인10 ②·④] 피상속인 주민번호·주소 — 가족관계증명서에 없으면 사망진단서·시체검안서의 칸(주소 = 사망 당시 주소, 납세지 §6)
@@ -30383,7 +30523,37 @@ function caseProcInhFacts0_(c, parsed) {
   if (out.assets.some(function (a) { return a.excluded; })) { out.assets.filter(function (a) { return a.excluded; }).forEach(function (a) { out.notes.push('상속재산 후보 ' + a.kind + ' ' + a.loc + ' — 세무사님 답: 상속재산 아님(목록에서 뺌)'); }); out.assets = out.assets.filter(function (a) { return !a.excluded; }); }
   // [2026.10.16] 보험금 지급내역 — 피상속인이 보험료를 낸 생명보험금은 간주상속재산(§8)이자 금융재산(§22). 금액·근거를 알린다(박종헌 사건: 3장이 안 쓰였다)
   const pn = function (v) { return v && typeof v === 'object' ? String(v.이름 || v.name || '') : String(v || ''); };
-  by('insurance').forEach(function (x) { const r = x.p.result || {}; if (r.종류 === '보증보험증권') return; out.notes.push('보험(' + x.f.name + ') ' + (r.종류 || '') + (r.지급액 ? ' 지급액 ' + Number(r.지급액).toLocaleString('ko-KR') + '원' : '') + (pn(r.피보험자) ? ' · 피보험자 ' + pn(r.피보험자) : '') + (pn(r.계약자) ? ' · 계약자 ' + pn(r.계약자) : '') + ' — 피상속인이 보험료를 낸 생명보험금이면 간주상속재산(§8)·금융재산(§22): 세액계산 보험금 칸에 넣을지 확인'); });
+  // [2026.10.18 3차 수정 N] 사망보험금 → 간주상속재산(상증법 §8①: 피상속인의 사망으로 받는 생명보험금으로 피상속인이 보험계약자이거나 실제 보험료를 낸 것)·금융재산(§22, 시행령 §19①).
+  //  예전엔 참고 줄("보험금 칸에 넣을지 확인")뿐이라 계산에 안 들어갔다(박종헌: 우체국 사망준비금 13,098,170원 — 계약자 생년 390722 = 피상속인).
+  //  지급 한 건마다(같은 금액의 사진·PDF·협의서 별지 보험 줄은 한 번만): 계약자가 피상속인(주민번호 앞자리·이름)이고 사망 지급이면 상속재산에 넣고(✅ 근거 표시),
+  //  계약자를 모르면 묻는다(넣음/넣지 않음). 세무사님 답(ihChoices 'ins_금액')이 있으면 그 답대로
+  out.deemed = [];
+  const decB6i = (function () {
+    const rn = String(out.deceased.regNo || '').replace(/[^\d]/g, ''); if (rn.length >= 6) return rn.slice(0, 6);
+    const dd = by('death').map(function (x) { return String((x.p.result || {}).생년월일 || ''); }).filter(Boolean)[0]; return dd ? dd.replace(/-/g, '').slice(2, 8) : '';
+  })();
+  by('insurance').forEach(function (x) {
+    const r = x.p.result || {}; if (r.종류 === '보증보험증권') return;
+    const info = '보험(' + x.f.name + ') ' + (r.종류 || '') + (r.지급액 ? ' 지급액 ' + Number(r.지급액).toLocaleString('ko-KR') + '원' : '') + (pn(r.피보험자) ? ' · 피보험자 ' + pn(r.피보험자) : '') + (pn(r.계약자) ? ' · 계약자 ' + pn(r.계약자) : (r.계약자 && r.계약자.생년6 ? ' · 계약자 생년 ' + r.계약자.생년6 : ''));
+    if (!r.지급액) { out.notes.push(info + ' — 피상속인이 보험료를 낸 생명보험금이면 간주상속재산(§8)·금융재산(§22): 지급액을 읽지 못해 계산에 못 넣음(원문 확인)'); return; }
+    const v = Number(r.지급액), dupI = out.deemed.filter(function (q) { return q.v === v; })[0];
+    if (dupI) { if (dupI.files.indexOf(x.f.name) === -1) dupI.files.push(x.f.name); return; }
+    const hB6 = r.계약자 && r.계약자.생년6 ? String(r.계약자.생년6) : '', hNm = pn(r.계약자);
+    const byDec = !!((hB6 && decB6i && hB6 === decB6i) || (hNm && dec && caseProcNameLike_(nm(hNm), dec)));
+    const death = /사망/.test(String(r.지급사유 || '') + ' ' + String(r.종류 || '') + ' ' + String(r.계약상태 || '')) || (base && r.지급일 && r.지급일 >= base && /사고\s*소멸/.test(String(r.계약상태 || '')));
+    out.deemed.push({ v: v, files: [x.f.name], byDec: byDec, death: !!death, info: info, why: (byDec ? '계약자 = 피상속인(' + (hB6 ? '생년 ' + hB6 : hNm) + ')' : '계약자 ' + (hNm || (hB6 ? '생년 ' + hB6 : '미상'))) + (r.지급사유 ? ' · 지급사유 ' + r.지급사유 : '') + (r.지급일 ? ' · 지급일 ' + r.지급일 : '') });
+  });
+  // 분할협의서 별지의 보험 줄(같은 금액이면 위 지급 건과 같은 것)
+  by('inhdivision').forEach(function (x) { ((x.p.result || {}).금융목록 || []).forEach(function (q) { if (!q.보험 || !q.잔액) return; const d0 = out.deemed.filter(function (z) { return z.v === q.잔액; })[0]; if (d0) { if (d0.files.indexOf(x.f.name) === -1) d0.files.push(x.f.name); return; } out.deemed.push({ v: q.잔액, files: [x.f.name], byDec: false, death: /사망|급부금/.test(String(q.종류 || '')), info: '분할협의서(' + x.f.name + ') 보험 ' + q.기관 + ' ' + q.계좌 + ' ' + Number(q.잔액).toLocaleString('ko-KR') + '원', why: '분할협의서 별지 보험 줄(계약자 서류 없음)' }); }); });
+  out.deemedValue = 0;
+  out.deemed.forEach(function (d) {
+    const ch = choices['ins_' + d.v];
+    d.key = 'ins_' + d.v;
+    if (ch) { d.value = Number(ch.v) || 0; d.src = ch.src || '세무사님 답'; }
+    else if (d.byDec && d.death) { d.value = d.v; d.src = d.why + ' — 피상속인이 계약자인 사망보험금(§8①)'; }
+    else d.value = null; // 묻는다(caseProcInhAssetItems_)
+    if (d.value) out.deemedValue += d.value;
+  });
   // 금융재산 — [2026.10.17 조사 보고 · 세무사님 원칙: 서류 합계가 아니라 내용 항목(계좌)별로] 계좌번호(끝 4자리)를 열쇠로 한 계좌별 대조표.
   //  잔액증명(개시일 기준) · 거래내역 증명서(개시일 직전 줄 잔액) · 분할협의서 별지 금융목록(잔액·지급액) · 안심상속 조회결과(기관별 금액) · 통장 사본(참고)을
   //  같은 계좌·같은 기관끼리 맞춰 한 번만 센다. 값은 계좌마다 개시일 잔액(잔액증명·거래내역) > 분할협의서 잔액, 계좌를 모르는 기관은 조회결과 금액 > 분할협의서 금액.
@@ -30464,7 +30634,7 @@ function caseProcInhFacts0_(c, parsed) {
   by('interest').forEach(function (x) {
     const r = x.p.result || {}, l4 = accKey(r.계좌번호); if (!l4 || !r.실지급액) return;
     const after = !!(base && r.지급일 && r.지급일 > base);
-    accOf(l4, finOrg_(r.금융기관), (r.금융기관 || '') + ' ' + r.계좌번호).srcs.push({ kind: 'int', v: r.실지급액, file: x.f.name, why: '이자계산서(' + x.f.name + ') ' + (r.구분 || '지급') + ' ' + (r.지급일 || '') + ': 원금 ' + won0(r.원금) + ' + 이자 ' + won0(r.이자) + ' − 원천세 ' + won0(r.원천세) + ' = ' + won0(r.실지급액) + (after ? ' — 상속개시일(' + base + ') 뒤 해약이라 개시일 뒤 이자가 섞임(참고)' : '') });
+    accOf(l4, finOrg_(r.금융기관), (r.금융기관 || '') + ' ' + r.계좌번호).srcs.push({ kind: 'int', v: r.실지급액, P: r.원금, I: r.이자, T: r.원천세, from: r.예입일 || '', to: r.지급일 || '', dkind: r.예금종류 || '', file: x.f.name, why: '이자계산서(' + x.f.name + ') ' + (r.구분 || '지급') + ' ' + (r.지급일 || '') + ': 원금 ' + won0(r.원금) + ' + 이자 ' + won0(r.이자) + ' − 원천세 ' + won0(r.원천세) + ' = ' + won0(r.실지급액) + (after ? ' — 상속개시일(' + base + ') 뒤 해약이라 개시일 뒤 이자가 섞임(참고)' : '') });
   });
   // ② 거래내역 증명서·거래내역 조회 — 개시일 직전 검산된 줄의 잔액, 통장 사본은 마지막 기록 잔액(참고)
   const otherAcc = [];
@@ -30492,10 +30662,10 @@ function caseProcInhFacts0_(c, parsed) {
   by('inhdivision').forEach(function (x) {
     const r = x.p.result || {};
     (r.금융목록 || []).forEach(function (q) {
-      if (q.보험) { if (!finIns.some(function (z) { return z.계좌 === q.계좌 && z.잔액 === q.잔액; })) { finIns.push(q); out.notes.push('분할협의서(' + x.f.name + ') 보험 ' + q.기관 + ' ' + q.계좌 + ' ' + won0(q.잔액) + ' — 피상속인이 보험료를 낸 보험금이면 간주상속재산(§8)·금융재산(§22)'); } return; }
+      if (q.보험) { if (!finIns.some(function (z) { return z.계좌 === q.계좌 && z.잔액 === q.잔액; }) && !(out.deemed || []).some(function (z) { return z.v === q.잔액; })) { finIns.push(q); out.notes.push('분할협의서(' + x.f.name + ') 보험 ' + q.기관 + ' ' + q.계좌 + ' ' + won0(q.잔액) + ' — 피상속인이 보험료를 낸 보험금이면 간주상속재산(§8)·금융재산(§22)'); } return; }
       const a = accOf(accKey(q.계좌), finOrg_(q.기관), q.기관 + ' ' + q.계좌);
       if (a.srcs.some(function (z) { return z.kind === 'div' && z.v === q.잔액; })) return;
-      a.srcs.push({ kind: 'div', v: q.잔액, pay: q.지급액, file: x.f.name, why: '분할협의서(' + x.f.name + ') 별지 잔액(이자 포함)' + (q.지급액 && q.지급액 !== q.잔액 ? ' · 지급액 ' + won0(q.지급액) : '') });
+      a.srcs.push({ kind: 'div', v: q.잔액, pay: q.지급액, dkind: q.종류 || '', file: x.f.name, why: '분할협의서(' + x.f.name + ') 별지 잔액' + (q.지급액 && q.지급액 !== q.잔액 ? ' · 지급액(이자 포함) ' + won0(q.지급액) : '') });
     });
     if (!(r.금융목록 || []).length) (r.금융 || []).forEach(function (q) {
       const org = finOrg_(q.기관);
@@ -30572,6 +30742,30 @@ function caseProcInhFacts0_(c, parsed) {
   const cands = [];
   const addCand = function (v, src) { if (!cands.some(function (q) { return q.v === v; })) cands.push({ v: v, src: src }); };
   if (groups.length) addCand(sumA, '계좌별 대조표 합 — ' + groups.map(function (g) { return g.org + ' ' + won0(g.v) + '[' + g.parts.map(function (p) { return p.why; }).join(' + ') + ']'; }).join(' + '));
+  // [2026.10.18 3차 수정 N] 예금 평가 = 평가기준일 현재 예입총액 + 이미 지난 미수이자 − 원천징수세액 상당액(상증법 §63④). 잔액증명은 원금만 적힌다 —
+  //  박종헌: 우체국 정기예금 3억(2025-05-13 예입, 2026-04-27 중도해약 이자 7,888,350·원천세 1,214,790)이 원금만 들어가 경과이자(약 627만원)가 빠졌다.
+  //  같은 계좌 이자계산서가 있으면 그 이자·원천세를 예입일~해약일 날짜 비례로 개시일까지 나눠 더한 후보를 따로 낸다(추정 — 개시일 기준 "미수이자 포함 잔액증명"으로 확정).
+  //  이자계산서가 없는 정기·회전예금·적금은 협의서의 이자 포함 지급액(해지일까지 이자 — 개시일 기준보다 많을 수 있음)을 참고로 알린다
+  try {
+    const dayN = function (s) { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '')); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000 : null; };
+    const bN = dayN(base), accr = [], payRef = [];
+    accs.forEach(function (a) {
+      if (!a.pick || bN === null) return;
+      const iq = a.srcs.filter(function (q) { return q.kind === 'int' && q.P && q.I && q.P === a.pick.v; })[0];
+      if (iq) {
+        const f0 = dayN(iq.from), t0 = dayN(iq.to);
+        if (f0 === null || t0 === null || !(t0 > bN) || !(bN > f0)) return; // 개시일 뒤 해약·지급분만(개시일 전에 해약했으면 개시일 잔액에 원금이 남아 있을 수 없다)
+        const ratio = (bN - f0) / (t0 - f0);
+        const ii = Math.round(iq.I * ratio), tt = Math.round((iq.T || 0) * ratio);
+        if (ii - tt > 0) accr.push({ v: ii - tt, why: (a.label || a.org).trim() + ' 원금 ' + won0(iq.P) + ' + 개시일까지 이자 ' + won0(ii) + ' − 원천세 ' + won0(tt) + '(이자계산서 ' + iq.file + ' 이자 ' + won0(iq.I) + '·원천세 ' + won0(iq.T) + ' × ' + (bN - f0) + '/' + (t0 - f0) + '일)' });
+        return;
+      }
+      const dv = a.srcs.filter(function (q) { return q.kind === 'div' && q.pay && q.pay > a.pick.v && /정기|회전|적금/.test(q.dkind || ''); })[0];
+      if (dv) payRef.push((a.label || a.org).trim() + ' ' + (dv.dkind || '') + ' 잔액 ' + won0(a.pick.v) + ' / 이자 포함 지급액 ' + won0(dv.pay) + '(' + dv.file + ')');
+    });
+    if (accr.length) addCand(sumA + accr.reduce(function (t, q) { return t + q.v; }, 0), '계좌별 대조표 합 + 정기예금 개시일 경과이자(상증법 §63④ — 예입총액 + 미수이자 − 원천징수세액, 날짜 비례 추정): ' + accr.map(function (q) { return q.why; }).join(' / ') + ' — 개시일 기준 미수이자 포함 잔액증명으로 확정');
+    if (payRef.length) out.notes.push('정기·회전예금 경과이자(§63④): ' + payRef.join(' / ') + ' — 잔액증명은 원금만이라 개시일까지 붙은 이자(− 원천세)가 빠졌을 수 있음. 지급액은 해지일까지 이자라 그대로 쓰지 말고 개시일 기준 미수이자 포함 잔액증명으로 확인');
+  } catch (e) {}
   const baseParts = [].concat.apply([], groups.map(function (g) { return g.parts.filter(function (p) { return p.base; }); }));
   if (baseParts.length && baseParts.length < [].concat.apply([], groups.map(function (g) { return g.parts; })).length) addCand(baseParts.reduce(function (t, p) { return t + p.v; }, 0), '개시일 잔액이 확인된 계좌만(잔액증명·거래내역 — ' + baseParts.map(function (p) { return p.src.file; }).filter(function (v, i, a0) { return a0.indexOf(v) === i; }).join(', ') + ') — 나머지 기관 빠짐');
   const qOrgs = groups.filter(function (g) { return insts.some(function (z) { return z.kind === 'query' && z.org === g.org; }); });
@@ -30874,7 +31068,8 @@ function caseProcInhFacts0_(c, parsed) {
     if ((out.finUnread || []).length) out.financialUnknown = '금융재산 미확정 — 못 읽은 금융·보험·통장 서류 ' + out.finUnread.length + '개(' + out.finUnread.slice(0, 5).join(', ') + (out.finUnread.length > 5 ? ' 외' : '') + ')가 있어 0원으로 정하지 않았습니다. 글자가 보이는 PDF·엑셀로 다시 넣거나(암호 파일이면 풀어서), 상속개시일 기준 금액을 직접 넣어 주세요(예금·보험금이 정말 없으면 0).'; // [2026.10.18 정밀분석 원인2]
     else { out.financialValue = 0; out.financialSrc = '금융재산 서류 없음 — 0원으로 봄(예금·보험 등이 있으면 잔액증명을 폴더에 넣어 주세요)'; out.financialAssumedZero = true; }
   }
-  out.grossEstate = out.assets.every(function (a) { return a.value; }) && out.financialValue !== null ? out.assets.reduce(function (t, a) { return t + a.value; }, 0) + out.financialValue : null;
+  // [2026.10.18 3차 수정 N] 간주상속재산(사망보험금 §8)도 총상속재산에 — 넣을지 아직 안 정한 보험금이 있으면 합계를 비워 둔다
+  out.grossEstate = out.assets.every(function (a) { return a.value; }) && out.financialValue !== null && !(out.deemed || []).some(function (d) { return d.value === null; }) ? out.assets.reduce(function (t, a) { return t + a.value; }, 0) + out.financialValue + (out.deemedValue || 0) : null;
   // [2026.10.15 1단계 ②] 상속 채무(상증법 §14) — 서류에서 채무 후보를 모은다(부채증명원·안심상속 조회 채무·피상속인이 임대인인 임대보증금·미지급 영수증).
   //  김창호 사건: 부채증명원·대출 납입증명·미지급 진료비·월세계약서가 어느 칸에도 안 쓰였고, 세액계산 채무 칸도 채워지지 않았다.
   //  확정은 세무사님(사건처리 「상속 채무 확정」) — 확정한 목록만 세액계산 채무 칸으로 간다.
@@ -31016,7 +31211,7 @@ function caseProcInhFacts0_(c, parsed) {
     }); });
     // 보증금은 건물 임대의 채무 — 건물(집합건물) 등기부 지분만 곱한다. 토지 등기부 지분만 있으면 곱하지 않고 알린다(박종헌: 토지 1/2만 있고 건물 등기부 없음 → 검토서도 260,000,000 전액)
     const pool = found.filter(function (s) { return s.bld; });
-    if (!pool.length) { const lands = found.filter(function (s) { return s.v < 1; }); return lands.length ? { v: 1, landOnly: lands[0].txt, file: lands[0].file } : null; }
+    if (!pool.length) { const lands = found.filter(function (s) { return s.v < 1; }); return lands.length && lands.every(function (s) { return s.v === lands[0].v; }) ? { v: 1, landOnly: lands[0].txt, landV: lands[0].v, file: lands[0].file } : lands.length ? { v: 1, landOnly: lands[0].txt, file: lands[0].file } : null; }
     return pool.every(function (s) { return s.v === pool[0].v; }) ? pool[0] : null;
   };
   let leaseSum = 0;
@@ -31027,6 +31222,17 @@ function caseProcInhFacts0_(c, parsed) {
     let sh = shareFor(r.소재지), shLoose = false;
     if ((!sh || sh.landOnly) && r.소재지) { const sh2 = shareFor(''); if (sh2 && !sh2.landOnly) { sh = sh2; shLoose = true; } else sh = sh || sh2; }
     else if (!sh) sh = shareFor('');
+    // [2026.10.18 3차 수정 N] 건물 등기부가 없고 토지 지분만 있을 때 — 계약서 임대인 칸에 피상속인 말고 공동명의인(공동임대인)이 있으면 건물도 공유라
+    //  토지와 같은 지분으로 본다(상증법 §14①·시행령 §10① 피상속인이 부담할 채무만). 박종헌: 토지 1/2 · 계약서 「임대인 윤경숙 / 공동명의인 박종한」인데 보증금 260,000,000 전액(1.3억 과다).
+    //  공동명의 표시가 없으면 전액으로 두되 체크하지 않는다(건물 단독 소유일 수도 — 건물 등기부로 확인)
+    let coLand = '';
+    if (sh && sh.landOnly && sh.landV) {
+      try {
+        const lt = String(tc_docText_(G.L0.f) || '');
+        if (/공\s*동\s*명\s*의\s*인|공\s*동\s*임\s*대\s*인/.test(lt)) coLand = '계약서 임대인 칸 공동명의인';
+      } catch (e) {}
+      if (coLand) sh = { v: sh.landV, txt: sh.landOnly, file: sh.file + ' 토지 지분 · ' + G.L0.f.name + ' ' + coLand + ' — 건물 등기부 없음, 건물도 공유로 봄', co: true };
+    }
     const amt = sh && sh.v < 1 ? Math.round(r.보증금 * sh.v) : r.보증금;
     leaseSum += r.보증금;
     const unitTxt = G.unit ? ' ' + (G.unit.charAt(0) === '#' ? G.unit.slice(1) + '호' : G.unit) : '';
@@ -31039,7 +31245,7 @@ function caseProcInhFacts0_(c, parsed) {
     if (G.files.length > 1) notes.push('같은 계약 ' + G.files.length + '부(' + G.files.join('·') + ') — 한 번만');
     if (sh && sh.v < 1) notes.push('보증금 ' + r.보증금.toLocaleString('ko-KR') + '원 × 피상속인 지분 ' + sh.txt + '(' + sh.file + (shLoose ? ' — 계약서 소재지와 지번 대조는 못 함, 피상속인 등기부 지분이 모두 같음' : '') + ')');
     else if (sh && sh.landOnly) notes.push('피상속인 토지 지분 ' + sh.landOnly + '(' + sh.file + ')만 확인, 건물 등기부가 없어 보증금 전액으로 둠 — 건물이 공유면 지분만큼만');
-    out.debts.push({ debtType: 'other', creditorName: '임차인(임대보증금' + unitTxt + ')', amount: amt, file: G.L0.f.name, dupFiles: G.files.join(', '), src: '임대보증금' + (r.소재지 ? '(' + r.소재지 + ')' : '') + (st0 || en0 ? ' 계약기간 ' + st0 + '~' + en0 : ''), sure: !!(live || viaTbl), note: notes.join(' · ') });
+    out.debts.push({ debtType: 'other', creditorName: '임차인(임대보증금' + unitTxt + ')', amount: amt, file: G.L0.f.name, dupFiles: G.files.join(', '), src: '임대보증금' + (r.소재지 ? '(' + r.소재지 + ')' : '') + (st0 || en0 ? ' 계약기간 ' + st0 + '~' + en0 : ''), sure: !!(live || viaTbl) && !(sh && sh.landOnly), note: notes.join(' · ') }); // 토지 지분만 알고 건물 공유 여부를 모르면 전액을 미리 체크하지 않는다
   });
   if (tbl) {
     const sh0 = shareFor('');
@@ -31408,8 +31614,12 @@ function tc_ruleInheritanceFacts_(body) {
   const c = work_readRow_(col, found.row);
   if (!String(c.폴더ID || '').trim()) return { error: '사건 폴더가 없습니다.' };
   const f = caseProcInhFacts_(c);
+  // [2026.10.18 3차 수정 N] 사망보험금(간주상속재산 §8)은 금융재산(§22, 시행령 §19① — 보험금 포함)이라 순금융재산 칸에도 더한다(총상속재산 합계에는 이미 들어 있음)
+  const deemedV = f.deemedValue || 0;
   return { ok: true, deathDate: c.기준일 || '', deceased: f.deceased, heirs: f.heirs, assets: f.assets.map(function (a) { return { kind: a.kind, loc: a.loc, area: a.area, value: a.value, valueSrc: a.valueSrc, sure: a.sure, cands: a.cands }; }),
-    financialValue: f.financialValue, financialSrc: f.financialSrc, grossEstate: f.grossEstate, funeral: f.funeral, niche: f.niche, notes: f.notes,
+    financialValue: f.financialValue !== null && f.financialValue !== undefined ? f.financialValue + deemedV : f.financialValue, financialSrc: f.financialSrc + (deemedV ? ' + 간주상속재산 보험금 ' + deemedV.toLocaleString('ko-KR') + '원(§8·§22)' : ''),
+    deemed: (f.deemed || []).filter(function (d) { return d.value; }).map(function (d) { return { kind: 'insurance', value: d.value, src: d.src, files: d.files }; }),
+    grossEstate: f.grossEstate, funeral: f.funeral, niche: f.niche, notes: f.notes,
     priorGifts: f.priorGifts || [], disposal: f.disposal || [], // [2026.10.18 정밀분석 원인2] 세무사님이 답한 통장 사전증여(§13)·§15 부표4만
 
     debts: f.debtsConfirmed || [] }; // [2026.10.15] 세무사님이 사건처리에서 확정한 채무만(확정 전엔 빈 목록)
@@ -31446,6 +31656,13 @@ function caseProcInhAssetItems_(c, lines, items, parsed) {
   if (f.financialValue !== null && !f.financialDiff) lines.push('✅ 금융재산 ' + won(f.financialValue) + ' (' + f.financialSrc + ' — 평가기준일 현재 잔액)' + (f.financialOther && f.financialOther.length ? ' · 참고: ' + f.financialOther.map(function (q) { return won(q.v) + '(' + q.src + ')'; }).join(', ') + '는 개시일 뒤 이자·입금 등이 더해진 금액일 수 있음' : ''));
   else if (f.financial.length) items.push(caseProcItem_('ih:financial:' + f.financial.map(function (q) { return q.v; }).join('|'), 'check', f.financialAsk ? f.financialAsk + ' — ' + f.financial.map(function (q) { return won(q.v) + '(' + q.src + ')'; }).join(' / ') : '금융재산 금액이 서류마다 다릅니다 — ' + f.financial.map(function (q) { return won(q.v) + '(' + q.src + ')'; }).join(' / ') + '. 상속개시일 기준 금액은?',
     { mode: 'choose', target: 'ih:financial', input: 'money', label: '금융재산', cands: f.financial.map(function (q) { return { v: String(q.v), src: q.src }; }) }));
+  // [2026.10.18 3차 수정 N] 사망보험금 — 간주상속재산(§8)·금융재산(§22). 계약자가 피상속인으로 확인되면 ✅, 모르면 넣을지 묻는다
+  (f.deemed || []).forEach(function (d) {
+    if (d.value) lines.push('✅ 간주상속재산(보험금 §8) ' + won(d.value) + ' (' + d.src + ' — ' + d.files.join(' = ') + ') — 총상속재산·순금융재산(§22)에 더함');
+    else if (d.value === 0) lines.push('간주상속재산 아님: 보험금 ' + won(d.v) + '(' + d.files.join(' = ') + ') — ' + (d.src || '세무사님 답'));
+    else items.push(caseProcItem_('ih:' + d.key, 'judge', '사망보험금 ' + won(d.v) + '(' + d.files.join(' = ') + ', ' + d.why + ') — 피상속인이 보험계약자이거나 보험료를 실제로 냈으면 상속재산으로 봅니다(간주상속재산 §8①·②, 금융재산공제 §22 대상). 넣을까요?',
+      { mode: 'choose', target: 'ih:' + d.key, input: 'money', label: '간주상속재산(보험금)', cands: [{ v: String(d.v), src: '넣음 — 피상속인이 계약자·보험료 부담자' }, { v: '0', src: '넣지 않음 — 피상속인이 보험료를 내지 않음(수익자 고유재산)' }] }));
+  });
   // [2026.10.18 정밀분석 원인2] 금융재산 미확정(못 읽은 서류) · 통장 거래에서 나온 사전증여 후보(§13, 받은 사람마다) · §15 사전 인출 소명액
   if (f.financialUnknown) items.push(caseProcItem_('ih:financial:unread', 'missing', f.financialUnknown, { mode: 'input', target: 'ih:financial', input: 'money', label: '금융재산' }));
   ((f.bank || {}).asks || []).forEach(function (q) { items.push(caseProcItem_('ih:' + q.key, 'judge', q.text, { mode: 'choose', target: 'ih:' + q.key, input: 'money', label: '사전증여 ' + q.name, cands: q.cands })); });
@@ -35675,7 +35892,12 @@ function docInhDivisionParse_(text) {
       var ins = (before.match(/(농협은행|[가-힣]{1,6}농협|[가-힣]{0,4}\s*우체국|[가-힣]{1,8}은행|[가-힣]{1,8}증권|[가-힣]{1,8}금고|[가-힣]{1,8}신협)/g) || []).pop() || '';
       var head = lst.slice(0, q.index), sh = head.lastIndexOf('보험'), sd = Math.max(head.lastIndexOf('예금'), head.lastIndexOf('증권'));
       var a1 = Number(q[3].replace(/,/g, '')), a2 = q[4] ? Number(q[4].replace(/,/g, '')) : null;
-      r.금융목록.push({ 기관: ins.replace(/\s+/g, ''), 계좌: q[1], 보험: sh > sd || /급부금|보험금/.test(q[2] || ''), 지급액: a1, 잔액: a2 !== null ? a2 : a1 });
+      // [2026.10.18 3차 수정 N] 별지 표 칸은 「잔액 | 지급액(이자 포함)」 — 머리 두 줄("지급액 ⏎ (이자 포함)")이 글자 순서상 앞에 나와 첫 금액을 지급액으로 읽어 열이 뒤바뀌었다
+      //  (박종헌: 농협 …5291 잔액 12,623,370 / 지급액 12,625,144, 우체국 정기예금 잔액 300,000,000 / 지급액 306,673,560 → 협의서 금액 기준 후보 574,093,161원, 맞게는 566,289,738원).
+      //  이자를 더한 지급액은 잔액보다 작을 수 없으므로 두 금액이 있으면 작은 쪽 = 잔액(개시일 잔액 후보), 큰 쪽 = 해지·지급 때 이자 포함 금액
+      var bal = a2 !== null ? Math.min(a1, a2) : a1, pay = a2 !== null ? Math.max(a1, a2) : null;
+      var kindM = (before.match(/([가-힣A-Za-z0-9+]*(?:정기\s*예금|회전\s*예금|적금|예탁금|저축\s*예금|통장|예금)[IⅡ]*)/g) || []).pop() || '';
+      r.금융목록.push({ 기관: ins.replace(/\s+/g, ''), 계좌: q[1], 종류: kindM.replace(/\s+/g, ''), 보험: sh > sd || /급부금|보험금/.test(q[2] || ''), 지급액: pay !== null ? pay : a1, 잔액: bal });
     }
   }
   var sec =t.split(/-\s*상\s*속\s*재\s*산\s*-/)[1] || '';
@@ -36925,6 +37147,9 @@ function docParseText_(text) {
   var imm = docImmigrationParse_(text); if (imm) return imm;
   // [2026.10.17 2차 새 서류] 차용증·재산조회 회보서·임대차계약 신고이력 확인서·토지등 수용사실 확인서 — 서류 머리 제목으로만(회보서 "건축물 정보"가 건축물대장으로, 신고이력의 "민간임대주택"이 임대사업자 등록증으로 오인되기 전에)
   var ndk = docNewKindsParse_(text); if (ndk) return ndk;
+  // [2026.10.18 3차 수정 N] 상속 협의분할 지분표(소유권 변동 현황)·상속인 사이 관리·정산 약정서 — 규칙이 없어 "종류 미정"으로 버려져 상속인 명단·지분을 못 썼다(노영환)
+  var ocp = docOwnChangeParse_(text); if (ocp) return ocp;
+  var hap = docHeirAgreeParse_(text); if (hap) return hap;
   // [2026.10.18 정밀분석 원인8] 은행 창구 송금의뢰 확인증·무통장 입금증 — 지점 이름("경희의료원지점")·"영수증, 계산서 겸용" 글자 때문에 병원·영수증으로 오인되기 전에(서식 제목이 있을 때만)
   var rmt = docRemitConfirmParse_(text); if (rmt) return rmt;
   var fst = docFinStmtParse_(text); if (fst) return fst; // [2026.10.18 원인8] 사업용 재무상태표 — 차입금·보증금·예수금 줄(상속 채무 후보)
@@ -37141,6 +37366,80 @@ function docNewKindsParse_(text) {
   }
   if (!r) return null;
   return { type: type, label: r.종류, result: r, md: docNewKindsMd_(type, r) };
+}
+// [2026.10.18 3차 수정 N] 상속 협의분할 지분표 「소유권 변동 현황」(법무사·사무소가 만든 인별 상속전·감소·증가·상속후·비율·비고 표) — 사람 한 줄씩.
+//  증가 = 상속후 − 상속전(비고 '신규'면 상속전 0). 피상속인 줄은 감소(− 표시)로 0이 된다. 검산: 증가 합 = 피상속인 감소(노영환 84/168 = 7/14).
+//  쓰는 곳: 상속인 명단(받은 사람 = 협의분할 상속인 — 피상속인 가족관계증명서에 없는 사람은 대습상속 확인 대상), 상속인별 취득 지분
+function docOwnChangeParse_(text) {
+  var t = String(text || ''), head = t.slice(0, 200).replace(/\s+/g, '');
+  if (!/소유권변동현황/.test(head)) return null;
+  var f = t.replace(/\s+/g, ' ');
+  var r = { 종류: '소유권 변동 현황(상속 지분표)', 행: [], 경고: [] };
+  var cm = /변\s*동\s*원\s*인\s*[:：]?\s*([^\n*]{4,80})/.exec(t);
+  if (cm) {
+    r.원인 = cm[1].replace(/\s+/g, ' ').trim();
+    var dm = /((?:19|20)\d{2})\s*[.\-년]\s*(\d{1,2})\s*[.\-월]\s*(\d{1,2})/.exec(r.원인); if (dm) r.개시일 = dm[1] + '-' + ('0' + dm[2]).slice(-2) + '-' + ('0' + dm[3]).slice(-2);
+    var pm = /([가-힣]{2,4})\s*사망/.exec(r.원인.replace(/일(?=\s*[가-힣]{2,4}\s*사망)/, ' ')); if (pm) r.피상속인 = pm[1];
+    r.협의분할 = /협\s*의\s*분\s*할/.test(r.원인);
+  }
+  var body = f.split(/\*?\s*변\s*동\s*원\s*인/)[0];
+  var frac = function (a, b) { return Number(b) ? Number(a) / Number(b) : null; };
+  var re = /([가-힣]{2,4})((?:\s+(?:-\s*\d+\s*\/\s*\d+|\d+\s*\/\s*\d+|\d+(?:\.\d+)?\s*%|기존|신규|[01](?![\d\/.])))+)/g, m;
+  while ((m = re.exec(body))) {
+    var name = m[1];
+    if (/^(인별|상속전|상속후|감소|증가|비율|비고|기존|신규|합계)$/.test(name)) continue;
+    var L = [], dec = null, pct = null, note = '', tk, tre = /(-\s*)?(\d+)\s*\/\s*(\d+)|(\d+(?:\.\d+)?)\s*%|(기존|신규)|(?:^|\s)([01])(?![\d\/.])/g;
+    while ((tk = tre.exec(m[2]))) {
+      if (tk[2]) { var v = { v: frac(tk[2], tk[3]), txt: tk[2] + '/' + tk[3] }; if (tk[1]) dec = v; else L.push(v); }
+      else if (tk[4]) pct = Number(tk[4]);
+      else if (tk[5]) note = tk[5];
+      else if (tk[6]) L.push({ v: Number(tk[6]), txt: tk[6] });
+    }
+    if (!L.length) continue;
+    var before = (note === '신규' && !dec) ? null : L[0], after = L[L.length - 1];
+    if (note === '신규' && L.length === 1) after = L[0];
+    var inc = (after ? after.v : 0) - (before ? before.v : 0);
+    var row = { 이름: name, 상속전: before ? before.txt : '', 감소: dec ? dec.txt : '', 상속후: after ? after.txt : '', 비율: pct, 비고: note };
+    if (inc > 1e-9) row.증가 = (note === '신규' ? L[0].txt : (L.length >= 3 ? L[1].txt : '')) || String(Math.round(inc * 1e6) / 1e6);
+    row.증가값 = inc > 1e-9 ? inc : 0;
+    r.행.push(row);
+  }
+  if (!r.행.length) return null;
+  var decRow = r.행.filter(function (x) { return x.감소; })[0];
+  if (decRow && !r.피상속인) r.피상속인 = decRow.이름;
+  var sumInc = r.행.reduce(function (s, x) { return s + (x.증가값 || 0); }, 0);
+  if (decRow) { var dv = (function () { var q = /(\d+)\/(\d+)/.exec(decRow.감소); return q ? Number(q[1]) / Number(q[2]) : null; })(); if (dv !== null) { r.검산 = Math.abs(dv - sumInc) < 1e-6 ? '증가 합 = 피상속인 감소 ' + decRow.감소 + ' 일치' : '증가 합 ≠ 피상속인 감소 ' + decRow.감소; if (!/일치$/.test(r.검산)) r.경고.push('⚠ ' + r.검산 + ' — 원문 확인'); } }
+  r.받은사람 = r.행.filter(function (x) { return x.증가값 > 0; }).map(function (x) { return x.이름; });
+  var md = '### 소유권 변동 현황(상속 지분표)' + (r.원인 ? ' — ' + r.원인 : '') + '\n\n| 이름 | 상속전 | 감소 | 증가 | 상속후 | 비율 | 비고 |\n|---|---|---|---|---|---|---|\n' + r.행.map(function (x) { return '| ' + [x.이름, x.상속전, x.감소, x.증가 || '', x.상속후, x.비율 === null ? '' : x.비율 + '%', x.비고].join(' | ') + ' |'; }).join('\n')
+    + (r.검산 ? '\n\n검산: ' + r.검산 : '') + (r.경고.length ? '\n\n' + r.경고.join('\n') : '');
+  return { type: 'ownchange', label: r.종류, result: r, md: md };
+}
+// [2026.10.18 3차 수정 N] 상속인 사이 「상속재산 관리 및 정산에 관한 약정서」 — 협의분할로 한 상속인 명의 등기 + 내부 지분 정산.
+//  읽는 것: 피상속인·사망일, 상속인(이름·주민번호/여권번호), 등기 명의 상속인, 관리·처분 대표 상속인, 약정 지분(상속인별).
+//  등기 명의와 실제 귀속이 다르다는 사실을 남긴다(협의분할 등기 뒤 지분을 다시 나누면 증여 — 상증법 §4③, 상속인별 상속재산 명세는 협의분할 기준).
+function docHeirAgreeParse_(text) {
+  var t = String(text || ''), head = t.slice(0, 80).replace(/\s+/g, '');
+  if (!(/상속/.test(head) && /약정서/.test(head)) || /분할/.test(head)) return null; // 「상속재산 분할 약정서」는 분할협의서 규칙으로
+  var r = { 종류: '상속재산 관리·정산 약정서(상속인 사이)', 상속인: [], 약정지분: [], 경고: [], 참고: [] };
+  var j = function (s) { return String(s || '').replace(/\s+/g, ''); };
+  var dm = /피\s*상\s*속\s*인\s*망\s*([가-힣]{2,4})/.exec(t); if (dm) r.피상속인 = dm[1];
+  var sm = /((?:19|20)\d{2})\s*년?\s*(\d{1,2})\s*월?\s*(\d{1,2})\s*일?[^\n]{0,40}?사\s*망/.exec(t); if (sm && +sm[2] >= 1 && +sm[2] <= 12 && +sm[3] >= 1 && +sm[3] <= 31) r.개시일 = sm[1] + '-' + ('0' + sm[2]).slice(-2) + '-' + ('0' + sm[3]).slice(-2);
+  var re = /상\s*속\s*인\s+((?:[가-힣]\s*){2,4}?)\s*서\s*명/g, m;
+  while ((m = re.exec(t))) {
+    var n = j(m[1]); if (r.상속인.some(function (q) { return q.이름 === n; })) continue;
+    var w = t.slice(re.lastIndex, re.lastIndex + 120), rn = /(\d{6})\s*-\s*(\d{7})/.exec(w), pp = /여\s*권\s*번\s*호[\s,:：]*(\w{6,12})/.exec(w);
+    r.상속인.push({ 이름: n, 주민번호: rn ? rn[1] + '-' + rn[2] : '', 여권번호: !rn && pp ? pp[1] : '', 외국국적: !rn && /시\s*민\s*권|외\s*국\s*인/.test(w) });
+  }
+  var sre = /[*＊]\s*[:：]?\s*(\d+)\s*\/\s*(\d+)\s*상\s*속\s*인\s*((?:[가-힣]\s*){2,4})/g;
+  while ((m = sre.exec(t))) r.약정지분.push({ 이름: j(m[3]).slice(0, 4), 지분: m[1] + '/' + m[2] });
+  var rp = /상\s*속\s*인\s*((?:[가-힣]\s*){2,4}?)\s*(?:은|는)\s*위\s*대\s*상\s*부\s*동\s*산[\s\S]{0,60}?대\s*표/.exec(t); if (rp) r.대표 = j(rp[1]);
+  var mm = /상\s*속\s*인\s*((?:[가-힣]\s*){2,4}?)\s*명\s*의\s*로/.exec(t); if (mm) r.명의 = j(mm[1]);
+  if (!r.상속인.length && !r.약정지분.length) return null;
+  if (r.명의 && r.약정지분.length) r.참고.push('등기 명의는 상속인 ' + r.명의 + ', 내부 약정 지분은 ' + r.약정지분.map(function (q) { return q.이름 + ' ' + q.지분; }).join(' · ') + ' — 협의분할 등기 뒤 지분을 다시 나누면 증여(상증법 §4③), 상속인별 상속재산 명세는 협의분할(등기) 기준');
+  var md = '### ' + r.종류 + '\n\n' + [r.피상속인 ? '피상속인: ' + r.피상속인 : '', r.개시일 ? '사망일: ' + r.개시일 : '', r.명의 ? '등기 명의 상속인: ' + r.명의 : '', r.대표 ? '관리·처분 대표: ' + r.대표 : ''].filter(Boolean).join(' · ')
+    + (r.상속인.length ? '\n\n| 상속인 | 주민번호 | 비고 |\n|---|---|---|\n' + r.상속인.map(function (q) { return '| ' + q.이름 + ' | ' + (q.주민번호 || '') + ' | ' + (q.여권번호 ? '여권번호 ' + q.여권번호 : '') + (q.외국국적 ? ' 외국 국적' : '') + ' |'; }).join('\n') : '')
+    + (r.약정지분.length ? '\n\n약정 지분: ' + r.약정지분.map(function (q) { return q.이름 + ' ' + q.지분; }).join(' · ') : '') + (r.참고.length ? '\n\n' + r.참고.join('\n') : '');
+  return { type: 'heiragree', label: r.종류, result: r, md: md };
 }
 // 한글·숫자 섞인 금액 → 원("일억구천사백만" 194,000,000 · "2억 1700만원" 217,000,000 · "1300만" 13,000,000). 모르는 글자가 있으면 null(지어내지 않음)
 function docKrMoney_(s) {
@@ -37829,7 +38128,8 @@ function jmParse_(text) {
   } else {
     var hm = /세대주\s*성명\s*\(\s*한자\s*\)\s*\n?\s*([가-힣]{2,5})/.exec(t);
     if (hm) r.세대주 = hm[1];
-    var cm = /세대\s*구성\s*사유\s*및\s*일자\s*\n?\s*([가-힣]{2,8})\s*\n?\s*((?:19|20)\d{2}-\d{2}-\d{2})/.exec(t);
+    // [2026.10.18 3차 수정 N] 사유와 날짜 사이에 표 칸 이름 조각(1~3글자 줄 "발변" 등)이 끼어도 — 김형민: "세대 구성 사유 및 일자 ⏎ 전입 ⏎ 발변 ⏎ 1990-03-26"을 놓쳤다
+    var cm = /세대\s*구성\s*사유\s*및\s*일자\s*\n?\s*([가-힣]{2,8})\s*\n?(?:\s*[가-힣]{1,3}\s*\n){0,2}\s*((?:19|20)\d{2}-\d{2}-\d{2})/.exec(t);
     if (cm) { r.세대구성사유 = cm[1]; r.세대구성일 = cm[2]; }
     var am = /현\s*주\s*소\s*[:：]\s*\n?\s*([^\n]{4,60}(?:\n[^\n]{0,40}호[^\n]*)?)/.exec(t);
     if (am) r.현주소 = am[1].replace(/\s*\n\s*(?:(?:19|20)\d{2}-\d{2}-\d{2}\s*\n\s*)?/g, ' ').replace(/\s+/g, ' ').trim();
@@ -37949,6 +38249,7 @@ function jmMembers_(t) {
       var nm = /^([가-힣]{2,4})(?:\s*\(\s*([一-鿿]{1,5}))?/.exec(w);
       if (!p.이름 && nm && !/^(거주자|세대주|등록상태|변동사유|성명|관계|번호)$/.test(nm[1]) && !/^(주민|등록|발생|신고|변동|세대|사유|상태|이하|여백)/.test(nm[1])) { p.이름 = nm[1]; p.한자 = nm[2] || ''; }
     });
+    p._ds = ds.slice(); // 글자 순서 그대로(아래에서 앞 행 몫 날짜를 되돌려 줄 때 씀)
     ds.sort(); // 발생일(전입일) ≤ 신고일
     p.전입일 = ds[0] || ''; p.신고일 = ds[1] || ds[0] || '';
     var st = /(거주불명자|거주자|말소자|재외국민|국외이주)/.exec(joined);
@@ -37957,6 +38258,27 @@ function jmMembers_(t) {
     if (ds.length > 2) p.확인필요 = true; // 다른 행 날짜가 섞임
     out.push(p);
   });
+  // [2026.10.18 3차 수정 N] 날짜가 한 행씩 밀린 표 — 글자인식이 "(漢字" 닫는 괄호와 함께 앞 행의 발생일·신고일을 다음 행 이름 뒤에 둔다
+  //  (김형민 등본: 배우자 장준순 행에 날짜가 없고 자녀 김서연 행에 날짜 4개 "1991-02-07 1991-02-12 / 1996-02-01 1996-02-01" → 김서연 전입일이 1991-02-07로 잘못 붙음).
+  //  한 행에 날짜 짝(발생일·신고일)이 둘 이상이고 바로 앞 행들이 날짜가 없으면, 글자 순서대로 앞 짝부터 앞 행에 되돌려 준다(행마다 한 짝 — 표 칸 순서와 같음)
+  for (var k = 0; k < out.length; k++) {
+    var q = out[k], dsk = q._ds || [];
+    if (dsk.length < 4 || dsk.length % 2) continue;
+    var empties = [];
+    for (var j = k - 1; j >= 0 && !(out[j]._ds || []).length; j--) empties.unshift(out[j]);
+    var give = Math.min(empties.length, dsk.length / 2 - 1);
+    if (!give) continue;
+    empties.slice(empties.length - give).forEach(function (e, i) {
+      var pr = dsk.slice(i * 2, i * 2 + 2).sort();
+      e.전입일 = pr[0]; e.신고일 = pr[1]; e._ds = pr; e.날짜보정 = '다음 행 글자에서 옮김(표 칸 순서)';
+      if (!e.변동사유 && q.변동사유) e.변동사유 = q.변동사유;
+      if (e.관계 && e.이름) delete e.확인필요;
+    });
+    var rest = dsk.slice(give * 2).sort();
+    q.전입일 = rest[0]; q.신고일 = rest[1] || rest[0]; q._ds = rest;
+    if (rest.length <= 2 && q.관계 && q.이름) delete q.확인필요;
+  }
+  out.forEach(function (p) { delete p._ds; });
   return out;
 }
 
