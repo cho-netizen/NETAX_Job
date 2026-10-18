@@ -29579,6 +29579,15 @@ function cpfBadName_(nm) {
   if (/^(감정|평가|공시|계약|증여|매매|임대|양도|상속|신고|세무|법무|등기|부동|재산|금액|합계|기준)/.test(s)) return true; // 서류 낱말("감정평가")
   return false;
 }
+// [2026.10.19 1번 밤작업 — 2번 10바퀴] 주소 바로 앞(120자, 줄 두 개 안)이 권리자·채권자 칸이면 그 역할 — 등기부 을구 "근저당권자 주식회사○○은행 110111-… 서울 중구 …(○○지점)"처럼
+//  권리자(은행 지점)의 주소가 부동산 소재지로 들어가 자산 열쇠가 되던 것. 소유자·채무자 주소는 거주지 연결에 쓰일 수 있어 그대로 둔다. 돌려주는 것: 역할 낱말 또는 ''
+function cpfCreditorAddr_(t, at) {
+  let back = String(t || '').slice(Math.max(0, at - 120), at); const nl = back.split('\n'); back = nl.slice(-2).join('\n');
+  const m = /(근\s*저\s*당\s*권\s*자|저\s*당\s*권\s*자|채\s*권\s*자|권\s*리\s*자|전\s*세\s*권\s*자|지\s*상\s*권\s*자|임\s*차\s*권\s*자|가\s*등\s*기\s*권\s*자|질\s*권\s*자|수\s*탁\s*자|우\s*선\s*수\s*익\s*자)(?![가-힣])[^\n]*\n?[^\n]{0,10}$/.exec(back);
+  if (m) return m[1].replace(/\s+/g, '');
+  if (/(주\s*식\s*회\s*사|㈜|\(\s*주\s*\)|은\s*행|농\s*업\s*협\s*동\s*조\s*합|축\s*산\s*업\s*협\s*동\s*조\s*합|협\s*동\s*조\s*합|새\s*마\s*을\s*금\s*고|신\s*용\s*협\s*동\s*조\s*합|캐\s*피\s*탈|보\s*험|저\s*축\s*은\s*행|공\s*사|신\s*탁)[^\n]{0,40}\n?[^\n]{0,10}$/.test(back)) return '법인 권리자';
+  return '';
+}
 // 글 속 쪽 번호(중10) — "1/3", "- 2 -", "[3쪽]" 표시가 있는 서류에서 그 자리의 쪽
 function cpfPageMarks_(t) {
   const marks = [], re = /(?:^|\n)\s*(?:(\d{1,3})\s*\/\s*\d{1,3}|-\s*(\d{1,3})\s*-|\[(\d{1,3})쪽\])\s*(?=\n|$)/g; let m;
@@ -29719,6 +29728,7 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
     const ak = cpfAssetKey_(m[1]); if (!ak) continue;
     // raw는 그 줄 끝까지(단지명·동호·도로명이 번지 뒤에 이어짐), value는 열쇠 재료가 되는 앞부분
     const le = t.indexOf('\n', m.index + m[1].length), rawLine = t.slice(m.index, le === -1 ? m.index + 120 : Math.min(le, m.index + 120));
+    { const cr = cpfCreditorAddr_(t, m.index); if (cr) { add('주소', m[1].replace(/\s+/g, ' ').trim(), rawLine.replace(/\s+/g, ' ').trim(), m.index, {}, { role: cr, note: '권리자·채권자 칸의 주소 — 부동산 소재지 아님(자산 열쇠 안 만듦)' }); continue; } }
     const kk = { asset: ak }; const af = cpfAssetFullKey_(m[1]); if (af) kk.assetFull = af;
     add('소재지', m[1].replace(/\s+/g, ' ').trim(), rawLine.replace(/\s+/g, ' ').trim(), m.index, kk);
     // 지번과 도로명이 함께 적힌 자리(대장·등기필·감정평가 "(도로명주소) …") — 둘을 잇는 사실(상5)
@@ -29727,7 +29737,7 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
   }
   // 도로명 주소(지번 없이 도로명만 적힌 주소 — 초본 주소이력·계약서 주소·대장) — keys.road
   re = /((?:[가-힣]+(?:특별시|광역시|도)\s*)?[가-힣]+(?:시|군|구)\s+(?:[가-힣]+구\s+)?(?:[가-힣]+(?:읍|면)\s+)?[가-힣][가-힣\d]*(?:대로|로|길)(?:\s*\d+\s*번?길)?\s*\d{1,4}(?:-\d{1,4})?(?![\d-]|가(?!길))(?:[^\n]{0,30}?\d{1,4}\s*동\s*\d{1,5}\s*호)?)/g; // [2026.10.19 1번 밤작업 ⑤] "금남로2가"(법정동)는 도로명 아님
-  while ((m = re.exec(t))) { const rk = cpfRoadKey_(m[1]); if (rk) add('주소', m[1].replace(/\s+/g, ' ').trim(), m[1], m.index, { road: rk }, { note: '도로명 주소' }); }
+  while ((m = re.exec(t))) { const rk = cpfRoadKey_(m[1]); if (!rk) continue; const cr = cpfCreditorAddr_(t, m.index); if (cr) add('주소', m[1].replace(/\s+/g, ' ').trim(), m[1], m.index, {}, { role: cr, note: '권리자·채권자 칸의 도로명 주소 — 부동산 소재지 아님(도로명 열쇠 안 만듦)' }); else add('주소', m[1].replace(/\s+/g, ' ').trim(), m[1], m.index, { road: rk }, { note: '도로명 주소' }); }
   // [2026.10.19 1번 밤작업 ⑤] 동호 — 지번·도로명 없이 "○○아파트 1333동 501호"만 적힌 자리(keys.unit — 같은 사건 안 같은 집)
   re = /(?<![\d-])(\d{1,4})\s*동\s*(?:제?\s*\d{1,3}\s*층\s*)?제?\s*(\d{1,5})\s*호(?![가-힣]*\s*서식)/g;
   while ((m = re.exec(t))) add('동호', m[1] + '동 ' + m[2] + '호', m[0], m.index, { unit: m[1] + '동' + m[2] + '호' });
