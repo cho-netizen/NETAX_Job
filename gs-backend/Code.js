@@ -24963,6 +24963,11 @@ function tcMedBillParse_(text) {
   } else {
     // [2026.10.17] 연도별 수급자 부담 총계("총계(=3) 1,273,830") — 병원비 집계표의 여러 해 합과 대조용(노영환 더섬김 2020~2022 = 5,672,870원)
     r.연총계 = []; var ytre = /총\s*계\s*\(\s*=\s*3\s*\)\s*(\d{1,3}(?:[.,]\d{3})+)/g; while ((m = ytre.exec(fl))) r.연총계.push(num(m[1]));
+    // [2026.10.18 정밀분석 원인9] 줄 읽기를 서식 칸 기준으로(tcMedPayRows_) — 예전 "날짜 뒤 첫 금액"은 총액(분당차 32,587 — 실제 수납 5,200)이나
+    //  한 줄 밀린 금액(장기요양 2022: 납부일이 줄 끝)을 읽었다. "진료비 세부산정내역" 쪽은 납부 줄이 아니라 뺀다. 칸 기준으로 못 읽으면 예전 규칙
+    var bodyM = fl, cutM = fl.search(/진\s*료\s*비\s*세\s*부\s*산\s*정\s*내\s*역/); if (cutM > 300) bodyM = fl.slice(0, cutM);
+    var payRows = tcMedPayRows_(bodyM, kind);
+    if (payRows) { r.줄 = payRows.rows; if (payRows.total) r.줄합계표 = payRows.total; return r; }
     // 납부확인서 — 날짜 줄마다 그 날짜 뒤 첫 금액(다음 날짜 전까지). 서식마다 금액이 날짜 앞에 오기도 해 확정은 부르는 쪽이 사망일 뒤 줄만 쓴다
     var dts = [], ddre = /((?:19|20)\d{2})-(\d{2})-(\d{2})/g;
     while ((m = ddre.exec(fl))) dts.push({ d: m[0], at: m.index, end: m.index + m[0].length });
@@ -24973,6 +24978,71 @@ function tcMedBillParse_(text) {
     });
   }
   return r;
+}
+// [2026.10.18 정밀분석 원인9] 진료비 납입 확인서·장기요양급여비 납부확인서의 납부 줄 — 글자인식이 표 칸 순서를 섞으므로 칸 이름 대신 검산으로 칸을 정한다.
+//  ① 줄마다 날짜(YYYY-MM-DD·YYYY/MM/DD, 기간 "부터-까지")가 있고 그 뒤에 금액이 오는 서식(분당차 외래 납입 확인서): 총액 − 공단부담 = 본인이 낸 돈(10원 미만 절사)
+//  ② 금액 묶음이 날짜와 떨어져 나오는 서식(위례센트럴 진료기간 목록, 장기요양 2022·김창호 요양원): "가 = 나 + 다"로 맞는 세 금액 묶음을 차례로 찾아 날짜와 순서대로 짝짓는다 —
+//     칸 머리에 "공단"이 있으면(총액 = 공단 + 수급자 부담) 낸 돈 = 마지막, 합이 뒤에 오면(본인 + 비급여 = 환자부담 총액) 낸 돈 = 합, 그 밖(계 = 본인부담 + 비급여) 낸 돈 = 계.
+//     "계·합계·총계" 뒤의 묶음은 합계 줄이라 뺀다. 묶음 수가 날짜 수와 같을 때만 쓴다(아니면 null — 예전 규칙)
+//  돌려주는 것: { rows: [{일자, 금액, 기간끝?}], total } 또는 null
+function tcMedPayRows_(fl, kind) {
+  var dts = [], m, dre = /((?:19|20)\d{2})[-\/.](\d{2})[-\/.](\d{2})(?:\s*-\s*((?:19|20)\d{2})[-\/.](\d{2})[-\/.](\d{2}))?/g;
+  while ((m = dre.exec(fl))) {
+    var bef = fl.slice(Math.max(0, m.index - 12), m.index), aft = fl.slice(dre.lastIndex, dre.lastIndex + 3);
+    if (/[~∼]\s*$/.test(bef) || /^\s*[~∼]/.test(aft) || /기\s*간\s*[:：]?\s*\(?\s*$|발\s*급|출\s*력/.test(bef)) continue;
+    dts.push({ d: m[1] + '-' + m[2] + '-' + m[3], to: m[4] ? m[4] + '-' + m[5] + '-' + m[6] : '', at: m.index, end: dre.lastIndex });
+  }
+  if (dts.length < 2) return null;
+  var toks = [], tre = /(?:^|[^\d.,])(\d{1,3}(?:[.,]\s?\d{3})+|0)(?![\d])/g;
+  while ((m = tre.exec(fl))) { var at = m.index + m[0].indexOf(m[1]); if (dts.some(function (d) { return at >= d.at && at < d.end; })) continue; toks.push({ v: Number(m[1].replace(/[^\d]/g, '')), at: at }); }
+  var sumWord = function (at) { return /(?:^|[^가-힣])(?:계|합\s*계|총\s*계)\s*[^가-힣]{0,30}$/.test(fl.slice(Math.max(0, at - 40), at)); };
+  var totM = /(?:^|[^가-힣])(?:계|합\s*계)\s*[:：]?\s*(\d{1,3}(?:[.,]\s?\d{3})+)/.exec(fl);
+  var totOk = function (rows) { var s = rows.reduce(function (t, x) { return t + x.금액; }, 0), tv = totM ? Number(totM[1].replace(/[^\d]/g, '')) : null; return tv === s ? tv : null; }; // 표의 계와 줄 합이 같을 때만 합계로 남김
+  var out = [];
+  // ① 날짜 뒤 금액 줄(납입 확인서) — 각 날짜 구간의 첫 두 금액(총액·공단)
+  if (kind === '진료비 납입 확인서') {
+    dts.forEach(function (d, k) {
+      var lim = k + 1 < dts.length ? dts[k + 1].at : fl.length;
+      var q = toks.filter(function (x) { return x.at > d.end && x.at < lim; });
+      if (q.length < 2 || !q[0].v || q[1].v > q[0].v) return;
+      var paid = Math.floor((q[0].v - q[1].v) / 10) * 10;
+      if (paid > 0) out.push({ 일자: d.d, 금액: paid, 기간끝: d.to || '' });
+    });
+    if (out.length >= Math.ceil(dts.length * 0.6)) return { rows: out, total: totOk(out) };
+    out = [];
+  }
+  // ②-1 납부일이 줄 끝에 오는 서식(장기요양 2022: "01월 1,348,870 1,146,540 202,330 202,330 0 202,330 2022-02-03") — 그 줄(앞 날짜 뒤 ~ 이 날짜)에서
+  //  두 번 넘게 되풀이된 금액(수급자 부담 = 현금·총계 칸에 같은 값)을 낸 돈으로, 없으면 "총액 = 공단 + 수급자" 묶음의 마지막
+  var firstAmt = toks.filter(function (x) { return x.v >= 1000; })[0];
+  if (kind === '장기요양급여비 납부확인서' && firstAmt && firstAmt.at < dts[0].at) {
+    dts.forEach(function (d, k) {
+      var from = k ? dts[k - 1].end : Math.max(0, dts[0].at - 160);
+      var q = toks.filter(function (x) { return x.at >= from && x.at < d.at && x.v >= 1000; });
+      if (!q.length || sumWord(q[0].at)) return;
+      var cnt = {}; q.forEach(function (x) { cnt[x.v] = (cnt[x.v] || 0) + 1; });
+      var rep = Object.keys(cnt).filter(function (v) { return cnt[v] >= 2; }).map(Number).sort(function (a, b) { return b - a; })[0];
+      var v = rep || null;
+      if (!v) for (var j = 0; j + 2 < q.length && !v; j++) if (q[j].v === q[j + 1].v + q[j + 2].v) v = q[j + 2].v;
+      if (v) out.push({ 일자: d.d, 금액: v });
+    });
+    if (out.length >= Math.ceil(dts.length * 0.6)) return { rows: out, total: totOk(out) };
+    out = [];
+  }
+  // ② 세 금액 검산 묶음을 순서대로
+  var gong = /공\s*단/.test(fl.slice(0, Math.min(fl.length, dts[0].at + 400)));
+  var trip = [];
+  for (var i = 0; i + 2 < toks.length; i++) {
+    var a = toks[i].v, b = toks[i + 1].v, c = toks[i + 2].v;
+    if (!a || !b && !c) continue;
+    var v = null;
+    if (a === b + c && ((b && c) || (!b && a === c))) v = gong ? c : a; // 본인부담 0원 줄("322,000 0 322,000")도
+    else if (c === a + b && a && b) v = c;
+    if (v === null || sumWord(toks[i].at)) continue;
+    trip.push({ v: v, at: toks[i].at }); i += 2;
+  }
+  if (trip.length !== dts.length) return null;
+  trip.forEach(function (t, k) { out.push({ 일자: dts[k].d, 금액: t.v, 기간끝: dts[k].to || '' }); });
+  return { rows: out, total: totOk(out) };
 }
 // [2026.10.17] 병원·요양 서류 정리 화면(docParseText_ 'medbill') — 채무 판단(사망 전 진료분을 사망 뒤 냈는지)은 caseProcInhFacts0_에서
 function docMedBillMd_(r) {
@@ -29882,23 +29952,68 @@ function caseProcInhFacts0_(c, parsed) {
     if (/진료|병원비|약제|약국/.test(hay)) return;
     const it = fItems.filter(function (q) { const key = String(q.row && q.row.적요 || '').replace(/[\s(].*$/, '').slice(0, 2); return q.row && q.noReceipt && q.v === r.합계 && (r.용도 === '장례비용' || /장례|운구|화장|장지|상조|봉안|추모|제사|환의|수의|영정/.test(hay) || (key.length === 2 && hay.indexOf(key) !== -1)); })[0]; if (it) { it.srcs.unshift(x.f.name); it.noReceipt = false; it.conf = true; cardLinked.push({ v: r.합계, ap: r.승인번호 || '', at: String(r.거래일 || ''), it: it }); } }); });
   fItems.forEach(function (it) { if (it.copies && it.copies.length) out.notes.push('장례비 줄 「' + it.name + ' ' + it.v.toLocaleString('ko-KR') + '원」 — 같은 승인 전표 ' + (it.copies.length + 1) + '장(' + it.srcs.filter(function (s) { return !/명세서/.test(s); }).join(' = ') + '), 한 번만 셈'); });
+  // [2026.10.18 정밀분석 원인9] 유족 명세서가 없어도 상속개시일~장례 끝(개시일 + 7일) 사이에 결제한 카드·현금 전표는 장례비 후보 항목 —
+  //  예전엔 명세서 줄에 붙을 때만 써서 김재욱 장례 당일 업체 카드 결제 660,000원, 박연경 응급차·분골함·수목장 전표가 어디에도 안 갔다.
+  //  진료·약국·감정평가·법무 결제는 빼고, 정산서·화장장 영수증과 금액이 같으면 같은 결제(한 번만), 같은 승인(승인번호, 없으면 금액+시각)의 사본도 한 번만.
+  //  상호·파일 이름에 장례 낱말이 있으면 일반 장례비, 수목장·자연장·봉안·납골이면 봉안시설·자연장지(5백만원 따로), 둘 다 아니면 "어느 비용인가요?"로 묻는다
+  if (!stmts.length && base) {
+    const endD = (function () { const x = new Date(base + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() + 7); return x.toISOString().slice(0, 10); })();
+    const cardSeen = [];
+    ['cardreceipt', 'cashreceipt'].forEach(function (t) { by(t).forEach(function (x) {
+      const r = x.p.result || {}; if (!r.합계 || r.취소 || !r.거래일) return;
+      const d = String(r.거래일).slice(0, 10); if (d < base || d > endD) return;
+      const hay = (x.f.name + ' ' + (r.상호 || '') + ' ' + String(x.f.dir || '')).replace(/\s+/g, '');
+      if (/진료|병원|의원|약국|약제|요양|감정평가|법무|등기|세무/.test(hay)) return;
+      const cp = cardSeen.filter(function (q) { return q.v === r.합계 && ((r.승인번호 && q.ap === r.승인번호) || (String(r.거래일).length > 10 && q.at === String(r.거래일))); })[0];
+      if (cp) { if (cp.it.srcs.indexOf(x.f.name) === -1) cp.it.srcs.push(x.f.name); return; }
+      const same = fItems.filter(function (it) { return it.v === r.합계; })[0];
+      if (same) { if (same.srcs.indexOf(x.f.name) === -1) same.srcs.push(x.f.name); same.conf = true; return; }
+      const cat = /수목장|자연장|봉안|납골|추모관|안치단/.test(hay) ? '봉안' : /장례|상조|운구|화장|추모공원|장지|빈소|영구차|응급차|분골|유골|수의|상복|영정|조화|근조|꽃|장례식/.test(hay) ? '' : '모름';
+      const it = { name: String(r.상호 || x.f.name.replace(/\.[A-Za-z]{2,5}$/, '')).slice(0, 30) + ' ' + d, v: r.합계, srcs: [x.f.name], from: '카드·현금 전표', cat: cat, card: true };
+      fItems.push(it); cardSeen.push({ v: r.합계, ap: r.승인번호 || '', at: String(r.거래일), it: it });
+    }); });
+  }
   if (stmts.length) fItems.forEach(function (it) { if (!it.row) unlinked.push(it); });
+  const evCh = choices.fnev; // 증빙 없는 명세서 줄을 넣을지(세무사님 답)
+  // 명세서 PDF 뒤쪽에 붙은 증빙(이체확인증·간이영수증·카드전표 사진)은 거래로 쪼개지지 않는다 — 같은 파일 글에 그 줄 금액이 두 번 넘게 나오면 뒤쪽 증빙에 같은 금액이 있는 것으로 본다(박종헌 성심라이프 4,750,000원·검안서류비)
+  const evTxt = {};
+  const inFileEv = function (it) {
+    const f0 = stmts.filter(function (x) { return (it.srcs || []).indexOf(x.f.name) !== -1; })[0]; if (!f0) return false;
+    if (evTxt[f0.f.name] === undefined) { try { evTxt[f0.f.name] = String(tc_docText_(f0.f) || '').replace(/(\d)\.(\d{3})/g, '$1,$2'); } catch (e) { evTxt[f0.f.name] = ''; } }
+    const s = Number(it.v).toLocaleString('en-US'), tx = evTxt[f0.f.name];
+    // 명세서 표 끝("전체 합계·총합계") 뒤에 붙은 증빙 쪽에서만 찾는다(표 안의 "200,000원 × 6명" 같은 계산 글자는 증빙이 아님). 표 끝 표시가 없으면 두 번 넘게 나올 때
+    const mk = tx.search(/전\s*체\s*합\s*계|총\s*합\s*계/);
+    if (mk > 0) {
+      //  금액만 같아서는 안 된다(10만원·15만원 같은 흔한 금액이 다른 증빙에도 있음) — 그 줄의 이름(받는 사람·업체·품목) 글자가 금액 가까이(±250자) 있어야 같은 거래
+      const tail = tx.slice(mk).replace(/^[^\n]*\n/, '').replace(/\s+/g, ' ');
+      const keys = (String(it.row.적요 || it.name).match(/[가-힣]{2,}/g) || []).filter(function (w) { return !/^(현금|카드|결제|계좌|이체|봉사료|비용|수고비|사용료|포함|관련|박종|용품|인력)$/.test(w); });
+      const re = new RegExp('(?:^|[^\\d,])' + s.replace(/,/g, ',\\s?') + '(?![\\d,])', 'g'); let mm;
+      while ((mm = re.exec(tail))) { const win = tail.slice(Math.max(0, mm.index - 250), mm.index + 250); if (keys.some(function (k) { return win.indexOf(k) !== -1; })) return true; }
+      return false;
+    }
+    return tx.split(s).length - 1 >= 2;
+  };
   fItems.forEach(function (it) {
     const r0 = it.row;
-    if (r0 && r0.아님 || notFuneral(it.name)) it.ok = 'no';
-    else if (r0 && r0.봉안 || it.cat === '봉안' || isNiche(it.name)) it.ok = 'niche';
+    if (/검\s*안|진\s*단\s*서/.test(it.name)) it.ok = 'debt'; // [2026.10.18 원인9] 검안서·사망진단서 발급비 — 장례비 말고 채무 후보로(아래 채무 단계)
+    else if (r0 && r0.아님 || notFuneral(it.name)) it.ok = 'no';
+    else if (r0 && r0.봉안 || it.cat === '봉안' || isNiche(it.name + ' ' + (it.srcs || []).join(' '))) it.ok = 'niche'; // 붙은 증빙 파일 이름의 수목장·자연장도(박연경 로뎀파크수목장)
     else if (unlinked.indexOf(it) !== -1) it.ok = 'sub';
     else if (!r0 && /^(모름|상조)$/.test(it.cat || '')) {
       // 묶음 안 결제인데 장례식장·화원·화장장 어느 것인지 서류에 안 나옴(상조회사 카드전표 등) — 일반 장례비인지 봉안·자연장지 상품인지 세무사님 판단(정해지기 전엔 어느 합에도 넣지 않음)
       const ch = choices['fn_' + it.v];
-      it.ok = ch ? (Number(ch.v) > 0 ? 'niche' : 'yes') : 'ask';
-    } else it.ok = 'yes';
+      it.ok = ch ? (String(ch.v) === '1' ? 'no' : Number(ch.v) > 0 ? 'niche' : 'yes') : 'ask'; // '1' = 장례비 아님(장례 기간 카드 결제가 장례와 무관할 때)
+    } else if (r0 && it.noReceipt && it.from === '명세서' && !(evCh && Number(evCh.v) > 0) && !inFileEv(it)) it.ok = 'noev'; // [2026.10.18 원인9] 증빙(영수증·전표·이체확인증)과 안 맞는 명세서 줄 — 합에서 빼고 "증빙 확인" 질문(상증령 §9② 1호: 증빙으로 입증되는 금액만)
+    else it.ok = 'yes';
   });
+  out.funeral.debtItems = fItems.filter(function (it) { return it.ok === 'debt'; });
+  const noEv = fItems.filter(function (it) { return it.ok === 'noev'; });
+  if (noEv.length && !evCh) out.funeral.evAsk = { key: 'fnev', v: noEv.reduce(function (t, it) { return t + it.v; }, 0), items: noEv.map(function (it) { return it.name + ' ' + it.v.toLocaleString('ko-KR') + '원'; }), file: noEv.map(function (it) { return it.srcs[0]; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(', ') };
   out.funeral.items = fItems;
   out.funeral.ask = fItems.filter(function (it) { return it.ok === 'ask'; }).map(function (it) { return { key: 'fn_' + it.v, name: it.name, v: it.v, file: it.srcs.join(', ') }; });
   const fYes = fItems.filter(function (it) { return it.ok === 'yes'; }), fSum = fYes.reduce(function (t, it) { return t + it.v; }, 0);
   const fNiche = fItems.filter(function (it) { return it.ok === 'niche'; }), fNicheSum = fNiche.reduce(function (t, it) { return t + it.v; }, 0);
-  const tag = { no: '[장례비 아님] ', niche: '[봉안시설·자연장지 — 따로] ', sub: '[명세서에 없는 영수증 — 세부 내역인지 확인, 합에서 뺌] ', ask: '[일반/봉안 확인 필요 — 합에서 뺌] ' };
+  const tag = { no: '[장례비 아님] ', niche: '[봉안시설·자연장지 — 따로] ', sub: '[명세서에 없는 영수증 — 세부 내역인지 확인, 합에서 뺌] ', ask: '[일반/봉안 확인 필요 — 합에서 뺌] ', noev: '[증빙 확인 필요 — 합에서 뺌] ', debt: '[장례비 아님 — 채무 후보로] ' };
   if (fItems.length) out.notes.push('장례비 항목표: ' + fItems.map(function (it) { return (tag[it.ok] || '') + it.name + ' ' + it.v.toLocaleString('ko-KR') + '원(' + it.srcs.join(' = ') + (it.noReceipt ? ', 영수증 대조 안 됨' : '') + ')'; }).join(', ') + ' → 일반 장례비 항목 합 ' + fSum.toLocaleString('ko-KR') + '원' + (fNicheSum ? ' · 봉안시설·자연장지 ' + fNicheSum.toLocaleString('ko-KR') + '원(따로, 5백만원 한도)' : '') + (stmts.length ? ' · 명세서 합계 ' + stmts.map(function (x) { return (x.p.result.합계 || 0).toLocaleString('ko-KR') + '원'; }).join('/') + '는 따로 더하지 않음' : '') + (out.funeral.listTotal ? ' · 유족 지출표 총액 ' + out.funeral.listTotal.toLocaleString('ko-KR') + '원은 증빙이 아니라 참고' : ''));
   out.funeral.nicheItems = fNiche; out.funeral.nicheSum = fNicheSum;
   if (!fch && fYes.length) { out.funeral.value = fSum; out.funeral.src = '장례비 항목 ' + fYes.length + '개 합(' + (stmts.length ? '명세서 줄 ↔ 영수증 대조, ' : '') + '정산서 항목 + 정산서에 없는 영수증, 겹치는 영수증은 한 번만) — ' + fYes.map(function (it) { return it.name + ' ' + it.v.toLocaleString('ko-KR') + '원'; }).join(' + ') + (fNicheSum ? ' · 봉안시설·자연장지 ' + fNicheSum.toLocaleString('ko-KR') + '원은 따로' : '') + (out.funeral.ask.length ? ' · 일반/봉안 확인 전 ' + out.funeral.ask.map(function (a) { return a.name + ' ' + a.v.toLocaleString('ko-KR') + '원'; }).join(', ') + '은 뺌' : ''); }
@@ -30140,6 +30255,62 @@ function caseProcInhFacts0_(c, parsed) {
     const tot = tbl.r.보증금합계;
     out.notes.push('임대보증금 검산: 계약서 ' + leaseFinal.length + '건 보증금 합 ' + leaseSum.toLocaleString('ko-KR') + '원 ↔ ' + tbl.f.name + ' 보증금 합계 ' + tot.toLocaleString('ko-KR') + '원' + (leaseSum === tot ? ' — 일치' : ' — ⚠ 차이 ' + (tot - leaseSum).toLocaleString('ko-KR') + '원(계약서가 빠졌거나 보증금이 바뀐 호실 확인)'));
   }
+  // [2026.10.18 정밀분석 원인8] 대출 사용처 표 — 부채증명원 대출(채무자가 피상속인이 아니어도 피상속인 재산 담보)의 실제 사용처를 거래 한 건씩:
+  //  송금·입금 확인증(같은 날·같은 금액 사본은 한 번), 대출 서류와 같은 폴더의 세금계산서(받는 분 = 공급자인 송금이 있으면 그 송금의 근거 — 금액이 다르면 알림).
+  //  합계 × 피상속인 지분(등기부)을 "대출 실사용분" 채무 후보로(체크 안 함 — 피상속인을 위해 쓴 몫만 채무로 볼 여지, §14①·시행령 §10② 입증 책임).
+  //  노영환: 하나은행 대출(채무자 구순애) 사용처 — 법률대리비 11,000,000·건물철거비 4,815,800·합의금 370,000,000·지하철거비 13,200,000(세금계산서 6,600,000과 불일치) × 지분 1/2
+  const wonD = function (n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; };
+  const invUsedD = {};
+  try {
+    const loanRows = out.debts.filter(function (d) { return d.debtType === 'loan' && by('debtcert').some(function (x) { return x.f.name === d.file; }); });
+    if (loanRows.length) {
+      const loanDirs = by('debtcert').map(function (x) { return String(x.f.dir || ''); });
+      const uses = [];
+      by('remit').forEach(function (x) {
+        const r = x.p.result || {}; if (!r.금액) return;
+        const tw = uses.filter(function (u) { return u.v === r.금액 && u.d === r.날짜; })[0];
+        if (tw) { if (tw.files.indexOf(x.f.name) === -1) tw.files.push(x.f.name); if (!tw.who && r.받는이) tw.who = r.받는이; return; }
+        uses.push({ d: r.날짜 || '', who: r.받는이 || '', v: r.금액, kind: '송금', files: [x.f.name], inv: [] });
+      });
+      by('taxinvoice').forEach(function (x) {
+        const r = x.p.result || {}, sup = String(r.상호 || '').replace(/\s+/g, '');
+        const hit = uses.filter(function (u) { return u.kind === '송금' && u.who && sup.indexOf(u.who) !== -1; })[0];
+        if (hit) { hit.inv.push(x.f.name + (r.합계 ? ' ' + wonD(r.합계) + (r.합계 !== hit.v ? '(⚠ 송금 ' + wonD(hit.v) + '과 다름)' : '') : '')); invUsedD[x.f.name] = 1; return; }
+        if (!r.합계 || loanDirs.indexOf(String(x.f.dir || '')) === -1) return;
+        const tw = uses.filter(function (u) { return u.kind === '세금계산서' && u.v === r.합계; })[0];
+        invUsedD[x.f.name] = 1;
+        if (tw) { tw.files.push(x.f.name); return; }
+        uses.push({ d: String(r.거래일 || '').slice(0, 10), who: /^(상호|공|공급자)$/.test(sup) ? '' : sup, v: r.합계, kind: '세금계산서', files: [x.f.name], inv: [] });
+      });
+      if (uses.length) {
+        uses.sort(function (a, b) { return (a.d || '9') < (b.d || '9') ? -1 : 1; });
+        const tot = uses.reduce(function (t, u) { return t + u.v; }, 0), L = loanRows[0], sh0 = shareFor('');
+        const amt = Math.min(sh0 && sh0.v < 1 ? Math.round(tot * sh0.v) : tot, L.amount || Infinity);
+        const tbl = uses.map(function (u) { return (u.d || '날짜 ?') + ' ' + (u.who || '받는 분 ?') + ' ' + wonD(u.v) + '(' + u.kind + (u.files.length > 1 ? ', 같은 ' + u.kind + ' ' + u.files.length + '부' : '') + (u.inv.length ? ' · 세금계산서 ' + u.inv.join(', ') : '') + ')'; }).join(' / ');
+        out.debts.push({ debtType: 'loan', creditorName: (L.creditorName || '대출') + ' 대출 실사용분', amount: amt, file: uses[0].files[0], src: '대출 사용처 표 ' + uses.length + '건 합 ' + wonD(tot) + (sh0 && sh0.v < 1 ? ' × 피상속인 지분 ' + sh0.txt + '(' + sh0.file + ')' : ''), sure: false,
+          note: '대출 명의가 피상속인이 아니어도 피상속인 재산을 담보로 피상속인을 위해 쓴 몫만 채무로 볼 여지(§14①, 시행령 §10② — 실사용분 입증) · 대출 잔액 ' + wonD(L.amount) + ' 안에서 · 사용처: ' + tbl });
+        out.notes.push('대출 사용처 표(' + (L.creditorName || '대출') + ' ' + wonD(L.amount) + '): ' + tbl + ' → 합 ' + wonD(tot) + (sh0 && sh0.v < 1 ? ' × 지분 ' + sh0.txt + ' = ' + wonD(Math.round(tot * sh0.v)) : '') + ' — 대출일 전 지출이면 대출로 갚은 비용인지 확인');
+      }
+    }
+  } catch (e) {}
+  // [2026.10.18 정밀분석 원인8] 사업용 재무상태표 — 상속개시일에 가장 가까운(앞선) 표의 부채 줄 × 피상속인 지분을 채무 후보로(체크 안 함).
+  //  차입금은 부채증명원 대출과 같은 돈인지(같으면 한 번만), 부가세예수금·예수금은 사망일까지분 공과금(§14①1호), 임대보증금은 계약서 합과 대조만(계약서 쪽에서 이미 채무)
+  try {
+    const fss = by('finstmt').map(function (x) { return { f: x.f, r: x.p.result || {} }; }).filter(function (x) { return (x.r.줄 || []).length; });
+    const gapD = function (x) { return base && x.r.기준일 ? Math.abs(new Date(x.r.기준일) - new Date(base)) : 9e15; }; // 상속개시일에 가장 가까운 결산일의 표(앞뒤 상관없이 — 노영환 개시일 2025-12-18 ↔ 2025-12-31 표)
+    const fsPick = fss.slice().sort(function (a, b) { return gapD(a) - gapD(b); })[0];
+    if (fsPick) {
+      const sh1 = shareFor(''), mul = function (v) { return sh1 && sh1.v < 1 ? Math.round(v * sh1.v) : v; };
+      const shTxt = sh1 && sh1.v < 1 ? ' × 피상속인 지분 ' + sh1.txt + '(' + sh1.file + ' — 공동사업 지분이 다르면 분배명세서 지분으로)' : '';
+      fsPick.r.줄.forEach(function (q) {
+        if (q.구분 === '현금' || q.구분 === '선수금') return;
+        if (q.구분 === '보증금') { out.notes.push('재무상태표(' + fsPick.f.name + ') 임대보증금 ' + wonD(q.금액) + ' ↔ 임대차계약서 보증금 합 ' + wonD(leaseSum) + (q.금액 === leaseSum ? ' — 일치(채무는 계약서 쪽에서 한 번만)' : ' — ⚠ 다름, 개시일 현재 계약 확인')); return; }
+        const sameLoan = q.구분 === '차입금' ? out.debts.filter(function (d) { return d.debtType === 'loan' && d.amount && Math.abs(d.amount - q.금액) <= q.금액 * 0.3; })[0] : null;
+        out.debts.push({ debtType: q.구분 === '차입금' ? 'loan' : 'other', creditorName: (fsPick.r.회사 || '사업') + ' ' + q.과목, amount: mul(q.금액), file: fsPick.f.name, src: '재무상태표 ' + (fsPick.r.기준일 || '') + ' ' + q.과목 + ' ' + wonD(q.금액) + shTxt, sure: false,
+          note: (q.구분 === '공과금' ? '사업장 세금(부가세·원천세) 중 상속개시일까지 생긴 몫만 공과금(§14①1호) — 개시일 현재 금액 확인' : q.구분 === '차입금' ? '사업용 차입금 — 상속개시일 현재 잔액·피상속인 부담분 확인(§14①3호)' + (sameLoan ? ' · ⚠ ' + (sameLoan.creditorName || '') + ' ' + wonD(sameLoan.amount) + '과 같은 대출일 수 있음(같으면 한 번만)' : ' · 부채증명원으로 확인') : '상속개시일 현재 미지급분만(§14①3호)') + (base && fsPick.r.기준일 && fsPick.r.기준일 < base ? ' · 재무상태표 기준일(' + fsPick.r.기준일 + ')이 개시일보다 앞섬' : '') });
+      });
+    }
+  } catch (e) {}
   const medTx = function (f0) { try { return tc_docText_(f0) || ''; } catch (e) { return ''; } };
   parsed.forEach(function (x) {
     if (!/미\s*지\s*급/.test(x.f.name) || !/^(cashreceipt|cardreceipt|receipt|taxinvoice)$/.test(x.p.type) || !x.p.result || !x.p.result.합계) return;
@@ -30314,6 +30485,36 @@ function caseProcInhFacts0_(c, parsed) {
   } catch (e) {}
   // [2026.10.16] 공과금 — 피상속인 명의 세금 납부서 중 상속개시일에 아직 낼 기한이 남은 것(사망 전 귀속분)은 공과금으로 뺀다(§14①1호).
   //  박종헌 사건: 2025년 귀속 종합소득세 납부서(기한 2026-06-01)가 채무·공과금 어디에도 안 들어갔다. 상속세·상속인 몫 세금은 제외.
+  // [2026.10.18 정밀분석 원인8] 장례·감정평가·병원·대출 사용처 규칙에 쓰이지 않은 세금계산서·영수증 — "미지급" 이름이 없어도 피상속인(사업장) 앞으로 발행된 것이면 채무 후보(체크 안 함).
+  //  박종헌: 한성회계법인 결산수수료 세금계산서(공급받는자 윤경숙상가) 330,000·990,000원이 "이 세목 계산과 무관"으로 버려졌다. 같은 계산서 사본(같은 금액·공급자)은 한 번만.
+  //  검안서·사망진단서 발급비(장례비 명세서 줄)도 장례비가 아니라 채무 후보로(세무사님 신고: 기타채무)
+  try {
+    const usedF = {};
+    (out.funeral.items || []).forEach(function (it) { (it.srcs || []).forEach(function (s) { usedF[s] = 1; }); });
+    (out.appraisalFees || []).forEach(function (q) { usedF[q.file] = 1; });
+    out.debts.forEach(function (d) { usedF[d.file] = 1; String(d.dupFiles || '').split(', ').forEach(function (s) { if (s) usedF[s] = 1; }); });
+    Object.keys(invUsedD).forEach(function (k) { usedF[k] = 1; });
+    const seenInv = [];
+    const decCore = String(dName || '').replace(/\s+/g, '');
+    parsed.forEach(function (x) {
+      if (!/^(taxinvoice|receipt|invoice)$/.test(x.p.type) || usedF[x.f.name]) return;
+      const r = x.p.result || {}; if (!r.합계 || r.취소) return;
+      if (/장례|감정\s*평가|법무사/.test(String(r.용도 || ''))) return; // 장례비·감정평가수수료·등기 비용은 각자 자리(상속등기 비용은 채무 아님)
+      let tx = ''; try { tx = String(tc_docText_(x.f) || ''); } catch (e) {}
+      const toDec = decCore.length >= 2 && tx.replace(/\s+/g, '').indexOf(decCore) !== -1;
+      const named = /채\s*무|미\s*지\s*급|미\s*납|부\s*채/.test(x.f.name + ' ' + String(x.f.dir || ''));
+      if (!toDec && !named) return;
+      const sup = String(r.상호 || '').replace(/\s+/g, '').replace(/^급?상호(?=.)/, '').replace(/\([^)]*\)$/, ''), supOk = sup && !/^(상호|공|공급자|성명)$/.test(sup); // 세로 칸 글자("급상호 한성회계법인(정보원)")를 떼고
+      const tw = seenInv.filter(function (q) { return q.v === r.합계 && (!supOk || !q.sup || q.sup === sup); })[0];
+      if (tw) { tw.d.note += ' · 같은 계산서 ' + x.f.name + '(한 번만)'; return; }
+      const d = { debtType: 'other', creditorName: supOk ? sup : x.f.name.replace(/\.[A-Za-z]{2,5}$/, ''), amount: r.합계, file: x.f.name, src: (r.종류 || '세금계산서') + (r.거래일 ? ' ' + String(r.거래일).slice(0, 10) : ''), sure: false,
+        note: '피상속인' + (toDec ? '(사업장) 앞으로 발행' : '') + ' — 상속개시 전에 생긴 피상속인 부담분만 채무(§14①3호), 개시일 뒤 용역의 대가면 빼세요' + (named ? ' · 파일 이름에 채무·미지급' : '') };
+      out.debts.push(d); seenInv.push({ v: r.합계, sup: supOk ? sup : '', d: d });
+    });
+    (out.funeral.debtItems || []).forEach(function (it) {
+      out.debts.push({ debtType: 'other', creditorName: it.name, amount: it.v, file: it.srcs[0] || '', src: '장례비 명세서 줄 — 사망 관련 서류 발급비', sure: false, note: '검안서·사망진단서 발급비는 장례에 직접 든 비용이 아니라 상속인이 낸 피상속인 관련 비용 — 채무(기타)로 넣을지 확인(장례비에서는 뺌)' });
+    });
+  } catch (e) {}
   out.dues = [];
   try {
     const decN = String(out.deceased && out.deceased.name || '');
@@ -30425,8 +30626,11 @@ function caseProcInhAssetItems_(c, lines, items, parsed) {
   // [2026.10.17] 묶음 안 결제 중 어느 장례 항목인지 서류에 안 나온 것(상조회사 카드전표 등) — 일반 장례비인지 봉안시설·자연장지인지(한도가 따로라 공제액이 달라짐)
   (f.funeral.ask || []).forEach(function (a) {
     items.push(caseProcItem_('ih:' + a.key, 'judge', '장례비 — ' + a.name + ' ' + won(a.v) + '(' + a.file + ')은 서류에 장례식장·화원·화장장 같은 항목 표시가 없습니다. 어느 비용인가요?(일반 장례비 1천만원 한도, 봉안시설·자연장지는 별도 5백만원 한도 — 상증령 §9②)',
-      { mode: 'choose', target: 'ih:' + a.key, input: 'money', label: '장례비 구분(' + a.name + ')', cands: [{ v: String(a.v), src: '봉안시설·자연장지 사용료(봉안당·납골·수목장 상품 등) — 따로 5백만원 한도' }, { v: '0', src: '일반 장례비(상조 서비스·장례용품 등) — 1천만원 한도에 합산' }] }));
+      { mode: 'choose', target: 'ih:' + a.key, input: 'money', label: '장례비 구분(' + a.name + ')', cands: [{ v: String(a.v), src: '봉안시설·자연장지 사용료(봉안당·납골·수목장 상품 등) — 따로 5백만원 한도' }, { v: '0', src: '일반 장례비(상조 서비스·장례용품 등) — 1천만원 한도에 합산' }, { v: '1', src: '장례비 아님(장례 기간에 낸 다른 결제)' }] }));
   });
+  // [2026.10.18 정밀분석 원인9] 증빙(영수증·카드전표·이체확인증)과 안 맞는 유족 명세서 줄 — 합에서 뺐으니 증빙이 있는지 묻는다(상증령 §9② 1호: 장례비는 증빙으로 입증되는 금액)
+  if (f.funeral.evAsk) { const ea = f.funeral.evAsk; items.push(caseProcItem_('ih:' + ea.key, 'judge', '장례비 증빙 확인 — 유족 명세서 줄 중 영수증·전표·이체확인증과 맞지 않는 ' + ea.items.length + '줄 ' + won(ea.v) + '(' + ea.file + '): ' + ea.items.slice(0, 10).join(', ') + (ea.items.length > 10 ? ' 외' : '') + '. 지금은 장례비 합에서 뺐습니다 — 증빙(계좌이체 내역·간이영수증 등)이 있나요?',
+    { mode: 'choose', target: 'ih:' + ea.key, input: 'money', label: '증빙 없는 명세서 줄', cands: [{ v: String(ea.v), src: '증빙 있음 — ' + ea.items.length + '줄 모두 장례비에 넣기' }, { v: '0', src: '증빙 없음 — 빼 둔 채로' }] })); }
   if (f.niche) {
     if (f.niche.value === null && f.niche.receipt && !f.niche.couple) { f.niche.value = f.niche.receipt.amount; f.niche.src = '납부 증빙(' + f.niche.receipt.file + ' ' + f.niche.receipt.date + ')'; }
     if (f.niche.value !== null) lines.push('✅ 봉안시설 비용 ' + won(f.niche.value) + ' (' + f.niche.src + ')');
@@ -33359,6 +33563,59 @@ function docAppraisalParse_(text) {
 // [2026.10.15] 이체확인증(증권·은행 앱 출력) — 한 파일에 여러 장. 장마다 "거래일시 YYYY.MM.DD hh:mm:ss … 보내는분 ○ 받는분 ○ 이체금액 ○".
 // 글자인식이 칸 순서를 섞어도(이체금액 이름표 뒤가 다른 칸) 그 장의 첫 쉼표 금액이 이체금액이다(계좌번호는 '-'라 금액으로 안 잡힘).
 // 같은 이체가 두 파일에 겹쳐 있으면(목록 장 + 낱장) 거래일시·금액으로 한 번만 센다 — 합산은 쓰는 쪽(caseProcCashGift_)에서 파일을 모아서.
+// [2026.10.18 정밀분석 원인8] 창구 송금의뢰 확인증·무통장 입금증("확인증(입금증, 영수증, 계산서, 전자통장거래확인증 등 겸용)") — 한 장 = 송금 한 건(보낸 분·받는 분·금액·일시).
+//  예전엔 종류 규칙이 없어 대출 사용처 증빙(노영환: 합의금 370,000,000·법률대리비 11,000,000·철거비 13,200,000, 사본 4부씩)이 모두 "종류 미정"으로 버려졌다.
+//  돌려주는 것: { type: 'remit', result: { 종류, 날짜, 시각, 보낸이, 받는이, 받는계좌, 금액, 은행 } } 또는 null(제목·금액·날짜가 없으면)
+function docRemitConfirmParse_(text) {
+  var t = String(text || ''), head = t.slice(0, 500).replace(/\s+/g, '');
+  if (!/확인증\(입금증|송금의뢰확인증|송금확인증|무통장입금(?:증|표)/.test(head)) return null;
+  if (/이체확인증|보내는분/.test(head) && /받는분/.test(head)) return null; // 인터넷·앱 이체확인증은 docTransferConfirmParse_
+  var fl = t.replace(/\s+/g, ' ').replace(/(\d)\.(\d{3})(?=[.,\s원]|$)/g, '$1,$2').replace(/(\d)\.(\d{3})(?=[.,\s원]|$)/g, '$1,$2');
+  var r = { 종류: /무\s*통\s*장/.test(t) ? '무통장 입금증' : '송금·입금 확인증', 날짜: '', 시각: '', 보낸이: '', 받는이: '', 받는계좌: '', 금액: 0, 은행: '', 경고: [] }, m;
+  m = /((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일(?:\s*(\d{1,2}:\d{2})(?::\d{2})?)?/.exec(fl) || /((?:19|20)\d{2})[.\-\/](\d{1,2})[.\-\/](\d{1,2})(?:\s+(\d{1,2}:\d{2})(?::\d{2})?)?/.exec(fl);
+  if (m) { r.날짜 = m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2); r.시각 = m[4] || ''; }
+  // 금액 — "합계" 뒤 첫 금액(1만원 이상 — 송금수수료 3,000원 제외), 없으면 ₩·# 붙은 가장 큰 금액
+  var amts = []; var are = /[#₩W￦]?\s*(\d{1,3}(?:,\d{3})+)/g; while ((m = are.exec(fl))) amts.push({ v: Number(m[1].replace(/,/g, '')), at: m.index, sym: /[#₩W￦]/.test(m[0]) });
+  var hs = fl.search(/합\s*계/);
+  var aft = hs >= 0 ? amts.filter(function (a) { return a.at > hs && a.v >= 10000; })[0] : null;
+  var sym = amts.filter(function (a) { return a.sym && a.v >= 10000; }).sort(function (a, b) { return b.v - a.v; })[0];
+  var amt = aft || sym || amts.filter(function (a) { return a.v >= 10000; }).sort(function (a, b) { return b.v - a.v; })[0];
+  if (amt) r.금액 = amt.v;
+  // 보낸 분 — 머리의 "구순애 님"(글자인식 "넘"), 받는 분 — 입금 계좌번호 바로 뒤 이름 또는 "수취인"
+  m = /([가-힣]{2,4})\s*[님넘]\s*(?:\n|$)/.exec(t) || /의\s*뢰\s*인\s*[:：]?\s*([가-힣]{2,4})/.exec(fl); if (m) r.보낸이 = m[1];
+  m = /(?:수\s*취\s*인|받\s*는\s*분|입\s*금\s*받\s*는\s*분)\s*[:：]?\s*([가-힣]{2,4})/.exec(fl) || /(\d[\d-]{8,20}\d)\s*[:：]?\s*\(?\s*([가-힣]{2,4})(?=[\s(]|$)/.exec(fl) || /(?:^|\n)\s*인\s+([가-힣]{2,4})\s*(?:\n|$)/.exec(t);
+  if (m) { if (m.length > 2 && m[2]) { r.받는계좌 = m[1]; r.받는이 = m[2]; } else r.받는이 = m[1]; }
+  if (r.받는이 && r.받는이 === r.보낸이) r.받는이 = '';
+  m = /(하나|KEB\s*하나|신한|국민|KB|우리|농협|NH|기업|IBK|SC제일|씨티|수협|새마을|신협|우체국|지역농축협)\s*(?:은행)?/.exec(fl.slice(-400)) || /(하나|신한|국민|우리|농협|기업|새마을|신협|우체국)\s*은행/.exec(fl);
+  if (m) r.은행 = m[1].replace(/\s+/g, '');
+  if (!r.금액 || !r.날짜) return null;
+  if (!r.받는이) r.경고.push('받는 분 이름을 읽지 못함 — 원문 확인');
+  var won = function (n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; };
+  return { type: 'remit', label: r.종류, result: r, md: '### ' + r.종류 + '\n\n' + docMdTable_([['일시', r.날짜 + (r.시각 ? ' ' + r.시각 : '')], ['보낸 분', r.보낸이], ['받는 분', r.받는이 + (r.받는계좌 ? '(' + r.받는계좌 + ')' : '')], ['금액', won(r.금액)], ['은행', r.은행]]) + (r.경고.length ? '\n\n' + r.경고.map(function (w) { return '- ⚠ ' + w; }).join('\n') : '') };
+}
+// [2026.10.18 정밀분석 원인8] 사업용 재무상태표(대차대조표) — 부채 줄(장·단기차입금·임대보증금·미지급금·예수금·부가세예수금)과 현금을 한 줄씩(당기 금액).
+//  예전엔 종류 규칙이 없어 피상속인 공동사업의 장기차입금 360,000,000·부가세예수금 5,031,440·예수금 76,530이 어디에도 안 갔다(노영환 재무제표_조용녀부동산_202512).
+//  표 글자가 "장 기 차 입 금 360,000,000 360,000,000"처럼 띄어 쓰여 나와 과목 이름은 글자 사이 공백을 허용해 찾는다. 첫 금액 = 당기(오른쪽은 전기)
+function docFinStmtParse_(text) {
+  var t = String(text || ''), head = t.slice(0, 400).replace(/\s+/g, '');
+  if (!/재무상태표|대차대조표/.test(head)) return null;
+  var fl = t.replace(/\s+/g, ' ');
+  var sp = function (w) { return w.split('').join('\\s*'); };
+  var r = { 종류: '재무상태표', 회사: '', 기준일: '', 줄: [], 경고: [] }, m;
+  m = /회\s*사\s*명\s*[:：]\s*([^\s(]{2,30})/.exec(fl); if (m) r.회사 = m[1];
+  m = /((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*현\s*재/.exec(fl); if (m) r.기준일 = m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2);
+  var used = fl;
+  [['부가세예수금', '공과금'], ['유동성장기부채', '차입금'], ['장기차입금', '차입금'], ['단기차입금', '차입금'], ['임대보증금', '보증금'], ['미지급비용', '미지급'], ['미지급금', '미지급'], ['선수금', '선수금'], ['예수금', '공과금'], ['현금', '현금']].forEach(function (a) {
+    var re = new RegExp('(?:^|[^가-힣])' + sp(a[0]) + '\\s*([\\d,]{1,15}\\d)'), x = re.exec(used);
+    if (!x) return;
+    var v = Number(x[1].replace(/,/g, ''));
+    used = used.slice(0, x.index) + ' '.repeat(x[0].length) + used.slice(x.index + x[0].length); // 같은 글자를 다른 과목(예수금 ⊂ 부가세예수금)이 다시 잡지 않게
+    if (v > 0) r.줄.push({ 과목: a[0], 구분: a[1], 금액: v });
+  });
+  if (!r.줄.length) return null;
+  var won = function (n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; };
+  return { type: 'finstmt', label: '재무상태표', result: r, md: '### 재무상태표' + (r.회사 ? '(' + r.회사 + ')' : '') + (r.기준일 ? ' — ' + r.기준일 + ' 현재' : '') + '\n\n| 과목 | 당기 금액 |\n|---|---|\n' + r.줄.map(function (q) { return '| ' + q.과목 + ' | ' + won(q.금액) + ' |'; }).join('\n') };
+}
 function docTransferConfirmParse_(t) {
   if (!/이\s*체\s*확\s*인\s*증|이\s*체\s*내\s*역\s*정\s*보/.test(t) || !/보\s*내\s*는\s*분/.test(t) || !/받\s*는\s*분/.test(t)) return null;
   // [2026.10.15] 은행 앱 화면(이체금액 → 이체일시 → 보내는 분 순서)도 — "이체일시"를 거래 시작으로, 금액이 날짜 앞에 있으면 아래에서 앞쪽도 본다
@@ -34654,7 +34911,7 @@ var DOC_BUNDLE_TITLES_ = [
   ['regcert', /^등기필증$|^등기필정보|^등기권리증$/],
   ['regapp', /(?:소유권(?:이전|보존)|근저당권설정)등기신청(?:서)?$/],
   ['cash', /^현금영수증(?:\((?:지출증빙|소득공제)용?\))?$/],
-  ['taxinv', /^(?:전자)?세금계산서$/],
+  ['taxinv', /^(?:전자)?세금계산서(?:\([^)]{0,10}\)?)?$/], // [2026.10.18 정밀분석 원인8] "(공급받는자 보관용)"·글자인식에 깨진 꼬리 "세금계산서(한"도 제목
   ['medical', /진료비(?:계산서|영수증|납입확인서)(?:·영수증)?$/],
   ['pay', /납세고지서(?:영수증)?$|납부서(?:겸영수증)?(?:\([^)]{0,8}\))?$|^영수증서\([^)]{0,8}\)$|^영수증\(자납분\)|고지서겸영수증|^납부\(납입\)서/],
   ['ret', /신고서$|(?:과세표준|확정)신고및(?:자진)?납부계산서$|^(?:증여|상속)세과세표준신고|평가명세서$/],
@@ -34662,7 +34919,7 @@ var DOC_BUNDLE_TITLES_ = [
   ['bal', /잔액증명서$|잔고증명서$|^CERTIFICATEOFDEPOSIT/i],
   ['int', /^이자계산서$/],
   ['est', /견적서$/],
-  ['bank', /^거래내역(?:조회|확인증)?$|^이체확인증$|^(?:입금|출금)증$/],
+  ['bank', /^거래내역(?:조회|확인증)?$|^이체확인증$|^(?:입금|출금)증$|^(?:타행)?송금(?:의뢰)?확인증$|^무통장입금(?:증|표)$|^확인증\(입금증/], // [2026.10.18 원인8] 창구 송금의뢰 확인증·무통장 입금증(대출 사용처 증빙 — 노영환 묶음 PDF)
   ['poa', /^위임장$/],
   ['rcpt', /^접수증$/],
   ['debt', /부채증명(?:서|원)$|^금융거래확인서$/],
@@ -34670,7 +34927,7 @@ var DOC_BUNDLE_TITLES_ = [
   ['biz', /^사업자등록증(?:명)?$/],
   ['inc', /^소득금액증명(?:원)?$/]
 ];
-var DOC_BUNDLE_TYPE_FAM_ = { interest: 'int', contract: 'deal', dealreport: 'deal', lease: 'deal', leaselist: 'deal', giftcontract: 'gift', resident: 'resident', family: 'family', death: 'family|death', bldledger: 'bld', landledger: 'land', registry: 'registry', cashreceipt: 'cash', taxinvoice: 'taxinv', payment: 'pay', acqtax: 'pay', filedret: 'ret', balance: 'bal', banktx: 'bank', debtcert: 'debt|bank', bizreg: 'biz', insurance: 'ins' };
+var DOC_BUNDLE_TYPE_FAM_ = { interest: 'int', contract: 'deal', dealreport: 'deal', lease: 'deal', leaselist: 'deal', giftcontract: 'gift', resident: 'resident', family: 'family', death: 'family|death', bldledger: 'bld', landledger: 'land', registry: 'registry', cashreceipt: 'cash', taxinvoice: 'taxinv', payment: 'pay', acqtax: 'pay', filedret: 'ret', balance: 'bal', banktx: 'bank', remit: 'bank', debtcert: 'debt|bank', bizreg: 'biz', insurance: 'ins' };
 var DOC_BUNDLE_PAGE_KW_ =[['resident', /주민등록표|등본은세대별|초본은/], ['family', /가족관계증명서|기본증명서|혼인관계증명서/], ['bld', /건축물대장/], ['land', /토지대장|임야대장/], ['registry', /등기사항(?:전부|일부)증명서/]];
 function docBundleTitleFam_(line) {
   var s = String(line || '').replace(/\s+/g, '');
@@ -35064,6 +35321,9 @@ function docParseText_(text) {
   var imm = docImmigrationParse_(text); if (imm) return imm;
   // [2026.10.17 2차 새 서류] 차용증·재산조회 회보서·임대차계약 신고이력 확인서·토지등 수용사실 확인서 — 서류 머리 제목으로만(회보서 "건축물 정보"가 건축물대장으로, 신고이력의 "민간임대주택"이 임대사업자 등록증으로 오인되기 전에)
   var ndk = docNewKindsParse_(text); if (ndk) return ndk;
+  // [2026.10.18 정밀분석 원인8] 은행 창구 송금의뢰 확인증·무통장 입금증 — 지점 이름("경희의료원지점")·"영수증, 계산서 겸용" 글자 때문에 병원·영수증으로 오인되기 전에(서식 제목이 있을 때만)
+  var rmt = docRemitConfirmParse_(text); if (rmt) return rmt;
+  var fst = docFinStmtParse_(text); if (fst) return fst; // [2026.10.18 원인8] 사업용 재무상태표 — 차입금·보증금·예수금 줄(상속 채무 후보)
   // [2026.10.10] 첫머리에 계약서·신고필증·확인설명서·확정일자 제목이 있으면 거래 서류 — 본문에 "토지대장·등기사항증명서" 같은
   // 첨부서류 이름이 들어 있어도 대장·등기부로 오인하지 않게 맨 먼저 본다(제목이 없으면 아래 기존 순서대로)
   if (docDealStrong_(text)) { var deal0 = docDealParseText_(text); if (deal0) return deal0; }
@@ -36426,10 +36686,11 @@ function lawParse_(text) {
 // 사무소 수금 기록용 parseReceiptText_와는 별개. 사무소(이음 세무컨설팅)가 발행한 것은 고객 증빙이 아니므로 구분해 뺀다.
 var RC_OFFICE_BIZ_ = '112-36-31504';
 var RC_USE_ = [
-  [/장\s*례|상\s*조|봉\s*안|납\s*골|추\s*모|화\s*장|수\s*의|영\s*결/, '장례비용', '상속세 장례비용 공제 증빙(상증령 §9②: 증빙 시 1천만원 한도, 봉안시설·자연장지 5백만원 별도)'],
+  [/장\s*례|상\s*조|봉\s*안|납\s*골|추\s*모|화\s*장|수\s*의|영\s*결|수\s*목\s*장|자\s*연\s*장/, '장례비용', '상속세 장례비용 공제 증빙(상증령 §9②: 증빙 시 1천만원 한도, 봉안시설·자연장지 5백만원 별도)'],
   [/인\s*테\s*리\s*어|리\s*모\s*델|건\s*축|공\s*사|설\s*비|창\s*호|샷\s*시|새\s*시|확\s*장|보\s*일\s*러|도\s*배|장\s*판|타\s*일|방\s*수|전\s*기\s*공|철\s*거/, '공사·인테리어', '양도 필요경비 후보 — 자본적지출(용도변경·개량·확장 등)이면 해당, 단순 수리(수익적지출)는 아님. 2018.4.1 이후 지출은 적격증빙 또는 금융거래 증빙 필요(소득세법 시행령 §163③) — 확인필요'],
   [/법\s*무\s*사/, '법무사 보수', '취득·양도 관련 등기 보수는 필요경비(취득부대비용·양도비용) 후보 — 근저당 설정 비용은 제외'],
   [/감\s*정\s*평\s*가/, '감정평가 수수료', '양도·상속·증여 평가 관련 수수료 — 상속·증여는 감정평가수수료 공제(상증령 §20의3, 한도) 확인'],
+  [/결산\s*수\s*수|기\s*장\s*대\s*리|세\s*무\s*조\s*정|회\s*계\s*법\s*인|공\s*인\s*회\s*계\s*사|세\s*무\s*사\s*무\s*소/, '세무·회계 수수료', '세무·회계 수수료 — 상속이면 피상속인 사업분 중 상속개시 전 귀속분이 채무 후보(상증법 §14①3호), 양도 비용은 아님'], // [2026.10.18 원인8] 결산수수료 세금계산서가 공급받는자 업태의 "부동산" 때문에 중개보수로 잡혔다(박종헌)
   [/중\s*개|공\s*인\s*중\s*개|부\s*동\s*산/, '중개보수', '양도 중개보수는 양도비용(필요경비) 후보, 취득 중개보수는 취득가액 포함 — 확인필요']
 ];
 function rcNum_(s) { return Number(String(s).replace(/[^\d]/g, '')) || 0; }
@@ -36445,11 +36706,11 @@ function rcKind_(t) {
   else if (/세\s*금\s*계\s*산\s*서|계\s*산\s*서/.test(t) && /공\s*급\s*가\s*액/.test(t) && !/거\s*래\s*정\s*보|거\s*래\s*용\s*도|개\s*업\s*연\s*월\s*일/.test(t) && ((t.match(/등\s*록\s*\n?\s*번\s*호/g) || []).length >= 2 || /공\s*급\s*받\s*는\s*자/.test(t))) kind = /세\s*금\s*계\s*산\s*서/.test(t) || /부\s*가\s*세|세\s*액/.test(t) ? 'taxinvoice' : 'invoice';
   if (!kind && !/보\s*험\s*료|보\s*증\s*보\s*험/.test(t)) {
     if (/현\s*금\s*\(?\s*(?:소득공제|지출증빙)?\s*\)?\s*영\s*수\s*증|현금영수증/.test(t.slice(0, 300)) || /거\s*래\s*용\s*도\s*(?:소득공제|지출증빙)/.test(t)) kind = 'cash';
-    else if (/신\s*용\s*카\s*드|매\s*출\s*전\s*표|카\s*드\s*(?:승인|매출)|체\s*크\s*카\s*드|신\s*용\s*구\s*매/.test(t)) kind = 'card'; // [2026.10.17] "하나카드/하나카드 신용구매" 전표(제목 없는 사진·사본 — 노영환 운구비용 영수증)
+    else if (/신\s*용\s*카\s*드|매\s*출\s*전\s*표|카\s*드\s*(?:승인|매출)|체\s*크\s*카\s*드|신\s*용\s*구\s*매|(?:신한|국민|KB|삼성|현대|롯데|하나|우리|BC|비씨|NH|농협|씨티|IBK)\s*카\s*드|신\s*용\s*승\s*인|신\s*용\s*매\s*출\s*표|카\s*드\s*정\s*산|IC\s*신\s*용|일\s*시\s*불/.test(t)) kind = 'card'; // [2026.10.18 원인9] 문자 승인 화면("신한카드 … 일시불 … 승인번호" — 김재욱 660,000원)·"IBK비씨신용매출표"·"카드정산"(추모공원)도 // [2026.10.17] "하나카드/하나카드 신용구매" 전표(제목 없는 사진·사본 — 노영환 운구비용 영수증)
     else if (/(?:^|[^세])계\s*산\s*서/.test(t) && /공\s*급\s*받\s*는\s*자/.test(t)) kind = 'invoice';
     else if (/현\s*금\s*\(?\s*(?:소득공제|지출증빙)\s*\)?/.test(t)) kind = 'cash';
   }
-  if (kind === 'card' && !/승\s*인\s*번\s*호|\d{4}-[\d*]{2,4}-\*{2,4}/.test(t)) kind = '';
+  if (kind === 'card' && !/승\s*인\s*번\s*호|\d{4}-[\d*]{2,4}-\*{2,4}|카\s*드\s*정\s*산[\s\S]{0,120}결\s*제\s*금\s*액|결\s*제\s*금\s*액[\s\S]{0,120}카\s*드\s*정\s*산/.test(t)) kind = '';
   return kind;
 }
 function rcParse_(text) {
@@ -36472,7 +36733,8 @@ function rcParse_(text) {
   if (m) r.카드번호 = '…' + m[1].slice(-4); // 카드번호는 뒷자리 4개만
   m = /할\s*부\s*[:：]?\s*(일\s*시\s*불|\d{1,2}\s*개?\s*월)/.exec(flat);
   if (m) r.할부 = m[1].replace(/\s/g, '');
-  if (/취\s*소\s*(?:거래|승인|전표)|승인\s*취소/.test(flat)) { r.취소 = true; r.경고.push('취소 거래 — 비용으로 넣지 않음'); }
+  // [2026.10.18 원인9] "[신용취소]" 전표도 취소 — 카드 낱말을 넓히자 취소 전표가 사망 뒤 병원비 결제로 더해졌다(노영환 1,628,740원). 음수 금액만으로는 정하지 않는다(매점 반품 줄 "-268,600")
+  if (/취\s*소\s*(?:거래|승인|전표)|승인\s*취소|신\s*용\s*취\s*소|\[\s*취\s*소\s*\]/.test(flat)) { r.취소 = true; r.경고.push('취소 거래 — 비용으로 넣지 않음'); }
   // 금액 검산 — 공급가액 + 부가세(=공급가액의 10%) + 봉사료 = 합계. 면세(계산서)는 부가세 0.
   var nums = (flat.match(/\d{1,3}(?:,\d{3})+|\b\d{3,9}(?=\s*원)/g) || []).map(rcNum_).filter(function (v) { return v > 0 && v < 1e11; });
   var uniq = nums.filter(function (v, i, a) { return a.indexOf(v) === i; }).sort(function (a, b) { return b - a; });
@@ -36497,7 +36759,7 @@ function rcParse_(text) {
   if (best) { r.합계 = best.합계; r.공급가액 = best.공급가액; r.부가세 = best.부가세; r.봉사료 = best.봉사료; r.검산 = true; }
   else {
     // 면세·간이·장례 정산서 등 부가세가 없는 경우 — "합계/총 거래금액/총 결제금액" 이름표 금액을 그대로(검산 없음)
-    m = /(?:총\s*(?:거래|결제|청구|영수)?\s*금액|합\s*계|청구\s*금액|결제\s*금액)[^\d]{0,30}(\d{1,3}(?:,\d{3})+)/.exec(flat);
+    m = /(?:총\s*(?:거래|결제|청구|영수)?\s*금액|합\s*계|청구\s*금액|결제\s*금액|판\s*매\s*금\s*액|승\s*인\s*금\s*액|이\s*용\s*금\s*액)[^\d]{0,30}(\d{1,3}(?:,\d{3})+)/.exec(flat); // [2026.10.18 원인9] 카드사 매출표의 "판매금액·승인금액·이용금액"도
     // [2026.10.17] 이름표와 금액 사이에 날짜·카드번호가 끼는 카드납부 영수증("카드결제금액 … 2025-12-20 … 50,000", 아래 "금액 50,000")은 "금액" 칸 바로 뒤 금액
     if (!m) m = /(?:^|[^가-힣])금\s*액\s*[:：]?\s*(\d{1,3}(?:,\d{3})+)(?![\d,])/.exec(flat) || /(\d{1,3}(?:,\d{3})+)\s*(?:원\s*)?위\s*금\s*액\s*을?\s*(?:정\s*히\s*)?영\s*수/.exec(flat); // "… 1건 50,000 위 금액을 영수합니다"
     if (m) { r.합계 = rcNum_(m[1]); r.검산 = false; r.경고.push('공급가액+부가세=합계 검산을 못 함(면세·간이 또는 표 판독) — 금액 원문 확인'); }
@@ -38257,6 +38519,23 @@ function ihParseDebt_(text) {
     var nRow = r.행.length; r.행 = r.행.filter(function (x, i, a) { return !a.slice(0, i).some(function (y) { return y.잔액 === x.잔액; }); });
     if (r.행.length < nRow) r.경고.push('같은 잔액의 대출 행이 여러 쪽에 나옴 — 한 번만 셈(같은 대출이 서식마다 다른 금액으로 적혔으면 원문 확인)');
   }
+  // [2026.10.18 정밀분석 원인8] 같은 대출이 두 줄 후보가 되던 것(노영환 하나은행 460,000,000·450,000,000):
+  //  ① 부채증명원 쪽 "잔액 (KRW)450,000,000"(원 단위 — 글자인식 "KAW")을 읽고, 금융거래확인서(천원 단위, 460,000)와 금액이 3% 안이면 같은 대출 — 원 단위 부채증명 값 하나만(차이는 알림)
+  //  ② 한도 칸이 잔액의 1할도 안 되는 줄(이자 거래내역의 이자 금액을 한도로 읽은 상환·해지된 옛 대출 줄 — "기업운전자금대출 한도 1,274,557 / 450,000,000")은 대출 행이 아님
+  var kre = /([가-힣]{2,20}대출)[\s\S]{0,240}?잔\s*액\s*\n?\s*\(\s*K[A-Z]{2}\s*\)\s*([\d,]{7,})/g, k2;
+  while ((k2 = kre.exec(t))) { var kv = ihNum_(k2[2]); if (kv && !r.행.some(function (x) { return x.원단위 && x.잔액 === kv; })) r.행.push({ 과목: k2[1], 대출일: '', 잔액: kv, 상환기일: '', 원단위: true }); }
+  var nR0 = r.행.length;
+  r.행 = r.행.filter(function (x) { return !(x.한도 && x.잔액 && x.한도 < x.잔액 * 0.1); });
+  if (r.행.length < nR0) r.경고.push('한도 칸이 잔액보다 훨씬 작은 줄(이자 거래내역의 옛 대출 줄로 보임)은 대출 행에서 뺌 — 원문 확인');
+  var wonRows = r.행.filter(function (x) { return x.원단위; });
+  if (wonRows.length) r.행 = r.행.filter(function (x) {
+    if (x.원단위) return true;
+    var tw = wonRows.filter(function (w) { return Math.abs(w.잔액 - x.잔액) <= w.잔액 * 0.03; })[0];
+    if (!tw) return true;
+    if (tw.잔액 !== x.잔액) r.경고.push('같은 대출(' + (x.과목 || '대출') + ')이 금융거래확인서에는 ' + Number(x.잔액).toLocaleString('ko-KR') + '원, 부채증명원에는 ' + Number(tw.잔액).toLocaleString('ko-KR') + '원 — 원 단위 부채증명원 값으로(차이 ' + Math.abs(tw.잔액 - x.잔액).toLocaleString('ko-KR') + '원 원문 확인)');
+    if (!tw.과목 && x.과목) tw.과목 = x.과목; if (x.상환기일 && !tw.상환기일) tw.상환기일 = x.상환기일;
+    return false;
+  });
   var sum = r.행.reduce(function (s, x) { return s + (x.잔액 || 0); }, 0);
   if (r.행.length) {
     r.잔액합계 = sum;
