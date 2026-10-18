@@ -25244,6 +25244,7 @@ function cpOcrProbe_(body) {
         const vr = tcVisionOcr_(Utilities.newBlob(one, 'application/pdf', 'probe.pdf'));
         if (!vr) { out.push({ name: v.name, error: 'VISION_API_KEY 없음(세무사님 결제 등록 뒤)' }); return; }
         const lay = tcLayoutFromWords_((vr[0] || {}).words || [], v);
+        save({ name: v.name + '_words' }, JSON.stringify(vr)); // 단어·위치·확신도 원자료 — 줄·칸 세우기를 이 PC에서 다시 맞춰 보려고
         save(v, lay.text + '\n\n[확신도 낮은 단어 ' + lay.low.length + '개]\n' + lay.low.map(function (x) { return x.line + '줄 ' + x.t + ' (' + x.c + ')'; }).join('\n'));
         out.push({ name: v.name, chars: lay.text.length, low: lay.low.length, ms: Date.now() - t0 }); return;
       }
@@ -25281,9 +25282,16 @@ function tcLayoutFromWords_(words, opt) {
     L.ws.sort(function (a, b) { return a.x - b.x; });
     let s = '';
     L.ws.forEach(function (w, i) {
-      if (i) { const gap = w.x - (L.ws[i - 1].x + L.ws[i - 1].w); s += gap > cw * (opt.colGap || 2.2) ? ' | ' : ' '; }
+      if (i) {
+        const pw = L.ws[i - 1], gap = w.x - (pw.x + pw.w);
+        // [2026.10.18 3번 세션 Vision 실험] 넓은 틈은 칸 경계, 엔진이 "뒤에 띄어쓰기 없음"(sp===false)이라 한 단어는 붙인다
+        //  (Vision은 한국어를 "감정 평가액"처럼 잘게 나눠 줘서 그냥 띄우면 기존 정리 규칙의 "감정평가액"이 안 맞음)
+        s += gap > cw * (opt.colGap || 2.2) ? ' | ' : (pw.sp === false ? '' : ' ');
+      }
       s += w.t;
       if ((w.c === undefined ? 1 : w.c) < (opt.lowConf || 0.75)) low.push({ t: w.t, line: li + 1, c: Math.round(w.c * 100) / 100 });
+      // 숫자는 글자 하나라도 확신이 낮으면(cmin) 따로 — 흐린 팩스의 6↔8·0↔8은 단어 확신도로는 안 잡혔다(서버 실험① vision)
+      else if (/\d/.test(w.t) && w.cmin !== undefined && w.cmin < (opt.lowDigit || 0.9)) low.push({ t: w.t, line: li + 1, c: Math.round(w.cmin * 100) / 100, digit: true });
     });
     out.push(s);
   });
@@ -25309,13 +25317,16 @@ function tcVisionOcr_(blob) {
     (fa.pages || []).forEach(function (pg) {
       const W = pg.width || 1, H = pg.height || 1, words = [];
       (pg.blocks || []).forEach(function (b) { (b.paragraphs || []).forEach(function (p) { (p.words || []).forEach(function (w) {
-        const t = (w.symbols || []).map(function (s) { return s.text; }).join('');
+        const sy = w.symbols || [], t = sy.map(function (s) { return s.text; }).join('');
+        // 마지막 글자 뒤 띄어쓰기·줄바꿈 표시(detectedBreak)가 없으면 다음 단어와 붙여 쓴 한 낱말. 글자별 확신도의 가장 낮은 값(cmin)
+        const lb = sy.length && sy[sy.length - 1].property && sy[sy.length - 1].property.detectedBreak, sp = !!lb;
+        const cs = sy.map(function (s) { return s.confidence; }).filter(function (v) { return typeof v === 'number'; }), cmin = cs.length ? Math.min.apply(null, cs) : undefined;
         const vs = (w.boundingBox && (w.boundingBox.vertices || w.boundingBox.normalizedVertices)) || [];
         const norm = !!(w.boundingBox && w.boundingBox.normalizedVertices && !w.boundingBox.vertices);
         const xs = vs.map(function (v) { return (v.x || 0) * (norm ? W : 1); }), ys = vs.map(function (v) { return (v.y || 0) * (norm ? H : 1); });
         if (!xs.length) return;
         const x0 = Math.min.apply(null, xs), y0 = Math.min.apply(null, ys);
-        words.push({ t: t, x: x0, y: y0, w: Math.max.apply(null, xs) - x0, h: Math.max.apply(null, ys) - y0, c: w.confidence === undefined ? 1 : w.confidence });
+        words.push({ t: t, x: x0, y: y0, w: Math.max.apply(null, xs) - x0, h: Math.max.apply(null, ys) - y0, c: w.confidence === undefined ? 1 : w.confidence, cmin: cmin, sp: sp });
       }); }); });
       out.push({ page: (r.context && r.context.pageNumber) || ri + 1, w: W, h: H, words: words, text: fa.text || '' });
     });
@@ -25411,6 +25422,54 @@ function tcOcrBigImage_(fileId) {
   if (res.getResponseCode() !== 200) throw new Error('큰 사진 — 축소본 받기 실패 ' + res.getResponseCode());
   const b = res.getBlob(); b.setName('big.jpg');
   return tcOcrBlob_(b);
+}
+// [2026.10.18 3번 세션 — 읽기, 2차] 구글 Vision으로 스캔 쪽·사진을 읽어 줄·칸을 다시 세운 글(기억 ocrvis1_<id>_<수정시각>, JSON
+//  {n, pages:{"쪽": {text, low:[…]}|false}, done}). 서버 실험(운영 b469968): 스캔 표(강정화 감정평가 시산가액 표)는 값 줄이 머리 칸과 맞게 한 줄로,
+//  흐린 팩스는 거래 한 건이 한 줄로 — 드라이브 글은 칸마다 흩어진다. 글자 정확도는 드라이브와 비슷(같은 구글 엔진)하므로 드라이브 글(ocrtxt_)을
+//  바꾸지 않고 따로 둔다 — 줄·칸이 필요한 쪽(통장 거래 줄·명세표)이 tcVisionText_로 받는다. 글자층 쪽은 false(원래 글이 정확함).
+//  새로 읽기는 일괄(TC_BATCH_READ_) 안에서만, 열쇠(VISION_API_KEY)가 있을 때만. 비용: 월 1,000쪽 무료, 그 뒤 1,000쪽당 1.5달러(쪽당 약 2원)
+function tcVisionDocText_(f, deadline) {
+  if (!f || !f.id || !f.modified) return null;
+  const key = 'ocrvis1_' + f.id + '_' + f.modified;
+  let st = null; try { st = JSON.parse(tcOcrStoreGet_(key) || 'null'); } catch (e) { st = null; }
+  if (st && st.done) return st;
+  if (!TC_BATCH_READ_ || TC_NO_NEW_OCR_ || !tcVisionKey_()) return st;
+  const mt = String(f.mimeType || '');
+  const one = function (blob) { const r = tcVisionOcr_(blob); const ws = (r && r[0] && r[0].words) || []; const lay = tcLayoutFromWords_(ws); return { text: lay.text, low: lay.low.filter(function (x) { return x.digit; }).slice(0, 80) }; };
+  if (/^image\//.test(mt)) {
+    if (Date.now() > deadline) return st;
+    const b = DriveApp.getFileById(f.id).getBlob();
+    if (b.getBytes().length > 15 * 1024 * 1024) { st = { n: 1, pages: { 1: false }, done: true, why: '사진이 15MB 넘음' }; tcOcrStoreSet_(key, JSON.stringify(st)); return st; }
+    try { st = { n: 1, pages: { 1: one(b) }, done: true }; } catch (e) { if (OCRB_TRANSIENT_RE_.test(String(e && e.message || e))) return st; st = { n: 1, pages: { 1: false }, done: true, why: String(e && e.message || e).slice(0, 80) }; }
+    tcOcrStoreSet_(key, JSON.stringify(st)); return st;
+  }
+  if (!/pdf/.test(mt)) return null;
+  const s = DriveApp.getFileById(f.id).getBlob().getDataAsString('ISO-8859-1');
+  const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i) & 255;
+  const pages = tcPdfPages_(u, s);
+  if (!pages) { st = { n: 0, pages: {}, done: true, why: '못 연 PDF(암호 등)' }; tcOcrStoreSet_(key, JSON.stringify(st)); return st; }
+  st = st && st.n === pages.length && st.pages && !Array.isArray(st.pages) ? st : { n: pages.length, pages: {}, done: false };
+  for (let i = 0; i < pages.length; i++) {
+    const k = String(i + 1);
+    if (Object.prototype.hasOwnProperty.call(st.pages, k)) continue;
+    if (Date.now() > deadline) break;
+    const pg = pages[i], area = pg.imgs.reduce(function (sm, im) { return sm + im.w * im.h; }, 0);
+    if (pg.err || area < 300000 || pg.textOps > 3) { st.pages[k] = false; continue; }
+    const pdf1 = tcPdfOnePage_(u, pages, pg, pg.imgs.slice(0, 60));
+    if (!pdf1) { st.pages[k] = false; continue; }
+    try { st.pages[k] = one(Utilities.newBlob(pdf1, 'application/pdf', 'p' + k + '.pdf')); }
+    catch (e) { if (OCRB_TRANSIENT_RE_.test(String(e && e.message || e))) break; st.pages[k] = false; }
+  }
+  st.done = Object.keys(st.pages).length === pages.length;
+  tcOcrStoreSet_(key, JSON.stringify(st));
+  return st;
+}
+// 기억된 Vision 줄·칸 글을 쪽 머리("[N쪽]")와 함께 이어서 — 없으면 ''(새로 읽지 않음, 사이드바에서도 씀)
+function tcVisionText_(f) {
+  if (!f || !f.id || !f.modified) return '';
+  let st = null; try { st = JSON.parse(tcOcrStoreGet_('ocrvis1_' + f.id + '_' + f.modified) || 'null'); } catch (e) { st = null; }
+  if (!st || !st.pages) return '';
+  return Object.keys(st.pages).sort(function (a, b) { return a - b; }).filter(function (k) { return st.pages[k]; }).map(function (k) { return '[' + k + '쪽]\n' + st.pages[k].text; }).join('\n');
 }
 // [2026.10.18 3번 세션 — 읽기] PDF 쪽마다 따로 읽은 글 — 스캔 PDF는 드라이브 글자인식이 쪽 경계 없이 한 덩어리로 돌려준다
 //  (3쪽 넘는 스캔 PDF 216개 1,569쪽 — 문서정리_연구.md). 서류 나누기·쪽 순서·빈 쪽 찾기·사실의 쪽 번호(src.page)의 바탕.
