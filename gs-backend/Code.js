@@ -24772,6 +24772,8 @@ function cpOcrBatch_(body) {
     if (st && st.ver !== OCRB_VER_) st = null;
     // [2026.10.18 3번 세션] 이미 끝난 일괄에 그림 쪽 보충만 다시 — {fill:true}
     if (st && st.phase === 'done' && !body.reset && body.fill && !st.dryRun) { st.phase = 'fillscan'; st.fi = 0; st.fq = []; st.fqi = 0; }
+    // [2026.10.18 1번] Vision 열쇠가 생긴 뒤 처음 부르면, 끝난 일괄도 뒷단계를 한 번 더 돌아 스캔 PDF·사진을 Vision으로 읽는다(쪽수 상한 안에서)
+    if (st && st.phase === 'done' && !body.reset && !st.dryRun && !st.visRound && ocrbVisOn_()) { st.visRound = 1; st.phase = 'fillscan'; st.fi = 0; st.fq = []; st.fqi = 0; }
     if (st && st.phase === 'done' && !body.reset) {
       if (body.cont) return { ok: true, phase: 'done', sum: st.sum, cases: st.cases, fails: st.fails, long: st.long, already: true };
       if (!body.dryRun && st.dryRun) st = null; // 세기만 한 뒤 실제 읽기 — 처음부터(그사이 늘어난 서류도 다시 셈)
@@ -24891,11 +24893,13 @@ function ocrbFill_(fo, st, started, budget) {
         if (/spreadsheetml|ms-excel/.test(String(f.mimeType || '')) && !have['ocrgrid1_' + f.id + '_' + f.modified]) { st.fq.push({ id: f.id, n: f.name, mt: f.mimeType, mod: f.modified, c: cname, sz: f.size || 0, grid: 1 }); return; }
         // [2026.10.18 1번] 글자층 PDF·워드의 칸 자리 지킨 표 글(ocrtbl1_, 3번 b18ce08) — 그 전에 읽은 서류는 표 글이 없다. 변환을 한 번 더 하므로 뒷단계 맨 끝에(st.fqTbl → 아래에서 fq 뒤로)
         if (/pdf|officedocument\.wordprocessingml|msword/.test(String(f.mimeType || '')) && have[tcOcrKey_(f)] && !have['ocrtbl1_' + f.id + '_' + f.modified]) (st.fqTbl = st.fqTbl || []).push({ id: f.id, n: f.name, mt: f.mimeType, mod: f.modified, c: cname, sz: f.size || 0, tbl: 1 });
+        // [2026.10.18 1번] 구글 Vision 줄·칸 글(ocrvis1_, 3번 tcVisionDocText_) — 스캔 PDF·사진만, 열쇠가 있을 때만, 뒷단계 맨 끝에(쪽수 상한은 읽을 때 지킨다)
+        if (ocrbVisOn_() && /pdf|^image\//.test(String(f.mimeType || '')) && have[tcOcrKey_(f)] && !have['ocrvis1_' + f.id + '_' + f.modified]) (st.fqVis = st.fqVis || []).push({ id: f.id, n: f.name, mt: f.mimeType, mod: f.modified, c: cname, sz: f.size || 0, vis: 1 });
         if (!/pdf/.test(String(f.mimeType || '')) || !have[tcOcrKey_(f)]) return; // 크기 하한 없음 — 팩스(CCITT) 쪽은 수십 KB(재점검 7)
         st.fq.push({ id: f.id, n: f.name, mod: f.modified, c: cname, sz: f.size || 0 });
       });
     }
-    if (st.fi >= st.folders.length) { st.phase = 'fill'; st.sum.그림쪽대상 = st.fq.length; st.sum.표글대상 = (st.fqTbl || []).length; st.fq = st.fq.concat(st.fqLate || [], st.fqTbl || []); st.fqTbl = []; st.fqLate = []; }
+    if (st.fi >= st.folders.length) { st.phase = 'fill'; st.sum.그림쪽대상 = st.fq.length; st.sum.표글대상 = (st.fqTbl || []).length; st.sum.Vision대상 = (st.fqVis || []).length; st.fq = st.fq.concat(st.fqLate || [], st.fqTbl || [], st.fqVis || []); st.fqTbl = []; st.fqLate = []; st.fqVis = []; }
     ocrbSave_(fo, st);
     if (st.phase === 'fillscan') return { ok: true, more: true, phase: 'fillscan', done: st.fi, total: st.folders.length, sum: st.sum };
   }
@@ -24912,6 +24916,7 @@ function ocrbFill_(fo, st, started, budget) {
         else if (String(t).indexOf(TC_ZIP_LEFT_) !== -1 && (q.rounds = (q.rounds || 0) + 1) <= 8) st.fq.push(q); // 덜 읽은 압축 파일 — 줄 끝에서 이어서
         continue;
       }
+      if (q.vis) { ocrbVisOne_(st, q, started + budget - 20000); continue; } // 구글 Vision(쪽수 상한 안에서만)
       if (q.tbl) { const tt = tcDocTableText_({ id: q.id, name: q.n, mimeType: q.mt, modified: q.mod }); st.sum.표글PDF = (st.sum.표글PDF || 0) + 1; if (tt) st.sum.표있음 = (st.sum.표있음 || 0) + 1; continue; } // 칸 자리 지킨 표 글 채우기(표가 없으면 빈 기억을 남겨 다시 안 함)
       if (q.grid) { tcSheetGridText_({ id: q.id, name: q.n, mimeType: q.mt, modified: q.mod }); st.sum.표글 = (st.sum.표글 || 0) + 1; continue; }
       const key = 'ocrtxt_' + q.id + '_' + q.mod, old = tcOcrStoreGet_(key);
@@ -24937,13 +24942,54 @@ function ocrbFill_(fo, st, started, budget) {
   try { ocrbTrigger_({ on: false }); } catch (e) {}
   return { ok: true, phase: 'done', sum: st.sum, cases: st.cases, fails: st.fails, long: st.long, filled: st.filled };
 }
+// =========================================================
+// [2026.10.18 1번] 일괄 안 구글 Vision(세무사님 허락: 약 5~6천 원) — 쪽수 상한으로 허락 금액을 넘지 않게.
+//  Vision 값: 월 1,000쪽 무료, 그 뒤 1,000쪽당 약 1.5달러. 상한: 한 달 3,300쪽(무료 1,000 + 유료 2,300 ≈ 3.45달러 ≈ 4,800원 — 3번 실험 도구가 따로 쓰는 몫을 남김), 사건당 400쪽(큰 사건 하나가 다 쓰지 않게).
+//  스크립트 속성으로 바꿀 수 있다: OCRB_VIS_MONTH_CAP·OCRB_VIS_CASE_CAP(쪽), OCRB_VIS_OFF='1'이면 끔. 이번 달 쓴 쪽은 OCRB_VIS_<yyyy-MM>에 쌓인다(달이 바뀌면 0부터).
+//  부르기 전에 "그 파일이 더 쓸 수 있는 쪽 수(PDF는 남은 쪽 전부로 셈)"가 이번 달·그 사건 남은 쪽 안에 들 때만 부르고, 부른 뒤 실제로 읽은 쪽만 더한다 — 상한을 넘을 수 없다.
+//  글자층 쪽은 tcVisionDocText_가 Vision에 보내지 않는다(false — 돈 안 듦). 사이드바는 Vision을 부르지 않는다(TC_BATCH_READ_ 안에서만).
+// =========================================================
+var OCRB_VIS_MONTH_CAP_ = 3300, OCRB_VIS_CASE_CAP_ = 400;
+function ocrbVisProp_(k, d) { try { const v = PropertiesService.getScriptProperties().getProperty(k); return v === null || v === '' ? d : v; } catch (e) { return d; } }
+function ocrbVisOn_() { try { return !!tcVisionKey_() && ocrbVisProp_('OCRB_VIS_OFF', '') !== '1'; } catch (e) { return false; } }
+function ocrbVisMonthKey_() { return 'OCRB_VIS_' + Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM'); }
+function ocrbVisUsed_() { return Number(ocrbVisProp_(ocrbVisMonthKey_(), 0)) || 0; }
+function ocrbVisCaps_() { return { month: Number(ocrbVisProp_('OCRB_VIS_MONTH_CAP', OCRB_VIS_MONTH_CAP_)) || OCRB_VIS_MONTH_CAP_, kase: Number(ocrbVisProp_('OCRB_VIS_CASE_CAP', OCRB_VIS_CASE_CAP_)) || OCRB_VIS_CASE_CAP_ }; }
+function ocrbVisPages_(st) { return st && st.pages ? Object.keys(st.pages).filter(function (k) { return st.pages[k]; }).length : 0; }
+function ocrbVisOne_(st, q, deadline) {
+  if (!ocrbVisOn_()) return;
+  const f = { id: q.id, name: q.n, mimeType: q.mt, modified: q.mod };
+  let prev = null; try { prev = JSON.parse(tcOcrStoreGet_('ocrvis1_' + q.id + '_' + q.mod) || 'null'); } catch (e) { prev = null; }
+  if (prev && prev.done) return;
+  const caps = ocrbVisCaps_(), used = ocrbVisUsed_(), vc = st.visCase = st.visCase || {}, cu = vc[q.c] || 0;
+  // 보낼 쪽 수 — 사진은 1, PDF는 tcVisionDocText_와 같은 쪽 나누기(tcPdfPages_)로 "아직 안 읽은 그림 쪽"(그 함수가 Vision에 보내는 쪽)을 센다. 못 세면 부르지 않음(어림하지 않음)
+  let need = 1;
+  if (/pdf/.test(String(q.mt || ''))) {
+    need = Infinity;
+    try {
+      const s = DriveApp.getFileById(q.id).getBlob().getDataAsString('ISO-8859-1'), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i) & 255;
+      const pages = tcPdfPages_(u, s), done0 = (prev && prev.pages) || {};
+      if (pages) need = pages.filter(function (pg, i) { const area = (pg.imgs || []).reduce(function (sm, im) { return sm + im.w * im.h; }, 0); return !Object.prototype.hasOwnProperty.call(done0, String(i + 1)) && !pg.err && area >= 300000 && !(pg.textOps > 3); }).length;
+    } catch (e) { need = Infinity; }
+    if (need === Infinity) { st.sum.Vision쪽못셈 = (st.sum.Vision쪽못셈 || 0) + 1; return; }
+    if (need === 0) { tcVisionDocText_(f, deadline); return; } // 그림 쪽이 없음 — Vision에 보낼 쪽 없이 "끝" 표시만(돈 안 듦)
+  }
+  if (used + need > caps.month) { st.sum.Vision상한넘어못함 = (st.sum.Vision상한넘어못함 || 0) + 1; st.visCapNote = '이번 달 ' + caps.month + '쪽 상한(쓴 쪽 ' + used + ')'; return; }
+  if (cu + need > caps.kase) { st.sum.Vision사건상한 = (st.sum.Vision사건상한 || 0) + 1; return; }
+  const before = ocrbVisPages_(prev);
+  const r = tcVisionDocText_(f, deadline);
+  const n = Math.max(0, ocrbVisPages_(r) - before);
+  if (n) { try { PropertiesService.getScriptProperties().setProperty(ocrbVisMonthKey_(), String(ocrbVisUsed_() + n)); } catch (e) {} vc[q.c] = cu + n; st.sum.Vision쪽 = (st.sum.Vision쪽 || 0) + n; }
+  st.sum.Vision파일 = (st.sum.Vision파일 || 0) + 1;
+  if (r && !r.done && (q.rounds = (q.rounds || 0) + 1) <= 8) st.fq.push(q); // 시간이 모자라 남은 쪽 — 줄 끝에서 이어서
+}
 // 진행 상황만(읽기 없음)
 function cpOcrBatchStatus_() {
   const fo = tcOcrStoreFolder_(); if (!fo) return { error: '"_글자인식기억" 폴더 없음' };
   const st = ocrbLoad_(fo); if (!st) return { ok: true, phase: 'none' };
   let trig = false; try { trig = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'cpOcrBatchTick'; }); } catch (e) {}
   const fl = st.phase === 'fill', sc = st.phase === 'scan' || st.phase === 'fillscan'; // [2026.10.18 3번 세션] 그림 쪽 보충 단계도 진행 수로
-  return { ok: true, phase: st.phase, dryRun: st.dryRun, done: sc ? st.fi : fl ? st.fqi : st.qi, total: sc ? (st.folders || []).length : fl ? (st.fq || []).length : (st.queue || []).length, filled: st.filled, sum: st.sum, cases: st.cases, fails: st.fails, long: st.long, startedAt: st.startedAt, touchedAt: st.touchedAt, doneAt: st.doneAt, trigger: trig };
+  return { ok: true, phase: st.phase, dryRun: st.dryRun, done: sc ? st.fi : fl ? st.fqi : st.qi, total: sc ? (st.folders || []).length : fl ? (st.fq || []).length : (st.queue || []).length, filled: st.filled, sum: st.sum, cases: st.cases, fails: st.fails, long: st.long, startedAt: st.startedAt, touchedAt: st.touchedAt, doneAt: st.doneAt, trigger: trig, vision: { 켜짐: ocrbVisOn_(), 이번달쪽: ocrbVisUsed_(), 상한: ocrbVisCaps_(), 사건별: st.visCase || {}, 메모: st.visCapNote || '' } };
 }
 // 자동 이어 읽기(10분마다) 켜기/끄기 — 화면을 닫아도 서버가 혼자 이어서 한다. 다 읽으면 cpOcrBatch_가 스스로 끈다
 function ocrbTrigger_(body) {
