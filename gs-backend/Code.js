@@ -46080,14 +46080,34 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
     const sum = function (k) { return mem.reduce(function (t, a) { return t + (Number(a[k]) || 0); }, 0); };
     const actual = trcNum_(ct0.totalPrice), w = function (n) { return Number(n || 0).toLocaleString('ko-KR'); };
     const gate = function (v) { if (!(actual > 0) || !(v > actual)) return ''; const diff = v - actual, thr = Math.min(300000000, Math.round(v * 0.05)); return ' — 대금 ' + w(actual) + '원은 ' + Math.round(diff / v * 100) + '% 낮음, 기준(시가의 5%·3억 중 적은 금액 ' + w(thr) + '원) ' + (diff >= thr ? '넘음 → 양도가액을 시가로' : '안 넘음 → 적용 안 함'); };
+    // 시가 후보 — 소득세법 시행령 §167⑤: 상증법 §60~§66 준용, 평가기간은 "양도일 전후 각 3개월". 시가(감정·매매사례)가 먼저이고
+    //  기준시가는 그것이 없을 때의 보충적 평가(§61)라 맨 뒤에, 그 근거를 붙여 낸다. 값은 세무사님이 고른 것만 들어간다(GAS·AI가 정하지 않음)
+    const base = S.baseDate || c.기준일 || '', bd = base ? new Date(base) : null;
+    const lo = bd ? new Date(bd.getFullYear(), bd.getMonth() - 3, bd.getDate()) : null, hi = bd ? new Date(bd.getFullYear(), bd.getMonth() + 3, bd.getDate()) : null;
+    const locs = mem.map(function (a) { return a.assetLocation; }).filter(Boolean), area = sum('assetArea');
+    const sameLoc = function (l) { return !l || !locs.length || locs.some(function (x) { return tcLocSame_(x, l); }); };
     const cands = [];
-    [['appraisalValue', '감정가액(상증법 §60⑤ — 시가)'], ['comparableTransactionPrice', '매매사례가액(§60② — 시가)'], ['transferStandardPriceForConversion', '기준시가(§61 — 시가가 없을 때 보충적 평가)']].forEach(function (x) {
-      const v = sum(x[0]); if (v > 0 && !cands.some(function (c0) { return Number(c0.v) === v; })) cands.push({ v: String(v), src: x[1] + ' 합 ' + w(v) + '원' + gate(v) });
+    const push = function (v, src) { v = Math.floor(Number(v) || 0); if (v > 0 && !cands.some(function (c0) { return Number(c0.v) === v; })) cands.push({ v: String(v), src: src + gate(v) }); };
+    let parsed = []; try { parsed = caseProcParseAll_(c) || []; } catch (e) { parsed = []; }
+    // ① 감정가액(§60⑤) — 같은 자산의 감정평가서
+    parsed.forEach(function (x) { const r = (x.p && x.p.result) || {}; if (x.p && x.p.type === 'appraisal' && r.감정평가액 && sameLoc(r.소재지)) push(r.감정평가액, '감정가액(상증법 §60⑤ — 시가, ' + x.f.name + (r.기준시점 ? ' · 기준시점 ' + r.기준시점 : '') + ' — 평가기간(양도일 전후 3개월) 안인지 확인)'); });
+    // ② 매매사례가액(§60②·시행령 §49①) — 실거래가 서류의 사례 중 양도일 전후 3개월 안·해제 아님·면적 ±5%(면적을 알 때)
+    if (bd) parsed.forEach(function (x) {
+      const r = (x.p && x.p.result) || {}; if (!x.p || x.p.type !== 'realprice' || !sameLoc(r.소재지)) return;
+      (r.사례 || []).filter(function (q0) { const ds = typeof rpCaseDates_ === 'function' ? rpCaseDates_(q0) : [q0.계약일]; return q0.금액 && !q0.해제 && ds.length && ds.every(function (d0) { const d = new Date(d0); return d >= lo && d <= hi; }) && (!area || !q0.면적 || Math.abs(q0.면적 - area) / area <= 0.05); })
+        .sort(function (a0, b0) { return Math.abs(new Date(a0.계약일) - bd) - Math.abs(new Date(b0.계약일) - bd); }).slice(0, 3)
+        .forEach(function (q0) { push(q0.금액, '매매사례가액(상증법 §60②·시행령 §49① — 시가, ' + x.f.name + ' · ' + q0.계약일 + ' 계약' + (q0.면적 ? ' · ' + q0.면적 + '㎡' : '') + (q0.직거래 ? ' · 직거래(특수관계 거래일 수 있어 확인)' : '') + ' — 같은·유사한 자산인지 확인)'); });
     });
-    // 토지: 양도 당시 개별공시지가(㎡당) × 면적 — 필지 나누기에 이미 들어 있다(이종식: 3필지 합)
+    // 계산기 칸에 이미 들어간 감정가액·매매사례가액이 있으면 그것도
+    if (sum('appraisalValue') > 0) push(sum('appraisalValue'), '감정가액(계산기 칸, 상증법 §60⑤ — 시가)');
+    if (sum('comparableTransactionPrice') > 0) push(sum('comparableTransactionPrice'), '매매사례가액(계산기 칸, §60② — 시가)');
+    const hasMarket = cands.length > 0;
+    // ③ 기준시가 — 보충적 평가(§61): 위 시가가 없을 때만
+    const supp = '기준시가 — 보충적 평가(상증법 §61: 감정·매매사례·수용·공매가액 같은 시가가 없을 때만)' + (hasMarket ? ' · 위에 시가 후보가 있으니 그것이 맞지 않을 때만' : '');
+    if (sum('transferStandardPriceForConversion') > 0) push(sum('transferStandardPriceForConversion'), supp + ' 합(계산기 칸)');
     const landStd = Math.floor(mem.reduce(function (t, a) { return t + (Number(a.landPricePerSqmTransfer) || 0) * (Number(a.assetArea) || 0); }, 0));
-    if (landStd > 0 && !cands.some(function (c0) { return Number(c0.v) === landStd; })) cands.push({ v: String(landStd), src: '기준시가(토지 — 양도 당시 개별공시지가 × 면적, 상증법 §61①1호 — 시가가 없을 때) 합 ' + w(landStd) + '원' + gate(landStd) });
-    q('tr:relfmv', 'judge', '양수인이 특수관계인' + (rel && rel !== 'none' ? '(' + rel + ')' : '') + '입니다 — 소득세법 §101①(부당행위계산) 판정에 쓸 시가를 정해 주세요. 대금이 시가보다 5% 이상(3억 한도) 낮으면 양도가액을 시가로 계산합니다(시행령 §167③④). 시가는 감정가액·매매사례가액, 없으면 기준시가입니다.' + (cands.length ? '' : ' 서류에서 시가·기준시가를 찾지 못했습니다 — 금액을 직접 넣어 주세요(토지는 개별공시지가 × 면적).'),
+    if (landStd > 0) push(landStd, supp + ' — 토지: 양도 당시 개별공시지가 × 면적(§61①1호) 합');
+    q('tr:relfmv', 'judge', '양수인이 특수관계인' + (rel && rel !== 'none' ? '(' + rel + ')' : '') + '입니다 — 소득세법 §101①(부당행위계산) 판정에 쓸 시가를 정해 주세요. 대금이 시가보다 5% 이상(3억 한도) 낮으면 양도가액을 시가로 계산합니다(시행령 §167③④). 시가는 상증법 §60~§66을 준용해 양도일 전후 각 3개월 안의 감정가액·매매사례가액(수용·공매가액 포함)이 먼저이고, 그것이 없을 때만 기준시가(보충적 평가)입니다(시행령 §167⑤). 고르신 값만 넣습니다 — 자동으로 정하지 않습니다.' + (cands.length ? '' : ' 서류에서 시가·기준시가를 찾지 못했습니다 — 금액을 직접 넣어 주세요(토지는 개별공시지가 × 면적).'),
       { mode: cands.length ? 'choose' : 'input', target: 'trRelFmv', input: 'money', label: '시가(§101① 판정)', cands: cands });
   })();
   // [2026.10.17 세무사님 원칙 — 내용 항목별로] 수용 토지 보상금 내역서의 필지별 줄(면적 × 단가 = 금액, 합 = 토지합계) — 서류 합계 하나를 고르게 하지 않고 필지마다 양도자산으로
