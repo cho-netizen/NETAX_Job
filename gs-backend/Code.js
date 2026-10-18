@@ -30403,10 +30403,11 @@ function cpfFile_(c, f, cache, tbank, opt) {
     if (sk.length === 1) table.concat(piped, lines, common).forEach(function (x) { x.keys = x.keys || {}; if (!x.keys.subject) x.keys.subject = sk[0]; }); }
   // [2026.10.19 1번 밤작업 — 거래 단위로 쪼개기] 서류 날짜·상대 — 날짜가 없는 줄 항목·금액(법무사 정산서 항목, 영수증 품목 금액 등)에 그 서류의 날짜와 상대(상호·사업자번호)를 대조 열쇠로 붙인다.
   //  통장 거래 한 줄과 "같은 날·같은 금액·같은 상대"로 맞대는 재료. 서류 날짜는 규칙이 낸 거래일·발행일·작성일·영수일·납부일·수납일·발급일 중 하나뿐일 때만(여럿이면 어느 날 거래인지 몰라 안 붙임)
-  { const dk = /^(거래일|발행일|작성일|영수일|납부일|수납일|발급일|결제일|지급일)$/, ds = {}; ruled.forEach(function (x) { if (dk.test(String(x.kind).replace(/^기타:/, '')) && /^\d{4}-\d{2}-\d{2}$/.test(String(x.value).slice(0, 10))) ds[String(x.value).slice(0, 10)] = 1; });
+  if (/영수증|계산서|정산서|청구서|결제|전표|납입|납부|내역서|명세서|견적서/.test(label) && !/대장|증명|등기|확인·설명서/.test(label)) { const dk = /^(거래일|발행일|작성일|영수일|납부일|수납일|결제일|지급일)$/, ds = {}; /* 발급일은 서류를 뗀 날 — 거래 날짜 아님 */ ruled.forEach(function (x) { if (dk.test(String(x.kind).replace(/^기타:/, '')) && /^\d{4}-\d{2}-\d{2}$/.test(String(x.value).slice(0, 10))) ds[String(x.value).slice(0, 10)] = 1; });
     const dl = Object.keys(ds), party = (ruled.filter(function (x) { return /^(상호|사업자번호|의료기관|금융기관)$/.test(x.kind); })[0] || {}).value;
     if (dl.length === 1 || party) common.concat(lines).forEach(function (x) {
       x.keys = x.keys || {};
+      if (typeof x.value === 'number' && /면적|비율|번호|생년|기준|연도|지분|수량|일수|쪽/.test(x.kind)) return; /* 금액 아닌 숫자 */
       if (dl.length === 1 && !x.keys.date && typeof x.value === 'number') { x.keys.date = dl[0]; x.keys.dateFrom = '서류 날짜'; }
       if (party && typeof x.value === 'number' && !x.keys.party) x.keys.party = String(party).replace(/\s+/g, '').slice(0, 40);
       if (typeof x.value === 'number' && x.keys.amount === undefined && Math.abs(x.value) >= 1000 && !/면적|비율|번호|생년|기준|연도/.test(x.kind) && (x.keys.date || x.keys.party)) x.keys.amount = x.value; /* 짝 열쇠가 생겼으니 금액 열쇠도 */
