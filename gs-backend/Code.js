@@ -25351,6 +25351,7 @@ function tc_ruleTransferFacts_(body) {
   var officeFees = []; // [2026.10.16] 이 사무소가 받은 양도세 신고 수수료 — 양도소득세 신고서 작성비용(시행령 §163⑤1호)
   var filingCase = !/상담|자문|컨설팅/.test(String(cr.업무유형 || '')); // [2026.10.18 정밀분석 국외자산] 상담·자문 사건의 사무소 수수료는 신고서 작성비용이 아닐 수 있음
   var giftRets = []; // [2026.10.16 1:1 이종식] 증여세 신고서(증여일·평가액)
+  var priorCalcs = []; // [2026.10.18 정밀분석 3차 김운래] 경정·수정 사건의 당초 신고 계산근거(tcPriorCalcParse_)
   var bldStds = []; // [2026.10.16 1:1 방영교] 홈택스 건물기준시가 계산 결과
   var contracts = [], reports = [], acqs = [], lawyers = [], regs = [], expDocs = [], pubs = [], regCerts = [], comps = [], objDetails = [], bunyang = [],giftDocs = [], realDocs = [], acqDateCands = [], acqPriceCands = [], started = Date.now(), skippedForTime = [], stmtEstNames = null;
   var costTexts = []; // [2026.10.17 세무사님 지시] 비용을 서류별이 아니라 세부 항목별로 — 항목을 다른 서류(취득세 영수증·수입인지·현금영수증·등기신청서)로 대조할 때 쓰는 글자
@@ -25376,6 +25377,9 @@ function tc_ruleTransferFacts_(body) {
     try { text = tc_docText_(f); } catch (e) { continue; }
     if (!text) continue;
     if (docIsReferenceText_(text)) continue; // [2026.10.18 정밀분석 12] 질의회신·법령 원문 — 사전답변 '사실관계'의 날짜·금액을 비용·대금 후보로 쓰지 않는다
+    // [2026.10.18 정밀분석 3차 김운래] 여기까지 온 이전 작업 보고서 = 경정·수정 사건의 당초 신고 계산근거(caseProcIsOutputDocFor_) — 칸(양도일·취득일·고시일·감면·비과세)만 읽고,
+    //  금액은 비용·보상금 규칙에 넣지 않는다(사무소가 당초 신고 때 정리한 표라 같은 금액이 원시증빙과 두 번 잡힌다)
+    if (caseProcIsPriorReport_(f.name)) { var pc0 = null; try { pc0 = tcPriorCalcParse_(text); } catch (e) { pc0 = null; } if (pc0) { pc0.file = f.name; priorCalcs.push(pc0); } continue; }
     var ok1 = caseProcOutputKind_(text);
     if (ok1 === 'calc' || ok1 === 'memo') continue; // 양도 사실 정리 — 간편계산 결과·우리 메모는 어느 사건이든 입력 아님
     if (ok1 === 'own') continue; // [2026.10.17 묶음12] 경정·불복 사건의 당초 양도세 신고서·계산명세서는 칸별로 따로 읽는다(caseProcReferenceDocs_) — 비용 규칙에 넣으면 신고서 금액이 비용 후보가 된다
@@ -25888,6 +25892,34 @@ function tc_ruleTransferFacts_(body) {
     if (b.r.잔금일) acqDateCands.push({ v: b.r.잔금일, src: '취득 계약서 잔금일 — ' + b.file + (b.r.소재지 ? ' (' + b.r.소재지 + ')' : ''), nomatch: true });
     if (ok(b)) acqPriceCands.push({ v: String(b.r.매매대금), src: '취득 계약서 매매대금(검산 일치) — ' + b.file + (b.r.소재지 ? ' (' + b.r.소재지 + ')' : ''), nomatch: true });
   });
+  // [2026.10.18 정밀분석 3차 김환식] 취득 계약서 매매대금이 없을 때 — 법무사 소유권이전(매매) 비용내역서의 "신고금액"(부동산 거래신고가액)과 취득세 영수증의 과세표준
+  //  (유상취득·매매, 2006년 이후 — 부동산 거래신고 2006.1.1 시행 뒤 매매 취득세 과세표준은 신고가액, 지방세법 §10)을 취득가액 후보로. 두 서류 금액이 같으면 한 후보로 합쳐 근거를 같이 적는다.
+  //  판 뒤에 산 물건(납부일이 양도일 뒤)·신규 주택 계약서와 같은 금액·판 물건과 소재지가 다른 영수증은 빼고, 그래도 어느 물건 것인지는 묻는다(정하지 않음)
+  if (txs.length <= 1 && !(txs[0] || {}).acquisitionPrice && !acqPriceCands.some(function (x) { return /취득 계약서 매매대금|분양/.test(x.src); })) {
+    var t0a = txs[0] || {}, loc0 = String(t0a.assetLocation || ''), td0 = String(t0a.transferDate || '').slice(0, 10);
+    var lot0 = (loc0.match(/\d{1,5}-\d{1,5}|\d{2,4}\s*동\s*\d{2,5}\s*호/g) || []).map(function (s) { return s.replace(/\s+/g, ''); });
+    var placeOk = function (s) { s = String(s || '').replace(/\s+/g, ''); return !lot0.length || !s || lot0.some(function (k) { return s.indexOf(k) !== -1; }); };
+    var newAmts = newHome.map(function (b) { return Number(b.r.매매대금) || 0; });
+    var realC = [];
+    acqs.forEach(function (a) {
+      var r = a.r || {}, d = String(r.납부일 || a.ym || '').slice(0, 10), v = Number(r.과세표준) || 0;
+      if (v < 1000000 || !/유\s*상|매\s*매/.test(String(r.과세원인 || '') + ' ' + String(r.과세물건 || '')) || /상\s*속|증\s*여|무\s*상|원\s*시|신\s*축/.test(String(r.과세원인 || ''))) return;
+      if ((d && d < '2006') || (d && td0 && d > td0) || newAmts.indexOf(v) !== -1 || !placeOk(r.과세물건)) return;
+      realC.push({ v: v, src: '취득세 영수증 과세표준(' + (r.과세원인 || '유상취득') + (d ? ', 납부 ' + d : '') + (r.과세물건 ? ', ' + String(r.과세물건).replace(/\s+/g, ' ').trim() : '') + ') — ' + a.file });
+    });
+    lawyers.forEach(function (l) {
+      var r = l.r || {}, v = Number(r.신고금액) || 0;
+      if (v < 1000000 || !/소유권이전|매매/.test(String(r.등기종류 || '')) || newAmts.indexOf(v) !== -1) return;
+      realC.push({ v: v, src: '법무사 비용내역서 신고금액(부동산 거래신고가액' + (r.등기종류 ? ', ' + r.등기종류 : '') + ') — ' + l.file });
+    });
+    var byV = {}; realC.forEach(function (x) { (byV[x.v] = byV[x.v] || []).push(x.src); });
+    Object.keys(byV).forEach(function (v) {
+      if (acqPriceCands.some(function (x) { return Number(x.v) === Number(v); })) return;
+      var ss = byV[v].filter(function (s, i, a) { return a.indexOf(s) === i; });
+      acqPriceCands.push({ v: String(v), src: ss.join(' = ') + (ss.length > 1 ? ' — 서류끼리 같은 금액' : '') + ' (2006년 이후 매매는 신고가액이 실지거래가액인 것이 보통 — 판 물건 것이면 고르세요)', real: true });
+    });
+    if (Object.keys(byV).length) evidence.push('취득가액 후보: 취득 계약서가 없어 법무사 비용내역서 신고금액·취득세 과세표준(매매) ' + Object.keys(byV).map(function (v) { return Number(v).toLocaleString('ko-KR') + '원(' + byV[v].length + '곳)'; }).join(', ') + ' — 처리개요 질문에서 고르세요');
+  }
   // [2026.10.16] 분양 취득 — 분양계약서 분양금액을 취득가액 후보로(거래가 하나이고 취득가액이 비었을 때, 매수인이 납세자일 때만).
   //  부가가치세: 매입세액을 공제(환급)받았으면 취득가액에 넣지 않고, 못 받았으면 넣는다 — 납세자의 부가가치세 신고 자료가 폴더에 있으면 공제받은 쪽을 1번으로.
   if (supplies.length && txs.length <= 1 && !(txs[0] || {}).acquisitionPrice) {
@@ -26110,7 +26142,25 @@ function tc_ruleTransferFacts_(body) {
     evidence.push('수용사실 확인서: ' + x.file + ' — ' + (x.project || '공익사업') + (x.cert.고시일 ? ', 사업인정 고시일 ' + x.cert.고시일 + (x.cert.고시번호 ? '(' + x.cert.고시번호 + ')' : '') : '') + ', 총 보상액 ' + x.total.toLocaleString('ko-KR') + '원' + (x.cert.현금 ? '(전액 현금보상)' : '') + (x.rows ? ' = 필지 ' + x.rows.length + '줄 합 검산 일치' : ' — ⚠ 필지 합 검산 안 됨') + (x.cert.양도일 ? ', 양도일 후보 ' + x.cert.양도일 : '')
       + (x.cert.양도자 && names.some(function (n0) { return /[가-힣]{2}/.test(n0); }) && !tcNameIn_(x.cert.양도자, names) ? ' — ⚠ 확인서의 양도자(' + x.cert.양도자 + ')가 사건 납세자와 다름' : ''));
   });
-  trDateCands.sort(function (a, b) { return String(a.v).localeCompare(String(b.v)); });
+  // [2026.10.18 정밀분석 3차 김운래] 당초 신고 계산근거 — 수정신고는 양도시기가 당초 그대로라 그 양도일을 1번 후보로, 취득일·고시일·당초 보상가는 서류끼리 대조해 근거로 남긴다
+  var priorCalc = priorCalcs[0] || null;
+  if (priorCalc) {
+    var pcw = function (n) { return Number(n).toLocaleString('ko-KR'); };
+    trDateCands = trDateCands.filter(function (q) { return q.v !== priorCalc.양도일; });
+    trDateCands.unshift({ v: priorCalc.양도일, src: '당초 신고 계산근거 양도일자 「' + priorCalc.양도일근거 + '」' + (priorCalc.양도일후보.length > 1 ? ' 중 빠른 날' : '') + ' — ' + priorCalc.file + ' (수정신고·경정은 양도시기가 당초 신고 그대로, 국세기본법 §45 · 수용은 대금청산일·수용개시일·등기접수일 중 빠른 날, 시행령 §162①7호)' + (priorCalc.양도일주의 ? ' ⚠ ' + priorCalc.양도일주의 : ''), prior: true });
+    // 취득일 — 날짜별 필지 수를 등기부(지금 납세자 명의 물건의 취득 접수일)와 대조
+    var regAcq = {}; (locCands || []).forEach(function (l) { if (l.acqDate) regAcq[l.acqDate] = (regAcq[l.acqDate] || 0) + 1; });
+    if (priorCalc.취득일.length) evidence.push('당초 신고 계산근거(' + priorCalc.file + ') 취득일: ' + priorCalc.취득일.map(function (q) { var n = regAcq[q.v] || 0; return q.v + (q.필지 ? ' ' + q.필지 + '필지' : '') + (Object.keys(regAcq).length ? (n ? ' ✅ 등기부 ' + n + '건 같은 날' : ' ⚠ 등기부에 같은 날 취득 없음') : ''); }).join(' · ') + ' — 필지마다 취득일은 그 등기부 취득 접수일로 넣고, 다르면 원문 확인');
+    if (priorCalc.토지보상가) {
+      var od0 = objDetails.filter(function (o) { return o.kind === '토지'; })[0];
+      var hitN = od0 ? priorCalc.토지보상가.줄.filter(function (q) { return od0.rows.some(function (r) { return r.a === q.v; }); }).length : 0;
+      evidence.push('당초 신고 계산근거 토지 보상가 ' + priorCalc.토지보상가.줄.length + '줄 합 ' + pcw(priorCalc.토지보상가.합계) + '원' + (od0 ? (od0.sumA === priorCalc.토지보상가.합계 ? ' ✅ = 이의재결 세부내역의 수용재결(당초) 합(' + od0.file + ', 필지 금액 ' + hitN + '/' + priorCalc.토지보상가.줄.length + '줄 일치)' : ' ⚠ 이의재결 세부내역 수용재결 합 ' + pcw(od0.sumA) + '원과 다름 — 확인') + ' → 수정신고 양도가액은 이의재결 금액(당초 + 증액 ▲' + pcw(od0.sumD) + '원)' : ''));
+    }
+    if (priorCalc.고시일) evidence.push('당초 신고 계산근거 사업인정 고시일 ' + priorCalc.고시일 + ' — 수용 감면 2년 요건(조특법 §77①: 고시일부터 소급 2년 이전 취득)·비사업용 토지 판정 기준');
+    if (priorCalc.감면) evidence.push('당초 신고 계산근거 감면: ' + priorCalc.감면.근거 + ' — 수정신고도 같은 감면(조특법 §77 수용 감면, 한도 §133)');
+    if (priorCalc.비과세지번.length) evidence.push('당초 신고 계산근거 비과세: ' + priorCalc.비과세지번.join('·') + '번지 — 주택(부수토지 포함) 1세대1주택 비과세(§89①3호)로 당초 신고, 수정신고도 그 필지는 비과세 구분 그대로');
+  }
+  trDateCands.sort(function (a, b) { return a.prior ? -1 : b.prior ? 1 : String(a.v).localeCompare(String(b.v)); });
   // [2026.10.16 1:1 김금옥] 양도 계약서 서명란의 양도인(= 납세자로 확인될 때만)·양수인 인적사항 — 신고서 칸용
   // [2026.10.17 세무사님 원칙 — 모든 서류는 내용 항목별로] 양도·취득 계약서 — 매매대금의 구성 항목(승계 보증금·융자, 부가세 조건, 매수인 부담 양도세, 토지·건물 구분)
   contracts.forEach(function (c0) {
@@ -26234,6 +26284,7 @@ function tc_ruleTransferFacts_(body) {
   try { tcWorkLink_(expCands, costTexts, evidence); } catch (e) {} // [2026.10.17 내용 항목별] 공사 견적·내역서를 공사 내용 항목으로 나눠 지급 증빙에 붙임
   return { ok: true, trDateCands: trDateCands, sellerName: names[0] || null, parties: parties, transactions: txs, evidence: evidence, expCands: expCands, comps: comps, objDetails: objDetails, bunyang: bunyang, acqDateCands: acqDateCands, acqPriceCands: acqPriceCands, locCands: locCands, holdings: holdings,
     vatDocs: vatDocs, // [2026.10.16 1:1 김금옥] 주택 여부 질문의 근거
+    priorCalc: priorCalc, // [2026.10.18 정밀분석 3차 김운래] 당초 신고 계산근거(양도일·취득일·고시일·감면·비과세 지번)
     officeFees: officeFees, filingCase: filingCase, // [2026.10.18 정밀분석 국외자산] 국내 거래가 0건인 국외자산 사건도 사무소 신고 수수료를 국외자산 카드 양도비 후보로(trcOverseas_)
     counts: { 계약서: contracts.length, 신고필증: reports.length, 취득세: acqs.length, 법무사: lawyers.length, 등기부: regs.length } };
 }
@@ -27999,6 +28050,41 @@ function caseProcBlockingWarns_(type, warns) {
 function caseProcIsPriorReport_(name) {
   const n = String(name || '').replace(/\s+/g, '');
   return /(종합검토서|신고보고서|검토서|검토내용|검토\s*자료|검토\s*보고서|자문보고서|경과지|작업진행|체크리스트|계산근거|추징\s*예상|예상\s*세액|해명\s*자료|(상속|증여|양도)세\s*계산|구비\s*서류)/.test(n) && !/의뢰서/.test(n);
+}
+// [2026.10.18 정밀분석 3차 김운래] 경정·수정신고 사건의 당초 신고 계산근거(사무소가 당초 신고 때 쓴 산출 근거) — 수정신고는 양도시기·취득일·감면·비과세 구분이
+//  당초 신고 그대로이고 바뀌는 것은 증액된 양도가액·관련 비용뿐이라(국세기본법 §45, 이의재결 증액분은 당초 양도의 양도가액에 더함) 이 서류의 칸이 입력이다.
+//  읽는 것: 양도일자(여러 날 중 "MIN" 또는 빠른 날 — 수용은 대금청산일·수용개시일·등기접수일 중 빠른 날, 소득세법 시행령 §162①7호), 취득일자(날짜별 필지 수),
+//  사업인정고시일, 감면(산출세액 n% · 한도 — 조특법 §77), 1세대1주택 비과세 지번(§89①3호), 지목별 당초 보상가(합 = 서류의 토지 합계일 때만).
+//  이 서류가 아닌 것(일반 검토서·보고서)은 null — 양도일·취득일 두 칸이 모두 있어야 계산근거로 본다
+function tcPriorCalcParse_(text) {
+  const t = String(text || ''), flat = t.replace(/\s+/g, ' ');
+  const ymd = function (y, m, d) { return y + '-' + ('0' + m).slice(-2) + '-' + ('0' + d).slice(-2); };
+  const dateRe = /((?:19|20)\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})\s*일?/g;
+  const tm = /양\s*도\s*(?:일\s*자|시\s*기|일)\s*[:：]\s*([^\n]{4,120})/.exec(t), am = /취\s*득\s*(?:일\s*자|시\s*기|일)\s*[:：]\s*([^\n]{4,160})/.exec(t);
+  if (!tm || !am) return null;
+  const r = { 양도일: '', 양도일후보: [], 양도일근거: tm[1].trim().slice(0, 80), 취득일: [], 고시일: '', 감면: null, 비과세지번: [], 토지보상가: null };
+  let x; dateRe.lastIndex = 0;
+  while ((x = dateRe.exec(tm[1]))) { const lb = (/([가-힣]{2,6})\s*$/.exec(tm[1].slice(0, x.index)) || [])[1] || ''; r.양도일후보.push({ v: ymd(x[1], x[2], x[3]), what: lb }); }
+  if (!r.양도일후보.length) return null;
+  r.양도일 = r.양도일후보.map(function (q) { return q.v; }).sort()[0]; // MIN(…) 또는 여러 날이면 빠른 날
+  if (r.양도일후보.length > 1 && !/MIN|빠\s*른|최\s*소/i.test(tm[1])) r.양도일주의 = '양도일자 칸에 날짜가 여럿인데 어느 날인지 표시(MIN 등)가 없음 — 원문 확인';
+  dateRe.lastIndex = 0;
+  while ((x = dateRe.exec(am[1]))) { const tail = am[1].slice(dateRe.lastIndex, dateRe.lastIndex + 12), n = /^\s*(\d{1,2})\s*필\s*지/.exec(tail); r.취득일.push({ v: ymd(x[1], x[2], x[3]), 필지: n ? Number(n[1]) : null }); }
+  const gm = /사\s*업\s*인\s*정\s*고\s*시\s*일\s*[:：]?\s*\(?\s*((?:19|20)\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})/.exec(t);
+  if (gm) r.고시일 = ymd(gm[1], gm[2], gm[3]);
+  const rm = /감\s*면[^\n]{0,60}?(?:MIN|min)?\s*\(\s*산\s*출\s*세\s*액\s*의?\s*(\d{1,3})\s*%\s*[,，]\s*(\d+(?:\.\d+)?)\s*억\s*원?\s*\)/.exec(flat) || /세\s*액\s*감\s*면[^\n]{0,80}?(\d{1,3})\s*%/.exec(flat);
+  if (rm) r.감면 = { 율: Number(rm[1]), 한도: rm[2] ? Math.round(Number(rm[2]) * 1e8) : 0, 근거: rm[0].replace(/\s+/g, ' ').trim().slice(0, 80) };
+  // 1세대1주택 비과세 — "■ 192번지 … 1세대1주택 비과세에 해당"처럼 비과세 문장 앞 300자 안의 지번
+  const nm = /1\s*세\s*대\s*1\s*주\s*택\s*비\s*과\s*세/g; let y;
+  while ((y = nm.exec(flat))) { const before = flat.slice(Math.max(0, y.index - 300), y.index), js = before.match(/(\d{1,4}(?:-\d{1,4})?)\s*번\s*지/g) || []; if (js.length) { const j = js[js.length - 1].replace(/\s*번\s*지/, ''); if (r.비과세지번.indexOf(j) === -1) r.비과세지번.push(j); } }
+  // 지목별 당초 보상가 — "대3,137,400,000 · 전1,262,646,000 …"(지목 한 글자 + 금액), 합이 서류의 다른 금액(토지 합계)과 같을 때만
+  const lv = []; let z; const lre = /(?:^|[^가-힣])(대|전|답|도|잡|임|과|구|하|유|공|철|제|창|학|주|목|광|염|체|종|사|묘|천|양|원)(\d{1,3}(?:,\d{3}){2,})(?![\d,])/g; // 지목 글자에 금액이 붙은 칸만(띄어 쓴 "전-전 1,262,646,000"은 배분표의 다른 칸)
+  while ((z = lre.exec(flat))) lv.push({ 지목: z[1], v: Number(z[2].replace(/,/g, '')) });
+  if (lv.length >= 2) {
+    const sum = lv.reduce(function (s, q) { return s + q.v; }, 0), all = (flat.match(/\d{1,3}(?:,\d{3}){2,}/g) || []).map(function (q) { return Number(q.replace(/,/g, '')); });
+    if (all.indexOf(sum) !== -1) r.토지보상가 = { 줄: lv, 합계: sum };
+  }
+  return r;
 }
 // [2026.10.15 1단계] 글자 내용으로 본 "이미 낸 신고서·명세서" — 파일 이름이 KakaoTalk_….jpg처럼 아무 말도 없는 사진 신고서(박미영 사건 7장)를 잡는다
 // [2026.10.16] tax를 주면 그 세목 기준 — 양도 사건에서 증여세·상속세 신고서(증여·상속받은 부동산의 취득가액 근거, 시행령 §163⑨)는 이미 낸 결과물이 아니라 입력
@@ -29843,6 +29929,41 @@ function caseProcInhSepDiv_(c, parsed) {
   if (anchor) famDead.forEach(function (q) { if (!caseProcNameLike_(q.name, anchor) && out.list.some(function (s) { return s.name && caseProcNameLike_(s.name, q.name); })) { out.famSep[key(q.x)] = 1; out.notes.push('가족관계증명서(' + q.x.f.name + ')의 본인(사망) ' + q.name + ' — 이 사건 피상속인 ' + anchor + '과(와) 달라 상속인 판단에 쓰지 않음(별건 상속 참고)'); } });
   return out;
 }
+// [2026.10.18 정밀분석 3차 김창호] 해명·소명·의견·경정청구 서면 속 사전증여 쟁점 금액 — [{ name, heir, v, file, quote, dates, claim }].
+//  "사전증여" 낱말이 든 문장에서 그 낱말 바로 앞의 금액(\·₩·원 표기, 백만 원 이상)과 그 금액 괄호 안 날짜, 받은 사람(상속인 목록·"상속인(제출인): ○○○"),
+//  주장(대여·금전소비대차·차용 / 착오)을 읽는다. 주장 낱말이 없으면 쟁점이 아니라 보지 않는다. 같은 사람·금액은 사본(최종본 등)이어도 한 번만. 새 글자인식은 하지 않는다
+function caseProcInhClaimGifts_(c, heirs, dec) {
+  const out = [], nm = function (x) { return String(x || '').replace(/\s+/g, ''); };
+  let files = []; try { files = caseProcFiles_(c).filter(function (f) { return /pdf|^image\/|^text\//.test(String(f.mimeType || '')) && /해\s*명|소\s*명|의\s*견\s*서|경\s*정\s*청\s*구/.test(f.name); }).slice(0, 6); } catch (e) { return out; }
+  const prevNo = TC_NO_NEW_OCR_; TC_NO_NEW_OCR_ = true;
+  try {
+    files.forEach(function (f) {
+      let t = ''; try { t = String(tc_docText_(f) || ''); } catch (e) { return; }
+      if (!/사\s*전\s*증\s*여/.test(t)) return;
+      const flat = t.replace(/\s+/g, ' ');
+      const claim = /금\s*전\s*소\s*비\s*대\s*차|대\s*여(?:금|된|한|하)|차\s*용/.test(flat) ? '대여(금전소비대차)' : /착\s*오/.test(flat) ? '착오로 가산' : '';
+      if (!claim) return;
+      const hs = (heirs || []).map(function (h) { return nm(h.name); }).filter(function (n) { return n.length >= 2 && n !== nm(dec); });
+      const sub = /상\s*속\s*인\s*(?:\(\s*제\s*출\s*인\s*\))?\s*[:：]\s*([가-힣](?:\s?[가-힣]){1,3})/.exec(flat);
+      const who = sub ? nm(sub[1]) : (hs.filter(function (n) { return nm(flat).indexOf(n) !== -1; })[0] || '');
+      if (!who) return;
+      const re = /사\s*전\s*증\s*여/g; let m;
+      while ((m = re.exec(flat))) {
+        let before = flat.slice(Math.max(0, m.index - 400), m.index);
+        const se = before.search(/[다요]\s*\.\s+(?!.*[다요]\s*\.\s)/); if (se >= 0) before = before.slice(se + 2); // 같은 문장 안의 금액만(앞 문장의 보증금·대출금 금액을 집지 않게)
+        const amtRe = /(?:[\\₩]\s*)(\d{1,3}(?:,\d{3}){2,})|(\d{1,3}(?:,\d{3}){2,})\s*원/g; let a, last = null;
+        while ((a = amtRe.exec(before))) last = { v: Number((a[1] || a[2]).replace(/,/g, '')), at: a.index, len: a[0].length };
+        if (!last || last.v < 1000000) continue;
+        const par = /^\s*[\/／]?\s*([^)]{0,80})\)/.exec(before.slice(last.at + last.len)) || null;
+        const dates = []; let yy = '', mm = '';
+        if (par) { const dr = /(?:((?:19|20)\d{2})\s*년\s*)?(?:(\d{1,2})\s*월\s*)?(\d{1,2})(?=\s*(?:일|,))/g; let d; while ((d = dr.exec(par[1])) && dates.length < 6) { if (d[1]) yy = d[1]; if (d[2]) mm = d[2]; if (yy && mm) dates.push(yy + '-' + ('0' + mm).slice(-2) + '-' + ('0' + d[3]).slice(-2)); } }
+        if (out.some(function (q) { return q.name === who && q.v === last.v; })) continue;
+        out.push({ name: who, heir: hs.indexOf(who) !== -1, v: last.v, file: f.name, quote: (Number(last.v).toLocaleString('ko-KR') + (par ? ' / ' + par[1].trim() : '')).slice(0, 70), dates: dates, claim: claim });
+      }
+    });
+  } finally { TC_NO_NEW_OCR_ = prevNo; }
+  return out;
+}
 function caseProcInhFacts0_(c, parsed) {
   parsed = parsed || caseProcParseAll_(c);
   const saved = caseProcLoad_(c.id), choices = saved.ihChoices || {};
@@ -30458,6 +30579,21 @@ function caseProcInhFacts0_(c, parsed) {
     out.bank.notes.forEach(function (n) { out.notes.push(n); });
   } catch (e) { out.notes.push('통장 거래 행선 중 오류 — ' + String(e && e.message || e).slice(0, 80)); }
   out.priorGifts = out.bank.priorGifts || []; out.disposal = out.bank.disposal || [];
+  // [2026.10.18 정밀분석 3차 김창호] 해명·소명·의견 서면(이전 작업 보고서라 입력에서 빼는 서류)의 쟁점 금액 — 당초 신고에서 사전증여재산(상증법 §13①1호)으로 가산한 돈을
+  //  대여(금전소비대차)라고 주장하는 등. 서면은 결론이 든 우리 작업물이라 값으로 쓰지 않지만, 그 금액이 계산기 「사전증여」 칸의 갈림이라 객관식으로 묻는다
+  //  (예전엔 서면 통째 제외 + 엑셀 통장 미분할로 230,957,412원이 사건 어디에도 없었다). 같은 상속인의 통장 사전증여 질문이 있으면 그 질문의 후보로 합친다
+  try {
+    caseProcInhClaimGifts_(c, out.heirs, dec).forEach(function (q) {
+      const key = 'pg_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, q.name, Utilities.Charset.UTF_8)).slice(0, 10); // 통장 사전증여 질문과 같은 열쇠(받은 사람 이름)
+      const cand = { v: String(q.v), src: '당초 신고 사전증여 가산액 — ' + q.file + '의 "' + q.quote + '"(해명 주장: ' + q.claim + ')' };
+      const no = { v: '0', src: '사전증여 아님(서면 주장대로 ' + q.claim + ') — 그러면 피상속인이 받을 대여금 채권이 상속재산인지 따로 확인(상증법 §7)' };
+      const ask = out.bank.asks.filter(function (a) { return a.key === key; })[0];
+      if (ask) { if (!ask.cands.some(function (x) { return Number(x.v) === q.v; })) ask.cands.unshift(cand); ask.text += ' · 해명 서면(' + q.file + ')의 쟁점 금액 ' + Number(q.v).toLocaleString('ko-KR') + '원(당초 사전증여 가산 ↔ ' + q.claim + ' 주장)'; return; }
+      const ch = choices[key];
+      if (ch) { if (Number(ch.v) > 0 && !out.priorGifts.some(function (g) { return g.key === key; })) out.priorGifts.push({ key: key, name: q.name, heir: q.heir, relation: '', v: Number(ch.v), src: ch.src || '', files: [q.file] }); return; }
+      out.bank.asks.push({ key: key, name: q.name, cands: [cand, no], text: '사전증여 쟁점(상증법 §13①' + (q.heir ? '1호 상속인 10년' : '2호 그 밖의 사람 5년') + ') — ' + q.file + ': 당초 신고에서 ' + q.name + (q.heir ? '(상속인)' : '') + '에게 간 ' + Number(q.v).toLocaleString('ko-KR') + '원' + (q.dates.length ? '(' + q.dates.join('·') + ')' : '') + '을 사전증여재산으로 가산했는데, 서면은 ' + q.claim + '라고 주장합니다. 통장 이체 내역(피상속인 계좌)으로 대조해 계산기 「사전증여」 칸에 넣을 금액을 골라 주세요 — 증여면 합산하고 증여세를 냈으면 증여세액공제(§28).' });
+    });
+  } catch (e) { out.notes.push('해명 서면 쟁점 금액 읽기 오류 — ' + String(e && e.message || e).slice(0, 80)); }
   // 장례비 — 영수증(증빙) 합계와 유족 지출표 총액
   const receipts = by('funeralbill').filter(function (x) { return x.p.result && x.p.result.합계; });
   // [2026.10.17] 결제 여러 건이 묶인 파일은 결제(구간)마다 따로 — 서류 합계 하나로 보지 않는다
@@ -33288,7 +33424,7 @@ var DOC_FR_FIELDS_ = {
     ['양도소득금액', ['(?<!된|경정된\\s*|대상\\s*)양도소득금액(?!\\s*(합계|계산))'], 'amt'], ['기신고소득금액', ['경정된양도소득금액합계', '경정된양도소득금액'], 'amt'], ['감면대상소득금액', ['소득감면대상소득금액'], 'amt'],
     ['기본공제', ['양도소득기본공제'], 'amt'], ['과세표준', ['(?<!양도소득|세)과세표준(?!\\s*(신고|및|확정|예정))'], 'amt'], ['세율', ['(?<!적용)세율(?!\\s*구분)'], 'rate'], ['산출세액', ['산출세액(?!\\s*계)'], 'amt'],
     ['감면세액', ['(?<!농어촌특별세\\s*)감면세액'], 'amt'], ['외국납부세액공제', ['외국납부세액공제'], 'amt'], ['예정신고납부세액공제', ['예정신고납부세액공제'], 'amt'], ['원천징수세액공제', ['원천징수세액공제'], 'amt'], ['전자신고세액공제', ['전자신고세액공제'], 'amt'],
-    ['기신고세액', ['경정세액조정공제', '경정세액(?!\\s*,?\\s*조정)'], 'amt'], ['납부할세액', ['(?<!분납|신고기한이내|기한이내)납부할세액'], 'amt'], ['분납할세액', ['분납\\(물납\\)할세액', '분납할세액'], 'amt'], ['환급세액', ['환급세액'], 'amt']
+    ['기신고세액', ['경정세액조정공제', '경정세액(?!\\s*,?\\s*조정)'], 'amt'], ['납부할세액', ['(?<!분납|신고기한이내|기한이내)납부할세액', '납부\\s*\\(\\s*환급\\s*\\)\\s*할총세액'], 'amt'], ['분납할세액', ['분납\\(물납\\)할세액', '분납할세액'], 'amt'], ['환급세액', ['환급세액'], 'amt']
   ],
   gift: [
     ['증여재산가액', ['증여재산가액'], 'amt'], ['비과세재산가액', ['비과세재산가액'], 'amt'], ['채무액', ['채무액'], 'amt'], ['증여재산가산액', ['증여재산가산액'], 'amt'], ['과세가액', ['증여세과세가액'], 'amt'],
@@ -33307,6 +33443,9 @@ var DOC_FR_FIELDS_ = {
 };
 function docFiledReturnKind_(text) {
   var t = String(text || '').slice(0, 4000);
+  // [2026.10.18 정밀분석 3차 박미영] 개인지방소득세(양도소득분) 신고서를 국세 서식보다 먼저 — 첨부서류 줄 "1. 양도소득금액 계산명세서(…) 1부"에 걸려
+  //  계산명세서로 판정되고 지방세 산출세액 713,961이 국세 산출세액 자리로 갔다(지방세법 §103의5·§103의7 서식, 세율은 국세의 10분의 1 — §103의3)
+  if (/양\s*도\s*소\s*득\s*에\s*대\s*한\s*개\s*인\s*지\s*방\s*소\s*득\s*세\s*과\s*세\s*표\s*준\s*(예\s*정\s*|확\s*정\s*)?신\s*고|개\s*인\s*지\s*방\s*소\s*득\s*세\s*\(\s*양\s*도\s*소\s*득\s*분?\s*\)\s*과\s*세\s*표\s*준\s*(예\s*정\s*|확\s*정\s*)?신\s*고/.test(t.slice(0, 600))) return { kind: 'transfer', doc: '개인지방소득세 신고서', local: true };
   if (/양\s*도\s*소\s*득\s*(\(\s*국\s*외\s*전\s*출\s*자\s*\)\s*)?과\s*세\s*표\s*준\s*(예\s*정\s*|확\s*정\s*)?신\s*고\s*및\s*(자\s*진\s*)?납\s*부\s*계\s*산\s*서|별\s*지\s*제?\s*84\s*호\s*서\s*식\s*\]/.test(t)) return { kind: 'transfer', doc: '신고서' };
   if (/양\s*도\s*소\s*득\s*금\s*액\s*계\s*산\s*명\s*세\s*서|별\s*지\s*제?\s*84\s*호\s*서\s*식\s*부\s*표\s*1\s*\]/.test(t)) return { kind: 'transfer', doc: '양도소득금액 계산명세서' };
   if (/증\s*여\s*세\s*과\s*세\s*표\s*준\s*신\s*고\s*및\s*자\s*진\s*납\s*부\s*계\s*산\s*서/.test(t)) return { kind: 'gift', doc: '신고서' };
@@ -33383,13 +33522,76 @@ function docFrGainChain_(amts, anchorI) {
   else if (pos.length === 1) { out.장기보유특별공제 = pos[0].장기보유특별공제; out.양도소득금액 = pos[0].양도소득금액; }
   return out;
 }
+// [2026.10.18 정밀분석 3차 박미영] 양도소득금액 계산명세서의 자산 열 — 서식(별지 84호 부표 1)은 합계 열 옆에 자산마다 열이 있다.
+//  열마다 양도가액 − 취득가액 − 필요경비 = 양도차익, 양도차익 − 장기보유특별공제(양도차익 × 정수 %) = 양도소득금액이 맞고, 자산 열(2~3개)의 칸별 합이
+//  모두 서류 안 금액(합계 열)일 때만. 같은 숫자 묶음을 칸만 바꿔 맞추는 조합은 서식의 칸 순서(취득가액·필요경비 → 양도차익, 장기보유특별공제 → 양도소득금액)가
+//  글자에 나온 순서와 같은 쪽만 남긴다. 하나로 정해질 때만 { 합계, 자산: [열…] }(자산 열은 글자에 나온 순서 = 자산1·자산2)
+function docFrColumnChains_(amts, text, anchorI) {
+  var set = {}; amts.forEach(function (v) { set[v] = 1; });
+  var vals = amts.filter(function (v) { return v > 0; }).sort(function (a, b) { return b - a; });
+  if (vals.length > 60 || vals.length < 8) return null;
+  var t = String(text || ''), at = function (v) { var i = t.indexOf(Number(v).toLocaleString('en-US')); return i < 0 ? Infinity : i; };
+  var cols = [];
+  vals.forEach(function (P) {
+    if (P < 1e6) return;
+    vals.forEach(function (A) {
+      if (A >= P) return;
+      [0].concat(vals).forEach(function (E) {
+        var G = P - A - E;
+        if (E > A || G <= 0 || !set[G] || G === A || G === P || (E && (G === E || E === A))) return;
+        [0].concat(vals).forEach(function (L) {
+          if (L >= G) return;
+          if (L) { var rt = L / G * 100; if (Math.abs(rt - Math.round(rt)) > 0.01 || rt > 80) return; }
+          var I = G - L;
+          if (!set[I] || (L && (I === L || L === A || L === E))) return;
+          cols.push({ 양도가액: P, 취득가액: A, 필요경비: E, 양도차익: G, 장기보유특별공제: L, 양도소득금액: I });
+        });
+      });
+    });
+  });
+  if (cols.length < 2 || cols.length > 400) return null;
+  var F = ['양도가액', '취득가액', '필요경비', '양도차익', '장기보유특별공제', '양도소득금액'];
+  var okOrder = function (s) { // 합계 열의 칸 순서가 글자 순서와 같은지(0원 칸은 건너뜀)
+    if (at(s.취득가액) > at(s.양도차익)) return false;
+    if (s.필요경비 && at(s.필요경비) > at(s.양도차익)) return false;
+    if (s.장기보유특별공제 && at(s.장기보유특별공제) > at(s.양도소득금액)) return false;
+    return true;
+  };
+  var sols = [], key = function (c) { return F.map(function (k) { return c[k]; }).join('/'); };
+  var tryCombo = function (list) {
+    var s = {}; F.forEach(function (k) { s[k] = list.reduce(function (x, c) { return x + c[k]; }, 0); });
+    if (!F.every(function (k) { return s[k] === 0 ? /필요경비|장기보유/.test(k) : !!set[s[k]]; })) return;
+    if (anchorI && s.양도소득금액 !== anchorI) return;
+    if (list.some(function (c) { return F.some(function (k) { return c[k] && c[k] === s[k]; }); })) return; // 자산 열 값이 합계와 같으면 열이 아님
+    if (!okOrder(s)) return;
+    if (!list.every(function (c) { return !c.장기보유특별공제 || at(c.장기보유특별공제) < at(c.양도소득금액); })) return;
+    sols.push({ s: s, list: list.slice().sort(function (x, y) { return at(x.취득가액) - at(y.취득가액); }) });
+  };
+  for (var i = 0; i < cols.length; i++) for (var j = i + 1; j < cols.length; j++) {
+    if (key(cols[i]) === key(cols[j])) continue;
+    tryCombo([cols[i], cols[j]]);
+    for (var k = j + 1; k < cols.length && sols.length < 6; k++) tryCombo([cols[i], cols[j], cols[k]]);
+    if (sols.length > 5) return null;
+  }
+  if (!sols.length) return null;
+  // 합계 열은 양도가액이 가장 큰 조합(장기보유특별공제·소득금액 숫자끼리 우연히 맞는 작은 조합은 버림), 장기보유특별공제 0원 조합(소득금액 = 양도차익이라 늘 맞음)은
+  //  같은 열에 0보다 큰 공제로 맞는 조합이 있으면 버린다
+  var maxP = Math.max.apply(null, sols.map(function (x) { return x.s.양도가액; }));
+  sols = sols.filter(function (x) { return x.s.양도가액 === maxP; });
+  var gk = function (x) { return [x.s.양도가액, x.s.취득가액, x.s.필요경비, x.s.양도차익].join('/') + '|' + x.list.map(function (c) { return [c.양도가액, c.취득가액, c.필요경비, c.양도차익].join('/'); }).join('|'); };
+  sols = sols.filter(function (x) { return x.s.장기보유특별공제 > 0 || !sols.some(function (y) { return y.s.장기보유특별공제 > 0 && gk(y) === gk(x); }); });
+  var sig = function (x) { return key(x.s) + '|' + x.list.map(key).join('|'); };
+  if (!sols.every(function (x) { return sig(x) === sig(sols[0]); })) return null;
+  return { 합계: sols[0].s, 자산: sols[0].list.map(function (c, n) { return Object.assign({ 열: '자산' + (n + 1) }, c); }) };
+}
 function docParseFiledReturn_(text) {
   var fk = docFiledReturnKind_(text);
   if (!fk) return null;
   var kind = fk.kind;
   var t = String(text || '').replace(/(\d),\s+(\d{3})(?!\d)/g, '$1,$2'); // 글자인식이 "30,134, 116"처럼 쉼표 뒤를 띄운 것
   var label = { transfer: '양도소득세', gift: '증여세', inheritance: '상속세' }[kind];
-  var r = { 종류: fk.doc === '신고서' ? label + ' 신고서' : fk.doc === '결정 통지' ? label + ' 결정 통지' : fk.doc, 세목: kind, 서류: fk.doc, 신고구분: '', 기준일: '', 칸: {}, 근거: {}, 읽은값: {}, 경고: [] };
+  var r = { 종류: fk.doc === '신고서' ? label + ' 신고서' : fk.doc === '결정 통지' ? label + ' 결정 통지' : fk.local ? '개인지방소득세 신고서(양도소득분)' : fk.doc, 세목: kind, 서류: fk.doc, 신고구분: '', 기준일: '', 칸: {}, 근거: {}, 읽은값: {}, 경고: [] };
+  if (fk.local) r.지방세 = true; // [2026.10.18 정밀분석 3차] 지방소득세 신고서 — 칸 값은 지방세(국세의 10분의 1), 국세 신고서 값과 섞지 않는다
   var L = docFrLabelValues_(t, kind);
   var amts = [], seen = {};
   (t.match(/(?<![\d,.\-])(?:0|\d{1,3}(?:,\d{3})+)(?![\d,.%\-])/g) || []).forEach(function (x) { var v = Number(x.replace(/,/g, '')); if (!seen[v]) { seen[v] = 1; amts.push(v); } });
@@ -33402,8 +33604,10 @@ function docParseFiledReturn_(text) {
     var cands = [];
     amts.forEach(function (b) {
       if (b < 1e6) return;
-      (kind === 'transfer' ? DOC_FR_INCOME_RATES_ : [DOC_FR_GI_RATES_]).forEach(function (tb) { var p = docFrProgressive_(b, tb); if (p.tax > 0 && has(p.tax)) cands.push({ b: b, tax: p.tax, how: '기본세율 ' + p.rate + '%(누진공제)' }); });
-      if (kind === 'transfer') pcts.forEach(function (pc) { var x = Math.floor(b * pc / 100); if (x > 0 && has(x)) cands.push({ b: b, tax: x, how: '단일세율 ' + pc + '%' }); });
+      // [2026.10.18 정밀분석 3차] 개인지방소득세(양도소득분) 세율 = 소득세 기본세율의 10분의 1(지방세법 §103의3①: 0.6%~4.5%, 누진공제도 10분의 1) — 박미영 53,748,375 × 2.4% − 576,000 = 713,961
+      if (fk.local) DOC_FR_INCOME_RATES_.forEach(function (tb) { for (var q = 0; q < tb.length; q++) if (b <= tb[q][0]) { var lx = Math.max(0, Math.floor(b * tb[q][1] / 1000 - tb[q][2] / 10)); if (lx > 0 && has(lx)) cands.push({ b: b, tax: lx, how: '지방소득세율 ' + (tb[q][1] / 10) + '%(소득세 기본세율의 10분의 1, 누진공제 ' + won(tb[q][2] / 10) + '원)' }); break; } });
+      else (kind === 'transfer' ? DOC_FR_INCOME_RATES_ : [DOC_FR_GI_RATES_]).forEach(function (tb) { var p = docFrProgressive_(b, tb); if (p.tax > 0 && has(p.tax)) cands.push({ b: b, tax: p.tax, how: '기본세율 ' + p.rate + '%(누진공제)' }); });
+      if (kind === 'transfer' && !fk.local) pcts.forEach(function (pc) { var x = Math.floor(b * pc / 100); if (x > 0 && has(x)) cands.push({ b: b, tax: x, how: '단일세율 ' + pc + '%' }); });
     });
     var pick = null, uniq = function (list) { return list.length && list.every(function (c) { return c.b === list[0].b && c.tax === list[0].tax; }) ? list[0] : null; };
     if (Number.isFinite(L.과세표준)) pick = uniq(cands.filter(function (c) { return c.b === L.과세표준; }));
@@ -33473,16 +33677,40 @@ function docParseFiledReturn_(text) {
     }
   }
   // 4) 양도소득금액 계산명세서(같은 파일이거나 따로 낸 부표 1)
-  if (kind === 'transfer' && (fk.doc === '양도소득금액 계산명세서' || /양\s*도\s*소\s*득\s*금\s*액\s*계\s*산\s*명\s*세\s*서/.test(t))) {
-    var gc = docFrGainChain_(amts, C.양도소득금액);
+  if (kind === 'transfer' && !fk.local && (fk.doc === '양도소득금액 계산명세서' || /양\s*도\s*소\s*득\s*금\s*액\s*계\s*산\s*명\s*세\s*서/.test(t))) { // 지방소득세 신고서는 첨부서류 줄의 이름일 뿐
+    // [2026.10.18 정밀분석 3차 박미영] 자산이 둘 이상이면 서식은 합계 열 + 자산 열(부표 1) — 열마다 양도가액 − 취득가액 − 필요경비 = 양도차익, − 장기보유특별공제 = 양도소득금액이
+    //  맞고 열의 합이 합계 열과 같은 조합을 먼저 찾는다(한 열 식만 보면 합계 열의 취득가액·양도차익이 맞바뀐 조합과 가려지지 않아 421,944,710을 양도차익으로 읽었다)
+    var mc = docFrColumnChains_(amts, t, C.양도소득금액);
+    if (mc) {
+      Object.keys(mc.합계).forEach(function (k) { set(k, mc.합계[k], '합계 열 = 자산 ' + mc.자산.length + '열의 합(열마다 양도가액 − 취득가액 − 필요경비 = 양도차익, − 장기보유특별공제 = 양도소득금액 검산 일치)'); });
+      r.자산열 = mc.자산;
+    }
+    var gc = mc ? null : docFrGainChain_(amts, C.양도소득금액);
     if (gc) Object.keys(gc).forEach(function (k) { set(k, gc[k], k === '양도소득금액' ? '양도차익 − 장기보유특별공제' : '양도가액 − 취득가액 − 필요경비 = 양도차익, − 장기보유특별공제 = 양도소득금액'); });
-    else r.경고.push('계산명세서 금액(양도가액·취득가액·필요경비)을 식으로 확정하지 못함 — 원문 확인');
+    else if (!mc) r.경고.push('계산명세서 금액(양도가액·취득가액·필요경비)을 식으로 확정하지 못함 — 원문 확인');
     var am = /취\s*득\s*일\s*자[^\d]{0,30}((?:19|20)\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})/.exec(t);
     if (am) r.취득일 = am[1] + '-' + ('0' + am[2]).slice(-2) + '-' + ('0' + am[3]).slice(-2);
+    // 자산 열별 취득일(원인) — "⑤ 취득일자(원인) 2009-09-25(01. 매매) 2014-12-02(04.증여)": 서식 열 순서(자산1·자산2…)대로
+    var ai = t.search(/취\s*득\s*일\s*자/);
+    if (ai >= 0) {
+      var aseg = t.slice(ai, ai + 260).split(/총\s*면\s*적|⑥/)[0], ar = /((?:19|20)\d{2})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})\s*(?:\(\s*(\d{2})\s*\.?\s*([가-힣A-Z\s]{0,6}?)\s*\))?/g, ax, alist = [];
+      var ACAUSE = { '01': '매매', '02': '교환', '03': '상속', '04': '증여', '05': '분양', '06': '신축', '07': '경매·공매', '08': '수용' };
+      while ((ax = ar.exec(aseg)) && alist.length < 6) alist.push({ 날짜: ax[1] + '-' + ('0' + ax[2]).slice(-2) + '-' + ('0' + ax[3]).slice(-2), 원인: ax[4] ? (ACAUSE[ax[4]] || ((ax[5] || '').replace(/\s+/g, '') || '코드 ' + ax[4])) : '' });
+      if (alist.length >= 2) { r.취득일목록 = alist; (r.자산열 || []).forEach(function (col, i) { if (alist[i]) { col.취득일 = alist[i].날짜; if (alist[i].원인) col.취득원인 = alist[i].원인; } }); }
+    }
+    // 기준시가(환산·기준시가 신고 때만 적는 칸) — "□ 기준시가" 구역에서 0이 아닌 금액이 두 가지면 서식 순서대로 양도시·취득시(합계)
+    var si = t.search(/□\s*기\s*준\s*시\s*가/);
+    if (si >= 0) {
+      var sv = []; (t.slice(si, si + 900).match(/(?<![\d,.\-])\d{1,3}(?:,\d{3})+(?![\d,.%\-])/g) || []).forEach(function (x) { var v = Number(x.replace(/,/g, '')); if (v && sv.indexOf(v) === -1) sv.push(v); });
+      if (sv.length === 2) r.기준시가 = { 양도시: sv[0], 취득시: sv[1], 근거: '기준시가 구역의 0 아닌 금액 둘을 서식 순서(양도시 → 취득시)로' };
+    }
   }
   // 신고구분 — 표시(✓·■·√ 등)가 붙은 것만(서식에는 네 가지가 다 인쇄돼 있다)
   var gm = /[✓✔☑■●▣◼√]\s*\]?\s*\)?\s*(예\s*정|확\s*정|수\s*정|기\s*한\s*(?:후|내)|정\s*기)\s*신\s*고/.exec(t);
   if (gm) r.신고구분 = gm[1].replace(/\s+/g, '') + ' 신고';
+  // [2026.10.18 정밀분석 3차] 신고일 — 서명란 날짜("신고인 2026년 04월 25일 박미영 (서명 또는 인)"). 실제 낸 신고본인지 가르는 표지(박미영 양도세·지방소득세 신고서)
+  var sgm = /신\s*고\s*인\s*[:：]?\s*((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/.exec(t) || /((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일[^\n(]{0,16}\n?\s*\(\s*서\s*명\s*(?:또\s*는|또는)?\s*인\s*\)/.exec(t);
+  if (sgm) r.신고일 = sgm[1] + '-' + ('0' + sgm[2]).slice(-2) + '-' + ('0' + sgm[3]).slice(-2);
   var dl = { transfer: '양\\s*도\\s*(?:일\\s*자|연\\s*월\\s*일)', gift: '증\\s*여\\s*(?:일\\s*자|연\\s*월\\s*일)', inheritance: '상\\s*속\\s*개\\s*시\\s*일' }[kind];
   var dm = new RegExp(dl + '[^\\d]{0,30}((?:19|20)\\d{2})\\s*[.\\-/년]\\s*(\\d{1,2})\\s*[.\\-/월]\\s*(\\d{1,2})').exec(t);
   if (dm) r.기준일 = dm[1] + '-' + ('0' + dm[2]).slice(-2) + '-' + ('0' + dm[3]).slice(-2);
@@ -33501,7 +33729,15 @@ function docFiledReturnToMarkdown_(r) {
   var bdl = { transfer: '양도일', gift: '증여일', inheritance: '상속개시일' }[r.세목];
   if (r.기준일) out.push('- ' + bdl + ': ' + r.기준일);
   if (r.취득일) out.push('- 취득일(첫 자산): ' + r.취득일);
+  if (r.신고일) out.push('- 신고일(서명란): ' + r.신고일);
   if (r.칸.세율) out.push('- 세율: ' + r.칸.세율);
+  if (r.지방세) out.push('- 지방소득세 신고서 — 칸 값은 지방세(국세의 10분의 1)라 국세 신고서 값과 대조만');
+  // [2026.10.18 정밀분석 3차] 계산명세서 자산 열(합계 = 열의 합)
+  if ((r.자산열 || []).length) {
+    out.push('\n**자산 열(합계 = 열의 합 검산 일치)**\n\n| 열 | 취득일(원인) | 양도가액 | 취득가액 | 필요경비 | 양도차익 | 장기보유특별공제 | 양도소득금액 |\n|---|---|---|---|---|---|---|---|');
+    r.자산열.forEach(function (c) { out.push('| ' + c.열 + ' | ' + (c.취득일 || '') + (c.취득원인 ? '(' + c.취득원인 + ')' : '') + ' | ' + [c.양도가액, c.취득가액, c.필요경비, c.양도차익, c.장기보유특별공제, c.양도소득금액].map(won).join(' | ') + ' |'); });
+  }
+  if (r.기준시가) out.push('- 기준시가(서식): 양도시 ' + won(r.기준시가.양도시) + ' · 취득시 ' + won(r.기준시가.취득시));
   var keys = Object.keys(r.칸).filter(function (k) { return k !== '세율'; });
   if (keys.length) {
     out.push('\n**계산식으로 확인된 칸**\n\n| 칸 | 신고값 | 확인 근거 |\n|---|---|---|');
@@ -37689,6 +37925,10 @@ function lawParse_(text) {
   if (m) r.일자 = m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2);
   m = /(?:과세\s*표준\s*액?|거래\s*가액|매매\s*대금)\s*[:：]?\s*(\d{1,3}(?:,\d{3})+)/.exec(flat);
   if (m) r.과세표준 = lawNum_(m[1]);
+  // [2026.10.18 정밀분석 3차 김환식] 소유권이전(매매) 비용내역서의 "신고금액"(부동산 거래신고가액 = 실거래가) — 머리 칸이라 물건 이름(샛별아파트 613-811)이 사이에 끼어도
+  //  이름표 뒤 80자 안의 첫 백만 원 이상 금액. 취득 계약서가 없을 때 취득가액 후보(tc_ruleTransferFacts_)
+  var sgi = flat.search(/신\s*고\s*(?:금\s*액|가\s*액)/);
+  if (sgi >= 0) { var sgm = /(?<![\d,.])(\d{1,3}(?:,\d{3}){2,})(?![\d,])/.exec(flat.slice(sgi, sgi + 90)); if (sgm && lawNum_(sgm[1]) >= 1000000) r.신고금액 = lawNum_(sgm[1]); }
   m = /(\d{3}-\d{2}-\d{5})/.exec(flat);
   if (m) r.사업자번호 = m[1];
   // 항목 — 이름표 뒤 40자 안의 첫 금액(0 포함)
@@ -40359,7 +40599,7 @@ function trcShareAssets_(c, rf, t, st, src, cands, facts) {
 }
 function trcFromEvidence_(c, rf, txs, ans) {
   const st = { transferSellers: [{}], transferContracts: [], transferAssets: [], acquisitionContracts: [] };
-  const src = {}, cands = {}, facts = { gift: [], parcels: null };
+  const src = {}, cands = {}, facts = { gift: [], parcels: null, priorCalc: rf.priorCalc || null }; // priorCalc: [2026.10.18 정밀분석 3차] 당초 신고 계산근거(사건분류 근거)
   const seller = st.transferSellers[0];
   const trSeller = (rf.evidence || []).some(function (e) { return /^양도: /.test(e); }) ? String(c.납세자 || '').replace(/\s+/g, '') : '';
   // [2026.10.18 정밀분석 5] 근거 표기 — 매도 계약서가 없어 등기부로 거래를 세웠으면 "등기부 양도 직전 명의인"(박미영: 폴더에 계약서가 없는데 "양도 계약서 매도인"으로 적혔다)
@@ -40481,6 +40721,14 @@ function trcFromEvidence_(c, rf, txs, ans) {
     if (!ct || ct.transferCause !== 'expropriation') return;
     if (!a.publicNoticeDate) { a.publicNoticeDate = certC.cert.고시일; src['a' + i + '.publicNoticeDate'] = '토지등 수용사실 확인서 사업인정 고시일(' + certC.file + ')'; }
     if (!a.compensationType && certC.cert.현금) { a.compensationType = 'cash'; src['a' + i + '.compensationType'] = '토지등 수용사실 확인서 — 총 보상액 전액 현금보상(' + certC.file + ')'; }
+  });
+  // [2026.10.18 정밀분석 3차 김운래] 수정신고 — 당초 신고 계산근거의 사업인정 고시일·현금보상 감면을 수용 자산 칸에(수용사실 확인서가 없을 때). 당초 신고 내용 그대로가 입력(국세기본법 §45)
+  const pcx = !certC && rf.priorCalc;
+  if (pcx && (pcx.고시일 || pcx.감면)) st.transferAssets.forEach(function (a, i) {
+    const ct = st.transferContracts.filter(function (q) { return q.id === a.transferContractId; })[0];
+    if (!ct || ct.transferCause !== 'expropriation') return;
+    if (pcx.고시일 && !a.publicNoticeDate) { a.publicNoticeDate = pcx.고시일; src['a' + i + '.publicNoticeDate'] = '당초 신고 계산근거 사업인정 고시일(' + pcx.file + ') — 수정신고는 당초 신고 내용 그대로'; }
+    if (pcx.감면 && /현\s*금/.test(pcx.감면.근거) && !a.compensationType) { a.compensationType = 'cash'; src['a' + i + '.compensationType'] = '당초 신고 계산근거 「' + pcx.감면.근거 + '」(' + pcx.file + ') — 현금보상 감면(조특법 §77①)'; }
   });
   return { state: st, src: src, cands: cands, facts: facts };
 }
@@ -40639,6 +40887,7 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
   // 2) 양도계약 카드 — 양도일·양도가액·양수인 관계
   const dConf = txs.some(function (t) { return t.transferDateConflict; });
   if (!c.기준일 && !items.some(function (x) { return /^ov:기준일/.test(x.id); })) q('ov:기준일:none', dConf ? 'judge' : 'missing', dConf ? '양도일 — 계약서 잔금일과 실거래 신고필증 잔금지급일이 서로 달라 자동으로 정하지 않았습니다(잔금일 변경 또는 글자인식 오류). 양도일은 실제 잔금일과 등기접수일 중 빠른 날(소득세법 §98)이고, 보유기간(장기보유특별공제·단기 세율)과 신고기한이 이 날로 정해집니다 — 실제로 잔금을 받은 날 쪽 후보를 고르세요' + (txs.some(function (t) { return (t.transferDateConflict || []).some(function (x) { return /등기접수일/.test(x.src); }); }) ? '(후보마다 등기접수일과 견준 결과를 적었습니다).' : '.')
+    : (rf && (rf.trDateCands || []).some(function (x) { return x.prior; })) ? '양도일 — 경정·수정신고 사건이라 양도시기는 당초 신고 그대로입니다(국세기본법 §45). 당초 신고 계산근거의 양도일을 1번 후보로, 다른 서류의 날짜를 함께 보여드립니다 — 맞는 날을 고르세요' + (rf.comps && rf.comps.length ? '(수용: 보상금 받은 날·수용개시일·수용 등기 접수일 중 빠른 날, 소득세법 시행령 §162①7호).' : '(잔금일·등기접수일 중 빠른 날, §98).') // [2026.10.18 정밀분석 3차 김운래]
     : (rf && (rf.comps || []).length ? '양도일(수용: 보상금 받은 날·수용개시일·수용 등기 접수일 중 빠른 날, 소득세법 시행령 §162①7호)' : '양도일(잔금일·등기접수일 중 빠른 날, 소득세법 §98)') + '을 서류에서 정하지 못했습니다 — 신고기한(양도일이 속한 달 말일부터 2개월)·보유기간(장기보유특별공제·단기 세율)이 이 날로 정해져 계산 전 필수입니다. 매도 계약서 잔금일·신고필증 잔금지급일·등기부 양도 등기 접수일을 찾지 못했으니 그 서류를 폴더에 넣거나 날짜를 직접 넣어 주세요.', { mode: 'base', cands: (rf && rf.trDateCands || []).length ? rf.trDateCands : undefined });
   st.transferContracts.forEach(function (ct, k) {
     const p = 'c' + k + '.totalPrice', cd = S.cands[p];
@@ -40733,6 +40982,7 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
       : cd.some(function (x) { return /증여세 (신고서|결정)/.test(x.src); }) ? '증여로 받은 부동산 — 취득가액은 증여세 신고·결정가액(소득세법 시행령 §163⑨). 신고서 평가액이 맞으면 고르고, 결정가액이 다르면 직접 넣어 주세요.'
       : cd.some(function (x) { return /분양계약서/.test(x.src); }) ? '분양계약서의 분양금액입니다 — 부가가치세 매입세액을 공제·환급받았으면 부가세를 뺀 금액, 받지 않았으면 부가세를 넣은 금액을 고르세요.'
         + ((rf.vatDocs || []).length ? ' 폴더의 납세자 부가가치세 신고 자료(' + rf.vatDocs.slice(0, 2).join(', ') + ')가 매입세액 공제·환급 여부의 근거입니다 — 매입세액을 공제·환급받았으면 부가세를 뺀 금액(1번 후보).' : '') // [2026.10.18 정밀분석 원인1] 김금옥 — 부가세 신고서를 이름으로 버리던 것을 근거로 붙임
+      : cd.some(function (x) { return /법무사 비용내역서 신고금액|취득세 영수증 과세표준/.test(x.src); }) ? '취득 계약서가 폴더에 없어 법무사 비용내역서의 신고금액(부동산 거래신고가액)·취득세 영수증 과세표준(매매)을 후보로 보여드립니다 — 2006년 이후 매매는 신고가액이 취득세 과세표준이라(지방세법 §10) 보통 실지거래가액과 같습니다. 판 물건(소재지)과 같은 부동산의 서류면 고르고, 취득 계약서가 있으면 그 매매대금이 우선입니다.' // [2026.10.18 정밀분석 3차 김환식]
       : cd.length ? '서류에서 읽은 금액입니다 — 이 자산의 취득가액이면 고르고, 아니면 직접 넣어 주세요.'
       : '취득가액(실지거래가액)을 서류(취득 계약서·등기부 거래가액·증여세 신고서·분양계약서)에서 찾지 못했습니다 — 양도차익 = 양도가액 − 취득가액이라 값이 있어야 계산됩니다. 알면 넣어 주세요. 모르면 계산기는 매매사례가액 → 감정가액 → 환산(취득당시·양도당시 기준시가) 순서로 정합니다' + (sc ? '(아래 기준시가 질문)' : '') + '.';
     if (cd.length || !sc) q('trc:' + p + '.acquisitionPrice', cd.length ? 'judge' : 'missing', '취득정보 ' + lab + '「취득가액」 — ' + why, { mode: cd.length ? 'choose' : 'input', target: 'calc:' + p + '.acquisitionPrice', input: 'money', label: lab + '취득가액', cands: cd });
@@ -40791,6 +41041,16 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
     if (a0.assetType || a0.assetKind || S.facts.officetel) cf.push('판 물건: ' + (a0.assetLocation || '') + ' — ' + [a0.assetType ? '과세대상 ' + (kindTxt[a0.assetType] || a0.assetType) : S.facts.officetel ? '오피스텔(주택으로 볼지는 「과세대상 구분」 질문에서)' : '', a0.assetKind ? '자산구분 ' + (kindTxt[a0.assetKind] || a0.assetKind) : ''].filter(Boolean).join(' · ') + (S.src['a0.assetType'] ? ' (근거: ' + S.src['a0.assetType'] + ')' : ''));
     if (a0.acquisitionDate && c.기준일) { const yrs = Math.floor(((new Date(c.기준일) - new Date(a0.acquisitionDate)) / 864e5) / 365.25 * 10) / 10; cf.push('보유기간: 취득일 ' + a0.acquisitionDate + ' ~ 양도일 ' + c.기준일 + ' — 약 ' + yrs + '년' + (yrs < 2 ? ' (2년 미만 — 1세대1주택 비과세 보유요건·단기 세율 확인)' : '')); }
     (rf.evidence || []).filter(function (e) { return /신규 주택|납세자 명의 부동산|오피스텔|증여|수용|보상금|필지 일괄|주민등록|초본|세대원|농지|자경|미등기|경매/.test(e) && !/^⚠/.test(e); }).slice(0, 6).forEach(function (e) { cf.push('서류: ' + e); });
+    // [2026.10.18 정밀분석 3차 이우석] 보유 자산 목록의 납세자 명의 다른 주택 — 1세대 주택 수(§89①3호·시행령 §154①)에 들어가는 사실. 상속받은 주택이면 상속주택 특례
+    //  (시행령 §155②: 상속받은 주택과 상속개시 당시 보유한 일반주택이 있는 1세대가 일반주택을 팔 때만 상속주택을 없는 것으로 봄)의 갈림 사실(일반주택 취득일 ↔ 상속일)을 함께
+    if (!S.facts.overseas && (rf.holdings || []).length) {
+      const aLoc = String(a0.assetLocation || ''), aD = String(a0.acquisitionDate || '').slice(0, 10);
+      (rf.holdings || []).filter(function (h) { return (h.mine === '단독' || h.mine === '공유') && h.kind !== '토지' && (h.house === true || /아\s*파\s*트|주\s*택|다\s*세\s*대|연\s*립|다\s*가\s*구/.test(String(h.use || '') + (h.kind === '집합건물' ? ' ' + h.loc : ''))) && !(aLoc && caseProcSamePlace_(h.loc, h.kind, aLoc, h.kind)); }).slice(0, 4).forEach(function (h) {
+        const inh = h.acq.filter(function (q) { return /상\s*속|협\s*의\s*분\s*할/.test(String(q.cause || '')); })[0];
+        cf.push('서류: 납세자 명의 다른 주택(보유 자산 목록 — 1세대 주택 수에 들어감, 양도일 현재 보유인지 확인): ' + h.loc + (h.use ? ' ' + h.use : '') + ' — ' + (h.ownTxt || h.mine) + (h.acq.length ? ', 취득 ' + h.acq.map(function (q) { return q.v + (q.cause ? ' ' + q.cause : ''); }).join(' · ') : '') + ' [' + h.files.join(', ') + ']'
+          + (inh ? ' — 상속받은 주택: 상속주택 특례(시행령 §155②)는 상속개시 당시 이미 보유한 일반주택을 팔 때만' + (aD ? (aD > inh.v ? ' → 판 물건 취득일 ' + aD + '이 상속 등기 접수일 ' + inh.v + ' 뒤 — 상속 뒤 취득한 일반주택이라 이 특례 대상 아님' : ' → 판 물건 취득일 ' + aD + '이 상속 등기 접수일 ' + inh.v + ' 앞 — 특례 검토 대상') : ' — 판 물건 취득일과 상속개시일을 견줘 판단') : ''));
+      });
+    }
     if (!cf.length) cf.push('서류에서 사건분류를 가를 사실(주택 여부·보유 주택 수·거주기간·취득 원인)을 읽지 못했습니다 — 상담 내용으로 골라 주세요.');
     // [2026.10.17 재설계] 고정 메뉴가 아니라 드러난 사실로 해당 없는 갈래는 뺀다(사실이 바뀌면 다음 회차에 다시 계산)
     const co = trcClassOptions_(S, tpl, ans);
@@ -40844,7 +41104,7 @@ function trcOverview_(c, ov, rf, lines, items) {
   const txs = (rf.transactions || []).filter(function (t) { return t.transferPrice || t.acquisitionPrice || t.transferDate || t.transferPriceCand || t.transferPriceConflict || t.transferDateConflict || t.parcels; });
   lines.push('서류 규칙 정리: 계약서 ' + rf.counts.계약서 + ' · 신고필증 ' + rf.counts.신고필증 + ' · 등기부 ' + rf.counts.등기부 + ' · 취득세 ' + rf.counts.취득세 + ' · 법무사 ' + rf.counts.법무사 + ' → 양도거래 ' + txs.length + '건');
   // [2026.10.17 내용 항목별] 서류를 항목으로 쪼갠 결과(계약서 항목·비용 항목표·정산서 검산·지급 확인 등)는 사이드바에 보이게
-  (rf.evidence || []).filter(function (e) { return !/^⚠/.test(e) && /계약서 항목|비용 항목표|법무사 정산서|등기 세금 서류|지급 확인|견적서·비교표|정산서 사본|공사 견적·내역서|입금 확인\(통장\)|통장 거래 행선/.test(e); }).forEach(function (e) { lines.push('🧾 ' + e); });
+  (rf.evidence || []).filter(function (e) { return !/^⚠/.test(e) && /계약서 항목|비용 항목표|법무사 정산서|등기 세금 서류|지급 확인|견적서·비교표|정산서 사본|공사 견적·내역서|입금 확인\(통장\)|통장 거래 행선/.test(e) || (/^당초 신고 계산근거/.test(e) && !/⚠/.test(e)); }).forEach(function (e) { lines.push('🧾 ' + e); }); // [2026.10.18 정밀분석 3차] 당초 신고 계산근거 대조 줄도(⚠ 줄은 아래 확인 알림)
   (rf.evidence || []).filter(function (e) { return /⚠|찾지 못함|확정 못/.test(e) && !/질문으로 확인$/.test(e); }).forEach(function (e) { // 질문으로 묻는 상충은 알림을 따로 띄우지 않는다(같은 말 두 번)
     items.push(caseProcItem_('rf:' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, e, Utilities.Charset.UTF_8)).slice(0, 10), 'check', e, { mode: 'note' }));
   });
@@ -40918,8 +41178,10 @@ function trcOverview_(c, ov, rf, lines, items) {
       { mode: 'choose', target: 'calc:' + pth, input: money ? 'money' : (/Date/.test(pth) ? 'date' : 'text'), label: lbl, cands: [{ v: money ? trcDigits_(x.v) : String(x.v), src: '세무사님 답(' + x.src + ')' }, { v: money ? trcDigits_(evv) : String(evv), src: '서류(규칙 정리, 검산 일치)' }] }));
   });
   // [2026.10.17 재설계] 세액계산기가 지금 원하는 칸(갈림길을 따라) — 질문은 이 목록에서 빈 칸만, 비용은 실지거래가액 갈래에서만
+  S.facts.acqPriceCands = shG ? [] : (rf.acqPriceCands || []); // [2026.10.18 정밀분석 3차] 비용을 지금 물을지(실지거래가액 종류 후보) — 지분별 자산은 지분마다 S.cands
   const needs = trcNeeds_(c, S, ans);
   S.needs = needs;
+  if (S.facts.costsEarly && !ans.costs) lines.push('비용(취득비용·양도비용)은 취득가액을 정하기 전이지만 지금 묻습니다 — ' + S.facts.costsEarly + '(실지거래가액 갈래의 필요경비, §97①2호·시행령 §163)');
   trcQuestions_(c, rf, txs, S, ans, lines, items);
   const h = trcStore_(c, S);
   const ns = trcNeedsSummary_(needs);
@@ -40959,14 +41221,32 @@ function trcOfficetel_(c, rf, txs) {
 }
 // 주택 용도 근거(등기부·건축물대장 건물 내역의 용도) — 없으면 ''
 function trcHouseUse_(c, loc) {
-  let hit = '';
+  let hit = '', ctHit = '';
   const USE = /(아\s*파\s*트|다\s*세\s*대\s*주\s*택|연\s*립\s*주\s*택|단\s*독\s*주\s*택|다\s*가\s*구\s*주\s*택|공\s*동\s*주\s*택)/;
   try {
     caseProcParseAll_(c).some(function (x) {
       const ty = x.p && x.p.type, r = (x.p && x.p.result) || {};
+      // [2026.10.18 정밀분석 3차 이우석] 같은 소재지 매매계약서의 「부동산의 표시」 건물 용도(아파트·공동주택 등) — 등기부·대장·공시가격이 없을 때의 근거(맨 나중에 씀)
+      if (ty === 'contract' && loc && !ctHit) {
+        ((r.docs || [{ r: r }]).map(function (d) { return d && d.r; }).filter(Boolean)).some(function (cr) {
+          const ls = [cr.소재지].concat(cr.소재지목록 || []).filter(Boolean).map(function (l) { return String(l).replace(/^[+\s]+/, ''); });
+          if (!ls.some(function (l) { return tcLocSame_(l, loc) || caseProcSamePlace_(l, '', loc, ''); })) return false;
+          let u = cr.건물용도 && USE.exec(String(cr.건물용도));
+          if (!u) { let tx0 = ''; try { tx0 = String(tc_docText_(x.f) || '').slice(0, 1500); } catch (e) {} u = new RegExp('용\\s*도\\s*[:：]?\\s*' + USE.source).exec(tx0); }
+          if (u) ctHit = '매매계약서(' + x.f.name + ') 부동산의 표시 건물 용도: ' + u[u.length - 1].replace(/\s+/g, '');
+          return !!ctHit;
+        });
+        return false;
+      }
       // [2026.10.17] 같은 소재지의 공동주택가격·개별주택가격 공시 = 주택으로 고시된 물건
       if (ty === 'pubprice') { if (loc && r.소재지 && /공\s*동\s*주\s*택|개\s*별\s*주\s*택/.test(String(r.종류 || '')) && [String(r.소재지)].concat((String(r.소재지).match(/\(([^)]+)\)/) || []).slice(1)).some(function (l) { return tcLocSame_(l, loc); })) hit = '공시가격(' + x.f.name + '): ' + String(r.종류).replace(/\s+/g, '') + ' 고시 물건'; return !!hit; }
       if (!/^(registry|bldledger)$/.test(ty || '')) return false;
+      // [2026.10.18 정밀분석 3차 이우석] 판 물건과 같은 소재지의 등기부·대장만 — 납세자의 다른 주택(호계동 무궁화, 2013 상속) 등기부의 "아파트"가 판 집(평촌 향촌)의
+      //  주택 근거로 쓰였다. 소재지를 읽은 서류는 소재지가 같을 때만, 소재지를 못 읽은 서류는 예전처럼
+      if (loc) {
+        const locs = ty === 'registry' ? (r.docs || []).map(function (d) { return d && d.소재지; }).filter(Boolean) : [r.소재지 || [r.대지위치, r.지번].filter(Boolean).join(' ')].filter(Boolean);
+        if (locs.length && !locs.some(function (l) { return tcLocSame_(l, loc) || caseProcSamePlace_(l, '', loc, ''); })) return false;
+      }
       let tx = ''; try { tx = String(tc_docText_(x.f) || ''); } catch (e) {}
       // 등기부는 표제부(갑구 앞)만, 건축물대장은 용도 칸 근처만 — 소유자 주소의 "○○아파트"를 용도로 보지 않게(2026-10-17)
       if (ty === 'registry') { const g = tx.search(/갑\s*구|소\s*유\s*권\s*에\s*관\s*한/); if (g > 0) tx = tx.slice(0, g); }
@@ -40975,7 +41255,7 @@ function trcHouseUse_(c, loc) {
       return !!hit;
     });
   } catch (e) {}
-  return hit;
+  return hit || ctHit;
 }
 
 // ── 답 반영(양도) — 계산기 칸 경로로 저장. 예전 질문 대상(ovAsset·expenses·trStdConv 등)도 같은 자리로 ──
@@ -41773,7 +42053,13 @@ function trcNeeds_(c, S, ans) {
     out.push({ p: p + '.acquisitionPrice', l: lab + '취득가액(없으면 계산기가 매매사례·감정·환산 기준시가로)', ok: real || est, src: S.src[p + '.acquisitionPrice'] || S.src[p + '.acquisitionStandardPriceForExpense'] || S.src[p + '.comparableTransactionPrice'] || S.src[p + '.appraisalValue'] || '', why: '양도차익 = 양도가액 − 취득가액', later: '' });
     if (i === 0 && st.transferAssets.length >= 1) {
       // 비용은 실지거래가액 갈래에서만 쓴다 — 취득가액이 추계(매매사례·감정·환산)면 계산기가 개산공제를 쓰므로 지금은 묻지 않는다
-      const later = real ? '' : '취득가액(실지거래가액)이 아직 없음 — 추계면 계산기가 개산공제를 씀, 실지거래가액이 정해지면 다시 봄';
+      // [2026.10.18 정밀분석 3차 이종식·김환식] 취득가액 칸이 아직 비었어도 실지거래가액 갈래가 정해진 경우는 비용을 지금 묻는다 —
+      //  ① 증여·상속으로 받은 자산: 취득가액 = 증여·상속 당시 상증법 평가액이 실지거래가액으로 의제(소득세법 시행령 §163⑨)라 개산공제(§97②·시행령 §163⑥) 갈래가 아님
+      //  ② 서류에서 찾은 취득가액 후보가 실지거래가액 종류(취득 계약서·분양계약서·증여세 신고가액·법무사 신고금액·취득세 과세표준)일 때 — 고르면 곧바로 실가 갈래
+      const gAcq = (S.facts.gift || []).some(function (g) { return g.p === p; });
+      const rc = (S.cands[p + '.acquisitionPrice'] || []).concat(S.facts.acqPriceCands || []).filter(function (x) { return x && x.v && !/^(매매사례|취득 당시 공시가격|분양가 내역표)/.test(String(x.src || '')); });
+      const later = real || gAcq || rc.length ? '' : '취득가액(실지거래가액)이 아직 없음 — 추계면 계산기가 개산공제를 씀, 실지거래가액이 정해지면 다시 봄';
+      if (!real && !later) S.facts.costsEarly = gAcq ? '증여로 받은 자산 — 취득가액은 증여 당시 평가액(실지거래가액 의제, 시행령 §163⑨)이라 개산공제가 아님' : '취득가액 후보 ' + rc.length + '건이 실지거래가액 종류(' + String(rc[0].src).split(' — ')[0].slice(0, 40) + ' 등)';
       out.push({ p: 'costs', l: '취득비용·양도비용', ok: !later && !!ans.costs, src: ans.costs ? ans.costs.src : '', why: '실지거래가액 갈래의 필요경비', later: later });
       out.push({ p: 'taxfee', l: '신고 세무비용', ok: !later && !!ans.taxfee, src: ans.taxfee ? ans.taxfee.src : '', why: '양도비용(시행령 §163⑤1호)', later: later });
     }
@@ -41898,6 +42184,9 @@ function trcOverseas_(c, S, ans, rf, lines, items) {
   if (s0o && !s0o.name && selHit) { s0o.name = selHit.kr; S.src['seller.name'] = '매도 정산서 매도인(' + of.sale.sellers + ') 중 ' + selHit.eng + ' = ' + selHit.src; }
   // 증여 취득일 = 증여받은 날(등기가 필요한 재산은 등기 접수일 — 소득세법 시행령 §162①5호). 증서 양수인이 정산서 매도인과 같은 사람일 때만(같은 자산을 받아서 판 것)
   const gHit = of.deed && of.sale ? (of.deed.grantees || []).filter(function (g) { return trcEngNameSame_(g, of.sale.sellers); }) : [];
+  // [2026.10.18 정밀분석 3차 박길서] 증여로 받은 국외자산 — 사건분류 판단 사실(S.facts.gift = []로 비워 두어 "증여로 받은 자산 아님"으로 이월과세 판단이 거꾸로 나왔다).
+  //  국내 증여 칸(증여자 관계·이월과세 입력)은 국외자산 카드에 없으니 facts.gift 대신 따로 둔다
+  if (of.deed && (of.deed.recDate || of.deed.date)) S.facts.oaGift = { date: of.deed.recDate || of.deed.date, donor: of.deed.grantor || '', src: '증여증서 ' + (of.deed.recDate ? '등록일 ' + of.deed.recDate : '날짜 ' + of.deed.date) + (of.deed.grantor ? ', 증여자 ' + of.deed.grantor : '') + (gHit.length ? ', 양수인 = 매도인' : '') + ' — ' + (of.deed.origFile || of.deed.file) };
   if (!a.acquisitionDate && of.deed && of.deed.recDate && gHit.length) { a.acquisitionDate = of.deed.recDate; S.src['a0.acquisitionDate'] = '증여증서 등록일(Recorded) — 증여 취득일은 등기 접수일(시행령 §162①5호) · 양수인 ' + gHit.join(', ') + ' = 매도 정산서 매도인 — ' + (of.deed.origFile || of.deed.file); }
   let resDocs = []; try { resDocs = caseProcFiles_(c).filter(function (f) { return /출입국|주민\s*등록|거소|체류/.test(f.name); }).map(function (f) { return f.name; }); } catch (e) {}
   if (!ans['a0.oaResident5yr']) {
@@ -42085,8 +42374,23 @@ function trcClassOptions_(S, tpl, ans) {
   const house = a0.assetType === 'house' || !!S.facts.officetel, land = a0.assetKind === 'land' && a0.assetType !== 'house', notHouse = a0.assetType === 'other' || land;
   const gift = (S.facts.gift || []).length > 0, rel = String(((c0.buyers || [])[0] || {}).relation || '');
   const out = [], cut = [];
+  // [2026.10.18 정밀분석 3차 박길서] 국외자산 카드 — 국내 주택·토지 특례(1세대1주택 비과세 §89①3호는 국내 주택, 다주택·비사업용 토지 중과 §104, 수용·자경 감면 조특법,
+  //  재건축 입주권, 미등기 세율)는 국외자산에 없다(국외자산 세율은 §118의5 기본세율, 장기보유특별공제도 없음 §118의8). 국외자산 계산기 카드에 그 체크 칸도 없다.
+  //  증여로 받은 국외자산은 증여증서로 증여 취득이 드러나 있으니 "증여로 받은 자산 아님"이라 하지 않는다. 이월과세(§97의2①)는 증여받은 날부터 10년(2022.12.31 이전
+  //  증여분은 5년 — 2022.12.31 개정 부칙) 안에 판 경우만이라, 그 기간이 지났으면 그 사실을 이유로 뺀다(기간 안이면 남겨 두고 세무사님이 판단)
+  const ov = !!S.facts.overseas, og = S.facts.oaGift || null;
+  const ovKeep = /이월과세|특수관계자|부담부증여/, ovCut = [];
   tpl.forEach(function (k) {
     let why = '';
+    if (ov && !ovKeep.test(k)) { ovCut.push(k); return; }
+    else if (ov && /이월과세/.test(k) && og) {
+      const td = String(S.baseDate || (S.state.transferAssets[0] || {}).transferDate || ''), gd = String(og.date || '');
+      const yrs = gd && td ? Number(td.slice(0, 4)) - Number(gd.slice(0, 4)) - (td.slice(5) < gd.slice(5) ? 1 : 0) : null, lim = gd && gd < '2023-01-01' ? 5 : 10;
+      if (yrs !== null && yrs >= lim) why = '증여로 받은 자산(' + og.src + ')이지만 증여일 ' + gd + '부터 ' + yrs + '년 지나 양도 — 이월과세 기간(' + lim + '년' + (lim === 5 ? ', 2022년 이전 증여분' : '') + ') 밖(§97의2①)';
+    }
+    else if (ov && /이월과세/.test(k) && !og) why = '증여로 받은 자산 아님(국외 취득 서류에 증여증서 없음)';
+    if (why) { cut.push(k + '(' + why + ')'); return; }
+    if (ov) { out.push(k); return; }
     if (/1세대1주택|일시적2주택|2주택|3주택|재건축|재개발/.test(k) && notHouse) why = land ? '판 물건이 토지' : '과세대상이 주택 아님';
     else if (/비사업용\s*토지|농지|자경/.test(k) && (house || (a0.assetKind && a0.assetKind !== 'land'))) why = house ? '판 물건이 주택' : '판 물건이 건물';
     else if (/수용/.test(k) && cause && cause !== 'expropriation') why = '양도원인이 수용 아님';
@@ -42096,6 +42400,7 @@ function trcClassOptions_(S, tpl, ans) {
     else if (/특수관계자/.test(k) && rel === 'none') why = '양수인과 특수관계 없음(세무사님 답)';
     if (why) cut.push(k + '(' + why + ')'); else out.push(k);
   });
+  if (ovCut.length) cut.unshift(ovCut.join('·') + '(국외자산 — 국내 부동산 갈래: §89 비과세·§104 중과·조특법 감면·입주권·미등기 등은 국외자산에 없음, 세율 §118의5·준용 §118의8)');
   // 서류 사실이 가리키는 갈래는 이유를 붙여 앞에 둔다(정하지는 않음)
   const fit = {};
   out.forEach(function (k) {
@@ -42103,8 +42408,15 @@ function trcClassOptions_(S, tpl, ans) {
     else if (/경매|공매/.test(k) && cause === 'auction') fit[k] = '양도원인 경매·공매';
     else if (/^교환/.test(k) && cause === 'exchange') fit[k] = '양도원인 교환';
     else if (/이월과세/.test(k) && (S.state.transferAssets || []).some(function (a) { return a.giftReceivedDate && /^(spouse|lineal)$/.test(String(a.donorRelation || '')); })) fit[k] = '배우자·직계존비속에게 증여받고 10년 안에 양도';
+    else if (/이월과세/.test(k) && ov && og) fit[k] = '증여로 받은 국외자산(' + og.src + ') — 증여자와의 관계·국외자산 준용 여부 확인';
   });
-  out.sort(function (x, y) { return (fit[x] ? 0 : 1) - (fit[y] ? 0 : 1); });
+  // [2026.10.18 정밀분석 3차 김운래] 수정신고 — 당초 신고 계산근거가 적용한 감면·비과세를 근거로 붙인다(정하지는 않음 — 필지마다 다를 수 있음)
+  const pc = S.facts.priorCalc, part = {};
+  if (pc) out.forEach(function (k) {
+    if (/수용/.test(k) && pc.감면) fit[k] = (fit[k] ? fit[k] + ' · ' : '') + '당초 신고: ' + pc.감면.근거;
+    else if (/^1세대1주택 비과세/.test(k) && pc.비과세지번.length) { if (!fit[k]) part[k] = 1; fit[k] = (fit[k] ? fit[k] + ' · ' : '') + '당초 신고: ' + pc.비과세지번.join('·') + '번지 주택(부수토지) 1세대1주택 비과세 — 그 필지만'; } // 일부 필지 근거는 뒤로
+  });
+  out.sort(function (x, y) { return (fit[x] ? (part[x] ? 1 : 0) : 2) - (fit[y] ? (part[y] ? 1 : 0) : 2); });
   return { options: out, cut: cut, fit: fit };
 }
 
