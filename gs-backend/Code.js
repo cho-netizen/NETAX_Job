@@ -3806,7 +3806,7 @@ function dispatchClientAction0_(body) {
   }
 
   // [2026.08] work 모듈 — 작업관리(사건별 세부업무 트리 + 법정기한 자동계산 + 캘린더 연동) 신규
-  const WORK_ACTIONS = ['work_get_cases', 'work_create_case', 'work_update_case', 'work_delete_case', 'work_add_subtask', 'work_update_subtask', 'work_delete_subtask', 'send_my_portal_sms', 'get_case_subfolders', 'ensure_case_folder', 'work_audit_case_folder_names', 'work_audit_unlinked_case_folders', 'work_link_case_folder', 'work_reassign_case_folder', 'work_fix_completion_after_receipt', 'work_backfill_receipt_case_links', 'work_plan_report_filename_cleanup', 'work_apply_report_filename_cleanup', 'migrate_report_template_names', 'work_resync_all_calendars', 'work_apply_receipt_only_case_cleanup', 'work_backfill_party_client_ids'];
+  const WORK_ACTIONS = ['work_get_cases', 'work_create_case', 'work_update_case', 'work_delete_case', 'work_add_subtask', 'work_update_subtask', 'work_delete_subtask', 'send_my_portal_sms', 'get_case_subfolders', 'ensure_case_folder', 'work_audit_case_folder_names', 'work_audit_unlinked_case_folders', 'work_link_case_folder', 'work_reassign_case_folder', 'work_fix_completion_after_receipt', 'work_backfill_receipt_case_links', 'work_plan_report_filename_cleanup', 'work_apply_report_filename_cleanup', 'migrate_report_template_names', 'work_resync_all_calendars', 'work_apply_receipt_only_case_cleanup', 'work_backfill_party_client_ids', 'work_plan_std_subfolders', 'work_apply_std_subfolders'];
   if (WORK_ACTIONS.indexOf(body.action) !== -1) {
     return jsonResponse(work_doPost(body));
   }
@@ -22763,8 +22763,27 @@ function work_getCases(params) {
 // 개명(가나다 정렬에서도 "보고서_내부"/"보고서_외부"가 나란히 붙어 더 명확함). 기존에 이미
 // 만들어져 있던 폴더들은 migrateReportFoldersAndFilenames_로 일괄 개명했다.
 const WORK_SUBFOLDER_INTERNAL_REPORT = '보고서_내부';
+// [2026.10.19 세무사님 지시] "문서별 pdf파일을 기본으로 하고 신고를 위한 파일은 <신고제출>이라는 폴더에 따로 복사해서 홈택스첨부기준에
+// 맞춰 제출" · "신고사건의 경우 <신고제출>폴더를 만들도록 … 그리고 <확보자료>폴더도 만들어라. 거기에 시스템이 확보하는 매매실례가,
+// 공동주택가격, 개별주택가격, 개별공시지가, 건물기준시가 등의 확보자료를 넣도록 하자."
+//  · 이름에 꺾쇠(<>)는 넣지 않는다 — J: 드라이브(구글 드라이브 PC 동기화)는 윈도 이름 규칙이라 < > 를 못 쓴다.
+//  · 신고제출 = 신고 사건(업무유형 '신고')만, 확보자료 = 폴더가 있는 모든 사건. 사건 폴더가 처음 생길 때·업무유형이 신고로 바뀔 때 만든다.
+//    이미 있는 사건 폴더에는 일괄로 만들지 않는다 — 설정 🛠 「📂 신고제출·확보자료 폴더 점검」(미리 보기 → 고른 것만 만들기).
+//  · 둘 다 사건처리 입력이 아니다(caseIsFilingCopyFolder_·caseIsSecuredFolder_ 주석). 3번(신고제출 묶음)도 이 상수를 쓴다.
+const WORK_SUBFOLDER_FILING_ = '신고제출';
+const WORK_SUBFOLDER_SECURED_ = '확보자료';
+function work_isFilingUpType_(upType) { return String(upType || '').trim() === '신고'; }
+// 사건 폴더 안 표준 하위폴더(이미 있으면 그대로 — 새로 만든 이름만 돌려줌)
+function work_ensureCaseStdSubfolders_(caseFolder, upType) {
+  const made = [];
+  const want = [WORK_SUBFOLDER_SECURED_].concat(work_isFilingUpType_(upType) ? [WORK_SUBFOLDER_FILING_] : []);
+  want.forEach(function (n) { if (!caseFolder.getFoldersByName(n).hasNext()) { caseFolder.createFolder(n); made.push(n); } });
+  return made;
+}
+// 사건 폴더 안 하위폴더 하나(없으면 만듦) — 3번 신고제출 묶음·확보자료 저장이 쓴다
+function work_caseSubfolder_(caseFolder, name) { return my_getOrCreateSubfolder_(caseFolder, name); }
 
-function work_getOrCreateCaseFolder_(사건명) {
+function work_getOrCreateCaseFolder_(사건명, upType) {
   try {
     const folderName = String(사건명 || '').trim();
     if (!folderName) return '';
@@ -22774,6 +22793,7 @@ function work_getOrCreateCaseFolder_(사건명) {
     my_getOrCreateSubfolder_(caseFolder, MY_SUBFOLDER_UPLOAD);
     my_getOrCreateSubfolder_(caseFolder, MY_SUBFOLDER_REPORT);
     my_getOrCreateSubfolder_(caseFolder, WORK_SUBFOLDER_INTERNAL_REPORT);
+    try { work_ensureCaseStdSubfolders_(caseFolder, upType); } catch (e) { console.log('신고제출·확보자료 폴더 만들기 실패(사건 폴더는 계속): ' + e.message); }
     return caseFolder.getId();
   } catch (err) {
     return '';
@@ -22794,12 +22814,56 @@ function work_ensureCaseFolder(params) {
     if (!found) return { success: false, message: '존재하지 않는 사건입니다.' };
     let folderId = found.row[col.폴더ID];
     if (!folderId) {
-      folderId = work_getOrCreateCaseFolder_(found.row[col.사건명]);
+      folderId = work_getOrCreateCaseFolder_(found.row[col.사건명], found.row[col.업무유형]);
       if (!folderId) return { success: false, message: '드라이브 폴더를 만들지 못했습니다.' };
       sheet.getRange(found.rowIndex, col.폴더ID + 1).setValue(folderId);
     }
     return { success: true, folderId: folderId };
   });
+}
+
+// [2026.10.19] 이미 있는 사건 폴더의 신고제출·확보자료 — 일괄로 만들지 않고 미리 보기 → 고른 것만 만들기(설정 🛠 정비도구).
+//  미리 보기: 폴더가 있는 사건마다 빠진 폴더(확보자료는 모든 사건, 신고제출은 업무유형 '신고')를 센다. 지우거나 옮기는 것은 없다.
+//  사건이 많으면 4분 30초에서 멈추고 지금까지 본 것만 돌려준다(partial — 다시 누르면 처음부터).
+function work_stdSubfoldersMissing_(folderId, upType) {
+  const f = DriveApp.getFolderById(folderId);
+  const want = [WORK_SUBFOLDER_SECURED_].concat(work_isFilingUpType_(upType) ? [WORK_SUBFOLDER_FILING_] : []);
+  return { folder: f, missing: want.filter(function (n) { return !f.getFoldersByName(n).hasNext(); }) };
+}
+function work_planStdSubfolders(params) {
+  const t0 = Date.now();
+  const sheet = work_getSheet_();
+  const data = sheet.getDataRange().getValues();
+  const col = work_colMap_(data[0]);
+  const items = [];
+  let checked = 0, partial = false, broken = 0;
+  for (let i = 1; i < data.length; i++) {
+    const fid = String(data[i][col.폴더ID] || '').trim();
+    if (!fid || !data[i][col.id]) continue;
+    if (Date.now() - t0 > 270000) { partial = true; break; }
+    checked++;
+    try {
+      const m = work_stdSubfoldersMissing_(fid, data[i][col.업무유형]);
+      if (m.missing.length) items.push({ id: data[i][col.id], 사건명: data[i][col.사건명], 업무유형: data[i][col.업무유형], 상태: data[i][col.상태], missing: m.missing });
+    } catch (e) { broken++; }
+  }
+  return { success: true, items: items, checked: checked, broken: broken, partial: partial };
+}
+function work_applyStdSubfolders(params) {
+  const ids = Array.isArray(params.ids) ? params.ids.map(String) : [];
+  if (!ids.length) return { success: false, message: '만들 사건을 고르세요.' };
+  const sheet = work_getSheet_();
+  const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+  const done = [], failed = [];
+  ids.forEach(function (id) {
+    const found = work_findCaseRow_(sheet, col, id);
+    if (!found || !found.row[col.폴더ID]) { failed.push({ id: id, why: '사건 또는 폴더 없음' }); return; }
+    try {
+      const made = work_ensureCaseStdSubfolders_(DriveApp.getFolderById(found.row[col.폴더ID]), found.row[col.업무유형]);
+      done.push({ id: id, 사건명: found.row[col.사건명], made: made });
+    } catch (e) { failed.push({ id: id, why: String(e && e.message || e) }); }
+  });
+  return { success: true, done: done, failed: failed };
 }
 
 // 상담신청(예약) 때 받은 고객유형/현재세무처리상황/관련분야를 개요(진행메모) 맨 앞에
@@ -22933,7 +22997,7 @@ function work_createCase(params) {
     // 만들지 않는다(폴더ID 빈 값). 이 값이 비어있으면 위쪽의 의뢰서템플릿 자동적용·아래쪽의
     // my.netax.kr 자동연결이 이미 조용히 건너뛰도록 되어 있어(둘 다 `if (newRow[col.폴더ID])`
     // 로 감싸져 있음) 별도로 더 손댈 곳이 없다 — 애초에 파일이 없는 사건이니 자연스럽다.
-    newRow[col.폴더ID] = (upType === '상담') ? '' : work_getOrCreateCaseFolder_(사건명);
+    newRow[col.폴더ID] = (upType === '상담') ? '' : work_getOrCreateCaseFolder_(사건명, upType);
     newRow[col.생성일] = now;
     newRow[col.수정일] = now;
 
@@ -23161,6 +23225,7 @@ function work_updateCase(params) {
       if (String(params.세목).trim() !== String(row[col.세목] || '').trim()) recalc = true;
       row[col.세목] = String(params.세목).trim();
     }
+    const prevUpType = String(row[col.업무유형] || '').trim(); // [2026.10.19] 신고로 바뀌는 순간 신고제출 폴더(아래)
     if (params.업무유형 !== undefined) {
       if (String(params.업무유형).trim() !== String(row[col.업무유형] || '').trim()) recalc = true;
       row[col.업무유형] = String(params.업무유형).trim();
@@ -23268,7 +23333,7 @@ function work_updateCase(params) {
     // 되면) 그 순간 개별 Drive 폴더를 새로 만든다. 반대 방향(자문·신고→상담)은 이미 파일이
     // 쌓여있을 수 있어 폴더를 지우지 않는다 — 그대로 둔다.
     if (upType !== '상담' && !row[col.폴더ID] && row[col.사건명]) {
-      const newFolderId = work_getOrCreateCaseFolder_(row[col.사건명]);
+      const newFolderId = work_getOrCreateCaseFolder_(row[col.사건명], upType);
       if (newFolderId) {
         row[col.폴더ID] = newFolderId;
         // [2026.10.18 탭연결 1번] 상담 사건에서 증빙을 올리려다 업무유형을 정해 폴더가 생긴 경우(script.html nxOpenCaseDocs_)에도
@@ -23290,6 +23355,11 @@ function work_updateCase(params) {
           }
         }
       }
+    }
+    // [2026.10.19] 폴더가 이미 있는 사건의 업무유형이 이번 저장에서 신고로 바뀌면 그때 신고제출(·확보자료) 폴더를 만든다.
+    // 바뀌지 않은 저장에서는 만들지 않는다 — 이미 있는 사건 폴더는 설정 🛠 정비도구로만(미리 보기 → 고른 것만).
+    if (row[col.폴더ID] && work_isFilingUpType_(upType) && prevUpType !== String(upType || '').trim()) {
+      try { work_ensureCaseStdSubfolders_(DriveApp.getFolderById(row[col.폴더ID]), upType); } catch (err) { console.log('신고제출 폴더 만들기 실패(저장은 계속): ' + err.message); }
     }
     row[col.수정일] = new Date();
 
@@ -23583,6 +23653,8 @@ function work_doPost(body) {
     case 'ensure_case_folder': return work_ensureCaseFolder(body);
     case 'work_audit_case_folder_names': return work_auditCaseFolderNames(body);
     case 'work_audit_unlinked_case_folders': return work_auditUnlinkedCaseFoldersAction_(body);
+    case 'work_plan_std_subfolders': return work_planStdSubfolders(body); // [2026.10.19] 신고제출·확보자료 폴더 점검(미리 보기)
+    case 'work_apply_std_subfolders': return work_applyStdSubfolders(body); // 고른 사건만 만들기
     case 'work_link_case_folder': return work_linkCaseFolder(body);
     case 'work_reassign_case_folder': return work_reassignCaseFolder(body);
     case 'work_fix_completion_after_receipt': return work_fixCompletionAfterReceipt(body);

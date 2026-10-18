@@ -253,6 +253,10 @@
           <div class="settings-tool-desc">사건 폴더를 열어봤는데 현금영수증 파일 하나뿐이거나 아무 파일도 없으면(=서류 작업 없이 상담만 하고 끝난 경우), 영수증은 상담용 공용 폴더로 옮기고 사건 종류를 "상담"으로 바꿉니다. 원래 폴더는 완전삭제가 아니라 휴지통으로만 보냅니다.</div>
         </div>
         <div class="settings-tool-item">
+          <button type="button" id="stBtnStdSubfolders" class="ghost-btn">📂 신고제출·확보자료 폴더 점검</button>
+          <div class="settings-tool-desc">[2026.10.19] 이제 새 사건 폴더에는 「확보자료」(모든 사건)와 「신고제출」(신고 사건)이 자동으로 생깁니다. 그 전에 만든 사건 폴더 중 이 폴더가 없는 사건을 먼저 보여주고, 고른 사건에만 빈 폴더를 만듭니다(다른 파일·폴더는 건드리지 않음).</div>
+        </div>
+        <div class="settings-tool-item">
           <button type="button" id="stBtnBackfillPartyClients" class="ghost-btn">👥 관계자 고객등록 일괄 반영</button>
           <div class="settings-tool-desc">사건에 "양도인 OOO", "공동상속인 OOO"처럼 이름만 적혀있고 아직 고객명단에 정식 등록 안 된 사람들을 찾아 한꺼번에 고객으로 등록·연결합니다.</div>
         </div>
@@ -418,6 +422,7 @@
     wire('stBtnResyncCalendars', runResyncCalendars_);
     wire('stBtnReceiptOnlyCleanup', function(){ openReceiptOnlyCleanupModal_(); });
     wire('stBtnBackfillPartyClients', runBackfillPartyClients_);
+    wire('stBtnStdSubfolders', function(){ settingsOpenStdSubfoldersModal_(); });
     // 고객관리
     wire('stBtnClientDupAudit', function(){ openClientDupAuditModal_(); });
     wire('stBtnClientScanCaseFiles', runClientScanCaseFiles_);
@@ -426,6 +431,48 @@
     wire('stBtnDocsFolderNameAudit', function(){ docsOpenFolderNameAuditModal_(); });
     wire('stBtnDocsUnlinkedFolderAudit', function(){ docsOpenUnlinkedFolderAuditModal_(); });
   }
+  // [2026.10.19] 📂 신고제출·확보자료 폴더 점검 — 미리 보기(없는 사건 목록) → 고른 것만 [만들기]. 이미 있는 사건 폴더에 일괄로 만들지 않기 위한 도구.
+  function settingsOpenStdSubfoldersModal_(){
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.innerHTML = '<div class="modal-panel" style="width:min(720px, 96vw); max-height:86vh; display:flex; flex-direction:column;">' +
+      '<div class="modal-head"><span>📂 신고제출·확보자료 폴더 점검</span><span class="modal-close" data-x="1">✕</span></div>' +
+      '<div class="modal-body" style="overflow-y:auto;" id="stSfBody"><div class="spinner">사건 폴더를 확인하는 중… (사건이 많으면 1~4분)</div></div></div>';
+    document.body.appendChild(overlay);
+    var close = function(){ overlay.remove(); };
+    overlay.querySelector('[data-x]').onclick = close;
+    var body = overlay.querySelector('#stSfBody');
+    callGas('work_plan_std_subfolders', {}).then(function(res){
+      if (!res || res.error || res.success === false){ body.innerHTML = '<div class="log-empty">' + escapeHtml((res && (res.message || res.error)) || '확인하지 못했습니다.') + '</div>'; return; }
+      var items = res.items || [];
+      var head = '<div style="font-size:12.5px; color:var(--sub); margin-bottom:8px;">폴더가 있는 사건 ' + res.checked + '건을 확인했습니다' + (res.partial ? '(시간이 모자라 일부만 — 만든 뒤 다시 누르면 나머지를 봅니다)' : '') + (res.broken ? ' · 폴더를 열 수 없는 사건 ' + res.broken + '건' : '') + '.</div>';
+      if (!items.length){ body.innerHTML = head + '<div class="log-empty">빠진 폴더가 있는 사건이 없습니다.</div>'; return; }
+      body.innerHTML = head +
+        '<label style="font-size:12.5px;"><input type="checkbox" id="stSfAll" checked> 모두 고르기</label>' +
+        '<table class="list-table" style="margin-top:6px;"><tr><th></th><th>사건명</th><th>업무유형</th><th>상태</th><th>만들 폴더</th></tr>' +
+        items.map(function(it, i){
+          return '<tr><td><input type="checkbox" data-i="' + i + '" checked></td><td>' + escapeHtml(it.사건명 || '') + '</td><td>' + escapeHtml(it.업무유형 || '') + '</td><td>' + escapeHtml(it.상태 || '') + '</td><td>' + escapeHtml(it.missing.join(', ')) + '</td></tr>';
+        }).join('') + '</table>' +
+        '<div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;"><button type="button" class="save-btn" id="stSfGo">고른 사건에 만들기</button><button type="button" class="ghost-btn" data-x="1">닫기</button></div>';
+      body.querySelector('.ghost-btn[data-x]').onclick = close;
+      body.querySelector('#stSfAll').addEventListener('change', function(){ var on = this.checked; body.querySelectorAll('input[data-i]').forEach(function(x){ x.checked = on; }); });
+      body.querySelector('#stSfGo').onclick = function(){
+        var btn = this;
+        var ids = Array.prototype.filter.call(body.querySelectorAll('input[data-i]'), function(x){ return x.checked; }).map(function(x){ return items[Number(x.getAttribute('data-i'))].id; });
+        if (!ids.length){ toast('만들 사건을 고르세요.'); return; }
+        btn.disabled = true; btn.textContent = '만드는 중…';
+        callGas('work_apply_std_subfolders', { ids: ids }).then(function(r){
+          if (!r || r.error || r.success === false){ toast((r && (r.message || r.error)) || '만들지 못했습니다.'); btn.disabled = false; btn.textContent = '고른 사건에 만들기'; return; }
+          var n = (r.done || []).filter(function(d){ return d.made && d.made.length; }).length;
+          body.innerHTML = '<div style="font-size:13px;">' + n + '개 사건에 폴더를 만들었습니다.' + ((r.failed || []).length ? '<br>못 만든 사건 ' + r.failed.length + '건: ' + escapeHtml(r.failed.map(function(f){ return f.why; }).join(', ')) : '') + '</div>' +
+            '<div style="text-align:right; margin-top:12px;"><button type="button" class="ghost-btn" data-x="1">닫기</button></div>';
+          body.querySelector('[data-x]').onclick = close;
+        }).catch(function(){ toast('만드는 중 오류가 났습니다.'); btn.disabled = false; btn.textContent = '고른 사건에 만들기'; });
+      };
+    }).catch(function(){ body.innerHTML = '<div class="log-empty">확인하지 못했습니다(시간 초과일 수 있습니다 — 잠시 뒤 다시 눌러 주세요).</div>'; });
+  }
+
   // showView(script.html)가 설정 화면을 벗어날 때 호출 — 비밀번호칸을 DOM에서 완전히 제거한다.
   function settingsTeardown_(){
     var body = document.getElementById('settingsPwBody');
