@@ -108,7 +108,7 @@
         // 고정되지 않는 것으로 보여, 아예 각 <td>에 실제 폭(px)을 직접 못박는다(표
         // 레이아웃 알고리즘의 불확실성에 기대지 않는, colgroup과 별개인 이중 안전장치).
         var td = function(px, extra){ return 'style="max-width:' + px + 'px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;' + (extra || '') + '"'; };
-        html += '<tr>' +
+        html += '<tr data-bk-row="' + b._rowIndex + '">' +
           '<td ' + td(140) + '>' + esc(b.reservedDate) + ' ' + esc(b.reservedTime) + '</td>' +
           '<td ' + td(70) + '>' + esc(b.name) + '</td>' +
           '<td ' + td(110) + '>' + esc(b.phone) + '</td>' +
@@ -123,6 +123,12 @@
       html += '</table></div>';
       box.innerHTML = html;
       window._bookingCache = list;
+      // [2026.10.18 탭연결 4번] 대시보드 '대기중인 상담신청'에서 눌러 왔으면 그 줄로 스크롤하고 잠깐 강조한다(bookingFocusRow_)
+      if (window._bookingFocusRow){
+        var focusTr = box.querySelector('tr[data-bk-row="' + window._bookingFocusRow + '"]');
+        window._bookingFocusRow = null;
+        if (focusTr){ focusTr.scrollIntoView({ block: 'center' }); focusTr.style.background = 'var(--gold-light)'; setTimeout(function(){ focusTr.style.background = ''; }, 2500); }
+      }
     }).catch(function(e){ box.innerHTML = '<div class="empty-row">오류: '+esc(e.message)+'</div>'; });
   }
 
@@ -272,6 +278,13 @@
         업무유형: (guessedSemok && guessedSemok !== 'objection') ? '상담' : ''
       });
     }
+  }
+
+  // [2026.10.18 탭연결 4번] 다른 화면(대시보드)에서 예약 한 줄을 눌러 왔을 때 — 예약관리를 새로 불러 그 줄로 가서 강조
+  function bookingFocusRow_(rowIndex){
+    window._bookingFocusRow = rowIndex;
+    if (typeof goToView_ === 'function') goToView_('booking');
+    initBooking(true);
   }
 
   function bookingGoToCase(caseId){

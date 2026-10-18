@@ -178,14 +178,29 @@
     if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(caseId);
   });
 
+  // [2026.10.18 탭연결 4번] "대기중인 상담신청"·"최근 수금내역" 표도 누르면 해당 화면으로 넘어간다(예전엔 표만 보여주고 끝)
+  document.getElementById('dashBookings').addEventListener('click', function(e){
+    var tr = e.target.closest('tr[data-bk-row]');
+    if (!tr || typeof bookingFocusRow_ !== 'function') return;
+    bookingFocusRow_(Number(tr.getAttribute('data-bk-row')));
+  });
+  document.getElementById('dashPayments').addEventListener('click', function(e){
+    var tr = e.target.closest('tr[data-pay-case]');
+    if (!tr) return;
+    var caseId = tr.getAttribute('data-pay-case');
+    if (caseId && typeof goToCaseHandling_ === 'function'){ goToCaseHandling_(caseId); return; }
+    if (typeof goToView_ === 'function') goToView_('collections');
+  });
+
   function loadDashBookings(){
     callGas('list_bookings', {}).then(function(res){
-      var list = (res.bookings || []).filter(function(b){ return b.status === '신청'; });
+      // [2026.10.18 탭연결 4번] 줄을 누르면 예약관리의 그 신청으로 간다(승인·사건 시작은 거기서) — 시트 줄번호는 예약관리와 같은 규칙(순서+2)
+      var list = (res.bookings || []).map(function(b, idx){ b._rowIndex = idx + 2; return b; }).filter(function(b){ return b.status === '신청'; });
       var box = document.getElementById('dashBookings');
       if (!list.length){ box.innerHTML = '<div class="empty-row">대기중인 신청이 없습니다.</div>'; return; }
       var html = '<table class="list-table"><tr><th>희망일시</th><th>이름</th><th>연락처</th><th>유형</th></tr>';
       list.forEach(function(b){
-        html += '<tr><td>' + esc(b.reservedDate) + ' ' + esc(b.reservedTime) + '</td><td>' + esc(b.name) +
+        html += '<tr data-bk-row="' + b._rowIndex + '" style="cursor:pointer;" title="눌러서 예약관리에서 승인·사건 시작"><td>' + esc(b.reservedDate) + ' ' + esc(b.reservedTime) + '</td><td>' + esc(b.name) +
           '</td><td>' + esc(b.phone) + '</td><td>' + esc(b.type) + '</td></tr>';
       });
       html += '</table>';
@@ -209,7 +224,8 @@
       logs.forEach(function(l){
         var dateCell = (l.날짜 === prevPayDate) ? '' : esc(l.날짜);
         prevPayDate = l.날짜;
-        html += '<tr><td style="' + nowrap + '">' + dateCell + '</td><td style="' + ellipsis + '" title="' + esc(l.고객명) + '">' + esc(l.고객명) + '</td><td style="' + nowrap + '">' +
+        // [2026.10.18 탭연결 4번] 줄을 누르면 사건이 연결된 수금은 그 사건 처리개요(💰 수금 카드)로, 아니면 수금관리로 간다
+        html += '<tr data-pay-case="' + esc(l.사건ID || '') + '" style="cursor:pointer;" title="' + (l.사건ID ? '눌러서 이 사건 처리개요로' : '눌러서 수금관리로') + '"><td style="' + nowrap + '">' + dateCell + '</td><td style="' + ellipsis + '" title="' + esc(l.고객명) + '">' + esc(l.고객명) + '</td><td style="' + nowrap + '">' +
           (l.금액 ? Number(l.금액).toLocaleString() : '') + '</td><td style="' + ellipsis + '" title="' + esc(l.수취증빙) + '">' + esc(l.수취증빙) + '</td></tr>';
       });
       html += '</table></div>';
@@ -496,9 +512,12 @@
         // [2026.09 버그수정] data-path(이름 경로)만 있으면 사건명이 바뀌어 폴더명이 자동
         // 갱신된 뒤엔 그 경로가 더 이상 존재하지 않아 이동이 실패한다 — 폴더ID가 있으면
         // 그걸 우선 쓰고, 옛 기록(폴더ID 없음)만 이름 경로로 폴백.
-        return '<tr data-path=\'' + esc(JSON.stringify(e.path || [])) + '\' data-folder-id="' + esc(e.folderId || '') + '" style="cursor:pointer;" title="눌러서 증빙관리로 이동">'
+        // [2026.10.18 탭연결 4번] 바로 위 "마감임박 작업"은 처리개요로, 이 표는 증빙관리로 가서 헷갈렸다 — 줄을 누르면 똑같이 그 사건 처리개요로
+        // 가고(사건 폴더의 기록일 때), 경과지가 적힌 폴더를 보려면 오른쪽 📁을 누른다.
+        return '<tr data-path=\'' + esc(JSON.stringify(e.path || [])) + '\' data-folder-id="' + esc(e.folderId || '') + '" style="cursor:pointer;" title="눌러서 이 사건 처리개요로(📁는 폴더)">'
           + '<td style="white-space:nowrap;">' + esc(e.date) + due + '</td>'
-          + '<td><span style="color:var(--sub); font-size:11.5px;">' + esc(pathStr) + '</span><br>' + esc(e.text) + '</td></tr>';
+          + '<td><span style="color:var(--sub); font-size:11.5px;">' + esc(pathStr) + '</span><br>' + esc(e.text) + '</td>'
+          + '<td style="width:34px; text-align:center;"><button type="button" class="ghost-btn" data-open-folder="1" title="경과지가 적힌 폴더 열기(증빙확보)" style="padding:1px 6px;">📁</button></td></tr>';
       }
 
       var sections = [];
@@ -517,6 +536,15 @@
     var tr = e.target.closest('tr[data-path]');
     if (!tr) return;
     var folderId = tr.getAttribute('data-folder-id');
+    var openFolder_ = function(){ dashOpenCaseLogFolder_(tr, folderId); };
+    if (e.target.closest('[data-open-folder]') || !folderId){ openFolder_(); return; }
+    // 그 폴더가 어느 사건의 폴더면 처리개요로, 아니면(사건 하위폴더·사건 밖 폴더) 예전처럼 증빙확보로
+    callGas('work_get_cases', {}).then(function(res){
+      var c = ((res && res.cases) || []).filter(function(x){ return x.폴더ID && x.폴더ID === folderId; })[0];
+      if (c && typeof goToCaseHandling_ === 'function') goToCaseHandling_(c.id); else openFolder_();
+    }).catch(openFolder_);
+  });
+  function dashOpenCaseLogFolder_(tr, folderId){
     if (typeof goToView_ === 'function') goToView_('docs');
     if (folderId && typeof docsNavigateById_ === 'function') {
       docsNavigateById_(folderId);
@@ -525,7 +553,7 @@
     var path;
     try { path = JSON.parse(tr.getAttribute('data-path')); } catch(err){ return; }
     if (typeof docsNavigate === 'function') docsNavigate(path);
-  });
+  }
 
   // [2026.09 신규] 야간 자동점검(시스템 자기점검/템플릿 점검/오늘의 요약)이 어젯밤 실제로
   // 돌았는지 확인 — 트리거 자체가 통째로 실패하면 오늘 날짜 파일이 하나도 안 생기므로,
