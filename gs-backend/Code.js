@@ -25472,6 +25472,54 @@ function tcJoinCands_(files) {
   });
   return out;
 }
+// =========================================================
+// [2026.10.19 3번 세션 — 문서 정리] 같은 문서의 사본 표시(tcCopyMarks_) — 세무사님: "홈택스에 올릴 수 있는 파일 수가 한정되어 있어 문서들을 그루핑해서
+//  합치기 때문에 한 파일에 여러 문서가 들어 있다. 그런 파일은 파일명 앞에 첨부일련번호가 붙어 있을 것"(노영환 제출서류 「01 기본증명.pdf」 60쪽·
+//  「07 장례비 지출증빙.pdf」 16쪽 등). 그래서 같은 문서가 제출용 묶음 속 구간과 낱장 파일(_제시자료 등)로 두 번 있다 — 교차검증이 독립 근거로
+//  두 번 세지 않게 "사본"을 표시한다. 지금 사본 판정(caseProcDupDrop_)은 본문 숫자가 전부 같을 때만이고 등기부·대장·공시가격은 일부러 뺐다(이웃 필지가
+//  숫자를 나눠 가짐) — 여기서는 ① 같은 문서 번호(문서확인번호·발급번호·발급확인번호·전자납부번호, 등기부는 고유번호+열람일시) ② 본문 숫자 모음이 90% 넘게 같고
+//  8개 이상(같은 종류일 때만)으로 본다. items: [{id, name, text, type, bundleOf, sub}] (묶음 구간도 한 항목) → {id: {copyOf, why}}
+//  남길 쪽: 묶음이 아닌 낱장(원래 서류) > 글자가 많은 쪽. 아직 사건처리에 연결하지 않음(2번 교차검증·1번 사실 목록이 이 표시를 받아 씀)
+// =========================================================
+function tcCopyMarks_(items) {
+  const keyOf = function (t) {
+    t = String(t || '');
+    const ks = [];
+    let m;
+    const re = /(?:문\s*서\s*확\s*인\s*번\s*호|발\s*급\s*확\s*인\s*번\s*호|발\s*급\s*번\s*호|전\s*자\s*납\s*부\s*번\s*호)\s*[:：]?\s*([0-9A-Z][0-9A-Z\-]{9,})/g;
+    while ((m = re.exec(t))) ks.push('번호 ' + m[1].replace(/-/g, ''));
+    const u = /고\s*유\s*번\s*호\s*[:：]?\s*(\d{4}-\d{4}-\d{6})/.exec(t), at = /열\s*람\s*일\s*시\s*[:：]?\s*(\d{4}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일\s*\d{1,2}\s*시\s*\d{1,2}\s*분\s*\d{1,2}\s*초)/.exec(t);
+    if (u && at) ks.push('등기 ' + u[1] + ' ' + at[1].replace(/\s+/g, ''));
+    return ks;
+  };
+  const numsOf = function (t) { return (String(t || '').match(/\d{1,3}(?:,\d{3})+|\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2}|\d{6,}/g) || []).map(function (x) { return x.replace(/[.\/]/g, '-'); }); };
+  const xs = (items || []).filter(function (x) { return x && x.id && String(x.text || '').replace(/\s/g, '').length >= 80; }).map(function (x) {
+    const ns = numsOf(x.text), set = {}; ns.forEach(function (n) { set[n] = 1; });
+    return { x: x, keys: keyOf(x.text), set: set, n: Object.keys(set).length, len: String(x.text).length };
+  });
+  const rank = function (a) { return (a.x.bundleOf ? 0 : 1000000) + a.len; };
+  const marks = {};
+  for (let i = 0; i < xs.length; i++) for (let j = i + 1; j < xs.length; j++) {
+    const a = xs[i], b = xs[j];
+    if (marks[a.x.id] || marks[b.x.id]) continue;
+    if (a.x.bundleOf && a.x.bundleOf === b.x.bundleOf) continue; // 한 묶음 안의 다른 구간
+    let why = '';
+    let inter = 0; Object.keys(a.set).forEach(function (v) { if (b.set[v]) inter++; });
+    const sim = inter / Math.max(1, Math.max(a.n, b.n));
+    const k = a.keys.filter(function (v) { return b.keys.indexOf(v) !== -1; })[0];
+    // 같은 문서 번호여도 본문 숫자가 절반도 안 겹치면 같은 문서의 다른 쪽(여러 쪽 서류는 쪽마다 같은 문서확인번호 — 신수호 카톡 사진 01·03)
+    if (k && (sim >= 0.5 || Math.min(a.n, b.n) < 4)) why = '같은 문서 번호(' + k + ')';
+    else if (k) continue;
+    // 등기부·대장·공시가격은 같은 필지의 토지·건물 서류가 숫자를 대부분 나눠 가진다(노영환 회기동 토지↔건물 20/21) — 숫자로는 가르지 않고 고유번호+열람일시로만
+    else if (a.n >= 8 && b.n >= 8 && (!a.x.type || !b.x.type || a.x.type === b.x.type) && !/등\s*기\s*사\s*항|고\s*유\s*번\s*호|대\s*장|공\s*시\s*가\s*격|공\s*시\s*지\s*가/.test(String(a.x.text).slice(0, 400) + String(b.x.text).slice(0, 400))) {
+      if (sim >= 0.9) why = '본문 숫자 ' + inter + '/' + Math.max(a.n, b.n) + '개가 같음';
+    }
+    if (!why) continue;
+    const keep = rank(b) > rank(a) ? b : a, lose = keep === a ? b : a;
+    marks[lose.x.id] = { copyOf: keep.x.id, keepName: keep.x.name, why: why };
+  }
+  return marks;
+}
 // 큰 사진 → 드라이브가 만든 축소본(thumbnailLink, =s3000)을 받아 글자인식. 축소본이 없으면 원래 오류를 낸다
 function tcOcrBigImage_(fileId) {
   const meta = Drive.Files.get(fileId, { fields: 'thumbnailLink' });
