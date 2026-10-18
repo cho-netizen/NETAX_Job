@@ -29256,7 +29256,7 @@ function cpfName_(v) { return String(v || '').replace(/\s+/g, ''); }
 //  같은 땅이 다른 열쇠가 되던 것 — 시군구까지 붙인 것은 keys.assetFull(공통 문서 3절 모양)
 function cpfAssetParts_(addr) {
   const s = String(addr || '').replace(/\([^)]*\)/g, ' ').replace(/[,·]/g, ' ').replace(/\s+/g, ' ');
-  const m = /((?:[가-힣]+(?:특별시|광역시|특별자치시|도)\s+)?(?:[가-힣]+(?:시|군)\s+)?(?:[가-힣]+구\s+)?(?:[가-힣]+(?:읍|면)\s+)?)([가-힣\d]+(?:동|리|가))\s*(산\s*)?(\d{1,5})(?:\s*번지)?(?:\s*-\s*(\d{1,5})|\s*번지\s*(\d{1,5})\s*호)?/.exec(s);
+  const m = /((?:[가-힣]+(?:특별시|광역시|특별자치시|도)\s+)?(?:[가-힣]+(?:시|군)\s+)?(?:[가-힣]+구\s+)?(?:[가-힣]+(?:읍|면)\s+)?)([가-힣][가-힣\d]*(?:동|리|가))\s*(산\s*)?(\d{1,5})(?:\s*번지)?(?:\s*-\s*(\d{1,5})|\s*번지\s*(\d{1,5})\s*호)?/.exec(s);
   if (!m) return null;
   const jb = (m[3] ? '산' : '') + m[4] + ((m[5] || m[6]) ? '-' + (m[5] || m[6]) : '');
   let dh = '';
@@ -29611,14 +29611,16 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
     if (cpfBadName_(nm) || NOT_NAME.test(nm) || /(의|를|을|와|과|에|께|로|은|는|이며|이고|에게|으로|하여|하고|한다|된다)$/.test(nm) && !/^[김이박최정강조윤장임한오서신권황안송류홍전고문양손배백허유남심노하곽성차주우구민진나엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예경봉사부]/.test(nm.slice(0, 1))) continue; // 조사로 끝나는 일반 낱말("와의"·"관계를")은 이름이 아님 — 성씨로 시작하면 이름일 수 있어 남김
     const role = m[1].replace(/\s+/g, '');
     // [2026.10.19 1번 밤작업 ③] 같은 사람 묶음은 다음 역할 낱말·법인 이름 앞에서 끊는다(등기부: 채무자 뒤 근저당권자 은행의 법인번호가 채무자에 붙던 것)
-    let after = t.slice(re.lastIndex, re.lastIndex + 160); { const cutAt = after.search(/(매\s*도\s*인|매\s*수\s*인|임\s*대\s*인|임\s*차\s*인|증\s*여\s*자|수\s*증\s*자|상\s*속\s*인|채\s*무\s*자|채\s*권\s*자|근\s*저\s*당\s*권\s*자|전\s*세\s*권\s*자|위\s*임\s*인|수\s*임\s*인|주\s*식\s*회\s*사|㈜|\(\s*주\s*\)|은\s*행|조\s*합|금\s*고|공\s*사(?![가-힣])|법\s*인)/); if (cutAt > 0) after = after.slice(0, cutAt); }
+    // 역할 낱말 바로 뒤부터 본다 — 이름 자리에 잡혔다 걸러진 칸 이름("임대인 | 주소 | …")이 주소 칸 이름이면 그 값도 찾게
+    const aft0 = m.index + m[0].indexOf(m[1]) + m[1].length;
+    let after = t.slice(aft0, aft0 + 160); { const cutAt = after.search(/(매\s*도\s*인|매\s*수\s*인|임\s*대\s*인|임\s*차\s*인|증\s*여\s*자|수\s*증\s*자|상\s*속\s*인|채\s*무\s*자|채\s*권\s*자|근\s*저\s*당\s*권\s*자|전\s*세\s*권\s*자|위\s*임\s*인|수\s*임\s*인|주\s*식\s*회\s*사|㈜|\(\s*주\s*\)|은\s*행|조\s*합|금\s*고|공\s*사(?![가-힣])|법\s*인)/); if (cutAt > 0) after = after.slice(0, cutAt); }
     const idm = /(\d{6})\s*-\s*([1-8*][\d*]{6})/.exec(after);
     const pk = cpfPersonKey_(nm, idm ? idm[1] + '-' + idm[2] : '');
     const rec = 'p' + (++pn), ex = { rec: rec, role: role, note: '역할 낱말 뒤 이름 — 사람 묶음은 거리로 짐작' }, gk = pk ? { personGuess: pk } : {};
     add('성명', nm, m[0], m.index, Object.assign({}, gk), ex);
-    if (idm) add('주민번호', idm[1] + '-' + idm[2], idm[0], re.lastIndex + idm.index, Object.assign({}, gk), ex);
-    const ad = /주\s*소\s*[:：]?\s*([가-힣][^\n]{5,70}?)(?=\s*(?:주\s*민|전\s*화|연\s*락|성\s*명|$|\n))/.exec(after); if (ad && /\d/.test(ad[1]) && /(동|로|길|리|가|읍|면|구|시)\b|아파트|빌라|호/.test(ad[1]) && !/번\s*호|주\s*민/.test(ad[1])) add('주소', ad[1].trim(), ad[0], re.lastIndex + ad.index, Object.assign({}, gk, cpfAssetKey_(ad[1]) ? { asset: cpfAssetKey_(ad[1]) } : {}), ex);
-    const ph = /(?<!\d)(01[016789]|0\d{1,2})[-)\s.]\s?(\d{3,4})[-\s.](\d{4})(?!\d)/.exec(after); if (ph) add('전화번호', ph[1] + '-' + ph[2] + '-' + ph[3], ph[0], re.lastIndex + ph.index, Object.assign({}, gk), ex);
+    if (idm) add('주민번호', idm[1] + '-' + idm[2], idm[0], aft0 + idm.index, Object.assign({}, gk), ex);
+    const ad = /주\s*소[\s|│]*[:：]?[\s|│]*([가-힣][^\n|│]{5,70}?)(?=[\s|│]*(?:주\s*민|전\s*화|연\s*락|성\s*명|$|\n|[|│]))/.exec(after); /* [2026.10.19 1번 밤작업] 표 칸 구분자("주소 | 과천시 …|") */ if (ad && /\d/.test(ad[1]) && /(동|로|길|리|가|읍|면|구|시)(?![가-힣])|아파트|빌라|호/.test(ad[1]) && !/번\s*호|주\s*민/.test(ad[1])) add('주소', ad[1].trim(), ad[0], aft0 + ad.index, Object.assign({}, gk, cpfAssetKey_(ad[1]) ? { asset: cpfAssetKey_(ad[1]) } : {}), ex);
+    const ph = /(?<!\d)(01[016789]|0\d{1,2})[-)\s.]\s?(\d{3,4})[-\s.](\d{4})(?!\d)/.exec(after); if (ph) add('전화번호', ph[1] + '-' + ph[2] + '-' + ph[3], ph[0], aft0 + ph.index, Object.assign({}, gk), ex);
   }
   if (roleCut) base.trunc.push('역할 낱말 뒤 사람 ' + (pn + roleCut) + '명 중 ' + CPF_LIMITS_.role + '명만');
   // 서류끼리 잇는 번호 — 부동산 고유번호·등기 접수번호·관리번호·발급(문서확인)번호(keys.docNo, 상4)
@@ -29680,9 +29682,9 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
   re = /(?<!\d)(\d{3}-\d{2}-\d{5})(?!\d)/g;
   while ((m = re.exec(t))) add('사업자번호', m[1], m[0], m.index, {});
   // 지번(시군구+동리가+번지) — 주소 열쇠(+시군구 포함 열쇠)
-  re = /((?:[가-힣]+(?:특별시|광역시|도)\s*)?(?:[가-힣]+(?:시|군)\s*)?(?:[가-힣]+구\s*)?(?:[가-힣]+(?:읍|면)\s*)?[가-힣\d]+(?:동|리|가)\s*(?:산\s*)?\d{1,5}(?:\s*-\s*\d{1,5}|\s*번지(?:\s*\d{1,5}\s*호)?)?(?:[^\n]{0,40}?제?\s*\d{1,4}\s*동\s*(?:제?\s*\d{1,3}\s*층\s*)?제?\s*\d{1,5}\s*호)?)/g;
+  re = /((?:[가-힣]+(?:특별시|광역시|도)\s*)?(?:[가-힣]+(?:시|군)\s*)?(?:[가-힣]+구\s*)?(?:[가-힣]+(?:읍|면)\s*)?[가-힣][가-힣\d]*(?:동|리|가)\s*(?:산\s*)?\d{1,5}(?:\s*-\s*\d{1,5}|\s*번지(?:\s*\d{1,5}\s*호)?)?(?:[^\n]{0,40}?제?\s*\d{1,4}\s*동\s*(?:제?\s*\d{1,3}\s*층\s*)?제?\s*\d{1,5}\s*호)?)/g;
   while ((m = re.exec(t))) {
-    if (!/(?:시|군|구)\s*\S*(?:동|리|가)/.test(m[1])) continue;
+    if (!/(?:시|군|구)\s*(?:\S*(?:읍|면)\s*)?\S*(?:동|리|가)/.test(m[1])) continue; // [2026.10.19 1번 밤작업 ⑤] 읍·면이 낀 지번("봉화군 봉화읍 압동리 511-3")도 — 예전엔 시골 땅 주소가 모두 빠졌다
     const ak = cpfAssetKey_(m[1]); if (!ak) continue;
     // raw는 그 줄 끝까지(단지명·동호·도로명이 번지 뒤에 이어짐), value는 열쇠 재료가 되는 앞부분
     const le = t.indexOf('\n', m.index + m[1].length), rawLine = t.slice(m.index, le === -1 ? m.index + 120 : Math.min(le, m.index + 120));
