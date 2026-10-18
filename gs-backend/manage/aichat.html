@@ -274,6 +274,10 @@
   html.nx-dark .nxai-cp-kind.k-judge{ background:#2a2240; color:#c9b6f5; }
   .nxai-cp-q{ font-size:11px; font-weight:700; color:var(--primary,#2563eb); cursor:help; }
   .nxai-cp-q:empty{ display:none; }
+  .nxai-cp-card{ margin:8px 0 0 14px; font-size:11.5px; font-weight:700; color:var(--sub); border-bottom:1px dashed var(--line); padding-bottom:2px; }
+  .nxai-cp-xdoc{ font-size:11px; font-weight:700; border-radius:5px; padding:0 5px; background:#fff4e0; color:#a35a00; }
+  html.nx-dark .nxai-cp-xdoc{ background:#3a2a10; color:#f0c27a; }
+  .nxai-cp-srcs{ font-size:11.5px; color:var(--sub); flex:1 1 100%; }
   .nxai-cp-ledger{ margin-top:6px; font-size:12px; }
   .nxai-cp-ledger summary{ cursor:pointer; padding:3px 0; }
   .nxai-cp-ledger table{ max-height:none; }
@@ -2140,6 +2144,116 @@
     { key: 'status', title: '7 반영 현황표' }
   ];
   var NXAI_CP_KIND_ = { missing: '⬜ 미확보', check: '⚠ 확인필요', judge: '🤔 판단필요', todo: '▶ 할 일' };
+  // ============================================================
+  // [2026.10.18 사용자 소통 1번] 질문을 세액계산기 카드 순서로 묶어 보인다(정보는 계산기 카드 순서대로 묻는다).
+  //  서버(CrossCheckAsk.js cxAskOrder_)가 질문마다 card·cardNo를 주면 그것을 쓰고, 안 주면(옛 결과) 아래 같은 표로 여기서 정한다.
+  //  ※ 서버 CrossCheckAsk.js의 CXA_CARDS_·cxaCardOf_와 같은 규칙 — 한쪽을 고치면 다른 쪽도 고칠 것.
+  // ============================================================
+  var NXAI_CP_CARDS_ = {
+    transfer: ['사건 기본', '양도인', '양도계약', '양도자산', '취득', '필요경비', '특례', '서류 요청', '알림'],
+    gift: ['사건 기본', '수증자', '증여자·관계', '증여재산·평가', '채무인수', '10년 합산', '특례', '서류 요청', '알림'],
+    inheritance: ['사건 기본', '피상속인', '상속인', '상속재산·평가', '금융재산', '채무·공과금', '장례비', '사전증여', '특례', '서류 요청', '알림'],
+    other: ['사건 기본', '계산기 칸', '서류 요청', '알림']
+  };
+  var NXAI_CP_TAXK_ = { transfer: 'transfer', '양도': 'transfer', '양도세': 'transfer', '양도소득세': 'transfer', gift: 'gift', '증여': 'gift', '증여세': 'gift', inheritance: 'inheritance', '상속': 'inheritance', '상속세': 'inheritance' };
+  function nxAiCpGuessTax_(items){
+    var ts = (items || []).map(function(it){ return String(((it && it.ask) || {}).target || ''); });
+    if (ts.some(function(t){ return /^calc:(seller|c\d|a\d|oa)\b/.test(t) || t === 'trTaxFee' || t === 'expenses'; })) return 'transfer';
+    if (ts.some(function(t){ return /^ov:gift|^giftdeal$/.test(t); })) return 'gift';
+    if (ts.some(function(t){ return /^ih:|^ihdiv:|^ihdebts$|^ov:(ihDeceased|상속인)/.test(t); })) return 'inheritance';
+    return 'other';
+  }
+  function nxAiCpTrField_(k){
+    if (/Expenses?$/.test(k) && !/StandardPrice/.test(k)) return '필요경비';
+    if (/^(capex|capital|improvement)/i.test(k)) return '필요경비';
+    if (/^transfer(Price|Date)$/.test(k) || /^buyer/.test(k)) return '양도계약';
+    if (/^(oaResident|oaForeignTax)|^(donor|doneeOwn|giftReceived|residence|lived|original|decedent|converted)/.test(k)) return '특례';
+    if (/^(acquisition|acq[A-Z]|standardPrice|landPrice|buildingLandPrice|housePrice|p90|newHousingCompletion|approvalDate)/.test(k) || /^(transfer|registration)StandardPrice/.test(k)) return '취득';
+    if (/^(asset|land|building|floor|share|ownership|ratio$|address|isOverseasAsset$|house|housing|exclusive|zone|use[A-Z])/.test(k)) return '양도자산';
+    return '특례';
+  }
+  function nxAiCpByWords_(tax, s){
+    s = String(s || '');
+    var rules = {
+      transfer: [[/주소이력|거주기간|전입/, '특례'], [/양도인|매도인/, '양도인'], [/취득|사용승인|기준시가|공시가격/, '취득'], [/양도일|잔금|양도가액|매매대금|계약일|양수인|매수인/, '양도계약'], [/소재지|면적|주택|지번|지분/, '양도자산'], [/필요경비|중개|수수료|취득세/, '필요경비']],
+      gift: [[/수증자/, '수증자'], [/증여자|관계/, '증여자·관계'], [/채무|담보|근저당/, '채무인수'], [/10년|합산|이전 증여/, '10년 합산'], [/증여일|증여재산|평가|감정|지분/, '증여재산·평가']],
+      inheritance: [[/상속인 명단/, '상속인'], [/임대보증금 채무/, '채무·공과금'], [/상속재산 목록|상속재산 등기부/, '상속재산·평가'], [/주소이력|거주기간|전입/, '특례'], [/피상속인|사망|상속개시/, '피상속인'], [/상속인/, '상속인'], [/장례/, '장례비'], [/사전증여|이체/, '사전증여'], [/금융|예금|보험/, '금융재산'], [/채무|공과금|보증금/, '채무·공과금'], [/상속재산|평가|감정|등기|지분|분할/, '상속재산·평가']]
+    }[tax] || [];
+    for (var i = 0; i < rules.length; i++) if (rules[i][0].test(s)) return rules[i][1];
+    return '';
+  }
+  function nxAiCpCardOf_(it, tax){
+    var a = (it && it.ask) || {}, id = String((it && it.id) || ''), t = String(a.target || ''), mode = String(a.mode || ''), m, k;
+    if (/^case:/.test(t) || mode === 'view' || mode === 'folder' || /^(basic|grasp|appeal):/.test(id) && !/^basic:날짜/.test(id)) return '사건 기본';
+    if (mode === 'evidence' || mode === 'docok' || /^(ev|file|rf|evidence):/.test(id)) return '서류 요청';
+    if (t === 'base' || mode === 'base' || /^(base|ov:기준일|ref:date|basic:날짜|calc:base)/.test(id)) return { transfer: '양도계약', gift: '증여재산·평가', inheritance: '피상속인' }[tax] || '사건 기본';
+    if (t === 'ov:사건분류') return tax === 'other' ? '계산기 칸' : '특례';
+    if (tax === 'transfer'){
+      if (/^calc:seller\./.test(t)) return '양도인';
+      if ((m = /^calc:c\d+\.(.+)$/.exec(t))) return /expenses?$/i.test(m[1]) ? '필요경비' : '양도계약';
+      if ((m = /^calc:a\d+\.(.+)$/.exec(t))) return nxAiCpTrField_(m[1]);
+      if (t === 'calc:oa.share') return '양도자산';
+      if (t === 'calc:oa.fxT') return '양도계약';
+      if (t === 'calc:oa.fxA') return '취득';
+      if (/^calc:oa\./.test(t)) return '특례';
+      if (t === 'expenses' || t === 'trTaxFee' || mode === 'expenses') return '필요경비';
+      if (t === 'trParcels' || t === 'trCompSplit') return '양도계약';
+      if (/^calc:/.test(t)) return '특례';
+    } else if (tax === 'gift'){
+      if (t === 'giftdeal' || mode === 'giftdeal') return '수증자';
+      if ((m = /^ov:(.+)$/.exec(t))){
+        k = m[1];
+        if (/^giftDonee/.test(k)) return '수증자';
+        if (/^giftDonor|^giftRelation/.test(k)) return '증여자·관계';
+        if (/^giftDebt/.test(k)) return '채무인수';
+        if (/^giftPrior/.test(k)) return '10년 합산';
+        if (/^gift|^증여재산/.test(k)) return '증여재산·평가';
+      }
+      if (/^gift:lien/.test(id)) return '채무인수';
+      if (/^gift:memoprior/.test(id)) return '10년 합산';
+      if ((m = /^calc:(?:.*\.)?([A-Za-z0-9]+)$/.exec(t))) return /^(sr|af|sl|pv|cb|ed)[A-Z]/.test(m[1]) ? '특례' : '증여재산·평가';
+    } else if (tax === 'inheritance'){
+      if ((m = /^ov:(.+)$/.exec(t))){
+        k = m[1];
+        if (/^ihDeceased|^ihDeath/.test(k)) return '피상속인';
+        if (/^상속인|^ihReporter|^ihHeir/.test(k)) return '상속인';
+        if (/^ih(Business|Farming)|^bc/.test(k)) return '특례';
+        if (/^ihYearsSincePrior/.test(k)) return '사전증여';
+      }
+      if (/^ihdiv:/.test(t)) return '상속재산·평가';
+      if (t === 'ihdebts' || mode === 'debts' || /^ih:debts/.test(id)) return '채무·공과금';
+      if ((m = /^ih:(.+)$/.exec(t) || /^ih:(.+)$/.exec(id))){
+        k = m[1];
+        if (/^financial/.test(k)) return '금융재산';
+        if (/^(funeral|niche|fn_|fnev)/.test(k)) return '장례비';
+        if (/^pg_/.test(k)) return '사전증여';
+        return '상속재산·평가';
+      }
+    } else if (t) return '계산기 칸';
+    if (/^cx[a-z]*:/.test(id)){ var w = nxAiCpByWords_(tax, (a.label || '') + ' ' + (it.text || '')); if (w) return w; }
+    return '알림';
+  }
+  // [2026.10.19 밤 2번] 필요경비 기본 체크 — 판독 확실한 것 + 영수증에 찍힌 법정 부대비용(취득세·등록(면허)세·지방교육세·농어촌특별세)은 판독이 미확인이어도 기본 체크(공제 안 됨 항목은 제외).
+  //  "그대로 확정"이 취득세를 빠뜨려 과세표준이 230만원 더 나오던 것(김금옥 최상위 AI 모의) — 금액 판독은 화면에 '원문 확인'으로 남긴다
+  function nxAiCpExpOn_(c){ if (!c) return false; if (c.deduct === 'no') return false; if (c.sure) return true; return /^(acqTax|regTax|eduTax|ruralTax|acqTaxRest)$/.test(String(c.item || '')) || /^(취득세|등록세|등록면허세|지방교육세|농어촌특별세)/.test(String(c.label || '')); }
+  // 이 사건의 세목 열쇠(transfer/gift/inheritance/other) — 세목 칸이 "불복"·빈칸이면 질문 칸 모양으로 짐작
+  function nxAiCpTax_(st){
+    var t = NXAI_CP_TAXK_[String((st.case && st.case.세목) || '').trim()] || 'other';
+    return t === 'other' ? nxAiCpGuessTax_(st.items) : t;
+  }
+  // 질문 하나의 카드 { card, no } — 서버가 준 card가 있으면 그것(표에 없는 이름이면 맨 뒤 알림 앞), 없으면 표로
+  function nxAiCpCard_(it, tax){
+    var cards = NXAI_CP_CARDS_[tax] || NXAI_CP_CARDS_.other;
+    var name = it.card || nxAiCpCardOf_(it, tax);
+    var no = cards.indexOf(name);
+    if (no === -1) no = it.cardNo ? it.cardNo - 1 : cards.length - 1;
+    return { card: name, no: no + 1 };
+  }
+  // 교차검증·AI 판단 질문(서류끼리 값이 다름) — 꼬리표와 후보별 출처 서류·👁를 붙인다
+  function nxAiCpXdocs_(it){
+    var a = (it && it.ask) || {};
+    return !!(a.aiJudge || a.xdocs || /^🧮 교차검증/.test(String((it && it.text) || '')) || /^cx(b|g):/.test(String((it && it.id) || '')));
+  }
   var CASEPROC_CALC_TABS_ = { transfer: 1, gift: 1, inheritance: 1 };
   var NXAI_CP_RE_ = /처리\s*(하자|합시다|해\s*줘|해\s*주세요|해$|진행|시작)/;
   function nxAiCaseProcResolve_(text){
@@ -2453,15 +2567,33 @@
     var box = row.querySelector('.nxai-cp-items');
     box.innerHTML = '';
     var held = 0, open = 0;
-    st.items.filter(function(it){ return it.step === key; }).forEach(function(it){
+    // [2026.10.18 사용자 소통 1번] 세액계산기 카드 순서로 — 카드마다 머리줄("양도계약 — 2개"), 같은 카드 안에서는 나온 순서
+    var tax = nxAiCpTax_(st), vis = [], cnt = {}, lastCard = null;
+    st.items.forEach(function(it, i){
+      if (it.step !== key) return;
+      var d0 = nxAiCaseProcDec_(st, it);
+      if (d0 === '무시' || d0 === 'done') return; // 무시 = 완전 제외, done = 확인으로 끝난 항목
+      vis.push({ it: it, i: i, c: nxAiCpCard_(it, tax) });
+    });
+    vis.sort(function(x, y){ return (x.c.no - y.c.no) || (x.i - y.i); });
+    vis.forEach(function(v){ cnt[v.c.card] = (cnt[v.c.card] || 0) + 1; });
+    vis.forEach(function(v){
+      var it = v.it;
       var dec = nxAiCaseProcDec_(st, it);
-      if (dec === '무시' || dec === 'done') return; // 무시 = 완전 제외, done = 확인으로 끝난 항목
+      if (v.c.card !== lastCard){
+        lastCard = v.c.card;
+        var hd = document.createElement('div'); hd.className = 'nxai-cp-card';
+        hd.textContent = v.c.card + ' — ' + cnt[v.c.card] + '개';
+        box.appendChild(hd);
+      }
       var parked = dec === '보류' || dec === '예정';
       if (parked) held++; else open++;
       var el = document.createElement('div');
       el.className = 'nxai-cp-item' + (parked ? ' held' : '');
       it._el = el;
-      el.innerHTML = '<div><span class="nxai-cp-q" title="입력창에 이 번호로 답할 수 있습니다 — 예) Q2 5억 매매계약서 / Q2 보류"></span> <span class="nxai-cp-kind k-' + nxAiEsc_(it.kind) + '">' + nxAiEsc_(NXAI_CP_KIND_[it.kind] || it.kind) + '</span> ' + nxAiEsc_(it.text) + '</div>'
+      el.innerHTML = '<div><span class="nxai-cp-q" title="입력창에 이 번호로 답할 수 있습니다 — 예) Q2 5억 매매계약서 / Q2 보류"></span> <span class="nxai-cp-kind k-' + nxAiEsc_(it.kind) + '">' + nxAiEsc_(NXAI_CP_KIND_[it.kind] || it.kind) + '</span> '
+        + (nxAiCpXdocs_(it) ? '<span class="nxai-cp-xdoc" title="서류마다 값이 달라(또는 AI가 정해) 맞는 값을 확인해야 합니다 — [확인]을 누르면 후보마다 출처 서류와 👁(열기)가 보입니다">서류끼리 다름</span> ' : '')
+        + nxAiEsc_(it.text) + '</div>'
         + (it.detail ? '<div class="nxai-cp-detail">' + nxAiEsc_(it.detail) + '</div>' : '') + '<div class="nxai-cp-btns"></div><div class="nxai-cp-ask" hidden></div>';
       var btns = el.querySelector('.nxai-cp-btns');
       var add = function(label, fn, primary){ var b = document.createElement('button'); b.type = 'button'; b.className = 'nxai-btn' + (primary ? ' primary' : ''); b.textContent = label; b.addEventListener('click', fn); btns.appendChild(b); return b; };
@@ -2560,11 +2692,12 @@
     var a = it.ask || {};
     return String((a.label || '') + ' ' + (a.mode === 'base' ? (NXAI_CP_BASE_LABEL_[tax] || '기준일') + ' ' : '') + (it.text || ''));
   }
-  // 살아 있는 질문(무시·확인완료 제외, 보류 포함) — 단계 순서대로, 같은 단계 안에서는 나온 순서대로
+  // 살아 있는 질문(무시·확인완료 제외, 보류 포함) — 단계 순서대로, 같은 단계 안에서는 계산기 카드 순서(화면과 같게), 같은 카드 안에서는 나온 순서대로
   function nxAiCaseProcLive_(st){
     var order = NXAI_CP_STEPS_.map(function(s){ return s.key; });
+    var tax = nxAiCpTax_(st);
     var live = st.items.filter(function(it){ var d = nxAiCaseProcDec_(st, it); return d !== '무시' && d !== 'done'; });
-    return live.map(function(it, i){ return { it: it, i: i }; }).sort(function(a, b){ return (order.indexOf(a.it.step) - order.indexOf(b.it.step)) || (a.i - b.i); }).map(function(x){ return x.it; });
+    return live.map(function(it, i){ return { it: it, i: i, n: nxAiCpCard_(it, tax).no }; }).sort(function(a, b){ return (order.indexOf(a.it.step) - order.indexOf(b.it.step)) || (a.n - b.n) || (a.i - b.i); }).map(function(x){ return x.it; });
   }
   function nxAiCaseProcRenumber_(st){
     nxAiCaseProcLive_(st).forEach(function(it, i){
@@ -2747,7 +2880,10 @@
       if (input === 'money'){ var v = nxAiKrMoney_(body.replace(/((?:19|20)\d{2})\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}/g, ' ')); return v ? String(v) : ''; }
       if (input === 'number'){ var n = /(\d+)\s*(명|개|건)?/.exec(body); return n ? n[1] : ''; }
       if (input === 'date') return nxAiKrDate_(body);
-      if (input === 'select'){ var nb = body.replace(/\s+/g, ''); var o = (a.options || []).filter(function(x){ var k = String(x).replace(/\s+/g, '').replace(/\(.*$/, ''); return k && nb.indexOf(k) !== -1; }); var kl = function(x){ return String(x).replace(/\s+/g, '').replace(/\(.*$/, '').length; }; if (o.length > 1){ var mx = Math.max.apply(null, o.map(kl)); o = o.filter(function(x){ return kl(x) === mx; }); } /* '기타친족'이 '기타'에도 걸리면 더 길게 맞는 쪽 */ return o.length === 1 ? o[0] : (nthN && a.options && a.options[nthN - 1]) || ''; }
+      if (input === 'select'){ var nb = body.replace(/\s+/g, ''); var o = (a.options || []).filter(function(x){ var k = String(x).replace(/\s+/g, '').replace(/\(.*$/, ''); return k && nb.indexOf(k) !== -1; }); var kl = function(x){ return String(x).replace(/\s+/g, '').replace(/\(.*$/, '').length; }; if (o.length > 1){ var mx = Math.max.apply(null, o.map(kl)); o = o.filter(function(x){ return kl(x) === mx; }); } /* '기타친족'이 '기타'에도 걸리면 더 길게 맞는 쪽 */
+        /* [2026.10.19 밤 2번] "직계존속"이 '직계존속(1촌…)'·'직계존속(2촌 이상…)' 둘에 함께 걸려 빈 값이 되던 것(하영애 모의) — 괄호까지 전체 글이 맞는 쪽, 아니면 2촌·조부모·손자·세대생략 낱말이 있을 때만 2촌 이상, 없으면 1촌 */
+        if (o.length > 1){ var fullHit = o.filter(function(x){ return nb.indexOf(String(x).replace(/\s+/g, '')) !== -1; }); if (fullHit.length === 1) o = fullHit; else { var far = /2촌|조부모|손자|손녀|세대생략/.test(nb); var o2 = o.filter(function(x){ return /2촌/.test(String(x)) === far; }); if (o2.length === 1) o = o2; } }
+        return o.length === 1 ? o[0] : (nthN && a.options && a.options[nthN - 1]) || ''; }
       return clean(body);
     };
     if (mode === 'input' || mode === 'choose' || mode === 'base'){
@@ -2811,12 +2947,13 @@
       if (/(그대로|확정|맞음|체크한\s*대로|후보대로)/.test(body)) return Object.assign(out, { act: 'apply', target: 'ihdebts', value: JSON.stringify({ items: dsure }), src: srcTxt, shown: '서류 후보 중 확실한 ' + dsure.length + '건 ' + dsure.reduce(function(s, c){ return s + Number(c.amount || 0); }, 0).toLocaleString('ko-KR') + '원으로 확정' });
       return Object.assign(out, { act: 'need', msg: 'Q' + it.q + ' 상속 채무 — "그대로 확정"(서류에서 확실한 ' + dsure.length + '건), "채무 없음"으로 말씀하시거나, 항목을 고르려면 [확인]을 눌러 주세요.' });
     }
-    // 필요경비 — "그대로 확정"(서류에서 확실하다고 본 것만), "없음/0원"
+    // 필요경비 — "그대로 확정"(서류에서 확실하다고 본 것 + 영수증의 법정 세금), "없음/0원"
     if (mode === 'expenses'){
       if (decide) return Object.assign(out, { act: 'decide', decide: decide });
-      var sure = (a.cands || []).filter(function(c){ return c.sure && c.amount; }).map(function(c){ return { kind: c.kind, label: c.label, amount: c.amount, file: c.file, date: c.date }; });
+      var sure = (a.cands || []).filter(function(c){ return nxAiCpExpOn_(c) && c.amount; }).map(function(c){ return { kind: c.kind, label: c.label, amount: c.amount, file: c.file, date: c.date }; });
+      var unsureIn = (a.cands || []).filter(function(c){ return c.amount && !c.sure && nxAiCpExpOn_(c); }).length;
       if (/(없음|없다|없어|0\s*원|영\s*원)/.test(body)) return Object.assign(out, { act: 'apply', target: 'expenses', value: JSON.stringify({ items: [] }), src: srcTxt, shown: '필요경비 없음(0원)' });
-      if (/(그대로|확정|맞음|체크한\s*대로|후보대로)/.test(body)) return Object.assign(out, { act: 'apply', target: 'expenses', value: JSON.stringify({ items: sure }), src: srcTxt, shown: '서류 후보 중 확실한 ' + sure.length + '건 ' + sure.reduce(function(s, c){ return s + Number(c.amount || 0); }, 0).toLocaleString('ko-KR') + '원으로 확정' });
+      if (/(그대로|확정|맞음|체크한\s*대로|후보대로)/.test(body)) return Object.assign(out, { act: 'apply', target: 'expenses', value: JSON.stringify({ items: sure }), src: srcTxt, shown: '서류 후보 ' + sure.length + '건 ' + sure.reduce(function(s, c){ return s + Number(c.amount || 0); }, 0).toLocaleString('ko-KR') + '원으로 확정' + (unsureIn ? '(영수증의 법정 세금 중 판독 미확인 ' + unsureIn + '건 포함 — 원문 확인)' : '') });
       return Object.assign(out, { act: 'need', msg: 'Q' + it.q + ' 필요경비 — "그대로 확정"(서류에서 확실한 ' + sure.length + '건), "없음"으로 말씀하시거나, 항목을 고치려면 [확인]을 눌러 주세요.' });
     }
     if (mode === 'note' && /(확인|알았|봤)/.test(body)) return Object.assign(out, { act: 'decide', decide: 'done', note: '확인함(사이드바)' });
@@ -2863,7 +3000,12 @@
       show('Q' + it.q + ' 「' + r.label + '」 → ' + (r.decide === '보류' ? '⏸ 보류(처리는 계속, 종합검토서 "추가로 확인할 사항"에 들어감)' : r.decide === '무시' ? '무시(다시 묻지 않음)' : '✅ ' + (r.shown || '확인함')));
       return true;
     }
-    st.run('apply', Object.assign({ target: r.target, value: r.value, src: String(r.src).slice(0, 80), label: r.label }, r.extra || {})).then(function(res){
+    // [2026.10.18 사용자 소통 4번] 답 기록 재료(서버 cxAnswerRecord_) — 말로 답한 값이 후보 중 몇 번째인지·근거 파일
+    var rc = (it.ask && it.ask.cands) || [], rpick = -1;
+    rc.forEach(function(c, ci){ if (rpick < 0 && String(c.v).replace(/[\s,]/g, '') === String(r.value).replace(/[\s,]/g, '')) rpick = ci; });
+    if (!rc.length) ((it.ask && it.ask.options) || []).forEach(function(o, oi){ if (rpick < 0 && o && String(o.value) === String(r.value)) rpick = oi; });
+    var rfile = (/근거:\s*(.+?)(?:\(파일 \d+개\))?\s*$/.exec(String(r.src || '')) || [])[1] || '';
+    st.run('apply', Object.assign({ target: r.target, value: r.value, src: String(r.src).slice(0, 80), label: r.label }, r.extra || {}, { ans: { qid: it.id, how: '말로 답', nCands: rc.length || ((it.ask && it.ask.options) || []).length, pick: rpick, file: rfile } })).then(function(res){
       if (!res || !res.ok) throw new Error((res && (res.error || res.message)) || '반영 실패');
       var shown = (it.ask && it.ask.input === 'money' && /^\d+$/.test(String(r.shown))) ? Number(r.shown).toLocaleString('ko-KR') + '원' : String(r.shown || r.value);
       show('Q' + it.q + ' 「' + r.label + '」 ← **' + shown + '** 반영했습니다 (' + r.src + ').\n\n영향 받는 단계를 다시 처리하고 세액을 다시 계산합니다 — 위 사건 처리 칸에서 진행을 볼 수 있습니다.');
@@ -2883,6 +3025,14 @@
     var p = function(txt, cls){ var d = document.createElement('div'); d.className = cls || 'nxai-cp-line'; d.textContent = txt; pane.appendChild(d); return d; };
     var btn = function(label, fn, primary, parent){ var b = document.createElement('button'); b.type = 'button'; b.className = 'nxai-btn' + (primary ? ' primary' : ''); b.textContent = label; b.addEventListener('click', fn); (parent || pane).appendChild(b); return b; };
     var rowEl = function(){ var d = document.createElement('div'); d.className = 'nxai-cp-btns'; pane.appendChild(d); return d; };
+    // [2026.10.18 교차검증 2번] 교차검증(GAS 규칙)·AI가 정한 값 — 누가 무엇을 근거로 정했는지와 물은 것을 먼저 보이고, 아래 후보·선택지로 "다른 값으로" 고친다
+    if (ask.aiJudge){
+      var aj = ask.aiJudge, jb = document.createElement('div'); jb.className = 'nxai-cp-line'; jb.style.cssText = 'background:#eef4ff;border-radius:6px;padding:6px 8px;margin-bottom:6px;';
+      jb.textContent = (aj.by === 'gas' ? '🧮 교차검증(규칙)' : '🤖 AI 판단' + (aj.model ? '(' + aj.model + ')' : '')) + (aj.value !== '' && aj.value != null ? ' — 값: ' + aj.value : '') + (aj.sure ? ' · ' + aj.sure : '') + (aj.why ? ' · 근거: ' + aj.why : '');
+      pane.appendChild(jb);
+      if (aj.q){ var dq = document.createElement('details'), sq = document.createElement('summary'), pq = document.createElement('pre'); sq.textContent = '물은 것(쟁점 묶음) 보기'; pq.textContent = aj.q; pq.style.cssText = 'white-space:pre-wrap;font-size:12px;max-height:240px;overflow:auto;'; dq.appendChild(sq); dq.appendChild(pq); pane.appendChild(dq); }
+      p(aj.by === 'gas' || aj.value ? '맞으면 그대로 두세요. 다르면 아래에서 다른 값을 고르거나 직접 넣으세요(세무사님 값이 우선).' : '');
+    }
     var fmt = function(v, input){ return input === 'money' && /^\d+$/.test(String(v)) ? Number(v).toLocaleString('ko-KR') + '원' : String(v); };
     var inputEl = function(type, options){
       var r = rowEl(), e;
@@ -2905,13 +3055,48 @@
     var srcFile = function(src){ var s0 = String(src || ''), best = null; (st.files || []).forEach(function(f){ if (f.name && s0.indexOf(f.name) !== -1 && (!best || f.name.length > best.name.length)) best = f; }); return best; };
     var openFile = function(f){ window.open('https://drive.google.com/file/d/' + encodeURIComponent(f.id) + '/view', '_blank', 'noopener'); };
     var eye = function(src, parent){ var f = srcFile(src); if (!f) return; var b = btn('👁', function(e){ if (e) e.stopPropagation(); openFile(f); }, false, parent); b.title = '근거 파일 열기: ' + f.name; };
-    var pickSrc = function(){
-      if (!(st.files || []).length) return { src: function(base){ return base; } };
+    // [2026.10.18 사용자 소통 2번] 근거 파일 고르기 — 직접 입력(주관식)뿐 아니라 후보(객관식)·선택지·판단 질문에도 붙인다.
+    //  def = 미리 골라 둘 파일 이름. candMode = 후보가 있는 질문 — 비워 두면 "후보의 출처 서류 그대로", 고르면 누른 후보 출처 뒤에 "— 근거: 파일".
+    //  서버가 출처(src)를 80자로 자르므로(caseProcApply_), 근거 파일 이름이 잘리지 않게 앞부분을 줄인다.
+    var srcFiles = function(src){ var s0 = String(src || ''), out = []; (st.files || []).slice().sort(function(a, b){ return String(b.name || '').length - String(a.name || '').length; }).forEach(function(f){ if (f.name && s0.indexOf(f.name) !== -1 && !out.some(function(o){ return o.name.indexOf(f.name) !== -1; })) out.push(f); }); return out; };
+    var pickSrc = function(def, candMode){
+      if (!(st.files || []).length) return { src: function(base){ return base; }, file: function(base){ var f = srcFile(base); return f ? f.name : ''; } };
       var r = rowEl(), sel = document.createElement('select'); sel.style.cssText = 'flex:1;min-width:160px;';
-      sel.innerHTML = '<option value="">(근거 파일 고르기 — 없으면 비워 둠)</option>' + (st.files || []).map(function(f){ return '<option>' + nxAiEsc_(f.name) + '</option>'; }).join('');
+      sel.innerHTML = '<option value="">' + (candMode ? '(근거 파일 — 고르지 않으면 후보의 출처 서류 그대로)' : '(근거 파일 고르기 — 없으면 비워 둠)') + '</option>' + (st.files || []).map(function(f){ return '<option>' + nxAiEsc_(f.name) + '</option>'; }).join('');
+      if (def && (st.files || []).some(function(f){ return f.name === def; })) sel.value = def;
       r.appendChild(sel);
       btn('👁 열기', function(){ var f = (st.files || []).filter(function(x){ return x.name === sel.value; })[0]; if (!f){ nxAiToast_('파일을 고르세요.'); return; } openFile(f); }, false, r);
-      return { src: function(base){ return sel.value ? base + ' — 근거: ' + sel.value : base; } };
+      return {
+        src: function(base){
+          base = String(base || '');
+          if (!sel.value || base.indexOf(sel.value) !== -1) return base;
+          var tail = ' — 근거: ' + sel.value, max = 80 - tail.length;
+          return (base.length > max ? base.slice(0, Math.max(8, max - 1)) + '…' : base) + tail;
+        },
+        file: function(base){ if (sel.value) return sel.value; var f = srcFile(base); return f ? f.name : ''; }
+      };
+    };
+    // 후보들의 출처 파일이 하나뿐이면 그 파일을 미리 골라 둔다(여럿이면 후보마다 자기 출처가 기본).
+    //  all = 후보 모두가 그 파일에서 나왔을 때만 — "처리개요(지금 값)" 같은 후보를 눌렀는데 남의 파일이 근거로 붙지 않게
+    var oneFile = function(list, all){
+      var names = []; (list || []).forEach(function(s){ srcFiles(s).forEach(function(f){ if (names.indexOf(f.name) === -1) names.push(f.name); }); });
+      if (names.length !== 1) return '';
+      if (all && !(list || []).every(function(s){ return String(s || '').indexOf(names[0]) !== -1; })) return '';
+      return names[0];
+    };
+    // [사용자 소통 4번] 답 기록 재료 — 서버 cxAnswerRecord_가 받는다(어느 질문·몇 번째 후보·후보 수·어떻게 답했나·근거 파일)
+    var ansX = function(how, pick, n, file){ return { ans: { qid: it.id, how: how, nCands: n, pick: pick == null ? -1 : pick, file: file || '' } }; };
+    // [사용자 소통 3번] 서류끼리 다른 질문 — 후보마다 출처 서류 이름과 서류별 👁(열기)
+    var xdocs = nxAiCpXdocs_(it);
+    var srcDocs = function(src, parent){
+      var s = document.createElement('span'); s.className = 'nxai-cp-srcs'; s.textContent = '출처: ' + String(src || '(출처 없음)'); parent.appendChild(s);
+      srcFiles(src).slice(0, 4).forEach(function(f){ var b = btn('👁 ' + (f.name.length > 18 ? f.name.slice(0, 17) + '…' : f.name), function(e){ if (e) e.stopPropagation(); openFile(f); }, false, parent); b.title = '출처 서류 열기: ' + f.name; });
+    };
+    // 후보 버튼 하나 — 보통은 "값 — 출처 👁", 서류끼리 다른 질문은 한 줄에 값 버튼 + 출처 서류 이름 + 서류별 👁
+    var candBtn = function(label, cd, onPick, rowShared){
+      var host = xdocs ? rowEl() : rowShared;
+      btn(xdocs ? label : label + ' — ' + cd.src, onPick, false, host);
+      if (xdocs) srcDocs(cd.src, host); else eye(cd.src, host);
     };
     var refreshAll = ['basic', 'overview', 'calc', 'output'];
     var mode = ask.mode;
@@ -2921,23 +3106,24 @@
         pane.innerHTML = '';
         if (!r || !r.ok) throw new Error((r && r.error) || '후보를 못 불러옴');
         p('맞는 ' + r.what + '을(를) 고르세요 — 고르면 사건 기준일로 반영하고 법정일을 다시 계산한 뒤 세액도 다시 계산합니다. 이미 낸 신고서의 날짜는 참고용입니다. (지금 법정일 ' + (r.법정일 || '없음') + ')');
-        var r1 = rowEl();
-        (r.cands || []).forEach(function(cd){ btn(cd.v + ' — ' + cd.src + (cd.due ? ' (→ 법정기한 ' + cd.due + ')' : ''), function(){ apply('base', cd.v, cd.src, refreshAll, true); }, false, r1); eye(cd.src, r1); });
-        if (!(r.cands || []).length) p('자료에서 찾은 날짜가 없습니다 — 아래에 직접 넣고, 근거 파일이 있으면 골라 주세요.');
+        var r1 = rowEl(), bc = r.cands || [], ps;
+        bc.forEach(function(cd, ci){ candBtn(cd.v + (cd.due ? ' (→ 법정기한 ' + cd.due + ')' : ''), cd, function(){ apply('base', cd.v, ps.src(cd.src), refreshAll, true, ansX('후보', ci, bc.length, ps.file(cd.src))); }, r1); });
+        if (!bc.length) p('자료에서 찾은 날짜가 없습니다 — 아래에 직접 넣고, 근거 파일이 있으면 골라 주세요.');
         var ie = inputEl('date');
-        var ps = pickSrc();
-        btn('이 날짜로 반영', function(){ apply('base', ie.val(), ps.src('세무사님 직접 입력'), refreshAll, true); }, true, ie.row);
+        ps = pickSrc(oneFile(bc.map(function(c){ return c.src; }), true), bc.length > 0);
+        btn('이 날짜로 반영', function(){ apply('base', ie.val(), ps.src('세무사님 직접 입력'), refreshAll, true, ansX('직접 입력', -1, bc.length, ps.file(''))); }, true, ie.row);
       }).catch(function(err){ pane.innerHTML = ''; p('후보를 불러오지 못했습니다: ' + (err && err.message || err), 'nxai-warn'); });
       return;
     }
     if (mode === 'input' || mode === 'choose'){
       p((ask.label ? ask.label + ' — ' : '') + (mode === 'choose' ? '어느 값이 맞나요? 고르거나 직접 입력하세요.' : '값을 고르거나 입력하세요.'));
-      var r2 = rowEl();
-      (ask.cands || []).forEach(function(cd){ btn(fmt(cd.v, ask.input) + ' — ' + cd.src, function(){ apply(ask.target, cd.v, cd.src, refreshAll, true); }, false, r2); eye(cd.src, r2); });
-      if (!(ask.cands || []).length) p('서류에서 찾은 값이 없습니다 — 직접 넣고, 근거 파일이 있으면 골라 주세요.');
+      if (xdocs && (ask.cands || []).length) p('서류끼리 값이 다릅니다 — 후보마다 출처 서류를 👁로 열어 보고 맞는 값을 고르세요.');
+      var r2 = rowEl(), cc = ask.cands || [], ps2;
+      cc.forEach(function(cd, ci){ candBtn(fmt(cd.v, ask.input), cd, function(){ apply(ask.target, cd.v, ps2.src(cd.src), refreshAll, true, ansX('후보', ci, cc.length, ps2.file(cd.src))); }, r2); });
+      if (!cc.length) p('서류에서 찾은 값이 없습니다 — 직접 넣고, 근거 파일이 있으면 골라 주세요.');
       var ie2 = inputEl(ask.input || 'text', ask.options);
-      var ps2 = pickSrc();
-      btn('반영', function(){ apply(ask.target, ie2.val(), ps2.src('세무사님 직접 입력'), refreshAll, true); }, true, ie2.row);
+      ps2 = pickSrc(cc.length ? oneFile(cc.map(function(c){ return c.src; }), true) : oneFile([it.text, it.detail]), cc.length > 0);
+      btn('반영', function(){ apply(ask.target, ie2.val(), ps2.src('세무사님 직접 입력'), refreshAll, true, ansX('직접 입력', -1, cc.length, ps2.file(''))); }, true, ie2.row);
       return;
     }
     // [2026.10.15 1:1] 증여 내용 확인 — 증여자·수증자·증여일·증여대상·금액을 칸마다 고르거나(객관식, 서류 후보) 직접 입력(주관식)한 뒤 한 번에 확정
@@ -2970,7 +3156,7 @@
     }
     // [2026.10.15 1:1] 양도 필요경비 — 서류에서 찾은 비용을 체크(규칙이 확정한 것은 미리 체크), 금액은 고칠 수 있고, 없는 비용은 직접 더한다
     if (mode === 'expenses'){
-      var rows = (ask.cands || []).map(function(c){ return { kind: c.kind, label: c.label, amount: c.amount, file: c.file, date: c.date, on: !!c.sure, note: c.note }; });
+      var rows = (ask.cands || []).map(function(c){ return { kind: c.kind, label: c.label, amount: c.amount, file: c.file, date: c.date, on: nxAiCpExpOn_(c), note: c.note }; });
       var list = document.createElement('div'); pane.appendChild(list);
       var draw = function(){
         list.innerHTML = '';
@@ -3035,17 +3221,22 @@
       return;
     }
     if (mode === 'options'){
-      var r3 = rowEl();
-      (ask.options || []).forEach(function(o){
+      var r3 = rowEl(), oo = ask.options || [], ps4 = null;
+      oo.forEach(function(o, oi){
         btn(o.label, function(){
           if (o.mode === 'base'){ it.ask = { mode: 'base' }; pane.innerHTML = ''; pane.hidden = true; nxAiCaseProcAsk_(st, it, el); return; }
           if (o.decide){ nxAiCaseProcDecide_(st, it, o.decide, o.note || o.label); return; }
-          apply(ask.target, o.value, '세무사님 선택', refreshAll, true);
+          apply(ask.target, o.value, ps4 ? ps4.src('세무사님 선택') : '세무사님 선택', refreshAll, true, ansX('선택지', oi, oo.length, ps4 ? ps4.file('') : ''));
         }, false, r3);
       });
-      if (ask.ai) btn('모름 — AI에게 근거 설명 듣기(유료)', function(){ nxAiCaseProcJudge_(st, it, ask.ai); }, false, r3);
       if (ask.fileId) btn('📄 원문 열기', function(){ openFile({ id: ask.fileId }); }, false, r3);
-      if (ask.withInput){ var ie4 = inputEl(ask.input || 'text', null); var ps4 = pickSrc(); btn('반영', function(){ apply(ask.target, ie4.val(), ps4.src('세무사님 직접 입력'), refreshAll, true); }, true, ie4.row); }
+      var ie4 = ask.withInput ? inputEl(ask.input || 'text', null) : null;
+      // 근거 파일 — 고르는 선택지(값을 반영하는 것)나 직접 입력이 있을 때만. 질문에 나온 파일(원문)을 미리 골라 둔다
+      if (ie4 || oo.some(function(o){ return !o.decide && o.mode !== 'base'; })){
+        var fdef = ask.fileId ? ((st.files || []).filter(function(f){ return f.id === ask.fileId; })[0] || {}).name : '';
+        ps4 = pickSrc(fdef || oneFile([it.text, it.detail]), false);
+      }
+      if (ie4) btn('반영', function(){ apply(ask.target, ie4.val(), ps4.src('세무사님 직접 입력'), refreshAll, true, ansX('직접 입력', -1, oo.length, ps4.file(''))); }, true, ie4.row);
       return;
     }
     if (mode === 'evidence'){

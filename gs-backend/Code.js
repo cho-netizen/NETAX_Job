@@ -3844,6 +3844,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'doc_parse_image') return jsonResponse(docParseImage_(body)); // 캡처 이미지 → 무료 OCR → 규칙(토큰 0) // 확장프로그램 화면 글자(Alt+Shift+C) 정리 — OCR 없이 규칙만(토큰 0)
   if (body.action === 'doc_parse_multi') return jsonResponse(docParseMulti_(body)); // 여러 서류 함께 정리 + 대조표(토큰 0)
   if (body.action === 'tc_extract_case_docs') return jsonResponse(tc_extractCaseDocs_(body));
+  if (body.action === 'cx_ai_report') return jsonResponse(cxAiReport_(body)); // [2026.10.18 교차검증 2번] 사건처리 AI 판단 정기 점검(규칙 후보·되돌림 경고·추이, 토큰 0)
   if (body.action === 'tc_rule_transfer_facts') return jsonResponse(tc_ruleTransferFacts_(body)); // 양도세 자동채우기 규칙 먼저(토큰 0)
   if (body.action === 'tc_rule_inheritance_facts') return jsonResponse(tc_ruleInheritanceFacts_(body)); // 상속세 자동채우기 규칙 먼저(토큰 0)
   if (body.action === 'case_proc') return jsonResponse(caseProcTimed_(body)); // '이 사건 처리하자' — 처리탭 도구로 단계별 점검(토큰 0)
@@ -15659,7 +15660,8 @@ function ai_usageMonth_() {
   function read(k) { try { return JSON.parse(props.getProperty('AI_USAGE_' + k) || '{}'); } catch (e) { return {}; } }
   let paid = [];
   try { paid = JSON.parse(ai_paidLogFile_().getBlob().getDataAsString('UTF-8') || '[]'); } catch (e) { paid = []; }
-  return { success: true, thisMonth: thisKey, prevMonth: prevKey, data: read(thisKey), prevData: read(prevKey), paid: paid.slice(-40).reverse() };
+  // [2026.10.18 교차검증 2번] 사건처리 AI 판단 기록(cx)의 쟁점 내용은 화면 목록엔 필요 없어 빼고 보낸다(응답 크기 — 나머지 칸은 예전 그대로)
+  return { success: true, thisMonth: thisKey, prevMonth: prevKey, data: read(thisKey), prevData: read(prevKey), paid: paid.slice(-40).reverse().map(function (p) { if (!p || !p.cx) return p; const c = Object.assign({}, p); delete c.cx; return c; }) };
 }
 
 // [2026.10.09] "유료 AI로 간 질문" 기록 — 토큰 0을 반복 개선하는 근거 자료. 단순 조회·반복 요청이 여기 쌓이면
@@ -15720,20 +15722,287 @@ function ai_logPaid_(body) {
       const file = ai_paidLogFile_();
       let arr = [];
       try { arr = JSON.parse(file.getBlob().getDataAsString('UTF-8') || '[]'); } catch (err) { arr = []; }
-      arr.push({
+      const rec = {
         at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'),
         kind: String(e.kind || 'chat').slice(0, 20),
         model: String(e.model || '').slice(0, 40),
         usd: Math.round((+e.usd || 0) * 1e5) / 1e5,
         q: String(e.q || '').slice(0, 120)
-      });
-      file.setContent(JSON.stringify(arr.slice(-300)));
+      };
+      // [2026.10.18 교차검증 2번] 사건처리 AI 판단(kind 'cx')은 쟁점별 내용(cx)을 함께 남긴다 — GAS 규칙으로 옮길 후보를 찾는 근거
+      if (rec.kind === 'cx' && e.cx && typeof e.cx === 'object') rec.cx = cxlogNormRecord_(e.cx);
+      arr.push(rec);
+      // [2026.10.18 교차검증 2번] 자를 때 종류별로 따로 센다 — 기존 기록은 예전처럼 300건, cx 기록은 3000건(+글자 수 한도)까지
+      file.setContent(JSON.stringify(cxlogTrimPaidLog_(arr)));
       return { success: true };
     });
   } catch (err) {
     return { success: false, message: err.message };
   }
 }
+
+// ============================================================
+// [2026.10.18 교차검증 2번] 사건처리 AI 판단 기록·정기 점검(토큰 0) — CX_LOG_BEGIN
+// 사건처리에서 GAS 규칙으로 안 풀린 쟁점을 서버가 LIGHT_MODEL에게 물으면(cxAskAi_), 그 판단을 쟁점 단위로
+// _유료질문기록.json에 kind 'cx'로 남긴다. 세무사님 목표: "AI 없이 GAS로 풀 수 있는지 수시로 검증해,
+// 사건당 AI 호출이 시간이 갈수록 줄어드는 것" — 그래서 기록을 토큰 0으로 모아
+//  ① 규칙 후보(여러 사건에서 같은 모양에 AI가 늘 같은 방식으로 답함 → GAS 규칙으로 옮길 후보)
+//  ② 되돌림 경고(세무사님이 AI 답을 자주 고친 쟁점 종류 → 지시문·넘긴 사실 점검 대상)
+//  ③ 추이(주별 호출 수·쟁점 수·비용·사건당 평균 — 줄고 있는지)
+// 를 보고서로 만든다. 기록 모양(호출부 cxAskAi_가 이 모양으로 넘김):
+//   entry = { kind:'cx', model, usd, q:'사건처리 AI 판단 — <사건명> (쟁점 n개)', cx: {
+//     id:'cx_<시각>_<사건ID 앞 8자>', caseId, case, 세목, round:1|2, bundleChars,
+//     items:[{ iid, kind, shape, target, label, facts(≤400자), cands:[{v,src}], answer, why,
+//              sure:'확실'|'불확실', need:[..], user:null|{act:'확인'|'수정', v, at} }] } }
+// ============================================================
+const CX_LOG_KEEP_ = 3000;          // cx 기록 최대 건수(기존 기록 300건과 따로 센다)
+const CX_LOG_OTHER_KEEP_ = 300;     // 기존(cx 아닌) 기록 — 예전과 같은 300건
+const CX_LOG_FULL_KEEP_ = 300;      // 최근 이만큼은 facts·why까지 그대로, 그보다 오래된 cx 기록은 facts·why를 비워 파일 크기를 줄인다(보고서 집계엔 안 쓰는 칸)
+const CX_LOG_MAX_CHARS_ = 2500000;  // cx 기록 전체 글자 수 한도(한글 위주라도 몇 MB 안) — 넘으면 오래된 것부터 버린다
+const CX_LOG_ITEMS_MAX_ = 30, CX_LOG_CANDS_MAX_ = 6, CX_LOG_NEED_MAX_ = 6;
+// 보고서 판정 기준값
+const CX_RULE_MIN_CASES_ = 3; const CX_RULE_MIN_CASES_CONST_ = 5; // [재점검 8] 2 → 3, 후보 없는 고정 답은 5건 이상
+//       // 규칙 후보: 같은 쟁점종류+입력모양이 서로 다른 사건 이만큼 이상에서 나와야(한 사건뿐이면 꿰맞추기라 제외)
+const CX_REVERT_MIN_FIX_ = 2;       // 되돌림 경고: 세무사님 '수정' 이만큼 이상이고
+const CX_REVERT_MIN_RATE_ = 0.3;    //   수정/(확인+수정) 비율이 이 이상
+function cxlogStr_(v, n) {
+  if (v == null) return '';
+  if (typeof v === 'object') { try { v = JSON.stringify(v); } catch (e) { v = String(v); } }
+  return String(v).slice(0, n);
+}
+// 답·후보값은 숫자면 숫자 그대로(보고서에서 크기 비교), 나머지는 글자로 잘라 둔다
+function cxlogVal_(v, n) { return (typeof v === 'number' && isFinite(v)) || typeof v === 'boolean' || v == null ? (v == null ? null : v) : cxlogStr_(v, n); }
+function cxlogNormUser_(u) {
+  if (!u || typeof u !== 'object') return null;
+  const act = u.act === '수정' ? '수정' : u.act === '확인' ? '확인' : '';
+  if (!act) return null;
+  return { act: act, v: cxlogVal_(u.v, 200), at: cxlogStr_(u.at, 20) };
+}
+function cxlogNormRecord_(cx) {
+  const items = (Array.isArray(cx.items) ? cx.items : []).slice(0, CX_LOG_ITEMS_MAX_).map(function (it) {
+    it = it || {};
+    return {
+      iid: cxlogStr_(it.iid, 80), kind: cxlogStr_(it.kind, 40), shape: cxlogStr_(it.shape, 160), target: cxlogStr_(it.target, 120), label: cxlogStr_(it.label, 80),
+      facts: cxlogStr_(it.facts, 400),
+      cands: (Array.isArray(it.cands) ? it.cands : []).slice(0, CX_LOG_CANDS_MAX_).map(function (c) { c = c || {}; return { v: cxlogVal_(c.v, 150), src: cxlogStr_(c.src, 80) }; }),
+      answer: cxlogVal_(it.answer, 200), why: cxlogStr_(it.why, 240),
+      sure: it.sure === '확실' ? '확실' : '불확실',
+      need: (Array.isArray(it.need) ? it.need : []).slice(0, CX_LOG_NEED_MAX_).map(function (x) { return cxlogStr_(x, 100); }),
+      user: cxlogNormUser_(it.user)
+    };
+  });
+  return {
+    id: cxlogStr_(cx.id, 60), caseId: cxlogStr_(cx.caseId, 80), case: cxlogStr_(cx.case, 80), 세목: cxlogStr_(cx.세목, 20),
+    round: cx.round === 2 ? 2 : 1, bundleChars: Math.max(0, Math.round(+cx.bundleChars || 0)), items: items
+  };
+}
+// 종류별로 따로 잘라 남긴다(순서는 그대로): cx 아닌 기록 최근 300건, cx 기록 최근 3000건·글자 수 한도.
+// 오래된 cx 기록(최근 CX_LOG_FULL_KEEP_건 밖)은 facts·why를 비운다 — 보고서 집계(kind·shape·cands·answer·user)엔 영향 없음.
+function cxlogTrimPaidLog_(arr) {
+  const keep = new Array(arr.length);
+  let nOther = 0, nCx = 0, cxChars = 0;
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const r = arr[i];
+    if (!r || typeof r !== 'object') continue;
+    if (r.kind === 'cx') {
+      if (nCx >= CX_LOG_KEEP_) continue;
+      if (nCx >= CX_LOG_FULL_KEEP_ && r.cx && Array.isArray(r.cx.items)) r.cx.items.forEach(function (it) { if (it) { it.facts = ''; it.why = ''; } });
+      const len = JSON.stringify(r).length;
+      if (nCx > 0 && cxChars + len > CX_LOG_MAX_CHARS_) continue;
+      cxChars += len; nCx++; keep[i] = true;
+    } else {
+      if (nOther >= CX_LOG_OTHER_KEEP_) continue;
+      nOther++; keep[i] = true;
+    }
+  }
+  return arr.filter(function (r, i) { return keep[i]; });
+}
+// 세무사님이 AI 판단을 확인·수정하면 그 사건의 가장 최근 cx 기록(그 쟁점이 든 것)의 쟁점에 user로 붙인다.
+// fix = { act:'확인'|'수정', v, at }. 못 찾거나 잠금을 못 얻으면 조용히 false.
+function cxLogUserFix_(caseId, iid, fix) {
+  try {
+    const cid = String(caseId || ''), id = String(iid || '');
+    const u = cxlogNormUser_(fix);
+    if (!cid || !id || !u) return false;
+    if (!u.at) u.at = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
+    const r = withLock_(5000, function () {
+      const file = ai_paidLogFile_();
+      let arr = [];
+      try { arr = JSON.parse(file.getBlob().getDataAsString('UTF-8') || '[]'); } catch (err) { return false; }
+      if (!Array.isArray(arr)) return false;
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const rec = arr[i];
+        if (!rec || rec.kind !== 'cx' || !rec.cx || String(rec.cx.caseId) !== cid || !Array.isArray(rec.cx.items)) continue;
+        const it = rec.cx.items.filter(function (x) { return x && String(x.iid) === id; })[0];
+        if (!it) continue;
+        it.user = u;
+        file.setContent(JSON.stringify(arr));
+        return true;
+      }
+      return false;
+    });
+    return r === true;
+  } catch (e) { return false; }
+}
+// ---------- 보고서(토큰 0): Drive 없이 배열만 받는 순수 함수 ----------
+function cxlogNormV_(v) { return String(v == null ? '' : v).replace(/[\s,]/g, '').replace(/원$/, '').toLowerCase(); }
+function cxlogNum_(v) { const s = cxlogNormV_(v); return /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : null; }
+// 출처 종류: "매매계약서(2023.05.01)"→"매매계약서", "통장 국민 123-45"→"통장" — 날짜·번호·괄호를 떼고 첫 낱말
+function cxlogSrcKind_(s) { return String(s || '').replace(/[\d\-.\/:()\[\]#_~,]+/g, ' ').trim().split(/\s+/)[0] || ''; }
+function cxlogWeekKey_(at) {
+  const m = String(at || '').match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return '';
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  const dow = (d.getUTCDay() + 6) % 7; // 월=0
+  d.setUTCDate(d.getUTCDate() - dow);
+  return d.toISOString().slice(0, 10); // 그 주 월요일
+}
+// 한 쟁점의 AI 답이 어떤 "방식"으로 고른 것인지 — 만족하는 방식을 모두 돌려준다.
+//  src:<출처종류>  답 = 그 출처 종류 후보의 값(예: 늘 매매계약서 쪽 값을 고름)
+//  max / min       답 = 숫자 후보 중 가장 큰 / 작은 값(후보가 2개 이상이고 서로 다를 때만)
+//  pos:<n>         답 = n번째 후보(늘 같은 자리)
+//  const:<값>      답이 늘 같은 글자 값(이체 성격·사건분류처럼 후보 없이 고르는 쟁점)
+// 같은 묶음의 모든 쟁점이 공통으로 만족하는 방식이 하나라도 있어야 "일관"으로 본다.
+// [2026.10.18 재점검 8] 답 방식은 근거형만 — 예전의 src:<출처종류>(늘 계약서 쪽)·pos:n(늘 n번째)·max/min은 고정 순위 규칙을 만들어 내서(세무사님 원문 3 위반) 뺐다.
+//  basis:검산 / basis:법령 / basis:독립서류 / basis:원문 — 고른 후보의 출처 글에 그 근거가 적혀 있을 때(GAS 객관 규칙으로 옮길 수 있는 꼴)
+//  const:<값> — 후보 없이 늘 같은 답(사건분류 등). 판단 결과를 굳히는 것이라 사건 수 기준을 더 높게(CX_RULE_MIN_CASES_CONST_)
+function cxlogAnswerPatterns_(it) {
+  const out = [], a = cxlogNormV_(it.answer), cands = Array.isArray(it.cands) ? it.cands : [];
+  if (!a) return out;
+  cands.forEach(function (c) {
+    if (!c || cxlogNormV_(c.v) !== a) return;
+    const s = String(c.src || '');
+    if (/검산\s*(일치|맞음)/.test(s)) out.push('basis:검산');
+    if (/법령\s*정의|§\s*98|시행령\s*§\s*162|상증령\s*§\s*24/.test(s)) out.push('basis:법령');
+    if (/서류\s*\d+종\s*일치|독립\s*서류/.test(s)) out.push('basis:독립서류');
+    if (/원문\s*재확인|원문 확인 일치/.test(s)) out.push('basis:원문');
+  });
+  if (!cands.length) out.push('const:' + a.slice(0, 60));
+  return out.filter(function (p, i) { return out.indexOf(p) === i; });
+}
+function cxlogPatternText_(p) {
+  if (p.indexOf('basis:') === 0) return '근거가 「' + p.slice(6) + '」인 후보를 고름(GAS 객관 규칙으로 옮길 수 있음)';
+  if (p === 'max') return '숫자 후보 중 가장 큰 값을 고름';
+  if (p === 'min') return '숫자 후보 중 가장 작은 값을 고름';
+  if (p.indexOf('pos:') === 0) return (Number(p.slice(4)) + 1) + '번째 후보를 고름';
+  if (p.indexOf('const:') === 0) return '"' + p.slice(6) + '"(으)로 답함';
+  return p;
+}
+const CX_LOG_PATTERN_ORDER_ = ['basis', 'const'];
+function cxAiReportFrom_(arr, opt) {
+  opt = opt || {};
+  const noise = /\[점검 중|zz_|\[시험\]|harness/;
+  const nowMs = +opt.now || Date.now();
+  const sinceDays = +opt.sinceDays || 0;
+  const sinceKey = sinceDays ? new Date(nowMs + 9 * 3600000 - sinceDays * 86400000).toISOString().slice(0, 10) : '';
+  const recs = (Array.isArray(arr) ? arr : []).filter(function (r) {
+    if (!r || r.kind !== 'cx' || !r.cx || !Array.isArray(r.cx.items)) return false;
+    if (noise.test(String(r.q || '') + ' ' + String(r.cx.case || ''))) return false;
+    if (sinceKey && String(r.at || '').slice(0, 10) < sinceKey) return false;
+    return true;
+  });
+  // ① 규칙 후보 — kind+shape 묶음
+  const groups = {};
+  const byKind = {};
+  recs.forEach(function (r) {
+    const cid = String(r.cx.caseId || r.cx.case || r.cx.id || '');
+    r.cx.items.forEach(function (it) {
+      if (!it) return;
+      const gk = String(it.kind || '') + '|' + String(it.shape || '');
+      const g = groups[gk] || (groups[gk] = { kind: String(it.kind || ''), shape: String(it.shape || ''), cases: {}, items: [], fixed: 0, confirmed: 0, uncertain: 0, targets: {}, labels: {} });
+      g.cases[cid] = 1; g.items.push(it);
+      if (it.user && it.user.act === '수정') g.fixed++;
+      if (it.user && it.user.act === '확인') g.confirmed++;
+      if (it.sure !== '확실') g.uncertain++;
+      if (it.target) g.targets[it.target] = (g.targets[it.target] || 0) + 1;
+      if (it.label) g.labels[it.label] = (g.labels[it.label] || 0) + 1;
+      // ② 되돌림 경고 — 쟁점 종류별 확인/수정
+      const k = byKind[it.kind || ''] || (byKind[it.kind || ''] = { kind: String(it.kind || ''), items: 0, confirmed: 0, fixed: 0, shapes: {} });
+      k.items++;
+      if (it.user && it.user.act === '확인') k.confirmed++;
+      if (it.user && it.user.act === '수정') { k.fixed++; k.shapes[it.shape || ''] = (k.shapes[it.shape || ''] || 0) + 1; }
+    });
+  });
+  const topKey = function (o) { return Object.keys(o).sort(function (a, b) { return o[b] - o[a]; })[0] || ''; };
+  const ruleCands = [];
+  Object.keys(groups).forEach(function (gk) {
+    const g = groups[gk], nCases = Object.keys(g.cases).length;
+    if (nCases < CX_RULE_MIN_CASES_) return;   // [재점검 8] 3건 미만 제외 — 한 사건에서만 나온 모양은 꿰맞추기 위험 — 제외
+    if (g.fixed > 0) return;                    // 세무사님이 한 번이라도 고친 모양은 규칙으로 굳히지 않음
+    // 모든 쟁점이 공통으로 만족하는 답 방식(교집합)
+    let common = null;
+    g.items.forEach(function (it) {
+      const ps = cxlogAnswerPatterns_(it);
+      common = common == null ? ps : common.filter(function (p) { return ps.indexOf(p) !== -1; });
+    });
+    if (!common || !common.length) return;     // 답이 일관되지 않음
+    if (common.every(function (p) { return /^const:/.test(p); }) && nCases < CX_RULE_MIN_CASES_CONST_) return; // [재점검 8] 고정 답은 더 많은 사건에서만
+    common.sort(function (a, b) { return CX_LOG_PATTERN_ORDER_.indexOf(a.split(':')[0]) - CX_LOG_PATTERN_ORDER_.indexOf(b.split(':')[0]); });
+    ruleCands.push({
+      kind: g.kind, shape: g.shape, target: topKey(g.targets), label: topKey(g.labels),
+      cases: nCases, items: g.items.length, confirmed: g.confirmed, uncertain: g.uncertain,
+      pattern: common[0], rule: cxlogPatternText_(common[0]), alsoMatches: common.slice(1, 4)
+    });
+  });
+  ruleCands.sort(function (a, b) { return b.cases - a.cases || b.items - a.items; });
+  const revertWarn = Object.keys(byKind).map(function (k) {
+    const x = byKind[k], judged = x.confirmed + x.fixed;
+    return { kind: x.kind, items: x.items, confirmed: x.confirmed, fixed: x.fixed, rate: judged ? Math.round(x.fixed / judged * 1000) / 1000 : 0, fixedShapes: Object.keys(x.shapes).sort(function (a, b) { return x.shapes[b] - x.shapes[a]; }).slice(0, 5) };
+  }).filter(function (x) { return x.fixed >= CX_REVERT_MIN_FIX_ && x.rate >= CX_REVERT_MIN_RATE_; })
+    .sort(function (a, b) { return b.rate - a.rate || b.fixed - a.fixed; });
+  // ③ 추이 — 주(월요일 시작)별 AI 호출 수·쟁점 수·비용·사건당 평균
+  const wk = {}, allCases = {};
+  let totCalls = 0, totItems = 0, totUsd = 0;
+  recs.forEach(function (r) {
+    const w = cxlogWeekKey_(r.at) || '날짜없음';
+    const b = wk[w] || (wk[w] = { week: w, calls: 0, items: 0, usd: 0, cases: {} });
+    const cid = String(r.cx.caseId || r.cx.case || r.cx.id || '');
+    b.calls++; b.items += r.cx.items.length; b.usd += (+r.usd || 0); b.cases[cid] = 1; allCases[cid] = 1;
+    totCalls++; totItems += r.cx.items.length; totUsd += (+r.usd || 0);
+  });
+  const r2 = function (n) { return Math.round(n * 100) / 100; };
+  const weeks = Object.keys(wk).sort().slice(-(+opt.weeks || 12)).map(function (k) {
+    const b = wk[k], nc = Object.keys(b.cases).length;
+    return { week: b.week, calls: b.calls, items: b.items, usd: Math.round(b.usd * 1e4) / 1e4, cases: nc, perCaseCalls: nc ? r2(b.calls / nc) : 0, perCaseItems: nc ? r2(b.items / nc) : 0 };
+  });
+  const nAll = Object.keys(allCases).length;
+  let direction = '자료부족';
+  if (weeks.length >= 2) {
+    const last = weeks[weeks.length - 1].perCaseCalls;
+    const prev = weeks.slice(0, -1), prevAvg = prev.reduce(function (s, w) { return s + w.perCaseCalls; }, 0) / prev.length;
+    direction = last < prevAvg - 0.05 ? '감소' : last > prevAvg + 0.05 ? '증가' : '변화없음';
+  }
+  const trend = {
+    weeks: weeks, direction: direction,
+    overall: { calls: totCalls, items: totItems, usd: Math.round(totUsd * 1e4) / 1e4, cases: nAll, perCaseCalls: nAll ? r2(totCalls / nAll) : 0, perCaseItems: nAll ? r2(totItems / nAll) : 0, perCaseUsd: nAll ? Math.round(totUsd / nAll * 1e4) / 1e4 : 0 }
+  };
+  const lines = [];
+  if (!totCalls) lines.push('🤖 사건처리 AI 판단 기록이 아직 없습니다' + (sinceDays ? '(최근 ' + sinceDays + '일).' : '.'));
+  else {
+    lines.push('🤖 사건처리 AI 판단 — 호출 ' + totCalls + '회 · 쟁점 ' + totItems + '개 · 사건 ' + nAll + '건 · $' + trend.overall.usd + ' (사건당 호출 ' + trend.overall.perCaseCalls + '회, 쟁점 ' + trend.overall.perCaseItems + '개)');
+    if (weeks.length >= 2) {
+      const lw = weeks[weeks.length - 1];
+      lines.push('📈 추이 — 이번 주(' + lw.week + '~) 사건당 호출 ' + lw.perCaseCalls + '회 · 지난 주들 대비 ' + direction);
+    }
+    if (!ruleCands.length) lines.push('🧩 규칙 후보 없음 — 서로 다른 사건 ' + CX_RULE_MIN_CASES_ + '건 이상에서 같은 모양에 AI가 같은 방식으로 답한 쟁점이 아직 없습니다.');
+    ruleCands.slice(0, 10).forEach(function (c) {
+      lines.push('🧩 규칙 후보 — ' + (c.label || c.kind) + ' [' + c.kind + ' / ' + c.shape.slice(0, 40) + ']: 사건 ' + c.cases + '건·쟁점 ' + c.items + '개에서 AI가 늘 ' + c.rule + (c.uncertain ? ' (AI 불확실 ' + c.uncertain + '개)' : '') + ' → GAS 규칙으로 옮길 수 있는지 검토');
+    });
+    revertWarn.slice(0, 10).forEach(function (w) {
+      lines.push('↩ 되돌림 경고 — ' + w.kind + ': 세무사님 수정 ' + w.fixed + ' / 확인 ' + w.confirmed + ' (' + Math.round(w.rate * 100) + '%) → AI 지시문·넘기는 사실 점검');
+    });
+  }
+  return { ok: true, lines: lines, ruleCands: ruleCands, revertWarn: revertWarn, trend: trend,
+    criteria: { ruleMinCases: CX_RULE_MIN_CASES_, revertMinFix: CX_REVERT_MIN_FIX_, revertMinRate: CX_REVERT_MIN_RATE_ } };
+}
+// 정기 점검 보고서(토큰 0) — 파일을 읽어 위 순수 함수로 집계. opt: { sinceDays, weeks }
+function cxAiReport_(opt) {
+  opt = opt || {};
+  let arr = [];
+  try { arr = JSON.parse(ai_paidLogFile_().getBlob().getDataAsString('UTF-8') || '[]'); } catch (e) { return { ok: false, error: '유료질문 기록을 읽지 못했습니다: ' + String(e && e.message || e).slice(0, 120), lines: [], ruleCands: [], revertWarn: [], trend: null }; }
+  return cxAiReportFrom_(arr, { sinceDays: +opt.sinceDays || 0, weeks: +opt.weeks || 12 });
+}
+// [2026.10.18 교차검증 2번] CX_LOG_END
 
 function callGemini(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
   const generationConfig = { maxOutputTokens: maxTokens };
@@ -26858,6 +27127,18 @@ function tcSheetText_(ss, keepCols) {
 }
 // [2026.10.18 정밀분석 원인2] 표 계산기(엑셀·구글 시트)를 칸 자리를 지킨 글로 — 통장 표 정리(caseProcTableBankDocs_)용. 메모 글(tc_docText_)과 기억을 따로 둔다.
 //  비싼 변환(엑셀 → 구글 시트)은 통장으로 보이는 파일에서만 한 번 하고 영구 기억에 남긴다
+// [2026.10.18 1번 세션 — 최대 수집] 엑셀을 글로 바꾸는 김에(같은 변환, 추가 비용 없음) 칸 자리를 지킨 표 글도 기억에 남긴다 — 사실 목록(cpfSheetRows_)이
+//  통장이 아닌 표(임대 현황·지분표·분배표 등)도 한 줄 = 사실 한 건으로 읽게. 이미 있으면 그대로 둔다
+function tcSheetGridKeep_(f, ss) {
+  try {
+    if (!f || !f.modified) return;
+    const key = 'ocrgrid1_' + f.id + '_' + f.modified;
+    if (tcOcrStoreGet_(key) !== null) return;
+    const g = String(tcSheetText_(ss, true) || '').slice(0, 400000);
+    tcOcrStorePut_(key, g);
+    if (g.length <= 30000) { try { CacheService.getScriptCache().put(key, g, 21600); } catch (e) {} }
+  } catch (e) {}
+}
 function tcSheetGridText_(f) {
   const key = 'ocrgrid1_' + f.id + '_' + (f.modified || '');
   const cache = CacheService.getScriptCache();
@@ -26924,6 +27205,7 @@ function tc_docText_(f) {
   else if (mt === 'application/vnd.google-apps.spreadsheet') {
     const ss = SpreadsheetApp.openById(f.id);
     text = tcSheetText_(ss);
+    tcSheetGridKeep_(f, ss);
   }
   // [2026.10.18 3번 세션 재점검 6] 구글 프레젠테이션(.gslides 자문보고서 등)·rtf(심판청구서)·html(태그째 읽히던 것)·mmd·url — 예전엔 못 읽거나 태그째
   else if (mt === 'application/vnd.google-apps.presentation') text = SlidesApp.openById(f.id).getSlides().map(function (sl, i) { return '[' + (i + 1) + '쪽] ' + sl.getShapes().map(function (sh) { try { return sh.getText().asString().trim(); } catch (e) { return ''; } }).filter(String).join('\n'); }).join('\n');
@@ -28135,7 +28417,7 @@ function tc_ruleTransferFacts_(body) {
     /* [2026.10.18 3차 수정 K] payDays — 취득일이 아직 안 정해졌을 때 계약서 잔금일(현금 출금 ↔ 비용 서류 대조용) */ payDays: buys.concat(sells).map(function (c) { return String(c.r.잔금일 || '').slice(0, 10); }).filter(Boolean) }); bk.add.forEach(function (e) { expDocs.push(e); }); bk.lines.forEach(function (l) { evidence.push(l); }); }
   // [2026.10.17 통장 사진] 통장 입금·출금 ↔ 계약서 대금·수용 보상금(이의재결 증액분) — 근거 줄, 실제 받은 날이 다르면 아래 양도일 후보로
   var bankInc = { lines: [], trDateCands: [] };
-  if (bankStmts.length) { try { bankInc = tcBankStmtIncome_({ stmts: bankStmts, sells: sells.filter(function (c) { return !c._dupOf; }), buys: buys.filter(function (c) { return !c._dupOf; }), objDetails: objDetails, comps: comps, names: names }); } catch (e) {} bankInc.lines.forEach(function (l) { evidence.push(l); }); }
+  if (bankStmts.length) { try { bankInc = tcBankStmtIncome_({ stmts: bankStmts, sells: sells.filter(function (c) { return !c._dupOf; }), buys: buys.filter(function (c) { return !c._dupOf; }), objDetails: objDetails, comps: comps, names: names, claims: (bk && bk.claims) || {} /* [2026.10.18 교차검증 2번] 비용 대조가 쓴 줄 — 행선에서 다시 판정하지 않음 */ }); } catch (e) {} bankInc.lines.forEach(function (l) { evidence.push(l); }); }
   var expCands = [], costConsumed = {};
   if (txs.length === 1) {
     // [2026.10.17 세무사님 지시] 서류별(정산서 합계·취득세 영수증 합계)이 아니라 세부 항목별 표로 — 겹치거나 빠지지 않게, 항목마다 공제 판단(tcCostLedger_)
@@ -28656,7 +28938,17 @@ function caseProcTimedRun_(body, t0) {
   if (r && typeof r === 'object' && !Array.isArray(r)) r._ms = Date.now() - t0;
   return r;
 }
+// [2026.10.18 교차검증 2번 — 사용자 소통] 단계 결과의 질문을 세액계산기 카드 순서로 묶고 같은 칸 질문은 하나로(cxAskOrder_, CrossCheckAsk.js),
+//  사이드바 답은 한 건씩 쌓는다(cxLogUserAnswer_ — 반복되는 답은 정기 점검에서 규칙 후보로). 단계 자체는 caseProc0_ 그대로
 function caseProc_(body) {
+  const r = caseProc0_(body);
+  try {
+    if (r && Array.isArray(r.items) && typeof cxAskOrder_ === 'function') r.items = cxAskOrder_(r.items, (r.case && r.case.세목) || '');
+    if (body && body.step === 'apply' && typeof cxAnswerRecord_ === 'function' && typeof cxLogUserAnswer_ === 'function') { const c0 = cxReadCase_(String(body.caseId || '')); if (c0) cxLogUserAnswer_(cxAnswerRecord_(c0, body, r)); }
+  } catch (e) {}
+  return r;
+}
+function caseProc0_(body) {
   const caseId = String(body && body.caseId || '').trim();
   if (!caseId) return { error: '사건이 필요합니다.' };
   if (body.step === 'save') return caseProcSave_(caseId, body);
@@ -30572,10 +30864,12 @@ function caseProcEvidence_(c, body) {
 
 var CASEPROC_LAST_RF_ = null;
 // [2026.10.15] 세목별로 세액 계산 입력이 되는 서류 종류(docParseText_ type) — 이 밖의 종류는 ⚠확인필요를 질문으로 올리지 않는다(서류 목록·증빙 대조는 그대로)
+// [2026.10.18 교차검증 2번] 1번 세션 새 서류 — regdone(등기완료통지서: 등기 접수일 = 취득·양도·증여 시기 근거, 소득세법 §98·상증령 §24)은 세 세목 모두,
+//  stamp(수입인지)·estimate(견적서)는 양도 필요경비, finassoc(금융협회 조회 결과)는 상속 금융재산. poa(위임장)는 계산과 무관해 넣지 않음
 const CASEPROC_RELEVANT_TYPES_ = {
-  gift: ['giftcontract', 'banktx', 'appraisal', 'registry', 'family', 'pubprice', 'realprice', 'balance', 'debtcert', 'rent', 'lease', 'leasereport', 'leaselist', 'bldledger', 'landledger', 'contract', 'loan'], // loan: 차용증(차입인지 증여인지)
-  inheritance: ['registry', 'appraisal', 'family', 'death', 'inhdivision', 'inhquery', 'funeralbill', 'funerallist', 'nichecontract', 'medbill', 'balance', 'debtcert', 'insurance', 'pubprice', 'realprice', 'rent', 'lease', 'leasereport', 'leaselist', 'bldledger', 'landledger', 'carreg', 'cashreceipt', 'cardreceipt', 'giftcontract', 'banktx', 'loan', 'propquery', 'interest', 'remit', 'settlement', 'simplereceipt', 'ownchange', 'heiragree'], // [2026.10.18 3차 수정 N] ownchange: 협의분할 지분표 · heiragree: 상속인 약정서 // [2026.10.18 3차 M] remit·settlement·simplereceipt: 대출 사용처 표(송금증·합의서·간이영수증) — 쓰였는데 "무관한 종류"로 표시되던 것 // interest: 예금 해약 이자 · medbill: 진료비 계산서·영수증 · loan: 대여금 채권·채무계산서(2026.10.17) // loan: 대여금 채권·채무, propquery: 재산조회 회보서
-  transfer: ['workcontract', 'contract', 'appraisal', 'dealreport', 'brokerdesc','registry', 'acqtax', 'lawyerfee', 'cashreceipt', 'cardreceipt', 'taxinvoice', 'receipt', 'pubprice', 'realprice', 'bldledger', 'landledger', 'resident', 'family', 'farmbiz', 'farmconfirm', 'farmledger', 'giftcontract', 'rent', 'lease', 'leasehist', 'expropcert', 'entryexit', 'residencecard', 'installment', 'simplereceipt'] // installment: 분양대금 납부확인서(정밀분석 14) · leasehist: 임대주택 요건(증액 5%), expropcert: 수용사실, entryexit·residencecard: 국외자산 5년 거주(§118의2) 확인서
+  gift: ['regdone', 'giftcontract', 'banktx', 'appraisal', 'registry', 'family', 'pubprice', 'realprice', 'balance', 'debtcert', 'rent', 'lease', 'leasereport', 'leaselist', 'bldledger', 'landledger', 'contract', 'loan'], // loan: 차용증(차입인지 증여인지)
+  inheritance: ['regdone', 'finassoc', 'registry', 'appraisal', 'family', 'death', 'inhdivision', 'inhquery', 'funeralbill', 'funerallist', 'nichecontract', 'medbill', 'balance', 'debtcert', 'insurance', 'pubprice', 'realprice', 'rent', 'lease', 'leasereport', 'leaselist', 'bldledger', 'landledger', 'carreg', 'cashreceipt', 'cardreceipt', 'giftcontract', 'banktx', 'loan', 'propquery', 'interest', 'remit', 'settlement', 'simplereceipt', 'ownchange', 'heiragree'], // [2026.10.18 3차 수정 N] ownchange: 협의분할 지분표 · heiragree: 상속인 약정서 // [2026.10.18 3차 M] remit·settlement·simplereceipt: 대출 사용처 표(송금증·합의서·간이영수증) — 쓰였는데 "무관한 종류"로 표시되던 것 // interest: 예금 해약 이자 · medbill: 진료비 계산서·영수증 · loan: 대여금 채권·채무계산서(2026.10.17) // loan: 대여금 채권·채무, propquery: 재산조회 회보서
+  transfer: ['regdone', 'stamp', 'estimate', 'workcontract', 'contract', 'appraisal', 'dealreport', 'brokerdesc','registry', 'acqtax', 'lawyerfee', 'cashreceipt', 'cardreceipt', 'taxinvoice', 'receipt', 'pubprice', 'realprice', 'bldledger', 'landledger', 'resident', 'family', 'farmbiz', 'farmconfirm', 'farmledger', 'giftcontract', 'rent', 'lease', 'leasehist', 'expropcert', 'entryexit', 'residencecard', 'installment', 'simplereceipt'] // installment: 분양대금 납부확인서(정밀분석 14) · leasehist: 임대주택 요건(증액 5%), expropcert: 수용사실, entryexit·residencecard: 국외자산 5년 거주(§118의2) 확인서
 };
 // 3) 처리개요 — 빈 칸은 [확인]에서 값을 받아 채우고, 양도는 서류 규칙 정리(검산된 값)로 물건목록의 빈 칸을 채운다. 기준일은 증빙으로 확정.
 const CASEPROC_OV_REQUIRED_ = {
@@ -31044,6 +31338,8 @@ function caseProcOverview_(c) {
   try { caseProcMemoCross_(c, r); } catch (e) {}
   try { caseProcNoteUsed_(c, r); } catch (e) {} // [2026.10.15 1단계 ②] 사실장부 "쓰인 곳"
   try { caseProcCleanCands_(r); } catch (e) {}
+  // [2026.10.18 교차검증 2번] 질문 중 "어느 값인가"를 묻는 것 — GAS 객관 규칙(같은 값·검산·법령 정의)으로 풀고, 남은 것은 AI에게 물을 쟁점 목록으로(CrossCheck.js)
+  try { if (r && r.ok && typeof cxResolve_ === 'function') cxResolve_(c, r); } catch (e) { if (r && r.lines) r.lines.push('⚠ 교차검증 중 오류: ' + (e && e.message || e)); }
   return r;
 }
 // [2026.10.16 후보 1번 점검] 이름·소재지 질문의 후보 중 그 칸 값이 될 수 없는 문장 조각을 뺀다 —
@@ -31093,6 +31389,9 @@ function caseProcOverview0_(c) {
   const items = [], lines = [];
   const ov = JSON.parse(JSON.stringify(c.사건개요 || {}));
   // [2026.10.17 재설계] 필수 칸 질문은 세목마다 한 곳에서 — 양도는 세액계산기 칸 질문(trcQuestions_), 증여·상속은 서류 사실과 함께(caseProcGiftInhFacts_)
+  // [2026.10.18 교차검증 2번] 상속은 개시일(기준일)을 사건분류보다 먼저 정한다 — 통장 사전증여 후보(caseProcInhBankRoute_)는 개시일이 있어야 가려지는데,
+  //  예전 순서(사건분류 → 기준일)에선 첫 실행에 개시일이 비어 사전증여 질문을 못 본 채 '일반'으로 확정했다(신수호: 사전증여 질문 2개가 열린 채 '일반')
+  if (c.세목 === 'inheritance') caseProcBaseDateCheck_(c, ov, lines, items);
   if (CASEPROC_TAX_LABEL_[c.세목] && !String(ov.사건분류 || '').trim() && c.세목 !== 'transfer') { // [2026.10.17] 양도는 계산기 순서(특례는 맨 뒤)로 trcQuestions_에서
     let tpl = WORK_EVIDENCE_TEMPLATES_[c.세목] && WORK_EVIDENCE_TEMPLATES_[c.세목].사건분류 ? Object.keys(WORK_EVIDENCE_TEMPLATES_[c.세목].사건분류) : [];
     let ruled = '';
@@ -31115,7 +31414,24 @@ function caseProcOverview0_(c) {
         const types = all.map(function (x) { return x.p.type; });
         const support = { 가업: /사업자\s*등록|주주\s*명부|정관|재무제표/, 영농: /농지\s*원부|자경|경영체/, 동거주택: /동거/, 사전증여: /증여세\s*신고|증여\s*계약/, 유증: /유언|사인\s*증여/ };
         const backed = tpl.filter(function (k) { const key = Object.keys(support).filter(function (w) { return k.indexOf(w) !== -1 || (w === '유증' && /유증/.test(k)); })[0]; return !key || support[key].test(names) || (key === '사전증여' && types.indexOf('giftcontract') !== -1); });
-        if (!backed.length && f.heirs.length) {
+        // [2026.10.18 교차검증 2번] 판단 칸은 물린 사실에 열린 질문·후보가 있으면 자동으로 정하지 않는다 — 사전증여 후보(통장 이체 질문 ih:pg_…·해명 서면 쟁점,
+        //  bank.asks)가 열려 있거나 이미 합산으로 답한 사전증여(priorGifts)가 있는데 "특례 서류 없음"만 보고 '일반'으로 확정하던 모순(김창호 — 사전증여 질문이 열린 채 '일반').
+        //  자동 확정 대신 기존 사건분류 질문(선택지)을 그대로 내고, 질문 글에 근거(열린 질문 금액·출처) 한 줄을 붙인다
+        const wonI = function (n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; };
+        const openPg = (((f.bank || {}).asks) || []).filter(function (a) { return /^pg_/.test(String(a.key || '')); }).map(function (a) {
+          const top = (a.cands || []).filter(function (q) { return Number(q.v) > 0; })[0];
+          return a.name + ' ' + (top ? wonI(top.v) + '(' + String(top.src || '').slice(0, 50) + ')' : '금액 미정');
+        });
+        const donePg = (f.priorGifts || []).filter(function (g) { return Number(g.v) > 0; }).map(function (g) { return g.name + ' ' + wonI(g.v) + '(' + String(g.src || '세무사님 답').slice(0, 40) + ')'; });
+        //  개시일이 아직 없으면 통장 사전증여 후보를 가리지도 못했다 — 통장 거래내역이 폴더에 있으면 이것도 열린 사실로 본다(못 본 사실로 확정하지 않음)
+        const bankUnseen = !String(c.기준일 || '').trim() && types.indexOf('banktx') !== -1;
+        const openWhy = (openPg.length ? ' 열린 질문: 사전증여 후보 ' + openPg.join(' / ') + '.' : '') + (donePg.length ? ' 답한 사전증여 합산: ' + donePg.join(' / ') + '.' : '')
+          + (bankUnseen ? ' 열린 질문: 상속개시일이 정해지지 않아 통장 거래의 사전증여 후보를 아직 가리지 못함.' : '');
+        if (openWhy) ruled += openWhy + ' — 사전증여 쟁점이 남아 있어 자동으로 "일반"으로 정하지 않았습니다.';
+        // [2026.10.18 재점검 18] 사전증여만이 아니라 특례 전반 — 사건 사실에 특례를 가리키는 사실(사업자·농지 지목·피상속인과 같은 주소의 상속인)이 있으면 자동 확정하지 않는다
+        let hintWhy = '';
+        try { const hs = typeof cxSpecialHints_ === 'function' ? cxSpecialHints_(c, f) : []; if (hs.length) { hintWhy = ' 특례를 가리키는 사실: ' + hs.join(' / ') + '.'; ruled += hintWhy + ' — 자동으로 "일반"으로 정하지 않았습니다.'; } } catch (e) {}
+        if (!backed.length && f.heirs.length && !openWhy && !hintWhy) {
           ov.사건분류 = '일반';
           const up = work_updateCase({ id: c.id, 사건개요: ov, 기대수정일: c.수정일 });
           if (up && up.success !== false) {
@@ -31128,10 +31444,9 @@ function caseProcOverview0_(c) {
       } catch (e) {}
     }
     if (ruled !== null) items.push(caseProcItem_('ov:사건분류', 'judge', '사건분류(비과세·중과·감면 등 어느 경우인지)가 정해지지 않았습니다.' + ruled,
-      { mode: 'options', target: 'ov:사건분류', options: tpl.map(function (k) { return { label: k, value: k }; }).concat([{ label: '일반(해당 특례 없음)', value: '일반' }]),
-        ai: '이 사건의 사건분류(비과세·중과·감면·특례 중 어느 경우인지)를 사건자료로 판단하고, 판단에 부족한 사실·서류를 알려줘.' }));
+      { mode: 'options', target: 'ov:사건분류', options: tpl.map(function (k) { return { label: k, value: k }; }).concat([{ label: '일반(해당 특례 없음)', value: '일반' }]) })); // [2026.10.18 교차검증 2번] ai(사용자가 AI를 부를지 고르는 버튼) 속성 뺌 — 세무사님 지시
   }
-  if (c.세목 === 'gift' || c.세목 === 'inheritance') caseProcBaseDateCheck_(c, ov, lines, items);
+  if (c.세목 === 'gift') caseProcBaseDateCheck_(c, ov, lines, items); // 상속은 위(사건분류 앞)에서 — [2026.10.18 교차검증 2번]
   if (c.세목 !== 'transfer') {
     let cc = c;
     if (c.세목 === 'gift' || c.세목 === 'inheritance') { cc = caseProcGiftInhFacts_(c, lines, items) || c; try { cc = caseProcSyncTaxpayer_(cc, lines) || cc; } catch (e) { lines.push('⚠ 납세자·사건명 맞추기 실패: ' + (e && e.message || e)); } }
@@ -33132,6 +33447,22 @@ function caseProcGiftClass_(c, lines, items) {
   let debt = !!saved.cashDebt;
   if (!saved.cashGift) { const cache = CacheService.getScriptCache(); caseProcFiles_(c).forEach(function (f) { if (!/pdf|^image\//.test(String(f.mimeType || ''))) return; const sm = caseProcParsed_(f, cache, false); if (sm && (sm.debt || (sm.t === 'registry' && sm.lien))) debt = true; }); }
   if (special || debt) return c;
+  // [2026.10.18 교차검증 2번] 판단 칸은 물린 사실에 열린 질문·후보가 있으면 자동으로 정하지 않는다 — 10년 합산(재차증여)·인수채무(부담부증여) 칸에
+  //  서류·상담 메모 근거가 있는 열린 질문(후보 금액이 있거나 메모 근거 질문)이 남아 있으면 '일반'으로 확정하지 않고 사건분류 질문에 근거 한 줄을 붙인다.
+  //  근거 없는 일반 10년 합산 질문(「있나요?」)은 예전처럼 따로 묻고 막지 않는다
+  const openG = items.filter(function (it) {
+    const a = it.ask || {}, t = String(a.target || '');
+    if (t !== 'ov:giftPriorAmount' && t !== 'ov:giftDebtAssumed') return false;
+    return /^gift:memoprior:/.test(it.id) || (Array.isArray(a.cands) && a.cands.some(function (q) { return Number(String(q.v).replace(/[^\d]/g, '')) > 0; }));
+  }).map(function (it) {
+    const a = it.ask || {}, top = Array.isArray(a.cands) ? a.cands.filter(function (q) { return Number(String(q.v).replace(/[^\d]/g, '')) > 0; })[0] : null;
+    return (a.target === 'ov:giftDebtAssumed' ? '인수채무 후보 ' : '10년 합산 후보 ') + (top ? Number(String(top.v).replace(/[^\d]/g, '')).toLocaleString('ko-KR') + '원(' + String(top.src || '').slice(0, 50) + ')' : '(' + String(it.text || '').slice(0, 50) + ')');
+  });
+  if (openG.length) {
+    items[ix] = Object.assign({}, items[ix], { text: String(items[ix].text || '') + ' 열린 질문: ' + openG.join(' / ') + ' — 이 질문이 남아 있어 자동으로 정하지 않았습니다.' });
+    lines.push('사건분류: 열린 질문(' + openG.join(' / ') + ')이 있어 자동으로 정하지 않음');
+    return c;
+  }
   const cls = /2촌\s*이상/.test(String(ov.giftRelation)) && /^직계존속/.test(String(ov.giftRelation)) ? '세대생략증여(할증)' : '일반';
   ov.사건분류 = cls;
   const up = work_updateCase({ id: c.id, 사건개요: ov, 기대수정일: c.수정일 });
@@ -33252,7 +33583,7 @@ function caseProcInhBankRoute_(banks, o) {
   const minD = all.reduce(function (m, g) { return !m || g.날짜 < m ? g.날짜 : m; }, '');
   res.notes.push('통장 거래 행선(§13·§15 — 거래 한 줄씩): 피상속인 계좌 ' + accts.length + '개 · 거래 ' + all.length + '줄' + (dupN ? '(같은 거래가 다른 파일·사본에 또 나온 ' + dupN + '줄은 한 번만)' : '') + (internalN ? ' · 피상속인 계좌끼리 옮긴 돈 ' + internalN + '건은 인출 아님(내돈입금)' : '') + ' — ' + accts.map(function (a) { return (a.label || a.org || '계좌') + '[' + a.files.join(' = ') + ']'; }).join(' / '));
   // ③ 사전증여 후보 — 받은 사람마다
-  const pg = {}, pgOrder = [];
+  const pg = {}, pgOrder = [], pgState = {}, pgV = {}; // pgState: 받은 사람 → 'gift'(증여로 답함)·'no'(증여 아님으로 답함)·'ask'(질문 열림)
   all.forEach(function (g) {
     if (g.phase !== 'pre' || g.self) return;
     let name = '', heir = null;
@@ -33273,8 +33604,11 @@ function caseProcInhBankRoute_(banks, o) {
     const fl = P.out.map(function (g) { return g.file; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
     const detail = (big.length ? big : P.out.slice().sort(function (a, b) { return b.금액 - a.금액; }).slice(0, 4)).slice(0, 8).map(function (g) { return g.날짜 + ' ' + won(g.금액) + (g.gift ? '(메모 "증여")' : ''); }).join(', ');
     const ch = choices[key];
+    // [2026.10.18 교차검증 2번] 한 돈 한 판정 — 사전증여 질문에 걸린(또는 답한) 이체 줄에 받은 사람을 표시해 두고, 아래 §15에서 같은 줄을 또 "용도 불분명 인출"로 세지 않게 한다
+    if (ch) { P.out.forEach(function (g) { g.pgName = name; }); pgState[name] = Number(ch.v) > 0 ? 'gift' : 'no'; pgV[name] = Number(ch.v) || 0; }
     if (ch) { if (Number(ch.v) > 0) res.priorGifts.push({ key: key, name: name, heir: !!P.heir, relation: P.heir ? P.heir.relation || '' : '', v: Number(ch.v), src: ch.src || '', files: fl }); res.notes.push('사전증여 후보 ' + who + ' — 세무사님 답 ' + won(ch.v) + (Number(ch.v) > 0 ? ' 합산' : ' (증여 아님)')); return; }
     if (tot < 10000000 && !P.out.some(function (g) { return g.gift || g.금액 >= 5000000; })) { res.notes.push('상속인·가족 앞 소액 이체 ' + who + ' ' + P.out.length + '건 합 ' + won(tot) + '(' + fl.join(', ') + ') — 생활비·용돈 등이면 증여 아님(참고)'); return; }
+    P.out.forEach(function (g) { g.pgName = name; }); pgState[name] = 'ask'; // [2026.10.18 교차검증 2번] 이 사람 앞 이체는 사전증여 질문 하나로만 판정
     const cands = [{ v: String(tot), src: '이체 ' + P.out.length + '건 모두 사전증여(' + P.out[0].날짜 + '~' + P.out[P.out.length - 1].날짜 + ')' }];
     if (big.length && bigS !== tot) cands.push({ v: String(bigS), src: '1천만원 이상 ' + big.length + '건만(나머지는 생활비·용돈 등)' });
     if (back > 0 && tot - back > 0) cands.push({ v: String(tot - back), src: '받은 돈 ' + P.back.length + '건 ' + won(back) + '을 뺀 순이체(빌려준 돈을 돌려받았다는 주장일 때 — 차용증·이자 기록 필요)' });
@@ -33286,8 +33620,17 @@ function caseProcInhBankRoute_(banks, o) {
   const pre = all.filter(function (g) { return g.phase === 'pre'; });
   const win = function (from) {
     const outs = pre.filter(function (g) { return g.입금 === false && g.날짜 > from; });
-    return { amt: sum(outs), self: sum(outs.filter(function (g) { return g.self; })), use: sum(outs.filter(function (g) { return g.use && !g.self; })), useN: outs.filter(function (g) { return g.use && !g.self; }).length,
-      heir: sum(outs.filter(function (g) { return g.heir; })), n: outs.length, top: outs.filter(function (g) { return !g.self; }).sort(function (p, q) { return q.금액 - p.금액; }).slice(0, 6).map(plain), unk: pre.filter(function (g) { return g.입금 === null && g.날짜 > from; }).length, inn: sum(pre.filter(function (g) { return g.입금 === true && g.날짜 > from; })) };
+    // [2026.10.18 교차검증 2번] 사전증여 질문이 판정하는 줄(pgName)은 §15 소명 후보(용도 보이는 출금·상속인 앞 이체)에서 뺀다 —
+    //  증여로 답한 몫(gift, 받은 사람마다 답한 금액과 이 기간 이체 합 중 작은 것)은 소명된 것으로 자동 반영, 질문이 열린 몫(pend)은 그 답을 기다린다
+    const judged = function (g) { return !!(g.pgName && pgState[g.pgName] && pgState[g.pgName] !== 'no'); };
+    const useRows = outs.filter(function (g) { return g.use && !g.self && !judged(g); });
+    let gift = 0, pend = 0;
+    Object.keys(pgState).forEach(function (nmk) {
+      const s0 = sum(outs.filter(function (g) { return !g.self && g.pgName === nmk; }));
+      if (pgState[nmk] === 'gift') gift += Math.min(pgV[nmk], s0); else if (pgState[nmk] === 'ask') pend += s0;
+    });
+    return { amt: sum(outs), self: sum(outs.filter(function (g) { return g.self; })), use: sum(useRows), useN: useRows.length, gift: gift, pend: pend,
+      heir: sum(outs.filter(function (g) { return g.heir && !judged(g); })), n: outs.length, top: outs.filter(function (g) { return !g.self; }).sort(function (p, q) { return q.금액 - p.금액; }).slice(0, 6).map(plain), unk: pre.filter(function (g) { return g.입금 === null && g.날짜 > from; }).length, inn: sum(pre.filter(function (g) { return g.입금 === true && g.날짜 > from; })) };
   };
   const W1 = win(y1), W2 = win(y2);
   W1.net = W1.amt - W1.self; W2.net = W2.amt - W2.self;
@@ -33303,13 +33646,15 @@ function caseProcInhBankRoute_(banks, o) {
     [[over1, 'd15_1', W1, '1년'], [over2, 'd15_2', W2, '2년']].forEach(function (q) {
       if (!q[0]) return;
       const ch = choices[q[1]], W = q[2];
-      if (ch) { item[q[1] === 'd15_1' ? 'oneYearExplained' : 'twoYearExplained'] = Number(ch.v); return; }
+      if (ch) { item[q[1] === 'd15_1' ? 'oneYearExplained' : 'twoYearExplained'] = Number(ch.v) + W.gift; return; } // [2026.10.18 교차검증 2번] + 사전증여로 답한 이체(같은 돈을 §15로 또 세지 않음)
       done = false;
       const cands = [];
       if (W.use) cands.push({ v: String(W.use), src: '적요로 용도가 보이는 출금 ' + W.useN + '건(카드·공과금·병원·보험료·대출 상환 등)' });
       if (W.heir) cands.push({ v: String(W.use + W.heir), src: '위 + 상속인 앞 이체 ' + won(W.heir) + '(사전증여로 합산하면 용도 확인)' });
       cands.push({ v: '0', src: '소명 자료 없음 — 순인출 전부 용도 불분명(계산기가 문턱(순인출 20%·2억 중 작은 것)을 넘는 부분만 추정)' });
-      res.d15Ask.push({ key: q[1], cands: cands, text: head15 + ' — ' + q[3] + ' 순인출 ' + won(W.net) + '이 기준을 넘습니다. 큰 출금: ' + W.top.map(function (g) { return g.날짜 + ' ' + won(g.금액) + ' ' + String(g.who).replace(/\s+/g, ' ').trim().slice(0, 14) + '(' + g.file + ')'; }).join(' / ') + '. 용도가 객관적으로 확인된(소명된) 금액은?' });
+      const pgTxt = (W.gift ? ' · 사전증여로 합산한 이체 ' + won(W.gift) + '은 소명된 것으로 자동 반영(같은 돈을 §15 인출로 또 세지 않음 — 아래 금액에 넣지 마세요)' : '')
+        + (W.pend ? ' · 사전증여 질문에 걸린 이체 ' + won(W.pend) + '은 그 질문의 답으로 한 번만 판정(증여로 답한 몫은 여기 소명액에 자동으로 더함 — 아래 금액에 넣지 마세요)' : '');
+      res.d15Ask.push({ key: q[1], cands: cands, text: head15 + ' — ' + q[3] + ' 순인출 ' + won(W.net) + '이 기준을 넘습니다. 큰 출금: ' + W.top.map(function (g) { return g.날짜 + ' ' + won(g.금액) + ' ' + String(g.who).replace(/\s+/g, ' ').trim().slice(0, 14) + '(' + g.file + ')'; }).join(' / ') + pgTxt + '. 용도가 객관적으로 확인된(소명된) 금액은?' });
     });
     if (done) res.disposal.push(item);
     res.notes.push(head15);
@@ -35732,6 +36077,13 @@ function caseProcDraft_(c) {
         .replace(/\{([가-힣A-Za-z0-9_]+)\}/g, function (_, k) { return (vars[k] != null && String(vars[k]).trim()) ? String(vars[k]) : '⚠[확인필요: ' + k + ']'; }), '');
     });
   }
+  // [2026.10.18 교차검증 2번] AI 판단 값은 서류 값·세무사님 확인 값과 섞지 않고 따로 모은다(세무사님 원칙 4 — 무엇을 AI가 정했는지 알 수 있게)
+  let aiList = []; try { aiList = typeof cxAiJudgedList_ === 'function' ? cxAiJudgedList_(c.id) : []; } catch (e) { aiList = []; }
+  if (aiList.length) {
+    L.push('## 🤖 AI 판단 값(' + aiList.length + '개) — 서류만으로 안 정해져 AI가 정한 값', '', '| 칸 | 값 | 모델 | 근거 | 세무사님 |', '|---|---|---|---|---|');
+    aiList.forEach(function (a) { L.push('| ' + [a.칸, a.값, a.모델, String(a.근거).replace(/\|/g, '/').slice(0, 200), a.세무사님].join(' | ') + ' |'); });
+    L.push('');
+  }
   const remain = (saved.remaining || []).filter(function (it) { const d = dec[it.id] && dec[it.id].d; return d !== '무시' && d !== 'done'; });
   L.push('## ' + (paras.length ? '4' : '3') + '. 추가로 확인할 사항', '');
   if (remain.length) remain.forEach(function (it) { const d = dec[it.id] && dec[it.id].d; L.push('- ' + (d === '보류' ? '(보류) ' : d === '예정' ? '(받을 예정) ' : '') + it.text + (dec[it.id] && dec[it.id].note ? ' — ' + dec[it.id].note : '')); });
@@ -36106,6 +36458,18 @@ function buildImprovementReport_() {
       report.guide.push('answerKey(🧪 정답지 점검): 실사건 정답지와 사건처리(서버 단계+화면 엔진) 결과의 불일치. 최우선 — 업무관리자/_정답지점검결과.json의 rows(칸·정답·도구값·출처)와 extra(정답지에 없는 질문)를 보고 서류 규칙·사건처리 단계를 고친다. 고객 정보(이름·주소·금액)는 PR·커밋에 쓰지 말 것(일반화).');
     }
   } catch (e) { report.answerKeyError = String(e && e.message || e).slice(0, 200); }
+  // [2026.10.18 교차검증 2번] 사건처리 AI 판단 점검(토큰 0) — GAS 규칙으로 옮길 후보·세무사님이 자주 고친 쟁점 종류·사건당 AI 호출 추이
+  try {
+    var cxr = cxAiReport_({ weeks: 12 });
+    if (cxr && cxr.ok) {
+      report.cxAi = { lines: cxr.lines, ruleCands: cxr.ruleCands.slice(0, 30), revertWarn: cxr.revertWarn.slice(0, 20), trend: cxr.trend, criteria: cxr.criteria };
+      cxr.ruleCands.slice(0, 5).forEach(function (c) { headline.push('🧩 사건처리 AI 규칙 후보 — ' + (c.label || c.kind) + ': 사건 ' + c.cases + '건에서 AI가 늘 ' + c.rule); });
+      cxr.revertWarn.slice(0, 5).forEach(function (w) { headline.push('↩ 사건처리 AI 되돌림 경고 — ' + w.kind + ': 세무사님 수정 ' + w.fixed + '건(' + Math.round(w.rate * 100) + '%)'); });
+      if (cxr.trend && cxr.trend.direction === '증가') headline.push('📈 사건당 AI 호출이 늘었음 — ' + (cxr.lines.filter(function (l) { return /^📈/.test(l); })[0] || ''));
+      report.candidateCount += cxr.ruleCands.length + cxr.revertWarn.length;
+      report.guide.push('cxAi(🧩·↩ 사건처리 AI 판단): ruleCands는 서로 다른 사건 2건 이상에서 같은 쟁점종류(kind)+입력모양(shape)에 AI(LIGHT_MODEL)가 늘 같은 방식(pattern: src=같은 출처 종류 후보 / max·min=숫자 후보 중 큰·작은 값 / pos=같은 자리 후보 / const=같은 값)으로 답했고 세무사님이 고친 적 없는 묶음이다. 그 쟁점을 AI에 묻기 전에 GAS 규칙으로 먼저 풀도록 사건처리 규칙에 옮기는 PR(규칙이 답하면 AI 호출을 건너뜀) — 단 pattern이 const이거나 uncertain>0이면 법령·서류 근거를 먼저 확인하고, 근거가 없으면 건너뛰고 이유만 적는다. revertWarn은 세무사님이 AI 답을 자주 고친 쟁점 종류 — fixedShapes 모양의 AI 지시문·넘기는 사실(facts)을 고치거나 그 쟁점은 AI 대신 세무사님께 묻도록 바꾼다. trend는 주별 사건당 호출 수(줄어드는 게 목표). 고객 정보는 PR에 쓰지 말 것.');
+    }
+  } catch (e) { report.cxAiError = String(e && e.message || e).slice(0, 200); }
   // [2026.10.13] 개발자↔사용자 소통·AI 자문단(Federation.js, 토큰 0) — 요청 번호·상태, 기능 부족 신고, 개발자 질문 답, AI 자문 공통 제안
   try {
     var st = commRequestsLoad_(), byAt = {};
@@ -40762,7 +41126,7 @@ function docParseText_(text) {
   }
   // [2026.10.18 3차 수정 M] 다른 규칙이 하나도 못 잡은 서류만 — 합의서(손해배상·화해)·간이영수증(공급자 영수증 서식). 예전엔 "종류 미정"으로 버려져
   //  대출 사용처 판단 재료(노영환: 합의금 공동 310,000,000·구순애 단독 60,000,000, 철거·수리 간이영수증)가 어디에도 안 갔다
-  if (!r) { var ssp = docSettlementParse_(text) || docSimpleReceiptParse_(text); if (ssp) return ssp; }
+  if (!r) { var ssp = docSettlementParse_(text) || docSimpleReceiptParse_(text) || docNewKinds2Parse_(text); if (ssp) return ssp; } // [2026.10.18 1번 세션] 등기완료통지서·수입인지·견적서·위임장·금융협회 조회 결과
   if (!r) {
     var why = reg.사유 ? reg.사유 : (String(text || '').replace(/\s/g, '').length < 30 ? '읽을 글자가 없음(사진·스캔 품질 확인)' : '자동 정리하는 서류 종류가 아님');
     return { type: '', label: '', result: null, md: '자동 정리 대상이 아닙니다 — ' + why + '. (정리 가능: 등기부, 가족관계증명서, 주민등록 등본·초본, 사업자등록증, 임대사업자 등록증, 홈택스 신고서 접수증, 국세 납부서, 잔고·잔액증명서, 공시가격, 취득세 납부확인서, 법무사 영수증·정산서, 카드·현금영수증·세금계산서, 원천징수영수증·지급명세서, 건축물대장·토지대장·임야대장, 매매계약서·신고필증·중개대상물 확인설명서, 임대차계약서·확정일자, 소득금액증명원·농업경영체 등록확인서·농지대장, 상속인 금융거래조회 결과·사망진단서·보험증권·자동차등록증·부채증명원, 통장 거래내역 엑셀·CSV)' };
@@ -45324,6 +45688,7 @@ function trcApplyAns_(S, ans) {
   };
   Object.keys(ans || {}).forEach(function (path) {
     const x = ans[path]; if (!x || /^(costs|taxfee|split|compSplit|사건분류)$/.test(path) || /^oa\.|^a\d+\.(isOverseasAsset|oaResident5yr)$/.test(path)) return; // 국외자산 판단·환율은 trcOverseas_가 쓴다
+    if (/^(교차검증|🤖)/.test(String(x.src || ''))) return; // [2026.10.18 재점검 7] 예전에 교차검증·AI가 답 저장소에 넣은 값은 답이 아님 — 매번 서류로 다시 판정(cxInlineTransfer_)
     if (setP(path, x.v)) S.src[path] = x.src;
   });
   const grp = S.facts && S.facts.splitGroup;
@@ -45636,7 +46001,7 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
     if (co.cut.length) cf.push('서류로 해당 없어 뺀 선택지: ' + co.cut.join(', '));
     tpl = co.options;
     q('ov:사건분류', 'judge', '사건분류(비과세·중과·감면 등 어느 경우인지)를 정해 주세요 — 고른 것은 계산기 자산 카드의 해당 체크(1세대1주택·비사업용토지·미등기 등)와 양도인 카드 주택 수로 들어가 세율·공제가 달라집니다. 서류에서 읽은 관련 사실을 아래에 적었습니다(보유 주택 수·세대 구성은 서류만으로 다 알 수 없어 정하지 않았습니다).',
-      { mode: 'options', target: 'ov:사건분류', label: '사건분류', options: tpl.map(function (k) { return { label: k + (co.fit[k] ? ' — 서류: ' + co.fit[k] : ''), value: k }; }).concat([{ label: '일반(해당 특례 없음)', value: '일반' }]), ai: '이 사건의 사건분류(비과세·중과·감면·특례 중 어느 경우인지)를 사건자료로 판단하고, 판단에 부족한 사실·서류를 알려줘.' }, cf);
+      { mode: 'options', target: 'ov:사건분류', label: '사건분류', options: tpl.map(function (k) { return { label: k + (co.fit[k] ? ' — 서류: ' + co.fit[k] : ''), value: k }; }).concat([{ label: '일반(해당 특례 없음)', value: '일반' }]) }, cf); // [2026.10.18 교차검증 2번] "AI에게 근거 듣기" 버튼(ai) 없앰 — AI를 부를지 사용자에게 고르게 하지 않는다(세무사님 지시), 판단은 교차검증 쟁점(cxResolve_)으로
   }
 }
 // 취득당시 기준시가 질문 — 증빙의 공시가격·개별공시지가·건물기준시가 출력물을 근거로(§164⑦: 공동주택가격 최초 공시 전 취득분)
@@ -45739,6 +46104,9 @@ function trcOverview_(c, ov, rf, lines, items) {
   }
   const ryr = trcResYears_(c, S); S.facts.resYears = ryr.y; S.facts.resRows = ryr.rows; // 1세대1주택 거주연수(초본)
   try { trcOverseas_(c, S, ans, rf, lines, items); } catch (e) { lines.push('⚠ 국외자산 서류 정리 오류: ' + (e && e.message || e)); } // 국외자산이면 계산기 국외자산 카드로
+  // [2026.10.18 재점검 3·7] 교차검증을 계산기 입력이 만들어지는 자리에서 — 서류 규칙이 서류 순서로 고른 값을 사건 사실 전체 맞대기 판정으로 바꾸고,
+  //  안 갈리면 후보 질문으로(CrossCheckBind.js cxInlineTransfer_). 매번 서류로 다시 정하므로 답(trAns)으로 굳지 않는다 — 세무사님 답만 아래에서 덮는다
+  try { if (typeof cxInlineTransfer_ === 'function') cxInlineTransfer_(c, S, lines); } catch (e) { lines.push('⚠ 교차검증(계산기 입력) 중 오류: ' + (e && e.message || e)); }
   trcApplyAns_(S, ans);
   // [2026.10.17 재설계] 이 사무소가 처리한 증여세 사건 — 증여로 받은 자산의 취득가액 후보(§163⑨ 증여세 신고·결정가액)
   if ((S.facts.gift || []).length && !S.facts.overseas) {
@@ -47838,6 +48206,9 @@ function tcBankFileText_(f) {
 //  (양도시기 = 대금을 청산한 날, 소득세법 §98·시행령 §162① — 계약서 잔금일은 약속일이고 통장 입금일이 실제 청산일).
 //  이의재결 증액분은 당초 양도의 양도가액이 늘어난 것이라 양도시기를 바꾸지 않는다 — 받은 날만 근거로 남긴다(수정신고 기한 판단용).
 //  돌려주는 것: { lines: [근거 줄], trDateCands: [{ v, src }] }
+// [2026.10.18 교차검증 2번] 통장 한 줄의 열쇠(파일+날짜+시각+금액+방향) — 비용 대조(tcBankStmtCost_)가 쓴 줄을 행선(tcBankStmtIncome_ ③)이 알아보게.
+//  같은 거래의 다른 사본은 파일·시각이 달라 열쇠도 다르지만, 행선은 사본을 한 줄로 묶은 뒤 사본마다의 열쇠를 모두 대 본다.
+function tcBankRowKey_(file, g) { return String(file || '') + '|' + g.날짜 + '|' + String(g.시각 || '') + '|' + g.금액 + '|' + (g.입금 === true ? 'in' : 'out'); }
 function tcBankStmtIncome_(o) {
   const won = function (n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; };
   const out = { lines: [], trDateCands: [] };
@@ -47847,8 +48218,8 @@ function tcBankStmtIncome_(o) {
     if (!g.금액 || !g.날짜) return; // 행선 판단은 모든 줄 — 대조(아래 ①②)는 10만원 이상·방향·짝이 확실한 줄만
     const who = (String(g.내용 || '') + ' ' + String(g.적요 || '')).replace(/\s+/g, ' ').trim();
     const k = g.날짜 + '|' + g.금액 + '|' + (g.입금 ? 'in' : 'out'); // 같은 거래가 사진·PDF 여러 사본에 — 한 번만(사본 이름은 모아 둠)
-    if (seen[k]) { if (seen[k].files.indexOf(s.file) === -1) seen[k].files.push(s.file); return; }
-    seen[k] = { g: g, who: who, files: [s.file], owner: s.r.예금주 || '' }; rows.push(seen[k]);
+    if (seen[k]) { if (seen[k].files.indexOf(s.file) === -1) seen[k].files.push(s.file); seen[k].keys.push(tcBankRowKey_(s.file, g)); return; }
+    seen[k] = { g: g, who: who, files: [s.file], owner: s.r.예금주 || '', keys: [tcBankRowKey_(s.file, g)] }; rows.push(seen[k]);
   }); });
   if (!rows.length) return out;
   const sure = function (x) { return x.g.금액 >= 100000 && x.g.입금 !== null && !x.g.짝확인필요; };
@@ -47891,10 +48262,17 @@ function tcBankStmtIncome_(o) {
   // ③ [세무사님 원칙 — 거래 단위로 쪼갠 뒤 적재적소로] 통장 한 줄마다 어느 칸으로 가는지(행선)를 정한다 — 집계는 맨 나중
   //  대금·보상금 = 위 ①② / 비용 낱말 출금 = 필요경비 검토(tcBankStmtCost_가 영수증·견적과 대조) / 세금 = 필요경비 아님 / 생활 거래 = 사건과 무관 /
   //  나머지 1천만원 이상은 행선을 정하지 못한 큰 거래 — 대금·보상금·차입·증여인지 알리고(지어내지 않음) 사람이 판단
+  // [2026.10.18 교차검증 2번] 한 돈 한 판정 — 비용 대조(tcBankStmtCost_)가 이미 짝지은 줄은 여기서 낱말로 다시 판정하지 않고 그 대조 결과를 행선으로 쓴다
+  //  (이우석: 15:22 10만원권 현금 출금 2,000,000원이 "생활 거래"로 세이면서 동시에 중개보수 내역서 2,160,000원과 대조되던 모순).
+  //  대금·보상금(①②)과 비용 대조가 같은 줄을 둘 다 썼으면 대금 쪽을 행선으로 두고 ⚠로 알린다(한 돈이 두 곳에 쓰였는지 사람이 확인)
+  const claims = o.claims || {}, twice = [];
   const cnt = {}, big = [];
   rows.forEach(function (x, i) {
     const w = x.who;
     let d = used[i] || '';
+    const cl = (x.keys || []).map(function (k) { return claims[k]; }).filter(Boolean)[0] || '';
+    if (cl && d) twice.push(tag(x) + ' — ' + d + ' ↔ ' + cl);
+    if (cl && !d) d = cl;
     if (!d && !x.g.입금 && /공인\s*중개|중개|복비|법\s*무|공사|인테리어|샷시|새시|창호|확장|보일러|방수|물막이|설비|시공|철거|도배|장판|취득세|등록세|채권/.test(w)) d = '필요경비 검토(영수증·견적 대조)';
     if (!d && /양도\s*소득세|양도세|재산세|종합부동산|종부세|지방세|소득세|주민세|자동차세|국세|세무서/.test(w + ' ' + String(x.g.구분 || ''))) d = '세금 — 필요경비 아님';
     if (!d && /이자|급\s*여|연금|수수료|체크|카드|페이|식당|커피|마트|관리비|수도|가스|전기|통신|렌탈|보험|적금|펀드|현금|ATM|자동이체/.test(w + ' ' + String(x.g.구분 || ''))) d = '사건과 무관(생활 거래)';
@@ -47905,11 +48283,13 @@ function tcBankStmtIncome_(o) {
   });
   out.lines.push('통장 거래 행선(거래 한 줄씩 — 사본 겹침 ' + rows.reduce(function (a, x) { return a + x.files.length - 1; }, 0) + '줄 빼고 ' + rows.length + '줄): ' + Object.keys(cnt).map(function (k) { return k + ' ' + cnt[k] + '줄'; }).join(' · '));
   if (big.length) out.lines.push('⚠ 행선을 정하지 못한 큰 거래 ' + big.length + '줄 — 대금·보상금·차입·증여 중 무엇인지 확인: ' + big.slice(0, 6).join(' / ') + (big.length > 6 ? ' 외' : ''));
+  if (twice.length) out.lines.push('⚠ 같은 통장 줄을 대금 대조와 비용 대조가 함께 씀 ' + twice.length + '줄 — 한 돈이 두 곳에 들어가지 않게 어느 쪽인지 확인: ' + twice.slice(0, 4).join(' / ') + (twice.length > 4 ? ' 외' : ''));
   return out;
 }
 function tcBankStmtCost_(o) {
   const won = function (n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; };
-  const out = { add: [], lines: [] }, names = o.names || [];
+  // [2026.10.18 교차검증 2번] claims — 이 대조가 짝지은(쓴) 통장 줄의 열쇠(tcBankRowKey_) → 그 줄의 행선. 행선(tcBankStmtIncome_ ③)이 같은 줄을 다시 판정하지 않게
+  const out = { add: [], lines: [], claims: {} }, names = o.names || [];
   const near = function (a, b, n) { return !a || !b || Math.abs(new Date(String(a).slice(0, 10)) - new Date(String(b).slice(0, 10))) <= n * 86400000; };
   // 대조할 서류 — 통장 화면 자체(같은 거래의 다른 사본)는 서류가 아니므로 뺀다
   const stmtFiles = {}; o.stmts.forEach(function (s) { stmtFiles[s.file] = true; });
@@ -47936,9 +48316,9 @@ function tcBankStmtCost_(o) {
       nOut++;
       const tag = s.file + ' ' + g.날짜 + ' ' + who.slice(0, 24) + ' ' + won(g.금액) + ' 출금' + (g.짝확인필요 ? '(금액 짝 확인 필요)' : g.입금 === null ? '(출금인지 확인)' : '');
       const doc = docs.filter(function (d) { return d.amount === g.금액 && d.file !== s.file && (sameNamed(d, who) ? near(d.date, g.날짜, 45) : g.금액 >= 1000000 && d.date && near(d.date, g.날짜, 15)); })[0];
-      if (doc) { out.lines.push('지급 확인(통장): ' + tag + ' = ' + doc.file + ' ' + won(doc.amount)); return; }
+      if (doc) { out.lines.push('지급 확인(통장): ' + tag + ' = ' + doc.file + ' ' + won(doc.amount)); out.claims[tcBankRowKey_(s.file, g)] = '필요경비 검토 — 비용 서류와 지급 대조'; return; }
       // [2026.10.18 3차 수정 K] 취득일·양도일(또는 계약서 잔금일) 앞뒤 7일 안의 현금·수표 출금(받는 이 글자 없음) — 중개·법무 비용 서류와 금액이 1할 안에서 다르면 실제 지급액 대조 거리(아래에서 한 번에)
-      if (g.금액 >= 1000000 && /현\s*금|만\s*원\s*권|수\s*표|출\s*금/.test(who) && [o.acqDay, o.trDay].concat(o.payDays || []).some(function (dd) { return dd && near(g.날짜, dd, 7); })) cashNear.push({ g: g, tag: tag });
+      if (g.금액 >= 1000000 && /현\s*금|만\s*원\s*권|수\s*표|출\s*금/.test(who) && [o.acqDay, o.trDay].concat(o.payDays || []).some(function (dd) { return dd && near(g.날짜, dd, 7); })) cashNear.push({ g: g, tag: tag, key: tcBankRowKey_(s.file, g) });
       const broker = /공인\s*중개|중개|부동산|복비/.test(who), lawyer = /법\s*무\s*사/.test(who), w = workOf(who);
       const costWord = /공사|인테리어|샷시|새시|창호|확장|보일러|방수|물막이|설비|시공|철거|도배|장판|수리/.test(who);
       if (!broker && !lawyer && !w && !costWord) return;
@@ -47952,6 +48332,7 @@ function tcBankStmtCost_(o) {
       else if (lawyer) { memo = who + ' 법무사 지급(통장 출금)'; note = '정산서 없음 — 통장 출금으로만 확인(무슨 등기 비용인지 확인)'; out.lines.push('정산서 없는 법무사 지급(통장에만 — 비용 후보에 체크 안 된 채로 물음): ' + tag); }
       else if (w) { memo = who + ' — 견적서 업체(' + (w.supplier || w.person) + ') 공사 지급'; (groups[w.file] = groups[w.file] || { w: w, pays: [] }).pays.push({ file: s.file, date: g.날짜, amount: g.금액 }); }
       else memo = who + ' (통장 출금)';
+      out.claims[tcBankRowKey_(s.file, g)] = broker ? '필요경비 검토 — 영수증 없는 중개보수(통장만)' : lawyer ? '필요경비 검토 — 정산서 없는 법무사 지급(통장만)' : w ? '필요경비 검토 — 견적 ↔ 실제 지급 대조' : '필요경비 검토(영수증·견적 대조)'; // [2026.10.18 교차검증 2번]
       if (g.짝확인필요 || g.입금 === null) note += (note ? ' · ' : '') + '통장 글자 판독상 ' + (g.짝확인필요 ? '금액 짝이 불확실' : '출금·입금을 확정 못 함') + ' — 원문 확인';
       nUsed++;
       if (already[s.file + '|' + g.금액 + '|' + g.날짜]) return; // 앱 화면 규칙이 이미 넣은 같은 줄
@@ -47962,6 +48343,7 @@ function tcBankStmtCost_(o) {
   //  이우석: 취득 잔금 무렵 15:22 "10만원권 −2,000,000원"(사진 끝 줄) ↔ 중개보수 내역서 2,160,000원 — 차액 160,000원
   cashNear.forEach(function (x) {
     const d = docs.filter(function (d0) { return d0.amount && d0.amount !== x.g.금액 && Math.abs(d0.amount - x.g.금액) <= d0.amount * 0.1 && (d0.law || /중개|복비/.test(String(d0.who || '') + ' ' + d0.file)); })[0];
+    if (d) out.claims[x.key] = '필요경비 검토 — 현금 출금 ↔ 비용 서류 금액 대조'; // [2026.10.18 교차검증 2번] 이 줄은 행선에서도 이 대조로(생활 거래로 다시 세지 않음)
     if (d) out.lines.push('⚠ 통장 현금 출금 ↔ 비용 서류 금액 다름: ' + x.tag + (x.g.사슬밖 ? '(사진 첫·끝 줄 — 잔액 검산 안 됨)' : '') + ' ↔ ' + d.file + ' ' + won(d.amount) + ' — 차액 ' + won(Math.abs(d.amount - x.g.금액)) + ': 실제로 지급한 금액이 어느 쪽인지 확인(필요경비는 실제 지급액, 소득세법 §97①3호·시행령 §163⑤)');
   });
   // 이체확인증(받는 분 = 견적서 업체·대표자) — 같은 공사 지급으로 함께 셈(이체확인증 자체는 이미 비용 후보)

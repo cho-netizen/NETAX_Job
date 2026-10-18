@@ -95,6 +95,19 @@ function akToolValues_(c) {
       v._deductions = { debts: debtSum, dues: duesSum, appraisalFee: f.appraisalFee ? f.appraisalFee.value : 0 };
       const input = { taxableEstateAmount: Math.max(0, f.grossEstate - debtSum - duesSum), appraisalFeeAmount: f.appraisalFee ? f.appraisalFee.value : 0, hasSpouse: f.heirs.some(function (h) { return h.relation === '배우자'; }), childCount: f.heirs.filter(function (h) { return h.relation === '자녀'; }).length,
         netFinancialAssets: f.financialValue || 0, funeralCostAmount: f.funeral.value || 0, funeralNicheCostAmount: (f.niche && f.niche.value) || 0 };
+      // [2026.10.19 밤 2번 — 5번 모의에서 찾은 빈틈] 사전증여(§13 — 세무사님이 답한 통장 사전증여 f.priorGifts)를 화면과 똑같이 넘긴다.
+      //  화면(taxcalc.html 'apply-ih-estate-auto'·applyCaseProcFacts): 과세가액 = 총상속재산 − 채무·공과금 + 10년(상속인)·5년(그 밖) 사전증여, ihGiftToHeirs·ihPriorGiftedIncluded·ihNonHeirPriorGiftAmount
+      //  예전엔 점검기가 이 셋을 빼고 돌려 §24 공제한도·과세가액이 화면과 달랐다(김창호 2.3억, 박종헌 1.6억). 엔진 계산식은 그대로.
+      const pgs = Array.isArray(f.priorGifts) ? f.priorGifts : [];
+      const pgHeir = pgs.filter(function (g) { return g.heir; }).reduce(function (s, g) { return s + (Number(g.v) || 0); }, 0);
+      const pgOther = pgs.filter(function (g) { return !g.heir; }).reduce(function (s, g) { return s + (Number(g.v) || 0); }, 0);
+      if (pgHeir + pgOther) {
+        input.taxableEstateAmount += pgHeir + pgOther;
+        input.priorGiftedAmountIncludedInEstate = pgHeir + pgOther;
+        if (pgHeir) input.giftToHeirsWithin10Years = pgHeir;
+        if (pgOther) input.nonHeirPriorGiftAmountTotal = pgOther;
+        v._deductions.priorGifts = pgHeir + pgOther;
+      }
       const r = runUiEngineCalcTool_('calculate_inheritance_tax', input) || { error: '엔진 없음' };
       v._engineInput = input;
       if (r.error) put('계산', '', '엔진 오류: ' + r.error);
@@ -253,8 +266,11 @@ function akSandbox_(caseId, fn, override) {
     caseProcPatch_ = function (id, mutate) { if (String(id) !== String(caseId)) return null; const s = copy(mem.saved); const o = mutate(s); mem.saved = s; return o === undefined ? s : o; };
     caseProcStore_ = function (id, s) { if (String(id) === String(caseId)) mem.saved = copy(s); };
     if (AK_BLIND_NO_CHAT_) caseProcChatTexts_ = function () { return []; };
+    // [2026.10.18 교차검증 2번] 점검 중에는 AI를 부르지 않는다 — "AI에게 물을 쟁점 목록"과 글자 수만 남김(CrossCheck.js)
+    if (typeof CX_AI_DRY_ !== 'undefined') CX_AI_DRY_ = true;
     return fn();
   } finally {
+    if (typeof CX_AI_DRY_ !== 'undefined') CX_AI_DRY_ = false;
     akReadCase_ = real.akReadCase_; work_findCaseRow_ = real.work_findCaseRow_; work_readRow_ = real.work_readRow_; work_updateCase = real.work_updateCase;
     caseProcLoad_ = real.caseProcLoad_; caseProcPatch_ = real.caseProcPatch_; caseProcStore_ = real.caseProcStore_; caseProcChatTexts_ = real.caseProcChatTexts_;
   }
@@ -354,6 +370,8 @@ function akRunCase0_(caseId, key) {
     try { const f = DriveApp.getFileById(d.id); out.ocr['미분류:' + d.name] = String(tc_docText_({ id: d.id, name: d.name, mimeType: f.getMimeType(), modified: f.getLastUpdated().getTime() }) || '').slice(0, 1500); } catch (e) {}
   });
   out.engineInput = tool._engineInput || null;
+  // [2026.10.18 교차검증 2번] 이 실행의 쟁점 기록(GAS로 푼 것·AI에게 물을 것·사용자에게 갈 것, 묶음/폴더 글자 수)
+  try { out.cx = typeof CX_LAST_ !== 'undefined' && CX_LAST_ && CX_LAST_.caseId === c.id ? JSON.parse(JSON.stringify(CX_LAST_)) : null; } catch (e) { out.cx = null; }
   out.why = tool._why || '';
   out.judge = !!tool._judge; if (tool._ref) out.ref = tool._ref;
   out.noSourceDocs = !ev.srcDocs;
