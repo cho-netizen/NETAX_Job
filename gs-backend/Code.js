@@ -25544,7 +25544,9 @@ function tcPdfConvCfg_() {
 // 폴더 이름 판정 — 앞의 "_ < [ ( 번호 . -"·띄어쓰기는 무시(1번 일괄 4dba929와 같은 규칙)
 function tcFolderKey_(name) { return String(name || '').replace(/^[\s_<\[(\d.\-]+/, '').replace(/[\s>\])]+/g, ''); }
 function tcIsOrigPhotoDir_(name) { return /^원본사진/.test(tcFolderKey_(name)); }
-function tcIsSubmitDir_(name) { return /^신고제출/.test(tcFolderKey_(name)); }
+// [2026.10.19 3번 세션] 빼는 것은 job이 만드는 "_신고제출"뿐 — 밑줄 없는 지난 사건의 "신고제출" 폴더(최형택: 서류별 PDF 15개)는 그 서류의 유일한 사본일 수 있어
+//  입력이다(세무사님: "현재는 신고제출용 파일만 남기고 원본이나 임시파일을 삭제하였을 가능성도 많다")
+function tcIsSubmitDir_(name) { return /^\s*_\s*신고제출/.test(String(name || '')); }
 // "_원본사진" 폴더 안에서 입력에서 뺄 사진 — {사진ID: {pdfId, pdfName, why}}. _변환기록.json의 짝 + PDF가 휴지통·삭제가 아니어야 함.
 //  사건처리 파일 목록(caseProcFiles_)과 1번 일괄이 같은 이 함수를 쓴다
 function tcPdfConvDropIn_(origFolder) {
