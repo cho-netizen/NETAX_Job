@@ -29196,7 +29196,7 @@ function caseProcParsed_(f, cache, canParse) {
 //   하17 기억 이름 cpf2_   하18 통장 줄 value에 공통 문서 칸(일시·적요·입금·출금·잔액·상대방)을 더함, keys.assetFull(시군구 포함)
 //  토큰 0. 기본은 글자인식 기억에 있는 글자만(opt.noNewOcr) — 새 글자인식은 증빙 단계·서버 일괄이 한다.
 // =========================================================
-var CPF_VER_ = 'cpf2_';
+var CPF_VER_ = 'cpf3_'; // [2026.10.19 1번 밤작업] cpf3_ — 한글 단위 금액·이름 거르기·서류 종류 확인·잇는 열쇠(동호·지분·줄인 날짜)·금액 열쇠는 짝 열쇠와 함께일 때만
 // 서류 정리 규칙의 칸 이름 → 사실 종류(낱말표). 여기 없는 칸은 "기타:<칸 이름>"으로 넘긴다(버리지 않음)
 var CPF_KIND_MAP_ = {
   소재지: '소재지', 대지위치: '소재지', 소재: '소재지', 소재지목록: '소재지', 부동산소재지: '소재지', 물건: '소재지', 지번: '지번', 동호: '동호', 건물번호: '동호', 호명칭: '동호',
@@ -29210,6 +29210,7 @@ var CPF_KIND_MAP_ = {
   주소: '주소', 현주소: '주소', 등록기준지: '등록기준지', 사망일: '사망일', 사망신고일: '사망신고일', 상속개시일: '상속개시일', 증여일: '증여일', 증여시기: '증여일',
   매도인: '성명', 매수인: '성명', 양도인: '성명', 양수인: '성명', 증여자: '성명', 수증자: '성명', 피상속인: '성명', 상속인: '성명', 임대인: '성명', 임차인: '성명', 채무자: '성명', 예금주: '성명', 세대주: '성명', 소유자: '성명', 권리자: '성명', 명의인: '성명', 배우자: '성명', 의뢰인: '성명', 원고: '성명', 피고: '성명', 받는이: '성명', 보낸이: '성명', 받은사람: '성명', 대표자: '성명', 계약자: '성명', 위임인: '성명', 수임인: '성명', 대리인: '성명', 신청인: '성명', 공유자: '성명', 공동명의인: '성명',
   은행: '은행', 계좌: '계좌번호', 계좌번호: '계좌번호', 받는계좌: '계좌번호',
+  전화: '전화번호', 전화번호: '전화번호', 연락처: '전화번호', 휴대폰: '전화번호', 휴대전화: '전화번호', 핸드폰: '전화번호', // [2026.10.19 1번 밤작업 ⑤] 전화 열쇠
   보증금: '임대 보증금', 보증금합계: '임대 보증금', 월세: '월세', 임대기간: '임대기간', 시작일: '시작일', 종료일: '종료일', 개시일: '시작일',
   상호: '상호', 사업자번호: '사업자번호', 등록번호: '등록번호', 공급자번호: '사업자번호', 업태: '업종', 종목: '업종', 개업일: '개업일', 사업장: '소재지',
   중개보수: '중개보수', 보수합계: '법무사 비용', 취득세: '취득세', 지방교육세: '지방교육세', 농어촌특별세: '농어촌특별세', 원금: '대출 원금', 잔액: '잔액', 총잔액: '잔액', 대출잔액: '대출 잔액', 이자: '이자',
@@ -29270,7 +29271,7 @@ function cpfAssetFullKey_(addr) { const p = cpfAssetParts_(addr); return p && p.
 // 도로명 열쇠(상5) — "경수대로665번길 32", "별양로 12" → "경수대로665번길 32"[|동호]
 function cpfRoadKey_(addr) {
   const s = String(addr || '').replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ');
-  const m = /([가-힣][가-힣\d]*(?:대로|로|길)(?:\s*\d+\s*번?길)?)\s*(\d{1,4}(?:-\d{1,4})?)(?![\d-]|\s*(?:층|㎡|m))/.exec(s);
+  const m = /([가-힣][가-힣\d]*(?:대로|로|길)(?:\s*\d+\s*번?길)?)\s*(\d{1,4}(?:-\d{1,4})?)(?![\d-]|\s*(?:층|㎡|m)|가(?!길))/.exec(s); // [2026.10.19 1번 밤작업 ⑤] "금남로2가"·"을지로2가"(법정동)는 도로명 아님
   if (!m || /^(도로|경로|진로|통로|보로)$/.test(m[1])) return '';
   let k = m[1].replace(/\s+/g, '') + ' ' + m[2];
   const h = /제?\s*(\d{1,4})\s*동\s*(?:제?\s*\d{1,3}\s*층\s*)?제?\s*(\d{1,5})\s*호/.exec(s.slice(m.index)) || /[,\s](\d{1,4})동\s*(\d{1,5})호/.exec(s.slice(m.index));
@@ -29315,6 +29316,11 @@ function cpfKeysFinish_(f) {
     const rk = cpfRoadKey_(v + ' ' + (f.raw || '')); if (rk) k.road = rk;
     if (k.asset && !k.assetFull) { const af = cpfAssetFullKey_(v); if (af) k.assetFull = af; }
   }
+  // [2026.10.19 1번 밤작업 ⑤] 동호 열쇠 — 지번·도로명 없이 "○○아파트 1333동 501호"만 적힌 서류도 같은 집끼리 잇게(동과 호가 함께 있을 때만 — 호만은 흔해서 안 씀)
+  if (!k.unit && /^(소재지|주소|동호|기타:도로명주소|주소 대응)$/.test(f.kind)) { const um = /(\d{1,4})\s*동\s*(?:제?\s*\d{1,3}\s*층\s*)?제?\s*(\d{1,5})\s*호/.exec(typeof v === 'string' ? v + ' ' + (f.raw || '') : String(f.raw || '')); if (um) k.unit = um[1] + '동' + um[2] + '호'; }
+  // [2026.10.19 1번 밤작업 엇묶임] 금액 열쇠는 날짜·사람·자산(지번·도로명·동호)·계좌 열쇠 중 하나와 함께일 때만 둔다 — 금액만 같은 다른 대상(채권최고액이 같은 다른 집 근저당)이
+  //  금액 하나로 이어지던 것. 잇는 쪽은 금액과 짝 열쇠가 함께 같을 때만 잇는다(금액 값은 value에 그대로)
+  if (k.amount !== undefined && !(k.date || k.person || k.personGuess || k.asset || k.assetFull || k.road || k.unit || k.account)) delete k.amount;
   return f;
 }
 // 칸 하나(이름 key, 값 v) → 정규화 값과 종류. docType으로 (서류 종류, 칸 이름) 대응을 먼저 본다
@@ -29386,7 +29392,7 @@ function cpfFromResult_(result, base, docType) {
     if (!b.asset && o.부동산표시 && typeof o.부동산표시 === 'object') { const a2 = cpfAssetKey_((o.부동산표시.소재지 || '') + ' ' + (o.부동산표시.건물번호 || '')); if (a2) b.asset = a2; }
     if (!b.asset && typeof o.부동산표시 === 'string') { const a3 = cpfAssetKey_(o.부동산표시); if (a3) b.asset = a3; }
     const nm = o.이름 || o.성명 || o.한글성명;
-    if (nm && typeof nm === 'string') { const pk = cpfPersonKey_(nm, o.주민번호 || o.생년월일 || o.생년6 || o.생년월일6 || ''); if (pk) b.person = pk; }
+    if (nm && typeof nm === 'string' && !cpfNounLike_(cpfName_(nm))) { const pk = cpfPersonKey_(nm, o.주민번호 || o.생년월일 || o.생년6 || o.생년월일6 || ''); if (pk) b.person = pk; }
     const ac = o.계좌번호 || o.계좌 || o.받는계좌;
     if (ac && typeof ac === 'string') { const k = cpfAccountKey_(o.은행 || o.기관 || '', ac); if (k) b.account = k; }
     const dt = o.날짜 || o.거래일 || o.접수일 || o.일자 || o.계약일 || o.발급일 || o.작성일 || o.납부일;
@@ -29445,7 +29451,8 @@ function cpfFromResult_(result, base, docType) {
       // 등기 을구 줄의 금액은 그 줄의 등기 목적으로 이름을 붙인다(근저당 → 채권최고액, 전세권 → 전세금)
       if (k === '금액' && typeof node.목적 === 'string') { if (/근\s*저\s*당/.test(node.목적)) nv.kind = '근저당 채권최고액'; else if (/전\s*세\s*권/.test(node.목적)) nv.kind = '전세금'; else if (/임\s*차\s*권/.test(node.목적)) nv.kind = '임대 보증금'; }
       const kk = Object.assign({}, keys);
-      if (nv.kind === '성명') { const pk = CPF_ROLE_KEYS_.test(k) ? cpfPersonKey_(v, node[k + '주민번호'] || node[k + '생년월일'] || '') : (own.person || cpfPersonKey_(v, '')); if (pk) kk.person = pk; }
+      if (nv.kind === '성명' && cpfNounLike_(nv.value)) { nv.unsure = true; delete kk.person; } // [2026.10.19 1번 밤작업 ③] 규칙이 성명 칸에 낱말("증서"·"요건")을 넣은 것 — 값은 두고 사람 열쇠는 안 만듦
+      else if (nv.kind === '성명') { const pk = CPF_ROLE_KEYS_.test(k) ? cpfPersonKey_(v, node[k + '주민번호'] || node[k + '생년월일'] || '') : (own.person || cpfPersonKey_(v, '')); if (pk) kk.person = pk; }
       if (nv.kind === '소재지') { const a = cpfAssetKey_(v + ' ' + (node.건물번호 || node.동호 || '')); if (a) kk.asset = a; }
       if (/^(\d{4}-\d{2}-\d{2})$/.test(String(nv.value))) { kk.date = nv.value; kk.dateFrom = k; }
       else if (typeof nv.value === 'number') { // 금액에는 그 회차의 날짜(하16) — "<칸>일" 또는 대응표, 없으면 기록 날짜(근거 표시)
@@ -29479,10 +29486,64 @@ function cpfHanNum_(s) {
   const mi = rest.indexOf('만'); if (mi !== -1) { v += small(rest.slice(0, mi) || '일') * 10000; rest = rest.slice(mi + 1); }
   return v + small(rest);
 }
+// [2026.10.19 1번 밤작업 ③] 성씨 첫 글자(흔한 단성·복성) — 서류 글에서 짐작한 이름은 이것으로 시작해야 한다
+var CPF_SURNAME_ = '김이박최정강조윤장임한오서신권황안송류홍전고문양손배백허유남심노하곽성차주우구민진나엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예경봉사부라태지좌변피감계당시빈단호복진갈엽견두춘평필창하';
+var CPF_SURNAME2_ = /^(남궁|황보|제갈|선우|독고|사공|서문|동방|어금|망절|소봉)/;
+// 성씨 글자로 시작하는 흔한 서식·서류 낱말(이름 아님) — 두 글자 낱말, 그 뒤에 "일·자·액·금·란·표·서·명·부·권·료·비·율·률"이 붙은 세 글자도
+var CPF_NOUN_WORDS_ = '정보,제공,포함,선택,분산,증서,요건,한정,기산,기준,정리,정산,정도,정액,정기,신고,신청,신규,신축,주소,주택,주식,주민,전화,전체,전부,전세,전입,전용,전기,조건,조회,조정,조사,조합,장소,장기,장부,한도,한계,고지,고객,고유,문서,문의,성명,성별,도장,도면,소재,소유,소득,소계,기간,기타,기재,기본,기한,기록,공시,공제,공유,공동,공급,공고,공사,공탁,계약,계좌,계산,구분,구조,구입,구매,방법,변경,변동,대상,대금,대출,대리,대표,대지,원금,원본,원인,원칙,감정,감면,감액,인감,인지,인수,인적,인출,연락,연도,연장,여부,배우,부동,부담,부속,부분,부부,사항,사유,사용,사본,사망,사실,사업,상속,상담,상세,상호,서명,서류,선정,설정,손실,송금,수입,수수,시가,시세,시점,안내,양도,양수,예금,예정,오류,용도,우편,유의,유형,은행,이전,이자,이체,이하,이상,이내,임대,임차,임야,지급,지분,지번,지목,지역,지정,진행,차액,차입,처분,처리,추가,취득,평가,표시,필요,합계,합의,해당,현금,현황,확인,환급,황금,금액,금융,명의,명세,명칭,반환,발급,백분,범위,보유,보증,보험,복사,분할,분양,비고,비율,비용,세대,세목,세율,세액,소명,옥상,육아,모두,모든,제출,제외,제목,채권,채무,천원,편의,편집,홍보,허가,허위,허용,남은,노후,하자,곽내,민원,진술,나머지,엄수,원래,천만,방문,공부,현재,함께,변제,염려,여러,추정,도로,석재,선택,설명,마감,길이,연금,위임,위치,표준,명시,기초,반영,왕래,금지,옥외,인도,맹지,제한,모집,탁송,국세,국가,어음,은닉,편입,용지,예상,경우,경과,경매,봉안,사전,부과,부족';
+var CPF_NOUN_SET_ = (function () { const o = {}; CPF_NOUN_WORDS_.split(',').forEach(function (w) { if (w) o[w] = 1; }); return o; })();
+function cpfNounLike_(s) {
+  s = String(s || '');
+  if (CPF_NOUN_SET_[s]) return true;
+  if (s.length === 3 && CPF_NOUN_SET_[s.slice(0, 2)] && /[일자액금란표서명부권료비율률세항]$/.test(s)) return true; // "기산일"·"정보란"
+  if (s.length === 4 && CPF_NOUN_SET_[s.slice(0, 2)] && CPF_NOUN_SET_[s.slice(2)]) return true; // 두 낱말 붙은 것("계약기간")
+  return false;
+}
+// 짐작한 이름이 사람 이름 같은가 — 성씨로 시작하고 흔한 낱말이 아님(규칙이 칸으로 준 이름은 성씨를 보지 않는다)
+function cpfLikelyName_(nm) { const s = String(nm || ''); if (!/^[가-힣]{2,4}$/.test(s)) return false; if (cpfNounLike_(s)) return false; return CPF_SURNAME_.indexOf(s[0]) !== -1 || CPF_SURNAME2_.test(s); }
+// [2026.10.19 1번 밤작업 ②] 단위 낱말 금액 — "6,548만원"·"440백만원"·"5억2천5백만원"·"2억700만"·"1억 650만원"·"1.5억"·"이억칠천만원정" → 원 정수.
+//  예전엔 숫자 금액이 "6,548"(만 떨어짐)로, "백만원"·"천만원" 낱말만 한글 금액(1,000,000)으로 읽혀 관계없는 파일끼리 이어졌다.
+//  숫자가 하나도 없는 단위 낱말("백만원"·"(단위: 천만원)")은 금액이 아님. 한글 수만으로 된 것은 "원·정"이 붙거나 "억"이 있을 때만(이름 "이만희" 거르기).
+//  "1억9천"(만 없이 억 뒤 천·백)은 관용대로 1억 9천만으로 읽고 note에 밝힌다. 돌려주는 것: [{ at, raw, value, han, note }]
+var CPF_HAN_DIGIT_ = { 일: 1, 이: 2, 삼: 3, 사: 4, 오: 5, 육: 6, 칠: 7, 팔: 8, 구: 9 };
+function cpfUnitAmounts_(text) {
+  const t = String(text || ''), out = [], BIG = { 조: 1e12, 억: 1e8, 만: 1e4 }, SMALL = { 천: 1000, 백: 100, 십: 10 };
+  const start = /(\d[\d,]*(?:\.\d+)?|[일이삼사오육칠팔구])?[ \t]*(조|억|천|백|십|만)/g, tok = /[ \t]*(\d[\d,]*(?:\.\d+)?|[일이삼사오육칠팔구])?[ \t]*(조|억|천|백|십|만)/y;
+  let m, skipTo = -1;
+  while ((m = start.exec(t))) {
+    const st = m.index; if (st < skipTo) continue;
+    const prev = t[st - 1] || '';
+    if (/[\d,.]/.test(prev)) continue; // 숫자 한가운데
+    if ((!m[1] || !/\d/.test(m[1])) && /[가-힣]/.test(prev) && !/금\s*$/.test(t.slice(Math.max(0, st - 2), st))) continue; // 한글 수는 낱말 첫머리(또는 "금" 뒤)에서만
+    let i = st, total = 0, sec = 0, nums = 0, digit = false, lastBig = '', units = 0, note = '';
+    for (;;) {
+      tok.lastIndex = i; const q = tok.exec(t); if (!q) break;
+      const isNum = !!q[1], n = isNum ? (/\d/.test(q[1]) ? Number(q[1].replace(/,/g, '')) : CPF_HAN_DIGIT_[q[1]]) : 0;
+      if (isNum) { nums++; if (/\d/.test(q[1])) digit = true; }
+      if (SMALL[q[2]]) sec += (isNum ? n : 1) * SMALL[q[2]];
+      else { sec += isNum ? n : 0; if (!sec) sec = 1; total += sec * BIG[q[2]]; sec = 0; lastBig = q[2]; }
+      units++; i = tok.lastIndex;
+      if (/[가-힣]/.test(t[i] || '') && !/^[ \t]*(?:\d|[일이삼사오육칠팔구]?[ \t]*[조억천백십만])/.test(t.slice(i, i + 3))) break;
+    }
+    if (sec) { if (lastBig === '억' && sec < 10000) { total += sec * 1e4; note = '억 뒤 천·백은 만 단위로 읽음(관용 "1억9천")'; } else total += sec; }
+    const tail = /^[ \t]*(원\s*정|원|정)/.exec(t.slice(i, i + 6)); if (tail) i += tail[0].length;
+    const raw = t.slice(st, i), han = !digit;
+    skipTo = i;
+    if (!nums) continue; // 숫자 없는 단위 낱말("백만원")
+    if (/단\s*위\s*[:：]?\s*\(?\s*$/.test(t.slice(Math.max(0, st - 8), st))) continue; // "(단위: 천만원)"
+    if (han && !tail && !/억/.test(raw)) continue; // 한글 수만 — "원·정"이나 "억"이 있어야 금액
+    if (!digit && !/[조억만]/.test(raw)) continue;
+    if (digit && !/[조억만]/.test(raw) && !tail) continue; // "3천 세대" 같은 것
+    if (!(total >= 10000) || !isFinite(total)) continue;
+    out.push({ at: st, raw: raw.trim(), value: Math.round(total), han: han, note: note });
+  }
+  return out;
+}
 // 이름이 아닌 낱말(칸 이름·조사로 끝나는 일반 낱말·역할 낱말) — 공통 뽑기의 이름 후보 거르기
 function cpfBadName_(nm) {
   const s = String(nm || '');
   if (!/^[가-힣]{2,5}$/.test(s)) return true;
+  if (cpfNounLike_(s)) return true; // [2026.10.19 1번 밤작업 ③] 서식·서류 낱말(정보·제공·요건·한정·기산일 …)
   if (/^(주소|성명|이름|주민|등록|번호|전화|연락|날인|인감|서명|또는|에게|사이|으로|이며|이고|본인|대리|기타|성별|상호|법인|동명|쌍방|관계|당사자|상대방|명의|부동산|소유|공유|각자|모두|전원|일방|본건|다음|아래|해당|각각|공동|함께)/.test(s)) return true;
   if (/(인|자|주)$/.test(s) && /^(매도|매수|임대|임차|증여|수증|상속|피상속|채무|채권|위임|수임|신청|소유|예금|의뢰|양도|양수|대표|세대|납세)/.test(s)) return true; // 역할 낱말
   if (/번호$|월일$|등록|번$/.test(s)) return true;
@@ -29527,15 +29588,19 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
   let m, re;
   // 역할 낱말 뒤 이름 — 계약서·위임장·신고서의 당사자 칸(임대인·임차인·증여자 등)이 서류 규칙에 없으면 사람이 통째로 빠졌다(원본 대조).
   //  거리(160자)로 짐작한 묶음이라 사람 열쇠는 keys.personGuess로(중13) — 같은 기록(src.rec p<n>)으로 남긴다
-  const NOT_NAME = /^(주소|성명|이름|주민|등록|번호|전화|연락|날인|인감|서명|또는|에게|사이|으로|이며|이고|본인|대리|기타|성별|상호|법인|및|등|의|은|는|이|가|을|를)/;
-  re = /(매\s*도\s*인|매\s*수\s*인|임\s*대\s*인|임\s*차\s*인|증\s*여\s*자|수\s*증\s*자|피\s*상\s*속\s*인|상\s*속\s*인|채\s*무\s*자|채\s*권\s*자|위\s*임\s*인|수\s*임\s*인|신\s*청\s*인|소\s*유\s*자|예\s*금\s*주|의\s*뢰\s*인|양\s*도\s*인|양\s*수\s*인|대\s*표\s*자|세\s*대\s*주|납\s*세\s*자)(?![가-힣])\s*\)?\s*[:：]?\s*(?:성\s*명|이\s*름|\(\s*[갑을]\s*\))?\s*[:：]?\s*([가-힣]{2,4}(?![가-힣]))?/g; // 이름이 바로 뒤에 없어도(서명란 "임대인 / 소 / 주민등록번호 …") 잡고 아래에서 "성명 ○○○"를 찾는다
+  // [2026.10.19 1번 밤작업 ③] 조사 한 글자(이·가·의·은·는·을·를·및·등)는 낱말 전체일 때만 — 예전엔 첫 글자만 보아 "이종혁"·"이월순" 같은 이씨 이름이 모두 빠졌다
+  const NOT_NAME = /^(?:주소|성명|이름|주민|등록|번호|전화|연락|날인|인감|서명|또는|에게|사이|으로|이며|이고|본인|대리|기타|성별|상호|법인)|^(?:및|등|의|은|는|이|가|을|를)$/;
+  // [2026.10.19 1번 밤작업 ③] 표로 된 서식("| 의뢰인 | 이종혁 |")의 칸 구분자도 넘고, 고객·상담자·대리인·보증인도 역할로
+  re = /(매\s*도\s*인|매\s*수\s*인|임\s*대\s*인|임\s*차\s*인|증\s*여\s*자|수\s*증\s*자|피\s*상\s*속\s*인|상\s*속\s*인|채\s*무\s*자|채\s*권\s*자|위\s*임\s*인|수\s*임\s*인|신\s*청\s*인|소\s*유\s*자|예\s*금\s*주|의\s*뢰\s*인|양\s*도\s*인|양\s*수\s*인|대\s*표\s*자|세\s*대\s*주|납\s*세\s*자|고\s*객\s*명?|상\s*담\s*자|대\s*리\s*인|연?\s*대?\s*보\s*증\s*인)(?![가-힣])[\s|│]*\)?[\s|│]*[:：]?[\s|│]*(?:성\s*명|이\s*름|\(\s*[갑을]\s*\))?[\s|│]*[:：]?[\s|│]*([가-힣]{2,4}(?![가-힣]))?/g; // 이름이 바로 뒤에 없어도(서명란 "임대인 / 소 / 주민등록번호 …") 잡고 아래에서 "성명 ○○○"를 찾는다
   let pn = 0, roleCut = 0;
   while ((m = re.exec(t))) {
     if (pn >= CPF_LIMITS_.role) { roleCut++; continue; }
     let nm = m[2] || '';
-    if (cpfBadName_(nm)) { const ah = /성\s*명\s*[:：]?\s*([가-힣]{2,4})(?![가-힣])/.exec(t.slice(re.lastIndex, re.lastIndex + 150)); if (ah && !cpfBadName_(ah[1])) nm = ah[1]; else continue; }
+    if (cpfBadName_(nm) || !cpfLikelyName_(nm)) { const ah = /성\s*명[\s|│]*[:：]?[\s|│]*([가-힣]{2,4})(?![가-힣])/.exec(t.slice(re.lastIndex, re.lastIndex + 150)); if (ah && !cpfBadName_(ah[1]) && cpfLikelyName_(ah[1])) nm = ah[1]; else continue; } // [2026.10.19 1번 밤작업 ③] 성씨로 시작하고 흔한 낱말이 아닐 때만
     if (cpfBadName_(nm) || NOT_NAME.test(nm) || /(의|를|을|와|과|에|께|로|은|는|이며|이고|에게|으로|하여|하고|한다|된다)$/.test(nm) && !/^[김이박최정강조윤장임한오서신권황안송류홍전고문양손배백허유남심노하곽성차주우구민진나엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예경봉사부]/.test(nm.slice(0, 1))) continue; // 조사로 끝나는 일반 낱말("와의"·"관계를")은 이름이 아님 — 성씨로 시작하면 이름일 수 있어 남김
-    const role = m[1].replace(/\s+/g, ''), after = t.slice(re.lastIndex, re.lastIndex + 160);
+    const role = m[1].replace(/\s+/g, '');
+    // [2026.10.19 1번 밤작업 ③] 같은 사람 묶음은 다음 역할 낱말·법인 이름 앞에서 끊는다(등기부: 채무자 뒤 근저당권자 은행의 법인번호가 채무자에 붙던 것)
+    let after = t.slice(re.lastIndex, re.lastIndex + 160); { const cutAt = after.search(/(매\s*도\s*인|매\s*수\s*인|임\s*대\s*인|임\s*차\s*인|증\s*여\s*자|수\s*증\s*자|상\s*속\s*인|채\s*무\s*자|채\s*권\s*자|근\s*저\s*당\s*권\s*자|전\s*세\s*권\s*자|위\s*임\s*인|수\s*임\s*인|주\s*식\s*회\s*사|㈜|\(\s*주\s*\)|은\s*행|조\s*합|금\s*고|공\s*사(?![가-힣])|법\s*인)/); if (cutAt > 0) after = after.slice(0, cutAt); }
     const idm = /(\d{6})\s*-\s*([1-8*][\d*]{6})/.exec(after);
     const pk = cpfPersonKey_(nm, idm ? idm[1] + '-' + idm[2] : '');
     const rec = 'p' + (++pn), ex = { rec: rec, role: role, note: '역할 낱말 뒤 이름 — 사람 묶음은 거리로 짐작' }, gk = pk ? { personGuess: pk } : {};
@@ -29557,10 +29622,12 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
   // 주민번호 + 이름 — 바로 앞 이름은 같은 칸(keys.person), 앞 80자 안의 "성명 ○○○"로 찾은 것은 짐작(keys.personGuess)
   re = /(?:([가-힣]{2,4})\s*[\(:：]?\s*)?(\d{6})\s*-\s*([1-8*][\d*]{6})/g;
   while ((m = re.exec(t))) {
+    // [2026.10.19 1번 밤작업 ③] 법인(주식회사·은행·조합·금고·공사·법인) 바로 뒤 13자리는 법인등록번호 — 사람 열쇠를 만들지 않는다
+    if (/(주\s*식\s*회\s*사|㈜|\(\s*주\s*\)|은\s*행|조\s*합|금\s*고|공\s*사|법\s*인|회\s*사|재\s*단|협\s*회|중\s*앙\s*회)[^\n\d]{0,20}$/.test(t.slice(Math.max(0, m.index + m[0].lastIndexOf(m[2]) - 30), m.index + m[0].lastIndexOf(m[2])))) { add('법인등록번호', m[2] + '-' + m[3], m[0].slice(m[0].lastIndexOf(m[2])), m.index + m[0].lastIndexOf(m[2]), {}, { note: '법인 이름 뒤 번호 — 사람 아님' }); continue; }
     let nm = m[1] && !/^(주민|등록|번호|성명|이름|생년|월일|본인|부|모|배우자|자녀|관계|구분)$/.test(m[1]) && !NOT_NAME.test(m[1]) && !/번호$|월일$|등록|번$/.test(m[1]) ? m[1] : '', guess = false;
     if (nm && /^명[가-힣]{2,4}$/.test(nm) && /성\s*$/.test(t.slice(Math.max(0, m.index - 3), m.index))) nm = nm.slice(1); // "성 명윤경숙"(성명 칸이 띄어 읽힘)
     if (nm && cpfBadName_(nm)) nm = '';
-    if (!nm) { const bk = t.slice(Math.max(0, m.index - 80), m.index), all = bk.match(/(?:성\s*명|이\s*름)\s*[:：]?\s*([가-힣]{2,4})(?![가-힣])/g); if (all) { const q = /([가-힣]{2,4})$/.exec(all[all.length - 1].replace(/\s+/g, '')); if (q && !NOT_NAME.test(q[1]) && !cpfBadName_(q[1])) { nm = q[1]; guess = true; } } }
+    if (!nm) { const bk = t.slice(Math.max(0, m.index - 80), m.index), all = bk.match(/(?:성\s*명|이\s*름)[\s|│]*[:：]?[\s|│]*([가-힣]{2,4})(?![가-힣])/g); if (all) { const q = /([가-힣]{2,4})$/.exec(all[all.length - 1].replace(/[\s|│:：]+/g, '')); if (q && !NOT_NAME.test(q[1]) && !cpfBadName_(q[1]) && cpfLikelyName_(q[1])) { nm = q[1]; guess = true; } } }
     const pk = nm ? cpfPersonKey_(nm, m[2] + '-' + m[3]) : '';
     const kp = pk ? (guess ? { personGuess: pk } : { person: pk }) : {};
     add('주민번호', m[2] + '-' + m[3], m[0].slice(m[0].lastIndexOf(m[2])), m.index + m[0].lastIndexOf(m[2]), Object.assign({}, kp)); // 자리는 번호가 시작하는 곳(역할 낱말 뒤 묶음과 같은 자리면 하나로)
@@ -29615,36 +29682,57 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
     if (rm) { const rk = cpfRoadKey_(rm[1]); if (rk) add('주소 대응', { 지번: ak, 도로명: rk }, rm[0].trim(), m.index, { asset: ak, road: rk }, { note: '한 자리에 지번·도로명이 함께 적힘' }); }
   }
   // 도로명 주소(지번 없이 도로명만 적힌 주소 — 초본 주소이력·계약서 주소·대장) — keys.road
-  re = /((?:[가-힣]+(?:특별시|광역시|도)\s*)?[가-힣]+(?:시|군|구)\s+(?:[가-힣]+구\s+)?(?:[가-힣]+(?:읍|면)\s+)?[가-힣][가-힣\d]*(?:대로|로|길)(?:\s*\d+\s*번?길)?\s*\d{1,4}(?:-\d{1,4})?(?:[^\n]{0,30}?\d{1,4}\s*동\s*\d{1,5}\s*호)?)/g;
+  re = /((?:[가-힣]+(?:특별시|광역시|도)\s*)?[가-힣]+(?:시|군|구)\s+(?:[가-힣]+구\s+)?(?:[가-힣]+(?:읍|면)\s+)?[가-힣][가-힣\d]*(?:대로|로|길)(?:\s*\d+\s*번?길)?\s*\d{1,4}(?:-\d{1,4})?(?![\d-]|가(?!길))(?:[^\n]{0,30}?\d{1,4}\s*동\s*\d{1,5}\s*호)?)/g; // [2026.10.19 1번 밤작업 ⑤] "금남로2가"(법정동)는 도로명 아님
   while ((m = re.exec(t))) { const rk = cpfRoadKey_(m[1]); if (rk) add('주소', m[1].replace(/\s+/g, ' ').trim(), m[1], m.index, { road: rk }, { note: '도로명 주소' }); }
+  // [2026.10.19 1번 밤작업 ⑤] 동호 — 지번·도로명 없이 "○○아파트 1333동 501호"만 적힌 자리(keys.unit — 같은 사건 안 같은 집)
+  re = /(?<![\d-])(\d{1,4})\s*동\s*(?:제?\s*\d{1,3}\s*층\s*)?제?\s*(\d{1,5})\s*호(?![가-힣]*\s*서식)/g;
+  while ((m = re.exec(t))) add('동호', m[1] + '동 ' + m[2] + '호', m[0], m.index, { unit: m[1] + '동' + m[2] + '호' });
   if (onlyKeys) { if (dropped) base.trunc.push('공통 뽑기 ' + (LIMIT + dropped) + '건 중 ' + LIMIT + '건만'); return out; }
   // 날짜
   re = /((?:19|20)\d{2})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})\s*일?(?!\d)/g;
   while ((m = re.exec(t))) { const d = cpfDate_(m[0]); if (!d) continue; add('기타:' + label(m.index), d, m[0], m.index, { date: d }); }
-  // 금액(세 자리 쉼표, 1,000 이상) — keys.amount
-  re = /(?<![\d\-])(-?\d{1,3}(?:,\d{3})+)(?![\d,]*\.\d)(?!\s*(?:㎡|m2|제곱))/g;
+  // [2026.10.19 1번 밤작업 ⑤] 줄여 쓴 날짜 — "26년8월"·"14년12월 5일"(연도 두 자리), "2026년 8월"(일 없음), "5/9일"·"5월 9일"(연도 없음).
+  //  날까지 있으면 날짜 열쇠, 연·월만이거나 연도가 없으면 값만(열쇠 없음 — 어느 해인지 2번이 맞댐)
+  re = /(?<![\d.\/\-])(\d{2})\s*년\s*(\d{1,2})\s*월(?:\s*(\d{1,2})\s*일)?/g;
+  while ((m = re.exec(t))) {
+    const yy = Number(m[1]), y = (yy <= 40 ? 2000 : 1900) + yy, mo = Number(m[2]); if (mo < 1 || mo > 12) continue;
+    if (m[3]) { const d = cpfDate_(y + '-' + mo + '-' + m[3]); if (d) add('기타:' + label(m.index), d, m[0], m.index, { date: d }, { note: '연도 두 자리(' + m[1] + '년 → ' + y + '년으로 읽음)' }); }
+    else add('기타:' + label(m.index), y + '-' + ('0' + mo).slice(-2), m[0], m.index, {}, { note: '연·월만(연도 두 자리 ' + m[1] + '년 → ' + y + '년으로 읽음)' });
+  }
+  re = /(?<![\d.\/\-])((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월(?!\s*\d{1,2}\s*일)/g;
+  while ((m = re.exec(t))) { const mo = Number(m[2]); if (mo < 1 || mo > 12) continue; add('기타:' + label(m.index), m[1] + '-' + ('0' + mo).slice(-2), m[0], m.index, {}, { note: '연·월만' }); }
+  re = /(?<![\d.\/\-])(\d{1,2})\s*(?:\/|월)\s*(\d{1,2})\s*일/g;
+  while ((m = re.exec(t))) {
+    if (/(?:(?:19|20)\d{2}|\d{2})\s*[.\-\/년]\s*$/.test(t.slice(Math.max(0, m.index - 8), m.index))) continue; // 연도가 앞에 있는 날짜는 위에서 읽음
+    const mo = Number(m[1]), dd = Number(m[2]); if (mo < 1 || mo > 12 || dd < 1 || dd > 31) continue;
+    add('기타:' + label(m.index), ('0' + mo).slice(-2) + '-' + ('0' + dd).slice(-2) + '(연도 없음)', m[0], m.index, {}, { note: '연도 없이 월·일만' });
+  }
+  // 금액(세 자리 쉼표, 1,000 이상) — keys.amount. [2026.10.19 1번 밤작업 ②] 뒤에 단위 낱말(만·억·천·백)이 붙은 숫자는 여기서 빼고 아래 단위 금액으로("6,548만원" → 65,480,000)
+  re = /(?<![\d\-])(-?\d{1,3}(?:,\d{3})+)(?![\d,]*\.\d)(?!\s*(?:㎡|m2|제곱|조|억|만|천|백|십))/g;
   while ((m = re.exec(t))) { const v = Number(m[1].replace(/,/g, '')); if (Math.abs(v) < 1000) continue; add('기타:' + label(m.index), v, m[0], m.index, { amount: v }); }
+  // [2026.10.19 1번 밤작업 ②] 단위 낱말 금액("6,548만원"·"440백만원"·"5억2천5백만원"·"이억칠천만원정") — 한글 수만으로 된 것은 예전처럼 "기타:한글금액"(숫자 금액과 맞대는 재료)
+  cpfUnitAmounts_(t).forEach(function (u) { add(u.han ? '기타:한글금액' : '기타:' + label(u.at), u.value, u.raw, u.at, { amount: u.value }, u.note ? { note: u.note } : null); });
+  // [2026.10.19 1번 밤작업 ②] 비율(%) — 세율·지분율·공제율·이자율 등(앞 낱말이 칸 이름)
+  re = /(?<![\d.])(\d{1,3}(?:\.\d{1,4})?)\s*(?:%|퍼센트|프로(?![가-힣]))/g;
+  while ((m = re.exec(t))) { const v = Number(m[1]); if (!(v >= 0 && v <= 100)) continue; add('비율', v, m[0], m.index, {}, { note: '앞 낱말: ' + label(m.index) }); }
   // 기간 — "2026-04-15~04-17", "2025.08.26 ~ 2026.08.25"(시작·끝 한 쌍)
   re = /((?:19|20)\d{2})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})\s*일?\s*[~∼～\-부터]{1,3}\s*(?:((?:19|20)\d{2})\s*[.\-\/년]\s*)?(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})\s*일?/g;
   while ((m = re.exec(t))) {
     const a = cpfDate_(m[1] + '-' + m[2] + '-' + m[3]), b = cpfDate_((m[4] || m[1]) + '-' + m[5] + '-' + m[6]);
     if (a && b && b >= a) add('기간', { 시작: a, 끝: b }, m[0], m.index, { date: a });
   }
-  // 한글 금액 — "금 이억칠천만원정" → 원 정수(숫자 금액과 맞대는 재료)
-  re = /(?:금\s*)?((?:[일이삼사오육칠팔구십백천]+\s*억\s*)?(?:[일이삼사오육칠팔구십백천]+\s*만\s*)?(?:[일이삼사오육칠팔구십백천]+\s*)?)원\s*정?/g;
-  while ((m = re.exec(t))) {
-    const s = m[1].replace(/\s+/g, ''); if (!/[억만]/.test(s) || s.length < 2) continue;
-    const v = cpfHanNum_(s); if (v >= 10000) add('기타:한글금액', v, m[0].trim(), m.index, { amount: v });
-  }
-  // 면적 — 같은 줄 앞 낱말로 종류(전유·공용·대지권·연면적·토지·건물)
-  re = /(\d{1,6}(?:\.\d{1,4})?)\s*(?:㎡|m2|m²|제곱미터)/g;
+  // (한글 금액은 위 단위 금액이 함께 읽음 — [2026.10.19 1번 밤작업 ②] "백만원"처럼 숫자 없는 단위 낱말은 금액이 아님)
+  // 면적 — 같은 줄 앞 낱말로 종류(전유·공용·대지권·연면적·토지·건물). [2026.10.19 1번 밤작업 ⑤] 천 단위 쉼표("10,293㎡"가 293으로 잘리던 것)
+  re = /(?<![\d.,])(\d{1,3}(?:,\d{3})+(?:\.\d{1,4})?|\d{1,6}(?:\.\d{1,4})?)\s*(?:㎡|m2|m²|제곱미터)/g;
   while ((m = re.exec(t))) {
     const lb = label(m.index), ak = /전\s*유|전\s*용/.test(lb) ? '전유면적' : /공\s*용/.test(lb) ? '공용면적' : /대\s*지\s*권/.test(lb) ? '대지권면적' : /연\s*면\s*적|건\s*물|건\s*축/.test(lb) ? '건물면적' : /토\s*지|대\s*지|임\s*야|전$|답$/.test(lb) ? '토지면적' : /임\s*대/.test(lb) ? '임대면적' : '면적';
-    add(ak, Number(m[1]), m[0], m.index, {});
+    add(ak, Number(m[1].replace(/,/g, '')), m[0], m.index, {});
   }
-  // 지분
+  // 지분 — "2분의1", [2026.10.19 1번 밤작업 ⑤] "지분 2/5"·"중 2/5"·"2/5 지분"(빗금은 지분 낱말이 곁에 있을 때만 — 날짜·쪽 번호와 헷갈림)
   re = /(\d+(?:\.\d+)?)\s*분\s*의\s*(\d+(?:\.\d+)?)/g;
   while ((m = re.exec(t))) add('지분', { n: Number(m[2]), d: Number(m[1]) }, m[0], m.index, {});
+  re = /(?:지\s*분\s*[:：]?\s*|중\s+)(\d{1,6})\s*\/\s*(\d{1,6})(?![\d\/])|(?<![\d\/])(\d{1,6})\s*\/\s*(\d{1,6})\s*지\s*분/g;
+  while ((m = re.exec(t))) { const n = Number(m[1] || m[3]), d = Number(m[2] || m[4]); if (n > 0 && d > 0 && n <= d) add('지분', { n: n, d: d }, m[0], m.index, {}); }
   if (dropped) base.trunc.push('공통 뽑기 ' + (LIMIT + dropped) + '건 중 ' + LIMIT + '건만');
   return out;
 }
@@ -29654,7 +29742,7 @@ function cpfTextRows_(text, base) {
   const t = String(text || ''), out = [], marks = cpfPageMarks_(t); let at = 0, n = 0, cut = 0;
   t.split('\n').forEach(function (ln) {
     const pos = at; at += ln.length + 1;
-    const amts = (ln.match(/(?<![\d\-])-?\d{1,3}(?:,\d{3})+(?![\d,]*\.\d)/g) || []).map(function (s) { return Number(s.replace(/,/g, '')); }).filter(function (v) { return Math.abs(v) >= 1000; });
+    const amts = (ln.match(/(?<![\d\-])-?\d{1,3}(?:,\d{3})+(?![\d,]*\.\d)(?!\s*(?:조|억|만|천|백|십))/g) || []).map(function (s) { return Number(s.replace(/,/g, '')); }).filter(function (v) { return Math.abs(v) >= 1000; }).concat(cpfUnitAmounts_(ln).map(function (u) { return u.value; })); // [2026.10.19 1번 밤작업 ②] 단위 낱말 금액도
     if (!amts.length) return;
     const dates = (ln.match(/(?:19|20)\d{2}\s*[.\-\/년]\s*\d{1,2}\s*[.\-\/월]\s*\d{1,2}/g) || []).map(cpfDate_).filter(String);
     const jbs = (ln.match(/(?<![\d-])산?\d{1,5}-\d{1,5}(?![\d-])/g) || []).filter(function (s) { return !/^\d{3}-\d{2}$/.test(s); });
@@ -29663,7 +29751,7 @@ function cpfTextRows_(text, base) {
     if (++n > CPF_LIMITS_.textRows) { cut++; return; }
     const val = { 줄: cpfMask_(ln.trim()).slice(0, 200), 금액: amts }; if (dates.length) val.날짜 = dates; if (jbs.length) val.지번 = jbs;
     const src = Object.assign({}, base.src, { where: '글자 ' + pos + '번째 자 줄', rec: 'line' + n }); const pg = cpfPageAt_(marks, pos); if (pg) src.page = pg;
-    const keys = {}; if (dates[0]) { keys.date = dates[0]; keys.dateFrom = '같은 줄'; } if (amts.length === 1) keys.amount = amts[0];
+    const keys = {}; if (dates[0]) { keys.date = dates[0]; keys.dateFrom = '같은 줄'; } if (amts.length === 1 && keys.date) keys.amount = amts[0]; // 금액 열쇠는 날짜와 함께일 때만(엇묶임)
     out.push({ kind: '글자 줄', value: val, raw: ln.trim().slice(0, 200), src: src, keys: keys, role: '', read: { how: base.how, conf: '불확실', note: '서류 규칙 없음 — 날짜·지번·순번과 금액이 함께 있는 줄을 한 건으로(칸 뜻은 모름)', ocrConf: cpfOcrConf_(base.how, null) } });
   });
   if (cut) base.trunc.push('글자 줄 ' + (CPF_LIMITS_.textRows + cut) + '개 중 ' + CPF_LIMITS_.textRows + '개만');
@@ -29704,6 +29792,18 @@ function cpfFile_(c, f, cache, tbank, opt) {
   if (!p) { try { p = docParseText_(text); } catch (e) { p = null; } }
   // 서류 정리 규칙이 종류를 못 정한 서류만 — 사실 목록 전용 새 서류 5가지(등기완료통지서·수입인지·견적서·위임장·금융협회 조회). 사건처리의 서류 판정(docParseText_)은 그대로
   if (!(p && p.type)) { try { const q5 = docNewKinds2Parse_(text); if (q5) p = q5; } catch (e) {} }
+  // [2026.10.19 1번 밤작업 ④] 서류 종류 확인 — 머리(앞 200자)가 의뢰서·검토서·메모·법령·질의회신·판례·자문보고서인데 규칙이 정한 종류의 이름이 머리에 없으면
+  //  규칙이 서식을 잘못 짚은 것으로 보고 칸 옮기기를 하지 않는다(빈 의뢰서 → "잔액증명서 합계 0", 검토 메모의 세액표 → 가짜 통장 거래). 글자의 공통 뽑기·글자 줄은 그대로 함
+  let typeDoubt = '';
+  if (p && p.type && !tbank[String(f.id)]) {
+    const head = String(text).slice(0, 200).replace(/\s+/g, '');
+    const nonEv = /(의뢰서|상담(?:의뢰|신청|기록|일지|메모|내용|요청)|검토서|검토(?:메모|의견|결과|보고)|메모|법령|조문|시행령|시행규칙|질의|회신|판례|유권해석|자문보고서|종합검토)/.exec(head);
+    if (nonEv) {
+      const toks = String(p.label || '').replace(/[()·\[\]+,\/]/g, ' ').split(/\s+/).filter(function (w) { return w.length >= 2; });
+      const hit = toks.some(function (w) { const w2 = w.replace(/(증명서|확인서|계약서|신고서|명세서|영수증|통지서|등록증|등본|초본|서)$/, ''); return head.indexOf(w) !== -1 || (w2.length >= 2 && head.indexOf(w2) !== -1); });
+      if (!hit) { typeDoubt = '서류 정리 규칙은 「' + (p.label || p.type) + '」로 봤으나 머리 제목(' + nonEv[1] + ')과 맞지 않아 칸 옮기기를 하지 않음'; p = null; }
+    }
+  }
   const label = (p && (p.label || p.type)) || '종류 미정';
   src.docType = label;
   const base = { src: src, how: how, trunc: trunc };
@@ -29753,9 +29853,20 @@ function cpfFile_(c, f, cache, tbank, opt) {
     try { table = cpfSheetRows_(f, base); } catch (e) {}
     if (!table.length) trunc.push(/\.csv$/i.test(n) ? 'CSV 표 — 칸 자리를 지킨 표 글이 없어 표 줄을 못 만듦(글자로만 읽음)' : '표 줄 못 만듦 — 칸 자리를 지킨 표 글(ocrgrid1_)이 기억에 없음(통장으로 안 보여 변환을 안 함 — 표 글 만들기는 3번 읽기 세션 몫)');
   }
-  const all = ruled.concat(table, lines, common);
+  // [2026.10.19 1번 밤작업 ①] 칸 구분자 표 — 3번 표 글(서류 표 ocrtbl1_ 우선, 없으면 Vision 줄·칸 ocrvis1_)과 글 속 마크다운 표. 기억에 있는 것만 받음(새 읽기 없음)
+  let piped = [];
+  if (how !== '엑셀') {
+    try {
+      let tt = ''; let from = '';
+      if (/pdf|officedocument\.wordprocessingml|msword/.test(mt)) { tt = tcDocTableText_(f) || ''; from = '서류 표 글'; }
+      if (!/\|/.test(tt) && /pdf|^image\//.test(mt)) { tt = tcVisionText_(f) || ''; from = 'Vision 줄·칸 글'; }
+      if (/\|/.test(tt)) piped = cpfPipeRows_(tt, base, from, p && p.type);
+      if (!piped.length && /\n\s*\|[^\n]*\|[^\n]*\|/.test('\n' + text)) piped = cpfPipeRows_(text, base, '글 속 표', p && p.type);
+    } catch (e) { trunc.push('표 글 받기 오류: ' + String(e && e.message || e).slice(0, 60)); }
+  }
+  const all = ruled.concat(table, piped, lines, common);
   if (exclude) all.forEach(function (x) { x.read.use = '제외 후보(' + exclude.replace(/ — .*$/, '') + ')'; });
-  facts[0].read.note = [exclude ? '제외 후보: ' + exclude + ' — 사실은 뽑았고 read.use로 표시(쓸지 2번이 정함)' : '', p && p.type ? '' : '서류 규칙이 없는 종류 — 글자에서 공통 뽑기·글자 줄만 함', warn.length ? '서류 정리 경고: ' + warn.slice(0, 3).join(' / ').slice(0, 200) : '', cut ? '글자 상한에서 잘림 — 뒤쪽은 못 읽음' : '', trunc.length ? '잘림·못 함: ' + trunc.join(' / ') : ''].filter(String).join(' · ');
+  facts[0].read.note = [typeDoubt, exclude ? '제외 후보: ' + exclude + ' — 사실은 뽑았고 read.use로 표시(쓸지 2번이 정함)' : '', p && p.type ? '' : '서류 규칙이 없는 종류 — 글자에서 공통 뽑기·글자 줄만 함', warn.length ? '서류 정리 경고: ' + warn.slice(0, 3).join(' / ').slice(0, 200) : '', cut ? '글자 상한에서 잘림 — 뒤쪽은 못 읽음' : '', trunc.length ? '잘림·못 함: ' + trunc.join(' / ') : ''].filter(String).join(' · ');
   if (exclude) facts[0].src.docType = label;
   return facts.concat(all);
 }
@@ -29790,6 +29901,62 @@ function cpfRegLists_(text, base) {
       out.push({ kind: kind + ' 부동산', value: val, raw: seg.replace(/\s+/g, ' ').trim().slice(0, 200), src: Object.assign({}, src, { rec: rec + '.' + sm[1] }), keys: Object.assign({ docNo: '목록번호|' + h.no }, ak ? { asset: ak } : {}, dates[0] ? { date: dates[0], dateFrom: '목록 원인일' } : {}), role: '', read: { how: base.how, conf: '불확실', note: '등기부 목록 표가 글자인식에서 풀려 지번·순위 자리가 섞일 수 있음 — 원문 확인', ocrConf: cpfOcrConf_(base.how, null) } });
     });
   });
+  return out;
+}
+// [2026.10.19 1번 밤작업 ①] 칸 구분자 표 → 사실. 3번 읽기의 표 글(서류 표 ocrtbl1_ — tcDocTableText_, Vision 줄·칸 ocrvis1_ — tcVisionText_)과
+//  마크다운 의뢰서·메모의 표가 모두 칸을 " | "로 나눈다. 드라이브 글에서는 표가 풀려 값이 칸 이름 없이 흩어지던 것(원본 대조 ①)을 받아 쓰는 자리.
+//  ① 두 칸(또는 네 칸) 표 "| 칸 이름 | 값 |" → 칸마다 사실(칸 이름을 서류 칸처럼 낱말표에 맞춤 — 의뢰인→성명 등)
+//  ② 머리 줄(글자 칸 3개 이상) 아래 줄 → "표 줄" 한 건({머리: 값}). 글자인식에서 온 표는 불확실(칸 경계를 글자 위치로 세움). 새 읽기 없음(기억에 있는 것만)
+//  from: '서류 표 글' | 'Vision 줄·칸 글' | '글 속 표'
+function cpfPipeRows_(text, base, from, docType) {
+  const t = String(text || ''), out = [], lines = t.split('\n'); let at = 0, blocks = [], cur = null;
+  lines.forEach(function (ln, i) {
+    const pos = at; at += ln.length + 1;
+    const cells = /\|/.test(ln) ? ln.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map(function (x) { return x.trim(); }) : null;
+    if (cells && cells.length >= 2 && !cells.every(function (x) { return /^:?-{2,}:?$/.test(x) || !x; })) { if (!cur) { cur = { rows: [], pos: [], page: null }; blocks.push(cur); } cur.rows.push(cells); cur.pos.push(pos); }
+    else if (cells && cells.every(function (x) { return /^:?-{2,}:?$/.test(x) || !x; })) { /* 마크다운 구분 줄 */ }
+    else cur = null;
+  });
+  const conf = from === '글 속 표' ? '확실' : '불확실', marks = cpfPageMarks_(t);
+  const note = from + (from === '글 속 표' ? '' : ' — 칸 경계를 읽기 쪽이 세움(원문 확인)');
+  let n = 0;
+  blocks.forEach(function (b, bi) {
+    if (b.rows.length < 1) return;
+    const isLab = function (x) { return /[가-힣A-Za-z]/.test(x) && x.length <= 20 && !/^\s*[\d,.\-]+\s*$/.test(x); };
+    // 머리 줄 표 — 첫 줄이 모두 칸 이름이고 아래 줄의 그 자리(짝수 칸 포함)에 숫자가 있으면(연도별 표 등). 아니면 두 칸(네 칸) 표는 "칸 이름 | 값" 쌍
+    const r0 = b.rows[0].filter(String), headLike = b.rows.length >= 2 && r0.length >= 3 && r0.every(isLab) && b.rows.slice(1).some(function (r) { return r.some(function (x, j) { return j % 2 === 0 && /^\s*[\d,.\-]+\s*$/.test(x) && x.trim(); }); });
+    const wid = b.rows.map(function (r) { return r.length; }), two = !headLike && wid.filter(function (w) { return w === 2 || w === 4; }).length >= Math.ceil(wid.length * 0.7);
+    const srcOf = function (ri, extra) { const pg = cpfPageAt_(marks, b.pos[ri]); return Object.assign({}, base.src, { where: from + ' ' + (bi + 1) + '번째 표 ' + (ri + 1) + '번째 줄', rec: 'tbl' + (bi + 1) + '.' + (ri + 1) }, pg ? { page: pg } : {}, extra || {}); };
+    if (two) { // 칸 이름 | 값 (| 칸 이름 | 값)
+      b.rows.forEach(function (r, ri) {
+        for (let j = 0; j + 1 < r.length; j += 2) {
+          const lab = r[j].replace(/\s+/g, ''), v = r[j + 1]; if (!lab || !v || !isLab(r[j]) || /^[\s\-_.()]+$/.test(v)) continue;
+          if (/^(항목|구분|내용|값|비고|칸|번호|순번)$/.test(lab) && /^(항목|구분|내용|값|비고|금액|입력|기재|작성)$/.test(v.replace(/\s+/g, ''))) continue; // 머리 줄("항목 | 내용")
+          if (++n > CPF_LIMITS_.sheet) return;
+          const ua = cpfUnitAmounts_(v), uv = ua.length === 1 && ua[0].raw.replace(/\s+/g, '').length >= v.replace(/[\s약()]+/g, '').length - 1 ? ua[0].value : null; // "5억2천만원" 칸 값
+          const nv = cpfNormalize_(lab, uv !== null ? uv : v, docType || ''); if (!nv) continue; if (uv !== null) nv.raw = v;
+          const keys = {}, role = CPF_ROLE_KEYS_.test(lab) ? lab : '';
+          if (nv.kind === '성명') { if (!cpfLikelyName_(nv.value) && !/^[가-힣]{2,4}$/.test(nv.value)) continue; const pk = cpfLikelyName_(nv.value) ? cpfPersonKey_(nv.value, '') : ''; if (pk) keys.personGuess = pk; }
+          if (/^(소재지|주소)$/.test(nv.kind)) { const a = cpfAssetKey_(v); if (a) keys.asset = a; }
+          if (/^\d{4}-\d{2}-\d{2}$/.test(String(nv.value))) { keys.date = nv.value; keys.dateFrom = lab; }
+          out.push(cpfKeysFinish_({ kind: nv.kind, value: nv.value, raw: (r[j] + ' | ' + v).slice(0, 200), src: srcOf(ri), keys: keys, role: role, read: { how: base.how, conf: conf, note: note + ' · 칸 이름 | 값 표', ocrConf: cpfOcrConf_(base.how, null) } }));
+        }
+      });
+      return;
+    }
+    let h = -1; for (let i = 0; i < Math.min(b.rows.length, 6); i++) { const cs = b.rows[i].filter(String); if (cs.length >= 3 && cs.filter(isLab).length >= Math.ceil(cs.length * 0.6)) { h = i; break; } }
+    if (h === -1) return;
+    const head = b.rows[h].map(function (x, i) { return x.replace(/\s+/g, '') || ('칸' + (i + 1)); });
+    b.rows.slice(h + 1).forEach(function (r, i) {
+      if (++n > CPF_LIMITS_.sheet) return;
+      const val = {}; let k = 0;
+      r.forEach(function (x, j) { const s0 = String(x).trim(); if (!s0) return; const u = cpfUnitAmounts_(s0); val[head[j] || ('칸' + (j + 1))] = cpfNum_(s0) !== null ? cpfNum_(s0) : (u.length === 1 && u[0].raw.length >= s0.replace(/\s+/g, '').length - 1 ? u[0].value : (cpfDate_(s0) && s0.length <= 14 ? cpfDate_(s0) : s0)); k++; });
+      if (k < 2) return;
+      const keys = {}; Object.keys(val).forEach(function (q) { if (!keys.date && /^\d{4}-\d{2}-\d{2}$/.test(String(val[q]))) { keys.date = val[q]; keys.dateFrom = q; } if (!keys.asset && /소재|주소|지번/.test(q)) { const a = cpfAssetKey_(val[q]); if (a) keys.asset = a; } if (!keys.personGuess && /성명|이름/.test(q) && cpfLikelyName_(val[q])) keys.personGuess = cpfPersonKey_(val[q], ''); });
+      out.push({ kind: '표 줄', value: val, raw: r.join(' | ').slice(0, 300), src: srcOf(h + 1 + i), keys: keys, role: '', read: { how: base.how, conf: conf, note: note, ocrConf: cpfOcrConf_(base.how, null) } });
+    });
+  });
+  if (n > CPF_LIMITS_.sheet) base.trunc.push(from + ' 칸 ' + n + '개 중 ' + CPF_LIMITS_.sheet + '개만');
   return out;
 }
 // 엑셀 표 줄 — 칸 자리를 지킨 표 글(ocrgrid1_ — 기억에 있을 때만, 새 변환 없음)에서 시트마다 머리 줄(글자 칸 3개 이상) 아래 줄을 {머리: 값}으로
