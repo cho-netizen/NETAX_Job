@@ -216,8 +216,11 @@ function akQuestionKind_(it) {
 const AK_FIELD_KIND_ = { 기준일: 'date', 법정일: 'date', 상속인수: 'number', 상속인: 'list', 금융재산: 'money', 장례비: 'money', 봉안시설: 'money', 총상속재산: 'money', 과세가액: 'money', 상속공제: 'money', 과세표준: 'money', 산출세액: 'money', 신고세액공제: 'money', 납부세액: 'money' };
 // [2026.10.14] 점검은 읽기 전용 — 사이드바와 같은 단계를 돌리되 사건 시트(work_updateCase)·결정 파일(caseProcPatch_/Store_) 쓰기는
 // 이 실행 안의 메모리에만 한다. 실사건 자료(증빙목록·처리개요·기준일·작업일지)는 바뀌지 않는다. 끝나면 원래 함수로 되돌린다.
+// [2026.10.18 세무사님 지시] 블라인드 점검 스위치 — true면 지난 대화기록(job AI 대화·work 시절 사건 폴더 _대화기록.json)의 세무사님 말을 단서로 읽지 않는다.
+//  99개 사건 중 32건이 대화기록 속 사건 설명을 단서로 써서, 원시서류만으로 낸 점수가 아니었다. 실제 처리(사이드바)에는 영향 없음 — 점검 때만.
+var AK_BLIND_NO_CHAT_ = true;
 function akSandbox_(caseId, fn, override) {
-  const real = { work_updateCase: work_updateCase, work_findCaseRow_: work_findCaseRow_, work_readRow_: work_readRow_, caseProcLoad_: caseProcLoad_, caseProcPatch_: caseProcPatch_, caseProcStore_: caseProcStore_, akReadCase_: akReadCase_ };
+  const real = { work_updateCase: work_updateCase, work_findCaseRow_: work_findCaseRow_, work_readRow_: work_readRow_, caseProcLoad_: caseProcLoad_, caseProcPatch_: caseProcPatch_, caseProcStore_: caseProcStore_, akReadCase_: akReadCase_, caseProcChatTexts_: caseProcChatTexts_ };
   const mem = { c: real.akReadCase_(caseId), saved: real.caseProcLoad_(caseId) };
   if (!mem.c) return fn();
   // [2026.10.15] 블라인드 점검 — 사람·세션이 이전에 넣은 값(처리개요·기준일·법정일·증빙목록 표시·작업일지·세액계산결과·사건처리 결정/채움)을 전부 지우고
@@ -249,10 +252,11 @@ function akSandbox_(caseId, fn, override) {
     caseProcLoad_ = function (id) { return String(id) === String(caseId) ? copy(mem.saved) : real.caseProcLoad_(id); };
     caseProcPatch_ = function (id, mutate) { if (String(id) !== String(caseId)) return null; const s = copy(mem.saved); const o = mutate(s); mem.saved = s; return o === undefined ? s : o; };
     caseProcStore_ = function (id, s) { if (String(id) === String(caseId)) mem.saved = copy(s); };
+    if (AK_BLIND_NO_CHAT_) caseProcChatTexts_ = function () { return []; };
     return fn();
   } finally {
     akReadCase_ = real.akReadCase_; work_findCaseRow_ = real.work_findCaseRow_; work_readRow_ = real.work_readRow_; work_updateCase = real.work_updateCase;
-    caseProcLoad_ = real.caseProcLoad_; caseProcPatch_ = real.caseProcPatch_; caseProcStore_ = real.caseProcStore_;
+    caseProcLoad_ = real.caseProcLoad_; caseProcPatch_ = real.caseProcPatch_; caseProcStore_ = real.caseProcStore_; caseProcChatTexts_ = real.caseProcChatTexts_;
   }
 }
 // 한 사건 점검 — 사이드바와 같은 서버 단계를 그대로(확인창·대화 전환 없이) 돌린 뒤 대조. 증빙 단계가 서류를 다 못 읽으면 more
