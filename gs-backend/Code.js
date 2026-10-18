@@ -45891,7 +45891,7 @@ function trcApplyAns_(S, ans) {
     return false;
   };
   Object.keys(ans || {}).forEach(function (path) {
-    const x = ans[path]; if (!x || /^(costs|taxfee|split|compSplit|사건분류)$/.test(path) || /^oa\.|^a\d+\.(isOverseasAsset|oaResident5yr)$/.test(path)) return; // 국외자산 판단·환율은 trcOverseas_가 쓴다
+    const x = ans[path]; if (!x || /^(costs|taxfee|split|compSplit|사건분류|relFmv)$/.test(path) || /^oa\.|^a\d+\.(isOverseasAsset|oaResident5yr)$/.test(path)) return; // 국외자산 판단·환율은 trcOverseas_가 쓴다
     if (/^(교차검증|🤖)/.test(String(x.src || ''))) return; // [2026.10.18 재점검 7] 예전에 교차검증·AI가 답 저장소에 넣은 값은 답이 아님 — 매번 서류로 다시 판정(cxInlineTransfer_)
     if (setP(path, x.v)) S.src[path] = x.src;
   });
@@ -45956,6 +45956,17 @@ function trcApplyAns_(S, ans) {
   });
   // 양수인 관계는 계약 카드 양수인과 자산(부당행위 확인 게이트)에 같이
   st.transferContracts.forEach(function (ct) { const r = ct.buyers && ct.buyers[0] && ct.buyers[0].relation; if (r) st.transferAssets.forEach(function (a) { if (a.transferContractId === ct.id) a.buyerRelation = r; }); });
+  // [2026.10.19 engine-fix] §101① — 시가 답이 있으면 화면 '특수관계인 간 시가재계산' 창과 같은 판정. 기준(시가의 5%·3억 중 적은 금액)을 넘으면
+  //  양도계약 카드 양도가액을 시가로 바꾸고(시행령 §167④) 실제 거래가액은 근거로 남긴다. 넘지 않으면 칸은 그대로, 판정 결과만 남긴다
+  if (ans.relFmv && st.transferContracts[0]) {
+    const ct0 = st.transferContracts[0], actual = trcNum_(ct0.totalPrice), fmv = Number(ans.relFmv.v) || 0;
+    const r = toolCalculateTransferRelatedPartyPriceAdjustment({ isRelatedPartyTransaction: true, transactionRole: 'sale', actualPrice: actual, marketValue: fmv });
+    S.facts = S.facts || {}; S.facts.relAdj = r;
+    if (r && r.시가재계산적용여부) {
+      ct0.relatedPartyActualPrice = actual; ct0.totalPrice = fmv;
+      S.src['c0.totalPrice'] = '§101① 부당행위계산 — 시가 ' + fmv.toLocaleString('ko-KR') + '원으로 계산(실제 거래가액 ' + actual.toLocaleString('ko-KR') + '원, 차액이 기준 ' + Number(r.차감기준액 || 0).toLocaleString('ko-KR') + '원 이상) · 시가 근거: ' + ans.relFmv.src;
+    }
+  }
   return S;
 }
 function trcHash_(st) {
@@ -46058,6 +46069,24 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
         { mode: 'options', target: 'calc:c0.buyer.relation', options: [{ label: '특수관계 없음', value: 'none' }, { label: '형제자매', value: 'sibling' }, { label: '직계존비속', value: 'lineal' }, { label: '배우자', value: 'spouse' }, { label: '기타 친족', value: 'relative' }], label: '양수인과의 관계' });
     }
   });
+  // [2026.10.19 engine-fix] 소득세법 §101①(양도소득의 부당행위계산) — 양수인이 특수관계인(관계 답) 또는 사건분류가 '특수관계자간 거래'면 시가를 묻는다.
+  //  예전엔 관계·사건분류를 골라도 계산기 칸이 하나도 안 바뀌어 세액이 '일반'과 같았다(이종식: 기준시가 합보다 33% 낮은 대금). 화면 계산기의
+  //  '특수관계인 간 시가재계산' 창과 같은 판정(toolCalculateTransferRelatedPartyPriceAdjustment)을 답을 받은 뒤 trcApplyAns_가 돌린다.
+  (function () {
+    const ct0 = S.state.transferContracts[0]; if (!ct0) return;
+    const rel = String(((ct0.buyers || [])[0] || {}).relation || ''), cls = String((ans.사건분류 && ans.사건분류.v) || '');
+    if (ans.relFmv || !((rel && rel !== 'none') || /^특수관계자간/.test(cls))) return;
+    const mem = S.state.transferAssets.filter(function (a) { return a.transferContractId === ct0.id; });
+    const sum = function (k) { return mem.reduce(function (t, a) { return t + (Number(a[k]) || 0); }, 0); };
+    const actual = trcNum_(ct0.totalPrice), w = function (n) { return Number(n || 0).toLocaleString('ko-KR'); };
+    const gate = function (v) { if (!(actual > 0) || !(v > actual)) return ''; const diff = v - actual, thr = Math.min(300000000, Math.round(v * 0.05)); return ' — 대금 ' + w(actual) + '원은 ' + Math.round(diff / v * 100) + '% 낮음, 기준(시가의 5%·3억 중 적은 금액 ' + w(thr) + '원) ' + (diff >= thr ? '넘음 → 양도가액을 시가로' : '안 넘음 → 적용 안 함'); };
+    const cands = [];
+    [['appraisalValue', '감정가액(상증법 §60⑤ — 시가)'], ['comparableTransactionPrice', '매매사례가액(§60② — 시가)'], ['transferStandardPriceForConversion', '기준시가(§61 — 시가가 없을 때 보충적 평가)']].forEach(function (x) {
+      const v = sum(x[0]); if (v > 0 && !cands.some(function (c0) { return Number(c0.v) === v; })) cands.push({ v: String(v), src: x[1] + ' 합 ' + w(v) + '원' + gate(v) });
+    });
+    q('tr:relfmv', 'judge', '양수인이 특수관계인' + (rel && rel !== 'none' ? '(' + rel + ')' : '') + '입니다 — 소득세법 §101①(부당행위계산) 판정에 쓸 시가를 정해 주세요. 대금이 시가보다 5% 이상(3억 한도) 낮으면 양도가액을 시가로 계산합니다(시행령 §167③④). 시가는 감정가액·매매사례가액, 없으면 기준시가입니다.' + (cands.length ? '' : ' 서류에서 시가·기준시가를 찾지 못했습니다 — 금액을 직접 넣어 주세요(토지는 개별공시지가 × 면적).'),
+      { mode: cands.length ? 'choose' : 'input', target: 'trRelFmv', input: 'money', label: '시가(§101① 판정)', cands: cands });
+  })();
   // [2026.10.17 세무사님 원칙 — 내용 항목별로] 수용 토지 보상금 내역서의 필지별 줄(면적 × 단가 = 금액, 합 = 토지합계) — 서류 합계 하나를 고르게 하지 않고 필지마다 양도자산으로
   const compRows = S.facts.compRows;
   if (compRows && !ans.compSplit) {
@@ -46430,6 +46459,12 @@ function trcApply_(c, body) {
     const sum = function (a) { return a.reduce(function (s, x) { return s + x.amount; }, 0); };
     trcAnsSet_(c, 'costs', { acq: acq, tr: tr }, src);
     return done('필요경비 확정 ← 취득비용 ' + sum(acq).toLocaleString('ko-KR') + '원(' + acq.length + '건, 자산 카드) · 자본적지출·양도비 ' + sum(tr).toLocaleString('ko-KR') + '원(' + tr.length + '건, 계약 카드)');
+  }
+  if (target === 'trRelFmv') { // [2026.10.19 engine-fix] §101① 시가
+    const amt = trcNum_(value);
+    if (!amt) return { ok: false, error: '시가를 넣어 주세요.' };
+    trcAnsSet_(c, 'relFmv', amt, src);
+    return done('§101① 판정 시가 ← ' + amt.toLocaleString('ko-KR') + '원');
   }
   if (target === 'trTaxFee') {
     const amt = trcNum_(value);
