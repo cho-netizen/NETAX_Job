@@ -15,6 +15,9 @@
         <input type="text" id="dashNewTaskTitle" placeholder="새 할일 입력 후 Enter" style="flex:1; min-width:160px;">
       </div>
       <div id="dashTasks"><div class="spinner">불러오는 중…</div></div>
+      <!-- [2026.10.18 탭연결 16번] 구글 할일과 작업관리 하위업무가 서로 다른 목록이라 한쪽만 보게 됐다 — 같은 카드에서 사건 하위업무(완료 전)도 함께 본다 -->
+      <div style="font-weight:700; font-size:12.5px; margin:10px 0 4px; color:var(--sub);">🗂 사건 하위업무(완료 전 — 체크·추가는 작업관리·처리개요)</div>
+      <div id="dashSubtasks"><div class="spinner">불러오는 중…</div></div>
     </div>
     <!-- [2026.09.16] 세무사님 요청 — 할일 바로 다음으로 순서 이동, 타이틀 "오늘~7일 일정"을
          그냥 "일정"으로 줄이고, 구글캘린더로 바로 가는 링크와 조회기간(전/후 며칠)을
@@ -92,6 +95,7 @@
     loadDashCalendar_();
     loadDashEmails_();
     loadDashTasks_();
+    loadDashSubtasks_();
     loadDashCaseLog_();
     loadDashNightlyStatus_();
     loadDashFed_();
@@ -429,6 +433,40 @@
       + '<button type="button" class="log-del dashTaskDel" title="삭제">✕</button>'
       + '</div>';
   }
+  // [2026.10.18 탭연결 16번] 진행 중 사건의 완료 전 하위업무 — 마감일 있는 것 먼저(가까운 순), 최대 12개. 줄을 누르면 그 사건 작업관리.
+  function loadDashSubtasks_(){
+    var box = document.getElementById('dashSubtasks');
+    if (!box) return;
+    callGas('work_get_cases', {}).then(function(res){
+      var rows = [];
+      ((res && res.cases) || []).forEach(function(c){
+        if (c.상태 === '완료') return;
+        (function walk(nodes){
+          (nodes || []).forEach(function(n){
+            if (n.status !== '완료') rows.push({ c: c, n: n });
+            walk(n.children);
+          });
+        })(c.하위업무);
+      });
+      if (!rows.length){ box.innerHTML = '<div class="empty-row">완료 전 하위업무가 없습니다.</div>'; return; }
+      rows.sort(function(a, b){
+        var da = a.n.dueDate || '9999', db = b.n.dueDate || '9999';
+        return da.localeCompare(db);
+      });
+      var todayStr = new Date().toISOString().slice(0, 10);
+      box.innerHTML = rows.slice(0, 12).map(function(r){
+        var overdue = r.n.dueDate && r.n.dueDate < todayStr;
+        return '<div class="log-entry" data-sub-case="' + esc(r.c.id) + '" style="cursor:pointer;" title="눌러서 이 사건 작업관리로">' +
+          '<div class="log-date"' + (overdue ? ' style="color:#a83232; font-weight:700;"' : '') + '>' + esc(r.n.dueDate ? fmtDateShort_(r.n.dueDate) : '') + '</div>' +
+          '<div class="log-text">' + esc(r.n.title || '') + ' <span style="color:var(--sub); font-size:12px;">· ' + esc(r.c.사건명 || '') + (r.n.status && r.n.status !== '대기' ? ' · ' + esc(r.n.status) : '') + '</span></div></div>';
+      }).join('') + (rows.length > 12 ? '<div style="font-size:12px; color:var(--sub);">외 ' + (rows.length - 12) + '건 — 작업관리에서 보기</div>' : '');
+    }).catch(function(e){ box.innerHTML = '<div class="empty-row">오류: ' + esc(e && e.message ? e.message : e) + '</div>'; });
+  }
+  document.getElementById('dashSubtasks').addEventListener('click', function(e){
+    var row = e.target.closest('[data-sub-case]');
+    if (row && typeof goToWorkManage_ === 'function') goToWorkManage_(row.getAttribute('data-sub-case'));
+  });
+
   function loadDashTasks_(){
     callGas('get_google_tasks', {}).then(function(res){
       var box = document.getElementById('dashTasks');
