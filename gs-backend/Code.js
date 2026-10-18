@@ -25086,13 +25086,55 @@ function ocrbKind_(f) {
   if (/^audio\/|^video\//.test(mt)) return { ok: false, why: '녹음·영상' };
   return { ok: false, why: '글자로 못 바꾸는 형식(' + (mt || '알 수 없음') + ')' };
 }
-function ocrbStateFile_(fo, create) {
-  const it = fo.getFilesByName(OCRB_STATE_NAME_);
-  if (it.hasNext()) return it.next();
-  return create ? fo.createFile(OCRB_STATE_NAME_, '{}', 'application/json') : null;
+// [2026.10.19 1번 — 뒷단계 빠르게 ①] 상태 파일(대기열 4천여 개 — 860KB)을 서류마다 통째로 다시 쓰던 것 → 서류마다는 작은 진행 파일(진행 번호·합계)만,
+//  전체 상태는 10개마다·60초마다·대기열 길이가 바뀔 때. 읽을 때 진행 파일이 같은 일괄(시작 시각·단계·대기열 길이 같음)이면 번호를 앞으로 당긴다.
+//  진행 파일이 없거나 맞지 않으면 상태 파일 그대로(옛 상태 파일도 그대로 읽힘). 파일 찾기(이름 검색 — 폴더에 3천여 개)도 한 실행 안에서 한 번만
+var OCRB_PTR_NAME_ = '_일괄글자인식_진행.json';
+var OCRB_FILE_MEMO_ = {};
+function ocrbNamedFile_(fo, name, create) {
+  if (OCRB_FILE_MEMO_[name]) return OCRB_FILE_MEMO_[name];
+  const it = fo.getFilesByName(name);
+  const f = it.hasNext() ? it.next() : (create ? fo.createFile(name, '{}', 'application/json') : null);
+  if (f) OCRB_FILE_MEMO_[name] = f;
+  return f;
 }
-function ocrbLoad_(fo) { try { const f = ocrbStateFile_(fo, false); return f ? JSON.parse(f.getBlob().getDataAsString('UTF-8') || 'null') : null; } catch (e) { return null; } }
-function ocrbSave_(fo, st) { st.touchedAt = new Date().toISOString(); ocrbStateFile_(fo, true).setContent(JSON.stringify(st)); }
+function ocrbStateFile_(fo, create) { return ocrbNamedFile_(fo, OCRB_STATE_NAME_, create); }
+function ocrbQueueLen_(st) { return ((st.phase === 'fill' ? st.fq : st.queue) || []).length; }
+function ocrbLoad_(fo) {
+  try {
+    const f = ocrbStateFile_(fo, false); const st = f ? JSON.parse(f.getBlob().getDataAsString('UTF-8') || 'null') : null;
+    if (st) {
+      try {
+        const pf = ocrbNamedFile_(fo, OCRB_PTR_NAME_, false), p = pf ? JSON.parse(pf.getBlob().getDataAsString('UTF-8') || 'null') : null;
+        if (p && p.startedAt === st.startedAt && p.phase === st.phase && p.len === ocrbQueueLen_(st)) {
+          if (st.phase === 'fill' && p.fqi > (st.fqi || 0)) { st.fqi = p.fqi; if (p.sum) st.sum = p.sum; if (p.touchedAt) st.touchedAt = p.touchedAt; }
+          if (st.phase === 'ocr' && p.qi > (st.qi || 0)) { st.qi = p.qi; if (p.sum) st.sum = p.sum; if (p.touchedAt) st.touchedAt = p.touchedAt; }
+        }
+      } catch (e) {}
+    }
+    return st;
+  } catch (e) { return null; }
+}
+function ocrbSave_(fo, st) { st.touchedAt = new Date().toISOString(); st._fullAt = Date.now(); st._ticks = 0; st._savedLen = ocrbQueueLen_(st); ocrbStateFile_(fo, true).setContent(JSON.stringify(st)); }
+// 서류 하나 시작 전 — 진행 번호는 매번(같은 서류에서 거듭 멈추지 않게), 전체 상태는 10개마다·60초마다·대기열 길이가 바뀌었을 때
+function ocrbSaveTick_(fo, st) {
+  const len = ocrbQueueLen_(st); st._ticks = (st._ticks || 0) + 1;
+  if (st._ticks >= 10 || !st._fullAt || Date.now() - st._fullAt > 60000 || st._savedLen !== len) { ocrbSave_(fo, st); return; }
+  st.touchedAt = new Date().toISOString();
+  ocrbNamedFile_(fo, OCRB_PTR_NAME_, true).setContent(JSON.stringify({ startedAt: st.startedAt, phase: st.phase, len: len, fqi: st.fqi || 0, qi: st.qi || 0, sum: st.sum, touchedAt: st.touchedAt }));
+}
+// [2026.10.19 1번 — 뒷단계 빠르게 ②] 그림 쪽 보충이 필요할 것 같은 PDF만 — 3번 read3과 같은 기준: 쪽 번호("10/30")로 쪽 수를 알면 한글·숫자가 쪽당 30자 미만이거나
+//  쪽 번호만 남은 쪽(다음 쪽 번호까지 30자 미만)이 있을 때, 쪽 번호가 없으면 글 전체가 300자 미만일 때. (확인 166개 중 1개만 채우던 것 — PDF를 통째로 내려받아 쪽을 나누는 비용)
+function ocrbImgSuspect_(text) {
+  const t = String(text || ''), cnt = function (x) { return (String(x).match(/[가-힣0-9]/g) || []).length; };
+  const re = /(?:^|\n)[ \t]*-?[ \t]*(\d{1,3})[ \t]*\/[ \t]*(\d{1,3})[ \t]*-?[ \t]*(?=\n|$)/g; let m; const pos = []; let tot = 0;
+  while ((m = re.exec(t))) { pos.push({ at: m.index, end: re.lastIndex }); tot = Math.max(tot, Number(m[2])); }
+  const n = cnt(t);
+  if (!pos.length || tot < 2) return n < 300;
+  if (n < 30 * tot) return true;
+  for (let i = 1; i < pos.length; i++) if (cnt(t.slice(pos[i - 1].end, pos[i].at)) < 30) return true;
+  return false;
+}
 // 사건 폴더 목록 — 작업관리 시트의 폴더ID + 그 폴더들의 부모가 "고객사건"이면 그 아래 모든 폴더(시트에 행이 없는 사건 폴더도)
 function ocrbCaseFolders_() {
   const sheet = work_getSheet_(), data = sheet.getDataRange().getValues(), col = work_colMap_(data[0]);
@@ -25267,7 +25309,7 @@ function cpOcrBatch_(body) {
     while (st.qi < st.queue.length && Date.now() - started < budget - OCRB_ITEM_MARGIN_MS_) {
       const q = st.queue[st.qi++], cs = st.cases[q.c] || (st.cases[q.c] = { 파일: 0, 기억있음: 0, 읽을것: 0, 못바꿈: 0, 읽음: 0, 빈글자: 0, 실패: 0, 못바꿈이유: {} });
       const f = { id: q.id, name: q.n, mimeType: q.mt, modified: q.mod };
-      ocrbSave_(fo, st); // 시작 전에 저장 — 이 서류에서 실행이 끊기면 다음 번엔 다음 서류부터(같은 서류에서 매번 멈추지 않게)
+      ocrbSaveTick_(fo, st); // 시작 전에 진행 번호 저장 — 이 서류에서 실행이 끊기면 다음 번엔 다음 서류부터(같은 서류에서 매번 멈추지 않게), 전체 상태는 10개·60초마다
       try {
         if (q.dupKey && ocrbCopyDup_(q, f)) { cs.읽음++; st.sum.읽음++; st.sum.사본복사 = (st.sum.사본복사 || 0) + 1; continue; } // 내용이 똑같은 사본 — 원본 글 복사(읽기 없음)
         if (q.dupKey && !q.dupWait) { q.dupWait = 1; st.queue.push(q); continue; } // 원본을 아직 안 읽음 — 줄 끝에서 한 번 더 기다림
@@ -25325,9 +25367,17 @@ function ocrbFill_(fo, st, started, budget) {
     ocrbSave_(fo, st);
     if (st.phase === 'fillscan') return { ok: true, more: true, phase: 'fillscan', done: st.fi, total: st.folders.length, sum: st.sum };
   }
+  // [2026.10.19 1번 — 뒷단계 빠르게 ③] 남은 줄을 한 번 다시 세운다: 새로 읽을 서류 → 엑셀 표 글 → Vision → 서류 표 글 → 그림 쪽 보충 확인(가장 비싸고 거의 안 채워짐).
+  //  이미 돌던 일괄(옛 상태 파일)도 남은 줄에만 적용(앞에서 한 것은 그대로). Vision 쪽수 상한은 그대로
+  if (st.phase === 'fill' && !st.fqOrdered) {
+    const rk = function (q) { return q.read ? 0 : q.grid ? 1 : q.vis ? 2 : q.tbl ? 3 : 4; };
+    const rest = st.fq.slice(st.fqi); rest.forEach(function (q, i) { q._i = i; });
+    rest.sort(function (a, b) { return (rk(a) - rk(b)) || (a._i - b._i); }); rest.forEach(function (q) { delete q._i; });
+    st.fq = st.fq.slice(0, st.fqi).concat(rest); st.fqOrdered = 1; ocrbSave_(fo, st);
+  }
   while (st.phase === 'fill' && st.fqi < st.fq.length && Date.now() - started < budget - OCRB_ITEM_MARGIN_MS_) {
     const q = st.fq[st.fqi++];
-    ocrbSave_(fo, st);
+    ocrbSaveTick_(fo, st);
     try {
       if (q.sz > 45 * 1024 * 1024) continue; // GAS가 한 번에 받을 수 있는 크기(50MB)를 넘음
       if (q.read && q.dupKey && ocrbCopyDup_(q, { id: q.id, name: q.n, mimeType: q.mt, modified: q.mod })) { st.sum.사본복사 = (st.sum.사본복사 || 0) + 1; continue; }
@@ -25344,6 +25394,7 @@ function ocrbFill_(fo, st, started, budget) {
       const key = 'ocrtxt_' + q.id + '_' + q.mod, old = tcOcrStoreGet_(key);
       if (old === null) continue;
       if (old.indexOf(TC_PDF_IMG_MARK_.slice(1)) !== -1 && old.indexOf(TC_PDF_IMG_LEFT_) === -1) continue; // 이미 보충함
+      if (old.indexOf(TC_PDF_IMG_LEFT_) === -1 && !ocrbImgSuspect_(old)) { st.sum.그림쪽건너뜀 = (st.sum.그림쪽건너뜀 || 0) + 1; continue; } /* 뒷단계 빠르게 ② — 글이 쪽마다 충분한 PDF는 내려받지 않음 */
       const nt = tcPdfImgFill_(q.id, old, started + budget - 20000);
       st.sum.그림쪽확인++;
       if (nt !== old) {
