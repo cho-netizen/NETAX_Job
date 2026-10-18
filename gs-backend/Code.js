@@ -29649,6 +29649,10 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
         else if (ns.length === 1) add('성명', ns[0], '성명 ' + ns[0], base0 + win.indexOf(ns[0]), { personGuess: cpfPersonKey_(ns[0], '') }, { rec: 'p' + (++pn), note: r1 + '·' + r2 + ' 칸 머리 뒤 성명 하나 — 누구 칸인지 서식에서 안 정해짐(AI 확인)' });
         if (ns.length) { pairSkip = aft1 + nx.index + nx[0].length; continue; } // 성명을 못 찾으면 평소대로
       } }
+    let backName = false;
+    if (cpfBadName_(nm) || !cpfLikelyName_(nm)) { /* 역할 칸이 이름 뒤에 세로로 붙는 서식 — 역할 낱말 바로 앞 30자 안의 "성명 ○○○"(사이에 "주민등록번호" 칸 이름만 있어도)을 먼저 */
+      const bm = /성\s*명[\s|│:：\d]*([가-힣]{2,4})(?![가-힣])(?:[\s|│\d]*주\s*민\s*등\s*록\s*번\s*호)?[\s|│:：\d]*$/.exec(t.slice(Math.max(0, m.index - 40), m.index));
+      if (bm && !cpfBadName_(bm[1]) && cpfLikelyName_(bm[1])) { nm = bm[1]; backName = true; } }
     if (cpfBadName_(nm) || !cpfLikelyName_(nm)) { const ah = /성\s*명[\s|│]*[:：]?[\s|│]*([가-힣]{2,4})(?![가-힣])/.exec(t.slice(re.lastIndex, re.lastIndex + 150)); if (ah && !cpfBadName_(ah[1]) && cpfLikelyName_(ah[1])) nm = ah[1]; else continue; } // [2026.10.19 1번 밤작업 ③] 성씨로 시작하고 흔한 낱말이 아닐 때만
     if (cpfBadName_(nm) || NOT_NAME.test(nm) || /(의|를|을|와|과|에|께|로|은|는|이며|이고|에게|으로|하여|하고|한다|된다)$/.test(nm) && !/^[김이박최정강조윤장임한오서신권황안송류홍전고문양손배백허유남심노하곽성차주우구민진나엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예경봉사부]/.test(nm.slice(0, 1))) continue; // 조사로 끝나는 일반 낱말("와의"·"관계를")은 이름이 아님 — 성씨로 시작하면 이름일 수 있어 남김
     const role = m[1].replace(/\s+/g, '');
@@ -29658,13 +29662,18 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
     let after = t.slice(aft0, aft0 + 160); { const cutAt = after.search(/(매\s*도\s*인|매\s*수\s*인|임\s*대\s*인|임\s*차\s*인|증\s*여\s*자|수\s*증\s*자|상\s*속\s*인|채\s*무\s*자|채\s*권\s*자|근\s*저\s*당\s*권\s*자|전\s*세\s*권\s*자|위\s*임\s*인|수\s*임\s*인|주\s*식\s*회\s*사|㈜|\(\s*주\s*\)|은\s*행|조\s*합|금\s*고|공\s*사(?![가-힣])|법\s*인|담\s*당\s*자|발\s*급\s*담\s*당|민\s*원\s*담\s*당|등\s*기\s*관)/); if (cutAt > 0) after = after.slice(0, cutAt); } // 담당자·등기관 전화가 신청인에 붙던 것
     const idm = /(\d{6})\s*-\s*([1-8*][\d*]{6})/.exec(after);
     const pk = cpfPersonKey_(nm, idm ? idm[1] + '-' + idm[2] : '');
-    const rec = 'p' + (++pn), ex = { rec: rec, role: role, note: '역할 낱말 뒤 이름 — 사람 묶음은 거리로 짐작' }, gk = pk ? { personGuess: pk } : {};
+    const rec = 'p' + (++pn), ex = { rec: rec, role: role, note: backName ? '역할 칸 바로 앞 성명(역할이 이름 뒤에 붙는 서식) — 사람 묶음은 거리로 짐작' : '역할 낱말 뒤 이름 — 사람 묶음은 거리로 짐작' }, gk = pk ? { personGuess: pk } : {};
     add('성명', nm, m[0], m.index, Object.assign({}, gk), ex);
     if (idm) add('주민번호', idm[1] + '-' + idm[2], idm[0], aft0 + idm.index, Object.assign({}, gk), ex);
     const ad = /주\s*소[\s|│]*[:：]?[\s|│]*([가-힣][^\n|│]{5,70}?)(?=[\s|│]*(?:주\s*민|전\s*화|연\s*락|성\s*명|$|\n|[|│]))/.exec(after); /* [2026.10.19 1번 밤작업] 표 칸 구분자("주소 | 과천시 …|") */ if (ad && /\d/.test(ad[1]) && /(동|로|길|리|가|읍|면|구|시)(?![가-힣])|아파트|빌라|호/.test(ad[1]) && !/번\s*호|주\s*민/.test(ad[1])) add('주소', ad[1].trim(), ad[0], aft0 + ad.index, Object.assign({}, gk, cpfAssetKey_(ad[1]) ? { asset: cpfAssetKey_(ad[1]) } : {}), ex);
     const ph = /(?<!\d)(01[016789]|0\d{1,2})[-)\s.]\s?(\d{3,4})[-\s.](\d{4})(?!\d)/.exec(after); if (ph) add('전화번호', ph[1] + '-' + ph[2] + '-' + ph[3], ph[0], aft0 + ph.index, Object.assign({}, gk), ex);
   }
   if (roleCut) base.trunc.push('역할 낱말 뒤 사람 ' + (pn + roleCut) + '명 중 ' + CPF_LIMITS_.role + '명만');
+  { const got = out.filter(function (x) { return x.kind === '성명'; }).map(function (x) { return { v: x.value, at: Number((/글자 (\d+)번째/.exec(x.src.where) || [0, -1e9])[1]) }; });
+    const sre = /성\s*명[\s|│]*[:：]?[\s|│]*([가-힣]{2,4})(?![가-힣])/g; let sm;
+    while ((sm = sre.exec(t))) { const v = sm[1]; if (cpfBadName_(v) || !cpfLikelyName_(v)) continue; const at = sm.index + sm[0].lastIndexOf(v);
+      if (got.some(function (g) { return g.v === v && Math.abs(g.at - at) < 200; })) continue;
+      add('성명', v, sm[0], at, { personGuess: cpfPersonKey_(v, '') }, { note: '"성명" 칸 — 역할 칸과 묶이지 않음(서식에서 누구 칸인지 안 정해짐, AI 확인)' }); got.push({ v: v, at: at }); } }
   // 서류끼리 잇는 번호 — 부동산 고유번호·등기 접수번호·관리번호·발급(문서확인)번호(keys.docNo, 상4)
   re = /(?<![\d-])(\d{4}-\d{4}-\d{6})(?![\d-])/g;
   while ((m = re.exec(t))) add('부동산 고유번호', m[1], m[0], m.index, {});
