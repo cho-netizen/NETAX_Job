@@ -24700,6 +24700,17 @@ function cpOcrBatch_(body) {
       if (st.phase === 'scan') return { ok: true, more: true, phase: 'scan', done: st.fi, total: st.folders.length, sum: st.sum };
       if (st.phase === 'done') return { ok: true, phase: 'done', sum: st.sum, cases: st.cases, fails: st.fails };
     }
+    // [2026.10.18] 남은 서류가 적은 사건부터 — 폴더 순서대로 읽으면 서류 몇 개짜리 사건들(처음 보는 시험 재료)이 큰 사건(송기종 247개 등) 뒤로 밀려 반나절을 기다렸다.
+    //  한 번만 다시 줄 세운다(이미 읽은 앞부분은 그대로). body.prio(사건 폴더 이름 목록)가 오면 그 사건들을 맨 앞으로
+    if (st.phase === 'ocr' && (!st.sorted || (body.prio && body.prio.length))) {
+      const rest = st.queue.slice(st.qi), cnt = {}; rest.forEach(function (q) { cnt[q.c] = (cnt[q.c] || 0) + 1; });
+      const pr = (body.prio || []).map(String);
+      const rank = function (q) { const i = pr.indexOf(q.c); return i !== -1 ? -100000 + i : cnt[q.c]; };
+      rest.forEach(function (q, i) { q._i = i; });
+      rest.sort(function (a, b) { return (rank(a) - rank(b)) || (a.c < b.c ? -1 : a.c > b.c ? 1 : 0) || (a._i - b._i); });
+      rest.forEach(function (q) { delete q._i; });
+      st.queue = st.queue.slice(0, st.qi).concat(rest); st.sorted = true;
+    }
     // 2) 읽기 — 기억에 없는 서류만 tc_docText_로(읽은 글자는 tc_docText_가 기억 폴더에 남긴다). 정리·저장은 하지 않는다
     while (st.qi < st.queue.length && Date.now() - started < OCRB_BUDGET_MS_ - OCRB_ITEM_MARGIN_MS_) {
       const q = st.queue[st.qi++], cs = st.cases[q.c] || (st.cases[q.c] = { 파일: 0, 기억있음: 0, 읽을것: 0, 못바꿈: 0, 읽음: 0, 빈글자: 0, 실패: 0, 못바꿈이유: {} });
