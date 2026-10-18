@@ -24649,17 +24649,46 @@ function ocrbCaseFolders_() {
   return Object.keys(ids);
 }
 // 사건 폴더 하나의 파일(하위 폴더 포함) — 사건처리 파일 목록(caseProcFiles_)과 같은 기준으로 뺄 폴더는 뺀다(양도코리아·판례 폴더·"_"로 시작하는 도구 폴더)
+// [2026.10.18 1번] 도구가 사건 폴더 안에 만드는 폴더 — 이것만 건너뛴다. 예전엔 "_"로 시작하는 폴더를 통째로 건너뛰어 받은 자료 폴더
+//  (_제시자료·_원시자료·_받은자료·_증여세 등, 7사건 PDF·사진 364개 — 그중 121개는 어디서도 글자를 얻은 적 없음)가 일괄에서 빠졌다.
+//  사건처리 목록(caseProcFiles_)은 이 폴더들을 읽는다 — 폴더 고르는 규칙을 사건처리와 같게(양도코리아는 includeFiled, 판례·참고는 뺌)
+var OCRB_TOOL_DIR_RE_ = /^_(제안함|글자인식기억|3번실험|휴대폰받은파일|ocr|tmp)/i;
 function ocrbWalk_(folder, rel, depth, out, opt) {
   if (depth > 8 || out.length >= 6000) return; // [2026.10.18 3번 세션] 1,500개에서 말없이 끊던 상한을 6,000으로(송기종 등 큰 사건)
+  // [2026.10.18 1번] 내용이 똑같은 사본을 알아보려고 드라이브의 md5(내용 지문)를 폴더마다 한 번에 받는다(못 받으면 없이)
+  const md5 = {};
+  try { let tok = null; do { const r = Drive.Files.list({ q: "'" + folder.getId() + "' in parents and trashed = false", fields: 'nextPageToken, files(id, md5Checksum)', pageSize: 1000, pageToken: tok || undefined }); (r.files || []).forEach(function (x) { if (x.md5Checksum) md5[x.id] = x.md5Checksum; }); tok = r.nextPageToken; } while (tok); } catch (e) {}
   const it = folder.getFiles();
-  while (it.hasNext()) { const f = it.next(); out.push({ id: f.getId(), name: f.getName(), mimeType: f.getMimeType(), modified: f.getLastUpdated().getTime(), dir: rel, size: f.getSize() }); }
+  while (it.hasNext()) { const f = it.next(), id = f.getId(); out.push({ id: id, name: f.getName(), mimeType: f.getMimeType(), modified: f.getLastUpdated().getTime(), dir: rel, size: f.getSize(), md5: md5[id] || '' }); }
   const subs = folder.getFolders();
   while (subs.hasNext()) {
     const sf = subs.next(), sn = sf.getName();
-    if (/^_/.test(sn) || (!opt.includeFiled && caseIsFiledReturnFolder_(sn)) || caseProcRefDirName_(sn)) { out.skipDirs = (out.skipDirs || 0) + 1; continue; }
+    if (OCRB_TOOL_DIR_RE_.test(sn) || (!opt.includeFiled && caseIsFiledReturnFolder_(sn)) || caseProcRefDirName_(sn)) { out.skipDirs = (out.skipDirs || 0) + 1; continue; }
     ocrbWalk_(sf, rel ? rel + '/' + sn : sn, depth + 1, out, opt);
   }
 }
+// [2026.10.18 1번] 읽기 전 거르기 ① 내용이 똑같은 사본(드라이브 md5가 같은 파일) — 한 사건 안에서 같은 md5끼리 묶어, 기억이 있는 것(없으면 처음 것)을 원본으로.
+//  사본은 글자인식하지 않고 원본 글을 사본 이름으로 복사한다(사건처리는 파일마다 기억을 찾으므로 사본 기억도 있어야 한다). 돌려주는 것: { 사본ID: 원본 기억 이름 }
+function ocrbDupKeys_(files, have) {
+  const g = {}, out = {};
+  files.forEach(function (f) { if (f.md5 && ocrbKind_(f).ok) (g[f.md5 + '|' + f.mimeType] = g[f.md5 + '|' + f.mimeType] || []).push(f); });
+  Object.keys(g).forEach(function (k) {
+    const xs = g[k]; if (xs.length < 2) return;
+    const orig = xs.filter(function (f) { return have[tcOcrKey_(f)]; })[0] || xs[0], ok = tcOcrKey_(orig);
+    xs.forEach(function (f) { if (f !== orig) out[f.id] = ok; });
+  });
+  return out;
+}
+function ocrbCopyDup_(q, f) {
+  const src = tcOcrStoreGet_(q.dupKey); if (src === null) return false;
+  tcOcrStorePut_(tcOcrKey_(f), src);
+  // 표 글(글자층 PDF·워드 ocrtbl1_, 엑셀 ocrgrid1_)도 원본 것이 있으면 함께 — 뒷단계가 사본에 변환을 한 번 더 하지 않게
+  const m = /^ocrtxt3?_(.+)_(\d*)$/.exec(q.dupKey);
+  if (m && f.modified) ['ocrtbl1_', 'ocrgrid1_'].forEach(function (p) { const t = tcOcrStoreGet_(p + m[1] + '_' + m[2]); if (t !== null) tcOcrStorePut_(p + f.id + '_' + f.modified, t); });
+  return true;
+}
+// 읽기 전 거르기 ② 이름으로 아는 사무소 결과물·이전 보고서·참고자료(질의회신·판례·법령) — 빼지 않고 맨 뒤로(사실 목록은 "제외 후보"로도 뽑으므로 글은 있어야 함)
+function ocrbLate_(name) { try { return !!(caseProcIsOutputDoc_(name) || caseProcIsPriorReport_(name) || caseProcIsReference_(name)); } catch (e) { return false; } }
 // PDF 쪽수(드라이브 글자인식이 긴 스캔 PDF를 몇 쪽까지 읽는지 확인용) — 15MB 넘으면 세지 않음. 못 세면 0
 function ocrbPdfPages_(id, size) {
   if (size && size > 15 * 1024 * 1024) return 0;
@@ -24709,6 +24738,7 @@ function cpOcrBatch_(body) {
         try { ocrbWalk_(folder, '', 0, files, st); } catch (e) { st.fails.push({ c: cname, n: '', why: '폴더 읽기 실패: ' + String(e && e.message || e).slice(0, 80) }); }
         const cs = st.cases[cname] = st.cases[cname] || { 파일: 0, 기억있음: 0, 읽을것: 0, 못바꿈: 0, 읽음: 0, 빈글자: 0, 실패: 0, 못바꿈이유: {} };
         st.sum.건너뛴폴더 += files.skipDirs || 0;
+        const dk = ocrbDupKeys_(files, have); // [2026.10.18 1번] 내용이 똑같은 사본 → 원본 기억 이름(읽지 않고 원본 글을 복사)
         files.forEach(function (f) {
           if (/^~\$/.test(f.name)) return;
           cs.파일++; st.sum.파일++;
@@ -24716,7 +24746,10 @@ function cpOcrBatch_(body) {
           if (!k.ok) { cs.못바꿈++; st.sum.못바꿈++; cs.못바꿈이유[k.why] = (cs.못바꿈이유[k.why] || 0) + 1; return; }
           if (have[tcOcrKey_(f)]) { cs.기억있음++; st.sum.기억있음++; return; }
           cs.읽을것++; st.sum.읽을것++;
-          st.queue.push({ id: f.id, n: f.name, mt: f.mimeType, mod: f.modified, c: cname, sz: f.size || 0 });
+          const q = { id: f.id, n: f.name, mt: f.mimeType, mod: f.modified, c: cname, sz: f.size || 0 };
+          if (dk[f.id]) q.dupKey = dk[f.id];
+          if (ocrbLate_(f.name)) q.late = 1; // 이름으로 아는 사무소 결과물·참고자료 — 빼지 않고 맨 뒤로(입력으로 쓸지는 사건처리가 정함)
+          st.queue.push(q);
         });
       }
       if (st.fi >= st.folders.length) { st.phase = st.dryRun ? 'done' : 'ocr'; if (st.dryRun) st.doneAt = new Date().toISOString(); }
@@ -24729,7 +24762,7 @@ function cpOcrBatch_(body) {
     if (st.phase === 'ocr' && (!st.sorted || (body.prio && body.prio.length))) {
       const rest = st.queue.slice(st.qi), cnt = {}; rest.forEach(function (q) { cnt[q.c] = (cnt[q.c] || 0) + 1; });
       const pr = (body.prio || []).map(String);
-      const rank = function (q) { const i = pr.indexOf(q.c); return i !== -1 ? -100000 + i : cnt[q.c]; };
+      const rank = function (q) { const i = pr.indexOf(q.c); return i !== -1 ? -100000 + i : (q.late ? 1000000 : 0) + (q.dupKey ? 500000 : 0) + cnt[q.c]; }; // 사무소 결과물·참고자료는 맨 뒤, 사본은 원본 뒤
       rest.forEach(function (q, i) { q._i = i; });
       rest.sort(function (a, b) { return (rank(a) - rank(b)) || (a.c < b.c ? -1 : a.c > b.c ? 1 : 0) || (a._i - b._i); });
       rest.forEach(function (q) { delete q._i; });
@@ -24756,6 +24789,8 @@ function cpOcrBatch_(body) {
       const f = { id: q.id, name: q.n, mimeType: q.mt, modified: q.mod };
       ocrbSave_(fo, st); // 시작 전에 저장 — 이 서류에서 실행이 끊기면 다음 번엔 다음 서류부터(같은 서류에서 매번 멈추지 않게)
       try {
+        if (q.dupKey && ocrbCopyDup_(q, f)) { cs.읽음++; st.sum.읽음++; st.sum.사본복사 = (st.sum.사본복사 || 0) + 1; continue; } // 내용이 똑같은 사본 — 원본 글 복사(읽기 없음)
+        if (q.dupKey && !q.dupWait) { q.dupWait = 1; st.queue.push(q); continue; } // 원본을 아직 안 읽음 — 줄 끝에서 한 번 더 기다림
         const t = tc_docText_(f);
         if (t === null) { cs.실패++; st.sum.실패++; st.fails.push({ c: q.c, n: q.n, why: '글자로 못 바꾸는 형식' }); continue; }
         if (!String(t).trim()) { cs.빈글자++; st.sum.빈글자++; continue; }
@@ -24790,10 +24825,11 @@ function ocrbFill_(fo, st, started, budget) {
       const cname = folder.getName(), files = [];
       // [2026.10.18 3번 세션 재점검 6] 뒷단계는 이미 낸 신고서 폴더(양도코리아)도 읽는다 — 읽기는 최대로, 입력으로 쓸지는 사건처리가 정한다(경정·수정·불복은 기신고서가 입력)
       try { ocrbWalk_(folder, '', 0, files, { includeFiled: true }); } catch (e) {}
+      const dk = ocrbDupKeys_(files, have);
       files.forEach(function (f) {
         if (/^~\$/.test(f.name)) return;
         // [2026.10.18 3번 세션] 이 일괄을 시작한 뒤 읽을 수 있게 된 형식(옛 한글 hwp·zip)이나 그 사이 들어온 서류 — 기억이 없으면 여기서 읽는다
-        if (!have[tcOcrKey_(f)] && ocrbKind_(f).ok) { st.fq.push({ id: f.id, n: f.name, mt: f.mimeType, mod: f.modified, c: cname, sz: f.size || 0, read: 1 }); return; }
+        if (!have[tcOcrKey_(f)] && ocrbKind_(f).ok) { const q0 = { id: f.id, n: f.name, mt: f.mimeType, mod: f.modified, c: cname, sz: f.size || 0, read: 1 }; if (dk[f.id]) q0.dupKey = dk[f.id]; (ocrbLate_(f.name) ? (st.fqLate = st.fqLate || []) : st.fq).push(q0); return; }
         // 엑셀은 칸 자리 지킨 표 글(ocrgrid1_)도 — 예전에 읽은 엑셀은 빈 칸을 지운 글만 있다
         if (/spreadsheetml|ms-excel/.test(String(f.mimeType || '')) && !have['ocrgrid1_' + f.id + '_' + f.modified]) { st.fq.push({ id: f.id, n: f.name, mt: f.mimeType, mod: f.modified, c: cname, sz: f.size || 0, grid: 1 }); return; }
         // [2026.10.18 1번] 글자층 PDF·워드의 칸 자리 지킨 표 글(ocrtbl1_, 3번 b18ce08) — 그 전에 읽은 서류는 표 글이 없다. 변환을 한 번 더 하므로 뒷단계 맨 끝에(st.fqTbl → 아래에서 fq 뒤로)
@@ -24802,7 +24838,7 @@ function ocrbFill_(fo, st, started, budget) {
         st.fq.push({ id: f.id, n: f.name, mod: f.modified, c: cname, sz: f.size || 0 });
       });
     }
-    if (st.fi >= st.folders.length) { st.phase = 'fill'; st.sum.그림쪽대상 = st.fq.length; st.sum.표글대상 = (st.fqTbl || []).length; st.fq = st.fq.concat(st.fqTbl || []); st.fqTbl = []; }
+    if (st.fi >= st.folders.length) { st.phase = 'fill'; st.sum.그림쪽대상 = st.fq.length; st.sum.표글대상 = (st.fqTbl || []).length; st.fq = st.fq.concat(st.fqLate || [], st.fqTbl || []); st.fqTbl = []; st.fqLate = []; }
     ocrbSave_(fo, st);
     if (st.phase === 'fillscan') return { ok: true, more: true, phase: 'fillscan', done: st.fi, total: st.folders.length, sum: st.sum };
   }
@@ -24811,6 +24847,7 @@ function ocrbFill_(fo, st, started, budget) {
     ocrbSave_(fo, st);
     try {
       if (q.sz > 45 * 1024 * 1024) continue; // GAS가 한 번에 받을 수 있는 크기(50MB)를 넘음
+      if (q.read && q.dupKey && ocrbCopyDup_(q, { id: q.id, name: q.n, mimeType: q.mt, modified: q.mod })) { st.sum.사본복사 = (st.sum.사본복사 || 0) + 1; continue; }
       if (q.read) {
         const t = tc_docText_({ id: q.id, name: q.n, mimeType: q.mt, modified: q.mod });
         st.sum.늦게읽음 = (st.sum.늦게읽음 || 0) + 1;
