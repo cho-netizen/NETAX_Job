@@ -25776,7 +25776,16 @@ function tcRenameSuggest_(c, f, text) {
   const person = parts.length > 1 && !/^\d{8}$/.test(parts[1]) && caseNames.indexOf(parts[1]) !== -1 ? parts[1] : '';
   const date = /^\d{8}$/.test(parts[parts.length - 1]) ? parts[parts.length - 1] : '';
   const kind2 = kind.replace(/\s*\([^)]*\)\s*$/, '').trim() || kind; // 「법무사 견적서(실제 지출 아님)」 같은 설명 괄호는 이름에 안 넣음
-  return { name: [kind2, person, date].filter(String).join('_').replace(/[\\/:*?"<>|]/g, ' ') + ext.toLowerCase(), kind: kind, person: person, date: date };
+  // 부동산 서류(등기부·대장·공시가격)는 대상 부동산을 이름에 — 지번으로 이름 붙인 파일(박미광 「219-7.pdf」·「222.pdf」)이 모두 「등기부_날짜」로 같아져 지번을 잃었다.
+  //  소재지에서 읍·면·동부터(시·도·구 뺌), 28자까지(낱말 단위)
+  let place = '';
+  if (/^(registry|landledger|bldledger|pubprice|realprice)$/.test(String(p.type))) {
+    const rr = p.result || {}, sj = String(rr.소재지 || (rr.docs && rr.docs[0] && rr.docs[0].소재지) || (rr.docs && rr.docs[0] && rr.docs[0].r && rr.docs[0].r.소재지) || '');
+    const mm = /([가-힣\d]+(?:동|리|가|읍|면)\s*\d[\d\-]*)(.*)$/.exec(sj.replace(/\s+/g, ' '));
+    if (mm) place = (mm[1] + (mm[2] ? ' ' + mm[2].replace(/^[\s,]+/, '').replace(/제(\d+)동\s*제\d+층\s*제(\d+)호/, '$1-$2') : '')).replace(/\s+/g, ' ').trim();
+    if (place.length > 28) place = place.slice(0, 28).replace(/\s+\S*$/, ''); // 낱말 중간에서 자르지 않음
+  }
+  return { name: [kind2, place, person, date].filter(String).join('_').replace(/[\\/:*?"<>|]/g, ' ') + ext.toLowerCase(), kind: kind, person: person, date: date };
 }
 // 이름이 바뀌면 드라이브 수정시각이 바뀌어 글자 기억 열쇠(<ID>_<수정시각>)가 안 맞는다 — 같은 내용이므로 새 열쇠로 옮긴다(다시 읽지 않음, 0원)
 var TC_MEM_PREFIXES_ = ['ocrtxt_', 'ocrtxt3_', 'ocrgrid1_', 'ocrtbl1_', 'ocrpage1_', 'ocrvis1_', 'ocrzip1_'];
