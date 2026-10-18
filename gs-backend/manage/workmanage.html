@@ -740,8 +740,17 @@
       var warnings = [];
       var unresolved = (c.증빙목록 || []).filter(function(e){ return e.source === 'requested' && e.status !== '확보됨'; });
       if (unresolved.length) warnings.push('요청자료 중 ' + unresolved.length + '건이 아직 미확보 상태입니다.');
-      if (!c.폴더ID) return Promise.resolve(warnings);
-      return callGas('get_case_subfolders', { caseId: c.id }).then(function(sub){
+      // [2026.10.18 탭연결 8번] 하위업무 미완료와 수금(입금) 기록도 같이 본다 — 일은 끝났는데 보수를 받았는지 시스템이 알려주지 않았다.
+      // (청구액·미수 관리는 새 기능이라 만들지 않았다 — 여기서는 "이 사건에 연결된 입금 기록이 하나라도 있나"만 본다)
+      var subPending = 0;
+      (function walk(nodes){ (nodes || []).forEach(function(n){ if (n.status !== '완료') subPending++; walk(n.children); }); })(c.하위업무);
+      if (subPending) warnings.push('작업관리 하위업무 중 ' + subPending + '건이 아직 완료 전입니다.');
+      var payCheck = callGas('client_get_consult_logs', {}).then(function(res){
+        var paid = ((res && res.logs) || []).filter(function(l){ return l.사건ID === c.id && Number(l.금액) > 0; });
+        if (!paid.length) warnings.push('이 사건에 연결된 수금(입금) 기록이 없습니다 — 보수를 받았으면 처리개요 💰 수금 카드나 수금관리에서 이 사건으로 기록하세요.');
+      }).catch(function(){});
+      if (!c.폴더ID) return payCheck.then(function(){ return warnings; });
+      return payCheck.then(function(){ return callGas('get_case_subfolders', { caseId: c.id }); }).then(function(sub){
         if (sub.error || !sub.reportFolderId) return warnings;
         return callGas('listFolder', { folderId: sub.reportFolderId }).then(function(res){
           var hasHtml = !res.error && (res.files || []).some(function(f){ return /\.html?$/i.test(f.name); });
