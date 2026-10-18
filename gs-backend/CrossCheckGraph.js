@@ -221,7 +221,10 @@ function cxgValueCheck_(cc, r, facts, rec) {
   let asked = 0;
   fields.forEach(function (fd) {
     const re = CXG_KIND_GROUPS_[fd.group];
-    const hits = (facts || []).filter(function (f) { return f && f.src && f.kind !== '서류' && !f._copy && re.test(f.kind) && !(f.read && f.read.conf === '불확실') && (!fd.ak || !(f.keys && f.keys.asset) || cxAkSame_(f.keys.asset, fd.ak)); });
+    // [2026.10.19 3번 integ 측정으로 찾은 것] 국세 평가(시가·보충적 평가)를 대조할 때 지방세 잣대 값은 뺀다 — 취득세·등록세·재산세 납부 서류와 법무사 견적서의
+    //  '공시가격'·'과세표준'·'시가표준액'은 지방세 시가표준액(정원식: 취득세 납부확인서 432,153,909원)이라 국세 보충적 평가(417,813,909원)와 잣대가 다르다
+    const localTax = function (f) { return /취득세|등록세|등록면허세|지방세|재산세|견적서/.test(String((f.src && f.src.docType) || '')) || /시가표준액|과세표준/.test(String(f.kind || '')); };
+    const hits = (facts || []).filter(function (f) { return f && f.src && f.kind !== '서류' && !f._copy && re.test(f.kind) && !(f.read && f.read.conf === '불확실') && !(/^(평가|공시가격)$/.test(fd.group) && localTax(f)) && (!fd.ak || !(f.keys && f.keys.asset) || cxAkSame_(f.keys.asset, fd.ak)); });
     const vals = {}; hits.forEach(function (f) { const n = cxgFactNum_(f); if (!n) return; const e = vals[n] = vals[n] || { v: n, docs: {} }; e.docs[f.src.docType || '서류'] = (e.docs[f.src.docType || '서류'] || []).concat(f.src.file); });
     const list = Object.keys(vals).map(function (k) { return vals[k]; });
     if (!list.length) { V.noEvidence++; return; }
@@ -229,7 +232,8 @@ function cxgValueCheck_(cc, r, facts, rec) {
     V.mismatch.push(fd.label + ' 지금 ' + fd.raw + ' ↔ 서류 ' + list.slice(0, 4).map(function (e) { return e.v; }).join(', '));
     if (asked >= 8 || r.items.some(function (it) { return it.ask && it.ask.target === fd.target; })) return;
     asked++;
-    const cands = list.sort(function (a, b) { return Object.keys(b.docs).length - Object.keys(a.docs).length; }).slice(0, 6).map(function (e) { return { v: e.v, src: Object.keys(e.docs).map(function (d) { return d + ' ' + e.docs[d].slice(0, 2).join(', '); }).join(' / ') }; }).concat([{ v: fd.cur, src: '지금 값' }]);
+    // 지금 값을 1번에 — 지금 값은 이미 정한 근거(질문 답·보충적 평가 등)가 있는 값이고, 서류 값은 대안이다(예전엔 맨 뒤에 둬 1번으로 답하면 다른 잣대 값이 들어갔다)
+    const cands = [{ v: fd.cur, src: '지금 값(이미 정한 값 — 그대로 두려면 이것)' }].concat(list.sort(function (a, b) { return Object.keys(b.docs).length - Object.keys(a.docs).length; }).slice(0, 6).map(function (e) { return { v: e.v, src: Object.keys(e.docs).map(function (d) { return d + ' ' + e.docs[d].slice(0, 2).join(', '); }).join(' / ') }; }));
     r.items.push(caseProcItem_('cxv:' + fd.path + ':' + cxHash_(fd.cur + '|' + list.map(function (e) { return e.v; }).join('|')), 'check', '🧮 교차검증 — 「' + fd.label + '」 지금 값 ' + fd.raw + '이(가) 같은 종류 서류 값 어디에도 없습니다(서류: ' + list.slice(0, 3).map(function (e) { return e.v; }).join(', ') + '). 맞는 값을 고르거나 그대로 두세요.',
       { mode: 'choose', target: fd.target, input: /일$/.test(fd.group) ? 'date' : 'money', label: fd.label, cands: cands }));
   });
