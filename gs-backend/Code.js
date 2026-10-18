@@ -25265,6 +25265,52 @@ function tcVisionOcr_(blob) {
   });
   return out;
 }
+// =========================================================
+// [2026.10.18 3번 세션 — 문서 정리] 흩어진 쪽 합치기 후보(tcJoinCands_) — 한 서류가 사진·스캔 여러 파일로 흩어진 것이 95묶음·407개 파일인데
+//  지금 잇는 장치(caseProcJoinPages_)는 쪽 표시 "n/N"+문서번호·초본 행번호가 있을 때만 잇는다(재현기 21사건에서 이어 붙인 것 0건 — 문서정리_연구.md A4).
+//  이름 일련번호로 묶고 쪽 순서를 정한 뒤, 글로 근거를 더한다. 사건처리에 아직 연결하지 않는다(후보·근거만 — 붙일지는 따로 정함).
+//  files: [{id, name, dir, text, type}] → [{ids:[쪽 순서], names, why:[…], conf:'강함'|'보통'|'약함'}]
+// =========================================================
+function tcJoinCands_(files) {
+  const fam = function (f) {
+    const n = String(f.name || ''), b = n.replace(/\.[A-Za-z0-9]{2,5}$/, ''), d = String(f.dir || '');
+    let m;
+    // 스캐너 한 번 스캔: Scan_20260122_092407(.jpg) → _001, _002 … (기본 이름이 첫 장)
+    if ((m = /^(.*?Scan_\d{8}_\d{6})(?:_(\d{3}))?(?:_\d)?$/i.exec(b))) return { k: d + '|scan|' + m[1], no: m[2] ? Number(m[2]) : 0, w: 3, how: '스캐너 한 번 스캔(같은 이름·_001 순번)' };
+    if ((m = /^(.*?)\s*\(Page\s*(\d+)\)$/i.exec(b))) return { k: d + '|page|' + m[1], no: Number(m[2]), w: 3, how: '이름의 (PageN)' };
+    // 카카오톡 사진 묶음: KakaoTalk_Photo_2026-08-31-15-01-43_01_ — 같은 분에 보낸 것끼리(서로 다른 서류일 수도 있어 약함)
+    if ((m = /^KakaoTalk_(?:Photo_)?(\d{4}-\d\d-\d\d-\d\d-\d\d)-\d\d_(\d+)_?$/i.exec(b))) return { k: d + '|kakao|' + m[1], no: Number(m[2]), w: 1, how: '카카오톡 한 번에 보낸 사진 순번' };
+    if (/\d-\d{1,3}$/.test(b)) return null; // 219-3·교로리 144-14 같은 지번 — 쪽 번호가 아님
+    if ((m = /^(.*?\D)[ _-]?(\d{1,2})$/.exec(b)) && m[1].replace(/[\s_\-]/g, '').length >= 2) return { k: d + '|tail|' + m[1].replace(/[\s_\-]+$/, ''), no: Number(m[2]), w: 2, how: '같은 이름 + 끝 번호' };
+    return null;
+  };
+  const groups = {};
+  (files || []).forEach(function (f) { if (!/pdf|^image\//.test(String(f.mimeType || 'image/'))) return; const r = fam(f); if (r) (groups[r.k] = groups[r.k] || []).push({ f: f, r: r }); });
+  const out = [];
+  Object.keys(groups).forEach(function (k) {
+    const g = groups[k].sort(function (a, b) { return a.r.no - b.r.no; });
+    if (g.length < 2) return;
+    // 같은 번호가 둘 이상이면 사본·다른 묶음 — 후보에서 뺌
+    if (g.some(function (x, i) { return i && x.r.no === g[i - 1].r.no; })) return;
+    const why = [g[0].r.how], t = g.map(function (x) { return String(x.f.text || ''); });
+    let score = g[0].r.w;
+    const types = g.map(function (x) { return x.f.type || ''; });
+    const typed = types.filter(String);
+    if (typed.length && typed.every(function (y) { return y === typed[0]; }) && typed.length < g.length) { score++; why.push('첫 장만 서류 종류가 정해지고 나머지는 같은 종류이거나 미정(' + typed[0] + ')'); }
+    // 장마다 같은 종류가 정해짐 = 장마다 서류 첫머리가 있음(송기종 「계약서-01~12」는 계약서 12건) — 따로 서류일 수 있음
+    if (typed.length === g.length && typed.every(function (y) { return y === typed[0]; })) { score--; why.push('장마다 서류 종류(' + typed[0] + ')가 따로 정해짐 — 같은 종류의 다른 서류일 수 있음'); }
+    if (g.some(function (x, i) { return i && x.r.no - g[i - 1].r.no > 1; })) { score--; why.push('번호가 건너뜀(' + g.map(function (x) { return x.r.no; }).join(',') + ')'); }
+    if (typed.length > 1 && typed.some(function (y) { return y !== typed[0]; })) { score -= 2; why.push('서류 종류가 서로 다름(' + typed.filter(function (y, i, a) { return a.indexOf(y) === i; }).join('·') + ') — 다른 서류일 수 있음'); }
+    const endRe = /이\s*하\s*여\s*백|다\s*음\s*장\s*없\s*음|이\s*하\s*빈\s*칸|-\s*끝\s*-|\(끝\)/;
+    const ends = t.map(function (x) { return endRe.test(x.slice(-400)); });
+    if (ends[ends.length - 1] && ends.slice(0, -1).every(function (e) { return !e; })) { score++; why.push('끝 표시(이하 여백 등)가 마지막 장에만'); }
+    else if (ends.slice(0, -1).some(Boolean)) { score--; why.push('중간 장에 끝 표시 — 서류가 거기서 끝났을 수 있음'); }
+    const pm = t.map(function (x) { const m = /(?:^|\n)\s*-?\s*(\d{1,2})\s*(?:\/\s*(\d{1,2})|쪽|-)\s*(?:\n|$)/.exec(x.slice(-300)); return m ? Number(m[1]) : 0; });
+    if (pm.every(function (p, i) { return p === i + 1; })) { score++; why.push('쪽 번호가 1부터 차례로'); }
+    out.push({ ids: g.map(function (x) { return x.f.id; }), names: g.map(function (x) { return x.f.name; }), why: why, conf: score >= 4 ? '강함' : score >= 2 ? '보통' : '약함' });
+  });
+  return out;
+}
 // 큰 사진 → 드라이브가 만든 축소본(thumbnailLink, =s3000)을 받아 글자인식. 축소본이 없으면 원래 오류를 낸다
 function tcOcrBigImage_(fileId) {
   const meta = Drive.Files.get(fileId, { fields: 'thumbnailLink' });
