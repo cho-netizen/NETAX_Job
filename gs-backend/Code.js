@@ -46084,6 +46084,9 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
     [['appraisalValue', '감정가액(상증법 §60⑤ — 시가)'], ['comparableTransactionPrice', '매매사례가액(§60② — 시가)'], ['transferStandardPriceForConversion', '기준시가(§61 — 시가가 없을 때 보충적 평가)']].forEach(function (x) {
       const v = sum(x[0]); if (v > 0 && !cands.some(function (c0) { return Number(c0.v) === v; })) cands.push({ v: String(v), src: x[1] + ' 합 ' + w(v) + '원' + gate(v) });
     });
+    // 토지: 양도 당시 개별공시지가(㎡당) × 면적 — 필지 나누기에 이미 들어 있다(이종식: 3필지 합)
+    const landStd = Math.floor(mem.reduce(function (t, a) { return t + (Number(a.landPricePerSqmTransfer) || 0) * (Number(a.assetArea) || 0); }, 0));
+    if (landStd > 0 && !cands.some(function (c0) { return Number(c0.v) === landStd; })) cands.push({ v: String(landStd), src: '기준시가(토지 — 양도 당시 개별공시지가 × 면적, 상증법 §61①1호 — 시가가 없을 때) 합 ' + w(landStd) + '원' + gate(landStd) });
     q('tr:relfmv', 'judge', '양수인이 특수관계인' + (rel && rel !== 'none' ? '(' + rel + ')' : '') + '입니다 — 소득세법 §101①(부당행위계산) 판정에 쓸 시가를 정해 주세요. 대금이 시가보다 5% 이상(3억 한도) 낮으면 양도가액을 시가로 계산합니다(시행령 §167③④). 시가는 감정가액·매매사례가액, 없으면 기준시가입니다.' + (cands.length ? '' : ' 서류에서 시가·기준시가를 찾지 못했습니다 — 금액을 직접 넣어 주세요(토지는 개별공시지가 × 면적).'),
       { mode: cands.length ? 'choose' : 'input', target: 'trRelFmv', input: 'money', label: '시가(§101① 판정)', cands: cands });
   })();
