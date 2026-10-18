@@ -510,11 +510,69 @@
           toast('이 화면은 다음 단계에서 추가됩니다.');
           return;
         }
+        // [2026.10.18 탭연결 5번] 떠나는 화면이 보던 사건을 기억해 둔다(아래 nxFollowCaseOnMenu_)
+        var fromAct = document.querySelector('.menu-item.active[data-view]');
+        var fromCase = fromAct ? nxScreenCaseIdOf_(fromAct.getAttribute('data-view')) : '';
+        if (fromCase) nxLastCaseId_ = fromCase;
         showView(view);
         items.forEach(function(i){ i.classList.remove('active'); });
         item.classList.add('active');
+        nxFollowCaseOnMenu_(view);
       });
     });
+  }
+
+  // [2026.10.18 탭연결 5번] 처리 화면들은 고른 사건을 화면마다 따로 기억해서, 처리개요에서 A 사건을 보다가 왼쪽 메뉴의 세액계산을
+  // 누르면 빈 화면이나 전에 보던 B 사건이 떴다(그대로 계산·저장하면 엉뚱한 사건에 들어갈 위험). 왼쪽 메뉴로 옮길 때:
+  //  · 처리개요·법령조회가 사건 없이 열리면 → 방금 보던 사건으로 바로 연다(잃을 입력이 없는 화면)
+  //  · 그 밖(세액계산·세액인쇄·문서작성·증빙확보)이거나 다른 사건이 열려 있으면 → 화면 위에 "방금 보던 사건으로 열기" 띠를 띄운다
+  //    (저장 안 한 계산·문서를 말없이 바꾸지 않도록 누를 때만 옮긴다)
+  var nxLastCaseId_ = '';
+  var NX_CASE_FOLLOW_VIEWS_ = ['casehandling', 'lawsearch', 'docs', 'taxcalc', 'print', 'reportwriter'];
+  function nxScreenCaseIdOf_(v){
+    try {
+      if (v === 'casehandling' && typeof chSelectedId !== 'undefined') return chSelectedId || '';
+      if (v === 'workmanage' && typeof workSelectedCaseId !== 'undefined') return workSelectedCaseId || '';
+      if (v === 'docs' && typeof docsSelectedCaseId_ !== 'undefined') return docsSelectedCaseId_ || '';
+      if ((v === 'taxcalc' || v === 'print') && typeof tcSelectedId !== 'undefined') return tcSelectedId || '';
+      if (v === 'lawsearch' && typeof lsSelectedId !== 'undefined') return lsSelectedId || '';
+      if (v === 'reportwriter'){ var rs = document.getElementById('rwCaseSelect'); return rs ? rs.value : ''; }
+    } catch (e) {}
+    return '';
+  }
+  function nxFollowCaseOnMenu_(view){
+    var old = document.getElementById('nxCaseFollowBar');
+    if (old) old.remove();
+    if (!nxLastCaseId_ || NX_CASE_FOLLOW_VIEWS_.indexOf(view) === -1) return;
+    var lastId = nxLastCaseId_;
+    var cur = nxScreenCaseIdOf_(view);
+    if (cur === lastId) return;
+    if (!cur && (view === 'casehandling' || view === 'lawsearch')){ nxCaseJump_(view, lastId); return; }
+    callGas('work_get_cases', {}).then(function(res){
+      var cases = (res && res.cases) || [];
+      var nameOf = function(id){ var c = cases.filter(function(x){ return x.id === id; })[0]; return c ? (c.사건명 || c.고객명 || '') : ''; };
+      var lastName = nameOf(lastId);
+      if (!lastName) return; // 지운 사건 등
+      var viewEl = document.getElementById('view-' + view);
+      if (!viewEl || !viewEl.classList.contains('active')) return; // 그 사이 다른 화면으로 옮겼음
+      if (nxScreenCaseIdOf_(view) === lastId) return; // 그 사이 같은 사건이 열렸음
+      var curNow = nxScreenCaseIdOf_(view), curName = curNow ? nameOf(curNow) : '';
+      var bar = document.createElement('div');
+      bar.id = 'nxCaseFollowBar';
+      bar.style.cssText = 'display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0 0 10px; padding:8px 12px; border:1px solid var(--gold, #c9a227); border-radius:8px; background:var(--gold-light, #fdf6e3); font-size:13px;';
+      bar.innerHTML = '<span>' + (curName ? '이 화면은 지금 「' + escapeHtml(curName) + '」 사건입니다. ' : '이 화면은 사건이 골라져 있지 않습니다. ') +
+        '방금 보던 「<b>' + escapeHtml(lastName) + '</b>」 사건으로 열까요?</span>' +
+        '<button type="button" class="save-btn" data-follow="go" style="padding:3px 10px;">「' + escapeHtml(lastName) + '」로 열기</button>' +
+        '<button type="button" class="ghost-btn" data-follow="stay" style="padding:3px 10px;">' + (curName ? '그대로 두기' : '닫기') + '</button>';
+      bar.addEventListener('click', function(e){
+        var b = e.target.closest('[data-follow]');
+        if (!b) return;
+        bar.remove();
+        if (b.getAttribute('data-follow') === 'go') nxCaseJump_(view, lastId);
+      });
+      var head = viewEl.querySelector('.view-head');
+      if (head && head.parentNode === viewEl) head.insertAdjacentElement('afterend', bar); else viewEl.insertBefore(bar, viewEl.firstChild);
+    }).catch(function(){});
   }
 
   // [2026.09] "아이콘+버튼명" 툴바(.tb-row/.scan-row)가 좁아지면 1단계로 아이콘부터 숨기고
@@ -590,6 +648,8 @@
       // 참고 — 크롬이 페이지 전체에서 비밀번호칸을 찾아 엉뚱한 화면에서도 자동완성 UI를
       // 띄우던 문제의 근본 해결책).
       if (name !== 'settings' && typeof settingsTeardown_ === 'function') settingsTeardown_();
+      var followBar = document.getElementById('nxCaseFollowBar'); // 탭연결 5번 — 지난 화면의 "방금 보던 사건으로 열기" 띠는 치운다
+      if (followBar) followBar.remove();
       document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('active'); });
       var target = document.getElementById('view-' + name);
       if (target) target.classList.add('active');
