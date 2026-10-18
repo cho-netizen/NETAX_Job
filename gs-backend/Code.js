@@ -29167,6 +29167,702 @@ function caseProcParsed_(f, cache, canParse) {
   if (!s.err) CASEPROC_PARSED_MEMO_[key] = s;
   return s;
 }
+// =========================================================
+// [2026.10.18 1번 세션 — 최대 수집] 사실 목록 cpFacts_(c) — 사건 폴더의 모든 파일에서 정보를 "사실 한 건"(두세션_공통 3절 모양) 목록으로.
+//  세무사님 원칙 ①최대 입수: 서식에 있는 칸을 넓게 받고, 서류끼리 잇는 열쇠(지번·호실·사람·계좌·날짜·번호)를 먼저 챙긴다.
+//  고르지도 판정하지도 않는다 — 파일마다 있는 대로 뽑고, 확실하지 않으면 read.conf "불확실" + 이유. 맞대어 정하는 일은 2번(교차검증) 몫.
+//  기존 서류 정리 결과(docParse* 결과 키·caseProcParsed_ 기억)는 그대로 두고 그 위에 더한다(지금 쓰는 곳은 바뀌지 않음).
+//  사실 한 건: { kind, value, raw, src:{fileId,file,docType,where,page?,rec?,part?,near?},
+//              keys:{asset?,assetFull?,road?,person?,personGuess?,account?,date?,dateFrom?,docNo?,biz?,phone?,amount?}, role,
+//              read:{how,conf,note,ocrConf?,check?,checkNote?,use?,sameAsRule?} }
+//   - 파일마다 kind "서류" 한 건(종류·읽은 방법·못 읽거나 뺀 이유·잘린 상한) — 말없이 빠지는 파일이 없게
+//   - 서류 정리 규칙이 뽑은 칸 → (서류 종류, 칸 이름) 대응표, 표에 없는 칸은 "기타:<칸 이름>"(버리지 않음)
+//   - 줄로 된 칸(통장 거래·대금 회차·주소이력·품목 등)은 한 줄 = 사실 한 건(value 객체), 그 밖의 줄(가족·등기 순위·권리자 등)은 칸마다 사실 + 같은 src.rec
+//   - 규칙이 못 잡은 글자 속 열쇠·날짜·금액·면적·지분·번호 → 공통 뽑기(conf "불확실", 이유 "서류 규칙 없음 — 글자에서 뽑음")
+//  [2026.10.18 재점검(maps/재점검_1번_20261018.md) 반영 — cpf2_]
+//   상1 같은 값은 "같은 자리"에서 나온 것만 하나로(위치·앞 낱말이 다르면 따로 — 규칙 값과 같은 값은 read.sameAsRule로 표시만)
+//   상2 한 파일 안 같은 종류 둘째 서류도 그 제목 자리부터 정리, 종류 미정 서류의 날짜·금액 줄은 "글자 줄" 한 줄 = 한 건
+//   상3 표 글이 없어 엑셀 표 줄을 못 만들면 "서류" note에 밝힘(표 글 만들기는 3번 읽기 세션 몫)
+//   상4 열쇠: docNo(부동산 고유번호·접수·관리·사건·증권·계약·발급·목록 번호)·biz(사업자번호)·phone·amount(금액)
+//   상5 도로명 열쇠(keys.road)와 지번↔도로명 대응 사실("주소 대응")
+//   중8 사람 열쇠는 이름|생년월일 6자리로 통일, 은행 별칭 표(NH→농협, KB→국민, IBK→기업 …)
+//   중9 (서류 종류, 칸 이름) 대응 — 감정평가 "목적"·수입인지 "용도"·"가격"이 등기 목적·지목·공시가격이 되던 것
+//   중10 "종류"(서류 이름 칸 말고)·"쪽"은 내용 — 쪽은 src.page로
+//   중11 상한에 닿으면 "서류" note에 무엇이 몇 건 잘렸는지
+//   중12 src.near의 주민번호·전화·계좌는 가림(값·열쇠에는 그대로)
+//   중13 거리로 짐작한 사람 묶음은 keys.personGuess(같은 기록 안의 묶음만 keys.person), 판독 확실성은 read.ocrConf로 따로
+//   하15 결과물·참고자료(이름·내용으로 앎)도 뽑되 read.use "제외 후보(…)"로 표시 — 쓸지 2번이 정함
+//   하16 금액에는 그 회차의 날짜(계약금→계약일·잔금→잔금일 …)를 keys.date로, 근거는 keys.dateFrom
+//   하17 기억 이름 cpf2_   하18 통장 줄 value에 공통 문서 칸(일시·적요·입금·출금·잔액·상대방)을 더함, keys.assetFull(시군구 포함)
+//  토큰 0. 기본은 글자인식 기억에 있는 글자만(opt.noNewOcr) — 새 글자인식은 증빙 단계·서버 일괄이 한다.
+// =========================================================
+var CPF_VER_ = 'cpf2_';
+// 서류 정리 규칙의 칸 이름 → 사실 종류(낱말표). 여기 없는 칸은 "기타:<칸 이름>"으로 넘긴다(버리지 않음)
+var CPF_KIND_MAP_ = {
+  소재지: '소재지', 대지위치: '소재지', 소재: '소재지', 소재지목록: '소재지', 부동산소재지: '소재지', 물건: '소재지', 지번: '지번', 동호: '동호', 건물번호: '동호', 호명칭: '동호',
+  지목: '지목·용도', 용도: '지목·용도', 주용도: '지목·용도', 전유용도: '지목·용도', 용도목록: '지목·용도',
+  면적: '면적', 토지면적: '토지면적', 대지면적: '토지면적', 건물면적: '건물면적', 연면적: '건물면적', 전유면적: '전유면적', 전용면적: '전유면적', 대지권면적: '대지권면적', 임대면적: '임대면적', 주택면적: '건물면적', 비주택면적: '건물면적',
+  대지권비율: '대지권비율', 지분: '지분', 피상속인지분: '지분', 공유인수: '공유자 수',
+  취득일: '취득일', 취득원인: '취득원인', 취득가액: '취득가액', 양도일: '양도일', 양도가액: '양도가액', 잔금일: '잔금일', 계약일: '계약일', 중도금일: '중도금일',
+  매매대금: '매매대금', 계약금: '계약금', 중도금: '중도금', 잔금: '잔금', 승계보증금: '승계보증금·채무', 융자금: '승계보증금·채무', 채권최고액: '근저당 채권최고액',
+  공시가격: '공시가격', 감정평가액: '감정가액', 평가액: '감정가액', 기준시점: '기준시점', 개별지가: '공시가격', 시가표준액: '공시가격', 감정가액: '감정가액', 외화감정가액: '감정가액', 매매사례가액: '매매사례가액',
+  성명: '성명', 이름: '성명', 한글성명: '성명', 대상이름: '성명', 주민번호: '주민번호', 주민앞: '주민번호', 생년월일: '생년월일', 생년월일6: '생년월일', 생년6: '생년월일', 대상생년6: '생년월일', 관계: '관계', 세대주관계: '관계',
+  주소: '주소', 현주소: '주소', 등록기준지: '등록기준지', 사망일: '사망일', 사망신고일: '사망신고일', 상속개시일: '상속개시일', 증여일: '증여일', 증여시기: '증여일',
+  매도인: '성명', 매수인: '성명', 양도인: '성명', 양수인: '성명', 증여자: '성명', 수증자: '성명', 피상속인: '성명', 상속인: '성명', 임대인: '성명', 임차인: '성명', 채무자: '성명', 예금주: '성명', 세대주: '성명', 소유자: '성명', 권리자: '성명', 명의인: '성명', 배우자: '성명', 의뢰인: '성명', 원고: '성명', 피고: '성명', 받는이: '성명', 보낸이: '성명', 받은사람: '성명', 대표자: '성명', 계약자: '성명', 위임인: '성명', 수임인: '성명', 대리인: '성명', 신청인: '성명', 공유자: '성명', 공동명의인: '성명',
+  은행: '은행', 계좌: '계좌번호', 계좌번호: '계좌번호', 받는계좌: '계좌번호',
+  보증금: '임대 보증금', 보증금합계: '임대 보증금', 월세: '월세', 임대기간: '임대기간', 시작일: '시작일', 종료일: '종료일', 개시일: '시작일',
+  상호: '상호', 사업자번호: '사업자번호', 등록번호: '등록번호', 공급자번호: '사업자번호', 업태: '업종', 종목: '업종', 개업일: '개업일', 사업장: '소재지',
+  중개보수: '중개보수', 보수합계: '법무사 비용', 취득세: '취득세', 지방교육세: '지방교육세', 농어촌특별세: '농어촌특별세', 원금: '대출 원금', 잔액: '잔액', 총잔액: '잔액', 대출잔액: '대출 잔액', 이자: '이자',
+  공급가액: '공급가액', 부가세: '부가세', 합계: '합계', 총액: '합계', 금액: '금액', 지급액: '지급액', 청구금액: '청구금액', 정산금액: '정산금액', 보험가입금액: '보험금액', 보험료: '보험료',
+  접수일: '접수일', 원인일: '원인일', 접수번호: '접수번호', 고유번호: '부동산 고유번호', 순위: '등기 순위', 관리번호: '관리번호', 사건: '사건번호', 사건번호: '사건번호', 증권번호: '증권번호', 계약번호: '계약번호', 발급번호: '발급번호', 목록번호: '목록번호',
+  날짜: '날짜', 일자: '날짜', 거래일: '거래일', 발급일: '발급일', 작성일: '작성일', 발행일: '발행일', 납부일: '납부일', 신고일: '신고일', 기준일: '기준일', 결정일: '결정일', 합의일: '합의일', 사용승인일: '사용승인일', 등기일: '등기일', 지급일: '지급일', 상환일: '상환일', 만기일: '만기일', 전입일: '전입일', 납부기한: '납부기한',
+  과세표준: '과세표준', 산출세액: '산출세액', 납부할세액: '납부할세액', 양도차익: '양도차익', 필요경비: '필요경비', 세목: '세목', 세무서: '세무서', 관서: '세무서'
+};
+// (서류 종류, 칸 이름) → 사실 종류 — 같은 칸 이름이 서류마다 뜻이 다른 것(중9)
+var CPF_KIND_BY_TYPE_ = {
+  registry: { 목적: '등기 목적', 원인: '등기 원인' },
+  regdone: { 목적: '등기 목적', 등기목적: '등기 목적', 원인: '등기 원인', 통지일: '발급일', 등기소: '발급기관' },
+  bldledger: { 목적: '기타:목적' }, landledger: { 목적: '기타:목적' },
+  pubprice: { 가격: '공시가격' }, bldstd: { 가격: '기준시가' },
+  appraisal: { 목적: '감정평가 목적', 가격: '감정가액' },
+  realprice: { 가격: '매매사례가액', 금액: '매매사례가액' },
+  stamp: { 용도: '인지 용도', 금액: '수입인지 금액', 등록번호: '생년월일·사업자번호' },
+  estimate: { 견적일: '견적일', 현장: '소재지', 고객: '성명', 합계: '견적 합계' },
+  poa: { 부동산표시: '소재지', 날짜: '작성일', 내용: '위임 내용', 사건: '사건번호' },
+  finassoc: { 기관: '금융기관', 대상자: '성명', 조회: '조회 종류', 내역없음: '조회 내역 없음', 미회신: '미회신' }
+};
+// 사람이 그 칸 이름 자체로 역할을 갖는 칸
+var CPF_ROLE_KEYS_ = /^(매도인|매수인|양도인|양수인|증여자|수증자|피상속인|상속인|임대인|임차인|채무자|예금주|세대주|소유자|권리자|명의인|배우자|의뢰인|원고|피고|받는이|보낸이|받은사람|대표자|계약자|위임인|수임인|대리인|신청인|공유자|공동명의인|대상자|고객)$/;
+// 서류 정리 규칙의 설명·검산·표시 칸 — 서류 내용이 아니라 규칙의 메모라 사실로 넘기지 않는다(경고는 "서류" 사실의 note로).
+//  "근거"·"설명"은 규칙의 검산 설명문, "읽은값"은 서류에서 읽은 값이라 넘긴다. "종류"는 맨 위(서류 이름)만, "쪽"은 src.page로(중10)
+var CPF_SKIP_KEYS_ = /^(경고|참고|비고|메모|확인필요|.*확인필요|.*검산|검산.*|type|label|md|isRegistry|세무쓰임|판독|.*출처|출처|근거|설명|원문|상세|섞임|칸값만|맞음|아님|사무소발행|열람용|앞장없음|뒷장없음|앞기록없음|시작표시|잔액사슬|사슬밖|차액맞춤|묶음|묶음합계|쪽|쪽수|행수|열|행|순서|순번|월정한방법|일시지급추정|승계방식|취득구조|판정\d호|주소변동포함|세대주관계포함|주택포함|부부단|원단위|맞춤|r)$/;
+// 한 줄 = 사실 한 건(value 객체)으로 둘 줄 칸
+var CPF_ROW_ONE_ = { 가격: '공시가격(연도별)', 거주기간: '거주기간', 귀속: '상속재산 분할(귀속)', 금융목록: '금융재산 줄', 금융: '금융재산 줄', 거래: '통장 거래', 회차: '대금 회차', 중도금: '중도금', 지급: '지급', 품목: '영수증 품목', 항목: '항목', 주소이력: '주소이력', 줄: '명세 줄', 구간: '결제', 명세: '명세 줄', 목록: '목록 줄', 사례: '매매사례', 비교사례: '매매사례', 변동: '변동 줄', 층별: '층별 면적', 출국: '출국', 입국: '입국', 상환: '상환 줄' };
+// 금액 칸 → 그 회차의 날짜 칸(하16)
+var CPF_AMT_DATE_ = { 계약금: '계약일', 중도금: '중도금일', 잔금: '잔금일', 매매대금: '잔금일', 보증금: '계약일', 지급액: '지급일', 납부금액: '납부일', 금액: '날짜' };
+// 상한(중11) — 닿으면 "서류" note에 적는다
+var CPF_LIMITS_ = { common: 1500, role: 80, rows: 5000, sheet: 3000, inner: 20, list: 200, textRows: 3000 };
+var CPF_DATE_RE_ = /((?:19|20)\d{2})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})(?!\d)/;
+function cpfDate_(v) { const m = CPF_DATE_RE_.exec(String(v || '')); return m && Number(m[2]) >= 1 && Number(m[2]) <= 12 && Number(m[3]) >= 1 && Number(m[3]) <= 31 ? m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2) : ''; }
+function cpfShare_(v) {
+  const s = String(v || '').replace(/\s+/g, '');
+  let m = /(\d+(?:\.\d+)?)분의(\d+(?:\.\d+)?)/.exec(s); if (m) return { n: Number(m[2]), d: Number(m[1]) };
+  m = /^(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/.exec(s); if (m) return { n: Number(m[1]), d: Number(m[2]) };
+  return null;
+}
+function cpfName_(v) { return String(v || '').replace(/\s+/g, ''); }
+// 주소 정규화 열쇠 — 동·리·가 + 지번[|동호]. 서류마다 시군구·읍면을 적거나 빼서(등기부 목록 "관양동 189-7" ↔ 소재지 "안양시 동안구 관양동 189-7")
+//  같은 땅이 다른 열쇠가 되던 것 — 시군구까지 붙인 것은 keys.assetFull(공통 문서 3절 모양)
+function cpfAssetParts_(addr) {
+  const s = String(addr || '').replace(/\([^)]*\)/g, ' ').replace(/[,·]/g, ' ').replace(/\s+/g, ' ');
+  const m = /((?:[가-힣]+(?:특별시|광역시|특별자치시|도)\s+)?(?:[가-힣]+(?:시|군)\s+)?(?:[가-힣]+구\s+)?(?:[가-힣]+(?:읍|면)\s+)?)([가-힣\d]+(?:동|리|가))\s*(산\s*)?(\d{1,5})(?:\s*번지)?(?:\s*-\s*(\d{1,5})|\s*번지\s*(\d{1,5})\s*호)?/.exec(s);
+  if (!m) return null;
+  const jb = (m[3] ? '산' : '') + m[4] + ((m[5] || m[6]) ? '-' + (m[5] || m[6]) : '');
+  let dh = '';
+  const h = /제?\s*(\d{1,4})\s*동\s*(?:제?\s*\d{1,3}\s*층\s*)?제?\s*(\d{1,5})\s*호/.exec(s) || /(?:^|\s)(\d{1,4})-(\d{3,5})(?:호|$|\s)/.exec(s.slice(m.index + m[0].length));
+  if (h) dh = h[1] + '동' + h[2] + '호';
+  else { const h2 = /제?\s*(\d{1,5})\s*호(?!\s*서식)/.exec(s.slice(m.index + m[0].length)); if (h2) dh = h2[1] + '호'; }
+  const sgg = m[1].replace(/(?:특별시|광역시|특별자치시|도)\s+/, ' ').replace(/^[가-힣]+(?:특별시|광역시|특별자치시)\s*/, '').replace(/\s+/g, ' ').trim();
+  return { dong: m[2], jb: jb, dh: dh, sgg: sgg };
+}
+function cpfAssetKey_(addr) { const p = cpfAssetParts_(addr); return p ? p.dong + ' ' + p.jb + (p.dh ? '|' + p.dh : '') : ''; }
+function cpfAssetFullKey_(addr) { const p = cpfAssetParts_(addr); return p && p.sgg ? (p.sgg + ' ' + p.dong + ' ' + p.jb + (p.dh ? '|' + p.dh : '')) : ''; }
+// 도로명 열쇠(상5) — "경수대로665번길 32", "별양로 12" → "경수대로665번길 32"[|동호]
+function cpfRoadKey_(addr) {
+  const s = String(addr || '').replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ');
+  const m = /([가-힣][가-힣\d]*(?:대로|로|길)(?:\s*\d+\s*번?길)?)\s*(\d{1,4}(?:-\d{1,4})?)(?![\d-]|\s*(?:층|㎡|m))/.exec(s);
+  if (!m || /^(도로|경로|진로|통로|보로)$/.test(m[1])) return '';
+  let k = m[1].replace(/\s+/g, '') + ' ' + m[2];
+  const h = /제?\s*(\d{1,4})\s*동\s*(?:제?\s*\d{1,3}\s*층\s*)?제?\s*(\d{1,5})\s*호/.exec(s.slice(m.index)) || /[,\s](\d{1,4})동\s*(\d{1,5})호/.exec(s.slice(m.index));
+  if (h) k += '|' + h[1] + '동' + h[2] + '호';
+  return k;
+}
+// 사람 열쇠(중8) — 이름|생년월일 6자리(주민번호 앞 6자리·생년월일 YYYY-MM-DD 모두 YYMMDD로). 생년이 없으면 이름만
+function cpfPersonKey_(name, idOrBirth) {
+  const n = cpfName_(name); if (!/^[가-힣]{2,5}$/.test(n)) return '';
+  const s = String(idOrBirth || ''); let m = /(\d{6})\s*-\s*[\d*]/.exec(s);
+  if (m) return n + '|' + m[1];
+  m = /((?:19|20)\d{2})[-.\/년\s]*(\d{1,2})[-.\/월\s]*(\d{1,2})/.exec(s); if (m) return n + '|' + m[1].slice(2) + ('0' + m[2]).slice(-2) + ('0' + m[3]).slice(-2);
+  m = /^(\d{6})$/.exec(s.replace(/\s/g, '')); if (m) return n + '|' + m[1];
+  return n;
+}
+// 은행 별칭 표(중8) — 서류마다 "NH농협·지역농축협·농협", "KB국민·국민", "IBK기업·기업"처럼 달라 같은 계좌가 다른 열쇠가 되던 것
+var CPF_BANK_ALIAS_ = [[/농\s*협|NH|농\s*축\s*협|축\s*협/i, '농협'], [/국\s*민|KB/i, '국민'], [/기\s*업|IBK/i, '기업'], [/신\s*한/, '신한'], [/우\s*리/, '우리'], [/하\s*나|KEB/i, '하나'], [/SC|제\s*일/i, 'SC제일'], [/씨\s*티|citi/i, '씨티'], [/카\s*카\s*오/, '카카오'], [/케\s*이\s*뱅\s*크/, '케이'], [/토\s*스/, '토스'], [/새\s*마\s*을/, '새마을'], [/신\s*협/, '신협'], [/우\s*체\s*국|우\s*정/, '우체국'], [/수\s*협/, '수협'], [/산\s*업|KDB/i, '산업'], [/대\s*구|DGB|iM/, '대구'], [/부\s*산|BNK/i, '부산'], [/경\s*남/, '경남'], [/광\s*주/, '광주'], [/전\s*북/, '전북'], [/제\s*주/, '제주'], [/저\s*축/, '저축은행'], [/증\s*권/, '증권']];
+function cpfBankName_(s) { s = String(s || ''); for (let i = 0; i < CPF_BANK_ALIAS_.length; i++) if (CPF_BANK_ALIAS_[i][0].test(s)) return CPF_BANK_ALIAS_[i][1]; return ''; }
+function cpfAccountKey_(bank, acct) {
+  const d = String(acct || '').replace(/[^\d*]/g, ''); if (d.replace(/\*/g, '').length < 4) return '';
+  const tail = d.slice(-4); if (/\*/.test(tail)) return '';
+  return (cpfBankName_(bank) || '은행?') + '|' + tail;
+}
+function cpfNum_(v) { if (typeof v === 'number') return v; const s = String(v == null ? '' : v); if (!/^\s*-?[\d,]+(?:\.\d+)?\s*원?\s*$/.test(s)) return null; const n = Number(s.replace(/[,원\s]/g, '')); return isNaN(n) ? null : n; }
+// 가리기(중12) — 주민번호 뒷자리·전화 가운데·계좌 끝 4자리 앞(원문 앞뒤 글자 src.near에만; 값·열쇠는 그대로)
+function cpfMask_(s) {
+  return String(s || '')
+    .replace(/(\d{6})\s*-\s*([1-8*])[\d*]{6}/g, '$1-$2******')
+    .replace(/(?<![\d-])(01[016789]|0[2-6]\d?)(\s?[-)]\s?)(\d{3,4})(\s?-\s?)(\d{4})(?![\d-])/g, function (a, p, s1, mid, s2, tail) { return p + s1 + '*'.repeat(mid.length) + s2 + tail; })
+    .replace(/(?<![\d-])(\d{2,6})-(\d{2,8})-(\d{2,8})(-\d{1,6})?(?![\d-])/g, function (a) { if (/^(19|20)\d{2}-\d{1,2}-\d{1,2}$/.test(a) || /^\d{3}-\d{2}-\d{5}$/.test(a) || /^\d{4}-\d{4}-\d{6}$/.test(a)) return a; return a.slice(0, -4).replace(/\d/g, '*') + a.slice(-4); });
+}
+var CPF_MONEY_KIND_ = /금액|가액|대금|보증금|월세|세$|세액|비용|보수|합계|잔액|원금|이자|지급액|청구|정산|보험|공급가액|부가세|매매사례|공시가격|기준시가|계약금|중도금|잔금|채무|채권최고액|전세금|과세표준|양도차익|필요경비|수입인지/;
+// 열쇠 마무리(상4·상5) — 사실 종류와 값으로 docNo·biz·phone·amount·road·assetFull을 더한다
+function cpfKeysFinish_(f) {
+  const k = f.keys || (f.keys = {}), v = f.value, kd = String(f.kind || '').replace(/^기타:/, '');
+  if (/^(부동산 고유번호|접수번호|관리번호|사건번호|증권번호|계약번호|발급번호|문서확인번호|목록번호|등록번호)$/.test(kd) && v !== null && v !== undefined && v !== '') k.docNo = kd + '|' + String(v).replace(/\s+/g, '') + (kd === '접수번호' && k.date ? '|' + k.date : '');
+  if (kd === '사업자번호') { const d = String(v).replace(/\D/g, ''); if (d.length === 10) k.biz = d; }
+  if (kd === '전화번호') { const d = String(v).replace(/\D/g, ''); if (d.length >= 9) k.phone = d; }
+  if (typeof v === 'number' && Math.abs(v) >= 1000 && CPF_MONEY_KIND_.test(kd) && !/면적|지분|비율|번호|수$/.test(kd)) k.amount = v;
+  if (f.kind === '통장 거래' && v && typeof v === 'object') { const a = v.입금 || v.출금 || (typeof v.금액 === 'number' ? Math.abs(v.금액) : null); if (a) k.amount = a; }
+  if (/^(소재지|주소|기타:도로명주소)$/.test(f.kind) && typeof v === 'string') {
+    const rk = cpfRoadKey_(v + ' ' + (f.raw || '')); if (rk) k.road = rk;
+    if (k.asset && !k.assetFull) { const af = cpfAssetFullKey_(v); if (af) k.assetFull = af; }
+  }
+  return f;
+}
+// 칸 하나(이름 key, 값 v) → 정규화 값과 종류. docType으로 (서류 종류, 칸 이름) 대응을 먼저 본다
+function cpfNormalize_(key, v, docType) {
+  const byT = CPF_KIND_BY_TYPE_[docType] || {};
+  const kind = byT[key] || CPF_KIND_MAP_[key] || (key === '가격' ? '가격' : key === '목적' ? '목적' : key === '원인' ? '원인' : '기타:' + key);
+  if (v === null || v === undefined || v === '' || v === false) return null;
+  if (typeof v === 'boolean') return { kind: kind, value: true, raw: key };
+  const raw = typeof v === 'number' ? v.toLocaleString('ko-KR') : String(v).slice(0, 300);
+  if (/^(성명)$/.test(kind)) { const n = cpfName_(v); return n ? { kind: kind, value: n, raw: raw } : null; }
+  if (kind === '지분' || kind === '대지권비율') { const sh = cpfShare_(v); return { kind: kind, value: sh || raw, raw: raw, unsure: !sh }; }
+  if (/일$|일자$|기한$|날짜$|^증여일$|시기$/.test(kind.replace(/^기타:/, ''))) { const d = cpfDate_(v); if (d) return { kind: kind, value: d, raw: raw }; }
+  if (typeof v === 'string' && /^\s*(?:19|20)\d{2}\s*[.\-\/년]\s*\d{1,2}\s*[.\-\/월]\s*\d{1,2}\s*[.일]?\s*$/.test(v)) { const d0 = cpfDate_(v); if (d0) return { kind: kind, value: d0, raw: raw }; }
+  const n = cpfNum_(v);
+  if (n !== null) return { kind: kind, value: n, raw: raw };
+  if (/면적/.test(kind)) { const m = /(\d+(?:\.\d+)?)/.exec(String(v)); if (m) return { kind: kind, value: Number(m[1]), raw: raw }; }
+  return { kind: kind, value: typeof v === 'object' ? raw : String(v).trim().slice(0, 300), raw: raw };
+}
+// [2026.10.18 2번 요청] 기록(객체)의 검산 결과 → { state: '일치'|'불일치', note }. key가 있으면 그 칸 전용 검산("<칸>검산")만 본다.
+//  서류 정리 규칙은 서류 안에서 맞대 본 결과를 "검산"·"○○검산" 칸에 남긴다(참/거짓 또는 "일치(…)"·"회차 합 ≠ 합계" 글). 없으면 null
+function cpfCheckOf_(node, key) {
+  if (!node || typeof node !== 'object' || Array.isArray(node)) return null;
+  const ks = key ? [key + '검산'] : Object.keys(node).filter(function (k) { return /검산$/.test(k) && !/검산(줄|확인)$/.test(k); });
+  let bad = false, good = false; const notes = [];
+  ks.forEach(function (k) {
+    const v = node[k];
+    if (v === true) good = true; else if (v === false) bad = true;
+    else if (typeof v === 'string' && v.trim()) { if (/불\s*일\s*치|≠|안\s*맞|맞지\s*않|못\s*함|못\s*했|다름|차이/.test(v)) bad = true; else if (/일\s*치|맞음|=|검산\s*됨/.test(v)) good = true; notes.push(v.slice(0, 80)); }
+    else if (v && typeof v === 'object' && typeof v.맞음 === 'number' && typeof v.전체 === 'number') { if (v.맞음 === v.전체) good = true; else bad = true; }
+  });
+  if (!bad && !good) return null;
+  return { state: bad ? '불일치' : '일치', note: notes.join(' / ').slice(0, 160) };
+}
+// 줄 하나(객체)의 칸들 → value 객체(낱개 값만, 하위 줄은 이름만)
+function cpfRowValue_(o) {
+  const out = {};
+  Object.keys(o || {}).forEach(function (k) {
+    if (CPF_SKIP_KEYS_.test(k)) return;
+    const v = o[k];
+    if (v === null || v === undefined || v === '' || v === false) return;
+    if (Array.isArray(v)) { const xs = v.map(function (x) { return x && typeof x === 'object' ? (x.이름 || x.성명 || x.금액 || '') : x; }).filter(function (x) { return x !== '' && x !== null && x !== undefined; }); if (xs.length) out[k] = xs.join(', ').slice(0, 200); return; }
+    if (typeof v === 'object') return;
+    out[k] = v;
+  });
+  return out;
+}
+// 통장 줄 value에 공통 문서 칸(일시·적요·입금·출금·잔액·상대방)을 더한다(하18) — 규칙의 원래 칸은 그대로 둔다
+function cpfBankRow_(val) {
+  const o = Object.assign({}, val);
+  if (o.날짜 && !o.일시) o.일시 = o.날짜 + (o.시각 ? ' ' + o.시각 : '');
+  if (typeof o.금액 === 'number') { if (o.금액 >= 0) o.입금 = o.금액; else o.출금 = -o.금액; }
+  if (typeof o.입금액 === 'number' && o.입금 === undefined) o.입금 = o.입금액;
+  if (typeof o.출금액 === 'number' && o.출금 === undefined) o.출금 = o.출금액;
+  const memo = [o.내용, o.적요].filter(Boolean).join(' ');
+  if (memo && o.적요 === undefined) o.적요 = memo;
+  if (!o.상대방) { const m = /([가-힣]{2,4})(?:\s*\(|\s*$)/.exec(String(o.적요 || o.내용 || '')); if (m && !/입금|출금|이체|대체|송금|타행|이자|결산|수수료|현금|카드|자동|급여|환불/.test(m[1])) o.상대방 = m[1]; }
+  return o;
+}
+// 서류 정리 결과(result) → 사실들. base: 파일 단위 공통(src·read·trunc). 열쇠는 같은 기록(rec)과 그 위 기록에서 찾는다
+function cpfFromResult_(result, base, docType) {
+  const out = [];
+  const pathName = function (p) { return p.replace(/^\./, '').replace(/\.r(?=\.|$)/g, ''); };
+  // 기록(객체) 하나에서 열쇠 재료
+  const keyBits = function (o) {
+    const b = {};
+    if (!o || typeof o !== 'object') return b;
+    const loc = o.소재지 || o.대지위치 || o.부동산소재지 || '';
+    if (loc && typeof loc === 'string') { const a = cpfAssetKey_(loc + ' ' + (o.건물번호 || o.동호 || '')); if (a) b.asset = a; }
+    if (!b.asset && o.부동산표시 && typeof o.부동산표시 === 'object') { const a2 = cpfAssetKey_((o.부동산표시.소재지 || '') + ' ' + (o.부동산표시.건물번호 || '')); if (a2) b.asset = a2; }
+    if (!b.asset && typeof o.부동산표시 === 'string') { const a3 = cpfAssetKey_(o.부동산표시); if (a3) b.asset = a3; }
+    const nm = o.이름 || o.성명 || o.한글성명;
+    if (nm && typeof nm === 'string') { const pk = cpfPersonKey_(nm, o.주민번호 || o.생년월일 || o.생년6 || o.생년월일6 || ''); if (pk) b.person = pk; }
+    const ac = o.계좌번호 || o.계좌 || o.받는계좌;
+    if (ac && typeof ac === 'string') { const k = cpfAccountKey_(o.은행 || o.기관 || '', ac); if (k) b.account = k; }
+    const dt = o.날짜 || o.거래일 || o.접수일 || o.일자 || o.계약일 || o.발급일 || o.작성일 || o.납부일;
+    if (dt) { const d = cpfDate_(dt); if (d) b.date = d; }
+    return b;
+  };
+  const merge = function (up, own) { const k = {}; ['asset', 'account', 'date'].forEach(function (x) { if (own[x] || up[x]) k[x] = own[x] || up[x]; }); if (own.person) k.person = own.person; return k; };
+  const push = function (f) { out.push(f); };
+  const walk = function (node, path, rec, upKeys, role, unsure, type, page) {
+    if (node === null || node === undefined) return;
+    if (Array.isArray(node)) return; // 배열은 아래 obj에서 칸 이름과 함께 다룬다
+    if (typeof node !== 'object') return;
+    // 매매·임대 묶음: {docs:[{type, r}]} — 안쪽 서류 종류로 칸 대응을 바꾼다
+    if (node.type && node.r && typeof node.r === 'object') { walk(node.r, path, rec, upKeys, role, unsure, node.type, page); return; }
+    const own = keyBits(node), keys = merge(upKeys, own);
+    const recUnsure = unsure || node.확인필요 === true;
+    const recCheck = cpfCheckOf_(node, ''); // 이 기록의 검산 결과(규칙이 서류 안에서 맞대 본 것 — 합계=회차 합, 한글 금액=숫자 등)
+    const pg = typeof node.쪽 === 'number' ? node.쪽 : page; // 쪽 번호(중10)
+    Object.keys(node).forEach(function (k) {
+      if (CPF_SKIP_KEYS_.test(k)) return;
+      if (k === '종류' && !path) return; // 맨 위 "종류"는 서류 이름(서류 사실에 있음) — 줄 안의 종류(토지·집합건물 등)는 내용이라 넘긴다
+      const v = node[k];
+      if (v === null || v === undefined || v === '') return;
+      if (Array.isArray(v)) {
+        if (!v.length) return;
+        const objs = v.filter(function (x) { return x && typeof x === 'object' && !Array.isArray(x); });
+        if (!objs.length) { // 낱개 값 목록(소재지목록 등) — 값마다 한 건
+          if (v.length > CPF_LIMITS_.list) base.trunc.push(k + ' 값 ' + v.length + '개 중 ' + CPF_LIMITS_.list + '개만');
+          v.slice(0, CPF_LIMITS_.list).forEach(function (x, i) {
+            const nv = cpfNormalize_(k.replace(/목록$/, '') in CPF_KIND_MAP_ ? k.replace(/목록$/, '') : k, x, type); if (!nv) return;
+            const kk = Object.assign({}, keys); if (nv.kind === '소재지') { const a = cpfAssetKey_(x); if (a) kk.asset = a; }
+            if (nv.kind === '성명') { const pk = cpfPersonKey_(x, ''); if (pk) kk.person = pk; }
+            push({ kind: nv.kind, value: nv.value, raw: nv.raw, where: pathName(path + '.' + k) + ' ' + (i + 1), rec: rec, keys: kk, role: CPF_ROLE_KEYS_.test(k) ? k : role, unsure: recUnsure || nv.unsure, page: pg });
+          });
+          return;
+        }
+        const one = CPF_ROW_ONE_[k];
+        if (objs.length > CPF_LIMITS_.rows) base.trunc.push(k + ' 줄 ' + objs.length + '개 중 ' + CPF_LIMITS_.rows + '개만');
+        objs.slice(0, CPF_LIMITS_.rows).forEach(function (x, i) {
+          const r2 = (rec ? rec + '.' : '') + k + (i + 1);
+          const xp = typeof x.쪽 === 'number' ? x.쪽 : pg;
+          if (one) { // 한 줄 = 사실 한 건
+            let val = cpfRowValue_(x); const kb = merge(keys, keyBits(x));
+            if (!Object.keys(val).length) return;
+            if (one === '통장 거래') val = cpfBankRow_(val);
+            push({ kind: one, value: val, raw: Object.keys(val).map(function (q) { return q + ' ' + val[q]; }).join(' · ').slice(0, 300), where: pathName(path + '.' + k) + ' ' + (i + 1) + '번째 줄', rec: r2, keys: kb, role: role, unsure: recUnsure || x.확인필요 === true || x.입출확인필요 === true, check: cpfCheckOf_(x, ''), page: xp });
+            return;
+          }
+          const subRole = CPF_ROLE_KEYS_.test(k) ? k : (x.관계 && typeof x.관계 === 'string' ? x.관계 : role);
+          walk(x, path + '.' + k + '[' + (i + 1) + ']', r2, keys, subRole, recUnsure, type, xp);
+        });
+        return;
+      }
+      if (typeof v === 'object') { walk(v, path + '.' + k, rec, keys, CPF_ROLE_KEYS_.test(k) ? k : role, recUnsure, type, pg); return; }
+      const nv = cpfNormalize_(k, v, type); if (!nv) return;
+      // 등기 을구 줄의 금액은 그 줄의 등기 목적으로 이름을 붙인다(근저당 → 채권최고액, 전세권 → 전세금)
+      if (k === '금액' && typeof node.목적 === 'string') { if (/근\s*저\s*당/.test(node.목적)) nv.kind = '근저당 채권최고액'; else if (/전\s*세\s*권/.test(node.목적)) nv.kind = '전세금'; else if (/임\s*차\s*권/.test(node.목적)) nv.kind = '임대 보증금'; }
+      const kk = Object.assign({}, keys);
+      if (nv.kind === '성명') { const pk = CPF_ROLE_KEYS_.test(k) ? cpfPersonKey_(v, node[k + '주민번호'] || node[k + '생년월일'] || '') : (own.person || cpfPersonKey_(v, '')); if (pk) kk.person = pk; }
+      if (nv.kind === '소재지') { const a = cpfAssetKey_(v + ' ' + (node.건물번호 || node.동호 || '')); if (a) kk.asset = a; }
+      if (/^(\d{4}-\d{2}-\d{2})$/.test(String(nv.value))) { kk.date = nv.value; kk.dateFrom = k; }
+      else if (typeof nv.value === 'number') { // 금액에는 그 회차의 날짜(하16) — "<칸>일" 또는 대응표, 없으면 기록 날짜(근거 표시)
+        const dk = node[k + '일'] !== undefined ? k + '일' : node[k + '일자'] !== undefined ? k + '일자' : CPF_AMT_DATE_[k];
+        const dv = dk ? cpfDate_(node[dk]) : '';
+        if (dv) { kk.date = dv; kk.dateFrom = dk; } else if (kk.date) kk.dateFrom = '같은 기록 날짜';
+      } else if (kk.date) kk.dateFrom = '같은 기록 날짜';
+      push({ kind: nv.kind, value: nv.value, raw: nv.raw, where: pathName(path + '.' + k), rec: rec, keys: kk, role: CPF_ROLE_KEYS_.test(k) ? k : (nv.kind === '성명' ? role : ''), unsure: recUnsure || nv.unsure || /후보/.test(k), check: cpfCheckOf_(node, k) || (typeof nv.value === 'number' ? recCheck : null), page: pg }); // 기록 전체 검산은 금액에만(이름·날짜엔 그 칸 전용 검산만)
+    });
+  };
+  if (Array.isArray(result)) result.forEach(function (x, i) { walk(x, '', String(i + 1), {}, '', false, docType, null); });
+  else walk(result, '', '', {}, '', false, docType, null);
+  return out.map(function (f) {
+    const src = Object.assign({}, base.src, { where: f.where || '' }); if (f.rec) src.rec = f.rec; if (f.page) src.page = f.page;
+    const kk = {}; Object.keys(f.keys || {}).forEach(function (x) { if (f.keys[x]) kk[x] = f.keys[x]; });
+    if (kk.dateFrom && !kk.date) delete kk.dateFrom;
+    const rd = { how: base.how, conf: f.unsure ? '불확실' : '확실', note: f.unsure ? '서류 정리 규칙이 확인 필요로 표시했거나 형식이 애매함' : '' };
+    if (f.check) { rd.check = f.check.state; if (f.check.note) rd.checkNote = f.check.note; } // [2026.10.18 2번 요청] 서류 안 검산 결과 — 교차검증의 객관 규칙(검산 맞는 후보)이 쓸 수 있게
+    rd.ocrConf = cpfOcrConf_(base.how, f.check); // 판독 확실성(중13) — conf(규칙이 그렇게 읽었는지)와 따로
+    return cpfKeysFinish_({ kind: f.kind, value: f.value, raw: f.raw, src: src, keys: kk, role: f.role || '', read: rd });
+  });
+}
+// 판독 확실성(중13) — 원문 글자(엑셀·한글·글 파일)는 "원문 글자", 글자인식은 서류 안 검산이 맞으면 "검산 확인", 아니면 "글자인식(미확인)"
+function cpfOcrConf_(how, check) { if (how !== '글자인식') return '원문 글자'; if (check && check.state === '일치') return '검산 확인'; return '글자인식(미확인)'; }
+// 한글 수("이억칠천오백만") → 정수. 억·만 단위로 끊고 그 안은 천·백·십
+function cpfHanNum_(s) {
+  const D = { 일: 1, 이: 2, 삼: 3, 사: 4, 오: 5, 육: 6, 칠: 7, 팔: 8, 구: 9 };
+  const small = function (x) { let tot = 0, cur = 0; for (const ch of x) { if (D[ch]) cur = D[ch]; else if (ch === '십' || ch === '백' || ch === '천') { tot += (cur || 1) * (ch === '십' ? 10 : ch === '백' ? 100 : 1000); cur = 0; } } return tot + cur; };
+  let v = 0, rest = String(s || '');
+  const ei = rest.indexOf('억'); if (ei !== -1) { v += small(rest.slice(0, ei) || '일') * 100000000; rest = rest.slice(ei + 1); }
+  const mi = rest.indexOf('만'); if (mi !== -1) { v += small(rest.slice(0, mi) || '일') * 10000; rest = rest.slice(mi + 1); }
+  return v + small(rest);
+}
+// 이름이 아닌 낱말(칸 이름·조사로 끝나는 일반 낱말·역할 낱말) — 공통 뽑기의 이름 후보 거르기
+function cpfBadName_(nm) {
+  const s = String(nm || '');
+  if (!/^[가-힣]{2,5}$/.test(s)) return true;
+  if (/^(주소|성명|이름|주민|등록|번호|전화|연락|날인|인감|서명|또는|에게|사이|으로|이며|이고|본인|대리|기타|성별|상호|법인|동명|쌍방|관계|당사자|상대방|명의|부동산|소유|공유|각자|모두|전원|일방|본건|다음|아래|해당|각각|공동|함께)/.test(s)) return true;
+  if (/(인|자|주)$/.test(s) && /^(매도|매수|임대|임차|증여|수증|상속|피상속|채무|채권|위임|수임|신청|소유|예금|의뢰|양도|양수|대표|세대|납세)/.test(s)) return true; // 역할 낱말
+  if (/번호$|월일$|등록|번$/.test(s)) return true;
+  if (s.length >= 3 && /(의|를|을|에게|에서|으로)$/.test(s)) return true; // "성백례의" — 이름 뒤에 조사가 붙은 것(재대조)
+  if (/^(감정|평가|공시|계약|증여|매매|임대|양도|상속|신고|세무|법무|등기|부동|재산|금액|합계|기준)/.test(s)) return true; // 서류 낱말("감정평가")
+  return false;
+}
+// 글 속 쪽 번호(중10) — "1/3", "- 2 -", "[3쪽]" 표시가 있는 서류에서 그 자리의 쪽
+function cpfPageMarks_(t) {
+  const marks = [], re = /(?:^|\n)\s*(?:(\d{1,3})\s*\/\s*\d{1,3}|-\s*(\d{1,3})\s*-|\[(\d{1,3})쪽\])\s*(?=\n|$)/g; let m;
+  while ((m = re.exec(t))) marks.push({ at: m.index, p: Number(m[1] || m[2] || m[3]) });
+  return marks;
+}
+function cpfPageAt_(marks, at) { let p = null; for (let i = 0; i < marks.length && marks[i].at <= at; i++) p = marks[i].p; return p; }
+// 공통 뽑기 — 서류 종류와 상관없이 글자 속 열쇠(주민번호+이름·계좌·지번·도로명·동호·번호)와 날짜·금액·면적·지분. 앞 낱말을 칸 이름으로.
+//  ruledVals: 규칙이 이미 뽑은 값(같은 값이면 read.sameAsRule 표시만 — 버리지 않음, 상1). onlyKeys: 통장처럼 줄 사실이 이미 다 있는 서류는 열쇠만
+function cpfCommon_(text, base, ruledVals, onlyKeys) {
+  const t = String(text || ''), out = [], LIMIT = CPF_LIMITS_.common, marks = cpfPageMarks_(t);
+  const note = '서류 규칙 없음 — 글자에서 뽑음';
+  const atSeen = {}; let dropped = 0;
+  const label = function (at) {
+    // 같은 줄의 앞 글자 — 줄 앞이 비었으면(표가 풀려 값만 한 줄) 바로 윗줄 끝 낱말
+    const ls = t.lastIndexOf('\n', at - 1);
+    let back = t.slice(Math.max(ls + 1, at - 40), at).replace(/[\s:：()\[\]|·,.\-~₩\d]+$/g, '');
+    if (!/[가-힣]/.test(back) && ls > 0) { const l2 = t.lastIndexOf('\n', ls - 1); back = t.slice(Math.max(l2 + 1, ls - 40), ls); }
+    const ws = back.split(/[\s:：|]+/).filter(function (w) { return /[가-힣]/.test(w); });
+    const w = (ws.slice(-2).join(' ') || '').replace(/[^가-힣a-zA-Z ]/g, '').trim();
+    return w.slice(-14) || '앞 낱말 없음';
+  };
+  // 같은 자리(같은 글자 위치·같은 종류·같은 값)만 하나로(상1)
+  const add = function (kind, value, raw, at, keys, extra) {
+    const sk = '@' + at + '|' + kind.replace(/^기타:.*/, '기타') + '|' + JSON.stringify(value);
+    if (atSeen[sk]) return; atSeen[sk] = 1;
+    if (out.length >= LIMIT) { dropped++; return; }
+    const src = Object.assign({}, base.src, { where: '글자 ' + at + '번째 자 근처', near: cpfMask_(t.slice(Math.max(0, at - 60), at + String(raw).length + 40).replace(/\s+/g, ' ').trim()) });
+    const pg = cpfPageAt_(marks, at); if (pg) src.page = pg;
+    if (extra && extra.rec) src.rec = extra.rec;
+    const rd = { how: base.how, conf: '불확실', note: note + (extra && extra.note ? ' (' + extra.note + ')' : ''), ocrConf: cpfOcrConf_(base.how, null) };
+    if (ruledVals['*|' + JSON.stringify(value)]) rd.sameAsRule = true; // 규칙 값과 같은 값 — 같은 자리일 수도 다른 자리일 수도(2번이 맞댐)
+    out.push(cpfKeysFinish_({ kind: kind, value: value, raw: String(raw).slice(0, 200), src: src, keys: keys || {}, role: (extra && extra.role) || '', read: rd }));
+  };
+  let m, re;
+  // 역할 낱말 뒤 이름 — 계약서·위임장·신고서의 당사자 칸(임대인·임차인·증여자 등)이 서류 규칙에 없으면 사람이 통째로 빠졌다(원본 대조).
+  //  거리(160자)로 짐작한 묶음이라 사람 열쇠는 keys.personGuess로(중13) — 같은 기록(src.rec p<n>)으로 남긴다
+  const NOT_NAME = /^(주소|성명|이름|주민|등록|번호|전화|연락|날인|인감|서명|또는|에게|사이|으로|이며|이고|본인|대리|기타|성별|상호|법인|및|등|의|은|는|이|가|을|를)/;
+  re = /(매\s*도\s*인|매\s*수\s*인|임\s*대\s*인|임\s*차\s*인|증\s*여\s*자|수\s*증\s*자|피\s*상\s*속\s*인|상\s*속\s*인|채\s*무\s*자|채\s*권\s*자|위\s*임\s*인|수\s*임\s*인|신\s*청\s*인|소\s*유\s*자|예\s*금\s*주|의\s*뢰\s*인|양\s*도\s*인|양\s*수\s*인|대\s*표\s*자|세\s*대\s*주|납\s*세\s*자)(?![가-힣])\s*\)?\s*[:：]?\s*(?:성\s*명|이\s*름|\(\s*[갑을]\s*\))?\s*[:：]?\s*([가-힣]{2,4}(?![가-힣]))?/g; // 이름이 바로 뒤에 없어도(서명란 "임대인 / 소 / 주민등록번호 …") 잡고 아래에서 "성명 ○○○"를 찾는다
+  let pn = 0, roleCut = 0;
+  while ((m = re.exec(t))) {
+    if (pn >= CPF_LIMITS_.role) { roleCut++; continue; }
+    let nm = m[2] || '';
+    if (cpfBadName_(nm)) { const ah = /성\s*명\s*[:：]?\s*([가-힣]{2,4})(?![가-힣])/.exec(t.slice(re.lastIndex, re.lastIndex + 150)); if (ah && !cpfBadName_(ah[1])) nm = ah[1]; else continue; }
+    if (cpfBadName_(nm) || NOT_NAME.test(nm) || /(의|를|을|와|과|에|께|로|은|는|이며|이고|에게|으로|하여|하고|한다|된다)$/.test(nm) && !/^[김이박최정강조윤장임한오서신권황안송류홍전고문양손배백허유남심노하곽성차주우구민진나엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예경봉사부]/.test(nm.slice(0, 1))) continue; // 조사로 끝나는 일반 낱말("와의"·"관계를")은 이름이 아님 — 성씨로 시작하면 이름일 수 있어 남김
+    const role = m[1].replace(/\s+/g, ''), after = t.slice(re.lastIndex, re.lastIndex + 160);
+    const idm = /(\d{6})\s*-\s*([1-8*][\d*]{6})/.exec(after);
+    const pk = cpfPersonKey_(nm, idm ? idm[1] + '-' + idm[2] : '');
+    const rec = 'p' + (++pn), ex = { rec: rec, role: role, note: '역할 낱말 뒤 이름 — 사람 묶음은 거리로 짐작' }, gk = pk ? { personGuess: pk } : {};
+    add('성명', nm, m[0], m.index, Object.assign({}, gk), ex);
+    if (idm) add('주민번호', idm[1] + '-' + idm[2], idm[0], re.lastIndex + idm.index, Object.assign({}, gk), ex);
+    const ad = /주\s*소\s*[:：]?\s*([가-힣][^\n]{5,70}?)(?=\s*(?:주\s*민|전\s*화|연\s*락|성\s*명|$|\n))/.exec(after); if (ad && /\d/.test(ad[1]) && /(동|로|길|리|가|읍|면|구|시)\b|아파트|빌라|호/.test(ad[1]) && !/번\s*호|주\s*민/.test(ad[1])) add('주소', ad[1].trim(), ad[0], re.lastIndex + ad.index, Object.assign({}, gk, cpfAssetKey_(ad[1]) ? { asset: cpfAssetKey_(ad[1]) } : {}), ex);
+    const ph = /(?<!\d)(01[016789]|0\d{1,2})[-)\s.]\s?(\d{3,4})[-\s.](\d{4})(?!\d)/.exec(after); if (ph) add('전화번호', ph[1] + '-' + ph[2] + '-' + ph[3], ph[0], re.lastIndex + ph.index, Object.assign({}, gk), ex);
+  }
+  if (roleCut) base.trunc.push('역할 낱말 뒤 사람 ' + (pn + roleCut) + '명 중 ' + CPF_LIMITS_.role + '명만');
+  // 서류끼리 잇는 번호 — 부동산 고유번호·등기 접수번호·관리번호·발급(문서확인)번호(keys.docNo, 상4)
+  re = /(?<![\d-])(\d{4}-\d{4}-\d{6})(?![\d-])/g;
+  while ((m = re.exec(t))) add('부동산 고유번호', m[1], m[0], m.index, {});
+  re = /접\s*수[^\n]{0,30}?제\s*(\d{3,8})\s*호/g;
+  while ((m = re.exec(t))) add('접수번호', m[1], m[0], m.index, {});
+  re = /(관\s*리\s*번\s*호|발\s*급\s*번\s*호|문\s*서\s*확\s*인\s*번\s*호|증\s*권\s*번\s*호|계\s*약\s*번\s*호|사\s*건\s*번\s*호)\s*[:：]?\s*([0-9A-Z][0-9A-Z\-]{4,24})/g;
+  while ((m = re.exec(t))) add(m[1].replace(/\s+/g, ''), m[2], m[0], m.index, {});
+  re = /(?<![\d가-힣])(\d{4}\s*(?:가합|가단|가소|타경|머|느|구합|구단|누|드|즈)\s*\d{2,7})(?!\d)/g; // 법원 사건번호
+  while ((m = re.exec(t))) add('사건번호', m[1].replace(/\s+/g, ''), m[0], m.index, {});
+  // 주민번호 + 이름 — 바로 앞 이름은 같은 칸(keys.person), 앞 80자 안의 "성명 ○○○"로 찾은 것은 짐작(keys.personGuess)
+  re = /(?:([가-힣]{2,4})\s*[\(:：]?\s*)?(\d{6})\s*-\s*([1-8*][\d*]{6})/g;
+  while ((m = re.exec(t))) {
+    let nm = m[1] && !/^(주민|등록|번호|성명|이름|생년|월일|본인|부|모|배우자|자녀|관계|구분)$/.test(m[1]) && !NOT_NAME.test(m[1]) && !/번호$|월일$|등록|번$/.test(m[1]) ? m[1] : '', guess = false;
+    if (nm && /^명[가-힣]{2,4}$/.test(nm) && /성\s*$/.test(t.slice(Math.max(0, m.index - 3), m.index))) nm = nm.slice(1); // "성 명윤경숙"(성명 칸이 띄어 읽힘)
+    if (nm && cpfBadName_(nm)) nm = '';
+    if (!nm) { const bk = t.slice(Math.max(0, m.index - 80), m.index), all = bk.match(/(?:성\s*명|이\s*름)\s*[:：]?\s*([가-힣]{2,4})(?![가-힣])/g); if (all) { const q = /([가-힣]{2,4})$/.exec(all[all.length - 1].replace(/\s+/g, '')); if (q && !NOT_NAME.test(q[1]) && !cpfBadName_(q[1])) { nm = q[1]; guess = true; } } }
+    const pk = nm ? cpfPersonKey_(nm, m[2] + '-' + m[3]) : '';
+    const kp = pk ? (guess ? { personGuess: pk } : { person: pk }) : {};
+    add('주민번호', m[2] + '-' + m[3], m[0].slice(m[0].lastIndexOf(m[2])), m.index + m[0].lastIndexOf(m[2]), Object.assign({}, kp)); // 자리는 번호가 시작하는 곳(역할 낱말 뒤 묶음과 같은 자리면 하나로)
+    if (nm) add('성명', nm, m[0], m.index, Object.assign({}, kp), guess ? { note: '앞 80자 안의 "성명" 칸 — 짐작' } : null);
+    // 주민번호 바로 뒤의 주소(등기부 권리자·계약서 당사자·분할협의서 상속인 줄: "이름 주민번호 주소") — 같은 사람 열쇠로
+    const tail = t.slice(re.lastIndex, re.lastIndex + 90), adm = /^\s*[,)]?\s*((?:[가-힣]+(?:특별시|광역시|도)\s*)?[가-힣]+(?:시|군|구)\s+[^\n]{4,60}?(?:\d+(?:-\d+)?\s*(?:번지|호|동|층)?|\)))(?=\s*(?:\n|$|[가-힣]{2,4}\s+\d{6}))/.exec(tail);
+    if (adm && /\d/.test(adm[1])) { const ak = cpfAssetKey_(adm[1]); add('주소', adm[1].replace(/\s+/g, ' ').trim(), adm[1], re.lastIndex + adm.index, Object.assign({}, kp, ak ? { asset: ak } : {})); }
+  }
+  // 전화번호 — 앞 150자 안의 주민번호 사람은 짐작(keys.personGuess)
+  re = /(?<![\d-])(01[016789]|0[2-6]\d?)\s?[-)]\s?(\d{3,4})\s?-\s?(\d{4})(?![\d-])/g;
+  while ((m = re.exec(t))) {
+    const bk = t.slice(Math.max(0, m.index - 150), m.index), ids = bk.match(/[가-힣]{2,4}\s*[\(:：]?\s*\d{6}\s*-\s*[1-8*]/g) || [];
+    let pk = ''; if (ids.length) { const q = /([가-힣]{2,4})\s*[\(:：]?\s*(\d{6})/.exec(ids[ids.length - 1]); if (q && !cpfBadName_(q[1])) pk = cpfPersonKey_(q[1], q[2] + '-'); }
+    if (/팩스|FAX|fax/.test(bk.slice(-20).replace(/\s+/g, ''))) continue;
+    add('전화번호', m[1] + '-' + m[2] + '-' + m[3], m[0], m.index, pk ? { personGuess: pk } : {});
+  }
+  // 발급·관할 기관(○○등기소·구청장·시장·군수·세무서장·법원 등) — 서류의 출처
+  re = /([가-힣]{2,10}(?:지방법원\s*[가-힣]{0,8}(?:지원\s*)?[가-힣]{2,8}등기소|등기소|구청장|시장|군수|세무서장|주민센터장|동장|읍장|면장|지방법원|공증인|공증사무소))(?![가-힣])/g;
+  while ((m = re.exec(t))) { const v = m[1].replace(/\s+/g, ' '); if (/^(관할|해당|위|본|각|이|그)/.test(v) || v.length < 4) continue; add('발급기관', v, m[0], m.index, {}); }
+  // 접수일 + 접수번호 쌍(등기부·대장·통지서의 줄마다 — 같은 줄 또는 다음 줄 첫머리) — 날짜 열쇠로 그 줄의 다른 사실과 묶인다
+  re = /((?:19|20)\d{2}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일)\s*(?:[^\n\d]{0,12}\n?\s*)?제\s*(\d{2,8})\s*호/g;
+  while ((m = re.exec(t))) { const d = cpfDate_(m[1]); if (!d) continue; add('접수번호', m[2], m[0], m.index, { date: d, dateFrom: '같은 줄 접수일' }); }
+  re = /((?:19|20)\d{2}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일)[^\n]{0,90}\n\s*제\s*(\d{2,8})\s*호/g;
+  while ((m = re.exec(t))) { const d = cpfDate_(m[1]); if (!d) continue; add('접수번호', m[2], m[0].replace(/\s+/g, ' '), m.index, { date: d, dateFrom: '윗줄 첫 날짜' }); re.lastIndex = m.index + m[1].length; }
+  // "칸 이름 : 값" — 서식의 칸(구조·용도·상호·계약기간·인도일 등)을 쌍점 뒤 같은 줄 값으로(서류 규칙이 없는 칸도 넓게)
+  re = /(?:^|\n|\s)(구\s*조|용\s*도|지\s*목|상\s*호|업\s*태|종\s*목|업\s*종|도\s*로\s*명\s*주\s*소|계\s*약\s*기\s*간|임\s*대\s*기\s*간|인\s*도\s*일|지\s*급\s*일|차\s*임|관\s*리\s*비|기\s*준\s*가\s*치|감\s*정\s*평\s*가\s*사|평\s*가\s*목\s*적|제\s*출\s*처|중\s*개\s*사\s*무\s*소|규\s*모|층\s*수|본|발\s*급\s*기\s*관|등\s*록\s*기\s*준\s*지)\s*[:：]\s*([^\n:：]{1,60})/g;
+  while ((m = re.exec(t))) { const lab = m[1].replace(/\s+/g, ''), v = m[2].trim(); if (!v || /^[\s\-_.]+$/.test(v)) continue; const kind = CPF_KIND_MAP_[lab] || ('기타:' + lab); add(kind, v.slice(0, 60), m[0].trim(), m.index, {}); }
+  // 계좌번호(계좌·통장·입금 낱말 가까이)
+  re = /(\d{2,6}(?:-\d{2,8}){1,3})/g;
+  while ((m = re.exec(t))) {
+    if (/\d{6}-[1-8*]/.test(m[1]) || /^\d{2,4}-\d{3,4}-\d{4}$/.test(m[1]) && /(전화|TEL|tel|팩스|FAX|연락)/.test(t.slice(Math.max(0, m.index - 20), m.index))) continue;
+    if (/^(19|20)\d{2}-\d{1,2}-\d{1,2}$/.test(m[1]) || /^\d{3}-\d{2}-\d{5}$/.test(m[1]) || /^\d{4}-\d{4}-\d{6}$/.test(m[1])) continue; // 날짜·사업자번호·고유번호
+    const near = t.slice(Math.max(0, m.index - 30), m.index);
+    if (!/계\s*좌|통\s*장|입\s*금|출\s*금|예\s*금|이\s*체|송\s*금|받는|보내는/.test(near)) continue;
+    const ak = cpfAccountKey_(t.slice(Math.max(0, m.index - 60), m.index + 40), m[1]);
+    add('계좌번호', m[1], m[0], m.index, ak ? { account: ak } : {});
+  }
+  // 사업자번호(keys.biz)
+  re = /(?<!\d)(\d{3}-\d{2}-\d{5})(?!\d)/g;
+  while ((m = re.exec(t))) add('사업자번호', m[1], m[0], m.index, {});
+  // 지번(시군구+동리가+번지) — 주소 열쇠(+시군구 포함 열쇠)
+  re = /((?:[가-힣]+(?:특별시|광역시|도)\s*)?(?:[가-힣]+(?:시|군)\s*)?(?:[가-힣]+구\s*)?(?:[가-힣]+(?:읍|면)\s*)?[가-힣\d]+(?:동|리|가)\s*(?:산\s*)?\d{1,5}(?:\s*-\s*\d{1,5}|\s*번지(?:\s*\d{1,5}\s*호)?)?(?:[^\n]{0,40}?제?\s*\d{1,4}\s*동\s*(?:제?\s*\d{1,3}\s*층\s*)?제?\s*\d{1,5}\s*호)?)/g;
+  while ((m = re.exec(t))) {
+    if (!/(?:시|군|구)\s*\S*(?:동|리|가)/.test(m[1])) continue;
+    const ak = cpfAssetKey_(m[1]); if (!ak) continue;
+    // raw는 그 줄 끝까지(단지명·동호·도로명이 번지 뒤에 이어짐), value는 열쇠 재료가 되는 앞부분
+    const le = t.indexOf('\n', m.index + m[1].length), rawLine = t.slice(m.index, le === -1 ? m.index + 120 : Math.min(le, m.index + 120));
+    const kk = { asset: ak }; const af = cpfAssetFullKey_(m[1]); if (af) kk.assetFull = af;
+    add('소재지', m[1].replace(/\s+/g, ' ').trim(), rawLine.replace(/\s+/g, ' ').trim(), m.index, kk);
+    // 지번과 도로명이 함께 적힌 자리(대장·등기필·감정평가 "(도로명주소) …") — 둘을 잇는 사실(상5)
+    const ahead = t.slice(m.index, m.index + m[1].length + 160), rm = /도\s*로\s*명\s*(?:주\s*소)?\s*[\])】:：]?\s*([^\n]{4,80})/.exec(ahead) || /\(([^()]*(?:대로|로|길)\s*\d{1,4}[^()]*)\)/.exec(rawLine);
+    if (rm) { const rk = cpfRoadKey_(rm[1]); if (rk) add('주소 대응', { 지번: ak, 도로명: rk }, rm[0].trim(), m.index, { asset: ak, road: rk }, { note: '한 자리에 지번·도로명이 함께 적힘' }); }
+  }
+  // 도로명 주소(지번 없이 도로명만 적힌 주소 — 초본 주소이력·계약서 주소·대장) — keys.road
+  re = /((?:[가-힣]+(?:특별시|광역시|도)\s*)?[가-힣]+(?:시|군|구)\s+(?:[가-힣]+구\s+)?(?:[가-힣]+(?:읍|면)\s+)?[가-힣][가-힣\d]*(?:대로|로|길)(?:\s*\d+\s*번?길)?\s*\d{1,4}(?:-\d{1,4})?(?:[^\n]{0,30}?\d{1,4}\s*동\s*\d{1,5}\s*호)?)/g;
+  while ((m = re.exec(t))) { const rk = cpfRoadKey_(m[1]); if (rk) add('주소', m[1].replace(/\s+/g, ' ').trim(), m[1], m.index, { road: rk }, { note: '도로명 주소' }); }
+  if (onlyKeys) { if (dropped) base.trunc.push('공통 뽑기 ' + (LIMIT + dropped) + '건 중 ' + LIMIT + '건만'); return out; }
+  // 날짜
+  re = /((?:19|20)\d{2})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})\s*일?(?!\d)/g;
+  while ((m = re.exec(t))) { const d = cpfDate_(m[0]); if (!d) continue; add('기타:' + label(m.index), d, m[0], m.index, { date: d }); }
+  // 금액(세 자리 쉼표, 1,000 이상) — keys.amount
+  re = /(?<![\d\-])(-?\d{1,3}(?:,\d{3})+)(?![\d,]*\.\d)(?!\s*(?:㎡|m2|제곱))/g;
+  while ((m = re.exec(t))) { const v = Number(m[1].replace(/,/g, '')); if (Math.abs(v) < 1000) continue; add('기타:' + label(m.index), v, m[0], m.index, { amount: v }); }
+  // 기간 — "2026-04-15~04-17", "2025.08.26 ~ 2026.08.25"(시작·끝 한 쌍)
+  re = /((?:19|20)\d{2})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})\s*일?\s*[~∼～\-부터]{1,3}\s*(?:((?:19|20)\d{2})\s*[.\-\/년]\s*)?(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})\s*일?/g;
+  while ((m = re.exec(t))) {
+    const a = cpfDate_(m[1] + '-' + m[2] + '-' + m[3]), b = cpfDate_((m[4] || m[1]) + '-' + m[5] + '-' + m[6]);
+    if (a && b && b >= a) add('기간', { 시작: a, 끝: b }, m[0], m.index, { date: a });
+  }
+  // 한글 금액 — "금 이억칠천만원정" → 원 정수(숫자 금액과 맞대는 재료)
+  re = /(?:금\s*)?((?:[일이삼사오육칠팔구십백천]+\s*억\s*)?(?:[일이삼사오육칠팔구십백천]+\s*만\s*)?(?:[일이삼사오육칠팔구십백천]+\s*)?)원\s*정?/g;
+  while ((m = re.exec(t))) {
+    const s = m[1].replace(/\s+/g, ''); if (!/[억만]/.test(s) || s.length < 2) continue;
+    const v = cpfHanNum_(s); if (v >= 10000) add('기타:한글금액', v, m[0].trim(), m.index, { amount: v });
+  }
+  // 면적 — 같은 줄 앞 낱말로 종류(전유·공용·대지권·연면적·토지·건물)
+  re = /(\d{1,6}(?:\.\d{1,4})?)\s*(?:㎡|m2|m²|제곱미터)/g;
+  while ((m = re.exec(t))) {
+    const lb = label(m.index), ak = /전\s*유|전\s*용/.test(lb) ? '전유면적' : /공\s*용/.test(lb) ? '공용면적' : /대\s*지\s*권/.test(lb) ? '대지권면적' : /연\s*면\s*적|건\s*물|건\s*축/.test(lb) ? '건물면적' : /토\s*지|대\s*지|임\s*야|전$|답$/.test(lb) ? '토지면적' : /임\s*대/.test(lb) ? '임대면적' : '면적';
+    add(ak, Number(m[1]), m[0], m.index, {});
+  }
+  // 지분
+  re = /(\d+(?:\.\d+)?)\s*분\s*의\s*(\d+(?:\.\d+)?)/g;
+  while ((m = re.exec(t))) add('지분', { n: Number(m[2]), d: Number(m[1]) }, m[0], m.index, {});
+  if (dropped) base.trunc.push('공통 뽑기 ' + (LIMIT + dropped) + '건 중 ' + LIMIT + '건만');
+  return out;
+}
+// 글자 줄(상2) — 서류 규칙이 없는 서류에서 날짜·지번·순번과 금액이 한 줄에 함께 나오는 줄은 "한 줄 = 사실 한 건"(보상금 필지 줄·예금거래실적·거래명세·진료비 집계·공탁 등)
+//  값을 고르지 않고 그 줄에 있는 날짜·금액·지번을 모두 담는다. 줄이 3개 미만이면 표가 풀려 줄 연결이 없는 것으로 보고 "서류" note에 밝힌다(중14)
+function cpfTextRows_(text, base) {
+  const t = String(text || ''), out = [], marks = cpfPageMarks_(t); let at = 0, n = 0, cut = 0;
+  t.split('\n').forEach(function (ln) {
+    const pos = at; at += ln.length + 1;
+    const amts = (ln.match(/(?<![\d\-])-?\d{1,3}(?:,\d{3})+(?![\d,]*\.\d)/g) || []).map(function (s) { return Number(s.replace(/,/g, '')); }).filter(function (v) { return Math.abs(v) >= 1000; });
+    if (!amts.length) return;
+    const dates = (ln.match(/(?:19|20)\d{2}\s*[.\-\/년]\s*\d{1,2}\s*[.\-\/월]\s*\d{1,2}/g) || []).map(cpfDate_).filter(String);
+    const jbs = (ln.match(/(?<![\d-])산?\d{1,5}-\d{1,5}(?![\d-])/g) || []).filter(function (s) { return !/^\d{3}-\d{2}$/.test(s); });
+    const lead = /^\s*\d{1,3}\s/.test(ln);
+    if (!dates.length && !jbs.length && !lead) return;
+    if (++n > CPF_LIMITS_.textRows) { cut++; return; }
+    const val = { 줄: cpfMask_(ln.trim()).slice(0, 200), 금액: amts }; if (dates.length) val.날짜 = dates; if (jbs.length) val.지번 = jbs;
+    const src = Object.assign({}, base.src, { where: '글자 ' + pos + '번째 자 줄', rec: 'line' + n }); const pg = cpfPageAt_(marks, pos); if (pg) src.page = pg;
+    const keys = {}; if (dates[0]) { keys.date = dates[0]; keys.dateFrom = '같은 줄'; } if (amts.length === 1) keys.amount = amts[0];
+    out.push({ kind: '글자 줄', value: val, raw: ln.trim().slice(0, 200), src: src, keys: keys, role: '', read: { how: base.how, conf: '불확실', note: '서류 규칙 없음 — 날짜·지번·순번과 금액이 함께 있는 줄을 한 건으로(칸 뜻은 모름)', ocrConf: cpfOcrConf_(base.how, null) } });
+  });
+  if (cut) base.trunc.push('글자 줄 ' + (CPF_LIMITS_.textRows + cut) + '개 중 ' + CPF_LIMITS_.textRows + '개만');
+  return out;
+}
+// 파일 하나 → 사실들(서류 사실 포함). tbank: 표 통장 정리 결과(caseProcTableBankDocs_ — 파일ID → p)
+function cpfFile_(c, f, cache, tbank, opt) {
+  const n = String(f.name || ''), mt = String(f.mimeType || '');
+  const how = /\.(hwpx?|hwp)$/i.test(n) ? '한글' : /spreadsheet|ms-excel|csv/.test(mt) || /\.(xlsx?|xlsm|csv)$/i.test(n) ? '엑셀' : /pdf|^image\//.test(mt) ? '글자인식' : '글자';
+  const part = f.bundleOf ? (/\(묶음\s*([^)]+)\)/.exec(n) || [0, ''])[1] : '';
+  const src = { fileId: String(f.id), file: f.bundleOf || n, docType: '', where: '' }; if (part) src.part = '묶음 ' + part;
+  const docFact = function (value, conf, note) { return { kind: '서류', value: value, raw: n, src: Object.assign({}, src, { where: '파일 전체', docType: value }), keys: {}, role: '', read: { how: how, conf: conf, note: note || '' } }; };
+  if (/^~\$/.test(n)) return [docFact('제외', '확실', '엑셀 임시 파일')];
+  if (/종합검토서_초안|^계산기\.json|_검토서_|^_/.test(n)) return [docFact('제외', '확실', '도구가 만든 파일')];
+  if (/\.html?$/i.test(n)) return [docFact('제외', '확실', '화면용 사본')];
+  if ((/zip|x-7z|rar/.test(mt) || /\.(zip|7z|rar)$/i.test(n)) && !/\.(hwpx|docx|xlsx|pptx)$/i.test(n)) return [docFact('못 읽음', '불확실', '압축 파일 — 풀린 파일이 폴더에 있으면 그 파일로 읽음')];
+  if (/^audio\/|^video\//.test(mt)) return [docFact('못 읽음', '불확실', '녹음·영상 — 글자로 못 바꿈')];
+  // 결과물·참고자료(이름으로 앎)도 뽑되 "제외 후보"로 표시(하15) — 쓸지 2번이 정함
+  let exclude = caseProcIsOutputDocFor_(c, n, f.dir) ? '이 사건의 결과물·참고자료(이름으로 앎)' : '';
+  let text = null;
+  try { text = tc_docText_(f); } catch (e) { return [docFact('못 읽음', '불확실', '읽기 실패: ' + String(e && e.message || e).slice(0, 80))]; }
+  if (text === null) return [docFact(exclude ? '제외 후보' : '못 읽음', '불확실', (exclude ? exclude + ' · ' : '') + (/\.hwp$/i.test(n) ? '옛 한글 hwp — 아직 글자로 못 바꿈' : '글자로 못 바꾸는 형식'))];
+  if (!String(text).trim()) return [docFact(exclude ? '제외 후보' : '못 읽음', '불확실', (exclude ? exclude + ' · ' : '') + (opt && opt.noNewOcr ? '글자인식 기억에 아직 없음(서버 글자인식 일괄 뒤 다시)' : '글자 없음(그림만·흐린 사진)'))];
+  // 결과물·참고자료(내용으로 앎) — 이 사건의 이미 낸 신고서·간편계산·우리 메모·질의회신·준비서류 안내·이전 보고서·사무소 계산표
+  if (!exclude) { const refK = docIsReferenceText_(text); if (refK) exclude = '참고자료(' + refK + ') — 사건 증빙 아님'; }
+  if (!exclude && docIsChecklist_(text)) exclude = '준비서류 안내 목록 — 증빙 아님';
+  if (!exclude && caseProcIsOutputTextFor_(c, text)) exclude = '이 사건의 결과물(이미 낸 신고서·계산 결과·우리 메모)';
+  const trunc = [];
+  if (!/pdf|^image\//.test(mt)) {
+    const sheet = how === '엑셀';
+    if (!exclude && caseProcIsPriorReport_(n)) exclude = '이전 작업 보고서 — 결론이 들어 있음';
+    const oc = caseProcOfficeCalcWhy_(n, text);
+    if (oc) { const fp = /\(내용/.test(oc) ? caseProcOfficeFactPart_(text, sheet) : ''; if (fp) { text = fp; trunc.push('사무소 계산표 — 의뢰·사실 구획만 읽고 세액계산·검토 구획은 뺌'); } else if (!exclude) exclude = oc + ' — 결론·계산이 들어 있음'; }
+    else if (!/번\s*역/.test(n)) { const cc = caseProcCalcCut_(String(text), sheet); if (cc.cut) trunc.push('세액계산 구획(결과물)은 뺌'); text = cc.text; }
+  }
+  const cut = String(text).indexOf(TC_TEXT_CUT_MARK_) !== -1;
+  let p = tbank && tbank[String(f.id)] || null;
+  if (!p) { try { p = docParseText_(text); } catch (e) { p = null; } }
+  // 서류 정리 규칙이 종류를 못 정한 서류만 — 사실 목록 전용 새 서류 5가지(등기완료통지서·수입인지·견적서·위임장·금융협회 조회). 사건처리의 서류 판정(docParseText_)은 그대로
+  if (!(p && p.type)) { try { const q5 = docNewKinds2Parse_(text); if (q5) p = q5; } catch (e) {} }
+  const label = (p && (p.label || p.type)) || '종류 미정';
+  src.docType = label;
+  const base = { src: src, how: how, trunc: trunc };
+  const warn = p && p.result && !Array.isArray(p.result) ? (p.result.경고 || []).concat(p.result.docs ? [].concat.apply([], (p.result.docs || []).map(function (d) { return (d && (d.경고 || (d.r && d.r.경고))) || []; })) : []) : [];
+  const facts = [docFact(exclude ? '제외 후보' : label, p && p.type ? '확실' : '불확실', '')];
+  let ruled = [];
+  if (p && p.type && p.result) { try { ruled = cpfFromResult_(p.result, base, p.type); } catch (e) { trunc.push('칸 옮기기 오류: ' + String(e && e.message || e).slice(0, 60)); } }
+  // 한 파일 안의 다른 서류 — 묶음 나누기(docBundleSplit_)가 못 나눈 파일에서 서식 제목 자리마다 서류 정리 규칙을 다시 돌린다(상2: 같은 종류 둘째 서류도).
+  //  규칙이 이미 한 파일 여러 서류로 나눈 결과(docs 2개 이상)면 같은 종류는 건너뜀(중복). 줄 첫머리 서식 제목만, 문장·목록 속 서류 이름은 건너뜀
+  if (p && !/#s\d/.test(String(f.id))) {
+    try {
+      const TITLE_RE = /(매\s*매\s*계\s*약\s*서|증\s*여\s*계\s*약\s*서|임\s*대\s*차\s*계\s*약\s*서|증\s*여\s*세\s*과\s*세\s*표\s*준\s*신\s*고|상\s*속\s*세\s*과\s*세\s*표\s*준\s*신\s*고|양\s*도\s*소\s*득\s*과\s*세\s*표\s*준|재\s*산\s*평\s*가\s*명\s*세\s*서|증\s*여\s*재\s*산\s*및\s*평\s*가\s*명\s*세\s*서|등\s*기\s*사\s*항\s*전\s*부\s*증\s*명\s*서|가\s*족\s*관\s*계\s*증\s*명\s*서|주\s*민\s*등\s*록\s*표|토\s*지\s*대\s*장|건\s*축\s*물\s*대\s*장|감\s*정\s*평\s*가\s*서|상\s*속\s*재\s*산\s*분\s*할\s*협\s*의\s*서)/g; // 영수증·확인서·납부서 같은 흔한 낱말은 뺀다
+      const multi = !!(p.result && Array.isArray(p.result.docs) && p.result.docs.length >= 2);
+      let tm, k = 0, lastAt = -1, innerCut = 0;
+      while ((tm = TITLE_RE.exec(text))) {
+        if (tm.index < 300 || tm.index - lastAt < 300) continue;
+        { const ls = text.lastIndexOf('\n', tm.index - 1), pre = text.slice(ls + 1, tm.index); if (!/(별\s*지|서\s*식)[^\n]{0,20}$/.test(pre) && (pre.trim().length > 12 || /[가-힣]{2,}\s*$/.test(pre) || /[:：]/.test(pre))) continue;
+          const post = text.slice(tm.index + tm[0].length, tm.index + tm[0].length + 30).split('\n')[0];
+          if ((/^\s*(,|및|등\b|에|를|을|의|은|는|이|가|으로|과|와|\))/.test(post) && !/^\s*및\s*[가-힣\s]{0,12}(계\s*산\s*서|명\s*세\s*서|신\s*고\s*서|신\s*청\s*서)/.test(post)) || /\d\s*부\b|\d\s*부\s*$/.test(post)) continue; } // "… 신고 및 자진납부계산서"는 제목의 일부
+        const nx = TITLE_RE.lastIndex; const seg = text.slice(tm.index);
+        let q = null; try { q = docParseText_(seg); } catch (e) { q = null; }
+        TITLE_RE.lastIndex = nx;
+        if (!q || !q.type || !q.result) continue;
+        if (multi && q.type === p.type) continue; // 규칙이 이미 나눠 읽은 같은 종류
+        { const tt = tm[0].replace(/\s+/g, ''), lb = String(q.label || '').replace(/\s+/g, ''); const ws = ['계약서', '신고', '명세서', '증명서', '대장', '등록표', '등본', '평가서', '협의서']; if (!ws.some(function (w) { return tt.indexOf(w) !== -1 && lb.indexOf(w) !== -1; })) continue; }
+        if (k >= CPF_LIMITS_.inner) { innerCut++; continue; }
+        lastAt = tm.index; k++;
+        const base2 = { src: Object.assign({}, base.src, { docType: q.label || q.type, part: '파일 안 ' + (k + 1) + '번째 서류(' + (q.label || q.type) + ', ' + tm.index + '번째 자부터)' }), how: how, trunc: trunc };
+        cpfFromResult_(q.result, base2, q.type).forEach(function (x) { x.src.rec = 'in' + (k + 1) + (x.src.rec ? '.' + x.src.rec : ''); x.read.note = (x.read.note ? x.read.note + ' · ' : '') + '한 파일 안 다른 서류에서 — 그 제목 자리부터 다시 정리(앞 서류 값이 섞일 수 있음)'; ruled.push(x); });
+      }
+      if (innerCut) trunc.push('파일 안 서류 ' + (k + innerCut) + '개 중 ' + CPF_LIMITS_.inner + '개만');
+    } catch (e) {}
+  }
+  let lists = [];
+  if (/목\s*록\s*번\s*호/.test(text)) { try { lists = cpfRegLists_(text, base); } catch (e) {} }
+  ruled = ruled.concat(lists);
+  const ruledVals = {};
+  ruled.forEach(function (x) { ruledVals['*|' + JSON.stringify(x.value)] = 1; if (x.value && typeof x.value === 'object') Object.keys(x.value).forEach(function (q) { const v = x.value[q]; ruledVals['*|' + JSON.stringify(typeof v === 'string' ? (cpfDate_(v) || v) : v)] = 1; }); });
+  const rowy = ruled.filter(function (x) { return x.value && typeof x.value === 'object' && !('n' in x.value); }).length >= 30; // 통장처럼 줄 사실이 많은 서류는 공통 뽑기에서 열쇠만
+  const common = cpfCommon_(text, base, ruledVals, rowy);
+  // 종류 미정 서류의 날짜·금액 줄(상2)
+  let lines = [];
+  if (!(p && p.type)) { lines = cpfTextRows_(text, base); if (lines.length < 3 && common.filter(function (x) { return typeof x.value === 'number'; }).length >= 5) trunc.push('표가 풀려 줄 연결 없음 — 금액·날짜가 줄 없이 따로 있음(표 구조는 3번 읽기 세션 몫)'); }
+  // 엑셀 표(통장이 아닌 것) — 머리 줄을 찾아 한 줄 = 사실 한 건. 표 글이 없으면 밝힌다(상3)
+  let table = [];
+  if (how === '엑셀' && !(p && p.type === 'banktx')) {
+    try { table = cpfSheetRows_(f, base); } catch (e) {}
+    if (!table.length) trunc.push(/\.csv$/i.test(n) ? 'CSV 표 — 칸 자리를 지킨 표 글이 없어 표 줄을 못 만듦(글자로만 읽음)' : '표 줄 못 만듦 — 칸 자리를 지킨 표 글(ocrgrid1_)이 기억에 없음(통장으로 안 보여 변환을 안 함 — 표 글 만들기는 3번 읽기 세션 몫)');
+  }
+  const all = ruled.concat(table, lines, common);
+  if (exclude) all.forEach(function (x) { x.read.use = '제외 후보(' + exclude.replace(/ — .*$/, '') + ')'; });
+  facts[0].read.note = [exclude ? '제외 후보: ' + exclude + ' — 사실은 뽑았고 read.use로 표시(쓸지 2번이 정함)' : '', p && p.type ? '' : '서류 규칙이 없는 종류 — 글자에서 공통 뽑기·글자 줄만 함', warn.length ? '서류 정리 경고: ' + warn.slice(0, 3).join(' / ').slice(0, 200) : '', cut ? '글자 상한에서 잘림 — 뒤쪽은 못 읽음' : '', trunc.length ? '잘림·못 함: ' + trunc.join(' / ') : ''].filter(String).join(' · ');
+  if (exclude) facts[0].src.docType = label;
+  return facts.concat(all);
+}
+// 등기부 뒤쪽의 매매목록·공동담보목록 — 서류 정리 규칙(registryParse)이 읽지 않던 부분(방향점검: 이종식·김운래).
+//  매매목록은 여러 필지를 한 계약으로 판 거래가액과 필지마다 순위·원인일, 공동담보목록은 한 근저당이 함께 잡은 부동산 목록. 표가 풀려 필지 줄은 불확실(거래가액은 확실)
+function cpfRegLists_(text, base) {
+  const t = String(text || ''), out = [], re = /목\s*록\s*번\s*호\s*(\d{4}\s*-\s*\d+)/g, heads = [];
+  let m;
+  while ((m = re.exec(t))) heads.push({ at: m.index, no: m[1].replace(/\s+/g, '') });
+  heads.forEach(function (h, i) {
+    const end = Math.min(i + 1 < heads.length ? heads[i + 1].at : t.length, h.at + 5000);
+    let blk = t.slice(h.at, end); const stop = blk.search(/이\s*하\s*여\s*백/); if (stop > 0) blk = blk.slice(0, stop);
+    const back = t.slice(Math.max(0, h.at - 400), h.at).replace(/\s+/g, '');
+    const kind = /거\s*래\s*가\s*액/.test(blk) || /매매목록(?!.*공동담보)/.test(back.slice(-60)) ? '매매목록' : /공동담보|담보목록/.test(back + blk.slice(0, 200).replace(/\s+/g, '')) || /담\s*보\s*추\s*가|설\s*정\s*계\s*약/.test(blk) ? '공동담보목록' : '목록';
+    const rec = 'list' + h.no, src = Object.assign({}, base.src, { where: kind + ' 제' + h.no + '호', rec: rec });
+    const am = /거\s*래\s*가\s*액\s*금?\s*(\d{1,3}(?:,\d{3})+)\s*원/.exec(blk);
+    if (am) out.push(cpfKeysFinish_({ kind: '매매목록 거래가액', value: Number(am[1].replace(/,/g, '')), raw: am[0].replace(/\s+/g, ' '), src: src, keys: { docNo: '목록번호|' + h.no }, role: '', read: { how: base.how, conf: '확실', note: '여러 필지를 한 계약으로 거래한 가액(필지별 아님)', ocrConf: cpfOcrConf_(base.how, null) } }));
+    const parts = blk.split(/(?=(?:^|\s)\d{1,3}\s+\[(?:토지|건물|집합건물)\])/);
+    parts.forEach(function (seg) {
+      const sm = /^\s*(\d{1,3})\s+\[(토지|건물|집합건물)\]/.exec(seg); if (!sm) return;
+      const town = /((?:[가-힣]+(?:시|군)\s+)?(?:[가-힣]+구\s+)?(?:[가-힣]+(?:읍|면)\s+)?[가-힣]+(?:동|리|가))(?=\s|$)/.exec(seg.replace(/\s+/g, ' '));
+      const dates = (seg.match(/(?:19|20)\d{2}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일/g) || []).map(function (d) { return cpfDate_(d); }).filter(String);
+      const clean = seg.replace(/(?:19|20)\d{2}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일/g, ' ').replace(/제\s*\d+\s*호/g, ' ').slice(sm[0].length);
+      const dash = /(?<![\d-])(산?\d{1,5}-\d{1,5})(?![\d-])/.exec(clean);
+      const near = /(?<![\d-])(\d{1,5})\s+[가-힣]+(?:지원|등기소)/.exec(clean);
+      const jb = dash ? dash[1] : near ? near[1] : '';
+      const share = /([가-힣]{2,4})\s*지\s*분/.exec(seg);
+      const cause = /(매\s*매|증\s*여|상\s*속|설\s*정\s*계\s*약|담\s*보\s*추\s*가|분\s*할|해\s*지)/.exec(seg);
+      const val = { 목록번호: h.no, 일련번호: Number(sm[1]), 종류: sm[2] };
+      if (town) val.소재 = town[1]; if (jb) val.지번 = jb; if (dates[0]) val.원인일 = dates[0]; if (dates[1]) val.해지일 = dates[1]; if (cause) val.원인 = cause[1].replace(/\s+/g, ''); if (share) val.지분 = share[1] + '지분';
+      const ak = town && jb ? cpfAssetKey_(town[1] + ' ' + jb) : '';
+      out.push({ kind: kind + ' 부동산', value: val, raw: seg.replace(/\s+/g, ' ').trim().slice(0, 200), src: Object.assign({}, src, { rec: rec + '.' + sm[1] }), keys: Object.assign({ docNo: '목록번호|' + h.no }, ak ? { asset: ak } : {}, dates[0] ? { date: dates[0], dateFrom: '목록 원인일' } : {}), role: '', read: { how: base.how, conf: '불확실', note: '등기부 목록 표가 글자인식에서 풀려 지번·순위 자리가 섞일 수 있음 — 원문 확인', ocrConf: cpfOcrConf_(base.how, null) } });
+    });
+  });
+  return out;
+}
+// 엑셀 표 줄 — 칸 자리를 지킨 표 글(ocrgrid1_ — 기억에 있을 때만, 새 변환 없음)에서 시트마다 머리 줄(글자 칸 3개 이상) 아래 줄을 {머리: 값}으로
+function cpfSheetRows_(f, base) {
+  const key = 'ocrgrid1_' + f.id + '_' + (f.modified || '');
+  let grid = null; try { grid = CacheService.getScriptCache().get(key); if (grid === null) grid = tcOcrStoreGet_(key); } catch (e) {}
+  if (!grid) return [];
+  const out = [];
+  String(grid).split(/\n\n/).forEach(function (blk) {
+    const ls = blk.split('\n'), sh = ls.shift() || '';
+    const rows = ls.map(function (l) { return l.split('\t'); });
+    let h = -1; for (let i = 0; i < Math.min(rows.length, 30); i++) { const cells = rows[i].filter(function (x) { return String(x).trim(); }); if (cells.length >= 3 && cells.filter(function (x) { return /[가-힣A-Za-z]/.test(x) && !/^\s*[\d,.\-]+\s*$/.test(x); }).length >= Math.ceil(cells.length * 0.6)) { h = i; break; } }
+    if (h === -1) { if (rows.length >= 3) base.trunc.push('시트 「' + sh + '」 머리 줄을 앞 30줄에서 못 찾아 표 줄을 안 만듦'); return; }
+    const head = rows[h].map(function (x, i) { return String(x).trim() || ('칸' + (i + 1)); });
+    if (rows.length - h - 1 > CPF_LIMITS_.sheet) base.trunc.push('시트 「' + sh + '」 ' + (rows.length - h - 1) + '줄 중 ' + CPF_LIMITS_.sheet + '줄만');
+    rows.slice(h + 1, h + 1 + CPF_LIMITS_.sheet).forEach(function (r, i) {
+      const val = {}; let k = 0;
+      r.forEach(function (x, j) { const s = String(x).trim(); if (s) { val[head[j] || ('칸' + (j + 1))] = cpfNum_(s) !== null ? cpfNum_(s) : (cpfDate_(s) && s.length <= 12 ? cpfDate_(s) : s); k++; } });
+      if (k < 2) return;
+      const keys = {}; Object.keys(val).forEach(function (q) { if (!keys.date && /^\d{4}-\d{2}-\d{2}$/.test(String(val[q]))) { keys.date = val[q]; keys.dateFrom = q; } if (!keys.asset && /소재|주소|지번/.test(q)) { const a = cpfAssetKey_(val[q]); if (a) keys.asset = a; } if (!keys.road && /소재|주소/.test(q)) { const rk = cpfRoadKey_(val[q]); if (rk) keys.road = rk; } });
+      out.push({ kind: '표 줄', value: val, raw: r.join(' | ').slice(0, 300), src: Object.assign({}, base.src, { where: '시트 「' + sh + '」 ' + (h + i + 2) + '번째 줄', rec: sh + '#' + (h + i + 2) }), keys: keys, role: '', read: { how: '엑셀', conf: '확실', note: '', ocrConf: '원문 글자' } });
+    });
+  });
+  return out;
+}
+// 사건 → 사실 목록. opt: { noNewOcr: 기억에 있는 글자만(기본), allowOcr: 새로 읽음, save: 사건별 사실 파일로 남김, budgetMs }
+function cpFacts_(c, opt) {
+  opt = opt || {};
+  const files = caseProcFiles_(c), cache = CacheService.getScriptCache(), started = Date.now();
+  if (opt.noNewOcr === undefined) opt.noNewOcr = !opt.allowOcr; // 기본은 기억에 있는 글자만(새 글자인식은 증빙 단계·서버 일괄이 함) — 사실 목록 만들기가 6분 한도에 걸리지 않게
+  const prevNo = TC_NO_NEW_OCR_; if (opt.noNewOcr) TC_NO_NEW_OCR_ = true;
+  const facts = [];
+  try {
+    let tbank = {};
+    try { (caseProcTableBankDocs_(c) || []).forEach(function (x) { if (x && x.f && x.p) tbank[String(x.f.id)] = x.p; }); } catch (e) {}
+    // 묶음 원본(구간으로 펼쳐진 것)·쪽 잇기 원본은 caseProcFiles_가 이미 구간·이은 서류로 바꿔 줌. 그 밖의 파일도 전부(엑셀·한글·메모 포함)
+    files.forEach(function (f) {
+      if (Date.now() - started > (opt.budgetMs || 200000)) { facts.push({ kind: '서류', value: '대기', raw: f.name, src: { fileId: String(f.id), file: f.name, docType: '대기', where: '파일 전체' }, keys: {}, role: '', read: { how: '', conf: '불확실', note: '시간 한도 — 다음 번에 읽음' } }); return; }
+      const ck = CPF_VER_ + (c.세목 || '') + '_' + f.id + '_' + (f.modified || '');
+      let got = null;
+      try { const hit = cache.get(ck); if (hit) got = JSON.parse(hit); } catch (e) {}
+      if (!got) {
+        got = cpfFile_(c, f, cache, tbank, opt);
+        const notYet = got.length === 1 && /못 읽음|제외 후보/.test(got[0].value) && /기억에 아직 없음/.test(got[0].read.note);
+        if (!notYet) { try { const js = JSON.stringify(got); if (js.length < 95000) cache.put(ck, js, 21600); } catch (e) {} }
+      }
+      Array.prototype.push.apply(facts, got);
+    });
+    // 폴더에 있었지만 목록에서 빠진 파일(같은 서류 사본·원근보정본과 원본 사진 중 한쪽) — 말없이 빠지지 않게 "서류" 사실(제외)로 남긴다
+    try {
+      const covered = {};
+      files.forEach(function (f) { const id = String(f.id); if (/^m#/.test(id)) id.slice(2).split('+').forEach(function (q) { covered[q.split('~')[0]] = 1; }); else covered[id.split('#')[0]] = 1; });
+      caseProcFiles_(c, { raw: true }).forEach(function (f) {
+        if (covered[String(f.id)]) return;
+        facts.push({ kind: '서류', value: '제외', raw: f.name, src: { fileId: String(f.id), file: f.name, docType: '제외', where: '파일 전체' }, keys: {}, role: '', read: { how: '', conf: '확실', note: '같은 서류 사본·보정본 중 한쪽 — 다른 파일로 한 번만 읽음' } });
+      });
+    } catch (e) {}
+    // 폴더 파일 상한(caseProcFiles_ 400개·하위폴더 6단계, 하19) — 넘으면 밝힘
+    if (files.truncated) facts.push({ kind: '서류', value: '못 읽음', raw: '(폴더 파일이 너무 많음)', src: { fileId: '', file: '', docType: '', where: '' }, keys: {}, role: '', read: { how: '', conf: '불확실', note: '폴더 파일 400개·하위폴더 6단계를 넘어 일부를 보지 못함(caseProcFiles_ 상한)' } });
+  } finally { TC_NO_NEW_OCR_ = prevNo; }
+  if (opt.save) { try { cpFactsSave_(c, facts); } catch (e) {} }
+  return facts;
+}
+// 사건별 사실 파일(업무관리자 "_글자인식기억" 폴더의 _사실목록_<사건ID>.json) — 사건 결정 파일에는 넣지 않는다(크면 저장이 느려짐)
+function cpFactsSave_(c, facts) {
+  const fo = tcOcrStoreFolder_(); if (!fo || !c || !c.id) return;
+  const name = '_사실목록_' + c.id + '.json', body = JSON.stringify({ at: new Date().toISOString(), ver: CPF_VER_, caseId: c.id, 사건명: c.사건명 || '', facts: facts });
+  const it = fo.getFilesByName(name);
+  if (it.hasNext()) it.next().setContent(body); else fo.createFile(name, body, 'application/json');
+}
+function cpFactsLoad_(c) {
+  try { const fo = tcOcrStoreFolder_(); const it = fo && fo.getFilesByName('_사실목록_' + c.id + '.json'); return it && it.hasNext() ? JSON.parse(it.next().getBlob().getDataAsString('UTF-8')) : null; } catch (e) { return null; }
+}
 var CASEPROC_PARSED_MEMO_ = {};
 const CASEPROC_DOC_MAX_ = 300;
 function caseProcEvidence_(c, body) {
@@ -39717,6 +40413,110 @@ function docParseText_(text) {
     if (r2.주택.length) return { type: 'bizreg', label: r.종류 + '+임대사업자 등록증', result: { 사업자: r, 임대: r2 }, md: docToMarkdown_('bizreg', r) + '\n\n---\n\n' + docToMarkdown_('rent', r2) };
   }
   return { type: type, label: r.종류, result: r, md: docToMarkdown_(type, r) };
+}
+// =========================================================
+// [2026.10.18 1번 세션 — 최대 수집] 규칙이 없던 서류 5가지 — 두 개 이상 사건에 나오고 서식 제목이 일정한 것만(한 사건에만 있는 서류는 사실 목록의 공통 뽑기로 충분).
+//  다른 규칙이 하나도 못 잡은 서류에서만 본다("종류 미정" 자리 — 기존 서류 판정은 바뀌지 않음). 서류 머리(앞 300자) 제목으로만 정한다.
+//  등기필정보 및 등기완료통지서(박종헌·신수호·김금옥·오승훈·최동규·황인택), 정부수입인지(이우석·노오섭·김금옥·오승훈),
+//  견적서·법무사 비용 계산서(노오섭·정원식·노영환), 위임장(노영환·송기종), 금융협회·중앙회 조회 결과(노영환·최형택).
+//  칸은 서식에 있는 대로 넓게 받고, 못 읽은 칸은 비워 둔다(지어내지 않음).
+// =========================================================
+function docNk2Date_(s) { var m = /((?:19|20)\d{2})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})/.exec(String(s || '')); return m ? m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2) : ''; }
+function docNk2Won_(n) { return n ? Number(n).toLocaleString('ko-KR') + '원' : ''; }
+function docNk2Head_(text) { return String(text || '').slice(0, 300).replace(/\s+/g, ''); }
+function docNewKinds2Parse_(text) {
+  return docRegDoneParse_(text) || docStampParse_(text) || docEstimateParse_(text) || docPoaParse_(text) || docFinAssocParse_(text);
+}
+// 등기필정보 및 등기완료통지서 — 권리자·접수일·등기목적·원인과 일자·부동산 고유번호·소재(취득일·취득원인·명의 근거)
+function docRegDoneParse_(text) {
+  if (!/등기필정보및등기완료통지|등기완료통지서/.test(docNk2Head_(text))) return null;
+  var f = String(text || '').replace(/\s+/g, ' '), m;
+  var r = { 종류: '등기필정보 및 등기완료통지서', 접수번호: '', 권리자: '', 주민번호: '', 주소: '', 대리인: '', 고유번호: '', 소재지: '', 접수일: '', 등기목적: '', 원인: '', 원인일: '', 통지일: '', 등기소: '', 경고: [] };
+  m = /접\s*수\s*번\s*호\s*[:：]?\s*(\d{3,9})/.exec(f); if (m) r.접수번호 = m[1];
+  m = /권\s*리\s*자\s*[:：]\s*([가-힣]{2,5}(?:\s*외\s*\d+\s*인)?)/.exec(f); if (m) r.권리자 = m[1].replace(/\s+/g, '');
+  m = /등\s*록\s*번\s*호\s*[:：]?\s*(\d{6}\s*-\s*[\d*]{1,7})/.exec(f); if (m) r.주민번호 = m[1].replace(/\s+/g, '');
+  m = /주\s*소\s*[:：]\s*([^:：]{5,90}?)(?=\s*(?:부\s*동\s*산\s*고\s*유|대\s*리\s*인|\(\s*주\s*민|$))/.exec(f) || /소\s*[:：]\s*([가-힣][^:：]{5,90}?)(?=\s*(?:부\s*동\s*산\s*고\s*유|대\s*리\s*인))/.exec(f); if (m) r.주소 = m[1].trim();
+  m = /대\s*리\s*인\s*[:：]\s*(법\s*무\s*사\s*[가-힣]{2,4}|[가-힣]{2,10})/.exec(f); if (m) r.대리인 = m[1].replace(/\s+/g, ' ');
+  m = /부\s*동\s*산\s*고\s*유\s*번\s*호\s*[:：]?\s*(\d{4}-\d{4}-\d{6})/.exec(f); if (m) r.고유번호 = m[1];
+  m = /부\s*동\s*산\s*소\s*재\s*[:：]?\s*(?:\[[^\]]{1,6}\]\s*)?([\s\S]{5,160}?)(?=\s*\(\s*도\s*로\s*명|\s*접\s*수\s*일\s*자)/.exec(f); if (m) r.소재지 = m[1].trim();
+  m = /접\s*수\s*일\s*자\s*[:：]?\s*((?:19|20)\d{2}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일)/.exec(f); if (m) r.접수일 = docNk2Date_(m[1]);
+  m = /등\s*기\s*목\s*적\s*[:：]?\s*([가-힣\s]{2,20}?)(?=\s*등\s*기\s*원\s*인|$)/.exec(f); if (m) r.등기목적 = m[1].replace(/\s+/g, '');
+  m = /등\s*기\s*원\s*인\s*및\s*일\s*자\s*[:：]?\s*((?:19|20)\d{2}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일)\s*([가-힣\s]{2,30}?)(?=\s*(?:부\s*착|적\s*색|대\s*법\s*원|등\s*기\s*필|$))/.exec(f); if (m) { r.원인일 = docNk2Date_(m[1]); r.원인 = m[2].replace(/\s+/g, ' ').trim(); }
+  m = /((?:19|20)\d{2}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일)\s*([가-힣]{2,12}(?:지방법원|지원)\s*[가-힣]{2,10}등기소)/.exec(f); if (m) { r.통지일 = docNk2Date_(m[1]); r.등기소 = m[2].replace(/\s+/g, ' '); }
+  if (!r.권리자 || !r.접수일) r.경고.push('권리자·접수일자 칸을 다 읽지 못함 — 원문 확인');
+  return { type: 'regdone', label: r.종류, result: r, md: '### ' + r.종류 + '\n\n' + docMdTable_([['권리자', r.권리자], ['주민번호', r.주민번호], ['부동산 고유번호', r.고유번호], ['소재지', r.소재지], ['접수일자', r.접수일], ['접수번호', r.접수번호], ['등기목적', r.등기목적], ['등기원인·일자', (r.원인 || '') + (r.원인일 ? ' ' + r.원인일 : '')], ['대리인', r.대리인], ['통지', (r.통지일 || '') + ' ' + (r.등기소 || '')]]) + (r.경고.length ? '\n\n⚠ ' + r.경고.join('\n⚠ ') : '') };
+}
+// 정부수입인지(전자수입인지) — 금액·발급일·성명(상호)·생년월일/사업자번호·고유번호(취득·양도 계약서 인지대 = 필요경비 근거)
+function docStampParse_(text) {
+  if (!/정부수입인지|전자수입인지/.test(docNk2Head_(text))) return null;
+  var f = String(text || '').replace(/\s+/g, ' '), m;
+  var r = { 종류: '정부수입인지', 금액: null, 발급일: '', 성명: '', 등록번호: '', 고유번호: '', 용도: '', 경고: [] };
+  var ws = (f.match(/(\d{1,3}(?:,\d{3})+)\s*원/g) || []).map(function (s) { return Number(s.replace(/[^\d]/g, '')); }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+  if (ws.length === 1) r.금액 = ws[0]; else if (ws.length > 1) r.경고.push('금액이 여럿 읽힘(' + ws.map(docNk2Won_).join('·') + ') — 원문 확인');
+  m = /(?:발\s*)?급\s*일\s*자\s*[:：]?\s*((?:19|20)\d{2}\s*[.\-]\s*\d{1,2}\s*[.\-]\s*\d{1,2})/.exec(f); if (m) r.발급일 = docNk2Date_(m[1]);
+  m = /(\d{7}-\d{9}|\d{8}\s+\d{8})/.exec(f); if (m) r.고유번호 = m[1];
+  m = /(?:생\s*년\s*월\s*일\s*\/?\s*사\s*업\s*자\s*번\s*호)\s*[:：]?\s*(\d{6,10})/.exec(f); if (m) r.등록번호 = m[1];
+  m = /원\s+([가-힣]{2,4})\s+생\s*년\s*월\s*일/.exec(f) || /성\s*명\s*\(\s*상\s*호\s*\)\s*[:：]?\s*([가-힣]{2,10})/.exec(f); if (m) r.성명 = m[1];
+  m = /용\s*도\s*[:：]?\s*(?:[가-힣]\s*)?([가-힣]{2,10}\s*납\s*부)/.exec(f) || /(인\s*지\s*세\s*납\s*부)/.exec(f); if (m) r.용도 = m[1].replace(/\s+/g, ' ');
+  if (!r.금액) r.경고.push('인지 금액을 확정하지 못함 — 원문 확인');
+  return { type: 'stamp', label: r.종류, result: r, md: '### ' + r.종류 + '\n\n' + docMdTable_([['금액', docNk2Won_(r.금액)], ['발급일', r.발급일], ['성명(상호)', r.성명], ['생년월일/사업자번호', r.등록번호], ['고유번호', r.고유번호], ['용도', r.용도]]) + (r.경고.length ? '\n\n⚠ ' + r.경고.join('\n⚠ ') : '') };
+}
+// 견적서·법무사 비용 계산서 — 견적일·공급자(상호·사업자번호)·현장·항목별 금액·합계(자본적지출·취득 부대비용 판단 재료 — 견적은 지급 증빙이 아님을 밝힘)
+function docEstimateParse_(text) {
+  var h = docNk2Head_(text);
+  if (!/견적서|견적일자|비용간편계산서/.test(h) || /계약서/.test(h)) return null;
+  var t = String(text || ''), f = t.replace(/\s+/g, ' '), m;
+  var r = { 종류: /비용간편계산서/.test(h) ? '법무사 비용 계산서(견적)' : '견적서', 견적일: '', 상호: '', 사업자번호: '', 대표자: '', 현장: '', 고객: '', 항목: [], 합계: null, 경고: [], 참고: ['견적은 지급 증빙이 아님 — 실제 지급은 영수증·세금계산서·통장으로 확인'] };
+  m = /(?:견\s*적\s*일\s*자?|일\s*자)\s*[:：]?\s*((?:19|20)\d{2}\s*[.\-년]?\s*\d{1,2}\s*[.\-월]?\s*\d{1,2})/.exec(f) || /((?:19|20)\d{2}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일)/.exec(f); if (m) r.견적일 = docNk2Date_(m[1]) || docNk2Date_(m[1].replace(/\s+/g, '.'));
+  m = /상\s*호\s*[:：]?\s*(?:\(\s*법\s*인\s*명\s*\)\s*)?([가-힣A-Za-z()]{2,20})/.exec(f) || /사\s*무\s*소\s*[:：]\s*([가-힣]{2,20})/.exec(f); if (m) r.상호 = m[1];
+  m = /(?<!\d)(\d{3}-\d{2}-\d{5})(?!\d)/.exec(f); if (m) r.사업자번호 = m[1];
+  m = /성\s*명\s*[:：]?\s*([가-힣]{2,4})(?=\s)/.exec(f); if (m) r.대표자 = m[1];
+  m = /고\s*객\s*명\s*\|?\s*([가-힣]{2,4})/.exec(f); if (m) r.고객 = m[1];
+  m = /([가-힣]+(?:동|리|가|로|길)\s*\d{1,5}(?:-\d{1,5})?(?:\s*[가-힣]*\s*\d{1,4}\s*호)?)\s*(?:지하\s*)?(?:귀\s*하|토지|건물)/.exec(f); if (m) r.현장 = m[1].trim();
+  // 항목 — 같은 줄의 "이름 … 금액"(줄마다). 표가 풀려 이름과 금액이 떨어진 줄은 금액만 남긴다
+  t.split('\n').forEach(function (ln) {
+    var mm = /^\s*\|?\s*([가-힣][가-힣\s()·]{1,24}?)\s*[:：|]?\s*(\d{1,3}(?:[,.]\d{3})+)\s*원?\s*$/.exec(ln);
+    if (mm && !/합\s*계|총\s*액|소\s*계|등록번호|번호/.test(mm[1])) r.항목.push({ 항목: mm[1].replace(/\s+/g, ' ').trim(), 금액: Number(mm[2].replace(/[^\d]/g, '')) });
+  });
+  // 합계 — "합계(금액)", "원정(₩ 1,500,000)", "TOTAL 5.700.000"(글자인식이 쉼표를 점으로 읽음)
+  m = /(?:합\s*계|총\s*액|견\s*적\s*금\s*액|총\s*견\s*적\s*가|TOTAL)\s*(?:금\s*액)?\s*[:：]?\s*[₩W￦]?\s*(\d{1,3}(?:[,.]\d{3})+)/i.exec(f) || /원\s*정\s*\(?\s*[₩W￦]\s*(\d{1,3}(?:,\d{3})+)/.exec(f); if (m) r.합계 = Number(m[1].replace(/[^\d]/g, ''));
+  if (!r.합계) r.경고.push('합계 칸을 읽지 못함 — 원문 확인');
+  return { type: 'estimate', label: r.종류, result: r, md: '### ' + r.종류 + '\n\n' + docMdTable_([['견적일', r.견적일], ['상호', r.상호], ['사업자번호', r.사업자번호], ['대표자', r.대표자], ['고객', r.고객], ['현장', r.현장], ['항목', r.항목.map(function (q) { return q.항목 + ' ' + docNk2Won_(q.금액); }).join(' · ')], ['합계', docNk2Won_(r.합계)]]) + '\n\n_' + r.참고[0] + '_' + (r.경고.length ? '\n\n⚠ ' + r.경고.join('\n⚠ ') : '') };
+}
+// 위임장 — 위임인·수임인(성명·주민번호·주소)·부동산 표시·위임 내용·날짜·사건번호(대리 관계·비용 부담자·관리 위임 근거)
+function docPoaParse_(text) {
+  var h = docNk2Head_(text);
+  if (!/^.{0,30}(위임장|처분위임장|POWEROFATTORNEY)/i.test(h)) return null;
+  var f = String(text || '').replace(/\s+/g, ' '), m, re;
+  var r = { 종류: '위임장', 위임인: [], 수임인: [], 부동산표시: '', 내용: '', 날짜: '', 사건: '', 경고: [] };
+  m = /부\s*동\s*산\s*의?\s*표\s*시\s*[:：]?\s*([\s\S]{4,120}?)(?=\s*(?:위\s*임\s*받|수\s*임\s*인|대\s*리\s*인|위\s*사\s*람))/.exec(f); if (m) r.부동산표시 = m[1].trim();
+  m = /(\d{4}\s*(?:가합|가단|가소|타경|머|느|구합|누)\s*\d{2,7})/.exec(f); if (m) r.사건 = m[1].replace(/\s+/g, '');
+  var cut = f.search(/위\s*임\s*인/), recv = cut === -1 ? f : f.slice(0, cut), giv = cut === -1 ? '' : f.slice(cut);
+  re = /([가-힣]{2,4})\s*\(?\s*(\d{6}\s*-\s*[\d*]{7})\s*\)?/g;
+  while ((m = re.exec(giv))) r.위임인.push({ 이름: m[1], 주민번호: m[2].replace(/\s+/g, '') });
+  m = /(?:위\s*임\s*받\s*은\s*사\s*람|수\s*임\s*인)[\s\S]{0,40}?(?:성\s*명\s*[:：]?\s*)?(?:변\s*호\s*사\s+)?(?!변호사)(?<![가-힣])([가-힣]{2,4})(?=\s|$)/.exec(recv); if (m && !/성명|주소|변호사/.test(m[1])) { var who = { 이름: m[1] }; var mm = /(\d{6}\s*-\s*[\d*]{7})/.exec(recv); if (mm) who.주민번호 = mm[1].replace(/\s+/g, ''); r.수임인.push(who); }
+  m = /(위\s*사\s*람을[\s\S]{5,240}?(?:위\s*임\s*한\s*다|위\s*임\s*함))/.exec(f); if (m) r.내용 = m[1].trim();
+  var ds = f.match(/(?:19|20)\d{2}\s*[.년]\s*\d{1,2}\s*[.월]\s*\d{1,2}/g) || []; if (ds.length) r.날짜 = docNk2Date_(ds[ds.length - 1]);
+  if (!r.위임인.length && !r.수임인.length) return null;
+  return { type: 'poa', label: r.종류, result: r, md: '### 위임장\n\n' + docMdTable_([['위임인', r.위임인.map(function (q) { return q.이름 + (q.주민번호 ? '(' + q.주민번호 + ')' : ''); }).join(', ')], ['수임인', r.수임인.map(function (q) { return q.이름; }).join(', ')], ['부동산 표시', r.부동산표시], ['사건', r.사건], ['위임 내용', r.내용], ['날짜', r.날짜]]) };
+}
+// 금융협회·중앙회 조회 결과(상속인 금융거래 조회의 기관별 회신 — 손해보험협회·생명보험협회·신협중앙회·새마을금고중앙회·여신금융협회·대부금융협회 등)
+//  — 기관·조회 종류·접수번호·접수일·대상자·"내역 없음" 여부·회신에 적힌 금액 줄(상속재산·채무 누락 확인 근거)
+function docFinAssocParse_(text) {
+  var h = docNk2Head_(text);
+  var org = /(손해보험협회|생명보험협회|신협중앙회|새마을금고중앙회|여신금융협회|대부금융협회|한국대부금융협회|저축은행중앙회|금융투자협회|은행연합회|산림조합중앙회|수협중앙회|우정사업본부)/.exec(h.replace(/"/g, ''));
+  if (!org) return null;
+  var t = String(text || ''), f = t.replace(/\s+/g, ' '), m;
+  var r = { 종류: '금융협회 조회 결과', 기관: org[1], 조회: '', 접수번호: '', 접수일: '', 대상자: '', 주민앞: '', 신청인: '', 내역없음: false, 미회신: false, 줄: [], 경고: [] };
+  m = /([가-힣]{2,12}\s*(?:조\s*회\s*결\s*과|거\s*래\s*내\s*역|내\s*역\s*조\s*회))/.exec(f.slice(0, 400)); if (m) r.조회 = m[1].replace(/\s+/g, '');
+  m = /접\s*수\s*번\s*호\s*[:：]?[\s\S]{0,40}?(\d{8,14})/.exec(f); if (m) r.접수번호 = m[1];
+  m = /((?:19|20)\d{2}-\d{2}-\d{2})/.exec(f); if (m) r.접수일 = m[1];
+  m = /성\s*명\s*[:：]?\s*([가-힣]{2,4})(?=\s|$)/.exec(f) || /([가-힣]{2,4})\s+(\d{6})\s*-\s*\d?\*/.exec(f); if (m) r.대상자 = m[1];
+  m = /(\d{6})\s*-\s*[\d]?\*{3,}/.exec(f); if (m) r.주민앞 = m[1];
+  r.내역없음 = /조\s*회\s*(?:된|된\s*)?\s*내\s*역\s*이?\s*없|내\s*역\s*이\s*존\s*재\s*하\s*지\s*않|해\s*당\s*(?:사\s*항|내\s*역)\s*없/.test(f);
+  r.미회신 = /미\s*회\s*신/.test(f);
+  t.split('\n').forEach(function (ln) { var mm = /([가-힣][가-힣\s()]{1,30}?)\s+(-?\d{1,3}(?:,\d{3})+)\s*원?/.exec(ln); if (mm) r.줄.push({ 내용: mm[1].trim(), 금액: Number(mm[2].replace(/,/g, '')) }); });
+  return { type: 'finassoc', label: r.종류 + '(' + r.기관 + ')', result: r, md: '### 금융협회 조회 결과 — ' + r.기관 + '\n\n' + docMdTable_([['조회', r.조회], ['접수번호', r.접수번호], ['접수일', r.접수일], ['대상자', r.대상자 + (r.주민앞 ? '(' + r.주민앞 + ')' : '')], ['결과', r.내역없음 ? '조회된 내역 없음' : r.미회신 ? '미회신 회원사 안내' : (r.줄.length ? r.줄.length + '줄' : '')], ['금액 줄', r.줄.slice(0, 10).map(function (q) { return q.내용 + ' ' + docNk2Won_(q.금액); }).join(' · ')]]) };
 }
 // [2026.10.18 3차 수정 M] 합의서(손해배상·화해 합의서) — 지급 조항을 당사자 한 사람(또는 "공동")·금액 한 줄씩. 서류 머리에 "합의서" 제목과 원고·피고(갑·을) 당사자가 있을 때만.
 //  쓰는 곳: 상속 대출 사용처 표 — 합의금 송금(같은 합계)의 근거, 단독 부담 몫은 그 사람 채무(피상속인 몫이 아님 §14①), 비용 분담(절반) 조항은 근거 메모
