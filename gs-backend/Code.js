@@ -40517,7 +40517,14 @@ function jmParse_(text) {
     // 세대 주소 이력(과거 주소변동 포함으로 뗀 등본) — 세대원 표 앞까지만 잘라 초본과 같은 방식으로 읽는다
     // 세대구성 사유·일자 칸("전입 2015-11-04")은 주소 이력 행이 아니므로 빼고, 세대원 표(첫 주민번호 앞 머리줄)부터는 자른다
     var dp = jmPages_(t).map(function (pg) {
-      var x = pg.text.replace(/세대\s*구성\s*사유\s*및\s*일자\s*\n?\s*[가-힣]{0,10}\s*\n?\s*(?:(?:19|20)\d{2}-\d{2}-\d{2})?/, ' ');
+      var x = pg.text, hm = /세대\s*구성\s*사유\s*및\s*일자\s*\n?\s*[가-힣]{0,10}\s*\n?\s*((?:19|20)\d{2}-\d{2}-\d{2})?/.exec(x);
+      if (hm) {
+        x = x.slice(0, hm.index) + ' ' + x.slice(hm.index + hm[0].length);
+        // [2026.10.19 3번 읽기 — 2번 넘김 "주소이력 날짜 모순"] 스캔 글자인식이 머리 칸 날짜를 떼어 표 첫 행 사이로 읽으면(윤경숙 말소자등본 2쪽: 세대구성 2015-07-20이
+        //  1번 전입 행 날짜로 잡혀 거주 시작이 2013 → 2015로) — 칸 이름 "발생일/신고일" 앞에 처음 나오는 날짜 하나가 머리 칸 날짜. 발생일 > 신고일 자체는 원본에도 있음(김창호 16번·방영교 3번)
+        var hd = x.search(/발\s*생\s*일/), dm = !hm[1] && hd > hm.index ? /(?:19|20)\d{2}-\d{2}-\d{2}/.exec(x.slice(hm.index, hd)) : null;
+        if (dm) x = x.slice(0, hm.index + dm.index) + ' ' + x.slice(hm.index + dm.index + dm[0].length);
+      }
       var k = x.search(JM_MEMBER_HEAD_RE_), f = x.search(/\d{6}\s*-\s*[\d*]{7}/);
       if (k < 0 && f > 0) { var lines = x.slice(0, f).split('\n'); k = x.slice(0, f).length - lines.slice(-6).join('\n').length; }
       return { n: pg.n, text: k > 0 ? x.slice(0, k) : x };
