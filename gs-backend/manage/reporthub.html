@@ -132,7 +132,8 @@
           '<td style="cursor:pointer;">' + esc(f.사건명 || '') + '</td>' +
           '<td style="cursor:pointer;">' + esc(f.name) + '</td>' +
           '<td style="color:var(--sub); font-size:12px; white-space:nowrap; cursor:pointer;">' + (f.published ? '📤 발행' : '✏️ 초안') + '</td>' +
-          '<td style="white-space:nowrap;"><button type="button" class="rhRenameBtn" data-file-id="' + f.id + '" title="파일명 직접 수정">✏️ 이름수정</button> ' +
+          // [2026.10.18 탭연결 15번] 보고서 모음에서 그 사건 처리개요로 바로(예전엔 문서작성으로만 갔다)
+          '<td style="white-space:nowrap;">' + (f.caseId ? '<button type="button" class="rhCaseBtn" data-case-id="' + esc(f.caseId) + '" title="이 사건 처리개요로">🧭 처리개요</button> ' : '') + '<button type="button" class="rhRenameBtn" data-file-id="' + f.id + '" title="파일명 직접 수정">✏️ 이름수정</button> ' +
           '<button type="button" class="rhDeleteBtn" data-file-id="' + f.id + '" title="이 파일을 휴지통으로 보냅니다">🗑 삭제</button></td>' +
           '</tr>';
       });
@@ -143,6 +144,12 @@
           var tr = td.closest('tr');
           if (typeof goToView_ === 'function') goToView_('reportwriter');
           if (typeof goToReportWriter_ === 'function') goToReportWriter_(tr.dataset.caseId, { fileId: tr.dataset.fileId });
+        });
+      });
+      wrap.querySelectorAll('.rhCaseBtn').forEach(function(btn){
+        btn.addEventListener('click', function(e){
+          e.stopPropagation();
+          if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(btn.dataset.caseId);
         });
       });
       // [2026.09.17 신규] 자동 일괄정비의 판단이 다 맞지 않고 목록이 너무 많아 검토하기 어렵다는
@@ -686,6 +693,18 @@
       }
     });
 
+    // [2026.10.18 탭연결 15번] AI 사이드바가 이 화면의 사건을 따라가게 — 글감만들기·쇼츠에서 고른 보고서의 사건(aichat.html nxAiScreenCaseId_)
+    window.rhScreenCaseId_ = function(){
+      var ids = ['rhContentSourceSelect', 'rhShortsSourceSelect'];
+      for (var i = 0; i < ids.length; i++){
+        var sel = document.getElementById(ids[i]);
+        var pane = sel && sel.closest('.rh-pane');
+        if (!sel || !sel.value || (pane && pane.style.display === 'none')) continue;
+        var f = rhAllFiles_.filter(function(x){ return x.id === sel.value; })[0];
+        if (f && f.caseId) return f.caseId;
+      }
+      return '';
+    };
     // 화면이 처음 보일 때 한 번만 모아보기 목록을 불러온다.
     var rhInited_ = false;
     window.initReportHub = function(){

@@ -833,6 +833,9 @@
       if ((v === 'taxcalc' || v === 'print') && typeof tcSelectedId !== 'undefined') return tcSelectedId || '';
       if (v === 'lawsearch' && typeof lsSelectedId !== 'undefined') return lsSelectedId || '';
       if (v === 'reportwriter'){ var rs = document.getElementById('rwCaseSelect'); return rs ? rs.value : ''; }
+      // [2026.10.18 탭연결 15번] 열람관리(등록 칸에서 고른 사건)·보고서 모음(글감만들기·쇼츠에서 고른 보고서의 사건)도 따라간다
+      if (v === 'reports'){ var rp = document.getElementById('repNewCase'); return rp ? rp.value : ''; }
+      if (v === 'reporthub' && typeof window.rhScreenCaseId_ === 'function') return window.rhScreenCaseId_() || '';
     } catch (e) {}
     return '';
   }

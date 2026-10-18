@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-18 13:50 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-18 13:51 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -43914,7 +43914,8 @@ function goToReportWriter_(caseId, opts){
           '<td style="cursor:pointer;">' + esc(f.사건명 || '') + '</td>' +
           '<td style="cursor:pointer;">' + esc(f.name) + '</td>' +
           '<td style="color:var(--sub); font-size:12px; white-space:nowrap; cursor:pointer;">' + (f.published ? '📤 발행' : '✏️ 초안') + '</td>' +
-          '<td style="white-space:nowrap;"><button type="button" class="rhRenameBtn" data-file-id="' + f.id + '" title="파일명 직접 수정">✏️ 이름수정</button> ' +
+          // [2026.10.18 탭연결 15번] 보고서 모음에서 그 사건 처리개요로 바로(예전엔 문서작성으로만 갔다)
+          '<td style="white-space:nowrap;">' + (f.caseId ? '<button type="button" class="rhCaseBtn" data-case-id="' + esc(f.caseId) + '" title="이 사건 처리개요로">🧭 처리개요</button> ' : '') + '<button type="button" class="rhRenameBtn" data-file-id="' + f.id + '" title="파일명 직접 수정">✏️ 이름수정</button> ' +
           '<button type="button" class="rhDeleteBtn" data-file-id="' + f.id + '" title="이 파일을 휴지통으로 보냅니다">🗑 삭제</button></td>' +
           '</tr>';
       });
@@ -43925,6 +43926,12 @@ function goToReportWriter_(caseId, opts){
           var tr = td.closest('tr');
           if (typeof goToView_ === 'function') goToView_('reportwriter');
           if (typeof goToReportWriter_ === 'function') goToReportWriter_(tr.dataset.caseId, { fileId: tr.dataset.fileId });
+        });
+      });
+      wrap.querySelectorAll('.rhCaseBtn').forEach(function(btn){
+        btn.addEventListener('click', function(e){
+          e.stopPropagation();
+          if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(btn.dataset.caseId);
         });
       });
       // [2026.09.17 신규] 자동 일괄정비의 판단이 다 맞지 않고 목록이 너무 많아 검토하기 어렵다는
@@ -44468,6 +44475,18 @@ function goToReportWriter_(caseId, opts){
       }
     });
 
+    // [2026.10.18 탭연결 15번] AI 사이드바가 이 화면의 사건을 따라가게 — 글감만들기·쇼츠에서 고른 보고서의 사건(aichat.html nxAiScreenCaseId_)
+    window.rhScreenCaseId_ = function(){
+      var ids = ['rhContentSourceSelect', 'rhShortsSourceSelect'];
+      for (var i = 0; i < ids.length; i++){
+        var sel = document.getElementById(ids[i]);
+        var pane = sel && sel.closest('.rh-pane');
+        if (!sel || !sel.value || (pane && pane.style.display === 'none')) continue;
+        var f = rhAllFiles_.filter(function(x){ return x.id === sel.value; })[0];
+        if (f && f.caseId) return f.caseId;
+      }
+      return '';
+    };
     // 화면이 처음 보일 때 한 번만 모아보기 목록을 불러온다.
     var rhInited_ = false;
     window.initReportHub = function(){
@@ -46370,6 +46389,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if ((v === 'taxcalc' || v === 'print') && typeof tcSelectedId !== 'undefined') return tcSelectedId || '';
       if (v === 'lawsearch' && typeof lsSelectedId !== 'undefined') return lsSelectedId || '';
       if (v === 'reportwriter'){ var rs = document.getElementById('rwCaseSelect'); return rs ? rs.value : ''; }
+      // [2026.10.18 탭연결 15번] 열람관리(등록 칸에서 고른 사건)·보고서 모음(글감만들기·쇼츠에서 고른 보고서의 사건)도 따라간다
+      if (v === 'reports'){ var rp = document.getElementById('repNewCase'); return rp ? rp.value : ''; }
+      if (v === 'reporthub' && typeof window.rhScreenCaseId_ === 'function') return window.rhScreenCaseId_() || '';
     } catch (e) {}
     return '';
   }
