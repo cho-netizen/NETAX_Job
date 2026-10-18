@@ -30180,9 +30180,10 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
   }
   // 금액(세 자리 쉼표, 1,000 이상) — keys.amount. [2026.10.19 1번 밤작업 ②] 뒤에 단위 낱말(만·억·천·백)이 붙은 숫자는 여기서 빼고 아래 단위 금액으로("6,548만원" → 65,480,000)
   re = /(?<![\d\-])(-?\d{1,3}(?:,\d{3})+)(?![\d,]*\.\d)(?!\s*(?:㎡|m2|제곱))/g;
-  while ((m = re.exec(t))) { const v = Number(m[1].replace(/,/g, '')); if (Math.abs(v) < 1000) continue; if (Math.abs(v) < 1e7 && /^\s*(?:억|만|천|백|십)/.test(t.slice(re.lastIndex, re.lastIndex + 3))) continue; /* 단위 낱말 앞 작은 숫자는 아래 단위 금액이 읽음 */ const lb = label(m.index), lk = cpfLabelKind_(lb); add(lk || '기타:' + lb, v, m[0], m.index, { amount: v }, lk ? { note: '앞 낱말 「' + lb + '」로 정한 종류' } : null); }
+  while ((m = re.exec(t))) { const v = Number(m[1].replace(/,/g, '')); if (Math.abs(v) < 1000) continue; if (Math.abs(v) < 1e7 && /^\s*(?:억|만|천|백|십)/.test(t.slice(re.lastIndex, re.lastIndex + 3))) continue; /* 단위 낱말 앞 작은 숫자는 아래 단위 금액이 읽음 */ const lb = label(m.index), lk = cpfLabelKind_(lb);
+    { const th = /^\s*(?:원|㎡|m2|m²|제곱미터)?\s*(?:정)?\s*(이하|이상|초과|미만)/.exec(t.slice(re.lastIndex, re.lastIndex + 10)); if (th) { add('기준 금액', v, m[0] + ' ' + th[1], m.index, {}, { note: '문장 속 조건(' + th[1] + ') — 사건 값 아님, 앞 낱말 「' + lb + '」' }); continue; } } /* [2026.10.19 1번 밤작업] "…10억원 이하인 경우" */ add(lk || '기타:' + lb, v, m[0], m.index, { amount: v }, lk ? { note: '앞 낱말 「' + lb + '」로 정한 종류' } : null); }
   // [2026.10.19 1번 밤작업 ②] 단위 낱말 금액("6,548만원"·"440백만원"·"5억2천5백만원"·"이억칠천만원정") — 한글 수만으로 된 것은 예전처럼 "기타:한글금액"(숫자 금액과 맞대는 재료)
-  cpfUnitAmounts_(t).forEach(function (u) { const lb = label(u.at), lk = u.han ? '' : cpfLabelKind_(lb); add(u.han ? '기타:한글금액' : (lk || '기타:' + lb), u.value, u.raw, u.at, { amount: u.value }, (u.note || lk) ? { note: [u.note, lk ? '앞 낱말 「' + lb + '」로 정한 종류' : ''].filter(String).join(' · ') } : null); });
+  cpfUnitAmounts_(t).forEach(function (u) { const thu = /^\s*(?:원|㎡|m2|m²|제곱미터)?\s*(?:정)?\s*(이하|이상|초과|미만)/.exec(t.slice(u.at + u.raw.length, u.at + u.raw.length + 10)); if (thu && !u.han) { add('기준 금액', u.value, u.raw + ' ' + thu[1], u.at, {}, { note: '문장 속 조건(' + thu[1] + ') — 사건 값 아님, 앞 낱말 「' + label(u.at) + '」' }); return; } const lb = label(u.at), lk = u.han ? '' : cpfLabelKind_(lb); add(u.han ? '기타:한글금액' : (lk || '기타:' + lb), u.value, u.raw, u.at, { amount: u.value }, (u.note || lk) ? { note: [u.note, lk ? '앞 낱말 「' + lb + '」로 정한 종류' : ''].filter(String).join(' · ') } : null); });
   // [2026.10.19 1번 밤작업 ②] 비율(%) — 세율·지분율·공제율·이자율 등(앞 낱말이 칸 이름)
   re = /(?<![\d.])(\d{1,3}(?:\.\d{1,4})?)\s*(?:%|퍼센트|프로(?![가-힣]))/g;
   while ((m = re.exec(t))) { const v = Number(m[1]); if (!(v >= 0 && v <= 100)) continue; add('비율', v, m[0], m.index, {}, { note: '앞 낱말: ' + label(m.index) }); }
@@ -30197,6 +30198,7 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
   re = /(?<![\d.,])(\d{1,3}(?:,\d{3})+(?:\.\d{1,4})?|\d{1,6}(?:\.\d{1,4})?)\s*(?:㎡|m2|m²|제곱미터)/g;
   while ((m = re.exec(t))) {
     const lb = label(m.index), ak = /전\s*유|전\s*용/.test(lb) ? '전유면적' : /공\s*용/.test(lb) ? '공용면적' : /대\s*지\s*권/.test(lb) ? '대지권면적' : /연\s*면\s*적|건\s*물|건\s*축/.test(lb) ? '건물면적' : /토\s*지|대\s*지|임\s*야|전$|답$/.test(lb) ? '토지면적' : /임\s*대/.test(lb) ? '임대면적' : '면적';
+    { const tha = /^\s*(이하|이상|초과|미만)/.exec(t.slice(re.lastIndex, re.lastIndex + 6)); if (tha) { add('기준 면적', Number(m[1].replace(/,/g, '')), m[0] + ' ' + tha[1], m.index, {}, { note: '문장 속 조건(' + tha[1] + ') — 사건 값 아님' }); continue; } }
     add(ak, Number(m[1].replace(/,/g, '')), m[0], m.index, {});
   }
   // 지분 — "2분의1", [2026.10.19 1번 밤작업 ⑤] "지분 2/5"·"중 2/5"·"2/5 지분"(빗금은 지분 낱말이 곁에 있을 때만 — 날짜·쪽 번호와 헷갈림)
