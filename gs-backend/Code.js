@@ -25265,6 +25265,37 @@ function tcVisionOcr_(blob) {
   });
   return out;
 }
+// [2026.10.18 3번 세션 — 읽기] PDF 쪽마다 따로 읽은 글 — 스캔 PDF는 드라이브 글자인식이 쪽 경계 없이 한 덩어리로 돌려준다
+//  (3쪽 넘는 스캔 PDF 216개 1,569쪽 — 문서정리_연구.md). 서류 나누기·쪽 순서·빈 쪽 찾기·사실의 쪽 번호(src.page)의 바탕.
+//  그림 쪽(넓이 합 30만 점 이상)만 그 쪽 그림을 한 쪽 PDF로 옮겨 글자인식, 글자층 쪽은 false(원래 글에 있음). 기억 ocrpage1_<id>_<수정시각>(JSON
+//  {n, pages:{"쪽": 글|false}, done}). 기억된 메모 글(ocrtxt_)은 그대로. 새로 읽기는 일괄(TC_BATCH_READ_) 안에서만, deadline까지 하고 이어서
+function tcPdfPageTexts_(f, deadline) {
+  if (!f || !f.id || !f.modified) return null;
+  const key = 'ocrpage1_' + f.id + '_' + f.modified;
+  let st = null; try { st = JSON.parse(tcOcrStoreGet_(key) || 'null'); } catch (e) { st = null; }
+  if (st && st.done) return st;
+  if (!TC_BATCH_READ_ || TC_NO_NEW_OCR_) return st;
+  const s = DriveApp.getFileById(f.id).getBlob().getDataAsString('ISO-8859-1');
+  const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i) & 255;
+  const pages = tcPdfPages_(u, s);
+  if (!pages) { st = { n: 0, pages: [], done: true, why: '못 연 PDF(암호 등)' }; tcOcrStoreSet_(key, JSON.stringify(st)); return st; }
+  // pages: {"쪽 번호": 글 | false(글자층 쪽 — 원래 글에 있음)} — 아직 안 읽은 쪽은 열쇠가 없다(JSON 배열은 빈 칸과 null을 구분 못 함)
+  st = st && st.n === pages.length && st.pages && !Array.isArray(st.pages) ? st : { n: pages.length, pages: {}, done: false };
+  for (let i = 0; i < pages.length; i++) {
+    const k = String(i + 1);
+    if (Object.prototype.hasOwnProperty.call(st.pages, k)) continue;
+    if (Date.now() > deadline) break;
+    const pg = pages[i], area = pg.imgs.reduce(function (sm, im) { return sm + im.w * im.h; }, 0);
+    if (pg.err || area < 300000 || pg.textOps > 3) { st.pages[k] = false; continue; }
+    const one = tcPdfOnePage_(u, pages, pg, pg.imgs.slice(0, 60));
+    if (!one) { st.pages[k] = '(그림 형식을 옮기지 못함)'; continue; }
+    try { st.pages[k] = String(tcOcrBlob_(Utilities.newBlob(one, 'application/pdf', 'p' + k + '.pdf')) || '').trim(); }
+    catch (e) { if (OCRB_TRANSIENT_RE_.test(String(e && e.message || e))) break; st.pages[k] = '(읽기 실패: ' + String(e && e.message || e).slice(0, 60) + ')'; }
+  }
+  st.done = Object.keys(st.pages).length === pages.length;
+  tcOcrStoreSet_(key, JSON.stringify(st));
+  return st;
+}
 // [2026.10.18 3번 세션 — 읽기] 서류(PDF·워드)의 칸 자리 지킨 표 글 — 표가 없으면 ''. 기억(ocrtbl1_)에 있으면 그대로(사이드바도 씀),
 //  없으면 TC_BATCH_READ_(일괄) 안에서만 한 번 더 변환해 만든다(이 수정 전에 읽은 서류용). 사이드바에서는 변환하지 않고 '' — 느려지지 않게
 function tcDocTableText_(f) {
