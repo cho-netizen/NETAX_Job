@@ -4189,7 +4189,7 @@ function rwRenderCaseReports_(caseId){
     if (sub.noFolder && typeof nxEnsureCaseFolder_ === 'function'){
       box.innerHTML = '<span>' + escapeHtml(sub.error) + '</span> <button type="button" class="ghost-btn" id="rwMakeCaseFolderBtn">업무유형 정하고 폴더 만들기</button>';
       document.getElementById('rwMakeCaseFolderBtn').addEventListener('click', function(){
-        nxEnsureCaseFolder_(c, '문서').then(function(cc){ if (cc && cc.폴더ID) rwRenderCaseReports_(caseId); });
+        nxEnsureCaseFolder_(c, '문서를').then(function(cc){ if (cc && cc.폴더ID) rwRenderCaseReports_(caseId); });
       });
       return;
     }

@@ -350,7 +350,7 @@
       return pick.then(function(c){
         if (c === 'legacy') return null;
         if (!c) return false;
-        return nxEnsureCaseFolder_(c, '메모').then(function(cc){
+        return nxEnsureCaseFolder_(c, '메모를').then(function(cc){
           if (!cc || !cc.폴더ID) return false;
           return writeMemoEntryToFolder_(cc.폴더ID, cc.사건명 || customerName, content, extraFile, fileName).then(function(){ return true; });
         });

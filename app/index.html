@@ -2534,8 +2534,10 @@
   // [2026.10.18 탭연결 4번] 다른 화면(대시보드)에서 예약 한 줄을 눌러 왔을 때 — 예약관리를 새로 불러 그 줄로 가서 강조
   function bookingFocusRow_(rowIndex){
     window._bookingFocusRow = rowIndex;
+    // 처음 여는 거면 goToView_가 목록을 불러오고, 이미 열어 본 화면이면 최신으로 한 번만 다시 불러온다(두 번 불러 강조가 지워지지 않게)
+    var wasLoaded = bookingLoaded;
     if (typeof goToView_ === 'function') goToView_('booking');
-    initBooking(true);
+    if (wasLoaded || !bookingLoaded) initBooking(true);
   }
 
   function bookingGoToCase(caseId){
@@ -4770,7 +4772,7 @@
         if (!stamps.length){ showToast('옮길 녹음을 고르세요.'); return; }
         btn.disabled = true;
         // 폴더 없는 상담 사건이면 업무유형을 먼저 물어 폴더를 만든다(탭연결 1번과 같은 도우미)
-        nxEnsureCaseFolder_(c, '상담 녹음').then(function(cc){
+        nxEnsureCaseFolder_(c, '상담 녹음을').then(function(cc){
           if (!cc || !cc.폴더ID){ btn.disabled = false; return; }
           return callGas('consult_inbox_move', { caseId: c.id, stamps: stamps }).then(function(r){
             if (!r || r.error){ showToast((r && r.error) || '옮기지 못했습니다.'); btn.disabled = false; return; }
@@ -4926,7 +4928,7 @@
     if (sub.noFolder && typeof nxEnsureCaseFolder_ === 'function'){
       box.innerHTML = '<div class="log-empty">' + escapeHtml(sub.error) + ' <button type="button" class="ghost-btn" data-ch-make-folder="1">업무유형 정하고 폴더 만들기</button></div>';
       box.querySelector('[data-ch-make-folder]').addEventListener('click', function(){
-        nxEnsureCaseFolder_(c, '문서').then(function(cc){ if (cc && cc.폴더ID && typeof goToCaseHandling_ === 'function') goToCaseHandling_(c.id); });
+        nxEnsureCaseFolder_(c, '문서를').then(function(cc){ if (cc && cc.폴더ID && typeof goToCaseHandling_ === 'function') goToCaseHandling_(c.id); });
       });
       return;
     }
@@ -41068,7 +41070,7 @@ function rwRenderCaseReports_(caseId){
     if (sub.noFolder && typeof nxEnsureCaseFolder_ === 'function'){
       box.innerHTML = '<span>' + escapeHtml(sub.error) + '</span> <button type="button" class="ghost-btn" id="rwMakeCaseFolderBtn">업무유형 정하고 폴더 만들기</button>';
       document.getElementById('rwMakeCaseFolderBtn').addEventListener('click', function(){
-        nxEnsureCaseFolder_(c, '문서').then(function(cc){ if (cc && cc.폴더ID) rwRenderCaseReports_(caseId); });
+        nxEnsureCaseFolder_(c, '문서를').then(function(cc){ if (cc && cc.폴더ID) rwRenderCaseReports_(caseId); });
       });
       return;
     }
@@ -41832,7 +41834,7 @@ function goToReportWriter_(caseId, opts){
       return pick.then(function(c){
         if (c === 'legacy') return null;
         if (!c) return false;
-        return nxEnsureCaseFolder_(c, '메모').then(function(cc){
+        return nxEnsureCaseFolder_(c, '메모를').then(function(cc){
           if (!cc || !cc.폴더ID) return false;
           return writeMemoEntryToFolder_(cc.폴더ID, cc.사건명 || customerName, content, extraFile, fileName).then(function(){ return true; });
         });
@@ -51029,8 +51031,9 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     buttons.push({ label: '취소', value: null, className: 'ghost-btn', isCancel: true, primary: true });
     return nxDialog_({
       title: '업무유형 정하기',
-      message: '"' + (c.사건명 || '이 사건') + '"은(는) 상담 사건이라 ' + (purpose || '증빙') + '을(를) 올릴 사건 폴더가 없습니다.\n\n' +
-        (purpose || '증빙') + '을(를) 올리려면 이 사건의 업무유형을 골라 주세요. 고르면 업무유형이 바뀌고(사건명도 함께), 사건 폴더가 만들어지며 고객창구(my.netax.kr)도 연결됩니다.\n\n' +
+      // purpose는 조사까지 붙여 받는다(예: '메모를', '문서를', '상담 녹음을') — 기본 '증빙을'
+      message: '"' + (c.사건명 || '이 사건') + '"은(는) 상담 사건이라 아직 사건 폴더가 없습니다.\n\n' +
+        (purpose || '증빙을') + ' 올리려면 이 사건의 업무유형을 골라 주세요. 고르면 업무유형이 바뀌고(사건명도 함께), 사건 폴더가 만들어지며 고객창구(my.netax.kr)도 연결됩니다.\n\n' +
         '· 신고 — 신고서를 작성하는 사건(법정기한 자동 계산)\n· 자문 — 검토서·보고서를 작성하는 사건',
       buttons: buttons
     }).then(function(upType){

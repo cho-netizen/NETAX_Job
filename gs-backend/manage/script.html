@@ -836,8 +836,9 @@
     buttons.push({ label: '취소', value: null, className: 'ghost-btn', isCancel: true, primary: true });
     return nxDialog_({
       title: '업무유형 정하기',
-      message: '"' + (c.사건명 || '이 사건') + '"은(는) 상담 사건이라 ' + (purpose || '증빙') + '을(를) 올릴 사건 폴더가 없습니다.\n\n' +
-        (purpose || '증빙') + '을(를) 올리려면 이 사건의 업무유형을 골라 주세요. 고르면 업무유형이 바뀌고(사건명도 함께), 사건 폴더가 만들어지며 고객창구(my.netax.kr)도 연결됩니다.\n\n' +
+      // purpose는 조사까지 붙여 받는다(예: '메모를', '문서를', '상담 녹음을') — 기본 '증빙을'
+      message: '"' + (c.사건명 || '이 사건') + '"은(는) 상담 사건이라 아직 사건 폴더가 없습니다.\n\n' +
+        (purpose || '증빙을') + ' 올리려면 이 사건의 업무유형을 골라 주세요. 고르면 업무유형이 바뀌고(사건명도 함께), 사건 폴더가 만들어지며 고객창구(my.netax.kr)도 연결됩니다.\n\n' +
         '· 신고 — 신고서를 작성하는 사건(법정기한 자동 계산)\n· 자문 — 검토서·보고서를 작성하는 사건',
       buttons: buttons
     }).then(function(upType){

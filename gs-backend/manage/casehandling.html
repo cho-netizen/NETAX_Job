@@ -1194,7 +1194,7 @@
         if (!stamps.length){ showToast('옮길 녹음을 고르세요.'); return; }
         btn.disabled = true;
         // 폴더 없는 상담 사건이면 업무유형을 먼저 물어 폴더를 만든다(탭연결 1번과 같은 도우미)
-        nxEnsureCaseFolder_(c, '상담 녹음').then(function(cc){
+        nxEnsureCaseFolder_(c, '상담 녹음을').then(function(cc){
           if (!cc || !cc.폴더ID){ btn.disabled = false; return; }
           return callGas('consult_inbox_move', { caseId: c.id, stamps: stamps }).then(function(r){
             if (!r || r.error){ showToast((r && r.error) || '옮기지 못했습니다.'); btn.disabled = false; return; }
@@ -1350,7 +1350,7 @@
     if (sub.noFolder && typeof nxEnsureCaseFolder_ === 'function'){
       box.innerHTML = '<div class="log-empty">' + escapeHtml(sub.error) + ' <button type="button" class="ghost-btn" data-ch-make-folder="1">업무유형 정하고 폴더 만들기</button></div>';
       box.querySelector('[data-ch-make-folder]').addEventListener('click', function(){
-        nxEnsureCaseFolder_(c, '문서').then(function(cc){ if (cc && cc.폴더ID && typeof goToCaseHandling_ === 'function') goToCaseHandling_(c.id); });
+        nxEnsureCaseFolder_(c, '문서를').then(function(cc){ if (cc && cc.폴더ID && typeof goToCaseHandling_ === 'function') goToCaseHandling_(c.id); });
       });
       return;
     }
