@@ -24834,6 +24834,17 @@ var OCRB_TOOL_DIR_RE_ = /^_(제안함|글자인식기억|3번실험|휴대폰받
 // [2026.10.19 1번] 문서별 PDF 기본(세무사님) — 폴더 이름 판정은 3번 문서 정리와 같은 함수 하나(tcIsSubmitDir_·tcIsOrigPhotoDir_)를 쓴다.
 //  "_신고제출"(홈택스 제출용 복사본)은 통째로 건너뛴다. "_원본사진"은 통째로 빼지 않는다(세무사님: "무조건 제외하면 안되고 pdf로 변환한 경우
 //  원본을 <_원본사진>으로 보내서 제외하는것은 가능하다") — 그 안에서 PDF로 바뀐 짝이 있고 그 PDF가 살아 있는 사진만(tcPdfConvDropIn_) 건너뛴다
+// [2026.10.19 1번 — 3번 read3 기준] 기억 글이 "한글·숫자 30자 × 쪽 수" 미만이면 다시 읽을 PDF(깨진 글자층에서 몇십 자만 건진 것 포함). 0바이트는 쪽 수를 볼 것도 없음
+function ocrbThinMemory_(memFile, f) {
+  try {
+    if (memFile.getSize() === 0) return true;
+    const n = (String(memFile.getBlob().getDataAsString('UTF-8') || '').match(/[가-힣0-9]/g) || []).length;
+    if (n < 30) return true;
+    let pages = 1;
+    try { const raw = DriveApp.getFileById(f.id).getBlob().getDataAsString('ISO-8859-1'); pages = Math.max(1, (raw.match(/\/Type\s*\/Page(?![s\w])/g) || []).length); } catch (e) {}
+    return n < 30 * pages;
+  } catch (e) { return false; }
+}
 function ocrbWalk_(folder, rel, depth, out, opt) {
   if (depth > 8 || out.length >= 6000) return; // [2026.10.18 3번 세션] 1,500개에서 말없이 끊던 상한을 6,000으로(송기종 등 큰 사건)
   // [2026.10.18 1번] 내용이 똑같은 사본을 알아보려고 드라이브의 md5(내용 지문)를 폴더마다 한 번에 받는다(못 받으면 없이)
@@ -24917,7 +24928,7 @@ function cpOcrBatch_(body) {
     // 1) 세기 — 폴더마다 파일을 보고 기억에 있는지 셈(기억 폴더 이름 목록은 한 번 읽어 둔다)
     if (st.phase === 'scan') {
       const have = {}, empty = {};
-      const it = fo.getFiles(); while (it.hasNext()) { const sf = it.next(), nm = sf.getName().replace(/(\s*\(\d+\))?\.txt$/, ''); have[nm] = 1; if (st.rereadEmpty && /^ocrtxt_/.test(nm) && sf.getSize() === 0) empty[nm] = 1; } /* 빈 기억(0바이트) — rereadEmpty일 때만 셈 */
+      const it = fo.getFiles(); while (it.hasNext()) { const sf = it.next(), nm = sf.getName().replace(/(\s*\(\d+\))?\.txt$/, ''); have[nm] = 1; if (st.rereadEmpty && /^ocrtxt_/.test(nm) && sf.getSize() < 4000) empty[nm] = sf; } /* 짧은 기억(4KB 미만) — rereadEmpty일 때만 후보로, 아래에서 쪽당 글자 수로 정함 */
       while (st.fi < st.folders.length && Date.now() - started < budget - 30000) {
         const fid = st.folders[st.fi++];
         let folder = null; try { folder = DriveApp.getFolderById(fid); } catch (e) { st.fails.push({ c: fid, n: '', why: '폴더를 열 수 없음' }); continue; }
@@ -24931,7 +24942,7 @@ function cpOcrBatch_(body) {
           cs.파일++; st.sum.파일++;
           const k = ocrbKind_(f);
           if (!k.ok) { cs.못바꿈++; st.sum.못바꿈++; cs.못바꿈이유[k.why] = (cs.못바꿈이유[k.why] || 0) + 1; return; }
-          const reread = st.rereadEmpty && empty[tcOcrKey_(f)] && /pdf/.test(String(f.mimeType || ''));
+          const reread = st.rereadEmpty && empty[tcOcrKey_(f)] && /pdf/.test(String(f.mimeType || '')) && ocrbThinMemory_(empty[tcOcrKey_(f)], f);
           if (have[tcOcrKey_(f)] && !reread) { cs.기억있음++; st.sum.기억있음++; return; }
           if (st.rereadEmpty && !reread) { cs.기억있음++; st.sum.기억있음++; return; } /* 빈 기억 다시 읽기는 그 PDF만 — 기억 없는 다른 서류는 평소 일괄 몫 */
           cs.읽을것++; st.sum.읽을것++;
@@ -24980,7 +24991,7 @@ function cpOcrBatch_(body) {
       try {
         if (q.dupKey && ocrbCopyDup_(q, f)) { cs.읽음++; st.sum.읽음++; st.sum.사본복사 = (st.sum.사본복사 || 0) + 1; continue; } // 내용이 똑같은 사본 — 원본 글 복사(읽기 없음)
         if (q.dupKey && !q.dupWait) { q.dupWait = 1; st.queue.push(q); continue; } // 원본을 아직 안 읽음 — 줄 끝에서 한 번 더 기다림
-        if (q.reread) { try { const k0 = tcOcrKey_(f), it0 = fo.getFilesByName(k0 + '.txt'); while (it0.hasNext()) { const x0 = it0.next(); if (x0.getSize() === 0) x0.setTrashed(true); } CacheService.getScriptCache().remove(k0); st.sum.빈기억다시 = (st.sum.빈기억다시 || 0) + 1; } catch (e) {} } /* 0바이트 기억만 휴지통으로 — tc_docText_가 새로 읽어 다시 남김 */
+        if (q.reread) { try { const k0 = tcOcrKey_(f), it0 = fo.getFilesByName(k0 + '.txt'); while (it0.hasNext()) { const x0 = it0.next(); if (x0.getSize() < 4000) x0.setTrashed(true); } CacheService.getScriptCache().remove(k0); st.sum.빈기억다시 = (st.sum.빈기억다시 || 0) + 1; } catch (e) {} } /* 짧은 기억(쪽당 30자 미만으로 고른 것)만 휴지통으로 — tc_docText_가 새로 읽어 다시 남김 */
         const t = tc_docText_(f);
         if (t === null) { cs.실패++; st.sum.실패++; st.fails.push({ c: q.c, n: q.n, why: '글자로 못 바꾸는 형식' }); continue; }
         if (!String(t).trim()) { cs.빈글자++; st.sum.빈글자++; continue; }
