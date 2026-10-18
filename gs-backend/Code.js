@@ -30230,11 +30230,26 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
     add('기타:' + label(m.index), ('0' + mo).slice(-2) + '-' + ('0' + dd).slice(-2) + '(연도 없음)', m[0], m.index, {}, { note: '연도 없이 월·일만' });
   }
   // 금액(세 자리 쉼표, 1,000 이상) — keys.amount. [2026.10.19 1번 밤작업 ②] 뒤에 단위 낱말(만·억·천·백)이 붙은 숫자는 여기서 빼고 아래 단위 금액으로("6,548만원" → 65,480,000)
-  re = /(?<![\d\-])(-?\d{1,3}(?:,\d{3})+)(?![\d,]*\.\d)(?!\s*(?:㎡|m2|제곱))/g;
-  while ((m = re.exec(t))) { const v = Number(m[1].replace(/,/g, '')); if (Math.abs(v) < 1000) continue; if (Math.abs(v) < 1e7 && /^\s*(?:억|만|천|백|십)/.test(t.slice(re.lastIndex, re.lastIndex + 3))) continue; /* 단위 낱말 앞 작은 숫자는 아래 단위 금액이 읽음 */ const lb = label(m.index), lk = cpfLabelKind_(lb);
+  // [2026.10.19 1번 밤작업 — 새 열쇠 점검 ⑤] 칸 이름 머리줄 뒤에 값이 늘어선 표("공급가액 부가세 봉사료 총 거래금액 850,000 85,000 0 935,000") — 값을 칸 순서대로(오른쪽 맞춤: 앞에 붙은 구획 제목 "거래금액"은 남는 칸 이름).
+  //  예전엔 첫 값이 바로 앞 낱말(마지막 칸 이름)을 가져가 공급가액이 "총 거래금액"이 됐다(개발용 11사건). 칸 이름 수보다 값이 많으면 손대지 않음
+  const hdrLab = {};
+  { const HW = '(?:총\\s*거\\s*래\\s*금\\s*액|거\\s*래\\s*금\\s*액|공\\s*급\\s*가\\s*액|공\\s*급\\s*가|부\\s*가\\s*가\\s*치\\s*세|부\\s*가\\s*세|세\\s*액|봉\\s*사\\s*료|합\\s*계\\s*금\\s*액|합\\s*계|과\\s*세|면\\s*세|비\\s*과\\s*세|금\\s*액)';
+    const hre = new RegExp('((?:' + HW + '[\\s|│:：]*){2,8})((?:-?\\d{1,3}(?:,\\d{3})*원?[\\s|│]+){1,7}-?\\d{1,3}(?:,\\d{3})*)(?![\\d,])', 'g'); let hm;
+    while ((hm = hre.exec(t))) {
+      const words = hm[1].match(new RegExp(HW, 'g')) || [], nums = [], nre = /-?\d{1,3}(?:,\d{3})*/g; let q; const base0 = hm.index + hm[1].length;
+      while ((q = nre.exec(hm[2]))) nums.push(base0 + q.index);
+      if (nums.length < 2 || nums.length > words.length) continue;
+      const ws = words.slice(words.length - nums.length);
+      nums.forEach(function (at, i) { hdrLab[at] = ws[i].replace(/\s+/g, '') === '총거래금액' ? '총 거래금액' : ws[i].replace(/\s+/g, ''); });
+    } }
+  // [2026.10.19 1번 밤작업 — 새 열쇠 점검 ⑥] 점이 천 단위 구분으로 읽힌 숫자("30.951,207"·"1.628.740"·"4.646,040") — 쉼표가 섞였거나 점 묶음이 둘 이상일 때만 통째로 한 금액(소수 "84.911"·"1.03053"은 그대로 아님)
+  re = /(?<!\d\.|[\d\-])(-?\d{1,3}(?:[,.]\d{3})+)(?![\d,]*\.\d)(?!\s*(?:㎡|m2|제곱))/g;
+  while ((m = re.exec(t))) { if (m[1].indexOf('.') !== -1 && !(m[1].indexOf(',') !== -1 || (m[1].match(/\./g) || []).length >= 2)) continue;
+    const v = Number(m[1].replace(/[,.]/g, '')); if (Math.abs(v) < 1000) continue; if (Math.abs(v) < 1e7 && /^\s*(?:억|만|천|백|십)/.test(t.slice(re.lastIndex, re.lastIndex + 3))) continue; /* 단위 낱말 앞 작은 숫자는 아래 단위 금액이 읽음 */ const lb = hdrLab[m.index] || label(m.index), lk = cpfLabelKind_(lb);
+    if (/포\s*상\s*금/.test(lb)) { add('안내 문구 금액', v, m[0], m.index, {}, { note: '서식 안내 문구(포상금) — 사건 값 아님' }); continue; } /* [새 열쇠 점검 ①] */
     { const th = /^\s*(?:원|㎡|m2|m²|제곱미터)?\s*(?:정)?\s*(이하|이상|초과|미만)/.exec(t.slice(re.lastIndex, re.lastIndex + 10)); if (th) { add('기준 금액', v, m[0] + ' ' + th[1], m.index, {}, { note: '문장 속 조건(' + th[1] + ') — 사건 값 아님, 앞 낱말 「' + lb + '」' }); continue; } } /* [2026.10.19 1번 밤작업] "…10억원 이하인 경우" */ add(lk || '기타:' + lb, v, m[0], m.index, { amount: v }, lk ? { note: '앞 낱말 「' + lb + '」로 정한 종류' } : null); }
   // [2026.10.19 1번 밤작업 ②] 단위 낱말 금액("6,548만원"·"440백만원"·"5억2천5백만원"·"이억칠천만원정") — 한글 수만으로 된 것은 예전처럼 "기타:한글금액"(숫자 금액과 맞대는 재료)
-  cpfUnitAmounts_(t).forEach(function (u) { const thu = /^\s*(?:원|㎡|m2|m²|제곱미터)?\s*(?:정)?\s*(이하|이상|초과|미만)/.exec(t.slice(u.at + u.raw.length, u.at + u.raw.length + 10)); if (thu && !u.han) { add('기준 금액', u.value, u.raw + ' ' + thu[1], u.at, {}, { note: '문장 속 조건(' + thu[1] + ') — 사건 값 아님, 앞 낱말 「' + label(u.at) + '」' }); return; } const lb = label(u.at), lk = u.han ? '' : cpfLabelKind_(lb); add(u.han ? '기타:한글금액' : (lk || '기타:' + lb), u.value, u.raw, u.at, { amount: u.value }, (u.note || lk) ? { note: [u.note, lk ? '앞 낱말 「' + lb + '」로 정한 종류' : ''].filter(String).join(' · ') } : null); });
+  cpfUnitAmounts_(t).forEach(function (u) { const thu = /^\s*(?:원|㎡|m2|m²|제곱미터)?\s*(?:정)?\s*(이하|이상|초과|미만)/.exec(t.slice(u.at + u.raw.length, u.at + u.raw.length + 10)); if (thu && !u.han) { add('기준 금액', u.value, u.raw + ' ' + thu[1], u.at, {}, { note: '문장 속 조건(' + thu[1] + ') — 사건 값 아님, 앞 낱말 「' + label(u.at) + '」' }); return; } const lb = label(u.at), lk = u.han ? '' : cpfLabelKind_(lb); if (/포\s*상\s*금/.test(lb)) { add('안내 문구 금액', u.value, u.raw, u.at, {}, { note: '서식 안내 문구(포상금) — 사건 값 아님' }); return; } /* [2026.10.19 1번 밤작업 — 새 열쇠 점검 ①] 카드·현금영수증 "신고안내(포상금 10만원 지급)"(개발용 3사건) */ add(u.han ? '기타:한글금액' : (lk || '기타:' + lb), u.value, u.raw, u.at, { amount: u.value }, (u.note || lk) ? { note: [u.note, lk ? '앞 낱말 「' + lb + '」로 정한 종류' : ''].filter(String).join(' · ') } : null); });
   // [2026.10.19 1번 밤작업 ②] 비율(%) — 세율·지분율·공제율·이자율 등(앞 낱말이 칸 이름)
   re = /(?<![\d.])(\d{1,3}(?:\.\d{1,4})?)\s*(?:%|퍼센트|프로(?![가-힣]))/g;
   while ((m = re.exec(t))) { const v = Number(m[1]); if (!(v >= 0 && v <= 100)) continue; add('비율', v, m[0], m.index, {}, { note: '앞 낱말: ' + label(m.index) }); }
@@ -30404,12 +30419,24 @@ function cpfFile_(c, f, cache, tbank, opt) {
   // [2026.10.19 1번 밤작업 — 거래 단위로 쪼개기] 서류 날짜·상대 — 날짜가 없는 줄 항목·금액(법무사 정산서 항목, 영수증 품목 금액 등)에 그 서류의 날짜와 상대(상호·사업자번호)를 대조 열쇠로 붙인다.
   //  통장 거래 한 줄과 "같은 날·같은 금액·같은 상대"로 맞대는 재료. 서류 날짜는 규칙이 낸 거래일·발행일·작성일·영수일·납부일·수납일·발급일 중 하나뿐일 때만(여럿이면 어느 날 거래인지 몰라 안 붙임)
   if (/영수증|계산서|정산서|청구서|결제|전표|납입|납부|내역서|명세서|견적서/.test(label) && !/대장|증명|등기|확인·설명서/.test(label)) { const dk = /^(거래일|발행일|작성일|영수일|납부일|수납일|결제일|지급일)$/, ds = {}; /* 발급일은 서류를 뗀 날 — 거래 날짜 아님 */ ruled.forEach(function (x) { if (dk.test(String(x.kind).replace(/^기타:/, '')) && /^\d{4}-\d{2}-\d{2}$/.test(String(x.value).slice(0, 10))) ds[String(x.value).slice(0, 10)] = 1; });
-    const dl = Object.keys(ds), party = (ruled.filter(function (x) { return /^(상호|사업자번호|의료기관|금융기관)$/.test(x.kind); })[0] || {}).value;
-    if (dl.length === 1 || party) common.concat(lines).forEach(function (x) {
+    // [2026.10.19 1번 밤작업 — 새 열쇠 점검] ③ 날짜가 발행일에서만 왔고 영수증·계산서·전표 종류가 아니면(진료비 계산서·진료내역서·납입 확인서·장기요양 — 2020년 진료를 2026년에 발행) 추정(keys.dateGuess — 금액 짝 열쇠 아님)
+    //  ④ 상대 후보가 여럿(서로 다른 사업자번호 둘 이상이고 상호·기관 이름이 하나로 안 정해짐)이면 추정(keys.partyGuess — 금액 짝 열쇠 아님). 상호·기관 이름이 하나면 그 이름
+    //  ② 신고서 부표·공제명세서·신고 검토자료(종류가 영수증류로 잘못 정해진 발생 문서)에는 안 붙임
+    const dsrc = {}; ruled.forEach(function (x) { const kk = String(x.kind).replace(/^기타:/, ''); if (dk.test(kk) && /^\d{4}-\d{2}-\d{2}$/.test(String(x.value).slice(0, 10))) (dsrc[String(x.value).slice(0, 10)] = dsrc[String(x.value).slice(0, 10)] || {})[kk] = 1; });
+    const dl = Object.keys(ds), dGuess = dl.length === 1 && Object.keys(dsrc[dl[0]]).every(function (kk) { return kk === '발행일'; }) && !/현금영수증|세금계산서|전표|간이영수증/.test(label);
+    const pNames = {}, pBiz = {}; ruled.forEach(function (x) { if (/^(상호|의료기관|금융기관)$/.test(x.kind) && String(x.value).replace(/[\s()]/g, '').length >= 2) pNames[String(x.value).replace(/\s+/g, '')] = 1; if (x.kind === '사업자번호') pBiz[String(x.value)] = 1; });
+    const pn = Object.keys(pNames), pb = Object.keys(pBiz);
+    let party = pn.length === 1 ? pn[0] : pb.length === 1 ? pb[0] : '', pGuess = '';
+    if (!party && (pn.length || pb.length)) pGuess = pn[0] || pb[0];
+    if (pn.length === 1 && pb.length > 1 && /세금계산서/.test(label)) { pGuess = party; party = ''; } /* 세금계산서는 공급자·공급받는자 둘 — 이름 하나로 누구인지 못 정함 */
+    const hd = String(n || '') + ' ' + String(text).slice(0, 300);
+    const derived = /신고\s*검토|검토\s*자료|공제\s*명세서|별지\s*제?\s*\d+\s*호\s*서식\s*부표/.test(hd);
+    if (!derived && (dl.length === 1 || party || pGuess)) common.concat(lines).forEach(function (x) {
       x.keys = x.keys || {};
-      if (typeof x.value === 'number' && /면적|비율|번호|생년|기준|연도|지분|수량|일수|쪽/.test(x.kind)) return; /* 금액 아닌 숫자 */
-      if (dl.length === 1 && !x.keys.date && typeof x.value === 'number') { x.keys.date = dl[0]; x.keys.dateFrom = '서류 날짜'; }
+      if (typeof x.value === 'number' && /면적|비율|번호|생년|기준|연도|지분|수량|일수|쪽|안내 문구/.test(x.kind)) return; /* 금액 아닌 숫자·안내 문구 */
+      if (dl.length === 1 && !x.keys.date && !x.keys.dateGuess && typeof x.value === 'number') { if (dGuess) { x.keys.dateGuess = dl[0]; x.keys.dateFrom = '서류 발행일(추정 — 거래 날짜가 아닐 수 있음)'; } else { x.keys.date = dl[0]; x.keys.dateFrom = '서류 날짜'; } }
       if (party && typeof x.value === 'number' && !x.keys.party) x.keys.party = String(party).replace(/\s+/g, '').slice(0, 40);
+      if (!party && pGuess && typeof x.value === 'number' && !x.keys.party && !x.keys.partyGuess) x.keys.partyGuess = String(pGuess).replace(/\s+/g, '').slice(0, 40);
       if (typeof x.value === 'number' && x.keys.amount === undefined && Math.abs(x.value) >= 1000 && !/면적|비율|번호|생년|기준|연도/.test(x.kind) && (x.keys.date || x.keys.party)) x.keys.amount = x.value; /* 짝 열쇠가 생겼으니 금액 열쇠도 */
     }); }
   const all = ruled.concat(table, piped, lines, common);
