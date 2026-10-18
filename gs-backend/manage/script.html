@@ -245,7 +245,8 @@
           '<div class="modal-head"><span>' + escapeHtml(opts.title || '안내') + '</span></div>' +
           '<div class="modal-body">' +
             '<div style="white-space:pre-wrap; font-size:13.5px; line-height:1.5; color:var(--ink);">' + escapeHtml(opts.message || '') + '</div>' +
-            '<div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">' + btnsHtml + '</div>' +
+            // [2026.10.18] opts.stack — 사건 고르기처럼 긴 버튼이 여러 개면 한 줄로 넘치지 않게 세로로 쌓는다(기본은 예전 그대로)
+            '<div style="display:flex; ' + (opts.stack ? 'flex-direction:column; align-items:stretch; max-height:55vh; overflow-y:auto;' : 'justify-content:flex-end;') + ' gap:8px; margin-top:14px;">' + btnsHtml + '</div>' +
           '</div>' +
         '</div>';
       document.body.appendChild(overlay);
