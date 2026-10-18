@@ -42165,7 +42165,7 @@ function jmHistoryByRowNo_(pg, lines) {
       else if (tot === 1) { if (/(재등록|말소|정리|정정|완료)$/.test(r)) rep = S[0] || D[0]; else { occ = S[0] || D[0]; bad = true; } } // 재등록·말소·표시정리는 신고일 하나로도 적힌다, 전입인데 날짜 하나면 확인
       if (tot > 2) bad = true;
     } else if (tot) bad = true;
-    var addr = (rw.addr + (rw.addr2 ? ' ' + rw.addr2 : '')).replace(/\s+/g, ' ').replace(/\s*,\s*$/, '').replace(/[,.]$/, '').trim();
+    var addr = jmAddrComma_((rw.addr + (rw.addr2 ? ' ' + rw.addr2 : '')).replace(/\s+/g, ' ').replace(/\s*,\s*$/, '').replace(/[,.]$/, '').trim());
     var row = { 쪽: pg.n, 번호: rw.n, 사유: r, 발생일: one ? '' : occ, 신고일: rep, 주소: addr, 날짜확인필요: bad || !(occ || rep), 짝확인필요: !addr || !r || !!rw.noNum };
     if (rw.rel.length) row.세대주관계 = rw.rel[0];
     if (occ && rep && (new Date(rep) - new Date(occ)) / 86400000 > 90) row.날짜확인필요 = true;
@@ -42173,6 +42173,9 @@ function jmHistoryByRowNo_(pg, lines) {
   });
   return out;
 }
+// [2026.10.19 3번 세션 — 이름 정확도] 도로명주소 「…16번길 43-14, 105동 706호」의 쉼표를 글자인식이 마침표로 읽는다(개발용 4사건 11줄: 조만덕·박영수·최형택·지은자) —
+//  건물번호 바로 뒤 「. 」 다음이 동·호·층·지하면 쉼표로 되돌린다(원본 주민등록표의 도로명주소 꼴)
+function jmAddrComma_(s) { return String(s).replace(/(\d)\.\s+(?=(?:\d+\s*동\s*)?\d+\s*호|\d+\s*층|지하|[A-Za-z가-힣]?\d+\s*동\s)/g, '$1, '); }
 function jmHistory_(pages) {
   var rows = [], unsure = 0;
   pages.forEach(function (pg) {
@@ -42211,7 +42214,7 @@ function jmHistory_(pages) {
           if (/^(\d{4}[-.]\s?\d{1,2}[-.]\s?\d{1,2}\.?\s*){1,2}$/.test(nx)) { skip++; continue; }
           break;
         }
-        addrs.push(full.replace(/\s+/g, ' ').replace(/[,.]$/, ''));
+        addrs.push(jmAddrComma_(full.replace(/\s+/g, ' ').replace(/[,.]$/, '')));
         continue;
       }
       if (/주민등록번호/.test(L)) continue;
