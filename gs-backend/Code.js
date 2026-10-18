@@ -29908,7 +29908,9 @@ function cpfFile_(c, f, cache, tbank, opt) {
       if (!hit) { typeDoubt = '서류 정리 규칙은 「' + (p.label || p.type) + '」로 봤으나 머리 제목(' + nonEv[1] + ')과 맞지 않아 칸 옮기기를 하지 않음'; p = null; }
     }
   }
-  const label = (p && (p.label || p.type)) || '종류 미정';
+  let titleKind = '';
+  if (!(p && p.type)) { const hd = String(text).slice(0, 300).replace(/\s+/g, ''); if (/국민주택채권.{0,8}?(?:매입|매출)?.{0,4}?(?:필증|영수증|확인서|내역)/.test(hd)) titleKind = '국민주택채권 매입 확인서'; } /* [2026.10.19 1번 밤작업 — 조정지시 04:10] 서식 제목만으로 정해지는 종류(개발용 두 사건 이상) */
+  const label = (p && (p.label || p.type)) || titleKind || '종류 미정';
   src.docType = label;
   const base = { src: src, how: how, trunc: trunc };
   const warn = p && p.result && !Array.isArray(p.result) ? (p.result.경고 || []).concat(p.result.docs ? [].concat.apply([], (p.result.docs || []).map(function (d) { return (d && (d.경고 || (d.r && d.r.경고))) || []; })) : []) : [];
