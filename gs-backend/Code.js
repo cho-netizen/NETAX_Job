@@ -24716,18 +24716,23 @@ function ocrbCaseFolders_() {
 //  (_제시자료·_원시자료·_받은자료·_증여세 등, 7사건 PDF·사진 364개 — 그중 121개는 어디서도 글자를 얻은 적 없음)가 일괄에서 빠졌다.
 //  사건처리 목록(caseProcFiles_)은 이 폴더들을 읽는다 — 폴더 고르는 규칙을 사건처리와 같게(양도코리아는 includeFiled, 판례·참고는 뺌)
 var OCRB_TOOL_DIR_RE_ = /^_(제안함|글자인식기억|3번실험|휴대폰받은파일|ocr|tmp)/i;
+// [2026.10.19 1번] 문서별 PDF 기본(세무사님) — 폴더 이름 판정은 3번 문서 정리와 같은 함수 하나(tcIsSubmitDir_·tcIsOrigPhotoDir_)를 쓴다.
+//  "_신고제출"(홈택스 제출용 복사본)은 통째로 건너뛴다. "_원본사진"은 통째로 빼지 않는다(세무사님: "무조건 제외하면 안되고 pdf로 변환한 경우
+//  원본을 <_원본사진>으로 보내서 제외하는것은 가능하다") — 그 안에서 PDF로 바뀐 짝이 있고 그 PDF가 살아 있는 사진만(tcPdfConvDropIn_) 건너뛴다
 function ocrbWalk_(folder, rel, depth, out, opt) {
   if (depth > 8 || out.length >= 6000) return; // [2026.10.18 3번 세션] 1,500개에서 말없이 끊던 상한을 6,000으로(송기종 등 큰 사건)
   // [2026.10.18 1번] 내용이 똑같은 사본을 알아보려고 드라이브의 md5(내용 지문)를 폴더마다 한 번에 받는다(못 받으면 없이)
   const md5 = {};
   try { let tok = null; do { const r = Drive.Files.list({ q: "'" + folder.getId() + "' in parents and trashed = false", fields: 'nextPageToken, files(id, md5Checksum)', pageSize: 1000, pageToken: tok || undefined }); (r.files || []).forEach(function (x) { if (x.md5Checksum) md5[x.id] = x.md5Checksum; }); tok = r.nextPageToken; } while (tok); } catch (e) {}
   const it = folder.getFiles();
-  while (it.hasNext()) { const f = it.next(), id = f.getId(); out.push({ id: id, name: f.getName(), mimeType: f.getMimeType(), modified: f.getLastUpdated().getTime(), dir: rel, size: f.getSize(), md5: md5[id] || '' }); }
+  while (it.hasNext()) { const f = it.next(), id = f.getId(); if (opt.skipIds && (opt.skipIds[id] || f.getName() === PDFCONV_LOG_)) { out.skipConv = (out.skipConv || 0) + 1; continue; } out.push({ id: id, name: f.getName(), mimeType: f.getMimeType(), modified: f.getLastUpdated().getTime(), dir: rel, size: f.getSize(), md5: md5[id] || '' }); }
   const subs = folder.getFolders();
   while (subs.hasNext()) {
     const sf = subs.next(), sn = sf.getName();
-    if (OCRB_TOOL_DIR_RE_.test(sn) || (!opt.includeFiled && caseIsFiledReturnFolder_(sn)) || caseProcRefDirName_(sn)) { out.skipDirs = (out.skipDirs || 0) + 1; continue; }
-    ocrbWalk_(sf, rel ? rel + '/' + sn : sn, depth + 1, out, opt);
+    if (OCRB_TOOL_DIR_RE_.test(sn) || tcIsSubmitDir_(sn) || (!opt.includeFiled && caseIsFiledReturnFolder_(sn)) || caseProcRefDirName_(sn)) { out.skipDirs = (out.skipDirs || 0) + 1; continue; }
+    let o2 = opt;
+    if (tcIsOrigPhotoDir_(sn)) { let sk = {}; try { sk = tcPdfConvDropIn_(sf) || {}; } catch (e) {} o2 = Object.assign({}, opt, { skipIds: sk }); }
+    ocrbWalk_(sf, rel ? rel + '/' + sn : sn, depth + 1, out, o2);
   }
 }
 // [2026.10.18 1번] 읽기 전 거르기 ① 내용이 똑같은 사본(드라이브 md5가 같은 파일) — 한 사건 안에서 같은 md5끼리 묶어, 기억이 있는 것(없으면 처음 것)을 원본으로.
