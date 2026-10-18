@@ -3844,6 +3844,9 @@ function dispatchClientAction0_(body) {
   if (body.action === 'tc_rule_transfer_facts') return jsonResponse(tc_ruleTransferFacts_(body)); // 양도세 자동채우기 규칙 먼저(토큰 0)
   if (body.action === 'tc_rule_inheritance_facts') return jsonResponse(tc_ruleInheritanceFacts_(body)); // 상속세 자동채우기 규칙 먼저(토큰 0)
   if (body.action === 'case_proc') return jsonResponse(caseProcTimed_(body)); // '이 사건 처리하자' — 처리탭 도구로 단계별 점검(토큰 0)
+  if (body.action === 'ocr_batch_run') return jsonResponse(cpOcrBatch_(body)); // [2026.10.18] 서버 글자인식 일괄 — 기억에 없는 서류만 글자를 읽어 기억에 쌓음(사건 저장 없음, 토큰 0)
+  if (body.action === 'ocr_batch_status') return jsonResponse(cpOcrBatchStatus_());
+  if (body.action === 'ocr_batch_trigger') return jsonResponse(ocrbTrigger_(body)); // 10분마다 자동 이어 읽기 켜기/끄기
   if (body.action === 'answerkey_run') return jsonResponse(answerKeyRun_(body)); // 🧪 정답지 점검(토큰 0, AnswerKey.js)
   if (body.action === 'taxpayer_bulk_fix') return jsonResponse(taxpayerBulkFix_(body)); // 🏷 납세자·사건명 일괄 정리(미리보기/적용, TaxpayerFix.js)
   if (body.action === 'answerkey_last') return jsonResponse(answerKeyLast_());
@@ -24574,6 +24577,168 @@ function tcOcrStoreGet_(key) {
 }
 function tcOcrStorePut_(key, text) {
   try { const fo = tcOcrStoreFolder_(); if (fo && !fo.getFilesByName(key + '.txt').hasNext()) fo.createFile(key + '.txt', String(text || ''), 'text/plain'); } catch (e) {}
+}
+// =========================================================
+// [2026.10.18 1번 세션 — 최대 수집] 서버 글자인식 일괄(cpOcrBatch_) — 모든 사건 폴더의 서류 중 글자인식 기억에 없는 것만 글자를 읽어 기억에 쌓는다.
+//  사건은 저장·정리하지 않는다(사건 결정 파일·작업관리 시트·사건 폴더에 아무것도 쓰지 않음). 쓰는 곳은 업무관리자 "_글자인식기억" 폴더뿐 —
+//  글자 파일(tc_docText_가 남김)·변환용 임시 사본(tcTmpMeta_로 그 폴더에 만들고 바로 휴지통)·이 작업의 진행 파일(_일괄글자인식_상태.json).
+//  왜: 처음 보는 78개 사건의 서류 약 1,143건이 기억에 없어, 사건처리 개선을 "안 본 사건"으로 잴 재료가 없었다(방향점검_20261018 2단계).
+//  토큰 0(구글 무료 글자인식). 사건처리 잠금(LockService)은 잡지 않는다 — 일괄끼리만 캐시 표시로 겹치지 않게(정답지 점검기와 같은 방식).
+//  한 번 부를 때 4분 30초 안에서 끊고, 어디까지 했는지 진행 파일에 남겨 다음 번(화면 버튼이 거듭 부름 / 10분마다 자동 실행)에 이어서 한다.
+//  압축 파일은 풀지 않는다(풀면 사건 폴더에 폴더가 생김) — 압축·옛 hwp·녹음 등 글자로 못 바꾸는 형식은 개수만 센다.
+// =========================================================
+var OCRB_STATE_NAME_ = '_일괄글자인식_상태.json';
+var OCRB_VER_ = 1;
+var OCRB_BUDGET_MS_ = 270000; // 4분 30초 — 이 안에서 끊는다
+var OCRB_ITEM_MARGIN_MS_ = 45000; // 서류 하나에 길면 40초 — 남은 시간이 이보다 적으면 새 서류를 시작하지 않는다
+// tc_docText_와 같은 기억 이름(엑셀만 ocrtxt3_) — 기억이 있는지 볼 때 쓴다
+function tcOcrKey_(f) {
+  const sheetLike = /spreadsheet|ms-excel/.test(String(f.mimeType || ''));
+  return (sheetLike ? 'ocrtxt3_' : 'ocrtxt_') + f.id + '_' + (f.modified || '');
+}
+// 서버 글자인식으로 기억에 남길 형식인가(tc_docText_의 "비싼 변환"과 같은 기준) — 아니면 이유
+function ocrbKind_(f) {
+  const mt = String(f.mimeType || ''), n = String(f.name || '');
+  if (/\.hwpx$/i.test(n) || /presentationml/.test(mt) || /\.pptx$/i.test(n)) return { ok: true };
+  if (/pdf|^image\/|officedocument\.wordprocessingml|msword|spreadsheetml|ms-excel/.test(mt)) return { ok: true };
+  if (/^application\/vnd\.google-apps\./.test(mt)) return { ok: false, why: '구글 문서·시트(기억 없이 바로 읽음)' };
+  if (/^text\/|json|csv|markdown/.test(mt)) return { ok: false, why: '글 파일(기억 없이 바로 읽음)' };
+  if (/\.hwp$/i.test(n)) return { ok: false, why: '옛 한글 hwp(아직 못 읽음)' };
+  if (/zip|x-7z|rar/.test(mt) || /\.(zip|7z|rar)$/i.test(n)) return { ok: false, why: '압축 파일(풀지 않음)' };
+  if (/^audio\/|^video\//.test(mt)) return { ok: false, why: '녹음·영상' };
+  return { ok: false, why: '글자로 못 바꾸는 형식(' + (mt || '알 수 없음') + ')' };
+}
+function ocrbStateFile_(fo, create) {
+  const it = fo.getFilesByName(OCRB_STATE_NAME_);
+  if (it.hasNext()) return it.next();
+  return create ? fo.createFile(OCRB_STATE_NAME_, '{}', 'application/json') : null;
+}
+function ocrbLoad_(fo) { try { const f = ocrbStateFile_(fo, false); return f ? JSON.parse(f.getBlob().getDataAsString('UTF-8') || 'null') : null; } catch (e) { return null; } }
+function ocrbSave_(fo, st) { st.touchedAt = new Date().toISOString(); ocrbStateFile_(fo, true).setContent(JSON.stringify(st)); }
+// 사건 폴더 목록 — 작업관리 시트의 폴더ID + 그 폴더들의 부모가 "고객사건"이면 그 아래 모든 폴더(시트에 행이 없는 사건 폴더도)
+function ocrbCaseFolders_() {
+  const sheet = work_getSheet_(), data = sheet.getDataRange().getValues(), col = work_colMap_(data[0]);
+  const ids = {}, roots = {};
+  for (let i = 1; i < data.length; i++) { const fid = String(data[i][col.폴더ID] || '').trim(); if (fid) ids[fid] = 1; }
+  Object.keys(ids).slice(0, 20).forEach(function (fid) {
+    try { const ps = DriveApp.getFolderById(fid).getParents(); while (ps.hasNext()) { const p = ps.next(); if (/^\s*고객사건\s*$/.test(p.getName())) roots[p.getId()] = 1; } } catch (e) {}
+  });
+  Object.keys(roots).forEach(function (rid) {
+    try { const it = DriveApp.getFolderById(rid).getFolders(); while (it.hasNext()) { const sf = it.next(); if (!/^_/.test(sf.getName())) ids[sf.getId()] = 1; } } catch (e) {}
+  });
+  return Object.keys(ids);
+}
+// 사건 폴더 하나의 파일(하위 폴더 포함) — 사건처리 파일 목록(caseProcFiles_)과 같은 기준으로 뺄 폴더는 뺀다(양도코리아·판례 폴더·"_"로 시작하는 도구 폴더)
+function ocrbWalk_(folder, rel, depth, out, opt) {
+  if (depth > 8 || out.length >= 1500) return;
+  const it = folder.getFiles();
+  while (it.hasNext()) { const f = it.next(); out.push({ id: f.getId(), name: f.getName(), mimeType: f.getMimeType(), modified: f.getLastUpdated().getTime(), dir: rel, size: f.getSize() }); }
+  const subs = folder.getFolders();
+  while (subs.hasNext()) {
+    const sf = subs.next(), sn = sf.getName();
+    if (/^_/.test(sn) || (!opt.includeFiled && caseIsFiledReturnFolder_(sn)) || caseProcRefDirName_(sn)) { out.skipDirs = (out.skipDirs || 0) + 1; continue; }
+    ocrbWalk_(sf, rel ? rel + '/' + sn : sn, depth + 1, out, opt);
+  }
+}
+// PDF 쪽수(드라이브 글자인식이 긴 스캔 PDF를 몇 쪽까지 읽는지 확인용) — 15MB 넘으면 세지 않음. 못 세면 0
+function ocrbPdfPages_(id, size) {
+  if (size && size > 15 * 1024 * 1024) return 0;
+  try {
+    const s = DriveApp.getFileById(id).getBlob().getDataAsString('ISO-8859-1');
+    const n = (s.match(/\/Type\s*\/Page(?![s\w])/g) || []).length;
+    if (n) return n;
+    const m = s.match(/\/Type\s*\/Pages[\s\S]{0,200}?\/Count\s+(\d+)/); return m ? Number(m[1]) : 0;
+  } catch (e) { return 0; }
+}
+// {reset?, dryRun?, cont?, includeFiled?} — dryRun: 세기만(글자인식 안 함). 돌려주는 것: {ok, more, phase, done, total, sum, cases?}
+function cpOcrBatch_(body) {
+  body = body || {};
+  const fo = tcOcrStoreFolder_();
+  if (!fo) return { error: '업무관리자 "_글자인식기억" 폴더를 찾지 못했습니다 — 변환용 사본이 사건 폴더에 생기지 않게 일괄 글자인식을 하지 않습니다(설정 화면에서 업무관리자 폴더 확인).' };
+  const cache = CacheService.getScriptCache(), FLAG = 'ocrb_running';
+  const flag = cache.get(FLAG);
+  if (flag) { const st0 = ocrbLoad_(fo); return { ok: true, more: true, busy: true, busyAge: Math.round((Date.now() - Number(flag)) / 1000), sum: st0 && st0.sum, phase: st0 && st0.phase }; }
+  cache.put(FLAG, String(Date.now()), 330); // 서버 한도 6분보다 조금 짧게 — 끊긴 실행의 표시가 오래 막지 않게
+  const started = Date.now();
+  try {
+    let st = body.reset ? null : ocrbLoad_(fo);
+    if (st && st.ver !== OCRB_VER_) st = null;
+    if (st && st.phase === 'done' && !body.reset) {
+      if (body.cont) return { ok: true, phase: 'done', sum: st.sum, cases: st.cases, fails: st.fails, long: st.long, already: true };
+      if (!body.dryRun && st.dryRun) st = null; // 세기만 한 뒤 실제 읽기 — 처음부터(그사이 늘어난 서류도 다시 셈)
+      else return { ok: true, phase: 'done', sum: st.sum, cases: st.cases, fails: st.fails, long: st.long, already: true };
+    }
+    if (!st) {
+      if (body.cont) return { ok: true, phase: 'none', already: true };
+      st = { ver: OCRB_VER_, dryRun: !!body.dryRun, includeFiled: !!body.includeFiled, phase: 'scan', folders: ocrbCaseFolders_(), fi: 0, queue: [], qi: 0,
+        cases: {}, sum: { 폴더: 0, 파일: 0, 기억있음: 0, 읽을것: 0, 못바꿈: 0, 읽음: 0, 빈글자: 0, 실패: 0, 건너뛴폴더: 0 }, fails: [], long: [], startedAt: new Date().toISOString() };
+      st.sum.폴더 = st.folders.length;
+    }
+    // 1) 세기 — 폴더마다 파일을 보고 기억에 있는지 셈(기억 폴더 이름 목록은 한 번 읽어 둔다)
+    if (st.phase === 'scan') {
+      const have = {};
+      const it = fo.getFiles(); while (it.hasNext()) have[it.next().getName().replace(/(\s*\(\d+\))?\.txt$/, '')] = 1;
+      while (st.fi < st.folders.length && Date.now() - started < OCRB_BUDGET_MS_ - 30000) {
+        const fid = st.folders[st.fi++];
+        let folder = null; try { folder = DriveApp.getFolderById(fid); } catch (e) { st.fails.push({ c: fid, n: '', why: '폴더를 열 수 없음' }); continue; }
+        const cname = folder.getName(), files = [];
+        try { ocrbWalk_(folder, '', 0, files, st); } catch (e) { st.fails.push({ c: cname, n: '', why: '폴더 읽기 실패: ' + String(e && e.message || e).slice(0, 80) }); }
+        const cs = st.cases[cname] = st.cases[cname] || { 파일: 0, 기억있음: 0, 읽을것: 0, 못바꿈: 0, 읽음: 0, 빈글자: 0, 실패: 0, 못바꿈이유: {} };
+        st.sum.건너뛴폴더 += files.skipDirs || 0;
+        files.forEach(function (f) {
+          if (/^~\$/.test(f.name)) return;
+          cs.파일++; st.sum.파일++;
+          const k = ocrbKind_(f);
+          if (!k.ok) { cs.못바꿈++; st.sum.못바꿈++; cs.못바꿈이유[k.why] = (cs.못바꿈이유[k.why] || 0) + 1; return; }
+          if (have[tcOcrKey_(f)]) { cs.기억있음++; st.sum.기억있음++; return; }
+          cs.읽을것++; st.sum.읽을것++;
+          st.queue.push({ id: f.id, n: f.name, mt: f.mimeType, mod: f.modified, c: cname, sz: f.size || 0 });
+        });
+      }
+      if (st.fi >= st.folders.length) { st.phase = st.dryRun ? 'done' : 'ocr'; if (st.dryRun) st.doneAt = new Date().toISOString(); }
+      ocrbSave_(fo, st);
+      if (st.phase === 'scan') return { ok: true, more: true, phase: 'scan', done: st.fi, total: st.folders.length, sum: st.sum };
+      if (st.phase === 'done') return { ok: true, phase: 'done', sum: st.sum, cases: st.cases, fails: st.fails };
+    }
+    // 2) 읽기 — 기억에 없는 서류만 tc_docText_로(읽은 글자는 tc_docText_가 기억 폴더에 남긴다). 정리·저장은 하지 않는다
+    while (st.qi < st.queue.length && Date.now() - started < OCRB_BUDGET_MS_ - OCRB_ITEM_MARGIN_MS_) {
+      const q = st.queue[st.qi++], cs = st.cases[q.c] || (st.cases[q.c] = { 파일: 0, 기억있음: 0, 읽을것: 0, 못바꿈: 0, 읽음: 0, 빈글자: 0, 실패: 0, 못바꿈이유: {} });
+      const f = { id: q.id, name: q.n, mimeType: q.mt, modified: q.mod };
+      ocrbSave_(fo, st); // 시작 전에 저장 — 이 서류에서 실행이 끊기면 다음 번엔 다음 서류부터(같은 서류에서 매번 멈추지 않게)
+      try {
+        const t = tc_docText_(f);
+        if (t === null) { cs.실패++; st.sum.실패++; st.fails.push({ c: q.c, n: q.n, why: '글자로 못 바꾸는 형식' }); continue; }
+        if (!String(t).trim()) { cs.빈글자++; st.sum.빈글자++; continue; }
+        cs.읽음++; st.sum.읽음++;
+        if (/pdf/.test(String(q.mt))) { const pg = ocrbPdfPages_(q.id, q.sz); if (pg > 10) st.long.push({ c: q.c, n: q.n, 쪽: pg, 글자: String(t).length }); }
+      } catch (e) {
+        cs.실패++; st.sum.실패++; st.fails.push({ c: q.c, n: q.n, why: String(e && e.message || e).slice(0, 120) });
+      }
+    }
+    if (st.qi >= st.queue.length) { st.phase = 'done'; st.doneAt = new Date().toISOString(); st.queue = []; }
+    ocrbSave_(fo, st);
+    if (st.phase !== 'done') return { ok: true, more: true, phase: 'ocr', done: st.qi, total: st.queue.length, sum: st.sum };
+    try { ocrbTrigger_({ on: false }); } catch (e) {}
+    return { ok: true, phase: 'done', sum: st.sum, cases: st.cases, fails: st.fails, long: st.long };
+  } finally { try { cache.remove(FLAG); } catch (e) {} }
+}
+// 진행 상황만(읽기 없음)
+function cpOcrBatchStatus_() {
+  const fo = tcOcrStoreFolder_(); if (!fo) return { error: '"_글자인식기억" 폴더 없음' };
+  const st = ocrbLoad_(fo); if (!st) return { ok: true, phase: 'none' };
+  let trig = false; try { trig = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'cpOcrBatchTick'; }); } catch (e) {}
+  return { ok: true, phase: st.phase, dryRun: st.dryRun, done: st.phase === 'scan' ? st.fi : st.qi, total: st.phase === 'scan' ? (st.folders || []).length : (st.queue || []).length, sum: st.sum, cases: st.cases, fails: st.fails, long: st.long, startedAt: st.startedAt, touchedAt: st.touchedAt, doneAt: st.doneAt, trigger: trig };
+}
+// 자동 이어 읽기(10분마다) 켜기/끄기 — 화면을 닫아도 서버가 혼자 이어서 한다. 다 읽으면 cpOcrBatch_가 스스로 끈다
+function ocrbTrigger_(body) {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'cpOcrBatchTick') ScriptApp.deleteTrigger(t); });
+  if (body && body.on) ScriptApp.newTrigger('cpOcrBatchTick').timeBased().everyMinutes(10).create();
+  return { ok: true, trigger: !!(body && body.on) };
+}
+function cpOcrBatchTick() { // 시간 트리거가 부르는 이름(끝에 _가 없어야 트리거가 부를 수 있음)
+  const fo = tcOcrStoreFolder_(); const st = fo ? ocrbLoad_(fo) : null;
+  if (!st || st.phase === 'done') { try { ocrbTrigger_({ on: false }); } catch (e) {} return; }
+  cpOcrBatch_({ cont: true });
 }
 // 한글 hwpx(압축된 XML) — 본문 section*.xml의 글자만 꺼낸다(무료, 변환 없음). 옛 hwp(이진 파일)는 못 읽음.
 function tcHwpxText_(fileId) {
