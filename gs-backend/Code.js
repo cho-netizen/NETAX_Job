@@ -3846,6 +3846,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'case_proc') return jsonResponse(caseProcTimed_(body)); // '이 사건 처리하자' — 처리탭 도구로 단계별 점검(토큰 0)
   if (body.action === 'ocr_batch_run') return jsonResponse(cpOcrBatch_(body)); // [2026.10.18] 서버 글자인식 일괄 — 기억에 없는 서류만 글자를 읽어 기억에 쌓음(사건 저장 없음, 토큰 0)
   if (body.action === 'ocr_batch_status') return jsonResponse(cpOcrBatchStatus_());
+  if (body.action === 'ocr_probe') return jsonResponse(cpOcrProbe_(body)); // [2026.10.18 3번 세션] 읽기 실험 — 한 쪽을 여러 방법으로 글자인식해 "_3번실험" 폴더에 남김(사건·기억 안 건드림)
   if (body.action === 'ocr_batch_trigger') return jsonResponse(ocrbTrigger_(body)); // 10분마다 자동 이어 읽기 켜기/끄기
   if (body.action === 'answerkey_run') return jsonResponse(answerKeyRun_(body)); // 🧪 정답지 점검(토큰 0, AnswerKey.js)
   if (body.action === 'taxpayer_bulk_fix') return jsonResponse(taxpayerBulkFix_(body)); // 🏷 납세자·사건명 일괄 정리(미리보기/적용, TaxpayerFix.js)
@@ -24772,6 +24773,390 @@ function cpOcrBatchTick() { // 시간 트리거가 부르는 이름(끝에 _가 
   const fo = tcOcrStoreFolder_(); const st = fo ? ocrbLoad_(fo) : null;
   if (!st || st.phase === 'done') { try { ocrbTrigger_({ on: false }); } catch (e) {} return; }
   cpOcrBatch_({ cont: true, _trigger: true });
+}
+// =========================================================
+// [2026.10.18 3번 세션 — 읽기 실험 전용] 사건처리(tc_docText_·caseProc)와 일괄(cpOcrBatch_)은 쓰지 않는 함수들 — action ocr_probe 실험 도구만 씀.
+//  PDF 풀기(tcPdfTok_·tcPdfPages_) → 한 쪽 PDF 만들기(tcPdfOnePage_·tcImgFileSrc_) → 바꾸기(tcPdfVariant_: 확대·줄이기·회전·잘라 보기) → 드라이브 글자인식.
+//  압축 풀기 tcInflateRaw_는 hwp 읽개(1번)의 것과 같은 함수
+// =========================================================
+// raw deflate 풀기(zlib 머리 없음 — GAS Utilities에는 없음). 저장·고정 허프만·동적 허프만 블록
+function tcInflateRaw_(src) {
+  let out = new Uint8Array(Math.max(4096, src.length * 4)), op = 0;
+  let pos = 0, buf = 0, cnt = 0, over = 0;
+  const need = function (n) {
+    while (cnt < n) {
+      if (pos < src.length) buf |= src[pos++] << cnt;
+      else if (++over > 8) throw new Error('hwp 압축 자료가 끝에서 잘림');
+      cnt += 8;
+    }
+  };
+  const bits = function (n) { need(n); const v = buf & ((1 << n) - 1); buf >>>= n; cnt -= n; return v; };
+  const room = function (n) { if (op + n > out.length) { const b = new Uint8Array(Math.max(out.length * 2, op + n)); b.set(out.subarray(0, op)); out = b; } };
+  // 부호 길이 → 빠른 찾기표(낮은 비트부터 읽은 값 → 기호<<4 | 길이)
+  const build = function (lens) {
+    let max = 0; lens.forEach(function (l) { if (l > max) max = l; });
+    if (!max) return { tbl: new Int32Array(2), max: 1 };
+    const blc = new Array(16).fill(0); lens.forEach(function (l) { if (l) blc[l]++; });
+    const next = new Array(16).fill(0); let code = 0;
+    for (let b = 1; b <= 15; b++) { code = (code + blc[b - 1]) << 1; next[b] = code; }
+    const tbl = new Int32Array(1 << max).fill(-1);
+    lens.forEach(function (l, sym) {
+      if (!l) return;
+      let c = next[l]++, r = 0;
+      for (let k = 0; k < l; k++) { r = (r << 1) | (c & 1); c >>= 1; }
+      for (let j = r; j < (1 << max); j += (1 << l)) tbl[j] = (sym << 4) | l;
+    });
+    return { tbl: tbl, max: max };
+  };
+  const sym = function (h) {
+    need(h.max);
+    const v = h.tbl[buf & ((1 << h.max) - 1)];
+    if (v < 0) throw new Error('hwp 압축 부호가 잘못됨');
+    const l = v & 15; buf >>>= l; cnt -= l;
+    return v >> 4;
+  };
+  const LB = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];
+  const LE = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
+  const DB = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577];
+  const DE = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
+  const ORD = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+  let fixL = null, fixD = null, last = 0;
+  while (!last) {
+    last = bits(1);
+    const type = bits(2);
+    if (type === 0) { // 저장 블록 — 바이트 경계로 맞춘 뒤 길이만큼 그대로
+      bits(cnt & 7);
+      const len = bits(16); bits(16);
+      room(len);
+      let k = 0;
+      while (cnt >= 8 && k < len) { out[op++] = bits(8); k++; }
+      if (pos + (len - k) > src.length) throw new Error('hwp 압축 저장 블록이 잘림');
+      out.set(src.subarray(pos, pos + len - k), op); op += len - k; pos += len - k;
+      continue;
+    }
+    let hl, hd;
+    if (type === 1) {
+      if (!fixL) {
+        const l = []; for (let i = 0; i < 288; i++) l.push(i < 144 ? 8 : i < 256 ? 9 : i < 280 ? 7 : 8);
+        fixL = build(l); fixD = build(new Array(30).fill(5));
+      }
+      hl = fixL; hd = fixD;
+    } else if (type === 2) {
+      const nl = bits(5) + 257, nd = bits(5) + 1, nc = bits(4) + 4;
+      const cl = new Array(19).fill(0);
+      for (let i = 0; i < nc; i++) cl[ORD[i]] = bits(3);
+      const ch = build(cl), lens = [];
+      while (lens.length < nl + nd) {
+        const s = sym(ch);
+        if (s < 16) lens.push(s);
+        else if (s === 16) { if (!lens.length) throw new Error('hwp 압축 부호 길이 잘못됨'); const pv = lens[lens.length - 1]; for (let r = bits(2) + 3; r > 0; r--) lens.push(pv); }
+        else if (s === 17) { for (let r = bits(3) + 3; r > 0; r--) lens.push(0); }
+        else { for (let r = bits(7) + 11; r > 0; r--) lens.push(0); }
+      }
+      hl = build(lens.slice(0, nl)); hd = build(lens.slice(nl, nl + nd));
+    } else throw new Error('hwp 압축 블록 형식이 잘못됨');
+    for (;;) {
+      const s = sym(hl);
+      if (s < 256) { room(1); out[op++] = s; continue; }
+      if (s === 256) break;
+      const li = s - 257; if (li >= 29) throw new Error('hwp 압축 길이 부호가 잘못됨');
+      const len = LB[li] + bits(LE[li]);
+      const di = sym(hd); if (di >= 30) throw new Error('hwp 압축 거리 부호가 잘못됨');
+      const dist = DB[di] + bits(DE[di]);
+      if (dist > op) throw new Error('hwp 압축 거리가 앞을 넘음');
+      room(len);
+      for (let k = 0; k < len; k++, op++) out[op] = out[op - dist];
+    }
+  }
+  return out.subarray(0, op);
+}
+// PDF 값 읽개 — 사전 {D:{}}, 배열 [], 이름 {N:''}, 참조 {R:번호}, 글자 {S:''}, 숫자·참거짓·null
+function tcPdfTok_(s, p) {
+  const n = s.length;
+  const ws = function () {
+    for (;;) {
+      while (p < n && /[\s\0]/.test(s[p])) p++;
+      if (s[p] === '%') { while (p < n && s[p] !== '\n' && s[p] !== '\r') p++; } else return;
+    }
+  };
+  const delim = /[\s\0\/\[\]<>(){}%]/;
+  const val = function () {
+    ws();
+    const c = s[p];
+    if (c === '<' && s[p + 1] === '<') {
+      p += 2; const d = {};
+      for (;;) { ws(); if (s[p] === '>' && s[p + 1] === '>') { p += 2; return { D: d }; } if (p >= n) return { D: d }; const k = val(); const v = val(); if (k && k.N !== undefined) d[k.N] = v; }
+    }
+    if (c === '[') { p++; const a = []; for (;;) { ws(); if (s[p] === ']') { p++; return a; } if (p >= n) return a; a.push(val()); } }
+    if (c === '<') { const e = s.indexOf('>', p); const h = s.slice(p + 1, e).replace(/\s/g, ''); p = e + 1; let t = ''; for (let i = 0; i < h.length; i += 2) t += String.fromCharCode(parseInt((h.substr(i, 2) + '0').slice(0, 2), 16)); return { S: t }; }
+    if (c === '(') { let dep = 0, t = ''; p++; while (p < n) { const ch = s[p++]; if (ch === '\\') { t += s[p++] || ''; continue; } if (ch === '(') dep++; else if (ch === ')') { if (!dep) break; dep--; } t += ch; } return { S: t }; }
+    if (c === '/') { let e = p + 1; while (e < n && !delim.test(s[e])) e++; const nm = s.slice(p + 1, e); p = e; return { N: nm }; }
+    if (c === ']' || c === '>' || c === ')' || c === '}') { p++; return null; }
+    let e = p; while (e < n && !delim.test(s[e])) e++;
+    const w = s.slice(p, e); p = e;
+    if (/^[+-]?(\d+\.?\d*|\.\d+)$/.test(w)) {
+      if (/^\d+$/.test(w)) { const m = /^\s+(\d+)\s+R(?=[\s\0\/\[\]<>()%]|$)/.exec(s.slice(p, p + 24)); if (m) { p += m[0].length; return { R: Number(w) }; } }
+      return Number(w);
+    }
+    if (w === 'true') return true; if (w === 'false') return false;
+    if (!w) p++;
+    return null;
+  };
+  const v = val();
+  return { v: v, p: p };
+}
+// Uint8Array → 한 글자 = 한 바이트인 글(정규식으로 PDF 구조를 찾기 위해)
+function tcBytesLatin1_(u) { let s = ''; for (let i = 0; i < u.length; i += 8192) s += String.fromCharCode.apply(null, u.subarray(i, Math.min(u.length, i + 8192))); return s; }
+// PDF를 열어 쪽마다 {p, textOps, imgs:[{w,h,filter,start,len}]} — 못 열면 null(암호 PDF는 내용 흐름이 암호화돼 글자 명령을 못 셈 → null)
+function tcPdfPages_(u, s0) {
+  const s = s0 || tcBytesLatin1_(u);
+  if (/\/Encrypt\s/.test(s.slice(-4096)) || /trailer[\s\S]{0,400}\/Encrypt/.test(s)) return null;
+  const objs = {}, re = /(\d+)\s+(\d+)\s+obj\b/g;
+  let m;
+  while ((m = re.exec(s))) {
+    const r = tcPdfTok_(s, m.index + m[0].length), o = { v: r.v };
+    let q = r.p; while (q < s.length && /[\s\0]/.test(s[q])) q++;
+    if (s.substr(q, 6) === 'stream') {
+      q += 6; if (s[q] === '\r') q++; if (s[q] === '\n') q++;
+      const L = r.v && r.v.D && r.v.D.Length;
+      let end = typeof L === 'number' && s.substr(q + L, 40).indexOf('endstream') !== -1 ? q + L : s.indexOf('endstream', q);
+      if (end < 0) end = s.length;
+      o.start = q; o.len = end - q;
+      if (typeof L !== 'number') { while (o.len > 0 && /[\r\n]/.test(s[q + o.len - 1])) o.len--; }
+      re.lastIndex = end;
+    } else re.lastIndex = Math.max(re.lastIndex, r.p);
+    objs[m[1]] = o;
+  }
+  const get = function (v) { let k = 0; while (v && v.R !== undefined && k++ < 20) { const o = objs[v.R]; v = o ? o.v : null; } return v; };
+  const nm = function (v) { v = get(v); return v && v.N !== undefined ? v.N : (Array.isArray(v) ? v.map(nm).join(',') : ''); };
+  const decode = function (o) {
+    const f = nm(o.v.D.Filter), raw = u.subarray(o.start, o.start + o.len);
+    if (!f) return raw;
+    if (f === 'FlateDecode') return tcInflateRaw_(raw.subarray(2));
+    return null;
+  };
+  // 압축된 객체 묶음(ObjStm) — 바로 적힌 객체가 없는 번호만 채운다
+  Object.keys(objs).forEach(function (k) {
+    const o = objs[k]; if (!o.v || !o.v.D || nm(o.v.D.Type) !== 'ObjStm' || o.start === undefined) return;
+    let d; try { d = decode(o); } catch (e) { d = null; } if (!d) return;
+    const t = tcBytesLatin1_(d), N = get(o.v.D.N), first = get(o.v.D.First);
+    const hd = t.slice(0, first).trim().split(/\s+/).map(Number);
+    for (let i = 0; i < N; i++) { const num = hd[2 * i], off = hd[2 * i + 1]; if (objs[num]) continue; try { objs[num] = { v: tcPdfTok_(t, first + off).v }; } catch (e) {} }
+  });
+  let root = null; { const rs = s.match(/\/Root\s+(\d+)\s+\d+\s+R/g) || []; for (let i = rs.length - 1; i >= 0 && !root; i--) { const rv = get({ R: Number(/(\d+)/.exec(rs[i])[1]) }); if (rv && rv.D && rv.D.Pages) root = rv; } }
+  if (!root) return null;
+  const pages = [];
+  const content = function (c) {
+    const cv = get(c), parts = Array.isArray(cv) ? cv : [c]; let out = ''; // 참조 하나(흐름 객체)는 참조 그대로, 참조가 배열을 가리키면 그 배열
+    parts.forEach(function (x) { const o = x && x.R !== undefined ? objs[x.R] : null; if (!o || o.start === undefined) return; let d = null; try { d = decode(o); } catch (e) {} if (d) out += tcBytesLatin1_(d) + '\n'; });
+    return out;
+  };
+  // 좌표 변환(cm) 곱 — 그림이 쪽에 그려질 때의 방향·크기(스캔 그림은 옆으로 누운 채 저장되고 cm으로 돌려 그리는 일이 흔함)
+  const mul = function (m, n) { return [m[0] * n[0] + m[1] * n[2], m[0] * n[1] + m[1] * n[3], m[2] * n[0] + m[3] * n[2], m[2] * n[1] + m[3] * n[3], m[4] * n[0] + m[5] * n[2] + n[4], m[4] * n[1] + m[5] * n[3] + n[5]]; };
+  const scan = function (cs, res, pg, depth, ctm0) {
+    pg.textOps += (cs.match(/(?:\)|>|\])\s*(?:T[Jj]|'|")/g) || []).length;
+    const rr = get(res), xo = rr && rr.D ? get(rr.D.XObject) : null;
+    const re2 = /\/([^\s\/\[\]<>()]+)\s+Do\b|(?<![\w.#])([-+]?(?:\d+\.?\d*|\.\d+))(?=[\s\[\]\/<>()]|$)|\b(q|Q|cm|BT|ET)\b/g; let mm, nums = [], ctm = ctm0, stack = [], inText = false;
+    while ((mm = re2.exec(cs))) {
+      if (mm[2] !== undefined) { if (!inText) { nums.push(Number(mm[2])); if (nums.length > 6) nums.shift(); } continue; }
+      if (mm[3]) {
+        if (mm[3] === 'BT') inText = true; else if (mm[3] === 'ET') inText = false;
+        else if (mm[3] === 'q') stack.push(ctm); else if (mm[3] === 'Q') ctm = stack.pop() || ctm0;
+        else if (mm[3] === 'cm' && nums.length === 6) ctm = mul(nums, ctm);
+        nums = []; continue;
+      }
+      nums = [];
+      const ref = xo && xo.D ? xo.D[mm[1]] : null, o = ref && ref.R !== undefined ? objs[ref.R] : null;
+      if (!o || !o.v || !o.v.D) continue;
+      const st = nm(o.v.D.Subtype);
+      if (st === 'Image') pg.imgs.push({ w: get(o.v.D.Width) || 0, h: get(o.v.D.Height) || 0, filter: nm(o.v.D.Filter), start: o.start, len: o.len, ctm: ctm, d: o.v.D });
+      else if (st === 'Form' && depth < 3) { let d = null; try { d = decode(o); } catch (e) {} const fm = get(o.v.D.Matrix); if (d) scan(tcBytesLatin1_(d), o.v.D.Resources || res, pg, depth + 1, Array.isArray(fm) && fm.length === 6 ? mul(fm.map(get), ctm) : ctm); }
+    }
+  };
+  const walk = function (node, res, depth, box) {
+    node = get(node); if (!node || !node.D || depth > 30 || pages.length > 3000) return;
+    const r = node.D.Resources || res, mb = get(node.D.MediaBox), b = Array.isArray(mb) && mb.length === 4 ? mb.map(get) : box;
+    if (node.D.Kids) { (get(node.D.Kids) || []).forEach(function (k) { walk(k, r, depth + 1, b); }); return; }
+    const pg = { p: pages.length + 1, textOps: 0, imgs: [], box: b || [0, 0, 595, 842], rot: get(node.D.Rotate) || 0 };
+    pages.push(pg);
+    try { scan(content(node.D.Contents), r, pg, 0, [1, 0, 0, 1, 0, 0]); } catch (e) { pg.err = String(e && e.message || e); }
+  };
+  walk(root.D.Pages, null, 0, null);
+  pages.get = get; pages.nm = nm;
+  return pages;
+}
+// 그림만 든 한 쪽짜리 PDF를 만든다(원래 쪽의 크기·방향·그림 위치 그대로) — 드라이브는 글자층 없는 PDF는 쪽을 그려서 글자인식하므로
+//  옆으로 누운 채 저장된 스캔 그림도 바로 선 모양으로 읽힌다. JPEG·팩스(CCITT)·압축 그림 모두 원래 바이트를 그대로 옮긴다. 못 만들면 null
+function tcPdfOnePage_(u, pages, pg, imgs) {
+  const get = pages.get;
+  const ser = function (v, dep) {
+    if (dep > 6) throw new Error('깊음');
+    if (v && v.R !== undefined) return ser(get(v), dep + 1);
+    if (typeof v === 'number') return String(Math.round(v * 10000) / 10000);
+    if (typeof v === 'boolean') return String(v);
+    if (v === null || v === undefined) return 'null';
+    if (v.N !== undefined) return '/' + v.N;
+    if (Array.isArray(v)) return '[' + v.map(function (x) { return ser(x, dep + 1); }).join(' ') + ']';
+    if (v.D) { if (v.D.JBIG2Globals) throw new Error('JBIG2'); return '<<' + Object.keys(v.D).map(function (k) { return '/' + k + ' ' + ser(v.D[k], dep + 1); }).join(' ') + '>>'; }
+    throw new Error('글자 값');
+  };
+  const xdict = function (img) {
+  const d = img.d;
+  let cs = get(d.ColorSpace), csTxt = '';
+  if (cs && cs.N !== undefined) csTxt = '/' + cs.N;
+  else if (Array.isArray(cs) && get(cs[0]) && get(cs[0]).N === 'ICCBased') { const st = get(cs[1]), n = st && st.D ? get(st.D.N) : 3; csTxt = n === 1 ? '/DeviceGray' : n === 4 ? '/DeviceCMYK' : '/DeviceRGB'; }
+  else if (!get(d.ImageMask)) {
+    if (img.filter !== 'DCTDecode') return null; // 색 목록(Indexed) 등 — 옮기기 어려움
+    let nc = 3; for (let i = img.start + 2; i < img.start + Math.min(img.len, 65536) - 9; i++) { if (u[i] === 0xFF && (u[i + 1] === 0xC0 || u[i + 1] === 0xC1 || u[i + 1] === 0xC2)) { nc = u[i + 9]; break; } }
+    csTxt = nc === 1 ? '/DeviceGray' : nc === 4 ? '/DeviceCMYK' : '/DeviceRGB';
+  }
+  try {
+    return '<< /Type /XObject /Subtype /Image /Width ' + img.w + ' /Height ' + img.h + ' /BitsPerComponent ' + (get(d.BitsPerComponent) || (get(d.ImageMask) ? 1 : 8)) +
+      (csTxt ? ' /ColorSpace ' + csTxt : '') + (d.Filter ? ' /Filter ' + ser(d.Filter, 0) : '') + (d.DecodeParms ? ' /DecodeParms ' + ser(d.DecodeParms, 0) : '') +
+      (d.Decode ? ' /Decode ' + ser(d.Decode, 0) : '') + (get(d.ImageMask) ? ' /ImageMask true' : '') + ' /Length ' + img.len + ' >>';
+  } catch (e) { return null; }
+  };
+  const dicts = imgs.map(xdict);
+  if (!dicts.length || dicts.some(function (x) { return !x; })) return null;
+  const body = imgs.map(function (img, i) { return 'q ' + img.ctm.map(function (x) { return Math.round(x * 10000) / 10000; }).join(' ') + ' cm /Im' + i + ' Do Q'; }).join('\n');
+  const bx = pg.box.map(function (x) { return Math.round(x * 100) / 100; }).join(' ');
+  // 객체: 1 목록 · 2 쪽 묶음 · 3 쪽 · 4 내용 · 5… 그림. 조각 [글 또는 그림, 객체 시작이면 1]
+  const xo = imgs.map(function (img, i) { return '/Im' + i + ' ' + (5 + i) + ' 0 R'; }).join(' ');
+  const parts = [['%PDF-1.4\n'], ['1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n', 1], ['2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n', 1],
+    ['3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [' + bx + ']' + (pg.rot ? ' /Rotate ' + pg.rot : '') + ' /Resources << /XObject << ' + xo + ' >> >> /Contents 4 0 R >>\nendobj\n', 1],
+    ['4 0 obj\n<< /Length ' + body.length + ' >>\nstream\n' + body + '\nendstream\nendobj\n', 1]];
+  imgs.forEach(function (img, i) { parts.push([(5 + i) + ' 0 obj\n' + dicts[i] + '\nstream\n', 1]); parts.push([img]); parts.push(['\nendstream\nendobj\n']); });
+  const offs = [], out = []; let pos = 0;
+  parts.forEach(function (pt) {
+    if (pt[1]) offs.push(pos);
+    const p = pt[0];
+    if (typeof p !== 'string') { const src = p.bytes || u, st0 = p.bytes ? 0 : p.start; for (let k = 0; k < p.len; k++) out.push(src[st0 + k]); pos += p.len; return; } // p.bytes: 따로 만든 그림 바이트(PNG 조각 이음 등)
+    for (let k = 0; k < p.length; k++) out.push(p.charCodeAt(k) & 255); pos += p.length;
+  });
+  const pad = function (n) { return ('0000000000' + n).slice(-10); };
+  const tail = 'xref\n0 ' + (offs.length + 1) + '\n0000000000 65535 f \n' + offs.map(function (o) { return pad(o) + ' 00000 n \n'; }).join('') + 'trailer\n<< /Size ' + (offs.length + 1) + ' /Root 1 0 R >>\nstartxref\n' + pos + '\n%%EOF\n';
+  for (let k = 0; k < tail.length; k++) out.push(tail.charCodeAt(k));
+  for (let k = 0; k < out.length; k++) if (out[k] > 127) out[k] -= 256; // GAS 바이트는 -128~127
+  return out;
+}
+// [2026.10.18 3번 세션 — 읽기] 사진 파일(JPEG·PNG)을 위 한 쪽 PDF 그림으로 — 그림을 풀지 않고 바이트 그대로(PNG는 IDAT 조각을 이어 FlateDecode+PNG 예측자).
+//  못 옮기는 것(PNG 투명도·격행, 그 밖의 형식)은 null
+function tcImgFileSrc_(u) {
+  if (u[0] === 0xFF && u[1] === 0xD8) {
+    for (let i = 2; i < u.length - 9; ) {
+      if (u[i] !== 0xFF) { i++; continue; }
+      const mk = u[i + 1], L = (u[i + 2] << 8) | u[i + 3];
+      if (mk >= 0xC0 && mk <= 0xCF && mk !== 0xC4 && mk !== 0xC8 && mk !== 0xCC) {
+        const h = (u[i + 5] << 8) | u[i + 6], w = (u[i + 7] << 8) | u[i + 8], nc = u[i + 9];
+        return { w: w, h: h, filter: 'DCTDecode', start: 0, len: u.length, d: { ColorSpace: { N: nc === 1 ? 'DeviceGray' : nc === 4 ? 'DeviceCMYK' : 'DeviceRGB' }, BitsPerComponent: 8, Filter: { N: 'DCTDecode' } } };
+      }
+      if (mk === 0xD8 || mk === 0x01 || (mk >= 0xD0 && mk <= 0xD7)) i += 2; else i += 2 + L;
+    }
+    return null;
+  }
+  if (u[0] === 0x89 && u[1] === 0x50 && u[2] === 0x4E && u[3] === 0x47) {
+    let p = 8, w = 0, h = 0, bd = 8, ct = 0, il = 0; const idat = []; let tot = 0;
+    while (p + 8 <= u.length) {
+      const L = ((u[p] << 24) | (u[p + 1] << 16) | (u[p + 2] << 8) | u[p + 3]) >>> 0, ty = String.fromCharCode(u[p + 4], u[p + 5], u[p + 6], u[p + 7]);
+      if (ty === 'IHDR') { w = ((u[p + 8] << 24) | (u[p + 9] << 16) | (u[p + 10] << 8) | u[p + 11]) >>> 0; h = ((u[p + 12] << 24) | (u[p + 13] << 16) | (u[p + 14] << 8) | u[p + 15]) >>> 0; bd = u[p + 16]; ct = u[p + 17]; il = u[p + 20]; }
+      else if (ty === 'IDAT') { idat.push(u.subarray(p + 8, p + 8 + L)); tot += L; }
+      else if (ty === 'IEND') break;
+      p += 12 + L;
+    }
+    if (!w || il || (ct !== 0 && ct !== 2) || bd !== 8) return null; // 색 목록·투명도·격행·16비트는 옮기지 않음
+    const b = new Uint8Array(tot); let o = 0; idat.forEach(function (c) { b.set(c, o); o += c.length; });
+    const nc = ct === 2 ? 3 : 1;
+    return { w: w, h: h, filter: 'FlateDecode', bytes: b, start: 0, len: tot, d: { ColorSpace: { N: nc === 3 ? 'DeviceRGB' : 'DeviceGray' }, BitsPerComponent: 8, Filter: { N: 'FlateDecode' }, DecodeParms: { D: { Predictor: 15, Colors: nc, BitsPerComponent: 8, Columns: w } } } };
+  }
+  return null;
+}
+// 그림 바꾸기(풀지 않고 PDF 좌표로) — 쪽 공간에서 sx·sy 늘이기·줄이기, rot도 돌리기, clip(0~1 비율 [x0,y0,x1,y1], 위가 y0) 일부만.
+//  pg = {box, rot}, imgs = [{…, ctm}]. 돌려주는 것: 바뀐 {pg, imgs}
+function tcPdfVariant_(pg, imgs, v) {
+  const mul = function (m, n) { return [m[0] * n[0] + m[1] * n[2], m[0] * n[1] + m[1] * n[3], m[2] * n[0] + m[3] * n[2], m[2] * n[1] + m[3] * n[3], m[4] * n[0] + m[5] * n[2] + n[4], m[4] * n[1] + m[5] * n[3] + n[5]]; };
+  const b = pg.box, cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2;
+  const th = (Number(v.rot || 0) + Number(pg.rot || 0) * -1) * Math.PI / 180; // 쪽의 /Rotate(시계 방향 표시)를 좌표 회전으로 풀어 넣는다
+  let T = [1, 0, 0, 1, -cx, -cy];
+  T = mul(T, [(v.sx || 1) * (v.scale || 1), 0, 0, (v.sy || 1) * (v.scale || 1), 0, 0]);
+  T = mul(T, [Math.cos(th), Math.sin(th), -Math.sin(th), Math.cos(th), 0, 0]);
+  const pts = [[b[0], b[1]], [b[2], b[1]], [b[0], b[3]], [b[2], b[3]]].map(function (q) { return [T[0] * q[0] + T[2] * q[1] + T[4], T[1] * q[0] + T[3] * q[1] + T[5]]; });
+  const xs = pts.map(function (q) { return q[0]; }), ys = pts.map(function (q) { return q[1]; });
+  const x0 = Math.min.apply(null, xs), y0 = Math.min.apply(null, ys), x1 = Math.max.apply(null, xs), y1 = Math.max.apply(null, ys);
+  T = mul(T, [1, 0, 0, 1, -x0, -y0]);
+  const W = x1 - x0, H = y1 - y0;
+  let box = [0, 0, W, H];
+  if (v.clip) { const c = v.clip; box = [W * c[0], H * (1 - c[3]), W * c[2], H * (1 - c[1])]; }
+  return { pg: { box: box, rot: 0 }, imgs: imgs.map(function (im) { return Object.assign({}, im, { ctm: mul(im.ctm, T) }); }) };
+}
+// 서류 한 쪽(PDF는 page쪽, 사진은 그 자체)을 {u, pages, pg, imgs}로 — 그림으로 된 쪽이 아니면 null
+function tcPageSrc_(fileId, page) {
+  const s = DriveApp.getFileById(fileId).getBlob().getDataAsString('ISO-8859-1');
+  const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i) & 255;
+  if (s.slice(0, 5) === '%PDF-') {
+    const pages = tcPdfPages_(u, s); if (!pages) return null;
+    const pg = pages[(page || 1) - 1]; if (!pg || !pg.imgs.length) return null;
+    return { u: u, pages: pages, pg: pg, imgs: pg.imgs.slice(0, 60), total: pages.length };
+  }
+  const im = tcImgFileSrc_(u); if (!im) return null;
+  const k = 72 / 150; // 사진은 150dpi로 본 쪽 크기(드라이브가 그리는 크기의 기준일 뿐)
+  im.ctm = [im.w * k, 0, 0, im.h * k, 0, 0];
+  const get = function (v) { return v; }, pages = [{ box: [0, 0, im.w * k, im.h * k], rot: 0 }]; pages.get = get; pages.nm = function (v) { return v && v.N; };
+  return { u: u, pages: pages, pg: pages[0], imgs: [im], total: 1 };
+}
+// [2026.10.18 3번 세션 — 읽기 실험] 한 쪽을 여러 방법으로 바꿔 드라이브 글자인식 — 흐린 팩스·표·돌아간 사진에 무엇이 듣는지 숫자로 보려고.
+//  body {fileId, page, variants:[{name, sx, sy, rot, scale, clip}]} → 결과 글은 업무관리자 "_글자인식기억/_3번실험" 폴더에 <fileId>_p<쪽>_<name>.txt로.
+//  사건·기억 글은 건드리지 않는다. 토큰 0. 한 번에 10가지까지(시간)
+function cpOcrProbe_(body) {
+  body = body || {};
+  const fo = tcOcrStoreFolder_(); if (!fo) return { error: '"_글자인식기억" 폴더 없음' };
+  const it = fo.getFoldersByName('_3번실험'), ex = it.hasNext() ? it.next() : fo.createFolder('_3번실험');
+  const vs = [].concat(body.variants || [{ name: 'base' }]).slice(0, 10), out = [], started = Date.now();
+  const save = function (v, t) {
+    const nm = String(body.fileId) + '_p' + (Number(body.page) || 1) + '_' + String(v.name || 'v').replace(/[^\w가-힣.-]/g, '') + '.txt';
+    const old = ex.getFilesByName(nm); if (old.hasNext()) old.next().setContent(t); else ex.createFile(nm, t, 'text/plain');
+  };
+  // {orig:true}: 원본 파일 통째(지금 tc_docText_와 같은 변환)로 바꾼 문서에 표(TABLE)가 생기는지 — 생기면 칸 자리를 지킨 글도 남긴다
+  vs.filter(function (v) { return v.orig; }).forEach(function (v) {
+    const t0 = Date.now();
+    try {
+      const copy = Drive.Files.copy(tcTmpMeta_({ name: '_ocr_tmp_' + Date.now(), mimeType: 'application/vnd.google-apps.document' }), String(body.fileId), { ocrLanguage: 'ko', fields: 'id' });
+      try { const r = tcDocTableAware_(DocumentApp.openById(copy.id).getBody()); save(v, r.text); out.push({ name: v.name, chars: r.text.length, tables: r.tables, ms: Date.now() - t0 }); }
+      finally { try { DriveApp.getFileById(copy.id).setTrashed(true); } catch (e) {} }
+    } catch (e) { out.push({ name: v.name, error: String(e && e.message || e).slice(0, 150) }); }
+  });
+  const rest = vs.filter(function (v) { return !v.orig; });
+  if (!rest.length) return { ok: true, results: out };
+  const src = tcPageSrc_(String(body.fileId || ''), Number(body.page) || 1);
+  if (!src) return { ok: !!out.length, error: '그림으로 된 쪽을 찾지 못함(글자층 쪽이거나 못 여는 형식)', results: out };
+  rest.forEach(function (v) {
+    if (Date.now() - started > 240000) { out.push({ name: v.name, skipped: '시간' }); return; }
+    const t0 = Date.now();
+    try {
+      const x = tcPdfVariant_(src.pg, src.imgs, v);
+      const one = tcPdfOnePage_(src.u, src.pages, x.pg, x.imgs);
+      if (!one) { out.push({ name: v.name, error: '한 쪽 PDF를 못 만듦' }); return; }
+      const doc = Drive.Files.create(tcTmpMeta_({ name: '_ocr_tmp_' + Date.now(), mimeType: 'application/vnd.google-apps.document' }), Utilities.newBlob(one, 'application/pdf', 'probe.pdf'), { ocrLanguage: 'ko', fields: 'id' });
+      try { const r = tcDocTableAware_(DocumentApp.openById(doc.id).getBody()); save(v, r.text); out.push({ name: v.name, chars: r.text.length, tables: r.tables, ms: Date.now() - t0 }); }
+      finally { try { DriveApp.getFileById(doc.id).setTrashed(true); } catch (e) {} }
+    } catch (e) { out.push({ name: v.name, error: String(e && e.message || e).slice(0, 150) }); }
+  });
+  return { ok: true, total: src.total, imgs: src.imgs.length, results: out };
+}
+// 구글 문서 본문 → 글. 표(TABLE)는 한 줄 = 표 한 줄, 칸은 " | "로(getText()는 칸마다 줄을 바꿔 줄·칸 연결이 사라진다). {text, tables}
+function tcDocTableAware_(bodyEl) {
+  const lines = []; let tables = 0;
+  const n = bodyEl.getNumChildren();
+  for (let i = 0; i < n; i++) {
+    const ch = bodyEl.getChild(i), ty = String(ch.getType());
+    if (ty === 'TABLE') {
+      tables++;
+      const tb = ch.asTable(), rows = tb.getNumRows();
+      lines.push('[표 ' + tables + ']');
+      for (let r = 0; r < rows; r++) { const row = tb.getRow(r), cells = []; for (let c = 0; c < row.getNumCells(); c++) cells.push(row.getCell(c).getText().replace(/\s*\n\s*/g, ' ').trim()); lines.push('| ' + cells.join(' | ') + ' |'); }
+    } else if (ty === 'PARAGRAPH') lines.push(ch.asParagraph().getText());
+    else if (ty === 'LIST_ITEM') lines.push(ch.asListItem().getText());
+  }
+  return { text: lines.join('\n'), tables: tables };
 }
 // 한글 hwpx(압축된 XML) — 본문 section*.xml의 글자만 꺼낸다(무료, 변환 없음). 옛 hwp(이진 파일)는 못 읽음.
 function tcHwpxText_(fileId) {
