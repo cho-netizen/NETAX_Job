@@ -6432,7 +6432,8 @@
   function colCaseName_(caseId){
     if (!caseId) return '';
     var c = colAllCasesCache_.filter(function(x){ return x.id === caseId; })[0];
-    return c ? c.사건명 : '';
+    // [2026.10.18 탭연결 13번] 사건 목록은 받았는데 그 사건이 없으면(이번 수정 전에 지운 사건) 빈칸 대신 "삭제된 사건"으로 보인다
+    return c ? c.사건명 : (colAllCasesCache_.length ? '(삭제된 사건)' : '');
   }
   // 고객명이 정확히 일치하는 그 고객의 사건만 골라 드롭다운에 채운다(원칙①: 관련 없는 사건까지
   // 다 보여주면 오히려 고르기 힘들어진다). selectEl의 현재 값(caseId)이 새 목록에도 있으면
@@ -6632,7 +6633,9 @@
     // 사건이 연결 안 됐을 땐 그냥 아무것도 안 보여서 "원래 이런 화면인지 고장인지" 구분이
     // 안 됐다. 연결 안 된 경우에도 회색 "사건 미연결"을 항상 표시하고, 눌러서 바로 사건을
     // 고를 수 있게 한다(미연결 고객처럼 굳이 빨간 경고까지는 아니고 — 사건 연결은 선택사항).
-    var caseHtml = caseName
+    var caseHtml = caseName === '(삭제된 사건)'
+      ? ' · <span class="col-link-case" style="cursor:pointer; color:#a83232; text-decoration:underline dotted; text-underline-offset:2px;" title="연결된 사건이 지워졌습니다 — 클릭해서 다른 사건에 연결">🗂 (삭제된 사건)</span>'
+      : caseName
       ? ' · <span class="col-goto-case" style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px;" title="클릭하면 작업관리·처리개요로 이동">🗂 ' + escapeHtml(caseName) + '</span>'
       : (unlinked ? '' : ' · <span class="col-link-case" style="cursor:pointer; color:var(--sub); text-decoration:underline dotted; text-underline-offset:2px;" title="클릭해서 사건 연결">사건 미연결</span>');
     row.style.borderColor = unlinked ? '#e3b3b3' : '';

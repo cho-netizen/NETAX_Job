@@ -23319,7 +23319,25 @@ function work_deleteCase(params) {
     // 삭제된 줄 모르고 계속 로그인·자료 업로드를 할 수 있었다 — 사건 삭제 = 그 접속도 끝나야
     // 하므로, 여기서도 만료일을 어제 날짜로 확정해 즉시 막는다(my_setExpiryByReportId_).
     const myReportId = found.row[col.my_report_id];
+    const deletedCaseName = String(found.row[col.사건명] || '');
     sheet.deleteRow(found.rowIndex);
+    // [2026.10.18 탭연결 13번] 지운 사건의 수금(자문내역) 기록은 사건ID가 죽은 값으로 남아 수금관리에서 "사건 없음"처럼 보였다 —
+    // 돈 기록은 그대로 두고, 내용 끝에 "[삭제된 사건: 사건명]"을 붙인 뒤 연결만 푼다(수금관리에서 다른 사건으로 다시 연결할 수 있음).
+    try {
+      const logSheet = client_getSheets_().log;
+      const logData = logSheet.getDataRange().getValues();
+      const lh = logData[0];
+      const iCase = lh.indexOf('사건ID'), iText = lh.indexOf('내용');
+      if (iCase !== -1 && iText !== -1) {
+        for (let r = 1; r < logData.length; r++) {
+          if (String(logData[r][iCase]) !== String(params.id)) continue;
+          logSheet.getRange(r + 1, iText + 1).setValue(String(logData[r][iText] || '') + ' [삭제된 사건: ' + (deletedCaseName || params.id) + ']');
+          logSheet.getRange(r + 1, iCase + 1).setValue('');
+        }
+      }
+    } catch (err) {
+      console.log('사건 삭제 시 수금 기록 정리 실패: ' + err.message);
+    }
     work_deleteCaseCalendarEvents_(params.id);
     // [2026.09 버그수정] 예약에서 시작된 사건을 지워도 그 예약의 연결사건ID가 안 지워져서,
     // 예약목록엔 죽은 사건을 가리키는 "🔗 사건 연결됨" 버튼이 영원히 남고, 눌러도 조용히
