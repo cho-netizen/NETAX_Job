@@ -25831,7 +25831,8 @@ function tc_ruleTransferFacts_(body) {
   }
   // [2026.10.15 1:1] 필요경비 후보 목록 — 규칙이 확정한 것(sure)과 판단이 필요한 것을 모두 항목별로 돌려준다(말없이 버리지 않음). 처리개요에서 세무사님이 체크해 확정.
   // [2026.10.17] 통장 거래내역 ↔ 비용 서류·견적 대조 — 영수증 있는 지급은 확인만, 영수증 없는 중개·법무 지급과 견적 업체 지급은 후보로(견적과 다르면 알림)
-  if (bankStmts.length) { var bk = tcBankStmtCost_({ stmts: bankStmts, expDocs: expDocs, lawyers: lawyers, acqs: acqs, costTexts: costTexts, names: names, acqDay: txs.length === 1 ? String(txs[0].acquisitionDate || '').slice(0, 10) : '', trDay: txs.length === 1 ? String(txs[0].transferDate || '').slice(0, 10) : '' }); bk.add.forEach(function (e) { expDocs.push(e); }); bk.lines.forEach(function (l) { evidence.push(l); }); }
+  if (bankStmts.length) { var bk = tcBankStmtCost_({ stmts: bankStmts, expDocs: expDocs, lawyers: lawyers, acqs: acqs, costTexts: costTexts, names: names, acqDay: txs.length === 1 ? String(txs[0].acquisitionDate || '').slice(0, 10) : '', trDay: txs.length === 1 ? String(txs[0].transferDate || '').slice(0, 10) : '',
+    /* [2026.10.18 3차 수정 K] payDays — 취득일이 아직 안 정해졌을 때 계약서 잔금일(현금 출금 ↔ 비용 서류 대조용) */ payDays: buys.concat(sells).map(function (c) { return String(c.r.잔금일 || '').slice(0, 10); }).filter(Boolean) }); bk.add.forEach(function (e) { expDocs.push(e); }); bk.lines.forEach(function (l) { evidence.push(l); }); }
   // [2026.10.17 통장 사진] 통장 입금·출금 ↔ 계약서 대금·수용 보상금(이의재결 증액분) — 근거 줄, 실제 받은 날이 다르면 아래 양도일 후보로
   var bankInc = { lines: [], trDateCands: [] };
   if (bankStmts.length) { try { bankInc = tcBankStmtIncome_({ stmts: bankStmts, sells: sells.filter(function (c) { return !c._dupOf; }), buys: buys.filter(function (c) { return !c._dupOf; }), objDetails: objDetails, comps: comps, names: names }); } catch (e) {} bankInc.lines.forEach(function (l) { evidence.push(l); }); }
@@ -34661,13 +34662,26 @@ function docAcctHistoryParse_(t) {
     if (/^[^\n\d]{0,4}\d{1,2}:\d{2}(?::\d{2})?[^\n]{0,6}현\s*재|^[^\n]{0,10}현\s*재\s*(?:시\s*간|잔\s*액)/.test(t.slice(re.lastIndex, re.lastIndex + 24))) continue; // [2026.10.18] 화면 머리의 "2026.03.03 10:12 현재" — 거래 줄이 아님(박종헌 우체국: 현재잔액으로 가짜 줄)
     rows.push({ at: x.index, end: re.lastIndex, d: dd });
   }
+  // [2026.10.18 3차 수정 K] 팩스형 은행 거래내역(머리 "거래일자 거래시각 거래종류 입지내역 적요 통화 거래금액 거래후잔액 단말 거래점 상대은행 상대계좌") —
+  //  단말번호(Y014·YO14·Y006)·거래점 번호(0053·0022)를 금액으로 읽어 잔액 14·53 같은 가짜 사슬이 생겼다(노영환 구순애 대출금계좌 팩스 8쪽: 256줄 중 금액 있는 줄 58).
+  //  ① 단말·거래점 번호를 숫자 후보에서 뺀다(잔액에 붙어 읽힌 "1,432,4580080"도 떼어 냄), 점으로 읽힌 쉼표("3.902.458")는 쉼표로, 점·줄표 줄("....-9.768,260")의 '-'는 부호가 아님
+  //  ② 거래종류 칸(입금/지급 — 팩스 글자 "임금"/"지금")이 방향, 통화(KRW) 뒤 첫 금액이 거래금액, 둘째가 거래후잔액 — 아래 "구간 맞춤"에 쓴다
+  var faxCols = (function (h) { return /거래종류/.test(h) && /거래금액/.test(h) && /거래후잔액/.test(h) && /단말/.test(h); })(t.slice(0, 3000).replace(/\s+/g, ''));
   rows.forEach(function (row, i) {
     var seg = t.slice(row.end, i + 1 < rows.length ? rows[i + 1].at : Math.min(t.length, row.end + 300));
     // [2026.10.18 정밀분석 원인2] 시각 줄(사슬 검산 뒤 다음 거래와 짝지을 때 씀)·마이너스 잔액 부호(대출·마이너스 통장 "-5,712,751")를 지킨다
     var tmm = /(?:^|[^\d:])(\d{1,2}:\d{2}(?::\d{2})?)(?![\d:])/.exec(seg.slice(0, 40)); row.tm = tmm ? tmm[1] : '';
     var clean = seg.replace(/\d{1,2}:\d{2}(?::\d{2})?/g, ' ').replace(/[\d*]+(?:-[\d*]+){1,}/g, ' ');
+    if (faxCols) {
+      clean = clean.replace(/[.\-_]{2,}/g, ' ').replace(/(\d)\.(\d{3})(?![\d])/g, '$1,$2').replace(/(\d)\.(\d{3})(?![\d])/g, '$1,$2')
+        .replace(/(\d{1,3}(?:,\d{3})+)(?=0\d{3}(?![\d,]))/g, '$1 ')
+        .replace(/(^|[^\dA-Za-z,])[YＹ]\s?[O0o]?\d{2,3}(?![\d,])/g, '$1 ').replace(/(^|[^\d,])0\d{3}(?![\d,])/g, '$1 ');
+      var dw = /(입\s*금|임\s*금)|(지\s*급|지\s*금)/.exec(clean.slice(0, 60));
+      row.faxDir = dw ? (dw[1] ? true : false) : null;
+    }
     row.seq = []; var nre = /(^|[^\d,\-])(-\s?)?(\d{1,3}(?:,\d{3})+|\d{1,10})(?![\d,])/g, nm0;
     while ((nm0 = nre.exec(clean)) && row.seq.length < 12) row.seq.push((nm0[2] ? -1 : 1) * Number(nm0[3].replace(/,/g, '')));
+    if (faxCols) { var cm = clean.match(/(?:^|[^\d,])\d{1,3}(?:,\d{3})+(?![\d,])/g) || []; row.faxNums = cm.slice(0, 2).map(function (s) { return Number(s.replace(/[^\d]/g, '')); }); }
     var nums = row.seq.map(function (v) { return Math.abs(v); }).concat(row.seq.filter(function (v) { return v < 0; }));
     var seen = {}; row.nums = nums.filter(function (v) { if (seen[v]) return false; seen[v] = 1; return true; }).slice(0, 14);
     row.memo = (seg.match(/[가-힣][가-힣()·:]{1,20}/g) || []).slice(0, 3).join(' ');
@@ -34690,6 +34704,8 @@ function docAcctHistoryParse_(t) {
       var o = { out: 0, inn: 0, amt: null, bal: null };
       cols.forEach(function (k, j) { var v = row.seq[j]; if (k === 'in') o.inn = Math.abs(v); else if (k === 'out') o.out = Math.abs(v); else if (k === 'amt') o.amt = Math.abs(v); else o.bal = v; });
       if (o.out && o.inn) return null; // 한 줄에 출금·입금이 둘 다 — 칸을 잘못 짚은 것
+      // [2026.10.18 3차 수정 K] 팩스형 — 잔액 칸이 1~99원이거나, 99원 이하 금액 뒤 잔액 0은 깨진 글자 조각("1000:000"의 "10"·"0")
+      if (faxCols && o.bal !== null && ((o.bal !== 0 && Math.abs(o.bal) < 100) || (o.bal === 0 && (o.amt !== null ? o.amt : o.inn || o.out) < 100))) return null;
       return o;
     });
     var fitP = function (p, q) { if (!p || !q || p.bal === null || q.bal === null) return null; var dl = q.bal - p.bal; if (q.amt !== null) return dl === q.amt ? 'in' : dl === -q.amt ? 'out' : false; return dl === q.inn - q.out && (q.inn || q.out) ? (q.inn ? 'in' : 'out') : false; };
@@ -34711,6 +34727,8 @@ function docAcctHistoryParse_(t) {
   var cntIn = function (row, v) { return row.seq.filter(function (x) { return Math.abs(x) === Math.abs(v); }).length; };
   //  (0 하나뿐인 줄의 잔액 0은 그 줄에 다른 잔액 후보가 하나도 없을 때만 — 해지 줄의 잔액 0이 글자인식에서 빠진 김창호 새마을금고)
   var stepOk = function (row, b, a) { if (a === Math.abs(b) && cntIn(row, b) < 2) return false; if (b === 0 && twoCol && cntIn(row, 0) < 2 && !row.zeroOk) return false; return true; };
+  // [2026.10.18 3차 수정 K] 팩스형 — 1~99원 잔액 마디는 칸 조각(쪽 번호·거래점 끝자리 "16"·"10")이지 잔액이 아니다(이자 63원 같은 작은 금액은 금액으로는 그대로 받음)
+  var tinyBal = function (v) { return faxCols && v !== 0 && Math.abs(v) < 100; };
   rows.forEach(function (row, k) {
     if (!k) return;
     var prev = rows[k - 1];
@@ -34718,7 +34736,7 @@ function docAcctHistoryParse_(t) {
       row.nums.forEach(function (b) {
         prev.nums.forEach(function (p) {
           var a = Math.abs(b - p);
-          if (!a || row.nums.indexOf(a) === -1 || (a === b && p === 0 && !(L[k - 1][0] >= 1)) || !stepOk(row, b, a)) return;
+          if (!a || row.nums.indexOf(a) === -1 || (a === b && p === 0 && !(L[k - 1][0] >= 1)) || !stepOk(row, b, a) || tinyBal(b) || tinyBal(p)) return;
           var len = (L[k - 1][p] || 0) + 1;
           if (!(L[k][b] >= len)) L[k][b] = len;
         });
@@ -34736,7 +34754,7 @@ function docAcctHistoryParse_(t) {
     bal[k] = bestB;
     while (k > 0 && bal[k] !== null) {
       var cur = bal[k], need = L[k][cur] - 1, pick = null;
-      rows[k - 1].nums.forEach(function (p) { var a = Math.abs(cur - p); if (pick === null && a && rows[k].nums.indexOf(a) !== -1 && stepOk(rows[k], cur, a) && (L[k - 1][p] || 0) === need) pick = p; });
+      rows[k - 1].nums.forEach(function (p) { var a = Math.abs(cur - p); if (pick === null && a && rows[k].nums.indexOf(a) !== -1 && stepOk(rows[k], cur, a) && !tinyBal(p) && (L[k - 1][p] || 0) === need) pick = p; });
       if (pick === null) break;
       bal[k - 1] = pick; k--;
       if (need === 0) break;
@@ -34764,14 +34782,58 @@ function docAcctHistoryParse_(t) {
     // [2026.10.18 정밀분석 원인13] 칸 위치 규칙 먼저 — 칸이 깨끗하고 앞 줄 잔액과 검산된 줄은 방향(입금·출금)도 칸대로. 금액·잔액은 사슬과 같아도
     //  사슬이 앞 줄 잔액을 다른 숫자로 이어 방향을 뒤집었다(창구 현금출금 20,000,000원이 "입금"으로 — 잔액 70,000,000 → 50,000,000인데)
     if (row.pos && row.pos.clean && row.pos.fit && row.pos.dir !== null && amt === row.pos.amt && dir !== row.pos.dir) dir = row.pos.dir;
+    // [2026.10.18 3차 수정 K] 팩스형 — 사슬은 칸 위치를 안 봐서 금액과 잔액을 뒤바꿔 이을 수 있다(151,544,242 − 87,544,242 = 64,000,000: 지급 64,000,000·잔액 87,544,242 줄이
+    //  "지급 87,544,242·잔액 64,000,000"으로). 칸 위치(거래금액·거래후잔액)로도 앞 줄과 검산되고 앞 줄 잔액이 같으면 칸 위치를 따른다
+    var prevB = i > 0 ? r.거래[i - 1].잔액 : null;
+    if (faxCols && row.pos && row.pos.amt && row.pos.bal !== null && b !== null && b !== row.pos.bal && prevB !== null && prevB !== undefined && Math.abs(row.pos.bal - prevB) === row.pos.amt) {
+      amt = row.pos.amt; dir = row.pos.bal > prevB; b = row.pos.bal; shown = undefined; chk = true;
+    }
     if (b !== null) ok++;
     r.거래.push({ 날짜: row.d, 시각: row.tm, 내용: row.memo.split(' ')[0] || '', 금액: amt, 잔액: b, 잔액표시: shown, 적요: row.memo, 입금: amt !== null ? dir : null, 검산: chk, 출금액: amt !== null && dir === false ? amt : 0, 입금액: amt !== null && dir === true ? amt : 0 });
   });
-  if (posUsed) r.서식 = '잔액 사슬 + 머리글 칸';
+  // [2026.10.18 3차 수정 K] 팩스형 — 칸 값(거래종류 방향·거래금액·거래후잔액)으로 줄을 채우고 "구간 맞춤"으로 검산한다.
+  //  팩스 글자는 잔액 칸이 한두 자씩 깨져(1,768,260 → "1,708,200") 줄마다 "앞 잔액 ± 금액 = 잔액"이 거의 안 맞지만, 거래금액 칸은 대체로 온전하다.
+  //  두 줄의 잔액 A·B가 읽히고 그 사이 줄들의 (방향 ± 거래금액) 합이 정확히 B − A이면 사이 줄의 금액·방향이 모두 맞은 것 — 사이 잔액은 A + 누적합(깨진 잔액 글자 대신).
+  //  구간이 안 맞는 줄은 적힌 칸 값 그대로 "검산 안 됨"(잔액은 표시만). 방향 낱말이나 금액·잔액 두 칸 중 하나가 안 읽힌 줄은 비워 둔다(지어내지 않음)
+  if (faxCols) {
+    var G = r.거래, faxFit = 0, faxRaw = 0;
+    rows.forEach(function (rw) { rw.fa = rw.faxNums && rw.faxNums.length === 2 && rw.faxDir !== null && rw.faxNums[0] ? { amt: rw.faxNums[0], bal: rw.faxNums[1], dir: rw.faxDir } : null; });
+    var fAmt = function (i) { var g = G[i], f = rows[i].fa; if (g.검산 && g.금액 != null && g.입금 !== null) return (g.입금 ? 1 : -1) * g.금액; return f ? (f.dir ? 1 : -1) * f.amt : null; };
+    var fBal = function (i) { if (G[i].검산 && G[i].잔액 != null) return G[i].잔액; var f = rows[i].fa; return f ? f.bal : G[i].잔액 != null ? G[i].잔액 : null; };
+    for (var a0 = 0; a0 < G.length; a0++) {
+      var A0 = fBal(a0); if (A0 === null) continue;
+      for (var b0 = a0 + 1, sum0 = 0; b0 < G.length && b0 - a0 <= 40; b0++) {
+        var s0 = fAmt(b0); if (s0 === null) break;
+        sum0 += s0;
+        if (fBal(b0) !== A0 + sum0) continue;
+        // 사이에 이미 검산된 줄이 있으면 그 잔액과 누적합이 같아야(다르면 이 구간은 우연히 맞은 것 — 넘어감)
+        var run = A0, agree = true;
+        for (var c1 = a0 + 1; c1 < b0; c1++) { run += fAmt(c1); if (G[c1].검산 && G[c1].잔액 != null && G[c1].잔액 !== run) agree = false; }
+        if (!agree) continue;
+        run = A0;
+        if (G[a0].잔액 == null) { G[a0].잔액 = A0; G[a0].잔액표시 = undefined; }
+        for (var c0 = a0 + 1; c0 <= b0; c0++) {
+          var sv0 = fAmt(c0); run += sv0;
+          var gg = G[c0]; if (!gg.검산) faxFit++;
+          gg.금액 = Math.abs(sv0); gg.입금 = sv0 > 0; gg.출금액 = sv0 < 0 ? -sv0 : 0; gg.입금액 = sv0 > 0 ? sv0 : 0; gg.잔액 = run; gg.잔액표시 = undefined; gg.검산 = true;
+        }
+        a0 = b0 - 1; break;
+      }
+    }
+    // 구간이 안 맞는 줄의 칸 글자는 금액으로 쓰지 않고 출처 단 후보로만(팩스 글자 금액은 "i9,000"·"$1,000"처럼 깨진 것이 많아 인출 집계(§15)에 넣으면 틀린 합이 된다)
+    G.forEach(function (g, i) {
+      var f = rows[i].fa; if (!f || g.검산 || g.금액 != null) return;
+      g.금액후보 = f.amt; g.입금후보 = f.dir; if (g.잔액 == null && g.잔액표시 == null) g.잔액표시 = f.bal; faxRaw++;
+    });
+    ok = G.filter(function (g) { return g.잔액 !== null && g.잔액 !== undefined; }).length;
+    if (faxFit) { r.서식 = '팩스 거래내역(거래금액·거래후잔액 칸 + 구간 맞춤)'; r.팩스 = { 구간맞춤: faxFit, 칸값만: faxRaw }; posUsed = posUsed || 1; }
+  }
+  if (posUsed && !r.서식) r.서식 = '잔액 사슬 + 머리글 칸';
   if (ok < 3) return null; // 검산되는 잔액이 거의 없으면 이 서식이 아님 — 다른 규칙에 넘긴다
   r.검산줄 = ok;
   // 검산 안 된 줄은 잔액을 비워 둘 뿐 값을 지어내지 않으므로 ⚠(확인 질문)가 아니라 참고 — 개시일 잔액은 finHistBalanceAt_가 그 앞뒤 줄이 검산될 때만 쓴다
   r.참고 = ok < rows.length ? ['거래 ' + rows.length + '줄 중 ' + ok + '줄 잔액 검산됨(앞 잔액 ± 금액 = 잔액) — 나머지 줄은 글자인식이 흐려 잔액을 비움'] : [];
+  if (r.팩스) r.참고.push('팩스 거래내역 — 구간 맞춤(두 잔액 사이 거래금액 합 = 잔액 차이)으로 검산한 줄 ' + r.팩스.구간맞춤 + '개' + (r.팩스.칸값만 ? ', 구간이 안 맞아 칸 글자를 금액 후보로만 둔 줄 ' + r.팩스.칸값만 + '개(집계에 넣지 않음 — 원문 확인)' : ''));
   return docAcctHistoryMd_(r, rows.length);
 }
 // 거래내역 정리 결과 → 표(발급일 현재 잔액과 마지막 잔액 대조 포함) — 머리글 칸 방식·잔액 사슬 방식 공용
@@ -34781,7 +34843,7 @@ function docAcctHistoryMd_(r, nrows) {
   if (last && r.발급일잔액 != null && last.잔액 !== r.발급일잔액) r.경고.push('마지막 거래 뒤 잔액(' + last.잔액.toLocaleString('ko-KR') + ')과 "발급일 현재 잔액"(' + r.발급일잔액.toLocaleString('ko-KR') + ')이 다름 — 원문 확인');
   var won = function (n) { return n == null ? '' : Number(n).toLocaleString('ko-KR') + '원'; };
   var md = '### 거래내역' + (r.은행 ? '(' + r.은행 + ')' : '') + '\n\n' + docMdTable_([['예금주', r.예금주], ['계좌번호', r.계좌번호], ['조회기간', r.기간시작 ? r.기간시작 + ' ~ ' + (r.기간끝 || '') : ''], ['발급일 현재 잔액', won(r.발급일잔액)], ['잔액 검산', ok + '/' + nrows + '줄']])
-    + '\n\n| 날짜 | 내용 | 금액 | 잔액 |\n|---|---|---|---|\n' + r.거래.map(function (g) { return '| ' + [g.날짜, g.적요, g.금액 == null ? '' : (g.입금 === null ? '?' : g.입금 ? '+' : '−') + won(g.금액), g.잔액 == null && g.잔액표시 != null ? won(g.잔액표시) + '(검산 안 됨)' : won(g.잔액)].map(function (v) { return String(v).replace(/\|/g, '/'); }).join(' | ') + ' |'; }).join('\n')
+    + '\n\n| 날짜 | 내용 | 금액 | 잔액 |\n|---|---|---|---|\n' + r.거래.map(function (g) { return '| ' + [g.날짜, g.적요, g.금액 == null ? (g.금액후보 ? '(칸 글자 ' + (g.입금후보 ? '+' : '−') + won(g.금액후보) + ' — 검산 안 됨)' : '') : (g.입금 === null ? '?' : g.입금 ? '+' : '−') + won(g.금액), g.잔액 == null && g.잔액표시 != null ? won(g.잔액표시) + '(검산 안 됨)' : won(g.잔액)].map(function (v) { return String(v).replace(/\|/g, '/'); }).join(' | ') + ' |'; }).join('\n')
     + (r.경고.length || r.참고.length ? '\n' : '') + r.참고.map(function (w) { return '\n- 참고: ' + w; }).join('') + r.경고.map(function (w) { return '\n- ⚠ ' + w; }).join('');
   return { type: 'banktx', label: '거래내역(잔액 포함)', result: r, md: md };
 }
@@ -34821,7 +34883,7 @@ function docBankChainRows_(t, opt) {
     if (!/^\d{1,3}(?:[,.]\d{3})+$/.test(raw) && !pre) continue;
     var v = Number(raw.replace(/[,.]/g, '')); if (!v) continue;
     var sg = m[2] ? (/[+]/.test(m[2]) ? 1 : -1) : 0;
-    toks.push({ v: v, s: sg, at: m.index + m[1].length, end: re.lastIndex });
+    toks.push({ v: v, s: sg, at: m.index + m[1].length, end: re.lastIndex, won: won });
   }
   if (toks.length < 4) return null;
   var n = toks.length, W = 14, sv = function (k) { return toks[k].s < 0 ? -toks[k].v : toks[k].v; };
@@ -34922,6 +34984,30 @@ function docBankChainRows_(t, opt) {
     var kind = book ? words(toks[j2].end, j2 + 1 < n ? toks[j2 + 1].at : t.length) : '';
     rows.push({ 날짜: dt, 시각: ltm && (!ldd || ltm.at > ldd.at) ? ltm.v : '', 구분: kind, 내용: who, 적요: '', 출금액: d < 0 ? -d : 0, 입금액: d > 0 ? d : 0, 금액: Math.abs(d), 잔액: sv(j2), 입금: d > 0, 잔액검산: true, 짝확인필요: false, 순번: bySeq ? s0 + x - 1 : undefined });
   });
+  // [2026.10.18 3차 수정 K] 사슬이 끊긴 사진 첫·끝 줄을 버리지 않는다 — 앱·화면 사진(통장 사본 말고)에서 사슬 앞뒤에 남은 금액 글자(부호 ±가 적힌 것)는
+  //  거래 한 줄의 후보로 남긴다. 금액·부호는 사진 글자 그대로, 잔액은 사슬 첫 마디(그 줄 바로 뒤에 적힌 잔액)일 때만 — 앞 잔액이 사진 밖이라 검산은 못 함(잔액검산 false·사슬밖 표시).
+  //  이우석 「거래내역조회」 휴대폰 화면: 사슬은 14:05~14:30 4줄뿐이라 14:01 +370,510(장기수선충당금)과 15:22 −2,000,000(10만원권 — 취득 중개보수 지급) 줄이 버려졌다.
+  //  사슬의 잔액·금액과 같은 값(겹쳐 읽힌 글자)과 1천원 미만·날짜를 못 정한 글자는 넣지 않는다(지어내지 않음). 통장 사본(book)은 순번 날짜 짝짓기가 따로 있어 그대로 둔다
+  if (!book && rows.length) {
+    var usedV = {}; chain.forEach(function (q) { usedV[toks[q].v] = 1; if (via[q] >= 0) usedV[toks[via[q]].v] = 1; });
+    var looseOk = function (k) { var tk = toks[k]; return tk && tk.s !== 0 && tk.v >= 1000 && !usedV[tk.v]; }; // 부호(±)가 적힌 금액만 — 부호 없는 글자는 금액인지 잔액인지 모름
+    var looseRow = function (k, balV, shownV) {
+      var tk = toks[k], ld = lastBefore(dates, tk.at), ltm = lastBefore(times, tk.at);
+      if (!ld) return null;
+      return { 날짜: ld.d, 시각: ltm && ltm.at > ld.at ? ltm.v : '', 구분: '', 내용: wordsBack(k) || words(tk.end, k + 1 < n ? toks[k + 1].at : t.length), 적요: '',
+        출금액: tk.s < 0 ? tk.v : 0, 입금액: tk.s > 0 ? tk.v : 0, 금액: tk.v, 잔액: balV, 잔액표시: shownV, 입금: tk.s > 0 ? true : tk.s < 0 ? false : null, 잔액검산: false, 짝확인필요: false, 사슬밖: true };
+    };
+    var lead = chain[0] - 1, lr = looseOk(lead) ? looseRow(lead, sv(chain[0])) : null;
+    if (lr) rows.unshift(lr);
+    var tail = [], last = chain[chain.length - 1];
+    for (var k3 = last + 1; k3 < n && tail.length < 3; k3++) {
+      if (!looseOk(k3)) continue;
+      var nb = looseOk(k3 + 1) ? sv(k3 + 1) : undefined; // 바로 뒤 금액 글자는 그 줄의 잔액(표시만 — 검산 안 됨)
+      var tr = looseRow(k3, null, nb); if (tr && tr.날짜 >= rows[rows.length - 1].날짜) tail.push(tr);
+      if (nb !== undefined) k3++;
+    }
+    rows = rows.concat(tail);
+  }
   return { rows: rows, bals: chain.map(sv), steps: steps, bySeq: bySeq };
 }
 // [2026.10.15] 통장 사본(거래하신 내용 — 맡기신 금액·찾으신 금액). 글자인식이 표를 섞어 거래 줄과 금액 칸을 짝짓지 못한다 →
@@ -35159,8 +35245,15 @@ function docBankStmtParse_(text) {
   m = /계\s*좌\s*번\s*호\s*[:：]?\s*\[?\s*(\d[\d-]{7,20}\d)/.exec(t); if (m) r.계좌번호 = m[1];
   m = /(?:고\s*객\s*명|예\s*금\s*주(?:\s*성\s*명)?)\s*[:：]?\s*([가-힣]{2,5})/.exec(t); if (m) r.예금주 = m[1];
   // [2026.10.17 통장 사진·앱 캡처] ④ 잔액 사슬 — 머리글·시각 줄 모양이 없는 화면(시각이 "14:05"뿐인 거래내역조회, 칸이 섞인 사진)
+  // [2026.10.18 3차 수정 K] 잔액 사슬만으로 통장이라 보는 문턱을 좁힌다 — 숫자 칸이 많은 다른 서식에서도 "앞 숫자 ± 숫자 = 뒤 숫자"가 우연히 3번 이어진다.
+  //  노영환 「부동산임대공급가액명세서」(머리 "수 입 금 액"의 '입금'에 걸려 보증금·월임대료·이자 칸이 가짜 거래 3줄·가짜 국민은행 계좌로),
+  //  김창호 「대출 원리금 납입 증명서」("대출잔액" 칸의 '잔액'에 걸려 이자 납입액이 가짜 계좌 061-…·사망 뒤 인출 2,238,948원으로)가 통장으로 잘못 정리됐다.
+  //  ① 다른 서식 제목(임대공급가액명세서·원리금/이자 납입 증명서·상환 내역)이 머리에 있으면 사슬로 통장이라 하지 않는다
+  //  ② 통장 신호는 거래 칸 낱말로만 — 입금·출금(수입금액·납입금 말고)·찾으신·맡기신, 잔액(대출잔액·잔액증명 말고), 거래내역·입출금내역 화면 제목, 타행이체·송금 적요
+  var chainFlat = t.replace(/\s+/g, ''), chainHead = chainFlat.slice(0, 300);
+  var chainSig = /(?:^|[^수납])입금(?!계좌)|출금|찾으신|맡기신|(?:^|[^출])잔액(?!증명)|거래내역|입출금내역|타행이체|모바일뱅킹|인터넷뱅킹/;
   var chainOf = function () {
-    if (!/잔\s*액|타\s*행|이\s*체|송\s*금|거\s*래\s*내\s*역|모바일\s*뱅킹|인터넷\s*뱅킹|체크|입\s*금|출\s*금/.test(t)) return null;
+    if (/임대공급가액명세서|(?:원리금|이자)납입(?:증명|확인|내역)|납입증명서|상환(?:내역|증명)서/.test(chainHead) || !chainSig.test(chainFlat)) return null;
     var ch = null; try { ch = docBankChainRows_(t, { book: false }); } catch (e) { ch = null; }
     return ch && ch.rows.length >= 3 && ch.rows.every(function (g) { return g.날짜; }) ? ch : null;
   };
@@ -35169,17 +35262,19 @@ function docBankStmtParse_(text) {
     r.거래 = ch4.rows; r.서식 = '사진·화면(잔액 사슬)';
   }
   docBankStmtCheck_(r);
-  // 화면 규칙(②·③)으로 읽었지만 잔액 검산이 절반도 안 맞으면 — 잔액 사슬이 더 많은 줄을 검산하면 그것으로 바꾼다
+  // 화면 규칙(②·③)으로 읽었지만 잔액 검산이 절반도 안 맞으면 — 잔액 사슬이 더 많은 줄을 검산하면 그것으로 바꾼다(사슬 밖 후보 줄은 세지 않음)
   if (r.서식 !== '구분자 표' && r.서식 !== '사진·화면(잔액 사슬)' && r.검산 && r.검산.맞음 < r.거래.length * 0.5) {
     var ch5 = chainOf();
-    if (ch5 && ch5.rows.length > r.검산.맞음) { r.거래 = ch5.rows; r.서식 = '사진·화면(잔액 사슬)'; r.경고 = []; docBankStmtCheck_(r); }
+    if (ch5 && ch5.rows.filter(function (g) { return !g.사슬밖; }).length > r.검산.맞음) { r.거래 = ch5.rows; r.서식 = '사진·화면(잔액 사슬)'; r.경고 = []; docBankStmtCheck_(r); }
   }
+  var looseN = r.거래.filter(function (g) { return g.사슬밖; }).length; // [2026.10.18 3차 수정 K] 사슬 밖 후보 줄 — 출처(사진 글자 그대로·검산 안 됨)를 표에 남긴다
+  if (looseN) r.참고 = ['잔액 사슬 밖 줄 ' + looseN + '개(사진 첫·끝 줄) — 금액·부호는 사진 글자 그대로, 앞 잔액이 사진 밖이라 검산 안 됨(원문 확인)'];
   var won = function (n) { return n ? Number(n).toLocaleString('ko-KR') + '원' : ''; };
   var outS = r.거래.reduce(function (s, x) { return s + (x.출금액 || 0); }, 0), inS = r.거래.reduce(function (s, x) { return s + (x.입금액 || 0); }, 0);
   var md = '### 통장 거래내역' + (r.은행 ? '(' + r.은행 + ')' : '') + ' — ' + r.서식 + '\n\n' + docMdTable_([['예금주', r.예금주], ['계좌번호', r.계좌번호], ['거래', r.거래.length + '줄 · 출금 ' + won(outS) + ' · 입금 ' + won(inS)], ['잔액 검산', r.검산 && r.검산.전체 ? r.검산.전체 + '줄 중 ' + r.검산.맞음 + '줄 맞음(' + r.검산.순서 + ')' : '']])
     + '\n\n| 날짜 | 시각 | 구분 | 내용 | 출금 | 입금 | 잔액 | 검산 |\n|---|---|---|---|---|---|---|---|\n'
-    + r.거래.slice(0, 80).map(function (g) { return '| ' + [g.날짜, g.시각, g.구분, (g.내용 + (g.적요 ? ' ' + g.적요 : '')).slice(0, 30), g.입금 === null ? '?' + won(g.금액) : won(g.출금액), won(g.입금액), g.잔액 == null ? '' : Number(g.잔액).toLocaleString('ko-KR'), g.짝확인필요 ? '⚠짝' : g.잔액검산 ? '✓' : ''].map(function (v) { return String(v).replace(/\|/g, '/'); }).join(' | ') + ' |'; }).join('\n')
-    + (r.거래.length > 80 ? '\n\n… 외 ' + (r.거래.length - 80) + '줄' : '') + (r.경고.length ? '\n\n' + r.경고.map(function (w) { return '- ⚠ ' + w; }).join('\n') : '');
+    + r.거래.slice(0, 80).map(function (g) { return '| ' + [g.날짜, g.시각, g.구분, (g.내용 + (g.적요 ? ' ' + g.적요 : '')).slice(0, 30), g.입금 === null ? '?' + won(g.금액) : won(g.출금액), won(g.입금액), g.잔액 == null ? '' : Number(g.잔액).toLocaleString('ko-KR'), g.짝확인필요 ? '⚠짝' : g.잔액검산 ? '✓' : g.사슬밖 ? '사슬 밖(사진 글자 그대로·검산 안 됨)' : ''].map(function (v) { return String(v).replace(/\|/g, '/'); }).join(' | ') + ' |'; }).join('\n')
+    + (r.거래.length > 80 ? '\n\n… 외 ' + (r.거래.length - 80) + '줄' : '') + (r.참고 && r.참고.length ? '\n\n' + r.참고.map(function (w) { return '- 참고: ' + w; }).join('\n') : '') + (r.경고.length ? '\n\n' + r.경고.map(function (w) { return '- ⚠ ' + w; }).join('\n') : '');
   return { type: 'banktx', label: '통장 거래내역', result: r, md: md };
 }
 // =========================================================
@@ -43132,7 +43227,7 @@ function tcBankStmtCost_(o) {
   const core = function (s) { return String(s || '').replace(/\s+/g, '').replace(/(인테리어|건설|설비|종합|공사|시공)$/, ''); };
   const workOf = function (who) { const ww = who.replace(/\s+/g, ''); const hit = works.filter(function (w) { return (w.person && ww.indexOf(w.person) !== -1) || (core(w.supplier).length >= 2 && ww.indexOf(core(w.supplier)) !== -1); }); return hit.length ? hit.sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); })[0] : null; };
   const already = {}; (o.expDocs || []).forEach(function (e) { already[e.file + '|' + e.amount + '|' + String(e.date || '').slice(0, 10)] = true; });
-  const seenRow = {}, groups = {};
+  const seenRow = {}, groups = {}, cashNear = [];
   let nRows = 0, nOut = 0, nUsed = 0;
   o.stmts.forEach(function (s) {
     const owner = s.r.예금주 || '', other = owner && names.length && !tcNameIn_(owner, names);
@@ -43146,6 +43241,8 @@ function tcBankStmtCost_(o) {
       const tag = s.file + ' ' + g.날짜 + ' ' + who.slice(0, 24) + ' ' + won(g.금액) + ' 출금' + (g.짝확인필요 ? '(금액 짝 확인 필요)' : g.입금 === null ? '(출금인지 확인)' : '');
       const doc = docs.filter(function (d) { return d.amount === g.금액 && d.file !== s.file && (sameNamed(d, who) ? near(d.date, g.날짜, 45) : g.금액 >= 1000000 && d.date && near(d.date, g.날짜, 15)); })[0];
       if (doc) { out.lines.push('지급 확인(통장): ' + tag + ' = ' + doc.file + ' ' + won(doc.amount)); return; }
+      // [2026.10.18 3차 수정 K] 취득일·양도일(또는 계약서 잔금일) 앞뒤 7일 안의 현금·수표 출금(받는 이 글자 없음) — 중개·법무 비용 서류와 금액이 1할 안에서 다르면 실제 지급액 대조 거리(아래에서 한 번에)
+      if (g.금액 >= 1000000 && /현\s*금|만\s*원\s*권|수\s*표|출\s*금/.test(who) && [o.acqDay, o.trDay].concat(o.payDays || []).some(function (dd) { return dd && near(g.날짜, dd, 7); })) cashNear.push({ g: g, tag: tag });
       const broker = /공인\s*중개|중개|부동산|복비/.test(who), lawyer = /법\s*무\s*사/.test(who), w = workOf(who);
       const costWord = /공사|인테리어|샷시|새시|창호|확장|보일러|방수|물막이|설비|시공|철거|도배|장판|수리/.test(who);
       if (!broker && !lawyer && !w && !costWord) return;
@@ -43164,6 +43261,12 @@ function tcBankStmtCost_(o) {
       if (already[s.file + '|' + g.금액 + '|' + g.날짜]) return; // 앱 화면 규칙이 이미 넣은 같은 줄
       out.add.push({ file: s.file, amount: g.금액, date: g.날짜, memo: memo, payer: other ? owner : '', head: who, stmt: true, noReceipt: broker || lawyer || !!g.짝확인필요 || g.입금 === null, bankNote: note });
     });
+  });
+  //  필요경비는 실제로 지급한 금액(소득세법 §97①3호·시행령 §163⑤) — 서류 금액과 통장 현금 출금이 다르면 어느 쪽이 실제 지급인지 묻는다(값은 바꾸지 않음).
+  //  이우석: 취득 잔금 무렵 15:22 "10만원권 −2,000,000원"(사진 끝 줄) ↔ 중개보수 내역서 2,160,000원 — 차액 160,000원
+  cashNear.forEach(function (x) {
+    const d = docs.filter(function (d0) { return d0.amount && d0.amount !== x.g.금액 && Math.abs(d0.amount - x.g.금액) <= d0.amount * 0.1 && (d0.law || /중개|복비/.test(String(d0.who || '') + ' ' + d0.file)); })[0];
+    if (d) out.lines.push('⚠ 통장 현금 출금 ↔ 비용 서류 금액 다름: ' + x.tag + (x.g.사슬밖 ? '(사진 첫·끝 줄 — 잔액 검산 안 됨)' : '') + ' ↔ ' + d.file + ' ' + won(d.amount) + ' — 차액 ' + won(Math.abs(d.amount - x.g.금액)) + ': 실제로 지급한 금액이 어느 쪽인지 확인(필요경비는 실제 지급액, 소득세법 §97①3호·시행령 §163⑤)');
   });
   // 이체확인증(받는 분 = 견적서 업체·대표자) — 같은 공사 지급으로 함께 셈(이체확인증 자체는 이미 비용 후보)
   (o.expDocs || []).filter(function (e) { return !e.stmt && /이\s*체\s*확\s*인\s*증/.test(String(e.head || '')); }).forEach(function (e) {
