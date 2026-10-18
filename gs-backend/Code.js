@@ -25285,10 +25285,14 @@ function tcHoldings_(regs, ledgers, names) {
     else if (!h.mine) { h.mine = '남의 것'; h.ownTxt = '등기부 지금 명의 ' + lastNames.join(', ') + '(납세자 아님)'; }
   }); });
   // ② 토지·건축물대장 — 지목·면적·용도·사용승인일·소유자(이름·지분)
+  var wholeBld = [];
   (ledgers || []).forEach(function (L) {
     var r = L.r || {}, land = L.type === 'landledger';
     var loc = land ? [r.소재, r.지번].filter(Boolean).join(' ') : (r.소재지 || [r.대지위치, r.지번].filter(Boolean).join(' '));
     if (!loc || !caseProcLotOf_(loc) && !caseProcDongHoOf_(loc)) return;
+    // [2026.10.18 3차 L] 집합건물의 표제부·총괄표제부는 건물 전체(동·단지) 서류라 보유 자산 한 줄이 아니다 — 따로 '건물'로 올리면 오피스텔 한 호실을 가진 납세자에게
+    //  연면적 7만㎡짜리 "건물"이 생긴다(김금옥 평촌IPARK). 같은 지번 집합건물 줄에 사용승인일만 보태고(아래) 줄은 만들지 않는다.
+    if (!land && /표제부/.test(r.종류 || '')) { wholeBld.push({ L: L, loc: loc }); return; }
     var kind = land ? '토지' : (/전유부/.test(r.종류 || '') ? '집합건물' : '건물');
     var h = find(loc, kind);
     if (!h) { h = { loc: loc, kind: kind, jimok: '', area: null, use: '', house: null, approval: '', owners: [], mine: '', ownTxt: '', acq: [], files: [], notes: [], reg: false }; list.push(h); }
@@ -25312,6 +25316,15 @@ function tcHoldings_(regs, ledgers, names) {
       } else if (rows.length && !h.mine) { h.mine = '남의 것'; h.ownTxt = (land ? '토지대장' : '건축물대장') + ' 소유자 ' + rows.map(function (q) { return q.이름 + (q.외 ? ' 외 ' + q.외 + '인' : '') + (q.지분 ? ' ' + tcShareTxt_(q.지분) : ''); }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(', ') + '(납세자 아님)'; }
       else if (!h.mine) { h.mine = '확인'; h.ownTxt = (land ? '토지대장' : '건축물대장') + ' 소유자 이름을 읽지 못함 — 원문 확인'; }
     } else if (rows.length && h.mine === '남의 것' && mineR.length) h.notes.push('대장 소유자에 납세자 이름이 있으나 등기부 지금 명의는 다름 — 등기부를 따름');
+  });
+  wholeBld.forEach(function (w) {
+    var lot = caseProcLotOf_(w.loc), r = w.L.r || {};
+    if (!lot) return;
+    list.forEach(function (h) {
+      if (h.kind !== '집합건물' || caseProcLotOf_(h.loc) !== lot) return;
+      if (r.사용승인일 && !h.approval) h.approval = r.사용승인일;
+      if (h.files.indexOf(w.L.file) === -1) h.files.push(w.L.file);
+    });
   });
   // ③ 신축 건물 취득일 — 소유권보존(신축)이면 사용승인일이 1번 후보(시행령 §162①4: 사용승인서 교부일, 그 전에 사실상 사용하면 그 날)
   list.forEach(function (h) {
@@ -31520,7 +31533,9 @@ function caseProcLedger_(c, saved) {
       else if (engDoc) r.use = '영문 서류(영문 ' + latin + '자) — 이 종류의 정리 규칙이 없어 칸에 넣지 않음' + (/번역/.test(allEx.map(function (o) { return o.name; }).join('\n')) ? '(번역본이 있으면 번역본으로 읽음)' : '') + ': 넣을 값이 있으면 [확인]에서 근거 파일로 고르세요';
       else if (hangul < 15 && latin < 60) r.use = '사진 — 글자가 거의 없어 서류 내용을 판별할 수 없음(현장·설비 사진 등, 필요하면 직접 확인)';
       // [2026.10.18 정밀분석 07_1] 대장은 이제 보유 자산 목록·상속재산 후보로 쓴다 — 여기까지 온 것은 이 사건 물건과 맞는 소재지·소유자를 못 찾은 것
-      else if (/^(bldledger|landledger)$/.test(r.t || '')) r.use = '참고 — 건축물·토지대장(이 사건 물건과 맞는 소재지·소유자를 찾지 못함 — 소재지·소유자 칸을 원문 확인)';
+      // [2026.10.18 3차 L] "찾지 못함"은 대장을 사건 물건과 맞춰 보는 세목(양도 보유 자산 목록·상속재산 후보)에서만 맞는 말이다 — 증여 사건은 맞춰 보는 길이 없어
+      //  증여재산과 같은 호실 대장(정원식 초원상가 303호)에도 "찾지 못함"이 붙었다. 건물 전체 서류(표제부·총괄표제부)는 호실과 맞출 대상이 아니다.
+      else if (/^(bldledger|landledger)$/.test(r.t || '')) r.use = (c.세목 === 'transfer' || c.세목 === 'inheritance') && !/표제부/.test(r.kind || '') ? '참고 — 건축물·토지대장(이 사건 물건과 맞는 소재지·소유자를 찾지 못함 — 소재지·소유자 칸을 원문 확인)' : '참고 — 건축물·토지대장(면적·용도 확인용, 계산 입력 아님' + (/표제부/.test(r.kind || '') ? ' — 건물 전체(표제부) 대장: 연면적·사용승인일·변동사항 확인' : '') + ')';
       else if (/^(pubprice|realprice)$/.test(r.t || '')) r.use = '참고 — 가격 자료(평가·환산 근거 — 해당 칸이 이미 정해졌거나 다른 물건·다른 호수 것)';
     }
     return r;
@@ -33657,7 +33672,8 @@ function ldDates_(s) {
 // 면적 토큰 — "159m2", "312.48 m²", "62.9m'" (OCR이 ²를 2·9·'로 읽음)
 function ldAreas_(s) {
   var out = [], re = /(\d{1,3}(?:,\d{3})*(?:\.\d{1,4})?|\d+(?:\.\d{1,4})?)\s*(?:m\s*[2²9']|㎡)/g, m;
-  while ((m = re.exec(s))) out.push({ v: ldNum_(m[1]), at: m.index });
+  // [2026.10.18 3차 L] 앞 글자가 영문이면 단위의 일부("m2 ⏎ m2"의 앞 '2')라 면적이 아니다 — 빈 건축면적 칸에서 '2'를 건축면적으로 읽었다(노영환 회기동)
+  while ((m = re.exec(s))) { if (m.index > 0 && /[A-Za-z]/.test(s.charAt(m.index - 1))) continue; out.push({ v: ldNum_(m[1]), at: m.index }); }
   return out;
 }
 function ldAfter_(t, labelRe, len) { var i = t.search(labelRe); return i < 0 ? '' : t.slice(i, i + (len || 400)); }
@@ -33666,7 +33682,17 @@ function ldAfter_(t, labelRe, len) { var i = t.search(labelRe); return i < 0 ? '
 function ldParseBuilding_(text) {
   var t = String(text || '');
   var isJip = /집합\s*건축물\s*대장/.test(t), isJeon = /전유부/.test(t), isChong = /총괄\s*표제부/.test(t);
-  var r = { 종류: isJip ? ('집합건축물대장(' + (isJeon ? '전유부' : isChong ? '총괄표제부' : '표제부') + ')') : (/일반\s*건축물\s*대장/.test(t) ? '일반건축물대장' : '건축물대장'), 경고: [], 확인필요: [] };
+  // [2026.10.18 3차 L] 대장 종류는 서식 제목줄(「집합건축물대장(표제부, 갑)」·「(전유부, 갑)」·「건축물대장총괄표제부(갑)」·「일반건축물대장(갑)」)로 정한다.
+  //  본문 낱말로 정하면 김금옥 표제부의 변동사항 "…공용58.6m2으로 전유부 변경(합병)" 때문에 전유부로 읽혀 대지·연면적·건폐율·사용승인일이 통째로 빠지고
+  //  설계자 면허번호 "제2876호"가 호명칭·소재지로 들어갔다. 정원식 단지 총괄표제부는 각주 "일반건축물대장(갑) 및 집합…에 적습니다"에 걸려 일반건축물대장이 됐다.
+  //  제목줄이 없으면(재산조회서·감정평가서 속 대장 등) 예전 기준 그대로.
+  var tJeon = /집합\s*건축물\s*대장\s*\(\s*전\s*유\s*부/.test(t), tPyo = /집합\s*건축물\s*대장\s*\(\s*표\s*제\s*부/.test(t);
+  var tChong = /건축물\s*대장\s*\(?\s*총\s*괄\s*표\s*제\s*부\s*\(?\s*[갑을]/.test(t), tIl = /일반\s*건축물\s*대장\s*\(\s*[갑을]\s*\)/.test(t);
+  if (tJeon) { isJip = true; isJeon = true; isChong = false; }
+  else if (tPyo) { isJip = true; isJeon = false; isChong = false; }
+  else if (tChong) { isJeon = false; isChong = true; }
+  else if (tIl) { isJip = false; isJeon = false; isChong = false; }
+  var r = { 종류: isJip ? ('집합건축물대장(' + (isJeon ? '전유부' : isChong ? '총괄표제부' : '표제부') + ')') : (isChong && !isJeon ? '건축물대장(총괄표제부)' : /일반\s*건축물\s*대장/.test(t) ? '일반건축물대장' : '건축물대장'), 경고: [], 확인필요: [] };
   if (/위반\s*건축물/.test(t.replace(/위반건축물\s*표시\s*란|위반\s*건축물\s*여부\s*[:：]?\s*(없음|미해당|해당없음)/g, ''))) { r.위반건축물 = true; r.경고.push('⚠ 위반건축물 표시가 있음 — 원문 확인(양도·임대 감면·비과세 판단에 영향)'); }
   var m = /대지\s*위치\s*\n?\s*([^\n]{4,60})/.exec(t);
   if (m && !/지번|도로명/.test(m[1]) && /[가-힣]{2,}(시|도|군|구)/.test(m[1])) r.대지위치 = m[1].trim();
@@ -33686,9 +33712,20 @@ function ldParseBuilding_(text) {
     var blk2 = ldAfter_(t, /건축\s*면적/, 300), a2 = ldAreas_(blk2);
     if (a2.length >= 1) r.건축면적 = a2[0].v;
     if (a2.length >= 2 && /용적률\s*산정용/.test(blk2)) r.용적률산정연면적 = a2[1].v;
-    var pc = ldAfter_(t, /건폐율/, 200).match(/(\d{1,3}(?:\.\d{1,4})?)\s*%/g) || [];
-    if (pc.length >= 1) r.건폐율 = ldNum_(pc[0].replace('%', ''));
-    if (pc.length >= 2) r.용적률 = ldNum_(pc[1].replace('%', ''));
+    // [2026.10.18 3차 L] 비율은 소수 자리 전체로 — 총괄표제부 "15.426019 %"·"216.28709 %"를 소수 4자리까지만 받아 뒤쪽 "19"·"709"를 건폐율·용적률로 읽었다(앞이 숫자·점이면 비율의 중간)
+    var pc = [], pcm, pcr = /(?:^|[^\d.,])(\d{1,4}(?:\.\d{1,8})?)\s*%/g, pcs = ldAfter_(t, /건폐율/, 200);
+    while ((pcm = pcr.exec(pcs))) pc.push(pcm[1]);
+    if (pc.length >= 1) r.건폐율 = ldNum_(pc[0]);
+    if (pc.length >= 2) r.용적률 = ldNum_(pc[1]);
+    // 면적 쉼표가 소수점으로 읽힌 것("96,269,342 m2" = 96,269.342㎡) — 그대로는 검산이 깨지고, 마지막 쉼표를 소수점으로 보면 비율과 맞을 때만 고친다(맞지 않으면 손대지 않음)
+    var ldCommaDec_ = function (v, pct) {
+      if (v == null || pct == null || !r.대지면적) return v;
+      var ok0 = Math.abs(v / r.대지면적 * 100 - pct) <= 1, v2 = v / 1000;
+      if (!ok0 && Math.abs(v2 / r.대지면적 * 100 - pct) <= 1) { r.확인필요.push('면적 ' + v.toLocaleString('ko-KR') + '을 ' + v2 + '㎡로 읽음(쉼표를 소수점으로 — 비율 검산 일치, 원문 확인)'); return Math.round(v2 * 10000) / 10000; }
+      return v;
+    };
+    if (r.건축면적 != null) r.건축면적 = ldCommaDec_(r.건축면적, r.건폐율);
+    if (r.용적률산정연면적 != null) r.용적률산정연면적 = ldCommaDec_(r.용적률산정연면적, r.용적률);
     // 검산: 건폐율 ≈ 건축면적/대지면적, 용적률 ≈ 용적률산정연면적/대지면적 (±1%p)
     r.면적검산 = '';
     if (r.대지면적 && r.건축면적 && r.건폐율 != null) {
@@ -33707,10 +33744,30 @@ function ldParseBuilding_(text) {
     m = /층수\s*\n(?:[^\n]*\n){0,6}?[^\n]*m\s*[2²9'][^\n]*\n(?:[^\n]*m\s*[2²9'][^\n]*\n)?[^\n]*조[^\n]*\n\s*([^\n]{2,30})\n/.exec(seg + '\n');
     if (m && !/지하|지상|층/.test(m[1])) r.주용도 = m[1].trim();
     // 인허가 시기 — 허가일 ≤ 착공일 ≤ 사용승인일 (날짜가 섞여 나와도 크기순)
-    var hb = ldAfter_(t, /인허가\s*시기|허가일/, 260), hd = ldDates_(hb).map(function (x) { return x.d; });
-    hd = hd.filter(function (d, i) { return hd.indexOf(d) === i || true; }).sort();
+    // [2026.10.18 3차 L] 인허가 칸은 그 칸 끝(건축물 인증·구조 현황)까지 본다 — 260자로 끊어 김금옥 평촌IPARK 사용승인일 2003.3.4를 놓치고 착공일 2001.2.9를 사용승인일로 냈다.
+    //  날짜가 셋 다 있으면 크기순(허가 ≤ 착공 ≤ 사용승인). 빈 칸이 있어 둘 이하면 각 날짜를 바로 앞 이름표(허가일·착공일·사용승인일)에 붙인다
+    //  — 예전엔 둘 중 늦은 것을 사용승인일로만 봐서, 칸을 덜 읽으면 허가일이 사용승인일이 됐다(노영환 회기동: 1986.7.23 허가 / 1986.12.23 사용승인).
+    var hs = t.search(/인허가\s*시기|허가일/), hb = hs >= 0 ? t.slice(hs, hs + 900) : '';
+    var he = hb.search(/건축물\s*인증|건축물\s*구조\s*현황|건축물\s*관리\s*현황|변동\s*사항/); if (he > 0) hb = hb.slice(0, he);
+    var hdo = ldDates_(hb), hd = hdo.map(function (x) { return x.d; }).filter(function (d, i, a) { return a.indexOf(d) === i; }).sort();
     if (hd.length >= 3) { r.허가일 = hd[0]; r.착공일 = hd[1]; r.사용승인일 = hd[hd.length - 1]; }
-    else if (hd.length) { r.사용승인일 = hd[hd.length - 1]; r.확인필요.push('허가·착공·사용승인일 일부만 읽음'); }
+    else if (hd.length) {
+      var labs = [], lre0 = /(사용\s*승인\s*일|착공\s*일|허가\s*일)/g, lm0; while ((lm0 = lre0.exec(hb))) labs.push({ at: lm0.index, k: /사용/.test(lm0[1]) ? '사용승인일' : /착공/.test(lm0[1]) ? '착공일' : '허가일' });
+      var got = {}, allLab = true;
+      hdo.forEach(function (x) { var pl = labs.filter(function (l) { return l.at < x.at; }).pop(); if (pl && !got[pl.k]) got[pl.k] = x.d; else allLab = false; });
+      var ord = [got.허가일, got.착공일, got.사용승인일].filter(Boolean), inOrder = ord.every(function (d, i) { return !i || ord[i - 1] <= d; });
+      if (allLab && inOrder && (got.사용승인일 || got.허가일 || got.착공일)) { if (got.허가일) r.허가일 = got.허가일; if (got.착공일) r.착공일 = got.착공일; if (got.사용승인일) r.사용승인일 = got.사용승인일; if (!got.사용승인일) r.확인필요.push('사용승인일을 읽지 못함'); }
+      else { r.사용승인일 = hd[hd.length - 1]; r.확인필요.push('허가·착공·사용승인일 일부만 읽음'); }
+    }
+    // [2026.10.18 3차 L] 총괄표제부의 "건축물 현황"은 층별이 아니라 동별(단지 안 각 동의 명칭·용도·연면적) — 층별로 읽으면 짝이 늘 깨지고,
+    //  아파트 동과 상가동이 섞여 단지 전체에 근거 없는 '겸용주택' 경고가 붙었다(정원식 초원아파트). 동별로 읽어 동 연면적 합 = 연면적일 때만 확정한다.
+    if (isChong) {
+      var dg = ldDongs_(t, r.연면적);
+      r.동별 = dg.rows; r.용도목록 = dg.uses; r.층별 = [];
+      if (dg.ok) r.동별검산 = '동별 연면적 합계 = 연면적(' + r.연면적 + '㎡)';
+      else if (dg.rows.length || dg.areas) r.확인필요.push('동별 현황(동·연면적 짝 확정 못함 — 원문 확인)');
+      return ldFinishBuilding_(t, r);
+    }
     // 층별현황 — "건축물 현황" 칸: 층(지1층·1층·옥탑) 목록, 용도 목록, 면적 목록을 각각 순서대로 짝짓고, 합계를 연면적과 비교
     var fl = ldFloors_(t);
     r.용도목록 = fl.용도목록 || [];
@@ -33735,19 +33792,35 @@ function ldParseBuilding_(text) {
     }
   } else {
     // 전유부 — 호명칭, 전유부분(층·구조·용도·면적), 공용부분 면적 합계, 공동주택가격
-    m = /호\s*명칭\s*\n(?:[^\n]*\n){0,3}?\s*([A-Za-z가-힣0-9-]*\d+\s*호)\s*\n/.exec(t) || /\n\s*(제?\s*\d+\s*동\s*)?(제?\s*\d{2,5}\s*호)\s*\n/.exec(t);
+    m = /호\s*명칭\s*\n(?:[^\n]*\n){0,3}?\s*([A-Za-z가-힣0-9-]*\d+\s*호)\s*\n/.exec(t);
+    // [2026.10.18 3차 L] 이름표 없이 찾는 대체 규칙은 설계자·공사감리자·시공자 칸의 면허(등록)번호("제2876호")를 호수로 잡지 않게 — 바로 앞 글에 그 칸 이름이 있으면 건너뛴다
+    if (!m) { var hre = /\n\s*(제?\s*\d+\s*동\s*)?(제?\s*\d{2,5}\s*호)\s*(?=\n)/g, hm; while ((hm = hre.exec(t))) { if (/설계자|감리자|시공자|면허|등록\s*번호|건축사|현장\s*관리인/.test(t.slice(Math.max(0, hm.index - 120), hm.index))) continue; m = hm; break; } }
     if (m) r.호명칭 = (m[2] ? (m[1] || '') + m[2] : m[1]).replace(/\s+/g, '');
     // [2026.10.18 정밀분석 07·11] 호명칭 칸에 "호" 글자 없이 "302"·"401"·"B01"·"B139"만 적힌 대장(정부24 전유부 대부분) — 이름표 뒤 3줄 안의 그 값
     if (!r.호명칭) { m = /호\s*명칭\s*\n(?:[^\n]*\n){0,3}?\s*([A-Z]?\d{1,4})\s*\n/.exec(t); if (m) r.호명칭 = m[1] + '호'; }
     m = /명칭\s*\n(?:[^\n]*\n){0,2}?\s*([^\n]{0,30}?)(\d{1,4})\s*동\s*\n/.exec(t); if (m) { r.동 = m[2]; if (m[1].trim() && !/호\s*명칭|도로명/.test(m[1])) r.명칭 = m[1].trim(); }
     var jb = ldAfter_(t, /전\s*유\s*부\s*분/, 900).split(/공\s*용\s*부\s*분/)[0];
-    var jm = /\n\s*(\d{1,3}층|지\d층)\s*\n\s*([^\n]*조)\s*\n\s*([^\n]{2,30})\s*\n/.exec(jb);
+    // [2026.10.18 3차 L] 구조 칸이 "…조"로 안 끝나는 대장("철근콘크리트/경사지")도 받고, 전유부분 칸 값이 이름표보다 먼저 나온 글자인식(정원식 초원상가 303호: "3층 ⏎ 철근콘크리트/경사지 ⏎ 생활시설")은
+    //  첫 공용부분 이름표 앞 전체에서 한 번 더 찾는다 — 못 찾으면 대체 낱말 찾기가 명칭 "초원아파트 상가동"의 '아파트'를 전유용도로 잡아 상가를 주택으로 볼 뻔했다.
+    var jre = /\n\s*(\d{1,3}층|지\d층)\s*\n\s*([^\n]*(?:조|콘크리트|철골|벽돌|블[럭록])[^\n]*)\s*\n\s*([^\n]{2,30})\s*\n/;
+    var jm = jre.exec(jb), c0 = t.search(/공\s*용\s*부\s*분/);
+    if (!jm && c0 > 0) jm = jre.exec(t.slice(0, c0));
     if (jm) { r.전유층 = jm[1]; r.전유구조 = jm[2].trim(); r.전유용도 = /이하\s*여백|^-/.test(jm[3]) ? '' : jm[3].trim(); }
-    if (!r.전유용도) { var um = /(아파트|오피스텔|다세대주택|연립주택|주택|근린생활시설|소매점|사무소|업무시설|점포|창고)/.exec(jb); if (um) { r.전유용도 = um[1]; } }
+    // 대체 낱말 찾기는 따로 떨어진 낱말만(단지 명칭 "○○아파트 상가동"·"공동주택(아파트) 가격" 제목의 '아파트'는 용도가 아님)
+    if (!r.전유용도) { var um = /(?:^|[\s\n])(아파트|오피스텔|다세대주택|연립주택|주택|근린생활시설|소매점|사무소|업무시설|점포|창고)(?=[\s\n]|$)/.exec(jb); if (um) { r.전유용도 = um[1]; } }
     var ja = jb.match(/\n\s*(\d{1,4}\.\d{1,4})\s*\n/);
     if (ja) r.전유면적 = ldNum_(ja[1]);
-    var cb = ldAfter_(t, /공\s*용\s*부\s*분/, 1200).split(/이등\(초\)본|이\s*등\(초\)본|발급일/)[0];
-    var cs = (cb.match(/\n\s*(\d{1,4}\.\d{1,4})\s*(?=\n)/g) || []).map(function (x) { return ldNum_(x); });
+    // [2026.10.18 3차 L] 공용부분은 쪽마다 따로 있다(1쪽 표 + 2쪽 "공용부분" 표) — 이름표마다 그 쪽 끝(발급일·변동사항·다음 쪽 머리)까지 모아 합산.
+    //  예전엔 첫 이름표 뒤 '발급일'에서 끊어 2쪽을 버렸다(김금옥 1421호 25.17 → 42.98㎡, 정원식 303호 32.319 → 38.359㎡).
+    //  글자인식이 "-이하여백-"·"이 등(초)본은…" 문구를 표 값 사이에 끼워 넣기도 해서(래미안슈르 1쪽) 그 문구에서는 끊지 않는다.
+    var cs = [], cre2 = /공\s*용\s*부\s*분/g, cm2, cEnd = -1;
+    while ((cm2 = cre2.exec(t))) {
+      if (cm2.index < cEnd) continue;
+      var cb = t.slice(cm2.index, cm2.index + 1500), ccut = cb.search(/발급\s*일|변동\s*사항|변동\s*일|변동\s*내용|쪽\s*중\s*제|문서\s*확인\s*번호|그\s*밖의\s*기재/);
+      if (ccut > 0) cb = cb.slice(0, ccut);
+      cEnd = cm2.index + cb.length;
+      (cb.match(/\n\s*(\d{1,4}\.\d{1,4})\s*(?=\n)/g) || []).forEach(function (x) { cs.push(ldNum_(x)); });
+    }
     if (cs.length) r.공용면적 = Math.round(cs.reduce(function (a, b) { return a + b; }, 0) * 10000) / 10000;
     if (!r.전유면적) r.확인필요.push('전유면적');
     // 공동주택가격 — "기준일 / 가격" 줄(날짜 + 금액)
@@ -33755,7 +33828,8 @@ function ldParseBuilding_(text) {
     // 기준일 목록과 가격 목록을 따로 모아 순서대로 짝짓는다(날짜·금액이 다른 줄로 흩어져 한 칸씩 밀리는 일을 막기 위해). 개수가 다르면 ⚠
     var pbase = t.search(/공동\s*주택\s*\(?\s*아파트\s*\)?\s*가격|공동주택가격/);
     if (pbase >= 0) {
-      var ps = t.slice(pbase).split(/부동산\s*가격공시에\s*관한|이하\s*여백\s*-?\s*$|변동\s*사항/)[0];
+      // [2026.10.18 3차 L] 변동일·변동내용 칸에서도 끊는다 — 공동주택가격이 없는 대장(김금옥 오피스텔)에서 변동사항 날짜 "2003.4.4"·"(2003.03.31)"를 기준일로 세어 "기준일 2개·가격 0개" 거짓 경고가 났다
+      var ps = t.slice(pbase).split(/부동산\s*가격공시에\s*관한|이하\s*여백\s*-?\s*$|변동\s*사항|변동\s*일|변동\s*내용/)[0];
       var pdl = [], pvl = [], pm, pdr = /((?:19|20)\d{2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})\s*\.?/g;
       while ((pm = pdr.exec(ps))) pdl.push(ldYmd_(pm[1], pm[2], pm[3]));
       var pvr = /(\d{1,3}(?:,\d{3}){2,})/g; while ((pm = pvr.exec(ps))) pvl.push(ldNum_(pm[1]));
@@ -33764,6 +33838,10 @@ function ldParseBuilding_(text) {
       if (pbad && (pdl.length || pvl.length)) r.확인필요.push('공동주택가격 기준일 ' + pdl.length + '개·가격 ' + pvl.length + '개로 짝이 맞지 않음 — 원문 확인');
     }
   }
+  return ldFinishBuilding_(t, r);
+}
+// 건축물대장 공통 마무리 — 소유자·변동사항·소재지 한 줄
+function ldFinishBuilding_(t, r) {
   // 소유자현황 — 변동일 + 변동원인(소유권이전·보존 등), 지분
   r.소유자 = ldOwners_(t);
   // 변동사항 — 날짜로 시작하는 기록. 용도변경·증축·대수선·위반·멸실은 강조
@@ -33781,17 +33859,23 @@ function ldFloors_(t) {
   var re = /건축물\s*현황/g, mm, blocks = [], lastEnd = -1;
   while ((mm = re.exec(t))) {
     if (mm.index < lastEnd) continue;
-    var b = t.slice(mm.index, mm.index + 2500), cut = b.search(/이하\s*여백|이\s*등\(초\)본|이등\(초\)본|건축물대장의\s*기재/);
-    if (cut > 0 && cut < 30) cut = b.slice(30).search(/이하\s*여백|이\s*등\(초\)본|이등\(초\)본/) + 30;
+    // [2026.10.18 3차 L] 칸 끝은 그 쪽 끝(발급일·문서확인번호·변동사항·다음 서식 머리)으로 — 글자인식이 "-이하여백"·"이 등(초)본은…" 문구를 표 값 사이에 끼워 넣어
+    //  거기서 끊으면 마지막 층 면적을 잃었다(박종헌 사당동 139-43 2층 73.49 — 층 7개·면적 6개로 짝이 깨짐).
+    var b = t.slice(mm.index, mm.index + 2500), cut = b.slice(10).search(/발급\s*일|문서\s*확인\s*번호|변동\s*사항|변동\s*내용|쪽\s*중\s*제|건축물대장의\s*기재/);
+    if (cut >= 0) cut += 10;
     b = cut > 0 ? b.slice(0, cut) : b;
     lastEnd = mm.index + b.length;
     blocks.push(b);
   }
   var lines = blocks.join('\n').split('\n').map(function (x) { return x.trim(); }).filter(function (x) { return x; });
   lines.forEach(function (L) {
-    if (/^(지\d+층|\d{1,3}층|옥탑\d?층?|지하\d+층|옥탑)$/.test(L)) floors.push(L);
+    var fm0;
+    if (/^(지\d+층|\d{1,3}층|옥탑\d?층?|지하\d+층|옥탑|지층)$/.test(L)) floors.push(L);
+    // [2026.10.18 3차 L] 층과 구조가 한 줄로 붙은 것("3층 철근콘크리트조,세멘벽돌조" — 노영환 회기동)도 층으로, 천 단위 쉼표 면적("2,743.83")도 면적으로
+    else if ((fm0 = /^(지\d+층|\d{1,3}층|지하\d+층|지층)\s+\S*(?:조|콘크리트|철골|벽돌|블[럭록])/.exec(L))) floors.push(fm0[1]);
+    else if (/^\d{1,3}(?:,\d{3})+\.\d{1,4}$/.test(L)) areas.push(ldNum_(L));
     else if (/^\d{1,5}(?:\.\d{1,4})?$/.test(L) && L.indexOf('.') !== -1) areas.push(ldNum_(L));
-    else if (/(시설|주택|사무소|점포|창고|주차장|계단실|기계실|음식점|소매점|공장|교회|학원|의원|다가구|다세대|아파트|근린|업무|숙박|판매|위락|연면적제외|화장실|기숙사)/.test(L) && !/구분|용도|층별|구조|면적/.test(L)) {
+    else if (/(시설|주택|사무소|점포|창고|주차장|계단실|기계실|음식점|소매점|공장|교회|학원|의원|다가구|다세대|아파트|근린|업무|숙박|판매|위락|연면적제외|화장실|기숙사)/.test(L) && !/구분|용도|층별|구조|면적/.test(L.replace(/\(\s*연\s*면\s*적\s*제\s*외\s*\)/g, ''))) { // [3차 L] "계단실(연면적제외)"의 '면적'은 이름표가 아님(박종헌 139-43 옥탑)
       // 한 줄에 용도 여러 개가 붙어 나오기도 함("제2종근린생활시설(사무소) 계단실(연면적제외)")
       var parts = L.match(/[^\s]*?(?:시설|주택|사무소|점포|창고|주차장|계단실|기계실|음식점|소매점|공장|교회|학원|의원|아파트|업무|화장실|기숙사)(?:\([^)]*\))?/g) || [L];
       parts.forEach(function (p) { uses.push(p); });
@@ -33800,9 +33884,49 @@ function ldFloors_(t) {
   var n = Math.min(floors.length, areas.length);
   for (var i = 0; i < n; i++) out.push({ 층: floors[i], 용도: uses[i] || '', 면적: areas[i] });
   if (floors.length !== areas.length || uses.length !== floors.length) out.짝확인필요 = true;
+  // [2026.10.18 3차 L] 층별 표는 아래층부터 차례로 적힌다(지하 깊은 층 → 지상 → 옥탑). 글자인식 순서가 이 차례가 아니면(두 단 표가 섞여 "지3·지2·지1·4층·5층·6층·1층…") 짝을 확정하지 않는다
+  //  — 면적 합 = 연면적 검산은 순서를 못 가리므로(합은 같다) 순서를 따로 본다.
+  var lv = function (f) { var q; if (/^옥탑/.test(f)) return 1000; if ((q = /^지(?:하)?(\d+)층?$/.exec(f))) return -Number(q[1]); if (f === '지층') return -1; q = /^(\d+)층$/.exec(f); return q ? Number(q[1]) : null; };
+  for (var fi = 1; fi < floors.length; fi++) { var la = lv(floors[fi - 1]), lb = lv(floors[fi]); if (la != null && lb != null && lb < la) { out.짝확인필요 = true; break; } }
   out.용도목록 = uses.filter(function (u, k) { return uses.indexOf(u) === k; });
   out.면적목록 = areas;
   return out;
+}
+// [2026.10.18 3차 L] 총괄표제부 동별 현황 — "구분(주1·주2…) ⏎ 동 명칭" 순서의 동 목록과 동 연면적 목록을 각각 모아 순서대로 짝짓고,
+//  동 연면적 합 = 총괄 연면적일 때만 확정한다. 글자인식이 소수점을 쉼표로 읽은 면적("10,700,532"·"9,439,53")은
+//  마지막 묶음이 1~2자리이거나, 그대로 읽으면 단지 전체 연면적보다 커서 한 동의 면적일 수 없을 때만 마지막 쉼표를 소수점으로 본다.
+function ldDongs_(t, total) {
+  var re = /건축물\s*현황/g, mm, blocks = [], lastEnd = -1;
+  while ((mm = re.exec(t))) {
+    if (mm.index < lastEnd) continue;
+    var b = t.slice(mm.index, mm.index + 3000), cut = b.search(/이하\s*여백|이\s*등\s*\(초\)\s*본|발급\s*일|그\s*밖의\s*기재/);
+    b = cut > 0 ? b.slice(0, cut) : b;
+    lastEnd = mm.index + b.length; blocks.push(b);
+  }
+  var lines = blocks.join('\n').split('\n').map(function (x) { return x.trim(); }).filter(function (x) { return x; });
+  var norm = function (s) {
+    s = s.replace(/^\|/, '');
+    if (s.indexOf('.') !== -1) { var p = s.split('.'); return ldNum_(p.slice(0, -1).join('').replace(/,/g, '') + '.' + p[p.length - 1].replace(/,/g, '')); }
+    var g = s.split(','), last = g[g.length - 1], whole = ldNum_(s);
+    if (g.length > 1 && (last.length < 3 || (total && whole > total))) return ldNum_(g.slice(0, -1).join('') + '.' + last);
+    return whole;
+  };
+  var USE = /(아파트|연립주택|다세대주택|단독주택|다가구주택|공동주택|근린생활시설|업무시설|판매시설|오피스텔|숙박시설|노유자시설|교육연구시설|운동시설|창고시설|주차장|공장|종교시설|의료시설|기숙사)/;
+  var names = [], areas = [], uses = [];
+  lines.forEach(function (L, i) {
+    if (/^(주|부)\S{0,2}$/.test(L) && lines[i + 1] && /(?:\d{1,4}|[가-힣]{1,4})\s*동$/.test(lines[i + 1]) && !/현황|명칭/.test(lines[i + 1])) names.push(lines[i + 1]);
+    var am = /^\|?\s*(\d{1,3}(?:[,.]\d{1,3})+)(?:\s+(?:19|20)\d{2}\s*[.,]\s*\d{1,2}\s*[.,]\s*\d{1,2}\s*[.,]?)?\s*$/.exec(L);
+    if (am) {
+      areas.push(norm(am[1]));
+      var u = '';
+      for (var k = i - 1; k >= Math.max(0, i - 4); k--) { var uq = USE.exec(lines[k]); if (uq && !/도로명|[로길]\s*\d/.test(lines[k])) { u = lines[k].replace(/^\|/, '').replace(/^(근린생활시설),\s*제\s*(\d)\s*종$/, '제$2종$1'); break; } }
+      uses.push(u);
+    }
+  });
+  var sum = areas.reduce(function (a, b) { return a + (b || 0); }, 0);
+  var ok = !!(names.length && names.length === areas.length && total && Math.abs(sum - total) <= 1);
+  var rows = ok ? names.map(function (n, i) { return { 동: n, 용도: uses[i] || '', 연면적: Math.round(areas[i] * 1000) / 1000 }; }) : [];
+  return { rows: rows, uses: uses.filter(function (u, k) { return u && uses.indexOf(u) === k; }), ok: ok, areas: areas.length };
 }
 function ldOwners_(t) {
   // 소유자현황 행은 OCR에서 "변동일 … 주민번호 … 주소 … 지분 … 변동원인" 순으로 흩어진다 — 변동원인 낱말을 기준으로
@@ -33834,7 +33958,8 @@ function ldOwners_(t) {
 var LD_NAME_STOP_ = /^(성명|명칭|주소|지분|구분|층별|용도|구조|면적|소유자|소유권|변동|변동일자|변동원인|등록번호|공용부분|전유부분|이하여백|여백|대지위치|도로명주소|아파트|주택|주차장|계단실|기계실|순번|비고|지번|토지|대장|건물|철근|현황|발급|담당자|외)$/;
 function ldOwnerName_(seg) {
   var s = String(seg || ''), m, best = null;
-  var re = /(?:^|\n|\))\s*(?:\(\s*부동산\s*등기용\s*등록번호\s*\)\s*)?((?:주식회사\s*|\(주\)\s*|㈜\s*)?[가-힣]{2,5})(?:\s*외\s*(\d{1,3})\s*인)?\s*\n\s*(?=(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|전북특별|경상|경북|경남|제주)[가-힣]*\s)/g;
+  // [2026.10.18 3차 L] 성명과 주소 사이에 변동일자 줄이 끼는 글자인식("정원식 ⏎ 2009.8.31. ⏎ 경기도 안양시 …" — 정원식 초원상가 303호)도 받는다
+  var re = /(?:^|\n|\))\s*(?:\(\s*부동산\s*등기용\s*등록번호\s*\)\s*)?((?:주식회사\s*|\(주\)\s*|㈜\s*)?[가-힣]{2,5})(?:\s*외\s*(\d{1,3})\s*인)?\s*\n\s*(?:(?:19|20)\d{2}\s*\.\s*\d{1,2}\s*\.\s*\d{1,2}\s*\.?\s*\n\s*)?(?=(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|전북특별|경상|경북|경남|제주)[가-힣]*\s)/g;
   while ((m = re.exec(s))) { var nmx = m[1].replace(/\s+/g, ''); if (!LD_NAME_STOP_.test(nmx) && !/(시|도|군|구|동|읍|면|리|로|길)$/.test(nmx) || /^(주식회사|\(주\)|㈜)/.test(nmx)) best = { 이름: nmx, 외: m[2] ? Number(m[2]) : 0 }; }
   if (!best) { m = /\(\s*부동산\s*등기용\s*등록번호\s*\)\s*([가-힣]{2,5})(?:\s*외\s*(\d{1,3})\s*인)?/.exec(s); if (m && !LD_NAME_STOP_.test(m[1])) best = { 이름: m[1], 외: m[2] ? Number(m[2]) : 0 }; }
   return best || { 이름: '', 외: 0 };
@@ -33842,9 +33967,39 @@ function ldOwnerName_(seg) {
 function ldChanges_(t) {
   var s = t.search(/변동\s*내용\s*및\s*원인/), out = [];
   if (s < 0) return out;
-  var blk = t.slice(s).split(/※\s*표시\s*항목|이하\s*여백\s*$/)[0];
-  var re = /((?:19|20)\d{2})\.(\d{1,2})\.(\d{1,2})\.?\s+([^\n]{4,160})/g, m;
-  while ((m = re.exec(blk))) { var txt = m[4].trim(); if (/^\d{4}\.\d/.test(txt)) continue; out.push({ 일자: ldYmd_(m[1], m[2], m[3]), 내용: txt }); }
+  // [2026.10.18 3차 L] 변동사항은 갑 쪽 끝과 별도 "(을) 변동사항" 쪽에 나뉘어 있다 — 첫 칸 뒤 각주("※※ 표시 항목은…")에서 끊어 을 쪽 변동(정원식 총괄표제부 2011.11.18 담장 철거·2021.1.22 용도변경)을 버렸다.
+  //  "변동내용 및 원인" 칸마다 각주·쪽 끝까지 모으고, 글자인식이 점을 쉼표로 읽은 날짜("2021,1,22,")도 받는다. 같은 날짜·내용은 한 번만.
+  var blks = [], bre = /변동\s*내용\s*및\s*원인/g, bm, bEnd = -1;
+  while ((bm = bre.exec(t))) {
+    if (bm.index < bEnd) continue;
+    // 글자인식이 "변동일 ⏎ 2003.4.4 ⏎ 변동내용 및 원인 ⏎ 동안건교…"처럼 날짜를 이름표 앞에 둔 경우(김금옥 전유부) — 바로 앞 "변동일" 이름표부터
+    var bs = bm.index, pre = t.slice(Math.max(bEnd, bm.index - 60), bm.index), pk = pre.search(/변동\s*일(?![가-힣])[^\n]*\n\s*(?:19|20)\d{2}\s*[.,]\s*\d{1,2}\s*[.,]\s*\d{1,2}\s*[.,]?\s*\n\s*$/);
+    if (pk >= 0) bs = bm.index - pre.length + pk;
+    // 글자인식이 "이하여백"을 변동 기록 사이에 끼워 넣기도 해서(박종헌 사당동 139-43) 거기서는 끊지 않는다 — 각주·다음 서식·쪽 끝에서만
+    var blk = t.slice(bs).split(/※+\s*표시\s*항목|건축물대장의\s*기재\s*및\s*관리|문서\s*확인\s*번호|본\s*증명서는/)[0];
+    bEnd = bs + blk.length; blks.push(blk);
+  }
+  var seen = {}, LBL = /^(변동\s*일|변동\s*사항|변동\s*내용|그\s*밖의\s*기재|이하\s*여백|-)/;
+  blks.forEach(function (blk) {
+    // 날짜 뒤 1~2글자 잡음 줄(도장 글자 "본" 등)은 건너뛴다(정원식 총괄표제부 "2021,1,22, ⏎ 본 ⏎ 주택과-2849…")
+    var re = /((?:19|20)\d{2})\s*[.,]\s*(\d{1,2})\s*[.,]\s*(\d{1,2})\s*[.,]?\s+(?:[^\n]{1,2}\s*\n\s*)?([^\n]{4,160})/g, m;
+    while ((m = re.exec(blk))) {
+      var txt = m[4].trim(), d = ldYmd_(m[1], m[2], m[3]);
+      if (/^변동\s*내용\s*및\s*원인\s*$/.test(txt)) { var nl = /^\n\s*([^\n]{4,160})/.exec(blk.slice(re.lastIndex)); if (!nl) continue; txt = nl[1].trim(); }
+      if (/^\d{4}\s*[.,]\s*\d/.test(txt) || LBL.test(txt) || seen[d + txt]) continue; seen[d + txt] = 1; out.push({ 일자: d, 내용: txt });
+    }
+    // 변동일 칸을 못 읽고 내용만 남은 줄("… 건축과-8722(2026.05.27.)호에 의거 불법증축으로 위반건축물 등재" — 정원식 총괄표제부) — 그 처분 문서 날짜로 적되
+    //  변동일이 아니라 문서 날짜임을 밝힌다. 이미 다른 기록의 내용에 들어간 줄은 다시 세지 않는다.
+    blk.split('\n').forEach(function (L) {
+      var q = /\(\s*((?:19|20)\d{2})\s*[.,]\s*(\d{1,2})\s*[.,]\s*(\d{1,2})\s*[.,]?\s*\)\s*호\s*에\s*의\s*(?:거|함)\s*([^\n]{4,150})/.exec(L);
+      if (!q) return;
+      var line = L.trim();
+      if (out.some(function (o) { return o.내용.indexOf(line.slice(0, 20)) !== -1 || line.indexOf(o.내용.slice(0, 20)) !== -1; })) return;
+      if (/^(?:19|20)\d{2}\s*[.,]\s*\d{1,2}\s*[.,]\s*\d{1,2}/.test(line)) return; // 줄 머리에 변동일이 있는 줄은 위에서 다룸
+      var dq = ldYmd_(q[1], q[2], q[3]); if (seen[dq + line]) return; seen[dq + line] = 1;
+      out.push({ 일자: dq, 내용: line.replace(/^변동\s*내용\s*및\s*원인\s*/, '') + ' (변동일 칸을 못 읽어 처분 문서 날짜로 적음)' });
+    });
+  });
   return out.slice(0, 40);
 }
 
@@ -33918,32 +34073,73 @@ function ldParseLand_(text) {
   }
   // 개별공시지가 — 쪽마다 "기준일 7개 줄 + 금액 7개 줄"(또는 한 줄에 날짜·금액). 쪽 안에서 날짜 목록과 금액 목록을 각각 모아
   // 순서대로 짝짓는다. 토지등급 칸의 "…일 수정" 날짜와 3자리 등급 숫자는 빼고, 날짜가 금액보다 많으면 앞쪽(등급 칸 잔여) 날짜를 버린다.
-  var pbase = t.search(/개별\s*공시\s*지가/), unsureP = 0;
+  // [2026.10.18 3차 L] 짝짓기를 다시 짰다 — 예전 규칙은 ① 쪽 끝 금액이 "토지대장에 의하여…" 꼬리글 뒤로 밀리면 버리고 ② 날짜가 금액보다 많으면 앞 날짜를 버려
+  //  한 해씩 밀렸고(노영환 회기동 42-1: 2017=11,400,000 — 실제 2016), ③ 마지막 "수정" 뒤만 봐서 등급 칸이 공시지가 뒤에 찍힌 쪽은 기준일을 통째로 잃었고(2002~2008),
+  //  ④ 날짜·금액이 한 줄씩 붙은 대장(박종헌 사당동 139-43: "2020년 01월 01일 11,330,000")에서 3자리 토지등급(208·211…)을 금액으로 받았다.
+  //  이제 (가) 날짜 바로 뒤에 금액이 붙은 줄이 둘 이상이면 그 짝을 그대로 쓰고, (나) 아니면 "수정"이 뒤따르는 날짜 묶음(등급 수정 연월일)을 빼고
+  //  공시지가 이름표 앞 기준일 묶음과 그 뒤 금액을 순서대로 짝짓는다(꼬리글 뒤 금액은 개수가 모자랄 때만 채움, 앞 날짜 버리기 없음).
+  //  (다) 글자인식은 표 칸을 몇 덩어리로 끊어 순서를 바꿔 내기도 한다(회기동 42-1 3쪽: 2016·2020·2021·2017·2018·2019·2022 순). 글자만으로는 칸 순서를 알 수 없으므로
+  //  금액이 해마다 오르내리는 쪽은 짝을 확정하지 않고 ⚠ + "금액 오름차순으로 놓은 짝" 후보를 함께 낸다(공시지가가 실제로 내린 해도 있어 후보일 뿐 — 원문 확인).
+  var pbase = t.search(/개별\s*공시\s*지가/), unsureP = 0, scrP = 0;
   if (pbase >= 0) {
     var pages = t.split(/문서확인번호/);
     pages.forEach(function (pg) {
       var b0 = pg.search(/개별\s*공시\s*지가/);
       if (b0 < 0) return;
-      // 쪽 끝 금액이 "용도지역 등" 글자 뒤로 밀려 나오기도 해서 "…대장에 의하여"까지 본다
-      var ps = pg.slice(b0).split(/토지\s*대장에\s*의하여|임야\s*대장에\s*의하여/)[0].replace(/용도\s*지역\s*등/g, ' ');
-      // 첫 쪽은 "등급 수정 연월일" 칸이 공시지가 이름표 뒤에 섞여 나오므로, 마지막 "수정" 뒤부터 본다
-      var hasGrade = /수정|등\s*급/.test(ps);
-      var lastFix = ps.lastIndexOf('수정');
-      if (lastFix >= 0) ps = ps.slice(lastFix + 2);
-      var pd = [], pv = [], dm2, dr2 = /((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일(?!\s*수정)/g;
-      while ((dm2 = dr2.exec(ps))) pd.push(ldYmd_(dm2[1], dm2[2], dm2[3]));
-      var rest = ps.replace(/((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/g, ' ');
-      // 토지등급(3자리 숫자)이 섞인 쪽에서는 1,000원 이상만 금액으로 본다(임야 등 1,000원 미만 공시지가는 등급 칸 없는 쪽에서만)
-      var vm2, vr2 = hasGrade ? /(?:^|[\s\n])(\d{1,3}(?:[,.]\d{3})+|\d{4,9})(?=[\s\n]|$)/g : /(?:^|[\s\n])(\d{1,3}(?:[,.]\d{3})+|\d{2,9})(?=[\s\n]|$)/g;
-      while ((vm2 = vr2.exec(rest))) pv.push(ldNum_(vm2[1].replace(/\./g, ',')));
-      if (pd.length > pv.length) pd = pd.slice(pd.length - pv.length);
-      var bad = pd.length !== pv.length;
-      if (bad) unsureP++;
-      // 개수가 맞지 않는 쪽의 짝은 확정하지 않는다(⚠ 표시 — 기준시가 환산에 그대로 쓰면 안 됨)
-      for (var q = 0; q < Math.min(pd.length, pv.length); q++) r.공시지가.push({ 기준일: pd[q], 단가: pv[q], 확인필요: bad });
+      var S = pg.slice(b0).replace(/용도\s*지역\s*등/g, function (x) { return new Array(x.length + 1).join(' '); });
+      var hasGrade = /수정|등\s*급/.test(S);
+      var toks = [], tm, dre = /((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/g;
+      while ((tm = dre.exec(S))) toks.push({ k: 'd', at: tm.index, end: dre.lastIndex, v: ldYmd_(tm[1], tm[2], tm[3]) });
+      // 날짜 자리를 같은 길이 공백으로 지운 글에서 금액을 찾는다(위치 유지). 토지등급(3자리 숫자)이 섞인 쪽은 1,000원 이상만 금액(임야 등 1,000원 미만은 등급 칸 없는 쪽에서만)
+      var S2 = S.replace(dre, function (x) { return new Array(x.length + 1).join(' '); });
+      var vre = hasGrade ? /(^|[\s|])(\d{1,3}(?:[,.]\d{3})+|\d{4,9})(?=[\s|]|$)/g : /(^|[\s|])(\d{1,3}(?:[,.]\d{3})+|\d{2,9})(?=[\s|]|$)/g;
+      while ((tm = vre.exec(S2))) { var vs = tm.index + tm[1].length; toks.push({ k: 'v', at: vs, end: vs + tm[2].length, v: ldNum_(tm[2].replace(/\./g, ',')) }); }
+      var fre = /수정/g; while ((tm = fre.exec(S))) toks.push({ k: 'f', at: tm.index, end: fre.lastIndex });
+      var tre = /(?:토지|임야)\s*대장에\s*의하여/g; while ((tm = tre.exec(S))) toks.push({ k: 'tail', at: tm.index, end: tre.lastIndex });
+      var lre = /개별\s*공시\s*지가\s*\(\s*원/g; while ((tm = lre.exec(S))) toks.push({ k: 'lab', at: tm.index, end: lre.lastIndex });
+      toks.sort(function (a, b) { return a.at - b.at; });
+      var gap = function (a, b) { return /^[\s|]*$/.test(S.slice(a.end, b.at)); };
+      var pd = [], pv = [], bad = false, scr = false;
+      // (가) 날짜 바로 뒤 금액
+      var inl = [];
+      toks.forEach(function (x, i) { var y = toks[i + 1]; if (x.k === 'd' && y && y.k === 'v' && gap(x, y)) inl.push([x.v, y.v]); });
+      if (inl.length >= 2) { inl.forEach(function (p) { pd.push(p[0]); pv.push(p[1]); }); }
+      else {
+        // (나) 날짜 묶음 — 사이에 다른 글이 없는 연속 날짜. 바로 뒤가 "수정"이면 등급 수정 연월일 묶음이라 뺀다
+        var runs = [], cur = null;
+        toks.forEach(function (x, i) {
+          if (x.k !== 'd') { if (cur) { cur.next = x; runs.push(cur); cur = null; } return; }
+          if (cur && gap(toks[i - 1], x)) cur.ds.push(x); else { if (cur) runs.push(cur); cur = { ds: [x] }; }
+        });
+        if (cur) runs.push(cur);
+        var pr = runs.filter(function (u) { return !(u.next && u.next.k === 'f') && !/^\s*수정/.test(S.slice(u.ds[u.ds.length - 1].end, u.ds[u.ds.length - 1].end + 8)); });
+        var lab = toks.filter(function (x) { return x.k === 'lab'; })[0];
+        if (lab) { var bef = pr.filter(function (u) { return u.ds[0].at < lab.at; }); if (bef.length) pr = [bef[bef.length - 1]]; }
+        else if (pr.length > 1) pr = [pr[pr.length - 1]];
+        if (pr.length) {
+          var run = pr[0], from = run.ds[run.ds.length - 1].end;
+          pd = run.ds.map(function (x) { return x.v; });
+          var main = [], tail = [], afterTail = false;
+          toks.forEach(function (x) { if (x.at < from) return; if (x.k === 'tail') afterTail = true; if (x.k === 'v') (afterTail ? tail : main).push(x.v); });
+          pv = main.slice(0, pd.length);
+          while (pv.length < pd.length && tail.length) pv.push(tail.shift());
+          if (main.length > pd.length) bad = true;
+        }
+      }
+      if (pd.length !== pv.length) bad = true;
+      if (bad && (pd.length || pv.length)) unsureP++;
+      // (다) 칸 순서 뒤바뀜 의심 — (가) 한 줄 짝은 제외(날짜와 금액이 붙어 있어 순서 문제가 없음)
+      var n = Math.min(pd.length, pv.length), srt = null;
+      if (!bad && inl.length < 2 && n >= 3) {
+        var up = true, dn = true; for (var qi = 1; qi < n; qi++) { if (pv[qi] < pv[qi - 1]) up = false; if (pv[qi] > pv[qi - 1]) dn = false; }
+        if (!up && !dn) { scr = true; scrP++; srt = pv.slice(0, n).sort(function (a, b) { return a - b; }); }
+      }
+      for (var q = 0; q < n; q++) { var row = { 기준일: pd[q], 단가: pv[q], 확인필요: bad || scr }; if (srt) row.후보단가 = srt[q]; r.공시지가.push(row); }
     });
-    var pq = {}; r.공시지가 = r.공시지가.filter(function (x) { if (pq[x.기준일]) return false; pq[x.기준일] = 1; return true; }).sort(function (a, b) { return a.기준일 < b.기준일 ? -1 : 1; });
+    // 여러 쪽에 같은 기준일이 있으면 확정된 짝을 먼저
+    var pq = {}; r.공시지가 = r.공시지가.slice().sort(function (a, b) { return (a.확인필요 ? 1 : 0) - (b.확인필요 ? 1 : 0); }).filter(function (x) { if (pq[x.기준일]) return false; pq[x.기준일] = 1; return true; }).sort(function (a, b) { return a.기준일 < b.기준일 ? -1 : 1; });
     if (unsureP) r.확인필요.push('개별공시지가 일부 쪽(' + unsureP + '쪽)에서 기준일·금액 개수가 달라 짝 확인 필요');
+    if (scrP) r.확인필요.push('개별공시지가 ' + scrP + '쪽은 글자인식 순서대로 놓으면 금액이 해마다 오르내림 — 표의 칸 순서와 다르게 읽혔을 수 있어 짝을 확정하지 않음(금액 오름차순 짝을 후보로 함께 표시, 원문 확인)');
   }
   if (!r.지목) r.확인필요.push('지목');
   if (r.면적 == null) r.확인필요.push('면적');
@@ -33984,7 +34180,10 @@ function ldToMarkdown_(type, r) {
     if (r.층별 && r.층별.length) {
       out.push('\n**층별현황** (' + (r.층별검산 || '') + ')\n\n| 층 | 용도 | 면적 |\n|---|---|---|');
       r.층별.forEach(function (f) { out.push('| ' + [f.층, f.용도, m2(f.면적)].map(esc).join(' | ') + ' |'); });
-    } else if (r.용도목록 && r.용도목록.length) out.push('\n층별 용도(원문 순서, 면적 짝은 원문 확인): ' + r.용도목록.join(', '));
+    } else if (r.동별 && r.동별.length) {
+      out.push('\n**동별현황** (' + (r.동별검산 || '') + ')\n\n| 동 | 용도 | 연면적 |\n|---|---|---|');
+      r.동별.forEach(function (f) { out.push('| ' + [f.동, f.용도, m2(f.연면적)].map(esc).join(' | ') + ' |'); });
+    } else if (r.용도목록 && r.용도목록.length) out.push('\n' + (/총괄/.test(r.종류 || '') ? '동별' : '층별') + ' 용도(원문 순서, 면적 짝은 원문 확인): ' + r.용도목록.join(', '));
     if (r.공동주택가격 && r.공동주택가격.length) {
       out.push('\n**공동주택가격**\n\n| 기준일 | 가격 |\n|---|---|');
       r.공동주택가격.forEach(function (p) { out.push('| ' + p.기준일 + ' | ' + won(p.가격) + (p.확인필요 ? ' ⚠' : '') + ' |'); });
@@ -34013,7 +34212,7 @@ function ldToMarkdown_(type, r) {
     }
     if (r.공시지가.length) {
       out.push('\n**개별공시지가(원/㎡)**' + (r.면적 ? ' — ×면적(' + m2(r.면적) + ') = 토지 기준시가' : '') + '\n\n| 기준일 | 원/㎡ | 토지 전체(현재 면적 기준) |\n|---|---|---|');
-      r.공시지가.forEach(function (p) { out.push('| ' + p.기준일 + ' | ' + Number(p.단가).toLocaleString('ko-KR') + (p.확인필요 ? ' ⚠' : '') + ' | ' + (r.면적 ? won(Math.round(p.단가 * r.면적)) : '') + ' |'); });
+      r.공시지가.forEach(function (p) { out.push('| ' + p.기준일 + ' | ' + Number(p.단가).toLocaleString('ko-KR') + (p.확인필요 ? ' ⚠' : '') + (p.후보단가 != null && p.후보단가 !== p.단가 ? ' (후보: ' + Number(p.후보단가).toLocaleString('ko-KR') + ')' : '') + ' | ' + (r.면적 ? won(Math.round(p.단가 * r.면적)) : '') + ' |'); });
       if (r.면적이력 && r.면적이력.length > 1) out.push('\n⚠ 면적이 바뀐 토지 — 과거 연도 기준시가는 그 당시 면적으로 다시 계산할 것');
     }
   }
