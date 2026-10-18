@@ -50,6 +50,17 @@ const MODEL_CONFIG = {
   // 여유 있게 들어감).
   'claude-haiku-4-5-20251001':  { provider: 'claude', input: 1.00,  output: 5.00,  temp: true,  codeExec: false, thinkingMode: 'budget' },
   'claude-fable-5':             { provider: 'claude', input: 10.00, output: 50.00, temp: false, codeExec: true,  thinkingMode: 'adaptive' },
+  // [2026.10.19] 최신 Claude 모델 — 고르기만 할 수 있게 넣음(기본값·자동 선택은 그대로, 바꾸는 것은 세무사님 승인 뒤).
+  //  네 모델 모두 생각은 adaptive만 받는다(budget_tokens는 400) — thinkingMode 'adaptive'로 깊이(effort)만 보낸다.
+  //  Opus 5.5·Fable 5.1·Haiku 5.5는 생각을 끌 수 없고, Haiku 5.5는 temperature 같은 기본 아닌 샘플링 값도 400이라 temp: false.
+  //  도구 강제 지정(tool_choice any/tool)은 Fable 5.1·Opus 5.5·Sonnet 5.5에서 400 — 이 코드는 강제 지정을 쓰지 않는다.
+  //  cacheRead = 캐시 읽기 단가(달러/100만 토큰) — 입력단가의 10%가 아닌 모델이 있어 따로 적는다(Claude API 참고표 2026-10).
+  //  Haiku 5.5는 입력이 10만 토큰을 넘으면 단가가 0.50/2.50으로 오르는데, 여기는 짧은 쪽 값만 적는다(비용 표시가 그만큼 낮게 나올 수 있음).
+  //  Haiku 5.5는 코드 실행 도구 지원을 확인하지 못해 Haiku 4.5와 같이 codeExec: false.
+  'claude-fable-5-1':           { provider: 'claude', input: 10.00, output: 50.00, cacheRead: 0.25, temp: false, codeExec: true,  thinkingMode: 'adaptive' },
+  'claude-opus-5-5':            { provider: 'claude', input: 4.00,  output: 20.00, cacheRead: 0.20, temp: false, codeExec: true,  thinkingMode: 'adaptive' },
+  'claude-sonnet-5-5':          { provider: 'claude', input: 2.00,  output: 10.00, cacheRead: 0.20, temp: false, codeExec: true,  thinkingMode: 'adaptive' },
+  'claude-haiku-5-5':           { provider: 'claude', input: 0.10,  output: 0.50,  cacheRead: 0.01, temp: false, codeExec: false, thinkingMode: 'adaptive' },
   'gemini-3.1-pro-preview':     { provider: 'gemini', input: 2.00,  output: 12.00, temp: true,  codeExec: true  },
   'gemini-3.5-flash':           { provider: 'gemini', input: 1.50,  output: 9.00,  temp: true,  codeExec: true  },
   'gemini-3.1-flash-lite':      { provider: 'gemini', input: 0.25,  output: 1.50,  temp: true,  codeExec: true  },
@@ -15618,7 +15629,7 @@ function buildClaudeUsageInfo_(result, cfg, model, advisorModel) {
 
   let costUsd = (inputTokens / 1e6) * cfg.input + (outputTokens / 1e6) * cfg.output;
   costUsd += (cacheWriteTokens / 1e6) * cfg.input * 1.25; // 캐시 새로 쓰기: 정상 입력단가의 1.25배
-  costUsd += (cacheReadTokens / 1e6) * cfg.input * 0.1;   // 캐시 읽기(캐시 히트): 정상 입력단가의 10%
+  costUsd += (cacheReadTokens / 1e6) * (cfg.cacheRead != null ? cfg.cacheRead : cfg.input * 0.1);   // 캐시 읽기(캐시 히트): 모델에 적힌 값, 없으면 정상 입력단가의 10%
   costUsd += webSearchUses * WEB_SEARCH_COST_PER_USE;
   if (advisorModel && usage.advisor_usage) {
     const advCfg = MODEL_CONFIG[advisorModel] || cfg;
