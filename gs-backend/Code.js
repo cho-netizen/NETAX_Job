@@ -42066,7 +42066,7 @@ function jmReasonOf_(line) {
 //   ④ 사유가 뒤 행으로 몰려 나오면(앞 행들은 사유 없음) 앞의 사유부터 앞 행에 돌려준다 ⑤ "[조례… 변경]" 주석 행은 이력이 아님
 //  행번호를 2개 이상 못 찾은 쪽은 예전 방식으로 읽는다. 행마다 확인 표시를 따로 남겨 한 행이 틀려도 쪽 전체를 버리지 않는다.
 var JM_ROWREL_RE_ = /^[가-힣]{2,5}의\s*[가-힣]{1,5}$/;
-var JM_ADDR2_RE_ = /(\d+\s*-\s*\d+|\d+\s*동(?![가-힣])|\d+\s*호|아파트|빌라|연립|맨션|타운|단지|오피스텔|빌딩|하우스|주택|\(\s*[가-힣]+동)/;
+var JM_ADDR2_RE_ = /(\d+\s*-\s*\d+|\d+\s*동(?![가-힣])|\d+\s*호|\d+\s*층|지하\s*\d*\s*층|아파트|빌라|연립|맨션|타운|단지|오피스텔|빌딩|하우스|주택|\(\s*[가-힣]+동)/; // [2026.10.19 3번 세션] 「2층」·「지하1층」 둘째 줄도
 function jmRowReason_(L) {
   var r = jmReasonOf_(L); if (r) return r;
   var w = String(L || '').replace(/\b(?:19|20)\d{2}-\d{2}-\d{2}\b/g, ' ').replace(/[^가-힣\s]/g, ' ').trim().split(/\s+/).filter(function (x) { return x; });
@@ -42114,7 +42114,7 @@ function jmHistoryByRowNo_(pg, lines) {
     }
     var tgt = pend.length ? pend[pend.length - 1] : cur;
     if (!tgt) continue; // 표 머리
-    if (!/(?:19|20)\d{2}-\d{2}-\d{2}/.test(L) && tgt.addr && !tgt.addr2 && L.length >= 3 && JM_ADDR2_RE_.test(L) && !JM_ROWREL_RE_.test(L) && !jmRowReason_(L) && !/발생일|신고일|세대주|등록상태|www|정부24/.test(L)) { tgt.addr2 = L; continue; }
+    if (!/(?:19|20)\d{2}-\d{2}-\d{2}/.test(L) && tgt.addr && !tgt.addr2 && (L.length >= 3 || /^\d층$/.test(L)) && JM_ADDR2_RE_.test(L) && !JM_ROWREL_RE_.test(L) && !jmRowReason_(L) && !/발생일|신고일|세대주|등록상태|www|정부24/.test(L)) { tgt.addr2 = L; continue; }
     tgt.lines.push({ L: L, top: tgt !== cur }); // top: 행번호가 나오기 전(행의 위 칸) 줄
   }
   pend.forEach(function (p) { p.noNum = true; p.lines.forEach(function (o) { o.top = false; }); rows.push(p); });
@@ -42201,8 +42201,16 @@ function jmHistory_(pages) {
       var a = L.replace(/^\d{1,3}\s+/, '');
       // 위조방지 용지 바탕에 시·도 이름이 찍혀 OCR에 "경상북도" 같은 줄이 섞인다 — 시·도 뒤에 두 낱말 이상 있어야 주소
       if (JM_SIDO_RE_.test(a + ' ') && /^\S+\s+\S+\s+\S+/.test(a) && !/(시장|구청장|군수|읍장|면장|동장)(\s|$)/.test(a)) {
-        var full = a, nx = (lines[i + 1] || '').trim();
-        if (/^\(?[^\n]{0,30}(\d+동\s*)?\d+호|^\([가-힣]+동|^\d+층/.test(nx) && !JM_SIDO_RE_.test(nx + ' ')) full += ' ' + nx;
+        var full = a;
+        // [2026.10.19 3번 세션 — 이름 정확도] 주소 칸이 두 줄일 때 글자인식은 주소 첫 줄 → 그 줄의 날짜(발생일·신고일) → 주소 둘째 줄(「2층」·「가동 202호」) 차례로 내기도 한다 —
+        //  바로 다음 줄만 보던 것을 날짜만 있는 줄 둘까지 건너뛰고 본다(개발용 원본 대조: 나성은 초본 「산본동 83-11 2층」의 「2층」이 빠짐)
+        for (var k = i + 1, skip = 0; k < lines.length && skip <= 2; k++) {
+          var nx = (lines[k] || '').replace(/\s+/g, ' ').trim();
+          if (!nx) continue;
+          if (/^\(?[^\n]{0,30}(\d+동\s*)?\d+호|^\([가-힣]+동|^\d+층/.test(nx) && !JM_SIDO_RE_.test(nx + ' ')) { full += ' ' + nx; break; }
+          if (/^(\d{4}[-.]\s?\d{1,2}[-.]\s?\d{1,2}\.?\s*){1,2}$/.test(nx)) { skip++; continue; }
+          break;
+        }
         addrs.push(full.replace(/\s+/g, ' ').replace(/[,.]$/, ''));
         continue;
       }
