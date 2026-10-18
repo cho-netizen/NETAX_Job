@@ -29717,6 +29717,11 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
   while ((m = re.exec(t))) { const d = cpfDate_(m[1]); if (!d) continue; add('접수번호', m[2], m[0], m.index, { date: d, dateFrom: '같은 줄 접수일' }); }
   re = /((?:19|20)\d{2}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일)[^\n]{0,90}\n\s*제\s*(\d{2,8})\s*호/g;
   while ((m = re.exec(t))) { const d = cpfDate_(m[1]); if (!d) continue; add('접수번호', m[2], m[0].replace(/\s+/g, ' '), m.index, { date: d, dateFrom: '윗줄 첫 날짜' }); re.lastIndex = m.index + m[1].length; }
+  // [2026.10.19 1번 밤작업 ④] 등기 원인 — 등기부 갑구·을구 줄의 "원인" 칸("2015년3월2일 매매", "2020년 5월 1일 협의분할에 의한 상속"). 원인일이 날짜 열쇠라 같은 줄의 접수번호·권리자와 묶인다
+  if (/등\s*기\s*사\s*항|등\s*기\s*부|갑\s*구|을\s*구|등\s*기\s*목\s*적/.test(t)) {
+    re = /((?:19|20)\d{2}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일)\s*(협\s*의\s*분\s*할\s*에\s*\s*의\s*한\s*상\s*속|매\s*매\s*예\s*약|매\s*매|증\s*여|상\s*속|유\s*증|신\s*탁(?:\s*재\s*산\s*귀\s*속)?|근\s*저\s*당\s*권\s*설\s*정\s*계\s*약|설\s*정\s*계\s*약|해\s*지|교\s*환|수\s*용|판\s*결|공\s*유\s*물\s*분\s*할|재\s*산\s*분\s*할|확\s*정\s*채\s*권\s*양\s*도|일\s*부\s*포\s*기|임\s*의\s*경\s*매|강\s*제\s*경\s*매|대\s*물\s*변\s*제|전\s*거|도\s*로\s*명\s*주\s*소)(?![가-힣])/g;
+    while ((m = re.exec(t))) { const d = cpfDate_(m[1]); if (!d) continue; add('등기 원인', m[2].replace(/\s+/g, ''), m[0], m.index + m[0].indexOf(m[2].charAt(0), m[1].length), { date: d, dateFrom: '원인일' }, { note: '등기부 줄의 원인 칸(원인일 + 원인)' }); }
+  }
   // "칸 이름 : 값" — 서식의 칸(구조·용도·상호·계약기간·인도일 등)을 쌍점 뒤 같은 줄 값으로(서류 규칙이 없는 칸도 넓게)
   re = /(?:^|\n|\s)(구\s*조|용\s*도|지\s*목|상\s*호|업\s*태|종\s*목|업\s*종|도\s*로\s*명\s*주\s*소|계\s*약\s*기\s*간|임\s*대\s*기\s*간|인\s*도\s*일|지\s*급\s*일|차\s*임|관\s*리\s*비|기\s*준\s*가\s*치|감\s*정\s*평\s*가\s*사|평\s*가\s*목\s*적|제\s*출\s*처|중\s*개\s*사\s*무\s*소|규\s*모|층\s*수|본|발\s*급\s*기\s*관|등\s*록\s*기\s*준\s*지)\s*[:：]\s*([^\n:：]{1,60})/g;
   while ((m = re.exec(t))) { const lab = m[1].replace(/\s+/g, ''), v = m[2].trim(); if (!v || /^[\s\-_.]+$/.test(v)) continue; const kind = CPF_KIND_MAP_[lab] || ('기타:' + lab); add(kind, v.slice(0, 60), m[0].trim(), m.index, {}); }
@@ -29753,7 +29758,9 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
     const le = t.indexOf('\n', m.index + m[1].length), rawLine = t.slice(m.index, le === -1 ? m.index + 120 : Math.min(le, m.index + 120));
     { const cr = cpfCreditorAddr_(t, m.index); if (cr) { add('주소', m[1].replace(/\s+/g, ' ').trim(), rawLine.replace(/\s+/g, ' ').trim(), m.index, {}, { role: cr, note: '권리자·채권자 칸의 주소 — 부동산 소재지 아님(자산 열쇠 안 만듦)' }); continue; } }
     const kk = { asset: ak }; const af = cpfAssetFullKey_(m[1]); if (af) kk.assetFull = af;
-    add('소재지', m[1].replace(/\s+/g, ' ').trim(), rawLine.replace(/\s+/g, ' ').trim(), m.index, kk);
+    /* 지번 바로 뒤(20자 안) "201호"·"3층 301호" — 값에만 붙임(열쇠는 그대로) */
+    let val = m[1]; { const tl = /^[\s.,]{0,3}(?:[^\n\d]{0,12}?)((?:제?\s*\d{1,3}\s*층\s*)?제?\s*\d{1,5}\s*호)(?![가-힣\d])/.exec(t.slice(m.index + m[1].length, m.index + m[1].length + 20)); if (tl && !/동\s*(?:제?\s*\d{1,3}\s*층\s*)?제?\s*\d{1,5}\s*호/.test(m[1])) val = m[1] + ' ' + tl[1]; }
+    add('소재지', val.replace(/\s+/g, ' ').trim(), rawLine.replace(/\s+/g, ' ').trim(), m.index, kk);
     // 지번과 도로명이 함께 적힌 자리(대장·등기필·감정평가 "(도로명주소) …") — 둘을 잇는 사실(상5)
     const ahead = t.slice(m.index, m.index + m[1].length + 160), rm = /도\s*로\s*명\s*(?:주\s*소)?\s*[\])】:：]?\s*([^\n]{4,80})/.exec(ahead) || /\(([^()]*(?:대로|로|길)\s*\d{1,4}[^()]*)\)/.exec(rawLine);
     if (rm) { const rk = cpfRoadKey_(rm[1]); if (rk) add('주소 대응', { 지번: ak, 도로명: rk }, rm[0].trim(), m.index, { asset: ak, road: rk }, { note: '한 자리에 지번·도로명이 함께 적힘' }); }
