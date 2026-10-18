@@ -31332,16 +31332,19 @@ function caseProcInhFacts0_(c, parsed) {
           if (solo.length) u.solo = solo.reduce(function (t, q) { return t + q.금액; }, 0);
           u.soloWho = solo.map(function (q) { return q.누가; }).join('·');
         });
-        const inUse = function (u) { return !u.pre && !u.unsure; };
-        const tot = uses.reduce(function (t, u) { return t + (inUse(u) ? u.v - (u.solo || 0) : 0); }, 0), totAll = uses.reduce(function (t, u) { return t + u.v; }, 0);
+        // [2026.10.18 3차 재채점] ①실행일 전 지출·②합의서 단독 부담 몫은 빼지 않고 합에 넣고 ⚠ 확인만 단다 — 노영환 세무사님 검토서는 둘 다 실사용분으로 넣었다
+        //  (실행일 전 지출을 이 대출로 갚았을 수 있고, 단독 부담 조항이 있어도 실제 대출금으로 냈으면 사용처). 빼면 과소 공제(약 3,800만원). 금액 확정 못 한 영수증만 뺀다.
+        const inUse = function (u) { return !u.unsure; };
+        const tot = uses.reduce(function (t, u) { return t + (inUse(u) ? u.v : 0); }, 0), totAll = uses.reduce(function (t, u) { return t + u.v; }, 0);
         const amt = Math.min(sh0 && sh0.v < 1 ? Math.round(tot * sh0.v) : tot, L.amount || Infinity);
-        const tbl = uses.map(function (u) { return (u.d || '날짜 ?') + ' ' + (u.who || '받는 분 ?') + ' ' + (u.v ? wonD(u.v) : '금액 확정 못 함' + (u.cand && u.cand.length ? '(읽힌 숫자 ' + u.cand.map(function (v) { return v.toLocaleString('ko-KR'); }).join('·') + ')' : '')) + '(' + u.kind + (u.files.length > 1 ? ', 같은 ' + u.kind + ' ' + u.files.length + '부' : '') + (u.inv.length ? ' · 세금계산서 ' + u.inv.join(', ') : '') + (u.stl ? ' · 합의서 ' + u.stl.f + ': ' + (u.stl.r.지급 || []).map(function (q) { return (q.누가 === '공동' ? '공동' : q.누가 + ' 단독') + ' ' + wonD(q.금액); }).join(' + ') : '') + ')' + (u.pre ? ' [대출 실행일 전 — 뺌]' : u.unsure ? ' [금액 확정 전 — 뺌]' : u.solo ? ' [' + u.soloWho + ' 단독 부담 ' + wonD(u.solo) + ' — 피상속인 몫 아님, 뺌]' : ''); }).join(' / ');
-        const why = [exec ? '대출 실행일 ' + exec.d + '(' + exec.file + ' "대출실행" 입금 ' + wonD(exec.v) + ') 전 지출 ' + wonD(uses.filter(function (u) { return u.pre; }).reduce(function (t, u) { return t + u.v; }, 0)) + ' 뺌' : '대출 실행일을 서류에서 못 찾음 — 실행일 전 지출이 섞였는지 확인',
-          uses.some(function (u) { return u.solo && !u.pre; }) ? '합의서 단독 부담 몫 ' + wonD(uses.reduce(function (t, u) { return t + (!u.pre && u.solo ? u.solo : 0); }, 0)) + ' 뺌' : '',
+        const tbl = uses.map(function (u) { return (u.d || '날짜 ?') + ' ' + (u.who || '받는 분 ?') + ' ' + (u.v ? wonD(u.v) : '금액 확정 못 함' + (u.cand && u.cand.length ? '(읽힌 숫자 ' + u.cand.map(function (v) { return v.toLocaleString('ko-KR'); }).join('·') + ')' : '')) + '(' + u.kind + (u.files.length > 1 ? ', 같은 ' + u.kind + ' ' + u.files.length + '부' : '') + (u.inv.length ? ' · 세금계산서 ' + u.inv.join(', ') : '') + (u.stl ? ' · 합의서 ' + u.stl.f + ': ' + (u.stl.r.지급 || []).map(function (q) { return (q.누가 === '공동' ? '공동' : q.누가 + ' 단독') + ' ' + wonD(q.금액); }).join(' + ') : '') + ')' + (u.unsure ? ' [금액 확정 전 — 뺌]' : u.pre ? ' [⚠ 대출 실행일 전 — 넣음, 이 대출로 갚은 지출인지 확인]' : u.solo ? ' [⚠ 합의서상 ' + u.soloWho + ' 단독 부담 ' + wonD(u.solo) + ' — 넣음, 대출금으로 냈는지 확인]' : ''); }).join(' / ');
+        const preSum = uses.filter(function (u) { return u.pre && !u.unsure; }).reduce(function (t, u) { return t + u.v; }, 0);
+        const why = [exec ? (preSum ? '⚠ 대출 실행일 ' + exec.d + '(' + exec.file + ' "대출실행" 입금 ' + wonD(exec.v) + ') 전 지출 ' + wonD(preSum) + ' 포함 — 이 대출로 갚은 것인지 확인' : '') : '대출 실행일을 서류에서 못 찾음 — 실행일 전 지출이 섞였는지 확인',
+          uses.some(function (u) { return u.solo && !u.unsure; }) ? '⚠ 합의서 단독 부담 몫 ' + wonD(uses.reduce(function (t, u) { return t + (!u.unsure && u.solo ? u.solo : 0); }, 0)) + ' 포함 — 대출금으로 냈는지 확인' : '',
           uses.some(function (u) { return u.unsure && !u.pre; }) ? '금액 확정 못 한 영수증은 뺌' : ''].filter(String).join(' · ');
-        if (tot > 0) out.debts.push({ debtType: 'loan', creditorName: (L.creditorName || '대출') + ' 대출 실사용분', amount: amt, file: uses.filter(inUse)[0] ? uses.filter(inUse)[0].files[0] : uses[0].files[0], src: '대출 사용처 표 ' + uses.filter(inUse).length + '건 합 ' + wonD(tot) + (sh0 && sh0.v < 1 ? ' × 피상속인 지분 ' + sh0.txt + '(' + sh0.file + ')' : '') + (tot !== totAll ? ' — ' + why : ''), sure: false,
+        if (tot > 0) out.debts.push({ debtType: 'loan', creditorName: (L.creditorName || '대출') + ' 대출 실사용분', amount: amt, file: uses.filter(inUse)[0] ? uses.filter(inUse)[0].files[0] : uses[0].files[0], src: '대출 사용처 표 ' + uses.filter(inUse).length + '건 합 ' + wonD(tot) + (sh0 && sh0.v < 1 ? ' × 피상속인 지분 ' + sh0.txt + '(' + sh0.file + ')' : '') + (why ? ' — ' + why : ''), sure: false,
           note: '대출 명의가 피상속인이 아니어도 피상속인 재산을 담보로 피상속인을 위해 쓴 몫만 채무로 볼 여지(§14①, 시행령 §10② — 실사용분 입증) · 대출 잔액 ' + wonD(L.amount) + ' 안에서 · ' + why + ' · 사용처: ' + tbl });
-        out.notes.push('대출 사용처 표(' + (L.creditorName || '대출') + ' ' + wonD(L.amount) + '): ' + tbl + ' → 쓸 수 있는 합 ' + wonD(tot) + (tot !== totAll ? '(표 전체 ' + wonD(totAll) + ')' : '') + (sh0 && sh0.v < 1 ? ' × 지분 ' + sh0.txt + ' = ' + wonD(Math.round(tot * sh0.v)) : '') + ' — ' + why);
+        out.notes.push('대출 사용처 표(' + (L.creditorName || '대출') + ' ' + wonD(L.amount) + '): ' + tbl + ' → 쓸 수 있는 합 ' + wonD(tot) + (tot !== totAll ? '(표 전체 ' + wonD(totAll) + ')' : '') + (sh0 && sh0.v < 1 ? ' × 지분 ' + sh0.txt + ' = ' + wonD(Math.round(tot * sh0.v)) : '') + (why ? ' — ' + why : ''));
       }
     }
   } catch (e) {}
