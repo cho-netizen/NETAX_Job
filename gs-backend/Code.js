@@ -25351,6 +25351,8 @@ function ocrbFill_(fo, st, started, budget) {
       const dk = ocrbDupKeys_(files, have);
       files.forEach(function (f) {
         if (/^~\$/.test(f.name)) return;
+        // [2026.10.19 3번 세션] 압축 파일 기억이 "풀지 못함"이면(안 파일 이름이 CP949라 Utilities.unzip이 실패하던 때) 다시 읽는다 — tc_docText_가 그 기억을 건너뛰고 직접 풀기로
+        if (/\.zip$/i.test(f.name) && have[tcOcrKey_(f)] && TC_ZIP_FAIL_RE_.test(String(tcOcrStoreGet_(tcOcrKey_(f)) || '').slice(0, 40))) { st.fq.push({ id: f.id, n: f.name, mt: f.mimeType, mod: f.modified, c: cname, sz: f.size || 0, read: 1 }); return; }
         // [2026.10.18 3번 세션] 이 일괄을 시작한 뒤 읽을 수 있게 된 형식(옛 한글 hwp·zip)이나 그 사이 들어온 서류 — 기억이 없으면 여기서 읽는다
         if (!have[tcOcrKey_(f)] && ocrbKind_(f).ok) { const q0 = { id: f.id, n: f.name, mt: f.mimeType, mod: f.modified, c: cname, sz: f.size || 0, read: 1 }; if (dk[f.id]) q0.dupKey = dk[f.id]; (ocrbLate_(f.name) ? (st.fqLate = st.fqLate || []) : st.fq).push(q0); return; }
         // 엑셀은 칸 자리 지킨 표 글(ocrgrid1_)도 — 예전에 읽은 엑셀은 빈 칸을 지운 글만 있다
@@ -25385,6 +25387,7 @@ function ocrbFill_(fo, st, started, budget) {
         const t = tc_docText_({ id: q.id, name: q.n, mimeType: q.mt, modified: q.mod });
         st.sum.늦게읽음 = (st.sum.늦게읽음 || 0) + 1;
         if (t === null) st.fails.push({ c: q.c, n: q.n, why: '글자로 못 바꾸는 형식' });
+        else if (/^\[⚠ (압축 파일을 풀지 못함|비밀번호가 걸린 압축)/.test(String(t))) st.fails.push({ c: q.c, n: q.n, why: String(t).slice(3, 90) }); // [2026.10.19 3번 세션] 압축 못 푼 이유를 실패 목록에
         else if (String(t).indexOf(TC_ZIP_LEFT_) !== -1 && (q.rounds = (q.rounds || 0) + 1) <= 8) st.fq.push(q); // 덜 읽은 압축 파일 — 줄 끝에서 이어서
         continue;
       }
@@ -26823,6 +26826,7 @@ function tcPdfImgFill_(fileId, text, deadline, blob) {
 //  안쪽 파일 글은 하나씩 영구 기억(ocrzip1_<zipID>_<수정시각>_<번호>)에 남겨 시간이 모자라 끊겨도 다음에 이어 읽는다. 7z·rar·암호 zip은 못 읽음 표시. 토큰 0.
 // =========================================================
 var TC_ZIP_LEFT_ = '[⚠ 압축 안 서류 남음';
+var TC_ZIP_FAIL_RE_ = /^\[⚠ 압축 파일을 풀지 못함/; // [2026.10.19 3번 세션] 풀기 실패 기억(비밀번호 걸림 "[⚠ 비밀번호가 걸린 압축"은 아님)
 // 이름으로 형식을 보고 blob 하나를 글로 — 압축 안 압축은 depth 2까지
 function tcBlobText_(blob, name, depth, deadline) {
   const n = String(name || '').toLowerCase(), ext = (/\.([a-z0-9]+)$/.exec(n) || [0, ''])[1];
@@ -26839,13 +26843,22 @@ function tcBlobText_(blob, name, depth, deadline) {
     const cp = Drive.Files.create(tcTmpMeta_({ name: '_xls_tmp_' + Date.now(), mimeType: 'application/vnd.google-apps.spreadsheet' }), blob, { fields: 'id' });
     try { return tcSheetText_(SpreadsheetApp.openById(cp.id)); } finally { try { DriveApp.getFileById(cp.id).setTrashed(true); } catch (e) {} }
   }
+  // [2026.10.19 3번 세션] 압축 안 rtf·pptx(송기종 「files.zip」 심판청구서 RTF판, 허상석 「files.zip」 발표자료 4개) — 사건 폴더의 같은 형식처럼 구글 문서·프레젠테이션으로 바꿔 읽고 바로 지움
+  if (ext === 'rtf' || ext === 'pptx') {
+    blob.setContentType(ext === 'rtf' ? 'application/rtf' : 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+    const cp = Drive.Files.create(tcTmpMeta_({ name: '_' + ext + '_tmp_' + Date.now(), mimeType: ext === 'rtf' ? 'application/vnd.google-apps.document' : 'application/vnd.google-apps.presentation' }), blob, { fields: 'id' });
+    try {
+      if (ext === 'rtf') return DocumentApp.openById(cp.id).getBody().getText();
+      return SlidesApp.openById(cp.id).getSlides().map(function (sl, i) { return '[' + (i + 1) + '쪽] ' + sl.getShapes().map(function (sh) { try { return sh.getText().asString().trim(); } catch (e) { return ''; } }).filter(String).join('\n'); }).join('\n');
+    } finally { try { DriveApp.getFileById(cp.id).setTrashed(true); } catch (e) {} }
+  }
   if (ext === 'hwp') return tcHwpBytesText_(blob.getBytes());
   if (ext === 'hwpx') return tcHwpxText_('', blob);
   if (/^(txt|csv|md|json|xml|html?|mmd)$/.test(ext)) {
     const t = blob.getDataAsString('UTF-8');
     return t.indexOf('�') !== -1 ? blob.getDataAsString('MS949') : t; // 옛 한국어 인코딩(EUC-KR/CP949) 글
   }
-  if (ext === 'zip' && depth < 2) return tcZipBlobsText_(Utilities.unzip(blob.setContentType('application/zip')), '', depth + 1, deadline, null, {}).text;
+  if (ext === 'zip' && depth < 2) return tcZipBlobsText_(tcUnzip_(blob), '', depth + 1, deadline, null, {}).text; // 안의 zip도 같은 풀기(이름 CP949·비밀번호 알림)
   return null;
 }
 // 압축 안 blob 목록 → {text, left}. keyBase가 있으면 안쪽 파일마다 영구 기억, sib는 {이름|크기: 사건 폴더 안 경로}
@@ -26875,12 +26888,58 @@ function tcZipSibs_(folder, rel, depth, sib) {
   const it = folder.getFiles(); while (it.hasNext()) { const f = it.next(); if (!/\.zip$/i.test(f.getName())) sib[f.getName() + '|' + f.getSize()] = (rel ? rel + '/' : '') + f.getName(); }
   const sub = folder.getFolders(); while (sub.hasNext()) { const sf = sub.next(); tcZipSibs_(sf, (rel ? rel + '/' : '') + sf.getName(), depth + 1, sib); }
 }
+// [2026.10.19 3번 세션 — 못 읽던 형식] 압축 풀기: Utilities.unzip이 먼저, 실패하거나 안 파일 이름이 깨지면(�) zip 목록을 직접 읽어 푼다.
+//  은행·관공서·윈도 압축은 안 파일 이름이 옛 한국어 인코딩(CP949, "UTF-8" 표시 없음)이다 — 고객 폴더 zip 30개의 안 파일 214개 중 101개.
+//  직접 풀기: 끝 목록(central directory) → 이름(UTF-8 표시가 있거나 UTF-8로 맞으면 UTF-8, 아니면 MS949) → 저장(0)·deflate(8)는 tcInflateRaw_(hwp와 같은 것).
+//  비밀번호 걸린 안 파일(국민은행 거래내역 zip 7개)은 풀 수 없으므로 그 사실을 이유로 알린다(비밀번호를 짐작해 넣지 않음).
+function tcUnzip_(blob) {
+  let bs = null, err = null;
+  try { bs = Utilities.unzip(blob.setContentType('application/zip')); } catch (e) { err = e; }
+  // 이름 깨짐: �가 있거나, 한글은 하나도 없이 라틴 확장 글자(Ã·±·¿ 등 — CP949 바이트를 라틴 글자로 읽은 모양)가 있으면
+  if (bs && !bs.some(function (b) { const nm = String(b.getName() || ''); return /�/.test(nm) || (/[\u0080-ÿ]/.test(nm) && !/[가-힣]/.test(nm)); })) return bs;
+  let own = null;
+  try { own = tcZipOwn_(blob.getBytes()); } catch (e) { if (!bs) throw err || e; return bs; }
+  if (own.enc && !own.files.length) throw new Error('비밀번호가 걸린 압축(안 파일 ' + own.enc + '개) — 비밀번호를 풀어 다시 저장해 주세요');
+  const out = own.files.map(function (x) { return Utilities.newBlob(x.bytes, '', x.name); });
+  if (own.enc) out.push(Utilities.newBlob([], 'text/plain', '(비밀번호 걸린 안 파일 ' + own.enc + '개 — 못 읽음).txt'));
+  return out;
+}
+// zip 바이트 → {files:[{name, bytes(0~255 수 배열이 아니라 -128~127, GAS blob용)}], enc, total}. 이름 디코딩은 tcZipName_
+function tcZipOwn_(bytes) {
+  const u = new Uint8Array(bytes.length); for (let i = 0; i < bytes.length; i++) u[i] = bytes[i] & 255;
+  const r16 = function (p) { return u[p] | (u[p + 1] << 8); }, r32 = function (p) { return (u[p] | (u[p + 1] << 8) | (u[p + 2] << 16) | (u[p + 3] << 24)) >>> 0; };
+  let e = -1; for (let p = u.length - 22; p >= Math.max(0, u.length - 22 - 65557); p--) { if (u[p] === 0x50 && u[p + 1] === 0x4b && u[p + 2] === 5 && u[p + 3] === 6) { e = p; break; } }
+  if (e < 0) throw new Error('zip 끝 목록 없음');
+  const cnt = r16(e + 10), files = []; let off = r32(e + 16), enc = 0;
+  for (let j = 0; j < cnt; j++) {
+    if (r32(off) !== 0x02014b50) break;
+    const fl = r16(off + 8), meth = r16(off + 10), csz = r32(off + 20), nl = r16(off + 28), el = r16(off + 30), cl = r16(off + 32), lo = r32(off + 42);
+    const name = tcZipName_(u.subarray(off + 46, off + 46 + nl), !!(fl & 0x800));
+    off += 46 + nl + el + cl;
+    if (/\/$/.test(name)) continue;
+    if (fl & 1) { enc++; continue; }
+    const ds = lo + 30 + r16(lo + 26) + r16(lo + 28), raw = u.subarray(ds, ds + csz);
+    let data; if (meth === 0) data = raw; else if (meth === 8) data = tcInflateRaw_(raw); else continue; // 그 밖의 압축 방식(bzip2·lzma 등)은 건너뜀
+    const b = new Array(data.length); for (let i = 0; i < data.length; i++) b[i] = data[i] > 127 ? data[i] - 256 : data[i];
+    files.push({ name: name, bytes: b });
+  }
+  return { files: files, enc: enc, total: cnt };
+}
+function tcZipName_(raw, utf8Flag) {
+  const ascii = !Array.prototype.some.call(raw, function (c) { return c > 127; });
+  const b = Array.prototype.map.call(raw, function (c) { return c > 127 ? c - 256 : c; });
+  if (ascii) return String.fromCharCode.apply(null, Array.prototype.slice.call(raw));
+  const blob = Utilities.newBlob(b);
+  const t = blob.getDataAsString('UTF-8');
+  if (utf8Flag || t.indexOf('�') === -1) return t;
+  return blob.getDataAsString('MS949');
+}
 function tcZipText_(f, deadline) {
   const file = DriveApp.getFileById(f.id);
   if (file.getSize() > 45 * 1024 * 1024) return '[⚠ 압축 파일이 너무 큼(45MB 넘음) — 풀어서 넣어 주세요]';
   let blobs;
-  try { blobs = Utilities.unzip(file.getBlob().setContentType('application/zip')); }
-  catch (e) { return '[⚠ 압축 파일을 풀지 못함(암호가 걸렸거나 zip이 아님): ' + String(e && e.message || e).slice(0, 80) + ']'; }
+  try { blobs = tcUnzip_(file.getBlob()); }
+  catch (e) { const m = String(e && e.message || e); return /비밀번호/.test(m) ? '[⚠ ' + m + ']' : '[⚠ 압축 파일을 풀지 못함(암호가 걸렸거나 zip이 아님): ' + m.slice(0, 80) + ']'; }
   const sib = {};
   try { const ps = file.getParents(); if (ps.hasNext()) { const p = ps.next(); tcZipSibs_(p, '', 0, sib); } } catch (e) {}
   const r = tcZipBlobsText_(blobs, 'ocrzip1_' + f.id + '_' + (f.modified || ''), 0, deadline, null, sib);
@@ -27250,14 +27309,16 @@ function tc_docText_(f) {
   const sheetLike = /spreadsheet|ms-excel/.test(String(f.mimeType || ''));
   const key = (sheetLike ? 'ocrtxt3_' : 'ocrtxt_') + f.id + '_' + (f.modified || '');
   const hit = cache.get(key);
-  if (hit !== null) return hit;
+  if (hit !== null && !(TC_BATCH_READ_ && TC_ZIP_FAIL_RE_.test(hit))) return hit; // [2026.10.19 3번 세션] 압축 풀기 실패 글은 일괄에서 캐시도 건너뜀
   let text = '';
   const mt = String(f.mimeType || '');
   const fname = String(f.name || '');
   // 비싼 변환(글자인식·엑셀·한글·파워포인트)은 영구 기억에서 먼저 찾는다(수정시각이 같을 때만)
   const isZip = /\.zip$/i.test(fname) || /^application\/(x-)?zip(-compressed)?$/.test(mt); // [2026.10.18 3번 세션] 압축 파일 안 서류도 읽는다(tcZipText_)
   const costly = !!f.modified && (/pdf|^image\/|officedocument|msword|spreadsheetml|ms-excel/.test(mt) || /\.(hwpx|hwp|pptx)$/i.test(fname) || isZip); // [2026.10.18 1번 세션] 옛 한글 hwp도 영구 기억
-  if (costly) { const st = tcOcrStoreGet_(key); if (st !== null) { try { cache.put(key, st, 21600); } catch (e) {} return st; } }
+  // [2026.10.19 3번 세션] 압축 파일의 "풀지 못함" 기억(이름이 CP949라 풀기에 실패하던 때 남은 것)은 일괄 안에서 다시 읽는다 — 비밀번호 걸림 기억은 그대로 씀
+  let zipRetry = false;
+  if (costly) { const st = tcOcrStoreGet_(key); if (st !== null && isZip && TC_BATCH_READ_ && TC_ZIP_FAIL_RE_.test(st)) zipRetry = true; else if (st !== null) { try { cache.put(key, st, 21600); } catch (e) {} return st; } }
   if (costly && TC_NO_NEW_OCR_) return '';
   if (/\.hwpx$/i.test(fname)) text = tcHwpxText_(f.id);
   else if (isZip) { if (!TC_BATCH_READ_) return null; text = tcZipText_(f, Date.now() + 60000); } // 일괄에서만 풀어 읽음(1분까지, 남은 안쪽 파일은 다음 번에 — 안쪽 글은 하나씩 기억). 사이드바는 예전처럼 "글자로 못 바꿈"
@@ -27309,8 +27370,9 @@ function tc_docText_(f) {
   // [2026.10.18 3번 세션 재점검 6] 그 밖의 서류도 6만 자 → 20만 자(긴 감정평가서·심판청구 붙임서류가 뒤쪽을 잃었다). 잘리면 여전히 표시를 남김
   { const full = String(text || ''), cap = tcLooksBankText_(full) || isZip ? 400000 : 200000; text = full.length > cap ? full.slice(0, cap) + '\n' + TC_TEXT_CUT_MARK_ + ' ' + cap + '자에서 잘림 — 뒤쪽 ' + (full.length - cap) + '자는 못 읽음(서류를 기간·쪽으로 나눠 넣어 주세요)]' : full; }
   if (isZip && text.indexOf(TC_ZIP_LEFT_) !== -1) return text; // 덜 읽은 압축 파일은 기억에 굳히지 않는다 — 다음 번에 남은 안쪽 파일부터 이어서
+  if (isZip && TC_ZIP_FAIL_RE_.test(text)) return text; // [2026.10.19 3번 세션] 풀기 실패도 굳히지 않는다(고친 뒤 다시 읽게) — 비밀번호 걸림은 굳힘
   try { cache.put(key, text, 21600); } catch (e) {}
-  if (costly) tcOcrStorePut_(key, text);
+  if (costly) { if (zipRetry) tcOcrStoreSet_(key, text); else tcOcrStorePut_(key, text); }
   return text;
 }
 // [2026.10.11 토큰0] 규칙으로 정리되는 서류(등기부·계약서·신고필증·대장·영수증 등)는 AI에게 OCR 원문 9천 자 대신
