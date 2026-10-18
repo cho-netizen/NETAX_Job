@@ -29217,18 +29217,22 @@ var CPF_KIND_MAP_ = {
   공급가액: '공급가액', 부가세: '부가세', 합계: '합계', 총액: '합계', 금액: '금액', 지급액: '지급액', 청구금액: '청구금액', 정산금액: '정산금액', 보험가입금액: '보험금액', 보험료: '보험료',
   접수일: '접수일', 원인일: '원인일', 접수번호: '접수번호', 고유번호: '부동산 고유번호', 순위: '등기 순위', 관리번호: '관리번호', 사건: '사건번호', 사건번호: '사건번호', 증권번호: '증권번호', 계약번호: '계약번호', 발급번호: '발급번호', 목록번호: '목록번호',
   날짜: '날짜', 일자: '날짜', 거래일: '거래일', 발급일: '발급일', 작성일: '작성일', 발행일: '발행일', 납부일: '납부일', 신고일: '신고일', 기준일: '기준일', 결정일: '결정일', 합의일: '합의일', 사용승인일: '사용승인일', 등기일: '등기일', 지급일: '지급일', 상환일: '상환일', 만기일: '만기일', 전입일: '전입일', 납부기한: '납부기한',
-  승인번호: '승인번호', 카드번호: '카드번호', 하위: '영수증 종류', // [2026.10.19 1번 밤작업] 영수증 칸(승인번호는 통장·카드 내역과 잇는 번호)
+  승인번호: '승인번호', 카드번호: '카드번호', 하위: '영수증 종류', 공급받는자번호: '공급받는자 사업자번호', 전자납부번호: '전자납부번호', 현주소전입일: '전입일', 세대구성일: '세대구성일', // [2026.10.19 1번 밤작업 — 04:45] // [2026.10.19 1번 밤작업] 영수증 칸(승인번호는 통장·카드 내역과 잇는 번호)
   마지막잔액: '잔액', 발급일잔액: '잔액', 잔액합계: '잔액', 채무자생년6: '생년월일', 대출상환합계: '대출 상환액', 장례비: '장례비', 장례비용: '장례비', 장례비합계: '장례비', 대출일: '대출일', 대출금액: '대출 원금', 대출액: '대출 원금', // [2026.10.19 1번 밤작업 — 2번 9바퀴] "기타:"로 남던 돈 칸
   과세표준: '과세표준', 산출세액: '산출세액', 납부할세액: '납부할세액', 양도차익: '양도차익', 필요경비: '필요경비', 세목: '세목', 세무서: '세무서', 관서: '세무서'
 };
 // (서류 종류, 칸 이름) → 사실 종류 — 같은 칸 이름이 서류마다 뜻이 다른 것(중9)
 var CPF_KIND_BY_TYPE_ = {
-  registry: { 목적: '등기 목적', 원인: '등기 원인' },
+  registry: { 목적: '등기 목적', 원인: '등기 원인', 거래가액: '등기 거래가액', 대상순위: '대상 등기 순위', 층별면적: '층별 면적' },
+  resident: { 현주소전입일: '전입일', 세대구성일: '세대구성일', 세대구성사유: '세대구성 사유', 현주소일자: '현주소 일자', 현주소신고일: '신고일', 현주소사유: '현주소 사유', 변동사유: '변동 사유', 상태: '등록 상태' },
+  payment: { 납부금액: '국세 납부액', 전자납부번호: '전자납부번호', 귀속: '귀속 연도' },
+  giftcontract: { 재산종류: '증여재산 종류', 방법: '지급 방법' },
+  lawyerfee: { 구성금액: '법무사 비용 항목', 등기종류: '등기 종류' },
   regdone: { 목적: '등기 목적', 등기목적: '등기 목적', 원인: '등기 원인', 통지일: '발급일', 등기소: '발급기관' },
   bldledger: { 목적: '기타:목적' }, landledger: { 목적: '기타:목적' },
   pubprice: { 가격: '공시가격' }, bldstd: { 가격: '기준시가' },
   appraisal: { 목적: '감정평가 목적', 가격: '감정가액' },
-  realprice: { 가격: '매매사례가액', 금액: '매매사례가액' },
+  realprice: { 가격: '매매사례가액', 금액: '매매사례가액', 단지: '단지명', 연도: '거래 연도' },
   stamp: { 용도: '인지 용도', 금액: '수입인지 금액', 등록번호: '생년월일·사업자번호' },
   estimate: { 견적일: '견적일', 현장: '소재지', 고객: '성명', 합계: '견적 합계' },
   poa: { 부동산표시: '소재지', 날짜: '작성일', 내용: '위임 내용', 사건: '사건번호' },
@@ -29339,7 +29343,7 @@ var CPF_MONEY_KIND_ = /금액|가액|대금|보증금|월세|세$|세액|비용|
 function cpfKeysFinish_(f) {
   const k = f.keys || (f.keys = {}), v = f.value, kd = String(f.kind || '').replace(/^기타:/, '');
   if (/^(부동산 고유번호|접수번호|관리번호|사건번호|증권번호|계약번호|발급번호|문서확인번호|목록번호|등록번호|승인번호)$/.test(kd) && v !== null && v !== undefined && v !== '') k.docNo = kd + '|' + String(v).replace(/\s+/g, '') + (kd === '접수번호' && k.date ? '|' + k.date : '');
-  if (kd === '사업자번호') { const d = String(v).replace(/\D/g, ''); if (d.length === 10) k.biz = d; }
+  if (kd === '사업자번호' || kd === '공급받는자 사업자번호') { const d = String(v).replace(/\D/g, ''); if (d.length === 10) k.biz = d; }
   if (kd === '전화번호') { const d = String(v).replace(/\D/g, ''); if (d.length >= 9) k.phone = d; }
   if (typeof v === 'number' && Math.abs(v) >= 1000 && CPF_MONEY_KIND_.test(kd) && !/면적|지분|비율|번호|수$/.test(kd)) k.amount = v;
   if (f.kind === '통장 거래' && v && typeof v === 'object') { const a = v.입금 || v.출금 || (typeof v.금액 === 'number' ? Math.abs(v.금액) : null); if (a) k.amount = a; }
@@ -29517,6 +29521,38 @@ function cpfFromResult_(result, base, docType) {
     rd.ocrConf = cpfOcrConf_(base.how, f.check); // 판독 확실성(중13) — conf(규칙이 그렇게 읽었는지)와 따로
     return cpfKeysFinish_({ kind: f.kind, value: f.value, raw: f.raw, src: src, keys: kk, role: f.role || '', read: rd });
   });
+}
+// [2026.10.19 1번 밤작업 — 조정지시 04:45] 납세자의 역할로 정하는 거래 금액 — 서식 구조로만(등기부 소유권이력 줄: 그 줄 권리자 = 산 사람, 바로 앞 줄 권리자 = 판 사람 /
+//  계약서: 매도인·매수인 칸). 납세자 이름(사건의 납세자·고객명)과 정확히 같을 때만 "확실", 공동명의는 note에 밝힘. 이름이 안 맞으면 만들지 않음(기존 거래가액·매매대금은 그대로)
+function cpfPayerDeals_(result, base, payers) {
+  const out = [], ps = (payers || []).map(cpfName_).filter(function (x) { return /^[가-힣]{2,5}$/.test(x); });
+  if (!ps.length || !result || typeof result !== 'object') return out;
+  const namesOf = function (v) { if (!v) return []; if (typeof v === 'string') return v.split(/[,·\s]+/).map(cpfName_).filter(String); if (Array.isArray(v)) return [].concat.apply([], v.map(function (x) { return namesOf(x && typeof x === 'object' ? (x.이름 || x.성명 || '') : x); })); if (typeof v === 'object') return namesOf(v.이름 || v.성명 || ''); return []; };
+  const mk = function (kind, value, where, date, note) {
+    const kk = { amount: value }; if (date) { kk.date = date; kk.dateFrom = '원인일·잔금일'; }
+    out.push(cpfKeysFinish_({ kind: kind, value: value, raw: String(value), src: Object.assign({}, base.src, { where: where }), keys: kk, role: '납세자', read: { how: base.how, conf: '확실', note: note, ocrConf: cpfOcrConf_(base.how, null) } }));
+  };
+  const walk = function (node, path) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) { node.forEach(function (x, i) { walk(x, path + '[' + (i + 1) + ']'); }); return; }
+    if (node.type && node.r) { walk(node.r, path); return; }
+    if (Array.isArray(node.소유권이력)) node.소유권이력.forEach(function (row, i) {
+      const amt = cpfNum_(row && row.거래가액); if (!amt) return;
+      const buyers = namesOf(row.권리자), prev = i > 0 ? namesOf(node.소유권이력[i - 1].권리자) : [], d = cpfDate_(row.원인일 || row.접수일 || '');
+      const co = function (arr) { return arr.length > 1 ? ' — 공동명의 ' + arr.length + '명(지분 확인)' : ''; };
+      if (buyers.some(function (n) { return ps.indexOf(n) !== -1; })) mk('취득가액', amt, path + '.소유권이력[' + (i + 1) + '].거래가액', d, '등기부 소유권이전 줄의 거래가액 — 그 줄 권리자가 납세자(산 쪽)' + co(buyers));
+      else if (prev.some(function (n) { return ps.indexOf(n) !== -1; })) mk('양도가액', amt, path + '.소유권이력[' + (i + 1) + '].거래가액', d, '등기부 소유권이전 줄의 거래가액 — 바로 앞 소유자가 납세자(판 쪽)' + co(prev));
+    });
+    const price = cpfNum_(node.매매대금);
+    if (price) {
+      const sel = namesOf(node.매도인 || node.양도인), buy = namesOf(node.매수인 || node.양수인), d = cpfDate_(node.잔금일 || node.계약일 || '');
+      if (sel.some(function (n) { return ps.indexOf(n) !== -1; })) mk('양도가액', price, path + '.매매대금', d, '계약서 매매대금 — 매도인 칸이 납세자(판 쪽)');
+      else if (buy.some(function (n) { return ps.indexOf(n) !== -1; })) mk('취득가액', price, path + '.매매대금', d, '계약서 매매대금 — 매수인 칸이 납세자(산 쪽)');
+    }
+    Object.keys(node).forEach(function (k) { const v = node[k]; if (v && typeof v === 'object' && k !== '소유권이력') walk(v, path + '.' + k); });
+  };
+  walk(result, '');
+  return out;
 }
 // 판독 확실성(중13) — 원문 글자(엑셀·한글·글 파일)는 "원문 글자", 글자인식은 서류 안 검산이 맞으면 "검산 확인", 아니면 "글자인식(미확인)"
 function cpfOcrConf_(how, check) { if (how !== '글자인식') return '원문 글자'; if (check && check.state === '일치') return '검산 확인'; return '글자인식(미확인)'; }
@@ -29917,6 +29953,7 @@ function cpfFile_(c, f, cache, tbank, opt) {
   const facts = [docFact(exclude ? '제외 후보' : label, p && p.type ? '확실' : '불확실', '')];
   let ruled = [];
   if (p && p.type && p.result) { try { ruled = cpfFromResult_(p.result, base, p.type); } catch (e) { trunc.push('칸 옮기기 오류: ' + String(e && e.message || e).slice(0, 60)); } }
+  if (p && p.type && p.result) { try { ruled = ruled.concat(cpfPayerDeals_(p.result, base, [c && c.납세자, c && c.고객명])); } catch (e) {} } /* 납세자 역할로 양도가액·취득가액 */
   // 한 파일 안의 다른 서류 — 묶음 나누기(docBundleSplit_)가 못 나눈 파일에서 서식 제목 자리마다 서류 정리 규칙을 다시 돌린다(상2: 같은 종류 둘째 서류도).
   //  규칙이 이미 한 파일 여러 서류로 나눈 결과(docs 2개 이상)면 같은 종류는 건너뜀(중복). 줄 첫머리 서식 제목만, 문장·목록 속 서류 이름은 건너뜀
   if (p && !/#s\d/.test(String(f.id))) {
