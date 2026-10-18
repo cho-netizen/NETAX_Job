@@ -29675,10 +29675,11 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
   }
   if (roleCut) base.trunc.push('역할 낱말 뒤 사람 ' + (pn + roleCut) + '명 중 ' + CPF_LIMITS_.role + '명만');
   { const got = out.filter(function (x) { return x.kind === '성명'; }).map(function (x) { return { v: x.value, at: Number((/글자 (\d+)번째/.exec(x.src.where) || [0, -1e9])[1]) }; });
-    const sre = /성\s*명[\s|│]*[:：]?[\s|│]*([가-힣]{2,4})(?![가-힣])/g; let sm;
+    const sre = /성\s*명[\s|│]*[:：]?[\s|│]*(?:[A-Za-z][A-Za-z .,'-]{1,40}?\(\s*)?([가-힣]{2,4})(?![가-힣])/g; let sm;
     while ((sm = sre.exec(t))) { const v = sm[1]; if (cpfBadName_(v) || !cpfLikelyName_(v)) continue; const at = sm.index + sm[0].lastIndexOf(v);
       if (got.some(function (g) { return g.v === v && Math.abs(g.at - at) < 200; })) continue;
-      add('성명', v, sm[0], at, { personGuess: cpfPersonKey_(v, '') }, { note: '"성명" 칸 — 역할 칸과 묶이지 않음(서식에서 누구 칸인지 안 정해짐, AI 확인)' }); got.push({ v: v, at: at }); } }
+      const idn = /(\d{6})\s*-\s*([1-8*][\d*]{6})/.exec(t.slice(sre.lastIndex, sre.lastIndex + 60));
+      add('성명', v, sm[0], at, { personGuess: cpfPersonKey_(v, idn ? idn[1] + '-' + idn[2] : '') }, { note: '"성명" 칸 — 역할 칸과 묶이지 않음(서식에서 누구 칸인지 안 정해짐, AI 확인)' }); got.push({ v: v, at: at }); } }
   // 서류끼리 잇는 번호 — 부동산 고유번호·등기 접수번호·관리번호·발급(문서확인)번호(keys.docNo, 상4)
   re = /(?<![\d-])(\d{4}-\d{4}-\d{6})(?![\d-])/g;
   while ((m = re.exec(t))) add('부동산 고유번호', m[1], m[0], m.index, {});
@@ -29696,7 +29697,9 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
     let nm = m[1] && !/^(주민|등록|번호|성명|이름|생년|월일|본인|부|모|배우자|자녀|관계|구분)$/.test(m[1]) && !NOT_NAME.test(m[1]) && !/번호$|월일$|등록|번$/.test(m[1]) ? m[1] : '', guess = false;
     if (nm && /^명[가-힣]{2,4}$/.test(nm) && /성\s*$/.test(t.slice(Math.max(0, m.index - 3), m.index))) nm = nm.slice(1); // "성 명윤경숙"(성명 칸이 띄어 읽힘)
     if (nm && (cpfBadName_(nm) || !cpfLikelyName_(nm))) nm = ''; // [2026.10.19 1번 밤작업 ③] 번호 바로 앞 낱말도 성씨로 시작하고 흔한 낱말이 아닐 때만
-    if (!nm) { const bk = t.slice(Math.max(0, m.index - 80), m.index), all = bk.match(/(?:성\s*명|이\s*름)[\s|│]*[:：]?[\s|│]*([가-힣]{2,4})(?![가-힣])/g); if (all) { const q = /([가-힣]{2,4})$/.exec(all[all.length - 1].replace(/[\s|│:：]+/g, '')); if (q && !NOT_NAME.test(q[1]) && !cpfBadName_(q[1]) && cpfLikelyName_(q[1])) { nm = q[1]; guess = true; } } }
+    if (!nm) { /* [2026.10.19 1번 밤작업 ⓑ] 마지막 "성명 ○○○"의 이름을 잡은 그대로 꺼냄 — 예전엔 띄어쓰기·쌍점을 지운 뒤 끝 네 글자를 잘라 "성 명: 한우종"이 "명한우종"이 됐다. 로마자 이름 뒤 괄호 한글 이름("PARK … JOE(조경순)")도 */
+      const bk = t.slice(Math.max(0, m.index - 80), m.index), bre = /(?:성\s*명|이\s*름)[\s|│]*[:：]?[\s|│]*(?:[A-Za-z][A-Za-z .,'-]{1,40}?\(\s*)?([가-힣]{2,4})(?![가-힣])/g; let bq, last = null; while ((bq = bre.exec(bk))) last = bq[1];
+      if (last && !NOT_NAME.test(last) && !cpfBadName_(last) && cpfLikelyName_(last)) { nm = last; guess = true; } }
     const pk = nm ? cpfPersonKey_(nm, m[2] + '-' + m[3]) : '';
     const kp = pk ? (guess ? { personGuess: pk } : { person: pk }) : {};
     add('주민번호', m[2] + '-' + m[3], m[0].slice(m[0].lastIndexOf(m[2])), m.index + m[0].lastIndexOf(m[2]), Object.assign({}, kp)); // 자리는 번호가 시작하는 곳(역할 낱말 뒤 묶음과 같은 자리면 하나로)
