@@ -26991,7 +26991,7 @@ var CASEPROC_LAST_RF_ = null;
 const CASEPROC_RELEVANT_TYPES_ = {
   gift: ['giftcontract', 'banktx', 'appraisal', 'registry', 'family', 'pubprice', 'realprice', 'balance', 'debtcert', 'rent', 'lease', 'leasereport', 'leaselist', 'bldledger', 'landledger', 'contract', 'loan'], // loan: 차용증(차입인지 증여인지)
   inheritance: ['registry', 'appraisal', 'family', 'death', 'inhdivision', 'inhquery', 'funeralbill', 'funerallist', 'nichecontract', 'medbill', 'balance', 'debtcert', 'insurance', 'pubprice', 'realprice', 'rent', 'lease', 'leasereport', 'leaselist', 'bldledger', 'landledger', 'carreg', 'cashreceipt', 'cardreceipt', 'giftcontract', 'banktx', 'loan', 'propquery', 'interest'], // interest: 예금 해약 이자 · medbill: 진료비 계산서·영수증 · loan: 대여금 채권·채무계산서(2026.10.17) // loan: 대여금 채권·채무, propquery: 재산조회 회보서
-  transfer: ['contract', 'appraisal', 'dealreport', 'brokerdesc', 'registry', 'acqtax', 'lawyerfee', 'cashreceipt', 'cardreceipt', 'taxinvoice', 'receipt', 'pubprice', 'realprice', 'bldledger', 'landledger', 'resident', 'family', 'farmbiz', 'farmconfirm', 'farmledger', 'giftcontract', 'rent', 'lease', 'leasehist', 'expropcert', 'entryexit', 'residencecard'] // leasehist: 임대주택 요건(증액 5%), expropcert: 수용사실, entryexit·residencecard: 국외자산 5년 거주(§118의2) 확인서
+  transfer: ['workcontract', 'contract', 'appraisal', 'dealreport', 'brokerdesc','registry', 'acqtax', 'lawyerfee', 'cashreceipt', 'cardreceipt', 'taxinvoice', 'receipt', 'pubprice', 'realprice', 'bldledger', 'landledger', 'resident', 'family', 'farmbiz', 'farmconfirm', 'farmledger', 'giftcontract', 'rent', 'lease', 'leasehist', 'expropcert', 'entryexit', 'residencecard'] // leasehist: 임대주택 요건(증액 5%), expropcert: 수용사실, entryexit·residencecard: 국외자산 5년 거주(§118의2) 확인서
 };
 // 3) 처리개요 — 빈 칸은 [확인]에서 값을 받아 채우고, 양도는 서류 규칙 정리(검산된 값)로 물건목록의 빈 칸을 채운다. 기준일은 증빙으로 확정.
 const CASEPROC_OV_REQUIRED_ = {
@@ -28073,9 +28073,11 @@ function caseProcAppealSummary_(c, lines, items) {
       + (r.납부기한 ? ' · 납부기한 ' + r.납부기한 : '') + (g.사유 ? ' · 사유 ' + g.사유 : '') + (g.가산세내역.length ? ' · 가산세 ' + g.가산세내역.map(function (y) { return y.구분 + ' ' + won(y.세액); }).join(', ') : '')
       + (r.경고.length ? ' ⚠ ' + r.경고[0] : ' ✓ 검산') + (n.dup.length ? ' (같은 고지: ' + n.dup.join(', ') + ' — 한 번만 셈)' : ''));
   });
-  // 불복 서면 한 건씩 — 처분청·통지일(청구기한)·신청일, 그리고 서면 안 쟁점 거래 표를 거래 한 건씩
-  const units = []; // 통장과 대조할 거래: { src, d, v, what, win(±일), vat(공급대가도 봄) }
+  // 불복 서면 한 건씩 — 처분청·통지일(청구기한)·신청일, 그리고 서면 안 쟁점 거래 표(표의 계약 한 건씩은 아래 계약과 짝지어 대조)
+  const units = []; // 통장과 대조할 거래(지급 한 건·현금 입금표): { src, d, v, what, win(±일), bank, cashNote, slips }
   const apps = of('appealdoc');
+  const days = function (a, b) { return Math.abs((new Date(a + 'T00:00:00') - new Date(b + 'T00:00:00')) / 86400000); };
+  const isYmd = function (s) { return /^\d{4}-\d{2}-\d{2}$/.test(s || ''); };
   apps.forEach(function (x) {
     const r = x.p.result;
     let due = '';
@@ -28083,39 +28085,126 @@ function caseProcAppealSummary_(c, lines, items) {
     lines.push('📄 ' + r.종류 + ' ' + x.f.name + ': ' + [r.처분청 ? '처분청 ' + r.처분청 : '', r.처분일 ? '처분(고지)일 ' + r.처분일 : '', r.처분통지일 ? '처분통지 받은 날 ' + r.처분통지일 + ' → 불복 청구기한 ' + due + '(90일, 국세기본법 §61①·§68①)' : '', r.신청일 ? '신청·청구일 ' + r.신청일 + (due && r.신청일.length >= 7 && r.신청일.slice(0, due.length) > due ? ' ⚠ 기한 뒤' : '') : '',
       r.쟁점금액.length ? '쟁점 세액 ' + r.쟁점금액.map(function (q) { return q.세목 + ' ' + won(q.금액); }).join(' · ') + (r.총액 ? ' (총 ' + won(r.총액) + ')' : '') : '', r.쟁점공급가액.length ? '쟁점 공급가액 ' + r.쟁점공급가액.slice(0, 3).map(won).join(' · ') : '', (r.거래 || []).length ? '쟁점 거래 표 ' + r.거래.length + '줄' : ''].filter(String).join(' · ')
       + (r.안내 ? ' (' + r.안내 + ')' : '') + (r.경고.length ? ' ⚠ ' + r.경고[0] : ''));
-    (r.거래 || []).forEach(function (t) { units.push({ src: x.f.name, d: t.날짜, v: t.금액[0], what: '쟁점 거래 ' + t.날짜 + ' ' + (t.내용 || '') + ' ' + t.금액.map(won).join(' / '), win: 31, vat: true }); });
   });
-  // 대사표·지급내역 한 줄씩
+  // [2026.10.18 정밀분석 원인13 — 계약 한 건씩] 공사·자재공급 계약서를 "계약서 n건" 목록이 아니라 계약 한 건(계약일·상대방·현장·공급대가)으로.
+  //  같은 계약의 사본(해명자료·제출본·검수사진 폴더 — 계약일·금액이 같은 것)은 한 번만, 파일 이름 앞 번호가 같은 자재 목록·인수증(거래명세서)·현장 사진은
+  //  그 계약의 증빙 묶음(사진은 장수만 — 금액 집계에 넣지 않음). 자재 목록이 번호로 안 이어지면 현장 이름으로.
+  //  계약은 통장 한 줄과 바로 대조하지 않는다(대금은 여러 번 나눠 지급·자재비 상계) — 서면 표의 계약 줄·세금계산서와 짝짓고, 통장은 지급 한 건 단위로 대조한다.
+  const numKey = function (f) { const n = String((f && f.name) || ''); if (/\d{1,2}\s*[~∼]\s*\d{1,2}|\(\s*묶음/.test(n)) return ''; /* "계약서 01~12"·묶음 구간은 여러 계약 — 번호로 묶지 않고 현장 이름으로 */ const m = /계\s*약\s*서?\s*[-_ ]\s*(\d{1,2})(?!\d)/.exec(n) || /^([A-Za-z]?\d{1,2})(?=[\s_\-.]|[가-힣])/.exec(n); return m ? String(m[1]).replace(/^0(\d)$/, '$1').toUpperCase() : ''; };
+  const siteKey = function (s) { return String(s || '').replace(/\s+|및|현장|케이블|설치|공사|\(.*?\)/g, '').slice(0, 4); };
+  const ctrs = [];
+  of('workcontract').forEach(function (x) {
+    const r = x.p.result, k = numKey(x.f);
+    const same = ctrs.filter(function (g) { return r.금액 && g.금액 === r.금액 && (!r.계약일 || !g.계약일 || r.계약일 === g.계약일) && (!k || !g.no || k === g.no); })[0];
+    if (same) { same.copies.push(x.f.name); if (!same.no && k) same.no = k; return; }
+    ctrs.push({ no: k, 계약일: r.계약일, 수급자: r.수급자, 발주자: r.발주자, 현장: r.현장, 금액: r.금액, 공급가액: r.공급가액, 부가세: r.부가세, 상계: r.상계약정, 종류: r.종류, f: x.f, copies: [], lists: [], stmts: [], photos: 0, 품목: r.품목, 품목검산: r.품목검산 });
+  });
+  const mats = [];
+  of('matlist').forEach(function (x) {
+    const r = x.p.result, k = numKey(x.f), isStmt = /거래명세/.test(r.종류);
+    if (mats.some(function (m) { return m.r.종류 === r.종류 && m.r.합계 === r.합계 && m.r.품목.length === r.품목.length && m.k === k && (r.합계 || r.품목.length) && m.r.발행일 === r.발행일; })) return; // 같은 목록 사본
+    mats.push({ f: x.f, r: r, k: k, isStmt: isStmt });
+  });
+  mats.forEach(function (m) {
+    const g = (m.k && ctrs.filter(function (c) { return c.no === m.k; })[0]) || (siteKey(m.r.현장).length >= 2 && ctrs.filter(function (c) { return siteKey(c.현장).indexOf(siteKey(m.r.현장)) === 0 || siteKey(m.r.현장).indexOf(siteKey(c.현장)) === 0; })[0]);
+    if (g) (m.isStmt ? g.stmts : g.lists).push(m); else m.loose = true;
+  });
+  if (ctrs.length) {
+    // 현장 사진 — 이름이 "NN-k_…"이거나 사진·검수 폴더의 그림 파일(글자가 거의 없어 종류가 안 정해짐). 번호로 계약에 붙인다
+    try {
+      caseProcFiles_(c).forEach(function (f) {
+        if (!/pdf|^image\//.test(String(f.mimeType || '')) || !(/^\d{1,2}\s*-\s*\d{1,2}[_\s]\d{8,}/.test(f.name) || /사\s*진|검\s*수/.test(String(f.dir || '') + ' ' + f.name))) return;
+        if (all.some(function (y) { return y.f.id === f.id; })) return; // 종류가 정해진 서류(계약서·목록)는 사진이 아님
+        const k = numKey(f), g = k && ctrs.filter(function (cc) { return cc.no === k; })[0]; if (g) g.photos++;
+      });
+    } catch (e) {}
+    const rows = []; apps.forEach(function (x) { (x.p.result.거래 || []).forEach(function (t, i) { rows.push({ t: t, i: i + 1, f: x.f }); }); });
+    const invs = of('taxinvoice').map(function (x) { return { f: x.f, r: x.p.result }; });
+    const invRecs = of('recon').filter(function (x) { return /세금계산서|발급|과세자료|매입내역|매출내역/.test(x.p.result.종류); });
+    lines.push('📑 쟁점 계약 ' + ctrs.length + '건 — 계약 한 건씩(계약일·상대방·현장·공급대가), 사본·자재 목록·인수증·현장 사진은 그 계약에 묶음:');
+    ctrs.sort(function (a, b) { return (Number(String(a.no).replace(/\D/g, '')) || 99) - (Number(String(b.no).replace(/\D/g, '')) || 99) || String(a.계약일).localeCompare(String(b.계약일)); });
+    ctrs.forEach(function (g) {
+      const parts = [];
+      const lt = g.lists.reduce(function (s, m) { return s + (Number(m.r.합계) || 0); }, 0);
+      if (g.lists.length) parts.push('자재 목록 ' + g.lists.length + '건 합계 ' + won(lt) + (g.lists.every(function (m) { return m.r.검산; }) ? ' ✓ 품목 검산' : ' ⚠ 품목 검산 안 됨') + (g.상계 ? '(발주자 지급 자재 — 공사대금에서 상계 약정)' : ''));
+      if (g.stmts.length) parts.push('인수증(거래명세서) ' + g.stmts.length + '건' + g.stmts.map(function (m) { return m.r.발행일 ? ' ' + m.r.발행일 : ''; }).join('') + (g.stmts.some(function (m) { return m.r.발행일 && g.계약일 && m.r.발행일 < g.계약일; }) ? ' ⚠ 계약일보다 앞선 인수증' : ''));
+      if (g.photos) parts.push('현장 사진 ' + g.photos + '장(정황 증빙 — 금액 없음)');
+      if (g.copies.length) parts.push('같은 계약 사본 ' + g.copies.length + '건 한 번만(' + g.copies.slice(0, 2).join(', ') + (g.copies.length > 2 ? ' 외' : '') + ')');
+      // 서면 표의 같은 계약 줄(금액 = 공급대가 또는 공급가액) — 계약일·자재비(상계분) 대조
+      const row = rows.filter(function (q) { return !q.used && (q.t.금액.indexOf(g.금액) !== -1 || (g.공급가액 && q.t.금액.indexOf(g.공급가액) !== -1)); })[0];
+      if (row) {
+        row.used = true; g.row = row;
+        const dOk = !isYmd(g.계약일) || !isYmd(row.t.날짜) || g.계약일 === row.t.날짜;
+        const sub = row.t.금액.filter(function (v) { return v !== g.금액 && v !== g.공급가액; })[0];
+        parts.push((dOk ? '✅' : '⚠') + ' ' + row.f.name + ' 표 ' + row.i + '번 줄' + (dOk ? '(계약일·금액 같음)' : ' 계약일 ' + row.t.날짜 + ' ≠ 계약서 ' + g.계약일 + ' — 어느 쪽이 맞는지 확인') + (g.lists.length && sub ? (sub === lt ? ' · 자재비 ' + won(sub) + ' = 자재 목록 ✓' : ' · ⚠ 표의 자재비 ' + won(sub) + ' ≠ 자재 목록 합계 ' + won(lt)) : ''));
+      } else if (rows.length) parts.push('△ 서면 표에서 같은 금액의 계약 줄을 찾지 못함');
+      // 세금계산서(공급가액·공급대가가 같은 것) — 발행일은 계약일 뒤여야 한다
+      const iv = invs.filter(function (q) { const r = q.r || {}; return !q.used && [r.공급가액, r.합계, r.합계금액].some(function (v) { return v && (v === g.공급가액 || v === g.금액); }); })[0];
+      const ivr = !iv && invRecs.map(function (x) { return x.p.result.거래.map(function (t) { return { x: x, t: t }; }); }).reduce(function (a, b) { return a.concat(b); }, []).filter(function (q) { return !q.t.used && (q.t.금액.indexOf(g.공급가액) !== -1 || q.t.금액.indexOf(g.금액) !== -1); })[0];
+      if (iv) { iv.used = true; parts.push('세금계산서 ' + iv.f.name + (iv.r.거래일 || iv.r.작성일 ? ' 작성일 ' + String(iv.r.거래일 || iv.r.작성일).slice(0, 10) : '') + ' ✓'); }
+      else if (ivr) { ivr.t.used = true; parts.push(ivr.x.p.result.종류 + ' ' + ivr.t.날짜 + ' ' + won(ivr.t.금액[0]) + ' ✓' + (isYmd(g.계약일) && ivr.t.날짜 < g.계약일 ? ' ⚠ 계약일보다 앞선 발행' : '')); }
+      lines.push('  · 계약 ' + (g.no || '?') + ': ' + [g.계약일 || '계약일 ⚠', g.수급자 ? '상대방 ' + g.수급자 : '', g.현장, g.금액 ? '공급대가 ' + won(g.금액) + (g.공급가액 && g.공급가액 !== g.금액 ? '(공급가액 ' + won(g.공급가액) + ')' : g.부가세 === '별도' ? '(VAT 별도)' : '') : '금액 ⚠'].filter(String).join(' · ') + ' (' + g.f.name + ')' + (parts.length ? ' — ' + parts.join(' · ') : ''));
+    });
+    const loose = mats.filter(function (m) { return m.loose; });
+    if (loose.length) lines.push('  · 계약과 잇지 못한 자재 목록·인수증 ' + loose.length + '건(번호·현장 이름이 안 맞음 — 어느 계약 것인지 확인): ' + loose.slice(0, 6).map(function (m) { return m.f.name + (Number.isFinite(m.r.합계) ? ' ' + won(m.r.합계) : ''); }).join(', '));
+    ctrs.forEach(function (g) { (g.품목 || []).length && lines.push('  · 계약 ' + (g.no || '?') + ' 품목 ' + g.품목.length + '줄' + (g.품목검산 ? ' — ' + g.품목검산 : '')); });
+  }
+  // [2026.10.18 정밀분석 원인13 — 지급 한 건씩] 지급내역·대사표·차이표 여러 장에 같은 지급이 줄마다 다시 나온다 — 날짜 ±3일·지급액(줄의 마지막 금액)이 같으면 "지급 한 건"으로
+  //  합치고(서류 수만큼 따로 대조하지 않음), 입금표는 같은 금액·날짜 ±3일의 지급 건에 붙인다(현금 지급의 영수 증빙). 통장은 지급 한 건 ↔ 출금 한 줄로 대조한다.
+  const BANKS_RE = /(국민|기업|하나|우리|신한|농협|SC\s*제일|씨티|수협|새마을|신협|우체국|부산|대구|경남|광주|전북|제주|카카오|토스|케이)/;
   const recs = of('recon');
-  recs.forEach(function (x) { x.p.result.거래.forEach(function (t) { units.push({ src: x.f.name, d: t.날짜, v: t.금액[0], what: x.p.result.종류 + ' ' + t.날짜 + ' ' + (t.내용 || '') + ' ' + won(t.금액[0]), win: 3 }); }); });
-  // 입금표 한 건씩
-  const deps = of('depositslip');
-  deps.forEach(function (x) { const r = x.p.result; units.push({ src: x.f.name, d: r.작성일, v: r.금액, what: '입금표 ' + [r.작성일 || '날짜 ⚠', r.금액 ? won(r.금액) : '금액 ⚠', r.공급자 ? '공급자 ' + r.공급자 : '', r.받는이 ? '귀하 ' + r.받는이 : '', r.내용].filter(String).join(' · '), win: 3, cashNote: true }); });
+  const payRecs = of('recon').filter(function (x) { return !/세금계산서|발급|과세자료|매입내역|매출내역/.test(x.p.result.종류); });
+  const pays = [];
+  payRecs.forEach(function (x) {
+    x.p.result.거래.forEach(function (t) {
+      const v = t.금액[t.금액.length - 1], src = x.f.name + (t.줄 != null ? ' ' + (t.줄 + 1) + '줄' : '');
+      const bm = BANKS_RE.exec(String(t.원문 || t.내용 || '')), how = /현\s*금/.test(String(t.원문 || '')) ? '현금' : /수\s*표/.test(String(t.원문 || '')) ? '수표' : '';
+      const p = isYmd(t.날짜) && pays.filter(function (q) { return q.v === v && isYmd(q.d) && days(q.d, t.날짜) <= 3; })[0];
+      if (p) { if (p.srcs.indexOf(x.f.name) === -1) p.srcs.push(x.f.name); if (!p.bank && bm) p.bank = bm[1].replace(/\s+/g, ''); if (!p.how && how) p.how = how; return; }
+      pays.push({ d: t.날짜, v: v, who: t.내용 || '', bank: bm ? bm[1].replace(/\s+/g, '') : '', how: how, srcs: [x.f.name], src0: src, slips: [] });
+    });
+  });
+  const deps = of('depositslip'), looseSlips = [];
+  deps.forEach(function (x) {
+    const r = x.p.result;
+    const p = r.금액 && pays.filter(function (q) { return q.v === r.금액 && (!isYmd(r.작성일) || (isYmd(q.d) && days(q.d, r.작성일) <= 3)) && q.slips.length < 3; }).sort(function (a, b) { return (isYmd(r.작성일) ? days(a.d, r.작성일) - days(b.d, r.작성일) : 0); })[0];
+    if (p) p.slips.push({ f: x.f, r: r }); else looseSlips.push(x);
+  });
+  pays.forEach(function (p) {
+    units.push({ src: p.srcs.join(', '), d: p.d, v: p.v, bank: p.bank, win: 3, pay: true,
+      what: '지급 ' + p.d + ' ' + (p.who ? p.who + ' ' : '') + won(p.v) + (p.how ? '(' + p.how + ')' : '') + (p.bank ? ' · 서류의 계좌 ' + p.bank : '') + (p.srcs.length > 1 ? ' · 같은 지급이 ' + p.srcs.length + '개 서류에 — 한 번만' : '') + (p.slips.length ? ' · 입금표 ' + p.slips.map(function (s) { return s.f.name + (s.r.작성일 ? '(' + s.r.작성일 + ')' : ''); }).join(', ') + ' 붙임' : ''),
+      cashNote: p.how === '현금' || !!p.slips.length });
+  });
+  looseSlips.forEach(function (x) { const r = x.p.result; units.push({ src: x.f.name, d: r.작성일, v: r.금액, win: 3, what: '입금표 ' + [r.작성일 || '날짜 ⚠', r.금액 ? won(r.금액) : '금액 ⚠', r.공급자 ? '공급자 ' + r.공급자 : '', r.받는이 ? '귀하 ' + r.받는이 : '', r.내용].filter(String).join(' · ') + (pays.length ? ' — 지급내역에 같은 지급 없음' : ''), cashNote: true }); });
   // 문답서·진술서 — 판단은 세무사님, 여기서는 항목만
   of('interview').forEach(function (x) {
     const r = x.p.result;
     lines.push('🗣 ' + r.종류 + ' ' + x.f.name + ': ' + [r.진술인 ? '진술인 ' + r.진술인 : '', r.작성일 ? '작성일 ' + r.작성일 : '', r.문답수 ? '문답 ' + r.문답수 + '개' : '', r.금액답.length ? '금액이 나온 답 ' + r.금액답.length + '개 — ' + r.금액답[0] : ''].filter(String).join(' · '));
   });
-  // 통장 한 줄씩 — 정리된 통장(PDF·사진)과 은행에서 내려받은 거래내역 글(.txt·.csv)
+  // 통장 한 줄씩 — 정리된 통장(PDF·사진)·표 파일(엑셀·csv — caseProcParseAll_이 통장으로 넣음)과 은행에서 내려받은 거래내역 글(.txt·.csv). 은행·계좌를 함께 둔다(계좌 조건)
   const txs = [];
-  of('banktx').forEach(function (x) { (x.p.result.거래 || []).forEach(function (g) { txs.push({ d: g.날짜, v: Number(g.입금액 || g.출금액 || g.금액 || 0), io: g.입금 === true ? '입금' : g.입금 === false ? '출금' : '', f: x.f.name, memo: g.내용 || '' }); }); });
-  if (units.length) { try { caseProcMemoTexts_(c).read.forEach(function (m) { if (!/\.(txt|csv)$/i.test(m.file) || !m.text || of('banktx').some(function (x) { return x.f.name === m.file; })) return; /* [2026.10.18] 표 파일 통장으로 이미 위에서 읽은 파일은 한 번만 */ const p = docParseText_(m.text); if (p && p.type === 'banktx' && p.result && Array.isArray(p.result.거래)) p.result.거래.forEach(function (g) { txs.push({ d: g.날짜, v: Number(g.입금액 || g.출금액 || g.금액 || 0), io: g.입금 === true ? '입금' : g.입금 === false ? '출금' : '', f: m.file, memo: g.내용 || '' }); }); }); } catch (e) {} }
-  // ── ② 적재적소 — 거래마다 통장의 같은 거래(같은 금액, 날짜 창 안; 쟁점 거래는 부가세 포함 금액도)를 찾는다. 한 통장 줄은 한 거래에만 ──
-  const days = function (a, b) { return Math.abs((new Date(a + 'T00:00:00') - new Date(b + 'T00:00:00')) / 86400000); };
+  const bankOf = function (r) { const m = BANKS_RE.exec(String((r && (r.은행 || r.기관)) || '')); return m ? m[1].replace(/\s+/g, '') : ''; };
+  of('banktx').forEach(function (x) { const bk = bankOf(x.p.result), ac = String(x.p.result.계좌번호 || ''); (x.p.result.거래 || []).forEach(function (g) { txs.push({ d: g.날짜, v: Number(g.입금액 || g.출금액 || g.금액 || 0), io: g.입금 === true ? '입금' : g.입금 === false ? '출금' : '', f: x.f.name, memo: g.내용 || '', bank: bk, acct: ac }); }); });
+  if (units.length) { try { caseProcMemoTexts_(c).read.forEach(function (m) { if (!/\.(txt|csv)$/i.test(m.file) || !m.text || of('banktx').some(function (x) { return x.f.name === m.file; })) return; /* [2026.10.18] 표 파일 통장으로 이미 위에서 읽은 파일은 한 번만 */ const p = docParseText_(m.text); if (p && p.type === 'banktx' && p.result && Array.isArray(p.result.거래)) { const bk = bankOf(p.result) || (BANKS_RE.exec(m.file) || [])[1] || ''; p.result.거래.forEach(function (g) { txs.push({ d: g.날짜, v: Number(g.입금액 || g.출금액 || g.금액 || 0), io: g.입금 === true ? '입금' : g.입금 === false ? '출금' : '', f: m.file, memo: g.내용 || '', bank: bk, acct: String(p.result.계좌번호 || '') }); }); } }); } catch (e) {} }
+  // ── ② 적재적소 — 지급 한 건마다 통장의 같은 출금(같은 금액, ±3일): 서류에 적힌 계좌(은행)의 통장 먼저, 같은 날 먼저·그다음 가까운 날. 한 통장 줄은 한 건에만 ──
   const used = {};
-  let hitN = 0, noMonthN = 0;
+  let hitN = 0, noMonthN = 0, otherBankN = 0;
   units.forEach(function (u) {
     let hit = null;
-    if (u.v && /^\d{4}-\d{2}-\d{2}$/.test(u.d || '') && txs.length) {
-      const vals = u.vat ? [u.v, Math.round(u.v * 1.1)] : [u.v];
-      txs.some(function (t, i) { if (used[i] || vals.indexOf(t.v) === -1 || !/^\d{4}-\d{2}-\d{2}$/.test(t.d || '') || days(t.d, u.d) > u.win) return false; used[i] = 1; hit = t; return true; });
+    if (u.v && isYmd(u.d) && txs.length) {
+      const cands = [];
+      txs.forEach(function (t, i) { if (used[i] || t.v !== u.v || !isYmd(t.d) || days(t.d, u.d) > u.win || (u.pay && t.io === '입금')) return; cands.push({ i: i, t: t, dd: days(t.d, u.d), sb: u.bank && t.bank === u.bank ? 0 : 1 }); });
+      cands.sort(function (a, b) { return a.sb - b.sb || a.dd - b.dd; });
+      if (cands.length) { used[cands[0].i] = 1; hit = cands[0].t; }
     }
     if (hit) hitN++;
+    const otherBank = hit && u.bank && hit.bank && hit.bank !== u.bank;
+    if (otherBank) otherBankN++;
     // 그 거래 날짜의 달에 통장 줄이 하나도 없으면 "없음"이 아니라 "그 달 통장이 정리되지 않음"(없는 증거를 없다고 하지 않음)
     const mon = /^\d{4}-\d{2}/.test(u.d || '') ? u.d.slice(0, 7) : '';
     const noMonth = !hit && mon && !txs.some(function (t) { return String(t.d || '').slice(0, 7) === mon; });
     if (noMonth) noMonthN++;
-    lines.push('  · ' + u.what + ' (' + u.src + ')' + (!txs.length ? '' : hit ? ' — ✅ 통장 ' + hit.f + ' ' + hit.d + ' ' + (hit.io || '') + ' ' + won(hit.v) + (hit.memo ? '(' + String(hit.memo).slice(0, 20) + ')' : '') : noMonth ? ' — △ ' + mon + ' 통장 거래내역이 폴더에서 정리되지 않아 대조 못 함' : ' — ⚠ 통장에 같은 거래 없음(±' + u.win + '일' + (u.vat ? ', 공급대가 포함' : '') + ')' + (u.cashNote ? ': 현금 수수였는지 확인' : '')));
+    lines.push('  · ' + u.what + ' (' + u.src + ')' + (!txs.length ? '' : hit ? (otherBank ? ' — △ 서류엔 ' + u.bank + ', 실제 ' + hit.bank + ' 통장 ' : ' — ✅ 통장 ') + hit.f + ' ' + hit.d + ' ' + (hit.io || '') + ' ' + won(hit.v) + (hit.memo ? '(' + String(hit.memo).slice(0, 20) + ')' : '') : noMonth ? ' — △ ' + mon + ' 통장 거래내역이 폴더에서 정리되지 않아 대조 못 함' : ' — ⚠ 통장에 같은 출금 없음(±' + u.win + '일)' + (u.cashNote ? ': 현금 지급이었는지 확인' : '')));
   });
   // 당초 신고서·결정 통지(1차 신고서 칸별 정리) — 양도·증여·상속 신고서가 있으면 그 세목의 경정 경로(계산기)가 맞을 수 있다
   const frs = of('filedret');
@@ -28127,8 +28216,8 @@ function caseProcAppealSummary_(c, lines, items) {
   }
   // 그 밖에 종류가 정해진 서류 — 양도 신고 서식(매매계약서 등)으로 판정하지 않고 쟁점 거래 자료 목록으로만
   const other = {};
-  all.forEach(function (x) { if (/^(payment|appealdoc|interview|depositslip|filedret|recon|banktx)$/.test(x.p.type)) return; const k = x.p.type === 'contract' ? '계약서' : (x.p.label || x.p.type); (other[k] = other[k] || []).push(x.f.name); });
-  if (Object.keys(other).length) lines.push(labeled ? '📎 쟁점 거래 자료(세액계산기에도 그대로 씀): ' : '📎 쟁점 거래 자료(양도 신고 서식으로 판정하지 않음 — 목록만): ' + Object.keys(other).map(function (k) { return k + ' ' + other[k].length + '건'; }).join(' · '));
+  all.forEach(function (x) { if (/^(payment|appealdoc|interview|depositslip|filedret|recon|banktx|workcontract|matlist)$/.test(x.p.type)) return; /* [2026.10.18 원인13] 계약·자재 목록은 위에서 한 건씩 */ const k = x.p.type === 'contract' ? '계약서' : (x.p.label || x.p.type); (other[k] = other[k] || []).push(x.f.name); });
+  if (Object.keys(other).length) lines.push((labeled ? '📎 쟁점 거래 자료(세액계산기에도 그대로 씀): ' : '📎 쟁점 거래 자료(양도 신고 서식으로 판정하지 않음 — 목록만): ') + Object.keys(other).map(function (k) { return k + ' ' + other[k].length + '건'; }).join(' · '));
   // ── ③ 집계·대조(맨 나중) ──
   const grp = function (r) { return r.지방 || /지방/.test(r.세목) ? '지방소득세' : /부가/.test(r.세목) ? '부가가치세' : /소득세/.test(r.세목) ? '소득세' : (r.세목 || '세목 미상'); };
   const sums = {};
@@ -28153,11 +28242,29 @@ function caseProcAppealSummary_(c, lines, items) {
       lines.push((same ? '✅' : '⚠') + ' 대조 ' + q.세목 + ' 쟁점 세액 ' + won(q.금액) + '(' + x.f.name + ') ' + (same ? '= ' : '≠ ') + '고지서 ' + s.n + '건 합 ' + won(s.paid) + (s.ok && s.raw !== s.paid ? '(버림 전 ' + won(s.raw) + ')' : '') + (same ? '' : ' — 차이 ' + won(Math.abs(q.금액 - (s.ok ? s.raw : s.paid))) + ': 고지서가 덜 있거나 서면이 다른 처분을 포함'));
     });
     (r.거래검산 || []).forEach(function (k) { lines.push('✅ ' + x.f.name + ' 쟁점 거래 표: ' + k); });
-    if ((r.거래 || []).length && r.쟁점공급가액.length) { const s0 = r.거래.reduce(function (a, t) { return a + t.금액[0]; }, 0); lines.push((r.쟁점공급가액.indexOf(s0) !== -1 ? '✅' : '△') + ' ' + x.f.name + ' 쟁점 거래 ' + r.거래.length + '건 금액 합 ' + won(s0) + (r.쟁점공급가액.indexOf(s0) !== -1 ? ' = 쟁점 공급가액' : ' — 쟁점 공급가액(' + r.쟁점공급가액.slice(0, 2).map(won).join('·') + ')과 다름(표가 계약금액·서면은 세금계산서 공급가액일 수 있음)')); }
+    if ((r.거래 || []).length && r.쟁점공급가액.length) {
+      const s0 = r.거래.reduce(function (a, t) { return a + t.금액[0]; }, 0), vatHit = r.쟁점공급가액.filter(function (v) { return Math.round(v * 1.1) === s0; })[0]; // [2026.10.18 원인13] 표가 공급대가(VAT 포함)면 쟁점 공급가액 × 1.1
+      lines.push((r.쟁점공급가액.indexOf(s0) !== -1 || vatHit ? '✅' : '△') + ' ' + x.f.name + ' 쟁점 거래 ' + r.거래.length + '건 금액 합 ' + won(s0) + (r.쟁점공급가액.indexOf(s0) !== -1 ? ' = 쟁점 공급가액' : vatHit ? ' = 쟁점 공급가액 ' + won(vatHit) + ' × 1.1(공급대가)' : ' — 쟁점 공급가액(' + r.쟁점공급가액.slice(0, 2).map(won).join('·') + ')과 다름(표가 계약금액·서면은 세금계산서 공급가액일 수 있음)'));
+    }
   });
   recs.forEach(function (x) { const r = x.p.result; lines.push((r.검산.length ? '✅ ' : '△ ') + x.f.name + ' ' + r.종류 + ' ' + r.거래.length + '줄 합 ' + won(r.거래.reduce(function (a, t) { return a + t.금액[0]; }, 0)) + (r.검산.length ? ' — ' + r.검산[0] : ' — 서류 합계 줄과 맞추지 못함')); });
-  if (deps.length) lines.push('Σ 입금표 ' + deps.length + '건 합 ' + won(deps.reduce(function (s, x) { return s + Number(x.p.result.금액 || 0); }, 0)));
-  if (units.length) lines.push('Σ 통장 대조 — 거래 ' + units.length + '건 중 통장에서 찾음 ' + hitN + '건 · 못 찾음 ' + (units.length - hitN - noMonthN) + '건' + (noMonthN ? ' · 그 달 통장 없음 ' + noMonthN + '건' : '') + (txs.length ? '(통장 ' + txs.length + '줄과 대조)' : ' — 통장 거래내역이 정리되지 않아 대조 못 함'));
+  // [2026.10.18 정밀분석 원인13] 계약 합계 ↔ 서면의 쟁점 공급가액(× 1.1) · 자재 목록 합계 ↔ 서면 표의 자재비 열 — 맨 나중 집계
+  if (ctrs.length) {
+    const sAmt = ctrs.reduce(function (s, g) { return s + (g.금액 || 0); }, 0), sSup = ctrs.reduce(function (s, g) { return s + (g.공급가액 || 0); }, 0), allSup = ctrs.every(function (g) { return g.공급가액; });
+    const claimed = []; apps.forEach(function (x) { (x.p.result.쟁점공급가액 || []).forEach(function (v) { if (claimed.indexOf(v) === -1) claimed.push(v); }); });
+    const hitC = claimed.filter(function (v) { return v === sAmt || (allSup && v === sSup); })[0];
+    lines.push((hitC ? '✅' : claimed.length ? '⚠' : 'Σ') + ' 쟁점 계약 ' + ctrs.length + '건 공급대가 합 ' + won(sAmt) + (allSup ? '(공급가액 합 ' + won(sSup) + ')' : '') + (hitC ? ' = 서면의 쟁점 공급가액 ' + won(hitC) : claimed.length ? ' — 서면의 쟁점 공급가액(' + claimed.slice(0, 3).map(won).join('·') + ')과 다름: 계약서가 덜 있거나 서면이 다른 거래를 포함' : ''));
+    const withList = ctrs.filter(function (g) { return g.lists.length; });
+    if (withList.length) {
+      const sList = withList.reduce(function (s, g) { return s + g.lists.reduce(function (a, m) { return a + (Number(m.r.합계) || 0); }, 0); }, 0);
+      const rowSub = ctrs.filter(function (g) { return g.row && g.lists.length; }).map(function (g) { return g.row.t.금액.filter(function (v) { return v !== g.금액 && v !== g.공급가액; })[0] || 0; });
+      const sRow = rowSub.reduce(function (a, v) { return a + v; }, 0);
+      lines.push('Σ 자재 목록(발주자 지급 자재 — 공사대금에서 상계) ' + withList.length + '건 합 ' + won(sList) + (rowSub.length === withList.length && sRow ? (sRow === sList ? ' = 서면 표 자재비 열 합 ✓' : ' ⚠ 서면 표 자재비 열 합 ' + won(sRow) + '과 ' + won(Math.abs(sRow - sList)) + ' 차이 — 표를 고칠지 확인') : ''));
+    }
+  }
+  if (deps.length) lines.push('Σ 입금표 ' + deps.length + '건 합 ' + won(deps.reduce(function (s, x) { return s + Number(x.p.result.금액 || 0); }, 0)) + (pays.length ? ' — 지급 건에 붙인 것 ' + (deps.length - looseSlips.length) + '장' : ''));
+  if (pays.length) { const nRows = payRecs.reduce(function (s, x) { return s + x.p.result.거래.length; }, 0); lines.push('Σ 지급 ' + pays.length + '건(지급내역·대사표 ' + payRecs.length + '장 ' + nRows + '줄에서 같은 지급을 합침) 합 ' + won(pays.reduce(function (s, p) { return s + (p.v || 0); }, 0))); }
+  if (units.length) lines.push('Σ 통장 대조 — 거래 ' + units.length + '건 중 통장에서 찾음 ' + hitN + '건' + (otherBankN ? '(그중 서류와 다른 은행 통장 ' + otherBankN + '건)' : '') + ' · 못 찾음 ' + (units.length - hitN - noMonthN) + '건' + (noMonthN ? ' · 그 달 통장 없음 ' + noMonthN + '건' : '') + (txs.length ? '(통장 ' + txs.length + '줄과 대조)' : ' — 통장 거래내역이 정리되지 않아 대조 못 함'));
   if (!notes.length && !apps.length) lines.push('⚠ 납세고지서·불복 서면을 아직 읽지 못함(글자인식 전이거나 폴더에 없음) — 처분 내용(세목·귀속·세액)은 고지서로 확인합니다');
 }
 // [2026.10.17 묶음11] 사건 폴더에 함께 넣어 둔 참고자료(국세청 질의회신·예규·판례·유권해석·관련 법령·신문 기사) — 고객 서류가 아니라 판단 참고용.
@@ -30928,6 +31035,8 @@ function caseProcLedger_(c, saved) {
       if (caseProcIsOutP_(c, p)) { r.st = '제외'; r.why = '이 사건 세목의 이미 낸 신고서·명세서(내용으로 확인) — 입력으로 쓰지 않음, 양도코리아 폴더로 옮길 대상'; return r; } // [2026.10.18 정밀분석 원인1]
       if (p.out || p.outGI) r._prior = caseProcIsAmend_(c) ? '당초 신고·결정 — 작업 재료(당초 과세표준·기납부세액, 국세기본법 §45·§45의2)' : caseProcIsPostFiling_(c) ? '이미 낸 신고서 — 사실·10년 합산(상증법 §47②)·기납부세액(§58)·물납 한도(§73) 근거' : c.세목 === 'transfer' ? '다른 세목의 이전 신고·결정 — 증여·상속받은 자산의 취득일·취득가액 근거(소득세법 시행령 §163⑨)' : c.세목 === 'inheritance' ? '사전증여 증여세 신고·결정 — 사전증여재산 합산(상증법 §13)·증여세액공제(§28) 근거' : '다른 세목의 이전 신고·결정(입력)';
       if (p.err) { r.st = '못읽음'; r.why = '읽기 오류: ' + p.err; return r; }
+      // [2026.10.18 정밀분석 원인13] 불복·조사 사건의 현장 검수 사진(이름 "NN-k_…"·사진·검수 폴더) — 다시 스캔할 서류가 아니라 정황 증빙(쟁점 계약 NN 묶음에 장수만)
+      if (p.nt && appealL && (/^\d{1,2}\s*-\s*\d{1,2}[_\s]\d{8,}/.test(n) || /사\s*진|검\s*수/.test(String(f.dir || '') + ' ' + n))) { /* "01-1_1716530601069…"(촬영·전송 시각) — "1-1 외상매입금 내역"(붙임 번호)은 아님 */ r.st = '읽음'; r.kind = '현장 사진(정황 증빙)'; r.use = '불복 항목표 — 파일 앞 번호의 쟁점 계약 묶음에 사진 장수로(금액 없음)'; return r; }
       if (p.nt) { r.st = '못읽음'; r.why = '글자 없음(그림만·흐린 사진) — 선명한 PDF로 다시 넣어 주세요'; return r; }
       if (!p.t && memo.read.some(function (x) { return x.file === n && x.photo; })) { r.st = '읽음'; r.kind = '메모(고객이 적어 보낸 설명 사진)'; }
       else if (!p.t && p.vat) { r.st = '읽음'; r.kind = '부가가치세 신고 자료(매입세액 공제·환급 여부 — 분양 취득가액의 부가세 판단 근거)'; }
@@ -30946,7 +31055,7 @@ function caseProcLedger_(c, saved) {
     else if (nameIn(evHay, n)) r.use = '증빙목록 확보';
     else if (r.kind === '메모·문서' || /^메모/.test(r.kind)) r.use = saved.memoUsed && saved.memoUsed.indexOf(n) !== -1 ? '질문 후보로 씀' : '';
     // [2026.10.17 불복 경로] 불복·조사 사건 — 고지서·불복 서면·문답서·입금표는 항목표에, 계약서 등은 양도 서식으로 판정하지 않고 쟁점 거래 자료로
-    if (appealL && r.t && !CASEPROC_TAX_LABEL_[c.세목]) { if (r.t === 'contract') r.kind = '계약서(쟁점 거래 자료)'; if (!r.use) r.use = /^(payment|appealdoc|interview|depositslip|filedret|recon|banktx)$/.test(r.t) ? '불복 항목표(거래 한 건씩 — 고지·쟁점 거래·대사·입금·통장 대조)에 씀' : '쟁점 거래 자료 — 양도 신고 서식으로 판정하지 않음(불복 항목표에 목록만)'; }
+    if (appealL && r.t && !CASEPROC_TAX_LABEL_[c.세목]) { if (r.t === 'contract') r.kind = '계약서(쟁점 거래 자료)'; if (!r.use) r.use = /^(payment|appealdoc|interview|depositslip|filedret|recon|banktx|workcontract|matlist)$/.test(r.t) ? '불복 항목표(거래 한 건씩 — 고지·쟁점 거래·대사·입금·통장 대조)에 씀' : '쟁점 거래 자료 — 양도 신고 서식으로 판정하지 않음(불복 항목표에 목록만)'; }
     if (r._prior) { if (!r.use) r.use = r._prior; delete r._prior; } // [2026.10.18 정밀분석 원인1] 입력으로 남긴 이미 낸 신고·결정
     // 이 세목 계산과 무관한 종류(보도자료·안내문 등)는 "안 쓰임"으로 세지 않는다
     if (!r.use && r.t && relevant && relevant.indexOf(r.t) === -1) r.use = '이 세목 계산과 무관한 종류';
@@ -33960,6 +34069,9 @@ function docAcctHistoryParse_(t) {
       if (b === null && row.pos.balOk) b = row.pos.bal; else if (b === null) shown = row.pos.bal;
       chk = row.pos.fit || chk;
     }
+    // [2026.10.18 정밀분석 원인13] 칸 위치 규칙 먼저 — 칸이 깨끗하고 앞 줄 잔액과 검산된 줄은 방향(입금·출금)도 칸대로. 금액·잔액은 사슬과 같아도
+    //  사슬이 앞 줄 잔액을 다른 숫자로 이어 방향을 뒤집었다(창구 현금출금 20,000,000원이 "입금"으로 — 잔액 70,000,000 → 50,000,000인데)
+    if (row.pos && row.pos.clean && row.pos.fit && row.pos.dir !== null && amt === row.pos.amt && dir !== row.pos.dir) dir = row.pos.dir;
     if (b !== null) ok++;
     r.거래.push({ 날짜: row.d, 시각: row.tm, 내용: row.memo.split(' ')[0] || '', 금액: amt, 잔액: b, 잔액표시: shown, 적요: row.memo, 입금: amt !== null ? dir : null, 검산: chk, 출금액: amt !== null && dir === false ? amt : 0, 입금액: amt !== null && dir === true ? amt : 0 });
   });
@@ -34252,9 +34364,13 @@ function docBankStmtTableRows_(t, r) {
   var flat = t.replace(/\s+/g, ' ');
   var hm = /거\s*래\s*일\s*[시자]/.exec(flat); if (!hm) return false;
   var hseg = flat.slice(hm.index, hm.index + 160);
-  if (!/적\s*요|구\s*분|내\s*용|받\s*는/.test(hseg) || !/출\s*금\s*액|입\s*금\s*액|찾\s*으\s*신|맡\s*기\s*신/.test(hseg)) return false;
+  // [2026.10.18 정밀분석 원인13] 머리글 낱말 — "출금액·입금액·찾으신·맡기신"만 받아 "출금 | 입금 | 잔액"(기업)·"지급(원) | 입금(원)"(우리) 출력물이 칸 위치 규칙을 못 탔다
+  //  (예금거래실적증명서의 "지급금액·입금금액"은 받지 않는다 — 스캔이 칸을 흩어 표 줄을 못 만든다: 노영환 우리은행 스캔에서 틀린 줄 2개가 생김)
+  var IN_H = /입\s*금\s*액|맡\s*기\s*신|입\s*금\s*\(\s*원\s*\)|입\s*금(?=\s*\||\s*$|\s+(?:출\s*금|지\s*급|잔\s*액))/, OUT_H = /출\s*금\s*액|찾\s*으\s*신|(?:출\s*금|지\s*급)\s*\(\s*원\s*\)|출\s*금(?=\s*\||\s*$|\s+(?:입\s*금|잔\s*액))/;
+  if (!/적\s*요|구\s*분|내\s*용|받\s*는/.test(hseg) || !(OUT_H.test(hseg) || IN_H.test(hseg))) return false;
   var cut = hseg.search(/(?:19|20)\d{2}[.\-]\d{2}[.\-]\d{2}/); if (cut > 0) hseg = hseg.slice(0, cut);
-  var order = [['in', hseg.search(/입\s*금\s*액|맡\s*기\s*신/)], ['out', hseg.search(/출\s*금\s*액|찾\s*으\s*신/)], ['bal', hseg.search(/잔\s*액/)]].filter(function (x) { return x[1] >= 0; }).sort(function (a, b) { return a[1] - b[1]; }).map(function (x) { return x[0]; });
+  if (!/잔\s*액/.test(hseg) && !/출\s*금\s*액|입\s*금\s*액|찾\s*으\s*신|맡\s*기\s*신/.test(hseg)) return false; // 새로 받은 짧은 낱말은 잔액 칸이 함께 있을 때만(본문 "입금" 낱말 오걸림 방지)
+  var order = [['in', hseg.search(IN_H)], ['out', hseg.search(OUT_H)], ['bal', hseg.search(/잔\s*액/)]].filter(function (x) { return x[1] >= 0; }).sort(function (a, b) { return a[1] - b[1]; }).map(function (x) { return x[0]; });
   // 화면이 "출금" 거래만 보여 주면(입금 칸 없음) 금액은 모두 출금
   var outOnly = order.indexOf('in') === -1;
   var body = flat.slice(hm.index + 20).replace(/(^|\s)[QO](?=\s+\d)/g, '$1 0');
@@ -35046,9 +35162,15 @@ function docNicheContractParse_(text) {
 //  같은 계열(매매·분양·임대차 계약서·신고필증·확인설명서 = 거래 서류, docDealParseText_가 안에서 나누고 대조)은 나누지 않는다.
 //  구간마다 docParseText_로 종류를 정해 종류 없고 제목도 없는 구간은 앞 구간에 붙이고, 종류가 둘 이상으로 갈릴 때만 나눈다(애매하면 예전대로 한 서류).
 //  장례 결제 묶음은 docFuneralSegments_가 장례 전용으로 이미 쪼개므로(결과를 바꾸지 않게) 손대지 않는다. 같은 서류가 여러 장(등기부 여러 통·등본 2쪽)인 것도 그대로.
+// [2026.10.18 정밀분석 원인13] 공사·용역·자재공급 계약서 제목 줄(띄어쓰기 없앤 것) — docWorkTitle_·ctSplit_·묶음 나누기가 같이 쓴다
+var DOC_WORK_TITLE_RE_ = /^(?:[가-힣A-Za-z()·,]{0,10})?(?:시공|공사|용역|도급|하도급|설치|자재|물품|장비|납품|기계|전기|인테리어)[가-힣·,및()]{0,16}?계약서(?:\([^)]{0,10}\))?$/;
 var DOC_BUNDLE_TITLES_ = [
   ['deal', /^(?:부동산|오피스텔|아파트|토지|상가|건물|주택|분양권|입주권)?(?:매매|분양|공급|임대차|전세|월세|교환)계약서$|거래계약신고필증$|^신고필증$|확인설명서$/],
   ['gift', /^(?:부동산)?증여계약서$/],
+  // [2026.10.18 정밀분석 원인13] 공사·자재공급 계약서와 자재 목록·거래명세서 — 해명자료 묶음(계약서.pdf 26쪽: 표지 + 계약 12건·자재 목록 12건)을 서류마다 나눈다
+  ['work', DOC_WORK_TITLE_RE_],
+  ['mat', /^자재공급(?:LIST|목록|리스트)$|^지급자재(?:목록|명세)?$|^거래명세(?:서|표)(?:\([^)]{0,10}\))?$/i],
+  ['expl', /^(?:납세자)?해명자료(?:제출(?:서|안내)?)?$/],
   ['resident', /^주민등록표(?:\(?(?:등|초)본\)?)?$|^주민등록(?:표)?(?:등본|초본)$/],
   ['family', /^(?:가족관계|기본|혼인관계|입양관계|친양자입양관계)증명서(?:\((?:일반|상세|특정)\))?$|^제적등본$/],
   ['bld', /^(?:일반|집합)?건축물대장(?:\(?(?:총괄)?(?:표제부|전유부|갑|을)\)?)*(?:건축물현황|변동사항)?$/],
@@ -35073,7 +35195,7 @@ var DOC_BUNDLE_TITLES_ = [
   ['biz', /^사업자등록증(?:명)?$/],
   ['inc', /^소득금액증명(?:원)?$/]
 ];
-var DOC_BUNDLE_TYPE_FAM_ = { interest: 'int', contract: 'deal', dealreport: 'deal', lease: 'deal', leaselist: 'deal', giftcontract: 'gift', resident: 'resident', family: 'family', death: 'family|death', bldledger: 'bld', landledger: 'land', registry: 'registry', cashreceipt: 'cash', taxinvoice: 'taxinv', payment: 'pay', acqtax: 'pay', filedret: 'ret', balance: 'bal', banktx: 'bank', remit: 'bank', debtcert: 'debt|bank', bizreg: 'biz', insurance: 'ins' };
+var DOC_BUNDLE_TYPE_FAM_ = { workcontract: 'work', matlist: 'mat', interest: 'int', contract: 'deal', dealreport: 'deal', lease: 'deal', leaselist: 'deal', giftcontract: 'gift', resident: 'resident', family: 'family', death: 'family|death', bldledger: 'bld', landledger: 'land', registry: 'registry', cashreceipt: 'cash', taxinvoice: 'taxinv', payment: 'pay', acqtax: 'pay', filedret: 'ret', balance: 'bal', banktx: 'bank', remit: 'bank', debtcert: 'debt|bank', bizreg: 'biz', insurance: 'ins' };
 var DOC_BUNDLE_PAGE_KW_ =[['resident', /주민등록표|등본은세대별|초본은/], ['family', /가족관계증명서|기본증명서|혼인관계증명서/], ['bld', /건축물대장/], ['land', /토지대장|임야대장/], ['registry', /등기사항(?:전부|일부)증명서/]];
 function docBundleTitleFam_(line) {
   var s = String(line || '').replace(/\s+/g, '');
@@ -35093,6 +35215,11 @@ function docBundleCuts_(text) {
   // ① 기준점: 서식 제목 줄 · 정부24 쪽 머리(문서확인번호·발급확인번호)
   var anc = [];
   lines.forEach(function (l, i) {
+    // [2026.10.18 정밀분석 원인13] 국세 납세고지서는 한 장이 "세액산출근거"(위) + "납부고지서 겸 영수증"(아래, 전자납부번호) 두 블록 —
+    //  아래 영수증 제목에서 자르면 구간마다 "앞 고지 아래쪽 + 다음 고지 위쪽"이 되어 귀속·세액과 전자납부번호가 엇갈렸다(송기종 고지 8건 중 1건 사라짐).
+    //  서식의 첫 블록("세 액 산 출 근 거")에서 자르고, 아래 영수증은 앞 구간(같은 고지)에 붙인다
+    var lc = String(l).replace(/\s+/g, '');
+    if (/^세액산출근거/.test(lc) && lc.length <= 14) { anc.push({ i: i, fam: 'pay', title: '납세고지서', notice: true }); return; }
     var tf = docBundleTitleFam_(l);
     if (tf) { anc.push({ i: i, fam: tf.fam, title: tf.title }); return; }
     if (/(?:문\s*서|발\s*급)\s*확\s*인\s*번\s*호/.test(l) && String(l).replace(/\s/g, '').length <= 50) anc.push({ i: i, fam: null, title: '', page: true });
@@ -35102,8 +35229,8 @@ function docBundleCuts_(text) {
   var a2 = [];
   anc.forEach(function (x) {
     var p = a2[a2.length - 1];
-    if (p && p.page && !p.fam && !x.page && x.i - p.i <= 8) { p.fam = x.fam; p.title = x.title; return; }
-    if (p && !x.page && !p.page && x.i - p.i <= 3) return;
+    if (p && p.page && !p.fam && !x.page && x.i - p.i <= 8) { p.fam = x.fam; p.title = x.title; if (x.notice) p.notice = true; return; }
+    if (p && !x.page && !p.page && x.i - p.i <= 3) { if (x.notice && p.fam === 'pay') p.notice = true; return; } // 고지서 제목 바로 아래 "세액산출근거" — 같은 고지의 첫 블록
     if (p && x.page && p.page && x.i - p.i <= 3) return;
     a2.push(x);
   });
@@ -35117,15 +35244,19 @@ function docBundleCuts_(text) {
   // ④ 구간: 계열이 바뀌는 기준점에서 자른다(같은 계열이 이어지면 한 서류 — 등기부 여러 쪽·같은 고지서 여러 장)
   var segs = [], cur = null;
   a2.forEach(function (x) {
-    if (!cur) { cur = { i: 0, fam: x.fam, title: x.title }; return; }
+    if (!cur) { cur = { i: 0, fam: x.fam, title: x.title, notice: !!x.notice }; return; }
     // 납부서·고지서가 이어지면 — 과세번호·전자납부번호(15자리 이상)가 새로 나오면 다른 고지서(김금옥: 취득세 고지서 + 등록세 고지서, 박영수: 취득세 납부서 2장),
     //  같은 번호면 같은 납부서의 납세자용·수납기관용 사본이라 한 서류
     var newPay = false;
-    if (x.fam === 'pay' && cur.fam === 'pay') {
+    // [2026.10.18 정밀분석 원인13] 국세 고지서 — 새 "세액산출근거"는 새 고지, 그 아래 영수증 제목은 같은 고지(번호 비교 없이)
+    if (x.fam === 'pay' && cur.fam === 'pay' && (x.notice || cur.notice)) {
+      if (!x.notice) return;
+      if (cur.notice) newPay = true; else { cur.notice = true; cur.title = x.title; return; }
+    } else if (x.fam === 'pay' && cur.fam === 'pay') {
       var longs = function (a, b) { return (lines.slice(a, b).join('\n').match(/\d[\d-]{14,}\d/g) || []).map(function (q) { return q.replace(/-/g, ''); }).filter(function (q) { return q.length >= 15; }); };
       var had = longs(cur.i, x.i), nxt = longs(x.i, Math.min(lines.length, x.i + 25));
       newPay = had.length > 0 && nxt.length > 0 && !nxt.some(function (q) { return had.indexOf(q) !== -1; });
-    }
+    } else if (x.fam === 'work' && cur.fam === 'work') newPay = true; // [2026.10.18 원인13] 공사·자재공급 계약서가 잇달아 나오면 계약마다 한 서류(제목이 곧 새 계약)
     if (!newPay && (!x.fam || x.fam === cur.fam || (!cur.fam && x.i - cur.i < 3))) { if (!cur.fam && x.fam) { cur.fam = x.fam; cur.title = x.title; } return; }
     if (cur.fam === 'medical' && x.fam === 'cash') return; // 진료비 영수증 아래의 "현금영수증" 칸은 같은 영수증의 결제 정보
     // 자르는 자리는 그 쪽의 머리부터 — 제목 앞 6줄 안에 쪽 머리("1/2"·"문서확인번호"·"정부24")가 있으면 거기서
@@ -35137,7 +35268,7 @@ function docBundleCuts_(text) {
       else if (/^\s*\d{1,2}\s*\/\s*\d{1,2}\s*$/.test(lines[b])) ci = b + 1;
     }
     segs.push({ i: cur.i, j: ci, fam: cur.fam, title: cur.title, newPay: cur.newPay });
-    cur = { i: ci, fam: x.fam, title: x.title, newPay: newPay };
+    cur = { i: ci, fam: x.fam, title: x.title, newPay: newPay, notice: !!x.notice };
   });
   if (cur) segs.push({ i: cur.i, j: lines.length, fam: cur.fam, title: cur.title, newPay: cur.newPay });
   if (segs.length < 2) return [];
@@ -35288,7 +35419,8 @@ function docTaxNoticeParse_(text) {
 //  토지수용 이의재결(보상금)은 다른 절차라 여기서 읽지 않는다.
 function docAppealDocParse_(text) {
   var t0 = String(text || ''), head = t0.slice(0, 400).replace(/\s+/g, '');
-  if (/재결|토지수용|공익사업|보상금/.test(t0.slice(0, 1500).replace(/\s+/g, ''))) return null;
+  // [2026.10.18 정밀분석 원인13] 토지수용 절차 서류만 거른다 — "재결청"(국세 불복 심판·심사 기관)·"재결"(조세심판 결정) 낱말까지 걸러 불복 서면을 놓쳤다
+  if (/수용재결|이의재결|토지수용|보상금/.test(t0.slice(0, 1500).replace(/\s+/g, ''))) return null;
   var kinds = [[/처분청의견서|불복청구에대한처분청의견/, '처분청 의견서'], [/조세심판청구서|심판청구서/, '심판청구서'], [/심사청구서/, '심사청구서'], [/이의신청서/, '이의신청서'], [/(?:청구|불복|신청)이유서|청구취지및이유/, '불복 이유서'], [/항변서|항변요지/, '항변서'], [/답변서/, '답변서'],
     [/(?:이의신청|심사청구|심판청구)?결정서|결정통지/, '결정서'], [/과세예고통지/, '과세예고통지'], [/과세전적부심사청구서/, '과세전적부심사 청구서'], [/보정요구서/, '보정요구서'], [/의견진술신청서/, '의견진술 신청서']];
   var kind = ''; for (var i = 0; i < kinds.length; i++) if (kinds[i][0].test(head)) { kind = kinds[i][1]; break; }
@@ -35334,7 +35466,7 @@ function docTxRows_(text) {
     var rest = ln.slice(m.index + m[0].length), am = docAmtList_(rest).filter(function (a) { return a.v >= 1000; });
     if (!am.length) return;
     var name = rest.slice(0, am[0].i).replace(/^[\s|·:]+|[\s|·:]+$/g, '').replace(/\s+/g, ' ').slice(0, 40);
-    rows.push({ 날짜: docYmd_(y, mo, d), 내용: name, 금액: am.map(function (a) { return a.v; }), 줄: i });
+    rows.push({ 날짜: docYmd_(y, mo, d), 내용: name, 금액: am.map(function (a) { return a.v; }), 줄: i, 원문: ln.replace(/\s+/g, ' ').trim().slice(0, 140) }); // [2026.10.18 원인13] 원문 — 지급 구분(현금·계좌)·은행 칸(계좌 조건 대조)
   });
   if (rows.length < 2) return { 거래: rows, 검산: [] };
   var chk = [], n = Math.max.apply(null, rows.map(function (r) { return r.금액.length; })), allAmt = docAmtList_(lines.join('\n')).map(function (a) { return a.v; });
@@ -35348,7 +35480,8 @@ function docTxRows_(text) {
 // 대사표·지급내역·거래처원장·매입매출 내역(불복·조사 쟁점 거래를 한 줄씩 적은 표)
 function docReconParse_(text) {
   var head = String(text || '').slice(0, 300).replace(/\s+/g, '');
-  var km = /(대사표|외상매입금[가-힣]{0,8}|거래처원장|매입매출내역|매입내역|매출내역|지급현황|쟁점거래[가-힣]{0,10})/.exec(head);
+  // [2026.10.18 정밀분석 원인13] 세금계산서 발급 내역·과세자료 내용·지급 내역 표도(작성일·공급가액 / 지급일·지급액 줄) — 계약 ↔ 세금계산서, 지급 ↔ 통장 대조
+  var km = /(대사표|외상매입금[가-힣]{0,8}|거래처원장|매입매출내역|매입내역|매출내역|지급현황|지급내역|쟁점거래[가-힣]{0,10}|세금계산서[가-힣]{0,4}(?:발급|수취)내역|과세자료(?:내용|처리)[가-힣]{0,4})/.exec(head);
   if (!km) return null;
   var tr = docTxRows_(text); if (tr.거래.length < 2) return null; // 줄이 없으면 이 규칙 대상이 아님(다른 규칙에 맡김)
   var r = { 종류: km[1], 거래: tr.거래, 검산: tr.검산, 경고: [] };
@@ -35388,6 +35521,111 @@ function docDepositSlipParse_(text) {
   m = /내[^\S\n]*용[^\S\n]*[:：]?[^\S\n]*([^\n]{2,40})/.exec(tn); if (m && !/^\s*영\s*수\s*자\s*$/.test(m[1])) r.내용 = m[1].trim();
   var md = '### 입금표\n\n' + docMdTable_([['공급자', r.공급자 + (r.공급자번호 ? '(' + r.공급자번호 + ')' : '')], ['받는 이(귀하)', r.받는이], ['작성일', r.작성일], ['합계', r.금액 ? r.금액.toLocaleString('ko-KR') + '원' : ''], ['내용', r.내용]]) + (r.경고.length ? '\n\n' + r.경고.map(function (w) { return '- ⚠ ' + w; }).join('\n') : '');
   return { type: 'depositslip', label: '입금표', result: r, md: md };
+}
+// ───────────── [2026.10.18 정밀분석 원인13] 공사·용역·자재공급 계약서와 자재 목록(지급자재·자재 공급 LIST)·거래명세서 ─────────────
+//  "시공 및 자재공급 계약서"·"물품 공급 계약서"·"자재, 장비 공급계약서"가 매매·분양계약 판별식("공급 계약서")에 걸려 부동산 매매계약서 서식으로 읽혔다
+//  (송기종: 계약 12건이 '분양(공급)계약서'·매매대금 ⚠로, 지급자재 목록 12건은 종류 없음). 부동산 거래가 아니라 재화·용역의 공급 계약이다
+//  (부가가치세법 §9 재화의 공급·§11 용역의 공급) — 계약 한 건(계약일·당사자·현장·금액 VAT 포함/별도)과 품목 한 줄씩(품명·수량·금액, 합계 검산)으로 읽는다.
+//  양도 사건의 공사 계약서는 자본적지출 근거(소득세법 시행령 §163③)라 지급 증빙과 대조할 서류다.
+// 서류 첫머리의 짧은 제목 줄이 공사·용역·자재공급 계약서인지 — 제목 문자열(띄어쓰기 없앤 것) 또는 ''(정규식 DOC_WORK_TITLE_RE_는 묶음 제목 표보다 앞에 둠)
+function docWorkTitle_(text) {
+  var ls = String(text || '').split('\n').slice(0, 25);
+  for (var i = 0; i < ls.length; i++) {
+    var s = ls[i].replace(/\s+/g, '');
+    if (s.length < 5 || s.length > 34) continue;
+    if (DOC_WORK_TITLE_RE_.test(s) && !/매매|분양|임대|전세|월세|증여|교환|부동산|아파트|주택|상가|오피스텔/.test(s)) return s;
+  }
+  return '';
+}
+// 품목 줄(품명·규격·수량·단가·금액) — 줄마다 마지막 금액이 그 줄 금액, 앞의 수가 수량(·단가). 수량×단가=금액이면 검산. 글자인식이 표를 열 덩어리로 흩으면
+//  금액 열(합계 직전까지의 수 중 합이 합계와 맞는 연속 덩어리)만 찾는다 — 그래도 안 맞으면 줄을 비우고 합계만(지어내지 않음).
+function docItemRows_(text) {
+  var t = String(text || '').replace(/(\d),\s+(\d{3})(?!\d)/g, '$1,$2');
+  var tot = null, tm = /합\s*계\s*(?:금\s*액)?\s*[:：]?\s*[₩\\]?\s*(\d{1,3}(?:,\d{3})+|\d{1,3})(?![\d,])/.exec(t);
+  if (tm) tot = Number(tm[1].replace(/,/g, ''));
+  var body = tm ? t.slice(0, tm.index) : t, rows = [];
+  body.split('\n').forEach(function (ln) {
+    if (/합\s*계|소\s*계|단\s*위\s*[:：]|품\s*명|규\s*격|수\s*량|금\s*액|비\s*고/.test(ln) && !/\d{1,3},\d{3}/.test(ln)) return;
+    var nums = [], m, re = /(?<![\d.,A-Za-z])(\d{1,3}(?:,\d{3})+|\d{1,7})(?![\d.,%])(?!\s*(?:SQ|sq|㎟|mm|C\b|P\b|EA|M\b))/g;
+    while ((m = re.exec(ln))) nums.push({ v: Number(m[1].replace(/,/g, '')), at: m.index });
+    var big = nums.filter(function (x) { return x.v >= 1000; });
+    if (!big.length) return;
+    var name = ln.slice(0, big[0].at).replace(/^[\s\d.)|\-]+/, '').replace(/[|]/g, ' ').replace(/\s+/g, ' ').replace(/(?:\s+\d[\d,]*)+$/, '').trim();
+    if (!/[가-힣A-Za-z]/.test(name) && !rows.length) return;
+    var amt = big[big.length - 1].v, rest = nums.filter(function (x) { return x.at < big[big.length - 1].at; }).map(function (x) { return x.v; });
+    var row = { 품명: name.slice(0, 40), 수량: rest.length ? rest[0] : null, 단가: rest.length >= 2 ? rest[1] : null, 금액: amt };
+    if (row.수량 && row.단가) row.곱 = row.수량 * row.단가 === amt;
+    rows.push(row);
+  });
+  var r = { 품목: rows, 합계: tot, 검산: '', 경고: [] }, s = rows.reduce(function (a, x) { return a + x.금액; }, 0);
+  if (tot && rows.length && s === tot) { r.검산 = '품목 ' + rows.length + '줄 합 ' + s.toLocaleString('ko-KR') + '원 = 합계 ✓'; return r; }
+  if (tot && rows.length && Math.abs(s - tot) <= 10 && rows.length >= 5) { r.검산 = '품목 ' + rows.length + '줄 합 ' + s.toLocaleString('ko-KR') + '원 ≈ 합계 ' + tot.toLocaleString('ko-KR') + '원(' + Math.abs(s - tot) + '원 — 단가 끝수 버림)'; return r; }
+  // 열 덩어리로 흩어진 표 — 합계 앞 수들 중 합이 합계인 연속 덩어리(금액 열)
+  if (tot) {
+    var all = (body.match(/(?<![\d.,])\d{1,3}(?:,\d{3})+(?![\d.,])/g) || []).map(function (x) { return Number(x.replace(/,/g, '')); });
+    for (var len = Math.min(all.length, 80); len >= 1; len--) {
+      for (var st = all.length - len; st >= 0; st--) {
+        var seg = all.slice(st, st + len), ss = seg.reduce(function (a, v) { return a + v; }, 0);
+        if (ss === tot && (len >= 2 || all.length === 1)) { r.품목 = seg.map(function (v) { return { 품명: '', 수량: null, 단가: null, 금액: v }; }); r.검산 = '금액 열 ' + len + '칸 합 ' + ss.toLocaleString('ko-KR') + '원 = 합계 ✓(글자인식이 표를 열로 흩어 품명은 짝짓지 않음)'; return r; }
+      }
+    }
+    if (rows.length) r.경고.push('품목 ' + rows.length + '줄 합 ' + s.toLocaleString('ko-KR') + '원 ≠ 합계 ' + tot.toLocaleString('ko-KR') + '원 — 줄을 덜 읽었거나 서류의 합계가 다름(원문 확인)');
+  }
+  return r;
+}
+function docWorkContractParse_(text) {
+  var t0 = String(text || ''), title = docWorkTitle_(t0);
+  if (!title) return null;
+  var t = t0.replace(/(\d),\s+(\d{3})(?!\d)/g, '$1,$2'), tn = t.replace(/[^\S\n]+/g, ' ');
+  var kind = /시공|공사|도급|설치|용역|인테리어/.test(title) ? '공사·용역 계약서' : '물품·자재 공급계약서';
+  var r = { 종류: kind, 제목: title, 계약일: '', 발주자: '', 수급자: '', 현장: '', 금액: null, 부가세: '', 공급가액: null, 계약기간: '', 상계약정: false, 붙임: '', 품목: [], 품목합계: null, 품목검산: '', 경고: [] }, m;
+  var who = function (re) { var q = re.exec(tn); return q ? q[1].replace(/\s+/g, ' ').replace(/\s*(?:대\s*표|주\s*소|사\s*업\s*자|\(인\)).*$/, '').trim().slice(0, 30) : ''; };
+  r.발주자 = who(/(?:발\s*주\s*자|발\s*주\s*처|도\s*급\s*인|구\s*매\s*자|매\s*수\s*자)\s*[:：]\s*([^\n]{2,40})/);
+  r.수급자 = who(/(?:수\s*급\s*(?:시\s*공\s*)?(?:자|인|사)|공\s*급\s*자|시\s*공\s*자|납\s*품\s*자|수\s*탁\s*자)\s*[:：]\s*([^\n]{2,40})/);
+  m = /(?:공\s*사\s*명|현\s*장\s*명|용\s*역\s*명|공\s*사\s*건\s*명|납\s*품\s*장\s*소|현\s*장)\s*[:：]\s*([^\n]{2,60})/.exec(tn); if (m) r.현장 = m[1].trim();
+  m = /(?:공\s*사|계\s*약|용\s*역|공\s*급|도\s*급)\s*(?:금\s*액|대\s*금|가\s*액)\s*[:：]?[^\n\d]{0,40}?\(?\s*[₩\\]?\s*(\d{1,3}(?:,\d{3}){2,})\s*\)?\s*(?:원\s*)?(?:\(?\s*(VAT|V\.A\.T|부\s*가\s*세|부\s*가\s*가\s*치\s*세)\s*(포\s*함|별\s*도)?)?/i.exec(tn);
+  if (m) { r.금액 = Number(m[1].replace(/,/g, '')); if (m[3]) r.부가세 = /포/.test(m[3]) ? '포함' : '별도'; else if (m[2]) r.부가세 = '포함'; }
+  if (!r.부가세 && r.금액) { var vm = /(VAT|부\s*가\s*(?:가\s*치\s*)?세)\s*(포\s*함|별\s*도)/.exec(tn); if (vm) r.부가세 = /포/.test(vm[2]) ? '포함' : '별도'; }
+  // 공급가액 = VAT 포함 금액 ÷ 1.1(나누어떨어질 때만 확정 — 아니면 세금계산서 공급가액으로 확인)
+  if (r.금액 && r.부가세 === '포함') { if (r.금액 % 11 === 0) r.공급가액 = r.금액 / 11 * 10; else r.경고.push('VAT 포함 금액 ' + r.금액.toLocaleString('ko-KR') + '원이 1.1로 나누어떨어지지 않음 — 공급가액은 세금계산서로 확인'); }
+  else if (r.금액 && r.부가세 === '별도') r.공급가액 = r.금액;
+  m = /(?:계\s*약\s*|공\s*사\s*|공\s*급\s*|납\s*품\s*)?기\s*간\s*[:：]?\s*(20\d{2})\s*[.년]\s*(\d{1,2})\s*[.월]\s*(\d{1,2})\s*[.일]?\s*(?:부\s*터|~|∼|-)\s*(20\d{2})\s*[.년]\s*(\d{1,2})\s*[.월]\s*(\d{1,2})/.exec(tn);
+  if (m) r.계약기간 = docYmd_(m[1], m[2], m[3]) + ' ~ ' + docYmd_(m[4], m[5], m[6]);
+  // 계약일 — 서명 위 날짜(맨 끝 "2018 년 8 월 3 일"). 기간 줄의 날짜는 빼고, 날짜가 여럿이면 마지막(서명란)
+  var ds = [], dre = /(20\d{2})\s*[.년]\s*(\d{1,2})\s*[.월]\s*(\d{1,2})\s*[.일]?/g;
+  while ((m = dre.exec(tn))) { var ctx = tn.slice(Math.max(0, m.index - 12), m.index); if (/기\s*간|부\s*터|~|∼/.test(ctx) || /^\s*(?:부\s*터|~|∼|-\s*20)/.test(tn.slice(dre.lastIndex, dre.lastIndex + 5))) continue; ds.push(docYmd_(m[1], m[2], m[3])); }
+  if (ds.length) r.계약일 = ds[ds.length - 1]; else r.경고.push('계약일을 읽지 못함 — 원문 확인');
+  if (/지\s*급\s*(?:된|한)?\s*원?\s*부?\s*자\s*재\s*비?[^\n]{0,30}상\s*계|사급|상\s*계\s*하\s*기\s*로/.test(tn)) r.상계약정 = true; // 발주자가 자재를 대고 공사대금에서 상계(유상사급)
+  m = /붙\s*임\s*[:：]?\s*([^\n]{2,30})/.exec(tn); if (m) r.붙임 = m[1].trim();
+  if (!r.금액) r.경고.push('계약(공사)금액을 읽지 못함 — 원문 확인');
+  // 견적·내역 품목이 함께 있는 공급계약(물품·자재 공급) — 품목 줄과 합계 검산
+  var ih = t.search(/(?:^|\n)[^\n]{0,10}(?:품\s*명|품\s*목|견\s*적\s*(?:내\s*역|서)|산\s*출\s*내\s*역)[^\n]{0,40}(?:수\s*량|금\s*액|단\s*가)/), it = ih >= 0 ? docItemRows_(t.slice(ih)) : { 품목: [] }; // 품목 표 머리가 있을 때만(계약금액 줄을 품목으로 읽지 않게)
+  if (it.품목.length >= 2) { r.품목 = it.품목.slice(0, 120); r.품목합계 = it.합계; r.품목검산 = it.검산; it.경고.forEach(function (w) { r.경고.push(w); }); }
+  var won = function (v) { return v ? Number(v).toLocaleString('ko-KR') + '원' : ''; };
+  var md = '### ' + kind + ' — ' + title + '\n\n' + docMdTable_([['계약일', r.계약일], ['계약기간', r.계약기간], ['발주자(구매자)', r.발주자], ['수급자(공급자)', r.수급자], ['현장·공사명', r.현장], ['계약금액', won(r.금액) + (r.부가세 ? '(VAT ' + r.부가세 + ')' : '')], ['공급가액', won(r.공급가액)], ['자재 상계 약정', r.상계약정 ? '있음 — 발주자가 지급한 원·부자재비를 공사대금에서 상계' : ''], ['붙임', r.붙임]])
+    + (r.품목.length ? '\n\n품목 ' + r.품목.length + '줄' + (r.품목검산 ? ' — ' + r.품목검산 : '') : '') + (r.경고.length ? '\n\n' + r.경고.map(function (w) { return '- ⚠ ' + w; }).join('\n') : '');
+  return { type: 'workcontract', label: kind, result: r, md: md };
+}
+// 자재 공급 LIST·지급자재 목록·거래명세서(인수증) — 품목 한 줄씩 + 합계 검산. 거래명세서는 인도 수량 기록(금액 0원일 수 있음 — 대가는 계약 약정으로 정산)
+function docMaterialListParse_(text) {
+  var t = String(text || ''), head = t.slice(0, 300).replace(/\s+/g, '');
+  var km = /(자재공급(?:LIST|목록|리스트)|지급자재(?:목록|LIST|명세)?|자재(?:LIST|목록|명세서)|공급자재(?:목록|LIST)|거래명세(?:서|표))/i.exec(head);
+  if (!km) return null;
+  // 은행 "정기예탁금 거래명세표"(통장 거래)는 아니다 — 거래명세서는 품목·수량 칸이 있고 계좌·예금주 칸이 없을 때만(노영환 신협 표지가 걸렸다)
+  if (/거래명세/.test(km[1]) && (/예\s*금\s*주|예\s*탁\s*금/.test(t.slice(0, 600)) || !/품\s*(?:목|명)|수\s*량|규\s*격/.test(t))) return null;
+  var kind = /거래명세/.test(km[1]) ? '거래명세서(인수증)' : '자재 공급 목록';
+  var r = { 종류: kind, 현장: '', 발행일: '', 거래처: '', 품목: [], 합계: null, 검산: '', 경고: [] }, m;
+  m = /(?:^|\n)\s*\d{1,2}\s*[.)]\s*([^\n]{2,40}(?:현장|공사|케이블)[^\n]{0,20})/.exec(t) || /(?:현\s*장\s*명?|공\s*사\s*명)\s*[:：]\s*([^\n]{2,40})/.exec(t); if (m) r.현장 = m[1].replace(/\s+/g, ' ').trim();
+  m = /(20\d{2})\s*[.년\-]\s*(\d{1,2})\s*[.월\-]\s*(\d{1,2})/.exec(t); if (m) r.발행일 = docYmd_(m[1], m[2], m[3]);
+  m = /거\s*래\s*처\s*명?\s*[:：]?\s*([^\n]{2,30})/.exec(t) || /([^\n]{2,30}?)\s*귀\s*하/.exec(t); if (m) r.거래처 = m[1].replace(/\s*귀\s*하.*$/, '').replace(/\s+/g, ' ').trim();
+  var it = docItemRows_(t.slice(km.index >= 0 ? 0 : 0));
+  r.품목 = it.품목.slice(0, 120); r.합계 = it.합계; r.검산 = it.검산; it.경고.forEach(function (w) { r.경고.push(w); });
+  if (!r.품목.length && !Number.isFinite(r.합계)) return null; // 표가 없으면 이 규칙 대상이 아님
+  // 합계 0원 거래명세서(무상 인도 기록) — 줄의 수는 인도 수량이다(금액 아님)
+  if (r.합계 === 0) { r.품목 = r.품목.map(function (x) { return { 품명: x.품명, 수량: x.금액, 단가: null, 금액: 0 }; }); r.경고 = []; r.검산 = '금액 0원 — 인도 수량 기록(대가는 계약 약정으로 정산)'; }
+  var md = '### ' + kind + (r.현장 ? ' — ' + r.현장 : '') + '\n\n' + docMdTable_([['발행일', r.발행일], ['거래처', r.거래처], ['합계', Number.isFinite(r.합계) ? r.합계.toLocaleString('ko-KR') + '원' : ''], ['검산', r.검산]])
+    + (r.품목.length ? '\n\n| 품명 | 수량 | 금액 |\n|---|---|---|\n' + r.품목.slice(0, 40).map(function (x) { return '| ' + (x.품명 || '').replace(/\|/g, '/') + ' | ' + (x.수량 == null ? '' : x.수량.toLocaleString('ko-KR')) + ' | ' + x.금액.toLocaleString('ko-KR') + ' |'; }).join('\n') : '') + (r.경고.length ? '\n\n' + r.경고.map(function (w) { return '- ⚠ ' + w; }).join('\n') : '');
+  return { type: 'matlist', label: kind, result: r, md: md };
 }
 // [2026.10.18 정밀분석 국외자산] 출입국사실증명(출입국관리법 시행규칙 별지 제138호서식) · 외국국적동포 국내거소신고증·외국인등록증 — 토큰 0, ES5
 //  국외자산 양도소득은 "양도일까지 계속 5년 이상 국내에 주소 또는 거소를 둔 거주자"만 과세(소득세법 §118의2) — 그 판단 재료.
@@ -35472,6 +35710,9 @@ function docParseText_(text) {
   var fst = docFinStmtParse_(text); if (fst) return fst; // [2026.10.18 원인8] 사업용 재무상태표 — 차입금·보증금·예수금 줄(상속 채무 후보)
   // [2026.10.10] 첫머리에 계약서·신고필증·확인설명서·확정일자 제목이 있으면 거래 서류 — 본문에 "토지대장·등기사항증명서" 같은
   // 첨부서류 이름이 들어 있어도 대장·등기부로 오인하지 않게 맨 먼저 본다(제목이 없으면 아래 기존 순서대로)
+  // [2026.10.18 정밀분석 원인13] 공사·용역·자재공급 계약서와 자재 목록·거래명세서 — "자재공급 계약서"가 아래 매매·분양 판별에 걸리기 전에(제목 줄로만)
+  var wcp = docWorkContractParse_(text); if (wcp) return wcp;
+  var mlp = docMaterialListParse_(text); if (mlp) return mlp;
   if (docDealStrong_(text)) { var deal0 = docDealParseText_(text); if (deal0) return deal0; }
   // [2026.10.15] 감정평가서 — 본문의 "집합건축물대장·등기사항전부증명서" 출처 낱말 때문에 대장으로 잘못 분류되던 것(실사건: 증여 아파트 감정평가서)
   var apr = docAppraisalParse_(text); if (apr) return apr;
@@ -37401,7 +37642,7 @@ function ctSplit_(text) {
     ['brokerdesc', /중\s*개\s*대\s*상\s*물\s*확\s*인\s*[·ㆍᆞ•.]?\s*설\s*명\s*서\s*\[\s*[ⅠⅡⅢⅣIVl1-4]+\s*\]/g],
     ['contract', /(?:^|\n)[^\n]{0,40}(?:매\s*매|공\s*급|분\s*양)\s*(?:전\s*자\s*)?계\s*약\s*서(?=\s|$)(?![^\n]{0,6}(?:를|을|에|의|상))/g]
   ];
-  res.forEach(function (x) { while ((m = x[1].exec(t))) marks.push({ type: x[0], at: m.index }); });
+  res.forEach(function (x) { while ((m = x[1].exec(t))) { if (x[0] === 'contract' && DOC_WORK_TITLE_RE_.test(m[0].replace(/\s+/g, ''))) continue; marks.push({ type: x[0], at: m.index }); } }); // [2026.10.18 원인13] "시공 및 자재공급 계약서" 제목 줄은 매매·분양 계약서가 아님
   marks.sort(function (a, b) { return a.at - b.at; });
   // 같은 종류가 이어지면 하나로(여러 쪽짜리 서류)
   var segs = [];
@@ -38052,11 +38293,13 @@ function lsParseLeaseList_(text) {
 // 제목으로 거래 서류임이 분명한지(첫 400자)
 function docDealStrong_(text) {
   var head = String(text || '').slice(0, 400);
-  return /(매\s*매|분\s*양|공\s*급|전\s*세|월\s*세|임\s*대\s*차|임\s*대)\s*(?:전\s*자\s*)?계\s*약\s*서|부\s*동\s*산\s*거\s*래\s*계\s*약\s*신\s*고\s*필\s*증|중\s*개\s*대\s*상\s*물\s*확\s*인\s*[·ㆍᆞ•.]?\s*설\s*명\s*서|확\s*정\s*일\s*자\s*(?:부여)?\s*현\s*황|임대차\s*계약\s*신고\s*(?:서|필증)|신고서\s*\([^)\n]{0,6}\)\s*\n?\s*임대차\s*계약/.test(head);
+  if (docWorkTitle_(text)) return false; // [2026.10.18 정밀분석 원인13] "시공 및 자재공급 계약서"·"물품 공급 계약서"는 거래(부동산) 서류가 아님
+  return/(매\s*매|분\s*양|공\s*급|전\s*세|월\s*세|임\s*대\s*차|임\s*대)\s*(?:전\s*자\s*)?계\s*약\s*서|부\s*동\s*산\s*거\s*래\s*계\s*약\s*신\s*고\s*필\s*증|중\s*개\s*대\s*상\s*물\s*확\s*인\s*[·ㆍᆞ•.]?\s*설\s*명\s*서|확\s*정\s*일\s*자\s*(?:부여)?\s*현\s*황|임대차\s*계약\s*신고\s*(?:서|필증)|신고서\s*\([^)\n]{0,6}\)\s*\n?\s*임대차\s*계약/.test(head);
 }
 // ---- 거래 서류 판별 — 한 파일 안의 서류들(묶음 스캔)로 나눠 돌려준다 ----
 function docDealDetect_(text) {
   var t = String(text || ''), head = t.slice(0, 400);
+  if (docWorkTitle_(t)) return []; // [2026.10.18 정밀분석 원인13] 공사·용역·자재공급 계약서는 부동산 거래 서류가 아님(docWorkContractParse_)
   var saleHead = /(매\s*매|분\s*양|공\s*급)\s*(?:전자\s*)?계\s*약\s*서|매매\s*계약을\s*체결/.test(head);
   // 임대차: 신고서·확정일자 현황 / 계약서 (시·군·구 임대사업자 등록증은 계약서 제목이 없어 걸리지 않는다). 매매 계약서 머리면 매매 쪽으로.
   if (!saleHead && /확\s*정\s*일\s*자\s*(?:부여)?\s*현\s*황|임대차\s*계약\s*신고\s*(?:서|필증)|주택\s*임대차\s*신고\s*필증|신고서\s*\([^)\n]{0,6}\)\s*\n?\s*임대차\s*계약/.test(t) && !/(전세|월세|임대차|임대)\s*계약서/.test(head)) return [{ type: 'leasereport', text: t }];
