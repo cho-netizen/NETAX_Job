@@ -3846,8 +3846,8 @@ function dispatchClientAction0_(body) {
   if (body.action === 'case_proc') return jsonResponse(caseProcTimed_(body)); // '이 사건 처리하자' — 처리탭 도구로 단계별 점검(토큰 0)
   if (body.action === 'ocr_batch_run') return jsonResponse(cpOcrBatch_(body)); // [2026.10.18] 서버 글자인식 일괄 — 기억에 없는 서류만 글자를 읽어 기억에 쌓음(사건 저장 없음, 토큰 0)
   if (body.action === 'ocr_batch_status') return jsonResponse(cpOcrBatchStatus_());
-  if (body.action === 'ocr_probe') return jsonResponse(cpOcrProbe_(body)); // [2026.10.18 3번 세션] 읽기 실험 — 한 쪽을 여러 방법으로 글자인식해 "_3번실험" 폴더에 남김(사건·기억 안 건드림)
   if (body.action === 'ocr_batch_trigger') return jsonResponse(ocrbTrigger_(body)); // 10분마다 자동 이어 읽기 켜기/끄기
+  if (body.action === 'ocr_probe') return jsonResponse(cpOcrProbe_(body)); // [2026.10.18 3번 세션] 읽기 실험 — 한 쪽을 여러 방법으로 글자인식해 "_3번실험" 폴더에 남김(사건·기억 안 건드림)
   if (body.action === 'answerkey_run') return jsonResponse(answerKeyRun_(body)); // 🧪 정답지 점검(토큰 0, AnswerKey.js)
   if (body.action === 'taxpayer_bulk_fix') return jsonResponse(taxpayerBulkFix_(body)); // 🏷 납세자·사건명 일괄 정리(미리보기/적용, TaxpayerFix.js)
   if (body.action === 'answerkey_last') return jsonResponse(answerKeyLast_());
@@ -24255,12 +24255,17 @@ function jsonResponse(obj) {
 // AI 비용 0원. 임시 문서는 읽자마자 휴지통으로 보낸다.
 // [2026.10.16] 변환용 임시 사본을 둘 곳 — 업무관리자 "_글자인식기억" 폴더(실행이 끊겨 못 지워도 고객 사건 폴더에 남지 않게). 못 찾으면 빈 값(예전처럼 원본 옆).
 function tcTmpMeta_(meta) { try { const fo = tcOcrStoreFolder_(); if (fo) meta.parents = [fo.getId()]; } catch (e) {} return meta; }
-function ocrFileText_(fileId) {
+function ocrFileText_(fileId, tblKey) {
   // [2026.10.16] 임시 문서는 고객 사건 폴더가 아니라 업무관리자 "_글자인식기억" 폴더에 만든다 — 실행 시간 초과로 지우기 전에 끊기면
   //  고객 폴더에 "_ocr_tmp_….gdoc"가 남았다(방영교 사건). 기억 폴더를 못 찾으면 예전처럼 원본 옆에.
   const copy = Drive.Files.copy(tcTmpMeta_({ name: '_ocr_tmp_' + Date.now(), mimeType: 'application/vnd.google-apps.document' }), fileId, { ocrLanguage: 'ko', fields: 'id' });
   try {
-    return DocumentApp.openById(copy.id).getBody().getText();
+    const body = DocumentApp.openById(copy.id).getBody();
+    // [2026.10.18 3번 세션 실험③] 드라이브는 글자층 PDF·워드를 바꿀 때 표(TABLE)를 만든다 — getText()는 칸마다 줄을 바꿔 줄·칸 연결이 사라진다
+    //  (노영환 임대명세서: 층·호·면적·상호·사업자번호·보증금·월세가 한 줄씩 흩어짐). 같은 변환에서 칸 자리 지킨 표 글도 기억(ocrtbl1_)에 남긴다.
+    //  메모 글(getText)은 그대로라 기존 정리 규칙 영향 없음. 칸 자리가 필요한 쪽은 tcDocTableText_로 받는다
+    if (tblKey) { try { const tb = tcDocTableAware_(body); tcOcrStorePut_(tblKey, tb.tables ? tb.text : ''); } catch (e) {} }
+    return body.getText();
   } finally {
     try { DriveApp.getFileById(copy.id).setTrashed(true); } catch (e) { /* 정리 실패는 무시 */ }
   }
@@ -24579,6 +24584,16 @@ function tcOcrStoreGet_(key) {
 function tcOcrStorePut_(key, text) {
   try { const fo = tcOcrStoreFolder_(); if (fo && !fo.getFilesByName(key + '.txt').hasNext()) fo.createFile(key + '.txt', String(text || ''), 'text/plain'); } catch (e) {}
 }
+// [2026.10.18 3번 세션 — 읽기] 이미 있는 기억 글을 고쳐 쓴다(그림 쪽 글자인식 보충) — 없으면 새로 만든다. 6시간 캐시도 지운다
+function tcOcrStoreSet_(key, text) {
+  try {
+    const fo = tcOcrStoreFolder_(); if (!fo) return;
+    const it = fo.getFilesByName(key + '.txt'); let any = false;
+    while (it.hasNext()) { it.next().setContent(String(text || '')); any = true; } // 같은 이름이 둘 이상이면(동시 쓰기) 모두 — 어느 것을 읽어도 같게
+    if (!any) fo.createFile(key + '.txt', String(text || ''), 'text/plain');
+    try { CacheService.getScriptCache().remove(key); } catch (e) {}
+  } catch (e) {}
+}
 // =========================================================
 // [2026.10.18 1번 세션 — 최대 수집] 서버 글자인식 일괄(cpOcrBatch_) — 모든 사건 폴더의 서류 중 글자인식 기억에 없는 것만 글자를 읽어 기억에 쌓는다.
 //  사건은 저장·정리하지 않는다(사건 결정 파일·작업관리 시트·사건 폴더에 아무것도 쓰지 않음). 쓰는 곳은 업무관리자 "_글자인식기억" 폴더뿐 —
@@ -24586,7 +24601,7 @@ function tcOcrStorePut_(key, text) {
 //  왜: 처음 보는 78개 사건의 서류 약 1,143건이 기억에 없어, 사건처리 개선을 "안 본 사건"으로 잴 재료가 없었다(방향점검_20261018 2단계).
 //  토큰 0(구글 무료 글자인식). 사건처리 잠금(LockService)은 잡지 않는다 — 일괄끼리만 캐시 표시로 겹치지 않게(정답지 점검기와 같은 방식).
 //  한 번 부를 때 4분 30초 안에서 끊고, 어디까지 했는지 진행 파일에 남겨 다음 번(화면 버튼이 거듭 부름 / 10분마다 자동 실행)에 이어서 한다.
-//  압축 파일은 풀지 않는다(풀면 사건 폴더에 폴더가 생김) — 압축·옛 hwp·녹음 등 글자로 못 바꾸는 형식은 개수만 센다.
+//  압축 파일은 풀지 않는다(풀면 사건 폴더에 폴더가 생김) — 압축·녹음 등 글자로 못 바꾸는 형식은 개수만 센다.
 // =========================================================
 var OCRB_STATE_NAME_ = '_일괄글자인식_상태.json';
 var OCRB_VER_ = 1;
@@ -24602,12 +24617,14 @@ function tcOcrKey_(f) {
 // 서버 글자인식으로 기억에 남길 형식인가(tc_docText_의 "비싼 변환"과 같은 기준) — 아니면 이유
 function ocrbKind_(f) {
   const mt = String(f.mimeType || ''), n = String(f.name || '');
-  if (/\.hwpx$/i.test(n) || /presentationml/.test(mt) || /\.pptx$/i.test(n)) return { ok: true };
+  if (/\.hwpx?$/i.test(n) || /presentationml/.test(mt) || /\.pptx$/i.test(n)) return { ok: true }; // [2026.10.18 1번 세션] 옛 한글 hwp도 읽는 형식(tcHwpText_)
   if (/pdf|^image\/|officedocument\.wordprocessingml|msword|spreadsheetml|ms-excel/.test(mt)) return { ok: true };
   if (/^application\/vnd\.google-apps\./.test(mt)) return { ok: false, why: '구글 문서·시트(기억 없이 바로 읽음)' };
-  if (/^text\/|json|csv|markdown/.test(mt)) return { ok: false, why: '글 파일(기억 없이 바로 읽음)' };
-  if (/\.hwp$/i.test(n)) return { ok: false, why: '옛 한글 hwp(아직 못 읽음)' };
-  if (/zip|x-7z|rar/.test(mt) || /\.(zip|7z|rar)$/i.test(n)) return { ok: false, why: '압축 파일(풀지 않음)' };
+  if (/^text\/|json|csv|markdown/.test(mt) || /\.(mmd|url|txt|csv|md|html?)$/i.test(n)) return { ok: false, why: '글 파일(기억 없이 바로 읽음)' };
+  if (/\.rtf$/i.test(n) || /rtf/.test(mt)) return { ok: false, why: 'rtf(기억 없이 바로 읽음)' }; // [2026.10.18 3번 세션] tc_docText_가 구글 문서로 바꿔 읽음
+  if (/\.(m4a|mp3|wav|aac|amr|3gp|mp4|mov)$/i.test(n)) return { ok: false, why: '녹음·영상' };
+  if (/\.zip$/i.test(n) || /^application\/(x-)?zip(-compressed)?$/.test(mt)) return { ok: true }; // [2026.10.18 3번 세션] zip은 서버 안에서 풀어 읽는다(tcZipText_ — 사건 폴더엔 아무것도 안 만듦)
+  if (/zip|x-7z|rar/.test(mt) || /\.(7z|rar|egg|alz)$/i.test(n)) return { ok: false, why: '압축 파일(7z·rar 등 — 풀지 못함)' };
   if (/^audio\/|^video\//.test(mt)) return { ok: false, why: '녹음·영상' };
   return { ok: false, why: '글자로 못 바꾸는 형식(' + (mt || '알 수 없음') + ')' };
 }
@@ -24623,7 +24640,7 @@ function ocrbCaseFolders_() {
   const sheet = work_getSheet_(), data = sheet.getDataRange().getValues(), col = work_colMap_(data[0]);
   const ids = {}, roots = {};
   for (let i = 1; i < data.length; i++) { const fid = String(data[i][col.폴더ID] || '').trim(); if (fid) ids[fid] = 1; }
-  Object.keys(ids).slice(0, 20).forEach(function (fid) {
+  Object.keys(ids).slice(0, 400).forEach(function (fid) { // [2026.10.18 3번 세션 재점검 6] 앞 20개 폴더의 부모만 보면 다른 "고객사건" 뿌리를 놓친다 — 모두(상한 400)
     try { const ps = DriveApp.getFolderById(fid).getParents(); while (ps.hasNext()) { const p = ps.next(); if (/^\s*고객사건\s*$/.test(p.getName())) roots[p.getId()] = 1; } } catch (e) {}
   });
   Object.keys(roots).forEach(function (rid) {
@@ -24633,13 +24650,13 @@ function ocrbCaseFolders_() {
 }
 // 사건 폴더 하나의 파일(하위 폴더 포함) — 사건처리 파일 목록(caseProcFiles_)과 같은 기준으로 뺄 폴더는 뺀다(양도코리아·판례 폴더·"_"로 시작하는 도구 폴더)
 function ocrbWalk_(folder, rel, depth, out, opt) {
-  if (depth > 8 || out.length >= 1500) return;
+  if (depth > 8 || out.length >= 6000) return; // [2026.10.18 3번 세션] 1,500개에서 말없이 끊던 상한을 6,000으로(송기종 등 큰 사건)
   const it = folder.getFiles();
   while (it.hasNext()) { const f = it.next(); out.push({ id: f.getId(), name: f.getName(), mimeType: f.getMimeType(), modified: f.getLastUpdated().getTime(), dir: rel, size: f.getSize() }); }
   const subs = folder.getFolders();
   while (subs.hasNext()) {
     const sf = subs.next(), sn = sf.getName();
-    if (/^_/.test(sn) || (!opt.includeFiled && caseIsFiledReturnFolder_(sn)) || (!opt.includeRef && caseProcRefDirName_(sn))) { out.skipDirs = (out.skipDirs || 0) + 1; continue; } // 2차(pass2)는 양도코리아·판례·참고 폴더도
+    if (/^_/.test(sn) || (!opt.includeFiled && caseIsFiledReturnFolder_(sn)) || caseProcRefDirName_(sn)) { out.skipDirs = (out.skipDirs || 0) + 1; continue; }
     ocrbWalk_(sf, rel ? rel + '/' + sn : sn, depth + 1, out, opt);
   }
 }
@@ -24663,9 +24680,12 @@ function cpOcrBatch_(body) {
   if (flag) { const st0 = ocrbLoad_(fo); return { ok: true, more: true, busy: true, busyAge: Math.round((Date.now() - Number(flag)) / 1000), sum: st0 && st0.sum, phase: st0 && st0.phase }; }
   cache.put(FLAG, String(Date.now()), 380); // 서버 한도 6분 + 20초 — 시간 트리거(5분+서류 하나)가 도는 동안 화면 호출과 겹치지 않게, 끊긴 실행의 표시는 오래 막지 않게
   const started = Date.now(), budget = body._trigger ? OCRB_TRIGGER_BUDGET_MS_ : OCRB_BUDGET_MS_;
+  TC_BATCH_READ_ = true; // [2026.10.18 3번 세션] 그림 쪽 보충·zip 읽기는 일괄 안에서만
   try {
     let st = body.reset ? null : ocrbLoad_(fo);
     if (st && st.ver !== OCRB_VER_) st = null;
+    // [2026.10.18 3번 세션] 이미 끝난 일괄에 그림 쪽 보충만 다시 — {fill:true}
+    if (st && st.phase === 'done' && !body.reset && body.fill && !st.dryRun) { st.phase = 'fillscan'; st.fi = 0; st.fq = []; st.fqi = 0; }
     if (st && st.phase === 'done' && !body.reset) {
       if (body.cont) return { ok: true, phase: 'done', sum: st.sum, cases: st.cases, fails: st.fails, long: st.long, already: true };
       if (!body.dryRun && st.dryRun) st = null; // 세기만 한 뒤 실제 읽기 — 처음부터(그사이 늘어난 서류도 다시 셈)
@@ -24673,7 +24693,8 @@ function cpOcrBatch_(body) {
     }
     if (!st) {
       if (body.cont) return { ok: true, phase: 'none', already: true };
-      st = { ver: OCRB_VER_, dryRun: !!body.dryRun, includeFiled: !!body.includeFiled, phase: 'scan', folders: ocrbCaseFolders_(), fi: 0, queue: [], qi: 0,
+      // [2026.10.18 3번 세션] 기본으로 신고서 폴더도 읽음 — [1번 바로잡음] 이 주석이 줄 중간에 있어 뒤의 folders·fi·queue·qi가 주석이 되어, 새로 시작하는 일괄(reset·미리 세기)이 st.folders 없음으로 멈췄다
+      st = { ver: OCRB_VER_, dryRun: !!body.dryRun, includeFiled: body.includeFiled !== false, phase: 'scan', folders: ocrbCaseFolders_(), fi: 0, queue: [], qi: 0,
         cases: {}, sum: { 폴더: 0, 파일: 0, 기억있음: 0, 읽을것: 0, 못바꿈: 0, 읽음: 0, 빈글자: 0, 실패: 0, 건너뛴폴더: 0 }, fails: [], long: [], startedAt: new Date().toISOString() };
       st.sum.폴더 = st.folders.length;
     }
@@ -24681,18 +24702,15 @@ function cpOcrBatch_(body) {
     if (st.phase === 'scan') {
       const have = {};
       const it = fo.getFiles(); while (it.hasNext()) have[it.next().getName().replace(/(\s*\(\d+\))?\.txt$/, '')] = 1;
-      const inQ = {}; if (st.pass2) st.queue.forEach(function (q) { inQ[q.id] = 1; });
       while (st.fi < st.folders.length && Date.now() - started < budget - 30000) {
         const fid = st.folders[st.fi++];
         let folder = null; try { folder = DriveApp.getFolderById(fid); } catch (e) { st.fails.push({ c: fid, n: '', why: '폴더를 열 수 없음' }); continue; }
         const cname = folder.getName(), files = [];
         try { ocrbWalk_(folder, '', 0, files, st); } catch (e) { st.fails.push({ c: cname, n: '', why: '폴더 읽기 실패: ' + String(e && e.message || e).slice(0, 80) }); }
         const cs = st.cases[cname] = st.cases[cname] || { 파일: 0, 기억있음: 0, 읽을것: 0, 못바꿈: 0, 읽음: 0, 빈글자: 0, 실패: 0, 못바꿈이유: {} };
-        if (!st.pass2) st.sum.건너뛴폴더 += files.skipDirs || 0;
+        st.sum.건너뛴폴더 += files.skipDirs || 0;
         files.forEach(function (f) {
           if (/^~\$/.test(f.name)) return;
-          // [2026.10.18] 2차 훑기 — 1차에서 건너뛴 폴더(양도코리아 당초 신고서·판례·참고)와 그사이 읽을 수 있게 된 형식(옛 hwp 등)에서 기억에 없고 대기열에도 없는 것만 더한다
-          if (st.pass2) { if (inQ[f.id] || !ocrbKind_(f).ok || have[tcOcrKey_(f)]) return; cs.읽을것++; st.sum.읽을것++; st.sum.추가 = (st.sum.추가 || 0) + 1; inQ[f.id] = 1; st.queue.push({ id: f.id, n: f.name, mt: f.mimeType, mod: f.modified, c: cname, sz: f.size || 0, p2: true }); return; }
           cs.파일++; st.sum.파일++;
           const k = ocrbKind_(f);
           if (!k.ok) { cs.못바꿈++; st.sum.못바꿈++; cs.못바꿈이유[k.why] = (cs.못바꿈이유[k.why] || 0) + 1; return; }
@@ -24717,16 +24735,20 @@ function cpOcrBatch_(body) {
       rest.forEach(function (q) { delete q._i; });
       st.queue = st.queue.slice(0, st.qi).concat(rest); st.sorted = true;
     }
-    // [2026.10.18] 드라이브 사용 한도 초과(User rate limit)로 실패한 서류는 실패가 아니라 "미룸" — 예전 실행이 실패로 남긴 것도 한 번 미룸으로 옮긴다(시험 묶음 이종혁·최영환 등기부 등 8건)
-    if (st.phase === 'ocr' && !st.migrated) {
-      st.retry = st.retry || []; const keep = [];
-      (st.fails || []).forEach(function (fl) {
-        if (!/rate\s*limit|quota|429/i.test(String(fl.why))) { keep.push(fl); return; }
-        const q = st.queue.slice(0, st.qi).filter(function (x) { return x.c === fl.c && x.n === fl.n; })[0];
-        if (!q) { keep.push(fl); return; }
-        st.retry.push(q); st.sum.실패 = Math.max(0, (st.sum.실패 || 0) - 1); if (st.cases[fl.c]) st.cases[fl.c].실패 = Math.max(0, (st.cases[fl.c].실패 || 0) - 1); st.sum.미룸 = (st.sum.미룸 || 0) + 1;
+    // [2026.10.18 1번 — 이어받기] 운영에서 돌던 cc20bc0 일괄의 상태 파일에 "미룸"(st.retry, 한도 초과로 미뤄 둔 서류)이 남아 있으면 줄 끝에 다시 세운다 —
+    //  이 코드에는 미룸 단계가 없어 그대로 두면 그 서류를 다시 읽지 않는다. cc20bc0의 2차 훑기(st.pass2)는 이 코드의 뒷단계(fillscan)가 대신한다
+    if (st.phase === 'ocr' && (st.retry || []).length) { st.queue = st.queue.concat(st.retry); st.sum.미룸 = 0; st.retry = []; }
+    // [2026.10.18 3번 세션] 이 수정 전에 잠깐 막힘으로 실패로 굳은 서류(나성은 금융거래내역.xlsx 등 4건)를 한 번 줄 끝에 다시 세운다
+    if (st.phase === 'ocr' && !st.failRetry) {
+      st.failRetry = 1;
+      st.fails = st.fails.filter(function (fl) {
+        if (!fl.n || !OCRB_TRANSIENT_RE_.test(String(fl.why || ''))) return true;
+        const q0 = st.queue.slice(0, st.qi).filter(function (x) { return x.c === fl.c && x.n === fl.n; })[0];
+        if (!q0) return true;
+        st.queue.push(Object.assign({}, q0, { tries: 1 }));
+        if (st.cases[fl.c]) st.cases[fl.c].실패--; st.sum.실패--;
+        return false;
       });
-      st.fails = keep; st.migrated = true;
     }
     // 2) 읽기 — 기억에 없는 서류만 tc_docText_로(읽은 글자는 tc_docText_가 기억 폴더에 남긴다). 정리·저장은 하지 않는다
     while (st.qi < st.queue.length && Date.now() - started < budget - OCRB_ITEM_MARGIN_MS_) {
@@ -24741,32 +24763,98 @@ function cpOcrBatch_(body) {
         if (/pdf/.test(String(q.mt))) { const pg = ocrbPdfPages_(q.id, q.sz); if (pg > 10) st.long.push({ c: q.c, n: q.n, 쪽: pg, 글자: String(t).length }); }
       } catch (e) {
         const msg = String(e && e.message || e);
-        if (/rate\s*limit|quota|429/i.test(msg) && (q.tries || 0) < 3) { q.tries = (q.tries || 0) + 1; (st.retry = st.retry || []).push(q); st.sum.미룸 = (st.sum.미룸 || 0) + 1; try { Utilities.sleep(3000); } catch (e2) {} break; } // 한도 초과 — 미루고 이번 호출은 쉼
+        // [2026.10.18 3번 세션] 잠깐 막힘(드라이브 사용량 초과·서버 오류)은 실패로 굳히지 않고 줄 끝에 다시 세운다(3번까지). 막혔으면 이번 실행은 일찍 끝낸다
+        //  (첫 일괄에서 "User rate limit exceeded" 4건이 실패로 남아 다시 읽히지 않았다 — 나성은 금융거래내역.xlsx 등)
+        if (OCRB_TRANSIENT_RE_.test(msg) && (q.tries || 0) < 3) { q.tries = (q.tries || 0) + 1; st.queue.push(q); st.sum.재시도 = (st.sum.재시도 || 0) + 1; if (/rate limit|too many/i.test(msg)) break; continue; }
         cs.실패++; st.sum.실패++; st.fails.push({ c: q.c, n: q.n, why: msg.slice(0, 120) });
       }
     }
-    if (st.qi >= st.queue.length) {
-      if ((st.retry || []).length) { st.queue = st.queue.concat(st.retry); st.sum.미룸 = Math.max(0, (st.sum.미룸 || 0) - st.retry.length); st.retry = []; } // 미룬 것 다시
-      else if (!st.pass2 && !st.dryRun) { st.pass2 = true; st.phase = 'scan'; st.fi = 0; st.includeFiled = true; st.includeRef = true; st.sorted = false; } // 2차 훑기
-      else { st.phase = 'done'; st.doneAt = new Date().toISOString(); st.queue = []; }
-    }
+    if (st.phase === 'ocr' && st.qi >= st.queue.length) { st.phase = 'fillscan'; st.queue = []; st.fi = 0; st.fq = []; st.fqi = 0; }
     ocrbSave_(fo, st);
-    if (st.phase !== 'done') return { ok: true, more: true, phase: st.phase, done: st.phase === 'scan' ? st.fi : st.qi, total: st.phase === 'scan' ? st.folders.length : st.queue.length, sum: st.sum };
-    try { ocrbTrigger_({ on: false }); } catch (e) {}
-    return { ok: true, phase: 'done', sum: st.sum, cases: st.cases, fails: st.fails, long: st.long };
-  } finally { try { cache.remove(FLAG); } catch (e) {} }
+    if (st.phase === 'ocr') return { ok: true, more: true, phase: 'ocr', done: st.qi, total: st.queue.length, sum: st.sum };
+    return ocrbFill_(fo, st, started, budget);
+  } finally { TC_BATCH_READ_ = false; try { cache.remove(FLAG); } catch (e) {} }
+}
+var OCRB_TRANSIENT_RE_ = /rate limit|too many|Rate Limit|Backend Error|Internal Error|서버 오류|Service invoked too many|timed out|시간 초과|Bad Gateway|Service Unavailable|503|500 /;
+// [2026.10.18 3번 세션 — 읽기] 일괄 3단계: 글자층 PDF 속 그림 쪽 보충(tcPdfImgFill_). 이미 기억에 있는 PDF(이번 일괄 전에 읽은 것 포함)를 다시 훑어
+//  그림 쪽이 있는 것만 그 쪽을 글자인식해 기억 글을 고쳐 쓴다. 그림 쪽이 없는 PDF는 기억을 건드리지 않는다.
+//  fillscan: 사건 폴더를 다시 돌며 기억이 있는 PDF 목록(작은 PDF는 큰 스캔 그림이 들 수 없어 뺌) → fill: 하나씩 보충
+function ocrbFill_(fo, st, started, budget) {
+  st.sum.그림쪽보충 = st.sum.그림쪽보충 || 0; st.sum.그림쪽확인 = st.sum.그림쪽확인 || 0;
+  if (st.phase === 'fillscan') {
+    const have = {};
+    const it = fo.getFiles(); while (it.hasNext()) have[it.next().getName().replace(/(\s*\(\d+\))?\.txt$/, '')] = 1;
+    while (st.fi < st.folders.length && Date.now() - started < budget - 30000) {
+      const fid = st.folders[st.fi++];
+      let folder = null; try { folder = DriveApp.getFolderById(fid); } catch (e) { continue; }
+      const cname = folder.getName(), files = [];
+      // [2026.10.18 3번 세션 재점검 6] 뒷단계는 이미 낸 신고서 폴더(양도코리아)도 읽는다 — 읽기는 최대로, 입력으로 쓸지는 사건처리가 정한다(경정·수정·불복은 기신고서가 입력)
+      try { ocrbWalk_(folder, '', 0, files, { includeFiled: true }); } catch (e) {}
+      files.forEach(function (f) {
+        if (/^~\$/.test(f.name)) return;
+        // [2026.10.18 3번 세션] 이 일괄을 시작한 뒤 읽을 수 있게 된 형식(옛 한글 hwp·zip)이나 그 사이 들어온 서류 — 기억이 없으면 여기서 읽는다
+        if (!have[tcOcrKey_(f)] && ocrbKind_(f).ok) { st.fq.push({ id: f.id, n: f.name, mt: f.mimeType, mod: f.modified, c: cname, sz: f.size || 0, read: 1 }); return; }
+        // 엑셀은 칸 자리 지킨 표 글(ocrgrid1_)도 — 예전에 읽은 엑셀은 빈 칸을 지운 글만 있다
+        if (/spreadsheetml|ms-excel/.test(String(f.mimeType || '')) && !have['ocrgrid1_' + f.id + '_' + f.modified]) { st.fq.push({ id: f.id, n: f.name, mt: f.mimeType, mod: f.modified, c: cname, sz: f.size || 0, grid: 1 }); return; }
+        // [2026.10.18 1번] 글자층 PDF·워드의 칸 자리 지킨 표 글(ocrtbl1_, 3번 b18ce08) — 그 전에 읽은 서류는 표 글이 없다. 변환을 한 번 더 하므로 뒷단계 맨 끝에(st.fqTbl → 아래에서 fq 뒤로)
+        if (/pdf|officedocument\.wordprocessingml|msword/.test(String(f.mimeType || '')) && have[tcOcrKey_(f)] && !have['ocrtbl1_' + f.id + '_' + f.modified]) (st.fqTbl = st.fqTbl || []).push({ id: f.id, n: f.name, mt: f.mimeType, mod: f.modified, c: cname, sz: f.size || 0, tbl: 1 });
+        if (!/pdf/.test(String(f.mimeType || '')) || !have[tcOcrKey_(f)]) return; // 크기 하한 없음 — 팩스(CCITT) 쪽은 수십 KB(재점검 7)
+        st.fq.push({ id: f.id, n: f.name, mod: f.modified, c: cname, sz: f.size || 0 });
+      });
+    }
+    if (st.fi >= st.folders.length) { st.phase = 'fill'; st.sum.그림쪽대상 = st.fq.length; st.sum.표글대상 = (st.fqTbl || []).length; st.fq = st.fq.concat(st.fqTbl || []); st.fqTbl = []; }
+    ocrbSave_(fo, st);
+    if (st.phase === 'fillscan') return { ok: true, more: true, phase: 'fillscan', done: st.fi, total: st.folders.length, sum: st.sum };
+  }
+  while (st.phase === 'fill' && st.fqi < st.fq.length && Date.now() - started < budget - OCRB_ITEM_MARGIN_MS_) {
+    const q = st.fq[st.fqi++];
+    ocrbSave_(fo, st);
+    try {
+      if (q.sz > 45 * 1024 * 1024) continue; // GAS가 한 번에 받을 수 있는 크기(50MB)를 넘음
+      if (q.read) {
+        const t = tc_docText_({ id: q.id, name: q.n, mimeType: q.mt, modified: q.mod });
+        st.sum.늦게읽음 = (st.sum.늦게읽음 || 0) + 1;
+        if (t === null) st.fails.push({ c: q.c, n: q.n, why: '글자로 못 바꾸는 형식' });
+        else if (String(t).indexOf(TC_ZIP_LEFT_) !== -1 && (q.rounds = (q.rounds || 0) + 1) <= 8) st.fq.push(q); // 덜 읽은 압축 파일 — 줄 끝에서 이어서
+        continue;
+      }
+      if (q.tbl) { const tt = tcDocTableText_({ id: q.id, name: q.n, mimeType: q.mt, modified: q.mod }); st.sum.표글PDF = (st.sum.표글PDF || 0) + 1; if (tt) st.sum.표있음 = (st.sum.표있음 || 0) + 1; continue; } // 칸 자리 지킨 표 글 채우기(표가 없으면 빈 기억을 남겨 다시 안 함)
+      if (q.grid) { tcSheetGridText_({ id: q.id, name: q.n, mimeType: q.mt, modified: q.mod }); st.sum.표글 = (st.sum.표글 || 0) + 1; continue; }
+      const key = 'ocrtxt_' + q.id + '_' + q.mod, old = tcOcrStoreGet_(key);
+      if (old === null) continue;
+      if (old.indexOf(TC_PDF_IMG_MARK_.slice(1)) !== -1 && old.indexOf(TC_PDF_IMG_LEFT_) === -1) continue; // 이미 보충함
+      const nt = tcPdfImgFill_(q.id, old, started + budget - 20000);
+      st.sum.그림쪽확인++;
+      if (nt !== old) {
+        tcOcrStoreSet_(key, nt);
+        st.sum.그림쪽보충++;
+        (st.filled = st.filled || []).push({ c: q.c, n: q.n, 쪽: (nt.match(/\[\d+쪽 그림 쪽 글자인식\]/g) || []).length, 남음: nt.indexOf(TC_PDF_IMG_LEFT_) !== -1 });
+        if (nt.indexOf(TC_PDF_IMG_LEFT_) !== -1 && (q.rounds = (q.rounds || 0) + 1) <= 8) st.fq.push(q); // 시간이 모자라 남은 쪽 — 줄 끝에서 이어서(같은 쪽이 거듭 실패하면 8번에서 멈춤)
+      }
+    } catch (e) {
+      const msg = String(e && e.message || e);
+      if (OCRB_TRANSIENT_RE_.test(msg) && (q.tries || 0) < 3) { q.tries = (q.tries || 0) + 1; st.fq.push(q); if (/rate limit|too many/i.test(msg)) break; continue; }
+      st.fails.push({ c: q.c, n: q.n, why: '그림 쪽 보충: ' + msg.slice(0, 100) });
+    }
+  }
+  if (st.phase === 'fill' && st.fqi >= st.fq.length) { st.phase = 'done'; st.doneAt = new Date().toISOString(); st.fq = []; }
+  ocrbSave_(fo, st);
+  if (st.phase !== 'done') return { ok: true, more: true, phase: st.phase, done: st.fqi, total: st.fq.length, sum: st.sum };
+  try { ocrbTrigger_({ on: false }); } catch (e) {}
+  return { ok: true, phase: 'done', sum: st.sum, cases: st.cases, fails: st.fails, long: st.long, filled: st.filled };
 }
 // 진행 상황만(읽기 없음)
 function cpOcrBatchStatus_() {
   const fo = tcOcrStoreFolder_(); if (!fo) return { error: '"_글자인식기억" 폴더 없음' };
   const st = ocrbLoad_(fo); if (!st) return { ok: true, phase: 'none' };
   let trig = false; try { trig = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'cpOcrBatchTick'; }); } catch (e) {}
-  return { ok: true, phase: st.phase, dryRun: st.dryRun, done: st.phase === 'scan' ? st.fi : st.qi, total: st.phase === 'scan' ? (st.folders || []).length : (st.queue || []).length, sum: st.sum, cases: st.cases, fails: st.fails, long: st.long, startedAt: st.startedAt, touchedAt: st.touchedAt, doneAt: st.doneAt, trigger: trig };
+  const fl = st.phase === 'fill', sc = st.phase === 'scan' || st.phase === 'fillscan'; // [2026.10.18 3번 세션] 그림 쪽 보충 단계도 진행 수로
+  return { ok: true, phase: st.phase, dryRun: st.dryRun, done: sc ? st.fi : fl ? st.fqi : st.qi, total: sc ? (st.folders || []).length : fl ? (st.fq || []).length : (st.queue || []).length, filled: st.filled, sum: st.sum, cases: st.cases, fails: st.fails, long: st.long, startedAt: st.startedAt, touchedAt: st.touchedAt, doneAt: st.doneAt, trigger: trig };
 }
 // 자동 이어 읽기(10분마다) 켜기/끄기 — 화면을 닫아도 서버가 혼자 이어서 한다. 다 읽으면 cpOcrBatch_가 스스로 끈다
 function ocrbTrigger_(body) {
   ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'cpOcrBatchTick') ScriptApp.deleteTrigger(t); });
-  // [2026.10.18] 10분 → 5분마다 — 한 번에 5분 일하므로 10분 간격이면 절반을 쉬었다(3번 0aeff3e와 같은 내용, 일괄은 1번 몫이라 여기로). 겹침은 ocrb_running 표시가 막는다
+  // [2026.10.18 3번 세션] 10분 → 5분마다 — 한 번에 5분 일하므로 10분 간격이면 절반을 쉬었다(분당 1.6건, 1,475건에 약 14시간). 겹침은 ocrb_running 표시가 막는다
   if (body && body.on) ScriptApp.newTrigger('cpOcrBatchTick').timeBased().everyMinutes(5).create();
   return { ok: true, trigger: !!(body && body.on) };
 }
@@ -24776,101 +24864,14 @@ function cpOcrBatchTick() { // 시간 트리거가 부르는 이름(끝에 _가 
   cpOcrBatch_({ cont: true, _trigger: true });
 }
 // =========================================================
-// [2026.10.18 3번 세션 — 읽기 실험 전용] 사건처리(tc_docText_·caseProc)와 일괄(cpOcrBatch_)은 쓰지 않는 함수들 — action ocr_probe 실험 도구만 씀.
-//  PDF 풀기(tcPdfTok_·tcPdfPages_) → 한 쪽 PDF 만들기(tcPdfOnePage_·tcImgFileSrc_) → 바꾸기(tcPdfVariant_: 확대·줄이기·회전·잘라 보기) → 드라이브 글자인식.
-//  압축 풀기 tcInflateRaw_는 hwp 읽개(1번)의 것과 같은 함수
+// [2026.10.18 3번 세션 — 읽기] 글자층 PDF 속 스캔 그림 쪽 글자인식 보충.
+//  드라이브는 글자가 든 PDF를 문서로 바꿀 때 글자층만 쓰고 그림 쪽은 글자인식을 하지 않는다 — 인터넷 발급 등기부 뒤에 신탁원부 스캔 20쪽을 붙인
+//  최은진 「등기부등본_인덕원센트럴푸르지오.pdf」(30쪽)가 1~9쪽만 읽히고 10~29쪽은 쪽 번호("10/30")만 남았다.
+//  PDF를 직접 풀어(순수 JavaScript, 압축 풀기는 hwp 읽개의 tcInflateRaw_) 쪽마다 글자 그리기 명령 수와 큰 그림을 세고,
+//  글자가 거의 없고(쪽 번호 정도) 큰 그림(JPEG·팩스·압축 그림)이 있는 쪽만 그 그림을 꺼내 따로 글자인식해 글 끝에 "[N쪽 그림 쪽 글자인식]" 머리와 함께 붙인다(이미 기억된 글의 자리는 그대로).
+//  모든 쪽이 그림뿐인 스캔 PDF는 드라이브가 이미 글자인식하므로 건드리지 않는다. 토큰 0.
 // =========================================================
-// raw deflate 풀기(zlib 머리 없음 — GAS Utilities에는 없음). 저장·고정 허프만·동적 허프만 블록
-function tcInflateRaw_(src) {
-  let out = new Uint8Array(Math.max(4096, src.length * 4)), op = 0;
-  let pos = 0, buf = 0, cnt = 0, over = 0;
-  const need = function (n) {
-    while (cnt < n) {
-      if (pos < src.length) buf |= src[pos++] << cnt;
-      else if (++over > 8) throw new Error('hwp 압축 자료가 끝에서 잘림');
-      cnt += 8;
-    }
-  };
-  const bits = function (n) { need(n); const v = buf & ((1 << n) - 1); buf >>>= n; cnt -= n; return v; };
-  const room = function (n) { if (op + n > out.length) { const b = new Uint8Array(Math.max(out.length * 2, op + n)); b.set(out.subarray(0, op)); out = b; } };
-  // 부호 길이 → 빠른 찾기표(낮은 비트부터 읽은 값 → 기호<<4 | 길이)
-  const build = function (lens) {
-    let max = 0; lens.forEach(function (l) { if (l > max) max = l; });
-    if (!max) return { tbl: new Int32Array(2), max: 1 };
-    const blc = new Array(16).fill(0); lens.forEach(function (l) { if (l) blc[l]++; });
-    const next = new Array(16).fill(0); let code = 0;
-    for (let b = 1; b <= 15; b++) { code = (code + blc[b - 1]) << 1; next[b] = code; }
-    const tbl = new Int32Array(1 << max).fill(-1);
-    lens.forEach(function (l, sym) {
-      if (!l) return;
-      let c = next[l]++, r = 0;
-      for (let k = 0; k < l; k++) { r = (r << 1) | (c & 1); c >>= 1; }
-      for (let j = r; j < (1 << max); j += (1 << l)) tbl[j] = (sym << 4) | l;
-    });
-    return { tbl: tbl, max: max };
-  };
-  const sym = function (h) {
-    need(h.max);
-    const v = h.tbl[buf & ((1 << h.max) - 1)];
-    if (v < 0) throw new Error('hwp 압축 부호가 잘못됨');
-    const l = v & 15; buf >>>= l; cnt -= l;
-    return v >> 4;
-  };
-  const LB = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];
-  const LE = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
-  const DB = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577];
-  const DE = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
-  const ORD = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
-  let fixL = null, fixD = null, last = 0;
-  while (!last) {
-    last = bits(1);
-    const type = bits(2);
-    if (type === 0) { // 저장 블록 — 바이트 경계로 맞춘 뒤 길이만큼 그대로
-      bits(cnt & 7);
-      const len = bits(16); bits(16);
-      room(len);
-      let k = 0;
-      while (cnt >= 8 && k < len) { out[op++] = bits(8); k++; }
-      if (pos + (len - k) > src.length) throw new Error('hwp 압축 저장 블록이 잘림');
-      out.set(src.subarray(pos, pos + len - k), op); op += len - k; pos += len - k;
-      continue;
-    }
-    let hl, hd;
-    if (type === 1) {
-      if (!fixL) {
-        const l = []; for (let i = 0; i < 288; i++) l.push(i < 144 ? 8 : i < 256 ? 9 : i < 280 ? 7 : 8);
-        fixL = build(l); fixD = build(new Array(30).fill(5));
-      }
-      hl = fixL; hd = fixD;
-    } else if (type === 2) {
-      const nl = bits(5) + 257, nd = bits(5) + 1, nc = bits(4) + 4;
-      const cl = new Array(19).fill(0);
-      for (let i = 0; i < nc; i++) cl[ORD[i]] = bits(3);
-      const ch = build(cl), lens = [];
-      while (lens.length < nl + nd) {
-        const s = sym(ch);
-        if (s < 16) lens.push(s);
-        else if (s === 16) { if (!lens.length) throw new Error('hwp 압축 부호 길이 잘못됨'); const pv = lens[lens.length - 1]; for (let r = bits(2) + 3; r > 0; r--) lens.push(pv); }
-        else if (s === 17) { for (let r = bits(3) + 3; r > 0; r--) lens.push(0); }
-        else { for (let r = bits(7) + 11; r > 0; r--) lens.push(0); }
-      }
-      hl = build(lens.slice(0, nl)); hd = build(lens.slice(nl, nl + nd));
-    } else throw new Error('hwp 압축 블록 형식이 잘못됨');
-    for (;;) {
-      const s = sym(hl);
-      if (s < 256) { room(1); out[op++] = s; continue; }
-      if (s === 256) break;
-      const li = s - 257; if (li >= 29) throw new Error('hwp 압축 길이 부호가 잘못됨');
-      const len = LB[li] + bits(LE[li]);
-      const di = sym(hd); if (di >= 30) throw new Error('hwp 압축 거리 부호가 잘못됨');
-      const dist = DB[di] + bits(DE[di]);
-      if (dist > op) throw new Error('hwp 압축 거리가 앞을 넘음');
-      room(len);
-      for (let k = 0; k < len; k++, op++) out[op] = out[op - dist];
-    }
-  }
-  return out.subarray(0, op);
-}
+var TC_PDF_IMG_MARK_ = '[그림 쪽 글자인식]', TC_PDF_IMG_LEFT_ = '[⚠ 그림 쪽 글자인식 남음';
 // PDF 값 읽개 — 사전 {D:{}}, 배열 [], 이름 {N:''}, 참조 {R:번호}, 글자 {S:''}, 숫자·참거짓·null
 function tcPdfTok_(s, p) {
   const n = s.length;
@@ -24985,6 +24986,15 @@ function tcPdfPages_(u, s0) {
   walk(root.D.Pages, null, 0, null);
   pages.get = get; pages.nm = nm;
   return pages;
+}
+// 글자층 PDF의 그림 쪽 — 글자 그리기 명령이 3개 이하(쪽 번호 정도)이고 큰 그림(60만 점 이상)이 있는 쪽. 글자층이 아예 없는 PDF는 [](드라이브가 이미 글자인식)
+function tcPdfImgPageList_(pages) {
+  if (!pages || !pages.some(function (p) { return p.textOps > 3; })) return [];
+  // 스캔 한 쪽을 가로띠 여러 장으로 잘라 넣은 PDF도 있다(최동규 세무자문자료 1쪽 — 2573×360 띠 여러 장) → 넓이 합으로 보고 그림 전부를 한 쪽에 옮긴다
+  return pages.filter(function (p) { return p.textOps <= 3 && !p.err && p.imgs.reduce(function (sm, im) { return sm + im.w * im.h; }, 0) >= 600000; }).map(function (p) {
+    const big = p.imgs.slice().sort(function (a, b) { return b.w * b.h - a.w * a.h; })[0];
+    return { p: p.p, img: big, imgs: p.imgs.slice(0, 60) };
+  });
 }
 // 그림만 든 한 쪽짜리 PDF를 만든다(원래 쪽의 크기·방향·그림 위치 그대로) — 드라이브는 글자층 없는 PDF는 쪽을 그려서 글자인식하므로
 //  옆으로 누운 채 저장된 스캔 그림도 바로 선 모양으로 읽힌다. JPEG·팩스(CCITT)·압축 그림 모두 원래 바이트를 그대로 옮긴다. 못 만들면 null
@@ -25143,6 +25153,16 @@ function cpOcrProbe_(body) {
   });
   return { ok: true, total: src.total, imgs: src.imgs.length, results: out };
 }
+// [2026.10.18 3번 세션 — 읽기] 서류(PDF·워드)의 칸 자리 지킨 표 글 — 표가 없으면 ''. 기억(ocrtbl1_)에 있으면 그대로(사이드바도 씀),
+//  없으면 TC_BATCH_READ_(일괄) 안에서만 한 번 더 변환해 만든다(이 수정 전에 읽은 서류용). 사이드바에서는 변환하지 않고 '' — 느려지지 않게
+function tcDocTableText_(f) {
+  if (!f || !f.id || !f.modified) return '';
+  const key = 'ocrtbl1_' + f.id + '_' + f.modified, st = tcOcrStoreGet_(key);
+  if (st !== null) return st;
+  if (!TC_BATCH_READ_ || TC_NO_NEW_OCR_ || !/pdf|officedocument\.wordprocessingml|msword/.test(String(f.mimeType || ''))) return '';
+  ocrFileText_(f.id, key);
+  return tcOcrStoreGet_(key) || '';
+}
 // 구글 문서 본문 → 글. 표(TABLE)는 한 줄 = 표 한 줄, 칸은 " | "로(getText()는 칸마다 줄을 바꿔 줄·칸 연결이 사라진다). {text, tables}
 function tcDocTableAware_(bodyEl) {
   const lines = []; let tables = 0;
@@ -25159,15 +25179,389 @@ function tcDocTableAware_(bodyEl) {
   }
   return { text: lines.join('\n'), tables: tables };
 }
-// 한글 hwpx(압축된 XML) — 본문 section*.xml의 글자만 꺼낸다(무료, 변환 없음). 옛 hwp(이진 파일)는 못 읽음.
-function tcHwpxText_(fileId) {
-  const blob = DriveApp.getFileById(fileId).getBlob().setContentType('application/zip');
+// 그림 한 장(blob) → 드라이브 무료 글자인식 글
+function tcOcrBlob_(blob) {
+  const doc = Drive.Files.create(tcTmpMeta_({ name: '_ocr_tmp_' + Date.now(), mimeType: 'application/vnd.google-apps.document' }), blob, { ocrLanguage: 'ko', fields: 'id' });
+  try { return DocumentApp.openById(doc.id).getBody().getText(); }
+  finally { try { DriveApp.getFileById(doc.id).setTrashed(true); } catch (e) {} }
+}
+// 드라이브가 읽은 글(text)에 그림 쪽 글자를 끼운다. deadline(ms 시각)을 넘으면 남은 쪽을 ⚠ 줄로 남긴다(다음 보충 때 이어서).
+//  이미 끼운 쪽("[N쪽 그림 쪽 글자인식]")은 건너뛴다. 끼울 쪽이 없으면 text 그대로
+function tcPdfImgFill_(fileId, text, deadline, blob) {
+  text = String(text || '');
+  // 바이트는 한 글자 = 한 바이트 글로 받는다 — getBytes()는 숫자 배열이라 30MB PDF(송기종 붙임서류 411쪽)면 메모리가 수백 MB가 된다
+  const s = (blob || DriveApp.getFileById(fileId).getBlob()).getDataAsString('ISO-8859-1'); // blob: 압축 파일 안 PDF
+  const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i) & 255;
+  const pages = tcPdfPages_(u, s);
+  const list = tcPdfImgPageList_(pages);
+  text = text.replace(/\n?\[⚠ 그림 쪽 글자인식 남음[^\]\n]*\]\s*$/, '');
+  if (!list.length) return text;
+  const left = [];
+  list.forEach(function (it) {
+    const tag = '[' + it.p + '쪽 ' + TC_PDF_IMG_MARK_.slice(1);
+    if (text.indexOf(tag) !== -1) return;
+    if (Date.now() > deadline) { left.push(it.p); return; }
+    let t = '';
+    const one = tcPdfOnePage_(u, pages, pages[it.p - 1], it.imgs);
+    if (one) {
+      try { t = String(tcOcrBlob_(Utilities.newBlob(one, 'application/pdf', 'p' + it.p + '.pdf')) || '').trim(); } catch (e) { left.push(it.p); return; }
+      if (!t) t = '(글자 없음)';
+    } else t = '(그림 형식 ' + (it.img.filter || '알 수 없음') + ' — 꺼내 읽지 못함)';
+    // 끝에만 붙인다 — 중간에 끼우면 이미 기억된 글의 자리(묶음 서류 구간 "#s시작-끝", 서류 정리 기억)가 말없이 어긋난다(재점검 9)
+    text += '\n' + tag + '\n' + t;
+  });
+  if (left.length) text += '\n' + TC_PDF_IMG_LEFT_ + ': ' + left.join(',') + '쪽 — 서버 글자인식 일괄이 이어서 읽음]';
+  return text;
+}
+// =========================================================
+// [2026.10.18 3번 세션 — 읽기] 압축 파일(zip) 안 서류 — 서버 안에서 풀어(사건 폴더엔 아무것도 안 만듦) 하나씩 글자로 읽는다.
+//  사건 폴더 30개 zip(송기종 은행 거래내역 2018.zip·20212024.zip, 노영환 attachments.zip의 사망진단서·가족관계증명서·신한은행 엑셀 등)을 아무도 못 읽었다.
+//  같은 이름·같은 크기 파일이 사건 폴더에 이미 풀려 있으면(송기종 "2018/" 폴더 등) 다시 읽지 않고 그 자리만 적는다(같은 서류를 두 번 세지 않게).
+//  안쪽 파일 글은 하나씩 영구 기억(ocrzip1_<zipID>_<수정시각>_<번호>)에 남겨 시간이 모자라 끊겨도 다음에 이어 읽는다. 7z·rar·암호 zip은 못 읽음 표시. 토큰 0.
+// =========================================================
+var TC_ZIP_LEFT_ = '[⚠ 압축 안 서류 남음';
+// 이름으로 형식을 보고 blob 하나를 글로 — 압축 안 압축은 depth 2까지
+function tcBlobText_(blob, name, depth, deadline) {
+  const n = String(name || '').toLowerCase(), ext = (/\.([a-z0-9]+)$/.exec(n) || [0, ''])[1];
+  const mtOf = { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp', tif: 'image/tiff', tiff: 'image/tiff',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', doc: 'application/msword' };
+  if (mtOf[ext]) {
+    blob.setContentType(mtOf[ext]);
+    let t = String(tcOcrBlob_(blob) || '');
+    if (ext === 'pdf') { try { t = tcPdfImgFill_('', t, Math.min(deadline, Date.now() + 25000), blob); } catch (e) {} }
+    return t;
+  }
+  if (ext === 'xlsx' || ext === 'xls') {
+    blob.setContentType(ext === 'xls' ? 'application/vnd.ms-excel' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    const cp = Drive.Files.create(tcTmpMeta_({ name: '_xls_tmp_' + Date.now(), mimeType: 'application/vnd.google-apps.spreadsheet' }), blob, { fields: 'id' });
+    try { return tcSheetText_(SpreadsheetApp.openById(cp.id)); } finally { try { DriveApp.getFileById(cp.id).setTrashed(true); } catch (e) {} }
+  }
+  if (ext === 'hwp') return tcHwpBytesText_(blob.getBytes());
+  if (ext === 'hwpx') return tcHwpxText_('', blob);
+  if (/^(txt|csv|md|json|xml|html?|mmd)$/.test(ext)) {
+    const t = blob.getDataAsString('UTF-8');
+    return t.indexOf('�') !== -1 ? blob.getDataAsString('MS949') : t; // 옛 한국어 인코딩(EUC-KR/CP949) 글
+  }
+  if (ext === 'zip' && depth < 2) return tcZipBlobsText_(Utilities.unzip(blob.setContentType('application/zip')), '', depth + 1, deadline, null, {}).text;
+  return null;
+}
+// 압축 안 blob 목록 → {text, left}. keyBase가 있으면 안쪽 파일마다 영구 기억, sib는 {이름|크기: 사건 폴더 안 경로}
+function tcZipBlobsText_(blobs, keyBase, depth, deadline, out0, sib) {
+  const out = [], left = [];
+  blobs.forEach(function (b, i) {
+    const nm = String(b.getName() || ''); if (!nm || /\/$/.test(nm) || /(^|\/)(__MACOSX|\.DS_Store|Thumbs\.db)/i.test(nm)) return;
+    const base = nm.split('/').pop(), head = '=== [압축 안] ' + nm + ' ===';
+    let size = 0; try { size = b.getBytes().length; } catch (e) {}
+    if (sib[base + '|' + size]) { out.push(head + '\n(같은 이름·같은 크기 파일이 사건 폴더에 이미 있음: ' + sib[base + '|' + size] + ' — 그 파일로 읽음)'); return; }
+    const key = keyBase ? keyBase + '_' + i : '';
+    let t = key ? tcOcrStoreGet_(key) : null;
+    if (t === null) {
+      if (Date.now() > deadline) { left.push(nm); return; }
+      try { t = tcBlobText_(b, base, depth, deadline); } catch (e) { const m = String(e && e.message || e); if (OCRB_TRANSIENT_RE_.test(m)) { left.push(nm); return; } t = '(읽기 실패: ' + m.slice(0, 80) + ')'; }
+      if (t === null) t = '(글자로 못 바꾸는 형식)';
+      t = String(t);
+      if (key) tcOcrStorePut_(key, t);
+    }
+    out.push(head + '\n' + t);
+  });
+  return { text: out.join('\n\n'), left: left };
+}
+// 사건 폴더 안 이름|크기 → 경로(zip이 있는 폴더부터 위로 한 단계, 아래로 3단계)
+function tcZipSibs_(folder, rel, depth, sib) {
+  if (depth > 3) return;
+  const it = folder.getFiles(); while (it.hasNext()) { const f = it.next(); if (!/\.zip$/i.test(f.getName())) sib[f.getName() + '|' + f.getSize()] = (rel ? rel + '/' : '') + f.getName(); }
+  const sub = folder.getFolders(); while (sub.hasNext()) { const sf = sub.next(); tcZipSibs_(sf, (rel ? rel + '/' : '') + sf.getName(), depth + 1, sib); }
+}
+function tcZipText_(f, deadline) {
+  const file = DriveApp.getFileById(f.id);
+  if (file.getSize() > 45 * 1024 * 1024) return '[⚠ 압축 파일이 너무 큼(45MB 넘음) — 풀어서 넣어 주세요]';
+  let blobs;
+  try { blobs = Utilities.unzip(file.getBlob().setContentType('application/zip')); }
+  catch (e) { return '[⚠ 압축 파일을 풀지 못함(암호가 걸렸거나 zip이 아님): ' + String(e && e.message || e).slice(0, 80) + ']'; }
+  const sib = {};
+  try { const ps = file.getParents(); if (ps.hasNext()) { const p = ps.next(); tcZipSibs_(p, '', 0, sib); } } catch (e) {}
+  const r = tcZipBlobsText_(blobs, 'ocrzip1_' + f.id + '_' + (f.modified || ''), 0, deadline, null, sib);
+  return r.text + (r.left.length ? '\n' + TC_ZIP_LEFT_ + ': ' + r.left.length + '개 — 서버 글자인식 일괄이 이어서 읽음]' : '');
+}
+// 한글 hwpx(압축된 XML) — 본문 section*.xml의 글자만 꺼낸다(무료, 변환 없음). 옛 hwp(이진 파일)는 tcHwpText_가 읽는다.
+function tcHwpxText_(fileId, blob0) {
+  const blob = (blob0 || DriveApp.getFileById(fileId).getBlob()).setContentType('application/zip'); // blob0: 압축 파일 안 hwpx
   const num = function (b) { return Number((/(\d+)\.xml$/i.exec(b.getName()) || [0, 0])[1]); };
   const parts = Utilities.unzip(blob).filter(function (b) { return /Contents\/section\d+\.xml$/i.test(b.getName()); }).sort(function (a, b) { return num(a) - num(b); });
   return parts.map(function (b) {
     return b.getDataAsString('UTF-8').replace(/<\/hp:p>/g, '\n').replace(/<hp:tab[^>]*\/>/g, '\t').replace(/<[^>]+>/g, '')
       .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
   }).join('\n').replace(/\n{3,}/g, '\n\n');
+}
+// [2026.10.18 1번 세션] 옛 한글(hwp, HWP 5.0 이진 형식) — 본문 글자를 직접 꺼낸다(무료·토큰 0, 외부 변환 없음). 고객 사건 폴더의 옛 hwp 73개를
+//  아무도 못 읽고 "hwpx나 PDF로 저장해 주세요"로만 남겼다. 순서: OLE 복합 문서(CFB) 풀기 → FileHeader(압축·암호) → BodyText/Section0..N
+//  (압축이면 raw deflate 풀기) → 레코드 중 문단 글자(HWPTAG_PARA_TEXT)만 모은다. 암호 걸린 문서는 '' (글자 없음으로 처리됨).
+function tcHwpText_(fileId) {
+  return tcHwpBytesText_(DriveApp.getFileById(fileId).getBlob().getBytes());
+}
+// 바이트 배열(GAS는 -128~127, 0~255로 바꿔 씀) → 본문 글자
+function tcHwpBytesText_(bytes) {
+  const u = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) u[i] = bytes[i] & 255;
+  const cfb = tcCfbOpen_(u);
+  if (!cfb) return ''; // OLE 복합 문서가 아님(HWP 3.0 등 더 옛 형식) — 못 읽음
+  const fh = cfb.read('FileHeader');
+  if (!fh || fh.length < 40) return '';
+  const prop = (fh[36] | (fh[37] << 8) | (fh[38] << 16) | (fh[39] << 24)) >>> 0;
+  if (prop & 2) return ''; // 암호 걸린 문서
+  const zipped = !!(prop & 1);
+  // [2026.10.18 1번 세션] 배포용 문서(bit2)는 본문이 ViewText에 암호화돼 있다 — 미리보기 글(PrvText, 앞부분 1천 자 남짓)이라도 읽는다
+  if (prop & 4) { const pv = cfb.read('PrvText'); return pv ? tcHwpCleanText_(tcUtf16le_(pv, 0, pv.length)) : ''; }
+  const out = [];
+  for (let s = 0; ; s++) {
+    let sec = cfb.read('BodyText/Section' + s);
+    if (!sec) break;
+    if (zipped) sec = tcInflateRaw_(sec);
+    out.push(tcHwpSectionText_(sec));
+  }
+  return tcHwpCleanText_(out.join('\n'));
+}
+function tcHwpCleanText_(t) { return tcHwpPuaFix_(String(t)).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim(); }
+// 한컴 전용 글자(U+F0000~, 한컴 글꼴에만 있는 기호)는 다른 곳에서 □로 깨진다. 서식의 번호 기호를 보통 글자로 바꾼다 —
+//  종합소득세 신고서의 칸 번호(⑯대리구분·⑰관리번호·⑲소득금액·⑳소득공제·㉑과세표준…)·신고유형 [11]자기조정 [12]외부조정 [14]성실신고확인 [20]간편장부
+//  [31]추계-기준율 [35]분리과세 [40]비사업자·첨부 ⓫소득공제명세서~⓲추계소득금액계산서로 맞춰 본 두 자리 번호(십의 자리 글자+일의 자리 글자):
+//  동그라미 십 F0288+십·일 F0292+일, 검은 동그라미 십 F029C+십·일 F02A6+일, 네모 한 자리 F02B0+수·십 F02B9+십·일 F02C3+일. 우편 기호 F0095=〒.
+//  그 밖의 한컴 전용 글자는 뜻을 모르므로 지운다(깨진 글자를 남기지 않음)
+function tcHwpPuaFix_(t) {
+  const cp = function (ch) { return ch.codePointAt(0) - 0xF0000; };
+  const circ = function (n) { return n >= 1 && n <= 20 ? String.fromCharCode(0x2460 + n - 1) : n >= 21 && n <= 35 ? String.fromCharCode(0x3251 + n - 21) : n >= 36 && n <= 50 ? String.fromCharCode(0x32B1 + n - 36) : '(' + n + ')'; };
+  const neg = function (n) { return n >= 1 && n <= 10 ? String.fromCharCode(0x2776 + n - 1) : n >= 11 && n <= 20 ? String.fromCharCode(0x24EB + n - 11) : '(' + n + ')'; };
+  return t
+    .replace(/([\u{F0289}-\u{F0291}])([\u{F0292}-\u{F029B}])/gu, function (m, a, b) { return circ((cp(a) - 0x288) * 10 + cp(b) - 0x292); })
+    .replace(/([\u{F029D}-\u{F02A5}])([\u{F02A6}-\u{F02AF}])/gu, function (m, a, b) { return neg((cp(a) - 0x29C) * 10 + cp(b) - 0x2A6); })
+    .replace(/([\u{F02BA}-\u{F02C2}])([\u{F02C3}-\u{F02CC}])/gu, function (m, a, b) { return '[' + ((cp(a) - 0x2B9) * 10 + cp(b) - 0x2C3) + ']'; })
+    .replace(/[\u{F02B1}-\u{F02B9}]/gu, function (m) { return '[' + (cp(m) - 0x2B0) + ']'; })
+    .replace(/\u{F0095}/gu, '〒')
+    .replace(/[\u{F0000}-\u{FFFFD}]/gu, '');
+}
+function tcUtf16le_(u, from, to) {
+  const cs = [];
+  for (let i = from; i + 1 < to; i += 2) cs.push(u[i] | (u[i + 1] << 8));
+  let s = '';
+  for (let i = 0; i < cs.length; i += 4096) s += String.fromCharCode.apply(null, cs.slice(i, i + 4096));
+  return s.replace(/\u0000+$/, '');
+}
+// 한 구역(Section)의 레코드 → 글자. 머리 32비트 = 태그 10비트·레벨 10비트·크기 12비트(0xFFF면 다음 32비트가 크기)
+function tcHwpSectionText_(u) {
+  const paras = [], lastAt = {};
+  let p = 0;
+  while (p + 4 <= u.length) {
+    const h = (u[p] | (u[p + 1] << 8) | (u[p + 2] << 16) | (u[p + 3] << 24)) >>> 0;
+    p += 4;
+    const tag = h & 0x3FF, lv = (h >>> 10) & 0x3FF;
+    let size = (h >>> 20) & 0xFFF;
+    if (size === 0xFFF) { if (p + 4 > u.length) break; size = (u[p] | (u[p + 1] << 8) | (u[p + 2] << 16) | (u[p + 3] << 24)) >>> 0; p += 4; }
+    const end = Math.min(u.length, p + size);
+    if (tag === 67) { const q = { s: tcHwpParaText_(u, p, end), fill: [] }; paras.push(q); lastAt[lv] = q; } // HWPTAG_PARA_TEXT(0x10+51) — 표 칸 글자도 이 레코드로 나온다
+    // 글자 겹침(제어 23, 'tcps') — 겹친 글자(①·⑥ 등)는 문단 글자가 아니라 뒤따르는 컨트롤 머리(HWPTAG_CTRL_HEADER, 71)에 있다.
+    //  빼면 "시행령 제154조 제⑥항"이 "제항"이 된다(김환식 의뢰인확인서). 같은 레벨의 바로 앞 문단 글자 자리에 차례로 채운다
+    else if (tag === 71 && end - p >= 6 && u[p] === 0x73 && u[p + 1] === 0x70 && u[p + 2] === 0x63 && u[p + 3] === 0x74 && lastAt[lv]) {
+      const n = u[p + 4] | (u[p + 5] << 8);
+      lastAt[lv].fill.push(tcUtf16le_(u, p + 6, Math.min(end, p + 6 + n * 2)).replace(/[\u0000-\u001f]/g, ''));
+    }
+    p = end;
+  }
+  return paras.map(function (q) { let k = 0; return q.s.replace(/\u0017/g, function () { return q.fill[k++] || ''; }); }).join('\n');
+}
+// 문단 글자(UTF-16LE). 0~31은 제어 문자: 확장·인라인 제어는 8글자(16바이트) 차지, 문자 제어는 1글자. 9=탭, 10·13=줄끝
+function tcHwpParaText_(u, from, to) {
+  const cs = [];
+  let i = from;
+  while (i + 1 < to) {
+    const c = u[i] | (u[i + 1] << 8);
+    if (c >= 32) { cs.push(c); i += 2; continue; }
+    if (c === 9) { cs.push(9); i += 16; continue; }                                   // 탭(인라인 제어)
+    if (c === 10 || c === 13) { cs.push(10); i += 2; continue; }                      // 줄바꿈·문단 끝
+    if (c === 0 || (c >= 24 && c <= 29)) { if (c === 24) cs.push(45); i += 2; continue; } // 쓸 수 없음·하이픈·예약
+    if (c === 30 || c === 31) { cs.push(32); i += 2; continue; }                      // 묶음 빈칸·고정폭 빈칸
+    if (c === 23) { cs.push(23); i += 16; continue; }                                 // 글자 겹침 자리 — 겹친 글자는 tcHwpSectionText_가 채움
+    i += 16;                                                                          // 확장 제어(표·그림·각주 등)·인라인 제어
+  }
+  let s = '';
+  for (let k = 0; k < cs.length; k += 4096) s += String.fromCharCode.apply(null, cs.slice(k, k + 4096));
+  return s.replace(/\n+$/, '');
+}
+// OLE 복합 문서(CFB) — 머리(512바이트)·FAT·DIFAT·미니 FAT·디렉터리 항목을 읽어 경로("BodyText/Section0")로 스트림을 꺼낸다
+function tcCfbOpen_(u) {
+  const SIG = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+  if (u.length < 512) return null;
+  for (let i = 0; i < 8; i++) if (u[i] !== SIG[i]) return null;
+  const u16 = function (o) { return u[o] | (u[o + 1] << 8); };
+  const u32 = function (o) { return (u[o] | (u[o + 1] << 8) | (u[o + 2] << 16) | (u[o + 3] << 24)) >>> 0; };
+  const secSize = 1 << u16(0x1E), miniSize = 1 << u16(0x20);
+  const nFat = u32(0x2C), dirStart = u32(0x30), cutoff = u32(0x38), miniFatStart = u32(0x3C), nMiniFat = u32(0x40);
+  let difatSec = u32(0x44), nDifat = u32(0x48);
+  const END = 0xFFFFFFFE, FREE = 0xFFFFFFFF;
+  const off = function (sid) { return (sid + 1) * secSize; };
+  // FAT 섹터 번호 목록(머리 109개 + DIFAT 섹터 사슬)
+  const fatSecs = [];
+  for (let i = 0; i < 109 && fatSecs.length < nFat; i++) { const v = u32(0x4C + i * 4); if (v !== FREE) fatSecs.push(v); }
+  for (let g = 0; nDifat > 0 && difatSec < END && g < 100000; g++, nDifat--) {
+    const o = off(difatSec); if (o + secSize > u.length) break;
+    for (let i = 0; i < secSize / 4 - 1 && fatSecs.length < nFat; i++) { const v = u32(o + i * 4); if (v !== FREE) fatSecs.push(v); }
+    difatSec = u32(o + secSize - 4);
+  }
+  const fat = [];
+  fatSecs.forEach(function (s) { const o = off(s); for (let i = 0; i < secSize / 4; i++) fat.push(o + i * 4 + 4 <= u.length ? u32(o + i * 4) : FREE); });
+  const chain = function (start, tbl) {
+    const r = [];
+    for (let s = start; s < END && s < tbl.length && r.length <= tbl.length; s = tbl[s]) r.push(s);
+    return r;
+  };
+  const readChain = function (start, size, src, unit, tbl, base) {
+    const out = new Uint8Array(size);
+    let w = 0;
+    const sids = chain(start, tbl);
+    for (let k = 0; k < sids.length && w < size; k++) {
+      const o = base(sids[k]), n = Math.min(unit, size - w, Math.max(0, src.length - o));
+      if (n <= 0) break;
+      out.set(src.subarray(o, o + n), w); w += n;
+    }
+    return w < size ? out.subarray(0, w) : out;
+  };
+  const readBig = function (start, size) { return readChain(start, size, u, secSize, fat, off); };
+  // 디렉터리 항목(128바이트씩)
+  const dirSids = chain(dirStart, fat), ents = [];
+  dirSids.forEach(function (s) {
+    const o0 = off(s);
+    for (let k = 0; k < secSize / 128; k++) {
+      const o = o0 + k * 128; if (o + 128 > u.length) return;
+      const nl = u16(o + 0x40);
+      ents.push({ name: tcUtf16le_(u, o, o + Math.min(64, Math.max(0, nl - 2))), type: u[o + 0x42],
+        left: u32(o + 0x44), right: u32(o + 0x48), child: u32(o + 0x4C), start: u32(o + 0x74), size: u32(o + 0x78) });
+    }
+  });
+  if (!ents.length || ents[0].type !== 5) return null;
+  // 경로 붙이기 — 형제는 좌우 나무, 하위는 child
+  const paths = {}, seen = {};
+  const walk = function (id, prefix) {
+    const st = [id];
+    while (st.length) {
+      const e = st.pop();
+      if (e >= ents.length || seen[e]) continue;
+      seen[e] = 1;
+      const d = ents[e], p = prefix + d.name;
+      paths[p] = d;
+      st.push(d.left, d.right);
+      if (d.type === 1) walk(d.child, p + '/');
+    }
+  };
+  walk(ents[0].child, '');
+  const root = ents[0];
+  let mini = null, miniFat = null;
+  return {
+    paths: paths,
+    read: function (path) {
+      const d = paths[path];
+      if (!d || d.type !== 2) return null;
+      if (d.size < cutoff) { // 작은 스트림은 미니 스트림(루트 항목의 스트림) 안에 64바이트 단위로
+        if (!mini) {
+          mini = readBig(root.start, root.size);
+          miniFat = [];
+          const mb = readBig(miniFatStart, nMiniFat * secSize);
+          for (let i = 0; i + 4 <= mb.length; i += 4) miniFat.push((mb[i] | (mb[i + 1] << 8) | (mb[i + 2] << 16) | (mb[i + 3] << 24)) >>> 0);
+        }
+        return readChain(d.start, d.size, mini, miniSize, miniFat, function (s) { return s * miniSize; });
+      }
+      return readBig(d.start, d.size);
+    }
+  };
+}
+// raw deflate 풀기(zlib 머리 없음 — GAS Utilities에는 없음). 저장·고정 허프만·동적 허프만 블록
+function tcInflateRaw_(src) {
+  let out = new Uint8Array(Math.max(4096, src.length * 4)), op = 0;
+  let pos = 0, buf = 0, cnt = 0, over = 0;
+  const need = function (n) {
+    while (cnt < n) {
+      if (pos < src.length) buf |= src[pos++] << cnt;
+      else if (++over > 8) throw new Error('hwp 압축 자료가 끝에서 잘림');
+      cnt += 8;
+    }
+  };
+  const bits = function (n) { need(n); const v = buf & ((1 << n) - 1); buf >>>= n; cnt -= n; return v; };
+  const room = function (n) { if (op + n > out.length) { const b = new Uint8Array(Math.max(out.length * 2, op + n)); b.set(out.subarray(0, op)); out = b; } };
+  // 부호 길이 → 빠른 찾기표(낮은 비트부터 읽은 값 → 기호<<4 | 길이)
+  const build = function (lens) {
+    let max = 0; lens.forEach(function (l) { if (l > max) max = l; });
+    if (!max) return { tbl: new Int32Array(2), max: 1 };
+    const blc = new Array(16).fill(0); lens.forEach(function (l) { if (l) blc[l]++; });
+    const next = new Array(16).fill(0); let code = 0;
+    for (let b = 1; b <= 15; b++) { code = (code + blc[b - 1]) << 1; next[b] = code; }
+    const tbl = new Int32Array(1 << max).fill(-1);
+    lens.forEach(function (l, sym) {
+      if (!l) return;
+      let c = next[l]++, r = 0;
+      for (let k = 0; k < l; k++) { r = (r << 1) | (c & 1); c >>= 1; }
+      for (let j = r; j < (1 << max); j += (1 << l)) tbl[j] = (sym << 4) | l;
+    });
+    return { tbl: tbl, max: max };
+  };
+  const sym = function (h) {
+    need(h.max);
+    const v = h.tbl[buf & ((1 << h.max) - 1)];
+    if (v < 0) throw new Error('hwp 압축 부호가 잘못됨');
+    const l = v & 15; buf >>>= l; cnt -= l;
+    return v >> 4;
+  };
+  const LB = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];
+  const LE = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
+  const DB = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577];
+  const DE = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
+  const ORD = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+  let fixL = null, fixD = null, last = 0;
+  while (!last) {
+    last = bits(1);
+    const type = bits(2);
+    if (type === 0) { // 저장 블록 — 바이트 경계로 맞춘 뒤 길이만큼 그대로
+      bits(cnt & 7);
+      const len = bits(16); bits(16);
+      room(len);
+      let k = 0;
+      while (cnt >= 8 && k < len) { out[op++] = bits(8); k++; }
+      if (pos + (len - k) > src.length) throw new Error('hwp 압축 저장 블록이 잘림');
+      out.set(src.subarray(pos, pos + len - k), op); op += len - k; pos += len - k;
+      continue;
+    }
+    let hl, hd;
+    if (type === 1) {
+      if (!fixL) {
+        const l = []; for (let i = 0; i < 288; i++) l.push(i < 144 ? 8 : i < 256 ? 9 : i < 280 ? 7 : 8);
+        fixL = build(l); fixD = build(new Array(30).fill(5));
+      }
+      hl = fixL; hd = fixD;
+    } else if (type === 2) {
+      const nl = bits(5) + 257, nd = bits(5) + 1, nc = bits(4) + 4;
+      const cl = new Array(19).fill(0);
+      for (let i = 0; i < nc; i++) cl[ORD[i]] = bits(3);
+      const ch = build(cl), lens = [];
+      while (lens.length < nl + nd) {
+        const s = sym(ch);
+        if (s < 16) lens.push(s);
+        else if (s === 16) { if (!lens.length) throw new Error('hwp 압축 부호 길이 잘못됨'); const pv = lens[lens.length - 1]; for (let r = bits(2) + 3; r > 0; r--) lens.push(pv); }
+        else if (s === 17) { for (let r = bits(3) + 3; r > 0; r--) lens.push(0); }
+        else { for (let r = bits(7) + 11; r > 0; r--) lens.push(0); }
+      }
+      hl = build(lens.slice(0, nl)); hd = build(lens.slice(nl, nl + nd));
+    } else throw new Error('hwp 압축 블록 형식이 잘못됨');
+    for (;;) {
+      const s = sym(hl);
+      if (s < 256) { room(1); out[op++] = s; continue; }
+      if (s === 256) break;
+      const li = s - 257; if (li >= 29) throw new Error('hwp 압축 길이 부호가 잘못됨');
+      const len = LB[li] + bits(LE[li]);
+      const di = sym(hd); if (di >= 30) throw new Error('hwp 압축 거리 부호가 잘못됨');
+      const dist = DB[di] + bits(DE[di]);
+      if (dist > op) throw new Error('hwp 압축 거리가 앞을 넘음');
+      room(len);
+      for (let k = 0; k < len; k++, op++) out[op] = out[op - dist];
+    }
+  }
+  return out.subarray(0, op);
 }
 // 파워포인트(pptx) — 구글 프레젠테이션으로 바꿔 상자 글자를 읽는다
 function tcPptxText_(fileId) {
@@ -25213,6 +25607,9 @@ function tcSheetGridText_(f) {
 // [2026.10.16] 정답지 점검이 증빙 단계(글자인식 한도 있음)를 마친 뒤에는 새 글자인식을 하지 않게 하는 스위치 — 서류가 한도보다 많은 사건(노영환 299개)은
 //  그 뒤 상속 사실 정리·메모 읽기가 넘친 서류를 하나씩 새로 글자인식해 서버 6분 한도를 넘겼다. 기억에 있는 글자는 그대로 쓴다.
 var TC_NO_NEW_OCR_ = false;
+// [2026.10.18 3번 세션] 서버 글자인식 일괄(cpOcrBatch_) 안에서만 켜는 스위치 — 오래 걸리는 새 읽기(PDF 그림 쪽 보충·zip 풀어 읽기)는 일괄에서만 한다.
+//  사이드바(사건처리)에서 기억 없는 PDF마다 그림 쪽 보충으로 최대 25초가 늘던 것을 막는다(세무사님 실사용). 사이드바는 일괄이 남긴 기억을 그대로 쓴다
+var TC_BATCH_READ_ = false;
 // [2026.10.18 정밀분석 14] 글자 상한에서 잘린 표시 · 통장 거래내역으로 보이는 글(머리의 거래내역·입출금·계좌번호 낱말 + 날짜 줄 50개 이상)
 var TC_TEXT_CUT_MARK_ = '[⚠ 글자 상한';
 function tcLooksBankText_(t) {
@@ -25243,29 +25640,53 @@ function tc_docText_(f) {
   const mt = String(f.mimeType || '');
   const fname = String(f.name || '');
   // 비싼 변환(글자인식·엑셀·한글·파워포인트)은 영구 기억에서 먼저 찾는다(수정시각이 같을 때만)
-  const costly = !!f.modified && (/pdf|^image\/|officedocument|msword|spreadsheetml|ms-excel/.test(mt) || /\.(hwpx|pptx)$/i.test(fname));
+  const isZip = /\.zip$/i.test(fname) || /^application\/(x-)?zip(-compressed)?$/.test(mt); // [2026.10.18 3번 세션] 압축 파일 안 서류도 읽는다(tcZipText_)
+  const costly = !!f.modified && (/pdf|^image\/|officedocument|msword|spreadsheetml|ms-excel/.test(mt) || /\.(hwpx|hwp|pptx)$/i.test(fname) || isZip); // [2026.10.18 1번 세션] 옛 한글 hwp도 영구 기억
   if (costly) { const st = tcOcrStoreGet_(key); if (st !== null) { try { cache.put(key, st, 21600); } catch (e) {} return st; } }
   if (costly && TC_NO_NEW_OCR_) return '';
   if (/\.hwpx$/i.test(fname)) text = tcHwpxText_(f.id);
+  else if (isZip) { if (!TC_BATCH_READ_) return null; text = tcZipText_(f, Date.now() + 60000); } // 일괄에서만 풀어 읽음(1분까지, 남은 안쪽 파일은 다음 번에 — 안쪽 글은 하나씩 기억). 사이드바는 예전처럼 "글자로 못 바꿈"
+  else if (/\.hwp$/i.test(fname)) text = tcHwpText_(f.id); // [2026.10.18 1번 세션] 옛 한글 hwp — 이진 파일을 직접 풀어 읽는다(토큰 0)
   else if (/presentationml/.test(mt) || /\.pptx$/i.test(fname)) text = tcPptxText_(f.id);
   else if (mt === 'application/vnd.google-apps.document') text = DocumentApp.openById(f.id).getBody().getText();
   else if (mt === 'application/vnd.google-apps.spreadsheet') {
     const ss = SpreadsheetApp.openById(f.id);
     text = tcSheetText_(ss);
   }
-  else if (/^text\/|json|csv|markdown/.test(mt)) text = DriveApp.getFileById(f.id).getBlob().getDataAsString('UTF-8');
-  else if (/pdf|^image\/|officedocument\.wordprocessingml|msword/.test(mt)) { Utilities.sleep(800); text = ocrFileText_(f.id); }
+  // [2026.10.18 3번 세션 재점검 6] 구글 프레젠테이션(.gslides 자문보고서 등)·rtf(심판청구서)·html(태그째 읽히던 것)·mmd·url — 예전엔 못 읽거나 태그째
+  else if (mt === 'application/vnd.google-apps.presentation') text = SlidesApp.openById(f.id).getSlides().map(function (sl, i) { return '[' + (i + 1) + '쪽] ' + sl.getShapes().map(function (sh) { try { return sh.getText().asString().trim(); } catch (e) { return ''; } }).filter(String).join('\n'); }).join('\n');
+  else if (/\.rtf$/i.test(fname) || /rtf/.test(mt)) {
+    const cp = Drive.Files.copy(tcTmpMeta_({ name: '_rtf_tmp_' + Date.now(), mimeType: 'application/vnd.google-apps.document' }), f.id, { fields: 'id' });
+    try { text = DocumentApp.openById(cp.id).getBody().getText(); } finally { try { DriveApp.getFileById(cp.id).setTrashed(true); } catch (e) {} }
+  }
+  else if (/html/.test(mt) || /\.html?$/i.test(fname)) {
+    text = DriveApp.getFileById(f.id).getBlob().getDataAsString('UTF-8').replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ').replace(/<br\s*\/?>|<\/(p|div|tr|li|h\d)>/gi, '\n').replace(/<\/t[dh]>/gi, '\t').replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+  }
+  else if (/^text\/|json|csv|markdown/.test(mt) || /\.(mmd|url|txt|csv|md)$/i.test(fname)) { const b = DriveApp.getFileById(f.id).getBlob(); text = b.getDataAsString('UTF-8'); if (text.indexOf('�') !== -1) text = b.getDataAsString('MS949'); } // 옛 한국어 인코딩 글도
+  else if (/pdf|^image\/|officedocument\.wordprocessingml|msword/.test(mt)) {
+    Utilities.sleep(800); text = ocrFileText_(f.id, f.modified ? 'ocrtbl1_' + f.id + '_' + f.modified : '');
+    // [2026.10.18 3번 세션] 글자층 PDF 속 스캔 그림 쪽 보충 — 일괄 안에서만(1분까지, 남은 쪽은 ⚠ 줄로 남기고 일괄 뒷단계가 이어서). 사이드바에서는 하지 않는다
+    if (/pdf/.test(mt) && TC_BATCH_READ_) { try { text = tcPdfImgFill_(f.id, text, Date.now() + 60000); } catch (e) {} }
+  }
   // [2026.10.15 1:1] 엑셀(.xlsx·.xls) — 구글 시트로 바꿔 읽는다(세무사님: "폴더 안 파일은 스펀지처럼 다 흡수" — 상담 메모 엑셀을 말없이 건너뛰던 문제)
   else if (/spreadsheetml|ms-excel/.test(mt)) {
     const cp = Drive.Files.copy(tcTmpMeta_({ name: '_xls_tmp_' + Date.now(), mimeType: 'application/vnd.google-apps.spreadsheet' }), f.id, { fields: 'id' });
-    try { const ss = SpreadsheetApp.openById(cp.id); text = tcSheetText_(ss); }
+    try {
+      const ss = SpreadsheetApp.openById(cp.id); text = tcSheetText_(ss);
+      // [2026.10.18 3번 세션] 같은 변환에서 칸 자리 지킨 표 글(tcSheetGridText_와 같은 기억)도 남긴다 — 통장 말고도 임대 현황·지분표 등
+      //  빈 칸을 지우면 칸이 한 칸씩 당겨진다. 변환을 한 번 더 하지 않게 여기서 함께
+      if (f.modified) { const gk = 'ocrgrid1_' + f.id + '_' + f.modified; if (tcOcrStoreGet_(gk) === null) tcOcrStorePut_(gk, String(tcSheetText_(ss, true) || '').slice(0, 400000)); }
+    }
     finally { try { DriveApp.getFileById(cp.id).setTrashed(true); } catch (e) {} }
   }
-  else return null; // 한글(hwp)·압축파일 등은 글자로 못 바꿈
+  else return null; // 압축파일 등은 글자로 못 바꿈
   // [2026.10.11] 글자는 잘라 쓰기 전 전체(최대 6만 자)를 기억 — 서류 자동정리 규칙은 여러 장짜리 등기부·초본 전체가 필요하다
   // [2026.10.18 정밀분석 14] 통장 거래내역(거래 줄 서류)은 끝까지 읽는다(상한 40만 자) — 6만 자에서 잘려 송기종 국민은행 127쪽 중 앞 20쪽·기업은행 앞 23쪽만 읽혀
   //  불복 대사표 50줄 중 2020~2024년 약 40줄이 "통장에 없음"이 됐다. 그 밖의 서류도 잘렸으면 끝에 표시를 남겨 정리 결과에 ⚠로 밝힌다(말없이 자르지 않음)
-  { const full = String(text || ''), cap = tcLooksBankText_(full) ? 400000 : 60000; text = full.length > cap ? full.slice(0, cap) + '\n' + TC_TEXT_CUT_MARK_ + ' ' + cap + '자에서 잘림 — 뒤쪽 ' + (full.length - cap) + '자는 못 읽음(서류를 기간·쪽으로 나눠 넣어 주세요)]' : full; }
+  // [2026.10.18 3번 세션 재점검 6] 그 밖의 서류도 6만 자 → 20만 자(긴 감정평가서·심판청구 붙임서류가 뒤쪽을 잃었다). 잘리면 여전히 표시를 남김
+  { const full = String(text || ''), cap = tcLooksBankText_(full) || isZip ? 400000 : 200000; text = full.length > cap ? full.slice(0, cap) + '\n' + TC_TEXT_CUT_MARK_ + ' ' + cap + '자에서 잘림 — 뒤쪽 ' + (full.length - cap) + '자는 못 읽음(서류를 기간·쪽으로 나눠 넣어 주세요)]' : full; }
+  if (isZip && text.indexOf(TC_ZIP_LEFT_) !== -1) return text; // 덜 읽은 압축 파일은 기억에 굳히지 않는다 — 다음 번에 남은 안쪽 파일부터 이어서
   try { cache.put(key, text, 21600); } catch (e) {}
   if (costly) tcOcrStorePut_(key, text);
   return text;
@@ -29327,7 +29748,7 @@ function caseProcMemoTexts_(c) {
     if (/종합검토서_초안|^계산기\.json|_검토서_/.test(n) || (caseProcIsOutputDocFor_(c, n, f.dir) && !caseProcIsPriorReport_(n))) { out.skipped.push(n + '(도구·이 사건 세목의 신고 결과물)'); return; } // [2026.10.18 정밀분석 원인1] 다른 세목·당초 신고서는 결과물 아님
     if (caseProcIsPriorReport_(n)) { out.skipped.push(n + '(이전 작업이 만든 보고서 — 결론이 들어 있어 입력으로 안 씀)'); return; }
     if (/\.html?$/i.test(n)) { out.skipped.push(n + '(화면용 사본 — 같은 이름 문서로 읽음)'); return; }
-    // [2026.10.15 일괄점검 ①] 압축 파일은 안에 든 파일 이름까지 알려 준다(풀어서 폴더에 넣으면 읽음), 옛 한글(hwp)은 이유를 밝힌다. hwpx는 이제 읽는다.
+    // [2026.10.15 일괄점검 ①] 압축 파일은 안에 든 파일 이름까지 알려 준다(풀어서 폴더에 넣으면 읽음), hwpx·옛 한글(hwp)은 이제 읽는다.
     // hwpx·docx·xlsx·pptx는 속이 압축 형식이라 압축 검사에 걸리면 안 된다(예전: hwpx를 "압축 파일"로 분류해 안 읽음 — 노영환 사건 5개)
     if ((/zip|x-7z|rar/.test(mt) || /\.(zip|7z|rar)$/i.test(n)) && !/\.(hwpx|docx|xlsx|pptx)$/i.test(n)) {
       // 도구가 이미 풀어 둔 압축 — 그 폴더 안 파일로 읽는다
@@ -29340,7 +29761,8 @@ function caseProcMemoTexts_(c) {
       try { const bs = Utilities.unzip(DriveApp.getFileById(f.id).getBlob().setContentType('application/zip')); inside = bs.length + '개: ' + bs.slice(0, 6).map(function (b) { return b.getName().split('/').pop(); }).join(', ') + (bs.length > 6 ? ' 외' : ''); } catch (e) { inside = '암호가 걸렸거나 열 수 없음'; }
       out.unread.push(n + '(압축 파일 — 안에 ' + inside + ' · 풀어서 폴더에 넣으면 읽음)'); return;
     }
-    if (/\.hwp$/i.test(n)) { out.unread.push(n + '(옛 한글 hwp — 글자로 못 바꿈, hwpx나 PDF로 저장해 주세요)'); return; }
+    // [2026.10.18 1번 세션] 옛 한글 hwp도 이제 읽는다(tcHwpText_) — 예전엔 여기서 "글자로 못 바꿈"으로 바로 빼서 고객 사건 폴더의 hwp 73개를 아무도 못 읽었다.
+    //  아래 tc_docText_가 다른 문서처럼 읽고, 암호 걸린 문서·빈 문서만 "글자 없음"으로 남는다
     let t = null;
     try { t = tc_docText_(f); } catch (e) { out.unread.push(n + '(읽기 실패)'); return; }
     if (t === null || !String(t).trim()) { out.unread.push(n + '(글자 없음·형식)'); return; }
@@ -29589,11 +30011,12 @@ function caseProcOfficeCalcWhy_(name, text) {
   //  이름이 '의뢰서'여도(이름 예외보다 먼저 본다), md뿐 아니라 txt·hwpx·docx도(고객은 # 제목을 쓰지 않는다).
   //  신선경(김해자) "이모_…_검토.md"의 "## 결론 … 비과세 가능성이 높다"가 사실 메모로 읽혀 질문 힌트로 노출, 김운래 "추가분/의뢰서.md"(## 결론 / 처리방향 · 잠정 세액),
   //  정원식 "법무사 증여 위탁.hwpx"(# 증여세 및 취득세 계산 결과)의 126,949,200원이 증여재산가액 후보로 들어갔다. 빈 의뢰서 양식의 "## 세액계산 확정 근거" 제목은 여기 걸리지 않는다
-  if (/\.(md|txt|hwpx|docx|gdoc)$/i.test(n) && /(?:^|\n)[ \t]*#{1,4}[ \t]*[^\n]*?(결\s*론|처\s*리\s*방\s*향|검\s*토\s*(?:결\s*과|의\s*견|요\s*약|사\s*항)|계\s*산\s*결\s*과|추\s*징\s*(?:예\s*상)?\s*세\s*액|잠\s*정\s*세\s*액)/.test(String(text || '').slice(0, 20000))) return '사무소가 쓴 검토 메모(마크다운 제목 — 결론·검토·계산 결과)';
+  if (/\.(md|txt|hwpx?|docx|gdoc)$/i.test(n) && /(?:^|\n)[ \t]*#{1,4}[ \t]*[^\n]*?(결\s*론|처\s*리\s*방\s*향|검\s*토\s*(?:결\s*과|의\s*견|요\s*약|사\s*항)|계\s*산\s*결\s*과|추\s*징\s*(?:예\s*상)?\s*세\s*액|잠\s*정\s*세\s*액)/.test(String(text || '').slice(0, 20000))) return '사무소가 쓴 검토 메모(마크다운 제목 — 결론·검토·계산 결과)';
   if (/의뢰|요청|부탁|안내문/.test(nn)) return '';
   if (/검토표|검토메모|평가표|계산표|보수검토/.test(nn) || (sheet && /검토|자산평가/.test(nn))) return '사무소가 만든 계산표·검토표(이름)';
   const t = String(text || '').slice(0, 20000);
-  if (sheet || /\.(docx|hwpx|gdoc)$/i.test(n)) {
+  // [2026.10.18 1번 세션 71b4536을 3번이 넘겨받음] 옛 한글 hwp도 이제 읽히므로(tcHwpText_) hwpx와 같은 사무소 작성물 판정을 받는다(김환식 「양도소득세 자문보고서.hwp」의 예상세액이 입력으로 새지 않게)
+  if (sheet || /\.(docx|hwpx?|gdoc)$/i.test(n)) {
     const calc = [/과\s*세\s*표\s*준/, /산\s*출\s*세\s*액/, /총\s*부\s*담\s*세\s*액|결\s*정\s*세\s*액|추\s*징\s*(?:예\s*상\s*)?세\s*액/].filter(function (re) { return re.test(t); }).length;
     const office = (t.match(/(?:^|\n|\t)\s*ㅇ\s*[가-힣]/g) || []).length;
     if (calc >= 2 && (office >= 2 || /자\s*본\s*적\s*지\s*출\s*검\s*토|증\s*빙\s*목\s*록|검\s*토\s*의\s*견|추\s*징/.test(t))) return '사무소가 만든 계산표·검토표(내용: 세액 계산 칸·검토 항목)';
