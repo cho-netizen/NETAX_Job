@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-17 19:38 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-18 02:23 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -22113,6 +22113,19 @@ function tcApplyInheritanceRule_(rf){
     }
   }
   if (rf.financialValue !== null && rf.financialValue !== undefined) setVal('ihNetFinancial', rf.financialValue, '순금융재산가액');
+  // [2026.10.18 정밀분석 원인2] 통장 거래에서 나온 사전증여(§13 — 사건처리에서 세무사님이 합산하기로 답한 것만) · §15 사전 인출(부표4, 소명액까지 답한 것만)
+  if (Array.isArray(rf.priorGifts) && rf.priorGifts.length){
+    const toHeir = rf.priorGifts.filter(function(g){ return g.heir; }).reduce(function(s, g){ return s + Number(g.v || 0); }, 0);
+    const toOther = rf.priorGifts.filter(function(g){ return !g.heir; }).reduce(function(s, g){ return s + Number(g.v || 0); }, 0);
+    if (toHeir) setVal('ihGiftToHeirs', toHeir, '10년내 상속인 사전증여');
+    if (toOther) setVal('ihNonHeirPriorGiftAmount', toOther, '5년내 상속인 아닌 자 사전증여');
+    if (toHeir + toOther) setVal('ihPriorGiftedIncluded', toHeir + toOther, '과세가액에 가산할 사전증여재산');
+  }
+  if (Array.isArray(rf.disposal) && rf.disposal.length && typeof inheritanceDisposalItems !== 'undefined'){
+    inheritanceDisposalItems = rf.disposal.map(function(d){ return { category: d.category, oneYearAmount: d.oneYearAmount, oneYearSelfDeposit: d.oneYearSelfDeposit, oneYearExplained: d.oneYearExplained, twoYearAmount: d.twoYearAmount, twoYearSelfDeposit: d.twoYearSelfDeposit, twoYearExplained: d.twoYearExplained }; });
+    if (typeof renderDisposalItemsList === 'function') renderDisposalItemsList();
+    filled.push('부표4 상속개시전 인출(§15)');
+  }
   const fun = [];
   if (rf.funeral && rf.funeral.value) fun.push({ payee: '장례비용(' + (rf.funeral.src || '증빙') + ')', category: 'general', detail: '사건처리 서류 정리', amount: rf.funeral.value });
   if (rf.niche && rf.niche.value) fun.push({ payee: '봉안시설(' + (rf.niche.file || '') + ')', category: 'niche', detail: rf.niche.src || '', amount: rf.niche.value });
@@ -35291,11 +35304,13 @@ function handleTaxCalcClick_(e){
     const nonIncluded = g_('ihPublicOrg') + g_('ihPublicTrust');
     const debtTotal = computeDebtTotal_(inheritanceDebtItems);
     const duesTotal = computeDuesTotal_(inheritanceDuesItems);
-    const estate = Math.max(0, gross - nonTaxable - nonIncluded - debtTotal - duesTotal);
+    // [2026.10.18 정밀분석 원인2] 상속세과세가액 = 총상속재산 − 비과세·불산입 − 채무·공과금 + 10년(5년) 내 사전증여(§13) — "과세가액에 가산된 사전증여재산" 칸 값을 더한다(예전엔 빠졌다)
+    const priorGift = g_('ihPriorGiftedIncluded');
+    const estate = Math.max(0, gross - nonTaxable - nonIncluded - debtTotal - duesTotal) + priorGift;
     const ihEstateEl = document.getElementById('ihEstate');
     ihEstateEl.value = estate;
     if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(ihEstateEl);
-    showToast('상속세과세가액 ' + won(estate) + '을(를) 반영했습니다(장례비용은 별도 항목으로 이미 반영되니 제외됨).', 'success');
+    showToast('상속세과세가액 ' + won(estate) + '을(를) 반영했습니다(장례비용은 별도 항목으로 이미 반영되니 제외됨' + (priorGift ? ', 사전증여 ' + won(priorGift) + ' 가산' : '') + ').', 'success');
   } else if (action === 'add-heir-row'){
     inheritanceHeirs.push({});
     renderHeirRegistry();
