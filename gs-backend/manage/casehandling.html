@@ -621,6 +621,8 @@
       '<textarea id="chEditDirection" placeholder="예: 1세대1주택 비과세 요건 충족 여부 검토 후 신고" style="width:100%; max-width:600px; min-height:50px; font-family:inherit; font-size:13px; box-sizing:border-box;">' + escapeHtml(c.처리방향 || '') + '</textarea>' +
       '<div style="margin-top:8px; text-align:right;"><button type="button" id="chSaveTarget" class="save-btn">저장</button></div>' +
       '</div>' +
+      // [2026.10.18 탭연결 7번] 처리 중에도 기한(법정일·처리시한)과 작업관리 하위업무가 보이고, 끝낸 하위업무는 여기서 바로 체크한다
+      '<div class="card" id="chProgressCard"></div>' +
       '<div class="card">' +
       '<div id="chMyPortalBody">불러오는 중…</div>' +
       '</div>' +
@@ -783,6 +785,7 @@
     chRenderTaxCalcList_(c);
     chRenderEvidenceSummary_(c);
     chRenderMemoSummary_(c);
+    chRenderProgress_(c);
     chLoadMyReports_(c);
     chInitMyPortal_(c);
   }
@@ -1099,6 +1102,59 @@
     openBtn.dataset.wired = '1';
     // 폴더ID로 직접 연다(폴더ID 없는 옛 사건은 이름으로, 폴더 없는 상담 사건은 업무유형을 물어 폴더를 만든 뒤 — nxOpenCaseDocs_)
     openBtn.addEventListener('click', function(){ nxOpenCaseDocs_(c); });
+  }
+
+  // [2026.10.18 탭연결 7번] 기한·하위업무 카드 — 예전엔 처리탭 어디에도 기한이 안 보이고, 세액계산·보고서를 끝내도 작업관리의
+  // "자료수집 → 세액계산 → …" 하위업무는 작업관리로 가서 하나씩 체크해야 했다. 상태(진행·보류·완료)·하위업무 추가·삭제는
+  // 그대로 작업관리에서 하고("작업관리=현황, 처리=작업"), 여기서는 보기 + 완료 체크만 한다(작업관리와 같은 work_update_subtask).
+  function chRenderProgress_(c){
+    var box = document.getElementById('chProgressCard');
+    if (!box) return;
+    var manual = typeof WORK_MANUAL_DEADLINE_TYPES_ !== 'undefined' && WORK_MANUAL_DEADLINE_TYPES_.indexOf(c.업무유형) !== -1;
+    var label = c.상태 === '완료' ? '완료일' : (manual ? '처리시한' : '법정일');
+    var dday = '';
+    if (c.법정일 && c.상태 !== '완료'){
+      var d = new Date(String(c.법정일).slice(0, 10) + 'T00:00:00'), t = new Date(); t.setHours(0, 0, 0, 0);
+      if (!isNaN(d.getTime())){
+        var n = Math.round((d - t) / 86400000);
+        dday = n > 0 ? ' <b>(D-' + n + ')</b>' : (n === 0 ? ' <b style="color:#a83232;">(오늘 마감)</b>' : ' <b style="color:#a83232;">(' + (-n) + '일 지남)</b>');
+      }
+    }
+    var rows = [];
+    (function walk(nodes, depth){
+      (nodes || []).forEach(function(nd){ rows.push({ n: nd, depth: depth }); walk(nd.children, depth + 1); });
+    })(c.하위업무, 0);
+    var done = rows.filter(function(r){ return r.n.status === '완료'; }).length;
+    box.innerHTML =
+      '<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between;">' +
+        '<div style="font-weight:700;">📅 기한·하위업무</div>' +
+        '<button type="button" class="ghost-btn" data-ch-prog="work" style="padding:2px 8px; font-size:12px;">📌 작업관리에서 고치기</button>' +
+      '</div>' +
+      '<div style="font-size:13px; margin-top:6px;">' + escapeHtml(label) + ': ' + (c.법정일 ? escapeHtml(String(c.법정일).slice(0, 10)) + dday : '<span style="color:var(--sub);">아직 없음</span>') +
+        ' · 상태: ' + escapeHtml(c.상태 || '') + (rows.length ? ' · 하위업무 ' + done + '/' + rows.length + ' 완료' : '') + '</div>' +
+      (rows.length
+        ? '<div style="margin-top:6px;">' + rows.map(function(r){
+            return '<label style="display:flex; gap:6px; align-items:center; font-size:13px; padding:2px 0 2px ' + (r.depth * 18) + 'px;">' +
+              '<input type="checkbox" data-ch-sub="' + escapeHtml(r.n.id) + '"' + (r.n.status === '완료' ? ' checked' : '') + '>' +
+              '<span' + (r.n.status === '완료' ? ' style="text-decoration:line-through; color:var(--sub);"' : '') + '>' + escapeHtml(r.n.title || '') + '</span>' +
+              (r.n.dueDate ? '<span style="color:var(--sub); font-size:12px;">~' + escapeHtml(r.n.dueDate) + '</span>' : '') +
+              (r.n.status && r.n.status !== '완료' && r.n.status !== '대기' ? '<span style="color:var(--sub); font-size:12px;">(' + escapeHtml(r.n.status) + ')</span>' : '') +
+              '</label>';
+          }).join('') + '</div>'
+        : '<div style="font-size:12.5px; color:var(--sub); margin-top:4px;">하위업무가 없습니다(작업관리에서 추가).</div>');
+    box.querySelector('[data-ch-prog="work"]').addEventListener('click', function(){ if (typeof goToWorkManage_ === 'function') goToWorkManage_(c.id); });
+    box.querySelectorAll('input[data-ch-sub]').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        cb.disabled = true;
+        callGas('work_update_subtask', { id: c.id, nodeId: cb.getAttribute('data-ch-sub'), status: cb.checked ? '완료' : '대기' }).then(function(res){
+          if (!res || res.success === false || !res.case){ showToast((res && (res.message || res.error)) || '하위업무를 저장하지 못했습니다.'); cb.checked = !cb.checked; cb.disabled = false; return; }
+          // 이 화면의 다른 저장(작업일지 등)이 기대수정일 충돌로 막히지 않게 수정일도 같이 맞춘다
+          c.하위업무 = res.case.하위업무; c.수정일 = res.case.수정일;
+          if (res.warning) showToast(res.warning);
+          chRenderProgress_(c);
+        }).catch(function(){ showToast('하위업무 저장 중 오류가 났습니다.'); cb.checked = !cb.checked; cb.disabled = false; });
+      });
+    });
   }
 
   // [2026.10.18 탭연결 2번] 「_상담녹음보관함」(사건 없이 또는 폴더 없는 상담 사건으로 녹음한 것)에서 골라 이 사건 폴더로 옮긴다.
