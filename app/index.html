@@ -43934,6 +43934,8 @@ function goToReportWriter_(caseId, opts){
         });
         if (target === 'template' && !rhTemplateLoaded_) { rhTemplateLoaded_ = true; rhLoadTemplateReview_(); }
         if (target === 'shorts' && !rhShortsLoaded_) { rhShortsLoaded_ = true; rhLoadShorts_(); }
+        // [2026.10.18 탭연결 17번] 글감만들기·쇼츠의 보고서 고르기 목록이 비어 있으면(처음 불러오기 실패 등) 다시 불러온다
+        if ((target === 'shorts' || target === 'content') && !rhAllFiles_.length) rhLoadFiles_();
       });
     });
 
@@ -44235,7 +44237,10 @@ function goToReportWriter_(caseId, opts){
     });
     document.getElementById('rhShortsMakeBtn').addEventListener('click', function(){
       var fileId = document.getElementById('rhShortsSourceSelect').value;
-      if (!fileId){ showToast('먼저 보고서를 골라 주세요 — 목록이 비어 있으면 "📚 모아보기"를 한 번 열어 주세요.'); return; }
+      // [2026.10.18 탭연결 17번] 보고서 목록은 이 화면을 열 때 이미 불러오므로 "모아보기를 열라"는 안내가 틀렸다 —
+      // 목록이 비어 있으면(아직 불러오는 중이거나 실패) 여기서 바로 다시 불러온다.
+      if (!fileId && !rhAllFiles_.length){ showToast('보고서 목록을 불러오는 중입니다 — 잠시 뒤 보고서를 골라 주세요.'); rhLoadFiles_(); return; }
+      if (!fileId){ showToast('먼저 보고서를 골라 주세요.'); return; }
       var btn = this; btn.disabled = true;
       var wrap = document.getElementById('rhShortsWrap');
       wrap.insertAdjacentHTML('afterbegin', '<div id="rhShortsMaking" class="spinner">🐶 대본 만드는 중… (20~40초)</div>');
