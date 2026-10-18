@@ -29217,6 +29217,7 @@ var CPF_KIND_MAP_ = {
   공급가액: '공급가액', 부가세: '부가세', 합계: '합계', 총액: '합계', 금액: '금액', 지급액: '지급액', 청구금액: '청구금액', 정산금액: '정산금액', 보험가입금액: '보험금액', 보험료: '보험료',
   접수일: '접수일', 원인일: '원인일', 접수번호: '접수번호', 고유번호: '부동산 고유번호', 순위: '등기 순위', 관리번호: '관리번호', 사건: '사건번호', 사건번호: '사건번호', 증권번호: '증권번호', 계약번호: '계약번호', 발급번호: '발급번호', 목록번호: '목록번호',
   날짜: '날짜', 일자: '날짜', 거래일: '거래일', 발급일: '발급일', 작성일: '작성일', 발행일: '발행일', 납부일: '납부일', 신고일: '신고일', 기준일: '기준일', 결정일: '결정일', 합의일: '합의일', 사용승인일: '사용승인일', 등기일: '등기일', 지급일: '지급일', 상환일: '상환일', 만기일: '만기일', 전입일: '전입일', 납부기한: '납부기한',
+  마지막잔액: '잔액', 발급일잔액: '잔액', 잔액합계: '잔액', 채무자생년6: '생년월일', 대출상환합계: '대출 상환액', 장례비: '장례비', 장례비용: '장례비', 장례비합계: '장례비', 대출일: '대출일', 대출금액: '대출 원금', 대출액: '대출 원금', // [2026.10.19 1번 밤작업 — 2번 9바퀴] "기타:"로 남던 돈 칸
   과세표준: '과세표준', 산출세액: '산출세액', 납부할세액: '납부할세액', 양도차익: '양도차익', 필요경비: '필요경비', 세목: '세목', 세무서: '세무서', 관서: '세무서'
 };
 // (서류 종류, 칸 이름) → 사실 종류 — 같은 칸 이름이 서류마다 뜻이 다른 것(중9)
@@ -29230,8 +29231,23 @@ var CPF_KIND_BY_TYPE_ = {
   stamp: { 용도: '인지 용도', 금액: '수입인지 금액', 등록번호: '생년월일·사업자번호' },
   estimate: { 견적일: '견적일', 현장: '소재지', 고객: '성명', 합계: '견적 합계' },
   poa: { 부동산표시: '소재지', 날짜: '작성일', 내용: '위임 내용', 사건: '사건번호' },
-  finassoc: { 기관: '금융기관', 대상자: '성명', 조회: '조회 종류', 내역없음: '조회 내역 없음', 미회신: '미회신' }
+  finassoc: { 기관: '금융기관', 대상자: '성명', 조회: '조회 종류', 내역없음: '조회 내역 없음', 미회신: '미회신' },
+  // [2026.10.19 1번 밤작업 — 2번 9바퀴] 돈 칸의 뜻이 서류 종류로 정해지는 것 — 통장·잔고증명의 잔액은 예금 잔액, 부채증명의 잔액·원금은 대출, 장례 영수증·명세의 합계는 장례비
+  banktx: { 잔액: '예금 잔액', 마지막잔액: '예금 잔액', 발급일잔액: '예금 잔액', 잔액합계: '예금 잔액' },
+  balance: { 잔액: '예금 잔액', 총잔액: '예금 잔액', 잔액합계: '예금 잔액', 합계: '예금 잔액', 금액: '예금 잔액' },
+  debtcert: { 잔액: '대출 잔액', 총잔액: '대출 잔액', 잔액합계: '대출 잔액', 대출잔액: '대출 잔액', 원금: '대출 원금', 대출금액: '대출 원금', 대출액: '대출 원금', 합계: '대출 잔액', 채무자: '성명' },
+  funeralbill: { 합계: '장례비', 총액: '장례비', 금액: '장례비', 소계: '장례비', 결제금액: '장례비' },
+  funerallist: { 합계: '장례비', 총액: '장례비', 금액: '장례비', 소계: '장례비' }
 };
+// 글자 공통 뽑기 금액의 앞 낱말 → 정식 종류(앞 낱말이 그 종류를 직접 말할 때만, 불확실 그대로). 없으면 "기타:<앞 낱말>"
+function cpfLabelKind_(lb) {
+  const s = String(lb || '').replace(/\s+/g, '');
+  if (/장례/.test(s)) return '장례비';
+  if (/대출(?:금)?잔액|대출잔여|잔여원금|원금잔액|대출원금잔액|최종대출잔액/.test(s)) return '대출 잔액';
+  if (/대출(?:금액|액|원금)|대출금$/.test(s)) return '대출 원금';
+  if (/(?:예금|통장|계좌|발급일|마지막|현재|최종)?잔액$|잔고$/.test(s) && !/대출|채무/.test(s)) return '잔액';
+  return '';
+}
 // 사람이 그 칸 이름 자체로 역할을 갖는 칸
 var CPF_ROLE_KEYS_ = /^(매도인|매수인|양도인|양수인|증여자|수증자|피상속인|상속인|임대인|임차인|채무자|예금주|세대주|소유자|권리자|명의인|배우자|의뢰인|원고|피고|받는이|보낸이|받은사람|대표자|계약자|위임인|수임인|대리인|신청인|공유자|공동명의인|대상자|고객)$/;
 // 서류 정리 규칙의 설명·검산·표시 칸 — 서류 내용이 아니라 규칙의 메모라 사실로 넘기지 않는다(경고는 "서류" 사실의 note로).
@@ -29506,6 +29522,7 @@ var CPF_NOUN_SET_ = (function () { const o = {}; CPF_NOUN_WORDS_.split(',').forE
 function cpfNounLike_(s) {
   s = String(s || '');
   if (CPF_NOUN_SET_[s]) return true;
+  if (/^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)(특별시|광역시|특별자치시|특별자치도|도|시)?$/.test(s)) return true; // 지명
   if (s.length === 3 && CPF_NOUN_SET_[s.slice(0, 2)] && /[일자액금란표서명부권료비율률세항]$/.test(s)) return true; // "기산일"·"정보란"
   if (s.length === 4 && CPF_NOUN_SET_[s.slice(0, 2)] && CPF_NOUN_SET_[s.slice(2)]) return true; // 두 낱말 붙은 것("계약기간")
   return false;
@@ -29603,10 +29620,24 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
   const NOT_NAME = /^(?:주소|성명|이름|주민|등록|번호|전화|연락|날인|인감|서명|또는|에게|사이|으로|이며|이고|본인|대리|기타|성별|상호|법인)|^(?:및|등|의|은|는|이|가|을|를)$/;
   // [2026.10.19 1번 밤작업 ③] 표로 된 서식("| 의뢰인 | 이종혁 |")의 칸 구분자도 넘고, 고객·상담자·대리인·보증인도 역할로
   re = /(매\s*도\s*인|매\s*수\s*인|임\s*대\s*인|임\s*차\s*인|증\s*여\s*자|수\s*증\s*자|피\s*상\s*속\s*인|상\s*속\s*인|채\s*무\s*자|채\s*권\s*자|위\s*임\s*인|수\s*임\s*인|신\s*청\s*인|소\s*유\s*자|예\s*금\s*주|의\s*뢰\s*인|양\s*도\s*인|양\s*수\s*인|대\s*표\s*자|세\s*대\s*주|납\s*세\s*자|고\s*객\s*명?|상\s*담\s*자|대\s*리\s*인|연?\s*대?\s*보\s*증\s*인)(?![가-힣])[\s|│]*\)?[\s|│]*[:：]?[\s|│]*(?:성\s*명|이\s*름|\(\s*[갑을]\s*\))?[\s|│]*[:：]?[\s|│]*([가-힣]{2,4}(?![가-힣]))?/g; // 이름이 바로 뒤에 없어도(서명란 "임대인 / 소 / 주민등록번호 …") 잡고 아래에서 "성명 ○○○"를 찾는다
-  let pn = 0, roleCut = 0;
+  let pn = 0, roleCut = 0, pairSkip = -1;
+  const ROLE_ONLY = new RegExp(re.source.split('(?![가-힣])')[0] + '(?![가-힣])');
   while ((m = re.exec(t))) {
     if (pn >= CPF_LIMITS_.role) { roleCut++; continue; }
+    if (m.index < pairSkip) continue;
     let nm = m[2] || '';
+    // [2026.10.19 1번 밤작업 — 2번 9바퀴] 서명란 표처럼 역할 칸 머리가 나란하면(이 역할 뒤 20자 안에 다음 역할 낱말, 그 사이 이름 없음) 뒤따르는 "성명" 칸을 칸 순서대로 나눈다.
+    //  서식에서 누구 칸인지 확정되지 않으므로 불확실 + "AI 확인" — 예전엔 두 역할이 같은 첫 이름을 함께 가져가 같은 사람이 매도인·매수인 양쪽으로 읽혔다(개발용 3사건)
+    { const aft1 = m.index + m[0].indexOf(m[1]) + m[1].length, gap = t.slice(aft1, aft1 + 20), nx = ROLE_ONLY.exec(gap);
+      const r1 = m[1].replace(/\s+/g, ''), r2 = nx ? (nx[1] || nx[0]).replace(/\s+/g, '') : '';
+      if ((!nm || cpfBadName_(nm) || !cpfLikelyName_(nm)) && nx && r2 !== r1 && /^[\s|│:：()\[\]]*$/.test(gap.slice(0, nx.index))) { // 서로 다른 역할이 구분자만 사이에 두고 나란할 때만
+        const win = t.slice(aft1 + nx.index + nx[0].length, aft1 + nx.index + nx[0].length + 400);
+        const ns = []; const nre = /성\s*명[\s|│]*[:：]?[\s|│]*([가-힣]{2,4})(?![가-힣])/g; let q; while ((q = nre.exec(win)) && ns.length < 2) if (!cpfBadName_(q[1]) && cpfLikelyName_(q[1]) && ns.indexOf(q[1]) === -1) ns.push(q[1]);
+        const base0 = aft1 + nx.index + nx[0].length;
+        if (ns.length === 2) [[r1, ns[0]], [r2, ns[1]]].forEach(function (pr, k) { const rec = 'p' + (++pn); add('성명', pr[1], pr[0] + ' … 성명 ' + pr[1], base0 + win.indexOf(pr[1]), { personGuess: cpfPersonKey_(pr[1], '') }, { rec: rec, role: pr[0], note: '나란한 역할 칸 머리(' + r1 + '·' + r2 + ') — 칸 순서로 짐작한 역할, AI 확인' }); });
+        else if (ns.length === 1) add('성명', ns[0], '성명 ' + ns[0], base0 + win.indexOf(ns[0]), { personGuess: cpfPersonKey_(ns[0], '') }, { rec: 'p' + (++pn), note: r1 + '·' + r2 + ' 칸 머리 뒤 성명 하나 — 누구 칸인지 서식에서 안 정해짐(AI 확인)' });
+        if (ns.length) { pairSkip = aft1 + nx.index + nx[0].length; continue; } // 성명을 못 찾으면 평소대로
+      } }
     if (cpfBadName_(nm) || !cpfLikelyName_(nm)) { const ah = /성\s*명[\s|│]*[:：]?[\s|│]*([가-힣]{2,4})(?![가-힣])/.exec(t.slice(re.lastIndex, re.lastIndex + 150)); if (ah && !cpfBadName_(ah[1]) && cpfLikelyName_(ah[1])) nm = ah[1]; else continue; } // [2026.10.19 1번 밤작업 ③] 성씨로 시작하고 흔한 낱말이 아닐 때만
     if (cpfBadName_(nm) || NOT_NAME.test(nm) || /(의|를|을|와|과|에|께|로|은|는|이며|이고|에게|으로|하여|하고|한다|된다)$/.test(nm) && !/^[김이박최정강조윤장임한오서신권황안송류홍전고문양손배백허유남심노하곽성차주우구민진나엄채원천방공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예경봉사부]/.test(nm.slice(0, 1))) continue; // 조사로 끝나는 일반 낱말("와의"·"관계를")은 이름이 아님 — 성씨로 시작하면 이름일 수 있어 남김
     const role = m[1].replace(/\s+/g, '');
@@ -29722,9 +29753,9 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
   }
   // 금액(세 자리 쉼표, 1,000 이상) — keys.amount. [2026.10.19 1번 밤작업 ②] 뒤에 단위 낱말(만·억·천·백)이 붙은 숫자는 여기서 빼고 아래 단위 금액으로("6,548만원" → 65,480,000)
   re = /(?<![\d\-])(-?\d{1,3}(?:,\d{3})+)(?![\d,]*\.\d)(?!\s*(?:㎡|m2|제곱|조|억|만|천|백|십))/g;
-  while ((m = re.exec(t))) { const v = Number(m[1].replace(/,/g, '')); if (Math.abs(v) < 1000) continue; add('기타:' + label(m.index), v, m[0], m.index, { amount: v }); }
+  while ((m = re.exec(t))) { const v = Number(m[1].replace(/,/g, '')); if (Math.abs(v) < 1000) continue; const lb = label(m.index), lk = cpfLabelKind_(lb); add(lk || '기타:' + lb, v, m[0], m.index, { amount: v }, lk ? { note: '앞 낱말 「' + lb + '」로 정한 종류' } : null); }
   // [2026.10.19 1번 밤작업 ②] 단위 낱말 금액("6,548만원"·"440백만원"·"5억2천5백만원"·"이억칠천만원정") — 한글 수만으로 된 것은 예전처럼 "기타:한글금액"(숫자 금액과 맞대는 재료)
-  cpfUnitAmounts_(t).forEach(function (u) { add(u.han ? '기타:한글금액' : '기타:' + label(u.at), u.value, u.raw, u.at, { amount: u.value }, u.note ? { note: u.note } : null); });
+  cpfUnitAmounts_(t).forEach(function (u) { const lb = label(u.at), lk = u.han ? '' : cpfLabelKind_(lb); add(u.han ? '기타:한글금액' : (lk || '기타:' + lb), u.value, u.raw, u.at, { amount: u.value }, (u.note || lk) ? { note: [u.note, lk ? '앞 낱말 「' + lb + '」로 정한 종류' : ''].filter(String).join(' · ') } : null); });
   // [2026.10.19 1번 밤작업 ②] 비율(%) — 세율·지분율·공제율·이자율 등(앞 낱말이 칸 이름)
   re = /(?<![\d.])(\d{1,3}(?:\.\d{1,4})?)\s*(?:%|퍼센트|프로(?![가-힣]))/g;
   while ((m = re.exec(t))) { const v = Number(m[1]); if (!(v >= 0 && v <= 100)) continue; add('비율', v, m[0], m.index, {}, { note: '앞 낱말: ' + label(m.index) }); }
