@@ -2515,7 +2515,7 @@
     foot.appendChild(again);
     // [2026.10.19] 문서 정리 도구 — 이 사건 폴더 대상이라 사건처리 결과 바로 아래(패널은 .nxai-cp-tools에 열림 — 이 줄은 결정할 때마다 다시 그려지므로)
     if (st.case && st.case.폴더ID){
-      [['📄 사진→PDF 정리', 'openConv'], ['📑 묶음 PDF 나누기', 'openBundle'], ['📦 신고제출 묶음 만들기', 'openSubmit']].forEach(function(x){
+      [['📄 사진→PDF 정리', 'openConv'], ['📑 묶음 PDF 나누기', 'openBundle'], ['🏷 파일 이름 정리', 'openRename'], ['📦 신고제출 묶음 만들기', 'openSubmit']].forEach(function(x){
         var b = document.createElement('button'); b.type = 'button'; b.className = 'nxai-btn'; b.textContent = x[0];
         b.addEventListener('click', function(){ if (st.running){ nxAiToast_('사건 처리가 끝난 뒤에 눌러 주세요.'); return; } NXAI_PDFDOC_[x[1]](st); });
         foot.appendChild(b);
@@ -4019,7 +4019,69 @@
       } catch (e) { line(res, '⚠ 만들지 못함: ' + errText(e), true); }
       finally { go.disabled = false; }
     }
-    return { openConv: openConv, openSubmit: openSubmit, openBundle: openBundle };
+    // ---------- ④ 파일 이름 정리 ----------
+    //  세무사님: "적절한 파일명 부여하기". 이름만 봐선 모르는 파일(카톡·숫자·스캐너 일련·웹 기본 이름)에 읽은 내용으로 "서류종류_사람_날짜" 제안(renamePlan — 고객 폴더 안 바뀜)
+    //  → 고칠 수 있는 이름 칸·체크 → [선택한 것 이름 바꾸기](renameApply — 확인창 뒤, 30개씩) → [↩ 모두 되돌리기](renameUndo). 서류 종류를 모르면 제안하지 않음
+    function openRename(st){
+      var P = panel(st, 'rename', '🏷 파일 이름 정리'); if (!P) return;
+      P.sum('제안 만드는 중… (고객 폴더는 아직 바뀌지 않습니다)');
+      callGas('case_proc', { caseId: st.caseId, step: 'renamePlan' }).then(function(r){
+        if (!r || r.error || !r.ok) throw new Error((r && r.error) || '응답 없음');
+        var its = r.items || [];
+        P.sum('이름 바꿀 제안 ' + its.length + '개' + ((r.noKind || []).length ? ' · 종류를 몰라 그대로 ' + r.noKind.length + '개' : '') + ((r.noText || []).length ? ' · 글이 없어 그대로 ' + r.noText.length + '개' : ''));
+        if (!its.length){ line(P.body, '이름만 봐선 모르는 파일 중 읽은 내용으로 이름을 정할 수 있는 것이 없습니다.'); return; }
+        line(P.body, '카톡·스캐너·숫자 이름처럼 이름만 봐선 무슨 서류인지 모르는 파일에, 읽은 내용으로 「서류종류_사람_날짜」 이름을 제안합니다. 사람은 사건 폴더 이름에 든 사람만, 서류 종류를 모르면 제안하지 않습니다. 이름은 고칠 수 있고, 바꾼 뒤 되돌릴 수 있습니다.');
+        var wrap = el('div', 'nxai-cp-wrap'), tb = el('table', 'nxai-cp-table'); wrap.appendChild(tb); P.body.appendChild(wrap);
+        tb.innerHTML = '<tr><th>바꾸기</th><th>지금 이름</th><th>새 이름</th><th>읽은 내용</th></tr>';
+        its.forEach(function(x){
+          x.on = true;
+          var tr = el('tr'), a = el('td'), b = el('td'), c2 = el('td'), d = el('td');
+          var cb = el('input'); cb.type = 'checkbox'; cb.checked = true; cb.addEventListener('change', function(){ x.on = cb.checked; }); a.appendChild(cb);
+          b.appendChild(document.createTextNode(x.name + ' ')); b.appendChild(openLink(x.id)); if (x.dir) b.appendChild(el('div', 'nxai-cp-sum', '📁 ' + x.dir));
+          var inp = el('input', 'nxai-cp-name'); inp.type = 'text'; inp.value = x.newName; inp.addEventListener('input', function(){ x.newName = inp.value; }); c2.appendChild(inp);
+          d.appendChild(el('div', '', x.kind)); d.appendChild(el('div', 'nxai-cp-sum', [x.person ? '사람 ' + x.person : '', x.date ? '날짜 ' + x.date : ''].filter(String).join(' · ') || '사람·날짜 못 정함'));
+          [a, b, c2, d].forEach(function(z){ tr.appendChild(z); }); tb.appendChild(tr);
+        });
+        if ((r.noKind || []).length) line(P.body, '종류를 몰라 그대로 둔 파일: ' + r.noKind.slice(0, 12).join(', ') + (r.noKind.length > 12 ? ' 외 ' + (r.noKind.length - 12) + '개' : ''));
+        var acts = el('div', 'nxai-cp-btns'), res = el('div', 'nxai-cp-res'); P.body.appendChild(acts); P.body.appendChild(res);
+        acts.appendChild(btn('모두 켜기', function(){ its.forEach(function(x){ x.on = true; }); tb.querySelectorAll('input[type=checkbox]').forEach(function(z){ z.checked = true; }); }));
+        acts.appendChild(btn('모두 끄기', function(){ its.forEach(function(x){ x.on = false; }); tb.querySelectorAll('input[type=checkbox]').forEach(function(z){ z.checked = false; }); }));
+        var go = btn('✅ 선택한 것 이름 바꾸기', function(){ renameApply(st, P, its, go, res); }, 'primary');
+        acts.appendChild(go);
+      }).catch(function(e){ P.sum(''); line(P.body, '제안을 불러오지 못했습니다: ' + errText(e), true); });
+    }
+    async function renameApply(st, P, its, go, res){
+      var pick = its.filter(function(x){ return x.on && String(x.newName || '').trim() && x.newName !== x.name; });
+      if (!pick.length){ nxAiToast_('바꿀 파일을 고르세요.'); return; }
+      var ok = await nxAiConfirm_('고객 폴더의 파일 ' + pick.length + '개 이름을 바꿉니다(내용은 그대로, 되돌리기 가능). 진행할까요?');
+      if (!ok) return;
+      go.disabled = true; var n = 0, fail = 0;
+      try {
+        for (var i = 0; i < pick.length; i += 30){
+          var part = pick.slice(i, i + 30);
+          P.sum('이름 바꾸는 중… ' + n + '/' + pick.length);
+          var r = null;
+          try { r = await callGas('case_proc', { caseId: st.caseId, step: 'renameApply', items: part.map(function(x){ return { id: x.id, newName: x.newName }; }) }); } catch (e) { r = { error: errText(e) }; }
+          if (!r || r.error || !r.ok){ fail += part.length; line(res, '⚠ ' + part.length + '개 못 바꿈: ' + ((r && r.error) || '응답 없음'), true); continue; }
+          (r.done || []).forEach(function(d){ n++; line(res, (d.same ? '— 그대로: ' : '✅ ') + d.old + (d.same ? '' : ' → ' + d.name)); });
+          (r.errors || []).forEach(function(e){ fail++; line(res, '⚠ 못 바꿈(' + e.id + '): ' + e.why, true); });
+        }
+      } finally { go.disabled = false; }
+      P.sum('이름 바꾸기 끝 — ' + n + '개' + (fail ? ' · 못 바꿈 ' + fail + '개' : ''));
+      if (n){
+        var ub = btn('↩ 이번에 바꾼 이름 모두 되돌리기', function(){
+          nxAiConfirm_('이 사건에서 바꾼 파일 이름을 모두 옛 이름으로 되돌립니다. 진행할까요?').then(function(yes){
+            if (!yes) return; ub.disabled = true;
+            callGas('case_proc', { caseId: st.caseId, step: 'renameUndo' }).then(function(u){
+              if (!u || u.error || !u.ok) throw new Error((u && u.error) || '응답 없음');
+              line(res, '↩ 되돌림 ' + (u.back || []).length + '개' + ((u.errors || []).length ? ' · 못 되돌림 ' + u.errors.length + '개' : ''));
+            }).catch(function(e){ ub.disabled = false; line(res, '⚠ 되돌리지 못함: ' + errText(e), true); });
+          });
+        }, 'nxai-cp-mini');
+        res.appendChild(ub);
+      }
+    }
+    return { openConv: openConv, openSubmit: openSubmit, openBundle: openBundle, openRename: openRename };
   })();
   // 4단계 실제 계산 — 세액계산 화면(계산엔진)을 이 사건으로 열어 계산하고, 결과가 나오면 사건에 저장한다.
   // 입력이 이미 다 있으면 [세액 계산하기]만 누르고(토큰 0), 모자라면 화면의 [자동계산](서류로 채우기 → 빈 칸은 화면이 직접 물음)을 쓴다.

@@ -25726,12 +25726,121 @@ function tcPdfConvName_(c, first, texts, p) {
   person = ns.filter(function (x) { return caseNames.indexOf(x) !== -1; })[0] || ns[0] || '';
   const ymd = function (y, mo, d) { return y + ('0' + mo).slice(-2) + ('0' + d).slice(-2); };
   let date = '';
-  const dl = /(?:발\s*급\s*일|작\s*성\s*일|발\s*행\s*일|거\s*래\s*일|계\s*약\s*일|접\s*수\s*일)[^\d\n]{0,12}((?:19|20)\d{2})\s*[년.\-/]\s*(\d{1,2})\s*[월.\-/]\s*(\d{1,2})/.exec(t)
-    || /((?:19|20)\d{2})\s*[년.\-/]\s*(\d{1,2})\s*[월.\-/]\s*(\d{1,2})\s*일?/.exec(t);
+  // 이름 붙은 날짜가 없으면 — 서식 개정·시행일("(2024.03.22 개정)")·괄호 속 생년월일("신청인: 이혜숙 (1962-01-16)")은 빼고, 발급일이 흔히 쓰는 "○○○○년 ○월 ○일" 꼴을 먼저(2026-10-19 파일 이름 제안 점검)
+  const dlAll = [], dre = /((?:19|20)\d{2})\s*([년.\-/])\s*(\d{1,2})\s*[월.\-/]\s*(\d{1,2})\s*(일?)/g; let dmm;
+  while ((dmm = dre.exec(t)) && dlAll.length < 60) {
+    const aft = t.slice(dre.lastIndex, dre.lastIndex + 6), bef = t.slice(Math.max(0, dmm.index - 2), dmm.index);
+    if (/^\s*\)?\s*(?:개\s*정|시\s*행|제\s*정)/.test(aft) || (/\(\s*$/.test(bef) && /^\s*\)/.test(aft)) || /생\s*년|출\s*생|개\s*정|시\s*행/.test(t.slice(Math.max(0, dmm.index - 8), dmm.index))) continue;
+    dlAll.push(dmm);
+  }
+  const dl = /(?:발\s*급\s*일|작\s*성\s*일|발\s*행\s*일|거\s*래\s*일|계\s*약\s*일|접\s*수\s*일|열\s*람\s*일\s*시)[^\d\n]{0,12}((?:19|20)\d{2})\s*[년.\-/]\s*(\d{1,2})\s*[월.\-/]\s*(\d{1,2})/.exec(t)
+    || (function () { const k = dlAll.filter(function (x) { return x[2] === '년' && x[5]; })[0] || dlAll[0]; return k ? [k[0], k[1], k[3], k[4]] : null; })();
   if (dl && Number(dl[2]) <= 12 && Number(dl[3]) <= 31) date = ymd(dl[1], dl[2], dl[3]);
   const base = String(first.name || '').replace(/\.[A-Za-z0-9]{2,5}$/, '');
   let name = kind ? [kind, person, date].filter(String).join('_') : (caseProcScanSerial_(first.name) ? '사진_' + Utilities.formatDate(new Date(Number(first.modified) || Date.now()), 'Asia/Seoul', 'yyyyMMdd_HHmm') : base);
   return name.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+}
+// =========================================================
+// [2026.10.19 3번 세션] 적절한 파일 이름 붙이기 — 세무사님: "문서 나누기, 여러파일을 하나의 문서로 합치기, 적절한 파일명 부여하기 등등 끝도없이 많다".
+//  이름만 봐선 무슨 서류인지 모르는 파일(카톡·숫자뿐·스캐너 일련·웹 기본 이름·해시 — 문서정리 연구 D1, 401개)에 읽은 내용으로 "서류종류_사람_날짜" 이름을 제안한다
+//  (사진→PDF 이름 규칙 tcPdfConvName_과 같음). 서류 종류를 모르면 제안하지 않음. 미리 보기 → 세무사님 승인 → 바꾸기 → 되돌리기(옛 이름 기록)
+// =========================================================
+function tcBlandName_(n) {
+  const b = caseProcScanBase_(n).trim();
+  if (!b) return true;
+  // 뜻 있는 한글 낱말(두 글자 이상, 사진·스캔·캡처 같은 기본 낱말 말고)이 있으면 뜻 있는 이름 — 「질의회신20180618」·「신한은행 181101~240229」·「회기동 토지 1141-…」은 숫자가 많아도 그대로
+  const words = (b.match(/[가-힣]{2,}/g) || []).filter(function (w) { return !/^(사진|스캔|캡처|캡쳐|스크린샷|제목없음|제목|없음|이미지|문서|통합|새문서|다운로드|파일|첨부|첨부파일|카톡|카카오톡|복사본|사본)$/.test(w); });
+  if (words.length) return false;
+  if (caseProcScanSerial_(n)) return true; // 카톡·IMG·스캔·사진·숫자 위주
+  if (/^(noname|untitled|document|download|unnamed|image|file|printpop|iframe_|user\.tdf|grid_exceldata|통합\s*문서|새\s*문서|새\s*파일|문서\s*\d|다운로드|제목\s*없|이름\s*없)/i.test(b)) return true;
+  if (/\.(jsp|do|php|aspx?|tdf|html?)$/i.test(b)) return true; // 「printPop.jsp.pdf」·「iframe_0203.do.pdf」 — 웹 화면을 그대로 PDF로
+  if (/^i_[0-9a-f]{8,}$/i.test(b) || /^[0-9a-f]{16,}$/i.test(b) || /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(b)) return true; // 해시 이름
+  if (/^[\d\s_\-().]{1,6}$/.test(b)) return true; // 「1.pdf」·「222.pdf」·「0 (1).jpg」
+  return false;
+}
+// 제안 이름 하나 — {name(확장자 포함), kind, parts} | null(종류를 모르면). text: 그 파일의 읽은 글
+function tcRenameSuggest_(c, f, text) {
+  const t = String(text || '');
+  if (t.replace(/[^가-힣0-9]/g, '').length < 30) return null;
+  let p = null; try { p = docParseText_(t); } catch (e) { p = null; }
+  if (!p || !p.type || /^out:/.test(String(p.type))) return null;
+  const pt = { t: p.type, l: p.label || '' }, kind = caseProcScanName_(pt);
+  if (!kind) return null;
+  // 서식 머리(앞 400자)가 "…신고서"인데 종류가 신고서가 아니면 종류 판정이 틀렸을 수 있음 — 제안 안 함(송기종 「1.pdf」: 별지 제21호 일반과세자 부가가치세 신고서가 세금계산서로)
+  if (/신\s*고\s*서/.test(t.slice(0, 400)) && /별\s*지|서\s*식/.test(t.slice(0, 400)) && !/신고/.test(kind)) return null;
+  const base = tcPdfConvName_(c || {}, { name: f.name, modified: f.modified }, [t], pt);
+  if (!base || base.indexOf(kind) !== 0) return null;
+  const ext = (/\.[A-Za-z0-9]{2,5}$/.exec(String(f.name || '')) || [''])[0] || (/pdf/.test(String(f.mimeType || '')) ? '.pdf' : /jpe?g/.test(String(f.mimeType || '')) ? '.jpg' : /png/.test(String(f.mimeType || '')) ? '.png' : '');
+  // 사람은 사건 폴더 이름(고객·납세자)에 든 사람만 — 서류의 첫 "성명" 칸이 상대방·병원 직원·"대신" 같은 조각일 때가 있다(노영환 진료비 영수증). 모르면 사람 없이
+  const parts = base.split('_'), caseNames = (String((c && (c.사건명 || '')) || '') + ' ' + String((c && c.폴더명) || '')).match(/[가-힣]{2,4}/g) || [];
+  const person = parts.length > 1 && !/^\d{8}$/.test(parts[1]) && caseNames.indexOf(parts[1]) !== -1 ? parts[1] : '';
+  const date = /^\d{8}$/.test(parts[parts.length - 1]) ? parts[parts.length - 1] : '';
+  const kind2 = kind.replace(/\s*\([^)]*\)\s*$/, '').trim() || kind; // 「법무사 견적서(실제 지출 아님)」 같은 설명 괄호는 이름에 안 넣음
+  return { name: [kind2, person, date].filter(String).join('_').replace(/[\\/:*?"<>|]/g, ' ') + ext.toLowerCase(), kind: kind, person: person, date: date };
+}
+// 이름이 바뀌면 드라이브 수정시각이 바뀌어 글자 기억 열쇠(<ID>_<수정시각>)가 안 맞는다 — 같은 내용이므로 새 열쇠로 옮긴다(다시 읽지 않음, 0원)
+var TC_MEM_PREFIXES_ = ['ocrtxt_', 'ocrtxt3_', 'ocrgrid1_', 'ocrtbl1_', 'ocrpage1_', 'ocrvis1_', 'ocrzip1_'];
+function tcMemCarry_(id, oldMod, newMod) {
+  let n = 0;
+  if (!oldMod || !newMod || oldMod === newMod) return 0;
+  TC_MEM_PREFIXES_.forEach(function (pre) { try { const v = tcOcrStoreGet_(pre + id + '_' + oldMod); if (v !== null && v !== undefined) { tcOcrStoreSet_(pre + id + '_' + newMod, v); n++; } } catch (e) {} });
+  return n;
+}
+// 미리 보기 — 고객 폴더 안 바뀜. 뜻 없는 이름의 파일마다 제안(같은 폴더에서 겹치면 (2)·(3)), 글이 없거나 종류를 모르면 제안 없음(이유만)
+function caseProcRenamePlan_(c) {
+  const prev = TC_NO_NEW_OCR_; TC_NO_NEW_OCR_ = true;
+  try {
+    const sv = caseProcLoad_(c.id) || {}, done = {}; (sv.renames || []).forEach(function (r) { if (!r.undone) done[r.id] = 1; });
+    const all = caseProcFiles_(c, { raw: true }), items = [], skip = { noText: [], noKind: [] }, used = {};
+    all.forEach(function (f) {
+      if (items.length >= 300 || /^_/.test(String(f.name || '')) || done[f.id] || !tcBlandName_(f.name)) return;
+      let t = ''; try { t = String(tc_docText_(f) || ''); } catch (e) {}
+      if (t.replace(/[^가-힣0-9]/g, '').length < 30) { skip.noText.push((f.dir ? f.dir + '/' : '') + f.name); return; }
+      const s = tcRenameSuggest_(c, f, t);
+      if (!s) { skip.noKind.push((f.dir ? f.dir + '/' : '') + f.name); return; }
+      const key = (f.dir || '') + '/' + s.name, m = /^(.*?)(\.[a-z0-9]{2,5})?$/i.exec(s.name);
+      let nm = s.name, k = 2; while (used[(f.dir || '') + '/' + nm] && k < 50) nm = m[1] + '(' + (k++) + ')' + (m[2] || ''); used[(f.dir || '') + '/' + nm] = 1;
+      items.push({ id: f.id, name: f.name, dir: f.dir || '', newName: nm, kind: s.kind, person: s.person, date: s.date, mimeType: f.mimeType });
+    });
+    // 폴더에 이미 같은 이름이 있으면 뒤에 번호(바꾸기 때 다시 확인)
+    return { ok: true, items: items, noText: skip.noText, noKind: skip.noKind };
+  } finally { TC_NO_NEW_OCR_ = prev; }
+}
+// 바꾸기 — body.items: [{id, newName}] (세무사님이 고친 이름 그대로). 이름을 바꾸고 기억 열쇠를 옮기고 옛 이름을 기록(sv.renames)
+function caseProcRenameApply_(c, body) {
+  const its = [].concat(body.items || []).filter(function (x) { return x && x.id && String(x.newName || '').trim(); }), done = [], errors = [], started = Date.now();
+  its.forEach(function (x) {
+    if (Date.now() - started > 240000) { errors.push({ id: x.id, why: '시간 — 남은 것은 다시' }); return; }
+    try {
+      const f = DriveApp.getFileById(x.id), old = f.getName(), oldMod = f.getLastUpdated().getTime();
+      let nm = String(x.newName).replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim();
+      const par = f.getParents(), folder = par.hasNext() ? par.next() : null;
+      if (folder) { const mm = /^(.*?)(\.[A-Za-z0-9]{2,5})?$/.exec(nm); let k = 2; while (k < 50) { const it = folder.getFilesByName(nm); let clash = false; while (it.hasNext()) { if (it.next().getId() !== x.id) clash = true; } if (!clash) break; nm = mm[1] + '(' + (k++) + ')' + (mm[2] || ''); } }
+      if (nm === old) { done.push({ id: x.id, old: old, name: nm, same: true }); return; }
+      f.setName(nm);
+      const newMod = DriveApp.getFileById(x.id).getLastUpdated().getTime(), carried = tcMemCarry_(x.id, oldMod, newMod);
+      const rec = { id: x.id, old: old, name: nm, at: new Date().toISOString(), oldMod: oldMod, newMod: newMod };
+      caseProcPatch_(c.id, function (sv) { (sv.renames = sv.renames || []).push(rec); });
+      done.push({ id: x.id, old: old, name: nm, carried: carried });
+    } catch (e) { errors.push({ id: x.id, why: String(e && e.message || e).slice(0, 150) }); }
+  });
+  return { ok: true, done: done, errors: errors };
+}
+// 되돌리기 — body.ids(없으면 이 사건에서 바꾼 것 전부) → 옛 이름으로, 기억 열쇠도 다시 옮김
+function caseProcRenameUndo_(c, body) {
+  const want = body.ids && body.ids.length ? [].concat(body.ids).map(String) : null, back = [], errors = [];
+  const sv = caseProcLoad_(c.id) || {}, recs = (sv.renames || []).filter(function (r) { return !r.undone && (!want || want.indexOf(String(r.id)) !== -1); });
+  recs.forEach(function (r) {
+    try {
+      const f = DriveApp.getFileById(r.id), m0 = f.getLastUpdated().getTime();
+      f.setName(r.old);
+      tcMemCarry_(r.id, m0, DriveApp.getFileById(r.id).getLastUpdated().getTime());
+      back.push({ id: r.id, name: r.old });
+    } catch (e) { errors.push({ id: r.id, why: String(e && e.message || e).slice(0, 150) }); }
+  });
+  const ok = {}; back.forEach(function (b) { ok[b.id] = 1; });
+  caseProcPatch_(c.id, function (s2) { (s2.renames || []).forEach(function (r) { if (ok[r.id] && !r.undone) r.undone = new Date().toISOString(); }); });
+  return { ok: true, back: back, errors: errors };
 }
 // 사건 폴더의 사진 목록(도구 폴더·이미 PDF로 바꾼 사진·양도코리아·신고제출 빼고) — [{id,name,mimeType,modified,dir,size,folderId}]
 function tcPdfConvPhotos_(c) {
@@ -28511,6 +28620,10 @@ function caseProc_(body) {
     if (body.step === 'pdfUndo') return caseProcPdfUndo_(c, body);
     if (body.step === 'pdfReflat') return caseProcPdfReflat_(c, body); // 자동 변환 PDF를 화면이 편 쪽으로 다시 쓰기
     // 묶음만 남은 지난 사건 — 제출용 묶음 PDF를 문서별 PDF로(후보 → 그림 쪽 글자인식 → 미리 보기 → 화면이 나눠 올림 → 기록·되돌리기)
+    // 뜻 없는 파일 이름 → 서류종류_사람_날짜 제안(미리 보기 → 승인 → 바꾸기·되돌리기)
+    if (body.step === 'renamePlan') return caseProcRenamePlan_(c);
+    if (body.step === 'renameApply') return caseProcRenameApply_(c, body);
+    if (body.step === 'renameUndo') return caseProcRenameUndo_(c, body);
     if (body.step === 'bundleCands') return caseProcBundleCands_(c);
     if (body.step === 'bundlePages') return caseProcBundlePages_(c, body);
     if (body.step === 'bundlePlan') return caseProcBundlePlan_(c, body);
