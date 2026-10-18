@@ -25110,6 +25110,81 @@ function tcNameIn_(field, names) {
   var f = String(field || '').replace(/\s+/g, '');
   return names.some(function (n) { return n.length >= 2 && f.indexOf(n) !== -1; });
 }
+// [2026.10.18 정밀분석 07_1·07_3] 보유 자산 목록 — 등기부(docs)와 토지·건축물대장을 물건마다 한 줄로. 같은 물건(읍면동·지번, 집합건물은 동·호)은 서류끼리 대조해 한 번만.
+//  소유권·취득일은 등기부 우선(소득세법 §98·시행령 §162①1~3: 대금청산일·등기접수일 중 빠른 날 — 여기는 접수일 후보), 신축 건물은 사용승인일(시행령 §162①4),
+//  지목·면적·용도·사용승인일은 대장 우선. 납세자 명의가 아닌 물건(가족·공유자 소유)도 "남의 것"으로 남겨 양도 대상에서 가린다. 값을 확정하지 않고 후보로만.
+function tcShareTxt_(s) { s = String(s || '').replace(/\s+/g, ''); var m = /(\d+(?:\.\d+)?)분의(\d+(?:\.\d+)?)/.exec(s); if (m) return m[2] + '/' + m[1]; m = /(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)/.exec(s); return m ? m[1] + '/' + m[2] : ''; }
+function tcHoldings_(regs, ledgers, names) {
+  var nmz = function (s) { return String(s || '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ''); };
+  var mineName = function (n) { n = nmz(n); return !!n && names.some(function (x) { return caseProcNameLike_(n, x); }); };
+  var list = [];
+  var find = function (loc, kind) { return list.filter(function (h) { return caseProcSamePlace_(h.loc, h.kind, loc, kind); })[0]; };
+  var addAcq = function (h, c) { if (c.v && !h.acq.some(function (q) { return q.v === c.v && q.cause === c.cause; })) h.acq.push(c); };
+  // ① 등기부 — 납세자가 얻은 기재(취득일 후보)와 지금 명의
+  (regs || []).forEach(function (g) { (g.r.docs || []).forEach(function (d) {
+    if (!d.소재지) return;
+    var hist = (d.소유권이력 || []).filter(function (x) { return !x.말소; }); if (!hist.length) return;
+    var kind = d.종류 === '토지' ? '토지' : (d.종류 === '집합건물' || caseProcDongHoOf_(d.소재지) ? '집합건물' : '건물');
+    var t = d.표제부 || {}, h = find(d.소재지, kind);
+    if (!h) { h = { loc: d.소재지, kind: kind, jimok: t.지목 || '', area: kind === '토지' ? (t.면적 || null) : (t.전유면적 || null), use: t.용도 || '', house: null, approval: '', owners: [], mine: '', ownTxt: '', acq: [], files: [], notes: [], reg: true }; list.push(h); }
+    else h.reg = true;
+    if (h.files.indexOf(g.file) === -1) h.files.push(g.file);
+    var last = hist[hist.length - 1], lastNames = (last.권리자 || []).map(function (q) { return nmz(q.이름); });
+    var mineE = hist.filter(function (x) { return (x.권리자 || []).some(function (q) { return mineName(q.이름); }); });
+    mineE.forEach(function (x) { var sh = ((x.권리자 || []).filter(function (q) { return mineName(q.이름); })[0] || {}).지분; addAcq(h, { v: x.접수일 || '', cause: x.원인 || '', src: '등기부 ' + (x.원인 || '') + ' 접수일' + (sh ? '(지분 ' + tcShareTxt_(sh) + ')' : '') + ' — ' + g.file, preserve: /보존/.test(String(x.원인 || '') + String(x.목적 || '')) }); });
+    var lastMine = (last.권리자 || []).filter(function (q) { return mineName(q.이름); })[0];
+    var partial = /일부|지분/.test(String(last.목적 || '')), outMine = names.some(function (n) { return n.length >= 2 && String(last.목적 || '').replace(/\s+/g, '').indexOf(n + '지분') !== -1; });
+    if (lastMine) { var s0 = tcShareTxt_(lastMine.지분); h.mine = (last.권리자 || []).length === 1 && (!s0 || s0 === '1/1') ? '단독' : '공유'; h.ownTxt = '등기부 지금 명의 ' + nmz(lastMine.이름) + (s0 ? ' ' + s0 : '') + ((last.권리자 || []).length > 1 ? ' (공유자 ' + lastNames.filter(function (n) { return !mineName(n); }).join(', ') + ')' : ''); }
+    else if (mineE.length && partial && !outMine) { var me = mineE[mineE.length - 1], s1 = tcShareTxt_(((me.권리자 || []).filter(function (q) { return mineName(q.이름); })[0] || {}).지분); h.mine = '공유'; h.ownTxt = '등기부 — 납세자 지분' + (s1 ? ' ' + s1 : '') + '(그 뒤 다른 공유자 지분 이전 ' + (last.접수일 || '') + ' — 원문 확인)'; }
+    else if (mineE.length) { h.mine = '넘김'; h.ownTxt = '등기부 — 납세자 명의였다가 ' + (last.접수일 || '') + ' ' + (last.원인 || '') + '로 ' + lastNames.join(', ') + ' 명의'; }
+    else if (!h.mine) { h.mine = '남의 것'; h.ownTxt = '등기부 지금 명의 ' + lastNames.join(', ') + '(납세자 아님)'; }
+  }); });
+  // ② 토지·건축물대장 — 지목·면적·용도·사용승인일·소유자(이름·지분)
+  (ledgers || []).forEach(function (L) {
+    var r = L.r || {}, land = L.type === 'landledger';
+    var loc = land ? [r.소재, r.지번].filter(Boolean).join(' ') : (r.소재지 || [r.대지위치, r.지번].filter(Boolean).join(' '));
+    if (!loc || !caseProcLotOf_(loc) && !caseProcDongHoOf_(loc)) return;
+    var kind = land ? '토지' : (/전유부/.test(r.종류 || '') ? '집합건물' : '건물');
+    var h = find(loc, kind);
+    if (!h) { h = { loc: loc, kind: kind, jimok: '', area: null, use: '', house: null, approval: '', owners: [], mine: '', ownTxt: '', acq: [], files: [], notes: [], reg: false }; list.push(h); }
+    if (h.files.indexOf(L.file) === -1) h.files.push(L.file);
+    if (land) { if (r.지목) { if (h.jimok && h.jimok !== r.지목) h.notes.push('지목 등기부 ' + h.jimok + ' / 토지대장 ' + r.지목 + ' — 대장(현재 지목)을 씀'); h.jimok = r.지목; } if (r.면적 != null) { if (h.area && Math.abs(h.area - r.면적) > 0.05) h.notes.push('면적 등기부 ' + h.area + '㎡ / 토지대장 ' + r.면적 + '㎡ — 다름(분할·합병 확인)'); h.area = r.면적; } }
+    else {
+      var ar = kind === '집합건물' ? r.전유면적 : r.연면적; if (ar && !h.area) h.area = ar;
+      var u = kind === '집합건물' ? (r.전유용도 || '') : (r.주용도 || (r.용도목록 || []).join('·')); if (u) h.use = u;
+      if (r.주택포함 === '있음' || /주택|아파트|다가구|다세대|연립|오피스텔/.test(u)) h.house = r.주택포함 === '있음' || !/오피스텔/.test(u) ? true : null; else if (r.주택포함 === '없음' || u) h.house = false;
+      if (r.사용승인일) h.approval = r.사용승인일;
+    }
+    var rows = (r.소유자 || []).filter(function (q) { return q.이름; });
+    var mineR = rows.filter(function (q) { return mineName(q.이름); });
+    if (!h.reg) {
+      if (mineR.length) {
+        var q0 = mineR[mineR.length - 1], s2 = tcShareTxt_(q0.지분), lastD = rows.length ? rows[rows.length - 1].변동일 : '';
+        var later = rows.filter(function (q) { return q.변동일 > q0.변동일 && !mineName(q.이름) && !q.지분; });
+        h.mine = later.length && land ? '넘김' : (!q0.외 && (!s2 || s2 === '1/1') && rows.filter(function (q) { return !mineName(q.이름); }).length === 0 ? '단독' : '공유');
+        h.ownTxt = (land ? '토지대장' : '건축물대장') + ' 소유자 ' + q0.이름 + (q0.외 ? ' 외 ' + q0.외 + '인' : '') + (s2 ? ' ' + s2 : '') + (h.mine === '넘김' ? ' → ' + later[later.length - 1].변동일 + ' ' + later[later.length - 1].이름 + ' 명의(확인)' : '');
+        mineR.forEach(function (q) { addAcq(h, { v: q.변동일 || '', cause: q.원인 || '', preserve: /보존|신규|신축/.test(q.원인 || ''), src: (land ? '토지대장' : '건축물대장') + ' 소유권 변동일(' + (q.원인 || '원인 ?') + (q.지분 ? ' 지분 ' + tcShareTxt_(q.지분) : '') + ') — ' + L.file + ' (등기 접수일과 며칠 다를 수 있어 등기부로 확인)' }); });
+      } else if (rows.length && !h.mine) { h.mine = '남의 것'; h.ownTxt = (land ? '토지대장' : '건축물대장') + ' 소유자 ' + rows.map(function (q) { return q.이름 + (q.외 ? ' 외 ' + q.외 + '인' : '') + (q.지분 ? ' ' + tcShareTxt_(q.지분) : ''); }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(', ') + '(납세자 아님)'; }
+      else if (!h.mine) { h.mine = '확인'; h.ownTxt = (land ? '토지대장' : '건축물대장') + ' 소유자 이름을 읽지 못함 — 원문 확인'; }
+    } else if (rows.length && h.mine === '남의 것' && mineR.length) h.notes.push('대장 소유자에 납세자 이름이 있으나 등기부 지금 명의는 다름 — 등기부를 따름');
+  });
+  // ③ 신축 건물 취득일 — 소유권보존(신축)이면 사용승인일이 1번 후보(시행령 §162①4: 사용승인서 교부일, 그 전에 사실상 사용하면 그 날)
+  list.forEach(function (h) {
+    if (h.kind === '토지' || !h.approval) return;
+    var pre = h.acq.filter(function (q) { return q.preserve; })[0];
+    if (pre) { // 매매·상속 등으로 산 건물은 사용승인일이 취득일이 아니다(을왕동 146-1: 1980 사용승인, 2002 매수)
+      h.acq.unshift({ v: h.approval, cause: '신축', src: '건축물대장 사용승인일 — 신축 건물 취득일(소득세법 시행령 §162①4)' + (pre ? ', 등기부 보존 접수일 ' + pre.v + '보다 우선' : '') });
+      if (pre && pre.v !== h.approval) h.notes.push('신축 건물 — 사용승인일 ' + h.approval + ' ≠ 보존등기 접수일 ' + pre.v + ': 취득일은 사용승인일(§162①4)');
+    }
+  });
+  return list;
+}
+function tcHoldingLine_(h) {
+  return h.loc + ' ' + h.kind + (h.jimok ? '(' + h.jimok + ')' : '') + (h.area ? ' ' + h.area + '㎡' : '') + (h.use ? ' ' + h.use : '') + (h.house ? ' [주택]' : '')
+    + ' — ' + ({ 단독: '납세자 단독', 공유: '납세자 공유', 넘김: '납세자가 넘김', '남의 것': '남의 것', 확인: '소유자 확인' })[h.mine || '확인'] + (h.ownTxt ? '(' + h.ownTxt + ')' : '')
+    + (h.acq.length && h.mine !== '남의 것' ? ' — 취득일 후보 ' + h.acq.map(function (q) { return q.v + '(' + q.src.split(' — ')[0] + ')'; }).join(', ') : '')
+    + (h.notes.length ? ' ⚠ ' + h.notes.join(' · ') : '') + ' [' + h.files.join(', ') + ']';
+}
 function tc_ruleTransferFacts_(body) {
   var caseId = String(body.caseId || '').trim();
   if (!caseId) return { error: '사건이 필요합니다.' };
@@ -25138,6 +25213,7 @@ function tc_ruleTransferFacts_(body) {
   var bankStmts = []; // [2026.10.17] 통장 거래내역(거래 한 줄씩) — 모두 읽은 뒤 비용 서류·견적과 대조(tcBankStmtCost_)
   // [2026.10.18 정밀분석 원인2] 엑셀(xlsx·xls) 통장도 — 아래 파일 돌기는 .txt·.csv만 받아 엑셀 통장의 비용·대금 줄이 대조에 안 들어갔다
   try { caseProcTableBankDocs_({ 폴더ID: folderId }).forEach(function (x) { if (!/\.(csv|txt)$/i.test(x.f.name)) bankStmts.push({ file: x.f.name, r: x.p.result }); }); } catch (e) {}
+  var ledgers = []; // [2026.10.18 정밀분석 07_1] 토지·건축물대장 정리 결과 — 등기부와 함께 보유 자산 목록(소재·지목·면적·용도·소유자·지분·취득일 후보)으로
   for (var i = 0; i < files.length; i++) {
     var f = files[i];
     if (!/pdf|^image\//.test(String(f.mimeType || ''))) {
@@ -25305,6 +25381,7 @@ function tc_ruleTransferFacts_(body) {
       lawyers.push({ file: f.name, r: p.result, bond: bond, disc: disc, amts: (lt.match(/\d{1,3}(?:,\d{3})+/g) || []).map(function (v) { return Number(v.replace(/,/g, '')); }) }); // amts: 정산서에 적힌 금액들(겹침 판단용, 2026-10-16)
     }
     if (p.type === 'registry') regs.push({ file: f.name, r: p.result });
+    if ((p.type === 'bldledger' || p.type === 'landledger') && p.result) ledgers.push({ file: f.name, type: p.type, r: p.result }); // [2026.10.18 정밀분석 07_1] 보유 자산 목록(tcHoldings_)
   }
   var ok = function (c) { return /^일치/.test(String(c.r.검산 || '')) && c.r.매매대금; };
   // 계약서 정리 결과의 매도인·매수인 칸은 서명란을 못 읽어 비는 일이 많아, 본문에서 납세자 이름 바로 앞 이름표(매도인/매수인)로 역할을 정한다
@@ -25596,6 +25673,18 @@ function tc_ruleTransferFacts_(body) {
     locCands.push({ v: d.소재지, src: '등기부 — 지금 납세자 명의(' + (last.원인 || '') + ' ' + (last.접수일 || '') + ') — ' + g.file + '(' + (d.종류 || '') + ')', acqDate: last.접수일 || '', cause: last.원인 || '' });
   }); });
   if (locCands.length) evidence.push('납세자 명의 부동산(등기부) ' + locCands.length + '건: ' + locCands.map(function (x) { return x.v + '(' + x.src.split(' — ').pop() + ')'; }).join(', ') + (comps.length ? ' — 수용 보상 대상이면 물건마다 처리개요에 넣으세요' : ''));
+  // [2026.10.18 정밀분석 07_1·07_3] 보유 자산 목록 — 등기부 + 토지·건축물대장을 물건마다 한 줄로 합친다(같은 물건은 한 번만, 소유권·취득일은 등기부 우선, 지목·면적·용도·사용승인일은 대장).
+  //  허상석(현물출자 상담): 대장 29건이 "참고 — 계산 입력 아님"으로만 남아 교로리·현천동·을왕동 11필지(등기부 없음)와 남의 호실 8개를 가리지 못했다.
+  var holdings = []; try { holdings = tcHoldings_(regs, ledgers, names); } catch (e) { evidence.push('보유 자산 목록 만들기 중 오류: ' + e.message); }
+  if (holdings.length) {
+    var hMine = holdings.filter(function (h) { return h.mine === '단독' || h.mine === '공유'; });
+    evidence.push('보유 자산 목록(등기부·토지·건축물대장, 물건 ' + holdings.length + '개 — 납세자 명의 ' + hMine.length + '개): ' + holdings.map(function (h, k) { return '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳'.charAt(k) + ' ' + tcHoldingLine_(h); }).join(' / '));
+    // 거래를 못 세웠을 때 — 등기부가 없는 납세자 명의 물건(대장에만 있음)도 소재지 후보로
+    if (!txs.length) hMine.forEach(function (h) {
+      if (locCands.some(function (x) { return caseProcSamePlace_(x.v, /토지/.test(x.src) && !/건물/.test(x.src) ? '토지' : h.kind, h.loc, h.kind); })) return;
+      locCands.push({ v: h.loc, src: '대장 — 납세자 명의(' + (h.ownTxt || '') + ') — ' + h.files.join(', '), acqDate: (h.acq[0] || {}).v || '', cause: (h.acq[0] || {}).cause || '' });
+    });
+  }
   // 거래를 못 세웠을 때 — 납세자가 매수인인 계약서를 취득일·취득가액 후보로(어느 물건 것인지는 확인)
   // [2026.10.16] 이름에 "신규주택·대체주택"이 붙은 매수 계약서(그 사진 사본 포함 — 같은 대금·잔금일)는 새로 산 집 — 판 집의 취득일·취득가액 근거가 아니라 일시적 2주택 판정 참고
   //  (김환식: 신규주택 잔금일 2026-04-28이 판 집 취득일 1번 후보가 됐다)
@@ -25902,7 +25991,7 @@ function tc_ruleTransferFacts_(body) {
     } catch (e) {}
   });
   try { tcWorkLink_(expCands, costTexts, evidence); } catch (e) {} // [2026.10.17 내용 항목별] 공사 견적·내역서를 공사 내용 항목으로 나눠 지급 증빙에 붙임
-  return { ok: true, trDateCands: trDateCands, sellerName: names[0] || null, parties: parties, transactions: txs, evidence: evidence, expCands: expCands, comps: comps, objDetails: objDetails, bunyang: bunyang, acqDateCands: acqDateCands, acqPriceCands: acqPriceCands, locCands: locCands,
+  return { ok: true, trDateCands: trDateCands, sellerName: names[0] || null, parties: parties, transactions: txs, evidence: evidence, expCands: expCands, comps: comps, objDetails: objDetails, bunyang: bunyang, acqDateCands: acqDateCands, acqPriceCands: acqPriceCands, locCands: locCands, holdings: holdings,
     vatDocs: vatDocs, // [2026.10.16 1:1 김금옥] 주택 여부 질문의 근거
     counts: { 계약서: contracts.length, 신고필증: reports.length, 취득세: acqs.length, 법무사: lawyers.length, 등기부: regs.length } };
 }
@@ -28670,8 +28759,10 @@ function caseProcGiftInhFacts_(c, lines, items) {
       byType('death').some(function (x) { let tx = ''; try { tx = tc_docText_(x.f) || ''; } catch (e) {} if (nn.length < 2 || tx.replace(/\s+/g, '').indexOf(nn) === -1) return false; add('ihDeceasedName', nn, ((x.p.result || {}).종류 || '사망 서류') + '(' + x.f.name + ')에 사건 납세자 이름', true); return true; });
     }
     // [2026.10.14] 피상속인 — 사망진단서 성명을 못 읽어도 "본인 사망"이 적힌 가족관계증명서·분할협의서의 피상속인으로 확정(납세자를 의뢰인 이름으로 잘못 짐작하지 않게)
-    fams.forEach(function (x) { const me = ((x.p.result && x.p.result.가족) || []).filter(function (q) { return q.관계 === '본인' && q.사망 && q.이름; })[0]; if (me) add('ihDeceasedName', norm(me.이름), '가족관계증명서(' + x.f.name + ', 본인 사망)', !me.확인필요); });
-    byType('inhdivision').forEach(function (x) { if (x.p.result && x.p.result.피상속인) add('ihDeceasedName', x.p.result.피상속인, '상속재산분할협의서(' + x.f.name + ')', true); });
+    // [2026.10.18 정밀분석 07_3] 별건 상속(다른 사람의 옛 상속) 협의서·그 피상속인의 가족관계증명서는 후보에서 뺀다 — 박영수(홍순자): 2013년 박창길 협의서가 피상속인 후보가 됐다
+    let sepD = {}, sepF = {}; try { const si = caseProcInhSepDiv_(c, parsed); sepD = si.sep; sepF = si.famSep; } catch (e) {}
+    fams.forEach(function (x) { const me = ((x.p.result && x.p.result.가족) || []).filter(function (q) { return q.관계 === '본인' && q.사망 && q.이름; })[0]; if (me && !sepF[x.f.id || x.f.name]) add('ihDeceasedName', norm(me.이름), '가족관계증명서(' + x.f.name + ', 본인 사망)', !me.확인필요); });
+    byType('inhdivision').forEach(function (x) { if (x.p.result && x.p.result.피상속인 && !sepD[x.f.id || x.f.name]) add('ihDeceasedName', x.p.result.피상속인, '상속재산분할협의서(' + x.f.name + ')', true); });
     // [2026.10.18 정밀분석 원인1] 입력으로 남긴 이미 낸 상속세 신고서(물납·연부연납·경정 — 상속물납: 신고서를 빼 놓고 "피상속인을 찾지 못했다"고 물음) — 피상속인 성명 후보(확정은 사망 서류)
     byType('filedret').filter(function (x) { return x.p.result && x.p.result.세목 === 'inheritance'; }).forEach(function (x) {
       let tx = ''; try { tx = String(tc_docText_(x.f) || '').slice(0, 3000); } catch (e) {}
@@ -28977,13 +29068,58 @@ function caseProcInhBankRoute_(banks, o) {
   if (same.length) res.notes.push('⚠ 개시일(' + base + ') 당일 출금 ' + same.length + '건 ' + won(sum(same)) + ' — 사망 시각' + (deathAt ? '' : '(사망진단서·기본증명서)') + '과 거래 시각을 비교해 사망 전이면 인출(§15), 뒤면 개시일 잔액에 포함: ' + same.slice(0, 5).map(function (g) { return won(g.금액) + ' ' + String(g.who).replace(/\s+/g, ' ').trim().slice(0, 12); }).join(', '));
   return res;
 }
+// [2026.10.18 정밀분석 07_3] 사건 하나에 피상속인 하나 — 분할협의서·가족관계증명서(본인 사망) 중 사건의 피상속인과 다른 사람의 것(별건 상속)을 가려낸다.
+//  기준(앵커): 사건 납세자 칸(상속 사건 명명 규칙 "고객명(피상속인)_상속") → 없으면 가족관계증명서 본인(사망)이 한 사람일 때 그 사람. 개시일 기준: 사망 서류의 사망일.
+//  ① 협의서 피상속인 이름이 앵커와 다르면(글자인식 한 글자 차이는 같은 사람) 별건 ② 이름이 없거나 같은데 개시일이 사망일과 한 달 넘게 다르면 — 이름이 다르거나 없을 때만 별건, 같으면 대조 안내만.
+//  앵커가 없으면 아무것도 빼지 않는다(예전과 같음). 별건 서류는 지우지 않고 참고로 남긴다.
+// [2026.10.18 정밀분석 07] 같은 부동산인지 — 읍면동+지번(·산), 집합건물은 동·호까지. 토지와 건물은 같은 지번이어도 다른 물건
+function caseProcLotOf_(s) { const q = /([가-힣]+(?:동|리|가))\s*(산?\s*\d{1,5}(?:-\d{1,5})?)(?:\s*번지)?(?![\d-])/.exec(String(s || '')); return q ? q[1] + q[2].replace(/\s+/g, '') : ''; }
+function caseProcDongHoOf_(s) { const q = /(\d{1,4})\s*동(?![가-힣])[\s\S]{0,12}?([A-Z]?\d{1,5})\s*호/.exec(String(s || '')); return q ? q[1] + '-' + q[2] : ''; }
+function caseProcIsLandKind_(k) { return /토지|^(대|전|답|임야|과수원|잡종지|도로|목장용지|공장용지|창고용지|주차장|묘지|구거|유지)$/.test(String(k || '')); }
+function caseProcSamePlace_(la, ka, lb, kb) {
+  if (!la || !lb || caseProcIsLandKind_(ka) !== caseProcIsLandKind_(kb)) return false;
+  const da = caseProcDongHoOf_(la), db = caseProcDongHoOf_(lb), pa = caseProcLotOf_(la), pb = caseProcLotOf_(lb);
+  if (da || db) return da === db && (!pa || !pb || pa === pb);
+  return (!!pa && pa === pb) || tcLocSame_(la, lb);
+}
+function caseProcInhSepDiv_(c, parsed) {
+  const nm = function (x) { return String(x || '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ''); };
+  const key = function (x) { return x.f.id || x.f.name; };
+  const out = { sep: {}, famSep: {}, list: [], notes: [] };
+  const famDead = (parsed || []).filter(function (x) { return x.p && x.p.type === 'family'; }).map(function (x) { const me = (((x.p.result || {}).가족) || []).filter(function (q) { return q.관계 === '본인' && q.사망 && q.이름; })[0]; return me ? { x: x, name: nm(me.이름) } : null; }).filter(Boolean);
+  let anchor = nm(c.납세자), anchorSrc = '사건 납세자 칸';
+  if (!anchor) { const ns = famDead.map(function (q) { return q.name; }).filter(function (v, i, a) { return a.indexOf(v) === i; }); if (ns.length === 1) { anchor = ns[0]; anchorSrc = '가족관계증명서(본인 사망)'; } }
+  const deaths = (parsed || []).filter(function (x) { return x.p && x.p.type === 'death' && x.p.result && x.p.result.사망일 && !x.p.result.사망일확인필요; }).map(function (x) { return { d: x.p.result.사망일, file: x.f.name }; });
+  const far = function (d) { return deaths.length && d && !deaths.some(function (q) { return Math.abs(new Date(q.d) - new Date(d)) <= 31 * 86400000; }); };
+  if (!anchor && !deaths.length) return out;
+  (parsed || []).filter(function (x) { return x.p && x.p.type === 'inhdivision'; }).forEach(function (x) {
+    const r = x.p.result || {}, who = nm(r.피상속인);
+    const nameDiff = !!(anchor && who && !caseProcNameLike_(who, anchor));
+    const dateFar = far(r.개시일);
+    // 이름이 달라도 개시일이 사망 서류 사망일과 맞으면 같은 상속(납세자 칸이 잘못 적혔을 수 있음) — 빼지 않고 알림만
+    if (nameDiff && deaths.length && r.개시일 && !dateFar) { out.notes.push('분할협의서(' + x.f.name + ')의 피상속인 ' + who + '이(가) 사건 납세자 칸(' + anchor + ')과 다르지만 개시일 ' + r.개시일 + '이 사망 서류 사망일과 같아 이 사건 협의서로 봄 — 사건 납세자(피상속인) 칸 확인'); return; }
+    if (nameDiff || (dateFar && !who)) {
+      out.sep[key(x)] = 1;
+      out.list.push({ name: who, date: r.개시일 || '', file: x.f.name });
+      out.notes.push('별건 상속(참고): 분할협의서(' + x.f.name + ')의 피상속인 ' + (who || '?') + (r.개시일 ? '(' + r.개시일 + ' 개시)' : '') + ' — 이 사건 피상속인' + (anchor ? ' ' + anchor + '(' + anchorSrc + ')' : '') + (deaths.length ? '·사망일 ' + deaths[0].d + '(' + deaths[0].file + ')' : '') + '과(와) 달라 이 사건 상속인·재산·분할 대조에 쓰지 않음(한 사건에 피상속인은 한 사람). 그때 상속받은 재산이 이번 피상속인 명의로 남아 있으면 등기부로 이 사건 재산에 들어감');
+    } else if (dateFar && who) out.notes.push('분할협의서(' + x.f.name + ') 개시일 ' + r.개시일 + '이 사망 서류의 사망일 ' + deaths[0].d + '과(와) 다름 — 피상속인 이름은 같아 이 사건 협의서로 봄(원문 날짜 확인)');
+  });
+  // 가족관계증명서도 — 본인(사망)이 별건 상속의 피상속인이면 그 사람의 증명서라 이 사건 상속인 판단에 쓰지 않음
+  if (anchor) famDead.forEach(function (q) { if (!caseProcNameLike_(q.name, anchor) && out.list.some(function (s) { return s.name && caseProcNameLike_(s.name, q.name); })) { out.famSep[key(q.x)] = 1; out.notes.push('가족관계증명서(' + q.x.f.name + ')의 본인(사망) ' + q.name + ' — 이 사건 피상속인 ' + anchor + '과(와) 달라 상속인 판단에 쓰지 않음(별건 상속 참고)'); } });
+  return out;
+}
 function caseProcInhFacts0_(c, parsed) {
   parsed = parsed || caseProcParseAll_(c);
   const saved = caseProcLoad_(c.id), choices = saved.ihChoices || {};
-  const by = function (t) { return parsed.filter(function (x) { return x.p.type === t; }); };
+  // [2026.10.18 정밀분석 07_3] 한 사건에 피상속인은 한 사람 — 사건 사망 서류·납세자와 피상속인·개시일이 다른 분할협의서(다른 사람의 옛 상속)는 '별건 상속(참고)'으로 빼고
+  //  아래 모든 대조(피상속인·상속인·재산·분할 귀속·금융 목록)에서 보지 않는다(sepDiv). 박영수(홍순자): 2013년 부친 박창길 상속 협의서가 피상속인 자리를 차지해 교동·주문진 토지가 섞였다
+  const sepInfo = caseProcInhSepDiv_(c, parsed), sepDiv = sepInfo.sep;
+  const by = function (t) { return parsed.filter(function (x) { return x.p.type === t && !(t === 'inhdivision' && sepDiv[x.f.id || x.f.name]) && !(t === 'family' && sepInfo.famSep[x.f.id || x.f.name]); }); };
   const nm = function (x) { return String(x || '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ''); };
   const base = c.기준일 || '';
   const out = { deceased: {}, heirs: [], assets: [], financial: [], funeral: {}, niche: null, notes: [] };
+  sepInfo.notes.forEach(function (s) { out.notes.push(s); });
+  out.separateInh = sepInfo.list; // 별건 상속(참고) — 피상속인·개시일·파일
   // 분할협의서가 여럿이면(부동산용·금융자산용) 상속인·부동산은 부동산이 적힌 것에서, 금융자산 목록은 아래에서 전부 본다
   const div = by('inhdivision').slice().sort(function (a, b) { return (((b.p.result || {}).부동산 || []).length) - (((a.p.result || {}).부동산 || []).length); })[0];
   const dv = div ? Object.assign({ file: div.f.name }, div.p.result) : null;
@@ -29024,7 +29160,12 @@ function caseProcInhFacts0_(c, parsed) {
       // [2026.10.15] 이름은 글자인식 한 글자 차이(성백예↔성백례)까지 같은 사람으로 — 김창호 사건: 피상속인 아파트가 상속재산에서 통째로 빠졌다
       const hasDec = function (list) { return String(list || '').split(',').some(function (x) { return caseProcNameLike_(x, dec); }); };
       const viaInh = h.some(function (e, k) { return !e.말소 && /상속/.test(String(e.원인 || '')) && k > 0 && hasDec(prevOf(k)); });
-      if (!(dec && (viaInh || hasDec(curOwner)))) return;
+      if (!(dec && (viaInh || hasDec(curOwner)))) {
+        // [2026.10.18 정밀분석 07_3] 별건 상속의 피상속인에게서 넘어온 등기부는 그 상속의 참고 자료로 이름을 남긴다(이 사건 재산 아님)
+        const sepW = (sepInfo.list || []).filter(function (s) { return s.name && h.some(function (e, k) { return !e.말소 && /상속/.test(String(e.원인 || '')) && k > 0 && String(prevOf(k)).split(',').some(function (q) { return caseProcNameLike_(q, s.name); }); }); })[0];
+        if (sepW) out.notes.push('별건 상속(참고): 등기부 ' + x.f.name + '(' + (d.소재지 || '') + ') — ' + sepW.name + '의 상속' + (sepW.date ? '(' + sepW.date + ')' : '') + '으로 넘어간 재산이라 이 사건 상속재산에 넣지 않음');
+        return;
+      }
       const t = d.표제부 || {};
       // [2026.10.17 세무사님 원칙 — 같은 항목은 서류끼리 대조해 한 번만] 같은 등기부를 두 번 받은 것(고유번호가 같음, 없으면 소재지·종류가 같음)은 한 물건 —
       //  노영환: 토지·건물 등기부가 _제시자료(RIS 출력)와 제출서류(사본)에 한 부씩 있어 물건이 4개가 되고 감정가가 두 번 더해져 과세가액이 두 배였다
@@ -29053,6 +29194,82 @@ function caseProcInhFacts0_(c, parsed) {
       out.notes.push('상속재산에 건물을 더함: ' + same[0].loc + ' 건물 ' + lo.a + '㎡ — 감정평가표(' + x.f.name + ')에 건물 줄이 있고 같은 지번 건축물대장(' + led.f.name + ')이 있음(건물 등기부는 폴더에 없음 — 받으면 그것으로 확인)');
     });
   } catch (e) {}
+  // [2026.10.18 정밀분석 07_4·11 — 상증법 §2·§7] 등기부가 폴더에 없는 피상속인 명의 부동산 — 건축물·토지대장의 소유자 칸, 재산조회(통합처리) 결과의 물건 줄,
+  //  분할협의서의 재산 줄을 같은 소재지(지번)·동호로 맞춰 상속재산 "후보"로 올린다(등기부가 있으면 등기부가 우선 — 같은 물건이면 더하지 않음).
+  //  박종헌(윤경숙): 과천 래미안슈르 321동 302호 1/3(약 20억 × 1/3)이 재산조회서·집합건축물대장·실거래가·분할협의서 네 곳에 있는데 등기부가 없어 통째로 빠졌다.
+  //  피상속인 지분은 대장·조회서의 지분, 없으면 분할협의서의 피상속인 지분 — 둘 다 없으면 비워 묻는다. 확정하지 않고 묻는다(등기부로 소유·지분 확인).
+  try {
+    const lotOf = caseProcLotOf_, dhOf0 = caseProcDongHoOf_, isLand = caseProcIsLandKind_, samePlace = caseProcSamePlace_;
+    const fracOf = function (s) { const q = /(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/.exec(String(s || '')); return q && Number(q[2]) ? { txt: q[1] + '/' + q[2], r: Number(q[1]) / Number(q[2]) } : null; };
+    const cands0 = [];
+    const addC = function (o) {
+      const hit = out.assets.filter(function (a) { return samePlace(a.loc, a.kind, o.loc, o.kind); })[0] || cands0.filter(function (a) { return samePlace(a.loc, a.kind, o.loc, o.kind); })[0];
+      if (hit) { // 같은 물건 — 근거만 더하고(서류끼리 대조), 지분·면적·공동주택가격은 비어 있을 때만 채운다
+        if (!hit.noReg) { if (o.srcTxt && (hit.ledSeen = hit.ledSeen || []).indexOf(o.srcTxt) === -1) { hit.ledSeen.push(o.srcTxt); out.notes.push('상속재산 대조: ' + (hit.kind ? hit.kind + ' ' : '') + hit.loc + '(' + (/등기/.test(hit.file || '') ? '등기부 ' : '목록 근거 ') + hit.file + ') ↔ ' + o.srcTxt); } return; }
+        if (o.srcTxt && hit.srcs.indexOf(o.srcTxt) === -1) hit.srcs.push(o.srcTxt);
+        if (o.share && hit.share && Math.abs(o.share.r - hit.share.r) > 1e-9) hit.shareConflict = (hit.shareConflict || []).concat([o.share.txt + '(' + o.srcTxt + ')']);
+        if (o.share && !hit.share) hit.share = o.share;
+        if (o.area && !hit.area) hit.area = o.area;
+        if (o.ledPrices && o.ledPrices.length && !(hit.ledPrices || []).length) { hit.ledPrices = o.ledPrices; hit.ledPriceFile = o.file; }
+        if (o.file && hit.files.indexOf(o.file) === -1) hit.files.push(o.file);
+        return;
+      }
+      cands0.push(Object.assign({ srcs: o.srcTxt ? [o.srcTxt] : [], files: o.file ? [o.file] : [], noReg: true }, o));
+    };
+    // ① 건축물대장(일반·집합 전유부) — 소유자 칸에 피상속인 이름
+    by('bldledger').forEach(function (x) {
+      const r = x.p.result || {};
+      const mine = (r.소유자 || []).filter(function (q) { return q.이름 && dec && caseProcNameLike_(q.이름, dec); });
+      if (!mine.length || !r.소재지) return;
+      const q = mine[mine.length - 1], jip = /전유부/.test(r.종류 || '');
+      addC({ kind: jip ? '집합건물' : '건물', loc: r.소재지, area: jip ? (r.전유면적 || null) : (r.연면적 || null), file: x.f.name, share: fracOf(q.지분),
+        ledPrices: (r.공동주택가격 || []).filter(function (p) { return p.가격 && !p.확인필요; }),
+        srcTxt: (r.종류 || '건축물대장') + '(' + x.f.name + ') 소유자 ' + q.이름 + (q.지분 ? ' 지분 ' + q.지분 : '') + (q.변동일 ? ' ' + q.변동일 + ' ' + (q.원인 || '') : '') });
+    });
+    // ② 토지대장 — 마지막 소유 기재가 피상속인(지분 기재가 있으면 그 지분)
+    by('landledger').forEach(function (x) {
+      const r = x.p.result || {}, rows = r.소유자 || [], last = rows.length ? rows[rows.length - 1].변동일 : '';
+      const mine = rows.filter(function (q) { return q.변동일 === last && q.이름 && dec && caseProcNameLike_(q.이름, dec); });
+      if (!mine.length || !r.소재 || !r.지번) return;
+      const q = mine[0];
+      addC({ kind: '토지', loc: r.소재 + ' ' + r.지번, area: r.면적 != null ? r.면적 : null, file: x.f.name, share: q.외 ? null : (fracOf(q.지분) || (!r.공유 ? { txt: '1/1', r: 1 } : null)),
+        srcTxt: (r.종류 || '토지대장') + '(' + x.f.name + ') 소유자 ' + q.이름 + (q.외 ? ' 외 ' + q.외 + '인(공유 — 지분 확인)' : '') + (q.지분 ? ' 지분 ' + q.지분 : '') + ' ' + q.변동일 + ' ' + (q.원인 || '') });
+    });
+    // ③ 재산조회 회보서·통합처리 결과 — 조회 대상이 피상속인이면 물건 줄 전부
+    by('propquery').forEach(function (x) {
+      const r = x.p.result || {};
+      if (!r.소유자 || !dec || !caseProcNameLike_(r.소유자, dec)) return;
+      (r.물건 || []).forEach(function (o) {
+        if (!o.소재지) return;
+        const land = o.구분 === '토지', jip = o.대장 === '전유부' || !!o.호;
+        const loc = o.소재지 + (o.동 ? ' ' + o.동 + '동' : '') + (o.호 ? ' ' + o.호 + '호' : '');
+        addC({ kind: land ? '토지' : jip ? '집합건물' : '건물', loc: loc, area: land ? (o.면적 || null) : null, file: x.f.name, share: fracOf(o.지분합),
+          srcTxt: (r.종류 || '재산조회') + '(' + x.f.name + ') ' + (land ? '토지 ' + (o.용도 || '') + ' ' + (o.면적 || '') + '㎡' + (o.유형 ? ' ' + o.유형 + (o.공유인수 ? '(공유인수 ' + o.공유인수 + ')' : '') : '') : (o.대장 || '건축물') + (o.용도 ? ' ' + o.용도 : '')) + (o.지분합 ? ' 지분 ' + o.지분합 : '') + ' ' + o.줄.map(function (q) { return (q.일자 || '') + ' ' + (q.원인 || ''); }).join(' / ') });
+      });
+    });
+    // ④ 분할협의서 재산 줄 — 목록·후보에 없는 부동산인데 같은 소재지·동호의 대장·공시가격·실거래가가 폴더에 있으면 후보로(피상속인 지분은 협의서의 "피상속인 지분")
+    const priceLoc = [].concat(by('bldledger').map(function (x) { return { loc: (x.p.result || {}).소재지 || '', file: x.f.name }; }), by('realprice').concat(by('pubprice')).map(function (x) { const r = x.p.result || {}; return { loc: [r.소재지 || '', r.단지 || '', r.동 ? r.동 + '동' : '', r.호 ? r.호 + '호' : ''].join(' '), file: x.f.name, rp: true }; }));
+    by('inhdivision').forEach(function (x) {
+      ((x.p.result || {}).귀속 || []).forEach(function (g) {
+        if (!/토지|건물|집합건물/.test(g.종류 || '') || !g.재산) return;
+        const kind = g.종류 === '토지' ? '토지' : g.종류;
+        if (out.assets.some(function (a) { return samePlace(a.loc, a.kind, g.재산, kind); }) || cands0.some(function (a) { return samePlace(a.loc, a.kind, g.재산, kind); })) {
+          const c0 = cands0.filter(function (a) { return samePlace(a.loc, a.kind, g.재산, kind); })[0];
+          if (c0) { const t0 = '분할협의서(' + x.f.name + ') 재산 줄 "' + g.재산 + '"' + (g.피상속인지분 ? ' 피상속인 지분 ' + g.피상속인지분 : ''); if (c0.srcs.indexOf(t0) === -1) c0.srcs.push(t0); const fs0 = fracOf(g.피상속인지분); if (fs0 && c0.share && Math.abs(fs0.r - c0.share.r) > 1e-9) c0.shareConflict = (c0.shareConflict || []).concat([fs0.txt + '(분할협의서)']); else if (fs0 && !c0.share) c0.share = fs0; }
+          return;
+        }
+        // 대조 상대: 같은 동호(집합건물) 또는 같은 지번(토지·건물)의 가격·대장 서류. 실거래가 출력물은 단지 단위라 같은 지번이면 맞는 것으로 본다
+        const sup = priceLoc.filter(function (p) { if (!p.loc.trim()) return false; if (kind === '집합건물' && dhOf0(p.loc) && dhOf0(g.재산)) return dhOf0(p.loc) === dhOf0(g.재산) && lotOf(p.loc) === lotOf(g.재산); return !!lotOf(g.재산) && lotOf(p.loc) === lotOf(g.재산); });
+        if (!sup.length) return; // 근거가 협의서 한 곳뿐이면 아래 분할 귀속 질문(목록에 없음)이 묻는다
+        addC({ kind: kind, loc: g.재산, area: null, file: x.f.name, share: fracOf(g.피상속인지분), srcTxt: '분할협의서(' + x.f.name + ') 재산 줄 "' + g.재산 + '"' + (g.피상속인지분 ? ' 피상속인 지분 ' + g.피상속인지분 : '') + ' · 같은 물건 서류: ' + sup.map(function (p) { return p.file; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(', ') });
+      });
+    });
+    cands0.forEach(function (o) {
+      const a = { key: keyOf(o.loc) + '#' + (isLand(o.kind) ? '토지' : '건물') + '#대장', kind: o.kind, loc: o.loc, area: o.area, file: o.files[0] || o.file || '', uid: '', dupFiles: o.files.slice(1), cands: [], noReg: true, share: o.share || null, ledPrices: o.ledPrices || [], ledPriceFile: o.ledPriceFile || (o.ledPrices && o.ledPrices.length ? o.file : ''), srcs: o.srcs, shareConflict: o.shareConflict || null };
+      out.assets.push(a);
+      out.notes.push('등기부 없는 피상속인 명의 부동산을 상속재산 후보로 올림: ' + a.kind + ' ' + a.loc + (a.share ? ' — 피상속인 지분 ' + a.share.txt : ' — 피상속인 지분 모름(등기부로 확인)') + (a.shareConflict ? ' ⚠ 서류마다 지분이 다름: ' + a.shareConflict.join(', ') : '') + ' · 근거: ' + a.srcs.join(' / ') + ' — 등기사항전부증명서로 소유·지분을 확인해 주세요(평가는 시가 → 없으면 공시가격, 상증법 §60·§61)');
+    });
+  } catch (e) { out.notes.push('대장·재산조회로 상속재산 후보 만들기 중 오류: ' + e.message); }
   // [2026.10.17 세무사님 원칙 — 내용 항목별로] 분할협의서 귀속 항목(재산 · 받는 상속인 · 지분)을 다른 서류의 재산과 대조해 연결한다.
   //  부동산은 등기부·건축물대장으로 만든 상속재산 목록(소재지·지번·동호·종류), 금융은 잔액증명(은행), "금융자산 전부"는 금융재산 전체.
   //  부동산용·금융용 협의서, 같은 협의서 사본에 같은 귀속이 거듭 나와도 한 번만. 맞는 재산이 없거나 둘 이상이면 지어내지 않고 후보를 붙여 묻는다(답: ihChoices['div:…'])
@@ -29138,6 +29355,13 @@ function caseProcInhFacts0_(c, parsed) {
         if (row2) a.cands.push({ v: row2.가격, src: (r.종류 || '공시가격') + ' ' + (row2.연도 || '') + '년 — 보충적 평가(§61)', kind: '기준시가', file: x.f.name });
       }
     });
+    // [2026.10.18 정밀분석 11] 집합건축물대장 2쪽의 공동주택가격 — 평가기준일에 이미 공시된 것(공동주택가격은 매년 4월 30일 공시, 부동산공시법 §18·시행령 §43)만.
+    //  박종헌: 개시일 2026-04-06은 2026년 가격 공시 전이라 2025.1.1 975,000,000원이 기준시가(§61①2)
+    if ((a.ledPrices || []).length && base && !a.cands.some(function (q) { return q.kind === '기준시가'; })) {
+      const pub = function (d) { const y = String(d || '').slice(0, 4); return y ? y + '-04-30' : ''; };
+      const lp = a.ledPrices.filter(function (p) { return p.기준일 && pub(p.기준일) <= base; }).sort(function (p1, p2) { return String(p2.기준일).localeCompare(String(p1.기준일)); })[0];
+      if (lp) a.cands.push({ v: lp.가격, src: '공동주택가격 ' + lp.기준일 + ' 기준(' + pub(lp.기준일) + ' 공시) ' + Number(lp.가격).toLocaleString('ko-KR') + '원 — 집합건축물대장(' + (a.ledPriceFile || a.file) + '), 보충적 평가(§61①2)', kind: '기준시가', file: a.ledPriceFile || a.file });
+    }
     // [2026.10.17] 폴더에 공시가격 서류가 없으면 세액계산기 🔍 공시가격 자동조회와 같은 기능으로 — 상속개시일 현재 공시된 가격(보충적 평가 §61)
     if (base && a.loc && !a.cands.some(function (q) { return q.kind === '기준시가'; })) {
       try {
@@ -29184,7 +29408,7 @@ function caseProcInhFacts0_(c, parsed) {
       //  찾으면 합계를 두고 "어느 물건 값인지 모름"으로 묻지 않고 그 줄 값으로(박종헌: 정안·예인 모두 토지·건물 두 줄). 소재지 거르기보다 먼저(건물 소재지가 감정서 지번과 다를 수 있음)
       const own = r.감정평가액 ? tcApprItemFor_(x, a, out.assets) : null;
       if (own) { apps.push({ v: own.v, src: '감정평가 ' + (r.평가법인 || x.f.name) + ' 물건별 내역 — ' + own.why + (r.기준시점 ? ' · ' + r.기준시점 + ' 기준' : '') + ' — 시가(§60⑤)', kind: '시가', days: r.기준시점 && base ? Math.abs(new Date(r.기준시점) - new Date(base)) / 86400000 : 0, file: x.f.name }); return; }
-      if (r.소재지 && a.loc && !tcLocSame_(r.소재지, a.loc) && nm(a.loc).indexOf(nm(r.소재지)) === -1 && out.assets.length > 1 && r.대상 !== '토지·건물') return; // 토지·건물 일괄 감정은 건물 쪽 질문에도 후보로
+      if (r.소재지 && a.loc && !tcLocSame_(r.소재지, a.loc) && nm(a.loc).indexOf(nm(r.소재지)) === -1 && out.assets.length > 1 && (r.대상 !== '토지·건물' || a.noReg)) return; // 토지·건물 일괄 감정은 건물 쪽 질문에도 후보로(대장으로 올린 다른 지번 후보 재산에는 아님 — 박종헌 사당동 감정가가 래미안 후보로 붙었다)
       if (!r.감정평가액 && r.통화) { out.notes.push('감정평가서(' + x.f.name + ') — 외화 감정가액 ' + r.통화 + ' ' + Number(r.외화감정가액 || 0).toLocaleString('en-US') + (r.기준시점 ? '(' + r.기준시점 + ' 기준)' : '') + ': 기준일 환율로 원화 환산 뒤 처리개요 평가에 넣으세요'); return; }
       if (!r.감정평가액) { out.notes.push('감정평가서(' + x.f.name + ') — 감정가액을 읽지 못함(글자인식 흐림): 원문의 감정가액을 처리개요 평가에 직접 넣으세요'); return; }
       // [2026.10.17 상충 판단 4] 노영환: 정안 감정서(실제 약 29억)를 1,100,000원으로 잘못 읽고(검산 안 됨) 예인 2,940,088,250원과 평균 내 14.7억을 만들었고,
@@ -29211,16 +29435,23 @@ function caseProcInhFacts0_(c, parsed) {
     const appsAmb = apps.filter(function (q) { return q.kind === '시가(확인)' && !/검산 안 됨/.test(q.src); });
     if (appsAmb.length >= 2) a.cands.push({ v: Math.round(appsAmb.reduce(function (t, q) { return t + q.v; }, 0) / appsAmb.length), src: '감정가액 ' + appsAmb.length + '곳 평균(시행령 §49①2) — ⚠ 여러 물건을 함께 감정한 합계일 수 있음, 원문 확인', kind: '시가(확인)', days: -1, file: appsAmb.map(function (q) { return q.file; }).join(', ') });
     if (appsOk.length >= 2) a.cands.push({ v: Math.round(appsOk.reduce(function (t, q) { return t + q.v; }, 0) / appsOk.length), src: '감정가액 ' + appsOk.length + '곳 평균 — 시가(시행령 §49①2)', kind: '시가', days: -1, file: appsOk.map(function (q) { return q.file; }).join(', ') });
+    // [2026.10.18 정밀분석 07_4] 대장·재산조회로 올린 후보 재산은 피상속인 지분만 상속재산 — 매매사례·공시가격은 물건 전체 값이라 × 지분(감정가는 지분 감정일 수 있어 곱하지 않고 알림)
+    if (a.noReg && a.share && a.share.r > 0 && a.share.r < 1) a.cands.forEach(function (q) {
+      if (/^감정/.test(q.src)) { q.src += ' ⚠ 감정가액이 물건 전체 값이면 × 피상속인 지분 ' + a.share.txt; return; }
+      q.src += ' × 피상속인 지분 ' + a.share.txt + '(전체 ' + Number(q.v).toLocaleString('ko-KR') + '원)'; q.v = Math.floor(q.v * a.share.r);
+    });
     const market = a.cands.filter(function (q) { return q.kind === '시가'; }).sort(function (p1, p2) { return p1.days - p2.days; });
     if (market.length) market[0].recommended = true; else if (a.cands.length === 1 && /^(시가|기준시가)$/.test(a.cands[0].kind)) a.cands[0].recommended = true; // 확인이 필요한 후보(시가(확인)·시가(조회))에는 ⭐를 달지 않음
     const ch = choices[a.key];
     a.value = ch ? Number(ch.v) : null; a.valueSrc = ch ? ch.src : '';
     // 시가(매매사례)가 있으면 평가기준일에 가장 가까운 날의 가액(시행령 §49②) — 날짜가 같은 다른 금액이 있으면 판단 필요
     const tie = market.length > 1 && market[1].days === market[0].days && market[1].v !== market[0].v;
-    if (!ch && market.length && !tie) { a.value = market[0].v; a.valueSrc = market[0].src + ' — 평가기준일에 가장 가까운 거래(시행령 §49②)' + (/제\s*\d+\s*동|동\s*제/.test(a.loc) ? ', 같은 단지 다른 동·호면 유사재산(§49④): 공동주택가격 차이 5% 이내 요건' : ''); a.sure = true; }
+    if (a.noReg) { a.sure = !!ch; if (ch && Number(ch.v) === 0) a.excluded = true; } // 등기부 없는 후보 — 상속재산인지·지분부터 확인받는다(자동 확정 안 함, 0 = 상속재산 아님)
+    else if (!ch && market.length && !tie) { a.value = market[0].v; a.valueSrc = market[0].src + ' — 평가기준일에 가장 가까운 거래(시행령 §49②)' + (/제\s*\d+\s*동|동\s*제/.test(a.loc) ? ', 같은 단지 다른 동·호면 유사재산(§49④): 공동주택가격 차이 5% 이내 요건' : ''); a.sure = true; }
     else if (!ch && !market.length && a.cands.length === 1 && a.cands[0].kind === '기준시가') { a.value = a.cands[0].v; a.valueSrc = a.cands[0].src; a.sure = true; }
     else a.sure = !!ch;
   });
+  if (out.assets.some(function (a) { return a.excluded; })) { out.assets.filter(function (a) { return a.excluded; }).forEach(function (a) { out.notes.push('상속재산 후보 ' + a.kind + ' ' + a.loc + ' — 세무사님 답: 상속재산 아님(목록에서 뺌)'); }); out.assets = out.assets.filter(function (a) { return !a.excluded; }); }
   // [2026.10.16] 보험금 지급내역 — 피상속인이 보험료를 낸 생명보험금은 간주상속재산(§8)이자 금융재산(§22). 금액·근거를 알린다(박종헌 사건: 3장이 안 쓰였다)
   const pn = function (v) { return v && typeof v === 'object' ? String(v.이름 || v.name || '') : String(v || ''); };
   by('insurance').forEach(function (x) { const r = x.p.result || {}; if (r.종류 === '보증보험증권') return; out.notes.push('보험(' + x.f.name + ') ' + (r.종류 || '') + (r.지급액 ? ' 지급액 ' + Number(r.지급액).toLocaleString('ko-KR') + '원' : '') + (pn(r.피보험자) ? ' · 피보험자 ' + pn(r.피보험자) : '') + (pn(r.계약자) ? ' · 계약자 ' + pn(r.계약자) : '') + ' — 피상속인이 보험료를 낸 생명보험금이면 간주상속재산(§8)·금융재산(§22): 세액계산 보험금 칸에 넣을지 확인'); });
@@ -30045,6 +30276,12 @@ function caseProcInhAssetItems_(c, lines, items, parsed) {
   f.assets.forEach(function (a) {
     const label = (a.kind ? a.kind + ' ' : '') + a.loc + (a.area ? ' ' + a.area + '㎡' : '');
     if (a.value) { lines.push('✅ 상속재산 ' + label + ' — ' + won(a.value) + ' (' + a.valueSrc + ')'); return; }
+    // [2026.10.18 정밀분석 07_4] 등기부 없이 대장·재산조회·분할협의서로 올린 후보 — 상속재산인지(피상속인 지분)부터 묻고, 평가액 후보는 지분을 곱한 값. 0 = 상속재산 아님
+    if (a.noReg) {
+      items.push(caseProcItem_('ih:' + a.key, 'check', '상속재산 후보 ' + label + ' — 등기부가 폴더에 없지만 피상속인 명의로 나옵니다(' + (a.srcs || []).join(' / ') + '). 피상속인 지분 ' + (a.share ? a.share.txt : '모름(등기부로 확인)') + (a.shareConflict ? ' ⚠ 서류마다 지분이 다름: ' + a.shareConflict.join(', ') : '') + '. 상속재산이면 평가액(피상속인 지분 몫, 시가 우선 → 없으면 공시가격 §60·§61)을 고르고, 아니면 "상속재산 아님"을 고르세요. 등기사항전부증명서를 받으면 그것으로 확인합니다.',
+        { mode: 'choose', target: 'ih:' + a.key, input: 'money', label: '상속재산 후보 ' + a.loc, cands: a.cands.map(function (q) { return { v: String(q.v), src: (q.recommended ? '⭐ ' : '') + q.src }; }).concat([{ v: '0', src: '상속재산 아님(남의 물건·이미 처분 등) — 목록에서 뺌' }]) }));
+      return;
+    }
     if (!a.cands.length) { items.push(caseProcItem_('ih:' + a.key + ':none', 'missing', '상속재산 ' + label + ' — 평가 자료(매매사례·감정가·공시가격)가 폴더에 없습니다. 상속세 과세가액의 기초라 계산 전 필수입니다 — 감정평가서·매매사례·공시가격 서류를 넣거나 평가액을 직접 넣어 주세요(시가 우선, 없으면 공시가격 등 보충적 평가 §61).', { mode: 'input', target: 'ih:' + a.key, input: 'money', label: '상속재산 ' + a.loc })); return; }
     items.push(caseProcItem_('ih:' + a.key, 'judge', '상속재산 ' + label + ' — 평가액을 골라 주세요(시가 우선, 없으면 보충적 평가). ' + (a.cands.some(function (q) { return q.recommended; }) ? '⭐는 평가기준일에 가장 가까운 사례' : '')
       + (f.assets.length > 1 && a.cands.some(function (q) { return /여러 물건 합계/.test(q.src); }) ? ' ⚠ 이 감정서는 이 물건만의 값인지 여러 물건(토지·건물 등)을 함께 감정한 합계인지 서류로 가르지 못했습니다 — 합계면 감정서의 물건별 금액(토지·건물 내역)을 각 물건에 넣거나 한 물건에만 합계를 넣어 주세요(같은 감정가를 물건마다 넣으면 상속재산이 그만큼 두 번 잡힙니다).' : '')
@@ -30378,7 +30615,8 @@ function caseProcLedger_(c, saved) {
       else if (/\d{4}\s*년\s*\d{1,2}\s*월\s*촬영/.test(fl) || /사진/.test(n) && hangul < 60) r.use = '사진 — 현장·지도 사진(서류 내용 아님, 필요하면 직접 확인)';
       else if (hangul < 60 && (fl.match(/\d+-\d+/g) || []).length >= 5) r.use = '도면·지도 — 지번 표시 그림(서류 내용 아님)';
       else if (hangul < 15) r.use = '사진 — 글자가 거의 없어 서류 내용을 판별할 수 없음(현장·설비 사진 등, 필요하면 직접 확인)';
-      else if (/^(bldledger|landledger)$/.test(r.t || '')) r.use = '참고 — 건축물·토지대장(면적·용도 확인용, 계산 입력 아님)';
+      // [2026.10.18 정밀분석 07_1] 대장은 이제 보유 자산 목록·상속재산 후보로 쓴다 — 여기까지 온 것은 이 사건 물건과 맞는 소재지·소유자를 못 찾은 것
+      else if (/^(bldledger|landledger)$/.test(r.t || '')) r.use = '참고 — 건축물·토지대장(이 사건 물건과 맞는 소재지·소유자를 찾지 못함 — 소재지·소유자 칸을 원문 확인)';
       else if (/^(pubprice|realprice)$/.test(r.t || '')) r.use = '참고 — 가격 자료(평가·환산 근거 — 해당 칸이 이미 정해졌거나 다른 물건·다른 호수 것)';
     }
     return r;
@@ -32318,8 +32556,8 @@ function ldParseBuilding_(text) {
   var m = /대지\s*위치\s*\n?\s*([^\n]{4,60})/.exec(t);
   if (m && !/지번|도로명/.test(m[1]) && /[가-힣]{2,}(시|도|군|구)/.test(m[1])) r.대지위치 = m[1].trim();
   if (!r.대지위치) { var m0 = /\n\s*([가-힣]{2,9}(?:특별시|광역시|특별자치시|특별자치도|도)\s+[가-힣]{1,6}(?:시|군|구)(?:\s+[가-힣]{1,6}(?:구|읍|면))?\s+[가-힣0-9]{1,8}(?:동|리|가|로))\s*\n/.exec(t); if (m0) r.대지위치 = m0[1]; }
-  m = /지번\s*\n?\s*(\d{1,5}(?:-\d{1,5})?)\s*(?:\n|$)/.exec(t) || /\n\s*(산?\d{1,5}-\d{1,5})\s*\n/.exec(t);
-  if (m) r.지번 = m[1];
+  m = /지번\s*\n?\s*(\d{1,5}(?:-\d{1,5})?)\s*(?:\n|$)/.exec(t) || /\n\s*(산?\d{1,5}-\d{1,5})\s*\n/.exec(t) || /(?:^|\n)\s*(산?\s*\d{1,5}(?:-\d{1,5})?)\s*외\s*(\d{1,3})\s*필지/.exec(t); // "4 외 1필지"(래미안슈르)·"160-15 외 4필지"(허상석 현천동)
+  if (m) { r.지번 = m[1].replace(/\s+/g, ''); if (m[2]) r.외필지 = Number(m[2]); }
   m = /도로명\s*주소\s*\n?\s*([^\n]*(?:로|길)\s*\d[^\n]{0,40})/.exec(t);
   if (m) r.도로명주소 = m[1].trim();
   m = /호수\s*\/\s*가구수\s*\/\s*세대수\s*\n?\s*([\d]+\s*호\s*\/\s*\d+\s*가구\s*\/?\s*\d+\s*세대)/.exec(t);
@@ -32384,6 +32622,9 @@ function ldParseBuilding_(text) {
     // 전유부 — 호명칭, 전유부분(층·구조·용도·면적), 공용부분 면적 합계, 공동주택가격
     m = /호\s*명칭\s*\n(?:[^\n]*\n){0,3}?\s*([A-Za-z가-힣0-9-]*\d+\s*호)\s*\n/.exec(t) || /\n\s*(제?\s*\d+\s*동\s*)?(제?\s*\d{2,5}\s*호)\s*\n/.exec(t);
     if (m) r.호명칭 = (m[2] ? (m[1] || '') + m[2] : m[1]).replace(/\s+/g, '');
+    // [2026.10.18 정밀분석 07·11] 호명칭 칸에 "호" 글자 없이 "302"·"401"·"B01"·"B139"만 적힌 대장(정부24 전유부 대부분) — 이름표 뒤 3줄 안의 그 값
+    if (!r.호명칭) { m = /호\s*명칭\s*\n(?:[^\n]*\n){0,3}?\s*([A-Z]?\d{1,4})\s*\n/.exec(t); if (m) r.호명칭 = m[1] + '호'; }
+    m = /명칭\s*\n(?:[^\n]*\n){0,2}?\s*([^\n]{0,30}?)(\d{1,4})\s*동\s*\n/.exec(t); if (m) { r.동 = m[2]; if (m[1].trim() && !/호\s*명칭|도로명/.test(m[1])) r.명칭 = m[1].trim(); }
     var jb = ldAfter_(t, /전\s*유\s*부\s*분/, 900).split(/공\s*용\s*부\s*분/)[0];
     var jm = /\n\s*(\d{1,3}층|지\d층)\s*\n\s*([^\n]*조)\s*\n\s*([^\n]{2,30})\s*\n/.exec(jb);
     if (jm) { r.전유층 = jm[1]; r.전유구조 = jm[2].trim(); r.전유용도 = /이하\s*여백|^-/.test(jm[3]) ? '' : jm[3].trim(); }
@@ -32415,6 +32656,8 @@ function ldParseBuilding_(text) {
   r.변동.forEach(function (c) { if (/위반/.test(c.내용) && !r.위반건축물) { r.위반건축물 = true; r.경고.push('⚠ 변동사항에 위반건축물 관련 기록 — 원문 확인'); } });
   if (r.변동.some(function (c) { return /증축/.test(c.내용); })) r.경고.push('증축 기록이 있음 — 증축 부분 취득시기·면적을 따로 볼 것');
   if (r.변동.some(function (c) { return /용도\s*변경/.test(c.내용); })) r.경고.push('용도변경 기록이 있음 — 양도 당시 용도(주택 여부) 확인');
+  // [2026.10.18 정밀분석 07] 소재지 한 줄(대지위치 + 지번 + 동·호) — trcLocAlt_·자산 목록이 r.소재지를 읽는데 이 키가 없어 대장으로 동·호를 보충하는 길이 늘 빈손이었다
+  if (r.대지위치 && r.지번) r.소재지 = [r.대지위치, r.지번, r.동 ? r.동 + '동' : '', r.호명칭 || ''].filter(Boolean).join(' ');
   return r;
 }
 function ldFloors_(t) {
@@ -32449,14 +32692,37 @@ function ldFloors_(t) {
 function ldOwners_(t) {
   // 소유자현황 행은 OCR에서 "변동일 … 주민번호 … 주소 … 지분 … 변동원인" 순으로 흩어진다 — 변동원인 낱말을 기준으로
   // 앞쪽 250자 안의 가장 가까운 날짜와 지분(1/3 등)을 붙인다
-  var out = [], re = /(소유권\s*이전|소유권\s*보존|소유자\s*등록|등기명의인\s*표시\s*변경|소유권\s*경정|소유권\s*일부\s*이전|공유자\s*지분\s*이전)/g, m;
+  // [2026.10.18 정밀분석 07·11] 소유자 이름도 함께 — 이름을 안 읽어 피상속인 명의 아파트(박종헌: 래미안슈르 321동 302호 윤경숙 1/3)를 재산으로 못 올렸고,
+  //  양도 사건에선 남의 호실(허상석: 상암 115-11 11개 호 중 8개가 가족·타인 소유)을 가리지 못했다. 앞 줄과 겹치지 않게 앞 소유자 줄 끝부터만 본다.
+  var out = [], re = /(소유권\s*이전|소유권\s*보존|소유자\s*등록|등기명의인\s*표시\s*변경|소유권\s*경정|소유권\s*일부\s*이전|공유자\s*지분\s*이전)/g, m, prevEnd = 0;
   while ((m = re.exec(t))) {
-    var back = t.slice(Math.max(0, m.index - 250), m.index), ds = ldDates_(back), sh = back.match(/(?:^|\n)\s*(\d{1,3}\s*\/\s*\d{1,4})\s*(?=\n)/g);
+    var back = t.slice(Math.max(prevEnd, m.index - 250), m.index), ds = ldDates_(back), sh = back.match(/(?:^|\n)\s*(\d{1,3}\s*\/\s*\d{1,4})\s*(?=\n)/g);
+    prevEnd = re.lastIndex;
     if (!ds.length) continue;
-    out.push({ 변동일: ds[ds.length - 1].d, 원인: m[1].replace(/\s+/g, ''), 지분: sh ? sh[sh.length - 1].replace(/\s/g, '') : '' });
+    var on = ldOwnerName_(back);
+    out.push({ 변동일: ds[ds.length - 1].d, 원인: m[1].replace(/\s+/g, ''), 지분: sh ? sh[sh.length - 1].replace(/\s/g, '') : '', 이름: on.이름, 외: on.외 });
+  }
+  // 변동원인 칸 글자가 빠진 대장(박종헌 사당동 139-43 일반대장: "(부동산등기용등록번호) 윤경숙 ⏎ 변동일 변동원인 ⏎ 1998.10.21.") — 이름표 뒤 이름과 바로 뒤 날짜로
+  if (!out.length) {
+    var re2 = /\(\s*부동산\s*등기용\s*등록번호\s*\)\s*([가-힣]{2,5})(?:\s*외\s*(\d{1,3})\s*인)?/g;
+    while ((m = re2.exec(t))) {
+      if (LD_NAME_STOP_.test(m[1])) continue;
+      var fw = t.slice(re2.lastIndex, re2.lastIndex + 120), fd = ldDates_(fw), fsh = fw.match(/(?:^|\n)\s*(\d{1,3}\s*\/\s*\d{1,4})\s*(?=\n)/);
+      out.push({ 변동일: fd.length ? fd[0].d : '', 원인: '', 지분: fsh ? fsh[1].replace(/\s/g, '') : '', 이름: m[1], 외: m[2] ? Number(m[2]) : 0, 확인필요: '변동원인 칸을 읽지 못함' });
+    }
   }
   var seen = {};
-  return out.filter(function (x) { var k = x.변동일 + x.원인 + x.지분; if (seen[k]) return false; seen[k] = 1; return true; });
+  return out.filter(function (x) { var k = x.변동일 + x.원인 + x.지분 + x.이름; if (seen[k]) return false; seen[k] = 1; return true; });
+}
+// 대장 소유자 칸의 성명 — 글자인식에서 성명은 주소 줄 바로 앞에 온다("(부동산등기용등록번호) 윤경숙 ⏎ 경기도 과천시 …", "박종선 ⏎ 경기도 …").
+//  주소 앞 이름을 못 찾으면 비워 둔다(지어내지 않음). "허준영 외 1인"의 외 n인도 함께.
+var LD_NAME_STOP_ = /^(성명|명칭|주소|지분|구분|층별|용도|구조|면적|소유자|소유권|변동|변동일자|변동원인|등록번호|공용부분|전유부분|이하여백|여백|대지위치|도로명주소|아파트|주택|주차장|계단실|기계실|순번|비고|지번|토지|대장|건물|철근|현황|발급|담당자|외)$/;
+function ldOwnerName_(seg) {
+  var s = String(seg || ''), m, best = null;
+  var re = /(?:^|\n|\))\s*(?:\(\s*부동산\s*등기용\s*등록번호\s*\)\s*)?((?:주식회사\s*|\(주\)\s*|㈜\s*)?[가-힣]{2,5})(?:\s*외\s*(\d{1,3})\s*인)?\s*\n\s*(?=(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|전북특별|경상|경북|경남|제주)[가-힣]*\s)/g;
+  while ((m = re.exec(s))) { var nmx = m[1].replace(/\s+/g, ''); if (!LD_NAME_STOP_.test(nmx) && !/(시|도|군|구|동|읍|면|리|로|길)$/.test(nmx) || /^(주식회사|\(주\)|㈜)/.test(nmx)) best = { 이름: nmx, 외: m[2] ? Number(m[2]) : 0 }; }
+  if (!best) { m = /\(\s*부동산\s*등기용\s*등록번호\s*\)\s*([가-힣]{2,5})(?:\s*외\s*(\d{1,3})\s*인)?/.exec(s); if (m && !LD_NAME_STOP_.test(m[1])) best = { 이름: m[1], 외: m[2] ? Number(m[2]) : 0 }; }
+  return best || { 이름: '', 외: 0 };
 }
 function ldChanges_(t) {
   var s = t.search(/변동\s*내용\s*및\s*원인/), out = [];
@@ -32518,8 +32784,17 @@ function ldParseLand_(text) {
   if (r.면적이력 && r.면적이력.length > 1) r.경고.push('면적 변동 이력(' + r.면적이력.join(' → ') + '㎡) — 분할·합병 확인');
   // 소유자 변동 — "2019년 03월 12일 (03)소유권이전"
   var ore = /((?:19|20)\d{2})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*\n?\s*\(\d{2}\)\s*(소유권\s*이전|소유권\s*보존|소유자\s*등록|주소\s*변경|성명\s*변경|등기명의인\s*표시\s*변경|소유권\s*일부\s*이전|공유자\s*지분\s*이전|소유자\s*복구)/g;
-  while ((jm = ore.exec(t))) r.소유자.push({ 변동일: ldYmd_(jm[1], jm[2], jm[3]), 원인: jm[4].replace(/\s+/g, '') });
-  var sq = {}; r.소유자 = r.소유자.filter(function (x) { var k = x.변동일 + x.원인; if (sq[k]) return false; sq[k] = 1; return true; }).sort(function (a, b) { return a.변동일 < b.변동일 ? -1 : 1; });
+  // [2026.10.18 정밀분석 07_1] 이름·"외 n인"·지분도 — 날짜·원인만 담아 납세자 지분의 재취득일(허상석: 상암 115-11 623.39/744 2026-04-27)과
+  //  남의 토지(현천동 160-34 김윤숙 외 2인)를 가리지 못했다. 원인 뒤 글을 다음 날짜 전까지만 봐서 다른 줄 이름을 붙이지 않는다(못 찾으면 비움)
+  while ((jm = ore.exec(t))) {
+    var fwd = t.slice(ore.lastIndex, ore.lastIndex + 160), nx = fwd.search(/(?:19|20)\d{2}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일/); if (nx >= 0) fwd = fwd.slice(0, nx);
+    var onm = null, oq, ore2 = /(?:^|\n)\s*([가-힣]{2,5})(?:\s*외\s*(\d{1,3})\s*인)?\s*(?=\n|$)/g;
+    while ((oq = ore2.exec(fwd))) { if (!LD_NAME_STOP_.test(oq[1]) && !/(시|도|군|구|동|읍|면|리|로|길)$/.test(oq[1])) { onm = oq; break; } }
+    var osh = /(?:^|\n)\s*(\d{1,6}(?:\.\d{1,4})?\s*\/\s*\d{1,6}(?:\.\d{1,4})?)\s*(?=\n|$)/.exec(fwd);
+    r.소유자.push({ 변동일: ldYmd_(jm[1], jm[2], jm[3]), 원인: jm[4].replace(/\s+/g, ''), 이름: onm ? onm[1] : '', 외: onm && onm[2] ? Number(onm[2]) : 0, 지분: osh ? osh[1].replace(/\s+/g, '') : '' });
+  }
+  var sq = {}; r.소유자 = r.소유자.filter(function (x) { var k = x.변동일 + x.원인 + x.이름 + x.지분; if (sq[k]) return false; sq[k] = 1; return true; }).sort(function (a, b) { return a.변동일 < b.변동일 ? -1 : 1; });
+  if (/공\s*유\s*지\s*연\s*명\s*부/.test(t) || r.소유자.some(function (x) { return x.외 || (x.지분 && !/^1\/1$/.test(x.지분)); })) r.공유 = true; // 화면표 "공유 토지" 줄이 이 값을 본다(예전엔 늘 비어 있었음)
   // 면적이 바뀐 횟수보다 분할·합병 기록이 적으면 토지 이동 기록 일부를 못 읽은 것
   if (r.면적이력) {
     var chg = 0; for (var ci = 1; ci < r.면적이력.length; ci++) if (r.면적이력[ci] !== r.면적이력[ci - 1]) chg++;
@@ -32599,7 +32874,7 @@ function ldToMarkdown_(type, r) {
       out.push('\n**공동주택가격**\n\n| 기준일 | 가격 |\n|---|---|');
       r.공동주택가격.forEach(function (p) { out.push('| ' + p.기준일 + ' | ' + won(p.가격) + (p.확인필요 ? ' ⚠' : '') + ' |'); });
     }
-    if (r.소유자 && r.소유자.length) out.push('\n소유자 변동(대장 기준): ' + r.소유자.map(function (x) { return x.변동일 + ' ' + x.원인 + (x.지분 ? '(지분 ' + x.지분 + ')' : ''); }).join(', ') + ' — 소유권은 등기부가 우선');
+    if (r.소유자 && r.소유자.length) out.push('\n소유자 변동(대장 기준): ' + r.소유자.map(function (x) { return (x.이름 ? x.이름 + (x.외 ? ' 외 ' + x.외 + '인' : '') + ' ' : '') + x.변동일 + ' ' + x.원인 + (x.지분 ? '(지분 ' + x.지분 + ')' : ''); }).join(', ') + ' — 소유권은 등기부가 우선');
     if (r.변동 && r.변동.length) {
       out.push('\n**변동사항**\n\n| 일자 | 내용 |\n|---|---|');
       r.변동.forEach(function (c) { out.push('| ' + c.일자 + ' | ' + esc(c.내용).slice(0, 120) + (/위반|증축|용도\s*변경|대수선|멸실|철거/.test(c.내용) ? ' ⚠' : '') + ' |'); });
@@ -32618,8 +32893,8 @@ function ldToMarkdown_(type, r) {
       r.표시변동.forEach(function (x) { out.push('| ' + x.일자 + ' | ' + esc(x.사유) + ' |'); });
     }
     if (r.소유자.length) {
-      out.push('\n**소유자 변동(대장 기준, 소유권은 등기부가 우선)**\n\n| 변동일 | 원인 |\n|---|---|');
-      r.소유자.forEach(function (x) { out.push('| ' + x.변동일 + ' | ' + x.원인 + ' |'); });
+      out.push('\n**소유자 변동(대장 기준, 소유권은 등기부가 우선)**\n\n| 변동일 | 원인 | 소유자 | 지분 |\n|---|---|---|---|');
+      r.소유자.forEach(function (x) { out.push('| ' + x.변동일 + ' | ' + x.원인 + ' | ' + esc((x.이름 || '') + (x.외 ? ' 외 ' + x.외 + '인' : '')) + ' | ' + esc(x.지분 || '') + ' |'); });
     }
     if (r.공시지가.length) {
       out.push('\n**개별공시지가(원/㎡)**' + (r.면적 ? ' — ×면적(' + m2(r.면적) + ') = 토지 기준시가' : '') + '\n\n| 기준일 | 원/㎡ | 토지 전체(현재 면적 기준) |\n|---|---|---|');
@@ -34664,6 +34939,13 @@ function docNewKindsParse_(text) {
   else if (/토지등?수용사실확인서/.test(head)) { r = docExpropCertParse_(t); type = 'expropcert'; }
   else if (/^.{0,60}(금전소비대차(계약|약정)서?|차용(증서?|금증서)|금전차용증서?)/.test(head)) { r = docLoanParse_(t); type = 'loan'; }
   else if ((/재산조회(결과|회보)/.test(head) || (t.slice(0, 3000).replace(/\s+/g, '').match(/(어선|차량|건축물|토지|부동산)정보조회내역/g) || []).length >= 2) && !ihDetect_(t)) { r = docPropQueryParse_(t); type = 'propquery'; } // 금융 조회가 섞인 상속인 조회결과(안심상속)는 기존 규칙(inhquery)으로
+  // [2026.10.18 정밀분석 07_4] 구청 "재산조회 통합처리 신청 접수증" + 건축물 정보 조회 내역 + 지적전산자료 조회결과를 한 파일로 받은 것(박종헌 재산조회서) —
+  //  안내문이 길어 구역 제목이 3,000자 뒤에 있고, 뒤에 붙은 우체국 알림톡 때문에 안심상속으로도 보여 건축물대장으로 잘못 정리됐다(피상속인 아파트 1/3을 소유자 "2026-04-27 1/1"로 지어냄).
+  //  유형자산(건축물·토지) 구역이 있으면 재산조회 회보서로 읽고, 섞인 금융 조회 결과는 r.금융조회에 따로 담아 둔다(금융재산 규칙이 쓸 수 있게 — 지금은 쓰지 않음)
+  else if (/재산조회통합처리/.test(head) && /(건축물|토지|어선|차량)정보조회내역|지적전산자료조회결과/.test(t.replace(/\s+/g, ''))) {
+    r = docPropQueryParse_(t); type = 'propquery'; r.종류 = '재산조회 통합처리 결과(유형자산)';
+    if (ihDetect_(t) === 'inhquery') { try { r.금융조회 = ihParseQuery_(t); r.참고.push('같은 파일에 상속인 금융거래 조회 결과(안심상속)가 함께 있음 — 금융재산은 그 결과·잔액증명으로'); } catch (e) {} }
+  }
   if (!r) return null;
   return { type: type, label: r.종류, result: r, md: docNewKindsMd_(type, r) };
 }
@@ -34806,12 +35088,15 @@ function docPropQueryParse_(text) {
   var t = String(text || '');
   var r = { 종류: '재산조회 회보서(유형자산)', 소유자: '', 구역: [], 물건: [], 참고: [], 경고: [] };
   var m = /([가-힣]{2,4})\s*\(\s*\d{6}\s*-/.exec(t); if (m) r.소유자 = m[1];
-  var heads = [], hre = /(어\s*선|차\s*량|건\s*축\s*물|토\s*지|부\s*동\s*산)\s*정\s*보\s*조\s*회\s*내\s*역/g;
-  while ((m = hre.exec(t))) heads.push({ k: m[1].replace(/\s+/g, ''), at: m.index, end: hre.lastIndex });
+  // [2026.10.18 정밀분석 07_4·11] 재산조회 "통합처리" 결과(구청 출력)는 토지 구역 제목이 "지적전산자료 조회결과"다(박종헌 재산조회서) — 같은 토지 구역으로 본다.
+  //  안내 문구 속 "…조회되는 건축물 정보 조회내역을 제공합니다"는 구역 제목이 아니다(빈 구역으로 ⚠가 붙었다)
+  var heads = [], hre = /(어\s*선|차\s*량|건\s*축\s*물|토\s*지|부\s*동\s*산)\s*정\s*보\s*조\s*회\s*내\s*역|(지\s*적\s*전\s*산\s*자\s*료)\s*조\s*회\s*결\s*과/g;
+  while ((m = hre.exec(t))) { if (/되는\s*$/.test(t.slice(Math.max(0, m.index - 8), m.index))) continue; heads.push({ k: m[2] ? '토지' : m[1].replace(/\s+/g, ''), at: m.index, end: hre.lastIndex }); }
   heads.forEach(function (h, i) {
     var seg = t.slice(h.end, i + 1 < heads.length ? heads[i + 1].at : t.length);
     var z = { 구분: h.k, 없음: /소\s*유\s*내\s*역\s*이\s*존\s*재\s*하\s*지\s*않/.test(seg), 줄: [] };
     if (!z.없음 && h.k === '건축물') z.줄 = docPropQueryBldRows_(seg);
+    else if (!z.없음 && h.k === '토지') { var lq = docPropQueryLandRows_(seg); z.줄 = lq.rows; lq.notes.forEach(function (x) { r.참고.push(x); }); }
     else if (!z.없음 && h.k === '차량') { var cr = seg.match(/\d{2,3}\s*[가-힣]\s*\d{4}/g) || []; z.줄 = cr.map(function (x) { return { 차량번호: x.replace(/\s+/g, '') }; }); }
     if (!z.없음 && !z.줄.length) r.경고.push('⚠ ' + h.k + ' 구역에 소유 줄이 있는 것 같은데 칸을 읽지 못함 — 원문 확인');
     r.구역.push(z);
@@ -34824,6 +35109,10 @@ function docPropQueryParse_(text) {
     var o = r.물건.filter(function (x) { return x._k === key; })[0];
     if (!o) { o = { _k: key, 구분: '건축물', 대장: row.대장, 소재지: row.대지위치, 도로명: row.도로명, 명칭: row.명칭, 동: row.동, 호: row.호, 용도: row.용도, 면적: row.면적, 지분합: '', 줄: [] }; r.물건.push(o); }
     o.줄.push({ 지분: row.지분, 원인: row.원인, 일자: row.일자 });
+  });
+  // 토지 줄(지적전산자료) — 필지마다 한 물건. 지분은 회보에 없고 "공동소유(공유인수 n)"만 나오면 지분은 비워 둔다(등기부·대장으로 확인)
+  r.구역.filter(function (z) { return z.구분 === '토지'; }).forEach(function (z) {
+    z.줄.forEach(function (row) { r.물건.push({ 구분: '토지', 소재지: row.소재지, 용도: row.지목, 면적: row.면적, 공유인수: row.공유인수 || null, 유형: row.유형 || '', 개별지가: row.개별지가 || null, 지분합: '', 줄: [{ 지분: row.유형 === '단독소유' ? '1/1' : '', 원인: row.원인 || '', 일자: row.일자 || '' }] }); });
   });
   r.물건.forEach(function (o) {
     var n = 0, d = 1, ok = true;
@@ -34838,7 +35127,8 @@ function docPropQueryParse_(text) {
 function docPropQueryBldRows_(seg) {
   var F = String(seg || '').replace(/\s+/g, ' ');
   // 줄 나누기 — 대장종류 값(전유부·일반·총괄표제부·표제부)이 줄 머리
-  var cuts = [], m, cre = /(?:^|\s)(전\s*유\s*부|총\s*괄\s*표\s*제\s*부|표\s*제\s*부|일\s*반)(?=\s)/g;
+  // [2026.10.18 정밀분석 07_4] 재산조회 통합처리 결과는 대장종류가 "일반건축물"로 붙어 나온다(박종헌 사당동 139-43) — 그 꼴도 줄 머리로
+  var cuts = [], m, cre = /(?:^|\s)(전\s*유\s*부|총\s*괄\s*표\s*제\s*부|표\s*제\s*부|일\s*반)(?:\s*건\s*축\s*물)?(?=\s)/g;
   while ((m = cre.exec(F))) cuts.push({ at: m.index, k: m[1].replace(/\s+/g, '') });
   var SIDO = '(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)[가-힣]*';
   var jre = new RegExp('(' + SIDO + '\\s+[가-힣]+(?:시|군|구)(?:\\s+[가-힣]+(?:구|시|군))?\\s+[가-힣0-9]+(?:동|읍|면|리|가)\\s*(?:산\\s*)?\\d+(?:-\\d+)?)');
@@ -34865,6 +35155,26 @@ function docPropQueryBldRows_(seg) {
     if (row.대지위치 || row.지분) rows.push(row);
   });
   return rows;
+}
+// [2026.10.18 정밀분석 07_4] 지적전산자료 조회결과(재산조회 통합처리의 토지 구역) — 줄마다 "변동일자 · 토지소재 · 지번 · 지목 · 면적 · 공유인수 · … · 개별지가 · 변동원인 · 유형".
+//  집합건물 대지권 줄("… 321동 3층 302호 대 176010.00 56.104/176010")은 건물 물건의 대지권이라 따로 세지 않고 참고로만(같은 재산을 두 번 세지 않게)
+function docPropQueryLandRows_(seg) {
+  var F = String(seg || '').replace(/\s+/g, ' '), rows = [], notes = [];
+  var SIDO = '(?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)[가-힣]*';
+  var num = function (s) { s = String(s || ''); if (/^\d+,\d{1,2}$/.test(s)) s = s.replace(',', '.'); return Number(s.replace(/,/g, '')); }; // 글자인식이 소수점을 쉼표로("150,00")
+  var re = new RegExp('((?:19|20)\\d{2}-\\d{2}-\\d{2})\\s+(' + SIDO + '\\s+[가-힣]+(?:시|군|구)(?:\\s+[가-힣]+(?:구|시|군))?(?:\\s+[가-힣]+(?:읍|면))?\\s+[가-힣0-9]+(?:동|리|가))\\s+(산?\\s*\\d{1,5}(?:-\\d{1,5})?)\\s+(' + LD_JIMOK_ + ')\\s+(\\d[\\d,]*(?:\\.\\d{1,2})?)(?:\\s+(\\d{1,3})(?=\\s))?', 'g'), m, hits = [];
+  while ((m = re.exec(F))) hits.push({ m: m, at: m.index, end: re.lastIndex });
+  hits.forEach(function (h, i) {
+    var m2 = h.m, tail = F.slice(h.end, i + 1 < hits.length ? hits[i + 1].at : Math.min(F.length, h.end + 260));
+    var row = { 일자: m2[1], 소재지: m2[2].trim() + ' ' + m2[3].replace(/\s+/g, ''), 지목: m2[4], 면적: num(m2[5]), 공유인수: m2[6] ? Number(m2[6]) : null };
+    var pv = /(?:^|\s)(\d{1,3}(?:,\d{3}){1,})(?=\s)/.exec(tail); if (pv) row.개별지가 = num(pv[1]);
+    var cz = /(소\s*유\s*권\s*이\s*전|소\s*유\s*권\s*보\s*존|상\s*속|증\s*여|매\s*매|신\s*규\s*등\s*록|분\s*할|합\s*병)/.exec(tail); if (cz) row.원인 = cz[1].replace(/\s+/g, '');
+    var ty = /(공\s*동\s*소\s*유|부\s*분\s*소\s*유|단\s*독\s*소\s*유)/.exec(tail); if (ty) row.유형 = ty[1].replace(/\s+/g, '');
+    rows.push(row);
+  });
+  var dj = new RegExp('(' + SIDO + '\\s+[가-힣]+(?:시|군|구)\\s+[가-힣0-9]+(?:동|리|가))\\s+([^\\d]{0,30}?)\\s*(\\d{1,5}(?:-\\d{1,5})?)\\s+(?:\\d{5,12}\\s+)?(\\d{1,4})\\s*동\\s*(\\d{1,3})\\s*층\\s*([A-Z]?\\d{1,5})\\s*호\\s+(' + LD_JIMOK_ + ')\\s+([\\d.,]+)\\s+(\\d[\\d.]*\\s*\\/\\s*\\d[\\d.]*)', 'g');
+  while ((m = dj.exec(F))) notes.push('지적전산자료 집합건물 대지권: ' + m[1] + ' ' + m[3] + (m[2].trim() ? ' ' + m[2].trim() : '') + ' ' + m[4] + '동 ' + m[6] + '호 — 대지 ' + m[8] + '㎡ 중 대지권비율 ' + m[9].replace(/\s+/g, '') + '(건물 물건의 대지권 — 따로 세지 않음)');
+  return { rows: rows, notes: notes };
 }
 // ---- 임대차계약 신고이력 확인서(민간임대주택법 시행규칙 별지 제23호의2) ----
 //  주택마다(소재지·건설/매입·등록 중/말소·종류·유형·전용면적·임대개시일) 계약 줄(순번·개시일·종료일·보증금·월세·인상률)로 쪼갠다.
@@ -38586,7 +38896,10 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
   // 3) 양도자산 카드 — 소재지·과세대상 구분(오피스텔은 근거를 보여주고 고른다)
   if (!splitPending && !S.facts.overseas) st.transferAssets.forEach(function (a, i) {
     const p = 'a' + i, lab = st.transferAssets.length > 1 ? '자산' + (i + 1) + ' ' : '';
-    if (!has(a.assetLocation) && !asked('calc:' + p + '.assetLocation')) q('trc:' + p + '.assetLocation', 'missing', '양도자산 ' + lab + '「소재지」를 서류에서 정하지 못했습니다 — 신고서 자산 표시와 공시가격·건축물대장 조회(기준시가·주택 여부 판단)에 쓰는 필수 칸입니다. 등기부등본의 지번 주소(집합건물은 동·호까지)를 넣어 주세요.', i === 0 && (rf.locCands || []).length ? { mode: 'choose', target: 'calc:' + p + '.assetLocation', input: 'text', label: lab + '소재지', cands: rf.locCands.map(function (x) { return { v: x.v, src: x.src }; }) } : { mode: 'input', target: 'calc:' + p + '.assetLocation', input: 'text', label: lab + '소재지', cands: [] });
+    // [2026.10.18 정밀분석 07_1] 등기부 후보가 없으면 보유 자산 목록(등기부·토지·건축물대장)의 납세자 명의 물건을 소재지 후보로
+    const holdC = (rf.holdings || []).filter(function (h) { return h.mine === '단독' || h.mine === '공유'; }).map(function (h) { return { v: h.loc, src: '보유 자산 목록 — ' + tcHoldingLine_(h) }; });
+    const locC = i === 0 && (rf.locCands || []).length ? rf.locCands.map(function (x) { return { v: x.v, src: x.src }; }) : holdC;
+    if (!has(a.assetLocation) && !asked('calc:' + p + '.assetLocation')) q('trc:' + p + '.assetLocation', 'missing', '양도자산 ' + lab + '「소재지」를 서류에서 정하지 못했습니다 — 신고서 자산 표시와 공시가격·건축물대장 조회(기준시가·주택 여부 판단)에 쓰는 필수 칸입니다. 등기부등본의 지번 주소(집합건물은 동·호까지)를 넣어 주세요.', locC.length ? { mode: 'choose', target: 'calc:' + p + '.assetLocation', input: 'text', label: lab + '소재지', cands: locC } : { mode: 'input', target: 'calc:' + p + '.assetLocation', input: 'text', label: lab + '소재지', cands: [] });
   });
   if (S.facts.officetel && !ans['a0.assetType']) {
     const ev = S.facts.officetel;
@@ -38594,13 +38907,21 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
       { mode: 'options', target: 'calc:a0.assetType', options: [{ label: '주택(주거용 오피스텔)', value: 'house' }, { label: '주택 아님(업무용 오피스텔)', value: 'other' }], label: '과세대상 구분' }, (ev.length ? ev : ['서류에 오피스텔 표시만 있음']).map(function (e, i) { return '①②③④⑤⑥'.charAt(i) + ' ' + e; }).join('\n'));
   }
   // 4) 취득정보 — 취득일, 취득가액(없으면 계산기가 쓰는 다른 칸: 기준시가)
+  // [2026.10.18 정밀분석 07_1] 이 양도자산과 같은 물건(소재지)의 보유 자산 목록 줄 — 토지·건물 둘 다 볼 수 있게 종류는 가리지 않는다
+  const holdOf = function (a) { const L = String(a.assetLocation || '').trim(); return L ? (rf.holdings || []).filter(function (h) { return h.mine !== '남의 것' && (caseProcSamePlace_(h.loc, h.kind, L, h.kind)); }) : []; };
   if (!splitPending && !S.facts.overseas) st.transferAssets.forEach(function (a, i) {
     const p = 'a' + i, lab = st.transferAssets.length > 1 ? '자산' + (i + 1) + ' ' : '';
     const giftC = (rf.acqDateCands || []).some(function (x) { return /증여|매매사례/.test(x.src); });
     if (!has(a.acquisitionDate) && !asked('calc:' + p + '.acquisitionDate')) {
       if (i === 0 && (rf.acqDateCands || []).length) q('tr:giftAcqDate', 'judge', giftC ? '증여로 받은 부동산입니다 — 취득일을 골라 주세요(후보: 증여계약일 = 등기부 등기원인일, 증여 등기 접수일 · 증여세 신고서 증여일).' : (rf.acqDateCands || []).some(function (x) { return x.nomatch; }) ? '취득일 — 판 물건과 소재지로 짝지은 취득 계약서·등기부 기재를 찾지 못해(매도 계약서가 없는 수용·계약서 미제출 등) 납세자가 산 계약서의 잔금일을 후보로 보여드립니다. 판 물건과 같은 부동산의 계약서면 고르세요 — 취득일은 잔금일·등기접수일 중 빠른 날(§98)이고, 보유기간(장기보유특별공제·세율)이 이 날부터 셉니다.'
         : '취득 계약서에서 읽은 날짜입니다 — 이 물건의 취득일을 골라 주세요(잔금일·등기접수일 중 빠른 날, §98).', { mode: 'choose', target: 'calc:' + p + '.acquisitionDate', input: 'date', label: lab + '취득일', cands: rf.acqDateCands });
+      else if (holdOf(a).some(function (h) { return h.acq.length; })) { const hh = holdOf(a).filter(function (h) { return h.acq.length; }); q('trc:' + p + '.acquisitionDate', 'judge', '취득정보 ' + lab + '「취득일」 — 계약서로는 정하지 못해 보유 자산 목록(등기부·토지·건축물대장)에서 이 물건(' + a.assetLocation + ')의 날짜를 후보로 보여드립니다. 취득일은 잔금일·등기접수일 중 빠른 날(§98, 시행령 §162①), 신축 건물은 사용승인일(§162①4)입니다 — 대장 변동일은 등기 접수일과 며칠 다를 수 있어 등기부·계약서로 확인하세요.', { mode: 'choose', target: 'calc:' + p + '.acquisitionDate', input: 'date', label: lab + '취득일', cands: [].concat.apply([], hh.map(function (h) { return h.acq.map(function (x) { return { v: x.v, src: h.kind + ' ' + x.src }; }); })) }); }
       else q('trc:' + p + '.acquisitionDate', 'missing', '취득정보 ' + lab + '「취득일」을 서류에서 정하지 못했습니다 — 보유기간(장기보유특별공제율·단기 세율·1세대1주택 2년 요건)을 세는 시작일이라 계산 전 필수입니다. 취득 계약서 잔금일·등기부 소유권 이전 접수일을 찾지 못했으니 그 서류를 넣거나 잔금일·등기접수일 중 빠른 날(§98)을 직접 넣어 주세요(상속은 상속개시일, 증여는 증여 등기 접수일).', { mode: 'input', target: 'calc:' + p + '.acquisitionDate', input: 'date', label: lab + '취득일', cands: [] });
+    } else if (has(a.acquisitionDate) && !ans[p + '.acquisitionDate']) { // 세무사님이 취득일을 직접 답했으면 다시 묻지 않음
+      // [2026.10.18 정밀분석 07_3] 신축 건물인데 취득일이 보존등기 접수일로 들어갔으면 — 소득세법 시행령 §162①4: 자기가 건설한 건물은 사용승인서 교부일(그 전 사실상 사용·임시사용승인은 그 날)
+      const nb = holdOf(a).filter(function (h) { return h.kind !== '토지' && h.approval && h.acq.some(function (x) { return x.preserve && x.v === String(a.acquisitionDate).slice(0, 10); }) && h.approval !== String(a.acquisitionDate).slice(0, 10); })[0];
+      if (nb) q('tr:approval:' + p, 'judge', '취득정보 ' + lab + '「취득일」이 등기부 소유권보존 접수일(' + String(a.acquisitionDate).slice(0, 10) + ')로 들어가 있는데, 건축물대장 사용승인일은 ' + nb.approval + '입니다 — 신축 건물의 취득일은 사용승인일(사용승인 전 사실상 사용·임시사용승인을 했으면 그 날, 소득세법 시행령 §162①4)이라 보유기간이 달라집니다. 어느 날로 할까요?',
+        { mode: 'choose', target: 'calc:' + p + '.acquisitionDate', input: 'date', label: lab + '취득일(신축)', cands: [{ v: nb.approval, src: '건축물대장 사용승인일 — §162①4 (' + nb.files.filter(function (f) { return !/등기/.test(f); }).join(', ') + ')' }, { v: String(a.acquisitionDate).slice(0, 10), src: '등기부 소유권보존 접수일(지금 값)' }] });
     }
     if (has(a.acquisitionPrice) || has(a.comparableTransactionPrice) || has(a.appraisalValue) || (has(a.acquisitionStandardPriceForExpense) && has(a.transferStandardPriceForConversion))) return;
     // 취득가액 후보(증여세 신고서·분양계약서·검산 안 된 계약서 등)
@@ -39664,7 +39985,8 @@ function trcNeedsSummary_(needs) {
   return { total: now.length, filled: ok.length, withSrc: ok.filter(function (n) { return n.src; }).length, missing: miss.map(function (n) { return n.l; }), later: (function () { const g = {}; later.forEach(function (n) { (g[n.later] = g[n.later] || []).push(n.l); }); return Object.keys(g).map(function (k) { return g[k].join('·') + ' — ' + k; }); })() }; // 같은 이유는 한 번만
 }
 // 필요한데 빈 칸의 근거가 될 서류 중 판독이 나쁜 사진 — 질문하기 전에 원근보정·다시 읽기로 돌아간다(사이드바가 이 파일부터 보정)
-const TRC_NEED_DOC_TYPES_ = { totalPrice: ['contract', 'dealreport'], date: ['contract', 'dealreport', 'registry'], assetLocation: ['registry', 'contract', 'bldledger'], acquisitionDate: ['contract', 'registry', 'acqtax', 'giftcontract'], acquisitionPrice: ['contract', 'registry', 'acqtax'], donorAcquisitionDate: ['registry'], donorAcquisitionPrice: ['registry', 'contract'], residenceYears: ['resident'], name: ['contract', 'resident'] };
+// [2026.10.18 정밀분석 07_1] 대장도 소재지(토지대장)·취득일(신축 사용승인일·대장 소유권 변동일) 근거 — 보유 자산 목록(tcHoldings_)이 쓴다
+const TRC_NEED_DOC_TYPES_ = { totalPrice: ['contract', 'dealreport'], date: ['contract', 'dealreport', 'registry'], assetLocation: ['registry', 'contract', 'bldledger', 'landledger'], acquisitionDate: ['contract', 'registry', 'acqtax', 'giftcontract', 'bldledger', 'landledger'], acquisitionPrice: ['contract', 'registry', 'acqtax'], donorAcquisitionDate: ['registry'], donorAcquisitionPrice: ['registry', 'contract'], residenceYears: ['resident'], name: ['contract', 'resident'] };
 function trcNeedScanFocus_(c, needs) {
   const want = {};
   needs.filter(function (n) { return !n.ok && !n.later; }).forEach(function (n) { const k = String(n.p).split('.').pop(); (TRC_NEED_DOC_TYPES_[k] || []).forEach(function (t) { want[t] = true; }); });
