@@ -27495,9 +27495,12 @@ function caseProcBaseDateCands_(p) {
   const out = [];
   try {
     if (p.type === 'registry' && p.result && p.result.docs) p.result.docs.forEach(function (d) {
-      (d.소유권이력 || []).forEach(function (x) {
+      (d.소유권이력 || []).forEach(function (x, k, h) {
         if (x.말소 || !x.접수일 || !/증여/.test(String(x.원인 || ''))) return;
-        out.push({ k: 'gift', d: x.접수일, cause: x.원인일 || '', who: (x.권리자 || []).map(function (h) { return h.이름; }).join(','), loc: String(d.소재지 || '').slice(0, 40), warn: !!x.확인필요 });
+        // [2026.10.18 정밀분석 07_6] 증여자(직전 소유자)도 남긴다 — 이번 증여자와 다른 사람의 증여(방신영: 2016 방신철→방주성)를 이번 증여일로 올리지 않게
+        let prev = null; for (let j = k - 1; j >= 0; j--) if (!h[j].말소) { prev = h[j]; break; }
+        const pm = /([가-힣]{2,4})\s*지\s*분/.exec(String(x.목적 || ''));
+        out.push({ k: 'gift', d: x.접수일, cause: x.원인일 || '', who: (x.권리자 || []).map(function (q) { return q.이름; }).join(','), from: pm ? pm[1] : (prev ? (prev.권리자 || []).map(function (q) { return q.이름; }).join(',') : ''), loc: String(d.소재지 || '').slice(0, 40), warn: !!x.확인필요 });
       });
     });
     // [2026.10.17 증여일 — 정원식 0/4] 증여계약서 계약일(·검인일)도 증여일 후보 — 다만 부동산 증여의 취득시기는 등기 접수일(상증령 §24①1)이라 2순위(con):
@@ -27543,6 +27546,28 @@ function caseProcEvidenceBaseDates_(c) {
       cands.push(Object.assign({ file: f.name, fileId: f.id }, b));
     });
   });
+  // [2026.10.18 정밀분석 07_6] 증여 — 등기부 증여 기재 중 이번 증여가 아닌 것을 후보에서 뺀다(상증법 §47② 10년 합산 검토 참고로만 알림):
+  //  ① 수증자(권리자)를 못 읽은 기재(하영애 샘마을 2016: 전산이기 부기 글이 끼어 권리자 [] → 남의 옛 증여가 후보로 올랐다)
+  //  ② 증여자(직전 소유자)가 이번 증여자와 다름(증여자를 알 때만) ③ 이번 증여계약일·의뢰일보다 1년 넘게 앞선 기재(증여세 신고기한 3개월 — 지난 증여)
+  cands.past = [];
+  if (kind === 'gift') {
+    const donor = norm(ov.giftDonorName || '');
+    //  의뢰일·생성일은 기한 안 신고 사건에서만 기준으로(경정·불복·조사·기한후·상담은 지난 증여가 바로 이 사건일 수 있음)
+    const inTime = /신고/.test(String(c.업무유형 || '')) && !/기한\s*후|경정|수정|불복|조사|상담/.test(String(c.업무유형 || '') + String(c.사건명 || ''));
+    const refs = cands.filter(function (b) { return b.con; }).map(function (b) { return b.d; }).concat(inTime ? [c.의뢰일 || c.생성일 || caseProcToday_()].map(function (x) { return String(x || '').slice(0, 10); }) : []).filter(function (x) { return /^\d{4}-\d{2}-\d{2}$/.test(x); }).sort();
+    const ref = refs.length ? refs[refs.length - 1] : '';
+    const keep = cands.filter(function (b) {
+      if (b.con) return true;
+      let why = '';
+      if (!b.who) why = '수증자(권리자)를 읽지 못한 증여 기재';
+      else if (donor && b.from && !String(b.from).split(',').some(function (q) { return caseProcNameLike_(q, donor); })) why = '증여자 ' + b.from + ' — 이번 증여자 ' + donor + '와(과) 다름';
+      else if (ref && (new Date(ref) - new Date(b.d)) > 365 * 86400000) why = (ref === (cands.filter(function (q) { return q.con; }).map(function (q) { return q.d; }).sort().pop() || '') ? '증여계약일 ' : (c.의뢰일 || c.생성일 ? '의뢰일 ' : '오늘 ')) + ref + '보다 1년 넘게 앞선 지난 증여';
+      if (why) { cands.past.push(Object.assign({ why: why }, b)); return false; }
+      return true;
+    });
+    keep.past = cands.past;
+    return keep;
+  }
   return cands;
 }
 // 현금·예금 증여 — 증여계약서(금액·검산·증여자·수증자·계약일)와 은행 거래내역(이체일·금액·적요)으로 증여재산가액·증여일을 확정.
@@ -27667,6 +27692,8 @@ function caseProcBaseDateCheck_(c, ov, lines, items) {
     }
   }
   const cands0 = caseProcEvidenceBaseDates_(c);
+  // [2026.10.18 정밀분석 07_6] 이번 증여일 후보에서 뺀 등기부 증여 기재 — 지운 게 아니라 참고로 알린다(10년 안 같은 증여자 증여면 합산, 상증법 §47②)
+  (cands0.past || []).forEach(function (b) { lines.push('참고: 등기부 증여 기재 ' + b.d + '(' + b.file + (b.loc ? ', ' + b.loc : '') + (b.who ? ', 수증자 ' + b.who : '') + (b.from ? ', 증여자 ' + b.from : '') + ') — ' + b.why + '라 이번 증여일 후보에서 뺌. 같은 증여자에게 10년 안에 받은 증여면 합산 검토(상증법 §47②)'); });
   // [2026.10.17 증여일] 증여계약서 계약일·검인일(con)은 2순위 — 등기 접수일 후보가 하나라도 있으면 그것으로 정하고 계약일은 대조 문구로만
   const cons = cands0.filter(function (b) { return b.con; }), cands = cands0.filter(function (b) { return !b.con; });
   const sure = cands.filter(function (b) { return !b.warn; });
@@ -28671,9 +28698,19 @@ function caseProcGiftInhFacts_(c, lines, items) {
           if (!last || last.확인필요) return;
           const owner = (last.권리자 || []).map(function (q) { return q.이름; });
           if (!parties.some(function (p) { return nameHas(owner, p); })) return;
+          // [2026.10.18 정밀분석 07_5] 증여계약서 목적물 소재지를 읽었으면 그 물건 등기부만 — 증여자 명의 등기부를 전부 올리면 증여 대상이 아닌 거주 주택(정원식 꿈마을)까지 후보가 된다
+          const gmo = gc && gc.부동산표시 && gc.부동산표시.소재지;
+          if (gmo && d.소재지 && !(tcLocSame_(gmo, d.소재지) || caseProcSamePlace_(gmo, d.종류 || '', d.소재지, d.종류 || ''))) { notes.push('증여자 명의 등기부 ' + x.f.name + '(' + d.소재지 + ') — 증여계약서 목적물(' + gmo + ')과 소재지가 달라 증여재산 후보에서 뺌'); return; }
           gifts.push({ file: x.f.name, to: donee, from: owner.join(','), loc: d.소재지 || '', kind: d.종류 || '', date: '', warn: true, pre: true, area: d.표제부 && d.표제부.전유면적 || null });
         });
       });
+      // [2026.10.18 정밀분석 07_6] 증여계약서 목적물이 없어 증여자 명의 물건이 여럿 후보면 — 평가 서류(실거래가·감정평가·공시가격)와 소재지가 맞는 물건이 하나뿐일 때 그것만 후보로.
+      //  하영애: 등기부를 제대로 읽자 증여자 거주 주택(샘마을)까지 후보가 됐다 — 매매사례(미원파크빌 24.365㎡)가 가리키는 물건은 하나
+      if (gifts.length > 1) {
+        const pl = byType('realprice').concat(byType('appraisal'), byType('pubprice')).map(function (y) { const r = y.p.result || {}; return [r.소재지 || '', r.단지 || ''].join(' ').trim(); }).filter(Boolean);
+        const hitG = gifts.filter(function (g) { return pl.some(function (l) { return g.loc && (tcLocSame_(l, g.loc) || (!!caseProcLotOf_(l) && caseProcLotOf_(l) === caseProcLotOf_(g.loc))); }); });
+        if (hitG.length === 1) { gifts.filter(function (g) { return g !== hitG[0]; }).forEach(function (g) { notes.push('증여자 명의 다른 부동산 ' + g.loc + '(' + g.file + ') — 평가 서류가 가리키는 물건이 아니라 증여재산 후보에서 뺌(증여 대상이면 알려 주세요)'); }); gifts.splice(0, gifts.length, hitG[0]); }
+      }
       if (gc) {
         const namesOk = gc.증여자 && gc.수증자 && !(gc.경고 || []).some(function (w) { return /성명/.test(w); });
         add('giftDonorName', gc.증여자, '증여계약서(' + gc.file + ')', !!namesOk);
@@ -28860,6 +28897,35 @@ function caseProcGiftInhFacts_(c, lines, items) {
       byType('lease').concat(byType('rent')).forEach(function (y) { const lr = y.p.result || {}; if (!lr.보증금 || (mo.소재지 && lr.소재지 && !tcLocSame_(mo.소재지, lr.소재지))) return; if ((facts.giftDebtAssumed || []).some(function (q) { return Number(q.v) === Number(lr.보증금); })) return; add('giftDebtAssumed', lr.보증금, '임대보증금 — 임대차계약서(' + y.f.name + (lr.소재지 ? ', ' + lr.소재지 : '') + ') · 증여계약서 채무인수 문구', false); });
       lines.push('부담부증여: 인수채무(' + ((facts.giftDebtAssumed || []).map(function (q) { return Number(q.v).toLocaleString('ko-KR') + '원 ' + q.src; }).join(' / ') || '금액 미확인') + ') — 채무 부분은 증여자에게 양도(소득세법 §88①)라 양도세 신고 대상일 수 있음(후보 — 세무사님 판단)');
     });
+    // [2026.10.18 정밀분석 07_5 — 상증법 §47①·③, §66·시행령 §63①3] 증여재산 등기부에 살아 있는 근저당·전세권이 있으면 판단 자리로 —
+    //  정원식 초원상가 을4 근저당 85,800,000원(채무자 정원식, 국민은행)이 정리 결과엔 "유효"로 있었는데 질문·안내 어디에도 안 나갔다.
+    //  ① 수증자가 그 채무를 인수하는가(부담부증여 — 인수채무는 증여가액에서 빼고 그만큼 증여자 양도, 배우자·직계존비속은 객관적 입증 필요 §47③)
+    //  ② 평가액은 시가·보충적 평가액과 담보채권액(근저당 채권최고액·전세금) 중 큰 금액(§66). 채권최고액은 실제 채무가 아니라 인수채무 후보로는 내지 않는다(증여일 현재 부채증명원 잔액으로)
+    try {
+      const liens = [];
+      gifts.forEach(function (g) {
+        byType('registry').filter(function (x) { return x.f.name === g.file; }).forEach(function (x) {
+          (x.p.result.docs || []).filter(function (d) { return !g.loc || d.소재지 === g.loc; }).forEach(function (d) {
+            (d.소유권외 || []).forEach(function (y) {
+              if (y.말소 || !/근저당권설정|전세권설정/.test(String(y.목적 || '')) || !(y.변경후금액 || y.금액)) return;
+              if (c.기준일 && y.접수일 && y.접수일 > c.기준일) return; // 증여일 뒤 설정은 증여재산의 부담이 아님
+              const k0 = [y.목적, y.접수일, y.변경후금액 || y.금액, y.권리자].join('|');
+              if (liens.some(function (q) { return q.k === k0; })) return; // 같은 근저당이 토지·건물 등기부에 공동담보로 — 한 번만
+              liens.push({ k: k0, loc: d.소재지 || g.loc, file: x.f.name, 순위: y.순위, 목적: y.목적, 접수일: y.접수일, 금액: y.변경후금액 || y.금액, 권리자: y.권리자 || '', 채무자: y.채무자 || '', 공동담보: !!y.공동담보 });
+            });
+          });
+        });
+      });
+      if (liens.length) {
+        const won1 = function (n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; };
+        const desc = liens.map(function (q) { return q.loc + ' 을구 ' + q.순위 + ' ' + (/전세/.test(q.목적) ? '전세권 전세금 ' : '근저당 채권최고액 ') + won1(q.금액) + (q.채무자 ? ' · 채무자 ' + q.채무자 : '') + (q.권리자 ? ' · ' + (/전세/.test(q.목적) ? '전세권자 ' : '근저당권자 ') + q.권리자 : '') + (q.공동담보 ? ' · 공동담보' : '') + ' (' + q.file + ', ' + q.접수일 + ')'; }).join(' / ');
+        lines.push('증여재산에 살아 있는 담보 ' + liens.length + '건: ' + desc + ' — 평가액은 시가·보충적 평가액과 담보채권액 중 큰 금액(상증법 §66)');
+        const gcAny = byType('giftcontract').some(function (x) { return x.p.result && x.p.result.부담부; });
+        if (!gcAny && !String(ov.giftDebtAssumed || '').trim() && !(facts.giftDebtAssumed || []).length)
+          items.push(caseProcItem_('gift:lien:' + liens.map(function (q) { return q.금액; }).join('|'), 'check', '증여재산 등기부에 말소되지 않은 담보가 있습니다 — ' + desc + '. 수증자가 이 채무를 인수합니까? 인수하면 부담부증여(상증법 §47①: 인수채무를 증여재산가액에서 빼고, 그 부분은 증여자에게 양도소득세 — 소득세법 §88①)이고, 배우자·직계존비속 사이는 채무 인수를 객관적으로 입증해야 인정됩니다(§47③). 증여계약서에는 채무인수 문구가 없습니다. 인수하면 증여일 현재 부채증명원 잔액을 넣어 주세요(채권최고액은 실제 채무가 아님).',
+            { mode: 'options', target: 'ov:giftDebtAssumed', options: [{ label: '인수 안 함(순수 증여) — 0원', value: '0' }], input: 'money', label: '수증자가 인수한 채무(증여일 현재 잔액)', withInput: true }));
+      }
+    } catch (e) { notes.push('증여재산 담보 대조 중 오류: ' + e.message); }
   } else {
     const deaths = byType('death').filter(function (x) { return x.p.result && x.p.result.성명; });
     deaths.forEach(function (x) { add('ihDeceasedName', x.p.result.성명, '사망 서류(' + x.f.name + ')', deaths.length === 1 && !x.p.result.사망일확인필요); });
@@ -31742,7 +31808,8 @@ function registryParse(text) {
     .replace(/(^|\s)열(\s+|\s*\n\s*)람(\s+|\s*\n\s*)용(?=\s|$)/g, ' ')
     .replace(/(^|\s)(열|람|용)(?=\s)/g, ' ')
     .replace(/m'|㎡|m\s?2/g, 'm2')
-    .replace(/부동산\s*등기법[\s\S]{0,90}?전산\s*이기/g, ' ')
+    // [2026.10.18 정밀분석 07_6] 전산이기 부기 사이에 다른 칸 글(공유자 이름·주민번호)이 끼면 부기 낱말만 지운다 — 통째로 지워 하영애(샘마을 갑2) 공유자가 사라졌다
+    .replace(/부동산\s*등기법[\s\S]{0,90}?전산\s*이기/g, function (w) { return /\d{6}\s*-\s*[\d*]/.test(w) ? w.replace(/부동산\s*등기법|의\s*하\s*여|제\s*177\s*조\s*의|제\s*1\s*항\s*의\s*규\s*정\s*에|전산\s*이기/g, ' ') : ' '; })
     .replace(/\d{4}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일\s*행정구역\s*(?:명칭)?\s*변경[\s\S]{0,40}?등\s*[기가]/g, ' ')
     .replace(/행정구역\s*(?:명칭)?\s*변경으로\s*인하여/g, ' ')
     .replace(/도로명\s*주소[\s\S]{0,30}?\d{4}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일\s*등\s*[기가]/g, ' ')
@@ -31825,16 +31892,57 @@ function regHolders_(s) {
     }
     if (/[�]|분$|^분|기타|사항|열람|일시/.test(nm)) continue;
     // 주소 끝말(동·구·호…)은 4자 이상일 때만 걸러낸다 — 3자 이름(정호·성구·현동)이 사라지지 않게
-    if (!org && /(지분|소유자|공유자|권리자|채권자|채무자|설정|이전|매매|증여|상속|지점|아파트|번지)$/.test(nm)) continue;
+    // [2026.10.18 정밀분석 07_6] 주민번호 바로 앞이 칸 이름("지분")이면 — 전산이기 부기 글이 끼어 "공유자 용 하영애 2000년 지분 470214-…"처럼 이름이 30자 앞에 있다(하영애 샘마을: 권리자 0명).
+    //  앞 30자 안에서 날짜·칸 이름·주소가 아닌 2~4자 낱말을 이름으로(못 찾으면 버림)
+    if (!org && /(지분|소유자|공유자|권리자|채권자|채무자|설정|이전|매매|증여|상속|지점|아파트|번지)$/.test(nm)) { if (!/지분$/.test(nm)) continue; var nb2 = regNameBefore_(s.slice(Math.max(0, m.index - 30), m.index)); if (!nb2 || nb2 === nm) continue; nm = nb2; }
     if (!org && nm.length >= 4 && /(시|구|군|동|읍|면|리|로|길|층|호)$/.test(nm)) continue;
+    // [2026.10.18 정밀분석 07_5] 3자 주소 끝말(안양시·과천시·경기도)이 주민번호 바로 앞에 오면 그것을 명의인으로 읽었다(정원식 꿈마을: 현재 명의 "안양시").
+    //  ○○시·○○군·시도 이름은 사람 이름이 아니다 — 앞 80자 안에서 주소·금액·칸 이름이 아닌 2~4자 낱말을 명의인으로 다시 찾는다(못 찾으면 버림)
+    if (!org && regIsPlaceWord_(nm)) { var nb = regNameBefore_(s.slice(Math.max(0, m.index - 80), m.index)); if (!nb) continue; nm = nb; }
     var pre = s.slice(Math.max(0, m.index - 70), m.index), sh = pre.match(/지분\s*(\d+)\s*분의\s*(\d+)/g);
     if (!out.some(function (h) { return h.이름 === nm; })) out.push({ 이름: nm, 지분: sh ? sh[sh.length - 1].replace(/지분\s*(\d+)\s*분의\s*(\d+)/, '$1분의 $2') : '' });
   }
+  // [2026.10.18 정밀분석 07_5] 주민번호가 없는 옛 공유 기재("공유자 지분 10분의 3 유귀례 … 지분 10분의 3 강훈 … 지분 10분의 2 강복순 …") — "지분 a분의 b + 이름" 묶음을 모두 공유자로.
+  //  예전엔 "공유자" 바로 뒤 한 명만 봐서 권리자 0~1명 → 양도인 지분(강복순 2/10)·상속 취득일을 못 정했다
+  if (!out.length) {
+    var rq = /지분\s*(\d+(?:\.\d+)?)\s*분\s*의\s*(\d+(?:\.\d+)?)\s*([가-힣]{2,4})(?=\s|$)/g, qm;
+    while ((qm = rq.exec(s))) { var qn = qm[3]; if (/^(지분|주소|공유자|소유자|전부|일부|이전|매매|증여|상속)$/.test(qn) || regIsPlaceWord_(qn) || out.some(function (h) { return h.이름 === qn; })) continue; out.push({ 이름: qn, 지분: qm[1] + '분의 ' + qm[2], 주민번호없음: true }); }
+  }
   if (!out.length) {
     var rp = /(소유자|공유자)\s*(?:지분\s*(\d+)\s*분의\s*(\d+)\s*)?([가-힣]{2,4})(?=\s)/g, pm;
-    while ((pm = rp.exec(s))) if (!/^(지분|주소)/.test(pm[4])) out.push({ 이름: pm[4], 지분: pm[2] ? pm[2] + '분의 ' + pm[3] : '' });
+    while ((pm = rp.exec(s))) if (!/^(지분|주소)/.test(pm[4]) && !regIsPlaceWord_(pm[4])) out.push({ 이름: pm[4], 지분: pm[2] ? pm[2] + '분의 ' + pm[3] : '' });
   }
   return out;
+}
+// [2026.10.18 정밀분석 07_4·5] 주소 낱말인가 — ○○시·○○군(3자 이하), 시도 이름. 3자 사람 이름(정호·성구·영도)은 남긴다(구·도로 끝나는 이름이 흔함)
+function regIsPlaceWord_(w) {
+  w = String(w || '').replace(/\s+/g, '');
+  return /^[가-힣]{1,3}(시|군)$/.test(w) || /^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|충청|전북|전남|전라|경북|경남|경상|제주)(도|시|특별시|광역시|특별자치시|특별자치도|북도|남도)?$/.test(w) || /(특별시|광역시|특별자치시|특별자치도)$/.test(w);
+}
+// 명의인 칸 앞 글에서 사람 이름 — 뒤에서부터 주소(…동·호·로·길·괄호·숫자)·금액("금…원")·칸 이름이 아닌 2~4자 한글 낱말
+function regNameBefore_(seg) {
+  var toks = String(seg || '').split(/\s+/).filter(Boolean);
+  for (var i = toks.length - 1; i >= 0; i--) {
+    var w = toks[i];
+    if (!/^[가-힣]{2,4}$/.test(w)) continue;
+    if (regIsPlaceWord_(w) || /(동|읍|면|리|로|길|층|호|구)$/.test(w) && w.length >= 3 && i > 0 && /[가-힣]+(시|군|도)$/.test(toks[i - 1])) continue;
+    if (/^(소유자|공유자|권리자|거래가액|지분|매매|증여|상속|이전|설정|채무자|채권자|근저당권자|전세권자|가등기권자|수탁자|위탁자|금액|원인|접수|등기|전부|일부|목록|공동담보|열람|람|용)$/.test(w)) continue;
+    return w;
+  }
+  return '';
+}
+// [2026.10.18 정밀분석 07_4·5] 을구 칸 이름 뒤 권리자·채무자 — 글자인식이 주소를 이름 앞에 끼우면("근저당권자 안양시 …") 주소 끝말을 권리자로 읽었다(김운래 을11 '안양시', 정원식 을4 '경기도').
+//  칸 이름 뒤 100자 안에서 금융기관·법인 이름을 먼저, 없으면 주소·숫자·칸 이름이 아닌 첫 2~5자 낱말
+function regPartyAfter_(x, labelRe) {
+  var lm = labelRe.exec(String(x || '')); if (!lm) return '';
+  var win = String(x).slice(lm.index + lm[0].length, lm.index + lm[0].length + 100);
+  var stop = win.search(/(근저당권자|채무자|채권자|전세권자|공동담보|설정계약|\d+\s*번)/); if (stop > 0) win = win.slice(0, stop);
+  var org = /((?:주식회사|\(주\)|㈜)\s?[가-힣A-Za-z]{2,20}|[가-힣A-Za-z]{2,24}(?:은행|농업협동조합|농협|수협|신용협동조합|신협|새마을금고|금고|조합|공사|공단|캐피탈|저축은행|보험|증권|카드|주식회사|재단|법인))/.exec(win);
+  if (org) return org[1].replace(/\s+/g, '');
+  var toks = win.split(/\s+/).filter(Boolean);
+  // 주소 끝말(…동·…로·…구)은 앞 낱말이 시·군·구·도일 때만 주소로 본다 — 조시호·정성구 같은 이름이 사라지지 않게
+  for (var i = 0; i < toks.length; i++) { var w = toks[i].replace(/[()]/g, ''); if (!/^[가-힣]{2,5}$/.test(w) || regIsPlaceWord_(w) || (/(동|읍|면|리|로|길|층|호|구)$/.test(w) && w.length >= 3 && i > 0 && /(시|군|구|도)$/.test(toks[i - 1]))) continue; if (/^(공동담보|채무자|근저당권자|전세권자|지점|본점|목록)$/.test(w)) continue; return w; }
+  return '';
 }
 // 기재 찾기 — 순위번호(1, 2, 22-1…)로 시작해야 기재. 순위번호는 커지는 순서여야(주소 숫자·본문 속 "8번압류" 배제).
 function registryStripHeader_(t) {
@@ -31844,7 +31952,8 @@ function registryStripHeader_(t) {
 }
 function registryEvents_(s, headRe) {
   var out = [], re = /(^|\s)(\d{1,3}(?:-\d{1,2})?)\s+(?=\S)/g, m, last = 0;
-  var refRe = /^((?:\d+\s*번\s*[가-힣]{0,14}?\s*(?:,|및|내지)?\s*)+)(지분\s*(?:전부|일부)?\s*이\s*전|근저당권\s*(?:변경|이전)|전세권\s*변경|등기명의인\s*표시(?:\s*(?:변경|경정))?)/;
+  // [2026.10.18 정밀분석 07_2] "1번방현순지분전부이전청구권가등기"는 지분 가등기 — 지분이전으로 읽지 않게 가등기 갈래를 먼저(갑구기타로 감)
+  var refRe = /^((?:\d+\s*번\s*[가-힣]{0,14}?\s*(?:,|및|내지)?\s*)+)(지분\s*(?:전부|일부)?\s*이\s*전\s*(?:청\s*구\s*권|담\s*보)(?:\s*가\s*(?:등\s*기)?)?|지분\s*(?:전부|일부)?\s*이\s*전(?!\s*(?:청\s*구\s*권|담\s*보))|근저당권\s*(?:변경|이전)|전세권\s*변경|등기명의인\s*표시(?:\s*(?:변경|경정))?)/;
   while ((m = re.exec(s))) {
     var rank = m[2], major = parseInt(rank, 10), bodyAt = re.lastIndex;
     re.lastIndex = m.index + m[1].length + rank.length; // 숫자만 소비 — 다음 후보("200-24 2 소유권이전"의 2)를 놓치지 않게
@@ -31918,7 +32027,7 @@ function registryAssign_(evs, cl) {
 //  소유권 원인일 때만), 그래도 안 되면 기재를 버리지 않고 bad[i]에 "원인 확인필요"를 적는다.
 function registryRepairCauses_(s, evs, cl, bad) {
   evs.forEach(function (e, i) {
-    if (!/^(소유권(?!보존)|공유자)|지분.*이전$/.test(e.kind) || !cl[i]) return;
+    if (!/^(소유권(?!보존)|공유자)|지분.*이전$/.test(e.kind) || /청구권|담보|가등기/.test(e.kind) || !cl[i]) return; // 가등기는 소유권 기재가 아님(2026.10.18 정밀분석 07)
     var c = cl[i], cause = regCause_(c.text);
     if (!/^(해제|해지)$/.test(cause)) return;
     var pc = i > 0 ? cl[i - 1] : null;
@@ -31967,8 +32076,25 @@ function registryParseOne_(id, text) {
     if (lands.length) { r.표제부.지목 = lands[lands.length - 1].지목; r.표제부.면적 = lands[lands.length - 1].면적; if (lands.length > 1) r.표제부.면적변동 = lands.map(function (x) { return x.지목 + ' ' + x.면적; }); }
   }
   if (r.종류 === '집합건물') {
-    var dj = flat.match(/(\d[\d,.]*)\s*분의\s*(\d[\d,.]*)/g);
-    if (dj && dj.length) { var last = dj[dj.length - 1].match(/(\d[\d,.]*)\s*분의\s*(\d[\d,.]*)/); r.표제부.대지권비율 = last[1] + '분의 ' + last[2]; if (dj.length > 1) r.표제부.대지권비율변동 = dj.map(function (x) { return x.replace(/\s+/g, ' '); }); }
+    // [2026.10.18 정밀분석 07_5·6·7] 대지권비율 칸이 두 줄로 접혀 "46875.2분의 1994년8월13일 대지권 (전 1) 85.861"처럼 등기원인 날짜가 분자 자리에 끼면
+    //  연도(1994)를 분자로 읽었다(정원식·하영애·김창호 등 대지권 있는 집합건물 17건 중 10건). '분의' 바로 뒤가 "○년○월○일"이면 날짜·"대지권"·"(전 n)"을 건너뛰고
+    //  그다음 숫자를 분자로. 분자 ≤ 분모, 분모 = 대지권의 목적인 토지 면적(합)으로 검산해 안 맞으면 ⚠(지어내지 않음)
+    var djs = [], djm, djRe = /(\d[\d,.]*)\s*분\s*의\s*((?:\d{4}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일\s*)?(?:대\s*지\s*권\s*)?(?:\(\s*[가-힣]{1,2}\s*\d{1,3}\s*\)\s*)?)(\d[\d,]*(?:\.\d+)?)(?![\d,.]|\s*년)/g;
+    while ((djm = djRe.exec(flat))) djs.push({ den: djm[1].replace(/,/g, ''), num: djm[3].replace(/,/g, ''), skipped: !!djm[2].trim() });
+    if (djs.length) {
+      var dl = djs[djs.length - 1];
+      r.표제부.대지권비율 = dl.den + '분의 ' + dl.num;
+      if (djs.length > 1) r.표제부.대지권비율변동 = djs.map(function (x) { return x.den + '분의 ' + x.num; });
+      var lsA = flat.search(/대\s*지\s*권\s*의\s*목\s*적\s*인\s*토\s*지/), lsB = lsA >= 0 ? flat.slice(lsA + 12).search(/[【\[]|표\s*제\s*부|전\s*유\s*부\s*분/) : -1; // 다음 표제부(전유부분) 머리까지
+      if (lsB >= 0) lsB += lsA + 12;
+      // 목적 토지 칸의 면적은 필지마다 하나 — 여러 필지면 "대 대 20150.8m2 27994.2m2"처럼 지목·면적이 몰려 나와 칸 안의 면적을 모두 더한다(야탑동 3필지)
+      var lsSeg = lsA >= 0 ? flat.slice(lsA, lsB > lsA ? lsB : lsA + 600) : '', lsSum = 0, lsM, lsRe = /(?:^|\s)([0-9][0-9,]*(?:\.[0-9]+)?)\s*m2/g;
+      while ((lsM = lsRe.exec(lsSeg))) lsSum += Number(lsM[1].replace(/,/g, ''));
+      var dden = Number(dl.den), dnum = Number(dl.num);
+      if (!(dnum > 0 && dnum < dden)) r.경고.push('⚠ 대지권비율 ' + r.표제부.대지권비율 + ' — 분자가 분모보다 크거나 0(칸이 섞였을 수 있음) — 원문 확인');
+      else if (lsSum > 0 && Math.abs(lsSum - dden) > 0.15) r.경고.push('⚠ 대지권비율 분모 ' + dl.den + '㎡ ≠ 대지권의 목적인 토지 면적 합 ' + Math.round(lsSum * 100) / 100 + '㎡ — 원문 확인');
+      if (dl.skipped) r.표제부.대지권비율검산 = '칸이 접혀 날짜가 끼어 있던 것을 건너뛰고 읽음' + (lsSum > 0 && Math.abs(lsSum - dden) <= 0.15 ? ' — 분모 = 대지권 목적 토지 면적 ' + dl.den + '㎡ 일치' : '');
+    }
     // [2026.10.14] 전유면적의 소수점이 쉼표로 읽히면("114, 192m2") 뒷자리만 잡혀 192㎡가 됐다(실사건) — 정수부 1천 미만 + 쉼표/점 + 숫자는 소수로 본다
     var ji = flat.search(/전유\s*부분/), ju = ji >= 0 ? /(\d{1,3})\s*[,.]\s*(\d{1,4})\s*m2|([0-9]+(?:\.[0-9]+)?)\s*m2/.exec(flat.slice(ji)) : null;
     if (ju) r.표제부.전유면적 = ju[1] ? Number(ju[1] + '.' + ju[2]) : Number(ju[3]);
@@ -31981,7 +32107,10 @@ function registryParseOne_(id, text) {
   // ---- 갑구 ----
   // 장이 바뀔 때마다 반복되는 표 머리글(#25 "1 갑 구 등 기 목 적 소유권이전")이 순위번호와 목적 사이에 끼면 기재를 놓친다 — 먼저 걷어낸다
   var g = registryStripHeader_(gap);
-  var gEv = registryEvents_(g, /^(소유권보존|소유권일부이전|소유권이전|공유자\s*전원\s*지분\s*전부\s*이\s*전|가압류|가처분|압류|임의경매개시결정|강제경매개시결정|신탁(?!재산)|등기명의인표시\s*(?:변경|경정))/);
+  // [2026.10.18 정밀분석 07_2·3·7 — 부동산등기법 §88·§91] "소유권이전청구권가등기"(·담보가등기)는 소유권을 옮기지 않는 순위 보전 등기라 소유권 이력이 아니라 갑구기타(권리 제한)로.
+  //  예전엔 앞부분 "소유권이전"에 걸려 가등기권자가 지금 소유자가 됐다(박미광 209-2 최선우, 허상석 101·701호 신혜정, 박미영 갑6 김숙녀·박배영). 소유자는 마지막 본등기로 정한다.
+  //  글자인식이 "소유권이전청구권가 … 등기"처럼 끊어도 "청구권"까지 보이면 가등기로 본다
+  var gEv = registryEvents_(g, /^(소유권(?:일부)?이전\s*(?:청\s*구\s*권|담\s*보)(?:\s*가\s*(?:등\s*기)?)?|소유권보존|소유권일부이전|소유권이전|공유자\s*전원\s*지분\s*전부\s*이\s*전|가압류|가처분|압류|임의경매개시결정|강제경매개시결정|신탁(?!재산)|등기명의인표시\s*(?:변경|경정))/);
   var gCl = registryAssign_(gEv, registryClusters_(g, gEv));
   var badCause = {};
   registryRepairCauses_(g, gEv, gCl, badCause);
@@ -31992,11 +32121,15 @@ function registryParseOne_(id, text) {
   gEv.forEach(function (e, i) {
     var c = gCl[i] || { text: '', 접수일: '', 원인일: '' };
     if (/말소$/.test(e.kind)) { (e.kind.replace(/번말소$/, '').match(/\d+/g) || []).forEach(function (n) { markG(n, e.kind); }); return; }
-    if (/^(소유권|공유자)|지분.*이전$/.test(e.kind)) {
+    if (/^(소유권|공유자)|지분.*이전$/.test(e.kind) && !/청구권|담보|가등기/.test(e.kind)) {
       r.소유권이력.push({ 순위: e.rank, 목적: e.kind, 접수일: c.접수일, 원인일: /보존/.test(e.kind) ? '' : c.원인일, 원인: /보존/.test(e.kind) ? '보존' : regCause_(c.text), 권리자: regHolders_(c.text),
         // [2026.10.15] 2006년 이후 매매 등기에는 신고한 실거래가액이 "거래가액 금…원"으로 적힌다 — 계약서가 없는 양도·취득의 금액 출처
         거래가액: /거\s*래\s*가\s*액/.test(c.text) ? regAmount_(c.text.slice(c.text.search(/거\s*래\s*가\s*액/))) : null });
       if (badCause[i]) r.소유권이력[r.소유권이력.length - 1].원인확인 = badCause[i]; // [2026.10.18 정밀분석 5] 버리지 않고 확인필요로 남김
+    } else if (/청구권|담보|가등기/.test(e.kind)) {
+      // 가등기 — 가등기권자·원인(매매예약 등). 살아 있으면 본등기 때 순위가 가등기일로 소급되는 권리 제한(양도·증여·부담부 판단 참고)
+      var gk = /청구권|가등기/.test(e.kind) && !/담보/.test(e.kind) ? '소유권이전청구권가등기' : '담보가등기';
+      r.갑구기타.push({ 순위: e.rank, 목적: /^\d+번/.test(e.kind) ? e.kind.replace(/(지분(?:전부|일부)?이전).*$/, '$1') + (gk === '담보가등기' ? '담보가등기' : '청구권가등기') : gk, 접수일: c.접수일, 원인일: c.원인일, 원인: /예\s*약/.test(c.text) ? '매매예약' : regCause_(c.text), 가등기: true, 권리자: regHolders_(c.text).map(function (h) { return h.이름; }).join(', '), 청구금액: null });
     } else if (!/등기명의인표시/.test(e.kind)) {
       r.갑구기타.push({ 순위: e.rank, 목적: e.kind, 접수일: c.접수일, 청구금액: /청구금액/.test(c.text) ? regAmount_(c.text.slice(c.text.indexOf('청구금액'))) : null });
     }
@@ -32027,7 +32160,10 @@ function registryParseOne_(id, text) {
   r.소유권이력.forEach(function (x) { var p = erasedG[String(x.순위).split('-')[0]]; if (p && /소유권/.test(p)) x.말소 = true; else if (p && /신탁/.test(p)) x.비고 = '신탁 기재 말소(소유권은 유지)'; });
   // ---- 을구 ----
   var u = registryStripHeader_(eul);
-  var uEv = registryEvents_(u, /^(근저당권설정|근저당권변경|근저당권이전|전세권설정|전세권변경|임차권설정|주택임차권|지상권설정|지역권설정|질권)/);
+  // [2026.10.18 정밀분석 07_4] 지분근저당 "갑구2번김운래지분 [접수일·원인일·채권최고액] 전부근저당권설정" — 칸이 좁아 목적이 둘로 갈리면 을구 기재 자체를 놓쳤다
+  //  (김운래 189-20 14건, 노영환 을3). 목적 앞머리 "갑구n번 ○○지분"부터 120자 안의 "(전부|일부)근저당권설정·전세권설정"까지를 한 목적으로 본다(글자인식 "자분"도)
+  var uEv = registryEvents_(u, /^(갑\s*구\s*\d+\s*번\s*[가-힣]{2,5}?\s*[지자]\s*분[\s\S]{0,120}?(?:전\s*부|일\s*부)?\s*(?:근\s*저\s*당\s*권|전\s*세\s*권)\s*설\s*정|근저당권설정|근저당권변경|근저당권이전|전세권설정|전세권변경|임차권설정|주택임차권|지상권설정|지역권설정|질권)/);
+  uEv.forEach(function (e) { var nk = /^갑구(\d+)번([가-힣]{2,5}?)[지자]분.*?(전부|일부)?(근저당권설정|전세권설정)$/.exec(e.kind); if (nk) e.kind = '갑구' + nk[1] + '번' + nk[2] + '지분' + (nk[3] || '') + nk[4]; });
   var uCl = registryAssign_(uEv, registryClusters_(u, uEv));
   var erasedU = {};
   uEv.forEach(function (e, i) {
@@ -32036,7 +32172,12 @@ function registryParseOne_(id, text) {
     var amt = /채권최고액/.test(x) ? regAmount_(x.slice(x.indexOf('채권최고액'))) : (/전세금/.test(x) ? regAmount_(x.slice(x.indexOf('전세금'))) : (/임차보증금/.test(x) ? regAmount_(x.slice(x.indexOf('임차보증금'))) : null));
     var who = /(근저당권자|전세권자|임차권자|지상권자)\s*([가-힣()]{2,30}?)(?=\s|\d|$)/.exec(x);
     var target = /^(\d+)번/.exec(e.kind);
-    r.소유권외.push({ 순위: e.rank, 목적: e.kind, 대상순위: target ? target[1] : '', 접수일: c.접수일, 금액: amt, 권리자: who && !/^(공동담보|채무자)/.test(who[2]) ? who[2] : '' });
+    // [2026.10.18 정밀분석 07_4·5] 권리자는 칸 이름 뒤의 금융기관·법인 이름을 먼저(주소 끝말 '안양시'·'경기도' 배제), 채무자 칸도 함께 —
+    //  채무자가 소유자(증여자·피상속인)인지가 부담부증여 채무 인수(상증법 §47①)·상속 채무(§14)·담보 평가(§66) 판단의 출발점
+    var who2 = regPartyAfter_(x, /(근저당권자|전세권자|임차권자|지상권자)/);
+    var debtor = /근저당|전세권/.test(e.kind) ? regPartyAfter_(x, /채\s*무\s*자/) : '';
+    var tgtShare = /^갑구\s*(\d+)\s*번\s*([가-힣]{2,5}?)\s*지분/.exec(e.kind); // "갑구2번김운래지분전부근저당권설정" — 그 사람 지분에만 설정된 근저당
+    r.소유권외.push({ 순위: e.rank, 목적: e.kind, 대상순위: target ? target[1] : '', 접수일: c.접수일, 금액: amt, 권리자: who2 || (who && !/^(공동담보|채무자)/.test(who[2]) && !regIsPlaceWord_(who[2]) ? who[2] : ''), 채무자: debtor || '', 지분대상: tgtShare ? tgtShare[2] : '', 공동담보: /공\s*동\s*담\s*보/.test(x) || undefined });
   });
   (u.match(/(\d+)\s*번\s*[가-힣\s]{0,20}?(?:등\s*기\s*)?말\s*소/g) || []).forEach(function (x) { erasedU[x.match(/\d+/)[0]] = true; });
   r.소유권외.forEach(function (x) { x.말소 = !!erasedU[x.대상순위 || String(x.순위).split('-')[0]]; });
@@ -32048,7 +32189,12 @@ function registryParseOne_(id, text) {
     // 신탁인데 수탁자 문구를 못 읽었으면 잡힌 이름이 위탁자·잡글일 수 있다
     if (/신탁/.test(x.원인) && !x.권리자.some(function (h) { return h.수탁자; })) x.확인필요 = true;
     // 공유자인데 지분이 빠진 사람이 있으면(OCR이 숫자를 놓침) 확인
-    if (x.권리자.length > 1 && x.권리자.some(function (h) { return !h.지분; })) x.확인필요 = true; });
+    if (x.권리자.length > 1 && x.권리자.some(function (h) { return !h.지분; })) x.확인필요 = true;
+    // [2026.10.18 정밀분석 07_7] 소유권 전부 이전(상속·매매)인데 공유자 지분 합이 1이 안 되면 공유자를 놓친 것(신수호 청송마을: "지분 4분의 2" 신유호 이름을 글자인식이 놓쳐 1/4 + 1/4만)
+    if (!/일부|지분/.test(x.목적) && x.권리자.length && x.권리자.every(function (h) { return h.지분; })) {
+      var fs = x.권리자.reduce(function (t, h) { var q = /(\d+(?:\.\d+)?)분의\s*(\d+(?:\.\d+)?)/.exec(h.지분 || ''); return t + (q ? Number(q[2]) / Number(q[1]) : 0); }, 0);
+      if (fs > 0 && Math.abs(fs - 1) > 0.001) { x.확인필요 = true; x.지분합계 = '공유자 지분 합 ' + Math.round(fs * 10000) / 10000 + ' ≠ 1 — 공유자를 놓쳤을 수 있음(원문 확인)'; }
+    } });
   return r;
 }
 // 등기부 정리 결과 → 화면용 마크다운 표. 확인필요·말소·경고를 그대로 드러낸다(지어내지 않음).
@@ -32078,17 +32224,17 @@ function registryToMarkdown_(p, fileName) {
       d.소유권이력.forEach(function (x) {
         out.push('| ' + [x.순위, x.목적, x.접수일, x.원인일, x.원인,
           x.권리자.map(function (h) { return h.이름 + (h.지분 ? '(' + h.지분 + ')' : '') + (h.수탁자 ? '[수탁자]' : ''); }).join(', '),
-          (x.말소 ? '말소 ' : '') + (x.확인필요 || x.원인확인 ? '⚠확인필요' : '') + (x.원인확인 ? ' ' + x.원인확인 : '')].map(esc).join(' | ') + ' |');
+          (x.말소 ? '말소 ' : '') + (x.확인필요 || x.원인확인 ? '⚠확인필요' : '') + (x.원인확인 ? ' ' + x.원인확인 : '') + (x.지분합계 ? ' ' + x.지분합계 : '')].map(esc).join(' | ') + ' |');
       });
     }
     if (d.갑구기타.length) {
       out.push('\n**갑구 · 압류·가압류·경매·신탁 등**\n\n| 순위 | 목적 | 접수일 | 청구금액 | 비고 |\n|---|---|---|---|---|');
-      d.갑구기타.forEach(function (x) { out.push('| ' + [x.순위, x.목적, x.접수일, won(x.청구금액), x.말소 ? '말소' : '유효'].map(esc).join(' | ') + ' |'); });
+      d.갑구기타.forEach(function (x) { out.push('| ' + [x.순위, x.목적, x.접수일, won(x.청구금액), (x.말소 ? '말소' : '유효') + (x.가등기 ? ' · 가등기권자 ' + (x.권리자 || '?') + (x.원인 ? ' (' + x.원인 + ')' : '') + ' — 소유권 아님' : '')].map(esc).join(' | ') + ' |'); });
     }
     if (d.소유권외.length) {
-      out.push('\n**을구 · 근저당·전세권 등**\n\n| 순위 | 목적 | 접수일 | 금액 | 권리자 | 비고 |\n|---|---|---|---|---|---|');
+      out.push('\n**을구 · 근저당·전세권 등**\n\n| 순위 | 목적 | 접수일 | 금액 | 권리자 | 채무자 | 비고 |\n|---|---|---|---|---|---|---|');
       d.소유권외.forEach(function (x) {
-        out.push('| ' + [x.순위, x.목적, x.접수일, won(x.금액) + (x.변경후금액 ? ' → ' + won(x.변경후금액) : ''), x.권리자, x.말소 ? '말소' : '유효'].map(esc).join(' | ') + ' |');
+        out.push('| ' + [x.순위, x.목적, x.접수일, won(x.금액) + (x.변경후금액 ? ' → ' + won(x.변경후금액) : ''), x.권리자, x.채무자 || '', (x.말소 ? '말소' : '유효') + (x.지분대상 ? ' · ' + x.지분대상 + ' 지분에만' : '') + (x.공동담보 ? ' · 공동담보' : '')].map(esc).join(' | ') + ' |');
       });
       var live = d.소유권외.filter(function (x) { return !x.말소 && /근저당권설정/.test(x.목적) && (x.변경후금액 || x.금액); });
       if (live.length) out.push('\n유효 근저당 채권최고액 합계: **' + won(live.reduce(function (s, x) { return s + Number(x.변경후금액 || x.금액); }, 0)) + '** (' + live.length + '건)');
@@ -40185,7 +40331,7 @@ function caseProcEvidenceParties_(c) {
       (d.소유권이력 || []).forEach(function (h) {
         if (h.말소) return;
         const names = (h.권리자 || []).map(function (q) { return q.이름; });
-        if (/증여/.test(String(h.원인 || ''))) names.forEach(function (n) { push(ev.giftReg, n, fn + (h.접수일 ? ' ' + h.접수일 : '')); });
+        if (/증여/.test(String(h.원인 || ''))) { names.forEach(function (n) { push(ev.giftReg, n, fn + (h.접수일 ? ' ' + h.접수일 : '')); }); (ev.giftRegD = ev.giftRegD || []).push(h.접수일 || ''); }
         if (/상속/.test(String(h.원인 || ''))) names.forEach(function (n) { push(ev.inhReg, n, fn); });
       });
     });
@@ -40237,6 +40383,14 @@ function caseProcGraspCheck_(c, lines, items) {
   } else if (!me && pn.length > 1) {
     items.push(caseProcItem_('grasp:납세자', 'missing', '사건파악 — 작업관리 납세자가 비어 있습니다. 서류의 ' + ({ transfer: '매도인', gift: '수증자', inheritance: '피상속인' })[c.세목] + '이 여럿입니다(' + files(party) + ') — 이 사건의 납세자를 고르세요.',
       { mode: 'choose', target: 'case:납세자', input: 'text', label: '납세자', cands: pn.map(function (n) { return { v: n, src: '서류(' + files(party.filter(function (x) { return x.v === n; })) + ')' }; }) }));
+  } else if (me && pn.length && !inL(party, me) && c.세목 === 'gift' && party === ev.giftReg && (function () {
+    // [2026.10.18 정밀분석 07_6] 등기부 증여 기재가 모두 의뢰 1년 넘게 앞선 지난 증여면(하영애 샘마을: 2016 이석복→하영애 — 증여자 본인의 옛 취득) 남의 사건 서류가 아니다
+    //  기준: 의뢰일·생성일(없으면 오늘) — 기한 안 신고 사건만(경정·불복·조사·기한후·상담은 지난 증여가 바로 이 사건일 수 있음)
+    if (!/신고/.test(String(c.업무유형 || '')) || /기한\s*후|경정|수정|불복|조사|상담/.test(String(c.업무유형 || '') + String(c.사건명 || ''))) return false;
+    const ref = String(c.의뢰일 || c.생성일 || caseProcToday_()).slice(0, 10), ds = ev.giftRegD || [];
+    return /^\d{4}-\d{2}-\d{2}$/.test(ref) && ds.length && ds.every(function (d) { return d && (new Date(ref) - new Date(d)) > 365 * 86400000; });
+  })()) {
+    lines.push('참고: 사건파악 — 등기부의 증여 기재(' + pn.slice(0, 4).join('·') + ' — ' + files(party) + ')는 의뢰보다 1년 넘게 앞선 지난 증여라 이번 증여 당사자 판단에 쓰지 않음(이번 증여는 등기 전으로 보임 — 증여계약서·이체내역으로)');
   } else if (me && pn.length && !inL(party, me)) {
     // 다른 사람 이름만 있다 — 사건 폴더 안에 다른 사람 사건 서류가 섞였거나(송호식 폴더의 최은진 증여처럼) 작업관리 납세자가 틀렸을 수 있다. 정하지 않고 알린다
     lines.push('⚠ 사건파악 — 작업관리 납세자 ' + me + '이(가) 서류의 ' + ({ transfer: '매도인', gift: '수증자', inheritance: '피상속인' })[c.세목] + '(' + pn.slice(0, 4).join('·') + ' — ' + files(party) + ')에 없습니다. 폴더에 다른 사람 사건 서류가 섞였는지, 납세자가 맞는지 확인하세요(계산은 작업관리 납세자 기준으로 진행).');
