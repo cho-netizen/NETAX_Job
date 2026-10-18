@@ -25096,6 +25096,7 @@ function tc_ruleTransferFacts_(body) {
   var rank = function (n) { return /(계약|신고필증|취득세|법무|등기|등본)/.test(n) ? 0 : /(공사|인테리어|중개|이체|영수증|비용)/.test(n) ? 1 : 2; };
   files.sort(function (a, b) { return rank(a.name) - rank(b.name); });
   var officeFees = []; // [2026.10.16] 이 사무소가 받은 양도세 신고 수수료 — 양도소득세 신고서 작성비용(시행령 §163⑤1호)
+  var filingCase = !/상담|자문|컨설팅/.test(String(cr.업무유형 || '')); // [2026.10.18 정밀분석 국외자산] 상담·자문 사건의 사무소 수수료는 신고서 작성비용이 아닐 수 있음
   var giftRets = []; // [2026.10.16 1:1 이종식] 증여세 신고서(증여일·평가액)
   var bldStds = []; // [2026.10.16 1:1 방영교] 홈택스 건물기준시가 계산 결과
   var contracts = [], reports = [], acqs = [], lawyers = [], regs = [], expDocs = [], pubs = [], regCerts = [], comps = [], objDetails = [], bunyang = [],giftDocs = [], realDocs = [], acqDateCands = [], acqPriceCands = [], started = Date.now(), skippedForTime = [], stmtEstNames = null;
@@ -25523,11 +25524,14 @@ function tc_ruleTransferFacts_(body) {
     var led = tcCostLedger_({ lawyers: lawyers, acqs: acqs, costTexts: costTexts, expDocs: expDocs, newHomeCost: newHomeCost, loc: txs[0].assetLocation, acqDay: String(txs[0].acquisitionDate || '').slice(0, 10), trDay: String(txs[0].transferDate || '').slice(0, 10), acqPrice: txs[0].acquisitionPrice });
     led.cands.forEach(function (x) { expCands.push(x); }); led.lines.forEach(function (x) { evidence.push(x); }); costConsumed = led.consumed;
   }
+  // [2026.10.18 정밀분석 국외자산] 일반 규칙: "양도 신고 사건 + 양도일 이후 낸 이 사무소 수수료" = 그 사건의 양도비(신고서 작성비용, 시행령 §163⑤1호나 — 국외자산은 §178의4④가 준용).
+  //  상담·자문 사건(업무유형에 신고가 없음)의 수수료는 상담료일 수 있어 체크하지 않는다. 거래가 여러 건이면 어느 거래 것인지 몰라 체크 없이 후보로(말없이 버리지 않음)
   if (txs.length === 1) officeFees.forEach(function (o) {
-    var sureO = !!(txs[0].transferDate && o.date && o.date >= txs[0].transferDate);
-    expCands.push({ kind: '양도', label: '양도소득세 신고서 작성비용(이 사무소 수수료, 시행령 §163⑤1호)', amount: o.amount, date: o.date, file: o.file, sure: sureO, note: sureO ? '' : '양도일 전에 낸 수수료 — 상담료면 빼세요' });
+    var sureO = !!(filingCase && txs[0].transferDate && o.date && o.date >= txs[0].transferDate);
+    expCands.push({ kind: '양도', label: '양도소득세 신고서 작성비용(이 사무소 수수료, 시행령 §163⑤1호)', amount: o.amount, date: o.date, file: o.file, sure: sureO, note: sureO ? '' : !filingCase ? '신고 사건이 아님(업무유형 ' + (cr.업무유형 || '없음') + ') — 상담료면 빼세요' : '양도일 전에 낸 수수료 — 상담료면 빼세요' });
     if (sureO) { txs[0].transferExpensesOnly = (txs[0].transferExpensesOnly || 0) + o.amount; evidence.push('양도비용: 신고서 작성비용 ' + o.amount.toLocaleString('ko-KR') + '원(' + o.file + ', 이 사무소 수수료 — 시행령 §163⑤1호)'); }
   });
+  if (txs.length >= 2) officeFees.forEach(function (o) { expCands.push({ kind: '양도', label: '양도소득세 신고서 작성비용(이 사무소 수수료, 시행령 §163⑤1호)', amount: o.amount, date: o.date, file: o.file, sure: false, note: '거래가 ' + txs.length + '건이라 어느 거래 신고 수수료인지 확인' + (filingCase ? '' : ' · 신고 사건이 아님 — 상담료면 빼세요') }); });
   if (txs.length !== 1 && acqs.length + lawyers.length) evidence.push('취득세·법무사 서류 ' + (acqs.length + lawyers.length) + '건은 어느 거래 것인지 규칙으로 확정 못 해 체크하지 않음(항목표에는 넣음) — 직접 확인');
   // [2026.10.15 1단계 ①②] 거래가 하나로 정해지지 않으면(0건·여러 건) 비용 서류를 말없이 버리지 않고 후보로(체크 안 함) — 김운래 사건: 재결 대응 법무법인 수수료·보상 컨설팅 세금계산서가 사라졌다
   if (txs.length !== 1) {
@@ -25857,6 +25861,7 @@ function tc_ruleTransferFacts_(body) {
   try { tcWorkLink_(expCands, costTexts, evidence); } catch (e) {} // [2026.10.17 내용 항목별] 공사 견적·내역서를 공사 내용 항목으로 나눠 지급 증빙에 붙임
   return { ok: true, trDateCands: trDateCands, sellerName: names[0] || null, parties: parties, transactions: txs, evidence: evidence, expCands: expCands, comps: comps, objDetails: objDetails, bunyang: bunyang, acqDateCands: acqDateCands, acqPriceCands: acqPriceCands, locCands: locCands,
     vatDocs: vatDocs, // [2026.10.16 1:1 김금옥] 주택 여부 질문의 근거
+    officeFees: officeFees, filingCase: filingCase, // [2026.10.18 정밀분석 국외자산] 국내 거래가 0건인 국외자산 사건도 사무소 신고 수수료를 국외자산 카드 양도비 후보로(trcOverseas_)
     counts: { 계약서: contracts.length, 신고필증: reports.length, 취득세: acqs.length, 법무사: lawyers.length, 등기부: regs.length } };
 }
 
@@ -26455,10 +26460,11 @@ function caseProcEvidence_(c, body) {
   // [2026.10.17 불복 경로] 불복·세무조사 사건(양도·증여·상속 신고가 아닌 것) — 양도 서식 판정·계산기 입력 대신 고지·쟁점·진술·입금 항목표
   if (caseProcIsAppeal_(c)) { try { caseProcAppealSummary_(c, lines, items); } catch (e) { lines.push('⚠ 불복 항목 정리 중 오류: ' + (e && e.message || e)); } }
   const office = docs.filter(function (f) { return f.p && f.p.office; });
-  if (office.length) lines.push('사무소 발행 영수증 ' + office.length + '건 — 고객 증빙 아님(수금 기록용), 점검에서 뺌: ' + office.slice(0, 3).map(function (f) { return f.name; }).join(', ') + (office.length > 3 ? ' 외' : ''));
+  if (office.length && c.세목 !== 'transfer') lines.push('사무소 발행 영수증 ' + office.length + '건 — 고객 증빙 아님(수금 기록용), 점검에서 뺌: ' + office.slice(0, 3).map(function (f) { return f.name; }).join(', ') + (office.length > 3 ? ' 외' : ''));
   // [2026.10.15 1:1] 양도 — 사무소가 받은 신고 수수료도 고객에겐 양도비용(신고서 작성비용, 소득세법 시행령 §163⑤1호)일 수 있다. 말없이 빼지 않고 묻는다.
   // [2026.10.16] 사무소 신고 수수료는 필요경비 후보(양도비용 — 신고서 작성비용, 시행령 §163⑤1호)로 넣고 「필요경비 확정」에서 함께 확인한다(예전: 따로 묻고 '넣음'이어도 직접 더해야 했다)
-  if (office.length && c.세목 === 'transfer') lines.push('사무소 신고 수수료 ' + office.length + '건 — 필요경비 후보(양도비용: 신고서 작성비용, 시행령 §163⑤1호)로 넣음, 「필요경비 확정」에서 확인: ' + office.map(function (f) { return f.name; }).join(', '));
+  // [2026.10.18 정밀분석 국외자산] "넣음"이라고 단정하지 않는다 — 실제로는 처리개요에서 양도 신고 사건·양도일 이후 지급분만 후보가 되고(상담료는 체크 없음), 국외자산은 국외자산 카드 「양도비」로 간다
+  if (office.length && c.세목 === 'transfer') lines.push('사무소 발행 영수증 ' + office.length + '건 — 양도 신고 수수료면 양도비 후보(신고서 작성비용, 시행령 §163⑤1호나 · 국외자산 §178의4④): 양도일 이후 지급분을 처리개요에서 국내는 「필요경비 확정」, 국외자산은 국외자산 카드 「양도비」 후보로 올림(상담료면 뺌): ' + office.map(function (f) { return f.name; }).join(', '));
   const pool = files.filter(function (f) { return !(f.p && f.p.office) && !/\.json$/i.test(f.name); });
   // [2026.10.15 1:1] 파일 이름의 '취득'·'양도' — 취득 칸엔 이름에 양도만 있는 파일을, 양도 칸엔 이름에 취득만 있는 파일을 후보로 올리지 않는다(세무사님: 이름에 분명히 적혀 있는데 둘 다 띄움)
   // [2026.10.15 1단계 ②] 계약서는 파일 이름이 아니라 본문으로 역할을 정한다(세무사님: "계약서를 읽어보면 알 수 있는데 읽어보지도 않나")
@@ -26664,7 +26670,7 @@ var CASEPROC_LAST_RF_ = null;
 const CASEPROC_RELEVANT_TYPES_ = {
   gift: ['giftcontract', 'banktx', 'appraisal', 'registry', 'family', 'pubprice', 'realprice', 'balance', 'debtcert', 'rent', 'lease', 'leasereport', 'leaselist', 'bldledger', 'landledger', 'contract', 'loan'], // loan: 차용증(차입인지 증여인지)
   inheritance: ['registry', 'appraisal', 'family', 'death', 'inhdivision', 'inhquery', 'funeralbill', 'funerallist', 'nichecontract', 'medbill', 'balance', 'debtcert', 'insurance', 'pubprice', 'realprice', 'rent', 'lease', 'leasereport', 'leaselist', 'bldledger', 'landledger', 'carreg', 'cashreceipt', 'cardreceipt', 'giftcontract', 'banktx', 'loan', 'propquery', 'interest'], // interest: 예금 해약 이자 · medbill: 진료비 계산서·영수증 · loan: 대여금 채권·채무계산서(2026.10.17) // loan: 대여금 채권·채무, propquery: 재산조회 회보서
-  transfer: ['contract', 'appraisal', 'dealreport', 'brokerdesc', 'registry', 'acqtax', 'lawyerfee', 'cashreceipt', 'cardreceipt', 'taxinvoice', 'receipt', 'pubprice', 'realprice', 'bldledger', 'landledger', 'resident', 'family', 'farmbiz', 'farmconfirm', 'farmledger', 'giftcontract', 'rent', 'lease', 'leasehist', 'expropcert'] // leasehist: 임대주택 요건(증액 5%), expropcert: 수용사실 확인서
+  transfer: ['contract', 'appraisal', 'dealreport', 'brokerdesc', 'registry', 'acqtax', 'lawyerfee', 'cashreceipt', 'cardreceipt', 'taxinvoice', 'receipt', 'pubprice', 'realprice', 'bldledger', 'landledger', 'resident', 'family', 'farmbiz', 'farmconfirm', 'farmledger', 'giftcontract', 'rent', 'lease', 'leasehist', 'expropcert', 'entryexit', 'residencecard'] // leasehist: 임대주택 요건(증액 5%), expropcert: 수용사실, entryexit·residencecard: 국외자산 5년 거주(§118의2) 확인서
 };
 // 3) 처리개요 — 빈 칸은 [확인]에서 값을 받아 채우고, 양도는 서류 규칙 정리(검산된 값)로 물건목록의 빈 칸을 채운다. 기준일은 증빙으로 확정.
 const CASEPROC_OV_REQUIRED_ = {
@@ -29629,6 +29635,7 @@ function caseProcLedger_(c, saved) {
   const usedHay = [saved.usedText || '', JSON.stringify(saved.filled || {}), JSON.stringify(saved.giftDeal || {}), JSON.stringify(saved.ihChoices || {}), JSON.stringify(c.사건개요 || {})].join('\n');
   const evHay = (Array.isArray(c.증빙목록) ? c.증빙목록 : []).map(function (e) { return e && e.status === '확보됨' ? String(e.note || '') : ''; }).join('\n');
   const nameIn = function (hay, n) { const b = String(n || '').replace(/\.[A-Za-z0-9]{2,5}$/, ''); return b.length >= 2 && (hay.indexOf(n) !== -1 || hay.indexOf(b) !== -1); };
+  let ledOv = null; const ledOverseas = function () { if (ledOv === null) { try { ledOv = !!caseProcOverseasFacts_(c); } catch (e) { ledOv = false; } } return ledOv; }; // [2026.10.18 정밀분석 국외자산] 국외자산 사건인지(필요할 때 한 번만)
   let memo = { read: [], unread: [], skipped: [] };
   try { memo = caseProcMemoTexts_(c); } catch (e) {}
   const memoOf = function (n) {
@@ -29686,6 +29693,8 @@ function caseProcLedger_(c, saved) {
       if (!p && Date.now() - started < 90000 && tcOcrStoreGet_('ocrtxt_' + f.id + '_' + f.modified) !== null) p = caseProcParsed_(f, cache, true);
       if (!p && f.bundleOf) p = caseProcParsed_(f, cache, true); // 묶음 구간 — 글자는 이미 읽은 원본에서 잘라 씀
       if (!p) { r.st = '대기'; r.why = '아직 글자인식 전 — 다시 처리하면 읽음'; return r; }
+      // [2026.10.18 정밀분석 국외자산] 양도 사건에서 이 사무소 신고 수수료가 양도비 후보로 쓰였으면 "제외"가 아니라 쓰인 곳을 밝힌다(화면엔 "넣음", 장부엔 "제외"로 엇갈렸다)
+      if (p.office && c.세목 === 'transfer' && nameIn(usedHay, n)) { r.st = '읽음'; r.kind = '사무소 발행 영수증(신고 수수료)'; r.use = '양도비 후보 — 양도소득세 신고서 작성비용(시행령 §163⑤1호나, 국외자산은 §178의4④)'; return r; }
       if (p.office) { r.st = '제외'; r.why = '사무소 발행 영수증(수금 기록용)'; return r; }
       if (p.checklist) { r.st = '제외'; r.why = '준비서류(구비서류) 안내 목록 — 증빙이 아니라 받을 서류 안내'; return r; } // [2026.10.17 묶음11]
       if (p.memo) { r.st = '제외'; r.why = '참고자료 — 우리 사무소가 쓴 메모·계산(마크다운)을 PDF로 뽑은 것: 고객 증빙이 아니라 입력 출처로 쓰지 않음'; return r; } // [2026.10.17 묶음11]
@@ -29696,6 +29705,8 @@ function caseProcLedger_(c, saved) {
       if (!p.t && memo.read.some(function (x) { return x.file === n && x.photo; })) { r.st = '읽음'; r.kind = '메모(고객이 적어 보낸 설명 사진)'; }
       else if (!p.t && p.vat) { r.st = '읽음'; r.kind = '부가가치세 신고 자료(매입세액 공제·환급 여부 — 분양 취득가액의 부가세 판단 근거)'; }
       else if (!p.t) { r.st = '일부'; r.kind = '종류 미정'; r.why = '글자는 읽었지만 이 종류의 서류 규칙이 없어 칸에 자동으로 넣지 못함'; }
+      // [2026.10.18 정밀분석 국외자산] 소득금액증명원의 ⚠는 자경농지(조특령 §66⑭) 판정용 — 국외자산 사건에선 5년 거주·거주자 판정 재료라 그 ⚠를 세지 않는다
+      else if (p.t === 'incomecert' && c.세목 === 'transfer' && ledOverseas()) { r.kind = (p.l || p.t) + '(국외자산 5년 거주·거주자 판정 재료 — 자경 판정 ⚠는 이 사건과 무관)'; r.st = '읽음'; }
       else { r.kind = p.l || p.t; if (p.wn > 0) { r.st = '일부'; r.why = '⚠ 확인필요 ' + p.wn + '곳'; } else r.st = '읽음'; }
       r.t = p.t || '';
     } else {
@@ -29726,6 +29737,9 @@ function caseProcLedger_(c, saved) {
       const fl = tx.replace(/\s+/g, ' ');
       f._norm = fl.replace(/[^가-힣0-9A-Za-z]/g, '').slice(0, 400);
       const hangul = (fl.match(/[가-힣]/g) || []).length;
+      // [2026.10.18 정밀분석 국외자산] 영문 위주 서류는 한글 글자 수로 사진·명함을 판정하지 않는다 — 영문 4,820자짜리 미국 PCOR 원문·증서 공증면이 "사진 — 글자가 거의 없음",
+      //  권원조사보고서가 TEL/FAX 낱말로 "연락처·명함"이 됐다(박길서). 영문 글자도 함께 센다
+      const latin = (fl.match(/[A-Za-z]/g) || []).length, engDoc = latin >= 300 && latin > hangul * 3;
       if (/견\s*적/.test(n) || /^.{0,40}견\s*적\s*서/.test(fl)) r.use = '견적서 — 실제 지출 증빙이 아님(지출 증빙과 대조용)';
       else if (/명함/.test(n)) r.use = '참고 — 명함';
       else if (/나무\s*위키|위키|블로그|뉴스|기사/.test(n) || /namu\.wiki|위키백과/.test(fl.slice(0, 300))) r.use = '참고 — 인터넷 자료(계산 입력 아님)';
@@ -29745,7 +29759,7 @@ function caseProcLedger_(c, saved) {
       // [2026.10.16] 노오섭 사건 — 통장 조회 화면·거래내역 중 경비로 볼 지급 줄(중개·법무·공사 업체)이 없는 것, 견적서 사진(종류는 정했으나 지출 아님), 로드뷰·현장 사진
       else if (/견\s*적/.test(r.kind || '')) r.use = '견적서 — 실제 지출 증빙이 아님(지출 증빙과 대조용)';
       // [2026.10.16] 연락처 명함(전화·팩스·메일이 여럿, 글이 짧음 — 노영환 "회계사무소연락처"), 이름이 제도 설명 자료인 것(김환식 "상속주택특례와 일시2주택특례")
-      else if ((fl.match(/TEL|전화|FAX|팩스|E-?mail|이메일|휴대폰/gi) || []).length >= 2 && hangul < 120) r.use = '참고 — 연락처·명함(계산 입력 아님)';
+      else if ((fl.match(/TEL|전화|FAX|팩스|E-?mail|이메일|휴대폰/gi) || []).length >= 2 && hangul < 120 && latin < 600) r.use = '참고 — 연락처·명함(계산 입력 아님)';
       else if (/특례|해설|안내서|가이드|제도\s*설명|요건/.test(n) && !/계약|등기|증명|영수|확인서|신고서/.test(n)) r.use = '참고 — 법령·제도 설명 자료(입력 아님)';
       else if (/보도\s*(참고)?\s*자료|홍보\s*(자료|물)/.test(n)) r.use = '참고 — 보도자료·홍보물(사건 서류 아님, 입력 아님)';
       else if (c.세목 === 'transfer' && /성\s*과\s*보\s*수/.test(fl) && /재\s*결|소\s*송|법\s*무\s*법\s*인|변\s*호\s*사/.test(fl)) r.use = '수용보상금 증액(이의재결·소송) 변호사 성과보수 — 양도비용 후보이나 금액을 못 읽음: 넣으려면 금액을 말로 알려 주세요';
@@ -29757,9 +29771,10 @@ function caseProcLedger_(c, saved) {
       else if (c.세목 === 'inheritance' && /과\s*세\s*표\s*준\s*확\s*정\s*신\s*고/.test(fl) && /종\s*합\s*소\s*득\s*세/.test(fl)) r.use = '참고 — 피상속인 종합소득세 신고서(공과금은 납부서 금액으로 넣음)';
       else if (c.세목 === 'inheritance' && /(조\s*정|결\s*산|기\s*장)\s*수\s*수\s*료/.test(fl)) r.use = '참고 — 세무 신고 대행 수수료 안내(상속개시 뒤 비용 — 상속세 공제 대상 아님)';
       else if (c.세목 === 'transfer' && (/(거래\s*일시|출금\s*내역|입금\s*내역|거래\s*내역\s*조회|통장\s*거래)/.test(fl) || (fl.match(/(?:19|20)\d{2}-\d{2}-\d{2}/g) || []).length >= 3 && (fl.match(/-?\d{1,3}(?:,\d{3})+/g) || []).length >= 4)) r.use = '참고 — 통장 조회 화면·거래내역(중개·법무·공사 업체에 낸 줄이 없음 — 빠진 지급이 있으면 날짜·금액·받는 이를 말로 알려 주세요)';
-      else if (/\d{4}\s*년\s*\d{1,2}\s*월\s*촬영/.test(fl) || /사진/.test(n) && hangul < 60) r.use = '사진 — 현장·지도 사진(서류 내용 아님, 필요하면 직접 확인)';
-      else if (hangul < 60 && (fl.match(/\d+-\d+/g) || []).length >= 5) r.use = '도면·지도 — 지번 표시 그림(서류 내용 아님)';
-      else if (hangul < 15) r.use = '사진 — 글자가 거의 없어 서류 내용을 판별할 수 없음(현장·설비 사진 등, 필요하면 직접 확인)';
+      else if (/\d{4}\s*년\s*\d{1,2}\s*월\s*촬영/.test(fl) || /사진/.test(n) && hangul < 60 && !engDoc) r.use = '사진 — 현장·지도 사진(서류 내용 아님, 필요하면 직접 확인)';
+      else if (hangul < 60 && !engDoc && (fl.match(/\d+-\d+/g) || []).length >= 5) r.use = '도면·지도 — 지번 표시 그림(서류 내용 아님)';
+      else if (engDoc) r.use = '영문 서류(영문 ' + latin + '자) — 이 종류의 정리 규칙이 없어 칸에 넣지 않음' + (/번역/.test(allEx.map(function (o) { return o.name; }).join('\n')) ? '(번역본이 있으면 번역본으로 읽음)' : '') + ': 넣을 값이 있으면 [확인]에서 근거 파일로 고르세요';
+      else if (hangul < 15 && latin < 60) r.use = '사진 — 글자가 거의 없어 서류 내용을 판별할 수 없음(현장·설비 사진 등, 필요하면 직접 확인)';
       else if (/^(bldledger|landledger)$/.test(r.t || '')) r.use = '참고 — 건축물·토지대장(면적·용도 확인용, 계산 입력 아님)';
       else if (/^(pubprice|realprice)$/.test(r.t || '')) r.use = '참고 — 가격 자료(평가·환산 근거 — 해당 칸이 이미 정해졌거나 다른 물건·다른 호수 것)';
     }
@@ -33856,12 +33871,82 @@ function docDepositSlipParse_(text) {
   var md = '### 입금표\n\n' + docMdTable_([['공급자', r.공급자 + (r.공급자번호 ? '(' + r.공급자번호 + ')' : '')], ['받는 이(귀하)', r.받는이], ['작성일', r.작성일], ['합계', r.금액 ? r.금액.toLocaleString('ko-KR') + '원' : ''], ['내용', r.내용]]) + (r.경고.length ? '\n\n' + r.경고.map(function (w) { return '- ⚠ ' + w; }).join('\n') : '');
   return { type: 'depositslip', label: '입금표', result: r, md: md };
 }
+// [2026.10.18 정밀분석 국외자산] 출입국사실증명(출입국관리법 시행규칙 별지 제138호서식) · 외국국적동포 국내거소신고증·외국인등록증 — 토큰 0, ES5
+//  국외자산 양도소득은 "양도일까지 계속 5년 이상 국내에 주소 또는 거소를 둔 거주자"만 과세(소득세법 §118의2) — 그 판단 재료.
+//  출입국사실증명 표는 「출국 | 입국」이 한 줄씩이라 글자인식은 날짜를 시간 순서대로 내놓는다. 첫 칸이 (Not Available)이면 조회 시작 전부터 국외에 있다가 들어온 것(그 앞은 이 서류로 확인 안 됨).
+//  날짜가 시간 순서가 아니면(칸이 흩어짐) 체류 기간을 계산하지 않고 ⚠로 남긴다(지어내지 않음). 국내 거소 기간은 입국 다음 날부터 출국하는 날까지(시행령 §4①).
+function docImmigrationParse_(text) {
+  var t = String(text || ''), head = t.slice(0, 600).replace(/\s+/g, '');
+  var ymd = function (y, m, d) { return y + '-' + ('0' + m).slice(-2) + '-' + ('0' + d).slice(-2); };
+  var dates = function (s) { var out = [], m, re = /((?:19|20)\d{2})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?/g; while ((m = re.exec(s))) out.push(ymd(m[1], m[2], m[3])); return out; };
+  var r = null, type = '';
+  if (/출입국에관한사실증명|출입국사실증명|CERTIFICATEOFENTRY&?(AND)?DEPARTURE/i.test(head) && /출\s*국|Departure/i.test(t) && /입\s*국|Entry/i.test(t)) {
+    type = 'entryexit';
+    r = { 종류: '출입국사실증명', 성명: '', 생년월일: '', 조회시작: '', 조회끝: '', 기록: [], 국외체류: [], 첫기록: null, 지금: '', 판독: false, 경고: [], 참고: [] };
+    var en = /성\s*명\s*\(\s*Full\s*name\s*\)\s*[:：]?\s*([A-Z][A-Z ]{2,40}[A-Z])/i.exec(t) || /성\s*명\s*\(\s*Full\s*name\s*\)\s*[:：]?\s*([가-힣]{2,5})(?![가-힣])/i.exec(t);
+    if (en) r.성명 = en[1].replace(/\s+/g, ' ').trim();
+    var bm = /\/\s*((?:19|20)\d{2})\.\s*(\d{1,2})\.\s*(\d{1,2})\./.exec(t); if (bm) r.생년월일 = ymd(bm[1], bm[2], bm[3]);
+    var hi = t.search(/출\s*국\s*\(\s*Departure|입\s*국\s*\(\s*Entry/i), ei = t.search(/이\s*하\s*빈\s*칸|\(\s*The\s*End\s*\)/i), pi = t.search(/조\s*회\s*기\s*간|Reference\s*Period/i);
+    // 조회 기간 — 표 끝(이하빈칸) 뒤 「조회 기간」 앞뒤의 날짜 두 개
+    var pz = ei >= 0 && pi > ei ? dates(t.slice(ei, pi + 40)) : pi >= 0 ? dates(t.slice(Math.max(0, pi - 60), pi + 80)) : [];
+    if (pz.length >= 2) { var pv = pz.slice(0, 2).sort(); r.조회시작 = pv[0]; r.조회끝 = pv[1]; } else r.경고.push('조회 기간을 읽지 못함 — 원문 확인');
+    if (hi < 0) r.경고.push('출국·입국 표를 찾지 못함 — 원문 확인');
+    else {
+      var seg = t.slice(hi, ei > hi ? ei : pi > hi ? pi : t.length), tok = [], m2, re2 = /\(\s*Not\s*Available\s*\)|((?:19|20)\d{2})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?/gi;
+      while ((m2 = re2.exec(seg))) tok.push(m2[1] ? ymd(m2[1], m2[2], m2[3]) : null);
+      var ok = tok.length > 0 && ei > hi;
+      for (var k = 1; k < tok.length; k++) if (tok[k] && tok[k - 1] && tok[k] < tok[k - 1]) ok = false;
+      tok.forEach(function (v, i) { if (v === null && i !== 0 && i !== tok.length - 1) ok = false; });
+      if (r.조회시작 && tok.some(function (v) { return v && (v < r.조회시작 || v > r.조회끝); })) ok = false;
+      r.기록 = tok.map(function (v, i) { return { 구분: i % 2 === 0 ? '출국' : '입국', 날짜: v }; });
+      r.판독 = ok;
+      if (!tok.length) r.경고.push('출입국 기록 날짜를 읽지 못함 — 원문 확인');
+      else if (!ok) r.경고.push('출입국 날짜가 시간 순서가 아니거나 표 끝을 찾지 못함(글자인식이 칸을 흩었을 수 있음) — 체류 기간을 계산하지 않음, 원문 확인');
+      else {
+        for (var j = 0; j < tok.length; j += 2) {
+          var dep = tok[j], ent = j + 1 < tok.length ? tok[j + 1] : null;
+          if (!dep && j === 0) continue; // 조회 시작 전 출국(이 서류에 기록 없음)
+          r.국외체류.push({ 출국: dep, 입국: ent, 일수: dep && ent ? Math.round((new Date(ent) - new Date(dep)) / 86400000) : null });
+        }
+        r.첫기록 = tok[0] === null ? { 구분: '입국', 날짜: tok[1] || '', 앞기록없음: true } : { 구분: '출국', 날짜: tok[0], 앞기록없음: false };
+        r.지금 = tok.length % 2 === 0 ? '국내(마지막 기록 입국 ' + (tok[tok.length - 1] || '') + ')' : '국외(마지막 기록 출국 ' + (tok[tok.length - 1] || '') + ')';
+      }
+    }
+  } else if (/국내거소신고증|OVERSEASKOREANRESIDENTCARD|외국인등록증|RESIDENCECARD/i.test(t.slice(0, 150).replace(/\s+/g, '')) && /체류\s*자격|\d{6}\s*-\s*\d{7}/.test(t)) { // 제목이 머리에 있을 때만(계약서의 「주민등록증/외국인등록증」 같은 낱말이 아니라)
+    type = 'residencecard';
+    r = { 종류: /거소/.test(head) ? '외국국적동포 국내거소신고증' : '외국인등록증', 성명: '', 한글성명: '', 등록번호: '', 체류자격: '', 국적: '', 거소신고일: '', 거소: '', 경고: [], 참고: [] };
+    var kn = /([A-Z][A-Z ]{3,40}[A-Z])\s*\(\s*([가-힣]{2,5})\s*\)/.exec(t) || /성\s*명\s*([A-Z][\s\S]{2,60}?)\(\s*([가-힣]{2,5})\s*\)/.exec(t);
+    if (kn) { r.성명 = kn[1].replace(/\bName\b/gi, ' ').replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim(); r.한글성명 = kn[2]; }
+    var rn = /(?:거소\s*신고\s*번호|외국인\s*등록\s*번호|등록\s*번호)\s*[:：]?\s*(\d{6}\s*-\s*\d{7})/.exec(t); if (rn) r.등록번호 = rn[1].replace(/\s+/g, '');
+    var sq = /체류\s*자격\s*[:：]?\s*([가-힣A-Za-z]+\s*\(\s*[A-Z]-?\d{1,2}\s*\))/.exec(t); if (sq) r.체류자격 = sq[1].replace(/\s+/g, '');
+    var cn = /국가\s*\/?\s*지역\s*[:：]?\s*([A-Z][A-Z .]{2,40}[A-Z])/.exec(t); if (cn) r.국적 = cn[1].trim();
+    var sd = /신\s*고\s*일\s*\n?\s*((?:19|20)\d{2})\.\s*(\d{1,2})\.\s*(\d{1,2})/.exec(t); if (sd) r.거소신고일 = ymd(sd[1], sd[2], sd[3]);
+    var ad = /국내\s*거소\s*\n\s*((?:서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)[^\n]{5,80})/.exec(t); if (ad) r.거소 = ad[1].replace(/\s+/g, ' ').trim();
+    if (!r.거소신고일) r.경고.push('국내거소 신고일을 읽지 못함 — 원문 확인');
+    if (/PASSPORT/i.test(t)) r.참고.push('같은 파일에 여권 사본이 함께 있음');
+  }
+  if (!r) return null;
+  var md = ['### ' + r.종류, '| 항목 | 내용 |', '|---|---|'];
+  var row = function (k, v) { if (v) md.push('| ' + k + ' | ' + String(v).replace(/\|/g, '/') + ' |'); };
+  if (type === 'entryexit') {
+    row('성명', r.성명); row('생년월일', r.생년월일); row('조회 기간', r.조회시작 && (r.조회시작 + ' ~ ' + r.조회끝));
+    if (r.첫기록) row('첫 기록', r.첫기록.구분 + ' ' + r.첫기록.날짜 + (r.첫기록.앞기록없음 ? ' (그 앞 출국 기록 없음 — 조회 시작 전부터 국외, 그 앞은 이 서류로 확인 안 됨)' : ''));
+    row('지금', r.지금);
+    row('국외 체류', r.국외체류.map(function (x) { return (x.출국 || '?') + '~' + (x.입국 || '(입국 기록 없음)') + (x.일수 != null ? '(' + x.일수 + '일)' : ''); }).join(', '));
+  } else { row('성명', r.성명 + (r.한글성명 ? '(' + r.한글성명 + ')' : '')); row('국적', r.국적); row('체류자격', r.체류자격); row('국내거소 신고일', r.거소신고일); row('국내거소', r.거소); }
+  if (r.참고.length) md.push('\n참고: ' + r.참고.join(' / '));
+  if (r.경고.length) md.push('\n⚠ ' + r.경고.join(' / '));
+  md.push('\n_국외자산 양도소득은 양도일까지 계속 5년 이상 국내에 주소·거소를 둔 거주자만 과세합니다(소득세법 §118의2). 이 서류는 그 판단 재료이며 판정하지 않습니다._');
+  return { type: type, label: r.종류, result: r, md: md.join('\n') };
+}
 function docParseText_(text) {
   // [2026.10.17 묶음11] 준비서류·구비서류 안내(서류 이름 목록, 금액 없음) — 목록 속 "가족관계증명서·인감증명서" 낱말로 그 서류로 잘못 읽었다
   //  (정원식: 법무사가 보낸 "증여등기관련 준비서류" 사진이 법무사 정산서 → 가족관계증명서로). 서류가 아니라 안내라 정리하지 않는다.
   if (docIsChecklist_(text)) return { type: '', label: '', result: null, md: '자동 정리 대상이 아닙니다 — 준비서류(구비서류) 안내 목록입니다(증빙 아님).' };
   // [2026.10.17 묶음10 국외 원문] 영문 국외부동산 서류(정산서·증서·미국 세금 납부확인서·감정평가서) — 한글 서식 규칙에 걸리기 전에(영문 제목이 있을 때만)
   var ovp = docOverseasParse_(text); if (ovp) return ovp;
+  // [2026.10.18 정밀분석 국외자산] 출입국사실증명·외국국적동포 국내거소신고증(외국인등록증) — 국외자산 5년 거주(§118의2)·거주자 판정 근거. 규칙이 없어 "종류 미정"·"신분증(무관)"으로 버려졌다
+  var imm = docImmigrationParse_(text); if (imm) return imm;
   // [2026.10.17 2차 새 서류] 차용증·재산조회 회보서·임대차계약 신고이력 확인서·토지등 수용사실 확인서 — 서류 머리 제목으로만(회보서 "건축물 정보"가 건축물대장으로, 신고이력의 "민간임대주택"이 임대사업자 등록증으로 오인되기 전에)
   var ndk = docNewKindsParse_(text); if (ndk) return ndk;
   // [2026.10.10] 첫머리에 계약서·신고필증·확인설명서·확정일자 제목이 있으면 거래 서류 — 본문에 "토지대장·등기사항증명서" 같은
@@ -39014,28 +39099,57 @@ function trcOverseas_(c, S, ans, rf, lines, items) {
   (of.checks || []).forEach(function (l) { lines.push('🔎 ' + l); });
   lines.push('국외자산 서류: ' + [of.sale ? '매도 정산서 ' + usd(of.sale.price) + ' 종결 ' + of.sale.date + '(' + of.sale.file + ')' : '', of.deed ? '증여증서 ' + of.deed.date + '(' + of.deed.file + ')' : '', of.appraisal ? '감정평가 ' + usd(of.appraisal.usd) + (of.appraisal.date ? ' ' + of.appraisal.date + ' 기준' : '') + '(' + of.appraisal.file + ')' : '', of.buy ? '매수 정산서 ' + usd(of.buy.price) + '(' + of.buy.file + ')' : '', of.taxes.map(function (x) { return x.who + ' ' + usd(x.usd) + ' ' + x.date + '(' + x.file + ')'; }).join(', ')].filter(Boolean).join(' · '));
   // 계산기 국외자산 카드 하나(양도계약 카드에 묶이지 않는 자산) — 국내 계약 자리를 비운다
-  let resDocs0 = []; try { resDocs0 = caseProcFiles_(c).filter(function (f) { return /출입국|거소|체류/.test(f.name); }).map(function (f) { return f.name; }); } catch (e) {}
-  if (resDocs0.length) lines.push('국외자산 「양도일까지 계속 5년 이상 국내 거주」(§118의2) 근거 서류: ' + resDocs0.join(', '));
+  // [2026.10.18 정밀분석 국외자산] 5년 거주(§118의2)·거주자(§1의2) 판단 재료 — 출입국사실증명·국내거소신고증·소득금액증명원을 파일 이름이 아니라 정리한 내용(날짜·연도)으로
+  let pp = { ee: [], rc: [], inc: null, engNames: [], lines: [] }; try { pp = trcOverseasPeople_(c); } catch (e) {}
+  pp.lines.forEach(function (l) { lines.push(l); });
+  let resDocs0 = []; try { resDocs0 = caseProcFiles_(c).filter(function (f) { return /출입국|거소|체류/.test(f.name) && !pp.ee.concat(pp.rc).some(function (x) { return x.f.name === f.name; }); }).map(function (f) { return f.name; }); } catch (e) {}
+  if (resDocs0.length) lines.push('국외자산 「양도일까지 계속 5년 이상 국내 거주」(§118의2) 근거 서류(이름으로 찾음 — 내용은 정리 못 함): ' + resDocs0.join(', '));
   const a = { id: 'trc_oa1', isOverseasAsset: true, oaForeignTaxMethod: 'credit', assetLocation: '', transferDate: c.기준일 || '', transferPrice: '', acquisitionDate: '', acquisitionPrice: '', oaTransferExpenses: '', oaForeignTaxPaid: '', oaResident5yr: false };
   S.state.transferContracts = []; S.state.transferAssets = [a]; S.facts.overseas = true; S.facts.gift = []; S.facts.parcels = null;
   if (c.기준일) S.src['a0.transferDate'] = '사건 기준일(양도일)';
   if (of.sale && of.sale.date && rf) { rf.trDateCands = (rf.trDateCands || []).concat([{ v: of.sale.date, src: '국외 매도 정산서 종결일(' + of.sale.file + ') — 대금 수령일·등기일과 다르면 고치세요' }]); }
-  if (flag !== 'Y') {
-    q('oa:flag', 'judge', '해외 부동산 양도 서류가 있습니다(' + (of.sale ? of.sale.loc : '') + ') — 세액계산기 국외자산 카드(소득세법 §118의2~8, 국내자산과 별도 계산)로 처리할까요?',
-      { mode: 'options', target: 'calc:a0.isOverseasAsset', label: '국외자산 여부', options: [{ label: '예 — 국외자산으로 계산', value: 'Y' }, { label: '아니오', value: 'N' }] });
+  // [2026.10.18 정밀분석 국외자산] 관문 ① — 국내 양도 거래가 0건이고 국외 매도 정산서가 있으면 이 사건의 양도는 그 국외자산뿐이라(서류로 드러난 사실) 국외자산 카드를 열어 두고,
+  //  아니면 [아니오]로 고치게 묻는다. 예전엔 이 답 전에는 정산서에서 정확히 읽은 소재지·양도일·취득일도 계산기 칸 0개였다(박길서). 국내 거래와 섞여 있으면 예전처럼 먼저 묻는다
+  const domTx = !!(rf && (rf.transactions || []).length), autoOpen = flag !== 'Y' && !domTx && !!of.sale;
+  const flagOpts = { mode: 'options', target: 'calc:a0.isOverseasAsset', label: '국외자산 여부', options: [{ label: '예 — 국외자산으로 계산', value: 'Y' }, { label: '아니오', value: 'N' }] };
+  if (flag !== 'Y' && !autoOpen) {
+    q('oa:flag', 'judge', '해외 부동산 양도 서류가 있습니다(' + (of.sale ? of.sale.loc : '') + ') — 세액계산기 국외자산 카드(소득세법 §118의2~8, 국내자산과 별도 계산)로 처리할까요?', flagOpts);
     S.facts.overseasPending = true;
     return { asset: a, pending: true };
   }
-  S.src['a0.isOverseasAsset'] = ans['a0.isOverseasAsset'].src;
+  if (autoOpen) {
+    q('oa:flag', 'check', '국외자산 카드(소득세법 §118의2~8, 국내자산과 별도 계산)로 열어 두었습니다 — 국내 양도 계약·등기 서류 없이 해외 부동산 매도 정산서(' + of.sale.file + (of.sale.loc ? ', ' + String(of.sale.loc).replace(/\s+/g, ' ').trim() : '') + ')만 있습니다. 국외자산이 아니면 [아니오]를 고르세요.', flagOpts);
+    S.src['a0.isOverseasAsset'] = '서류: 국내 양도 서류 없이 국외 매도 정산서만 있음(' + of.sale.file + ') — 국외자산 카드로 열어 둠';
+  } else S.src['a0.isOverseasAsset'] = ans['a0.isOverseasAsset'].src;
   const fxT = num(av('oa.fxT')), fxA = num(av('oa.fxA')), share = num(av('oa.share'));
   const sh = share ? share / 100 : 1, shTxt = share ? ' × 지분 ' + share + '%' : '';
   const take = function (p, key) { if (ans[p] && String(ans[p].v).trim() !== '') { a[key] = ans[p].v; S.src[p] = ans[p].src; return true; } return false; };
   take('a0.assetLocation', 'assetLocation'); take('a0.transferPrice', 'transferPrice'); take('a0.acquisitionDate', 'acquisitionDate'); take('a0.acquisitionPrice', 'acquisitionPrice'); take('a0.oaTransferExpenses', 'oaTransferExpenses'); take('a0.oaForeignTaxPaid', 'oaForeignTaxPaid');
   if (take('a0.oaResident5yr', 'oaResident5yr')) a.oaResident5yr = String(a.oaResident5yr) === 'Y';
-  if (!a.assetLocation && of.sale && of.sale.loc) q('oa:loc', 'missing', '국외자산 카드 「소재지」 — 매도 정산서의 부동산 주소입니다.', { mode: 'choose', target: 'calc:a0.assetLocation', input: 'text', label: '국외자산 소재지', cands: [{ v: of.sale.loc.replace(/\s+/g, ' ').trim(), src: '매도 정산서 PROPERTY — ' + of.sale.file }] });
+  // [2026.10.18 정밀분석 국외자산] 서류에서 정확히 읽은 값은 계산기 칸으로 바로(답이 있으면 답이 먼저) — 소재지(정산서 PROPERTY)·양도일(종결일)·취득일(증여 등기일)·양도인 성명
+  if (!a.assetLocation && of.sale && of.sale.loc) { a.assetLocation = of.sale.loc.replace(/\s+/g, ' ').trim(); S.src['a0.assetLocation'] = '매도 정산서 PROPERTY — ' + of.sale.file; }
+  if (of.sale && of.sale.date) {
+    // 에스크로 종결일(Closing Date) = 대금 청산·소유권 이전 등기일 — 양도시기(§98: 대금청산일·등기접수일 중 빠른 날). 사건 기준일이 비어 있으면 국내 양도처럼 기준일로 올린다
+    if (!a.transferDate) { a.transferDate = of.sale.date; S.src['a0.transferDate'] = '국외 매도 정산서 종결일(Closing Date) — ' + of.sale.file; }
+    if (!c.기준일) {
+      const ap = caseProcApplyBase_(c.id, of.sale.date, '국외 매도 정산서 종결일(' + of.sale.file + ')', '양도일');
+      lines.push(ap.ok ? '✏ ' + ap.message : '⚠ 양도일을 반영하지 못했습니다: ' + ap.error);
+      if (ap.ok) { c.기준일 = ap.기준일; if (ap.법정일) c.법정일 = ap.법정일; if (ap.수정일) c.수정일 = ap.수정일; S.baseDate = c.기준일; }
+    } else if (c.기준일 !== of.sale.date) lines.push('⚠ 양도일: 사건 기준일 ' + c.기준일 + ' ↔ 국외 매도 정산서 종결일 ' + of.sale.date + '(' + of.sale.file + ') — 대금 받은 날·등기일을 확인하세요(§98)');
+  }
+  const s0o = S.state.transferSellers && S.state.transferSellers[0];
+  const selHit = of.sale ? pp.engNames.filter(function (x) { return trcEngNameSame_(x.eng, of.sale.sellers); })[0] : null;
+  if (s0o && !s0o.name && selHit) { s0o.name = selHit.kr; S.src['seller.name'] = '매도 정산서 매도인(' + of.sale.sellers + ') 중 ' + selHit.eng + ' = ' + selHit.src; }
+  // 증여 취득일 = 증여받은 날(등기가 필요한 재산은 등기 접수일 — 소득세법 시행령 §162①5호). 증서 양수인이 정산서 매도인과 같은 사람일 때만(같은 자산을 받아서 판 것)
+  const gHit = of.deed && of.sale ? (of.deed.grantees || []).filter(function (g) { return trcEngNameSame_(g, of.sale.sellers); }) : [];
+  if (!a.acquisitionDate && of.deed && of.deed.recDate && gHit.length) { a.acquisitionDate = of.deed.recDate; S.src['a0.acquisitionDate'] = '증여증서 등록일(Recorded) — 증여 취득일은 등기 접수일(시행령 §162①5호) · 양수인 ' + gHit.join(', ') + ' = 매도 정산서 매도인 — ' + (of.deed.origFile || of.deed.file); }
   let resDocs = []; try { resDocs = caseProcFiles_(c).filter(function (f) { return /출입국|주민\s*등록|거소|체류/.test(f.name); }).map(function (f) { return f.name; }); } catch (e) {}
-  if (!ans['a0.oaResident5yr']) q('oa:res5', 'judge', '국외자산 카드 「양도일까지 계속 5년 이상 국내 거주」 — 아니면 국외자산 양도세 납세의무가 없습니다(§118의2).' + (resDocs.length ? ' 근거 서류: ' + resDocs.join(', ') : ' 근거 서류(출입국 사실증명·주민등록초본)가 폴더에 없습니다.'),
-    { mode: 'options', target: 'calc:a0.oaResident5yr', label: '5년 이상 거주', options: [{ label: '예(5년 이상 거주자)', value: 'Y' }, { label: '아니오', value: 'N' }] });
+  if (!ans['a0.oaResident5yr']) {
+    const r5 = trcOverseasRes5_(pp, a.transferDate || c.기준일 || '');
+    S.facts.oaRes = { ee: pp.ee.length, gapFrom: r5.gapFrom }; // 증빙목록 되먹임(trcNeedEvidence_) — 이미 있는 출입국사실증명을 또 요청하지 않고, 모자라는 기간만
+    q('oa:res5', 'judge', '국외자산 카드 「양도일까지 계속 5년 이상 국내 거주」 — 아니면 국외자산 양도세 납세의무가 없습니다(§118의2).' + (r5.text ? ' ' + r5.text : resDocs.length ? ' 근거 서류: ' + resDocs.join(', ') : ' 근거 서류(출입국 사실증명·주민등록초본)가 폴더에 없습니다.'),
+      { mode: 'options', target: 'calc:a0.oaResident5yr', label: '5년 이상 거주', options: [{ label: '예(5년 이상 거주자)', value: 'Y' }, { label: '아니오', value: 'N' }] }, r5.detail || '');
+  }
   if (of.sale && !fxT) q('oa:fxT', 'missing', '양도일(' + (of.sale.date || '종결일') + ') 미국 달러 기준환율(원/달러)을 알려 주세요 — 양도가액 ' + usd(of.sale.price) + '을 원화로 바꿉니다(시행령 §178의5①).', { mode: 'input', target: 'calc:oa.fxT', input: 'text', label: '양도일 기준환율', cands: [] });
   const acqDate = (of.deed && (of.deed.recDate || of.deed.date)) || (of.appraisal && of.appraisal.date) || '';
   if ((of.appraisal || of.buy) && !fxA) q('oa:fxA', 'missing', '취득일(' + (acqDate || '취득대금 지급일') + ') 미국 달러 기준환율(원/달러)을 알려 주세요 — 취득가액을 원화로 바꿉니다.', { mode: 'input', target: 'calc:oa.fxA', input: 'text', label: '취득일 기준환율', cands: [] });
@@ -39056,11 +39170,21 @@ function trcOverseas_(c, S, ans, rf, lines, items) {
     if (of.buy && of.buy.price) cc.push({ v: String(Math.round(of.buy.price * fxA * sh)), src: (buyIsDonor ? '참고 — 매수인 ' + of.buy.buyer + '은 증여자(증여증서 양도인)라 증여자의 취득가: ' : '매수 취득 — ') + '매수 정산서 ' + usd(of.buy.price) + ' × ' + fxA + shTxt + '(이 환율이 매수일 환율일 때만) — ' + of.buy.file });
     if (cc.length) q('oa:ap', 'judge', '국외자산 카드 「취득가액」 — 증여로 받았으면 증여일 현재 시가(감정평가액), 직접 샀으면 매수가액입니다. 맞는 것을 고르세요.', { mode: 'choose', target: 'calc:a0.acquisitionPrice', input: 'money', label: '국외자산 취득가액', cands: cc });
   }
+  // [2026.10.18 정밀분석 국외자산] 이 사무소 신고 수수료(양도 신고 사건 · 양도일 이후 지급) = 국외자산 양도비 후보 — 국외자산 필요경비는 §97 준용(§118의4①3호)이고 양도비 범위는
+  //  시행령 §178의4④ → §163⑤1호나(양도소득세 신고서 작성비용). 납세자 본인이 낸 돈이라 지분을 곱하지 않는다. 예전엔 국내 거래가 1건일 때만 후보가 돼 국외자산 사건에선 어디에도 안 들어갔다(박길서 5천만원)
+  const trD = String(a.transferDate || c.기준일 || ''), won = function (n) { return Number(n || 0).toLocaleString('ko-KR') + '원'; };
+  const allFees = (rf && rf.officeFees) || [], filing = !(rf && rf.filingCase === false);
+  const fees = filing ? allFees.filter(function (o) { return o.amount && (!trD || !o.date || o.date >= trD); }) : [];
+  const feeSum = fees.reduce(function (s, o) { return s + o.amount; }, 0), feeTxt = fees.map(function (o) { return won(o.amount) + '(' + o.file + (o.date ? ', ' + o.date : '') + ')'; }).join(', ');
+  if (fees.length) lines.push('사무소 신고 수수료 ' + feeTxt + ' — 국외자산 카드 「양도비」 후보(신고서 작성비용, 시행령 §178의4④→§163⑤1호나 · 납세자 본인 지출이라 지분 안 곱함)' + (of.sale && fxT ? '' : ' — 양도일 환율을 받으면 정산서 양도비와 함께 묻습니다'));
+  allFees.filter(function (o) { return fees.indexOf(o) === -1; }).forEach(function (o) { lines.push('사무소 수수료 ' + won(o.amount) + '(' + o.file + (o.date ? ', ' + o.date : '') + ') — ' + (filing ? '양도일(' + trD + ') 전에 낸 것' : '신고 사건이 아님') + '이라 상담료일 수 있어 양도비 후보에서 뺌(신고 수수료면 「양도비」에 더해 넣으세요)'); });
   if (of.sale && fxT && !a.oaTransferExpenses) {
     const sure = of.sale.exp.filter(function (x) { return x.sure; }), sumU = sure.reduce(function (s, x) { return s + x.usd; }, 0) - (of.sale.discount || 0);
-    q('oa:te', 'judge', '국외자산 카드 「양도비」 — 정산서 비용 중 중개·에스크로·권원보험·이전세·등록 수수료 ' + sure.length + '건 ' + usd(sumU) + (of.sale.discount ? '(할인 ' + usd(of.sale.discount) + ' 차감)' : '') + ' × ' + fxT + shTxt + '. 대출 상환·이자·재산세 안분은 양도비가 아니라 뺐습니다. 보증보험·매수인 크레딧 등은 넣지 않았습니다(넣으려면 직접 입력).',
-      { mode: 'choose', target: 'calc:a0.oaTransferExpenses', input: 'money', label: '국외자산 양도비', cands: [{ v: String(Math.round(sumU * fxT * sh)), src: '정산서 양도비 ' + sure.length + '건 ' + usd(sumU) + ' × ' + fxT + shTxt + ' — ' + of.sale.file }] },
-      of.sale.exp.map(function (x) { return (x.sure ? '☑ ' : '☐ ') + x.label + ' ' + usd(x.usd); }).join('\n'));
+    const setW = Math.round(sumU * fxT * sh), setSrc = '정산서 양도비 ' + sure.length + '건 ' + usd(sumU) + ' × ' + fxT + shTxt + ' — ' + of.sale.file;
+    const cands = fees.length ? [{ v: String(setW + feeSum), src: setSrc + ' + 이 사무소 신고 수수료 ' + feeTxt + '(지분 안 곱함)' }, { v: String(setW), src: setSrc + '(사무소 신고 수수료 뺌)' }] : [{ v: String(setW), src: setSrc }];
+    q('oa:te', 'judge', '국외자산 카드 「양도비」 — 정산서 비용 중 중개·에스크로·권원보험·이전세·등록 수수료 ' + sure.length + '건 ' + usd(sumU) + (of.sale.discount ? '(할인 ' + usd(of.sale.discount) + ' 차감)' : '') + ' × ' + fxT + shTxt + (fees.length ? ' + 이 사무소 신고 수수료 ' + won(feeSum) + '(신고서 작성비용 — 시행령 §178의4④→§163⑤1호나, 납세자 본인 지출이라 지분 안 곱함)' : '') + '. 대출 상환·이자·재산세 안분은 양도비가 아니라 뺐습니다. 보증보험·매수인 크레딧 등은 넣지 않았습니다(넣으려면 직접 입력).',
+      { mode: 'choose', target: 'calc:a0.oaTransferExpenses', input: 'money', label: '국외자산 양도비', cands: cands },
+      of.sale.exp.map(function (x) { return (x.sure ? '☑ ' : '☐ ') + x.label + ' ' + usd(x.usd); }).concat(fees.map(function (o) { return '☑ 이 사무소 신고 수수료 ' + won(o.amount) + '(' + o.file + ')'; })).join('\n'));
   }
   if (of.taxes.length && fxT && !a.oaForeignTaxPaid) {
     const tU = of.taxes.reduce(function (s, x) { return s + x.usd; }, 0);
@@ -39068,6 +39192,76 @@ function trcOverseas_(c, S, ans, rf, lines, items) {
       { mode: 'choose', target: 'calc:a0.oaForeignTaxPaid', input: 'money', label: '국외자산 외국납부세액', cands: [{ v: String(Math.round(tU * fxT * sh)), src: '예납 ' + usd(tU) + ' × ' + fxT + shTxt + ' — ' + of.taxes.map(function (x) { return [x.file].concat(x.origFiles || []).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(', '); }).join(', ') }] });
   }
   return { asset: a, pending: false };
+}
+// [2026.10.18 정밀분석 국외자산] 영문 이름이 같은 사람인지 — 한쪽의 이름 낱말(두 글자 이상)이 모두 다른 쪽에 있고, 한 글자 머리글자는 다른 쪽 낱말의 첫 글자와 같을 때.
+//  y는 매도인 여럿("KOUNG SOON J. PARK and SOOJI PARK RHODES")일 수 있어 and·쉼표로 나눠 하나라도 맞으면 참. 성만 같은 사람(두 낱말 미만)은 같다고 보지 않는다
+function trcEngNameSame_(x, y) {
+  const tk = function (s) { return String(s || '').toUpperCase().replace(/[^A-Z ]/g, ' ').split(/\s+/).filter(Boolean); };
+  const sub = function (p, q) {
+    if (p.filter(function (w) { return w.length > 1; }).length < 2) return false;
+    return p.every(function (w) { return w.length > 1 ? q.indexOf(w) !== -1 : q.indexOf(w) !== -1 || q.some(function (v) { return v.length > 1 && v.charAt(0) === w && p.indexOf(v) === -1; }); });
+  };
+  const A = tk(x);
+  if (!A.length) return false;
+  return String(y || '').split(/\band\b|,|&|·|;|\/|및|와\s|과\s/i).some(function (part) { const B = tk(part); return B.length > 0 && (sub(A, B) || sub(B, A)); });
+}
+// [2026.10.18 정밀분석 국외자산] 국외자산 납세의무(§118의2: 양도일까지 계속 5년 이상 국내 주소·거소)·거주자(§1의2) 판단 재료를 정리한 서류 내용으로 모은다 —
+//  출입국사실증명(조회기간·첫 기록·국외 체류), 외국국적동포 국내거소신고증(영문·한글 이름·신고일), 소득금액증명원(귀속연도별 국내 소득). 판정은 하지 않는다
+function trcOverseasPeople_(c) {
+  const out = { ee: [], rc: [], inc: null, engNames: [], lines: [] };
+  const parsed = caseProcParseAll_(c);
+  const nm = function (s) { return String(s || '').replace(/\s+/g, ''); };
+  parsed.forEach(function (x) { if (!x.p || !x.p.result) return; if (x.p.type === 'entryexit') out.ee.push({ f: x.f, r: x.p.result }); else if (x.p.type === 'residencecard') out.rc.push({ f: x.f, r: x.p.result }); });
+  out.rc.forEach(function (x) {
+    const r = x.r;
+    if (r.성명 && (!r.한글성명 || nm(r.한글성명) === nm(c.납세자))) out.engNames.push({ eng: r.성명, kr: r.한글성명 || c.납세자, src: r.종류 + '(' + x.f.name + ') ' + r.성명 + (r.한글성명 ? '(' + r.한글성명 + ')' : '') });
+    out.lines.push('🪪 ' + r.종류 + '(' + x.f.name + '): ' + [r.성명 + (r.한글성명 ? '(' + r.한글성명 + ')' : ''), r.국적, r.체류자격, r.거소신고일 ? '국내거소 신고일 ' + r.거소신고일 : ''].filter(Boolean).join(' · ') + ' — 국외자산 5년 거주(§118의2) 판단 재료');
+  });
+  out.ee.forEach(function (x) {
+    const r = x.r, trips = r.국외체류 || [], days = trips.reduce(function (s, t) { return s + (t.일수 || 0); }, 0);
+    const longest = trips.filter(function (t) { return t.일수 != null; }).sort(function (p, q) { return q.일수 - p.일수; })[0];
+    // 이름이 거소신고증 영문 이름과 같으면 같은 사람 — 다르면 밝힌다
+    if (r.성명 && out.engNames.length && !out.engNames.some(function (n) { return trcEngNameSame_(n.eng, r.성명); })) out.lines.push('⚠ 출입국사실증명(' + x.f.name + ') 성명 ' + r.성명 + '이 거소신고증 이름과 다릅니다 — 누구 것인지 확인');
+    out.lines.push('🛂 출입국사실증명(' + x.f.name + '): ' + [r.조회시작 ? '조회 ' + r.조회시작 + '~' + r.조회끝 : '', r.첫기록 ? '첫 기록 ' + r.첫기록.날짜 + ' ' + r.첫기록.구분 + (r.첫기록.앞기록없음 ? '(그 앞 출국 기록 없음 — 조회 시작 전부터 국외, 그 앞은 이 서류로 확인 안 됨)' : '') : '', r.판독 ? '국외 체류 ' + trips.length + '번 합 ' + days + '일' + (longest ? '(가장 긴 것 ' + longest.출국 + '~' + longest.입국 + ' ' + longest.일수 + '일)' : '') : '', r.지금 ? '지금 ' + r.지금 : ''].concat(r.경고 || []).filter(Boolean).join(' · '));
+  });
+  const yrs = {}, files = [];
+  parsed.forEach(function (x) { if (!x.p || x.p.type !== 'incomecert' || !x.p.result) return; (x.p.result.연도 || []).forEach(function (y) { if (!yrs[y.연도]) yrs[y.연도] = y; }); if (files.indexOf(x.f.name) === -1) files.push(x.f.name); });
+  const ys = Object.keys(yrs).map(Number).sort();
+  if (ys.length) {
+    const work = ys.filter(function (y) { return yrs[y].총급여 > 0; }), biz = ys.filter(function (y) { return yrs[y].사업수입금액 > 0; });
+    out.inc = { years: ys, files: files, work: work, biz: biz };
+    out.lines.push('📄 소득금액증명원 ' + ys.length + '개 해(' + ys[0] + '~' + ys[ys.length - 1] + ' 귀속' + (ys.length !== ys[ys.length - 1] - ys[0] + 1 ? ', 빠진 해 있음' : '') + ') — 국내 근로소득 ' + work.length + '개 해 · 사업소득 ' + biz.length + '개 해: 국내 생활 근거(거주자 판정 §1의2·시행령 §2③ 국내에 계속 근무하는 직업, 국외자산 5년 거주 §118의2) 판단 재료 — ' + files.join(', '));
+  }
+  return out;
+}
+// [2026.10.18 정밀분석 국외자산] 5년 거주 질문에 붙일 사실 — 양도일 전 5년(양도일의 5년 전 같은 날부터)을 출입국 기록이 덮는지, 첫 기록이 조회 시작 바로 뒤 입국이면
+//  "그 앞은 서류로 확인 안 됨", 그 기간 국외 체류 합·양도일 당일 국외였는지. 일시적 출국은 거소 기간으로 본다(시행령 §4②) — 판정은 세무사님이
+function trcOverseasRes5_(pp, td) {
+  const out = { text: '', detail: '', gapFrom: '' }, bits = []; let det = [];
+  if (!pp || !(pp.ee.length || pp.rc.length || pp.inc)) return out;
+  const win = /^\d{4}-\d{2}-\d{2}$/.test(td) ? (Number(td.slice(0, 4)) - 5) + td.slice(4) : '';
+  pp.ee.forEach(function (x) {
+    const r = x.r;
+    if (win && r.조회시작 && r.조회시작 > win) bits.push('출입국사실증명(' + x.f.name + ')은 ' + r.조회시작 + '부터라 양도일 전 5년(' + win + '~' + td + ') 중 앞부분이 이 서류로 확인 안 됨');
+    if (r.첫기록 && r.첫기록.앞기록없음 && r.첫기록.날짜) {
+      const d0 = new Date(r.첫기록.날짜), d1 = new Date(td), mon = td ? (d1.getFullYear() - d0.getFullYear()) * 12 + d1.getMonth() - d0.getMonth() - (d1.getDate() < d0.getDate() + 1 ? 1 : 0) : 0;
+      bits.push('첫 기록이 ' + r.첫기록.날짜 + ' 입국(조회 시작 ' + (r.조회시작 || '') + ' 바로 뒤, 그 앞 출국 기록 없음)이라 그 앞은 서류로 확인 안 됨' + (td && mon >= 0 ? ' — 이 입국 다음 날부터 양도일까지 ' + Math.floor(mon / 12) + '년 ' + (mon % 12) + '개월' + (mon < 60 ? '(5년 미달일 수 있음)' : '') : ''));
+    }
+    if (r.판독 && td) {
+      const inWin = (r.국외체류 || []).filter(function (t) { return t.출국 && (!win || (t.입국 || '9999') >= win) && t.출국 <= td; });
+      const dsum = inWin.reduce(function (s, t) { return s + (t.일수 || 0); }, 0), onT = inWin.filter(function (t) { return t.출국 <= td && (!t.입국 || t.입국 > td); })[0];
+      if (inWin.length) bits.push('양도일 전 5년 중 국외 체류 ' + inWin.length + '번 합 ' + dsum + '일' + (onT ? ' · 양도일(' + td + ')에는 국외 체류 중(' + onT.출국 + ' 출국~' + (onT.입국 || '입국 기록 없음') + ')' : ''));
+      det = det.concat(inWin.map(function (t) { return '국외 ' + t.출국 + ' ~ ' + (t.입국 || '?') + (t.일수 != null ? ' (' + t.일수 + '일)' : ''); }));
+    }
+  });
+  pp.rc.forEach(function (x) { if (x.r.거소신고일) bits.push(x.r.종류 + '(' + x.f.name + ') 국내거소 신고일 ' + x.r.거소신고일 + (x.r.체류자격 ? '(' + x.r.체류자격 + ')' : '') + ' — 그 전 주소·거소는 다른 서류로 확인'); });
+  if (pp.inc) bits.push('소득금액증명원 ' + pp.inc.years[0] + '~' + pp.inc.years[pp.inc.years.length - 1] + ' 귀속 국내 소득(근로 ' + pp.inc.work.length + '개 해·사업 ' + pp.inc.biz.length + '개 해) — 국내 주소(생활 근거) 판단 재료(§1의2·시행령 §2③), 국외 체류가 일시적 출국(시행령 §4②)인지 함께 보세요');
+  const gap = pp.ee.some(function (x) { return (win && x.r.조회시작 && x.r.조회시작 > win) || (x.r.첫기록 && x.r.첫기록.앞기록없음 && win && x.r.첫기록.날짜 > win); });
+  if (gap) out.gapFrom = win;
+  if (gap) bits.push('→ 서류로는 양도일까지 5년 계속 국내 거소가 확인되지 않습니다. 더 앞(' + win + ' 이전)부터의 출입국사실증명을 받거나, 그 앞 국외 체류가 일시적이었는지 확인해 고르세요');
+  out.text = bits.length ? '서류로 본 사실: ' + bits.join(' / ') + '.' : '';
+  out.detail = det.join('\n');
+  return out;
 }
 
 // [2026.10.17 재설계] 서류 읽기 순서 — 서류 수·시간 한도에 걸려도 그 세목 계산기 칸의 근거가 되는 서류(이름으로 짐작)부터. 0이 먼저
@@ -39116,7 +39310,10 @@ function trcNeedEvidence_(c, S, needs, lines) {
     if (miss(g.p + '.donorAcquisitionPrice') || miss(g.p + '.donorAcquisitionDate')) want.push(['need:' + g.p + '.donoracq', '증여자 취득 당시 계약서·등기부(이월과세 비교 — 증여자 취득일·취득가액)']);
   });
   (S.state.transferAssets || []).forEach(function (a, i) { if (miss('a' + i + '.residenceYears')) want.push(['need:a' + i + '.res', '양도인 주민등록초본 전체 이력(1세대1주택 거주연수)']); });
-  if (miss('a0.oaResident5yr')) want.push(['need:a0.oa5', '출입국 사실증명(국외자산 5년 이상 국내 거주 — §118의2)']);
+  // [2026.10.18 정밀분석 국외자산] 출입국사실증명이 이미 있으면 다시 요청하지 않고, 양도일 전 5년을 다 덮지 못할 때만 그 앞 기간을 요청한다
+  const oaR = S.facts.oaRes || {};
+  if (miss('a0.oaResident5yr') && !oaR.ee) want.push(['need:a0.oa5', '출입국 사실증명(국외자산 5년 이상 국내 거주 — §118의2)']);
+  else if (miss('a0.oaResident5yr') && oaR.gapFrom) want.push(['need:a0.oa5', '출입국 사실증명 — ' + oaR.gapFrom + ' 이전부터 조회한 것(지금 서류는 양도일 전 5년을 다 덮지 못함 — §118의2)']);
   if (!want.length) return;
   const list = Array.isArray(c.증빙목록) ? c.증빙목록.slice() : [];
   const add = want.filter(function (w) { return !list.some(function (e) { return e && (e.slotKey === w[0] || e.label === w[1]); }); });
