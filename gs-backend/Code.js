@@ -24766,7 +24766,8 @@ function cpOcrBatchStatus_() {
 // 자동 이어 읽기(10분마다) 켜기/끄기 — 화면을 닫아도 서버가 혼자 이어서 한다. 다 읽으면 cpOcrBatch_가 스스로 끈다
 function ocrbTrigger_(body) {
   ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'cpOcrBatchTick') ScriptApp.deleteTrigger(t); });
-  if (body && body.on) ScriptApp.newTrigger('cpOcrBatchTick').timeBased().everyMinutes(10).create();
+  // [2026.10.18] 10분 → 5분마다 — 한 번에 5분 일하므로 10분 간격이면 절반을 쉬었다(3번 0aeff3e와 같은 내용, 일괄은 1번 몫이라 여기로). 겹침은 ocrb_running 표시가 막는다
+  if (body && body.on) ScriptApp.newTrigger('cpOcrBatchTick').timeBased().everyMinutes(5).create();
   return { ok: true, trigger: !!(body && body.on) };
 }
 function cpOcrBatchTick() { // 시간 트리거가 부르는 이름(끝에 _가 없어야 트리거가 부를 수 있음)
