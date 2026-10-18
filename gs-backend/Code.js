@@ -29673,7 +29673,7 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
   re = /(?<![\d가-힣])(\d{4}\s*(?:가합|가단|가소|타경|머|느|구합|구단|누|드|즈)\s*\d{2,7})(?!\d)/g; // 법원 사건번호
   while ((m = re.exec(t))) add('사건번호', m[1].replace(/\s+/g, ''), m[0], m.index, {});
   // 주민번호 + 이름 — 바로 앞 이름은 같은 칸(keys.person), 앞 80자 안의 "성명 ○○○"로 찾은 것은 짐작(keys.personGuess)
-  re = /(?:([가-힣]{2,4})\s*[\(:：]?\s*)?(\d{6})\s*-\s*([1-8*][\d*]{6})/g;
+  re = /(?:([가-힣]{2,4})[\s|│]*[\(:：]?[\s|│]*)?(\d{6})\s*-\s*([1-8*][\d*]{6})/g; // [2026.10.19 1번 밤작업] 표 줄 "| 김민수 | 800506-… |"도
   while ((m = re.exec(t))) {
     // [2026.10.19 1번 밤작업 ③] 법인(주식회사·은행·조합·금고·공사·법인) 바로 뒤 13자리는 법인등록번호 — 사람 열쇠를 만들지 않는다
     if (/(주\s*식\s*회\s*사|㈜|\(\s*주\s*\)|은\s*행|조\s*합|금\s*고|공\s*사|법\s*인|회\s*사|재\s*단|협\s*회|중\s*앙\s*회)[^\n\d]{0,20}$/.test(t.slice(Math.max(0, m.index + m[0].lastIndexOf(m[2]) - 30), m.index + m[0].lastIndexOf(m[2])))) { add('법인등록번호', m[2] + '-' + m[3], m[0].slice(m[0].lastIndexOf(m[2])), m.index + m[0].lastIndexOf(m[2]), {}, { note: '법인 이름 뒤 번호 — 사람 아님' }); continue; }
@@ -29686,7 +29686,8 @@ function cpfCommon_(text, base, ruledVals, onlyKeys) {
     add('주민번호', m[2] + '-' + m[3], m[0].slice(m[0].lastIndexOf(m[2])), m.index + m[0].lastIndexOf(m[2]), Object.assign({}, kp)); // 자리는 번호가 시작하는 곳(역할 낱말 뒤 묶음과 같은 자리면 하나로)
     if (nm) add('성명', nm, m[0], m.index, Object.assign({}, kp), guess ? { note: '앞 80자 안의 "성명" 칸 — 짐작' } : null);
     // 주민번호 바로 뒤의 주소(등기부 권리자·계약서 당사자·분할협의서 상속인 줄: "이름 주민번호 주소") — 같은 사람 열쇠로
-    const tail = t.slice(re.lastIndex, re.lastIndex + 90), adm = /^\s*[,)]?\s*((?:[가-힣]+(?:특별시|광역시|도)\s*)?[가-힣]+(?:시|군|구)\s+[^\n]{4,60}?(?:\d+(?:-\d+)?\s*(?:번지|호|동|층)?|\)))(?=\s*(?:\n|$|[가-힣]{2,4}\s+\d{6}))/.exec(tail);
+    // [2026.10.19 1번 밤작업 ④] "주소 :"·표 칸 구분자가 사이에 있어도(분할협의서 상속인 줄 "성명 주민번호 / 주소 : …") — 개발용 3차 대조의 상속인 주소 놓침
+    const tail = t.slice(re.lastIndex, re.lastIndex + 110), adm = /^[\s|│]*[,)]?[\s|│]*(?:주\s*소[\s|│]*[:：]?[\s|│]*)?((?:[가-힣]+(?:특별시|광역시|특별자치시|특별자치도|도)\s*)?[가-힣]+(?:시|군|구)\s+[^\n|│]{4,60}?(?:\d+(?:-\d+)?\s*(?:번지|호|동|층)?|\)))(?=[\s|│]*(?:\n|$|[가-힣]{2,4}\s+\d{6}|[|│]))/.exec(tail);
     if (adm && /\d/.test(adm[1])) { const ak = cpfAssetKey_(adm[1]); add('주소', adm[1].replace(/\s+/g, ' ').trim(), adm[1], re.lastIndex + adm.index, Object.assign({}, kp, ak ? { asset: ak } : {})); }
   }
   // 전화번호 — 앞 150자 안의 주민번호 사람은 짐작(keys.personGuess)
