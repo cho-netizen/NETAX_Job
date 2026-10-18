@@ -45576,6 +45576,9 @@ function trcFromEvidence_(c, rf, txs, ans) {
   const trSeller = (rf.evidence || []).some(function (e) { return /^양도: /.test(e); }) ? String(c.납세자 || '').replace(/\s+/g, '') : '';
   // [2026.10.18 정밀분석 5] 근거 표기 — 매도 계약서가 없어 등기부로 거래를 세웠으면 "등기부 양도 직전 명의인"(박미영: 폴더에 계약서가 없는데 "양도 계약서 매도인"으로 적혔다)
   if (trSeller) { seller.name = trSeller; src['seller.name'] = (rf.evidence || []).some(function (e) { return /^양도: /.test(e) && !/^양도: 매도 계약서 없음/.test(e); }) ? '양도 계약서 매도인 = 사건 납세자' : '등기부 양도 등기 직전 명의인 = 사건 납세자'; }
+  // [2026.10.19 밤 2번 30바퀴 헛질문] 양도 거래 서류가 없어도 양도인은 사건 납세자다(폴더 규칙 "고객명(납세자)" — 양도세 납세의무자 = 양도인).
+  //  예전엔 서류가 없으면 비워 두고 "양도인 성명을 넣어 주세요"를 물었다(개발용 고영진·김기범·김운래·김환식·이숙희 5건 — 답은 늘 사건 납세자)
+  else if (String(c.납세자 || '').trim()) { seller.name = String(c.납세자).replace(/\s+/g, ''); src['seller.name'] = '사건 납세자(사건 등록 — 양도 서류에서 아직 확인 안 됨)'; }
   const pt = rf.parties || null;
   if (pt) {
     const ps = pt.seller || {};
