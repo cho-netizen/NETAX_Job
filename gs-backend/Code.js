@@ -30223,12 +30223,12 @@ function caseProcOfficeCalcWhy_(name, text) {
   //  이름이 '의뢰서'여도(이름 예외보다 먼저 본다), md뿐 아니라 txt·hwpx·docx도(고객은 # 제목을 쓰지 않는다).
   //  신선경(김해자) "이모_…_검토.md"의 "## 결론 … 비과세 가능성이 높다"가 사실 메모로 읽혀 질문 힌트로 노출, 김운래 "추가분/의뢰서.md"(## 결론 / 처리방향 · 잠정 세액),
   //  정원식 "법무사 증여 위탁.hwpx"(# 증여세 및 취득세 계산 결과)의 126,949,200원이 증여재산가액 후보로 들어갔다. 빈 의뢰서 양식의 "## 세액계산 확정 근거" 제목은 여기 걸리지 않는다
-  if (/\.(md|txt|hwpx?|docx|gdoc)$/i.test(n) && /(?:^|\n)[ \t]*#{1,4}[ \t]*[^\n]*?(결\s*론|처\s*리\s*방\s*향|검\s*토\s*(?:결\s*과|의\s*견|요\s*약|사\s*항)|계\s*산\s*결\s*과|추\s*징\s*(?:예\s*상)?\s*세\s*액|잠\s*정\s*세\s*액)/.test(String(text || '').slice(0, 20000))) return '사무소가 쓴 검토 메모(마크다운 제목 — 결론·검토·계산 결과)';
+  if (/\.(md|txt|hwpx?|docx|gdoc|rtf|gslides)$/i.test(n) && /(?:^|\n)[ \t]*#{1,4}[ \t]*[^\n]*?(결\s*론|처\s*리\s*방\s*향|검\s*토\s*(?:결\s*과|의\s*견|요\s*약|사\s*항)|계\s*산\s*결\s*과|추\s*징\s*(?:예\s*상)?\s*세\s*액|잠\s*정\s*세\s*액)/.test(String(text || '').slice(0, 20000))) return '사무소가 쓴 검토 메모(마크다운 제목 — 결론·검토·계산 결과)';
   if (/의뢰|요청|부탁|안내문/.test(nn)) return '';
   if (/검토표|검토메모|평가표|계산표|보수검토/.test(nn) || (sheet && /검토|자산평가/.test(nn))) return '사무소가 만든 계산표·검토표(이름)';
   const t = String(text || '').slice(0, 20000);
   // [2026.10.18 1번 세션 71b4536을 3번이 넘겨받음] 옛 한글 hwp도 이제 읽히므로(tcHwpText_) hwpx와 같은 사무소 작성물 판정을 받는다(김환식 「양도소득세 자문보고서.hwp」의 예상세액이 입력으로 새지 않게)
-  if (sheet || /\.(docx|hwpx?|gdoc)$/i.test(n)) {
+  if (sheet || /\.(docx|hwpx?|gdoc|rtf|gslides)$/i.test(n)) { // [2026.10.18 3번 세션] rtf·구글 프레젠테이션도 이제 읽히므로 같은 판정
     const calc = [/과\s*세\s*표\s*준/, /산\s*출\s*세\s*액/, /총\s*부\s*담\s*세\s*액|결\s*정\s*세\s*액|추\s*징\s*(?:예\s*상\s*)?세\s*액/].filter(function (re) { return re.test(t); }).length;
     const office = (t.match(/(?:^|\n|\t)\s*ㅇ\s*[가-힣]/g) || []).length;
     if (calc >= 2 && (office >= 2 || /자\s*본\s*적\s*지\s*출\s*검\s*토|증\s*빙\s*목\s*록|검\s*토\s*의\s*견|추\s*징/.test(t))) return '사무소가 만든 계산표·검토표(내용: 세액 계산 칸·검토 항목)';
