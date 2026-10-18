@@ -25316,6 +25316,18 @@ function tcVisionOcr_(blob) {
     const fa = r.fullTextAnnotation; if (!fa) { out.push({ page: ri + 1, words: [], text: '' }); return; }
     (fa.pages || []).forEach(function (pg) {
       const W = pg.width || 1, H = pg.height || 1, words = [];
+      // [2026.10.18 3번 세션 Vision 실험⑤] 옆으로 누운 스캔(노영환 병원비 세부산정내역 — 표가 90도 돌아감)은 단어 상자가 세로로 서서
+      //  줄·칸 세우기가 칸을 줄로 읽었다. Vision 상자 꼭짓점은 글 방향 기준(왼위→오위→…)이라 첫 변의 방향으로 쪽의 글 방향(0·90·180·270도)을
+      //  다수결로 정하고, 모든 꼭짓점을 그만큼 되돌려 바로 선 좌표로 놓는다
+      const qs = [0, 0, 0, 0];
+      (pg.blocks || []).forEach(function (b) { (b.paragraphs || []).forEach(function (p) { (p.words || []).forEach(function (w) {
+        const v = (w.boundingBox && (w.boundingBox.vertices || w.boundingBox.normalizedVertices)) || [];
+        if (v.length < 2 || (w.symbols || []).length < 2) return;
+        const a = Math.atan2((v[1].y || 0) - (v[0].y || 0), (v[1].x || 0) - (v[0].x || 0));
+        qs[((Math.round(a / (Math.PI / 2)) % 4) + 4) % 4]++;
+      }); }); });
+      const q = qs.indexOf(Math.max.apply(null, qs)), th = q * Math.PI / 2, cq = Math.round(Math.cos(th)), sq = Math.round(Math.sin(th));
+      const rot = function (x, y) { return [x * cq + y * sq, -x * sq + y * cq]; }; // 글 방향을 왼→오로 되돌림
       (pg.blocks || []).forEach(function (b) { (b.paragraphs || []).forEach(function (p) { (p.words || []).forEach(function (w) {
         const sy = w.symbols || [], t = sy.map(function (s) { return s.text; }).join('');
         // 마지막 글자 뒤 띄어쓰기·줄바꿈 표시(detectedBreak)가 없으면 다음 단어와 붙여 쓴 한 낱말. 글자별 확신도의 가장 낮은 값(cmin)
@@ -25323,12 +25335,13 @@ function tcVisionOcr_(blob) {
         const cs = sy.map(function (s) { return s.confidence; }).filter(function (v) { return typeof v === 'number'; }), cmin = cs.length ? Math.min.apply(null, cs) : undefined;
         const vs = (w.boundingBox && (w.boundingBox.vertices || w.boundingBox.normalizedVertices)) || [];
         const norm = !!(w.boundingBox && w.boundingBox.normalizedVertices && !w.boundingBox.vertices);
-        const xs = vs.map(function (v) { return (v.x || 0) * (norm ? W : 1); }), ys = vs.map(function (v) { return (v.y || 0) * (norm ? H : 1); });
+        const pts = vs.map(function (v) { return rot((v.x || 0) * (norm ? W : 1), (v.y || 0) * (norm ? H : 1)); });
+        const xs = pts.map(function (p) { return p[0]; }), ys = pts.map(function (p) { return p[1]; });
         if (!xs.length) return;
         const x0 = Math.min.apply(null, xs), y0 = Math.min.apply(null, ys);
         words.push({ t: t, x: x0, y: y0, w: Math.max.apply(null, xs) - x0, h: Math.max.apply(null, ys) - y0, c: w.confidence === undefined ? 1 : w.confidence, cmin: cmin, sp: sp });
       }); }); });
-      out.push({ page: (r.context && r.context.pageNumber) || ri + 1, w: W, h: H, words: words, text: fa.text || '' });
+      out.push({ page: (r.context && r.context.pageNumber) || ri + 1, w: W, h: H, words: words, text: fa.text || '', rot: q * 90 });
     });
   });
   return out;
