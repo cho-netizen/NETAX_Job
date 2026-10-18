@@ -283,6 +283,17 @@
   .nxai-cp-total{ font-size:12.5px; white-space:normal; }
   .nxai-cp-table{ border-collapse:collapse; font-size:11.5px; margin:4px 0 0 14px; white-space:normal; }
   .nxai-cp-table th, .nxai-cp-table td{ border:1px solid var(--line); padding:2px 5px; text-align:left; vertical-align:top; }
+  /* [2026.10.19] 사진→PDF 정리·신고제출 묶음 패널(사건처리 결과 아래) */
+  .nxai-cp-panel{ border:1px solid var(--line); border-radius:8px; padding:6px 8px; margin-top:8px; font-size:12px; white-space:normal; }
+  .nxai-cp-panel .nxai-cp-step-h{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .nxai-cp-panel .nxai-cp-x{ margin-left:auto; padding:2px 7px; font-size:11.5px; }
+  .nxai-cp-wrap{ overflow-x:auto; max-width:100%; }
+  .nxai-cp-wrap .nxai-cp-table{ margin-left:0; }
+  .nxai-cp-thumb{ width:44px; height:44px; object-fit:cover; border:1px solid var(--line); border-radius:4px; margin:1px; vertical-align:top; }
+  .nxai-cp-name{ width:100%; min-width:130px; box-sizing:border-box; font-size:11.5px; padding:2px 4px; border:1px solid var(--line); border-radius:4px; }
+  .nxai-cp-bad{ color:var(--danger); }
+  .nxai-cp-res .nxai-cp-line{ margin-left:0; }
+  .nxai-cp-mini{ padding:1px 6px; font-size:11px; }
   .nxai-confirm{ margin-top:10px; border:1px solid #e8cf8a; background:#fffaf0; border-radius:9px; padding:9px 11px; white-space:normal; }
   .nxai-confirm-head{ font-weight:700; font-size:.95em; color:#7a5300; margin-bottom:4px; }
   .nxai-confirm-body{ font-size:.95em; white-space:pre-wrap; margin-bottom:8px; color:var(--ink); }
@@ -2190,7 +2201,7 @@
   function nxAiCaseProcRun_(bubble, caseId, opts){
     var st = { caseId: caseId, case: null, decisions: {}, steps: {}, items: [], files: [], saveTimer: null, bubble: bubble, calcBusy: false, calcAuto: false, running: true, relink: !!(opts && opts.relink) };
     NXAI_CP_ACTIVE_ = NXAI_CP_ACTIVE_.filter(function(x){ return x.bubble !== bubble; }).concat([st]);
-    bubble.innerHTML = '<div class="nxai-local-badge">⚡ 사건 처리 · 처리탭 도구로 실제 처리(AI 미사용, 판단 근거 설명만 AI)</div><div class="nxai-cp-head">사건 불러오는 중…</div><div class="nxai-cp-steps"></div><div class="nxai-cp-foot"></div>';
+    bubble.innerHTML = '<div class="nxai-local-badge">⚡ 사건 처리 · 처리탭 도구로 실제 처리(AI 미사용, 판단 근거 설명만 AI)</div><div class="nxai-cp-head">사건 불러오는 중…</div><div class="nxai-cp-steps"></div><div class="nxai-cp-foot"></div><div class="nxai-cp-tools"></div>';
     var stepsEl = bubble.querySelector('.nxai-cp-steps');
     NXAI_CP_STEPS_.forEach(function(s){
       var row = document.createElement('div');
@@ -2502,6 +2513,14 @@
     again.type = 'button'; again.className = 'nxai-btn'; again.textContent = '🔄 처음부터 다시 처리';
     again.addEventListener('click', function(){ nxAiCaseProcRun_(st.bubble, st.caseId); });
     foot.appendChild(again);
+    // [2026.10.19] 문서 정리 도구 — 이 사건 폴더 대상이라 사건처리 결과 바로 아래(패널은 .nxai-cp-tools에 열림 — 이 줄은 결정할 때마다 다시 그려지므로)
+    if (st.case && st.case.폴더ID){
+      [['📄 사진→PDF 정리', 'openConv'], ['📦 신고제출 묶음 만들기', 'openSubmit']].forEach(function(x){
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'nxai-btn'; b.textContent = x[0];
+        b.addEventListener('click', function(){ if (st.running){ nxAiToast_('사건 처리가 끝난 뒤에 눌러 주세요.'); return; } NXAI_PDFDOC_[x[1]](st); });
+        foot.appendChild(b);
+      });
+    }
     // 대화기록에는 요약을 남긴다 — 이어서 "이 중 ○○ 검토해줘"라고 AI에게 물으면 이 결과를 보고 판단한다.
     var ref = st.bubble._nxMsgRef;
     if (ref){
@@ -3230,6 +3249,391 @@
       return done.length;
     }
     return { run: run };
+  })();
+  // ============================================================
+  // [2026.10.19 3번 세션 화면] 세무사님 결정 — "문서별 PDF를 기본으로 하고, 신고를 위한 파일은 <_신고제출> 폴더에 따로 복사해 홈택스 첨부 기준에 맞춘다".
+  //  사건처리 결과 아래 두 단추로 여는 패널(사건처리 거품 안 .nxai-cp-tools — 아래 결정 줄은 답할 때마다 다시 그려지므로 따로 둠).
+  //  ① 📄 사진→PDF 정리: 미리 보기(case_proc pdfPlan — 고객 폴더 안 바뀜) → 묶음마다 적용 체크·이름 고치기·약함 묶음은 객관식 질문
+  //     → [선택한 것 적용](pdfApply — 확인창 뒤, 6묶음씩, 서버가 시간 넘겨 남긴 것만 다시) → 결과마다 [되돌리기](pdfUndo — PDF는 휴지통, 사진은 원래 폴더로)
+  //     🔧 원근보정 = 사진 하나를 판독 나쁜 사진 보정(NXAI_SCAN_)과 같은 보정으로 "<이름>_보정.pdf" 저장(원본 그대로, scanSaved로 짝 기록)
+  //  ② 📦 신고제출 묶음: 사건 폴더의 PDF를 골라 순서 정하기 → [묶음 계획](submitPlan) → [만들기] = 화면이 pdf-lib로 합쳐 submitSave(_신고제출 폴더, 원래 PDF는 그대로)
+  //  서버는 단추를 눌렀을 때만 부른다(로그인 전 호출 없음).
+  // ============================================================
+  var NXAI_PDFDOC_ = (function(){
+    function b64ToBytes(b64){ var bin = atob(b64), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+    function bytesToB64(u){ var s = '', CH = 0x8000; for (var i = 0; i < u.length; i += CH) s += String.fromCharCode.apply(null, u.subarray(i, i + CH)); return btoa(s); }
+    function errText(e){ var m = String((e && e.message) || e || '알 수 없는 오류'); return /AUTH_REQUIRED/.test(m) ? '로그인이 만료됨 — 다시 로그인해 주세요' : m.slice(0, 200); }
+    function el(tag, cls, text){ var d = document.createElement(tag); if (cls) d.className = cls; if (text != null) d.textContent = text; return d; }
+    function btn(label, fn, cls){ var b = el('button', 'nxai-btn' + (cls ? ' ' + cls : ''), label); b.type = 'button'; b.addEventListener('click', fn); return b; }
+    function line(parent, text, bad){ var d = el('div', 'nxai-cp-line' + (bad ? ' nxai-cp-bad' : ''), text); parent.appendChild(d); return d; }
+    function viewUrl(id){ return 'https://drive.google.com/file/d/' + encodeURIComponent(id) + '/view'; }
+    function openLink(id, label){ var a = el('a', 'nxai-btn nxai-cp-mini', label || '👁 열기'); a.href = viewUrl(id); a.target = '_blank'; a.rel = 'noopener'; return a; }
+    // 패널 하나 — 같은 종류가 이미 열려 있으면 새로 고침
+    function panel(st, kind, title){
+      var host = st.bubble && st.bubble.querySelector('.nxai-cp-tools');
+      if (!host) return null;
+      var old = host.querySelector('.nxai-cp-panel[data-kind="' + kind + '"]'); if (old) old.remove();
+      var p = el('div', 'nxai-cp-panel'); p.setAttribute('data-kind', kind);
+      p.innerHTML = '<div class="nxai-cp-step-h"><b>' + nxAiEsc_(title) + '</b> <span class="nxai-cp-sum"></span></div><div class="nxai-cp-pbody"></div>';
+      p.querySelector('.nxai-cp-step-h').appendChild(btn('✕ 닫기', function(){ p.remove(); }, 'nxai-cp-x'));
+      host.appendChild(p);
+      try { p.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+      return { el: p, body: p.querySelector('.nxai-cp-pbody'), sum: function(t){ p.querySelector('.nxai-cp-sum').textContent = t || ''; } };
+    }
+    // 사건 폴더 안 상대 경로("가/나") → 폴더 ID와 그 폴더의 파일 이름들(listFolder로 한 단씩)
+    async function dirFolder(st, dir){
+      var id = String((st.case && st.case.폴더ID) || '').trim();
+      if (!id) throw new Error('사건 폴더가 없음');
+      var segs = String(dir || '').split('/').filter(String), res = null;
+      for (var i = 0; i <= segs.length; i++){
+        res = await callGas('listFolder', { folderId: id });
+        if (!res || res.error) throw new Error((res && res.error) || '폴더를 열지 못함');
+        if (i === segs.length) break;
+        var f = (res.folders || []).filter(function(x){ return x.name === segs[i]; })[0];
+        if (!f) throw new Error('폴더 「' + segs[i] + '」를 찾지 못함');
+        id = f.id;
+      }
+      return { id: id, names: (res.files || []).map(function(f){ return f.name; }) };
+    }
+
+    // ---------- ① 사진→PDF 정리 ----------
+    // 🔧 사진 하나 원근보정 → 같은 폴더에 "<이름>_보정.pdf"(원본 사진은 그대로)
+    async function fixPhoto(st, g, i, out){
+      var id = g.ids[i], nm = g.names[i];
+      out.hidden = false; out.className = 'nxai-cp-line';
+      out.textContent = '🔧 「' + nm + '」 원근보정 중… (사진 불러오기)';
+      try {
+        if (typeof PDFLib === 'undefined') throw new Error('PDF 도구가 아직 준비되지 않음 — 화면을 새로 고친 뒤 다시 눌러 주세요');
+        var fb = await callGas('readFileBinary', { fileId: id });
+        if (!fb || fb.error || !fb.base64) throw new Error((fb && fb.error) || '사진을 불러오지 못함');
+        if (!/jpe?g|png|webp|gif|bmp/i.test(String(fb.mimeType || '') + ' ' + nm)) throw new Error('이 사진 형식(' + (fb.mimeType || '알 수 없음') + ')은 화면에서 보정할 수 없음');
+        out.textContent = '🔧 「' + nm + '」 원근보정 중… (서류 모서리 찾기·펴기)';
+        var r = await NXAI_SCAN_.correct([{ bytes: b64ToBytes(fb.base64), mime: fb.mimeType }]);
+        var fo = await dirFolder(st, g.dir);
+        var base = nm.replace(/\.[A-Za-z0-9]{2,5}$/, ''), save = base + '_보정.pdf', k = 2;
+        while (fo.names.indexOf(save) !== -1 && k < 50) save = base + '_보정(' + (k++) + ').pdf';
+        var up = await callGas('uploadFile', { folderId: fo.id, name: save, mimeType: 'application/pdf', base64Data: bytesToB64(r.pdf) });
+        if (!up || up.error || !up.id) throw new Error((up && up.error) || '보정본을 저장하지 못함');
+        await callGas('case_proc', { caseId: st.caseId, step: 'scanSaved', pairs: [{ corr: up.id, orig: [id] }] }).catch(function(){});
+        out.textContent = '🔧 보정본 저장: ' + (up.name || save) + (r.found && r.found[0] < 4 ? '(모서리를 못 찾은 변은 사진 전체로)' : '') + ' — 원본 사진은 그대로입니다. 보정본으로 충분하면 이 묶음의 적용 체크를 끄세요. ';
+        out.appendChild(openLink(up.id));
+      } catch (e) { out.className = 'nxai-cp-line nxai-cp-bad'; out.textContent = '🔧 「' + nm + '」 보정하지 못함: ' + errText(e); }
+    }
+    function openConv(st){
+      var P = panel(st, 'conv', '📄 사진→PDF 정리'); if (!P) return;
+      P.sum('미리 보기 불러오는 중… (고객 폴더는 아직 바뀌지 않습니다)');
+      callGas('case_proc', { caseId: st.caseId, step: 'pdfPlan' }).then(function(r){
+        if (!r || r.error || !r.ok) throw new Error((r && r.error) || '응답 없음');
+        var gs = r.groups || [];
+        if (!gs.length){ P.sum(''); line(P.body, '사건 폴더에 PDF로 바꿀 사진이 없습니다(이미 바꾼 사진은 _원본사진 폴더에 있습니다).'); return; }
+        gs.forEach(function(g){ g.on = !g.ask; g.ans = ''; g.pick = {}; g.doneIds = {}; g.ids.forEach(function(id){ g.pick[id] = true; }); });
+        renderConv(st, P, r);
+      }).catch(function(e){ P.sum(''); line(P.body, '미리 보기를 불러오지 못했습니다: ' + errText(e), true); });
+    }
+    function renderConv(st, P, r){
+      var gs = r.groups, body = P.body;
+      body.innerHTML = '';
+      var weak = gs.filter(function(g){ return g.ask; }).length;
+      P.sum('사진 ' + (r.photos || 0) + '장 → PDF ' + gs.length + '묶음' + (weak ? ' · 물어볼 묶음 ' + weak + '개' : ''));
+      line(body, '미리 보기입니다 — [선택한 것 적용]을 누르기 전에는 고객 폴더가 바뀌지 않습니다. PDF 이름은 고칠 수 있습니다.' + (r.cfg ? ' (PDF 하나가 ' + r.cfg.pdfMB + 'MB를 넘으면 큰 사진부터 축소본으로 담습니다)' : ''));
+      var wrap = el('div', 'nxai-cp-wrap'); body.appendChild(wrap);
+      var tb = el('table', 'nxai-cp-table'); wrap.appendChild(tb);
+      tb.innerHTML = '<tr><th>적용</th><th>그림</th><th>쪽 순서·사진</th><th>PDF 이름</th><th>근거·확신도</th><th>크기</th><th>보정</th></tr>';
+      gs.forEach(function(g){ convRow(st, g, tb); });
+      var acts = el('div', 'nxai-cp-btns'); body.appendChild(acts);
+      acts.appendChild(btn('모두 켜기', function(){ gs.forEach(function(g){ if (g._cb && !g._cb.disabled){ g.on = true; g._cb.checked = true; } }); }));
+      acts.appendChild(btn('모두 끄기', function(){ gs.forEach(function(g){ if (g._cb && !g._cb.disabled){ g.on = false; g._cb.checked = false; } }); }));
+      var res = el('div', 'nxai-cp-res');
+      var go = btn('✅ 선택한 것 적용', function(){ applyConv(st, P, gs, go, res); }, 'primary');
+      acts.appendChild(go);
+      if (weak) acts.appendChild(el('span', 'nxai-cp-sum', '물어볼 묶음은 질문에 답해야 적용할 수 있습니다.'));
+      body.appendChild(res);
+    }
+    // 묶음 한 줄(+ 질문·보정 결과 줄)
+    function convRow(st, g, tb){
+      var tr = el('tr'), sub = el('tr'), subTd = el('td'); subTd.colSpan = 7; sub.appendChild(subTd);
+      // 적용
+      var td0 = el('td'), cb = el('input'); cb.type = 'checkbox'; cb.checked = g.on; cb.disabled = g.ask && !g.ans;
+      cb.title = cb.disabled ? '아래 질문에 먼저 답해 주세요' : '이 묶음을 PDF로 만들기';
+      cb.addEventListener('change', function(){ g.on = cb.checked; });
+      td0.appendChild(cb); g._cb = cb;
+      // 그림(드라이브 작은 그림 — 누르면 사진 열기)
+      var td1 = el('td');
+      g.ids.slice(0, 4).forEach(function(id, i){
+        var a = el('a'); a.href = viewUrl(id); a.target = '_blank'; a.rel = 'noopener'; a.title = g.names[i] || '';
+        var im = el('img', 'nxai-cp-thumb'); im.loading = 'lazy'; im.alt = g.names[i] || ''; im.src = 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(id) + '&sz=w120';
+        im.onerror = function(){ im.replaceWith(document.createTextNode('🖼')); };
+        a.appendChild(im); td1.appendChild(a);
+      });
+      if (g.ids.length > 4) td1.appendChild(document.createTextNode(' 외 ' + (g.ids.length - 4) + '장'));
+      // 쪽 순서·사진(직접 고르기면 사진마다 체크)
+      var td2 = el('td');
+      var fillPages = function(){
+        td2.innerHTML = '';
+        g.names.forEach(function(n, i){
+          var d = el('div');
+          if (g.ans === 'pick'){ var c = el('input'); c.type = 'checkbox'; c.checked = !!g.pick[g.ids[i]]; c.disabled = !!g.doneIds[g.ids[i]]; c.addEventListener('change', function(){ g.pick[g.ids[i]] = c.checked; }); d.appendChild(c); d.appendChild(document.createTextNode(' ')); }
+          d.appendChild(document.createTextNode((g.names.length > 1 ? (i + 1) + '쪽 ' : '') + n + (g.doneIds[g.ids[i]] ? ' ✅' : '')));
+          td2.appendChild(d);
+        });
+        if (g.ans === 'pick') td2.appendChild(el('div', 'nxai-cp-sum', '체크한 사진 = 한 PDF, 나머지는 사진마다 따로'));
+        if (g.dir) td2.appendChild(el('div', 'nxai-cp-sum', '📁 ' + g.dir));
+      };
+      fillPages(); g._fill = fillPages;
+      // PDF 이름(고칠 수 있음)
+      var td3 = el('td'), inp = el('input', 'nxai-cp-name'); inp.type = 'text'; inp.value = g.name || '';
+      inp.addEventListener('input', function(){ g.name = inp.value; });
+      td3.appendChild(inp);
+      // 근거·확신도
+      var td4 = el('td');
+      td4.appendChild(el('b', '', g.conf === '한 장' ? '사진 한 장' : '확신도 ' + (g.conf || '-')));
+      (g.why || []).forEach(function(w){ td4.appendChild(el('div', 'nxai-cp-sum', '· ' + w)); });
+      // 크기·축소본
+      var td5 = el('td');
+      td5.appendChild(document.createTextNode('약 ' + (g.estMB != null ? g.estMB : '?') + 'MB · ' + (g.pages || g.ids.length) + '쪽'));
+      if ((g.shrink || []).length) td5.appendChild(el('div', 'nxai-cp-sum', '축소본으로 담음 ' + g.shrink.length + '장: ' + g.shrink.join(', ')));
+      // 🔧 원근보정(사진마다)
+      var td6 = el('td'), fixOut = el('div', 'nxai-cp-line'); fixOut.hidden = true;
+      g.ids.forEach(function(id, i){
+        var b = btn('🔧' + (g.ids.length > 1 ? ' ' + (i + 1) + '쪽' : ''), function(){
+          nxAiConfirm_('「' + g.names[i] + '」 사진을 원근보정해 같은 폴더에 「…_보정.pdf」로 저장합니다(원본 사진은 그대로 둡니다). 진행할까요?').then(function(ok){
+            if (!ok) return;
+            b.disabled = true; sub.hidden = false;
+            fixPhoto(st, g, i, fixOut).then(function(){ b.disabled = false; });
+          });
+        }, 'nxai-cp-mini');
+        b.title = '이 사진의 서류 모서리를 찾아 펴고 흑백·대비를 맞춘 보정본 PDF 만들기';
+        td6.appendChild(b);
+      });
+      [td0, td1, td2, td3, td4, td5, td6].forEach(function(t){ tr.appendChild(t); });
+      tb.appendChild(tr);
+      // 약함 — 객관식 질문
+      if (g.ask && g.question){
+        var q = el('div', 'nxai-cp-line'); q.style.marginLeft = '0';
+        q.appendChild(el('b', '', '❓ ' + g.question.q));
+        var row = el('div', 'nxai-cp-btns'), note = el('span', 'nxai-cp-sum'), keys = ['merge', 'split', 'pick'], bs = [];
+        (g.question.options || []).forEach(function(opt, k){
+          var b = btn(opt, function(){
+            g.ans = keys[k] || 'split'; g.on = true; cb.disabled = false; cb.checked = true; cb.title = '이 묶음을 PDF로 만들기';
+            bs.forEach(function(x, j){ x.classList.toggle('primary', j === k); });
+            note.textContent = g.ans === 'merge' ? '→ 한 PDF로 합칩니다(이 순서)' : g.ans === 'split' ? '→ 사진마다 따로 PDF를 만듭니다' : '→ 위에서 한 서류인 사진만 체크하세요';
+            fillPages();
+          }, 'nxai-cp-mini');
+          bs.push(b); row.appendChild(b);
+        });
+        row.appendChild(note); q.appendChild(row); subTd.appendChild(q);
+      }
+      subTd.appendChild(fixOut);
+      // 질문도 보정 결과도 없으면 빈 줄은 숨김(보정 단추를 누르면 보임)
+      sub.hidden = !(g.ask && g.question);
+      tb.appendChild(sub);
+    }
+    // 보낼 묶음 목록 — 약함은 답대로(따로 = 사진마다, 직접 고르기 = 고른 것 한 묶음 + 나머지 따로). 이미 만든 사진은 뺌
+    function buildApply(gs){
+      var list = [], byGid = {};
+      var add = function(g, gid, ids, name){ var x = { gid: gid, ids: ids, name: name, g: g, names: ids.map(function(id){ return g.names[g.ids.indexOf(id)]; }) }; list.push(x); byGid[gid] = x; };
+      var one = function(g, id){ var n = g.names[g.ids.indexOf(id)] || 'PDF'; return n.replace(/\.[A-Za-z0-9]{2,5}$/, '') + '.pdf'; };
+      var nameFor = function(g, n){ var nm = String(g.name || '').trim() || 'PDF.pdf'; return nm.replace(/\(\d+쪽\)(?=(\.pdf)?$)/i, n > 1 ? '(' + n + '쪽)' : ''); };
+      gs.forEach(function(g){
+        if (!g.on || (g.ask && !g.ans)) return;
+        var left = g.ids.filter(function(id){ return !g.doneIds[id]; });
+        if (!left.length) return;
+        if (g.ans === 'split') left.forEach(function(id, i){ add(g, g.gid + '-' + (g.ids.indexOf(id) + 1), [id], one(g, id)); });
+        else if (g.ans === 'pick'){
+          var sel = left.filter(function(id){ return g.pick[id]; }), rest = left.filter(function(id){ return !g.pick[id]; });
+          if (sel.length) add(g, g.gid, sel, sel.length === 1 && rest.length ? one(g, sel[0]) : nameFor(g, sel.length));
+          rest.forEach(function(id){ add(g, g.gid + '-' + (g.ids.indexOf(id) + 1), [id], one(g, id)); });
+        } else add(g, g.gid, left, left.length === g.ids.length ? (String(g.name || '').trim() || 'PDF.pdf') : nameFor(g, left.length));
+      });
+      return { list: list, byGid: byGid };
+    }
+    function markDone(g, ids, done){
+      ids.forEach(function(id){ if (done) g.doneIds[id] = 1; else delete g.doneIds[id]; });
+      var all = g.ids.every(function(id){ return g.doneIds[id]; });
+      if (g._cb){ g._cb.disabled = all || (g.ask && !g.ans); if (all) g._cb.checked = g.on = false; }
+      if (g._fill) g._fill();
+    }
+    async function applyConv(st, P, gs, go, resBox){
+      var L = buildApply(gs);
+      if (!L.list.length){ nxAiToast_('적용할 묶음을 고르세요(물어볼 묶음은 질문에 먼저 답해 주세요).'); return; }
+      var ok = await nxAiConfirm_('고객 폴더에 PDF를 만들고 원본 사진은 _원본사진 폴더로 옮깁니다. 진행할까요?\n\n(만들 PDF ' + L.list.length + '개)');
+      if (!ok) return;
+      go.disabled = true; st.pdfConvBusy = true;
+      var pend = L.list.slice(), made = 0, fail = 0, stuck = 0, BATCH = 6;
+      var showErr = function(x, why){ fail++; line(resBox, '⚠ 못 만듦 — ' + (x ? (x.name + ' (' + x.names.join(', ') + ')') : '묶음') + ': ' + why, true); };
+      var showDone = function(x, d){
+        made++;
+        if (x) markDone(x.g, x.ids, true);
+        st.pdfConvMade = (st.pdfConvMade || []).concat([{ id: d.pdfId, name: d.name }]);
+        var ln = line(resBox, '✅ ' + d.name + ' (' + (d.pages || (x ? x.ids.length : 1)) + '쪽' + (d.shrunk ? ', 축소본 ' + d.shrunk + '장' : '') + ')' + (x ? ' ← ' + x.names.join(', ') : '') + ' ');
+        ln.appendChild(openLink(d.pdfId));
+        var ub = btn('↩ 되돌리기', function(){
+          nxAiConfirm_('「' + d.name + '」을 휴지통으로 보내고 원본 사진을 원래 폴더로 되돌립니다. 진행할까요?').then(function(yes){
+            if (!yes) return;
+            ub.disabled = true;
+            callGas('case_proc', { caseId: st.caseId, step: 'pdfUndo', pdfId: d.pdfId }).then(function(u){
+              if (!u || u.error || !u.ok) throw new Error((u && u.error) || '응답 없음');
+              if (x) markDone(x.g, x.ids, false);
+              st.pdfConvMade = (st.pdfConvMade || []).filter(function(m){ return m.id !== d.pdfId; });
+              ln.textContent = '↩ 되돌림: ' + d.name + ' → 사진 ' + (u.back || []).length + '장을 원래 폴더로(' + (u.back || []).join(', ') + ')';
+            }).catch(function(e){ ub.disabled = false; line(resBox, '⚠ 「' + d.name + '」 되돌리지 못함: ' + errText(e), true); });
+          });
+        }, 'nxai-cp-mini');
+        ln.appendChild(ub);
+      };
+      try {
+        while (pend.length){
+          var batch = pend.splice(0, BATCH);
+          P.sum('적용 중… ' + made + '/' + L.list.length + ' (사진이 많으면 몇 분 걸립니다)');
+          var res = null;
+          try { res = await callGas('case_proc', { caseId: st.caseId, step: 'pdfApply', groups: batch.map(function(x){ return { gid: x.gid, ids: x.ids, name: x.name }; }) }); }
+          catch (e) { res = { error: errText(e) }; }
+          if (!res || res.error || !res.ok){ batch.forEach(function(x){ showErr(x, (res && res.error) || '응답 없음'); }); continue; }
+          (res.done || []).forEach(function(d){ showDone(L.byGid[d.gid], d); });
+          var again = [];
+          (res.errors || []).forEach(function(e){ var x = L.byGid[e.gid]; if (/^시간/.test(String(e.why || '')) && x) again.push(x); else showErr(x, e.why || '알 수 없는 이유'); });
+          if (again.length){
+            // 서버가 시간이 모자라 남긴 묶음만 다시 보낸다(한 번도 못 만들고 두 번 연속 시간이면 멈춤)
+            if (!(res.done || []).length && ++stuck >= 2) again.forEach(function(x){ showErr(x, '시간이 모자라 만들지 못함 — [선택한 것 적용]을 다시 눌러 주세요'); });
+            else { if ((res.done || []).length) stuck = 0; pend = again.concat(pend); }
+          }
+        }
+      } finally { go.disabled = false; st.pdfConvBusy = false; }
+      P.sum('적용 끝 — PDF ' + made + '개 만듦' + (fail ? ' · 못 만듦 ' + fail + '개' : '') + ' (원본 사진은 각 폴더의 _원본사진에)');
+    }
+
+    // ---------- ② 신고제출 묶음 ----------
+    function openSubmit(st){
+      var P = panel(st, 'submit', '📦 신고제출 묶음 만들기'); if (!P) return;
+      var S = { list: [], plan: null, busy: false };
+      var seen = {};
+      // 처음 목록 — 방금 만든 PDF + 이번 사건처리가 읽은 증빙 목록의 PDF(서버를 더 부르지 않음)
+      (st.pdfConvMade || []).concat(st.files || []).forEach(function(f){
+        if (!f || !f.id || seen[f.id] || !/\.pdf$/i.test(String(f.name || ''))) return;
+        seen[f.id] = 1; S.list.push({ id: f.id, name: f.name, dir: f.dir || '', on: false });
+      });
+      var top = el('div', 'nxai-cp-line'); top.style.marginLeft = '0'; P.body.appendChild(top);
+      top.textContent = '넣을 PDF를 체크하고 ↑↓로 순서를 정한 뒤 [묶음 계획]을 누르세요. 원래 PDF는 그대로 두고 사건 폴더의 _신고제출 폴더에 합친 사본을 만듭니다.';
+      var listBox = el('div', 'nxai-cp-wrap'); P.body.appendChild(listBox);
+      var acts = el('div', 'nxai-cp-btns'); P.body.appendChild(acts);
+      var planBox = el('div', 'nxai-cp-res'); P.body.appendChild(planBox);
+      var renderList = function(){
+        listBox.innerHTML = '';
+        if (!S.list.length){ line(listBox, 'PDF가 없습니다 — [📂 폴더에서 다시 찾기]를 눌러 보세요.'); P.sum(''); return; }
+        var tb = el('table', 'nxai-cp-table'); tb.innerHTML = '<tr><th>넣기</th><th>순서</th><th>PDF</th></tr>';
+        S.list.forEach(function(f, i){
+          var tr = el('tr'), a = el('td'), b = el('td'), c = el('td');
+          var cb = el('input'); cb.type = 'checkbox'; cb.checked = f.on; cb.addEventListener('change', function(){ f.on = cb.checked; S.plan = null; planBox.innerHTML = ''; count(); }); a.appendChild(cb);
+          var mv = function(d){ var j = i + d; if (j < 0 || j >= S.list.length) return; var t = S.list[i]; S.list[i] = S.list[j]; S.list[j] = t; S.plan = null; planBox.innerHTML = ''; renderList(); };
+          var up = btn('↑', function(){ mv(-1); }, 'nxai-cp-mini'), dn = btn('↓', function(){ mv(1); }, 'nxai-cp-mini');
+          up.disabled = i === 0; dn.disabled = i === S.list.length - 1; b.appendChild(up); b.appendChild(dn);
+          c.appendChild(document.createTextNode((f.dir ? f.dir + '/' : '') + f.name + ' ')); c.appendChild(openLink(f.id, '👁'));
+          tr.appendChild(a); tr.appendChild(b); tr.appendChild(c); tb.appendChild(tr);
+        });
+        listBox.appendChild(tb); count();
+      };
+      var count = function(){ var n = S.list.filter(function(f){ return f.on; }).length; P.sum('PDF ' + S.list.length + '개 중 ' + n + '개 고름'); };
+      // 사건 폴더를 아래로 3단까지 훑어 PDF 찾기(_원본사진·_신고제출 등 "_" 폴더는 뺌) — 단추를 눌렀을 때만
+      var scanFolder = async function(){
+        var rootId = String((st.case && st.case.폴더ID) || '').trim();
+        if (!rootId){ line(listBox, '사건 폴더가 없습니다.', true); return; }
+        P.sum('사건 폴더에서 PDF 찾는 중…');
+        var level = [{ id: rootId, rel: '' }], found = [], calls = 0, cut = false;
+        for (var depth = 0; depth < 4 && level.length && calls < 40; depth++){
+          var part = level.slice(0, 40 - calls); calls += part.length; if (part.length < level.length) cut = true;
+          var rs = await Promise.all(part.map(function(fo){ return callGas('listFolder', { folderId: fo.id }).then(function(r){ return { fo: fo, r: r }; }, function(e){ return { fo: fo, r: { error: errText(e) } }; }); }));
+          var next = [];
+          rs.forEach(function(x){
+            if (!x.r || x.r.error) return;
+            (x.r.files || []).forEach(function(f){ if (/pdf/i.test(String(f.mimeType || '')) || /\.pdf$/i.test(f.name || '')) found.push({ id: f.id, name: f.name, dir: x.fo.rel }); });
+            (x.r.folders || []).forEach(function(sf){ if (!/^\s*_/.test(sf.name)) next.push({ id: sf.id, rel: x.fo.rel ? x.fo.rel + '/' + sf.name : sf.name }); });
+          });
+          level = next;
+        }
+        var add = 0;
+        found.forEach(function(f){ var have = S.list.filter(function(x){ return x.id === f.id; })[0]; if (have){ have.dir = f.dir; return; } S.list.push({ id: f.id, name: f.name, dir: f.dir, on: false }); add++; });
+        renderList();
+        if (cut || level.length) line(listBox, '폴더가 많아 일부(4단 아래 또는 40개 넘는 폴더)는 못 훑었습니다.');
+        if (!found.length) line(listBox, '사건 폴더에서 PDF를 찾지 못했습니다.');
+        else if (add) line(listBox, '폴더에서 PDF ' + add + '개를 더 찾았습니다.');
+      };
+      var findB = btn('📂 폴더에서 다시 찾기', function(){ findB.disabled = true; scanFolder().catch(function(e){ line(listBox, '폴더를 읽지 못했습니다: ' + errText(e), true); }).then(function(){ findB.disabled = false; }); });
+      acts.appendChild(findB);
+      acts.appendChild(btn('모두 고르기', function(){ S.list.forEach(function(f){ f.on = true; }); S.plan = null; planBox.innerHTML = ''; renderList(); }));
+      var planB = btn('🧮 묶음 계획', function(){
+        var ids = S.list.filter(function(f){ return f.on; }).map(function(f){ return f.id; });
+        if (!ids.length){ nxAiToast_('넣을 PDF를 체크하세요.'); return; }
+        planB.disabled = true; planBox.innerHTML = ''; line(planBox, '묶음 계획 만드는 중…');
+        callGas('case_proc', { caseId: st.caseId, step: 'submitPlan', ids: ids }).then(function(r){
+          if (!r || r.error || !r.ok) throw new Error((r && r.error) || '응답 없음');
+          S.plan = r; renderPlan(st, P, S, planBox);
+        }).catch(function(e){ planBox.innerHTML = ''; line(planBox, '묶음 계획을 만들지 못했습니다: ' + errText(e), true); }).then(function(){ planB.disabled = false; });
+      }, 'primary');
+      acts.appendChild(planB);
+      renderList();
+      if (!S.list.length) findB.click();
+    }
+    function renderPlan(st, P, S, box){
+      var r = S.plan, files = r.files || [], cfg = r.cfg || {};
+      box.innerHTML = '';
+      if (!files.length){ line(box, '묶을 PDF가 없습니다(고른 파일을 찾지 못함).', true); return; }
+      var wrap = el('div', 'nxai-cp-wrap'), tb = el('table', 'nxai-cp-table');
+      tb.innerHTML = '<tr><th>파일 이름</th><th>들어갈 문서</th><th>MB</th></tr>' + files.map(function(f){
+        var over = cfg.htFileMB && f.mb > cfg.htFileMB;
+        return '<tr><td>' + nxAiEsc_(f.file) + '</td><td>' + (f.names || []).map(function(n){ return nxAiEsc_(n); }).join('<br>') + '</td><td' + (over ? ' class="nxai-cp-bad" title="한 문서가 한 파일 한도보다 큼"' : '') + '>' + nxAiEsc_(f.mb) + (over ? ' ⚠' : '') + '</td></tr>';
+      }).join('');
+      wrap.appendChild(tb); box.appendChild(wrap);
+      line(box, '제출 파일 ' + files.length + '개 · 기준: 한 파일 ' + cfg.htFileMB + 'MB, ' + cfg.htFiles + '개까지');
+      if (r.overFiles) line(box, '⚠ 홈택스 한도(임시값)를 넘음 — 파일 ' + files.length + '개(한도 ' + cfg.htFiles + '개). 넣을 PDF를 줄이거나 그대로 만든 뒤 나눠 제출하세요.', true);
+      if (files.some(function(f){ return cfg.htFileMB && f.mb > cfg.htFileMB; })) line(box, '⚠ 한 문서만으로 한 파일 한도(' + cfg.htFileMB + 'MB)를 넘는 것이 있습니다(⚠ 표시).', true);
+      if (r.note) line(box, 'ℹ ' + r.note);
+      var acts = el('div', 'nxai-cp-btns'), out = el('div', 'nxai-cp-res');
+      var mk = btn('🛠 만들기', function(){ makeSubmit(st, P, S, mk, out); }, 'primary');
+      acts.appendChild(mk); box.appendChild(acts); box.appendChild(out);
+    }
+    async function makeSubmit(st, P, S, mk, out){
+      var files = (S.plan && S.plan.files) || [];
+      if (!files.length) return;
+      if (typeof PDFLib === 'undefined'){ line(out, 'PDF 도구가 아직 준비되지 않았습니다 — 화면을 새로 고친 뒤 다시 눌러 주세요.', true); return; }
+      var ok = await nxAiConfirm_('고객 사건 폴더의 _신고제출 폴더에 제출용 PDF ' + files.length + '개를 만듭니다(같은 이름 파일은 새것으로 바꾸고, 원래 PDF는 그대로 둡니다). 진행할까요?');
+      if (!ok) return;
+      mk.disabled = true; out.innerHTML = '';
+      var cache = {}, saved = [], folderId = '', lim = ((S.plan.cfg && S.plan.cfg.htFileMB) || 0) * 1048576;
+      var bytesOf = async function(id, name){
+        if (cache[id]) return cache[id];
+        var fb = await callGas('readFileBinary', { fileId: id });
+        if (!fb || fb.error || !fb.base64) throw new Error('「' + name + '」 불러오기 실패' + (fb && fb.error ? ' — ' + fb.error : ''));
+        return (cache[id] = b64ToBytes(fb.base64));
+      };
+      try {
+        for (var i = 0; i < files.length; i++){
+          var f = files[i];
+          P.sum('만드는 중 ' + (i + 1) + '/' + files.length + ' — ' + f.file);
+          try {
+            var doc = await PDFLib.PDFDocument.create();
+            for (var j = 0; j < f.ids.length; j++){
+              var nm = (f.names || [])[j] || f.ids[j];
+              var src;
+              try { src = await PDFLib.PDFDocument.load(await bytesOf(f.ids[j], nm), { ignoreEncryption: true }); }
+              catch (e) { if (/불러오기 실패/.test(String(e && e.message))) throw e; throw new Error('「' + nm + '」 PDF를 열지 못함(손상·암호)'); }
+              var pgs = await doc.copyPages(src, src.getPageIndices());
+              pgs.forEach(function(p){ doc.addPage(p); });
+            }
+            var pdf = await doc.save();
+            var sv = await callGas('case_proc', { caseId: st.caseId, step: 'submitSave', files: [{ file: f.file, b64: bytesToB64(pdf) }] });
+            if (!sv || sv.error || !sv.ok || !(sv.saved || []).length) throw new Error((sv && sv.error) || '저장 응답 없음');
+            folderId = sv.folderId || folderId;
+            saved.push(sv.saved[0].name);
+            var ln = line(out, '✅ ' + sv.saved[0].name + ' (' + f.ids.length + '개 문서, ' + (Math.round(pdf.length / 104857.6) / 10) + 'MB' + (lim && pdf.length > lim ? ' — ⚠ 한 파일 한도를 넘음' : '') + ') ');
+            ln.appendChild(openLink(sv.saved[0].id));
+          } catch (e) { line(out, '⚠ ' + f.file + ' 못 만듦: ' + errText(e), true); }
+        }
+      } finally { mk.disabled = false; }
+      P.sum(saved.length ? '_신고제출 폴더에 ' + saved.length + '개' : '만든 파일 없음');
+      var fin = line(out, saved.length ? '📦 _신고제출 폴더에 ' + saved.length + '개를 만들었습니다' + (saved.length < files.length ? '(못 만든 ' + (files.length - saved.length) + '개는 위 이유 참고)' : '') + '. ' : '하나도 만들지 못했습니다 — 위 이유를 확인해 주세요.', !saved.length);
+      if (folderId){ var a = el('a', 'nxai-btn nxai-cp-mini', '📂 폴더 열기'); a.href = 'https://drive.google.com/drive/folders/' + encodeURIComponent(folderId); a.target = '_blank'; a.rel = 'noopener'; fin.appendChild(a); }
+    }
+    return { openConv: openConv, openSubmit: openSubmit };
   })();
   // 4단계 실제 계산 — 세액계산 화면(계산엔진)을 이 사건으로 열어 계산하고, 결과가 나오면 사건에 저장한다.
   // 입력이 이미 다 있으면 [세액 계산하기]만 누르고(토큰 0), 모자라면 화면의 [자동계산](서류로 채우기 → 빈 칸은 화면이 직접 물음)을 쓴다.
