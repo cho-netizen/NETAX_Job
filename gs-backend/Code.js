@@ -24395,14 +24395,46 @@ function tcTmpMeta_(meta) { try { const fo = tcOcrStoreFolder_(); if (fo) meta.p
 function ocrFileText_(fileId, tblKey) {
   // [2026.10.16] 임시 문서는 고객 사건 폴더가 아니라 업무관리자 "_글자인식기억" 폴더에 만든다 — 실행 시간 초과로 지우기 전에 끊기면
   //  고객 폴더에 "_ocr_tmp_….gdoc"가 남았다(방영교 사건). 기억 폴더를 못 찾으면 예전처럼 원본 옆에.
-  const copy = Drive.Files.copy(tcTmpMeta_({ name: '_ocr_tmp_' + Date.now(), mimeType: 'application/vnd.google-apps.document' }), fileId, { ocrLanguage: 'ko', fields: 'id' });
+  let copy = null;
+  try { copy = Drive.Files.copy(tcTmpMeta_({ name: '_ocr_tmp_' + Date.now(), mimeType: 'application/vnd.google-apps.document' }), fileId, { ocrLanguage: 'ko', fields: 'id' }); }
+  catch (e0) {
+    // [2026.10.19 3번 읽기 — 확보율 재측정 "읽기 실패"] 드라이브 글자인식이 거절한 파일:
+    //  ① 너무 큰 사진(13MB 휴대폰 사진 "Request Too Large" — 노오섭 지선영.jpg)·변환 안 되는 그림 형식(webp) → 드라이브가 만든 축소본(2400px)으로 읽음(일괄 안에서만)
+    //  ② 암호 걸린 PDF("Bad Request" — 김희연 사망보험금 지급증명서는 비밀번호 없이는 안 열림) → 이유를 알아볼 수 있게 바꿔 던짐(비밀번호를 풀어 다시 받아야 함)
+    const em = String(e0 && e0.message || e0);
+    let mt0 = ''; try { mt0 = String(DriveApp.getFileById(fileId).getMimeType() || ''); } catch (e1) {}
+    if (TC_BATCH_READ_ && /^image\//.test(mt0) && /Too Large|not supported|conversion/i.test(em)) {
+      const th = tcThumbBytes_(fileId, 2400), tb2 = [];
+      for (let k = 0; k < th.length; k++) tb2.push(th[k] > 127 ? th[k] - 256 : th[k]);
+      return String(tcOcrBlob_(Utilities.newBlob(tb2, th[0] === 0x89 ? 'image/png' : 'image/jpeg', 'img')) || '');
+    }
+    if (/pdf/.test(mt0) && /Bad Request/i.test(em)) {
+      let enc = false; try { const s0 = DriveApp.getFileById(fileId).getBlob().getDataAsString('ISO-8859-1'); enc = /\/Encrypt\s/.test(s0.slice(-4000)) || /\/Encrypt\s/.test(s0.slice(0, 4000)); } catch (e2) {}
+      if (enc) throw new Error('암호 걸린 PDF — 비밀번호를 풀어 다시 올려 주셔야 읽을 수 있음(' + em.slice(0, 60) + ')');
+    }
+    throw e0;
+  }
   try {
     const body = DocumentApp.openById(copy.id).getBody();
     // [2026.10.18 3번 세션 실험③] 드라이브는 글자층 PDF·워드를 바꿀 때 표(TABLE)를 만든다 — getText()는 칸마다 줄을 바꿔 줄·칸 연결이 사라진다
     //  (노영환 임대명세서: 층·호·면적·상호·사업자번호·보증금·월세가 한 줄씩 흩어짐). 같은 변환에서 칸 자리 지킨 표 글도 기억(ocrtbl1_)에 남긴다.
     //  메모 글(getText)은 그대로라 기존 정리 규칙 영향 없음. 칸 자리가 필요한 쪽은 tcDocTableText_로 받는다
     if (tblKey) { try { const tb = tcDocTableAware_(body); tcOcrStorePut_(tblKey, tb.tables ? tb.text : ''); } catch (e) {} }
-    return body.getText();
+    const got = body.getText();
+    // [2026.10.19 3번 읽기 — 확보율 재측정] 글자가 모양(그림)으로만 찍힌 PDF — "Microsoft Print to PDF"로 저장한 웹 화면(국세법령정보 예규 등)은 글꼴은 있는데
+    //  글자 표가 깨져 드라이브가 그 깨진 글자층을 그대로 써서 0자가 된다(개발용 22개 — 최동규 관련예규 9·신선경 5·김환식 4). 서버는 PDF를 그림으로 못 그리므로
+    //  드라이브가 만든 첫 쪽 그림(축소본 2400px)을 글자인식(0원)한다 — 첫 쪽만이라 표시를 붙임. 일괄 안에서만(사이드바는 느려지지 않게)
+    if (TC_BATCH_READ_ && String(got || '').replace(/[^가-힣0-9]/g, '').length < 30) {
+      try {
+        if (/pdf/.test(String(DriveApp.getFileById(fileId).getMimeType() || ''))) {
+          const th = tcThumbBytes_(fileId, 2400), tb2 = [];
+          for (let k = 0; k < th.length; k++) tb2.push(th[k] > 127 ? th[k] - 256 : th[k]);
+          const tt = String(tcOcrBlob_(Utilities.newBlob(tb2, th[0] === 0x89 ? 'image/png' : 'image/jpeg', 'p1')) || '').trim();
+          if (tt.replace(/[^가-힣0-9]/g, '').length >= 30) return String(got || '') + '\n[1쪽 — 글자가 그림 모양으로만 찍힌 PDF라 드라이브가 그린 첫 쪽 그림으로 읽음, 뒷쪽은 못 읽음]\n' + tt;
+        }
+      } catch (e) {}
+    }
+    return got;
   } finally {
     try { DriveApp.getFileById(copy.id).setTrashed(true); } catch (e) { /* 정리 실패는 무시 */ }
   }
@@ -35310,7 +35342,28 @@ function registryParse(text) {
     if (x.id) seen[x.id] = docs.length;
     docs.push({ id: x.id, text: seg });
   });
-  return { isRegistry: true, docs: docs.map(function (d) { return registryParseOne_(d.id, d.text); }) };
+  // [2026.10.19 3번 읽기 — 2번 넘김 "등기부 대상 부동산 칸"] 쪽 머리 "[종류] 소재지"가 앞 쪽과 다른 부동산이면 다른 등기부의 쪽 — 고유번호가 든 1쪽 없이 뒷장(을구)만 묶인
+  //  제출용 묶음(박종헌 「02 등기부등본.pdf」: 사당동 토지 뒤에 과천 원문동 집합건물 을구 1장)에서 그 장이 앞 등기부에 붙어 원문동이 소재지로 안 잡혔다. 거기서 새 문서(고유번호 빈칸)로 나눈다
+  var normA = function (s) { return String(s || '').replace(/고유번호.*$/, '').replace(/[\s,.()]/g, ''); };
+  var sameA = function (a, b) { if (!a || !b) return true; if (a.indexOf(b) !== -1 || b.indexOf(a) !== -1) return true; var k = 0; while (k < a.length && k < b.length && a.charAt(k) === b.charAt(k)) k++; return k >= Math.min(a.length, b.length) * 0.8; };
+  var out = [];
+  docs.forEach(function (d) {
+    var hre = /\[(?:집합건물|토지|건물)\]\s*([^\n]{4,120})/g, hm, cuts = [], first = '';
+    while ((hm = hre.exec(d.text))) {
+      var a = normA(hm[1]); if (a.replace(/[\d-]/g, '').length < 4) continue;
+      // 쪽 머리만 — 공동담보목록·대지권 목록의 "[토지] … 수원지방법원 안양등기소 … 2002년1월24일" 줄은 머리가 아님(김운래 관양동 등기부가 58개로 쪼개졌다).
+      //  머리 줄은 소재지뿐(법원·등기소·날짜 없음)이고, 바로 뒤(300자 안)에 표제부·갑구·을구 머리가 온다
+      if (/법원|등기소|등기국|\d{4}\s*년/.test(hm[1])) continue;
+      if (!/표\s*제\s*부|[【\[]\s*[갑을]\s*구?|소유권\s*(?:이외의\s*권리)?에\s*관한\s*사항|순위\s*번호/.test(d.text.slice(hm.index + hm[0].length, hm.index + hm[0].length + 300))) continue;
+      if (!first) { first = a; continue; }
+      if (!sameA(first, a) && !cuts.some(function (c) { return sameA(c.a, a); })) cuts.push({ at: hm.index, a: a });
+    }
+    if (!cuts.length) { out.push(d); return; }
+    var pos = 0;
+    cuts.forEach(function (c, i) { out.push({ id: i === 0 ? d.id : '', text: d.text.slice(pos, c.at), part: i > 0 }); pos = c.at; });
+    out.push({ id: '', text: d.text.slice(pos), part: true });
+  });
+  return { isRegistry: true, docs: out.map(function (d) { var one = registryParseOne_(d.id, d.text); if (d.part && !d.id) one.경고.push('고유번호가 든 첫 장 없이 이 부동산의 일부 장만 있음(앞 등기부와 쪽 머리 소재지가 다름) — 고유번호·표제부는 원문·전부 증명서로 확인'); return one; }) };
 }
 
 function regDates_(s) { var out = [], re = /(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/g, m; while ((m = re.exec(s))) out.push({ d: m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2), at: m.index }); return out; }
@@ -35526,8 +35579,10 @@ function registryRepairCauses_(s, evs, cl, bad) {
 
 function registryParseOne_(id, text) {
   var r = { 고유번호: id, 종류: '', 소재지: '', 표제부: {}, 소유권이력: [], 갑구기타: [], 소유권외: [], 경고: [] };
-  var km = /\[(집합건물|토지|건물)\]\s*([^\n]{4,120})/.exec(text);
-  if (km) { r.종류 = km[1]; r.소재지 = km[2].replace(/\s+/g, ' ').replace(/고유번호.*$/, '').trim(); }
+  // [2026.10.19 3번 읽기 — 2번 넘김 "등기부 대상 부동산 칸"] 쪽마다 머리에 "[종류] 소재지"가 되풀이된다 — 첫 머리가 "[집합건물] 고유번호 …"로 뭉쳐 소재지가 비면
+  //  (박종헌 _증여세 등기부등본.pdf) 다음 쪽 머리의 소재지를 쓴다
+  var kre = /\[(집합건물|토지|건물)\]\s*([^\n]{4,120})/g, km;
+  while ((km = kre.exec(text))) { if (!r.종류) r.종류 = km[1]; var sj = km[2].replace(/\s+/g, ' ').replace(/고유번호.*$/, '').trim(); if (sj.replace(/[\s\d-]/g, '').length >= 4) { r.종류 = km[1]; r.소재지 = sj; break; } }
   // 갑구·을구 시작 — 괄호가 빠지거나(#6) 다른 칸 글이 끼어든(#25 "소유권에 수 관한 … 사항") OCR까지 대비해 단계적으로 찾는다
   var iEul = text.search(/\(?\s*소유권\s*이외의\s*권리에\s*관한\s*사항/);
   if (iEul < 0) iEul = text.search(/[【\[]\s*을\s*구?/);
@@ -37273,13 +37328,61 @@ function docGiftContractParse_(text) {
   md += docGiftPropertyBlock_(t, r); // [2026.10.17 묶음11] 부동산 표시(고유번호·전유면적·대지권) + 부담부 문구 넓히기
   return { type: 'giftcontract', label: '증여계약서', result: r, md: md };
 }
+// [2026.10.19 3번 읽기 — 새 각도: 시간 축의 읽기 원인] 통장 거래 줄의 날짜는 날짜순으로 찍힌다(오래된순이든 최신순이든). 스캔·팩스 글자인식이 숫자 한 자를
+//  비슷한 숫자로 읽으면(6↔8·3↔8·0↔8·1↔7·5↔6 — 구순애 팩스 통장 "2016-01-13"이 "2018-01-13"으로, 2016-01-04와 2016-01-14 사이) 그 줄 하나만 앞뒤 줄과
+//  어긋난다. 날짜순을 지키는 가장 긴 줄 모음을 믿을 줄로 삼고, 거기서 빠진 줄만 — 숫자 한 자를 비슷한 숫자로 바꿔 앞뒤 믿을 줄 사이에 드는 날짜가 딱 하나일 때 바꾸고
+//  원래 글자를 남긴다(날짜고침). 그 밖(맨 앞·맨 뒤 줄·후보가 둘 이상)은 그대로 — 지어내지 않음. 거래 줄이 5줄 미만이면 순서를 몰라 보지 않음
+var BANK_DIGIT_LOOK_ = { '0': '8689', '1': '7', '2': '7', '3': '85', '5': '63', '6': '850', '7': '12', '8': '6309', '9': '80' };
+function docBankDateFix_(p) {
+  try {
+    var G = p && p.result && p.result.거래;
+    if (!Array.isArray(G) || G.length < 5) return p;
+    var ok = function (d) { var m = /^((?:19|20)\d{2})-(\d{2})-(\d{2})$/.exec(String(d || '')); if (!m) return false; var dt = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])); return dt.getUTCMonth() === +m[2] - 1 && dt.getUTCDate() === +m[3]; };
+    var idx = []; G.forEach(function (g, i) { if (ok(g.날짜)) idx.push(i); });
+    if (idx.length < 5) return p;
+    var up = 0, down = 0;
+    for (var k = 1; k < idx.length; k++) { var a = G[idx[k - 1]].날짜, b = G[idx[k]].날짜; if (a < b) up++; else if (a > b) down++; }
+    if (up === down) return p;
+    var asc = up > down, n = 0;
+    // 믿을 줄 = 날짜순을 지키는 가장 긴 줄 모음(여러 줄이 잇달아 틀려도 다수인 바른 줄이 기준이 됨 — 앞뒤 줄만 보면 바른 줄을 틀린 쪽으로 고쳤다)
+    var D = idx.map(function (i) { var d = G[i].날짜; return asc ? d : d.split('').map(function (c) { return /\d/.test(c) ? String(9 - +c) : c; }).join(''); });
+    var len = D.map(function () { return 1; }), from = D.map(function () { return -1; }), bi = 0;
+    for (var x = 0; x < D.length; x++) { for (var y = 0; y < x; y++) if (D[y] <= D[x] && len[y] + 1 > len[x]) { len[x] = len[y] + 1; from[x] = y; } if (len[x] > len[bi]) bi = x; }
+    var trust = {}; for (var t0 = bi; t0 >= 0; t0 = from[t0]) trust[t0] = 1;
+    for (var j = 0; j < idx.length; j++) {
+      if (trust[j]) continue;
+      var pj = -1, nj = -1; for (var u = j - 1; u >= 0; u--) if (trust[u]) { pj = u; break; } for (var w = j + 1; w < idx.length; w++) if (trust[w]) { nj = w; break; }
+      if (pj < 0 || nj < 0) continue; // 맨 앞·맨 뒤의 어긋난 줄(쪽 끝에 따로 찍힌 줄 등)은 기준이 한쪽뿐 — 그대로
+      var cur = G[idx[j]].날짜, prev = G[idx[pj]].날짜, next = G[idx[nj]].날짜;
+      var lo = asc ? prev : next, hi = asc ? next : prev;
+      if (cur >= lo && cur <= hi) continue;
+      // 확실히 튄 날짜만(믿을 앞뒤 줄 범위에서 한 달 넘게 벗어남 — 연·월을 잘못 읽은 것) · 앞뒤 믿을 줄이 석 달 안(거래가 촘촘한 구간)일 때만.
+      //  며칠 차이(11-20 ↔ 11-26)는 가까운 날짜가 많아 어느 숫자가 맞는지 모르므로 고치지 않는다
+      var dayN = function (d) { return Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) / 86400000; };
+      if (dayN(hi) - dayN(lo) > 92 || Math.min(Math.abs(dayN(cur) - dayN(lo)), Math.abs(dayN(cur) - dayN(hi))) <= 31) continue;
+      var digits = cur.replace(/-/g, ''), cand = {};
+      for (var q = 0; q < digits.length; q++) {
+        var alt = BANK_DIGIT_LOOK_[digits.charAt(q)] || '';
+        for (var r = 0; r < alt.length; r++) {
+          var dd = digits.slice(0, q) + alt.charAt(r) + digits.slice(q + 1), ds = dd.slice(0, 4) + '-' + dd.slice(4, 6) + '-' + dd.slice(6, 8);
+          if (ok(ds) && ds >= lo && ds <= hi) cand[ds] = 1;
+        }
+      }
+      var cs = Object.keys(cand);
+      if (cs.length !== 1) continue;
+      var g = G[idx[j]]; g.날짜원문 = cur; g.날짜 = cs[0]; g.날짜고침 = '앞뒤 거래 날짜 순서로 바로잡음(글자인식 ' + cur + ' → ' + cs[0] + ')'; n++;
+    }
+    if (n) { p.result.경고 = p.result.경고 || []; p.result.경고.push('날짜 ' + n + '줄을 앞뒤 거래 날짜 순서로 바로잡음(숫자 한 자를 비슷한 숫자로 읽은 것 — 원래 글자는 날짜원문)'); }
+  } catch (e) {}
+  return p;
+}
 // 은행 거래내역 출력물(입금증·거래내역조회 화면 인쇄) — 예금주·계좌·거래(날짜·내용·금액·적요·잔액). 엑셀·CSV 거래내역은 bankParseFile_.
 function docBankSlipParse_(text) {
   var t = String(text || '');
   var tc = docTransferConfirmParse_(t); if (tc) return tc;
-  var pb = docPassbookParse_(t); if (pb) return pb;
-  var ah = docAcctHistoryParse_(t); if (ah) return ah;
-  var bst = docBankStmtParse_(t); if (bst) return bst; // [2026.10.17] 통장 거래내역 — 거래 한 줄씩(출금·입금·잔액 칸)
+  var pb = docPassbookParse_(t); if (pb) return docBankDateFix_(pb);
+  var ah = docAcctHistoryParse_(t); if (ah) return docBankDateFix_(ah);
+  var bst = docBankStmtParse_(t); if (bst) return docBankDateFix_(bst); // [2026.10.17] 통장 거래내역 — 거래 한 줄씩(출금·입금·잔액 칸)
   if (!/거\s*래\s*내\s*역|입\s*금\s*증|입\s*금\s*확\s*인/.test(t) || !/예\s*금\s*주/.test(t) || /잔\s*(액|고)\s*증\s*명/.test(t)) return null;
   if (!/(맡기신|찾으신|입금\s*액|출금\s*액|입금|출금)/.test(t)) return null;
   var r = { 종류: '은행 거래내역', 은행: '', 예금주: '', 계좌번호: '', 거래: [], 경고: [] };
@@ -40522,7 +40625,9 @@ function jmParse_(text) {
         x = x.slice(0, hm.index) + ' ' + x.slice(hm.index + hm[0].length);
         // [2026.10.19 3번 읽기 — 2번 넘김 "주소이력 날짜 모순"] 스캔 글자인식이 머리 칸 날짜를 떼어 표 첫 행 사이로 읽으면(윤경숙 말소자등본 2쪽: 세대구성 2015-07-20이
         //  1번 전입 행 날짜로 잡혀 거주 시작이 2013 → 2015로) — 칸 이름 "발생일/신고일" 앞에 처음 나오는 날짜 하나가 머리 칸 날짜. 발생일 > 신고일 자체는 원본에도 있음(김창호 16번·방영교 3번)
-        var hd = x.search(/발\s*생\s*일/), dm = !hm[1] && hd > hm.index ? /(?:19|20)\d{2}-\d{2}-\d{2}/.exec(x.slice(hm.index, hd)) : null;
+        //  그 사이 날짜가 딱 하나일 때만 — 둘 이상이면(김동일 등본: 현주소 전입 2020-06-19와 세대구성 2008-12-24가 같이 앞에 옴) 어느 것이 머리 칸 것인지 몰라 그대로(확인필요)
+        var hd = x.search(/발\s*생\s*일/), seg0 = !hm[1] && hd > hm.index ? x.slice(hm.index, hd) : '', dl = seg0.match(/(?:19|20)\d{2}-\d{2}-\d{2}/g) || [];
+        var dm = dl.length === 1 ? /(?:19|20)\d{2}-\d{2}-\d{2}/.exec(seg0) : null;
         if (dm) x = x.slice(0, hm.index + dm.index) + ' ' + x.slice(hm.index + dm.index + dm[0].length);
       }
       var k = x.search(JM_MEMBER_HEAD_RE_), f = x.search(/\d{6}\s*-\s*[\d*]{7}/);
