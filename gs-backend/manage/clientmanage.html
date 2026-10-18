@@ -294,7 +294,8 @@
       '<div style="margin-bottom:14px;"><label style="font-size:12px; color:var(--sub);">추가 연락처(공동의뢰인·가족 — 현금영수증 자동연결에도 쓰입니다)</label><br>' +
       ccExtraContactsBlockHtml_('ccEditExtra') + '</div>' +
       '<textarea id="ccEditMemo" placeholder="메모" style="width:100%; max-width:500px; min-height:50px; font-family:inherit; margin-bottom:16px;">' + escapeHtml(c.메모 || '') + '</textarea>' +
-      '<h4 style="margin-bottom:6px;">서비스 이력</h4>' +
+      // [2026.10.18 탭연결 3번] 고객관리에서 바로 이 고객의 새 사건을 연다(작업관리 새 사건 폼에 고객을 고정해 넘김 — 동명이인 혼동 없음)
+      '<h4 style="margin-bottom:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">서비스 이력 <button type="button" class="ghost-btn" data-cc-new-case="1" style="font-size:12px; padding:2px 8px; font-weight:400;">＋ 이 고객으로 새 사건</button></h4>' +
       '<div id="ccLogList" class="log-list"><div class="log-empty">불러오는 중…</div></div>' +
       '<h4 id="ccPaymentToggle" style="margin-bottom:6px; margin-top:18px; cursor:pointer; width:fit-content;" title="눌러서 수금 내역 추가">➕ 수금관리</h4>' +
       '<div id="ccPaymentList" class="log-list"><div class="log-empty">불러오는 중…</div></div>' +
@@ -511,6 +512,27 @@
     container = container || clientDetail;
     var listEl = container.querySelector('#ccLogList');
     if (!listEl) return;
+    // [2026.10.18 탭연결 3번] 사건 이력 줄의 [처리개요]/[작업관리] 버튼과 "＋ 이 고객으로 새 사건" — 예전엔 글자만 있어 사건으로 갈 수 없었다
+    if (!listEl.dataset.wiredCaseGo){
+      listEl.dataset.wiredCaseGo = '1';
+      listEl.addEventListener('click', function(e){
+        var b = e.target.closest && e.target.closest('[data-cc-case-go]');
+        if (!b) return;
+        var caseId = b.getAttribute('data-case-id');
+        if (container !== clientDetail && typeof closeClientQuickView_ === 'function') { try { closeClientQuickView_(); } catch (err) {} }
+        if (b.getAttribute('data-cc-case-go') === 'work' && typeof goToWorkManage_ === 'function') goToWorkManage_(caseId);
+        else if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(caseId);
+      });
+    }
+    var newCaseBtn = container.querySelector('[data-cc-new-case]');
+    if (newCaseBtn && !newCaseBtn.dataset.wired){
+      newCaseBtn.dataset.wired = '1';
+      newCaseBtn.addEventListener('click', function(){
+        if (container !== clientDetail && typeof closeClientQuickView_ === 'function') { try { closeClientQuickView_(); } catch (err) {} }
+        if (typeof goToView_ === 'function') goToView_('workmanage');
+        if (typeof renderNewCaseForm === 'function') renderNewCaseForm({ 고객명: c.성명 || '', 전화: c.전화번호 || '', 고객ID: c.id });
+      });
+    }
     callGas('work_get_cases', {}).then(function(res){
       if (res.error || res.success === false){
         listEl.innerHTML = '<div class="log-empty">' + escapeHtml(res.error || res.message || '불러오지 못했습니다.') + '</div>';
@@ -547,6 +569,10 @@
       ' · <span style="color:' + (wc.상태 === '완료' ? '#16a34a' : 'var(--sub)') + ';">' + escapeHtml(wc.상태 || '') + '</span>' +
       rolesHtml +
       (wc.법정일 ? '<br>' + escapeHtml(deadlineLabel) + ': ' + escapeHtml(fmtDateShort_(wc.법정일)) : '') +
+      '<div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">' +
+        '<button type="button" class="ghost-btn" style="font-size:12px; padding:2px 8px;" data-cc-case-go="handle" data-case-id="' + escapeHtml(wc.id) + '">🧭 처리개요</button>' +
+        '<button type="button" class="ghost-btn" style="font-size:12px; padding:2px 8px;" data-cc-case-go="work" data-case-id="' + escapeHtml(wc.id) + '">📌 작업관리</button>' +
+      '</div>' +
       '</div>';
   }
 

@@ -451,6 +451,7 @@
     workCaseDetail.innerHTML =
       '<h3 style="margin-top:0;">새 사건 등록</h3>' +
       (prefill.bookingRowIndex ? '<div style="font-size:12px; color:var(--sub); margin-bottom:8px;">🗂 예약에서 시작 — 저장하면 그 예약에 이 사건이 연결됩니다.</div>' : '') +
+      (prefill.고객ID ? '<div style="font-size:12px; color:var(--sub); margin-bottom:8px;">🙋 고객관리에서 시작 — 저장하면 고객관리의 그 고객에 바로 연결됩니다.</div>' : '') +
       '<div style="display:flex; flex-direction:column; gap:8px; max-width:420px;">' +
       '<label>고객명(의뢰인) *<br><input type="text" id="wcNewCustomer" list="clientNameOptions" value="' + escapeHtml(prefill.고객명 || '') + '" size="' + Math.max(String(prefill.고객명 || '').length, 8) + '" placeholder="고객명"></label>' +
       '<label>납세자 <span style="color:var(--sub); font-weight:400;">(의뢰인과 다른 경우만 입력)</span><br><input type="text" id="wcNewTaxpayer" value="' + escapeHtml(prefill.납세자 || '') + '" size="' + Math.max(String(prefill.납세자 || '').length, 8) + '" placeholder="(선택)"></label>' +
@@ -549,6 +550,9 @@
       // 현재세무처리·관련분야를 그대로 실어 보낸다(work_createCase가 전화는 고객 레코드에,
       // 나머지는 개요 앞부분에 반영한다) — 예전엔 여기서 다 버려지고 있었다.
       if (prefill.전화) payload.전화 = prefill.전화;
+      // [2026.10.18 탭연결 3번] 고객관리 "＋ 이 고객으로 새 사건"에서 왔으면 그 고객에 바로 붙인다(이름으로 다시 찾지 않음 — 동명이인 혼동 방지).
+      // 고객명 칸을 다른 사람으로 고쳤으면 고정을 풀고 예전처럼 이름으로 찾는다.
+      if (prefill.고객ID && 고객명 === String(prefill.고객명 || '').trim()) payload.고객ID = prefill.고객ID;
       if (prefill.고객유형) payload.고객유형 = prefill.고객유형;
       if (prefill.현재세무처리) payload.현재세무처리 = prefill.현재세무처리;
       if (prefill.관련분야) payload.관련분야 = prefill.관련분야;

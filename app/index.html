@@ -2865,6 +2865,7 @@
     workCaseDetail.innerHTML =
       '<h3 style="margin-top:0;">새 사건 등록</h3>' +
       (prefill.bookingRowIndex ? '<div style="font-size:12px; color:var(--sub); margin-bottom:8px;">🗂 예약에서 시작 — 저장하면 그 예약에 이 사건이 연결됩니다.</div>' : '') +
+      (prefill.고객ID ? '<div style="font-size:12px; color:var(--sub); margin-bottom:8px;">🙋 고객관리에서 시작 — 저장하면 고객관리의 그 고객에 바로 연결됩니다.</div>' : '') +
       '<div style="display:flex; flex-direction:column; gap:8px; max-width:420px;">' +
       '<label>고객명(의뢰인) *<br><input type="text" id="wcNewCustomer" list="clientNameOptions" value="' + escapeHtml(prefill.고객명 || '') + '" size="' + Math.max(String(prefill.고객명 || '').length, 8) + '" placeholder="고객명"></label>' +
       '<label>납세자 <span style="color:var(--sub); font-weight:400;">(의뢰인과 다른 경우만 입력)</span><br><input type="text" id="wcNewTaxpayer" value="' + escapeHtml(prefill.납세자 || '') + '" size="' + Math.max(String(prefill.납세자 || '').length, 8) + '" placeholder="(선택)"></label>' +
@@ -2963,6 +2964,9 @@
       // 현재세무처리·관련분야를 그대로 실어 보낸다(work_createCase가 전화는 고객 레코드에,
       // 나머지는 개요 앞부분에 반영한다) — 예전엔 여기서 다 버려지고 있었다.
       if (prefill.전화) payload.전화 = prefill.전화;
+      // [2026.10.18 탭연결 3번] 고객관리 "＋ 이 고객으로 새 사건"에서 왔으면 그 고객에 바로 붙인다(이름으로 다시 찾지 않음 — 동명이인 혼동 방지).
+      // 고객명 칸을 다른 사람으로 고쳤으면 고정을 풀고 예전처럼 이름으로 찾는다.
+      if (prefill.고객ID && 고객명 === String(prefill.고객명 || '').trim()) payload.고객ID = prefill.고객ID;
       if (prefill.고객유형) payload.고객유형 = prefill.고객유형;
       if (prefill.현재세무처리) payload.현재세무처리 = prefill.현재세무처리;
       if (prefill.관련분야) payload.관련분야 = prefill.관련분야;
@@ -5493,7 +5497,8 @@
       '<div style="margin-bottom:14px;"><label style="font-size:12px; color:var(--sub);">추가 연락처(공동의뢰인·가족 — 현금영수증 자동연결에도 쓰입니다)</label><br>' +
       ccExtraContactsBlockHtml_('ccEditExtra') + '</div>' +
       '<textarea id="ccEditMemo" placeholder="메모" style="width:100%; max-width:500px; min-height:50px; font-family:inherit; margin-bottom:16px;">' + escapeHtml(c.메모 || '') + '</textarea>' +
-      '<h4 style="margin-bottom:6px;">서비스 이력</h4>' +
+      // [2026.10.18 탭연결 3번] 고객관리에서 바로 이 고객의 새 사건을 연다(작업관리 새 사건 폼에 고객을 고정해 넘김 — 동명이인 혼동 없음)
+      '<h4 style="margin-bottom:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">서비스 이력 <button type="button" class="ghost-btn" data-cc-new-case="1" style="font-size:12px; padding:2px 8px; font-weight:400;">＋ 이 고객으로 새 사건</button></h4>' +
       '<div id="ccLogList" class="log-list"><div class="log-empty">불러오는 중…</div></div>' +
       '<h4 id="ccPaymentToggle" style="margin-bottom:6px; margin-top:18px; cursor:pointer; width:fit-content;" title="눌러서 수금 내역 추가">➕ 수금관리</h4>' +
       '<div id="ccPaymentList" class="log-list"><div class="log-empty">불러오는 중…</div></div>' +
@@ -5710,6 +5715,27 @@
     container = container || clientDetail;
     var listEl = container.querySelector('#ccLogList');
     if (!listEl) return;
+    // [2026.10.18 탭연결 3번] 사건 이력 줄의 [처리개요]/[작업관리] 버튼과 "＋ 이 고객으로 새 사건" — 예전엔 글자만 있어 사건으로 갈 수 없었다
+    if (!listEl.dataset.wiredCaseGo){
+      listEl.dataset.wiredCaseGo = '1';
+      listEl.addEventListener('click', function(e){
+        var b = e.target.closest && e.target.closest('[data-cc-case-go]');
+        if (!b) return;
+        var caseId = b.getAttribute('data-case-id');
+        if (container !== clientDetail && typeof closeClientQuickView_ === 'function') { try { closeClientQuickView_(); } catch (err) {} }
+        if (b.getAttribute('data-cc-case-go') === 'work' && typeof goToWorkManage_ === 'function') goToWorkManage_(caseId);
+        else if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(caseId);
+      });
+    }
+    var newCaseBtn = container.querySelector('[data-cc-new-case]');
+    if (newCaseBtn && !newCaseBtn.dataset.wired){
+      newCaseBtn.dataset.wired = '1';
+      newCaseBtn.addEventListener('click', function(){
+        if (container !== clientDetail && typeof closeClientQuickView_ === 'function') { try { closeClientQuickView_(); } catch (err) {} }
+        if (typeof goToView_ === 'function') goToView_('workmanage');
+        if (typeof renderNewCaseForm === 'function') renderNewCaseForm({ 고객명: c.성명 || '', 전화: c.전화번호 || '', 고객ID: c.id });
+      });
+    }
     callGas('work_get_cases', {}).then(function(res){
       if (res.error || res.success === false){
         listEl.innerHTML = '<div class="log-empty">' + escapeHtml(res.error || res.message || '불러오지 못했습니다.') + '</div>';
@@ -5746,6 +5772,10 @@
       ' · <span style="color:' + (wc.상태 === '완료' ? '#16a34a' : 'var(--sub)') + ';">' + escapeHtml(wc.상태 || '') + '</span>' +
       rolesHtml +
       (wc.법정일 ? '<br>' + escapeHtml(deadlineLabel) + ': ' + escapeHtml(fmtDateShort_(wc.법정일)) : '') +
+      '<div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">' +
+        '<button type="button" class="ghost-btn" style="font-size:12px; padding:2px 8px;" data-cc-case-go="handle" data-case-id="' + escapeHtml(wc.id) + '">🧭 처리개요</button>' +
+        '<button type="button" class="ghost-btn" style="font-size:12px; padding:2px 8px;" data-cc-case-go="work" data-case-id="' + escapeHtml(wc.id) + '">📌 작업관리</button>' +
+      '</div>' +
       '</div>';
   }
 
