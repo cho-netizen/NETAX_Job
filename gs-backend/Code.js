@@ -29399,14 +29399,24 @@ function cpfFromResult_(result, base, docType) {
     if (dt) { const d = cpfDate_(dt); if (d) b.date = d; }
     return b;
   };
+  // [2026.10.19 1번 밤작업 — 2번 요청] 증명서 기준 인물(keys.subject) — 한 파일에 가족관계·기본·주민등록 증명서가 섞여도 그 증명서의 배우자·자녀·부모·주소 사실이
+  //  누구 기준인지 묶이게. 가족관계(기본·혼인관계)증명서는 "본인" 줄, 주민등록 초본은 성명 칸(등본은 세대주), 그 밖에 "본인" 칸이 있는 서식은 그 사람. 열쇠 모양은 사람 열쇠와 같음(이름|생년 6자리)
+  const subjectOf = function (node) {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) return '';
+    if (Array.isArray(node.가족)) { const me = node.가족.filter(function (p) { return p && p.관계 === '본인'; })[0]; if (me) return cpfPersonKey_(me.이름 || me.성명 || '', me.주민번호 || me.생년월일 || ''); }
+    if (/주민등록/.test(String(node.종류 || ''))) { if (node.성명) return cpfPersonKey_(node.성명, node.주민번호 || node.생년월일 || ''); if (node.세대주) return cpfPersonKey_(node.세대주, node.세대주주민번호 || ''); }
+    if (node.본인 && typeof node.본인 === 'object') return cpfPersonKey_(node.본인.이름 || node.본인.성명 || '', node.본인.주민번호 || node.본인.생년월일 || '');
+    return '';
+  };
   const merge = function (up, own) { const k = {}; ['asset', 'account', 'date'].forEach(function (x) { if (own[x] || up[x]) k[x] = own[x] || up[x]; }); if (own.person) k.person = own.person; return k; };
   const push = function (f) { out.push(f); };
-  const walk = function (node, path, rec, upKeys, role, unsure, type, page) {
+  const walk = function (node, path, rec, upKeys, role, unsure, type, page, subj0) {
     if (node === null || node === undefined) return;
     if (Array.isArray(node)) return; // 배열은 아래 obj에서 칸 이름과 함께 다룬다
     if (typeof node !== 'object') return;
-    // 매매·임대 묶음: {docs:[{type, r}]} — 안쪽 서류 종류로 칸 대응을 바꾼다
-    if (node.type && node.r && typeof node.r === 'object') { walk(node.r, path, rec, upKeys, role, unsure, node.type, page); return; }
+    // 매매·임대 묶음: {docs:[{type, r}]} — 안쪽 서류 종류로 칸 대응을 바꾼다(기준 인물도 안쪽 서류마다)
+    if (node.type && node.r && typeof node.r === 'object') { walk(node.r, path, rec, upKeys, role, unsure, node.type, page, ''); return; }
+    const subj = subjectOf(node) || subj0 || '';
     const own = keyBits(node), keys = merge(upKeys, own);
     const recUnsure = unsure || node.확인필요 === true;
     const recCheck = cpfCheckOf_(node, ''); // 이 기록의 검산 결과(규칙이 서류 안에서 맞대 본 것 — 합계=회차 합, 한글 금액=숫자 등)
@@ -29425,7 +29435,7 @@ function cpfFromResult_(result, base, docType) {
             const nv = cpfNormalize_(k.replace(/목록$/, '') in CPF_KIND_MAP_ ? k.replace(/목록$/, '') : k, x, type); if (!nv) return;
             const kk = Object.assign({}, keys); if (nv.kind === '소재지') { const a = cpfAssetKey_(x); if (a) kk.asset = a; }
             if (nv.kind === '성명') { const pk = cpfPersonKey_(x, ''); if (pk) kk.person = pk; }
-            push({ kind: nv.kind, value: nv.value, raw: nv.raw, where: pathName(path + '.' + k) + ' ' + (i + 1), rec: rec, keys: kk, role: CPF_ROLE_KEYS_.test(k) ? k : role, unsure: recUnsure || nv.unsure, page: pg });
+            push({ kind: nv.kind, value: nv.value, raw: nv.raw, where: pathName(path + '.' + k) + ' ' + (i + 1), rec: rec, keys: kk, role: CPF_ROLE_KEYS_.test(k) ? k : role, unsure: recUnsure || nv.unsure, page: pg, subj: subj });
           });
           return;
         }
@@ -29438,15 +29448,15 @@ function cpfFromResult_(result, base, docType) {
             let val = cpfRowValue_(x); const kb = merge(keys, keyBits(x));
             if (!Object.keys(val).length) return;
             if (one === '통장 거래') val = cpfBankRow_(val);
-            push({ kind: one, value: val, raw: Object.keys(val).map(function (q) { return q + ' ' + val[q]; }).join(' · ').slice(0, 300), where: pathName(path + '.' + k) + ' ' + (i + 1) + '번째 줄', rec: r2, keys: kb, role: role, unsure: recUnsure || x.확인필요 === true || x.입출확인필요 === true, check: cpfCheckOf_(x, ''), page: xp });
+            push({ kind: one, value: val, raw: Object.keys(val).map(function (q) { return q + ' ' + val[q]; }).join(' · ').slice(0, 300), where: pathName(path + '.' + k) + ' ' + (i + 1) + '번째 줄', rec: r2, keys: kb, role: role, unsure: recUnsure || x.확인필요 === true || x.입출확인필요 === true, check: cpfCheckOf_(x, ''), page: xp, subj: subj });
             return;
           }
           const subRole = CPF_ROLE_KEYS_.test(k) ? k : (x.관계 && typeof x.관계 === 'string' ? x.관계 : role);
-          walk(x, path + '.' + k + '[' + (i + 1) + ']', r2, keys, subRole, recUnsure, type, xp);
+          walk(x, path + '.' + k + '[' + (i + 1) + ']', r2, keys, subRole, recUnsure, type, xp, subj);
         });
         return;
       }
-      if (typeof v === 'object') { walk(v, path + '.' + k, rec, keys, CPF_ROLE_KEYS_.test(k) ? k : role, recUnsure, type, pg); return; }
+      if (typeof v === 'object') { walk(v, path + '.' + k, rec, keys, CPF_ROLE_KEYS_.test(k) ? k : role, recUnsure, type, pg, subj); return; }
       const nv = cpfNormalize_(k, v, type); if (!nv) return;
       // 등기 을구 줄의 금액은 그 줄의 등기 목적으로 이름을 붙인다(근저당 → 채권최고액, 전세권 → 전세금)
       if (k === '금액' && typeof node.목적 === 'string') { if (/근\s*저\s*당/.test(node.목적)) nv.kind = '근저당 채권최고액'; else if (/전\s*세\s*권/.test(node.목적)) nv.kind = '전세금'; else if (/임\s*차\s*권/.test(node.목적)) nv.kind = '임대 보증금'; }
@@ -29460,7 +29470,7 @@ function cpfFromResult_(result, base, docType) {
         const dv = dk ? cpfDate_(node[dk]) : '';
         if (dv) { kk.date = dv; kk.dateFrom = dk; } else if (kk.date) kk.dateFrom = '같은 기록 날짜';
       } else if (kk.date) kk.dateFrom = '같은 기록 날짜';
-      push({ kind: nv.kind, value: nv.value, raw: nv.raw, where: pathName(path + '.' + k), rec: rec, keys: kk, role: CPF_ROLE_KEYS_.test(k) ? k : (nv.kind === '성명' ? role : ''), unsure: recUnsure || nv.unsure || /후보/.test(k), check: cpfCheckOf_(node, k) || (typeof nv.value === 'number' ? recCheck : null), page: pg }); // 기록 전체 검산은 금액에만(이름·날짜엔 그 칸 전용 검산만)
+      push({ kind: nv.kind, value: nv.value, raw: nv.raw, where: pathName(path + '.' + k), rec: rec, keys: kk, role: CPF_ROLE_KEYS_.test(k) ? k : (nv.kind === '성명' ? role : ''), unsure: recUnsure || nv.unsure || /후보/.test(k), check: cpfCheckOf_(node, k) || (typeof nv.value === 'number' ? recCheck : null), page: pg, subj: subj }); // 기록 전체 검산은 금액에만(이름·날짜엔 그 칸 전용 검산만)
     });
   };
   if (Array.isArray(result)) result.forEach(function (x, i) { walk(x, '', String(i + 1), {}, '', false, docType, null); });
@@ -29469,6 +29479,7 @@ function cpfFromResult_(result, base, docType) {
     const src = Object.assign({}, base.src, { where: f.where || '' }); if (f.rec) src.rec = f.rec; if (f.page) src.page = f.page;
     const kk = {}; Object.keys(f.keys || {}).forEach(function (x) { if (f.keys[x]) kk[x] = f.keys[x]; });
     if (kk.dateFrom && !kk.date) delete kk.dateFrom;
+    if (f.subj) kk.subject = f.subj; // 증명서 기준 인물(본인)
     const rd = { how: base.how, conf: f.unsure ? '불확실' : '확실', note: f.unsure ? '서류 정리 규칙이 확인 필요로 표시했거나 형식이 애매함' : '' };
     if (f.check) { rd.check = f.check.state; if (f.check.note) rd.checkNote = f.check.note; } // [2026.10.18 2번 요청] 서류 안 검산 결과 — 교차검증의 객관 규칙(검산 맞는 후보)이 쓸 수 있게
     rd.ocrConf = cpfOcrConf_(base.how, f.check); // 판독 확실성(중13) — conf(규칙이 그렇게 읽었는지)와 따로
@@ -29864,6 +29875,9 @@ function cpfFile_(c, f, cache, tbank, opt) {
       if (!piped.length && /\n\s*\|[^\n]*\|[^\n]*\|/.test('\n' + text)) piped = cpfPipeRows_(text, base, '글 속 표', p && p.type);
     } catch (e) { trunc.push('표 글 받기 오류: ' + String(e && e.message || e).slice(0, 60)); }
   }
+  // [2026.10.19 1번 밤작업 — 2번 요청] 이 파일(구간)의 증명서 기준 인물이 하나뿐이면 글자에서 뽑은 사실에도 같은 기준 인물을 단다(여럿이면 어느 증명서 글인지 몰라 안 닮)
+  { const subs = {}; ruled.forEach(function (x) { if (x.keys && x.keys.subject) subs[x.keys.subject] = 1; }); const sk = Object.keys(subs);
+    if (sk.length === 1) table.concat(piped, lines, common).forEach(function (x) { x.keys = x.keys || {}; if (!x.keys.subject) x.keys.subject = sk[0]; }); }
   const all = ruled.concat(table, piped, lines, common);
   if (exclude) all.forEach(function (x) { x.read.use = '제외 후보(' + exclude.replace(/ — .*$/, '') + ')'; });
   facts[0].read.note = [typeDoubt, exclude ? '제외 후보: ' + exclude + ' — 사실은 뽑았고 read.use로 표시(쓸지 2번이 정함)' : '', p && p.type ? '' : '서류 규칙이 없는 종류 — 글자에서 공통 뽑기·글자 줄만 함', warn.length ? '서류 정리 경고: ' + warn.slice(0, 3).join(' / ').slice(0, 200) : '', cut ? '글자 상한에서 잘림 — 뒤쪽은 못 읽음' : '', trunc.length ? '잘림·못 함: ' + trunc.join(' / ') : ''].filter(String).join(' · ');
