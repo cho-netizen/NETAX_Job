@@ -283,8 +283,10 @@
   // [2026.10.18 탭연결 4번] 다른 화면(대시보드)에서 예약 한 줄을 눌러 왔을 때 — 예약관리를 새로 불러 그 줄로 가서 강조
   function bookingFocusRow_(rowIndex){
     window._bookingFocusRow = rowIndex;
+    // 처음 여는 거면 goToView_가 목록을 불러오고, 이미 열어 본 화면이면 최신으로 한 번만 다시 불러온다(두 번 불러 강조가 지워지지 않게)
+    var wasLoaded = bookingLoaded;
     if (typeof goToView_ === 'function') goToView_('booking');
-    initBooking(true);
+    if (wasLoaded || !bookingLoaded) initBooking(true);
   }
 
   function bookingGoToCase(caseId){
