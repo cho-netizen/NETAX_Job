@@ -3250,6 +3250,159 @@
     }
     return { run: run };
   })();
+  // ---- NXFLAT 시작 ----
+  // [2026.10.19 3번 세션] 서류 사진 자동 펴기(스캔 앱처럼: 테두리 찾기 → 원근 펴기 → 잘라내기 → 필요하면 명암) — 세무사님 "스캔기능으로 펴기작업을 거치지 않았네?"
+  //  화면(브라우저)과 이 PC 시험이 같은 코드를 쓴다(ES5, 의존 없음). 지금 스캔 도구(netax.kr/shared/scan-tool.js·사이드바 NXAI_SCAN_)의 자동 모서리는
+  //  변마다 "안쪽 거리" 하나(직사각형 자르기)라 기울어진 종이를 못 편다 — 여기서는 변마다 25곳에서 종이 가장자리 점을 찾아 직선으로 맞추고 네 직선의 교점으로 원근을 편다.
+  //  안전장치(세무사님: 확실히 못 찾으면 펴지 말 것): 변마다 따로 판정해 "확실한 변"만 자르고 나머지 변은 사진 가장자리 그대로 둔다(자르지 않으니 글자를 잃지 않음).
+  //  확실한 변 = 점이 직선에 잘 맞고(6점 이상·변 길이 25% 넘게 퍼짐·12도 안), 그 바깥 전체가 한 가지 배경이며 바로 안쪽 종이보다 확실히 어두움.
+  //  네 각 직각 ±12도·종이 넓이 25% 이상·모서리가 사진 안. 확실한 변이 하나도 없으면(이미 반듯한 스캔·화면 캡처·종이가 사진에 꽉 참·밝은 탁자 위) 그대로 둔다.
+  //  시험(개발 사진 27장 + 시험에 안 쓴 사진 20장): 11장 폄, 글자 잘림 0 — 기준을 고치면 두 묶음을 다시 돌려 펴기 전/후를 눈으로 볼 것(방법: netax-inventory maps/설계_3번_PDF변환.md 펴기 절).
+  var NXFLAT = (function () {
+    function gray(d) { var g = new Float32Array(d.width * d.height); for (var i = 0, p = 0; i < d.data.length; i += 4, p++) g[p] = 0.299 * d.data[i] + 0.587 * d.data[i + 1] + 0.114 * d.data[i + 2]; return g; }
+    // 한 줄을 바깥에서 안으로 훑어 가장 큰 밝기 변화 자리(사진 가장자리 3%는 건너뜀, 안쪽 40%까지)
+    // 가장 센 변화가 아니라 "바깥에서 처음 만나는 센 변화"(그 띠 최대값의 절반 이상) — 종이 안 글자(검은 글씨)가 종이 가장자리보다 변화가 커서
+    //  가장 센 자리를 고르면 글자 줄을 가장자리로 잡았다(김순희 확인서 사진). 어두운→밝은(배경→종이) 방향만
+    function edgeAt(getVal, len) {
+      var skip = Math.floor(len * 0.02), lim = Math.floor(len * 0.4), ds = [], maxD = 0;
+      for (var i = skip + 2; i < lim; i++) { var df = ((getVal(i) + getVal(i + 1)) - (getVal(i - 1) + getVal(i - 2))) / 2; ds.push({ i: i, d: df }); if (df > maxD) maxD = df; }
+      var th = Math.max(18, maxD * 0.3); // 종이 가장자리가 흐릿해도(밝은 탁자 위) 서식 굵은 테두리보다 먼저 잡게 — 김환식 계약서 사진은 0.5에서 테두리를 잡아 제목이 잘렸다
+      for (var k = 0; k < ds.length; k++) if (ds[k].d >= th) { var j = k; while (j + 1 < ds.length && ds[j + 1].d > ds[j].d) j++; return { idx: ds[j].i, s: ds[j].d }; }
+      return { idx: -1, s: 0 };
+    }
+    // 점들 → 직선(아래·위 변은 y = a·x + b, 왼·오른 변은 x = a·y + b), 벗어난 점을 두 번 걸러 냄
+    //  종이가 사진 가운데만 차지하면 바깥 표본 줄은 바닥 무늬를 잡는다 — 두 점씩 골라 가장 많은 점이 맞는 직선을 찾고(어긋난 점에 끌리지 않게) 그 점들로 다시 맞춘다
+    function fit(pts, tol) {
+      if (pts.length < 2) return null;
+      var best = null;
+      for (var i = 0; i < pts.length; i++) for (var j = i + 1; j < pts.length; j++) {
+        var du = pts[j].u - pts[i].u; if (Math.abs(du) < 1e-6) continue;
+        var a0 = (pts[j].v - pts[i].v) / du, b0 = pts[i].v - a0 * pts[i].u;
+        var inl = pts.filter(function (p) { return Math.abs(p.v - (a0 * p.u + b0)) <= tol; });
+        if (!best || inl.length > best.length) best = inl;
+      }
+      if (!best || best.length < 2) return null;
+      var n = best.length, sx = 0, sy = 0, sxx = 0, sxy = 0;
+      best.forEach(function (p) { sx += p.u; sy += p.v; sxx += p.u * p.u; sxy += p.u * p.v; });
+      var den = n * sxx - sx * sx; if (Math.abs(den) < 1e-9) return null;
+      var a = (n * sxy - sx * sy) / den, b = (sy - a * sx) / n;
+      return { a: a, b: b, n: best.filter(function (p) { return Math.abs(p.v - (a * p.u + b)) <= tol; }).length };
+    }
+    // gray(w×h)에서 네 변의 직선과 모서리. 돌려주는 것 {ok, corners:[tl,tr,br,bl], why, flatAlready, real:[변]}
+    //  변마다 따로 판정한다 — "확실한 변"(점이 직선에 잘 맞고, 그 바깥 전체가 종이보다 어두운 배경)만 잘라 내고,
+    //  나머지 변은 사진 가장자리 그대로 둔다(자르지 않으므로 글자를 잃지 않음). 종이가 사진 끝까지 찬 변·밝은 탁자 위 변은 그래서 안 자른다.
+    function detect(g, w, h) {
+      var N = 25, TH = 18, tolX = w * 0.02, tolY = h * 0.02, K = ['top', 'bottom', 'left', 'right'];
+      var hz = function (k) { return k === 'top' || k === 'bottom'; };
+      var sides = { top: [], bottom: [], left: [], right: [] }, offs = { top: [], bottom: [], left: [], right: [] };
+      for (var s = 1; s <= N; s++) {
+        var t = 0.1 + 0.8 * (s - 1) / (N - 1);
+        var x = Math.round(t * (w - 1)), y = Math.round(t * (h - 1)), r;
+        r = edgeAt(function (p) { return g[p * w + x]; }, h); if (r.s > TH) { sides.top.push({ u: x, v: r.idx }); offs.top.push(r.idx / h); }
+        r = edgeAt(function (p) { return g[(h - 1 - p) * w + x]; }, h); if (r.s > TH) { sides.bottom.push({ u: x, v: h - 1 - r.idx }); offs.bottom.push(r.idx / h); }
+        r = edgeAt(function (p) { return g[y * w + p]; }, w); if (r.s > TH) { sides.left.push({ u: y, v: r.idx }); offs.left.push(r.idx / w); }
+        r = edgeAt(function (p) { return g[y * w + (w - 1 - p)]; }, w); if (r.s > TH) { sides.right.push({ u: y, v: w - 1 - r.idx }); offs.right.push(r.idx / w); }
+      }
+      // 종이 밝기(가운데 70% 자리 — 글자는 어두우니 위쪽 값)
+      var pin = []; for (var yy3 = Math.round(h * 0.3); yy3 < h * 0.7; yy3 += 4) for (var xx3 = Math.round(w * 0.3); xx3 < w * 0.7; xx3 += 4) pin.push(g[yy3 * w + xx3]);
+      pin.sort(function (a, b) { return a - b; }); var paper = pin[Math.floor(pin.length * 0.7)];
+      var border = { top: { a: 0, b: 0, border: 1 }, bottom: { a: 0, b: h - 1, border: 1 }, left: { a: 0, b: 0, border: 1 }, right: { a: 0, b: w - 1, border: 1 } };
+      var why = {}, cand = {};
+      K.forEach(function (k) {
+        var ln = fit(sides[k], hz(k) ? tolY : tolX);
+        if (!ln) { why[k] = '점 없음'; return; }
+        var tol = hz(k) ? tolY : tolX, len = hz(k) ? w : h;
+        var us = sides[k].filter(function (p) { return Math.abs(p.v - (ln.a * p.u + ln.b)) <= tol; }).map(function (p) { return p.u; });
+        var spr = us.length ? (Math.max.apply(null, us) - Math.min.apply(null, us)) / len : 0;
+        if (ln.n < 6 || spr < 0.25) { why[k] = '점이 직선에 안 맞음'; return; }
+        if (Math.abs(ln.a) > 0.21) { why[k] = '너무 기욺'; return; } // 12도
+        // 직선 바로 안쪽 띠(종이)와 직선 바깥 전체(사진 끝까지)를 견줌 — 종이 밝기는 가운데가 아니라 그 자리 바로 안쪽으로 잼
+        //  (그늘·화면 밝기 차이로 가운데 기준이면 아래쪽 그늘진 종이를 배경으로 오인해 끝줄 글자를 잘랐다 — 구본경 상담자료 사진)
+        //  확실한 변 = (단차 60 이상·바깥 밝은 점 30% 미만·바깥에 종이만한 밝은 띠가 다시 나오는 줄 10/30 이하) 또는 (단차 25 이상·밝은 점 5% 미만·밝은 띠 3/30 이하)
+        //   — 글자 줄·표 회색 칸·그늘을 가장자리로 잡으면 바깥에 종이 밝기 띠가 다시 나온다(화면 견적서 "합계" 칸, 지선영 메모 끝줄이 잘렸던 사례)
+        var out = hz(k) ? (k === 'top' ? -1 : 1) : (k === 'left' ? -1 : 1), lenN = hz(k) ? h : w, strip = Math.max(4, Math.round(lenN * 0.03));
+        var depth = 0, n = 0, bright = 0, steps = [], runCols = 0, bandCols = 0;
+        for (var s2 = 0; s2 < 30; s2++) {
+          var t2 = 0.12 + 0.76 * s2 / 29, q = Math.round(t2 * ((hz(k) ? w : h) - 1)), base = ln.a * q + ln.b;
+          var px = function (d) { var c = Math.round(base + out * d); if (c < 0 || c >= lenN) return -1; return hz(k) ? g[c * w + q] : g[q * w + c]; };
+          depth += (out < 0 ? base : lenN - 1 - base) / lenN;
+          var ins = []; for (var d1 = 2; d1 <= strip + 2; d1++) { var v1 = px(-d1); if (v1 >= 0) ins.push(v1); }
+          if (ins.length < 3) continue;
+          ins.sort(function (a, b) { return a - b; }); var ref = ins[Math.floor(ins.length * 0.7)];
+          var os = [], run = 0, runMax = 0; for (var d2 = 2; d2 < lenN; d2 += 2) { var v2 = px(d2); if (v2 < 0) break; os.push(v2); n++; if (v2 > ref - 20) bright++; if (v2 > ref - 30) { run += 2; if (run > runMax) runMax = run; } else run = 0; }
+          if (runMax >= lenN * 0.03) runCols++;
+          // 바깥이 한 가지 배경인가: 직선 바로 바깥과 사진 끝 쪽 밝기가 크게 다르면 띠(서식 색 머리줄·화면 테두리)를 넘은 것 — 무통장입금증 초록 머리줄이 잘렸던 사례
+          var kk = Math.max(3, Math.round(lenN * 0.015)); if (os.length >= kk * 3) { var md = function (arr) { var c = arr.slice().sort(function (a, b) { return a - b; }); return c[Math.floor(c.length / 2)]; }; if (Math.abs(md(os.slice(0, kk)) - md(os.slice(-kk))) > 30) bandCols++; }
+          if (os.length) { os.sort(function (a, b) { return a - b; }); steps.push(ref - os[Math.floor(os.length / 2)]); }
+        }
+        depth /= 30;
+        if (depth < 0.03 && Math.abs(ln.a) < 0.02) { why[k] = '사진 가장자리'; return; } // 이미 반듯 — 자를 것 없음
+        steps.sort(function (a, b) { return a - b; }); var step = steps.length ? steps[Math.floor(steps.length / 2)] : 0;
+        if (n < 40 || bandCols > 10 || !(step >= 60 && bright / n < 0.3 && runCols <= 10 || step >= 25 && bright / n < 0.05 && runCols <= 3)) { why[k] = '바깥도 종이처럼 밝음'; return; }
+        cand[k] = ln;
+      });
+      var ck = Object.keys(cand);
+      if (!ck.length) {
+        var flat = K.every(function (k) { return why[k] === '사진 가장자리' || why[k] === '바깥도 종이처럼 밝음' || why[k] === '점 없음'; });
+        return { ok: false, flatAlready: flat, why: '자를 만큼 확실한 종이 가장자리 없음(' + K.map(function (k) { return k + ':' + why[k]; }).join(', ') + ')' };
+      }
+      function cross(a, b) { var yv = (a.a * b.b + a.b) / (1 - a.a * b.a); return { x: b.a * yv + b.b, y: yv }; }
+      var ang = function (a, b, c) { var v1 = { x: a.x - b.x, y: a.y - b.y }, v2 = { x: c.x - b.x, y: c.y - b.y }; return Math.acos((v1.x * v2.x + v1.y * v2.y) / (Math.hypot(v1.x, v1.y) * Math.hypot(v2.x, v2.y))) * 180 / Math.PI; };
+      // 확실한 변들의 조합 중 가장 많은 변을 쓰면서 모서리·각·넓이가 맞는 것(엉뚱한 변 하나가 섞여 있으면 그 변만 빼고 다시 봄)
+      var best = null, lastWhy = '';
+      for (var m = (1 << ck.length) - 1; m > 0; m--) {
+        var use = ck.filter(function (k, i) { return m & (1 << i); });
+        if (best && use.length <= best.use.length) continue;
+        var Lx = {}; K.forEach(function (k) { Lx[k] = use.indexOf(k) >= 0 ? cand[k] : border[k]; });
+        var tl = cross(Lx.top, Lx.left), tr = cross(Lx.top, Lx.right), br = cross(Lx.bottom, Lx.right), bl = cross(Lx.bottom, Lx.left), cs = [tl, tr, br, bl];
+        if (cs.some(function (p) { return !isFinite(p.x) || !isFinite(p.y) || p.x < -w * 0.03 || p.y < -h * 0.03 || p.x > w * 1.03 || p.y > h * 1.03; })) { lastWhy = '모서리가 사진 밖'; continue; }
+        var angs = [ang(bl, tl, tr), ang(tl, tr, br), ang(tr, br, bl), ang(br, bl, tl)];
+        // 휴대폰으로 찍은 종이는 직각에서 10도 안팎 — 12도 넘게 틀어지면 엉뚱한 선을 잡은 것(손글씨 메모 i_7e66 70·106도에서 글이 잘림)
+        if (angs.some(function (a) { return !isFinite(a) || Math.abs(a - 90) > 12; })) { lastWhy = '네 각이 직각과 많이 다름(' + angs.map(Math.round).join(',') + ')'; continue; }
+        var area = Math.abs((tl.x * tr.y - tr.x * tl.y) + (tr.x * br.y - br.x * tr.y) + (br.x * bl.y - bl.x * br.y) + (bl.x * tl.y - tl.x * bl.y)) / 2;
+        if (area < w * h * 0.25) { lastWhy = '종이 넓이가 사진의 25%보다 작음'; continue; }
+        best = { use: use, cs: cs, angs: angs };
+      }
+      if (!best) return { ok: false, why: lastWhy };
+      // 바깥으로 3% 넉넉히(가장자리 판단이 조금 안쪽이어도 글자를 자르지 않게) — 사진 가장자리 변은 그대로
+      var c0 = best.cs, cx = (c0[0].x + c0[1].x + c0[2].x + c0[3].x) / 4, cy = (c0[0].y + c0[1].y + c0[2].y + c0[3].y) / 4;
+      var out = c0.map(function (p) { return { x: Math.max(0, Math.min(w - 1, p.x + (p.x - cx) * 0.03)), y: Math.max(0, Math.min(h - 1, p.y + (p.y - cy) * 0.03)) }; });
+      return { ok: true, sides: why, corners: out, angs: best.angs, real: best.use, why: '확실한 변 ' + best.use.join('·') + (best.use.length < 4 ? ' (나머지는 사진 가장자리 그대로)' : '') };
+    }
+    function homo(src, dst) {
+      var A = [], B = [];
+      for (var i = 0; i < 4; i++) { var sx = src[i].x, sy = src[i].y, dx = dst[i].x, dy = dst[i].y; A.push([sx, sy, 1, 0, 0, 0, -dx * sx, -dx * sy]); B.push(dx); A.push([0, 0, 0, sx, sy, 1, -dy * sx, -dy * sy]); B.push(dy); }
+      var n = 8; for (var r = 0; r < n; r++) A[r] = A[r].concat([B[r]]);
+      for (var c = 0; c < n; c++) { var mr = c; for (var r2 = c + 1; r2 < n; r2++) if (Math.abs(A[r2][c]) > Math.abs(A[mr][c])) mr = r2; var tmp = A[c]; A[c] = A[mr]; A[mr] = tmp; for (var r3 = c + 1; r3 < n; r3++) { var f = A[r3][c] / A[c][c]; for (var k = c; k <= n; k++) A[r3][k] -= f * A[c][k]; } }
+      var x = new Array(n); for (var i2 = n - 1; i2 >= 0; i2--) { var s = A[i2][n]; for (var j = i2 + 1; j < n; j++) s -= A[i2][j] * x[j]; x[i2] = s / A[i2][i2]; }
+      return [x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7], 1];
+    }
+    // 원본 RGBA(sw×sh)와 원본 좌표 모서리 → 펴진 RGBA(가로·세로는 변 길이, 긴 변 maxPx). 명암은 밝기 2%~98%를 늘려 맞춤(대비가 낮을 때만)
+    function warp(src, sw, sh, corners, maxPx) {
+      var dist = function (a, b) { return Math.hypot(a.x - b.x, a.y - b.y); };
+      var ow = Math.round(Math.max(dist(corners[0], corners[1]), dist(corners[3], corners[2]))), oh = Math.round(Math.max(dist(corners[0], corners[3]), dist(corners[1], corners[2])));
+      var sc = Math.min(1, (maxPx || 2400) / Math.max(ow, oh)); ow = Math.max(50, Math.round(ow * sc)); oh = Math.max(50, Math.round(oh * sc));
+      var M = homo([{ x: 0, y: 0 }, { x: ow, y: 0 }, { x: ow, y: oh }, { x: 0, y: oh }], corners); // 출력 → 원본
+      var out = new Uint8ClampedArray(ow * oh * 4), hist = new Uint32Array(256);
+      for (var Y = 0; Y < oh; Y++) for (var X = 0; X < ow; X++) {
+        var wv = M[6] * X + M[7] * Y + M[8], sx = (M[0] * X + M[1] * Y + M[2]) / wv, sy = (M[3] * X + M[4] * Y + M[5]) / wv, o = (Y * ow + X) * 4;
+        if (sx < 0 || sy < 0 || sx > sw - 1 || sy > sh - 1) { out[o] = out[o + 1] = out[o + 2] = 255; out[o + 3] = 255; continue; }
+        var x0 = Math.floor(sx), y0 = Math.floor(sy), x1 = Math.min(x0 + 1, sw - 1), y1 = Math.min(y0 + 1, sh - 1), fx = sx - x0, fy = sy - y0;
+        for (var c = 0; c < 3; c++) {
+          var v = (src[(y0 * sw + x0) * 4 + c] * (1 - fx) + src[(y0 * sw + x1) * 4 + c] * fx) * (1 - fy) + (src[(y1 * sw + x0) * 4 + c] * (1 - fx) + src[(y1 * sw + x1) * 4 + c] * fx) * fy;
+          out[o + c] = v;
+        }
+        out[o + 3] = 255; hist[Math.round(0.299 * out[o] + 0.587 * out[o + 1] + 0.114 * out[o + 2])]++;
+      }
+      // 명암 정리(필요할 때만): 밝기 2%·98% 자리가 160보다 좁으면 늘림
+      var tot = ow * oh, acc = 0, lo = 0, hi = 255; for (var i = 0; i < 256; i++) { acc += hist[i]; if (acc < tot * 0.02) lo = i; if (acc < tot * 0.98) hi = i; }
+      var enhanced = false;
+      if (hi - lo < 160 && hi > lo) { enhanced = true; var k = 255 / (hi - lo); for (var p = 0; p < out.length; p += 4) for (var c2 = 0; c2 < 3; c2++) out[p + c2] = (out[p + c2] - lo) * k; }
+      return { data: out, width: ow, height: oh, enhanced: enhanced };
+    }
+    return { gray: gray, detect: detect, warp: warp };
+  })();
+  // ---- NXFLAT 끝 ----
   // ============================================================
   // [2026.10.19 3번 세션 화면] 세무사님 결정 — "문서별 PDF를 기본으로 하고, 신고를 위한 파일은 <_신고제출> 폴더에 따로 복사해 홈택스 첨부 기준에 맞춘다".
   //  사건처리 결과 아래 두 단추로 여는 패널(사건처리 거품 안 .nxai-cp-tools — 아래 결정 줄은 답할 때마다 다시 그려지므로 따로 둠).
@@ -3297,6 +3450,83 @@
     }
 
     // ---------- ① 사진→PDF 정리 ----------
+    // 🪄 펴기(기본) — 휴대폰으로 찍은 서류 사진(JPEG)을 PDF에 담기 전에 NXFLAT로 테두리 찾기→원근 펴기→잘라내기(필요하면 명암).
+    //  확실하지 않으면 원래 사진 그대로(이유를 보여 줌). 화면 캡처(PNG)·HEIC 등 JPEG 아닌 것은 펴지 않음. 원본 사진은 언제나 _원본사진에 그대로.
+    var FLAT_SIDE_ = { top: '위', bottom: '아래', left: '왼쪽', right: '오른쪽' };
+    function loadImg(bytes, mime){ return new Promise(function(res, rej){ var url = URL.createObjectURL(new Blob([bytes], { type: mime || 'image/jpeg' })); var img = new Image(); img.onload = function(){ URL.revokeObjectURL(url); res(img); }; img.onerror = function(){ URL.revokeObjectURL(url); rej(new Error('사진을 열지 못함')); }; img.src = url; }); }
+    function canvasOf(w, h){ var c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+    function smallUrl(cv){ var s = Math.min(1, 240 / Math.max(cv.width, cv.height)), t = canvasOf(Math.max(1, Math.round(cv.width * s)), Math.max(1, Math.round(cv.height * s))); t.getContext('2d').drawImage(cv, 0, 0, t.width, t.height); return t.toDataURL('image/jpeg', 0.7); }
+    // 사진 하나 → { b64(편 JPEG — 폈을 때만), why(펴거나 안 편 까닭), before/after(미리 보기 작은 그림, preview일 때) }
+    async function flatPhoto(id, name, preview){
+      if (typeof NXFLAT === 'undefined') return { why: '펴기 도구 없음 — 원래 사진 그대로' };
+      if (!/\.jpe?g$/i.test(String(name || ''))) return { why: '화면 캡처·JPEG 아닌 사진은 펴지 않음' };
+      var fb = await callGas('readFileBinary', { fileId: id });
+      if (!fb || fb.error || !fb.base64) throw new Error((fb && fb.error) || '사진을 불러오지 못함');
+      var img = await loadImg(b64ToBytes(fb.base64), fb.mimeType || 'image/jpeg'); // 브라우저가 사진 속 회전 정보대로 세워 줌
+      var iw = img.naturalWidth, ih = img.naturalHeight, sc = Math.min(1, 800 / Math.max(iw, ih));
+      var c0 = canvasOf(Math.max(1, Math.round(iw * sc)), Math.max(1, Math.round(ih * sc))), x0 = c0.getContext('2d'); x0.drawImage(img, 0, 0, c0.width, c0.height);
+      var det = NXFLAT.detect(NXFLAT.gray(x0.getImageData(0, 0, c0.width, c0.height)), c0.width, c0.height);
+      var out = { before: preview ? smallUrl(c0) : null };
+      if (!det.ok){ out.why = det.flatAlready ? '이미 반듯함 — 그대로' : '확실하지 않아 그대로(' + String(det.why || '').replace(/\(.*$/, '') + ')'; return out; }
+      var cs = canvasOf(iw, ih), xs = cs.getContext('2d'); xs.drawImage(img, 0, 0);
+      var k = iw / c0.width, w = NXFLAT.warp(xs.getImageData(0, 0, iw, ih).data, iw, ih, det.corners.map(function(p){ return { x: p.x * k, y: p.y * k }; }), 3000);
+      var co = canvasOf(w.width, w.height), xo = co.getContext('2d'), od = xo.createImageData(w.width, w.height); od.data.set(w.data); xo.putImageData(od, 0, 0);
+      var jpg = await new Promise(function(res, rej){ co.toBlob(function(b){ if (!b) { rej(new Error('편 그림 만들기 실패')); return; } b.arrayBuffer().then(function(buf){ res(new Uint8Array(buf)); }); }, 'image/jpeg', 0.9); });
+      out.b64 = bytesToB64(jpg); out.after = preview ? smallUrl(co) : null;
+      out.why = '폄(' + (det.real || []).map(function(s){ return FLAT_SIDE_[s] || s; }).join('·') + ' 가장자리 잘라냄' + (w.enhanced ? ', 명암 정리' : '') + ')';
+      return out;
+    }
+    // 🪄 미리 보기 — 펴기 전/후 작은 그림(고객 폴더 안 바뀜)
+    async function flatPreview(g, i, out){
+      out.hidden = false; out.className = 'nxai-cp-line'; out.textContent = '🪄 「' + g.names[i] + '」 펴기 미리 보기 중…';
+      try {
+        var r = await flatPhoto(g.ids[i], g.names[i], true);
+        out.textContent = '🪄 「' + g.names[i] + '」 ' + r.why + ' ';
+        var row = el('div', 'nxai-cp-btns');
+        [[r.before, '펴기 전'], [r.after, '펴기 후']].forEach(function(p){ if (!p[0]) return; var fig = el('span'); var im = el('img'); im.src = p[0]; im.alt = p[1]; im.style.maxHeight = '180px'; im.style.border = '1px solid #ccc'; fig.appendChild(im); fig.appendChild(el('div', 'nxai-cp-sum', p[1])); row.appendChild(fig); });
+        out.appendChild(row);
+      } catch (e) { out.className = 'nxai-cp-line nxai-cp-bad'; out.textContent = '🪄 「' + g.names[i] + '」 미리 보기 못함: ' + errText(e); }
+    }
+    // 묶음의 사진들을 펴서 {사진ID: b64} — 한 번 편 것은 다시 펴지 않음(시간 넘겨 다시 보낼 때)
+    async function flatGroup(x, P){
+      if (x.flat) return x.flat;
+      x.flat = {}; x.flatNotes = [];
+      if (x.g.flatOff) return x.flat;
+      for (var i = 0; i < x.ids.length; i++){
+        P.sum('펴는 중… 「' + x.names[i] + '」');
+        try { var r = await flatPhoto(x.ids[i], x.names[i], false); if (r.b64) x.flat[x.ids[i]] = r.b64; x.flatNotes.push(r.why); }
+        catch (e) { x.flatNotes.push('펴지 못해 그대로(' + errText(e) + ')'); }
+      }
+      return x.flat;
+    }
+    // 90초 자동 변환으로 만들어져 아직 펴지 않은 PDF — _원본사진의 사진으로 펴서 같은 PDF(ID 그대로)에 다시 씀
+    function renderPending(st, P, list){
+      if (!list || !list.length) return;
+      var box = el('div', 'nxai-cp-res'); P.body.appendChild(box);
+      line(box, '🪄 자동으로 만든 PDF 중 아직 펴지 않은 것 ' + list.length + '개(' + list.slice(0, 3).map(function(r){ return r.pdfName; }).join(', ') + (list.length > 3 ? ' 외' : '') + ') — _원본사진의 사진으로 펴서 같은 PDF에 다시 씁니다(링크 그대로, 확실하지 않은 쪽은 원래 사진 그대로).');
+      var acts = el('div', 'nxai-cp-btns'); box.appendChild(acts);
+      var go = btn('🪄 펴기', function(){
+        nxAiConfirm_('자동으로 만든 PDF ' + list.length + '개를 펴서 다시 씁니다(원본 사진은 _원본사진에 그대로). 진행할까요?').then(async function(ok){
+          if (!ok) return;
+          go.disabled = true; var n = 0;
+          try {
+            for (var i = 0; i < list.length; i++){
+              var r = list[i], flat = {}, notes = [];
+              for (var j = 0; j < r.src.length; j++){
+                P.sum('펴는 중… ' + (i + 1) + '/' + list.length + ' 「' + r.src[j].name + '」');
+                try { var f = await flatPhoto(r.src[j].id, r.src[j].name, false); if (f.b64) flat[r.src[j].id] = f.b64; notes.push(f.why); } catch (e) { notes.push('펴지 못해 그대로(' + errText(e) + ')'); }
+              }
+              try {
+                var u = await callGas('case_proc', { caseId: st.caseId, step: 'pdfReflat', pdfId: r.pdfId, flat: flat });
+                if (!u || u.error || !u.ok) throw new Error((u && u.error) || '응답 없음');
+                n++; var ln = line(box, (u.flat ? '✅ 폄: ' : '— 그대로: ') + r.pdfName + ' — ' + notes.join(' / ') + ' '); ln.appendChild(openLink(r.pdfId));
+              } catch (e) { line(box, '⚠ 「' + r.pdfName + '」 펴지 못함: ' + errText(e), true); }
+            }
+          } finally { go.disabled = false; P.sum('펴기 끝 — ' + n + '/' + list.length + '개 처리'); }
+        });
+      }, 'primary');
+      acts.appendChild(go);
+    }
     // 🔧 사진 하나 원근보정 → 같은 폴더에 "<이름>_보정.pdf"(원본 사진은 그대로)
     async function fixPhoto(st, g, i, out){
       var id = g.ids[i], nm = g.names[i];
@@ -3325,7 +3555,7 @@
       callGas('case_proc', { caseId: st.caseId, step: 'pdfPlan' }).then(function(r){
         if (!r || r.error || !r.ok) throw new Error((r && r.error) || '응답 없음');
         var gs = r.groups || [];
-        if (!gs.length){ P.sum(''); line(P.body, '사건 폴더에 PDF로 바꿀 사진이 없습니다(이미 바꾼 사진은 _원본사진 폴더에 있습니다).'); return; }
+        if (!gs.length){ P.sum(''); line(P.body, '사건 폴더에 PDF로 바꿀 사진이 없습니다(이미 바꾼 사진은 _원본사진 폴더에 있습니다).'); renderPending(st, P, r.flatPending); return; }
         gs.forEach(function(g){ g.on = !g.ask; g.ans = ''; g.pick = {}; g.doneIds = {}; g.ids.forEach(function(id){ g.pick[id] = true; }); });
         renderConv(st, P, r);
       }).catch(function(e){ P.sum(''); line(P.body, '미리 보기를 불러오지 못했습니다: ' + errText(e), true); });
@@ -3336,9 +3566,10 @@
       var weak = gs.filter(function(g){ return g.ask; }).length;
       P.sum('사진 ' + (r.photos || 0) + '장 → PDF ' + gs.length + '묶음' + (weak ? ' · 물어볼 묶음 ' + weak + '개' : ''));
       line(body, '미리 보기입니다 — [선택한 것 적용]을 누르기 전에는 고객 폴더가 바뀌지 않습니다. PDF 이름은 고칠 수 있습니다.' + (r.cfg ? ' (PDF 하나가 ' + r.cfg.pdfMB + 'MB를 넘으면 큰 사진부터 축소본으로 담습니다)' : ''));
+      line(body, '🪄 휴대폰 사진(JPEG)은 PDF에 담을 때 스캔 앱처럼 폅니다(종이 테두리를 확실히 찾은 변만 잘라냄 — 확실하지 않으면 원래 사진 그대로). 안 펴려면 묶음의 「🪄 펴기」 체크를 끄세요. [🪄]로 펴기 전/후를 먼저 볼 수 있습니다.');
       var wrap = el('div', 'nxai-cp-wrap'); body.appendChild(wrap);
       var tb = el('table', 'nxai-cp-table'); wrap.appendChild(tb);
-      tb.innerHTML = '<tr><th>적용</th><th>그림</th><th>쪽 순서·사진</th><th>PDF 이름</th><th>근거·확신도</th><th>크기</th><th>보정</th></tr>';
+      tb.innerHTML = '<tr><th>적용</th><th>그림</th><th>쪽 순서·사진</th><th>PDF 이름</th><th>근거·확신도</th><th>크기</th><th>펴기·보정</th></tr>';
       gs.forEach(function(g){ convRow(st, g, tb); });
       var acts = el('div', 'nxai-cp-btns'); body.appendChild(acts);
       acts.appendChild(btn('모두 켜기', function(){ gs.forEach(function(g){ if (g._cb && !g._cb.disabled){ g.on = true; g._cb.checked = true; } }); }));
@@ -3348,6 +3579,7 @@
       acts.appendChild(go);
       if (weak) acts.appendChild(el('span', 'nxai-cp-sum', '물어볼 묶음은 질문에 답해야 적용할 수 있습니다.'));
       body.appendChild(res);
+      renderPending(st, P, r.flatPending);
     }
     // 묶음 한 줄(+ 질문·보정 결과 줄)
     function convRow(st, g, tb){
@@ -3357,6 +3589,12 @@
       cb.title = cb.disabled ? '아래 질문에 먼저 답해 주세요' : '이 묶음을 PDF로 만들기';
       cb.addEventListener('change', function(){ g.on = cb.checked; });
       td0.appendChild(cb); g._cb = cb;
+      if (g.names.some(function(n){ return /\.jpe?g$/i.test(String(n || '')); })){
+        var fl = el('label', 'nxai-cp-sum'), fcb = el('input'); fcb.type = 'checkbox'; fcb.checked = !g.flatOff;
+        fcb.addEventListener('change', function(){ g.flatOff = !fcb.checked; });
+        fl.title = '휴대폰 사진을 스캔 앱처럼 펴서 담기(확실하지 않은 사진은 그대로)'; fl.appendChild(fcb); fl.appendChild(document.createTextNode('🪄 펴기'));
+        td0.appendChild(el('br')); td0.appendChild(fl);
+      }
       // 그림(드라이브 작은 그림 — 누르면 사진 열기)
       var td1 = el('td');
       g.ids.slice(0, 4).forEach(function(id, i){
@@ -3403,6 +3641,11 @@
           });
         }, 'nxai-cp-mini');
         b.title = '이 사진의 서류 모서리를 찾아 펴고 흑백·대비를 맞춘 보정본 PDF 만들기';
+        if (/\.jpe?g$/i.test(String(g.names[i] || ''))){
+          var pv = btn('🪄' + (g.ids.length > 1 ? ' ' + (i + 1) + '쪽' : ''), function(){ pv.disabled = true; sub.hidden = false; flatPreview(g, i, fixOut).then(function(){ pv.disabled = false; }); }, 'nxai-cp-mini');
+          pv.title = '펴기 전/후 미리 보기(고객 폴더는 안 바뀜)';
+          td6.appendChild(pv);
+        }
         td6.appendChild(b);
       });
       [td0, td1, td2, td3, td4, td5, td6].forEach(function(t){ tr.appendChild(t); });
@@ -3456,7 +3699,7 @@
     async function applyConv(st, P, gs, go, resBox){
       var L = buildApply(gs);
       if (!L.list.length){ nxAiToast_('적용할 묶음을 고르세요(물어볼 묶음은 질문에 먼저 답해 주세요).'); return; }
-      var ok = await nxAiConfirm_('고객 폴더에 PDF를 만들고 원본 사진은 _원본사진 폴더로 옮깁니다. 진행할까요?\n\n(만들 PDF ' + L.list.length + '개)');
+      var ok = await nxAiConfirm_('고객 폴더에 PDF를 만들고 원본 사진은 _원본사진 폴더로 옮깁니다(🪄 펴기를 켠 묶음의 휴대폰 사진은 펴서 담습니다). 진행할까요?\n\n(만들 PDF ' + L.list.length + '개)');
       if (!ok) return;
       go.disabled = true; st.pdfConvBusy = true;
       var pend = L.list.slice(), made = 0, fail = 0, stuck = 0, BATCH = 6;
@@ -3465,7 +3708,7 @@
         made++;
         if (x) markDone(x.g, x.ids, true);
         st.pdfConvMade = (st.pdfConvMade || []).concat([{ id: d.pdfId, name: d.name }]);
-        var ln = line(resBox, '✅ ' + d.name + ' (' + (d.pages || (x ? x.ids.length : 1)) + '쪽' + (d.shrunk ? ', 축소본 ' + d.shrunk + '장' : '') + ')' + (x ? ' ← ' + x.names.join(', ') : '') + ' ');
+        var ln = line(resBox, '✅ ' + d.name + ' (' + (d.pages || (x ? x.ids.length : 1)) + '쪽' + (d.shrunk ? ', 축소본 ' + d.shrunk + '장' : '') + (d.flat ? ', 🪄 편 쪽 ' + d.flat : '') + ')' + (x ? ' ← ' + x.names.join(', ') : '') + (x && x.flatNotes && x.flatNotes.length ? ' · 펴기: ' + x.flatNotes.join(' / ') : '') + ' ');
         ln.appendChild(openLink(d.pdfId));
         var ub = btn('↩ 되돌리기', function(){
           nxAiConfirm_('「' + d.name + '」을 휴지통으로 보내고 원본 사진을 원래 폴더로 되돌립니다. 진행할까요?').then(function(yes){
@@ -3484,18 +3727,24 @@
       try {
         while (pend.length){
           var batch = pend.splice(0, BATCH);
-          P.sum('적용 중… ' + made + '/' + L.list.length + ' (사진이 많으면 몇 분 걸립니다)');
-          var res = null;
-          try { res = await callGas('case_proc', { caseId: st.caseId, step: 'pdfApply', groups: batch.map(function(x){ return { gid: x.gid, ids: x.ids, name: x.name }; }) }); }
-          catch (e) { res = { error: errText(e) }; }
-          if (!res || res.error || !res.ok){ batch.forEach(function(x){ showErr(x, (res && res.error) || '응답 없음'); }); continue; }
-          (res.done || []).forEach(function(d){ showDone(L.byGid[d.gid], d); });
-          var again = [];
-          (res.errors || []).forEach(function(e){ var x = L.byGid[e.gid]; if (/^시간/.test(String(e.why || '')) && x) again.push(x); else showErr(x, e.why || '알 수 없는 이유'); });
-          if (again.length){
-            // 서버가 시간이 모자라 남긴 묶음만 다시 보낸다(한 번도 못 만들고 두 번 연속 시간이면 멈춤)
-            if (!(res.done || []).length && ++stuck >= 2) again.forEach(function(x){ showErr(x, '시간이 모자라 만들지 못함 — [선택한 것 적용]을 다시 눌러 주세요'); });
-            else { if ((res.done || []).length) stuck = 0; pend = again.concat(pend); }
+          // 🪄 펴기 — 묶음마다 화면에서 먼저 편다. 편 쪽이 있는 묶음은 보낼 양이 커서 하나씩 보냄
+          for (var bi = 0; bi < batch.length; bi++) await flatGroup(batch[bi], P);
+          var plain = batch.filter(function(x){ return !Object.keys(x.flat).length; }), calls = (plain.length ? [plain] : []).concat(batch.filter(function(x){ return Object.keys(x.flat).length; }).map(function(x){ return [x]; }));
+          for (var ci = 0; ci < calls.length; ci++){
+            var part = calls[ci];
+            P.sum('적용 중… ' + made + '/' + L.list.length + ' (사진이 많으면 몇 분 걸립니다)');
+            var res = null;
+            try { res = await callGas('case_proc', { caseId: st.caseId, step: 'pdfApply', groups: part.map(function(x){ var o = { gid: x.gid, ids: x.ids, name: x.name }; if (Object.keys(x.flat).length) o.flat = x.flat; return o; }) }); }
+            catch (e) { res = { error: errText(e) }; }
+            if (!res || res.error || !res.ok){ part.forEach(function(x){ showErr(x, (res && res.error) || '응답 없음'); }); continue; }
+            (res.done || []).forEach(function(d){ showDone(L.byGid[d.gid], d); });
+            var again = [];
+            (res.errors || []).forEach(function(e){ var x = L.byGid[e.gid]; if (/^시간/.test(String(e.why || '')) && x) again.push(x); else showErr(x, e.why || '알 수 없는 이유'); });
+            if (again.length){
+              // 서버가 시간이 모자라 남긴 묶음만 다시 보낸다(한 번도 못 만들고 두 번 연속 시간이면 멈춤)
+              if (!(res.done || []).length && ++stuck >= 2) again.forEach(function(x){ showErr(x, '시간이 모자라 만들지 못함 — [선택한 것 적용]을 다시 눌러 주세요'); });
+              else { if ((res.done || []).length) stuck = 0; pend = again.concat(pend); }
+            }
           }
         }
       } finally { go.disabled = false; st.pdfConvBusy = false; }
