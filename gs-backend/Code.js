@@ -3824,6 +3824,9 @@ function dispatchClientAction0_(body) {
   if (body.action === 'consult_chunk') return jsonResponse(consult_chunk_(body));
   if (body.action === 'consult_finish') return jsonResponse(withLock_(20000, function () { return consult_finish_(body); }));
   if (body.action === 'consult_status') return jsonResponse(consult_status_(body));
+  // [2026.10.18 탭연결 2번] 「_상담녹음보관함」 목록 / 고른 녹음을 사건 폴더로 옮기기(처리개요 📝 메모 카드)
+  if (body.action === 'consult_inbox_list') return jsonResponse(consult_inboxList_());
+  if (body.action === 'consult_inbox_move') return jsonResponse(consult_inboxMove_(body)); // 안에서 작업일지를 work_updateCase(자체 잠금)로 쓰므로 바깥 잠금은 걸지 않는다
   if (body.action === 'ai_list_bugs') return jsonResponse(ai_listBugs());
   if (body.action === 'ai_clear_bugs') return jsonResponse(ai_clearBugs());
   if (body.action === 'ai_usage_month') return jsonResponse(ai_usageMonth_());

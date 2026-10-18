@@ -651,6 +651,8 @@
       '<div class="card">' +
       '<button type="button" id="chMemoOpenBtn" class="ch-card-head-btn">📝 메모 <span class="ch-card-head-arrow">›</span></button>' +
       '<div id="chMemoSummary" style="font-size:13px; color:var(--sub); margin-top:6px;">확인 중…</div>' +
+      // [2026.10.18 탭연결 2번] 사건 없이 녹음해 보관함에 쌓인 상담 녹음을 이 사건으로 옮기는 길(예전엔 드라이브에서 손으로 옮겨야 했다)
+      '<button type="button" id="chConsultInboxBtn" class="ghost-btn" style="margin-top:6px; font-size:12.5px;">🎙 보관함 녹음 가져오기</button>' +
       '</div>' +
       '<div class="card">' +
       '<button type="button" id="chTaxCalcOpenBtn" class="ch-card-head-btn">🧮 세액계산 <span class="ch-card-head-arrow">›</span></button>' +
@@ -1087,11 +1089,66 @@
         el.textContent = memoFiles.length ? ('메모 ' + memoFiles.length + '건 있습니다') : '아직 저장된 메모가 없습니다.';
       }).catch(function(){ el.textContent = '불러오지 못했습니다.'; });
     }
+    var inboxBtn = document.getElementById('chConsultInboxBtn');
+    if (inboxBtn && !inboxBtn.dataset.wired){
+      inboxBtn.dataset.wired = '1';
+      inboxBtn.addEventListener('click', function(){ chOpenConsultInbox_(c); });
+    }
     var openBtn = document.getElementById('chMemoOpenBtn');
     if (openBtn.dataset.wired) return;
     openBtn.dataset.wired = '1';
     // 폴더ID로 직접 연다(폴더ID 없는 옛 사건은 이름으로, 폴더 없는 상담 사건은 업무유형을 물어 폴더를 만든 뒤 — nxOpenCaseDocs_)
     openBtn.addEventListener('click', function(){ nxOpenCaseDocs_(c); });
+  }
+
+  // [2026.10.18 탭연결 2번] 「_상담녹음보관함」(사건 없이 또는 폴더 없는 상담 사건으로 녹음한 것)에서 골라 이 사건 폴더로 옮긴다.
+  // 미리 보기(목록·체크) → [옮기기]를 눌러야만 옮긴다. 이 사건 이름으로 녹음한 것은 미리 체크해 둔다. 지우는 것은 없다.
+  function chOpenConsultInbox_(c){
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+    overlay.innerHTML = '<div class="modal-panel" style="width:min(560px, 94vw); max-height:84vh; display:flex; flex-direction:column;">' +
+      '<div class="modal-head"><span>🎙 보관함 상담 녹음 → 이 사건</span><span class="modal-close" data-x="1">✕</span></div>' +
+      '<div class="modal-body" style="overflow-y:auto;" id="chCiBody"><div class="spinner">보관함 읽는 중…</div></div></div>';
+    document.body.appendChild(overlay);
+    var close = function(){ overlay.remove(); };
+    overlay.querySelector('[data-x]').onclick = close;
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+    var body = overlay.querySelector('#chCiBody');
+    callGas('consult_inbox_list', {}).then(function(res){
+      if (!res || res.error){ body.innerHTML = '<div class="log-empty">' + escapeHtml((res && res.error) || '보관함을 읽지 못했습니다.') + '</div>'; return; }
+      var items = res.items || [];
+      if (!items.length){ body.innerHTML = '<div class="log-empty">보관함이 비어 있습니다.</div>'; return; }
+      body.innerHTML = '<div style="font-size:12.5px; color:var(--sub); margin-bottom:8px;">옮길 녹음을 고르세요. 상담내용(.md)은 이 사건 폴더 바로 안(📝 메모에서 보임), 원본 음성은 사건 폴더/상담녹음/으로 옮깁니다.</div>' +
+        items.map(function(it, i){
+          var mine = it.caseName && it.caseName === c.사건명;
+          return '<label style="display:flex; gap:8px; align-items:flex-start; padding:6px 0; border-bottom:1px solid var(--line);">' +
+            '<input type="checkbox" data-i="' + i + '"' + (mine ? ' checked' : '') + '>' +
+            '<span><b>' + escapeHtml(it.when) + '</b> · ' + escapeHtml(it.caseName || '사건 미지정') + (mine ? ' <span style="color:#16a34a;">(이 사건)</span>' : '') +
+            '<br><span style="font-size:12px; color:var(--sub);">' + (it.mdId ? '상담내용' : '상담내용 없음(정리 전이거나 실패)') + (it.audio.length ? ' · 원본 음성 ' + it.audio.length + '개' : '') +
+            (it.mdUrl ? ' · <a href="' + escapeHtml(it.mdUrl) + '" target="_blank" rel="noopener">열어 보기</a>' : '') + '</span></span></label>';
+        }).join('') +
+        (res.total > items.length ? '<div style="font-size:12px; color:var(--sub); margin-top:6px;">최근 ' + items.length + '건만 보입니다(전체 ' + res.total + '건).</div>' : '') +
+        '<div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;"><button type="button" class="save-btn" id="chCiGo">고른 녹음 이 사건으로 옮기기</button><button type="button" class="ghost-btn" data-x="1">닫기</button></div>';
+      body.querySelector('.ghost-btn[data-x]').onclick = close;
+      body.querySelector('#chCiGo').onclick = function(){
+        var btn = this;
+        var stamps = Array.prototype.filter.call(body.querySelectorAll('input[type=checkbox]'), function(x){ return x.checked; })
+          .map(function(x){ return items[Number(x.getAttribute('data-i'))].stamp; });
+        if (!stamps.length){ showToast('옮길 녹음을 고르세요.'); return; }
+        btn.disabled = true;
+        // 폴더 없는 상담 사건이면 업무유형을 먼저 물어 폴더를 만든다(탭연결 1번과 같은 도우미)
+        nxEnsureCaseFolder_(c, '상담 녹음').then(function(cc){
+          if (!cc || !cc.폴더ID){ btn.disabled = false; return; }
+          return callGas('consult_inbox_move', { caseId: c.id, stamps: stamps }).then(function(r){
+            if (!r || r.error){ showToast((r && r.error) || '옮기지 못했습니다.'); btn.disabled = false; return; }
+            showToast('보관함에서 ' + r.moved + '개 파일을 이 사건으로 옮겼습니다.');
+            close();
+            if (typeof goToCaseHandling_ === 'function') goToCaseHandling_(c.id);
+          });
+        }).catch(function(){ showToast('옮기는 중 오류가 났습니다.'); btn.disabled = false; });
+      };
+    }).catch(function(){ body.innerHTML = '<div class="log-empty">보관함을 읽지 못했습니다.</div>'; });
   }
 
   // ============================================================

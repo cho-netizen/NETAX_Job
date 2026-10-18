@@ -87,13 +87,16 @@ function consult_finish_(body) {
       const data = sheet.getDataRange().getValues();
       const col = work_colMap_(data[0]);
       const found = work_findCaseRow_(sheet, col, body.caseId);
-      if (found && found.row[col.폴더ID]) { folderId = String(found.row[col.폴더ID]); caseName = String(found.row[col.사건명] || ''); }
+      // [2026.10.18 탭연결 2번] 폴더 없는 상담 사건이어도 사건명은 남긴다 — 보관함에 저장돼도 상담내용 제목·작업일지로 어느 사건 것인지 알 수 있게
+      if (found) caseName = String(found.row[col.사건명] || '');
+      if (found && found.row[col.폴더ID]) folderId = String(found.row[col.폴더ID]);
     } catch (e) { folderId = ''; }
   }
+  const inInbox = !folderId;
   if (!folderId) folderId = my_getOrCreateSubfolder_(getDefaultFolder(), CONSULT_INBOX_FOLDER_).getId();
   const job = {
     id: id, status: 'queued', step: '녹음 저장 대기', caseId: body.caseId || '', caseName: caseName,
-    folderId: folderId, partIds: partIds, totalBytes: totalBytes, audioId: '', mime: mime,
+    folderId: folderId, inInbox: inInbox, partIds: partIds, totalBytes: totalBytes, audioId: '', mime: mime,
     stamp: Utilities.formatDate(startedAt, 'Asia/Seoul', 'yyyyMMdd_HHmm'),
     startedAt: startedAt.getTime(), durationSec: Math.max(1, Math.round(Number(body.durationSec) || 0)),
     segDone: 0, trId: '', geminiFile: '', usd: 0, createdAt: Date.now()
@@ -236,6 +239,14 @@ function consult_work_(job, t0) {
     job.status = 'done'; job.step = '완료';
     try { DriveApp.getFileById(job.trId).setTrashed(true); } catch (e) { } // 녹취록은 상담내용 파일에 들어갔다
     consult_saveJob_(job);
+    // [2026.10.18 탭연결 2번] 사건을 골라 녹음했으면 그 사건 작업일지에 한 줄 남긴다 — 예전엔 사건 화면 어디에도 상담 요약이 안 보였다
+    if (job.caseId) {
+      try {
+        consult_logToCase_(job.caseId, '[상담녹음] ' + Math.round(job.durationSec / 60) + '분 상담 정리됨 — ' + String(job.brief || '').slice(0, 200) +
+          (job.inInbox ? ' (사건 폴더가 없어 보관함 「' + CONSULT_INBOX_FOLDER_ + '」에 저장 — 처리개요 📝 메모의 「🎙 보관함 녹음 가져오기」로 이 사건에 옮길 수 있음)' : '') +
+          (job.mdUrl ? ' ' + job.mdUrl : ''));
+      } catch (e) { console.log('상담녹음 작업일지 기록 실패: ' + e.message); }
+    }
     try { ai_logPaid_({ entry: { kind: 'consult', model: CONSULT_MODEL_, usd: job.usd, q: '상담 음성메모 — ' + (job.caseName || '사건 없음') + ' ' + Math.round(job.durationSec / 60) + '분' } }); } catch (e) { }
     return false;
   } catch (err) {
@@ -346,4 +357,91 @@ function consult_cleanupOld_(props) {
       if ((j.status === 'done' || j.status === 'error') && Date.now() - (j.createdAt || 0) > 3 * 86400000) sp.deleteProperty(k);
     } catch (e) { sp.deleteProperty(k); }
   });
+}
+
+// ============================================================
+// [2026.10.18 탭연결 2번] 상담 녹음 ↔ 사건 연결
+//  - 사건을 골라 녹음하면 끝날 때 그 사건 작업일지에 한 줄(요약·파일 링크)을 남긴다(consult_logToCase_)
+//  - 사건 없이(또는 폴더 없는 상담 사건으로) 녹음해 「_상담녹음보관함」에 쌓인 것을 처리개요 📝 메모 카드에서 골라
+//    그 사건 폴더로 옮긴다(consult_inbox_list → consult_inbox_move). 고른 것만 옮기고 지우는 것은 없다.
+// ============================================================
+function consult_logToCase_(caseId, text) {
+  const sheet = work_getSheet_();
+  const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+  const found = work_findCaseRow_(sheet, col, caseId);
+  if (!found) return;
+  const c = work_readRow_(col, found.row);
+  const log = (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd'), text: String(text || '').slice(0, 900), dueDate: '' }]);
+  // 기대수정일을 같이 보내 그 사이 다른 저장이 있었으면 덮어쓰지 않는다 — 한 번만 다시 읽어 재시도
+  let up = work_updateCase({ id: caseId, 작업일지: log, 기대수정일: c.수정일 });
+  if (up && up.conflict && up.case) {
+    const log2 = (Array.isArray(up.case.작업일지) ? up.case.작업일지 : []).concat([log[log.length - 1]]);
+    up = work_updateCase({ id: caseId, 작업일지: log2, 기대수정일: up.case.수정일 });
+  }
+  return up;
+}
+
+function consult_inboxFolder_() { return my_getOrCreateSubfolder_(getDefaultFolder(), CONSULT_INBOX_FOLDER_); }
+
+// 보관함 목록 — 상담내용_날짜_시각.md와 같은 시각의 원본 음성(상담녹음/상담녹음_날짜_시각.*)을 한 묶음으로
+function consult_inboxList_() {
+  const inbox = consult_inboxFolder_();
+  const items = {};
+  const it = inbox.getFiles();
+  while (it.hasNext()) {
+    const f = it.next();
+    const m = /^상담내용_(\d{8}_\d{4})\.md$/.exec(f.getName());
+    if (!m) continue;
+    const head = String(f.getBlob().getDataAsString('UTF-8') || '').slice(0, 400);
+    const t = /^# 상담내용 — (.*)$/m.exec(head);
+    const when = /상담 일시:\s*([^\n]+)/.exec(head);
+    items[m[1]] = { stamp: m[1], mdId: f.getId(), mdUrl: f.getUrl(), caseName: t ? t[1].trim() : '', when: when ? when[1].trim() : m[1], audio: [] };
+  }
+  const af = inbox.getFoldersByName('상담녹음');
+  if (af.hasNext()) {
+    const ai = af.next().getFiles();
+    while (ai.hasNext()) {
+      const f = ai.next();
+      const m = /^상담녹음_(\d{8}_\d{4})\./.exec(f.getName());
+      if (!m) continue;
+      if (!items[m[1]]) items[m[1]] = { stamp: m[1], mdId: '', mdUrl: '', caseName: '', when: m[1], audio: [] };
+      items[m[1]].audio.push({ id: f.getId(), name: f.getName() });
+    }
+  }
+  const list = Object.keys(items).map(function (k) { return items[k]; }).sort(function (a, b) { return a.stamp < b.stamp ? 1 : -1; });
+  return { success: true, items: list.slice(0, 40), total: list.length };
+}
+
+// 고른 묶음(stamps)을 사건 폴더로 옮긴다 — 상담내용은 사건 폴더 바로 안(처리개요 📝 메모가 세는 곳), 음성은 사건 폴더/상담녹음/
+function consult_inboxMove_(body) {
+  const stamps = Array.isArray(body.stamps) ? body.stamps.map(String) : [];
+  if (!stamps.length) return { error: '옮길 녹음을 고르세요.' };
+  const sheet = work_getSheet_();
+  const col = work_colMap_(sheet.getDataRange().getValues()[0]);
+  const found = work_findCaseRow_(sheet, col, body.caseId);
+  if (!found) return { error: '사건을 찾을 수 없습니다.' };
+  const folderId = String(found.row[col.폴더ID] || '');
+  if (!folderId) return { error: '이 사건은 아직 사건 폴더가 없습니다 — 업무유형을 정해 폴더를 먼저 만들어 주세요.', noFolder: true };
+  const caseFolder = DriveApp.getFolderById(folderId);
+  const inbox = consult_inboxFolder_();
+  let moved = 0, audioFolder = null;
+  const names = [];
+  stamps.forEach(function (st) {
+    if (!/^\d{8}_\d{4}$/.test(st)) return;
+    const md = inbox.getFilesByName('상담내용_' + st + '.md');
+    while (md.hasNext()) { md.next().moveTo(caseFolder); moved++; names.push('상담내용_' + st + '.md'); }
+    const af = inbox.getFoldersByName('상담녹음');
+    if (af.hasNext()) {
+      const ai = af.next().getFiles();
+      while (ai.hasNext()) {
+        const f = ai.next();
+        if (f.getName().indexOf('상담녹음_' + st + '.') !== 0) continue;
+        if (!audioFolder) audioFolder = my_getOrCreateSubfolder_(caseFolder, '상담녹음');
+        f.moveTo(audioFolder); moved++;
+      }
+    }
+  });
+  if (!moved) return { error: '고른 녹음을 보관함에서 찾지 못했습니다(이미 옮겼을 수 있습니다).' };
+  try { consult_logToCase_(body.caseId, '[상담녹음] 보관함에서 이 사건으로 옮김: ' + names.join(', ')); } catch (e) { }
+  return { success: true, moved: moved };
 }
