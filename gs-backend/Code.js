@@ -24900,6 +24900,8 @@ function cpOcrBatch_(body) {
     if (st && st.phase === 'done' && !body.reset && body.fill && !st.dryRun) { st.phase = 'fillscan'; st.fi = 0; st.fq = []; st.fqi = 0; }
     // [2026.10.18 1번] Vision 열쇠가 생긴 뒤 처음 부르면, 끝난 일괄도 뒷단계를 한 번 더 돌아 스캔 PDF·사진을 Vision으로 읽는다(쪽수 상한 안에서)
     if (st && st.phase === 'done' && !body.reset && !st.dryRun && !st.visRound && ocrbVisOn_()) { st.visRound = 1; st.phase = 'fillscan'; st.fi = 0; st.fq = []; st.fqi = 0; }
+    // [2026.10.19 1번] 빈 기억 다시 읽기 — 끝난 일괄 위에서도 처음부터 다시 센다(0바이트 기억이 있는 PDF만 대기열에)
+    if (body.rereadEmpty && !body.cont) st = null;
     if (st && st.phase === 'done' && !body.reset) {
       if (body.cont) return { ok: true, phase: 'done', sum: st.sum, cases: st.cases, fails: st.fails, long: st.long, already: true };
       if (!body.dryRun && st.dryRun) st = null; // 세기만 한 뒤 실제 읽기 — 처음부터(그사이 늘어난 서류도 다시 셈)
@@ -24908,14 +24910,14 @@ function cpOcrBatch_(body) {
     if (!st) {
       if (body.cont) return { ok: true, phase: 'none', already: true };
       // [2026.10.18 3번 세션] 기본으로 신고서 폴더도 읽음 — [1번 바로잡음] 이 주석이 줄 중간에 있어 뒤의 folders·fi·queue·qi가 주석이 되어, 새로 시작하는 일괄(reset·미리 세기)이 st.folders 없음으로 멈췄다
-      st = { ver: OCRB_VER_, dryRun: !!body.dryRun, includeFiled: body.includeFiled !== false, phase: 'scan', folders: ocrbCaseFolders_(), fi: 0, queue: [], qi: 0,
+      st = { ver: OCRB_VER_, dryRun: !!body.dryRun, rereadEmpty: !!body.rereadEmpty, includeFiled: body.includeFiled !== false, phase: 'scan', folders: ocrbCaseFolders_(), fi: 0, queue: [], qi: 0,
         cases: {}, sum: { 폴더: 0, 파일: 0, 기억있음: 0, 읽을것: 0, 못바꿈: 0, 읽음: 0, 빈글자: 0, 실패: 0, 건너뛴폴더: 0 }, fails: [], long: [], startedAt: new Date().toISOString() };
       st.sum.폴더 = st.folders.length;
     }
     // 1) 세기 — 폴더마다 파일을 보고 기억에 있는지 셈(기억 폴더 이름 목록은 한 번 읽어 둔다)
     if (st.phase === 'scan') {
-      const have = {};
-      const it = fo.getFiles(); while (it.hasNext()) have[it.next().getName().replace(/(\s*\(\d+\))?\.txt$/, '')] = 1;
+      const have = {}, empty = {};
+      const it = fo.getFiles(); while (it.hasNext()) { const sf = it.next(), nm = sf.getName().replace(/(\s*\(\d+\))?\.txt$/, ''); have[nm] = 1; if (st.rereadEmpty && /^ocrtxt_/.test(nm) && sf.getSize() === 0) empty[nm] = 1; } /* 빈 기억(0바이트) — rereadEmpty일 때만 셈 */
       while (st.fi < st.folders.length && Date.now() - started < budget - 30000) {
         const fid = st.folders[st.fi++];
         let folder = null; try { folder = DriveApp.getFolderById(fid); } catch (e) { st.fails.push({ c: fid, n: '', why: '폴더를 열 수 없음' }); continue; }
@@ -24929,9 +24931,11 @@ function cpOcrBatch_(body) {
           cs.파일++; st.sum.파일++;
           const k = ocrbKind_(f);
           if (!k.ok) { cs.못바꿈++; st.sum.못바꿈++; cs.못바꿈이유[k.why] = (cs.못바꿈이유[k.why] || 0) + 1; return; }
-          if (have[tcOcrKey_(f)]) { cs.기억있음++; st.sum.기억있음++; return; }
+          const reread = st.rereadEmpty && empty[tcOcrKey_(f)] && /pdf/.test(String(f.mimeType || ''));
+          if (have[tcOcrKey_(f)] && !reread) { cs.기억있음++; st.sum.기억있음++; return; }
+          if (st.rereadEmpty && !reread) { cs.기억있음++; st.sum.기억있음++; return; } /* 빈 기억 다시 읽기는 그 PDF만 — 기억 없는 다른 서류는 평소 일괄 몫 */
           cs.읽을것++; st.sum.읽을것++;
-          const q = { id: f.id, n: f.name, mt: f.mimeType, mod: f.modified, c: cname, sz: f.size || 0 };
+          const q = { id: f.id, n: f.name, mt: f.mimeType, mod: f.modified, c: cname, sz: f.size || 0 }; if (reread) q.reread = 1;
           if (dk[f.id]) q.dupKey = dk[f.id];
           if (ocrbLate_(f.name)) q.late = 1; // 이름으로 아는 사무소 결과물·참고자료 — 빼지 않고 맨 뒤로(입력으로 쓸지는 사건처리가 정함)
           st.queue.push(q);
@@ -24976,6 +24980,7 @@ function cpOcrBatch_(body) {
       try {
         if (q.dupKey && ocrbCopyDup_(q, f)) { cs.읽음++; st.sum.읽음++; st.sum.사본복사 = (st.sum.사본복사 || 0) + 1; continue; } // 내용이 똑같은 사본 — 원본 글 복사(읽기 없음)
         if (q.dupKey && !q.dupWait) { q.dupWait = 1; st.queue.push(q); continue; } // 원본을 아직 안 읽음 — 줄 끝에서 한 번 더 기다림
+        if (q.reread) { try { const k0 = tcOcrKey_(f), it0 = fo.getFilesByName(k0 + '.txt'); while (it0.hasNext()) { const x0 = it0.next(); if (x0.getSize() === 0) x0.setTrashed(true); } CacheService.getScriptCache().remove(k0); st.sum.빈기억다시 = (st.sum.빈기억다시 || 0) + 1; } catch (e) {} } /* 0바이트 기억만 휴지통으로 — tc_docText_가 새로 읽어 다시 남김 */
         const t = tc_docText_(f);
         if (t === null) { cs.실패++; st.sum.실패++; st.fails.push({ c: q.c, n: q.n, why: '글자로 못 바꾸는 형식' }); continue; }
         if (!String(t).trim()) { cs.빈글자++; st.sum.빈글자++; continue; }
