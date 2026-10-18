@@ -25977,6 +25977,150 @@ function caseProcSubmitSave_(c, body) {
   });
   return { ok: true, folderId: dir.getId(), saved: saved };
 }
+// =========================================================
+// [2026.10.19 3번 세션] 묶음만 남은 지난 사건 — 제출용 묶음 PDF(「01 기본증명.pdf」 60쪽 등)를 문서별 PDF로 나누기(미리 보기 → 승인 → 만들기).
+//  세무사님: "현재는 신고제출용 파일만 남기고 원본이나 임시파일을 삭제하였을 가능성도 많다" — 개발용 7사건에서 묶음 구간 대부분(61개 중 57개)이 낱장 없이 묶음에만 있었다.
+//  원본 묶음은 그대로(지우거나 옮기지 않음). 나눈 PDF는 같은 폴더에, 설명 칸에 "묶음 「…」 n~m쪽에서 나눔".
+//  쪽 글: 글자층 쪽은 화면(pdf.js)이 뽑아 보내고, 그림 쪽은 서버가 쪽마다 드라이브 글자인식(0원, 기억 ocrpage1_ — 일괄과 같은 기억이라 두 번 읽지 않음).
+//  자르는 자리: 사건처리가 묶음을 서류별 구간으로 펼칠 때와 같은 규칙(docBundleSplit_)을 쪽 글을 이어 붙인 글에 돌려 쪽 번호로 옮긴다.
+//  만든 PDF는 sv.scanSplits(원본 → 나눈 파일, 원근보정·서류 나누기와 같은 기록)로 — 나눈 파일이 다 읽히면 사건처리가 원본 대신 나눈 쪽으로 읽어 같은 서류를 두 번 세지 않는다
+// =========================================================
+// 쪽 글 배열 → 구간 [{pages:[1부터], title, text, why}]. 드라이브·사건 없이 도는 순수 함수(이 PC 시험과 같은 코드).
+//  묶음을 실제로 나눌 때는 쪽이 단위다 — 쪽마다 "새 서류가 시작하는가"를 서식 구조로 본다:
+//   ① 쪽 표시 "n/N"(n ≥ 2)이면 앞 서류의 다음 쪽 ② 문서 번호(정부24 문서확인번호·발급확인번호·발급번호)가 앞 쪽과 다르면 새 서류, 같으면 같은 서류
+//   ③ 첫 줄들(14줄 안)에 서식 제목 줄(docBundleTitleFam_ — 사건처리 묶음 구간과 같은 제목 규칙)이나 "…서·증·원·장·표"로 끝나는 짧은 제목 줄이 있으면 새 서류
+//   ④ 그 밖의 쪽(제목 없는 쪽)은 앞 서류의 이어짐. 사건처리가 읽기용으로 정한 구간(docBundleSplit_)의 시작 쪽도 새 서류로 더한다
+function tcBundleSplitPlan_(texts, wholeType) {
+  texts = [].concat(texts || []).map(function (t) { return String(t || ''); });
+  const N = texts.length;
+  if (N < 2) return [];
+  const docNo = texts.map(function (t) { const m = /(?:문\s*서\s*확\s*인\s*번\s*호|발\s*급\s*확\s*인\s*번\s*호|발\s*급\s*번\s*호)\s*[:：]?\s*([0-9]{4}(?:\s*-\s*[0-9]{4,5}){2,4})/.exec(t); return m ? m[1].replace(/\s+/g, '') : ''; });
+  const mark = texts.map(function (t) { let m, re = /(?:^|\n)[ \t]*(\d{1,2})[ \t]*\/[ \t]*(\d{1,2})[ \t]*(?=\n|$)/g, best = null; while ((m = re.exec(t))) { const no = +m[1], of = +m[2]; if (no >= 1 && of >= 2 && no <= of && of <= 60) best = { no: no, of: of }; } return best; });
+  const GEN_END = /(?:계약서|증명서|증명원|확인서|영수증|명세서|내역서|신고서|신청서|위임장|합의서|약정서|각서|진단서|검안서|계산서|통지서|고지서|납부서|평가서|설명서|의견서|조서|증서|대장|등본|초본|입금증|확인증|인수증|견적서|청구서)$/;
+  const titleOf = function (t) {
+    const ls = t.split('\n').map(function (s) { return s.trim(); }).filter(Boolean).slice(0, 14);
+    for (let i = 0; i < ls.length; i++) { const tf = docBundleTitleFam_(ls[i]); if (tf) return { title: tf.title, why: '제목 「' + tf.title + '」' }; }
+    // 한 줄 제목 · 두 줄로 갈린 제목("주민등록표 ⏎ (등본)") · 글자 사이를 띄운 제목이 한 글자씩 줄로 갈린 것("위 ⏎ 임 ⏎ 장")
+    const sp = ls.map(function (l) { return l.replace(/\s+/g, '').replace(/[()（）]/g, ''); });
+    const tail = ls.map(function (l) { return l.replace(/\s+/g, '').replace(/[(（][^)）]{0,8}[)）]$/, ''); }); // "결제내역서(총괄)" → "결제내역서"
+    const cand = [];
+    for (let i = 0; i < Math.min(8, sp.length); i++) {
+      if (sp[i].length > 30) break; // 본문 줄이 먼저 나온 쪽 — 그 뒤 짧은 줄은 쪽 머리 제목이 아님(합의서 3쪽 끝의 첨부 목록)
+      if (sp.slice(Math.max(0, i - 3), i).some(function (x) { return /^첨부/.test(x); })) continue; // "첨 부 ⏎ 합의 위임장(원고)" — 첨부 목록 줄은 제목이 아님
+      cand.push(tail[i]); cand.push(sp[i]);
+      if (i + 1 < sp.length) cand.push(sp[i] + sp[i + 1]);
+      if (sp[i].length <= 2) { let s = sp[i]; for (let j = i + 1; j < sp.length && j < i + 5 && sp[j].length <= 2; j++) { s += sp[j]; cand.push(s); } }
+    }
+    for (let i = 0; i < cand.length; i++) { const s = cand[i]; if (s.length >= 3 && s.length <= 16 && /^[가-힣]+$/.test(s) && GEN_END.test(s)) return { title: s, why: '제목 「' + s + '」' }; }
+    return null;
+  };
+  // 사건처리 읽기 구간의 시작 쪽(참고) — 쪽 글을 이어 붙인 글에서 자른 자리를 쪽으로
+  let joined = ''; const starts = [];
+  texts.forEach(function (t) { starts.push(joined.length); joined += t.replace(/\s+$/, '') + '\n'; });
+  const pageOf = function (off) { let k = 0; while (k + 1 < starts.length && starts[k + 1] <= off) k++; return k; };
+  const cutStart = {};
+  try { (docBundleSplit_(joined, wholeType) || []).forEach(function (cut, i) { if (!i) return; const a = cut[0][0][0], k = pageOf(a); const before = joined.slice(starts[k], a).replace(/\s/g, '').length; cutStart[before <= 30 ? k : Math.min(N - 1, k + 1)] = String(cut[1] || ''); }); } catch (e) {}
+  const secs = [];
+  for (let k = 0; k < N; k++) {
+    let start = k === 0, why = '', secsTitle = '';
+    const tt = titleOf(texts[k]);
+    if (k > 0) {
+      const sameNo = docNo[k] && docNo[k] === docNo[k - 1], diffNo = docNo[k] && docNo[k - 1] && docNo[k] !== docNo[k - 1];
+      if (diffNo) { start = true; why = '문서 번호가 바뀜'; }
+      else if (sameNo) start = false;
+      else if (mark[k] && mark[k].no > 1) start = false;
+      else if (tt) { start = true; why = tt.why; }
+      // 카드·현금 영수증은 제목 줄이 없다 — 승인번호와 합계·금액이 있는 쪽은 한 장이 한 서류(장례비·필요경비 묶음의 영수증 여러 장)
+      else if (/승\s*인\s*번\s*호/.test(texts[k]) && /합\s*계|거\s*래\s*금\s*액|결\s*제\s*금\s*액|금\s*액/.test(texts[k])) { start = true; why = '영수증(승인번호) 한 장'; secsTitle = '영수증'; }
+      else if (cutStart[k] !== undefined) { start = true; why = '사건처리 구간 「' + cutStart[k] + '」'; }
+    }
+    if (start) secs.push({ pages: [k + 1], title: (tt && tt.title) || secsTitle || cutStart[k] || '', why: k === 0 ? '첫 쪽' : why, parts: [texts[k]] });
+    else { const s = secs[secs.length - 1]; s.pages.push(k + 1); s.parts.push(texts[k]); }
+  }
+  secs.forEach(function (s) { s.text = s.parts.join('\n'); delete s.parts; s.shared = false; });
+  return secs.length >= 2 ? secs : [];
+}
+function tcPagesLabel_(pages) { // [1,2,3,7] → "1~3·7쪽"
+  const out = []; let s = null, p = null;
+  pages.concat([null]).forEach(function (k) { if (k !== null && p !== null && k === p + 1) { p = k; return; } if (s !== null) out.push(s === p ? String(s) : s + '~' + p); s = p = k; });
+  return out.join('·') + '쪽';
+}
+// 후보 — 사건 파일 중 서류별 구간이 둘 이상으로 정해진 PDF(이미 나눈 것 빼고). 새 글자인식 없이 기억만
+function caseProcBundleCands_(c) {
+  const cache = CacheService.getScriptCache(), sv = caseProcLoad_(c.id) || {}, done = sv.scanSplits || {};
+  const prev = TC_NO_NEW_OCR_; TC_NO_NEW_OCR_ = true;
+  try {
+    const out = [];
+    caseProcFiles_(c, { raw: true }).forEach(function (f) {
+      if (out.length >= 40 || !/pdf/.test(String(f.mimeType || '')) || /^_/.test(String(f.name || '')) || done[f.id]) return;
+      let p = null; try { p = caseProcParsed_(f, cache, false); } catch (e) {}
+      if (!p || !Array.isArray(p.sg) || p.sg.length < 2) return;
+      let folderId = ''; try { const it = DriveApp.getFileById(f.id).getParents(); if (it.hasNext()) folderId = it.next().getId(); } catch (e) {}
+      out.push({ id: f.id, name: f.name, dir: f.dir || '', folderId: folderId, modified: f.modified, titles: p.sg.map(function (g) { return String(g[1] || '서류'); }) });
+    });
+    return { ok: true, cands: out };
+  } finally { TC_NO_NEW_OCR_ = prev; }
+}
+// 그림 쪽 글자인식 — body.fileId. 한 번에 200초까지, 끊기면 다시 부르면 남은 쪽부터(기억 ocrpage1_). pages: {"쪽": 글 | false(글자층 쪽 — 화면이 뽑음)}
+function caseProcBundlePages_(c, body) {
+  const id = String(body.fileId || ''); if (!id) return { error: 'fileId 필요' };
+  const df = DriveApp.getFileById(id), f = { id: id, name: df.getName(), mimeType: df.getMimeType(), modified: df.getLastUpdated().getTime() };
+  const pb = TC_BATCH_READ_, pn = TC_NO_NEW_OCR_; TC_BATCH_READ_ = true; TC_NO_NEW_OCR_ = false;
+  try { const st = tcPdfPageTexts_(f, Date.now() + 200000) || {}; return { ok: true, n: st.n || 0, done: !!st.done, read: Object.keys(st.pages || {}).length, pages: st.pages || {}, why: st.why || '' }; }
+  finally { TC_BATCH_READ_ = pb; TC_NO_NEW_OCR_ = pn; }
+}
+// 미리 보기 — body: {fileId, texts:[쪽마다 글]} → 구간마다 쪽·제목·종류·이름 제안·낱장 사본 여부. 고객 폴더는 바뀌지 않음
+function caseProcBundlePlan_(c, body) {
+  const id = String(body.fileId || ''), texts = [].concat(body.texts || []);
+  if (!id || texts.length < 2) return { error: '쪽 글이 모자람(두 쪽 이상 필요)' };
+  const df = DriveApp.getFileById(id), name = df.getName(), mod = df.getLastUpdated().getTime();
+  let whole = null; try { whole = docParseText_(texts.join('\n')); } catch (e) {}
+  const secs = tcBundleSplitPlan_(texts, whole && whole.type);
+  if (secs.length < 2) return { ok: true, sections: [], why: '쪽 글로 다시 보니 서류가 둘 이상으로 갈리지 않음 — 나누지 않음' };
+  // 낱장 사본 — 같은 서류가 사건 폴더에 따로 있으면 나누지 않아도 됨(기본 끔)
+  const cache = CacheService.getScriptCache(), prev = TC_NO_NEW_OCR_; TC_NO_NEW_OCR_ = true;
+  let loose = [];
+  try {
+    loose = caseProcFiles_(c, { raw: true }).filter(function (f) { return f.id !== id && /pdf|^image\//.test(String(f.mimeType || '')); }).slice(0, 150).map(function (f) {
+      let t = ''; try { t = String(tc_docText_(f) || ''); } catch (e) {}
+      let p = null; try { p = caseProcParsed_(f, cache, false); } catch (e) {}
+      return { id: f.id, name: f.name, text: t, type: (p && p.t) || '' };
+    }).filter(function (x) { return x.text.replace(/\s/g, '').length >= 80; });
+  } finally { TC_NO_NEW_OCR_ = prev; }
+  const used = {};
+  const out = secs.map(function (s, i) {
+    let p = null; try { p = docParseText_(s.text); } catch (e) {}
+    const pt = { t: (p && p.type) || '', l: (p && p.label) || s.title };
+    let nm = tcPdfConvName_(c, { name: s.title + '.pdf', modified: mod }, [s.text], pt) || s.title;
+    if (used[nm]) nm += '_' + tcPagesLabel_(s.pages).replace(/쪽$/, '쪽'); used[nm] = 1;
+    const marks = tcCopyMarks_(loose.concat([{ id: 'sec' + i, name: name + ' ' + tcPagesLabel_(s.pages), text: s.text, type: pt.t, bundleOf: name }]));
+    const cm = marks['sec' + i];
+    return { no: i + 1, pages: s.pages, pagesLabel: tcPagesLabel_(s.pages), title: s.title, label: caseProcScanName_(pt) || s.title, name: nm + '.pdf', shared: s.shared, copyOf: cm ? cm.keepName : '', copyWhy: cm ? cm.why : '' };
+  });
+  return { ok: true, name: name, n: texts.length, sections: out };
+}
+// 만든 뒤 기록 — body: {orig, parts:[{id, name, pages}]} → 나눈 파일 설명 칸 + sv.scanSplits(읽기는 나눈 쪽으로) + sv.bundleSplits(되돌리기용)
+function caseProcBundleSaved_(c, body) {
+  const orig = String(body.orig || ''), parts = [].concat(body.parts || []).filter(function (x) { return x && x.id; });
+  if (!orig || !parts.length) return { error: 'orig·parts 필요' };
+  let oname = ''; try { oname = DriveApp.getFileById(orig).getName(); } catch (e) {}
+  parts.forEach(function (x) { try { DriveApp.getFileById(x.id).setDescription('묶음 「' + oname + '」 ' + tcPagesLabel_([].concat(x.pages || [])) + '에서 나눔(원본 묶음은 그대로) — job 사건처리'); } catch (e) {} });
+  caseProcPatch_(c.id, function (sv) {
+    sv.scanSplits = sv.scanSplits || {}; sv.scanSplits[orig] = parts.map(function (x) { return String(x.id); });
+    sv.bundleSplits = sv.bundleSplits || {}; sv.bundleSplits[orig] = { at: new Date().toISOString(), name: oname, parts: parts.map(function (x) { return { id: x.id, name: x.name, pages: x.pages }; }) };
+  });
+  return { ok: true };
+}
+// 되돌리기 — 나눈 PDF는 휴지통(완전 삭제 아님), 기록 지움 → 다시 원본 묶음으로 읽음
+function caseProcBundleUndo_(c, body) {
+  const orig = String(body.orig || ''); if (!orig) return { error: 'orig 필요' };
+  let rec = null;
+  caseProcPatch_(c.id, function (sv) { rec = (sv.bundleSplits || {})[orig] || null; if (sv.bundleSplits) delete sv.bundleSplits[orig]; if (sv.scanSplits) delete sv.scanSplits[orig]; });
+  if (!rec) return { error: '나눈 기록이 없음' };
+  const trashed = [];
+  rec.parts.forEach(function (x) { try { DriveApp.getFileById(x.id).setTrashed(true); trashed.push(x.name); } catch (e) {} });
+  return { ok: true, trashed: trashed };
+}
 // 새 사진 대기 — 올리기·옮기기마다 한 장씩 들어오므로 바로 바꾸면 여러 장 서류가 낱장 PDF가 된다. 사건 폴더("고객사건" 아래)의 사진만 대기 목록
 //  (스크립트 속성 PDFCONV_PENDING {폴더ID: [파일ID…]})에 넣고 90초 뒤 한 번 도는 트리거가 폴더별로 묶어 바꾼다(그사이 같이 올린 사진끼리 한 묶음)
 function tcPdfConvQueue_(fileId) {
@@ -28365,6 +28509,12 @@ function caseProc_(body) {
     if (body.step === 'pdfApply') return caseProcPdfApply_(c, body);
     if (body.step === 'pdfUndo') return caseProcPdfUndo_(c, body);
     if (body.step === 'pdfReflat') return caseProcPdfReflat_(c, body); // 자동 변환 PDF를 화면이 편 쪽으로 다시 쓰기
+    // 묶음만 남은 지난 사건 — 제출용 묶음 PDF를 문서별 PDF로(후보 → 그림 쪽 글자인식 → 미리 보기 → 화면이 나눠 올림 → 기록·되돌리기)
+    if (body.step === 'bundleCands') return caseProcBundleCands_(c);
+    if (body.step === 'bundlePages') return caseProcBundlePages_(c, body);
+    if (body.step === 'bundlePlan') return caseProcBundlePlan_(c, body);
+    if (body.step === 'bundleSaved') return caseProcBundleSaved_(c, body);
+    if (body.step === 'bundleUndo') return caseProcBundleUndo_(c, body);
     if (body.step === 'submitPlan') return caseProcSubmitPlan_(c, body);
     if (body.step === 'submitSave') return caseProcSubmitSave_(c, body);
     if (body.step === 'scanSaved') return caseProcScanSaved_(c, body); // 원근보정본 짝 기록
