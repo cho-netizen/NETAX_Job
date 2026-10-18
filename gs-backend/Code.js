@@ -29522,6 +29522,33 @@ function cpfFromResult_(result, base, docType) {
     return cpfKeysFinish_({ kind: f.kind, value: f.value, raw: f.raw, src: src, keys: kk, role: f.role || '', read: rd });
   });
 }
+// [2026.10.19 1번 밤작업 — 조정지시 05:00] 부부 열쇠 — 가족관계증명서 한 장마다: 본인–배우자 줄은 "부부"(지금 혼인 중 — 확실), 부–모 줄은 "부모"(같은 증명서에 함께 적힌 부·모 —
+//  지금 혼인 중인지는 이 증명서로 안 정해져 불확실, 부·모의 혼인관계증명서·가족관계증명서로 확인). 상증법 §47②(10년 안 같은 사람 — 직계존속이면 그 배우자 포함 — 의 증여 합산)의 재료.
+//  keys.couple = 두 사람 열쇠(이름|생년 6자리)를 정렬해 "+"로 이은 것 — 두 사람 다 생년이 있어야 만듦(이름만 같은 다른 사람과 섞이지 않게)
+function cpfCouples_(result, base) {
+  const out = [];
+  const walk = function (node, path) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) { node.forEach(function (x, i) { walk(x, path + '[' + (i + 1) + ']'); }); return; }
+    if (node.type && node.r) { walk(node.r, path); return; }
+    if (Array.isArray(node.가족)) {
+      const pk = function (p) { const k = p ? cpfPersonKey_(p.이름 || p.성명 || '', p.주민번호 || p.생년월일 || '') : ''; return /\|\d{6}$/.test(k) ? k : ''; };
+      const one = function (rel) { return node.가족.filter(function (p) { return p && p.관계 === rel && !p.사망; })[0] || null; };
+      const me = node.가족.filter(function (p) { return p && p.관계 === '본인'; })[0] || null, sp = one('배우자'), fa = node.가족.filter(function (p) { return p && /^(부|양부|친생부)$/.test(p.관계); })[0] || null, mo = node.가족.filter(function (p) { return p && /^(모|양모|친생모)$/.test(p.관계); })[0] || null;
+      const subj = pk(me);
+      const add = function (kind, a, b, conf, note, la, lb) {
+        const ka = pk(a), kb = pk(b); if (!ka || !kb) return;
+        const val = {}; val[la] = ka; val[lb] = kb;
+        out.push({ kind: kind, value: val, raw: (a.이름 || '') + ' · ' + (b.이름 || ''), src: Object.assign({}, base.src, { where: path + '.가족' }), keys: Object.assign({ couple: [ka, kb].sort().join('+') }, subj ? { subject: subj } : {}), role: '', read: { how: base.how, conf: conf, note: note, ocrConf: cpfOcrConf_(base.how, null) } });
+      };
+      if (me && sp) add('부부', me, sp, '확실', '가족관계증명서 본인·배우자 줄 — 지금 혼인 중', '본인', '배우자');
+      if (fa && mo) add('부모', fa, mo, '불확실', '가족관계증명서에 함께 적힌 부·모 — 지금 혼인 중인지는 이 증명서로 안 정해짐(부·모의 혼인관계증명서·가족관계증명서로 확인) · 상증법 §47② 직계존속 배우자 합산 재료' + ((fa.사망 || mo.사망) ? ' · 한쪽 사망' : ''), '부', '모');
+    }
+    Object.keys(node).forEach(function (k) { const v = node[k]; if (v && typeof v === 'object' && k !== '가족') walk(v, path + '.' + k); });
+  };
+  walk(result, '');
+  return out;
+}
 // [2026.10.19 1번 밤작업 — 조정지시 04:45] 납세자의 역할로 정하는 거래 금액 — 서식 구조로만(등기부 소유권이력 줄: 그 줄 권리자 = 산 사람, 바로 앞 줄 권리자 = 판 사람 /
 //  계약서: 매도인·매수인 칸). 납세자 이름(사건의 납세자·고객명)과 정확히 같을 때만 "확실", 공동명의는 note에 밝힘. 이름이 안 맞으면 만들지 않음(기존 거래가액·매매대금은 그대로)
 function cpfPayerDeals_(result, base, payers) {
@@ -29954,6 +29981,7 @@ function cpfFile_(c, f, cache, tbank, opt) {
   let ruled = [];
   if (p && p.type && p.result) { try { ruled = cpfFromResult_(p.result, base, p.type); } catch (e) { trunc.push('칸 옮기기 오류: ' + String(e && e.message || e).slice(0, 60)); } }
   if (p && p.type && p.result) { try { ruled = ruled.concat(cpfPayerDeals_(p.result, base, [c && c.납세자, c && c.고객명])); } catch (e) {} } /* 납세자 역할로 양도가액·취득가액 */
+  if (p && p.type && p.result) { try { ruled = ruled.concat(cpfCouples_(p.result, base)); } catch (e) {} } /* 부부 열쇠(§47② 합산 재료) */
   // 한 파일 안의 다른 서류 — 묶음 나누기(docBundleSplit_)가 못 나눈 파일에서 서식 제목 자리마다 서류 정리 규칙을 다시 돌린다(상2: 같은 종류 둘째 서류도).
   //  규칙이 이미 한 파일 여러 서류로 나눈 결과(docs 2개 이상)면 같은 종류는 건너뜀(중복). 줄 첫머리 서식 제목만, 문장·목록 속 서류 이름은 건너뜀
   if (p && !/#s\d/.test(String(f.id))) {
