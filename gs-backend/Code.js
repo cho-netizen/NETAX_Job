@@ -29924,7 +29924,7 @@ function cpfUnitAmounts_(text) {
     const st = m.index; if (st < skipTo) continue;
     const prev = t[st - 1] || '';
     if (/[\d,.]/.test(prev)) continue; // 숫자 한가운데
-    if (/제\s*$/.test(t.slice(Math.max(0, st - 2), st))) continue; // "제3천호"·"제2만번" 같은 번호
+    if (/(?:^|[^가-힣])제\s*$/.test(t.slice(Math.max(0, st - 3), st))) continue; // "제3천호"·"제2만번" 같은 번호 — "제"가 낱말 첫머리일 때만("공제 1억"·"누진공제 1,000만원"의 "제"는 아님)
     if ((!m[1] || !/\d/.test(m[1])) && /[가-힣]/.test(prev) && !/금\s*$/.test(t.slice(Math.max(0, st - 2), st))) continue; // 한글 수는 낱말 첫머리(또는 "금" 뒤)에서만
     let i = st, total = 0, sec = 0, nums = 0, digit = false, lastBig = '', units = 0, note = '';
     for (;;) {
