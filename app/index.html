@@ -33271,7 +33271,16 @@ function renderPrintPane(){
   const anyReady = printCurrentRows_.some(function(r){ return r.ready; });
   const efileItems = items.filter(function(item){ return item.efileAction; });
 
+  // [2026.10.18 탭연결 6번] 인쇄·전자신고 직전에 "어느 사건 계산인지"를 화면에서 확인할 수 없었다(여러 사건을 오가며 계산했으면
+  // 다른 사건 서식을 뽑을 위험) — 맨 위에 지금 세액계산에서 열린 사건 이름을 보여주고, 세액계산으로 돌아가기·다른 화면 바로가기를 둔다.
+  const printCaseName = (typeof tcCurrentCase !== 'undefined' && tcCurrentCase) ? String(tcCurrentCase.사건명 || tcCurrentCase.고객명 || '') : '';
   taxCalcPrintPane.innerHTML =
+    '<div id="printCaseLine" style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px; padding:8px 12px; border:1px solid var(--line); border-radius:8px; font-size:13px;' + (printCaseName ? '' : ' background:#fff4e5;') + '">' +
+      (printCaseName
+        ? '<span>🧮 이 서식은 「<b>' + escapeHtml(printCaseName) + '</b>」 사건의 세액계산 결과입니다.</span>'
+        : '<span>⚠ 세액계산에서 고른 사건이 없습니다 — 아래 서식은 사건 없이 계산한 값입니다(사건 서식이면 세액계산에서 사건을 먼저 고르세요).</span>') +
+      '<button type="button" class="ghost-btn" data-action="print-back-to-taxcalc" style="padding:3px 10px;">🧮 세액계산으로</button>' +
+    '</div>' +
     '<div class="taxcalc-tabs">' +
       availableGroups.map(function(g){
         return '<button type="button" class="taxcalc-tab' + (g === printActiveGroup_ ? ' active' : '') + '" data-action="switch-print-subtab" data-group="' + escapeHtml(g) + '">' + escapeHtml(g) + '</button>';
@@ -33291,6 +33300,9 @@ function renderPrintPane(){
       }).join('') : '') +
     '</div>' +
     '<div class="taxcalc-result-note" style="margin-top:10px;">"필수/임의" 구분은 법정 필수서류 목록이 아니라 "항상 나오는 본문" vs "사안에 따라 붙는 첨부서식"의 편의상 구획입니다 — 실제 제출 의무는 별도로 확인하세요. 계산값을 바꿨으면 그 세목 탭에서 다시 "세액 계산하기"를 누른 뒤 이 화면을 나갔다가 다시 들어오세요.</div>';
+  // [2026.10.18 탭연결 6번] 사건 머리줄에 "↪ 이 사건 다른 화면" 상자(다른 처리 화면과 같은 공용 상자 — 사건은 세액계산의 사건)
+  const caseLine = document.getElementById('printCaseLine');
+  if (caseLine && tcSelectedId && typeof nxCaseJumpSelect_ === 'function') caseLine.appendChild(nxCaseJumpSelect_('print', function(){ return tcSelectedId; }));
 }
 
 // ---- 화면 전환 및 이벤트 바인딩 ----
@@ -33396,6 +33408,9 @@ function handleTaxCalcClick_(e){
   if (action === 'switch-print-subtab'){
     printActiveGroup_ = btn.dataset.group;
     renderPrintPane();
+  } else if (action === 'print-back-to-taxcalc'){
+    // [2026.10.18 탭연결 6번] 세액인쇄 → 세액계산(지금 사건 그대로)
+    if (typeof goToView_ === 'function') goToView_('taxcalc');
   } else if (action === 'switch-transfer-subtab'){
     // [2026.09.24 신규] 부동산/주식등/국외자산 하위 탭 전환 — 데이터는 그대로 두고 표시만
     // 바꾸면 되므로 전체 재렌더 없이 CSS만 토글한다(입력 중이던 값이 날아가지 않게).
