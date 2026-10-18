@@ -25183,12 +25183,87 @@ function cpOcrProbe_(body) {
       const x = tcPdfVariant_(src.pg, src.imgs, v);
       const one = tcPdfOnePage_(src.u, src.pages, x.pg, x.imgs);
       if (!one) { out.push({ name: v.name, error: '한 쪽 PDF를 못 만듦' }); return; }
+      if (v.vision) { // [2026.10.18 3번 세션] 구글 Vision(열쇠 VISION_API_KEY가 있을 때) — 단어 위치로 줄·칸을 다시 세운 글 + 확신도 낮은 단어
+        const vr = tcVisionOcr_(Utilities.newBlob(one, 'application/pdf', 'probe.pdf'));
+        if (!vr) { out.push({ name: v.name, error: 'VISION_API_KEY 없음(세무사님 결제 등록 뒤)' }); return; }
+        const lay = tcLayoutFromWords_((vr[0] || {}).words || [], v);
+        save(v, lay.text + '\n\n[확신도 낮은 단어 ' + lay.low.length + '개]\n' + lay.low.map(function (x) { return x.line + '줄 ' + x.t + ' (' + x.c + ')'; }).join('\n'));
+        out.push({ name: v.name, chars: lay.text.length, low: lay.low.length, ms: Date.now() - t0 }); return;
+      }
       const doc = Drive.Files.create(tcTmpMeta_({ name: '_ocr_tmp_' + Date.now(), mimeType: 'application/vnd.google-apps.document' }), Utilities.newBlob(one, 'application/pdf', 'probe.pdf'), { ocrLanguage: 'ko', fields: 'id' });
       try { const r = tcDocTableAware_(DocumentApp.openById(doc.id).getBody()); save(v, r.text); out.push({ name: v.name, chars: r.text.length, tables: r.tables, ms: Date.now() - t0 }); }
       finally { try { DriveApp.getFileById(doc.id).setTrashed(true); } catch (e) {} }
     } catch (e) { out.push({ name: v.name, error: String(e && e.message || e).slice(0, 150) }); }
   });
   return { ok: true, total: src.total, imgs: src.imgs.length, results: out };
+}
+// =========================================================
+// [2026.10.18 3번 세션 — 읽기, 준비만(꺼 둠)] 단어 위치로 줄·칸을 다시 세우기 + 구글 Cloud Vision 글자인식.
+//  드라이브 글자인식은 단어 위치·확신도를 주지 않아 스캔 표가 칸마다 흩어지고(강정화 감정평가 명세표, 계약서 금액표·당사자표),
+//  흐린 팩스의 6↔8을 골라 물을 수도 없다(서버 실험① 기존 78%). 위치를 주는 엔진(Vision·윈도우 글자인식·Tesseract tsv)이면
+//  같은 높이의 단어를 한 줄로, 넓은 틈을 칸 경계(" | ")로 다시 세운다. 확신도 낮은 단어는 따로 모아 돌려준다(묻기 재료).
+//  Vision은 세무사님이 구글 클라우드 결제를 등록하고 스크립트 속성 VISION_API_KEY가 있을 때만 쓴다(월 1,000쪽 무료, 그 뒤 1,000쪽당 약 1.5달러).
+// =========================================================
+// words: [{t, x, y, w, h, c(0~1, 없으면 1)}] (한 쪽, 같은 좌표계) → {text, low:[{t, line}]}
+function tcLayoutFromWords_(words, opt) {
+  opt = opt || {};
+  const ws = (words || []).filter(function (w) { return w && String(w.t || '').trim() && w.h > 0; });
+  if (!ws.length) return { text: '', low: [] };
+  const hs = ws.map(function (w) { return w.h; }).sort(function (a, b) { return a - b; }), mh = hs[Math.floor(hs.length / 2)];
+  // 한 글자 너비(중앙값) — 칸 경계 판정용
+  const cw = ws.map(function (w) { return w.w / Math.max(1, String(w.t).length); }).sort(function (a, b) { return a - b; })[Math.floor(ws.length / 2)] || mh * 0.6;
+  ws.sort(function (a, b) { return (a.y + a.h / 2) - (b.y + b.h / 2); });
+  const lines = [];
+  ws.forEach(function (w) {
+    const yc = w.y + w.h / 2, L = lines[lines.length - 1];
+    if (L && Math.abs(yc - L.yc) <= mh * (opt.lineTol || 0.55)) { L.ws.push(w); L.yc = (L.yc * (L.ws.length - 1) + yc) / L.ws.length; }
+    else lines.push({ yc: yc, ws: [w] });
+  });
+  const low = [], out = [];
+  lines.forEach(function (L, li) {
+    L.ws.sort(function (a, b) { return a.x - b.x; });
+    let s = '';
+    L.ws.forEach(function (w, i) {
+      if (i) { const gap = w.x - (L.ws[i - 1].x + L.ws[i - 1].w); s += gap > cw * (opt.colGap || 2.2) ? ' | ' : ' '; }
+      s += w.t;
+      if ((w.c === undefined ? 1 : w.c) < (opt.lowConf || 0.75)) low.push({ t: w.t, line: li + 1, c: Math.round(w.c * 100) / 100 });
+    });
+    out.push(s);
+  });
+  return { text: out.join('\n'), low: low };
+}
+function tcVisionKey_() { try { return PropertiesService.getScriptProperties().getProperty('VISION_API_KEY') || ''; } catch (e) { return ''; } }
+// Vision 글자인식 — blob(그림 또는 PDF, PDF는 앞 5쪽까지) → [{page, w, h, words:[{t,x,y,w,h,c}], text}]. 열쇠가 없으면 null
+function tcVisionOcr_(blob) {
+  const key = tcVisionKey_(); if (!key) return null;
+  const isPdf = /pdf/.test(String(blob.getContentType() || ''));
+  const feat = [{ type: 'DOCUMENT_TEXT_DETECTION' }], ctx = { languageHints: ['ko', 'en'] };
+  const payload = isPdf
+    ? { requests: [{ inputConfig: { content: Utilities.base64Encode(blob.getBytes()), mimeType: 'application/pdf' }, features: feat, imageContext: ctx, pages: [1, 2, 3, 4, 5] }] }
+    : { requests: [{ image: { content: Utilities.base64Encode(blob.getBytes()) }, features: feat, imageContext: ctx }] };
+  const res = UrlFetchApp.fetch('https://vision.googleapis.com/v1/' + (isPdf ? 'files' : 'images') + ':annotate?key=' + encodeURIComponent(key), { method: 'post', contentType: 'application/json', payload: JSON.stringify(payload), muteHttpExceptions: true });
+  const js = JSON.parse(res.getContentText() || '{}');
+  if (js.error) throw new Error('Vision: ' + (js.error.message || res.getResponseCode()));
+  const resps = isPdf ? ((js.responses && js.responses[0] && js.responses[0].responses) || []) : (js.responses || []);
+  const out = [];
+  resps.forEach(function (r, ri) {
+    if (r.error) throw new Error('Vision: ' + r.error.message);
+    const fa = r.fullTextAnnotation; if (!fa) { out.push({ page: ri + 1, words: [], text: '' }); return; }
+    (fa.pages || []).forEach(function (pg) {
+      const W = pg.width || 1, H = pg.height || 1, words = [];
+      (pg.blocks || []).forEach(function (b) { (b.paragraphs || []).forEach(function (p) { (p.words || []).forEach(function (w) {
+        const t = (w.symbols || []).map(function (s) { return s.text; }).join('');
+        const vs = (w.boundingBox && (w.boundingBox.vertices || w.boundingBox.normalizedVertices)) || [];
+        const norm = !!(w.boundingBox && w.boundingBox.normalizedVertices && !w.boundingBox.vertices);
+        const xs = vs.map(function (v) { return (v.x || 0) * (norm ? W : 1); }), ys = vs.map(function (v) { return (v.y || 0) * (norm ? H : 1); });
+        if (!xs.length) return;
+        const x0 = Math.min.apply(null, xs), y0 = Math.min.apply(null, ys);
+        words.push({ t: t, x: x0, y: y0, w: Math.max.apply(null, xs) - x0, h: Math.max.apply(null, ys) - y0, c: w.confidence === undefined ? 1 : w.confidence });
+      }); }); });
+      out.push({ page: (r.context && r.context.pageNumber) || ri + 1, w: W, h: H, words: words, text: fa.text || '' });
+    });
+  });
+  return out;
 }
 // [2026.10.18 3번 세션 — 읽기] 서류(PDF·워드)의 칸 자리 지킨 표 글 — 표가 없으면 ''. 기억(ocrtbl1_)에 있으면 그대로(사이드바도 씀),
 //  없으면 TC_BATCH_READ_(일괄) 안에서만 한 번 더 변환해 만든다(이 수정 전에 읽은 서류용). 사이드바에서는 변환하지 않고 '' — 느려지지 않게
