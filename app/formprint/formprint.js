@@ -348,11 +348,13 @@
         var size = c.글자크기 || 8;
         if (ctx.opts.debugBoxes) page.drawCircle({ x: c.cx, y: H - c.cy, size: size * 0.6, borderColor: ctx.PDFLib.rgb(0.9, 0.1, 0.1), borderWidth: 0.4 });
         if (c.표시 === '○') {
-          var tw = Math.max(6, String(c.보기 || '').length * size * 0.45 + 3);
-          page.drawEllipse({ x: c.cx, y: H - c.cy, xScale: tw, yScale: size * 0.7, borderColor: ctx.color, borderWidth: 0.7 });
+          // [2026.10.20 눈검사 ③] ○ 가로 반지름 = 실제 글자 폭의 반 + 여백(예전 글자 수 × 0.45 + 3은 한 글자 보기에서 너무 넓어 옆 쉼표에 닿음) — 위치판 c.○반지름으로 덮어쓸 수 있음
+          var tw = c['○반지름'] || Math.max(size * 0.6, ctx.font.widthOfTextAtSize(String(c.보기 || ''), size) / 2 + Math.max(2, size * 0.5));
+          page.drawEllipse({ x: c.cx, y: H - c.cy, xScale: tw, yScale: size * 0.95, borderColor: ctx.color, borderWidth: 0.6 }); // 세로 0.7 → 0.95(글자 위아래를 지나가던 것)
         } else {
-          var vw = ctx.bold.widthOfTextAtSize('V', size);
-          page.drawText('V', { x: c.cx - vw / 2, y: H - c.cy - size * 0.36, size: size, font: ctx.bold, color: ctx.color });
+          // [2026.10.20 눈검사 ①] V는 글자 크기의 85% — 서식 [ ] 틈이 좁아 굵은 V가 괄호에 닿던 것(위치판 c.체크크기로 덮어쓸 수 있음)
+          var vs = c.체크크기 || size * 0.85, vw = ctx.bold.widthOfTextAtSize('V', vs);
+          page.drawText('V', { x: c.cx - vw / 2, y: H - c.cy - vs * 0.36, size: vs, font: ctx.bold, color: ctx.color });
         }
         ctx.report.placed++;
         return;
@@ -621,9 +623,12 @@
                             합계칸: opts.continueTotals === 'first' ? '첫 장에만' : '마지막 장에만' });
                         });
                         // 이어 찍은 표시(위치판 밖 위쪽 여백, 오른쪽 끝)
+                        // [2026.10.20 눈검사 ④] 위치판 서식 항목에 장마다_따로: true(나라마다 한 장인 소득11호 부표1 등)면 그 쪽은 이어 찍은 장이 아니라 따로 내는 장 — 표시 안 함
+                        var ownSheet_ = {};
+                        map.서식.forEach(function (e) { if (e.장마다_따로) (e.칸 || []).forEach(function (c) { ownSheet_[c.쪽] = 1; }); });
                         all.forEach(function (a) {
                           var tot = needOf[a.n] || 1;
-                          if (tot <= 1) return;
+                          if (tot <= 1 || ownSheet_[a.n]) return;
                           var t = a.q === 0 ? '(1/' + tot + ')' : '(계속 ' + (a.q + 1) + '/' + tot + ')';
                           var sz = 7, tw = fonts[0].widthOfTextAtSize(t, sz);
                           a.page.drawText(t, { x: a.page.getWidth() - 24 - tw, y: a.page.getHeight() - 14, size: sz, font: fonts[0], color: PDFLib.rgb(0.25, 0.25, 0.25) });
