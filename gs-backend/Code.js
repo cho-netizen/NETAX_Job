@@ -4965,7 +4965,9 @@ function toolLookupStatuteArticle(lawName, articleNo, baseDate) {
   ent = idx && idx.법령[key];
   var ver = ent && ent.판.filter(function (p) { return day ? p.시행일 <= day : p.판 === ent.현행; }).pop();
   if (ent && /부칙/.test(String(articleNo))) return lawDbBuchik_(idx, key, ver, (String(articleNo).match(/\d+/) || [])[0]);
-  var fid = ver && lawDbIds_(idx, key)[ver.판];
+  var fid = ver && lawDbIds_(idx, key)[ver.판], bm = String(articleNo).match(/별표\s*(\d+(?:의\d+)?)/);
+  if (fid && bm) { var bd = JSON.parse(Utilities.ungzip(DriveApp.getFileById(fid).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')), bb = (bd.별표 || []).filter(function (b) { return b.번호 === bm[1]; }); // [2026.10.20] 별표(현행·시행예정 판)
+    return bb.length ? { 법령명: ent.이름, 시행일자: ver.시행일, 판: ver.판, 별표: bb } : { error: '이 판에 별표 ' + bm[1] + '이 없습니다' + (bd.별표 ? '' : '(옛 판은 별표를 담지 않음)') + '.' }; }
   if (fid) try {
     var ck = 'lwa|' + key + '|' + ver.판 + '|' + jk, hit = jk && c.get(ck);
     arts = hit ? [JSON.parse(hit)] : JSON.parse(Utilities.ungzip(DriveApp.getFileById(fid).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')).조.filter(function (a) { return !jk || a.조 === jk; });
@@ -5022,9 +5024,9 @@ function lawDbToc_(lawName, ver) {
   var key = String(lawName).replace(/\s/g, ''), e = idx.법령[key], v = ver || (e && e.현행);
   var fid = e && lawDbIds_(idx, key)[v];
   if (!fid) return { 법령: laws, error: '그 판이 정비본에 없습니다.' };
-  var c = CacheService.getScriptCache(), ck = 'lwtoc|' + key + '|' + v, s = c.get(ck);
-  if (!s) { var d = JSON.parse(Utilities.ungzip(DriveApp.getFileById(fid).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')); s = JSON.stringify({ 머리: d.머리 || [], 조: d.조.map(function (a) { return [a.조, a.제목]; }) }); try { c.put(ck, s, 21600); } catch (x) { } }
-  var t = JSON.parse(s); return { 법령: laws, 키: key, 판: v, 머리: t.머리, 조: t.조 };
+  var c = CacheService.getScriptCache(), ck = 'lwtoc2|' + key + '|' + v, s = c.get(ck);
+  if (!s) { var d = JSON.parse(Utilities.ungzip(DriveApp.getFileById(fid).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')); s = JSON.stringify({ 머리: d.머리 || [], 조: d.조.map(function (a) { return [a.조, a.제목]; }), 별표: (d.별표 || []).map(function (b) { return [b.번호, b.구분, b.제목]; }) }); try { c.put(ck, s, 21600); } catch (x) { } }
+  var t = JSON.parse(s); return { 법령: laws, 키: key, 판: v, 머리: t.머리, 조: t.조, 별표: t.별표 || [] };
 }
 
 /**
