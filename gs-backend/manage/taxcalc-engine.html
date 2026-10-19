@@ -584,9 +584,13 @@
   }
 
   // 장기임대주택 등 장기보유특별공제 특례([별지 제84호서식] 코드04·05, 조특법 §97의3·§97의4)
-  function rentalLongTermRate(type, holdingYears, rentalYears) {
+  function rentalLongTermRate(type, holdingYears, rentalYears, registrationDate) {
     const ry = Number(rentalYears) || 0;
     if (type === 'rental_general') {
+      // [2026.10.19 세액 고침] 아래 '8년 50%는 근거 없음' 판단은 2023.1.1 개정(법률 제19199호)만 본 것이었다. 같은 법 부칙 제38조(법제처 원문):
+      //  "이 법 시행 전에 등록을 한 공공지원민간임대주택 또는 장기일반민간임대주택 … 종전의 규정에 따른다" — 2022-12-31 이전 등록분은 지금도
+      //  종전 §97의3①(8년 이상 50%, 10년 이상 70%, 2016.1.1 이후 양도). 등록일(registrationDate)이 그 전이면 8년 이상 50%를 준다.
+      if (ry >= 8 && ry < 10 && registrationDate && String(registrationDate).slice(0, 10) <= '2022-12-31') return 0.50;
       // §97의3①본문·1호(현행, 2024.12.31 최종개정) — "10년 이상 계속하여 임대한 후 양도하는 경우"에만
       // 70% 공제율을 적용한다. "8년 이상 50%"는 2018.1.16 개정본까지 있었던 구법(§2조제6호 단기민간
       // 임대주택 관련) 조항으로, 2020년 임대주택 등록제도 개편으로 삭제되어 현행법상 근거가 없다
@@ -611,7 +615,7 @@
 
   // [2026.10.19 조견표 2부-01·2부-03] 양도일에 맞는 기본세율 구간·장기보유특별공제율 — 법제처 연혁판·부칙 원문으로 만든 조견표
   //  (저장소 reftables/2부-01.json·2부-03.json)를 tools/build-reftables.js가 아래 자리에 옮겨 적는다(직접 고치지 말 것).
-  //  세무사님 확인 전에는 꺼 둔다: window.__NX_REF_HISTORY_ON이 true일 때만 쓴다(회귀 시험 node tools/engine-regress.js --history).
+  //  2026-10-19 세무사님 확인으로 켬(아래 refHistoryOn_). window.__NX_REF_HISTORY_ON === false면 끔(회귀 시험 node tools/engine-regress.js --no-history).
   //  켜도 지금 표가 맞는 기간(기본세율 2023-01-01~, 표1 2019-01-01~, 표2 2021-01-01~)은 지금 함수를 그대로 불러 0원도 안 바뀐다.
   //  아직 안 따라가는 것: 단기·중과 등 특례세율(2부-02), 조합원입주권 장특공 안분, 임대 특례 장특공, 주식·국외자산 세율.
   /*@@REF_ENGINE_BEGIN@@*/
@@ -619,7 +623,8 @@
   const REF_LT_ = { 표1: [{"from":"2008-01-01","to":"2008-03-20","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30}},{"from":"2008-03-21","to":"2018-12-31","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30}},{"from":"2019-01-01","to":null,"rates":{"3":6,"4":8,"5":10,"6":12,"7":14,"8":16,"9":18,"10":20,"11":22,"12":24,"13":26,"14":28,"15":30}}], 표2: [{"from":"2008-01-01","to":"2008-03-20","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30,"11":33,"12":36,"13":39,"14":42,"15":45}},{"from":"2008-03-21","to":"2008-12-31","rates":{"3":12,"4":16,"5":20,"6":24,"7":28,"8":32,"9":36,"10":40,"11":44,"12":48,"13":52,"14":56,"15":60,"16":64,"17":68,"18":72,"19":76,"20":80}},{"from":"2009-01-01","to":"2020-12-31","rates":{"3":24,"4":32,"5":40,"6":48,"7":56,"8":64,"9":72,"10":80}}] };
   const REF_HV_ = {"house":[{"from":"2005-02-19","to":"2008-10-06","amount":600000000},{"from":"2008-10-07","to":"2021-12-07","amount":900000000},{"from":"2021-12-08","to":null,"amount":1200000000}],"right":[{"from":"2017-02-03","to":"2021-12-07","amount":900000000},{"from":"2021-12-08","to":null,"amount":1200000000}]};
   /*@@REF_ENGINE_END@@*/
-  function refHistoryOn_() { return !!(typeof window !== 'undefined' && window && window.__NX_REF_HISTORY_ON === true); }
+  // [2026.10.19 켬] 세무사님 답(원문): "1. 켠다" — 기본으로 켠다. 끄려면 window.__NX_REF_HISTORY_ON = false(시험·비상용).
+  function refHistoryOn_() { return !(typeof window !== 'undefined' && window && window.__NX_REF_HISTORY_ON === false); }
   function refRowAt_(rows, d) { for (let i = 0; i < rows.length; i++) { if (rows[i].from <= d && (!rows[i].to || d <= rows[i].to)) return rows[i]; } return null; }
   // {"3":10,"4":12,…,"10":30} — 보유(거주)연수 이상인 가장 큰 열쇠의 %(맨 끝 열쇠는 '그 이상')
   function refRateAt_(rates, years) { let best = -1; Object.keys(rates).forEach(function (k) { const n = Number(k); if (years >= n && n > best) best = n; }); return best < 0 ? 0 : rates[best] / 100; }
@@ -715,6 +720,22 @@
     let necessaryExpenses = Number(t.necessaryExpenses) || 0;
     if (!transferPrice || transferPrice <= 0) return { error: '양도가액이 필요합니다.' };
 
+    // [2026.10.19] 청산금 수령액(재건축·재개발 / 환지)은 화면의 "청산금 수령분을 별도 거래로 추가"
+    // 버튼이 권리가액·기존 취득가액·필요경비를 안분해 줄여야만 시행령§166 흐름도대로 계산된다
+    // (권리부분 = 양도가액-(평가액-지급받은청산금)-경비, 기존부분 = (평가액-취득가액-경비)×(평가액-청산금)/평가액).
+    // 수령액만 입력하고 버튼을 안 누르면 엔진은 수령액을 모른 채 계산해 양도차익이 과소·장특이 과대가
+    // 되므로, 버튼으로 반영한 금액(…Applied)과 지금 입력값이 다르면 계산을 멈춘다.
+    const settlementGuards = [
+      ['settlementReceived', 'settlementReceivedApplied', '재건축·재개발'],
+      ['replotmentSettlementReceived', 'replotmentSettlementReceivedApplied', '환지']
+    ];
+    for (const [recvKey, appliedKey, label] of settlementGuards) {
+      const recv = Number(t[recvKey]) || 0;
+      const applied = Number(t[appliedKey]) || 0;
+      if (recv > 0 && applied === 0) return { error: label + ' 청산금 수령액(' + recv.toLocaleString() + '원)이 아직 계산에 반영되지 않았습니다 — "청산금 수령분을 별도 거래로 추가" 버튼을 먼저 누르세요.' };
+      if (applied > 0 && recv !== applied) return { error: label + ' 청산금 수령액이 버튼으로 반영한 금액(' + applied.toLocaleString() + '원)과 다릅니다 — 수령액을 ' + applied.toLocaleString() + '원으로 되돌리거나, 추가된 청산금 거래를 지우고 이 자산을 새로 입력하세요.' };
+    }
+
     // 취득가액 결정 — 실지거래가액(acquisitionPrice 직접입력)이 최우선이다. 이를 확인할 수 없으면
     // 소득세법시행령§176의2③의 순차적용(1호 매매사례가액 → 2호 감정가액 → 3호 환산취득가액 → 4호
     // 취득당시 기준시가)에 따라 자동으로 결정한다. 환산취득가액(§176의2②2호, 토지·건물·부동산취득권리
@@ -784,6 +805,10 @@
 
     const holdingYears = fullYearsElapsed(deemedAcquisitionDate(t.acquisitionDate), t.transferDate);
     if (holdingYears < 0) return { error: '양도일이 취득일보다 빠릅니다.' };
+    // [2026.10.19 세액 고침] §104②1호 — 세율(단기·분양권 등 1년·2년 판정)의 보유기간은 상속받은 자산이면 "피상속인이 그 자산을 취득한 날"부터.
+    //  예전엔 상속개시일부터 세어 상속 뒤 2년 안 양도에 단기세율(40~70%)이 잘못 붙을 수 있었다. 장특공 보유기간은 §95④대로 상속개시일부터(위 holdingYears 그대로).
+    const decedentAcqForRate_ = (t.isInheritedAsset || bizSuccessionRatio > 0) ? (t.inheritedDecedentAcquisitionDate || t.decedentAcquisitionDate || '') : '';
+    const rateHoldingYears = decedentAcqForRate_ ? Math.max(holdingYears, fullYearsElapsed(deemedAcquisitionDate(decedentAcqForRate_), t.transferDate)) : holdingYears;
 
     // 개산공제율(시행령§163⑥1호·2호) — 원칙 3/100(3%)이나, 미등기양도자산은 3/1000(0.3%)로 10분의 1이다.
     // [2026.09 버그수정] 환산취득가액·취득당시기준시가로 취득가액을 대체한 경우는 실제 필요경비
@@ -985,7 +1010,7 @@
     } else if (bizSuccessionRatio > 0 && t.decedentAcquisitionDate) {
       // §95④단서 — 가업상속공제가 적용된 비율에 해당하는 자산은 장기보유특별공제의 보유기간 기산일이
       // "피상속인이 해당 자산을 취득한 날"이다(나머지 비율은 상속개시일 기산인 일반 상속재산과 동일).
-      // §104(세율판정용 holdingYears)에는 이런 예외가 없으므로 holdingYears는 상속개시일 기준 그대로 쓴다.
+      // (세율 판정 보유기간은 §104②1호대로 피상속인 취득일부터 — rateHoldingYears. 여기 장특공은 위 §95④단서의 비율 안분)
       const decedentHoldingYears = fullYearsElapsed(deemedAcquisitionDate(t.decedentAcquisitionDate), t.transferDate);
       ltRate = longTermRateAt_(decedentHoldingYears, t.transferDate) * bizSuccessionRatio + longTermRateAt_(holdingYears, t.transferDate) * (1 - bizSuccessionRatio);
     } else {
@@ -993,7 +1018,10 @@
     }
 
     if (!isReconstruction && !isPresaleRight) {
-      const rentalRate = rentalLongTermRate(t.rentalSpecialType, holdingYears, t.rentalYears);
+      const rentalRate = rentalLongTermRate(t.rentalSpecialType, holdingYears, t.rentalYears, t.rentalRegistrationDate);
+      // 등록일을 모르는데 임대 8~10년이면 2022-12-31 이전 등록 여부로 50%가 갈린다 — 알림
+      if (t.rentalSpecialType === 'rental_general' && !t.rentalRegistrationDate && Number(t.rentalYears) >= 8 && Number(t.rentalYears) < 10)
+        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '⚠ 장기일반민간임대 장특공 특례: 임대 ' + t.rentalYears + '년 — 임대주택 등록일이 2022-12-31 이전이면 50%(조특법 법률 제19199호 부칙 제38조), 그 뒤면 특례 없음. 등록일을 넣어 주세요(지금은 특례 없이 계산).';
       isRentalSpecial = rentalRate !== null;
       if (isRentalSpecial) ltRate = rentalRate;
 
@@ -1003,7 +1031,12 @@
       // 적용하지 않는다. 보유기간 2년 미만이면 이 한시배제 대상이 아니므로 중과 여부를 그대로 판정해야
       // 한다(양도일만 보고 보유기간을 확인하지 않으면 단기양도인데도 잘못 배제될 수 있음).
       const isMultiHouseSurchargeExcluded = computeMultiHouseSurchargeExclusion(t, holdingYears);
-      isMultiHouseSurcharge = !isOneHouse && !isRentalSpecial && !!t.isAdjustedArea && multiHouseCount >= 2 && !isMultiHouseSurchargeExcluded;
+      // [2026.10.19 세액 고침] 소득세법 시행령 §167의3①5호(법제처 원문) — 조특법 §77·§98의2·§98의3·§98의5~§98의8·§99·§99의2·§99의3에 따라
+      //  양도소득세가 감면되는 주택은 중과 대상 주택에서 뺀다(주택 수에는 들어감). 거래 카드에서 그 감면 조문을 고른 주택(수용 감면 포함)은 중과·장특공 배제를 안 한다.
+      //  예전엔 이 분기가 없어 한시배제가 끝난 2026-05-10 이후 양도분에 중과 가산과 장특공 0이 잘못 붙을 수 있었다(책자 부록 2부-26에서 발견). §98의4는 목록에 없어 그대로.
+      const isReductionHouseExcluded_ = ["sect99", "sect99_2", "sect99_3"].indexOf(t.newHouseReductionProvision) !== -1
+        || ["sect98_3", "sect98_5", "sect98_6", "sect98_7", "sect98_8"].indexOf(t.unsoldHouseReductionProvision) !== -1 || !!t.compensationType;
+      isMultiHouseSurcharge = !isOneHouse && !isRentalSpecial && !!t.isAdjustedArea && multiHouseCount >= 2 && !isMultiHouseSurchargeExcluded && !isReductionHouseExcluded_;
       if (isMultiHouseSurcharge) ltRate = 0;
     }
 
@@ -1038,7 +1071,7 @@
     }
     // 분양권(§104①1호·2호·3호)은 보유기간과 무관하게 항상 60%(1년미만 70%) 단일세율이고 기본세율
     // 누진과세 대상이 될 수 없으므로(1호가 별도로 분양권 60%를 정함), 합산(pooling) 대상에서 제외한다.
-    const isPoolable = !isPresaleRight && holdingYears >= 2; // 2년 이상 보유 → 기본세율(누진) 대상, 합산 가능
+    const isPoolable = !isPresaleRight && rateHoldingYears >= 2; // 2년 이상 보유(세율 판정 보유기간 — 상속 자산은 피상속인 취득일부터) → 기본세율(누진) 대상, 합산 가능
 
     // 소득세법§114의2① — 신축 또는 증축(바닥면적합계 85㎡ 초과분만)한 건물을 취득일·증축일로부터 5년
     // 이내에 양도하면서 그 취득가액을 §97①1호나목에 따른 "감정가액 또는 환산취득가액"으로 한 경우,
@@ -1056,7 +1089,7 @@
 
     return {
       reconstructionDetail, rentalPeriodSplit, acquisitionPriceMethodNote,
-      holdingYears, exempt: false, isUnregistered: false, isPoolable,
+      holdingYears, rateHoldingYears, exempt: false, isUnregistered: false, isPoolable,
       transferPrice, acquisitionPrice, necessaryExpenses, assetType, isOneHouse, isRentalSpecial,
       gainBeforeDeduction, taxableGain, longTermRate: ltRate, longTermDeductionAmount, incomeAmount,
       isMultiHouseSurcharge, multiHouseCount, isNonBusinessLand: !!t.isNonBusinessLand, isEightYearFarmland: !!t.isEightYearFarmland,
@@ -1095,7 +1128,7 @@
     }
     // [2026.10.19 시점 점검 — maps/시점점검_2부.md의 경계 날짜] 아직 날짜로 갈라 계산하지 않는 규칙 — 해당하면 경고만(숫자 그대로)
     if (!core.exempt) {
-      const r_ = core.raw || {}, hy_ = Number(core.holdingYears);
+      const r_ = core.raw || {}, hy_ = Number(core.rateHoldingYears != null ? core.rateHoldingYears : core.holdingYears);
       if (d < '2021-06-01' && core.assetType === 'house' && hy_ < 2) miss.push('단기 보유 세율(그때 1년 미만 40%·1~2년 기본세율 — 법률 제17477호 부칙 제3조)');
       if (d < '2021-06-01' && core.assetType === 'presale_right') miss.push('분양권 세율(그때 조정지역 50%·그 밖 일반 자산 세율)');
       if (d >= '2018-04-01' && d < '2022-05-10' && r_.isAdjustedArea && Number(r_.multiHouseCount) >= 2 && !core.isOneHouse) miss.push('다주택 중과(한시배제는 2022-05-10 이후 양도분부터 — 그때는 중과 대상, 2021-06-01 전은 +10%p·+20%p)');
@@ -1116,8 +1149,81 @@
     return ws.filter(function (w, i) { return ws.indexOf(w) === i; }).join(' / ');
   }
 
+  // [2026.10.19 신규] 환지 증가 면적 분리 — 시행령§162①9호 단서(law.go.kr 원문 확인): "교부받은 토지의 면적이
+  // 환지처분에 의한 권리면적보다 증가 또는 감소된 경우에는 그 증가 또는 감소된 면적의 토지에 대한 취득시기
+  // 또는 양도시기는 환지처분의 공고가 있은 날의 다음날". 그래서 분담금(청산금 납부)으로 늘어난 면적은 종전토지와
+  // 보유기간이 다른 별개 자산처럼 계산해야 한다(장특 보유연수·단기세율 판정이 각각 다름).
+  //   종전분: 양도가액·양도비용 × 권리면적/확정면적, 취득가액·취득비용 = 종전토지분, 취득일 = 종전 취득일
+  //   증가분: 양도가액·양도비용 × (확정면적-권리면적)/확정면적, 취득가액 = 분담금, 취득일 = 공고일 다음날
+  // 양도가액을 면적비율로 나누는 것은 같은 필지 안에서 ㎡당 가액이 같다는 전제다.
+  // 반환: [t] (분리 불필요) | [종전분, 증가분] | { error }
+  function addOneDay_(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }
+  function expandReplotmentIncrease_(t) {
+    const paid = Number(t.replotmentSettlementPaid) || 0;
+    if (!t.isLandReplotment || paid <= 0) return [t];
+    const rights = Number(t.rightsAreaSqm) || 0;
+    const final = Number(t.finalAreaSqm) || 0;
+    if (!(rights > 0 && final > rights) || !t.replotmentDisposalDate) {
+      return { error: '환지 분담금(' + paid.toLocaleString() + '원)이 있으면 증가 면적을 따로 계산해야 하므로 권리(예정)면적·확정면적(권리면적보다 큼)·환지처분 공고일이 모두 필요합니다(시행령§162①9호).' };
+    }
+    const increaseAcqDate = addOneDay_(t.replotmentDisposalDate);
+    if (t.transferDate && t.transferDate < increaseAcqDate) {
+      return { error: '양도일(' + t.transferDate + ')이 증가 면적 취득일(환지처분 공고일 다음날 ' + increaseAcqDate + ')보다 빠릅니다 — 환지처분 전 양도라면 분담금 납부액을 0으로 두고 계약 내용대로 입력하세요.' };
+    }
+    const r = (final - rights) / final;
+    const transferExp = Number(t.replotmentTransferExpenses) || 0;
+    const incTransferExp = Math.round(transferExp * r);
+    const incTransferPrice = Math.round((Number(t.transferPrice) || 0) * r);
+    const scaleKeep = function (v) { return v ? Math.round(Number(v) * (1 - r)) : v; };
+    const label = '환지 증가분 ' + Math.round(final - rights).toLocaleString() + '㎡(' + (Math.round(r * 10000) / 100) + '%)';
+    const original = Object.assign({}, t, {
+      transferPrice: (Number(t.transferPrice) || 0) - incTransferPrice,
+      necessaryExpenses: (Number(t.necessaryExpenses) || 0) - incTransferExp,
+      // 양도 쪽 기준시가·시가 등도 확정면적 전체 기준이라 종전분 몫만 남긴다(환산취득가액 등에 쓰임).
+      transferStandardPriceForConversion: scaleKeep(t.transferStandardPriceForConversion),
+      transferStandardPrice: scaleKeep(t.transferStandardPrice),
+      fairMarketValueForGiftCheck: scaleKeep(t.fairMarketValueForGiftCheck),
+      downContractPriceDifference: scaleKeep(t.downContractPriceDifference),
+      replotmentSettlementPaid: 0,
+      _환지분리: '종전분 ' + Math.round(rights).toLocaleString() + '㎡ (취득일 ' + (t.acquisitionDate || '') + ')'
+    });
+    // 증가분은 감면·이월과세 등 종전토지에 딸린 특례를 물려받지 않도록 기본 항목만 골라 새로 만든다
+    // (증가분에 감면이 될지는 별도 확인 — 안내에 남긴다).
+    const increase = {
+      assetType: t.assetType, transferDate: t.transferDate, acquisitionDate: increaseAcqDate,
+      transferPrice: incTransferPrice, acquisitionPrice: paid, necessaryExpenses: incTransferExp,
+      isTransferorResident: t.isTransferorResident, isNonResidentTwoYearException: t.isNonResidentTwoYearException,
+      isAdjustedArea: t.isAdjustedArea, multiHouseCount: t.multiHouseCount,
+      isNonBusinessLand: t.isNonBusinessLand, isUnregisteredTransfer: t.isUnregisteredTransfer,
+      _환지분리: label + ' (취득일 ' + increaseAcqDate + ' = 공고일 다음날, 취득가액 = 분담금 ' + paid.toLocaleString() + '원; 종전토지의 감면 특례는 넘기지 않음 — 해당되면 별도 확인)'
+    };
+    return [original, increase];
+  }
+  // 화면의 신고서·전자신고(부표1)용 — 환지 증가분을 별도 자산 줄로 쓰기 위해 같은 분리 결과를 쓴다
+  // (세무사님 확인 2026.10.19: 추가부담금 납부는 새 취득, 청산금 수령은 새 양도 — 별도 거래).
+  // 분리 조건이 안 맞으면(오류) 원래 자산 그대로 한 줄 — 그 경우 세액 계산 자체가 오류로 멈춘다.
+  window.expandReplotmentIncreaseJS = function (t) {
+    const parts = expandReplotmentIncrease_(t);
+    return parts.error ? [t] : parts;
+  };
+
   // 단일 거래 양도소득세 — gs-backend toolCalculateTransferTax와 동일 로직(기본공제 1건 전액 적용).
   window.calculateTransferTaxSingleJS = function (t) {
+    // [2026.10.19] 환지 증가분이 있으면 종전분 결과를 본체로, 증가분 결과를 따로 붙인다(단독 계산근거용 —
+    // 실제 세액은 calculateTransferTaxMultiJS가 두 몫을 합산·통산해 낸다).
+    const replotParts = expandReplotmentIncrease_(t);
+    if (replotParts.error) return { error: replotParts.error };
+    if (replotParts.length === 2) {
+      const main = window.calculateTransferTaxSingleJS(replotParts[0]);
+      if (main.error) return main;
+      main.환지증가분_결과 = window.calculateTransferTaxSingleJS(replotParts[1]);
+      main.환지분리_안내 = [replotParts[0]._환지분리, replotParts[1]._환지분리];
+      return main;
+    }
     const core = transferAssetCore(t);
     if (core.error) return { error: core.error };
 
@@ -1176,13 +1282,14 @@
       }
       return { tax: tax, notes: notes };
     }
+    const rhy_ = core.rateHoldingYears != null ? core.rateHoldingYears : core.holdingYears; // 세율 판정 보유기간(§104②)
     if (core.assetType === 'presale_right') {
       // §104①1호·2호·3호 — 분양권은 보유기간 1년 미만 70%, 1년 이상은 무조건 60%(기본세율 누진 적용 없음).
-      const rate = core.holdingYears < 1 ? 0.70 : 0.60;
+      const rate = rhy_ < 1 ? 0.70 : 0.60;
       calculatedTax = Math.round(taxBase * rate);
-      appliedRateNote = '분양권 — ' + (core.holdingYears < 1 ? '보유기간 1년 미만 70%' : '60%') + ' 단일세율 적용(장기보유특별공제·기본세율누진 배제)';
-    } else if (core.holdingYears < 2 && (core.isMultiHouseSurcharge || core.isNonBusinessLand)) {
-      const rate = core.holdingYears < 1 ? (core.assetType === 'house' ? 0.70 : 0.50) : (core.assetType === 'house' ? 0.60 : 0.40);
+      appliedRateNote = '분양권 — ' + (rhy_ < 1 ? '보유기간 1년 미만 70%' : '60%') + ' 단일세율 적용(장기보유특별공제·기본세율누진 배제)';
+    } else if (rhy_ < 2 && (core.isMultiHouseSurcharge || core.isNonBusinessLand)) {
+      const rate = rhy_ < 1 ? (core.assetType === 'house' ? 0.70 : 0.50) : (core.assetType === 'house' ? 0.60 : 0.40);
       const shortTermTax = Math.round(taxBase * rate);
       const alt = surchargeBasedTax_();
       if (alt.tax > shortTermTax) {
@@ -1191,13 +1298,13 @@
         appliedRateNote = '보유기간 2년 미만이나 다주택중과·비사업용토지 가산세율 적용시 세액이 더 커서(§104④·⑦후단) 기본세율+가산율 적용 — 단기세율(' + (rate * 100) + '%) 적용시: ' + shortTermTax + '원';
       } else {
         calculatedTax = shortTermTax;
-        appliedRateNote = '보유기간 ' + (core.holdingYears < 1 ? '1년 미만' : '1년 이상 2년 미만') + ' 단기세율 ' + (rate * 100) + '% 적용(§104④·⑦후단 비교 결과 기본세율+가산율보다 큼)';
+        appliedRateNote = '보유기간 ' + (rhy_ < 1 ? '1년 미만' : '1년 이상 2년 미만') + ' 단기세율 ' + (rate * 100) + '% 적용(§104④·⑦후단 비교 결과 기본세율+가산율보다 큼)';
       }
-    } else if (core.holdingYears < 1) {
+    } else if (rhy_ < 1) {
       const rate = core.assetType === 'house' ? 0.70 : 0.50;
       calculatedTax = Math.round(taxBase * rate);
       appliedRateNote = '보유기간 1년 미만 단기세율 ' + (rate * 100) + '% 적용';
-    } else if (core.holdingYears < 2) {
+    } else if (rhy_ < 2) {
       const rate = core.assetType === 'house' ? 0.60 : 0.40;
       calculatedTax = Math.round(taxBase * rate);
       appliedRateNote = '보유기간 1년 이상 2년 미만 단기세율 ' + (rate * 100) + '% 적용';
@@ -1504,6 +1611,15 @@
         _미분양주택감면_사유: (reduction && (reduction.error || reduction.안내)) || undefined
       });
     }
+    // [2026.10.19 세액 고침] 5년 이내 양도는 세액감면(조특법 §98의3①·§98의5①·§98의6①·§98의7① "양도소득세의 100분의 ○에 상당하는 세액을 감면").
+    //  예전엔 양도차익을 감면율만큼 빼는 방식이라, 누진세율 때문에 감면율 100% 미만(§98의3 과밀 60%, §98의5 60·80%, §98의6 50%)은 세액이 원문보다 적게 나왔다.
+    //  이제 2년 이상 보유(합산 그룹)면 합산 단계에서 그 자산 몫 산출세액 × 감면율을 뺀다(구조조정 §43·장기임대 §97과 같은 처리). 단기(2년 미만)는 예전 방식(근사)+안내.
+    if (reduction.감면방식 === '세액감면' && (baseCore.rateHoldingYears != null ? baseCore.rateHoldingYears : baseCore.holdingYears) >= 2) {
+      return Object.assign({}, t, {
+        _미분양주택감면_적용여부: true, _미분양감면_세액감면율: (Number(reduction.적용감면율) || 0) / 100,
+        _미분양주택감면_안내: reduction.안내 + ' (세액감면 — 합산 산출세액 중 이 자산 몫 × ' + reduction.적용감면율 + '%)'
+      });
+    }
     return Object.assign({}, t, {
       _externalGainOverride: baseCore.gainBeforeDeduction - reduction.감면_비과세대상_양도소득금액,
       _미분양주택감면_적용여부: true,
@@ -1582,6 +1698,21 @@
   window.calculateTransferTaxMultiJS = function (transactions, filingParams) {
     if (!Array.isArray(transactions) || !transactions.length) return { error: '거래를 1건 이상 입력하세요.' };
     filingParams = filingParams || {};
+    // [2026.10.19] 환지 증가분(시행령§162①9호 단서)은 보유기간이 다른 별도 거래로 나눈다 — 거래 번호(idx)가
+    // 화면의 자산 카드 순서와 어긋나지 않도록 종전분은 제자리에, 증가분은 맨 뒤에 붙이고, 번호→표시이름 표를 돌려준다.
+    const txLabels_ = transactions.map(function (_, i) { return (i + 1) + '번째 거래'; });
+    const replotAppend_ = [];
+    for (let i = 0; i < transactions.length; i++) {
+      const parts = expandReplotmentIncrease_(transactions[i]);
+      if (parts.error) return { error: (i + 1) + '번째 거래: ' + parts.error };
+      if (parts.length === 2) {
+        transactions = transactions.slice();
+        transactions[i] = parts[0];
+        txLabels_[i] = (i + 1) + '번째 거래(환지 종전분)';
+        replotAppend_.push({ t: parts[1], label: (i + 1) + '번째 거래(환지 증가분)' });
+      }
+    }
+    replotAppend_.forEach(function (p) { transactions = transactions.concat([p.t]); txLabels_.push(p.label); });
     // 이월과세(§97의2) — 거래 카드에 "배우자·직계존속에게 증여받음"을 체크해뒀으면, 합산 계산에
     // 넣기 전에 이 거래 단독 기준으로 적용여부를 먼저 판정해 취득가액·취득일·필요경비를 확정한다.
     // (예전엔 별도 계산기에서 계산한 결과를 손으로 옮겨 입력해야 했다 — 이제는 자동 반영된다.)
@@ -1617,7 +1748,7 @@
       return c;
     });
     const errorOne = cores.find(function (c) { return c.error; });
-    if (errorOne) return { error: (errorOne.idx + 1) + '번째 거래: ' + errorOne.error };
+    if (errorOne) return { error: txLabels_[errorOne.idx] + ': ' + errorOne.error };
 
     const exempt = cores.filter(function (c) { return c.exempt; });
     const unregistered = cores.filter(function (c) { return c.isUnregistered; });
@@ -1638,7 +1769,7 @@
       if (c.isUnregistered) return 'unregistered';
       if (c.isPoolable) return 'progressive';
       const r = (c.assetType === 'house' || c.assetType === 'presale_right')
-        ? (c.holdingYears < 1 ? 0.70 : 0.60) : (c.holdingYears < 1 ? 0.50 : 0.40);
+        ? ((c.rateHoldingYears != null ? c.rateHoldingYears : c.holdingYears) < 1 ? 0.70 : 0.60) : ((c.rateHoldingYears != null ? c.rateHoldingYears : c.holdingYears) < 1 ? 0.50 : 0.40);
       return 'short_' + r;
     }
     const nettingBuckets_ = {};
@@ -1808,6 +1939,7 @@
         else { assetNotes.push({ idx: c.idx, 구분: '국가양도산지감면(§85의10)', 적용여부: false, 사유: (nfCheck && (nfCheck.error || nfCheck.안내)) || undefined }); }
       }
       else if (c.raw._구조조정감면_세액감면율) { label = '구조조정대상 부동산 감면(조특법§43, 세액 ' + c.raw._구조조정감면_세액감면율 + '% 감면)'; rate = c.raw._구조조정감면_세액감면율 / 100; }
+      else if (c.raw._미분양감면_세액감면율) { label = '미분양주택 감면(조특법 ' + String(c.raw.unsoldHouseReductionProvision || '').replace('sect98_', '§98의') + ', 5년 이내 양도 — 세액 ' + Math.round(c.raw._미분양감면_세액감면율 * 100) + '% 감면)'; rate = c.raw._미분양감면_세액감면율; }
       else if (c.raw._장기임대감면_세액감면율) { label = '장기임대주택 등 감면(조특법§97, 세액 ' + c.raw._장기임대감면_세액감면율 + '% 감면)'; rate = c.raw._장기임대감면_세액감면율 / 100; }
       if (label && rate > 0 && poolIncomeSum > 0) {
         const share = Math.round(poolTaxWithSurcharge * (c.incomeAmount / poolIncomeSum));
@@ -1901,7 +2033,7 @@
       const nettedInc_ = (nettedIncomeByIdx_[c.idx] !== undefined) ? nettedIncomeByIdx_[c.idx] : c.incomeAmount;
       const base = Math.max(0, nettedInc_ - bd);
       const rate = (c.assetType === 'house' || c.assetType === 'presale_right')
-        ? (c.holdingYears < 1 ? 0.70 : 0.60) : (c.holdingYears < 1 ? 0.50 : 0.40);
+        ? ((c.rateHoldingYears != null ? c.rateHoldingYears : c.holdingYears) < 1 ? 0.70 : 0.60) : ((c.rateHoldingYears != null ? c.rateHoldingYears : c.holdingYears) < 1 ? 0.50 : 0.40);
       const shortTermTax = Math.round(base * rate);
       const dualRateEligible = c.assetType !== 'presale_right' && (c.isMultiHouseSurcharge || c.isNonBusinessLand);
       const surchargePct = dualRateEligible
@@ -1996,6 +2128,8 @@
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       지방소득세: localIncomeTax, 납부세액_합계: grandTotal,
       자산별_내역: assetNotes,
+      거래번호표시: txLabels_, // [2026.10.19] 자산별_내역의 idx → 표시이름(환지 증가분이 맨 뒤에 붙음)
+      환지분리_안내: replotAppend_.length ? transactions.filter(function (t) { return t._환지분리; }).map(function (t) { return t._환지분리; }) : undefined,
       양도차손_통산_적용여부: lossNettingApplied_,
       양도차손_통산_내역: lossNettingApplied_ ? lossNettingDetail_ : undefined,
       안내: '2년 이상 보유·특례 없는(또는 다주택중과·비사업용토지만 해당하는) 거래는 소득금액을 합산해 기본공제(250만원, 전체 1회)와 누진세율을 함께 적용했습니다. 단기양도(2년 미만)·미등기양도는 합산 누진세 대상이 아니라 건별로 따로 계산해 더했습니다. 다주택중과·비사업용토지 가산액과 8년자경농지 감면액은 자산별 소득금액 비중으로 계산한 근사치이니, 특례가 여러 건 섞인 복잡한 합산은 결과를 참고용으로만 쓰고 반드시 재검토하세요. 신고불성실·납부지연가산세는 전체 확정신고 기준(산출세액 합계)으로 한 번만 계산했습니다.' + (lossNettingApplied_ ? ' 일부 자산에서 발생한 양도차손은 소득세법§102②·시행령§167의2에 따라 같은 세율 자산의 소득금액에서 먼저, 남으면 다른 세율 자산들의 소득금액에 안분하여 공제했습니다(자산별_내역의 "양도차손통산후소득금액" 참고, 당해연도에 못 턴 손실은 이월되지 않고 소멸).' : '')
@@ -5479,6 +5613,8 @@
       적용여부: true,
       보유기간_년: Math.round(yearsHeld * 100) / 100,
       적용감면율: rate,
+      // [2026.10.19] 5년 이내 양도(§98의8 빼고)는 "양도소득세의 ○%에 상당하는 세액을 감면"(세액감면), 5년 지나면 "5년간 양도소득금액의 ○%를 뺌"(소득금액공제)
+      감면방식: (yearsHeld <= 5 && provision !== 'sect98_8') ? '세액감면' : '소득금액공제',
       전체양도차익: Math.round(totalGain),
       감면_비과세대상_양도소득금액: Math.round(exemptGain),
       과세대상양도소득금액: taxableGain,
