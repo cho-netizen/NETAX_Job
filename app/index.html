@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 20:57 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 20:59 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -18060,7 +18060,12 @@
 
     const gain = transferPrice - acquisitionPrice - transferExpenses;
     const priorNetGainOrLoss = (assetCategory === 'domestic_stock' || assetCategory === 'foreign_stock') ? (Number(p.priorNetGainOrLoss) || 0) : 0;
-    const combinedGain = gain + priorNetGainOrLoss;
+    // [2026.10.20 세액 고침 — 양도 감사] 다른 종목 순손익은 손실(음수)일 때만 이번 소득에서 뺀다(§102② 같은 묶음 통산). 이익(양수)은 그 종목 세율로
+    //  그 종목 계산에서 과세하므로(§104①11호 — 종목마다 세율이 다름) 여기에 더하지 않는다. 예전엔 더해 이번 종목 세율로 과세했다.
+    const combinedGain = gain + Math.min(0, priorNetGainOrLoss);
+    // [2026.10.20 양도 감사] 기타자산 주식(§94①4호다·라목)은 부동산 등과 한 묶음(§102①1호) — 기본공제 250만원(§103①1호)과 손익통산을 같이 쓴다. 이 계산기는 따로라 알림만.
+    const otherAssetNote_ = assetCategory === 'other_asset' ? '⚠ 기타자산 주식은 부동산 등과 같은 묶음이라(소득세법 §102①1호·§103①1호) 같은 해 부동산 등 양도가 있으면 기본공제 250만원과 양도차손 통산을 함께 씁니다 — 이미 쓴 기본공제 칸에 부동산 쪽 공제를 넣고, 손실은 부동산 등 계산에서 통산하세요.' : '';
+    const priorGainNote_ = (otherAssetNote_ ? otherAssetNote_ + ' ' : '') + (priorNetGainOrLoss > 0 ? (gain < 0 ? '⚠ 이번 종목 손실 ' + (-gain) + '원은 다른 종목 이익(' + priorNetGainOrLoss + '원)에서 빼야 합니다(§102②) — 그 종목 계산에 반영하세요.' : '다른 종목 이익 ' + priorNetGainOrLoss + '원은 그 종목 세율로 따로 과세(이번 계산에 더하지 않음, §104①11호).') : '');
 
     const basicDeductionAlreadyUsed = Number(p.basicDeductionAlreadyUsed) || 0;
     // [2026.10.20 세액 고침 — 양도 감사] §103① 연 250만원 중 이미 쓴 몫을 뺀 남은 한도와 소득금액 중 작은 금액 — 예전 식(min(250만, 소득) − 이미 쓴 것)은
@@ -18139,7 +18144,7 @@
       손익통산_적용후_소득금액: Math.round(combinedGain),
       기본공제: basicDeduction,
       과세표준: taxBase,
-      적용세율_설명: rateNote,
+      적용세율_설명: rateNote, 손익통산_안내: priorGainNote_ || undefined,
       산출세액: calculatedTax,
       외국납부세액공제: foreignTaxCredit,
       무신고가산세: penalties.unreportedPenalty,
@@ -18329,10 +18334,13 @@
     const withoutResult = window.calculateStockTransferTaxJS(withoutCarryoverParams);
 
     const deathExcludedStock_ = isEligibleRelation && isWithinWindow ? carryoverDonorDeathExcluded_(p) : '';
-    if (!isEligibleRelation || !isWithinWindow || deathExcludedStock_) {
+    // [2026.10.20 세액 고침 — 양도 감사] §97의2① 대상은 §94①1호·3호 자산과 시행령 §163의2①(2호가목·4호나목) — 주식 계산기에서는 §94①3호 주식등
+    //  (국내·국외 주식)만. 기타자산 주식(4호다·라목)·파생상품(5호)·신탁 수익권(6호)은 이월과세 대상이 아니다(예전엔 적용했다).
+    const stockKindOk_ = ['domestic_stock', 'foreign_stock'].indexOf(p.assetCategory || 'domestic_stock') !== -1;
+    if (!isEligibleRelation || !isWithinWindow || deathExcludedStock_ || !stockKindOk_) {
       if (withoutResult && !withoutResult.error) {
         withoutResult.이월과세_적용여부 = false;
-        withoutResult.이월과세_미적용사유 = deathExcludedStock_ || (!isEligibleRelation ? '배우자·직계존비속으로부터의 증여가 아님' : (!stockCarryoverAppliesAt_(giftReceivedDate) ? '2025.1.1. 전에 증여받은 주식등은 이월과세 대상이 아님(법률 제20615호 부칙 제8조)' : '증여일로부터 1년 경과(§94①3호 주식등, §97의2①)'));
+        withoutResult.이월과세_미적용사유 = deathExcludedStock_ || (!stockKindOk_ ? '이월과세 대상 자산 아님 — §97의2①·시행령 §163의2①은 §94①3호 주식등(국내·국외 주식)만(기타자산 주식·파생상품·신탁 수익권 제외)' : !isEligibleRelation ? '배우자·직계존비속으로부터의 증여가 아님' : (!stockCarryoverAppliesAt_(giftReceivedDate) ? '2025.1.1. 전에 증여받은 주식등은 이월과세 대상이 아님(법률 제20615호 부칙 제8조)' : '증여일로부터 1년 경과(§94①3호 주식등, §97의2①)'));
       }
       return withoutResult;
     }
@@ -18345,7 +18353,9 @@
     const necessaryExpenseCap = Math.max(0, (Number(p.transferPrice) || 0) - donorAcqPrice);
     const cappedGiftTaxEquivalent = Math.min(giftTaxEquivalent, necessaryExpenseCap);
 
-    const withCarryoverParams = Object.assign({}, p, {
+    // [2026.10.20 세액 고침] 이월과세 적용 시 세율 판정 보유기간은 증여자가 취득한 날부터(§104②2호) — 증여자 취득일이 있으면 보유월수를 다시 셈
+    const donorHoldMonths_ = (p.donorAcquisitionDate && p.transferDate) ? monthsBetween_(p.donorAcquisitionDate, p.transferDate) : null;
+    const withCarryoverParams = Object.assign({}, p, donorHoldMonths_ != null ? { holdingMonths: donorHoldMonths_ } : {}, {
       acquisitionPrice: donorAcqPrice,
       transferExpenses: (Number(p.transferExpenses) || 0) + cappedGiftTaxEquivalent
     });
@@ -30018,6 +30028,7 @@ function renderStockTransferResult(r){
   html += taxCalcResultRow('기본공제', won(r.기본공제));
   html += taxCalcResultRow('과세표준', won(r.과세표준));
   html += taxCalcResultRow('적용세율', r.적용세율_설명);
+  if (r.손익통산_안내) html += '<div class="taxcalc-result-note">' + escapeHtml(r.손익통산_안내) + '</div>'; // [2026.10.20] 다른 종목 순손익 처리 안내
   html += taxCalcResultRow('산출세액', won(r.산출세액));
   if (r.외국납부세액공제) html += taxCalcResultRow('외국납부세액공제', '-' + won(r.외국납부세액공제));
   if (r.무신고가산세) html += taxCalcResultRow('무신고가산세', '+' + won(r.무신고가산세));

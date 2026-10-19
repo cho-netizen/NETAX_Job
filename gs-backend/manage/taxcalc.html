@@ -7679,6 +7679,7 @@ function renderStockTransferResult(r){
   html += taxCalcResultRow('기본공제', won(r.기본공제));
   html += taxCalcResultRow('과세표준', won(r.과세표준));
   html += taxCalcResultRow('적용세율', r.적용세율_설명);
+  if (r.손익통산_안내) html += '<div class="taxcalc-result-note">' + escapeHtml(r.손익통산_안내) + '</div>'; // [2026.10.20] 다른 종목 순손익 처리 안내
   html += taxCalcResultRow('산출세액', won(r.산출세액));
   if (r.외국납부세액공제) html += taxCalcResultRow('외국납부세액공제', '-' + won(r.외국납부세액공제));
   if (r.무신고가산세) html += taxCalcResultRow('무신고가산세', '+' + won(r.무신고가산세));
