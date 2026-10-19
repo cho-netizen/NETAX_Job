@@ -1391,7 +1391,9 @@
       if (on && d < '2014-01-01' && ((r_.isAdjustedArea && Number(r_.multiHouseCount) >= 2 && !core.isOneHouse) || r_.isNonBusinessLand)) miss.push('2013년 이전 양도의 다주택·비사업용토지 중과 유예 부칙(조견표 2부-02 확인 필요 — 지금 값으로 계산됨)');
       if (!on && d < '2020-01-01' && Number(core.conversionValuePenalty) > 0) miss.push('환산취득가액 가산세(2018년 전 양도는 없음·2018~2019는 신축 건물만)');
       if (!on && r_.giftReceivedDate && String(r_.giftReceivedDate).slice(0, 10) < '2023-01-01' && r_._이월과세_적용여부 !== undefined) miss.push('이월과세 기간(그 증여일은 5년)');
-      if (d < '2025-01-01' && r_.compensationType) miss.push('수용감면율·감면 한도');
+      // [2026.10.19] §77 수용(현금·채권) 감면율·§133 한도는 연혁대로 계산하게 됨(compRateAt_ 등) — 연혁이 꺼졌을 때만 경고.
+      //  §77의2 대토·§77의3 개발제한구역 감면율 연혁은 아직 확인 전이라 경고를 남긴다
+      if (d < '2025-01-01' && r_.compensationType && (!on || ['cash', 'bond', 'bond_3y', 'bond_5y'].indexOf(r_.compensationType) === -1)) miss.push(['cash', 'bond', 'bond_3y', 'bond_5y'].indexOf(r_.compensationType) === -1 ? '대토·개발제한구역 감면율(§77의2·§77의3)' : '수용감면율·감면 한도');
     }
     // [2026.10.19] 고가주택 기준 — 1세대1주택(·1조합원입주권)이 2021-12-08 전 양도이고 양도가액이 그때 기준(9억, 2008-10-07 전 6억)을 넘으면
     //  비과세로 끝나는 경우에도 알린다(예: 2020년 11억 1주택 — 지금 기준 12억이면 비과세, 그때 기준 9억이면 과세)
