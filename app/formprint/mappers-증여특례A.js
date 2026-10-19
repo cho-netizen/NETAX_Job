@@ -124,7 +124,8 @@
     o.check('㉕ = ㉑ − ㉒ − ㉓ − ㉔', base, Math.max(0, sum - n(r.증여재산공제) - n(r.재해손실공제) - n(r.감정평가수수료공제)));
     o.check('㉗ = ㉕ × ㉖', calc, st ? Math.round(base * 0.1) : Math.round(Math.min(base, 12000000000) * 0.1 + Math.max(0, base - 12000000000) * 0.2));
     o.check('㉝ = ㉗ − ㉘ + ㉛ + ㉜', due, Math.max(0, calc - paid - fx + pen + late));
-    if (n(r.기본세율적용대상_증여재산가액) > 0) o.note('⚠ 한도를 넘는 ' + n(r.기본세율적용대상_증여재산가액) + '원은 기본세율 적용 대상 — 일반 증여세 신고서(별지 제10호서식)에 따로 적어 신고(부표' + (st ? '1 ⑰·⑱' : '2 ⑬') + ')');
+    var baseRate = st ? (n(r.과세특례적용전_증여세과세가액_계) > n(r.총한도액) ? n(r.기본세율적용대상_증여재산가액) : 0) : n(r.기본세율적용대상_증여재산가액); // 창업자금은 ⑫ > ⑬일 때만(부표1 ⑰)
+    if (baseRate > 0) o.note('⚠ ' + baseRate + '원은 기본세율 적용 대상 — 일반 증여세 신고서(별지 제10호서식)에 따로 적어 신고(부표' + (st ? '1 ⑰·⑱' : '2 ⑬') + ')');
     return o.result();
   };
 
@@ -142,6 +143,44 @@
   }
   ctxFor['증여10호의2'] = srCtx;
   ready['증여10호의2'] = function () { return !!g('lastSpecialRateGiftResult_'); };
+
+  // ═════════ 상증 별지 제10호의2서식 부표1 — 창업자금 증여재산평가 및 과세가액 계산명세서 ═════════
+  //  가. 재산 명세 = 특례세율 탭 "재산 목록 합산" 도구(srAssetRows_)의 줄(재산종류·소재지·평가가액만 있음)
+  //  나. 과세가액 = 엔진 결과(지금 인쇄 srAttach1PrintPageHtml_의 값과 같음)
+  mappers['증여10호의2부표1'] = function (ctx) {
+    var o = new Out(), r = ctx.r || {};
+    if (r.특례종류 !== STARTUP) { o.miss('①~⑱', '창업자금 특례 결과가 아님(특례종류: ' + r.특례종류 + ')'); return o.result(); }
+    var rows = (ctx.srRows || []).filter(function (x) { return x.method || n(x.value) > 0; });
+    if (rows.length) {
+      o.set('①', rows.map(function () { return 'A12'; })); // 작성방법 1: 증여재산(창업자금) — 목록 줄은 모두 이번 증여분
+      o.set('②', rows.map(function (x) { return x.typeCode || ''; }));
+      if (rows.some(function (x) { return !x.typeCode; })) o.miss('② 재산종류코드(일부 줄)', '재산종류를 고르지 않은 줄');
+      if (rows.some(function (x) { return x.method === 'direct'; })) o.note('② 직접입력 재산은 지금 시스템 분류대로 12(기타재산)로 찍음 — 현금이면 01, 금융재산이면 11로 고칠 것');
+      o.set('③@소재지', rows.map(function (x) { return x.location || ''; }));
+      o.set('⑦', rows.map(function (x) { return Math.round(n(x.value)); }));
+      var bc = rows.map(function (x) { return x.method && x.method !== 'direct' ? '08' : ''; });
+      if (bc.some(function (x) { return x; })) o.set('⑧', bc);
+      if (bc.some(function (x) { return !x; })) o.miss('⑧ 평가기준코드(직접입력 줄)', '계산기에 없음 — 목록 도구에 평가 근거(매매가·감정가 등)를 고르는 칸이 없음(고시가격 재산만 08)');
+      o.check('⑨ = ⑦ 합(재산 목록)', n(r.증여재산가액), rows.reduce(function (s, x) { return s + Math.round(n(x.value)); }, 0));
+      if (rows.length > 8) o.note('재산 ' + rows.length + '줄 — 8줄을 넘는 만큼 모듈이 다음 장에 이어 찍음');
+    } else o.miss('①②③⑦⑧ 재산 명세', '특례세율 탭 "재산 목록 합산" 도구에 입력한 재산 없음');
+    o.miss('③ 국외자산 여부·국가명', '계산기에 없음');
+    o.miss('④ 사업자등록번호(지분) ⑤ 수량(면적) ⑥ 단가', '계산기에 없음 — 목록 도구는 재산종류·소재지·평가가액만 받음');
+    var g9 = n(r.증여재산가액), d10 = n(r.인수채무액), p11 = n(r.가산_과세특례증여재산), s12 = n(r.과세특례적용전_증여세과세가액_계), lim = n(r.총한도액), cur = n(r.과세특례적용대상_증여세과세가액);
+    o.set('⑨', g9).set('⑩', d10).set('⑪', p11).set('⑫', s12).set('⑬', lim).set('⑭', p11).set('⑮', Math.max(0, lim - p11)).set('⑯', cur);
+    if (s12 > lim) o.set('⑰', g9 - cur).set('⑱', d10);
+    else o.miss('⑰⑱ 기본세율 적용대상', '해당 없음 — ⑫가 ⑬(총한도액) 이하(서식: ⑫ > ⑬일 때만 적음)');
+    o.check('⑫ = ⑨ − ⑩ + ⑪', s12, g9 - d10 + p11);
+    o.check('⑯ = ⑫ < ⑬이면 ⑫ − ⑪, 아니면 min(⑫, ⑮)', cur, s12 < lim ? s12 - p11 : Math.min(s12, Math.max(0, lim - p11)));
+    if (s12 > lim) o.check('⑰ = ⑨ − ⑯', g9 - cur, g9 - cur);
+    return o.result();
+  };
+  ctxFor['증여10호의2부표1'] = function (extra) { var c = srCtx(extra); return c && c.r.특례종류 === STARTUP ? c : null; };
+  // 지금 인쇄(srAttach1PrintPageHtml_)와 같은 조건 — 창업자금 결과이고 재산 목록 줄이 있을 때
+  ready['증여10호의2부표1'] = function () {
+    var r = g('lastSpecialRateGiftResult_');
+    return !!(r && r.특례종류 === STARTUP && (g('srAssetRows_') || []).some(function (row) { return row.method || numv(row.value) > 0; }));
+  };
 
   // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만)
   function plan(tax, ctx) {
