@@ -30990,19 +30990,50 @@ function cpfCompKind_(text) {
 }
 // 같은 서식 규칙(사건처리 trc 양도가액 후보와 같은 정규식)으로 합계 금액만 사실로 — 어느 금액이 양도가액인지는 판단(정하지 않음)
 function cpfCompFacts_(text, base) {
+  // [밤샘 1바퀴 ②-1 잘게 쪼개기 — 세무사님 "정보분석은 잘게 쪼개기가 우선"] 합계만이 아니라 보상 항목 한 건(필지 한 줄 = 면적 × 단가(× 지분) = 금액,
+  //  지장물 일괄 묶음 한 건, 이의재결 개인별 세부내역 한 줄)마다 사실 하나 — 지번(parcel)·금액(amount) 열쇠와 출처 자리. 행이 합계와 검산되지 않으면 쪼개지 않고 합계만
   const t = String(text || ''), out = [];
-  const mk = function (kind, v, raw, note) { out.push(cpfKeysFinish_({ kind: kind, value: v, raw: raw, src: Object.assign({}, base.src, { where: '서식 합계 줄' }), keys: { amount: v }, role: '', read: { how: base.how, conf: '불확실', note: note || '수용·보상 서식 합계 — 양도가액인지는 판단', ocrConf: cpfOcrConf_(base.how, null) } })); };
-  const num = function (s) { return Number(String(s).replace(/,/g, '')); };
+  const mk = function (kind, v, raw, note, extra, where) { out.push(cpfKeysFinish_({ kind: kind, value: v, raw: raw, src: Object.assign({}, base.src, { where: where || '서식 합계 줄' }), keys: Object.assign({ amount: v }, extra || {}), role: '', read: { how: base.how, conf: '불확실', note: note || '수용·보상 서식 — 양도가액인지는 판단', ocrConf: cpfOcrConf_(base.how, null) } })); };
+  const num = function (x) { return Number(String(x).replace(/,/g, '')); };
+  const w = function (n) { return Number(n).toLocaleString('ko-KR'); };
+  // ① 토지 보상금 내역 — 합계 + 필지별 줄(면적 × 단가 × 지분 = 금액, 줄 합 = 토지합계일 때만)
   const ctm = /토\s*지\s*합\s*계\s*(\d+)\s*필\s*지\s*(\d{1,3}(?:,\d{3}){2,})/.exec(t);
-  if (ctm) mk('보상금 합계(토지)', num(ctm[2]), ctm[0].replace(/\s+/g, ' '), ctm[1] + '필지 토지 보상금 합계');
+  if (ctm) {
+    mk('보상금 합계(토지)', num(ctm[2]), ctm[0].replace(/\s+/g, ' '), ctm[1] + '필지 토지 보상금 합계');
+    try {
+      const ci = t.search(/보\s*상\s*금\s*내\s*역\s*\(?\s*토\s*지/), sl = ci >= 0 ? t.slice(ci) : t;
+      const CR = typeof tcAreaUnitRows_ === 'function' ? tcAreaUnitRows_(sl, { total: num(ctm[2]) }) : null;
+      if (CR && CR.ok) { const fl = sl.replace(/\s+/g, ' '); let prev = 0;
+        CR.rows.forEach(function (rw, i) { const win = fl.slice(prev, rw.at), jm = win.match(/\d{1,4}-\d{1,4}(?![\d,])|\b\d{2,4}\b(?=\s*[대전답임도잡하구유공철제창학주목과광염체종사묘천양원])/g); prev = rw.at + 1;
+          const jb = jm ? jm[jm.length - 1] : '';
+          mk('보상금(필지)', rw.v, (jb ? jb + ' ' : '') + rw.a + '㎡ × ' + w(rw.u) + (rw.f && rw.f !== 1 ? ' × ' + rw.f : '') + ' = ' + w(rw.v), '토지 보상금 내역 ' + (i + 1) + '번째 필지 줄(줄 합 = 토지합계 검산 일치)', jb ? { parcel: jb } : {}, '토지 보상금 내역 ' + (i + 1) + '번째 줄'); });
+      }
+    } catch (e) {}
+  }
+  // ② 지장물(물건) 보상금 내역 — 합계 + 일괄 묶음별(건물·구축물·수목·영업시설, 묶음 합 = 물건의 합계일 때만)
   const com = /물\s*건\s*의?\s*합\s*계[\s\S]{0,400}?(\d{1,3}(?:,\d{3}){2,})/.exec(t);
-  if (com) mk('보상금 합계(지장물)', num(com[1]), '물건의 합계 ' + com[1]);
+  if (com) {
+    mk('보상금 합계(지장물)', num(com[1]), '물건의 합계 ' + com[1]);
+    try {
+      const oi = t.search(/보\s*상\s*금\s*내\s*역\s*\(?\s*물\s*건/), osl = oi >= 0 ? t.slice(oi) : t;
+      let OG = typeof tcCompObjGroups_ === 'function' ? tcCompObjGroups_(osl) : null;
+      if (OG && !OG.ok) OG = tcCompObjGroups_(osl, { total: num(com[1]) });
+      if (OG && OG.ok) OG.groups.forEach(function (g, i) { mk('보상금(지장물)', g.v, g.cat + (g.jibun ? ' ' + g.jibun : '') + ' ' + w(g.v), '지장물 ' + (i + 1) + '번째 일괄 묶음(' + g.cat + (g.why ? ' — ' + g.why : '') + ', 묶음 합 = 물건의 합계)', Object.assign({ category: g.cat }, g.jibun ? { parcel: g.jibun } : {}), '지장물 내역 ' + (i + 1) + '번째 묶음'); });
+    } catch (e) {}
+  }
+  // ③ 공탁 통지서 — 공탁금(보상금의 일부)
   if (/공\s*탁\s*통\s*지\s*서/.test(t)) { const dpm = /숫\s*자\s*금?\s*(\d{1,3}(?:,\d{3})+)\s*원/.exec(t) || /공\s*탁\s*금\s*액[\s\S]{0,80}?(\d{1,3}(?:,\d{3}){1,})\s*원/.exec(t); if (dpm) mk('공탁금', num(dpm[1]), '공탁금액 ' + dpm[1]); }
+  // ④ 이의재결 개인별 세부내역 — 합계 + 필지(물건)별 줄(수용재결 → 이의재결, 증액 ▲)
   let od = null; try { od = typeof tcObjectionDetail_ === 'function' ? tcObjectionDetail_(t) : null; } catch (e) { od = null; }
   if (od && od.rows && od.rows.length) {
     const note = '이의재결 개인별 세부내역(' + od.kind + ', ' + od.rows.length + '줄' + (od.ok ? ', 소계와 검산 일치' : ', 소계 검산 안 됨') + ')';
-    mk('수용재결 보상금', od.sumA, '수용재결 ' + od.sumA, note); mk('이의재결 보상금', od.sumB, '이의재결 ' + od.sumB, note); mk('이의재결 증액', od.sumD, '▲' + od.sumD, note);
+    mk('수용재결 보상금', od.sumA, '수용재결 ' + w(od.sumA), note); mk('이의재결 보상금', od.sumB, '이의재결 ' + w(od.sumB), note); mk('이의재결 증액', od.sumD, '▲' + w(od.sumD), note);
+    if (od.ok) od.rows.forEach(function (r, i) { const ex = r.jibun ? { parcel: r.jibun } : {}; const wh = '이의재결 세부내역 ' + (i + 1) + '번째 줄';
+      mk('이의재결 보상금(' + od.kind + ')', r.b, (r.jibun ? r.jibun + ' ' : '') + w(r.a) + ' → ' + w(r.b), note, ex, wh); mk('이의재결 증액(' + od.kind + ')', r.d, (r.jibun ? r.jibun + ' ' : '') + '▲' + w(r.d), note, ex, wh); });
   }
+  // ⑤ 시점 — 재결일·공탁일(보상금 수령 시기·양도시기 판단 재료, 판정은 안 함)
+  const dre = /(재\s*결\s*일|공\s*탁\s*일|재\s*결\s*일\s*자)\s*[:：]?\s*(\d{4})\s*[.\-년]\s*(\d{1,2})\s*[.\-월]\s*(\d{1,2})/g; let dm, nD = 0;
+  while ((dm = dre.exec(t)) && nD < 4) { nD++; const d = dm[2] + '-' + ('0' + dm[3]).slice(-2) + '-' + ('0' + dm[4]).slice(-2); out.push(cpfKeysFinish_({ kind: /공/.test(dm[1]) ? '공탁일' : '재결일', value: d, raw: dm[0].replace(/\s+/g, ' '), src: Object.assign({}, base.src, { where: '서식 날짜 칸' }), keys: { date: d }, role: '', read: { how: base.how, conf: '불확실', note: '수용 시점 재료(양도시기 판정은 아님)', ocrConf: cpfOcrConf_(base.how, null) } })); }
   return out;
 }
 function cpFacts_(c, opt) {
