@@ -541,7 +541,7 @@
 
   // [2026.10.19 조견표 2부-01·2부-03] 양도일에 맞는 기본세율 구간·장기보유특별공제율 — 법제처 연혁판·부칙 원문으로 만든 조견표
   //  (저장소 reftables/2부-01.json·2부-03.json)를 tools/build-reftables.js가 아래 자리에 옮겨 적는다(직접 고치지 말 것).
-  //  세무사님 확인 전에는 꺼 둔다: window.__NX_REF_HISTORY_ON이 true일 때만 쓴다(회귀 시험 node tools/engine-regress.js --history).
+  //  2026-10-19 세무사님 확인으로 켬(아래 refHistoryOn_). window.__NX_REF_HISTORY_ON === false면 끔(회귀 시험 node tools/engine-regress.js --no-history).
   //  켜도 지금 표가 맞는 기간(기본세율 2023-01-01~, 표1 2019-01-01~, 표2 2021-01-01~)은 지금 함수를 그대로 불러 0원도 안 바뀐다.
   //  아직 안 따라가는 것: 단기·중과 등 특례세율(2부-02), 조합원입주권 장특공 안분, 임대 특례 장특공, 주식·국외자산 세율.
   /*@@REF_ENGINE_BEGIN@@*/
@@ -549,7 +549,8 @@
   const REF_LT_ = { 표1: [{"from":"2008-01-01","to":"2008-03-20","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30}},{"from":"2008-03-21","to":"2018-12-31","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30}},{"from":"2019-01-01","to":null,"rates":{"3":6,"4":8,"5":10,"6":12,"7":14,"8":16,"9":18,"10":20,"11":22,"12":24,"13":26,"14":28,"15":30}}], 표2: [{"from":"2008-01-01","to":"2008-03-20","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30,"11":33,"12":36,"13":39,"14":42,"15":45}},{"from":"2008-03-21","to":"2008-12-31","rates":{"3":12,"4":16,"5":20,"6":24,"7":28,"8":32,"9":36,"10":40,"11":44,"12":48,"13":52,"14":56,"15":60,"16":64,"17":68,"18":72,"19":76,"20":80}},{"from":"2009-01-01","to":"2020-12-31","rates":{"3":24,"4":32,"5":40,"6":48,"7":56,"8":64,"9":72,"10":80}}] };
   const REF_HV_ = {"house":[{"from":"2005-02-19","to":"2008-10-06","amount":600000000},{"from":"2008-10-07","to":"2021-12-07","amount":900000000},{"from":"2021-12-08","to":null,"amount":1200000000}],"right":[{"from":"2017-02-03","to":"2021-12-07","amount":900000000},{"from":"2021-12-08","to":null,"amount":1200000000}]};
   /*@@REF_ENGINE_END@@*/
-  function refHistoryOn_() { return !!(typeof window !== 'undefined' && window && window.__NX_REF_HISTORY_ON === true); }
+  // [2026.10.19 켬] 세무사님 답(원문): "1. 켠다" — 기본으로 켠다. 끄려면 window.__NX_REF_HISTORY_ON = false(시험·비상용).
+  function refHistoryOn_() { return !(typeof window !== 'undefined' && window && window.__NX_REF_HISTORY_ON === false); }
   function refRowAt_(rows, d) { for (let i = 0; i < rows.length; i++) { if (rows[i].from <= d && (!rows[i].to || d <= rows[i].to)) return rows[i]; } return null; }
   // {"3":10,"4":12,…,"10":30} — 보유(거주)연수 이상인 가장 큰 열쇠의 %(맨 끝 열쇠는 '그 이상')
   function refRateAt_(rates, years) { let best = -1; Object.keys(rates).forEach(function (k) { const n = Number(k); if (years >= n && n > best) best = n; }); return best < 0 ? 0 : rates[best] / 100; }
