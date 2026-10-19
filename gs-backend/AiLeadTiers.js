@@ -19,8 +19,8 @@
 // =========================================================
 var CASEPROC_AI_ROUTE_DEFAULT_ = [
   // 위에서부터 처음 맞는 줄. re는 쟁점 id·종류·칸 이름·질문 글에 대고 본다
+  { topic: '사건분류', route: 'lead', re: '^ov:사건분류|^cls:|사건분류|1세대1주택|일시적 ?2주택|비과세|중과|감면|특례' }, // 맨 위 — 사건분류 질문 글에 '가족관계' 같은 낱말이 있어도 사건분류로
   { topic: '특수관계', route: 'lead', re: '특수관계|관계인지|buyerrel|buyer\\.relation|donorRelation|giftRelation|양수인관계|이월과세관계|가족관계' },
-  { topic: '사건분류', route: 'lead', re: '사건분류|^cls:|1세대1주택|일시적 ?2주택|비과세|중과|감면|특례' },
   { topic: '돈흐름', route: 'lead', re: '무슨 돈|^money:|이체 성격|송금 성격|돈 흐름|대여|차용|자금출처' },
   { topic: '사전증여', route: 'lead', re: '사전증여|10년 ?(내|이내)|합산|재차증여' },
   { topic: '시가평가', route: 'lead', re: '시가|relfmv|평가액|감정가|매매사례|유사사례|보충적 평가' },
@@ -239,41 +239,99 @@ var CASEPROC_AI_GAP_SRC_ = [
   [/증여일|증여재산|증여가액/, '증여계약서·등기사항증명서(증여 원인)', /계약|등기/], [/상속개시|사망|상속인/, '기본증명서·가족관계증명서·제적등본', /기본|가족|제적/],
   [/채무|부채|대출/, '부채증명서·대출 잔액증명서', /부채|대출|잔액/], [/예금|금융재산|잔액/, '잔액증명서·거래내역', /잔액|거래내역|통장/], [/경비|비용|수수료/, '영수증·세금계산서·견적서', /영수증|세금계산서|견적/]
 ];
+// [밤샘 5번-8 — 세무사님: 빈칸을 채우려 다시 똥통을 뒤진다] 빈칸마다 GAS가 먼저(0원) 이 사건의 그 종류 서류를 다시 뒤진다.
+//  아무 날짜·금액이 아니라 법정 서식의 칸 이름(등기 '접수'·'등기원인', 계약서 '잔금'·'매매대금', 기본증명서 '사망', 등본 '전입', 부채증명서 '잔액', 대장 '주용도')이
+//  있는 줄(또는 바로 다음 줄)의 값만 — 서식이 같으면 사건이 달라도 같은 자리에 있다. 값은 넣지 않고 후보로만(고르는 건 AI·세무사님). 관계·상속인처럼 사람만 아는 칸은 뒤지지 않음
+var CASEPROC_AI_GAP_REFIND_ = [
+  [/취득가액|취득 ?금액|양도가액|증여가액|증여재산가액/, 'amount', /매매대금|분양대금|거래가액|매매가격|계약금액|증여가액|평가액/],
+  [/취득일|취득 ?원인|양도일|잔금|증여일/, 'date', /접수|등기원인|원인일자|잔금|증여일/],
+  [/상속개시|사망/, 'date', /사망/], [/세대|거주|전입/, 'date', /전입/],
+  [/채무|부채|대출/, 'amount', /잔액|대출금|채무액|원금/], [/예금|금융재산|잔액/, 'amount', /잔액/],
+  [/경비|비용|수수료/, 'amount', /합계|공급가액|청구금액|결제금액/], [/주택|용도|assetType/, 'line', /주용도/]
+];
+var CASEPROC_AI_DATE_RE_ = /(19|20)\d{2}\s*[.\-년\/]\s*\d{1,2}\s*[.\-월\/]\s*\d{1,2}(?:\s*일)?/g, CASEPROC_AI_AMT_RE_ = /\d{1,3}(,\d{3})+(?:\s*원)?/g;
+function caseProcAiStoredText_(c, fn, cache) {
+  if (cache[fn] != null) return cache[fn];
+  let t = '';
+  try { const f = caseProcAiFindFile_(c, fn); if (f) { const v = typeof tcVisionText_ === 'function' ? tcVisionText_(f) : ''; t = v ? String(v) : String(tc_docText_(f) || ''); } } catch (e) { t = ''; }
+  return (cache[fn] = t);
+}
+function caseProcAiGapRefind_(c, gapText, files, cache) {
+  const r = CASEPROC_AI_GAP_REFIND_.filter(function (x) { return x[0].test(gapText); })[0];
+  if (!r || !files.length) return null;
+  const out = [], seen = {};
+  files.slice(0, 2).forEach(function (fn) {
+    const ls = caseProcAiStoredText_(c, fn, cache).split('\n');
+    ls.forEach(function (line, i) {
+      if (out.length >= 4 || !r[2].test(line.replace(/\s+/g, ''))) return;
+      // 그 줄에 값이 없을 때만 바로 다음 줄(표 머리줄 아래 값 줄) — 다음 항목(계약금 등)이 섞이지 않게
+      const vre = r[1] === 'date' ? CASEPROC_AI_DATE_RE_ : CASEPROC_AI_AMT_RE_;
+      const ms = r[1] === 'line' ? [caseProcAiCut_(line.trim(), 40)] : (line.match(vre) || String(ls[i + 1] || '').match(vre) || []).slice(0, 2);
+      // 같은 값을 다른 서류에서 또 찾으면 버리지 않고 '같은값서류'로 붙임(받침)
+      ms.forEach(function (m) { const k = String(m).replace(/[\s일]+/g, ''); if (!k) return; if (seen[k]) { if (seen[k].파일 !== fn && seen[k].같은값서류.indexOf(fn) === -1) seen[k].같은값서류.push(fn); return; } seen[k] = { 값: String(m).trim(), 파일: fn, 줄: caseProcAiMask_(caseProcAiCut_(line.trim(), 60)), 같은값서류: [] }; out.push(seen[k]); });
+    });
+  });
+  return { 찾는칸이름: String(r[2].source).replace(/\|/g, '·'), 후보: out };
+}
 function caseProcAiAxis_(f) { const k = String(f.kind || ''); for (let i = 0; i < CASEPROC_AI_AXES_.length; i++) if (CASEPROC_AI_AXES_[i][1].test(k)) return CASEPROC_AI_AXES_[i][0]; const ks = f.keys || {}; return ks.person ? '사람' : ks.asset ? '자산' : ks.date ? '시간' : ks.amount ? '돈' : '그 밖'; }
 function caseProcAiFactMap_(c, items) {
   let facts = []; try { facts = (typeof cxFacts_ === 'function' ? cxFacts_(c) : []) || []; } catch (e) { facts = []; }
   const G = {}, A = {}, fileKinds = {};
   facts.forEach(function (f) {
     if (!f || f.kind === '서류') { if (f && f.src && f.src.file) fileKinds[f.src.file] = String(f.value || ''); return; }
+    // [밤샘 5번-4] 원문 줄(글자 줄·표 줄 등 찾기용 재료)은 사실이 아니라 지도에서 뺀다
+    if (/글자 ?줄|표 ?줄|^text$|^binary$/.test(String(f.kind || ''))) return;
     const ax = caseProcAiAxis_(f), ks = f.keys || {}, file = (f.src && f.src.file) || '';
     if (file && f.src.docType && !fileKinds[file]) fileKinds[file] = f.src.docType;
+    const a0 = A[ax] || (A[ax] = { 조각: 0, 출처: 0, 열쇠없음: 0 }); a0.조각++; if (file) a0.출처++;
+    // "같은 사실"은 무엇에 대한 사실인지(자산·사람·계좌·서류번호)가 있어야 맞댈 수 있다 — 열쇠 없는 조각은 세기만
+    if (!(ks.asset || ks.person || ks.account || ks.docNo)) { a0.열쇠없음++; return; }
     const gk = ax + '|' + f.kind + '|' + (ks.asset || ks.person || ks.account || ks.docNo || '');
     const g = G[gk] || (G[gk] = { ax: ax, kind: f.kind, key: ks.asset || ks.person || ks.account || '', vals: {}, files: {} });
     const v = typeof f.value === 'object' ? JSON.stringify(f.value) : String(f.value == null ? '' : f.value).replace(/[\s,원]/g, '');
     if (!v) return;
     (g.vals[v] = g.vals[v] || {})[file + (f._copy ? '#사본' : '')] = (f.src && f.src.page) || 1;
-    if (file && !f._copy) g.files[file] = 1;
-    const a = A[ax] || (A[ax] = { 조각: 0, 출처: 0 }); a.조각++; if (file) a.출처++;
+    if (file && !f._copy) (g.files[file] = g.files[file] || {})[v] = 1;
   });
   const sum = {}, conflicts = [], singles = [];
   Object.keys(G).forEach(function (k) {
-    const g = G[k], nv = Object.keys(g.vals).length, nf = Object.keys(g.files).length, s = sum[g.ax] || (sum[g.ax] = { 묶음: 0, 받침: 0, 한서류: 0, 어긋남: 0 });
+    const g = G[k], nv = Object.keys(g.vals).length, nf = Object.keys(g.files).length, s = sum[g.ax] || (sum[g.ax] = { 묶음: 0, 받침: 0, 한서류: 0, 어긋남: 0, 여러값: 0 });
     if (!nv) return; s.묶음++;
-    if (nv > 1) { s.어긋남++; if (conflicts.length < 12) conflicts.push(g.ax + ' · ' + g.kind + (g.key ? '(' + caseProcAiCut_(g.key, 24) + ')' : '') + ': ' + Object.keys(g.vals).slice(0, 3).map(function (v) { return caseProcAiCut_(v, 24) + '←' + Object.keys(g.vals[v]).slice(0, 2).map(function (f) { return caseProcAiCut_(f, 30); }).join('·'); }).join(' / ')); }
-    else if (nf >= 2) s.받침++; else { s.한서류++; if (singles.length < 8) singles.push(g.ax + ' · ' + g.kind + ' ← ' + caseProcAiCut_(Object.keys(g.files)[0] || '', 30)); }
+    // 받침 = 서로 다른 서류 둘 이상이 같은 값 / 어긋남 = 값을 하나만 말하는 서류끼리 값이 다름(통장 거래처럼 한 서류에 값이 여럿인 것은 어긋남 아님)
+    const fv = Object.keys(g.files).map(function (fn) { return Object.keys(g.files[fn]); });
+    const shared = Object.keys(g.vals).some(function (v) { return fv.filter(function (vs) { return vs.indexOf(v) !== -1; }).length >= 2; });
+    const singleVals = fv.filter(function (vs) { return vs.length === 1; }).map(function (vs) { return vs[0]; });
+    const clash = !shared && singleVals.length >= 2 && singleVals.some(function (v) { return v !== singleVals[0]; });
+    if (shared) s.받침++;
+    else if (clash) { s.어긋남++; if (conflicts.length < 12) conflicts.push(g.ax + ' · ' + g.kind + (g.key ? '(' + caseProcAiCut_(g.key, 24) + ')' : '') + ': ' + Object.keys(g.vals).slice(0, 3).map(function (v) { return caseProcAiCut_(v, 24) + '←' + Object.keys(g.vals[v]).slice(0, 2).map(function (f) { return caseProcAiCut_(f, 30); }).join('·'); }).join(' / ')); }
+    else if (nf >= 2) s.여러값++; /* 여러 서류에 값이 여럿(거래 줄 등) — 같은 값이 없으면 맞댈 수 없음 */ else { s.한서류++; if (singles.length < 8) singles.push(g.ax + ' · ' + g.kind + ' ← ' + caseProcAiCut_(Object.keys(g.files)[0] || '', 30)); }
   });
   // 빈칸 — 계산기가 비었다고 한 칸(질문 중 빈 칸)마다 찾을 서류와 이 사건에 있는 그 종류 파일
   const files = Object.keys(fileKinds);
+  const txtCache = {};
   const gaps = (items || []).filter(function (it) { return it.kind === 'missing'; }).slice(0, 15).map(function (it) {
     const t = [it.id, it.text, it.ask && it.ask.label, it.ask && it.ask.target].join(' ');
     const m = CASEPROC_AI_GAP_SRC_.filter(function (x) { return x[0].test(t); })[0];
-    const have = m ? files.filter(function (fn) { return m[2].test(fileKinds[fn] + ' ' + fn); }).slice(0, 4) : [];
-    return { 칸: it.id, 글: caseProcAiCut_(it.text, 60), 찾을서류: m ? m[1] : '(표에 없음 — 질문)', 이사건에있는파일: have.length ? have : (m ? '없음 — 서류 요청 질문' : '') };
+    const have = m ? files.filter(function (fn) { if (!m[2].test(fileKinds[fn] + ' ' + fn)) return false; try { const f = caseProcAiFindFile_(c, fn); return !(f && caseProcAiIsRefHead_(String(tc_docText_(f) || '').slice(0, 800))); } catch (e) { return true; } }).slice(0, 4) : []; // 판례·심판례 같은 참고 자료는 다시 뒤질 서류로 권하지 않음
+    let again = null; try { again = have.length ? caseProcAiGapRefind_(c, t, have, txtCache) : null; } catch (e) { again = null; }
+    return { 칸: it.id, 글: caseProcAiCut_(it.text, 60), 찾을서류: m ? m[1] : '(표에 없음 — 질문)', 이사건에있는파일: have.length ? have : (m ? '없음 — 서류 요청 질문' : ''), 다시뒤짐: again };
   });
-  const tot = { 조각: 0, 출처: 0, 묶음: 0, 받침: 0, 어긋남: 0 };
-  Object.keys(A).forEach(function (k) { tot.조각 += A[k].조각; tot.출처 += A[k].출처; });
+  // [밤샘 5번-7 — 2번 cxRefind_] 한 서류뿐인 계산기 금액·날짜를 다른 서류의 저장된 판독 글에서 같은 값으로 되찾음 — '되찾아 받침'(우연히 같은 숫자일 수 있어 판정엔 안 씀, 근거·질문 출처 보강용)
+  let refind = null;
+  try { if (typeof cxRefind_ === 'function') { const rf = cxRefind_(c, facts, { max: 40 }) || {}; refind = { 대상: rf.candidates || 0, 한서류뿐: rf.single || 0, 되찾음: rf.refound || 0, 보기: (rf.list || []).filter(function (x) { return x.also && x.also.length; }).slice(0, 6).map(function (x) { return x.kind + ' ' + caseProcAiCut_(String(x.value), 24) + ' ← ' + caseProcAiCut_(x.file || '', 26) + ' + ' + x.also.slice(0, 2).map(function (a) { return caseProcAiCut_(a.file || '', 26); }).join('·'); }) }; } } catch (e) { refind = { 오류: caseProcAiCut_(e && e.message || e, 60) }; }
+  const tot = { 조각: 0, 출처: 0, 열쇠없음: 0, 묶음: 0, 받침: 0, 어긋남: 0 };
+  Object.keys(A).forEach(function (k) { tot.조각 += A[k].조각; tot.출처 += A[k].출처; tot.열쇠없음 += A[k].열쇠없음 || 0; });
   Object.keys(sum).forEach(function (k) { tot.묶음 += sum[k].묶음; tot.받침 += sum[k].받침; tot.어긋남 += sum[k].어긋남; });
-  return { ok: true, 축: sum, 조각: A, 합: tot, 지표: { '②-1 출처 비율': tot.조각 ? Math.round(tot.출처 / tot.조각 * 100) : 0, '②-2 둘 이상 서류가 받치는 비율': tot.묶음 ? Math.round(tot.받침 / tot.묶음 * 100) : 0 }, 어긋남: conflicts, 한서류뿐: singles, 빈칸: gaps };
+  return { ok: true, 축: sum, 조각: A, 합: tot, 지표: { '②-1 출처 비율': tot.조각 ? Math.round(tot.출처 / tot.조각 * 100) : 0, '②-2 둘 이상 서류가 받치는 비율': tot.묶음 ? Math.round(tot.받침 / tot.묶음 * 100) : 0 }, 어긋남: conflicts, 한서류뿐: singles, 되찾아받침: refind, 빈칸: gaps, 고리: (function () { const n = gaps.length, d = gaps.filter(function (g) { return Array.isArray(g.이사건에있는파일); }).length, h = gaps.filter(function (g) { return g.다시뒤짐 && g.다시뒤짐.후보.length; }).length; return { 빈칸: n, 서류있음: d, 다시뒤져후보: h, 묻기로: n - h }; })() };
+}
+// 입구 요약 한 줄 — 사실 지도(GAS, 0원)를 미리 넣어 AI가 fact_map을 부르지 않아도 어긋남·빈칸과 찾을 서류를 본다
+function caseProcAiFactLine_(c, items) {
+  try {
+    const fm = caseProcAiFactMap_(c, items || []);
+    const g = fm.빈칸.filter(function (x) { return Array.isArray(x.이사건에있는파일); }).slice(0, 4).map(function (x) { return x.칸 + '→' + x.이사건에있는파일.slice(0, 2).join('·'); });
+    const hit = fm.빈칸.filter(function (x) { return x.다시뒤짐 && x.다시뒤짐.후보.length; }).slice(0, 3).map(function (x) { return x.칸 + '=' + x.다시뒤짐.후보.slice(0, 2).map(function (q) { return q.값; }).join('/') + '(' + caseProcAiCut_(x.다시뒤짐.후보[0].파일, 20) + ')'; });
+    return (hit.length ? 'GAS가 다시 뒤져 찾은 빈칸 후보(서식 칸 이름 줄, 확인 필요): ' + hit.join(', ') + ' · ' : '') + '사실 지도(GAS): 받침 ' + fm.합.받침 + ' · 어긋남 ' + fm.합.어긋남 + (fm.어긋남.length ? '(' + fm.어긋남.slice(0, 2).map(function (x) { return caseProcAiCut_(x, 70); }).join(' / ') + ')' : '') + ' · 빈칸 ' + fm.빈칸.length + (g.length ? ' — 이 사건 서류로 다시 뒤질 수 있는 빈칸: ' + g.join(', ') + ' (doc_find로)' : '') + '. 자세히는 fact_map.';
+  } catch (e) { return ''; }
 }
 // 다시 뒤지기 — 저장된 판독만(새 판독·쓰기 없음). want: date | amount | keyword(+keyword) | name
 function caseProcAiDocFind_(c, input) {

@@ -2896,5 +2896,98 @@
    "산출세액_합계": 63340000,
    "납부세액_합계": 44033000
   }
+ },
+ {
+  "이름": "[B#4 회장 결론] 일감떼어주기 수혜법인 이익 — 1년차 부문 원가를 못 나눔: (전체 영업이익 10억 + 세무조정 1억) × 부문 매출 30억 ÷ 전체 100억 = 3.3억(시행규칙 §10의9②, 예전 도구는 30억), 2년차 부문 구분: 30억 − 20억 − 5억 − 세무조정 5천만 = 4.5억(시행령 §34의4③ 본문) → 합계 7.8억",
+  "도구": "calculateOpportunitySegmentProfitJS",
+  "고정": true,
+  "입력": {
+   "years": [
+    {
+     "totalSales": 10000000000,
+     "segmentSales": 3000000000,
+     "costTotal": 7000000000,
+     "expenseTotal": 2000000000,
+     "taxAdjustment": 100000000
+    },
+    {
+     "totalSales": 10000000000,
+     "segmentSales": 3000000000,
+     "costTotal": 7000000000,
+     "costSegment": 2000000000,
+     "expenseTotal": 2000000000,
+     "expenseSegment": 500000000,
+     "taxAdjustment": -50000000
+    }
+   ]
+  },
+  "정답": {
+   "합계": 780000000
+  }
+ },
+ {
+  "이름": "[B#5 회장 결론] 일감몰아주기 사업부문별 구분경리(법 §45의3① 후단·시행령 §34의3③④⑰) — 일반기업·지분 50%: A 60%·C 40%만 과세요건(B 10%) → 합쳐 거래비율 50%, 세후영업이익 15억 × (50 − 5)% × 50% = 337,500,000, 산출 57,500,000(전체로 보면 23.3%라 과세 안 됨)",
+  "도구": "calculateRelatedPartyTransactionGiftTaxJS",
+  "고정": true,
+  "입력": {
+   "companySize": "general",
+   "shareholderOwnershipRatio": 50,
+   "segmentAccounting": true,
+   "totalSales": 60000000000,
+   "segments": [
+    {
+     "label": "A",
+     "sales": 10000000000,
+     "relatedSales": 6000000000,
+     "afterTaxOperatingIncome": 1000000000
+    },
+    {
+     "label": "B",
+     "sales": 40000000000,
+     "relatedSales": 4000000000,
+     "afterTaxOperatingIncome": 3000000000
+    },
+    {
+     "label": "C",
+     "sales": 10000000000,
+     "relatedSales": 4000000000,
+     "afterTaxOperatingIncome": 500000000
+    }
+   ]
+  },
+  "정답": {
+   "증여의제이익": 337500000,
+   "산출세액": 57500000,
+   "납부세액": 55775000
+  }
+ },
+ {
+  "이름": "[B#5] 대체요건 1천억의 부문 안분(시행령 §34의3⑰ 단서): 부문 D 매출 2천억 중 특수관계 500억(25% > 20%) — 기준 1천억 × 2천억 ÷ 전체 1조 = 200억 초과라 해당(안분 없으면 미달), 세후영업이익 100억 × (25 − 5)% × 50% = 10억, 산출 2.4억",
+  "도구": "calculateRelatedPartyTransactionGiftTaxJS",
+  "고정": true,
+  "입력": {
+   "companySize": "general",
+   "shareholderOwnershipRatio": 50,
+   "segmentAccounting": true,
+   "totalSales": 1000000000000,
+   "segments": [
+    {
+     "label": "D",
+     "sales": 200000000000,
+     "relatedSales": 50000000000,
+     "afterTaxOperatingIncome": 10000000000
+    },
+    {
+     "label": "E",
+     "sales": 800000000000,
+     "relatedSales": 40000000000,
+     "afterTaxOperatingIncome": 30000000000
+    }
+   ]
+  },
+  "정답": {
+   "증여의제이익": 1000000000,
+   "산출세액": 240000000
+  }
  }
 ]

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 22:09 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 22:10 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -16310,9 +16310,32 @@
     // 동일하다(law.go.kr 원문 산식 이미지의 LaTeX 대체텍스트로 2026-08-25 직접 재검증 — 세 목 모두
     // "수혜법인의세후영업이익 × ..." 로 시작하며 "세후순이익"이라는 표현은 어디에도 없다. 과거에 중소기업만
     // "세후순이익"을 쓰는 것으로 잘못 구현되어 있었던 것을 이번에 바로잡음).
+    // [2026.10.20 B#5 회장 결론] 법 §45의3① 후단·시행령 §34의3③④⑰ — 사업부문별로 자산·부채·손익을 구분경리(시행규칙 §10의8)하고 한국표준산업분류
+    //  세세분류 이상으로 나눈 법인은 특수관계법인거래비율·세후영업이익을 사업부문별로 계산할 수 있다. 과세요건(1호)에 해당하는 부문이 둘 이상이면
+    //  하나의 부문으로 보아 계산(④ 후단). 일반기업 대체요건의 1천억원은 1천억 × 그 부문 매출액 ÷ 전체 매출액(⑰ 단서).
+    //  segments = [{ label, sales(⑫ 매출액), relatedSales(④ 특수관계법인 매출), excludedSales(⑥ 과세제외), excludedSalesForProfit(⑤+⑦ 계산 때만 빼는 몫),
+    //  afterTaxOperatingIncome(그 부문 세후영업이익) }], totalSales(전체 매출액). 요건 비율 ⑬ = (④ − ⑥) ÷ (⑫ − ⑥), 계산 비율 ⑯ = (④ − ⑤ − ⑥ − ⑦) ÷ (⑫ − ⑥ − ⑦).
+    let seg5_ = null;
+    if (p.segmentAccounting && Array.isArray(p.segments) && p.segments.length) {
+      const nv_ = function (v) { return Math.max(0, Number(v) || 0); };
+      const th_ = companySize === 'general' ? 30 : (companySize === 'medium' ? 40 : 50);
+      const sg_ = p.segments.map(function (x, i) { return { label: (x && x.label) || ('부문 ' + (i + 1)), sales: nv_(x && x.sales), rel: nv_(x && x.relatedSales), ex6: nv_(x && x.excludedSales), ex57: nv_(x && x.excludedSalesForProfit), inc: Number(x && x.afterTaxOperatingIncome) || 0 }; }).filter(function (x) { return x.sales > 0; });
+      const total_ = nv_(p.totalSales) || sg_.reduce(function (t, x) { return t + x.sales; }, 0);
+      const gr_ = function (x) { return x.sales - x.ex6 > 0 ? (x.rel - x.ex6) / (x.sales - x.ex6) * 100 : 0; };
+      const pr_ = function (x) { return x.sales - x.ex6 - x.ex57 > 0 ? Math.max(0, x.rel - x.ex57 - x.ex6) / (x.sales - x.ex6 - x.ex57) * 100 : 0; };
+      const rows_ = sg_.map(function (x) {
+        const g = gr_(x), cap = total_ > 0 ? 100000000000 * x.sales / total_ : 0;
+        const alt = companySize === 'general' && g > th_ * 2 / 3 && (x.rel - x.ex6) > cap;
+        return { 부문: x.label, 매출액: x.sales, 특수관계법인매출: x.rel, 과세요건_거래비율: Math.round(g * 10000) / 10000, 대체요건_매출액기준: companySize === 'general' ? Math.round(cap) : undefined, 과세요건_해당: g > th_ || alt, 세후영업이익: x.inc, _x: x };
+      });
+      const q_ = rows_.filter(function (r) { return r.과세요건_해당; }).map(function (r) { return r._x; });
+      const c_ = q_.reduce(function (a, x) { return { sales: a.sales + x.sales, rel: a.rel + x.rel, ex6: a.ex6 + x.ex6, ex57: a.ex57 + x.ex57, inc: a.inc + x.inc }; }, { sales: 0, rel: 0, ex6: 0, ex57: 0, inc: 0 });
+      seg5_ = { ok: q_.length > 0, income: c_.inc, gateRatio: gr_(c_), profitRatio: pr_(c_), relSales: c_.rel - c_.ex6, cap: total_ > 0 ? 100000000000 * c_.sales / total_ : 0,
+        rows: rows_.map(function (r) { const o = Object.assign({}, r); delete o._x; return o; }), merged: q_.length };
+    }
     const afterTaxOperatingIncome = Number(p.afterTaxOperatingIncome) || 0;
-    const incomeBase = afterTaxOperatingIncome;
-    const tradeRatio = Number(p.relatedPartyTransactionRatio) || 0;
+    const incomeBase = seg5_ ? seg5_.income : afterTaxOperatingIncome;
+    const tradeRatio = seg5_ ? seg5_.gateRatio : (Number(p.relatedPartyTransactionRatio) || 0);
     // [2026.10.20 ⑮] 출자관계별 계산(시행령 §34의3⑬·⑮, [별지 제10호의3서식 부표5]) — shareRelations가 있으면 출자관계마다 증여의제이익을 내고
     //  배당소득 공제·0 바닥을 출자관계마다 한다. [{ kind: 'direct'|'indirect', ratio(그 관계의 직접·간접보유비율 %), corp, dividend(배당소득),
     //  distributable(배당가능이익 — 직접: 수혜법인 ㉖, 간접: 간접출자법인 ㉛), beneficiaryDistributable(간접: 수혜법인 배당가능이익 ㉜),
@@ -16331,14 +16354,14 @@
     const generalAltGateTradeThreshold = companySize === 'general' ? gateTradeThreshold * 2 / 3 : null;
     const relatedPartySalesAmount = Number(p.relatedPartySalesAmount) || 0;
     const meetsGeneralAltGate = companySize === 'general' && tradeRatio > generalAltGateTradeThreshold && relatedPartySalesAmount > 100000000000;
-    const meetsTradeGate = tradeRatio > gateTradeThreshold || meetsGeneralAltGate;
+    const meetsTradeGate = seg5_ ? seg5_.ok : (tradeRatio > gateTradeThreshold || meetsGeneralAltGate); // [B#5] 부문별이면 부문마다 판정(위)
     const meetsGate = incomeBase > 0 && meetsTradeGate && shareRatio > gateShareThreshold;
 
     if (!meetsGate) {
       return {
         과세대상여부: false,
         과세요건_거래비율기준: gateTradeThreshold, 과세요건_지분율기준: gateShareThreshold,
-        과세요건_대체거래비율기준: generalAltGateTradeThreshold, 과세요건_대체매출액기준: companySize === 'general' ? 100000000000 : null,
+        과세요건_대체거래비율기준: generalAltGateTradeThreshold, 과세요건_대체매출액기준: companySize === 'general' ? 100000000000 : null, 사업부문별_구분경리: seg5_ ? { 부문: seg5_.rows, 합친부문수: seg5_.merged, 합친_과세요건거래비율: Math.round(seg5_.gateRatio * 10000) / 10000, 합친_계산거래비율: Math.round(seg5_.profitRatio * 10000) / 10000, 합친_세후영업이익: seg5_.income, 근거: '법 §45의3① 후단·시행령 §34의3③④⑰' } : undefined, 
         증여의제이익: 0, 납부세액: 0,
         안내: '과세요건(세후영업이익 존재, 거래비율 ' + gateTradeThreshold + '% 초과, 주식보유비율 ' + gateShareThreshold + '% 초과' +
           (companySize === 'general' ? ' — 또는 거래비율 ' + generalAltGateTradeThreshold.toFixed(1) + '% 초과+특수관계법인매출액 1천억원 초과(§45의3①1호나목2)' : '') +
@@ -16351,7 +16374,7 @@
     // [2026.10.20 세액 고침 — 증여 감사 B, 서식 10호의3 부표4 작성방법 7·9] 과세요건 비율 ⑬ = (④−⑥)÷(⑫−⑥)과 증여의제이익 계산 비율 ⑯ = (④−⑤−⑥−⑦)÷(⑫−⑥−⑦)은
     //  다르다(⑤ 부칙 제외·⑦ 추가 과세제외 매출). relatedPartyTransactionRatioForProfit(⑯)를 받으면 계산식에 그 값을 쓰고, 과세요건은 relatedPartyTransactionRatio(⑬)로.
     //  예전엔 한 비율로 둘 다 계산해 ⑤·⑦이 있으면 이익이 과다(또는 요건 판정이 틀림). 없으면 예전과 같음.
-    const tradeRatioForProfit_ = Number(p.relatedPartyTransactionRatioForProfit) > 0 ? Number(p.relatedPartyTransactionRatioForProfit) : tradeRatio;
+    const tradeRatioForProfit_ = seg5_ ? seg5_.profitRatio : (Number(p.relatedPartyTransactionRatioForProfit) > 0 ? Number(p.relatedPartyTransactionRatioForProfit) : tradeRatio);
     const netTradeRatio = Math.max(0, (tradeRatioForProfit_ - formulaTradeSubtract) / 100);
     const netShareRatio = Math.max(0, (shareRatio - formulaShareSubtract) / 100);
     let dividendDeduction = Number(p.dividendDeduction) || 0;
@@ -16387,7 +16410,7 @@
 
     return {
       과세대상여부: true,
-      적용소득기준: '세후영업이익', 적용소득금액: incomeBase,
+      적용소득기준: '세후영업이익', 적용소득금액: incomeBase, 사업부문별_구분경리: seg5_ ? { 부문: seg5_.rows, 합친부문수: seg5_.merged, 합친_과세요건거래비율: Math.round(seg5_.gateRatio * 10000) / 10000, 합친_계산거래비율: Math.round(seg5_.profitRatio * 10000) / 10000, 합친_세후영업이익: seg5_.income, 근거: '법 §45의3① 후단·시행령 §34의3③④⑰' } : undefined, 
       증여의제이익_계산식차감비율_거래: formulaTradeSubtract, 증여의제이익_계산식차감비율_지분: formulaShareSubtract,
       배당소득공제: dividendDeduction,
       출자관계별: relRows_ || undefined, // [2026.10.20 ⑮] 부표5 출자관계별 계산
@@ -16397,6 +16420,27 @@
       납부세액: r.finalTax,
       안내: '증여재산공제는 적용되지 않습니다(증여의제이익 전액이 과세표준). 특수관계법인거래비율·주식보유비율은 과세제외매출액을 반영해 이미 계산된 최종 비율을 입력해야 하며, 이 도구는 매출액 세부내역으로부터의 비율 산출 자체는 하지 않습니다. 지배주주 판정, 다수 특수관계법인이 있는 경우의 증여자별 안분 등은 별도로 확인하세요. 지배주주가 수혜법인에 직접출자와 간접출자를 모두 하고 있는 경우에는 출자관계별로 각각 계산한 뒤 증여의제이익을 합산해야 합니다.'
     };
+  };
+
+  // [2026.10.20 B#4 회장 결론] 일감떼어주기 "수혜법인의 이익"(시행령 §34의4③) — 연도마다:
+  //  본문(가 방법): 사업기회를 받은 사업부문의 영업이익(부문 매출 − 부문 매출원가 − 부문 판관비) + 세무조정(법인세법 §23·§33·§34·§40·§41, 시행령 §44의2·§74)
+  //  단서(나 방법 — 부문별로 회계를 구분하지 않아 부문 영업이익을 셀 수 없을 때, 시행규칙 §10의9②): (수혜법인 전체 영업이익 + 세무조정) × 부문 매출 ÷ 전체 매출
+  //  years = [{ totalSales, segmentSales, costTotal, costSegment, expenseTotal, expenseSegment, taxAdjustment, method: 'a'|'b'|'' }] — method를 비우면 부문 원가·판관비를
+  //  하나라도 나눠 넣었으면 가, 아니면 나. 예전 도구는 원가를 나누지 않으면 부문 이익 = 부문 매출로 잡아 이익이 부풀었다(서식 감사 B#4). 원 미만 버림.
+  window.calculateOpportunitySegmentProfitJS = function (p) {
+    p = p || {};
+    const num = function (v) { return Number(v) || 0; };
+    const rows = (Array.isArray(p.years) ? p.years : []).map(function (y, i) {
+      y = y || {};
+      const tS = num(y.totalSales), sS = num(y.segmentSales), cT = num(y.costTotal), cS = num(y.costSegment), eT = num(y.expenseTotal), eS = num(y.expenseSegment), adj = num(y.taxAdjustment);
+      if (!tS && !sS && !cT && !cS && !eT && !eS) return null;
+      const m = y.method === 'a' || y.method === 'b' ? y.method : ((cS || eS) ? 'a' : 'b');
+      if (m === 'a') return { 연차: i + 1, 방법: '가(부문 구분)', 부문영업이익: sS - cS - eS, 세무조정: adj, 이익: Math.trunc(sS - cS - eS + adj), 근거: '시행령 §34의4③ 본문' };
+      const whole = tS - cT - eT + adj, ratio = tS > 0 ? sS / tS : 0;
+      return { 연차: i + 1, 방법: '나(부문 구분 불가)', 전체영업이익: tS - cT - eT, 세무조정: adj, 부문매출비율: ratio, 이익: Math.trunc(whole * ratio), 근거: '시행령 §34의4③ 단서·시행규칙 §10의9②',
+        안내: tS > 0 ? undefined : '전체 매출액이 없어 부문 매출 비율을 셀 수 없음' };
+    }).filter(Boolean);
+    return { 연도별: rows, 합계: rows.reduce(function (t, r) { return t + r.이익; }, 0) };
   };
 
   // 일감떼어주기 증여의제 (상증세법 §45의4, [별지 제10호의4서식]) — Code.js toolCalculateBusinessOpportunityGiftTax와 동일 로직.
@@ -24596,12 +24640,15 @@ function openSrAssetHelperModal_(){
 // 전체금액/부문금액"의 반복입력표로 구현한다 — 항목 개수는 자유, 합계만 정확하면 세액계산
 // (사업기회로 인한 수혜법인 이익)에는 지장이 없다. 3개년(개시사업연도+그 다음 2년) 반복.
 let jtSegmentYears_ = [{ costs: [{}], expenses: [{}] }, { costs: [{}], expenses: [{}] }, { costs: [{}], expenses: [{}] }];
-function jtSegmentYearOperatingProfit_(year){
-  const costSum = (year.costs || []).reduce(function(s, r){ return s + numVal(r.segment); }, 0);
-  const expenseSum = (year.expenses || []).reduce(function(s, r){ return s + numVal(r.segment); }, 0);
-  const grossProfit = numVal(year.segmentSales) - costSum;
-  return grossProfit - expenseSum;
+// [2026.10.20 B#4] 엔진 calculateOpportunitySegmentProfitJS(시행령 §34의4③ 본문·단서, 시행규칙 §10의9②)로 — 부문 원가·판관비를 나누지 않았으면
+//  (전체 영업이익 + 세무조정) × 부문 매출 ÷ 전체 매출. 예전엔 부문 이익 = 부문 매출 − 0 으로 부풀었다.
+function jtSegmentYearInput_(year){
+  const sum = function(list, k){ return (list || []).reduce(function(s, r){ return s + numVal(r[k]); }, 0); };
+  return { totalSales: numVal(year.totalSales), segmentSales: numVal(year.segmentSales), costTotal: sum(year.costs, 'total'), costSegment: sum(year.costs, 'segment'),
+    expenseTotal: sum(year.expenses, 'total'), expenseSegment: sum(year.expenses, 'segment'), taxAdjustment: numVal(year.taxAdjustment), method: year.method || '' };
 }
+function jtSegmentYearResult_(year){ const r = calculateOpportunitySegmentProfitJS({ years: [jtSegmentYearInput_(year)] }); return (r.연도별 || [])[0] || null; }
+function jtSegmentYearOperatingProfit_(year){ const r = jtSegmentYearResult_(year); return r ? r.이익 : 0; }
 function renderJtSegmentRowGroup_(yearIdx, groupKey, groupLabel){
   const rows = jtSegmentYears_[yearIdx][groupKey];
   return '<div class="taxcalc-asset-head" style="margin-top:6px;"><span style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
@@ -24617,6 +24664,11 @@ function renderJtSegmentRowGroup_(yearIdx, groupKey, groupLabel){
       '</div>';
     }).join('');
 }
+function jtSegmentProfitNote_(year){
+  const r = jtSegmentYearResult_(year);
+  if (!r) return '수혜법인의 이익(자동계산): 0원';
+  return '수혜법인의 이익(자동계산, ' + r.방법 + '): ' + won(r.이익) + (r.방법.charAt(0) === '나' ? ' = (전체 영업이익 ' + won(r.전체영업이익) + ' + 세무조정 ' + won(r.세무조정) + ') × 부문 매출 비율 ' + (Math.round(r.부문매출비율 * 10000) / 100) + '%' : (r.세무조정 ? ' (세무조정 ' + won(r.세무조정) + ' 포함)' : '')) + ' — ' + r.근거;
+}
 function renderJtSegmentYear_(yearIdx){
   const year = jtSegmentYears_[yearIdx];
   const profit = jtSegmentYearOperatingProfit_(year);
@@ -24625,10 +24677,12 @@ function renderJtSegmentYear_(yearIdx){
     '<div class="taxcalc-grid" data-jtseg-sales-year="' + yearIdx + '">' +
       '<div class="taxcalc-field"><label>총매출액</label><input type="number" data-jtsegsales="totalSales" placeholder="원" value="' + (year.totalSales || '') + '"></div>' +
       '<div class="taxcalc-field"><label>부문(사업기회 제공분) 매출액</label><input type="number" data-jtsegsales="segmentSales" placeholder="원" value="' + (year.segmentSales || '') + '"></div>' +
+      '<div class="taxcalc-field"><label>세무조정 반영액(가산 +, 차감 −)</label><input type="number" data-jtsegsales="taxAdjustment" placeholder="원" value="' + (year.taxAdjustment || '') + '"><span class="taxcalc-field-help">법인세법 §23·§33·§34·§40·§41, 시행령 §44의2·§74 — 부문을 나눴으면 그 부문 몫, 못 나눴으면 법인 전체 몫</span></div>' +
+      '<div class="taxcalc-field"><label>계산 방법</label><select data-jtsegsales="method"><option value=""' + (!year.method ? ' selected' : '') + '>자동(부문 원가·판관비를 나눠 넣으면 가, 아니면 나)</option><option value="a"' + (year.method === 'a' ? ' selected' : '') + '>가 — 부문 영업이익(시행령 §34의4③ 본문)</option><option value="b"' + (year.method === 'b' ? ' selected' : '') + '>나 — 부문을 못 나눔: 전체 영업이익 × 부문 매출 ÷ 전체 매출(시행규칙 §10의9②)</option></select></div>' +
     '</div>' +
     renderJtSegmentRowGroup_(yearIdx, 'costs', '매출원가 항목') +
     renderJtSegmentRowGroup_(yearIdx, 'expenses', '판매관리비 항목') +
-    '<div class="taxcalc-result-note" data-jtseg-profit-year="' + yearIdx + '" style="margin-top:6px;">부문 영업이익(자동계산): ' + won(profit) + '</div>' +
+    '<div class="taxcalc-result-note" data-jtseg-profit-year="' + yearIdx + '" style="margin-top:6px;">' + jtSegmentProfitNote_(year) + '</div>' +
   '</div>';
 }
 function openJtSegmentHelperModal_(){
@@ -24687,7 +24741,7 @@ function openJtSegmentHelperModal_(){
   }
   function updateProfitNote(yearIdx){
     const note = overlay.querySelector('[data-jtseg-profit-year="' + yearIdx + '"]');
-    if (note) note.textContent = '부문 영업이익(자동계산): ' + won(jtSegmentYearOperatingProfit_(jtSegmentYears_[yearIdx]));
+    if (note) note.textContent = jtSegmentProfitNote_(jtSegmentYears_[yearIdx]);
   }
   wireAll();
   enhanceNumberInputs(overlay);
@@ -31411,6 +31465,10 @@ function renderRelatedPartyGiftResult(r){
   const box = document.getElementById('taxCalcRelatedPartyGiftResult');
   if (r.error){ box.innerHTML = '<div class="taxcalc-error">' + r.error + '</div>'; return; }
   let html = '<div class="taxcalc-result">';
+  // [2026.10.20 B#5] 사업부문별 구분경리 — 부문마다 요건 판정, 해당 부문 합침
+  const seg_ = r.사업부문별_구분경리;
+  if (seg_) { (seg_.부문 || []).forEach(function(x){ html += '<div class="taxcalc-result-note">' + escapeHtml(x.부문) + ': 거래비율 ' + x.과세요건_거래비율 + '% → ' + (x.과세요건_해당 ? '과세요건 해당' : '해당 없음') + (x.대체요건_매출액기준 ? ' (대체요건 매출 기준 ' + won(x.대체요건_매출액기준) + ')' : '') + '</div>'; });
+    if (seg_.합친부문수) html += '<div class="taxcalc-result-note">해당 부문 ' + seg_.합친부문수 + '개를 하나로 — 거래비율 ' + seg_.합친_계산거래비율 + '%, 세후영업이익 ' + won(seg_.합친_세후영업이익) + ' (' + escapeHtml(seg_.근거) + ')</div>'; }
   if (!r.과세대상여부) {
     html += '<div class="taxcalc-result-note">' + r.안내 + '</div></div>';
     box.innerHTML = html;
@@ -34231,6 +34289,11 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>[⑤·⑦이 있으면] 증여의제이익 계산용 거래비율 ⑯</label><input type="number" step="0.01" id="jmTradeRatioForProfit" placeholder="%"><span class="taxcalc-field-help">⑯ = (④−⑤−⑥−⑦)÷(⑫−⑥−⑦), 작성방법 9 — 비우면 위 비율</span></div>' +
         '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-related-party-ratio-helper">🧮 특수관계법인 여러 곳이면 매출 합산해서 계산</button></div>' +
         '<div class="taxcalc-field"><label>특수관계법인 매출액(일반기업 대체과세요건용)</label><input type="number" id="jmRelatedPartySales" placeholder="원"><span class="taxcalc-field-help">일반기업이고 거래비율 20~30%일 때만 — §45의3①1호나목2</span></div>' +
+        // [2026.10.20 B#5] 사업부문별 구분경리 특례(법 §45의3① 후단·시행령 §34의3③④⑰) — 부문마다 과세요건, 해당 부문은 합쳐 계산
+        '<div class="taxcalc-field checkbox" style="grid-column:1/-1;"><input type="checkbox" id="jmSegOn"><label for="jmSegOn">사업부문별로 구분경리함(시행령 §34의3③ — 부문별 자산·부채·손익 독립 계정, 표준산업분류 세세분류 이상) — 아래 부문 표로 계산(위 거래비율·세후영업이익 대신)</label></div>' +
+        '<div class="taxcalc-field" style="grid-column:1/-1;"><label>[부문별] 전체 매출액</label><input type="number" id="jmSegTotalSales" placeholder="원"><span class="taxcalc-field-help">일반기업 대체요건 1천억 × 부문 매출 ÷ 전체 매출(⑰)</span>' +
+          [1, 2, 3].map(function (k) { return '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;"><input type="text" id="jmSeg' + k + 'Label" placeholder="부문 ' + k + ' 이름" style="width:110px;"><input type="number" id="jmSeg' + k + 'Sales" placeholder="매출액 ⑫" style="width:130px;"><input type="number" id="jmSeg' + k + 'Rel" placeholder="특수관계법인 매출 ④" style="width:150px;"><input type="number" id="jmSeg' + k + 'Ex6" placeholder="과세제외 ⑥" style="width:120px;"><input type="number" id="jmSeg' + k + 'Ex57" placeholder="계산 때만 빼는 ⑤+⑦" style="width:150px;"><input type="number" id="jmSeg' + k + 'Inc" placeholder="부문 세후영업이익" style="width:150px;"></div>'; }).join('') +
+          '<span class="taxcalc-field-help">부문마다 요건 비율 (④−⑥)÷(⑫−⑥)으로 판정 → 해당 부문이 둘 이상이면 합쳐 하나로(④ 후단), 계산 비율 (④−⑤−⑥−⑦)÷(⑫−⑥−⑦)</span></div>' +
         '<div class="taxcalc-field"><label>지배주주+친족 주식보유비율</label><input type="number" step="0.01" id="jmShareRatio" placeholder="%"><span class="taxcalc-field-help">직접 또는 간접, 출자관계별로 따로 계산</span></div>' +
         '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-shareholding-helper" data-target="jm">🧮 주주별 직접·간접보유 내역으로 계산</button></div>' +
         '<div class="taxcalc-field"><label>배당소득공제</label><input type="number" id="jmDividendDeduction" placeholder="원"><span class="taxcalc-field-help">신고기한 내 받은 배당소득 공제액, 없으면 비움</span></div>' +
@@ -38597,6 +38660,8 @@ function handleTaxCalcClick_(e){
       relatedPartyTransactionRatio: numVal(document.getElementById('jmTradeRatio').value) || 0,
       relatedPartyTransactionRatioForProfit: numVal((document.getElementById('jmTradeRatioForProfit') || {}).value) || 0, // [2026.10.20] 부표4 ⑯
       relatedPartySalesAmount: numVal(document.getElementById('jmRelatedPartySales').value) || 0,
+      segmentAccounting: !!(document.getElementById('jmSegOn') && document.getElementById('jmSegOn').checked), totalSales: numVal((document.getElementById('jmSegTotalSales') || {}).value) || 0, // [2026.10.20 B#5]
+      segments: [1, 2, 3].map(function (k) { const v = function (f) { const e = document.getElementById('jmSeg' + k + f); return e ? e.value : ''; }; return { label: v('Label'), sales: numVal(v('Sales')) || 0, relatedSales: numVal(v('Rel')) || 0, excludedSales: numVal(v('Ex6')) || 0, excludedSalesForProfit: numVal(v('Ex57')) || 0, afterTaxOperatingIncome: numVal(v('Inc')) || 0 }; }).filter(function (x) { return x.sales > 0; }),
       shareholderOwnershipRatio: numVal(document.getElementById('jmShareRatio').value) || 0,
       dividendDeduction: numVal(document.getElementById('jmDividendDeduction').value) || 0,
       shareRelations: jmRelations_.length ? JSON.parse(JSON.stringify(jmRelations_)) : undefined, // [2026.10.20 ⑮] 출자관계별

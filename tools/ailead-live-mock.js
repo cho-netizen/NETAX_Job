@@ -27,6 +27,8 @@ caseProcAiCall_ = function (model, system, tools, messages, maxTokens, effort) {
     __pick = pick ? { id: pick.id, v: pick.ask.cands[0].v, text: pick.text } : null;
     var c = [{ type: 'text', text: '판단한다' }];
     if (pick) c.push({ type: 'tool_use', id: id(1), name: 'value_set', input: { itemId: pick.id, value: String(pick.ask.cands[0].v), basis: { kind: 'cand' }, why: '대본 시험 — GAS 후보 첫째', sure: '확실' } });
+    // [밤샘 5번-5] 가린 값으로 넣기(AI는 주민번호를 가린 꼴로만 봄) — GAS가 후보 중 같은 가림 꼴로 바꿔야 함
+    if (pick && typeof cxMask_ === 'function' && cxMask_(String(pick.ask.cands[0].v)) !== String(pick.ask.cands[0].v)) c.push({ type: 'tool_use', id: id(9), name: 'value_set', input: { itemId: pick.id, value: cxMask_(String(pick.ask.cands[0].v)), basis: { kind: 'cand' }, why: '대본 시험 — 가린 값', sure: '확실' } });
     if (pick) c.push({ type: 'tool_use', id: id(2), name: 'value_set', input: { itemId: pick.id, value: '987654321', basis: { kind: 'doc', file: '없는서류.pdf' }, why: '지어낸 값 시험', sure: '확실' } });
     if (other) c.push({ type: 'tool_use', id: id(3), name: 'value_set', input: { itemId: other.id, value: String(other.ask.cands[0].v), basis: { kind: 'cand' }, why: '대본 시험 — 불확실', sure: '불확실' } });
     if (its[0]) c.push({ type: 'tool_use', id: id(4), name: 'ask_user', input: { itemIds: [its[its.length - 1].id], urgent: true, note: '대본 시험' } });
