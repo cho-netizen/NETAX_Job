@@ -2754,11 +2754,22 @@
     // [2026.10.20 §107② — 회장 지시] 같은 해 누진세율(기본세율, §104①1호) 자산을 2회 이상 예정신고하면서 이미 신고한 양도소득금액과 합산할 때:
     //  예정신고 산출세액 = [(A 이미 신고한 소득금액 + B 이번 소득금액 − C 기본공제) × 기본세율] − E 이미 신고한 예정신고 산출세액(소득세법 §107②1호, 서식 84호 ⑤·⑰).
     //  filingParams.priorFiledIncomeAmount(A), priorFiledBasicDeduction(그때 쓴 기본공제, 비우면 min(250만, A)), priorFiledTaxAmount(E). A는 누진 묶음의 일반(기본세율) 몫에
-    //  과세표준(A − 그때 쓴 기본공제)으로 더하고, E는 산출세액 뒤에 뺀다(⑰ — 가산세·지방소득세는 뺀 뒤 금액 기준). 비사업용 토지(8호)·중과(9호 등) 자산의 2회째 합산은 아직 입력 칸 없음.
-    const priorInc107_ = Math.max(0, Number(filingParams.priorFiledIncomeAmount) || 0);
-    const priorBasic107_ = priorInc107_ > 0 ? Math.min(priorInc107_, 2500000, (filingParams.priorFiledBasicDeduction !== undefined && filingParams.priorFiledBasicDeduction !== '' && filingParams.priorFiledBasicDeduction !== null) ? Math.max(0, Number(filingParams.priorFiledBasicDeduction) || 0) : 2500000) : 0;
-    const priorBase107_ = Math.max(0, priorInc107_ - priorBasic107_);
-    const priorTax107_ = priorInc107_ > 0 ? Math.max(0, Number(filingParams.priorFiledTaxAmount) || 0) : 0;
+    //  과세표준(A − 그때 쓴 기본공제)으로 더하고, E는 산출세액 뒤에 뺀다(⑰ — 가산세·지방소득세는 뺀 뒤 금액 기준).
+    //  [2026.10.20 §107②2호 — 회장 지시] 비사업용 토지(§104①8호, 기본세율 + 10%p)·중과 주택(§104⑦ 등, + 10·20·30%p) 자산도 같은 산식 — D가 그 호 세율.
+    //  filingParams.priorFiled107 = [{ rateClass: 'g0'|'n10'|'h10'|'h20'|'h30', income, basicDeduction, tax }] — 엔진 세율 묶음(§104⑤2호 단서, 같은 호끼리)에
+    //  그 몫을 가짜 자산(-1, -2, …)으로 넣고 가산율 몫도 더한다. 기본공제는 연 250만원 한 번이라 앞 줄부터 차례로(§103②). 위 세 칸(priorFiledIncomeAmount…)은 'g0' 한 줄과 같다.
+    const p107in_ = function (v, d) { return (v === undefined || v === null || v === '') ? d : Math.max(0, Number(v) || 0); };
+    const prior107_ = (Array.isArray(filingParams.priorFiled107) ? filingParams.priorFiled107 : [])
+      .concat(Number(filingParams.priorFiledIncomeAmount) > 0 ? [{ rateClass: 'g0', income: filingParams.priorFiledIncomeAmount, basicDeduction: filingParams.priorFiledBasicDeduction, tax: filingParams.priorFiledTaxAmount }] : [])
+      .map(function (x) { return { cls: /^(g0|n10|h10|h20|h30)$/.test(String(x && x.rateClass)) ? x.rateClass : 'g0', inc: p107in_(x && x.income, 0), bdIn: x && x.basicDeduction, tax: p107in_(x && x.tax, 0) }; })
+      .filter(function (x) { return x.inc > 0; });
+    { let bdLeft_ = 2500000;
+      prior107_.forEach(function (x) { x.bd = Math.min(x.inc, bdLeft_, p107in_(x.bdIn, 2500000)); bdLeft_ -= x.bd; x.base = x.inc - x.bd;
+        x.addRate = x.cls === 'g0' ? 0 : Number(x.cls.slice(1)) / 100; x.sur = Math.round(x.base * x.addRate); }); }
+    const priorInc107_ = prior107_.reduce(function (t, x) { return t + x.inc; }, 0);
+    const priorBasic107_ = prior107_.reduce(function (t, x) { return t + x.bd; }, 0);
+    const priorBase107_ = prior107_.reduce(function (t, x) { return t + x.base; }, 0);
+    const priorTax107_ = prior107_.reduce(function (t, x) { return t + x.tax; }, 0);
     const basicOf_ = {};
     (function () {
       let left = (pooled.length || shortTerm.length) ? Math.max(0, 2500000 - priorBasic107_) : 0; // [§107②] 먼저 양도해 이미 신고한 자산이 쓴 기본공제는 뺀 나머지(§103②)
@@ -2814,7 +2825,7 @@
       const keyOf_ = function (c) { const r = rateOf_[c.idx] || { rate: 0, kind: 'g' }; if (!split_) return 'all'; if (yr_ < '2019-01-01' && pp.length > 1) return 'a' + c.idx; return r.kind + Math.round(r.rate * 100); };
       let incL = Math.max(0, poolTaxBaseIncome_), bdL = poolTaxBaseIncome_ - (poolTaxBase - priorBase107_);
       const groups_ = {}, order_ = [];
-      if (priorBase107_ > 0) { const k0 = split_ ? 'g0' : 'all'; groups_[k0] = { base: priorBase107_, items: [{ c: { idx: -1 }, base: priorBase107_ }] }; order_.push(k0); } // [§107②] 이미 신고한 몫(가짜 자산 -1)
+      prior107_.forEach(function (x, k) { const k0 = split_ ? x.cls : 'all'; if (!groups_[k0]) { groups_[k0] = { base: 0, items: [] }; order_.push(k0); } groups_[k0].base += x.base; groups_[k0].items.push({ c: { idx: -1 - k }, base: x.base }); surOf_[-1 - k] = x.sur; poolSurchargeTotal += x.sur; }); // [§107②] 이미 신고한 몫(가짜 자산 -1)
       pp.forEach(function (c, i) {
         const last = i === pp.length - 1;
         const inc = last ? incL : Math.round(c.incomeAmount * lf_), bd = last ? bdL : Math.min(Math.round(basicOf_[c.idx] || 0), inc, bdL);
@@ -2995,13 +3006,13 @@
     const rateRows_ = [];
     (function () {
       const pp = pooled.filter(function (c) { return c.incomeAmount > 0; });
-      let incL = Math.max(0, poolTaxBaseIncome_), bdL = poolTaxBaseIncome_ - (poolTaxBase - priorBase107_), taxL = poolBaseTax - (progOf_[-1] || 0); // [§107②] 이미 신고한 몫 빼고 자산에
+      let incL = Math.max(0, poolTaxBaseIncome_), bdL = poolTaxBaseIncome_ - (poolTaxBase - priorBase107_), taxL = poolBaseTax - prior107_.reduce(function (t, x, k) { return t + (progOf_[-1 - k] || 0); }, 0); // [§107②] 이미 신고한 몫 빼고 자산에
       pp.forEach(function (c, i) {
         const last = i === pp.length - 1;
         const inc = last ? incL : Math.round(c.incomeAmount * lossFactor90_), bd = last ? bdL : Math.min(Math.round(basicOf_[c.idx] || 0), inc, bdL);
         const base = Math.max(0, inc - bd), tx = progOf_[c.idx] != null ? progOf_[c.idx] : (last ? taxL : (poolTaxBase > 0 ? Math.round(poolBaseTax * base / poolTaxBase) : 0));
         incL -= inc; bdL -= bd; taxL -= tx;
-        rateRows_.push({ idx: c.idx, 묶음: '누진', 소득금액: inc, 기본공제: bd, 과세표준: base, 산출세액: tx + (surOf_[c.idx] || 0), 가산액: surOf_[c.idx] || 0 });
+        rateRows_.push({ idx: c.idx, 묶음: '누진', 세율묶음: (rateOf_[c.idx] ? rateOf_[c.idx].kind + Math.round(rateOf_[c.idx].rate * 100) : 'g0'), 소득금액: inc, 기본공제: bd, 과세표준: base, 산출세액: tx + (surOf_[c.idx] || 0), 가산액: surOf_[c.idx] || 0 });
       });
       shortItems.forEach(function (it, i) {
         const inc = nettedIncomeByIdx_[it.c.idx] !== undefined ? nettedIncomeByIdx_[it.c.idx] : it.c.incomeAmount;
@@ -3231,7 +3242,7 @@
       환산취득가액가산세_합계: conversionValuePenaltyTotal,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       신고불성실가산세_옛소득세법115: typeof penalties.옛소득세법115 === 'string' ? penalties.옛소득세법115 : undefined, // [2026.10.20] 2006년 이전 양도분 산식
-      기신고_양도소득금액_107조: priorInc107_ || undefined, 기신고_기본공제_107조: priorInc107_ ? priorBasic107_ : undefined, 기신고세액_107조: priorInc107_ ? priorTax107_ : undefined, 기신고몫_산출세액_107조: priorInc107_ ? (progOf_[-1] || 0) : undefined, // [§107②] 84호 ⑤·⑰ — 마지막은 합산 누진세액 중 이미 신고한 과세표준 몫(세율 열 ⑩용)
+      기신고_양도소득금액_107조: priorInc107_ || undefined, 기신고_기본공제_107조: priorInc107_ ? priorBasic107_ : undefined, 기신고세액_107조: priorInc107_ ? priorTax107_ : undefined, 기신고_세율별_107조: prior107_.length ? prior107_.map(function (x, k) { return { 세율묶음: x.cls, 소득금액: x.inc, 기본공제: x.bd, 과세표준: x.base, 산출세액몫: (progOf_[-1 - k] || 0) + x.sur, 기신고세액: x.tax }; }) : undefined, // [§107②] 84호 ⑤·⑰ — 마지막은 합산 누진세액 중 이미 신고한 과세표준 몫(세율 열 ⑩용)
       지방소득세: localIncomeTax, 납부세액_합계: grandTotal,
       // [2026.10.20 J21] 84호 ㉒~㉚ 농어촌특별세 — 양도세 납부세액_합계(양도세+지방소득세)에는 넣지 않고 따로(서식도 칸이 따로)
       납부지연가산세_몫별: lateSplit_ ? lateSplit_.rows : undefined, // [2026.10.20 J23] 예정분·확정 추가분 기산일별
