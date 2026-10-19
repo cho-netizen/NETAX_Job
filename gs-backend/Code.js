@@ -318,12 +318,13 @@ const DRIVE_TOOLS = [
   },
   {
     name: 'lookup_statute_article',
-    description: '국가법령정보센터에서 특정 법령의 특정 조문 원문을 실시간으로 가져온다. "상증세법 §45", "소득세법 제94조" 같은 조문을 인용하거나 정확한 원문 확인이 필요할 때 써라. articleNo를 생략하면 그 법령의 조문 전체를 가져오니, 특정 조문만 필요하면 반드시 articleNo를 지정해라(전체를 가져오면 응답이 너무 길어질 수 있음).',
+    description: '법령 조문 원문을 가져온다(법령 정비본 우선 + 산식 보정, 법제처로 개정 확인). 조문 인용·원문 확인 때 써라. articleNo를 꼭 지정해라(생략하면 전체라 너무 길다). 옛 사건은 baseDate(양도·상속·증여일)로 그때 판을 본다. 검증필요_코드에서옮김 산식은 근거로 쓰지 마라.',
     input_schema: {
       type: 'object',
       properties: {
         lawName: { type: 'string', description: '법령명(정식 명칭에 가깝게, 예: "상속세및증여세법", "소득세법")' },
-        articleNo: { type: 'string', description: '조번호. 예: "45", "45조의2". 생략하면 조문 전체를 가져온다.' }
+        articleNo: { type: 'string', description: '조번호. 예: "45", "45조의2"' },
+        baseDate: { type: 'string', description: '기준일 YYYYMMDD(생략하면 현행)' }
       },
       required: ['lawName']
     }
@@ -3938,7 +3939,7 @@ function dispatchClientAction0_(body) {
     return jsonResponse(toolGetTaxPrecedentDetail(body.category, body.id));
   }
   if (body.action === 'law_lookup_article') {
-    return jsonResponse(toolLookupStatuteArticle(body.lawName, body.articleNo));
+    return jsonResponse(toolLookupStatuteArticle(body.lawName, body.articleNo, body.baseDate));
   }
   // [2026.10.19 조견표 체계] 법령정보 탭 — 조견표·서식 칸 지도에 세무사님이 남긴 확인·메모·보류(표 내용은 화면 파일, 여기는 기록만)
   if (body.action === 'reftable_review_get') return jsonResponse(reftableReviewGet_());
@@ -4812,113 +4813,103 @@ function reftableReviewSet_(body) {
   } finally { lock.releaseLock(); }
 }
 
-/**
- * 국가법령정보센터(law.go.kr) Open API로 조문 원문을 실시간 조회한다.
- * 1단계: lawSearch.do(target=eflaw)로 법령명을 검색해서 법령일련번호(MST)·시행일자(efYd)를 찾는다.
- * 2단계: lawService.do(target=eflaw)에 MST·efYd·JO(조번호)를 넣어 그 조문 원문만 가져온다.
- *   JO는 "조번호 4자리 + 조가지번호 2자리"인 6자리 숫자다(예: 45조 → 004500, 10조의2 → 001002).
- * OC(인증키)는 스크립트 속성 LAW_OC에 저장해둔 값을 쓴다.
- */
-function toolLookupStatuteArticle(lawName, articleNo) {
+// [2026.10.19] 조문 조회 — 1순위 법령 정비본(드라이브 0 NETAX/업무관리자/법령정비본, tools/law-build.js) + 산식 보정, 법제처는 개정 확인·정비본에 없는 법령/옛 판. 설계 netax-inventory/maps/설계_법령원본.md
+function lawDbIdx_() {
+  var c = CacheService.getScriptCache(), s = c.get('lawdb_idx2');
+  if (s) return JSON.parse(s);
+  var sub = function (f, n) { var it = f && f.getFoldersByName(n); return it && it.hasNext() ? it.next() : null; };
+  var b = sub(sub(sub(getNetaxRootFolder_(), '업무관리자'), '법령정비본'), '본문'), it = b && b.getFilesByName('색인.json');
+  if (!it || !it.hasNext()) return null;
+  var idx = JSON.parse(it.next().getBlob().getDataAsString('UTF-8'));
+  Object.keys(idx.법령).forEach(function (k) {
+    var f = sub(b, k), fi = f && f.getFiles(), ids = idx.법령[k].ids = {};
+    while (fi && fi.hasNext()) { var x = fi.next(); ids[x.getName().replace('.json.gz', '')] = x.getId(); }
+  });
+  var ci = sub(b.getParents().next(), '산식보정');
+  ci = ci && ci.getFilesByName('산식보정.json');
+  idx.보정ID = ci && ci.hasNext() ? ci.next().getId() : '';
+  try { c.put('lawdb_idx2', JSON.stringify(idx), 21600); } catch (e) { }
+  return idx;
+}
+function lawUnit_(u) { // 법제처 조문단위 → 정비본 모양(law-build.js parseLaw와 같은 규칙)
+  var imgs = [], T = function (e, n) {
+    return String(e.getChildText(n) || '').replace(/<img[^>]*?flSeq=(\d+)[^>]*>(?:([^<]*)<\/img>)?/g, function (m, id, b) {
+      imgs.push(id); b = String(b || '').replace(/^\s*\n|\s+$/g, ''); return '〔산식 그림 img' + id + '〕' + (/[│┌]/.test(b) ? '\n' + b : '');
+    }).replace(/<\/?[a-z][^>]*>/gi, '').trim();
+  }, g = u.getChildText('조문가지번호');
+  return { 조: u.getChildText('조문번호') + (g && g !== '0' ? '의' + g : ''), 제목: T(u, '조문제목'), 내용: T(u, '조문내용'), 참고: T(u, '조문참고자료'), 그림: imgs,
+    항: u.getChildren('항').map(function (h) { return { 내용: T(h, '항내용'), 호: h.getChildren('호').map(function (o) { return { 내용: T(o, '호내용'), 목: o.getChildren('목').map(function (m) { return T(m, '목내용'); }) }; }) }; }) };
+}
+function lawGo_(oc, q, jo) { // q=법령명이면 판 목록(하루 기억), q=[mst,ef]면 조문들
+  var u = 'https://www.law.go.kr/DRF/' + (jo === undefined ? 'lawSearch.do?OC=' + encodeURIComponent(oc) + '&target=eflaw&type=XML&display=100&query=' + encodeURIComponent(q) : 'lawService.do?OC=' + encodeURIComponent(oc) + '&target=eflaw&type=XML&MST=' + q[0] + '&efYd=' + q[1] + (jo ? '&JO=' + jo : ''));
+  var c = CacheService.getScriptCache(), ck = jo === undefined && 'lawgo_v|' + q.replace(/\s/g, ''), s = ck && c.get(ck);
+  if (s) return JSON.parse(s);
+  var r = UrlFetchApp.fetch(u, { muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) return { error: '법제처 응답 오류(' + r.getResponseCode() + ')' };
+  var root = XmlService.parse(r.getContentText('UTF-8')).getRootElement();
+  if (!ck) { var jm = root.getChild('조문'); return (jm ? jm.getChildren('조문단위') : []).filter(function (x) { return x.getChildText('조문여부') === '조문'; }).map(lawUnit_); }
+  var ls = root.getChildren('law'); if (!ls.length) return { error: '"' + q + '"으로 검색된 법령이 없습니다(정식 법령명 확인).' };
+  var nm = ls[0].getChildText('법령명한글'), v = { 이름: nm, 판: ls.filter(function (x) { return x.getChildText('법령명한글') === nm; }).map(function (x) {
+    return { mst: x.getChildText('법령일련번호'), ef: x.getChildText('시행일자'), no: x.getChildText('공포번호'), cur: x.getChildText('현행연혁코드') === '현행' }; }) };
+  try { c.put(ck, JSON.stringify(v), 86400); } catch (e) { }
+  return v;
+}
+function toolLookupStatuteArticle(lawName, articleNo, baseDate) {
   if (!lawName || !String(lawName).trim()) return { error: '법령명이 없습니다.' };
-
-  const ocKey = PropertiesService.getScriptProperties().getProperty('LAW_OC');
-  if (!ocKey) return { error: 'LAW_OC(국가법령정보센터 인증키)가 스크립트 속성에 설정되어 있지 않습니다.' };
-
-  // 1단계: 법령명 검색
-  let mst, efYd, matchedName, futureEfYd = '';
-  try {
-    const searchUrl = 'https://www.law.go.kr/DRF/lawSearch.do?OC=' + encodeURIComponent(ocKey)
-      + '&target=eflaw&type=XML&query=' + encodeURIComponent(String(lawName).trim());
-    const res = UrlFetchApp.fetch(searchUrl, { muteHttpExceptions: true });
-    if (res.getResponseCode() !== 200) {
-      return { error: '법령 검색 API 호출 실패 (status ' + res.getResponseCode() + ')' };
+  var oc = PropertiesService.getScriptProperties().getProperty('LAW_OC'), key = String(lawName).replace(/\s/g, '');
+  [[/상증세?법/, '상속세및증여세법'], [/조특법/, '조세특례제한법'], [/국기법/, '국세기본법'], [/국징법/, '국세징수법'], [/농특세?법/, '농어촌특별세법']].forEach(function (a) { key = key.replace(a[0], a[1]); });
+  var m = String(articleNo || '').match(/(\d+)\s*(?:조)?\s*(?:의\s*(\d+))?/), jk = m ? m[1] + (m[2] ? '의' + m[2] : '') : '';
+  var jo = m ? ('0000' + m[1]).slice(-4) + ('00' + (m[2] || 0)).slice(-2) : '', day = String(baseDate || '').replace(/\D/g, '').slice(0, 8);
+  var out = { 법령명: lawName }, arts = null, idx = null, ent, c = CacheService.getScriptCache();
+  try { idx = lawDbIdx_(); } catch (e) { }
+  ent = idx && idx.법령[key];
+  var ver = ent && ent.판.filter(function (p) { return day ? p.시행일 <= day : p.판 === ent.현행; }).pop();
+  if (ver && ent.ids[ver.판]) try {
+    var ck = 'lwa|' + key + '|' + ver.판 + '|' + jk, hit = jk && c.get(ck);
+    arts = hit ? [JSON.parse(hit)] : JSON.parse(Utilities.ungzip(DriveApp.getFileById(ent.ids[ver.판]).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')).조.filter(function (a) { return !jk || a.조 === jk; });
+    if (jk && !hit && arts.length) try { c.put(ck, JSON.stringify(arts[0]), 21600); } catch (e) { }
+    out = { 법령명: ent.이름, 시행일자: ver.시행일, 판: ver.판, 출처: '법령 정비본(법제처 ' + ver.시행일 + ' 시행판, 공포 ' + ver.공포일 + ' 제' + ver.공포번호 + '호)' };
+    if (ent.범위 === '조회만') out.주의 = '지방세 — 조회만, 계산·신고서 근거로 쓰지 않음';
+    var fut = ent.판.filter(function (p) { return p.상태 === '시행예정' && p.시행일 > (day || ver.시행일); })[0];
+    if (fut) out.시행예정개정 = fut.시행일 + ' 시행 예정 개정판 있음 — 그 뒤 양도·증여·상속분이면 baseDate로 확인';
+  } catch (e) { arts = null; out.정비본오류 = String(e.message || e); }
+  if (oc) { // 법제처: 개정 확인, 또는 정비본에 없는 법령·판
+    var vs = lawGo_(oc, ent ? ent.이름 : lawName), ps = vs.판 || [], cur = ps.filter(function (p) { return p.cur; })[0];
+    if (vs.error && !arts) return vs;
+    var pick = day ? ps.filter(function (p) { return p.ef <= day; }).sort(function (a, b) { return b.ef.localeCompare(a.ef); })[0] : cur;
+    if (!arts && pick) { arts = lawGo_(oc, [pick.mst, pick.ef], jo); out = { 법령명: vs.이름, 시행일자: pick.ef, 출처: '법제처 ' + pick.ef + ' 시행판(정비본에 없음)' }; }
+    else if (arts && !day && cur && ent) {
+      if (cur.ef + '_' + cur.no === ent.현행) out.개정확인 = '정비본 = 법제처 현행판';
+      else {
+        var nw = jo ? lawGo_(oc, [cur.mst, cur.ef], jo) : [], f = function (a) { return a ? JSON.stringify([a.내용, a.항]).replace(/\s/g, '') : ''; }, same = f(nw[0]) === f(arts[0]);
+        out.개정확인 = '🆕 법제처에 새 현행판(' + cur.ef + ' 시행) — 정비본 갱신 대상' + (nw[0] ? (same ? ', 이 조문은 같음' : ', 이 조문 바뀜(법제처현행 참고)') : '');
+        if (nw[0] && !same) out.법제처현행 = nw[0];
+      }
     }
-    const doc = XmlService.parse(res.getContentText('UTF-8'));
-    const root = doc.getRootElement();
-    const laws = root.getChildren('law');
-    if (!laws.length) {
-      return { error: '"' + lawName + '"으로 검색된 법령이 없습니다. 정확한 법령명(정식 명칭)인지 확인해주세요.' };
-    }
-    // [2026.10.11 버그수정] 첫 검색결과가 "시행 예정"(미래 시행일) 판일 때가 있어(예: 소득세법 시행령 2028.1.1 시행판),
-    // 아직 시행되지 않은 조문을 현행처럼 인용하는 문제가 있었다 — 같은 법령명 중 "현행" 판(없으면 오늘 이전 시행일 중
-    // 가장 최근 판)을 고르고, 시행 예정 판이 있으면 그 시행일을 함께 알려준다.
-    const first = laws[0];
-    const firstName = first.getChildText('법령명한글');
-    const todayYmd = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMdd');
-    const same = laws.filter(function (x) { return x.getChildText('법령명한글') === firstName; });
-    let pick = same.filter(function (x) { return /현행/.test(x.getChildText('현행연혁코드') || ''); })[0];
-    if (!pick) {
-      const past = same.filter(function (x) { return String(x.getChildText('시행일자') || '') <= todayYmd; })
-        .sort(function (a, b) { return String(b.getChildText('시행일자')).localeCompare(String(a.getChildText('시행일자'))); });
-      pick = past[0] || first;
-    }
-    const future = same.filter(function (x) { return String(x.getChildText('시행일자') || '') > todayYmd; })
-      .map(function (x) { return x.getChildText('시행일자'); }).sort();
-    futureEfYd = future.length ? future[0] : '';
-    mst = pick.getChildText('법령일련번호');
-    efYd = pick.getChildText('시행일자');
-    matchedName = pick.getChildText('법령명한글');
-  } catch (err) {
-    return { error: '법령 검색 중 오류: ' + err.message };
+    out.원문링크 = 'https://www.law.go.kr/법령/' + encodeURIComponent(String(vs.이름 || lawName).replace(/\s/g, '')) + (jk ? '/' + encodeURIComponent('제' + jk.replace(/^(\d+)/, '$1조')) : '');
   }
-
-  // 조번호를 "4자리+2자리" 6자리 코드로 변환 (예: "45" → 004500, "10조의2" → 001002)
-  let jo = null;
-  if (articleNo) {
-    const m = String(articleNo).match(/(\d+)\s*(?:조)?\s*(?:의\s*(\d+))?/);
-    if (m) {
-      const num = ('0000' + m[1]).slice(-4);
-      const sub = ('00' + (m[2] || '0')).slice(-2);
-      jo = num + sub;
-    }
-  }
-
-  // 2단계: 조문 본문 조회
+  if (!arts || !arts.length || arts.error) return { error: '해당 조문을 찾을 수 없습니다(법령명·조번호 확인).', 법령명: out.법령명 };
+  var corr = []; // 산식 보정 — 그 판 조문에 같은 산식 그림이 있을 때만 덧입힘. "검증 필요"(코드에서 옮김)는 덧입히지 않고 따로
   try {
-    let bodyUrl = 'https://www.law.go.kr/DRF/lawService.do?OC=' + encodeURIComponent(ocKey)
-      + '&target=eflaw&MST=' + encodeURIComponent(mst) + '&efYd=' + encodeURIComponent(efYd) + '&type=XML';
-    if (jo) bodyUrl += '&JO=' + jo;
-
-    const res2 = UrlFetchApp.fetch(bodyUrl, { muteHttpExceptions: true });
-    if (res2.getResponseCode() !== 200) {
-      return { error: '조문 조회 API 호출 실패 (status ' + res2.getResponseCode() + ')' };
-    }
-    const doc2 = XmlService.parse(res2.getContentText('UTF-8'));
-    const root2 = doc2.getRootElement();
-    const joMok = root2.getChild('조문');
-    const articleUnits = joMok ? joMok.getChildren('조문단위') : [];
-
-    if (!articleUnits.length) {
-      return { error: '해당 조문을 찾을 수 없습니다(법령명 또는 조번호를 다시 확인해주세요).', 법령명: matchedName };
-    }
-
-    const items = articleUnits.map(function (unit) {
-      const hangList = unit.getChildren('항').map(function (hang) {
-        const hoList = hang.getChildren('호').map(function (ho) {
-          return (ho.getChildText('호내용') || '').trim();
-        });
-        return { 항내용: (hang.getChildText('항내용') || '').trim(), 호: hoList };
-      });
-      return {
-        조문번호: unit.getChildText('조문번호'),
-        조문제목: unit.getChildText('조문제목'),
-        조문내용: (unit.getChildText('조문내용') || '').trim(),
-        항: hangList
-      };
+    var cs = c.get('lawdb_corr');
+    if (!cs && idx && idx.보정ID) { cs = JSON.stringify(JSON.parse(DriveApp.getFileById(idx.보정ID).getBlob().getDataAsString('UTF-8')).항목.map(function (x) { return [x.법령, x.조, x.그림, x.산식, x.출처, x.상태]; })); try { c.put('lawdb_corr', cs, 21600); } catch (e) { } }
+    corr = JSON.parse(cs || '[]').filter(function (x) { return x[0] === key; });
+  } catch (e) { }
+  out.조문 = arts.map(function (a) {
+    var 보정 = [], 검증 = [], s = JSON.stringify(a);
+    corr.forEach(function (x) {
+      if (x[1] !== a.조) return;
+      var r = { 그림: x[2], 산식: x[3], 출처: x[4], 상태: x[5] };
+      if (/^검증/.test(x[5])) return 검증.push(r);
+      if (!x[2].every(function (id) { return a.그림.indexOf(id) >= 0; })) r.상태 = '다시 확인 필요(이 판에는 그 산식 그림이 없음 — 개정됨)';
+      else if (!/^다시/.test(x[5])) s = s.replace('〔산식 그림 img' + x[2][0] + '〕', '$&\\n' + JSON.stringify('〔산식 보정 — ' + x[4] + ' · ' + x[5] + '〕\n' + x[3]).slice(1, -1).replace(/\$/g, '$$$$'));
+      보정.push(r);
     });
-
-    return {
-      법령명: matchedName,
-      시행일자: efYd,
-      시행예정개정: futureEfYd ? (futureEfYd + ' 시행 예정 개정판 있음 — 시행일 이후 양도·증여·상속분이면 그 판을 확인') : '',
-      조문: items,
-      원문링크: 'https://www.law.go.kr/DRF/lawService.do?OC=' + ocKey + '&target=eflaw&MST=' + mst
-        + '&efYd=' + efYd + (jo ? '&JO=' + jo : '') + '&type=HTML'
-    };
-  } catch (err) {
-    return { error: '조문 조회 중 오류: ' + err.message };
-  }
+    a = JSON.parse(s);
+    return { 조문번호: a.조, 조문제목: a.제목, 조문내용: a.내용, 참고: a.참고, 산식보정: 보정.length ? 보정 : undefined, '검증필요_코드에서옮김(근거 아님)': 검증.length ? 검증 : undefined,
+      항: a.항.map(function (h) { return { 항내용: h.내용, 호: h.호.map(function (o) { return [o.내용].concat(o.목 || []).join('\n'); }) }; }) };
+  });
+  return out;
 }
 
 /**
@@ -14883,7 +14874,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
 
       if (block.name === 'lookup_statute_article') {
         const input = block.input || {};
-        const resultObj = toolLookupStatuteArticle(input.lawName, input.articleNo);
+        const resultObj = toolLookupStatuteArticle(input.lawName, input.articleNo, input.baseDate);
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj) };
       }
 
