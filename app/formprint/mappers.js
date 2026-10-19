@@ -376,7 +376,8 @@
       if (has(ta.phone)) o.set(isMobile(ta.phone) ? '⑯~전화번호(휴대전화) (세무대리인)' : '⑯~전화번호(사무실) (세무대리인)', ta.phone);
     }
     var giftAmount = has(it.amount) ? n(it.amount) : n(r.증여재산가액);
-    var prior = n(it.priorGiftAmount);
+    // [2026.10.19 서식 감사 B1] ㉓ = 엔진이 실제 가산한 금액(1천만 미만·합산배제면 0)
+    var prior = (has(r.증여세과세가액) && has(r.순수증여재산가액)) ? Math.max(0, n(r.증여세과세가액) - n(r.순수증여재산가액)) : n(it.priorGiftAmount);
     var taxable = n(r.순수증여재산가액) + prior;
     o.set('⑰', giftAmount).set('⑱', n(r.비과세재산가액)).set('⑲', n(r.공익법인출연재산가액)).set('⑳', n(r.공익신탁재산가액))
       .set('㉑', n(r.장애인신탁재산가액)).set('㉒', n(r.인수채무액)).set('㉓', prior).set('㉔', taxable);
@@ -691,7 +692,7 @@
     } else o.note('재산평가 목록에 이 수증자·증여자에게 배분된 재산이 없음 — 표는 비움(⑨는 증여재산가액)');
     var giftAmount = has(it.amount) ? n(it.amount) : n(r.증여재산가액);
     o.set('⑨', giftAmount).set('⑩', n(r.비과세재산가액)).set('⑪', n(r.공익법인출연재산가액)).set('⑫', n(r.공익신탁재산가액))
-      .set('⑬', n(r.장애인신탁재산가액)).set('⑭', n(it.priorGiftAmount));
+      .set('⑬', n(r.장애인신탁재산가액)).set('⑭', (has(r.증여세과세가액) && has(r.순수증여재산가액)) ? Math.max(0, n(r.증여세과세가액) - n(r.순수증여재산가액)) : n(it.priorGiftAmount)); // [2026.10.19 B1]
     o.miss('⑮ 합계', '⑨~⑭를 더하고 빼는 식이 서식·작성방법에 없음');
     if (rows.length) o.check('⑨ 증여재산가액 = ⑦ 평가가액 합', giftAmount, rows.reduce(function (s, a) { return s + Math.round(n(a.value)); }, 0));
     return o.result();
@@ -843,7 +844,7 @@
       o.set('⑤', pct2(legal));
       if (b25 !== null) {
         o.set('⑥', Math.round((b12 + b25 - n(ctx.nonHeirBequest) - n(r.비과세재산가액) - n(ctx.duesTotal) - n(ctx.debtTotal)) * legal));
-        o.note('⑥은 작성방법 3의 식대로(재산 + 처분재산 + 가산 증여 − 수유자 유증 − 비과세 − 공과금 − 채무) × 법정지분 — 지금 인쇄·전자신고(재산평가 합계 × 지분)와 다를 수 있음');
+        // [2026.10.19 B2] 예전 인쇄·전자신고도 같은 식으로 고침(ihLegalShareBase_)
       } else o.miss('⑥ 법정상속재산가액', '가산하는 증여재산가액(fv.priorGiftAdded) 없음');
     } else o.miss('⑤⑥ 법정상속지분율·재산가액', '상속인 명부 법정지분 없음');
     var actual = Math.round(n(h.actualValue));
