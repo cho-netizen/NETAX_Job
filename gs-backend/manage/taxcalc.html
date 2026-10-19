@@ -7000,7 +7000,11 @@ function collectTransferInput(vals){
     lrRegistrationStandardPrice: numVal(vals.lrRegistrationStandardPrice) || 0,
     lrTransferStandardPrice: numVal(vals.lrTransferStandardPrice) || 0,
     lrRentalEndStandardPrice: numVal(vals.lrRentalEndStandardPrice) || 0, // [2026.10.19] 시행령 §97의5② 임대기간 마지막 날 기준시가
-    lrRentedUntilTransfer: !!vals.lrRentedUntilTransfer
+    lrRentedUntilTransfer: !!vals.lrRentedUntilTransfer,
+    // [2026.10.20] 표시용 칸(세액 계산엔 안 씀) — 계산 결과 자산(lastTransferResults_[].assets)을 읽는 원본 모양 출력(84호 부표1 소재지·특례 신고서)과
+    //  판단 대기 안내(지정지역 비사업용 토지 — 소재지)가 비지 않게 그대로 넘긴다. 예전엔 빠져 원본 출력의 소재지가 비었다(원본 인쇄 작업자 양도소득특례가 발견).
+    assetLocation: vals.assetLocation || '', assetArea: vals.assetArea || '', assetKind: vals.assetKind || '', assetSubType: vals.assetSubType || '',
+    oneHouseSpecialCase: vals.oneHouseSpecialCase || '', formerResidencePeriod: vals.formerResidencePeriod || '', businessApprovalDate: vals.businessApprovalDate || ''
   };
 }
 
