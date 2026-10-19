@@ -54,7 +54,8 @@ function caseProcAiSpots_(body) {
   try { if (String(PropertiesService.getScriptProperties().getProperty('AI_LEAD') || '') === '끄기') return { ok: true, off: true, need: false, ai: 0, ask: 0, gas: 0, tiers: null, spots: [], why: 'AI 지휘 꺼짐(스크립트 속성 AI_LEAD = 끄기)' }; } catch (e) {}
   const ov = body.ov || {}, ev = body.ev || {}, items = ov.items || [];
   let spots = [];
-  try { spots = caseProcAiVarSpots_('calc_fill', { items: items, needs: ov.needs || null, case: c }, caseId); } catch (e) { spots = []; }
+  // 자리 세기가 실패하면 "AI 없이 끝"으로 숨기지 않고 오류로 돌려준다 — 화면은 예비 경로(지금 GAS 순서)로 가고 오류를 보인다(2026-10-19 재현기에서 조용히 0개로 세던 결함)
+  try { spots = caseProcAiVarSpots_('calc_fill', { items: items, needs: ov.needs || null, case: c }, caseId); } catch (e) { return { ok: false, error: 'AI 자리 세기 오류: ' + (e && e.message || e) }; }
   try { spots = spots.concat(caseProcAiVarSpots_('docs_read', { docTypes: ev.docTypes || [] }, caseId)); } catch (e) {}
   const byId = {}; items.forEach(function (it) { byId[it.id] = it; });
   const gas = spots.filter(function (s) { return CASEPROC_AI_GAS_SPOTS_[s.이유]; });

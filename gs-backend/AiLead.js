@@ -337,10 +337,11 @@ function caseProcAiVarSpots_(name, raw, caseId) {
     //  AI가 판단할 재료도 없다. AI 자리가 아니라 서류 요청 질문(빈 칸)으로 센다(개발용 5건·시험 23건 되풀이). 이름 대조로 확실히 정하는 GAS 규칙은 아님
     // [2026.10.19 5번 사건분류 쪼개기] 양도 사건분류 질문은 통째로 AI 자리로 세지 않고, 남은 선택지가 기대는 작은 판단으로 나눠 센다:
     //  사용자 사실(세대 주택 수·관계 등 — 서류에 없어 질문) / 변수(오피스텔 실사용·재촌자경·정비사업 감면·상속주택 정황 — AI 해석) / 상수(GAS 몫 — 표·날짜)
-    if (it.id === 'ov:사건분류' && /주택|토지|양도|수용|이월과세/.test(JSON.stringifycaseProcAiOpts_(a))) {
+    if (it.id === 'ov:사건분류' && /주택|토지|양도|수용|이월과세/.test(JSON.stringify(caseProcAiOpts_(a)))) {
       const opts = caseProcAiOpts_(a).map(function (o) { return String(o.label || o.v || o.value || ''); }).join(' | '), det = (String(it.detail || '') + ' ' + String(it.text || '')).split('서류로 해당 없어 뺀 선택지')[0]; // 뺀 선택지 목록(재건축·재개발 등 낱말)을 신호로 읽지 않게
       const subs = [];
       if (/1세대1주택|일시적2주택|2주택 중과|3주택/.test(opts)) {
+        // [연결 지점 — 2026.10.19부터 조정지역 판정의 주인은 조견표 세션(reftables 1부-01). 그쪽 판정 함수가 생기면 caseProcAiAdjSpot_의 caseProcAdjAreaAt_ 부름만 바꾼다]
         // [2026.10.19 5번 조정지역 이력표 — 재기 전용] CASEPROC_AI_ADJ_TRIAL_가 켜졌을 때만 AdjArea.js 이력표로 취득·양도 당시 조정대상지역을 가른다(운영 판정에 안 씀)
         const adj = (typeof CASEPROC_AI_ADJ_TRIAL_ !== 'undefined' && CASEPROC_AI_ADJ_TRIAL_ && typeof caseProcAdjAreaAt_ === 'function') ? caseProcAiAdjSpot_(raw, caseId) : null;
         subs.push({ 자리: 'cls:세대주택수', 이유: '빈 칸', 설명: '[사건분류 쪼개기 — 사용자 사실] 양도일 현재 세대 보유 주택 수(납세자 명의는 등기부로, 세대원·다른 집은 세무사님 확인)' });
