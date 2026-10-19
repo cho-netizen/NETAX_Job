@@ -291,6 +291,12 @@
       '<input type="text" id="setTaxAgentMgmtNo" style="width:100%;" placeholder="세무대리인 관리번호"></div>' +
       '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">전화번호</label>' +
       '<input type="text" id="setTaxAgentPhone" style="width:100%;" placeholder="02 1234 5678"></div>' +
+      // [2026.10.20 전자신고 대조] 전자신고 파일 머리 레코드 필수 값(사무소 고정값)
+      '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">세무대리인 생년월일</label>' +
+      '<input type="text" id="setTaxAgentBirth" style="width:100%;" placeholder="YYYYMMDD (양도 전자신고 — 관리번호와 둘 중 하나 필수)"></div>' +
+      '<div><label style="display:block; font-size:12px; color:var(--sub); margin-bottom:3px;">홈택스 사용자ID</label>' +
+      '<input type="text" id="setHometaxUserId" style="width:100%;" placeholder="전자신고 파일 머리 레코드의 사용자ID"></div>' +
+      '<div style="font-size:12px; color:var(--sub);">세무대리 대표자 주민등록번호는 저장하지 않습니다 — 양도 전자신고 파일을 만들 때만 그 자리에서 받고 지웁니다.</div>' +
       '<button type="button" id="setBtnTaxAgentSave" class="save-btn" style="align-self:flex-start;">저장</button>' +
       '<div id="setTaxAgentMsg" style="font-size:12px; min-height:16px;"></div>' +
       '</div>';
@@ -300,6 +306,8 @@
       document.getElementById('setTaxAgentBizNo').value = res.taxAgentBizNo || '';
       document.getElementById('setTaxAgentMgmtNo').value = res.taxAgentMgmtNo || '';
       document.getElementById('setTaxAgentPhone').value = res.taxAgentPhone || '';
+      document.getElementById('setTaxAgentBirth').value = res.taxAgentBirth || '';
+      document.getElementById('setHometaxUserId').value = res.hometaxUserId || '';
     }).catch(function(err){
       document.getElementById('setTaxAgentMsg').textContent = '불러오기 오류: ' + (err && err.message ? err.message : err);
     });
@@ -311,7 +319,9 @@
         taxAgentName: document.getElementById('setTaxAgentName').value,
         taxAgentBizNo: document.getElementById('setTaxAgentBizNo').value,
         taxAgentMgmtNo: document.getElementById('setTaxAgentMgmtNo').value,
-        taxAgentPhone: document.getElementById('setTaxAgentPhone').value
+        taxAgentPhone: document.getElementById('setTaxAgentPhone').value,
+        taxAgentBirth: document.getElementById('setTaxAgentBirth').value.replace(/\D/g, ''),
+        hometaxUserId: document.getElementById('setHometaxUserId').value
       }).then(function(res){
         btn.disabled = false;
         if (res && res.success){
