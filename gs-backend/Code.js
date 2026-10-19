@@ -2410,7 +2410,8 @@ const DRIVE_TOOLS = [
       properties: {
         clawedBackTaxAmount: { type: 'number', description: '사후관리 위반으로 결정된 추징세액(원) — 당초 감면·특례로 줄어들었던 세액. 세액 자체의 산정은 이 도구가 하지 않으므로 별도로 계산해서 입력한다.' },
         startDate: { type: 'string', description: '이자 기산일(YYYY-MM-DD) — 당초 감면·특례 적용받은 증여세(또는 상속세)의 과세표준 신고기한 다음 날.' },
-        endDate: { type: 'string', description: '추징사유 발생일(YYYY-MM-DD) — 사후관리 위반 사유가 발생한 날.' }
+        endDate: { type: 'string', description: '추징사유 발생일(YYYY-MM-DD) — 사후관리 위반 사유가 발생한 날. provision=gift_marriage면 수정신고·기한 후 신고를 한 날.' },
+        provision: { type: 'string', enum: ['gift_marriage'], description: '혼인·출산 증여재산공제 추징(상증법 §53의2⑥⑦, 부표4)이면 gift_marriage — 이자 = 증여세액 × (신고기한 다음날~신고한 날, 양 끝 포함) × 1일 10만분의 22(시행령 §46④). 다른 사후관리면 비움(환급가산금 이율).' }
       },
       required: ['clawedBackTaxAmount', 'startDate', 'endDate']
     }
@@ -9828,6 +9829,22 @@ function toolCalculateClawbackInterest(p) {
   const taxAmount = Number(p.clawedBackTaxAmount);
   if (!taxAmount || taxAmount <= 0) return { error: '사후관리 위반으로 결정된 추징세액(clawedBackTaxAmount)이 필요합니다.' };
   if (!p.startDate || !p.endDate) return { error: '이자 기산일(startDate)과 추징사유 발생일(endDate)이 필요합니다.' };
+  // [2026.10.19 fix3] 혼인·출산 증여재산공제 추징(상증법 §53의2⑥⑦ — 별지 제10호서식 부표4)은 이자상당액 계산이 다른 사후관리와 다르다.
+  //  시행령 §46④(법제처 원문 2026-10-19 확인): 기간 = 증여세 과세표준 신고기한의 다음날부터 §53의2⑥·⑦에 따라 수정신고·기한 후 신고를 한 날까지(양 끝 포함),
+  //  율 = 국세기본법 시행령 §27의4① "1일 10만분의 22". 예전엔 다른 사후관리처럼 환급가산금 이율(연 3.1% 등 ÷365)로, 끝날을 추징사유 발생일로 계산했다.
+  if (p.provision === 'gift_marriage') {
+    const s0 = new Date(p.startDate + 'T00:00:00'), e0 = new Date(p.endDate + 'T00:00:00');
+    const mDays = Math.round((e0.getTime() - s0.getTime()) / 86400000) + 1;
+    if (!(mDays > 0)) return { error: '수정신고·기한 후 신고일이 이자 기산일(신고기한 다음날)보다 빠릅니다.' };
+    const mInterest = Math.floor(taxAmount * mDays * 22 / 100000); // 원 미만 버림
+    return {
+      추징세액: taxAmount, 이자기산일: p.startDate, 추징사유발생일: p.endDate, 신고일: p.endDate, provision: 'gift_marriage',
+      구간별_이자상당액: [{ 시작일: p.startDate, 종료일: p.endDate, 일수: mDays, 연이율: null, 일이율: 0.00022, 이자상당액: mInterest }],
+      이자상당액_합계: mInterest,
+      납부할세액: taxAmount + mInterest,
+      안내: '혼인·출산 증여재산공제 추징(§53의2⑥⑦) — 이자상당액 = 증여세액 × 일수(신고기한 다음날 ~ 수정신고·기한 후 신고를 한 날, 양 끝 포함) × 1일 10만분의 22(시행령 §46④, 국세기본법 시행령 §27의4①). 가산세(과소·무신고·납부지연)는 부과하지 않습니다(시행령 §46③).'
+    };
+  }
   const segments = splitDateRangeByRate_(p.startDate, p.endDate);
   if (!segments.length) return { error: '추징사유 발생일이 이자 기산일보다 빠르거나 같습니다.' };
   let totalInterest = 0;

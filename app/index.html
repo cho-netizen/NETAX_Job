@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 06:47 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 06:51 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -14938,6 +14938,22 @@
     const taxAmount = Number(p.clawedBackTaxAmount);
     if (!taxAmount || taxAmount <= 0) return { error: '사후관리 위반으로 결정된 추징세액이 필요합니다.' };
     if (!p.startDate || !p.endDate) return { error: '이자 기산일과 추징사유 발생일이 필요합니다.' };
+    // [2026.10.19 fix3] 혼인·출산 증여재산공제 추징(상증법 §53의2⑥⑦ — 별지 제10호서식 부표4)은 이자상당액 계산이 다른 사후관리와 다르다.
+    //  시행령 §46④(법제처 원문 2026-10-19 확인): 기간 = 증여세 과세표준 신고기한의 다음날부터 §53의2⑥·⑦에 따라 수정신고·기한 후 신고를 한 날까지(양 끝 포함),
+    //  율 = 국세기본법 시행령 §27의4① "1일 10만분의 22". 예전엔 다른 사후관리처럼 환급가산금 이율(연 3.1% 등 ÷365)로, 끝날을 추징사유 발생일로 계산했다.
+    if (p.provision === 'gift_marriage') {
+      const s0 = new Date(p.startDate + 'T00:00:00'), e0 = new Date(p.endDate + 'T00:00:00');
+      const mDays = Math.round((e0.getTime() - s0.getTime()) / 86400000) + 1;
+      if (!(mDays > 0)) return { error: '수정신고·기한 후 신고일이 이자 기산일(신고기한 다음날)보다 빠릅니다.' };
+      const mInterest = Math.floor(taxAmount * mDays * 22 / 100000); // 원 미만 버림
+      return {
+        추징세액: taxAmount, 이자기산일: p.startDate, 추징사유발생일: p.endDate, 신고일: p.endDate, provision: 'gift_marriage',
+        구간별_이자상당액: [{ 시작일: p.startDate, 종료일: p.endDate, 일수: mDays, 연이율: null, 일이율: 0.00022, 이자상당액: mInterest }],
+        이자상당액_합계: mInterest,
+        납부할세액: taxAmount + mInterest,
+        안내: '혼인·출산 증여재산공제 추징(§53의2⑥⑦) — 이자상당액 = 증여세액 × 일수(신고기한 다음날 ~ 수정신고·기한 후 신고를 한 날, 양 끝 포함) × 1일 10만분의 22(시행령 §46④, 국세기본법 시행령 §27의4①). 가산세(과소·무신고·납부지연)는 부과하지 않습니다(시행령 §46③).'
+      };
+    }
     const segments = splitDateRangeByRate_(p.startDate, p.endDate);
     if (!segments.length) return { error: '추징사유 발생일이 이자 기산일보다 빠르거나 같습니다.' };
     let totalInterest = 0;
@@ -27808,7 +27824,7 @@ function renderGiftInheritanceSharedPane_(){
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>추징세액(당초 감면·특례로 줄었던 세액)</label><input type="number" id="ckAmount" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>이자 기산일</label><input type="date" id="ckStartDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">당초 신고기한 다음날 등</span></div>' +
-        '<div class="taxcalc-field"><label>추징사유 발생일</label><input type="date" id="ckEndDate" min="1900-01-01" max="2099-12-31"></div>' +
+        '<div class="taxcalc-field"><label>추징사유 발생일</label><input type="date" id="ckEndDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">혼인출산공제 추징(부표4)은 수정신고·기한 후 신고를 한 날(시행령 §46④ — 이율 1일 10만분의 22)</span></div>' +
         '<div class="taxcalc-field"><label>서식 구분(인쇄용, 해당시)</label><select id="ckFormType">' +
           '<option value="">해당없음(인쇄서식 없음)</option>' +
           '<option value="ih6">상속세 — 가업·영농상속공제 사후관리추징(부표6)</option>' +
@@ -28613,7 +28629,7 @@ function renderClawbackResult(r){
   let html = '<div class="taxcalc-result">';
   html += taxCalcResultRow('추징세액', won(r.추징세액));
   (r.구간별_이자상당액 || []).forEach(function(seg){
-    html += taxCalcResultRow(seg.시작일 + ' ~ ' + seg.종료일 + ' (' + seg.일수 + '일, 연 ' + (seg.연이율 * 100).toFixed(1) + '%)', won(seg.이자상당액));
+    html += taxCalcResultRow(seg.시작일 + ' ~ ' + seg.종료일 + ' (' + seg.일수 + '일, ' + (seg.일이율 ? '1일 10만분의 ' + Math.round(seg.일이율 * 100000) : '연 ' + (seg.연이율 * 100).toFixed(1) + '%') + ')', won(seg.이자상당액)); // [fix3] 혼인공제 추징은 일이율
   });
   html += taxCalcResultRow('이자상당액 합계', won(r.이자상당액_합계));
   html += taxCalcResultRow('납부할 세액', won(r.납부할세액), { total: true });
@@ -28764,9 +28780,9 @@ function gfMarriageClawbackPrintPageHtml_(r){
     '<table class="pf-table">' +
       pfRow_(++n, '수정신고·기한후신고 코드', reasonCode + ' — ' + reasonLabel) +
       pfRow_(++n, '결정된 증여세액(추징대상)', won(r.추징세액)) +
-      pfRow_(++n, '이자 기산일', r.이자기산일) + pfRow_(++n, '추징사유 발생일', r.추징사유발생일) +
+      pfRow_(++n, '이자 기산일', r.이자기산일) + pfRow_(++n, r.provision === 'gift_marriage' ? '수정신고·기한 후 신고를 한 날(㉒ 끝날)' : '추징사유 발생일', r.추징사유발생일) +
       (r.구간별_이자상당액 || []).map(function(seg){
-        return pfRow_(0, '이자상당액(' + seg.시작일 + '~' + seg.종료일 + ', ' + seg.일수 + '일, 연' + (seg.연이율 * 100).toFixed(1) + '%)', won(seg.이자상당액), { indent: true });
+        return pfRow_(0, '이자상당액(' + seg.시작일 + '~' + seg.종료일 + ', ' + seg.일수 + '일, ' + (seg.일이율 ? '1일 10만분의 ' + Math.round(seg.일이율 * 100000) : '연' + (seg.연이율 * 100).toFixed(1) + '%') + ')', won(seg.이자상당액), { indent: true });
       }).join('') +
       pfRow_(++n, '이자상당액 합계', won(r.이자상당액_합계)) +
       pfRow_(++n, '납부할 세액(합계액)', won(r.납부할세액)) +
@@ -37071,6 +37087,8 @@ function handleTaxCalcClick_(e){
       startDate: document.getElementById('ckStartDate').value,
       endDate: document.getElementById('ckEndDate').value
     };
+    // [2026.10.19 fix3] 혼인·출산 증여재산공제 추징(부표4)은 시행령 §46④ — 끝날 = 수정신고·기한 후 신고일, 율 = 1일 10만분의 22
+    if ((document.getElementById('ckFormType') || {}).value === 'gf_marriage') input.provision = 'gift_marriage';
     renderClawbackResult(calculateClawbackInterestJS(input));
   } else if (action === 'run-business-succession-deferral-amount'){
     // [2026.09.30 신규, 재검토100] 별지10호 부표2용 사업무관자산 5항목을 채웠으면 그 비율로
