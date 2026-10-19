@@ -466,5 +466,75 @@
   "정답": {
    "납부지연가산세": 2200000
   }
+ },
+ {
+  "이름": "[2부-07] 현금보상 33억 2024-06-30 — 그때 감면율 10%(2025부터 15%)",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "transferDate": "2024-06-30",
+   "acquisitionDate": "2010-01-01",
+   "publicNoticeDate": "2023-01-01",
+   "transferPrice": 3300000000,
+   "acquisitionPrice": 300000000,
+   "compensationType": "cash"
+  },
+  "정답": {
+   "과세표준": 2157500000,
+   "산출세액": 814441500,
+   "수용감면액": 90493500
+  }
+ },
+ {
+  "이름": "[2부-07] 현금보상 50억 2020-06-30 — 감면 128,655,000이 종합한도 연 1억(§133①1호, 2016~2024)에 걸림",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "transferDate": "2020-06-30",
+   "acquisitionDate": "2005-01-01",
+   "publicNoticeDate": "2019-01-01",
+   "transferPrice": 5000000000,
+   "acquisitionPrice": 500000000,
+   "compensationType": "cash"
+  },
+  "정답": {
+   "과세표준": 3147500000,
+   "수용감면액": 100000000,
+   "산출세액": 1186550000
+  }
+ },
+ {
+  "이름": "[§77④ 고침] 3년 만기특약 위반 2025-06-30 — 추징 = 감면 전 세액 × 15%",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "transferDate": "2025-06-30",
+   "acquisitionDate": "2010-01-01",
+   "publicNoticeDate": "2023-01-01",
+   "transferPrice": 800000000,
+   "acquisitionPrice": 300000000,
+   "compensationType": "bond_3y",
+   "isBondPledgeBreached": true
+  },
+  "정답": {
+   "산출세액": 90448000
+  }
+ },
+ {
+  "이름": "[§77④ 고침] 5년 만기특약 위반 2025-06-30 — 추징 = 감면 전 세액 × 25%",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "transferDate": "2025-06-30",
+   "acquisitionDate": "2010-01-01",
+   "publicNoticeDate": "2023-01-01",
+   "transferPrice": 800000000,
+   "acquisitionPrice": 300000000,
+   "compensationType": "bond_5y",
+   "isBondPledgeBreached": true
+  },
+  "정답": {
+   "산출세액": 90448000
+  }
  }
 ]
