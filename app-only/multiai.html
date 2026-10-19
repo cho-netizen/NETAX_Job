@@ -1,4 +1,4 @@
-<!-- [2026.10.19] 🤝 멀티 AI 사이드바 — 앱(job.netax.kr/app)에만 들어간다(tools/build-app.js가 lawsearch.html 자리 표시에 끼움). 서버 10MB 한도. -->
+<!-- [2026.10.19] 🤝 AI 회의 사이드바 — 앱(job.netax.kr/app)에만 들어간다(tools/build-app.js가 lawsearch.html 자리 표시에 끼움). 서버 10MB 한도. -->
 <style>
   #maiPanel{ position:fixed; top:0; right:0; width:min(640px, 100vw); height:100vh; background:var(--panel, #fff); border-left:1px solid var(--line, #ddd); box-shadow:-6px 0 18px rgba(0,0,0,.12); z-index:950; display:flex; flex-direction:column; font-size:13px; }
   #maiPanel .mai-head{ display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line, #ddd); }
@@ -20,23 +20,13 @@
 </style>
 <script>
   // ============================================================
-  // [2026.10.19] 🤝 멀티 AI 사이드바 — 질문 하나를 여러 AI 칸에 동시에(웹 AI는 복사·사이트 열기·답 붙여넣기, API는 켜면 자동) → 비교표 → 세무사님이 고름.
-  //  세무사님 말씀(원문): "이 ai연합체를 시스템업그레이드와 법령검색 양쪽에 활용하자는 것이다. 멀티ai사이드바 라는 것을 보고 여러ai들을 동시에 활용하는 방안을 생각한 것이었다."
-  //                       "일단 api없이 해보고, 무료api가 있다고 하면 추후 보완할께"
-  //  - 웹 AI(B 등급)는 약관상 자동 질의·자동 답 수집 금지(docs/ai-federation.md 2절) → 칸마다 "📋 복사·열기"(한 번 누를 때 창 하나 — 팝업 차단 안 걸림),
-  //    "▶ 다음 웹 AI" 단추로 차례대로. 보내기는 세무사님이 그 사이트에서 누르고, 답을 칸에 붙여 넣는다.
-  //    주소에 질문을 미리 넣는 방식(?q=)은 쓰지 않는다 — 질문지(조문 원문 포함)가 주소 길이 한도를 넘고, 일부 사이트는 ?q=로 바로 보내 버려 "보내기는 세무사님이"와 어긋남.
-  //  - API 칸: A 무료(설정 🔑에 키가 들어오면 바로 자동 칸, 0원)·C 유료(Claude·Gemini — 기본 꺼짐, 켜면 건당 예상 비용 확인 후 보냄). 서버 ai_ask_slots(Federation.js).
+  // [2026.10.19 재편] 🤝 AI 회의 사이드바 — 세무사님 "이 방향으로 수정하자"(AI 연합체를 회의 틀 하나로, 돌지 않는 것은 삭제).
+  //  위원 = Gemini API(무료 등급 키)·OpenRouter(키를 넣으면 추가) — 서버 ai_ask_slots(Federation.js), 고객 자료는 서버가 막음. 회장 결론은 조정 세션(Claude)이 판단 대기 파일에 저장.
+  //  웹 AI 복사·붙여넣기 칸과 유료 칸 토글은 삭제(2026-10-19). 답 칸에 직접 붙여 넣는 것은 그대로 됨.
   //  - 법령 쪽(mode 'law'): 답에서 결론(가/나)·근거 조문·판례·예규 번호를 규칙으로 뽑고(토큰 0) 법제처에 실제로 있는지 확인(실재 ✔ / 못 찾음 ⚠ / 확인 못 함 ?).
   //    시스템 쪽(mode 'system'): 같은 방식, 근거 확인 없이 결론끼리 묶기만.
   //  열기: nxMultiAi_.open({ mode, title, head, law, choices, defLaw, saved, decided, onAnswer, onCheck, onDecide, storeKey })
   // ============================================================
-  var MAI_WEB_FALLBACK_ = [ // 명단(ai_registry)을 못 받을 때만 — Federation.js AI_REGISTRY_ B 등급과 같게
-    { id: 'web-chatgpt', name: 'ChatGPT(웹)', url: 'https://chatgpt.com/' }, { id: 'web-gemini', name: 'Gemini(웹)', url: 'https://gemini.google.com/app' },
-    { id: 'web-claude', name: 'Claude(웹)', url: 'https://claude.ai/new' }, { id: 'web-copilot', name: 'Copilot(웹)', url: 'https://copilot.microsoft.com/' },
-    { id: 'web-perplexity', name: 'Perplexity(웹)', url: 'https://www.perplexity.ai/' }, { id: 'web-deepseek', name: 'DeepSeek(웹)', url: 'https://chat.deepseek.com/' },
-    { id: 'web-grok', name: 'Grok(웹)', url: 'https://grok.com/' }, { id: 'web-clovax', name: '클로바X(웹)', url: 'https://clova-x.naver.com/' }];
-  var MAI_KRW_ = 1400, MAI_OUT_TOKENS_ = 1200;
   var mai_ = null; // 지금 열린 사이드바 상태
   var maiVerifyCache_ = {}; // 근거 실재 확인 결과(같은 번호를 두 번 묻지 않음)
   function maiEsc_(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -54,7 +44,11 @@
     while ((m = re3.exec(t))) add('예규', m[0], m[0].replace(/\s+/g, ''));
     return out.slice(0, 20);
   }
-  function maiParse_(text){
+  function maiParse_(text, ctx){
+    var keep = mai_; if (ctx) mai_ = Object.assign({}, mai_ || {}, ctx); // 회의 기록 표는 사이드바 없이 안건마다 선택지·기본 법령을 넘긴다
+    try { return maiParse0_(text); } finally { mai_ = keep; }
+  }
+  function maiParse0_(text){
     var t = String(text || ''), r = { 결론: '', 결론글: '', 조문: [], 번호: [] };
     var m = t.match(/결론\s*\**\s*[:：]\s*\**\s*([^\n]*)/);
     var line = m ? m[1].replace(/\*+/g, '').trim() : (t.split('\n').filter(function(x){ return x.trim(); }).slice(-1)[0] || '').trim();
@@ -105,7 +99,7 @@
   function maiOpen_(opts){
     mai_ = Object.assign({ mode: 'law', title: '', head: '', law: '', choices: [], saved: {}, decided: null }, opts || {});
     mai_.ans = {}; mai_.opened = {}; mai_.checks = {};
-    Object.keys(mai_.saved || {}).forEach(function(id){ var a = mai_.saved[id]; mai_.ans[id] = { text: a.글 || a.text || '', 방식: a.방식 || '붙여넣기' }; });
+    Object.keys(mai_.saved || {}).forEach(function(id){ var a = mai_.saved[id]; mai_.ans[id] = { text: a.글 || a.text || '', 방식: a.방식 || '붙여넣기', 이름: a.이름 || '' }; });
     if (mai_.storeKey){ try { var st = JSON.parse(localStorage.getItem(mai_.storeKey) || '{}'); Object.keys(st).forEach(function(id){ if (!mai_.ans[id]) mai_.ans[id] = st[id]; }); } catch (e) {} }
     var el = document.getElementById('maiPanel');
     if (!el){ el = document.createElement('div'); el.id = 'maiPanel'; document.body.appendChild(el); el.addEventListener('click', maiClick_); el.addEventListener('input', maiInput_); el.addEventListener('change', maiChange_); }
@@ -113,44 +107,36 @@
     el.innerHTML = '<div class="mai-head"><b title="' + maiEsc_(mai_.title) + '">🤝 ' + maiEsc_(mai_.title) + '</b><button type="button" class="ghost-btn" data-mai="close">✕ 닫기</button></div><div class="mai-body" id="maiBody">명단 불러오는 중…</div>';
     var go = function(reg){
       mai_.reg = reg;
-      mai_.web = (reg.filter(function(x){ return x.tier === 'B'; }).length ? reg.filter(function(x){ return x.tier === 'B'; }) : MAI_WEB_FALLBACK_);
-      mai_.api = reg.filter(function(x){ return (x.tier === 'A' && x.keyProp) || (x.tier === 'C' && /^(claude-|gemini-paid)/.test(x.id)); });
-      mai_.on = {}; mai_.api.forEach(function(x){ mai_.on[x.id] = x.tier === 'A' && x.status === '사용 가능'; }); // 무료는 키 있으면 켜짐, 유료는 기본 꺼짐(세무사님 "api없이")
+      mai_.api = reg.filter(function(x){ return x.member; }); // 위원(Gemini API·OpenRouter) — 키가 있으면 켜짐
+      mai_.on = {}; mai_.api.forEach(function(x){ mai_.on[x.id] = x.status === '사용 가능'; });
       maiRender_();
       Object.keys(mai_.ans).forEach(maiCheckSlot_);
     };
     callGas('ai_registry', {}).then(function(r){ go((r && r.registry) || []); }).catch(function(){ go([]); });
   }
-  function maiAllSlots_(){ return (mai_.api || []).concat(mai_.web || []); }
-  function maiSlot_(id){ return maiAllSlots_().filter(function(x){ return x.id === id; })[0] || { id: id, name: id }; }
-  function maiCost_(x){
-    if (!x.price) return x.tier === 'A' ? '0원' : '단가 모름';
-    var inTok = Math.round(maiSheet_().length * 0.9), krw = (inTok * x.price.in + MAI_OUT_TOKENS_ * x.price.out) / 1e6 * MAI_KRW_;
-    return '약 ' + Math.max(1, Math.round(krw)) + '원(추정)';
-  }
+  function maiAllSlots_(){ return mai_.api || []; }
+  function maiSlot_(id){ return maiAllSlots_().filter(function(x){ return x.id === id; })[0] || { id: id, name: (mai_.ans[id] && mai_.ans[id].이름) || id }; }
   function maiRender_(){
     var b = document.getElementById('maiBody'); if (!b) return;
-    var sheet = maiSheet_(), webDone = mai_.web.filter(function(w){ return mai_.ans[w.id] && mai_.ans[w.id].text; }).length;
-    var html = '<div class="mai-note">' + (mai_.mode === 'law' ? '질문지를 여러 AI에 보내고, 답을 칸에 붙여 넣으면 결론·근거를 뽑아 근거가 법제처에 실제로 있는지 확인합니다. 결정은 세무사님이 고릅니다(엔진은 자동으로 고치지 않음).' : '질문을 여러 AI에 보내고 답을 붙여 넣으면 결론끼리 비교합니다.') + '</div>';
-    html += '<div class="mai-sec">질문지 <span class="mai-chip">' + sheet.length.toLocaleString() + '자</span></div><pre class="mai-sheet">' + maiEsc_(sheet) + '</pre>' +
-      '<div class="mai-row" style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="ghost-btn" data-mai="copy">📋 질문지 복사</button><button type="button" class="btn" data-mai="next">▶ 다음 웹 AI 열기 (' + webDone + '/' + mai_.web.length + ' 답함)</button></div>';
-    // API 칸
-    html += '<div class="mai-sec">API 칸 — 켜면 자동</div>' + (mai_.api.length ? mai_.api.map(function(x){
-      var can = x.status === '사용 가능', paid = x.tier === 'C';
+    var sheet = maiSheet_();
+    var html = '<div class="mai-note">' + (mai_.mode === 'law' ? '위원 AI가 질문지에 답하면 결론·근거를 뽑아 근거가 법제처에 실제로 있는지 확인합니다. 회장(Claude)이 결론을 내고, 결론이 안 난 것만 세무사님이 고릅니다(엔진은 자동으로 고치지 않음).' : '위원 AI의 답을 결론끼리 비교합니다.') + '</div>';
+    html += '<div class="mai-sec">질문지 <span class="mai-chip">' + sheet.length.toLocaleString() + '자</span></div><pre class="mai-sheet">' + maiEsc_(sheet) + '</pre>';
+    // 위원 칸 — 키가 있으면 켜짐(무료 등급, 0원). 키가 없으면 설정 🤝 → 👥 위원 상태에서 넣음
+    html += '<div class="mai-sec">위원</div>' + (mai_.api.length ? mai_.api.map(function(x){
+      var can = x.status === '사용 가능';
       return '<div class="mai-slot"><div class="mai-row"><label><input type="checkbox" data-maion="' + maiEsc_(x.id) + '"' + (mai_.on[x.id] ? ' checked' : '') + (can ? '' : ' disabled') + '> <b>' + maiEsc_(x.name) + '</b></label>' +
-        '<span class="mai-chip">' + (paid ? '유료 · ' + maiEsc_(maiCost_(x)) : '무료') + '</span><span class="mai-note">' + maiEsc_(can ? '' : x.status + (x.tier === 'A' ? ' — 설정 🤝 카드 🔑에 키를 넣으면 바로 자동 칸' : '')) + '</span></div>' + maiAnsBox_(x) + '</div>';
-    }).join('') + '<button type="button" class="ghost-btn" data-mai="api">🤖 켠 API 칸에 보내기</button>' : '<div class="mai-note">명단을 받지 못했습니다.</div>');
-    // 웹 칸
-    html += '<div class="mai-sec">웹 AI 칸 — 복사·열기 → 그 사이트에서 붙여넣고 보내기 → 답을 복사해 칸에 붙여넣기</div>' + mai_.web.map(function(x){
-      return '<div class="mai-slot"><div class="mai-row"><b>' + maiEsc_(x.name) + '</b><button type="button" class="ghost-btn" data-maiopen="' + maiEsc_(x.id) + '">📋 복사·열기</button>' + (mai_.opened[x.id] ? '<span class="mai-chip">열림 ' + maiEsc_(mai_.opened[x.id]) + '</span>' : '') + '</div>' + maiAnsBox_(x) + '</div>';
-    }).join('');
+        '<span class="mai-chip">무료 등급 · 오늘 ' + (x.usedToday || 0) + '번</span><span class="mai-note">' + maiEsc_(can ? '' : x.status + ' — 설정 🤝 → 👥 위원 상태') + '</span></div>' + maiAnsBox_(x) + '</div>';
+    }).join('') + '<button type="button" class="ghost-btn" data-mai="api">🤝 위원에게 묻기</button>' : '<div class="mai-note">위원 명단을 받지 못했습니다.</div>');
+    // 위원 칸에 없는 저장된 답(예전 회의·다른 이름) — 읽기만
+    var extra = Object.keys(mai_.ans).filter(function(id){ return id.charAt(0) !== '_' && !mai_.api.some(function(x){ return x.id === id; }) && mai_.ans[id].text; });
+    if (extra.length) html += '<div class="mai-sec">그 밖에 저장된 답</div>' + extra.map(function(id){ return '<div class="mai-slot"><b>' + maiEsc_(maiSlot_(id).name) + '</b>' + maiAnsBox_(maiSlot_(id)) + '</div>'; }).join('');
     html += '<div class="mai-sec">비교표</div><div id="maiCmp">' + maiCmpHtml_() + '</div>';
-    if (mai_.mode === 'law' && mai_.choices.length) html += '<div class="mai-sec">결정 — 세무사님이 고릅니다</div><div id="maiDec">' + maiDecHtml_() + '</div>';
+    if (mai_.mode === 'law' && mai_.choices.length) html += '<div class="mai-sec">결정 — 회장 결론이 없거나 보류면 세무사님이 고릅니다</div><div id="maiDec">' + maiDecHtml_() + '</div>';
     b.innerHTML = html;
   }
   function maiAnsBox_(x){
     var a = mai_.ans[x.id] || {};
-    return '<textarea data-maians="' + maiEsc_(x.id) + '" placeholder="' + (x.tier === 'B' || !x.tier ? '여기에 ' + maiEsc_(x.name) + ' 답을 붙여 넣으세요' : '자동으로 채워집니다(직접 붙여 넣어도 됨)') + '">' + maiEsc_(a.text || '') + '</textarea><div class="mai-sum" id="maiSum-' + maiEsc_(x.id) + '">' + maiSumHtml_(x.id) + '</div>';
+    return '<textarea data-maians="' + maiEsc_(x.id) + '" placeholder="위원에게 물으면 채워집니다(직접 붙여 넣어도 됨)">' + maiEsc_(a.text || '') + '</textarea><div class="mai-sum" id="maiSum-' + maiEsc_(x.id) + '">' + maiSumHtml_(x.id) + '</div>';
   }
   function maiSumHtml_(id){
     var a = mai_.ans[id]; if (!a || !a.text) return '';
@@ -211,7 +197,7 @@
   }
   function maiDecHtml_(){
     var d = mai_.decided, maj = maiMajority_();
-    return (d ? '<div class="mai-note" style="margin-bottom:4px;">지금 결정: <b>' + maiEsc_(d.선택) + (d.내용 ? ' — ' + d.내용 : '') + '</b> (' + maiEsc_(d.때 || '') + ')</div>' : '') +
+    return (d ? '<div class="mai-note" style="margin-bottom:4px;">' + maiEsc_(/회장/.test(d.누가 || '') ? '회장 결론' : '지금 결정') + ': <b>' + maiEsc_(d.선택) + (d.내용 ? ' — ' + d.내용 : '') + '</b> (' + maiEsc_((d.누가 || '세무사님') + ' · ' + (d.때 || '')) + ')' + (d.메모 ? '<br>' + maiEsc_(d.메모) : '') + '</div>' : '') +
       mai_.choices.concat([{ 기호: '보류', 내용: '아직 정하지 않음(추가 확인)' }]).map(function(c){
         return '<label style="display:block;margin:3px 0;"><input type="radio" name="maiPick" value="' + maiEsc_(c.기호) + '"' + (d && d.선택 === c.기호 ? ' checked' : '') + '> <b>' + maiEsc_(c.기호) + '</b> ' + maiEsc_(c.내용) + (maj.key === c.기호 ? ' <span class="mai-chip">AI 다수</span>' : '') + '</label>';
       }).join('') +
@@ -246,20 +232,6 @@
     });
     return out;
   }
-  // ---- 복사·열기 — 복사를 먼저(같은 누름 안에서 바로) 하고 창 하나만 연다: 한 번 누를 때 창 하나라 팝업 차단에 안 걸림 ----
-  function maiCopy_(text){
-    var ok = false;
-    try { var ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px'; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); document.body.removeChild(ta); } catch (e) { ok = false; }
-    if (!ok && navigator.clipboard) { try { navigator.clipboard.writeText(text); ok = true; } catch (e) {} }
-    return ok;
-  }
-  function maiOpenWeb_(id){
-    var x = maiSlot_(id), ok = maiCopy_(maiSheet_());
-    var w = window.open(x.url, '_blank'); // noopener를 주면 열렸는지 알 수 없어(늘 null) 열린 뒤 끊는다
-    if (w) { try { w.opener = null; } catch (e) {} mai_.opened[id] = new Date().toTimeString().slice(0, 5); }
-    maiToast_((ok ? '질문지를 복사했습니다' : '복사하지 못했습니다 — "📋 질문지 복사"를 다시 눌러 주세요') + ' — ' + (w ? x.name + ' 창에 붙여 넣고 보내세요. 답은 이 칸에 붙여 넣으면 됩니다.' : '새 창이 막혔습니다. 주소창 오른쪽의 팝업 차단 표시에서 이 사이트를 허용해 주세요.'));
-    maiRender_();
-  }
   function maiSave_(id, 방식){
     var a = mai_.ans[id]; if (!a) return;
     a.p = maiParse_(a.text); a.방식 = 방식 || a.방식 || '붙여넣기';
@@ -278,30 +250,20 @@
   }
   function maiChange_(ev){ var id = ev.target && ev.target.dataset && ev.target.dataset.maion; if (id) mai_.on[id] = ev.target.checked; }
   function maiClick_(ev){
-    var t = ev.target.closest && ev.target.closest('[data-mai],[data-maiopen]'); if (!t) return;
+    var t = ev.target.closest && ev.target.closest('[data-mai]'); if (!t) return;
     var d = t.dataset;
-    if (d.maiopen) return maiOpenWeb_(d.maiopen);
     if (d.mai === 'close'){ document.getElementById('maiPanel').style.display = 'none'; if (mai_.onClose) mai_.onClose(); return; }
-    if (d.mai === 'copy'){ maiToast_(maiCopy_(maiSheet_()) ? '질문지를 복사했습니다.' : '복사하지 못했습니다.'); return; }
-    if (d.mai === 'next'){
-      var nx = mai_.web.filter(function(w){ return !mai_.opened[w.id] && !(mai_.ans[w.id] && mai_.ans[w.id].text); })[0] || mai_.web.filter(function(w){ return !(mai_.ans[w.id] && mai_.ans[w.id].text); })[0];
-      if (!nx) return maiToast_('웹 AI 칸이 모두 답을 받았습니다.');
-      return maiOpenWeb_(nx.id);
-    }
     if (d.mai === 'api'){
       var ids = Object.keys(mai_.on).filter(function(k){ return mai_.on[k]; });
-      if (!ids.length) return maiToast_('켠 API 칸이 없습니다 — 무료 키가 없으면 웹 AI 칸을 쓰세요.');
-      var paid = mai_.api.filter(function(x){ return ids.indexOf(x.id) !== -1 && x.tier === 'C'; });
-      var ask = paid.length ? (typeof nxConfirm_ === 'function' ? nxConfirm_('유료 API로 보냅니다: ' + paid.map(function(x){ return x.name + ' ' + maiCost_(x); }).join(', ') + '\n보낼까요?') : Promise.resolve(window.confirm('유료 API로 보낼까요?'))) : Promise.resolve(true);
-      return ask.then(function(ok){
-        if (!ok) return;
-        t.disabled = true; t.textContent = '🤖 보내는 중…';
+      if (!ids.length) return maiToast_('켠 위원이 없습니다 — 설정 🤝 → 👥 위원 상태에서 키를 확인해 주세요.');
+      return Promise.resolve(true).then(function(){
+        t.disabled = true; t.textContent = '🤝 위원이 답하는 중…';
         return callGas('ai_ask_slots', { ids: ids, head: mai_.head, law: mai_.law }).then(function(r){
           if (!r || r.error) { maiToast_((r && r.error) || '응답 없음'); return; }
           (r.answers || []).forEach(function(a){ if (!a.ok){ maiToast_(a.name + ': ' + a.error); return; } mai_.ans[a.ai] = { text: a.text, 방식: 'API' }; });
           maiRender_();
           (r.answers || []).filter(function(a){ return a.ok; }).forEach(function(a){ maiSave_(a.ai, 'API'); });
-        }).catch(function(e){ maiToast_('보내지 못했습니다: ' + (e && e.message || e)); }).then(function(){ t.disabled = false; t.textContent = '🤖 켠 API 칸에 보내기'; });
+        }).catch(function(e){ maiToast_('보내지 못했습니다: ' + (e && e.message || e)); }).then(function(){ t.disabled = false; t.textContent = '🤝 위원에게 묻기'; });
       });
     }
     if (d.mai === 'decide'){
@@ -314,11 +276,11 @@
       t.disabled = true;
       return Promise.resolve(mai_.onDecide ? mai_.onDecide(dec, att) : null).then(function(r){
         if (r && r.error) { maiToast_('저장 못 함: ' + r.error); return; }
-        mai_.decided = Object.assign({ 때: new Date().toLocaleString('ko-KR') }, dec);
+        mai_.decided = Object.assign({ 때: new Date().toLocaleString('ko-KR'), 누가: '세무사님' }, dec);
         maiToast_('결정 저장 — ' + dec.선택 + (att.length ? ', 근거 ' + att.length + '건 첨부' : ''));
         var dd = document.getElementById('maiDec'); if (dd) dd.innerHTML = maiDecHtml_();
       }).catch(function(e){ maiToast_('저장 못 함: ' + (e && e.message || e)); }).then(function(){ t.disabled = false; });
     }
   }
-  window.nxMultiAi_ = { open: maiOpen_, parse: function(t){ return maiParse_(t); }, nums: maiNums_ };
+  window.nxMultiAi_ = { open: maiOpen_, parse: function(t, ctx){ return maiParse_(t, ctx); }, nums: maiNums_ };
 </script>

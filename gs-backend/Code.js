@@ -3937,16 +3937,11 @@ function dispatchClientAction0_(body) {
   if (body.action === 'improve_report_get') return jsonResponse(getImprovementReport_());
   if (body.action === 'system_audit_run') return jsonResponse(runNightlySystemAudit(true) || { success: true });
   if (body.action === 'improve_request_add') return jsonResponse(improve_addRequest_(body));
-  // [2026.10.13] AI 연합체·AI 자문단·개발자↔사용자 소통·2중 검증(Federation.js, docs/ai-federation.md)
+  // [2026.10.13] AI 회의(2026.10.19 재편)·개발자↔사용자 소통·2중 검증(Federation.js, docs/ai-federation.md)
   if (body.action === 'comm_status') return jsonResponse(commStatus_());
   if (body.action === 'comm_request_confirm') return jsonResponse(commRequestConfirm_(body));
   if (body.action === 'comm_dev_answer') return jsonResponse(commDevAnswer_(body));
   if (body.action === 'ai_registry') return jsonResponse({ success: true, registry: aiRegistryList_(), dispatch: AI_DISPATCH_TABLE_ });
-  if (body.action === 'ai_consensus') return jsonResponse(aiConsensus_(body));
-  if (body.action === 'ai_advice_get') return jsonResponse(aiAdviceGet_());
-  if (body.action === 'ai_advice_run') return jsonResponse(aiAdviceRun_(body));
-  if (body.action === 'ai_advice_add_manual') return jsonResponse(aiAdviceAddManual_(body));
-  if (body.action === 'ai_advice_mark') return jsonResponse(aiAdviceMark_(body));
   if (body.action === 'ai_set_key') return jsonResponse(aiSetKey_(body));
   if (body.action === 'ai_judge_get') return jsonResponse(aiJudgeGet_()); // [2026.10.19] 멀티 AI 사이드바 — 판단 대기 쟁점(Federation.js)
   if (body.action === 'ai_judge_save') return jsonResponse(aiJudgeSave_(body));
@@ -16751,8 +16746,8 @@ function runNightlyChiefManager() {
   // [2026.10.13] 환경 감시(토큰 0)는 오래 걸릴 수 있어(법령 11개·주간 정찰) 이 묶음(6분 제한) 안에서 돌리지 않고 새벽 4시 따로 돈다 —
   // 여기서는 그 시간 트리거가 있는지만 확인해 없으면 만든다. 감시가 끝나면 개선 후보 보고서를 다시 만들어 결과를 싣는다.
   try { envEnsureTrigger_(); } catch (err) { console.error('환경 감시 트리거 확인 실패: ' + err.message); }
-  // [2026.10.13] AI 연합체 무료 API 점검·AI 자문단(월요일)은 새벽 5시 별도 트리거(Federation.js aiFederationNightly) — 있는지만 확인
-  try { aiFedEnsureTrigger_(); } catch (err) { console.error('AI 연합체 트리거 확인 실패: ' + err.message); }
+  // [2026.10.13] AI 회의 위원 API 점검은 새벽 5시 별도 트리거(Federation.js aiFederationNightly) — 있는지만 확인
+  try { aiFedEnsureTrigger_(); } catch (err) { console.error('AI 회의 트리거 확인 실패: ' + err.message); }
   try { buildImprovementReport_(); } catch (err) { console.error('개선 후보 보고서 실패: ' + err.message); }
   // [2026.09.15 신규] 홈택스 매출내역 엑셀(0_NX_0 폴더)도 매일 밤 같이 확인 — 세무사님이
   // 새 파일을 올려두면 다음날 밤 자동으로 반영된다(수동 버튼도 별도로 있음).
@@ -36829,7 +36824,7 @@ function buildImprovementReport_() {
       report.guide.push('aiLead(🤖 AI 지휘 — 세무사님 조건 "gas를 계속 고도화"): ruleCands는 총괄·저비용 AI가 처음 보는 사건 2건 이상에서 같은 주제(kind)+모양(shape)에 같은 방식으로 답했고 세무사님이 확인했으며 고친 적 없는 판단 — 그 판단을 AI에 넘기기 전에 GAS 규칙(사건처리 단계·교차검증 규칙)으로 먼저 풀게 하는 PR. pattern이 없거나 const면 법령·서류 근거부터 확인하고 근거가 없으면 건너뛴다. 옮겼으면 업무관리자 폴더 _사건처리규칙승격기록.json에 {at, kind, shape, pr} 한 줄을 더하는 코드도 함께(승격 수 세기). gaps(빠진 도구)는 AI가 도구가 없어 못 한 일 — 되풀이되는 것부터 AiLead.js 도구(GAS, 토큰 0)로 만든다(새 도구는 CASEPROC_AI_TOOLS_에 더함 — 새 도구 수로 셈). topics의 move(내리기·올리기 후보)는 AI_ROUTE_TABLE(스크립트 속성) 또는 CASEPROC_AI_ROUTE_DEFAULT_를 고치는 PR — 사람이 승인. weeks는 매주 숫자(aiFree↑·perCaseDecisions↓·perCaseWon↓·promoted·newTools), stall이면 최우선. 고객 정보는 PR에 쓰지 말 것.');
     }
   } catch (e) { report.aiLeadError = String(e && e.message || e).slice(0, 200); }
-  // [2026.10.13] 개발자↔사용자 소통·AI 자문단(Federation.js, 토큰 0) — 요청 번호·상태, 기능 부족 신고, 개발자 질문 답, AI 자문 공통 제안
+  // [2026.10.13] 개발자↔사용자 소통(Federation.js, 토큰 0) — 요청 번호·상태, 기능 부족 신고, 개발자 질문 답, AI 자문 공통 제안
   try {
     var st = commRequestsLoad_(), byAt = {};
     st.tracking.entries.forEach(function (x) { byAt[x.at] = x; });
@@ -36839,17 +36834,11 @@ function buildImprovementReport_() {
     if (report.gaps.length) headline.push('🧩 job AI가 할 수 없었던 요청 ' + report.gaps.length + '건(기능 부족 신고)');
     report.answers = commDevQuestions_().filter(function (q) { return q.answer; }).map(function (q) { return { id: q.id, title: q.title, answer: q.answer, at: q.answeredAt }; });
     if (report.answers.length) headline.push('💬 개발자 질문에 세무사님이 답함 ' + report.answers.length + '건');
-    var adv = aiAdviceLoad_(), lastAdv = adv.rounds[adv.rounds.length - 1];
-    if (lastAdv) {
-      report.ai_advice = { week: lastAdv.week, scores: adv.scores, items: [] };
-      lastAdv.questions.forEach(function (q) { q.suggestions.forEach(function (s, i) { if ((s.common || s.verdict === '채택') && s.verdict !== '기각') report.ai_advice.items.push({ qid: q.id, idx: i, topic: q.topic, suggestion: s.text, ais: s.ais, verdict: s.verdict || '' }); }); });
-      if (report.ai_advice.items.length) headline.push('🧑‍🏫 AI 자문단 공통·채택 제안 ' + report.ai_advice.items.length + '건(' + lastAdv.week + ')');
-    }
-    report.candidateCount += report.gaps.length + report.answers.length + (report.ai_advice ? report.ai_advice.items.length : 0);
+    report.candidateCount += report.gaps.length + report.answers.length;
     report.guide.push('요청 번호: requests의 id(R…)를 그 요청을 고친 커밋·PR 제목에 "[요청#R…]"으로 넣는다 — 📥 반영 때 job이 그 요청을 "반영됨"으로 바꾸고 세무사님 확인을 받는다. status=재오픈이면 reopenNote(세무사님 지적)를 우선 고친다. urgent(🚨)는 최우선.');
     report.guide.push('gaps(🧩 기능 부족 신고): job AI가 사용자 요청을 도구가 없어 못 한 기록. 반복되거나 쉬운 것부터 도구·⚡바로처리로 만든다(유료 AI 호출 추가 금지 원칙 그대로).');
     report.guide.push('개발자 질문: 판단이 필요하면 추측하지 말고 docs/dev-questions.md에 "## Q-YYYYMMDD-n 제목" 블록(쉬운 말, 고객 정보 없이)을 추가하는 PR을 올린다. answers에 세무사님 답이 오면 반영하고 그 블록을 지운다.');
-    report.guide.push('ai_advice(🧑‍🏫 AI 자문단): 여러 무료 AI가 공통으로 낸 기술 제안. 무료 AI 답은 틀릴 수 있으니 반드시 공식 문서로 사실 확인 → job에 적용 가능한지 작게 시험 → PR. 확인 안 되면 기각 이유를 PR 본문에 적는다. 새 AI·새 버전 편입은 docs/ai-federation.md "신규 AI 편입 절차"(고정 시험 세트, 약관 확인)대로 Federation.js AI_REGISTRY_를 고치는 PR.');
+    report.guide.push('🛠 AI 회의(시스템 안건, 2026-10-19 재편): 이 보고서의 반복 오류·유료 비용·막힌 기능·요청과 개정 감시의 기술 변화가 안건이다. 위원 = Gemini API(무료 등급, 고객 정보 없이 묻기), 회장 = 이 정비 루틴. 결론은 고침 작업(PR)으로, 결론 안 난 것과 돈 드는 결정만 docs/dev-questions.md로 세무사님께. 위원 답은 틀릴 수 있으니 공식 문서로 사실 확인 후 반영.');
   } catch (e) { report.federation = { error: String(e && e.message || e).slice(0, 200) }; }
   try { improve_reportFile_().setContent(JSON.stringify(report)); } catch (e) {}
   return { success: true, report: report };

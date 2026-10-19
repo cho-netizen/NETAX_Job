@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 12:54 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 14:38 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -1074,9 +1074,9 @@
       <h3>🌙 야간 자동점검 상태</h3>
       <div id="dashNightlyStatus"><div class="spinner">불러오는 중…</div></div>
     </div>
-    <!-- [2026.10.13] AI 연합체·개발자 소통 요약 — 새 기능·확인할 요청·긴급 요청·개발자 질문·AI 자문단(자세한 것은 설정 🤝 카드) -->
+    <!-- [2026.10.13] 개발자 소통 요약 — 새 기능·확인할 요청·긴급 요청·개발자 질문 · [2026.10.19] AI 회의 결정 필요(자문단은 삭제, 자세한 것은 설정 🤝 카드) -->
     <div class="card">
-      <h3>🤝 새 기능 · 개발자 소통 · AI 자문단</h3>
+      <h3>🤝 새 기능 · 개발자 소통 · AI 회의</h3>
       <div id="dashFedStatus"><div class="spinner">불러오는 중…</div></div>
     </div>
     <!-- [2026.09 신규] 증빙관리에 폴더별 "경과지" 기록판을 새로 만들면서 발견한 빈틈 — 각
@@ -1667,9 +1667,10 @@
       if (unanswered) html += '<div style="padding:6px 0;">❓ 개발자 질문 <b>' + unanswered + '건</b> <a href="#" data-dashgo="settings">답하러 가기</a></div>';
       var ch = (r.changes || []).slice(0, 5);
       html += '<div style="padding:6px 0;"><b>✨ 최근 바뀐 기능</b>' + (ch.length ? ch.map(function(c){ return '<div style="font-size:12px; color:var(--sub); padding-top:2px;">' + esc(String(c.at).slice(5)) + ' · ' + esc(String(c.msg).slice(0, 90)) + '</div>'; }).join('') : '<div style="font-size:12px; color:var(--sub);">기록 없음(다음 반영부터 쌓입니다)</div>') + '</div>';
-      var a = r.advice;
-      html += '<div style="padding:6px 0;"><b>🧑‍🏫 이번 주 AI 자문단</b> ' + (a ? esc(a.week) + ' — 질문 ' + a.questions + ' · 공통 제안 ' + a.common + ' · 채택 ' + a.adopted + ' · 검토 중 ' + a.pending : '아직 없음(매주 월요일 밤, 무료 AI 키가 있으면 자동)') + ' <a href="#" data-dashgo="settings">자세히</a></div>';
+      html += '<div style="padding:6px 0;" id="dashMeetNeed"><b>🤝 AI 회의</b> 회의 기록·세무사님 결정 필요 <a href="#" data-dashgo="settings">설정 → 🤝 AI 회의</a></div>';
       box.innerHTML = html;
+      // 회장(Claude)이 결론을 못 낸 안건(결정 '보류')만 세무사님께 — 수만 보여 준다
+      callGas('ai_judge_get', {}).then(function(j){ var n = ((j && j.doc && j.doc.항목) || []).filter(function(x){ return x.결정 && x.결정.선택 === '보류'; }).length; var el = document.getElementById('dashMeetNeed'); if (el && n) el.insertAdjacentHTML('afterbegin', '🙋 <b style="color:#a83232;">세무사님 결정 필요 ' + n + '건</b> · '); }).catch(function(){});
     }).catch(function(e){ var b = document.getElementById('dashFedStatus'); if (b) b.innerHTML = '<div class="empty-row">오류: ' + esc(e.message) + '</div>'; });
   }
   document.addEventListener('click', function(ev){
@@ -5065,18 +5066,18 @@
 
       <!-- [2026.10.19] ⚖️ 법령정보 → 📜 법령 탭 "🤝 판단 대기" 카드 — 앱에만(tools/build-app.js가 lawsearch.html 자리 표시에 끼움). 서버 10MB 한도. -->
 <div class="card" id="jwCard">
-  <h3 style="margin-top:0;">🤝 판단 대기 — 여러 AI에게 묻고 세무사님이 고르기</h3>
-  <div class="lsi-note" style="margin-bottom:8px;">법령·서식을 정비하며 바로 확인되지 않은 쟁점입니다. 쟁점을 열면 질문지(쟁점·선택지·서식 칸 해설·답 형식·조문 원문)를 만들어 멀티 AI 사이드바에 띄웁니다(토큰 0). 웹 AI 답을 붙여 넣으면 근거가 법제처에 실제로 있는지 확인하고 비교표를 보여 줍니다. 결정은 세무사님이 고르고, 엔진은 자동으로 고치지 않습니다.</div>
+  <h3 style="margin-top:0;">🤝 판단 대기 — AI 회의 기록</h3>
+  <div class="lsi-note" style="margin-bottom:8px;">법령·서식을 정비하며 바로 확인되지 않은 쟁점(⚖️ 법령 안건)입니다. 위원(Gemini API)이 같은 질문지(쟁점·선택지·서식 칸 해설·조문 원문)에 답하고, 근거가 법제처에 실제로 있는지(✔/⚠) 확인한 뒤 회장(Claude)이 결론을 냅니다. 결론이 안 난 것(🙋 결정 필요)만 세무사님이 고릅니다. 엔진은 자동으로 고치지 않습니다.</div>
   <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-    <button type="button" class="ghost-btn" id="jwLoad">📋 쟁점 목록</button>
-    <select id="jwFilter" aria-label="상태 고르기"><option value="">전체</option><option value="판단 대기">판단 대기</option><option value="결정">결정</option><option value="보류">보류</option></select>
+    <button type="button" class="ghost-btn" id="jwLoad">📋 회의 기록</button>
+    <select id="jwFilter" aria-label="상태 고르기"><option value="">전체</option><option value="회의 전">회의 전</option><option value="위원 답함">위원 답함</option><option value="회장 결론">회장 결론</option><option value="결정 필요">🙋 결정 필요</option><option value="세무사님 결정">세무사님 결정</option></select>
     <span id="jwCount" class="lsi-note"></span>
   </div>
   <div id="jwList" style="margin-top:8px;"></div>
 </div>
 <script>
   // ============================================================
-  // [2026.10.19] 판단 대기 쟁점 → 질문지 → 🤝 멀티 AI 사이드바(app-only/multiai.html). 세무사님 말씀(원문):
+  // [2026.10.19] 판단 대기 쟁점 → 질문지 → 🤝 AI 회의 사이드바(app-only/multiai.html). 세무사님 말씀(원문):
   //  "법령을 정비하고 서식을 정비하면서 수정할 내용 중 바로 확인이 되지 않는 것이 있었지? 이것을 설정탭의 ai연합체 기능을 보완하여 해결해 보자."
   //  쟁점 목록 = 드라이브 업무관리자/법령/_판단대기.json(서버 ai_judge_get·ai_judge_save, Federation.js). 만듦: netax-inventory/maps/법령도구/판단대기_만들기.js
   //  질문지는 화면이 만든다(토큰 0): 쟁점 설명·선택지 + 서식 칸 해설(LSI_FORM_MAPS_) + 답 형식 + 정비본 조문 원문(law_lookup_article, 관계법령 모양).
@@ -5084,27 +5085,46 @@
   // ============================================================
   var jwDoc_ = null, jwSheets_ = {};
   function jwEsc_(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  function jwLoad_(){
-    var box = document.getElementById('jwList'); box.textContent = '불러오는 중…';
+  // [2026.10.19 재편 — AI 회의] 상태: 회의 전 → 위원 답함 → 회장 결론(조정 세션이 결정에 누가 '회장(Claude)'로 저장) / 🙋 결정 필요(회장이 '보류') → 세무사님 결정
+  function jwState_(x){
+    var d = x.결정;
+    if (d && d.선택) return d.선택 === '보류' ? '결정 필요' : /회장/.test(d.누가 || '') ? '회장 결론' : '세무사님 결정';
+    return Object.keys(x.답 || {}).filter(function(k){ return k.charAt(0) !== '_'; }).length ? '위원 답함' : '회의 전';
+  }
+  // 위원 답 요약 — 결론은 글에서 다시 뽑는다(회의 기록에 결론 칸이 비어 있어도), 근거 실재는 저장된 확인 결과(사이드바를 열면 확인해 저장)
+  function jwAnsSum_(x){
+    var ids = Object.keys(x.답 || {}).filter(function(k){ return k.charAt(0) !== '_'; });
+    if (!ids.length) return { 결론: '—', 근거: '—' };
+    var parse = window.nxMultiAi_ && nxMultiAi_.parse;
+    var con = ids.map(function(k){ var a = x.답[k], c = a.결론 || (parse ? parse(a.글 || '', { choices: x.선택지 || [], defLaw: (x.조문 && x.조문[0] && x.조문[0].법령) || '' }).결론 : ''); return (a.이름 || k).replace(/\(.*\)/, '') + ' ' + (c || '?'); }).join(' · ');
+    var ok = 0, bad = 0, q = 0, none = 0;
+    ids.forEach(function(k){ var ev = x.답[k].근거 || []; if (!ev.length) none++; ev.forEach(function(e){ if (e.상태 === '실재') ok++; else if (e.상태 === '못 찾음') bad++; else q++; }); });
+    return { 결론: con, 근거: (ok ? '✔' + ok + ' ' : '') + (bad ? '⚠' + bad + ' ' : '') + (q ? '?' + q + ' ' : '') + (none ? '(열면 확인 ' + none + ')' : '') };
+  }
+  function jwLoad_(box, filter){
+    box = box || document.getElementById('jwList'); box.textContent = '불러오는 중…';
     return callGas('ai_judge_get', {}).then(function(r){
       if (!r || r.error){ box.textContent = (r && r.error) || '응답 없음'; return; }
-      jwDoc_ = r.doc; jwRender_();
+      jwDoc_ = r.doc; jwRender_(box, filter);
     }).catch(function(e){ box.textContent = '불러오지 못했습니다: ' + (e && e.message || e); });
   }
-  function jwState_(x){ return x.상태 || (x.결정 ? (x.결정.선택 === '보류' ? '보류' : '결정') : '판단 대기'); }
-  function jwRender_(){
-    var box = document.getElementById('jwList'), f = document.getElementById('jwFilter').value;
-    var list = (jwDoc_ && jwDoc_.항목 || []).filter(function(x){ return !f || jwState_(x) === f; });
-    var all = jwDoc_ && jwDoc_.항목 || [];
-    document.getElementById('jwCount').textContent = '전체 ' + all.length + '건 · 판단 대기 ' + all.filter(function(x){ return jwState_(x) === '판단 대기'; }).length + ' · 결정 ' + all.filter(function(x){ return jwState_(x) === '결정'; }).length + ' · 보류 ' + all.filter(function(x){ return jwState_(x) === '보류'; }).length;
-    var cell = function(h, t){ return typeof lsiCell_ === 'function' ? lsiCell_(h, t || '') : '<span class="lsi-cell">' + h + '</span>'; };
+  // 설정 🤝 AI 회의 카드도 같은 표를 쓴다(그 카드 상자에 그림)
+  function jwRenderInto_(box, filter){ return jwLoad_(box, filter); }
+  function jwRender_(box, filter){
+    box = box || document.getElementById('jwList');
+    var sel = document.getElementById('jwFilter'), f = filter != null && filter !== '' ? filter : (box.id === 'jwList' && sel ? sel.value : (filter || ''));
+    var all = jwDoc_ && jwDoc_.항목 || [], list = all.filter(function(x){ return !f || jwState_(x) === f; });
+    var cnt = function(st){ return all.filter(function(x){ return jwState_(x) === st; }).length; };
+    var head = '전체 ' + all.length + '건 · 회의 전 ' + cnt('회의 전') + ' · 위원 답함 ' + cnt('위원 답함') + ' · 회장 결론 ' + cnt('회장 결론') + ' · 🙋 결정 필요 ' + cnt('결정 필요') + ' · 세무사님 결정 ' + cnt('세무사님 결정');
+    var c = document.getElementById('jwCount'); if (c && box.id === 'jwList') c.textContent = head;
+    var cell = function(h, t){ return typeof lsiCell_ === 'function' ? lsiCell_(h, t || '') : '<span class="lsi-cell" title="' + jwEsc_(t || '') + '">' + h + '</span>'; };
     var rows = list.map(function(x){
-      var n = Object.keys(x.답 || {}).length;
-      return [cell('<button type="button" class="lsi-link" data-jwopen="' + jwEsc_(x.id) + '">' + jwEsc_(x.id) + ' 열기</button>'), cell(jwEsc_(x.분류)), cell(jwEsc_(x.세목)), cell(jwEsc_(x.제목), x.제목), cell(n ? n + '곳' : '—'),
-        cell(x.결정 ? '<b>' + jwEsc_(x.결정.선택) + '</b> ' + jwEsc_(x.결정.때 || '') : jwEsc_(jwState_(x)), x.결정 ? x.결정.선택 + ' ' + (x.결정.내용 || '') : '')];
+      var a = jwAnsSum_(x), d = x.결정, st = jwState_(x);
+      var dec = d && d.선택 ? (st === '결정 필요' ? '🙋 ' : '') + '<b>' + jwEsc_(d.선택) + '</b> ' + jwEsc_((d.누가 || '') + ' ' + String(d.때 || '').slice(5)) : jwEsc_(st);
+      return [cell('<button type="button" class="lsi-link" data-jwopen="' + jwEsc_(x.id) + '">' + jwEsc_(x.id) + ' 열기</button>'), cell(jwEsc_(x.분류 + '·' + x.세목)), cell(jwEsc_(x.제목), x.제목), cell(jwEsc_(a.결론), a.결론), cell(jwEsc_(a.근거), '✔ 법제처에 있음 · ⚠ 못 찾음 · ? 확인 못 함'), cell(dec, d ? (d.내용 || '') + (d.메모 ? ' — ' + d.메모 : '') : '')];
     });
-    var cols = [{ h: '쟁점', w: 6 }, { h: '분류', w: 6 }, { h: '세목', w: 3.5 }, { h: '무엇', w: 34 }, { h: '답', w: 3.5 }, { h: '결정', w: 11 }];
-    box.innerHTML = rows.length ? (typeof lsiGridHtml_ === 'function' ? lsiGridHtml_(cols, rows) : '<table>' + rows.map(function(r){ return '<tr><td>' + r.join('</td><td>') + '</td></tr>'; }).join('') + '</table>') : '<div class="lsi-note">해당 쟁점이 없습니다.</div>';
+    var cols = [{ h: '안건', w: 6 }, { h: '분류', w: 8 }, { h: '무엇', w: 28 }, { h: '위원 답', w: 13 }, { h: '근거 실재', w: 9 }, { h: '회장 결론·결정', w: 14 }];
+    box.innerHTML = (box.id === 'jwList' ? '' : '<div style="margin-bottom:4px;">' + jwEsc_(head) + '</div>') + (rows.length ? (typeof lsiGridHtml_ === 'function' ? lsiGridHtml_(cols, rows) : '<table>' + rows.map(function(r){ return '<tr><td>' + r.join('</td><td>') + '</td></tr>'; }).join('') + '</table>') : '<div class="lsi-note">해당 안건이 없습니다.</div>');
   }
   // 서식 칸 해설 — LSI_FORM_MAPS_(앱에 든 칸 해설). 칸을 안 정했으면 서식 이름만.
   function jwFormText_(refs){
@@ -5166,7 +5186,7 @@
     if (typeof nxMultiAi_ === 'undefined'){ alert('멀티 AI 사이드바를 불러오지 못했습니다.'); return; }
     if (typeof showToast === 'function') showToast('질문지 만드는 중 — 조문 ' + (x.조문 || []).length + '개 읽기');
     jwSheet_(x).then(function(s){
-      var save = function(body){ body.id = x.id; return callGas('ai_judge_save', body).then(function(r){ if (r && r.item){ Object.assign(x, r.item); jwRender_(); } return r; }); };
+      var save = function(body){ body.id = x.id; return callGas('ai_judge_save', body).then(function(r){ if (r && r.item){ Object.assign(x, r.item); if (document.getElementById('jwList') && document.getElementById('jwList').innerHTML) jwRender_(); } return r; }); };
       nxMultiAi_.open({ mode: 'law', title: x.id + ' ' + x.제목, head: s.head, law: s.law, choices: x.선택지 || [], defLaw: (x.조문 && x.조문[0] && x.조문[0].법령) || '', saved: x.답 || {}, decided: x.결정,
         onAnswer: function(slot, text, p, how){ return save({ answer: { ai: slot.id, name: slot.name, text: text, 결론: p.결론 || p.결론글.slice(0, 60), 방식: how } }); },
         onCheck: function(slot, ev){ return save({ check: { ai: slot.id, 근거: ev } }); },
@@ -5176,9 +5196,10 @@
   document.addEventListener('click', function(ev){
     var t = ev.target.closest && ev.target.closest('#jwLoad,[data-jwopen]'); if (!t) return;
     if (t.id === 'jwLoad') return jwLoad_();
+    if (!jwDoc_) return;
     jwOpen_(t.dataset.jwopen);
   });
-  document.addEventListener('change', function(ev){ if (ev.target && ev.target.id === 'jwFilter' && jwDoc_) jwRender_(); });
+  document.addEventListener('change', function(ev){ if (ev.target && ev.target.id === 'jwFilter' && jwDoc_) jwRender_(document.getElementById('jwList'), ev.target.value); });
 </script>
 
       <div class="card">
@@ -6633,7 +6654,7 @@
   });
 </script>
 
-<!-- [2026.10.19] 🤝 멀티 AI 사이드바 — 앱(job.netax.kr/app)에만 들어간다(tools/build-app.js가 lawsearch.html 자리 표시에 끼움). 서버 10MB 한도. -->
+<!-- [2026.10.19] 🤝 AI 회의 사이드바 — 앱(job.netax.kr/app)에만 들어간다(tools/build-app.js가 lawsearch.html 자리 표시에 끼움). 서버 10MB 한도. -->
 <style>
   #maiPanel{ position:fixed; top:0; right:0; width:min(640px, 100vw); height:100vh; background:var(--panel, #fff); border-left:1px solid var(--line, #ddd); box-shadow:-6px 0 18px rgba(0,0,0,.12); z-index:950; display:flex; flex-direction:column; font-size:13px; }
   #maiPanel .mai-head{ display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line, #ddd); }
@@ -6655,23 +6676,13 @@
 </style>
 <script>
   // ============================================================
-  // [2026.10.19] 🤝 멀티 AI 사이드바 — 질문 하나를 여러 AI 칸에 동시에(웹 AI는 복사·사이트 열기·답 붙여넣기, API는 켜면 자동) → 비교표 → 세무사님이 고름.
-  //  세무사님 말씀(원문): "이 ai연합체를 시스템업그레이드와 법령검색 양쪽에 활용하자는 것이다. 멀티ai사이드바 라는 것을 보고 여러ai들을 동시에 활용하는 방안을 생각한 것이었다."
-  //                       "일단 api없이 해보고, 무료api가 있다고 하면 추후 보완할께"
-  //  - 웹 AI(B 등급)는 약관상 자동 질의·자동 답 수집 금지(docs/ai-federation.md 2절) → 칸마다 "📋 복사·열기"(한 번 누를 때 창 하나 — 팝업 차단 안 걸림),
-  //    "▶ 다음 웹 AI" 단추로 차례대로. 보내기는 세무사님이 그 사이트에서 누르고, 답을 칸에 붙여 넣는다.
-  //    주소에 질문을 미리 넣는 방식(?q=)은 쓰지 않는다 — 질문지(조문 원문 포함)가 주소 길이 한도를 넘고, 일부 사이트는 ?q=로 바로 보내 버려 "보내기는 세무사님이"와 어긋남.
-  //  - API 칸: A 무료(설정 🔑에 키가 들어오면 바로 자동 칸, 0원)·C 유료(Claude·Gemini — 기본 꺼짐, 켜면 건당 예상 비용 확인 후 보냄). 서버 ai_ask_slots(Federation.js).
+  // [2026.10.19 재편] 🤝 AI 회의 사이드바 — 세무사님 "이 방향으로 수정하자"(AI 연합체를 회의 틀 하나로, 돌지 않는 것은 삭제).
+  //  위원 = Gemini API(무료 등급 키)·OpenRouter(키를 넣으면 추가) — 서버 ai_ask_slots(Federation.js), 고객 자료는 서버가 막음. 회장 결론은 조정 세션(Claude)이 판단 대기 파일에 저장.
+  //  웹 AI 복사·붙여넣기 칸과 유료 칸 토글은 삭제(2026-10-19). 답 칸에 직접 붙여 넣는 것은 그대로 됨.
   //  - 법령 쪽(mode 'law'): 답에서 결론(가/나)·근거 조문·판례·예규 번호를 규칙으로 뽑고(토큰 0) 법제처에 실제로 있는지 확인(실재 ✔ / 못 찾음 ⚠ / 확인 못 함 ?).
   //    시스템 쪽(mode 'system'): 같은 방식, 근거 확인 없이 결론끼리 묶기만.
   //  열기: nxMultiAi_.open({ mode, title, head, law, choices, defLaw, saved, decided, onAnswer, onCheck, onDecide, storeKey })
   // ============================================================
-  var MAI_WEB_FALLBACK_ = [ // 명단(ai_registry)을 못 받을 때만 — Federation.js AI_REGISTRY_ B 등급과 같게
-    { id: 'web-chatgpt', name: 'ChatGPT(웹)', url: 'https://chatgpt.com/' }, { id: 'web-gemini', name: 'Gemini(웹)', url: 'https://gemini.google.com/app' },
-    { id: 'web-claude', name: 'Claude(웹)', url: 'https://claude.ai/new' }, { id: 'web-copilot', name: 'Copilot(웹)', url: 'https://copilot.microsoft.com/' },
-    { id: 'web-perplexity', name: 'Perplexity(웹)', url: 'https://www.perplexity.ai/' }, { id: 'web-deepseek', name: 'DeepSeek(웹)', url: 'https://chat.deepseek.com/' },
-    { id: 'web-grok', name: 'Grok(웹)', url: 'https://grok.com/' }, { id: 'web-clovax', name: '클로바X(웹)', url: 'https://clova-x.naver.com/' }];
-  var MAI_KRW_ = 1400, MAI_OUT_TOKENS_ = 1200;
   var mai_ = null; // 지금 열린 사이드바 상태
   var maiVerifyCache_ = {}; // 근거 실재 확인 결과(같은 번호를 두 번 묻지 않음)
   function maiEsc_(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -6689,7 +6700,11 @@
     while ((m = re3.exec(t))) add('예규', m[0], m[0].replace(/\s+/g, ''));
     return out.slice(0, 20);
   }
-  function maiParse_(text){
+  function maiParse_(text, ctx){
+    var keep = mai_; if (ctx) mai_ = Object.assign({}, mai_ || {}, ctx); // 회의 기록 표는 사이드바 없이 안건마다 선택지·기본 법령을 넘긴다
+    try { return maiParse0_(text); } finally { mai_ = keep; }
+  }
+  function maiParse0_(text){
     var t = String(text || ''), r = { 결론: '', 결론글: '', 조문: [], 번호: [] };
     var m = t.match(/결론\s*\**\s*[:：]\s*\**\s*([^\n]*)/);
     var line = m ? m[1].replace(/\*+/g, '').trim() : (t.split('\n').filter(function(x){ return x.trim(); }).slice(-1)[0] || '').trim();
@@ -6740,7 +6755,7 @@
   function maiOpen_(opts){
     mai_ = Object.assign({ mode: 'law', title: '', head: '', law: '', choices: [], saved: {}, decided: null }, opts || {});
     mai_.ans = {}; mai_.opened = {}; mai_.checks = {};
-    Object.keys(mai_.saved || {}).forEach(function(id){ var a = mai_.saved[id]; mai_.ans[id] = { text: a.글 || a.text || '', 방식: a.방식 || '붙여넣기' }; });
+    Object.keys(mai_.saved || {}).forEach(function(id){ var a = mai_.saved[id]; mai_.ans[id] = { text: a.글 || a.text || '', 방식: a.방식 || '붙여넣기', 이름: a.이름 || '' }; });
     if (mai_.storeKey){ try { var st = JSON.parse(localStorage.getItem(mai_.storeKey) || '{}'); Object.keys(st).forEach(function(id){ if (!mai_.ans[id]) mai_.ans[id] = st[id]; }); } catch (e) {} }
     var el = document.getElementById('maiPanel');
     if (!el){ el = document.createElement('div'); el.id = 'maiPanel'; document.body.appendChild(el); el.addEventListener('click', maiClick_); el.addEventListener('input', maiInput_); el.addEventListener('change', maiChange_); }
@@ -6748,44 +6763,36 @@
     el.innerHTML = '<div class="mai-head"><b title="' + maiEsc_(mai_.title) + '">🤝 ' + maiEsc_(mai_.title) + '</b><button type="button" class="ghost-btn" data-mai="close">✕ 닫기</button></div><div class="mai-body" id="maiBody">명단 불러오는 중…</div>';
     var go = function(reg){
       mai_.reg = reg;
-      mai_.web = (reg.filter(function(x){ return x.tier === 'B'; }).length ? reg.filter(function(x){ return x.tier === 'B'; }) : MAI_WEB_FALLBACK_);
-      mai_.api = reg.filter(function(x){ return (x.tier === 'A' && x.keyProp) || (x.tier === 'C' && /^(claude-|gemini-paid)/.test(x.id)); });
-      mai_.on = {}; mai_.api.forEach(function(x){ mai_.on[x.id] = x.tier === 'A' && x.status === '사용 가능'; }); // 무료는 키 있으면 켜짐, 유료는 기본 꺼짐(세무사님 "api없이")
+      mai_.api = reg.filter(function(x){ return x.member; }); // 위원(Gemini API·OpenRouter) — 키가 있으면 켜짐
+      mai_.on = {}; mai_.api.forEach(function(x){ mai_.on[x.id] = x.status === '사용 가능'; });
       maiRender_();
       Object.keys(mai_.ans).forEach(maiCheckSlot_);
     };
     callGas('ai_registry', {}).then(function(r){ go((r && r.registry) || []); }).catch(function(){ go([]); });
   }
-  function maiAllSlots_(){ return (mai_.api || []).concat(mai_.web || []); }
-  function maiSlot_(id){ return maiAllSlots_().filter(function(x){ return x.id === id; })[0] || { id: id, name: id }; }
-  function maiCost_(x){
-    if (!x.price) return x.tier === 'A' ? '0원' : '단가 모름';
-    var inTok = Math.round(maiSheet_().length * 0.9), krw = (inTok * x.price.in + MAI_OUT_TOKENS_ * x.price.out) / 1e6 * MAI_KRW_;
-    return '약 ' + Math.max(1, Math.round(krw)) + '원(추정)';
-  }
+  function maiAllSlots_(){ return mai_.api || []; }
+  function maiSlot_(id){ return maiAllSlots_().filter(function(x){ return x.id === id; })[0] || { id: id, name: (mai_.ans[id] && mai_.ans[id].이름) || id }; }
   function maiRender_(){
     var b = document.getElementById('maiBody'); if (!b) return;
-    var sheet = maiSheet_(), webDone = mai_.web.filter(function(w){ return mai_.ans[w.id] && mai_.ans[w.id].text; }).length;
-    var html = '<div class="mai-note">' + (mai_.mode === 'law' ? '질문지를 여러 AI에 보내고, 답을 칸에 붙여 넣으면 결론·근거를 뽑아 근거가 법제처에 실제로 있는지 확인합니다. 결정은 세무사님이 고릅니다(엔진은 자동으로 고치지 않음).' : '질문을 여러 AI에 보내고 답을 붙여 넣으면 결론끼리 비교합니다.') + '</div>';
-    html += '<div class="mai-sec">질문지 <span class="mai-chip">' + sheet.length.toLocaleString() + '자</span></div><pre class="mai-sheet">' + maiEsc_(sheet) + '</pre>' +
-      '<div class="mai-row" style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="ghost-btn" data-mai="copy">📋 질문지 복사</button><button type="button" class="btn" data-mai="next">▶ 다음 웹 AI 열기 (' + webDone + '/' + mai_.web.length + ' 답함)</button></div>';
-    // API 칸
-    html += '<div class="mai-sec">API 칸 — 켜면 자동</div>' + (mai_.api.length ? mai_.api.map(function(x){
-      var can = x.status === '사용 가능', paid = x.tier === 'C';
+    var sheet = maiSheet_();
+    var html = '<div class="mai-note">' + (mai_.mode === 'law' ? '위원 AI가 질문지에 답하면 결론·근거를 뽑아 근거가 법제처에 실제로 있는지 확인합니다. 회장(Claude)이 결론을 내고, 결론이 안 난 것만 세무사님이 고릅니다(엔진은 자동으로 고치지 않음).' : '위원 AI의 답을 결론끼리 비교합니다.') + '</div>';
+    html += '<div class="mai-sec">질문지 <span class="mai-chip">' + sheet.length.toLocaleString() + '자</span></div><pre class="mai-sheet">' + maiEsc_(sheet) + '</pre>';
+    // 위원 칸 — 키가 있으면 켜짐(무료 등급, 0원). 키가 없으면 설정 🤝 → 👥 위원 상태에서 넣음
+    html += '<div class="mai-sec">위원</div>' + (mai_.api.length ? mai_.api.map(function(x){
+      var can = x.status === '사용 가능';
       return '<div class="mai-slot"><div class="mai-row"><label><input type="checkbox" data-maion="' + maiEsc_(x.id) + '"' + (mai_.on[x.id] ? ' checked' : '') + (can ? '' : ' disabled') + '> <b>' + maiEsc_(x.name) + '</b></label>' +
-        '<span class="mai-chip">' + (paid ? '유료 · ' + maiEsc_(maiCost_(x)) : '무료') + '</span><span class="mai-note">' + maiEsc_(can ? '' : x.status + (x.tier === 'A' ? ' — 설정 🤝 카드 🔑에 키를 넣으면 바로 자동 칸' : '')) + '</span></div>' + maiAnsBox_(x) + '</div>';
-    }).join('') + '<button type="button" class="ghost-btn" data-mai="api">🤖 켠 API 칸에 보내기</button>' : '<div class="mai-note">명단을 받지 못했습니다.</div>');
-    // 웹 칸
-    html += '<div class="mai-sec">웹 AI 칸 — 복사·열기 → 그 사이트에서 붙여넣고 보내기 → 답을 복사해 칸에 붙여넣기</div>' + mai_.web.map(function(x){
-      return '<div class="mai-slot"><div class="mai-row"><b>' + maiEsc_(x.name) + '</b><button type="button" class="ghost-btn" data-maiopen="' + maiEsc_(x.id) + '">📋 복사·열기</button>' + (mai_.opened[x.id] ? '<span class="mai-chip">열림 ' + maiEsc_(mai_.opened[x.id]) + '</span>' : '') + '</div>' + maiAnsBox_(x) + '</div>';
-    }).join('');
+        '<span class="mai-chip">무료 등급 · 오늘 ' + (x.usedToday || 0) + '번</span><span class="mai-note">' + maiEsc_(can ? '' : x.status + ' — 설정 🤝 → 👥 위원 상태') + '</span></div>' + maiAnsBox_(x) + '</div>';
+    }).join('') + '<button type="button" class="ghost-btn" data-mai="api">🤝 위원에게 묻기</button>' : '<div class="mai-note">위원 명단을 받지 못했습니다.</div>');
+    // 위원 칸에 없는 저장된 답(예전 회의·다른 이름) — 읽기만
+    var extra = Object.keys(mai_.ans).filter(function(id){ return id.charAt(0) !== '_' && !mai_.api.some(function(x){ return x.id === id; }) && mai_.ans[id].text; });
+    if (extra.length) html += '<div class="mai-sec">그 밖에 저장된 답</div>' + extra.map(function(id){ return '<div class="mai-slot"><b>' + maiEsc_(maiSlot_(id).name) + '</b>' + maiAnsBox_(maiSlot_(id)) + '</div>'; }).join('');
     html += '<div class="mai-sec">비교표</div><div id="maiCmp">' + maiCmpHtml_() + '</div>';
-    if (mai_.mode === 'law' && mai_.choices.length) html += '<div class="mai-sec">결정 — 세무사님이 고릅니다</div><div id="maiDec">' + maiDecHtml_() + '</div>';
+    if (mai_.mode === 'law' && mai_.choices.length) html += '<div class="mai-sec">결정 — 회장 결론이 없거나 보류면 세무사님이 고릅니다</div><div id="maiDec">' + maiDecHtml_() + '</div>';
     b.innerHTML = html;
   }
   function maiAnsBox_(x){
     var a = mai_.ans[x.id] || {};
-    return '<textarea data-maians="' + maiEsc_(x.id) + '" placeholder="' + (x.tier === 'B' || !x.tier ? '여기에 ' + maiEsc_(x.name) + ' 답을 붙여 넣으세요' : '자동으로 채워집니다(직접 붙여 넣어도 됨)') + '">' + maiEsc_(a.text || '') + '</textarea><div class="mai-sum" id="maiSum-' + maiEsc_(x.id) + '">' + maiSumHtml_(x.id) + '</div>';
+    return '<textarea data-maians="' + maiEsc_(x.id) + '" placeholder="위원에게 물으면 채워집니다(직접 붙여 넣어도 됨)">' + maiEsc_(a.text || '') + '</textarea><div class="mai-sum" id="maiSum-' + maiEsc_(x.id) + '">' + maiSumHtml_(x.id) + '</div>';
   }
   function maiSumHtml_(id){
     var a = mai_.ans[id]; if (!a || !a.text) return '';
@@ -6846,7 +6853,7 @@
   }
   function maiDecHtml_(){
     var d = mai_.decided, maj = maiMajority_();
-    return (d ? '<div class="mai-note" style="margin-bottom:4px;">지금 결정: <b>' + maiEsc_(d.선택) + (d.내용 ? ' — ' + d.내용 : '') + '</b> (' + maiEsc_(d.때 || '') + ')</div>' : '') +
+    return (d ? '<div class="mai-note" style="margin-bottom:4px;">' + maiEsc_(/회장/.test(d.누가 || '') ? '회장 결론' : '지금 결정') + ': <b>' + maiEsc_(d.선택) + (d.내용 ? ' — ' + d.내용 : '') + '</b> (' + maiEsc_((d.누가 || '세무사님') + ' · ' + (d.때 || '')) + ')' + (d.메모 ? '<br>' + maiEsc_(d.메모) : '') + '</div>' : '') +
       mai_.choices.concat([{ 기호: '보류', 내용: '아직 정하지 않음(추가 확인)' }]).map(function(c){
         return '<label style="display:block;margin:3px 0;"><input type="radio" name="maiPick" value="' + maiEsc_(c.기호) + '"' + (d && d.선택 === c.기호 ? ' checked' : '') + '> <b>' + maiEsc_(c.기호) + '</b> ' + maiEsc_(c.내용) + (maj.key === c.기호 ? ' <span class="mai-chip">AI 다수</span>' : '') + '</label>';
       }).join('') +
@@ -6881,20 +6888,6 @@
     });
     return out;
   }
-  // ---- 복사·열기 — 복사를 먼저(같은 누름 안에서 바로) 하고 창 하나만 연다: 한 번 누를 때 창 하나라 팝업 차단에 안 걸림 ----
-  function maiCopy_(text){
-    var ok = false;
-    try { var ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px'; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); document.body.removeChild(ta); } catch (e) { ok = false; }
-    if (!ok && navigator.clipboard) { try { navigator.clipboard.writeText(text); ok = true; } catch (e) {} }
-    return ok;
-  }
-  function maiOpenWeb_(id){
-    var x = maiSlot_(id), ok = maiCopy_(maiSheet_());
-    var w = window.open(x.url, '_blank'); // noopener를 주면 열렸는지 알 수 없어(늘 null) 열린 뒤 끊는다
-    if (w) { try { w.opener = null; } catch (e) {} mai_.opened[id] = new Date().toTimeString().slice(0, 5); }
-    maiToast_((ok ? '질문지를 복사했습니다' : '복사하지 못했습니다 — "📋 질문지 복사"를 다시 눌러 주세요') + ' — ' + (w ? x.name + ' 창에 붙여 넣고 보내세요. 답은 이 칸에 붙여 넣으면 됩니다.' : '새 창이 막혔습니다. 주소창 오른쪽의 팝업 차단 표시에서 이 사이트를 허용해 주세요.'));
-    maiRender_();
-  }
   function maiSave_(id, 방식){
     var a = mai_.ans[id]; if (!a) return;
     a.p = maiParse_(a.text); a.방식 = 방식 || a.방식 || '붙여넣기';
@@ -6913,30 +6906,20 @@
   }
   function maiChange_(ev){ var id = ev.target && ev.target.dataset && ev.target.dataset.maion; if (id) mai_.on[id] = ev.target.checked; }
   function maiClick_(ev){
-    var t = ev.target.closest && ev.target.closest('[data-mai],[data-maiopen]'); if (!t) return;
+    var t = ev.target.closest && ev.target.closest('[data-mai]'); if (!t) return;
     var d = t.dataset;
-    if (d.maiopen) return maiOpenWeb_(d.maiopen);
     if (d.mai === 'close'){ document.getElementById('maiPanel').style.display = 'none'; if (mai_.onClose) mai_.onClose(); return; }
-    if (d.mai === 'copy'){ maiToast_(maiCopy_(maiSheet_()) ? '질문지를 복사했습니다.' : '복사하지 못했습니다.'); return; }
-    if (d.mai === 'next'){
-      var nx = mai_.web.filter(function(w){ return !mai_.opened[w.id] && !(mai_.ans[w.id] && mai_.ans[w.id].text); })[0] || mai_.web.filter(function(w){ return !(mai_.ans[w.id] && mai_.ans[w.id].text); })[0];
-      if (!nx) return maiToast_('웹 AI 칸이 모두 답을 받았습니다.');
-      return maiOpenWeb_(nx.id);
-    }
     if (d.mai === 'api'){
       var ids = Object.keys(mai_.on).filter(function(k){ return mai_.on[k]; });
-      if (!ids.length) return maiToast_('켠 API 칸이 없습니다 — 무료 키가 없으면 웹 AI 칸을 쓰세요.');
-      var paid = mai_.api.filter(function(x){ return ids.indexOf(x.id) !== -1 && x.tier === 'C'; });
-      var ask = paid.length ? (typeof nxConfirm_ === 'function' ? nxConfirm_('유료 API로 보냅니다: ' + paid.map(function(x){ return x.name + ' ' + maiCost_(x); }).join(', ') + '\n보낼까요?') : Promise.resolve(window.confirm('유료 API로 보낼까요?'))) : Promise.resolve(true);
-      return ask.then(function(ok){
-        if (!ok) return;
-        t.disabled = true; t.textContent = '🤖 보내는 중…';
+      if (!ids.length) return maiToast_('켠 위원이 없습니다 — 설정 🤝 → 👥 위원 상태에서 키를 확인해 주세요.');
+      return Promise.resolve(true).then(function(){
+        t.disabled = true; t.textContent = '🤝 위원이 답하는 중…';
         return callGas('ai_ask_slots', { ids: ids, head: mai_.head, law: mai_.law }).then(function(r){
           if (!r || r.error) { maiToast_((r && r.error) || '응답 없음'); return; }
           (r.answers || []).forEach(function(a){ if (!a.ok){ maiToast_(a.name + ': ' + a.error); return; } mai_.ans[a.ai] = { text: a.text, 방식: 'API' }; });
           maiRender_();
           (r.answers || []).filter(function(a){ return a.ok; }).forEach(function(a){ maiSave_(a.ai, 'API'); });
-        }).catch(function(e){ maiToast_('보내지 못했습니다: ' + (e && e.message || e)); }).then(function(){ t.disabled = false; t.textContent = '🤖 켠 API 칸에 보내기'; });
+        }).catch(function(e){ maiToast_('보내지 못했습니다: ' + (e && e.message || e)); }).then(function(){ t.disabled = false; t.textContent = '🤝 위원에게 묻기'; });
       });
     }
     if (d.mai === 'decide'){
@@ -6949,13 +6932,13 @@
       t.disabled = true;
       return Promise.resolve(mai_.onDecide ? mai_.onDecide(dec, att) : null).then(function(r){
         if (r && r.error) { maiToast_('저장 못 함: ' + r.error); return; }
-        mai_.decided = Object.assign({ 때: new Date().toLocaleString('ko-KR') }, dec);
+        mai_.decided = Object.assign({ 때: new Date().toLocaleString('ko-KR'), 누가: '세무사님' }, dec);
         maiToast_('결정 저장 — ' + dec.선택 + (att.length ? ', 근거 ' + att.length + '건 첨부' : ''));
         var dd = document.getElementById('maiDec'); if (dd) dd.innerHTML = maiDecHtml_();
       }).catch(function(e){ maiToast_('저장 못 함: ' + (e && e.message || e)); }).then(function(){ t.disabled = false; });
     }
   }
-  window.nxMultiAi_ = { open: maiOpen_, parse: function(t){ return maiParse_(t); }, nums: maiNums_ };
+  window.nxMultiAi_ = { open: maiOpen_, parse: function(t, ctx){ return maiParse_(t, ctx); }, nums: maiNums_ };
 </script>
 
 
@@ -48245,19 +48228,19 @@ function goToReportWriter_(caseId, opts){
       </div>
       <div id="stBugList" class="settings-tool-desc">불러오기를 누르면 최근 기록이 보입니다.</div>
     </div>
-    <!-- [2026.10.13] AI 연합체·개발자 소통 — 요청 상태(접수→반영→확인), 개발자 질문, AI 자문단(무료 AI 기술 조언),
-         무료 AI 3곳 다수결, AI 명단, 무료 API 키. 서버: Federation.js. 설명: docs/ai-federation.md -->
+    <!-- [2026.10.19] 🤝 AI 회의 · 개발자 소통 — 세무사님 "이 방향으로 수정하자"(AI 연합체를 회의 틀 하나로, 돌지 않는 것은 삭제).
+         안건 두 종류: ⚖️ 법령(판단 대기 — 회장 Claude=조정 세션), 🛠 시스템(개선 후보 보고서 — 회장=주간 정비 루틴). 위원 = Gemini API(무료 등급)·OpenRouter.
+         회의 기록 표는 앱 전용(app-only/judgewait.html — 법령 탭 "🤝 판단 대기"와 같은 표). 서버: Federation.js. 설명: docs/ai-federation.md -->
     <div class="card" style="max-width:720px;" id="stFedCard">
-      <h3>🤝 AI 연합체 · 개발자 소통</h3>
-      <div class="settings-tool-desc" style="margin:0 0 8px;">요청한 개선이 반영됐는지 확인하고, 개발자(웹 Claude Code)의 질문에 답하고, 여러 무료 AI에게 기술 조언을 받습니다. 고객 정보는 무료 AI로 보내지 않습니다(자동으로 막음).</div>
+      <h3>🤝 AI 회의 · 개발자 소통</h3>
+      <div class="settings-tool-desc" style="margin:0 0 8px;">위원 AI(Gemini API)가 안건마다 답하고 회장(Claude)이 결론을 냅니다. 결론이 안 난 것과 돈 드는 결정만 세무사님께 올라옵니다. 고객 정보는 위원에게 보내지 않습니다(자동 차단).</div>
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+        <button type="button" class="ghost-btn" data-fed="law">⚖️ 회의 기록(법령)</button>
+        <button type="button" class="ghost-btn" data-fed="need">🙋 세무사님 결정 필요</button>
+        <button type="button" class="ghost-btn" data-fed="sys">🛠 시스템 안건</button>
         <button type="button" class="ghost-btn" data-fed="req">📝 요청 상태</button>
         <button type="button" class="ghost-btn" data-fed="q">❓ 개발자 질문</button>
-        <button type="button" class="ghost-btn" data-fed="advice">🧑‍🏫 AI 자문단</button>
-        <button type="button" class="ghost-btn" data-fed="ask" title="고객 정보 없는 일반 질문을 무료 AI 3곳에 동시에 묻고 결론이 맞는지 봅니다(0원)">🗳 무료 AI 3곳에 묻기</button>
-        <button type="button" class="ghost-btn" data-fed="mai" title="질문 하나를 여러 AI 칸에 — 웹 AI는 복사·열기·답 붙여넣기, API는 켜면 자동 → 비교표(앱에서만)">🤝 멀티 AI 사이드바</button>
-        <button type="button" class="ghost-btn" data-fed="reg">🤝 AI 명단</button>
-        <button type="button" class="ghost-btn" data-fed="key">🔑 무료 AI 키</button>
+        <button type="button" class="ghost-btn" data-fed="reg">👥 위원 상태</button>
       </div>
       <div id="stFedBox" class="settings-tool-desc">버튼을 누르면 내용이 보입니다.</div>
     </div>
@@ -48267,9 +48250,21 @@ function goToReportWriter_(caseId, opts){
     var h = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
     var row = function(html){ return '<div style="padding:5px 0; border-top:1px solid var(--line);">' + html + '</div>'; };
     var err = function(e){ box().textContent = '오류: ' + (e && e.message ? e.message : e); };
-    var lastStatus = null, lastAdvice = null;
     var STATUS_COLOR = { '접수': 'var(--sub)', '반영됨': '#1f6feb', '확인완료': 'var(--success)', '재오픈': '#a83232' };
-    function loadStatus(){ return callGas('comm_status', {}).then(function(r){ if (!r || r.error) throw new Error((r && r.error) || '응답 없음'); lastStatus = r; return r; }); }
+    function loadStatus(){ return callGas('comm_status', {}).then(function(r){ if (!r || r.error) throw new Error((r && r.error) || '응답 없음'); return r; }); }
+    function showMeeting(onlyNeed){
+      if (typeof jwRenderInto_ !== 'function'){ box().textContent = '회의 기록 표는 앱(job.netax.kr/app)에서 보입니다.'; return; }
+      jwRenderInto_(box(), onlyNeed ? '결정 필요' : '');
+    }
+    function showSys(){
+      box().textContent = '불러오는 중…';
+      callGas('improve_report_get', {}).then(function(r){
+        var rep = r && r.report;
+        if (!rep){ box().innerHTML = '아직 개선 후보 보고서가 없습니다(매일 새벽에 만들어집니다).'; return; }
+        box().innerHTML = '<div style="margin-bottom:4px;">이번 보고서(' + h(String(rep.generatedAt || '').slice(0, 16)) + ')의 안건 — 위원(Gemini API)에게 묻고 회장(주간 정비 루틴)이 결론을 내 고침 작업(PR)으로 올립니다. 결론이 안 난 것·돈 드는 결정은 ❓ 개발자 질문으로 옵니다.</div>'
+          + ((rep.headline || []).length ? (rep.headline || []).map(function(x){ return row(h(x)); }).join('') : row('안건 없음'));
+      }).catch(err);
+    }
     function showReq(){
       box().textContent = '불러오는 중…';
       loadStatus().then(function(r){
@@ -48294,130 +48289,33 @@ function goToReportWriter_(caseId, opts){
         }).join('');
       }).catch(err);
     }
+    // 위원 상태 — Gemini API(키·오늘 사용량), OpenRouter 칸(키를 넣으면 위원 추가), Claude(기존 배차)
     function showReg(){
       box().textContent = '불러오는 중…';
       loadStatus().then(function(r){
-        var tierName = { A: 'A 무료 API(자동)', B: 'B 무료 웹(수동 — 약관상 자동화 금지)', C: 'C 유료·기기 안(고객 자료 허용)' };
-        var html = '';
-        ['A', 'B', 'C'].forEach(function(t){
-          var list = (r.registry || []).filter(function(x){ return x.tier === t; });
-          html += '<div style="margin-top:6px;"><b>' + tierName[t] + '</b></div>' + list.map(function(x){
-            return row('<b>' + h(x.name) + '</b> <span style="color:var(--sub);">' + h(x.status) + (x.dailyFree ? ' · 오늘 ' + x.usedToday + '/' + x.dailyFree : '') + (x.clientData ? ' · 고객자료 허용' : ' · 고객자료 금지') + '</span><br>주특기: ' + h((x.specialties || []).join(', ')) + (x.tos ? '<br><span style="color:var(--sub);">약관: ' + h(x.tos) + '</span>' : '') + (x.note ? '<br><span style="color:var(--sub);">' + h(x.note) + '</span>' : ''));
-          }).join('');
-        });
-        html += '<div style="margin-top:8px;"><b>배차표(GAS 운영팀장)</b></div>' + Object.keys(r.dispatch || {}).map(function(k){ var d = r.dispatch[k]; return row(h(d.label) + ' — ' + h(d.order.join(' → ')) + (d.maxKrw ? ' · 한 번 최대 ' + d.maxKrw + '원' : ' · 0원') + (d.clientData ? '' : ' · 고객자료 없음')); }).join('');
-        box().innerHTML = html;
-      }).catch(err);
-    }
-    var KEY_HELP = {
-      GEMINI_FREE_API_KEY: 'Google AI Studio(aistudio.google.com) → Get API key → 결제 연결 없는 프로젝트로 만든 키',
-      GROQ_API_KEY: 'console.groq.com → API Keys → Create API Key',
-      OPENROUTER_API_KEY: 'openrouter.ai → Keys → Create Key(무료 모델만 씀)',
-      MISTRAL_API_KEY: 'console.mistral.ai → API Keys(무료 실험 등급)',
-      HF_TOKEN: 'huggingface.co → Settings → Access Tokens(읽기 권한)'
-    };
-    function showKey(){
-      box().textContent = '불러오는 중…';
-      loadStatus().then(function(r){
         var reg = r.registry || [];
-        box().innerHTML = '<div style="margin-bottom:4px;">무료 API 키는 세무사님이 각 사이트에서 직접 발급해 여기에 붙여 넣습니다(Claude는 계정을 만들거나 키를 넣지 않습니다). 키는 저장만 되고 화면에 다시 보이지 않습니다.</div>'
-          + Object.keys(KEY_HELP).map(function(k){
-            var e = reg.filter(function(x){ return x.keyProp === k; })[0];
-            var set = e && !/키 없음/.test(e.status);
-            return row('<b>' + h(e ? e.name : k) + '</b> — ' + (set ? '<span style="color:var(--success);">설정됨</span>' : '<span style="color:var(--sub);">없음</span>') + '<br><span style="color:var(--sub);">' + h(KEY_HELP[k]) + '</span><br><button type="button" class="ghost-btn" data-fedkey="' + h(k) + '">🔑 ' + (set ? '바꾸기' : '넣기') + '</button>' + (set ? ' <button type="button" class="ghost-btn" data-fedkeydel="' + h(k) + '">지우기</button>' : ''));
-          }).join('');
-      }).catch(err);
-    }
-    function showAsk(){
-      nxPrompt_('고객 정보가 없는 일반 질문을 적어 주세요(예: "2026년 1세대1주택 고가주택 기준금액은?").\n무료 AI 3곳에 동시에 묻고 결론이 같은지 봅니다(0원).', '').then(function(q){
-        q = String(q || '').trim();
-        if (!q) return;
-        nxConfirm_('이 질문에 고객 이름·주민번호·전화·주소·사건 내용이 없나요?\n(무료 AI에는 고객 자료를 보내지 않습니다)').then(function(ok){
-          if (!ok) return;
-          box().textContent = '🗳 무료 AI에 묻는 중… (10~40초)';
-          callGas('ai_consensus', { question: q, noClientData: true }).then(function(r){
-            if (!r || r.error){ box().textContent = (r && r.error) || '응답 없음'; return; }
-            box().innerHTML = '<div style="margin-bottom:4px;"><b>' + h(r.verdict) + '</b>' + (r.adopted ? ' — 채택 결론: ' + h(r.adopted) : '') + '</div>'
-              + (r.answers || []).map(function(a){ return row('<b>' + h(a.name) + '</b> — 결론: ' + h(a.conclusion) + '<details><summary>전체 답</summary><div style="white-space:pre-wrap;">' + h(a.text) + '</div></details>'); }).join('')
-              + '<div style="color:var(--sub); margin-top:4px;">무료 AI 답은 참고용입니다 — 세무 판단은 법령 원문·유료 AI로 확인하세요.</div>';
-          }).catch(err);
-        });
-      });
-    }
-    function showAdvice(){
-      box().textContent = '불러오는 중…';
-      callGas('ai_advice_get', {}).then(function(r){
-        lastAdvice = r;
-        var L = r && r.latest;
-        var head = '<div style="margin-bottom:6px;">매주 월요일 밤 job이 막힌·비싼 기능과 오류를 바탕으로 기술 질문을 만들어 무료 AI들에 묻습니다(0원). 웹 AI(ChatGPT 등)는 약관상 자동으로 못 하므로 📋 복사 → 사이트에서 붙여넣어 보내기 → 답 복사 → ✍ 붙여넣기로 직접 넣습니다. 여러 AI가 같이 낸 제안은 "공통"으로 표시되고, 개발자(주간 루틴)가 공식 문서로 확인해 적용합니다.</div>'
-          + '<button type="button" class="ghost-btn" data-fedrun="1">🧑‍🏫 지금 질문 만들고 무료 AI에 묻기</button>';
-        if (!L){ box().innerHTML = head + '<div style="margin-top:6px;">아직 자문 기록이 없습니다.</div>'; return; }
-        var webs = r.registry || [];
-        var html = head + '<div style="margin-top:6px;"><b>' + h(L.week) + '</b> · ' + h(L.at) + '</div>';
-        L.questions.forEach(function(q){
-          html += row('<b>[' + h(q.topic) + ']</b> <span style="color:var(--sub);">' + h(q.id) + ' · 답 ' + q.answers.length + '개(' + h(q.answers.map(function(a){ return a.name + (a.mode === 'manual' ? '·수동' : ''); }).join(', ')) + ')</span>'
-            + '<details><summary>질문 보기</summary><div style="white-space:pre-wrap;">' + h(q.q) + '</div></details>'
-            + '<div style="margin:3px 0;">' + (window.nxMultiAi_ ? '<button type="button" class="ghost-btn" data-fedmai="' + h(q.id) + '">🤝 여러 AI에 묻기(사이드바)</button>' : webs.map(function(w){ return '<button type="button" class="ghost-btn" data-fedweb="' + h(q.id) + '|' + h(w.id) + '" title="' + h(w.tos) + '">📋 ' + h(w.name) + '</button>'; }).join(' ')) + '</div>'
-            + (q.suggestions || []).map(function(s, i){
-              return '<div style="padding:2px 0 2px 8px;">' + (s.common ? '⭐ 공통(' + s.ais.length + ')' : '· 단독') + ' ' + h(s.text) + ' <span style="color:var(--sub);">— ' + h(s.ais.join(', ')) + '</span>'
-                + (s.verdict ? ' <b>[' + h(s.verdict) + ']</b>' : '') + ' <button type="button" class="ghost-btn" data-fedmark="' + h(q.id) + '|' + i + '|채택">채택</button> <button type="button" class="ghost-btn" data-fedmark="' + h(q.id) + '|' + i + '|기각">기각</button></div>';
-            }).join(''));
-        });
-        var sc = r.scores || {};
-        var names = Object.keys(sc);
-        if (names.length) html += '<div style="margin-top:8px;"><b>AI 성적표</b> ' + names.map(function(n){ return h(n) + ' 채택 ' + sc[n].adopted + '/' + sc[n].proposed; }).join(' · ') + '</div>';
-        box().innerHTML = html;
+        var line = function(x){ return row('<b>' + h(x.name) + '</b> <span style="color:var(--sub);">' + h(x.status) + ' · 오늘 ' + (x.usedToday || 0) + '번' + (x.dailyFree ? '/' + x.dailyFree : '') + (x.clientData ? ' · 고객자료 허용' : ' · 고객자료 금지') + '</span>' + (x.note ? '<br><span style="color:var(--sub);">' + h(x.note) + '</span>' : '')
+          + (x.keyProp === 'OPENROUTER_API_KEY' ? '<br><span style="color:var(--sub);">openrouter.ai → Keys → Create Key(무료 모델만 씀)</span><br><button type="button" class="ghost-btn" data-fedkey="OPENROUTER_API_KEY">🔑 ' + (x.status === '키 없음' ? '넣기' : '바꾸기') + '</button>' + (x.status === '키 없음' ? '' : ' <button type="button" class="ghost-btn" data-fedkeydel="OPENROUTER_API_KEY">지우기</button>') : '')); };
+        box().innerHTML = '<div style="margin-top:2px;"><b>위원</b></div>' + reg.filter(function(x){ return x.member; }).map(line).join('')
+          + '<div style="margin-top:8px;"><b>Claude API(회장·기존 기능)</b></div>' + reg.filter(function(x){ return !x.member; }).map(line).join('')
+          + '<div style="margin-top:8px;"><b>배차표</b></div>' + Object.keys(r.dispatch || {}).map(function(k){ var d = r.dispatch[k]; return row(h(d.label) + ' — ' + h(d.order.join(' → ')) + (d.maxKrw ? ' · 한 번 최대 ' + d.maxKrw + '원' : ' · 0원') + (d.clientData ? '' : ' · 고객자료 없음')); }).join('');
       }).catch(err);
     }
     document.addEventListener('click', function(ev){
-      var t = ev.target.closest && ev.target.closest('[data-fed],[data-fedmai],[data-fedok],[data-fedno],[data-fedans],[data-fedkey],[data-fedkeydel],[data-fedrun],[data-fedweb],[data-fedmark]');
+      var t = ev.target.closest && ev.target.closest('[data-fed],[data-fedok],[data-fedno],[data-fedans],[data-fedkey],[data-fedkeydel]');
       if (!t || !document.getElementById('stFedCard') || !document.getElementById('stFedCard').contains(t)) return;
       var d = t.dataset;
+      if (d.fed === 'law') return showMeeting(false);
+      if (d.fed === 'need') return showMeeting(true);
+      if (d.fed === 'sys') return showSys();
       if (d.fed === 'req') return showReq();
       if (d.fed === 'q') return showQ();
       if (d.fed === 'reg') return showReg();
-      if (d.fed === 'key') return showKey();
-      if (d.fed === 'ask') return showAsk();
-      if (d.fed === 'advice') return showAdvice();
-      // [2026.10.19] 🤝 멀티 AI 사이드바(app-only/multiai.html) — 자문단 질문은 답을 ai_advice_add_manual로 저장(공통 제안·채택/기각은 이 카드 그대로), 새 질문은 이 브라우저에만 보관
-      var sysTail = '\n\n답은 번호 목록(1. 2. 3.)으로 구체적인 제안 위주로. 마지막 줄은 "결론: (한 문장)".';
-      if (d.fed === 'mai'){
-        if (!window.nxMultiAi_) return toast('멀티 AI 사이드바는 앱(job.netax.kr/app)에서 열립니다.');
-        return nxPrompt_('여러 AI에 물을 질문(개선 제안·서식 칸 해석·기술 질문 등 — 고객 정보 없이)', '').then(function(q){ q = String(q || '').trim(); if (!q) return; nxMultiAi_.open({ mode: 'system', title: q.slice(0, 40), head: q + sysTail, storeKey: 'nxMai_' + q.slice(0, 60) }); });
-      }
-      if (d.fedmai){
-        var mq = null; ((lastAdvice && lastAdvice.latest && lastAdvice.latest.questions) || []).forEach(function(x){ if (x.id === d.fedmai) mq = x; });
-        if (!mq) return;
-        var saved = {}; (mq.answers || []).forEach(function(a){ saved[a.ai] = { 글: a.text, 방식: a.mode === 'manual' ? '붙여넣기' : 'API' }; });
-        return nxMultiAi_.open({ mode: 'system', title: '[' + mq.topic + '] ' + mq.id, head: mq.q + sysTail, saved: saved,
-          onAnswer: function(slot, text){ return callGas('ai_advice_add_manual', { qid: mq.id, ai: slot.id, text: text }); }, onClose: showAdvice });
-      }
       if (d.fedok) return callGas('comm_request_confirm', { id: d.fedok, ok: true }).then(showReq).catch(err);
       if (d.fedno) return nxPrompt_('무엇이 아직 안 되는지 적어 주세요(다음 개발자 실행 때 다시 고칩니다).', '').then(function(note){ if (note === null) return; return callGas('comm_request_confirm', { id: d.fedno, ok: false, note: note }).then(showReq); }).catch(err);
       if (d.fedans) return nxPrompt_('개발자 질문 ' + d.fedans + '에 대한 답을 적어 주세요.', '').then(function(a){ a = String(a || '').trim(); if (!a) return; return callGas('comm_dev_answer', { id: d.fedans, text: a }).then(showQ); }).catch(err);
-      if (d.fedkey) return nxPrompt_(d.fedkey + ' 키를 통째로 붙여 넣어 주세요(저장 후 다시 보이지 않습니다).', '').then(function(v){ v = String(v || '').trim(); if (!v) return; return callGas('ai_set_key', { name: d.fedkey, value: v }).then(function(r){ if (r && r.error) toast(r.error); showKey(); }); }).catch(err);
-      if (d.fedkeydel) return nxConfirm_(d.fedkeydel + ' 키를 지울까요?').then(function(ok){ if (!ok) return; return callGas('ai_set_key', { name: d.fedkeydel, value: '' }).then(showKey); }).catch(err);
-      if (d.fedrun){ box().textContent = '🧑‍🏫 질문을 만들고 무료 AI에 묻는 중… (1~3분)'; return callGas('ai_advice_run', { force: true }).then(function(r){ if (r && r.noFreeAi) toast('무료 AI 키가 아직 없어 자동 답은 없습니다 — 🔑 무료 AI 키를 넣거나 웹 AI에 수동으로 물어 주세요.'); showAdvice(); }).catch(err); }
-      if (d.fedweb){
-        var p = d.fedweb.split('|'), qid = p[0], ai = p[1];
-        var q = null; ((lastAdvice && lastAdvice.latest && lastAdvice.latest.questions) || []).forEach(function(x){ if (x.id === qid) q = x; });
-        var w = ((lastAdvice && lastAdvice.registry) || []).filter(function(x){ return x.id === ai; })[0];
-        if (!q || !w) return;
-        var text = q.q + '\n\n답은 번호 목록(1. 2. 3.)으로 구체적인 제안 위주로.';
-        var copy = navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject(new Error('복사 불가'));
-        copy.catch(function(){}).then(function(){
-          window.open(w.url, '_blank', 'noopener');
-          setTimeout(function(){
-            nxPrompt_('질문을 복사했습니다 — 열린 ' + w.name + ' 창에 붙여 넣어 보내고, 답을 복사해 여기에 붙여 넣어 주세요.\n(약관상 자동 수집은 하지 않습니다)', '').then(function(ans){
-              ans = String(ans || '').trim();
-              if (!ans) return;
-              callGas('ai_advice_add_manual', { qid: qid, ai: ai, text: ans }).then(showAdvice).catch(err);
-            });
-          }, 600);
-        });
-        return;
-      }
-      if (d.fedmark){ var m = d.fedmark.split('|'); return callGas('ai_advice_mark', { qid: m[0], idx: Number(m[1]), verdict: m[2] }).then(showAdvice).catch(err); }
+      if (d.fedkey) return nxPrompt_(d.fedkey + ' 키를 통째로 붙여 넣어 주세요(저장 후 다시 보이지 않습니다).', '').then(function(v){ v = String(v || '').trim(); if (!v) return; return callGas('ai_set_key', { name: d.fedkey, value: v }).then(function(r){ if (r && r.error) toast(r.error); showReg(); }); }).catch(err);
+      if (d.fedkeydel) return nxConfirm_(d.fedkeydel + ' 키를 지울까요?').then(function(ok){ if (!ok) return; return callGas('ai_set_key', { name: d.fedkeydel, value: '' }).then(showReg); }).catch(err);
     });
   })();
 </script>
@@ -49264,7 +49162,7 @@ function goToReportWriter_(caseId, opts){
           </ul>
         </li>
         <li><b>🛠 개선 후보</b>: 매일 밤 job이 최근 7일의 오류 기록·유료 AI로 간 질문·자가점검·화면 속도를 모아 "고칠 거리"를 정리합니다(AI 비용 0). 대시보드 "야간 자동작업"에 "개선 후보 N건"으로 나오고, 🐞 카드의 🛠 개선 후보 보기로 지금 바로 다시 만들 수 있습니다. 실제로 고치는 건 웹 Claude Code가 합니다 — 매주 월요일 아침 자동으로, 또는 AI 탭 🛠 버튼 → 열린 화면에서 "지금 실행"을 누르면 보고서를 읽고 고쳐서 깃허브에 수정안(PR)을 올립니다. 수정안 설명을 보시고 깃허브에서 <b>Merge</b>(승인)하신 뒤, 🐞 카드의 <b>📥 수정 반영</b>을 누르면 job이 스스로 새 버전으로 바뀝니다. 승인하지 않은 수정은 절대 반영되지 않습니다.</li>
-        <li><b>🤝 AI 연합체·개발자 소통·AI 자문단(2026.10.14)</b>: 설정 → <b>🤝 AI 연합체 · 개발자 소통</b> 카드. ① <b>📝 요청 상태</b> — ✍로 적은 개선요구사항이 개발자(웹 Claude Code) 수정·📥 반영을 거쳐 "반영됨"이 되면 👍 잘 됨 / ↩ 다시 고쳐 주세요를 누릅니다(다시 고쳐 달라고 하면 다음 개발자 실행 때 우선 처리). 요청 글에 "긴급"이 있으면 대시보드에 🚨와 "지금 개발자 부르기"가 뜹니다. ② <b>❓ 개발자 질문</b> — 개발자가 판단이 필요해 남긴 질문에 답하면 다음 실행 때 반영됩니다. ③ <b>🧑‍🏫 AI 자문단</b> — 매주 월요일 새벽 job이 막힌 기능·오류를 바탕으로 기술 질문을 만들어 무료 AI들에 묻고, 여러 AI가 같이 낸 제안(⭐공통)을 개발자가 공식 문서로 확인해 적용합니다(0원). ChatGPT·Gemini·Claude 등 웹 AI는 약관상 자동 조작이 금지라 📋을 누르면 질문이 복사되고 사이트가 열립니다 — 붙여 넣어 보내고 답을 복사해 넣어 주세요. 채택·기각을 누르면 AI 성적표가 쌓입니다. ④ <b>🗳 무료 AI 3곳에 묻기</b> — 고객 정보 없는 일반 질문을 무료 AI 3곳에 동시에 묻고 결론이 같은지 봅니다(참고용). ⑤ <b>🔑 무료 AI 키</b> — Google AI Studio·Groq·OpenRouter·Mistral·Hugging Face에서 직접 발급한 키를 붙여 넣으면 자문단·다수결이 자동으로 돕니다(키가 없으면 "대기"). 고객 자료는 무료 AI로 절대 보내지 않습니다(자동 차단). ⑥ 세액계산 "세액 계산하기" 옆 <b>🔍 2중 검증</b> — 계산된 세액을 유료 AI(Sonnet)가 입력값만 보고 따로 계산해 비교합니다(이름·주소는 보내지 않음, 한 번 수십 원, 다르면 ⚠). ⑦ 대시보드 <b>🤝 새 기능</b> 카드에 개발자가 최근 바꾼 기능이 보이고, AI 탭 AI도 이 목록을 알고 안내합니다. AI가 할 수 없는 일을 만나면 개발자에게 "기능 부족 신고"를 자동으로 남깁니다.</li>
+        <li><b>🤝 AI 회의·개발자 소통(2026.10.19 재편)</b>: 설정 → <b>🤝 AI 회의 · 개발자 소통</b> 카드. 위원 AI(Gemini API, 무료 등급)가 안건마다 답하고 회장(Claude)이 결론을 내며, 결론이 안 난 것과 돈 드는 결정만 세무사님께 올라옵니다. ① <b>⚖️ 회의 기록(법령)</b> — 판단 대기 안건마다 위원 답·근거(법제처 실재 ✔/⚠)·회장 결론·결정(법령정보 탭 "🤝 판단 대기"와 같은 표). ② <b>🙋 세무사님 결정 필요</b> — 회장이 결론을 못 낸 안건만. ③ <b>🛠 시스템 안건</b> — 개선 후보 보고서(반복 오류·비용·막힌 기능·요청)를 주간 정비 루틴이 회장으로 처리(고침 작업으로). ④ <b>📝 요청 상태</b> — ✍로 적은 개선요구사항이 반영되면 👍 잘 됨 / ↩ 다시 고쳐 주세요. 요청 글에 "긴급"이 있으면 대시보드에 🚨. ⑤ <b>❓ 개발자 질문</b>. ⑥ <b>👥 위원 상태</b> — Gemini API 키·오늘 사용량, OpenRouter 칸(키를 넣으면 위원이 늘어남). 고객 자료는 위원에게 보내지 않습니다(자동 차단). 세액계산 <b>🔍 2중 검증</b>·대시보드 <b>🤝 새 기능</b>·AI의 "기능 부족 신고"는 그대로입니다. (무료 AI 3곳 다수결·AI 자문단·웹 AI 붙여넣기는 2026-10-19 삭제)</li>
         <li><b>🩹 자가치유 장치(2026.10.14, 모두 AI 비용 0)</b>: ① <b>계산 자가점검</b> — 매일 밤 양도·증여·상속 51개 사례(법조문으로 손계산한 정답, 근거 조문 포함)를 계산엔진에 돌려 하나라도 어긋나면 개선 후보에 🩺로 올립니다. ② <b>서류 정리 회귀시험</b> — 서류 종류별 표본 35건을 밤마다 8건씩, 일주일에 한 바퀴 다시 정리해 예전과 다르게 읽으면 🧾로 올립니다(고객 금액은 저장하지 않고 "숫자 묶음의 지문"만 비교). ③ <b>고친 값 = 학습 신호</b> — 세액계산 자동채우기(규칙·AI)가 넣은 값을 세무사님이 고치면 "어느 화면·어느 칸을 고쳤는지"만 기록하고, 같은 칸이 반복되면 ✏️로 올립니다. ④ <b>배포 직후 자동 점검</b> — 📥 수정 반영 직후 사건·고객·예약 목록, 계산엔진, 서류 정리 견본을 바로 돌려 보고, 이상하면 🐞 카드와 개선 후보에 🚨로 알립니다. ⑤ <b>↩ 되돌리기</b> — 반영 뒤 job이 이상하면 🐞 카드의 <b>↩ 되돌리기</b>로 바로 앞 버전으로 돌아갑니다(주소 그대로, 되돌린 뒤 자동 점검). 다시 최신으로는 📥 수정 반영. ⑥ <b>화면 배선 점검</b> — job을 열면 하루 한 번, 메뉴마다 화면과 버튼 기능이 제대로 연결돼 있는지 확인해 빠진 것을 오류 기록에 남깁니다. 올라온 후보는 매주 웹 Claude Code가 고쳐 수정안으로 올립니다.</li>
         <li><b>✍ 개선요구사항 적기</b>: 🐞 카드의 이 버튼으로 "이렇게 고쳐 달라", "이런 기능이 있으면 좋겠다"를 적어 두면 개선 후보에 올라가고, 다음 웹 Claude Code 실행 때 구현해서 수정안으로 올립니다(AI 비용 0 — 예전처럼 밤마다 유료 AI가 메모를 쓰지 않습니다).</li>
         <li><b>🧾 지침 점검</b>: 업무관리자·지침 파일이 바뀌면 밤에 "지침이 바뀜"만 개선 후보에 표시합니다(0원). 모순·중복 점검(유료 AI)은 이 버튼을 누를 때만 합니다.</li>
