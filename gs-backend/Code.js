@@ -3948,6 +3948,9 @@ function dispatchClientAction0_(body) {
   if (body.action === 'ai_advice_add_manual') return jsonResponse(aiAdviceAddManual_(body));
   if (body.action === 'ai_advice_mark') return jsonResponse(aiAdviceMark_(body));
   if (body.action === 'ai_set_key') return jsonResponse(aiSetKey_(body));
+  if (body.action === 'ai_judge_get') return jsonResponse(aiJudgeGet_()); // [2026.10.19] 멀티 AI 사이드바 — 판단 대기 쟁점(Federation.js)
+  if (body.action === 'ai_judge_save') return jsonResponse(aiJudgeSave_(body));
+  if (body.action === 'ai_ask_slots') return jsonResponse(aiAskSlots_(body));
   if (body.action === 'ai_cross_check') return jsonResponse(aiCrossCheck_(body));
   if (body.action === 'gh_mark_deployed') { if (!/^[0-9a-f]{40}$/.test(String(body.sha || ''))) return jsonResponse({ success: false, error: 'sha 형식 오류' }); gh_markDeployed_(body.sha); let chk = null; try { chk = deploySmoke_().last; } catch (e) {} return jsonResponse({ success: true, check: chk }); } // PC에서 clasp 배포·푸시 후 기준 맞춤(tools/mark-deployed.js)
   if (body.action === 'gh_deploy_status') return jsonResponse(gh_deployStatus_());

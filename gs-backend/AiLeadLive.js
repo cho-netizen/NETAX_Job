@@ -367,8 +367,8 @@ function caseProcAiAttachLine_(c) {
 function caseProcAiLawText_(r, hang) {
   const u = (r.조문 || [])[0]; if (!u) return '';
   const strip = function (s) { return String(s || '').replace(/\s*<\s*(개정|신설|전문개정|타법개정|본조신설)[^>]*>/g, '').trim(); };
-  const hs = u.항 || [], num = function (h) { const m = String(h.항내용 || '').match(/^\s*([①-⑳])/); return m ? m[1].charCodeAt(0) - 0x2460 + 1 : 0; };
-  const L = hs.length ? [] : [strip(u.조문내용)], ci = function (k) { return String.fromCharCode(0x2460 + k - 1); };
+  const hs = u.항 || [], num = function (h) { const m = String(h.항내용 || '').match(/^\s*(?:([①-⑳])|<(\d+)>)/); return !m ? 0 : m[1] ? m[1].charCodeAt(0) - 0x2460 + 1 : +m[2]; }; // 16항부터는 "<16>" 꼴
+  const L = hs.length ? [] : [strip(u.조문내용)], ci = function (k) { return k > 15 ? '<' + k + '>' : String.fromCharCode(0x2460 + k - 1); };
   const last = hs.length ? num(hs[hs.length - 1]) : 0, h0 = Number(hang) || 0;
   if (h0 > 1) L.push((h0 > 2 ? '①~' + ci(h0 - 1) : '①') + ' (생략)');
   hs.forEach(function (h) {
