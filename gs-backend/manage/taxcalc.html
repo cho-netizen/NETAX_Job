@@ -5709,6 +5709,45 @@ function tcSyncTaxOfficeButtons_(paneEl){
 // 전용 로직을 하나도 안 거치게 하는 게 legally 안전하다 — run-transfer 핸들러에서 이
 // 카드들은 calculateOverseasAssetTransferTaxJS로 자산별 독립 계산 후, 국내 합산과는
 // 별도로 "국외자산 양도소득세(별도 세목)" 결과로만 보여준다(국내 납부세액에 합산 안 함).
+// [2026.10.20 조견표 1부-13] 외화 금액 → 원화(소득세법 시행령 §178의5① "수령하거나 지출한 날 현재 외국환거래법에 의한 기준환율 또는 재정환율")
+//  서버 lookupExchangeRate(한국은행 ECOS 731Y001, 서울외국환중개 고시)로 그날(휴일이면 직전 고시일) 환율을 받아 칸에 넣는다.
+function fxHelperBtn_(idx, target, dateField){
+  return '<button type="button" class="taxcalc-ai-btn" data-action="open-fx-helper" data-idx="' + idx + '" data-target="' + target + '" data-datefield="' + dateField + '">💱 외화 → 원화</button>';
+}
+function openFxHelper_(defaultDate, onApply){
+  const CUR = [['USD','미국달러'],['JPY','일본엔(100엔당)'],['EUR','유로'],['CNY','중국위안'],['GBP','영국파운드'],['CAD','캐나다달러'],['AUD','호주달러'],['NZD','뉴질랜드달러'],['CHF','스위스프랑'],['HKD','홍콩달러'],['SGD','싱가포르달러'],['TWD','대만달러'],['THB','태국바트'],['VND','베트남동(100동당)'],['PHP','필리핀페소'],['IDR','인도네시아루피아(100당)'],['MYR','말레이시아링깃'],['INR','인도루피'],['MXN','멕시코페소'],['BRL','브라질헤알'],['SEK','스웨덴크로나'],['DKK','덴마크크로나'],['NOK','노르웨이크로나'],['RUB','러시아루블'],['SAR','사우디리얄'],['KWD','쿠웨이트디나르'],['AED','아랍에미리트디르함'],['TRY','튀르키예리라'],['ZAR','남아공랜드']];
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.display = 'flex';
+  overlay.innerHTML =
+    '<div class="modal-panel" style="width:min(480px, 94vw);">' +
+      '<div class="modal-head"><span>외화 → 원화(기준환율, 소득세법 시행령 §178의5①)</span><span class="modal-close" id="btnCloseFx">✕</span></div>' +
+      '<div class="modal-body"><div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>통화</label><select id="fxCur">' + CUR.map(function(c){ return '<option value="' + c[0] + '">' + c[0] + ' ' + c[1] + '</option>'; }).join('') + '</select></div>' +
+        '<div class="taxcalc-field"><label>외화 금액</label><input type="number" id="fxAmt" step="0.01" placeholder="외화"></div>' +
+        '<div class="taxcalc-field"><label>대금을 받은(지급한) 날</label><input type="date" id="fxDate" value="' + (defaultDate || '') + '" min="1964-05-04" max="2099-12-31"><span class="taxcalc-field-help">장기할부는 양도일·취득일(§178의5②)</span></div>' +
+      '</div><div id="fxOut" class="taxcalc-result-note" style="margin:8px 0;"></div>' +
+      '<button type="button" class="taxcalc-ai-btn" id="fxGo">환율 조회</button> <button type="button" class="taxcalc-ai-btn" id="fxApply" disabled>원화 금액을 칸에 넣기</button></div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  function close(){ overlay.remove(); }
+  overlay.querySelector('#btnCloseFx').onclick = close;
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+  let won_ = null;
+  overlay.querySelector('#fxGo').onclick = function(){
+    const out = overlay.querySelector('#fxOut');
+    const body = { currency: overlay.querySelector('#fxCur').value, date: overlay.querySelector('#fxDate').value, amount: Number(overlay.querySelector('#fxAmt').value) || 0 };
+    out.textContent = '조회 중…';
+    callGas('lookupExchangeRate', body).then(function(r){
+      if (!r || r.error){ out.textContent = '⚠ ' + ((r && r.error) || '조회 실패'); return; }
+      won_ = r.원화금액 != null ? r.원화금액 : null;
+      out.textContent = r.고시일 + ' ' + r.구분 + ' ' + r.통화이름 + ' ' + (r.단위 !== 1 ? r.단위 : 1) + ' = ' + r.환율.toLocaleString('ko-KR') + '원' +
+        (won_ != null ? ' → ' + body.amount.toLocaleString('ko-KR') + ' ' + r.통화 + ' = ' + won_.toLocaleString('ko-KR') + '원(원 미만 버림)' : ' — 외화 금액을 넣으면 원화로 바꿔 줍니다') + ' · ' + (r.안내 || '');
+      overlay.querySelector('#fxApply').disabled = won_ == null;
+    }).catch(function(e){ out.textContent = '⚠ ' + (e && e.message || e); });
+  };
+  overlay.querySelector('#fxApply').onclick = function(){ if (won_ != null){ onApply(won_); close(); } };
+}
 function renderOverseasPropertyCardHtml_(idx){
   const a = transferAssets[idx];
   return '<div class="taxcalc-asset" data-idx="' + idx + '">' +
@@ -5720,16 +5759,16 @@ function renderOverseasPropertyCardHtml_(idx){
         '<div class="taxcalc-field checkbox" style="flex-basis:100%; max-width:none;"><input type="checkbox" data-field="isOverseasAsset" id="oaAsset-' + idx + '" checked><label for="oaAsset-' + idx + '">이 자산은 국외 소재(소득세법§118의2~8 — 국내자산 양도세와 완전히 별도 세목으로, 국내 합산 없이 별도 계산·별도 표시됩니다)</label></div>' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="oaResident5yr" id="oaRes5-' + idx + '"' + (a.oaResident5yr ? ' checked' : '') + '><label for="oaRes5-' + idx + '">양도일까지 계속 5년 이상 국내에 주소·거소를 둔 거주자</label></div>' +
         '<div class="taxcalc-field"><label>양도일</label><input type="date" data-field="transferDate" value="' + (a.transferDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>양도가액</label><input type="number" data-field="transferPrice" placeholder="원" value="' + (a.transferPrice || '') + '"><span class="taxcalc-field-help">원칙 실지거래가액</span></div>' +
+        '<div class="taxcalc-field"><label>양도가액</label><input type="number" data-field="transferPrice" placeholder="원" value="' + (a.transferPrice || '') + '"><span class="taxcalc-field-help">원칙 실지거래가액 · 외화면 대금 받은 날 기준환율 ' + fxHelperBtn_(idx, 'transferPrice', 'transferDate') + '</span></div>' +
         '<div class="taxcalc-field"><label>취득일</label><input type="date" data-field="acquisitionDate" value="' + (a.acquisitionDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>취득가액</label><input type="number" data-field="acquisitionPrice" placeholder="원" value="' + (a.acquisitionPrice || '') + '"><span class="taxcalc-field-help">원칙 실지거래가액</span></div>' +
+        '<div class="taxcalc-field"><label>취득가액</label><input type="number" data-field="acquisitionPrice" placeholder="원" value="' + (a.acquisitionPrice || '') + '"><span class="taxcalc-field-help">원칙 실지거래가액 · 외화면 대금 지급한 날 기준환율 ' + fxHelperBtn_(idx, 'acquisitionPrice', 'acquisitionDate') + '</span></div>' +
         '<div class="taxcalc-field"><label>자본적지출액</label><input type="number" data-field="oaCapitalExpenditure" placeholder="원" value="' + (a.oaCapitalExpenditure || '') + '"><span class="taxcalc-field-help">없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>양도비</label><input type="number" data-field="oaTransferExpenses" placeholder="원" value="' + (a.oaTransferExpenses || '') + '"><span class="taxcalc-field-help">없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>외국납부세액 처리방법</label><select data-field="oaForeignTaxMethod">' +
           '<option value="credit"' + (a.oaForeignTaxMethod !== 'expense' ? ' selected' : '') + '>외국납부세액공제(세액공제, 산출세액 한도)</option>' +
           '<option value="expense"' + (a.oaForeignTaxMethod === 'expense' ? ' selected' : '') + '>필요경비산입방법(위 취득가액 등에 이미 포함해 입력)</option>' +
         '</select></div>' +
-        '<div class="taxcalc-field"><label>외국에 납부한 세액</label><input type="number" data-field="oaForeignTaxPaid" placeholder="원" value="' + (a.oaForeignTaxPaid || '') + '"><span class="taxcalc-field-help">없으면 0, 세액공제방법만</span></div>' +
+        '<div class="taxcalc-field"><label>외국에 납부한 세액</label><input type="number" data-field="oaForeignTaxPaid" placeholder="원" value="' + (a.oaForeignTaxPaid || '') + '"><span class="taxcalc-field-help">없으면 0, 세액공제방법만 · 외화면 낸 날 환율 ' + fxHelperBtn_(idx, 'oaForeignTaxPaid', 'transferDate') + '</span></div>' +
       '</div>' +
     '</div>';
 }
@@ -16072,6 +16111,9 @@ function handleTaxCalcClick_(e){
     });
   } else if (action === 'open-related-party-ratio-helper'){
     openRelatedPartyRatioHelperModal_();
+  } else if (action === 'open-fx-helper'){ // [2026.10.20 조견표 1부-13] 외화 → 원화(기준환율)
+    const fxIdx = numVal(btn.dataset.idx), fxTarget = btn.dataset.target;
+    openFxHelper_((transferAssets[fxIdx] || {})[btn.dataset.datefield] || '', function(value){ transferAssets[fxIdx][fxTarget] = value; renderTransferPane(); });
   } else if (action === 'clear-jm-relations'){ // [2026.10.20 ⑮]
     jmRelations_ = []; renderJmRelations_();
   } else if (action === 'open-shareholding-helper'){

@@ -4145,6 +4145,9 @@ function dispatchClientAction0_(body) {
   if (body.action === 'lookupOfficialPrice') {
     return jsonResponse(handleLookupOfficialPrice(body));
   }
+  if (body.action === 'lookupExchangeRate') { // [2026.10.20 조견표 1부-13] 날짜별 기준환율·재정환율(한국은행 ECOS)
+    return jsonResponse(handleLookupExchangeRate(body));
+  }
   if (body.action === 'checkBusinessNumber') {
     return jsonResponse(handleCheckBusinessNumber(body));
   }
@@ -14228,6 +14231,49 @@ function handleSearchAddressHo(body) {
 // 쓸지는 사용자가 매매사례의 유사성(면적·층·거래시점)을 보고 직접 판단해서 골라야 한다.
 // 이 계정은 이미 실거래가 조회용 MOLIT_API_KEY를 갖고 있고(toolLookupRealEstatePrice가 씀),
 // 같은 API를 다시 직접 호출하는 대신 그 함수를 그대로 재사용해서 응답만 화면이 기대하는 모양으로 바꾼다.
+// [2026.10.20 조견표 1부-13] 기준환율 조회 — 소득세법 시행령 §178의5①: 국외자산 양도가액·필요경비는 "수령하거나 지출한 날 현재 「외국환거래법」에
+//  의한 기준환율 또는 재정환율"로 환산(외국납부세액공제·국외 감정가액도 같은 환율을 씀). 값은 한국은행 경제통계시스템(ECOS) 공개 API 731Y001
+//  "주요국 통화의 대원화환율"(서울외국환중개 고시 매매기준율 — 미국달러·위안은 기준환율, 그 밖의 통화는 재정환율). 키는 스크립트 속성 ECOS_API_KEY,
+//  없으면 ECOS 공개 'sample' 키(한 번에 10건) — 날짜 앞 9일을 받아 그날 또는 직전 고시일 값을 고른다(휴일·주말엔 직전 영업일 고시가 그대로 쓰임).
+const ECOS_FX_ITEMS_ = {
+  USD: ['0000001', '미국달러', 1], CNY: ['0000053', '위안', 1], JPY: ['0000002', '일본엔', 100], EUR: ['0000003', '유로', 1], GBP: ['0000012', '영국파운드', 1],
+  CAD: ['0000013', '캐나다달러', 1], CHF: ['0000014', '스위스프랑', 1], AUD: ['0000017', '호주달러', 1], NZD: ['0000026', '뉴질랜드달러', 1], HKD: ['0000015', '홍콩달러', 1],
+  TWD: ['0000031', '대만달러', 1], THB: ['0000028', '태국바트', 1], SGD: ['0000024', '싱가포르달러', 1], IDR: ['0000029', '인도네시아루피아', 100], MYR: ['0000025', '말레이시아링깃', 1],
+  PHP: ['0000034', '필리핀페소', 1], VND: ['0000035', '베트남동', 100], INR: ['0000037', '인도루피', 1], MXN: ['0000040', '멕시코페소', 1], BRL: ['0000041', '브라질헤알', 1],
+  SEK: ['0000016', '스웨덴크로나', 1], DKK: ['0000018', '덴마크크로나', 1], NOK: ['0000019', '노르웨이크로나', 1], RUB: ['0000043', '러시아루블', 1], SAR: ['0000020', '사우디리얄', 1],
+  KWD: ['0000021', '쿠웨이트디나르', 1], AED: ['0000023', '아랍에미리트디르함', 1], TRY: ['0000050', '튀르키예리라', 1], ZAR: ['0000051', '남아공랜드', 1]
+};
+function handleLookupExchangeRate(body) {
+  const cur = String(body.currency || 'USD').toUpperCase().trim();
+  const item = ECOS_FX_ITEMS_[cur];
+  if (!item) return { error: '지원하지 않는 통화입니다: ' + cur + ' — ' + Object.keys(ECOS_FX_ITEMS_).join('·') };
+  const d = String(body.date || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return { error: '날짜(YYYY-MM-DD)가 필요합니다 — 양도가액은 대금을 받은 날, 취득가액은 지급한 날(소득세법 시행령 §178의5①)' };
+  const end = d.replace(/-/g, '');
+  const sd = new Date(d + 'T00:00:00Z'); sd.setUTCDate(sd.getUTCDate() - 9);
+  const start = Utilities.formatDate(sd, 'UTC', 'yyyyMMdd');
+  const key = PropertiesService.getScriptProperties().getProperty('ECOS_API_KEY') || 'sample';
+  const url = 'https://ecos.bok.or.kr/api/StatisticSearch/' + encodeURIComponent(key) + '/json/kr/1/10/731Y001/D/' + start + '/' + end + '/' + item[0];
+  let j;
+  try {
+    const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    j = JSON.parse(res.getContentText() || '{}');
+  } catch (e) { return { error: '한국은행 ECOS 조회 실패: ' + (e && e.message ? e.message : e) }; }
+  const rows = (j.StatisticSearch && j.StatisticSearch.row) || [];
+  if (!rows.length) return { error: '그 날짜 앞 열흘 안에 고시된 환율이 없습니다' + (j.RESULT ? '(' + j.RESULT.MESSAGE + ')' : '') };
+  const last = rows.filter(function (r) { return String(r.TIME) <= end; }).pop() || rows[rows.length - 1];
+  const t = String(last.TIME);
+  const day = t.slice(0, 4) + '-' + t.slice(4, 6) + '-' + t.slice(6, 8);
+  const rate = Number(last.DATA_VALUE);
+  const amt = Number(body.amount);
+  return {
+    통화: cur, 통화이름: item[1], 단위: item[2], 기준일: d, 고시일: day, 환율: rate,
+    구분: (cur === 'USD' || cur === 'CNY') ? '기준환율(매매기준율)' : '재정환율',
+    원화금액: isFinite(amt) && amt > 0 ? Math.floor(amt * rate / item[2]) : undefined,
+    안내: (day !== d ? d + '은 고시가 없어(휴일 등) 직전 고시일 ' + day + ' 값입니다. ' : '') + '출처: 한국은행 ECOS 731Y001(서울외국환중개 고시) — 소득세법 시행령 §178의5①' + (item[2] !== 1 ? ' · ' + item[2] + item[1] + '당 원' : '')
+  };
+}
+
 function handleLookupRealPrice(body) {
   const lawdCd = String(body.lawdCd || '').trim();
   const dealYm = String(body.dealYm || '').trim();
