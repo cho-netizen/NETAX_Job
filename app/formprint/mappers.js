@@ -63,7 +63,7 @@
  * 상속  heirs: [{name, regNo, relation, address, addressDong, addressHo, statutoryShareRatio, actualValue}] (부표2, ctx.부표2상속인 = 상속인 번호)
  *       valAssets: [{…giftAssets와 같은 줄, alloc:[{heirIdx, ratio}]}] (부표1·2·8) / nonHeirBequest
  *       spouse: {estateValue, assumedDebt, nonTaxable, actual, nonHeirBequest, giftToHeirs, ratio, giftBase, priorGiftedIncluded, divided} (부표3의2)
- *       disposalItems: inheritanceDisposalItems (부표4갑) / forProfitRatio (부표5)
+ *       disposalItems: inheritanceDisposalItems (부표4갑) / forProfitRatio · forProfitPayers: [{kind, name, regNo, ratio}] (부표5)
  *       clawback: {formType('ih6'|'ih7'), result} (부표6·7) / bc: {provision, deferredTax, triggerEvent, disposalRatio, equityDecreaseRatio, equityRatioAtBase, currentEquityRatio} (부표7)
  */
 (function (root, factory) {
@@ -1029,8 +1029,23 @@
     o.miss('①②③ 영리법인 법인명·사업자등록번호·사업장 소재지', '계산기에 없음');
     o.set('④', beq).set('⑤', ex).set('⑥', Math.round(beq * 0.1));
     o.note('⑤ 면제세액은 화면에 직접 입력한 값(계산기가 계산하지 않음)');
-    o.miss('⑦~⑪ 사람별 줄', '계산기는 상속인 등의 지분 비율을 합계 한 칸으로만 받음 — 계 줄에만 찍음');
-    o.set('계~계 — ⑩ 지분율 합', pct2(ratio)).set('계~계 — ⑪ 면제분 납부세액 합(= 본표 ㊱)', n(r.영리법인면제분납부세액));
+    // [2026.10.20 AI 회의 회장 결론 J07] 상증법 §3의2②(2025.12.23. 개정, 2026.1.1. 시행)·시행령 §3② — 상속인·상속인의 배우자·직계비속·
+    //  직계비속의 배우자가 "각자의" 지분상당액을 낸다. 서식(2020.3.13.판) ⑦ 구분엔 상속인·직계비속만 있지만, 같은 줄 형식을 사람마다 써서 ⑦에
+    //  "상속인의 배우자"처럼 적고 ⑩·⑪을 따로 적는다(합쳐 적기는 남의 납부의무를 상속인 몫으로 적는 셈이라 안 씀). 5줄이 넘으면 이어지는 장.
+    var payers = (ctx.forProfitPayers || []).filter(function (p) { return p && (has(p.name) || n(p.ratio) > 0); });
+    var total = n(r.영리법인면제분납부세액), base = ex - beq * 0.1;
+    if (payers.length) {
+      var amts = payers.map(function (p) { return Math.max(0, Math.round(base * n(p.ratio))); });
+      var sumR = payers.reduce(function (s, p) { return s + n(p.ratio); }, 0);
+      // 사람별 원 미만 반올림 합이 본표 ㊱(엔진 합계)과 1~2원 다르면 마지막 줄에서 맞춘다
+      var diff = total - amts.reduce(function (s, a) { return s + a; }, 0);
+      if (diff && Math.abs(diff) <= payers.length && Math.abs(sumR - ratio) < 1e-6) { amts[amts.length - 1] += diff; o.note('⑪ 사람별 원 미만 반올림 차이 ' + diff + '원을 마지막 줄에서 맞춤(계 = 본표 ㊱)'); }
+      o.set('⑦', payers.map(function (p) { return p.kind || '상속인'; })).set('⑧', payers.map(function (p) { return p.name || ''; }))
+        .set('⑨', payers.map(function (p) { return p.regNo || ''; })).set('⑩', payers.map(function (p) { return pct2(n(p.ratio)); })).set('⑪', amts);
+      o.check('계 ⑩ = 사람별 ⑩ 합(화면 지분 상당 비율과 같음)', pct2(ratio), pct2(sumR));
+      if (payers.some(function (p) { return /배우자/.test(p.kind || ''); })) o.note('⑦ 구분에 "상속인의 배우자"·"직계비속의 배우자"를 적은 줄은 상증법 §3의2②(2025.12.23. 개정)로 더해진 납부의무자 — 서식(2020.3.13.판)에 그 구분이 아직 없어 같은 줄 형식으로 적음');
+    } else o.miss('⑦~⑪ 사람별 줄', '화면 "영리법인 면제분 납부의무자"에 사람을 넣지 않음 — 계 줄에만 찍음');
+    o.set('계~계 — ⑩ 지분율 합', pct2(ratio)).set('계~계 — ⑪ 면제분 납부세액 합(= 본표 ㊱)', total);
     o.check('계 ⑪ = (⑤ − ⑥) × 계 ⑩', n(r.영리법인면제분납부세액), Math.max(0, Math.round((ex - beq * 0.1) * ratio)));
     return o.result();
   };
@@ -1297,7 +1312,7 @@
       });
       return Object.assign({ r: r, fv: r ? ihFormValues_(r) : {}, reporter: reporter, phone: el('ihReporterPhone'), email: el('ihReporterEmail'),
         deceased: { name: el('ihDeceasedName'), regNo: el('ihDeceasedRegNo'), address: el('ihDeceasedAddress'), deathDate: el('ihDeathDate'), resident: nonRes ? 'nonresident' : 'resident', taxOffice: el('ihDeceasedTaxOffice') },
-        taxAgent: agent(), rate: r ? ihRateForBase_(r.과세표준) : null, forProfitBequest: gn('ihForProfitBequest'), forProfitExempted: gn('ihForProfitExempted'), forProfitRatio: numVal(el('ihForProfitRatio')) || 0,
+        taxAgent: agent(), rate: r ? ihRateForBase_(r.과세표준) : null, forProfitBequest: gn('ihForProfitBequest'), forProfitExempted: gn('ihForProfitExempted'), forProfitRatio: numVal(el('ihForProfitRatio')) || 0, forProfitPayers: (typeof inheritanceForProfitPayers !== 'undefined' ? inheritanceForProfitPayers : []), // [2026.10.20 J07] 부표5 사람별 줄
         bizDeferred: gn('ihBizInheritDeferred'), installment: inst, split: split,
         assets: valAssets, valAssets: valAssets, heirs: heirs, spouse: spouse, nonHeirBequest: gn('ihNonHeirBequest'), disposalItems: disposal,
         valuationTotal: Math.round(ihValuationAssetsGrossTotal_()), grossEstate: ihGrossEstateTotal_(), publicOrg: gn('ihPublicOrg'), publicTrust: gn('ihPublicTrust'),
