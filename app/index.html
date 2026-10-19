@@ -11925,12 +11925,10 @@
   }
   function presumedInheritedFromDisposal(item) {
     item = item || {};
-    // [2026.10.19 판단 대기 ④ 해석 B 계산용] 서식 별지 제9호 부표4(갑) 부담채무Ⅱ 줄은 ⑫(금액 기준)·⑮(차감)이 막혀 있어 ⑰ = ⑭ 미소명 전액 —
-    //  _fullUnexplained가 켜진 항목만 그렇게 계산한다(기본 계산은 법문대로 — 해석 A).
-    if (item._fullUnexplained) {
-      const un = function (amt, dep, exp) { return Math.max(0, Math.max(0, (Number(amt) || 0) - (Number(dep) || 0)) - (Number(exp) || 0)); };
-      return Math.max(un(item.oneYearAmount, item.oneYearSelfDeposit, item.oneYearExplained), un(item.twoYearAmount, item.twoYearSelfDeposit, item.twoYearExplained));
-    }
+    // [2026.10.20 AI 회의 회장 결론 J05] 부담채무Ⅱ(국가·지자체·금융회사등이 아닌 자에 대한 채무)도 상증법 §15①2호·시행령 §11④·집행기준
+    //  15-11-3·15-11-6은 채권자를 가리지 않으므로 1년 2억·2년 5억 기준과 MIN(20%, 2억) 차감을 거친다(해석 A로 확정). 기준·차감 없이
+    //  전액 넣는 것은 §15②(상속인이 변제할 의무가 없는 것으로 추정되는 채무 — presumedFictitiousDebtAmount)이다. 판단 대기(해석 B: 서식
+    //  부표4(갑) Ⅱ 줄 미소명 전액) 계산용 _fullUnexplained 분기는 내렸다.
     const oneYear = computeDisposalBasisPresumed_(item.oneYearAmount, item.oneYearSelfDeposit, item.oneYearExplained, 200000000);
     const twoYear = computeDisposalBasisPresumed_(item.twoYearAmount, item.twoYearSelfDeposit, item.twoYearExplained, 500000000);
     return Math.max(oneYear, twoYear);
@@ -21855,7 +21853,7 @@
   const JUDGMENT_PENDING_ = {
     speculative_zone_land: { 제목: '세종 지정지역(2017.8.3.~2022.9.25.) 비사업용토지 +10%p', 조견표: '1부-04', 근거: '소득세법 §104④3호·§104의2②·시행령 §168의3①·③, 기획재정부공고 제2017-114호', A: '가산 안 함(공고 본문의 "주택" 지정 — 시행령 §168의3①1호)', B: '+10%p 가산(예정지구형 ①4호면 ③3호로 주택 외 부동산 가산)' },
     apartment_deadline_155_20: { 제목: '아파트 매입임대 양도기한(2026.10.1 개정)이 지난 뒤의 거주주택 특례(§155⑳)', 조견표: '2부-27', 근거: '소득세법 시행령 §155⑳·㉓·§167의3①2호 가목2)·나목2)·라목8)·마목4)·⑪(대통령령 제36737호)', A: '거주주택 특례에는 안 걸림(비과세 유지)', B: '걸림(특례 배제·과세) — 임대주택이 말소되지 않은 채 기한이 지난 경우' },
-    private_debt_15: { 제목: '상속개시 전 사인 간 채무(부담채무Ⅱ)의 추정상속재산', 조견표: '상속 서식 별지 제9호 부표4(갑)', 근거: '상증법 §15①2호·시행령 §11④ ↔ 서식 부표4(갑) 부담채무Ⅱ 줄(⑫·⑮ 칸 막힘) · §15②', A: '법문대로 1년 2억·2년 5억 기준, 미소명에서 MIN(20%, 2억) 차감', B: '서식대로 미소명 전액(기준·차감 없음)' },
+    // [2026.10.20 회장 결론 J05] private_debt_15(부담채무Ⅱ 추정상속재산)는 해석 A(§15①2호 기준·차감)로 확정해 내림
     rental_9703_vs_surcharge: { 제목: '장기일반민간임대(조특법 §97의3) 주택이 다주택 중과 대상일 때 장특공 특례율', 조견표: '2부-24', 근거: '조특법 §97의3①("§95②에도 불구하고")·소득세법 §95② 본문 괄호·§104⑦·시행령 §167의3', A: '중과 세율 + 특례 공제율(70%·50%) 함께', B: '중과 세율 + 장특공 배제' },
     // [2026.10.19 서식 감사 — 작업자 자] 시행령 §97의3⑤ 임대기간 중 양도차익 — 2026.2.27 전 양도분은 산식이 법령에 없음
     rental_9703_split_pre2026: { 제목: '장기일반민간임대(§97의3) 임대기간 중 양도차익 — 2026.2.27 전 양도분 계산법', 조견표: '2부-24', 근거: '조특법 시행령 §97의3⑤(2021.2.17~2026.2.26 "기준시가를 기준으로 산정"만)', A: '(양도일 − 등록일) ÷ (양도일 − 취득일) 기준시가(지금 동작)', B: '2026.2.27 산식(임대 마지막 날 − 임대 개시일) ÷ (양도일 − 취득일)' },
@@ -21927,7 +21925,7 @@
   function judgmentWarning_(list) {
     return list.length ? '⚠ 세무사님 판단 대기 — ' + list.map(function (j) { return j.제목 + ': 해석 A(' + j.해석A + ') 산출세액 ' + j.세액A.toLocaleString('ko-KR') + '원 / 해석 B(' + j.해석B + ') ' + j.세액B.toLocaleString('ko-KR') + '원'; }).join(' · ') + ' — 계산은 해석 A(지금 기본)로 했음' : '';
   }
-  // [2026.10.19 판단 대기 ④] 상속 — 부담채무Ⅱ(국가·지자체·금융기관이 아닌 자에게 진 채무) 항목이 있을 때만 해석 B(미소명 전액)로 다시 계산해 나란히
+  // [2026.10.19 판단 대기 ④ → 2026.10.20 회장 결론 J05로 해석 A 확정, 판단 대기 내림] 상속 — 부담채무Ⅱ와 §15② 가공채무가 둘 다 있으면 겹침 주의만
   (function () {
     const i0 = window.calculateInheritanceTaxJS;
     if (typeof i0 !== 'function') return;
@@ -21939,18 +21937,6 @@
           // 같은 사인 채무를 §15①2호(부담채무Ⅱ 줄)와 §15②(presumedFictitiousDebtAmount) 두 길로 넣었을 수 있음 — 둘 다 있으면 주의 한 줄
           if (p.disposalPresumptionItems.some(isII) && (Number(p.presumedFictitiousDebtAmount) || 0) > 0)
             r.채무겹침주의 = '⚠ 같은 채무를 두 번 넣었는지 확인하세요 — 부담채무Ⅱ(2년 안 사인 채무, 부표4 줄)와 변제의무 없는 가공채무(§15②, ' + (Number(p.presumedFictitiousDebtAmount) || 0).toLocaleString('ko-KR') + '원)가 둘 다 있습니다. 한 채무는 한 곳에만 넣습니다.';
-          if (p.disposalPresumptionItems.some(isII)) {
-            const alt = JSON.parse(JSON.stringify(p));
-            alt.disposalPresumptionItems = alt.disposalPresumptionItems.map(function (it) { return isII(it) ? Object.assign({}, it, { _fullUnexplained: true }) : it; });
-            const rb = i0(alt);
-            const tA = Number(r.산출세액) || 0, tB = Number(rb && rb.산출세액) || 0;
-            if (rb && !rb.error && Math.abs(tB - tA) >= 1) {
-              const m = JUDGMENT_PENDING_.private_debt_15;
-              const L = [{ id: 'private_debt_15', 자산: 0, 제목: m.제목, 근거: m.근거, 조견표: m.조견표, 해석A: m.A, 해석B: m.B, 세액A: tA, 세액B: Math.round(tB),
-                비고: '추정상속재산 A ' + (Number(r.상속개시전처분재산_추정합계) || 0).toLocaleString('ko-KR') + '원 / B ' + (Number(rb.상속개시전처분재산_추정합계) || 0).toLocaleString('ko-KR') + '원' }];
-              r.판단대기 = (r.판단대기 || []).concat(L); r.판단대기경고 = judgmentWarning_(r.판단대기);
-            }
-          }
         } catch (e2) {}
       }
       return r;
@@ -32850,8 +32836,10 @@ function renderInheritancePane(){
     '<div class="taxcalc-asset-head"><b>재산평가 자산 배분 — 자산 등록·평가는 "재산평가" 탭에서 하고, 여기서는 배분만 합니다</b></div>' +
     '<div id="inheritanceAssetAllocationList">' + renderInheritanceAssetAllocationListHtml_() + '</div>' +
     '<div class="taxcalc-asset-head"><b>[부표4] 상속개시전 처분재산 등 산입액(§15) — 상속개시 전 1년 이내 재산종류별 2억원 이상(2년 이내 5억원 이상) 처분·인출·채무부담인데 용도가 불분명하면 자동으로 과세가액에 가산됩니다. 해당 없으면 비워두세요.</b></div>' +
-    '<div class="taxcalc-result-note" style="margin:2px 0 6px;">같은 채무를 두 곳에 넣지 마세요 — 2년 안에 국가·금융기관이 아닌 사람에게 진 채무(사인 채무)의 용도 소명은 여기 "부담채무Ⅱ" 줄에, 상속인이 갚을 의무가 없는 것으로 보이는 가공채무(§15②)는 상속재산 채무에서 빼는 쪽으로 넣습니다. 부담채무Ⅱ가 있으면 결과에 "세무사님 판단 대기"(법문 A / 서식 B 세액)가 나옵니다.</div>' +
+    // [2026.10.20 AI 회의 회장 결론 J05] 사인 채무는 두 길로 나눠 받는다 — 판단 대기(법문 A / 서식 B)는 A로 확정해 내림
+    '<div class="taxcalc-result-note" style="margin:2px 0 6px;">국가·금융기관이 아닌 사람에게 진 채무(사인 채무)는 한 곳에만 넣으세요 — ① 채무는 실제로 있는데 빌린 돈을 어디에 썼는지 밝히지 못한 금액 → 아래 "부담채무Ⅱ" 줄(1년 2억·2년 5억 이상일 때, 못 밝힌 금액에서 20%·2억 중 작은 금액을 뺌 — 상증법 §15①2호) ② 상속인이 갚아야 한다는 서류가 없는 채무 → 아래 "갚을 의무가 입증 안 된 사인 채무" 칸(기준·차감 없이 전액 — §15②).</div>' +
     '<div id="ihDisposalItems"></div>' +
+    '<div class="taxcalc-grid" style="margin-top:6px;"><div class="taxcalc-field"><label>갚을 의무가 입증 안 된 사인 채무(§15②)</label><input type="number" id="ihPresumedFictitiousDebt" placeholder="원"><span class="taxcalc-field-help">채무 목록에 넣은 개인 채무 중 상속인이 실제로 갚아야 한다는 서류(채무부담계약서·이자 지급 증빙 등, 시행령 §10①2호)가 없는 금액 — 전액 과세가액에 다시 더합니다. 없으면 비움</span></div></div>' +
     '<div class="taxcalc-asset">' +
       '<div class="taxcalc-asset-head"><b>과세가액 · 인적공제(자녀 수·미성년·65세이상은 위 상속인 명부에서 자동 산출)</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -33501,7 +33489,7 @@ function ihGrossEstateTotal_(){
 function ihAttach1CalcRecord_(){
   const r = lastInheritanceResult || {};
   const grossEstate = ihGrossEstateTotal_();
-  const disposalIncluded = numVal(r.상속개시전처분재산_추정합계) || 0;
+  const disposalIncluded = (numVal(r.상속개시전처분재산_추정합계) || 0) + (numVal(r.가공채무추정_재산입액) || 0); // [2026.10.20 J05] 부표1 ⑪ = 부표4(갑) 다(§15①·② 합)
   const grossTotal = grossEstate + disposalIncluded;
   const nonTaxable = numVal(r.비과세재산가액) || 0;
   const publicOrg = numVal(document.getElementById('ihPublicOrg') ? document.getElementById('ihPublicOrg').value : 0);
@@ -33620,7 +33608,7 @@ function ihLegalShareBase_(){
   const g_ = function(id){ const el = document.getElementById(id); return el ? (numVal(el.value) || 0) : 0; };
   const ge = g_('ihGrossEstateGeneral');
   const gross = ge > 0 ? ge : ihValuationAssetsGrossTotal_();
-  const presumed = (typeof lastInheritanceResult !== 'undefined' && lastInheritanceResult) ? (numVal(lastInheritanceResult.상속개시전처분재산_추정합계) || 0) : 0;
+  const presumed = (typeof lastInheritanceResult !== 'undefined' && lastInheritanceResult) ? ((numVal(lastInheritanceResult.상속개시전처분재산_추정합계) || 0) + (numVal(lastInheritanceResult.가공채무추정_재산입액) || 0)) : 0; // [2026.10.20 J05] §15② 포함
   return gross + presumed + g_('ihPriorGiftedIncluded') - g_('ihNonHeirBequest') - g_('ihNonTaxable') - computeDuesTotal_(inheritanceDuesItems) - computeDebtTotal_(inheritanceDebtItems);
 }
 // 부표2 — 상속인별 상속재산 및 평가명세서_상속현황(자료구분06, 600B) × 상속인 1명
@@ -33891,7 +33879,7 @@ function ihAttachPrintPagesHtml_(){
       // 소계·세부내역 구조임을 확인 — 예전엔 8개 요약줄로 뭉개져 있었다. e-file
       // (ihAttach1CalcRecord_)이 이미 이 구조 그대로 값을 갖고 있어서 그대로 옮긴다(세부미수집
       // 항목은 0으로 정직하게 표시 — 지어내지 않음).
-      const disposalIncluded = numVal(r.상속개시전처분재산_추정합계) || 0;
+      const disposalIncluded = (numVal(r.상속개시전처분재산_추정합계) || 0) + (numVal(r.가공채무추정_재산입액) || 0); // [2026.10.20 J05] §15② 포함
       const grossTotal = grossEstate + disposalIncluded;
       const nonTaxable = numVal(r.비과세재산가액) || 0;
       const publicOrg = numVal(g_('ihPublicOrg'));
@@ -36348,6 +36336,7 @@ function buildInheritanceCalcBasisLines(r){
   if (r.공익법인출연재산가액) lines.push('공익법인출연재산가액(§16) = -' + won(r.공익법인출연재산가액));
   if (r.공익신탁재산가액) lines.push('공익신탁재산가액(§17) = -' + won(r.공익신탁재산가액));
   if (r.상속개시전처분재산_추정합계) lines.push('상속개시전 처분재산 등 산입액(§15) = +' + won(r.상속개시전처분재산_추정합계));
+  if (r.가공채무추정_재산입액) lines.push('갚을 의무가 입증 안 된 사인 채무(§15②) = +' + won(r.가공채무추정_재산입액)); // [2026.10.20 J05]
   lines.push('적용된 상속세과세가액 = ' + won(r.상속세과세가액_적용값));
   lines.push('기초공제+인적공제(' + won(r.인적공제) + ') vs 일괄공제(5억) 중 큰 값 = -' + won(r['기초인적공제_또는_일괄공제']));
   if (r.배우자공제) lines.push('배우자상속공제(§19) = -' + won(r.배우자공제));
@@ -36403,9 +36392,10 @@ function renderInheritanceResult(r){
   if (r.비과세재산가액) html += taxCalcResultRow('비과세재산가액', '-' + won(r.비과세재산가액));
   if (r.공익법인출연재산가액) html += taxCalcResultRow('공익법인출연재산가액', '-' + won(r.공익법인출연재산가액));
   if (r.공익신탁재산가액) html += taxCalcResultRow('공익신탁재산가액', '-' + won(r.공익신탁재산가액));
-  if (r.상속개시전처분재산_추정합계 || r.비과세재산가액 || r.공익법인출연재산가액 || r.공익신탁재산가액) {
+  if (r.상속개시전처분재산_추정합계 || r.가공채무추정_재산입액 || r.비과세재산가액 || r.공익법인출연재산가액 || r.공익신탁재산가액) {
     html += taxCalcResultRow('상속세과세가액(입력값)', won(r.상속세과세가액_입력값));
     if (r.상속개시전처분재산_추정합계) html += taxCalcResultRow('상속개시전 처분재산 추정 가산액(§15)', '+' + won(r.상속개시전처분재산_추정합계));
+    if (r.가공채무추정_재산입액) html += taxCalcResultRow('갚을 의무가 입증 안 된 사인 채무(§15②)', '+' + won(r.가공채무추정_재산입액)); // [2026.10.20 J05]
     html += taxCalcResultRow('적용된 상속세과세가액', won(r.상속세과세가액_적용값));
   }
   html += taxCalcResultRow('인적공제', won(r.인적공제));
@@ -39684,6 +39674,7 @@ function handleTaxCalcClick_(e){
       totalGrossEstateValue: numVal(document.getElementById('ihTotalGrossEstate').value) || 0,
       grossEstateValue: (function(){ const ge = numVal((document.getElementById('ihGrossEstateGeneral') || {}).value) || 0; return ge > 0 ? ge : ihValuationAssetsGrossTotal_(); })(), // [2026.10.20 J28] 부표1 ⑨ 자동
       disposalPresumptionItems: disposalPresumptionItems,
+      presumedFictitiousDebtAmount: numVal((document.getElementById('ihPresumedFictitiousDebt') || {}).value) || 0, // [2026.10.20 J05] §15② — 기준·차감 없이 전액
       isDecedentResident: document.getElementById('ihDecedentResident').value !== 'nonresident',
       hasSpouse: taxCalcHeirRegistryHasSpouse,
       isSpouseOnlyHeir: taxCalcHeirRegistryIsSpouseOnly,

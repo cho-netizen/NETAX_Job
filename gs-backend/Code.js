@@ -779,7 +779,7 @@ const DRIVE_TOOLS = [
           items: {
             type: 'object',
             properties: {
-              category: { type: 'string', description: '재산종류 (예: "현금·예금·유가증권", "부동산", "기타재산", "부담채무I", "부담채무II"). 부담채무II(국가·지자체·금융기관이 아닌 자에게 진 채무)는 세무사님 판단 대기 중 — 계산은 법문(기준·20% 차감, 해석 A)이고 결과에 서식대로(미소명 전액, 해석 B) 세액이 함께 나온다. presumedFictitiousDebtAmount(§15②)와 같은 채무를 겹쳐 넣지 말 것.' },
+              category: { type: 'string', description: '재산종류 (예: "현금·예금·유가증권", "부동산", "기타재산", "부담채무I", "부담채무II"). 부담채무II(국가·지자체·금융기관이 아닌 자에게 진 채무)도 §15①2호대로 1년 2억·2년 5억 기준과 MIN(20%, 2억) 차감을 거친다(2026.10.20 회장 결론 J05 — 채무는 실재하나 받은 돈의 용도가 불분명한 경우). 채무 자체를 상속인이 갚을 의무가 입증되지 않으면 여기 말고 presumedFictitiousDebtAmount(§15②, 전액)로 — 같은 채무를 겹쳐 넣지 말 것.' },
               oneYearAmount: { type: 'number', description: '상속개시 전 1년 이내 총인출(처분·차입)액 합계(원)' },
               oneYearSelfDeposit: { type: 'number', description: '위 1년 이내 인출액 중 본인계좌 재입금 등 실질적으로 인출이 아닌 금액(원, 없으면 0)' },
               oneYearExplained: { type: 'number', description: '1년 이내 순인출액 중 용도가 객관적으로 소명된 금액(원, 없으면 0)' },

@@ -10863,8 +10863,10 @@ function renderInheritancePane(){
     '<div class="taxcalc-asset-head"><b>재산평가 자산 배분 — 자산 등록·평가는 "재산평가" 탭에서 하고, 여기서는 배분만 합니다</b></div>' +
     '<div id="inheritanceAssetAllocationList">' + renderInheritanceAssetAllocationListHtml_() + '</div>' +
     '<div class="taxcalc-asset-head"><b>[부표4] 상속개시전 처분재산 등 산입액(§15) — 상속개시 전 1년 이내 재산종류별 2억원 이상(2년 이내 5억원 이상) 처분·인출·채무부담인데 용도가 불분명하면 자동으로 과세가액에 가산됩니다. 해당 없으면 비워두세요.</b></div>' +
-    '<div class="taxcalc-result-note" style="margin:2px 0 6px;">같은 채무를 두 곳에 넣지 마세요 — 2년 안에 국가·금융기관이 아닌 사람에게 진 채무(사인 채무)의 용도 소명은 여기 "부담채무Ⅱ" 줄에, 상속인이 갚을 의무가 없는 것으로 보이는 가공채무(§15②)는 상속재산 채무에서 빼는 쪽으로 넣습니다. 부담채무Ⅱ가 있으면 결과에 "세무사님 판단 대기"(법문 A / 서식 B 세액)가 나옵니다.</div>' +
+    // [2026.10.20 AI 회의 회장 결론 J05] 사인 채무는 두 길로 나눠 받는다 — 판단 대기(법문 A / 서식 B)는 A로 확정해 내림
+    '<div class="taxcalc-result-note" style="margin:2px 0 6px;">국가·금융기관이 아닌 사람에게 진 채무(사인 채무)는 한 곳에만 넣으세요 — ① 채무는 실제로 있는데 빌린 돈을 어디에 썼는지 밝히지 못한 금액 → 아래 "부담채무Ⅱ" 줄(1년 2억·2년 5억 이상일 때, 못 밝힌 금액에서 20%·2억 중 작은 금액을 뺌 — 상증법 §15①2호) ② 상속인이 갚아야 한다는 서류가 없는 채무 → 아래 "갚을 의무가 입증 안 된 사인 채무" 칸(기준·차감 없이 전액 — §15②).</div>' +
     '<div id="ihDisposalItems"></div>' +
+    '<div class="taxcalc-grid" style="margin-top:6px;"><div class="taxcalc-field"><label>갚을 의무가 입증 안 된 사인 채무(§15②)</label><input type="number" id="ihPresumedFictitiousDebt" placeholder="원"><span class="taxcalc-field-help">채무 목록에 넣은 개인 채무 중 상속인이 실제로 갚아야 한다는 서류(채무부담계약서·이자 지급 증빙 등, 시행령 §10①2호)가 없는 금액 — 전액 과세가액에 다시 더합니다. 없으면 비움</span></div></div>' +
     '<div class="taxcalc-asset">' +
       '<div class="taxcalc-asset-head"><b>과세가액 · 인적공제(자녀 수·미성년·65세이상은 위 상속인 명부에서 자동 산출)</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -11514,7 +11516,7 @@ function ihGrossEstateTotal_(){
 function ihAttach1CalcRecord_(){
   const r = lastInheritanceResult || {};
   const grossEstate = ihGrossEstateTotal_();
-  const disposalIncluded = numVal(r.상속개시전처분재산_추정합계) || 0;
+  const disposalIncluded = (numVal(r.상속개시전처분재산_추정합계) || 0) + (numVal(r.가공채무추정_재산입액) || 0); // [2026.10.20 J05] 부표1 ⑪ = 부표4(갑) 다(§15①·② 합)
   const grossTotal = grossEstate + disposalIncluded;
   const nonTaxable = numVal(r.비과세재산가액) || 0;
   const publicOrg = numVal(document.getElementById('ihPublicOrg') ? document.getElementById('ihPublicOrg').value : 0);
@@ -11633,7 +11635,7 @@ function ihLegalShareBase_(){
   const g_ = function(id){ const el = document.getElementById(id); return el ? (numVal(el.value) || 0) : 0; };
   const ge = g_('ihGrossEstateGeneral');
   const gross = ge > 0 ? ge : ihValuationAssetsGrossTotal_();
-  const presumed = (typeof lastInheritanceResult !== 'undefined' && lastInheritanceResult) ? (numVal(lastInheritanceResult.상속개시전처분재산_추정합계) || 0) : 0;
+  const presumed = (typeof lastInheritanceResult !== 'undefined' && lastInheritanceResult) ? ((numVal(lastInheritanceResult.상속개시전처분재산_추정합계) || 0) + (numVal(lastInheritanceResult.가공채무추정_재산입액) || 0)) : 0; // [2026.10.20 J05] §15② 포함
   return gross + presumed + g_('ihPriorGiftedIncluded') - g_('ihNonHeirBequest') - g_('ihNonTaxable') - computeDuesTotal_(inheritanceDuesItems) - computeDebtTotal_(inheritanceDebtItems);
 }
 // 부표2 — 상속인별 상속재산 및 평가명세서_상속현황(자료구분06, 600B) × 상속인 1명
@@ -11904,7 +11906,7 @@ function ihAttachPrintPagesHtml_(){
       // 소계·세부내역 구조임을 확인 — 예전엔 8개 요약줄로 뭉개져 있었다. e-file
       // (ihAttach1CalcRecord_)이 이미 이 구조 그대로 값을 갖고 있어서 그대로 옮긴다(세부미수집
       // 항목은 0으로 정직하게 표시 — 지어내지 않음).
-      const disposalIncluded = numVal(r.상속개시전처분재산_추정합계) || 0;
+      const disposalIncluded = (numVal(r.상속개시전처분재산_추정합계) || 0) + (numVal(r.가공채무추정_재산입액) || 0); // [2026.10.20 J05] §15② 포함
       const grossTotal = grossEstate + disposalIncluded;
       const nonTaxable = numVal(r.비과세재산가액) || 0;
       const publicOrg = numVal(g_('ihPublicOrg'));
@@ -14361,6 +14363,7 @@ function buildInheritanceCalcBasisLines(r){
   if (r.공익법인출연재산가액) lines.push('공익법인출연재산가액(§16) = -' + won(r.공익법인출연재산가액));
   if (r.공익신탁재산가액) lines.push('공익신탁재산가액(§17) = -' + won(r.공익신탁재산가액));
   if (r.상속개시전처분재산_추정합계) lines.push('상속개시전 처분재산 등 산입액(§15) = +' + won(r.상속개시전처분재산_추정합계));
+  if (r.가공채무추정_재산입액) lines.push('갚을 의무가 입증 안 된 사인 채무(§15②) = +' + won(r.가공채무추정_재산입액)); // [2026.10.20 J05]
   lines.push('적용된 상속세과세가액 = ' + won(r.상속세과세가액_적용값));
   lines.push('기초공제+인적공제(' + won(r.인적공제) + ') vs 일괄공제(5억) 중 큰 값 = -' + won(r['기초인적공제_또는_일괄공제']));
   if (r.배우자공제) lines.push('배우자상속공제(§19) = -' + won(r.배우자공제));
@@ -14416,9 +14419,10 @@ function renderInheritanceResult(r){
   if (r.비과세재산가액) html += taxCalcResultRow('비과세재산가액', '-' + won(r.비과세재산가액));
   if (r.공익법인출연재산가액) html += taxCalcResultRow('공익법인출연재산가액', '-' + won(r.공익법인출연재산가액));
   if (r.공익신탁재산가액) html += taxCalcResultRow('공익신탁재산가액', '-' + won(r.공익신탁재산가액));
-  if (r.상속개시전처분재산_추정합계 || r.비과세재산가액 || r.공익법인출연재산가액 || r.공익신탁재산가액) {
+  if (r.상속개시전처분재산_추정합계 || r.가공채무추정_재산입액 || r.비과세재산가액 || r.공익법인출연재산가액 || r.공익신탁재산가액) {
     html += taxCalcResultRow('상속세과세가액(입력값)', won(r.상속세과세가액_입력값));
     if (r.상속개시전처분재산_추정합계) html += taxCalcResultRow('상속개시전 처분재산 추정 가산액(§15)', '+' + won(r.상속개시전처분재산_추정합계));
+    if (r.가공채무추정_재산입액) html += taxCalcResultRow('갚을 의무가 입증 안 된 사인 채무(§15②)', '+' + won(r.가공채무추정_재산입액)); // [2026.10.20 J05]
     html += taxCalcResultRow('적용된 상속세과세가액', won(r.상속세과세가액_적용값));
   }
   html += taxCalcResultRow('인적공제', won(r.인적공제));
@@ -17697,6 +17701,7 @@ function handleTaxCalcClick_(e){
       totalGrossEstateValue: numVal(document.getElementById('ihTotalGrossEstate').value) || 0,
       grossEstateValue: (function(){ const ge = numVal((document.getElementById('ihGrossEstateGeneral') || {}).value) || 0; return ge > 0 ? ge : ihValuationAssetsGrossTotal_(); })(), // [2026.10.20 J28] 부표1 ⑨ 자동
       disposalPresumptionItems: disposalPresumptionItems,
+      presumedFictitiousDebtAmount: numVal((document.getElementById('ihPresumedFictitiousDebt') || {}).value) || 0, // [2026.10.20 J05] §15② — 기준·차감 없이 전액
       isDecedentResident: document.getElementById('ihDecedentResident').value !== 'nonresident',
       hasSpouse: taxCalcHeirRegistryHasSpouse,
       isSpouseOnlyHeir: taxCalcHeirRegistryIsSpouseOnly,

@@ -546,7 +546,7 @@
     var grossKnown = n(ctx.grossEstate) > 0 || assets.length > 0 || n(ctx.valuationTotal) > 0;
     if (grossKnown) o.set('⑨', Math.round(valTotal)); else o.miss('⑨⑩⑫ 재산가액 합계', '재산평가 목록이 없음(계산기에 과세가액만 입력) — 출력물에 직접 적으세요');
     var gross = has(ctx.grossEstate) ? n(ctx.grossEstate) : valTotal;
-    var disp = n(r.상속개시전처분재산_추정합계), nonTax = n(r.비과세재산가액);
+    var disp = presumedAll(r), nonTax = n(r.비과세재산가액); // [2026.10.20 J05] ⑪ = 부표4(갑) 다 — §15①(처분·인출·채무부담) + §15②(변제의무 미입증 채무)
     var po = n(ctx.publicOrg), pt = n(ctx.publicTrust), dues = n(ctx.duesTotal), debt = n(ctx.debtTotal), fun = n(r.장례비용공제);
     if (grossKnown) o.set('⑩', gross).set('⑫', gross + disp);
     o.set('⑪', disp).set('⑬', nonTax).set('⑯', nonTax);
@@ -887,7 +887,7 @@
     var legal = fracNum(h.statutoryShareRatio);
     // 작성방법 3: ⑥ = (부표1 ⑫ + ㉕ − 상속인 아닌 수유자 유증 등 − ⑬ − ㉒ − ㉔) × ⑤
     var gross = has(ctx.grossEstate) ? n(ctx.grossEstate) : n(ctx.valuationTotal);
-    var b12 = gross + n(r.상속개시전처분재산_추정합계), b25 = fv.priorGiftAdded !== null ? fv.priorGiftAdded : null;
+    var b12 = gross + presumedAll(r), b25 = fv.priorGiftAdded !== null ? fv.priorGiftAdded : null;
     if (legal !== null) {
       o.set('⑤', pct2(legal));
       if (b25 !== null) {
@@ -916,7 +916,7 @@
     // ⑱~㉗ 상속인별 나눔은 계산기에 없음(전자신고 0) — 전체 금액이 0이면 누구 몫이든 0이 확실하므로 0, 아니면 비움
     var zero = true;
     function zeroIf(keys, total, why) { if (!total) keys.forEach(function (k) { o.set(k, 0); }); else { zero = false; o.miss(keys.join(''), why + '(전체 ' + total + '원) — 상속인별 나눔이 계산기에 없음'); } }
-    zeroIf(['⑱'], n(r.상속개시전처분재산_추정합계), '상속개시전 처분재산 산입액');
+    zeroIf(['⑱'], presumedAll(r), '상속개시전 처분재산 산입액');
     zeroIf(['⑲', '⑳', '㉑'], n(r.비과세재산가액), '비과세 재산가액');
     zeroIf(['㉒'], n(ctx.publicOrg), '공익법인 출연재산');
     zeroIf(['㉓'], n(ctx.publicTrust), '공익신탁 재산');
@@ -937,7 +937,7 @@
     o.check('④ = ① − ② − ③', v4, Math.max(0, v1 - v2 - v3));
     var grossKnown = n(ctx.grossEstate) > 0 || n(ctx.valuationTotal) > 0 || (ctx.assets || []).length > 0; // [2026.10.19] 재산 목록 없으면 ⑤⑨ 비움
     var gross = has(ctx.grossEstate) ? n(ctx.grossEstate) : n(ctx.valuationTotal);
-    var v5 = gross + n(r.상속개시전처분재산_추정합계), v6 = n(r.비과세재산가액);
+    var v5 = gross + presumedAll(r), v6 = n(r.비과세재산가액);
     // [2026.10.19 법령 우선] 서식 작성방법 3은 ⑦에 부표1 ㉑(공과금+장례비용+채무)을 옮기라 하지만, 시행령 §17①2호는 "법 제14조의 규정에 의한 공과금 및 채무"만
     //  뺀다(장례비용은 §14①2호로 따로) — 엔진(배우자공제 한도)도 법령대로 장례비를 빼지 않으므로 ⑦은 공과금+채무로 찍어 ⑨·⑭가 엔진과 맞게 한다. 세무사님 판단 대기.
     var funeral = n(r.장례비용공제);
@@ -963,10 +963,13 @@
     var un = Math.max(0, net - n(ex)), cut = Math.min(net * 0.2, 200000000);
     return { net: net, ex: n(ex), un: un, cut: Math.round(cut), met: net >= th, pres: net >= th && un >= cut ? Math.round(un - cut) : 0 };
   }
+  // [2026.10.20 AI 회의 회장 결론 J05] 상증법 §15 추정상속재산 전체 = ①(처분·인출·채무부담, 엔진 상속개시전처분재산_추정합계) + ②(변제의무 미입증 채무, 가공채무추정_재산입액)
+  function presumedAll(r) { return n(r.상속개시전처분재산_추정합계) + n(r.가공채무추정_재산입액); }
   M['상속9호부표4갑'] = function (ctx) {
     var o = new Out(), r = ctx.r || {};
     var items = (ctx.disposalItems || []).filter(function (d) { return n(d.oneYearAmount) > 0 || n(d.twoYearAmount) > 0; });
-    if (!items.length) { o.miss('부표4(갑) 전체', '상속개시전 처분재산·채무부담 입력 없음'); return o.result(); }
+    var fict = Math.round(n(r.가공채무추정_재산입액)); // §15② — 기준·차감 없이 전액
+    if (!items.length && !fict) { o.miss('부표4(갑) 전체', '상속개시전 처분재산·채무부담 입력 없음'); return o.result(); }
     var detail = r.상속개시전처분재산_추정내역 || [];
     var T = { 재산: { k: ['②', '③', '④', '⑤', '⑥', '⑦', '⑧'], rows: 3 }, 채무: { k: ['⑪', '⑫', '⑬', '⑭', '⑮', '⑯', '⑰'], rows: 2 } };
     var V = {}, used = {};
@@ -991,13 +994,21 @@
       if (!isII) {
         if (c.met && c.un === c.cut) o.note(d.category + ' — 미소명금액 = 차감가액: 서식 "⑤ > ⑥"이면 부, 시행령 §11④ "이상"이면 여(추정액 0) — 서식대로 부로 적음');
         o.check(d.category + ' 추정상속재산가액 = 미소명 − 차감가액(추정일 때)', est, Math.max(c1.pres, c2.pres));
-      } else if (est !== c.un) o.note('부담채무Ⅱ — 엔진은 금액 기준·20% 차감을 적용(법문 해석 A), 서식은 ⑰ = ⑭(미소명 전액) — 판단 대기 ④');
+      } else {
+        // [2026.10.20 회장 결론 J05] Ⅱ 줄 ⑰ = 법 기준 추정액(§15①2호분 + 아래 §15②분). 회색 칸 ⑫·⑮는 비우고 §15①2호 산식은 별지(명세)에 적는다.
+        o.note('부담채무Ⅱ ⑰ 별지(명세)에 적을 산식 — 상증법 §15①2호·시행령 §11④: ' + p + '년 이내 채무부담액 ' + c.net.toLocaleString('ko-KR') + '원(기준 ' + (p === 1 ? '2억' : '5억') + '원 ' + (c.met ? '이상' : '미만') + ') − 용도 소명 ' + c.ex.toLocaleString('ko-KR') + '원 = 미소명 ' + c.un.toLocaleString('ko-KR') + '원' + (c.met ? ' − MIN(채무부담액 × 20%, 2억원) ' + c.cut.toLocaleString('ko-KR') + '원' : '') + ' = 추정 ' + est.toLocaleString('ko-KR') + '원');
+        o.check(d.category + ' 추정상속재산가액 = 미소명 − 차감가액(추정일 때)', est, Math.max(c1.pres, c2.pres));
+      }
     });
+    if (fict > 0) {
+      V['⑰'][1] = (V['⑰'][1] === '' ? 0 : n(V['⑰'][1])) + fict; V['⑯'][1] = '여'; sumP.채무 += fict;
+      o.note('부담채무Ⅱ ⑰에 상속인이 갚을 의무가 입증되지 않은 채무(상증법 §15②·시행령 §11③, 기준·차감 없이 전액) ' + fict.toLocaleString('ko-KR') + '원을 더해 적음 — §15①2호분과 나눠 별지(명세)에 적으세요');
+    }
     // 부담채무Ⅱ 줄은 ⑫·⑮가 서식에서 막혀 있음 → ⑫는 1줄, ⑮는 한 칸
     V['⑫'] = V['⑫'].slice(0, 1); V['⑮'] = V['⑮'][0];
     Object.keys(V).forEach(function (k) { var v = V[k]; if (Array.isArray(v) ? v.some(function (x) { return x !== ''; }) : v !== '') o.set(k, v); });
     o.set('⑨', sumP.재산).set('⑱', sumP.채무).set('다', sumP.재산 + sumP.채무);
-    o.check('다 = ⑨ + ⑱ = 부표1 ⑪(엔진 상속개시전처분재산_추정합계)', sumP.재산 + sumP.채무, n(r.상속개시전처분재산_추정합계));
+    o.check('다 = ⑨ + ⑱ = 부표1 ⑪(엔진 상속개시전처분재산_추정합계 + 가공채무추정_재산입액)', sumP.재산 + sumP.채무, presumedAll(r));
     return o.result();
   };
 
