@@ -3054,6 +3054,7 @@ function openOneHouseSpecialCaseModal_(idx){
           '<div class="taxcalc-field"><label>상생임대차 종료일</label><input type="date" id="mgLeaseEnd" min="1900-01-01" max="2099-12-31"></div>' +
           '<div class="taxcalc-field"><label>상생임대차 보증금</label><input type="number" id="mgLeaseDeposit" placeholder="원"></div>' +
           '<div class="taxcalc-field"><label>상생임대차 월세</label><input type="number" id="mgLeaseRent" placeholder="원"></div>' +
+          '<div class="taxcalc-field"><label>[보증금↔월세 전환했으면] 전환율</label><input type="number" step="0.01" id="mgConversionRate" placeholder="% (예: 5.5)"><span class="taxcalc-field-help">시행령 §155의3② — 연 10%와 계약 당시 한국은행 기준금리 + 2% 중 낮은 것(주택임대차보호법 §7의2)</span></div>' +
         '</div>' +
         // [2026.10.08, 재검토125] 세무사님 지적("예시는 하나일 뿐") — 이 블록만 "[Nㅎ만]"이
         // 사유별로 2~4개씩 묶여 반복되는 가장 심한 사례였다. 바깥 토글 대상 id(ohsHr)는 그대로
@@ -3317,6 +3318,7 @@ function openOneHouseSpecialCaseModal_(idx){
         mutualLeaseEndDate: document.getElementById('mgLeaseEnd').value,
         mutualLeaseDeposit: numVal(document.getElementById('mgLeaseDeposit').value),
         mutualLeaseRent: numVal(document.getElementById('mgLeaseRent').value),
+        conversionRatePercent: numVal((document.getElementById('mgConversionRate') || {}).value) || 0, // [2026.10.20] §155의3② 전환
         transferDate: transferAssets[idx].transferDate
       });
     } else if (provision === 'hr'){
@@ -6135,7 +6137,7 @@ function renderPropertyCardHtml_(idx, opts){
         '<div class="taxcalc-asset-head" data-show-if="donorRelation" style="display:none; margin-top:10px;"><b>수증자 본인 기준 정보</b></div>' +
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>증여 당시 평가액(수증자의 취득가액)</label><input type="number" data-field="doneeOwnAcquisitionPrice" placeholder="원"><span class="taxcalc-field-help">이 자산의 증여세 과세가액 — 이월과세 배제시 대신 취득가액으로 씀</span></div>' +
-          '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>증여받은 후 지출한 필요경비</label><input type="number" data-field="doneeOwnNecessaryExpenses" placeholder="원"><span class="taxcalc-field-help">이월과세 배제시만, 없으면 0</span></div>' +
+          '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>증여받은 후 지출한 필요경비</label><input type="number" data-field="doneeOwnNecessaryExpenses" placeholder="원"><span class="taxcalc-field-help">카드 비용 내역에 없는 것만(카드의 취득비용·자본적지출·양도비는 자동으로 들어감), 없으면 0</span></div>' +
           '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>낸 이 자산분 증여세 산출세액</label><input type="number" data-field="giftTaxPaid" placeholder="원"><span class="taxcalc-field-help">이월과세 적용시 필요경비에 가산(시행령§163의2②)</span></div>' +
           '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>전체 증여세 과세가액</label><input type="number" data-field="giftTaxableValue" placeholder="원"><span class="taxcalc-field-help">이 자산만 증여받았으면 위 평가액과 동일</span></div>' +
         '</div>' +
@@ -7221,6 +7223,10 @@ function collectTransferInput(vals){
     donorNecessaryExpenses: numVal(vals.donorNecessaryExpenses) || 0,
     doneeOwnAcquisitionPrice: numVal(vals.doneeOwnAcquisitionPrice) || 0,
     doneeOwnNecessaryExpenses: numVal(vals.doneeOwnNecessaryExpenses) || 0,
+    // [2026.10.20 세액 고침] 이월과세 판정용 — 카드 비용을 증여 취득 때(1xx)·취득 뒤(2xx 자본적지출 등)·양도비로 나눠 넘김(엔진이 두 시나리오에 법대로 넣음)
+    doneeAcqCosts: vals.donorRelation ? (Array.isArray(vals.acquisitionExpenseItems) ? vals.acquisitionExpenseItems : []).reduce(function(s, it){ return String(it.expenseCode || '').charAt(0) === '2' ? s : s + (numVal(it.amount) || 0); }, 0) : undefined,
+    doneePostAcqExpenses: vals.donorRelation ? (Array.isArray(vals.acquisitionExpenseItems) ? vals.acquisitionExpenseItems : []).reduce(function(s, it){ return String(it.expenseCode || '').charAt(0) === '2' ? s + (numVal(it.amount) || 0) : s; }, 0) : undefined,
+    doneeTransferExpenses: vals.donorRelation ? computeCostItemsTotal_(vals.transferExpenseItems) : undefined,
     giftTaxPaid: numVal(vals.giftTaxPaid) || 0,
     giftTaxableValue: numVal(vals.giftTaxableValue) || 0,
     // [2026.09.23 신규] 우회양도 부인(§101②) — 예전 별도 계산기(dd) 흡수. donorRelation이
@@ -7299,9 +7305,9 @@ function buildTransferCalcBasisLines(r){
   }
   if (r.다운계약서_비과세배제) {
     lines.push('1세대1주택 비과세 대상이나, 다운계약서(업계약서) 등 거짓 계약으로 비과세를 적용받은 것으로 전제(소득세법§91②)');
-    lines.push('비과세 미적용시 산출세액(지방소득세 포함) = ' + won(r.비과세미적용시_산출세액));
+    lines.push('비과세 미적용시 산출세액(§104①, 국세) = ' + won(r.비과세미적용시_산출세액));
     lines.push('계약서·실거래 차액 = ' + won(r.계약서_실거래_차액));
-    lines.push('추징세액 = MIN(비과세 미적용시 세액, 계약서·실거래 차액) = ' + won(r.납부세액_합계));
+    lines.push('추징세액 = MIN(비과세 미적용시 산출세액, 계약서·실거래 차액) = ' + won(r.납부세액) + (r.지방소득세 ? ' + 지방소득세 ' + won(r.지방소득세) + ' = ' + won(r.납부세액_합계) : ''));
     return lines;
   }
   if (r.비과세여부) {

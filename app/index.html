@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 20:33 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 20:46 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -13024,7 +13024,11 @@
       ltRate = 0;
     } else if (isOneHouse) {
       taxableGain = gainBeforeDeduction * (transferPrice - HV_HOUSE_) / transferPrice;
-      ltRate = longTermRate1HouseAt_(holdingYears, Number(t.residenceYears) || 0, t.transferDate);
+      // [2026.10.20 세액 고침 — 양도 감사] 상생임대주택(시행령 §155의3①, 별지 83호의4)은 §159의4(표2)의 거주기간 제한을 받지 않음 — 거주 2년 미만이어도 표2:
+      //  보유기간별 공제율 + 거주기간별 공제율(실제 거주연수, 2년 미만은 0). 예전엔 거주 2년 미만이면 표1이었다.
+      const mutualLease_ = /제83호의4서식/.test(String(t.oneHouseSpecialFormNo || '')) || !!t.isMutualLeaseSpecial;
+      const live_ = Number(t.residenceYears) || 0;
+      ltRate = (mutualLease_ && live_ < 2) ? (holdingYears >= 3 ? Math.min(0.40, Math.floor(holdingYears) * 0.04) : 0) : longTermRate1HouseAt_(holdingYears, live_, t.transferDate);
     } else if (bizSuccessionRatio > 0 && t.decedentAcquisitionDate) {
       // §95④단서 — 가업상속공제가 적용된 비율에 해당하는 자산은 장기보유특별공제의 보유기간 기산일이
       // "피상속인이 해당 자산을 취득한 날"이다(나머지 비율은 상속개시일 기산인 일반 상속재산과 동일).
@@ -13048,7 +13052,12 @@
       isRentalSpecial = rentalRate !== null;
       // [2026.10.20 세액 고침] 조특법 §97의4① 단서 — 소득세법 §95② 단서(1세대1주택 표2)에 해당하면 장기임대 추가공제를 적용하지 않는다(표2 그대로).
       //  예전엔 1세대1주택 표2(최대 80%)를 표1+추가공제로 바꿔 장특공이 줄었다.
-      if (isRentalSpecial && isOneHouse && t.rentalSpecialType === 'rental_long') {
+      // [2026.10.20 세액 고침 — 양도 감사 발견] §97의4① 단서 "같은 항 단서에 해당하는 경우" = 소득세법 §95② 단서(표2)가 실제로 적용될 때만 추가공제 배제.
+      //  표2는 2020.1.1. 이후 양도분부터 보유기간 중 거주 2년 이상일 때만(시행령 §159의4, 엔진 longTermRate1HouseAt_도 같음) — 1세대1주택이라도 거주 2년 미만이면
+      //  표1이므로 §97의4 추가공제를 더한다. 예전엔 1세대1주택이면 거주와 상관없이 껐다.
+      const table2Applies_ = !String(t.transferDate || '').slice(0, 10) || String(t.transferDate).slice(0, 10) < '2020-01-01' || (Number(t.residenceYears) || 0) >= 2
+        || /제83호의4서식/.test(String(t.oneHouseSpecialFormNo || '')) || !!t.isMutualLeaseSpecial; // 상생임대는 거주 제한 없이 표2
+      if (isRentalSpecial && isOneHouse && t.rentalSpecialType === 'rental_long' && table2Applies_) {
         isRentalSpecial = false;
         acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '장기임대주택 추가공제(조특법 §97의4)는 1세대1주택(소득세법 §95② 단서 표2)에는 적용하지 않습니다(§97의4① 단서) — 표2 공제율로 계산했습니다.';
       }
@@ -13132,7 +13141,8 @@
           산식: mode9703_ === 'formula2026' ? '시행령 §97의3⑤(2026.2.27~) 양도차익 × (임대 마지막 날 ' + endStd_ + ' − 임대 개시일 ' + startStd_ + ') ÷ (양도일 ' + trfStd + ' − 취득일 ' + acqStd + ') 기준시가'
             : '양도차익 × (양도일 ' + trfStd + ' − 등록일 ' + regStd + ') ÷ (양도일 − 취득일 ' + acqStd + ') 기준시가(2026.2.26 전 양도분 — 산식이 법령에 없어 판단 대기)' };
       } else {
-        longTermDeductionAmount = Math.floor(taxableGain * ltRate + 1e-6); // [2026.10.17] 장기보유특별공제 원 미만 버림(고객X: 200,593,166 × 30% = 60,177,949.8 → 60,177,949원, 양도코리아와 같게)
+        // [2026.10.20 세액 고침 — 양도 감사] §95②은 '양도차익'에 공제율을 곱함 — 양도차손(음수)에는 장특공이 없다(예전엔 음수 공제가 붙어 손실이 줄었음)
+        longTermDeductionAmount = taxableGain > 0 ? Math.floor(taxableGain * ltRate + 1e-6) : 0; // [2026.10.17] 장기보유특별공제 원 미만 버림(고객X: 200,593,166 × 30% = 60,177,949.8 → 60,177,949원, 양도코리아와 같게)
         incomeAmount = taxableGain - longTermDeductionAmount;
       }
     }
@@ -13492,14 +13502,15 @@
       const downContractDiff = Number(t.downContractPriceDifference) || 0;
       if (downContractDiff > 0) {
         const wouldBeResult = window.calculateTransferTaxSingleJS(Object.assign({}, t, { isOneHouseOneFamily: false, downContractPriceDifference: 0 }));
-        const wouldBeTax = (wouldBeResult && typeof wouldBeResult.납부세액_합계 === 'number') ? wouldBeResult.납부세액_합계 : 0;
+        const wouldBeTax = (wouldBeResult && typeof wouldBeResult.산출세액 === 'number') ? wouldBeResult.산출세액 : 0; // [2026.10.20 세액 고침] §91②1호 산출세액과 비교
         const clawback = Math.min(wouldBeTax, downContractDiff);
+        const clawbackLocal_ = Math.round(clawback * 0.1);
         return {
           입력값: { 양도가액: core.transferPrice, 취득가액: core.acquisitionPrice, 필요경비: core.necessaryExpenses, 보유기간_년: core.holdingYears },
           취득가액_산정방법: core.acquisitionPriceMethodNote || undefined,
           비과세여부: false, 다운계약서_비과세배제: true,
           비과세미적용시_산출세액: wouldBeTax, 계약서_실거래_차액: downContractDiff,
-          납부세액: clawback, 납부세액_합계: clawback
+          산출세액: clawback, 납부세액: clawback, 지방소득세: clawbackLocal_, 납부세액_합계: clawback + clawbackLocal_
         };
       }
       return {
@@ -13756,7 +13767,12 @@
     const doneeNecessaryExpenses = Number(t.doneeOwnNecessaryExpenses) || 0;
     // 수증자 본인 값(이월과세 미적용 시나리오) — 증여 당시 평가액을 취득가액, 증여일을 취득일로
     // 삼는다(증여로 취득한 자산의 취득가액은 상증세법상 평가액이므로).
-    const withoutBasis = { acquisitionPrice: doneeAcquisitionPrice, acquisitionDate: giftReceivedDate, necessaryExpenses: doneeNecessaryExpenses };
+    // [2026.10.20 세액 고침 — 양도 감사] 수증자가 증여받은 뒤 쓴 자본적지출(카드 비용 구분 2xx)·양도비는 이월과세를 적용하든 안 하든 필요경비
+    //  (§97의2① "필요경비는 제97조제2항에 따르되", §97①2·3호). 화면 카드 비용은 doneePostAcqExpenses·doneeTransferExpenses·doneeAcqCosts(증여 취득 때 1xx)로 넘어온다.
+    //  예전엔 이월과세 판정이 카드 필요경비를 통째로 증여자 필요경비(또는 수증자 따로 입력값)로 바꿔 이 비용이 빠졌다. 증여 취득 때 비용(취득세 등)은 미적용 쪽만(확인 필요 — 적용 쪽은 증여자 취득 기준).
+    const hasCard_ = t.doneePostAcqExpenses != null || t.doneeTransferExpenses != null || t.doneeAcqCosts != null;
+    const post_ = Number(t.doneePostAcqExpenses) || 0, trx_ = Number(t.doneeTransferExpenses) || 0, acqC_ = Number(t.doneeAcqCosts) || 0;
+    const withoutBasis = { acquisitionPrice: doneeAcquisitionPrice, acquisitionDate: giftReceivedDate, necessaryExpenses: doneeNecessaryExpenses + (hasCard_ ? post_ + trx_ + acqC_ : 0) };
 
     if (!giftReceivedDate || !isEligibleRelation) {
       return Object.assign({ applied: false, reason: giftReceivedDate ? '배우자·직계존비속으로부터의 증여가 아님' : undefined }, withoutBasis);
@@ -13780,7 +13796,7 @@
     const giftTaxEquivalent = giftTaxableValue > 0 ? Math.round(giftTaxPaid * doneeAcquisitionPrice / giftTaxableValue) : 0;
     const necessaryExpenseCap = Math.max(0, (Number(t.transferPrice) || 0) - donorAcqPrice - donorNecessaryExpenses);
     const cappedGiftTaxEquivalent = Math.min(giftTaxEquivalent, necessaryExpenseCap);
-    const withBasis = { acquisitionPrice: donorAcqPrice, acquisitionDate: t.donorAcquisitionDate, necessaryExpenses: donorNecessaryExpenses + cappedGiftTaxEquivalent };
+    const withBasis = { acquisitionPrice: donorAcqPrice, acquisitionDate: t.donorAcquisitionDate, necessaryExpenses: donorNecessaryExpenses + cappedGiftTaxEquivalent + (hasCard_ ? post_ + trx_ : 0) };
 
     const withoutResult = window.calculateTransferTaxSingleJS(Object.assign({}, t, withoutBasis));
     const withResult = window.calculateTransferTaxSingleJS(Object.assign({}, t, withBasis));
@@ -14240,7 +14256,12 @@
       let left = (pooled.length || shortTerm.length) ? 2500000 : 0;
       const redRatio_ = {};
       red90Assets_.forEach(function (a) { if (a.reds && a.reds.length) redRatio_[a.idx] = a.reducedRatio != null ? Math.max(0, Math.min(1, Number(a.reducedRatio) || 0)) : 1; });
-      const incOf_ = function (c) { return Math.max(0, c.isPoolable ? c.incomeAmount : (nettedIncomeByIdx_[c.idx] !== undefined ? nettedIncomeByIdx_[c.idx] : c.incomeAmount)); };
+      // [2026.10.20 세액 고침 — 양도 감사] §103② 기본공제는 양도차손 통산 뒤 양도소득금액에서 뺀다 — 누진(합산) 묶음 자산도 그 묶음 순소득을 이익 자산에 금액 비율로
+      //  나눈 몫으로 본다. 예전엔 통산 전 소득으로 나눠, 묶음 안 손실이 있으면 그 묶음에 기본공제가 순소득보다 크게 배정되고 남는 몫이 버려졌다(단기 자산 쪽으로 못 감).
+      const poolNet_ = {};
+      if (poolBucket_) { const pg_ = poolBucket_.items.filter(function (it) { return it.inc > 0; }); const pgs_ = pg_.reduce(function (t, it) { return t + it.inc; }, 0);
+        pg_.forEach(function (it) { poolNet_[it.c.idx] = pgs_ > 0 ? (poolBucket_.netSum || 0) * it.inc / pgs_ : 0; }); }
+      const incOf_ = function (c) { return Math.max(0, c.isPoolable ? (poolBucket_ ? (poolNet_[c.idx] || 0) : c.incomeAmount) : (nettedIncomeByIdx_[c.idx] !== undefined ? nettedIncomeByIdx_[c.idx] : c.incomeAmount)); };
       const ord_ = pooled.concat(shortTerm).sort(function (a, b) { return String((a.raw && a.raw.transferDate) || '').localeCompare(String((b.raw && b.raw.transferDate) || '')) || (a.idx - b.idx); });
       ord_.forEach(function (c) { const other = incOf_(c) * (1 - (redRatio_[c.idx] || 0)); const u = Math.min(left, other); basicOf_[c.idx] = u; left -= u; });
       ord_.forEach(function (c) { if (!(c.idx in redRatio_)) return; const red = incOf_(c) * redRatio_[c.idx]; const u = Math.min(left, red); basicOf_[c.idx] += u; left -= u; });
@@ -14373,7 +14394,9 @@
       const diff = Number(c.raw.downContractPriceDifference) || 0;
       if (diff > 0) {
         const wouldBe = window.calculateTransferTaxSingleJS(Object.assign({}, c.raw, { isOneHouseOneFamily: false, downContractPriceDifference: 0 }));
-        const wouldBeTax = (wouldBe && typeof wouldBe.납부세액_합계 === 'number') ? wouldBe.납부세액_합계 : 0;
+        // [2026.10.20 세액 고침 — 양도 감사] 소득세법 §91②1호 "비과세 … 적용하지 아니하였을 경우의 제104조제1항에 따른 양도소득 산출세액"과 차액 중 적은 금액 —
+        //  예전엔 지방소득세·가산세가 든 납부세액_합계와 비교해 많게 잡고, 84호 ⑱ 국세 칸에 지방세가 섞였다. 이제 산출세액(국세)으로 비교하고 산출세액 합계에 넣는다(지방소득세는 거기서 10%).
+        const wouldBeTax = (wouldBe && typeof wouldBe.산출세액 === 'number') ? wouldBe.산출세액 : 0;
         const clawback = Math.min(wouldBeTax, diff);
         exemptClawbackTotal += clawback;
         assetNotes.push({ idx: c.idx, 구분: '비과세거래(개별)', 특례: '다운계약서 비과세배제', 추징액: clawback });
@@ -14521,10 +14544,11 @@
       if (c.raw && c.raw.isPensionWithdrawnWithin5Years && credit > 0) pensionAccountClawbackTotal += credit;
     });
 
+    // [2026.10.20] exemptClawbackTotal은 이제 산출세액(국세) 기준이라 아래 totalCalculatedTax에 넣는다(84호 ⑩·⑱, 지방소득세 10%가 정상으로 붙음). 아래 옛 설명은 예전 방식:
     // exemptClawbackTotal(다운계약서 비과세배제 추징액)은 calculateTransferTaxSingleJS의 완전 계산 결과(지방소득세 포함)를
     // 상한으로 삼아 MIN한 값이라 이미 지방소득세가 녹아 있으므로, 아래 totalCalculatedTax에는 포함하지 않고
     // (그러면 다시 10% 지방소득세가 얹혀 이중계산된다) 최종 합계에만 그대로 더한다.
-    const totalCalculatedTax = poolTaxWithSurcharge + shortTaxTotal + unregisteredTaxTotal;
+    const totalCalculatedTax = poolTaxWithSurcharge + shortTaxTotal + unregisteredTaxTotal + exemptClawbackTotal;
     const pensionAccountCreditTotal = Math.min(pensionAccountCreditRaw, Math.max(0, totalCalculatedTax));
     const eFilingCredit = filingParams.isSelfElectronicFiling ? Math.min(20000, Math.max(0, totalCalculatedTax - pensionAccountCreditTotal)) : 0;
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(filingParams.filingStatus) !== -1 ? filingParams.filingStatus : 'ontime';
@@ -14646,7 +14670,7 @@
     }
     const localIncomeTax = Math.round(totalCalculatedTax * 0.1);
     const grandTotal = Math.max(0, totalCalculatedTax - pensionAccountCreditTotal - eFilingCredit + conversionValuePenaltyTotal
-      + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax + exemptClawbackTotal + pensionAccountClawbackTotal);
+      + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax + pensionAccountClawbackTotal);
 
     return {
       거래건수: transactions.length, 비과세건수: exempt.length,
@@ -18022,7 +18046,9 @@
     const combinedGain = gain + priorNetGainOrLoss;
 
     const basicDeductionAlreadyUsed = Number(p.basicDeductionAlreadyUsed) || 0;
-    const basicDeduction = Math.max(0, Math.min(2500000, Math.max(0, combinedGain)) - basicDeductionAlreadyUsed);
+    // [2026.10.20 세액 고침 — 양도 감사] §103① 연 250만원 중 이미 쓴 몫을 뺀 남은 한도와 소득금액 중 작은 금액 — 예전 식(min(250만, 소득) − 이미 쓴 것)은
+    //  소득이 한도보다 작을 때 공제를 덜 줬다(소득 200만·이미 100만: 100만 → 150만).
+    const basicDeduction = Math.min(Math.max(0, 2500000 - basicDeductionAlreadyUsed), Math.max(0, combinedGain));
     const taxBase = Math.max(0, combinedGain - basicDeduction);
 
     let calculatedTax, rateNote;
@@ -18061,10 +18087,10 @@
       // 소득세법§104①9호(시행령§167조의7) — §94①4호다목·라목 주식등 중, 그 법인 자산총액에서
       // 법인세법§55조의2②에 따른 비사업용토지가 차지하는 비율이 50% 이상인 법인의 주식등은
       // 8호(비사업용토지) 세율표와 동일하게 기본세율에 10%p를 가산한다.
-      calculatedTax = progressiveTax(taxBase, TRANSFER_TAX_BRACKETS) + Math.round(taxBase * 0.10);
+      calculatedTax = progressiveTax(taxBase, transferBracketsAt_(p.transferDate)) + Math.round(taxBase * 0.10); // [2026.10.20] 양도일 세율표(§104①)
       rateNote = '기타자산 중 비사업용토지 과다보유법인 주식등(§104①9호) — 기본세율(누진 6~45%)+10%p 가산';
     } else {
-      calculatedTax = progressiveTax(taxBase, TRANSFER_TAX_BRACKETS);
+      calculatedTax = progressiveTax(taxBase, transferBracketsAt_(p.transferDate)); // [2026.10.20] 양도일 세율표
       rateNote = '기타자산(특정주식·부동산과다보유법인 주식등) — 기본세율(누진 6~45%)';
     }
 
@@ -19471,9 +19497,20 @@
     }
     const priorDeposit = Number(p.priorLeaseDeposit) || 0, mutualDeposit = Number(p.mutualLeaseDeposit) || 0;
     const priorRent = Number(p.priorLeaseRent) || 0, mutualRent = Number(p.mutualLeaseRent) || 0;
+    // [2026.10.20 세액 고침 — 양도 감사] 시행령 §155의3② — 보증금과 월세를 서로 전환하면 민간임대주택법 §44④(주택임대차보호법 §7의2 전환율 = 연 10%와
+    //  한국은행 기준금리 + 2% 중 낮은 것) 기준으로 증가율을 계산: 환산보증금 = 보증금 + 월세 × 12 ÷ 전환율. 예전엔 보증금·월세를 따로 봐서
+    //  보증금 3억 → 3억 + 월세 50만 같은 경우 증가율 0%로 '적용'이 나왔다. 전환율(conversionRatePercent)이 없는데 전환이 있으면 판정 보류.
     const rates = [];
-    if (priorDeposit > 0) rates.push((mutualDeposit - priorDeposit) / priorDeposit);
-    if (priorRent > 0) rates.push((mutualRent - priorRent) / priorRent);
+    const converted_ = (priorRent > 0) !== (mutualRent > 0) || ((mutualDeposit - priorDeposit) * (mutualRent - priorRent) < 0);
+    if (converted_) {
+      const cr_ = Number(p.conversionRatePercent) || 0;
+      if (!(cr_ > 0)) return { 적용여부: false, 판단대기: true, 안내: '보증금과 월세를 서로 전환한 계약입니다 — 시행령 §155의3②에 따라 전환율(주택임대차보호법 §7의2: 연 10%와 계약 당시 한국은행 기준금리 + 2% 중 낮은 것)로 환산해 증가율을 봐야 합니다. 전환율을 넣어 주세요.' };
+      const prior_ = priorDeposit + priorRent * 12 / (cr_ / 100), mutual_ = mutualDeposit + mutualRent * 12 / (cr_ / 100);
+      if (prior_ > 0) rates.push((mutual_ - prior_) / prior_);
+    } else {
+      if (priorDeposit > 0) rates.push((mutualDeposit - priorDeposit) / priorDeposit);
+      if (priorRent > 0) rates.push((mutualRent - priorRent) / priorRent);
+    }
     if (rates.some(function (r) { return r > 0.05; })) {
       return { 적용여부: false, 안내: '직전임대차계약 대비 임대보증금 또는 임대료 증가율이 5%를 초과해 시행령§155의3①1호 요건(상생임대차계약)을 충족하지 못합니다.' };
     }
@@ -19803,7 +19840,7 @@
 
     const basicDeduction = Math.min(2500000, Math.max(0, gain));
     const taxBase = Math.max(0, gain - basicDeduction);
-    const calculatedTax = progressiveTax(taxBase, TRANSFER_TAX_BRACKETS);
+    const calculatedTax = progressiveTax(taxBase, transferBracketsAt_(p.transferDate)); // [2026.10.20 세액 고침 — 양도 감사] 국외자산도 양도일 세율표(§118의5 → §55①)
 
     const foreignTaxCreditMethod = p.foreignTaxCreditMethod === 'expense' ? 'expense' : 'credit';
     const foreignTaxPaidAmount = Number(p.foreignTaxPaidAmount) || 0;
@@ -19860,7 +19897,7 @@
 
     const basicDeduction = Math.min(2500000, Math.max(0, totalGain));
     const taxBase = Math.max(0, totalGain - basicDeduction);
-    const calculatedTax = progressiveTax(taxBase, TRANSFER_TAX_BRACKETS);
+    const calculatedTax = progressiveTax(taxBase, transferBracketsAt_(transactions.reduce(function (m, t) { const d = String((t && t.transferDate) || ''); return d > m ? d : m; }, ''))); // [2026.10.20 세액 고침] 그 과세기간 세율표
 
     // [2026.10.19 세액 고침] §118의6①1호(2020.1.1 이후 양도분): 자산마다 한도 = A × (해당 국외자산 양도소득금액 B) ÷ (국외자산 양도소득금액 합계 C).
     //  예전엔 국내 양도소득금액을 분모에 더하고(한도 과소) 외국납부세액 합계와 한도 합계를 한 번에 비교했다(자산별 초과분이 다른 자산 한도로 넘어감).
@@ -25339,6 +25376,7 @@ function openOneHouseSpecialCaseModal_(idx){
           '<div class="taxcalc-field"><label>상생임대차 종료일</label><input type="date" id="mgLeaseEnd" min="1900-01-01" max="2099-12-31"></div>' +
           '<div class="taxcalc-field"><label>상생임대차 보증금</label><input type="number" id="mgLeaseDeposit" placeholder="원"></div>' +
           '<div class="taxcalc-field"><label>상생임대차 월세</label><input type="number" id="mgLeaseRent" placeholder="원"></div>' +
+          '<div class="taxcalc-field"><label>[보증금↔월세 전환했으면] 전환율</label><input type="number" step="0.01" id="mgConversionRate" placeholder="% (예: 5.5)"><span class="taxcalc-field-help">시행령 §155의3② — 연 10%와 계약 당시 한국은행 기준금리 + 2% 중 낮은 것(주택임대차보호법 §7의2)</span></div>' +
         '</div>' +
         // [2026.10.08, 재검토125] 세무사님 지적("예시는 하나일 뿐") — 이 블록만 "[Nㅎ만]"이
         // 사유별로 2~4개씩 묶여 반복되는 가장 심한 사례였다. 바깥 토글 대상 id(ohsHr)는 그대로
@@ -25602,6 +25640,7 @@ function openOneHouseSpecialCaseModal_(idx){
         mutualLeaseEndDate: document.getElementById('mgLeaseEnd').value,
         mutualLeaseDeposit: numVal(document.getElementById('mgLeaseDeposit').value),
         mutualLeaseRent: numVal(document.getElementById('mgLeaseRent').value),
+        conversionRatePercent: numVal((document.getElementById('mgConversionRate') || {}).value) || 0, // [2026.10.20] §155의3② 전환
         transferDate: transferAssets[idx].transferDate
       });
     } else if (provision === 'hr'){
@@ -28420,7 +28459,7 @@ function renderPropertyCardHtml_(idx, opts){
         '<div class="taxcalc-asset-head" data-show-if="donorRelation" style="display:none; margin-top:10px;"><b>수증자 본인 기준 정보</b></div>' +
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>증여 당시 평가액(수증자의 취득가액)</label><input type="number" data-field="doneeOwnAcquisitionPrice" placeholder="원"><span class="taxcalc-field-help">이 자산의 증여세 과세가액 — 이월과세 배제시 대신 취득가액으로 씀</span></div>' +
-          '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>증여받은 후 지출한 필요경비</label><input type="number" data-field="doneeOwnNecessaryExpenses" placeholder="원"><span class="taxcalc-field-help">이월과세 배제시만, 없으면 0</span></div>' +
+          '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>증여받은 후 지출한 필요경비</label><input type="number" data-field="doneeOwnNecessaryExpenses" placeholder="원"><span class="taxcalc-field-help">카드 비용 내역에 없는 것만(카드의 취득비용·자본적지출·양도비는 자동으로 들어감), 없으면 0</span></div>' +
           '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>낸 이 자산분 증여세 산출세액</label><input type="number" data-field="giftTaxPaid" placeholder="원"><span class="taxcalc-field-help">이월과세 적용시 필요경비에 가산(시행령§163의2②)</span></div>' +
           '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>전체 증여세 과세가액</label><input type="number" data-field="giftTaxableValue" placeholder="원"><span class="taxcalc-field-help">이 자산만 증여받았으면 위 평가액과 동일</span></div>' +
         '</div>' +
@@ -29506,6 +29545,10 @@ function collectTransferInput(vals){
     donorNecessaryExpenses: numVal(vals.donorNecessaryExpenses) || 0,
     doneeOwnAcquisitionPrice: numVal(vals.doneeOwnAcquisitionPrice) || 0,
     doneeOwnNecessaryExpenses: numVal(vals.doneeOwnNecessaryExpenses) || 0,
+    // [2026.10.20 세액 고침] 이월과세 판정용 — 카드 비용을 증여 취득 때(1xx)·취득 뒤(2xx 자본적지출 등)·양도비로 나눠 넘김(엔진이 두 시나리오에 법대로 넣음)
+    doneeAcqCosts: vals.donorRelation ? (Array.isArray(vals.acquisitionExpenseItems) ? vals.acquisitionExpenseItems : []).reduce(function(s, it){ return String(it.expenseCode || '').charAt(0) === '2' ? s : s + (numVal(it.amount) || 0); }, 0) : undefined,
+    doneePostAcqExpenses: vals.donorRelation ? (Array.isArray(vals.acquisitionExpenseItems) ? vals.acquisitionExpenseItems : []).reduce(function(s, it){ return String(it.expenseCode || '').charAt(0) === '2' ? s + (numVal(it.amount) || 0) : s; }, 0) : undefined,
+    doneeTransferExpenses: vals.donorRelation ? computeCostItemsTotal_(vals.transferExpenseItems) : undefined,
     giftTaxPaid: numVal(vals.giftTaxPaid) || 0,
     giftTaxableValue: numVal(vals.giftTaxableValue) || 0,
     // [2026.09.23 신규] 우회양도 부인(§101②) — 예전 별도 계산기(dd) 흡수. donorRelation이
@@ -29584,9 +29627,9 @@ function buildTransferCalcBasisLines(r){
   }
   if (r.다운계약서_비과세배제) {
     lines.push('1세대1주택 비과세 대상이나, 다운계약서(업계약서) 등 거짓 계약으로 비과세를 적용받은 것으로 전제(소득세법§91②)');
-    lines.push('비과세 미적용시 산출세액(지방소득세 포함) = ' + won(r.비과세미적용시_산출세액));
+    lines.push('비과세 미적용시 산출세액(§104①, 국세) = ' + won(r.비과세미적용시_산출세액));
     lines.push('계약서·실거래 차액 = ' + won(r.계약서_실거래_차액));
-    lines.push('추징세액 = MIN(비과세 미적용시 세액, 계약서·실거래 차액) = ' + won(r.납부세액_합계));
+    lines.push('추징세액 = MIN(비과세 미적용시 산출세액, 계약서·실거래 차액) = ' + won(r.납부세액) + (r.지방소득세 ? ' + 지방소득세 ' + won(r.지방소득세) + ' = ' + won(r.납부세액_합계) : ''));
     return lines;
   }
   if (r.비과세여부) {

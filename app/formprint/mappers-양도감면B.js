@@ -115,7 +115,8 @@
     var o = new Out(), s = ctx.seller || {}, it = itemOf(ctx), a = it.asset || {};
     applicant(o, s, { name: '신청인@성명', birth: '신청인@생년월일', addr: '신청인@주소', phone: '신청인@전화번호' }, '1. 신청인');
     o.need('소재지', a.assetLocation, '2. 소재지');
-    o.miss('주택면적', '계산기에 없음');
+    // [2026.10.20 서식 감사(양도)] 화면 자산 카드 면적(assetArea — 건물은 건물면적, taxcalc.html 자산 카드)이 있으면 그 값(양도감면A와 같은 출처)
+    if (n(a.assetArea) && a.assetKind !== 'land') o.set('주택면적', n(a.assetArea)); else o.miss('주택면적', '화면 입력 없음(자산 카드 면적)');
     var startStd = n(a.rentalStartStandardPrice), regStd = n(a.registrationStandardPrice);
     if (startStd || regStd) {
       o.set('임대개시당시기준시가', startStd || regStd);
@@ -157,7 +158,9 @@
     var o = new Out(), s = ctx.seller || {}, it = itemOf(ctx), a = it.asset || {};
     applicant(o, s, { name: '①', birth: '②', addr: '③@주소', phone: '③@전화번호' }, '①~③ 신청인');
     o.need('④', a.assetLocation, '④ 소재지');
-    o.miss('⑤ 주택면적', '계산기에 없음').miss('⑥ 토지면적', '계산기에 없음');
+    // [2026.10.20 서식 감사(양도)] 화면 자산 카드 면적(assetArea — 건물은 건물면적, taxcalc.html 자산 카드)이 있으면 그 값(양도감면A와 같은 출처)
+    if (n(a.assetArea) && a.assetKind !== 'land') o.set('⑤', n(a.assetArea)); else o.miss('⑤ 주택면적', '화면 입력 없음(자산 카드 면적)');
+    o.miss('⑥ 토지면적', '계산기에 없음 — 자산 카드 면적은 건물면적(대지권 제외)');
     ymdSet(o, '⑦', a.acquisitionDate, '⑦ 취득일자');
     ymdSet(o, '⑧', a.transferDate, '⑧ 양도일자');
     o.miss('⑨ 세법상 사업자등록일', '계산기에 없음');
@@ -173,15 +176,18 @@
     } else o.miss('⑯ 임대개시일 당시 기준시가 합계액', '화면 입력 없음(등록일 당시 기준시가)');
     var r = singleOf(it);
     if (ry < 6) o.miss('⑰', has(a.rentalYears) ? '임대기간 ' + ry + '년 — 6년 미만이라 추가공제 대상 아님(조특법 §97의4①)' : '화면 입력 없음(임대기간 연수)');
-    else {
+    // [2026.10.20 서식 감사(양도)] ⑰은 "장기보유특별공제율에 가산할 추가공제율"(작성방법 3) — 엔진이 실제로 가산하지 않았으면(1세대1주택 표2 — §97의4① 단서,
+    //  조정대상지역 중과 등) 적지 않는다(신고서 84호 부표1 ⑯과 신청서가 서로 달라지지 않게, 62호의2 ②와 같은 원칙). 엔진 결과가 없을 때만 작성방법 3 표로.
+    else if (r && !r.error && !r.장기임대주택특례_적용여부) {
+      o.miss('⑰', '엔진: 장기임대 추가공제 미적용 — ' + (r.취득가액_산정방법 || '1세대1주택 표2(§97의4① 단서)·조정대상지역 중과 등') + ' — 이 신청서를 낼 대상인지 확인');
+    } else {
       var add = addRate97_4(ry);
       o.set('⑰', add);
-      if (r && !r.error && r.장기임대주택특례_적용여부) {
+      if (r && !r.error) {
         var h = n(r.입력값 && r.입력값.보유기간_년);
         o.check('엔진 장기보유특별공제율 = 소득세법 §95② 표1(보유 ' + h + '년) + ⑰ 추가공제율', pct1(r.장기보유특별공제율), table1(h) + add);
-      } else o.note('엔진 결과에 장기임대주택 특례가 적용되지 않음' + (r && r.error ? '(' + r.error + ')' : '') + ' — ⑰은 작성방법 3 표로만 찍음');
+      } else o.note('엔진 결과 없음' + (r && r.error ? '(' + r.error + ')' : '') + ' — ⑰은 작성방법 3 표로만 찍음');
     }
-    if (a.isOneHouseOneFamily) o.note('⚠ 1세대 1주택(소득세법 §95② 단서 표2) 자산 — 조특법 §97의4① 단서는 이 경우 추가공제를 적용하지 않는다고 함. 엔진은 표1+추가공제율로 바꿔 계산하므로 확인 필요');
     signBlock(o, ctx, s, { agent: true });
     return o.result();
   };
@@ -233,7 +239,9 @@
     o.need('⑦@양도일반주택', a.assetLocation, '⑦ 소재지(⑤ 양도(일반)주택)');
     o.miss('⑦ 소재지(⑥ 농어촌주택 등)', '계산기에 없음 — 판정 도구는 소재지 요건을 체크로만 받음');
     o.miss('⑧ 주택의 종류(단독주택·공동주택, ⑤·⑥ 열)', '계산기에 없음');
-    o.miss('⑨ 면적(토지·건물, ⑤·⑥ 열)', '계산기에 없음');
+    // [2026.10.20 서식 감사(양도)] 화면 자산 카드 면적(assetArea — 건물은 건물면적, taxcalc.html 자산 카드)이 있으면 그 값(양도감면A와 같은 출처)
+    if (n(a.assetArea) && a.assetKind !== 'land') o.set('⑨@양도일반주택.건물', n(a.assetArea)); else o.miss('⑨ 면적(양도(일반)주택 건물)', '화면 입력 없음(자산 카드 면적)');
+    o.miss('⑨ 면적(양도(일반)주택 토지·⑥ 농어촌주택 등 토지·건물)', '계산기에 없음 — 판정 도구의 대지면적(rhLandArea)은 저장되지 않음');
     o.miss('⑩ 기준시가(토지·건물·합계, ⑤·⑥ 열)', '계산기에 없음 — 농어촌주택 등 가액 요건(취득 당시 3억원, 한옥 4억원 — 조특법 §99의4①1호나목)은 판정 도구에 체크로만 있음');
     ymdSet(o, '⑪@일반주택', a.acquisitionDate, '⑪ 취득일(일반주택)');
     ymdSet(o, '⑪@농어촌주택등', c.acquisitionDate, '⑪ 취득일(농어촌주택 등)', '판정 도구에 농어촌주택 등 취득일 입력 없음');
@@ -257,7 +265,9 @@
     var o = new Out(), s = ctx.seller || {}, it = itemOf(ctx), a = it.asset || {};
     applicant(o, s, { name: '①', regNo: '②', addr: '③@주소', phone: '③@전화번호' }, '①~③ 신청인');
     o.need('④', a.assetLocation, '④ 소재지(양도주택)');
-    o.miss('⑤ 토지면적·⑥ 건물면적', '계산기에 없음');
+    // [2026.10.20 서식 감사(양도)] 화면 자산 카드 면적(assetArea — 건물은 건물면적, taxcalc.html 자산 카드)이 있으면 그 값(양도감면A와 같은 출처)
+    o.miss('⑤ 토지면적', '계산기에 없음');
+    if (n(a.assetArea) && a.assetKind !== 'land') o.set('⑥', n(a.assetArea)); else o.miss('⑥ 건물면적', '화면 입력 없음(자산 카드 면적)');
     if (has(a.acquisitionDate)) o.set('⑦', a.acquisitionDate); else o.miss('⑦ 취득일자', '화면 입력 없음');
     if (has(a.transferDate)) o.set('⑧', a.transferDate); else o.miss('⑧ 양도일자', '화면 입력 없음');
     o.miss('⑨ 과세표준·⑪ 산출세액', '계산기에 없음 — 옛 조특법 §99의2 특례세율(10%) 계산이 계산기에 없음(일반 계산의 과세표준과 같은 값이 아님)');
@@ -275,7 +285,9 @@
     var o = new Out(), s = ctx.seller || {}, it = itemOf(ctx), a = it.asset || {};
     applicant(o, s, { name: '①', regNo: '②', addr: '③' }, '①~③ 신고인');
     if (has(a.assetLocation)) o.set('④', [a.assetLocation]); else o.miss('④ 소재지', '화면 입력 없음');
-    o.miss('⑤ 토지면적·⑥ 건물면적', '계산기에 없음');
+    // [2026.10.20 서식 감사(양도)] 화면 자산 카드 면적(assetArea — 건물은 건물면적, taxcalc.html 자산 카드)이 있으면 그 값(양도감면A와 같은 출처)
+    o.miss('⑤ 토지면적', '계산기에 없음');
+    if (n(a.assetArea) && a.assetKind !== 'land') o.set('⑥', [n(a.assetArea)]); else o.miss('⑥ 건물면적', '화면 입력 없음(자산 카드 면적)');
     if (has(a.acquisitionDate)) o.set('⑦', [a.acquisitionDate]); else o.miss('⑦ 취득(계약)일자', '화면 입력 없음');
     if (has(a.transferDate)) o.set('⑧', [a.transferDate]); else o.miss('⑧ 양도일자', '화면 입력 없음');
     o.miss('⑨ 과세표준·⑪ 산출세액(양도소득세)', '계산기에 없음 — 조특법 §98① 20% 특례세율 계산이 계산기에 없음');
