@@ -337,7 +337,9 @@ function caseProcAiVarSpots_(name, raw, caseId) {
     //  AI가 판단할 재료도 없다. AI 자리가 아니라 서류 요청 질문(빈 칸)으로 센다(개발용 5건·시험 23건 되풀이). 이름 대조로 확실히 정하는 GAS 규칙은 아님
     // [2026.10.19 5번 사건분류 쪼개기] 양도 사건분류 질문은 통째로 AI 자리로 세지 않고, 남은 선택지가 기대는 작은 판단으로 나눠 센다:
     //  사용자 사실(세대 주택 수·관계 등 — 서류에 없어 질문) / 변수(오피스텔 실사용·재촌자경·정비사업 감면·상속주택 정황 — AI 해석) / 상수(GAS 몫 — 표·날짜)
-    if (it.id === 'ov:사건분류' && /주택|토지|양도|수용|이월과세/.test(JSON.stringify(caseProcAiOpts_(a)))) {
+    // 양도 사건에만(증여의 '부담부증여(양도 부분)' 같은 낱말에 걸려 증여 사건분류를 버리던 것 — 2026.10.19 재현기)
+    const isTr = raw.case ? raw.case.세목 === 'transfer' : /1세대1주택|일시적|비사업용|중과/.test(JSON.stringify(caseProcAiOpts_(a)));
+    if (it.id === 'ov:사건분류' && isTr && /주택|토지|양도|수용|이월과세/.test(JSON.stringify(caseProcAiOpts_(a)))) {
       const opts = caseProcAiOpts_(a).map(function (o) { return String(o.label || o.v || o.value || ''); }).join(' | '), det = (String(it.detail || '') + ' ' + String(it.text || '')).split('서류로 해당 없어 뺀 선택지')[0]; // 뺀 선택지 목록(재건축·재개발 등 낱말)을 신호로 읽지 않게
       const subs = [];
       if (/1세대1주택|일시적2주택|2주택 중과|3주택/.test(opts)) {
@@ -358,8 +360,8 @@ function caseProcAiVarSpots_(name, raw, caseId) {
       if (/이월과세/.test(opts)) subs.push({ 자리: 'cls:이월과세관계', 이유: '빈 칸', 설명: '[사건분류 쪼개기 — 사용자 사실] 증여자와의 관계(기간 안 증여)' });
       if (/당초 신고|수용\(보상금/.test(det) && /수용/.test(opts)) subs.push({ 자리: 'cls:수용', 이유: '상수', 설명: '[사건분류 쪼개기 — 상수] 양도 원인 수용·당초 신고 근거' });
       if (/읽지 못했습니다/.test(det)) subs.length = 0, subs.push({ 자리: 'cls:서류없음', 이유: '빈 칸', 설명: '[사건분류 쪼개기] 사건분류를 가를 서류가 없음 — 사용자 사실(상담 내용)' });
-      subs.forEach(function (x) { out.push(x); });
-      return;
+      if (subs.length) { subs.forEach(function (x) { out.push(x); }); return; }
+      // 쪼갤 작은 판단이 하나도 안 나오면 버리지 않고 아래 일반 규칙으로 센다(판단 갈림길)
     }
     const c0 = caseProcAiOpts_(a)[0] || {};
     const noDoc = n === 1 && /사건 납세자/.test(String(c0.src || '')) && (it.kind === 'missing' || /서류로는 확인 못|확인 못 함/.test(String(c0.src || '')));
