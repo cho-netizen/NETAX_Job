@@ -587,6 +587,36 @@
     return o.result();
   };
 
+  // ───────── 10호의4 부표4 — 수증자 및 과세가액 계산명세서(B-1)(수혜법인의 부문별 영업이익 명세서) ─────────
+  //  사업연도 한 해에 한 장 — ctx.부표4년차 = 몇 번째 해(0부터, ctxFor가 값이 있는 해마다 장을 만듦)
+  //  값 출처: 🧮 부문별 매출·비용 내역(jtSegmentYears_ — jtAttach4PrintPageHtml_와 같은 항목명·금액). ③·⑥ 비율과 총매출액 세부는 계산기에 없음
+  mappers['증여10호의4부표4'] = function (ctx) {
+    var o = new Out(), k = n(ctx.부표4년차), y = (ctx.segmentYears || [])[k];
+    if (!y || !(n(y.segmentSales) || n(y.totalSales) || (y.costs || []).length || (y.expenses || []).length)) {
+      o.miss('①②③④⑤⑥ 부표4 전체', '계산기에 없음 — 🧮 부문별 매출·비용 내역에 ' + (k + 1) + '년차 값이 없음'); return o.result();
+    }
+    var cT = (y.costs || []).reduce(function (s, x) { return s + n(x.total); }, 0), cS = sumSeg(y.costs);
+    var eT = (y.expenses || []).reduce(function (s, x) { return s + n(x.total); }, 0), eS = sumSeg(y.expenses);
+    o.set('②@총매출액', n(y.totalSales)).set('⑤@총매출액', n(y.segmentSales))
+      .set('②@총매출원가', cT).set('⑤@총매출원가', cS)
+      .set('②@매출총이익', n(y.totalSales) - cT).set('⑤@매출총이익', n(y.segmentSales) - cS)
+      .set('②@판매관리비', eT).set('⑤@판매관리비', eS)
+      .set('②@총영업이익', n(y.totalSales) - cT - eT).set('⑤@총영업이익', n(y.segmentSales) - cS - eS);
+    var put = function (grp, L) {
+      if (!L.length) { o.miss('①②④⑤ ' + grp + ' 세부 줄', '해당 없음 — 🧮 부문별 내역에 항목 없음'); return; }
+      o.set('①@' + grp, L.map(function (x) { return x.label; })).set('④@' + grp, L.map(function (x) { return x.label; }))
+        .set('②@' + grp, L.map(function (x) { return n(x.total); })).set('⑤@' + grp, L.map(function (x) { return n(x.segment); }));
+    };
+    put('원가항목', y.costs || []);
+    put('판관비항목', y.expenses || []);
+    o.miss('①②④⑤ 매출항목(총매출액 세부 1)~4))', '계산기에 없음 — 🧮 도구는 총매출액·부문 매출액 합계만 받음');
+    o.miss('③⑥ 비율(점유비)', '계산기에 없음 — 작성방법 1의 "점유비"를 계산기가 내지 않음');
+    o.check('⑤ 5. 부문별 영업이익 = 부문 매출 − 부문 원가 − 부문 판관비(🧮 도구 부문 영업이익)', n(y.segmentSales) - cS - eS, n(y.segmentSales) - sumSeg(y.costs) - sumSeg(y.expenses));
+    o.check('⑤ 3. 부문별 매출총이익 = 1. − 2.', n(y.segmentSales) - cS, n(y.segmentSales) - (y.costs || []).reduce(function (s, x) { return s + n(x.segment); }, 0));
+    o.note('이 장은 ' + (k + 1) + '년차(🧮 부문별 매출·비용 내역의 순서) — 사업연도는 서식에 적는 칸이 없어 표시하지 않음');
+    return o.result();
+  };
+
   // ───────── 세액인쇄 화면용 ctx — 화면 전역값에서 모음(브라우저) ─────────
   /* global lastRelatedPartyGiftResult_, lastBusinessOpportunityGiftResult_, giftDonees, shareholdingRows_, relatedPartyRatioRows_,
      jmRelatedPartyTotalSales_, jmRelatedPartyExcludedSales_, jtSegmentYears_, shareholdingIndirectRatio_, shareholdingCountedIndirectRatio_ */
@@ -635,12 +665,15 @@
     '증여10호의4': function () { return !!jtR(); },
     '증여10호의4부표1': function () { var r = jtR(); return !!(r && r.과세대상여부); },
     '증여10호의4부표3': function () { var r = jtR(); return !!(r && r.과세대상여부); },
+    '증여10호의4부표4': function () { var r = jtR(); return !!(r && r.과세대상여부 && segYearsWith(jtCtx({})).length); },
     '증여10호의4부표2': function () { var r = jtR(); return !!(r && r.과세대상여부 && shRows('jt').some(function (x) { return has(x.chain1Company) || n(x.chain1Ratio) > 0; })); },
     '증여10호의3부표5': function () { var r = jmR(); return !!(r && r.과세대상여부); },
     '증여10호의3부표4': function () { var r = jmR(); return !!(r && r.과세대상여부 && (typeof relatedPartyRatioRows_ !== 'undefined' ? relatedPartyRatioRows_ : []).some(function (x) { return has(x.label) || n(x.sales) > 0; })); }
   };
   // 한 사건에 여러 장인 서식 — 수혜법인의 법인주주(ⓐ)마다 한 장
+  function segYearsWith(c) { var out = []; (c.segmentYears || []).forEach(function (y, i) { if ((y.costs || []).some(function (x) { return has(x.label); }) || (y.expenses || []).some(function (x) { return has(x.label); }) || n(y.segmentSales) || n(y.totalSales)) out.push(i); }); return out; }
   var SPLIT = {
+    '증여10호의4부표4': function (c) { return segYearsWith(c).map(function (i) { return Object.assign({}, c, { 부표4년차: i }); }); },
     '증여10호의3부표3': function (c) { return chainGroups(c.shareholders || []).a.map(function (x, i) { return Object.assign({}, c, { 부표3법인: i }); }); }
   };
   Object.keys(READY).forEach(function (k) {
