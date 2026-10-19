@@ -21,6 +21,9 @@
  *           글자 칸에 긴 글자 하나를 주면 칸 너비에 맞춰 다음 줄로 이어 씀.
  *   - null·undefined·'' 는 찍지 않음.
  *   - 칸 너비를 넘으면 글자 크기를 줄임(최소 4pt). 그래도 넘치면 report.overflow에 남김.
+ *   - 한 장에 모자라면 다음 장에 이어 찍음(아래 "다음 장 이어 찍기" 설명): 표의 줄은 배열을 줄 수보다 길게
+ *     (또는 '⑦#8'), 열은 키 숫자를 키워서('①@자산4.앞', '④@세율5') 넘기면 됨. report.continued = [{formKey, pages, …}].
+ *     합계·서명 등 표 아래 칸은 마지막 장에만(opts.continueTotals = 'first'면 첫 장에만).
  *
  * 바탕 PDF: callGas('listFolder', {folderId}) → files[{id,name,sizeBytes}] 에서 위치판 원본.파일의 이름으로 찾고,
  *           callGas('readFileBinary', {fileId}) → {name, mimeType, base64} 로 받음. 받은 뒤 원본.md5와 비교 — 다르면 찍지 않고 오류.
@@ -378,6 +381,150 @@
     });
   }
 
+  // ───────── 쪽 번호 읽기 ─────────
+  // 위치판의 '쪽'·'뒷면쪽'은 숫자 하나(2)·배열([2,3,4])·null이 섞여 있음(증여10호·상속9호 = 숫자, 양도84호 = 배열) — 모두 배열로.
+  function toPages(v) {
+    if (v === null || v === undefined || v === '') return [];
+    if (Array.isArray(v)) return v.reduce(function (a, x) { return a.concat(toPages(x)); }, []);
+    if (typeof v === 'number') return isFinite(v) && v > 0 ? [v] : [];
+    if (typeof v === 'string') return v.split(/[^0-9]+/).filter(Boolean).map(Number).filter(function (n) { return n > 0; });
+    return [];
+  }
+
+  // ───────── 다음 장 이어 찍기(작업자 거, 2026-10-19) ─────────
+  // 한 장에 자리가 모자라면 그 서식 쪽을 원본에서 한 번 더 복사해 나머지를 이어 찍는다. 서식마다 따로 짜지 않고 위치판에서 반복 단위를 알아냄:
+  //   줄(row): 같은 쪽에서 줄 위치(c.줄의 y들)가 똑같은 여러 줄 칸이 2개 이상 → 표의 줄. 한 장 용량 = 줄 수.
+  //            줄번호가 있는 체크 칸(③|여 등) → 같은 키의 가장 큰 줄번호가 용량.
+  //            값: 배열이면 앞에서부터 장마다 줄 수만큼, '키#7'처럼 줄을 지정하면 7번째 줄(= 2장 2번째 줄, 줄 5개 표일 때).
+  //   열(col): 열 이름이 '이름+숫자'(세율1·자산1·종목1) 또는 열번호(1~5) → 같은 이름끼리 가장 큰 숫자가 용량.
+  //            값: 위치판 키의 숫자만 키워 줌 — '①@자산5.앞' = 자산 열 3개 서식의 2장 2번째 열.
+  //   나머지 칸: 그 쪽 표(반복 칸) 맨 위보다 위에 있으면 머리(성명·귀속연도 등) → 장마다 찍음.
+  //              표 맨 위와 같거나 아래(합계·계·서명·신고일 등) → 마지막 장에만(opts.continueTotals = 'first'면 첫 장에만).
+  //   이어 찍은 장 위쪽 여백에 '(계속 2/3)' 표시, 첫 장엔 '(1/3)'. 작성방법(뒷면) 쪽은 다시 넣지 않음.
+  function meaningful(v) { return v !== undefined && v !== null && v !== '' && v !== false; }
+  function lastIdx(arr) { for (var i = arr.length - 1; i >= 0; i--) if (meaningful(arr[i])) return i; return -1; }
+  function escRe(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function colInfo(c) {
+    if (c.열번호) return { prefix: '', num: Number(c.열번호), token: '@' + c.열번호 };
+    var m = c.열 && /^(.*?)(\d+)$/.exec(String(c.열));
+    return m ? { prefix: m[1], num: Number(m[2]), token: '@' + c.열 } : null;
+  }
+  // 키에서 열 자리('@자산1')를 찾아 앞·뒤로 나눔(뒤는 끝 또는 . | # ~ 로 시작해야 함)
+  function splitTok(key, token) {
+    var from = 0, i;
+    while ((i = key.indexOf(token, from)) >= 0) {
+      var nx = key.charAt(i + token.length);
+      if (nx === '' || '.|#~'.indexOf(nx) >= 0) return { pre: key.slice(0, i), post: key.slice(i + token.length) };
+      from = i + 1;
+    }
+    return null;
+  }
+  function slotTop(c) {
+    if (c.종류 === '체크') return c.cy - (c.글자크기 || 8) / 2;
+    if (c.줄 && c.줄.length) return c.줄[0][0];
+    return c.y;
+  }
+  // 서식 하나(entry)를 값(values)에 맞춰 몇 장이 필요한지 계획
+  function planEntry(entry, values) {
+    var slots = slotsOf(entry), hashAll = {};
+    Object.keys(values).forEach(function (k) {
+      var m = /^(.*)#(\d+)$/.exec(k);
+      if (m) (hashAll[m[1]] = hashAll[m[1]] || []).push(Number(m[2]));
+    });
+    function hashMax(k) {
+      var mx = 0; (hashAll[k] || []).forEach(function (n) { if (n > mx && meaningful(values[k + '#' + n])) mx = n; }); return mx;
+    }
+    // 줄 표 찾기: 같은 쪽·같은 줄 위치의 여러 줄 칸 수
+    var sigCnt = {}, chkCap = {};
+    function sigOf(c) { return c.쪽 + ':' + c.줄.map(function (r) { return Math.round(r[0] * 2) / 2; }).join(','); }
+    slots.forEach(function (s) {
+      var c = s.c;
+      if (colInfo(c)) return;
+      if (c.종류 !== '체크' && c.줄 && c.줄.length > 1) sigCnt[sigOf(c)] = (sigCnt[sigOf(c)] || 0) + 1;
+      if (c.종류 === '체크' && c.줄번호) chkCap[s.key] = Math.max(chkCap[s.key] || 0, c.줄번호);
+    });
+    var colCap = {};
+    slots.forEach(function (s) { var ci = colInfo(s.c); if (ci) colCap[ci.prefix] = Math.max(colCap[ci.prefix] || 0, ci.num); });
+    // 열 값의 가장 큰 번호(키 숫자를 키운 값까지)
+    var colMax = {}, tmplSeen = {};
+    var vkeys = Object.keys(values);
+    var plan = slots.map(function (s) {
+      var c = s.c, ci = colInfo(c), sp = { s: s, keys: c.종류 === '체크' && s.base !== s.key ? [s.key, s.base] : [s.key] };
+      if (ci) {
+        var tm = sp.keys.map(function (k) { return splitTok(k, ci.token); });
+        if (tm.some(function (t) { return !t; })) { sp.kind = 'fixed'; return sp; }
+        sp.kind = 'col'; sp.prefix = ci.prefix; sp.num = ci.num; sp.cap = colCap[ci.prefix]; sp.tm = tm;
+        tm.forEach(function (t) {
+          var id = t.pre + '\u0001' + t.post; if (tmplSeen[id]) return; tmplSeen[id] = 1;
+          var re = new RegExp('^' + escRe(t.pre) + '@' + escRe(ci.prefix) + '(\\d+)' + escRe(t.post) + '(?:#\\d+)?$');
+          vkeys.forEach(function (k) {
+            var m = re.exec(k);
+            if (m && meaningful(values[k])) colMax[ci.prefix] = Math.max(colMax[ci.prefix] || 0, Number(m[1]));
+          });
+        });
+        return sp;
+      }
+      var N = 0;
+      if (c.종류 === '체크' && c.줄번호) N = chkCap[s.key];
+      else if (c.종류 !== '체크' && c.줄 && c.줄.length > 1 && sigCnt[sigOf(c)] >= 2) N = c.줄.length;
+      if (N) {
+        var L = 0;
+        sp.keys.forEach(function (k) {
+          if (Array.isArray(values[k])) L = Math.max(L, lastIdx(values[k]) + 1);
+          L = Math.max(L, hashMax(k));
+        });
+        sp.kind = 'row'; sp.cap = N; sp.need = Math.max(1, Math.ceil(L / N));
+        return sp;
+      }
+      sp.kind = 'other';
+      return sp;
+    });
+    plan.forEach(function (sp) { if (sp.kind === 'col') sp.need = Math.max(1, Math.ceil((colMax[sp.prefix] || 0) / sp.cap)); if (sp.kind === 'fixed') sp.need = 1; });
+    // 쪽마다 필요한 장 수, 표 맨 위
+    var needOf = {}, topOf = {};
+    plan.forEach(function (sp) {
+      var pg = sp.s.c.쪽;
+      if (sp.kind === 'other') return;
+      needOf[pg] = Math.max(needOf[pg] || 1, sp.need);
+      var t = slotTop(sp.s.c); if (isNum(t)) topOf[pg] = topOf[pg] === undefined ? t : Math.min(topOf[pg], t);
+    });
+    var total = 1;
+    plan.forEach(function (sp) {
+      var pg = sp.s.c.쪽;
+      if (!needOf[pg]) needOf[pg] = 1;
+      if (sp.kind === 'other') { var t = slotTop(sp.s.c); sp.kind = topOf[pg] !== undefined && isNum(t) && t < topOf[pg] - 1 ? 'head' : 'tail'; }
+      total = Math.max(total, needOf[pg]);
+    });
+    var shortOf = {};
+    plan.forEach(function (sp) { if (sp.kind === 'row' || sp.kind === 'col') { var u = (sp.kind === 'col' ? '열 ' + (sp.prefix || '번호') : '줄 ' + (sp.s.c.칸 || sp.s.key)); shortOf[u] = Math.max(shortOf[u] || 0, sp.cap); } });
+    return { plan: plan, needOf: needOf, total: total, hashAll: hashAll, capacity: shortOf };
+  }
+  // p번째 장(0부터)에 찍을 값(view)과, view 키 → 원래 키 대응
+  function viewFor(pl, values, p, totalsFirst) {
+    var view = {}, orig = {};
+    function put(vk, ok) { if (values[ok] !== undefined) { view[vk] = values[ok]; orig[vk] = ok; } }
+    function putAll(vk, ok) { put(vk, ok); (pl.hashAll[ok] || []).forEach(function (n) { put(vk + '#' + n, ok + '#' + n); }); }
+    pl.plan.forEach(function (sp) {
+      var pg = sp.s.c.쪽, last = (pl.needOf[pg] || 1) - 1;
+      if (sp.kind === 'head') sp.keys.forEach(function (k) { putAll(k, k); });
+      else if (sp.kind === 'tail') { if (p === (totalsFirst ? 0 : last)) sp.keys.forEach(function (k) { putAll(k, k); }); }
+      else if (sp.kind === 'fixed') { if (p === 0) sp.keys.forEach(function (k) { putAll(k, k); }); }
+      else if (sp.kind === 'row') {
+        var N = sp.cap, off = p * N;
+        sp.keys.forEach(function (k) {
+          var v = values[k];
+          if (Array.isArray(v)) { view[k] = v.slice(off, off + N); orig[k] = k; }
+          else if (p === 0 && v !== undefined) { view[k] = v; orig[k] = k; }
+          (pl.hashAll[k] || []).forEach(function (n) { if (n > off && n <= off + N) put(k + '#' + (n - off), k + '#' + n); });
+        });
+      } else if (sp.kind === 'col') {
+        var n = p * sp.cap + sp.num;
+        sp.keys.forEach(function (k, i) { var t = sp.tm[i]; putAll(k, t.pre + '@' + sp.prefix + n + t.post); });
+      }
+    });
+    return { view: view, orig: orig };
+  }
+
   // [고침] @pdf-lib/fontkit 1.1.1의 TrueType 부분 넣기(subset) 버그: 글자 모양(glyf) 조각 길이가 홀수인데
   //  위치표(loca)를 짧은 형식(2바이트 단위)으로 써서, 홀수 조각 뒤의 글자가 전부 깨진다(나눔고딕·IBM Plex에서 숫자·한글 대부분 사라짐,
   //  맑은고딕은 조각이 짝수라 괜찮았음 — 2026-10-19 시험). 조각마다 0 한 바이트를 덧대 짝수로 맞춘다(글자 모양은 그대로).
@@ -404,7 +551,7 @@
   // jobs: [{formKey, values}] → {bytes, report}
   function renderBytes(jobs, opts) {
     opts = opts || {};
-    var report = { placed: 0, shrunk: [], overflow: [], unknownKeys: [], warnings: [], forms: [] };
+    var report = { placed: 0, shrunk: [], overflow: [], unknownKeys: [], warnings: [], forms: [], continued: [] };
     var libs, fontBytes;
     return ensureLibs(opts).then(function (l) { libs = l; return loadFont(opts); })
       .then(function (fb) { fontBytes = fb; patchFontkitSubset(libs.fontkit, fontBytes); return Promise.all(jobs.map(function (j) { return loadMap(j.formKey, opts); })); })
@@ -424,30 +571,72 @@
                   var map = d.maps[ji], md5 = map.원본.md5 || ('#' + ji);
                   return (srcDocs[md5] ? Promise.resolve(srcDocs[md5]) : PDFLib.PDFDocument.load(d.srcs[ji]).then(function (sd) { srcDocs[md5] = sd; return sd; }))
                     .then(function (src) {
-                      var pageNos = [];
-                      map.서식.forEach(function (e) {
-                        [].concat(e.쪽 == null ? [] : e.쪽).forEach(function (p) { if (pageNos.indexOf(p) < 0) pageNos.push(p); });
-                        if (opts.backPages !== false) [].concat(e.뒷면쪽 == null ? [] : e.뒷면쪽).forEach( /* [2026.10.19 고침] 위치판의 쪽·뒷면쪽은 숫자 하나·배열·null이 섞여 있음(증여10호·상속9호는 숫자 2) */ function (p) { if (pageNos.indexOf(p) < 0) pageNos.push(p); });
+                      var values = job.values || {};
+                      var pageNos = [], frontNos = [];
+                      // 이어 찍기 계획(서식마다): 쪽별 필요한 장 수
+                      var plans = map.서식.map(function (e) { return planEntry(e, values); });
+                      var needOf = {};
+                      map.서식.forEach(function (e, ei) {
+                        toPages(e.쪽).forEach(function (p) {
+                          if (pageNos.indexOf(p) < 0) pageNos.push(p);
+                          if (frontNos.indexOf(p) < 0) frontNos.push(p);
+                          needOf[p] = Math.max(needOf[p] || 1, plans[ei].needOf[p] || 1);
+                        });
+                        if (opts.backPages !== false) toPages(e.뒷면쪽).forEach(function (p) { if (pageNos.indexOf(p) < 0) pageNos.push(p); });
                       });
                       pageNos.sort(function (a, b) { return a - b; });
                       return doc.copyPages(src, pageNos.map(function (n) { return n - 1; })).then(function (copied) {
-                        var byNo = {};
+                        // 이어 찍을 장: 원본 쪽을 한 번 더 복사(쪽마다 따로 복사해야 서로 다른 장이 됨)
+                        var extra = [];
+                        frontNos.forEach(function (n) { for (var q = 1; q < (needOf[n] || 1); q++) extra.push({ n: n, q: q }); });
+                        return extra.reduce(function (pr, x) {
+                          return pr.then(function () { return doc.copyPages(src, [x.n - 1]).then(function (cp) { x.page = cp[0]; }); });
+                        }, Promise.resolve()).then(function () { return { copied: copied, extra: extra }; });
+                      }).then(function (cc) {
+                        var copied = cc.copied, byNoP = [{}], all = [];
                         copied.forEach(function (p, i) {
-                          doc.addPage(p); byNo[pageNos[i]] = p;
-                          if (p.getRotation && p.getRotation().angle) report.warnings.push(job.formKey + ' ' + pageNos[i] + '쪽이 돌려져 있음(' + p.getRotation().angle + '도) — 좌표가 어긋날 수 있음');
+                          var n = pageNos[i];
+                          doc.addPage(p); byNoP[0][n] = p; all.push({ page: p, n: n, q: 0 });
+                          if (p.getRotation && p.getRotation().angle) report.warnings.push(job.formKey + ' ' + n + '쪽이 돌려져 있음(' + p.getRotation().angle + '도) — 좌표가 어긋날 수 있음');
+                          // 그 쪽의 이어 찍은 장은 바로 뒤에
+                          cc.extra.forEach(function (x) {
+                            if (x.n !== n) return;
+                            doc.addPage(x.page); (byNoP[x.q] = byNoP[x.q] || {})[n] = x.page; all.push({ page: x.page, n: n, q: x.q });
+                          });
                         });
                         var ctx = { PDFLib: PDFLib, font: fonts[0], bold: fonts[1], report: report, opts: opts, formKey: job.formKey, used: {},
                           color: opts.color ? PDFLib.rgb.apply(null, opts.color) : PDFLib.rgb(0, 0, 0) };
-                        var before = report.placed;
-                        map.서식.forEach(function (e) { stampEntry(ctx, e, function (n) { return byNo[n]; }, job.values || {}); });
-                        Object.keys(job.values || {}).forEach(function (k) {
-                          var v = job.values[k];
+                        var before = report.placed, sheets = 1;
+                        map.서식.forEach(function (e, ei) {
+                          var pl = plans[ei];
+                          if (pl.total <= 1) { stampEntry(ctx, e, function (n) { return byNoP[0][n]; }, values); return; }
+                          sheets = Math.max(sheets, pl.total);
+                          for (var q = 0; q < pl.total; q++) {
+                            var vw = viewFor(pl, values, q, opts.continueTotals === 'first');
+                            var c2 = Object.create(ctx); c2.used = {};
+                            stampEntry(c2, e, (function (qq) { return function (n) { return byNoP[qq] && byNoP[qq][n]; }; })(q), vw.view);
+                            Object.keys(c2.used).forEach(function (k) { ctx.used[vw.orig[k] || k] = 1; });
+                          }
+                          report.continued.push({ formKey: job.formKey, 서식: e.서식, pages: pl.total, 쪽별장수: pl.needOf, 한장용량: pl.capacity,
+                            합계칸: opts.continueTotals === 'first' ? '첫 장에만' : '마지막 장에만' });
+                        });
+                        // 이어 찍은 표시(위치판 밖 위쪽 여백, 오른쪽 끝)
+                        all.forEach(function (a) {
+                          var tot = needOf[a.n] || 1;
+                          if (tot <= 1) return;
+                          var t = a.q === 0 ? '(1/' + tot + ')' : '(계속 ' + (a.q + 1) + '/' + tot + ')';
+                          var sz = 7, tw = fonts[0].widthOfTextAtSize(t, sz);
+                          a.page.drawText(t, { x: a.page.getWidth() - 24 - tw, y: a.page.getHeight() - 14, size: sz, font: fonts[0], color: PDFLib.rgb(0.25, 0.25, 0.25) });
+                        });
+                        Object.keys(values).forEach(function (k) {
+                          var v = values[k];
                           if (!ctx.used[k] && v !== undefined && v !== null && v !== '') report.unknownKeys.push(job.formKey + ' ' + k);
                         });
-                        if (opts.watermark) copied.forEach(function (p) {
+                        if (opts.watermark) all.forEach(function (a) {
+                          var p = a.page;
                           p.drawText(String(opts.watermark), { x: 40, y: p.getHeight() - 18, size: 8, font: fonts[0], color: PDFLib.rgb(0.8, 0.1, 0.1) });
                         });
-                        report.forms.push({ formKey: job.formKey, 쪽: pageNos, 찍은칸: report.placed - before, 원본: basename(map.원본.파일), 개정: map.원본.개정일 || '' });
+                        report.forms.push({ formKey: job.formKey, 쪽: pageNos, 이어찍은장: cc.extra.length, 장수: sheets, 찍은칸: report.placed - before, 원본: basename(map.원본.파일), 개정: map.원본.개정일 || '' });
                       });
                     });
                 });
@@ -493,7 +682,7 @@
   var api = {
     VERSION: VERSION, config: config, FOLDERS: FOLDERS,
     render: render, renderMany: renderMany, renderBytes: renderBytes, renderWithMappers: renderWithMappers,
-    keys: keys, keysOfMap: keysOfMap, slotsOf: slotsOf, loadMap: loadMap, loadSource: loadSource,
+    keys: keys, keysOfMap: keysOfMap, slotsOf: slotsOf, planEntry: planEntry, toPages: toPages, loadMap: loadMap, loadSource: loadSource,
     open: open, md5hex: md5hex, fmt: fmt, clearCache: function () { cache.maps = {}; cache.src = {}; cache.font = null; }
   };
   return api;

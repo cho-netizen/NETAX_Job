@@ -41,6 +41,10 @@
     <button data-case="양도84호" disabled>양도 84호 + 부표1</button>
     <button data-case="증여10호" disabled>증여 10호</button>
     <button data-case="상속9호" disabled>상속 9호 + 부표1·부표3</button>
+    <button data-case="양도_부표" disabled>양도 전체(plan: 부표1~3)</button>
+    <button data-case="증여_부표" disabled>증여 전체(plan: 부표1~6)</button>
+    <button data-case="상속_부표" disabled>상속 전체(plan: 부표1~8)</button>
+    <button data-case="상속_부표7" disabled>상속 부표7</button>
     <label><input type="checkbox" id="boxes"> 칸 테두리 보기</label>
     <label><input type="checkbox" id="back"> 뒷면(작성방법) 포함</label>
   </div>
@@ -67,7 +71,7 @@
   fetch('../../gs-backend/manage/taxcalc-engine.html').then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); }).then(function (src) {
     src = src.replace(/^\s*<script>/, '').replace(/<\/script>\s*$/, '');
     var win = {}; new Function('window', src)(win); E = win;
-    CASES = window.NxFormPrintTestCases(E);
+    CASES = window.NxFormPrintTestCases(E); CASES = CASES.concat(CASES.부표 || []);
     say('엔진 준비됨 — 원본 PDF를 고른 뒤 단추를 누르세요.');
     refresh();
   }).catch(function (e) { say('엔진(gs-backend/manage/taxcalc-engine.html)을 못 읽음: ' + e.message, 'bad'); });
@@ -117,7 +121,8 @@
       var cs = CASES.filter(function (c) { return c.name === btn.getAttribute('data-case'); })[0];
       say('찍는 중…');
       var t0 = performance.now();
-      FP.renderWithMappers(cs.forms, cs.ctx, {
+      var jobs = cs.tax ? FP.plan(cs.tax, cs.ctx).filter(function (it) { return !cs.only || cs.only.indexOf(typeof it === 'string' ? it : it.formKey) >= 0; }) : cs.forms; // 작업자 하: 세목별 plan
+      FP.renderWithMappers(jobs, cs.ctx, {
         callGas: fakeCallGas, debugBoxes: document.getElementById('boxes').checked, backPages: document.getElementById('back').checked,
         watermark: '견본 — NETAX 원본 서식 출력 시험(합성 값, 신고용 아님)'
       }).then(function (r) {
