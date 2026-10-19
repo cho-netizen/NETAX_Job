@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 19:49 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 19:55 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -19810,7 +19810,7 @@
       perTxn.forEach(function (x) {
         const B_ = G_ > 0 ? Math.round(Math.max(0, x.양도차익) * C_ / G_) : 0;
         x.기준양도소득금액_B = B_;
-        if (x.양도차익 < 0) lossAllocNote_ = '[회장 결정 N13·확인 필요] 차손 자산이 있어 자산별 공제한도의 B는 차손 합계를 이익 자산에 양도소득금액 비율로 나눠 뺀 값(차손 자산 B = 0, 서식 11호 부표1 작성방법 9·10 ⑩) — 자산별 한도 합 = 산출세액(소득세법 §118의6①1호 A×B÷C).';
+        if (x.양도차익 < 0) lossAllocNote_ = '[서식 11호 부표1 작성방법 9·10 — 결손 국가 안분] 차손 자산이 있어 자산별 공제한도의 B는 차손 합계를 이익 자산에 양도소득금액 비율로 나눠 뺀 값(차손 자산 B = 0, 서식 11호 부표1 작성방법 9·10 ⑩) — 자산별 한도 합 = 산출세액(소득세법 §118의6①1호 A×B÷C).';
         const lim = C_ > 0 ? Math.round(calculatedTax * B_ / C_) : 0;
         x.공제한도 = lim;
         x.공제액 = Math.min(x.외국납부세액_공제신청액, lim);
