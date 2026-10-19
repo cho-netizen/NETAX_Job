@@ -58,13 +58,16 @@ async function get(url) {
 
 // 법령의 판 목록(현행 1 + 시행예정) — 시행예정은 시행일마다 가장 늦게 공포된 판 하나
 async function versions(name) {
-  const x = await get('https://www.law.go.kr/DRF/lawSearch.do?OC=' + OC + '&target=eflaw&type=XML&display=100&query=' + encodeURIComponent(name));
+  // [2026.10.20] 검색은 법·시행령·시행규칙이 섞여 100건을 넘으므로 쪽을 넘겨 모은다(1쪽만 보면 시행령 시행예정이 빠짐)
+  let x = '';
+  for (let page = 1; page <= 6; page++) { const y = await get('https://www.law.go.kr/DRF/lawSearch.do?OC=' + OC + '&target=eflaw&type=XML&display=100&page=' + page + '&query=' + encodeURIComponent(name)); if (!tagsAll(y, 'law').length) break; x += y; }
   const all = tagsAll(x, 'law').map(s => ({ 이름: tag(s, '법령명한글'), 법령ID: tag(s, '법령ID'), MST: tag(s, '법령일련번호'), 시행일: tag(s, '시행일자'), 공포일: tag(s, '공포일자'), 공포번호: tag(s, '공포번호'), 구분: tag(s, '제개정구분명'), 법종: tag(s, '법령구분명'), 코드: tag(s, '현행연혁코드') }))
     .filter(v => key(v.이름) === key(name));
   const cur = all.find(v => v.코드 === '현행');
   if (!cur) return { error: '법제처 검색에 현행판 없음' };
   const byEf = {};
-  all.filter(v => v.코드 === '시행예정' && v.시행일 > today && v.공포일 >= cur.공포일).forEach(v => { const b = byEf[v.시행일]; if (!b || v.공포일 > b.공포일) byEf[v.시행일] = v; });
+  // [2026.10.20] 현행보다 먼저 공포된 시행예정(예: 국기법 2028.1.1. 시행분, 법률 21212)도 넣는다 — 법제처는 그 판 원문에 뒤 개정까지 반영해 준다(2026.9.29. 개정 표시 확인)
+  all.filter(v => v.코드 === '시행예정' && v.시행일 > today).forEach(v => { const b = byEf[v.시행일]; if (!b || v.공포일 > b.공포일) byEf[v.시행일] = v; });
   return { 법령ID: cur.법령ID, 현행: cur, 예정: Object.keys(byEf).sort().map(k => byEf[k]) };
 }
 
