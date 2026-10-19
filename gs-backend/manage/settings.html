@@ -67,6 +67,7 @@
         <button type="button" class="ghost-btn" data-fed="q">❓ 개발자 질문</button>
         <button type="button" class="ghost-btn" data-fed="advice">🧑‍🏫 AI 자문단</button>
         <button type="button" class="ghost-btn" data-fed="ask" title="고객 정보 없는 일반 질문을 무료 AI 3곳에 동시에 묻고 결론이 맞는지 봅니다(0원)">🗳 무료 AI 3곳에 묻기</button>
+        <button type="button" class="ghost-btn" data-fed="mai" title="질문 하나를 여러 AI 칸에 — 웹 AI는 복사·열기·답 붙여넣기, API는 켜면 자동 → 비교표(앱에서만)">🤝 멀티 AI 사이드바</button>
         <button type="button" class="ghost-btn" data-fed="reg">🤝 AI 명단</button>
         <button type="button" class="ghost-btn" data-fed="key">🔑 무료 AI 키</button>
       </div>
@@ -168,7 +169,7 @@
         L.questions.forEach(function(q){
           html += row('<b>[' + h(q.topic) + ']</b> <span style="color:var(--sub);">' + h(q.id) + ' · 답 ' + q.answers.length + '개(' + h(q.answers.map(function(a){ return a.name + (a.mode === 'manual' ? '·수동' : ''); }).join(', ')) + ')</span>'
             + '<details><summary>질문 보기</summary><div style="white-space:pre-wrap;">' + h(q.q) + '</div></details>'
-            + '<div style="margin:3px 0;">' + webs.map(function(w){ return '<button type="button" class="ghost-btn" data-fedweb="' + h(q.id) + '|' + h(w.id) + '" title="' + h(w.tos) + '">📋 ' + h(w.name) + '</button>'; }).join(' ') + '</div>'
+            + '<div style="margin:3px 0;">' + (window.nxMultiAi_ ? '<button type="button" class="ghost-btn" data-fedmai="' + h(q.id) + '">🤝 여러 AI에 묻기(사이드바)</button>' : webs.map(function(w){ return '<button type="button" class="ghost-btn" data-fedweb="' + h(q.id) + '|' + h(w.id) + '" title="' + h(w.tos) + '">📋 ' + h(w.name) + '</button>'; }).join(' ')) + '</div>'
             + (q.suggestions || []).map(function(s, i){
               return '<div style="padding:2px 0 2px 8px;">' + (s.common ? '⭐ 공통(' + s.ais.length + ')' : '· 단독') + ' ' + h(s.text) + ' <span style="color:var(--sub);">— ' + h(s.ais.join(', ')) + '</span>'
                 + (s.verdict ? ' <b>[' + h(s.verdict) + ']</b>' : '') + ' <button type="button" class="ghost-btn" data-fedmark="' + h(q.id) + '|' + i + '|채택">채택</button> <button type="button" class="ghost-btn" data-fedmark="' + h(q.id) + '|' + i + '|기각">기각</button></div>';
@@ -181,7 +182,7 @@
       }).catch(err);
     }
     document.addEventListener('click', function(ev){
-      var t = ev.target.closest && ev.target.closest('[data-fed],[data-fedok],[data-fedno],[data-fedans],[data-fedkey],[data-fedkeydel],[data-fedrun],[data-fedweb],[data-fedmark]');
+      var t = ev.target.closest && ev.target.closest('[data-fed],[data-fedmai],[data-fedok],[data-fedno],[data-fedans],[data-fedkey],[data-fedkeydel],[data-fedrun],[data-fedweb],[data-fedmark]');
       if (!t || !document.getElementById('stFedCard') || !document.getElementById('stFedCard').contains(t)) return;
       var d = t.dataset;
       if (d.fed === 'req') return showReq();
@@ -190,6 +191,19 @@
       if (d.fed === 'key') return showKey();
       if (d.fed === 'ask') return showAsk();
       if (d.fed === 'advice') return showAdvice();
+      // [2026.10.19] 🤝 멀티 AI 사이드바(app-only/multiai.html) — 자문단 질문은 답을 ai_advice_add_manual로 저장(공통 제안·채택/기각은 이 카드 그대로), 새 질문은 이 브라우저에만 보관
+      var sysTail = '\n\n답은 번호 목록(1. 2. 3.)으로 구체적인 제안 위주로. 마지막 줄은 "결론: (한 문장)".';
+      if (d.fed === 'mai'){
+        if (!window.nxMultiAi_) return toast('멀티 AI 사이드바는 앱(job.netax.kr/app)에서 열립니다.');
+        return nxPrompt_('여러 AI에 물을 질문(개선 제안·서식 칸 해석·기술 질문 등 — 고객 정보 없이)', '').then(function(q){ q = String(q || '').trim(); if (!q) return; nxMultiAi_.open({ mode: 'system', title: q.slice(0, 40), head: q + sysTail, storeKey: 'nxMai_' + q.slice(0, 60) }); });
+      }
+      if (d.fedmai){
+        var mq = null; ((lastAdvice && lastAdvice.latest && lastAdvice.latest.questions) || []).forEach(function(x){ if (x.id === d.fedmai) mq = x; });
+        if (!mq) return;
+        var saved = {}; (mq.answers || []).forEach(function(a){ saved[a.ai] = { 글: a.text, 방식: a.mode === 'manual' ? '붙여넣기' : 'API' }; });
+        return nxMultiAi_.open({ mode: 'system', title: '[' + mq.topic + '] ' + mq.id, head: mq.q + sysTail, saved: saved,
+          onAnswer: function(slot, text){ return callGas('ai_advice_add_manual', { qid: mq.id, ai: slot.id, text: text }); }, onClose: showAdvice });
+      }
       if (d.fedok) return callGas('comm_request_confirm', { id: d.fedok, ok: true }).then(showReq).catch(err);
       if (d.fedno) return nxPrompt_('무엇이 아직 안 되는지 적어 주세요(다음 개발자 실행 때 다시 고칩니다).', '').then(function(note){ if (note === null) return; return callGas('comm_request_confirm', { id: d.fedno, ok: false, note: note }).then(showReq); }).catch(err);
       if (d.fedans) return nxPrompt_('개발자 질문 ' + d.fedans + '에 대한 답을 적어 주세요.', '').then(function(a){ a = String(a || '').trim(); if (!a) return; return callGas('comm_dev_answer', { id: d.fedans, text: a }).then(showQ); }).catch(err);

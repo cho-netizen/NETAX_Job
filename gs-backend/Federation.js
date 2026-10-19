@@ -65,7 +65,7 @@ function aiRegistryList_() {
   var use = aiUsage_(), h = aiHealth_();
   return AI_REGISTRY_.map(function (e) {
     var st = e.status || (e.tier === 'B' ? '수동(약관상 자동화 금지)' : e.provider === 'none' || e.provider === 'device' ? '대기' : aiHasKey_(e) ? (h[e.id] && h[e.id].ok === false ? '오류' : '사용 가능') : '대기(키 없음)');
-    return { id: e.id, tier: e.tier, name: e.name, model: aiModelOf_(e) || '', specialties: e.specialties, clientData: e.clientData, dailyFree: e.dailyFree || null, usedToday: use[e.id] || 0, speed: e.speed || '', cost: e.cost || '', status: st, url: e.url || '', tos: e.tos || '', note: e.note || '', keyProp: e.keyProp || '', health: h[e.id] || null };
+    return { id: e.id, tier: e.tier, name: e.name, model: aiModelOf_(e) || '', specialties: e.specialties, clientData: e.clientData, dailyFree: e.dailyFree || null, usedToday: use[e.id] || 0, speed: e.speed || '', cost: e.cost || '', status: st, url: e.url || '', tos: e.tos || '', note: e.note || '', keyProp: e.keyProp || '', health: h[e.id] || null, price: (typeof MODEL_CONFIG !== 'undefined' && MODEL_CONFIG[aiModelOf_(e)]) ? { in: MODEL_CONFIG[aiModelOf_(e)].input, out: MODEL_CONFIG[aiModelOf_(e)].output } : null };
   });
 }
 // 배차 — 고객자료 여부 → 무료 가능 → 주특기 → 남은 한도 순으로 실제 호출 가능한 A·C 후보를 고른다(B는 수동이라 제외).
@@ -171,6 +171,60 @@ function aiConsensus_(body) {
   var top = groups[0] || null, agree = top ? top.members.length : 0;
   var verdict = !answers.length ? '답을 받지 못함' : agree >= 2 && agree === answers.length ? '일치(' + agree + '/' + answers.length + ')' : agree >= 2 ? '다수(' + agree + '/' + answers.length + ')' : '불일치 — 유료 AI나 법령 원문으로 확인 권장';
   return { success: true, verdict: verdict, agree: agree, total: answers.length, adopted: agree >= 2 ? top.rep : '', groups: groups, answers: answers.map(function (a) { return { name: a.name, conclusion: a.conclusion, text: a.text.slice(0, 2500) }; }) };
+}
+
+// ---- [2026.10.19 멀티 AI 사이드바] 세무사님 "이 ai연합체를 시스템업그레이드와 법령검색 양쪽에 활용하자", "일단 api없이 해보고"
+// 화면(질문지 만들기·복사·사이트 열기·답 붙여넣기·근거 실재 확인·비교표)은 앱 전용(app-only/multiai.html·judgewait.html). 서버는 판단 대기 파일 읽기·저장과 API 칸 묻기만.
+var AI_JUDGE_FILE_ = '_판단대기.json'; // 드라이브 0 NETAX/업무관리자/법령/(시스템 전용 — 이름 앞 _). 만듦: netax-inventory/maps/법령도구/판단대기_만들기.js
+function aiJudgeFile_() {
+  var g = function (p, n) { var it = p && p.getFoldersByName(n); return it && it.hasNext() ? it.next() : null; };
+  var d = g(g(getNetaxRootFolder_(), '업무관리자'), '법령'), it = d && d.getFilesByName(AI_JUDGE_FILE_);
+  return it && it.hasNext() ? it.next() : null;
+}
+function aiJudgeGet_() {
+  var f = aiJudgeFile_(); if (!f) return { error: '드라이브 업무관리자/법령/' + AI_JUDGE_FILE_ + '이 없습니다.' };
+  try { return { success: true, doc: JSON.parse(f.getBlob().getDataAsString('UTF-8')) }; } catch (e) { return { error: '판단 대기 파일을 읽지 못했습니다: ' + e.message }; }
+}
+// 쟁점 하나에 답(AI별)·근거 확인·결정·첨부를 덧붙인다. 엔진은 고치지 않는다(결정 목록을 조정·서식 세션이 보고 고침).
+function aiJudgeSave_(body) {
+  var id = String(body && body.id || '');
+  return withLock_(10000, function () {
+    var f = aiJudgeFile_(); if (!f) return { error: '판단 대기 파일이 없습니다.' };
+    var doc = JSON.parse(f.getBlob().getDataAsString('UTF-8')), x = (doc.항목 || []).filter(function (i) { return i.id === id; })[0];
+    if (!x) return { error: '쟁점을 찾지 못했습니다: ' + id };
+    var now = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), log = function (s) { x.기록 = (x.기록 || []).concat([{ 때: now, 무엇: s }]).slice(-80); };
+    var a = body.answer;
+    if (a && a.ai) {
+      x.답 = x.답 || {};
+      if (a.text) { x.답[a.ai] = { 이름: a.name || a.ai, 글: String(a.text).slice(0, 12000), 결론: a.결론 || '', 근거: a.근거 || [], 방식: a.방식 || '붙여넣기', 때: now }; log((a.name || a.ai) + ' 답(' + (a.방식 || '붙여넣기') + ')' + (a.결론 ? ' 결론 ' + a.결론 : '')); }
+      else if (x.답[a.ai]) { delete x.답[a.ai]; log((a.name || a.ai) + ' 답 지움'); }
+    }
+    if (body.check && x.답 && x.답[body.check.ai]) x.답[body.check.ai].근거 = body.check.근거 || [];
+    var d = body.decision;
+    if (d) {
+      x.결정 = d.선택 ? { 선택: d.선택, 내용: d.내용 || '', 메모: String(d.메모 || '').slice(0, 2000), 다수: d.다수 || '', 근거: d.근거 || [], 누가: '세무사님', 때: now } : null;
+      x.상태 = !d.선택 ? '판단 대기' : d.선택 === '보류' ? '보류' : '결정';
+      log(d.선택 ? '결정 ' + d.선택 + (d.내용 ? ' — ' + d.내용 : '') : '결정 취소');
+    }
+    if (body.attach && body.attach.length) {
+      var add = [].concat(body.attach);
+      x.첨부 = (x.첨부 || []).filter(function (e) { return !add.some(function (n) { return n.category === e.category && n.id === e.id; }); }).concat(add);
+      log('실재 확인된 근거 첨부 ' + add.length + '건');
+    }
+    doc.고친때 = now;
+    f.setContent(JSON.stringify(doc, null, 1));
+    return { success: true, item: x };
+  });
+}
+// API 칸 묻기 — A 무료(키 있을 때)·C 유료(Claude·Gemini — 화면에서 켠 칸만, 기본 꺼짐). 웹 AI(B)는 약관상 자동 질의 금지라 여기서 다루지 않는다.
+// head = 쟁점·질문(고객 자료 검사 그대로), law = 정비본 조문 원문(공개 법령이라 "…으로 1년" 같은 주소 꼴 오탐을 피해 주민번호·전화·계좌 꼴만 검사)
+function aiAskSlots_(body) {
+  var ids = [].concat(body && body.ids || []), head = String(body && body.head || ''), law = String(body && body.law || '');
+  if (!ids.length || !head.trim()) return { error: '보낼 AI와 질문이 필요합니다.' };
+  if (aiLooksClientData_(head) || /\d{6}\s*-\s*[1-4]\d{6}|01[016789]-?\d{3,4}-?\d{4}|\d{3,6}-\d{2,6}-\d{4,8}/.test(law)) return { error: '주민번호·전화·계좌·상세주소처럼 고객 자료로 보이는 내용이 있어 보내지 않았습니다.' };
+  var list = AI_REGISTRY_.filter(function (e) { return ids.indexOf(e.id) !== -1 && (e.tier === 'A' || (e.tier === 'C' && /^(claude|gemini)$/.test(e.provider))) && aiHasKey_(e); });
+  if (!list.length) return { error: '보낼 수 있는 API 칸이 없습니다(키 없음).' };
+  return { success: true, answers: aiAskMany_(list, head + (law ? '\n\n' + law : ''), Number(body.maxTokens) || 1500) };
 }
 
 // ---- 무료 API 상태 점검(매일 밤, 0원) — 키·모델 존재만(모델 목록 조회는 토큰 무과금). 유료 Claude·Gemini 모델 점검은 EnvWatch.js(envTechCheck_)가 한다. ----

@@ -163,8 +163,9 @@
   function lsiCiteArt_(u){
     var lines0 = String(u.조문내용 || '').split('\n'), tm = lines0[0].match(/^(제(\d+)조(?:의(\d+))?)\(([^)]*)\)\s*(.*)$/);
     var hangs = (u.항 || []).map(function(h){
-      var c = String(h.항내용 || '').match(/^\s*([①-⑳])/), n = c ? c[1].charCodeAt(0) - 0x2460 + 1 : 0;
-      return { n: n, mark: c ? c[1] : '', text: h.항내용 || '', ho: (h.호 || []).map(function(o){ var m = String(o).match(/^\s*(\d+(?:의\d+)?)\./); return { n: m ? m[1] : '', text: o }; }) };
+      // 16항부터는 법제처 원문이 "<16>" 꼴로 적는다(⑯~⑳ 원문자가 아님) — 둘 다 항 번호로
+      var c = String(h.항내용 || '').match(/^\s*(?:([①-⑳])|<(\d+)>)/), n = !c ? 0 : c[1] ? c[1].charCodeAt(0) - 0x2460 + 1 : +c[2];
+      return { n: n, mark: !c ? '' : c[1] || '<' + c[2] + '>', text: h.항내용 || '', ho: (h.호 || []).map(function(o){ var m = String(o).match(/^\s*(\d+(?:의\d+)?)\./); return { n: m ? m[1] : '', text: o }; }) };
     });
     return { label: tm ? tm[1] : lines0[0], title: tm ? tm[4] : '', rest: (tm ? [tm[5]] : []).concat(lines0.slice(1)).join('\n'), hangs: hangs, ref: u.참고 || '' };
   }
