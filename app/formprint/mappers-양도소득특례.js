@@ -53,9 +53,14 @@
   // 1세대1주택 특례 신고서 — oneHouseSpecialCase.formNo 끝의 "[별지 제83호의4서식]"으로 서식을 고름
   var SPECIAL_KEYS = ['소득83호의4', '소득83호의2', '소득83호의5', '소득83호', '소득83호의3'];
   var SPECIAL_FORM = { '소득83호': '[별지 제83호서식]', '소득83호의2': '[별지 제83호의2서식]', '소득83호의3': '[별지 제83호의3서식]', '소득83호의4': '[별지 제83호의4서식]', '소득83호의5': '[별지 제83호의5서식]' };
+  // 계산 결과에 담긴 자산(lastTransferResults_[i].assets = collectTransferInput 결과)에는 oneHouseSpecialCase·소재지 같은 카드 칸이 없고
+  //  oneHouseSpecialFormNo(서식번호)만 있다 — 그때는 서식번호만 든 자리표(_자리표)를 돌려주고, 화면에서는 linkCards()가 카드 값을 붙인다.
+  var STUB_NOTE = '계산 결과 자산에 특례 서식번호만 있고 자산 카드와 이어 붙이지 못해 판정 창 값(체결일·취득일 등)과 소재지가 없음 — 자산 카드 확인';
   function specialOf(asset, formKey) {
     var c = asset && asset.oneHouseSpecialCase;
-    return (c && String(c.formNo || '').indexOf(SPECIAL_FORM[formKey]) >= 0) ? c : null;
+    if (c && String(c.formNo || '').indexOf(SPECIAL_FORM[formKey]) >= 0) return c;
+    if (!c && asset && String(asset.oneHouseSpecialFormNo || '').indexOf(SPECIAL_FORM[formKey]) >= 0) return { formNo: asset.oneHouseSpecialFormNo, _자리표: true };
+    return null;
   }
   // 이 서식을 찍을 자산인가(83호의5는 조합원입주권 자체 양도도)
   function assetWants(asset, formKey) {
@@ -99,6 +104,7 @@
     var o = new Out(), s = ctx.seller || {};
     var it = pickAsset(ctx, '소득83호의4'), a = (it && it.asset) || {}, c = specialOf(a, '소득83호의4');
     if (!c) { o.miss('①~⑪ 전체', '상생임대주택 판정(특정주택 제외 판정 mg)을 적용한 양도 자산 없음'); return o.result(); }
+    if (c && c._자리표) o.note(STUB_NOTE);
     person(o, s, '①', '②', '③', '③@전화번호');
     o.need('④', a.assetLocation, '④ 소재지');
     o.need('⑤', a.acquisitionDate, '⑤ 취득일').need('⑥', a.transferDate, '⑥ 양도일');
@@ -123,6 +129,7 @@
     var o = new Out(), s = ctx.seller || {};
     var it = pickAsset(ctx, '소득83호의2'), a = (it && it.asset) || {}, c = specialOf(a, '소득83호의2');
     if (!c) { o.miss('①~㉙ 전체', '거주주택 특례 판정(특정주택 제외 판정 lr)을 적용한 양도 자산 없음'); return o.result(); }
+    if (c && c._자리표) o.note(STUB_NOTE);
     person(o, s, '①', '②', '③', '③@전화번호');
     o.need('④', a.assetLocation, '④ 소재지');
     o.miss('⑤⑥ 주택·토지 면적', '계산기에 없음');
@@ -164,6 +171,7 @@
     var o = new Out(), s = ctx.seller || {};
     var it = pickAsset(ctx, '소득83호의5'), a = (it && it.asset) || {}, c = specialOf(a, '소득83호의5');
     if (!c && !a.isReconstructionRights) { o.miss('①~⑯ 전체', '조합원입주권·분양권 특례 판정(ci·rp·iu·pr·ip)을 적용했거나 조합원입주권을 양도하는 자산 없음'); return o.result(); }
+    if (c && c._자리표) o.note(STUB_NOTE);
     o.need('①', s.name, '① 성명').need('②', s.regNo, '② 주민등록번호').need('③', H.fullAddr(s), '③ 주소');
     var filled = {}; // 열마다 채운 칸
     function put(no, col, v, label) { if (has(v)) { o.set(no + '@' + col, v); filled[no + '@' + col] = 1; } else if (label) o.miss(no + ' ' + col + ' ' + label, '화면 입력 없음'); }
@@ -219,6 +227,7 @@
     var o = new Out(), s = ctx.seller || {};
     var it = pickAsset(ctx, '소득83호'), a = (it && it.asset) || {}, c = specialOf(a, '소득83호');
     if (!c) { o.miss('①~⑪ 전체', '이농주택·귀농주택 판정(특정주택 제외 판정 ef·rf)을 적용한 양도 자산 없음'); return o.result(); }
+    if (c && c._자리표) o.note(STUB_NOTE);
     o.need('①', s.name, '① 성명').need('②', s.regNo, '② 주민등록번호').need('③', H.fullAddr(s), '③ 주소');
     if (c.houseType === '이농주택' || c.houseType === '귀농주택' || c.houseType === '상속주택') o.set('⑤', c.houseType);
     else o.miss('⑤ 주택구분(상속·이농·귀농)', '판정 창이 주택구분을 남기지 않음("' + (c.provisionLabel || '') + '")');
@@ -245,6 +254,7 @@
     var o = new Out(), s = ctx.seller || {};
     var it = pickAsset(ctx, '소득83호의3'), a = (it && it.asset) || {}, c = specialOf(a, '소득83호의3');
     if (!c) { o.miss('①~⑫ 전체', '장기저당담보주택 동거봉양 합가 판정(특정주택 제외 판정 mp)을 적용한 양도 자산 없음'); return o.result(); }
+    if (c && c._자리표) o.note(STUB_NOTE);
     o.need('①', s.name, '① 성명').need('②', s.regNo, '② 주민등록번호').need('③', H.fullAddr(s), '③ 주소');
     o.need('⑥@일반주택', a.assetLocation, '⑥ 일반주택 소재지');
     o.need('⑨@일반주택', a.acquisitionDate, '⑨ 일반주택 취득일');
@@ -401,6 +411,28 @@
   };
 
   // ───────── 세액인쇄 화면용 ─────────
+  // 계산 결과 자산(collectTransferInput 결과)을 화면 자산 카드(transferAssets)와 이어 붙임 — 카드에만 있는 소재지·oneHouseSpecialCase·
+  //  종전주택 거주기간·사업시행인가일 등을 쓰려고. 같은 순서의 국내 카드 중 양도일·취득일·특례 서식번호·조합원입주권 여부가 같은 첫 카드.
+  //  금액(공동양도인 지분으로 나눈 값)은 계산 결과 쪽을 그대로 둔다. 화면이 아니면(시험) 그대로 돌려줌.
+  function linkCards(ctx) {
+    var cards = (typeof transferAssets !== 'undefined' && transferAssets ? transferAssets : []).filter(function (a) { return a && !a.isOverseasAsset; });
+    if (!ctx || !cards.length) return ctx;
+    var used = {};
+    var assets = (ctx.assets || []).map(function (it) {
+      var a = it.asset || {};
+      if (a.oneHouseSpecialCase || has(a.assetLocation)) return it;
+      var fn = String(a.oneHouseSpecialFormNo || '');
+      for (var k = 0; k < cards.length; k++) {
+        var c = cards[k];
+        if (used[k] || String(c.transferDate || '') !== String(a.transferDate || '') || String(c.acquisitionDate || '') !== String(a.acquisitionDate || '')) continue;
+        if (String((c.oneHouseSpecialCase && c.oneHouseSpecialCase.formNo) || '') !== fn || !!c.isReconstructionRights !== !!a.isReconstructionRights) continue;
+        used[k] = 1;
+        return Object.assign({}, it, { asset: Object.assign({}, c, a) });
+      }
+      return it;
+    });
+    return Object.assign({}, ctx, { assets: assets });
+  }
   function transferItems() {
     return (typeof lastTransferResults_ !== 'undefined' && lastTransferResults_ ? lastTransferResults_ : []).filter(function (it) { return it.result && !it.result.error; });
   }
@@ -409,7 +441,7 @@
     var out = [];
     transferItems().forEach(function (item, i) {
       if (!(item.assets || []).some(function (a) { return assetWants(a, formKey); })) return;
-      var ctx = H.ctxFromApp.양도(i, extra);
+      var ctx = linkCards(H.ctxFromApp.양도(i, extra));
       (ctx.assets || []).forEach(function (it, ai) { if (assetWants(it.asset, formKey)) out.push(Object.assign({}, ctx, { 특례자산: ai })); });
     });
     return out;
@@ -431,7 +463,7 @@
   }
   ctxFor['소득83호의6'] = function (extra) {
     var out = [];
-    transferItems().forEach(function (item, i) { if (item.seller && item.seller.isMultiHouseRentalExemption) out = out.concat(mhCtxList(H.ctxFromApp.양도(i, extra))); });
+    transferItems().forEach(function (item, i) { if (item.seller && item.seller.isMultiHouseRentalExemption) out = out.concat(mhCtxList(linkCards(H.ctxFromApp.양도(i, extra)))); });
     return out;
   };
   ready['소득83호의6'] = function () { return transferItems().some(function (item) { return !!(item.seller && item.seller.isMultiHouseRentalExemption); }); };
@@ -440,6 +472,7 @@
   function plan(tax, ctx) {
     var L = [];
     if (tax !== '양도' || !ctx) return L;
+    ctx = linkCards(ctx);
     mhCtxList(ctx).forEach(function (c) { L.push({ formKey: '소득83호의6', ctx: c }); });
     var oc = ovCtx(ctx);
     if (oc) L.push({ formKey: '소득11호', ctx: oc });

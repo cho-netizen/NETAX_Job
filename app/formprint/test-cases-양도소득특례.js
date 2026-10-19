@@ -102,6 +102,16 @@ module.exports = function (E, H) {
   if (!ovR || ovR.error) throw new Error('국외자산 계산 오류: ' + JSON.stringify(ovR));
   var ctxOv = { seller: clone(SELLER), 귀속연도: '2025', 신고일: '2026-05-20', taxAgent: AGENT, overseas: ovR, overseasAssets: ovCards, assets: [] };
 
+  // ⑩ 화면 경로 흉내 — 계산 결과 자산(collectTransferInput 결과)에는 oneHouseSpecialCase·소재지가 없고 oneHouseSpecialFormNo만 있음.
+  //  plan이 화면 자산 카드(transferAssets)와 이어 붙여(linkCards) 찍는지 — 전역 transferAssets를 잠깐 두고 plan을 부른 뒤 지움
+  var mgInput = clone(mgAsset); delete mgInput.oneHouseSpecialCase; delete mgInput.assetLocation; mgInput.oneHouseSpecialFormNo = mgAsset.oneHouseSpecialCase.formNo;
+  var ctxLink = caseOf([mgInput]);
+  globalThis.transferAssets = [clone(rfAsset), clone(mgAsset)];
+  var linkForms;
+  try { linkForms = require('./mappers.js').plan('양도', ctxLink).filter(function (it) { return typeof it !== 'string' && /^소득/.test(it.formKey); }); } finally { delete globalThis.transferAssets; }
+  if (!linkForms.length || linkForms[0].ctx.assets[0].asset.assetLocation !== mgAsset.assetLocation || !linkForms[0].ctx.assets[0].asset.oneHouseSpecialCase)
+    throw new Error('카드 연결 시험 실패: ' + JSON.stringify(linkForms.map(function (x) { return x.formKey; })));
+
   return [
     { name: '83호의4_상생임대주택', tax: '양도', ctx: ctxMg },
     { name: '83호의2_거주주택특례', tax: '양도', ctx: ctxLr },
@@ -109,7 +119,8 @@ module.exports = function (E, H) {
     { name: '83호_귀농주택', tax: '양도', ctx: caseOf([rfAsset]) },
     { name: '83호의3_장기저당담보주택', tax: '양도', ctx: caseOf([mpAsset]) },
     { name: '83호의6_장기임대주택_일반세율', tax: '양도', ctx: ctxMh },
-    { name: '11호_국외자산_외국납부세액공제', tax: '양도', ctx: ctxOv }
+    { name: '11호_국외자산_외국납부세액공제', tax: '양도', ctx: ctxOv },
+    { name: '83호의4_계산결과자산_카드연결', forms: linkForms, ctx: ctxLink }
   ].map(function (cs) {
     // tax만 준 사례는 plan으로 이 묶음 서식만 고름(84호 본표는 기존 23장 시험에서 봄)
     if (!cs.forms) cs.forms = H.ctxFromApp && cs.tax ? require('./mappers.js').plan(cs.tax, cs.ctx).filter(function (it) { return typeof it !== 'string' && /^소득/.test(it.formKey); }) : [];
