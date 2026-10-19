@@ -499,6 +499,56 @@ function computeHeirActualValue_(heirIdx){
     return sum + value * heirRatio;
   }, 0));
 }
+// [2026.10.19 상속세책자 사례] 채무·공과금·장례비의 "부담 상속인" — 책 사례해설: 배우자공제의 "배우자가 실제 상속받은
+//  금액"은 배우자 몫 재산에서 배우자가 승계한 채무·공과금을 뺀 금액이고, 상속인별 상속세 과세가액은 각자 받은 재산에서
+//  각자 부담한 채무·공과금·장례비를 빼고 각자 사전증여재산을 더한 금액이다. 예전엔 부담자를 적는 칸이 없어 배우자공제가
+//  배우자 몫 채무만큼 크게(책 사례 5,600만원) 잡히고, 증여세액공제 상속인별 한도가 근사식으로 계산됐다.
+//  inheritanceDebtItems 등은 아래쪽에서 let으로 선언되므로(로드 순서) 접근을 try로 감싼다.
+function heirBurdenLists_(){
+  try { return { debts: inheritanceDebtItems || [], dues: inheritanceDuesItems || [], funeral: inheritanceFuneralItems || [] }; }
+  catch (e) { return { debts: [], dues: [], funeral: [] }; }
+}
+function heirBurdenMatch_(it, heirIdx){ return it && it.heirIdx !== undefined && it.heirIdx !== null && it.heirIdx !== '' && String(it.heirIdx) === String(heirIdx); }
+function heirAssumedDebt_(heirIdx){
+  const L = heirBurdenLists_();
+  return L.debts.concat(L.dues).reduce(function(s, it){ return s + (heirBurdenMatch_(it, heirIdx) ? (numVal(it.amount) || 0) : 0); }, 0);
+}
+// 장례비는 공제액(일반 500만~1천만·봉안 500만 한도)을 지출액 비율로 부담 상속인에게 나눈다(책: 자녀1 장례비 1,500만원 = 공제액)
+function heirAssumedFuneral_(heirIdx){
+  const L = heirBurdenLists_();
+  const allAmt = L.funeral.reduce(function(s, it){ return s + (numVal(it.amount) || 0); }, 0);
+  if (allAmt <= 0) return 0;
+  const assigned = L.funeral.reduce(function(s, it){ return s + (heirBurdenMatch_(it, heirIdx) ? (numVal(it.amount) || 0) : 0); }, 0);
+  if (assigned <= 0) return 0;
+  const t = computeFuneralTotals_(L.funeral);
+  const deduction = (t.general > 0 ? Math.min(Math.max(t.general, 5000000), 10000000) : 5000000) + Math.min(t.niche, 5000000);
+  return Math.floor(deduction * assigned / allAmt);
+}
+function heirBurdenOptionsHtml_(selected){
+  const sel = (selected === undefined || selected === null) ? '' : String(selected);
+  return '<option value=""' + (sel === '' ? ' selected' : '') + '>지정 안 함(실제상속 비율로 나눔)</option>' +
+    (Array.isArray(inheritanceHeirs) ? inheritanceHeirs : []).map(function(h, hidx){
+      return '<option value="' + hidx + '"' + (sel === String(hidx) ? ' selected' : '') + '>' + (h.name || ('상속인' + (hidx + 1))) + (h.relation ? ' (' + h.relation + ')' : '') + '</option>';
+    }).join('');
+}
+// 상속세 계산·상속인별 안분에 넘기는 상속인 목록(사전증여·부담 채무·장례비·법정상속분·대습 여부·할증액)
+function buildInheritanceHeirInputs_(){
+  return inheritanceHeirs.map(function(h, idx){
+    return {
+      name: h.name || '',
+      relation: h.relation || '',
+      actualInheritedValue: computeHeirActualValue_(idx),
+      assumedDebtAmount: heirAssumedDebt_(idx),
+      assumedFuneralAmount: heirAssumedFuneral_(idx),
+      legalShareRatio: h.hasRenounced ? 0 : (parseShareFraction_(h.statutoryShareRatio) || 0),
+      isSubstituteHeir: (h.relation || '').indexOf('대습상속') !== -1,
+      priorGiftAmount: h.hasPriorGift ? (numVal(h.priorGiftAmount) || 0) : 0,
+      priorGiftTaxableBase: h.hasPriorGift ? (numVal(h.priorGiftTaxableBase) || 0) : 0,
+      priorGiftTaxPaid: h.hasPriorGift ? (numVal(h.priorGiftTaxPaid) || 0) : 0,
+      priorGiftGenSkipPremium: h.hasPriorGift ? (numVal(h.priorGiftGenSkipPremium) || 0) : 0
+    };
+  });
+}
 // computeHeirActualValue_의 증여세 버전 — 공동소유 자산을 증여자별 지분(donorAllocations)으로
 // 배분한 이 증여자 몫의 가액. 상속과 달리 이 값은 사후 분배용이 아니라 이 증여자의 독립된
 // calculateGiftTaxJS 입력(giftAmount)으로 바로 쓰인다.
@@ -639,7 +689,8 @@ function recomputeHeirDerivedFields(){
   const isSpouseOnlyHeir = hasSpouse && nonSpouseNamedHeirs.length === 0;
   let spouseActual = 0, genSkipAmount = 0;
   heirs.forEach(function(h, hidx){
-    if (h.relation === '배우자') spouseActual += computeHeirActualValue_(hidx);
+    // [2026.10.19 상속세책자 사례] 배우자가 실제 상속받은 금액 = 배우자 몫 재산 − 배우자가 승계한 채무·공과금
+    if (h.relation === '배우자') spouseActual += Math.max(0, computeHeirActualValue_(hidx) - heirAssumedDebt_(hidx));
     if ((h.relation || '').indexOf('세대생략') !== -1) genSkipAmount += computeHeirActualValue_(hidx);
   });
   const otherHeirsCount = childUnitCount > 0 ? childUnitCount : activeHeirs.filter(function(h){ return (h.relation || '').indexOf('부모') !== -1; }).length;
@@ -10381,7 +10432,7 @@ function renderInheritancePane(){
       '<button type="button" class="taxcalc-run-btn" data-action="apply-ih-estate-auto" style="margin-top:8px;">위 내역으로 상속세과세가액 자동계산해서 반영</button>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>배우자상속공제 (부표3의2 한도액 계산)</b></div>' +
       '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>배우자 실제 상속액(자동, 명부의 배우자 행 기준)</label><input type="number" id="ihSpouseActual" placeholder="0" readonly><span class="taxcalc-field-help">5억 미만/미입력이면 최소 5억 자동 적용</span></div>' +
+        '<div class="taxcalc-field"><label>배우자 실제 상속액(자동, 배우자 몫 재산 − 배우자가 부담한 채무·공과금)</label><input type="number" id="ihSpouseActual" placeholder="0" readonly><span class="taxcalc-field-help">5억 미만/미입력이면 최소 5억 자동 적용</span></div>' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isSpousePropertyDivided" id="ihSpouseDivided" checked><label for="ihSpouseDivided">배우자상속재산분할기한(신고기한 다음날부터 9개월)까지 배우자 상속재산을 분할·등기하고 신고함 (§19②③ — 체크 해제시 실제상속액과 무관하게 최소 5억원만 공제)</label></div>' +
         '<div class="taxcalc-field"><label>배우자 외 같은 순위 공동상속인 수</label><input type="number" id="ihOtherHeirsCount" placeholder="0" readonly><span class="taxcalc-field-help">자동, 명부에 자녀·손자녀가 있으면 그 수, 없으면 부모 수</span></div>' +
         '<div class="taxcalc-field"><label>배우자 법정상속분 비율</label><input type="number" step="0.0001" id="ihSpouseRatio" placeholder="0" readonly><span class="taxcalc-field-help">자동계산: 위 공동상속인 수 기준, 민법§1009②</span><span class="taxcalc-result-note" id="ihSpouseRatioHint" style="margin:2px 0 0;"></span></div>' +
@@ -10397,10 +10448,12 @@ function renderInheritancePane(){
         '<div class="taxcalc-field"><label>위 사전증여분 증여세 과세표준 합계</label><input type="number" id="ihNonHeirPriorGiftBase" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         // [2026.10.09] §28② — 상속인 아닌 자에 대한 사전증여의 증여세도 상속세에서 공제(한도 있음). 예전엔 입력칸이 없어 공제가 빠졌다.
         '<div class="taxcalc-field"><label>위 사전증여분 증여세 산출세액 합계(§28② 공제)</label><input type="number" id="ihNonHeirPriorGiftTaxPaid" placeholder="원"><span class="taxcalc-field-help">상속세에서 공제(한도: 산출세액×과세표준 비율), 없으면 비움</span></div>' +
+        // [2026.10.19 상속세책자 사례] 세대생략 할증분은 증여세액공제 대상이 아니다(책: 손자 3,900만원 중 3,000만원만 공제)
+        '<div class="taxcalc-field"><label>그중 세대생략 할증액(§57)</label><input type="number" id="ihNonHeirPriorGiftGenSkipPremium" placeholder="원"><span class="taxcalc-field-help">손자녀 등 할증분은 공제에서 뺌, 없으면 비움</span></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>그 밖의 상속공제</b></div>' +
       '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>순금융재산가액(금융재산-금융채무)</label><input type="number" id="ihNetFinancial" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>순금융재산가액(금융재산-금융채무)</label><input type="number" id="ihNetFinancial" placeholder="원"><span class="taxcalc-field-help">예금·상장주식·보험금(의제상속) 포함, 최대주주 보유 비상장주식·추정상속재산·사전증여 제외. 없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>동거주택가액</label><input type="number" id="ihCohabitValue" placeholder="0" readonly><span class="taxcalc-field-help">자동, 명부에서 "동거주택 상속" 체크된 행 합계, 6억 한도</span><span class="taxcalc-result-note" id="ihCohabitValueHint" style="margin:2px 0 0;"></span></div>' +
         '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="ihAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="ihAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">500만원 한도</span></div>' +
         '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="ihDisasterLoss" placeholder="원"><span class="taxcalc-field-help">신고기한 내 재난 멸실분</span></div>' +
@@ -10516,7 +10569,7 @@ function renderInheritancePane(){
     '</div>' +
     '<button type="button" class="taxcalc-run-btn" data-action="run-inheritance">세액 계산하기</button><button type="button" class="ghost-btn" data-action="tc-cross-check" data-kind="inheritance" style="margin-left:6px;" title="계산된 세액을 AI(Sonnet)가 입력값만 보고 따로 계산해 비교합니다(이름·주소는 보내지 않음, 한 번 수십 원)">🔍 2중 검증</button>' +
     '<div id="taxCalcInheritanceResult"></div>' +
-    '<button type="button" class="taxcalc-calcbasis-btn" data-action="toggle-heir-tool" style="margin-bottom:10px;">👪 상속인별 세액 안분(상증세법§3조의2①, 실제상속재산가액 비율 근사)</button>' +
+    '<button type="button" class="taxcalc-calcbasis-btn" data-action="toggle-heir-tool" style="margin-bottom:10px;">👪 상속인별 세액 안분(상증세법§3조의2①·시행령§3①, 상속인별 과세표준 비율)</button>' +
     '<div id="taxCalcHeirTool"></div>' +
     // [2026.09.24 재구성] 연부연납은 증여쪽과 완전히 중복이던 도구라(이 taxType 선택형
     // 판 하나만) renderGiftInheritanceSharedPane_() 공유 패널로 옮겼다 — 아래 삭제.
@@ -13569,6 +13622,7 @@ function renderDebtItemsList(){
       '<div class="taxcalc-field"><label>차입일</label><input type="date" data-dbfield="startDate" value="' + (item.startDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
       '<div class="taxcalc-field"><label>상환(예정)일</label><input type="date" data-dbfield="endDate" value="' + (item.endDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
       '<div class="taxcalc-field"><label>채무금액</label><input type="number" data-dbfield="amount" placeholder="원" value="' + (item.amount || '') + '"></div>' +
+      '<div class="taxcalc-field"><label>부담 상속인</label><select data-dbfield="heirIdx">' + heirBurdenOptionsHtml_(item.heirIdx) + '</select><span class="taxcalc-field-help">누가 갚는지(협의분할 등) — 배우자공제·상속인별 세액에 씀</span></div>' +
       (idx > 0 ? '<button type="button" class="taxcalc-del-asset" data-action="del-debt-item" data-idx="' + idx + '">✕ 채무 삭제</button>' : '') +
     '</div>';
   }).join('');
@@ -13582,6 +13636,7 @@ function renderDebtItemsList(){
       inheritanceDebtItems[idx][el.dataset.dbfield] = el.value;
       const totalEl = container.querySelector('[data-debt-total]');
       if (totalEl) totalEl.textContent = '채무 합계 ' + won(computeDebtTotal_(inheritanceDebtItems));
+      if (el.dataset.dbfield === 'heirIdx' || el.dataset.dbfield === 'amount') recomputeHeirDerivedFields();
     });
   });
   enhanceNumberInputs(container);
@@ -13595,6 +13650,7 @@ function renderDuesItemsList(){
       '<div class="taxcalc-field"><label>연도</label><input type="number" data-duefield="year" placeholder="예: 2025" value="' + (item.year || '') + '"></div>' +
       '<div class="taxcalc-field"><label>분기</label><select data-duefield="quarter"><option value=""' + (!item.quarter ? ' selected' : '') + '>해당없음</option><option value="1"' + (item.quarter === '1' ? ' selected' : '') + '>1분기</option><option value="2"' + (item.quarter === '2' ? ' selected' : '') + '>2분기</option><option value="3"' + (item.quarter === '3' ? ' selected' : '') + '>3분기</option><option value="4"' + (item.quarter === '4' ? ' selected' : '') + '>4분기</option></select></div>' +
       '<div class="taxcalc-field"><label>금액</label><input type="number" data-duefield="amount" placeholder="원" value="' + (item.amount || '') + '"></div>' +
+      '<div class="taxcalc-field"><label>부담 상속인</label><select data-duefield="heirIdx">' + heirBurdenOptionsHtml_(item.heirIdx) + '</select><span class="taxcalc-field-help">누가 갚는지(협의분할 등) — 배우자공제·상속인별 세액에 씀</span></div>' +
       (idx > 0 ? '<button type="button" class="taxcalc-del-asset" data-action="del-dues-item" data-idx="' + idx + '">✕ 공과금 삭제</button>' : '') +
     '</div>';
   }).join('');
@@ -13608,6 +13664,7 @@ function renderDuesItemsList(){
       inheritanceDuesItems[idx][el.dataset.duefield] = el.value;
       const totalEl = container.querySelector('[data-dues-total]');
       if (totalEl) totalEl.textContent = '공과금 합계 ' + won(computeDuesTotal_(inheritanceDuesItems));
+      if (el.dataset.duefield === 'heirIdx' || el.dataset.duefield === 'amount') recomputeHeirDerivedFields();
     });
   });
   enhanceNumberInputs(container);
@@ -13702,6 +13759,7 @@ function renderFuneralItemsList(){
       '<div class="taxcalc-field"><label>구분</label><select data-ffield="category"><option value="general"' + (item.category !== 'niche' ? ' selected' : '') + '>일반 장례비용</option><option value="niche"' + (item.category === 'niche' ? ' selected' : '') + '>봉안시설·자연장지 비용</option></select></div>' +
       '<div class="taxcalc-field"><label>지급내역</label><input type="text" data-ffield="detail" value="' + (item.detail || '').replace(/"/g, '&quot;') + '" placeholder="부표3용, 예: 빈소·운구·장지 비용"></div>' +
       '<div class="taxcalc-field"><label>금액</label><input type="number" data-ffield="amount" placeholder="원" value="' + (item.amount || '') + '"></div>' +
+      '<div class="taxcalc-field"><label>부담 상속인</label><select data-ffield="heirIdx">' + heirBurdenOptionsHtml_(item.heirIdx) + '</select><span class="taxcalc-field-help">누가 갚는지(협의분할 등) — 배우자공제·상속인별 세액에 씀</span></div>' +
       (idx > 0 ? '<button type="button" class="taxcalc-del-asset" data-action="del-funeral-item" data-idx="' + idx + '">✕ 장례비용 삭제</button>' : '') +
     '</div>';
   }).join('');
@@ -13911,7 +13969,8 @@ function renderHeirRegistry(){
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="hasPriorGift" id="hPriorGift-' + idx + '"' + (h.hasPriorGift ? ' checked' : '') + '><label for="hPriorGift-' + idx + '">10년 이내 이 상속인에게 사전증여 있음(§13 가산대상)</label></div>' +
       '<div class="taxcalc-field" data-show-if-heir="hasPriorGift" style="' + (h.hasPriorGift ? '' : 'display:none;') + '"><label>사전증여재산가액(증여 당시 원본가액)</label><input type="number" data-hfield="priorGiftAmount" placeholder="원" value="' + (h.priorGiftAmount || '') + '"></div>' +
       '<div class="taxcalc-field" data-show-if-heir="hasPriorGift" style="' + (h.hasPriorGift ? '' : 'display:none;') + '"><label>위 증여재산의 증여세 과세표준</label><input type="number" data-hfield="priorGiftTaxableBase" placeholder="원" value="' + (h.priorGiftTaxableBase || '') + '"></div>' +
-      '<div class="taxcalc-field" data-show-if-heir="hasPriorGift" style="' + (h.hasPriorGift ? '' : 'display:none;') + '"><label>위 증여 당시 납부한 증여세산출세액</label><input type="number" data-hfield="priorGiftTaxPaid" placeholder="원" value="' + (h.priorGiftTaxPaid || '') + '"></div>' +
+      '<div class="taxcalc-field" data-show-if-heir="hasPriorGift" style="' + (h.hasPriorGift ? '' : 'display:none;') + '"><label>위 증여 당시 납부한 증여세산출세액</label><input type="number" data-hfield="priorGiftTaxPaid" placeholder="원" value="' + (h.priorGiftTaxPaid || '') + '"><span class="taxcalc-field-help">세대생략 할증액 포함 금액 그대로</span></div>' +
+      '<div class="taxcalc-field" data-show-if-heir="hasPriorGift" style="' + (h.hasPriorGift ? '' : 'display:none;') + '"><label>그중 세대생략 할증액(§57)</label><input type="number" data-hfield="priorGiftGenSkipPremium" placeholder="원" value="' + (h.priorGiftGenSkipPremium || '') + '"><span class="taxcalc-field-help">할증분은 증여세액공제에서 뺌(대습상속인이면 공제), 없으면 비움</span></div>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -13940,6 +13999,9 @@ function renderHeirRegistry(){
       }
       recomputeHeirDerivedFields();
       updateHeirActualValueHints();
+      if (key === 'name' || key === 'relation'){
+        document.querySelectorAll('#ihDebtItemsList select[data-dbfield="heirIdx"], #ihDuesItemsList select[data-duefield="heirIdx"], #ihFuneralItemsList select[data-ffield="heirIdx"]').forEach(function(s){ s.innerHTML = heirBurdenOptionsHtml_(s.value); });
+      }
     });
   });
   container.querySelectorAll('[data-hfield="addressDong"]').forEach(function(el){
@@ -13997,7 +14059,7 @@ function renderHeirTool(){
   }).join('');
   box.innerHTML =
     '<div class="taxcalc-asset" style="margin-top:10px;">' +
-      '<div class="taxcalc-asset-head"><b>상속인별 세액 안분 — 전체 산출세액·세액공제·가산세를 위 상속인 명부의 실제상속재산가액 비율로 나눕니다(유산세 방식)</b></div>' +
+      '<div class="taxcalc-asset-head"><b>상속인별 세액 안분 — 각자 받은 재산·부담한 채무·장례비·사전증여로 상속인별 과세표준을 구해 나눕니다(아래 금액은 각자 받은 재산)</b></div>' +
       summaryRows +
       '<button type="button" class="taxcalc-run-btn" data-action="run-heir-allocation">상속인별 세액 안분 계산하기</button>' +
       '<div id="taxCalcHeirResult"></div>' +
@@ -14014,6 +14076,8 @@ function renderHeirResult(r){
     html += taxCalcResultRow('상속세과세가액(안분)', won(row.상속세과세가액));
     html += taxCalcResultRow('과세표준(안분)', won(row.과세표준));
     html += taxCalcResultRow('산출세액 합계(안분)', won(row.산출세액_합계));
+    if (row.증여세액공제) html += taxCalcResultRow('└ 증여세액공제(본인 몫)', '-' + won(row.증여세액공제));
+    if (row.신고세액공제) html += taxCalcResultRow('└ 신고세액공제', '-' + won(row.신고세액공제));
     if (row.세액공제_합계) html += taxCalcResultRow('세액공제 합계(안분)', '-' + won(row.세액공제_합계));
     if (row.영리법인면제분납부세액) html += taxCalcResultRow('영리법인면제분납부세액(안분)', '+' + won(row.영리법인면제분납부세액));
     if (row.가산세_합계) html += taxCalcResultRow('가산세 합계(안분)', '+' + won(row.가산세_합계));
@@ -16820,6 +16884,7 @@ function handleTaxCalcClick_(e){
       nonHeirPriorGiftAmountTotal: numVal(document.getElementById('ihNonHeirPriorGiftAmount').value) || 0,
       nonHeirPriorGiftTaxableBaseTotal: numVal(document.getElementById('ihNonHeirPriorGiftBase').value) || 0,
       nonHeirPriorGiftTaxPaidTotal: numVal((document.getElementById('ihNonHeirPriorGiftTaxPaid') || {}).value) || 0,
+      nonHeirPriorGiftGenSkipPremiumTotal: numVal((document.getElementById('ihNonHeirPriorGiftGenSkipPremium') || {}).value) || 0,
       childCount: numVal(document.getElementById('ihChildCount').value) || 0,
       minorHeirRemainingYears: numVal(document.getElementById('ihMinorYears').value) || 0,
       elderlyHeirCount: numVal(document.getElementById('ihElderlyCount').value) || 0,
@@ -16864,15 +16929,7 @@ function handleTaxCalcClick_(e){
       farmingNonBizStock: numVal(document.getElementById('ihFarmingNonBizStock').value) || 0,
       decedentFarmingRequirementMet: document.getElementById('ihFarmReqDecedent').checked,
       heirFarmingRequirementMet: document.getElementById('ihFarmReqHeir').checked,
-      priorGiftHeirs: inheritanceHeirs.map(function(h, idx){
-        return {
-          name: h.name || '',
-          actualInheritedValue: computeHeirActualValue_(idx),
-          priorGiftAmount: h.hasPriorGift ? (numVal(h.priorGiftAmount) || 0) : 0,
-          priorGiftTaxableBase: h.hasPriorGift ? (numVal(h.priorGiftTaxableBase) || 0) : 0,
-          priorGiftTaxPaid: h.hasPriorGift ? (numVal(h.priorGiftTaxPaid) || 0) : 0
-        };
-      }),
+      priorGiftHeirs: buildInheritanceHeirInputs_(),
       disclaimedShareRedistributedAmount: numVal(document.getElementById('ihDisclaimedRedistributed').value) || 0,
       generationSkipHeirRatio: numVal(document.getElementById('ihGenSkipRatio').value) || 0,
       generationSkipOver2Billion: document.getElementById('ihGenSkipOver2B').checked,
@@ -16961,6 +17018,7 @@ function handleTaxCalcClick_(e){
     inheritanceHeirs.push({});
     renderHeirRegistry();
     renderHeirTool();
+    renderDebtItemsList(); renderDuesItemsList(); renderFuneralItemsList(); // 부담 상속인 선택지 갱신
     renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets_());
   } else if (action === 'del-heir-row'){
     const deletedIdx = numVal(btn.dataset.idx);
@@ -16975,6 +17033,15 @@ function handleTaxCalcClick_(e){
         return al;
       });
     });
+    // [2026.10.19] 채무·공과금·장례비의 부담 상속인 번호도 같이 보정(삭제된 상속인을 가리키면 "지정 안 함"으로)
+    const L_ = heirBurdenLists_();
+    L_.debts.concat(L_.dues, L_.funeral).forEach(function(it){
+      if (!it || it.heirIdx === undefined || it.heirIdx === null || it.heirIdx === '') return;
+      const hi = Number(it.heirIdx);
+      if (hi === deletedIdx) it.heirIdx = '';
+      else if (!isNaN(hi) && hi > deletedIdx) it.heirIdx = String(hi - 1);
+    });
+    renderDebtItemsList(); renderDuesItemsList(); renderFuneralItemsList();
     renderHeirRegistry();
     renderHeirTool();
     renderValuationAssetList('inheritanceValuationList', inheritanceValuationAssets_());
@@ -17038,10 +17105,10 @@ function handleTaxCalcClick_(e){
     renderGiftDoneeRegistry();
     renderValuationAssetList('giftValuationList', giftValuationAssets_());
   } else if (action === 'run-heir-allocation'){
-    const heirs = inheritanceHeirs.map(function(h, idx){
-      return { name: h.name, relation: h.relation, actualInheritedValue: computeHeirActualValue_(idx) };
-    });
-    const result = allocateInheritanceTaxByHeirJS(lastInheritanceResult, heirs);
+    // [2026.10.19 상속세책자 사례] 사전증여·부담 채무·장례비·법정상속분까지 넘겨 책의 상속인별 표처럼 나눈다(예전엔 실제상속재산 비율만)
+    const result = allocateInheritanceTaxByHeirJS(lastInheritanceResult, buildInheritanceHeirInputs_(),
+      numVal((document.getElementById('ihNonHeirPriorGiftBase') || {}).value) || 0,
+      numVal((document.getElementById('ihNonHeirPriorGiftAmount') || {}).value) || 0);
     renderHeirResult(result);
   }
 }

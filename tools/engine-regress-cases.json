@@ -23,5 +23,15 @@
     "정답": { "과세표준": 30000000, "산출세액_할증후": 3000000, "신고세액공제": 90000, "납부세액": 2910000 } },
   { "이름": "증여 — 기타친족 8천만", "도구": "calculate_gift_tax", "고정": true,
     "입력": { "giftAmount": 80000000, "relation": "기타친족" },
-    "정답": { "과세표준": 70000000, "산출세액_할증후": 7000000 } }
+    "정답": { "과세표준": 70000000, "산출세액_할증후": 7000000 } },
+  { "이름": "상속 — 상속세책자 제7장 제5절 신고서 작성 사례(배우자·자녀2·손자 사전증여, 추정상속·가업·동거주택·할증분 제외)", "도구": "calculate_inheritance_tax",
+    "입력": { "taxableEstateAmount": 4325000000, "nonTaxableAmount": 30000000, "publicInterestOrgAmount": 300000000, "disposalPresumptionItems": [{ "category": "예금", "oneYearAmount": 275000000, "oneYearExplained": 45000000 }],
+      "hasSpouse": true, "childCount": 2, "spouseActualInheritedAmount": 1624000000, "spouseLegalShareRatio": 0.42857142857142855, "priorGiftedAmountIncludedInEstate": 650000000, "giftToHeirsWithin10Years": 400000000,
+      "netFinancialAssets": 630000000, "hasCohabitingHouseDeduction": true, "cohabitingHouseValue": 500000000, "businessOwnershipYears": 18, "businessInheritanceStockValue": 600000000, "businessInheritanceTotalAssetValue": 600000, "businessInheritanceNonBizAsset55": 220000,
+      "appraisalFeeAmount": 500000, "funeralCostAmount": 12700000, "funeralNicheCostAmount": 9650000,
+      "nonHeirPriorGiftTaxableBaseTotal": 200000000, "nonHeirPriorGiftAmountTotal": 250000000, "nonHeirPriorGiftTaxPaidTotal": 39000000, "nonHeirPriorGiftGenSkipPremiumTotal": 9000000,
+      "priorGiftHeirs": [{ "name": "배우자", "actualInheritedValue": 1924000000, "assumedDebtAmount": 300000000, "assumedFuneralAmount": 0, "legalShareRatio": 0.42857142857142855 },
+        { "name": "자녀1", "actualInheritedValue": 1100000000, "assumedDebtAmount": 0, "assumedFuneralAmount": 15000000, "legalShareRatio": 0.2857142857142857, "priorGiftAmount": 400000000, "priorGiftTaxableBase": 350000000, "priorGiftTaxPaid": 60000000 },
+        { "name": "자녀2", "actualInheritedValue": 821000000, "assumedDebtAmount": 200000000, "assumedFuneralAmount": 0, "legalShareRatio": 0.2857142857142857 }] },
+    "정답": { "과세표준": 1024500000, "산출세액": 249800000, "기납부증여세액공제": 90000000, "신고세액공제": 4794000, "납부세액": 155006000 } }
 ]
