@@ -3127,6 +3127,8 @@ function openOneHouseSpecialCaseModal_(idx){
     let html = '<div class="taxcalc-result" style="margin-top:10px;">';
     html += taxCalcResultRow('적용 여부', r.적용여부 ? '적용 가능' : '적용 안 됨', { total: true });
     html += '<div class="taxcalc-result-note">' + (r.안내 || '') + '</div>';
+    // [2026.10.19] 특례 판정에 그 양도일 연혁이 아직 없으면(예: 일시적 2주택 2023-01-12 전 양도) 경고
+    if (r.시점경고) html += '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600;">' + escapeHtml(r.시점경고) + '</div>';
     if (r.적용여부){
       html += '<button type="button" class="taxcalc-run-btn" id="ohsApplyBtn" style="margin-top:8px;">1세대1주택 비과세로 체크하기</button>';
     }
@@ -3189,7 +3191,7 @@ function openOneHouseSpecialCaseModal_(idx){
             newHousingCompletionDate: provision === 'pr' ? document.getElementById('prCompletionDate').value : '',
             mgContractDate: provision === 'mg' ? document.getElementById('mgContractDate').value : '',
             mgLeasePeriod: provision === 'mg' ? (document.getElementById('mgLeaseStart').value + ' ~ ' + document.getElementById('mgLeaseEnd').value) : '',
-            안내: r.안내 || ''
+            안내: (r.시점경고 ? r.시점경고 + ' ' : '') + (r.안내 || '')
           };
         } else {
           delete transferAssets[idx].oneHouseSpecialCase;
