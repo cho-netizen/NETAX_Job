@@ -613,5 +613,57 @@
                         "합산소득금액": 525000000,
                         "산출세액_합계": 183510000
                 }
+        },
+        {
+                "이름": "양도 — 장기일반민간임대(§97의5), 2026.4 임대 끝(그날 기준시가 6억): 감면소득 = 양도소득금액 × (6억−3억)÷(7억−3억), 소득세법 §90① 세액감면 (서식 감사 사 후보 4-1 ㉠)",
+                "도구": "calculateTransferTaxMultiJS",
+                "고정": true,
+                "입력": [
+                        {
+                                "assetType": "house",
+                                "transferPrice": 900000000,
+                                "acquisitionPrice": 400000000,
+                                "necessaryExpenses": 0,
+                                "acquisitionDate": "2016-03-01",
+                                "transferDate": "2026-09-01",
+                                "multiHouseCount": 2,
+                                "isAdjustedArea": false,
+                                "longTermRentalHouseProvision": "sect97_5",
+                                "lrAcquisitionStandardPrice": 300000000,
+                                "lrRegistrationStandardPrice": 300000000,
+                                "lrRentalEndStandardPrice": 600000000,
+                                "lrTransferStandardPrice": 700000000
+                        }
+                ],
+                "정답": {
+                        "합산조특법세액감면액": 100422641,
+                        "합산그룹_산출세액": 32637359
+                }
+        },
+        {
+                "이름": "양도 — 장기일반민간임대(§97의5), 양도일까지 임대·등록일 기준시가 3.5억: 등록일은 산식에 안 씀 → 전액 감면 (서식 감사 사 후보 4-1 ㉡)",
+                "도구": "calculateTransferTaxMultiJS",
+                "고정": true,
+                "입력": [
+                        {
+                                "assetType": "house",
+                                "transferPrice": 900000000,
+                                "acquisitionPrice": 400000000,
+                                "necessaryExpenses": 0,
+                                "acquisitionDate": "2016-03-01",
+                                "transferDate": "2026-09-01",
+                                "multiHouseCount": 2,
+                                "isAdjustedArea": false,
+                                "longTermRentalHouseProvision": "sect97_5",
+                                "lrAcquisitionStandardPrice": 300000000,
+                                "lrRegistrationStandardPrice": 350000000,
+                                "lrRentedUntilTransfer": true,
+                                "lrTransferStandardPrice": 700000000
+                        }
+                ],
+                "정답": {
+                        "합산그룹_산출세액": 0,
+                        "납부세액_합계": 0
+                }
         }
 ]

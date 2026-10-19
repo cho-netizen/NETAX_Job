@@ -2021,13 +2021,14 @@
       registrationDateValue: Number(t.lrRegistrationValue) || 0,
       acquisitionStandardPrice: Number(t.lrAcquisitionStandardPrice) || 0,
       registrationStandardPrice: Number(t.lrRegistrationStandardPrice) || 0,
-      transferStandardPrice: Number(t.lrTransferStandardPrice) || 0
+      transferStandardPrice: Number(t.lrTransferStandardPrice) || 0,
+      rentalEndStandardPrice: Number(t.lrRentalEndStandardPrice) || 0, rentedUntilTransfer: !!t.lrRentedUntilTransfer // [2026.10.19] §97의5② 임대 마지막 날
     });
     if (!reduction || reduction.error || !reduction.적용여부) {
       return Object.assign({}, t, { _장기임대감면_적용여부: false, _장기임대감면_사유: (reduction && (reduction.error || reduction.안내)) || undefined });
     }
     if (reduction.세액감면방식) {
-      return Object.assign({}, t, { _장기임대감면_적용여부: true, _장기임대감면_세액감면율: reduction.적용감면율, _장기임대감면_안내: reduction.안내 });
+      return Object.assign({}, t, { _장기임대감면_적용여부: true, _장기임대감면_세액감면율: reduction.적용감면율, _장기임대감면_감면소득비율: reduction.감면소득비율, _장기임대감면_안내: reduction.안내 });
     }
     return Object.assign({}, t, {
       _externalGainOverride: baseCore.gainBeforeDeduction - reduction.감면대상_양도소득금액,
@@ -2266,7 +2267,12 @@
       }
       else if (c.raw._구조조정감면_세액감면율) { label = '구조조정대상 부동산 감면(조특법§43, 세액 ' + c.raw._구조조정감면_세액감면율 + '% 감면)'; rate = c.raw._구조조정감면_세액감면율 / 100; sec = '43'; }
       else if (c.raw._미분양감면_세액감면율) { label = '미분양주택 감면(조특법 ' + String(c.raw.unsoldHouseReductionProvision || '').replace('sect98_', '§98의') + ', 5년 이내 양도 — 세액 ' + Math.round(c.raw._미분양감면_세액감면율 * 100) + '% 감면)'; rate = c.raw._미분양감면_세액감면율; }
-      else if (c.raw._장기임대감면_세액감면율) { label = '장기임대주택 등 감면(조특법§97, 세액 ' + c.raw._장기임대감면_세액감면율 + '% 감면)'; rate = c.raw._장기임대감면_세액감면율 / 100; }
+      else if (c.raw._장기임대감면_세액감면율) {
+        label = c.raw.longTermRentalHouseProvision === 'sect97_5'
+          ? '장기일반민간임대주택등 감면(조특법§97의5, 임대기간 중 소득 ' + (Math.round((Number(c.raw._장기임대감면_감면소득비율) || 0) * 10000) / 100) + '% × 세액 100% 감면)'
+          : '장기임대주택 등 감면(조특법§97, 세액 ' + c.raw._장기임대감면_세액감면율 + '% 감면)';
+        rate = c.raw._장기임대감면_세액감면율 / 100;
+      }
       if (label && rate > 0) reds.push({ key: 'percent', sec: sec, rate: rate, label: label });
       const rate0_ = COMPENSATION_REDUCTION_RATES_M[c.raw.compensationType];
       if (rate0_ !== undefined && !(c.raw.transferDate > COMPENSATION_SUNSET_DATE_M[c.raw.compensationType])) {
@@ -2285,7 +2291,9 @@
             rate: rateAt_ != null ? rateAt_ : rate0_, compLow: c.raw.compensationType === 'cash' || c.raw.compensationType === 'bond', label: '수용감면(안분)', type: c.raw.compensationType });
         }
       }
-      return { idx: c.idx, date: String(c.raw.transferDate || ''), income: c.incomeAmount, reds: reds };
+      // §97의5: 그 자산 소득 중 임대기간 중 발생분만 감면대상(시행령 §97의5②) — 나머지는 §103② '감면소득 외' 소득
+      const ratio_ = (c.raw._장기임대감면_감면소득비율 != null && c.raw.longTermRentalHouseProvision === 'sect97_5') ? Number(c.raw._장기임대감면_감면소득비율) : null;
+      return { idx: c.idx, date: String(c.raw.transferDate || ''), income: c.incomeAmount, reducedRatio: ratio_ != null ? ratio_ : undefined, reds: reds };
     });
     // 소득령 §167의2② — 통산으로 줄어든 비율만큼 감면소득금액도 줄인다(합산 그룹 통산 후 소득 ÷ 통산 전 양(+)소득 합계)
     const poolGainSum90_ = pooled.reduce(function (s, c) { return s + Math.max(0, c.incomeAmount); }, 0);
@@ -7935,21 +7943,27 @@
 
     let exemptGain;
     if (provision === 'sect97_5') {
-      // 시행령§97의5② — 임대기간중 양도소득금액 = 전체양도소득금액 × (양도당시기준시가－등록일당시기준시가)
-      // ÷ (양도당시기준시가－취득당시기준시가). 기준시가 3종이 모두 있으면 원문대로 계산하고, 없으면
-      // "등록일 현재 평가액(실거래가 상당)"을 이용한 근사치로 대체한다.
+      // [2026.10.19 서식 감사 — 작업자 자] 시행령§97의5②(2018.2.13.~2026.9.18. 시행판 같은 산식) — 임대기간 중 발생한 양도소득
+      //  = 소득세법 §95① 양도소득금액(장특공 뒤) × (임대기간 마지막 날 기준시가 − 취득 당시 기준시가) ÷ (양도 당시 기준시가 − 취득 당시 기준시가).
+      //  법 §97의5①은 "양도소득세의 100분의 100에 상당하는 세액을 감면"하므로 소득세법 §90① 세액감면(A×(B−C)÷D×E) — 비율만 돌려주고
+      //  감면액은 합산 계산(reductions90_)이 낸다. 예전엔 (양도일 − 등록일) 기준시가 비율 × 장특공 전 양도차익을 소득에서 빼는 방식이었다.
       const acqStd = Number(p.acquisitionStandardPrice) || 0;
-      const regStd = Number(p.registrationStandardPrice) || 0;
       const trfStd = Number(p.transferStandardPrice) || 0;
+      const endStd = p.rentedUntilTransfer ? trfStd : (Number(p.rentalEndStandardPrice) || 0);
+      if (acqStd > 0 && trfStd > 0 && trfStd !== acqStd) {
+        if (!(endStd > 0)) return { error: '§97의5 감면소득 계산에 임대기간 마지막 날 기준시가가 필요합니다(시행령 §97의5②) — 넣거나, 양도일까지 계속 임대했으면 "양도일까지 계속 임대"를 체크하세요.' };
+        const ratio = Math.max(0, Math.min(1, (endStd - acqStd) / (trfStd - acqStd)));
+        return {
+          적용여부: true, 적용감면율: 100, 세액감면방식: true, 감면소득비율: ratio, 전체양도차익: Math.round(totalGain),
+          안내: note + ' 감면소득 = 양도소득금액(장특공 뒤) × (임대기간 마지막 날 ' + endStd + ' − 취득 당시 ' + acqStd + ') ÷ (양도 당시 ' + trfStd + ' − 취득 당시 ' + acqStd + ') = 양도소득금액의 ' + (Math.round(ratio * 10000) / 100) + '%, 감면세액은 소득세법 §90①(산출세액 × (감면소득 − 그 몫 기본공제) ÷ 과세표준) — 세액 계산(합산)이 자동 반영합니다.'
+        };
+      }
       let rentalPeriodGain, gainNote;
-      if (acqStd > 0 && regStd > 0 && trfStd > 0 && trfStd !== acqStd) {
-        rentalPeriodGain = totalGain * (trfStd - regStd) / (trfStd - acqStd);
-        gainNote = ' 기준시가 비율로 정확히 계산했습니다: 전체양도소득금액 × (양도당시기준시가－등록일당시기준시가) ÷ (양도당시기준시가－취득당시기준시가).';
-      } else {
+      {
         const registrationDateValue = Number(p.registrationDateValue) || 0;
-        if (registrationDateValue <= 0) return { error: '기준시가 3종(취득당시·등록일당시·양도당시)을 모두 입력하거나, 그것이 없으면 최소한 등록일 현재의 평가액을 입력하세요(임대기간중 발생분 산정용).' };
+        if (registrationDateValue <= 0) return { error: '§97의5 감면소득 계산에 기준시가(취득 당시·임대기간 마지막 날·양도 당시)가 필요합니다(시행령 §97의5②).' };
         rentalPeriodGain = Math.max(0, transferPrice - registrationDateValue);
-        gainNote = ' 기준시가 3종이 입력되지 않아, 입력하신 등록일 현재 평가액을 기준으로 근사 계산했습니다(정확한 산정은 기준시가 3종을 모두 입력하세요).';
+        gainNote = ' ⚠ 참고용 근사(법령 산식 아님 — 판단 대기): 취득·양도 당시 기준시가가 없어 등록일 현재 평가액으로 근사 계산했습니다. 시행령 §97의5②는 기준시가로만 계산하므로(고시 전이면 직전 기준시가) 취득 당시·임대 마지막 날·양도 당시 기준시가를 넣으세요.';
       }
       note += gainNote;
       exemptGain = Math.round(Math.max(0, Math.min(rentalPeriodGain, totalGain)) * rate / 100);

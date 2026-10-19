@@ -2001,8 +2001,11 @@ const DRIVE_TOOLS = [
         necessaryExpenses: { type: 'number', description: '필요경비(원). 없으면 생략.' },
         registrationDateValue: { type: 'number', description: 'provision이 sect97_5일 때 — 장기일반민간임대주택등 등록일 현재의 평가액(원). acquisitionStandardPrice·registrationStandardPrice·transferStandardPrice가 없을 때의 근사치 계산에만 쓰인다.' },
         acquisitionStandardPrice: { type: 'number', description: 'provision이 sect97_5일 때만 — 취득 당시 기준시가(원). registrationStandardPrice·transferStandardPrice와 함께 셋 다 입력하면 시행령§97의5② 원문대로 "임대기간중 발생한 양도소득금액"을 기준시가 비율로 정확히 계산한다(없으면 registrationDateValue로 근사치 계산).' },
-        registrationStandardPrice: { type: 'number', description: 'provision이 sect97_5일 때만 — 장기일반민간임대주택등 등록일 현재 기준시가(원).' },
-        transferStandardPrice: { type: 'number', description: 'provision이 sect97_5일 때만 — 양도 당시 기준시가(원).' }
+        registrationStandardPrice: { type: 'number', description: 'provision이 sect97_5일 때 참고만 — 등록일 기준시가(시행령§97의5② 산식에는 안 씀).' },
+        transferStandardPrice: { type: 'number', description: 'provision이 sect97_5일 때만 — 양도 당시 기준시가(원).' },
+        // [2026.10.19 서식 감사] 시행령§97의5② — 감면소득 = 양도소득금액(장특공 뒤) × (임대 마지막 날 − 취득 당시) ÷ (양도 당시 − 취득 당시) 기준시가, 소득세법§90① 세액감면
+        rentalEndStandardPrice: { type: 'number', description: 'provision이 sect97_5일 때 필수 — 임대기간 마지막 날 기준시가(원). 결과는 감면소득비율(세액감면, 감면액은 calculate_transfer_tax_multi에서 lrRentalEndStandardPrice로 계산).' },
+        rentedUntilTransfer: { type: 'boolean', description: 'provision이 sect97_5일 때 — 양도일까지 계속 임대했으면 true(임대 마지막 날 기준시가 = 양도 당시 기준시가).' }
       },
       required: ['provision']
     }
