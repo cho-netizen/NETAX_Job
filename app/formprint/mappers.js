@@ -938,14 +938,15 @@
     var grossKnown = n(ctx.grossEstate) > 0 || n(ctx.valuationTotal) > 0 || (ctx.assets || []).length > 0; // [2026.10.19] 재산 목록 없으면 ⑤⑨ 비움
     var gross = has(ctx.grossEstate) ? n(ctx.grossEstate) : n(ctx.valuationTotal);
     var v5 = gross + presumedAll(r), v6 = n(r.비과세재산가액);
-    // [2026.10.19 법령 우선] 서식 작성방법 3은 ⑦에 부표1 ㉑(공과금+장례비용+채무)을 옮기라 하지만, 시행령 §17①2호는 "법 제14조의 규정에 의한 공과금 및 채무"만
-    //  뺀다(장례비용은 §14①2호로 따로) — 엔진(배우자공제 한도)도 법령대로 장례비를 빼지 않으므로 ⑦은 공과금+채무로 찍어 ⑨·⑭가 엔진과 맞게 한다. 세무사님 판단 대기.
+    // [2026.10.19 법령 우선 → 2026.10.20 AI 회의 회장 결론 J06(가)로 확정, 판단 대기 J1 내림] 서식 작성방법 3은 ⑦에 부표1 ㉑(공과금+장례비용+채무)을
+    //  옮기라 하지만, 시행령 §17①2호는 "법 제14조의 규정에 의한 공과금 및 채무"만 뺀다(§14①이 공과금·장례비용·채무를 따로 열거, 집행기준 19-17-2
+    //  "장례비는 차감하지 않음") — 엔진(배우자공제 한도)도 장례비를 빼지 않으므로 ⑦은 공과금+채무로 찍어 ⑨·⑭가 엔진과 맞게 한다.
     var funeral = n(r.장례비용공제);
     var v7 = n(ctx.duesTotal) + n(ctx.debtTotal), v8 = n(ctx.publicOrg) + n(ctx.publicTrust);
     var v9 = v5 - v6 - v7 - v8, v10 = n(sp.nonHeirBequest), v11 = n(sp.giftToHeirs), ratio = n(sp.ratio), v13 = n(sp.giftBase);
     if (grossKnown) o.set('⑤', v5).set('⑨', v9); else o.miss('⑤⑨ 상속재산 가액', '재산평가 목록이 없음(계산기에 과세가액만 입력) — 출력물에 직접 적으세요');
     o.set('⑥', v6).set('⑦', v7).set('⑧', v8).set('⑩', v10).set('⑪', v11).set('⑫', pct2(ratio)).set('⑬', v13);
-    if (funeral > 0) o.note('⚠ 부표3의2 ⑦: 서식 작성방법은 부표1 ㉑(장례비용 ' + funeral.toLocaleString('ko-KR') + '원 포함)을 적으라 하나, 시행령 §17①2호(공과금 및 채무)대로 장례비용을 빼지 않고 찍었습니다(법령 우선 — 계산기 배우자공제 한도와 같은 기준). 세무사님 판단 대기');
+    if (funeral > 0) o.note('부표3의2 ⑦: 공과금·채무만 적고 장례비용(' + funeral.toLocaleString('ko-KR') + '원)은 넣지 않았습니다 — 비고에 "상증법 시행령 §17①2호·집행기준 19-17-2"를 적으세요(서식 작성방법 3의 부표1 ㉑ 전체보다 법령 우선)');
     var limitCalc = Math.max(0, Math.floor((v9 - v10 + v11) * ratio - v13));
     var lim = (has(r.배우자공제한도액) ? n(r.배우자공제한도액) : limitCalc);
     o.set('⑭', Math.min(lim, 3000000000)).set('⑮', n(r.배우자공제));

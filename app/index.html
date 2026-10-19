@@ -34026,6 +34026,7 @@ function ihAttachPrintPagesHtml_(){
       '<div class="pf-title">배우자 상속공제 명세서</div>' +
       '<table class="pf-table">' +
         pfRow_(0, '① 상속재산의 가액', won(estateBase)) +
+        pfRow_(0, '　(①에서 뺀 공과금 및 채무 — 장례비용 제외)', won(computeDuesTotal_(inheritanceDuesItems) + computeDebtTotal_(inheritanceDebtItems))) + // [2026.10.20 회장 결론 J06] 서식 부표3의2 ⑦
         pfRow_(0, '② 배우자 외의 자에게 유증 등을 한 재산가액', won(nonHeirBequest)) +
         pfRow_(0, '③ 상속인의 상속개시전 10년 이내 증여재산가액', won(giftToHeirs)) +
         pfRow_(0, '④ 배우자의 법정상속분 비율', (legalShareRatio * 100).toFixed(2) + '%') +
@@ -34035,7 +34036,7 @@ function ihAttachPrintPagesHtml_(){
         pfRow_(0, '배우자상속재산 분할기한까지 분할·신고 여부', isDivided ? '분할·신고함' : '미분할(§19②③ — 최소보장액 5억원만 인정)') +
         pfRow_(0, '배우자 상속공제액', won(numVal(r.배우자공제))) +
       '</table>' +
-      '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 배우자 상속공제액은 최소 5억원, (실제 상속재산가액·공제한도액) 중 작은 값입니다.</div>' +
+      '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 배우자 상속공제액은 최소 5억원, (실제 상속재산가액·공제한도액) 중 작은 값입니다. 상속재산의 가액에서는 공과금·채무만 빼고 장례비용은 빼지 않습니다(상증법 시행령 §17①2호, 집행기준 19-17-2 — 서식 작성방법 3의 "부표1 ㉑ 전체"보다 법령 우선).</div>' +
     '</div>';
   }
   // [2026.09.30 신규, 재검토99] 부표8(서화·골동품 등 상속재산 명세서, 신설 2025.3.21) — "서화·
