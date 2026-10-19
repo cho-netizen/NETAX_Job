@@ -960,6 +960,19 @@
     if (!it0) { o.miss('부표3 전체', '필요경비 상세 항목이 있는 자산 없음'); return o.result(); }
     var a = it0.asset || {}, items = expenseItemsOf(a);
     if (!items.length) { o.miss('부표3 전체', '이 자산에 필요경비 상세 항목 없음'); return o.result(); }
+    // [2026.10.20 서식 감사(양도)] 취득가액이 환산·기준시가·매매사례·감정이라 엔진이 개산공제(소득세법 §97②2호·시행령 §163⑥)를 필요경비로 썼으면
+    //  입력 비용 명세는 부표1 ⑫·⑭와 맞지 않는다(부표3 유의사항 2·3: ⑤ → 부표1 취득가액, ⑬ → 부표1 기타 필요경비). 그때는 찍지 않는다.
+    //  실제 비용을 쓴 경우(상속·증여 자산 매매사례·감정 — 시행령 §163⑨, §97②2호 단서 자본적지출+양도비가 더 큰 경우)는 그대로 찍음
+    var ev = it0.ev || evFromSingle(a, it0.single), an = it0.an || acqNec(a, ev);
+    if (ev.ok && an.kind !== '01') {
+      var totX = items.reduce(function (t, x) { return t + x.amount; }, 0);
+      var inc1X = items.filter(function (x) { return /^1/.test(x.code); }).reduce(function (t, x) { return t + x.amount; }, 0);
+      var usedActual = Math.round(an.nec) === Math.round(n(a.necessaryExpenses)) || Math.round(an.acq + an.nec) === Math.round(totX - inc1X);
+      if (!usedActual) {
+        o.miss('부표3 전체', '취득가액이 ' + ACQ_KIND_LABEL[an.kind] + '이라 엔진은 입력 비용 ' + totX + '원 대신 개산공제 ' + Math.round(an.nec) + '원을 필요경비로 씀(소득세법 §97②2호·시행령 §163⑥) — 실제 비용 명세(부표3)는 부표1 ⑫·⑭와 맞지 않아 찍지 않음');
+        return o.result();
+      }
+    }
     o.note('자산 ' + (idx + 1) + (a.assetLocation ? ' (' + a.assetLocation + ')' : '') + ' — 부표1 자산' + (idx + 1) + '과 짝(전자신고 필요경비신고자료일련번호 ' + (idx + 1) + ')');
     var by = {};
     items.forEach(function (x) { (by[x.code] = by[x.code] || []).push(x); });
@@ -973,13 +986,15 @@
       if (g.length === 1) {
         var x = g[0];
         o.set(row + '@상호', x.payee).set(row + '@사업자등록번호', x.bizNo).set(row + '@지급일', x.payDate).set(row + '@증빙종류', receiptCode(x.receipt));
-      } else o.note(row + ' — ' + g.length + '건이라 (1)에는 금액 합계만, 상호·지급일 등은 명세서(2)에');
+      } else { // [2026.10.20 서식 감사(양도)] 유의사항 4 — 증빙이 여럿이면 사업자등록번호란에 "별지 작성", 지급금액란에 합계
+        o.set(row + '@사업자등록번호', '별지 작성');
+        o.note(row + ' — ' + g.length + '건이라 (1) 사업자등록번호란에 "별지 작성", 지급금액은 합계, 상세는 명세서(2)에(유의사항 4)');
+      }
     });
     if (sum('260')) o.miss('⑥ 자본적지출(260) 세부 줄', '화면은 260 한 가지로 받아 용도변경·엘리베이터·피난시설·원상복구·수선비·기타 중 어느 줄인지 정할 수 없음 — ⑥ 소계와 명세서(2)에만 찍음');
     if (sum('280')) o.miss('⑧ 기타비용(280) 세부 줄', '화면은 280 한 가지로 받아 토지장애철거비·도로시설비·사방사업비·기타 중 어느 줄인지 정할 수 없음 — ⑧ 소계와 명세서(2)에만 찍음');
     var known = Object.keys(EXP_ROW).concat(['260', '280']);
     Object.keys(by).forEach(function (c) { if (known.indexOf(c) < 0) o.miss('구분코드 ' + c, '서식 (1)에 없는 코드 — 명세서(2)에만 찍음'); });
-    var ev = it0.ev || evFromSingle(a, it0.single), an = it0.an || acqNec(a, ev);
     var dep = n(a.depreciationDeductedAsBusinessExpense);
     var s1x = sumOf(['112', '113', '114', '115', '116']), s3 = sumOf(['131', '132', '133', '134']);
     var v5 = null;
