@@ -828,13 +828,14 @@
     //  (예: 환산 1.5억·개산 180만, 비용 1억 입력 → 양도차익 2.5억 ↔ 법대로 3억4,820만).
     if (acquisitionPriceUsedConversionOrStandardOnly && t.necessaryExpenses && acquisitionStandardPriceForConversion > 0) {
       const est_ = Math.floor(acquisitionStandardPriceForConversion * estimatedRateFor_() + 1e-6);
-      const actual_ = Number(t.necessaryExpenses) || 0;
+      // 단서 금액은 자본적지출 + 양도비만 — 화면이 취득 부대비용(취득세·법무사비 등, 부표3 코드 1xx)을 acquisitionIncidentalExpenses로 따로 넘긴다
+      const actual_ = Math.max(0, (Number(t.necessaryExpenses) || 0) - (Number(t.acquisitionIncidentalExpenses) || 0));
       if (actual_ > acquisitionPrice + est_) {
         necessaryExpenses = actual_ - acquisitionPrice; // 합계(취득가액 + 필요경비) = 자본적지출 + 양도비
-        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '§97②2호 단서: 입력한 필요경비 ' + actual_ + '원이 (환산취득가액 + 개산공제 ' + est_ + '원)보다 커서 그 금액 전부를 필요경비로 했습니다(환산취득가액 대신). 단서 금액엔 자본적지출·양도비만 들어가야 합니다 — 취득세 등 취득 부대비용은 빼고 다시 확인하세요.';
+        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '§97②2호 단서: 입력한 필요경비 ' + actual_ + '원(자본적지출 + 양도비)이 (환산취득가액 + 개산공제 ' + est_ + '원)보다 커서 그 금액 전부를 필요경비로 했습니다(환산취득가액 대신).';
       } else {
         necessaryExpenses = est_;
-        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '환산취득가액이면 필요경비는 개산공제(' + est_ + '원, 시행령 §163⑥)입니다 — 입력한 필요경비 ' + actual_ + '원은 빼지 않았습니다(§97②2호, 그 금액이 환산취득가액 + 개산공제보다 클 때만 단서로 대신 씀).';
+        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '환산취득가액이면 필요경비는 개산공제(' + est_ + '원, 시행령 §163⑥)입니다 — 입력한 비용 ' + (Number(t.necessaryExpenses) || 0) + '원은 빼지 않았습니다(§97②2호, 자본적지출 + 양도비가 환산취득가액 + 개산공제보다 클 때만 단서로 대신 씀).';
       }
     }
 
