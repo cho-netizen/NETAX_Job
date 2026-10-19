@@ -237,14 +237,17 @@ var CASEPROC_AI_GAP_SRC_ = [
   [/양도가액|양도일|잔금/, '양도 계약서·등기사항증명서(이전 접수일)', /계약|등기/], [/소재지|면적|지번/, '등기사항증명서·건축물대장·토지대장', /등기|대장/],
   [/주택|용도|assetType/, '건축물대장(주용도)', /대장/], [/세대|거주|전입/, '주민등록 등본·초본', /주민|등본|초본/], [/관계/, '가족관계증명서', /가족/],
   [/증여일|증여재산|증여가액/, '증여계약서·등기사항증명서(증여 원인)', /계약|등기/], [/상속개시|사망|상속인/, '기본증명서·가족관계증명서·제적등본', /기본|가족|제적/],
-  [/채무|부채|대출/, '부채증명서·대출 잔액증명서', /부채|대출|잔액/], [/예금|금융재산|잔액/, '잔액증명서·거래내역', /잔액|거래내역|통장/], [/경비|비용|수수료/, '영수증·세금계산서·견적서', /영수증|세금계산서|견적/]
+  [/채무|부채|대출/, '부채증명서·대출 잔액증명서', /부채|대출/], // [5번-9] 예금 잔액증명서·통장 '잔액'은 재산이지 채무 출처가 아님 [/예금|금융재산|잔액/, '잔액증명서·거래내역', /잔액|거래내역|통장/], [/경비|비용|수수료/, '영수증·세금계산서·견적서', /영수증|세금계산서|견적/]
 ];
 // [밤샘 5번-8 — 세무사님: 빈칸을 채우려 다시 똥통을 뒤진다] 빈칸마다 GAS가 먼저(0원) 이 사건의 그 종류 서류를 다시 뒤진다.
 //  아무 날짜·금액이 아니라 법정 서식의 칸 이름(등기 '접수'·'등기원인', 계약서 '잔금'·'매매대금', 기본증명서 '사망', 등본 '전입', 부채증명서 '잔액', 대장 '주용도')이
 //  있는 줄(또는 바로 다음 줄)의 값만 — 서식이 같으면 사건이 달라도 같은 자리에 있다. 값은 넣지 않고 후보로만(고르는 건 AI·세무사님). 관계·상속인처럼 사람만 아는 칸은 뒤지지 않음
 var CASEPROC_AI_GAP_REFIND_ = [
   [/취득가액|취득 ?금액|양도가액|증여가액|증여재산가액/, 'amount', /매매대금|분양대금|거래가액|매매가격|계약금액|증여가액|평가액/],
-  [/취득일|취득 ?원인|양도일|잔금|증여일/, 'date', /접수|등기원인|원인일자|잔금|증여일/],
+  // [5번-9 — 사람 열쇠] 등기 갑구에는 옛 소유자들의 이전 날짜가 다 있다 — 등기 줄 구조(2번 사실 조각의 소유권이력·성명·접수일)가 있으면
+  //  취득일·증여일은 납세자가 권리자인 줄('own'), 양도일은 납세자 줄 바로 다음 권리자 줄('next')의 접수일만. 구조가 없는 서류(계약서 등)는 칸 이름 줄로
+  [/취득일|취득 ?원인|증여일/, 'date', /접수|등기원인|원인일자|잔금|증여일/, 'own'],
+  [/양도일|잔금/, 'date', /접수|등기원인|원인일자|잔금/, 'next'],
   [/상속개시|사망/, 'date', /사망/], [/세대|거주|전입/, 'date', /전입/],
   [/채무|부채|대출/, 'amount', /잔액|대출금|채무액|원금/], [/예금|금융재산|잔액/, 'amount', /잔액/],
   [/경비|비용|수수료/, 'amount', /합계|공급가액|청구금액|결제금액/], [/주택|용도|assetType/, 'line', /주용도/]
@@ -256,19 +259,47 @@ function caseProcAiStoredText_(c, fn, cache) {
   try { const f = caseProcAiFindFile_(c, fn); if (f) { const v = typeof tcVisionText_ === 'function' ? tcVisionText_(f) : ''; t = v ? String(v) : String(tc_docText_(f) || ''); } } catch (e) { t = ''; }
   return (cache[fn] = t);
 }
-function caseProcAiGapRefind_(c, gapText, files, cache) {
+// 등기 소유권 줄(파일별) — 2번 cxFacts_가 뽑은 소유권이력N의 성명·접수일·원인(cxOwnerAssets_와 같은 재료)
+function caseProcAiOwnerRows_(facts) {
+  const by = {}, rows = {};
+  (facts || []).forEach(function (f) {
+    if (!f || !f.src || f._copy) return;
+    const m = /^(.*?소유권이력)(\d+)/.exec(String(f.src.rec || '')); if (!m) return;
+    const fn = f.src.file || '', k = fn + '#' + m[1] + m[2];
+    const x = rows[k] = rows[k] || { base: fn + '#' + m[1], no: Number(m[2]), names: [] };
+    if (f.kind === '접수일') x.date = String(f.value); else if (f.kind === '등기 원인' || f.kind === '취득원인') x.cause = String(f.value); else if (f.kind === '성명') x.names.push(String(f.value).replace(/\s+/g, ''));
+    (by[fn] = by[fn] || []).indexOf(x) === -1 && by[fn].push(x);
+  });
+  return by;
+}
+// 날짜는 연·월·일 숫자로 맞대야 '2015.2.10'과 '2015년 2월 10일'이 같은 값이 된다
+function caseProcAiValKey_(m, kind) {
+  const s = String(m);
+  if (kind === 'date') { const d = s.match(/\d+/g) || []; if (d.length >= 3) return +d[0] + '-' + +d[1] + '-' + +d[2]; }
+  return s.replace(/[\s일원]+/g, '');
+}
+function caseProcAiGapRefind_(c, gapText, files, cache, opt) {
   const r = CASEPROC_AI_GAP_REFIND_.filter(function (x) { return x[0].test(gapText); })[0];
   if (!r || !files.length) return null;
-  const out = [], seen = {};
+  const out = [], seen = {}, o = opt || {}, tp = String(o.taxpayer || '').replace(/\s+/g, '');
+  const add = function (m, fn, line) { const k = caseProcAiValKey_(m, r[1]); if (!k) return; if (seen[k]) { if (seen[k].파일 !== fn && seen[k].같은값서류.indexOf(fn) === -1) seen[k].같은값서류.push(fn); return; } if (out.length >= 4) return; seen[k] = { 값: String(m).trim(), 파일: fn, 줄: line, 같은값서류: [] }; out.push(seen[k]); };
   files.slice(0, 2).forEach(function (fn) {
+    const rows = r[3] && o.ownerRows ? o.ownerRows[fn] : null;
+    if (rows && rows.length) {
+      // 등기 줄 구조가 있는 서류 — 납세자 이름 열쇠로 그 줄(또는 다음 권리자 줄)만. 납세자 이름이 없는 등기부(다른 자산·다른 사람)는 후보 없음
+      const mine = tp ? rows.filter(function (x) { return x.names.indexOf(tp) !== -1; }) : [];
+      const pick = r[3] === 'own' ? mine : mine.map(function (x) { return rows.filter(function (p) { return p.base === x.base && p.no === x.no + 1; })[0]; }).filter(Boolean);
+      pick.forEach(function (p) { if (p.date) add(p.date, fn, '등기 소유권 ' + p.no + '번' + (p.cause ? ' ' + p.cause : '') + (r[3] === 'own' ? ' — 납세자가 권리자' : ' — 납세자 다음 권리자')); });
+      return;
+    }
     const ls = caseProcAiStoredText_(c, fn, cache).split('\n');
     ls.forEach(function (line, i) {
-      if (out.length >= 4 || !r[2].test(line.replace(/\s+/g, ''))) return;
+      if (!r[2].test(line.replace(/\s+/g, ''))) return;
       // 그 줄에 값이 없을 때만 바로 다음 줄(표 머리줄 아래 값 줄) — 다음 항목(계약금 등)이 섞이지 않게
       const vre = r[1] === 'date' ? CASEPROC_AI_DATE_RE_ : CASEPROC_AI_AMT_RE_;
       const ms = r[1] === 'line' ? [caseProcAiCut_(line.trim(), 40)] : (line.match(vre) || String(ls[i + 1] || '').match(vre) || []).slice(0, 2);
       // 같은 값을 다른 서류에서 또 찾으면 버리지 않고 '같은값서류'로 붙임(받침)
-      ms.forEach(function (m) { const k = String(m).replace(/[\s일]+/g, ''); if (!k) return; if (seen[k]) { if (seen[k].파일 !== fn && seen[k].같은값서류.indexOf(fn) === -1) seen[k].같은값서류.push(fn); return; } seen[k] = { 값: String(m).trim(), 파일: fn, 줄: caseProcAiMask_(caseProcAiCut_(line.trim(), 60)), 같은값서류: [] }; out.push(seen[k]); });
+      ms.forEach(function (m) { add(m, fn, caseProcAiMask_(caseProcAiCut_(line.trim(), 60))); });
     });
   });
   return { 찾는칸이름: String(r[2].source).replace(/\|/g, '·'), 후보: out };
@@ -308,12 +339,14 @@ function caseProcAiFactMap_(c, items) {
   });
   // 빈칸 — 계산기가 비었다고 한 칸(질문 중 빈 칸)마다 찾을 서류와 이 사건에 있는 그 종류 파일
   const files = Object.keys(fileKinds);
-  const txtCache = {};
+  const txtCache = {}, ownerRows = caseProcAiOwnerRows_(facts);
   const gaps = (items || []).filter(function (it) { return it.kind === 'missing'; }).slice(0, 15).map(function (it) {
     const t = [it.id, it.text, it.ask && it.ask.label, it.ask && it.ask.target].join(' ');
-    const m = CASEPROC_AI_GAP_SRC_.filter(function (x) { return x[0].test(t); })[0];
+    // 기준일은 세목마다 뜻이 다름(CASEPROC_BASE_LABEL_: 양도일·증여일·상속개시일) — 그 낱말을 붙여 표에서 맞는 줄을 고름
+    const t2 = /기준일/.test(t) && typeof CASEPROC_BASE_LABEL_ !== 'undefined' && CASEPROC_BASE_LABEL_[c.세목] ? CASEPROC_BASE_LABEL_[c.세목] + ' ' + t : t;
+    const m = CASEPROC_AI_GAP_SRC_.filter(function (x) { return x[0].test(t2); })[0];
     const have = m ? files.filter(function (fn) { if (!m[2].test(fileKinds[fn] + ' ' + fn)) return false; try { const f = caseProcAiFindFile_(c, fn); return !(f && caseProcAiIsRefHead_(String(tc_docText_(f) || '').slice(0, 800))); } catch (e) { return true; } }).slice(0, 4) : []; // 판례·심판례 같은 참고 자료는 다시 뒤질 서류로 권하지 않음
-    let again = null; try { again = have.length ? caseProcAiGapRefind_(c, t, have, txtCache) : null; } catch (e) { again = null; }
+    let again = null; try { again = have.length ? caseProcAiGapRefind_(c, t2, have, txtCache, { taxpayer: c.납세자 || c.고객명 || '', ownerRows: ownerRows }) : null; } catch (e) { again = null; }
     return { 칸: it.id, 글: caseProcAiCut_(it.text, 60), 찾을서류: m ? m[1] : '(표에 없음 — 질문)', 이사건에있는파일: have.length ? have : (m ? '없음 — 서류 요청 질문' : ''), 다시뒤짐: again };
   });
   // [밤샘 5번-7 — 2번 cxRefind_] 한 서류뿐인 계산기 금액·날짜를 다른 서류의 저장된 판독 글에서 같은 값으로 되찾음 — '되찾아 받침'(우연히 같은 숫자일 수 있어 판정엔 안 씀, 근거·질문 출처 보강용)
