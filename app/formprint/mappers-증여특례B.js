@@ -469,6 +469,58 @@
     return o.result();
   };
 
+  // 부문별 영업이익 도구(jtSegmentYears_)에서 서식 한 칸에 넣을 사업연도: 값이 있는 해가 하나면 그 해, 개시 신고면 1년차
+  function segYear(ctx) {
+    var ys = (ctx.segmentYears || []).map(function (y, i) { return { y: y, i: i }; }).filter(function (x) { return n(x.y.segmentSales) || n(x.y.totalSales); });
+    if (!ys.length) return { why: '🧮 부문별 매출·비용 내역이 비어 있음' };
+    if (ys.length === 1) return ys[0];
+    if ((ctx.in || {}).phase === 'initial' && ys[0].i === 0) return ys[0];
+    return { why: '부문별 내역이 ' + ys.length + '개 사업연도에 있어 어느 해 값인지 서식에 없음(부표4는 해마다 한 장)' };
+  }
+  function sumSeg(L) { return (L || []).reduce(function (s, x) { return s + n(x.segment); }, 0); }
+
+  // ───────── 10호의4 부표1 — 수증자 등 및 과세가액 계산명세서(A) ─────────
+  //  값 출처: 🧮 주주별 직접·간접보유 내역(shareholdingRows_.jt — jtAttach1PrintPageHtml_와 같은 표), 🧮 부문별 매출·비용 내역(jtSegmentYears_)
+  mappers['증여10호의4부표1'] = function (ctx) {
+    var o = new Out(), I = ctx.in || {}, sh = ctx.shareholders || [];
+    o.miss('① 수혜법인 법인명', '계산기에 없음').miss('② 사업자등록번호', '계산기에 없음').miss('③ 소재지', '계산기에 없음')
+      .miss('⑤ 법인구분', '계산기에 없음 — 일감떼어주기 탭에 기업규모 칸이 없음');
+    if (I.phase === 'initial' && has(I.fiscalYearEnd)) { o.set('④', fyText(I.fiscalYearEnd)); o.note('④ 사업연도는 종료일만(화면 "해당 사업연도 종료일") — 시작일은 계산기에 없음'); }
+    else o.miss('④ 사업연도', I.phase === 'initial' ? '화면 입력 없음(해당 사업연도 종료일)' : '계산기에 없음 — 정산 신고 화면의 종료일은 정산사업연도 것');
+    var dir = sh.filter(function (s) { return n(s.directRatio) > 0; });
+    if (dir.length) {
+      var mx = Math.max.apply(null, dir.map(function (s) { return n(s.directRatio); }));
+      o.set('⑥', dir.map(function (s) { return s.name; })).set('⑧', dir.map(function (s) { return s.relation; })).set('⑨', dir.map(function (s) { return r4(n(s.directRatio)); }))
+        .set('⑩', dir.map(function (s) { return n(s.directRatio) === mx ? '○' : ''; })).set('⑨@계', r4(dir.reduce(function (a, s) { return a + n(s.directRatio); }, 0)));
+      o.note('㉠ ⑥~⑩은 🧮 주주별 직접·간접보유 내역에 넣은 주주만 — 최대주주등의 다른 주주는 계산기에 없음');
+    } else o.miss('⑥⑧⑨⑩ ㉠ 최대주주 등', '계산기에 없음 — 🧮 주주별 보유 내역에 직접보유비율이 있는 주주가 없음');
+    o.miss('⑦ 주민등록번호(사업자등록번호)', '계산기에 없음').miss('㉠비고', '계산기에 없음')
+      .miss('⑪⑫⑬⑭⑮⑯ ㉡ 간접보유비율(최대주주가 법인일 때)', '계산기에 없음 — 지배주주 판정(작성방법 4·8)을 계산기가 하지 않음')
+      .miss('㉢ 지배주주 성명·주민등록번호', '계산기에 없음 — 지배주주 판정을 계산기가 하지 않음(엔진 안내)');
+    if (sh.length) {
+      var of = ownerFirst(sh.slice()), L2 = of.list;
+      if (!of.found) o.note('⚠ 다. 첫 줄은 지배주주 자리 — 🧮 주주별 보유 내역의 관계 칸에 "지배주주"·"본인"이 없어 입력 순서대로 적음');
+      var d = 0, ind = 0;
+      L2.forEach(function (s) { d += n(s.directRatio); ind += n(s.indirectRaw); });
+      o.set('⑰', L2.map(function (s) { return s.name; })).set('⑲', L2.map(function (s, k) { return k === 0 ? '' : s.relation; }))
+        .set('⑳', L2.map(function (s) { return r4(n(s.directRatio)); })).set('㉑', L2.map(function (s) { return r4(n(s.indirectRaw)); }))
+        .set('㉒', L2.map(function (s) { return r4(n(s.directRatio) + n(s.indirectRaw)); }))
+        .set('⑳@계', r4(d)).set('㉑@계', r4(ind)).set('㉒@계', r4(d + ind));
+      if (d + ind >= 30) o.set('㉓', '○'); else o.miss('㉓ 수증자 해당여부', '해당 안 됨 — ㉒ 계 ' + r4(d + ind) + '% < 30%');
+      o.check('㉒ 계 = 화면 주식보유비율(엔진 입력, 지배주주+친족 합계)', Math.round((d + ind) * 1e4), Math.round(n(I.shareRatio) * 1e4));
+      o.note('다. ㉑ 간접 보유비율 = 🧮 도구의 고리 지분율을 모두 곱한 값(일감떼어주기는 간접출자법인 요건 거르기 없이 — 지금 계산기와 같음)');
+    } else o.miss('⑰⑲⑳㉑㉒㉓ 다. 지배주주와 친족', '계산기에 없음 — 🧮 주주별 직접·간접보유 내역이 비어 있음');
+    o.miss('⑱ 주민등록번호', '계산기에 없음');
+    o.miss('㉔ 사업기회 제공 법인명·㉕ 사업자등록번호·㉖ 중소기업 또는 50% 출자 법인 여부', '계산기에 없음 — 일감떼어주기 탭에 제공 법인 칸이 없음(법 §45의4① 괄호: 중소기업 등은 제외)');
+    var sy = segYear(ctx);
+    if (sy.why) o.miss('㉗ 부문별 총매출액·㉘ 부문별 총매출원가', sy.why);
+    else {
+      o.set('㉗', n(sy.y.segmentSales)).set('㉘', sumSeg(sy.y.costs));
+      o.note('㉗·㉘ = 🧮 부문별 매출·비용 내역 ' + (sy.i + 1) + '년차의 부문 매출액·부문 매출원가 합(부표4 1.·2. ⑤ — 작성방법 13)');
+    }
+    return o.result();
+  };
+
   // ───────── 세액인쇄 화면용 ctx — 화면 전역값에서 모음(브라우저) ─────────
   /* global lastRelatedPartyGiftResult_, lastBusinessOpportunityGiftResult_, giftDonees, shareholdingRows_, relatedPartyRatioRows_,
      jmRelatedPartyTotalSales_, jmRelatedPartyExcludedSales_, jtSegmentYears_, shareholdingIndirectRatio_, shareholdingCountedIndirectRatio_ */
@@ -515,6 +567,7 @@
     '증여10호의3부표2': function () { var r = jmR(); return !!(r && r.과세대상여부 && shRows('jm').some(function (x) { return has(x.chain1Company) || n(x.chain1Ratio) > 0; })); },
     '증여10호의3부표3': function () { var r = jmR(); return !!(r && r.과세대상여부 && chainGroups(shRows('jm')).a.length); },
     '증여10호의4': function () { return !!jtR(); },
+    '증여10호의4부표1': function () { var r = jtR(); return !!(r && r.과세대상여부); },
     '증여10호의3부표5': function () { var r = jmR(); return !!(r && r.과세대상여부); },
     '증여10호의3부표4': function () { var r = jmR(); return !!(r && r.과세대상여부 && (typeof relatedPartyRatioRows_ !== 'undefined' ? relatedPartyRatioRows_ : []).some(function (x) { return has(x.label) || n(x.sales) > 0; })); }
   };

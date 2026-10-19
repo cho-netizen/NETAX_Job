@@ -63,8 +63,12 @@ module.exports = function (E, H) {
   var jt1 = E.calculateBusinessOpportunityGiftTaxJS({ phase: 'initial', profitFromOpportunity: 1000000000, shareholderOwnershipRatio: 50, corporateTaxAfterCredit: 150000000,
     corporateTaxableIncome: 2000000000, monthsInInitialYear: 12, filingStatus: 'ontime', reportedInTime: true });
   if (jt1.증여의제이익 !== 1275000000 || jt1.산출세액 !== 350000000 || jt1.납부세액 !== 339500000) throw new Error('일감떼어주기 개시 엔진 값이 손계산과 다름: ' + JSON.stringify(jt1));
-  var jtCtx1 = { kind: 'jt', r: jt1, donee: DONEE, taxAgent: AGENT, in: jtIn1, shareholders: jtSH, segmentYears: [], 신고일: '2025-06-30' };
+  // 🧮 부문별 매출·비용 내역(1년차만) — 부문 매출 50억, 매출원가 2항목, 판관비 2항목 → 부문 영업이익 = 50억 − 30억 − 9억 = 11억(세무조정 −1억 뒤 ⑲ 10억은 화면에 직접 넣은 값)
+  var SEG = [{ totalSales: 20000000000, segmentSales: 5000000000, costs: [{ label: '상품매출원가', total: 9000000000, segment: 2500000000 }, { label: '물류비', total: 1500000000, segment: 500000000 }],
+    expenses: [{ label: '급여', total: 2000000000, segment: 600000000 }, { label: '임차료', total: 800000000, segment: 300000000 }] }, { totalSales: 0, segmentSales: 0, costs: [], expenses: [] }, { totalSales: 0, segmentSales: 0, costs: [], expenses: [] }];
+  var jtCtx1 = { kind: 'jt', r: jt1, donee: DONEE, taxAgent: AGENT, in: jtIn1, shareholders: jtSH, segmentYears: SEG, 신고일: '2025-06-30' };
   L.push({ name: '증여10호의4_개시사업연도', forms: [{ formKey: '증여10호의4', ctx: jtCtx1 }], ctx: jtCtx1 });
+  L.push({ name: '증여10호의4부표1_주주표', forms: [{ formKey: '증여10호의4부표1', ctx: jtCtx1 }], ctx: jtCtx1 });
   // ───── 일감떼어주기 — 정산사업연도(2년 경과) 신고: 직접만 50%, 누적 이익 36억, 법인세 상당액 누계 2억, 개시 산출세액 3억5천만 ─────
   //  손계산: 36억 × 50% − 2억 = 16억 → 40% − 1억6천만 = 4억8천만, ㉗ 3억5천만 빼면 1억3천만, 신고세액공제 3% 390만 → 납부 1억2,610만
   var jtIn2 = { phase: 'settlement', profit: 3600000000, shareRatio: 50, corporateTax: 200000000, corpTaxAfterCredit: 0, corpTaxableIncome: 0, months: 0, dividendDeduction: 0,
