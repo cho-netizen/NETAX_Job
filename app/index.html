@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 04:47 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 04:50 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -34084,6 +34084,24 @@ function printRenderTable_(rows, sectionTitle){
       rows.map(function(row){ return printRenderRow_(row, printCurrentRows_.indexOf(row)); }).join('') +
     '</table>';
 }
+// [2026.10.19 서식 연동] 세무사님 말씀(원문): "서식을 완벽하게 구현하면, 세액인쇄화면에는 실제로 인쇄할 서식만 보여주면 된다"
+//  → 세액인쇄는 그 사건 계산이 실제로 만든 서식(ready)만 보여 주고, 계산만으로 정할 수 없는 서식은 '필요할 수 있음'(이유·근거)으로 따로.
+//  전체 서식 목록은 법령정보 › 서식 탭(서식번호·원본·칸 지도). 아래 규칙은 근거 조문이 분명한 것만 — 늘릴 때는 칸 지도의 '필요조건'과 맞춘다.
+const PRINT_MAYBE_RULES_ = [
+  { group: '상속세', formNo: '국세기본법 시행규칙 [별지 제8호서식]', title: '상속인대표자신고서',
+    why: function(){ return (lastInheritanceResult && typeof inheritanceHeirs !== 'undefined' && inheritanceHeirs.filter(function(h){ return h && (h.name || h.relation); }).length >= 2) ? '상속인이 2명 이상이면 대표자를 정해 신고(국세기본법 §24③)' : ''; } },
+  { group: '상속세', formNo: '상속세 및 증여세법 시행규칙 [별지 제3호서식]', title: '배우자 상속재산 미분할 신고서',
+    why: function(){ const r = lastInheritanceResult; const el = document.getElementById('ihSpouseDivided'); return (r && numVal(r.배우자공제) > 0 && el && !el.checked) ? '배우자 상속재산을 분할기한까지 나누지 못하면 미분할 신고(상증세법 §19③)' : ''; } },
+  { group: '상속세', formNo: '상속세 및 증여세법 시행규칙 [별지 제11호서식]', title: '상속세(증여세) 연부연납허가 신청서',
+    why: function(){ const r = lastInheritanceResult; return (r && numVal(r.납부세액) > 20000000) ? '납부세액이 2천만원을 넘으면 연부연납을 신청할 수 있음(상증세법 §71①) — 계산·인쇄는 증여·상속 공통 탭' : ''; } },
+  { group: '증여세', formNo: '상속세 및 증여세법 시행규칙 [별지 제11호서식]', title: '상속세(증여세) 연부연납허가 신청서',
+    why: function(){ return (lastGiftResults_ || []).some(function(x){ return x && x.result && numVal(x.result.납부세액) > 20000000; }) ? '납부세액이 2천만원을 넘으면 연부연납을 신청할 수 있음(상증세법 §71①) — 계산·인쇄는 증여·상속 공통 탭' : ''; } }
+];
+function printMaybeRows_(group, readyRows){
+  return PRINT_MAYBE_RULES_.filter(function(rule){ return rule.group === group && !readyRows.some(function(r){ return r.formNo === rule.formNo; }); })
+    .map(function(rule){ let why = ''; try { why = rule.why() || ''; } catch (e) { why = ''; } return why ? { formNo: rule.formNo, title: rule.title, why: why } : null; })
+    .filter(Boolean);
+}
 function renderPrintPane(){
   const groups = printRegistryGroups_();
   const availableGroups = PRINT_GROUP_ORDER_.filter(function(g){ return groups[g] && groups[g].length; });
@@ -34122,8 +34140,19 @@ function renderPrintPane(){
           return '<button type="button" class="save-btn" data-action="' + item.efileAction + '" data-registry-key="' + item.key + '"' + (item.isReady() ? '' : ' disabled') + '>' + item.efileLabel + '</button>';
         }).join('') +
       '</div>' +
-      printRenderTable_(requiredRows, '필수 신고서식') +
-      printRenderTable_(optionalRows, '임의 신고서식') +
+      (anyReady
+        ? printRenderTable_(requiredRows.filter(function(r){ return r.ready; }), '이 사건에 필요한 서식 — 신고서 본문') +
+          printRenderTable_(optionalRows.filter(function(r){ return r.ready; }), '이 사건에 필요한 서식 — 사안에 따라 붙는 첨부·특례 서식')
+        : '<div class="taxcalc-result-note" style="margin:8px 0;">아직 이 세목을 계산하지 않았습니다. 세액계산을 하면 이 사건에 필요한 서식만 여기에 나옵니다.</div>') +
+      (function(){
+        const maybe = printMaybeRows_(printActiveGroup_, printCurrentRows_.filter(function(r){ return r.ready; }));
+        if (!maybe.length) return '';
+        return '<div class="print-hub-section-head">필요할 수 있음 — 계산만으로 정할 수 없는 서식</div>' +
+          '<table class="print-hub-table"><tr><th>서식명</th><th>서식번호</th><th>왜</th></tr>' +
+          maybe.map(function(m){ return '<tr><td>' + escapeHtml(m.title) + '</td><td class="print-hub-formno">' + escapeHtml(printShortFormNo_(m.formNo)) + '</td><td>' + escapeHtml(m.why) + '</td></tr>'; }).join('') +
+          '</table>';
+      })() +
+      '<div class="taxcalc-result-note" style="margin-top:8px;">이 세목의 전체 서식 목록(' + printCurrentRows_.length + '개)·원본·칸 지도는 <button type="button" class="lsi-link" data-action="print-open-form-catalog" style="background:none;border:none;color:var(--navy);text-decoration:underline;cursor:pointer;padding:0;">법령정보 › 서식</button>에서 봅니다.</div>' +
       (efileItems.length ? efileItems.map(function(item){
         return '<div id="' + item.efileResultId + '" style="margin-top:6px;"></div>';
       }).join('') : '') +
@@ -35838,6 +35867,9 @@ function handleTaxCalcClick_(e){
     const row = printCurrentRows_[numVal(btn.dataset.rowIdx)];
     if (!row || !row.ready){ nxAlert_('이 서식은 아직 계산된 데이터가 없습니다.'); return; }
     openPrintFormWindow_(row.title || '인쇄', row.html);
+  } else if (action === 'print-open-form-catalog'){
+    if (typeof goToView_ === 'function') goToView_('lawsearch');
+    if (typeof lsiShowTab_ === 'function'){ if (typeof lsiFormGroup_ !== 'undefined') lsiFormGroup_ = printActiveGroup_; lsiShowTab_('form'); }
   } else if (action === 'print-group-batch'){
     const readyRows = printCurrentRows_.filter(function(r){ return r.ready; });
     if (!readyRows.length){ nxAlert_('먼저 이 세목 탭에서 "세액 계산하기"를 눌러 계산을 완료하세요.'); return; }
