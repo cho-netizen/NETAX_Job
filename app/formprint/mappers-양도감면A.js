@@ -153,11 +153,73 @@
     return o.result();
   };
 
-  // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만)
+  // 신청일(= 신고일, 감면신청서는 과세표준신고와 함께 냄)·서명란·세무대리인·관할 세무서
+  function signs(o, ctx, keys) {
+    var s = ctx.seller || {}, ta = ctx.taxAgent || {};
+    if (!setYmd(o, keys.date || '신청일', ctx.신고일)) o.miss('신청일', 'ctx.신고일 없음(감면신청서는 과세표준신고와 함께 냄)');
+    if (keys.sign) o.need(keys.sign, s.name, '신청인 서명란 성명');
+    if (keys.agent) { if (has(ta.name)) o.set(keys.agent, ta.name); else o.miss('세무대리인 서명란', '세무대리인 없음'); }
+    if (keys.mgmt) { if (has(ta.mgmtNo)) o.set(keys.mgmt, ta.mgmtNo); else o.miss('세무대리인 관리번호', '세무대리인 관리번호 없음'); }
+    if (keys.office) { if (has(s.taxOffice)) o.set(keys.office, H.officeName(s.taxOffice)); else o.miss('세무서', '양도인 관할 세무서 입력 없음'); }
+  }
+
+  // ───────── 조특 별지 제62호서식(장기임대주택에 대한 양도소득 세액감면신청서) — 조특법 §97·§97의2·§97의5 ─────────
+  //  시행령 §97④·§97의2②·§97의5④ — 양도자가 과세표준신고와 함께 냄. 예전 인쇄(trLongTermRentalHousePrintPageHtml_)와 같게
+  //  자산 카드 "장기임대주택 감면 적용 조문"(longTermRentalHouseProvision)이 있는 자산마다 한 장.
+  //  감면 방식(엔진): §97 50%·§97의5(임대기간 중 소득 100%) = 세액감면(§90① — 자산별 내역 '합산(장기)' 줄),
+  //                   §97 단서 100%·§97의2 100% = 그 자산 양도차익을 소득에서 빼는 방식(자산별 내역 '장기임대주택등감면' 줄, 감면세액 없음)
+  var LR_LAW = { sect97: '조특법 §97', sect97_2: '조특법 §97의2', sect97_5: '조특법 §97의5' };
+  mappers['조특62호'] = function (ctx) {
+    var o = new Out(), s = ctx.seller || {}, p = pick(ctx), a = p.a;
+    o.need('신청인@성명', s.name, '신청인 성명');
+    o.miss('신청인 사업자등록번호', '계산기에 없음 — 양도인 카드에 임대사업자 등록번호 칸 없음');
+    var b = birthOf(s.regNo); if (b) o.set('신청인@생년월일', b); else o.miss('신청인 생년월일', '주민등록번호가 13자리가 아니라 못 셈');
+    o.need('신청인@주소', H.fullAddr(s), '신청인 주소').need('신청인@전화번호', s.phone, '신청인 전화번호');
+    o.need('소재지', a.assetLocation, '소재지');
+    if (n(a.assetArea)) o.set('주택면적', n(a.assetArea)); else o.miss('주택면적', '화면 입력 없음(자산 카드 면적)');
+    o.miss('임대개시당시 기준시가', '계산기에 없음 — 자산 카드에는 "등록일 당시 기준시가"만 있음(임대개시일과 같은 날인지 모름)');
+    if (!setYmd(o, '취득일자', a.acquisitionDate)) o.miss('취득일자', '화면 입력 없음');
+    if (!setYmd(o, '양도일자', a.transferDate)) o.miss('양도일자', '화면 입력 없음');
+    o.miss('세법상 사업자등록일·민간임대주택법상 사업자등록일', '계산기에 없음 — 등록일 입력 칸 없음');
+    o.miss('세액감면 대상기간', '계산기에 없음 — 임대기간(년) 입력 없이 세부 유형(lrSubType)만 고름');
+    o.miss('임대내역(임차인·보증금·월세·임대기간)·① 기간', '계산기에 없음');
+    var law = LR_LAW[a.longTermRentalHouseProvision];
+    if (!law) o.miss('세액감면비율·감면대상소득·감면받고자 하는 세액', '자산 카드 장기임대주택 감면 조문 없음');
+    else {
+      o.note('적용 조문: ' + law + (a.longTermRentalHouseProvision === 'sect97' && a.lrSubType ? '(세부 유형 ' + a.lrSubType + ')' : ''));
+      var notes = notesOf(ctx, p.i);
+      var red = redNotes(notes, /^장기(임대주택 등|일반민간임대주택등) 감면/)[0];
+      var excl = (notes || []).filter(function (x) { return x.구분 === '장기임대주택등감면(조특법§97계열)'; })[0];
+      if (!notes) o.miss('세액감면비율·감면대상소득·감면받고자 하는 세액', '자산 목록과 엔진 거래 수가 달라(환지 증가분 등) 자산별 감면 값을 고를 수 없음');
+      else if (red) {
+        var f = checkRed(o, '감면받고자 하는 세액', red);
+        o.set('감면받고자 하는 세액', n(red.감면액));
+        if (f) o.set('세액감면비율', Math.round(f.E * 1000) / 10).set('감면대상소득', f.B);
+        else o.miss('세액감면비율·감면대상소득', '엔진 감면산식 글을 읽지 못함');
+        if (a.longTermRentalHouseProvision === 'sect97_5') o.note('감면대상소득 = 양도소득금액 × (임대기간 마지막 날 − 취득 당시 기준시가) ÷ (양도 당시 − 취득 당시 기준시가)(시행령 §97의5②) — 엔진 감면산식의 B');
+      } else if (excl && excl.적용여부 === true) {
+        o.set('세액감면비율', 100).set('감면대상소득', n(excl.제외소득금액));
+        o.note('엔진은 100% 감면(§97①단서·§97의2)을 그 자산 양도차익(장기보유특별공제 전 ' + n(excl.제외소득금액) + '원)을 소득에서 빼는 방식으로 계산 — 감면세액을 따로 내지 않음');
+        o.miss('감면받고자 하는 세액', '엔진이 100% 감면을 소득에서 빼는 방식으로 계산해 감면세액 값이 없음(계산 오류 의심 — 보고서)');
+      } else o.miss('세액감면비율·감면대상소득·감면받고자 하는 세액', '엔진에서 감면이 적용되지 않음' + (excl && excl.사유 ? '(' + String(excl.사유).slice(0, 80) + ')' : ''));
+    }
+    signs(o, ctx, { sign: '신청인서명', agent: '세무대리인서명', mgmt: '세무대리인@관리번호', office: '세무서' });
+    return o.result();
+  };
+
+  // ───────── 어떤 자산에 어떤 신청서 — 예전 인쇄(trAttach1PrintPageHtml_ 뒤에 붙는 함수들)가 그 서식을 그리는 조건과 같게 ─────────
   //  조특54호는 넣지 않음 — 사업시행자 제출(시행령 §72④·⑦)
+  var TESTS = {};
+  function register(k, test) { TESTS[k] = test; ctxFor[k] = perAsset(test); ready[k] = readyOf(ctxFor[k]); }
+  register('조특62호', function (a) { return !!a.longTermRentalHouseProvision; });
+
+  // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만) — 감면 대상 자산마다 한 장
   function plan(tax, ctx) {
     var L = [];
     if (tax !== '양도' || !ctx || !ctx.r) return L;
+    Object.keys(TESTS).forEach(function (k) {
+      (ctx.assets || []).forEach(function (it, j) { if (TESTS[k](it.asset || {}, ctx, j)) L.push({ formKey: k, ctx: Object.assign({}, ctx, { 감면자산: j }) }); });
+    });
     return L;
   }
 

@@ -15,12 +15,28 @@ module.exports = function (E, H) {
       taxAgent: AGENT }, extra || {});
   }
   var L = [];
+  // 이 묶음의 plan(세목 원본 모양 출력 묶음에 더할 서식)이 고른 것만 — 84호·부표1은 기존 확인 도구(formprint-check.js)에서
+  function plan(ctx) { return require('./mappers-양도감면A.js').plan('양도', ctx); }
 
   // 1. 조특54호 — 공익사업 협의매수(§77①1호) 현금보상 토지, 2015 취득 2억 → 2025.8.20. 5억(사업인정고시 2024.3.15.)
   var comp = { assetType: 'other', assetKind: 'land', transferPrice: 500000000, acquisitionPrice: 200000000, necessaryExpenses: 0,
     transferDate: '2025-08-20', acquisitionDate: '2015-04-01', assetLocation: '경기도 ○○시 ○○동 100 (견본)', assetArea: 1200,
     compensationType: 'cash', compensationTransferMode: 'consult', publicNoticeDate: '2024-03-15' };
   L.push({ name: '54호_공익사업_협의매수_현금', forms: ['조특54호'], ctx: trCtx([comp], { 감면자산: 0 }) });
+
+  // 2. 조특62호 — 장기임대주택(§97 본문 50%) 국민주택, 1998 취득 1억 → 2025.9.10. 4억
+  var lr97 = { assetType: 'house', assetKind: 'building', transferPrice: 400000000, acquisitionPrice: 100000000, necessaryExpenses: 3000000,
+    transferDate: '2025-09-10', acquisitionDate: '1998-05-02', assetLocation: '서울특별시 ○○구 ○○동 1-1, 101호 (견본)', assetArea: 84.5,
+    longTermRentalHouseProvision: 'sect97', lrSubType: '' };
+  L.push({ name: '62호_장기임대_97조_50', forms: plan(trCtx([lr97])) });
+  // 2-2. §97의5(임대기간 중 소득 100%) — 기준시가 취득 1.5억·임대 끝 2.7억·양도 3억 → 감면소득 80%, 같은 해 토지 하나 더(합산)
+  var lr975 = Object.assign({}, lr97, { longTermRentalHouseProvision: 'sect97_5', acquisitionDate: '2015-03-02', assetLocation: '서울특별시 ○○구 ○○동 2-2 (견본)',
+    lrAcquisitionStandardPrice: 150000000, lrTransferStandardPrice: 300000000, lrRentalEndStandardPrice: 270000000 });
+  var land2 = { assetType: 'other', assetKind: 'land', transferPrice: 150000000, acquisitionPrice: 100000000, necessaryExpenses: 0,
+    transferDate: '2025-03-10', acquisitionDate: '2016-01-05', assetLocation: '경기도 ○○군 ○○면 200 (견본)' };
+  L.push({ name: '62호_장기일반민간임대_97조의5', forms: [{ formKey: '조특62호', ctx: trCtx([land2, lr975], { 감면자산: 1 }) }] });
+  // 2-3. §97 단서 10년 이상 임대(100%) — 엔진이 소득에서 빼는 방식이라 감면세액 칸은 비움
+  L.push({ name: '62호_장기임대_97조_10년_100', forms: ['조특62호'], ctx: trCtx([Object.assign({}, lr97, { lrSubType: 'rental_10yr' })], { 감면자산: 0 }) });
 
   return L;
 };
