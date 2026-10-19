@@ -205,6 +205,46 @@
     return o.result();
   };
 
+  // ───────── 상속 별지 제2호서식 — 영농상속공제신고서(법 §18의3, 시행령 §16) ─────────
+  //  값 출처: 지금 인쇄 ihAttachPrintPagesHtml_ [별지 제2호서식] 쪽(피상속인·상속인 = 명부 첫 행, 화면 ihFarming* 칸, 결과 영농상속공제_계산내역).
+  //  예전 인쇄 번호와 다름: 예전 "③ 총자산가액·④ 사업무관 계·⑤ 사업관련·⑥ 비율"(가업상속 서식 번호를 옮겨 와 하나씩 밀림) → 서식 ④·⑤·⑥·⑦, 서식 ③(= ②) 줄 추가.
+  mappers['상속2호'] = function (ctx) {
+    var o = new Out(), r = ctx.r || {}, dc = ctx.deceased || {}, x = ihxOf(ctx), f = x.farm || {}, d = (ctx.r || {}).영농상속공제_계산내역;
+    o.need('1@피상속인성명', dc.name, '1.피상속인 성명').need('1@피상속인주민등록번호', dc.regNo, '1.피상속인 주민등록번호');
+    var h = firstHeir(ctx);
+    o.need('1@상속인성명', h.name, '1.상속인 성명').need('1@상속인주민등록번호', h.regNo, '1.상속인 주민등록번호');
+    o.note('⚠ 1. 상속인 = 상속인 명부 첫 행(지금 인쇄와 같음 — 영농상속인을 따로 고르는 칸이 없음). 실제 영농상속인이 다르면 고치세요');
+    o.miss('2.가-1 명세(종류·소재지·수량·단가·가액 줄)', '계산기에 없음(영농 재산을 합계로만 받음)');
+    o.miss('2.가-2 명세(상호·사업자등록번호·주식수·1주당 가액·가액 줄)', '계산기에 없음(법인별 명세 없음)');
+    if (!d) { o.miss('①② 3.영농상속공제액 전체', '영농상속공제 계산 내역 없음'); signBlock(o, ctx, (ctx.reporter || {}).name); return o.result(); }
+    var v1 = n(d.소득세법적용분), debt = n(d.소득세법적용분_담보채무차감);
+    if (v1 > 0 || n(f.individualAsset) > 0) {
+      o.set('①', v1).set('3가1', v1);
+      if (debt > 0) o.note('① = 영농 재산 ' + n(f.individualAsset) + '원 − 담보채무 ' + debt + '원 = ' + v1 + '원(시행령 §16⑤1호, 2026.2.27. 이후 상속개시분 — 서식(2025.3.21.)에는 담보채무 칸이 없어 순액을 적음)');
+    } else o.miss('① 3.가-1', '해당 없음 — 「소득세법」 적용 영농 재산 0');
+    var stock = n(f.stockValue);
+    if (stock > 0) {
+      var tot = n(f.totalAsset), nb = [n(f.nonBiz55), n(f.nonBiz49), n(f.nonBiz61), n(f.excessCash), n(f.nonBizStock)];
+      var v5 = nb.reduce(function (s, v) { return s + v; }, 0), v6 = Math.max(0, tot - v5), v7 = n(d.사업관련자산가액비율), corp = n(d.법인세법적용분);
+      o.set('②', stock).set('③', stock).set('④', tot).set('㉮', nb[0]).set('㉯', nb[1]).set('㉰', nb[2]).set('㉱', nb[3]).set('㉲', nb[4])
+        .set('⑤', v5).set('⑥', v6).set('⑦', pct2(v7)).set('3가2', corp);
+      o.check('⑤ = ㉮ + ㉯ + ㉰ + ㉱ + ㉲', v5, nb[0] + nb[1] + nb[2] + nb[3] + nb[4]);
+      o.check('⑥ = ④ − ⑤', v6, tot - v5);
+      o.check('⑦ = ⑥ ÷ ④(엔진 비율, 만분율)', Math.round(v7 * 10000), tot > 0 ? Math.round(v6 / tot * 10000) : 0);
+      o.check('가-2 = ③ × ⑦(엔진 반올림)', corp, Math.round(stock * v7));
+      if (nb[3] > 0) o.note('⚠ ㉱ 과다보유현금 — 서식 작성방법 6은 직전 5개 사업연도 말 평균의 150% 초과분이나 현행 시행령 §15⑤2호라목은 200% 초과분(2025.2.28. 개정). 계산기는 결과값만 받으므로 200% 기준으로 넣었는지 확인');
+    } else o.miss('②③④⑤⑥⑦ ㉮㉯㉰㉱㉲ 3.가-2', '해당 없음 — 「법인세법」 적용 영농 주식 등 가액 0');
+    var target = n(d.대상금액), lim = n(d.한도액), ded = n(r.영농상속공제);
+    o.set('⑧', target).set('⑩', ded);
+    o.check('⑧ = ① + (③ × ⑦)', target, v1 + n(d.법인세법적용분));
+    if (lim !== 3000000000) o.note('⚠ ⑨ 한도액 — 서식에 30억원이 인쇄돼 있으나 엔진 한도는 ' + lim + '원(상속개시일 기준 옛 한도)');
+    if (d.요건미충족으로_공제배제) o.note('⚠ ⑩ 영농상속공제액 0 — 요건 미충족(' + (d.미충족요건목록 || []).join(', ') + ')');
+    else o.check('⑩ = MIN(⑧, ⑨ ' + lim + ')', ded, Math.min(target, lim));
+    if (d.요건미확인) o.note('⚠ 영농상속공제 요건 체크 중 확인하지 않은 것이 있음(엔진 요건미확인)');
+    signBlock(o, ctx, (ctx.reporter || {}).name);
+    return o.result();
+  };
+
   // ───────── 언제 찍나 ─────────
   var WHEN = {
     '상속1호': function (c) { var r = c.r || {}; return !!(r.가업상속공제_계산내역 && !r.가업상속납부유예_선택); },

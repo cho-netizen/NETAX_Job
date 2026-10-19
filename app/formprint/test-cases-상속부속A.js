@@ -42,5 +42,16 @@ module.exports = function (E, H) {
   var cMid = ihCtx(pMid);
   L.push({ name: '상속1호부표1_중견기업배제', forms: X.plan('상속', cMid).filter(function (it) { return /^상속1호/.test(it.formKey); }), ctx: cMid });
 
+  // ② 상속2호 — 영농상속공제: 개인 영농 재산 15억(담보채무 2억 — 2026.2.27. 이후 상속이라 뺌) + 영농법인 주식 10억(총자산 20억, 사업무관 2억)
+  //   손계산: ① = 15억 − 2억 = 13억, ⑦ = (20억 − 2억) ÷ 20억 = 90% → 가-2 = 10억 × 90% = 9억 → ⑧ = 22억, ⑨ 30억 → ⑩ = 22억
+  var pFarm = Object.assign({}, BASE, {
+    taxableEstateAmount: 6000000000,
+    farmingIndividualAssetValue: 1500000000, farmingIndividualSecuredDebt: 200000000, farmingStockValue: 1000000000, farmingTotalAssetValue: 2000000000,
+    farmingNonBizAsset55: 100000000, farmingExcessCash: 100000000,
+    decedentFarmingRequirementMet: true, heirFarmingRequirementMet: true, heirAge18OrOlder: true
+  });
+  var cFarm = ihCtx(pFarm);
+  L.push({ name: '상속2호_영농상속공제', forms: X.plan('상속', cFarm), ctx: cFarm });
+
   return L;
 };
