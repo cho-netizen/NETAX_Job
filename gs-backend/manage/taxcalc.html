@@ -11679,7 +11679,7 @@ function ihPrintFormBodyHtml_(){
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml(reporter.name || '') + ' &nbsp;(서명 또는 인)<br>' + pfTaxOfficeGreeting_(g_('ihDeceasedTaxOffice')) + '</div>' +
   '</div>' +
-  foreignTaxCreditPrintPageHtml_('상속세', taxBase, calcTaxTotal, numVal(g_('ihForeignBase')), numVal(g_('ihForeignTax')), numVal(r.외국납부세액공제)) +
+  foreignTaxCreditPrintPageHtml_('상속세', taxBase, calcTaxBase, numVal(g_('ihForeignBase')), numVal(g_('ihForeignTax')), numVal(r.외국납부세액공제), r.외국납부세액공제_비율한도) + // [2026.10.19 서식감사 차] 엔진과 같은 할증 전 산출세액·엔진 한도값
   ihAttachPrintPagesHtml_();
 }
 
@@ -13209,7 +13209,7 @@ function gfPrintFormBodyHtml_(){
   const first = validItems[0];
   if (first){
     const r = first.result;
-    html += foreignTaxCreditPrintPageHtml_('증여세', numVal(r.과세표준), numVal(r.산출세액_할증전) + numVal(r.세대생략할증액), numVal((document.getElementById('giftForeignBase') || {}).value) || 0, numVal((document.getElementById('giftForeignTax') || {}).value) || 0, numVal(r.외국납부세액공제)); // [2026.10.19 서식 감사] 예전엔 세무대리인 설정값(taxAgentField_)에서 읽어 늘 빈 값이었다
+    html += foreignTaxCreditPrintPageHtml_('증여세', numVal(r.과세표준), numVal(r.산출세액_할증전), numVal((document.getElementById('giftForeignBase') || {}).value) || 0, numVal((document.getElementById('giftForeignTax') || {}).value) || 0, numVal(r.외국납부세액공제), r.외국납부세액공제_비율한도); // [2026.10.19 서식 감사] 예전엔 세무대리인 설정값(taxAgentField_)에서 읽어 늘 빈 값이었다
     html += farmlandExemptionPrintPageHtml_(giftDonees[first.doneeIdx] || {}, numVal(r.영농자녀증여농지세액감면) || numVal((document.getElementById('giftFarmlandExemption') || {}).value) || 0); // [2026.10.19 서식 감사] 계산 결과의 감면세액(예전엔 세무대리인 설정값에서 읽어 52호가 안 나옴)
   }
   return html;
@@ -13226,9 +13226,12 @@ function gfPrintFormBodyHtml_(){
 // 전체과세표준), 외국납부세액 한도)을 그대로 따라 하되, 상속세 결과객체는 이 비율한도값을
 // 안 돌려주므로(증여세는 돌려줌) 여기서 같은 공식으로 다시 계산한다 — 공식이 아주 단순해서
 // (엔진과 중복되더라도) 별도 필드 추가보다 이 편이 더 간단하고 안전하다.
-function foreignTaxCreditPrintPageHtml_(formLabel, taxBase, calculatedTax, foreignBase, foreignPaid, creditAmount){
+// [2026.10.19 서식감사 차] ① 산출세액은 엔진이 쓴 값(세대생략 할증 전 — 시행령 §21①·§48 "상속(증여)세산출세액")을 받고, ④는 엔진 결과
+//  외국납부세액공제_비율한도(engineLimit)가 있으면 그것을 그대로 찍는다. 전에는 ①에 할증 포함 값을 찍고 ④를 따로 계산해 할증이 있으면
+//  ④와 ⑥(엔진 공제액)이 서로 맞지 않았다. ①을 할증 전·후 어느 쪽으로 볼지는 법령 원문으로 판정이 안 돼 "판단 대기"(엔진 기준을 따름).
+function foreignTaxCreditPrintPageHtml_(formLabel, taxBase, calculatedTax, foreignBase, foreignPaid, creditAmount, engineLimit){
   if (!numVal(creditAmount)) return '';
-  const creditLimit = (numVal(foreignBase) > 0 && numVal(taxBase) > 0)
+  const creditLimit = (engineLimit != null && engineLimit !== '') ? numVal(engineLimit) : (numVal(foreignBase) > 0 && numVal(taxBase) > 0)
     ? Math.round(numVal(calculatedTax) * Math.min(1, numVal(foreignBase) / numVal(taxBase)))
     : numVal(foreignPaid);
   let n = 0;
