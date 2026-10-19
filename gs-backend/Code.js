@@ -885,6 +885,7 @@ const DRIVE_TOOLS = [
         forProfitHeirShareRatio: { type: 'number', description: '영리법인 최대주주 등에 해당하는 상속인·직계비속의 지분 상당 비율(0~1). 없으면 생략(0).' },
         culturalPropertyDeferredTaxAmount: { type: 'number', description: '문화재자료·박물관자료등 징수유예세액(원) — 이번 신고 시 납부할 세액에서 차감(유예)된다. 없으면 생략.' },
         businessInheritanceDeferredTaxAmount: { type: 'number', description: '가업상속 상속세 납부유예세액(원, §72의2, [별지 제12호의2서식]) — 이번 신고 시 납부할 세액에서 차감(유예)된다. 정확한 금액을 모르면 totalGrossEstateValue와 businessInheritanceIndividualNetAssetValue/businessInheritanceStockValue 등을 넣어 이 도구가 계산한 가업상속납부유예_가능세액(참고용)을 확인한 뒤 그 금액을 여기 넣어라. 없으면 생략.' },
+        businessInheritanceDeferralElected: { type: 'boolean', description: '가업상속공제 대신 납부유예(§72의2)를 고르면 true — 가업상속공제 0, businessInheritanceDeferredTaxAmount를 비우면 가능세액 전부. §72의2①2호: 가업상속공제·영농상속공제를 받으면 유예세액은 빼지 않는다.' },
         totalGrossEstateValue: { type: 'number', description: '가업상속납부유예 가능세액 계산용 — 총 상속재산가액(원, 상속으로 얻은 자산에 §13에 따라 가산하는 증여재산 포함, 공과금·채무 차감 전 총액). 가업상속공제용 상세 자산내역과 함께 주면 §72의2에 따른 납부유예 가능세액(참고용, 자동 적용되지는 않음)을 계산해준다.' },
         reporterName: { type: 'string', description: '신고인(상속인) 성명. list_drive_folder/read_drive_file로 사건 폴더의 가족관계증명서·신분증 사본 등을 먼저 찾아보고, 없으면 사용자에게 직접 물어봐라.' },
         reporterRegNo: { type: 'string', description: '신고인 주민등록번호. 위와 같은 방식으로 확인.' },

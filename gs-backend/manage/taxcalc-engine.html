@@ -3147,7 +3147,12 @@
     const funeralNicheDeduction = isDecedentResident ? Math.min(Number(p.funeralNicheCostAmount) || 0, 5000000) : 0;
     const funeralDeduction = funeralGeneralDeduction + funeralNicheDeduction;
     const businessInheritanceDetail = isDecedentResident ? businessInheritanceDeductionDetailed(p) : null;
-    const businessInheritanceDeduction = isDecedentResident ? (businessInheritanceDetail ? businessInheritanceDetail.deductionAmount : (Number(p.businessInheritanceDeduction) || 0)) : 0;
+    // [2026.10.19 서식감사 차] 법 §72의2①2호 — 가업상속 납부유예는 "가업상속공제를 받지 아니하였을 것"(영농상속공제를 받으면
+    //  가업상속공제를 받은 것으로 봄)이 요건이다. businessInheritanceDeferralElected(가업상속공제 대신 납부유예 선택)면 가업상속공제를
+    //  0으로 두고(재산 명세는 [별지 제12호의2서식 부표 1] 납부유예 가능세액 계산에만 씀), 선택하지 않았는데 공제와 유예를 함께
+    //  넣으면 유예를 빼지 않는다(아래 businessInheritanceDeferredTaxAmount). 전에는 둘을 함께 빼 세액이 이중으로 줄었다.
+    const businessInheritanceDeferralElected = !!p.businessInheritanceDeferralElected;
+    const businessInheritanceDeduction = (isDecedentResident && !businessInheritanceDeferralElected) ? (businessInheritanceDetail ? businessInheritanceDetail.deductionAmount : (Number(p.businessInheritanceDeduction) || 0)) : 0;
     const farmingInheritanceDetail = isDecedentResident ? farmingInheritanceDeductionDetailed(p) : null;
     const farmingInheritanceDeduction = isDecedentResident ? (farmingInheritanceDetail ? farmingInheritanceDetail.deductionAmount : (Number(p.farmingInheritanceDeduction) || 0)) : 0;
     // [2026.10.01 신규, 재검토103] §18의4(가업상속공제와 영농상속공제의 동시 적용 배제) — law.go.kr
@@ -3253,7 +3258,9 @@
     // 가업상속납부유예(§72의2, businessInheritanceDeferredTaxAmount)는 §69①1호가 "제74조"만 명시하므로
     // 이 기준액 계산에는 포함하지 않고, 아래 최종 납부세액 단계에서만 차감한다.
     const culturalPropertyDeferredTaxAmount = Number(p.culturalPropertyDeferredTaxAmount) || 0;
-    const businessInheritanceDeferredTaxAmount = Number(p.businessInheritanceDeferredTaxAmount) || 0;
+    const businessInheritanceDeferredTaxInput = Number(p.businessInheritanceDeferredTaxAmount) || 0;
+    // §72의2①2호 — 가업상속공제·영농상속공제를 받았으면 납부유예 불가(유예액을 빼지 않고 알림).
+    const businessInheritanceDeferralBlocked = businessInheritanceDeferredTaxInput > 0 && (businessInheritanceDeduction > 0 || farmingInheritanceDeduction > 0);
     const taxAfterCredits = Math.max(0, calculatedTax - priorGiftTaxCredit - specialGiftTaxCredit - foreignTaxCredit - shortTermCredit - otherCreditsAmount - culturalPropertyDeferredTaxAmount);
     const reportCreditRate_ = reportCreditRateAt_(inhDate_); // [2026.10.19 2부-10] 2019년 전 상속은 10%·7%·5%
     const reportCredit = reportedInTime ? Math.round(taxAfterCredits * reportCreditRate_) : 0;
@@ -3272,6 +3279,11 @@
     if (businessInheritanceDetail && totalGrossEstateValue > 0) {
       businessInheritanceDeferralEligibleAmount = Math.round(taxAfterReportCredit * businessInheritanceDetail.targetAmount / totalGrossEstateValue);
     }
+    // [2026.10.19 서식감사 차] 실제로 빼는 납부유예세액 — 공제를 받았으면 0(§72의2①2호), 아니면 입력값(비우고 납부유예를 선택했으면
+    //  가능세액). 한도(시행령 §69의3① 가능세액)는 지금 엔진에 그대로 두지 않는다 — 부표1 ⑩의 "① 또는 ⑦" 산식 문제가 따로 남아 있어서.
+    const businessInheritanceDeferredTaxAmount = businessInheritanceDeferralBlocked ? 0
+      : (businessInheritanceDeferredTaxInput > 0 ? businessInheritanceDeferredTaxInput
+        : (businessInheritanceDeferralElected && businessInheritanceDeferralEligibleAmount ? businessInheritanceDeferralEligibleAmount : 0));
 
     // culturalPropertyDeferredTaxAmount(§74)는 위 taxAfterCredits 단계에서 이미 뺐으므로 여기서 다시
     // 빼지 않는다(이중차감 방지) — businessInheritanceDeferredTaxAmount(§72의2)만 최종 단계에서 차감.
@@ -3328,6 +3340,8 @@
       납부지연가산세: penalties.latePenalty,
       문화재등징수유예세액: culturalPropertyDeferredTaxAmount, 가업상속납부유예세액: businessInheritanceDeferredTaxAmount,
       가업상속납부유예_가능세액: businessInheritanceDeferralEligibleAmount,
+      가업상속납부유예_선택: businessInheritanceDeferralElected,
+      가업상속납부유예_불가안내: businessInheritanceDeferralBlocked ? '가업상속 납부유예세액(' + businessInheritanceDeferredTaxInput + '원)을 빼지 않았습니다 — 법 §72의2①2호: 가업상속공제(영농상속공제 포함)를 받으면 납부유예를 받을 수 없습니다. 납부유예를 받으려면 "가업상속공제 대신 납부유예 선택"을 켜세요(그러면 가업상속공제는 0).' : null,
       납부세액: finalTax
     };
   };
