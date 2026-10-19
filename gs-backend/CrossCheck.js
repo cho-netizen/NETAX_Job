@@ -42,7 +42,8 @@ var CX_IN_ = false;       // 다시 들어오지 않게
 //   값고르기: 서류끼리 갈린 값 중 맞는 것(서류 뜻·앞뒤 사정) / 판단: 사건분류·관계·주택 여부 등 정황 / 빈칸: 서류 규칙이 못 찾은 값을 관련 사실에서 / 같은지: 이름·주소 표기 차이
 const CX_AI_MODEL_ = { 값고르기: 'light', 판단: 'light', 빈칸: 'light', 같은지: 'gemini' };
 function cxModelFor_(kind) {
-  if ((CX_AI_MODEL_[kind] || 'light') === 'gemini') {
+  // [2026.10.19 보안] 같은지(이름·주소 표기)는 고객 자료 — 제미니 키가 무료 등급이면 하이쿠(LIGHT_MODEL)로 돌린다(geminiClientDataAllowed_, Code.js)
+  if ((CX_AI_MODEL_[kind] || 'light') === 'gemini' && geminiClientDataAllowed_()) {
     let gm = ''; try { gm = PropertiesService.getScriptProperties().getProperty('CX_GEMINI_MODEL') || ''; } catch (e) {}
     if (gm && MODEL_CONFIG[gm] && MODEL_CONFIG[gm].provider === 'gemini') return gm;
   }
@@ -392,6 +393,7 @@ function cxCallAi_(model, user) {
   const hit = cache.get(ck); if (hit) return { text: hit, usd: 0, cached: true };
   let txt = '', usd = 0;
   if (cfg.provider === 'gemini') {
+    if (!geminiClientDataAllowed_()) return { error: GEMINI_CLIENT_BLOCK_MSG_ }; // [2026.10.19 보안] 쟁점 묶음은 고객 자료
     const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
     if (!key) return { error: 'GEMINI_API_KEY 없음' };
     const res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent', { method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': key }, muteHttpExceptions: true,

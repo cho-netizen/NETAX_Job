@@ -205,6 +205,12 @@ function consult_work_(job, t0) {
       job.audioId = consult_saveAudio_(job);
       consult_saveJob_(job);
     }
+    // [2026.10.19 보안] 상담 녹음은 고객 자료 — 무료 제미니 키로는 올리지 않는다. 원본 녹음은 위에서 사건 폴더에 저장됐다.
+    if (!geminiClientDataAllowed_()) {
+      (job.partIds || []).forEach(function (pid) { try { DriveApp.getFileById(pid).setTrashed(true); } catch (e) { } });
+      job.partIds = [];
+      throw new Error('받아쓰기·요약을 하지 않았습니다 — ' + GEMINI_CLIENT_BLOCK_MSG_);
+    }
     if (!job.geminiFile) {
       job.step = '음성 올리는 중';
       consult_saveJob_(job);
