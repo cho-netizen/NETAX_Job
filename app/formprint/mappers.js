@@ -249,26 +249,46 @@
     o.need('②@양도자산소재지', loc0, '② 양도자산 소재지');
     if (assets.length > 1) o.note('자산이 ' + assets.length + '개 — ② 양도자산 소재지에는 첫 자산만 찍음');
 
-    // ③ 세율구분 — 자산들의 세율 코드가 하나뿐일 때만 세율1 열을 씀(엔진이 세율별로 나눠 주지 않음)
-    var codes = [];
-    assets.forEach(function (a) { if (a.rateCode && codes.indexOf(a.rateCode) < 0) codes.push(a.rateCode); });
+    // [2026.10.20 B6] ③~⑩ 세율 열 — 엔진 합산 결과의 자산별 세율 묶음 값(r.세율별_자산: idx·소득금액·기본공제·과세표준·산출세액(감면 전))을
+    //  자산의 세율구분 코드(trRateClassCode1_)별로 모아 세율1~3 열에 찍는다. ⑧ = ④ − ⑦(⑤⑥ 없음). ⑩: 단기·미등기 열은 그 세액,
+    //  누진세율 열이 하나면 그 묶음 산출세액, 누진세율 열이 둘 이상이면 열별 배분이 작성방법 8(§104⑤ 비교과세)이라 합계 열에만 적는다.
+    var rows = r.세율별_자산 || [], rowsOk = rows.length > 0 && assets.length === n(r.거래건수);
     var overseas = assets.some(function (a) { return a.asset && a.asset.isOverseasAsset; });
-    var single = codes.length === 1 && !overseas;
-    var cols = ['합계', '국내분소계'].concat(single ? ['세율1'] : []);
-    if (single) { o.set('③@세율1.앞', '1').set('③@세율1.뒤', codes[0]); }
-    else o.miss('③ 세율구분·세율별 열', codes.length ? '세율 코드가 ' + codes.length + '가지(' + codes.join('·') + ') — 엔진이 세율별 소득금액·세액을 나눠 주지 않아 합계·국내분소계만 찍음' : '세율 코드 없음');
+    var byCode = {}, codeOrder = [];
+    if (rowsOk) rows.forEach(function (row) {
+      var a = assets[row.idx]; var code = a && a.rateCode; if (!code) return;
+      if (!byCode[code]) { byCode[code] = { 소득금액: 0, 기본공제: 0, 과세표준: 0, 산출세액: 0, 누진: false, 세율: {} }; codeOrder.push(code); }
+      var g = byCode[code]; g.소득금액 += n(row.소득금액); g.기본공제 += n(row.기본공제); g.과세표준 += n(row.과세표준); g.산출세액 += n(row.산출세액);
+      if (row.묶음 === '누진') g.누진 = true; else g.세율[String(row.세율)] = true;
+    });
+    codeOrder.sort(function (x, y) { return Number(x) - Number(y); });
+    var progCodes = codeOrder.filter(function (c) { return byCode[c].누진; });
+    var cols = ['합계', '국내분소계'];
     function put(no, v) { cols.forEach(function (c) { o.set(no + '@' + c, v); }); }
-
+    if (rowsOk && !overseas) {
+      codeOrder.slice(0, 3).forEach(function (code, k) {
+        var col = '세율' + (k + 1), g = byCode[code];
+        o.set('③@' + col + '.앞', '1').set('③@' + col + '.뒤', code);
+        o.set('④@' + col, g.소득금액).set('⑦@' + col, g.기본공제).set('⑧@' + col, g.과세표준);
+        var rates = Object.keys(g.세율);
+        if (!g.누진 && rates.length === 1) o.set('⑨@' + col, Math.round(Number(rates[0]) * 100) + '%');
+        if (!g.누진 || progCodes.length === 1) o.set('⑩@' + col, g.산출세액);
+      });
+      if (codeOrder.length > 3) o.note('세율구분이 ' + codeOrder.length + '가지 — 서식 세율 열이 3개라 앞 3개(' + codeOrder.slice(0, 3).join('·') + ')만 찍음, 나머지(' + codeOrder.slice(3).join('·') + ')는 별지 필요');
+      if (progCodes.length > 1) o.miss('⑩ 누진세율 열별 산출세액', '누진세율 열이 ' + progCodes.length + '개 — 열별 배분은 작성방법 8(§104⑤ 비교과세)이라 합계 열에만 적음(판단 대기)');
+      o.miss('⑨ 누진세율 열의 세율', '누진세율(6~45%, 가산 포함)은 열 하나에 숫자 하나로 적기 어려워 비움');
+      var sumBy = function (k) { return codeOrder.reduce(function (t, c) { return t + byCode[c][k]; }, 0); };
+      put('④', sumBy('소득금액')); put('⑧', sumBy('과세표준'));
+      o.check('⑧ 합계 = 세율 열 ⑧ 합', sumBy('과세표준'), n(r.합산과세표준) + rows.filter(function (x) { return x.묶음 !== '누진'; }).reduce(function (t, x) { return t + n(x.과세표준); }, 0));
+      o.check('⑦ 합계 = 세율 열 ⑦ 합', n(r.기본공제), sumBy('기본공제'));
+    } else {
+      o.miss('③④⑧ 세율 열', overseas ? '국외자산이 섞임 — 국외분은 국외자산 계산 결과로 따로' : '엔진 자산별 세율 값(세율별_자산)과 자산 목록이 맞지 않음(환지 증가분 등) — 합계 열만');
+      var poolAll = has(r.합산대상_장기거래건수) && n(r.합산대상_장기거래건수) === n(r.거래건수) - n(r.비과세건수);
+      if (poolAll) { put('④', n(r.합산소득금액)); put('⑧', n(r.합산과세표준)); }
+    }
     var reduction = n(r.합산자경감면액) + n(r.합산수용감면액) + n(r.합산조특법세액감면액);
     var 가산신고 = n(r.무신고가산세) + n(r.과소신고가산세), 가산납부 = n(r.납부지연가산세), 가산기장 = n(r.환산취득가액가산세_합계);
     var payable = Math.max(0, n(r.납부세액_합계) - n(r.지방소득세)); // trPrintFormPageHtml_ nationalPayable
-    var active = n(r.거래건수) - n(r.비과세건수);
-    var poolAll = has(r.합산대상_장기거래건수) && n(r.합산대상_장기거래건수) === active;
-    if (poolAll) { put('④', n(r.합산소득금액)); put('⑧', n(r.합산과세표준)); }
-    else {
-      o.miss('④ 양도소득금액', '단기·미등기 거래가 섞임 — 엔진 합산소득금액은 장기보유(합산그룹)만 담음');
-      o.miss('⑧ 과세표준', '단기·미등기 거래가 섞임 — 엔진 합산과세표준은 장기보유(합산그룹)만 담음');
-    }
     o.miss('⑤ 기신고ㆍ결정ㆍ경정된 양도소득금액', '계산기에 없음');
     o.miss('⑥ 소득감면대상 소득금액', '본표 합산 계산에 없음');
     put('⑦', n(r.기본공제));

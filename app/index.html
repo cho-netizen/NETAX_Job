@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 15:05 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 15:38 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -13954,6 +13954,7 @@
       ord_.forEach(function (c) { const inc = Math.max(0, c.incomeAmount); const other = inc * (1 - (redRatio_[c.idx] || 0)); const u = Math.min(left, other); basicOf_[c.idx] = u; left -= u; });
       ord_.forEach(function (c) { if (!(c.idx in redRatio_)) return; const red = Math.max(0, c.incomeAmount) * redRatio_[c.idx]; const u = Math.min(left, red); basicOf_[c.idx] += u; left -= u; });
     })();
+    const surOf_ = {};
     pooled.forEach(function (c) {
       let rate = 0; const notes = [];
       if (c.isMultiHouseSurcharge) { rate += (c.multiAddRate != null ? c.multiAddRate : (c.multiHouseCount >= 3 ? 0.30 : 0.20)); notes.push('다주택중과'); } // [2026.10.19] 양도일별 가산율(2부-02)
@@ -13963,7 +13964,7 @@
         //  그 자산의 과세표준 몫 = 소득금액 − §103② 순서(감면 아닌 소득 → 먼저 양도한 자산)로 배분된 기본공제. 예전엔 기본공제 전 소득금액에
         //  가산율을 곱해 단건 계산(과세표준 × 가산율)보다 250만 × 가산율(최대 75만 원) 많았다.
         const amt = Math.round(Math.max(0, c.incomeAmount - (basicOf_[c.idx] || 0)) * rate);
-        poolSurchargeTotal += amt;
+        poolSurchargeTotal += amt; surOf_[c.idx] = amt;
         assetNotes.push({ idx: c.idx, 구분: '합산(장기)', 소득금액: Math.round(c.incomeAmount), 특례: notes.join('+'), 가산액: amt });
       }
     });
@@ -14102,6 +14103,29 @@
       return tax;
     });
     const unregisteredTaxTotal = unregisteredResults.reduce(function (s, v) { return s + v; }, 0);
+    // [2026.10.20 B6] 서식 84호 세율 열(③ 세율구분별 ④ 소득금액·⑦ 기본공제·⑧ 과세표준·⑩ 산출세액(감면 전))용 자산별 값 — 위 계산 값을 모으기만 한다.
+    //  장기 누진 묶음: 소득금액 = 통산(시행령 §167의2) 뒤 몫, 기본공제 = §103② 배분, 산출세액 = 묶음 누진세액(감면 전)을 과세표준 비율로 나눈 몫 + 그 자산 가산액.
+    const rateRows_ = [];
+    (function () {
+      const pp = pooled.filter(function (c) { return c.incomeAmount > 0; });
+      let incL = Math.max(0, poolTaxBaseIncome_), bdL = poolTaxBaseIncome_ - poolTaxBase, taxL = poolBaseTax;
+      pp.forEach(function (c, i) {
+        const last = i === pp.length - 1;
+        const inc = last ? incL : Math.round(c.incomeAmount * lossFactor90_), bd = last ? bdL : Math.min(Math.round(basicOf_[c.idx] || 0), inc, bdL);
+        const base = Math.max(0, inc - bd), tx = last ? taxL : (poolTaxBase > 0 ? Math.round(poolBaseTax * base / poolTaxBase) : 0);
+        incL -= inc; bdL -= bd; taxL -= tx;
+        rateRows_.push({ idx: c.idx, 묶음: '누진', 소득금액: inc, 기본공제: bd, 과세표준: base, 산출세액: tx + (surOf_[c.idx] || 0), 가산액: surOf_[c.idx] || 0 });
+      });
+      shortItems.forEach(function (it, i) {
+        const inc = nettedIncomeByIdx_[it.c.idx] !== undefined ? nettedIncomeByIdx_[it.c.idx] : it.c.incomeAmount;
+        rateRows_.push({ idx: it.c.idx, 묶음: '단기', 소득금액: Math.round(inc), 기본공제: it.bd, 과세표준: it.base, 산출세액: shortResults[i], 세율: it.rate });
+      });
+      unregistered.forEach(function (c, i) {
+        const inc = nettedIncomeByIdx_[c.idx] !== undefined ? nettedIncomeByIdx_[c.idx] : c.gainBeforeDeduction;
+        rateRows_.push({ idx: c.idx, 묶음: '미등기', 소득금액: Math.max(0, Math.round(inc)), 기본공제: 0, 과세표준: Math.max(0, Math.round(inc)), 산출세액: unregisteredResults[i], 세율: 0.7 });
+      });
+      rateRows_.sort(function (a, b) { return a.idx - b.idx; });
+    })();
 
     const conversionValuePenaltyTotal = active.reduce(function (s, c) { return s + (c.conversionValuePenalty || 0); }, 0);
 
@@ -14139,7 +14163,7 @@
       시점경고: rateHistoryWarningMulti_(cores) || undefined, // [2026.10.19] 2023 전 양도 임시 경고
       합산대상_장기거래건수: pooled.length, 합산소득금액: Math.round(poolIncomeSum),
       기본공제: basicDeductionUsedInPool ? 2500000 : (usedBasicOnShort && shortTerm.length ? 2500000 : 0),
-      합산과세표준: poolTaxBase, 합산기본세액: poolBaseTax, 합산가산액: poolSurchargeTotal, 합산자경감면액: farmlandReductionTotal, 합산자경감면_추징액: farmlandClawbackTotal,
+      세율별_자산: rateRows_, 합산과세표준: poolTaxBase, 합산기본세액: poolBaseTax, 합산가산액: poolSurchargeTotal, 합산자경감면액: farmlandReductionTotal, 합산자경감면_추징액: farmlandClawbackTotal,
       합산수용감면액: compensationReductionTotal, 합산채권만기특약위반_추징액: bondBreachClawbackTotal, 다운계약서_감면배제_추징액: downContractClawbackTotal, 비과세거래_다운계약서_추징액: exemptClawbackTotal,
       합산감면전_산출세액: red90_.reds.length ? A90_ : undefined, // [2026.10.19] §90① A — 감면은 모두 이 값에서(자산별 산식은 자산별 특례 내역의 감면산식)
       감면한도_조특법133: red90_.cuts.length ? red90_.cuts : undefined, 감면한도_시점경고: red90_.reds.length && red90_.warn ? red90_.warn : undefined,
