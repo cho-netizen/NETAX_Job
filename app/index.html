@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 19:55 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 20:14 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -6381,7 +6381,7 @@
     lsiDb_.law = l; lsiDb_.ver = l.현행;
     document.getElementById('lsiDbLaw').value = key;
     // [2026.10.20] 옛 판(2014~ 연혁)이 법령마다 수십~백여 개 — 현행·시행예정과 옛판을 나눠 묶는다
-    var opt = function(p){ return '<option value="' + lsiEsc_(p.판) + '"' + (p.판 === l.현행 ? ' selected' : '') + '>' + lsiEsc_(lsiDbYmd_(p.시행일) + ' 시행 (' + (p.상태 || '') + ', 제' + String(p.공포번호).replace(/^0+/, '') + '호)') + '</option>'; };
+    var opt = function(p){ return '<option value="' + lsiEsc_(p.판) + '"' + (p.판 === l.현행 ? ' selected' : '') + '>' + lsiEsc_(lsiDbYmd_(p.시행일) + ' 시행 (' + (p.상태 || '') + ', 제' + String(p.공포번호).replace(/^0+/, '') + '호)' + (p.낡은글 ? ' ⚠ 낡은 연혁 글 — 늦게 공포된 판 글로 보임' : '')) + '</option>'; };
     var vs = l.판.slice().reverse(), now = vs.filter(function(p){ return p.상태 !== '옛판'; }), old = vs.filter(function(p){ return p.상태 === '옛판'; });
     document.getElementById('lsiDbVer').innerHTML = '<optgroup label="현행·시행예정">' + now.map(opt).join('') + '</optgroup>' + (old.length ? '<optgroup label="옛 판 ' + old.length + '개(연혁 — 양도일·증여일 당시 법)">' + old.map(opt).join('') + '</optgroup>' : '');
     lsiDbToc_(then);
@@ -6612,7 +6612,7 @@
       if (!r || r.error || !r.조문){ doc.innerHTML = '<div class="lsi-note">' + lsiEsc_((r && r.error) || '조문을 읽지 못했습니다.') + '</div>'; return; }
       var meta = { law: r.법령명, 시행일: r.시행일자, 법종: p && p.법종, 공포번호: p && p.공포번호 };
       var head = '<div class="lsidb-head"><b>' + lsiEsc_(r.법령명) + '</b> [시행 ' + lsiEsc_(lsiDbYmd_(r.시행일자)) + ']' + (p ? ' [' + lsiEsc_((p.법종 ? p.법종 + ' ' : '') + '제' + String(p.공포번호).replace(/^0+/, '')) + '호, ' + lsiEsc_(lsiDbYmd_(p.공포일)) + ', ' + lsiEsc_(p.구분 || '') + ']' : '') +
-        (r.주의 ? '<br>⚠ ' + lsiEsc_(r.주의) : '') + (r.개정확인 ? '<br>' + lsiEsc_(r.개정확인) : '') + (r.시행예정개정 ? '<br>⏳ ' + lsiEsc_(r.시행예정개정) : '') +
+        (r.주의 ? '<br>⚠ ' + lsiEsc_(r.주의) : '') + (r.판주의 ? '<br>⚠ ' + lsiEsc_(r.판주의) : '') + (r.개정확인 ? '<br>' + lsiEsc_(r.개정확인) : '') + (r.시행예정개정 ? '<br>⏳ ' + lsiEsc_(r.시행예정개정) : '') +
         '<br><span class="lsi-note">' + lsiEsc_(r.출처 || '') + (r.원문링크 ? ' · <a href="' + lsiEsc_(r.원문링크) + '" target="_blank" rel="noopener">법제처에서 보기 ↗</a>' : '') + '</span></div>';
       var cites = [], btn = function(a, h, o, label, title){ var k = cites.push({ a: a, h: h, o: o }) - 1; return '<button type="button" class="lsidb-copy" data-lsidbcite="' + k + '" title="' + lsiEsc_(title) + '">' + label + '</button>' +
         (o < 0 ? '<button type="button" class="lsidb-copy" data-lsidbatt="' + k + '" title="위에서 고른 사건에 이 ' + (h < 0 ? '조문' : '항') + '을 첨부(사건 기준일 판 원문·쓸 곳 함께 저장 — 관련법령·검토서 근거·AI 지휘가 씀)">📎 첨부</button>' : ''); };
