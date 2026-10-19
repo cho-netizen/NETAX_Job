@@ -55,8 +55,10 @@
     if (!has(ctx.신고구분)) o.note('신고구분은 그 탭의 신고 상태(ontime→기한 내, underreported→수정, unreported→기한 후)에서 옮김 — 기본값 4(2026-10-19)와 같은 방법');
   }
   // 수증자 ①~⑦ · 증여자 ⑧~⑫ · 세무대리인 ⑬~⑯ (10호의2·10호의5·10호의6 본표 머리 — 칸 번호가 같음)
-  function people(o, ctx) {
+  //  ak = 세무대리인 칸 번호 [성명, 사업자등록번호, 관리번호, 전화번호] — 10호의6은 ⑯~⑲(⑬~⑮가 특정법인)
+  function people(o, ctx, ak) {
     var dn = ctx.donee || {}, dr = ctx.donor || {}, ta = ctx.taxAgent || {};
+    ak = ak || ['⑬', '⑭', '⑮', '⑯'];
     o.need('①', dn.name, '① 수증자 성명').need('②', dn.regNo, '② 수증자 주민등록번호');
     o.set('③', dn.resident === 'nonresident' ? '비거주자' : '거주자');
     o.need('④', H.fullAddr(dn), '④ 수증자 주소');
@@ -68,11 +70,11 @@
     o.need('⑪', H.fullAddr(dr), '⑪ 증여자 주소');
     o.miss('⑫ 증여자 전화번호', '계산기에 없음(증여자 카드에 전화 입력 칸 없음)');
     if (has(ta.name)) {
-      o.set('⑬', ta.name);
-      if (has(ta.bizNo)) o.set('⑭', ta.bizNo); else o.miss('⑭ 세무대리인 사업자등록번호', '설정 탭 입력 없음');
-      if (has(ta.mgmtNo)) o.set('⑮', ta.mgmtNo); else o.miss('⑮ 세무대리인 관리번호', '설정 탭 입력 없음');
-      if (has(ta.phone)) { o.set(H.isMobile(ta.phone) ? '⑯@휴대전화' : '⑯@사무실', ta.phone); o.miss(H.isMobile(ta.phone) ? '⑯ (사무실)' : '⑯ (휴대전화)', '세무대리인 전화번호 입력이 한 칸뿐 — 01x면 휴대전화, 아니면 사무실 칸에 찍음(기본값 2)'); } else o.miss('⑯ 세무대리인 전화번호', '설정 탭 입력 없음');
-    } else o.miss('⑬⑭⑮⑯ 세무대리인', '세무대리인 입력 없음(본인 신고)');
+      o.set(ak[0], ta.name);
+      if (has(ta.bizNo)) o.set(ak[1], ta.bizNo); else o.miss(ak[1] + ' 세무대리인 사업자등록번호', '설정 탭 입력 없음');
+      if (has(ta.mgmtNo)) o.set(ak[2], ta.mgmtNo); else o.miss(ak[2] + ' 세무대리인 관리번호', '설정 탭 입력 없음');
+      if (has(ta.phone)) { o.set(ak[3] + (H.isMobile(ta.phone) ? '@휴대전화' : '@사무실'), ta.phone); o.miss(ak[3] + (H.isMobile(ta.phone) ? ' (사무실)' : ' (휴대전화)'), '세무대리인 전화번호 입력이 한 칸뿐 — 01x면 휴대전화, 아니면 사무실 칸에 찍음(기본값 2)'); } else o.miss(ak[3] + ' 세무대리인 전화번호', '설정 탭 입력 없음');
+    } else o.miss(ak.join('') + ' 세무대리인', '세무대리인 입력 없음(본인 신고)');
   }
   // 신고일·신고인(수증자)·세무대리인 서명란·세무서
   function signBlock(o, ctx) {
@@ -288,7 +290,7 @@
   function deductCells(o, r, ctx, cells) {
     var REL = { '배우자': cells[0], '직계존속': cells[1], '직계비속': cells[2], '기타친족': cells[3] };
     var d = n(r.증여재산공제), c = REL[ctx.relation];
-    if (c) { cells.forEach(function (k) { o.set(k, k === c ? d : 0); }); o.note(c + ' 증여재산공제 = 화면 "증여재산공제 남은 한도액"으로 엔진이 뺀 금액. 관계(' + ctx.relation + ')는 일반 탭 첫 증여자 카드에서 옮김 — 다르면 고칠 것'); }
+    if (c) { cells.forEach(function (k) { o.set(k, k === c ? d : 0); }); if (d) o.note(c + ' 증여재산공제 = 화면 "증여재산공제 남은 한도액"으로 엔진이 뺀 금액. 관계(' + ctx.relation + ')는 일반 탭 첫 증여자 카드에서 옮김 — 다르면 고칠 것'); }
     else if (!d) cells.forEach(function (k) { o.set(k, 0); });
     else o.miss(cells.join('') + ' 증여재산공제', '관계 값이 배우자·직계존속·직계비속·기타친족이 아님(' + ctx.relation + ') — 공제 ' + d + '원을 어느 칸에 적을지 정할 수 없음');
   }
@@ -322,7 +324,8 @@
     var calc = n(r.산출세액), gen = n(r.세대생략할증액), tot = has(r.산출세액_할증후) ? n(r.산출세액_할증후) : calc + gen;
     o.set('㉘', calc).set('㉙', gen).set('㉚', tot);
     var cr = creditsOf(r, inp), rep = n(r.신고세액공제);
-    o.set('㉜', cr.paid).set('㉝', cr.foreign).set('㉞', rep).set('㉟', 0).set('㉛', cr.paid + cr.foreign + rep);
+    o.set('㉜', cr.paid).set('㉝', cr.foreign).set('㉞', rep).set('㉛', cr.paid + cr.foreign + rep);
+    o.miss('㉟ 그 밖의 공제ㆍ감면세액', '계산기에 없음 — 초과배당 탭에 입력 칸이 없음(엔진은 0으로 계산)');
     var init = n(r.최초신고_증여세액);
     if (ctx.finalSettlement) o.set('㊱', init); else o.miss('㊱ 증여재산가액 기준 증여세액', '해당 없음 — 최초 신고(정산 신고 때만 최초 신고 세액을 적음)');
     var pen = n(r.무신고가산세) + n(r.과소신고가산세), late = n(r.납부지연가산세);
@@ -355,6 +358,71 @@
       relation: relationOfFirstDonor(), giftDate: H.el('edGiftDate') || H.el('giftDate') }, extra || {});
   };
   ready['증여10호의5'] = function () { return !!g('lastExcessDividendGiftResult_'); };
+
+  // ═════════ 상증 별지 제10호의6서식 — 특정법인과의 거래를 통한 이익의 증여의제(상증법 §45의5) ═════════
+  //  ctx: { r: lastSpecificCorpGiftResult_, filingStatus(scFilingStatus), scInput: {benefitToCorpAmount, shareholderOwnershipRatio, directGiftTaxEquivalent,
+  //         priorGiftAmount, priorPaidTax}, fiscalYearEnd(scFiscalYearEnd), donee, donor, relation, giftDate(scTransactionDate 거래한 날 — §45의5①), taxAgent, 신고일 }
+  //  ㊲ 산출세액 한도 = 엔진 안의 capLimit(결과에 없음)을 같은 식으로: 직접 증여 시 증여세 상당액 − round(법인세상당액 전체 × 주식보유비율)
+  mappers['증여10호의6'] = function (ctx) {
+    var o = new Out(), r = ctx.r || {}, inp = ctx.scInput || {};
+    filing(o, ctx);
+    people(o, ctx, ['⑯', '⑰', '⑱', '⑲']);
+    o.miss('⑬ 법인명 ⑭ 사업자등록번호', '계산기에 없음 — 특정법인 탭에 법인 정보 칸이 없음');
+    var fy = String(ctx.fiscalYearEnd || '');
+    if (/^\d{4}-\d{2}/.test(fy)) o.set('⑮', fy.slice(0, 4) + '.' + fy.slice(5, 7)); else o.miss('⑮ 사업연도 종료월', '화면 입력 없음(특정법인 사업연도 종료일)');
+    var gv = n(r.증여의제이익);
+    o.set('⑳', gv);
+    if (r.과세대상여부 === false) {
+      o.note('⚠ 엔진: 과세대상 아님 — ' + (r.안내 || ''));
+      o.miss('㉑~53 세액 계산', '과세대상 아님(엔진 판정) — ' + (r.안내 || ''));
+      signBlock(o, ctx); return o.result();
+    }
+    o.miss('㉑ 비과세 ㉒㉓㉔ 과세가액 불산입 ㉕ 채무액', '계산기에 없음 — 특정법인 탭에 입력 칸이 없음(엔진은 0으로 계산)');
+    var agg = aggOf(r, inp, gv), sum = gv + agg;
+    o.set('㉖', agg).set('㉗', sum);
+    deductCells(o, r, ctx, ['㉘', '㉙', '㉚', '㉛']);
+    if (n(r.증여재산공제)) o.note('⚠ 엔진 안내: 증여자가 지배주주의 친족이 아닌 특정법인 자체이므로 증여재산공제(§53)는 통상 적용되지 않음 — 공제 ' + n(r.증여재산공제) + '원이 들어가 있음');
+    var base = n(r.과세표준), dis = n(r.재해손실공제), fee = n(r.감정평가수수료공제);
+    o.set('㉜', dis).set('㉝', fee).set('㉞', base).set('㉟', H.giftInheritRate(base));
+    var calc = n(r.산출세액), raw = progressive(base);
+    o.set('㊱', calc);
+    var cap = null;
+    if (n(inp.benefitToCorpAmount) > 0 && n(inp.shareholderOwnershipRatio) > 0) {
+      var ratio = Math.min(1, Math.max(0, n(inp.shareholderOwnershipRatio)));
+      var direct = n(inp.directGiftTaxEquivalent) > 0 ? n(inp.directGiftTaxEquivalent) : progressive(Math.round(n(inp.benefitToCorpAmount) * ratio));
+      cap = Math.max(0, direct - Math.round(n(r.법인세상당액_전체) * ratio));
+      o.set('㊲', cap);
+      if (calc < raw) o.note('㊱ 산출세액은 ㊲ 한도(상증법 §45의5②)로 낮춘 값 — 세율 적용 세액 ' + raw + '원');
+    } else o.miss('㊲ 산출세액 한도', '화면 입력 없음(특정법인 이익·주식보유비율) — 엔진 안의 한도 값을 되살릴 수 없음');
+    var gen = n(r.세대생략할증액), tot = has(r.산출세액_할증후) ? n(r.산출세액_할증후) : calc + gen;
+    o.set('㊳', gen).set('㊴', tot);
+    o.miss('㊵ 이자상당액 ㊶ 박물관자료 등 징수유예세액', '계산기에 없음 — 특정법인 탭에 입력 칸이 없음(엔진은 0으로 계산)');
+    var cr = creditsOf(r, inp), rep = n(r.신고세액공제);
+    o.set('㊸', cr.paid).set('㊹', cr.foreign).set('㊺', rep).set('㊷', cr.paid + cr.foreign + rep);
+    o.miss('㊻ 그 밖의 공제ㆍ감면세액', '계산기에 없음 — 특정법인 탭에 입력 칸이 없음(엔진은 0으로 계산)');
+    var pen = n(r.무신고가산세) + n(r.과소신고가산세), late = n(r.납부지연가산세), due = n(r.납부세액);
+    o.set('㊼', pen).set('㊽', late).set('㊿', due);
+    o.miss('㊾ 공익법인 등 관련 가산세', '계산기에 없음 — 특정법인 탭에 입력 칸이 없음');
+    o.miss('51 연부연납 52 분납', '계산기에 없음 — 특정법인 탭에 연부연납·분납 칸이 없음(나눠 내면 직접 적고 53을 고칠 것)');
+    o.set('53@금액', due);
+    o.miss('51·52·53 납부 및 신청일', '계산기에 없음');
+    signBlock(o, ctx);
+    o.check('㉗ = ⑳ − ㉑ − ㉒ − ㉓ − ㉔ − ㉕ + ㉖', sum, gv + agg);
+    o.check('㉞ = ㉗ − ㉘ − ㉙ − ㉚ − ㉛ − ㉜ − ㉝', base, Math.max(0, sum - n(r.증여재산공제) - dis - fee));
+    o.check('㊱ = min(㉞ × ㉟(누진), ㊲)', calc, cap === null ? raw : Math.min(raw, cap));
+    o.check('㊴ = ㊱ + ㊳', tot, calc + gen);
+    o.check('㊿ = ㊴ + ㊵ − ㊶ − ㊷ + ㊼ + ㊽ + ㊾', due, Math.max(0, tot - (cr.paid + cr.foreign + rep) + pen + late));
+    return o.result();
+  };
+  ctxFor['증여10호의6'] = function (extra) {
+    var r = g('lastSpecificCorpGiftResult_'); if (!r) return null;
+    var a = aggInputOf('sc');
+    return Object.assign(peopleFromApp(), { r: r, filingStatus: H.el('scFilingStatus') || 'ontime', fiscalYearEnd: H.el('scFiscalYearEnd'),
+      scInput: { benefitToCorpAmount: numv(H.el('scBenefitToCorp')), shareholderOwnershipRatio: numv(H.el('scShareRatio')), directGiftTaxEquivalent: numv(H.el('scDirectGiftTax')),
+        priorGiftAmount: a.priorGiftAmount, priorPaidTax: a.priorPaidTax },
+      relation: relationOfFirstDonor(), giftDate: H.el('scTransactionDate') }, extra || {});
+  };
+  ready['증여10호의6'] = function () { return !!g('lastSpecificCorpGiftResult_'); };
 
   // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만)
   //  증여: 조특52호 = 그 증여 쌍의 계산 결과에 영농자녀 증여농지 세액감면이 있을 때(지금 인쇄가 일반 증여 신고서 뒤에 붙이는 것과 같음)

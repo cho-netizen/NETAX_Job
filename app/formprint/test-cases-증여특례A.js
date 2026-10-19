@@ -64,5 +64,16 @@ module.exports = function (E, H) {
   var c5b = base({ r: E.calculateExcessDividendGiftTaxJS(edIn2), filingStatus: 'ontime', finalSettlement: true, edInput: { priorGiftAmount: 20000000, priorPaidTax: 0 }, relation: '직계존속', giftDate: '2026-04-30' });
   L.push({ name: '증여10호의5_초과배당_정산환급', forms: [{ formKey: '증여10호의5', ctx: c5b }], ctx: c5b });
 
+  // ⑥ 증여10호의6 — 특정법인 거래이익(상증법 §45의5): 지배주주 부모가 법인에 10억 무상 제공, 법인 소득 20억·법인세(감면 뒤) 3.5억, 지배주주등 지분 60%
+  //   손계산: 법인세상당액 = 3.5억 × 10억/20억 = 1.75억 → 특정법인의 이익 8.25억 → ⑳ = 8.25억 × 60% = 4.95억(1억 이상 과세)
+  //           ㉞ 4.95억 → 세율 적용 세액 4.95억 × 20% − 1천만 = 8,900만 / ㊲ 한도 = 직접 증여 6억의 세액 1.2억 − 1.75억 × 60%(1.05억) = 1,500만
+  //           → ㊱ 1,500만(한도 적용, §45의5②) → 신고세액공제 3% 45만 → ㊿ 1,455만
+  var scIn = { benefitToCorpAmount: 1000000000, corporateTaxAfterCredit: 350000000, corporateTaxableIncome: 2000000000, shareholderOwnershipRatio: 0.6,
+    relationDeductionLimit: 0, priorGiftAmount: 0, priorPaidTax: 0, filingStatus: 'ontime', giftDate: '2026-03-15', transactionDate: '2026-03-15' };
+  var c6 = base({ r: E.calculateSpecificCorporationGiftTaxJS(scIn), filingStatus: 'ontime', fiscalYearEnd: '2026-12-31',
+    scInput: { benefitToCorpAmount: 1000000000, shareholderOwnershipRatio: 0.6, directGiftTaxEquivalent: 0, priorGiftAmount: 0, priorPaidTax: 0 },
+    relation: '직계존속', giftDate: '2026-03-15', 신고일: '2027-06-30' });
+  L.push({ name: '증여10호의6_특정법인_한도적용', forms: [{ formKey: '증여10호의6', ctx: c6 }], ctx: c6 });
+
   return L;
 };
