@@ -567,5 +567,51 @@
                         "자경농지감면액": 200000000,
                         "납부세액_합계": 547635000
                 }
+        },
+        {
+                "이름": "양도 — 구조조정대상부동산(§43)인데 2015.1.1 취득: §43①은 1999.12.31 이전 취득만 → 감면 없음 (서식 감사 사 후보 5)",
+                "도구": "calculateTransferTaxMultiJS",
+                "고정": true,
+                "입력": [
+                        {
+                                "assetType": "land",
+                                "transferPrice": 1000000000,
+                                "acquisitionPrice": 200000000,
+                                "necessaryExpenses": 0,
+                                "acquisitionDate": "2015-01-01",
+                                "transferDate": "2026-09-01",
+                                "isRestructuringPropertyReduction": true,
+                                "rpAcquisitionStandardPrice": 100000000,
+                                "rpFiveYearStandardPrice": 150000000,
+                                "rpTransferStandardPrice": 500000000
+                        }
+                ],
+                "정답": {
+                        "합산소득금액": 624000000,
+                        "산출세액_합계": 225090000
+                }
+        },
+        {
+                "이름": "양도 — 구조조정대상부동산(§43) 1998.5.1 취득, 5년 경과 양도: 5년간 소득금액의 50% 뺌(엔진이 맞았음, 사 후보 5 확인)",
+                "도구": "calculateTransferTaxMultiJS",
+                "고정": true,
+                "입력": [
+                        {
+                                "assetType": "land",
+                                "transferPrice": 1000000000,
+                                "acquisitionPrice": 200000000,
+                                "necessaryExpenses": 0,
+                                "acquisitionDate": "1998-05-01",
+                                "transferDate": "2026-09-01",
+                                "isRestructuringPropertyReduction": true,
+                                "rpAcquisitionStandardPrice": 100000000,
+                                "rpFiveYearStandardPrice": 150000000,
+                                "rpTransferStandardPrice": 500000000
+                        }
+                ],
+                "정답": {
+                        "합산소득금액": 525000000,
+                        "산출세액_합계": 183510000
+                }
         }
 ]

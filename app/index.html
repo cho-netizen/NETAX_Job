@@ -19245,6 +19245,9 @@
     const acqTime = new Date(acquisitionDate).getTime();
     const trfTime = new Date(transferDate).getTime();
     if (!(trfTime > acqTime)) return { error: '양도일은 취득일 이후여야 합니다.' };
+    // [2026.10.19 서식 감사 — 작업자 자] §43①은 "1999년 12월 31일 이전에 취득한 자"만 — 예전엔 안내문에만 적고 검사하지 않아
+    //  2000년 이후 취득분에도 감면이 붙었다(2010.1.1·2026.9.18 시행판 같은 문언).
+    if (String(acquisitionDate).slice(0, 10) > '1999-12-31') return { 적용여부: false, 안내: '조특법 §43①은 1999.12.31. 이전에 취득한 구조조정대상부동산만 감면합니다 — 취득일(' + String(acquisitionDate).slice(0, 10) + ')이 그 뒤라 감면 대상이 아닙니다.' };
     const yearsHeld = (trfTime - acqTime) / (365.25 * 24 * 3600 * 1000);
 
     const transferPrice = Number(p.transferPrice) || 0;
