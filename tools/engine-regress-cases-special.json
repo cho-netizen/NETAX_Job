@@ -1293,5 +1293,78 @@
    "농어촌특별세": 2581200,
    "농어촌특별세_가산세": 258120
   }
+ },
+ {
+  "이름": "[옛 §115] 2006년 양도 무신고·2007-09-30 납부 — 신고불성실 산출세액 × 10%(부정 가중 없음), 납부불성실 확정신고기한 다음 날부터 1일 1만분의 3",
+  "도구": "calculateTransferTaxMultiJS",
+  "인자": [
+   [
+    {
+     "assetType": "land",
+     "necessaryExpenses": 0,
+     "acquisitionDate": "1995-01-01",
+     "transferDate": "2006-06-01",
+     "transferPrice": 600000000,
+     "acquisitionPrice": 100000000
+    }
+   ],
+   {
+    "filingStatus": "unreported",
+    "paidDate": "2007-09-30"
+   }
+  ],
+  "정답": {
+   "산출세액_합계": 129060000,
+   "무신고가산세": 12906000,
+   "과소신고가산세": 0,
+   "납부지연가산세": 4723596
+  }
+ },
+ {
+  "이름": "[옛 §115] 2005년 양도 과소신고(과소 세액 1,000만) — 신고불성실 1,000만 × 10% = 100만",
+  "도구": "calculateTransferTaxMultiJS",
+  "인자": [
+   [
+    {
+     "assetType": "land",
+     "necessaryExpenses": 0,
+     "acquisitionDate": "1995-01-01",
+     "transferDate": "2005-06-01",
+     "transferPrice": 600000000,
+     "acquisitionPrice": 100000000
+    }
+   ],
+   {
+    "filingStatus": "underreported",
+    "underreportedTaxAmount": 10000000
+   }
+  ],
+  "정답": {
+   "과소신고가산세": 1000000,
+   "무신고가산세": 0
+  }
+ },
+ {
+  "이름": "[옛 §115③] 2006년 양도 확정신고 무신고지만 예정신고로 세액을 다 냄 — 추가납부세액이 없어 신고불성실 0",
+  "도구": "calculateTransferTaxMultiJS",
+  "인자": [
+   [
+    {
+     "assetType": "land",
+     "necessaryExpenses": 0,
+     "acquisitionDate": "1995-01-01",
+     "transferDate": "2006-06-01",
+     "transferPrice": 600000000,
+     "acquisitionPrice": 100000000
+    }
+   ],
+   {
+    "filingStatus": "unreported",
+    "preliminaryTaxPaid": 999999999
+   }
+  ],
+  "정답": {
+   "무신고가산세": 0
+  }
  }
 ]
