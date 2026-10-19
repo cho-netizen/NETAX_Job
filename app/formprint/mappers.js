@@ -273,6 +273,7 @@
     var progCodes = codeOrder.filter(function (c) { return byCode[c].누진; });
     var cols = ['합계', '국내분소계'];
     function put(no, v) { cols.forEach(function (c) { o.set(no + '@' + c, v); }); }
+    var use1_ = !!(r.비교과세_104조5항 && r.비교과세_104조5항.적용 === '1호');
     if (rowsOk && !overseas) {
       codeOrder.slice(0, 3).forEach(function (code, k) {
         var col = '세율' + (k + 1), g = byCode[code];
@@ -280,10 +281,10 @@
         o.set('④@' + col, g.소득금액).set('⑦@' + col, g.기본공제).set('⑧@' + col, g.과세표준);
         var rates = Object.keys(g.세율);
         if (!g.누진 && rates.length === 1) o.set('⑨@' + col, Math.round(Number(rates[0]) * 100) + '%');
-        if (!g.누진 || progCodes.length === 1) o.set('⑩@' + col, g.산출세액);
+        if (!use1_) o.set('⑩@' + col, g.산출세액); // [2026.10.20 J15] 엔진이 §104⑤2호대로 세율 묶음마다 누진세액을 매김 — 열별 ⑩이 정해짐
       });
       if (codeOrder.length > 3) o.note('세율구분이 ' + codeOrder.length + '가지 — 서식 세율 열이 3개라 앞 3개(' + codeOrder.slice(0, 3).join('·') + ')만 찍음, 나머지(' + codeOrder.slice(3).join('·') + ')는 별지 필요');
-      if (progCodes.length > 1) o.miss('⑩ 누진세율 열별 산출세액', '누진세율 열이 ' + progCodes.length + '개 — 열별 배분은 작성방법 8(§104⑤ 비교과세)이라 합계 열에만 적음(판단 대기)');
+      if (use1_) o.miss('⑩ 세율 열별 산출세액', '§104⑤1호(과세표준 합계 × 기본세율) 적용 해 — 산출세액이 하나라 합계 열에만 적음(작성방법 8)');
       o.miss('⑨ 누진세율 열의 세율', '누진세율(6~45%, 가산 포함)은 열 하나에 숫자 하나로 적기 어려워 비움');
       var sumBy = function (k) { return codeOrder.reduce(function (t, c) { return t + byCode[c][k]; }, 0); };
       put('④', sumBy('소득금액')); put('⑧', sumBy('과세표준'));

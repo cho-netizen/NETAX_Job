@@ -1481,5 +1481,111 @@
   "정답": {
    "납부세액": 25220000
   }
+ },
+ {
+  "이름": "양도 합산 §104⑤2호(J15) — 일반 토지 과표 3억 + 비사업용 토지 3억: 자산별(같은 호끼리) 9,406만 + (9,406만 + 3,000만) = 2억1,812만 > 1호 6억 × 기본세율 2억1,606만 (예전 한 묶음 2억4,606만)",
+  "도구": "calculateTransferTaxMultiJS",
+  "고정": true,
+  "입력": [
+   {
+    "assetType": "other",
+    "transferPrice": 600000000,
+    "acquisitionPrice": 300000000,
+    "necessaryExpenses": 0,
+    "transferDate": "2025-09-10",
+    "acquisitionDate": "2023-01-10"
+   },
+   {
+    "assetType": "other",
+    "transferPrice": 602500000,
+    "acquisitionPrice": 300000000,
+    "necessaryExpenses": 0,
+    "transferDate": "2025-03-10",
+    "acquisitionDate": "2023-01-10",
+    "isNonBusinessLand": true
+   }
+  ],
+  "정답": {
+   "산출세액_합계": 218120000
+  }
+ },
+ {
+  "이름": "양도 합산 §104⑤1호(J15) — 장기 토지 과표 12억 + 1~2년 토지 9,750만(40%): 1호 12억9,750만 × 기본세율 5억1,793만5천 > 2호 4억7,406만 + 3,900만 = 5억1,306만",
+  "도구": "calculateTransferTaxMultiJS",
+  "고정": true,
+  "입력": [
+   {
+    "assetType": "other",
+    "transferPrice": 1500000000,
+    "acquisitionPrice": 300000000,
+    "necessaryExpenses": 0,
+    "transferDate": "2025-09-10",
+    "acquisitionDate": "2023-01-10"
+   },
+   {
+    "assetType": "other",
+    "transferPrice": 300000000,
+    "acquisitionPrice": 200000000,
+    "necessaryExpenses": 0,
+    "transferDate": "2025-03-10",
+    "acquisitionDate": "2023-12-10"
+   }
+  ],
+  "정답": {
+   "산출세액_합계": 517935000
+  }
+ },
+ {
+  "이름": "양도 합산 §104⑤2호 + 수용감면(J15) — 감면 A·D는 그 세율 묶음: 일반 묶음 9,406만 × 3억 ÷ 3억 × 15% = 14,109,000",
+  "도구": "calculateTransferTaxMultiJS",
+  "고정": true,
+  "입력": [
+   {
+    "assetType": "other",
+    "transferPrice": 600000000,
+    "acquisitionPrice": 300000000,
+    "necessaryExpenses": 0,
+    "transferDate": "2025-09-10",
+    "acquisitionDate": "2023-01-10",
+    "compensationType": "cash",
+    "publicNoticeDate": "2025-06-01"
+   },
+   {
+    "assetType": "other",
+    "transferPrice": 602500000,
+    "acquisitionPrice": 300000000,
+    "necessaryExpenses": 0,
+    "transferDate": "2025-03-10",
+    "acquisitionDate": "2023-01-10",
+    "isNonBusinessLand": true
+   }
+  ],
+  "정답": {
+   "합산수용감면액": 14109000,
+   "산출세액_합계": 204011000
+  }
+ },
+ {
+  "이름": "장기일반민간임대 §97의3 70%(위원회 J16) — 2020.6.30. 양도: 그때 법은 양도소득 전체 → 안분 없이 차익 6억 × 70% = 4.2억, 과표 1억7,750만, 산출 48,050,000(예전 안분 74,270,000)",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "acquisitionDate": "2008-03-01",
+   "transferDate": "2020-06-30",
+   "transferPrice": 900000000,
+   "acquisitionPrice": 300000000,
+   "necessaryExpenses": 0,
+   "rentalSpecialType": "rental_general",
+   "rentalYears": 10,
+   "rentalRegistrationDate": "2010-03-01",
+   "acquisitionStandardPrice": 200000000,
+   "registrationStandardPrice": 300000000,
+   "transferStandardPrice": 600000000
+  },
+  "정답": {
+   "과세표준": 177500000,
+   "산출세액": 48050000
+  }
  }
 ]
