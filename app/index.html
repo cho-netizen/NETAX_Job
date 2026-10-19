@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 20:42 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 20:45 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -13006,7 +13006,11 @@
       ltRate = 0;
     } else if (isOneHouse) {
       taxableGain = gainBeforeDeduction * (transferPrice - HV_HOUSE_) / transferPrice;
-      ltRate = longTermRate1HouseAt_(holdingYears, Number(t.residenceYears) || 0, t.transferDate);
+      // [2026.10.20 세액 고침 — 양도 감사] 상생임대주택(시행령 §155의3①, 별지 83호의4)은 §159의4(표2)의 거주기간 제한을 받지 않음 — 거주 2년 미만이어도 표2:
+      //  보유기간별 공제율 + 거주기간별 공제율(실제 거주연수, 2년 미만은 0). 예전엔 거주 2년 미만이면 표1이었다.
+      const mutualLease_ = /제83호의4서식/.test(String(t.oneHouseSpecialFormNo || '')) || !!t.isMutualLeaseSpecial;
+      const live_ = Number(t.residenceYears) || 0;
+      ltRate = (mutualLease_ && live_ < 2) ? (holdingYears >= 3 ? Math.min(0.40, Math.floor(holdingYears) * 0.04) : 0) : longTermRate1HouseAt_(holdingYears, live_, t.transferDate);
     } else if (bizSuccessionRatio > 0 && t.decedentAcquisitionDate) {
       // §95④단서 — 가업상속공제가 적용된 비율에 해당하는 자산은 장기보유특별공제의 보유기간 기산일이
       // "피상속인이 해당 자산을 취득한 날"이다(나머지 비율은 상속개시일 기산인 일반 상속재산과 동일).
@@ -13033,7 +13037,8 @@
       // [2026.10.20 세액 고침 — 양도 감사 발견] §97의4① 단서 "같은 항 단서에 해당하는 경우" = 소득세법 §95② 단서(표2)가 실제로 적용될 때만 추가공제 배제.
       //  표2는 2020.1.1. 이후 양도분부터 보유기간 중 거주 2년 이상일 때만(시행령 §159의4, 엔진 longTermRate1HouseAt_도 같음) — 1세대1주택이라도 거주 2년 미만이면
       //  표1이므로 §97의4 추가공제를 더한다. 예전엔 1세대1주택이면 거주와 상관없이 껐다.
-      const table2Applies_ = !String(t.transferDate || '').slice(0, 10) || String(t.transferDate).slice(0, 10) < '2020-01-01' || (Number(t.residenceYears) || 0) >= 2;
+      const table2Applies_ = !String(t.transferDate || '').slice(0, 10) || String(t.transferDate).slice(0, 10) < '2020-01-01' || (Number(t.residenceYears) || 0) >= 2
+        || /제83호의4서식/.test(String(t.oneHouseSpecialFormNo || '')) || !!t.isMutualLeaseSpecial; // 상생임대는 거주 제한 없이 표2
       if (isRentalSpecial && isOneHouse && t.rentalSpecialType === 'rental_long' && table2Applies_) {
         isRentalSpecial = false;
         acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '장기임대주택 추가공제(조특법 §97의4)는 1세대1주택(소득세법 §95② 단서 표2)에는 적용하지 않습니다(§97의4① 단서) — 표2 공제율로 계산했습니다.';
@@ -19463,9 +19468,20 @@
     }
     const priorDeposit = Number(p.priorLeaseDeposit) || 0, mutualDeposit = Number(p.mutualLeaseDeposit) || 0;
     const priorRent = Number(p.priorLeaseRent) || 0, mutualRent = Number(p.mutualLeaseRent) || 0;
+    // [2026.10.20 세액 고침 — 양도 감사] 시행령 §155의3② — 보증금과 월세를 서로 전환하면 민간임대주택법 §44④(주택임대차보호법 §7의2 전환율 = 연 10%와
+    //  한국은행 기준금리 + 2% 중 낮은 것) 기준으로 증가율을 계산: 환산보증금 = 보증금 + 월세 × 12 ÷ 전환율. 예전엔 보증금·월세를 따로 봐서
+    //  보증금 3억 → 3억 + 월세 50만 같은 경우 증가율 0%로 '적용'이 나왔다. 전환율(conversionRatePercent)이 없는데 전환이 있으면 판정 보류.
     const rates = [];
-    if (priorDeposit > 0) rates.push((mutualDeposit - priorDeposit) / priorDeposit);
-    if (priorRent > 0) rates.push((mutualRent - priorRent) / priorRent);
+    const converted_ = (priorRent > 0) !== (mutualRent > 0) || ((mutualDeposit - priorDeposit) * (mutualRent - priorRent) < 0);
+    if (converted_) {
+      const cr_ = Number(p.conversionRatePercent) || 0;
+      if (!(cr_ > 0)) return { 적용여부: false, 판단대기: true, 안내: '보증금과 월세를 서로 전환한 계약입니다 — 시행령 §155의3②에 따라 전환율(주택임대차보호법 §7의2: 연 10%와 계약 당시 한국은행 기준금리 + 2% 중 낮은 것)로 환산해 증가율을 봐야 합니다. 전환율을 넣어 주세요.' };
+      const prior_ = priorDeposit + priorRent * 12 / (cr_ / 100), mutual_ = mutualDeposit + mutualRent * 12 / (cr_ / 100);
+      if (prior_ > 0) rates.push((mutual_ - prior_) / prior_);
+    } else {
+      if (priorDeposit > 0) rates.push((mutualDeposit - priorDeposit) / priorDeposit);
+      if (priorRent > 0) rates.push((mutualRent - priorRent) / priorRent);
+    }
     if (rates.some(function (r) { return r > 0.05; })) {
       return { 적용여부: false, 안내: '직전임대차계약 대비 임대보증금 또는 임대료 증가율이 5%를 초과해 시행령§155의3①1호 요건(상생임대차계약)을 충족하지 못합니다.' };
     }
@@ -25331,6 +25347,7 @@ function openOneHouseSpecialCaseModal_(idx){
           '<div class="taxcalc-field"><label>상생임대차 종료일</label><input type="date" id="mgLeaseEnd" min="1900-01-01" max="2099-12-31"></div>' +
           '<div class="taxcalc-field"><label>상생임대차 보증금</label><input type="number" id="mgLeaseDeposit" placeholder="원"></div>' +
           '<div class="taxcalc-field"><label>상생임대차 월세</label><input type="number" id="mgLeaseRent" placeholder="원"></div>' +
+          '<div class="taxcalc-field"><label>[보증금↔월세 전환했으면] 전환율</label><input type="number" step="0.01" id="mgConversionRate" placeholder="% (예: 5.5)"><span class="taxcalc-field-help">시행령 §155의3② — 연 10%와 계약 당시 한국은행 기준금리 + 2% 중 낮은 것(주택임대차보호법 §7의2)</span></div>' +
         '</div>' +
         // [2026.10.08, 재검토125] 세무사님 지적("예시는 하나일 뿐") — 이 블록만 "[Nㅎ만]"이
         // 사유별로 2~4개씩 묶여 반복되는 가장 심한 사례였다. 바깥 토글 대상 id(ohsHr)는 그대로
@@ -25594,6 +25611,7 @@ function openOneHouseSpecialCaseModal_(idx){
         mutualLeaseEndDate: document.getElementById('mgLeaseEnd').value,
         mutualLeaseDeposit: numVal(document.getElementById('mgLeaseDeposit').value),
         mutualLeaseRent: numVal(document.getElementById('mgLeaseRent').value),
+        conversionRatePercent: numVal((document.getElementById('mgConversionRate') || {}).value) || 0, // [2026.10.20] §155의3② 전환
         transferDate: transferAssets[idx].transferDate
       });
     } else if (provision === 'hr'){

@@ -2484,5 +2484,45 @@
    "과세표준": 232000000,
    "산출세액": 68220000
   }
+ },
+ {
+  "이름": "[세액 고침 — 양도 감사, 시행령 §155의3①] 상생임대주택(83호의4) 1세대1주택 고가(14억, 보유 6년, 거주 0년) — §159의4 거주 제한 없이 표2 보유 24%: 과세대상 8,571만 × 76% − 250만 → 산출 9,274,285(예전 표1 12%로 11,742,857)",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "transferPrice": 1400000000,
+   "acquisitionPrice": 800000000,
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2020-06-30",
+   "transferDate": "2026-07-30",
+   "isOneHouseOneFamily": true,
+   "residenceYears": 0,
+   "oneHouseSpecialFormNo": "소득세법 시행규칙 [별지 제83호의4서식]"
+  },
+  "정답": {
+   "산출세액": 9274285
+  }
+ },
+ {
+  "이름": "[세액 고침 — 양도 감사, 시행령 §155의3②] 상생임대 직전 보증금 3억 → 3억 + 월세 50만, 전환율 5.5%: 환산보증금 3억 → 4.09억(36% 증가) — 상생임대차 아님(예전엔 보증금·월세를 따로 봐 적용)",
+  "도구": "calculateMutualGrowthLeaseExclusionJS",
+  "고정": true,
+  "입력": {
+   "priorLeaseStartDate": "2020-01-01",
+   "priorLeaseEndDate": "2021-12-31",
+   "priorLeaseDeposit": 300000000,
+   "priorLeaseRent": 0,
+   "mutualLeaseContractDate": "2022-01-05",
+   "mutualLeaseStartDate": "2022-01-10",
+   "mutualLeaseEndDate": "2024-01-31",
+   "mutualLeaseDeposit": 300000000,
+   "mutualLeaseRent": 500000,
+   "transferDate": "2024-06-30",
+   "conversionRatePercent": 5.5
+  },
+  "정답": {
+   "적용여부": false
+  }
  }
 ]

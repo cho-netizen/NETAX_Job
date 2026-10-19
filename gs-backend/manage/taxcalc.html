@@ -3054,6 +3054,7 @@ function openOneHouseSpecialCaseModal_(idx){
           '<div class="taxcalc-field"><label>상생임대차 종료일</label><input type="date" id="mgLeaseEnd" min="1900-01-01" max="2099-12-31"></div>' +
           '<div class="taxcalc-field"><label>상생임대차 보증금</label><input type="number" id="mgLeaseDeposit" placeholder="원"></div>' +
           '<div class="taxcalc-field"><label>상생임대차 월세</label><input type="number" id="mgLeaseRent" placeholder="원"></div>' +
+          '<div class="taxcalc-field"><label>[보증금↔월세 전환했으면] 전환율</label><input type="number" step="0.01" id="mgConversionRate" placeholder="% (예: 5.5)"><span class="taxcalc-field-help">시행령 §155의3② — 연 10%와 계약 당시 한국은행 기준금리 + 2% 중 낮은 것(주택임대차보호법 §7의2)</span></div>' +
         '</div>' +
         // [2026.10.08, 재검토125] 세무사님 지적("예시는 하나일 뿐") — 이 블록만 "[Nㅎ만]"이
         // 사유별로 2~4개씩 묶여 반복되는 가장 심한 사례였다. 바깥 토글 대상 id(ohsHr)는 그대로
@@ -3317,6 +3318,7 @@ function openOneHouseSpecialCaseModal_(idx){
         mutualLeaseEndDate: document.getElementById('mgLeaseEnd').value,
         mutualLeaseDeposit: numVal(document.getElementById('mgLeaseDeposit').value),
         mutualLeaseRent: numVal(document.getElementById('mgLeaseRent').value),
+        conversionRatePercent: numVal((document.getElementById('mgConversionRate') || {}).value) || 0, // [2026.10.20] §155의3② 전환
         transferDate: transferAssets[idx].transferDate
       });
     } else if (provision === 'hr'){
