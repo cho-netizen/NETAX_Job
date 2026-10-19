@@ -34073,6 +34073,41 @@ function caseProcGiftInhFacts_(c, lines, items) {
     if (!v) return;
     add('giftPriorAmount', v, '이전 증여세 ' + (r.서류 || '신고서') + '(' + x.f.name + (r.기준일 ? ', 증여일 ' + r.기준일 : '') + ') ' + (k.과세가액 ? '과세가액' : '증여재산가액') + (Number.isFinite(k.자진납부할세액) ? ' · 납부세액 ' + k.자진납부할세액.toLocaleString('ko-KR') + '원(기납부세액 §58)' : Number.isFinite(k.산출세액) ? ' · 산출세액 ' + k.산출세액.toLocaleString('ko-KR') + '원' : '') + ' — 같은 증여자·10년 안이면 합산', false);
   });
+  // [2026.10.20 2번 밤샘 9바퀴 — ③ 소통 "짧게, 한 번에 모아서"] 증여 서류가 하나도 없는 사건(증여 등기 줄·증여계약서·이체내역에서 증여자·금액을 하나도 못 찾았고
+  //  처리개요 금액도 없음 — 대개 상담·자문)은 증여자·증여재산가액·관계를 칸마다 따로(주관식 3~4개) 묻지 않고, 현금 이체만 있는 사건처럼 「증여 내용 확인」 한 질문으로.
+  //  세무사님이 정하면(saved.giftDeal) 그 값이 확정값(현금 갈래와 같은 저장). 가족관계증명서 이름·상담 메모 증여 문장의 금액은 출처와 함께 후보로만(확정 안 함).
+  //  미관측 증여 상담 11~13건에서 증여자·증여가액이 따로 주관식이었다. 앞으로의 사건: 서류가 들어오면 그 서류 값이 생겨 이 갈래를 타지 않음
+  if (c.세목 === 'gift' && !dealPending && !(facts.giftDonorName || []).length && !(facts.giftAmount || []).length && !String(ov.giftAmount || '').replace(/[^\d]/g, '')) {
+    const deal0 = saved.giftDeal;
+    if (deal0) {
+      add('giftDonorName', deal0.donor, '세무사님 확인(증여 내용)', true);
+      add('giftDoneeName', deal0.donee, '세무사님 확인(증여 내용)', true);
+      add('giftAmount', deal0.amount, '세무사님 확인(증여 내용' + (deal0.kind ? ': ' + deal0.kind : '') + ')', true);
+      lines.push('증여 내용(세무사님 확인): ' + deal0.donor + ' → ' + deal0.donee + ' · ' + deal0.date + ' · ' + (deal0.kind || '') + ' ' + Number(deal0.amount).toLocaleString('ko-KR') + '원');
+    } else {
+      dealPending = true;
+      if (c.납세자) add('giftDoneeName', norm(c.납세자), '사건 납세자(수증자)', true);
+      let memos0 = []; try { memos0 = caseProcMemoTexts_(c).read.filter(function (m) { return m.text; }); } catch (e) {}
+      const famP = [].concat.apply([], fams.map(function (x) { return ((x.p.result && x.p.result.가족) || []).map(function (q) { return { 이름: norm(q.이름), 관계: q.관계, file: x.f.name }; }); }));
+      const uq0 = function (arr) { const seen = {}; return arr.filter(function (x) { if (!x.v || seen[x.v]) return false; seen[x.v] = 1; return true; }); };
+      const cands0 = { donor: famP.filter(function (p) { return p.이름 && !nameHas([p.이름], c.납세자 || ''); }).map(function (p) { return { v: p.이름, src: '가족관계증명서 ' + p.관계 + '(' + p.file + ')' }; }),
+        donee: [{ v: norm(c.납세자 || ''), src: '사건 납세자' }], date: [],
+        kind: [{ v: '부동산', src: '' }, { v: '현금(계좌이체)', src: '' }, { v: '주식 등 유가증권', src: '' }, { v: '그 밖의 재산', src: '' }], amount: [] };
+      let memoDetail0 = '';
+      memos0.forEach(function (m) {
+        const sents = m.text.split(/[\n,]+/).map(function (x) { return x.trim(); }).filter(function (x) { return x.length > 3; });
+        memoDetail0 += '\n상담 메모(' + m.file + '): ' + sents.join(' / ').slice(0, 500);
+        sents.filter(function (x) { return /증여|수증/.test(x); }).forEach(function (x) {
+          const a = caseProcKrAmount_(x); if (a) cands0.amount.push({ v: String(a), src: '상담 메모: "' + x.slice(0, 40) + '"' });
+          const fam = /부친|아버지|아빠/.test(x) ? '부' : /모친|어머니|엄마/.test(x) ? '모' : '';
+          if (fam) famP.filter(function (p) { return p.관계 === fam; }).forEach(function (p) { cands0.donor.unshift({ v: p.이름, src: '상담 메모 "' + (x.match(/부친|아버지|아빠|모친|어머니|엄마/) || [''])[0] + '" + 가족관계증명서 ' + fam }); });
+        });
+      });
+      cands0.donor = uq0(cands0.donor); cands0.amount = uq0(cands0.amount);
+      items.push(caseProcItem_('gift:deal', 'missing', '증여 내용을 정하는 서류(증여계약서·증여 등기된 등기부·이체내역)가 폴더에 없습니다 — 증여자·수증자·증여일·증여대상(무엇을 얼마나)을 한 번에 정해 주세요(상담이면 예정된 내용). 서류가 들어오면 그 서류 값으로 다시 봅니다.',
+        { mode: 'giftdeal', target: 'giftdeal', label: '증여 내용', cands: cands0 }, memoDetail0));
+    }
+  }
   notes.forEach(function (n) { lines.push('참고: ' + n); });
   // 칸별 반영: 빈 칸 + 확실한 값 → 채움 / 빈 칸 + 후보만 → 질문 / 있는 값 ≠ 서류 → 질문 / 금액이 서류로 뒷받침 안 됨 → 추정(확정 질문)
   const spec = c.세목 === 'gift'
