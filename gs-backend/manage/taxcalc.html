@@ -8731,7 +8731,7 @@ function gfMarriageClawbackPrintPageHtml_(r){
     '<table class="pf-table">' +
       pfRow_(++n, '수정신고·기한후신고 코드', reasonCode + ' — ' + reasonLabel) +
       pfRow_(++n, '결정된 증여세액(추징대상)', won(r.추징세액)) +
-      pfRow_(++n, '이자 기산일', r.이자기산일) + pfRow_(++n, '추징사유 발생일', r.추징사유발생일) +
+      pfRow_(++n, '이자 기산일', r.이자기산일) + pfRow_(++n, r.provision === 'gift_marriage' ? '수정신고·기한 후 신고를 한 날(㉒ 끝날)' : '추징사유 발생일', r.추징사유발생일) +
       (r.구간별_이자상당액 || []).map(function(seg){
         return pfRow_(0, '이자상당액(' + seg.시작일 + '~' + seg.종료일 + ', ' + seg.일수 + '일, ' + ckRateLabel_(seg) + ')', won(seg.이자상당액), { indent: true });
       }).join('') +
@@ -17048,6 +17048,8 @@ function handleTaxCalcClick_(e){
       isReDeferral: !!(document.getElementById('ckReDeferral') || {}).checked
     };
     if (ckMethodByForm_ && document.getElementById('ckMethod')) document.getElementById('ckMethod').value = ckMethodByForm_;
+    // [2026.10.19 fix3] 혼인·출산 증여재산공제 추징(부표4)은 시행령 §46④ — 끝날 = 수정신고·기한 후 신고일, 율 = 1일 10만분의 22
+    if ((document.getElementById('ckFormType') || {}).value === 'gf_marriage') input.provision = 'gift_marriage';
     renderClawbackResult(calculateClawbackInterestJS(input));
   } else if (action === 'run-business-succession-deferral-amount'){
     // [2026.09.30 신규, 재검토100] 별지10호 부표2용 사업무관자산 5항목을 채웠으면 그 비율로
