@@ -703,13 +703,14 @@
     if (!b) { o.miss('부표2 전체', '가업승계 납부유예(증여, 조특법 §30의7) 계산 결과 없음'); return o.result(); }
     var nb = n(b.nonBiz55) + n(b.nonBiz49) + n(b.nonBiz61) + n(b.excessCash) + n(b.nonBizStock);
     var tot = n(b.totalAsset), rel = Math.max(0, tot - nb), defer = n(b.result && b.result.납부유예금액);
-    o.miss('① 증여일 현재 주식 등의 가액', '계산기에 따로 없음(지금 인쇄는 ⑦ 총 증여재산가액을 같이 찍음 — 같은 값인지 확인 전 비움)');
+    if (n(b.stockValue)) o.set('①', n(b.stockValue)); else o.miss('① 증여일 현재 주식 등의 가액', '화면 "가업 주식등의 가액" 칸이 비어 있음');
     o.set('②', tot).set('㉮', n(b.nonBiz55)).set('㉯', n(b.nonBiz49)).set('㉰', n(b.nonBiz61)).set('㉱', n(b.excessCash)).set('㉲', n(b.nonBizStock))
       .set('③', nb).set('④', rel);
     if (tot) o.set('⑤', pct2(rel / tot)); else o.miss('⑤ 사업관련 자산가액 비율', '② 총자산가액 0');
     o.set('⑥', n(b.businessValue)).set('⑦', n(b.totalValue)).set('⑧', n(b.taxPayable)).set('⑨', defer);
     o.note('⑧은 화면 칸(bdTaxPayable, 이름 "산출세액") 값 — 엔진이 ⑨ 계산에 쓴 값과 같음(서식 이름은 "증여세 납부세액")');
     o.check('④ = ② − ③', rel, tot - nb);
+    if (n(b.stockValue) && tot) o.check('⑥ = ① × ⑤', n(b.businessValue), Math.round(n(b.stockValue) * rel / tot)); // [2026.10.19 A2]
     if (n(b.totalValue)) o.check('⑨ = ⑧ × ⑥ ÷ ⑦', defer, Math.round(n(b.taxPayable) * n(b.businessValue) / n(b.totalValue)));
     return o.result();
   };
@@ -1189,7 +1190,7 @@
       var bdRes = i === 0 ? (typeof lastBdDeferralResult_ !== 'undefined' ? lastBdDeferralResult_ : null) : null;
       var bd = (bdRes && el('bdProvision') === 'gift') ? { totalAsset: numVal(el('bdTotalAsset')) || 0, nonBiz55: numVal(el('bdNonBiz55')) || 0, nonBiz49: numVal(el('bdNonBiz49')) || 0,
         nonBiz61: numVal(el('bdNonBiz61')) || 0, excessCash: numVal(el('bdExcessCash')) || 0, nonBizStock: numVal(el('bdNonBizStock')) || 0,
-        totalValue: numVal(el('bdTotalValue')) || 0, businessValue: numVal(el('bdBusinessValue')) || 0, taxPayable: numVal(el('bdTaxPayable')) || 0, result: bdRes } : null;
+        totalValue: numVal(el('bdTotalValue')) || 0, stockValue: numVal(el('bdStockValue')) || 0, businessValue: numVal(el('bdBusinessValue')) || 0, taxPayable: numVal(el('bdTaxPayable')) || 0, result: bdRes } : null;
       return Object.assign({ r: r, item: item ? { amount: item.amount, priorGiftAmount: item.priorGiftAmount } : {}, donee: giftDonees[doneeIdx] || {}, donor: donor,
         relation: item ? giftPairRelation_(donor, doneeIdx).relation : '', giftDate: el('giftDate'),
         marriageBirth: r && numVal(r.혼인출산증여재산공제) ? gfMarriageBirthSplit_(numVal(r.혼인출산증여재산공제) || 0) : { marriage: 0, birth: 0 },

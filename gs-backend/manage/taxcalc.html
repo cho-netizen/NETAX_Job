@@ -7812,6 +7812,8 @@ function renderGiftInheritanceSharedPane_(){
         '<div class="taxcalc-field"><label>산출세액</label><input type="number" id="bdTaxPayable" placeholder="원"><span class="taxcalc-field-help">상속세 또는 증여세</span></div>' +
         '<div class="taxcalc-field"><label>가업상속재산가액·가업자산상당액</label><input type="number" id="bdBusinessValue" placeholder="원"><span class="taxcalc-field-help">§15⑤ 기준, 증여는 같은 호 준용·상속개시일→증여일. 아래 사업무관자산 내역을 채우면 자동계산됩니다</span></div>' +
         '<div class="taxcalc-field"><label>총 상속재산가액·총 증여재산가액</label><input type="number" id="bdTotalValue" placeholder="원"></div>' +
+        // [2026.10.19 세액 고침 A2] 서식 부표2 ① — 가업자산상당액 = 이 주식 가액 × 사업관련자산 비율(상증령 §15⑤2호)
+        '<div class="taxcalc-field"><label>가업 주식등의 가액(증여일·상속개시일 현재)</label><input type="number" id="bdStockValue" placeholder="원"><span class="taxcalc-field-help">부표2 ① — 아래 비율을 이 금액에 곱합니다(총 증여재산 중 주식 외 재산은 빼고)</span></div>' +
       '</div>' +
       // [2026.09.30 신규, 재검토100] (조특법§30의7, 증여만) 별지10호 부표2(가업승계 증여세
       // 납부유예 증여재산평가 및 납부유예세액계산명세서)용 — 특례세율(sr)탭과 같은 5항목
@@ -8784,7 +8786,7 @@ function bdDeferralPrintPageHtml_(r){
     '<div class="pf-section-head">수증자</div>' +
     '<table class="pf-table">' + pfRow_(++n, '성명', donee.name) + pfRow_(++n, '주민등록번호', donee.regNo) + '</table>' +
     '<table class="pf-table">' +
-      pfRow_(++n, '증여일 현재 주식등의 가액', won(totalValue)) +
+      pfRow_(++n, '증여일 현재 주식등의 가액', won((numVal((document.getElementById('bdStockValue') || {}).value) || 0) || totalValue)) + // [2026.10.19] ① = 주식 가액 칸(없으면 예전처럼 총 증여재산가액)
       pfRow_(++n, '총자산가액', won(totalAsset)) +
       pfRow_(0, '(법인세법§55의2 해당자산)', won(nonBiz55), { indent: true }) +
       pfRow_(0, '(시행령§49 해당자산·임대용부동산)', won(nonBiz49), { indent: true }) +
@@ -17114,7 +17116,14 @@ function handleTaxCalcClick_(e){
       const nonBizTotal = (numVal(document.getElementById('bdNonBiz55').value) || 0) + (numVal(document.getElementById('bdNonBiz49').value) || 0) +
         (numVal(document.getElementById('bdNonBiz61').value) || 0) + (numVal(document.getElementById('bdExcessCash').value) || 0) + (numVal(document.getElementById('bdNonBizStock').value) || 0);
       const ratio = Math.max(0, bdTotalAsset - nonBizTotal) / bdTotalAsset;
-      businessValue = Math.round((numVal(document.getElementById('bdTotalValue').value) || 0) * ratio);
+      // [2026.10.19 세액 고침 A2] 가업자산상당액 = 가업 주식등의 가액 × 비율(상증령 §15⑤2호·조특령 §27의7④, 서식 부표2 ⑥ = ① × ⑤).
+      //  예전엔 총 증여재산가액(⑦)에 비율을 곱해 주식 외 재산(현금 등)까지 유예 대상에 들어갔다
+      //  (재현: 주식 6억 + 현금 4억, 비율 80%, 납부세액 3억 → 납부유예 2억4천만, 맞는 값 1억4,400만).
+      const stockValue = numVal((document.getElementById('bdStockValue') || {}).value) || 0;
+      const baseForRatio = stockValue > 0 ? stockValue : (numVal(document.getElementById('bdTotalValue').value) || 0);
+      if (!(stockValue > 0)) showToast('가업 주식등의 가액 칸이 비어 총 재산가액에 비율을 곱했습니다 — 주식 외 재산이 있으면 그 칸을 채우세요(서식 부표2 ①).', 'warning');
+      businessValue = Math.round(baseForRatio * ratio);
+      const bvEl = document.getElementById('bdBusinessValue'); if (bvEl) bvEl.value = businessValue; // 인쇄·원본 출력 ⑥이 같은 값을 쓰도록
     }
     const input = {
       provision: document.getElementById('bdProvision').value,
@@ -18355,7 +18364,7 @@ const TC_TOOL_STATE_ = {
   bd: { label: '가업승계 증여세 납부유예 계산',
     get: function(){
       if (!lastBdDeferralResult_) return null;
-      const domFields = ['bdTotalAsset', 'bdNonBiz55', 'bdNonBiz49', 'bdNonBiz61', 'bdExcessCash', 'bdNonBizStock', 'bdTotalValue', 'bdBusinessValue', 'bdTaxPayable'];
+      const domFields = ['bdTotalAsset', 'bdNonBiz55', 'bdNonBiz49', 'bdNonBiz61', 'bdExcessCash', 'bdNonBizStock', 'bdTotalValue', 'bdStockValue', 'bdBusinessValue', 'bdTaxPayable'];
       const dom = {};
       domFields.forEach(function(id){ const el = document.getElementById(id); if (el) dom[id] = el.value; });
       return { result: lastBdDeferralResult_, dom: dom };
