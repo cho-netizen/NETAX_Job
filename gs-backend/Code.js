@@ -1535,7 +1535,9 @@ const DRIVE_TOOLS = [
         acquisitionDate: { type: 'string', description: '준공후미분양주택의 취득일(YYYY-MM-DD).' },
         isOutsideMetropolitanArea: { type: 'boolean', description: '수도권 밖의 지역에 소재하는지.' },
         wasOneHouseBeforeAcquisition: { type: 'boolean', description: '이 준공후미분양주택 취득 전 1주택을 보유한 1세대였는지.' },
-        meetsAreaAndPriceRequirements: { type: 'boolean', description: '전용면적·취득가액 등 시행령이 정하는 요건을 충족하는지.' }
+        meetsAreaAndPriceRequirements: { type: 'boolean', description: '양도자(사업주체·분양사업자·시공자)·최초 계약·선착순 공급 요건(시행령 §98의8①3~5호)을 충족하는지.' },
+        exclusiveArea: { type: 'number', description: '전용면적(㎡) — 85㎡ 초과면 제외.' },
+        acquisitionPrice: { type: 'number', description: '취득가액(원) — 6억원(2026.2.27. 이후 취득 7억원) 초과면 제외.' }
       },
       required: ['acquisitionDate']
     }
@@ -1676,7 +1678,11 @@ const DRIVE_TOOLS = [
       properties: {
         acquisitionDate: { type: 'string', description: '농어촌주택등의 취득일(YYYY-MM-DD).' },
         houseType: { type: 'string', enum: ['rural', 'hometown'], description: 'rural=농어촌주택(2003.8.1~), hometown=고향주택(2009.1.1~). 기본값 rural.' },
-        meetsLocationAndPriceRequirements: { type: 'boolean', description: '소재지·가액(3억원, 한옥은 4억원) 등 시행령이 정하는 농어촌주택·고향주택 요건을 충족하는지.' },
+        meetsLocationAndPriceRequirements: { type: 'boolean', description: '가액 밖의 소재지 요건(§99의4①)을 충족하는지.' },
+        housePrice: { type: 'number', description: '주택+딸린 토지 가액(취득 당시 기준시가, 원) — 2023.1.1. 이후 양도 3억원·그 전 2억원, 2014.1.1. 이후 구입 한옥 4억원 초과면 제외.' },
+        isHanok: { type: 'boolean', description: '한옥인지.' },
+        transferDate: { type: 'string', description: '일반주택 양도일(YYYY-MM-DD) — 가액 한도·대지 660㎡ 요건(2020년 이전 양도) 판정용.' },
+        landArea: { type: 'number', description: '대지면적(㎡).' },
         isSameOrAdjacentDistrict: { type: 'boolean', description: '취득한 농어촌주택등과 보유하던 일반주택이 행정구역상 같은(또는 연접한) 읍·면·동(고향주택은 시)에 있는지(true면 적용배제).' },
         holdingYears: { type: 'number', description: '농어촌주택등의 보유기간(년). 3년 미만이고 isPendingHoldingPeriod가 아니면 적용대상 아님.' },
         isPendingHoldingPeriod: { type: 'boolean', description: '아직 3년 보유요건을 채우지 못한 상태에서 일반주택을 먼저 양도하는 경우인지(§99의4④, 이 경우도 특례 적용 가능하나 이후 사후관리 대상).' },
@@ -2104,7 +2110,10 @@ const DRIVE_TOOLS = [
         acquisitionDate: { type: 'string', description: '인구감소지역주택의 취득일(YYYY-MM-DD).' },
         isPopulationDeclineArea: { type: 'boolean', description: '인구감소지역 또는 수도권 밖 인구감소관심지역에 소재하는지.' },
         wasOneOrFewerBeforeAcquisition: { type: 'boolean', description: '이 주택 취득 전 주택·조합원입주권·분양권 중 1채(1개)를 보유한 1세대였는지.' },
-        meetsAreaAndPriceRequirements: { type: 'boolean', description: '주택 소재지·가액 등 시행령이 정하는 요건을 충족하는지.' }
+        meetsAreaAndPriceRequirements: { type: 'boolean', description: '광역시(군 제외)·종전주택과 같은 시군구가 아닌지(시행령 §68의2①).' },
+        areaKind: { type: 'string', enum: ['decline', 'interest'], description: '인구감소지역(decline) 또는 수도권 밖 인구감소관심지역(interest, 2025.11.28. 이후 취득분).' },
+        isCapitalArea: { type: 'boolean', description: '수도권(접경지역)에 있는지.' },
+        standardPrice: { type: 'number', description: '주택+딸린 토지 기준시가 합계(취득일 현재, 원) — 한도 4억원, 2025.8.14. 이후 취득한 수도권 밖 인구감소지역은 9억원.' }
       },
       required: ['acquisitionDate']
     }
