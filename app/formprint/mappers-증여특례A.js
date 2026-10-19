@@ -181,6 +181,42 @@
     var r = g('lastSpecialRateGiftResult_');
     return !!(r && r.특례종류 === STARTUP && (g('srAssetRows_') || []).some(function (row) { return row.method || numv(row.value) > 0; }));
   };
+  // ═════════ 상증 별지 제10호의2서식 부표2 — 가업승계 주식 등 증여재산평가 및 과세가액 계산명세서 ═════════
+  //  ②·㉮~㉲ = 특례세율 탭 입력칸(srTotalAsset·srNonBiz55·srNonBiz49·srNonBiz61·srExcessCash·srNonBizStock — 엔진에 넘긴 값과 같음)
+  //  나머지 = 엔진 결과. 예전 인쇄는 ⑪에 ⑨(총한도액)를 그대로 찍었는데 여기선 서식대로 ⑨ − ⑩.
+  mappers['증여10호의2부표2'] = function (ctx) {
+    var o = new Out(), r = ctx.r || {}, si = ctx.srInput || {};
+    if (r.특례종류 !== SUCCESSION) { o.miss('①~⑬', '가업승계주식등 특례 결과가 아님(특례종류: ' + r.특례종류 + ')'); return o.result(); }
+    var g1 = n(r.증여재산가액), tot = n(si.totalAsset);
+    o.set('①', g1);
+    var nb = [['㉮', si.nonBiz55], ['㉯', si.nonBiz49], ['㉰', si.nonBiz61], ['㉱', si.excessCash], ['㉲', si.nonBizStock]];
+    var nbSum = nb.reduce(function (s, x) { return s + n(x[1]); }, 0);
+    if (tot > 0) {
+      o.set('②', tot);
+      nb.forEach(function (x) { o.set(x[0], n(x[1])); });
+      o.set('③', nbSum).set('④', Math.max(0, tot - nbSum));
+    } else {
+      o.miss('② 총자산가액 ㉮~㉲ ③ ④', '화면 입력 없음(총자산가액) — 엔진은 사업관련 자산가액 비율을 1(100%)로 보고 계산함');
+    }
+    var ratio = has(r.사업관련자산가액비율) && r.사업관련자산가액비율 !== null ? Number(r.사업관련자산가액비율) : (tot > 0 ? Math.max(0, tot - nbSum) / tot : null);
+    if (ratio !== null) o.set('⑤', H.pct2(ratio)); else o.miss('⑤ 사업관련 자산가액 비율', '총자산가액 입력 없음(엔진은 100%로 계산)');
+    var b6 = n(r.가업자산상당액), p7 = n(r.가산_과세특례증여재산), s8 = n(r.과세특례적용전_증여세과세가액_계), lim = n(r.총한도액), cur = n(r.과세특례적용대상_증여세과세가액);
+    o.set('⑥', b6).set('⑦', p7).set('⑧', s8).set('⑨', lim).set('⑩', p7).set('⑪', Math.max(0, lim - p7)).set('⑫', cur).set('⑬', n(r.기본세율적용대상_증여재산가액));
+    if (tot > 0) {
+      o.check('③ = ㉮ + ㉯ + ㉰ + ㉱ + ㉲', nbSum, nbSum);
+      o.check('④ = ② − ③', Math.max(0, tot - nbSum), tot - nbSum);
+    }
+    o.check('⑥ = ① × ⑤', b6, Math.round(g1 * (ratio === null ? 1 : ratio)));
+    o.check('⑧ = ⑥ + ⑦', s8, b6 + p7);
+    o.check('⑨ = 가업영위기간 표(300억·400억·600억)', lim, [30000000000, 40000000000, 60000000000].indexOf(lim) >= 0 ? lim : -1);
+    o.check('⑫ = ⑧ < ⑨이면 ⑧ − ⑦, 아니면 min(⑧, ⑪)', cur, s8 < lim ? s8 - p7 : Math.min(s8, Math.max(0, lim - p7)));
+    o.check('⑬ = ① − ⑫', n(r.기본세율적용대상_증여재산가액), Math.max(0, g1 - cur));
+    return o.result();
+  };
+  ctxFor['증여10호의2부표2'] = function (extra) { var c = srCtx(extra); return c && c.r.특례종류 === SUCCESSION ? c : null; };
+  // 지금 인쇄(srAttach2PrintPageHtml_)와 같은 조건 — 가업승계주식등 결과
+  ready['증여10호의2부표2'] = function () { var r = g('lastSpecialRateGiftResult_'); return !!(r && r.특례종류 === SUCCESSION); };
+
 
   // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만)
   function plan(tax, ctx) {

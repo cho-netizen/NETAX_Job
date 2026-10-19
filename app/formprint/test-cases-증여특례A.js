@@ -29,5 +29,16 @@ module.exports = function (E, H) {
       { method: 'apartment', typeCode: '05', location: '서울특별시 ○○구 견본로 5, 3동 301호 (견본)', value: 800000000 }], srInput: {} });
   L.push({ name: '증여10호의2부표1_창업자금_한도초과', forms: [{ formKey: '증여10호의2', ctx: c2 }, { formKey: '증여10호의2부표1', ctx: c2 }], ctx: c2 });
 
+  // ③ 증여10호의2부표2 — 가업승계주식등(조특법 §30의6): 주식 200억, 부모 가업 25년(한도 400억), 앞선 특례분 20억(낸 세액 1억)
+  //   총자산 200억, 사업무관자산 ㉮10억 ㉯5억 ㉰3억 ㉱7억 ㉲5억 = 30억 → ④ 170억 → ⑤ 85% → ⑥ 170억
+  //   손계산: ⑧ = 170억 + 20억 = 190억 < ⑨ 400억 → ⑫ = 190억 − 20억 = 170억, ⑬ = 200억 − 170억 = 30억(기본세율)
+  //           본표 ㉑ 190억 − ㉒ 10억 = ㉕ 180억 → ㉗ = 120억 × 10% + 60억 × 20% = 24억 → ㉙ 1억 → ㉝ 23억
+  var bsIn = { totalAsset: 20000000000, nonBiz55: 1000000000, nonBiz49: 500000000, nonBiz61: 300000000, excessCash: 700000000, nonBizStock: 500000000 };
+  var srIn3 = { specialType: 'business_succession', giftAmount: 20000000000, doneeAge: 38, donorAge: 68, businessOwnershipYearsOfParent: 25,
+    priorSpecialGiftAmount: 2000000000, priorPaidTax: 100000000, filingStatus: 'ontime',
+    totalAssetValue: bsIn.totalAsset, nonBizAsset55: bsIn.nonBiz55, nonBizAsset49: bsIn.nonBiz49, nonBizAsset61: bsIn.nonBiz61, excessCash: bsIn.excessCash, nonBizStock: bsIn.nonBizStock };
+  var c3 = base({ r: E.calculateSpecialRateGiftTaxJS(srIn3), filingStatus: 'ontime', srRows: [], srInput: bsIn });
+  L.push({ name: '증여10호의2부표2_가업승계_120억초과', forms: [{ formKey: '증여10호의2', ctx: c3 }, { formKey: '증여10호의2부표2', ctx: c3 }], ctx: c3 });
+
   return L;
 };
