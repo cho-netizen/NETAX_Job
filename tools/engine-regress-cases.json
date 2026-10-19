@@ -1141,5 +1141,103 @@
                     "정답": {
                               "납부지연가산세": 11040000
                     }
+          },
+          {
+                    "이름": "[비사업용 토지 §168의6] 2014년 양도 농지, 보유 10년·사업용 합계 7년(70%)·직전 5년 2.5·3년 1.5 → 2015.2.3. 전이라 80% 기준 미달: 비사업용",
+                    "도구": "calculateNonBusinessLandJS",
+                    "고정": true,
+                    "입력": {
+                              "landType": "farmland",
+                              "holdingYears": 10,
+                              "meetsResidencyAndCultivation": false,
+                              "businessUseYears": 7,
+                              "transferDate": "2014-06-30",
+                              "businessUseYearsLast5": 2.5,
+                              "businessUseYearsLast3": 1.5
+                    },
+                    "정답": {
+                              "비사업용여부": true
+                    }
+          },
+          {
+                    "이름": "[비사업용 토지 §168의6] 같은 땅 2016년 양도 → 60% 기준 충족: 사업용(예전 엔진은 양도일 현재 미충족이라 비사업용)",
+                    "도구": "calculateNonBusinessLandJS",
+                    "고정": true,
+                    "입력": {
+                              "landType": "farmland",
+                              "holdingYears": 10,
+                              "meetsResidencyAndCultivation": false,
+                              "businessUseYears": 7,
+                              "transferDate": "2016-06-30",
+                              "businessUseYearsLast5": 2.5,
+                              "businessUseYearsLast3": 1.5
+                    },
+                    "정답": {
+                              "비사업용여부": false
+                    }
+          },
+          {
+                    "이름": "[비사업용 토지 §168의6] 직전 5년 중 3년 재촌자경 후 최근 2년 임대, 보유 8년 → 직전 5년 중 사업용 3년: 사업용(양도일 현재 요건과 무관)",
+                    "도구": "calculateNonBusinessLandJS",
+                    "고정": true,
+                    "입력": {
+                              "landType": "farmland",
+                              "holdingYears": 8,
+                              "meetsResidencyAndCultivation": false,
+                              "businessUseYears": 3,
+                              "transferDate": "2026-06-30",
+                              "businessUseYearsLast5": 3,
+                              "businessUseYearsLast3": 1
+                    },
+                    "정답": {
+                              "비사업용여부": false
+                    }
+          },
+          {
+                    "이름": "[비사업용 토지 §168의6] 나대지, 보유 6년, 지금 별도합산이지만 그 기간 1년뿐 → 기간기준 미달: 비사업용(예전엔 양도일 현재 분류로 사업용)",
+                    "도구": "calculateNonBusinessLandJS",
+                    "고정": true,
+                    "입력": {
+                              "landType": "other_land",
+                              "holdingYears": 6,
+                              "isPropertyTaxSeparateOrDividedAssessment": true,
+                              "businessUseYears": 1,
+                              "transferDate": "2026-06-30",
+                              "businessUseYearsLast5": 1,
+                              "businessUseYearsLast3": 1
+                    },
+                    "정답": {
+                              "비사업용여부": true
+                    }
+          },
+          {
+                    "이름": "[비사업용 토지 §168의6] 나대지, 보유 6년, 지금 종합합산이지만 전에 별도합산 4년(직전 5년 중 3.5년) → 사업용",
+                    "도구": "calculateNonBusinessLandJS",
+                    "고정": true,
+                    "입력": {
+                              "landType": "other_land",
+                              "holdingYears": 6,
+                              "isPropertyTaxSeparateOrDividedAssessment": false,
+                              "businessUseYears": 4,
+                              "transferDate": "2026-06-30",
+                              "businessUseYearsLast5": 3.5,
+                              "businessUseYearsLast3": 1.5
+                    },
+                    "정답": {
+                              "비사업용여부": false
+                    }
+          },
+          {
+                    "이름": "[비사업용 토지 §168의6] 옛 입력 그대로: 나대지 지금 별도합산, 기간 안 넣음 → 보유기간 전체 사업용으로(알림)",
+                    "도구": "calculateNonBusinessLandJS",
+                    "고정": true,
+                    "입력": {
+                              "landType": "other_land",
+                              "holdingYears": 6,
+                              "isPropertyTaxSeparateOrDividedAssessment": true
+                    },
+                    "정답": {
+                              "비사업용여부": false
+                    }
           }
 ]

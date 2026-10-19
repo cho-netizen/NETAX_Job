@@ -2059,23 +2059,27 @@ function openNonBusinessLandModal_(idx){
         '<div class="taxcalc-field"><label>보유기간(년)</label><input type="number" id="nblHoldingYears" placeholder="년" step="0.1"></div>' +
         '<div id="nblFarmland" class="taxcalc-grid">' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblMeetsResidency"><label for="nblMeetsResidency">양도일 현재 농지소재지에 거주하며 직접 경작 중</label></div>' +
-          '<div class="taxcalc-field"><label>[위 체크시만] 그 상태를 양도일부터 거슬러 연속으로 유지한 기간</label><input type="number" id="nblBizYearsFarm" placeholder="년" step="0.1"></div>' +
+          '<div class="taxcalc-field"><label>보유기간 중 재촌·자경한 기간 합계(년)</label><input type="number" id="nblBizYearsFarm" placeholder="년" step="0.1"></div>' +
         '</div>' +
         '<div id="nblForest" class="taxcalc-grid" style="display:none;">' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblProtectedForest"><label for="nblProtectedForest">산림유전자원보호림 등 법정 지정림(보유기간 무관 제외)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblResidentForest"><label for="nblResidentForest">[법정지정림 아닐때만] 양도일 현재 임야소재지에 거주 중</label></div>' +
-          '<div class="taxcalc-field"><label>[거주 체크시만] 그 상태를 거슬러 연속 유지한 기간</label><input type="number" id="nblBizYearsForest" placeholder="년" step="0.1"></div>' +
+          '<div class="taxcalc-field"><label>보유기간 중 거주(또는 지정림)였던 기간 합계(년)</label><input type="number" id="nblBizYearsForest" placeholder="년" step="0.1"></div>' +
         '</div>' +
         '<div id="nblPasture" class="taxcalc-grid" style="display:none;">' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblLivestockBiz"><label for="nblLivestockBiz">양도일 현재 축산업을 경영 중</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblExceedsArea"><label for="nblExceedsArea">[경영중일때만] 기준면적을 초과함</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblUrbanArea"><label for="nblUrbanArea">[경영중일때만] 도시지역에 소재</label></div>' +
-          '<div class="taxcalc-field"><label>[경영중+기준이내+비도시일때만] 그 상태를 거슬러 연속 유지한 기간</label><input type="number" id="nblBizYearsPasture" placeholder="년" step="0.1"></div>' +
+          '<div class="taxcalc-field"><label>보유기간 중 축산업·기준면적 이내·도시지역 밖이던 기간 합계(년)</label><input type="number" id="nblBizYearsPasture" placeholder="년" step="0.1"></div>' +
         '</div>' +
         '<div id="nblOther" class="taxcalc-grid" style="display:none;">' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblPropertyTaxExempt"><label for="nblPropertyTaxExempt">재산세가 비과세·면제되는 토지</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblPropertyTaxSeparate"><label for="nblPropertyTaxSeparate">재산세 별도합산·분리과세대상 토지</label></div>' +
+          '<div class="taxcalc-field"><label>보유기간 중 비과세·면제·별도합산·분리과세였던 기간 합계(년)</label><input type="number" id="nblBizYearsOther" placeholder="비우면 보유기간 전체" step="0.1"></div>' +
         '</div>' +
+        // [2026.10.19 조견표 2부-06 원문 대조] 시행령 §168의6은 양도일 현재가 아니라 기간 합계(직전 5년·직전 3년·전체 비율)로 판정
+        '<div class="taxcalc-grid"><div class="taxcalc-field"><label>그중 양도일 직전 5년 안(년)</label><input type="number" id="nblBizLast5" placeholder="비우면 양도일까지 이어진 것으로" step="0.1"></div>' +
+          '<div class="taxcalc-field"><label>그중 직전 3년 안(년)</label><input type="number" id="nblBizLast3" placeholder="비우면 양도일까지 이어진 것으로" step="0.1"></div></div>' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" id="nblSignificantReason"><label for="nblSignificantReason">거주 또는 사업과 직접 관련 있다고 인정할 상당한 이유(시행령상 예외, 별도 확인)</label></div>' +
         '<button type="button" class="taxcalc-run-btn" id="nblRunBtn" style="margin-top:8px;">판정하기</button>' +
         '<div id="nblResult"></div>' +
@@ -2094,14 +2098,15 @@ function openNonBusinessLandModal_(idx){
   overlay.querySelector('#nblRunBtn').addEventListener('click', function(){
     const landType = overlay.querySelector('#nblLandType').value;
     const holdingYears = numVal(overlay.querySelector('#nblHoldingYears').value);
-    const input = { landType: landType, holdingYears: holdingYears, hasSignificantReasonException: overlay.querySelector('#nblSignificantReason').checked };
+    const input = { landType: landType, holdingYears: holdingYears, hasSignificantReasonException: overlay.querySelector('#nblSignificantReason').checked,
+      transferDate: (transferAssets[idx] || {}).transferDate || '', businessUseYearsLast5: overlay.querySelector('#nblBizLast5').value, businessUseYearsLast3: overlay.querySelector('#nblBizLast3').value }; // [2026.10.19] 양도일 2015.2.3. 전이면 80% 기준
     if (landType === 'farmland'){
       input.meetsResidencyAndCultivation = overlay.querySelector('#nblMeetsResidency').checked;
       input.businessUseYears = numVal(overlay.querySelector('#nblBizYearsFarm').value);
     } else if (landType === 'forest'){
       input.isProtectedForest = overlay.querySelector('#nblProtectedForest').checked;
       input.isResidentAtForestLocation = overlay.querySelector('#nblResidentForest').checked;
-      input.businessUseYears = numVal(overlay.querySelector('#nblBizYearsForest').value);
+      input.businessUseYears = overlay.querySelector('#nblBizYearsForest').value; // 비우면(지정림) 보유기간 전체로
     } else if (landType === 'pasture'){
       input.isLivestockBusiness = overlay.querySelector('#nblLivestockBiz').checked;
       input.exceedsStandardArea = overlay.querySelector('#nblExceedsArea').checked;
@@ -2110,6 +2115,7 @@ function openNonBusinessLandModal_(idx){
     } else {
       input.isPropertyTaxExemptOrFree = overlay.querySelector('#nblPropertyTaxExempt').checked;
       input.isPropertyTaxSeparateOrDividedAssessment = overlay.querySelector('#nblPropertyTaxSeparate').checked;
+      input.businessUseYears = overlay.querySelector('#nblBizYearsOther').value; // 비우면 엔진이 보유기간 전체로(알림)
     }
     const r = window.calculateNonBusinessLandJS(input);
     const resultBox = document.getElementById('nblResult');
