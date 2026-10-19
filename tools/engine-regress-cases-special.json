@@ -2341,5 +2341,131 @@
    "과세표준": 9000000000,
    "산출세액": 900000000
   }
+ },
+ {
+  "이름": "[2부-13 옛판] 비상장주식 2016-06-01 평가 — 순자산가치 하한 없음(2017.4.1. 시행 전): (0×3 + 10만×2)÷5 = 4만 × 1만주",
+  "도구": "calculateUnlistedStockValueJS",
+  "입력": {
+   "totalIssuedShares": 10000,
+   "ownedShares": 10000,
+   "netProfit1YearAgo": 0,
+   "netProfit2YearsAgo": 0,
+   "netProfit3YearsAgo": 0,
+   "netAssetValue": 1000000000,
+   "valuationDate": "2016-06-01"
+  },
+  "정답": {
+   "평가액_1주당": 40000,
+   "평가총액": 400000000
+  }
+ },
+ {
+  "이름": "[2부-13 옛판] 같은 주식 2017-06-01 평가 — 하한 70%(대통령령 제27835호 부칙): 7만 × 1만주",
+  "도구": "calculateUnlistedStockValueJS",
+  "입력": {
+   "totalIssuedShares": 10000,
+   "ownedShares": 10000,
+   "netProfit1YearAgo": 0,
+   "netProfit2YearsAgo": 0,
+   "netProfit3YearsAgo": 0,
+   "netAssetValue": 1000000000,
+   "valuationDate": "2017-06-01"
+  },
+  "정답": {
+   "평가액_1주당": 70000,
+   "평가총액": 700000000
+  }
+ },
+ {
+  "이름": "[2부-13 대조] 같은 주식 2019-06-01 평가 — 하한 80%: 8만 × 1만주",
+  "도구": "calculateUnlistedStockValueJS",
+  "입력": {
+   "totalIssuedShares": 10000,
+   "ownedShares": 10000,
+   "netProfit1YearAgo": 0,
+   "netProfit2YearsAgo": 0,
+   "netProfit3YearsAgo": 0,
+   "netAssetValue": 1000000000,
+   "valuationDate": "2019-06-01"
+  },
+  "정답": {
+   "평가액_1주당": 80000,
+   "평가총액": 800000000
+  }
+ },
+ {
+  "이름": "[2부-13 옛판] 비상장 최대주주 지분 50% 초과 2019-06-01 — 할증 30%: 8억 × 1.3",
+  "도구": "calculateUnlistedStockValueJS",
+  "입력": {
+   "totalIssuedShares": 10000,
+   "ownedShares": 10000,
+   "netProfit1YearAgo": 0,
+   "netProfit2YearsAgo": 0,
+   "netProfit3YearsAgo": 0,
+   "netAssetValue": 1000000000,
+   "valuationDate": "2019-06-01",
+   "isMajorShareholder": true,
+   "isMajorShareholderOver50Percent": true
+  },
+  "정답": {
+   "최대주주할증액": 240000000,
+   "평가총액": 1040000000
+  }
+ },
+ {
+  "이름": "[2부-13 옛판] 상장 최대주주 50% 초과 2019-06-01 — 할증 30%: 10억 × 30% = 3억",
+  "도구": "calculateListedStockValueJS",
+  "입력": {
+   "averageClosingPrice": 10000,
+   "shares": 100000,
+   "isMajorShareholder": true,
+   "valuationDate": "2019-06-01",
+   "isMajorShareholderOver50Percent": true
+  },
+  "정답": {
+   "최대주주할증액": 300000000
+  }
+ },
+ {
+  "이름": "[2부-13 대조] 같은 상장 2020-06-01 — 20% 단일: 2억",
+  "도구": "calculateListedStockValueJS",
+  "입력": {
+   "averageClosingPrice": 10000,
+   "shares": 100000,
+   "isMajorShareholder": true,
+   "valuationDate": "2020-06-01",
+   "isMajorShareholderOver50Percent": true
+  },
+  "정답": {
+   "최대주주할증액": 200000000
+  }
+ },
+ {
+  "이름": "[2부-13 옛판] 중견기업 주식 2022-06-01 — 중견 제외는 2023.1.1.부터라 할증 20%: 2억",
+  "도구": "calculateListedStockValueJS",
+  "입력": {
+   "averageClosingPrice": 10000,
+   "shares": 100000,
+   "isMajorShareholder": true,
+   "valuationDate": "2022-06-01",
+   "isMediumBusinessUnder500B": true
+  },
+  "정답": {
+   "최대주주할증액": 200000000
+  }
+ },
+ {
+  "이름": "[2부-13 대조] 중견기업 주식 2023-06-01 — 할증 제외: 0",
+  "도구": "calculateListedStockValueJS",
+  "입력": {
+   "averageClosingPrice": 10000,
+   "shares": 100000,
+   "isMajorShareholder": true,
+   "valuationDate": "2023-06-01",
+   "isMediumBusinessUnder500B": true
+  },
+  "정답": {
+   "최대주주할증액": 0
+  }
  }
 ]

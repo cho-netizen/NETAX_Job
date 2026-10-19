@@ -10,6 +10,7 @@
 //             자경 §69·대토 §70, 조문이 생기기 전 양도는 0) → §133 한도 후보(없음·1억·2억) 중 정답과 맞는 것
 //          ⑦ [2026.10.20] 주식(국내)·파생상품 산출세액 — 2부-23 세율(양도일 판: 2015까지·2016~2017·2018~, 중소기업 대주주 2018~2019 20%), 파생 탄력세율
 //          ⑧ [2026.10.20] 특정법인 증여(§45의5) — ㊲ 한도·기납부세액을 뺀 값이라 다시 셀 수 없어 "산출세액 ≤ §26 세율 값" 상한만 확인
+//          ⑨ [2026.10.20] 비상장·상장 주식 평가 — 2부-13 가중치·순자산가치 하한·최대주주 할증(평가기준일 판)으로 1주당 가액·할증액·평가총액
 const fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '..');
 const T = (n) => JSON.parse(fs.readFileSync(path.join(ROOT, 'reftables', n + '.json'), 'utf8'));
@@ -27,7 +28,27 @@ const lt1 = (d, y) => { const r = t203.행.filter((x) => /^표1/.test(x.구분))
 const shortRate = (d, kind, y) => { const name = kind === 'house' ? /^단기세율 주택/ : /^단기세율 그 밖/; const r = t202.행.filter((x) => name.test(x.구분)).find((x) => x.시작 <= d && (!x.끝 || d <= x.끝)); if (!r) return null; const v = y < 1 ? r.값['1년미만'] : (y < 2 ? r.값['1년이상2년미만'] : r.값['2년이상']); return typeof v === 'number' ? v / 100 : null; };
 const reportRate = (d) => { const r = rowAt(t210.행, d); return r ? r.값 / 100 : null; };
 const rowOf = (t, gu, d) => rowAt(t.행.filter((r) => r.구분 === gu), d);
-const t207 = T('2부-07'), t223 = T('2부-23');
+const t207 = T('2부-07'), t223 = T('2부-23'), t213 = T('2부-13');
+// ⑨ 주식 평가 — 돌려줌 { 평가액_1주당?, 최대주주할증액, 평가총액?, why } 또는 null
+const VAL_FLAGS = /isLiquidation|isNewOrDormant|AssetRatio80|hasFixedDissolution|totalIssuedShares[123]|hasContinuousLoss|allMajorShareholderSharesSold|isDeemedProfit|isParentCompany|newBusinessOperatingLoss|lostMajorShareholder|isNomineeTrust/;
+const stockVal = (tool, inp) => {
+  if (Object.keys(inp).some((k) => VAL_FLAGS.test(k))) return null;
+  const d = String(inp.valuationDate || '9999-12-31').slice(0, 10);
+  const prem = rowOf(t213, '최대주주등 할증', d); if (!prem) return null;
+  const sme = !!inp.isSmallBusiness, mid = !!inp.isMediumBusinessUnder500B && prem.값['중견기업(매출 5천억 미만)'] === 0;
+  const rate = !inp.isMajorShareholder || sme || mid ? 0 : (inp.isMajorShareholderOver50Percent && prem.값['지분50%초과'] != null ? prem.값['지분50%초과'] : prem.값.기본) / 100;
+  if (/Listed/.test(tool) && !/Unlisted/.test(tool)) { const v = Math.round((inp.averageClosingPrice || 0) * (inp.shares || 0)); return { 최대주주할증액: Math.round(v * rate), why: '할증 ' + Math.round(rate * 100) + '%(2부-13 ' + prem.시작 + '~ 행)' }; }
+  const sh = inp.totalIssuedShares; if (!sh) return null;
+  const w = rowOf(t213, '비상장주식 가중치(순손익:순자산)', d), fl = rowOf(t213, '비상장주식 순자산가치 하한', d); if (!w || !fl) return null;
+  const [a1, a2] = String(inp.isRealEstateHeavy ? w.값.부동산과다보유법인 : w.값.일반).split(':').map(Number);
+  const profit = (((inp.netProfit1YearAgo || 0) * 3 + (inp.netProfit2YearsAgo || 0) * 2 + (inp.netProfit3YearsAgo || 0)) / 6 / sh) / 0.10;
+  const nav = (inp.netAssetValue || 0) / sh;
+  let per = (profit * a1 + nav * a2) / (a1 + a2);
+  const flr = fl.값 === '없음' ? 0 : Number(String(fl.값).replace('%', '')) / 100;
+  if (per < nav * flr) per = nav * flr;
+  const per1 = Math.round(per), tot0 = Math.round(per1 * (inp.ownedShares || 0)), pr = Math.round(tot0 * rate);
+  return { 평가액_1주당: per1, 최대주주할증액: pr, 평가총액: tot0 + pr, why: '가중치 ' + a1 + ':' + a2 + '·하한 ' + fl.값 + '·할증 ' + Math.round(rate * 100) + '%(2부-13)' };
+};
 // ⑦ 국내 주식·파생 세율 — 돌려줌 { tax, why } 또는 null(검산 못 함)
 const stockTax = (inp, d, base) => {
   const pct = (v) => Number(String(v).replace('%', ''));
@@ -181,6 +202,16 @@ files.forEach((f) => {
     if (isGift && a.신고세액공제 != null && d) {
       const rr = reportRate(d);
       notes.push('신고세액공제율 ' + (rr != null ? Math.round(rr * 100) + '%(2부-10)' : '표 없음'));
+    }
+    // ⑨ 주식 평가
+    if (/^calculate(Unlisted|Listed)StockValueJS$/.test(c.도구)) {
+      const sv = stockVal(c.도구, inp);
+      if (sv) {
+        const keys = Object.keys(sv).filter((k) => k !== 'why' && a[k] != null);
+        const diff = keys.filter((k) => a[k] !== sv[k]);
+        if (diff.length) { verdict = '⚠ 주식 평가가 조견표(2부-13)로 센 값과 다름'; notes.push(diff.map((k) => k + ' 정답 ' + a[k].toLocaleString('ko-KR') + ' ↔ ' + sv[k].toLocaleString('ko-KR')).join(' / ') + ' (' + sv.why + ')'); }
+        else if (keys.length) verdict = '평가 맞음 — ' + keys.join('·') + ' · ' + sv.why;
+      }
     }
     // ⑥ 양도 감면액 — 자산 1건·직전 감면 입력 없음일 때만
     const RED_F = ['수용감면액', '자경농지감면액', '합산수용감면액', '합산자경감면액', '합산조특법세액감면액'];
