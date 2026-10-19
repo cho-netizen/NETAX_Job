@@ -1338,7 +1338,7 @@
   //          ctxFor:  { formKey: function (extra) → ctx 또는 [ctx…] }       (세액인쇄 화면의 서식 한 줄 출력용 — 화면 전역값에서 모음),
   //          ready:   { formKey: function () → true/false }               (그 서식에 찍을 계산 결과가 화면에 있는지) }
   //  파일 이름은 EXT_FILES에 미리 적어 둔다(세액인쇄 화면이 이 순서로 불러옴). 없는 묶음 파일은 빈 등록만 한다.
-  var EXT_FILES = ['mappers-양도감면A.js', 'mappers-양도감면B.js', 'mappers-양도소득특례.js', 'mappers-증여특례A.js', 'mappers-증여특례B.js', 'mappers-상속부속A.js', 'mappers-상속부속B.js'];
+  var EXT_FILES = ['mappers-양도감면A.js', 'mappers-양도감면B.js', 'mappers-양도소득특례.js', 'mappers-증여특례A.js', 'mappers-증여특례B.js', 'mappers-상속부속A.js', 'mappers-상속부속B.js', 'mappers-2단계.js'];
   var EXTS = [];
   function registerExt(x) {
     if (!x || EXTS.indexOf(x) >= 0) return x;
