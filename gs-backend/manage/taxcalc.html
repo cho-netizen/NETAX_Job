@@ -3090,6 +3090,7 @@ function openOneHouseSpecialCaseModal_(idx){
             '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrMaExcl4"><label for="lrMaExcl4">[단서4호] 아파트 양도기한(§167조의3⑪) 경과 후 양도</label></div>' +
           '</div>' +
           '<div id="lrManualField" class="taxcalc-field checkbox" style="display:none;"><input type="checkbox" id="lrMeetsRequirements"><label for="lrMeetsRequirements">장기임대주택(가·나·다·라·바·사·아·자목 중 해당, 등록시기·면적·호수 등 세부요건은 직접 확인) 또는 장기어린이집 요건 충족(별도 확인)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrBeforePeriod"><label for="lrBeforePeriod">임대기간요건(10년 등)을 채우기 전에 거주주택을 양도함(시행령 §155㉑ — 특례 적용, 뒤에 못 채우면 추징)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="lrHasPriorResidence"><label for="lrHasPriorResidence">민간임대주택 등록(또는 어린이집 운영) 이력이 있는 거주주택을 과거에 이미 양도한 적이 있음("직전거주주택보유주택" — 해당시 안분비과세)</label></div>' +
         '</div>' +
         '<div id="ohsCh" class="taxcalc-grid" style="display:none;">' +
@@ -3309,7 +3310,8 @@ function openOneHouseSpecialCaseModal_(idx){
     } else if (provision === 'lr'){
       const lrInput = {
         residencePeriodMonths: numVal(document.getElementById('lrResidenceMonths').value),
-        hasPriorQualifyingResidence: document.getElementById('lrHasPriorResidence').checked
+        hasPriorQualifyingResidence: document.getElementById('lrHasPriorResidence').checked,
+        beforeRentalPeriodMet: document.getElementById('lrBeforePeriod').checked
       };
       if (document.getElementById('lrUseMaCalc').checked){
         lrInput.rentalItemMa = {
@@ -7097,7 +7099,11 @@ function collectTransferInput(vals){
     lrRegistrationStandardPrice: numVal(vals.lrRegistrationStandardPrice) || 0,
     lrTransferStandardPrice: numVal(vals.lrTransferStandardPrice) || 0,
     lrRentalEndStandardPrice: numVal(vals.lrRentalEndStandardPrice) || 0, // [2026.10.19] 시행령 §97의5② 임대기간 마지막 날 기준시가
-    lrRentedUntilTransfer: !!vals.lrRentedUntilTransfer
+    lrRentedUntilTransfer: !!vals.lrRentedUntilTransfer,
+    // [2026.10.20] 표시용 칸(세액 계산엔 안 씀) — 계산 결과 자산(lastTransferResults_[].assets)을 읽는 원본 모양 출력(84호 부표1 소재지·특례 신고서)과
+    //  판단 대기 안내(지정지역 비사업용 토지 — 소재지)가 비지 않게 그대로 넘긴다. 예전엔 빠져 원본 출력의 소재지가 비었다(원본 인쇄 작업자 양도소득특례가 발견).
+    assetLocation: vals.assetLocation || '', assetArea: vals.assetArea || '', assetKind: vals.assetKind || '', assetSubType: vals.assetSubType || '',
+    oneHouseSpecialCase: vals.oneHouseSpecialCase || '', formerResidencePeriod: vals.formerResidencePeriod || '', businessApprovalDate: vals.businessApprovalDate || ''
   };
 }
 

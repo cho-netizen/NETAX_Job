@@ -29,6 +29,31 @@ fs.readdirSync(DIR).filter((f) => /\.json$/.test(f) && !/^_/.test(f)).sort().for
   }
 });
 tables.sort((a, b) => a.번호.localeCompare(b.번호, 'ko', { numeric: true }));
+// [2026.10.20] 서식 탭 순서 — 세무사님 "서식탭의 증여에서는 왜 조특법이 먼저 정렬되었는가?": 목록 파일은 법제처 목록을 모아 온 순서
+//  그대로라 증여에 조특법이, 상속에 국세기본법이 먼저 섰다. 세목마다 주된 법령 먼저, 그 안에서는 별지 번호(호·의·부표) 순서로.
+const LAW_RANK = {
+  양도: ['소득세법', '조세특례제한법', '국세기본법', '국세징수법'],
+  증여: ['상속세 및 증여세법', '조세특례제한법', '국세기본법', '국세징수법'],
+  상속: ['상속세 및 증여세법', '조세특례제한법', '국세기본법', '국세징수법'],
+  공통: ['국세기본법', '국세징수법', '상속세 및 증여세법', '소득세법', '조세특례제한법']
+};
+const formKey_ = (x) => {
+  const no = String(x.서식번호 || '');
+  const law = no.split(' [')[0].replace(/\s*시행규칙$/, '');
+  const ranks = LAW_RANK[x.세목] || [];
+  const r = ranks.indexOf(law);
+  const m = no.match(/제(\d+)호(?:의(\d+))?서식(?:\s*부표\s*(\d+)?\s*(?:\((갑|을)\))?)?/) || [];
+  const hasAttach = /부표/.test(no);
+  return [r < 0 ? ranks.length : r, Number(m[1]) || 0, Number(m[2]) || 0, hasAttach ? (Number(m[3]) || 1) : 0, m[4] === '을' ? 2 : m[4] === '갑' ? 1 : 0];
+};
+const order_ = (catalog.세목순서 || []);
+catalog.서식 = (catalog.서식 || []).map((x, i) => ({ x, i })).sort((a, b) => {
+  const sa = order_.indexOf(a.x.세목), sb = order_.indexOf(b.x.세목);
+  if (sa !== sb) return sa - sb;
+  const ka = formKey_(a.x), kb = formKey_(b.x);
+  for (let k = 0; k < ka.length; k++) if (ka[k] !== kb[k]) return ka[k] - kb[k];
+  return a.i - b.i;
+}).map((o) => o.x);
 return { tables, forms, catalog };
 }
 // 화면 자료 묶음(BEGIN 자리 표시부터 END 바로 앞까지)

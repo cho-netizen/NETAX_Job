@@ -320,7 +320,7 @@ const DRIVE_TOOLS = [
   },
   {
     name: 'lookup_statute_article',
-    description: '법령 조문 원문을 가져온다(법령 정비본 우선 + 산식 보정, 법제처로 개정 확인). 조문 인용·원문 확인 때 써라. articleNo를 꼭 지정해라(생략하면 전체라 너무 길다). 옛 사건은 baseDate(양도·상속·증여일)로 그때 판을 본다. 검증필요_코드에서옮김 산식은 근거로 쓰지 마라.',
+    description: '법령 조문 원문을 가져온다(법령 정비본 우선 + 산식 보정, 법제처로 개정 확인). 조문 인용·원문 확인 때 써라. articleNo에 \'부칙\'을 주면 그 판까지의 부칙(적용례·경과조치). articleNo를 꼭 지정해라(생략하면 전체라 너무 길다). 옛 사건은 baseDate(양도·상속·증여일)로 그때 판을 본다. 검증필요_코드에서옮김 산식은 근거로 쓰지 마라.',
     input_schema: {
       type: 'object',
       properties: {
@@ -4913,21 +4913,32 @@ function reftableReviewSet_(body) {
 
 // [2026.10.19] 조문 조회 — 1순위 법령 정비본(드라이브 0 NETAX/업무관리자/법령/_본문, tools/law-build.js) + 산식 보정, 법제처는 개정 확인·정비본에 없는 법령/옛 판. 설계 netax-inventory/maps/설계_법령원본.md
 function lawDbIdx_() {
-  var c = CacheService.getScriptCache(), s = c.get('lawdb_idx2');
+  var c = CacheService.getScriptCache(), s = c.get('lawdb_idx3');
   if (s) return JSON.parse(s);
   var sub = function (f, n) { var it = f && f.getFoldersByName(n); return it && it.hasNext() ? it.next() : null; };
   var mg = sub(getNetaxRootFolder_(), '업무관리자'), lw = sub(mg, '법령'), b = sub(lw, '_본문') || sub(lw, '본문') || sub(sub(mg, '법령정비본'), '본문') /* [2026.10.19] 폴더 정리 — 업무관리자/법령정비본 → 업무관리자/법령(옛 이름도 찾음) */, it = b && b.getFilesByName('색인.json');
   if (!it || !it.hasNext()) return null;
   var idx = JSON.parse(it.next().getBlob().getDataAsString('UTF-8'));
-  Object.keys(idx.법령).forEach(function (k) {
-    var f = sub(b, k), fi = f && f.getFiles(), ids = idx.법령[k].ids = {};
-    while (fi && fi.hasNext()) { var x = fi.next(); ids[x.getName().replace('.json.gz', '')] = x.getId(); }
-  });
+  idx.본문ID = b.getId(); // [2026.10.20] 옛 판(2014~)이 법령마다 수십~백여 개라 파일 ID는 법령별로 따로 기억(lawDbIds_ — 캐시 한 칸 100KB 한도)
   var ci = sub(b.getParents().next(), '_산식보정') || sub(b.getParents().next(), '산식보정'); // [2026.10.19] 시스템 전용 폴더는 이름 앞 _(세무사님 지시) — 옛 이름도 찾음
   ci = ci && ci.getFilesByName('산식보정.json');
   idx.보정ID = ci && ci.hasNext() ? ci.next().getId() : '';
-  try { c.put('lawdb_idx2', JSON.stringify(idx), 21600); } catch (e) { }
+  try { c.put('lawdb_idx3', JSON.stringify(idx), 21600); } catch (e) { }
   return idx;
+}
+function lawDbIds_(idx, k) {
+  var c = CacheService.getScriptCache(), ck = 'lawdb_ids|' + k, s = c.get(ck); if (s) return JSON.parse(s);
+  var ids = {}, it = DriveApp.getFolderById(idx.본문ID).getFoldersByName(k), f = it.hasNext() ? it.next() : null, fi = f && f.getFiles();
+  while (fi && fi.hasNext()) { var x = fi.next(); ids[x.getName().replace('.json.gz', '')] = x.getId(); }
+  try { c.put(ck, JSON.stringify(ids), 21600); } catch (e) { }
+  return ids;
+}
+// [2026.10.20] 부칙(적용례·경과조치) — 법령마다 _부칙.json.gz 하나(모든 부칙, tools/law-build.js). 그 판 공포일까지를 최근 것부터, 번호를 주면 그 부칙만
+function lawDbBuchik_(idx, key, ver, no) {
+  var id = lawDbIds_(idx, key)['_부칙']; if (!id) return { error: '이 법령의 부칙은 정비본에 아직 없습니다.' };
+  var d = JSON.parse(Utilities.ungzip(DriveApp.getFileById(id).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8'));
+  var list = d.부칙.filter(function (b) { return no ? +b.공포번호 === +no : (!ver || b.공포일 <= ver.공포일); }).sort(function (a, b) { return b.공포일.localeCompare(a.공포일); });
+  return { 법령명: idx.법령[key].이름, 판: ver ? ver.판 : '', 출처: '법령 정비본(법제처 부칙)', 전체: list.length, 부칙: no ? list : list.slice(0, 10) };
 }
 function lawUnit_(u) { // 법제처 조문단위 → 정비본 모양(law-build.js parseLaw와 같은 규칙)
   var imgs = [], T = function (e, n) {
@@ -4962,9 +4973,13 @@ function toolLookupStatuteArticle(lawName, articleNo, baseDate) {
   try { idx = lawDbIdx_(); } catch (e) { }
   ent = idx && idx.법령[key];
   var ver = ent && ent.판.filter(function (p) { return day ? p.시행일 <= day : p.판 === ent.현행; }).pop();
-  if (ver && ent.ids[ver.판]) try {
+  if (ent && /부칙/.test(String(articleNo))) return lawDbBuchik_(idx, key, ver, (String(articleNo).match(/\d+/) || [])[0]);
+  var fid = ver && lawDbIds_(idx, key)[ver.판], bm = String(articleNo).match(/별표\s*(\d+(?:의\d+)?)/);
+  if (fid && bm) { var bd = JSON.parse(Utilities.ungzip(DriveApp.getFileById(fid).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')), bb = (bd.별표 || []).filter(function (b) { return b.번호 === bm[1]; }); // [2026.10.20] 별표(현행·시행예정 판)
+    return bb.length ? { 법령명: ent.이름, 시행일자: ver.시행일, 판: ver.판, 별표: bb } : { error: '이 판에 별표 ' + bm[1] + '이 없습니다' + (bd.별표 ? '' : '(옛 판은 별표를 담지 않음)') + '.' }; }
+  if (fid) try {
     var ck = 'lwa|' + key + '|' + ver.판 + '|' + jk, hit = jk && c.get(ck);
-    arts = hit ? [JSON.parse(hit)] : JSON.parse(Utilities.ungzip(DriveApp.getFileById(ent.ids[ver.판]).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')).조.filter(function (a) { return !jk || a.조 === jk; });
+    arts = hit ? [JSON.parse(hit)] : JSON.parse(Utilities.ungzip(DriveApp.getFileById(fid).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')).조.filter(function (a) { return !jk || a.조 === jk; });
     if (jk && !hit && arts.length) try { c.put(ck, JSON.stringify(arts[0]), 21600); } catch (e) { }
     out = { 법령명: ent.이름, 시행일자: ver.시행일, 판: ver.판, 출처: '법령 정비본(법제처 ' + ver.시행일 + ' 시행판, 공포 ' + ver.공포일 + ' 제' + ver.공포번호 + '호)' };
     if (ent.범위 === '조회만') out.주의 = '지방세 — 조회만, 계산·신고서 근거로 쓰지 않음';
@@ -5016,10 +5031,11 @@ function lawDbToc_(lawName, ver) {
   var laws = Object.keys(idx.법령).map(function (k) { var e = idx.법령[k]; return { 키: k, 이름: e.이름, 범위: e.범위, 현행: e.현행, 판: e.판.map(function (p) { return { 판: p.판, 시행일: p.시행일, 공포일: p.공포일, 공포번호: p.공포번호, 구분: p.구분, 법종: p.법종, 상태: p.상태 }; }) }; });
   if (!lawName) return { 법령: laws };
   var key = String(lawName).replace(/\s/g, ''), e = idx.법령[key], v = ver || (e && e.현행);
-  if (!e || !e.ids[v]) return { 법령: laws, error: '그 판이 정비본에 없습니다.' };
-  var c = CacheService.getScriptCache(), ck = 'lwtoc|' + key + '|' + v, s = c.get(ck);
-  if (!s) { var d = JSON.parse(Utilities.ungzip(DriveApp.getFileById(e.ids[v]).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')); s = JSON.stringify({ 머리: d.머리 || [], 조: d.조.map(function (a) { return [a.조, a.제목]; }) }); try { c.put(ck, s, 21600); } catch (x) { } }
-  var t = JSON.parse(s); return { 법령: laws, 키: key, 판: v, 머리: t.머리, 조: t.조 };
+  var fid = e && lawDbIds_(idx, key)[v];
+  if (!fid) return { 법령: laws, error: '그 판이 정비본에 없습니다.' };
+  var c = CacheService.getScriptCache(), ck = 'lwtoc2|' + key + '|' + v, s = c.get(ck);
+  if (!s) { var d = JSON.parse(Utilities.ungzip(DriveApp.getFileById(fid).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')); s = JSON.stringify({ 머리: d.머리 || [], 조: d.조.map(function (a) { return [a.조, a.제목]; }), 별표: (d.별표 || []).map(function (b) { return [b.번호, b.구분, b.제목]; }) }); try { c.put(ck, s, 21600); } catch (x) { } }
+  var t = JSON.parse(s); return { 법령: laws, 키: key, 판: v, 머리: t.머리, 조: t.조, 별표: t.별표 || [] };
 }
 
 /**
