@@ -32,8 +32,17 @@ module.exports = function (E, H) {
       mgLeasePeriod: mgIn.mutualLeaseStartDate + ' ~ ' + mgIn.mutualLeaseEndDate, 안내: mg.안내 } };
   var ctxMg = caseOf([mgAsset]);
 
+  // ② 거주주택 특례(영 §155⑳) — 장기임대주택 보유자가 거주주택(2015.3.2. 취득 6억, 5년 거주) → 2026.3.31. 양도 11억(12억 이하 비과세)
+  var lr = need(E.calculateRentalHousingResidenceExclusionJS({ residencePeriodMonths: 60, meetsLongTermRentalRequirements: true, hasPriorQualifyingResidence: false }), '거주주택 특례');
+  var lrAsset = { assetType: 'house', transferPrice: 1100000000, acquisitionPrice: 600000000, necessaryExpenses: 8000000, transferDate: '2026-03-31', acquisitionDate: '2015-03-02',
+    assetLocation: '경기도 ○○시 ○○로 20, 203동 502호 (견본마을)', isOneHouseOneFamily: true,
+    oneHouseSpecialCase: { provisionLabel: '장기임대주택·장기어린이집 보유자의 거주주택(소득세법시행령§155⑳)', formNo: '소득세법 시행규칙 [별지 제83호의2서식]',
+      formTitle: '주택임대사업자의 거주주택 1세대1주택 특례적용신고서', acquisitionDate: '', houseType: '', newHousingCompletionDate: '', mgContractDate: '', mgLeasePeriod: '', 안내: lr.안내 } };
+  var ctxLr = caseOf([lrAsset]);
+
   return [
-    { name: '83호의4_상생임대주택', tax: '양도', ctx: ctxMg }
+    { name: '83호의4_상생임대주택', tax: '양도', ctx: ctxMg },
+    { name: '83호의2_거주주택특례', tax: '양도', ctx: ctxLr }
   ].map(function (cs) {
     // tax만 준 사례는 plan으로 이 묶음 서식만 고름(84호 본표는 기존 23장 시험에서 봄)
     if (!cs.forms) cs.forms = H.ctxFromApp && cs.tax ? require('./mappers.js').plan(cs.tax, cs.ctx).filter(function (it) { return typeof it !== 'string' && /^소득/.test(it.formKey); }) : [];

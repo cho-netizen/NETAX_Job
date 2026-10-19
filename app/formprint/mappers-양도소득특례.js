@@ -51,6 +51,7 @@
 
   // ───────── 공용 ─────────
   // 1세대1주택 특례 신고서 — oneHouseSpecialCase.formNo 끝의 "[별지 제83호의4서식]"으로 서식을 고름
+  var SPECIAL_KEYS = ['소득83호의4', '소득83호의2'];
   var SPECIAL_FORM = { '소득83호': '[별지 제83호서식]', '소득83호의2': '[별지 제83호의2서식]', '소득83호의3': '[별지 제83호의3서식]', '소득83호의4': '[별지 제83호의4서식]', '소득83호의5': '[별지 제83호의5서식]' };
   function specialOf(asset, formKey) {
     var c = asset && asset.oneHouseSpecialCase;
@@ -114,6 +115,37 @@
     return o.result();
   };
 
+
+  // ═════════ 소득83호의2 — 주택임대사업자의 거주주택 1세대 1주택 특례적용신고서(영 §155⑳·㉔) ═════════
+  //  값 출처: 양도 자산(거주주택 = 양도주택: 소재지·취득일·양도일·양도가액) + 판정 창(lr)이 남긴 oneHouseSpecialCase(특례 이름·안내뿐)
+  //  거주기간 개월 수·장기임대주택 요건(마목 계산값)은 판정 창에서만 쓰고 저장되지 않는다. 장기임대주택 명세(⑬~㉗)·임대내역(㉘) 입력은 계산기에 없음.
+  mappers['소득83호의2'] = function (ctx) {
+    var o = new Out(), s = ctx.seller || {};
+    var it = pickAsset(ctx, '소득83호의2'), a = (it && it.asset) || {}, c = specialOf(a, '소득83호의2');
+    if (!c) { o.miss('①~㉙ 전체', '거주주택 특례 판정(특정주택 제외 판정 lr)을 적용한 양도 자산 없음'); return o.result(); }
+    person(o, s, '①', '②', '③', '③@전화번호');
+    o.need('④', a.assetLocation, '④ 소재지');
+    o.miss('⑤⑥ 주택·토지 면적', '계산기에 없음');
+    o.need('⑦', a.acquisitionDate, '⑦ 취득일').need('⑧', a.transferDate, '⑧ 양도일');
+    o.miss('⑨ 거주기간', '계산기에 없음(판정 창은 거주 개월 수만 받고 저장하지 않음 — 시작·끝 날짜 입력 없음)');
+    var tp = n(a.transferPrice);
+    if (tp) {
+      o.set('⑩', tp);
+      var sg = it && it.single;
+      if (sg && sg.입력값 && has(sg.입력값.양도가액)) o.check('⑩ 양도가액 = 엔진 입력 양도가액(84호 부표1 ⑪)', tp, n(sg.입력값.양도가액));
+    } else o.miss('⑩ 양도가액', '양도 자산에 양도가액 없음');
+    // 판정 엔진(calculateRentalHousingResidenceExclusionJS)은 장기임대주택(또는 장기어린이집) 요건을 "충족"했을 때만 적용여부 true를 주고,
+    //  그때만 판정 창이 이 자산에 oneHouseSpecialCase를 남긴다 → 이 신고서가 나오는 경우는 늘 ⑪(충족한 경우)
+    o.set('⑪|충족', true);
+    o.miss('⑫ 미충족한 경우', '계산기에 없음(임대기간요건 충족 전 양도 — 영 §155㉑ — 갈래가 판정 엔진에 없음)');
+    o.miss('⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕ 장기임대주택(㉖)·장기어린이집(㉗) 명세', '계산기에 없음(소유자·소재지·취득일·면적·임대개시일·기준시가·등록일·호수 입력 없음 — 판정 창의 기준시가·임대 연수는 저장되지 않음)');
+    o.miss('㉘ 임대내역', '계산기에 없음(임차인·보증금·월세·임대기간 입력 없음 — 판정 창의 임대료 증가율은 저장되지 않음)');
+    o.miss('㉙ 직전거주주택보유명세', '계산기에 없음(판정 창은 "직전거주주택 양도 이력 있음" 체크만 받고 저장하지 않음, 소재지·양도일 입력 없음)');
+    if (c.안내) o.note('판정 안내: ' + c.안내);
+    footer(o, ctx, s);
+    return o.result();
+  };
+
   // ───────── 세액인쇄 화면용 ─────────
   function transferItems() {
     return (typeof lastTransferResults_ !== 'undefined' && lastTransferResults_ ? lastTransferResults_ : []).filter(function (it) { return it.result && !it.result.error; });
@@ -131,7 +163,7 @@
   function specialReady(formKey) {
     return transferItems().some(function (item) { return (item.assets || []).some(function (a) { return assetWants(a, formKey); }); });
   }
-  ['소득83호의4'].forEach(function (k) {
+  SPECIAL_KEYS.forEach(function (k) {
     ctxFor[k] = function (extra) { return specialCtxs(k, extra); };
     ready[k] = function () { return specialReady(k); };
   });
@@ -140,7 +172,7 @@
   function plan(tax, ctx) {
     var L = [];
     if (tax !== '양도' || !ctx) return L;
-    ['소득83호의4'].forEach(function (k) {
+    SPECIAL_KEYS.forEach(function (k) {
       (ctx.assets || []).forEach(function (it, ai) { if (assetWants(it.asset, k)) L.push({ formKey: k, ctx: Object.assign({}, ctx, { 특례자산: ai }) }); });
     });
     return L;
