@@ -86,5 +86,11 @@ module.exports = function (E, H) {
   var c13 = ihCtx(pIn, { pk: { input: pkIn, result: pkRes } });
   L.push({ name: '상속13호_일반물납', forms: [{ formKey: '상속13호', ctx: c13 }], ctx: c13 });
 
+  // ⑥ 상속13호의2 — 물납 재산 재평가 신청서: 수납가액 도구(무상증자, 구주 1주당 과세가액 30,000원, 1주당 신주 0.5주) + ⑤의 물납 도구 결과
+  //   손계산: 30,000 ÷ (1 + 0.5) = 20,000원(시행규칙 §20의2①1호가목) — 이 서식(§75①3호)에 쓰는 값이 아니라 알림으로만
+  var svIn = { changeType: 'free_increase', oldSharePreChangeValue: 30000, newSharesPerOldShare: 0.5 };
+  var c132 = ihCtx(pIn, { sv: { input: svIn, result: E.calculatePropertyInKindStockReceiptValueJS(clone(svIn)) }, pk: { input: pkIn, result: pkRes } });
+  L.push({ name: '상속13호의2_물납재산재평가', forms: [{ formKey: '상속13호의2', ctx: c132 }], ctx: c132 });
+
   return L;
 };

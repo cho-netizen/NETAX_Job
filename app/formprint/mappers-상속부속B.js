@@ -462,6 +462,39 @@
     return o.result();
   };
 
+  // ───────── 상증 별지 제13호의2서식 — 물납 재산 재평가 신청서(시행령 §70⑧·§75①3호, 시행규칙 §19의4②) ─────────
+  //  값 출처: 지금 인쇄 svPrintFormPageHtml_(신청인 성명·주민번호 = 명부 첫 행, 증자·감자 구분, 구주 1주당 과세가액, 재평가 후 구주 1주당 수납가액).
+  //  ⚠ 이 서식은 시행령 §75①3호(물납기간 중 합병·분할·주요 재산 처분·배당 증가로 30% 이상 하락) 재평가 신청서(시행규칙 §19의4②)인데,
+  //    계산기 "물납 주식 수납가액" 도구(sv)는 §75①1호(신주 발행·감자 — 시행규칙 §20의2① 산식) 수납가액을 셈. 그래서 ⑨·⑮는 비우고 도구 값은 알림으로만.
+  //  ctx = 상속 ctx(heirsCtx) + sv: {input, result}(lastSvInput_·lastSvResult_) + pk(물납 도구 결과 — 있으면 ⑤ 당초 납부세액)
+  /* global lastSvInput_, lastSvResult_ */
+  function svFromApp() {
+    var inp = typeof lastSvInput_ !== 'undefined' ? lastSvInput_ : null, res = typeof lastSvResult_ !== 'undefined' ? lastSvResult_ : null;
+    return (inp && res) ? { input: inp, result: res } : null;
+  }
+  mappers['상속13호의2'] = function (ctx) {
+    var o = new Out(), sv = ctx.sv || {}, si = sv.input || {}, sr = sv.result || {}, h = firstHeir(ctx), dc = ctx.deceased || {}, pk = ctx.pk;
+    o.need('①', h.name, '① 신청인 성명').need('②', h.regNo, '② 주민등록번호').need('③', H.fullAddr(h), '③ 주소');
+    var ph = heirPhone(ctx, h);
+    if (ph) o.set('③@전화번호', ph); else o.miss('③ 전화번호(☎)', '상속인 명부에 전화번호 칸 없음(신고인 전화번호는 명부 첫 행이 신고인일 때만 씀)');
+    if (h.isReporter && has(ctx.email)) o.set('④', ctx.email); else o.miss('④ 전자우편주소', '상속인 명부에 전자우편 칸 없음(신고인 전자우편은 명부 첫 행이 신고인일 때만 씀)');
+    o.note('⚠ 신청인 = 상속인 명부 첫 행(지금 인쇄와 같음)');
+    if (pk && pk.input && n(pk.input.inheritanceTaxPayable) > 0) {
+      o.set('⑤', n(pk.input.inheritanceTaxPayable));
+      o.note('⑤ 납부세액 = 물납 도구의 상속세 납부세액(작성방법 1: 당초 물납신청서를 참고해 ①~⑧ 기재)');
+    } else o.miss('⑤ 납부세액', '계산기에 없음(물납 도구 계산이 없음 — 당초 물납신청서의 값을 적음)');
+    o.miss('⑥ 물납신청세액·⑦ 유형·⑧ 납부기한', '계산기에 없음(당초 물납신청서의 값을 적음)');
+    o.miss('⑨ 재평가사유 코드', '계산기에 없음(수납가액 도구의 증자·감자 구분은 시행령 §75①1호 — 이 서식의 사유 ①합병·분할 ②주요 재산 처분 ③배당 증가 ④유사 사유(§75①3호)와 다른 제도)');
+    o.miss('⑩ 재평가 상세사유', '계산기에 없음');
+    o.miss('⑪⑫⑬⑭⑮⑯⑰ 물납 재산 재평가 대상(종류·발행기관·평가기준일·평가기준·단위당가액·수량·총액)', '계산기에 없음(§75①3호 재평가액 — 물납허가통지서 발송일 전일 평가액(§75①2호) — 을 세는 도구가 없음)');
+    var CT = { free_increase: '무상증자', paid_increase: '유상증자', free_decrease: '무상감자', paid_decrease: '유상감자' };
+    if (has(sr.구주1주당수납가액)) o.note('⚠ 판단 대기: 계산기 수납가액 도구 결과(' + (CT[si.changeType] || si.changeType || '') + ', 구주 1주당 과세가액 ' + n(si.oldSharePreChangeValue) + '원 → 구주 1주당 수납가액 ' + sr.구주1주당수납가액 + '원)는 시행령 §75①1호(시행규칙 §20의2①) 값 — 이 신청서(§75①3호 재평가, 시행규칙 §19의4②)에 쓰는 값이 아니라 ⑮에 찍지 않음. (예전 인쇄는 이 값을 이 서식 ⑤ 자리에 찍었음)');
+    ymdSet(o, '신청일', ctx.신고일, '신청일', 'ctx.신고일 없음(계산기에 없음)');
+    o.need('신청인서명', h.name, '신청인(서명)');
+    if (has(dc.taxOffice)) o.set('세무서', H.officeName(dc.taxOffice)); else o.miss('세무서', '피상속인 관할 세무서 입력 없음');
+    return o.result();
+  };
+
   // ───────── 언제 찍나 ─────────
   function instIh(c) { var i = c.inst || instFromApp(); return i && i.input && i.input.taxType === 'inheritance' ? i : null; }
   var WHEN = {
@@ -502,6 +535,9 @@
   // 물납 — 지금 인쇄처럼 물납 도구가 "적용 가능"으로 판정했을 때(PRINT_REGISTRY_ propertyinkind.isReady). 일반 = 13호, 문화유산 등 = 14호의2
   ctxFor['상속13호'] = function (extra) { var c = pkCtx(extra); return (c && c.pk.input.provision !== 'cultural_heritage') ? c : null; };
   ready['상속13호'] = function () { var pk = pkFromApp(); return !!(pk && pk.input.provision !== 'cultural_heritage'); };
+  // 물납 재산 재평가 — 지금 인쇄처럼 수납가액 도구(sv) 결과가 있으면(PRINT_REGISTRY_ sv.isReady). 물납 도구 결과가 있으면 ⑤에 씀
+  ctxFor['상속13호의2'] = function (extra) { var sv = svFromApp(); return sv ? Object.assign(heirsCtx(extra), { sv: sv, pk: pkFromApp() }) : null; };
+  ready['상속13호의2'] = function () { return !!svFromApp(); };
 
   return { 묶음: '상속부속B', forms: forms, mappers: mappers, plan: plan, ctxFor: ctxFor, ready: ready,
     ihbFromInput: ihbFromInput, ihbFromDom: ihbFromDom };
