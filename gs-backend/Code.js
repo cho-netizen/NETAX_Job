@@ -30980,6 +30980,7 @@ function cpfSheetRows_(f, base) {
 // [2026.10.20 2번 밤샘 1바퀴] 수용·보상 서류 — 서식 제목(앞 600자)으로 종류. 정리 규칙(docParseText_)이 못 정한 서류만
 function cpfCompKind_(text) {
   const hd = String(text || '').slice(0, 600).replace(/\s+/g, ''), all = String(text || '').replace(/\s+/g, '');
+  if (/성과보수/.test(hd.slice(0, 120))) return /청구/.test(hd.slice(0, 120)) ? '수용 대리 성과보수 청구서' : '수용 대리 성과보수 안내'; // 재결 대리인 보수 문서(재결 결과를 인용하지만 재결서가 아님)
   if (/이의재결서|수용재결서|재결서\(?정본|이의신청에대한재결/.test(hd)) return /보상금내역/.test(all) ? '이의재결서·보상금 내역서' : '수용·이의재결서';
   if (/이의재결.{0,6}(결과|안내)/.test(hd)) return '이의재결 결과 안내';
   if (/보상금내역/.test(hd)) return '보상금 내역서';
