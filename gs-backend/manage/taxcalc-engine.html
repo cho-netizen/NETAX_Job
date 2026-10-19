@@ -311,6 +311,12 @@
   }
   function presumedInheritedFromDisposal(item) {
     item = item || {};
+    // [2026.10.19 판단 대기 ④ 해석 B 계산용] 서식 별지 제9호 부표4(갑) 부담채무Ⅱ 줄은 ⑫(금액 기준)·⑮(차감)이 막혀 있어 ⑰ = ⑭ 미소명 전액 —
+    //  _fullUnexplained가 켜진 항목만 그렇게 계산한다(기본 계산은 법문대로 — 해석 A).
+    if (item._fullUnexplained) {
+      const un = function (amt, dep, exp) { return Math.max(0, Math.max(0, (Number(amt) || 0) - (Number(dep) || 0)) - (Number(exp) || 0)); };
+      return Math.max(un(item.oneYearAmount, item.oneYearSelfDeposit, item.oneYearExplained), un(item.twoYearAmount, item.twoYearSelfDeposit, item.twoYearExplained));
+    }
     const oneYear = computeDisposalBasisPresumed_(item.oneYearAmount, item.oneYearSelfDeposit, item.oneYearExplained, 200000000);
     const twoYear = computeDisposalBasisPresumed_(item.twoYearAmount, item.twoYearSelfDeposit, item.twoYearExplained, 500000000);
     return Math.max(oneYear, twoYear);
@@ -816,9 +822,27 @@
     // 개산공제를 인정한다(매매사례가액·감정가액을 확인할 수 있는 경우는 실제 필요경비도 확인
     // 가능한 게 보통이라 이 자동적용에서 제외 — acquisitionPriceUsedConversionOrStandardOnly가
     // 감정가액 케이스는 포함하지 않도록 위에서 이미 구분해뒀다).
+    // [2026.10.19] 개산공제율(시행령 §163⑥) — 토지·건물 3%(미등기 0.3%), 분양권 등 부동산을 취득할 수 있는 권리(§94①2호가목)는 4호 '그 밖의 자산' 1%
+    const estimatedRateFor_ = function () { return t.assetType === 'presale_right' ? 0.01 : (t.isUnregisteredTransfer ? 0.003 : 0.03); };
     if (!t.necessaryExpenses && (t.useEstimatedNecessaryExpense || acquisitionPriceUsedConversionOrStandardOnly) && acquisitionStandardPriceForConversion > 0) {
-      const estimatedExpenseRate = t.isUnregisteredTransfer ? 0.003 : 0.03;
+      const estimatedExpenseRate = estimatedRateFor_();
       necessaryExpenses = Math.floor(acquisitionStandardPriceForConversion * estimatedExpenseRate + 1e-6); // [2026.10.17] 원 미만 버림(방영교: 663,275.94원 → 663,275원, 양도코리아 계산과 같게)
+    }
+    // [2026.10.19 세액 고침] 소득세법 §97②2호 — 취득가액을 환산취득가액으로 하면 필요경비는 "환산취득가액 + 개산공제(시행령 §163⑥)"다.
+    //  실제 자본적지출·양도비는 더하지 않고, 단서로 (자본적지출 + 양도비)가 (환산취득가액 + 개산공제)보다 클 때만 그 금액을 필요경비로 할 수 있다.
+    //  예전엔 환산인데 필요경비를 하나라도 넣으면(중개수수료 등) 개산공제를 버리고 환산 + 실제 비용을 빼서 세액이 적게 나왔다
+    //  (예: 환산 1.5억·개산 180만, 비용 1억 입력 → 양도차익 2.5억 ↔ 법대로 3억4,820만).
+    if (acquisitionPriceUsedConversionOrStandardOnly && t.necessaryExpenses && acquisitionStandardPriceForConversion > 0) {
+      const est_ = Math.floor(acquisitionStandardPriceForConversion * estimatedRateFor_() + 1e-6);
+      // 단서 금액은 자본적지출 + 양도비만 — 화면이 취득 부대비용(취득세·법무사비 등, 부표3 코드 1xx)을 acquisitionIncidentalExpenses로 따로 넘긴다
+      const actual_ = Math.max(0, (Number(t.necessaryExpenses) || 0) - (Number(t.acquisitionIncidentalExpenses) || 0));
+      if (actual_ > acquisitionPrice + est_) {
+        necessaryExpenses = actual_ - acquisitionPrice; // 합계(취득가액 + 필요경비) = 자본적지출 + 양도비
+        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '§97②2호 단서: 입력한 필요경비 ' + actual_ + '원(자본적지출 + 양도비)이 (환산취득가액 + 개산공제 ' + est_ + '원)보다 커서 그 금액 전부를 필요경비로 했습니다(환산취득가액 대신).';
+      } else {
+        necessaryExpenses = est_;
+        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '환산취득가액이면 필요경비는 개산공제(' + est_ + '원, 시행령 §163⑥)입니다 — 입력한 비용 ' + (Number(t.necessaryExpenses) || 0) + '원은 빼지 않았습니다(§97②2호, 자본적지출 + 양도비가 환산취득가액 + 개산공제보다 클 때만 단서로 대신 씀).';
+      }
     }
 
     const isReconstruction = !!t.isReconstructionRights;
@@ -4187,6 +4211,22 @@
     const taxAmount = Number(p.clawedBackTaxAmount);
     if (!taxAmount || taxAmount <= 0) return { error: '사후관리 위반으로 결정된 추징세액이 필요합니다.' };
     if (!p.startDate || !p.endDate) return { error: '이자 기산일과 추징사유 발생일이 필요합니다.' };
+    // [2026.10.19 fix3] 혼인·출산 증여재산공제 추징(상증법 §53의2⑥⑦ — 별지 제10호서식 부표4)은 이자상당액 계산이 다른 사후관리와 다르다.
+    //  시행령 §46④(법제처 원문 2026-10-19 확인): 기간 = 증여세 과세표준 신고기한의 다음날부터 §53의2⑥·⑦에 따라 수정신고·기한 후 신고를 한 날까지(양 끝 포함),
+    //  율 = 국세기본법 시행령 §27의4① "1일 10만분의 22". 예전엔 다른 사후관리처럼 환급가산금 이율(연 3.1% 등 ÷365)로, 끝날을 추징사유 발생일로 계산했다.
+    if (p.provision === 'gift_marriage') {
+      const s0 = new Date(p.startDate + 'T00:00:00'), e0 = new Date(p.endDate + 'T00:00:00');
+      const mDays = Math.round((e0.getTime() - s0.getTime()) / 86400000) + 1;
+      if (!(mDays > 0)) return { error: '수정신고·기한 후 신고일이 이자 기산일(신고기한 다음날)보다 빠릅니다.' };
+      const mInterest = Math.floor(taxAmount * mDays * 22 / 100000); // 원 미만 버림
+      return {
+        추징세액: taxAmount, 이자기산일: p.startDate, 추징사유발생일: p.endDate, 신고일: p.endDate, provision: 'gift_marriage',
+        구간별_이자상당액: [{ 시작일: p.startDate, 종료일: p.endDate, 일수: mDays, 연이율: null, 일이율: 0.00022, 이자상당액: mInterest }],
+        이자상당액_합계: mInterest,
+        납부할세액: taxAmount + mInterest,
+        안내: '혼인·출산 증여재산공제 추징(§53의2⑥⑦) — 이자상당액 = 증여세액 × 일수(신고기한 다음날 ~ 수정신고·기한 후 신고를 한 날, 양 끝 포함) × 1일 10만분의 22(시행령 §46④, 국세기본법 시행령 §27의4①). 가산세(과소·무신고·납부지연)는 부과하지 않습니다(시행령 §46③).'
+      };
+    }
     const segments = splitDateRangeByRate_(p.startDate, p.endDate);
     if (!segments.length) return { error: '추징사유 발생일이 이자 기산일보다 빠르거나 같습니다.' };
     let totalInterest = 0;
@@ -9143,7 +9183,7 @@
     if (typeof g0 === 'function') window.calculateGiftTaxJS = function (p) { const r = g0(p); if (r && !r.error) { const w = giftHistoryWarning_(p || {}, r); if (w) r.시점경고 = w; } return r; };
     if (typeof i0 === 'function') window.calculateInheritanceTaxJS = function (p) { const r = i0(p); if (r && !r.error) { const w = inheritanceHistoryWarning_(p || {}, r); if (w) r.시점경고 = w; } return r; };
   })();
-  // [2026.10.19 서식 연동 B-2] 서식 칸 산식 검산 — 칸 지도(reftables/서식_상속9호*.json·서식_양도84부표1.json의 '검산' 식)의 칸끼리 산식으로
+  // [2026.10.19 서식 연동 B-2] 서식 칸 산식 검산(칸 번호는 칸 해설 reftables/서식_*.json 기준, 번호 없는 칸은 이름으로) — 칸 지도(reftables/서식_상속9호*.json·서식_양도84부표1.json의 '검산' 식)의 칸끼리 산식으로
   //  엔진 결과를 따로 다시 계산해 맞춰 본다(토큰 0). 다르면 결과에 서식검산(칸별 표)과 서식검산경고를 붙인다 — 숫자는 바꾸지 않는다.
   //  오늘 장례비 사례(§24 한도의 기준이 장례비를 뺀 과세가액인데 엔진이 빼기 전 금액을 썼던 것)처럼 서식 정의와 엔진이 어긋나면 여기서 잡힌다.
   function formCheckPush_(list, 서식, 칸, 내용, 계산기, 서식식) {
@@ -9169,14 +9209,14 @@
     // 부표3 ㉛ ≤ ㉚
     formCheckPush_(L, F + ' 부표3', '㉛', '상속공제 합계는 공제적용한도액을 넘지 않음', Math.min(Number(r.상속공제_서식합계), Number(r.공제적용한도액)), r.상속공제_서식합계);
     // 산출세액 = 누진세율(과세표준) + 세대생략 가산액
-    formCheckPush_(L, F, '㉒~㉔', '산출세액 = 세율(과세표준) + 세대생략가산액', r.산출세액, progressiveTax(Number(r.과세표준), GIFT_INHERIT_TAX_BRACKETS) + (Number(r.세대생략가산액) || 0));
+    formCheckPush_(L, F, '㉕', '산출세액 = ㉓ 세율(㉑ 과세표준) + ㉔ 세대생략가산액', r.산출세액, progressiveTax(Number(r.과세표준), GIFT_INHERIT_TAX_BRACKETS) + (Number(r.세대생략가산액) || 0));
     return L;
   }
   function giftFormChecks_(p, r) {
     const L = [], F = '별지 제10호';
     if (r.과세표준 === undefined || r.산출세액_할증전 === undefined) return L;
-    formCheckPush_(L, F, '산출세액', '산출세액(할증 전) = 세율(과세표준)', r.산출세액_할증전, progressiveTax(Number(r.과세표준), GIFT_INHERIT_TAX_BRACKETS));
-    formCheckPush_(L, F, '할증 뒤', '산출세액(할증 뒤) = 할증 전 + 세대생략 할증액', r.산출세액_할증후, (Number(r.산출세액_할증전) || 0) + (Number(r.세대생략할증액) || 0));
+    formCheckPush_(L, F, '㊱', '산출세액 = 세율(㉞ 과세표준)', r.산출세액_할증전, progressiveTax(Number(r.과세표준), GIFT_INHERIT_TAX_BRACKETS));
+    formCheckPush_(L, F, '㊳', '산출세액 계 = ㊱ + ㊲ 세대생략 할증세액', r.산출세액_할증후, (Number(r.산출세액_할증전) || 0) + (Number(r.세대생략할증액) || 0));
     return L;
   }
   function transferFormChecks_(p, r) {
@@ -9185,11 +9225,11 @@
     const special = r.장기임대주택특례_임대기간중분리상세 || r.조합원입주권_재건축상세 || p.hasRelocationRight || p._externalGainOverride != null;
     if (!special) {
       const iv = r.입력값 || {};
-      formCheckPush_(L, F, '⑭', '양도차익 = 양도가액 − 취득가액 − 필요경비', r.양도차익, (Number(iv.양도가액) || 0) - (Number(iv.취득가액) || 0) - (Number(iv.필요경비) || 0));
-      formCheckPush_(L, F, '⑯', '장기보유특별공제 = 과세대상 양도차익 × 공제율', r.장기보유특별공제액, Math.floor(Number(r.과세대상양도차익) * Number(r.장기보유특별공제율) + 1e-6));
+      formCheckPush_(L, F, '전체 양도차익', '전체 양도차익 = ⑪ 양도가액 − ⑫ 취득가액 − ⑬ 토지초과이득세 − ⑭ 기타 필요경비', r.양도차익, (Number(iv.양도가액) || 0) - (Number(iv.취득가액) || 0) - (Number(iv.필요경비) || 0));
+      formCheckPush_(L, F, '⑯', '장기보유특별공제 = ⑮ 과세대상 양도차익 × 공제율', r.장기보유특별공제액, Math.floor(Number(r.과세대상양도차익) * Number(r.장기보유특별공제율) + 1e-6));
     }
-    formCheckPush_(L, F, '⑱', '양도소득금액 = 과세대상 양도차익 − 장기보유특별공제', r.양도소득금액, Number(r.과세대상양도차익) - Number(r.장기보유특별공제액));
-    formCheckPush_(L, '별지 제84호', '과세표준', '과세표준 = 양도소득금액 − 기본공제', r.과세표준, Math.max(0, Number(r.양도소득금액) - Number(r.기본공제)));
+    formCheckPush_(L, F, '⑱', '양도소득금액 = ⑮ − ⑯', r.양도소득금액, Number(r.과세대상양도차익) - Number(r.장기보유특별공제액));
+    formCheckPush_(L, '별지 제84호', '⑧', '과세표준 = ④ 양도소득금액 − ⑦ 기본공제(⑤⑥ 없을 때)', r.과세표준, Math.max(0, Number(r.양도소득금액) - Number(r.기본공제)));
     return L;
   }
   (function () {
@@ -9225,6 +9265,7 @@
   const JUDGMENT_PENDING_ = {
     speculative_zone_land: { 제목: '투기지역(지정지역) 비사업용토지 +10%p', 조견표: '1부-04', 근거: '소득세법 §104④3호·시행령 §168의3③', A: '가산 안 함(지금 지정은 주택 지정지역뿐)', B: '+10%p 가산' },
     apartment_deadline_155_20: { 제목: '아파트 매입임대 양도기한(2026.10.1 개정)의 거주주택 특례(§155⑳) 적용', 조견표: '2부-27', 근거: '소득세법 시행령 §155⑳·§167의3①2호(대통령령 제36737호)', A: '거주주택 특례에는 안 걸림(비과세 유지)', B: '걸림(특례 배제·과세)' },
+    private_debt_15: { 제목: '상속개시 전 사인 간 채무(부담채무Ⅱ)의 추정상속재산', 조견표: '상속 서식 별지 제9호 부표4(갑)', 근거: '상증법 §15①2호·시행령 §11④ ↔ 서식 부표4(갑) 부담채무Ⅱ 줄(⑫·⑮ 칸 막힘) · §15②', A: '법문대로 1년 2억·2년 5억 기준, 미소명에서 MIN(20%, 2억) 차감', B: '서식대로 미소명 전액(기준·차감 없음)' },
     rental_9703_vs_surcharge: { 제목: '장기일반민간임대 장특공 특례(조특법 §97의3)와 다주택 중과', 조견표: '2부-24', 근거: '조특법 §97의3·소득세법 §104⑦·시행령 §167의3', A: '특례 우선 — 중과 안 함', B: '중과 적용(가산세율·장특공 배제)' }
   };
   function judgmentChecks_(txs, run, resA) {
@@ -9263,6 +9304,35 @@
   function judgmentWarning_(list) {
     return list.length ? '⚠ 세무사님 판단 대기 — ' + list.map(function (j) { return j.제목 + ': 해석 A(' + j.해석A + ') 산출세액 ' + j.세액A.toLocaleString('ko-KR') + '원 / 해석 B(' + j.해석B + ') ' + j.세액B.toLocaleString('ko-KR') + '원'; }).join(' · ') + ' — 계산은 해석 A(지금 기본)로 했음' : '';
   }
+  // [2026.10.19 판단 대기 ④] 상속 — 부담채무Ⅱ(국가·지자체·금융기관이 아닌 자에게 진 채무) 항목이 있을 때만 해석 B(미소명 전액)로 다시 계산해 나란히
+  (function () {
+    const i0 = window.calculateInheritanceTaxJS;
+    if (typeof i0 !== 'function') return;
+    window.calculateInheritanceTaxJS = function (p) {
+      const r = i0(p);
+      if (r && !r.error && p && Array.isArray(p.disposalPresumptionItems)) {
+        try {
+          const isII = function (it) { return it && /부담채무\s*(Ⅱ|II|2)/.test(String(it.category || '')) && ((Number(it.oneYearAmount) || 0) > 0 || (Number(it.twoYearAmount) || 0) > 0); };
+          // 같은 사인 채무를 §15①2호(부담채무Ⅱ 줄)와 §15②(presumedFictitiousDebtAmount) 두 길로 넣었을 수 있음 — 둘 다 있으면 주의 한 줄
+          if (p.disposalPresumptionItems.some(isII) && (Number(p.presumedFictitiousDebtAmount) || 0) > 0)
+            r.채무겹침주의 = '⚠ 같은 채무를 두 번 넣었는지 확인하세요 — 부담채무Ⅱ(2년 안 사인 채무, 부표4 줄)와 변제의무 없는 가공채무(§15②, ' + (Number(p.presumedFictitiousDebtAmount) || 0).toLocaleString('ko-KR') + '원)가 둘 다 있습니다. 한 채무는 한 곳에만 넣습니다.';
+          if (p.disposalPresumptionItems.some(isII)) {
+            const alt = JSON.parse(JSON.stringify(p));
+            alt.disposalPresumptionItems = alt.disposalPresumptionItems.map(function (it) { return isII(it) ? Object.assign({}, it, { _fullUnexplained: true }) : it; });
+            const rb = i0(alt);
+            const tA = Number(r.산출세액) || 0, tB = Number(rb && rb.산출세액) || 0;
+            if (rb && !rb.error && Math.abs(tB - tA) >= 1) {
+              const m = JUDGMENT_PENDING_.private_debt_15;
+              const L = [{ id: 'private_debt_15', 자산: 0, 제목: m.제목, 근거: m.근거, 조견표: m.조견표, 해석A: m.A, 해석B: m.B, 세액A: tA, 세액B: Math.round(tB),
+                비고: '추정상속재산 A ' + (Number(r.상속개시전처분재산_추정합계) || 0).toLocaleString('ko-KR') + '원 / B ' + (Number(rb.상속개시전처분재산_추정합계) || 0).toLocaleString('ko-KR') + '원' }];
+              r.판단대기 = (r.판단대기 || []).concat(L); r.판단대기경고 = judgmentWarning_(r.판단대기);
+            }
+          }
+        } catch (e2) {}
+      }
+      return r;
+    };
+  })();
   (function () {
     const m1 = window.calculateTransferTaxMultiJS, s1 = window.calculateTransferTaxSingleJS;
     if (typeof m1 === 'function') window.calculateTransferTaxMultiJS = function (transactions, filingParams) {

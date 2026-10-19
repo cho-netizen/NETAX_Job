@@ -6735,6 +6735,8 @@ function collectTransferInput(vals){
     transferPrice: (vals.isReconstructionRights && vals.isCompletedNewHousing && vals.useReconstructionStandardPriceMethod && numVal(vals.rsNewStdAtTransfer)) ? numVal(vals.rsNewStdAtTransfer) : transferPrice,
     acquisitionPrice: acquisitionPrice,
     necessaryExpenses: necessaryExpenses,
+    // [2026.10.19] 취득 부대비용(부표3 코드 1xx: 취득세·법무사비·취득 중개수수료 등) — 서식 ⑫ 취득가액 쪽(작성방법 9), 환산취득가액 단서 비교에서는 뺀다(§97②2호)
+    acquisitionIncidentalExpenses: vals.isReconstructionRights ? 0 : trExpenseSplit_(vals).incidental,
     acquisitionDate: vals.acquisitionDate || '',
     transferDate: vals.transferDate || '',
     isOneHouseOneFamily: !!vals.isOneHouseOneFamily,
@@ -7761,7 +7763,7 @@ function renderGiftInheritanceSharedPane_(){
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>추징세액(당초 감면·특례로 줄었던 세액)</label><input type="number" id="ckAmount" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>이자 기산일</label><input type="date" id="ckStartDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">당초 신고기한 다음날 등</span></div>' +
-        '<div class="taxcalc-field"><label>추징사유 발생일</label><input type="date" id="ckEndDate" min="1900-01-01" max="2099-12-31"></div>' +
+        '<div class="taxcalc-field"><label>추징사유 발생일</label><input type="date" id="ckEndDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">혼인출산공제 추징(부표4)은 수정신고·기한 후 신고를 한 날(시행령 §46④ — 이율 1일 10만분의 22)</span></div>' +
         '<div class="taxcalc-field"><label>서식 구분(인쇄용, 해당시)</label><select id="ckFormType">' +
           '<option value="">해당없음(인쇄서식 없음)</option>' +
           '<option value="ih6">상속세 — 가업·영농상속공제 사후관리추징(부표6)</option>' +
@@ -8566,7 +8568,7 @@ function renderClawbackResult(r){
   let html = '<div class="taxcalc-result">';
   html += taxCalcResultRow('추징세액', won(r.추징세액));
   (r.구간별_이자상당액 || []).forEach(function(seg){
-    html += taxCalcResultRow(seg.시작일 + ' ~ ' + seg.종료일 + ' (' + seg.일수 + '일, 연 ' + (seg.연이율 * 100).toFixed(1) + '%)', won(seg.이자상당액));
+    html += taxCalcResultRow(seg.시작일 + ' ~ ' + seg.종료일 + ' (' + seg.일수 + '일, ' + (seg.일이율 ? '1일 10만분의 ' + Math.round(seg.일이율 * 100000) : '연 ' + (seg.연이율 * 100).toFixed(1) + '%') + ')', won(seg.이자상당액)); // [fix3] 혼인공제 추징은 일이율
   });
   html += taxCalcResultRow('이자상당액 합계', won(r.이자상당액_합계));
   html += taxCalcResultRow('납부할 세액', won(r.납부할세액), { total: true });
@@ -8717,9 +8719,9 @@ function gfMarriageClawbackPrintPageHtml_(r){
     '<table class="pf-table">' +
       pfRow_(++n, '수정신고·기한후신고 코드', reasonCode + ' — ' + reasonLabel) +
       pfRow_(++n, '결정된 증여세액(추징대상)', won(r.추징세액)) +
-      pfRow_(++n, '이자 기산일', r.이자기산일) + pfRow_(++n, '추징사유 발생일', r.추징사유발생일) +
+      pfRow_(++n, '이자 기산일', r.이자기산일) + pfRow_(++n, r.provision === 'gift_marriage' ? '수정신고·기한 후 신고를 한 날(㉒ 끝날)' : '추징사유 발생일', r.추징사유발생일) +
       (r.구간별_이자상당액 || []).map(function(seg){
-        return pfRow_(0, '이자상당액(' + seg.시작일 + '~' + seg.종료일 + ', ' + seg.일수 + '일, 연' + (seg.연이율 * 100).toFixed(1) + '%)', won(seg.이자상당액), { indent: true });
+        return pfRow_(0, '이자상당액(' + seg.시작일 + '~' + seg.종료일 + ', ' + seg.일수 + '일, ' + (seg.일이율 ? '1일 10만분의 ' + Math.round(seg.일이율 * 100000) : '연' + (seg.연이율 * 100).toFixed(1) + '%') + ')', won(seg.이자상당액), { indent: true });
       }).join('') +
       pfRow_(++n, '이자상당액 합계', won(r.이자상당액_합계)) +
       pfRow_(++n, '납부할 세액(합계액)', won(r.납부할세액)) +
@@ -9128,7 +9130,10 @@ function trRateDetailRecord_(rateClass, r, splitAmt){ // rateClass: '00'(국세 
   const 국세가산세_납부 = r.납부지연가산세 || 0;
   const 가산세_신고 = isLocal ? Math.round(국세가산세_신고 * 0.1) : 국세가산세_신고;
   const 가산세_납부 = isLocal ? Math.round(국세가산세_납부 * 0.1) : 국세가산세_납부;
-  const 가산세_계 = 가산세_신고 + 가산세_납부;
+  // [2026.10.19 서식 고침] 서식 84호 작성방법 13 — 감정가액·환산취득가액 적용 가산세(§114의2, 5%)는 ⑯ '기장불성실 등'에 적는다.
+  //  예전엔 35번(가산세-기장불성실)을 0으로 두고 17번(계)에서도 빠져, 엔진 납부세액(19번, 이 가산세 포함)과 산출−감면+가산세가 안 맞았다.
+  const 가산세_기장 = isLocal ? 0 : (r.환산취득가액가산세_합계 || 0);
+  const 가산세_계 = 가산세_신고 + 가산세_납부 + 가산세_기장;
   const 자진납부할세액 = isLocal ? localTax : Math.max(0, (r.납부세액_합계 || 0) - localTax);
 
   let b = [];
@@ -9169,7 +9174,7 @@ function trRateDetailRecord_(rateClass, r, splitAmt){ // rateClass: '00'(국세 
   b = b.concat(ihPadNum_(0, 13));                       // 32 주민세_산출세액
   b = b.concat(ihPadNum_(0, 13));                       // 33 주민세_자진납부세액
   b = b.concat(ihPadNum_(0, 13));                       // 34 소득감면대상 소득금액(해당 감면코드 미지원)
-  b = b.concat(ihPadNum_(0, 13));                       // 35 가산세-기장불성실
+  b = b.concat(ihPadNum_(가산세_기장, 13));             // 35 가산세-기장불성실 등(감정가액·환산취득가액 가산세 — 서식 작성방법 13)
   b = b.concat(ihPadChar_('', 9));                      // 36 공란
   return b;
 }
@@ -9480,7 +9485,27 @@ function trAttach1EngineValues_(asset){
   if (!r || r.error || r.과세대상양도차익 === undefined) return { ok: false, why: r && r.error ? r.error : '엔진 값 없음' };
   const gross = Math.round(Number(r.양도차익) || 0), taxable = Math.round(Number(r.과세대상양도차익) || 0);
   return { ok: true, gross: gross, nonTaxable: Math.max(0, gross - taxable), taxable: taxable, ltRate: Number(r.장기보유특별공제율) || 0,
-    ltDeduction: Math.round(Number(r.장기보유특별공제액) || 0), income: Math.round(Number(r.양도소득금액) || 0) };
+    ltDeduction: Math.round(Number(r.장기보유특별공제액) || 0), income: Math.round(Number(r.양도소득금액) || 0),
+    acq: Number(r.입력값 && r.입력값.취득가액) || 0, nec: Number(r.입력값 && r.입력값.필요경비) || 0, kind: trAcqKindCode_(r.취득가액_산정방법) };
+}
+// [2026.10.19] 취득가액종류(전자신고 설명서 35번·부표1 ⑫ 종류): 01 실지거래가액 02 매매사례가액 03 감정가액 04 환산가액 05 기준시가 — 엔진 '취득가액_산정방법' 글에서
+function trAcqKindCode_(note){ const s = String(note || ''); return /환산취득가액/.test(s) ? '04' : /매매사례가액/.test(s) ? '02' : /감정가액/.test(s) ? '03' : /기준시가로/.test(s) ? '05' : '01'; }
+const TR_ACQ_KIND_LABEL_ = { '01': '실지거래가액', '02': '매매사례가액', '03': '감정가액', '04': '환산취득가액', '05': '기준시가' };
+// 취득비용 내역 나누기 — 부표3 코드 1xx = 취득 부대비용(⑫ 취득가액 쪽), 2xx = 자본적지출 등(⑭), 양도비(29x)도 ⑭
+function trExpenseSplit_(asset){
+  let incidental = 0, capital = 0, transfer = 0;
+  (Array.isArray(asset.acquisitionExpenseItems) ? asset.acquisitionExpenseItems : []).forEach(function(it){ const v = numVal(it.amount) || 0; if (!v) return; if (/^1/.test(trExpenseCategoryCode_(it, 'acquisition'))) incidental += v; else capital += v; });
+  (Array.isArray(asset.transferExpenseItems) ? asset.transferExpenseItems : []).forEach(function(it){ transfer += numVal(it.amount) || 0; });
+  return { incidental: incidental, capital: capital, transfer: transfer };
+}
+// 부표1 ⑫ 취득가액·⑭ 기타필요경비(서식 작성방법 9·11): 실지거래가액이면 ⑫ = 취득가액 + 취득 부대비용, ⑭ = 자본적지출 + 양도비.
+//  매매사례·감정·환산·기준시가면 엔진이 쓴 값 그대로(⑫ = 그 가액, ⑭ = 개산공제 또는 §97②2호 단서 금액). 합계(⑫+⑭)는 엔진 필요경비 합계와 같다.
+function trAttach1AcqNec_(asset, ev){
+  const acq0 = Number(asset.acquisitionPrice) || 0, nec0 = Number(asset.necessaryExpenses) || 0;
+  if (!ev || !ev.ok) return { acq: acq0, nec: nec0, kind: '01' };
+  if (ev.kind !== '01') return { acq: ev.acq, nec: ev.nec, kind: ev.kind };
+  const inc = Math.min(trExpenseSplit_(asset).incidental, ev.nec);
+  return { acq: ev.acq + inc, nec: ev.nec - inc, kind: '01' };
 }
 function trLongTermDeductionRate_(years, isOneHouse){
   if (years < 3) return 0;
@@ -9536,8 +9561,9 @@ function trAttach3ExpenseRecords_(asset, feeSeq){
 // 부표1(양도소득금액계산명세서, 자료구분05, C116400, 700B) — 국내 부동산·부동산에관한권리·기타자산.
 function trAttach1AssetRecord_(asset, seq){
   const transferPrice = Number(asset.transferPrice) || 0;
-  const acquisitionPrice = Number(asset.acquisitionPrice) || 0;
-  const necessaryExpenses = Number(asset.necessaryExpenses) || 0;
+  const ev0_ = trAttach1EngineValues_(asset), an_ = trAttach1AcqNec_(asset, ev0_);
+  const acquisitionPrice = an_.acq; // [2026.10.19] ⑫ = 엔진 취득가액(+실지면 취득 부대비용), ⑭ = 나머지 — 예전엔 화면 입력 그대로라 환산이면 취득가액 0으로 찍혔다
+  const necessaryExpenses = an_.nec;
   const grossGain = transferPrice - acquisitionPrice - necessaryExpenses;
   const years = trHoldingYearsSimple_(asset.acquisitionDate, asset.transferDate);
   const isOneHouse = !!asset.isOneHouseOneFamily;
@@ -9583,7 +9609,7 @@ function trAttach1AssetRecord_(asset, seq){
   b = b.concat(ihPadDec_(0, 11, 3));                          // 32 거래자산면적_취득면적_건물_면적(미수집)
   b = b.concat(ihPadNum_(transferPrice, 13));                 // 33 거래금액_양도가액
   b = b.concat(ihPadNum_(acquisitionPrice, 13));              // 34 거래금액_취득가액
-  b = b.concat(ihPadChar_('01', 2));                          // 35 취득가액종류(01 실지거래가액 — 이 앱은 실지거래가액만 지원)
+  b = b.concat(ihPadChar_(an_.kind, 2));                      // 35 취득가액종류(01 실지 02 매매사례 03 감정 04 환산 05 기준시가 — 엔진 산정방법)
   b = b.concat(ihPadNum_(0, 13));                             // 36 기납부토지초과이득세
   b = b.concat(ihPadNum_(necessaryExpenses, 13));             // 37 기타필요경비
   b = b.concat(ihPadNum_(gainAll, 13));                       // 38 양도차익_전체양도차익(엔진)
@@ -9594,16 +9620,14 @@ function trAttach1AssetRecord_(asset, seq){
   b = b.concat(ihPadNum_(0, 13));                             // 43 감면소득금액(감면 미적용 기본값)
   b = b.concat(ihPadChar_('ZZZ', 3));                         // 44 감면종류
   b = b.concat(ihPadNum_(0, 5));                              // 45 감면율
-  b = b.concat(ihPadNum_(0, 13));                             // 46 양도시기준시가_건물_일반건물(환산가액 아님=0)
-  b = b.concat(ihPadNum_(0, 13));                             // 47 양도시기준시가_건물_오피스텔상업용
-  b = b.concat(ihPadNum_(0, 13));                             // 48 양도시기준시가_건물_개별공동주택
-  b = b.concat(ihPadNum_(0, 13));                             // 49 양도시기준시가_토지
-  b = b.concat(ihPadNum_(0, 13));                             // 50 양도시기준시가_합계
-  b = b.concat(ihPadNum_(0, 13));                             // 51 취득시기준시가_건물_일반건물
-  b = b.concat(ihPadNum_(0, 13));                             // 52 취득시기준시가_건물_오피스텔상업용
-  b = b.concat(ihPadNum_(0, 13));                             // 53 취득시기준시가_건물_개별공동주택
-  b = b.concat(ihPadNum_(0, 13));                             // 54 취득시기준시가_토지
-  b = b.concat(ihPadNum_(0, 13));                             // 55 취득시기준시가_합계
+  // [2026.10.19] 46~55 기준시가 — 취득가액종류 04(환산)일 때만 적는다(설명서: 그 밖엔 0). 건물·토지 나눔은 화면이 따로 받지 않아 자산 종류 칸 하나에 합계를 둔다
+  const isConv_ = an_.kind === '04';
+  const stdT_ = isConv_ ? (Number(asset.transferStandardPriceForConversion) || 0) : 0, stdA_ = isConv_ ? (Number(asset.acquisitionStandardPriceForConversion) || Number(asset.acquisitionStandardPriceForExpense) || 0) : 0;
+  const slot_ = asset.assetType === 'house' ? 3 : (asset.assetKind === 'building' ? 1 : 4); // 1 일반건물 2 오피스텔·상업용 3 개별·공동주택 4 토지
+  [1, 2, 3, 4].forEach(function(k){ b = b.concat(ihPadNum_(k === slot_ ? stdT_ : 0, 13)); }); // 46~49 양도시기준시가
+  b = b.concat(ihPadNum_(stdT_, 13));                         // 50 양도시기준시가_합계
+  [1, 2, 3, 4].forEach(function(k){ b = b.concat(ihPadNum_(k === slot_ ? stdA_ : 0, 13)); }); // 51~54 취득시기준시가
+  b = b.concat(ihPadNum_(stdA_, 13));                         // 55 취득시기준시가_합계
   b = b.concat(ihPadChar_('1', 1));                           // 56 자동계산불러오기구분값(1 수기)
   b = b.concat(ihPadChar_('KR ', 3));                         // 57 소재지국
   b = b.concat(ihPadChar_('한국', 40));                        // 58 소재지국명
@@ -9655,8 +9679,9 @@ function trAttach2StockRecord_(stock, seq){
 }
 function trAttach1PrintPageHtml_(asset, seq){
   const transferPrice = Number(asset.transferPrice) || 0;
-  const acquisitionPrice = Number(asset.acquisitionPrice) || 0;
-  const necessaryExpenses = Number(asset.necessaryExpenses) || 0;
+  const an_ = trAttach1AcqNec_(asset, trAttach1EngineValues_(asset)); // [2026.10.19] ⑫·⑭·종류는 엔진 값 기준(서식 작성방법 9·11)
+  const acquisitionPrice = an_.acq;
+  const necessaryExpenses = an_.nec;
   const grossGain = transferPrice - acquisitionPrice - necessaryExpenses;
   const years = trHoldingYearsSimple_(asset.acquisitionDate, asset.transferDate);
   const eligibleForLtDeduction = years >= 3 && !asset.isUnregisteredTransfer && !asset.isNonBusinessLand;
@@ -9675,7 +9700,7 @@ function trAttach1PrintPageHtml_(asset, seq){
       pfRow_(++n, '양도일자', asset.transferDate) +
       pfRow_(++n, '취득일자', asset.acquisitionDate) +
       pfRow_(++n, '양도가액', won(transferPrice)) +
-      pfRow_(++n, '취득가액종류', '실지거래가액') +
+      pfRow_(++n, '취득가액종류', TR_ACQ_KIND_LABEL_[an_.kind] || '실지거래가액') +
       pfRow_(++n, '취득가액', won(acquisitionPrice)) +
       pfRow_(++n, '기타필요경비', won(necessaryExpenses)) +
       pfRow_(++n, '전체양도차익', won(ev.ok ? ev.gross : grossGain)) +
@@ -10160,6 +10185,7 @@ function trPrintFormPageHtml_(seller, r, buyers, assets){
       pfRow_(++n, '감면세액', won(nationalReduction)) +
       pfRow_(++n, '신고불성실가산세', won(r.무신고가산세 || r.과소신고가산세 ? reportPenalty : 0)) +
       pfRow_(++n, '납부지연가산세', won(latePenalty)) +
+      ((r.환산취득가액가산세_합계 || 0) ? pfRow_(++n, '기장불성실 등 가산세(감정가액·환산취득가액 적용, §114의2)', won(r.환산취득가액가산세_합계)) : '') +
       pfRow_(++n, '자진납부할 세액(국세)', won(nationalPayable)) +
     '</table>' +
     '<div class="pf-section-head">개인지방소득세(참고, 세율구분 98)</div>' +
@@ -10524,6 +10550,7 @@ function renderInheritancePane(){
     '<div class="taxcalc-asset-head"><b>재산평가 자산 배분 — 자산 등록·평가는 "재산평가" 탭에서 하고, 여기서는 배분만 합니다</b></div>' +
     '<div id="inheritanceAssetAllocationList">' + renderInheritanceAssetAllocationListHtml_() + '</div>' +
     '<div class="taxcalc-asset-head"><b>[부표4] 상속개시전 처분재산 등 산입액(§15) — 상속개시 전 1년 이내 재산종류별 2억원 이상(2년 이내 5억원 이상) 처분·인출·채무부담인데 용도가 불분명하면 자동으로 과세가액에 가산됩니다. 해당 없으면 비워두세요.</b></div>' +
+    '<div class="taxcalc-result-note" style="margin:2px 0 6px;">같은 채무를 두 곳에 넣지 마세요 — 2년 안에 국가·금융기관이 아닌 사람에게 진 채무(사인 채무)의 용도 소명은 여기 "부담채무Ⅱ" 줄에, 상속인이 갚을 의무가 없는 것으로 보이는 가공채무(§15②)는 상속재산 채무에서 빼는 쪽으로 넣습니다. 부담채무Ⅱ가 있으면 결과에 "세무사님 판단 대기"(법문 A / 서식 B 세액)가 나옵니다.</div>' +
     '<div id="ihDisposalItems"></div>' +
     '<div class="taxcalc-asset">' +
       '<div class="taxcalc-asset-head"><b>과세가액 · 인적공제(자녀 수·미성년·65세이상은 위 상속인 명부에서 자동 산출)</b></div>' +
@@ -14012,6 +14039,8 @@ function renderInheritanceResult(r){
   let html = '<div class="taxcalc-result">';
   if (r.시점경고) html += '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.시점경고) + '</div>'; // [2026.10.19] 상속개시일 연혁 경고
   if (r.서식검산경고) html += '<div class="taxcalc-result-note" style="color:#b00020; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.서식검산경고) + '</div>'; // [2026.10.19] 서식 칸 산식 검산
+  if (r.판단대기 && r.판단대기.length) html += tcJudgmentPendingHtml_(r.판단대기); // [2026.10.19] 세무사님 판단 대기 ④ 부담채무Ⅱ — 해석 A/B 세액, 고르면 기록
+  if (r.채무겹침주의) html += '<div class="taxcalc-result-note" style="color:#a83232;">' + escapeHtml(r.채무겹침주의) + '</div>';
   // [2026.10.09] 실사용 점검에서 발견 — 처리개요의 상속인 이름은 이름만 넘어오고 관계(배우자·자녀…)는 비어 있어,
   // 배우자가 있는데도 배우자공제(최소 5억)가 0원으로 계산되는데 아무 경고가 없었다. 관계가 빈 상속인이 있으면 알린다.
   const ihNoRelation_ = (inheritanceHeirs || []).filter(function(h){ return h && String(h.name || '').trim() && !h.relation; }).map(function(h){ return h.name; });
@@ -14714,7 +14743,7 @@ const PRINT_REGISTRY_ = [
       // 전부 다른데, 기존엔 그중 하나(별지83호의5)만 카탈로그에 올려서 나머지 6종은 계산 전엔
       // 아예 안 보였다 — 7종 전부 올린다.
       { formNo: '조세특례제한법 시행규칙 [별지 제52호의3서식]', title: '1세대1주택 과세특례(인구감소지역주택·준공후미분양주택 취득자) 신고서', section: 'optional' },
-      { formNo: '소득세법 시행규칙 [별지 제63호의4서식]', title: '농어촌주택 등 취득자에 대한 과세특례신고서', section: 'optional' },
+      { formNo: '조세특례제한법 시행규칙 [별지 제63호의4서식]', title: '농어촌주택 등 취득자에 대한 과세특례신고서', section: 'optional' }, // [2026.10.19] 법 이름 고침(소득세법 → 조세특례제한법 시행규칙, 법제처 서식 목록·조특법 §99의4)
       { formNo: '소득세법 시행규칙 [별지 제83호서식]', title: '농어촌주택 소유자 1세대1주택 특례적용신고서(문화재주택·이농주택·귀농주택)', section: 'optional' },
       { formNo: '소득세법 시행규칙 [별지 제83호의2서식]', title: '주택임대사업자의 거주주택 1세대1주택 특례적용신고서', section: 'optional' },
       { formNo: '소득세법 시행규칙 [별지 제83호의3서식]', title: '장기저당담보주택에 대한 특례적용신고서(동거봉양 합가)', section: 'optional' },
@@ -15034,6 +15063,8 @@ function renderPrintPane(){
           return '<button type="button" class="save-btn" data-action="' + item.efileAction + '" data-registry-key="' + item.key + '"' + (item.isReady() ? '' : ' disabled') + '>' + item.efileLabel + '</button>';
         }).join('') +
       '</div>' +
+      // [2026.10.19] 지금 인쇄는 법정서식 원본 모양이 아니라 칸 번호를 화면이 스스로 매긴다 — 원본 모양 출력(위치판)으로 바꿀 때까지 화면에서만 알림(종이에는 안 찍음)
+      (anyReady ? '<div class="taxcalc-result-note" style="color:#8a5a00; margin:8px 0;">⚠ 지금 인쇄물은 법정서식 원본 모양이 아닙니다 — 칸 배치와 동그라미 번호가 원본과 다를 수 있습니다(예: 양도 본표 ⑱ 납부할 세액이 ⑫로 찍힘). 세무서에 내기 전에 칸 이름으로 원본과 맞춰 보세요. 원본 모양 출력을 준비하고 있습니다.</div>' : '') +
       (anyReady
         ? printRenderTable_(requiredRows.filter(function(r){ return r.ready; }), '이 사건에 필요한 서식 — 신고서 본문') +
           printRenderTable_(optionalRows.filter(function(r){ return r.ready; }), '이 사건에 필요한 서식 — 사안에 따라 붙는 첨부·특례 서식')
@@ -16998,6 +17029,8 @@ function handleTaxCalcClick_(e){
       startDate: document.getElementById('ckStartDate').value,
       endDate: document.getElementById('ckEndDate').value
     };
+    // [2026.10.19 fix3] 혼인·출산 증여재산공제 추징(부표4)은 시행령 §46④ — 끝날 = 수정신고·기한 후 신고일, 율 = 1일 10만분의 22
+    if ((document.getElementById('ckFormType') || {}).value === 'gf_marriage') input.provision = 'gift_marriage';
     renderClawbackResult(calculateClawbackInterestJS(input));
   } else if (action === 'run-business-succession-deferral-amount'){
     // [2026.09.30 신규, 재검토100] 별지10호 부표2용 사업무관자산 5항목을 채웠으면 그 비율로

@@ -748,7 +748,7 @@ const DRIVE_TOOLS = [
       properties: {
         isOffshoreTransaction: { type: 'boolean', description: '국세기본법§47의2·§47의3의 역외거래 부정행위(무신고·과소신고)에 해당하는지 — true면 가산세율이 40%(국내)가 아니라 60%로 적용된다.' },
         isWarOrDutyDeath: { type: 'boolean', description: '§11 — 전쟁 또는 대통령령으로 정하는 공무의 수행 중 사망하거나 그로 인한 부상·질병으로 사망하여 상속이 개시되는 경우인지. true면 다른 입력과 무관하게 상속세를 전액 부과하지 않는다.' },
-        presumedFictitiousDebtAmount: { type: 'number', description: '§15② — 피상속인이 국가·지방자치단체·금융회사등이 아닌 자(개인 등)에게 부담한 채무로서 상속인이 변제할 의무가 없는 것으로 추정되는(가공채무로 의심되는) 금액(원). taxableEstateAmount 계산시 이미 채무로 공제됐다면, 그 금액을 여기 넣어 과세가액에 다시 산입해야 한다. 없으면 생략.' },
+        presumedFictitiousDebtAmount: { type: 'number', description: '§15② — 피상속인이 국가·지방자치단체·금융회사등이 아닌 자(개인 등)에게 부담한 채무로서 상속인이 변제할 의무가 없는 것으로 추정되는(가공채무로 의심되는) 금액(원). taxableEstateAmount 계산시 이미 채무로 공제됐다면, 그 금액을 여기 넣어 과세가액에 다시 산입해야 한다. 같은 채무를 disposalPresumptionItems의 "부담채무II"(2년 안 사인 채무 용도 소명) 줄에도 넣지 말 것 — 한 채무는 한 곳에만. 없으면 생략.' },
         taxableEstateAmount: { type: 'number', description: '상속세 과세가액(원) — 총상속재산가액에서 공과금·채무를 빼고 10년 이내 사전증여재산 등을 가산해 이미 계산된 금액이어야 한다(조특법§30의5·6 특례증여재산은 증여시기와 무관하게 항상 가산해야 함에 유의). 장례비용은 여기서 빼면 안 된다 — 이 도구가 funeralCostAmount·funeralNicheCostAmount로 별도 입력받아 자동으로 공제하므로, 여기에 미리 빼서 넣으면 장례비용이 이중으로 공제된다. 비과세재산가액·과세가액불산입재산가액은 여기 포함하지 말 것(nonTaxableAmount 등으로 별도 입력하면 자동으로 차감된다). 상속개시전 처분재산 추정액(disposalPresumptionItems)도 여기 포함하지 말 것 — 자동으로 더해진다. 그 총상속재산가액을 구성하는 개별 자산의 가액은 반드시 다음 순서로 확인하라: ① list_drive_folder/read_drive_file로 사건 폴더 안에 계약서·감정평가서 등 시가를 알 수 있는 문서가 있는지 먼저 찾는다 ② 없으면 lookup_real_estate_price로 유사 매매사례가 있는지 조회한다 ③ 그래도 없으면 부동산은 토지=개별공시지가×면적, 건물=calculate_building_standard_price(보충적평가방법)로 계산하고, 비상장주식은 calculate_unlisted_stock_value로 계산한다 ④ 그래도 확인할 수 없는 값은 사용자에게 직접 물어봐라. 각 단계를 시도했는지, 어느 단계에서 값을 확정했는지 답변에서 밝혀라.' },
         nonTaxableAmount: { type: 'number', description: '비과세되는 상속재산가액(원, §12) — 국가·지방자치단체·공공단체 유증재산, 문화재보호구역 토지, 금양임야·묘토인 농지(한도 2억원), 족보·제구(한도 1천만원), 정당 유증재산, 사내근로복지기금 등 유증재산, 이재구호금품 등. 조특법§76②에 따라 「정치자금법」상 적법한 절차로 기부받은 정치자금도 상속세를 부과하지 않으므로 여기 포함해서 넣으면 된다. 없으면 생략.' },
         publicInterestOrgAmount: { type: 'number', description: '상속세 과세표준 신고기한 이내에 공익법인등에 출연한 재산가액(원, §16 — 과세가액 불산입). 없으면 생략.' },
@@ -759,7 +759,7 @@ const DRIVE_TOOLS = [
           items: {
             type: 'object',
             properties: {
-              category: { type: 'string', description: '재산종류 (예: "현금·예금·유가증권", "부동산", "기타재산", "부담채무I", "부담채무II")' },
+              category: { type: 'string', description: '재산종류 (예: "현금·예금·유가증권", "부동산", "기타재산", "부담채무I", "부담채무II"). 부담채무II(국가·지자체·금융기관이 아닌 자에게 진 채무)는 세무사님 판단 대기 중 — 계산은 법문(기준·20% 차감, 해석 A)이고 결과에 서식대로(미소명 전액, 해석 B) 세액이 함께 나온다. presumedFictitiousDebtAmount(§15②)와 같은 채무를 겹쳐 넣지 말 것.' },
               oneYearAmount: { type: 'number', description: '상속개시 전 1년 이내 총인출(처분·차입)액 합계(원)' },
               oneYearSelfDeposit: { type: 'number', description: '위 1년 이내 인출액 중 본인계좌 재입금 등 실질적으로 인출이 아닌 금액(원, 없으면 0)' },
               oneYearExplained: { type: 'number', description: '1년 이내 순인출액 중 용도가 객관적으로 소명된 금액(원, 없으면 0)' },
@@ -2410,7 +2410,8 @@ const DRIVE_TOOLS = [
       properties: {
         clawedBackTaxAmount: { type: 'number', description: '사후관리 위반으로 결정된 추징세액(원) — 당초 감면·특례로 줄어들었던 세액. 세액 자체의 산정은 이 도구가 하지 않으므로 별도로 계산해서 입력한다.' },
         startDate: { type: 'string', description: '이자 기산일(YYYY-MM-DD) — 당초 감면·특례 적용받은 증여세(또는 상속세)의 과세표준 신고기한 다음 날.' },
-        endDate: { type: 'string', description: '추징사유 발생일(YYYY-MM-DD) — 사후관리 위반 사유가 발생한 날.' }
+        endDate: { type: 'string', description: '추징사유 발생일(YYYY-MM-DD) — 사후관리 위반 사유가 발생한 날. provision=gift_marriage면 수정신고·기한 후 신고를 한 날.' },
+        provision: { type: 'string', enum: ['gift_marriage'], description: '혼인·출산 증여재산공제 추징(상증법 §53의2⑥⑦, 부표4)이면 gift_marriage — 이자 = 증여세액 × (신고기한 다음날~신고한 날, 양 끝 포함) × 1일 10만분의 22(시행령 §46④). 다른 사후관리면 비움(환급가산금 이율).' }
       },
       required: ['clawedBackTaxAmount', 'startDate', 'endDate']
     }
@@ -9830,6 +9831,22 @@ function toolCalculateClawbackInterest(p) {
   const taxAmount = Number(p.clawedBackTaxAmount);
   if (!taxAmount || taxAmount <= 0) return { error: '사후관리 위반으로 결정된 추징세액(clawedBackTaxAmount)이 필요합니다.' };
   if (!p.startDate || !p.endDate) return { error: '이자 기산일(startDate)과 추징사유 발생일(endDate)이 필요합니다.' };
+  // [2026.10.19 fix3] 혼인·출산 증여재산공제 추징(상증법 §53의2⑥⑦ — 별지 제10호서식 부표4)은 이자상당액 계산이 다른 사후관리와 다르다.
+  //  시행령 §46④(법제처 원문 2026-10-19 확인): 기간 = 증여세 과세표준 신고기한의 다음날부터 §53의2⑥·⑦에 따라 수정신고·기한 후 신고를 한 날까지(양 끝 포함),
+  //  율 = 국세기본법 시행령 §27의4① "1일 10만분의 22". 예전엔 다른 사후관리처럼 환급가산금 이율(연 3.1% 등 ÷365)로, 끝날을 추징사유 발생일로 계산했다.
+  if (p.provision === 'gift_marriage') {
+    const s0 = new Date(p.startDate + 'T00:00:00'), e0 = new Date(p.endDate + 'T00:00:00');
+    const mDays = Math.round((e0.getTime() - s0.getTime()) / 86400000) + 1;
+    if (!(mDays > 0)) return { error: '수정신고·기한 후 신고일이 이자 기산일(신고기한 다음날)보다 빠릅니다.' };
+    const mInterest = Math.floor(taxAmount * mDays * 22 / 100000); // 원 미만 버림
+    return {
+      추징세액: taxAmount, 이자기산일: p.startDate, 추징사유발생일: p.endDate, 신고일: p.endDate, provision: 'gift_marriage',
+      구간별_이자상당액: [{ 시작일: p.startDate, 종료일: p.endDate, 일수: mDays, 연이율: null, 일이율: 0.00022, 이자상당액: mInterest }],
+      이자상당액_합계: mInterest,
+      납부할세액: taxAmount + mInterest,
+      안내: '혼인·출산 증여재산공제 추징(§53의2⑥⑦) — 이자상당액 = 증여세액 × 일수(신고기한 다음날 ~ 수정신고·기한 후 신고를 한 날, 양 끝 포함) × 1일 10만분의 22(시행령 §46④, 국세기본법 시행령 §27의4①). 가산세(과소·무신고·납부지연)는 부과하지 않습니다(시행령 §46③).'
+    };
+  }
   const segments = splitDateRangeByRate_(p.startDate, p.endDate);
   if (!segments.length) return { error: '추징사유 발생일이 이자 기산일보다 빠르거나 같습니다.' };
   let totalInterest = 0;
