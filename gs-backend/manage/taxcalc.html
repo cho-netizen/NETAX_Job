@@ -5751,6 +5751,7 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isOneHouseOneFamily" id="oneHouse-' + idx + '"><label for="oneHouse-' + idx + '">1세대1주택 비과세 전제</label></div>' +
           '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-one-house-special-modal" data-idx="' + idx + '" title="특정주택(수도권밖미분양·인구감소지역·농어촌주택)은 주택수에서 제외될 수 있습니다">🔍 특정주택 제외 판정</button></div>' +
           '<div class="taxcalc-field" data-show-if="isOneHouseOneFamily" style="display:none;"><label>거주연수</label><input type="number" data-field="residenceYears" placeholder="년" maxlength="2"></div>' +
+          '<div class="taxcalc-field"><label>별지 83호의6 일반세율 적용(이 주택)</label><select data-field="mhRentalExemptionType"><option value="">해당 없음</option><option value="long_rental">장기임대주택</option><option value="reduced_rental">감면대상 장기임대주택</option><option value="daycare">장기어린이집</option><option value="general">일반주택(위 셋을 빼면 남는 1주택)</option></select><span class="taxcalc-field-help">2·3주택 이상이라도 이 주택이 넷 중 하나면 중과 대신 일반세율(시행령 §167의3①2·3·8의2·10호, ⑦ 신청서 — 주택마다)</span></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isAdjustedArea" id="adj-' + idx + '"><label for="adj-' + idx + '">조정대상지역(2026.5.9까지 양도분은 시행령§167조의3①12호의2 등에 따라 중과 한시배제 자동 적용, 이후 재연장 여부는 별도 확인)</label></div>' +
           '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-industrial-complex-lot-modal" data-idx="' + idx + '" title="산업단지 조성으로 이주한 이주택지를 분양받아 양도하는 경우, 다주택중과 배제 대상인지 판정합니다(조특법§104의20, 2012.12.31까지 양도분만)">🔍 산업단지 이주택지 중과배제 판정</button></div>' +
           (transferAssets[idx].transferContractId ? '<div class="taxcalc-field"><span class="taxcalc-field-help">매매계약체결일·토지거래허가 관련 항목은 양도계약에서 가져옵니다 — 계약 카드에서 수정하세요</span></div>' :
@@ -6848,6 +6849,7 @@ function collectTransferInput(vals){
     isAdjustedArea: !!vals.isAdjustedArea,
     multiHouseCount: numVal(vals.multiHouseCount) || 0,
     isMultiHouseRentalExemption: !!vals.isMultiHouseRentalExemption, // [2026.10.19] 별지 83호의6 일반세율 적용 — 시행령 §167의3①2·3·8의2·10호 중과 제외
+    mhRentalExemptionType: vals.mhRentalExemptionType || '', // [2026.10.20 J17] ④ 구분(주택마다)
     saleContractDate: vals.saleContractDate || '',
     isLandTransactionPermitArea: !!vals.isLandTransactionPermitArea,
     isPermitApplicationFiledByDeadline: !!vals.isPermitApplicationFiledByDeadline,
@@ -15378,7 +15380,10 @@ function renderPrintPane(){
   });
   // [2026.10.20] 예전 인쇄가 만들지 않은 장이라도 원본 모양으로 찍을 계산 결과가 있으면 그 줄을 보여 준다(모듈을 한 번 불러온 뒤부터)
   const FPx_ = window.NxFormPrint;
-  if (FPx_ && FPx_.officialReady) printCurrentRows_.forEach(function(r){ if (!r.ready && r.formNo && FPx_.officialFor(r.formNo) && FPx_.officialReady(r.formNo)) r.ready = true; });
+  if (FPx_ && FPx_.officialReady){
+    const shown_ = {}; printCurrentRows_.forEach(function(r){ if (r.ready && r.formNo) shown_[r.formNo.replace(/\s+/g, '')] = true; });
+    printCurrentRows_.forEach(function(r){ const f_ = r.formNo ? r.formNo.replace(/\s+/g, '') : ''; if (!r.ready && f_ && !shown_[f_] && FPx_.officialFor(r.formNo) && FPx_.officialReady(r.formNo)){ r.ready = true; shown_[f_] = true; } }); // 같은 서식번호 줄이 이미 보이면 켜지 않음(국외전출자 84호 등)
+  }
   const requiredRows = printCurrentRows_.filter(function(r){ return r.section === 'required'; });
   const optionalRows = printCurrentRows_.filter(function(r){ return r.section === 'optional'; });
   const anyReady = printCurrentRows_.some(function(r){ return r.ready; });
@@ -16102,9 +16107,11 @@ function handleTaxCalcClick_(e){
       const sharedNonResidentException = !!(document.getElementById('trNonResidentTwoYearException') && document.getElementById('trNonResidentTwoYearException').checked);
       // [2026.10.19 서식 감사] 별지 83호의6 일반세율 적용(중과 제외) 체크도 양도인 값 — 엔진 중과 판정에 넘긴다(예전엔 인쇄에만 쓰임)
       const sharedMultiHouseRentalExemption = !!(document.getElementById('trMultiHouseRentalExemption') && document.getElementById('trMultiHouseRentalExemption').checked);
+      // [2026.10.20 위원회 J17] 83호의6 일반세율은 주택마다(자산 카드 mhRentalExemptionType). 양도인 체크는 옛 자료 호환용 — 자산 카드 값이 하나도 없을 때만 읽음
+      const anyAssetMh_ = domesticAssets.some(function(a){ return !!a.mhRentalExemptionType; });
       domesticAssets.forEach(function(a){
         a.multiHouseCount = sharedMultiHouseCount;
-        a.isMultiHouseRentalExemption = sharedMultiHouseRentalExemption;
+        a.isMultiHouseRentalExemption = anyAssetMh_ ? !!a.mhRentalExemptionType : sharedMultiHouseRentalExemption;
         a.isTransferorResident = sharedIsResident;
         a.isNonResidentTwoYearException = sharedNonResidentException;
       });
@@ -16158,7 +16165,7 @@ function handleTaxCalcClick_(e){
           if (!ratio) return null;
           const resolved = collectTransferInput(Object.assign({}, a, {
             multiHouseCount: seller.multiHouseCount || '0',
-            isMultiHouseRentalExemption: !!seller.isMultiHouseRentalExemption, // [2026.10.19] 별지 83호의6 — 엔진 중과 판정
+            isMultiHouseRentalExemption: domesticAssets.some(function(x){ return !!x.mhRentalExemptionType; }) ? !!a.mhRentalExemptionType : !!seller.isMultiHouseRentalExemption, // [2026.10.20 J17] 주택마다(옛 양도인 체크는 호환용)
             isTransferorResident: seller.isTransferorResident !== false,
             isNonResidentTwoYearException: !!seller.isNonResidentTwoYearException
           }));

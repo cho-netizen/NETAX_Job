@@ -284,12 +284,15 @@
   }
   mappers['소득83호의6'] = function (ctx) {
     var o = new Out(), s = ctx.seller || {};
-    if (!s.isMultiHouseRentalExemption) { o.miss('①~㉗ 전체', '양도인 카드 "장기임대주택 등 일반세율 적용" 체크 없음'); return o.result(); }
+    var list0_ = ctx.assets || [], it0_ = list0_[has(ctx.특례자산) ? ctx.특례자산 : 0], mhT_ = it0_ && it0_.asset ? it0_.asset.mhRentalExemptionType : '';
+    if (!s.isMultiHouseRentalExemption && !mhT_) { o.miss('①~㉗ 전체', '주택 카드 "별지 83호의6 일반세율 적용"(또는 옛 양도인 카드 체크) 없음'); return o.result(); }
     person(o, s, '①', '②', '③', '③@전화번호');
     var list = ctx.assets || [], ai = has(ctx.특례자산) ? ctx.특례자산 : (mhAssets(ctx)[0] != null ? mhAssets(ctx)[0] : 0);
     var it = list[ai], a = (it && it.asset) || {};
     if (!isHouse(a)) o.note('양도 자산 중 주택이 없어 첫 자산을 양도주택 칸에 찍음 — 확인 필요');
-    o.miss('④ 구분(장기임대주택·감면대상 장기임대주택·장기어린이집·일반주택)', '계산기에 없음(양도인 카드는 체크 하나뿐 — 양도주택이 네 가지 중 무엇인지 고르는 칸 없음)');
+    var MH_LABEL_ = { long_rental: '장기임대주택', reduced_rental: '감면대상 장기임대주택', daycare: '장기어린이집', general: '일반주택' };
+    if (MH_LABEL_[a.mhRentalExemptionType]) o.set('④', MH_LABEL_[a.mhRentalExemptionType]); // [2026.10.20 위원회 J17] 주택 카드 ④ 구분
+    else o.miss('④ 구분(장기임대주택·감면대상 장기임대주택·장기어린이집·일반주택)', '계산기에 없음(양도인 카드는 체크 하나뿐 — 양도주택이 네 가지 중 무엇인지 고르는 칸 없음)');
     o.need('⑤', a.assetLocation, '⑤ 소재지');
     o.miss('⑥ 주택면적·⑦ 토지면적', '계산기에 없음');
     o.miss('⑧ 임대개시일 당시 기준시가 합계액', '계산기에 없음');
@@ -456,17 +459,21 @@
 
   // 83호의6 — 양도인 카드 체크가 있는 양도인마다, 그 양도인의 주택 자산마다 한 장(주택이 없으면 한 장)
   function mhCtxList(ctx) {
-    if (!ctx || !ctx.seller || !ctx.seller.isMultiHouseRentalExemption) return [];
+    if (!ctx) return [];
+    // [2026.10.20 위원회 J17] 주택 카드에 83호의6 구분이 있는 주택마다 한 장. 없으면 옛 양도인 체크로 그 양도인의 주택마다.
+    var own_ = mhAssets(ctx).filter(function (i) { return !!((ctx.assets[i] || {}).asset || {}).mhRentalExemptionType; });
+    if (own_.length) return own_.map(function (ai) { return Object.assign({}, ctx, { 특례자산: ai }); });
+    if (!ctx.seller || !ctx.seller.isMultiHouseRentalExemption) return [];
     var idx = mhAssets(ctx);
     if (!idx.length) idx = [0];
     return idx.map(function (ai) { return Object.assign({}, ctx, { 특례자산: ai }); });
   }
   ctxFor['소득83호의6'] = function (extra) {
     var out = [];
-    transferItems().forEach(function (item, i) { if (item.seller && item.seller.isMultiHouseRentalExemption) out = out.concat(mhCtxList(linkCards(H.ctxFromApp.양도(i, extra)))); });
+    transferItems().forEach(function (item, i) { if ((item.seller && item.seller.isMultiHouseRentalExemption) || (item.assets || []).some(function (a) { return !!a.mhRentalExemptionType; })) out = out.concat(mhCtxList(linkCards(H.ctxFromApp.양도(i, extra)))); });
     return out;
   };
-  ready['소득83호의6'] = function () { return transferItems().some(function (item) { return !!(item.seller && item.seller.isMultiHouseRentalExemption); }); };
+  ready['소득83호의6'] = function () { return transferItems().some(function (item) { return !!(item.seller && item.seller.isMultiHouseRentalExemption) || (item.assets || []).some(function (a) { return !!a.mhRentalExemptionType; }); }); };
 
   // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만)
   function plan(tax, ctx) {
