@@ -29798,14 +29798,15 @@ function caseProcDupDrop_(files, cache) {
     const baseOf = function (n) { return String(n || '').replace(/\.[A-Za-z0-9]{2,5}$/, '').replace(/\s+/g, '').toLowerCase(); };
     const sameDoc = function (a, b) {
       if (a.f.bundleOf && a.f.bundleOf === b.f.bundleOf) return false; // 한 묶음 안의 서로 다른 구간
-      const img = function (x) { return /^image\//.test(String(x.f.mimeType || '')); };
-      if (!a.f.bundleOf && !b.f.bundleOf && img(a) !== img(b) && baseOf(a.f.name) === baseOf(b.f.name) && (!a.p.t || !b.p.t || a.p.t === b.p.t)) return '같은 이름의 ' + (img(a) ? 'PDF' : '사진') + '과 같은 서류';
+      const img = function (x) { return x._img; }; // [밤샘 6바퀴 속도] 사진 여부·이름 바탕은 파일마다 한 번만 계산(아래 xs.forEach) — 짝마다 정규식을 다시 돌렸다
+      if (!a.f.bundleOf && !b.f.bundleOf && img(a) !== img(b) && a._base === b._base && (!a.p.t || !b.p.t || a.p.t === b.p.t)) return '같은 이름의 ' + (img(a) ? 'PDF' : '사진') + '과 같은 서류';
       // 등기부·대장·공시가격은 이웃 필지·같은 건물의 토지/건물 서류가 같은 숫자(이력 날짜·연도별 가격)를 많이 나눠 가져 숫자로 가르지 않는다(고객Z 관양동 000 토지·건물 등기부, 고객Y 511-1·511-4 기준시가)
       if (!a.p.t || a.p.t !== b.p.t || a.p.calc || b.p.calc || /^(registry|pubprice|realprice|landledger|bldledger|officetelstd|bldstdcalc)$/.test(a.p.t)) return false;
       const na = a.p.nums || [], nb = b.p.nums || [];
       if (na.length < 6 || na.length !== nb.length || na.length >= 200) return false;
       return na.every(function (v, i) { return v === nb[i]; }) ? '본문 숫자(금액·날짜·번호)가 모두 같은 같은 서류 사본' : false;
     };
+    xs.forEach(function (x) { x._img = /^image\//.test(String(x.f.mimeType || '')); x._base = baseOf(x.f.name); });
     for (let i = 0; i < xs.length; i++) for (let j = i + 1; j < xs.length; j++) {
       const a = xs[i], b = xs[j];
       if (drop[a.f.id] || drop[b.f.id]) continue;
@@ -40003,20 +40004,25 @@ function docBankChainRows_(t, opt) {
   var amtFor = function (i, j) {
     var d = sv(j) - sv(i); if (!d) return -1;
     var best = -1, bd = 1e9;
-    for (var k = Math.max(0, i - W); k <= Math.min(n - 1, j + W); k++) {
-      if (k === i || k === j || toks[k].v !== Math.abs(d)) continue;
+    // [2026.10.20 2번 밤샘 6바퀴 — 속도] 같은 금액 글자의 자리 목록(posByV, 오름차순)만 본다 — 예전엔 창 안 모든 글자를 훑고, 못 찾으면 글 전체를 다시 훑어
+    //  (토큰 수)² 걸렸다(큰 통장 사건 처리 시간의 13%). 고르는 규칙(가장 가까운 것, 같으면 앞 자리)과 결과는 그대로
+    var ps = posByV[Math.abs(d)] || [], lo = Math.max(0, i - W), hi = Math.min(n - 1, j + W);
+    for (var pi = 0; pi < ps.length; pi++) {
+      var k = ps[pi]; if (k < lo) continue; if (k > hi) break;
+      if (k === i || k === j) continue;
       if (toks[k].s && (toks[k].s > 0) !== (d > 0)) continue;
       var dist = k > i && k < j ? 0 : Math.min(Math.abs(k - i), Math.abs(k - j));
       if (dist < bd) { bd = dist; best = k; }
     }
     // [2026.10.18] 창 밖의 금액 — 사진은 금액 칸과 잔액 칸이 멀리 떨어져 읽히기도 한다(고객A 신한: 819,160원). 10만원 넘는 금액이 글 전체에 딱 한 번 있으면 그 글자
-    if (best < 0 && Math.abs(d) >= 100000 && vCnt[Math.abs(d)] === 1) for (var k2 = 0; k2 < n; k2++) if (k2 !== i && k2 !== j && toks[k2].v === Math.abs(d) && !(toks[k2].s && (toks[k2].s > 0) !== (d > 0))) { best = k2; break; }
+    if (best < 0 && Math.abs(d) >= 100000 && vCnt[Math.abs(d)] === 1) for (var p2 = 0; p2 < ps.length; p2++) { var k2 = ps[p2]; if (k2 !== i && k2 !== j && !(toks[k2].s && (toks[k2].s > 0) !== (d > 0))) { best = k2; break; } }
     return best;
   };
   var L = toks.map(function () { return 0; }), from = toks.map(function () { return -1; }), via = toks.map(function () { return -1; });
   // [2026.10.18 정밀분석 원인2] 세 번 넘게 되풀이된 금액(CD출금 1,000,000원 ×9 등)은 거래 금액이지 잔액이 아니다 — 잔액 마디로 쓰면 엉뚱한 긴 사슬이 이겨
   //  앞 거래 14줄이 통째로 버려졌다(고객A 신한 통장 사진: 19줄 중 5줄만). 잔액은 줄마다 바뀌므로 같은 값이 세 번 이상 나오지 않는다
   var vCnt = {}; toks.forEach(function (tk) { vCnt[tk.v] = (vCnt[tk.v] || 0) + 1; });
+  var posByV = {}; toks.forEach(function (tk, ix) { (posByV[tk.v] = posByV[tk.v] || []).push(ix); }); // 금액 → 글자 자리(오름차순)
   var balOk = function (k) { return vCnt[toks[k].v] < 3; };
   for (var j = 1; j < n; j++) for (var i = Math.max(0, j - W); i < j; i++) {
     if (L[i] + 1 <= L[j] || !balOk(i) || !balOk(j)) continue;
