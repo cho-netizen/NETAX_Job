@@ -22,6 +22,7 @@ const REF = opt('ref') || 'J:/내 드라이브/0 NETAX/업무관리자/법령/�
 const ONLY = opt('only') ? opt('only').split(',').map(s => s.replace(/\s/g, '')) : null;
 const DRY = args.includes('--dry');
 const HIST = opt('history'); // 예: 20140101
+const REFETCH_BOX = args.includes('--refetch-box') ? (opt('refetch-box') === 'all' ? 'all' : 'cur') : null;
 const OC = process.env.LAW_OC || 'netax';
 
 // 정비 대상(계산·신고서·감사에 씀) / 조회만(지방세 — 세무사님이 범위 밖으로 정하심, 계산·신고서에 안 씀)
@@ -58,13 +59,16 @@ async function get(url) {
 
 // 법령의 판 목록(현행 1 + 시행예정) — 시행예정은 시행일마다 가장 늦게 공포된 판 하나
 async function versions(name) {
-  const x = await get('https://www.law.go.kr/DRF/lawSearch.do?OC=' + OC + '&target=eflaw&type=XML&display=100&query=' + encodeURIComponent(name));
+  // [2026.10.20] 검색은 법·시행령·시행규칙이 섞여 100건을 넘으므로 쪽을 넘겨 모은다(1쪽만 보면 시행령 시행예정이 빠짐)
+  let x = '';
+  for (let page = 1; page <= 6; page++) { const y = await get('https://www.law.go.kr/DRF/lawSearch.do?OC=' + OC + '&target=eflaw&type=XML&display=100&page=' + page + '&query=' + encodeURIComponent(name)); if (!tagsAll(y, 'law').length) break; x += y; }
   const all = tagsAll(x, 'law').map(s => ({ 이름: tag(s, '법령명한글'), 법령ID: tag(s, '법령ID'), MST: tag(s, '법령일련번호'), 시행일: tag(s, '시행일자'), 공포일: tag(s, '공포일자'), 공포번호: tag(s, '공포번호'), 구분: tag(s, '제개정구분명'), 법종: tag(s, '법령구분명'), 코드: tag(s, '현행연혁코드') }))
     .filter(v => key(v.이름) === key(name));
   const cur = all.find(v => v.코드 === '현행');
   if (!cur) return { error: '법제처 검색에 현행판 없음' };
   const byEf = {};
-  all.filter(v => v.코드 === '시행예정' && v.시행일 > today && v.공포일 >= cur.공포일).forEach(v => { const b = byEf[v.시행일]; if (!b || v.공포일 > b.공포일) byEf[v.시행일] = v; });
+  // [2026.10.20] 현행보다 먼저 공포된 시행예정(예: 국기법 2028.1.1. 시행분, 법률 21212)도 넣는다 — 법제처는 그 판 원문에 뒤 개정까지 반영해 준다(2026.9.29. 개정 표시 확인)
+  all.filter(v => v.코드 === '시행예정' && v.시행일 > today).forEach(v => { const b = byEf[v.시행일]; if (!b || v.공포일 > b.공포일) byEf[v.시행일] = v; });
   return { 법령ID: cur.법령ID, 현행: cur, 예정: Object.keys(byEf).sort().map(k => byEf[k]) };
 }
 
@@ -93,7 +97,7 @@ function cleanText(s) {
   const t = cdata(s).replace(/<img[^>]*?flSeq=(\d+)[^>]*>(?:([^<]*)<\/img>)?/g, (m, id, box) => {
     imgs.push(id);
     const b = String(box || '').replace(/^\s*\n|\s+$/g, '');
-    return '〔산식 그림 img' + id + '〕' + (/[│┌]/.test(b) ? '\n' + b : '');
+    return '〔산식 그림 img' + id + '〕' + (/[│┌]/.test(b) || /[가-힣]/.test(b) ? '\n' + b : ''); // [2026.10.20] │┌ 없이 띄어쓰기로만 그린 글자상자도 둠(조특칙 §45의10⑦ — 원문 표본 대조로 발견)
   }).replace(/<\/?[a-z][^>]*>/gi, '').trim();
   return { t, imgs };
 }
@@ -137,7 +141,7 @@ function mdText(t, ind, corrOf) {
     const l = lines[i], mm = l.match(/^\s*〔산식 그림 img(\d+)〕\s*$/);
     if (!mm) { if (l.trim()) out.push(ind + l.trim() + '  '); continue; }
     const id = mm[1], box = [];
-    const isBox = s => s !== undefined && /^[│┌└├┬┴┼─┐┘┤\s]/.test(s) && /[│┌└─]/.test(s);
+    const isBox = s => s !== undefined && ((/^[│┌└├┬┴┼─┐┘┤\s]/.test(s) && /[│┌└─]/.test(s)) || /^\s{2,}\S/.test(s)); // 띄어쓰기로만 그린 상자(앞 공백 2칸 이상)도
     // 상자 앞의 짧은 제목 줄("표 1")도 상자에 넣는다
     while (i + 1 < lines.length && (isBox(lines[i + 1]) || (lines[i + 1].trim().length <= 20 && isBox(lines[i + 2])))) box.push(lines[++i]);
     const c = corrOf(id);
@@ -268,7 +272,7 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
     ent.범위 = scope; ent.법령ID = v.법령ID;
     let curArts = null, curKey = null;
     let hist = [];
-    if (HIST) { try { hist = (await history(name, HIST)).filter(h => h.시행일 < v.현행.시행일 && !v.예정.some(e => e.시행일 === h.시행일)); } catch (e) { report.push(name + ' 연혁 목록 실패: ' + e.message); } }
+    if (HIST && scope === '정비') { try { hist = (await history(name, HIST)).filter(h => h.시행일 < v.현행.시행일 && !v.예정.some(e => e.시행일 === h.시행일)); } catch (e) { report.push(name + ' 연혁 목록 실패: ' + e.message); } }
     let curXml = null;
     for (const [ver, 상태] of [[v.현행, '현행']].concat(v.예정.map(x => [x, '시행예정'])).concat(hist.map(x => [x, '옛판']))) {
       const vk = ver.시행일 + '_' + ver.공포번호;
@@ -276,7 +280,10 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
       let arts;
       // 이미 받은 판은 다시 받지 않는다 — 다만 편·장·절 제목(머리)이 없는 옛 형식이면 다시 받는다
       const have = fs.existsSync(file) ? JSON.parse(zlib.gunzipSync(fs.readFileSync(file)).toString('utf8')) : null;
-      if (have && have.머리 && (상태 === '옛판' || have.별표)) arts = have.조;
+      // [2026.10.20] --refetch-box: 글자상자 빈 그림이 있는 판은 다시 받는다(│┌ 없이 그린 상자를 예전 규칙이 버렸음). 값 all이면 옛 판까지
+      const emptyBox = h => /〔산식 그림 img\d+〕(?!\\n)/.test(JSON.stringify(h.조));
+      const refBox = REFETCH_BOX && (REFETCH_BOX === 'all' || 상태 !== '옛판') && have && emptyBox(have);
+      if (have && have.머리 && (상태 === '옛판' || have.별표) && !refBox) arts = have.조;
       else {
         const x = await get('https://www.law.go.kr/DRF/lawService.do?OC=' + OC + '&target=eflaw&type=XML&MST=' + ver.MST + '&efYd=' + ver.시행일);
         if (상태 === '현행') curXml = x;
