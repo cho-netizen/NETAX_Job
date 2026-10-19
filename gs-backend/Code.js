@@ -4153,6 +4153,9 @@ function dispatchClientAction0_(body) {
   if (body.action === 'lookupOfficialPrice') {
     return jsonResponse(handleLookupOfficialPrice(body));
   }
+  if (body.action === 'lookupExchangeRate') { // [2026.10.20 조견표 1부-13] 날짜별 기준환율·재정환율(한국은행 ECOS)
+    return jsonResponse(handleLookupExchangeRate(body));
+  }
   if (body.action === 'checkBusinessNumber') {
     return jsonResponse(handleCheckBusinessNumber(body));
   }
@@ -6110,8 +6113,8 @@ const STRUCTURE_TABLE = [
 
 const USE_TABLE = [
   { no: 1, desc: '아파트', index: 110 }, { no: 2, desc: '단독주택(노인복지주택 제외)', index: 100 },
-  { no: 3, desc: '관광호텔(5성급·4성급)', index: 140 }, { no: 4, desc: '호텔(일반숙박시설)', index: 130 },
-  { no: 5, desc: '관광호텔(3성급이하)·생활숙박시설·외국인관광 도시민박·한옥체험시설', index: 120 },
+  { no: 3, desc: '관광호텔(5성급·4성급)', index: 140 }, { no: 4, desc: '호텔(일반숙박시설)·관광호텔(3성급이하)·생활숙박시설 등', index: 130 },
+  { no: 5, desc: '외국인관광 도시민박(홈스테이·게스트하우스)·한옥체험시설', index: 120 },
   { no: 6, desc: '여관(모텔 포함)', index: 112 }, { no: 7, desc: '다중생활시설', index: 105 }, { no: 8, desc: '여인숙', index: 100 },
   { no: 9, desc: '백화점', index: 135 }, { no: 10, desc: '대형점·쇼핑센터·복합쇼핑몰', index: 125 },
   { no: 11, desc: '일반상점(바닥 1,000~3,000㎡)', index: 95 }, { no: 12, desc: '도매시장·전통시장·경매장', index: 85 },
@@ -6164,7 +6167,7 @@ const ADJUSTMENT_TABLE = [
 ];
 
 const DEPRECIATION_TABLE = {
-  I:  { 2026:1.000,2025:0.982,2024:0.964,2023:0.946,2022:0.928,2021:0.910,2020:0.892,2019:0.874,2018:0.856,2017:0.838,2016:0.820,2015:0.802,2014:0.784,2013:0.766,2012:0.748,2011:0.730,2010:0.712,2009:0.694,2008:0.676,2007:0.658,2006:0.640,2005:0.622,2004:0.604,2003:0.586,2002:0.568,2001:0.550,2000:0.532,1999:0.514,1998:0.496,1997:0.478,1996:0.460,1995:0.442,1994:0.424,1993:0.406,1992:0.388,1991:0.370,1990:0.352,1989:0.334,1988:0.316,1987:0.298,1986:0.280,1985:0.262,1984:0.244,1983:0.226,1982:0.208,1981:0.190,1980:0.172,1979:0.154,1978:0.136,1977:0.118 },
+  I:  { 2026:1.000,2025:0.982,2024:0.964,2023:0.946,2022:0.928,2021:0.910,2020:0.892,2019:0.874,2018:0.856,2017:0.838,2016:0.820,2015:0.802,2014:0.784,2013:0.766,2012:0.748,2011:0.730,2010:0.712,2009:0.694,2008:0.676,2007:0.658,2006:0.640,2005:0.622,2004:0.604,2003:0.586,2002:0.568,2001:0.550,2000:0.532,1999:0.514,1998:0.496,1997:0.478,1996:0.460,1995:0.442,1994:0.424,1993:0.406,1992:0.388,1991:0.370,1990:0.352,1989:0.334,1988:0.316,1987:0.298,1986:0.280,1985:0.262,1984:0.244,1983:0.226,1982:0.208,1981:0.190,1980:0.172,1979:0.154,1978:0.136,1977:0.118, 1976:0.100 },
   II: { 2026:1.0000,2025:0.9775,2024:0.9550,2023:0.9325,2022:0.9100,2021:0.8875,2020:0.8650,2019:0.8425,2018:0.8200,2017:0.7975,2016:0.7750,2015:0.7525,2014:0.7300,2013:0.7075,2012:0.6850,2011:0.6625,2010:0.6400,2009:0.6175,2008:0.5950,2007:0.5725,2006:0.5500,2005:0.5275,2004:0.5050,2003:0.4825,2002:0.4600,2001:0.4375,2000:0.4150,1999:0.3925,1998:0.3700,1997:0.3475,1996:0.3250,1995:0.3025,1994:0.2800,1993:0.2575,1992:0.2350,1991:0.2125,1990:0.1900,1989:0.1675,1988:0.1450,1987:0.1225,1986:0.1000 },
   III:{ 2026:1.000,2025:0.970,2024:0.940,2023:0.910,2022:0.880,2021:0.850,2020:0.820,2019:0.790,2018:0.760,2017:0.730,2016:0.700,2015:0.670,2014:0.640,2013:0.610,2012:0.580,2011:0.550,2010:0.520,2009:0.490,2008:0.460,2007:0.430,2006:0.400,2005:0.370,2004:0.340,2003:0.310,2002:0.280,2001:0.250,2000:0.220,1999:0.190,1998:0.160,1997:0.130,1996:0.100 },
   IV: { 2026:1.000,2025:0.955,2024:0.910,2023:0.865,2022:0.820,2021:0.775,2020:0.730,2019:0.685,2018:0.640,2017:0.595,2016:0.550,2015:0.505,2014:0.460,2013:0.415,2012:0.370,2011:0.325,2010:0.280,2009:0.235,2008:0.190,2007:0.145,2006:0.100 }
@@ -6176,7 +6179,7 @@ const LOCATION_TABLE = [
   { max: 100000, index: 87 }, { max: 130000, index: 88 }, { max: 150000, index: 89 }, { max: 180000, index: 90 },
   { max: 200000, index: 91 }, { max: 300000, index: 92 }, { max: 350000, index: 93 }, { max: 500000, index: 94 },
   { max: 650000, index: 97 }, { max: 800000, index: 100 }, { max: 1000000, index: 102 }, { max: 1200000, index: 104 },
-  { max: 1600000, index: 106 }, { max: 2000000, index: 118 }, { max: 2500000, index: 114 }, { max: 3000000, index: 116 },
+  { max: 1600000, index: 106 }, { max: 2000000, index: 108 }, { max: 2500000, index: 114 }, { max: 3000000, index: 116 },
   { max: 3500000, index: 118 }, { max: 4000000, index: 120 }, { max: 4500000, index: 122 }, { max: 5000000, index: 124 },
   { max: 5500000, index: 126 }, { max: 6000000, index: 128 }, { max: 7000000, index: 130 }, { max: 8000000, index: 132 },
   { max: 9000000, index: 134 }, { max: 10000000, index: 137 }, { max: 15000000, index: 140 }, { max: 20000000, index: 143 },
@@ -14236,6 +14239,49 @@ function handleSearchAddressHo(body) {
 // 쓸지는 사용자가 매매사례의 유사성(면적·층·거래시점)을 보고 직접 판단해서 골라야 한다.
 // 이 계정은 이미 실거래가 조회용 MOLIT_API_KEY를 갖고 있고(toolLookupRealEstatePrice가 씀),
 // 같은 API를 다시 직접 호출하는 대신 그 함수를 그대로 재사용해서 응답만 화면이 기대하는 모양으로 바꾼다.
+// [2026.10.20 조견표 1부-13] 기준환율 조회 — 소득세법 시행령 §178의5①: 국외자산 양도가액·필요경비는 "수령하거나 지출한 날 현재 「외국환거래법」에
+//  의한 기준환율 또는 재정환율"로 환산(외국납부세액공제·국외 감정가액도 같은 환율을 씀). 값은 한국은행 경제통계시스템(ECOS) 공개 API 731Y001
+//  "주요국 통화의 대원화환율"(서울외국환중개 고시 매매기준율 — 미국달러·위안은 기준환율, 그 밖의 통화는 재정환율). 키는 스크립트 속성 ECOS_API_KEY,
+//  없으면 ECOS 공개 'sample' 키(한 번에 10건) — 날짜 앞 9일을 받아 그날 또는 직전 고시일 값을 고른다(휴일·주말엔 직전 영업일 고시가 그대로 쓰임).
+const ECOS_FX_ITEMS_ = {
+  USD: ['0000001', '미국달러', 1], CNY: ['0000053', '위안', 1], JPY: ['0000002', '일본엔', 100], EUR: ['0000003', '유로', 1], GBP: ['0000012', '영국파운드', 1],
+  CAD: ['0000013', '캐나다달러', 1], CHF: ['0000014', '스위스프랑', 1], AUD: ['0000017', '호주달러', 1], NZD: ['0000026', '뉴질랜드달러', 1], HKD: ['0000015', '홍콩달러', 1],
+  TWD: ['0000031', '대만달러', 1], THB: ['0000028', '태국바트', 1], SGD: ['0000024', '싱가포르달러', 1], IDR: ['0000029', '인도네시아루피아', 100], MYR: ['0000025', '말레이시아링깃', 1],
+  PHP: ['0000034', '필리핀페소', 1], VND: ['0000035', '베트남동', 100], INR: ['0000037', '인도루피', 1], MXN: ['0000040', '멕시코페소', 1], BRL: ['0000041', '브라질헤알', 1],
+  SEK: ['0000016', '스웨덴크로나', 1], DKK: ['0000018', '덴마크크로나', 1], NOK: ['0000019', '노르웨이크로나', 1], RUB: ['0000043', '러시아루블', 1], SAR: ['0000020', '사우디리얄', 1],
+  KWD: ['0000021', '쿠웨이트디나르', 1], AED: ['0000023', '아랍에미리트디르함', 1], TRY: ['0000050', '튀르키예리라', 1], ZAR: ['0000051', '남아공랜드', 1]
+};
+function handleLookupExchangeRate(body) {
+  const cur = String(body.currency || 'USD').toUpperCase().trim();
+  const item = ECOS_FX_ITEMS_[cur];
+  if (!item) return { error: '지원하지 않는 통화입니다: ' + cur + ' — ' + Object.keys(ECOS_FX_ITEMS_).join('·') };
+  const d = String(body.date || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return { error: '날짜(YYYY-MM-DD)가 필요합니다 — 양도가액은 대금을 받은 날, 취득가액은 지급한 날(소득세법 시행령 §178의5①)' };
+  const end = d.replace(/-/g, '');
+  const sd = new Date(d + 'T00:00:00Z'); sd.setUTCDate(sd.getUTCDate() - 9);
+  const start = Utilities.formatDate(sd, 'UTC', 'yyyyMMdd');
+  const key = PropertiesService.getScriptProperties().getProperty('ECOS_API_KEY') || 'sample';
+  const url = 'https://ecos.bok.or.kr/api/StatisticSearch/' + encodeURIComponent(key) + '/json/kr/1/10/731Y001/D/' + start + '/' + end + '/' + item[0];
+  let j;
+  try {
+    const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    j = JSON.parse(res.getContentText() || '{}');
+  } catch (e) { return { error: '한국은행 ECOS 조회 실패: ' + (e && e.message ? e.message : e) }; }
+  const rows = (j.StatisticSearch && j.StatisticSearch.row) || [];
+  if (!rows.length) return { error: '그 날짜 앞 열흘 안에 고시된 환율이 없습니다' + (j.RESULT ? '(' + j.RESULT.MESSAGE + ')' : '') };
+  const last = rows.filter(function (r) { return String(r.TIME) <= end; }).pop() || rows[rows.length - 1];
+  const t = String(last.TIME);
+  const day = t.slice(0, 4) + '-' + t.slice(4, 6) + '-' + t.slice(6, 8);
+  const rate = Number(last.DATA_VALUE);
+  const amt = Number(body.amount);
+  return {
+    통화: cur, 통화이름: item[1], 단위: item[2], 기준일: d, 고시일: day, 환율: rate,
+    구분: (cur === 'USD' || cur === 'CNY') ? '기준환율(매매기준율)' : '재정환율',
+    원화금액: isFinite(amt) && amt > 0 ? Math.floor(amt * rate / item[2]) : undefined,
+    안내: (day !== d ? d + '은 고시가 없어(휴일 등) 직전 고시일 ' + day + ' 값입니다. ' : '') + '출처: 한국은행 ECOS 731Y001(서울외국환중개 고시) — 소득세법 시행령 §178의5①' + (item[2] !== 1 ? ' · ' + item[2] + item[1] + '당 원' : '')
+  };
+}
+
 function handleLookupRealPrice(body) {
   const lawdCd = String(body.lawdCd || '').trim();
   const dealYm = String(body.dealYm || '').trim();
@@ -15104,15 +15150,22 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(toolGetBuildingPriceIndexTables()) };
       }
 
-      if (block.name === 'calculate_building_standard_price') {
+      // [2026.10.20 계산 엔진 일원화] 건물 기준시가도 화면 엔진(calculateBuildingStandardPriceJS·…MultiJS)으로 — Code.js 표엔 2026.10.19 엔진 고침
+      //  (위치지수 18번 구간 108·잔가율 1976년 0.100·용도 4·5 설명)이 빠져 같은 입력에 다른 값/오류가 났다. 엔진을 못 읽을 때만 옛 함수.
+      if (block.name === 'calculate_building_standard_price' || block.name === 'calculate_building_standard_price_multi') {
         const input = block.input || {};
-        const resultObj = toolCalculateBuildingStandardPrice(input.structureName, input.useNo, input.officialLandPricePerSqm, input.builtYear, input.floorAreaSqm, input.taxType, input.adjustmentNos);
-        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj) };
-      }
-
-      if (block.name === 'calculate_building_standard_price_multi') {
-        const input = block.input || {};
-        const resultObj = toolCalculateBuildingStandardPriceMulti(input.rows, input.officialLandPricePerSqm, input.taxType);
+        let resultObj;
+        try {
+          const eng_ = getUiCalcEngine_();
+          resultObj = block.name === 'calculate_building_standard_price'
+            ? eng_.calculateBuildingStandardPriceJS(input.structureName, input.useNo, input.officialLandPricePerSqm, input.builtYear, input.floorAreaSqm, input.taxType, input.adjustmentNos)
+            : eng_.calculateBuildingStandardPriceMultiJS(input.rows, input.officialLandPricePerSqm, input.taxType);
+          if (resultObj && resultObj.error && /구조명|용도번호/.test(resultObj.error)) resultObj.error += ' — get_building_price_index_tables로 정확한 구조명·용도번호를 먼저 확인하세요.';
+        } catch (e) {
+          resultObj = block.name === 'calculate_building_standard_price'
+            ? toolCalculateBuildingStandardPrice(input.structureName, input.useNo, input.officialLandPricePerSqm, input.builtYear, input.floorAreaSqm, input.taxType, input.adjustmentNos)
+            : toolCalculateBuildingStandardPriceMulti(input.rows, input.officialLandPricePerSqm, input.taxType);
+        }
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj) };
       }
 
@@ -46334,7 +46387,9 @@ function trcApplyAns_(S, ans) {
   //  양도계약 카드 양도가액을 시가로 바꾸고(시행령 §167④) 실제 거래가액은 근거로 남긴다. 넘지 않으면 칸은 그대로, 판정 결과만 남긴다
   if (ans.relFmv && st.transferContracts[0]) {
     const ct0 = st.transferContracts[0], actual = trcNum_(ct0.totalPrice), fmv = Number(ans.relFmv.v) || 0;
-    const r = toolCalculateTransferRelatedPartyPriceAdjustment({ isRelatedPartyTransaction: true, transactionRole: 'sale', actualPrice: actual, marketValue: fmv });
+    // [2026.10.20] 계산 엔진 일원화 — 화면 엔진(calculateTransferRelatedPartyPriceAdjustmentJS)으로, 엔진을 못 읽을 때만 옛 함수(같은 결과 6경우 확인)
+    const relIn_ = { isRelatedPartyTransaction: true, transactionRole: 'sale', actualPrice: actual, marketValue: fmv };
+    let r; try { r = getUiCalcEngine_().calculateTransferRelatedPartyPriceAdjustmentJS(relIn_); } catch (e) { r = toolCalculateTransferRelatedPartyPriceAdjustment(relIn_); }
     S.facts = S.facts || {}; S.facts.relAdj = r;
     if (r && r.시가재계산적용여부) {
       ct0.relatedPartyActualPrice = actual; ct0.totalPrice = fmv;

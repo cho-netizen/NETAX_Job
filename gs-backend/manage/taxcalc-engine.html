@@ -1677,15 +1677,22 @@
   //  §77 중 §69①본문 거주자가 직접 경작한 토지(8년 요건 무관, 같은 호), §33·§98의3·§98의5(§4⑦1호). 그 밖의 양도세 감면(§77 그 밖의 수용·§77의2·§77의3·
   //  §43·§85의10·§97·§97의2·§97의5·§97의10·§98·§98의2·§98의4·§98의6~§98의8·§99·§99의2·§99의3)은 과세. 본세 가산세는 과세표준에 안 넣음(시행령 §5④).
   //  돌려주는 값: 비과세면 근거 글, 과세면 ''.
+  // [2026.10.20 옛 판 확정 — 법령 세션 옛 판(2005~) 원문] 시행령 §4①1호: 2005.12.31. 이전 판 "§66 내지 §69·§77(직접 경작 토지)" → §70 대토(그 사이 §69의2 등도)는 과세,
+  //  2006.1.1. 판(대통령령 제19257호)부터 "§66 내지 §70". §98의3은 2009.4.21. 판(제21433호), §98의5는 2010.6.8. 판(제22182호)부터 같은 조 비과세 목록.
+  //  §77 직접 경작 토지는 2010년 판까지 "농업소득세 과세대상 토지에 한한다"가 붙음(2011.1.1. 판에서 삭제 — 농업소득세 폐지). 판정일 = 양도일.
   function nongteukExemptReason_(red, raw) {
     raw = raw || {};
-    if (red.key === 'farm') return '조특법 §' + String(red.sec || '').replace('_', '의') + ' — 농특세법 시행령 §4①1호(§66~§70) 비과세';
+    const d_ = String(raw.transferDate || '').slice(0, 10);
+    if (red.key === 'farm') {
+      if (d_ && d_ < '2006-01-01' && red.sec !== '69') return '';
+      return '조특법 §' + String(red.sec || '').replace('_', '의') + ' — 농특세법 시행령 §4①1호(' + (d_ && d_ < '2006-01-01' ? '2005년 판 §66~§69' : '§66~§70') + ') 비과세';
+    }
     if (red.key === 'comp') {
       if (red.sec === '77' && raw.isCompensationOnSelfCultivatedLand) return '조특법 §77 중 거주자가 직접 경작한 토지 수용 — 농특세법 시행령 §4①1호 비과세';
       return '';
     }
     const up = String(raw.unsoldHouseReductionProvision || '');
-    if (up === 'sect98_3' || up === 'sect98_5') return '조특법 ' + up.replace('sect98_', '§98의') + ' — 농특세법 시행령 §4⑦1호 비과세';
+    if ((up === 'sect98_3' && !(d_ && d_ < '2009-04-21')) || (up === 'sect98_5' && !(d_ && d_ < '2010-06-08'))) return '조특법 ' + up.replace('sect98_', '§98의') + ' — 농특세법 시행령 §4⑦1호 비과세';
     return '';
   }
   function reductions90_(assets, o) {
@@ -2886,6 +2893,22 @@
       }
     }
     const nongteukTax_ = Math.floor(ntBase_ * 0.2);
+    // [2026.10.20 84호 ㉕] 농특세 가산세 — 농특세도 국세라 국세기본법 §47의2(무신고)·§47의3(과소신고)·§47의4(납부지연)가 그대로(농특세법 §8②1호
+    //  "본세의 결정·경정 및 징수의 예"). 과소신고한 농특세는 nongteukUnderreportedTaxAmount, 비우면 본세 과소 비율로 추정. 납부지연 1일분은 본세 몫별
+    //  기산일(J23)에 농특세가 같은 비율로 붙는다고 보고 같은 날수(농특세법 §7① — 예정신고 때도 함께 신고·납부).
+    let ntPen_ = null;
+    if (!filingParams._ntInner && nongteukTax_ > 0 && filingStatus !== 'ontime') {
+      const ntUnderIn_ = Number(filingParams.nongteukUnderreportedTaxAmount);
+      const ntUnder_ = filingStatus === 'underreported' ? (ntUnderIn_ > 0 ? Math.min(nongteukTax_, ntUnderIn_)
+        : (totalCalculatedTax > 0 ? Math.round(nongteukTax_ * Math.min(1, (Number(filingParams.underreportedTaxAmount) || 0) / totalCalculatedTax)) : 0)) : 0;
+      const ntUnpaid_ = filingStatus === 'unreported' ? nongteukTax_ : ntUnder_;
+      const pn_ = giftFilingPenalties(nongteukTax_, filingStatus, !!filingParams.isFraudulent, ntUnder_, filingParams.unpaidDays, ntUnpaid_, !!filingParams.isOffshoreTransaction, lateCtx_(filingParams), 0, 0);
+      let late_ = pn_.latePenalty;
+      if (lateSplit_) { const sb_ = lateSplit_.rows.reduce(function (s, x) { return s + (Number(x.세액) || 0); }, 0); late_ = sb_ > 0 ? Math.floor(ntUnpaid_ * lateSplit_.total / sb_) : 0; }
+      ntPen_ = { 무신고가산세: pn_.unreportedPenalty, 과소신고가산세: pn_.underreportedPenalty, 납부지연가산세: late_,
+        합계: pn_.unreportedPenalty + pn_.underreportedPenalty + late_,
+        안내: filingStatus === 'underreported' && !(ntUnderIn_ > 0) ? '과소신고한 농특세를 넣지 않아 본세 과소 비율로 추정(' + ntUnder_.toLocaleString('ko-KR') + '원)' : undefined };
+    }
     const localIncomeTax = Math.round(totalCalculatedTax * 0.1);
     const grandTotal = Math.max(0, totalCalculatedTax - pensionAccountCreditTotal - eFilingCredit + conversionValuePenaltyTotal
       + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax + exemptClawbackTotal + pensionAccountClawbackTotal);
@@ -2909,7 +2932,10 @@
       지방소득세: localIncomeTax, 납부세액_합계: grandTotal,
       // [2026.10.20 J21] 84호 ㉒~㉚ 농어촌특별세 — 양도세 납부세액_합계(양도세+지방소득세)에는 넣지 않고 따로(서식도 칸이 따로)
       납부지연가산세_몫별: lateSplit_ ? lateSplit_.rows : undefined, // [2026.10.20 J23] 예정분·확정 추가분 기산일별
-      농어촌특별세_과세표준: ntBase_, 농어촌특별세: nongteukTax_, 농어촌특별세_내역: ntRows_.length ? ntRows_ : undefined, 납부세액_합계_농특세포함: grandTotal + nongteukTax_,
+      농어촌특별세_과세표준: ntBase_, 농어촌특별세: nongteukTax_, 농어촌특별세_내역: ntRows_.length ? ntRows_ : undefined,
+      농어촌특별세_가산세: ntPen_ ? ntPen_.합계 : 0, 농어촌특별세_가산세_내역: ntPen_ || undefined, // [2026.10.20 84호 ㉕]
+      농어촌특별세_자진납부할세액: nongteukTax_ + (ntPen_ ? ntPen_.합계 : 0), // ㉗ = ㉔ + ㉕ − ㉖(기신고 0)
+      납부세액_합계_농특세포함: grandTotal + nongteukTax_ + (ntPen_ ? ntPen_.합계 : 0),
       자산별_내역: assetNotes,
       거래번호표시: txLabels_, // [2026.10.19] 자산별_내역의 idx → 표시이름(환지 증가분이 맨 뒤에 붙음)
       환지분리_안내: replotAppend_.length ? transactions.filter(function (t) { return t._환지분리; }).map(function (t) { return t._환지분리; }) : undefined,
@@ -4319,7 +4345,15 @@
     const afterTaxOperatingIncome = Number(p.afterTaxOperatingIncome) || 0;
     const incomeBase = afterTaxOperatingIncome;
     const tradeRatio = Number(p.relatedPartyTransactionRatio) || 0;
-    const shareRatio = Number(p.shareholderOwnershipRatio) || 0;
+    // [2026.10.20 ⑮] 출자관계별 계산(시행령 §34의3⑬·⑮, [별지 제10호의3서식 부표5]) — shareRelations가 있으면 출자관계마다 증여의제이익을 내고
+    //  배당소득 공제·0 바닥을 출자관계마다 한다. [{ kind: 'direct'|'indirect', ratio(그 관계의 직접·간접보유비율 %), corp, dividend(배당소득),
+    //  distributable(배당가능이익 — 직접: 수혜법인 ㉖, 간접: 간접출자법인 ㉛), beneficiaryDistributable(간접: 수혜법인 배당가능이익 ㉜),
+    //  corpShareInBeneficiary(간접: 간접출자법인의 수혜법인 주식보유비율 % ㉝), ownRatioInCorp(간접: 지배주주등의 간접출자법인 직접보유비율 % ㉞) }]
+    //  간접보유비율 1천분의 1 미만 관계는 뺀다(⑬). 주식보유비율 칸이 비면 관계 비율의 합.
+    const rels_ = (Array.isArray(p.shareRelations) ? p.shareRelations : []).map(function (x) {
+      return Object.assign({}, x, { kind: x && x.kind === 'indirect' ? 'indirect' : 'direct', ratio: Math.max(0, Number(x && x.ratio) || 0) });
+    }).filter(function (x) { return x.ratio > 0 && !(x.kind === 'indirect' && x.ratio < 0.1); });
+    const shareRatio = (Number(p.shareholderOwnershipRatio) || 0) || rels_.reduce(function (s, x) { return s + x.ratio; }, 0);
 
     const gateTradeThreshold = companySize === 'general' ? 30 : (companySize === 'medium' ? 40 : 50);
     const gateShareThreshold = companySize === 'general' ? 3 : 10;
@@ -4348,8 +4382,32 @@
     const formulaShareSubtract = companySize === 'general' ? 0 : (companySize === 'medium' ? 5 : 10);
     const netTradeRatio = Math.max(0, (tradeRatio - formulaTradeSubtract) / 100);
     const netShareRatio = Math.max(0, (shareRatio - formulaShareSubtract) / 100);
-    const dividendDeduction = Number(p.dividendDeduction) || 0;
-    const deemedGiftProfit = Math.max(0, Math.round(incomeBase * netTradeRatio * netShareRatio) - dividendDeduction);
+    let dividendDeduction = Number(p.dividendDeduction) || 0;
+    let deemedGiftProfit = Math.max(0, Math.round(incomeBase * netTradeRatio * netShareRatio) - dividendDeduction);
+    let relRows_ = null;
+    if (rels_.length) {
+      // ⑬ "간접보유비율에서 한계보유비율(중견은 그 50%)을 먼저 빼고 간접출자관계가 둘 이상이면 작은 것부터" — 남으면 직접에서
+      let left_ = formulaShareSubtract;
+      const ord_ = rels_.map(function (x, i) { return { x: x, i: i }; }).sort(function (a, b) {
+        if (a.x.kind !== b.x.kind) return a.x.kind === 'indirect' ? -1 : 1;
+        return a.x.ratio - b.x.ratio;
+      });
+      const net_ = {};
+      ord_.forEach(function (o) { const cut = Math.min(left_, o.x.ratio); left_ -= cut; net_[o.i] = o.x.ratio - cut; });
+      relRows_ = rels_.map(function (x, i) {
+        const profit = Math.round(incomeBase * netTradeRatio * net_[i] / 100); // 부표5 ㉒(직접)·㉓(간접)
+        const dv = Math.max(0, Number(x.dividend) || 0);
+        let den = 0;
+        if (x.kind === 'direct') den = (Number(x.distributable) || 0) * x.ratio / 100; // ㉖ × ㉗
+        else den = ((Number(x.distributable) || 0) + (Number(x.beneficiaryDistributable) || 0) * (Number(x.corpShareInBeneficiary) || 0) / 100) * (Number(x.ownRatioInCorp) || 0) / 100; // (㉛ + ㉜ × ㉝) × ㉞
+        const ded = dv > 0 && den > 0 ? Math.round(dv * profit / den) : 0; // ㉘ = ㉕ × ㉒ ÷ (㉖ × ㉗) / ㉟ = ㉚ × ㉓ ÷ {(㉛ + ㉜ × ㉝) × ㉞}
+        return { 출자관계: x.kind === 'direct' ? '직접' : '간접(' + (x.corp || '간접출자법인') + ')', 보유비율: x.ratio, 한계보유비율_차감후: Math.round(net_[i] * 10000) / 10000,
+          증여의제이익: profit, 배당소득: dv, 배당소득공제: ded, 배당가능이익_분모: den > 0 ? Math.round(den) : null,
+          과세가액: Math.max(0, profit - ded), 안내: dv > 0 && !(den > 0) ? '배당가능이익·보유비율이 없어 배당소득 공제를 계산하지 못했습니다(시행령 §34의3⑮)' : undefined }; // ㊲·㊳ 0 바닥
+      });
+      dividendDeduction = relRows_.reduce(function (s, x) { return s + Math.min(x.배당소득공제, x.증여의제이익); }, 0);
+      deemedGiftProfit = relRows_.reduce(function (s, x) { return s + x.과세가액; }, 0); // 부표5 ㊴
+    }
 
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
@@ -4360,6 +4418,7 @@
       적용소득기준: '세후영업이익', 적용소득금액: incomeBase,
       증여의제이익_계산식차감비율_거래: formulaTradeSubtract, 증여의제이익_계산식차감비율_지분: formulaShareSubtract,
       배당소득공제: dividendDeduction,
+      출자관계별: relRows_ || undefined, // [2026.10.20 ⑮] 부표5 출자관계별 계산
       증여의제이익: deemedGiftProfit,
       과세표준: r.taxBase, 산출세액: r.calculatedTax, 신고세액공제: r.reportCredit,
       무신고가산세: r.penalties.unreportedPenalty, 과소신고가산세: r.penalties.underreportedPenalty, 납부지연가산세: r.penalties.latePenalty,
@@ -9511,6 +9570,8 @@
     // 초과하면 그 초과액은 없는 것으로 본다. "직접 증여받은 경우의 증여세 상당액"은 시행령이 별도 공제 없이
     // [특정법인의 이익(법인세공제전, 4항1호금액)×지분율]에 누진세율만 적용한 금액으로 정의하므로, 이미 갖고
     // 있는 값(benefitToCorpAmount·shareholderOwnershipRatio)으로 자동계산한다(직접입력하면 그 값이 우선).
+    // [2026.10.20 ㊲ 확정] 이 한도엔 세대생략 할증(§57)을 넣지 않는다 — [별지 제10호의6서식](2025.7.4. 개정) ㊲ 이름이 "산출세액 한도", 작성방법 9 ㊱ = min(㉞×㉟−누진공제, ㊲),
+    //  그 뒤 ㊳ 세대생략가산액을 더해 ㊴ = ㊱ + ㊳. 산출세액(§56 — 할증 전)과 비교하는 한도라 "직접 증여 시 증여세 상당액"도 할증 전 기준.
     const corporateTaxEquivalentForShareholder = Math.round(corporateTaxEquivalentTotal * shareholderOwnershipRatio);
     const directGiftTaxEquivalent = Number(p.directGiftTaxEquivalent) > 0
       ? Number(p.directGiftTaxEquivalent)

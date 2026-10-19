@@ -2209,6 +2209,28 @@ function openControllingShareholderModal_(){
 // 간접 주식보유 내역. 부표1(계산명세Ⅰ)의 "나.수혜법인 지배주주" 직접보유표, 부표2(간접보유비율
 // 산정)의 1~3차 출자법인 체인을 한 화면에서 입력받는다. target별로 따로 보존(jm/jt 별개 신고).
 let shareholdingRows_ = { jm: [{}], jt: [{}] };
+// [2026.10.20 ⑮] 일감몰아주기 출자관계별 계산(시행령 §34의3⑬·⑮, [별지 제10호의3서식 부표5]) — 주주 도우미에서 고른 수증자의 출자관계로 만든다.
+//  [{ kind: 'direct'|'indirect', ratio, corp, dividend, distributable, beneficiaryDistributable, corpShareInBeneficiary, ownRatioInCorp }]
+let jmRelations_ = [];
+function jmRelationsHtml_(){
+  if (!jmRelations_.length) return '<div class="taxcalc-result-note" style="margin:6px 0;">출자관계별 배당소득 공제(시행령 §34의3⑮·부표5): 위 "🧮 주주별 직접·간접보유 내역으로 계산"에서 수증자 비율을 반영하면 직접·간접 출자관계별 표가 생겨 배당소득 공제와 0 바닥을 관계마다 계산합니다. 표가 없으면 위 배당소득공제 합계 칸으로 계산합니다.</div>';
+  const f = function(i, k, label, help, step){ const v = jmRelations_[i][k]; return '<div class="taxcalc-field"><label>' + label + '</label><input type="number"' + (step ? ' step="' + step + '"' : '') + ' data-jmrel="' + i + '" data-jmrelf="' + k + '" value="' + (v != null && v !== '' ? v : '') + '" placeholder="' + (step ? '%' : '원') + '">' + (help ? '<span class="taxcalc-field-help">' + help + '</span>' : '') + '</div>'; };
+  return '<div class="taxcalc-asset-head" style="margin-top:10px;"><b>출자관계별 배당소득 공제(시행령 §34의3⑬·⑮, 부표5) — 이 표가 있으면 위 배당소득공제 합계 칸 대신 씀</b> <button type="button" class="taxcalc-del-asset" data-action="clear-jm-relations">✕ 표 지우기</button></div>' +
+    jmRelations_.map(function(x, i){
+      const head = '<div class="taxcalc-result-note" style="margin:6px 0 2px;"><b>' + (x.kind === 'direct' ? '직접 출자관계' : '간접 출자관계 — ' + escapeHtml(x.corp || '간접출자법인')) + '</b> · 보유비율 ' + Number(x.ratio || 0).toFixed(4) + '%</div>';
+      return head + '<div class="taxcalc-grid">' + (x.kind === 'direct'
+        ? f(i, 'dividend', '수혜법인에서 받은 배당소득(㉕)', '직전 사업연도 신고기한 다음 날~이번 신고기한') + f(i, 'distributable', '수혜법인 사업연도 말 배당가능이익(㉖)', '법인세법 시행령 §86의3①')
+        : f(i, 'dividend', '간접출자법인에서 받은 배당소득(㉚)', '') + f(i, 'distributable', '간접출자법인 배당가능이익(㉛)', '') + f(i, 'beneficiaryDistributable', '수혜법인 배당가능이익(㉜)', '') +
+          f(i, 'corpShareInBeneficiary', '간접출자법인의 수혜법인 주식보유비율(㉝)', '', '0.0001') + f(i, 'ownRatioInCorp', '지배주주등의 간접출자법인 직접보유비율(㉞)', '', '0.0001')) + '</div>';
+    }).join('');
+}
+function renderJmRelations_(){ const box = document.getElementById('jmRelationsBox'); if (box) box.innerHTML = jmRelationsHtml_(); }
+document.addEventListener('input', function(e){
+  const el = e.target;
+  if (!el || !el.dataset || el.dataset.jmrel === undefined) return;
+  const row = jmRelations_[numVal(el.dataset.jmrel)];
+  if (row) row[el.dataset.jmrelf] = el.value === '' ? '' : numVal(el.value);
+});
 function shareholdingIndirectRatio_(row){
   const l1 = numVal(row.chain1Ratio), l2 = numVal(row.chain2Ratio), l3 = numVal(row.chain3Ratio);
   if (!l1) return 0;
@@ -2376,7 +2398,7 @@ function openShareholdingHelperModal_(target){
       names_.forEach(function(nm, i){
         const b = shareholdingPersonBreakdown_(nm, target, sub_);
         if (pick < 0 && doneeName && nm === doneeName) pick = i;
-        html += '<div class="taxcalc-field checkbox"><input type="radio" name="shPick" value="' + i + '" id="shPick-' + i + '" data-total="' + b.total + '"><label for="shPick-' + i + '">' + escapeHtml(nm) + ' — ' + b.total.toFixed(4) + '% ' + (b.total > limit ? '(과세대상)' : '(한계보유비율 이하 — 과세 안 됨)') + '</label></div>';
+        html += '<div class="taxcalc-field checkbox"><input type="radio" name="shPick" value="' + i + '" id="shPick-' + i + '" data-total="' + b.total + '" data-name="' + escapeHtml(nm) + '"><label for="shPick-' + i + '">' + escapeHtml(nm) + ' — ' + b.total.toFixed(4) + '% ' + (b.total > limit ? '(과세대상)' : '(한계보유비율 이하 — 과세 안 됨)') + '</label></div>';
         if (b.total > limit && b.parts.length > 1) html += '<div class="taxcalc-result-note" style="margin:0 0 4px 22px;">출자관계별(⑬, ' + sub_ + '%p를 간접 작은 것부터 뺌): ' + b.parts.map(function(p){ return escapeHtml(p.관계) + ' ' + p.비율.toFixed(4) + '% − ' + p.차감.toFixed(4) + ' = ' + p.남음.toFixed(4) + '%'; }).join(' · ') + '</div>';
       });
       if (pick < 0) names_.forEach(function(nm, i){ if (pick < 0 && shareholdingPersonBreakdown_(nm, target, sub_).total > limit) pick = i; });
@@ -2395,6 +2417,23 @@ function openShareholdingHelperModal_(target){
       if (target === 'jm'){
         const chosen = resultBox.querySelector('input[name="shPick"]:checked') || resultBox.querySelector('input[name="shPick"]');
         value = chosen ? numVal(chosen.dataset.total) : 0; // [2026.10.20 J29] 같은 성명 행 합계
+        // [2026.10.20 ⑮] 고른 수증자의 출자관계로 부표5 표를 만든다(직접 1줄 + 간접 고리마다 1줄, 2단계 고리면 ㉞·㉝을 1차·직전 지분율로 미리 채움)
+        if (chosen){
+          const nm_ = chosen.dataset.name || '';
+          const mine_ = shareholdingRows_.jm.filter(function(r0, i0){ return shareholdingPersonKey_(r0, i0) === nm_; });
+          const direct_ = mine_.reduce(function(s, r0){ return s + numVal(r0.directRatio); }, 0);
+          const keep_ = {}; jmRelations_.forEach(function(x){ keep_[x.kind + '|' + (x.corp || '')] = x; });
+          const rel_ = [];
+          if (direct_ > 0) rel_.push(Object.assign({ dividend: '', distributable: '' }, keep_['direct|'] || {}, { kind: 'direct', ratio: direct_, corp: '' }));
+          mine_.forEach(function(r0){
+            const ind = shareholdingCountedIndirectRatio_(r0, 'jm'); if (!(ind > 0)) return;
+            const corp = r0.chain3Company || r0.chain2Company || r0.chain1Company || '';
+            const two = !numVal(r0.chain2Ratio);
+            rel_.push(Object.assign({ dividend: '', distributable: '', beneficiaryDistributable: '', corpShareInBeneficiary: two ? numVal(r0.chain3Ratio) || '' : '', ownRatioInCorp: two ? numVal(r0.chain1Ratio) || '' : '' }, keep_['indirect|' + corp] || {}, { kind: 'indirect', ratio: ind, corp: corp }));
+          });
+          jmRelations_ = rel_;
+          renderJmRelations_();
+        }
       }
       const el = document.getElementById(fieldId);
       if (el){ el.value = value.toFixed(4); if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(el); }
@@ -5686,6 +5725,45 @@ function tcSyncTaxOfficeButtons_(paneEl){
 // 전용 로직을 하나도 안 거치게 하는 게 legally 안전하다 — run-transfer 핸들러에서 이
 // 카드들은 calculateOverseasAssetTransferTaxJS로 자산별 독립 계산 후, 국내 합산과는
 // 별도로 "국외자산 양도소득세(별도 세목)" 결과로만 보여준다(국내 납부세액에 합산 안 함).
+// [2026.10.20 조견표 1부-13] 외화 금액 → 원화(소득세법 시행령 §178의5① "수령하거나 지출한 날 현재 외국환거래법에 의한 기준환율 또는 재정환율")
+//  서버 lookupExchangeRate(한국은행 ECOS 731Y001, 서울외국환중개 고시)로 그날(휴일이면 직전 고시일) 환율을 받아 칸에 넣는다.
+function fxHelperBtn_(idx, target, dateField){
+  return '<button type="button" class="taxcalc-ai-btn" data-action="open-fx-helper" data-idx="' + idx + '" data-target="' + target + '" data-datefield="' + dateField + '">💱 외화 → 원화</button>';
+}
+function openFxHelper_(defaultDate, onApply){
+  const CUR = [['USD','미국달러'],['JPY','일본엔(100엔당)'],['EUR','유로'],['CNY','중국위안'],['GBP','영국파운드'],['CAD','캐나다달러'],['AUD','호주달러'],['NZD','뉴질랜드달러'],['CHF','스위스프랑'],['HKD','홍콩달러'],['SGD','싱가포르달러'],['TWD','대만달러'],['THB','태국바트'],['VND','베트남동(100동당)'],['PHP','필리핀페소'],['IDR','인도네시아루피아(100당)'],['MYR','말레이시아링깃'],['INR','인도루피'],['MXN','멕시코페소'],['BRL','브라질헤알'],['SEK','스웨덴크로나'],['DKK','덴마크크로나'],['NOK','노르웨이크로나'],['RUB','러시아루블'],['SAR','사우디리얄'],['KWD','쿠웨이트디나르'],['AED','아랍에미리트디르함'],['TRY','튀르키예리라'],['ZAR','남아공랜드']];
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.display = 'flex';
+  overlay.innerHTML =
+    '<div class="modal-panel" style="width:min(480px, 94vw);">' +
+      '<div class="modal-head"><span>외화 → 원화(기준환율, 소득세법 시행령 §178의5①)</span><span class="modal-close" id="btnCloseFx">✕</span></div>' +
+      '<div class="modal-body"><div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>통화</label><select id="fxCur">' + CUR.map(function(c){ return '<option value="' + c[0] + '">' + c[0] + ' ' + c[1] + '</option>'; }).join('') + '</select></div>' +
+        '<div class="taxcalc-field"><label>외화 금액</label><input type="number" id="fxAmt" step="0.01" placeholder="외화"></div>' +
+        '<div class="taxcalc-field"><label>대금을 받은(지급한) 날</label><input type="date" id="fxDate" value="' + (defaultDate || '') + '" min="1964-05-04" max="2099-12-31"><span class="taxcalc-field-help">장기할부는 양도일·취득일(§178의5②)</span></div>' +
+      '</div><div id="fxOut" class="taxcalc-result-note" style="margin:8px 0;"></div>' +
+      '<button type="button" class="taxcalc-ai-btn" id="fxGo">환율 조회</button> <button type="button" class="taxcalc-ai-btn" id="fxApply" disabled>원화 금액을 칸에 넣기</button></div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  function close(){ overlay.remove(); }
+  overlay.querySelector('#btnCloseFx').onclick = close;
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+  let won_ = null;
+  overlay.querySelector('#fxGo').onclick = function(){
+    const out = overlay.querySelector('#fxOut');
+    const body = { currency: overlay.querySelector('#fxCur').value, date: overlay.querySelector('#fxDate').value, amount: Number(overlay.querySelector('#fxAmt').value) || 0 };
+    out.textContent = '조회 중…';
+    callGas('lookupExchangeRate', body).then(function(r){
+      if (!r || r.error){ out.textContent = '⚠ ' + ((r && r.error) || '조회 실패'); return; }
+      won_ = r.원화금액 != null ? r.원화금액 : null;
+      out.textContent = r.고시일 + ' ' + r.구분 + ' ' + r.통화이름 + ' ' + (r.단위 !== 1 ? r.단위 : 1) + ' = ' + r.환율.toLocaleString('ko-KR') + '원' +
+        (won_ != null ? ' → ' + body.amount.toLocaleString('ko-KR') + ' ' + r.통화 + ' = ' + won_.toLocaleString('ko-KR') + '원(원 미만 버림)' : ' — 외화 금액을 넣으면 원화로 바꿔 줍니다') + ' · ' + (r.안내 || '');
+      overlay.querySelector('#fxApply').disabled = won_ == null;
+    }).catch(function(e){ out.textContent = '⚠ ' + (e && e.message || e); });
+  };
+  overlay.querySelector('#fxApply').onclick = function(){ if (won_ != null){ onApply(won_); close(); } };
+}
 function renderOverseasPropertyCardHtml_(idx){
   const a = transferAssets[idx];
   return '<div class="taxcalc-asset" data-idx="' + idx + '">' +
@@ -5697,16 +5775,16 @@ function renderOverseasPropertyCardHtml_(idx){
         '<div class="taxcalc-field checkbox" style="flex-basis:100%; max-width:none;"><input type="checkbox" data-field="isOverseasAsset" id="oaAsset-' + idx + '" checked><label for="oaAsset-' + idx + '">이 자산은 국외 소재(소득세법§118의2~8 — 국내자산 양도세와 완전히 별도 세목으로, 국내 합산 없이 별도 계산·별도 표시됩니다)</label></div>' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="oaResident5yr" id="oaRes5-' + idx + '"' + (a.oaResident5yr ? ' checked' : '') + '><label for="oaRes5-' + idx + '">양도일까지 계속 5년 이상 국내에 주소·거소를 둔 거주자</label></div>' +
         '<div class="taxcalc-field"><label>양도일</label><input type="date" data-field="transferDate" value="' + (a.transferDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>양도가액</label><input type="number" data-field="transferPrice" placeholder="원" value="' + (a.transferPrice || '') + '"><span class="taxcalc-field-help">원칙 실지거래가액</span></div>' +
+        '<div class="taxcalc-field"><label>양도가액</label><input type="number" data-field="transferPrice" placeholder="원" value="' + (a.transferPrice || '') + '"><span class="taxcalc-field-help">원칙 실지거래가액 · 외화면 대금 받은 날 기준환율 ' + fxHelperBtn_(idx, 'transferPrice', 'transferDate') + '</span></div>' +
         '<div class="taxcalc-field"><label>취득일</label><input type="date" data-field="acquisitionDate" value="' + (a.acquisitionDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>취득가액</label><input type="number" data-field="acquisitionPrice" placeholder="원" value="' + (a.acquisitionPrice || '') + '"><span class="taxcalc-field-help">원칙 실지거래가액</span></div>' +
+        '<div class="taxcalc-field"><label>취득가액</label><input type="number" data-field="acquisitionPrice" placeholder="원" value="' + (a.acquisitionPrice || '') + '"><span class="taxcalc-field-help">원칙 실지거래가액 · 외화면 대금 지급한 날 기준환율 ' + fxHelperBtn_(idx, 'acquisitionPrice', 'acquisitionDate') + '</span></div>' +
         '<div class="taxcalc-field"><label>자본적지출액</label><input type="number" data-field="oaCapitalExpenditure" placeholder="원" value="' + (a.oaCapitalExpenditure || '') + '"><span class="taxcalc-field-help">없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>양도비</label><input type="number" data-field="oaTransferExpenses" placeholder="원" value="' + (a.oaTransferExpenses || '') + '"><span class="taxcalc-field-help">없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>외국납부세액 처리방법</label><select data-field="oaForeignTaxMethod">' +
           '<option value="credit"' + (a.oaForeignTaxMethod !== 'expense' ? ' selected' : '') + '>외국납부세액공제(세액공제, 산출세액 한도)</option>' +
           '<option value="expense"' + (a.oaForeignTaxMethod === 'expense' ? ' selected' : '') + '>필요경비산입방법(위 취득가액 등에 이미 포함해 입력)</option>' +
         '</select></div>' +
-        '<div class="taxcalc-field"><label>외국에 납부한 세액</label><input type="number" data-field="oaForeignTaxPaid" placeholder="원" value="' + (a.oaForeignTaxPaid || '') + '"><span class="taxcalc-field-help">없으면 0, 세액공제방법만</span></div>' +
+        '<div class="taxcalc-field"><label>외국에 납부한 세액</label><input type="number" data-field="oaForeignTaxPaid" placeholder="원" value="' + (a.oaForeignTaxPaid || '') + '"><span class="taxcalc-field-help">없으면 0, 세액공제방법만 · 외화면 낸 날 환율 ' + fxHelperBtn_(idx, 'oaForeignTaxPaid', 'transferDate') + '</span></div>' +
       '</div>' +
     '</div>';
 }
@@ -7262,6 +7340,8 @@ function renderOneTransferResultHtml_(r, label, sellerIdx){
   if (r.합산채권만기특약위반_추징액) html += taxCalcResultRow('채권 만기특약 위반 추징(조특법§77④)', '+' + won(r.합산채권만기특약위반_추징액));
   // [2026.10.20 J21] 양도세 감면분 농어촌특별세(84호 ㉒~㉙ — 양도세와 따로 납부)
   if (r.농어촌특별세 > 0) html += taxCalcResultRow('농어촌특별세(과세 감면세액 ' + won(r.농어촌특별세_과세표준) + ' × 20%, 따로 납부)', won(r.농어촌특별세));
+  // [2026.10.20 84호 ㉕] 농특세 가산세(국세기본법 §47의2~§47의4)
+  if (r.농어촌특별세_가산세 > 0){ const p_ = r.농어촌특별세_가산세_내역 || {}; html += taxCalcResultRow('농어촌특별세 가산세(무신고 ' + won(p_.무신고가산세 || 0) + '·과소 ' + won(p_.과소신고가산세 || 0) + '·납부지연 ' + won(p_.납부지연가산세 || 0) + ')', '+' + won(r.농어촌특별세_가산세)); if (p_.안내) html += '<div class="taxcalc-result-note">' + escapeHtml(p_.안내) + '</div>'; }
   (r.농어촌특별세_내역 || []).forEach(function(x){ html += '<div class="taxcalc-result-note">농특세 ' + escapeHtml(x.농특세) + ' — ' + escapeHtml(String(x.감면)) + ' ' + won(x.감면세액) + ': ' + escapeHtml(x.근거) + '</div>'; });
   // [2026.10.19 서식 감사] 조특법 §133 한도로 감면하지 않은 금액(엔진 감면한도_조특법133)·그 시점 경고
   (r.감면한도_조특법133 || []).forEach(function(x){ html += '<div class="taxcalc-result-note">' + escapeHtml(x.한도) + ' — 감면받을 세액 ' + won(x.감면받을세액_합계) + (x.직전4개과세기간_감면세액 ? ' + 직전 4개 과세기간 ' + won(x.직전4개과세기간_감면세액) : '') + ' 중 ' + won(x.감면하지않는금액) + '은 감면하지 않음(늦게 양도한 자산부터)</div>'; });
@@ -8639,6 +8719,8 @@ function renderRelatedPartyGiftResult(r){
     return;
   }
   if (r.배당소득공제) html += taxCalcResultRow('배당소득공제', '-' + won(r.배당소득공제));
+  // [2026.10.20 ⑮] 출자관계별(부표5 ㉒·㉓ − ㉘·㉟, 관계마다 0 바닥)
+  (r.출자관계별 || []).forEach(function(x){ html += '<div class="taxcalc-result-note">' + escapeHtml(x.출자관계) + ' ' + x.보유비율 + '% → 차감 후 ' + x.한계보유비율_차감후 + '%: 증여의제이익 ' + won(x.증여의제이익) + (x.배당소득공제 ? ' − 배당소득 공제 ' + won(x.배당소득공제) : '') + ' = ' + won(x.과세가액) + (x.안내 ? ' (' + escapeHtml(x.안내) + ')' : '') + '</div>'; });
   html += taxCalcResultRow('증여의제이익', won(r.증여의제이익));
   html += taxCalcResultRow('과세표준(증여재산공제 없음)', won(r.과세표준));
   html += taxCalcResultRow('산출세액', won(r.산출세액));
@@ -9478,14 +9560,15 @@ function trRateDetailRecord_(rateClass, r, splitAmt){ // rateClass: '00'(국세 
   b = b.concat(ihPadNum_(즉시납부세액, 13));            // 21 자진납부세액(분납신청액 제외한 나머지, 분납 없으면 19와 동일)
   // [2026.10.20 J21] 농어촌특별세(84호 ㉒~㉙) — 국세 줄(00)에만. 엔진 농어촌특별세_과세표준(과세 감면세액) × 20%(농특세법 §5①1호). 세율은 다른 세율 칸처럼 ×100(20% → 02000)
   const ntBase = isLocal ? 0 : (r.농어촌특별세_과세표준 || 0), ntTax = isLocal ? 0 : (r.농어촌특별세 || 0);
+  const ntPen = isLocal ? 0 : (r.농어촌특별세_가산세 || 0), ntDue = ntTax + ntPen; // [2026.10.20] 25 가산세(국세기본법 §47의2~§47의4), 27·29 = 24 + 25
   b = b.concat(ihPadNum_(ntBase, 13));                  // 22 농어촌특별세_소득세감면세액
   b = b.concat(ihPadNum_(ntBase > 0 ? 2000 : 0, 5));    // 23 농어촌특별세_세율
   b = b.concat(ihPadNum_(ntTax, 13));                   // 24 농어촌특별세_산출세액
-  b = b.concat(ihPadNum_(0, 13));                       // 25 농어촌특별세_수정신고가산세등(계산 안 함)
+  b = b.concat(ihPadNum_(ntPen, 13));                   // 25 농어촌특별세_수정신고가산세등
   b = b.concat(ihPadNum_(0, 13));                       // 26 농어촌특별세_기신고,결정,경정세액
-  b = b.concat(ihPadNum_(ntTax, 13));                   // 27 농어촌특별세_자진납부할세액
+  b = b.concat(ihPadNum_(ntDue, 13));                   // 27 농어촌특별세_자진납부할세액
   b = b.concat(ihPadNum_(0, 13));                       // 28 농어촌특별세_분납할세액
-  b = b.concat(ihPadNum_(ntTax, 13));                   // 29 농어촌특별세_자진납부세액
+  b = b.concat(ihPadNum_(ntDue, 13));                   // 29 농어촌특별세_자진납부세액
   b = b.concat(ihPadNum_(isLocal ? 0 : localTax, 13));  // 30 주민세_소득세자진납부할세액(00행에 지방소득세 요약 기재)
   b = b.concat(ihPadNum_(0, 5));                        // 31 주민세_세율(스펙상 "사용안함")
   b = b.concat(ihPadNum_(0, 13));                       // 32 주민세_산출세액
@@ -10515,7 +10598,8 @@ function trPrintFormPageHtml_(seller, r, buyers, assets){
     // [2026.10.20 J21] 농어촌특별세 납부계산서(84호 ㉒~㉙) — 과세 감면세액 × 20%(농특세법 §5①1호), 비과세 감면(시행령 §4)은 빠짐
     (r.농어촌특별세_과세표준 > 0 ? '<div class="pf-section-head">농어촌특별세 납부계산서</div><table class="pf-table">' +
       pfRow_(0, '㉒ 소득세 감면세액(농특세 과세분)', won(r.농어촌특별세_과세표준)) + pfRow_(0, '㉓ 세율', '20%') +
-      pfRow_(0, '㉔ 산출세액', won(r.농어촌특별세)) + pfRow_(0, '㉗ 납부할 세액', won(r.농어촌특별세)) + '</table>' : '') +
+      pfRow_(0, '㉔ 산출세액', won(r.농어촌특별세)) + (r.농어촌특별세_가산세 ? pfRow_(0, '㉕ 가산세', won(r.농어촌특별세_가산세)) : '') +
+      pfRow_(0, '㉗ 납부할 세액', won(r.농어촌특별세_자진납부할세액 != null ? r.농어촌특별세_자진납부할세액 : r.농어촌특별세)) + '</table>' : '') +
     '<div class="pf-section-head">개인지방소득세(참고, 세율구분 98)</div>' +
     '<table class="pf-table">' + pfRow_(0, '지방소득세(국세의 10% 근사)', won(localTax)) + '</table>' +
     '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 지방소득세는 위택스 별도신고 필요 여부를 실무로 확인하세요. 양도소득금액계산명세서(부표1)·취득가액및필요경비계산상세명세서(부표3)는 뒤에 이어집니다.</div>' +
@@ -12568,6 +12652,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>배당소득공제</label><input type="number" id="jmDividendDeduction" placeholder="원"><span class="taxcalc-field-help">신고기한 내 받은 배당소득 공제액, 없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>수혜법인 사업연도 종료일</label><input type="date" id="jmFiscalYearEnd" min="1900-01-01" max="2099-12-31"></div>' +
       '</div>' +
+      '<div id="jmRelationsBox">' + jmRelationsHtml_() + '</div>' + // [2026.10.20 ⑮]
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>신고 상태 · 가산세</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>신고 상태</label><select id="jmFilingStatus">' +
@@ -12762,7 +12847,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>특정법인의 법인세 산출세액(공제·감면 차감후)</label><input type="number" id="scCorpTax" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>특정법인의 해당 사업연도 소득금액</label><input type="number" id="scCorpIncome" placeholder="원"><span class="taxcalc-field-help">법인세법§14</span></div>' +
         '<div class="taxcalc-field"><label>지배주주등의 주식보유비율</label><input type="number" step="0.01" min="0" max="1" id="scShareRatio" placeholder="0~1"></div>' +
-        '<div class="taxcalc-field"><label>직접증여시 증여세상당액(§45의5② 한도용)</label><input type="number" id="scDirectGiftTax" placeholder="원"><span class="taxcalc-field-help">관계별공제 반영해 별도 계산, 없으면 한도 미적용</span></div>' +
+        '<div class="taxcalc-field"><label>직접증여시 증여세상당액(§45의5② 한도용)</label><input type="number" id="scDirectGiftTax" placeholder="원"><span class="taxcalc-field-help">세대생략 할증 전 금액(서식 10호의6 ㊲ "산출세액 한도" — 할증 ㊳은 한도 뒤에 더함). 비우면 (특정법인 이익 × 지분율)에 누진세율로 자동 계산</span></div>' +
         '<div class="taxcalc-field"><label>1년 이내 같은 특정법인과의 이전거래 이익 합계(§43②)</label><input type="number" id="scPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="scRelationDeduction" placeholder="원"><span class="taxcalc-field-help">증여자가 법인이므로 통상 0</span></div>' +
         '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="scAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
@@ -16117,6 +16202,11 @@ function handleTaxCalcClick_(e){
     });
   } else if (action === 'open-related-party-ratio-helper'){
     openRelatedPartyRatioHelperModal_();
+  } else if (action === 'open-fx-helper'){ // [2026.10.20 조견표 1부-13] 외화 → 원화(기준환율)
+    const fxIdx = numVal(btn.dataset.idx), fxTarget = btn.dataset.target;
+    openFxHelper_((transferAssets[fxIdx] || {})[btn.dataset.datefield] || '', function(value){ transferAssets[fxIdx][fxTarget] = value; renderTransferPane(); });
+  } else if (action === 'clear-jm-relations'){ // [2026.10.20 ⑮]
+    jmRelations_ = []; renderJmRelations_();
   } else if (action === 'open-shareholding-helper'){
     openShareholdingHelperModal_(btn.dataset.target);
   } else if (action === 'open-sr-asset-helper'){
@@ -17568,6 +17658,7 @@ function handleTaxCalcClick_(e){
       relatedPartySalesAmount: numVal(document.getElementById('jmRelatedPartySales').value) || 0,
       shareholderOwnershipRatio: numVal(document.getElementById('jmShareRatio').value) || 0,
       dividendDeduction: numVal(document.getElementById('jmDividendDeduction').value) || 0,
+      shareRelations: jmRelations_.length ? JSON.parse(JSON.stringify(jmRelations_)) : undefined, // [2026.10.20 ⑮] 출자관계별
       filingStatus: document.getElementById('jmFilingStatus').value,
       isFraudulent: document.getElementById('jmFraudulent').checked,
       underreportedTaxAmount: numVal(document.getElementById('jmUnderreportedTax').value) || 0,
@@ -18848,8 +18939,8 @@ const TC_TOOL_STATE_ = {
     total: function(saved){ return saved.result && saved.result.납부세액; }
   },
   jm: { label: '일감몰아주기 증여의제',
-    get: function(){ return lastRelatedPartyGiftResult_ ? { result: lastRelatedPartyGiftResult_ } : null; },
-    set: function(saved){ lastRelatedPartyGiftResult_ = saved.result || null; },
+    get: function(){ return lastRelatedPartyGiftResult_ ? { result: lastRelatedPartyGiftResult_, relations: jmRelations_ } : null; },
+    set: function(saved){ lastRelatedPartyGiftResult_ = saved.result || null; jmRelations_ = Array.isArray(saved.relations) ? saved.relations : []; renderJmRelations_(); },
     total: function(saved){ return saved.result && saved.result.납부세액; } },
   jt: { label: '일감떼어주기 증여의제',
     get: function(){ return lastBusinessOpportunityGiftResult_ ? { result: lastBusinessOpportunityGiftResult_ } : null; },
