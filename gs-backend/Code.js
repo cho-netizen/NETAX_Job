@@ -5016,14 +5016,20 @@ function toolLookupStatuteArticle(lawName, articleNo, baseDate) {
   if (ent && /부칙/.test(String(articleNo))) return lawDbBuchik_(idx, key, ver, (String(articleNo).match(/\d+/) || [])[0]);
   var fid = ver && lawDbIds_(idx, key)[ver.판], bm = String(articleNo).match(/별표\s*(\d+(?:의\d+)?)/);
   if (fid && bm) { var bd = JSON.parse(Utilities.ungzip(DriveApp.getFileById(fid).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')), bb = (bd.별표 || []).filter(function (b) { return b.번호 === bm[1]; }); // [2026.10.20] 별표(현행·시행예정 판)
-    return bb.length ? { 법령명: ent.이름, 시행일자: ver.시행일, 판: ver.판, 별표: bb } : { error: '이 판에 별표 ' + bm[1] + '이 없습니다' + (bd.별표 ? '' : '(옛 판은 별표를 담지 않음)') + '.' }; }
+    return bb.length ? { 법령명: ent.이름, 시행일자: ver.시행일, 판: ver.판, 별표: bb } : { error: '이 판에 별표 ' + bm[1] + '이 없습니다' + (bd.별표 ? '' : '(이 판 파일에 별표가 아직 없음 — 법제처 원문 보기로 확인)') + '.' }; }
   if (fid) try {
     var ck = 'lwa|' + key + '|' + ver.판 + '|' + jk, hit = jk && c.get(ck);
     arts = hit ? [JSON.parse(hit)] : JSON.parse(Utilities.ungzip(DriveApp.getFileById(fid).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')).조.filter(function (a) { return !jk || a.조 === jk; });
     if (jk && !hit && arts.length) try { c.put(ck, JSON.stringify(arts[0]), 21600); } catch (e) { }
     out = { 법령명: ent.이름, 시행일자: ver.시행일, 판: ver.판, 출처: '법령 정비본(법제처 ' + ver.시행일 + ' 시행판, 공포 ' + ver.공포일 + ' 제' + ver.공포번호 + '호)' };
     if (ent.범위 === '조회만') out.주의 = '지방세 — 조회만, 계산·신고서 근거로 쓰지 않음';
-    if (stale) out.판주의 = stale.시행일 + ' 시행판(제' + stale.공포번호 + '호, 공포 ' + stale.공포일 + ')은 그보다 늦게 공포된 개정(' + stale.낡은글.앞최신 + ')을 반영하지 않은 법제처 연혁 글이라(되돌린 조 ' + stale.낡은글.되돌림 + '·빠진 조 ' + stale.낡은글.빠진조 + ') 이 판 글을 씀 — 제' + stale.공포번호 + '호로 ' + stale.시행일 + '부터 시행된 개정분은 부칙·원문 보기로 확인';
+    if (stale) {
+      var ch = stale.낡은글.바뀐조 || [], no = +stale.공포번호;
+      out.판주의 = stale.시행일 + ' 시행판(제' + no + '호, 공포 ' + stale.공포일 + ')은 그보다 늦게 공포된 개정(' + stale.낡은글.앞최신 + ')을 반영하지 않은 법제처 연혁 글이라(되돌린 조 ' + stale.낡은글.되돌림 + '·빠진 조 ' + stale.낡은글.빠진조 + ') 이 판(' + ver.판 + ') 글을 씀'
+        + (ch.length ? ' — 이 날 제' + no + '호로 바뀐 조: ' + ch.slice(0, 40).map(function (j) { return '§' + j; }).join('·') + (ch.length > 40 ? ' 외 ' + (ch.length - 40) + '개' : '') + '(' + (stale.낡은글.바뀐조근거 || '') + ')' : ' — 제' + no + '호로 ' + stale.시행일 + '부터 시행된 개정분은 부칙·원문 보기로 확인');
+      // [2026.10.20 위원회 N14] 조회한 조가 그 날 바뀐 조이면 맨 앞에 경고 — 아래 글에는 그 개정이 빠져 있을 수 있다
+      if (jk && ch.indexOf(jk) >= 0) out = Object.assign({ 경고: '⚠ 이 조(제' + jk.replace(/의/, '조의').replace(/^(\d+)$/, '$1조') + ')는 ' + stale.시행일 + ' 제' + no + '호로 바뀐 조 — 아래 글은 대신 쓴 ' + ver.판 + ' 판 글이라 그 개정이 빠졌을 수 있음. 📖 원문 보기에서 ' + stale.판 + ' 판(⚠ 낡은 연혁 글)과 부칙으로 확인' }, out);
+    }
     var fut = ent.판.filter(function (p) { return p.상태 === '시행예정' && p.시행일 > (day || ver.시행일); })[0];
     if (fut) out.시행예정개정 = fut.시행일 + ' 시행 예정 개정판 있음 — 그 뒤 양도·증여·상속분이면 baseDate로 확인';
   } catch (e) { arts = null; out.정비본오류 = String(e.message || e); }

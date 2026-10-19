@@ -1392,5 +1392,270 @@
    "과소신고가산세": 3240000,
    "무신고가산세": 0
   }
+ },
+ {
+  "이름": "[옛 중과] 2008-06-01 3주택 — §104①2호의3 60% 단일세율·장특공 제외(§95②): (3억 − 250만) × 60% = 178,500,000",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2000-01-01",
+   "transferDate": "2008-06-01",
+   "transferPrice": 400000000,
+   "acquisitionPrice": 100000000,
+   "multiHouseCount": 3
+  },
+  "정답": {
+   "과세표준": 297500000,
+   "산출세액": 178500000
+  }
+ },
+ {
+  "이름": "[옛 중과] 2007-06-01 2주택 — §104①2호의5 50%(2007.1.1.~, 법률 제7837호 부칙 제1조) = 148,750,000",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2000-01-01",
+   "transferDate": "2007-06-01",
+   "transferPrice": 400000000,
+   "acquisitionPrice": 100000000,
+   "multiHouseCount": 2
+  },
+  "정답": {
+   "과세표준": 297500000,
+   "산출세액": 148750000
+  }
+ },
+ {
+  "이름": "[옛 중과] 2009-02-01 3주택 — §104⑥(2009.1.1. 판) 45% = 133,875,000",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2000-01-01",
+   "transferDate": "2009-02-01",
+   "transferPrice": 400000000,
+   "acquisitionPrice": 100000000,
+   "multiHouseCount": 3
+  },
+  "정답": {
+   "과세표준": 297500000,
+   "산출세액": 133875000
+  }
+ },
+ {
+  "이름": "[옛 중과] 2010-06-01 3주택 — 2009.3.16.~ 기본세율(§104⑥)이나 장특공 제외(2011년까지): 2.975억 × 35% − 1,490만 = 89,225,000",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2000-01-01",
+   "transferDate": "2010-06-01",
+   "transferPrice": 400000000,
+   "acquisitionPrice": 100000000,
+   "multiHouseCount": 3
+  },
+  "정답": {
+   "과세표준": 297500000,
+   "산출세액": 89225000
+  }
+ },
+ {
+  "이름": "[옛 중과] 2012-06-01 3주택 — 기본세율·장특공 30%(2012년부터 대상): 2.075억 × 35% − 1,490만 = 57,725,000",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2000-01-01",
+   "transferDate": "2012-06-01",
+   "transferPrice": 400000000,
+   "acquisitionPrice": 100000000,
+   "multiHouseCount": 3
+  },
+  "정답": {
+   "과세표준": 207500000,
+   "산출세액": 57725000
+  }
+ },
+ {
+  "이름": "[옛 비사업용] 2008-06-01 비사업용 토지 — §104①2호의7 60%·장특공 제외 = 178,500,000",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2000-01-01",
+   "transferDate": "2008-06-01",
+   "transferPrice": 400000000,
+   "acquisitionPrice": 100000000,
+   "isNonBusinessLand": true
+  },
+  "정답": {
+   "과세표준": 297500000,
+   "산출세액": 178500000
+  }
+ },
+ {
+  "이름": "[옛 비사업용] 2015-06-01 비사업용 토지 — 세율은 유예(기본세율)지만 장특공 제외(2016년 전 §95②): 2.975억 × 38% − 1,940만 = 93,650,000",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2000-01-01",
+   "transferDate": "2015-06-01",
+   "transferPrice": 400000000,
+   "acquisitionPrice": 100000000,
+   "isNonBusinessLand": true
+  },
+  "정답": {
+   "과세표준": 297500000,
+   "산출세액": 93650000
+  }
+ },
+ {
+  "이름": "[2005 기준면적 미만 고가주택] 1세대1주택 9억/3억·1995 취득(10년) — 고가 6억 초과분 2억 × 장특공 50%(§95②3호) − 250만 = 9,750만 × 36% − 1,170만 = 23,400,000",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "1995-01-01",
+   "transferDate": "2005-06-01",
+   "transferPrice": 900000000,
+   "acquisitionPrice": 300000000,
+   "isOneHouseOneFamily": true,
+   "isBelowStandardAreaHighValueHouse": true
+  },
+  "정답": {
+   "과세표준": 97500000,
+   "산출세액": 23400000
+  }
+ },
+ {
+  "이름": "[부칙 9270-14] 비사업용토지 2012-03-01 취득 2016-06-30 양도 — 취득일 특례로 +10%p 없음(2016 양도 장특공 기산 2016.1.1.이라 0)",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "isNonBusinessLand": true,
+   "transferDate": "2016-06-30",
+   "acquisitionDate": "2012-03-01",
+   "transferPrice": 300000000,
+   "acquisitionPrice": 100000000
+  },
+  "정답": {
+   "과세표준": 197500000,
+   "산출세액": 55650000
+  }
+ },
+ {
+  "이름": "[부칙 9270-14] 비사업용토지 2009-03-16 취득(첫날) 2020-06-30 양도 — 기본세율, 장특공 22%",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "isNonBusinessLand": true,
+   "transferDate": "2020-06-30",
+   "acquisitionDate": "2009-03-16",
+   "transferPrice": 500000000,
+   "acquisitionPrice": 200000000
+  },
+  "정답": {
+   "과세표준": 231500000,
+   "산출세액": 68570000
+  }
+ },
+ {
+  "이름": "[부칙 9270-14 대조] 비사업용토지 2009-03-15 취득(하루 전) 2020-06-30 양도 — 특례 밖, +10%p",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "isNonBusinessLand": true,
+   "transferDate": "2020-06-30",
+   "acquisitionDate": "2009-03-15",
+   "transferPrice": 500000000,
+   "acquisitionPrice": 200000000
+  },
+  "정답": {
+   "과세표준": 231500000,
+   "산출세액": 91720000
+  }
+ },
+ {
+  "이름": "[부칙 9270-14] 비사업용토지 2012-12-31 취득(끝날) 2026-03-02 양도 — 기본세율, 장특공 26%",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "isNonBusinessLand": true,
+   "transferDate": "2026-03-02",
+   "acquisitionDate": "2012-12-31",
+   "transferPrice": 600000000,
+   "acquisitionPrice": 300000000
+  },
+  "정답": {
+   "과세표준": 219500000,
+   "산출세액": 63470000
+  }
+ },
+ {
+  "이름": "[부칙 9270-14 대조] 비사업용토지 2013-01-01 취득 2026-03-02 양도 — 특례 밖, +10%p, 장특공 26%",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "isNonBusinessLand": true,
+   "transferDate": "2026-03-02",
+   "acquisitionDate": "2013-01-01",
+   "transferPrice": 600000000,
+   "acquisitionPrice": 300000000
+  },
+  "정답": {
+   "과세표준": 219500000,
+   "산출세액": 85420000
+  }
+ },
+ {
+  "이름": "[2부-03] 비사업용토지 2010-01-01 취득 2016-09-30 양도(특례 밖 아님 — 2009.3.16.~ 취득이라 기본세율) — 장특공 기산 2016.1.1.이라 0",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "isNonBusinessLand": true,
+   "transferDate": "2016-09-30",
+   "acquisitionDate": "2010-01-01",
+   "transferPrice": 150000000,
+   "acquisitionPrice": 100000000
+  },
+  "정답": {
+   "과세표준": 47500000,
+   "산출세액": 6180000
+  }
+ },
+ {
+  "이름": "[2부-03] 비사업용토지 2005-01-01 취득 2016-09-30 양도 — 장특공 기산 2016.1.1.이라 0, +10%p",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "isNonBusinessLand": true,
+   "transferDate": "2016-09-30",
+   "acquisitionDate": "2005-01-01",
+   "transferPrice": 150000000,
+   "acquisitionPrice": 100000000
+  },
+  "정답": {
+   "과세표준": 47500000,
+   "산출세액": 10930000
+  }
+ },
+ {
+  "이름": "[2부-03] 비사업용토지 2005-01-01 취득 2017-03-02 양도 — 단서 삭제로 취득일부터 12년 30%, +10%p",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "isNonBusinessLand": true,
+   "transferDate": "2017-03-02",
+   "acquisitionDate": "2005-01-01",
+   "transferPrice": 150000000,
+   "acquisitionPrice": 100000000
+  },
+  "정답": {
+   "과세표준": 32500000,
+   "산출세액": 7045000
+  }
  }
 ]
