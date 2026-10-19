@@ -431,7 +431,14 @@
   //      부득이한 사유 사망시 면제)+거주요건, 또는 ③2호: 2년전부터 계속 종사+신고기한까지 임원취임+
   //      2년내 대표이사등 취임(법인세법 적용영농), 또는 영농·영어·임업후계자
   function farmingInheritanceDeductionDetailed(p) {
-    const individualTotal = Number(p.farmingIndividualAssetValue) || 0;
+    // [2026.10.19 서식감사 차] 시행령 §16⑤1호(2026.2.27. 개정, 부칙 제5조: 그날 이후 상속개시분) — 소득세법 적용 영농상속 재산가액 =
+    //  영농에 사용한 자산의 가액 "에서 해당 자산에 담보된 채무액을 뺀 가액". 그 전 상속개시분은 빼지 않는다(연혁 스위치·상속개시일).
+    //  [별지 제2호서식](2025.3.21.)에는 아직 담보채무 칸이 없어 ①에 순액을 적는다. farmingIndividualSecuredDebt가 없으면 예전과 같다.
+    const farmingGross = Number(p.farmingIndividualAssetValue) || 0;
+    const fmDate_ = String(p.dateOfDeath || p.inheritanceDate || '').slice(0, 10);
+    const farmingDebtApplies = !refHistoryOn_() || !/^\d{4}-\d{2}-\d{2}$/.test(fmDate_) || fmDate_ >= '2026-02-27';
+    const farmingSecuredDebt = farmingDebtApplies ? Math.min(farmingGross, Math.max(0, Number(p.farmingIndividualSecuredDebt) || 0)) : 0;
+    const individualTotal = farmingGross - farmingSecuredDebt;
     const stockValue = Number(p.farmingStockValue) || 0;
     if (individualTotal <= 0 && stockValue <= 0) return null;
 
@@ -459,7 +466,7 @@
       eligibilityGateApplied = true;
       deductionAmount = 0;
     }
-    return { targetAmount, limitAmount, deductionAmount, individualTotal, targetCorporate, ratioInfo, requirementsUnverified, eligibilityGateApplied, failedRequirements };
+    return { targetAmount, limitAmount, deductionAmount, individualTotal, farmingSecuredDebt, targetCorporate, ratioInfo, requirementsUnverified, eligibilityGateApplied, failedRequirements };
   }
 
   const TAX_FUNCS = {
@@ -3145,7 +3152,12 @@
       cohabitEligible = !!p.hasCohabitingHouseDeduction;
     }
     const co_ = giRowAt_(REF_GI_.cohabit, inhDate_); // [2026.10.19 2부-12] 2020년 전 80%·5억, 2016년 전 40%·5억
-    const cohabitingHouseDeduction = (isDecedentResident && cohabitEligible) ? (co_ ? Math.min(Math.floor((Number(p.cohabitingHouseValue) || 0) * co_.rate), co_.cap) : Math.min(Number(p.cohabitingHouseValue) || 0, 600000000)) : 0;
+    // [2026.10.19 서식감사 차] [별지 제6호의2서식] ⑩ = ② 상속주택가액(담보채무 뺀 주택 전체) × ⑨ 요건을 갖춘 상속인의 지분 합계 —
+    //  §23의2①3호 "동거한 상속인이 상속받은 주택"이라 요건 못 갖춘 상속인 몫은 공제 대상이 아니다. cohabitingHouseShareRatio(⑨, 0~1)를
+    //  주면 주택 전체 가액에 곱하고, 없으면 cohabitingHouseValue를 이미 요건 갖춘 상속인 몫의 가액으로 본다(화면 명부 합계 = 몫 가액 합).
+    const cohabitShareRatio_ = Number(p.cohabitingHouseShareRatio);
+    const cohabitingHouseBase = Math.round((Number(p.cohabitingHouseValue) || 0) * ((cohabitShareRatio_ > 0 && cohabitShareRatio_ <= 1) ? cohabitShareRatio_ : 1));
+    const cohabitingHouseDeduction = (isDecedentResident && cohabitEligible) ? (co_ ? Math.min(Math.floor(cohabitingHouseBase * co_.rate), co_.cap) : Math.min(cohabitingHouseBase, 600000000)) : 0;
     // 시행령§20의3③ — 일반 감정평가법인·유형재산 감정수수료(1호·3호)는 500만원 한도이나, 비상장주식
     // 신용평가전문기관 평가수수료(2호, §49의2⑨)는 평가대상 법인수×의뢰기관수별로 각각 1천만원 한도로
     // 별개 규정된다(단일 500만원 한도에 합산하면 안 됨). unlistedStockAppraisalFeeAmount는 그 합계액을
@@ -3161,7 +3173,12 @@
     const funeralNicheDeduction = isDecedentResident ? Math.min(Number(p.funeralNicheCostAmount) || 0, 5000000) : 0;
     const funeralDeduction = funeralGeneralDeduction + funeralNicheDeduction;
     const businessInheritanceDetail = isDecedentResident ? businessInheritanceDeductionDetailed(p) : null;
-    const businessInheritanceDeduction = isDecedentResident ? (businessInheritanceDetail ? businessInheritanceDetail.deductionAmount : (Number(p.businessInheritanceDeduction) || 0)) : 0;
+    // [2026.10.19 서식감사 차] 법 §72의2①2호 — 가업상속 납부유예는 "가업상속공제를 받지 아니하였을 것"(영농상속공제를 받으면
+    //  가업상속공제를 받은 것으로 봄)이 요건이다. businessInheritanceDeferralElected(가업상속공제 대신 납부유예 선택)면 가업상속공제를
+    //  0으로 두고(재산 명세는 [별지 제12호의2서식 부표 1] 납부유예 가능세액 계산에만 씀), 선택하지 않았는데 공제와 유예를 함께
+    //  넣으면 유예를 빼지 않는다(아래 businessInheritanceDeferredTaxAmount). 전에는 둘을 함께 빼 세액이 이중으로 줄었다.
+    const businessInheritanceDeferralElected = !!p.businessInheritanceDeferralElected;
+    const businessInheritanceDeduction = (isDecedentResident && !businessInheritanceDeferralElected) ? (businessInheritanceDetail ? businessInheritanceDetail.deductionAmount : (Number(p.businessInheritanceDeduction) || 0)) : 0;
     const farmingInheritanceDetail = isDecedentResident ? farmingInheritanceDeductionDetailed(p) : null;
     const farmingInheritanceDeduction = isDecedentResident ? (farmingInheritanceDetail ? farmingInheritanceDetail.deductionAmount : (Number(p.farmingInheritanceDeduction) || 0)) : 0;
     // [2026.10.01 신규, 재검토103] §18의4(가업상속공제와 영농상속공제의 동시 적용 배제) — law.go.kr
@@ -3267,7 +3284,9 @@
     // 가업상속납부유예(§72의2, businessInheritanceDeferredTaxAmount)는 §69①1호가 "제74조"만 명시하므로
     // 이 기준액 계산에는 포함하지 않고, 아래 최종 납부세액 단계에서만 차감한다.
     const culturalPropertyDeferredTaxAmount = Number(p.culturalPropertyDeferredTaxAmount) || 0;
-    const businessInheritanceDeferredTaxAmount = Number(p.businessInheritanceDeferredTaxAmount) || 0;
+    const businessInheritanceDeferredTaxInput = Number(p.businessInheritanceDeferredTaxAmount) || 0;
+    // §72의2①2호 — 가업상속공제·영농상속공제를 받았으면 납부유예 불가(유예액을 빼지 않고 알림).
+    const businessInheritanceDeferralBlocked = businessInheritanceDeferredTaxInput > 0 && (businessInheritanceDeduction > 0 || farmingInheritanceDeduction > 0);
     const taxAfterCredits = Math.max(0, calculatedTax - priorGiftTaxCredit - specialGiftTaxCredit - foreignTaxCredit - shortTermCredit - otherCreditsAmount - culturalPropertyDeferredTaxAmount);
     const reportCreditRate_ = reportCreditRateAt_(inhDate_); // [2026.10.19 2부-10] 2019년 전 상속은 10%·7%·5%
     const reportCredit = reportedInTime ? Math.round(taxAfterCredits * reportCreditRate_) : 0;
@@ -3286,6 +3305,11 @@
     if (businessInheritanceDetail && totalGrossEstateValue > 0) {
       businessInheritanceDeferralEligibleAmount = Math.round(taxAfterReportCredit * businessInheritanceDetail.targetAmount / totalGrossEstateValue);
     }
+    // [2026.10.19 서식감사 차] 실제로 빼는 납부유예세액 — 공제를 받았으면 0(§72의2①2호), 아니면 입력값(비우고 납부유예를 선택했으면
+    //  가능세액). 한도(시행령 §69의3① 가능세액)는 지금 엔진에 그대로 두지 않는다 — 부표1 ⑩의 "① 또는 ⑦" 산식 문제가 따로 남아 있어서.
+    const businessInheritanceDeferredTaxAmount = businessInheritanceDeferralBlocked ? 0
+      : (businessInheritanceDeferredTaxInput > 0 ? businessInheritanceDeferredTaxInput
+        : (businessInheritanceDeferralElected && businessInheritanceDeferralEligibleAmount ? businessInheritanceDeferralEligibleAmount : 0));
 
     // culturalPropertyDeferredTaxAmount(§74)는 위 taxAfterCredits 단계에서 이미 뺐으므로 여기서 다시
     // 빼지 않는다(이중차감 방지) — businessInheritanceDeferredTaxAmount(§72의2)만 최종 단계에서 차감.
@@ -3321,7 +3345,7 @@
       가업영농상속공제_동일자산중복적용주의: businessAndFarmingSameAssetWarning,
       영농상속공제_계산내역: farmingInheritanceDetail ? {
         대상금액: farmingInheritanceDetail.targetAmount, 한도액: farmingInheritanceDetail.limitAmount,
-        소득세법적용분: farmingInheritanceDetail.individualTotal, 법인세법적용분: farmingInheritanceDetail.targetCorporate,
+        소득세법적용분: farmingInheritanceDetail.individualTotal, 소득세법적용분_담보채무차감: farmingInheritanceDetail.farmingSecuredDebt, 법인세법적용분: farmingInheritanceDetail.targetCorporate,
         사업관련자산가액비율: farmingInheritanceDetail.ratioInfo ? farmingInheritanceDetail.ratioInfo.ratio : null,
         요건미확인: farmingInheritanceDetail.requirementsUnverified,
         요건미충족으로_공제배제: farmingInheritanceDetail.eligibilityGateApplied,
@@ -3336,12 +3360,14 @@
       산출세액: calculatedTax, 세대생략가산액: generationSkipPremium,
       세대생략할증_미성년자여부확인필요: generationSkipMinorStatusUnverified,
       기납부증여세액공제: priorGiftTaxCredit, 증여세액공제_상속분입력필요: !!priorGiftCreditResult.needsActualValue, 기납부증여세액공제_상속인외: nonHeirPriorGiftTaxCredit, 기납부증여세액공제_상속인외한도: nonHeirPriorGiftCreditLimit, 증여세액공제_5억이하배제: giftCreditExcludedBySmallEstate, 증여세액공제_상속인별내역: priorGiftCreditResult.perHeir, 증여세액공제_상속인별과세가액_정밀: !!priorGiftCreditResult.precise,
-      특례증여세액공제: specialGiftTaxCredit, 외국납부세액공제: foreignTaxCredit, 단기재상속세액공제: shortTermCredit, 그밖의공제: otherCreditsAmount,
+      특례증여세액공제: specialGiftTaxCredit, 외국납부세액공제: foreignTaxCredit, 외국납부세액공제_비율한도: foreignTaxCreditByFormula, 단기재상속세액공제: shortTermCredit, 그밖의공제: otherCreditsAmount, // [2026.10.19 서식감사 차] 비율한도 = [별지 제7호서식] ④
       신고세액공제: reportCredit, 이자상당액: interestAmount, 영리법인면제분납부세액: forProfitPayableByHeirs,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty,
       납부지연가산세: penalties.latePenalty,
       문화재등징수유예세액: culturalPropertyDeferredTaxAmount, 가업상속납부유예세액: businessInheritanceDeferredTaxAmount,
       가업상속납부유예_가능세액: businessInheritanceDeferralEligibleAmount,
+      가업상속납부유예_선택: businessInheritanceDeferralElected,
+      가업상속납부유예_불가안내: businessInheritanceDeferralBlocked ? '가업상속 납부유예세액(' + businessInheritanceDeferredTaxInput + '원)을 빼지 않았습니다 — 법 §72의2①2호: 가업상속공제(영농상속공제 포함)를 받으면 납부유예를 받을 수 없습니다. 납부유예를 받으려면 "가업상속공제 대신 납부유예 선택"을 켜세요(그러면 가업상속공제는 0).' : null,
       납부세액: finalTax
     };
   };
@@ -3501,9 +3527,9 @@
     }
 
     // 조특법§30의5①후단·§30의6 — 같은 특례를 2회 이상(또는 부모 각각으로부터) 받으면 과세가액을
-    // 합산한다(priorSpecialGiftAmount). priorPaidTax는 그 이전 특례증여분에 대해 이미 낸 산출세액을
-    // 그대로 차감하는 것으로, 상증세법§58(§47②합산에 대한 기납부세액공제)과는 별개다 — §30의5⑪이
-    // 일반 증여재산의 §47② 합산 자체를 이 특례 과세가액에서 배제하므로 §58이 적용될 여지가 없다.
+    // 합산한다(priorSpecialGiftAmount). priorPaidTax는 그 이전 특례증여분에 대해 이미 낸 산출세액으로,
+    // 서식 ㉙(납부세액공제, 상증법 §58)에 들어간다 — §30의5⑪은 특례 외 "다른 증여재산"의 합산만 막을 뿐,
+    // 같은 특례분끼리는 ㉑에서 합산하고 ㉙로 앞선 세액을 뺀다(아래 [2026.10.19 서식감사 차] 참고).
     const priorSpecialGiftAmount = Number(p.priorSpecialGiftAmount) || 0;
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
 
@@ -3540,17 +3566,24 @@
       : Math.min(grossBase, remainingLimit);
     const baseRateApplicableAmount = Math.max(0, giftAmount - specialRateApplicableAmount);
 
+    // [2026.10.19 서식감사 차] [별지 제10호의2서식] ㉑ = ⑰ + ⑱(창업자금) 또는 ⑲ + ⑳(가업승계) — 앞서 같은 특례를
+    //  받은 증여분(priorSpecialGiftAmount)을 이번 분에 더한 누적 과세가액으로 ㉒ 공제·㉕ 과세표준·㉗ 산출세액을
+    //  내고, 앞선 분에 낸 세액은 ㉙(납부세액공제)로 뺀다(조특법 §30의5① 후단 "각각의 증여세 과세가액을 합산하여
+    //  적용", §30의6⑤→§30의5⑬→상증법 §47②·§58). 전에는 이번 분만으로 과세표준을 내면서 공제(5억·10억)를 또 하고
+    //  앞선 세액까지 빼서 두 번째 이후 특례 증여 세액이 적게 나왔다(예: 창업자금 앞선 10억·이번 10억 → 0원, 바른 값 1억).
+    //  §58② 비율 한도는 앞선 특례분 과세표준 입력이 없어 산출세액 한도로만 둔다(10% 단일세율 구간이면 결과 같음).
+    const cumulativeSpecialBase = specialRateApplicableAmount + priorSpecialGiftAmount;
     const propertyDeductionLimit = specialType === 'startup' ? 500000000 : 1000000000;
-    const propertyDeduction = Math.min(propertyDeductionLimit, specialRateApplicableAmount);
+    const propertyDeduction = Math.min(propertyDeductionLimit, cumulativeSpecialBase);
     const disasterLossDeduction = Number(p.disasterLossAmount) || 0;
     const appraisalFeeDeduction = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000);
-    const taxBase = Math.max(0, specialRateApplicableAmount - propertyDeduction - disasterLossDeduction - appraisalFeeDeduction);
+    const taxBase = Math.max(0, cumulativeSpecialBase - propertyDeduction - disasterLossDeduction - appraisalFeeDeduction);
 
     const calculatedTax = specialType === 'startup'
       ? Math.round(taxBase * 0.10)
       : Math.round(Math.min(taxBase, 12000000000) * 0.10 + Math.max(0, taxBase - 12000000000) * 0.20);
 
-    const priorPaidTax = Number(p.priorPaidTax) || 0;
+    const priorPaidTax = Math.min(Number(p.priorPaidTax) || 0, calculatedTax);
     // §59·시행령§48(§21 준용) — 외국납부세액공제 = 증여세산출세액×(외국법령에 따라 증여세가 부과된
     // 증여재산의 과세표준÷법§55①에 따른 증여세의 과세표준), 실제 납부한 외국증여세액 한도.
     // foreignGiftTaxBase를 입력하면 이 비례산식으로 자동계산하고, 없으면(구버전 호환) 실제 납부액을
@@ -3573,6 +3606,7 @@
       인수채무액: debtAssumedAmount, 가업자산상당액: businessAssetAmount, 사업관련자산가액비율: ratioInfo ? ratioInfo.ratio : null,
       과세특례적용전_증여세과세가액_계: grossBase, 총한도액: totalLimit,
       과세특례적용대상_증여세과세가액: specialRateApplicableAmount, 기본세율적용대상_증여재산가액: baseRateApplicableAmount,
+      가산_과세특례증여재산: priorSpecialGiftAmount, 과세특례_과세가액_합계: cumulativeSpecialBase, // 서식 ⑱·⑳ / ㉑
       증여재산공제: propertyDeduction, 재해손실공제: disasterLossDeduction, 감정평가수수료공제: appraisalFeeDeduction,
       과세표준: taxBase, 세율: specialType === 'startup' ? '10%' : '10%(120억 초과분 20%)', 산출세액: calculatedTax,
       납부세액공제: priorPaidTax, 외국납부세액공제: foreignTaxCredit,
@@ -3836,7 +3870,10 @@
   // flatDeduction: §55①3호("제1호 및 제2호를 제외한 합산배제증여재산: 그 증여재산가액에서 3천만원을
   // 공제한 금액") 전용 — §45(재산취득자금 증여추정)처럼 §55①1호(§45의2)·2호(§45의3·45의4)에 속하지
   // 않는 합산배제증여재산에서만 30000000을 넘겨 쓴다. 1호·2호 해당분은 기존대로 0(미지정).
-  function taxOnDeemedGiftProfit(deemedGiftProfit, filingStatus, isFraudulent, underreportedTaxAmount, unpaidDays, unpaidTaxForLatePenalty, reportedInTime, appraisalFeeAmount, isOffshoreTransaction, flatDeduction, monthsAfterDesignatedDueDate, unpaidTaxAtDesignatedDueDate, unlistedStockAppraisalFeeAmount, fraudulentUnderreportedTaxAmount) {
+  // [2026.10.19 서식감사 차] priorCalculatedTax: 정산 신고에서 앞서(개시사업연도·최초 신고) 낸 산출세액 — [별지 제10호의4서식] ㉗,
+  //  [별지 제10호의5서식] ㊱. 산출세액에서 빼고 남은 금액에만 신고세액공제 3%(법 §69②2호 "이 법에 따라 산출세액에서 공제되는
+  //  금액"을 뺀 금액의 3%)·가산세를 매기며, 음수면 환급세액(refundTax)으로 돌려준다(한도는 부르는 쪽에서). 0이면 예전과 같음.
+  function taxOnDeemedGiftProfit(deemedGiftProfit, filingStatus, isFraudulent, underreportedTaxAmount, unpaidDays, unpaidTaxForLatePenalty, reportedInTime, appraisalFeeAmount, isOffshoreTransaction, flatDeduction, monthsAfterDesignatedDueDate, unpaidTaxAtDesignatedDueDate, unlistedStockAppraisalFeeAmount, fraudulentUnderreportedTaxAmount, priorCalculatedTax) {
     // §55①1~3호 — 명의신탁재산 증여의제·§45의3·45의4 증여의제이익·기타 합산배제증여재산은 전부
     // "그 금액에서 대통령령으로 정하는 증여재산의 감정평가 수수료를 뺀 금액"이 과세표준이다(3호는 3천만원도 추가로 뺀다).
     // 시행령§46의2·§20의3③ — 일반 감정평가법인 등(1·3호) 수수료는 500만원, 비상장주식 신용평가전문기관
@@ -3844,11 +3881,14 @@
     const appraisalFeeDeduction = Math.min(Number(appraisalFeeAmount) || 0, 5000000) + Math.min(Number(unlistedStockAppraisalFeeAmount) || 0, 10000000);
     const taxBase = Math.max(0, Math.round(deemedGiftProfit) - appraisalFeeDeduction - (Number(flatDeduction) || 0));
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
-    const reportCredit = reportedInTime ? Math.round(calculatedTax * 0.03) : 0;
-    const taxAfterCredit = calculatedTax - reportCredit;
+    const priorTax = Math.max(0, Number(priorCalculatedTax) || 0);
+    const taxDue = calculatedTax - priorTax;
+    const reportCredit = reportedInTime ? Math.round(Math.max(0, taxDue) * 0.03) : 0;
+    const taxAfterCredit = Math.max(0, taxDue) - reportCredit;
     const penalties = giftFilingPenalties(taxAfterCredit, filingStatus, isFraudulent, underreportedTaxAmount, unpaidDays, unpaidTaxForLatePenalty, isOffshoreTransaction, monthsAfterDesignatedDueDate, unpaidTaxAtDesignatedDueDate, fraudulentUnderreportedTaxAmount);
     const finalTax = Math.max(0, taxAfterCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
-    return { taxBase, calculatedTax, reportCredit, penalties, finalTax };
+    const refundTax = taxDue < 0 ? -taxDue : 0;
+    return { taxBase, calculatedTax, priorTax, reportCredit, penalties, finalTax, refundTax };
   }
 
   // 일감몰아주기 증여의제 (상증세법 §45의3, [별지 제10호의3서식]) — Code.js toolCalculateRelatedPartyTransactionGiftTax와 동일 로직.
@@ -3956,13 +3996,21 @@
 
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
-    const r = taxOnDeemedGiftProfit(deemedGiftProfit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), reportedInTime, p.appraisalFeeAmount, !!p.isOffshoreTransaction, undefined, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.unlistedStockAppraisalFeeAmount, p.fraudulentUnderreportedTaxAmount);
+    // [2026.10.19 서식감사 차] 정산 신고 — 법 §45의4③ "정산증여의제이익에 대한 증여세액과 제2항에 따라 납부한 증여의제이익에
+    //  대한 증여세액과의 차액을 납부", 적으면 "그 차액에 상당하는 증여세액(제2항에 따라 납부한 세액을 한도로 한다)을 환급".
+    //  [별지 제10호의4서식] ㉛ = ㉖ − ㉗(개시사업연도 산출세액) − ㉘ + ㉙ + ㉚. 전에는 ㉗이 없어 정산 세액이 개시분만큼 많았다.
+    //  initialPhaseCalculatedTax(㉗)가 없으면(0) 예전과 같다. initialPhasePaidTax(개시 때 실제 낸 세액)는 환급 한도 — 없으면 ㉗.
+    const initialPhaseCalculatedTax = phase === 'settlement' ? Math.max(0, Number(p.initialPhaseCalculatedTax) || 0) : 0;
+    const r = taxOnDeemedGiftProfit(deemedGiftProfit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), reportedInTime, p.appraisalFeeAmount, !!p.isOffshoreTransaction, undefined, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.unlistedStockAppraisalFeeAmount, p.fraudulentUnderreportedTaxAmount, initialPhaseCalculatedTax);
+    const initialPhasePaidTax = Number(p.initialPhasePaidTax) > 0 ? Number(p.initialPhasePaidTax) : initialPhaseCalculatedTax;
+    const refundTax = Math.min(r.refundTax, initialPhasePaidTax);
 
     return {
       과세대상여부: true,
       증여의제이익: deemedGiftProfit,
-      과세표준: r.taxBase, 산출세액: r.calculatedTax, 신고세액공제: r.reportCredit,
+      과세표준: r.taxBase, 산출세액: r.calculatedTax, 개시사업연도_산출세액: initialPhaseCalculatedTax, 신고세액공제: r.reportCredit,
       무신고가산세: r.penalties.unreportedPenalty, 과소신고가산세: r.penalties.underreportedPenalty, 납부지연가산세: r.penalties.latePenalty,
+      환급세액: refundTax,
       안내: (phase === 'initial'
         ? '개시사업연도 신고는 잠정치입니다 — 2년 경과 후 정산사업연도에 재계산·정산신고해야 합니다. '
         : '') + '증여재산공제는 적용되지 않습니다(증여의제이익 전액이 과세표준). 지배주주 판정은 다자간 지분구조 확인이 필요해 이 도구가 자동판정하지 않으니 별도로 확인하세요. 법인세 납부세액 중 상당액은 corporateTaxAfterCredit·corporateTaxableIncome을 넣으면 시행령§34의4④ 산식대로 자동계산되니(수혜법인의 실제 법인세 신고서상 값을 정확히 넣었는지만 확인하면 됩니다), corporateTaxPortion을 직접 계산해서 넣을 필요는 없습니다.',
@@ -6190,6 +6238,19 @@
   // 직접 입력하면 그 값을 그대로 우선 사용한다. 정산시(isFinalSettlement) 종합과세되는 경우의 실제소득세액은
   // 시행규칙§10의3②3호(comprehensiveIncomeTaxBase 입력시 자동계산)로, 비과세·분리과세인 경우는
   // actualIncomeTax 직접 입력으로 처리한다.
+  // [2026.10.19 서식감사 차] 세대생략 할증(법 §57) — 일반 증여세 함수(calculateGiftTaxJS)와 같은 규칙을 초과배당([별지 제10호의5서식] ㉙)·
+  //  특정법인([별지 제10호의6서식] ㊳) 계산에 쓰려고 뺀 도우미. 수증자가 증여자의 자녀가 아닌 직계비속이면 산출세액의 30%,
+  //  미성년자이면서 증여재산가액이 20억원 초과면 40%(2016.1.1. 전 증여는 30% — genSkipMinorRateAt_), 최근친 직계비속이 사망해
+  //  그 최근친 직계비속이 받은 경우(§57① 단서)는 0. 앞선 합산분에 이미 낸 할증세액(priorPaidGenerationSkipPremium)은 뺀다.
+  //  isGenerationSkip을 넣지 않으면 0 — 예전 결과와 같다.
+  function genSkipPremium_(taxBeforePremium, p, giftValue) {
+    if (!p.isGenerationSkip || p.isSubstituteGiftDueToDeath) return { rate: 0, amount: 0 };
+    const over2Billion = !!p.generationSkipOver2Billion || (Number(giftValue) || 0) > 2000000000;
+    const rate = (over2Billion && p.isMinor) ? genSkipMinorRateAt_(p.giftDate || p.giftReceivedDate) : 0.3;
+    const amount = Math.max(0, Math.round(taxBeforePremium * rate) - (Number(p.priorPaidGenerationSkipPremium) || 0));
+    return { rate: rate, amount: amount };
+  }
+
   window.calculateExcessDividendGiftTaxJS = function (p) {
     p = p || {};
     const isFinalSettlement = !!p.isFinalSettlement;
@@ -6257,18 +6318,28 @@
       ? Math.round(calculatedTax * Math.min(1, foreignGiftTaxBase / taxBase))
       : foreignTaxPaidAmount;
     const foreignTaxCredit = Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, calculatedTax - priorPaidTax));
-    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
+    // [2026.10.19 서식감사 차] ㉙ 세대생략가산액(법 §57) → ㉚ = ㉘ + ㉙. 기납부세액(㉜)·외국납부세액(㉝)은 할증 전 산출세액
+    //  기준(일반 증여세 함수와 같음), 신고세액공제(㉞)는 ㉚에서 공제액을 뺀 금액의 3%(법 §69②).
+    const genSkip = genSkipPremium_(calculatedTax, p, giftAmount);
+    const calculatedTaxTotal = calculatedTax + genSkip.amount;
+    const taxAfterCredit = Math.max(0, calculatedTaxTotal - Math.min(priorPaidTax, calculatedTax) - foreignTaxCredit);
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
     const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
-    const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
-    const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
+    // [2026.10.19 서식감사 차] 정산 신고 — 법 §41의2② "정산증여재산가액 기준 증여세액에서 제1항 증여재산가액 기준 증여세액을
+    //  뺀 금액을 납부, 넘으면 환급". [별지 제10호의5서식] ㊱ = 최초 신고의 (㉚ − ㉛), ㊴ = ㉚ − ㉛ − ㊱ + ㊲ + ㊳(음수면 환급).
+    //  전에는 ㊱이 없어 정산 세액이 최초 세액만큼 많았고 환급도 0이었다. initialGiftTaxAmount가 없으면(0) 예전과 같다.
+    const initialGiftTaxAmount = isFinalSettlement ? Math.max(0, Number(p.initialGiftTaxAmount) || 0) : 0;
+    const settlementDiff = taxAfterCredit - reportCredit - initialGiftTaxAmount;
+    const penalties = giftFilingPenalties(Math.max(0, settlementDiff), filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
+    const finalTax = Math.max(0, Math.max(0, settlementDiff) + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
     return {
       과세대상여부: true, 이번거래초과배당금액: thisTransactionExcessDividendAmount, 직전1년합산액: priorBenefitSum, 초과배당금액: excessDividendAmount, 소득세상당액: incomeTaxEquivalent, 증여의제이익: giftAmount,
       증여재산공제: relationDeduction, 감정평가수수료공제: appraisalFeeAmount, 재해손실공제: disasterLossAmount,
-      과세표준: taxBase, 산출세액: calculatedTax, 신고세액공제: reportCredit,
+      과세표준: taxBase, 산출세액: calculatedTax, 세대생략할증액: genSkip.amount, 산출세액_할증후: calculatedTaxTotal, 신고세액공제: reportCredit,
+      최초신고_증여세액: initialGiftTaxAmount,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
-      납부세액: finalTax,
+      납부세액: finalTax, 환급세액: settlementDiff < 0 ? -settlementDiff : 0,
       안내: note + aggNote
     };
   };
@@ -8893,6 +8964,17 @@
     const corporateTaxableIncome = Number(p.corporateTaxableIncome) || 0;
     const shareholderOwnershipRatio = Math.min(1, Math.max(0, Number(p.shareholderOwnershipRatio) || 0));
     if (shareholderOwnershipRatio <= 0) return { error: '지배주주등의 주식보유비율이 필요합니다.' };
+    // [2026.10.19 서식감사 차] 법 §45의5① 거래 상대방 — 2026.1.1. 시행 개정(법률 제21219호, 따로 적용례 없음 → 증여일 = 거래한 날 기준)으로
+    //  "지배주주의 특수관계인" → "지배주주 및 그 특수관계인". 그 전 거래는 지배주주 본인과의 거래가 과세대상이 아니다.
+    //  isTransactionWithControllingShareholderHimself(상대방이 지배주주 본인)이고 거래일(transactionDate, 없으면 giftDate)이 2026.1.1. 전이면
+    //  과세하지 않는다. 날짜가 없거나 연혁 스위치를 끄면 현행(과세)대로. [별지 제10호의6서식](2025.7.4.)은 개정 전 글이다.
+    const scTxDate_ = String(p.transactionDate || p.giftDate || '').slice(0, 10);
+    if (p.isTransactionWithControllingShareholderHimself && refHistoryOn_() && /^\d{4}-\d{2}-\d{2}$/.test(scTxDate_) && scTxDate_ < '2026-01-01') {
+      return {
+        과세대상여부: false, 지배주주등주식보유비율: shareholderOwnershipRatio, 증여의제이익: 0, 납부세액: 0,
+        안내: '거래 상대방이 지배주주 본인이고 거래일(' + scTxDate_ + ')이 2026.1.1. 전이어서 과세대상이 아닙니다 — 그때 법 §45의5①은 "지배주주의 특수관계인"과의 거래만 과세했습니다(2026.1.1. 시행 개정으로 지배주주 본인 거래도 과세).'
+      };
+    }
     // §45의5① — 지배주주등의 주식보유비율이 100분의 30 이상인 법인만 "특정법인"에 해당해 과세대상이 된다.
     // 30% 미만이면 애초에 이 조문의 적용대상 법인이 아니므로 이하 계산을 진행하지 않는다.
     if (shareholderOwnershipRatio < 0.3) {
@@ -8950,7 +9032,11 @@
       ? Math.round(calculatedTax * Math.min(1, foreignGiftTaxBase / taxBase))
       : foreignTaxPaidAmount;
     const foreignTaxCredit = Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, calculatedTax - priorPaidTax));
-    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
+    // [2026.10.19 서식감사 차] [별지 제10호의6서식] ㊳ 세대생략가산액(법 §57)은 ㊱(㊲ 한도 적용 뒤 산출세액)에 붙이고 ㊴ = ㊱ + ㊳.
+    //  기납부·외국납부세액은 할증 전 ㊱ 기준, 신고세액공제(㊺)는 ㊴에서 공제액을 뺀 금액의 3%. 넣지 않으면 예전과 같다.
+    const genSkip = genSkipPremium_(calculatedTax, p, giftDeemedAmount);
+    const calculatedTaxTotal = calculatedTax + genSkip.amount;
+    const taxAfterCredit = Math.max(0, calculatedTaxTotal - Math.min(priorPaidTax, calculatedTax) - foreignTaxCredit);
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
     const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
@@ -8961,7 +9047,7 @@
       특정법인의이익: specificCorpNetBenefit, 법인세상당액_전체: corporateTaxEquivalentTotal,
       이번거래증여의제이익: thisTransactionGiftDeemedAmount, 직전1년합산액: priorBenefitSum, 증여의제이익: giftDeemedAmount,
       증여재산공제: relationDeduction, 감정평가수수료공제: appraisalFeeAmount, 재해손실공제: disasterLossAmount,
-      과세표준: taxBase, 산출세액: calculatedTax, 신고세액공제: reportCredit,
+      과세표준: taxBase, 산출세액: calculatedTax, 세대생략할증액: genSkip.amount, 산출세액_할증후: calculatedTaxTotal, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
       안내: (capApplied ? '산출세액이 §45의5② 한도(직접증여시 증여세상당액-법인세상당액)를 초과해 그 한도로 낮췄습니다. ' : '') + '증여자가 지배주주의 친족이 아닌 특정법인 자체이므로 증여재산공제(§53)는 통상 적용되지 않습니다(위 관계별공제 한도는 0으로 입력하는 것이 원칙입니다). 증여세 과세표준 신고기한은 특정법인의 법인세 과세표준 신고기한이 속하는 달의 말일부터 3개월입니다(§68①).' + aggNote
