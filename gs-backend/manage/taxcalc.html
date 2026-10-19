@@ -7992,7 +7992,7 @@ function renderGiftInheritanceSharedPane_(){
           '<option value="inheritance">§72의2(가업상속납부유예)</option>' +
           '<option value="gift">조특법§30의7(가업승계증여세납부유예)</option>' +
         '</select></div>' +
-        '<div class="taxcalc-field"><label>산출세액</label><input type="number" id="bdTaxPayable" placeholder="원"><span class="taxcalc-field-help">상속세 또는 증여세</span></div>' +
+        '<div class="taxcalc-field"><label>상속세(증여세) 납부세액(공제·감면 뒤)</label><input type="number" id="bdTaxPayable" placeholder="원"><span class="taxcalc-field-help">상속세는 별지 9호 ㊲ "공제·면제 후 납부할 세액"(시행령 §69의3①·부표1 ⑧) — 산출세액을 넣으면 유예액이 커짐</span></div>' +
         '<div class="taxcalc-field"><label>가업상속재산가액·가업자산상당액</label><input type="number" id="bdBusinessValue" placeholder="원"><span class="taxcalc-field-help">§15⑤ 기준, 증여는 같은 호 준용·상속개시일→증여일. 아래 사업무관자산 내역을 채우면 자동계산됩니다</span></div>' +
         '<div class="taxcalc-field"><label>총 상속재산가액·총 증여재산가액</label><input type="number" id="bdTotalValue" placeholder="원"></div>' +
         // [2026.10.19 세액 고침 A2] 서식 부표2 ① — 가업자산상당액 = 이 주식 가액 × 사업관련자산 비율(상증령 §15⑤2호)
@@ -10849,7 +10849,7 @@ function renderInheritancePane(){
         '<div class="taxcalc-field"><label>사업무관자산 - 시행령§61①2호</label><input type="number" id="ihBusinessNonBiz61" placeholder="원"><span class="taxcalc-field-help">대여금, 법인</span></div>' +
         '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="ihBusinessExcessCash" placeholder="원"><span class="taxcalc-field-help">법인, 평균 현금의 200%(2025.2.28. 이후 상속개시·증여, 그 전 150%) 초과분 — 시행령 §15⑤2호라목</span></div>' +
         '<div class="taxcalc-field"><label>영업무관 주식·채권·금융상품</label><input type="number" id="ihBusinessNonBizStock" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
-        '<div class="taxcalc-field"><label>총 상속재산가액(가업상속납부유예 참고계산용)</label><input type="number" id="ihTotalGrossEstate" placeholder="원"><span class="taxcalc-field-help">§72의2 납부유예 가능세액을 참고로 보려면 입력</span></div>' +
+        '<div class="taxcalc-field"><label>총 상속재산가액(가업상속 납부유예 부표1 ⑨)</label><input type="number" id="ihTotalGrossEstate" placeholder="비우면 자동"><span class="taxcalc-field-help">비우면 총상속재산가액(재산 합계) + 추정상속재산 + 과세가액에 가산된 사전증여재산으로 자동 계산(작성방법 8) — 다를 때만 직접 입력</span></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>가업상속공제 자격요건(시행령§15③) — ※ 아래 항목은 모두 기본적으로 충족(체크)된 상태로 시작합니다. 실제와 달라 하나라도 체크 해제하면 가업상속공제가 전액 배제됩니다. 반드시 확인 후 체크하세요.</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -12139,9 +12139,8 @@ function ihAttachPrintPagesHtml_(){
     const totalAsset = ihDomNum_('ihBusinessTotalAsset');
     const bizRelatedAssetValue = Math.max(0, totalAsset - nonBizTotal);
     const heir = inheritanceHeirs[0] || {};
-    // taxAfterReportCredit 재구성 — 엔진의 가업상속납부유예_가능세액(=taxAfterReportCredit×대상금액÷총상속재산가액)과
-    // 정확히 같은 분자를 쓰기 위해, 엔진 내부 계산식(§72의2 납부유예 가능세액)을 그대로 역산한다.
-    const taxAfterReportCredit = (numVal(r.산출세액) || 0) - (numVal(r.기납부증여세액공제) || 0) - (numVal(r.특례증여세액공제) || 0) - (numVal(r.외국납부세액공제) || 0) - (numVal(r.단기재상속세액공제) || 0) - (numVal(r.그밖의공제) || 0) - (numVal(r.문화재등징수유예세액) || 0) - (numVal(r.신고세액공제) || 0);
+    // [2026.10.20 J28] ⑧은 엔진 결과(가업상속납부유예_상속세납부세액 = 별지 9호 ㊲)를 쓰고, 옛 결과(그 칸 없음)만 예전처럼 역산한다.
+    const taxAfterReportCredit = r.가업상속납부유예_상속세납부세액 != null ? numVal(r.가업상속납부유예_상속세납부세액) : (numVal(r.산출세액) || 0) - (numVal(r.기납부증여세액공제) || 0) - (numVal(r.특례증여세액공제) || 0) - (numVal(r.외국납부세액공제) || 0) - (numVal(r.단기재상속세액공제) || 0) - (numVal(r.그밖의공제) || 0) - (numVal(r.문화재등징수유예세액) || 0) - (numVal(r.신고세액공제) || 0);
     html += '<div class="pf-page">' +
       '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제12호의2서식]</div>' +
       '<div class="pf-title">가업상속 납부유예신청서</div>' +
@@ -12159,9 +12158,9 @@ function ihAttachPrintPagesHtml_(){
       ihBizAssetDetailTableHtml_(bizDetail, nonBizTotal, bizRelatedAssetValue) +
       '<div class="pf-section-head">다. 가업상속 납부유예 가능 상속세 납부세액</div>' +
       '<table class="pf-table">' +
-        pfRow_(0, '⑧ 상속세 납부세액(신고세액공제 적용 후)', won(Math.max(0, taxAfterReportCredit))) +
-        pfRow_(0, '⑨ 총상속재산가액', won(ihDomNum_('ihTotalGrossEstate'))) +
-        pfRow_(0, '⑩ 납부유예 가능세액(⑧×가업상속재산가액÷⑨)', won(r.가업상속납부유예_가능세액)) +
+        pfRow_(0, '⑧ 상속세 납부세액(별지 제9호서식 공제·면제 후 납부할 세액)', won(Math.max(0, taxAfterReportCredit))) +
+        pfRow_(0, '⑨ 총 상속재산가액', won(r.가업상속납부유예_총상속재산가액 != null ? numVal(r.가업상속납부유예_총상속재산가액) : ihDomNum_('ihTotalGrossEstate'))) +
+        pfRow_(0, '⑩ 납부유예 가능 세액 [⑧ × {(① 또는 ⑦) ÷ ⑨}]', won(r.가업상속납부유예_가능세액)) +
       '</table>' +
       '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다.</div>' +
     '</div>' +
@@ -14366,6 +14365,7 @@ function renderInheritanceResult(r){
   if (r.문화재등징수유예세액) html += taxCalcResultRow('문화재등 징수유예세액', '-' + won(r.문화재등징수유예세액));
   if (r.가업상속납부유예세액) html += taxCalcResultRow('가업상속 납부유예세액', '-' + won(r.가업상속납부유예세액));
   if (r.가업상속납부유예_불가안내) html += '<div class="taxcalc-error">' + r.가업상속납부유예_불가안내 + '</div>';
+  if (r.가업상속납부유예_안내) html += '<div class="taxcalc-result-note">' + escapeHtml(r.가업상속납부유예_안내) + '</div>'; // [2026.10.20 J28]
   html += taxCalcResultRow('납부세액', won(r.납부세액), { total: true });
   if (r.가업상속납부유예_가능세액 != null) html += '<div class="taxcalc-result-note">참고: §72의2에 따라 가업상속 납부유예를 신청할 경우 최대 ' + won(r.가업상속납부유예_가능세액) + '까지 유예 가능합니다(가업상속공제를 받지 않아야 함, §72의2①2호 — 실제 유예받으려면 위 "가업상속공제 대신 납부유예 선택"을 켜고 다시 계산하세요. 공제를 끄면 이 가능세액도 커집니다).</div>';
   html += '<div class="taxcalc-result-note">배우자가 단독상속인이면 일괄공제(5억) 대신 기초공제+인적공제만 적용되도록 위 상속인 명부 기준으로 자동 판정됩니다(§18의2). 가업상속공제·영농상속공제·특례증여세액공제·영리법인 면제세액은 자격요건 판정과 세액 자체를 이 계산기가 산출하지 않으므로 별도로 계산한 값을 직접 입력해야 합니다. 납부지연가산세율(1일 10만분의22)은 시행령 개정으로 바뀔 수 있습니다. 실제 신고 전 홈택스 모의계산으로 재검증하세요.</div>';
@@ -17560,6 +17560,7 @@ function handleTaxCalcClick_(e){
       publicInterestOrgAmount: numVal(document.getElementById('ihPublicOrg').value) || 0,
       publicTrustAmount: numVal(document.getElementById('ihPublicTrust').value) || 0,
       totalGrossEstateValue: numVal(document.getElementById('ihTotalGrossEstate').value) || 0,
+      grossEstateValue: (function(){ const ge = numVal((document.getElementById('ihGrossEstateGeneral') || {}).value) || 0; return ge > 0 ? ge : ihValuationAssetsGrossTotal_(); })(), // [2026.10.20 J28] 부표1 ⑨ 자동
       disposalPresumptionItems: disposalPresumptionItems,
       isDecedentResident: document.getElementById('ihDecedentResident').value !== 'nonresident',
       hasSpouse: taxCalcHeirRegistryHasSpouse,

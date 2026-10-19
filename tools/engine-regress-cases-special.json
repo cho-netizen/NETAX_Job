@@ -839,5 +839,68 @@
    "납부세액공제_한도": 457142857,
    "납부세액": 1200000000
   }
+ },
+ {
+  "이름": "[J28] 납부유예 선택 + 유예세액 20억 입력 — 가능세액(⑩) 4,158,875,000×30억÷100억 = 1,247,662,500을 넘어 ⑩까지만 뺌(시행령 §69의3①)",
+  "도구": "calculate_inheritance_tax",
+  "입력": {
+   "taxableEstateAmount": 10000000000,
+   "hasSpouse": false,
+   "childCount": 1,
+   "businessOwnershipYears": 15,
+   "businessInheritanceIndividualNetAssetValue": 3000000000,
+   "businessInheritanceDeferralElected": true,
+   "dateOfDeath": "2026-03-01",
+   "businessInheritanceDeferredTaxAmount": 2000000000,
+   "totalGrossEstateValue": 10000000000
+  },
+  "정답": {
+   "과세표준": 9495000000,
+   "산출세액": 4287500000,
+   "가업상속납부유예_가능세액": 1247662500,
+   "가업상속납부유예세액": 1247662500,
+   "납부세액": 2911212500
+  }
+ },
+ {
+  "이름": "[J28] ⑨ 비움 — 재산 합계 90억 + 가산 증여재산 10억 = 100억으로 자동(작성방법 8), ⑩ 1,247,662,500",
+  "도구": "calculate_inheritance_tax",
+  "입력": {
+   "taxableEstateAmount": 10000000000,
+   "hasSpouse": false,
+   "childCount": 1,
+   "businessOwnershipYears": 15,
+   "businessInheritanceIndividualNetAssetValue": 3000000000,
+   "businessInheritanceDeferralElected": true,
+   "dateOfDeath": "2026-03-01",
+   "grossEstateValue": 9000000000,
+   "priorGiftedAmountIncludedInEstate": 1000000000
+  },
+  "정답": {
+   "가업상속납부유예_총상속재산가액": 10000000000,
+   "가업상속납부유예_상속세납부세액": 4158875000,
+   "가업상속납부유예_가능세액": 1247662500,
+   "가업상속납부유예세액": 1247662500
+  }
+ },
+ {
+  "이름": "[J28] ⑧ = 별지 9호 ㊲ — 이자상당액 1천만 포함: (4,158,875,000 + 10,000,000) × 30억 ÷ 100억 = 1,250,662,500",
+  "도구": "calculate_inheritance_tax",
+  "입력": {
+   "taxableEstateAmount": 10000000000,
+   "hasSpouse": false,
+   "childCount": 1,
+   "businessOwnershipYears": 15,
+   "businessInheritanceIndividualNetAssetValue": 3000000000,
+   "businessInheritanceDeferralElected": true,
+   "dateOfDeath": "2026-03-01",
+   "totalGrossEstateValue": 10000000000,
+   "interestAmount": 10000000
+  },
+  "정답": {
+   "가업상속납부유예_상속세납부세액": 4168875000,
+   "가업상속납부유예_가능세액": 1250662500,
+   "가업상속납부유예세액": 1250662500
+  }
  }
 ]
