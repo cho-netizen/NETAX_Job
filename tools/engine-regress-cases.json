@@ -1400,5 +1400,52 @@
   "정답": {
    "적용여부": true
   }
+ },
+ {
+  "이름": "양도 합산 토지 + 장기임대주택(§97① 단서 10년 면제) — 면제는 소득세법 §90① 세액감면: 산출 154,620,000 × 2.079억 ÷ 4.514억 = 감면 71,212,888 → 납부 83,407,112(+지방 10%), 농특세 14,242,577",
+  "도구": "calculateTransferTaxMultiJS",
+  "고정": true,
+  "입력": [
+   {
+    "assetType": "other",
+    "transferPrice": 500000000,
+    "acquisitionPrice": 200000000,
+    "necessaryExpenses": 0,
+    "transferDate": "2025-03-10",
+    "acquisitionDate": "2015-04-01"
+   },
+   {
+    "assetType": "house",
+    "transferPrice": 400000000,
+    "acquisitionPrice": 100000000,
+    "necessaryExpenses": 3000000,
+    "transferDate": "2025-09-10",
+    "acquisitionDate": "1998-05-02",
+    "longTermRentalHouseProvision": "sect97",
+    "lrSubType": "rental_10yr"
+   }
+  ],
+  "정답": {
+   "납부세액_합계": 91747823,
+   "농어촌특별세": 14242577
+  }
+ },
+ {
+  "이름": "거주주택 특례(영 §155㉑) — 마목 임대 6년(10년 요건 충족 전) 양도도 적용, 뒤에 못 채우면 §155㉒ 추징 안내",
+  "도구": "calculateRentalHousingResidenceExclusionJS",
+  "고정": true,
+  "입력": {
+   "residencePeriodMonths": 36,
+   "beforeRentalPeriodMet": true,
+   "rentalItemMa": {
+    "rentalYears": 6,
+    "standardPriceAtLeaseStart": 500000000,
+    "isOutsideMetro": false,
+    "rentIncreaseRate": 3
+   }
+  },
+  "정답": {
+   "적용여부": true
+  }
  }
 ]
