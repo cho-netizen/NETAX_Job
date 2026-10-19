@@ -29,6 +29,31 @@ fs.readdirSync(DIR).filter((f) => /\.json$/.test(f) && !/^_/.test(f)).sort().for
   }
 });
 tables.sort((a, b) => a.번호.localeCompare(b.번호, 'ko', { numeric: true }));
+// [2026.10.20] 서식 탭 순서 — 세무사님 "서식탭의 증여에서는 왜 조특법이 먼저 정렬되었는가?": 목록 파일은 법제처 목록을 모아 온 순서
+//  그대로라 증여에 조특법이, 상속에 국세기본법이 먼저 섰다. 세목마다 주된 법령 먼저, 그 안에서는 별지 번호(호·의·부표) 순서로.
+const LAW_RANK = {
+  양도: ['소득세법', '조세특례제한법', '국세기본법', '국세징수법'],
+  증여: ['상속세 및 증여세법', '조세특례제한법', '국세기본법', '국세징수법'],
+  상속: ['상속세 및 증여세법', '조세특례제한법', '국세기본법', '국세징수법'],
+  공통: ['국세기본법', '국세징수법', '상속세 및 증여세법', '소득세법', '조세특례제한법']
+};
+const formKey_ = (x) => {
+  const no = String(x.서식번호 || '');
+  const law = no.split(' [')[0].replace(/\s*시행규칙$/, '');
+  const ranks = LAW_RANK[x.세목] || [];
+  const r = ranks.indexOf(law);
+  const m = no.match(/제(\d+)호(?:의(\d+))?서식(?:\s*부표\s*(\d+)?\s*(?:\((갑|을)\))?)?/) || [];
+  const hasAttach = /부표/.test(no);
+  return [r < 0 ? ranks.length : r, Number(m[1]) || 0, Number(m[2]) || 0, hasAttach ? (Number(m[3]) || 1) : 0, m[4] === '을' ? 2 : m[4] === '갑' ? 1 : 0];
+};
+const order_ = (catalog.세목순서 || []);
+catalog.서식 = (catalog.서식 || []).map((x, i) => ({ x, i })).sort((a, b) => {
+  const sa = order_.indexOf(a.x.세목), sb = order_.indexOf(b.x.세목);
+  if (sa !== sb) return sa - sb;
+  const ka = formKey_(a.x), kb = formKey_(b.x);
+  for (let k = 0; k < ka.length; k++) if (ka[k] !== kb[k]) return ka[k] - kb[k];
+  return a.i - b.i;
+}).map((o) => o.x);
 return { tables, forms, catalog };
 }
 // 화면 자료 묶음(BEGIN 자리 표시부터 END 바로 앞까지)
@@ -94,7 +119,10 @@ if (t201 && t203) {
     marriageFrom: (rowsOf('2부-11', '혼인·출산 증여재산공제')[0] || {}).시작 || null,
     personal: rowsOf('2부-12', '그 밖의 인적공제').map((r) => Object.assign(P(r), { child: r.값.자녀, minorPerYear: r.값.미성년_1년당, elderly: r.값.연로자, disabledPerYear: r.값.장애인_1년당 })),
     cohabit: rowsOf('2부-12', '동거주택 상속공제').map((r) => Object.assign(P(r), { rate: r.값.율 / 100, cap: r.값.한도 })),
-    business: rowsOf('2부-12', '가업상속공제 한도').map((r) => Object.assign(P(r), { tiers: Object.keys(r.값).map((k) => [Number((k.match(/(\d+)년/) || [])[1]), r.값[k]]).sort((a, b) => a[0] - b[0]) })),
+    // [2026.10.20] 2014년 전 가업상속공제: 공제율(%)·최소(2억 — 가액이 그보다 적으면 그 가액) 칸. '…년' 칸만 한도 단계로 씀
+    business: rowsOf('2부-12', '가업상속공제 한도').map((r) => Object.assign(P(r), { tiers: Object.keys(r.값).filter((k) => /[0-9]+년/.test(k)).map((k) => [Number((k.match(/([0-9]+)년/) || [])[1]), r.값[k]]).sort((a, b) => a[0] - b[0]) },
+      r.값.공제율 != null && r.값.공제율 !== 100 ? { rate: r.값.공제율 / 100 } : {}, r.값.최소 ? { floor: r.값.최소 } : {})),
+    s24: rowsOf('2부-12', '공제 적용 한도 — 사전증여 차감 기준').map((r) => Object.assign(P(r), { over: r.값.차감기준_과세가액_초과 })), // [2026.10.20] §24 단서(2016~)
     farming: rowsOf('2부-12', '영농상속공제 한도').map((r) => Object.assign(P(r), { cap: r.값.한도 })),
     genSkip: rowsOf('2부-15', '세대생략 할증률').map((r) => Object.assign(P(r), { minor: r.값.미성년_20억초과 / 100 }))
   };
@@ -103,7 +131,7 @@ if (t201 && t203) {
     const g = now(gi.giftDed), pr = now(gi.personal), co = now(gi.cohabit), bz = now(gi.business), fm = now(gi.farming), gs = now(gi.genSkip);
     const ok = now(gi.credit).rate === 0.03 && g.spouse === 600000000 && g.asc === 50000000 && g.ascMinor === 20000000 && g.desc === 50000000 && g.other === 10000000 && gi.marriageFrom === '2024-01-01'
       && pr.child === 50000000 && pr.minorPerYear === 10000000 && pr.elderly === 50000000 && pr.disabledPerYear === 10000000 && co.rate === 1 && co.cap === 600000000
-      && JSON.stringify(bz.tiers) === JSON.stringify([[10, 30000000000], [20, 40000000000], [30, 60000000000]]) && fm.cap === 3000000000 && gs.minor === 0.4;
+      && JSON.stringify(bz.tiers) === JSON.stringify([[10, 30000000000], [20, 40000000000], [30, 60000000000]]) && fm.cap === 3000000000 && gs.minor === 0.4 && now(gi.s24).over === 500000000;
     if (!ok) throw new Error('2부-10·11·12·15의 지금 값 행이 엔진 지금 값(신고세액공제 3%, 증여재산공제 6억·5천·2천·5천·1천, 인적공제, 동거주택 100%·6억, 가업 300·400·600억, 영농 30억, 할증 40%)과 다릅니다 — 확인 필요');
   }
   // [2026.10.19 조견표 2부-16] 납부지연 1일 이자율은 엔진 DAILY_FIXED_RATE_HISTORY_(사후관리 이자에도 씀)를 그대로 쓴다 — 표와 엔진의 바뀐 날이 같은지만 확인

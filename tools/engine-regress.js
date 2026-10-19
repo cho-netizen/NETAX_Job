@@ -6,6 +6,7 @@
 //    node tools/engine-regress.js --base <git ref>      기준 판을 main 말고 다른 가지·커밋으로
 //    node tools/engine-regress.js --no-history          지금 판에서 양도일별 세율·장특공·고가주택 연혁(조견표, 기본 켬)을 끄고 비교
 //    node tools/engine-regress.js --cases <파일.json>   경우를 더함(정답지 사건 입력은 저장소 밖 파일로만 — 이 저장소는 공개 서빙됨)
+//    node tools/regress-answer-audit.js [사례파일…]    고정 정답 독립 검산(엔진 안 씀 — 조견표 reftables로 그 날짜 세율·장특공·공제율을 셈, 기본 special·history). 회귀 전에 함께 돌려 "다름 0건" 확인
 //  경우 파일 모양: [{ "이름": "...", "도구": "calculate_inheritance_tax", "입력": {...}, "고정": true, "정답": { "과세표준": 123, ... } }]
 //   - 고정: 고쳐도 숫자가 바뀌면 안 되는 경우(바뀌면 끝에 ✗로 알리고 종료 코드 1)
 //   - 정답: 신고서·검산표처럼 맞아야 하는 값(지금 판이 다르면 ✗)
@@ -35,7 +36,7 @@ const HISTORY_ON = argv.indexOf('--no-history') === -1; // 2026-10-19부터 엔�
 cur.__NX_REF_HISTORY_ON = HISTORY_ON;
 try { base = load(cp.execSync('git show ' + baseRef + ':' + ENGINE, { cwd: ROOT, maxBuffer: 64 * 1024 * 1024 }).toString('utf8')); } catch (e) { console.error('기준 판(' + baseRef + ') 엔진을 못 불러옴: ' + e.message); process.exit(2); }
 
-const run = (eng, c) => { const fn = eng[FN[c.도구] || c.도구]; if (typeof fn !== 'function') return { 오류: '엔진에 함수 없음: ' + c.도구 }; try { return fn(JSON.parse(JSON.stringify(c.입력))) || {}; } catch (e) { return { 오류: e.message }; } };
+const run = (eng, c) => { const fn = eng[FN[c.도구] || c.도구]; if (typeof fn !== 'function') return { 오류: '엔진에 함수 없음: ' + c.도구 }; try { return (Array.isArray(c.인자) ? fn.apply(null, JSON.parse(JSON.stringify(c.인자))) : fn(JSON.parse(JSON.stringify(c.입력)))) || {}; } /* [2026.10.20] 인자: 여러 인자(합산 계산의 거래 목록·신고 입력) */ catch (e) { return { 오류: e.message }; } };
 const won = (v) => (typeof v === 'number' ? v.toLocaleString('ko-KR') : v === undefined ? '—' : String(v));
 let bad = 0, changed = 0, total = 0;
 const L = ['# 엔진 회귀 시험 — 기준 ' + baseRef + ' ↔ 지금 판' + (HISTORY_ON ? '' : '(지금 판 연혁 끔)'), ''];
@@ -45,7 +46,8 @@ caseFiles.forEach((f) => {
   L.push('## ' + path.basename(f) + ' (' + cases.length + '건)', '', '| 경우 | 칸 | 기준 판 | 지금 판 | 정답 | 판정 |', '|---|---|---|---|---|---|');
   cases.forEach((c) => {
     total++;
-    const b = run(base, c), n = run(cur, c);
+    let b = run(base, c); const n = run(cur, c);
+    if (b.오류 && /^엔진에 함수 없음/.test(b.오류) && !n.오류) b = {}; /* [2026.10.20] 기준 판에 아직 없는 새 함수 — 지금 판만 정답과 대조 */
     const keys = (KEYS[c.도구] || ['과세표준', '산출세액', '납부세액']).concat(Object.keys(Object.assign({}, c.참고 || {}, c.정답 || {})).filter((k) => (KEYS[c.도구] || []).indexOf(k) === -1));
     let caseChanged = false, caseBad = false;
     if (b.오류 || n.오류) { L.push('| ' + c.이름 + ' | 오류 | ' + (b.오류 || '') + ' | ' + (n.오류 || '') + ' | | ✗ |'); bad++; return; }

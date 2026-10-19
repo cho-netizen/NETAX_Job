@@ -28,7 +28,7 @@
  *
  * ── ctx(넘길 자료) ── 앱에서는 NxFormPrint.ctxFromApp.양도(i)/증여(i)/상속() 이 지금 화면에서 모아 줌.
  * 양도(양도84호·양도84부표1) — 같은 ctx 하나
- *   r          : calculateTransferTaxMultiJS 결과(lastTransferResults_[i].result) — 필수
+ *   r          : calculateTransferTaxMultiJS 결과(lastTransferResults_[i].result) — 부동산 등이 있을 때(국외자산·주식등만 있으면 null)
  *   seller     : 양도인 {name, regNo, phone, address, taxOffice, isTransferorResident}
  *   buyers     : [{name, regNo, shareRatio('1/2'), relation, relationLabel}] (trCollectBuyers_ + trBuyerRelationLabel_)
  *   assets     : [{ asset: 자산 입력, single: calculateTransferTaxSingleJS 결과, ev: trAttach1EngineValues_(asset),
@@ -53,17 +53,20 @@
  *          childCount, minorYears, elderlyCount, disabledYears, isNonResident
  *
  * ── 부표 17장이 더 쓰는 ctx(작업자 하, 2026-10-19) ── ctxFromApp이 화면에서 읽어 채움
- * 양도  stock: lastStockTransferResult_ {input, result} (부표2) / derivative: lastDerivativeResult_ (부표2의2)
+ * 양도  stock: lastStockTransferResult_ {input, result} (84호 주식등 한 장 — 갈래 '주식등', 부표2·부표1(신탁수익권)·부표2의2(파생상품)) / derivative: lastDerivativeResult_ (부표2의2)
+ *       overseas: lastOverseasTransferResult_(calculateOverseasAssetTransferTaxMultiJS 결과) / overseasAssets: 국외자산 카드(transferAssets 중 isOverseasAsset —
+ *                 transferDate·acquisitionDate·transferPrice·acquisitionPrice·oaCapitalExpenditure·oaTransferExpenses, 거래별_내역 idx와 같은 순서)
+ *                 (84호 2-10 열·국외분 소계, 부표1 국외자산 열 — 대표 양도인만. 묶음 파일 소득11호도 같은 이름)
  *       assets[].asset.acquisitionExpenseItems·transferExpenseItems·depreciationDeductedAsBusinessExpense (부표3, ctx.부표3자산 = 자산 번호)
  *       seller.addressDong·addressHo(주소에 붙임), asset.isInheritedAsset·isGiftedAsset(부표1 ⑤ 취득원인)
  * 증여  giftAssets: [{method, typeCode, basisCode, location, area, unitPrice, value(배분 후), artwork:{code,artist,title,year,material,size}}] (부표1·5)
  *       bd: {totalAsset, nonBiz55, nonBiz49, nonBiz61, excessCash, nonBizStock, totalValue, businessValue, taxPayable, result} (부표2)
- *       mbDetail: {thisTime, cur:{marriage,birth}, prior, marriageDate, birthDate, giftDate, giftAmount} (부표3)
+ *       mbDetail: {thisTime, cur:{marriage,birth}, prior, priorParts:{w9,w10,w11,w12,sameMarriage,sameBirth,otherWithin10}, marriageDate, birthDate, giftDate, giftAmount} (부표3)
  *       clawback: {formType('gf_marriage'), reason, result(lastClawbackResult_)} (부표4) / publicOrgPenaltyItems: [{penaltyType, violationSubType, base, amount}] (부표6)
  * 상속  heirs: [{name, regNo, relation, address, addressDong, addressHo, statutoryShareRatio, actualValue}] (부표2, ctx.부표2상속인 = 상속인 번호)
  *       valAssets: [{…giftAssets와 같은 줄, alloc:[{heirIdx, ratio}]}] (부표1·2·8) / nonHeirBequest
  *       spouse: {estateValue, assumedDebt, nonTaxable, actual, nonHeirBequest, giftToHeirs, ratio, giftBase, priorGiftedIncluded, divided} (부표3의2)
- *       disposalItems: inheritanceDisposalItems (부표4갑) / forProfitRatio (부표5)
+ *       disposalItems: inheritanceDisposalItems (부표4갑) / forProfitRatio · forProfitPayers: [{kind, name, regNo, ratio}] (부표5)
  *       clawback: {formType('ih6'|'ih7'), result} (부표6·7) / bc: {provision, deferredTax, triggerEvent, disposalRatio, equityDecreaseRatio, equityRatioAtBase, currentEquityRatio} (부표7)
  */
 (function (root, factory) {
@@ -217,6 +220,40 @@
     var inc = Math.min(incidental, ev.nec);
     return { acq: ev.acq + inc, nec: ev.nec - inc, kind: '01' };
   }
+  // [2026.10.20 서식 감사(양도)] 증여받은 자산(giftReceivedDate)은 합산 계산(calculateTransferTaxMultiJS → resolveCarryoverAcquisitionBasis_)이
+  //  이월과세(소득세법 §97의2①) 적용이면 증여자 취득가액·취득일(§95④ 단서)·필요경비 + 증여세 상당액, 미적용이면 수증자 본인 값으로 바꿔 계산한다.
+  //  단건 계산(trAttach1EngineValues_)은 이 판정을 하지 않아 부표1 ⑤⑫⑭·양도차익·⑱이 84호 ④와 달랐다(작성방법 5 "④ = 부표1 ⑱ 합계").
+  //  엔진이 이미 판정한 결과(자산별_내역 '이월과세(§97의2)' 줄)를 그대로 따라 같은 값의 자산을 만든다. 자산 수가 엔진 거래 수와 같을 때만(환지 분리 땐 null)
+  function carryResolved(a, r, i, cnt) {
+    if (!a || !a.giftReceivedDate || !r || !Array.isArray(r.자산별_내역) || cnt !== n(r.거래건수)) return null;
+    var co = r.자산별_내역.filter(function (x) { return x.idx === i && x.구분 === '이월과세(§97의2)'; })[0];
+    if (!co) return null;
+    if (co.적용여부 === true) return Object.assign({}, a, { acquisitionPrice: n(a.donorAcquisitionPrice), acquisitionDate: a.donorAcquisitionDate,
+      necessaryExpenses: n(a.donorNecessaryExpenses) + n(co.비교 && co.비교.증여세상당액_필요경비산입) });
+    return Object.assign({}, a, { acquisitionPrice: n(a.doneeOwnAcquisitionPrice), acquisitionDate: a.giftReceivedDate, necessaryExpenses: n(a.doneeOwnNecessaryExpenses) });
+  }
+  // [2026.10.20 서식 감사(양도)] 그 자산의 감면 줄(엔진 합산 결과 자산별_내역) — §104⑤1호(비교과세)가 채택된 해는 '비교과세 1호 감면' 줄이 실제 값
+  var RED_1HO = '비교과세 1호 감면(§90① A·D = 그 해 전체)';
+  var EXCL_KINDS = ['신축주택등감면(조특법§99계열)', '미분양주택감면(조특법§98계열)', '구조조정대상부동산감면(조특법§43)', '장기임대주택등감면(조특법§97계열)'];
+  function redLinesOf(r, i) {
+    var all = (r && r.자산별_내역) || [];
+    var pick = function (g) { return all.filter(function (x) { return x.idx === i && x.구분 === g && typeof x.감면액 === 'number' && x.감면액 >= 0 && x.감면산식; }); };
+    var one = pick(RED_1HO);
+    return one.length ? one : pick('합산(장기)');
+  }
+  // §90② 소득금액 차감 감면 줄(신축주택·미분양·구조조정·장기임대 소득 방식 — 엔진은 제외소득금액을 양도차익에서 미리 뺌)
+  function exclLinesOf(r, i) {
+    return ((r && r.자산별_내역) || []).filter(function (x) { return x.idx === i && x.적용여부 === true && n(x.제외소득금액) > 0 && EXCL_KINDS.indexOf(x.구분) >= 0; });
+  }
+  // 엔진 감면산식 글 'A … × (B … − C …) ÷ D …(그 세율 묶음 — §104⑤2호) × E 15%' 읽기(mappers-양도감면A.js formulaOf와 같은 식)
+  function redFormula(note) {
+    var m = String(note && note.감면산식 || '').match(/A ([\d,]+) × \(B ([\d,]+) − C ([\d,]+)\) ÷ D ([\d,]+)(?:\([^)]*\))? × E ([\d.]+)%/);
+    var g = function (s) { return Number(String(s).replace(/,/g, '')); };
+    var f = m ? { A: g(m[1]), B: g(m[2]), C: g(m[3]), D: g(m[4]), E: Number(m[5]) } : null;
+    // [2026.10.20 서식 연결] 엔진 감면 줄의 표시 필드(감면대상소득금액·감면율 숫자)가 있으면 B·E(%)는 그 숫자를 씀(글 읽기는 예전 저장 결과용)
+    if (note && typeof note.감면대상소득금액 === 'number' && typeof note.감면율 === 'number') { f = f || {}; f.B = note.감면대상소득금액; f.E = Math.round(note.감면율 * 1000) / 10; }
+    return f;
+  }
   // 부표1 ④ 원인(작성방법 4: 매매·수용·협의매수·교환·공매·경매·부담부증여…) — 화면 양도원인 중 서식 낱말과 1:1인 것만
   var CAUSE_LABEL = { '': '매매', sale: '매매', exchange: '교환', burdened_gift: '부담부증여' };
   function ratioText(s) {
@@ -227,10 +264,17 @@
   var M = {};
 
   // ───────── 양도 별지 제84호서식 본표 ─────────
-  M['양도84호'] = function (ctx) {
-    var o = new Out(), r = ctx.r || {}, s = ctx.seller || {}, ta = ctx.taxAgent || {};
-    var assets = ctx.assets || [];
-    if (has(ctx.귀속연도)) o.set('귀속연도', String(ctx.귀속연도)); else o.miss('귀속연도', '양도일 없음');
+  // [2026.10.20 84호 주식등·국외자산] 본표 ④~㉑은 열이 6개 — 양도소득세 합계·국내분 소계·세율 열 3개(③ 세율구분 코드 "□-□")·국외분 소계.
+  //  ③ 코드 앞자리는 서식 3~4쪽 세율표대로 국내자산 1·국외자산 2(§118의2 국외자산은 토지·건물·부동산 권리·기타자산 모두 2-10).
+  //  · 부동산 등(calculateTransferTaxMultiJS 결과 ctx.r) — 세율 열은 자산 세율구분 코드(1-xx)별, 국내분 소계
+  //  · 국외자산(calculateOverseasAssetTransferTaxMultiJS 결과 ctx.overseas, 카드 ctx.overseasAssets) — 2-10 열, 국외분 소계. 대표 양도인의 부동산 등과 같은 장에
+  //    열을 나눠 적고 합계 열 = 국내분 소계 + 국외분 소계(전자신고도 같은 신고서에 국외분('9') 줄을 더함 — trBuildEfileBytes_)
+  //  · 주식등(calculateStockTransferTaxJS 결과 ctx.stock, plan이 ctx.갈래 '주식등'으로 따로 한 장) — 전자신고에서 주식등은 신고유형(6·7·8)이 다른
+  //    별도 신고서라 부동산 등 신고서와 섞지 않는다. 국외주식(§94①3호다목)도 세율표 "국내자산" 칸의 코드(1-61·1-62)라 국내분 소계
+  //  값은 전자신고 레코드(trRateDetailRecord_·trOverseasRateDetailRecord_·trStockRateDetailRecord_)와 같은 엔진 결과 이름을 쓴다.
+  function head84(o, ctx, year) {
+    var s = ctx.seller || {};
+    if (has(year)) o.set('귀속연도', String(year)); else o.miss('귀속연도', '양도일 없음');
     if (has(ctx.신고구분)) o.set('신고구분', ctx.신고구분);
     else o.miss('신고구분', '계산기에 신고구분 칸 없음(전자신고는 확정신고 01 고정) — ctx.신고구분으로 넘기면 찍음');
     // ① 신고인(양도인)
@@ -245,77 +289,9 @@
     if (resident) o.set('①@거주지국', '대한민국').set('①@거주지국코드', 'KR');
     else o.miss('① 거주지국(코드)', '비거주자 — 거주지국이 계산기에 없음(전자신고는 KR 근사)');
     o.miss('① 전자우편주소', '양도인 카드에 전자우편 칸 없음');
-    // ② 양수인 — 서식 칸은 한 줄
-    var b = (ctx.buyers || [])[0];
-    if (b) {
-      o.need('②@성명', b.name, '② 양수인 성명').need('②@주민등록번호', b.regNo, '② 양수인 주민등록번호');
-      o.set('②@지분', ratioText(b.shareRatio));
-      o.need('②@관계', b.relationLabel || b.relation, '② 양도인과의 관계');
-      if ((ctx.buyers || []).length > 1) o.note('양수인이 ' + ctx.buyers.length + '명 — 서식 ② 칸이 한 줄이라 첫 사람만 찍음(나머지는 별지 필요)');
-    } else o.miss('② 양수인', '등록된 양수인 없음');
-    var loc0 = assets[0] && assets[0].asset && assets[0].asset.assetLocation;
-    o.need('②@양도자산소재지', loc0, '② 양도자산 소재지');
-    if (assets.length > 1) o.note('자산이 ' + assets.length + '개 — ② 양도자산 소재지에는 첫 자산만 찍음');
-
-    // [2026.10.20 B6] ③~⑩ 세율 열 — 엔진 합산 결과의 자산별 세율 묶음 값(r.세율별_자산: idx·소득금액·기본공제·과세표준·산출세액(감면 전))을
-    //  자산의 세율구분 코드(trRateClassCode1_)별로 모아 세율1~3 열에 찍는다. ⑧ = ④ − ⑦(⑤⑥ 없음). ⑩: 단기·미등기 열은 그 세액,
-    //  누진세율 열이 하나면 그 묶음 산출세액, 누진세율 열이 둘 이상이면 열별 배분이 작성방법 8(§104⑤ 비교과세)이라 합계 열에만 적는다.
-    var rows = r.세율별_자산 || [], rowsOk = rows.length > 0 && assets.length === n(r.거래건수);
-    var overseas = assets.some(function (a) { return a.asset && a.asset.isOverseasAsset; });
-    var byCode = {}, codeOrder = [];
-    if (rowsOk) rows.forEach(function (row) {
-      var a = assets[row.idx]; var code = a && a.rateCode; if (!code) return;
-      if (!byCode[code]) { byCode[code] = { 소득금액: 0, 기본공제: 0, 과세표준: 0, 산출세액: 0, 누진: false, 세율: {} }; codeOrder.push(code); }
-      var g = byCode[code]; g.소득금액 += n(row.소득금액); g.기본공제 += n(row.기본공제); g.과세표준 += n(row.과세표준); g.산출세액 += n(row.산출세액);
-      if (row.묶음 === '누진') g.누진 = true; else g.세율[String(row.세율)] = true;
-    });
-    codeOrder.sort(function (x, y) { return Number(x) - Number(y); });
-    var progCodes = codeOrder.filter(function (c) { return byCode[c].누진; });
-    var cols = ['합계', '국내분소계'];
-    function put(no, v) { cols.forEach(function (c) { o.set(no + '@' + c, v); }); }
-    if (rowsOk && !overseas) {
-      codeOrder.slice(0, 3).forEach(function (code, k) {
-        var col = '세율' + (k + 1), g = byCode[code];
-        o.set('③@' + col + '.앞', '1').set('③@' + col + '.뒤', code);
-        o.set('④@' + col, g.소득금액).set('⑦@' + col, g.기본공제).set('⑧@' + col, g.과세표준);
-        var rates = Object.keys(g.세율);
-        if (!g.누진 && rates.length === 1) o.set('⑨@' + col, Math.round(Number(rates[0]) * 100) + '%');
-        if (!g.누진 || progCodes.length === 1) o.set('⑩@' + col, g.산출세액);
-      });
-      if (codeOrder.length > 3) o.note('세율구분이 ' + codeOrder.length + '가지 — 서식 세율 열이 3개라 앞 3개(' + codeOrder.slice(0, 3).join('·') + ')만 찍음, 나머지(' + codeOrder.slice(3).join('·') + ')는 별지 필요');
-      if (progCodes.length > 1) o.miss('⑩ 누진세율 열별 산출세액', '누진세율 열이 ' + progCodes.length + '개 — 열별 배분은 작성방법 8(§104⑤ 비교과세)이라 합계 열에만 적음(판단 대기)');
-      o.miss('⑨ 누진세율 열의 세율', '누진세율(6~45%, 가산 포함)은 열 하나에 숫자 하나로 적기 어려워 비움');
-      var sumBy = function (k) { return codeOrder.reduce(function (t, c) { return t + byCode[c][k]; }, 0); };
-      put('④', sumBy('소득금액')); put('⑧', sumBy('과세표준'));
-      o.check('⑧ 합계 = 세율 열 ⑧ 합', sumBy('과세표준'), n(r.합산과세표준) + rows.filter(function (x) { return x.묶음 !== '누진'; }).reduce(function (t, x) { return t + n(x.과세표준); }, 0));
-      o.check('⑦ 합계 = 세율 열 ⑦ 합', n(r.기본공제), sumBy('기본공제'));
-    } else {
-      o.miss('③④⑧ 세율 열', overseas ? '국외자산이 섞임 — 국외분은 국외자산 계산 결과로 따로' : '엔진 자산별 세율 값(세율별_자산)과 자산 목록이 맞지 않음(환지 증가분 등) — 합계 열만');
-      var poolAll = has(r.합산대상_장기거래건수) && n(r.합산대상_장기거래건수) === n(r.거래건수) - n(r.비과세건수);
-      if (poolAll) { put('④', n(r.합산소득금액)); put('⑧', n(r.합산과세표준)); }
-    }
-    var reduction = n(r.합산자경감면액) + n(r.합산수용감면액) + n(r.합산조특법세액감면액);
-    var 가산신고 = n(r.무신고가산세) + n(r.과소신고가산세), 가산납부 = n(r.납부지연가산세), 가산기장 = n(r.환산취득가액가산세_합계);
-    var payable = Math.max(0, n(r.납부세액_합계) - n(r.지방소득세)); // trPrintFormPageHtml_ nationalPayable
-    o.miss('⑤ 기신고ㆍ결정ㆍ경정된 양도소득금액', '계산기에 없음');
-    o.miss('⑥ 소득감면대상 소득금액', '본표 합산 계산에 없음');
-    put('⑦', n(r.기본공제));
-    o.miss('⑨ 세율', '계산기에 숫자 세율 없음(적용세율_설명 글만)');
-    put('⑩', n(r.산출세액_합계) + reduction); // 감면 전 금액(trRateDetailRecord_ 10번과 같은 식)
-    put('⑪', reduction);
-    o.miss('⑫ 외국납부세액공제', '부동산 본표 계산기에 없음(국외자산은 별도 계산)');
-    o.miss('⑬ 원천징수세액공제', '계산기에 없음');
-    put('⑭', n(r.연금계좌세액공제_합계));
-    put('⑮', n(r.전자신고세액공제));
-    put('⑯-무(과소)신고', 가산신고); put('⑯-납부지연', 가산납부); put('⑯-기장불성실 등', 가산기장);
-    put('⑯-계', 가산신고 + 가산납부 + 가산기장);
-    o.miss('⑰ 기신고ㆍ결정ㆍ경정세액, 조정공제', '부동산은 계산기에 없음');
-    put('⑱', payable);
-    if (typeof ctx.splitAmt === 'number' && isFinite(ctx.splitAmt)) { put('⑲', ctx.splitAmt); put('⑳', Math.max(0, payable - ctx.splitAmt)); }
-    else o.miss('⑲ 분납할 세액·⑳ 납부세액', '분납 계산 자료(ctx.splitAmt) 없음');
-    o.miss('㉑ 환급세액', '계산기에 없음');
-    o.miss('㉒~㉚ 농어촌특별세', '계산기에 없음(엔진의 농어촌특별세는 취득세용)' + (reduction ? ' — 감면세액 ' + reduction + '원이 있어 농특세 대상일 수 있음' : ''));
-    o.miss('㉛㉜ 환급금 계좌', '계산기에 없음');
+  }
+  function tail84(o, ctx) {
+    var s = ctx.seller || {}, ta = ctx.taxAgent || {};
     var d = ymd(ctx.신고일);
     if (d) o.set('신고일.연', d.y).set('신고일.월', d.m).set('신고일.일', d.d); else o.miss('신고일', 'ctx.신고일 없음');
     o.set('신고인서명', s.name);
@@ -325,21 +301,265 @@
         .set('세무대리인@관리번호', ta.mgmtNo).set('세무대리인@전화번호', ta.phone);
       o.miss('세무대리인 생년월일', '계산기에 없음');
     }
-    // 검산: ⑱ = ⑩ − ⑪ − ⑫ − ⑬ − ⑭ − ⑮ + ⑯ − ⑰ (⑫⑬⑰은 0으로)
-    o.check('⑱ = ⑩ − ⑪ − ⑭ − ⑮ + ⑯계 (⑫⑬⑰ 0)', payable,
-      Math.max(0, n(r.산출세액_합계) + reduction - reduction - n(r.연금계좌세액공제_합계) - n(r.전자신고세액공제) + 가산신고 + 가산납부 + 가산기장));
-    if (poolAll) o.check('⑧ = ④ − ⑦', n(r.합산과세표준), n(r.합산소득금액) - n(r.기본공제));
+  }
+  // 열 하나(국내분 소계·국외분 소계·합계)에 ④~⑳ 값 묶음을 찍음 — 값이 undefined인 칸은 비움
+  var ROWS84 = ['④', '⑥', '⑦', '⑧', '⑩', '⑪', '⑫', '⑭', '⑮', '⑯-무(과소)신고', '⑯-납부지연', '⑯-기장불성실 등', '⑯-계', '⑱', '⑲', '⑳'];
+  function putCol84(o, col, V) { ROWS84.forEach(function (k) { if (V[k] !== undefined) o.set(k + '@' + col, V[k]); }); }
+
+  M['양도84호'] = function (ctx) { return ctx && ctx.갈래 === '주식등' ? stock84(ctx) : realty84(ctx || {}); };
+
+  // 부동산 등 + 국외자산(대표 양도인) 한 장
+  function realty84(ctx) {
+    var o = new Out(), r = ctx.r || {};
+    var assets = ctx.assets || [], hasDom = !!(ctx.r && assets.length);
+    var ov = ctx.overseas && !ctx.overseas.error ? ctx.overseas : null;
+    var ovAssets = (ov && ctx.overseasAssets) || [];
+    head84(o, ctx, ctx.귀속연도);
+    // ② 양수인 — 서식 칸은 한 줄(부동산 등 계약의 양수인)
+    if (hasDom) {
+      var b = (ctx.buyers || [])[0];
+      if (b) {
+        o.need('②@성명', b.name, '② 양수인 성명').need('②@주민등록번호', b.regNo, '② 양수인 주민등록번호');
+        o.set('②@지분', ratioText(b.shareRatio));
+        o.need('②@관계', b.relationLabel || b.relation, '② 양도인과의 관계');
+        if ((ctx.buyers || []).length > 1) o.note('양수인이 ' + ctx.buyers.length + '명 — 서식 ② 칸이 한 줄이라 첫 사람만 찍음(나머지는 별지 필요)');
+      } else o.miss('② 양수인', '등록된 양수인 없음');
+      var loc0 = assets[0] && assets[0].asset && assets[0].asset.assetLocation;
+      o.need('②@양도자산소재지', loc0, '② 양도자산 소재지');
+      if (assets.length > 1) o.note('자산이 ' + assets.length + '개 — ② 양도자산 소재지에는 첫 자산만 찍음');
+      if (ov) o.note('국외자산 ' + n(ov.거래건수) + '건은 ② 칸에 적지 않음(한 줄 칸) — 국외자산 양수인·소재지는 계산기에 없어 별지에 직접');
+    } else {
+      o.miss('② 양수인', '국외자산 계산기에 양수인 칸 없음');
+      o.miss('② 양도자산 소재지', '국외자산 카드에 소재지 칸 없음');
+    }
+
+    // [2026.10.20 B6] ③~⑩ 세율 열 — 엔진 합산 결과의 자산별 세율 묶음 값(r.세율별_자산: idx·소득금액·기본공제·과세표준·산출세액(감면 전))을
+    //  자산의 세율구분 코드(trRateClassCode1_)별로 모아 세율1~3 열에 찍는다. ⑧ = ④ − ⑦(⑤⑥ 없음). ⑩: 단기·미등기 열은 그 세액,
+    //  누진세율 열이 하나면 그 묶음 산출세액, 누진세율 열이 둘 이상이면 열별 배분이 작성방법 8(§104⑤ 비교과세)이라 합계 열에만 적는다.
+    var rows = r.세율별_자산 || [], rowsOk = hasDom && rows.length > 0 && assets.length === n(r.거래건수);
+    // [2026.10.20 서식 감사(양도)] ⑥ 소득감면대상 소득금액(작성방법 6, §90② 소득금액 차감 방식) — 엔진은 제외소득금액을 양도차익에서 미리 빼서
+    //  세율별_자산 소득금액이 감면 뺀 값이다. 서식은 ④ = 부표1 ⑱ 합계(감면 빼기 전, 작성방법 5)에서 ⑥을 빼므로, 자산마다 부표1 ⑳과 같은 값
+    //  (제외소득금액 × (1 − 장기보유특별공제율))을 ⑥으로 적고 ④에 더한다. ⑧ = ④ − ⑥ − ⑦ 은 엔진 과세표준 그대로
+    var ex6 = {}, ex6Sum = 0;
+    if (rowsOk) assets.forEach(function (it, i) {
+      var exL = exclLinesOf(r, i); if (!exL.length) return;
+      var ev = it.ev || evFromSingle(it.carry || it.asset || {}, it.single);
+      if (!ev || !ev.ok) return;
+      ex6[i] = Math.round(exL.reduce(function (t, x) { return t + n(x.제외소득금액); }, 0) * (1 - n(ev.ltRate))); ex6Sum += ex6[i];
+    });
+    var byCode = {}, codeOrder = [];
+    if (rowsOk) rows.forEach(function (row) {
+      var a = assets[row.idx]; var code = a && a.rateCode; if (!code) return;
+      if (!byCode[code]) { byCode[code] = { 소득금액: 0, 감면: 0, 기본공제: 0, 과세표준: 0, 산출세액: 0, 누진: false, 세율: {} }; codeOrder.push(code); }
+      var g = byCode[code]; g.소득금액 += n(row.소득금액) + (ex6[row.idx] || 0); g.감면 += (ex6[row.idx] || 0); g.기본공제 += n(row.기본공제); g.과세표준 += n(row.과세표준); g.산출세액 += n(row.산출세액);
+      if (row.묶음 === '누진') { g.누진 = true; if (row.세율묶음) g.klass = row.세율묶음; } else g.세율[String(row.세율)] = true; // [§107②] 엔진 세율 묶음(g0·n10·h20…)
+    });
+    codeOrder.sort(function (x, y) { return Number(x) - Number(y); });
+    var use1_ = !!(r.비교과세_104조5항 && r.비교과세_104조5항.적용 === '1호');
+    var p5_ = n(r.기신고_양도소득금액_107조), p7_ = n(r.기신고_기본공제_107조), p17_ = n(r.기신고세액_107조); // [2026.10.20 §107②] 84호 ⑤·⑰
+    var sumBy = function (k) { return codeOrder.reduce(function (t, c) { return t + byCode[c][k]; }, 0); };
+    var poolAll = hasDom && has(r.합산대상_장기거래건수) && n(r.합산대상_장기거래건수) === n(r.거래건수) - n(r.비과세건수);
+    var colUsed = 0;
+    if (rowsOk) {
+      codeOrder.slice(0, 3).forEach(function (code, k) {
+        var col = '세율' + (k + 1), g = byCode[code];
+        o.set('③@' + col + '.앞', '1').set('③@' + col + '.뒤', code);
+        o.set('④@' + col, g.소득금액).set('⑦@' + col, g.기본공제).set('⑧@' + col, g.과세표준);
+        if (g.감면) o.set('⑥@' + col, g.감면);
+        var rates = Object.keys(g.세율);
+        if (!g.누진 && rates.length === 1) o.set('⑨@' + col, Math.round(Number(rates[0]) * 100) + '%');
+        // [2026.10.20 §107②] 2회째 예정신고 — 이미 신고한 기본세율 자산 소득금액은 기본세율(1-10) 열 ⑤, ⑦·⑧·⑩도 합산 기준(작성방법 14·§107②1호)
+        // [2026.10.20 §107②1·2호] 이미 신고한 몫은 같은 세율 묶음(기본세율·비사업용 토지 +10%p·중과 +10~30%p) 열의 ⑤에, ⑦·⑧·⑩도 그 열에서 합산 기준
+        var pr_ = (r.기신고_세율별_107조 || []).filter(function (x) { return x.세율묶음 === (g.누진 ? (g.klass || 'g0') : '-'); });
+        var pr5_ = pr_.reduce(function (t, x) { return t + n(x.소득금액); }, 0), pr7_ = pr_.reduce(function (t, x) { return t + n(x.기본공제); }, 0), pr10_ = pr_.reduce(function (t, x) { return t + n(x.산출세액몫); }, 0);
+        if (pr5_ > 0) { o.set('⑤@' + col, pr5_).set('⑦@' + col, g.기본공제 + pr7_).set('⑧@' + col, g.과세표준 + pr5_ - pr7_); g.p107 = pr5_; }
+        if (!use1_) o.set('⑩@' + col, g.산출세액 + pr10_); // [2026.10.20 J15] 엔진이 §104⑤2호대로 세율 묶음마다 누진세액을 매김 — 열별 ⑩이 정해짐
+      });
+      colUsed = Math.min(3, codeOrder.length);
+      if (codeOrder.length > 3) o.note('세율구분이 ' + codeOrder.length + '가지 — 서식 세율 열이 3개라 앞 3개(' + codeOrder.slice(0, 3).join('·') + ')만 찍음, 나머지(' + codeOrder.slice(3).join('·') + ')는 별지 필요');
+      if (use1_) o.miss('⑩ 세율 열별 산출세액', '§104⑤1호(과세표준 합계 × 기본세율) 적용 해 — 산출세액이 하나라 합계 열에만 적음(작성방법 8)');
+      var placed5_ = codeOrder.slice(0, 3).reduce(function (t, c) { return t + (byCode[c].p107 || 0); }, 0);
+      if (p5_ > 0 && placed5_ !== p5_) o.note('⑤ 이미 신고한 소득금액 중 ' + (p5_ - placed5_) + '원은 같은 세율 묶음 열이 이번 신고에 없음 — 그 세율구분 열을 직접 만들어 ⑤·⑦·⑧·⑩을 적을 것');
+      o.check('⑧ 국내분 = 세율 열 ⑧ 합', sumBy('과세표준') + (p5_ - p7_), n(r.합산과세표준) + rows.filter(function (x) { return x.묶음 !== '누진'; }).reduce(function (t, x) { return t + n(x.과세표준); }, 0));
+      o.check('⑦ 국내분 = 세율 열 ⑦ 합', n(r.기본공제) + p7_, sumBy('기본공제') + p7_);
+    } else if (hasDom) {
+      o.miss('③④⑧ 세율 열', '엔진 자산별 세율 값(세율별_자산)과 자산 목록이 맞지 않음(환지 증가분 등) — 소계·합계 열만');
+    }
+
+    // 국내분(부동산 등) 값 — 지금까지와 같은 식
+    var D = null;
+    if (hasDom) {
+      var reduction = n(r.합산자경감면액) + n(r.합산수용감면액) + n(r.합산조특법세액감면액);
+      var 가산신고 = n(r.무신고가산세) + n(r.과소신고가산세), 가산납부 = n(r.납부지연가산세), 가산기장 = n(r.환산취득가액가산세_합계);
+      // [2026.10.20 84호 ⑰ — 작성방법 14] "기신고세액(누계금액으로서 납부할 세액을 포함), 무신고결정·경정 결정된 경우 총결정세액(누계)" — 확정·수정·기한 후 신고에서
+      //  양도인 카드 '기신고·결정·경정세액 누계'(filedTaxCumulative)를 ⑰에 적고 ⑱에서 뺀다. 화면 납부세액은 그 해 전체 세액이라 ⑱ = 그 값 − ⑰.
+      //  2회째 예정신고(§107②)는 엔진이 이미 E를 뺐으므로 ⑰ = E 그대로(p17_).
+      var p17x_ = (p5_ > 0 || !(ctx.seller && has(ctx.seller.filedTaxCumulative))) ? 0 : n(ctx.seller.filedTaxCumulative);
+      var payable = Math.max(0, n(r.납부세액_합계) - n(r.지방소득세) - p17x_); // trPrintFormPageHtml_ nationalPayable(− ⑰ 기신고세액)
+      if (p17x_ > 0 && n(r.납부세액_합계) - n(r.지방소득세) - p17x_ < 0) o.note('⑰ 기신고세액이 이번 계산 세액보다 커서 ⑱을 0으로 적음 — 차액 ' + (p17x_ - (n(r.납부세액_합계) - n(r.지방소득세))) + '원은 ㉑ 환급세액으로 직접 적을 것');
+      D = { '④': rowsOk ? sumBy('소득금액') : (poolAll ? n(r.합산소득금액) : undefined), '⑥': rowsOk ? ex6Sum : undefined, '⑦': n(r.기본공제) + p7_,
+        '⑧': rowsOk ? sumBy('과세표준') + (p5_ - p7_) : (poolAll ? n(r.합산과세표준) : undefined),
+        '⑩': n(r.산출세액_합계) + reduction, // 감면 전 금액(trRateDetailRecord_ 10번과 같은 식)
+        '⑪': reduction, '⑭': n(r.연금계좌세액공제_합계), '⑮': n(r.전자신고세액공제),
+        '⑯-무(과소)신고': 가산신고, '⑯-납부지연': 가산납부, '⑯-기장불성실 등': 가산기장, '⑯-계': 가산신고 + 가산납부 + 가산기장, '⑱': payable };
+      if (p5_ > 0) { D['⑤'] = p5_; D['⑰'] = p17_; }
+      else if (p17x_ > 0) D['⑰'] = p17x_;
+      if (typeof ctx.splitAmt === 'number' && isFinite(ctx.splitAmt)) { D['⑲'] = ctx.splitAmt; D['⑳'] = Math.max(0, payable - ctx.splitAmt); }
+      // 검산: ⑱ = ⑩ − ⑪ − ⑫ − ⑬ − ⑭ − ⑮ + ⑯ − ⑰ (⑫⑬은 0으로, ⑰은 §107② 이미 신고한 세액)
+      o.check('⑱ 국내분 = ⑩ − ⑪ − ⑭ − ⑮ + ⑯계 − ⑰ (⑫⑬ 0)', payable,
+        Math.max(0, n(r.산출세액_합계) + reduction - reduction - n(r.연금계좌세액공제_합계) - n(r.전자신고세액공제) + 가산신고 + 가산납부 + 가산기장 - p17_ - p17x_));
+      if (poolAll) o.check('⑧ 국내분 = ④ + ⑤ − ⑦', n(r.합산과세표준), n(r.합산소득금액) + p5_ - (n(r.기본공제) + p7_));
+    }
+
+    // 국외분(국외자산) 값 — 전자신고 trOverseasRateDetailRecord_와 같은 값(감면·연금계좌·전자신고세액공제·기장불성실은 국외자산 계산에 없어 0)
+    var F = null;
+    if (ov) {
+      var fInc = Math.round(n(ov.합산양도차익)), fDed = n(ov.기본공제), fBase = n(ov.과세표준), fTax = n(ov.산출세액), fFtc = n(ov.외국납부세액공제);
+      var f신고 = n(ov.무신고가산세) + n(ov.과소신고가산세), f납부 = n(ov.납부지연가산세);
+      var fPay = Math.max(0, n(ov.납부세액_합계) - n(ov.지방소득세));
+      F = { '④': fInc, '⑥': 0, '⑦': fDed, '⑧': fBase, '⑩': fTax, '⑪': 0, '⑫': fFtc, '⑭': 0, '⑮': 0,
+        '⑯-무(과소)신고': f신고, '⑯-납부지연': f납부, '⑯-기장불성실 등': 0, '⑯-계': f신고 + f납부, '⑱': fPay };
+      if (typeof ctx.splitAmt === 'number' && isFinite(ctx.splitAmt)) { F['⑲'] = 0; F['⑳'] = fPay; }
+      // 세율 열 — 국외자산 2-10(기본세율 6~45%, §118의5①) 하나
+      if (colUsed < 3) {
+        var fc = '세율' + (colUsed + 1);
+        o.set('③@' + fc + '.앞', '2').set('③@' + fc + '.뒤', '10');
+        o.set('④@' + fc, fInc).set('⑦@' + fc, fDed).set('⑧@' + fc, fBase).set('⑩@' + fc, fTax);
+      } else o.note('세율 열 3개가 국내분으로 다 차서 국외자산 2-10 열은 별지 필요 — 국외분 소계 열에는 찍음');
+      o.check('⑧ 국외분 = ④ − ⑦ (0 아래면 0)', fBase, Math.max(0, fInc - fDed));
+      o.check('⑱ 국외분 = ⑩ − ⑫ + ⑯계', fPay, Math.max(0, fTax - fFtc + f신고 + f납부));
+      if (ov.외국납부세액공제_안내) o.note('국외분 ⑫ 외국납부세액공제: ' + ov.외국납부세액공제_안내);
+      if (ovAssets.length !== n(ov.거래건수)) o.note('국외자산 카드 수(' + ovAssets.length + ')가 국외자산 계산 결과 거래 수(' + n(ov.거래건수) + ')와 다름 — 계산 뒤 카드를 고쳤으면 다시 계산하세요');
+    }
+
+    // 소계·합계 열
+    if (D) putCol84(o, '국내분소계', D);
+    if (F) putCol84(o, '국외분소계', F);
+    if (D && F) {
+      var T = {};
+      ROWS84.forEach(function (k) {
+        var dv = k === '⑫' ? 0 : D[k]; // 국내분 ⑫ 외국납부세액공제는 계산기에 없음(국내자산이라 0 — 전자신고 12번도 0)
+        if (dv !== undefined && F[k] !== undefined) T[k] = dv + F[k];
+      });
+      putCol84(o, '합계', T);
+      if (D['⑤'] !== undefined) o.set('⑤@합계', D['⑤']);
+      if (D['⑰'] !== undefined) o.set('⑰@합계', D['⑰']); // [§107②·작성방법 14] 국외분엔 없음
+      if (D['④'] === undefined) o.miss('④⑧ 합계', '국내분 ④⑧을 정하지 못해 합계 열도 비움');
+      if (n(ctx.splitAmt) > 0) o.note('⑲ 분납 — 분납 계산기는 국내분(부동산 등) 세액 기준이라 국내분 열에만 적음. 분납 한도(§112)는 신고서 전체 납부할 세액 기준이므로 국외분까지 합쳐 다시 확인(확인 필요)');
+    } else if (D) putCol84(o, '합계', D);
+    if (D && D['⑤'] !== undefined) { o.set('⑤@국내분소계', D['⑤']); if (!F) o.set('⑤@합계', D['⑤']); } // [2026.10.20 §107②]
+    if (D && D['⑰'] !== undefined) { o.set('⑰@국내분소계', D['⑰']); if (!F) o.set('⑰@합계', D['⑰']); } // [2026.10.20 작성방법 14]
+    else if (F) putCol84(o, '합계', F);
+    if (D || F) {
+      if ((D && D['⑲'] === undefined) || (!D && F && F['⑲'] === undefined)) o.miss('⑲ 분납할 세액·⑳ 납부세액', '분납 계산 자료(ctx.splitAmt) 없음');
+    }
+    if (!(D && D['⑤'] !== undefined)) o.miss('⑤ 기신고ㆍ결정ㆍ경정된 양도소득금액', '2회째 예정신고가 아니면 비움 — 그때는 양도인 카드 [2회째 예정신고] 칸(§107②)');
+    if (D && !rowsOk) o.miss('⑥ 소득감면대상 소득금액', '엔진 세율별 자산 값과 자산 목록이 맞지 않아(환지 등) 자산별 감면소득을 짝지을 수 없음');
+    if (ex6Sum) o.note('⑥ 소득감면대상 소득금액 ' + ex6Sum + '원 = 부표1 ⑳ 합계(엔진 제외소득금액 × (1 − 장기보유특별공제율)) — ④는 감면 빼기 전(부표1 ⑱ 합계), ⑧ = ④ − ⑥ − ⑦ 은 엔진 과세표준');
+    o.miss('⑨ 누진세율 열의 세율', '누진세율(6~45%, 가산 포함)은 열 하나에 숫자 하나로 적기 어려워 비움 — 합계·소계 열은 서식대로 비움');
+    if (hasDom) o.miss('⑫ 외국납부세액공제(국내분)', '부동산 본표 계산기에 없음(국외자산은 국외분 열)');
+    o.miss('⑬ 원천징수세액공제', '계산기에 없음');
+    if (!(D && D['⑰'] !== undefined)) o.miss('⑰ 기신고ㆍ결정ㆍ경정세액, 조정공제', '기신고세액 없음 — 확정·수정신고면 양도인 카드 "기신고·결정·경정세액 누계"(작성방법 14), 2회째 예정신고면 [2회째] 칸');
+    else if (p5_ > 0) o.note('⑰ = 2회째 예정신고 E(이미 신고한 예정신고 산출세액, §107②). 앞선 신고에 감면·공제가 있었으면 작성방법 9·14대로 ⑪(누계)에 그 감면을 더하고 ⑰을 감면 뒤 금액으로 적을 것(⑱은 같음)');
+    o.miss('㉑ 환급세액', '계산기에 없음');
+    // [2026.10.20 J21] 양도세 감면분 농어촌특별세 — 엔진 농어촌특별세_과세표준(과세 감면세액)·농어촌특별세(× 20%, 농특세법 §5①1호). 비과세 감면(§66~§70·직접 경작 수용·§98의3·§98의5)은 빠짐
+    //  국외자산 계산에는 감면이 없어 농특세가 생기지 않음
+    if (hasDom) {
+      if (has(r.농어촌특별세_과세표준)) {
+        var ntB = n(r.농어촌특별세_과세표준), ntT = n(r.농어촌특별세);
+        // [2026.10.20] ㉕ 농특세 가산세(국세기본법 §47의2~§47의4 — 엔진 농어촌특별세_가산세), ㉗ = ㉔ + ㉕ − ㉖
+        var ntP = has(r.농어촌특별세_가산세) ? n(r.농어촌특별세_가산세) : 0, ntDue = has(r.농어촌특별세_자진납부할세액) ? n(r.농어촌특별세_자진납부할세액) : ntT + ntP;
+        if (ntB > 0) { o.set('㉒', ntB).set('㉓', '20%').set('㉔', ntT).set('㉕', ntP).set('㉗', ntDue).set('㉙', ntDue); o.miss('㉖ 기신고세액·㉘ 분납', '계산기에 없음(농특세 분납은 따로 계산 안 함)'); }
+        else if (D['⑪']) o.note('감면세액 ' + D['⑪'] + '원은 모두 농특세 비과세 감면(농특세법 시행령 §4)이라 ㉒~㉙ 비움');
+      } else o.miss('㉒~㉚ 농어촌특별세', '엔진 결과에 농어촌특별세 없음(옛 결과)');
+    }
+    o.miss('㉛㉜ 환급금 계좌', '계산기에 없음');
+    tail84(o, ctx);
     return o.result();
-  };
+  }
+
+  // ───────── 주식등(주식등 계산기 lastStockTransferResult_) 84호 — 따로 한 장 ─────────
+  // 세율구분 코드 뒷자리 — 서식 3~4쪽 세율표 2항(주식: 1-70·1-62·1-61·1-63)·3항(기타자산 1-10, 비사업용토지 과다보유법인 주식 1-11(1항 ⑨))·
+  //  4항(파생상품 1-80·1-81)·5항(신탁수익권 1-95). 고르는 조건은 calculateStockTransferTaxJS가 세율을 고르는 조건과 같게
+  function stockRateCode(inp) {
+    var cat = inp.assetCategory, hm = (inp.holdingMonths === null || inp.holdingMonths === undefined || inp.holdingMonths === '') ? NaN : Number(inp.holdingMonths);
+    if (cat === 'domestic_stock') {
+      if (inp.isDaejuju && !inp.isSmallMediumCompany && isFinite(hm) && hm < 12) return '70'; // ① 중소기업 외 법인 대주주 1년 미만 30%
+      if (inp.isDaejuju) return '63';                                                      // ④ 대주주 20~25%
+      return inp.isSmallMediumCompany ? '62' : '61';                                         // ② 중소기업 소액주주 10% / ③ 그 밖 소액주주 20%
+    }
+    if (cat === 'foreign_stock') return inp.isSmallMediumCompany ? '62' : '61';           // 국외주식 — 중소기업 10% / 그 밖 20%
+    if (cat === 'derivative') return String(inp.transferDate || '') && String(inp.transferDate) < '2018-04-01' ? '80' : '81'; // [2026.10.20] 엔진도 양도일로 5%(80)·10%(81) — 시행령 §167의9 연혁
+    if (cat === 'other_asset') return inp.isMajorityNonBusinessLandCorp ? '11' : '10';
+    if (cat === 'trust_beneficiary') return '95';
+    return '';
+  }
+  var STOCK_FLAT_RATE = { '61': '20%', '62': '10%', '70': '30%', '80': '5%', '81': '10%' };
+  // 이월과세(§97의2①)가 적용된 결과는 엔진이 취득가액을 증여자 취득가액으로, 필요경비에 증여세 상당액을 더해 계산 — 서식 칸도 그 값으로
+  //  (화면 입력값 input.acquisitionPrice는 수증자 자기 취득가액이라 그대로 찍으면 양도소득금액과 안 맞음)
+  function stockAcqExp(inp, r) {
+    var tp = n(inp.transferPrice), ap = n(inp.acquisitionPrice), te = n(inp.transferExpenses);
+    if (r && r.이월과세_적용여부 === true && r.이월과세_비교 && has(r.양도차익)) {
+      var te2 = te + n(r.이월과세_비교.증여세상당액_필요경비산입);
+      return { tp: tp, ap: tp - te2 - Math.round(n(r.양도차익)), te: te2, carry: true };
+    }
+    return { tp: tp, ap: ap, te: te, carry: false };
+  }
+  function stock84(ctx) {
+    var o = new Out(), st = ctx.stock || {}, inp = st.input || {}, r = st.result || {};
+    if (!st.input || !st.result) { o.miss('84호(주식등) 전체', '주식등 계산 결과 없음'); return o.result(); }
+    var m = String(inp.transferDate || '').match(/^(\d{4})-/);
+    head84(o, ctx, m ? m[1] : '');
+    o.miss('② 양수인', '주식등 계산기에 양수인 칸 없음 — 장외 양도면 직접 적음');
+    o.miss('② 양도자산 소재지', '주식등 계산기에 소재지 칸 없음(종목은 부표 ①②)');
+    var code = stockRateCode(inp);
+    if (code) o.set('③@세율1.앞', '1').set('③@세율1.뒤', code); else o.miss('③ 세율구분', '자산구분을 알 수 없음');
+    var inc = Math.round(n(r.손익통산_적용후_소득금액)), ded = n(r.기본공제), base = n(r.과세표준), tax = n(r.산출세액), ftc = n(r.외국납부세액공제);
+    var s신고 = n(r.무신고가산세) + n(r.과소신고가산세), s납부 = n(r.납부지연가산세), s기장 = n(r.기장불성실가산세);
+    var bt = r.법인전환이월과세_사후관리 && has(r.법인전환이월과세_사후관리.납부세액) ? n(r.법인전환이월과세_사후관리.납부세액) : 0;
+    var pay = Math.max(0, n(r.납부세액_합계) - n(r.지방소득세) - bt);
+    o.set('④@세율1', inc).set('⑦@세율1', ded).set('⑧@세율1', base).set('⑩@세율1', tax);
+    if (STOCK_FLAT_RATE[code]) o.set('⑨@세율1', STOCK_FLAT_RATE[code]);
+    else o.miss('⑨ 세율', '누진세율(' + (r.적용세율_설명 || '') + ')은 열 하나에 숫자 하나로 적기 어려워 비움');
+    var V = { '④': inc, '⑦': ded, '⑧': base, '⑩': tax, '⑪': 0, '⑫': ftc, '⑭': 0, '⑮': 0,
+      '⑯-무(과소)신고': s신고, '⑯-납부지연': s납부, '⑯-기장불성실 등': s기장, '⑯-계': s신고 + s납부 + s기장, '⑱': pay, '⑲': 0, '⑳': pay };
+    putCol84(o, '국내분소계', V);
+    putCol84(o, '합계', V);
+    if (inp.assetCategory === 'foreign_stock') o.note('국외주식(§94①3호다목)은 세율표 "국내자산" 칸 코드(1-61·1-62)라 국내분 소계 열에 적음 — 국외분 소계는 §118의2 국외자산(2-10)용');
+    if (n(inp.priorNetGainOrLoss)) o.note('④에 "같은 기간 다른 국내외주식 순손익" ' + n(inp.priorNetGainOrLoss) + '원(손익통산)이 들어 있음 — 부표에는 이번 종목만 찍히므로 다른 종목 줄을 부표에 직접 적어야 ④ = 부표 합계(작성방법 5)');
+    if (n(inp.basicDeductionAlreadyUsed)) o.note('⑦은 연 250만원 중 이미 쓴 ' + n(inp.basicDeductionAlreadyUsed) + '원을 뺀 값');
+    if (bt) o.note('법인전환 이월과세 사후관리 납부세액 ' + bt + '원은 화면 합계에는 더해졌지만 84호 칸 산식(⑱ = ⑩ − … + ⑯ − ⑰)에 들어갈 자리가 없어 ⑱에 넣지 않음(확인 필요)');
+    o.note('⑲ 분납 — 분납 계산기는 부동산 등 세액 기준이라 주식등은 분납 0으로 찍음(분납하면 ⑲⑳을 직접 고침)');
+    o.check('⑧ = ④ − ⑦ (0 아래면 0)', base, Math.max(0, inc - ded));
+    o.check('⑱ = ⑩ − ⑫ + ⑯계', pay, Math.max(0, tax - ftc + s신고 + s납부 + s기장));
+    o.miss('⑤ 기신고ㆍ결정ㆍ경정된 양도소득금액', '계산기에 없음');
+    o.miss('⑥ 소득감면대상 소득금액', '주식등 계산에 감면 없음');
+    o.miss('⑬ 원천징수세액공제', '계산기에 없음');
+    o.miss('⑰ 기신고ㆍ결정ㆍ경정세액, 조정공제', '계산기에 없음');
+    o.miss('㉑ 환급세액', '계산기에 없음');
+    o.miss('㉛㉜ 환급금 계좌', '계산기에 없음');
+    tail84(o, ctx);
+    return o.result();
+  }
 
   // ───────── 양도 별지 제84호서식 부표1(양도소득금액 계산명세서) ─────────
+  // [2026.10.20 84호 주식등·국외자산] 부동산 등 자산 다음 열에 국외자산(ctx.overseas)도 적는다 — ① 세율구분 앞자리 2(국외)·뒷자리 10,
+  //  ⑯ 장기보유특별공제 0(§118의8 단서). 본표 ④ = 부표1 ⑱ 합계(작성방법 5)가 국외분까지 맞게.
+  //  주식등 계산기의 신탁수익권(§94①6호)은 부표2(주식) 종류코드에 없고 부표1 자산종류 26·세율구분 95라 ctx.갈래 '주식등'으로 한 장 따로(stockB1).
+  var STOCK_ACQ_CAUSE = { '01': '매매', '07': '증여', '08': '상속', '09': '기타' }; // 주식 취득유형 중 부표1 ⑤ 원인 낱말과 1:1인 것만
   M['양도84부표1'] = function (ctx) {
+    if (ctx && ctx.갈래 === '주식등') return stockB1(ctx);
     var o = new Out(), list = ctx.assets || [];
-    if (list.length > 3) o.note('자산이 ' + list.length + '개 — 한 장 3열이라 모듈이 다음 장에 이어 찍음(합계는 마지막 장)');
+    var ov = ctx.overseas && !ctx.overseas.error ? ctx.overseas : null;
+    var ovList = (ov && ctx.overseasAssets) || [];
+    var total = list.length + ovList.length;
+    if (total > 3) o.note('자산이 ' + total + '개 — 한 장 3열이라 모듈이 다음 장에 이어 찍음(합계는 마지막 장)');
     var sum = {};
     function add(k, v) { sum[k] = (sum[k] || 0) + v; }
+    var rA = ctx.r || {}, alignedA = list.length === n(rA.거래건수); // 자산 번호 = 엔진 거래 번호일 때만 자산별_내역을 읽음
     list.forEach(function (it, i) {
-      var a = it.asset || {}, col = '자산' + (i + 1), tag = '자산' + (i + 1) + ' ';
+      // [2026.10.20 서식 감사(양도)] 이월과세(§97의2) 판정이 있는 자산은 엔진이 쓴 값의 자산(it.carry — ctxFromApp carryResolved)으로 ⑤⑫⑭·양도차익을 적음
+      var a = it.carry || it.asset || {}, col = '자산' + (i + 1), tag = '자산' + (i + 1) + ' ';
       var ev = it.ev || evFromSingle(a, it.single);
       var an = it.an || acqNec(a, ev);
       o.set('①@' + col + '.앞', a.isOverseasAsset ? '2' : '1');
@@ -353,7 +573,13 @@
       else o.miss(tag + '④ 양도원인', '화면 양도원인 "' + cause + '"은 서식 낱말과 1:1이 아님(수용·협의매수, 공매·경매 구분 없음 등)');
       o.need('⑤@' + col + '.날짜', a.acquisitionDate, tag + '⑤ 취득일');
       if (a.isInheritedAsset) o.set('⑤@' + col + '.원인', '상속');
-      else if (a.isGiftedAsset) o.set('⑤@' + col + '.원인', '증여');
+      else if (a.isGiftedAsset) {
+        // [2026.10.20 위원회 J10] 이월과세(§97의2)가 실제로 적용된 자산은 그 뜻을 알림으로(원인 칸이 좁음)(엔진 자산별 내역 — 자산 수가 엔진 거래 수와 같을 때만)
+        var r_ = ctx.r || {}, co_ = (list.length === n(r_.거래건수)) ? (r_.자산별_내역 || []).filter(function (x) { return x.idx === i && x.구분 === '이월과세(§97의2)'; })[0] : null;
+        o.set('⑤@' + col + '.원인', '증여'); // 칸 너비 21pt라 '증여(§97의2 이월과세)'는 안 들어감(두 줄로도 넘침) — 이월과세 적용은 알림으로
+        if (co_ && co_.적용여부 === true) o.note(tag + '⑤ 원인은 증여 — 이월과세(§97의2) 적용 자산(취득가액은 증여자 취득가액). 칸이 좁아 원인 칸에는 "증여"만 적음(위원회 J10 권고: 괄호에 이월과세 표기)');
+        if (co_ && co_.적용여부 === false && /사망/.test(String(co_.사유 || ''))) o.note(tag + '증여자 사망으로 이월과세를 하지 않음 — 사망 사실 증빙(기본증명서 등)을 첨부(위원회 J10)');
+      }
       else o.miss(tag + '⑤ 취득원인', '계산기에 취득원인 칸 없음(상속·증여받은 자산 표시만 있음 — 둘 다 아니면 매매인지 알 수 없음)');
       o.miss(tag + '⑥⑦⑧ 면적·지분', '계산기에 없음(미수집)');
       o.miss(tag + '⑨⑩⑰ 보유·거주기간(1세대1주택)', '"○년 이상 ○년 미만" 칸 쓰는 법 확정 전 — 비워 둠');
@@ -374,21 +600,91 @@
         o.check(tag + '⑱ = ⑮ − ⑯', ev.income, ev.taxable - ev.ltDeduction);
       } else o.miss(tag + '양도차익·⑮·⑯·⑱', '엔진 값 없음(' + (ev.why || '') + ') — 참고치는 찍지 않음');
       o.miss(tag + '⑯ 장기보유특별공제 코드', '엔진에 공제 종류 코드(01~06) 없음 — 판정 규칙 확정 후 채움');
-      o.miss(tag + '⑲⑳㉑ 감면소득금액·감면종류·감면율', '자산별 감면소득금액 키가 엔진에 없음');
+      // [2026.10.20 서식 감사(양도)] ⑲⑳㉑ — 엔진 합산 결과 자산별_내역의 감면 줄에서(작성방법 14·15·16)
+      //  ⑲(§90① 세액감면 방식 감면소득금액) = 감면산식의 B(감면대상 양도소득금액), ㉑ = 특례 이름·E(감면율). 감면이 둘 이상인 자산은 칸이 하나라 비움
+      //  ⑳(§90② 소득금액 차감 방식) = 엔진 제외소득금액(양도차익 기준) × (1 − 그 자산 장기보유특별공제율) — 엔진은 제외분을 장특공 전에 빼므로
+      //   양도소득금액 기준으로는 이 몫이 빠짐. 1세대1주택 고가주택 안분이 섞인 자산은 확인 필요
+      var redL = alignedA ? redLinesOf(rA, i) : [], exL = alignedA ? exclLinesOf(rA, i) : [];
+      if (redL.length === 1 && redFormula(redL[0])) {
+        var f19 = redFormula(redL[0]);
+        o.set('⑲@' + col, f19.B); add('⑲', f19.B);
+        o.set('㉑@' + col + '.감면종류', String(redL[0].특례 || '')).set('㉑@' + col + '.감면율', f19.E + '%');
+      } else if (redL.length > 1) o.miss(tag + '⑲㉑ 세액감면 감면소득금액·감면종류', '감면이 ' + redL.length + '가지(' + redL.map(function (x) { return x.특례; }).join('·') + ') — 칸이 하나라 비움(감면신청서별로 적음)');
+      if (exL.length && ev.ok) {
+        var v20 = Math.round(exL.reduce(function (t, x) { return t + n(x.제외소득금액); }, 0) * (1 - n(ev.ltRate)));
+        o.set('⑳@' + col, v20); add('⑳', v20);
+        if (!redL.length) o.set('㉑@' + col + '.감면종류', exL.map(function (x) { return x.구분.replace(/\(.*\)$/, ''); }).join('·'));
+        o.note(tag + '⑳ = 엔진 제외소득금액 ' + exL.reduce(function (t, x) { return t + n(x.제외소득금액); }, 0) + ' × (1 − 장기보유특별공제율 ' + n(ev.ltRate) + ') — 고가주택 안분이 섞이면 확인');
+      }
+      if (!redL.length && !exL.length) o.miss(tag + '⑲⑳㉑ 감면소득금액·감면종류·감면율', alignedA ? '엔진 결과에 이 자산 감면 없음' : '자산 수와 엔진 거래 수가 달라(환지 등) 감면 줄을 짝지을 수 없음');
+      else if (!(redL.length === 1 && redFormula(redL[0]))) o.miss(tag + '㉑ 감면율', '소득금액 차감 감면은 엔진에 감면율 숫자 없음');
       if (an.kind === '04' && n(a.transferStandardPriceForConversion) && n(a.acquisitionStandardPriceForConversion)) {
         o.set('양도시 기준시가 합계@' + col, n(a.transferStandardPriceForConversion)); add('양도기준', n(a.transferStandardPriceForConversion));
         o.set('취득시 기준시가 합계@' + col, n(a.acquisitionStandardPriceForConversion)); add('취득기준', n(a.acquisitionStandardPriceForConversion));
         o.miss(tag + '㉒~㉕ 건물·토지 기준시가', '화면은 건물·토지 합계 한 값만 받음 — 합계 줄에만 찍음');
       }
     });
-    if (list.length) {
+    // 국외자산 — calculateOverseasAssetTransferTaxMultiJS 거래별_내역(idx = 국외자산 카드 순서)의 양도차익
+    var perTxn = (ov && ov.거래별_내역) || [], ovOk = ov && ovList.length === n(ov.거래건수);
+    if (ov && !ovOk) o.miss('국외자산 열', '국외자산 카드 수(' + ovList.length + ')와 계산 결과 거래 수(' + n(ov.거래건수) + ')가 다름 — 다시 계산하세요');
+    if (ovOk) ovList.forEach(function (a, j) {
+      var i = list.length + j, col = '자산' + (i + 1), tag = '자산' + (i + 1) + '(국외) ';
+      var px = perTxn.filter(function (x) { return x.idx === j; })[0];
+      o.set('①@' + col + '.앞', '2').set('①@' + col + '.뒤', '10');
+      o.miss(tag + '② 소재지국·소재지', '국외자산 카드에 소재지국·소재지 칸 없음');
+      o.miss(tag + '③ 자산종류 코드', '국외자산 카드에 자산 종류(토지·건물·권리·기타자산) 칸 없음');
+      o.need('④@' + col + '.날짜', a.transferDate, tag + '④ 양도일');
+      o.miss(tag + '④⑤ 양도·취득 원인', '국외자산 카드에 원인 칸 없음');
+      o.need('⑤@' + col + '.날짜', a.acquisitionDate, tag + '⑤ 취득일');
+      var tp = n(a.transferPrice), ap = n(a.acquisitionPrice), ex = n(a.oaCapitalExpenditure) + n(a.oaTransferExpenses);
+      o.set('⑪@' + col, tp); add('⑪', tp);
+      o.set('⑫@' + col, ap); add('⑫', ap);
+      o.miss(tag + '⑫ 취득가액 종류', '국외자산 카드에 취득가액 산정 방법 칸 없음');
+      o.set('⑭@' + col, ex); add('⑭', ex);
+      if (px) {
+        var g = Math.round(n(px.양도차익));
+        o.set('(양도차익) 전체 양도차익@' + col, g); add('전체', g);
+        o.set('(양도차익) 비과세 양도차익@' + col, 0); add('비과세', 0);
+        o.set('⑮@' + col, g); add('⑮', g);
+        o.set('⑯@' + col + '.금액', 0); add('⑯', 0); // §118의8 단서 — 국외자산은 장기보유특별공제 없음
+        o.set('⑱@' + col, g); add('⑱', g);
+        o.check(tag + '전체 양도차익 = ⑪ − ⑫ − ⑭ (자본적지출+양도비)', g, tp - ap - ex);
+      } else o.miss(tag + '양도차익·⑮·⑱', '엔진 거래별_내역에 이 자산 없음');
+    });
+    if (ovOk && ovList.length) o.check('국외자산 ⑱ 합 = 본표 ④ 국외분(합산양도차익)', ovList.reduce(function (t, a, j) { var px = perTxn.filter(function (x) { return x.idx === j; })[0]; return t + (px ? Math.round(n(px.양도차익)) : 0); }, 0), Math.round(n(ov.합산양도차익)));
+    if (total) {
       o.set('⑪@합계', sum['⑪']).set('⑫@합계', sum['⑫']).set('⑭@합계', sum['⑭']);
       if (has(sum['전체'])) o.set('(양도차익) 전체 양도차익@합계', sum['전체']).set('(양도차익) 비과세 양도차익@합계', sum['비과세'])
         .set('⑮@합계', sum['⑮']).set('⑯@합계', sum['⑯']).set('⑱@합계', sum['⑱']);
       if (has(sum['양도기준'])) o.set('양도시 기준시가 합계@합계', sum['양도기준']).set('취득시 기준시가 합계@합계', sum['취득기준']);
+      if (has(sum['⑲'])) o.set('⑲@합계', sum['⑲']);
+      if (has(sum['⑳'])) o.set('⑳@합계', sum['⑳']);
     } else o.miss('부표1 전체', '자산 없음');
     return o.result();
   };
+  // 주식등 계산기의 신탁수익권(§94①6호) 한 열 — 세율구분 1-95, 자산종류 26(부표1 작성방법 1·3), 장기보유특별공제 없음(§95②은 토지·건물·조합원입주권만)
+  function stockB1(ctx) {
+    var o = new Out(), st = ctx.stock || {}, inp = st.input || {}, r = st.result || {}, col = '자산1';
+    if (!st.input || !st.result) { o.miss('부표1 전체', '주식등 계산 결과 없음'); return o.result(); }
+    var code = stockRateCode(inp), x = stockAcqExp(inp, r), g = Math.round(n(r.양도차익));
+    o.set('①@' + col + '.앞', '1').set('①@' + col + '.뒤', code);
+    o.set('③@' + col, '26');
+    o.need('②@' + col + '.소재지', inp.companyName, '② 소재지(신탁 이름)');
+    o.note('② 소재지 칸에 화면 "종목명(발행법인명)"을 적음 — 신탁수익권은 신탁 이름·수탁자를 적는 것이 맞는지 확인 필요');
+    o.need('④@' + col + '.날짜', inp.transferDate, '④ 양도일');
+    o.miss('④ 양도원인', '주식등 계산기에 양도원인 칸 없음');
+    o.need('⑤@' + col + '.날짜', inp.acquisitionDate, '⑤ 취득일');
+    if (STOCK_ACQ_CAUSE[inp.acquisitionType || '01']) o.set('⑤@' + col + '.원인', STOCK_ACQ_CAUSE[inp.acquisitionType || '01']);
+    else o.miss('⑤ 취득원인', '화면 취득유형 "' + inp.acquisitionType + '"은 부표1 원인 낱말과 1:1이 아님');
+    o.set('⑪@' + col, x.tp).set('⑫@' + col, x.ap).set('⑭@' + col, x.te);
+    o.set('(양도차익) 전체 양도차익@' + col, g).set('(양도차익) 비과세 양도차익@' + col, 0).set('⑮@' + col, g).set('⑯@' + col + '.금액', 0).set('⑱@' + col, g);
+    o.set('⑪@합계', x.tp).set('⑫@합계', x.ap).set('⑭@합계', x.te).set('(양도차익) 전체 양도차익@합계', g).set('(양도차익) 비과세 양도차익@합계', 0)
+      .set('⑮@합계', g).set('⑯@합계', 0).set('⑱@합계', g);
+    o.check('전체 양도차익 = ⑪ − ⑫ − ⑭', g, x.tp - x.ap - x.te);
+    if (x.carry) o.note('이월과세(§97의2) 적용 — ⑫는 증여자 취득가액, ⑭에 증여세 상당액 ' + n(r.이월과세_비교.증여세상당액_필요경비산입) + '원 포함(엔진 값에서 되짚음)');
+    o.miss('② 소재지국·고유번호, ⑥~⑩ 면적·지분·보유기간', '주식등 계산기에 없음');
+    return o.result();
+  }
 
   // ───────── 증여 별지 제10호서식 본표 ─────────
   var FILING_LABEL = { ontime: '기한 내 신고', underreported: '수정신고', unreported: '기한 후 신고' };
@@ -403,7 +699,8 @@
     o.set('⑤', dn.email);
     if (has(dn.phone)) o.set(isMobile(dn.phone) ? '⑥~전화번호(휴대전화) (수증자)' : '⑥~전화번호(자택) (수증자)', dn.phone);
     else o.miss('⑥ 수증자 전화번호', '화면 입력 없음');
-    o.miss('⑦ 증여자와의 관계', '계산기 값은 공제 구분(직계존속 등)이라 "증여자의 (  )"에 맞는 낱말(자·손자 등)이 아님');
+    var rw7_ = relWord(ctx.relation, ctx.genSkip, dn.regNo);
+    if (rw7_) o.set('⑦', rw7_); else o.miss('⑦ 증여자와의 관계', '관계가 기타친족·그 밖의 자이거나 수증자 주민번호로 성별을 알 수 없음 — 직접 적을 것(작성방법 3: 수증자 기준)');
     o.need('⑧', dr.name, '⑧ 증여자 성명').need('⑨', dr.regNo, '⑨ 증여자 주민등록번호');
     o.need('⑩', ctx.giftDate, '⑩ 증여일자').need('⑪', fullAddr(dr), '⑪ 증여자 주소');
     o.miss('⑫ 증여자 전화번호', '증여자 카드에 전화 입력 칸 없음');
@@ -412,7 +709,8 @@
       if (has(ta.phone)) o.set(isMobile(ta.phone) ? '⑯~전화번호(휴대전화) (세무대리인)' : '⑯~전화번호(사무실) (세무대리인)', ta.phone);
     }
     var giftAmount = has(it.amount) ? n(it.amount) : n(r.증여재산가액);
-    // [2026.10.19 서식 감사 B1] ㉓ = 엔진이 실제 가산한 금액(1천만 미만·합산배제면 0)
+    // [2026.10.19 서식 감사 B1 → 2026.10.20 AI 회의 회장 결론 J09(가) 확정] ㉓ = 엔진이 실제 가산한 금액(증여세과세가액 − 순수증여재산가액).
+    //  §47② 1천만원 판정은 앞선 증여만으로(이번 증여 제외) — 1천만 미만·합산배제면 0. 입력값(priorGiftAmount)은 엔진 결과가 없을 때만
     var prior = (has(r.증여세과세가액) && has(r.순수증여재산가액)) ? Math.max(0, n(r.증여세과세가액) - n(r.순수증여재산가액)) : n(it.priorGiftAmount);
     var taxable = n(r.순수증여재산가액) + prior;
     o.set('⑰', giftAmount).set('⑱', n(r.비과세재산가액)).set('⑲', n(r.공익법인출연재산가액)).set('⑳', n(r.공익신탁재산가액))
@@ -420,8 +718,11 @@
     var REL = { '배우자': '㉕', '직계존속': '㉖', '직계비속': '㉗', '기타친족': '㉘' };
     var relCell = REL[ctx.relation];
     ['㉕', '㉖', '㉗', '㉘'].forEach(function (k) { o.set(k, k === relCell ? n(r.증여재산공제) : 0); });
-    if (!relCell) { o.miss('㉕~㉘ 증여재산공제', '관계 값(ctx.relation)이 배우자·직계존속·직계비속·기타친족이 아님: ' + ctx.relation); ['㉕', '㉖', '㉗', '㉘'].forEach(function (k) { delete o.values[k]; }); }
-    var mb = ctx.marriageBirth || { marriage: 0, birth: 0 };
+    if (!relCell && ctx.relation !== '기타') { o.miss('㉕~㉘ 증여재산공제', '관계 값(ctx.relation)이 배우자·직계존속·직계비속·기타친족이 아님: ' + ctx.relation); ['㉕', '㉖', '㉗', '㉘'].forEach(function (k) { delete o.values[k]; }); }
+    // [2026.10.20 서식↔엔진 감사 A] 작성방법 8·9: ㉙ = 부표3 ⑯(같은 증여자 기존 혼인공제 + 이번 혼인공제), ㉚ = 부표3 ⑰ — 부표3과 같은 나누기
+    //  (예전엔 기존+이번 합계를 이번 증여의 혼인/출산 여부로만 나눠, 같은 증여자의 기존 출산공제가 혼인 칸으로 몰렸음)
+    var mbd_ = ctx.mbDetail, pp0_ = mbd_ && mbd_.priorParts, cur0_ = (mbd_ && mbd_.cur) || { marriage: 0, birth: 0 };
+    var mb = pp0_ ? { marriage: n(pp0_.sameMarriage) + n(cur0_.marriage), birth: n(pp0_.sameBirth) + n(cur0_.birth) } : (ctx.marriageBirth || { marriage: 0, birth: 0 });
     if (n(r.혼인출산증여재산공제) && !n(mb.marriage) && !n(mb.birth)) o.miss('㉙㉚ 혼인·출산 공제', '혼인·출산 나누기 자료(ctx.marriageBirth) 없음');
     else o.set('㉙', n(mb.marriage)).set('㉚', n(mb.birth));
     o.set('㉛', n(r.재해손실공제)).set('㉜', n(r.합산배제증여재산공제)).set('㉝', n(r.감정평가수수료공제)).set('㉞', n(r.과세표준));
@@ -473,7 +774,9 @@
     o.need('①', rp.name, '① 신고인 성명').need('②', rp.regNo, '② 신고인 주민등록번호').set('③', ctx.email)
       .need('④', fullAddr(rp), '④ 신고인 주소').need('⑤', rp.relation, '⑤ 피상속인과의 관계');
     if (has(ctx.phone)) o.set(isMobile(ctx.phone) ? '⑥~전화번호(휴대전화)' : '⑥~전화번호(자택)', ctx.phone); else o.miss('⑥ 전화번호', '화면 입력 없음');
-    o.miss('⑦ 외국에 주소를 둔 상속인 여부', '계산기에 없음');
+    // [2026.10.20 감사 D] 작성방법 3 — 상속 탭 '상속인 중 외국에 주소를 둔 사람 있음' 체크(§67④ 9개월 기한과 같은 값)
+    var fa9_ = checked('ihHeirForeignAddress');
+    if (fa9_ === null) o.miss('⑦ 외국에 주소를 둔 상속인 여부', '화면 칸 없음(시험)'); else o.set('⑦', fa9_ ? '있음' : '없음');
     o.need('⑧', dc.name, '⑧ 피상속인 성명').need('⑨', dc.regNo, '⑨ 피상속인 주민등록번호');
     o.set('⑩', dc.resident === 'nonresident' ? '비거주자' : '거주자');
     o.need('⑪', dc.address, '⑪ 피상속인 주소');
@@ -534,7 +837,7 @@
     var grossKnown = n(ctx.grossEstate) > 0 || assets.length > 0 || n(ctx.valuationTotal) > 0;
     if (grossKnown) o.set('⑨', Math.round(valTotal)); else o.miss('⑨⑩⑫ 재산가액 합계', '재산평가 목록이 없음(계산기에 과세가액만 입력) — 출력물에 직접 적으세요');
     var gross = has(ctx.grossEstate) ? n(ctx.grossEstate) : valTotal;
-    var disp = n(r.상속개시전처분재산_추정합계), nonTax = n(r.비과세재산가액);
+    var disp = presumedAll(r), nonTax = n(r.비과세재산가액); // [2026.10.20 J05] ⑪ = 부표4(갑) 다 — §15①(처분·인출·채무부담) + §15②(변제의무 미입증 채무)
     var po = n(ctx.publicOrg), pt = n(ctx.publicTrust), dues = n(ctx.duesTotal), debt = n(ctx.debtTotal), fun = n(r.장례비용공제);
     if (grossKnown) o.set('⑩', gross).set('⑫', gross + disp);
     o.set('⑪', disp).set('⑬', nonTax).set('⑯', nonTax);
@@ -577,9 +880,13 @@
     o.set('⑰', n(r.장례비용공제)); // 공제 인정액(지금 인쇄·전자신고와 같음 — 실제 지출 합계와 다를 수 있음)
     var nr = !!ctx.isNonResident;
     var lump = fv.lumpSum !== null ? fv.lumpSum : null;
-    o.set('⑱', fv.basic)
-      .set('⑲', nr ? 0 : n(ctx.childCount) * 50000000).set('⑳', nr ? 0 : n(ctx.minorYears) * 10000000)
-      .set('㉑', nr ? 0 : n(ctx.elderlyCount) * 50000000).set('㉒', nr ? 0 : n(ctx.disabledYears) * 10000000);
+    // [2026.10.20 서식 감사] ⑲~㉒ 1인당 금액은 상속개시일의 법(상증법 §20① — 2015.12.15. 개정 전: 자녀·연로자 3천만, 미성년자·장애인 연 500만)으로 —
+    //  엔진(calculateInheritanceTaxJS REF_GI_.personal)과 같은 표. 예전엔 지금 금액(5천만·1천만)으로 고정해 2016년 전 상속이면 ⑲~㉒ 합이 엔진 인적공제·㉛과 달랐음
+    var dd_ = String((ctx.deceased || {}).deathDate || ''), U_ = (dd_ && dd_ < '2016-01-01') ? { c: 30000000, m: 5000000, e: 30000000, d: 5000000 } : { c: 50000000, m: 10000000, e: 50000000, d: 10000000 };
+    var p19 = nr ? 0 : n(ctx.childCount) * U_.c, p20 = nr ? 0 : n(ctx.minorYears) * U_.m, p21 = nr ? 0 : n(ctx.elderlyCount) * U_.e, p22 = nr ? 0 : n(ctx.disabledYears) * U_.d;
+    o.set('⑱', fv.basic).set('⑲', p19).set('⑳', p20).set('㉑', p21).set('㉒', p22);
+    if (has(r.인적공제)) o.check('⑲ + ⑳ + ㉑ + ㉒ = 엔진 인적공제', p19 + p20 + p21 + p22, n(r.인적공제));
+    if (dd_ && dd_ < '2012-01-01') o.note('⚠ 상속개시일 ' + dd_ + ' — 2012년 전 인적공제 금액은 계산기 표에 없음(2012~2015 금액으로 찍음), 확인');
     if (lump !== null) o.set('㉓', lump); else o.miss('㉓ 일괄공제', 'fv.lumpSum 없음(ihFormValues_)');
     o.note('⑱~㉒(기초·인적공제)와 ㉓ 일괄공제를 함께 적음 — 기본값 5, 세무사님 확인(2026-10-19)(㉛은 엔진 한도 적용 합계)');
     var biz = n(r.가업상속공제), farm = n(r.영농상속공제), sp = n(r.배우자공제), fin = n(r.금융재산상속공제), dis = n(r.재해손실공제), co = n(r.동거주택상속공제);
@@ -600,6 +907,8 @@
   }
 
   // ───── 양도 부표2(주식등 양도소득금액 계산명세서) — lastStockTransferResult_ 1건 ─────
+  //  [2026.10.20 84호 주식등·국외자산] ④ 종류코드: 국외주식 62(중소기업 10%)·61(그 밖 20%), 기타자산 주식 51(누진)·52(비사업용토지 과다보유법인 누진)
+  //  — 부표2 작성방법 4 표. 국내주식은 상장(코스피·코스닥·코넥스)·비상장 구분이 계산기에 없어 비움. 이월과세가 적용된 결과면 ⑬⑭를 엔진 값으로(stockAcqExp)
   M['양도84부표2'] = function (ctx) {
     var o = new Out(), st = ctx.stock;
     if (!st || !st.input) { o.miss('부표2 전체', '주식등 계산 결과 없음'); return o.result(); }
@@ -611,27 +920,46 @@
       o.note('② 화면의 사업자등록번호를 찍음 — 상장주식이면 한국거래소 종목코드를 써야 함(계산기에 종목코드 칸 없음)');
     }
     o.set('③@' + c, foreign ? '2' : '1');
-    o.miss('④ 주식등 종류코드', '코드(31~45·21~25·71·74·51·52·61·62)를 정할 시장 구분(코스피·코스닥·코넥스·비상장)이 계산기에 없음(전자신고는 62 근사)');
+    if (foreign) o.set('④@' + c, inp.isSmallMediumCompany ? '62' : '61');
+    else if (inp.assetCategory === 'other_asset') o.set('④@' + c, inp.isMajorityNonBusinessLandCorp ? '52' : '51');
+    else o.miss('④ 주식등 종류코드', '국내주식 코드(31~35·21~25·41~45·71·74)를 정할 시장 구분(코스피·코스닥·코넥스·비상장)이 계산기에 없음(전자신고는 62 근사)');
     o.set('⑤@' + c, '1');
     o.note('⑤ 양도유형 1(매매) — 국외전출(2)은 따로 있는 국외전출자 계산기라 이 계산 결과는 매매');
     o.set('⑥@' + c, String(Number(inp.acquisitionType || '01') || 1)); // 화면 01~10 = 서식 코드 1~10
     o.miss('⑦⑨⑫ 주식 수·주당 양도가액·주당 취득가액', '계산기는 총액만 받음(전자신고도 0)');
-    var tp = n(inp.transferPrice), ap = n(inp.acquisitionPrice), te = n(inp.transferExpenses);
+    var x = stockAcqExp(inp, r), tp = x.tp, ap = x.ap, te = x.te;
     o.need('⑧@' + c, inp.transferDate, '⑧ 양도일자').set('⑩@' + c, tp).need('⑪@' + c, inp.acquisitionDate, '⑪ 취득일자').set('⑬@' + c, ap).set('⑭@' + c, te);
     var gain = has(r.양도차익) ? Math.round(n(r.양도차익)) : tp - ap - te;
     o.set('(양도소득금액) 전체 양도소득금액@' + c, gain).set('⑮@' + c, gain);
     o.miss('비과세 양도소득금액·⑯⑰⑱ 감면·과세이연', '계산기에 없음(전자신고 0·ZZZ)');
     o.set('⑩@합계', tp).set('⑬@합계', ap).set('⑭@합계', te).set('(양도소득금액) 전체 양도소득금액@합계', gain).set('⑮@합계', gain);
     o.check('전체 양도소득금액 = ⑩ − ⑬ − ⑭', gain, tp - ap - te);
+    if (x.carry) o.note('이월과세(§97의2) 적용 — ⑬은 증여자 취득가액, ⑭에 증여세 상당액 ' + n(r.이월과세_비교.증여세상당액_필요경비산입) + '원 포함(엔진 값에서 되짚음)');
     return o.result();
   };
 
-  // ───── 양도 부표2의2(파생상품등) — lastDerivativeResult_ ─────
+  // ───── 양도 부표2의2(파생상품등) — lastDerivativeResult_ / 주식등 계산기의 "파생상품등"(ctx.갈래 '주식등') ─────
   M['양도84부표2의2'] = function (ctx) {
-    var o = new Out(), r = ctx.derivative;
+    var o = new Out();
+    if (ctx && ctx.갈래 === '주식등') {
+      var st = ctx.stock || {}, inp = st.input || {}, sr = st.result || {};
+      if (!st.input || !st.result) { o.miss('부표2의2 전체', '주식등 계산 결과 없음'); return o.result(); }
+      var m = String(inp.transferDate || '').match(/^(\d{4})-/), g = Math.round(n(sr.양도차익)), tp = n(inp.transferPrice), ap = n(inp.acquisitionPrice);
+      if (m) o.set('①', m[1]); else o.miss('① 과세대상연도', '양도일 없음');
+      o.set('②', String(inp.transferDate || '') && String(inp.transferDate) < '2018-04-01' ? '80' : '81'); // 작성방법 3 — 2018.3.31. 이전 5%(80)·4.1. 이후 10%(81), 엔진 세율과 같음
+      o.miss('④ 파생상품 유형', '선물·옵션 등 유형 칸이 계산기에 없음');
+      o.set('⑧', tp).set('⑪', ap).set('⑮', g).set('⑧@합계', tp).set('⑪@합계', ap).set('⑮@합계', g);
+      o.miss('③⑤⑥⑦⑩ 국내/외·증권사·계좌·수량', '주식등 계산기에 없음');
+      o.miss('⑨⑫ 수수료', '화면 양도비용 ' + n(inp.transferExpenses) + '원이 매도·매수 수수료 중 어느 쪽인지 계산기에 없음 — 직접 나눠 적음');
+      o.check('⑮ = ⑧ − ⑪ − 양도비용(⑨+⑫)', g, tp - ap - n(inp.transferExpenses));
+      return o.result();
+    }
+    var r = ctx.derivative;
     if (!r) { o.miss('부표2의2 전체', '파생상품 계산 결과 없음'); return o.result(); }
     o.set('⑮@합계', Math.round(n(r.통산손익)));
-    o.miss('①~⑮ 종목별 줄', '계산기는 국내·국외 손익 합계 두 값만 받음 — 과세대상연도·세율구분·종목·증권사·계좌·수량·가액은 직접 적어야 함');
+    // [2026.10.20 서식 연결] ① 과세대상연도 = 엔진 결과 과세연도(화면 과세연도 입력, 탄력세율 연혁에 쓰는 값)
+    if (n(r.과세연도)) o.set('①', String(r.과세연도)); else o.miss('① 과세대상연도', '파생상품 계산기 과세연도 입력 없음(또는 예전 저장 결과)');
+    o.miss('②~⑮ 종목별 줄', '계산기는 국내·국외 손익 합계 두 값만 받음 — 세율구분·종목·증권사·계좌·수량·가액은 직접 적어야 함');
     o.note('⑮ 합계 = 국내 ' + Math.round(n(r.국내파생상품손익)) + ' + 국외 ' + Math.round(n(r.국외파생상품손익)) + ' (엔진 통산손익)');
     return o.result();
   };
@@ -666,6 +994,19 @@
     if (!it0) { o.miss('부표3 전체', '필요경비 상세 항목이 있는 자산 없음'); return o.result(); }
     var a = it0.asset || {}, items = expenseItemsOf(a);
     if (!items.length) { o.miss('부표3 전체', '이 자산에 필요경비 상세 항목 없음'); return o.result(); }
+    // [2026.10.20 서식 감사(양도)] 취득가액이 환산·기준시가·매매사례·감정이라 엔진이 개산공제(소득세법 §97②2호·시행령 §163⑥)를 필요경비로 썼으면
+    //  입력 비용 명세는 부표1 ⑫·⑭와 맞지 않는다(부표3 유의사항 2·3: ⑤ → 부표1 취득가액, ⑬ → 부표1 기타 필요경비). 그때는 찍지 않는다.
+    //  실제 비용을 쓴 경우(상속·증여 자산 매매사례·감정 — 시행령 §163⑨, §97②2호 단서 자본적지출+양도비가 더 큰 경우)는 그대로 찍음
+    var ev = it0.ev || evFromSingle(a, it0.single), an = it0.an || acqNec(a, ev);
+    if (ev.ok && an.kind !== '01') {
+      var totX = items.reduce(function (t, x) { return t + x.amount; }, 0);
+      var inc1X = items.filter(function (x) { return /^1/.test(x.code); }).reduce(function (t, x) { return t + x.amount; }, 0);
+      var usedActual = Math.round(an.nec) === Math.round(n(a.necessaryExpenses)) || Math.round(an.acq + an.nec) === Math.round(totX - inc1X);
+      if (!usedActual) {
+        o.miss('부표3 전체', '취득가액이 ' + ACQ_KIND_LABEL[an.kind] + '이라 엔진은 입력 비용 ' + totX + '원 대신 개산공제 ' + Math.round(an.nec) + '원을 필요경비로 씀(소득세법 §97②2호·시행령 §163⑥) — 실제 비용 명세(부표3)는 부표1 ⑫·⑭와 맞지 않아 찍지 않음');
+        return o.result();
+      }
+    }
     o.note('자산 ' + (idx + 1) + (a.assetLocation ? ' (' + a.assetLocation + ')' : '') + ' — 부표1 자산' + (idx + 1) + '과 짝(전자신고 필요경비신고자료일련번호 ' + (idx + 1) + ')');
     var by = {};
     items.forEach(function (x) { (by[x.code] = by[x.code] || []).push(x); });
@@ -679,13 +1020,15 @@
       if (g.length === 1) {
         var x = g[0];
         o.set(row + '@상호', x.payee).set(row + '@사업자등록번호', x.bizNo).set(row + '@지급일', x.payDate).set(row + '@증빙종류', receiptCode(x.receipt));
-      } else o.note(row + ' — ' + g.length + '건이라 (1)에는 금액 합계만, 상호·지급일 등은 명세서(2)에');
+      } else { // [2026.10.20 서식 감사(양도)] 유의사항 4 — 증빙이 여럿이면 사업자등록번호란에 "별지 작성", 지급금액란에 합계
+        o.set(row + '@사업자등록번호', '별지 작성');
+        o.note(row + ' — ' + g.length + '건이라 (1) 사업자등록번호란에 "별지 작성", 지급금액은 합계, 상세는 명세서(2)에(유의사항 4)');
+      }
     });
     if (sum('260')) o.miss('⑥ 자본적지출(260) 세부 줄', '화면은 260 한 가지로 받아 용도변경·엘리베이터·피난시설·원상복구·수선비·기타 중 어느 줄인지 정할 수 없음 — ⑥ 소계와 명세서(2)에만 찍음');
     if (sum('280')) o.miss('⑧ 기타비용(280) 세부 줄', '화면은 280 한 가지로 받아 토지장애철거비·도로시설비·사방사업비·기타 중 어느 줄인지 정할 수 없음 — ⑧ 소계와 명세서(2)에만 찍음');
     var known = Object.keys(EXP_ROW).concat(['260', '280']);
     Object.keys(by).forEach(function (c) { if (known.indexOf(c) < 0) o.miss('구분코드 ' + c, '서식 (1)에 없는 코드 — 명세서(2)에만 찍음'); });
-    var ev = it0.ev || evFromSingle(a, it0.single), an = it0.an || acqNec(a, ev);
     var dep = n(a.depreciationDeductedAsBusinessExpense);
     var s1x = sumOf(['112', '113', '114', '115', '116']), s3 = sumOf(['131', '132', '133', '134']);
     var v5 = null;
@@ -717,7 +1060,9 @@
   M['증여10부표1'] = function (ctx) {
     var o = new Out(), r = ctx.r || {}, it = ctx.item || {}, rows = ctx.giftAssets || [];
     if (rows.length > 9) o.note('재산 ' + rows.length + '건 — 9줄을 넘는 만큼 모듈이 다음 장에 이어 찍음');
-    o.miss('① 재산구분코드', '계산기에 재산구분 칸 없음(전자신고는 A11 고정)');
+    // [2026.10.20 서식↔엔진 감사 A] 작성방법 1: 이 표의 줄 = 이번 증여재산 → A11(전자신고 gfAttach1AssetRecord_와 같음), 영농 감면 농지는 A14
+    if (rows.length) o.set('①', rows.map(function () { return 'A11'; }));
+    if (n(r.영농자녀증여농지세액감면) > 0) o.note('① 영농자녀 감면 농지 줄은 A14로 고칠 것(부표1 작성방법 1)');
     o.miss('국외자산 여부·국가명', '계산기에 없음(전자신고 N·ZZ 고정)');
     o.miss('④ 사업자등록번호(지분율)', '사업자등록번호 칸 없음 — 지분율은 배분 비율로 볼지 확인 전(지금 인쇄·전자신고는 100% 고정)');
     if (rows.length) {
@@ -754,22 +1099,26 @@
 
   // ───── 증여 부표3(혼인 및 출산 증여재산 공제 명세서) — gfMarriageBirthPrintPageHtml_와 같은 값 ─────
   M['증여10부표3'] = function (ctx) {
-    var o = new Out(), mb = ctx.mbDetail;
-    if (!mb || !n(mb.thisTime)) { o.miss('부표3 전체', '혼인·출산 증여재산공제 없음'); return o.result(); }
+    var o = new Out(), mb = ctx.mbDetail, r = ctx.r || {};
+    if (!mb || !(n(mb.thisTime) || n(r.혼인출산증여재산공제))) { o.miss('부표3 전체', '혼인·출산 증여재산공제 없음'); return o.result(); }
     var cur = mb.cur || { marriage: 0, birth: 0 }, prior = n(mb.prior), gift = n(mb.giftAmount);
     var m = n(cur.marriage), b = n(cur.birth);
     if (m) o.need('①@1', mb.marriageDate, '① 혼인신고(예정)일').need('②@1', mb.giftDate, '② 증여일자');
     if (b) o.need('⑤@1', mb.birthDate, '⑤ 출생일·입양신고일').need('⑥@1', mb.giftDate, '⑥ 증여일자');
     if (m && !b) { o.set('③@1', gift); if (!prior) o.set('④', gift); }
     else if (b && !m) { o.set('⑦@1', gift); if (!prior) o.set('⑧', gift); }
+    else if (!m && !b) o.miss('③④⑦⑧ 이번 증여', '이번 증여는 혼인·출산 공제 없음 — 같은 증여자 기존 공제만 다시 공제(⑯⑰, §47② 합산)');
     else o.miss('③④⑦⑧ 증여재산가액', '혼인·출산 둘 다 해당 — 이번 증여재산가액을 혼인분·출산분으로 나눈 값이 계산기에 없음(공제액만 나눔)');
     if (prior) o.miss('④⑧ 합계·2~5번째 증여 칸', '기존에 혼인·출산 공제를 받은 증여(' + prior + '원)가 있음 — 그 증여 건별 날짜·가액이 계산기에 없음');
-    if (!prior) o.set('⑨', 0).set('⑩', 0).set('⑪', 0).set('⑫', 0);
-    else o.miss('⑨~⑫ 기존 공제액', '계산기는 기존 공제 누적액 한 값(' + prior + '원)만 받음 — 혼인/출산·10년 이내/도과로 나눌 수 없음');
-    var room = Math.max(0, 100000000 - prior);
+    // [2026.10.20 AI 회의 회장 결론 J08(다)] ⑨⑩ = 10년 안 기존 공제(모든 증여자 — ⑬ 1억 한도용, §53의2), ⑪⑫ = 10년 넘은 것,
+    //  ⑬ = 1억 − (⑨+⑩+⑪+⑫), ⑯⑰ = 같은 증여자분(§47② 합산 대상, 엔진 혼인출산증여재산공제_같은증여자기공제) + ⑭⑮ — 본표 ㉙와 같게.
+    var pp = mb.priorParts || { w9: 0, w10: 0, w11: 0, w12: 0, total: prior, sameMarriage: 0, sameBirth: 0, otherWithin10: 0, room: Math.max(0, 100000000 - prior) };
+    o.set('⑨', n(pp.w9)).set('⑩', n(pp.w10)).set('⑪', n(pp.w11)).set('⑫', n(pp.w12));
+    var room = Math.max(0, 100000000 - (n(pp.w9) + n(pp.w10) + n(pp.w11) + n(pp.w12)));
     o.set('⑬', room).set('⑭', m).set('⑮', b);
-    if (!prior) o.set('⑯', m).set('⑰', b);
-    else o.miss('⑯⑰ 증여재산공제액', '⑨⑩(기존 공제액의 혼인·출산 나눔)을 몰라 더할 수 없음');
+    o.set('⑯', n(pp.sameMarriage) + m).set('⑰', n(pp.sameBirth) + b);
+    if (n(pp.otherWithin10) > 0) o.note('비고에 적을 것: ⑨⑩ 중 다른 증여자분 ' + n(pp.otherWithin10).toLocaleString('ko-KR') + '원은 §47② 합산 대상이 아님(⑯⑰에 더하지 않음)');
+    if (n(r.혼인출산증여재산공제)) o.check('⑯ + ⑰ = 본표 ㉙ 혼인·출산 공제(엔진)', n(pp.sameMarriage) + m + n(pp.sameBirth) + b, n(r.혼인출산증여재산공제));
     o.note('③·⑦ 증여재산가액은 이번 증여의 증여재산가액(지금 인쇄는 공제액을 찍었음 — 서식 칸 이름대로 고침)');
     o.check('⑭ + ⑮ ≤ ⑬', Math.min(m + b, room), m + b);
     o.check('⑭ + ⑮ = 이번 혼인·출산 공제액(엔진)', m + b, n(mb.thisTime));
@@ -784,7 +1133,8 @@
       .need('④', fullAddr(dn), '④ 수증자 주소').set('⑤', dn.email);
     if (has(dn.phone)) o.set(isMobile(dn.phone) ? '⑥~전화번호(휴대전화) (수증자)' : '⑥~전화번호(자택) (수증자)', dn.phone);
     else o.miss('⑥ 수증자 전화번호', '화면 입력 없음');
-    o.miss('⑦ 증여자와의 관계', '계산기 값은 공제 구분(직계존속 등)이라 "증여자의 (  )"에 맞는 낱말이 아님');
+    var rw4_ = relWord(ctx.relation, ctx.genSkip, dn.regNo);
+    if (rw4_) o.set('⑦', rw4_); else o.miss('⑦ 증여자와의 관계', '관계가 기타친족·그 밖의 자이거나 증여 계산 결과 없음 — 직접 적을 것(부표4 작성방법 3: 수증자 기준)');
     o.need('⑧', dr.name, '⑧ 증여자 성명').need('⑨', dr.regNo, '⑨ 증여자 주민등록번호').need('⑩', ctx.giftDate, '⑩ 증여일자').need('⑪', fullAddr(dr), '⑪ 증여자 주소');
     o.miss('⑫ 증여자 전화번호', '증여자 카드에 전화 칸 없음');
     o.miss('⑬~⑲ 추징 대상 증여재산 명세', '계산기에 부표4용 재산 입력 없음(추징 대상은 혼인·출산 공제를 받은 지난 증여분)');
@@ -875,7 +1225,7 @@
     var legal = fracNum(h.statutoryShareRatio);
     // 작성방법 3: ⑥ = (부표1 ⑫ + ㉕ − 상속인 아닌 수유자 유증 등 − ⑬ − ㉒ − ㉔) × ⑤
     var gross = has(ctx.grossEstate) ? n(ctx.grossEstate) : n(ctx.valuationTotal);
-    var b12 = gross + n(r.상속개시전처분재산_추정합계), b25 = fv.priorGiftAdded !== null ? fv.priorGiftAdded : null;
+    var b12 = gross + presumedAll(r), b25 = fv.priorGiftAdded !== null ? fv.priorGiftAdded : null;
     if (legal !== null) {
       o.set('⑤', pct2(legal));
       if (b25 !== null) {
@@ -904,13 +1254,17 @@
     // ⑱~㉗ 상속인별 나눔은 계산기에 없음(전자신고 0) — 전체 금액이 0이면 누구 몫이든 0이 확실하므로 0, 아니면 비움
     var zero = true;
     function zeroIf(keys, total, why) { if (!total) keys.forEach(function (k) { o.set(k, 0); }); else { zero = false; o.miss(keys.join(''), why + '(전체 ' + total + '원) — 상속인별 나눔이 계산기에 없음'); } }
-    zeroIf(['⑱'], n(r.상속개시전처분재산_추정합계), '상속개시전 처분재산 산입액');
+    zeroIf(['⑱'], presumedAll(r), '상속개시전 처분재산 산입액');
     zeroIf(['⑲', '⑳', '㉑'], n(r.비과세재산가액), '비과세 재산가액');
     zeroIf(['㉒'], n(ctx.publicOrg), '공익법인 출연재산');
     zeroIf(['㉓'], n(ctx.publicTrust), '공익신탁 재산');
     o.set('㉔', 0);
     if (b25 === null) { zero = false; o.miss('㉕㉖㉗', '가산하는 증여재산가액(fv.priorGiftAdded) 없음'); }
-    else zeroIf(['㉕', '㉖', '㉗'], b25, '가산하는 증여재산가액');
+    else if (b25 && has(h.priorGiftAmount)) {
+      // [2026.10.20 서식 감사] ㉕ = 이 상속인의 §13 가산 증여재산 — 상속인 명부 "10년 이내 사전증여"(엔진 priorGiftHeirs[].priorGiftAmount와 같은 값, 화면 buildInheritanceHeirInputs_)
+      o.set('㉕', n(h.priorGiftAmount)); zero = false;
+      o.miss('㉖㉗', '조특법 §30의5·§30의6 특례분을 상속인별로 나눠 받는 칸이 없음 — 특례분이 섞여 있으면 ㉕에서 옮겨 적을 것');
+    } else zeroIf(['㉕', '㉖', '㉗'], b25, '가산하는 증여재산가액');
     o.note('㉔ 기타 불산입은 계산기 과세가액 계산에 없는 항목이라 0(있으면 세액부터 다시 계산해야 함)');
     if (zero) o.set('㉘', actual); else o.miss('㉘ 합계', '⑱~㉗ 중 비운 칸이 있고 합계 식이 서식에 없음');
     return o.result();
@@ -925,15 +1279,16 @@
     o.check('④ = ① − ② − ③', v4, Math.max(0, v1 - v2 - v3));
     var grossKnown = n(ctx.grossEstate) > 0 || n(ctx.valuationTotal) > 0 || (ctx.assets || []).length > 0; // [2026.10.19] 재산 목록 없으면 ⑤⑨ 비움
     var gross = has(ctx.grossEstate) ? n(ctx.grossEstate) : n(ctx.valuationTotal);
-    var v5 = gross + n(r.상속개시전처분재산_추정합계), v6 = n(r.비과세재산가액);
-    // [2026.10.19 법령 우선] 서식 작성방법 3은 ⑦에 부표1 ㉑(공과금+장례비용+채무)을 옮기라 하지만, 시행령 §17①2호는 "법 제14조의 규정에 의한 공과금 및 채무"만
-    //  뺀다(장례비용은 §14①2호로 따로) — 엔진(배우자공제 한도)도 법령대로 장례비를 빼지 않으므로 ⑦은 공과금+채무로 찍어 ⑨·⑭가 엔진과 맞게 한다. 세무사님 판단 대기.
+    var v5 = gross + presumedAll(r), v6 = n(r.비과세재산가액);
+    // [2026.10.19 법령 우선 → 2026.10.20 AI 회의 회장 결론 J06(가)로 확정, 판단 대기 J1 내림] 서식 작성방법 3은 ⑦에 부표1 ㉑(공과금+장례비용+채무)을
+    //  옮기라 하지만, 시행령 §17①2호는 "법 제14조의 규정에 의한 공과금 및 채무"만 뺀다(§14①이 공과금·장례비용·채무를 따로 열거, 집행기준 19-17-2
+    //  "장례비는 차감하지 않음") — 엔진(배우자공제 한도)도 장례비를 빼지 않으므로 ⑦은 공과금+채무로 찍어 ⑨·⑭가 엔진과 맞게 한다.
     var funeral = n(r.장례비용공제);
     var v7 = n(ctx.duesTotal) + n(ctx.debtTotal), v8 = n(ctx.publicOrg) + n(ctx.publicTrust);
     var v9 = v5 - v6 - v7 - v8, v10 = n(sp.nonHeirBequest), v11 = n(sp.giftToHeirs), ratio = n(sp.ratio), v13 = n(sp.giftBase);
     if (grossKnown) o.set('⑤', v5).set('⑨', v9); else o.miss('⑤⑨ 상속재산 가액', '재산평가 목록이 없음(계산기에 과세가액만 입력) — 출력물에 직접 적으세요');
     o.set('⑥', v6).set('⑦', v7).set('⑧', v8).set('⑩', v10).set('⑪', v11).set('⑫', pct2(ratio)).set('⑬', v13);
-    if (funeral > 0) o.note('⚠ 부표3의2 ⑦: 서식 작성방법은 부표1 ㉑(장례비용 ' + funeral.toLocaleString('ko-KR') + '원 포함)을 적으라 하나, 시행령 §17①2호(공과금 및 채무)대로 장례비용을 빼지 않고 찍었습니다(법령 우선 — 계산기 배우자공제 한도와 같은 기준). 세무사님 판단 대기');
+    if (funeral > 0) o.note('부표3의2 ⑦: 공과금·채무만 적고 장례비용(' + funeral.toLocaleString('ko-KR') + '원)은 넣지 않았습니다 — 비고에 "상증법 시행령 §17①2호·집행기준 19-17-2"를 적으세요(서식 작성방법 3의 부표1 ㉑ 전체보다 법령 우선)');
     var limitCalc = Math.max(0, Math.floor((v9 - v10 + v11) * ratio - v13));
     var lim = (has(r.배우자공제한도액) ? n(r.배우자공제한도액) : limitCalc);
     o.set('⑭', Math.min(lim, 3000000000)).set('⑮', n(r.배우자공제));
@@ -951,10 +1306,13 @@
     var un = Math.max(0, net - n(ex)), cut = Math.min(net * 0.2, 200000000);
     return { net: net, ex: n(ex), un: un, cut: Math.round(cut), met: net >= th, pres: net >= th && un >= cut ? Math.round(un - cut) : 0 };
   }
+  // [2026.10.20 AI 회의 회장 결론 J05] 상증법 §15 추정상속재산 전체 = ①(처분·인출·채무부담, 엔진 상속개시전처분재산_추정합계) + ②(변제의무 미입증 채무, 가공채무추정_재산입액)
+  function presumedAll(r) { return n(r.상속개시전처분재산_추정합계) + n(r.가공채무추정_재산입액); }
   M['상속9호부표4갑'] = function (ctx) {
     var o = new Out(), r = ctx.r || {};
     var items = (ctx.disposalItems || []).filter(function (d) { return n(d.oneYearAmount) > 0 || n(d.twoYearAmount) > 0; });
-    if (!items.length) { o.miss('부표4(갑) 전체', '상속개시전 처분재산·채무부담 입력 없음'); return o.result(); }
+    var fict = Math.round(n(r.가공채무추정_재산입액)); // §15② — 기준·차감 없이 전액
+    if (!items.length && !fict) { o.miss('부표4(갑) 전체', '상속개시전 처분재산·채무부담 입력 없음'); return o.result(); }
     var detail = r.상속개시전처분재산_추정내역 || [];
     var T = { 재산: { k: ['②', '③', '④', '⑤', '⑥', '⑦', '⑧'], rows: 3 }, 채무: { k: ['⑪', '⑫', '⑬', '⑭', '⑮', '⑯', '⑰'], rows: 2 } };
     var V = {}, used = {};
@@ -979,13 +1337,21 @@
       if (!isII) {
         if (c.met && c.un === c.cut) o.note(d.category + ' — 미소명금액 = 차감가액: 서식 "⑤ > ⑥"이면 부, 시행령 §11④ "이상"이면 여(추정액 0) — 서식대로 부로 적음');
         o.check(d.category + ' 추정상속재산가액 = 미소명 − 차감가액(추정일 때)', est, Math.max(c1.pres, c2.pres));
-      } else if (est !== c.un) o.note('부담채무Ⅱ — 엔진은 금액 기준·20% 차감을 적용(법문 해석 A), 서식은 ⑰ = ⑭(미소명 전액) — 판단 대기 ④');
+      } else {
+        // [2026.10.20 회장 결론 J05] Ⅱ 줄 ⑰ = 법 기준 추정액(§15①2호분 + 아래 §15②분). 회색 칸 ⑫·⑮는 비우고 §15①2호 산식은 별지(명세)에 적는다.
+        o.note('부담채무Ⅱ ⑰ 별지(명세)에 적을 산식 — 상증법 §15①2호·시행령 §11④: ' + p + '년 이내 채무부담액 ' + c.net.toLocaleString('ko-KR') + '원(기준 ' + (p === 1 ? '2억' : '5억') + '원 ' + (c.met ? '이상' : '미만') + ') − 용도 소명 ' + c.ex.toLocaleString('ko-KR') + '원 = 미소명 ' + c.un.toLocaleString('ko-KR') + '원' + (c.met ? ' − MIN(채무부담액 × 20%, 2억원) ' + c.cut.toLocaleString('ko-KR') + '원' : '') + ' = 추정 ' + est.toLocaleString('ko-KR') + '원');
+        o.check(d.category + ' 추정상속재산가액 = 미소명 − 차감가액(추정일 때)', est, Math.max(c1.pres, c2.pres));
+      }
     });
+    if (fict > 0) {
+      V['⑰'][1] = (V['⑰'][1] === '' ? 0 : n(V['⑰'][1])) + fict; V['⑯'][1] = '여'; sumP.채무 += fict;
+      o.note('부담채무Ⅱ ⑰에 상속인이 갚을 의무가 입증되지 않은 채무(상증법 §15②·시행령 §11③, 기준·차감 없이 전액) ' + fict.toLocaleString('ko-KR') + '원을 더해 적음 — §15①2호분과 나눠 별지(명세)에 적으세요');
+    }
     // 부담채무Ⅱ 줄은 ⑫·⑮가 서식에서 막혀 있음 → ⑫는 1줄, ⑮는 한 칸
     V['⑫'] = V['⑫'].slice(0, 1); V['⑮'] = V['⑮'][0];
     Object.keys(V).forEach(function (k) { var v = V[k]; if (Array.isArray(v) ? v.some(function (x) { return x !== ''; }) : v !== '') o.set(k, v); });
     o.set('⑨', sumP.재산).set('⑱', sumP.채무).set('다', sumP.재산 + sumP.채무);
-    o.check('다 = ⑨ + ⑱ = 부표1 ⑪(엔진 상속개시전처분재산_추정합계)', sumP.재산 + sumP.채무, n(r.상속개시전처분재산_추정합계));
+    o.check('다 = ⑨ + ⑱ = 부표1 ⑪(엔진 상속개시전처분재산_추정합계 + 가공채무추정_재산입액)', sumP.재산 + sumP.채무, presumedAll(r));
     return o.result();
   };
 
@@ -1004,8 +1370,23 @@
     o.miss('①②③ 영리법인 법인명·사업자등록번호·사업장 소재지', '계산기에 없음');
     o.set('④', beq).set('⑤', ex).set('⑥', Math.round(beq * 0.1));
     o.note('⑤ 면제세액은 화면에 직접 입력한 값(계산기가 계산하지 않음)');
-    o.miss('⑦~⑪ 사람별 줄', '계산기는 상속인 등의 지분 비율을 합계 한 칸으로만 받음 — 계 줄에만 찍음');
-    o.set('계~계 — ⑩ 지분율 합', pct2(ratio)).set('계~계 — ⑪ 면제분 납부세액 합(= 본표 ㊱)', n(r.영리법인면제분납부세액));
+    // [2026.10.20 AI 회의 회장 결론 J07] 상증법 §3의2②(2025.12.23. 개정, 2026.1.1. 시행)·시행령 §3② — 상속인·상속인의 배우자·직계비속·
+    //  직계비속의 배우자가 "각자의" 지분상당액을 낸다. 서식(2020.3.13.판) ⑦ 구분엔 상속인·직계비속만 있지만, 같은 줄 형식을 사람마다 써서 ⑦에
+    //  "상속인의 배우자"처럼 적고 ⑩·⑪을 따로 적는다(합쳐 적기는 남의 납부의무를 상속인 몫으로 적는 셈이라 안 씀). 5줄이 넘으면 이어지는 장.
+    var payers = (ctx.forProfitPayers || []).filter(function (p) { return p && (has(p.name) || n(p.ratio) > 0); });
+    var total = n(r.영리법인면제분납부세액), base = ex - beq * 0.1;
+    if (payers.length) {
+      var amts = payers.map(function (p) { return Math.max(0, Math.round(base * n(p.ratio))); });
+      var sumR = payers.reduce(function (s, p) { return s + n(p.ratio); }, 0);
+      // 사람별 원 미만 반올림 합이 본표 ㊱(엔진 합계)과 1~2원 다르면 마지막 줄에서 맞춘다
+      var diff = total - amts.reduce(function (s, a) { return s + a; }, 0);
+      if (diff && Math.abs(diff) <= payers.length && Math.abs(sumR - ratio) < 1e-6) { amts[amts.length - 1] += diff; o.note('⑪ 사람별 원 미만 반올림 차이 ' + diff + '원을 마지막 줄에서 맞춤(계 = 본표 ㊱)'); }
+      o.set('⑦', payers.map(function (p) { return p.kind || '상속인'; })).set('⑧', payers.map(function (p) { return p.name || ''; }))
+        .set('⑨', payers.map(function (p) { return p.regNo || ''; })).set('⑩', payers.map(function (p) { return pct2(n(p.ratio)); })).set('⑪', amts);
+      o.check('계 ⑩ = 사람별 ⑩ 합(화면 지분 상당 비율과 같음)', pct2(ratio), pct2(sumR));
+      if (payers.some(function (p) { return /배우자/.test(p.kind || ''); })) o.note('⑦ 구분에 "상속인의 배우자"·"직계비속의 배우자"를 적은 줄은 상증법 §3의2②(2025.12.23. 개정)로 더해진 납부의무자 — 서식(2020.3.13.판)에 그 구분이 아직 없어 같은 줄 형식으로 적음');
+    } else o.miss('⑦~⑪ 사람별 줄', '화면 "영리법인 면제분 납부의무자"에 사람을 넣지 않음 — 계 줄에만 찍음');
+    o.set('계~계 — ⑩ 지분율 합', pct2(ratio)).set('계~계 — ⑪ 면제분 납부세액 합(= 본표 ㊱)', total);
     o.check('계 ⑪ = (⑤ − ⑥) × 계 ⑩', n(r.영리법인면제분납부세액), Math.max(0, Math.round((ex - beq * 0.1) * ratio)));
     return o.result();
   };
@@ -1037,7 +1418,11 @@
     o.miss('⑲ 사후관리 위반유형코드', '계산기에 없음');
     if (biz) o.set('⑳', biz);
     if (farm) o.set('㉓', farm);
-    if (biz) o.miss('㉑㉒ 추징율·금액', '기간별 추징율이 계산기에 없음');
+    // [2026.10.20 서식 감사] ㉑ 추징율 = 작성방법 3 "시행령 §15⑮의 추징율(100%)", ㉒ = ⑳ × ㉑
+    if (biz) {
+      o.set('㉑', 100).set('㉒', biz);
+      o.note('㉑ 추징율 100%(서식 작성방법 3, 시행령 §15⑮) — 가업용 자산 처분(§18의2⑤1호)이면 처분비율을 곱한 금액인지, 2022.12.31. 이전 상속개시분(기간별 추징율 경과규정)인지 확인');
+    }
     if (farm) o.miss('㉔㉕㉖', '영농상속재산 중 처분재산가액·영농상속재산가액이 계산기에 없음');
     if (kind) {
       var K = kind === '가업' ? { tax: '㉗', days: '㉙', rate: '㉚', int: '㉛', pay: '㉟' } : { tax: '㉘', days: '㉜', rate: '㉝', int: '㉞', pay: '㊱' };
@@ -1060,12 +1445,17 @@
     if (!cr || cw.formType !== 'ih7') { o.miss('부표7 전체', '사후관리 추징이자 계산(서식 구분: 가업상속 납부유예 사후관리추징) 결과 없음'); return o.result(); }
     ihClawHead(o, ctx, '⑦');
     o.miss('⑧~⑰ 가업상속 재산명세', '계산기에 재산명세 칸 없음');
-    o.miss('⑱ 추징사유 유형 코드', '도구의 사유 값(' + (bc.triggerEvent || '') + ')과 서식 코드 01~05의 짝이 확인 전');
+    // [2026.10.20 서식 감사] ⑱ 작성방법 2: 01~05 = 상증법 §72의2③ 1~5호 — 엔진 calculateBusinessSuccessionDeferralClawbackJS 위 주석의 호 순서
+    //  (1호 가업용자산 40% 이상 처분, 2호 가업 미종사, 3호 지분 감소, 4호 고용유지 미달, 5호 상속인 사망)
+    var EV7 = { asset_disposed_40pct: '01', not_engaged: '02', equity_decreased: '03', employment_failed: '04', heir_death: '05' };
+    if (bc.provision === 'inheritance' && EV7[bc.triggerEvent]) o.set('⑱', EV7[bc.triggerEvent]);
+    else o.miss('⑱ 추징사유 유형 코드', '가업상속 납부유예 사후관리 도구(§72의2)의 사유가 없음(' + (bc.triggerEvent || '') + ')');
     var tax = n(cr.추징세액), ratio = null;
     if (bc.provision === 'inheritance' && n(bc.deferredTax)) {
       o.set('⑲', n(bc.deferredTax));
       if (bc.triggerEvent === 'asset_disposed_40pct' && n(bc.disposalRatio)) ratio = n(bc.disposalRatio);
-      else if (bc.triggerEvent === 'equity_decreased') {
+      // [2026.10.20 서식 감사] 지분 감소가 상속개시일부터 5년 이내면 전부 추징(비율 없음) — 엔진 calculateBusinessSuccessionDeferralClawbackJS(yearsSinceBase ≤ 5)·시행령 §69의3⑥
+      else if (bc.triggerEvent === 'equity_decreased' && !(has(bc.yearsSinceBase) && n(bc.yearsSinceBase) <= 5)) {
         ratio = n(bc.equityDecreaseRatio) || (n(bc.equityRatioAtBase) ? (n(bc.equityRatioAtBase) - n(bc.currentEquityRatio)) / n(bc.equityRatioAtBase) : null);
       }
       if (ratio !== null && ratio > 0) { o.set('⑳', pct2(ratio)); o.check('㉑ = ⑲ × ⑳', tax, Math.round(n(bc.deferredTax) * ratio)); }
@@ -1108,15 +1498,24 @@
     var L = [];
     if (tax === '양도') {
       var assets = ctx.assets || [];
-      if (ctx.r && assets.length) L.push('양도84호', '양도84부표1');
-      if (ctx.stock && ctx.stock.input) L.push('양도84부표2');
+      // [2026.10.20 84호 주식등·국외자산] 국외자산(대표 양도인)은 부동산 등과 같은 84호·부표1에 열을 나눠, 주식등은 84호 한 장 따로(ctx.갈래 '주식등') +
+      //  자산구분에 맞는 부표(국내·국외주식·기타자산 주식 → 부표2, 신탁수익권 → 부표1, 파생상품 → 부표2의2)
+      var ovR = !!(ctx.overseas && !ctx.overseas.error);
+      if ((ctx.r && assets.length) || ovR) L.push('양도84호', '양도84부표1');
+      if (ctx.stock && ctx.stock.input && ctx.stock.result) {
+        var sc = Object.assign({}, ctx, { 갈래: '주식등' }), cat = ctx.stock.input.assetCategory || ctx.stock.assetCategory;
+        L.push({ formKey: '양도84호', ctx: sc });
+        if (cat === 'trust_beneficiary') L.push({ formKey: '양도84부표1', ctx: sc });
+        else if (cat === 'derivative') L.push({ formKey: '양도84부표2의2', ctx: sc });
+        else L.push('양도84부표2');
+      }
       if (ctx.derivative) L.push('양도84부표2의2');
       assets.forEach(function (it, i) { if (expenseItemsOf(it.asset || {}).length) L.push({ formKey: '양도84부표3', ctx: Object.assign({}, ctx, { 부표3자산: i }) }); });
     } else if (tax === '증여') {
       var r = ctx.r;
       if (r) L.push('증여10호', '증여10부표1');
       if (ctx.bd) L.push('증여10부표2');
-      if (ctx.mbDetail && n(ctx.mbDetail.thisTime)) L.push('증여10부표3');
+      if (ctx.mbDetail && (n(ctx.mbDetail.thisTime) || (ctx.r && n(ctx.r.혼인출산증여재산공제)))) L.push('증여10부표3');
       if (ctx.clawback && ctx.clawback.result && ctx.clawback.formType === 'gf_marriage') L.push('증여10부표4');
       if ((ctx.giftAssets || []).some(function (a) { return a.method === 'artwork'; })) L.push('증여10부표5');
       if ((r && n(r.공익법인등관련가산세) > 0) || (ctx.publicOrgPenaltyItems || []).length) L.push('증여10부표6');
@@ -1148,7 +1547,7 @@
   // 지금 세액인쇄 함수들이 읽는 같은 전역값·화면 칸을 읽기만 한다(아무것도 바꾸지 않음).
   /* global lastTransferResults_, trCollectBuyers_, trLatestTransferDate_, trBuyerRelationLabel_, trAttach1EngineValues_, trAttach1AcqNec_,
      trRateClassCode1_, trAssetTypeCode1_, transferContracts, transferSellers, lastTrSplitPaymentInput_, lastTrSplitPaymentResult_, taxAgentField_, numVal,
-     lastStockTransferResult_, lastDerivativeResult_,
+     lastStockTransferResult_, lastDerivativeResult_, lastOverseasTransferResult_, transferAssets,
      lastGiftResults_, giftDonees, giftDonors, giftPairRelation_, gfMarriageBirthSplit_, ihRateForBase_, lastInstallmentInput_, lastInstallmentResult_,
      lastSplitPaymentInput_, lastSplitPaymentResult_, giftValuationAssets_, parseShareFraction_, lastBdDeferralResult_, lastClawbackResult_,
      lastInheritanceResult, inheritanceHeirs, ihFormValues_, inheritanceValuationAssets_, computeHeirActualValue_, heirAssumedDebt_, taxCalcHeirRegistryHasSpouse,
@@ -1182,17 +1581,27 @@
       var stock = i === 0 ? (typeof lastStockTransferResult_ !== 'undefined' ? lastStockTransferResult_ : null) : null;
       var dv = i === 0 ? (typeof lastDerivativeResult_ !== 'undefined' ? lastDerivativeResult_ : null) : null;
       if (dv && dv.error) dv = null;
-      if (!item && !stock && !dv) throw new Error('양도세 계산 결과가 없습니다 — 먼저 계산하세요.');
+      // [2026.10.20 84호 주식등·국외자산] 국외자산 계산 결과(calculateOverseasAssetTransferTaxMultiJS)도 대표 양도인(i=0)에 — 전자신고 trBuildEfileBytes_와 같음.
+      //  자산은 계산 때와 같은 순서(transferAssets 중 isOverseasAsset, run-overseas-transfer)라 엔진 거래별_내역 idx와 짝
+      var ovR = i === 0 && typeof lastOverseasTransferResult_ !== 'undefined' && lastOverseasTransferResult_ && !lastOverseasTransferResult_.error ? lastOverseasTransferResult_ : null;
+      //  (이름은 묶음 파일 mappers-양도소득특례.js 소득11호와 같게 — ctx.overseas = 결과, ctx.overseasAssets = 국외자산 카드)
+      var ovCards = ovR ? (typeof transferAssets !== 'undefined' && transferAssets ? transferAssets : []).filter(function (a) { return a && a.isOverseasAsset; }) : [];
+      if (!item && !stock && !dv && !ovR) throw new Error('양도세 계산 결과가 없습니다 — 먼저 계산하세요.');
       var buyers = (typeof trCollectBuyers_ === 'function' ? trCollectBuyers_() : []).map(function (b) {
         return { name: b.name, regNo: b.regNo, shareRatio: b.shareRatio, relation: b.relation, relationLabel: typeof trBuyerRelationLabel_ === 'function' ? trBuyerRelationLabel_(b.relation) : '' };
       });
-      var assets = ((item && item.assets) || []).map(function (a) {
-        var ev = trAttach1EngineValues_(a);
+      var srcAssets = (item && item.assets) || [];
+      var assets = srcAssets.map(function (a, k) {
+        // [2026.10.20 서식 감사(양도)] 이월과세(§97의2) 자산은 합산 계산과 같은 취득가액·취득일·필요경비로 부표1 값을 만든다(carryResolved)
+        var ca = carryResolved(a, item && item.result, k, srcAssets.length);
+        var ev = trAttach1EngineValues_(ca || a);
         var contract = a.transferContractId && typeof transferContracts !== 'undefined' ? transferContracts.find(function (c) { return c.id === a.transferContractId; }) : null;
-        return { asset: a, ev: ev, an: trAttach1AcqNec_(a, ev), rateCode: trRateClassCode1_(a), typeCode: trAssetTypeCode1_(a),
+        return { asset: a, carry: ca || undefined, ev: ev, an: trAttach1AcqNec_(ca || a, ev), rateCode: trRateClassCode1_(a), typeCode: trAssetTypeCode1_(a),
           transferCause: contract ? (contract.transferCause || '') : null };
       });
       var latest = typeof trLatestTransferDate_ === 'function' ? trLatestTransferDate_() : '';
+      // trLatestTransferDate_는 국내 자산만 봄 — 국외자산만 있으면 국외자산 양도일 중 마지막
+      if (!latest && ovR) latest = ovCards.map(function (a) { return a.transferDate; }).filter(Boolean).sort().pop() || '';
       // 전자신고 trBuildEfileBytes_ 의 trSplitAmt와 같은 식(대표 양도인만)
       var splitAmt = 0;
       if (i === 0 && typeof lastTrSplitPaymentInput_ !== 'undefined' && lastTrSplitPaymentInput_ && lastTrSplitPaymentInput_.taxType === 'transfer' &&
@@ -1200,7 +1609,7 @@
         splitAmt = numVal(lastTrSplitPaymentResult_.분납신청금액 != null ? lastTrSplitPaymentResult_.분납신청금액 : lastTrSplitPaymentResult_.분납가능_최대금액) || 0;
       var seller = item ? (item.seller || {}) : ((typeof transferSellers !== 'undefined' && transferSellers && transferSellers[0]) || {});
       return Object.assign({ r: item ? item.result : null, seller: seller, buyers: buyers, assets: assets, 귀속연도: latest ? latest.slice(0, 4) : '',
-        splitAmt: splitAmt, taxAgent: agent(), stock: stock || null, derivative: dv || null }, extra || {});
+        splitAmt: splitAmt, taxAgent: agent(), stock: stock || null, derivative: dv || null, overseas: ovR, overseasAssets: ovCards }, extra || {});
     },
     // i = 증여 계산 결과(수증자·증여자 조합) 번호. 사건 전체에 하나뿐인 자료(가업승계 납부유예·추징이자)는 첫 결과(i=0)에만 붙임
     '증여': function (i, extra) {
@@ -1212,8 +1621,10 @@
       var r = item ? (item.result || {}) : null;
       var doneeIdx = item ? item.doneeIdx : 0, donorIdx = item ? item.donorIdxs[0] : 0;
       var donor = giftDonors[donorIdx] || {};
-      var inst = (typeof lastInstallmentInput_ !== 'undefined' && lastInstallmentInput_ && lastInstallmentInput_.taxType === 'gift' && lastInstallmentResult_) ? (numVal(lastInstallmentResult_.연부연납대상금액) || 0) : 0;
-      var split = (typeof lastSplitPaymentInput_ !== 'undefined' && lastSplitPaymentInput_ && lastSplitPaymentInput_.taxType === 'gift' && lastSplitPaymentResult_ && lastSplitPaymentResult_.분납가능여부) ? (numVal(lastSplitPaymentResult_.분납신청금액 != null ? lastSplitPaymentResult_.분납신청금액 : lastSplitPaymentResult_.분납가능_최대금액) || 0) : 0;
+      // [2026.10.20 서식↔엔진 감사 A] 연부연납·분납 계산은 사건에 하나 — 증여 쌍이 여럿이면 그 계산의 총 납부세액이 이 쌍 납부세액과 같은 쌍에만(예전엔 모든 쌍 51·52에 같은 금액)
+      var mine_ = function (inp) { return items.length <= 1 || !!(r && inp && Math.round(numVal(inp.totalTaxAmount) || 0) === Math.round(numVal(r.납부세액) || 0)); };
+      var inst = (typeof lastInstallmentInput_ !== 'undefined' && lastInstallmentInput_ && lastInstallmentInput_.taxType === 'gift' && lastInstallmentResult_ && mine_(lastInstallmentInput_)) ? (numVal(lastInstallmentResult_.연부연납대상금액) || 0) : 0;
+      var split = (typeof lastSplitPaymentInput_ !== 'undefined' && lastSplitPaymentInput_ && lastSplitPaymentInput_.taxType === 'gift' && lastSplitPaymentResult_ && lastSplitPaymentResult_.분납가능여부 && mine_(lastSplitPaymentInput_)) ? (numVal(lastSplitPaymentResult_.분납신청금액 != null ? lastSplitPaymentResult_.분납신청금액 : lastSplitPaymentResult_.분납가능_최대금액) || 0) : 0;
       // 부표1·5 — gfAttach1PrintPageHtml_와 같은 배분(이 증여자·수증자 몫 비율 × 평가액)
       var giftAssets = (typeof giftValuationAssets_ === 'function' ? giftValuationAssets_() : []).map(function (a) {
         var ratio = (Array.isArray(a.donorAllocations) ? a.donorAllocations : []).reduce(function (s, al) {
@@ -1231,9 +1642,9 @@
         nonBiz61: numVal(el('bdNonBiz61')) || 0, excessCash: numVal(el('bdExcessCash')) || 0, nonBizStock: numVal(el('bdNonBizStock')) || 0,
         totalValue: numVal(el('bdTotalValue')) || 0, stockValue: numVal(el('bdStockValue')) || 0, businessValue: numVal(el('bdBusinessValue')) || 0, taxPayable: numVal(el('bdTaxPayable')) || 0, result: bdRes } : null;
       return Object.assign({ r: r, item: item ? { amount: item.amount, priorGiftAmount: item.priorGiftAmount } : {}, donee: giftDonees[doneeIdx] || {}, donor: donor,
-        relation: item ? giftPairRelation_(donor, doneeIdx).relation : '', giftDate: el('giftDate'),
+        relation: item ? giftPairRelation_(donor, doneeIdx).relation : '', genSkip: item ? giftPairRelation_(donor, doneeIdx).genSkip : '', giftDate: el('giftDate'),
         marriageBirth: r && numVal(r.혼인출산증여재산공제) ? gfMarriageBirthSplit_(numVal(r.혼인출산증여재산공제) || 0) : { marriage: 0, birth: 0 },
-        mbDetail: mbThis ? { thisTime: mbThis, cur: gfMarriageBirthSplit_(mbThis), prior: numVal(el('giftPriorMarriageBirth')) || 0, marriageDate: el('giftMarriageDate'),
+        mbDetail: (mbThis || (r && numVal(r.혼인출산증여재산공제))) ? { thisTime: mbThis, cur: gfMarriageBirthSplit_(mbThis), prior: (typeof gfPriorMarriageBirthParts_ === 'function' ? gfPriorMarriageBirthParts_(r).total : 0), priorParts: (typeof gfPriorMarriageBirthParts_ === 'function' ? gfPriorMarriageBirthParts_(r) : null), marriageDate: el('giftMarriageDate'),
           birthDate: el('giftBirthDate'), giftDate: el('giftDate'), giftAmount: has(item.amount) ? numVal(item.amount) : numVal(r.증여재산가액) } : null,
         giftAssets: giftAssets, bd: bd, clawback: claw, publicOrgPenaltyItems: [],
         rate: r ? ihRateForBase_(r.과세표준) : null, installment: inst, split: split, taxAgent: agent() }, extra || {});
@@ -1254,7 +1665,8 @@
       });
       var heirs = inheritanceHeirs.map(function (h, hi) {
         return { name: h.name || '', regNo: h.regNo || '', relation: h.relation || '', address: h.address || '', addressDong: h.addressDong || '', addressHo: h.addressHo || '',
-          statutoryShareRatio: h.statutoryShareRatio, actualValue: computeHeirActualValue_(hi), isReporter: !!h.isReporter };
+          statutoryShareRatio: h.statutoryShareRatio, actualValue: computeHeirActualValue_(hi), isReporter: !!h.isReporter,
+          priorGiftAmount: h.hasPriorGift ? (numVal(h.priorGiftAmount) || 0) : 0 }; // 부표2 ㉕ — 엔진 priorGiftHeirs와 같은 값
       });
       var spIdx = -1;
       inheritanceHeirs.some(function (h, hi) { if (h.relation === '배우자') { spIdx = hi; return true; } return false; });
@@ -1272,7 +1684,7 @@
       });
       return Object.assign({ r: r, fv: r ? ihFormValues_(r) : {}, reporter: reporter, phone: el('ihReporterPhone'), email: el('ihReporterEmail'),
         deceased: { name: el('ihDeceasedName'), regNo: el('ihDeceasedRegNo'), address: el('ihDeceasedAddress'), deathDate: el('ihDeathDate'), resident: nonRes ? 'nonresident' : 'resident', taxOffice: el('ihDeceasedTaxOffice') },
-        taxAgent: agent(), rate: r ? ihRateForBase_(r.과세표준) : null, forProfitBequest: gn('ihForProfitBequest'), forProfitExempted: gn('ihForProfitExempted'), forProfitRatio: numVal(el('ihForProfitRatio')) || 0,
+        taxAgent: agent(), rate: r ? ihRateForBase_(r.과세표준) : null, forProfitBequest: gn('ihForProfitBequest'), forProfitExempted: gn('ihForProfitExempted'), forProfitRatio: numVal(el('ihForProfitRatio')) || 0, forProfitPayers: (typeof inheritanceForProfitPayers !== 'undefined' ? inheritanceForProfitPayers : []), // [2026.10.20 J07] 부표5 사람별 줄
         bizDeferred: gn('ihBizInheritDeferred'), installment: inst, split: split,
         assets: valAssets, valAssets: valAssets, heirs: heirs, spouse: spouse, nonHeirBequest: gn('ihNonHeirBequest'), disposalItems: disposal,
         valuationTotal: Math.round(ihValuationAssetsGrossTotal_()), grossEstate: ihGrossEstateTotal_(), publicOrg: gn('ihPublicOrg'), publicTrust: gn('ihPublicTrust'),
@@ -1280,7 +1692,8 @@
         debts: inheritanceDebtItems, dues: inheritanceDuesItems, funerals: inheritanceFuneralItems,
         childCount: gn('ihChildCount'), minorYears: gn('ihMinorYears'), elderlyCount: gn('ihElderlyCount'), disabledYears: gn('ihDisabledYears'), isNonResident: nonRes,
         clawback: claw, bc: { provision: el('bcProvision'), deferredTax: gn('bcDeferredTax'), triggerEvent: el('bcTriggerEvent'), disposalRatio: numVal(el('bcDisposalRatio')) || 0,
-          equityDecreaseRatio: numVal(el('bcEquityDecreaseRatio')) || 0, equityRatioAtBase: numVal(el('bcEquityRatioAtBase')) || 0, currentEquityRatio: numVal(el('bcCurrentEquityRatio')) || 0 } }, extra || {});
+          equityDecreaseRatio: numVal(el('bcEquityDecreaseRatio')) || 0, equityRatioAtBase: numVal(el('bcEquityRatioAtBase')) || 0, currentEquityRatio: numVal(el('bcCurrentEquityRatio')) || 0,
+          yearsSinceBase: el('bcYearsSinceBase') === '' ? '' : numVal(el('bcYearsSinceBase')) } }, extra || {});
     }
   };
 
@@ -1293,7 +1706,7 @@
   //          ctxFor:  { formKey: function (extra) → ctx 또는 [ctx…] }       (세액인쇄 화면의 서식 한 줄 출력용 — 화면 전역값에서 모음),
   //          ready:   { formKey: function () → true/false }               (그 서식에 찍을 계산 결과가 화면에 있는지) }
   //  파일 이름은 EXT_FILES에 미리 적어 둔다(세액인쇄 화면이 이 순서로 불러옴). 없는 묶음 파일은 빈 등록만 한다.
-  var EXT_FILES = ['mappers-양도감면A.js', 'mappers-양도감면B.js', 'mappers-양도소득특례.js', 'mappers-증여특례A.js', 'mappers-증여특례B.js', 'mappers-상속부속A.js', 'mappers-상속부속B.js'];
+  var EXT_FILES = ['mappers-양도감면A.js', 'mappers-양도감면B.js', 'mappers-양도소득특례.js', 'mappers-증여특례A.js', 'mappers-증여특례B.js', 'mappers-상속부속A.js', 'mappers-상속부속B.js', 'mappers-2단계.js'];
   var EXTS = [];
   function registerExt(x) {
     if (!x || EXTS.indexOf(x) >= 0) return x;
@@ -1361,9 +1774,18 @@
       return officialJobs(formNo).length > 0;
     } catch (e) { return false; }
   }
-  var helpers = { n: n, has: has, Out: Out, ymd: ymd, dateParts: dateParts, officeName: officeName, isMobile: isMobile, fullAddr: fullAddr, nativeOf: nativeOf,
+  // [2026.10.20 서식↔엔진 감사 A] 서식 "증여자의 (   )" — 수증자를 기준으로 적음(증여10호 작성방법 3: 부모가 자녀에게 증여하면 "자").
+  //  rel = 화면 관계(증여자가 수증자의 직계존속·직계비속·배우자…), genSkip '1' = 세대를 건넘. 기타친족·그 밖의 자는 낱말을 정할 수 없어 ''.
+  function relWord(rel, genSkip, doneeRegNo) {
+    var d = String(doneeRegNo || '').replace(/\D/g, ''), g = d.length === 13 ? (/[13579]/.test(d[6]) ? 'M' : 'F') : '';
+    if (rel === '직계존속') return genSkip === '1' ? '손' : '자';
+    if (rel === '직계비속') return g ? (genSkip === '1' ? (g === 'M' ? '조부' : '조모') : (g === 'M' ? '부' : '모')) : '';
+    if (rel === '배우자') return g === 'M' ? '남편' : g === 'F' ? '처' : '';
+    return '';
+  }
+  var helpers = { relWord: relWord, n: n, has: has, Out: Out, ymd: ymd, dateParts: dateParts, officeName: officeName, isMobile: isMobile, fullAddr: fullAddr, nativeOf: nativeOf,
     fracNum: fracNum, pct: pct, pct2: pct2, ratioText: ratioText, el: el, checked: checked, agent: agent,
-    evFromSingle: evFromSingle, acqNec: acqNec, giftInheritRate: giftInheritRate, expenseItemsOf: expenseItemsOf, ctxFromApp: ctxFromApp };
+    evFromSingle: evFromSingle, acqNec: acqNec, giftInheritRate: giftInheritRate, expenseItemsOf: expenseItemsOf, ctxFromApp: ctxFromApp, carryResolved: carryResolved };
 
   return { mappers: M, ctxFromApp: ctxFromApp, FORMS_BY_TAX: FORMS_BY_TAX, applicable: applicable, plan: plan,
     registerExt: registerExt, EXT_FILES: EXT_FILES, exts: EXTS, helpers: helpers,

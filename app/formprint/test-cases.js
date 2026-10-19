@@ -72,7 +72,7 @@
       seller: Object.assign({}, ctx양도.seller, { regNo: '800101-1000000', address: '서울특별시 ○○구 견본로 1', addressDong: '101', addressHo: '1001' }),
       assets: tAssets.map(function (a) { return { asset: a, single: E.calculateTransferTaxSingleJS(clone(a)), rateCode: '10', typeCode: '01', transferCause: 'sale' }; }),
       stock: { assetCategory: 'domestic_stock', input: stInput, result: E.calculateStockTransferTaxJS(clone(stInput)) },
-      derivative: E.calculateDerivativeTransferTaxJS({ domesticGainLoss: 30000000, overseasGainLoss: -5000000, filingStatus: 'ontime' })
+      derivative: E.calculateDerivativeTransferTaxJS({ taxYear: 2025, domesticGainLoss: 30000000, overseasGainLoss: -5000000, filingStatus: 'ontime' })
     });
     // 증여: 직계존속에게서 1.5억(혼인 공제), 아파트·토지·서화 배분, 가업승계 납부유예, 혼인공제 추징, 공익법인 가산세
     var gr = E.calculateGiftTaxJS({ giftAmount: 150000000, relation: '직계존속', giftDate: '2026-09-01', filingStatus: 'ontime', isMarriageGift: true, marriageDate: '2026-10-01', publicInterestOrgPenalty: 3000000 });
@@ -115,6 +115,7 @@
     var ihR = E.calculateInheritanceTaxJS(clone(ihIn));
     var ctx상속부표 = Object.assign({}, ctx상속, {
       r: ihR, fv: { priorGiftAdded: 0, lumpSum: 500000000, basic: 200000000 },
+      childCount: ihIn.childCount, // [2026.10.20 서식 감사] 엔진 입력과 같은 자녀 수(예전엔 ctx상속의 2명이 그대로 남아 부표3 ⑲가 엔진 인적공제와 달랐음 — 새 검산이 잡음)
       reporter: Object.assign({}, ctx상속.reporter, { addressDong: '101', addressHo: '1001' }),
       assets: vA, valAssets: vA, valuationTotal: gross, grossEstate: gross,
       heirs: [
@@ -131,6 +132,40 @@
       clawback: { formType: 'ih7', result: E.calculateClawbackInterestJS({ clawedBackTaxAmount: 40000000, startDate: '2023-01-01', endDate: '2026-06-30', method: 'split' }) },
       bc: { provision: 'inheritance', deferredTax: 80000000, triggerEvent: 'equity_decreased', equityDecreaseRatio: 0.5 }
     });
+    // ───── 84호 주식등·국외자산(2026-10-20) — 국외자산은 부동산 등과 같은 84호·부표1에 열을 나눠, 주식등은 84호 한 장 따로 ─────
+    // 국외자산 2건(미국 토지·건물 — 금액은 원화 환산 견본), 화면 run-overseas-transfer와 같은 입력
+    var oaAssets = [
+      { isOverseasAsset: true, oaResident5yr: true, transferDate: '2025-07-15', acquisitionDate: '2015-02-01', transferPrice: '850000000', acquisitionPrice: '500000000', oaCapitalExpenditure: '20000000', oaTransferExpenses: '12000000', oaForeignTaxMethod: 'credit', oaForeignTaxPaid: '40000000' },
+      { isOverseasAsset: true, oaResident5yr: true, transferDate: '2025-09-30', acquisitionDate: '2019-05-20', transferPrice: '230000000', acquisitionPrice: '260000000', oaCapitalExpenditure: '', oaTransferExpenses: '3000000', oaForeignTaxMethod: 'credit', oaForeignTaxPaid: '' }
+    ];
+    // 화면 국외자산 카드(transferAssets 중 isOverseasAsset — 금액은 글자) → 엔진 거래(taxcalc.html run-overseas-transfer와 같은 식)
+    var oaTx = oaAssets.map(function (a) { return { wasResidentFiveYearsContinuously: !!a.oaResident5yr, transferDate: a.transferDate, transferPrice: Number(a.transferPrice) || 0, acquisitionPrice: Number(a.acquisitionPrice) || 0,
+      capitalExpenditure: Number(a.oaCapitalExpenditure) || 0, transferExpenses: Number(a.oaTransferExpenses) || 0, foreignTaxCreditMethod: a.oaForeignTaxMethod || 'credit', foreignTaxPaidAmount: Number(a.oaForeignTaxPaid) || 0 }; });
+    var oaR = E.calculateOverseasAssetTransferTaxMultiJS(clone(oaTx), { filingStatus: 'ontime' });
+    var stForeign = { assetCategory: 'foreign_stock', companyName: 'ABC Corp(견본)', bizRegNo: '', transferDate: '2025-11-03', acquisitionDate: '2021-04-01',
+      acquisitionType: '01', transferPrice: 95000000, acquisitionPrice: 61000000, transferExpenses: 250000, isSmallMediumCompany: false, foreignTaxPaidAmount: 500000 };
+    var ctx양도혼합 = Object.assign({}, ctx양도, {
+      overseas: oaR, overseasAssets: oaAssets,
+      stock: { assetCategory: 'foreign_stock', input: stForeign, result: E.calculateStockTransferTaxJS(clone(stForeign)) }
+    });
+    var ctx양도국외만 = Object.assign({}, ctx양도, { r: null, assets: [], buyers: [], 귀속연도: '2025', overseas: oaR, overseasAssets: oaAssets });
+    // 주식등만 — 기타자산(비사업용토지 과다보유법인 주식, 1-11·부표2 52)
+    var stOther = { assetCategory: 'other_asset', companyName: '○○개발(견본)', bizRegNo: '000-00-00000', transferDate: '2025-04-10', acquisitionDate: '2012-06-01',
+      acquisitionType: '01', transferPrice: 700000000, acquisitionPrice: 300000000, transferExpenses: 5000000, isMajorityNonBusinessLandCorp: true };
+    var ctx양도기타주식 = Object.assign({}, ctx양도, { r: null, assets: [], buyers: [], stock: { assetCategory: 'other_asset', input: stOther, result: E.calculateStockTransferTaxJS(clone(stOther)) } });
+    // 주식등만 — 국내주식 이월과세(배우자에게 2025.3. 증여받아 1년 안 양도, §97의2①) — 부표2 ⑬⑭는 엔진 값(증여자 취득가액·증여세 상당액)으로
+    var stCarry = { assetCategory: 'domestic_stock', companyName: '○○바이오(견본)', bizRegNo: '000-00-00000', transferDate: '2025-12-01', acquisitionDate: '2025-03-02',
+      acquisitionType: '07', transferPrice: 500000000, acquisitionPrice: 450000000, transferExpenses: 1000000, isDaejuju: true, isSmallMediumCompany: false, holdingMonths: 9,
+      giftReceivedDate: '2025-03-02', donorRelation: 'spouse', donorAcquisitionPrice: 100000000, doneeOwnAcquisitionPrice: 450000000, giftTaxPaid: 0, giftTaxableValue: 450000000 };
+    var crR = E.calculateStockTransferTaxWithCarryoverJS(clone(stCarry));
+    var ctx양도이월주식 = Object.assign({}, ctx양도, { r: null, assets: [], buyers: [], stock: { assetCategory: 'domestic_stock', input: stCarry, result: crR } });
+    // 주식등 계산기의 신탁수익권(1-95, 부표1 26)·파생상품(1-81, 부표2의2)
+    var stTrust = { assetCategory: 'trust_beneficiary', companyName: '○○부동산신탁 수익권(견본)', transferDate: '2025-05-20', acquisitionDate: '2020-01-10', acquisitionType: '01',
+      transferPrice: 400000000, acquisitionPrice: 250000000, transferExpenses: 2000000 };
+    var stDeriv = { assetCategory: 'derivative', companyName: 'KOSPI200 선물(견본)', transferDate: '2025-08-29', acquisitionDate: '2025-08-01', acquisitionType: '01',
+      transferPrice: 180000000, acquisitionPrice: 150000000, transferExpenses: 300000 };
+    var ctx양도신탁 = Object.assign({}, ctx양도, { r: null, assets: [], buyers: [], stock: { assetCategory: 'trust_beneficiary', input: stTrust, result: E.calculateStockTransferTaxJS(clone(stTrust)) } });
+    var ctx양도파생 = Object.assign({}, ctx양도, { r: null, assets: [], buyers: [], stock: { assetCategory: 'derivative', input: stDeriv, result: E.calculateStockTransferTaxJS(clone(stDeriv)) } });
     // 처음 3건은 한 장짜리 사건(tools/formprint-continue-check.js가 고치기 전 모듈과 그림을 비교) — 부표 사건은 .부표에 따로 둠
     var base = [
       { name: '양도84호', forms: ['양도84호', '양도84부표1'], ctx: ctx양도 },
@@ -141,7 +176,13 @@
       { name: '양도_부표', tax: '양도', ctx: ctx양도부표 },
       { name: '증여_부표', tax: '증여', ctx: ctx증여부표 },
       { name: '상속_부표', tax: '상속', ctx: ctx상속부표 },
-      { name: '상속_부표7', tax: '상속', only: ['상속9호부표7'], ctx: ctx상속부표7 }
+      { name: '상속_부표7', tax: '상속', only: ['상속9호부표7'], ctx: ctx상속부표7 },
+      { name: '양도_국외주식혼합', tax: '양도', ctx: ctx양도혼합 },
+      { name: '양도_국외자산만', tax: '양도', ctx: ctx양도국외만 },
+      { name: '양도_기타자산주식', tax: '양도', ctx: ctx양도기타주식 },
+      { name: '양도_이월과세주식', tax: '양도', ctx: ctx양도이월주식 },
+      { name: '양도_신탁수익권', tax: '양도', ctx: ctx양도신탁 },
+      { name: '양도_파생주식계산기', tax: '양도', ctx: ctx양도파생 }
     ];
     return base;
   };
