@@ -297,6 +297,109 @@
     return o.result();
   };
 
+
+  // ═════════ 소득11호 — 외국납부세액공제 신청서 + 부표1 국가별 외국납부세액공제 명세서(국외자산 양도, 법 §118의6) ═════════
+  //  예전 인쇄 trOverseasForeignTaxCreditPrintPageHtml_와 같은 조건: 국외자산 카드 중 oaForeignTaxMethod === 'credit' 이고 외국납부세액 > 0
+  //  값: 국외자산 계산 결과 ctx.overseas(lastOverseasTransferResult_ = calculateOverseasAssetTransferTaxMultiJS) — 거래별_내역[k]가 ctx.overseasAssets[k]와 같은 순서
+  //    (2020.1.1. 이후 양도분: 자산마다 공제한도 = 산출세액 × 그 자산 양도차익 ÷ 국외 양도차익 합 — 거래별_내역[k].공제한도·공제액)
+  //  계산기는 나라(국가명·코드)를 받지 않아 국외자산 한 건 = 총괄명세 한 줄 = 부표1 한 장으로 찍는다(같은 나라 자산이 여럿이면 합쳐 적어야 함).
+  //  ※ 시행규칙 §100 11호는 이 서식을 영 §117③(종합소득) 신청서로만 지정 — 영 §178의7②의 국외자산 신청서 서식 지정은 찾지 못함(예전 인쇄와 같게 11호를 씀, 판단 대기)
+  function ovQualifies(a) { return !!a && !!a.isOverseasAsset && a.oaForeignTaxMethod === 'credit' && n(a.oaForeignTaxPaid) > 0; }
+  mappers['소득11호'] = function (ctx) {
+    var o = new Out(), s = ctx.seller || {}, r = ctx.overseas || null, cards = ctx.overseasAssets || [];
+    var rows = [];
+    cards.forEach(function (a, k) { if (ovQualifies(a)) rows.push({ a: a, k: k, t: (r && r.거래별_내역 && r.거래별_내역[k]) || null }); });
+    if (!r || !rows.length) { o.miss('본표·부표1 전체', !r ? '국외자산 계산 결과 없음' : '외국납부세액을 세액공제로 신청한 국외자산 없음'); return o.result(); }
+    var perAsset = rows.every(function (x) { return x.t && has(x.t.공제한도); }); // 2020.1.1. 이후 양도분만 자산별 한도
+    // ── 본표 ──
+    o.need('성명', s.name, '성명').need('주민등록번호', s.regNo, '주민등록번호').need('주소', H.fullAddr(s), '주소');
+    o.set('1', '예');
+    o.miss('② 국가명·③ 국가코드', '계산기에 없음(국외자산 카드는 소재지 글자만 받음 — 나라 칸 없음)');
+    o.miss('④ 전기이월액·⑧ 이월배제액·⑨ 차기이월액(줄·합계)', '계산기에 없음(국외자산 양도 외국납부세액은 법 §118의6에 이월공제 규정이 없음 — 확인 필요)');
+    var paid = rows.map(function (x) { return n(x.a.oaForeignTaxPaid); });
+    o.set('⑤', paid);
+    var paidSum = paid.reduce(function (t, v) { return t + v; }, 0);
+    o.set('⑤@합계', paidSum);
+    if (perAsset) {
+      var lim = rows.map(function (x) { return n(x.t.공제한도); }), cr = rows.map(function (x) { return n(x.t.공제액); });
+      o.set('⑥', lim).set('⑦', cr);
+      rows.forEach(function (x, i) {
+        o.check('줄' + (i + 1) + ' ⑦ = ⑤와 ⑥ 중 작은 금액', cr[i], Math.min(paid[i], lim[i]));
+        if (x.t.외국납부세액_공제신청액 != null) o.check('줄' + (i + 1) + ' ⑤ = 엔진 외국납부세액 공제신청액', paid[i], n(x.t.외국납부세액_공제신청액));
+      });
+      o.check('⑦ 합계 = 줄 ⑦ 합(엔진 외국납부세액공제, 산출세액 한도)', n(r.외국납부세액공제), cr.reduce(function (t, v) { return t + v; }, 0));
+    } else {
+      o.miss('⑥ 국가별 공제한도·⑦ 줄별 세액공제액', '2019.12.31. 이전 양도분이 섞여 엔진이 자산별 한도를 내지 않음(옛 문언 — 국내 양도소득금액 포함 비율)');
+    }
+    o.set('⑦@합계', n(r.외국납부세액공제));
+    o.miss('⑩⑪⑫⑬⑭ 필요경비산입 명세·필요경비 합계', '1.에서 "예"(세액공제)를 골라 작성하지 않음(작성방법 3 가)');
+    if (rows.length > 1) o.note('국외자산 ' + rows.length + '건 — 나라를 몰라 한 건을 한 줄·부표1 한 장으로 적음(같은 나라면 합쳐 적어야 함)');
+    footer(o, ctx, s, { agent: false });
+    // ── 부표1(자산마다 한 장 = 열 국가1, 국가2…) ──
+    var y = String(ctx.귀속연도 || '').slice(0, 4);
+    if (/^\d{4}$/.test(y)) o.set('부표1과세기간.시작.연', y).set('부표1과세기간.시작.월', '1').set('부표1과세기간.시작.일', '1').set('부표1과세기간.끝.연', y).set('부표1과세기간.끝.월', '12').set('부표1과세기간.끝.일', '31');
+    else o.miss('과세기간(부표1)', '귀속연도 없음');
+    o.need('부표1성명', s.name, '성명(부표1)').need('부표1주민등록번호', s.regNo, '주민등록번호(부표1)');
+    var A = n(r.산출세액), C = Math.max(0, n(r.합산양도차익));
+    rows.forEach(function (x, i) {
+      var col = '@국가' + (i + 1), K = function (no, part) { return '부표1' + no + col + (part ? '.' + part : ''); };
+      var gain = x.t ? n(x.t.양도차익) : null;
+      if (gain !== null) {
+        o.set(K('③'), gain).set(K('⑨'), gain);
+        if (gain >= 0) o.set(K('⑩'), gain); // 결손 국가가 없으면 ⑩ = ⑨(작성방법 9)
+      }
+      o.set(K('⑮'), paid[i]).set(K('㉒', '당기'), paid[i]);
+      if (perAsset) {
+        o.set(K('⑪'), A).set(K('⑫'), C).set(K('⑬'), n(x.t.공제한도));
+        o.check('부표1 국가' + (i + 1) + ' ⑬ = ⑪ × ⑩ ÷ ⑫', n(x.t.공제한도), C > 0 ? Math.round(A * Math.max(0, gain) / C) : 0);
+        var over = Math.max(0, paid[i] - n(x.t.공제한도));
+        o.set(K('⑰'), over);
+        o.set(K('㉖', '당기'), n(x.t.공제액)).set(K('㉖', '합계'), n(x.t.공제액));
+        o.check('부표1 국가' + (i + 1) + ' ㉖ = 총괄명세 줄 ⑦', n(x.t.공제액), cr[i]);
+      }
+    });
+    o.miss('①② 국가명·국가코드(부표1)', '계산기에 없음');
+    o.miss('④⑤⑥⑦⑧ 대응 비용·감면(부표1)', '계산기에 없음(③은 이미 양도가액 − 취득가액 − 자본적지출 − 양도비를 뺀 양도차익)');
+    if (rows.some(function (x) { return x.t && n(x.t.양도차익) < 0; })) o.miss('⑩ 기준 국외원천소득(결손 자산)', '결손 국외자산이 있어 작성방법 9의 배분 계산이 필요 — 계산기에 없음');
+    if (!perAsset) o.miss('⑪⑫⑬⑰㉖ 공제한도·초과액·당기 실제 세액공제액(부표1)', '2019.12.31. 이전 양도분이 섞여 자산별 한도 없음');
+    o.miss('⑭⑯⑱⑲⑳ 이월 관련(부표1)', '계산기에 없음(국외자산 양도는 이월공제 규정 없음 — 확인 필요, ⑯ = ⑭ + ⑮도 ⑭가 비어 비움)');
+    o.miss('㉕㉗㉘ 당기·합계 줄(부표1)', '계산기에 없음(㉕ = ⑯, ㉗ = ⑲, ㉘ = ㉕ − ㉖ − ㉗ — 이월 칸이 비어 비움)');
+    return o.result();
+  };
+  // 국외자산 자료 — ctx에 없으면 화면 전역값(대표 양도인에게만 — 예전 인쇄·전자신고와 같음)
+  function overseasFromApp() {
+    var r = typeof lastOverseasTransferResult_ !== 'undefined' ? lastOverseasTransferResult_ : null;
+    var cards = (typeof transferAssets !== 'undefined' && transferAssets ? transferAssets : []).filter(function (a) { return a && a.isOverseasAsset; });
+    return { overseas: r || null, overseasAssets: cards };
+  }
+  function isPrimarySeller(sl) {
+    var s0 = (typeof transferSellers !== 'undefined' && transferSellers && transferSellers[0]) || null;
+    if (!sl || !s0) return false;
+    return sl === s0 || (String(sl.name || '') === String(s0.name || '') && String(sl.regNo || '') === String(s0.regNo || ''));
+  }
+  function ovCtx(ctx) {
+    if (!ctx) return null;
+    if (ctx.overseas === undefined && isPrimarySeller(ctx.seller)) ctx = Object.assign({}, ctx, overseasFromApp());
+    if (!ctx.overseas || !(ctx.overseasAssets || []).some(ovQualifies)) return null;
+    return ctx;
+  }
+  ctxFor['소득11호'] = function (extra) {
+    var ctx;
+    try { ctx = H.ctxFromApp.양도(0, extra); } catch (e) {
+      // 국외자산만 있는 사건 — 국내 계산 결과가 없어도 대표 양도인으로 찍음
+      var s0 = (typeof transferSellers !== 'undefined' && transferSellers && transferSellers[0]) || {};
+      var d = overseasFromApp().overseasAssets.map(function (a) { return a.transferDate || ''; }).sort().pop() || '';
+      ctx = Object.assign({ seller: s0, 귀속연도: d.slice(0, 4), taxAgent: H.agent() }, extra || {});
+    }
+    var c = ovCtx(Object.assign({}, ctx, overseasFromApp()));
+    return c ? [c] : [];
+  };
+  // 예전 인쇄는 국외자산 카드만으로 페이지를 만들었으나, 원본 모양은 국외자산 계산 결과(공제한도·공제액)가 있어야 찍음
+  ready['소득11호'] = function () {
+    var ov = overseasFromApp();
+    return !!(ov.overseas && ov.overseasAssets.some(ovQualifies));
+  };
+
   // ───────── 세액인쇄 화면용 ─────────
   function transferItems() {
     return (typeof lastTransferResults_ !== 'undefined' && lastTransferResults_ ? lastTransferResults_ : []).filter(function (it) { return it.result && !it.result.error; });
@@ -338,6 +441,8 @@
     var L = [];
     if (tax !== '양도' || !ctx) return L;
     mhCtxList(ctx).forEach(function (c) { L.push({ formKey: '소득83호의6', ctx: c }); });
+    var oc = ovCtx(ctx);
+    if (oc) L.push({ formKey: '소득11호', ctx: oc });
     SPECIAL_KEYS.forEach(function (k) {
       (ctx.assets || []).forEach(function (it, ai) { if (assetWants(it.asset, k)) L.push({ formKey: k, ctx: Object.assign({}, ctx, { 특례자산: ai }) }); });
     });

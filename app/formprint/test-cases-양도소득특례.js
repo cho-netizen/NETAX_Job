@@ -85,13 +85,31 @@ module.exports = function (E, H) {
   var mhNo = E.calculateTransferTaxMultiJS([Object.assign(clone(mhAsset), { isMultiHouseRentalExemption: false })], {});
   if (!(ctxMh.r.산출세액_합계 < mhNo.산출세액_합계)) throw new Error('83호의6 시험: 일반세율 적용 체크가 중과를 빼지 않음 ' + ctxMh.r.산출세액_합계 + ' / ' + mhNo.산출세액_합계);
 
+  // ⑨ 국외자산 양도 외국납부세액공제(법 §118의6) — 국외자산 3건(가운데 1건은 필요경비 산입 방식이라 신청서에서 빠짐), 2025년 양도
+  var ovCards = [
+    { isOverseasAsset: true, oaResident5yr: true, assetLocation: '미국 캘리포니아주 ○○시 견본로 100', transferDate: '2025-04-10', acquisitionDate: '2015-06-01',
+      transferPrice: 900000000, acquisitionPrice: 500000000, oaCapitalExpenditure: 20000000, oaTransferExpenses: 30000000, oaForeignTaxMethod: 'credit', oaForeignTaxPaid: 60000000 },
+    { isOverseasAsset: true, oaResident5yr: true, assetLocation: '베트남 호찌민시 ○○구 견본 아파트', transferDate: '2025-07-01', acquisitionDate: '2019-03-01',
+      transferPrice: 300000000, acquisitionPrice: 250000000, oaCapitalExpenditure: 0, oaTransferExpenses: 5000000, oaForeignTaxMethod: 'expense', oaForeignTaxPaid: 3000000 },
+    { isOverseasAsset: true, oaResident5yr: true, assetLocation: '일본 도쿄도 ○○구 견본 1-2-3', transferDate: '2025-09-20', acquisitionDate: '2012-11-11',
+      transferPrice: 400000000, acquisitionPrice: 300000000, oaCapitalExpenditure: 0, oaTransferExpenses: 10000000, oaForeignTaxMethod: 'credit', oaForeignTaxPaid: 9000000 }
+  ];
+  // 앱 run-overseas-transfer와 같은 거래 목록
+  var ovR = E.calculateOverseasAssetTransferTaxMultiJS(ovCards.map(function (a) {
+    return { wasResidentFiveYearsContinuously: !!a.oaResident5yr, transferDate: a.transferDate, transferPrice: a.transferPrice, acquisitionPrice: a.acquisitionPrice,
+      capitalExpenditure: a.oaCapitalExpenditure, transferExpenses: a.oaTransferExpenses, foreignTaxCreditMethod: a.oaForeignTaxMethod, foreignTaxPaidAmount: a.oaForeignTaxPaid };
+  }), { filingStatus: 'ontime' });
+  if (!ovR || ovR.error) throw new Error('국외자산 계산 오류: ' + JSON.stringify(ovR));
+  var ctxOv = { seller: clone(SELLER), 귀속연도: '2025', 신고일: '2026-05-20', taxAgent: AGENT, overseas: ovR, overseasAssets: ovCards, assets: [] };
+
   return [
     { name: '83호의4_상생임대주택', tax: '양도', ctx: ctxMg },
     { name: '83호의2_거주주택특례', tax: '양도', ctx: ctxLr },
     { name: '83호의5_조합원입주권_분양권_입주권양도', tax: '양도', ctx: caseOf([ciAsset, prAsset, urAsset]) },
     { name: '83호_귀농주택', tax: '양도', ctx: caseOf([rfAsset]) },
     { name: '83호의3_장기저당담보주택', tax: '양도', ctx: caseOf([mpAsset]) },
-    { name: '83호의6_장기임대주택_일반세율', tax: '양도', ctx: ctxMh }
+    { name: '83호의6_장기임대주택_일반세율', tax: '양도', ctx: ctxMh },
+    { name: '11호_국외자산_외국납부세액공제', tax: '양도', ctx: ctxOv }
   ].map(function (cs) {
     // tax만 준 사례는 plan으로 이 묶음 서식만 고름(84호 본표는 기존 23장 시험에서 봄)
     if (!cs.forms) cs.forms = H.ctxFromApp && cs.tax ? require('./mappers.js').plan(cs.tax, cs.ctx).filter(function (it) { return typeof it !== 'string' && /^소득/.test(it.formKey); }) : [];
