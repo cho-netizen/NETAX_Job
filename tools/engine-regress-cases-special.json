@@ -1657,5 +1657,266 @@
    "과세표준": 32500000,
    "산출세액": 7045000
   }
+ },
+ {
+  "이름": "[2부-12 옛판] 상속 15억·동거주택 6억 2008-06-01 — 동거주택 상속공제 없음(§23의2는 2009.1.1. 신설)",
+  "도구": "calculate_inheritance_tax",
+  "입력": {
+   "hasSpouse": false,
+   "funeralCostAmount": 0,
+   "netFinancialAssets": 0,
+   "filingStatus": "reported",
+   "childCount": 1,
+   "taxableEstateAmount": 1500000000,
+   "dateOfDeath": "2008-06-01",
+   "hasCohabitingHouseDeduction": true,
+   "cohabitingHouseValue": 600000000
+  },
+  "정답": {
+   "과세표준": 995000000,
+   "산출세액": 238500000,
+   "신고세액공제": 23850000,
+   "납부세액": 214650000
+  }
+ },
+ {
+  "이름": "[2부-12 옛판] 상속 15억·동거주택 6억 2010-06-01 — 40%·5억(2009~2015)",
+  "도구": "calculate_inheritance_tax",
+  "입력": {
+   "hasSpouse": false,
+   "funeralCostAmount": 0,
+   "netFinancialAssets": 0,
+   "filingStatus": "reported",
+   "childCount": 1,
+   "taxableEstateAmount": 1500000000,
+   "dateOfDeath": "2010-06-01",
+   "hasCohabitingHouseDeduction": true,
+   "cohabitingHouseValue": 600000000
+  },
+  "정답": {
+   "과세표준": 755000000,
+   "산출세액": 166500000,
+   "신고세액공제": 16650000,
+   "납부세액": 149850000
+  }
+ },
+ {
+  "이름": "[2부-12 옛판] 상속 30억·가업 5억(6년) 2006-06-01 — 가업상속공제 1억 한도(§18②1호 2005판)",
+  "도구": "calculate_inheritance_tax",
+  "입력": {
+   "hasSpouse": false,
+   "funeralCostAmount": 0,
+   "netFinancialAssets": 0,
+   "filingStatus": "reported",
+   "childCount": 1,
+   "taxableEstateAmount": 3000000000,
+   "dateOfDeath": "2006-06-01",
+   "businessOwnershipYears": 6,
+   "businessInheritanceIndividualNetAssetValue": 500000000
+  },
+  "정답": {
+   "과세표준": 2395000000,
+   "산출세액": 798000000,
+   "신고세액공제": 79800000,
+   "납부세액": 718200000
+  }
+ },
+ {
+  "이름": "[2부-12 옛판] 상속 100억·가업 50억(16년) 2008-06-01 — 20% 10억(30억 한도)",
+  "도구": "calculate_inheritance_tax",
+  "입력": {
+   "hasSpouse": false,
+   "funeralCostAmount": 0,
+   "netFinancialAssets": 0,
+   "filingStatus": "reported",
+   "childCount": 1,
+   "taxableEstateAmount": 10000000000,
+   "dateOfDeath": "2008-06-01",
+   "businessOwnershipYears": 16,
+   "businessInheritanceIndividualNetAssetValue": 5000000000
+  },
+  "정답": {
+   "과세표준": 8495000000,
+   "산출세액": 3787500000,
+   "신고세액공제": 378750000,
+   "납부세액": 3408750000
+  }
+ },
+ {
+  "이름": "[2부-12 옛판] 상속 30억·가업 5억(16년) 2008-06-01 — 20% 1억보다 나목 2억이 커서 2억",
+  "도구": "calculate_inheritance_tax",
+  "입력": {
+   "hasSpouse": false,
+   "funeralCostAmount": 0,
+   "netFinancialAssets": 0,
+   "filingStatus": "reported",
+   "childCount": 1,
+   "taxableEstateAmount": 3000000000,
+   "dateOfDeath": "2008-06-01",
+   "businessOwnershipYears": 16,
+   "businessInheritanceIndividualNetAssetValue": 500000000
+  },
+  "정답": {
+   "과세표준": 2295000000,
+   "산출세액": 758000000,
+   "신고세액공제": 75800000,
+   "납부세액": 682200000
+  }
+ },
+ {
+  "이름": "[2부-12 옛판] 상속 300억·가업 200억(12년) 2010-06-01 — 40% 80억이 10년 한도 60억에 걸림",
+  "도구": "calculate_inheritance_tax",
+  "입력": {
+   "hasSpouse": false,
+   "funeralCostAmount": 0,
+   "netFinancialAssets": 0,
+   "filingStatus": "reported",
+   "childCount": 1,
+   "taxableEstateAmount": 30000000000,
+   "dateOfDeath": "2010-06-01",
+   "businessOwnershipYears": 12,
+   "businessInheritanceIndividualNetAssetValue": 20000000000
+  },
+  "정답": {
+   "과세표준": 23495000000,
+   "산출세액": 11287500000
+  }
+ },
+ {
+  "이름": "[2부-12 옛판] 상속 300억·가업 200억(20년) 2012-06-01 — 70% 140억(20년 한도 300억 안)",
+  "도구": "calculate_inheritance_tax",
+  "입력": {
+   "hasSpouse": false,
+   "funeralCostAmount": 0,
+   "netFinancialAssets": 0,
+   "filingStatus": "reported",
+   "childCount": 1,
+   "taxableEstateAmount": 30000000000,
+   "dateOfDeath": "2012-06-01",
+   "businessOwnershipYears": 20,
+   "businessInheritanceIndividualNetAssetValue": 20000000000
+  },
+  "정답": {
+   "과세표준": 15495000000,
+   "산출세액": 7287500000
+  }
+ },
+ {
+  "이름": "[2부-12 옛판] 상속 30억·영농 5억 2010-06-01 — 영농상속공제 2억 한도(2005~2011)",
+  "도구": "calculate_inheritance_tax",
+  "입력": {
+   "hasSpouse": false,
+   "funeralCostAmount": 0,
+   "netFinancialAssets": 0,
+   "filingStatus": "reported",
+   "childCount": 1,
+   "taxableEstateAmount": 3000000000,
+   "dateOfDeath": "2010-06-01",
+   "farmingIndividualAssetValue": 500000000
+  },
+  "정답": {
+   "과세표준": 2295000000,
+   "산출세액": 758000000
+  }
+ },
+ {
+  "이름": "[2부-12 옛판] 상속 30억·영농 10억 2013-06-01 — 5억 한도(2012~2015)",
+  "도구": "calculate_inheritance_tax",
+  "입력": {
+   "hasSpouse": false,
+   "funeralCostAmount": 0,
+   "netFinancialAssets": 0,
+   "filingStatus": "reported",
+   "childCount": 1,
+   "taxableEstateAmount": 3000000000,
+   "dateOfDeath": "2013-06-01",
+   "farmingIndividualAssetValue": 1000000000
+  },
+  "정답": {
+   "과세표준": 1995000000,
+   "산출세액": 638000000,
+   "신고세액공제": 63800000,
+   "납부세액": 574200000
+  }
+ },
+ {
+  "이름": "[2부-12 §24] 상속 4억(사전증여 1억·과표 7천 포함) 2015-06-01 — 2016년 전은 5억 이하여도 사전증여 과표를 공제한도에서 뺌",
+  "도구": "calculate_inheritance_tax",
+  "입력": {
+   "hasSpouse": false,
+   "funeralCostAmount": 0,
+   "netFinancialAssets": 0,
+   "filingStatus": "reported",
+   "childCount": 1,
+   "taxableEstateAmount": 400000000,
+   "dateOfDeath": "2015-06-01",
+   "priorGiftHeirs": [
+    {
+     "priorGiftAmount": 100000000,
+     "priorGiftTaxableBase": 70000000,
+     "priorGiftTaxPaid": 7000000
+    }
+   ]
+  },
+  "정답": {
+   "과세표준": 70000000,
+   "산출세액": 7000000
+  }
+ },
+ {
+  "이름": "[2부-12 §24 대조] 같은 상속 2016-06-01 — 과세가액 5억 이하라 사전증여 과표 안 빼고 증여세액공제도 없음",
+  "도구": "calculate_inheritance_tax",
+  "입력": {
+   "hasSpouse": false,
+   "funeralCostAmount": 0,
+   "netFinancialAssets": 0,
+   "filingStatus": "reported",
+   "childCount": 1,
+   "taxableEstateAmount": 400000000,
+   "dateOfDeath": "2016-06-01",
+   "priorGiftHeirs": [
+    {
+     "priorGiftAmount": 100000000,
+     "priorGiftTaxableBase": 70000000,
+     "priorGiftTaxPaid": 7000000
+    }
+   ]
+  },
+  "정답": {
+   "과세표준": 0,
+   "산출세액": 0
+  }
+ },
+ {
+  "이름": "[2부-11 옛판] 성년 자녀 1억 2006-06-01 증여 — 직계존속 공제 3천만, 신고세액공제 10%",
+  "도구": "calculate_gift_tax",
+  "입력": {
+   "filingStatus": "reported",
+   "relation": "직계존속",
+   "giftAmount": 100000000,
+   "giftDate": "2006-06-01"
+  },
+  "정답": {
+   "과세표준": 70000000,
+   "신고세액공제": 700000,
+   "납부세액": 6300000,
+   "산출세액_할증후": 7000000
+  }
+ },
+ {
+  "이름": "[2부-11 옛판] 배우자 5억 2006-06-01 증여 — 배우자 공제 3억(2008년 전)",
+  "도구": "calculate_gift_tax",
+  "입력": {
+   "filingStatus": "reported",
+   "relation": "배우자",
+   "giftAmount": 500000000,
+   "giftDate": "2006-06-01"
+  },
+  "정답": {
+   "과세표준": 200000000,
+   "신고세액공제": 3000000,
+   "납부세액": 27000000,
+   "산출세액_할증후": 30000000
+  }
  }
 ]
