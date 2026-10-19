@@ -4826,7 +4826,7 @@ function reftableReviewSet_(body) {
   } finally { lock.releaseLock(); }
 }
 
-// [2026.10.19] 조문 조회 — 1순위 법령 정비본(드라이브 0 NETAX/업무관리자/법령정비본, tools/law-build.js) + 산식 보정, 법제처는 개정 확인·정비본에 없는 법령/옛 판. 설계 netax-inventory/maps/설계_법령원본.md
+// [2026.10.19] 조문 조회 — 1순위 법령 정비본(드라이브 0 NETAX/업무관리자/법령/_본문, tools/law-build.js) + 산식 보정, 법제처는 개정 확인·정비본에 없는 법령/옛 판. 설계 netax-inventory/maps/설계_법령원본.md
 function lawDbIdx_() {
   var c = CacheService.getScriptCache(), s = c.get('lawdb_idx2');
   if (s) return JSON.parse(s);
