@@ -61,6 +61,8 @@ function caseProcAiSpots_(body) {
   try { spots = spots.concat(caseProcAiVarSpots_('docs_read', { docTypes: ev.docTypes || [] }, caseId)); } catch (e) {}
   const byId = {}; items.forEach(function (it) { byId[it.id] = it; });
   const gas = spots.filter(function (s) { return CASEPROC_AI_GAS_SPOTS_[s.이유]; });
+  // [밤샘 1바퀴] 입수 구멍 — 종류는 이름·첫머리 글로 아는데 서류 규칙이 값을 못 뽑은 서류(종류별 수) · 참고자료(입력 아님)
+  const inGap = {}; gas.forEach(function (s) { if (s.이유 === '이름으로 종류 앎') inGap[s.종류] = (inGap[s.종류] || 0) + 1; else if (s.이유 === '참고자료') inGap['(참고·발생문서 — 입력 아님) ' + s.종류] = (inGap['(참고·발생문서 — 입력 아님) ' + s.종류] || 0) + 1; });
   const ask = spots.filter(function (s) { return s.이유 === '빈 칸'; });
   // [세 겹 ①] 길 나누기 — GAS·2번 교차검증이 이미 정한 것은 빼고, 남은 판단 자리를 주제 표로 저비용/총괄에
   const tiers = { GAS: 0, 저비용: 0, 올림: 0, 총괄: 0, 질문: ask.length };
@@ -98,7 +100,7 @@ function caseProcAiSpots_(body) {
     caseProcAiAttachLine_(c),
     '비용 상한 ' + caseProcAiCap_(c).toLocaleString('ko-KR') + '원, 바퀴 상한 ' + CASEPROC_AI_MAX_ROUNDS_ + '. calc_fill부터 불러 지금 칸과 질문을 본 뒤 판단하라.'
   ].join('\n');
-  return { ok: true, ai: lead.length, ask: ask.length, gas: gas.length, byWhy: by, level: level, cap: caseProcAiCap_(c), need: lead.length > 0, tiers: tiers, plan: plan, lightApplied: lightApplied, lightOff: lp.off, lightUsd: lp.usd, lightError: lp.error || '',
+  return { ok: true, ai: lead.length, ask: ask.length, gas: gas.length, byWhy: by, level: level, cap: caseProcAiCap_(c), need: lead.length > 0, tiers: tiers, plan: plan, inGap: inGap, lightApplied: lightApplied, lightOff: lp.off, lightUsd: lp.usd, lightError: lp.error || '',
     lightDone: lp.done.map(function (r) { return { 자리: r.자리, topic: r.topic, answer: caseProcAiMask_(r.answer), why: caseProcAiMask_(r.why), applied: !!r.applied }; }),
     spots: lead.map(function (s) { return { 자리: s.자리, 이유: s.이유, 주제: s.topic || '', 겹: s.tier, 수준: caseProcAiSpotLevel_(s), 설명: caseProcAiCut_(s.설명 || '', 120) }; }), entry: caseProcAiMask_(entry) };
 }

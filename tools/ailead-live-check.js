@@ -37,7 +37,7 @@ function __lc(caseId) {
     res.missing = (ov.needs && ov.needs.missing) || [];
     if (typeof caseProcAiSpots_ === 'function') {
       var sp = caseProcAiSpots_({ caseId: caseId, ov: { items: ov.items || [], needs: ov.needs || null }, ev: { docTypes: ev.docTypes || [] } });
-      res.spots = { ai: sp.ai, ask: sp.ask, gas: sp.gas, level: sp.level, cap: sp.cap, need: sp.need, byWhy: sp.byWhy, tiers: sp.tiers, plan: sp.plan, list: (sp.spots || []).map(function (s) { return s.자리 + '|' + s.이유 + '|' + s.수준; }), entryLen: (sp.entry || '').length };
+      res.spots = { ai: sp.ai, ask: sp.ask, gas: sp.gas, level: sp.level, cap: sp.cap, need: sp.need, byWhy: sp.byWhy, tiers: sp.tiers, plan: sp.plan, inGap: sp.inGap, list: (sp.spots || []).map(function (s) { return s.자리 + '|' + s.이유 + '|' + s.수준 + '|' + (s.주제 || '') + '|' + String(s.설명 || '').slice(0, 80); }), entryLen: (sp.entry || '').length };
     }
   }, null);
   return JSON.stringify(res);
