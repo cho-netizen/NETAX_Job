@@ -35,7 +35,7 @@ const HISTORY_ON = argv.indexOf('--no-history') === -1; // 2026-10-19부터 엔�
 cur.__NX_REF_HISTORY_ON = HISTORY_ON;
 try { base = load(cp.execSync('git show ' + baseRef + ':' + ENGINE, { cwd: ROOT, maxBuffer: 64 * 1024 * 1024 }).toString('utf8')); } catch (e) { console.error('기준 판(' + baseRef + ') 엔진을 못 불러옴: ' + e.message); process.exit(2); }
 
-const run = (eng, c) => { const fn = eng[FN[c.도구] || c.도구]; if (typeof fn !== 'function') return { 오류: '엔진에 함수 없음: ' + c.도구 }; try { return fn(JSON.parse(JSON.stringify(c.입력))) || {}; } catch (e) { return { 오류: e.message }; } };
+const run = (eng, c) => { const fn = eng[FN[c.도구] || c.도구]; if (typeof fn !== 'function') return { 오류: '엔진에 함수 없음: ' + c.도구 }; try { return (Array.isArray(c.인자) ? fn.apply(null, JSON.parse(JSON.stringify(c.인자))) : fn(JSON.parse(JSON.stringify(c.입력)))) || {}; } /* [2026.10.20] 인자: 여러 인자(합산 계산의 거래 목록·신고 입력) */ catch (e) { return { 오류: e.message }; } };
 const won = (v) => (typeof v === 'number' ? v.toLocaleString('ko-KR') : v === undefined ? '—' : String(v));
 let bad = 0, changed = 0, total = 0;
 const L = ['# 엔진 회귀 시험 — 기준 ' + baseRef + ' ↔ 지금 판' + (HISTORY_ON ? '' : '(지금 판 연혁 끔)'), ''];

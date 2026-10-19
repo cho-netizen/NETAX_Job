@@ -790,6 +790,35 @@
     const end = new Date(Date.UTC(y, m + add, 0)); // 그 달 말일 + add개월의 말일
     return addDaysStr_(shiftTaxDeadline_(end.toISOString().slice(0, 10)), 1);
   }
+  // [2026.10.20 J23 — AI 회의 회장 결론] 양도소득세 납부지연가산세 1일분을 몫별 기산일로 — 국세기본법 §47의4①(예정신고납부 포함)·⑤(예정분에
+  //  부과된 몫은 확정신고 때 다시 안 붙임), 소득세법 §105①1호·§106(예정신고·납부 = 양도일이 속한 달 말일부터 2개월), 조심2014중1323.
+  //  ① 자산마다 예정신고분(그 자산만 계산한 산출세액 − 예정 때 낸 몫)은 그 자산의 예정신고기한 다음 날부터 ② 확정신고로 늘어난 몫(합산 산출세액 −
+  //  예정분 합계)만 확정신고기한(다음해 5.31.) 다음 날부터 ③ 2009.12.31. 이전 양도는 예정 미납 가산세가 없어 확정신고기한부터.
+  //  예정 때 낸 세액(preliminaryTaxPaid)을 안 넣으면 신고상태로: 정상 신고 = 예정분은 냈다고 봄, 무신고 = 안 냄, 과소신고 = 과소분을 예정분 비율로.
+  //  기한은 shiftTaxDeadline_(토·일·공휴일 미룸), 날수는 납부일 2026.7.1. 이후면 '납부일의 전날까지'(법률 제21212호), 율은 기간별(2부-16).
+  //  부담부증여 채무분(§105①3호 3개월)·토지거래허가 허가일 기준(§105①1호 단서)은 입력 칸이 없어 양도월 기준 — 확인 필요.
+  function transferLateDaily_(portions, paidDate) {
+    const pay = String(paidDate || '').slice(0, 10);
+    const out = { total: 0, rows: [] };
+    portions.forEach(function (p) {
+      if (!(p.base > 0)) return;
+      const start = addDaysStr_(shiftTaxDeadline_(p.deadline), 1);
+      const end = addDaysStr_(pay, pay >= '2026-07-01' ? -1 : 0);
+      if (!(end >= start)) { out.rows.push({ 몫: p.label, 세액: p.base, 기한: shiftTaxDeadline_(p.deadline), 일수: 0, 가산세: 0 }); return; }
+      const segs = splitByHistory_(start, end, DAILY_FIXED_RATE_HISTORY_);
+      const days = segs.reduce(function (s, g) { return s + g.days; }, 0);
+      const amt = Math.round(segs.reduce(function (s, g) { return s + p.base * g.days * (refHistoryOn_() ? g.rate : 0.00022); }, 0));
+      out.total += amt;
+      out.rows.push({ 몫: p.label, 세액: p.base, 기한: shiftTaxDeadline_(p.deadline), 기산일: start, 일수: days, 가산세: amt });
+    });
+    return out;
+  }
+  function prelimDeadline_(transferDate) {
+    const d = String(transferDate || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';
+    const end = new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) + 2, 0));
+    return end.toISOString().slice(0, 10);
+  }
   // [2026.10.19 조견표 1부-02·2부-17] 국세기본법 §5① — 신고·납부기한 끝날이 토요일·일요일, 공휴일·대체공휴일(임시공휴일·선거일 포함),
   //  5월 1일(근로자의 날 → 2025.11.11.부터 노동절)이면 그다음 날이 기한. 토·일·5.1.은 늘 미루고, 공휴일은 화면(app)에 조견표 1부-02가
   //  있을 때(연혁 스위치 켜짐)만 표로 미룬다 — 서버·시험 도구엔 표가 없어 토·일·5.1.만. 화면은 window.nxShiftTaxDeadline_로 같은 규칙을 쓴다.
@@ -1873,10 +1902,25 @@
 
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(t.filingStatus) !== -1 ? t.filingStatus : 'ontime';
     const penalties = giftFilingPenalties(calculatedTax, filingStatus, !!t.isFraudulent, t.underreportedTaxAmount, t.unpaidDays, Number(t.unpaidTaxForLatePenalty), !!t.isOffshoreTransaction, lateCtx_(t), Number(t.unpaidTaxAtDesignatedDueDate), t.fraudulentUnderreportedTaxAmount, t.unpaidStartDate || unpaidStartAt_('transfer', t.transferDate));
+    // [2026.10.20 J23] 실제 납부일(t.paidDate)이 있으면 1일분을 이 자산의 예정신고기한(2010년 이후 양도) 다음 날부터 — 확정 추가분 몫은 합산 계산에서
+    let lateSplitS_ = null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(t.paidDate || '').slice(0, 10)) && t.transferDate) {
+      const ov_ = String(t.lateStartOverride || '').slice(0, 10);
+      const pre_ = String(t.transferDate) >= '2010-01-01';
+      const hasPaid_ = t.preliminaryTaxPaid !== undefined && t.preliminaryTaxPaid !== null && t.preliminaryTaxPaid !== '' && isFinite(Number(t.preliminaryTaxPaid));
+      const paid_ = hasPaid_ ? Math.max(0, Number(t.preliminaryTaxPaid)) : (filingStatus === 'ontime' ? calculatedTax : (filingStatus === 'underreported' ? Math.max(0, calculatedTax - (Number(t.underreportedTaxAmount) || 0)) : 0));
+      const portions_ = /^\d{4}-\d{2}-\d{2}$/.test(ov_) ? [{ label: '직접 입력한 기산일부터', base: calculatedTax, deadline: addDaysStr_(ov_, -1) }]
+        : [{ label: pre_ ? '예정신고분' : '2010년 전 양도 — 확정신고분', base: Math.max(0, calculatedTax - paid_), deadline: pre_ ? prelimDeadline_(t.transferDate) : (Number(String(t.transferDate).slice(0, 4)) + 1) + '-05-31' }];
+      lateSplitS_ = transferLateDaily_(portions_, t.paidDate);
+      const old_ = penalties.납부지연가산세_상세 ? Number(penalties.납부지연가산세_상세.사전이자분_1호) || 0 : 0;
+      penalties.latePenalty = Math.max(0, penalties.latePenalty - old_ + lateSplitS_.total);
+      if (penalties.납부지연가산세_상세) penalties.납부지연가산세_상세.사전이자분_1호 = lateSplitS_.total;
+    }
     const localIncomeTax = Math.round(calculatedTax * 0.1);
     const totalTax = Math.max(0, calculatedTax - pensionAccountCredit - eFilingCredit + core.conversionValuePenalty
       + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax + pensionAccountClawback);
     return {
+      납부지연가산세_몫별: lateSplitS_ ? lateSplitS_.rows : undefined, // [2026.10.20 J23]
       입력값: { 양도가액: core.transferPrice, 취득가액: core.acquisitionPrice, 필요경비: core.necessaryExpenses, 보유기간_년: core.holdingYears },
       취득가액_산정방법: core.acquisitionPriceMethodNote || undefined,
       조합원입주권_재건축상세: core.reconstructionDetail,
@@ -2611,6 +2655,39 @@
     const eFilingCredit = filingParams.isSelfElectronicFiling ? Math.min(20000, Math.max(0, totalCalculatedTax - pensionAccountCreditTotal)) : 0;
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(filingParams.filingStatus) !== -1 ? filingParams.filingStatus : 'ontime';
     const penalties = giftFilingPenalties(totalCalculatedTax, filingStatus, !!filingParams.isFraudulent, filingParams.underreportedTaxAmount, filingParams.unpaidDays, Number(filingParams.unpaidTaxForLatePenalty), !!filingParams.isOffshoreTransaction, lateCtx_(filingParams), Number(filingParams.unpaidTaxAtDesignatedDueDate), filingParams.fraudulentUnderreportedTaxAmount, filingParams.unpaidStartDate || unpaidStartAt_('transfer', poolDate_));
+    // [2026.10.20 J23] 실제 납부일(filingParams.paidDate)이 있으면 1일분 납부지연가산세를 예정분·확정 추가분 기산일로 나눠 다시 계산(transferLateDaily_)
+    let lateSplit_ = null;
+    const payD_ = String(filingParams.paidDate || '').slice(0, 10);
+    if (!filingParams._ntInner && /^\d{4}-\d{2}-\d{2}$/.test(payD_) && poolDate_) {
+      const confirmDeadline_ = (Number(poolDate_.slice(0, 4)) + 1) + '-05-31';
+      const override_ = String(filingParams.lateStartOverride || '').slice(0, 10);
+      let portions_ = [];
+      if (/^\d{4}-\d{2}-\d{2}$/.test(override_)) {
+        portions_.push({ label: '직접 입력한 기산일부터 전체', base: totalCalculatedTax, deadline: addDaysStr_(override_, -1) });
+      } else {
+        const pre_ = transactions.map(function (t0, k) {
+          const c = cores[k];
+          if (!c || c.exempt || !t0 || String(t0.transferDate || '') < '2010-01-01') return null;
+          const one = window.calculateTransferTaxSingleJS(Object.assign({}, t0, { filingStatus: 'ontime', unpaidDays: 0 }));
+          const tax = one && !one.error ? Math.max(0, Number(one.산출세액) || 0) : 0;
+          return tax > 0 ? { k: k, tax: tax, deadline: prelimDeadline_(t0.transferDate), date: t0.transferDate } : null;
+        }).filter(Boolean);
+        const preSum_ = pre_.reduce(function (s, x) { return s + x.tax; }, 0);
+        const paidIn_ = filingParams.preliminaryTaxPaid;
+        const hasPaid_ = paidIn_ !== undefined && paidIn_ !== null && paidIn_ !== '' && isFinite(Number(paidIn_));
+        let paidLeft_ = hasPaid_ ? Math.max(0, Number(paidIn_)) : (filingStatus === 'ontime' ? preSum_ : (filingStatus === 'underreported' ? Math.max(0, preSum_ - (Number(filingParams.underreportedTaxAmount) || 0)) : 0));
+        pre_.slice().sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); }).forEach(function (x) {
+          const paid = Math.min(paidLeft_, x.tax); paidLeft_ -= paid;
+          portions_.push({ label: '예정신고분(' + (txLabels_ && txLabels_[x.k] || ('거래 ' + (x.k + 1))) + ', 양도 ' + x.date + ')', base: x.tax - paid, deadline: x.deadline });
+        });
+        portions_.push({ label: '확정신고로 늘어난 몫(합산 산출세액 − 예정분 합계)', base: Math.max(0, totalCalculatedTax - preSum_), deadline: confirmDeadline_ });
+        // 2010년 전 양도분은 예정 미납 가산세가 없어 확정 몫에 들어가 있다(pre_에서 뺐으므로 위 차액에 포함)
+      }
+      lateSplit_ = transferLateDaily_(portions_, payD_);
+      const old_ = penalties.납부지연가산세_상세 ? Number(penalties.납부지연가산세_상세.사전이자분_1호) || 0 : 0;
+      penalties.latePenalty = Math.max(0, penalties.latePenalty - old_ + lateSplit_.total);
+      if (penalties.납부지연가산세_상세) penalties.납부지연가산세_상세.사전이자분_1호 = lateSplit_.total;
+    }
     // [2026.10.20 J21] 농어촌특별세 — ① 세액감면(§90①) 분: 감면마다 nongteukExemptReason_로 가르고 과세분 감면세액(만기특약 위반 추징은 뺌)을 더함
     //  ② 소득금액에서 빼는 감면(§99 신축주택 계열·§98 미분양 중 §98의3·§98의5 아닌 것·§43·§97 소득금액 방식): 농특세법 시행령 §5② —
     //     "비과세소득·소득공제액을 과세표준에 산입하여 계산한 세액 − 제외하고 계산한 세액" → 그 감면을 빼고 다시 계산한 산출세액과의 차이.
@@ -2669,13 +2746,14 @@
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       지방소득세: localIncomeTax, 납부세액_합계: grandTotal,
       // [2026.10.20 J21] 84호 ㉒~㉚ 농어촌특별세 — 양도세 납부세액_합계(양도세+지방소득세)에는 넣지 않고 따로(서식도 칸이 따로)
+      납부지연가산세_몫별: lateSplit_ ? lateSplit_.rows : undefined, // [2026.10.20 J23] 예정분·확정 추가분 기산일별
       농어촌특별세_과세표준: ntBase_, 농어촌특별세: nongteukTax_, 농어촌특별세_내역: ntRows_.length ? ntRows_ : undefined, 납부세액_합계_농특세포함: grandTotal + nongteukTax_,
       자산별_내역: assetNotes,
       거래번호표시: txLabels_, // [2026.10.19] 자산별_내역의 idx → 표시이름(환지 증가분이 맨 뒤에 붙음)
       환지분리_안내: replotAppend_.length ? transactions.filter(function (t) { return t._환지분리; }).map(function (t) { return t._환지분리; }) : undefined,
       양도차손_통산_적용여부: lossNettingApplied_,
       양도차손_통산_내역: lossNettingApplied_ ? lossNettingDetail_ : undefined,
-      안내: '2년 이상 보유·특례 없는(또는 다주택중과·비사업용토지만 해당하는) 거래는 소득금액을 합산해 기본공제(250만원, 전체 1회)와 누진세율을 함께 적용했습니다. 단기양도(2년 미만)·미등기양도는 합산 누진세 대상이 아니라 건별로 따로 계산해 더했습니다. 다주택중과·비사업용토지 가산액과 8년자경농지 감면액은 자산별 소득금액 비중으로 계산한 근사치이니, 특례가 여러 건 섞인 복잡한 합산은 결과를 참고용으로만 쓰고 반드시 재검토하세요. 신고불성실·납부지연가산세는 전체 확정신고 기준(산출세액 합계)으로 한 번만 계산했습니다.' + (lossNettingApplied_ ? ' 일부 자산에서 발생한 양도차손은 소득세법§102②·시행령§167의2에 따라 같은 세율 자산의 소득금액에서 먼저, 남으면 다른 세율 자산들의 소득금액에 안분하여 공제했습니다(자산별_내역의 "양도차손통산후소득금액" 참고, 당해연도에 못 턴 손실은 이월되지 않고 소멸).' : '')
+      안내: '2년 이상 보유·특례 없는(또는 다주택중과·비사업용토지만 해당하는) 거래는 소득금액을 합산해 기본공제(250만원, 전체 1회)와 누진세율을 함께 적용했습니다. 단기양도(2년 미만)·미등기양도는 합산 누진세 대상이 아니라 건별로 따로 계산해 더했습니다. 다주택중과·비사업용토지 가산액과 8년자경농지 감면액은 자산별 소득금액 비중으로 계산한 근사치이니, 특례가 여러 건 섞인 복잡한 합산은 결과를 참고용으로만 쓰고 반드시 재검토하세요. 신고불성실가산세는 전체 확정신고 기준(산출세액 합계)으로 한 번만 계산했고, 납부지연가산세는 실제 납부일이 있으면 예정신고분(그 자산 예정신고기한)·확정신고로 늘어난 몫(확정신고기한)으로 기산일을 나눠 계산했습니다(국세기본법 §47의4①⑤).' + (lossNettingApplied_ ? ' 일부 자산에서 발생한 양도차손은 소득세법§102②·시행령§167의2에 따라 같은 세율 자산의 소득금액에서 먼저, 남으면 다른 세율 자산들의 소득금액에 안분하여 공제했습니다(자산별_내역의 "양도차손통산후소득금액" 참고, 당해연도에 못 턴 손실은 이월되지 않고 소멸).' : '')
     };
   };
 

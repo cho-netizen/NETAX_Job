@@ -685,5 +685,95 @@
    "농어촌특별세_과세표준": 62200000,
    "농어촌특별세": 12440000
   }
+ },
+ {
+  "이름": "[J23] 무신고 두 자산 2026-08-10 납부 — 예정분 각 예정신고기한(6.2.·10.31.), 확정 추가분 6.1. 다음 날부터: 6,697,731 + 3,536,900 + 360,373",
+  "도구": "calculateTransferTaxMultiJS",
+  "입력": [
+   {
+    "assetType": "land",
+    "transferDate": "2025-03-15",
+    "acquisitionDate": "2015-01-01",
+    "transferPrice": 500000000,
+    "acquisitionPrice": 200000000
+   },
+   {
+    "assetType": "land",
+    "transferDate": "2025-08-20",
+    "acquisitionDate": "2016-01-01",
+    "transferPrice": 400000000,
+    "acquisitionPrice": 150000000
+   }
+  ],
+  "정답": {
+   "납부지연가산세": 10595004
+  },
+  "인자": [
+   [
+    {
+     "assetType": "land",
+     "transferDate": "2025-03-15",
+     "acquisitionDate": "2015-01-01",
+     "transferPrice": 500000000,
+     "acquisitionPrice": 200000000
+    },
+    {
+     "assetType": "land",
+     "transferDate": "2025-08-20",
+     "acquisitionDate": "2016-01-01",
+     "transferPrice": 400000000,
+     "acquisitionPrice": 150000000
+    }
+   ],
+   {
+    "filingStatus": "unreported",
+    "paidDate": "2026-08-10"
+   }
+  ]
+ },
+ {
+  "이름": "[J23] 정상 신고·확정 5.31.(일) → 6.1. 기한, 6.30. 납부 — 확정 추가분 23,740,000 × 29일",
+  "도구": "calculateTransferTaxMultiJS",
+  "입력": [
+   {
+    "assetType": "land",
+    "transferDate": "2025-03-15",
+    "acquisitionDate": "2015-01-01",
+    "transferPrice": 500000000,
+    "acquisitionPrice": 200000000
+   },
+   {
+    "assetType": "land",
+    "transferDate": "2025-08-20",
+    "acquisitionDate": "2016-01-01",
+    "transferPrice": 400000000,
+    "acquisitionPrice": 150000000
+   }
+  ],
+  "정답": {
+   "납부지연가산세": 151461
+  },
+  "인자": [
+   [
+    {
+     "assetType": "land",
+     "transferDate": "2025-03-15",
+     "acquisitionDate": "2015-01-01",
+     "transferPrice": 500000000,
+     "acquisitionPrice": 200000000
+    },
+    {
+     "assetType": "land",
+     "transferDate": "2025-08-20",
+     "acquisitionDate": "2016-01-01",
+     "transferPrice": 400000000,
+     "acquisitionPrice": 150000000
+    }
+   ],
+   {
+    "filingStatus": "ontime",
+    "paidDate": "2026-06-30"
+   }
+  ]
  }
 ]

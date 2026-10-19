@@ -233,6 +233,8 @@ function taxCalcDaysLate_(deadline, paidDateStr){
   if (days > 0 && String(paidDateStr) >= '2026-07-01') days -= 1;
   return days > 0 ? days : 0;
 }
+// [2026.10.20 J23] '예정신고 때 낸 세액' — 비우면 '' 그대로(엔진이 신고상태로 판단), 숫자면 숫자
+function tcPrelimPaid_(v){ return (v === undefined || v === null || String(v).trim() === '') ? '' : (numVal(v) || 0); }
 function setUnpaidDaysField_(fieldId, days){
   const el = document.getElementById(fieldId);
   if (!el) return;
@@ -6075,7 +6077,10 @@ function renderSellerRegistry(){
         '<div class="taxcalc-field checkbox"><input type="checkbox" data-slfield="isFraudulent"' + idOf('trFraudulent') + (s.isFraudulent ? ' checked' : '') + '><label>부정행위(가산세율 40%로 상향)</label></div>' +
         '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" data-slfield="underreportedTax"' + idOf('trUnderreportedTax') + ' placeholder="원" value="' + (s.underreportedTax || '') + '"></div>' +
         '<div class="taxcalc-field"><label>실제 납부일</label><input type="date" data-slfield="paidDate" id="trPaidDate' + suf + '" value="' + (s.paidDate || '') + '" min="1900-01-01" max="2099-12-31"></div>' +
-        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="trUnpaidDays' + suf + '" placeholder="0" value="' + (s.unpaidDays || '') + '" readonly><span class="taxcalc-field-help">확정신고기한 다음해 5.31 대비</span></div>' +
+        '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="trUnpaidDays' + suf + '" placeholder="0" value="' + (s.unpaidDays || '') + '" readonly><span class="taxcalc-field-help">확정신고기한 다음해 5.31 대비(참고) — 실제 납부일이 있으면 계산은 예정신고분·확정 추가분으로 나눠 함(결과의 몫별 표)</span></div>' +
+        // [2026.10.20 J23] 예정신고분 납부지연 기산일(국세기본법 §47의4①·⑤, 소득세법 §105·§106) — 예정 때 낸 세액·예외용 기산일 직접 입력
+        '<div class="taxcalc-field"><label>예정신고 때 낸 세액(원)</label><input type="number" data-slfield="preliminaryTaxPaid" placeholder="비우면 신고상태로 판단" value="' + (s.preliminaryTaxPaid != null ? s.preliminaryTaxPaid : '') + '"><span class="taxcalc-field-help">이 양도인의 예정신고 때 실제 낸 양도세 합계. 비우면 정상 신고 = 예정분은 냄, 무신고 = 안 냄, 과소신고 = 과소분만큼 덜 냄으로 봄. 안 낸 예정분은 그 자산의 예정신고기한(양도월 말일+2개월) 다음 날부터 가산세(2010년 이후 양도)</span></div>' +
+        '<div class="taxcalc-field"><label>납부지연 기산일 직접 입력(예외)</label><input type="date" data-slfield="lateStartOverride" value="' + (s.lateStartOverride || '') + '" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">수정신고 뒤 등 몫별 자동 기산일이 맞지 않을 때만 — 넣으면 전체 세액을 이 날부터 셈</span></div>' +
         '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" data-slfield="monthsAfterDesignated"' + idOf('trMonthsAfterDesignated') + ' placeholder="0" value="' + (s.monthsAfterDesignated || '') + '"></div>' +
         tcDesigDueField_('data-slfield="designatedDueDate"' + idOf('trDesignatedDueDate'), s.designatedDueDate) +
         '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" data-slfield="unpaidAtDesignated"' + idOf('trUnpaidAtDesignated') + ' placeholder="0" value="' + (s.unpaidAtDesignated || '') + '"></div>' +
@@ -7130,6 +7135,8 @@ function renderOneTransferResultHtml_(r, label, sellerIdx){
   if (r.무신고가산세) html += taxCalcResultRow('무신고가산세', '+' + won(r.무신고가산세));
   if (r.과소신고가산세) html += taxCalcResultRow('과소신고가산세', '+' + won(r.과소신고가산세));
   if (r.납부지연가산세) html += taxCalcResultRow('납부지연가산세', '+' + won(r.납부지연가산세));
+  // [2026.10.20 J23] 납부지연 1일분 몫별(예정신고분은 그 자산 예정신고기한, 확정 추가분은 확정신고기한 다음 날부터)
+  (r.납부지연가산세_몫별 || []).forEach(function(x){ if (x.세액 > 0) html += '<div class="taxcalc-result-note">납부지연 — ' + escapeHtml(x.몫) + ': ' + won(x.세액) + ' × ' + (x.일수 || 0) + '일(기한 ' + escapeHtml(x.기한 || '') + ' 다음 날부터) = ' + won(x.가산세) + '</div>'; });
   html += taxCalcResultRow('지방소득세(10%)', won(r.지방소득세));
   if (r.법인전환이월과세_사후관리) html += taxCalcResultRow('법인전환 이월과세 사후관리 추징(§31·§32)', '+' + won(r.법인전환이월과세_사후관리.납부세액));
   html += taxCalcResultRow('납부세액 합계', won(r.납부세액_합계), { total: true });
@@ -16081,6 +16088,7 @@ function handleTaxCalcClick_(e){
         underreportedTaxAmount: numVal(document.getElementById('trUnderreportedTax').value) || 0,
         unpaidDays: numVal(document.getElementById('trUnpaidDays').value) || 0,
         monthsAfterDesignatedDueDate: numVal(document.getElementById('trMonthsAfterDesignated').value) || 0, designatedDueDate: (transferSellers[0] || {}).designatedDueDate || '', paidDate: (transferSellers[0] || {}).paidDate || '',
+        preliminaryTaxPaid: tcPrelimPaid_((transferSellers[0] || {}).preliminaryTaxPaid), lateStartOverride: (transferSellers[0] || {}).lateStartOverride || '', // [2026.10.20 J23]
         unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('trUnpaidAtDesignated').value) || 0,
         isSelfElectronicFiling: document.getElementById('trSelfEfiling').checked
       };
@@ -16139,6 +16147,7 @@ function handleTaxCalcClick_(e){
           filingStatus: seller.filingStatus || 'ontime', isFraudulent: !!seller.isFraudulent,
           underreportedTaxAmount: numVal(seller.underreportedTax) || 0, unpaidDays: numVal(seller.unpaidDays) || 0,
           monthsAfterDesignatedDueDate: numVal(seller.monthsAfterDesignated) || 0, designatedDueDate: seller.designatedDueDate || '', paidDate: seller.paidDate || '',
+          preliminaryTaxPaid: tcPrelimPaid_(seller.preliminaryTaxPaid), lateStartOverride: seller.lateStartOverride || '', // [2026.10.20 J23]
           unpaidTaxAtDesignatedDueDate: numVal(seller.unpaidAtDesignated) || 0,
           isSelfElectronicFiling: !!seller.isSelfElectronicFiling
         };
