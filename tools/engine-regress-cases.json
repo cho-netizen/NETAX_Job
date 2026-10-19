@@ -783,5 +783,56 @@
                               "산출세액": 250000000,
                               "납부세액": 250000000
                     }
+          },
+          {
+                    "이름": "[서식감사 차] 사업기회 정산 — 정산 산출세액 9천만에서 개시사업연도 산출세액(㉗) 6천만 빼고 3% (법 §45의4③)",
+                    "도구": "calculateBusinessOpportunityGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "phase": "settlement",
+                              "profitFromOpportunity": 1000000000,
+                              "shareholderOwnershipRatio": 50,
+                              "initialPhaseCalculatedTax": 60000000
+                    },
+                    "정답": {
+                              "과세표준": 500000000,
+                              "산출세액": 90000000,
+                              "신고세액공제": 900000,
+                              "납부세액": 29100000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 사업기회 정산 — 정산 세액이 적으면 환급(개시 때 낸 세액 한도, 법 §45의4③ 단서)",
+                    "도구": "calculateBusinessOpportunityGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "phase": "settlement",
+                              "profitFromOpportunity": 200000000,
+                              "shareholderOwnershipRatio": 50,
+                              "initialPhaseCalculatedTax": 60000000,
+                              "initialPhasePaidTax": 58200000
+                    },
+                    "정답": {
+                              "산출세액": 10000000,
+                              "납부세액": 0,
+                              "환급세액": 50000000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 사업기회 개시사업연도 — ㉗ 없음(전후 같아야 함)",
+                    "도구": "calculateBusinessOpportunityGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "phase": "initial",
+                              "profitFromOpportunity": 100000000,
+                              "shareholderOwnershipRatio": 50,
+                              "monthsInInitialYear": 12
+                    },
+                    "정답": {
+                              "과세표준": 150000000,
+                              "산출세액": 20000000,
+                              "신고세액공제": 600000,
+                              "납부세액": 19400000
+                    }
           }
 ]

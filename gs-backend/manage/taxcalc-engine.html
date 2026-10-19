@@ -3830,7 +3830,10 @@
   // flatDeduction: §55①3호("제1호 및 제2호를 제외한 합산배제증여재산: 그 증여재산가액에서 3천만원을
   // 공제한 금액") 전용 — §45(재산취득자금 증여추정)처럼 §55①1호(§45의2)·2호(§45의3·45의4)에 속하지
   // 않는 합산배제증여재산에서만 30000000을 넘겨 쓴다. 1호·2호 해당분은 기존대로 0(미지정).
-  function taxOnDeemedGiftProfit(deemedGiftProfit, filingStatus, isFraudulent, underreportedTaxAmount, unpaidDays, unpaidTaxForLatePenalty, reportedInTime, appraisalFeeAmount, isOffshoreTransaction, flatDeduction, monthsAfterDesignatedDueDate, unpaidTaxAtDesignatedDueDate, unlistedStockAppraisalFeeAmount, fraudulentUnderreportedTaxAmount) {
+  // [2026.10.19 서식감사 차] priorCalculatedTax: 정산 신고에서 앞서(개시사업연도·최초 신고) 낸 산출세액 — [별지 제10호의4서식] ㉗,
+  //  [별지 제10호의5서식] ㊱. 산출세액에서 빼고 남은 금액에만 신고세액공제 3%(법 §69②2호 "이 법에 따라 산출세액에서 공제되는
+  //  금액"을 뺀 금액의 3%)·가산세를 매기며, 음수면 환급세액(refundTax)으로 돌려준다(한도는 부르는 쪽에서). 0이면 예전과 같음.
+  function taxOnDeemedGiftProfit(deemedGiftProfit, filingStatus, isFraudulent, underreportedTaxAmount, unpaidDays, unpaidTaxForLatePenalty, reportedInTime, appraisalFeeAmount, isOffshoreTransaction, flatDeduction, monthsAfterDesignatedDueDate, unpaidTaxAtDesignatedDueDate, unlistedStockAppraisalFeeAmount, fraudulentUnderreportedTaxAmount, priorCalculatedTax) {
     // §55①1~3호 — 명의신탁재산 증여의제·§45의3·45의4 증여의제이익·기타 합산배제증여재산은 전부
     // "그 금액에서 대통령령으로 정하는 증여재산의 감정평가 수수료를 뺀 금액"이 과세표준이다(3호는 3천만원도 추가로 뺀다).
     // 시행령§46의2·§20의3③ — 일반 감정평가법인 등(1·3호) 수수료는 500만원, 비상장주식 신용평가전문기관
@@ -3838,11 +3841,14 @@
     const appraisalFeeDeduction = Math.min(Number(appraisalFeeAmount) || 0, 5000000) + Math.min(Number(unlistedStockAppraisalFeeAmount) || 0, 10000000);
     const taxBase = Math.max(0, Math.round(deemedGiftProfit) - appraisalFeeDeduction - (Number(flatDeduction) || 0));
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
-    const reportCredit = reportedInTime ? Math.round(calculatedTax * 0.03) : 0;
-    const taxAfterCredit = calculatedTax - reportCredit;
+    const priorTax = Math.max(0, Number(priorCalculatedTax) || 0);
+    const taxDue = calculatedTax - priorTax;
+    const reportCredit = reportedInTime ? Math.round(Math.max(0, taxDue) * 0.03) : 0;
+    const taxAfterCredit = Math.max(0, taxDue) - reportCredit;
     const penalties = giftFilingPenalties(taxAfterCredit, filingStatus, isFraudulent, underreportedTaxAmount, unpaidDays, unpaidTaxForLatePenalty, isOffshoreTransaction, monthsAfterDesignatedDueDate, unpaidTaxAtDesignatedDueDate, fraudulentUnderreportedTaxAmount);
     const finalTax = Math.max(0, taxAfterCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
-    return { taxBase, calculatedTax, reportCredit, penalties, finalTax };
+    const refundTax = taxDue < 0 ? -taxDue : 0;
+    return { taxBase, calculatedTax, priorTax, reportCredit, penalties, finalTax, refundTax };
   }
 
   // 일감몰아주기 증여의제 (상증세법 §45의3, [별지 제10호의3서식]) — Code.js toolCalculateRelatedPartyTransactionGiftTax와 동일 로직.
@@ -3950,13 +3956,21 @@
 
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
-    const r = taxOnDeemedGiftProfit(deemedGiftProfit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), reportedInTime, p.appraisalFeeAmount, !!p.isOffshoreTransaction, undefined, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.unlistedStockAppraisalFeeAmount, p.fraudulentUnderreportedTaxAmount);
+    // [2026.10.19 서식감사 차] 정산 신고 — 법 §45의4③ "정산증여의제이익에 대한 증여세액과 제2항에 따라 납부한 증여의제이익에
+    //  대한 증여세액과의 차액을 납부", 적으면 "그 차액에 상당하는 증여세액(제2항에 따라 납부한 세액을 한도로 한다)을 환급".
+    //  [별지 제10호의4서식] ㉛ = ㉖ − ㉗(개시사업연도 산출세액) − ㉘ + ㉙ + ㉚. 전에는 ㉗이 없어 정산 세액이 개시분만큼 많았다.
+    //  initialPhaseCalculatedTax(㉗)가 없으면(0) 예전과 같다. initialPhasePaidTax(개시 때 실제 낸 세액)는 환급 한도 — 없으면 ㉗.
+    const initialPhaseCalculatedTax = phase === 'settlement' ? Math.max(0, Number(p.initialPhaseCalculatedTax) || 0) : 0;
+    const r = taxOnDeemedGiftProfit(deemedGiftProfit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), reportedInTime, p.appraisalFeeAmount, !!p.isOffshoreTransaction, undefined, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.unlistedStockAppraisalFeeAmount, p.fraudulentUnderreportedTaxAmount, initialPhaseCalculatedTax);
+    const initialPhasePaidTax = Number(p.initialPhasePaidTax) > 0 ? Number(p.initialPhasePaidTax) : initialPhaseCalculatedTax;
+    const refundTax = Math.min(r.refundTax, initialPhasePaidTax);
 
     return {
       과세대상여부: true,
       증여의제이익: deemedGiftProfit,
-      과세표준: r.taxBase, 산출세액: r.calculatedTax, 신고세액공제: r.reportCredit,
+      과세표준: r.taxBase, 산출세액: r.calculatedTax, 개시사업연도_산출세액: initialPhaseCalculatedTax, 신고세액공제: r.reportCredit,
       무신고가산세: r.penalties.unreportedPenalty, 과소신고가산세: r.penalties.underreportedPenalty, 납부지연가산세: r.penalties.latePenalty,
+      환급세액: refundTax,
       안내: (phase === 'initial'
         ? '개시사업연도 신고는 잠정치입니다 — 2년 경과 후 정산사업연도에 재계산·정산신고해야 합니다. '
         : '') + '증여재산공제는 적용되지 않습니다(증여의제이익 전액이 과세표준). 지배주주 판정은 다자간 지분구조 확인이 필요해 이 도구가 자동판정하지 않으니 별도로 확인하세요. 법인세 납부세액 중 상당액은 corporateTaxAfterCredit·corporateTaxableIncome을 넣으면 시행령§34의4④ 산식대로 자동계산되니(수혜법인의 실제 법인세 신고서상 값을 정확히 넣었는지만 확인하면 됩니다), corporateTaxPortion을 직접 계산해서 넣을 필요는 없습니다.',

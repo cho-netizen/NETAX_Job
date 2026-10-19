@@ -1263,6 +1263,8 @@ const DRIVE_TOOLS = [
         corporateTaxableIncome: { type: 'number', description: 'corporateTaxPortion 자동계산용 — 수혜법인의 해당 사업연도 각사업연도소득금액(원). corporateTaxPortion을 직접 입력하면 이 값은 무시된다.' },
         monthsInInitialYear: { type: 'integer', description: 'phase가 initial일 때만 — 개시사업연도의 월수(보통 12, 사업연도가 짧으면 그 미만).' },
         dividendDeduction: { type: 'number', description: 'phase가 settlement일 때만 — 신고기한까지 수혜법인으로부터 받은 배당소득에 대한 공제액(원). 별도로 계산해서 입력한다. 없으면 생략.' },
+        initialPhaseCalculatedTax: { type: 'number', description: 'phase가 settlement일 때만 — 개시사업연도 신고의 산출세액(원, [별지10호의4] ㉗). 정산 세액에서 빼고 남은 것에만 3% 공제(법 §45의4③). 적으면 환급세액.' },
+        initialPhasePaidTax: { type: 'number', description: 'phase가 settlement일 때만 — 개시사업연도에 실제 낸 세액(원, 환급 한도). 없으면 생략(=산출세액).' },
         appraisalFeeAmount: { type: 'number', description: '증여재산의 감정평가 수수료(원, §55①). 500만원 한도로 과세표준에서 차감된다. 없으면 생략.' },
         unlistedStockAppraisalFeeAmount: { type: 'number', description: '비상장주식 신용평가전문기관 평가수수료(원, §49의2⑨). 위 appraisalFeeAmount의 500만원 한도와 별개로 1천만원 한도로 공제된다(시행령§46의2·§20의3③). 없으면 생략.' },
         doneeName: { type: 'string', description: '수증자(지배주주 또는 그 친족) 성명. list_drive_folder/read_drive_file로 사건 폴더 문서를 먼저 찾아보고, 없으면 사용자에게 직접 물어봐라.' },

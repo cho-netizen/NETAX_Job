@@ -8505,11 +8505,13 @@ function renderBusinessOpportunityGiftResult(r){
   html += taxCalcResultRow('증여의제이익', won(r.증여의제이익));
   html += taxCalcResultRow('과세표준(증여재산공제 없음)', won(r.과세표준));
   html += taxCalcResultRow('산출세액', won(r.산출세액));
+  if (r.개시사업연도_산출세액) html += taxCalcResultRow('개시사업연도 산출세액(서식 ㉗)', '-' + won(r.개시사업연도_산출세액));
   html += taxCalcResultRow('신고세액공제(3%)', '-' + won(r.신고세액공제));
   if (r.무신고가산세) html += taxCalcResultRow('무신고가산세', '+' + won(r.무신고가산세));
   if (r.과소신고가산세) html += taxCalcResultRow('과소신고가산세', '+' + won(r.과소신고가산세));
   if (r.납부지연가산세) html += taxCalcResultRow('납부지연가산세', '+' + won(r.납부지연가산세));
   html += taxCalcResultRow('납부세액', won(r.납부세액), { total: true });
+  if (r.환급세액) html += taxCalcResultRow('환급세액(법 §45의4③ 단서)', won(r.환급세액), { total: true });
   html += '<div class="taxcalc-result-note">' + (r.안내 || '') + '</div>';
   html += tcToolSaveButtonHtml_('jt');
   html += '</div>';
@@ -12308,6 +12310,8 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>수혜법인의 해당 사업연도 소득금액</label><input type="number" id="jtCorpTaxableIncome" placeholder="원"><span class="taxcalc-field-help">법인세법§14, 자동계산용</span></div>' +
         '<div class="taxcalc-field"><label>(개시사업연도만) 개시사업연도 월수</label><input type="number" id="jtMonths" placeholder="보통 12" maxlength="2"></div>' +
         '<div class="taxcalc-field"><label>(정산사업연도만) 배당소득공제액</label><input type="number" id="jtDividendDeduction" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>(정산사업연도만) 개시사업연도 산출세액</label><input type="number" id="jtInitialTax" placeholder="원"><span class="taxcalc-field-help">서식 ㉗ — 정산 세액에서 뺌(법 §45의4③)</span></div>' +
+        '<div class="taxcalc-field"><label>(정산사업연도만) 개시사업연도에 실제 낸 세액</label><input type="number" id="jtInitialPaidTax" placeholder="원"><span class="taxcalc-field-help">환급 한도, 비우면 위 산출세액</span></div>' +
         '<div class="taxcalc-field"><label>해당 사업연도 종료일</label><input type="date" id="jtFiscalYearEnd" min="1900-01-01" max="2099-12-31"></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>신고 상태 · 가산세</b></div>' +
@@ -13528,11 +13532,13 @@ function jtPrintFormPageHtml_(){
       pfRow_(++n, '증여의제이익', won(r.증여의제이익)) +
       pfRow_(++n, '과세표준(증여재산공제 없음)', won(r.과세표준)) +
       pfRow_(++n, '산출세액', won(r.산출세액)) +
+      (r.개시사업연도_산출세액 ? pfRow_(++n, '개시사업연도 산출세액(서식 ㉗)', won(r.개시사업연도_산출세액)) : '') +
       pfRow_(++n, '신고세액공제(3%)', won(r.신고세액공제)) +
       (r.무신고가산세 ? pfRow_(++n, '무신고가산세', won(r.무신고가산세)) : '') +
       (r.과소신고가산세 ? pfRow_(++n, '과소신고가산세', won(r.과소신고가산세)) : '') +
       (r.납부지연가산세 ? pfRow_(++n, '납부지연가산세', won(r.납부지연가산세)) : '') +
       pfRow_(++n, '자진납부할 세액(합계액)', won(r.납부세액)) +
+      (r.환급세액 ? pfRow_(++n, '환급받을 세액(법 §45의4③ 단서)', won(r.환급세액)) : '') +
     '</table>' +
     gfPrintFormNote_() +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
@@ -17140,6 +17146,8 @@ function handleTaxCalcClick_(e){
       corporateTaxableIncome: numVal(document.getElementById('jtCorpTaxableIncome').value) || 0,
       monthsInInitialYear: numVal(document.getElementById('jtMonths').value) || 0,
       dividendDeduction: numVal(document.getElementById('jtDividendDeduction').value) || 0,
+      initialPhaseCalculatedTax: numVal(document.getElementById('jtInitialTax').value) || 0,
+      initialPhasePaidTax: numVal(document.getElementById('jtInitialPaidTax').value) || 0,
       filingStatus: document.getElementById('jtFilingStatus').value,
       isFraudulent: document.getElementById('jtFraudulent').checked,
       underreportedTaxAmount: numVal(document.getElementById('jtUnderreportedTax').value) || 0,
