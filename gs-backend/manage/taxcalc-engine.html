@@ -3131,7 +3131,12 @@
       cohabitEligible = !!p.hasCohabitingHouseDeduction;
     }
     const co_ = giRowAt_(REF_GI_.cohabit, inhDate_); // [2026.10.19 2부-12] 2020년 전 80%·5억, 2016년 전 40%·5억
-    const cohabitingHouseDeduction = (isDecedentResident && cohabitEligible) ? (co_ ? Math.min(Math.floor((Number(p.cohabitingHouseValue) || 0) * co_.rate), co_.cap) : Math.min(Number(p.cohabitingHouseValue) || 0, 600000000)) : 0;
+    // [2026.10.19 서식감사 차] [별지 제6호의2서식] ⑩ = ② 상속주택가액(담보채무 뺀 주택 전체) × ⑨ 요건을 갖춘 상속인의 지분 합계 —
+    //  §23의2①3호 "동거한 상속인이 상속받은 주택"이라 요건 못 갖춘 상속인 몫은 공제 대상이 아니다. cohabitingHouseShareRatio(⑨, 0~1)를
+    //  주면 주택 전체 가액에 곱하고, 없으면 cohabitingHouseValue를 이미 요건 갖춘 상속인 몫의 가액으로 본다(화면 명부 합계 = 몫 가액 합).
+    const cohabitShareRatio_ = Number(p.cohabitingHouseShareRatio);
+    const cohabitingHouseBase = Math.round((Number(p.cohabitingHouseValue) || 0) * ((cohabitShareRatio_ > 0 && cohabitShareRatio_ <= 1) ? cohabitShareRatio_ : 1));
+    const cohabitingHouseDeduction = (isDecedentResident && cohabitEligible) ? (co_ ? Math.min(Math.floor(cohabitingHouseBase * co_.rate), co_.cap) : Math.min(cohabitingHouseBase, 600000000)) : 0;
     // 시행령§20의3③ — 일반 감정평가법인·유형재산 감정수수료(1호·3호)는 500만원 한도이나, 비상장주식
     // 신용평가전문기관 평가수수료(2호, §49의2⑨)는 평가대상 법인수×의뢰기관수별로 각각 1천만원 한도로
     // 별개 규정된다(단일 500만원 한도에 합산하면 안 됨). unlistedStockAppraisalFeeAmount는 그 합계액을

@@ -956,5 +956,24 @@
                               "가업상속납부유예세액": 1247662500,
                               "납부세액": 2911212500
                     }
+          },
+          {
+                    "이름": "[서식감사 차] 동거주택 8억 중 요건 갖춘 상속인 지분 50% — ⑩ = ② × ⑨ = 4억 공제 ([별지6호의2], §23의2①3호)",
+                    "도구": "calculate_inheritance_tax",
+                    "고정": true,
+                    "입력": {
+                              "taxableEstateAmount": 2000000000,
+                              "hasSpouse": false,
+                              "childCount": 2,
+                              "hasCohabitingHouseDeduction": true,
+                              "cohabitingHouseValue": 800000000,
+                              "cohabitingHouseShareRatio": 0.5,
+                              "dateOfDeath": "2026-03-01"
+                    },
+                    "정답": {
+                              "동거주택상속공제": 400000000,
+                              "과세표준": 1095000000,
+                              "납부세액": 269660000
+                    }
           }
 ]

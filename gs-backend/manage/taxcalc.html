@@ -14258,12 +14258,12 @@ function renderHeirRegistry(){
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="isReporter" id="hReporter-' + idx + '"' + (h.isReporter ? ' checked' : '') + '><label for="hReporter-' + idx + '">신고인</label></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="hasRenounced" id="hRenounced-' + idx + '"' + (h.hasRenounced ? ' checked' : '') + '><label for="hRenounced-' + idx + '">상속포기(민법§1043 — 처음부터 상속인 아니었던 것으로 봄)</label></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="isCohabitHouse" id="hCohabit-' + idx + '"' + (h.isCohabitHouse ? ' checked' : '') + '><label for="hCohabit-' + idx + '">동거주택 상속(10년이상 동거·무주택 등)</label></div>' +
-      '<div class="taxcalc-field" data-show-if-heir="isCohabitHouse" style="' + (h.isCohabitHouse ? '' : 'display:none;') + '"><label>동거주택가액</label><input type="number" data-hfield="cohabitHouseValue" placeholder="원" value="' + (h.cohabitHouseValue || '') + '"></div>' +
+      '<div class="taxcalc-field" data-show-if-heir="isCohabitHouse" style="' + (h.isCohabitHouse ? '' : 'display:none;') + '"><label>동거주택 중 이 상속인이 받은 몫의 가액</label><input type="number" data-hfield="cohabitHouseValue" placeholder="원" value="' + (h.cohabitHouseValue || '') + '"><span class="taxcalc-field-help">주택가액 × 이 상속인 지분(서식 6호의2 ⑨) — 요건 갖춘 상속인 몫만 공제</span></div>' +
       // [2026.09 버그수정] 상증세법§23의2는 "상속개시일 현재 그 주택에 담보된 피상속인의
       // 채무액을 뺀 가액"을 공제 기준액으로 삼는데, 이 화면은 여태 담보채무를 뺄 방법 없이
       // 동거주택가액 총액을 그대로 공제액 계산에 넣고 있었다(6억 한도에 걸리는 사건은 결과에
       // 영향 없지만, 그 미만인 사건은 공제가 과다계산될 수 있었다).
-      '<div class="taxcalc-field" data-show-if-heir="isCohabitHouse" style="' + (h.isCohabitHouse ? '' : 'display:none;') + '"><label>위 주택에 담보된 피상속인 채무액</label><input type="number" data-hfield="cohabitHouseDebt" placeholder="원" value="' + (h.cohabitHouseDebt || '') + '"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+      '<div class="taxcalc-field" data-show-if-heir="isCohabitHouse" style="' + (h.isCohabitHouse ? '' : 'display:none;') + '"><label>위 주택에 담보된 피상속인 채무액 중 이 상속인 몫</label><input type="number" data-hfield="cohabitHouseDebt" placeholder="원" value="' + (h.cohabitHouseDebt || '') + '"><span class="taxcalc-field-help">없으면 비움</span></div>' +
       // [2026.09.24 신규] 세무사님 지시 — 법정상속지분·실제상속지분을 분수로 먼저 받아두면,
       // 재산평가 자산목록에서 이 상속인을 배분할 때마다 이 값이 우선 채워진다(협의분할로 특정
       // 자산만 다르게 나눴으면 그 자산의 배분 행에서 직접 고치면 된다). 법정상속지분(민법§1009,
