@@ -6054,7 +6054,11 @@ function renderPropertyCardHtml_(idx, opts){
         '<div class="taxcalc-asset-head" data-show-if="rentalSpecialType" style="display:none; margin-top:4px;"><b>위 특례 선택시만 — 안분용 기준시가</b></div>' +
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>임대기간</label><input type="number" data-field="rentalYears" placeholder="년" maxlength="2"></div>' +
-          '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>임대주택 등록일</label><input type="date" data-field="rentalRegistrationDate" min="1990-01-01" max="2099-12-31"><span class="taxcalc-field-help">2022-12-31 이전 등록이면 8년 이상 50%(조특법 부칙 제38조)</span></div>' +
+          '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>임대주택 등록일</label><input type="date" data-field="rentalRegistrationDate" min="1990-01-01" max="2099-12-31"><span class="taxcalc-field-help">2022-12-31 이전 등록이면 8년 이상 50%(조특법 부칙 제38조 — 매입임대는 2020.12.31.까지 등록분만)</span></div>' +
+          '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>[§97의3] 임대주택 종류</label><select data-field="rentalHousingKind"><option value="">모름</option><option value="construction">민간건설임대주택</option><option value="purchase">민간매입임대주택</option></select><span class="taxcalc-field-help">임대사업자 등록증으로 확인. 2023.1.1. 이후 등록은 건설임대만, 매입임대는 2020.12.31.까지 등록분만 특례. 장기일반(준공공) 등록 없이 임대사업자 등록만 있으면 특례 없음(조심 2022서6972)</span></div>' +
+          '<div class="taxcalc-field checkbox" data-show-if="rentalSpecialType" style="display:none;"><input type="checkbox" data-field="rentalIsApartment" id="rtApt-' + idx + '"><label for="rtApt-' + idx + '">[§97의3] 아파트(2020.7.11. 이후 장기일반 등록 신청한 아파트 매입임대는 특례 없음)</label></div>' +
+          '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>[§97의3] 장기일반 등록 신청일(등록일과 다르면)</label><input type="date" data-field="rentalApplyDate" min="1990-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>[§97의3] 단기→장기 변경 신고일(있으면)</label><input type="date" data-field="rentalConversionDate" min="1990-01-01" max="2099-12-31"><span class="taxcalc-field-help">2020.7.11. 이후 변경 신고한 주택은 특례 없음</span></div>' +
           '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>취득 당시 기준시가</label><input type="number" data-field="acquisitionStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의3 선택시 필수 — 임대기간중 양도차익 안분용, 3종 모두 없으면 계산 불가</span></div>' +
           '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>등록일 당시 기준시가</label><input type="number" data-field="registrationStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의3 선택시 필수</span></div>' +
           '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>양도 당시 기준시가</label><input type="number" data-field="transferStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의3 선택시 필수</span></div>' +
@@ -7098,6 +7102,8 @@ function collectTransferInput(vals){
     rentalSpecialType: vals.rentalSpecialType || '',
     rentalYears: numVal(vals.rentalYears) || 0,
     rentalRegistrationDate: vals.rentalRegistrationDate || '', // §97의3 2022-12-31 이전 등록분 8년 50%
+    // [2026.10.20 회장 결론 N4] §97의3 대상 판정 — 건설/매입·아파트·등록 신청일·단기→장기 변경 신고일
+    rentalHousingKind: vals.rentalHousingKind || '', rentalIsApartment: !!vals.rentalIsApartment, rentalApplyDate: vals.rentalApplyDate || '', rentalConversionDate: vals.rentalConversionDate || '',
     oneHouseSpecialFormNo: vals.oneHouseSpecialCase ? (vals.oneHouseSpecialCase.formNo || '') : '', // [2026.10.19] 판단 대기 ②(§155⑳) 확인용 — 계산엔 안 씀
     // [2026.10.20 회장 결론 J03] 거주주택 특례 — 임대주택 유형·말소일·의무기간 종료일·⑪2·3호 기한(판단 대기 ② 판정용, 계산엔 안 씀)
     isResidenceHouseSpecial: !!vals.isResidenceHouseSpecial, resRentalKind: vals.resRentalKind || '', resRentalDeregDate: vals.resRentalDeregDate || '',

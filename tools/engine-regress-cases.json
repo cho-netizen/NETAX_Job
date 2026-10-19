@@ -1883,5 +1883,162 @@
   "정답": {
    "평가기간이내여부": true
   }
+ },
+ {
+  "이름": "[회장 결론 N4] §97의3 민간매입임대 2021.5.1. 등록 — 매입임대는 2020.12.31.까지 등록분만(법률 제17759호, 2023 이후 양도도 부칙 제38조 종전 규정). 특례 없음 → 표1 10년 20%: (5억 − 1억 − 250만) × 40% − 2,594만 = 133,060,000",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "transferPrice": 900000000,
+   "acquisitionPrice": 400000000,
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2016-03-01",
+   "transferDate": "2026-09-01",
+   "multiHouseCount": 2,
+   "isAdjustedArea": false,
+   "rentalSpecialType": "rental_general",
+   "rentalYears": 10,
+   "acquisitionStandardPrice": 300000000,
+   "registrationStandardPrice": 300000000,
+   "transferStandardPrice": 600000000,
+   "rentalEndStandardPrice": 600000000,
+   "rentalRegistrationDate": "2021-05-01",
+   "rentalHousingKind": "purchase"
+  },
+  "정답": {
+   "산출세액": 133060000
+  }
+ },
+ {
+  "이름": "[회장 결론 N4] §97의3 아파트 민간매입임대 2020.8.1. 장기일반 등록 신청 — 2020.7.11. 이후 신청 아파트 매입임대 제외. 특례 없음 → 표1 10년 20%: (5억 − 1억 − 250만) × 40% − 2,594만 = 133,060,000",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "transferPrice": 900000000,
+   "acquisitionPrice": 400000000,
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2016-03-01",
+   "transferDate": "2026-09-01",
+   "multiHouseCount": 2,
+   "isAdjustedArea": false,
+   "rentalSpecialType": "rental_general",
+   "rentalYears": 10,
+   "acquisitionStandardPrice": 300000000,
+   "registrationStandardPrice": 300000000,
+   "transferStandardPrice": 600000000,
+   "rentalEndStandardPrice": 600000000,
+   "rentalRegistrationDate": "2020-08-01",
+   "rentalHousingKind": "purchase",
+   "rentalIsApartment": true
+  },
+  "정답": {
+   "산출세액": 133060000
+  }
+ },
+ {
+  "이름": "[회장 결론 N4] §97의3 단기→장기 변경 신고 2020.8.1. — 2020.7.11. 이후 변경 신고 주택 제외. 특례 없음 → 표1 10년 20%: (5억 − 1억 − 250만) × 40% − 2,594만 = 133,060,000",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "transferPrice": 900000000,
+   "acquisitionPrice": 400000000,
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2016-03-01",
+   "transferDate": "2026-09-01",
+   "multiHouseCount": 2,
+   "isAdjustedArea": false,
+   "rentalSpecialType": "rental_general",
+   "rentalYears": 10,
+   "acquisitionStandardPrice": 300000000,
+   "registrationStandardPrice": 300000000,
+   "transferStandardPrice": 600000000,
+   "rentalEndStandardPrice": 600000000,
+   "rentalRegistrationDate": "2016-04-01",
+   "rentalConversionDate": "2020-08-01"
+  },
+  "정답": {
+   "산출세액": 133060000
+  }
+ },
+ {
+  "이름": "[회장 결론 N4] §97의3 민간매입임대 2023.3.1. 등록·2033 양도 — 2023.1.1. 이후 등록은 민간건설임대만(법률 제19199호). 특례 없음 → 표1 10년 20%: (5억 − 1억 − 250만) × 40% − 2,594만 = 133,060,000",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "transferPrice": 900000000,
+   "acquisitionPrice": 400000000,
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2023-03-01",
+   "transferDate": "2033-06-30",
+   "multiHouseCount": 2,
+   "isAdjustedArea": false,
+   "rentalSpecialType": "rental_general",
+   "rentalYears": 10,
+   "acquisitionStandardPrice": 300000000,
+   "registrationStandardPrice": 300000000,
+   "transferStandardPrice": 600000000,
+   "rentalEndStandardPrice": 600000000,
+   "rentalRegistrationDate": "2023-03-01",
+   "rentalHousingKind": "purchase"
+  },
+  "정답": {
+   "산출세액": 133060000
+  }
+ },
+ {
+  "이름": "[회장 결론 N4] §97의3 민간건설임대 2023.3.1. 등록·2033 양도 10년 — 70%: (5억 − 3.5억 − 250만) × 35% − 1,544만 = 36,185,000",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "transferPrice": 900000000,
+   "acquisitionPrice": 400000000,
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2023-03-01",
+   "transferDate": "2033-06-30",
+   "multiHouseCount": 2,
+   "isAdjustedArea": false,
+   "rentalSpecialType": "rental_general",
+   "rentalYears": 10,
+   "acquisitionStandardPrice": 300000000,
+   "registrationStandardPrice": 300000000,
+   "transferStandardPrice": 600000000,
+   "rentalEndStandardPrice": 600000000,
+   "rentalRegistrationDate": "2023-03-01",
+   "rentalHousingKind": "construction"
+  },
+  "정답": {
+   "산출세액": 36185000
+  }
+ },
+ {
+  "이름": "[회장 결론 N4] §97의3 민간매입임대 2016.4.1. 등록 8년 — 부칙 제38조 종전 규정 50%: (5억 − 2.5억 − 250만) × 38% − 1,994만 = 74,110,000",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "transferPrice": 900000000,
+   "acquisitionPrice": 400000000,
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2016-03-01",
+   "transferDate": "2026-09-01",
+   "multiHouseCount": 2,
+   "isAdjustedArea": false,
+   "rentalSpecialType": "rental_general",
+   "rentalYears": 8,
+   "acquisitionStandardPrice": 300000000,
+   "registrationStandardPrice": 300000000,
+   "transferStandardPrice": 600000000,
+   "rentalEndStandardPrice": 600000000,
+   "rentalRegistrationDate": "2016-04-01",
+   "rentalHousingKind": "purchase"
+  },
+  "정답": {
+   "산출세액": 74110000
+  }
  }
 ]

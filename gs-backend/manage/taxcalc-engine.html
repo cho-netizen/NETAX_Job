@@ -603,13 +603,46 @@
   }
 
   // 장기임대주택 등 장기보유특별공제 특례([별지 제84호서식] 코드04·05, 조특법 §97의3·§97의4)
-  function rentalLongTermRate(type, holdingYears, rentalYears, registrationDate) {
+  // [2026.10.20 회장 결론 N4 — 법제처 연혁판 원문 대조] 조특법 §97의3① 대상은 등록일·임대주택 종류로 갈린다.
+  //  · 2020.1.1.판: 2022.12.31.까지 등록(건설·매입 구분 없음). 그 전 판은 등록기한 없음. 8년 이상 50%·10년 이상 70%.
+  //  · 2021.1.1.판(법률 제17759호, 경과조치 없음 → 2021.1.1. 이후 양도분): 매입임대는 2020.12.31.까지, 민간건설임대는 2022.12.31.까지 등록.
+  //    2020.7.11. 이후 장기일반으로 등록 신청한 아파트 매입임대, 2020.7.11. 이후 단기→장기 변경 신고한 주택은 제외. 8년 50%·10년 70%.
+  //  · 2023.1.1.판(법률 제19199호): 민간건설임대만, 10년 이상 70%만(등록기한 2024.12.31. → 2025.1.1.판 법률 제20617호로 2027.12.31.), 단기→장기 변경 주택 제외.
+  //    같은 법 부칙 제38조: 이 법 시행 전 등록분은 종전 규정(2021.1.1.판 조건)대로.
+  //  · 임대사업자 등록만 있고 장기일반(준공공) 등록이 없으면 대상 아님(조심 2022서6972, 조심 2026인2161).
+  //  t.rentalHousingKind('construction' 민간건설임대 | 'purchase' 민간매입임대 | ''), t.rentalIsApartment, t.rentalApplyDate(장기일반 등록 신청일, 없으면 등록일),
+  //  t.rentalConversionDate(단기→장기 변경 신고일). 돌려주는 값: { ok, eight50: 8년 이상 50%를 주는지, reason, warn }.
+  function rental9703Eligibility_(t) {
+    t = t || {};
+    const d_ = function (v) { return String(v || '').slice(0, 10); };
+    const R = d_(t.rentalRegistrationDate), T = d_(t.transferDate), kind = t.rentalHousingKind || '', apt = !!t.rentalIsApartment;
+    const apply = d_(t.rentalApplyDate) || R, conv = d_(t.rentalConversionDate);
+    if (!R) return { ok: true, eight50: false, reason: '', warn: '' }; // 등록일 모름 — 예전대로(10년 이상 70%, 8~10년은 호출부 알림)
+    const kindWarn_ = !kind && (R >= '2021-01-01' || (apt && apply >= '2020-07-11'))
+      ? '⚠ 장기일반민간임대 장특공 특례: 민간건설임대인지 민간매입임대인지를 넣어 주세요 — ' + (R >= '2023-01-01' ? '2023.1.1. 이후 등록은 민간건설임대만 대상(법률 제19199호)' : '2021.1.1. 이후 양도분은 매입임대 2020.12.31.까지 등록·아파트 매입임대 2020.7.11. 이후 신청 제외(법률 제17759호)') + '. 지금은 대상으로 보고 계산했습니다.'
+      : '';
+    if (R > '2027-12-31') return { ok: false, reason: '임대주택 등록일 ' + R + ' — 장기일반민간임대 장특공 특례는 2027.12.31.까지 등록분만(조특법 §97의3①)' };
+    if (conv && conv >= '2020-07-11') return { ok: false, reason: '단기민간임대주택을 2020.7.11. 이후(' + conv + ') 장기일반으로 변경 신고한 주택은 §97의3 특례 대상 아님(조특법 §97의3① 괄호)' };
+    if (R >= '2023-01-01') {
+      if (kind === 'purchase') return { ok: false, reason: '2023.1.1. 이후 등록한 민간매입임대주택은 §97의3 특례 대상 아님 — 민간건설임대만(법률 제19199호)' };
+      return { ok: true, eight50: false, reason: '', warn: kindWarn_ };
+    }
+    // 2022.12.31. 이전 등록 — 부칙 제38조 종전 규정
+    if (T >= '2021-01-01') {
+      if (kind === 'purchase' && R > '2020-12-31') return { ok: false, reason: '민간매입임대주택은 2020.12.31.까지 등록분만 §97의3 특례 대상(등록일 ' + R + ', 법률 제17759호 — 2023.1.1. 이후 양도도 부칙 제38조 종전 규정)' };
+      if (kind === 'purchase' && apt && apply >= '2020-07-11') return { ok: false, reason: '2020.7.11. 이후(' + apply + ') 장기일반으로 등록 신청한 아파트 민간매입임대주택은 §97의3 특례 대상 아님(조특법 §97의3① 괄호, 법률 제17759호)' };
+    }
+    return { ok: true, eight50: true, reason: '', warn: kindWarn_ };
+  }
+  function rentalLongTermRate(type, holdingYears, rentalYears, registrationDate, t) {
     const ry = Number(rentalYears) || 0;
     if (type === 'rental_general') {
+      const el_ = rental9703Eligibility_(Object.assign({}, t || {}, { rentalRegistrationDate: registrationDate }));
+      if (!el_.ok) return null;
       // [2026.10.19 세액 고침] 아래 '8년 50%는 근거 없음' 판단은 2023.1.1 개정(법률 제19199호)만 본 것이었다. 같은 법 부칙 제38조(법제처 원문):
       //  "이 법 시행 전에 등록을 한 공공지원민간임대주택 또는 장기일반민간임대주택 … 종전의 규정에 따른다" — 2022-12-31 이전 등록분은 지금도
       //  종전 §97의3①(8년 이상 50%, 10년 이상 70%, 2016.1.1 이후 양도). 등록일(registrationDate)이 그 전이면 8년 이상 50%를 준다.
-      if (ry >= 8 && ry < 10 && registrationDate && String(registrationDate).slice(0, 10) <= '2022-12-31') return 0.50;
+      if (ry >= 8 && ry < 10 && registrationDate && el_.eight50) return 0.50;
       // §97의3①본문·1호(현행, 2024.12.31 최종개정) — "10년 이상 계속하여 임대한 후 양도하는 경우"에만
       // 70% 공제율을 적용한다. "8년 이상 50%"는 2018.1.16 개정본까지 있었던 구법(§2조제6호 단기민간
       // 임대주택 관련) 조항으로, 2020년 임대주택 등록제도 개편으로 삭제되어 현행법상 근거가 없다
@@ -1372,10 +1405,15 @@
     }
 
     if (!isReconstruction && !isPresaleRight) {
-      const rentalRate = rentalLongTermRate(t.rentalSpecialType, holdingYears, t.rentalYears, t.rentalRegistrationDate);
+      const rentalRate = rentalLongTermRate(t.rentalSpecialType, holdingYears, t.rentalYears, t.rentalRegistrationDate, t);
+      if (t.rentalSpecialType === 'rental_general') { // [2026.10.20 회장 결론 N4] 대상 아님·구분 확인 알림
+        const el9703_ = rental9703Eligibility_(t);
+        if (!el9703_.ok) acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '장기일반민간임대 장특공 특례 없음: ' + el9703_.reason + ' — 일반 공제율로 계산했습니다.';
+        else if (el9703_.warn) acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + el9703_.warn;
+      }
       // 등록일을 모르는데 임대 8~10년이면 2022-12-31 이전 등록 여부로 50%가 갈린다 — 알림
       if (t.rentalSpecialType === 'rental_general' && !t.rentalRegistrationDate && Number(t.rentalYears) >= 8 && Number(t.rentalYears) < 10)
-        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '⚠ 장기일반민간임대 장특공 특례: 임대 ' + t.rentalYears + '년 — 임대주택 등록일이 2022-12-31 이전이면 50%(조특법 법률 제19199호 부칙 제38조), 그 뒤면 특례 없음. 등록일을 넣어 주세요(지금은 특례 없이 계산).';
+        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '⚠ 장기일반민간임대 장특공 특례: 임대 ' + t.rentalYears + '년 — 임대주택 등록일이 2022-12-31 이전이면 50%(조특법 법률 제19199호 부칙 제38조 — 매입임대는 2020.12.31.까지 등록분만), 그 뒤면 특례 없음. 등록일을 넣어 주세요(지금은 특례 없이 계산).';
       isRentalSpecial = rentalRate !== null;
       // [2026.10.20 세액 고침] 조특법 §97의4① 단서 — 소득세법 §95② 단서(1세대1주택 표2)에 해당하면 장기임대 추가공제를 적용하지 않는다(표2 그대로).
       //  예전엔 1세대1주택 표2(최대 80%)를 표1+추가공제로 바꿔 장특공이 줄었다.
