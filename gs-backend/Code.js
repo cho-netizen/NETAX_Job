@@ -5007,7 +5007,7 @@ function toolLookupStatuteArticle(lawName, articleNo, baseDate) {
   var corr = []; // 산식 보정 — 그 판 조문에 같은 산식 그림이 있을 때만 덧입힘. "검증 필요"(코드에서 옮김)는 덧입히지 않고 따로
   try {
     var cs = c.get('lawdb_corr');
-    if (!cs && idx && idx.보정ID) { cs = JSON.stringify(JSON.parse(DriveApp.getFileById(idx.보정ID).getBlob().getDataAsString('UTF-8')).항목.map(function (x) { return [x.법령, x.조, x.그림, x.산식, x.출처, x.상태]; })); try { c.put('lawdb_corr', cs, 21600); } catch (e) { } }
+    if (!cs && idx && idx.보정ID) { cs = JSON.stringify(JSON.parse(DriveApp.getFileById(idx.보정ID).getBlob().getDataAsString('UTF-8')).항목.filter(function (x) { return !/^다시 확인 필요\(원본 그림 판독으로 대체/.test(x.상태); }).map(function (x) { return [x.법령, x.조, x.그림, x.산식, x.출처, x.상태]; })); try { c.put('lawdb_corr', cs, 21600); } catch (e) { } } // [2026.10.20] 원본 그림 판독으로 대체된 옛 보정은 빼고(캐시 100KB 안)
     corr = JSON.parse(cs || '[]').filter(function (x) { return x[0] === key; });
   } catch (e) { }
   out.조문 = arts.map(function (a) {
@@ -5016,8 +5016,8 @@ function toolLookupStatuteArticle(lawName, articleNo, baseDate) {
       if (x[1] !== a.조) return;
       var r = { 그림: x[2], 산식: x[3], 출처: x[4], 상태: x[5] };
       if (/^검증/.test(x[5])) return 검증.push(r);
-      if (!x[2].every(function (id) { return a.그림.indexOf(id) >= 0; })) r.상태 = '다시 확인 필요(이 판에는 그 산식 그림이 없음 — 개정됨)';
-      else if (!/^다시/.test(x[5])) s = s.replace('〔산식 그림 img' + x[2][0] + '〕', '$&\\n' + JSON.stringify('〔산식 보정 — ' + x[4] + ' · ' + x[5] + '〕\n' + x[3]).slice(1, -1).replace(/\$/g, '$$$$'));
+      if (!x[2].every(function (id) { return a.그림.indexOf(id) >= 0; })) return; // [2026.10.20] 보정은 판마다 그림 번호로 — 이 판에 없는 그림의 보정(다른 판 것)은 붙이지 않음
+      if (!/^다시/.test(x[5])) s = s.replace('〔산식 그림 img' + x[2][0] + '〕', '$&\\n' + JSON.stringify('〔산식 보정 — ' + x[4] + ' · ' + x[5] + '〕\n' + x[3]).slice(1, -1).replace(/\$/g, '$$$$'));
       보정.push(r);
     });
     a = JSON.parse(s);
