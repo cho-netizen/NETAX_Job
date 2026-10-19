@@ -18,6 +18,9 @@
   .lsi-files a{ margin-right:8px; white-space:nowrap; }
   .lsi-table-wrap{ overflow-x:auto; }
   .lsi-table td.nw{ white-space:nowrap; }
+  .lsi-table td.w-mid{ min-width:9em; }
+  .lsi-table td.w-wide{ min-width:18em; }
+  .lsi-long summary{ cursor:pointer; color:var(--navy); }
 </style>
 <div class="view" id="view-lawsearch">
   <div class="view-head"><h2>⚖️ 법령정보</h2></div>
@@ -452,8 +455,12 @@
   //  · 칸 지도(LSI_FORM_MAPS_)·조견표(LSI_REF_TABLES_)는 세무사님 확인 전 "초안" — 운영 판정·계산에는 쓰지 않는다.
   // ============================================================
   var LSI_ENGINE_LAW_MAP_ = /*@@ENGINE_LAW_MAP@@*/null;
-  var LSI_FORM_MAPS_ = {};   // 서식번호(PRINT_REGISTRY_의 formNo 그대로) → 칸 지도
-  var LSI_REF_TABLES_ = [];  // 조견표 한 장씩(번호·이름·절차·행·개정·쓰는곳·확인필요)
+  // 서식번호(PRINT_REGISTRY_의 formNo 그대로) → 칸 지도 / 조견표 한 장씩(번호·이름·절차·행·개정·쓰는곳·확인필요)
+  // 아래 두 줄은 tools/build-reftables.js가 저장소 reftables/*.json으로 다시 쓴다 — 직접 고치지 말고 JSON을 고친 뒤 도구를 돌릴 것
+  /*@@REF_DATA_BEGIN@@*/
+  var LSI_FORM_MAPS_ = {};
+  var LSI_REF_TABLES_ = [{"번호":"1부-01","이름":"조정대상지역 지정·해제 이력","무엇":"어느 주소가 어느 날 조정대상지역이었나(공고 18건(목록 19줄))","기준일":"쓰는 곳마다 다름 — 거주요건은 취득일, 중과는 양도일, 일시적 2주택은 새 주택 취득일","근거법령":["주택법 §63의2","소득세법 시행령 §154①","소득세법 시행령 §154②","소득세법 §104⑦","소득세법 시행령 §155①","소득세법 시행령 §167의3"],"근거서식":[],"출처":[{"이름":"국토교통부 행정규칙 게시판(첫 공고 2017-1305호)","주소":"https://www.molit.go.kr/USR/I0204/m_45/dtl.jsp?idx=15151"},{"이름":"국가법령정보센터 행정규칙 「조정대상지역 지정」","주소":"https://www.law.go.kr/LSW/admRulLsInfoP.do?admRulSeq=2100000281588"}],"대조":["세무사님 해설서 478~483쪽(참고자료조견표 폴더)"],"갱신":"수시(공고 날) — 새 공고는 법제처 연혁으로 다시 확인","상태":"초안","절차":[{"단계":1,"묻는것":"주소에 시·군·구가 있나","예":"2로","아니오":"확인 필요(주소 보충 질문)","근거":""},{"단계":2,"묻는것":"그 날짜까지 공고를 날짜 순으로 따라가 그 주소가 든 마지막 줄이 지정인가","예":"3으로","아니오":"비조정","근거":"공고 본문 \"공고한 날부터 효력\""},{"단계":3,"묻는것":"제외 읍·면·동·리, 일부 동만, 지구 경계에 걸리나","예":"확인 필요(경계 질문)","아니오":"조정","근거":"공고 본문"},{"단계":4,"묻는것":"2017-08-03~11-09 사이 날짜의 거주요건 판정인가","예":"2017-1305호 지역이면 조정(§154②)","아니오":"—","근거":"소득세법 시행령 §154②"}],"행":[{"구분":"지정 — 국토교통부공고 제2017-1305호","시작":"2017-09-06","끝":"—","값":"서울 종로구, 서울 중구, 서울 용산구, 서울 성동구, 서울 광진구, 서울 동대문구, 서울 중랑구, 서울 성북구, 서울 강북구, 서울 도봉구, 서울 노원구, 서울 은평구, 서울 서대문구, 서울 마포구, 서울 양천구, 서울 강서구, 서울 구로구, 서울 금천구, 서울 영등포구, 서울 동작구, 서울 관악구, 서울 서초구, 서울 강남구, 서울 송파구, 서울 강동구, 경기 과천시, 경기 광명시, 경기 성남시, 경기 고양시, 경기 남양주시, 경기 하남시, 경기 화성시(반송동·석우동·금곡리·목리·방교리·산척리·송리·신리·영천리·오산리·장지리·중리·청계리·금곡동·목동·방교동·산척동·송동·신동·영천동·오산동·장지동·중동·청계동만) [동탄2택지개발지구(반송동·석우동, 동탄면 금곡리·목리·방교리·산척리·송리·신리·영천리·오산리·장지리·중리·청계리 일원)에 한함], 세종 세종특별자치시 [행정중심복합도시 건설 예정지역(건설교통부고시 제2006-418호)에 한함], 부산 해운대구, 부산 연제구, 부산 동래구, 부산 남구, 부산 부산진구, 부산 수영구, 부산 기장군","조건":"공고 하나(지역 상태는 다음 공고가 바꿀 때까지) · 예정지 공고 — 법률 제14866호 「주택법」(2017.8.9., 시행 2017.11.10.) 부칙 §2. 거주요건은 소득세법 시행령 §154②로 2017-08-03부터 조정(해설서 479쪽 \"2017.8.3.에 최초 지정 의제\"), 중과·장기보유특별공제의 2017-08-03~11-09는 그 조문 확인 필요 · 지구 경계 줄은 확인 필요","근거조문":"주택법 §63의2","서식칸":"","출처":"https://www.molit.go.kr/USR/I0204/m_45/dtl.jsp?idx=15151","확인":"확인 필요(효력일 — 예정지 공고 — 법률 제14866호 「주택법」(2017.8.9., 시행 …)"},{"구분":"지정 — 국토교통부공고 제2018-1088호","시작":"2018-08-28","끝":"—","값":"경기 구리시, 경기 안양시 동안구, 경기 수원시 영통구(이의동·원천동·하동·매탄동만) [광교택지개발지구에 한함], 경기 수원시 팔달구(우만동만) [광교택지개발지구에 한함], 경기 수원시 장안구(연무동만) [광교택지개발지구에 한함], 경기 용인시 수지구(상현동만) [광교택지개발지구에 한함], 경기 용인시 기흥구(영덕동만) [광교택지개발지구에 한함]","조건":"공고 하나(지역 상태는 다음 공고가 바꿀 때까지) · 공고한 날부터 효력 · 지구 경계 줄은 확인 필요","근거조문":"주택법 §63의2","서식칸":"","출처":"https://www.molit.go.kr/USR/I0204/m_45/dtl.jsp?idx=15659","확인":"원문 대조됨(5번, 공고 원문)"},{"구분":"해제 — 국토교통부공고 제2018-1089호","시작":"2018-08-28","끝":"—","값":"부산 기장군(일광면 제외)","조건":"공고 하나(지역 상태는 다음 공고가 바꿀 때까지) · 공고한 날부터 효력","근거조문":"주택법 §63의2","서식칸":"","출처":"https://www.molit.go.kr/USR/I0204/m_45/dtl.jsp?idx=15660","확인":"원문 대조됨(5번, 공고 원문)"},{"구분":"지정 — 국토교통부공고 제2018-1766호","시작":"2018-12-31","끝":"—","값":"경기 수원시 팔달구, 경기 용인시 수지구, 경기 용인시 기흥구","조건":"공고 하나(지역 상태는 다음 공고가 바꿀 때까지) · 공고한 날부터 효력","근거조문":"주택법 §63의2","서식칸":"","출처":"https://www.molit.go.kr/USR/I0204/m_45/dtl.jsp?idx=15909","확인":"원문 대조됨(5번, 공고 원문)"},{"구분":"해제 — 국토교통부공고 제2018-1767호","시작":"2018-12-31","끝":"—","값":"부산 부산진구, 부산 남구, 부산 연제구, 부산 기장군(일광면만)","조건":"공고 하나(지역 상태는 다음 공고가 바꿀 때까지) · 공고한 날부터 효력","근거조문":"주택법 §63의2","서식칸":"","출처":"https://www.molit.go.kr/USR/I0204/m_45/dtl.jsp?idx=15910","확인":"원문 대조됨(5번, 공고 원문)"},{"구분":"해제 — 국토교통부공고 제2019-1540호","시작":"2019-11-08","끝":"—","값":"경기 고양시 [삼송·원흥·지축·향동·덕은·킨텍스1단계·고양관광문화단지(한류월드) 택지지구는 해제에서 제외], 경기 남양주시(다산동·별내동 제외), 부산 해운대구, 부산 수영구, 부산 동래구","조건":"공고 하나(지역 상태는 다음 공고가 바꿀 때까지) · 공고한 날부터 효력 · 지구 경계 줄은 확인 필요","근거조문":"주택법 §63의2","서식칸":"","출처":"https://www.molit.go.kr/USR/I0204/m_45/dtl.jsp?idx=16220","확인":"원문 대조됨(5번, 공고 원문)"},{"구분":"지정 — 국토교통부공고 제2020-197호","시작":"2020-02-21","끝":"—","값":"경기 수원시 영통구, 경기 수원시 권선구, 경기 수원시 장안구, 경기 안양시 만안구, 경기 의왕시","조건":"공고 하나(지역 상태는 다음 공고가 바꿀 때까지) · 공고한 날부터 효력","근거조문":"주택법 §63의2","서식칸":"","출처":"https://www.molit.go.kr/USR/I0204/m_45/dtl.jsp?idx=17015","확인":"원문 대조됨(5번, 공고 원문)"},{"구분":"지정 — 국토교통부공고 제2020-828호","시작":"2020-06-19","끝":"—","값":"경기 고양시, 경기 남양주시(화도읍·수동면·조안면 제외), 경기 군포시, 경기 안성시(일죽면 제외)(죽산면 죽산리·용설리·장계리·매산리·장릉리·장원리·두현리, 삼죽면 용월리·덕산리·율곡리·내장리·배태리 제외), 경기 부천시, 경기 안산시, 경기 시흥시, 경기 용인시 처인구(포곡읍·모현면·모현읍·백암면·양지면 제외)(원삼면 가재월리·사암리·미평리·좌항리·맹리·두창리 제외), 경기 오산시, 경기 평택시, 경기 광주시(초월읍·곤지암읍·도척면·퇴촌면·남종면·남한산성면 제외), 경기 양주시, 경기 의정부시, 인천 중구, 인천 동구, 인천 미추홀구, 인천 연수구, 인천 남동구, 인천 부평구, 인천 계양구, 인천 서구, 대전 동구, 대전 중구, 대전 서구, 대전 유성구, 대전 대덕구, 충북 청주시(낭성면·미원면·가덕면·남일면·문의면·남이면·현도면·강내면·옥산면·내수읍·북이면 제외)","조건":"공고 하나(지역 상태는 다음 공고가 바꿀 때까지) · 공고한 날부터 효력","근거조문":"주택법 §63의2","서식칸":"","출처":"https://www.molit.go.kr/USR/I0204/m_45/dtl.jsp?idx=17018","확인":"원문 대조됨(5번, 공고 원문)"},{"구분":"지정 — 국토교통부공고 제2020-877호","시작":"2020-06-19","끝":"—","값":"경기 화성시","조건":"공고 하나(지역 상태는 다음 공고가 바꿀 때까지) · 정정공고(2020-06-29) — 2020-828호 대상지역에 화성시 추가. 2020-06-19~06-28 사이 날짜는 확인 필요","근거조문":"주택법 §63의2","서식칸":"","출처":"https://www.molit.go.kr/USR/I0204/m_45/dtl.jsp?idx=17020","확인":"확인 필요(효력일 — 정정공고(2020-06-29) — 2020-828호 대상지역에 화성시 추…)"},{"구분":"지정 — 국토교통부공고 제2020-1521호","시작":"2020-11-20","끝":"—","값":"경기 김포시(통진읍·대곶면·월곶면·하성면 제외), 부산 해운대구, 부산 동래구, 부산 수영구, 부산 연제구, 부산 남구, 대구 수성구","조건":"공고 하나(지역 상태는 다음 공고가 바꿀 때까지) · 공고한 날부터 효력","근거조문":"주택법 §63의2","서식칸":"","출처":"https://www.molit.go.kr/USR/I0204/m_45/dtl.jsp?idx=17021","확인":"원문 대조됨(5번, 공고 원문)"},{"구분":"지정 — 국토교통부공고 제2020-1650호","시작":"2020-12-18","끝":"—","값":"부산 서구, 부산 동구, 부산 영도구, 부산 부산진구, 부산 금정구, 부산 북구, 부산 강서구, 부산 사상구, 부산 사하구, 대구 중구, 대구 동구, 대구 서구, 대구 남구, 대구 북구, 대구 달서구, 대구 달성군(가창면·구지면·하빈면·논공읍·옥포읍·유가읍·현풍읍 제외), 광주 동구, 광주 서구, 광주 남구, 광주 북구, 광주 광산구, 울산 중구, 울산 남구, 경기 파주시(문산읍·파주읍·법원읍·조리읍·월롱면·탄현면·광탄면·파평면·적성면·군내면·장단면·진동면·진서면 제외), 충남 천안시 동남구(목천읍·풍세면·광덕면·북면·성남면·수신면·병천면·동면 제외), 충남 천안시 서북구(성환읍·성거읍·직산읍·입장면 제외), 충남 논산시(강경읍·연무읍·성동면·광석면·노성면·상월면·부적면·연산면·벌곡면·양촌면·가야곡면·은진면·채운면 제외), 충남 공주시(유구읍·이인면·탄천면·계룡면·반포면·의당면·정안면·우성면·사곡면·신풍면 제외), 전북 전주시 완산구, 전북 전주시 덕진구, 전남 여수시(돌산읍·율촌면·화양면·남면·화정면·삼산면 제외), 전남 순천시(승주읍·황전면·월등면·주암면·송광면·외서면·낙안면·별량면·상사면 제외), 전남 광양시(봉강면·옥룡면·옥곡면·진상면·진월면·다압면 제외), 경북 포항시 남구(구룡포읍·연일읍·오천읍·대송면·동해면·장기면·호미곶면 제외), 경북 경산시(하양읍·진량읍·압량읍·와촌면·자인면·용성면·남산면·남천면 제외), 경남 창원시 성산구","조건":"공고 하나(지역 상태는 다음 공고가 바꿀 때까지) · 공고한 날부터 효력","근거조문":"주택법 §63의2","서식칸":"","출처":"https://www.molit.go.kr/USR/I0204/m_45/dtl.jsp?idx=17024","확인":"원문 대조됨(5번, 공고 원문)"},{"구분":"해제 — 국토교통부공고 제2020-1650호","시작":"2020-12-18","끝":"—","값":"인천 중구(을왕동·남북동·덕교동·무의동만), 경기 양주시(백석읍·남면·광적면·은현면만), 경기 안성시(미양면·대덕면·양성면·고삼면·보개면·서운면·금광면·죽산면·삼죽면만)","조건":"공고 하나(지역 상태는 다음 공고가 바꿀 때까지) · 공고한 날부터 효력","근거조문":"주택법 §63의2","서식칸":"","출처":"https://www.molit.go.kr/USR/I0204/m_45/dtl.jsp?idx=17024","확인":"원문 대조됨(5번, 공고 원문)"},{"구분":"지정 — 국토교통부공고 제2021-1309호","시작":"2021-08-30","끝":"—","값":"경기 동두천시(광암동·걸산동·안흥동·상봉암동·하봉암동·탑동동 제외)","조건":"공고 하나(지역 상태는 다음 공고가 바꿀 때까지) · 공고한 날부터 효력","근거조문":"주택법 §63의2","서식칸":"","출처":"https://www.molit.go.kr/USR/I0204/m_45/dtl.jsp?idx=17012","확인":"원문 대조됨(5번, 공고 원문)"},{"구분":"해제 — 국토교통부공고 제2022-883호","시작":"2022-07-05","끝":"—","값":"경기 안산시 단원구(대부동동·대부남동·대부북동·선감동·풍도동만), 경기 화성시(서신면만), 대구 동구, 대구 서구, 대구 남구, 대구 북구, 대구 중구, 대구 달서구, 대구 달성군, 경북 경산시, 전남 여수시, 전남 순천시, 전남 광양시","조건":"공고 하나(지역 상태는 다음 공고가 바꿀 때까지) · 공고한 날부터 효력","근거조문":"주택법 §63의2","서식칸":"","출처":"https://www.molit.go.kr/USR/I0204/m_45/dtl.jsp?idx=17524","확인":"원문 대조됨(5번, 공고 원문)"},{"구분":"해제 — 국토교통부공고 제2022-1207호","시작":"2022-09-26","끝":"—","값":"경기 동두천시, 경기 양주시, 경기 파주시, 경기 평택시, 경기 안성시, 부산 해운대구, 부산 수영구, 부산 동래구, 부산 남구, 부산 연제구, 부산 서구, 부산 동구, 부산 영도구, 부산 부산진구, 부산 금정구, 부산 북구, 부산 강서구, 부산 사상구, 부산 사하구, 대구 수성구, 광주 동구, 광주 서구, 광주 남구, 광주 북구, 광주 광산구, 대전 동구, 대전 중구, 대전 서구, 대전 유성구, 대전 대덕구, 울산 중구, 울산 남구, 충북 청주시, 충남 천안시, 충남 논산시, 충남 공주시, 전북 전주시, 경북 포항시 남구, 경남 창원시 성산구","조건":"공고 하나(지역 상태는 다음 공고가 바꿀 때까지) · 공고한 날부터 효력","근거조문":"주택법 §63의2","서식칸":"","출처":"https://www.molit.go.kr/USR/I0204/m_45/dtl.jsp?idx=17594","확인":"원문 대조됨(5번, 공고 원문)"},{"구분":"해제 — 국토교통부공고 제2022-1408호","시작":"2022-11-14","끝":"—","값":"경기 성남시 중원구, 경기 구리시, 경기 안양시, 경기 수원시, 경기 의왕시, 경기 고양시, 경기 남양주시, 경기 화성시, 경기 군포시, 경기 부천시, 경기 안산시, 경기 시흥시, 경기 용인시, 경기 오산시, 경기 광주시, 경기 의정부시, 경기 김포시, 세종 세종특별자치시, 인천 중구, 인천 동구, 인천 미추홀구, 인천 연수구, 인천 남동구, 인천 부평구, 인천 계양구, 인천 서구","조건":"공고 하나(지역 상태는 다음 공고가 바꿀 때까지) · 공고한 날부터 효력","근거조문":"주택법 §63의2","서식칸":"","출처":"https://www.molit.go.kr/USR/I0204/m_45/dtl.jsp?idx=17626","확인":"원문 대조됨(5번, 공고 원문)"},{"구분":"해제 — 국토교통부공고 제2023-2호","시작":"2023-01-05","끝":"—","값":"서울 종로구, 서울 중구, 서울 성동구, 서울 광진구, 서울 동대문구, 서울 중랑구, 서울 성북구, 서울 강북구, 서울 도봉구, 서울 노원구, 서울 은평구, 서울 서대문구, 서울 마포구, 서울 양천구, 서울 강서구, 서울 구로구, 서울 금천구, 서울 영등포구, 서울 동작구, 서울 관악구, 서울 강동구, 경기 과천시, 경기 성남시 수정구, 경기 성남시 분당구, 경기 하남시, 경기 광명시","조건":"공고 하나(지역 상태는 다음 공고가 바꿀 때까지) · 공고한 날부터 효력","근거조문":"주택법 §63의2","서식칸":"","출처":"https://www.molit.go.kr/USR/I0204/m_45/dtl.jsp?idx=17701","확인":"원문 대조됨(5번, 공고 원문)"},{"구분":"지정 — 국토교통부공고 제2025-1223호","시작":"2025-10-16","끝":"—","값":"서울 종로구, 서울 중구, 서울 성동구, 서울 광진구, 서울 동대문구, 서울 중랑구, 서울 성북구, 서울 강북구, 서울 도봉구, 서울 노원구, 서울 은평구, 서울 서대문구, 서울 마포구, 서울 양천구, 서울 강서구, 서울 구로구, 서울 금천구, 서울 영등포구, 서울 동작구, 서울 관악구, 서울 강동구, 경기 수원시 장안구, 경기 수원시 팔달구, 경기 수원시 영통구, 경기 성남시 수정구, 경기 성남시 중원구, 경기 성남시 분당구, 경기 안양시 동안구, 경기 과천시, 경기 용인시 수지구, 경기 광명시, 경기 하남시, 경기 의왕시","조건":"공고 하나(지역 상태는 다음 공고가 바꿀 때까지) · 공고한 날부터 효력","근거조문":"주택법 §63의2","서식칸":"","출처":"https://www.law.go.kr/LSW/admRulLsInfoP.do?admRulSeq=2100000265026","확인":"원문 대조됨(5번, 공고 원문)"},{"구분":"지정 — 국토교통부공고 제2026-882호","시작":"2026-07-01","끝":"—","값":"경기 화성시 동탄구, 경기 용인시 기흥구, 경기 구리시","조건":"공고 하나(지역 상태는 다음 공고가 바꿀 때까지) · 공고한 날부터 효력","근거조문":"주택법 §63의2","서식칸":"","출처":"https://www.law.go.kr/LSW/admRulLsInfoP.do?admRulSeq=2100000281588","확인":"원문 대조됨(5번, 공고 원문)"}],"개정":[],"쓰는곳":[{"곳":"사건처리 판정","이름":"cls:조정대상지역·cls:거주기간(재기 전용 스위치 CASEPROC_AI_ADJ_TRIAL_)","보는날":"취득일·양도일","켜짐":false},{"곳":"계산기 칸","이름":"양도 isAdjustedArea(지금은 사람이 입력)","보는날":"양도일","켜짐":false}],"확인필요":["2017-08-03~11-09 기간을 중과(§167의3 등)·장기보유특별공제에서 어떻게 보는지 — 각 조문 원문으로 확인","2020-877호 정정공고로 추가된 화성시의 효력일(2020-06-19인지 06-29인지)","택지개발지구·행복도시 예정지역 경계(동탄2·광교·고양 택지·세종) — 목록 동·리 안의 주소는 지구 경계를 봐야 함(목록 밖은 아님으로 풀림)","2026-07-01 이후 공고(법제처 연혁 최신: 2026-882호 — 그 뒤 변동은 다시 확인)"],"원본":"5번 세션 gs-backend/AdjArea.js(ai-lead-live f818c2d), maps/조정대상지역_이력표.md — 이 파일은 거기서 옮긴 것"}];
+  /*@@REF_DATA_END@@*/
   var lsiActiveTab_ = 'law';
   var lsiFolderFiles_ = null;      // [{name,url,mimeType,folder}] — 드라이브 서식 폴더 3곳
   var lsiFolderLoading_ = false;
@@ -467,12 +474,73 @@
 
   function lsiEsc_(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
+  // ---------- 세무사님 확인 기록(서버 스크립트 속성 — reftable_review_get/set). 기록만 하고, 확인해도 계산·판정에 바로 쓰이지 않는다 ----------
+  var lsiReviews_ = null, lsiReviewLoading_ = false, lsiReviewFailed_ = false, lsiReviewWaiters_ = [];
+  function lsiLoadReviews_(after){
+    if (lsiReviews_){ if (after) after(); return; }
+    if (after) lsiReviewWaiters_.push(after);
+    if (lsiReviewLoading_) return;
+    lsiReviewLoading_ = true;
+    callGas('reftable_review_get', {}).then(function(r){ lsiReviews_ = (r && r.reviews) || {}; lsiReviewFailed_ = !(r && r.reviews); })
+      .catch(function(){ lsiReviews_ = {}; lsiReviewFailed_ = true; })
+      .then(function(){ lsiReviewLoading_ = false; var w = lsiReviewWaiters_; lsiReviewWaiters_ = []; w.forEach(function(f){ f(); }); });
+  }
+  // 표 내용 지문 — 확인한 뒤 표가 바뀌면 "확인 뒤 바뀜"으로 알리려고(행·칸·절차·개정만 본다)
+  function lsiVer_(obj){
+    var s = JSON.stringify([obj.행 || obj.칸 || null, obj.절차 || null, obj.개정 || null]);
+    var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return (h >>> 0).toString(36) + '-' + s.length;
+  }
+  function lsiState_(key, obj){
+    var rv = lsiReviews_ && lsiReviews_[key];
+    if (rv && rv.상태 === '확인' && rv.판 === lsiVer_(obj)) return '세무사님 확인';
+    if (rv && rv.상태 === '보류') return '보류';
+    return obj.상태 || '초안';
+  }
+  function lsiReviewBarHtml_(key, obj){
+    var rv = lsiReviews_ && lsiReviews_[key];
+    var changed = rv && rv.판 && rv.판 !== lsiVer_(obj);
+    var line = lsiReviews_ === null ? '확인 기록을 불러오는 중…'
+      : lsiReviewFailed_ ? '확인 기록을 불러오지 못했습니다(서버 연결을 확인해 주세요).'
+      : !rv ? '아직 세무사님 확인 전입니다.'
+      : '세무사님 <b>' + lsiEsc_(rv.상태) + '</b> — ' + lsiEsc_(rv.시각 || '') + (changed ? ' · <span class="lsi-badge warn">확인한 뒤 표가 바뀌었습니다 — 다시 봐 주세요</span>' : '') + (rv.메모 ? '<br>메모: ' + lsiEsc_(rv.메모) : '');
+    return '<div class="lsi-review" data-lsirevkey="' + lsiEsc_(key) + '" style="margin:8px 0; padding:8px 10px; border:1px dashed var(--line); border-radius:6px;">' +
+      '<div style="font-size:12.5px; margin-bottom:6px;">' + line + '</div>' +
+      '<div style="display:flex; gap:6px; flex-wrap:wrap;">' +
+      '<button type="button" class="btn" data-lsirev="확인">✅ 이 표 확인</button>' +
+      '<button type="button" class="btn" data-lsirevmemo="1">✏ 고칠 곳 메모</button>' +
+      '<button type="button" class="btn" data-lsirev="보류">⏸ 보류</button>' +
+      (rv ? '<button type="button" class="ghost-btn" data-lsirev="지움">기록 지우기</button>' : '') + '</div>' +
+      '<div class="lsi-revmemo" style="display:none; margin-top:6px;"><textarea rows="2" style="width:100%;" aria-label="고칠 곳 메모" placeholder="어느 행·칸을 어떻게 고쳐야 하는지 적어 주세요">' + lsiEsc_(rv && rv.메모 || '') + '</textarea>' +
+      '<button type="button" class="btn" data-lsirev="메모" style="margin-top:4px;">메모 저장</button></div>' +
+      '<div class="lsi-note" style="margin-top:6px;">확인을 누르셔도 계산·판정에 바로 쓰이지는 않습니다. 확인된 표만 다음 반영 때 켭니다.</div></div>';
+  }
+  function lsiWireReview_(root, key, obj, redraw){
+    var bar = root.querySelector('.lsi-review'); if (!bar) return;
+    var memo = bar.querySelector('.lsi-revmemo');
+    var m = bar.querySelector('[data-lsirevmemo]'); if (m) m.addEventListener('click', function(){ memo.style.display = ''; memo.querySelector('textarea').focus(); });
+    bar.querySelectorAll('[data-lsirev]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var st = b.dataset.lsirev;
+        if (st === '메모' && !memo.querySelector('textarea').value.trim()){ showToast('메모를 적어 주세요.', 'warning'); return; }
+        b.disabled = true;
+        callGas('reftable_review_set', { key: key, state: st, ver: lsiVer_(obj), memo: memo.querySelector('textarea').value.trim() }).then(function(r){
+          if (!r || r.error) throw new Error((r && r.error) || '저장 실패');
+          lsiReviews_ = r.reviews || {}; lsiReviewFailed_ = false;
+          showToast(st === '지움' ? '기록을 지웠습니다.' : '저장했습니다.', 'success');
+          redraw();
+        }).catch(function(e){ b.disabled = false; showToast('저장하지 못했습니다: ' + e.message, 'warning'); });
+      });
+    });
+  }
+
   function lsiShowTab_(tab){
     lsiActiveTab_ = tab;
     document.querySelectorAll('.lsi-tab').forEach(function(b){ b.classList.toggle('active', b.dataset.lsitab === tab); });
     ['law', 'form', 'ref'].forEach(function(t){ document.getElementById('lsiPane-' + t).style.display = t === tab ? '' : 'none'; });
     if (tab === 'form') lsiRenderForms_();
     if (tab === 'ref') lsiRenderRefs_();
+    if (tab !== 'law') lsiLoadReviews_(function(){ if (lsiActiveTab_ === 'form') lsiRenderForms_(); else if (lsiActiveTab_ === 'ref') lsiRenderRefs_(); });
   }
   document.querySelectorAll('.lsi-tab').forEach(function(b){ b.addEventListener('click', function(){ lsiShowTab_(b.dataset.lsitab); }); });
 
@@ -567,7 +635,7 @@
       var fileHtml = files === null ? '<span class="lsi-note">불러오는 중…</span>'
         : files.length ? '<span class="lsi-files">' + files.map(function(x){ return '<a href="' + lsiEsc_(x.f.url) + '" target="_blank" rel="noopener" title="' + lsiEsc_(x.f.folder + ' 폴더 · ' + x.f.name + ' · ' + x.how) + '">' + (/\.pdf$/i.test(x.f.name) ? 'PDF' : /\.hwpx?$/i.test(x.f.name) ? '한글' : '파일') + (x.how === '번호·법 같음' ? '' : '?') + '</a>'; }).join('') + '</span>'
         : '<span class="lsi-badge warn">원본 없음</span>';
-      var mapHtml = fm ? '<button type="button" class="lsi-link" data-lsiformmap="' + lsiEsc_(r.formNo) + '">칸 ' + (fm.칸 || []).length + '개</button> <span class="lsi-badge' + (fm.상태 === '세무사님 확인' ? ' ok' : ' warn') + '">' + lsiEsc_(fm.상태 || '초안') + '</span>' : '<span class="lsi-note">아직 없음</span>';
+      var mapHtml = fm ? '<button type="button" class="lsi-link" data-lsiformmap="' + lsiEsc_(r.formNo) + '">칸 ' + (fm.칸 || []).length + '개</button> <span class="lsi-badge' + (lsiState_(r.formNo, fm) === '세무사님 확인' ? ' ok' : ' warn') + '">' + lsiEsc_(lsiState_(r.formNo, fm)) + '</span>' : '<span class="lsi-note">아직 없음</span>';
       return '<tr><td class="nw">' + (r.section === 'required' ? '필수' : '해당 시') + '</td><td style="white-space:nowrap;">' + lsiEsc_(typeof printShortFormNo_ === 'function' ? printShortFormNo_(r.formNo) : r.formNo) + '</td>' +
         '<td>' + lsiEsc_(r.title) + '<div class="lsi-note">' + lsiEsc_(r.formNo.split('[')[0].trim()) + '</div></td><td class="nw">' + lsiEsc_(efile.label === '전자' ? '전자신고' : '서면') + '</td>' +
         '<td class="nw">' + fileHtml + '</td><td class="nw">' + mapHtml + '</td><td class="nw"><button type="button" class="lsi-link" data-lsiprint="1">세액인쇄로</button></td></tr>';
@@ -706,26 +774,28 @@
     if (!box){ lsiRenderForms_(); box = document.getElementById('lsiFormMapBox'); }
     if (!fm || !box) return;
     box.innerHTML = '<div class="card"><h3 style="margin-top:0;">칸 지도 — ' + lsiEsc_(fm.이름 || '') + '</h3>' +
-      '<div class="lsi-note" style="margin-bottom:6px;">' + lsiEsc_(formNo) + (fm.서식판 ? ' · 서식판 ' + lsiEsc_(fm.서식판) : '') + ' · 상태: <b>' + lsiEsc_(fm.상태 || '초안') + '</b>(세무사님 확인 전에는 계산·판정에 쓰지 않습니다)' +
+      '<div class="lsi-note" style="margin-bottom:6px;">' + lsiEsc_(formNo) + (fm.서식판 ? ' · 서식판 ' + lsiEsc_(fm.서식판) : '') + ' · 상태: <b>' + lsiEsc_(lsiState_(formNo, fm)) + '</b>(세무사님 확인 전에는 계산·판정에 쓰지 않습니다)' +
       (fm.출처 || []).map(function(o){ return ' · <a href="' + lsiEsc_(o.주소) + '" target="_blank" rel="noopener">' + lsiEsc_(o.이름) + ' ↗</a>'; }).join('') + '</div>' +
       (fm.설명 ? '<div class="lsi-note" style="margin-bottom:6px;">' + lsiEsc_(fm.설명) + '</div>' : '') +
+      lsiReviewBarHtml_(formNo, fm) +
       '<div class="lsi-table-wrap"><table class="lsi-table"><thead><tr><th>칸</th><th>칸 이름</th><th>작성방법(요지)</th><th>계산(칸끼리)</th><th>근거 조문</th><th>계산기 칸</th><th>조견표</th><th>확인</th></tr></thead><tbody>' +
       (fm.칸 || []).map(function(k){
         return '<tr><td style="white-space:nowrap;">' + lsiEsc_(k.칸) + '</td><td>' + lsiEsc_(k.이름) + '</td><td>' + lsiEsc_(k.작성방법) + '</td><td>' + lsiEsc_(k.계산 || '') + '</td><td>' + lsiArtLinks_(k.근거조문) + '</td>' +
           '<td>' + (k.계산기칸 || []).map(function(c){ return '<button type="button" class="lsi-link" data-lsicalc="1">' + lsiEsc_(c) + '</button>'; }).join(', ') + '</td><td>' + lsiRefLinks_(k.조견표) + '</td>' +
-          '<td>' + (/원문 대조됨/.test(k.확인 || '') ? '<span class="lsi-badge ok">원문 대조됨</span>' : '<span class="lsi-badge warn">' + lsiEsc_(k.확인 || '확인 필요') + '</span>') + '</td></tr>';
+          '<td>' + lsiCheckBadge_(k.확인) + '</td></tr>';
       }).join('') + '</tbody></table></div>' +
       ((fm.검산 || []).length ? '<div style="margin-top:8px;"><b>칸 산식 검산</b> <span class="lsi-note">(계산 결과를 서식 칸 계산대로 다시 맞춰 봄)</span><ul style="margin:4px 0 0 18px; font-size:12.5px;">' + fm.검산.map(function(x){ return '<li>' + lsiEsc_(x) + '</li>'; }).join('') + '</ul></div>' : '') +
       ((fm.확인필요 || []).length ? '<div style="margin-top:8px;"><b>확인 필요</b><ul style="margin:4px 0 0 18px; font-size:12.5px;">' + fm.확인필요.map(function(x){ return '<li>' + lsiEsc_(x) + '</li>'; }).join('') + '</ul></div>' : '') +
       '</div>';
     lsiWireLinks_(box);
+    lsiWireReview_(box, formNo, fm, function(){ lsiShowFormMap_(formNo, true); lsiRenderForms_(); });
     if (!noScroll && box.scrollIntoView) box.scrollIntoView({ block: 'start' });
   }
 
   // ---------- 조견표 ----------
   function lsiFmtVal_(v){
     if (v == null) return '';
-    if (typeof v !== 'object') return lsiEsc_(v);
+    if (typeof v !== 'object'){ var tx = String(v); return tx.length > 160 ? '<details class="lsi-long"><summary>' + lsiEsc_(tx.slice(0, 120)) + '… (펼치기)</summary>' + lsiEsc_(tx) + '</details>' : lsiEsc_(tx); }
     if (Array.isArray(v)){
       if (v.length && typeof v[0] === 'object'){
         var ks = Object.keys(v[0]);
@@ -736,12 +806,17 @@
     }
     return Object.keys(v).map(function(k){ return lsiEsc_(k) + ': ' + lsiFmtVal_(v[k]); }).join('<br>');
   }
+  function lsiCheckBadge_(txt){
+    txt = txt || '확인 필요';
+    if (/원문 대조됨/.test(txt)) return '<span class="lsi-badge ok" title="' + lsiEsc_(txt) + '">원문 대조됨</span>';
+    return '<span class="lsi-badge warn" title="' + lsiEsc_(txt) + '">' + lsiEsc_(txt.length > 24 ? txt.slice(0, 22) + '…' : txt) + '</span>';
+  }
   function lsiRenderRefs_(){
     var pane = document.getElementById('lsiPane-ref');
     var part = function(p){ return LSI_REF_TABLES_.filter(function(t){ return String(t.번호).indexOf(p) === 0; }); };
     var item = function(t){
       return '<li><button type="button" class="lsi-link" data-lsigoref="' + lsiEsc_(t.번호) + '">' + lsiEsc_(t.번호 + ' ' + t.이름) + '</button> ' +
-        '<span class="lsi-badge' + (t.상태 === '세무사님 확인' ? ' ok' : ' warn') + '">' + lsiEsc_(t.상태 || '초안') + '</span> <span class="lsi-note">' + (t.행 || []).length + '행</span></li>';
+        '<span class="lsi-badge' + (lsiState_(t.번호, t) === '세무사님 확인' ? ' ok' : ' warn') + '">' + lsiEsc_(lsiState_(t.번호, t)) + '</span> <span class="lsi-note">' + (t.행 || []).length + '행</span></li>';
     };
     pane.innerHTML = '<div class="card"><div class="lsi-note" style="margin-bottom:8px;">조견표는 판정 순서(절차)와 요건·수치·기간(내용)을 한 장에 담은 표입니다. 행마다 공식 원문 근거가 있고, <b>세무사님 확인 전에는 계산·판정에 쓰지 않습니다.</b> ' +
       '자료는 드라이브 "0 NETAX\\참고자료조견표" 폴더에 넣어 주시면 읽어서 초안을 만듭니다.</div>' +
@@ -759,22 +834,24 @@
     if (!box) return;
     if (!t){ box.innerHTML = '<div class="card lsi-note">' + lsiEsc_(no) + ' 조견표는 아직 없습니다.</div>'; return; }
     var tbl = function(head, rows){ return rows.length ? '<div class="lsi-table-wrap"><table class="lsi-table"><thead><tr>' + head.map(function(h){ return '<th>' + h + '</th>'; }).join('') + '</tr></thead><tbody>' + rows.join('') + '</tbody></table></div>' : '<div class="lsi-note">없음</div>'; };
-    box.innerHTML = '<div class="card"><h3 style="margin-top:0;">' + lsiEsc_(t.번호 + ' ' + t.이름) + ' <span class="lsi-badge' + (t.상태 === '세무사님 확인' ? ' ok' : ' warn') + '">' + lsiEsc_(t.상태 || '초안') + '</span></h3>' +
+    box.innerHTML = '<div class="card"><h3 style="margin-top:0;">' + lsiEsc_(t.번호 + ' ' + t.이름) + ' <span class="lsi-badge' + (lsiState_(t.번호, t) === '세무사님 확인' ? ' ok' : ' warn') + '">' + lsiEsc_(lsiState_(t.번호, t)) + '</span></h3>' +
+      lsiReviewBarHtml_(t.번호, t) +
       '<div class="lsi-note" style="margin-bottom:8px;">' + lsiEsc_(t.무엇 || '') + '<br>기준이 되는 날: ' + lsiEsc_(t.기준일 || '') + ' · 갱신: ' + lsiEsc_(t.갱신 || '') +
       '<br>근거 법령: ' + lsiArtLinks_(t.근거법령) + (t.근거서식 && t.근거서식.length ? '<br>근거 서식: ' + lsiFormCellLinks_(t.근거서식) : '') +
       '<br>출처: ' + (t.출처 || []).map(function(o){ return '<a href="' + lsiEsc_(o.주소) + '" target="_blank" rel="noopener">' + lsiEsc_(o.이름) + ' ↗</a>'; }).join(' · ') +
       (t.대조 && t.대조.length ? '<br>대조 자료(근거 아님): ' + t.대조.map(lsiEsc_).join(', ') : '') + '</div>' +
       '<h4>판정 순서</h4>' + tbl(['단계', '묻는 것', '예 →', '아니오 →', '근거'], (t.절차 || []).map(function(s){ return '<tr><td>' + lsiEsc_(s.단계) + '</td><td>' + lsiEsc_(s.묻는것) + '</td><td>' + lsiEsc_(s.예) + '</td><td>' + lsiEsc_(s.아니오) + '</td><td>' + lsiEsc_(s.근거) + '</td></tr>'; })) +
       '<h4>값 표</h4>' + tbl(['구분', '적용 시작', '적용 끝', '값', '조건', '근거 조문', '서식 칸', '출처', '확인'], (t.행 || []).map(function(r){
-        return '<tr><td>' + lsiEsc_(r.구분) + '</td><td style="white-space:nowrap;">' + lsiEsc_(r.시작 || '') + '</td><td style="white-space:nowrap;">' + lsiEsc_(r.끝 || '지금까지') + '</td><td>' + lsiFmtVal_(r.값) + '</td><td>' + lsiEsc_(r.조건 || '') + '</td>' +
+        return '<tr><td class="w-mid">' + lsiEsc_(r.구분) + '</td><td class="nw">' + lsiEsc_(r.시작 || '') + '</td><td class="nw">' + lsiEsc_(r.끝 || '지금까지') + '</td><td class="w-wide">' + lsiFmtVal_(r.값) + '</td><td class="w-mid">' + lsiFmtVal_(r.조건 || '') + '</td>' +
           '<td>' + lsiArtLinks_(r.근거조문 ? [r.근거조문] : []) + '</td><td>' + lsiFormCellLinks_(r.서식칸 ? [r.서식칸] : []) + '</td><td>' + (r.출처 ? '<a href="' + lsiEsc_(r.출처) + '" target="_blank" rel="noopener">원문 ↗</a>' : '') + '</td>' +
-          '<td>' + (/원문 대조됨/.test(r.확인 || '') ? '<span class="lsi-badge ok">원문 대조됨</span>' : '<span class="lsi-badge warn">' + lsiEsc_(r.확인 || '확인 필요') + '</span>') + '</td></tr>';
+          '<td>' + lsiCheckBadge_(r.확인) + '</td></tr>';
       })) +
       '<h4>개정 이력</h4>' + tbl(['개정일', '시행일', '무엇이 바뀌었나', '어느 날 기준으로', '경과규정(부칙)'], (t.개정 || []).map(function(r){ return '<tr><td>' + lsiEsc_(r.개정일) + '</td><td>' + lsiEsc_(r.시행일) + '</td><td>' + lsiEsc_(r.내용) + '</td><td>' + lsiEsc_(r.적용기준) + '</td><td>' + lsiEsc_(r.부칙) + '</td></tr>'; })) +
       '<h4>시스템이 쓰는 곳</h4>' + tbl(['쓰는 곳', '이름', '보는 날', '켜짐'], (t.쓰는곳 || []).map(function(r){ return '<tr><td>' + lsiEsc_(r.곳) + '</td><td>' + lsiEsc_(r.이름) + '</td><td>' + lsiEsc_(r.보는날) + '</td><td>' + (r.켜짐 ? '켜짐' : '꺼짐(세무사님 확인 전)') + '</td></tr>'; })) +
       ((t.확인필요 || []).length ? '<h4>확인 필요(공식 출처로 확인 못 함 — 표에 넣지 않음)</h4><ul style="margin:4px 0 0 18px; font-size:12.5px;">' + t.확인필요.map(function(x){ return '<li>' + lsiEsc_(x) + '</li>'; }).join('') + '</ul>' : '') +
       '</div>';
     lsiWireLinks_(box);
+    lsiWireReview_(box, t.번호, t, function(){ lsiRenderRefs_(); });
     if (box.scrollIntoView) box.scrollIntoView({ block: 'start' });
   }
 </script>

@@ -3921,6 +3921,9 @@ function dispatchClientAction0_(body) {
   if (body.action === 'law_lookup_article') {
     return jsonResponse(toolLookupStatuteArticle(body.lawName, body.articleNo));
   }
+  // [2026.10.19 조견표 체계] 법령정보 탭 — 조견표·서식 칸 지도에 세무사님이 남긴 확인·메모·보류(표 내용은 화면 파일, 여기는 기록만)
+  if (body.action === 'reftable_review_get') return jsonResponse(reftableReviewGet_());
+  if (body.action === 'reftable_review_set') return jsonResponse(reftableReviewSet_(body));
 
   // [2026.09 버그수정] 실사용 감사 지적 — 종전 챗봇(work.netax.kr)에서는 "이거 메일로 보내줘",
   // "이번주 일정 뭐있어", "안읽은 메일 있어?", "할일 뭐있어" 처럼 자연어로 자유롭게 쓰던
@@ -4733,6 +4736,34 @@ function toolSendEmail(to, subject, body) {
   } catch (err) {
     return { error: '이메일 발송 중 오류: ' + err.message };
   }
+}
+
+// [2026.10.19 조견표 체계] 조견표·서식 칸 지도의 세무사님 확인 기록 — 스크립트 속성 한 칸(JSON).
+//  열쇠 = 조견표 번호("1부-01") 또는 서식번호. 판 = 화면이 표 내용으로 만든 짧은 지문(확인 뒤 표가 바뀌면 화면이 "확인 뒤 바뀜"으로 알림).
+//  기록만 한다 — 확인을 눌러도 계산·판정에 바로 쓰이지 않는다(쓰는 곳을 켜는 것은 확인된 표만 개발 반영으로).
+const REFTABLE_REVIEW_PROP_ = 'NX_REFTABLE_REVIEW';
+function reftableReviewGet_() {
+  let all = {};
+  try { all = JSON.parse(PropertiesService.getScriptProperties().getProperty(REFTABLE_REVIEW_PROP_) || '{}'); } catch (e) { all = {}; }
+  return { success: true, reviews: all };
+}
+function reftableReviewSet_(body) {
+  const key = String(body.key || '').slice(0, 120);
+  const state = String(body.state || '');
+  if (!key || ['확인', '메모', '보류', '지움'].indexOf(state) === -1) return { error: '잘못된 요청입니다(열쇠·상태).' };
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return { error: '다른 저장이 진행 중입니다. 잠시 뒤 다시 눌러 주세요.' };
+  try {
+    const props = PropertiesService.getScriptProperties();
+    let all = {};
+    try { all = JSON.parse(props.getProperty(REFTABLE_REVIEW_PROP_) || '{}'); } catch (e) { all = {}; }
+    if (state === '지움') delete all[key];
+    else all[key] = { 상태: state, 메모: String(body.memo || '').slice(0, 500), 판: String(body.ver || '').slice(0, 40), 시각: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') };
+    const text = JSON.stringify(all);
+    if (text.length > 8500) return { error: '기록이 너무 많아 저장하지 못했습니다(메모를 줄여 주세요).' };
+    props.setProperty(REFTABLE_REVIEW_PROP_, text);
+    return { success: true, reviews: all };
+  } finally { lock.releaseLock(); }
 }
 
 /**
