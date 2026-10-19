@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 04:02 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 04:03 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -36168,13 +36168,15 @@ function handleTaxCalcClick_(e){
     const g_ = function(id){ const el = document.getElementById(id); return el ? numVal(el.value) : 0; };
     const grossInput = g_('ihGrossEstateGeneral');
     const gross = grossInput > 0 ? grossInput : ihValuationAssetsGrossTotal_();
-    const nonTaxable = g_('ihNonTaxable');
-    const nonIncluded = g_('ihPublicOrg') + g_('ihPublicTrust');
     const debtTotal = computeDebtTotal_(inheritanceDebtItems);
     const duesTotal = computeDuesTotal_(inheritanceDuesItems);
     // [2026.10.18 정밀분석 원인2] 상속세과세가액 = 총상속재산 − 비과세·불산입 − 채무·공과금 + 10년(5년) 내 사전증여(§13) — "과세가액에 가산된 사전증여재산" 칸 값을 더한다(예전엔 빠졌다)
     const priorGift = g_('ihPriorGiftedIncluded');
-    const estate = Math.max(0, gross - nonTaxable - nonIncluded - debtTotal - duesTotal) + priorGift;
+    // [2026.10.19 세액 고침] 비과세(ihNonTaxable)·불산입(ihPublicOrg·ihPublicTrust)은 여기서 빼지 않는다 — 계산 실행이 그 칸들을
+    //  nonTaxableAmount 등으로 따로 넘기고 엔진(effectiveEstateAmount)이 뺀다. 여기서도 빼면 두 번 빠져 과세가액·세액이 적게 나왔다
+    //  (재현: 총재산 30억·비과세 2억·공익법인 1억·채무 1억 → 엔진 과세가액 23억(맞는 값 26억), 산출세액 1억2천만 원 적게).
+    //  ihEstate 칸 정의(공과금·채무를 빼고 사전증여 가산)·AI 도구 taxableEstateAmount 설명과 같게.
+    const estate = Math.max(0, gross - debtTotal - duesTotal) + priorGift;
     const ihEstateEl = document.getElementById('ihEstate');
     ihEstateEl.value = estate;
     if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(ihEstateEl);
