@@ -222,7 +222,7 @@ function cxgValueCheck_(cc, r, facts, rec) {
   fields.forEach(function (fd) {
     const re = CXG_KIND_GROUPS_[fd.group];
     // [2026.10.19 3번 integ 측정으로 찾은 것] 국세 평가(시가·보충적 평가)를 대조할 때 지방세 잣대 값은 뺀다 — 취득세·등록세·재산세 납부 서류와 법무사 견적서의
-    //  '공시가격'·'과세표준'·'시가표준액'은 지방세 시가표준액(정원식: 취득세 납부확인서 432,153,909원)이라 국세 보충적 평가(417,813,909원)와 잣대가 다르다
+    //  '공시가격'·'과세표준'·'시가표준액'은 지방세 시가표준액(고객G: 취득세 납부확인서 432,153,909원)이라 국세 보충적 평가(417,813,909원)와 잣대가 다르다
     const localTax = function (f) { return /취득세|등록세|등록면허세|지방세|재산세|견적서/.test(String((f.src && f.src.docType) || '')) || /시가표준액|과세표준/.test(String(f.kind || '')); };
     const hits = (facts || []).filter(function (f) { return f && f.src && f.kind !== '서류' && !f._copy && re.test(f.kind) && !(f.read && f.read.conf === '불확실') && !(/^(평가|공시가격)$/.test(fd.group) && localTax(f)) && (!fd.ak || !(f.keys && f.keys.asset) || cxAkSame_(f.keys.asset, fd.ak)); });
     const vals = {}; hits.forEach(function (f) { const n = cxgFactNum_(f); if (!n) return; const e = vals[n] = vals[n] || { v: n, docs: {} }; e.docs[f.src.docType || '서류'] = (e.docs[f.src.docType || '서류'] || []).concat(f.src.file); });
@@ -302,7 +302,7 @@ function cxPersonChecks_(c, facts) {
     const mine = Object.keys(certs).map(function (k) { return certs[k]; }).filter(function (L) { return dec && L.some(function (x) { return x.rel === '본인' && x.who === dec; }); })[0];
     const signers = {}; sure.forEach(function (f) { if (f.kind === '성명' && f.role === '상속인' && /분할/.test(String(f.src.docType || ''))) { const n = cxgName_(f.value); if (n) signers[n] = src(f); } });
     const heirs = {}; (mine || []).forEach(function (x) { if (/^(배우자|자녀|자|딸|아들)$/.test(x.rel) && x.who) heirs[x.who] = x.rel; });
-    // [밤 12바퀴 사람 축 다시] 세무사는 증명서에 "사망" 표시가 있는 가족부터 가른다 — 같은 기록(가족N)의 기타:사망 표시(개발용 신수호 배우자 이임규).
+    // [밤 12바퀴 사람 축 다시] 세무사는 증명서에 "사망" 표시가 있는 가족부터 가른다 — 같은 기록(가족N)의 기타:사망 표시(개발용 고객O 배우자 고객O 배우자).
     //  사망일을 모르면 먼저 사망(상속인 아님)인지 뒤에 사망(그 상속인이 대신 협의)인지 정하지 않고 알려만 준다. 자녀가 사망이면 대습상속(그 자녀의 배우자·자녀가 협의)
     const deadRec = {}; sure.forEach(function (f) { if (f.kind === '기타:사망' && /^(true|사망)$/.test(String(f.value)) && f.src) deadRec[(f.src.fileId || f.src.file) + '#' + String(f.src.part || '') + '#' + String(f.src.rec || '')] = 1; });
     const dead = {}; (mine || []).forEach(function (x) { if (x.rel !== '본인' && x.who && deadRec[(x.f.src.fileId || x.f.src.file) + '#' + String(x.f.src.part || '') + '#' + String(x.f.src.rec || '')]) dead[x.who] = x.rel; });
@@ -321,9 +321,9 @@ function cxPersonChecks_(c, facts) {
 // =========================================================
 // [2026.10.19 밤 5바퀴 — 사람처럼 추론해 본 걸음 중 여러 사건에서 되풀이된 GAS 몫] (maps/추론걸음_사람추론.md)
 //  ① 같은 자산의 감정평가서가 둘 이상(서로 다른 서류) — 상증법 시행령 §49①: 둘 이상의 감정가액이 있으면 그 평균액. 평균을 근거와 함께 적고,
-//     그 자산의 상속재산 평가 질문(ih:)에 "감정가액 평균" 후보로 붙인다(고르는 것은 세무사·AI — 시가 순위 판단은 맥락)  — 개발용 노영환·박종헌
+//     그 자산의 상속재산 평가 질문(ih:)에 "감정가액 평균" 후보로 붙인다(고르는 것은 세무사·AI — 시가 순위 판단은 맥락)  — 개발용 고객A·고객B
 //  ② 임대 보증금 합계(현황표·명세서) ↔ 개별 임대차계약 보증금 — 같은 파일 안 개별 보증금 합, 없으면 다른 계약서 보증금 중 합이 같은 조합(2~8건).
-//     맞으면 채무(상증법 §14 임대보증금)의 근거로 적고, 안 맞으면 확인 — 개발용 김창호·노영환·박종헌
+//     맞으면 채무(상증법 §14 임대보증금)의 근거로 적고, 안 맞으면 확인 — 개발용 고객C·고객A·고객B
 // =========================================================
 // [2026.10.19 밤 28바퀴 — 5번 도구 고칠 거리] 상속 '채운 칸' 요약 — 필수 칸 4개(피상속인·사망일·상속인 등)가 다 찼다는 줄만 있어,
 //  재산 평가·금융재산·채무가 열려 있어도 끝난 것처럼 보였다. 작업 지시 AI·세무사가 한눈에 보도록 금액 칸의 합과 아직 안 정한 것을 적는다(계산 안 함 — 사실 정리만)
@@ -353,7 +353,7 @@ function cxInhSummary_(c) {
 //  ① 저가양도 신호: 양도 대금 ÷ 양도일 기준 기준시가 합(공시일 ≤ 양도일인 가장 늦은 해 — 공동주택가격은 총액, 토지는 개별공시지가 × 면적). 같은 성 매수인이면 함께 적음(§101① 5%·3억 기준은 시가로 판정)
 //  ② 거주 요약: 초본 거주기간 중 판 자산 주소에 산 기간(없으면 "판 자산 주소 거주 기록 없음")
 //  ③ 재촌자경 재료: 농지(답·전·과수원)면 농지 소재 시군구 ↔ 양도인 주소 시군구, 자경 서류 유무(시행령 §168의8)
-//  개발용: 이종식(대금 5천만 ÷ 기준시가 합 약 7.48천만 = 67%, 같은 성, 봉화 농지), 방영교(초본상 판 빌라 거주 없음)
+//  개발용: 고객Y(대금 5천만 ÷ 기준시가 합 약 7.48천만 = 67%, 같은 성, 봉화 농지), 고객X(초본상 판 빌라 거주 없음)
 function cxTrJudgeMaterials_(c, facts) {
   if (!c || c.세목 !== 'transfer') return '';
   const D = String(c.기준일 || ''); if (!/^\d{4}-\d{2}-\d{2}$/.test(D)) return '';
@@ -408,7 +408,7 @@ function cxTrJudgeMaterials_(c, facts) {
 }
 // [2026.10.19 밤 17바퀴 — 세목별: 증여만] 10년 합산(상증법 §47②)은 개발용 증여 8건 모두 "있나요?"만 묻는다. 세무사는 먼저 사무소 안의 같은 수증자 다른 증여 사건을 본다.
 //  상수(GAS): 작업관리 시트에서 같은 납세자(수증자)·증여 사건을 찾아 날짜·증여자로 가름 — 이번 증여 전 10년 안 + 같은 증여자(수증자 증명서의 부·모는 서로 배우자라 같은 사람)면 합산 후보,
-//  증여자 다름·뒤 증여·10년 밖은 합산 아님. 변수(작업 지시 AI·사용자): 사무소 밖 증여, 증여자 배우자 관계가 증명서에 없을 때. 개발용 강정화 가족(임세택 4/28 임미경·7/14 임종삼)
+//  증여자 다름·뒤 증여·10년 밖은 합산 아님. 변수(작업 지시 AI·사용자): 사무소 밖 증여, 증여자 배우자 관계가 증명서에 없을 때. 개발용 고객D 가족(고객D 납세자 4/28 고객D 관계인1·7/14 고객D 관계인3)
 var CX_CASE_ROWS_ = null;
 function cxCaseRows_() {
   if (CX_CASE_ROWS_) return CX_CASE_ROWS_;
@@ -448,7 +448,7 @@ function cxOtherGifts_(c, facts, rows) {
 }
 // [2026.10.19 밤 10바퀴 — 자산 축을 추론 먼저로 다시] 상속 재산 목록 맞대기: 세무사는 분할협의서 재산 ↔ 등기부(그 부동산) 목록부터 맞춘다.
 //  등기부의 대상 부동산은 구조화된 기록(docs[N].소재지)만 쓴다 — 글자 훑기로 잡힌 소재지에는 근저당권자 은행 지점·앞 권리자 주소가 섞인다(다동 39·남대문로2가 9-1 등, 3사건 되풀이).
-//  같은 동·리 + 같은 동호 + 단지 이름 글자가 겹치면 지번 표기만 다른 같은 집(재개발 전 "52번지 일원" ↔ 등기부 898, 개발용 김창호).
+//  같은 동·리 + 같은 동호 + 단지 이름 글자가 겹치면 지번 표기만 다른 같은 집(재개발 전 "52번지 일원" ↔ 등기부 898, 개발용 고객C).
 //  분할협의서에만 있음 → 등기부 요청 / 등기부에만 있음 → 이미 처분·사전증여·다른 사람 재산인지 묻기(알림). 판정은 안 함.
 function cxEstateRoster_(c, facts) {
   const out = { lines: [], notes: [], div: 0, reg: 0 };
@@ -481,14 +481,14 @@ function cxEstateRoster_(c, facts) {
     onlyD.push(d);
   });
   const onlyR = R.filter(function (r) { return !usedR[r.key] && !D.some(function (d) { return cxAkSame_(d.key, r.key); }); });
-  // 등기부 글에는 그 자산이 나오는데 대상 부동산 칸으로 정리가 안 된 경우(사진 등기부·같은 이름 파일 섞임, 개발용 박종헌 원문동) — "등기부 없음"이라고 요청하지 않는다
+  // 등기부 글에는 그 자산이 나오는데 대상 부동산 칸으로 정리가 안 된 경우(사진 등기부·같은 이름 파일 섞임, 개발용 고객B 원문동) — "등기부 없음"이라고 요청하지 않는다
   const inRegText = function (d) { return (facts || []).some(function (f) { return f && f.src && /등기부/.test(String(f.src.docType || '')) && f.keys && f.keys.asset && cxAkSame_(String(f.keys.asset), d.key); }); };
   const textOnly = onlyD.filter(inRegText);
   for (let i = onlyD.length - 1; i >= 0; i--) if (textOnly.indexOf(onlyD[i]) !== -1) onlyD.splice(i, 1);
   out.lines.push('🏠 재산 목록 맞대기(분할협의서 ' + D.length + '곳 ↔ 등기부 ' + R.length + '곳): 같음 ' + same.length + (renum.length ? ' · 지번 표기만 다른 같은 집 ' + renum.length + '(' + renum.slice(0, 2).join(' / ') + ')' : '') + (textOnly.length ? ' · 등기부 글에만 나옴(대상 부동산 칸 못 읽음) ' + textOnly.length + '(' + textOnly.map(function (d) { return d.raw; }).slice(0, 2).join(' / ') + ')' : '') + (onlyD.length ? ' · 분할협의서에만 ' + onlyD.length : '') + (onlyR.length ? ' · 등기부에만 ' + onlyR.length : ''));
   onlyD.slice(0, 3).forEach(function (d) { out.notes.push('🏠 상속재산 등기부 없음 — 분할협의서의 「' + d.raw + '」 등기부등본이 폴더에 없습니다(소유·지분·담보 확인과 평가에 필요) — 넣어 주세요 (출처: 분할협의서 ' + d.file + ')'); });
   // [밤 14바퀴] 등기부에만 있는 자산은 그 등기부 소유권 줄로 먼저 가른다 — 피상속인이 권리자로 한 번도 없으면 상속재산 아님(처리 줄),
-  //  피상속인이 마지막 권리자면 빠진 상속재산(알림), 피상속인 → 다른 사람 증여 등기면 상속개시 전 10년(상속인)·5년(그 밖) 안인지(§13①) — 개발용 박종헌 사당동 139-88(1982 박준영 → 2003 자녀 증여, 피상속인 없음)
+  //  피상속인이 마지막 권리자면 빠진 상속재산(알림), 피상속인 → 다른 사람 증여 등기면 상속개시 전 10년(상속인)·5년(그 밖) 안인지(§13①) — 개발용 고객B 사당동 000-00(1982 고객B 관계인1 → 2003 자녀 증여, 피상속인 없음)
   const D0 = String(c.기준일 || ''), dec = cxgName_(((c.사건개요 || {}).ihDeceasedName) || '');
   const heirsN = {}; ((c.사건개요 || {}).상속인목록 || []).forEach(function (h) { const n = cxgName_(h && h.name); if (n) heirsN[n] = 1; });
   const ownRows = function (r) {
@@ -521,8 +521,8 @@ function cxEstateRoster_(c, facts) {
   return out;
 }
 // [2026.10.19 밤 11바퀴 — 돈 축을 추론 먼저로 다시] 상속 임대보증금 채무는 사망일 현재 유효한 임대차만(상증법 §14 — 상속개시일 현재 피상속인 채무).
-//  같은 집(동호까지 같은 자산)의 옛 계약·재계약을 더하면 두 번 센다(개발용 김창호: 같은 호실 2022·2023·2025 계약 — 사망일 현재는 2023 계약),
-//  사망일 전에 끝난 계약·사망일 뒤 시작한 계약은 채무 근거가 아니다(노영환 103호 2025-02 종료). 같은 금액·같은 날짜 계약서는 사본으로 한 번만.
+//  같은 집(동호까지 같은 자산)의 옛 계약·재계약을 더하면 두 번 센다(개발용 고객C: 같은 호실 2022·2023·2025 계약 — 사망일 현재는 2023 계약),
+//  사망일 전에 끝난 계약·사망일 뒤 시작한 계약은 채무 근거가 아니다(고객A 103호 2025-02 종료). 같은 금액·같은 날짜 계약서는 사본으로 한 번만.
 function cxLeaseAtDeath_(c, facts) {
   const out = { lines: [], notes: [], n: 0 };
   const D = c && c.세목 === 'inheritance' ? String(c.기준일 || '') : '';
@@ -597,7 +597,7 @@ function cxLawChecks_(c, facts) {
   return out;
 }
 
-// [2026.10.19 relcheck — 세무사님 지시(원문): "이종식 사건에서 특수관계자 거래를 검토한 것은 매우 잘했다. 하지만 이 거래에서 양도자와 양수자는 특수관계자가 아니다.
+// [2026.10.19 relcheck — 세무사님 지시(원문): "고객Y 사건에서 특수관계자 거래를 검토한 것은 매우 잘했다. 하지만 이 거래에서 양도자와 양수자는 특수관계자가 아니다.
 //  따라서 특수관계 여부를 확인하는 절차만 있으면 된다" · "가족관계증명원이나 주민등록등초본 등 나아가 여타 증빙에서 특수관계로 보이는 정황이 있는지 세밀하게 검토하는 것은 매우 좋은 것이다"]
 //  특수관계 정황 점검 — 두 사람(양도인↔양수인, 수증자↔증여자)이 서류에 함께 나오는 정황만 근거와 함께 모은다. GAS·AI가 관계를 정하지 않는다(답은 세무사님).
 //  범위: 소득세법 시행령 §98① = 국세기본법 시행령 §1조의2 ①친족(4촌 혈족·3촌 인척·배우자(사실혼)·친양자 입양 전 친생·인지한 생부모) ②경제적 연관(임원·사용인, 생계를

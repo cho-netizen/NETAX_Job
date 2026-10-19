@@ -56,7 +56,7 @@ function cxmtSameAsset_(a, b) {
   if (pa[0] !== pb[0]) return false;
   return !pa[1] || !pb[1];
 }
-// 이름은 공백만 빼고 그대로 맞댄다 — 한 글자 차이를 같다고 보면 돌림자 형제(박종헌·박종한)를 같은 사람으로 묶게 된다
+// 이름은 공백만 빼고 그대로 맞댄다 — 한 글자 차이를 같다고 보면 돌림자 형제(고객B·고객B 형제)를 같은 사람으로 묶게 된다
 function cxmtName_(s) { return String(s || '').replace(/\s+/g, ''); }
 function cxmtPersonName_(f) { return cxmtName_(String((f.keys && f.keys.person) || '').split('|')[0]); }
 // 금융기관 이름 맞대기용 — 조합·은행 표기 차이를 줄인다
@@ -324,7 +324,7 @@ function cxmtOwnerLines_(facts) {
   });
 }
 
-// [2026.10.18 교차검증 2번] 소유권 줄의 넘겨준 사람 — 목적 "1번박준영지분전부이전"이면 박준영, 아니면 앞 줄 권리자가 한 사람일 때 그 사람
+// [2026.10.18 교차검증 2번] 소유권 줄의 넘겨준 사람 — 목적 "1번박○○지분전부이전"이면 고객B 관계인1, 아니면 앞 줄 권리자가 한 사람일 때 그 사람
 function cxmtTransferor_(l, prevL) {
   const m = /\d+번\s*([가-힣A-Za-z()]{2,20}?)\s*지분/.exec(l.aim || '');
   if (m) return cxmtName_(m[1]);
@@ -399,7 +399,7 @@ function cxTimeOrder_(facts, ctx) {
         if (!l.recv || l.owners.indexOf(payer) === -1) return;
         acq.push({ asset: l.asset || R.asset, date: l.recv, f: l.F['접수일'], what: '취득 등기 접수일' });
         // 납세자가 넘긴 줄 찾기 — 목적에 넘긴 사람 이름("N번<이름>지분…")이 있으면 그 이름이 납세자일 때만,
-        //  이름이 없으면 납세자 단독 소유 줄 바로 다음의 이전 줄만(공유 지분이면 누구 지분이 넘어갔는지 모름 — 박준영 지분 상속을 납세자 양도로 잘못 보던 것 막음)
+        //  이름이 없으면 납세자 단독 소유 줄 바로 다음의 이전 줄만(공유 지분이면 누구 지분이 넘어갔는지 모름 — 고객B 관계인1 지분 상속을 납세자 양도로 잘못 보던 것 막음)
         let nx = null;
         for (let j = i + 1; j < R.lines.length && !nx; j++) {
           const n = R.lines[j];
@@ -526,7 +526,7 @@ function cxTimeOrder_(facts, ctx) {
   Object.keys(ag).forEach(function (k) {
     const L = ag[k];
     const moves = L.filter(function (f) { return f.kind === '주소이력'; });
-    // [밤 8바퀴 보완 — 3번 원본 대조] 주소이력 한 줄의 신고일이 발생일보다 앞서는 것은 원본 초본에도 있는 서류상 정상(김창호·방영교 하루, 원본 그대로) — 모순으로 세지 않는다.
+    // [밤 8바퀴 보완 — 3번 원본 대조] 주소이력 한 줄의 신고일이 발생일보다 앞서는 것은 원본 초본에도 있는 서류상 정상(고객C·고객X 하루, 원본 그대로) — 모순으로 세지 않는다.
     //  거주기간은 법령 기준(소득세법 시행령 §154⑥ 주민등록표상 전입일 ~ 전출일)으로 발생일(전입일)을 쓴다. 신고일은 거주기간 계산에 쓰지 않는다.
     const ins = moves.map(function (f, i) { return { f: f, i: i, n: cxmtNum_(f.value.번호), d: cxmtDate_(f.value.발생일) || cxmtDate_(f.value.신고일) }; })
       .filter(function (x) { return x.d && /전입|전출|재등록|최초/.test(String(x.f.value.사유 || '')); })

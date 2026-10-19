@@ -197,7 +197,7 @@
   }
   function maiDecHtml_(){
     var d = mai_.decided, maj = maiMajority_();
-    return (d ? '<div class="mai-note" style="margin-bottom:4px;">' + maiEsc_(/회장/.test(d.누가 || '') ? '회장 결론' : '지금 결정') + ': <b>' + maiEsc_(d.선택) + (d.내용 ? ' — ' + d.내용 : '') + '</b> (' + maiEsc_((d.누가 || '세무사님') + ' · ' + (d.때 || '')) + ')' + (d.메모 ? '<br>' + maiEsc_(d.메모) : '') + '</div>' : '') +
+    return (d ? '<div class="mai-note" style="margin-bottom:4px;">' + maiEsc_(/회장/.test(d.누가 || '') ? '회장 결론' : '지금 결정') + ': <b>' + maiEsc_(d.선택 + (d.내용 ? ' — ' + d.내용 : '')) + '</b> (' + maiEsc_((d.누가 || '세무사님') + ' · ' + (d.때 || '')) + ')' + (d.메모 ? '<br>' + maiEsc_(d.메모) : '') + '</div>' : '') +
       mai_.choices.concat([{ 기호: '보류', 내용: '아직 정하지 않음(추가 확인)' }]).map(function(c){
         return '<label style="display:block;margin:3px 0;"><input type="radio" name="maiPick" value="' + maiEsc_(c.기호) + '"' + (d && d.선택 === c.기호 ? ' checked' : '') + '> <b>' + maiEsc_(c.기호) + '</b> ' + maiEsc_(c.내용) + (maj.key === c.기호 ? ' <span class="mai-chip">AI 다수</span>' : '') + '</label>';
       }).join('') +

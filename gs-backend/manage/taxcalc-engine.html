@@ -37,7 +37,7 @@
   function progressiveTax(base, brackets) {
     if (!base || base <= 0) return 0;
     const bracket = brackets.find(function (b) { return base <= b.max; }) || brackets[brackets.length - 1];
-    // [2026.10.16 1:1 김금옥] 원 미만은 버린다(국고금 관리법 §47 끝수 처리) — 반올림해 정답지(33,650,760원)보다 1원 많게(33,650,761원) 나왔다.
+    // [2026.10.16 1:1 고객W] 원 미만은 버린다(국고금 관리법 §47 끝수 처리) — 반올림해 정답지(33,650,760원)보다 1원 많게(33,650,761원) 나왔다.
     //  곱셈 오차(…999.9999)로 1원이 빠지지 않게 아주 작은 값을 더한 뒤 버린다
     return Math.max(0, Math.floor(base * bracket.rate - bracket.deduction + 1e-6));
   }
@@ -329,7 +329,7 @@
     const net = Number(netFinancialAssets) || 0;
     if (net <= 0) return 0;
     if (net <= 20000000) return net;
-    // [2026.10.19 engine-fix] 원 미만 버림 — 비율 공제(금융재산 20%·배우자 법정상속분)에서 생긴 끝수가 과세표준·신고서 칸까지 가던 것(박종헌: 과세표준 2,744,401,611.4)
+    // [2026.10.19 engine-fix] 원 미만 버림 — 비율 공제(금융재산 20%·배우자 법정상속분)에서 생긴 끝수가 과세표준·신고서 칸까지 가던 것(고객B: 과세표준 2,744,401,611.4)
     return Math.floor(Math.min(200000000, Math.max(net * 0.2, 20000000)));
   }
 
@@ -939,7 +939,7 @@
       } else if (acquisitionStandardPriceForConversion > 0 && transferStandardPriceForConversion > 0) {
         acquisitionPriceUsedAppraisalOrConversion = true;
         acquisitionPriceUsedConversionOrStandardOnly = true;
-        acquisitionPrice = Math.floor(transferPrice * acquisitionStandardPriceForConversion / transferStandardPriceForConversion + 1e-6); // [2026.10.17] 원 미만 버림(양도코리아·홈택스와 같게 — 방영교 과세표준 1원 차)
+        acquisitionPrice = Math.floor(transferPrice * acquisitionStandardPriceForConversion / transferStandardPriceForConversion + 1e-6); // [2026.10.17] 원 미만 버림(양도코리아·홈택스와 같게 — 고객X 과세표준 1원 차)
         acquisitionPriceMethodNote = '취득가액은 환산취득가액(시행령§176의2②2호·③3호) = 양도가액(' + transferPrice + '원)×[취득당시기준시가(' + acquisitionStandardPriceForConversion + '원)÷양도당시기준시가(' + transferStandardPriceForConversion + '원)] = ' + acquisitionPrice + '원으로 자동계산했습니다.';
       } else if (acquisitionStandardPriceForConversion > 0) {
         // [2026.09 버그수정] "양도당시기준시가를 몰라서 취득당시기준시가를 배율조정 없이 그대로
@@ -992,7 +992,7 @@
     const estimatedRateFor_ = function () { return t.assetType === 'presale_right' ? 0.01 : (t.isUnregisteredTransfer ? 0.003 : 0.03); };
     if (!t.necessaryExpenses && (t.useEstimatedNecessaryExpense || acquisitionPriceUsedConversionOrStandardOnly) && acquisitionStandardPriceForConversion > 0) {
       const estimatedExpenseRate = estimatedRateFor_();
-      necessaryExpenses = Math.floor(acquisitionStandardPriceForConversion * estimatedExpenseRate + 1e-6); // [2026.10.17] 원 미만 버림(방영교: 663,275.94원 → 663,275원, 양도코리아 계산과 같게)
+      necessaryExpenses = Math.floor(acquisitionStandardPriceForConversion * estimatedExpenseRate + 1e-6); // [2026.10.17] 원 미만 버림(고객X: 663,275.94원 → 663,275원, 양도코리아 계산과 같게)
     }
     // [2026.10.19 세액 고침] 매매사례가액·감정가액(§97①1호나목, 시행령 §176의2③)으로 추계하면 §97②2호 본문대로 필요경비는 "그 가액 + 개산공제(§163⑥)"다 —
     //  단서(실제 비용이 더 크면 그것)는 환산취득가액에만 있다. 다만 상속·증여받은 자산(isInheritedAsset·isGiftedAsset)은 시행령 §163⑨대로 상속개시일·증여일
@@ -1364,7 +1364,7 @@
           산식: mode9703_ === 'formula2026' ? '시행령 §97의3⑤(2026.2.27~) 양도차익 × (임대 마지막 날 ' + endStd_ + ' − 임대 개시일 ' + startStd_ + ') ÷ (양도일 ' + trfStd + ' − 취득일 ' + acqStd + ') 기준시가'
             : '양도차익 × (양도일 ' + trfStd + ' − 등록일 ' + regStd + ') ÷ (양도일 − 취득일 ' + acqStd + ') 기준시가(2026.2.26 전 양도분 — 산식이 법령에 없어 판단 대기)' };
       } else {
-        longTermDeductionAmount = Math.floor(taxableGain * ltRate + 1e-6); // [2026.10.17] 장기보유특별공제 원 미만 버림(방영교: 200,593,166 × 30% = 60,177,949.8 → 60,177,949원, 양도코리아와 같게)
+        longTermDeductionAmount = Math.floor(taxableGain * ltRate + 1e-6); // [2026.10.17] 장기보유특별공제 원 미만 버림(고객X: 200,593,166 × 30% = 60,177,949.8 → 60,177,949원, 양도코리아와 같게)
         incomeAmount = taxableGain - longTermDeductionAmount;
       }
     }
@@ -2670,7 +2670,7 @@
     });
     const errorOne = results.find(function (r) { return r && r.error; });
     if (errorOne) return { error: errorOne.error };
-    // [2026.10.17] 반올림으로 안분액 합계가 총액과 1원씩 어긋나지 않게 — 차이는 가장 큰 자산이 흡수(이종식: 50,000,000원이 50,000,001원으로 나뉘었다)
+    // [2026.10.17] 반올림으로 안분액 합계가 총액과 1원씩 어긋나지 않게 — 차이는 가장 큰 자산이 흡수(고객Y: 50,000,000원이 50,000,001원으로 나뉘었다)
     const fixSum = function (key, total) {
       if (!total) return;
       const sum = results.reduce(function (t, r) { return t + (Number(r[key]) || 0); }, 0), diff = total - sum;
@@ -3275,7 +3275,7 @@
     //  §13①은 과세가액을 "상속재산의 가액에서 제14조에 따른 것(공과금·장례비용·채무)을 뺀 후" 사전증여를 더한 금액으로 정한다.
     //  이 계산기의 effectiveEstateAmount(입력 taxableEstateAmount)는 장례비를 빼기 전 금액이고 장례비는 아래에서 공제 쪽에 더하므로,
     //  한도의 기준·5억 판정에는 장례비를 뺀 금액을 써야 한다. 예전엔 빼기 전 금액을 써서 한도가 걸리는 사건의 과세표준이
-    //  장례비만큼 적게 나왔다(김창호 상속 추징예상: 엔진 314,746,412 ↔ 국세청식 328,757,412, 차이 = 장례비 14,011,000).
+    //  장례비만큼 적게 나왔다(고객C 상속 추징예상: 엔진 314,746,412 ↔ 국세청식 328,757,412, 차이 = 장례비 14,011,000).
     // [2026.10.19 A1] 장례비도 §14 금액이라 사전증여 가산 전 바닥 안에서만 뺀다(상속재산보다 큰 부분은 없는 것으로 봄)
     const funeralAppliedToEstate_ = Math.min(funeralDeduction, Math.max(0, estateBeforeGift_));
     const estateTaxableAfterFuneral = effectiveEstateAmount - funeralAppliedToEstate_;

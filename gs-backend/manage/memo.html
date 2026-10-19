@@ -861,7 +861,10 @@
     // 설정이지만, 가볍게 받아적는 메모에는 안 맞음). 메모만 breaks:true로 바꿔 엔터 한 번도
     // 그대로 줄바꿈되게 한다(문서작성은 기존 저장된 보고서 모양이 바뀌지 않도록 그대로 둠).
     var html = (typeof marked !== 'undefined') ? marked.parse(raw, { breaks:true, gfm:true }) : raw.replace(/</g, '&lt;');
-    if (typeof DOMPurify !== 'undefined') html = DOMPurify.sanitize(html, { ADD_ATTR: ['checked', 'style'] });
+    // [2026.10.20 보안] DOMPurify를 못 불러오면 거르지 않고 그리던 것(fail-open)을 글자로만 보이게 바꿨다 — 메모에는 상담 녹음 요약(고객 말)도 들어온다.
+    // style 허용은 뺐다(화면을 덮는 가짜 단추를 만들 수 있음).
+    if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) html = DOMPurify.sanitize(html, { ADD_ATTR: ['checked'] });
+    else html = '<pre style="white-space:pre-wrap;">' + String(raw || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>';
     memoPreviewEl.innerHTML = html || '<p style="color:var(--sub);">(내용 없음)</p>';
     memoPreviewEl.querySelectorAll('input[type="checkbox"]').forEach(function(cb, idx){
       cb.disabled = false;

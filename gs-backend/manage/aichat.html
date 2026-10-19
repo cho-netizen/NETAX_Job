@@ -1850,7 +1850,7 @@
       if (!res || !Array.isArray(res.clients)) throw new Error('고객 목록을 받지 못했습니다 — 잠시 후 다시 시도하세요.');
       var t = nxAiNorm_(text);
       var hits = (res.clients || []).filter(function(c){ var n = nxAiNorm_(c.성명); return n.length >= 2 && t.indexOf(n) !== -1; });
-      // 이름이 다른 이름에 포함되는 경우(예: 김순 / 김순희) 가장 긴 이름만
+      // 이름이 다른 이름에 포함되는 경우(예: 홍길 / 홍길동) 가장 긴 이름만
       var maxLen = hits.reduce(function(m, c){ return Math.max(m, nxAiNorm_(c.성명).length); }, 0);
       return hits.filter(function(c){ return nxAiNorm_(c.성명).length === maxLen; });
     });
@@ -2241,7 +2241,7 @@
     return '알림';
   }
   // [2026.10.19 밤 2번] 필요경비 기본 체크 — 판독 확실한 것 + 영수증에 찍힌 법정 부대비용(취득세·등록(면허)세·지방교육세·농어촌특별세)은 판독이 미확인이어도 기본 체크(공제 안 됨 항목은 제외).
-  //  "그대로 확정"이 취득세를 빠뜨려 과세표준이 230만원 더 나오던 것(김금옥 최상위 AI 모의) — 금액 판독은 화면에 '원문 확인'으로 남긴다
+  //  "그대로 확정"이 취득세를 빠뜨려 과세표준이 230만원 더 나오던 것(고객W 최상위 AI 모의) — 금액 판독은 화면에 '원문 확인'으로 남긴다
   function nxAiCpExpOn_(c){ if (!c) return false; if (c.deduct === 'no') return false; if (c.sure) return true; return /^(acqTax|regTax|eduTax|ruralTax|acqTaxRest)$/.test(String(c.item || '')) || /^(취득세|등록세|등록면허세|지방교육세|농어촌특별세)/.test(String(c.label || '')); }
   // 이 사건의 세목 열쇠(transfer/gift/inheritance/other) — 세목 칸이 "불복"·빈칸이면 질문 칸 모양으로 짐작
   function nxAiCpTax_(st){
@@ -2373,7 +2373,7 @@
         if (key === 'overview' && res.case) st.case = res.case; // 서류로 채운 처리개요 — 세액계산 입력에 그대로 쓴다
         nxAiCaseProcFill_(st, key, res);
         if (key === 'overview') (st.loopNotes || []).forEach(function(t){ var d = document.createElement('div'); d.className = 'nxai-cp-line'; d.textContent = t; st.steps.overview.querySelector('.nxai-cp-lines').appendChild(d); });
-        // [2026.10.16 1:1 김금옥] 다시 계산할 이유가 새로 생기면(입력값 변경 등 — 질문 id가 달라짐) 한 처리 안에서도 다시 자동 계산한다.
+        // [2026.10.16 1:1 고객W] 다시 계산할 이유가 새로 생기면(입력값 변경 등 — 질문 id가 달라짐) 한 처리 안에서도 다시 자동 계산한다.
         //  예전: 처리마다 한 번만 자동 계산해서, 질문에 답한 뒤 "▶ 지금 계산"을 따로 눌러야 했다
         var calcKey = key === 'calc' ? (res.items || []).map(function(x){ return x.id; }).join('|') : '';
         if (key === 'calc' && res.needCalc && (!st.calcAuto || st.calcAutoKey !== calcKey)){ st.calcAuto = true; st.calcAutoKey = calcKey; setTimeout(function(){ nxAiCaseProcCalcRun_(st, false); }, 300); }
@@ -2978,7 +2978,7 @@
       if (!it) return { matched: false };
     }
     var a = it.ask || {}, mode = a.mode || '';
-    // 글자로 답하는 칸(이름·소재지)은 "근거"라고 밝히지 않았으면 파일 이름과 겹쳐도 값에서 떼지 않는다("Q9 이종식" — 파일 이름에 이종식이 있어 값이 비던 것)
+    // 글자로 답하는 칸(이름·소재지)은 "근거"라고 밝히지 않았으면 파일 이름과 겹쳐도 값에서 떼지 않는다("Q9 고객Y" — 파일 이름에 고객Y이 있어 값이 비던 것)
     var keepWords = (a.input || 'text') === 'text' && mode !== 'base' && !/(근거|증빙|출처)/.test(rest);
     var body0 = keepWords ? rest : noSrc;
     var body = (synHit ? body0.replace(synHit, ' ') : body0).replace(/물건\s*\d+/g, ' ');
@@ -2989,13 +2989,13 @@
     var label = a.label || (mode === 'base' ? (NXAI_CP_BASE_LABEL_[tax] || '기준일') : String(it.text || '').slice(0, 30));
     var out = { matched: true, it: it, label: label, src: srcTxt };
     var input = mode === 'base' ? 'date' : (a.input || 'text');
-    var clean = function(s){ return String(s || '').replace(/(?:Q|q|질문)\s*\d+/g, ' ').replace(/(?:근거|증빙|출처)\s*(?:는|은|:|=)?/g, ' ').replace(/^\s*(?:[은는이가을를](?=[\s:：=])|[:：=])[\s:：=]*/, '').replace(/^\s+/, '') /* 조사는 띄어 쓴 것만 — "Q1 이종식"의 '이'를 떼어 "종식"이 되던 것 */.replace(/\s*(입니다|이에요|예요|이다|이야|야|요|으로|로)?\s*(해\s*(줘|주세요)|반영(해\s*줘)?|넣어\s*(줘|주세요)|하자|맞(아|음|습니다))?[.!\s]*$/, '').replace(/\s+/g, ' ').trim(); };
+    var clean = function(s){ return String(s || '').replace(/(?:Q|q|질문)\s*\d+/g, ' ').replace(/(?:근거|증빙|출처)\s*(?:는|은|:|=)?/g, ' ').replace(/^\s*(?:[은는이가을를](?=[\s:：=])|[:：=])[\s:：=]*/, '').replace(/^\s+/, '') /* 조사는 띄어 쓴 것만 — "Q1 이○○"의 '이'를 떼어 "○○"이 되던 것 */.replace(/\s*(입니다|이에요|예요|이다|이야|야|요|으로|로)?\s*(해\s*(줘|주세요)|반영(해\s*줘)?|넣어\s*(줘|주세요)|하자|맞(아|음|습니다))?[.!\s]*$/, '').replace(/\s+/g, ' ').trim(); };
     var pickVal = function(){
       if (input === 'money'){ var v = nxAiKrMoney_(body.replace(/((?:19|20)\d{2})\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}/g, ' ')); return v ? String(v) : ''; }
       if (input === 'number'){ var n = /(\d+)\s*(명|개|건)?/.exec(body); return n ? n[1] : ''; }
       if (input === 'date') return nxAiKrDate_(body);
       if (input === 'select'){ var nb = body.replace(/\s+/g, ''); var o = (a.options || []).filter(function(x){ var k = String(x).replace(/\s+/g, '').replace(/\(.*$/, ''); return k && nb.indexOf(k) !== -1; }); var kl = function(x){ return String(x).replace(/\s+/g, '').replace(/\(.*$/, '').length; }; if (o.length > 1){ var mx = Math.max.apply(null, o.map(kl)); o = o.filter(function(x){ return kl(x) === mx; }); } /* '기타친족'이 '기타'에도 걸리면 더 길게 맞는 쪽 */
-        /* [2026.10.19 밤 2번] "직계존속"이 '직계존속(1촌…)'·'직계존속(2촌 이상…)' 둘에 함께 걸려 빈 값이 되던 것(하영애 모의) — 괄호까지 전체 글이 맞는 쪽, 아니면 2촌·조부모·손자·세대생략 낱말이 있을 때만 2촌 이상, 없으면 1촌 */
+        /* [2026.10.19 밤 2번] "직계존속"이 '직계존속(1촌…)'·'직계존속(2촌 이상…)' 둘에 함께 걸려 빈 값이 되던 것(고객H 모의) — 괄호까지 전체 글이 맞는 쪽, 아니면 2촌·조부모·손자·세대생략 낱말이 있을 때만 2촌 이상, 없으면 1촌 */
         if (o.length > 1){ var fullHit = o.filter(function(x){ return nb.indexOf(String(x).replace(/\s+/g, '')) !== -1; }); if (fullHit.length === 1) o = fullHit; else { var far = /2촌|조부모|손자|손녀|세대생략/.test(nb); var o2 = o.filter(function(x){ return /2촌/.test(String(x)) === far; }); if (o2.length === 1) o = o2; } }
         return o.length === 1 ? o[0] : (nthN && a.options && a.options[nthN - 1]) || ''; }
       return clean(body);
@@ -3004,7 +3004,7 @@
       var cands = a.cands || [];
       if (nthN && cands[nthN - 1] && !(input === 'money' && nxAiKrMoney_(body) >= 10000)) return Object.assign(out, { act: 'apply', target: mode === 'base' ? 'base' : a.target, value: String(cands[nthN - 1].v), src: cands[nthN - 1].src || srcTxt, shown: cands[nthN - 1].v });
       var v = pickVal();
-      // 글자 칸 — 질문 이름의 낱말이 값 앞에 남으면 뗀다("양도인 성명 이종식" → "성명 이종식"이 들어가던 것)
+      // 글자 칸 — 질문 이름의 낱말이 값 앞에 남으면 뗀다("양도인 성명 고객Y" → "성명 고객Y"이 들어가던 것)
       if (input === 'text' && v){ String(label).split(/\s+/).filter(function(w){ return w.length >= 2; }).forEach(function(w){ var v2 = v.replace(new RegExp('^\\s*' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*'), ''); if (v2) v = v2; }); }
       if (!v) return decide ? Object.assign(out, { act: 'decide', decide: decide }) : Object.assign(out, { act: 'need', msg: 'Q' + it.q + ' 「' + label + '」의 값을 알아듣지 못했습니다 — ' + ({ money: '예: "Q' + it.q + ' 5억 2천만원 매매계약서"', date: '예: "Q' + it.q + ' 2024.3.5 계약서"', number: '예: "Q' + it.q + ' 3명"', select: '예: "Q' + it.q + ' ' + ((a.options || [])[0] || '') + '"' }[input] || '예: "Q' + it.q + ' 홍길동"') });
       var same = cands.filter(function(c){ return String(c.v) === v; })[0];
@@ -3476,7 +3476,7 @@
     // PDF 쪽 → JPEG 바이트(문서작성 화면이 싣는 pdf.js로, 긴 변 약 2000px)
     async function pdfToJpgs(bytes){
       if (typeof pdfjsLib === 'undefined') return [];
-      var doc = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
+      var doc = await pdfjsLib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
       if (doc.numPages > 6) return [];
       var out = [];
       for (var p = 1; p <= doc.numPages; p++){
@@ -3567,11 +3567,11 @@
     function gray(d) { var g = new Float32Array(d.width * d.height); for (var i = 0, p = 0; i < d.data.length; i += 4, p++) g[p] = 0.299 * d.data[i] + 0.587 * d.data[i + 1] + 0.114 * d.data[i + 2]; return g; }
     // 한 줄을 바깥에서 안으로 훑어 가장 큰 밝기 변화 자리(사진 가장자리 3%는 건너뜀, 안쪽 40%까지)
     // 가장 센 변화가 아니라 "바깥에서 처음 만나는 센 변화"(그 띠 최대값의 절반 이상) — 종이 안 글자(검은 글씨)가 종이 가장자리보다 변화가 커서
-    //  가장 센 자리를 고르면 글자 줄을 가장자리로 잡았다(김순희 확인서 사진). 어두운→밝은(배경→종이) 방향만
+    //  가장 센 자리를 고르면 글자 줄을 가장자리로 잡았다(고객AI 확인서 사진). 어두운→밝은(배경→종이) 방향만
     function edgeAt(getVal, len) {
       var skip = Math.floor(len * 0.02), lim = Math.floor(len * 0.4), ds = [], maxD = 0;
       for (var i = skip + 2; i < lim; i++) { var df = ((getVal(i) + getVal(i + 1)) - (getVal(i - 1) + getVal(i - 2))) / 2; ds.push({ i: i, d: df }); if (df > maxD) maxD = df; }
-      var th = Math.max(18, maxD * 0.3); // 종이 가장자리가 흐릿해도(밝은 탁자 위) 서식 굵은 테두리보다 먼저 잡게 — 김환식 계약서 사진은 0.5에서 테두리를 잡아 제목이 잘렸다
+      var th = Math.max(18, maxD * 0.3); // 종이 가장자리가 흐릿해도(밝은 탁자 위) 서식 굵은 테두리보다 먼저 잡게 — 고객AF 계약서 사진은 0.5에서 테두리를 잡아 제목이 잘렸다
       for (var k = 0; k < ds.length; k++) if (ds[k].d >= th) { var j = k; while (j + 1 < ds.length && ds[j + 1].d > ds[j].d) j++; return { idx: ds[j].i, s: ds[j].d }; }
       return { idx: -1, s: 0 };
     }
@@ -3622,9 +3622,9 @@
         if (ln.n < 6 || spr < 0.25) { why[k] = '점이 직선에 안 맞음'; return; }
         if (Math.abs(ln.a) > 0.21) { why[k] = '너무 기욺'; return; } // 12도
         // 직선 바로 안쪽 띠(종이)와 직선 바깥 전체(사진 끝까지)를 견줌 — 종이 밝기는 가운데가 아니라 그 자리 바로 안쪽으로 잼
-        //  (그늘·화면 밝기 차이로 가운데 기준이면 아래쪽 그늘진 종이를 배경으로 오인해 끝줄 글자를 잘랐다 — 구본경 상담자료 사진)
+        //  (그늘·화면 밝기 차이로 가운데 기준이면 아래쪽 그늘진 종이를 배경으로 오인해 끝줄 글자를 잘랐다 — 고객AL 상담자료 사진)
         //  확실한 변 = (단차 60 이상·바깥 밝은 점 30% 미만·바깥에 종이만한 밝은 띠가 다시 나오는 줄 10/30 이하) 또는 (단차 25 이상·밝은 점 5% 미만·밝은 띠 3/30 이하)
-        //   — 글자 줄·표 회색 칸·그늘을 가장자리로 잡으면 바깥에 종이 밝기 띠가 다시 나온다(화면 견적서 "합계" 칸, 지선영 메모 끝줄이 잘렸던 사례)
+        //   — 글자 줄·표 회색 칸·그늘을 가장자리로 잡으면 바깥에 종이 밝기 띠가 다시 나온다(화면 견적서 "합계" 칸, 고객Q 관계인1 메모 끝줄이 잘렸던 사례)
         var out = hz(k) ? (k === 'top' ? -1 : 1) : (k === 'left' ? -1 : 1), lenN = hz(k) ? h : w, strip = Math.max(4, Math.round(lenN * 0.03));
         var depth = 0, n = 0, bright = 0, steps = [], runCols = 0, bandCols = 0;
         for (var s2 = 0; s2 < 30; s2++) {
@@ -4063,7 +4063,7 @@
       var seen = {};
       // 처음 목록 — 방금 만든 PDF + 이번 사건처리가 읽은 증빙 목록의 PDF(서버를 더 부르지 않음)
       (st.pdfConvMade || []).concat(st.files || []).forEach(function(f){
-        if (!f || !f.id || seen[f.id] || !(/\.pdf$/i.test(String(f.name || '')) || /pdf/i.test(String(f.mimeType || '')))) return; // 확장자 없는 PDF(황인택 「등기부등본1」 등)도
+        if (!f || !f.id || seen[f.id] || !(/\.pdf$/i.test(String(f.name || '')) || /pdf/i.test(String(f.mimeType || '')))) return; // 확장자 없는 PDF(고객BG 「등기부등본1」 등)도
         seen[f.id] = 1; S.list.push({ id: f.id, name: f.name, dir: f.dir || '', on: false });
       });
       var top = el('div', 'nxai-cp-line'); top.style.marginLeft = '0'; P.body.appendChild(top);
@@ -4228,7 +4228,7 @@
     async function bundleTexts(st, c, bytes, say){
       var lib = null; try { lib = await pdfjs(); } catch (e) { lib = null; }
       if (!lib) throw new Error('PDF 도구(pdf.js)를 불러오지 못함 — 인터넷 연결을 확인하고 다시 눌러 주세요');
-      var doc = await lib.getDocument({ data: bytes.slice() }).promise, n = doc.numPages, texts = [], need = 0;
+      var doc = await lib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise, n = doc.numPages, texts = [], need = 0;
       for (var p = 1; p <= n; p++){
         say('쪽 글 뽑는 중… ' + p + '/' + n);
         var pg = await doc.getPage(p), tc = await pg.getTextContent(), lines = [], lastY = null, cur = '';
@@ -4412,7 +4412,7 @@
   function nxAiCaseProcCalcRun_(st, manual){
     if (st.calcBusy) return;
     // [2026.10.15 1:1] 증여 내용(증여자·수증자·증여일·증여대상)을 아직 안 정했으면 계산하지 않는다 — 추정값으로 세액을 내지 않게
-    // 양도 필요경비·사건분류(비과세·중과 판단)도 정해지기 전엔 계산하지 않는다(필요경비 0원·사건분류 미정으로 계산하던 문제 — 노오섭)
+    // 양도 필요경비·사건분류(비과세·중과 판단)도 정해지기 전엔 계산하지 않는다(필요경비 0원·사건분류 미정으로 계산하던 문제 — 고객Q)
     var blockers = { 'gift:deal': '「증여 내용 확인」', 'tr:expenses': '「필요경비 확정」', 'ov:사건분류': '「사건분류」', 'ih:debts': '「상속 채무 확정」' };
     // [2026.10.15 일괄점검 ③] 위 셋만이 아니라 — 계산 입력 칸(처리개요 값·기준일)을 묻는 질문에 아직 답하지 않았으면 자동 계산하지 않는다(보류는 "진행"이라 막지 않음)
     // [2026.10.19 small0] 세액 영향이 작은 칸(ask.provisional — 신고 세무비용)은 잠정값으로 먼저 계산한다(질문은 남김, 답하면 다시 계산, 출력 전 알림)
@@ -4474,7 +4474,7 @@
       try {
         if (ovsOnly) filled = transferAssets.every(function(a){ return a.transferPrice && a.acquisitionPrice && a.acquisitionDate && (a.transferDate || st.case.기준일); });
         else if (tab === 'gift') filled = Object.keys(GIFT_AUTOCALC_REQUIRED_).every(function(k){ return g(GIFT_AUTOCALC_REQUIRED_[k].id); });
-        // [2026.10.16 1:1 방영교] 취득가액이 비어도 환산용 기준시가(취득당시·양도당시)가 있으면 계산할 수 있다(환산취득가액) — 예전엔 "입력값이 비어 있다"며 유료 자동채우기를 권했다
+        // [2026.10.16 1:1 고객X] 취득가액이 비어도 환산용 기준시가(취득당시·양도당시)가 있으면 계산할 수 있다(환산취득가액) — 예전엔 "입력값이 비어 있다"며 유료 자동채우기를 권했다
         else if (tab === 'transfer') filled = transferAssets.length > 0 && transferAssets.every(function(a){ return Object.keys(TRANSFER_AUTOCALC_REQUIRED_).every(function(k){ return a[k] || (k === 'acquisitionPrice' && (a.comparableTransactionPrice || a.appraisalValue || (a.acquisitionStandardPriceForExpense && a.transferStandardPriceForConversion))); }); }); // 엔진 요구와 같게(2026-10-17)
         else filled = !!(g('ihDeceasedName') && g('ihDeathDate') && g('ihGrossEstateGeneral') && inheritanceHeirs.some(function(h){ return h && h.name && h.relation; }));
       } catch (e) { filled = false; }
@@ -4836,10 +4836,13 @@
   // 다리는 job 화면 자기 창(안쪽 틀) 또는 바로 바깥 구글 틀에 있을 수 있다 — 연결 전엔 둘 다에 보내고,
   // 먼저 답한 쪽(nxAiExtTarget)으로만 주고받는다(양쪽에 다리가 있어도 질문·캡처가 두 번 처리되지 않게).
   var nxAiExtTarget = null;
+  // [2026.10.20 보안] NX 확장 1.5.1과 짝 — 확장 다리는 https://job.netax.kr 최상위 창에만 들어온다. 예전엔 '*'로 보내고 부모 틀에서 온
+  // 메시지도 받아서, 다른 사이트가 job을 틀로 넣으면 가짜 캡처·답을 넣거나 제미니 질문을 엿볼 수 있었다. 이제 이 창·이 출처끼리만 주고받는다.
+  var NX_EXT_ORIGIN_ = 'https://job.netax.kr';
   function nxAiExtPost_(msg){
     msg.source = 'nx-page';
-    var wins = nxAiExtTarget ? [nxAiExtTarget] : [window].concat(window.parent && window.parent !== window ? [window.parent] : []);
-    wins.forEach(function(w){ try{ w.postMessage(msg, '*'); }catch(e){} });
+    if (location.origin !== NX_EXT_ORIGIN_) return; // 다른 주소(로컬 시험 등)에서는 확장이 붙지 않는다
+    try{ window.postMessage(msg, NX_EXT_ORIGIN_); }catch(e){}
   }
   function nxAiExtHello_(){ nxAiExtPost_({ type: 'NX_HELLO' }); }
   function nxAiEnsureExt_(){
@@ -5034,8 +5037,7 @@
     nxAiToast_('확장프로그램에서 가져와 AI 입력창에 넣었습니다 (#' + nxAiCaptureCount + (meta && meta.mode === 'selection' ? ' · 선택영역' : ' · 전체 페이지') + ')');
   }
   window.addEventListener('message', function(event){
-    if (event.source !== window && !(window.parent !== window && event.source === window.parent)) return;
-    if (nxAiExtTarget && event.source !== nxAiExtTarget) return;
+    if (event.source !== window || event.origin !== NX_EXT_ORIGIN_) return; // [2026.10.20 보안] 이 창·job 출처에서 온 확장 다리 메시지만
     var d = event.data;
     if (!d || d.source !== 'nx-bridge' || !d.type) return;
     if (d.type === 'NX_HELLO_ACK'){ nxAiExtTarget = event.source; nxAiExtConnected = true; nxAiExtUi_(); return; }

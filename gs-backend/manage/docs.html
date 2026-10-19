@@ -406,6 +406,8 @@
   // pdf.js는 실제 렌더링을 별도 워커에서 돌리므로, 워커 스크립트 위치를 지정해줘야 한다
   // (PDF 관리의 텍스트추출·서명 정밀배치 미리보기에 사용).
   if (typeof pdfjsLib !== 'undefined'){
+    // [2026.10.20 보안] 이 판(3.11.174)과 AI 탭의 4.0.379는 악성 PDF로 스크립트가 실행되는 취약점(CVE-2024-4367) 대상 —
+    // getDocument마다 isEvalSupported:false(공식 완화책)를 넣었다(docs 2곳·aichat 2곳). 새로 getDocument를 쓸 때도 꼭 넣을 것.
     var PDFJS_WORKER_URL_ = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL_;
     // [2026.10.19 3번] 다른 주소(cdnjs)의 일꾼은 브라우저가 띄우지 않아 pdf.js가 화면에서 대신 돌며 큰 스캔 PDF에서 화면이 멈춘다 —
@@ -497,7 +499,7 @@
     });
   }
 
-  // [2026.09.16 신규] "박영수(홍순자)_상속_상담은 폴더가 있는데 연결이 안 돼 없는 것처럼 나온다"는
+  // [2026.09.16 신규] "고객E(고객E 피상속인)_상속_상담은 폴더가 있는데 연결이 안 돼 없는 것처럼 나온다"는
   // 지적으로 추가 — 위 "사건명 점검"은 이름이 어긋난 것만 잡고, 폴더ID 자체가 비어있는 사건은
   // "폴더 없음"으로만 보여줄 뿐 실제로 있을 수도 있는 폴더를 찾아주지 않는다. 고객명으로 느슨하게
   // 후보를 찾아 보여주고, 사람이 맞는 것 하나를 골라 "연결"만 누르면 된다(이름/폴더는 안 바뀜).
@@ -571,7 +573,7 @@
               errDiv.className = 'docsUfaErr';
               errDiv.style.cssText = 'color:#b23; font-size:12px; margin-top:4px;';
               errDiv.textContent = '⚠ ' + (res.message || '연결 실패');
-              // [2026.09.16 신규] "나성은(나성은)/홍순자(박영수)는 잘못 부여된 사건명이니까
+              // [2026.09.16 신규] "고객F(고객F)/고객E 피상속인(고객E)는 잘못 부여된 사건명이니까
               // 수정된 사건명으로 연결해주고 잘못된 사건명은 삭제해달라" — 충돌 사유가 "다른
               // 사건이 이미 이 폴더를 차지함"일 때는, 그 옛 사건이 정정 전 이름(또는 고객명·
               // 납세자가 뒤바뀐) 채로 남아있는 경우가 많다. 재입력 없이 그 자리에서 바로
@@ -1934,7 +1936,7 @@
       for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
       var doc = await PDFLib.PDFDocument.load(bytes);
-      var pdfjsDoc = (typeof pdfjsLib !== 'undefined') ? await pdfjsLib.getDocument({ data: bytes.slice() }).promise : null;
+      var pdfjsDoc = (typeof pdfjsLib !== 'undefined') ? await pdfjsLib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise : null;
       var sourceName = file.name.replace(/\.pdf$/i, '');
       var pageCount = doc.getPageCount();
       for (var p = 0; p < pageCount; p++){
@@ -1959,7 +1961,7 @@
         var doc = await PDFLib.PDFDocument.load(bytes);
         // pdf.js는 pdf-lib와 별개의 파서라, 렌더링(서명 배치용)을 위해 따로 한 번 더 읽어둔다.
         // 같은 배열을 그대로 넘기면 나중에 detach되는 문제가 있어 복사본을 넘긴다.
-        var pdfjsDoc = (typeof pdfjsLib !== 'undefined') ? await pdfjsLib.getDocument({ data: bytes.slice() }).promise : null;
+        var pdfjsDoc = (typeof pdfjsLib !== 'undefined') ? await pdfjsLib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise : null;
         var sourceName = file.name.replace(/\.pdf$/i, '');
         var pageCount = doc.getPageCount();
         for (var p2 = 0; p2 < pageCount; p2++){

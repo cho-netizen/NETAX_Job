@@ -62,7 +62,7 @@ function cxDateOk_(f) { return !(f && f.read && /미확인/.test(String(f.read.o
 // 계약 묶음 — 같은 파일·같은 기록(rec 앞부분)의 매매대금·계약금·중도금·잔금·잔금일·계약일
 function cxContracts_(facts, ak) {
   const g = {};
-  // [밤 8바퀴 깨기] 여러 필지를 한 계약서로 판 경우 대금 사실의 자산 열쇠는 첫 필지 하나뿐 — 같은 서류(파일+기록) 안 소재지 중 하나라도 이 자산이면 이 자산의 계약으로 본다(이종식 3필지: 511-3 자산이 511-1 열쇠의 잔금일을 못 봐 등기 접수일만 남던 것)
+  // [밤 8바퀴 깨기] 여러 필지를 한 계약서로 판 경우 대금 사실의 자산 열쇠는 첫 필지 하나뿐 — 같은 서류(파일+기록) 안 소재지 중 하나라도 이 자산이면 이 자산의 계약으로 본다(고객Y 3필지: 511-3 자산이 511-1 열쇠의 잔금일을 못 봐 등기 접수일만 남던 것)
   const docKeys = {};
   if (ak) facts.forEach(function (f) { if (f && f.src && f.kind === '소재지' && f.keys && f.keys.asset) { const dk = (f.src.fileId || f.src.file) + '#' + String(f.src.rec || '').split('.')[0] + '#' + (f.src.part || ''); (docKeys[dk] = docKeys[dk] || []).push(f.keys.asset); } });
   facts.forEach(function (f) {

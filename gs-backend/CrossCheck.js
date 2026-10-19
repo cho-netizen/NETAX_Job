@@ -276,7 +276,7 @@ function cxContextFor_(iss, facts) {
   const judge = /사건분류|relation|Relation|관계/.test(iss.target);
   (facts || []).forEach(function (f) {
     if (!f || !f.src || f._copy || !r[1].test(f.kind) || typeof f.value === 'object') return;
-    // [밤 33바퀴 묶음만 보고 판단] 영수증·견적서·세금계산서의 주소·상호는 공급자(업체·우리 사무소) 것 — 판단 재료가 아닌데 14줄을 채웠다(개발용 노오섭·방영교·박길서·이숙희)
+    // [밤 33바퀴 묶음만 보고 판단] 영수증·견적서·세금계산서의 주소·상호는 공급자(업체·우리 사무소) 것 — 판단 재료가 아닌데 14줄을 채웠다(개발용 고객Q·고객X·고객AM·고객AV)
     if (judge && /^(주소|상호)$/.test(f.kind) && /견적서|영수증|세금계산서|카드|지출증빙/.test(String(f.src.docType || ''))) return;
     const k = f.kind + '|' + f.raw + '|' + (f.src.docType || ''); if (seen[k]) return; seen[k] = 1; // 같은 서류 종류·같은 값(사본)은 한 번만
     // [밤 33바퀴] 같은 서류의 같은 종류 값(근저당 채권최고액 12줄·표제부 용도 14줄)은 한 줄로 — 주소는 누구 주소인지 원문 앞뒤가 필요해 줄마다 둔다
@@ -297,7 +297,7 @@ function cxContextFor_(iss, facts) {
   return (own ? own : '') + (out.length ? (own ? '\n' : '') + '관련 사실(사건 사실 목록에서 이 칸·판단에 쓰이는 종류):\n' + out.join('\n') : '');
 }
 // [2026.10.19 밤 9바퀴 계산기에서 거꾸로] 사건분류(일시적 2주택·대체취득 등)는 "다른 집을 언제 샀나"로 갈린다 — 서류 속 매매계약서마다 자산·계약일·잔금일·당사자(원문 그대로)를
-//  판단 재료로 붙인다. 당사자 역할 판독이 자주 틀려(매수인 이름이 매도인으로 읽힘) GAS가 "납세자가 샀다"고 정하지 않고 AI·세무사가 본다(개발용 김환식: 신규주택 취득 계약서만 있는 사건)
+//  판단 재료로 붙인다. 당사자 역할 판독이 자주 틀려(매수인 이름이 매도인으로 읽힘) GAS가 "납세자가 샀다"고 정하지 않고 AI·세무사가 본다(개발용 고객AF: 신규주택 취득 계약서만 있는 사건)
 function cxContractList_(facts) {
   const cons = typeof cxContracts_ === 'function' ? cxContracts_(facts || [], '') : [];
   if (!cons.length) return '';
@@ -354,10 +354,10 @@ function cxIssueText_(c, iss, facts, more) {
   iss._taxpayer = iss._taxpayer || String(c.납세자 || ''); // 판단 묶음에 납세자 명의 등기 목록을 붙이려고
   iss._case = { 세목: c.세목, 기준일: c.기준일, 납세자: c.납세자 }; // [밤 25바퀴] 양도 판단 재료(양도일 기준 기준시가·매도인)
   const ctx = cxContextFor_(iss, facts);
-  // [밤 33바퀴] 판단 재료(ctx)는 원문 앞뒤와 따로 — 예전엔 원문 뒤에 붙여 2,400자에서 함께 잘려 명의 등기·계약서 목록·저가양도 줄이 빠졌다(개발용 박미영·이우석·방영교·김운래)
+  // [밤 33바퀴] 판단 재료(ctx)는 원문 앞뒤와 따로 — 예전엔 원문 뒤에 붙여 2,400자에서 함께 잘려 명의 등기·계약서 목록·저가양도 줄이 빠졌다(개발용 고객L·고객J·고객X·고객Z)
   if (more && more.files) more.files.forEach(function (fn) { const t = cxDocTextByName_(c, fn); if (t) snip += '\n[' + fn + ' — 더 보기]\n' + t.slice(0, 800).replace(/\s+/g, ' '); });
   const L = ['### 쟁점 ' + iss.iid + ' (' + iss.kind + ') — ' + (iss.label || iss.target), '칸: ' + iss.target + ' — ' + cxRole_(iss.target), '도구 질문: ' + String(iss.text).slice(0, 400)];
-  if (iss.detail) L.push('도구 설명: ' + String(iss.detail).slice(0, 800)); // [밤 33바퀴] 300자에서 다른 주택·지분별 취득 줄이 잘렸다(개발용 박미영·이우석·방영교)
+  if (iss.detail) L.push('도구 설명: ' + String(iss.detail).slice(0, 800)); // [밤 33바퀴] 300자에서 다른 주택·지분별 취득 줄이 잘렸다(개발용 고객L·고객J·고객X)
   if (iss.cands.length) L.push('후보:\n' + iss.cands.map(function (x, i) { return (i + 1) + ') ' + x.v + ' — 출처: ' + x.src.slice(0, 200); }).join('\n'));
   if (iss.options) L.push('선택지: ' + iss.options.map(function (o) { return o.v + (o.label !== o.v ? '(' + o.label.slice(0, 60) + ')' : ''); }).join(' / '));
   L.push('GAS가 못 푼 이유: ' + (iss.kind === '값고르기' ? '후보가 서로 다르고, 검산·법령 정의만으로 하나로 안 정해짐' : iss.kind === '판단' ? '서류의 정황을 읽어야 하는 판단' : '서류 규칙으로 값을 못 찾음'));
@@ -543,7 +543,7 @@ function cxResolve0_(c, r) {
       er.notes.forEach(function (t) { const id = 'cxr:' + cxHash_(t); if (!r.items.some(function (it) { return it.id === id; })) r.items.push(caseProcItem_(id, 'check', t, { mode: 'note' })); });
     }
   } catch (e) { lines.push('⚠ 재산 목록 맞대기 중 오류: ' + (e && e.message || e)); }
-  // [밤 18바퀴 — 세목별: 양도만] 양도 핵심 서류(양도 계약서·등기부)가 폴더에 없으면 같은 원인으로 빈칸 질문이 6~7개씩 따로 나온다(개발용 고영진·김기범·이숙희·김환식).
+  // [밤 18바퀴 — 세목별: 양도만] 양도 핵심 서류(양도 계약서·등기부)가 폴더에 없으면 같은 원인으로 빈칸 질문이 6~7개씩 따로 나온다(개발용 고객AK·고객AJ·고객AV·고객AF).
   //  세무사는 "이 서류를 넣어 주세요"를 먼저 한 번 말한다 — 원인 한 장을 맨 앞(사건 기본 카드)에 두고, 어떤 서류가 어느 칸을 채우는지 적는다. 빈칸 질문은 그대로 둔다(서류를 넣으면 다시 채워짐)
   try {
     if (cc.세목 === 'transfer') {
@@ -645,7 +645,7 @@ function cxResolve0_(c, r) {
     const texts0 = open.map(function (iss) { return { iss: iss, text: cxIssueText_(cc, iss, facts) }; });
     // [재점검 5] 판단 쟁점은 사건 요약·선택지·관련 사실로 AI가 볼 수 있어 늘 AI로. 빈칸·값고르기는 원문·후보·관련 사실 중 하나라도 있으면 AI로(사건에 서류가 하나도 없을 때만 바로 사용자)
     // [밤 24바퀴] 서류에 없는 빈 칸은 AI를 거치지 않고 바로 질문(5번 AI 자리 줄이기, 미관측에서도 되풀이) — 빈칸은 값이 있을 법한 원문(앞뒤)이나 종류 못 정한 서류 앞부분이 붙을 때만 AI로.
-    //  '관련 사실'(그 종류의 다른 값들)만으로는 빈 칸 값을 AI가 지어낼 수밖에 없다(방영교 취득일 — 등기부·취득 계약서 없음)
+    //  '관련 사실'(그 종류의 다른 값들)만으로는 빈 칸 값을 AI가 지어낼 수밖에 없다(고객X 취득일 — 등기부·취득 계약서 없음)
     const texts = texts0.filter(function (x) { const ok = x.iss.kind === '판단' || (x.iss.kind === '빈칸' ? !!x.iss._srcSnip : (/\n원문\(앞뒤\):|\n관련 사실/.test(x.text) || x.iss.cands.length > 0)); if (!ok) rec.user.push({ iid: x.iss.iid, label: x.iss.label, why: x.iss.kind === '빈칸' ? '서류에 없는 빈 칸 — 바로 사용자에게' : '근거 원문 없음 — 바로 사용자에게' }); return ok; });
     open.splice(0, open.length).forEach(function (iss) { if (texts.some(function (x) { return x.iss === iss; })) open.push(iss); });
     // [2026.10.19 5번 세겹 ①] 쟁점 종류 표(AiLeadTiers.js caseProcAiRoute_ — 스크립트 속성 AI_ROUTE_TABLE로 바꿈)에서 총괄 AI 몫(사건분류·특수관계·돈 흐름·사전증여·시가·주택 여부)은

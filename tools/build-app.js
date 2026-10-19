@@ -68,3 +68,10 @@ html = html.replace('<head>', '<head>\n  <!-- 자동 생성 파일 — 직접 �
 fs.mkdirSync(OUT_DIR, { recursive: true });
 fs.writeFileSync(path.join(OUT_DIR, 'index.html'), html);
 console.log('app/index.html 생성 — ' + (html.length / 1024 / 1024).toFixed(2) + 'MB, 포함 파일 ' + seen.length + '개');
+
+// [2026.10.20 보안] 공개 저장소라 고객 실명·주민번호·계좌번호가 다시 들어왔는지 경고만 한다(빌드는 막지 않음).
+//  자세한 위치: node tools/check-names.js (대응표: %USERPROFILE%\.netax\names-map.json, 저장소 밖)
+try {
+  const r = require('./check-names.js').scan();
+  if (r.hits.length) console.log('⚠ 실명 의심 ' + r.hits.length + '곳 — node tools/check-names.js 로 위치 확인' + (r.mapLoaded ? '' : ' (대응표 없음: 꼴 검사만)'));
+} catch (e) { console.log('⚠ 실명 검사 실패(빌드는 계속): ' + e.message); }

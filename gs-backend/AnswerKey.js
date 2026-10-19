@@ -87,7 +87,7 @@ function akToolValues_(c) {
     put('봉안시설', f.niche && f.niche.value !== null ? f.niche.value : 0, f.niche ? (f.niche.src || (f.niche.receipt ? '영수증 ' + f.niche.receipt.amount.toLocaleString('ko-KR') + '원(공제액 선택 전)' : '공제 0 — 계약서만 있고 납부 증빙 없음')) : '봉안 서류 없음(공제 0)', 'money'); // 계산에 들어가는 공제 대상 금액
     put('총상속재산', f.grossEstate, f.grossEstate ? '부동산 평가 + 금융재산' : '평가 안 끝남', 'money');
     if (f.grossEstate) {
-      // [2026.10.16] 과세가액 = 총상속재산 − 공과금 − 채무(§14) — 예전엔 총상속재산을 그대로 넣어 채무·공과금 있는 사건(김창호·박종헌 등)을 과다 계산했다.
+      // [2026.10.16] 과세가액 = 총상속재산 − 공과금 − 채무(§14) — 예전엔 총상속재산을 그대로 넣어 채무·공과금 있는 사건(고객C·고객B 등)을 과다 계산했다.
       //  채무는 세무사님이 확정한 목록, 없으면 서류로 확실한 것만. 감정평가수수료(§25①)도 화면과 같이 넣는다.
       const debtList = Array.isArray(f.debtsConfirmed) ? f.debtsConfirmed : (f.debts || []).filter(function (d) { return d.sure; });
       const debtSum = debtList.reduce(function (s, d) { return s + (Number(d.amount) || 0); }, 0);
@@ -97,7 +97,7 @@ function akToolValues_(c) {
         netFinancialAssets: f.financialValue || 0, funeralCostAmount: f.funeral.value || 0, funeralNicheCostAmount: (f.niche && f.niche.value) || 0 };
       // [2026.10.19 밤 2번 — 5번 모의에서 찾은 빈틈] 사전증여(§13 — 세무사님이 답한 통장 사전증여 f.priorGifts)를 화면과 똑같이 넘긴다.
       //  화면(taxcalc.html 'apply-ih-estate-auto'·applyCaseProcFacts): 과세가액 = 총상속재산 − 채무·공과금 + 10년(상속인)·5년(그 밖) 사전증여, ihGiftToHeirs·ihPriorGiftedIncluded·ihNonHeirPriorGiftAmount
-      //  예전엔 점검기가 이 셋을 빼고 돌려 §24 공제한도·과세가액이 화면과 달랐다(김창호 2.3억, 박종헌 1.6억). 엔진 계산식은 그대로.
+      //  예전엔 점검기가 이 셋을 빼고 돌려 §24 공제한도·과세가액이 화면과 달랐다(고객C 2.3억, 고객B 1.6억). 엔진 계산식은 그대로.
       const pgs = Array.isArray(f.priorGifts) ? f.priorGifts : [];
       const pgHeir = pgs.filter(function (g) { return g.heir; }).reduce(function (s, g) { return s + (Number(g.v) || 0); }, 0);
       const pgOther = pgs.filter(function (g) { return !g.heir; }).reduce(function (s, g) { return s + (Number(g.v) || 0); }, 0);
@@ -300,7 +300,7 @@ function akRunCase0_(caseId, key) {
   akTrace_('증빙1 끝', ev.more ? ev.progress : 'done');
   if (ev.more) return { caseId: caseId, more: true, progress: ev.progress };
   TC_NO_NEW_OCR_ = true; // 이후 단계는 새 글자인식 없이(한도 넘친 서류는 다음 점검에서 증빙 단계가 이어 읽음)
-  // [2026.10.16] 서류가 많은 사건(노영환 299개)은 서류 정리만으로 몇 분이 걸려, 이어서 처리개요·두 번째 증빙까지 하면 서버 6분 한도에 걸려
+  // [2026.10.16] 서류가 많은 사건(고객A 299개)은 서류 정리만으로 몇 분이 걸려, 이어서 처리개요·두 번째 증빙까지 하면 서버 6분 한도에 걸려
   //  같은 사건을 3번 끊고 건너뛰었다. 서류 정리에 2분 넘게 걸렸으면 여기서 끊고 다음 호출에서 이어 간다(글자·정리 결과는 캐시에 남아 빨라짐).
   if (Date.now() - t0 > 120000) {
     const sc = CacheService.getScriptCache(), sk = 'ak_split_' + caseId; // 사건마다 한 번만 끊는다(10분) — 계속 끊기만 하는 반복 방지
@@ -478,7 +478,7 @@ function answerKeyRun_(body) {
       try { akArchiveMd_(folder, result); } catch (e) { result.archiveError = String(e && e.message || e); }
       const it = folder.getFilesByName(AK_RESULT_NAME_);
       // [2026.10.16] 사건 하나만 점검(caseId)한 결과로 전체 결과 파일을 덮어쓰지 않는다 — 그 사건 줄만 바꿔 끼운다
-      //  (2026-10-16 새벽: 노영환 1건 점검이 27건 결과를 덮어써 설정 🐞 카드와 오프라인 재현기의 파일 대응표가 1건만 남았다)
+      //  (2026-10-16 새벽: 고객A 1건 점검이 27건 결과를 덮어써 설정 🐞 카드와 오프라인 재현기의 파일 대응표가 1건만 남았다)
       if (st.only && it.hasNext()) {
         const file = it.next();
         let prev = null; try { prev = JSON.parse(file.getBlob().getDataAsString('UTF-8')); } catch (e) {}
@@ -851,7 +851,7 @@ function akTransferInputs_(nums, base) {
         if (tp <= g) return;
         nums.forEach(function (ap) {
           if (ap >= tp) return;
-          // [2026.10.16] "양도소득금액 − 기본공제 250만 = 과세표준"을 "양도가액 − 취득가액 = 양도차익"으로 짝짓던 것(김운래·김금옥·노오섭 정답지의 취득가액 250만원)
+          // [2026.10.16] "양도소득금액 − 기본공제 250만 = 과세표준"을 "양도가액 − 취득가액 = 양도차익"으로 짝짓던 것(고객Z·고객W·고객Q 정답지의 취득가액 250만원)
           if (ap === 2500000 && tp === base + 2500000) return;
           const ex = tp - ap - g;
           if (ex < 0 || (ex > 0 && !has(ex))) return;
