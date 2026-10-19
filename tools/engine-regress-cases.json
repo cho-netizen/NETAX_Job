@@ -1,49 +1,344 @@
 [
-  { "이름": "상속 — 사전증여 없음(과세가액 8억, 자녀 6·연로자 1)", "도구": "calculate_inheritance_tax", "고정": true,
-    "입력": { "taxableEstateAmount": 800000000, "childCount": 6, "elderlyHeirCount": 1, "hasSpouse": false, "funeralCostAmount": 10000000, "funeralNicheCostAmount": 4000000, "netFinancialAssets": 0 },
-    "정답": { "과세표준": 236000000, "산출세액": 37200000 } },
-  { "이름": "상속 — 일괄공제 5억(과세가액 6억·장례비 1,400만·자녀 1)", "도구": "calculate_inheritance_tax", "고정": true,
-    "입력": { "taxableEstateAmount": 600000000, "childCount": 1, "elderlyHeirCount": 0, "hasSpouse": false, "funeralCostAmount": 10000000, "funeralNicheCostAmount": 4000000, "netFinancialAssets": 0 },
-    "정답": { "과세표준": 86000000, "산출세액": 8600000, "신고세액공제": 258000, "납부세액": 8342000 } },
-  { "이름": "상속 — §24 공제한도 걸림(장례비 뺀 과세가액 5.56억 − 사전증여 과세표준 3억)", "도구": "calculate_inheritance_tax",
-    "입력": { "taxableEstateAmount": 570000000, "childCount": 6, "elderlyHeirCount": 1, "hasSpouse": false, "funeralCostAmount": 10000000, "funeralNicheCostAmount": 4000000, "priorGiftedAmountIncludedInEstate": 300000000, "netFinancialAssets": 0,
-      "priorGiftHeirs": [{ "name": "상속인1", "priorGiftAmount": 300000000, "priorGiftTaxableBase": 300000000, "priorGiftTaxPaid": 0 }] },
-    "정답": { "과세표준": 300000000, "산출세액": 50000000 } },
-  { "이름": "상속 — 경계(장례비 빼기 전 5.08억·뺀 뒤 4.94억 → §24 3호·§28 적용 안 함)", "도구": "calculate_inheritance_tax",
-    "입력": { "taxableEstateAmount": 508000000, "childCount": 6, "elderlyHeirCount": 1, "hasSpouse": false, "funeralCostAmount": 10000000, "funeralNicheCostAmount": 4000000, "priorGiftedAmountIncludedInEstate": 200000000, "netFinancialAssets": 0,
-      "priorGiftHeirs": [{ "name": "상속인1", "priorGiftAmount": 200000000, "priorGiftTaxableBase": 150000000, "priorGiftTaxPaid": 20000000, "actualInheritedValue": 100000000 }, { "name": "상속인2", "priorGiftAmount": 0, "priorGiftTaxableBase": 0, "priorGiftTaxPaid": 0, "actualInheritedValue": 208000000 }] },
-    "정답": { "과세표준": 0, "납부세액": 0 } },
-  { "이름": "상속 — 증여세 냈는데 상속분 없음(공제 0 + 입력 필요 표시)", "도구": "calculate_inheritance_tax",
-    "입력": { "taxableEstateAmount": 900000000, "childCount": 2, "elderlyHeirCount": 0, "hasSpouse": false, "funeralCostAmount": 10000000, "priorGiftedAmountIncludedInEstate": 200000000, "netFinancialAssets": 0,
-      "priorGiftHeirs": [{ "name": "상속인1", "priorGiftAmount": 200000000, "priorGiftTaxableBase": 150000000, "priorGiftTaxPaid": 20000000 }] } },
-  { "이름": "상속 — 금융재산공제 끝수(순금융재산 123,456,789 × 20%)", "도구": "calculate_inheritance_tax",
-    "입력": { "taxableEstateAmount": 3000000000, "childCount": 3, "elderlyHeirCount": 0, "hasSpouse": false, "funeralCostAmount": 10000000, "netFinancialAssets": 123456789 } },
-  { "이름": "증여 — 직계존속 8천만", "도구": "calculate_gift_tax", "고정": true,
-    "입력": { "giftAmount": 80000000, "relation": "직계존속" },
-    "정답": { "과세표준": 30000000, "산출세액_할증후": 3000000, "신고세액공제": 90000, "납부세액": 2910000 } },
-  { "이름": "증여 — 기타친족 8천만", "도구": "calculate_gift_tax", "고정": true,
-    "입력": { "giftAmount": 80000000, "relation": "기타친족" },
-    "정답": { "과세표준": 70000000, "산출세액_할증후": 7000000 } },
-  { "이름": "증여 — 국세청 증여세 신고 사례03(모→부 동일인 10년 합산, 앞서 공제 3천만 사용 — 합산 계산 공제는 5천만 그대로)", "도구": "calculate_gift_tax", "고정": true,
-    "입력": { "giftAmount": 200000000, "relation": "직계존속", "priorGiftAmount": 100000000, "priorPaidTax": 7000000, "priorRelationDeductionUsed": 30000000, "giftDate": "2021-02-15" },
-    "정답": { "과세표준": 250000000, "산출세액_할증후": 40000000, "신고세액공제": 990000, "납부세액": 32010000 } },
-  { "이름": "증여 — 국세청 증여세 신고 사례04 부(같은 날 조부에게도 받음, 공제 5천만을 과세가액 비율로 안분 → 2천만)", "도구": "calculate_gift_tax", "고정": true,
-    "입력": { "giftAmount": 28000000, "relation": "직계존속", "relationDeductionCap": 20000000, "giftDate": "2021-02-15" },
-    "정답": { "과세표준": 8000000, "산출세액_할증후": 800000, "신고세액공제": 24000, "납부세액": 776000 } },
-  { "이름": "증여 — 국세청 증여세 신고 사례04 조부(세대생략 30%, 안분 몫 3천만)", "도구": "calculate_gift_tax", "고정": true,
-    "입력": { "giftAmount": 42000000, "relation": "직계존속", "relationDeductionCap": 30000000, "isGenerationSkip": true, "giftDate": "2021-02-15" },
-    "정답": { "과세표준": 12000000, "산출세액_할증후": 1560000, "신고세액공제": 46800, "납부세액": 1513200 } },
-  { "이름": "양도 — 환산취득가액인데 비용 1억 입력(§97②2호: 필요경비는 개산공제 180만, 비용은 안 뺌 — 환산+개산 1억5,180만 > 비용 1억)", "도구": "calculate_transfer_tax", "고정": true,
-    "입력": { "assetType": "other", "acquisitionDate": "2005-03-01", "transferDate": "2025-06-30", "transferPrice": 500000000, "acquisitionStandardPriceForConversion": 60000000, "transferStandardPriceForConversion": 200000000, "necessaryExpenses": 100000000 },
-    "정답": { "과세표준": 241240000, "산출세액": 71731200 } },
-  { "이름": "상속 — 상속세책자 제7장 제5절 신고서 작성 사례(배우자·자녀2·손자 사전증여, 추정상속·가업·동거주택·할증분 제외)", "도구": "calculate_inheritance_tax",
-    "입력": { "taxableEstateAmount": 4325000000, "nonTaxableAmount": 30000000, "publicInterestOrgAmount": 300000000, "disposalPresumptionItems": [{ "category": "예금", "oneYearAmount": 275000000, "oneYearExplained": 45000000 }],
-      "hasSpouse": true, "childCount": 2, "spouseActualInheritedAmount": 1624000000, "spouseLegalShareRatio": 0.42857142857142855, "priorGiftedAmountIncludedInEstate": 650000000, "giftToHeirsWithin10Years": 400000000,
-      "netFinancialAssets": 630000000, "hasCohabitingHouseDeduction": true, "cohabitingHouseValue": 500000000, "businessOwnershipYears": 18, "businessInheritanceStockValue": 600000000, "businessInheritanceTotalAssetValue": 600000, "businessInheritanceNonBizAsset55": 220000,
-      "appraisalFeeAmount": 500000, "funeralCostAmount": 12700000, "funeralNicheCostAmount": 9650000,
-      "nonHeirPriorGiftTaxableBaseTotal": 200000000, "nonHeirPriorGiftAmountTotal": 250000000, "nonHeirPriorGiftTaxPaidTotal": 39000000, "nonHeirPriorGiftGenSkipPremiumTotal": 9000000,
-      "priorGiftHeirs": [{ "name": "배우자", "actualInheritedValue": 1924000000, "assumedDebtAmount": 300000000, "assumedFuneralAmount": 0, "legalShareRatio": 0.42857142857142855 },
-        { "name": "자녀1", "actualInheritedValue": 1100000000, "assumedDebtAmount": 0, "assumedFuneralAmount": 15000000, "legalShareRatio": 0.2857142857142857, "priorGiftAmount": 400000000, "priorGiftTaxableBase": 350000000, "priorGiftTaxPaid": 60000000 },
-        { "name": "자녀2", "actualInheritedValue": 821000000, "assumedDebtAmount": 200000000, "assumedFuneralAmount": 0, "legalShareRatio": 0.2857142857142857 }] },
-    "정답": { "과세표준": 1024500000, "산출세액": 249800000, "기납부증여세액공제": 90000000, "신고세액공제": 4794000, "납부세액": 155006000 } }
+    {
+        "이름": "상속 — 사전증여 없음(과세가액 8억, 자녀 6·연로자 1)",
+        "도구": "calculate_inheritance_tax",
+        "고정": true,
+        "입력": {
+            "taxableEstateAmount": 800000000,
+            "childCount": 6,
+            "elderlyHeirCount": 1,
+            "hasSpouse": false,
+            "funeralCostAmount": 10000000,
+            "funeralNicheCostAmount": 4000000,
+            "netFinancialAssets": 0
+        },
+        "정답": {
+            "과세표준": 236000000,
+            "산출세액": 37200000
+        }
+    },
+    {
+        "이름": "상속 — 일괄공제 5억(과세가액 6억·장례비 1,400만·자녀 1)",
+        "도구": "calculate_inheritance_tax",
+        "고정": true,
+        "입력": {
+            "taxableEstateAmount": 600000000,
+            "childCount": 1,
+            "elderlyHeirCount": 0,
+            "hasSpouse": false,
+            "funeralCostAmount": 10000000,
+            "funeralNicheCostAmount": 4000000,
+            "netFinancialAssets": 0
+        },
+        "정답": {
+            "과세표준": 86000000,
+            "산출세액": 8600000,
+            "신고세액공제": 258000,
+            "납부세액": 8342000
+        }
+    },
+    {
+        "이름": "상속 — §24 공제한도 걸림(장례비 뺀 과세가액 5.56억 − 사전증여 과세표준 3억)",
+        "도구": "calculate_inheritance_tax",
+        "입력": {
+            "taxableEstateAmount": 570000000,
+            "childCount": 6,
+            "elderlyHeirCount": 1,
+            "hasSpouse": false,
+            "funeralCostAmount": 10000000,
+            "funeralNicheCostAmount": 4000000,
+            "priorGiftedAmountIncludedInEstate": 300000000,
+            "netFinancialAssets": 0,
+            "priorGiftHeirs": [
+                {
+                    "name": "상속인1",
+                    "priorGiftAmount": 300000000,
+                    "priorGiftTaxableBase": 300000000,
+                    "priorGiftTaxPaid": 0
+                }
+            ]
+        },
+        "정답": {
+            "과세표준": 300000000,
+            "산출세액": 50000000
+        }
+    },
+    {
+        "이름": "상속 — 경계(장례비 빼기 전 5.08억·뺀 뒤 4.94억 → §24 3호·§28 적용 안 함)",
+        "도구": "calculate_inheritance_tax",
+        "입력": {
+            "taxableEstateAmount": 508000000,
+            "childCount": 6,
+            "elderlyHeirCount": 1,
+            "hasSpouse": false,
+            "funeralCostAmount": 10000000,
+            "funeralNicheCostAmount": 4000000,
+            "priorGiftedAmountIncludedInEstate": 200000000,
+            "netFinancialAssets": 0,
+            "priorGiftHeirs": [
+                {
+                    "name": "상속인1",
+                    "priorGiftAmount": 200000000,
+                    "priorGiftTaxableBase": 150000000,
+                    "priorGiftTaxPaid": 20000000,
+                    "actualInheritedValue": 100000000
+                },
+                {
+                    "name": "상속인2",
+                    "priorGiftAmount": 0,
+                    "priorGiftTaxableBase": 0,
+                    "priorGiftTaxPaid": 0,
+                    "actualInheritedValue": 208000000
+                }
+            ]
+        },
+        "정답": {
+            "과세표준": 0,
+            "납부세액": 0
+        }
+    },
+    {
+        "이름": "상속 — 증여세 냈는데 상속분 없음(공제 0 + 입력 필요 표시)",
+        "도구": "calculate_inheritance_tax",
+        "입력": {
+            "taxableEstateAmount": 900000000,
+            "childCount": 2,
+            "elderlyHeirCount": 0,
+            "hasSpouse": false,
+            "funeralCostAmount": 10000000,
+            "priorGiftedAmountIncludedInEstate": 200000000,
+            "netFinancialAssets": 0,
+            "priorGiftHeirs": [
+                {
+                    "name": "상속인1",
+                    "priorGiftAmount": 200000000,
+                    "priorGiftTaxableBase": 150000000,
+                    "priorGiftTaxPaid": 20000000
+                }
+            ]
+        }
+    },
+    {
+        "이름": "상속 — 금융재산공제 끝수(순금융재산 123,456,789 × 20%)",
+        "도구": "calculate_inheritance_tax",
+        "입력": {
+            "taxableEstateAmount": 3000000000,
+            "childCount": 3,
+            "elderlyHeirCount": 0,
+            "hasSpouse": false,
+            "funeralCostAmount": 10000000,
+            "netFinancialAssets": 123456789
+        }
+    },
+    {
+        "이름": "증여 — 직계존속 8천만",
+        "도구": "calculate_gift_tax",
+        "고정": true,
+        "입력": {
+            "giftAmount": 80000000,
+            "relation": "직계존속"
+        },
+        "정답": {
+            "과세표준": 30000000,
+            "산출세액_할증후": 3000000,
+            "신고세액공제": 90000,
+            "납부세액": 2910000
+        }
+    },
+    {
+        "이름": "증여 — 기타친족 8천만",
+        "도구": "calculate_gift_tax",
+        "고정": true,
+        "입력": {
+            "giftAmount": 80000000,
+            "relation": "기타친족"
+        },
+        "정답": {
+            "과세표준": 70000000,
+            "산출세액_할증후": 7000000
+        }
+    },
+    {
+        "이름": "증여 — 국세청 증여세 신고 사례03(모→부 동일인 10년 합산, 앞서 공제 3천만 사용 — 합산 계산 공제는 5천만 그대로)",
+        "도구": "calculate_gift_tax",
+        "고정": true,
+        "입력": {
+            "giftAmount": 200000000,
+            "relation": "직계존속",
+            "priorGiftAmount": 100000000,
+            "priorPaidTax": 7000000,
+            "priorRelationDeductionUsed": 30000000,
+            "giftDate": "2021-02-15"
+        },
+        "정답": {
+            "과세표준": 250000000,
+            "산출세액_할증후": 40000000,
+            "신고세액공제": 990000,
+            "납부세액": 32010000
+        }
+    },
+    {
+        "이름": "증여 — 국세청 증여세 신고 사례04 부(같은 날 조부에게도 받음, 공제 5천만을 과세가액 비율로 안분 → 2천만)",
+        "도구": "calculate_gift_tax",
+        "고정": true,
+        "입력": {
+            "giftAmount": 28000000,
+            "relation": "직계존속",
+            "relationDeductionCap": 20000000,
+            "giftDate": "2021-02-15"
+        },
+        "정답": {
+            "과세표준": 8000000,
+            "산출세액_할증후": 800000,
+            "신고세액공제": 24000,
+            "납부세액": 776000
+        }
+    },
+    {
+        "이름": "증여 — 국세청 증여세 신고 사례04 조부(세대생략 30%, 안분 몫 3천만)",
+        "도구": "calculate_gift_tax",
+        "고정": true,
+        "입력": {
+            "giftAmount": 42000000,
+            "relation": "직계존속",
+            "relationDeductionCap": 30000000,
+            "isGenerationSkip": true,
+            "giftDate": "2021-02-15"
+        },
+        "정답": {
+            "과세표준": 12000000,
+            "산출세액_할증후": 1560000,
+            "신고세액공제": 46800,
+            "납부세액": 1513200
+        }
+    },
+    {
+        "이름": "양도 — 환산취득가액인데 비용 1억 입력(§97②2호: 필요경비는 개산공제 180만, 비용은 안 뺌 — 환산+개산 1억5,180만 > 비용 1억)",
+        "도구": "calculate_transfer_tax",
+        "고정": true,
+        "입력": {
+            "assetType": "other",
+            "acquisitionDate": "2005-03-01",
+            "transferDate": "2025-06-30",
+            "transferPrice": 500000000,
+            "acquisitionStandardPriceForConversion": 60000000,
+            "transferStandardPriceForConversion": 200000000,
+            "necessaryExpenses": 100000000
+        },
+        "정답": {
+            "과세표준": 241240000,
+            "산출세액": 71731200
+        }
+    },
+    {
+        "이름": "상속 — 상속세책자 제7장 제5절 신고서 작성 사례(배우자·자녀2·손자 사전증여, 추정상속·가업·동거주택·할증분 제외)",
+        "도구": "calculate_inheritance_tax",
+        "입력": {
+            "taxableEstateAmount": 4325000000,
+            "nonTaxableAmount": 30000000,
+            "publicInterestOrgAmount": 300000000,
+            "disposalPresumptionItems": [
+                {
+                    "category": "예금",
+                    "oneYearAmount": 275000000,
+                    "oneYearExplained": 45000000
+                }
+            ],
+            "hasSpouse": true,
+            "childCount": 2,
+            "spouseActualInheritedAmount": 1624000000,
+            "spouseLegalShareRatio": 0.42857142857142855,
+            "priorGiftedAmountIncludedInEstate": 650000000,
+            "giftToHeirsWithin10Years": 400000000,
+            "netFinancialAssets": 630000000,
+            "hasCohabitingHouseDeduction": true,
+            "cohabitingHouseValue": 500000000,
+            "businessOwnershipYears": 18,
+            "businessInheritanceStockValue": 600000000,
+            "businessInheritanceTotalAssetValue": 600000,
+            "businessInheritanceNonBizAsset55": 220000,
+            "appraisalFeeAmount": 500000,
+            "funeralCostAmount": 12700000,
+            "funeralNicheCostAmount": 9650000,
+            "nonHeirPriorGiftTaxableBaseTotal": 200000000,
+            "nonHeirPriorGiftAmountTotal": 250000000,
+            "nonHeirPriorGiftTaxPaidTotal": 39000000,
+            "nonHeirPriorGiftGenSkipPremiumTotal": 9000000,
+            "priorGiftHeirs": [
+                {
+                    "name": "배우자",
+                    "actualInheritedValue": 1924000000,
+                    "assumedDebtAmount": 300000000,
+                    "assumedFuneralAmount": 0,
+                    "legalShareRatio": 0.42857142857142855
+                },
+                {
+                    "name": "자녀1",
+                    "actualInheritedValue": 1100000000,
+                    "assumedDebtAmount": 0,
+                    "assumedFuneralAmount": 15000000,
+                    "legalShareRatio": 0.2857142857142857,
+                    "priorGiftAmount": 400000000,
+                    "priorGiftTaxableBase": 350000000,
+                    "priorGiftTaxPaid": 60000000
+                },
+                {
+                    "name": "자녀2",
+                    "actualInheritedValue": 821000000,
+                    "assumedDebtAmount": 200000000,
+                    "assumedFuneralAmount": 0,
+                    "legalShareRatio": 0.2857142857142857
+                }
+            ]
+        },
+        "정답": {
+            "과세표준": 1024500000,
+            "산출세액": 249800000,
+            "기납부증여세액공제": 90000000,
+            "신고세액공제": 4794000,
+            "납부세액": 155006000
+        }
+    },
+    {
+        "이름": "양도 수용 — 2025.6.30 양도, 채권 3년 만기특약 위반: §77④ 징수 = 양도소득세 169,060,000 × 15% (서식 감사 바 E5)",
+        "도구": "calculate_transfer_tax",
+        "고정": true,
+        "입력": {
+            "assetType": "other",
+            "acquisitionDate": "2010-01-01",
+            "publicNoticeDate": "2023-01-01",
+            "transferDate": "2025-06-30",
+            "transferPrice": 1000000000,
+            "acquisitionPrice": 300000000,
+            "necessaryExpenses": 0,
+            "compensationType": "bond_3y",
+            "isBondPledgeBreached": true
+        },
+        "정답": {
+            "채권만기특약위반_추징액": 25359000,
+            "납부세액_합계": 148772800
+        }
+    },
+    {
+        "이름": "양도 수용(합산) — 2025.6.30 양도, 채권 5년 만기특약 위반: §77④ 징수 = 양도소득세 × 25% (서식 감사 바 E6)",
+        "도구": "calculateTransferTaxMultiJS",
+        "고정": true,
+        "입력": [
+            {
+                "assetType": "other",
+                "acquisitionDate": "2010-01-01",
+                "publicNoticeDate": "2023-01-01",
+                "transferDate": "2025-06-30",
+                "transferPrice": 1000000000,
+                "acquisitionPrice": 300000000,
+                "necessaryExpenses": 0,
+                "compensationType": "bond_5y",
+                "isBondPledgeBreached": true
+            }
+        ],
+        "정답": {
+            "합산채권만기특약위반_추징액": 42265000,
+            "납부세액_합계": 148772800
+        }
+    }
 ]
