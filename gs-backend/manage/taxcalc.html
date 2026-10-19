@@ -17726,7 +17726,7 @@ function handleTaxCalcClick_(e){
       totalTaxAmount: numVal(document.getElementById('ipIhTotal').value) || 0,
       initialPaymentAmount: numVal(document.getElementById('ipIhInitial').value) || 0,
       installmentPeriodYears: numVal(document.getElementById('ipIhYears').value) || 0,
-      annualInterestRatePercent: numVal(document.getElementById('ipIhRate').value)
+      annualInterestRatePercent: document.getElementById('ipIhRate').value === '' ? undefined : numVal(document.getElementById('ipIhRate').value) // [2026.10.20] 비우면 엔진이 고시 이율로
     };
     const installmentResult = calculateInstallmentPaymentScheduleJS(input);
     lastInstallmentInput_ = input;

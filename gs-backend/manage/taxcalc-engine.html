@@ -4915,8 +4915,10 @@
     // 없으면 오늘) 시점에 적용되는 최신 고시 이자율(REFUND_INTEREST_RATE_HISTORY, calculateClawbackInterestJS와
     // 동일 테이블)을 전체 회차에 공통 적용하는 것으로 자동계산한다(직접 입력하면 그 값이 우선).
     const referenceDate = p.referenceDate || new Date().toISOString().slice(0, 10);
-    const annualInterestRatePercent = Number(p.annualInterestRatePercent) >= 0
-      ? Number(p.annualInterestRatePercent)
+    // [2026.10.20 세액 고침] 비운 칸('')·null을 0%로 읽어 가산금이 0원이 되던 것 — 값이 실제로 있을 때만 그 율, 없으면 기준일 고시 이율(원본 인쇄 작업자 상속부속B 발견)
+    const rateIn_ = p.annualInterestRatePercent;
+    const annualInterestRatePercent = (rateIn_ !== '' && rateIn_ !== null && rateIn_ !== undefined && Number.isFinite(Number(rateIn_)) && Number(rateIn_) >= 0)
+      ? Number(rateIn_)
       : Math.round(refundInterestRateAt_(referenceDate) * 100 * 1000) / 1000;
     const initialPaymentAmount = Math.min(Number(p.initialPaymentAmount) || 0, totalTaxAmount);
 
@@ -4939,7 +4941,7 @@
       remaining -= principal;
     }
     const totalInterest = schedule.reduce(function (s, r) { return s + r.가산금; }, 0);
-    const belowMinimumWarning = basePrincipal > 0 && basePrincipal < 10000000;
+    const belowMinimumWarning = basePrincipal > 0 && basePrincipal <= 10000000; // §71② 단서 "각 회분 분할납부 세액이 1천만원을 초과하도록" — 1천만원 정확히도 경고
 
     return {
       세목: taxType === 'inheritance' ? '상속세' : '증여세', 총납부세액: totalTaxAmount, 최초납부세액: initialPaymentAmount,

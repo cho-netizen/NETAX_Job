@@ -1799,5 +1799,20 @@
    "과세표준": 147500000,
    "산출세액": 36185000
   }
+ },
+ {
+  "이름": "연부연납 가산금(상증 §72·영 §69①) — 이율 칸을 비우면 기준일(2026.3.2.) 고시 이율 3.1%: 증여 1.2억·5년, 잔액 합 3억 × 3.1% = 9,300,000(예전 빈칸 0%로 0원)",
+  "도구": "calculateInstallmentPaymentScheduleJS",
+  "고정": true,
+  "입력": {
+   "taxType": "gift",
+   "totalTaxAmount": 120000000,
+   "installmentPeriodYears": 5,
+   "referenceDate": "2026-03-02",
+   "annualInterestRatePercent": ""
+  },
+  "정답": {
+   "가산금_합계": 9300000
+  }
  }
 ]
