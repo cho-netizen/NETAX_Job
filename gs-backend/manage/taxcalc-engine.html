@@ -819,12 +819,13 @@
   // [2026.10.19 조견표 2부-16] 미납 첫날(납부기한 다음 날) — 화면의 납부지연일수 계산(taxcalc.html recompute…UnpaidDays)과 같은 기한:
   //  양도 = 양도일이 속한 해의 다음해 5.31.(확정신고), 증여 = 증여일이 속한 달 말일부터 3개월, 상속 = 상속개시일이 속한 달 말일부터 6개월.
   //  (기한 끝날이 공휴일이면 미뤄지는 것 — 1부-02 — 은 화면 날수 계산도 안 하므로 여기서도 같게 둠)
-  function unpaidStartAt_(kind, date) {
+  function unpaidStartAt_(kind, date, monthsOverride) {
     const d = String(date || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';
     const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7));
     if (kind === 'transfer') return addDaysStr_(shiftTaxDeadline_((y + 1) + '-05-31'), 1);
-    const add = kind === 'gift' ? 3 : 6;
+    // [2026.10.20 세액 고침 — 감사 D] 상속세는 피상속인이나 상속인이 외국에 주소를 둔 경우 9개월(상증법 §67④) — 호출부가 monthsOverride로 줌
+    const add = monthsOverride || (kind === 'gift' ? 3 : 6);
     const end = new Date(Date.UTC(y, m + add, 0)); // 그 달 말일 + add개월의 말일
     return addDaysStr_(shiftTaxDeadline_(end.toISOString().slice(0, 10)), 1);
   }
@@ -3810,7 +3811,7 @@
     const reportCredit = reportedInTime ? Math.round(taxAfterCredits * reportCreditRate_) : 0;
     const taxAfterReportCredit = taxAfterCredits - reportCredit;
 
-    const penalties = giftFilingPenalties(taxAfterReportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, lateCtx_(p), Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount, p.unpaidStartDate || unpaidStartAt_('inheritance', inhDate_));
+    const penalties = giftFilingPenalties(taxAfterReportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, lateCtx_(p), Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount, p.unpaidStartDate || unpaidStartAt_('inheritance', inhDate_, (p.isDecedentResident === false || p.hasForeignAddressHeir) ? 9 : 0));
 
     const interestAmount = Number(p.interestAmount) || 0;
     const forProfitBequestAmount = Number(p.forProfitBequestAmount) || 0;

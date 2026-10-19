@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 20:20 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 20:22 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -12431,12 +12431,13 @@
   // [2026.10.19 조견표 2부-16] 미납 첫날(납부기한 다음 날) — 화면의 납부지연일수 계산(taxcalc.html recompute…UnpaidDays)과 같은 기한:
   //  양도 = 양도일이 속한 해의 다음해 5.31.(확정신고), 증여 = 증여일이 속한 달 말일부터 3개월, 상속 = 상속개시일이 속한 달 말일부터 6개월.
   //  (기한 끝날이 공휴일이면 미뤄지는 것 — 1부-02 — 은 화면 날수 계산도 안 하므로 여기서도 같게 둠)
-  function unpaidStartAt_(kind, date) {
+  function unpaidStartAt_(kind, date, monthsOverride) {
     const d = String(date || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';
     const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7));
     if (kind === 'transfer') return addDaysStr_(shiftTaxDeadline_((y + 1) + '-05-31'), 1);
-    const add = kind === 'gift' ? 3 : 6;
+    // [2026.10.20 세액 고침 — 감사 D] 상속세는 피상속인이나 상속인이 외국에 주소를 둔 경우 9개월(상증법 §67④) — 호출부가 monthsOverride로 줌
+    const add = monthsOverride || (kind === 'gift' ? 3 : 6);
     const end = new Date(Date.UTC(y, m + add, 0)); // 그 달 말일 + add개월의 말일
     return addDaysStr_(shiftTaxDeadline_(end.toISOString().slice(0, 10)), 1);
   }
@@ -15422,7 +15423,7 @@
     const reportCredit = reportedInTime ? Math.round(taxAfterCredits * reportCreditRate_) : 0;
     const taxAfterReportCredit = taxAfterCredits - reportCredit;
 
-    const penalties = giftFilingPenalties(taxAfterReportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, lateCtx_(p), Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount, p.unpaidStartDate || unpaidStartAt_('inheritance', inhDate_));
+    const penalties = giftFilingPenalties(taxAfterReportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, lateCtx_(p), Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount, p.unpaidStartDate || unpaidStartAt_('inheritance', inhDate_, (p.isDecedentResident === false || p.hasForeignAddressHeir) ? 9 : 0));
 
     const interestAmount = Number(p.interestAmount) || 0;
     const forProfitBequestAmount = Number(p.forProfitBequestAmount) || 0;
@@ -22497,13 +22498,19 @@ function recomputeGiftUnpaidDays(idx){
   const hint = document.getElementById('giftDateDeadlineHint');
   if (hint) hint.textContent = deadline ? '법정신고기한: ' + formatDateYmd_(deadline) + '까지(증여일+3개월)' : '';
 }
+// [2026.10.20 세액 고침 — 감사 D] 상증법 §67④ — 피상속인이나 상속인이 외국에 주소를 둔 경우 신고기한(납부기한 §70①도 같음)은 9개월
+function ihFilingMonths_(){
+  const nr = document.getElementById('ihDecedentResident'), fa = document.getElementById('ihHeirForeignAddress');
+  return ((nr && nr.value === 'nonresident') || (fa && fa.checked)) ? 9 : 6;
+}
 function recomputeInheritanceUnpaidDays(){
   const deathDate = document.getElementById('ihDeathDate');
   const paidDate = document.getElementById('ihPaidDate');
-  const deadline = taxCalcDeadlineFromMonthEnd_(deathDate ? deathDate.value : '', 6);
+  const ihMonths_ = ihFilingMonths_();
+  const deadline = taxCalcDeadlineFromMonthEnd_(deathDate ? deathDate.value : '', ihMonths_);
   setUnpaidDaysField_('ihUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
   const hint = document.getElementById('ihDeathDateDeadlineHint');
-  if (hint) hint.textContent = deadline ? '법정신고기한: ' + formatDateYmd_(deadline) + '까지(상속개시일+6개월)' : '';
+  if (hint) hint.textContent = deadline ? '법정신고기한: ' + formatDateYmd_(deadline) + '까지(상속개시일이 속한 달 말일+' + ihMonths_ + '개월' + (ihMonths_ === 9 ? ', 외국 주소 §67④' : '') + ')' : '';
 }
 
 // 배우자 법정상속분 비율(민법§1009②) — 배우자는 다른 공동상속인 1인당 지분의 1.5배를 받는다.
@@ -32550,6 +32557,7 @@ function renderInheritancePane(){
         '<div class="taxcalc-field"><label>호</label><input type="text" id="ihDeceasedHo" list="ihDeceasedHoList" placeholder="예: 1502호"><datalist id="ihDeceasedHoList"></datalist><span class="taxcalc-field-help">동을 고르면 호 목록이 자동으로 뜹니다 — 목록에 없으면 직접 입력하세요</span></div>' +
         '<div class="taxcalc-field"><label style="visibility:hidden;">관할세무서</label><input type="hidden" id="ihDeceasedTaxOffice" value=""><button type="button" class="taxcalc-ai-btn" data-action="open-tax-office-guide" data-address-input="ihDeceasedAddress" data-office-input="ihDeceasedTaxOffice" id="ihDeceasedTaxOfficeBtn">관할세무서</button></div>' +
         '<div class="taxcalc-field"><label>거주구분</label><select id="ihDecedentResident"><option value="resident" selected>거주자</option><option value="nonresident">비거주자</option></select><span class="taxcalc-field-help">국내에 주소를 두거나 183일 이상 거소를 둔 사람=거주자</span><span class="taxcalc-result-note" style="margin:2px 0 0;">비거주자면 기초공제(2억원)만 적용되고 배우자공제·일괄공제·인적공제·금융재산공제·동거주택공제·장례비용공제·가업/영농상속공제는 적용되지 않습니다(§14②·§18~§23의2).</span></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihHeirForeignAddress"><label for="ihHeirForeignAddress">상속인 중 외국에 주소를 둔 사람 있음 — 신고·납부기한 9개월(상증법 §67④, 신고서 ⑦)</label></div>' +
       '</div>' +
       '<div class="taxcalc-grid" style="margin-top:10px;">' +
         '<div class="taxcalc-field"><label>상속개시일</label><input type="date" id="ihDeathDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-result-note" id="ihDeathDateDeadlineHint" style="margin:2px 0 0;"></span></div>' +
@@ -32781,6 +32789,7 @@ function renderInheritancePane(){
   const ihPaidDateEl = document.getElementById('ihPaidDate');
   if (ihDeathDateEl) ihDeathDateEl.addEventListener('input', recomputeInheritanceUnpaidDays);
   if (ihPaidDateEl) ihPaidDateEl.addEventListener('input', recomputeInheritanceUnpaidDays);
+  ['ihDecedentResident', 'ihHeirForeignAddress'].forEach(function(id){ const e_ = document.getElementById(id); if (e_) e_.addEventListener('change', recomputeInheritanceUnpaidDays); }); // [2026.10.20] §67④ 9개월
   recomputeInheritanceUnpaidDays();
   wireMoneyCapHint_('ihAppraisalFee', 'ihAppraisalFeeHint', 5000000);
   wireMoneyCapHint_('ihCohabitValue', 'ihCohabitValueHint', 600000000);
@@ -38314,6 +38323,7 @@ function handleTaxCalcClick_(e){
       disposalPresumptionItems: disposalPresumptionItems,
       presumedFictitiousDebtAmount: numVal((document.getElementById('ihPresumedFictitiousDebt') || {}).value) || 0, // [2026.10.20 J05] §15② — 기준·차감 없이 전액
       isDecedentResident: document.getElementById('ihDecedentResident').value !== 'nonresident',
+      hasForeignAddressHeir: !!(document.getElementById('ihHeirForeignAddress') && document.getElementById('ihHeirForeignAddress').checked), // [2026.10.20] §67④ 9개월·9호 ⑦
       hasSpouse: taxCalcHeirRegistryHasSpouse,
       isSpouseOnlyHeir: taxCalcHeirRegistryIsSpouseOnly,
       spouseActualInheritedAmount: numVal(document.getElementById('ihSpouseActual').value) || 0,

@@ -276,13 +276,19 @@ function recomputeGiftUnpaidDays(idx){
   const hint = document.getElementById('giftDateDeadlineHint');
   if (hint) hint.textContent = deadline ? '법정신고기한: ' + formatDateYmd_(deadline) + '까지(증여일+3개월)' : '';
 }
+// [2026.10.20 세액 고침 — 감사 D] 상증법 §67④ — 피상속인이나 상속인이 외국에 주소를 둔 경우 신고기한(납부기한 §70①도 같음)은 9개월
+function ihFilingMonths_(){
+  const nr = document.getElementById('ihDecedentResident'), fa = document.getElementById('ihHeirForeignAddress');
+  return ((nr && nr.value === 'nonresident') || (fa && fa.checked)) ? 9 : 6;
+}
 function recomputeInheritanceUnpaidDays(){
   const deathDate = document.getElementById('ihDeathDate');
   const paidDate = document.getElementById('ihPaidDate');
-  const deadline = taxCalcDeadlineFromMonthEnd_(deathDate ? deathDate.value : '', 6);
+  const ihMonths_ = ihFilingMonths_();
+  const deadline = taxCalcDeadlineFromMonthEnd_(deathDate ? deathDate.value : '', ihMonths_);
   setUnpaidDaysField_('ihUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
   const hint = document.getElementById('ihDeathDateDeadlineHint');
-  if (hint) hint.textContent = deadline ? '법정신고기한: ' + formatDateYmd_(deadline) + '까지(상속개시일+6개월)' : '';
+  if (hint) hint.textContent = deadline ? '법정신고기한: ' + formatDateYmd_(deadline) + '까지(상속개시일이 속한 달 말일+' + ihMonths_ + '개월' + (ihMonths_ === 9 ? ', 외국 주소 §67④' : '') + ')' : '';
 }
 
 // 배우자 법정상속분 비율(민법§1009②) — 배우자는 다른 공동상속인 1인당 지분의 1.5배를 받는다.
@@ -10329,6 +10335,7 @@ function renderInheritancePane(){
         '<div class="taxcalc-field"><label>호</label><input type="text" id="ihDeceasedHo" list="ihDeceasedHoList" placeholder="예: 1502호"><datalist id="ihDeceasedHoList"></datalist><span class="taxcalc-field-help">동을 고르면 호 목록이 자동으로 뜹니다 — 목록에 없으면 직접 입력하세요</span></div>' +
         '<div class="taxcalc-field"><label style="visibility:hidden;">관할세무서</label><input type="hidden" id="ihDeceasedTaxOffice" value=""><button type="button" class="taxcalc-ai-btn" data-action="open-tax-office-guide" data-address-input="ihDeceasedAddress" data-office-input="ihDeceasedTaxOffice" id="ihDeceasedTaxOfficeBtn">관할세무서</button></div>' +
         '<div class="taxcalc-field"><label>거주구분</label><select id="ihDecedentResident"><option value="resident" selected>거주자</option><option value="nonresident">비거주자</option></select><span class="taxcalc-field-help">국내에 주소를 두거나 183일 이상 거소를 둔 사람=거주자</span><span class="taxcalc-result-note" style="margin:2px 0 0;">비거주자면 기초공제(2억원)만 적용되고 배우자공제·일괄공제·인적공제·금융재산공제·동거주택공제·장례비용공제·가업/영농상속공제는 적용되지 않습니다(§14②·§18~§23의2).</span></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihHeirForeignAddress"><label for="ihHeirForeignAddress">상속인 중 외국에 주소를 둔 사람 있음 — 신고·납부기한 9개월(상증법 §67④, 신고서 ⑦)</label></div>' +
       '</div>' +
       '<div class="taxcalc-grid" style="margin-top:10px;">' +
         '<div class="taxcalc-field"><label>상속개시일</label><input type="date" id="ihDeathDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-result-note" id="ihDeathDateDeadlineHint" style="margin:2px 0 0;"></span></div>' +
@@ -10560,6 +10567,7 @@ function renderInheritancePane(){
   const ihPaidDateEl = document.getElementById('ihPaidDate');
   if (ihDeathDateEl) ihDeathDateEl.addEventListener('input', recomputeInheritanceUnpaidDays);
   if (ihPaidDateEl) ihPaidDateEl.addEventListener('input', recomputeInheritanceUnpaidDays);
+  ['ihDecedentResident', 'ihHeirForeignAddress'].forEach(function(id){ const e_ = document.getElementById(id); if (e_) e_.addEventListener('change', recomputeInheritanceUnpaidDays); }); // [2026.10.20] §67④ 9개월
   recomputeInheritanceUnpaidDays();
   wireMoneyCapHint_('ihAppraisalFee', 'ihAppraisalFeeHint', 5000000);
   wireMoneyCapHint_('ihCohabitValue', 'ihCohabitValueHint', 600000000);
@@ -16093,6 +16101,7 @@ function handleTaxCalcClick_(e){
       disposalPresumptionItems: disposalPresumptionItems,
       presumedFictitiousDebtAmount: numVal((document.getElementById('ihPresumedFictitiousDebt') || {}).value) || 0, // [2026.10.20 J05] §15② — 기준·차감 없이 전액
       isDecedentResident: document.getElementById('ihDecedentResident').value !== 'nonresident',
+      hasForeignAddressHeir: !!(document.getElementById('ihHeirForeignAddress') && document.getElementById('ihHeirForeignAddress').checked), // [2026.10.20] §67④ 9개월·9호 ⑦
       hasSpouse: taxCalcHeirRegistryHasSpouse,
       isSpouseOnlyHeir: taxCalcHeirRegistryIsSpouseOnly,
       spouseActualInheritedAmount: numVal(document.getElementById('ihSpouseActual').value) || 0,

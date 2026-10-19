@@ -687,7 +687,9 @@
     o.need('①', rp.name, '① 신고인 성명').need('②', rp.regNo, '② 신고인 주민등록번호').set('③', ctx.email)
       .need('④', fullAddr(rp), '④ 신고인 주소').need('⑤', rp.relation, '⑤ 피상속인과의 관계');
     if (has(ctx.phone)) o.set(isMobile(ctx.phone) ? '⑥~전화번호(휴대전화)' : '⑥~전화번호(자택)', ctx.phone); else o.miss('⑥ 전화번호', '화면 입력 없음');
-    o.miss('⑦ 외국에 주소를 둔 상속인 여부', '계산기에 없음');
+    // [2026.10.20 감사 D] 작성방법 3 — 상속 탭 '상속인 중 외국에 주소를 둔 사람 있음' 체크(§67④ 9개월 기한과 같은 값)
+    var fa9_ = checked('ihHeirForeignAddress');
+    if (fa9_ === null) o.miss('⑦ 외국에 주소를 둔 상속인 여부', '화면 칸 없음(시험)'); else o.set('⑦', fa9_ ? '있음' : '없음');
     o.need('⑧', dc.name, '⑧ 피상속인 성명').need('⑨', dc.regNo, '⑨ 피상속인 주민등록번호');
     o.set('⑩', dc.resident === 'nonresident' ? '비거주자' : '거주자');
     o.need('⑪', dc.address, '⑪ 피상속인 주소');
