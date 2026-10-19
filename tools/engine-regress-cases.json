@@ -2040,5 +2040,71 @@
   "정답": {
    "산출세액": 74110000
   }
+ },
+ {
+  "이름": "[회장 결론 N3] 영농자녀 증여 감면 — 염전은 2021.1.1. 이후 증여분부터(법률 제17759호 부칙 제2조④): 2020.6. 증여는 감면 없음",
+  "도구": "calculateFarmlandGiftTaxReductionJS",
+  "고정": true,
+  "입력": {
+   "assetType": "salt_farm",
+   "giftDate": "2020-06-01",
+   "areaSqm": 50000,
+   "giftValue": 200000000,
+   "totalGiftCalculatedTax": 40000000,
+   "totalGiftPropertyValue": 400000000
+  },
+  "정답": {
+   "적용여부": false
+  }
+ },
+ {
+  "이름": "[회장 결론 N3] 영농자녀 증여 감면 — 염전 2021.3. 증여 5만㎡(한도 6만㎡ 이내): 4천만 × 2억 ÷ 4억 = 20,000,000",
+  "도구": "calculateFarmlandGiftTaxReductionJS",
+  "고정": true,
+  "입력": {
+   "assetType": "salt_farm",
+   "giftDate": "2021-03-01",
+   "areaSqm": 50000,
+   "giftValue": 200000000,
+   "totalGiftCalculatedTax": 40000000,
+   "totalGiftPropertyValue": 400000000
+  },
+  "정답": {
+   "적용여부": true,
+   "최종_감면세액": 20000000
+  }
+ },
+ {
+  "이름": "[회장 결론 N3] 영농자녀 증여 감면 — 어선은 2018.1.1. 이후 증여분부터(법률 제15227호): 2017.5. 증여는 감면 없음",
+  "도구": "calculateFarmlandGiftTaxReductionJS",
+  "고정": true,
+  "입력": {
+   "assetType": "fishing_boat",
+   "giftDate": "2017-05-01",
+   "tonnage": 10,
+   "giftValue": 200000000,
+   "totalGiftCalculatedTax": 40000000,
+   "totalGiftPropertyValue": 400000000
+  },
+  "정답": {
+   "적용여부": false
+  }
+ },
+ {
+  "이름": "[회장 결론 N3] 영농자녀 증여 감면 — 농지 5만㎡(한도 4만㎡): 4천만 × (2억 × 0.8) ÷ 4억 = 16,000,000",
+  "도구": "calculateFarmlandGiftTaxReductionJS",
+  "고정": true,
+  "입력": {
+   "assetType": "farmland",
+   "giftDate": "2024-03-01",
+   "areaSqm": 50000,
+   "giftValue": 200000000,
+   "totalGiftCalculatedTax": 40000000,
+   "totalGiftPropertyValue": 400000000
+  },
+  "정답": {
+   "적용여부": true,
+   "최종_감면세액": 16000000
+  }
  }
 ]

@@ -4320,6 +4320,16 @@
     if (validTypes.indexOf(assetType) === -1) {
       return { error: '농지등 유형을 선택하세요.' };
     }
+    // [2026.10.20 회장 결론 N3 — 법제처 연혁판] §71① 대상 열거는 세 번 넓어졌고 부칙(각 제2조④)은 모두 "이 법 시행 이후 … 증여받는 경우부터":
+    //  축사용지 2016.1.1.(법률 제13560호), 어선·어업권·어업용 토지등 2018.1.1.(법률 제15227호), 염전 2021.1.1.(법률 제17759호). 현행 증여기한 2028.12.31.
+    const FARM_LABEL_ = { farmland: '농지', pasture: '초지', forest_land: '산림지', livestock_land: '축사용지', fishing_boat: '어선', fishing_right: '어업권·양식업권', fishing_land: '어업용 토지등', salt_farm: '염전' };
+    const FARM_FROM_ = { livestock_land: ['2016-01-01', '법률 제13560호'], fishing_boat: ['2018-01-01', '법률 제15227호'], fishing_right: ['2018-01-01', '법률 제15227호'], fishing_land: ['2018-01-01', '법률 제15227호'], salt_farm: ['2021-01-01', '법률 제17759호'] };
+    const farmGiftDate_ = String(p.giftDate || '').slice(0, 10);
+    if (farmGiftDate_ && FARM_FROM_[assetType] && farmGiftDate_ < FARM_FROM_[assetType][0]) {
+      return { 적용여부: false, 감면세액: 0, 농지등유형: assetType, 종류: FARM_LABEL_[assetType], 안내: '§71① — ' + FARM_LABEL_[assetType] + (((FARM_LABEL_[assetType].charCodeAt(FARM_LABEL_[assetType].length - 1) - 0xAC00) % 28) ? '은 ' : '는 ') + FARM_FROM_[assetType][0].replace(/-/g, '.') + '. 이후 증여받는 분부터 감면 대상입니다(' + FARM_FROM_[assetType][1] + ' 부칙 제2조④). 증여일 ' + farmGiftDate_ + '은 대상이 아닙니다.' };
+    }
+    if (farmGiftDate_ && farmGiftDate_ > '2028-12-31') return { 적용여부: false, 감면세액: 0, 농지등유형: assetType, 종류: FARM_LABEL_[assetType], 안내: '§71① — 2028.12.31.까지 증여분만 감면(현행 기한).' };
+    const farmDateNote_ = !farmGiftDate_ && FARM_FROM_[assetType] ? ' ⚠ 증여일(giftDate)을 넣으면 ' + FARM_LABEL_[assetType] + ' 감면 시작일(' + FARM_FROM_[assetType][0] + ' 이후 증여분)을 확인합니다.' : '';
     if (p.isInZoningRestrictedArea) {
       return { 적용여부: false, 감면세액: 0, 안내: '§71①2호 — 주거지역·상업지역·공업지역에 소재하는 농지등은 감면 대상이 아닙니다.' };
     }
@@ -4390,13 +4400,14 @@
 
     return {
       적용여부: true,
-      농지등유형: assetType, 면적한도_안내: capNote,
+      농지등유형: assetType, 종류: FARM_LABEL_[assetType], 면적: Number(p.areaSqm) || undefined, 총톤수: assetType === 'fishing_boat' ? Number(p.tonnage) : undefined, // [2026.10.20 N3] 52호 부표 ⑥⑦용
+      면적한도_안내: capNote,
       감면대상비율: Math.round(qualifyingRatio * 10000) / 10000,
       감면대상_농지등가액: qualifyingGiftValue,
       계산상_감면세액: rawReduction,
       최종_감면세액: reductionAmount,
       사후관리_추징액: clawback,
-      안내: '이 감면세액을 증여세 계산기의 농지등 감면(farmlandGiftTaxExemptionAmount)에 넣어 최종 증여세를 계산하세요.' + limitExceededNote + (clawbackNote ? ' ' + clawbackNote : '')
+      안내: '이 감면세액을 증여세 계산기의 농지등 감면(farmlandGiftTaxExemptionAmount)에 넣어 최종 증여세를 계산하세요.' + limitExceededNote + (clawbackNote ? ' ' + clawbackNote : '') + farmDateNote_
     };
   };
 

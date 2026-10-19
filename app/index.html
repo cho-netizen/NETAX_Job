@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 18:28 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 18:33 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -15932,6 +15932,16 @@
     if (validTypes.indexOf(assetType) === -1) {
       return { error: '농지등 유형을 선택하세요.' };
     }
+    // [2026.10.20 회장 결론 N3 — 법제처 연혁판] §71① 대상 열거는 세 번 넓어졌고 부칙(각 제2조④)은 모두 "이 법 시행 이후 … 증여받는 경우부터":
+    //  축사용지 2016.1.1.(법률 제13560호), 어선·어업권·어업용 토지등 2018.1.1.(법률 제15227호), 염전 2021.1.1.(법률 제17759호). 현행 증여기한 2028.12.31.
+    const FARM_LABEL_ = { farmland: '농지', pasture: '초지', forest_land: '산림지', livestock_land: '축사용지', fishing_boat: '어선', fishing_right: '어업권·양식업권', fishing_land: '어업용 토지등', salt_farm: '염전' };
+    const FARM_FROM_ = { livestock_land: ['2016-01-01', '법률 제13560호'], fishing_boat: ['2018-01-01', '법률 제15227호'], fishing_right: ['2018-01-01', '법률 제15227호'], fishing_land: ['2018-01-01', '법률 제15227호'], salt_farm: ['2021-01-01', '법률 제17759호'] };
+    const farmGiftDate_ = String(p.giftDate || '').slice(0, 10);
+    if (farmGiftDate_ && FARM_FROM_[assetType] && farmGiftDate_ < FARM_FROM_[assetType][0]) {
+      return { 적용여부: false, 감면세액: 0, 농지등유형: assetType, 종류: FARM_LABEL_[assetType], 안내: '§71① — ' + FARM_LABEL_[assetType] + (((FARM_LABEL_[assetType].charCodeAt(FARM_LABEL_[assetType].length - 1) - 0xAC00) % 28) ? '은 ' : '는 ') + FARM_FROM_[assetType][0].replace(/-/g, '.') + '. 이후 증여받는 분부터 감면 대상입니다(' + FARM_FROM_[assetType][1] + ' 부칙 제2조④). 증여일 ' + farmGiftDate_ + '은 대상이 아닙니다.' };
+    }
+    if (farmGiftDate_ && farmGiftDate_ > '2028-12-31') return { 적용여부: false, 감면세액: 0, 농지등유형: assetType, 종류: FARM_LABEL_[assetType], 안내: '§71① — 2028.12.31.까지 증여분만 감면(현행 기한).' };
+    const farmDateNote_ = !farmGiftDate_ && FARM_FROM_[assetType] ? ' ⚠ 증여일(giftDate)을 넣으면 ' + FARM_LABEL_[assetType] + ' 감면 시작일(' + FARM_FROM_[assetType][0] + ' 이후 증여분)을 확인합니다.' : '';
     if (p.isInZoningRestrictedArea) {
       return { 적용여부: false, 감면세액: 0, 안내: '§71①2호 — 주거지역·상업지역·공업지역에 소재하는 농지등은 감면 대상이 아닙니다.' };
     }
@@ -16002,13 +16012,14 @@
 
     return {
       적용여부: true,
-      농지등유형: assetType, 면적한도_안내: capNote,
+      농지등유형: assetType, 종류: FARM_LABEL_[assetType], 면적: Number(p.areaSqm) || undefined, 총톤수: assetType === 'fishing_boat' ? Number(p.tonnage) : undefined, // [2026.10.20 N3] 52호 부표 ⑥⑦용
+      면적한도_안내: capNote,
       감면대상비율: Math.round(qualifyingRatio * 10000) / 10000,
       감면대상_농지등가액: qualifyingGiftValue,
       계산상_감면세액: rawReduction,
       최종_감면세액: reductionAmount,
       사후관리_추징액: clawback,
-      안내: '이 감면세액을 증여세 계산기의 농지등 감면(farmlandGiftTaxExemptionAmount)에 넣어 최종 증여세를 계산하세요.' + limitExceededNote + (clawbackNote ? ' ' + clawbackNote : '')
+      안내: '이 감면세액을 증여세 계산기의 농지등 감면(farmlandGiftTaxExemptionAmount)에 넣어 최종 증여세를 계산하세요.' + limitExceededNote + (clawbackNote ? ' ' + clawbackNote : '') + farmDateNote_
     };
   };
 
@@ -34666,7 +34677,20 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>공익법인등 관련 가산세</label><input type="number" id="giftPublicOrgPenalty" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>박물관자료등 징수유예세액</label><input type="number" id="giftMuseumDeferred" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>가업승계 납부유예세액</label><input type="number" id="giftBizSuccessionDeferred" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>영농자녀 증여농지 세액감면(조특법§71)</label><input type="number" id="giftFarmlandExemption" placeholder="원"><span class="taxcalc-field-help">감면요건·한도는 별도 확인 후 입력</span></div>' +
+        '<div class="taxcalc-field"><label>영농자녀 증여농지 세액감면(조특법§71)</label><input type="number" id="giftFarmlandExemption" placeholder="원"><span class="taxcalc-field-help">감면요건·한도는 별도 확인 후 입력 — 아래 도우미로 계산할 수 있음</span></div>' +
+        '<details class="taxcalc-field" id="gfFarmHelper" style="grid-column:1/-1;"><summary>영농자녀 감면세액 계산 도우미(조특법 §71) — 증여세를 한 번 계산한 뒤 눌러 위 칸을 채움</summary>' +
+          '<div class="taxcalc-grid">' +
+            '<div class="taxcalc-field"><label>농지등 종류</label><select id="gfFarmType"><option value="">고르세요</option><option value="farmland">농지(4만㎡)</option><option value="pasture">초지(14만8천500㎡)</option><option value="forest_land">산림지(29만7천㎡, 조림 20년↑ 99만㎡)</option><option value="livestock_land">축사용지(2016.1.1.~ 증여분)</option><option value="fishing_boat">어선 20톤 미만(2018.1.1.~)</option><option value="fishing_right">어업권·양식업권 10만㎡(2018.1.1.~)</option><option value="fishing_land">어업용 토지등 4만㎡(2018.1.1.~)</option><option value="salt_farm">염전 6만㎡(2021.1.1.~)</option></select></div>' +
+            '<div class="taxcalc-field"><label>감면 대상 농지등 가액</label><input type="number" id="gfFarmValue" placeholder="원"></div>' +
+            '<div class="taxcalc-field"><label>실제 면적</label><input type="number" id="gfFarmArea" placeholder="㎡"></div>' +
+            '<div class="taxcalc-field"><label>[어선] 총톤수</label><input type="number" id="gfFarmTonnage" placeholder="톤"></div>' +
+            '<div class="taxcalc-field"><label>[축사용지] 건축면적</label><input type="number" id="gfFarmBuildingArea" placeholder="㎡"></div>' +
+            '<div class="taxcalc-field"><label>[축사용지] 건폐율</label><input type="number" id="gfFarmCoverage" placeholder="0.6" step="0.01"></div>' +
+            '<div class="taxcalc-field"><label>[산림지] 조림 기간</label><input type="number" id="gfFarmAfforest" placeholder="년"></div>' +
+            '<div class="taxcalc-field"><label>5년 안에 이미 감면받은 세액</label><input type="number" id="gfFarmPrior5y" placeholder="원"><span class="taxcalc-field-help">§133④ 5년 1억원 한도</span></div>' +
+          '</div>' +
+          '<button type="button" class="ghost-btn" data-action="gift-farmland-calc">감면세액 계산해 위 칸에 넣고 다시 계산</button><div id="gfFarmHelperResult" class="taxcalc-result-note"></div>' +
+        '</details>' +
       '</div>' +
     '</div>' +
     '<button type="button" class="taxcalc-run-btn" data-action="run-gift">세액 계산하기</button><button type="button" class="ghost-btn" data-action="tc-cross-check" data-kind="gift" style="margin-left:6px;" title="계산된 세액을 AI(Sonnet)가 입력값만 보고 따로 계산해 비교합니다(이름·주소는 보내지 않음, 한 번 수십 원)">🔍 2중 검증</button>' +
@@ -39281,6 +39305,27 @@ function handleTaxCalcClick_(e){
     transferAssets.push(newAsset);
     renderTransferPane();
     showToast('청산금 수령분을 별도 거래로 추가하고, 남은 원본 자산의 취득가액·필요경비·권리가액도 그만큼 줄였습니다.', 'success');
+  } else if (action === 'gift-farmland-calc'){
+    // [2026.10.20 회장 결론 N3] 영농자녀 감면세액(조특법 §71) — 방금 계산한 증여세 결과(산출세액 할증 전·증여재산가액)로 엔진 calculateFarmlandGiftTaxReductionJS를 돌려
+    //  증여일별 대상 종류(축사용지 2016·어선 등 2018·염전 2021~)와 면적 한도를 판정하고, 감면세액 칸을 채운 뒤 다시 계산한다. 증여 쌍이 둘 이상이면 어느 쌍의 농지인지 몰라 멈춘다.
+    const outEl_ = document.getElementById('gfFarmHelperResult');
+    const res_ = (lastGiftResults_ || []).filter(function(x){ return x && x.result && !x.result.error; });
+    if (!res_.length) { if (outEl_) outEl_.textContent = '먼저 [세액 계산하기]로 증여세를 계산하세요(감면세액 = 산출세액 × 감면 농지등 가액 ÷ 증여재산가액).'; return; }
+    if (res_.length > 1) { if (outEl_) outEl_.textContent = '증여 쌍이 둘 이상이라 어느 쌍의 농지인지 정할 수 없습니다 — 쌍별로 calculate_farmland_gift_tax_reduction(AI 도구)로 계산해 넣으세요.'; return; }
+    const gr_ = res_[0].result;
+    const fv_ = function(id){ return numVal((document.getElementById(id) || {}).value) || 0; };
+    const prevEx_ = numVal(document.getElementById('giftFarmlandExemption').value) || 0;
+    const fr_ = calculateFarmlandGiftTaxReductionJS({
+      assetType: (document.getElementById('gfFarmType') || {}).value || '', giftValue: fv_('gfFarmValue'), giftDate: document.getElementById('giftDate').value,
+      areaSqm: fv_('gfFarmArea') || undefined, tonnage: fv_('gfFarmTonnage'), buildingArea: fv_('gfFarmBuildingArea'), buildingCoverageRatio: fv_('gfFarmCoverage'), afforestationYears: fv_('gfFarmAfforest'),
+      totalGiftCalculatedTax: Number(gr_.산출세액_할증전) || 0, totalGiftPropertyValue: (Number(gr_.증여재산가액) || 0) + (Number(res_[0].priorGiftAmount) || 0), priorReductionWithinFiveYears: fv_('gfFarmPrior5y')
+    });
+    if (fr_.error) { if (outEl_) outEl_.textContent = fr_.error; return; }
+    const amt_ = fr_.적용여부 ? (Number(fr_.최종_감면세액) || 0) : 0;
+    document.getElementById('giftFarmlandExemption').value = amt_ || '';
+    if (outEl_) outEl_.textContent = (fr_.적용여부 ? '감면세액 ' + amt_.toLocaleString('ko-KR') + '원 — ' + (fr_.면적한도_안내 || '') + ', 감면 대상 가액 ' + (Number(fr_.감면대상_농지등가액) || 0).toLocaleString('ko-KR') + '원. ' : '감면 없음. ') + (fr_.안내 || '') + (Number(res_[0].priorGiftAmount) > 0 ? ' (10년 합산 증여가 있어 분모에 합산액 포함 — 확인 필요)' : '');
+    window.__gfFarmHelper = Object.assign({}, fr_, { 면적: fv_('gfFarmArea') || undefined, 가액: fv_('gfFarmValue') || undefined }); // 52호 부표 ⑥⑦
+    if (amt_ !== prevEx_) { const runBtn_ = document.querySelector('[data-action="run-gift"]'); if (runBtn_) runBtn_.click(); }
   } else if (action === 'run-gift'){
     // [2026.09.20 재설계, 2026.09.23 재구성] "수증자산의 소유자가 여러명이라서 발생하는
     // 케이스" — 공동소유 자산을 여러 증여자가 지분만큼 나눠 증여하면 증여자마다 관계·10년
