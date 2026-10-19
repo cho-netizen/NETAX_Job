@@ -12581,29 +12581,6 @@ function gfDeemedGiftPrintRows_(r, extraFields){
   if (r.환급세액) rows += pfRow_(++n, '환급받을 세액', won(r.환급세액));
   return rows;
 }
-// [2026.09.30 신규, 재검토99] 서화·골동품 등 증여재산명세서(10-5·10-6용) — 상속세 부표8과 같은
-// artworkCode 등 입력값을 재사용한다.
-function gfArtworkPrintPageHtml_(){
-  const donee = giftDonees[0] || {};
-  const artworkAssets = (giftValuationAssets_() || []).filter(function(a){ return a.method === 'artwork'; });
-  if (!artworkAssets.length) return '';
-  const ART_CODE_LABELS_ = { '01':'서양화','02':'동양화','03':'데생','04':'파스텔','05':'콜라주','06':'판화','07':'인쇄화','08':'석판화','09':'골동품','10':'기타','11':'서예','12':'조각','13':'도자기','14':'사진','ZZ':'해당없음' };
-  return '<div class="pf-page">' +
-    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호의5·10호의6서식 부표]</div>' +
-    '<div class="pf-title">서화·골동품 등 증여재산명세서</div>' +
-    '<table class="pf-table">' +
-      '<tr><th>수증자</th><th>작품코드</th><th>작가명</th><th>작품명</th><th>제작년도</th><th>재질</th><th>크기</th><th>평가가액</th></tr>' +
-      artworkAssets.map(function(a){
-        return '<tr><td>' + escapeHtml(donee.name || '') + '</td><td>' + escapeHtml(ART_CODE_LABELS_[a.artworkCode] || a.artworkCode || '') + '</td>' +
-          '<td>' + escapeHtml(a.artworkArtist || '') + '</td><td>' + escapeHtml(a.artworkTitle || '') + '</td>' +
-          '<td>' + escapeHtml(a.artworkYear || '') + '</td><td>' + escapeHtml(a.artworkMaterial || '') + '</td>' +
-          '<td>' + escapeHtml(a.artworkSize || '') + '</td><td class="pf-right">' + won(Math.round(computeValuationAssetValue(a))) + '</td></tr>';
-      }).join('') +
-    '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다.</div>' +
-  '</div>';
-}
-
 // [2026.09.30 신규, 재검토87] 명의신탁·재산취득자금·상장이익·재산가치증가이익·전환사채 —
 // 국세청이 별도 서식번호를 부여하지 않은 합산배제증여재산이라, 세무사님 확인대로 전용
 // 서식을 새로 만들지 않고 "일반 증여세과세표준신고서(별지10호)" 양식 그대로 인쇄한다.
@@ -13765,8 +13742,13 @@ const PRINT_REGISTRY_ = [
     formNo: '소득세법 시행규칙 [별지 제84호서식]',
     isReady: function(){ return !!lastExitTaxResult_; },
     title: '국외전출자 양도소득(국외전출자) 과세표준 신고 및 납부계산서',
-    noOfficial: true, // [2026.10.20] 서식번호는 84호지만 국외전출자 계산 결과 — 원본 모양(84호 대응표는 부동산 등 결과)과 짝이 아님
-    bodyFn: function(){ return exitTaxPrintFormPageHtml_(lastExitTaxInput_, lastExitTaxResult_); } },
+    bodyFn: function(){ return exitTaxPrintFormPageHtml_(lastExitTaxInput_, lastExitTaxResult_); },
+    subForms: [ // [2026.10.20 2단계 서식] 84호 줄은 옛 모양(84호 원본 모양 대응표는 부동산 등 결과용이라 짝이 아님 — noOfficial), 103~105호는 원본 모양
+      { formNo: '소득세법 시행규칙 [별지 제84호서식]', title: '국외전출자 양도소득(국외전출자) 과세표준 신고 및 납부계산서', section: 'required', noOfficial: true },
+      { formNo: '소득세법 시행규칙 [별지 제103호서식]', title: '국외전출자 양도소득세 세액공제신청서·국외전출자 국내주식등 양도내역서', section: 'optional' },
+      { formNo: '소득세법 시행규칙 [별지 제104호서식]', title: '국외전출자 국내주식등 보유현황 신고서', section: 'optional' },
+      { formNo: '소득세법 시행규칙 [별지 제105호서식]', title: '국외전출자 납부유예신청서', section: 'optional' }
+    ] },
   { key: 'derivative', group: '양도소득세', label: '파생상품등 양도소득금액 계산명세서',
     formNo: '소득세법 시행규칙 [별지 제84호서식 부표2의2]',
     isReady: function(){ return !!lastDerivativeResult_; },
@@ -13861,18 +13843,18 @@ const PRINT_REGISTRY_ = [
   { key: 'sc', group: '증여세', label: '특정법인 거래이익 증여의제 신고서',
     formNo: '상속세 및 증여세법 시행규칙 [별지 제10호의6서식]',
     isReady: function(){ return !!lastSpecificCorpGiftResult_; }, title: '특정법인 거래이익 증여의제 신고서',
-    bodyFn: gfArtworkPrintPageHtml_, // [2026.10.20] 본표는 원본 모양 — 옛 모양은 원본 모양이 없는 서화·골동품 명세(부표)만
-    subForms: [
+    subForms: [ // [2026.10.20 2단계 서식] 본표·부표1·부표2 모두 원본 모양(옛 서화·골동품 부표 인쇄는 지움)
       { formNo: '상속세 및 증여세법 시행규칙 [별지 제10호의6서식]', title: '특정법인 거래이익 증여의제 신고서', section: 'required' },
-      { formNo: '상속세 및 증여세법 시행규칙 [별지 제10호의5·10호의6서식 부표]', title: '서화·골동품 등 증여재산명세서(특정법인)', section: 'optional' }
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제10호의6서식 부표1]', title: '증여재산 및 평가명세서(특정법인)', section: 'required' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제10호의6서식 부표2]', title: '서화·골동품 등 증여재산 명세서(특정법인)', section: 'optional' }
     ] },
   { key: 'ed', group: '증여세', label: '초과배당 증여의제 신고서',
     formNo: '상속세 및 증여세법 시행규칙 [별지 제10호의5서식]',
     isReady: function(){ return !!lastExcessDividendGiftResult_; }, title: '초과배당 증여의제 신고서',
-    bodyFn: gfArtworkPrintPageHtml_, // [2026.10.20] 본표는 원본 모양 — 옛 모양은 원본 모양이 없는 서화·골동품 명세(부표)만
-    subForms: [
+    subForms: [ // [2026.10.20 2단계 서식] 본표·부표1·부표2 모두 원본 모양(옛 서화·골동품 부표 인쇄는 지움)
       { formNo: '상속세 및 증여세법 시행규칙 [별지 제10호의5서식]', title: '초과배당 증여의제 신고서', section: 'required' },
-      { formNo: '상속세 및 증여세법 시행규칙 [별지 제10호의5·10호의6서식 부표]', title: '서화·골동품 등 증여재산명세서(초과배당)', section: 'optional' }
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제10호의5서식 부표1]', title: '증여재산 및 평가명세서(초과배당)', section: 'required' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제10호의5서식 부표2]', title: '서화·골동품 등 증여재산 명세서(초과배당)', section: 'optional' }
     ] },
   { key: 'nt', group: '증여세', label: '증여세 과세표준신고서(명의신탁재산 증여의제)',
     formNo: '상속세 및 증여세법 시행규칙 [별지 제10호서식]',
@@ -13964,12 +13946,12 @@ function printExtractPages_(item, fp){
   const itemFormNo = typeof item.formNo === 'function' ? item.formNo() : item.formNo;
   const itemTitle = (typeof item.title === 'function' ? item.title() : item.title) || item.label;
   const rows = item.subForms
-    ? item.subForms.map(function(sf){ return { formNo: sf.formNo, title: sf.title, html: '', section: sf.section, ready: false, official: false, sourceKey: item.key }; })
+    ? item.subForms.map(function(sf){ return { formNo: sf.formNo, title: sf.title, html: '', section: sf.section, ready: false, official: false, sourceKey: item.key, noOfficial: !!sf.noOfficial }; })
     : [{ formNo: itemFormNo || '', title: itemTitle, html: '', section: 'required', ready: false, official: false, sourceKey: item.key }];
   // 1) 원본 모양
   if (fp && !item.noOfficial){
     rows.forEach(function(r){
-      if (!r.formNo || !fp.officialFor(r.formNo)) return;
+      if (!r.formNo || r.noOfficial || !fp.officialFor(r.formNo)) return; // [2026.10.20] 줄마다 noOfficial(국외전출자 84호)
       r.official = true;
       try { r.ready = !!fp.officialReady(r.formNo); } catch (e) { r.ready = false; }
     });
