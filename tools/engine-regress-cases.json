@@ -2524,5 +2524,44 @@
   "정답": {
    "적용여부": false
   }
+ },
+ {
+  "이름": "[세액 고침 — 양도 감사, §102②·§104①11호] 중소기업 소액주주 주식 이익 5천만 + 다른 종목 이익 3천만 — 다른 종목 이익은 그 종목 세율로 따로 과세, 이번 계산엔 더하지 않음: 과표 4,750만 × 10% = 4,750,000(예전 다른 이익까지 이번 10%로 7,750,000)",
+  "도구": "calculateStockTransferTaxJS",
+  "고정": true,
+  "입력": {
+   "assetCategory": "domestic_stock",
+   "isDaejuju": false,
+   "isSmallMediumCompany": true,
+   "transferPrice": 60000000,
+   "acquisitionPrice": 10000000,
+   "transferDate": "2025-06-30",
+   "priorNetGainOrLoss": 30000000
+  },
+  "정답": {
+   "과세표준": 47500000,
+   "산출세액": 4750000
+  }
+ },
+ {
+  "이름": "[세액 고침 — 양도 감사, §97의2①·시행령 §163의2①] 직계존속에게 증여받은 기타자산 주식(특정주식) 1년 안 양도 — 이월과세 대상 아님(§94①3호 주식등만): 수증자 취득가액 2.9억 기준 과표 750만 × 6% = 450,000(예전 증여자 취득가액 1억으로 이월과세)",
+  "도구": "calculateStockTransferTaxWithCarryoverJS",
+  "고정": true,
+  "입력": {
+   "assetCategory": "other_asset",
+   "isDaejuju": false,
+   "transferPrice": 300000000,
+   "doneeOwnAcquisitionPrice": 290000000,
+   "donorAcquisitionPrice": 100000000,
+   "giftReceivedDate": "2025-06-30",
+   "transferDate": "2026-03-31",
+   "donorRelation": "lineal",
+   "giftTaxPaid": 0,
+   "giftTaxableValue": 290000000
+  },
+  "정답": {
+   "과세표준": 7500000,
+   "산출세액": 450000
+  }
  }
 ]
