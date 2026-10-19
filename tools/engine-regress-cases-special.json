@@ -1229,5 +1229,43 @@
    "농어촌특별세_과세표준": 24000000,
    "농어촌특별세": 4800000
   }
+ },
+ {
+  "이름": "[N7] 부담부증여 채무분 2025-03-10 양도·무신고·2025-07-15 납부 — 예정신고기한 양도월 말일부터 3개월(2025-06-30, §105①3호) → 납부지연 15일",
+  "도구": "calculateTransferTaxSingleJS",
+  "입력": {
+   "assetType": "land",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2010-01-01",
+   "transferPrice": 500000000,
+   "acquisitionPrice": 200000000,
+   "filingStatus": "unreported",
+   "transferDate": "2025-03-10",
+   "paidDate": "2025-07-15",
+   "isBurdenedGiftDebtPortion": true
+  },
+  "정답": {
+   "산출세액": 58910000,
+   "납부지연가산세": 194403
+  }
+ },
+ {
+  "이름": "[N7] 토지거래허가 전 대금청산 2024-03-10·허가일 2025-02-10·무신고·2025-05-20 납부 — 예정신고기한 허가월 말일부터 2개월(2025-04-30, §105①1호 단서) → 20일",
+  "도구": "calculateTransferTaxSingleJS",
+  "입력": {
+   "assetType": "land",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2010-01-01",
+   "transferPrice": 500000000,
+   "acquisitionPrice": 200000000,
+   "filingStatus": "unreported",
+   "transferDate": "2024-03-10",
+   "paidDate": "2025-05-20",
+   "landPermitDate": "2025-02-10"
+  },
+  "정답": {
+   "산출세액": 61190000,
+   "납부지연가산세": 269236
+  }
  }
 ]

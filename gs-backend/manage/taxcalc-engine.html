@@ -801,7 +801,7 @@
   //  예정분 합계)만 확정신고기한(다음해 5.31.) 다음 날부터 ③ 2009.12.31. 이전 양도는 예정 미납 가산세가 없어 확정신고기한부터.
   //  예정 때 낸 세액(preliminaryTaxPaid)을 안 넣으면 신고상태로: 정상 신고 = 예정분은 냈다고 봄, 무신고 = 안 냄, 과소신고 = 과소분을 예정분 비율로.
   //  기한은 shiftTaxDeadline_(토·일·공휴일 미룸), 날수는 납부일 2026.7.1. 이후면 '납부일의 전날까지'(법률 제21212호), 율은 기간별(2부-16).
-  //  부담부증여 채무분(§105①3호 3개월)·토지거래허가 허가일 기준(§105①1호 단서)은 입력 칸이 없어 양도월 기준 — 확인 필요.
+  //  부담부증여 채무분(§105①3호 3개월)·토지거래허가 허가일 기준(§105①1호 단서)은 prelimDeadline_(날짜, 거래)가 반영(2026.10.20 N7).
   function transferLateDaily_(portions, paidDate) {
     const pay = String(paidDate || '').slice(0, 10);
     const out = { total: 0, rows: [] };
@@ -818,12 +818,37 @@
     });
     return out;
   }
-  function prelimDeadline_(transferDate) {
+  // [2026.10.20 N7 — AI 회의 회장 결론] 예정신고기한(소득세법 §105①) — t(거래 입력)를 넘기면:
+  //  · 토지거래허가 전 대금청산(t.landPermitDate = 허가일, 허가 전 지정 해제면 해제일) → 그 날이 속한 달 말일부터 2개월(§105①1호 단서;
+  //    해제일 문구는 2018.1.1. 이후 해제분부터(법률 제15225호 부칙 제7조), 그 전 해제분도 조심2013중0221이 해제일 기준 인정)
+  //  · 부담부증여 채무분(t.isBurdenedGiftDebtPortion)·2017.1.1. 이후 → 양도일이 속한 달 말일부터 3개월(§105①3호, 법률 제14389호 부칙 제15조 — 그 전은 2개월)
+  //  · 그 밖 → 양도일이 속한 달 말일부터 2개월. 양도시기(세율·장특공 기간)는 그대로 대금청산일.
+  function prelimDeadline_(transferDate, t) {
+    t = t || {};
     const d = String(transferDate || '').slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';
-    const end = new Date(Date.UTC(Number(d.slice(0, 4)), Number(d.slice(5, 7)) + 2, 0));
+    if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(d)) return '';
+    const permit = String(t.landPermitDate || '').slice(0, 10);
+    const base = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(permit) ? permit : d;
+    const add = (base === d && t.isBurdenedGiftDebtPortion && d >= '2017-01-01') ? 3 : 2;
+    const end = new Date(Date.UTC(Number(base.slice(0, 4)), Number(base.slice(5, 7)) + add, 0));
     return end.toISOString().slice(0, 10);
   }
+  // 확정신고기한 — 토지거래허가 전 대금청산이면 허가일(해제일)이 속하는 과세기간의 다음 해 5.31.(§110①)
+  function confirmDeadlineOf_(transferDate, t) {
+    t = t || {};
+    const permit = String(t.landPermitDate || '').slice(0, 10);
+    const y = Number((/^[0-9]{4}-/.test(permit) ? permit : String(transferDate || '')).slice(0, 4));
+    return y ? (y + 1) + '-05-31' : '';
+  }
+  // [2026.10.20 N7] 주식등(§94①3호) 예정신고기한 — 양도일이 속하는 반기(2018.1.1. 이후 양도, 법률 제14389호 부칙 제8조) 또는 분기(그 전)의 말일부터 2개월(§105①2호)
+  window.stockPrelimDeadlineJS = function (transferDate) {
+    const d = String(transferDate || '').slice(0, 10);
+    if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(d)) return '';
+    const m = Number(d.slice(5, 7)), span = d >= '2018-01-01' ? 6 : 3;
+    const lastM = Math.ceil(m / span) * span;
+    return new Date(Date.UTC(Number(d.slice(0, 4)), lastM + 2, 0)).toISOString().slice(0, 10);
+  };
+  window.prelimDeadlineJS = function (transferDate, t) { return prelimDeadline_(transferDate, t); };
   // [2026.10.19 조견표 1부-02·2부-17] 국세기본법 §5① — 신고·납부기한 끝날이 토요일·일요일, 공휴일·대체공휴일(임시공휴일·선거일 포함),
   //  5월 1일(근로자의 날 → 2025.11.11.부터 노동절)이면 그다음 날이 기한. 토·일·5.1.은 늘 미루고, 공휴일은 화면(app)에 조견표 1부-02가
   //  있을 때(연혁 스위치 켜짐)만 표로 미룬다 — 서버·시험 도구엔 표가 없어 토·일·5.1.만. 화면은 window.nxShiftTaxDeadline_로 같은 규칙을 쓴다.
@@ -1983,7 +2008,7 @@
       const hasPaid_ = t.preliminaryTaxPaid !== undefined && t.preliminaryTaxPaid !== null && t.preliminaryTaxPaid !== '' && isFinite(Number(t.preliminaryTaxPaid));
       const paid_ = hasPaid_ ? Math.max(0, Number(t.preliminaryTaxPaid)) : (filingStatus === 'ontime' ? calculatedTax : (filingStatus === 'underreported' ? Math.max(0, calculatedTax - (Number(t.underreportedTaxAmount) || 0)) : 0));
       const portions_ = /^\d{4}-\d{2}-\d{2}$/.test(ov_) ? [{ label: '직접 입력한 기산일부터', base: calculatedTax, deadline: addDaysStr_(ov_, -1) }]
-        : [{ label: pre_ ? '예정신고분' : '2010년 전 양도 — 확정신고분', base: Math.max(0, calculatedTax - paid_), deadline: pre_ ? prelimDeadline_(t.transferDate) : (Number(String(t.transferDate).slice(0, 4)) + 1) + '-05-31' }];
+        : [{ label: pre_ ? '예정신고분' : '2010년 전 양도 — 확정신고분', base: Math.max(0, calculatedTax - paid_), deadline: pre_ ? prelimDeadline_(t.transferDate, t) : confirmDeadlineOf_(t.transferDate, t) }]; // [N7] 허가일·부담부증여
       lateSplitS_ = transferLateDaily_(portions_, t.paidDate);
       const old_ = penalties.납부지연가산세_상세 ? Number(penalties.납부지연가산세_상세.사전이자분_1호) || 0 : 0;
       penalties.latePenalty = Math.max(0, penalties.latePenalty - old_ + lateSplitS_.total);
@@ -2830,7 +2855,7 @@
     let lateSplit_ = null;
     const payD_ = String(filingParams.paidDate || '').slice(0, 10);
     if (!filingParams._ntInner && /^\d{4}-\d{2}-\d{2}$/.test(payD_) && poolDate_) {
-      const confirmDeadline_ = (Number(poolDate_.slice(0, 4)) + 1) + '-05-31';
+      const confirmDeadline_ = confirmDeadlineOf_(poolDate_, transactions.find(function (x) { return x && x.landPermitDate; }) || {}); // [N7] 허가일(해제일) 해 기준(§110①)
       const override_ = String(filingParams.lateStartOverride || '').slice(0, 10);
       let portions_ = [];
       if (/^\d{4}-\d{2}-\d{2}$/.test(override_)) {
@@ -2841,7 +2866,7 @@
           if (!c || c.exempt || !t0 || String(t0.transferDate || '') < '2010-01-01') return null;
           const one = window.calculateTransferTaxSingleJS(Object.assign({}, t0, { filingStatus: 'ontime', unpaidDays: 0 }));
           const tax = one && !one.error ? Math.max(0, Number(one.산출세액) || 0) : 0;
-          return tax > 0 ? { k: k, tax: tax, deadline: prelimDeadline_(t0.transferDate), date: t0.transferDate } : null;
+          return tax > 0 ? { k: k, tax: tax, deadline: prelimDeadline_(t0.transferDate, t0), date: t0.transferDate } : null;
         }).filter(Boolean);
         const preSum_ = pre_.reduce(function (s, x) { return s + x.tax; }, 0);
         const paidIn_ = filingParams.preliminaryTaxPaid;
