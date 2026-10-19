@@ -535,6 +535,40 @@
     return null;
   }
 
+  // [2026.10.19 조견표 2부-01·2부-03] 양도일에 맞는 기본세율 구간·장기보유특별공제율 — 법제처 연혁판·부칙 원문으로 만든 조견표
+  //  (저장소 reftables/2부-01.json·2부-03.json)를 tools/build-reftables.js가 아래 자리에 옮겨 적는다(직접 고치지 말 것).
+  //  세무사님 확인 전에는 꺼 둔다: window.__NX_REF_HISTORY_ON이 true일 때만 쓴다(회귀 시험 node tools/engine-regress.js --history).
+  //  켜도 지금 표가 맞는 기간(기본세율 2023-01-01~, 표1 2019-01-01~, 표2 2021-01-01~)은 지금 함수를 그대로 불러 0원도 안 바뀐다.
+  //  아직 안 따라가는 것: 단기·중과 등 특례세율(2부-02), 조합원입주권 장특공 안분, 임대 특례 장특공, 주식·국외자산 세율.
+  /*@@REF_ENGINE_BEGIN@@*/
+  const REF_TR_BRACKETS_ = [{"from":"2008-01-01","to":"2008-12-31","brackets":[{"max":10000000,"rate":0.09,"deduction":0},{"max":40000000,"rate":0.18,"deduction":900000},{"max":80000000,"rate":0.27,"deduction":4500000},{"max":Infinity,"rate":0.36,"deduction":11700000}]},{"from":"2009-01-01","to":"2009-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.16,"deduction":1200000},{"max":88000000,"rate":0.25,"deduction":5340000},{"max":Infinity,"rate":0.35,"deduction":14140000}]},{"from":"2010-01-01","to":"2011-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.15,"deduction":1080000},{"max":88000000,"rate":0.24,"deduction":5220000},{"max":Infinity,"rate":0.35,"deduction":14900000}]},{"from":"2012-01-01","to":"2013-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.15,"deduction":1080000},{"max":88000000,"rate":0.24,"deduction":5220000},{"max":300000000,"rate":0.35,"deduction":14900000},{"max":Infinity,"rate":0.38,"deduction":23900000}]},{"from":"2014-01-01","to":"2016-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.15,"deduction":1080000},{"max":88000000,"rate":0.24,"deduction":5220000},{"max":150000000,"rate":0.35,"deduction":14900000},{"max":Infinity,"rate":0.38,"deduction":19400000}]},{"from":"2017-01-01","to":"2017-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.15,"deduction":1080000},{"max":88000000,"rate":0.24,"deduction":5220000},{"max":150000000,"rate":0.35,"deduction":14900000},{"max":500000000,"rate":0.38,"deduction":19400000},{"max":Infinity,"rate":0.4,"deduction":29400000}]},{"from":"2018-01-01","to":"2020-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.15,"deduction":1080000},{"max":88000000,"rate":0.24,"deduction":5220000},{"max":150000000,"rate":0.35,"deduction":14900000},{"max":300000000,"rate":0.38,"deduction":19400000},{"max":500000000,"rate":0.4,"deduction":25400000},{"max":Infinity,"rate":0.42,"deduction":35400000}]},{"from":"2021-01-01","to":"2022-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.15,"deduction":1080000},{"max":88000000,"rate":0.24,"deduction":5220000},{"max":150000000,"rate":0.35,"deduction":14900000},{"max":300000000,"rate":0.38,"deduction":19400000},{"max":500000000,"rate":0.4,"deduction":25400000},{"max":1000000000,"rate":0.42,"deduction":35400000},{"max":Infinity,"rate":0.45,"deduction":65400000}]},{"from":"2023-01-01","to":null,"brackets":[{"max":14000000,"rate":0.06,"deduction":0},{"max":50000000,"rate":0.15,"deduction":1260000},{"max":88000000,"rate":0.24,"deduction":5760000},{"max":150000000,"rate":0.35,"deduction":15440000},{"max":300000000,"rate":0.38,"deduction":19940000},{"max":500000000,"rate":0.4,"deduction":25940000},{"max":1000000000,"rate":0.42,"deduction":35940000},{"max":Infinity,"rate":0.45,"deduction":65940000}]}];
+  const REF_LT_ = { 표1: [{"from":"2008-01-01","to":"2008-03-20","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30}},{"from":"2008-03-21","to":"2018-12-31","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30}},{"from":"2019-01-01","to":null,"rates":{"3":6,"4":8,"5":10,"6":12,"7":14,"8":16,"9":18,"10":20,"11":22,"12":24,"13":26,"14":28,"15":30}}], 표2: [{"from":"2008-01-01","to":"2008-03-20","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30,"11":33,"12":36,"13":39,"14":42,"15":45}},{"from":"2008-03-21","to":"2008-12-31","rates":{"3":12,"4":16,"5":20,"6":24,"7":28,"8":32,"9":36,"10":40,"11":44,"12":48,"13":52,"14":56,"15":60,"16":64,"17":68,"18":72,"19":76,"20":80}},{"from":"2009-01-01","to":"2020-12-31","rates":{"3":24,"4":32,"5":40,"6":48,"7":56,"8":64,"9":72,"10":80}}] };
+  /*@@REF_ENGINE_END@@*/
+  function refHistoryOn_() { return !!(typeof window !== 'undefined' && window && window.__NX_REF_HISTORY_ON === true); }
+  function refRowAt_(rows, d) { for (let i = 0; i < rows.length; i++) { if (rows[i].from <= d && (!rows[i].to || d <= rows[i].to)) return rows[i]; } return null; }
+  // {"3":10,"4":12,…,"10":30} — 보유(거주)연수 이상인 가장 큰 열쇠의 %(맨 끝 열쇠는 '그 이상')
+  function refRateAt_(rates, years) { let best = -1; Object.keys(rates).forEach(function (k) { const n = Number(k); if (years >= n && n > best) best = n; }); return best < 0 ? 0 : rates[best] / 100; }
+  function transferBracketsAt_(transferDate) {
+    const d = String(transferDate || '').slice(0, 10);
+    if (!refHistoryOn_() || !d || d >= '2023-01-01') return TRANSFER_TAX_BRACKETS;
+    const r = refRowAt_(REF_TR_BRACKETS_, d);
+    return r ? r.brackets : TRANSFER_TAX_BRACKETS;
+  }
+  function longTermRateAt_(years, transferDate) {
+    const d = String(transferDate || '').slice(0, 10);
+    if (!refHistoryOn_() || !d || d >= '2019-01-01') return longTermRate(years);
+    const r = refRowAt_(REF_LT_.표1, d);
+    return r ? refRateAt_(r.rates, years) : longTermRate(years);
+  }
+  function longTermRate1HouseAt_(ownYears, liveYears, transferDate) {
+    const d = String(transferDate || '').slice(0, 10);
+    if (!refHistoryOn_() || !d || d >= '2021-01-01') return longTermRate1House(ownYears, liveYears);
+    // 2020-01-01~2020-12-31 양도: 보유기간 중 거주 2년 이상이어야 표2(시행령 §159의3, 대통령령 제29242호 부칙 §3) — 아니면 그때 표1
+    if (d >= '2020-01-01' && liveYears < 2) return longTermRateAt_(ownYears, d);
+    const r = refRowAt_(REF_LT_.표2, d);
+    return r ? refRateAt_(r.rates, ownYears) : longTermRate1House(ownYears, liveYears);
+  }
+
   // §21① — 원칙은 max(기초공제+그밖의인적공제, 5억원)이나, "다만, 제67조 또는 국세기본법§45의3에
   // 따른 신고가 없는 경우에는 5억원을 공제한다"는 단서가 있다 — 무신고시 인적공제 합계가 3억원을
   // 넘어도 5억원 고정이지 그 초과분까지 인정되는 것이 아니다.
@@ -862,15 +896,15 @@
       ltRate = 0;
     } else if (isOneHouse) {
       taxableGain = gainBeforeDeduction * (transferPrice - 1200000000) / transferPrice;
-      ltRate = longTermRate1House(holdingYears, Number(t.residenceYears) || 0);
+      ltRate = longTermRate1HouseAt_(holdingYears, Number(t.residenceYears) || 0, t.transferDate);
     } else if (bizSuccessionRatio > 0 && t.decedentAcquisitionDate) {
       // §95④단서 — 가업상속공제가 적용된 비율에 해당하는 자산은 장기보유특별공제의 보유기간 기산일이
       // "피상속인이 해당 자산을 취득한 날"이다(나머지 비율은 상속개시일 기산인 일반 상속재산과 동일).
       // §104(세율판정용 holdingYears)에는 이런 예외가 없으므로 holdingYears는 상속개시일 기준 그대로 쓴다.
       const decedentHoldingYears = fullYearsElapsed(deemedAcquisitionDate(t.decedentAcquisitionDate), t.transferDate);
-      ltRate = longTermRate(decedentHoldingYears) * bizSuccessionRatio + longTermRate(holdingYears) * (1 - bizSuccessionRatio);
+      ltRate = longTermRateAt_(decedentHoldingYears, t.transferDate) * bizSuccessionRatio + longTermRateAt_(holdingYears, t.transferDate) * (1 - bizSuccessionRatio);
     } else {
-      ltRate = longTermRate(holdingYears);
+      ltRate = longTermRateAt_(holdingYears, t.transferDate);
     }
 
     if (!isReconstruction && !isPresaleRight) {
@@ -967,6 +1001,8 @@
     const d = core && core.raw && String(core.raw.transferDate || '');
     if (!d || !/^\d{4}-\d{2}-\d{2}/.test(d)) return '';
     const miss = [];
+    const covered = refHistoryOn_() && !!refRowAt_(REF_TR_BRACKETS_, d) && !!refRowAt_(REF_LT_.표1, d); // 연혁이 켜져 있고 그 날짜 표가 있으면 경고 안 함
+    if (covered) return '';
     if (d < RATE_TABLE_FROM_.기본세율) miss.push('세율');
     const lt = Number(core.longTermRate) > 0;
     if (lt && (d < RATE_TABLE_FROM_.장특공_일반 || (core.isOneHouse && d < RATE_TABLE_FROM_.장특공_1세대1주택))) miss.push('장기보유특별공제율');
@@ -1022,7 +1058,7 @@
     // "[기본세율(누진)+가산율]로 계산한 산출세액"과 "단기양도세율(§104①2호·3호)로 계산한 산출세액" 중
     // 큰 세액을 산출세액으로 한다 — 즉 단기세율이 무조건 적용되는 게 아니라 가산세율 쪽과 비교해야 한다.
     function surchargeBasedTax_() {
-      let tax = progressiveTax(taxBase, TRANSFER_TAX_BRACKETS);
+      let tax = progressiveTax(taxBase, transferBracketsAt_(core.raw && core.raw.transferDate));
       const notes = [];
       if (core.isMultiHouseSurcharge) {
         const rate = core.multiHouseCount >= 3 ? 0.30 : 0.20;
@@ -1559,7 +1595,9 @@
     const poolIncomeSum = pooled.reduce(function (s, c) { return s + c.incomeAmount; }, 0);
     const basicDeductionUsedInPool = pooled.length > 0;
     const poolTaxBase = Math.max(0, poolTaxBaseIncome_ - (basicDeductionUsedInPool ? 2500000 : 0));
-    const poolBaseTax = progressiveTax(poolTaxBase, TRANSFER_TAX_BRACKETS);
+    // 합산은 같은 과세기간(한 해) 양도 — 그 해의 표(이번 계산 거래 중 가장 늦은 양도일)
+    const poolDate_ = cores.reduce(function (m, c) { const d = String((c.raw && c.raw.transferDate) || ''); return d > m ? d : m; }, '');
+    const poolBaseTax = progressiveTax(poolTaxBase, transferBracketsAt_(poolDate_));
 
     let poolSurchargeTotal = 0;
     const assetNotes = [];
@@ -1780,7 +1818,7 @@
       const g = dualRateGroups[key];
       const groupBaseSum = g.items.reduce(function (s, it) { return s + it.base; }, 0);
       const groupShortTermTaxSum = g.items.reduce(function (s, it) { return s + it.shortTermTax; }, 0);
-      const groupAltTax = progressiveTax(groupBaseSum, TRANSFER_TAX_BRACKETS) + Math.round(groupBaseSum * g.surchargePct / 100);
+      const groupAltTax = progressiveTax(groupBaseSum, transferBracketsAt_(poolDate_)) + Math.round(groupBaseSum * g.surchargePct / 100);
       const groupTax = Math.max(groupShortTermTaxSum, groupAltTax);
       // 합산 세액을 자산별 과세표준 비중으로 재배분한다(개별 세액은 참고용 표시일 뿐, 합계만 정확하면 됨).
       let allocated = 0;

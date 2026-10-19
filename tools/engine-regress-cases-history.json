@@ -1,15 +1,207 @@
 [
- { "이름": "[2023 이후] 토지 2024-06-30 양도, 10년 보유", "도구": "calculate_transfer_tax", "고정": true, "입력": { "assetType": "land", "transferDate": "2024-06-30", "acquisitionDate": "2014-03-01", "transferPrice": 300000000, "acquisitionPrice": 150000000, "necessaryExpenses": 0 } },
- { "이름": "[2023 이후] 토지 2023-01-01 양도(경계), 3년 보유", "도구": "calculate_transfer_tax", "고정": true, "입력": { "assetType": "land", "transferDate": "2023-01-01", "acquisitionDate": "2019-12-01", "transferPrice": 500000000, "acquisitionPrice": 200000000, "necessaryExpenses": 5000000 } },
- { "이름": "[2023 이후] 1세대1주택 고가 2025-03-01, 보유 10·거주 10", "도구": "calculate_transfer_tax", "고정": true, "입력": { "assetType": "house", "isOneHouseOneFamily": true, "residenceYears": 10, "transferDate": "2025-03-01", "acquisitionDate": "2015-01-15", "transferPrice": 1500000000, "acquisitionPrice": 500000000, "necessaryExpenses": 10000000 } },
- { "이름": "[2023 이후] 1세대1주택 고가 2024-09-01, 보유 6·거주 1", "도구": "calculate_transfer_tax", "고정": true, "입력": { "assetType": "house", "isOneHouseOneFamily": true, "residenceYears": 1, "transferDate": "2024-09-01", "acquisitionDate": "2018-05-01", "transferPrice": 1400000000, "acquisitionPrice": 700000000, "necessaryExpenses": 0 } },
- { "이름": "[2023 이후] 상가 2026-02-01 양도, 과표 10억 넘음", "도구": "calculate_transfer_tax", "고정": true, "입력": { "assetType": "other_building", "transferDate": "2026-02-01", "acquisitionDate": "2010-02-01", "transferPrice": 3000000000, "acquisitionPrice": 1000000000, "necessaryExpenses": 0 } },
- { "이름": "[2023 이후] 주택 1년 미만 단기 2024", "도구": "calculate_transfer_tax", "고정": true, "입력": { "assetType": "house", "transferDate": "2024-05-01", "acquisitionDate": "2023-12-01", "transferPrice": 400000000, "acquisitionPrice": 350000000, "necessaryExpenses": 0 } },
- { "이름": "[옛 양도] 토지 2022-12-31 양도(경계), 10년 보유", "도구": "calculate_transfer_tax", "입력": { "assetType": "land", "transferDate": "2022-12-31", "acquisitionDate": "2012-03-01", "transferPrice": 300000000, "acquisitionPrice": 150000000, "necessaryExpenses": 0 } },
- { "이름": "[옛 양도] 토지 2021-06-30 양도, 5년 보유", "도구": "calculate_transfer_tax", "입력": { "assetType": "land", "transferDate": "2021-06-30", "acquisitionDate": "2016-01-15", "transferPrice": 600000000, "acquisitionPrice": 300000000, "necessaryExpenses": 0 } },
- { "이름": "[옛 양도] 1세대1주택 고가 2020-06-30, 보유 5·거주 1", "도구": "calculate_transfer_tax", "입력": { "assetType": "house", "isOneHouseOneFamily": true, "residenceYears": 1, "transferDate": "2020-06-30", "acquisitionDate": "2015-03-01", "transferPrice": 1500000000, "acquisitionPrice": 700000000, "necessaryExpenses": 0 } },
- { "이름": "[옛 양도] 1세대1주택 고가 2019-06-30, 보유 5·거주 0", "도구": "calculate_transfer_tax", "입력": { "assetType": "house", "isOneHouseOneFamily": true, "residenceYears": 0, "transferDate": "2019-06-30", "acquisitionDate": "2014-03-01", "transferPrice": 1500000000, "acquisitionPrice": 700000000, "necessaryExpenses": 0 } },
- { "이름": "[옛 양도] 토지 2018-06-30 양도, 10년 보유", "도구": "calculate_transfer_tax", "입력": { "assetType": "land", "transferDate": "2018-06-30", "acquisitionDate": "2008-03-01", "transferPrice": 300000000, "acquisitionPrice": 150000000, "necessaryExpenses": 0 } },
- { "이름": "[옛 양도] 상가 2017-06-30 양도, 과표 5억 넘음", "도구": "calculate_transfer_tax", "입력": { "assetType": "other_building", "transferDate": "2017-06-30", "acquisitionDate": "2009-01-10", "transferPrice": 1500000000, "acquisitionPrice": 700000000, "necessaryExpenses": 0 } },
- { "이름": "[옛 양도] 토지 2015-06-30 양도, 과표 1.5억 넘음", "도구": "calculate_transfer_tax", "입력": { "assetType": "land", "transferDate": "2015-06-30", "acquisitionDate": "2011-01-10", "transferPrice": 500000000, "acquisitionPrice": 300000000, "necessaryExpenses": 0 } }
+ {
+  "이름": "[2023 이후] 토지 2024-06-30 양도, 10년 보유",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "land",
+   "transferDate": "2024-06-30",
+   "acquisitionDate": "2014-03-01",
+   "transferPrice": 300000000,
+   "acquisitionPrice": 150000000,
+   "necessaryExpenses": 0
+  }
+ },
+ {
+  "이름": "[2023 이후] 토지 2023-01-01 양도(경계), 3년 보유",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "land",
+   "transferDate": "2023-01-01",
+   "acquisitionDate": "2019-12-01",
+   "transferPrice": 500000000,
+   "acquisitionPrice": 200000000,
+   "necessaryExpenses": 5000000
+  }
+ },
+ {
+  "이름": "[2023 이후] 1세대1주택 고가 2025-03-01, 보유 10·거주 10",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "isOneHouseOneFamily": true,
+   "residenceYears": 10,
+   "transferDate": "2025-03-01",
+   "acquisitionDate": "2015-01-15",
+   "transferPrice": 1500000000,
+   "acquisitionPrice": 500000000,
+   "necessaryExpenses": 10000000
+  }
+ },
+ {
+  "이름": "[2023 이후] 1세대1주택 고가 2024-09-01, 보유 6·거주 1",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "isOneHouseOneFamily": true,
+   "residenceYears": 1,
+   "transferDate": "2024-09-01",
+   "acquisitionDate": "2018-05-01",
+   "transferPrice": 1400000000,
+   "acquisitionPrice": 700000000,
+   "necessaryExpenses": 0
+  }
+ },
+ {
+  "이름": "[2023 이후] 상가 2026-02-01 양도, 과표 10억 넘음",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "other_building",
+   "transferDate": "2026-02-01",
+   "acquisitionDate": "2010-02-01",
+   "transferPrice": 3000000000,
+   "acquisitionPrice": 1000000000,
+   "necessaryExpenses": 0
+  }
+ },
+ {
+  "이름": "[2023 이후] 주택 1년 미만 단기 2024",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "transferDate": "2024-05-01",
+   "acquisitionDate": "2023-12-01",
+   "transferPrice": 400000000,
+   "acquisitionPrice": 350000000,
+   "necessaryExpenses": 0
+  }
+ },
+ {
+  "이름": "[옛 양도] 토지 2022-12-31 양도(경계), 10년 보유",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "transferDate": "2022-12-31",
+   "acquisitionDate": "2012-03-01",
+   "transferPrice": 300000000,
+   "acquisitionPrice": 150000000,
+   "necessaryExpenses": 0
+  },
+  "참고": {
+   "과세표준": 117500000,
+   "산출세액": 26225000
+  },
+  "손계산": "2021~2022 세율 35% 구간 누진 1,490만 — 그때 법(조견표 2부-01·2부-03, 법제처 원문)으로 손계산. --history로 켜면 같아야 함"
+ },
+ {
+  "이름": "[옛 양도] 토지 2021-06-30 양도, 5년 보유",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "transferDate": "2021-06-30",
+   "acquisitionDate": "2016-01-15",
+   "transferPrice": 600000000,
+   "acquisitionPrice": 300000000,
+   "necessaryExpenses": 0
+  },
+  "참고": {
+   "과세표준": 267500000,
+   "산출세액": 82250000
+  },
+  "손계산": "2021 세율 38% 구간 누진 1,940만, 장특공 2019~ 5년 10% — 그때 법(조견표 2부-01·2부-03, 법제처 원문)으로 손계산. --history로 켜면 같아야 함"
+ },
+ {
+  "이름": "[옛 양도] 1세대1주택 고가 2020-06-30, 보유 5·거주 1",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "isOneHouseOneFamily": true,
+   "residenceYears": 1,
+   "transferDate": "2020-06-30",
+   "acquisitionDate": "2015-03-01",
+   "transferPrice": 1500000000,
+   "acquisitionPrice": 700000000,
+   "necessaryExpenses": 0
+  },
+  "참고": {
+   "과세표준": 141500000,
+   "산출세액": 34625000
+  },
+  "손계산": "2020 양도 거주 2년 미만 → 표1 5년 10%, 2018~2020 세율 — 단 고가주택 기준은 그때 9억(2부-04, 아직 12억으로 계산) — 그때 법(조견표 2부-01·2부-03, 법제처 원문)으로 손계산. --history로 켜면 같아야 함"
+ },
+ {
+  "이름": "[옛 양도] 1세대1주택 고가 2019-06-30, 보유 5·거주 0",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "isOneHouseOneFamily": true,
+   "residenceYears": 0,
+   "transferDate": "2019-06-30",
+   "acquisitionDate": "2014-03-01",
+   "transferPrice": 1500000000,
+   "acquisitionPrice": 700000000,
+   "necessaryExpenses": 0
+  },
+  "참고": {
+   "과세표준": 93500000,
+   "산출세액": 17825000
+  },
+  "손계산": "2019 양도 거주요건 없음 → 표2 5년 40% — 단 고가주택 기준은 그때 9억(2부-04, 아직 12억으로 계산) — 그때 법(조견표 2부-01·2부-03, 법제처 원문)으로 손계산. --history로 켜면 같아야 함"
+ },
+ {
+  "이름": "[옛 양도] 토지 2018-06-30 양도, 10년 보유",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "transferDate": "2018-06-30",
+   "acquisitionDate": "2008-03-01",
+   "transferPrice": 300000000,
+   "acquisitionPrice": 150000000,
+   "necessaryExpenses": 0
+  },
+  "참고": {
+   "과세표준": 102500000,
+   "산출세액": 20975000
+  },
+  "손계산": "2012~2018 표1 10년 30%, 2018 세율 35% 구간 누진 1,490만 — 그때 법(조견표 2부-01·2부-03, 법제처 원문)으로 손계산. --history로 켜면 같아야 함"
+ },
+ {
+  "이름": "[옛 양도] 상가 2017-06-30 양도, 과표 5억 넘음",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "other_building",
+   "transferDate": "2017-06-30",
+   "acquisitionDate": "2009-01-10",
+   "transferPrice": 1500000000,
+   "acquisitionPrice": 700000000,
+   "necessaryExpenses": 0
+  },
+  "참고": {
+   "과세표준": 605500000,
+   "산출세액": 212800000
+  },
+  "손계산": "2009~2018 표1 8년 24%, 2017 세율 5억 초과 40% 누진 2,940만 — 그때 법(조견표 2부-01·2부-03, 법제처 원문)으로 손계산. --history로 켜면 같아야 함"
+ },
+ {
+  "이름": "[옛 양도] 토지 2015-06-30 양도, 과표 1.5억 넘음",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "transferDate": "2015-06-30",
+   "acquisitionDate": "2011-01-10",
+   "transferPrice": 500000000,
+   "acquisitionPrice": 300000000,
+   "necessaryExpenses": 0
+  },
+  "참고": {
+   "과세표준": 173500000,
+   "산출세액": 46530000
+  },
+  "손계산": "2012~2018 표1 4년 12%, 2014~2016 세율 1.5억 초과 38% 누진 1,940만 — 그때 법(조견표 2부-01·2부-03, 법제처 원문)으로 손계산. --history로 켜면 같아야 함"
+ }
 ]
