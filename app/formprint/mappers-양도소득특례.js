@@ -51,7 +51,7 @@
 
   // ───────── 공용 ─────────
   // 1세대1주택 특례 신고서 — oneHouseSpecialCase.formNo 끝의 "[별지 제83호의4서식]"으로 서식을 고름
-  var SPECIAL_KEYS = ['소득83호의4', '소득83호의2', '소득83호의5'];
+  var SPECIAL_KEYS = ['소득83호의4', '소득83호의2', '소득83호의5', '소득83호'];
   var SPECIAL_FORM = { '소득83호': '[별지 제83호서식]', '소득83호의2': '[별지 제83호의2서식]', '소득83호의3': '[별지 제83호의3서식]', '소득83호의4': '[별지 제83호의4서식]', '소득83호의5': '[별지 제83호의5서식]' };
   function specialOf(asset, formKey) {
     var c = asset && asset.oneHouseSpecialCase;
@@ -207,6 +207,32 @@
     if (rest.length) o.miss(rest.join('·'), '계산기에 없음(판정 창·자산 카드에 그 열의 값 입력 없음 또는 저장 안 됨)');
     o.miss('⑧ 면적(토지·건물)', '계산기에 없음');
     o.miss('⑨ 소유자(성명·주민등록번호·소득자와 관계)', '계산기에 없음(열마다 소유자 입력 없음)');
+    footer(o, ctx, s);
+    return o.result();
+  };
+
+
+  // ═════════ 소득83호 — 농어촌주택 소유자 1세대 1주택 특례적용신고서(영 §155⑦·⑬) ═════════
+  //  판정 창(ef 이농주택·rf 귀농주택)이 양도하는 일반주택에 남긴 oneHouseSpecialCase — ④ 일반주택 열 = 양도 자산, ⑤ 농어촌주택 열 = 판정 창 값
+  //  판정 창이 남기는 값: houseType('이농주택'·'귀농주택' → ⑤ 체크), acquisitionDate(rf 귀농주택 취득일). 상속 농어촌주택(⑦1호) 판정 갈래는 계산기에 없음.
+  mappers['소득83호'] = function (ctx) {
+    var o = new Out(), s = ctx.seller || {};
+    var it = pickAsset(ctx, '소득83호'), a = (it && it.asset) || {}, c = specialOf(a, '소득83호');
+    if (!c) { o.miss('①~⑪ 전체', '이농주택·귀농주택 판정(특정주택 제외 판정 ef·rf)을 적용한 양도 자산 없음'); return o.result(); }
+    o.need('①', s.name, '① 성명').need('②', s.regNo, '② 주민등록번호').need('③', H.fullAddr(s), '③ 주소');
+    if (c.houseType === '이농주택' || c.houseType === '귀농주택' || c.houseType === '상속주택') o.set('⑤', c.houseType);
+    else o.miss('⑤ 주택구분(상속·이농·귀농)', '판정 창이 주택구분을 남기지 않음("' + (c.provisionLabel || '') + '")');
+    o.need('⑥@일반주택', a.assetLocation, '⑥ 일반주택 소재지');
+    o.need('⑨@일반주택', a.acquisitionDate, '⑨ 일반주택 취득일');
+    o.need('⑩@일반주택', a.transferDate, '⑩ 일반주택 양도일');
+    if (c.houseType === '귀농주택' && has(c.acquisitionDate)) o.set('⑨@농어촌주택', c.acquisitionDate);
+    else o.miss('⑨ 농어촌주택 취득일', c.houseType === '귀농주택' ? '판정 창에 귀농주택 취득일 없음' : '계산기에 없음(이농주택 판정 창은 취득일을 받지 않음)');
+    o.miss('⑥ 농어촌주택 소재지', '계산기에 없음(판정 창은 "수도권 밖 읍·면 소재" 체크만 받음)');
+    o.miss('⑦ 면적(토지·건물)', '계산기에 없음(귀농주택 대지 면적은 판정 창에서만 쓰고 저장되지 않음)');
+    o.miss('⑧ 소유자(성명·주민등록번호·소득자와 관계)', '계산기에 없음');
+    o.miss('⑩ 농어촌주택 양도일', '계산기에 없음(농어촌주택은 양도하지 않는 주택 — 양도했으면 그 자산 카드에)');
+    o.miss('⑪ 거주기간', '계산기에 없음(이농주택 판정 창은 "취득 후 5년 이상 거주" 체크만 받고 날짜 입력 없음)');
+    if (c.안내) o.note('판정 안내: ' + c.안내);
     footer(o, ctx, s);
     return o.result();
   };

@@ -59,10 +59,20 @@ module.exports = function (E, H) {
     transferDate: '2026-01-15', acquisitionDate: '2012-07-01', assetLocation: '서울특별시 ○○구 ○○동 50 (○○재건축정비사업조합, 견본)',
     formerResidencePeriod: '2012.07.01 ~ 2021.06.30', businessApprovalDate: '2019-04-12', managementDispositionDate: '2021-06-30', newHousingCompletionDate: '' };
 
+  // ⑥ 귀농주택(영 §155⑦3호·⑩) — 일반주택 2010.9.1. 취득 → 2026.6.30. 양도, 귀농주택 2023.4.1. 취득(5년 이내 일반주택 양도)
+  var rfIn = { isOutsideMetroEupMyeon: true, isHighValueHouseAtAcquisition: false, landAreaSqm: 600, meetsFarmingPurposeRequirement: true, wholeFamilyMovedIn: true,
+    acquisitionDate: '2023-04-01', generalHouseTransferDate: '2026-06-30', isNotFirstGeneralHouseSinceReturn: false };
+  var rf = need(E.calculateReturnFarmHouseExclusionJS(rfIn), '귀농주택');
+  var rfAsset = { assetType: 'house', transferPrice: 650000000, acquisitionPrice: 280000000, necessaryExpenses: 3000000, transferDate: rfIn.generalHouseTransferDate, acquisitionDate: '2010-09-01',
+    assetLocation: '대전광역시 ○○구 ○○로 60, 7동 702호 (견본)', isOneHouseOneFamily: true,
+    oneHouseSpecialCase: { provisionLabel: '귀농주택(소득세법시행령§155⑦3호)', formNo: '소득세법 시행규칙 [별지 제83호서식]', formTitle: '농어촌주택 소유자 1세대1주택 특례적용신고서',
+      acquisitionDate: rfIn.acquisitionDate, houseType: '귀농주택', newHousingCompletionDate: '', mgContractDate: '', mgLeasePeriod: '', 안내: rf.안내 } };
+
   return [
     { name: '83호의4_상생임대주택', tax: '양도', ctx: ctxMg },
     { name: '83호의2_거주주택특례', tax: '양도', ctx: ctxLr },
-    { name: '83호의5_조합원입주권_분양권_입주권양도', tax: '양도', ctx: caseOf([ciAsset, prAsset, urAsset]) }
+    { name: '83호의5_조합원입주권_분양권_입주권양도', tax: '양도', ctx: caseOf([ciAsset, prAsset, urAsset]) },
+    { name: '83호_귀농주택', tax: '양도', ctx: caseOf([rfAsset]) }
   ].map(function (cs) {
     // tax만 준 사례는 plan으로 이 묶음 서식만 고름(84호 본표는 기존 23장 시험에서 봄)
     if (!cs.forms) cs.forms = H.ctxFromApp && cs.tax ? require('./mappers.js').plan(cs.tax, cs.ctx).filter(function (it) { return typeof it !== 'string' && /^소득/.test(it.formKey); }) : [];
