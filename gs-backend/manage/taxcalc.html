@@ -15651,7 +15651,7 @@ function handleTaxCalcClick_(e){
     if (fr_.error) { if (outEl_) outEl_.textContent = fr_.error; return; }
     const amt_ = fr_.적용여부 ? (Number(fr_.최종_감면세액) || 0) : 0;
     document.getElementById('giftFarmlandExemption').value = amt_ || '';
-    if (outEl_) outEl_.textContent = (fr_.적용여부 ? '감면세액 ' + amt_.toLocaleString('ko-KR') + '원 — ' + (fr_.면적한도_안내 || '') + ', 감면 대상 가액 ' + (Number(fr_.감면대상_농지등가액) || 0).toLocaleString('ko-KR') + '원. ' : '감면 없음. ') + (fr_.안내 || '') + (Number(res_[0].priorGiftAmount) > 0 ? ' (10년 합산 증여가 있어 분모에 합산액 포함 — 확인 필요)' : '');
+    if (outEl_) outEl_.textContent = (fr_.적용여부 ? '감면세액 ' + amt_.toLocaleString('ko-KR') + '원 — ' + (fr_.면적한도_안내 || '') + ', 감면 대상 가액 ' + (Number(fr_.감면대상_농지등가액) || 0).toLocaleString('ko-KR') + '원. ' : '감면 없음. ') + String(fr_.안내 || '').replace('이 감면세액을 증여세 계산기의 농지등 감면(farmlandGiftTaxExemptionAmount)에 넣어 최종 증여세를 계산하세요.', '위 감면 칸에 넣고 다시 계산했습니다.') + (Number(res_[0].priorGiftAmount) > 0 ? ' (10년 합산 증여가 있어 분모에 합산액 포함 — 확인 필요)' : '');
     window.__gfFarmHelper = Object.assign({}, fr_, { 면적: fv_('gfFarmArea') || undefined, 가액: fv_('gfFarmValue') || undefined }); // 52호 부표 ⑥⑦
     if (amt_ !== prevEx_) { const runBtn_ = document.querySelector('[data-action="run-gift"]'); if (runBtn_) runBtn_.click(); }
   } else if (action === 'run-gift'){
