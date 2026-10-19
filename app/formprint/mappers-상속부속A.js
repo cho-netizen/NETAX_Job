@@ -160,6 +160,51 @@
     return o.result();
   };
 
+  // ───────── 상속 별지 제1호서식 부표1 — 가업상속재산명세서(시행령 §15⑤~⑦) ─────────
+  //  값 출처: 지금 인쇄 ihBizAssetDetailTableHtml_·"다. 한도액계산"·"라. 중견기업 적용요건"(화면 ihBusiness* 칸 + 결과 가업상속공제_계산내역).
+  //  예전 인쇄 번호와 다름: 예전 "⑧ 한도액·⑨ 대상금액·⑩ 공제액" → 서식 ⑩ 한도액·⑨ 대상금액·⑪ 공제액(⑧은 가업영위기간 줄).
+  mappers['상속1호부표1'] = function (ctx) {
+    var o = new Out(), r = ctx.r || {}, x = ihxOf(ctx), b = x.biz || {}, d = bizDetailOf(ctx);
+    if (!d) { o.miss('부표1 전체', '가업상속공제 계산 내역 없음'); return o.result(); }
+    // 가. 소득세법 적용 가업 — 계산기는 사업용 자산 순액 합계(①) 하나만 받음
+    o.miss('가.㉮ 금액·㉯ 담보채무액·대상금액(토지·건축물·기계장치·기타 줄)', '계산기에 없음(자산 종류별 금액·담보채무를 따로 받지 않고 순액 합계 ①만 받음)');
+    o.miss('①@㉮·①@㉯ ① 계의 ㉮ 금액 계·㉯ 담보채무액 계', '계산기에 없음(순액 ①만 받음)');
+    var v1 = n(d.소득세법적용분);
+    if (v1 > 0) o.set('①', v1); else o.miss('① 계', '해당 없음 — 소득세법 적용 가업 금액 0(화면 사업용 자산 순액 비어 있음)');
+    // 나. 법인세법 적용 가업
+    var stock = n(b.stockValue);
+    if (stock > 0) {
+      var tot = n(b.totalAsset), nb = [n(b.nonBiz55), n(b.nonBiz49), n(b.nonBiz61), n(b.excessCash), n(b.nonBizStock)];
+      var v4 = nb.reduce(function (s, v) { return s + v; }, 0), v5 = Math.max(0, tot - v4), v6 = n(d.사업관련자산가액비율), v7 = n(d.법인세법적용분);
+      o.set('②', stock).set('③', tot).set('㉮', nb[0]).set('㉯', nb[1]).set('㉰', nb[2]).set('㉱', nb[3]).set('㉲', nb[4]).set('④', v4).set('⑤', v5).set('⑥', pct2(v6)).set('⑦', v7);
+      o.check('④ = ㉮ + ㉯ + ㉰ + ㉱ + ㉲', v4, nb[0] + nb[1] + nb[2] + nb[3] + nb[4]);
+      o.check('⑤ = ③ − ④', v5, tot - v4);
+      o.check('⑥ = ⑤ ÷ ③(엔진 비율, 만분율)', Math.round(v6 * 10000), tot > 0 ? Math.round(v5 / tot * 10000) : 0);
+      o.check('⑦ = ② × ⑥(엔진 반올림)', v7, Math.round(stock * v6));
+      if (n(b.nonBiz49) > 0 || n(b.nonBiz61) > 0) o.note('㉯·㉰ 사업무관자산 — 시행령 §15⑤2호나목·다목 단서(2025.2.28. 개정: 임직원 무상임대 주택·학자금·전세금 대여 제외)는 입력자가 빼서 넣어야 함');
+    } else o.miss('②~⑦ 나. 법인세법 적용 가업(②③㉮㉯㉰㉱㉲④⑤⑥⑦)', '해당 없음 — 상속개시일 현재 주식 등의 가액 0(법인 가업 아님)');
+    // 다. 한도액 계산 — 가업영위기간 줄에 ⑨·⑪
+    var yrs = n(b.years), row = yrs >= 30 ? 2 : yrs >= 20 ? 1 : yrs >= 10 ? 0 : -1;
+    var target = n(d.대상금액), lim = n(d.한도액), ded = n(r.가업상속공제);
+    if (row >= 0) {
+      var a9 = ['', '', ''], a11 = ['', '', ''];
+      a9[row] = target; a11[row] = ded;
+      o.set('⑨', a9).set('⑪', a11);
+      o.check('⑩ 한도액(가업영위기간 ' + yrs + '년 줄) = 엔진 한도액', lim, [30000000000, 40000000000, 60000000000][row]);
+      if (d.요건미충족으로_공제배제 || d.중견기업게이트_적용여부) o.note('⚠ ⑪ 가업상속공제액 0 — ' + (d.요건미충족으로_공제배제 ? '요건 미충족(' + (d.미충족요건목록 || []).join(', ') + ')' : '라. ㉮ − ㉯가 양수(중견기업 적용 배제, 법 §18의2②)'));
+      else o.check('⑪ = MIN(⑨, ⑩)', ded, Math.min(target, lim));
+    } else o.miss('⑨ ⑪ 다. 한도액 계산', '가업영위기간 ' + yrs + '년 — 10년 미만이라 들어갈 줄이 없음(엔진 한도 ' + lim + '원)');
+    o.check('⑨ = ① + ⑦(엔진 대상금액)', target, v1 + n(d.법인세법적용분));
+    if (v1 > 0 && n(d.법인세법적용분) > 0) o.note('⚠ ⑨ — 서식은 "① 또는 ⑦"인데 개인 가업과 법인 가업이 둘 다 있어 엔진은 ① + ⑦을 더해 한도 하나로 계산함(둘 이상 독립 가업의 한도·공제순서는 시행령 §15④ → 시행규칙 — 확인 필요)');
+    // 라. 중견기업 적용 요건 — 중견기업일 때만(법 §18의2②)
+    if (b.mediumSized === true) {
+      var la = n(b.heirNonBizAsset), lb = n(b.heirTaxWithoutDeduction) * 2;
+      o.set('라㉮', la).set('라㉯', lb).set('라㉮-㉯', la - lb);
+      o.check('라. ㉮ − ㉯ 양수 ↔ 엔진 중견기업 적용 배제(1 = 배제)', la - lb > 0 ? 1 : 0, d.중견기업게이트_적용여부 ? 1 : 0);
+    } else o.miss('라.㉮·㉯·㉮-㉯ 중견기업 적용 요건', '해당 없음 — 중견기업 아님(화면 중견기업 체크 꺼짐). 예전 인쇄는 이때도 0으로 찍었음');
+    return o.result();
+  };
+
   // ───────── 언제 찍나 ─────────
   var WHEN = {
     '상속1호': function (c) { var r = c.r || {}; return !!(r.가업상속공제_계산내역 && !r.가업상속납부유예_선택); },

@@ -35,6 +35,12 @@ module.exports = function (E, H) {
   });
   var cBiz = ihCtx(pBiz);
   L.push({ name: '상속1호_가업상속공제', forms: [{ formKey: '상속1호', ctx: cBiz }], ctx: cBiz });
+  L.push({ name: '상속1호부표1_가업상속재산명세', forms: [{ formKey: '상속1호부표1', ctx: cBiz }], ctx: cBiz });
+  // 부표1 — 법인 가업만, 중견기업, 가업영위 32년: 가업상속인의 다른 재산 50억 > 납부세액 20억 × 200% = 40억 → 공제 배제(법 §18의2②)
+  var pMid = Object.assign({}, pBiz, { businessOwnershipYears: 32, businessInheritanceIndividualNetAssetValue: 0, isMediumSizedBusiness: true,
+    businessHeirNonBusinessAssetValue: 5000000000, businessHeirTaxWithoutDeduction: 2000000000 });
+  var cMid = ihCtx(pMid);
+  L.push({ name: '상속1호부표1_중견기업배제', forms: X.plan('상속', cMid).filter(function (it) { return /^상속1호/.test(it.formKey); }), ctx: cMid });
 
   return L;
 };
