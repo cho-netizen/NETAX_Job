@@ -418,5 +418,53 @@
    "산출세액": 838000000,
    "납부세액": 754200000
   }
+ },
+ {
+  "이름": "[2부-16] 증여 2020-02-10, 미납 1억·944일(2020-06-01~2022-12-31) — 10만분의 25·22 나눔",
+  "도구": "calculate_gift_tax",
+  "입력": {
+   "relation": "직계존속",
+   "giftAmount": 500000000,
+   "giftDate": "2020-02-10",
+   "filingStatus": "reported",
+   "unpaidDays": 944,
+   "unpaidTaxForLatePenalty": 100000000
+  },
+  "정답": {
+   "납부지연가산세": 22640000
+  }
+ },
+ {
+  "이름": "[2부-16] 상속 2018-06-15, 미납 1천만·200일(2019-01-01~) — 1만분의 3·10만분의 25 나눔",
+  "도구": "calculate_inheritance_tax",
+  "입력": {
+   "taxableEstateAmount": 2000000000,
+   "childCount": 2,
+   "hasSpouse": false,
+   "funeralCostAmount": 0,
+   "netFinancialAssets": 0,
+   "dateOfDeath": "2018-06-15",
+   "filingStatus": "reported",
+   "unpaidDays": 200,
+   "unpaidTaxForLatePenalty": 10000000
+  },
+  "정답": {
+   "납부지연가산세": 521000
+  }
+ },
+ {
+  "이름": "[2부-16] 증여 2023-02-10, 미납 1억·100일 — 10만분의 22 그대로",
+  "도구": "calculate_gift_tax",
+  "입력": {
+   "relation": "직계존속",
+   "giftAmount": 500000000,
+   "giftDate": "2023-02-10",
+   "filingStatus": "reported",
+   "unpaidDays": 100,
+   "unpaidTaxForLatePenalty": 100000000
+  },
+  "정답": {
+   "납부지연가산세": 2200000
+  }
  }
 ]

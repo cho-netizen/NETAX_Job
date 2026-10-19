@@ -718,6 +718,18 @@
   function reportCreditRateAt_(date) { const r = giRowAt_(REF_GI_.credit, date); return r ? r.rate : 0.03; } // 신고세액공제율(§69)
   function genSkipMinorRateAt_(date) { const r = giRowAt_(REF_GI_.genSkip, date); return r ? r.minor : 0.4; } // 미성년·20억 초과 할증률(2016년 전 30%)
   function marriageBirthAllowedAt_(date) { const d = String(date || '').slice(0, 10); return !(refHistoryOn_() && /^\d{4}-\d{2}-\d{2}$/.test(d) && REF_GI_.marriageFrom && d < REF_GI_.marriageFrom); }
+  // [2026.10.19 조견표 2부-16] 미납 첫날(납부기한 다음 날) — 화면의 납부지연일수 계산(taxcalc.html recompute…UnpaidDays)과 같은 기한:
+  //  양도 = 양도일이 속한 해의 다음해 5.31.(확정신고), 증여 = 증여일이 속한 달 말일부터 3개월, 상속 = 상속개시일이 속한 달 말일부터 6개월.
+  //  (기한 끝날이 공휴일이면 미뤄지는 것 — 1부-02 — 은 화면 날수 계산도 안 하므로 여기서도 같게 둠)
+  function unpaidStartAt_(kind, date) {
+    const d = String(date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';
+    const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7));
+    if (kind === 'transfer') return (y + 1) + '-06-01';
+    const add = kind === 'gift' ? 3 : 6;
+    const end = new Date(Date.UTC(y, m + add, 0)); // 그 달 말일 + add개월의 말일
+    return addDaysStr_(end.toISOString().slice(0, 10), 1);
+  }
   // [2026.10.19 조견표 2부-32] 이월과세(§97의2①)·증여 후 우회양도 부인(§101②) 기간 — 2023.1.1. 이후 증여받은 자산 10년, 그 전 5년
   //  (법률 제19196호 부칙 제18조 '이 법 시행 전에 증여받은 자산은 종전 규정'). 증여일을 모르면 지금 값 10년.
   function carryoverWindowYearsAt_(giftDate) {
@@ -1603,7 +1615,7 @@
     const eFilingCredit = t.isSelfElectronicFiling ? Math.min(20000, Math.max(0, calculatedTax - pensionAccountCredit)) : 0;
 
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(t.filingStatus) !== -1 ? t.filingStatus : 'ontime';
-    const penalties = giftFilingPenalties(calculatedTax, filingStatus, !!t.isFraudulent, t.underreportedTaxAmount, t.unpaidDays, Number(t.unpaidTaxForLatePenalty), !!t.isOffshoreTransaction, t.monthsAfterDesignatedDueDate, Number(t.unpaidTaxAtDesignatedDueDate), t.fraudulentUnderreportedTaxAmount);
+    const penalties = giftFilingPenalties(calculatedTax, filingStatus, !!t.isFraudulent, t.underreportedTaxAmount, t.unpaidDays, Number(t.unpaidTaxForLatePenalty), !!t.isOffshoreTransaction, t.monthsAfterDesignatedDueDate, Number(t.unpaidTaxAtDesignatedDueDate), t.fraudulentUnderreportedTaxAmount, t.unpaidStartDate || unpaidStartAt_('transfer', t.transferDate));
     const localIncomeTax = Math.round(calculatedTax * 0.1);
     const totalTax = Math.max(0, calculatedTax - pensionAccountCredit - eFilingCredit + core.conversionValuePenalty
       + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax + pensionAccountClawback);
@@ -2299,7 +2311,7 @@
     const pensionAccountCreditTotal = Math.min(pensionAccountCreditRaw, Math.max(0, totalCalculatedTax));
     const eFilingCredit = filingParams.isSelfElectronicFiling ? Math.min(20000, Math.max(0, totalCalculatedTax - pensionAccountCreditTotal)) : 0;
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(filingParams.filingStatus) !== -1 ? filingParams.filingStatus : 'ontime';
-    const penalties = giftFilingPenalties(totalCalculatedTax, filingStatus, !!filingParams.isFraudulent, filingParams.underreportedTaxAmount, filingParams.unpaidDays, Number(filingParams.unpaidTaxForLatePenalty), !!filingParams.isOffshoreTransaction, filingParams.monthsAfterDesignatedDueDate, Number(filingParams.unpaidTaxAtDesignatedDueDate), filingParams.fraudulentUnderreportedTaxAmount);
+    const penalties = giftFilingPenalties(totalCalculatedTax, filingStatus, !!filingParams.isFraudulent, filingParams.underreportedTaxAmount, filingParams.unpaidDays, Number(filingParams.unpaidTaxForLatePenalty), !!filingParams.isOffshoreTransaction, filingParams.monthsAfterDesignatedDueDate, Number(filingParams.unpaidTaxAtDesignatedDueDate), filingParams.fraudulentUnderreportedTaxAmount, filingParams.unpaidStartDate || unpaidStartAt_('transfer', poolDate_));
     const localIncomeTax = Math.round(totalCalculatedTax * 0.1);
     const grandTotal = Math.max(0, totalCalculatedTax - pensionAccountCreditTotal - eFilingCredit + conversionValuePenaltyTotal
       + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax + exemptClawbackTotal + pensionAccountClawbackTotal);
@@ -2644,7 +2656,10 @@
   // 3호: 지정납부기한까지 납부하지 않은 세액에 대해 정액 3%를 1회 추가한다(150만원 기준과 무관하게 적용).
   // monthsAfterDesignatedDueDate·unpaidTaxAtDesignatedDueDate를 생략하면(고지 전 자진납부만 하는 경우)
   // 1호만 적용되어 종전과 동일하게 동작한다.
-  function giftFilingPenalties(taxAfterCredit, filingStatus, isFraudulent, underreportedTaxAmount, unpaidDays, unpaidTaxOverride, isOffshoreTransaction, monthsAfterDesignatedDueDate, unpaidTaxAtDesignatedDueDate, fraudulentUnderreportedTaxAmount) {
+  // [2026.10.19 조견표 2부-16] unpaidStartDate(미납 첫날 = 납부기한 다음 날)를 주면 1일 이자율을 기간별로 나눠 계산한다
+  //  (2019.2.11.까지 1만분의 3, 2022.2.14.까지 10만분의 25, 그 뒤 10만분의 22 — 국세기본법 시행령 §27의4, 부칙 "시행 전 기간분은 종전 율").
+  //  날짜를 안 주면 예전처럼 10만분의 22 하나(지금 사건은 0원도 안 바뀜).
+  function giftFilingPenalties(taxAfterCredit, filingStatus, isFraudulent, underreportedTaxAmount, unpaidDays, unpaidTaxOverride, isOffshoreTransaction, monthsAfterDesignatedDueDate, unpaidTaxAtDesignatedDueDate, fraudulentUnderreportedTaxAmount, unpaidStartDate) {
     let unreportedPenalty = 0, underreportedPenalty = 0;
     const fraudRate = isOffshoreTransaction ? 0.60 : 0.40;
     if (filingStatus === 'unreported') {
@@ -2663,7 +2678,10 @@
       }
     }
     const base = Number.isFinite(unpaidTaxOverride) ? unpaidTaxOverride : taxAfterCredit;
-    const dailyInterestPenalty = Math.round(base * (Number(unpaidDays) || 0) * 0.00022);
+    const days_ = Number(unpaidDays) || 0;
+    const st_ = String(unpaidStartDate || '');
+    const segs_ = (refHistoryOn_() && days_ > 0 && /^\d{4}-\d{2}-\d{2}$/.test(st_) && st_ < '2022-02-15') ? splitByHistory_(st_, addDaysStr_(st_, days_ - 1), DAILY_FIXED_RATE_HISTORY_) : null;
+    const dailyInterestPenalty = segs_ ? Math.round(segs_.reduce(function (s, g) { return s + base * g.days * g.rate; }, 0)) : Math.round(base * days_ * 0.00022);
     const unpaidAtDesignated = Number(unpaidTaxAtDesignatedDueDate) || 0;
     const cappedMonths = Math.min(Number(monthsAfterDesignatedDueDate) || 0, 60);
     const monthlyInterestPenalty = (unpaidAtDesignated >= 1500000 && cappedMonths > 0) ? Math.round(unpaidAtDesignated * cappedMonths * 0.0067) : 0;
@@ -2803,7 +2821,7 @@
     const reportCredit = reportedInTime ? Math.round(taxAfterPriorCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일별 율
     const taxAfterCredit = taxAfterPriorCredit - reportCredit;
 
-    const penalties = giftFilingPenalties(taxAfterCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
+    const penalties = giftFilingPenalties(taxAfterCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount, p.unpaidStartDate || unpaidStartAt_('gift', p.giftDate || p.giftReceivedDate));
 
     const interestAmount = Number(p.interestAmount) || 0;
     const publicInterestOrgPenalty = Number(p.publicInterestOrgPenalty) || 0;
@@ -3039,7 +3057,7 @@
     const reportCredit = reportedInTime ? Math.round(taxAfterCredits * reportCreditRate_) : 0;
     const taxAfterReportCredit = taxAfterCredits - reportCredit;
 
-    const penalties = giftFilingPenalties(taxAfterReportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
+    const penalties = giftFilingPenalties(taxAfterReportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount, p.unpaidStartDate || unpaidStartAt_('inheritance', inhDate_));
 
     const interestAmount = Number(p.interestAmount) || 0;
     const forProfitBequestAmount = Number(p.forProfitBequestAmount) || 0;

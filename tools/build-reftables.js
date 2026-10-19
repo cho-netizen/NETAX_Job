@@ -106,6 +106,12 @@ if (t201 && t203) {
       && JSON.stringify(bz.tiers) === JSON.stringify([[10, 30000000000], [20, 40000000000], [30, 60000000000]]) && fm.cap === 3000000000 && gs.minor === 0.4;
     if (!ok) throw new Error('2부-10·11·12·15의 지금 값 행이 엔진 지금 값(신고세액공제 3%, 증여재산공제 6억·5천·2천·5천·1천, 인적공제, 동거주택 100%·6억, 가업 300·400·600억, 영농 30억, 할증 40%)과 다릅니다 — 확인 필요');
   }
+  // [2026.10.19 조견표 2부-16] 납부지연 1일 이자율은 엔진 DAILY_FIXED_RATE_HISTORY_(사후관리 이자에도 씀)를 그대로 쓴다 — 표와 엔진의 바뀐 날이 같은지만 확인
+  if (tb('2부-16')) {
+    const starts = tb('2부-16').행.filter((r) => r.구분 === '1일 이자율').map((r) => r.시작).slice(1).join(',');
+    if (!/DAILY_FIXED_RATE_HISTORY_ = \[\{ from: '1900-01-01', rate: 0\.0003 \}, \{ from: '2019-02-12', rate: 0\.00025 \}, \{ from: '2022-02-15', rate: 0\.00022 \}\]/.test(e) || starts !== '2019-02-12,2022-02-15')
+      throw new Error('2부-16 납부지연 이자율 행과 엔진 DAILY_FIXED_RATE_HISTORY_가 다릅니다 — 확인 필요');
+  }
   e = e.slice(0, i2) + EB + nl + '  const REF_TR_BRACKETS_ = ' + js(br) + ';' + nl + '  const REF_LT_ = { 표1: ' + js(lt1) + ', 표2: ' + js(lt2) + ' };' + nl + '  const REF_HV_ = ' + js(hv) + ';' + nl + '  const REF_SR_ = ' + js(sr) + ';' + nl + '  const REF_GI_ = ' + js(gi) + ';' + nl + '  ' + e.slice(k2);
   fs.writeFileSync(ENGINE, e);
   console.log('엔진: 기본세율 ' + br.length + '개 시기, 장특공 표1 ' + lt1.length + '·표2(2020 이전) ' + lt2.length + '개 시기, 고가주택 기준 주택 ' + hv.house.length + '·입주권 ' + hv.right.length + '개 시기, 특례세율(2부-02) ' + (sr.house.length + sr.other.length + sr.presale.length + sr.multi.length + sr.nonbiz.length) + '행 → taxcalc-engine.html');
