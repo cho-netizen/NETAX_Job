@@ -1,7 +1,7 @@
 /*
  * NxFormPrint — 법정서식 "원본 모양" 출력 (작업자 파, 2026-10-19)
  *
- * 하는 일: 드라이브 법정서식원본(법제처) 묶음 PDF를 바탕에 깔고, 위치판(칸마다 쪽·x·y·w·h)대로
+ * 하는 일: 드라이브 법제처 원본(PDF) 묶음 PDF를 바탕에 깔고, 위치판(칸마다 쪽·x·y·w·h)대로
  *          값을 올려 찍어 PDF 한 벌을 만든다. 바탕이 원본 그 자체라 칸 배치·번호·개정일·작성방법이 원본 그대로다.
  *
  * 브라우저:  <script src=".../formprint/formprint.js"></script> (+ mappers.js) → window.NxFormPrint
@@ -41,7 +41,7 @@
   'use strict';
 
   var VERSION = '2026-10-19';
-  // 드라이브 업무관리자/세금계산/법정서식원본(법제처)/<세목> 폴더
+  // 드라이브 업무관리자/서식/법제처 원본(PDF)/<세목> 폴더
   var FOLDERS = {
     '상속': '11qD8IugSmXnNlI2RueaSrTCYrL74F937',
     '증여': '1wqtL3uPhNCuAwM8O3uHM1F-tt8QQLJ-3',
@@ -187,11 +187,11 @@
       var folderId = 세목 && (config.folders[세목]);
       if (!folderId) return Promise.reject(new Error('위치판의 원본 파일 경로에서 세목 폴더(상속·증여·양도·공통)를 알 수 없습니다: ' + (map.원본 && map.원본.파일)));
       p = Promise.resolve(cg('listFolder', { folderId: folderId })).then(function (list) {
-        if (!list || list.error) throw new Error('법정서식원본 폴더를 읽지 못했습니다: ' + (list && list.error || '응답 없음'));
+        if (!list || list.error) throw new Error('드라이브 서식/법제처 원본(PDF) 폴더를 읽지 못했습니다: ' + (list && list.error || '응답 없음'));
         var files = list.files || [];
         var f = files.filter(function (x) { return x.name === name; })[0] ||
           files.filter(function (x) { return normName(x.name) === normName(name); })[0];
-        if (!f) throw new Error('드라이브 "법정서식원본(법제처)/' + 세목 + '" 폴더에서 원본 서식 파일을 찾지 못했습니다: ' + name);
+        if (!f) throw new Error('드라이브 "법제처 원본(PDF)/' + 세목 + '" 폴더에서 원본 서식 파일을 찾지 못했습니다: ' + name);
         if (map.원본.크기 && f.sizeBytes && Number(f.sizeBytes) !== Number(map.원본.크기))
           throw new Error('드라이브의 원본 서식 파일 크기가 위치판을 잰 판과 다릅니다(' + f.sizeBytes + ' ≠ ' + map.원본.크기 + '바이트) — 서식이 바뀌었으면 위치판을 다시 재야 합니다. 찍지 않았습니다: ' + name);
         return cg('readFileBinary', { fileId: f.id });
