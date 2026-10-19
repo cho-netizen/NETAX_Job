@@ -25371,11 +25371,13 @@ function ocrbFill_(fo, st, started, budget) {
   }
   // [2026.10.19 1번 — 뒷단계 빠르게 ③] 남은 줄을 한 번 다시 세운다: 새로 읽을 서류 → 엑셀 표 글 → Vision → 서류 표 글 → 그림 쪽 보충 확인(가장 비싸고 거의 안 채워짐).
   //  이미 돌던 일괄(옛 상태 파일)도 남은 줄에만 적용(앞에서 한 것은 그대로). Vision 쪽수 상한은 그대로
-  if (st.phase === 'fill' && !st.fqOrdered) {
-    const rk = function (q) { return q.read ? 0 : q.grid ? 1 : q.vis ? 2 : q.tbl ? 3 : 4; };
-    const rest = st.fq.slice(st.fqi); rest.forEach(function (q, i) { q._i = i; });
-    rest.sort(function (a, b) { return (rk(a) - rk(b)) || (a._i - b._i); }); rest.forEach(function (q) { delete q._i; });
-    st.fq = st.fq.slice(0, st.fqi).concat(rest); st.fqOrdered = 1; ocrbSave_(fo, st);
+  // [2026.10.19 1번 — 운영 확인 뒤 보정] 늦게 읽을 서류(결과물·이전 보고서·참고자료, ocrbLate_ — 처음 줄을 만들 때 fqLate로 뒤에 두던 것)는 새로 읽기와 같은 0순위가 아니라
+  //  Vision·서류 표 글 뒤로(입력으로 쓰지 않는 서류가 Vision 앞을 막았다 — 운영 09:03 뒤 읽기 145개 중 93개). 한 번 세운 일괄(fqOrdered 1)도 남은 줄을 한 번 더 세운다
+  if (st.phase === 'fill' && (st.fqOrdered || 0) < 2) {
+    const rk = function (q) { return q.read ? (ocrbLate_(q.n) ? 4 : 0) : q.grid ? 1 : q.vis ? 2 : q.tbl ? 3 : 5; };
+    const rest = st.fq.slice(st.fqi).map(function (q, i) { return { q: q, i: i, r: rk(q) }; });
+    rest.sort(function (a, b) { return (a.r - b.r) || (a.i - b.i); });
+    st.fq = st.fq.slice(0, st.fqi).concat(rest.map(function (x) { return x.q; })); st.fqOrdered = 2; ocrbSave_(fo, st);
   }
   while (st.phase === 'fill' && st.fqi < st.fq.length && Date.now() - started < budget - OCRB_ITEM_MARGIN_MS_) {
     const q = st.fq[st.fqi++];
