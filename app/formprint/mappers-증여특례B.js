@@ -346,6 +346,33 @@
     return o.result();
   };
 
+  // ───────── 10호의3 부표4 — 라-1. 지배주주 등과 특수관계법인(증여자 등) ─────────
+  //  값 출처: 🧮 특수관계법인 매출 합산(relatedPartyRatioRows_·jmRelatedPartyTotalSales_·jmRelatedPartyExcludedSales_ — jmAttach4PrintPageHtml_와 같은 값)
+  //  도구는 법인마다 "과세제외를 뺀 매출액" 하나와 과세제외 합계만 받는다 → ⑨(조정후)·⑨ 소계·⑥ 소계·⑫·⑬만, ④~⑦ 법인별 금액은 계산기에 없음
+  mappers['증여10호의3부표4'] = function (ctx) {
+    var o = new Out(), I = ctx.in || {}, rp = ctx.relatedParties || [];
+    if (!rp.length) { o.miss('①~⑯ 부표4 전체', '계산기에 없음 — 🧮 특수관계법인 매출 합산 표가 비어 있음'); return o.result(); }
+    var sum = rp.reduce(function (s, x) { return s + n(x.sales); }, 0), tot = n(ctx.totalSales), ex = n(ctx.excludedSales);
+    o.set('①', rp.map(function (x) { return x.label; })).set('⑨', rp.map(function (x) { return n(x.sales); }));
+    o.miss('② 사업자등록번호', '계산기에 없음').miss('③ 특수관계 유형', '계산기에 없음').miss('⑧ 사유', '계산기에 없음')
+      .miss('④ 매출액·⑤ (부칙)제외·⑥ 과세제외·⑦ 추가 과세제외(법인별)', '계산기에 없음 — 🧮 도구는 법인마다 과세제외를 뺀 매출액(⑨)만 받음');
+    o.note('⑨ 조정후 매출액 = 🧮 도구의 "매출액(과세제외매출액 차감 후)" — ⑤·⑦을 뺐는지는 입력한 값에 따름');
+    o.set('⑩@⑨', sum);
+    if (tot > 0) o.set('⑩@⑥', ex); else o.miss('⑩ ⑥ 소계', '화면 입력 없음(🧮 도구 수혜법인 총매출액·과세제외 합계)');
+    o.miss('⑩ ④·⑤·⑦ 소계', '계산기에 없음');
+    o.set('⑪', rp.slice().sort(function (a, b) { return n(b.sales) - n(a.sales); })[0].label).miss('⑭ 대표증여자 사업자등록번호', '계산기에 없음');
+    if (tot > 0) {
+      o.set('⑫', tot);
+      var ratio = (tot - ex) > 0 ? sum / (tot - ex) * 100 : 0;
+      o.set('⑬', r4(ratio));
+      o.note('⑬ = ⑨ 소계 ÷ (⑫ − ⑥ 소계) — 🧮 도구 식(jmRelatedPartyTradeRatioPct_)과 같음. 서식 식 (④ 소계 − ⑥ 소계) ÷ (⑫ − ⑥ 소계)와는 ⑤·⑦이 없을 때 같음');
+      o.check('⑬ = 화면 특수관계법인거래비율(엔진 입력)', Math.round(ratio * 100), Math.round(n(I.tradeRatio) * 100));
+    } else o.miss('⑫ 수혜법인의 총매출액·⑬ 거래비율(과세요건)', '화면 입력 없음(🧮 도구 수혜법인 총매출액)');
+    o.miss('⑮ 과세매출비율', '계산기에 없음 — ⑦ 추가 과세제외 소계가 없음(세후영업이익은 화면에 직접 넣음)')
+      .miss('⑯ 거래비율(증여의제이익)', '계산기에 없음 — 엔진은 거래비율 하나(⑬과 같은 값)로 과세요건과 증여의제이익을 함께 계산');
+    return o.result();
+  };
+
   // ───────── 세액인쇄 화면용 ctx — 화면 전역값에서 모음(브라우저) ─────────
   /* global lastRelatedPartyGiftResult_, lastBusinessOpportunityGiftResult_, giftDonees, shareholdingRows_, relatedPartyRatioRows_,
      jmRelatedPartyTotalSales_, jmRelatedPartyExcludedSales_, jtSegmentYears_, shareholdingIndirectRatio_, shareholdingCountedIndirectRatio_ */
@@ -390,7 +417,8 @@
     '증여10호의3': function () { return !!jmR(); },
     '증여10호의3부표1': function () { var r = jmR(); return !!(r && r.과세대상여부); },
     '증여10호의3부표2': function () { var r = jmR(); return !!(r && r.과세대상여부 && shRows('jm').some(function (x) { return has(x.chain1Company) || n(x.chain1Ratio) > 0; })); },
-    '증여10호의3부표3': function () { var r = jmR(); return !!(r && r.과세대상여부 && chainGroups(shRows('jm')).a.length); }
+    '증여10호의3부표3': function () { var r = jmR(); return !!(r && r.과세대상여부 && chainGroups(shRows('jm')).a.length); },
+    '증여10호의3부표4': function () { var r = jmR(); return !!(r && r.과세대상여부 && (typeof relatedPartyRatioRows_ !== 'undefined' ? relatedPartyRatioRows_ : []).some(function (x) { return has(x.label) || n(x.sales) > 0; })); }
   };
   // 한 사건에 여러 장인 서식 — 수혜법인의 법인주주(ⓐ)마다 한 장
   var SPLIT = {
