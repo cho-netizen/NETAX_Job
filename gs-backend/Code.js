@@ -17017,25 +17017,12 @@ function doGet(e) {
     // google.script.run으로, 이름이 _로 끝나지 않는 서버 함수 전부(주민번호 풀기 client_getRRN·메일 발송·파일 공개 공유 등)를
     // 비밀번호·키 없이 누구나 부를 수 있었다(로그인 화면은 겉모습일 뿐 막지 못함). job은 job.netax.kr/app/(__manage 입구 —
     // 허용 함수만, 세션 토큰 검사)으로 옮겼으므로 이 화면은 기본으로 닫는다. 꼭 필요할 때만 세무사님이 스크립트 속성
-    // MANAGE_GOOGLE_PAGE=켜기로 잠깐 다시 열 수 있다(그동안은 위 구멍이 다시 열림 — 쓰고 나면 지울 것).
-    if (PropertiesService.getScriptProperties().getProperty('MANAGE_GOOGLE_PAGE') !== '켜기') {
-      return ContentService.createTextOutput('NETAX job은 https://job.netax.kr/app/ 에서 여세요. (구글 주소 화면은 보안 때문에 닫았습니다)')
-        .setMimeType(ContentService.MimeType.TEXT);
-    }
-    // [2026.09 버그수정] 실사용 지적 — "홈 화면에 추가" 아이콘이 계속 구글 기본 대체
-    // 아이콘("G")으로만 떴다. 원인은 앱스크립트 웹앱이 실제 화면을 별도의 숨겨진
-    // iframe(sandboxFrame, googleusercontent.com) 안에 띄우는 구조라서, manage/index.html
-    // <head>에 넣은 <link rel="manifest">/<link rel="icon"> 태그는 전부 그 iframe 안에만
-    // 적용되고, 정작 휴대폰이 "홈 화면 추가" 아이콘을 결정할 때 보는 바깥쪽 껍데기 문서에는
-    // 전혀 반영되지 않았다. 그 바깥쪽 문서는 구글이 통제하고, HtmlOutput이 공식으로 허용하는
-    // 건 제목·파비콘 정도뿐이라 setFaviconUrl로 대신 지정한다(매니페스트 자체는 이 구조에서
-    // 지정할 방법이 없음).
-    return HtmlService.createTemplateFromFile('manage/index')
-      .evaluate()
-      .setTitle('NETAX 관리')
-      .setFaviconUrl('https://job.netax.kr/icon-512.png')
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    // MANAGE_GOOGLE_PAGE=켜기로 잠깐 다시 열 수 있었다.
+    // [2026.10.20 서버 용량] 화면 원본(manage/*.html)은 이제 서버에 올리지 않는다(.claspignore — 서버 세액 엔진 taxcalc-engine만 남김).
+    // 세무사님 "2번게이트로만 들어가도록 하겠다" — 화면은 job.netax.kr/app/(깃허브)에서만 연다. 그래서 비상 스위치도 없앴고,
+    // 이 주소는 언제나 앱 주소 안내 글자만 돌려준다(약 3.8MB를 서버에서 덜어 냄 — 서버 크기 한도 약 10.29MB).
+    return ContentService.createTextOutput('NETAX job은 https://job.netax.kr/app/ 에서 여세요. (구글 주소 화면은 닫았습니다)')
+      .setMimeType(ContentService.MimeType.TEXT);
   }
 
   // [2026.08] booking 모듈의 GET 액션(예약가능시간 조회, 신청목록 조회) — netax.kr 랜딩페이지와
@@ -17065,10 +17052,8 @@ function doGet(e) {
 // manage 모듈 — my.netax.kr 신규 관리 앱 (2026.09)
 // =========================================================
 
-// manage/index.html에서 <?!= include_('manage/xxx') ?>로 부분 HTML을 끼워넣기 위한 헬퍼.
-function include_(filename) {
-  return HtmlService.createHtmlOutputFromFile(filename).getContent();
-}
+// [2026.10.20] 예전 include_(manage/index.html이 부분 HTML을 끼워 넣던 헬퍼)는 없앴다 — 서버가 더는 화면을 내주지 않는다(위 doGet).
+// manage/*.html은 tools/build-app.js가 job.netax.kr/app/index.html로 조립하는 원본으로만 저장소에 남는다.
 
 // [2026.09 보안수정] 이전에는 클라이언트가 sessionStorage에 "로그인했다"는 표시만 남기고,
 // 그 뒤 모든 데이터 호출(manageApp_call)이 그 표시를 서버에 전혀 보내지 않았다 — 즉 이
