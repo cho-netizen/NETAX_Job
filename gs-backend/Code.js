@@ -1112,6 +1112,7 @@ const DRIVE_TOOLS = [
         hasDeadlineExtensionReason: { type: 'boolean', description: '국세기본법§6(천재지변 등으로 인한 기한연장) 사유에 해당하는지(§48①1호). true면 originalPenaltyAmount 전액을 면제한다.' },
         filingType: { type: 'string', enum: ['revised', 'late_filing'], description: "revised=법정신고기한까지 신고했으나 나중에 수정신고(§48②1호, 과소신고가산세만 대상), late_filing=법정신고기한까지 무신고했다가 나중에 기한후신고(§48②2호, 무신고가산세만 대상)." },
         monthsAfterDeadline: { type: 'number', description: '법정신고기한이 지난 후 수정신고(또는 기한후신고)까지 경과한 개월 수.' },
+        filingDate: { type: 'string', description: '수정신고·기한후신고를 한 날(YYYY-MM-DD). 넣으면 그때 감면 단계 — 수정신고: 2008년까지 6개월 50%만, 2009~2019 50·20·10%, 2020~ 90~10%. 기한후신고: 2011.8.2.까지 1개월 50%만, 2011.8.3.~2019 50·20%, 2020~ 50·30·20%. 비우면 지금 단계.' },
         isAmendedAfterAuditNotice: { type: 'boolean', description: '과세표준과 세액을 경정(또는 결정)할 것을 미리 알고 수정신고(또는 기한후신고)를 한 경우인지. true면 §48②의 감면이 적용되지 않는다.' }
       },
       required: ['originalPenaltyAmount']
@@ -2662,6 +2663,8 @@ const DRIVE_TOOLS = [
         netAssetValue: { type: 'number', description: '평가기준일 현재 법인의 순자산가액(자산총액-부채총액, 상증세법 기준 재평가액, 원)' },
         isRealEstateHeavy: { type: 'boolean', description: '자산총액 중 부동산 등의 비율이 50% 이상인 부동산과다보유법인인지 (가중치가 순손익2:순자산3으로 바뀜, 기본은 순손익3:순자산2)' },
         isMajorShareholder: { type: 'boolean', description: '최대주주 및 특수관계인에 해당하는지 (원칙적으로 20% 할증평가, 아래 배제 사유가 있으면 자동으로 배제됨). 판정시 시행령§53⑤에 따라 평가기준일부터 소급 1년 이내에 최대주주등이 양도·증여한 주식등도 보유주식등에 합산해서 판단할 것 — 이 도구는 그 합산을 자동으로 하지 않는다. 특수관계인 범위는 상증세법§2조10호·시행령§2의2 기준.' },
+        valuationDate: { type: 'string', description: '평가기준일(증여일·상속개시일, YYYY-MM-DD). 넣으면 그때 법으로 평가 — 비상장 순자산가치 하한(2017.4.1. 전 없음·2018.3.31.까지 70%), 최대주주 할증(2019년 이전 50% 초과 30%), 중견기업 할증 제외(2023.1.1.~). 비우면 지금 법.' },
+        isMajorShareholderOver50Percent: { type: 'boolean', description: '(2019년 이전 평가만) 최대주주등이 발행주식총수의 50%를 넘게 보유 — 할증 30%(상증법 §63③ 옛 판)' },
         isSmallBusiness: { type: 'boolean', description: '평가대상 법인이 중소기업기본법상 중소기업인지 — true면 최대주주 할증평가가 항상 배제된다(§53⑧9호).' },
         isMediumBusinessUnder500B: { type: 'boolean', description: '평가대상 법인이 중견기업이면서 직전 3개 사업연도 매출액 평균이 5천억원 미만인지 — true면 최대주주 할증평가가 배제된다(§53⑧9호).' },
         hasContinuousLossFor3Years: { type: 'boolean', description: '§53⑧1호 — 평가기준일 전 3년 이내 계속하여 결손금이 있는 법인인지. true면 최대주주 할증평가가 배제된다.' },
@@ -2705,6 +2708,8 @@ const DRIVE_TOOLS = [
       averageClosingPrice: { type: 'number', description: '평가기준일 전후 2개월 종가평균(원)' },
       shares: { type: 'number', description: '평가대상 주식수' },
       isMajorShareholder: { type: 'boolean', description: '최대주주 및 특수관계인에 해당하는지 (원칙적으로 20% 할증평가, 아래 배제 사유가 있으면 자동으로 배제됨). 판정시 시행령§53⑤에 따라 평가기준일부터 소급 1년 이내에 최대주주등이 양도·증여한 주식등도 보유주식등에 합산해서 판단할 것 — 이 도구는 그 합산을 자동으로 하지 않는다. 특수관계인 범위는 상증세법§2조10호·시행령§2의2 기준.' },
+      valuationDate: { type: 'string', description: '평가기준일(증여일·상속개시일, YYYY-MM-DD). 넣으면 그때 법으로 평가 — 비상장 순자산가치 하한(2017.4.1. 전 없음·2018.3.31.까지 70%), 최대주주 할증(2019년 이전 50% 초과 30%), 중견기업 할증 제외(2023.1.1.~). 비우면 지금 법.' },
+      isMajorShareholderOver50Percent: { type: 'boolean', description: '(2019년 이전 평가만) 최대주주등이 발행주식총수의 50%를 넘게 보유 — 할증 30%(상증법 §63③ 옛 판)' },
       isSmallBusiness: { type: 'boolean', description: '평가대상 법인이 중소기업기본법상 중소기업인지 — true면 최대주주 할증평가가 항상 배제된다(§53⑧9호).' },
       isMediumBusinessUnder500B: { type: 'boolean', description: '평가대상 법인이 중견기업이면서 직전 3개 사업연도 매출액 평균이 5천억원 미만인지 — true면 최대주주 할증평가가 배제된다(§53⑧9호).' },
       hasContinuousLossFor3Years: { type: 'boolean', description: '§53⑧1호 — 평가기준일 전 3년 이내 계속하여 결손금이 있는 법인인지. true면 최대주주 할증평가가 배제된다.' },
@@ -25056,7 +25061,9 @@ function toolDeleteWorkCase(input, contextPath) {
 // 딱 1세트만 존재) 설정값이라 별도 시트 없이 스크립트 속성에 저장한다(API 키 등 기존 전역
 // 설정값과 같은 방식). taxcalc.html의 모든 인쇄서식·전자신고파일 생성, settings.html의
 // "세무대리인 정보" 입력화면 양쪽에서 이 두 함수만 호출한다.
-const TAX_AGENT_SETTINGS_KEYS_ = ['taxAgentName', 'taxAgentBizNo', 'taxAgentMgmtNo', 'taxAgentPhone'];
+// [2026.10.20 전자신고 대조] taxAgentBirth(세무대리인 생년월일 — 양도 HEADER 27, 관리번호와 둘 중 하나 필수)·hometaxUserId(홈택스 사용자ID — 세 세목 HEADER 10·12) 추가.
+//  세무대리 대표자 주민등록번호는 민감 정보라 저장하지 않는다(화면이 파일 만들 때만 받고 지움).
+const TAX_AGENT_SETTINGS_KEYS_ = ['taxAgentName', 'taxAgentBizNo', 'taxAgentMgmtNo', 'taxAgentPhone', 'taxAgentBirth', 'hometaxUserId'];
 function getTaxAgentSettings_() {
   const props = PropertiesService.getScriptProperties();
   const result = {};
@@ -29815,14 +29822,15 @@ function caseProcDupDrop_(files, cache) {
     const baseOf = function (n) { return String(n || '').replace(/\.[A-Za-z0-9]{2,5}$/, '').replace(/\s+/g, '').toLowerCase(); };
     const sameDoc = function (a, b) {
       if (a.f.bundleOf && a.f.bundleOf === b.f.bundleOf) return false; // 한 묶음 안의 서로 다른 구간
-      const img = function (x) { return /^image\//.test(String(x.f.mimeType || '')); };
-      if (!a.f.bundleOf && !b.f.bundleOf && img(a) !== img(b) && baseOf(a.f.name) === baseOf(b.f.name) && (!a.p.t || !b.p.t || a.p.t === b.p.t)) return '같은 이름의 ' + (img(a) ? 'PDF' : '사진') + '과 같은 서류';
+      const img = function (x) { return x._img; }; // [밤샘 6바퀴 속도] 사진 여부·이름 바탕은 파일마다 한 번만 계산(아래 xs.forEach) — 짝마다 정규식을 다시 돌렸다
+      if (!a.f.bundleOf && !b.f.bundleOf && img(a) !== img(b) && a._base === b._base && (!a.p.t || !b.p.t || a.p.t === b.p.t)) return '같은 이름의 ' + (img(a) ? 'PDF' : '사진') + '과 같은 서류';
       // 등기부·대장·공시가격은 이웃 필지·같은 건물의 토지/건물 서류가 같은 숫자(이력 날짜·연도별 가격)를 많이 나눠 가져 숫자로 가르지 않는다(고객Z 관양동 000 토지·건물 등기부, 고객Y 511-1·511-4 기준시가)
       if (!a.p.t || a.p.t !== b.p.t || a.p.calc || b.p.calc || /^(registry|pubprice|realprice|landledger|bldledger|officetelstd|bldstdcalc)$/.test(a.p.t)) return false;
       const na = a.p.nums || [], nb = b.p.nums || [];
       if (na.length < 6 || na.length !== nb.length || na.length >= 200) return false;
       return na.every(function (v, i) { return v === nb[i]; }) ? '본문 숫자(금액·날짜·번호)가 모두 같은 같은 서류 사본' : false;
     };
+    xs.forEach(function (x) { x._img = /^image\//.test(String(x.f.mimeType || '')); x._base = baseOf(x.f.name); });
     for (let i = 0; i < xs.length; i++) for (let j = i + 1; j < xs.length; j++) {
       const a = xs[i], b = xs[j];
       if (drop[a.f.id] || drop[b.f.id]) continue;
@@ -32936,6 +32944,12 @@ function docIsReferenceText_(text) {
   if (/법\s*제\s*처/.test(tail) && /국\s*가\s*법\s*령\s*정\s*보\s*센\s*터/.test(tail)) return '법령 원문(국가법령정보센터)';
   if (/이\s*택\s*스\s*코\s*리\s*아|etaxkorea/i.test(h) && /요\s*지|회\s*신|질\s*의|판\s*례|예\s*규/.test(h)) return '세무 해석 자료(이택스코리아)';
   if (/\[\s*(?:요\s*지|회\s*신|질\s*의\s*요\s*지|답\s*변)\s*\]/.test(h) && /(?:[가-힣]{2,10}과|[가-힣]{2,12}\d\s*팀|서면|사전|기준)\s*-\s*\d/.test(h)) return '질의회신·예규(문서번호·요지)';
+  // [2026.10.20 2번 밤샘 7바퀴] 판례·심판례·질의회신 본문 — 앞머리(600자, 빈칸 지움)에 판시사항·판결요지·결정요지·질의요지·회신요지가 있거나,
+  //  사건번호(조심2022서2289·대법원 2020두12345·국심·감심)와 결정·판결·심판 낱말이 함께 있으면 참고자료(사건 증빙 아님). 5번 지휘 AI의 참고 자료 머리말 규칙(caseProcAiIsRefHead_)과 같은 낱말
+  //  — 심판례 PDF가 '공시가격' 서류로 읽혀 사실·다시 읽기 대상이 되던 것(미관측 1건)
+  const h6 = t.slice(0, 600).replace(/\s+/g, '');
+  if (/판시사항|판결요지|결정요지|질의요지|회신요지|참조조문참조판례/.test(h6)) return '판례·심판례·질의회신(요지)';
+  if (/(조심|국심|감심|심사)\d{4}[가-힣]{1,2}\d{2,6}|대법원\d{2,4}[가-힣]{1,2}\d{2,6}|\d{4}[누두구다]\d{3,6}/.test(h6.slice(0, 120)) && /결정|판결|심판|청구/.test(h6)) return '판례·심판례(사건번호)'; // 제목 자리(앞 120자)의 사건번호만 — 편지·메모 본문 속 인용은 아님
   return '';
 }
 // [2026.10.17 묶음12] 경정·수정·불복 사건 — 이름이 "당초 신고서.pdf"·"계산명세서"·"접수증"인 파일도 작업 재료라 이름으로 빼지 않는다
@@ -40020,20 +40034,25 @@ function docBankChainRows_(t, opt) {
   var amtFor = function (i, j) {
     var d = sv(j) - sv(i); if (!d) return -1;
     var best = -1, bd = 1e9;
-    for (var k = Math.max(0, i - W); k <= Math.min(n - 1, j + W); k++) {
-      if (k === i || k === j || toks[k].v !== Math.abs(d)) continue;
+    // [2026.10.20 2번 밤샘 6바퀴 — 속도] 같은 금액 글자의 자리 목록(posByV, 오름차순)만 본다 — 예전엔 창 안 모든 글자를 훑고, 못 찾으면 글 전체를 다시 훑어
+    //  (토큰 수)² 걸렸다(큰 통장 사건 처리 시간의 13%). 고르는 규칙(가장 가까운 것, 같으면 앞 자리)과 결과는 그대로
+    var ps = posByV[Math.abs(d)] || [], lo = Math.max(0, i - W), hi = Math.min(n - 1, j + W);
+    for (var pi = 0; pi < ps.length; pi++) {
+      var k = ps[pi]; if (k < lo) continue; if (k > hi) break;
+      if (k === i || k === j) continue;
       if (toks[k].s && (toks[k].s > 0) !== (d > 0)) continue;
       var dist = k > i && k < j ? 0 : Math.min(Math.abs(k - i), Math.abs(k - j));
       if (dist < bd) { bd = dist; best = k; }
     }
     // [2026.10.18] 창 밖의 금액 — 사진은 금액 칸과 잔액 칸이 멀리 떨어져 읽히기도 한다(고객A 신한: 819,160원). 10만원 넘는 금액이 글 전체에 딱 한 번 있으면 그 글자
-    if (best < 0 && Math.abs(d) >= 100000 && vCnt[Math.abs(d)] === 1) for (var k2 = 0; k2 < n; k2++) if (k2 !== i && k2 !== j && toks[k2].v === Math.abs(d) && !(toks[k2].s && (toks[k2].s > 0) !== (d > 0))) { best = k2; break; }
+    if (best < 0 && Math.abs(d) >= 100000 && vCnt[Math.abs(d)] === 1) for (var p2 = 0; p2 < ps.length; p2++) { var k2 = ps[p2]; if (k2 !== i && k2 !== j && !(toks[k2].s && (toks[k2].s > 0) !== (d > 0))) { best = k2; break; } }
     return best;
   };
   var L = toks.map(function () { return 0; }), from = toks.map(function () { return -1; }), via = toks.map(function () { return -1; });
   // [2026.10.18 정밀분석 원인2] 세 번 넘게 되풀이된 금액(CD출금 1,000,000원 ×9 등)은 거래 금액이지 잔액이 아니다 — 잔액 마디로 쓰면 엉뚱한 긴 사슬이 이겨
   //  앞 거래 14줄이 통째로 버려졌다(고객A 신한 통장 사진: 19줄 중 5줄만). 잔액은 줄마다 바뀌므로 같은 값이 세 번 이상 나오지 않는다
   var vCnt = {}; toks.forEach(function (tk) { vCnt[tk.v] = (vCnt[tk.v] || 0) + 1; });
+  var posByV = {}; toks.forEach(function (tk, ix) { (posByV[tk.v] = posByV[tk.v] || []).push(ix); }); // 금액 → 글자 자리(오름차순)
   var balOk = function (k) { return vCnt[toks[k].v] < 3; };
   for (var j = 1; j < n; j++) for (var i = Math.max(0, j - W); i < j; i++) {
     if (L[i] + 1 <= L[j] || !balOk(i) || !balOk(j)) continue;

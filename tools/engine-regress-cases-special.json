@@ -2108,5 +2108,511 @@
   "정답": {
    "합산조특법세액감면액": 6645000
   }
+ },
+ {
+  "이름": "[2부-23 옛판] 중소기업 대주주 주식 2015-06-30 — 2015년까지는 중소기업 주식이면 대주주도 10%: (4억 − 250만) × 10% = 39,750,000",
+  "도구": "calculateStockTransferTaxJS",
+  "입력": {
+   "assetCategory": "domestic_stock",
+   "transferPrice": 500000000,
+   "acquisitionPrice": 100000000,
+   "holdingMonths": 36,
+   "isDaejuju": true,
+   "isSmallMediumCompany": true,
+   "transferDate": "2015-06-30"
+  },
+  "정답": {
+   "과세표준": 397500000,
+   "산출세액": 39750000
+  }
+ },
+ {
+  "이름": "[2부-23 옛판] 같은 주식 2017-06-30 — 2016~2017 대주주 20% 단일: 79,500,000",
+  "도구": "calculateStockTransferTaxJS",
+  "입력": {
+   "assetCategory": "domestic_stock",
+   "transferPrice": 500000000,
+   "acquisitionPrice": 100000000,
+   "holdingMonths": 36,
+   "isDaejuju": true,
+   "isSmallMediumCompany": true,
+   "transferDate": "2017-06-30"
+  },
+  "정답": {
+   "과세표준": 397500000,
+   "산출세액": 79500000
+  }
+ },
+ {
+  "이름": "[2부-23 옛판] 같은 주식 2019-06-30 — 중소기업 대주주 25%는 2020.1.1.부터(법률 제15225호 부칙 제1조 4호)라 20% 단일: 79,500,000",
+  "도구": "calculateStockTransferTaxJS",
+  "입력": {
+   "assetCategory": "domestic_stock",
+   "transferPrice": 500000000,
+   "acquisitionPrice": 100000000,
+   "holdingMonths": 36,
+   "isDaejuju": true,
+   "isSmallMediumCompany": true,
+   "transferDate": "2019-06-30"
+  },
+  "정답": {
+   "과세표준": 397500000,
+   "산출세액": 79500000
+  }
+ },
+ {
+  "이름": "[2부-23 대조] 같은 주식 2020-06-30 — 3억 이하 20%·초과 25%: 6천만 + 9,750만 × 25% = 84,375,000",
+  "도구": "calculateStockTransferTaxJS",
+  "입력": {
+   "assetCategory": "domestic_stock",
+   "transferPrice": 500000000,
+   "acquisitionPrice": 100000000,
+   "holdingMonths": 36,
+   "isDaejuju": true,
+   "isSmallMediumCompany": true,
+   "transferDate": "2020-06-30"
+  },
+  "정답": {
+   "과세표준": 397500000,
+   "산출세액": 84375000
+  }
+ },
+ {
+  "이름": "[2부-23 옛판] 중소기업 외 대주주 1년 이상 2017-06-30 — 3억 초과 25%는 2018년부터라 20% 단일: 79,500,000",
+  "도구": "calculateStockTransferTaxJS",
+  "입력": {
+   "assetCategory": "domestic_stock",
+   "transferPrice": 500000000,
+   "acquisitionPrice": 100000000,
+   "holdingMonths": 36,
+   "isDaejuju": true,
+   "isSmallMediumCompany": false,
+   "transferDate": "2017-06-30"
+  },
+  "정답": {
+   "과세표준": 397500000,
+   "산출세액": 79500000
+  }
+ },
+ {
+  "이름": "[2부-23 옛판] 파생상품 2015-06-30 양도 — 2016.1.1. 전 파생상품등은 양도소득 아님: 0",
+  "도구": "calculateStockTransferTaxJS",
+  "입력": {
+   "assetCategory": "derivative",
+   "transferPrice": 110000000,
+   "acquisitionPrice": 100000000,
+   "holdingMonths": 36,
+   "transferDate": "2015-06-30"
+  },
+  "정답": {
+   "과세표준": 7500000,
+   "산출세액": 0
+  }
+ },
+ {
+  "이름": "[2부-11 옛판] 창업자금 40억 2015-06-01 — 한도 30억(2015년까지): (30억 − 5억) × 10% = 250,000,000",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "입력": {
+   "doneeAge": 30,
+   "donorAge": 65,
+   "specialType": "startup",
+   "giftAmount": 4000000000,
+   "giftDate": "2015-06-01"
+  },
+  "정답": {
+   "총한도액": 3000000000,
+   "과세표준": 2500000000,
+   "산출세액": 250000000
+  }
+ },
+ {
+  "이름": "[2부-11 옛판] 창업자금 40억·10명 이상 고용 2020-06-01 — 한도 50억(2016~2022): 35억 × 10% = 350,000,000",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "입력": {
+   "doneeAge": 30,
+   "donorAge": 65,
+   "specialType": "startup",
+   "giftAmount": 4000000000,
+   "giftDate": "2020-06-01",
+   "jobsCreated10Plus": true
+  },
+  "정답": {
+   "총한도액": 5000000000,
+   "과세표준": 3500000000,
+   "산출세액": 350000000
+  }
+ },
+ {
+  "이름": "[2부-11 옛판] 창업자금 40억·고용 없음 2020-06-01 — 한도 30억: 250,000,000",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "입력": {
+   "doneeAge": 30,
+   "donorAge": 65,
+   "specialType": "startup",
+   "giftAmount": 4000000000,
+   "giftDate": "2020-06-01"
+  },
+  "정답": {
+   "총한도액": 3000000000,
+   "과세표준": 2500000000,
+   "산출세액": 250000000
+  }
+ },
+ {
+  "이름": "[2부-11 대조] 창업자금 40억 2026-03-01 — 지금 한도 50억: 350,000,000",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "입력": {
+   "doneeAge": 30,
+   "donorAge": 65,
+   "specialType": "startup",
+   "giftAmount": 4000000000,
+   "giftDate": "2026-03-01"
+  },
+  "정답": {
+   "총한도액": 5000000000,
+   "과세표준": 3500000000,
+   "산출세액": 350000000
+  }
+ },
+ {
+  "이름": "[2부-11 옛판] 가업승계 50억(경영 15년) 2012-06-01 — 한도 30억·공제 5억·10% 단일: 250,000,000",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "입력": {
+   "doneeAge": 30,
+   "donorAge": 65,
+   "specialType": "business_succession",
+   "giftAmount": 5000000000,
+   "giftDate": "2012-06-01",
+   "businessOwnershipYearsOfParent": 15
+  },
+  "정답": {
+   "총한도액": 3000000000,
+   "과세표준": 2500000000,
+   "산출세액": 250000000
+  }
+ },
+ {
+  "이름": "[2부-11 옛판] 가업승계 150억(15년) 2020-06-01 — 한도 100억·공제 5억·30억 초과 20%: 3억 + 65억 × 20% = 1,600,000,000",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "입력": {
+   "doneeAge": 30,
+   "donorAge": 65,
+   "specialType": "business_succession",
+   "giftAmount": 15000000000,
+   "giftDate": "2020-06-01",
+   "businessOwnershipYearsOfParent": 15
+  },
+  "정답": {
+   "총한도액": 10000000000,
+   "과세표준": 9500000000,
+   "산출세액": 1600000000
+  }
+ },
+ {
+  "이름": "[2부-11 옛판] 가업승계 100억(15년) 2023-06-01 — 공제 10억·60억 초과 20%: 6억 + 30억 × 20% = 1,200,000,000",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "입력": {
+   "doneeAge": 30,
+   "donorAge": 65,
+   "specialType": "business_succession",
+   "giftAmount": 10000000000,
+   "giftDate": "2023-06-01",
+   "businessOwnershipYearsOfParent": 15
+  },
+  "정답": {
+   "총한도액": 30000000000,
+   "과세표준": 9000000000,
+   "산출세액": 1200000000
+  }
+ },
+ {
+  "이름": "[2부-11 대조] 가업승계 100억(15년) 2024-06-01 — 120억까지 10%: 900,000,000",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "입력": {
+   "doneeAge": 30,
+   "donorAge": 65,
+   "specialType": "business_succession",
+   "giftAmount": 10000000000,
+   "giftDate": "2024-06-01",
+   "businessOwnershipYearsOfParent": 15
+  },
+  "정답": {
+   "총한도액": 30000000000,
+   "과세표준": 9000000000,
+   "산출세액": 900000000
+  }
+ },
+ {
+  "이름": "[2부-13 옛판] 비상장주식 2016-06-01 평가 — 순자산가치 하한 없음(2017.4.1. 시행 전): (0×3 + 10만×2)÷5 = 4만 × 1만주",
+  "도구": "calculateUnlistedStockValueJS",
+  "입력": {
+   "totalIssuedShares": 10000,
+   "ownedShares": 10000,
+   "netProfit1YearAgo": 0,
+   "netProfit2YearsAgo": 0,
+   "netProfit3YearsAgo": 0,
+   "netAssetValue": 1000000000,
+   "valuationDate": "2016-06-01"
+  },
+  "정답": {
+   "평가액_1주당": 40000,
+   "평가총액": 400000000
+  }
+ },
+ {
+  "이름": "[2부-13 옛판] 같은 주식 2017-06-01 평가 — 하한 70%(대통령령 제27835호 부칙): 7만 × 1만주",
+  "도구": "calculateUnlistedStockValueJS",
+  "입력": {
+   "totalIssuedShares": 10000,
+   "ownedShares": 10000,
+   "netProfit1YearAgo": 0,
+   "netProfit2YearsAgo": 0,
+   "netProfit3YearsAgo": 0,
+   "netAssetValue": 1000000000,
+   "valuationDate": "2017-06-01"
+  },
+  "정답": {
+   "평가액_1주당": 70000,
+   "평가총액": 700000000
+  }
+ },
+ {
+  "이름": "[2부-13 대조] 같은 주식 2019-06-01 평가 — 하한 80%: 8만 × 1만주",
+  "도구": "calculateUnlistedStockValueJS",
+  "입력": {
+   "totalIssuedShares": 10000,
+   "ownedShares": 10000,
+   "netProfit1YearAgo": 0,
+   "netProfit2YearsAgo": 0,
+   "netProfit3YearsAgo": 0,
+   "netAssetValue": 1000000000,
+   "valuationDate": "2019-06-01"
+  },
+  "정답": {
+   "평가액_1주당": 80000,
+   "평가총액": 800000000
+  }
+ },
+ {
+  "이름": "[2부-13 옛판] 비상장 최대주주 지분 50% 초과 2019-06-01 — 할증 30%: 8억 × 1.3",
+  "도구": "calculateUnlistedStockValueJS",
+  "입력": {
+   "totalIssuedShares": 10000,
+   "ownedShares": 10000,
+   "netProfit1YearAgo": 0,
+   "netProfit2YearsAgo": 0,
+   "netProfit3YearsAgo": 0,
+   "netAssetValue": 1000000000,
+   "valuationDate": "2019-06-01",
+   "isMajorShareholder": true,
+   "isMajorShareholderOver50Percent": true
+  },
+  "정답": {
+   "최대주주할증액": 240000000,
+   "평가총액": 1040000000
+  }
+ },
+ {
+  "이름": "[2부-13 옛판] 상장 최대주주 50% 초과 2019-06-01 — 할증 30%: 10억 × 30% = 3억",
+  "도구": "calculateListedStockValueJS",
+  "입력": {
+   "averageClosingPrice": 10000,
+   "shares": 100000,
+   "isMajorShareholder": true,
+   "valuationDate": "2019-06-01",
+   "isMajorShareholderOver50Percent": true
+  },
+  "정답": {
+   "최대주주할증액": 300000000
+  }
+ },
+ {
+  "이름": "[2부-13 대조] 같은 상장 2020-06-01 — 20% 단일: 2억",
+  "도구": "calculateListedStockValueJS",
+  "입력": {
+   "averageClosingPrice": 10000,
+   "shares": 100000,
+   "isMajorShareholder": true,
+   "valuationDate": "2020-06-01",
+   "isMajorShareholderOver50Percent": true
+  },
+  "정답": {
+   "최대주주할증액": 200000000
+  }
+ },
+ {
+  "이름": "[2부-13 옛판] 중견기업 주식 2022-06-01 — 중견 제외는 2023.1.1.부터라 할증 20%: 2억",
+  "도구": "calculateListedStockValueJS",
+  "입력": {
+   "averageClosingPrice": 10000,
+   "shares": 100000,
+   "isMajorShareholder": true,
+   "valuationDate": "2022-06-01",
+   "isMediumBusinessUnder500B": true
+  },
+  "정답": {
+   "최대주주할증액": 200000000
+  }
+ },
+ {
+  "이름": "[2부-13 대조] 중견기업 주식 2023-06-01 — 할증 제외: 0",
+  "도구": "calculateListedStockValueJS",
+  "입력": {
+   "averageClosingPrice": 10000,
+   "shares": 100000,
+   "isMajorShareholder": true,
+   "valuationDate": "2023-06-01",
+   "isMediumBusinessUnder500B": true
+  },
+  "정답": {
+   "최대주주할증액": 0
+  }
+ },
+ {
+  "이름": "[2부-21 옛판] 수정신고 8개월 뒤, 2008-06-01 신고 — 2008년까지는 6개월 이내 50%만: 감면 0",
+  "도구": "calculateFilingPenaltyReductionJS",
+  "입력": {
+   "originalPenaltyAmount": 1000000,
+   "filingType": "revised",
+   "monthsAfterDeadline": 8,
+   "filingDate": "2008-06-01"
+  },
+  "정답": {
+   "감면세액": 0,
+   "최종가산세액": 1000000
+  }
+ },
+ {
+  "이름": "[2부-21 옛판] 수정신고 8개월 뒤, 2015-06-01 신고 — 1년 이내 20%: 200,000",
+  "도구": "calculateFilingPenaltyReductionJS",
+  "입력": {
+   "originalPenaltyAmount": 1000000,
+   "filingType": "revised",
+   "monthsAfterDeadline": 8,
+   "filingDate": "2015-06-01"
+  },
+  "정답": {
+   "감면세액": 200000,
+   "최종가산세액": 800000
+  }
+ },
+ {
+  "이름": "[2부-21 대조] 수정신고 8개월 뒤, 2021-06-01 신고 — 지금 단계 1년 이내 30%: 300,000",
+  "도구": "calculateFilingPenaltyReductionJS",
+  "입력": {
+   "originalPenaltyAmount": 1000000,
+   "filingType": "revised",
+   "monthsAfterDeadline": 8,
+   "filingDate": "2021-06-01"
+  },
+  "정답": {
+   "감면세액": 300000,
+   "최종가산세액": 700000
+  }
+ },
+ {
+  "이름": "[2부-21 옛판] 기한후신고 3개월 뒤, 2010-06-01 신고 — 2011.8.2.까지는 1개월 이내 50%만: 0",
+  "도구": "calculateFilingPenaltyReductionJS",
+  "입력": {
+   "originalPenaltyAmount": 1000000,
+   "filingType": "late_filing",
+   "monthsAfterDeadline": 3,
+   "filingDate": "2010-06-01"
+  },
+  "정답": {
+   "감면세액": 0
+  }
+ },
+ {
+  "이름": "[2부-21 옛판] 기한후신고 3개월 뒤, 2015-06-01 신고 — 6개월 이내 20%: 200,000",
+  "도구": "calculateFilingPenaltyReductionJS",
+  "입력": {
+   "originalPenaltyAmount": 1000000,
+   "filingType": "late_filing",
+   "monthsAfterDeadline": 3,
+   "filingDate": "2015-06-01"
+  },
+  "정답": {
+   "감면세액": 200000
+  }
+ },
+ {
+  "이름": "[2부-21 대조] 기한후신고 3개월 뒤, 2021-06-01 신고 — 3개월 이내 30%: 300,000",
+  "도구": "calculateFilingPenaltyReductionJS",
+  "입력": {
+   "originalPenaltyAmount": 1000000,
+   "filingType": "late_filing",
+   "monthsAfterDeadline": 3,
+   "filingDate": "2021-06-01"
+  },
+  "정답": {
+   "감면세액": 300000
+  }
+ },
+ {
+  "이름": "[2부-21 옛판] 역외거래 부정 무신고 증여 2014-06-01 — 60%는 2015.7.1. 이후 증여분이라 40%: 8천만 × 40% = 32,000,000",
+  "도구": "calculate_gift_tax",
+  "입력": {
+   "relation": "직계존속",
+   "giftAmount": 500000000,
+   "filingStatus": "unreported",
+   "isFraudulent": true,
+   "isOffshoreTransaction": true,
+   "giftDate": "2014-06-01"
+  },
+  "정답": {
+   "과세표준": 450000000,
+   "무신고가산세": 32000000
+  }
+ },
+ {
+  "이름": "[2부-21 대조] 같은 증여 2016-06-01 — 60%: 48,000,000",
+  "도구": "calculate_gift_tax",
+  "입력": {
+   "relation": "직계존속",
+   "giftAmount": 500000000,
+   "filingStatus": "unreported",
+   "isFraudulent": true,
+   "isOffshoreTransaction": true,
+   "giftDate": "2016-06-01"
+  },
+  "정답": {
+   "과세표준": 450000000,
+   "무신고가산세": 48000000
+  }
+ },
+ {
+  "이름": "[2부-09 옛판] 환산 1.5억 + 개산 180만 < 비용 3억, 2009-06-30 양도 — §97②2호 단서는 2011.1.1. 이후 신고분이라 환산 + 개산만: 차익 348,200,000 × 70% − 250만 = 241,240,000, × 35% − 1,414만 = 70,294,000",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "other",
+   "acquisitionDate": "1995-03-01",
+   "transferPrice": 500000000,
+   "acquisitionStandardPriceForConversion": 60000000,
+   "transferStandardPriceForConversion": 200000000,
+   "necessaryExpenses": 300000000,
+   "transferDate": "2009-06-30"
+  },
+  "정답": {
+   "과세표준": 241240000,
+   "산출세액": 70294000
+  }
+ },
+ {
+  "이름": "[2부-09 대조] 같은 자산 2012-06-30 양도 — 단서로 비용 3억: 차익 2억 × 70% − 250만 = 137,500,000, × 35% − 1,490만 = 33,225,000",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "other",
+   "acquisitionDate": "1995-03-01",
+   "transferPrice": 500000000,
+   "acquisitionStandardPriceForConversion": 60000000,
+   "transferStandardPriceForConversion": 200000000,
+   "necessaryExpenses": 300000000,
+   "transferDate": "2012-06-30"
+  },
+  "정답": {
+   "과세표준": 137500000,
+   "산출세액": 33225000
+  }
  }
 ]
