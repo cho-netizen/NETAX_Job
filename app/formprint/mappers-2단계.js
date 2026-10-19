@@ -13,6 +13,12 @@
  *   조특11호의13 : 같은 도구, 서식 구분 'sr_succession_deferred' — srSuccessionClawbackPrintPageHtml_(…, true)
  *     세 장 모두 증여세 신고 뒤 사후관리 위반 때 따로 내는 신고서라 세목 묶음(plan)에는 넣지 않는다(세액인쇄 서식표 줄로 찍음).
  *     수증자·증여자는 지금 인쇄처럼 일반 증여 탭의 첫 번째 사람(giftDonees[0]·giftDonors[0]) — 추징이자 도구에는 사람 칸이 없음.
+ *   조특11호의8  : 특례세율 결과(lastSpecialRateGiftResult_)가 가업승계주식등 — srBusinessSuccessionApplicationPrintPageHtml_ (서식표 sr 줄에 이 서식 쪽이 붙음)
+ *   소득103호·104호 : 국외전출자 결과(lastExitTaxInput_·lastExitTaxResult_)가 있음, 소득105호 : 거기에 "납부유예를 신청함" — exitTaxPrintFormPageHtml_
+ *   증여10호의5·10호의6 부표1 : 초과배당·특정법인 결과가 있음(예전 인쇄엔 없던 장), 부표2 : 거기에 일반 증여 탭 재산평가의 서화·골동품이 있음 — gfArtworkPrintPageHtml_
+ *   상속1호부표2 : 가업상속공제 계산 내역이 있고 납부유예를 고르지 않음, 상속12호의2부표2 : 가업상속 납부유예세액 > 0 — ihBizAssetListPrintPageHtml_ (상속 묶음 plan에도 붙임)
+ *   ⚠ 세액인쇄 서식표(taxcalc.html PRINT_REGISTRY_)에서 사후관리 추징(clawback)·국외전출자(exittax)·초과배당(ed)·특정법인(sc) 줄은 서식번호가 하나뿐이라
+ *     52호의2·11호의10·11호의13·103~105호·10호의5/6 부표 줄이 따로 없다 — 그 줄(subForms)이 생겨야 📄 원본 모양 단추가 뜸(이 파일은 taxcalc.html을 고치지 않음).
  */
 (function (root, factory) {
   var NF = root.NxFormPrint;
