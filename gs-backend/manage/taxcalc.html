@@ -211,14 +211,26 @@ function taxCalcDeadlineFromMonthEnd_(dateStr, monthsAfter){
   if (!dateStr) return null;
   const d = new Date(dateStr + 'T00:00:00');
   if (isNaN(d.getTime())) return null;
-  return new Date(d.getFullYear(), d.getMonth() + 1 + monthsAfter, 0);
+  return taxCalcShiftDeadline_(new Date(d.getFullYear(), d.getMonth() + 1 + monthsAfter, 0));
+}
+// [2026.10.19 조견표 1부-02·2부-17] 국세기본법 §5① — 기한 끝날이 토·일·공휴일(조견표 1부-02)·5월 1일이면 그다음 날이 기한.
+//  규칙은 엔진의 window.nxShiftTaxDeadline_ 하나(납부지연가산세 기간 나눔과 같은 날). 엔진이 없으면 그대로.
+function taxCalcShiftDeadline_(dt){
+  if (!dt || isNaN(dt.getTime()) || typeof window.nxShiftTaxDeadline_ !== 'function') return dt;
+  const p = function(n){ return String(n).padStart(2, '0'); };
+  const s2 = window.nxShiftTaxDeadline_(dt.getFullYear() + '-' + p(dt.getMonth() + 1) + '-' + p(dt.getDate()));
+  const out = new Date(s2 + 'T00:00:00');
+  return isNaN(out.getTime()) ? dt : out;
 }
 // 실제납부일이 법정신고기한보다 늦은 날수(음수·미입력이면 0)를 계산한다.
 function taxCalcDaysLate_(deadline, paidDateStr){
   if (!deadline || !paidDateStr) return 0;
   const paid = new Date(paidDateStr + 'T00:00:00');
   if (isNaN(paid.getTime())) return 0;
-  const days = Math.round((paid.getTime() - deadline.getTime()) / 86400000);
+  let days = Math.round((paid.getTime() - deadline.getTime()) / 86400000);
+  // [2026.10.19 조견표 2부-17] 국세기본법 §47의4①1호 — 법률 제21212호(2026.7.1. 시행)부터 "법정납부기한의 다음 날부터 납부일의 전날까지".
+  //  그 전 판은 "납부일까지"(2020~2026.6.30.)·"자진납부일까지"(~2019). 2026.7.1. 이후 납부분은 하루 덜 셈.
+  if (days > 0 && String(paidDateStr) >= '2026-07-01') days -= 1;
   return days > 0 ? days : 0;
 }
 function setUnpaidDaysField_(fieldId, days){
@@ -241,7 +253,7 @@ function recomputeTransferUnpaidDays(idx){
   });
   if (!maxTransferDate){ setUnpaidDaysField_('trUnpaidDays' + suf, 0); return; }
   const y = Number(maxTransferDate.slice(0, 4));
-  const deadline = new Date(y + 1, 4, 31); // 확정신고기한: 양도일 속한 해의 다음해 5.31
+  const deadline = taxCalcShiftDeadline_(new Date(y + 1, 4, 31)); // 확정신고기한: 양도일 속한 해의 다음해 5.31
   const paidDate = document.getElementById('trPaidDate' + suf);
   setUnpaidDaysField_('trUnpaidDays' + suf, taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
 }
@@ -302,7 +314,7 @@ function recomputeStockUnpaidDays(){
   const paidDate = document.getElementById('stPaidDate');
   if (!transferDate || !transferDate.value){ setUnpaidDaysField_('stUnpaidDays', 0); return; }
   const y = Number(transferDate.value.slice(0, 4));
-  const deadline = new Date(y + 1, 4, 31); // 확정신고기한: 양도일 속한 해의 다음해 5.31
+  const deadline = taxCalcShiftDeadline_(new Date(y + 1, 4, 31)); // 확정신고기한: 양도일 속한 해의 다음해 5.31
   setUnpaidDaysField_('stUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
 }
 // [2026.09.23 재설계] 국외자산이 자산 카드 배열(transferAssets)로 흡수되면서 여러 건일 수
@@ -312,7 +324,7 @@ function recomputeOverseasAssetUnpaidDays(idx){
   const a = transferAssets[idx];
   if (!a || !a.transferDate){ setUnpaidDaysField_('oaUnpaidDays-' + idx, 0); a.oaUnpaidDays = 0; return; }
   const y = Number(a.transferDate.slice(0, 4));
-  const deadline = new Date(y + 1, 4, 31); // 확정신고기한: 양도일 속한 해의 다음해 5.31
+  const deadline = taxCalcShiftDeadline_(new Date(y + 1, 4, 31)); // 확정신고기한: 양도일 속한 해의 다음해 5.31
   const days = taxCalcDaysLate_(deadline, a.oaPaidDate || '');
   a.oaUnpaidDays = days;
   setUnpaidDaysField_('oaUnpaidDays-' + idx, days);
@@ -5544,7 +5556,7 @@ function recomputeOverseasSharedUnpaidDays(){
   const latestTransferDate = transferAssets.filter(function(a){ return a.isOverseasAsset && a.transferDate; }).map(function(a){ return a.transferDate; }).sort().pop();
   if (!latestTransferDate){ setUnpaidDaysField_('oaSharedUnpaidDays', 0); oaSharedFilingState.unpaidDays = 0; return; }
   const y = Number(latestTransferDate.slice(0, 4));
-  const deadline = new Date(y + 1, 4, 31); // 확정신고기한: 양도일 속한 해의 다음해 5.31
+  const deadline = taxCalcShiftDeadline_(new Date(y + 1, 4, 31)); // 확정신고기한: 양도일 속한 해의 다음해 5.31
   const days = taxCalcDaysLate_(deadline, oaSharedFilingState.paidDate || '');
   oaSharedFilingState.unpaidDays = days;
   setUnpaidDaysField_('oaSharedUnpaidDays', days);
