@@ -2182,10 +2182,20 @@ function shareholdingIndirectRatio_(row){
   if (l3) ratio = ratio * (l3 / 100);
   return ratio * 100;
 }
+// [2026.10.19 서식감사 차] 일감몰아주기(jm)에서 실제로 세는 간접보유비율 — 시행령 §34의3⑧·⑱: 간접출자법인이 "지배주주등이 30% 이상
+//  출자한 법인" 또는 "지배주주등과 그런 법인이 50% 이상 출자한 법인"일 때만 간접보유비율에 넣고(chainQualified — 화면에서 확인, 기본 충족),
+//  ⑬: 간접보유비율이 1천분의 1(0.1%) 미만인 출자관계는 뺀다. 일감떼어주기(jt)는 예전 그대로(입력 고리를 모두 곱해 더함).
+function shareholdingCountedIndirectRatio_(row, target){
+  const r = shareholdingIndirectRatio_(row);
+  if (target !== 'jm') return r;
+  if (row.chainQualified === false) return 0;
+  if (r > 0 && r < 0.1) return 0;
+  return r;
+}
 function renderShareholdingRows_(target){
   const rows = shareholdingRows_[target];
   return rows.map(function(row, i){
-    const indirect = shareholdingIndirectRatio_(row);
+    const indirect = shareholdingCountedIndirectRatio_(row, target);
     return '<div class="taxcalc-asset-head" style="margin-top:6px;"><span style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
         '<b>주주 ' + tcPad2_(i + 1) + '</b>' +
         (i > 0 ? '<button type="button" class="taxcalc-del-asset" data-action="del-sh-row" data-idx="' + i + '">✕ 주주 삭제</button>' : '') +
@@ -2201,6 +2211,7 @@ function renderShareholdingRows_(target){
       '<div class="taxcalc-field"><label>2차 지분율(%)</label><input type="number" step="0.01" data-shfield="chain2Ratio" value="' + (row.chain2Ratio || '') + '" placeholder="1차법인→2차법인"></div>' +
       '<div class="taxcalc-field"><label>수혜법인 직전 출자법인명</label><input type="text" data-shfield="chain3Company" value="' + (row.chain3Company || '').replace(/"/g, '&quot;') + '"></div>' +
       '<div class="taxcalc-field"><label>수혜법인 출자비율(%)</label><input type="number" step="0.01" data-shfield="chain3Ratio" value="' + (row.chain3Ratio || '') + '" placeholder="마지막법인→수혜법인"></div>' +
+      (target === 'jm' ? '<div class="taxcalc-field checkbox"><input type="checkbox" data-shfield="chainQualified" id="shChainQ-' + i + '"' + (row.chainQualified === false ? '' : ' checked') + '><label for="shChainQ-' + i + '">간접출자법인 요건 충족(시행령 §34의3⑱ — 지배주주등이 30% 이상 출자, 또는 지배주주등+그 법인이 50% 이상 출자한 법인). 끄면 간접보유비율 0, 0.1% 미만도 0(⑬)</label></div>' : '') +
       '<div class="taxcalc-field"><span class="taxcalc-result-note" style="margin:0;">간접보유비율(자동계산): ' + indirect.toFixed(4) + '% · 합계(직접+간접): ' + (numVal(row.directRatio) + indirect).toFixed(4) + '%</span></div>' +
     '</div>';
   }).join('');
@@ -2233,11 +2244,11 @@ function openShareholdingHelperModal_(target){
     overlay.querySelectorAll('[data-shfield]').forEach(function(el){
       el.addEventListener('input', function(){
         const i = numVal(el.closest('[data-sh-idx]').dataset.shIdx);
-        shareholdingRows_[target][i][el.dataset.shfield] = el.value;
+        shareholdingRows_[target][i][el.dataset.shfield] = el.type === 'checkbox' ? el.checked : el.value;
         const noteEl = el.closest('[data-sh-idx]').querySelector('.taxcalc-result-note');
         if (noteEl){
           const row = shareholdingRows_[target][i];
-          const indirect = shareholdingIndirectRatio_(row);
+          const indirect = shareholdingCountedIndirectRatio_(row, target);
           noteEl.textContent = '간접보유비율(자동계산): ' + indirect.toFixed(4) + '% · 합계(직접+간접): ' + (numVal(row.directRatio) + indirect).toFixed(4) + '%';
         }
       });
@@ -2256,20 +2267,46 @@ function openShareholdingHelperModal_(target){
   enhanceNumberInputs(overlay);
   overlay.querySelector('#shRunBtn').addEventListener('click', function(){
     const total = shareholdingRows_[target].reduce(function(s, row){
-      return s + numVal(row.directRatio) + shareholdingIndirectRatio_(row);
+      return s + numVal(row.directRatio) + shareholdingCountedIndirectRatio_(row, target);
     }, 0);
     const resultBox = document.getElementById('shResult');
     let html = '<div class="taxcalc-result" style="margin-top:10px;">';
-    html += taxCalcResultRow('지배주주+친족 주식보유비율(합계)', total.toFixed(4) + '%', { total: true });
-    html += '<button type="button" class="taxcalc-run-btn" id="shApplyBtn" style="margin-top:8px;">위 계산결과 반영하기</button>';
+    // [2026.10.19 서식감사 차] 일감몰아주기는 주주(수증자)마다 따로 판정·계산한다 — 법 §45의3① "지배주주와 그 친족[주식보유비율이
+    //  한계보유비율을 초과하는 주주에 한정]이 ... 각각 증여받은 것으로 본다", 부표1 ㉓도 주주별. 전에는 주주 전체 합계를 jmShareRatio에
+    //  넣어 한 사람처럼 과세요건(3%·10%)을 보고 세액도 합계로 냈다. 이제 주주별 비율을 보여 주고 이번 신고의 수증자 한 명을 골라 넣는다.
+    let pick = -1;
+    if (target === 'jm'){
+      const sizeEl = document.getElementById('jmCompanySize');
+      const limit = (sizeEl && sizeEl.value !== 'general') ? 10 : 3; // 한계보유비율(시행령 §34의3⑨) — 엔진 gateShareThreshold와 같음
+      const doneeName = ((typeof giftDonees !== 'undefined' && giftDonees[0]) ? giftDonees[0].name : '') || '';
+      html += '<div class="taxcalc-result-note">주주별 주식보유비율(직접+간접) — 한계보유비율 ' + limit + '%를 넘는 주주만 과세대상. 이번 신고의 수증자를 고르세요.</div>';
+      shareholdingRows_[target].forEach(function(row, i){
+        const t = numVal(row.directRatio) + shareholdingCountedIndirectRatio_(row, target);
+        if (pick < 0 && doneeName && row.name === doneeName) pick = i;
+        html += '<div class="taxcalc-field checkbox"><input type="radio" name="shPick" value="' + i + '" id="shPick-' + i + '"><label for="shPick-' + i + '">' + escapeHtml(row.name || ('주주 ' + (i + 1))) + ' — ' + t.toFixed(4) + '% ' + (t > limit ? '(과세대상)' : '(한계보유비율 이하 — 과세 안 됨)') + '</label></div>';
+      });
+      if (pick < 0) shareholdingRows_[target].forEach(function(row, i){ if (pick < 0 && numVal(row.directRatio) + shareholdingCountedIndirectRatio_(row, target) > limit) pick = i; });
+      if (pick < 0) pick = 0;
+      html += taxCalcResultRow('(참고) 지배주주+친족 합계', total.toFixed(4) + '%');
+    } else {
+      html += taxCalcResultRow('지배주주+친족 주식보유비율(합계)', total.toFixed(4) + '%', { total: true });
+    }
+    html += '<button type="button" class="taxcalc-run-btn" id="shApplyBtn" style="margin-top:8px;">' + (target === 'jm' ? '고른 수증자의 비율 반영하기' : '위 계산결과 반영하기') + '</button>';
     html += '</div>';
     resultBox.innerHTML = html;
+    if (pick >= 0){ const r0 = resultBox.querySelector('#shPick-' + pick); if (r0) r0.checked = true; }
     resultBox.querySelector('#shApplyBtn').addEventListener('click', function(){
       const fieldId = target === 'jt' ? 'jtShareRatio' : 'jmShareRatio';
+      let value = total;
+      if (target === 'jm'){
+        const chosen = resultBox.querySelector('input[name="shPick"]:checked');
+        const row = shareholdingRows_[target][chosen ? numVal(chosen.value) : 0] || {};
+        value = numVal(row.directRatio) + shareholdingCountedIndirectRatio_(row, target);
+      }
       const el = document.getElementById(fieldId);
-      if (el){ el.value = total.toFixed(4); if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(el); }
+      if (el){ el.value = value.toFixed(4); if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(el); }
       close();
-      showToast('지배주주+친족 주식보유비율을 반영했습니다.', 'success');
+      showToast(target === 'jm' ? '고른 수증자의 주식보유비율을 반영했습니다.' : '지배주주+친족 주식보유비율을 반영했습니다.', 'success');
     });
   });
 }
