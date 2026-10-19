@@ -3525,16 +3525,30 @@
     const forProfitHeirShareRatio = Math.max(0, Math.min(1, Number(p.forProfitHeirShareRatio) || 0));
     const forProfitPayableByHeirs = Math.max(0, Math.round((forProfitExemptedTaxAmount - forProfitBequestAmount * 0.10) * forProfitHeirShareRatio));
 
-    const totalGrossEstateValue = Number(p.totalGrossEstateValue) || 0;
+    // [2026.10.20 J28 — AI 회의 회장 결론] 별지 12호의2 부표1 ⑩ = ⑧ × (① 또는 ⑦) ÷ ⑨ (상증법 시행령 §69의3①, 분자는 §15⑤ 가업상속 재산가액)
+    //  ⑧ 상속세 납부세액 = 작성방법 7 "별지 제9호서식의 공제·면제 후 납부할 세액" = 본표 ㊲(㉕ + ㉖ − ㉗ − ㉘ + ㊱) — 전엔 ㉖ 이자상당액·㊱ 면제분을 빠뜨림
+    //  ⑨ 총 상속재산가액 = 작성방법 8 "상속으로 얻은 자산(법 §13에 따라 가산하는 증여재산 포함)의 총액" — 직접 입력이 없으면
+    //     총상속재산(grossEstateValue, 화면 재산 합계) + 추정상속재산(§15) + 가산 증여재산(§13)으로 채움(부표1 ⑫ + ㉕)
+    const deferralTax8_ = Math.max(0, taxAfterReportCredit + interestAmount + forProfitPayableByHeirs);
+    const grossEstateValue_ = Number(p.grossEstateValue) || 0;
+    const totalGrossAuto_ = grossEstateValue_ > 0 ? grossEstateValue_ + disposalPresumptionTotal + priorGiftInEstate_ : 0;
+    const totalGrossEstateInput_ = Number(p.totalGrossEstateValue) || 0;
+    const totalGrossEstateValue = totalGrossEstateInput_ > 0 ? totalGrossEstateInput_ : totalGrossAuto_;
     let businessInheritanceDeferralEligibleAmount = null;
     if (businessInheritanceDetail && totalGrossEstateValue > 0) {
-      businessInheritanceDeferralEligibleAmount = Math.round(taxAfterReportCredit * businessInheritanceDetail.targetAmount / totalGrossEstateValue);
+      businessInheritanceDeferralEligibleAmount = Math.round(deferralTax8_ * businessInheritanceDetail.targetAmount / totalGrossEstateValue);
     }
-    // [2026.10.19 서식감사 차] 실제로 빼는 납부유예세액 — 공제를 받았으면 0(§72의2①2호), 아니면 입력값(비우고 납부유예를 선택했으면
-    //  가능세액). 한도(시행령 §69의3① 가능세액)는 지금 엔진에 그대로 두지 않는다 — 부표1 ⑩의 "① 또는 ⑦" 산식 문제가 따로 남아 있어서.
+    // 실제로 빼는 납부유예세액 — 공제를 받았으면 0(§72의2①2호), 아니면 입력값(비우고 납부유예를 선택했으면 가능세액).
+    //  [J28] 입력값이 가능세액(⑩)을 넘으면 ⑩으로 줄이고 알린다(본표 '바' ≤ 부표1 ⑩) — ⑨가 없어 ⑩을 못 내면 입력값 그대로.
+    const deferralOver_ = !businessInheritanceDeferralBlocked && businessInheritanceDeferredTaxInput > 0 && businessInheritanceDeferralEligibleAmount != null
+      && businessInheritanceDeferredTaxInput > businessInheritanceDeferralEligibleAmount;
     const businessInheritanceDeferredTaxAmount = businessInheritanceDeferralBlocked ? 0
-      : (businessInheritanceDeferredTaxInput > 0 ? businessInheritanceDeferredTaxInput
+      : (businessInheritanceDeferredTaxInput > 0 ? (deferralOver_ ? businessInheritanceDeferralEligibleAmount : businessInheritanceDeferredTaxInput)
         : (businessInheritanceDeferralElected && businessInheritanceDeferralEligibleAmount ? businessInheritanceDeferralEligibleAmount : 0));
+    const deferralNotes_ = [];
+    if (deferralOver_) deferralNotes_.push('입력한 납부유예세액 ' + businessInheritanceDeferredTaxInput.toLocaleString('ko-KR') + '원이 가능세액(부표1 ⑩) ' + businessInheritanceDeferralEligibleAmount.toLocaleString('ko-KR') + '원을 넘어 ⑩까지만 뺐습니다(상증법 시행령 §69의3①).');
+    if (totalGrossEstateInput_ > 0 && totalGrossAuto_ > 0 && totalGrossEstateInput_ !== totalGrossAuto_) deferralNotes_.push('직접 넣은 총 상속재산가액(⑨) ' + totalGrossEstateInput_.toLocaleString('ko-KR') + '원이 재산 합계 + 추정상속재산 + 가산 증여재산 ' + totalGrossAuto_.toLocaleString('ko-KR') + '원과 다릅니다 — 직접 넣은 값으로 계산했습니다.');
+    if (totalGrossEstateInput_ <= 0 && totalGrossAuto_ > 0 && businessInheritanceDetail) deferralNotes_.push('총 상속재산가액(⑨)을 재산 합계 + 추정상속재산 + 가산 증여재산 = ' + totalGrossAuto_.toLocaleString('ko-KR') + '원으로 채웠습니다(부표1 작성방법 8).');
 
     // culturalPropertyDeferredTaxAmount(§74)는 위 taxAfterCredits 단계에서 이미 뺐으므로 여기서 다시
     // 빼지 않는다(이중차감 방지) — businessInheritanceDeferredTaxAmount(§72의2)만 최종 단계에서 차감.
@@ -3591,6 +3605,8 @@
       납부지연가산세: penalties.latePenalty,
       문화재등징수유예세액: culturalPropertyDeferredTaxAmount, 가업상속납부유예세액: businessInheritanceDeferredTaxAmount,
       가업상속납부유예_가능세액: businessInheritanceDeferralEligibleAmount,
+      가업상속납부유예_상속세납부세액: businessInheritanceDetail ? deferralTax8_ : null, 가업상속납부유예_총상속재산가액: businessInheritanceDetail && totalGrossEstateValue > 0 ? totalGrossEstateValue : null, // [J28] 부표1 ⑧·⑨
+      가업상속납부유예_안내: deferralNotes_.length ? deferralNotes_.join(' ') : undefined,
       가업상속납부유예_선택: businessInheritanceDeferralElected,
       가업상속납부유예_불가안내: businessInheritanceDeferralBlocked ? '가업상속 납부유예세액(' + businessInheritanceDeferredTaxInput + '원)을 빼지 않았습니다 — 법 §72의2①2호: 가업상속공제(영농상속공제 포함)를 받으면 납부유예를 받을 수 없습니다. 납부유예를 받으려면 "가업상속공제 대신 납부유예 선택"을 켜세요(그러면 가업상속공제는 0).' : null,
       납부세액: finalTax
@@ -3796,7 +3812,8 @@
     //  내고, 앞선 분에 낸 세액은 ㉙(납부세액공제)로 뺀다(조특법 §30의5① 후단 "각각의 증여세 과세가액을 합산하여
     //  적용", §30의6⑤→§30의5⑬→상증법 §47②·§58). 전에는 이번 분만으로 과세표준을 내면서 공제(5억·10억)를 또 하고
     //  앞선 세액까지 빼서 두 번째 이후 특례 증여 세액이 적게 나왔다(예: 창업자금 앞선 10억·이번 10억 → 0원, 바른 값 1억).
-    //  §58② 비율 한도는 앞선 특례분 과세표준 입력이 없어 산출세액 한도로만 둔다(10% 단일세율 구간이면 결과 같음).
+    //  [2026.10.20 J25] §58② 비율 한도 — 앞선 특례 증여 당시 과세표준(priorSpecialTaxBase, 당시 10호의2 ㉕)을 넣으면
+    //  ㉙ = min(앞선 분 당시 산출세액, ㉗ × 앞선 과세표준 ÷ ㉕). 비우면 산출세액 한도로만 두고, 앞선 세액이 있으면 확인 안내.
     const cumulativeSpecialBase = specialRateApplicableAmount + priorSpecialGiftAmount;
     const propertyDeductionLimit = specialType === 'startup' ? 500000000 : 1000000000;
     const propertyDeduction = Math.min(propertyDeductionLimit, cumulativeSpecialBase);
@@ -3808,7 +3825,17 @@
       ? Math.round(taxBase * 0.10)
       : Math.round(Math.min(taxBase, 12000000000) * 0.10 + Math.max(0, taxBase - 12000000000) * 0.20);
 
-    const priorPaidTax = Math.min(Number(p.priorPaidTax) || 0, calculatedTax);
+    // [2026.10.20 J25] 상증법 §58① 공제액 = 앞선 특례 증여분의 '증여 당시 산출세액'(조특법 §30의5⑬·§30의6⑤가 상증법을 따름),
+    //  §58② 한도 = 이번 산출세액 × (가산한 증여재산의 과세표준 ÷ 합친 과세표준). 예: 앞선 분이 옛 공제·세율로 과세돼 당시 산출세액 6천만,
+    //  당시 과세표준 5억, 이번 합산 과세표준 15억·산출세액 1.5억이면 한도 = 1.5억 × 5억 ÷ 15억 = 5천만 → ㉙ 5천만.
+    const priorSpecialTaxBase = Number(p.priorSpecialTaxBase) || 0;
+    const priorPaidInput_ = Number(p.priorPaidTax) || 0;
+    const priorRatioLimit_ = (priorSpecialTaxBase > 0 && taxBase > 0) ? Math.round(calculatedTax * Math.min(1, priorSpecialTaxBase / taxBase)) : null;
+    const priorPaidTax = Math.min(priorPaidInput_, calculatedTax, priorRatioLimit_ == null ? Infinity : priorRatioLimit_);
+    const c_ = function (n) { return Number(n).toLocaleString('ko-KR'); };
+    const priorCreditNote_ = priorPaidInput_ <= 0 ? '' : (priorRatioLimit_ == null
+      ? '납부세액공제(㉙) — 앞선 특례 증여 당시 과세표준을 넣지 않아 상증법 §58② 비율 한도를 확인하지 않았습니다. 앞선 증여가 지금과 다른 세율·공제로 과세됐다면 그 과세표준을 넣으세요(같은 세율·공제면 결과 같음).'
+      : ('납부세액공제(㉙) = min(앞선 분 당시 산출세액 ' + c_(priorPaidInput_) + '원, 상증법 §58② 한도 ' + c_(calculatedTax) + ' × ' + c_(priorSpecialTaxBase) + ' ÷ ' + c_(taxBase) + ' = ' + c_(priorRatioLimit_) + '원) = ' + c_(priorPaidTax) + '원'));
     // §59·시행령§48(§21 준용) — 외국납부세액공제 = 증여세산출세액×(외국법령에 따라 증여세가 부과된
     // 증여재산의 과세표준÷법§55①에 따른 증여세의 과세표준), 실제 납부한 외국증여세액 한도.
     // foreignGiftTaxBase를 입력하면 이 비례산식으로 자동계산하고, 없으면(구버전 호환) 실제 납부액을
@@ -3837,6 +3864,7 @@
       증여재산공제: propertyDeduction, 재해손실공제: disasterLossDeduction, 감정평가수수료공제: appraisalFeeDeduction,
       과세표준: taxBase, 세율: specialType === 'startup' ? '10%' : '10%(120억 초과분 20%)', 산출세액: calculatedTax,
       납부세액공제: priorPaidTax, 외국납부세액공제: foreignTaxCredit,
+      납부세액공제_한도: priorRatioLimit_, 납부세액공제_안내: priorCreditNote_ || undefined, // [2026.10.20 J25] §58②
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       창업자금사용명세미제출가산세: usageStatementPenalty, 창업자금사용명세미제출가산세_별도부과: true,
       납부세액: finalTax
