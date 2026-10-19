@@ -62,5 +62,13 @@ module.exports = function (E, H) {
     other: { name: '견본증여자', regNo: '600101-1000000' }, office: '서초세무서' };
   L.push({ name: '공통11호_증여연부연납5년', forms: [{ formKey: '공통11호', ctx: cG }], ctx: cG });
 
+  // ③ 공통16호 — 상속세 결정(경정)청구: 당초 신고 = ②의 상속(과세가액 80억) 납부세액, 상속개시 후 1년 안 수용으로 재산 가액이 5억 하락(법 §79①2호) → 과세가액 75억으로 다시 계산
+  //   손계산: 과세표준 74.9억 → 69.9억, 산출세액 = 69.9억 × 50% − 4.6억 = 30.35억, 신고세액공제 3% 9,105만 → 29.4395억 → 환급할 세액 = 31.8645억 − 29.4395억 = 2억4,250만
+  var rCor = E.calculateInheritanceTaxJS(clone(Object.assign({}, pIn, { taxableEstateAmount: 7500000000, totalGrossEstateValue: 8500000000 })));
+  var cCr = { 세목: '상속', 신고일: '2026-12-15', taxAgent: AGENT,
+    cr: { taxType: 'inheritance', originalTax: rIn.납부세액, correctedTax: rCor.납부세액, reasonType: 'subsequent', reasonDetail: '상속개시 후 1년 안에 상속재산(토지)이 수용되어 보상가액이 평가액보다 5억원 낮음(상증법 §79①2호)' },
+    claimant: Object.assign({ phone: '010-0000-0000', email: 'sample@example.com' }, HEIRS[0]), other: { name: DECEASED.name, regNo: DECEASED.regNo, deathDate: pIn.dateOfDeath }, office: DECEASED.taxOffice };
+  L.push({ name: '공통16호_상속경정청구', forms: [{ formKey: '공통16호', ctx: cCr }], ctx: cCr });
+
   return L;
 };

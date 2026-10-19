@@ -83,6 +83,8 @@
     if (x) o.set(key + '.연', x.y).set(key + '.월', x.m).set(key + '.일', x.d);
     else o.miss(칸, why || '화면 입력 없음');
   }
+  // 글꼴(나눔고딕)에 없는 동그라미 숫자(①~⑳)를 (1)~(20)으로 — 화면에 손으로 적은 글을 찍을 때
+  function plainNum(t) { return String(t).replace(/[①-⑳]/g, function (ch) { return '(' + (ch.charCodeAt(0) - 0x245F) + ')'; }); }
   function pct2(x) { return Math.round(n(x) * 10000) / 100; } // 0.82345 → 82.35
   function bizDetailOf(ctx) { return (ctx.r || {}).가업상속공제_계산내역 || null; }
   // 별지 제9호서식 ㊲ 공제·면제 후 납부할 세액(= ㉕ + ㉖ − ㉗ − ㉘ + ㊱) — mappers.js 상속9호와 같은 식
@@ -309,6 +311,72 @@
     return o.result();
   };
 
+  // ───────── 결정(경정)청구(증여·상속 공통 탭 "경정청구" 도구) ─────────
+  //  ctx = { 세목, cr(lastCorrectionClaimInput_ = {taxType, originalTax, correctedTax, reasonType, reasonDetail}), claimant(청구인), other(피상속인·증여자), office, taxAgent }
+  //  청구인: 경정청구 도구엔 청구인 칸이 없어 상속 = 상속세 신고인(명부의 신고인 표시, 없으면 첫 행), 증여 = 수증자 첫 번째.
+  /* global lastCorrectionClaimInput_ */
+  function crCtx(extra) {
+    var cr = typeof lastCorrectionClaimInput_ !== 'undefined' ? lastCorrectionClaimInput_ : null;
+    if (!cr) return null;
+    var ta = H.agent();
+    if (cr.taxType === 'gift') {
+      var dn = (typeof giftDonees !== 'undefined' && giftDonees && giftDonees[0]) || {}, dr = (typeof giftDonors !== 'undefined' && giftDonors && giftDonors[0]) || {};
+      return Object.assign({ 세목: '증여', cr: cr, taxAgent: ta,
+        claimant: { name: dn.name, regNo: dn.regNo, address: dn.address, addressDong: dn.addressDong, addressHo: dn.addressHo, phone: dn.phone, email: dn.email },
+        other: { name: dr.name, regNo: dr.regNo, giftDate: H.el('giftDate') }, office: dn.taxOffice }, extra || {});
+    }
+    var hs = (typeof inheritanceHeirs !== 'undefined' && inheritanceHeirs) ? inheritanceHeirs : [];
+    var rp = hs.filter(function (h) { return h && h.isReporter; })[0] || hs[0] || {};
+    return Object.assign({ 세목: '상속', cr: cr, taxAgent: ta,
+      claimant: { name: rp.name, regNo: rp.regNo, address: rp.address, addressDong: rp.addressDong, addressHo: rp.addressHo,
+        phone: rp.isReporter ? H.el('ihReporterPhone') : '', email: rp.isReporter ? H.el('ihReporterEmail') : '', isReporter: !!rp.isReporter },
+      other: { name: H.el('ihDeceasedName'), regNo: H.el('ihDeceasedRegNo'), deathDate: H.el('ihDeathDate') }, office: H.el('ihDeceasedTaxOffice') }, extra || {});
+  }
+
+  // ───────── 상증 별지 제16호서식 — 상속세(증여세) 과세표준 및 세액의 결정(경정)청구서(법 §79, 시행령 §81) ─────────
+  //  값 출처: 지금 인쇄 crPrintFormPageHtml_(세목·당초 신고(결정)세액·청구 후 세액·환급세액·청구 구분·사유) — 화면 crTaxType·crOriginalTax·crCorrectedTax·crReason·crReasonDetail.
+  //  예전 인쇄 번호와 다름: 예전 ① 세목·② 당초세액·③ 청구 후 세액·④ 환급세액·⑤ 청구 구분·⑥ 사유 → 서식 ⑨(신고(결정)·결정(경정)청구 두 열)·③ 청구이유.
+  mappers['공통16호'] = function (ctx) {
+    var o = new Out(), cr = ctx.cr || {}, c = ctx.claimant || {}, ot = ctx.other || {}, ta = ctx.taxAgent || {};
+    var gift = ctx.세목 === '증여';
+    o.need('청구인@성명', c.name, '1.청구인 성명').need('청구인@주민등록번호', c.regNo, '1.청구인 주민등록번호').need('청구인@주소', H.fullAddr(c), '1.청구인 주소');
+    if (has(c.phone)) o.set('청구인@전화번호', c.phone); else o.miss('1.청구인 전화번호(☎)', gift ? '수증자 전화번호 입력 없음' : '상속인 명부에 전화번호 칸 없음(신고인 전화번호는 청구인이 신고인일 때만 씀)');
+    if (has(c.email)) o.set('청구인@전자우편주소', c.email); else o.miss('1.청구인 전자우편주소', gift ? '수증자 전자우편 입력 없음' : '상속인 명부에 전자우편 칸 없음(신고인 전자우편은 청구인이 신고인일 때만 씀)');
+    o.note('⚠ 1. 청구인 = ' + (gift ? '수증자 목록 첫 번째' : '상속세 신고인(상속인 명부의 신고인 표시)') + ' — 경정청구 도구엔 청구인 칸이 없음(예전 인쇄는 청구인을 비워 둠). 다르면 고치세요');
+    o.need('피상속인@성명', ot.name, gift ? '1.증여인 성명' : '1.피상속인 성명').need('피상속인@주민등록번호', ot.regNo, gift ? '1.증여인 주민등록번호' : '1.피상속인 주민등록번호');
+    if (gift) {
+      o.need('피상속인@증여일', ot.giftDate, '1.증여일');
+      o.miss('1.상속개시일', '해당 없음 — 증여세 청구');
+    } else {
+      o.need('피상속인@상속개시일', ot.deathDate, '1.상속개시일');
+      o.miss('1.증여일', '해당 없음 — 상속세 청구');
+    }
+    if (has(ta.name)) {
+      o.set('세무대리인@성명', ta.name);
+      if (has(ta.bizNo)) o.set('세무대리인@사업자등록번호', ta.bizNo); else o.miss('1.세무대리인 사업자등록번호', '세무대리인 사업자등록번호 입력 없음');
+      if (has(ta.phone)) o.set('세무대리인@연락처', ta.phone); else o.miss('1.세무대리인 연락처', '세무대리인 전화번호 입력 없음');
+      o.miss('1.세무대리인 생년월일', '계산기에 없음');
+    } else o.miss('1.세무대리인(성명·사업자등록번호·생년월일·연락처)', '세무대리인 입력 없음(본인 청구)');
+    o.note('제목 "상속세(증여세)" — 이 청구는 ' + (gift ? '증여세' : '상속세') + '(서식에 세목 칸은 따로 없음 — 해당 없는 글자를 지우세요)');
+    o.miss('① 과세표준 신고일', '계산기에 없음(경정청구 도구에 당초 신고일 칸 없음)');
+    o.miss('② 결정통지일', '계산기에 없음');
+    if (has(cr.reasonDetail)) o.set('③', plainNum(cr.reasonDetail)); else o.miss('③ 결정(경정) 청구이유', '화면 입력 없음(경정청구 사유 글)');
+    o.note('⚠ 이 서식은 상증법 §79(경정 등의 청구 특례 — ①상속회복청구소송 등·상속개시 후 1년 안 수용 등으로 가액 하락: 사유 발생일부터 6개월, ②부동산무상사용·금전무상대출·담보제공 증여 뒤 상속·증여 등: 3개월) 청구서. ' +
+      '계산기는 국세기본법 §45의2 ' + (cr.reasonType === 'subsequent' ? '후발적 경정청구(②)' : '통상적 경정청구(①)') + '로 구분함 — §45의2 일반 경정청구면 국세기본법 시행규칙 별지 제16호의2서식을 쓰는지 확인하세요');
+    o.miss('④ 결정(경정)청구 대상 재산(종류·소재지)', '계산기에 없음');
+    o.miss('⑤⑥⑦⑧ 과세표준 금액·산출세액·가산세·공제세액 및 징수유예액(신고(결정)·결정(경정)청구)', '계산기에 없음(경정청구 도구는 납부할 세액만 받음)');
+    var orig = n(cr.originalTax), corr = n(cr.correctedTax), diff = orig - corr;
+    o.set('⑨@신고', orig).set('⑨@청구', corr);
+    if (diff > 0) o.note('환급할 세액(⑨ 신고(결정) − ⑨ 결정(경정)청구) = ' + diff + '원');
+    else if (diff < 0) o.note('⚠ 청구 후 세액이 당초 세액보다 많음 — 경정청구가 아니라 수정신고 대상(국세기본법 §45)');
+    else o.note('⚠ 차액 없음 — 경정청구 실익이 없음');
+    ymdSet(o, '청구일', ctx.신고일, '청구일', 'ctx.신고일 없음(계산기에 없음)');
+    o.need('청구인서명', c.name, '청구인(서명)');
+    if (has(ta.name)) o.set('세무대리인서명', ta.name); else o.miss('세무대리인(서명)', '세무대리인 입력 없음(본인 청구)');
+    if (has(ctx.office)) o.set('세무서', H.officeName(ctx.office)); else o.miss('세무서', gift ? '수증자 관할 세무서 입력 없음' : '피상속인 관할 세무서 입력 없음');
+    return o.result();
+  };
+
   // ───────── 언제 찍나 ─────────
   function instIh(c) { var i = c.inst || instFromApp(); return i && i.input && i.input.taxType === 'inheritance' ? i : null; }
   var WHEN = {
@@ -341,6 +409,9 @@
   ready['공통11호'] = function () { return !!instFromApp(); };
   ctxFor['공통11호부표'] = function (extra) { var c = instCtx(extra); return (c && c.세목 === '상속' && bizDetailOf(c)) ? c : null; };
   ready['공통11호부표'] = function () { try { return !!ctxFor['공통11호부표'](); } catch (e) { return false; } };
+  // 결정(경정)청구 — 지금 인쇄처럼 경정청구 도구 계산이 있으면(PRINT_REGISTRY_ cr.isReady). 신고 묶음(plan)엔 넣지 않음(신고 뒤 따로 내는 청구서)
+  ctxFor['공통16호'] = function (extra) { return crCtx(extra); };
+  ready['공통16호'] = function () { return typeof lastCorrectionClaimInput_ !== 'undefined' && !!lastCorrectionClaimInput_; };
 
   return { 묶음: '상속부속B', forms: forms, mappers: mappers, plan: plan, ctxFor: ctxFor, ready: ready,
     ihbFromInput: ihbFromInput, ihbFromDom: ihbFromDom };
