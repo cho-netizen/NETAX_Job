@@ -5708,7 +5708,9 @@ function renderOverseasPropertyCardHtml_(idx){
 // (여러 건이어도 기본공제 1회만 적용)로 바꾼다.
 function renderOverseasSharedFilingSectionHtml_(){
   return '<div class="taxcalc-grid" style="margin-top:8px;">' +
-      '<div class="taxcalc-field"><label>같은 과세기간 국내자산 양도소득금액(있으면)</label><input type="number" id="oaSharedDomesticIncome" placeholder="원" value="' + (oaSharedFilingState.domesticIncome || '') + '"><span class="taxcalc-field-help">2019년 이전 양도분만 씀 — 2020.1.1 이후 양도분은 법(§118의6①1호)대로 국외자산 양도소득금액만으로 자산별 한도를 계산해 이 값을 쓰지 않습니다</span></div>' +
+      // [2026.10.20 J14] 옛 §118의6①(2019.12.31. 이전 양도분)도 분모에 국내 양도소득금액을 넣지 않음 — 대신 그해 국외 주식등(옛 국외자산) 몫
+      '<div class="taxcalc-field"><label>(2019년 이전 양도분만) 그해 국외 주식등 양도소득금액</label><input type="number" id="oaSharedOverseasStockIncome" placeholder="없으면 비움" value="' + (oaSharedFilingState.overseasStockIncome || '') + '"><span class="taxcalc-field-help">옛 소득세법 §118의2제3호 — 그때는 국외 주식도 국외자산이라 외국납부세액공제 한도(옛 §118의6①1호)의 분모에 들어감. 국내 양도소득금액은 넣지 않습니다(AI 회의 J14)</span></div>' +
+      '<div class="taxcalc-field"><label>(2019년 이전 양도분만) 그 국외 주식등 산출세액</label><input type="number" id="oaSharedOverseasStockTax" placeholder="없으면 비움" value="' + (oaSharedFilingState.overseasStockTax || '') + '"><span class="taxcalc-field-help">한도 산식의 A(국외자산 산출세액)에 더함</span></div>' +
       '<div class="taxcalc-field"><label>신고 상태</label><select id="oaSharedFilingStatus"><option value="ontime"' + (oaSharedFilingState.filingStatus !== 'unreported' && oaSharedFilingState.filingStatus !== 'underreported' ? ' selected' : '') + '>정상(기한내) 신고</option><option value="unreported"' + (oaSharedFilingState.filingStatus === 'unreported' ? ' selected' : '') + '>무신고</option><option value="underreported"' + (oaSharedFilingState.filingStatus === 'underreported' ? ' selected' : '') + '>과소신고</option></select></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" id="oaSharedFraudulent"' + (oaSharedFilingState.isFraudulent ? ' checked' : '') + '><label for="oaSharedFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
       '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="oaSharedUnderreportedTax" placeholder="원" value="' + (oaSharedFilingState.underreportedTax || '') + '"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
@@ -5904,6 +5906,10 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isForestManagementExempt" id="forest-' + idx + '"><label for="forest-' + idx + '">자경산지 감면(§69의4, 10년 이상 직접경영 — 경영기간별 10~50%)</label></div>' +
           // [2026.10.19 서식 감사] 조특법 §133①2호 — 5개 과세기간 한도는 직전 4개 과세기간에 감면받은 세액을 더해 본다(양도인 한 사람 값, 자산 아무 곳에 한 번)
           '<div class="taxcalc-field" data-show-if="isEightYearFarmland|isLivestockLandExempt|isFisheryLandExempt|isFarmlandSubstitutionExempt|isForestManagementExempt|compensationType" style="display:none;"><label>직전 4개 과세기간 감면세액 — §66~§70 묶음</label><input type="number" data-field="sect133PriorFarm" placeholder="원"><span class="taxcalc-field-help">조특법 §133①2호나목 5개 과세기간 2억원 한도용. 자경·축사·어업·자경산지·대토로 감면받은 양도소득세 합계(2024년 이전 양도분이면 수용 §77·§77의2 감면도 더함). 양도인 한 사람 값 — 자산 하나에만 넣으세요</span></div>' +
+          // [2026.10.20 J20] 옛 §133①2호다목 5개 과세기간 3억원(2010~2017년 양도·2018~2019년 경과조치) — 비우면 위 §66~§70 묶음 값
+          '<div class="taxcalc-field" data-show-if="isEightYearFarmland|isLivestockLandExempt|isFarmlandSubstitutionExempt|compensationType" style="display:none;"><label>직전 4개 과세기간 감면세액 — 옛 3억원 묶음(2010~2019년 양도분)</label><input type="number" data-field="sect133PriorWide" placeholder="비우면 위 값"><span class="taxcalc-field-help">2010~2017년 양도분 옛 조특법 §133①2호(2010년 나목·2011~2017년 다목) 5개 과세기간 3억원 한도용 — 자경·축사·대토·수용(§69·§69의2·§70·§77, 2016년부터 §77의2도) 감면세액 합계. 2011~2013년 양도분은 2011.1.1. 전 §77(20·25%) 감면분 제외. 양도인 한 사람 값 — 자산 하나에만</span></div>' +
+          '<div class="taxcalc-field" data-show-if="isEightYearFarmland|isLivestockLandExempt" style="display:none;"><label>공익사업 사업인정고시일(§133 경과조치용)</label><input type="date" data-field="sect133TransitNoticeDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">자경·축사 농지를 공익사업 시행자에게 양도한 경우만 — 2016~2017년 양도(고시 2015.12.31. 전, 법률 제13560호 부칙 제63조)·2018~2019년 양도(고시 2017.12.31. 전, 제15227호 부칙 제61조)면 종전 한도</span></div>' +
+          '<div class="taxcalc-field checkbox" data-show-if="isEightYearFarmland|isLivestockLandExempt" style="display:none;"><input type="checkbox" data-field="sect133TransitHalfAcquired" id="s133Half-' + idx + '"><label for="s133Half-' + idx + '">사업시행자가 기준일 현재 사업지역 면적 1/2 이상 취득(위 경과조치 요건 — 조특령 대통령령 제26959호 부칙 제39조·제28636호 부칙 제23조)</label></div>' +
           '<div class="taxcalc-field" data-show-if="isFarmlandSubstitutionExempt" style="display:none;"><label>직전 4개 과세기간 §70 대토 감면세액</label><input type="number" data-field="sect133PriorSect70" placeholder="원"><span class="taxcalc-field-help">조특법 §133①2호가목 5개 과세기간 1억원 한도용</span></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isBankruptcyDisposal" id="bankruptcy-' + idx + '"><label for="bankruptcy-' + idx + '">파산선고에 의한 처분(§89①1호, 요건 없이 전액 비과세)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isFarmlandExchange" id="farmex-' + idx + '"><label for="farmex-' + idx + '">농지의 교환·분합으로 발생한 소득(§89①2호·시행령§153, 비과세)</label></div>' +
@@ -6817,7 +6823,7 @@ function renderTransferPane(){
   // [2026.09.24 재구성] 국외자산 신고상태는 이제 자산별이 아니라 공유칸 하나다(과세기간당
   // 확정신고 1번 — 재검토60 참고). 공유칸들이 실제로 렌더됐을 때만(국외자산이 1건 이상일
   // 때만) 배선한다.
-  ['oaSharedDomesticIncome', 'oaSharedFilingStatus', 'oaSharedFraudulent', 'oaSharedUnderreportedTax', 'oaSharedMonthsAfterDesignated', 'oaSharedUnpaidAtDesignated', 'oaSharedDesignatedDueDate'].forEach(function(id){
+  ['oaSharedOverseasStockIncome', 'oaSharedOverseasStockTax', 'oaSharedFilingStatus', 'oaSharedFraudulent', 'oaSharedUnderreportedTax', 'oaSharedMonthsAfterDesignated', 'oaSharedUnpaidAtDesignated', 'oaSharedDesignatedDueDate'].forEach(function(id){
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener(el.type === 'checkbox' || el.tagName === 'SELECT' ? 'change' : 'input', function(){
@@ -6996,6 +7002,8 @@ function collectTransferInput(vals){
     sect133PriorFarm: numVal(vals.sect133PriorFarm) || 0,
     sect133PriorSect70: numVal(vals.sect133PriorSect70) || 0,
     sect133PriorComp: numVal(vals.sect133PriorComp) || 0,
+    sect133PriorWide: numVal(vals.sect133PriorWide) || 0, // [2026.10.20 J20] 옛 2호다 3억 묶음
+    sect133TransitNoticeDate: vals.sect133TransitNoticeDate || '', sect133TransitHalfAcquired: !!vals.sect133TransitHalfAcquired, // [J20] 경과조치
     downContractPriceDifference: numVal(vals.downContractPriceDifference) || 0,
     isReconstructionRights: !!vals.isReconstructionRights,
     isCompletedNewHousing: !!vals.isCompletedNewHousing,
@@ -7526,6 +7534,7 @@ function renderOneOverseasResultHtml_(r, label){
   html += taxCalcResultRow('과세표준', won(r.과세표준));
   html += taxCalcResultRow('산출세액', won(r.산출세액));
   if (r.외국납부세액공제한도 !== undefined) html += taxCalcResultRow('외국납부세액공제 한도', won(r.외국납부세액공제한도));
+  if (r.외국납부세액공제_안내) html += '<div class="taxcalc-result-note">' + escapeHtml(r.외국납부세액공제_안내) + '</div>'; // [2026.10.20 J14]
   if (r.외국납부세액공제) html += taxCalcResultRow('외국납부세액공제', '-' + won(r.외국납부세액공제));
   if (r.무신고가산세) html += taxCalcResultRow('무신고가산세', '+' + won(r.무신고가산세));
   if (r.과소신고가산세) html += taxCalcResultRow('과소신고가산세', '+' + won(r.과소신고가산세));
@@ -16348,7 +16357,8 @@ function handleTaxCalcClick_(e){
       };
     });
     const oaFilingParams = {
-      domesticTransferIncomeAmount: numVal(document.getElementById('oaSharedDomesticIncome').value) || 0,
+      overseasStockIncomeOldRule: numVal((document.getElementById('oaSharedOverseasStockIncome') || {}).value) || 0, // [2026.10.20 J14]
+      overseasStockTaxOldRule: numVal((document.getElementById('oaSharedOverseasStockTax') || {}).value) || 0,
       filingStatus: document.getElementById('oaSharedFilingStatus').value,
       isFraudulent: document.getElementById('oaSharedFraudulent').checked,
       underreportedTaxAmount: numVal(document.getElementById('oaSharedUnderreportedTax').value) || 0,

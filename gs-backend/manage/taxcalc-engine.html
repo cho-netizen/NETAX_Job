@@ -685,10 +685,12 @@
   //  상당하는 금액을 징수"(감면율과의 차액이 아니라 양도소득세 × 징수율). 연혁(법제처 원문):
   //   2019.1.1. 이후 양도 15%(5년 25%) — 법률 제16009호(2018.12.24) 제77조④ 개정, 부칙 제2조③ "시행 이후 양도하는 경우부터"
   //   2014.1.1.~2018.12.31. 양도 10%(5년 20%) — 법률 제12173호(2014.1.1) 제77조④ 개정, 부칙 제2조③ "시행 후 양도하는 분부터"
-  //   2013.12.31. 이전 양도 15%(5년 25%) — 2013.10.31. 시행판 원문(그 전 연혁은 확인 안 함)
+  //   2010.1.1.~2013.12.31. 양도 15%(5년 25%) — 법률 제9921호(부칙 제35조) 옛 ③(2011.1.1.부터 ④)
+  //   2009.12.31. 이전 양도 5%(만기 구분 없음) — 법률 제8827호·제9272호 옛 ③ [2026.10.20 J20 — AI 회의 회장 결론]
   function compClawRateAt_(type, transferDate) {
     const five = type === 'bond_5y';
     const d = String(transferDate || '').slice(0, 10);
+    if (refHistoryOn_() && d && d < '2010-01-01') return 0.05;
     if (!refHistoryOn_() || !d || d >= '2019-01-01' || d < '2014-01-01') return five ? 0.25 : 0.15;
     return five ? 0.20 : 0.10;
   }
@@ -724,7 +726,10 @@
     const d = String(transferDate || '').slice(0, 10);
     if (type === 'land_replacement') return (d && d < '2015-01-01') ? '2014.12.31. 이전 양도한 대토보상은 감면이 없고 과세이연만 받을 수 있습니다(조특법 §77의2 — 감면은 2015.1.1. 양도분부터).' : '';
     if (!(type in { cash: 1, bond: 1, bond_3y: 1, bond_5y: 1 })) return '';
-    if (d && d < '2008-01-01') return '⚠ 2007년 이전 양도 — 감면율은 2008년 판(10/15/20%)으로 계산했습니다. 그때는 채권으로 받은 분만 감면하는 등 요건이 달랐으니 양도일 판 원문을 확인하세요.';
+    // [2026.10.20 J20] 10/15/20%는 2007.7.6.부터(법률 제8827호 부칙 제20조, 조심2008서3119) — 그 전은 연혁 확인 안 함
+    if (d && d < '2007-07-06') return '⚠ 2007.7.6. 전 양도 — 감면율은 2007.7.6.~2008년 판(10/15/20%)으로 계산했습니다. 그때는 채권으로 받은 분만 감면하는 등 요건이 달랐으니 양도일 판 원문을 확인하세요.';
+    // 만기특약 고율(2010~2013 40·50%)은 "보금자리주택 건설 등에 관한 특별법 등 대통령령으로 정하는 법률에 따른 협의매수·수용"만(법률 제9921호 §77①)
+    if ((type === 'bond_3y' || type === 'bond_5y') && d >= '2010-01-01' && d < '2016-01-01') return '만기 보유 특약 고율(' + (d < '2014-01-01' ? '40·50%' : '30·40%') + ')은 2010~2013년 판 문언상 "「보금자리주택 건설 등에 관한 특별법」 등 대통령령으로 정하는 법률에 따른 협의매수·수용"일 때만입니다(법률 제9921호 §77①) — 그 밖의 사업이면 일반채권율로 고르세요' + (d >= '2014-01-01' ? '(2014~2015년 판이 같은 문언인지는 확인 필요)' : '') + '.';
     if (d >= '2016-01-01' && d <= '2017-12-31' && !noticeDate) return '사업인정고시일이 2016.1.1. 전이면 2017.12.31.까지 양도분은 종전 감면율(15/20/30/40%)입니다(법률 제13560호 부칙 제53조) — 사업인정고시일을 넣어 주세요.';
     return '';
   }
@@ -1593,8 +1598,14 @@
   //    compLow: §77 중 현금·일반채권(만기특약 아님) — 옛 §133의 "§77(100분의 ○ 감면율에 한함)" 판정용
   //  o: { A, D, basic(쓴 기본공제), lossFactor(1 이하), yearDate(과세기간 판정 양도일), prior: { p70, pFarm, pComp } }
   const S133_FARM_ = ['69', '69_2', '69_3', '69_4', '70'];
-  function sect133Groups_(yearDate) {
+  // [2026.10.20 J20 — AI 회의 회장 결론, 법제처 연혁판·부칙 원문] 2014~2017년 양도분 "5개 과세기간 3억원"(옛 2호다)·2013년 이전 판별 구조·경과조치.
+  //  prior 'pWide' = 직전 4개 과세기간에 옛 2호다(자경·축사·대토·수용 등 합계)로 감면받은 세액(sect133PriorWide) — 비우면 pFarm.
+  //  low77: §77 중 현금·일반채권(compLow)만, high77: §77 중 만기특약(40·50%)만. skipT63/skipT61: 경과조치 대상 감면은 이 한도에서 빼고 종전 한도로.
+  //  opts.t63 — 법률 제13560호 부칙 제63조(§69, 2015.12.31. 전 사업인정고시 + 시행자가 사업지역 1/2 이상 취득 + 2017.12.31.까지 시행자에게 양도 → 종전 §133①1호)
+  //  opts.t61 — 법률 제15227호 부칙 제61조(§69·§69의2, 2017.12.31. 전 고시 + 1/2 이상 취득 + 2019.12.31.까지 양도 → 종전 §133①2호)
+  function sect133Groups_(yearDate, opts) {
     const d = String(yearDate || '').slice(0, 10);
+    opts = opts || {};
     // 2025.1.1. 이후 양도(법률 제20778호 부칙 제15조①): ① 자경 등 + §43·§85의10, ② §77·§77의2·§77의3 따로
     if (!refHistoryOn_() || !d || d >= '2025-01-01') return { warn: '', groups: [
       [{ 이름: '§133①1호(과세기간 1억원)', 한도: 100000000, set: S133_FARM_.concat(['43', '85_10']) },
@@ -1606,23 +1617,51 @@
     if (d >= '2018-01-01') return { warn: '', groups: [[
       { 이름: '옛 §133①1호(과세기간 1억원, 수용 포함)', 한도: 100000000, set: S133_FARM_.concat(['43', '85_10', '77', '77_2', '77_3']) },
       { 이름: '§133①2호가목(5개 과세기간 §70 1억원)', 한도: 100000000, set: ['70'], prior: 'p70' },
-      { 이름: '옛 §133①2호나목(5개 과세기간 §66~§70·§77·§77의2 2억원)', 한도: 200000000, set: S133_FARM_.concat(['77', '77_2']), prior: 'pFarm' }]] };
-    // 2016.1.1.~2017.12.31. 양도(법률 제13560호): 2호나목은 §70·§77(10·15%)·§77의2만
+      { 이름: '옛 §133①2호나목(5개 과세기간 §66~§70·§77·§77의2 2억원)', 한도: 200000000, set: S133_FARM_.concat(['77', '77_2']), prior: 'pFarm', skipT61: !!opts.t61 }]
+      .concat(opts.t61 && d <= '2019-12-31' ? [{ 이름: '종전 §133①2호다목(5개 과세기간 3억원 — 법률 제15227호 부칙 제61조 경과조치)', 한도: 300000000, set: ['69', '69_2', '70', '77', '77_2'], prior: 'pWide' }] : [])] };
+    // 2016.1.1.~2017.12.31. 양도(법률 제13560호): 2호나목은 §70·§77(10·15%)·§77의2만, 2호다목 5개 과세기간 3억원
     if (d >= '2016-01-01') return { warn: '', groups: [[
-      { 이름: '옛 §133①1호(과세기간 1억원)', 한도: 100000000, set: ['69', '69_2', '70', '43', '85_10', '77', '77_2', '77_3'] },
+      { 이름: '옛 §133①1호(과세기간 1억원)', 한도: 100000000, set: ['69', '69_2', '70', '43', '85_10', '77', '77_2', '77_3'], skipT63: !!opts.t63 },
       { 이름: '§133①2호가목(5개 과세기간 §70 1억원)', 한도: 100000000, set: ['70'], prior: 'p70' },
-      { 이름: '옛 §133①2호나목(5개 과세기간 §70·§77(10·15%)·§77의2 2억원)', 한도: 200000000, set: ['70', '77', '77_2'], low77: true, prior: 'pFarm' }]] };
-    // 2014.1.1.~2015.12.31. 양도(2014.1.1.·2015.12.31. 시행판 원문): 1호가 1억(자경 제외)·1호나 2억(자경 포함)
-    return { warn: d < '2014-01-01' ? '⚠ 2013년 이전 양도 — 조특법 §133 한도는 2014.1.1. 시행판 구조로 계산했습니다(그 전 연혁 확인 안 함).' : '', groups: [[
+      { 이름: '옛 §133①2호나목(5개 과세기간 §70·§77(10·15%)·§77의2 2억원)', 한도: 200000000, set: ['70', '77', '77_2'], low77: true, prior: 'pFarm' },
+      { 이름: '옛 §133①2호다목(5개 과세기간 §66~§69·§69의2·§70·§77·§77의2 3억원)', 한도: 300000000, set: ['69', '69_2', '70', '77', '77_2'], prior: 'pWide' }]
+      .concat(opts.t63 ? [{ 이름: '종전 §133①1호나목(과세기간 2억원 — 법률 제13560호 부칙 제63조 경과조치)', 한도: 200000000, set: ['69', '69_2', '70', '43', '85_10', '77', '77_3'] }] : [])] };
+    // 2014.1.1.~2015.12.31. 양도(2014.1.1.·2015.12.31. 시행판 원문): 1호가 1억(자경 제외)·1호나 2억(자경 포함)·2호다 5개 과세기간 3억
+    if (d >= '2014-01-01') return { warn: '', groups: [[
       { 이름: '옛 §133①1호가목(과세기간 1억원)', 한도: 100000000, set: ['70', '43', '85_10', '77', '77_3'], low77: true },
       { 이름: '옛 §133①1호나목(과세기간 2억원)', 한도: 200000000, set: ['69', '69_2', '70', '43', '85_10', '77', '77_3'] },
       { 이름: '§133①2호가목(5개 과세기간 §70 1억원)', 한도: 100000000, set: ['70'], prior: 'p70' },
-      { 이름: '옛 §133①2호나목(5개 과세기간 §70·§77(15·20%) 2억원)', 한도: 200000000, set: ['70', '77'], low77: true, prior: 'pFarm' }]] };
+      { 이름: '옛 §133①2호나목(5개 과세기간 §70·§77(15·20%) 2억원)', 한도: 200000000, set: ['70', '77'], low77: true, prior: 'pFarm' },
+      { 이름: '옛 §133①2호다목(5개 과세기간 §69·§69의2·§70·§77 3억원)', 한도: 300000000, set: ['69', '69_2', '70', '77'], prior: 'pWide' }]] };
+    // 2011.1.1.~2013.12.31. 양도(법률 제10406호 부칙 제2조③): 1호의 §77은 20·25%만, 2호나 §70·§77(20·25%) 2억, 2호다 §69·§69의2·§70·§77 3억
+    if (d >= '2011-01-01') return { warn: '직전 4개 과세기간 감면세액에 2011.1.1. 전 §77(20·25%) 감면분은 넣지 마세요(법률 제10406호 부칙 제49조).', groups: [[
+      { 이름: '옛 §133①1호가목(과세기간 1억원)', 한도: 100000000, set: ['70', '43', '85_10', '77', '77_3'], low77: true },
+      { 이름: '옛 §133①1호나목(과세기간 2억원)', 한도: 200000000, set: ['69', '69_2', '70', '43', '85_10', '77', '77_3'], low77: true },
+      { 이름: '§133①2호가목(5개 과세기간 §70 1억원)', 한도: 100000000, set: ['70'], prior: 'p70' },
+      { 이름: '옛 §133①2호나목(5개 과세기간 §70·§77(20·25%) 2억원)', 한도: 200000000, set: ['70', '77'], low77: true, prior: 'pFarm' },
+      { 이름: '옛 §133①2호다목(5개 과세기간 §69·§69의2·§70·§77 3억원)', 한도: 300000000, set: ['69', '69_2', '70', '77'], prior: 'pWide' }]] };
+    // 2010.1.1.~2010.12.31. 양도(법률 제9921호 부칙 제35조): 1호의 §77은 20·25%만, 2호나 §69·§70·§77(40·50%만) 3억
+    if (d >= '2010-01-01') return { warn: '', groups: [[
+      { 이름: '옛 §133①1호가목(과세기간 1억원)', 한도: 100000000, set: ['70', '43', '85_10', '77', '77_3'], low77: true },
+      { 이름: '옛 §133①1호나목(과세기간 2억원)', 한도: 200000000, set: ['69', '70', '43', '85_10', '77', '77_3'], low77: true },
+      { 이름: '§133①2호가목(5개 과세기간 §70 1억원)', 한도: 100000000, set: ['70'], prior: 'p70' },
+      { 이름: '옛 §133①2호나목(5개 과세기간 §69·§70·§77(40·50%) 3억원)', 한도: 300000000, set: ['69', '70', '77'], high77: true, prior: 'pWide' }]] };
+    // 2008.1.1.~2009.12.31. 양도(법률 제9272호 부칙 제29조): 1호가 1억(§43·§70·§77·§77의3), 1호나 2억(+§69), 2호가 §70 1억, 2호나 §69·§70 3억
+    if (d >= '2008-01-01') return { warn: '', groups: [[
+      { 이름: '옛 §133①1호가목(과세기간 1억원)', 한도: 100000000, set: ['70', '43', '77', '77_3'] },
+      { 이름: '옛 §133①1호나목(과세기간 2억원)', 한도: 200000000, set: ['69', '70', '43', '77', '77_3'] },
+      { 이름: '옛 §133①2호가목(5개 과세기간 §70 1억원)', 한도: 100000000, set: ['70'], prior: 'p70' },
+      { 이름: '옛 §133①2호나목(5개 과세기간 §69·§70 3억원)', 한도: 300000000, set: ['69', '70'], prior: 'pFarm' }]] };
+    // 2007년 이전 양도(2008.1.1. 시행판 구조): §33·§43·§69·§70·§77 과세기간 1억 + §69·§70 5개 과세기간 1억
+    return { warn: d < '2007-01-01' ? '⚠ 2006년 이전 양도 — 조특법 §133 한도는 2008.1.1. 시행판 구조로 계산했습니다(그 전 연혁 확인 안 함).' : '', groups: [[
+      { 이름: '옛 §133①1호(과세기간 1억원)', 한도: 100000000, set: ['69', '70', '43', '77'] },
+      { 이름: '옛 §133①2호(5개 과세기간 §69·§70 1억원)', 한도: 100000000, set: ['69', '70'], prior: 'pFarm' }]] };
   }
   // 직전 4개 과세기간 감면세액(§133 5개 과세기간 한도용) — 단건 입력 t 또는 합산 filingParams·거래 입력에서
   function prior133From_(srcs) {
     const pick = function (k) { return Math.max.apply(null, [0].concat(srcs.map(function (s) { return Math.max(0, Number(s && s[k]) || 0); }))); };
-    return { p70: pick('sect133PriorSect70'), pFarm: pick('sect133PriorFarm'), pComp: pick('sect133PriorComp') };
+    const pFarm = pick('sect133PriorFarm'), pWide = pick('sect133PriorWide'); // [2026.10.20 J20] 옛 2호다 3억 묶음 — 비우면 pFarm
+    return { p70: pick('sect133PriorSect70'), pFarm: pFarm, pComp: pick('sect133PriorComp'), pWide: pWide > 0 ? pWide : pFarm };
   }
   // [2026.10.20 J21 — 조견표 2부-33] 양도소득세 감면분 농어촌특별세 — 농특세법 §3·§5①1호: 조특법으로 감면받는 소득세 감면세액 × 100분의 20.
   //  비과세는 농특세법 §4·시행령 §4에 열거된 것만(2026.5.12. 법·2026.1.2. 시행령 원문): 조특법 §66~§70(자경·축사·어업·자경산지·대토 — 시행령 §4①1호),
@@ -1669,9 +1708,22 @@
       });
     });
     const prior = o.prior || {};
-    const g133 = sect133Groups_(o.yearDate);
+    // [2026.10.20 J20] 경과조치 대상 감면(자경·축사 농지를 공익사업 시행자에게 양도 — 고시일·시행자 1/2 이상 취득)
+    const yd_ = String(o.yearDate || '').slice(0, 10);
+    reds.forEach(function (x) {
+      const nt = String(x.notice || '').slice(0, 10);
+      x.t63 = x.sec === '69' && !!x.half && !!nt && nt < '2016-01-01' && yd_ >= '2016-01-01' && yd_ <= '2017-12-31';
+      x.t61 = (x.sec === '69' || x.sec === '69_2') && !!x.half && !!nt && nt < '2018-01-01' && yd_ >= '2018-01-01' && yd_ <= '2019-12-31';
+    });
+    const g133 = sect133Groups_(o.yearDate, { t63: reds.some(function (x) { return x.t63; }), t61: reds.some(function (x) { return x.t61; }) });
     const cuts = [];
-    const inCap = function (x, cap) { return cap.set.indexOf(x.sec) !== -1 && !(x.sec === '77' && cap.low77 && !x.compLow); };
+    const inCap = function (x, cap) {
+      if (cap.set.indexOf(x.sec) === -1) return false;
+      if (x.sec === '77' && cap.low77 && !x.compLow) return false;
+      if (x.sec === '77' && cap.high77 && x.compLow) return false;
+      if ((cap.skipT63 && x.t63) || (cap.skipT61 && x.t61)) return false;
+      return true;
+    };
     g133.groups.forEach(function (g) {
       let best = null;
       g.forEach(function (cap) {
@@ -1808,7 +1860,7 @@
         : core.isLivestockLandExempt ? '축사용지 감면(조특법§69의2)'
         : core.isFisheryLandExempt ? '어업용토지 감면(조특법§69의3)'
         : '농지대토 감면(조특법§70)';
-      redsS_.push({ key: 'farm', sec: farmSecS_, rate: 1, label: farmlandReductionLabel });
+      redsS_.push({ key: 'farm', sec: farmSecS_, rate: 1, label: farmlandReductionLabel, notice: t.sect133TransitNoticeDate || t.publicNoticeDate || '', half: !!t.sect133TransitHalfAcquired }); // [J20] 경과조치
       if (core.isEightYearFarmland) {
         farmlandGateNote = '§69①은 "농지 소재지에 거주하는" 거주자의 8년 이상 직접경작만 감면 대상입니다(재촌+자경 요건을 모두 충족해야 함). 경영이양 직접지불보조금 대상 농지를 한국농어촌공사·농업법인에 2026.12.31까지 양도하는 경우는 예외적으로 3년 이상 경작만으로도 충족됩니다.';
       }
@@ -2396,7 +2448,7 @@
       const reds = [];
       const farmSec = c.isEightYearFarmland ? '69' : c.isLivestockLandExempt ? '69_2' : c.isFisheryLandExempt ? '69_3' : c.isFarmlandSubstitutionExempt ? '70' : null;
       if (farmSec) {
-        reds.push({ key: 'farm', sec: farmSec, rate: 1, label: c.isEightYearFarmland ? '8년자경농지감면(안분)' : c.isLivestockLandExempt ? '축사용지감면(안분)' : c.isFisheryLandExempt ? '어업용토지감면(안분)' : '농지대토감면(안분)' });
+        reds.push({ key: 'farm', sec: farmSec, rate: 1, notice: c.raw.sect133TransitNoticeDate || c.raw.publicNoticeDate || '', half: !!c.raw.sect133TransitHalfAcquired, label: c.isEightYearFarmland ? '8년자경농지감면(안분)' : c.isLivestockLandExempt ? '축사용지감면(안분)' : c.isFisheryLandExempt ? '어업용토지감면(안분)' : '농지대토감면(안분)' });
       } else if (c.isForestManagementExempt) {
         const yrs = c.forestManagementYears;
         const forestRate = yrs >= 50 ? 0.50 : yrs >= 40 ? 0.40 : yrs >= 30 ? 0.30 : yrs >= 20 ? 0.20 : yrs >= 10 ? 0.10 : 0;
@@ -7764,12 +7816,28 @@
   // 않는다(§118의8단서). 기본공제는 국내양도세와 별개로 연250만원(§118의7①). 외국납부세액공제 한도는
   // [2026.10.19 세액 고침] §118의6①1호(법률 제16834호, 2020.1.1 이후 양도분 — 부칙 제2조① 일반 적용례): 한도 = A × B / C
   //  A 국외자산 양도소득 산출세액, B 해당 국외자산 양도소득금액, C 그 과세기간 국외자산 양도소득금액 — 국내분은 넣지 않고 자산마다 비교한다.
-  //  아래 옛 설명(국내 양도소득금액을 분모에 넣음)은 2019.12.31까지 양도분 문언("그 과세기간의 양도소득금액")이라 그 경우에만 쓴다(판단 대기).
+  //  [2026.10.20 J14 — AI 회의 회장 결론] 2019.12.31. 이전 양도분(법률 제16834호 부칙 제2조②로 옛 문언)도 분모에 국내 양도소득금액을 넣지 않는다:
+  //   옛 §118의6①1호 "제118조의5에 따라 계산한 해당 과세기간의 양도소득 산출세액(A — 국외자산 과세표준에 매긴 세액)에 국외자산 양도소득금액이
+  //   그 과세기간의 양도소득금액에서 차지하는 비율" — 같은 절 옛 §118의7①의 같은 말("해당 과세기간의 양도소득금액")도 국외자산 소득만 뜻한다.
+  //   다만 옛 판은 국외 주식등(옛 §118의2제3호)도 국외자산이라, 그해 국외 주식등 양도가 있었으면 그 소득금액·산출세액을 A와 분모에 더한다
+  //   (overseasStockIncomeOldRule·overseasStockTaxOldRule — 없으면 비율 1). 옛 판은 한도를 국외자산 전체로 한 번 비교(자산별 아님).
+  //  아래 (옛) 설명은 2026.10.20 전 계산기 방식 — domesticTransferIncomeAmount는 이제 쓰지 않는다(넣으면 안내만).
   // (옛) §118의6①·시행령§178의7: 산출세액 × (국외자산양도소득금액 ÷ 해당 과세기간 양도소득금액 합계액) —
   // 같은 과세기간에 국내자산 양도소득금액이 함께 있으면 domesticTransferIncomeAmount로 입력하면 정확한
   // 비율로 한도를 계산하고, 입력하지 않으면(국외자산양도소득만 있는 경우) 비율이 1이 되어 한도=산출세액과
   // 같아진다. 또는 필요경비산입 방법을 선택할 수 있다(필요경비산입 방법을 쓰려면 이미 필요경비에 포함해
   // 입력하고 세액공제는 0으로 둔다).
+  // [2026.10.20 J14] 옛 §118의6①(2019.12.31. 이전 양도분) 한도의 국외 주식등 몫과 안내
+  function oldFtcRuleParts_(isOld, src) {
+    src = src || {};
+    const dom = Math.max(0, Number(src.domesticTransferIncomeAmount) || 0);
+    if (!isOld) return { stockIncome: 0, stockTax: 0, note: '' };
+    const si = Math.max(0, Number(src.overseasStockIncomeOldRule) || 0), st = Math.max(0, Number(src.overseasStockTaxOldRule) || 0);
+    let note = '2019.12.31. 이전 양도분 외국납부세액공제 한도 = 국외자산 산출세액 × 해당 국외자산 양도소득금액 ÷ 그해 국외자산 양도소득금액(옛 소득세법 §118의6①1호 — 국내 양도소득금액은 넣지 않음, AI 회의 J14)';
+    if (si > 0 || st > 0) note += ' · 그해 국외 주식등(옛 §118의2제3호) 소득금액 ' + si.toLocaleString('ko-KR') + '원·산출세액 ' + st.toLocaleString('ko-KR') + '원을 A와 분모에 더함';
+    if (dom > 0) note += ' · 넣은 국내 양도소득금액(' + dom.toLocaleString('ko-KR') + '원)은 쓰지 않았습니다';
+    return { stockIncome: si, stockTax: st, note: note };
+  }
   window.calculateOverseasAssetTransferTaxJS = function (p) {
     p = p || {};
     if (!p.wasResidentFiveYearsContinuously) {
@@ -7788,13 +7856,12 @@
 
     const foreignTaxCreditMethod = p.foreignTaxCreditMethod === 'expense' ? 'expense' : 'credit';
     const foreignTaxPaidAmount = Number(p.foreignTaxPaidAmount) || 0;
-    // [2026.10.19] 2020.1.1 이후 양도분은 분모 C에 국내분을 넣지 않는다(단건은 B = C → 비율 1). 2019년 이전 양도분만 옛 문언대로 국내분 포함(판단 대기)
+    // [2026.10.19] 2020.1.1 이후 양도분은 분모 C에 국내분을 넣지 않는다(단건은 B = C → 비율 1).
+    // [2026.10.20 J14] 2019년 이전 양도분도 국내분은 넣지 않고, 그해 국외 주식등(옛 국외자산)이 있으면 A·분모에 더한다
     const oldFtcRule_ = !!(p.transferDate && String(p.transferDate) < '2020-01-01');
-    const domesticTransferIncomeAmount = oldFtcRule_ ? Math.max(0, Number(p.domesticTransferIncomeAmount) || 0) : 0;
-    const totalIncomeAmountForRatio = Math.max(0, gain) + domesticTransferIncomeAmount;
-    const creditRatio = totalIncomeAmountForRatio > 0 ? Math.max(0, gain) / totalIncomeAmountForRatio : 1;
-    const foreignTaxCreditLimit = Math.round(calculatedTax * creditRatio);
-    const foreignTaxCredit = foreignTaxCreditMethod === 'credit' ? Math.min(foreignTaxPaidAmount, foreignTaxCreditLimit) : 0;
+    const ftcOld_ = oldFtcRuleParts_(oldFtcRule_, p);
+    const foreignTaxCreditLimit = Math.round((calculatedTax + ftcOld_.stockTax) * (Math.max(0, gain) + ftcOld_.stockIncome > 0 ? Math.max(0, gain) / (Math.max(0, gain) + ftcOld_.stockIncome) : 1));
+    const foreignTaxCredit = foreignTaxCreditMethod === 'credit' ? Math.min(foreignTaxPaidAmount, foreignTaxCreditLimit, calculatedTax) : 0;
     const taxAfterCredit = Math.max(0, calculatedTax - foreignTaxCredit);
 
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
@@ -7807,7 +7874,7 @@
       양도차익: Math.round(gain), 기본공제: basicDeduction, 과세표준: taxBase,
       산출세액: calculatedTax, 외국납부세액공제한도: foreignTaxCreditLimit, 외국납부세액공제: foreignTaxCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
-      지방소득세: localIncomeTax, 납부세액_합계: totalTax,
+      지방소득세: localIncomeTax, 납부세액_합계: totalTax, 외국납부세액공제_안내: ftcOld_.note || undefined,
       안내: '장기보유특별공제는 국외자산에는 적용되지 않습니다(§118의8단서). 기본공제(연250만원)는 국내자산 양도소득과 별도로 적용됩니다(§118의7). 양도가액·취득가액은 원칙적으로 실지거래가액이며, 확인 안 되면 소재국 시가(그래도 안되면 대통령령이 정하는 방법)를 씁니다. 국외전출자 국내주식등 출국세(§118의9~118의18)는 2027.1.1 시행 예정이라 아직 시행 전이며 핵심 세율표도 확인되지 않아 이 계산기가 다루지 않습니다. 같은 과세기간에 국외자산을 2건 이상 양도했다면 이 함수 대신 calculateOverseasAssetTransferTaxMultiJS로 합산 계산해야 기본공제(§118의7①) 중복적용을 막을 수 있습니다.'
     };
   };
@@ -7849,12 +7916,12 @@
     //  2019.12.31 이전 양도분(옛 문언 "그 과세기간의 양도소득금액")이 섞이면 예전 방식(판단 대기).
     const oldFtcRuleM_ = transactions.some(function (t) { return t && t.transferDate && String(t.transferDate) < '2020-01-01'; });
     let foreignTaxCreditLimit = 0, foreignTaxCredit = 0;
+    const ftcOldM_ = oldFtcRuleParts_(oldFtcRuleM_, filingParams); // [2026.10.20 J14] 국내분 넣지 않음, 그해 국외 주식등은 A·분모에
     if (oldFtcRuleM_) {
-      const domesticTransferIncomeAmount = Math.max(0, Number(filingParams.domesticTransferIncomeAmount) || 0);
-      const totalIncomeAmountForRatio = Math.max(0, totalGain) + domesticTransferIncomeAmount;
+      const totalIncomeAmountForRatio = Math.max(0, totalGain) + ftcOldM_.stockIncome;
       const creditRatio = totalIncomeAmountForRatio > 0 ? Math.max(0, totalGain) / totalIncomeAmountForRatio : 1;
-      foreignTaxCreditLimit = Math.round(calculatedTax * creditRatio);
-      foreignTaxCredit = Math.min(totalForeignTaxPaid, foreignTaxCreditLimit);
+      foreignTaxCreditLimit = Math.round((calculatedTax + ftcOldM_.stockTax) * creditRatio);
+      foreignTaxCredit = Math.min(totalForeignTaxPaid, foreignTaxCreditLimit, calculatedTax);
     } else {
       const C_ = Math.max(0, totalGain);
       perTxn.forEach(function (x) {
@@ -7878,7 +7945,7 @@
       거래건수: transactions.length,
       거래별_내역: perTxn,
       합산양도차익: Math.round(totalGain), 기본공제: basicDeduction, 과세표준: taxBase,
-      산출세액: calculatedTax, 외국납부세액공제한도: foreignTaxCreditLimit, 외국납부세액공제: foreignTaxCredit,
+      산출세액: calculatedTax, 외국납부세액공제한도: foreignTaxCreditLimit, 외국납부세액공제: foreignTaxCredit, 외국납부세액공제_안내: ftcOldM_.note || undefined,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       지방소득세: localIncomeTax, 납부세액_합계: totalTax,
       안내: '국외자산은 §118의7①에 따라 여러 건을 양도해도 기본공제(연250만원)를 통틀어 1회만 적용합니다(국내자산처럼 자산 종류별로 나누지 않음). 장기보유특별공제는 국외자산에 적용되지 않습니다. foreignTaxCreditMethod가 expense인 거래는 이미 필요경비에 포함해 입력했다고 보아 세액공제 대상에서 제외했습니다.'
