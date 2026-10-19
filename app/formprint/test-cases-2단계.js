@@ -43,5 +43,14 @@ module.exports = function (E, H) {
   var c1113b = Object.assign({ clawback: { formType: 'sr_succession_deferred', result: cr1113b, reason: '02' }, taxAgent: {}, 신고일: '2026-06-30' }, GP);
   L.push({ name: '조특11호의13_재차납부유예_본인신고', forms: [{ formKey: '조특11호의13', ctx: c1113b }], ctx: c1113b });
 
+  // ④ 조특11호의8 — 가업승계 주식 등 증여세 과세특례 적용신청(조특법 §30의6): 주식 가액 50억, 총자산 100억 중 사업무관자산 계 10억(→ 비율 90%), 가업영위 25년(총한도 400억)
+  //   손계산: 가업자산상당액 = 50억 × 90% = 45억 → 과세특례 적용대상 과세가액(부표2 ⑫) = 45억(한도 안)
+  var pSr = { specialType: 'business_succession', giftAmount: 5000000000, doneeAge: 35, donorAge: 65, businessOwnershipYearsOfParent: 25,
+    totalAssetValue: 10000000000, nonBizAsset55: 400000000, nonBizAsset49: 300000000, nonBizAsset61: 100000000, excessCash: 150000000, nonBizStock: 50000000, filingStatus: 'ontime' };
+  var rSr = E.calculateSpecialRateGiftTaxJS(clone(pSr));
+  if (!rSr || rSr.error) throw new Error('특례세율 엔진 오류: ' + (rSr && rSr.error));
+  var c118 = Object.assign({ r: rSr, sr: { giftDate: '2026-05-20', businessYears: 25 }, taxAgent: AGENT, 신고일: '2026-08-31' }, GP);
+  L.push({ name: '조특11호의8_가업승계특례신청', forms: [{ formKey: '조특11호의8', ctx: c118 }], ctx: c118 });
+
   return L;
 };

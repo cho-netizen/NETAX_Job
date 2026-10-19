@@ -26,7 +26,8 @@
   var forms = {
     '조특52호의2': '조세특례제한법 시행규칙 [별지 제52호의2서식]', // 영농자녀 증여세 감면 위반사유 신고 및 자진납부 계산서
     '조특11호의10': '조세특례제한법 시행규칙 [별지 제11호의10서식]', // 가업승계 증여세 과세특례 추징사유 신고 및 자진납부 계산서
-    '조특11호의13': '조세특례제한법 시행규칙 [별지 제11호의13서식]' // 납부유예 사후관리추징사유 신고 및 자진납부 계산서
+    '조특11호의13': '조세특례제한법 시행규칙 [별지 제11호의13서식]', // 납부유예 사후관리추징사유 신고 및 자진납부 계산서
+    '조특11호의8': '조세특례제한법 시행규칙 [별지 제11호의8서식]' // 가업승계 주식 등 증여세 과세특례 적용신청서
   };
   var mappers = {};
   var ctxFor = {};
@@ -178,6 +179,46 @@
     };
     ready[p[0]] = function () { return !!clawFromApp(p[1]); };
   });
+
+  // ═════════ 조특 별지 제11호의8서식 — 가업승계 주식 등 증여세 과세특례 적용신청서(법 §30의6⑤ → §30의5⑫ 준용) ═════════
+  //  ctx: { r: lastSpecialRateGiftResult_(특례종류 가업승계), sr: {giftDate: srGiftDate, businessYears: srBusinessYears}, donee, donor, taxAgent, 신고일 }
+  //  예전 인쇄(srBusinessSuccessionApplicationPrintPageHtml_)는 "과세특례 적용대상 증여세 과세가액"·"가업자산상당액" 두 줄과 "직접 보완" 안내만 찍었음.
+  var SUCCESSION = '가업승계주식등(조특법 §30의6)';
+  mappers['조특11호의8'] = function (ctx) {
+    var o = new Out(), r = ctx.r || {}, sr = ctx.sr || {}, dn = ctx.donee || {}, dr = ctx.donor || {};
+    if (r.특례종류 !== SUCCESSION) { o.miss('조특11호의8 전체', '특례세율 계산 결과가 가업승계주식등(조특법 §30의6)이 아님'); return o.result(); }
+    o.miss('가.상호(법인명)·사업자등록번호·성명(대표이사)·생년월일·개업연월일·업종', '계산기에 없음 — 특례세율 탭에 가업 법인 인적사항 칸 없음');
+    o.miss('나.중소기업 여부·상장여부(상장일)·중견기업 여부·직전 3개 사업연도 평균 매출액', '계산기에 없음 — 특례세율 탭은 중소·중견기업 요건을 묻지 않음(법 §30의6①)');
+    o.note('⚠ 증여자·수증자 = 일반 증여 탭의 첫 번째 사람(특례세율 탭에 사람 칸이 없음 — 10호의2 본표와 같은 방법)');
+    o.need('다@성명', dr.name, '다.증여자 성명').need('다@주민등록번호', dr.regNo, '다.증여자 주민등록번호');
+    if (n(sr.businessYears) > 0) o.set('다@가업영위기간', n(sr.businessYears) + '년'); else o.miss('다.가업영위기간', '화면 입력 없음(특례세율 탭 가업영위기간)');
+    o.miss('다.대표이사 재직기간·최대주주등 여부·특수관계인포함 보유 주식 등 지분율', '계산기에 없음 — 요건 칸 없음(시행령 §27의6①1호)');
+    o.need('라@성명', dn.name, '라.수증자 성명').need('라@주민등록번호', dn.regNo, '라.수증자 주민등록번호').need('라@주소', H.fullAddr(dn), '라.주소');
+    if (has(dn.phone)) o.set('라@전화번호', dn.phone); else o.miss('라.전화번호(☎)', '화면 입력 없음');
+    o.miss('라.증여자와의 관계·임원/대표이사 취임일', '계산기에 없음 — 관계 값은 공제 구분(직계존속 등)이라 관계 낱말이 아니고, 취임일 칸 없음(시행령 §27의6①2호)');
+    // 마. — 한 줄(특례세율 탭은 이번 증여 한 건)
+    var gd = sr.giftDate;
+    if (has(gd)) o.set('마@수증일', [gd]); else o.miss('마.수증일', '화면 입력 없음(특례세율 탭 증여일자)');
+    o.miss('㉮ 수량·마.지분율·㉯ 단가', '계산기에 없음 — 특례세율 탭은 주식 가액 합계(증여재산가액)만 받음');
+    var g1 = n(r.증여재산가액), cur = n(r.과세특례적용대상_증여세과세가액);
+    o.set('①', [g1]).set('②', [cur]);
+    o.note('① 주식 등 가액 = 엔진 증여재산가액(특례세율 탭 입력) — 작성방법 4: 2인 이상이 증여받았으면 1인이 모두 받은 것으로 본 전체 가액(법 §30의6②)');
+    o.note('② = 별지 제10호의2서식 부표2 ⑫(작성방법 6) — 엔진 과세특례적용대상_증여세과세가액');
+    var lim = n(r.총한도액), prior = n(r.가산_과세특례증여재산), s8 = n(r.과세특례적용전_증여세과세가액_계);
+    o.check('② = 부표2 ⑫(⑧ < ⑨이면 ⑧ − ⑦, 아니면 min(⑧, ⑪))', cur, s8 < lim ? s8 - prior : Math.min(s8, Math.max(0, lim - prior)));
+    if (n(sr.businessYears) > 0) o.check('총한도액 = 가업영위기간 표(10~20년 300억·20~30년 400억·30년 이상 600억, 법 §30의6①)', lim,
+      n(sr.businessYears) >= 30 ? 60000000000 : n(sr.businessYears) >= 20 ? 40000000000 : n(sr.businessYears) >= 10 ? 30000000000 : 0);
+    ymdSet(o, '신청일', ctx.신고일, '신청일', 'ctx.신고일 없음(계산기에 없음 — 세액인쇄 화면에서 고른 날)');
+    o.need('신청인서명', dn.name, '신청인(서명)');
+    if (has(dn.taxOffice)) o.set('세무서', H.officeName(dn.taxOffice)); else o.miss('세무서', '수증자 관할 세무서 입력 없음');
+    return o.result();
+  };
+  ctxFor['조특11호의8'] = function (extra) {
+    var r = g('lastSpecialRateGiftResult_'); if (!r || r.특례종류 !== SUCCESSION) return null;
+    return Object.assign(giftPeople(), { r: r, sr: { giftDate: H.el('srGiftDate'), businessYears: n(H.el('srBusinessYears')) }, taxAgent: H.agent() }, extra || {});
+  };
+  // 지금 인쇄(srPrintFormPageHtml_ → srBusinessSuccessionApplicationPrintPageHtml_)와 같은 조건 — 특례세율 결과가 가업승계주식등
+  ready['조특11호의8'] = function () { var r = g('lastSpecialRateGiftResult_'); return !!(r && r.특례종류 === SUCCESSION); };
 
   // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만) — 추징 신고서는 신고 뒤 따로 내는 서류라 넣지 않음
   function plan(tax, ctx) { var L = []; return L; }
