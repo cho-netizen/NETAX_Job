@@ -3515,6 +3515,29 @@ function openOneHouseSpecialCaseModal_(idx){
             mgLeasePeriod: provision === 'mg' ? (document.getElementById('mgLeaseStart').value + ' ~ ' + document.getElementById('mgLeaseEnd').value) : '',
             안내: (r.시점경고 ? r.시점경고 + ' ' : '') + (r.안내 || '')
           };
+          // [2026.10.20 서식 연결] 판정 창에 이미 입력한 값을 서식 칸용으로 함께 남김(계산엔 안 씀 — 인쇄 연결표 app/formprint가 읽음)
+          //  52호의3 ⑪ 전용면적·⑬ 주택가격(미분양 취득가액 / 인구감소 취득일 기준시가), 63호의4 ⑨ 대지면적·⑩ 기준시가,
+          //  83호의4 ⑩ 직전·⑪ 상생 임대차 개시·종료일·보증금·월세, 83호 ⑦ 귀농주택 대지면적, 83호의5 ⑬ 사업시행인가일·⑮ 완성(예정)일,
+          //  83호의2 ㉑ 임대개시 당시 기준시가·⑪/⑫ 임대기간요건 충족 전 양도
+          const ohsVal_ = function(id){ const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+          const ohsNum_ = function(id){ const v = ohsVal_(id); return v ? numVal(v) : ''; };
+          const ohc_ = transferAssets[idx].oneHouseSpecialCase;
+          if (provision === 'u9'){ ohc_.u9Area = ohsNum_('u9Area'); ohc_.u9Price = ohsNum_('u9Price'); }
+          if (provision === 'pd'){ ohc_.pdStdPrice = ohsNum_('pdStdPrice'); }
+          if (provision === 'rh'){ ohc_.rhLandArea = ohsNum_('rhLandArea'); ohc_.rhHousePrice = ohsNum_('rhHousePrice'); }
+          if (provision === 'mg'){
+            ohc_.mgPriorStart = ohsVal_('mgPriorStart'); ohc_.mgPriorEnd = ohsVal_('mgPriorEnd');
+            ohc_.mgPriorDeposit = ohsNum_('mgPriorDeposit'); ohc_.mgPriorRent = ohsNum_('mgPriorRent');
+            ohc_.mgLeaseDeposit = ohsNum_('mgLeaseDeposit'); ohc_.mgLeaseRent = ohsNum_('mgLeaseRent');
+          }
+          if (provision === 'rf'){ ohc_.rfLandArea = ohsNum_('rfLandArea'); }
+          if (provision === 'rp'){ ohc_.businessApprovalDate = ohsVal_('rpApprovalDate'); ohc_.newHousingCompletionDate = ohsVal_('rpCompletionDate'); }
+          if (provision === 'ci'){ ohc_.newHousingCompletionDate = ohsVal_('ciCompletionDate'); }
+          if (provision === 'lr'){
+            if (document.getElementById('lrUseMaCalc') && document.getElementById('lrUseMaCalc').checked) ohc_.lrMaStandardPrice = ohsNum_('lrMaStandardPrice');
+            if (r.임대기간충족전) ohc_.임대기간충족전 = true;
+            if (r.직전거주주택보유주택) ohc_.직전거주주택보유주택 = true;
+          }
         } else {
           delete transferAssets[idx].oneHouseSpecialCase;
         }

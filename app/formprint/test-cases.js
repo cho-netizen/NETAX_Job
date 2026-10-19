@@ -72,7 +72,7 @@
       seller: Object.assign({}, ctx양도.seller, { regNo: '800101-1000000', address: '서울특별시 ○○구 견본로 1', addressDong: '101', addressHo: '1001' }),
       assets: tAssets.map(function (a) { return { asset: a, single: E.calculateTransferTaxSingleJS(clone(a)), rateCode: '10', typeCode: '01', transferCause: 'sale' }; }),
       stock: { assetCategory: 'domestic_stock', input: stInput, result: E.calculateStockTransferTaxJS(clone(stInput)) },
-      derivative: E.calculateDerivativeTransferTaxJS({ domesticGainLoss: 30000000, overseasGainLoss: -5000000, filingStatus: 'ontime' })
+      derivative: E.calculateDerivativeTransferTaxJS({ taxYear: 2025, domesticGainLoss: 30000000, overseasGainLoss: -5000000, filingStatus: 'ontime' })
     });
     // 증여: 직계존속에게서 1.5억(혼인 공제), 아파트·토지·서화 배분, 가업승계 납부유예, 혼인공제 추징, 공익법인 가산세
     var gr = E.calculateGiftTaxJS({ giftAmount: 150000000, relation: '직계존속', giftDate: '2026-09-01', filingStatus: 'ontime', isMarriageGift: true, marriageDate: '2026-10-01', publicInterestOrgPenalty: 3000000 });

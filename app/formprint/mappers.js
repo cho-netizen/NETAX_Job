@@ -248,9 +248,11 @@
   // 엔진 감면산식 글 'A … × (B … − C …) ÷ D …(그 세율 묶음 — §104⑤2호) × E 15%' 읽기(mappers-양도감면A.js formulaOf와 같은 식)
   function redFormula(note) {
     var m = String(note && note.감면산식 || '').match(/A ([\d,]+) × \(B ([\d,]+) − C ([\d,]+)\) ÷ D ([\d,]+)(?:\([^)]*\))? × E ([\d.]+)%/);
-    if (!m) return null;
     var g = function (s) { return Number(String(s).replace(/,/g, '')); };
-    return { A: g(m[1]), B: g(m[2]), C: g(m[3]), D: g(m[4]), E: Number(m[5]) };
+    var f = m ? { A: g(m[1]), B: g(m[2]), C: g(m[3]), D: g(m[4]), E: Number(m[5]) } : null;
+    // [2026.10.20 서식 연결] 엔진 감면 줄의 표시 필드(감면대상소득금액·감면율 숫자)가 있으면 B·E(%)는 그 숫자를 씀(글 읽기는 예전 저장 결과용)
+    if (note && typeof note.감면대상소득금액 === 'number' && typeof note.감면율 === 'number') { f = f || {}; f.B = note.감면대상소득금액; f.E = Math.round(note.감면율 * 1000) / 10; }
+    return f;
   }
   // 부표1 ④ 원인(작성방법 4: 매매·수용·협의매수·교환·공매·경매·부담부증여…) — 화면 양도원인 중 서식 낱말과 1:1인 것만
   var CAUSE_LABEL = { '': '매매', sale: '매매', exchange: '교환', burdened_gift: '부담부증여' };
@@ -942,7 +944,9 @@
     var r = ctx.derivative;
     if (!r) { o.miss('부표2의2 전체', '파생상품 계산 결과 없음'); return o.result(); }
     o.set('⑮@합계', Math.round(n(r.통산손익)));
-    o.miss('①~⑮ 종목별 줄', '계산기는 국내·국외 손익 합계 두 값만 받음 — 과세대상연도·세율구분·종목·증권사·계좌·수량·가액은 직접 적어야 함');
+    // [2026.10.20 서식 연결] ① 과세대상연도 = 엔진 결과 과세연도(화면 과세연도 입력, 탄력세율 연혁에 쓰는 값)
+    if (n(r.과세연도)) o.set('①', String(r.과세연도)); else o.miss('① 과세대상연도', '파생상품 계산기 과세연도 입력 없음(또는 예전 저장 결과)');
+    o.miss('②~⑮ 종목별 줄', '계산기는 국내·국외 손익 합계 두 값만 받음 — 세율구분·종목·증권사·계좌·수량·가액은 직접 적어야 함');
     o.note('⑮ 합계 = 국내 ' + Math.round(n(r.국내파생상품손익)) + ' + 국외 ' + Math.round(n(r.국외파생상품손익)) + ' (엔진 통산손익)');
     return o.result();
   };

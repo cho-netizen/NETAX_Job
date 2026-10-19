@@ -2762,6 +2762,7 @@
       const note = { idx: x.idx, 구분: '합산(장기)', 소득금액: Math.round(c.incomeAmount), 특례: x.label, 감면액: x.allowed,
         감면산식: 'A ' + Math.round(classAD_[x.idx] && classAD_[x.idx].n > 1 ? classAD_[x.idx].A : A90_).toLocaleString('ko-KR') + ' × (B ' + Math.round(x.B).toLocaleString('ko-KR') + ' − C ' + Math.round(x.C).toLocaleString('ko-KR') + ') ÷ D ' + Math.round(classAD_[x.idx] && classAD_[x.idx].n > 1 ? classAD_[x.idx].D : poolTaxBase).toLocaleString('ko-KR') + (classAD_[x.idx] && classAD_[x.idx].n > 1 ? '(그 세율 묶음 — §104⑤2호)' : '') + ' × E ' + Math.round(x.rate * 1000) / 10 + '%' };
       if (x.cut) note.조특법133_한도로_감면안함 = x.cut;
+      note.감면대상소득금액 = Math.round(x.B); note.감면율 = x.rate; // [2026.10.20 서식 연결] 표시 필드(세액 영향 없음) — 부표1 ⑲·㉑, 조특62호 등이 감면산식 글 대신 읽음
       assetNotes.push(note);
       if (x.key === 'farm') {
         farmlandReductionTotal += x.allowed;
@@ -2945,8 +2946,12 @@
       farmlandReductionTotal = 0; percentTaxReductionTotal = 0; compensationReductionTotal = 0;
       red1.reds.forEach(function (x) {
         if (x.key === 'farm') farmlandReductionTotal += x.allowed; else if (x.key === 'percent') percentTaxReductionTotal += x.allowed; else compensationReductionTotal += x.allowed;
-        assetNotes.push({ idx: x.idx, 구분: '비교과세 1호 감면(§90① A·D = 그 해 전체)', 특례: x.label, 감면액: x.allowed,
-          감면산식: 'A ' + Math.round(T1).toLocaleString('ko-KR') + ' × (B ' + Math.round(x.B).toLocaleString('ko-KR') + ' − C ' + Math.round(x.C).toLocaleString('ko-KR') + ') ÷ D ' + Math.round(totalBase_).toLocaleString('ko-KR') + ' × E ' + Math.round(x.rate * 1000) / 10 + '%' });
+        const note1_ = { idx: x.idx, 구분: '비교과세 1호 감면(§90① A·D = 그 해 전체)', 특례: x.label, 감면액: x.allowed,
+          감면산식: 'A ' + Math.round(T1).toLocaleString('ko-KR') + ' × (B ' + Math.round(x.B).toLocaleString('ko-KR') + ' − C ' + Math.round(x.C).toLocaleString('ko-KR') + ') ÷ D ' + Math.round(totalBase_).toLocaleString('ko-KR') + ' × E ' + Math.round(x.rate * 1000) / 10 + '%' };
+        // [2026.10.20 서식 연결] 표시 필드(세액 영향 없음) — 2호 줄과 같게 §133 한도로 깎인 몫·감면대상소득금액·감면율
+        if (x.cut) note1_.조특법133_한도로_감면안함 = x.cut;
+        note1_.감면대상소득금액 = Math.round(x.B); note1_.감면율 = x.rate;
+        assetNotes.push(note1_);
       });
       shortRed1_.forEach(function (x) { percentTaxReductionTotal += x.allowed; });
       shortRed_ = shortRed1_; shortReductionTotal_ = 0; // 1호는 아래 poolTaxWithSurcharge = T1 − R1(단기 감면 포함)로 이미 뺌
@@ -6752,6 +6757,7 @@
     const totalTax = Math.max(0, calculatedTax + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax);
 
     return {
+      과세연도: dvYear_ || undefined, // [2026.10.20 서식 연결] 표시 필드(세액 영향 없음) — 부표2의2 ① 과세대상연도
       국내파생상품손익: domesticGain,
       국외파생상품손익: overseasGain,
       통산손익: combinedGain,

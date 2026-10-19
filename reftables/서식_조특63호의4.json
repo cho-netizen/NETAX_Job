@@ -148,7 +148,9 @@
    ],
    "조문개정": "법률 제21738호 2026.6.2. 공포",
    "계산기칸": [
-    "계산기에 없음"
+    "양도(일반)주택 건물 = 자산 카드 assetArea(토지 자산 제외)",
+    "[2026.10.20] 농어촌주택 등 토지 = 판정 창 rhLandArea(대지면적) → oneHouseSpecialCase.rhLandArea",
+    "양도(일반)주택 토지·농어촌주택 등 건물은 계산기에 없음"
    ],
    "조견표": [],
    "인쇄": "이 칸 없음",
@@ -164,7 +166,8 @@
    ],
    "조문개정": "법률 제21738호 2026.6.2. 공포",
    "계산기칸": [
-    "meetsLocationAndPriceRequirements(체크 — 금액 판정 없음)"
+    "meetsLocationAndPriceRequirements(체크 — 금액 판정 없음)",
+    "[2026.10.20] 판정 창 입력 rhHousePrice(주택+딸린 토지 취득 당시 기준시가) → oneHouseSpecialCase.rhHousePrice → ⑩ 농어촌주택 등 합계(토지·건물 나눔 입력 없음)"
    ],
    "조견표": [],
    "인쇄": "이 칸 없음",

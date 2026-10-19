@@ -171,7 +171,8 @@
    ],
    "조문개정": "§97·§97의2 법률 제13498호 2015.8.28. / §97의5 법률 제15356호 2018.1.16. 공포",
    "계산기칸": [
-    "calculateLongTermRentalHouseReductionJS 결과 적용감면율(50 세액감면방식) 또는 rate 100"
+    "calculateLongTermRentalHouseReductionJS 결과 적용감면율(50 세액감면방식) 또는 rate 100",
+    "[2026.10.20] 합산 결과 감면 줄 표시 필드 감면율(세액감면 방식 — 감면산식 E)"
    ],
    "조견표": [],
    "인쇄": "이 칸 없음",
@@ -188,7 +189,8 @@
    "조문개정": "§97의5 시행령 대통령령 제35947호 2025.12.30. 공포(④항 기준 — ②항 따로 확인 안 함)",
    "계산기칸": [
     "sect97_5: rentalPeriodGain = totalGain × (양도 기준시가 − 등록일 기준시가) ÷ (양도 기준시가 − 취득 기준시가)(lrTransferStandardPrice·lrRegistrationStandardPrice·lrAcquisitionStandardPrice), 없으면 lrRegistrationValue 근사",
-    "→ _장기임대감면_제외소득금액"
+    "→ _장기임대감면_제외소득금액",
+    "[2026.10.20] 합산 결과 감면 줄 표시 필드 감면대상소득금액(세액감면 방식 — 감면산식 B)"
    ],
    "조견표": [],
    "인쇄": "이 칸 없음",
