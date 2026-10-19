@@ -1340,5 +1340,47 @@
    "수용감면액": 60175500,
    "납부세액_합계": 154450450
   }
+ },
+ {
+  "이름": "양도 1세대1주택 + 장기임대(§97의4) 8년 — §97의4① 단서: 1세대1주택은 추가공제 없이 표2 80% — 과세 차익 2억 × 20% = 4천만, 과표 3,750만, 산출 4,365,000",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "acquisitionDate": "2014-06-30",
+   "transferDate": "2026-06-30",
+   "transferPrice": 1500000000,
+   "acquisitionPrice": 500000000,
+   "necessaryExpenses": 0,
+   "isOneHouseOneFamily": true,
+   "residenceYears": 12,
+   "rentalSpecialType": "rental_long",
+   "rentalYears": 8
+  },
+  "정답": {
+   "과세표준": 37500000,
+   "산출세액": 4365000
+  }
+ },
+ {
+  "이름": "양도 조정지역 2주택 + 장기임대(§97의4) 임대 5년 — 6년 미만은 특례 아님: 중과 +20%p·장특 0 — 과표 4.975억 × 40% − 2,594만 + 4.975억 × 20% = 272,560,000",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "acquisitionDate": "2016-06-30",
+   "transferDate": "2026-06-30",
+   "transferPrice": 900000000,
+   "acquisitionPrice": 400000000,
+   "necessaryExpenses": 0,
+   "isAdjustedArea": true,
+   "multiHouseCount": 2,
+   "rentalSpecialType": "rental_long",
+   "rentalYears": 5
+  },
+  "정답": {
+   "과세표준": 497500000,
+   "산출세액": 272560000
+  }
  }
 ]
