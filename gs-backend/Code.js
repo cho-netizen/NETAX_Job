@@ -1252,6 +1252,7 @@ const DRIVE_TOOLS = [
         isOffshoreTransaction: { type: 'boolean', description: '국세기본법§47의2·§47의3의 역외거래 부정행위(무신고·과소신고)에 해당하는지 — true면 가산세율이 40%(국내)가 아니라 60%로 적용된다.' },
         companySize: { type: 'string', enum: ['general', 'medium', 'small'], description: '수혜법인의 기업규모. general=일반(중견·중소기업 아님), medium=중견기업, small=중소기업(조특법§6① 각 호 외 부분에 따른 중소기업).' },
         afterTaxOperatingIncome: { type: 'number', description: '수혜법인의 세후영업이익(원) — companySize(중소/중견/일반) 무관하게 §45의3①2호가·나·다목 모두 이 값을 소득기준으로 쓴다.' },
+        relatedPartyTransactionRatioForProfit: { type: 'number', description: '[2026.10.20] 증여의제이익 계산용 특수관계법인거래비율(%) ⑯ = (④−⑤−⑥−⑦)÷(⑫−⑥−⑦)(서식 10호의3 부표4 작성방법 9). relatedPartyTransactionRatio는 과세요건 ⑬ = (④−⑥)÷(⑫−⑥). 없으면 같은 값.' },
         relatedPartyTransactionRatio: { type: 'number', description: '특수관계법인거래비율(%, 0~100) — (특수관계법인 매출액-과세제외매출액)/(수혜법인 총매출액-과세제외매출액)×100. 과세제외매출액(중소기업간 거래, 수출관련 거래 등 8개 항목) 반영이 끝난 최종 비율을 입력해야 한다.' },
         relatedPartySalesAmount: { type: 'number', description: '수혜법인이 companySize가 general(일반기업)일 때만 — 특수관계법인에 대한 매출액(원, 과세제외매출액 반영 후). 거래비율이 정상거래비율(30%)의 3분의2인 20%를 초과하면서 이 금액이 1천억원을 초과하면, 거래비율이 30%를 넘지 않아도 §45의3①1호나목2)의 대체 과세요건을 충족한다.' },
         shareholderOwnershipRatio: { type: 'number', description: '지배주주와 그 친족(배우자, 6촌 이내 혈족, 4촌 이내 인척)의 수혜법인에 대한 직접 또는 간접 주식보유비율(%, 0~100). 직접출자와 간접출자를 모두 하고 있는 경우, 출자관계별로 세후영업이익·거래비율이 달라질 수 있으므로 이 도구를 출자관계별로 각각 호출해 증여의제이익을 따로 계산한 뒤 합산해야 한다(하나의 합계 비율로 한 번에 계산하지 말 것).' },
@@ -1284,6 +1285,7 @@ const DRIVE_TOOLS = [
         isOffshoreTransaction: { type: 'boolean', description: '국세기본법§47의2·§47의3의 역외거래 부정행위(무신고·과소신고)에 해당하는지 — true면 가산세율이 40%(국내)가 아니라 60%로 적용된다.' },
         phase: { type: 'string', enum: ['initial', 'settlement'], description: 'initial=개시사업연도(사업기회를 제공받은 날이 속하는 사업연도 종료일 이후 신고), settlement=정산사업연도(사업기회제공일로부터 2년이 경과한 날이 속하는 사업연도 종료일 이후 신고, 반드시 필요).' },
         profitFromOpportunity: { type: 'number', description: 'initial이면 제공받은 사업기회로 인하여 발생한 개시사업연도 수혜법인의 이익(원), settlement이면 개시사업연도부터 정산사업연도까지 발생한 수혜법인의 이익 합계액(원).' },
+        doneeOwnershipRatio: { type: 'number', description: '[2026.10.20] 수증자 본인의 수혜법인 직접+간접 주식보유비율(%) — 증여의제이익은 이 비율로 계산(서식 10호의4 본표 ⑳·부표1 다.㉒). 없으면 합계 비율.' },
         shareholderOwnershipRatio: { type: 'number', description: '지배주주와 그 친족의 수혜법인에 대한 직·간접 주식보유비율(%, 0~100). 30% 이상이어야 과세대상이다.' },
         corporateTaxPortion: { type: 'number', description: 'initial이면 개시사업연도분의 법인세 납부세액 중 상당액(원), settlement이면 개시사업연도부터 정산사업연도분까지의 법인세 납부세액 중 상당액 합계(원). 생략하면 corporateTaxAfterCredit·corporateTaxableIncome으로 자동계산한다(시행령§34의4④).' },
         corporateTaxAfterCredit: { type: 'number', description: 'corporateTaxPortion 자동계산용 — 수혜법인의 해당 사업연도 법인세 산출세액(법인세법§55, 토지등양도소득에 대한 법인세 제외)에서 공제·감면세액을 뺀 금액(원). corporateTaxPortion을 직접 입력하면 이 값은 무시된다.' },
@@ -5010,14 +5012,20 @@ function toolLookupStatuteArticle(lawName, articleNo, baseDate) {
   if (ent && /부칙/.test(String(articleNo))) return lawDbBuchik_(idx, key, ver, (String(articleNo).match(/\d+/) || [])[0]);
   var fid = ver && lawDbIds_(idx, key)[ver.판], bm = String(articleNo).match(/별표\s*(\d+(?:의\d+)?)/);
   if (fid && bm) { var bd = JSON.parse(Utilities.ungzip(DriveApp.getFileById(fid).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')), bb = (bd.별표 || []).filter(function (b) { return b.번호 === bm[1]; }); // [2026.10.20] 별표(현행·시행예정 판)
-    return bb.length ? { 법령명: ent.이름, 시행일자: ver.시행일, 판: ver.판, 별표: bb } : { error: '이 판에 별표 ' + bm[1] + '이 없습니다' + (bd.별표 ? '' : '(옛 판은 별표를 담지 않음)') + '.' }; }
+    return bb.length ? { 법령명: ent.이름, 시행일자: ver.시행일, 판: ver.판, 별표: bb } : { error: '이 판에 별표 ' + bm[1] + '이 없습니다' + (bd.별표 ? '' : '(이 판 파일에 별표가 아직 없음 — 법제처 원문 보기로 확인)') + '.' }; }
   if (fid) try {
     var ck = 'lwa|' + key + '|' + ver.판 + '|' + jk, hit = jk && c.get(ck);
     arts = hit ? [JSON.parse(hit)] : JSON.parse(Utilities.ungzip(DriveApp.getFileById(fid).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')).조.filter(function (a) { return !jk || a.조 === jk; });
     if (jk && !hit && arts.length) try { c.put(ck, JSON.stringify(arts[0]), 21600); } catch (e) { }
     out = { 법령명: ent.이름, 시행일자: ver.시행일, 판: ver.판, 출처: '법령 정비본(법제처 ' + ver.시행일 + ' 시행판, 공포 ' + ver.공포일 + ' 제' + ver.공포번호 + '호)' };
     if (ent.범위 === '조회만') out.주의 = '지방세 — 조회만, 계산·신고서 근거로 쓰지 않음';
-    if (stale) out.판주의 = stale.시행일 + ' 시행판(제' + stale.공포번호 + '호, 공포 ' + stale.공포일 + ')은 그보다 늦게 공포된 개정(' + stale.낡은글.앞최신 + ')을 반영하지 않은 법제처 연혁 글이라(되돌린 조 ' + stale.낡은글.되돌림 + '·빠진 조 ' + stale.낡은글.빠진조 + ') 이 판 글을 씀 — 제' + stale.공포번호 + '호로 ' + stale.시행일 + '부터 시행된 개정분은 부칙·원문 보기로 확인';
+    if (stale) {
+      var ch = stale.낡은글.바뀐조 || [], no = +stale.공포번호;
+      out.판주의 = stale.시행일 + ' 시행판(제' + no + '호, 공포 ' + stale.공포일 + ')은 그보다 늦게 공포된 개정(' + stale.낡은글.앞최신 + ')을 반영하지 않은 법제처 연혁 글이라(되돌린 조 ' + stale.낡은글.되돌림 + '·빠진 조 ' + stale.낡은글.빠진조 + ') 이 판(' + ver.판 + ') 글을 씀'
+        + (ch.length ? ' — 이 날 제' + no + '호로 바뀐 조: ' + ch.slice(0, 40).map(function (j) { return '§' + j; }).join('·') + (ch.length > 40 ? ' 외 ' + (ch.length - 40) + '개' : '') + '(' + (stale.낡은글.바뀐조근거 || '') + ')' : ' — 제' + no + '호로 ' + stale.시행일 + '부터 시행된 개정분은 부칙·원문 보기로 확인');
+      // [2026.10.20 위원회 N14] 조회한 조가 그 날 바뀐 조이면 맨 앞에 경고 — 아래 글에는 그 개정이 빠져 있을 수 있다
+      if (jk && ch.indexOf(jk) >= 0) out = Object.assign({ 경고: '⚠ 이 조(제' + jk.replace(/의/, '조의').replace(/^(\d+)$/, '$1조') + ')는 ' + stale.시행일 + ' 제' + no + '호로 바뀐 조 — 아래 글은 대신 쓴 ' + ver.판 + ' 판 글이라 그 개정이 빠졌을 수 있음. 📖 원문 보기에서 ' + stale.판 + ' 판(⚠ 낡은 연혁 글)과 부칙으로 확인' }, out);
+    }
     var fut = ent.판.filter(function (p) { return p.상태 === '시행예정' && p.시행일 > (day || ver.시행일); })[0];
     if (fut) out.시행예정개정 = fut.시행일 + ' 시행 예정 개정판 있음 — 그 뒤 양도·증여·상속분이면 baseDate로 확인';
   } catch (e) { arts = null; out.정비본오류 = String(e.message || e); }

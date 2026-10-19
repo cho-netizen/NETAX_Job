@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 21:11 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 21:13 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -6611,7 +6611,7 @@
     callGas('law_lookup_article', { lawName: l.이름, articleNo: art, baseDate: p && p.판 !== l.현행 ? p.시행일 : '' }).then(function(r){
       if (!r || r.error || !r.조문){ doc.innerHTML = '<div class="lsi-note">' + lsiEsc_((r && r.error) || '조문을 읽지 못했습니다.') + '</div>'; return; }
       var meta = { law: r.법령명, 시행일: r.시행일자, 법종: p && p.법종, 공포번호: p && p.공포번호 };
-      var head = '<div class="lsidb-head"><b>' + lsiEsc_(r.법령명) + '</b> [시행 ' + lsiEsc_(lsiDbYmd_(r.시행일자)) + ']' + (p ? ' [' + lsiEsc_((p.법종 ? p.법종 + ' ' : '') + '제' + String(p.공포번호).replace(/^0+/, '')) + '호, ' + lsiEsc_(lsiDbYmd_(p.공포일)) + ', ' + lsiEsc_(p.구분 || '') + ']' : '') +
+      var head = (r.경고 ? '<div class="lsi-note" style="font-weight:600;">' + lsiEsc_(r.경고) + '</div>' : '') + '<div class="lsidb-head"><b>' + lsiEsc_(r.법령명) + '</b> [시행 ' + lsiEsc_(lsiDbYmd_(r.시행일자)) + ']' + (p ? ' [' + lsiEsc_((p.법종 ? p.법종 + ' ' : '') + '제' + String(p.공포번호).replace(/^0+/, '')) + '호, ' + lsiEsc_(lsiDbYmd_(p.공포일)) + ', ' + lsiEsc_(p.구분 || '') + ']' : '') +
         (r.주의 ? '<br>⚠ ' + lsiEsc_(r.주의) : '') + (r.판주의 ? '<br>⚠ ' + lsiEsc_(r.판주의) : '') + (r.개정확인 ? '<br>' + lsiEsc_(r.개정확인) : '') + (r.시행예정개정 ? '<br>⏳ ' + lsiEsc_(r.시행예정개정) : '') +
         '<br><span class="lsi-note">' + lsiEsc_(r.출처 || '') + (r.원문링크 ? ' · <a href="' + lsiEsc_(r.원문링크) + '" target="_blank" rel="noopener">법제처에서 보기 ↗</a>' : '') + '</span></div>';
       var cites = [], btn = function(a, h, o, label, title){ var k = cites.push({ a: a, h: h, o: o }) - 1; return '<button type="button" class="lsidb-copy" data-lsidbcite="' + k + '" title="' + lsiEsc_(title) + '">' + label + '</button>' +
@@ -16230,7 +16230,11 @@
 
     const formulaTradeSubtract = companySize === 'general' ? 5 : (companySize === 'medium' ? 20 : 50);
     const formulaShareSubtract = companySize === 'general' ? 0 : (companySize === 'medium' ? 5 : 10);
-    const netTradeRatio = Math.max(0, (tradeRatio - formulaTradeSubtract) / 100);
+    // [2026.10.20 세액 고침 — 증여 감사 B, 서식 10호의3 부표4 작성방법 7·9] 과세요건 비율 ⑬ = (④−⑥)÷(⑫−⑥)과 증여의제이익 계산 비율 ⑯ = (④−⑤−⑥−⑦)÷(⑫−⑥−⑦)은
+    //  다르다(⑤ 부칙 제외·⑦ 추가 과세제외 매출). relatedPartyTransactionRatioForProfit(⑯)를 받으면 계산식에 그 값을 쓰고, 과세요건은 relatedPartyTransactionRatio(⑬)로.
+    //  예전엔 한 비율로 둘 다 계산해 ⑤·⑦이 있으면 이익이 과다(또는 요건 판정이 틀림). 없으면 예전과 같음.
+    const tradeRatioForProfit_ = Number(p.relatedPartyTransactionRatioForProfit) > 0 ? Number(p.relatedPartyTransactionRatioForProfit) : tradeRatio;
+    const netTradeRatio = Math.max(0, (tradeRatioForProfit_ - formulaTradeSubtract) / 100);
     const netShareRatio = Math.max(0, (shareRatio - formulaShareSubtract) / 100);
     let dividendDeduction = Number(p.dividendDeduction) || 0;
     let deemedGiftProfit = Math.max(0, Math.round(incomeBase * netTradeRatio * netShareRatio) - dividendDeduction);
@@ -16305,6 +16309,12 @@
       };
     }
 
+    // [2026.10.20 세액 고침 — 증여 감사 B, 서식 10호의4 본표 ⑳·부표1 다.㉒·부표3 ㉑·㉙] 30% 과세요건은 지배주주·친족 합계 비율(shareRatio)로 보고,
+    //  한 수증자의 증여의제이익은 그 수증자 본인의 직접 + 간접 주식보유비율로 계산한다(부표1 다.는 사람마다 ⑳+㉑=㉒, 계 줄로 30% 판정; 신고서는 수증자마다).
+    //  예전엔 합계 비율로 한 번에 계산해, 수증자가 여럿이면 각자 신고서에 모두의 몫이 들어가 누진세율로 세액이 커졌다. doneeOwnershipRatio가 없으면 합계 비율(경고).
+    const doneeRatioIn_ = Number(p.doneeOwnershipRatio);
+    const calcRatio_ = doneeRatioIn_ > 0 ? Math.min(doneeRatioIn_, shareRatio) : shareRatio;
+    const ratioNote_ = doneeRatioIn_ > 0 ? '' : '⚠ 수증자 본인 주식보유비율을 넣지 않아 지배주주·친족 합계 비율(' + shareRatio + '%)로 계산했습니다 — 수증자가 여럿이면 각자의 직접+간접 비율로 따로 계산하세요(서식 10호의4 본표 ⑳·부표1 다.㉒). ';
     let deemedGiftProfit;
     // 시행령§34의4⑤ — 개시사업연도분(§45의4①)도 정산분(⑥, §45의4③)과 별개로 "지배주주등이 배당받은
     // 소득이 있는 경우... 금액을 증여의제이익에서 공제(공제 후의 금액이 음수인 경우에는 영으로 본다)"가
@@ -16312,9 +16322,9 @@
     const dividendDeduction = Number(p.dividendDeduction) || 0;
     if (phase === 'initial') {
       const monthsInInitialYear = Number(p.monthsInInitialYear) || 12;
-      deemedGiftProfit = Math.max(0, Math.round(Math.max(0, (profitFromOpportunity * (shareRatio / 100) - corporateTaxPortion) / monthsInInitialYear * 12) * 3) - dividendDeduction);
+      deemedGiftProfit = Math.max(0, Math.round(Math.max(0, (profitFromOpportunity * (calcRatio_ / 100) - corporateTaxPortion) / monthsInInitialYear * 12) * 3) - dividendDeduction);
     } else {
-      deemedGiftProfit = Math.max(0, Math.round(profitFromOpportunity * (shareRatio / 100) - corporateTaxPortion) - dividendDeduction);
+      deemedGiftProfit = Math.max(0, Math.round(profitFromOpportunity * (calcRatio_ / 100) - corporateTaxPortion) - dividendDeduction);
     }
 
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
@@ -16334,7 +16344,8 @@
       과세표준: r.taxBase, 산출세액: r.calculatedTax, 개시사업연도_산출세액: initialPhaseCalculatedTax, 신고세액공제: r.reportCredit,
       무신고가산세: r.penalties.unreportedPenalty, 과소신고가산세: r.penalties.underreportedPenalty, 납부지연가산세: r.penalties.latePenalty,
       환급세액: refundTax,
-      안내: (phase === 'initial'
+      계산에쓴_주식보유비율: calcRatio_,
+      안내: ratioNote_ + (phase === 'initial'
         ? '개시사업연도 신고는 잠정치입니다 — 2년 경과 후 정산사업연도에 재계산·정산신고해야 합니다. '
         : '') + '증여재산공제는 적용되지 않습니다(증여의제이익 전액이 과세표준). 지배주주 판정은 다자간 지분구조 확인이 필요해 이 도구가 자동판정하지 않으니 별도로 확인하세요. 법인세 납부세액 중 상당액은 corporateTaxAfterCredit·corporateTaxableIncome을 넣으면 시행령§34의4④ 산식대로 자동계산되니(수혜법인의 실제 법인세 신고서상 값을 정확히 넣었는지만 확인하면 됩니다), corporateTaxPortion을 직접 계산해서 넣을 필요는 없습니다.',
       납부세액: r.finalTax
@@ -21537,12 +21548,19 @@
     // [2026.10.20 ㊲ 확정] 이 한도엔 세대생략 할증(§57)을 넣지 않는다 — [별지 제10호의6서식](2025.7.4. 개정) ㊲ 이름이 "산출세액 한도", 작성방법 9 ㊱ = min(㉞×㉟−누진공제, ㊲),
     //  그 뒤 ㊳ 세대생략가산액을 더해 ㊴ = ㊱ + ㊳. 산출세액(§56 — 할증 전)과 비교하는 한도라 "직접 증여 시 증여세 상당액"도 할증 전 기준.
     const corporateTaxEquivalentForShareholder = Math.round(corporateTaxEquivalentTotal * shareholderOwnershipRatio);
+    // [2026.10.20 세액 고침 — 증여 감사 C] 시행령 §34의5⑨ "증여일에 [4항1호 금액 × 보유비율]을 직접 증여받은 것으로 볼 때의 증여세" — 직접 증여였다면
+    //  같은 증여자 10년 내 증여 합산(§47②)·1년 내 같은 거래 합산(§43②)·증여재산공제 등이 실제 산출세액(서식 ㉞ 과세표준)과 똑같이 들어간다.
+    //  예전엔 이번 거래 이익 × 비율에 세율만 매겨, 합산이 있으면 한도(합산 없음)가 산출세액(합산 있음)보다 훨씬 작아 늘 한도에 걸린 뒤
+    //  기납부세액을 또 빼서 세액이 0 가까이 됐다(예: 이익 3억·법인세상당액 2천만·앞선 증여 2억(기납부 3천만) → 0원, 고친 뒤 4천만원).
+    //  그래서 과세표준과 같은 줄을 쓰되 이번 거래 몫만 법인세 차감 전 금액(4항1호 × 비율)으로 바꾼다. 1년 내 앞선 거래 합산액은 입력값 그대로(그 거래의 법인세상당액은 이 한도에서 따로 빼지 않음 — 입력 칸 없음).
+    const directThis_ = Math.round(benefitToCorpAmount * shareholderOwnershipRatio);
+    const directBase_ = Math.max(0, directThis_ + priorBenefitSum + priorGiftAmount - relationDeductionFor_(p, directThis_ + priorBenefitSum, priorGiftAmount) - appraisalFeeAmount - disasterLossAmount);
     const directGiftTaxEquivalent = Number(p.directGiftTaxEquivalent) > 0
       ? Number(p.directGiftTaxEquivalent)
-      : progressiveGiftInheritTax(Math.round(benefitToCorpAmount * shareholderOwnershipRatio), GIFT_INHERIT_TAX_BRACKETS);
-    let capApplied = false;
+      : progressiveGiftInheritTax(directBase_, GIFT_INHERIT_TAX_BRACKETS);
+    let capApplied = false, capLimit_ = null;
     {
-      const capLimit = Math.max(0, directGiftTaxEquivalent - corporateTaxEquivalentForShareholder);
+      const capLimit = Math.max(0, directGiftTaxEquivalent - corporateTaxEquivalentForShareholder); capLimit_ = capLimit;
       if (calculatedTax > capLimit) { calculatedTax = capLimit; capApplied = true; }
     }
 
@@ -21575,6 +21593,7 @@
       과세표준: taxBase, 산출세액: calculatedTax, 세대생략할증액: genSkip.amount, 산출세액_할증후: calculatedTaxTotal, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
+      직접증여시_증여세상당액: directGiftTaxEquivalent, 법인세상당액_지배주주몫: corporateTaxEquivalentForShareholder, 산출세액한도: capLimit_, // [2026.10.20] 서식 ㊲
       안내: (capApplied ? '산출세액이 §45의5② 한도(직접증여시 증여세상당액-법인세상당액)를 초과해 그 한도로 낮췄습니다. ' : '') + '증여자가 지배주주의 친족이 아닌 특정법인 자체이므로 증여재산공제(§53)는 통상 적용되지 않습니다(위 관계별공제 한도는 0으로 입력하는 것이 원칙입니다). 증여세 과세표준 신고기한은 특정법인의 법인세 과세표준 신고기한이 속하는 달의 말일부터 3개월입니다(§68①).' + aggNote
     };
   };
@@ -33958,7 +33977,8 @@ function renderGiftPane(){
         '</select></div>' +
         '<div class="taxcalc-field"><label>수혜법인 세후영업이익(중견·일반기업용, §45의3①2호나·다목)</label><input type="number" id="jmOperatingIncome" placeholder="원"><span class="taxcalc-field-help">중소기업이면 비워도 됨</span></div>' +
         '<div class="taxcalc-field"><label>수혜법인 세후순이익(중소기업용, §45의3①2호가목)</label><input type="number" id="jmNetIncome" placeholder="원"><span class="taxcalc-field-help">중소기업일 때만 사용</span></div>' +
-        '<div class="taxcalc-field"><label>특수관계법인거래비율</label><input type="number" step="0.01" id="jmTradeRatio" placeholder="%"><span class="taxcalc-field-help">과세제외매출액 반영한 최종비율</span></div>' +
+        '<div class="taxcalc-field"><label>특수관계법인거래비율</label><input type="number" step="0.01" id="jmTradeRatio" placeholder="%"><span class="taxcalc-field-help">과세요건 판정용 ⑬ = (④−⑥)÷(⑫−⑥) — 서식 10호의3 부표4 작성방법 7</span></div>' +
+        '<div class="taxcalc-field"><label>[⑤·⑦이 있으면] 증여의제이익 계산용 거래비율 ⑯</label><input type="number" step="0.01" id="jmTradeRatioForProfit" placeholder="%"><span class="taxcalc-field-help">⑯ = (④−⑤−⑥−⑦)÷(⑫−⑥−⑦), 작성방법 9 — 비우면 위 비율</span></div>' +
         '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-related-party-ratio-helper">🧮 특수관계법인 여러 곳이면 매출 합산해서 계산</button></div>' +
         '<div class="taxcalc-field"><label>특수관계법인 매출액(일반기업 대체과세요건용)</label><input type="number" id="jmRelatedPartySales" placeholder="원"><span class="taxcalc-field-help">일반기업이고 거래비율 20~30%일 때만 — §45의3①1호나목2</span></div>' +
         '<div class="taxcalc-field"><label>지배주주+친족 주식보유비율</label><input type="number" step="0.01" id="jmShareRatio" placeholder="%"><span class="taxcalc-field-help">직접 또는 간접, 출자관계별로 따로 계산</span></div>' +
@@ -33996,6 +34016,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>사업기회로 인한 수혜법인 이익</label><input type="number" id="jtProfit" placeholder="원"><span class="taxcalc-field-help">개시: 해당연도분 / 정산: 누적 합계</span></div>' +
         '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-jt-segment-helper">🧮 부문별 매출·비용 내역으로 계산(3개년)</button></div>' +
         '<div class="taxcalc-field"><label>지배주주+친족 주식보유비율</label><input type="number" step="0.01" id="jtShareRatio" placeholder="%"><span class="taxcalc-field-help">30% 이상이어야 과세</span></div>' +
+        '<div class="taxcalc-field"><label>수증자 본인 주식보유비율(직접+간접)</label><input type="number" step="0.01" id="jtDoneeRatio" placeholder="%"><span class="taxcalc-field-help">증여의제이익은 이 비율로(서식 본표 ⑳·부표1 다.㉒) — 수증자마다 따로 계산</span></div>' +
         '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-shareholding-helper" data-target="jt">🧮 주주별 직접·간접보유 내역으로 계산</button></div>' +
         '<div class="taxcalc-field"><label>법인세 납부세액 중 상당액</label><input type="number" id="jtCorporateTax" placeholder="원"><span class="taxcalc-field-help">직접 입력시 아래 자동계산값보다 우선 — 개시: 해당연도분 / 정산: 누적 합계, 비우면 자동계산</span></div>' +
         '<div class="taxcalc-field"><label>수혜법인의 법인세 산출세액(공제·감면 차감후)</label><input type="number" id="jtCorpTaxAfterCredit" placeholder="원"><span class="taxcalc-field-help">법인세 납부세액 중 상당액 자동계산용</span></div>' +
@@ -34401,8 +34422,10 @@ function gfDoneeRelationCode_(donor, donee){
   const gender = ihGenderFromRegNo_(donee.regNo);
   const rel = donor.relation;
   if (rel === '배우자') return gender === 'M' ? '07' : '02'; // 07 남편, 02 처
-  if (rel === '직계존속') return donor.genSkip === '1' ? (gender === 'M' ? '50' : '51') : (gender === 'M' ? '03' : '04'); // 조부/조모, 부/모
-  if (rel === '직계비속') return donor.genSkip === '1' ? '40' : '05'; // 손, 자
+  // [2026.10.20 바로잡음 — 증여세 전자신고 설명서(2025.10) 22번 '증여자와의 관계'·별첨 8 코드표 + 서식 10호 ⑦ '증여자의 (   )' 작성방법 3(수증자 기준, 부모→자녀면 "자")]
+  //  코드는 수증자가 증여자의 누구인지로 통일 — 예전엔 배우자만 수증자 기준이고 직계는 증여자 기준(직계존속 증여에 부/모를 수증자 성별로)이라 섞여 있었다.
+  if (rel === '직계존속') return donor.genSkip === '1' ? '40' : '05'; // 증여자가 직계존속 → 수증자는 손(40)·자(05)
+  if (rel === '직계비속') return donor.genSkip === '1' ? (gender === 'M' ? '50' : '51') : (gender === 'M' ? '03' : '04'); // 증여자가 직계비속 → 수증자는 조부·조모(50·51)·부·모(03·04)
   if (rel === '기타친족') return 'ZB'; // 기타(세부 친족 미수집)
   if (rel === '기타') return 'ZA'; // 무관계
   return 'ZZ'; // 해당없음(관계 미선택)
@@ -38313,6 +38336,7 @@ function handleTaxCalcClick_(e){
       afterTaxOperatingIncome: numVal(document.getElementById('jmOperatingIncome').value) || 0,
       afterTaxNetIncome: numVal(document.getElementById('jmNetIncome').value) || 0,
       relatedPartyTransactionRatio: numVal(document.getElementById('jmTradeRatio').value) || 0,
+      relatedPartyTransactionRatioForProfit: numVal((document.getElementById('jmTradeRatioForProfit') || {}).value) || 0, // [2026.10.20] 부표4 ⑯
       relatedPartySalesAmount: numVal(document.getElementById('jmRelatedPartySales').value) || 0,
       shareholderOwnershipRatio: numVal(document.getElementById('jmShareRatio').value) || 0,
       dividendDeduction: numVal(document.getElementById('jmDividendDeduction').value) || 0,
@@ -38333,6 +38357,7 @@ function handleTaxCalcClick_(e){
       phase: document.getElementById('jtPhase').value,
       profitFromOpportunity: numVal(document.getElementById('jtProfit').value) || 0,
       shareholderOwnershipRatio: numVal(document.getElementById('jtShareRatio').value) || 0,
+      doneeOwnershipRatio: numVal((document.getElementById('jtDoneeRatio') || {}).value) || 0, // [2026.10.20] 수증자 본인 비율
       corporateTaxPortion: numVal(document.getElementById('jtCorporateTax').value) || 0,
       corporateTaxAfterCredit: numVal(document.getElementById('jtCorpTaxAfterCredit').value) || 0,
       corporateTaxableIncome: numVal(document.getElementById('jtCorpTaxableIncome').value) || 0,

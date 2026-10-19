@@ -917,6 +917,25 @@
   }
  },
  {
+  "이름": "[증여 감사 C] 특정법인 ㊲ 한도 — 앞선 증여 2억(기납부 3천만) 합산: 직접 증여 시 증여세 tax(3억+2억)=9천만 − 법인세상당액 2천만 = 7천만 한도, − 기납부 3천만 = 4천만, 신고공제 120만 (시행령 §34의5⑨; 예전 0원)",
+  "도구": "calculateSpecificCorporationGiftTaxJS",
+  "고정": true,
+  "입력": {
+   "benefitToCorpAmount": 300000000,
+   "corporateTaxAfterCredit": 20000000,
+   "corporateTaxableIncome": 300000000,
+   "shareholderOwnershipRatio": 1,
+   "priorGiftAmount": 200000000,
+   "priorPaidTax": 30000000
+  },
+  "정답": {
+   "과세표준": 480000000,
+   "산출세액": 70000000,
+   "신고세액공제": 1200000,
+   "납부세액": 38800000
+  }
+ },
+ {
   "이름": "[서식감사 차] 가업상속공제 30억 받고 납부유예 5억도 넣음 — 유예는 빼지 않음 (§72의2①2호)",
   "도구": "calculate_inheritance_tax",
   "고정": true,
@@ -2562,6 +2581,38 @@
   "정답": {
    "과세표준": 7500000,
    "산출세액": 450000
+  }
+ },
+ {
+  "이름": "[세액 고침 — 증여 감사 B, 서식 10호의4 본표 ⑳·부표1 다.㉒·부표3 ㉙] 일감떼어주기 정산 — 이익 10억, 지배주주·친족 합계 40%(과세요건), 수증자 A 본인 20%: 증여의제이익 2억, 산출 3,000만(예전 합계 비율로 4억·7,000만)",
+  "도구": "calculateBusinessOpportunityGiftTaxJS",
+  "고정": true,
+  "입력": {
+   "phase": "settlement",
+   "profitFromOpportunity": 1000000000,
+   "shareholderOwnershipRatio": 40,
+   "doneeOwnershipRatio": 20,
+   "corporateTaxPortion": 0
+  },
+  "정답": {
+   "증여의제이익": 200000000,
+   "산출세액": 30000000
+  }
+ },
+ {
+  "이름": "[세액 고침 — 증여 감사 B, 서식 10호의3 부표4 작성방법 7·9] 일감몰아주기 — 과세요건 ⑬ 60%, 계산용 ⑯ = 50/90 = 55.5556%(⑦ 추가 과세제외 10억): 세후영업이익 10억 × (55.5556 − 5)% × 50% = 252,778,000(예전 ⑬ 하나로 2.75억)",
+  "도구": "calculateRelatedPartyTransactionGiftTaxJS",
+  "고정": true,
+  "입력": {
+   "companySize": "general",
+   "relatedPartyTransactionRatio": 60,
+   "relatedPartyTransactionRatioForProfit": 55.5556,
+   "shareholderOwnershipRatio": 50,
+   "afterTaxOperatingIncome": 1000000000,
+   "relatedPartySalesAmount": 6000000000
+  },
+  "정답": {
+   "증여의제이익": 252778000
   }
  }
 ]
