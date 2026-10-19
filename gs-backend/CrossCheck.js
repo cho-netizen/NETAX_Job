@@ -246,7 +246,9 @@ function cxRefind_(c, facts, opt) {
   const seen = {}, uniq = single.filter(function (x) { const k = key(x); if (seen[k]) return false; seen[k] = 1; return true; });
   let texts = [];
   const prevNo = typeof TC_NO_NEW_OCR_ !== 'undefined' ? TC_NO_NEW_OCR_ : false; try { TC_NO_NEW_OCR_ = true; } catch (e) {} // 저장된 판독만(새 글자인식 안 함)
-  try { texts = caseProcFiles_(c).filter(function (f) { return !/^_|^~\$/.test(f.name) && !caseProcIsOutputDocFor_(c, f.name, f.dir); }).map(function (f) { let t = ''; try { t = String(tc_docText_(f) || ''); } catch (e) {} return { name: f.name, flat: t.replace(/s+/g, ' ') }; }).filter(function (x) { return x.flat.length > 20; }); } catch (e) { texts = []; } try { TC_NO_NEW_OCR_ = prevNo; } catch (e) {}
+  // 독립 근거만 — 사실 목록이 입력으로 받은 서류(사무소 계산표·검토메모·결과물·참고자료는 cxFacts_가 이미 뺌)에서만 찾는다(같은 서류를 보고 만든 계산표는 받침이 아님)
+  const inputFiles = {}; (facts || []).forEach(function (x) { if (x && x.src && x.src.file && !x._copy) inputFiles[x.src.file] = 1; });
+  try { texts = caseProcFiles_(c).filter(function (f) { return inputFiles[f.name] && !/^_|^~\$/.test(f.name) && !caseProcIsOutputDocFor_(c, f.name, f.dir); }).map(function (f) { let t = ''; try { t = String(tc_docText_(f) || ''); } catch (e) {} return { name: f.name, flat: t.replace(/s+/g, ' ') }; }).filter(function (x) { return x.flat.length > 20; }); } catch (e) { texts = []; } try { TC_NO_NEW_OCR_ = prevNo; } catch (e) {}
   const out = [];
   uniq.slice(0, opt.max || 300).forEach(function (x) {
     const d = CX_REFIND_DATE_.test(x.kind), n = cxNormV_(x.value, d ? 'date' : 'money');
