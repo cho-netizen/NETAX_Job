@@ -770,11 +770,35 @@
     const d = String(date || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';
     const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7));
-    if (kind === 'transfer') return (y + 1) + '-06-01';
+    if (kind === 'transfer') return addDaysStr_(shiftTaxDeadline_((y + 1) + '-05-31'), 1);
     const add = kind === 'gift' ? 3 : 6;
     const end = new Date(Date.UTC(y, m + add, 0)); // 그 달 말일 + add개월의 말일
-    return addDaysStr_(end.toISOString().slice(0, 10), 1);
+    return addDaysStr_(shiftTaxDeadline_(end.toISOString().slice(0, 10)), 1);
   }
+  // [2026.10.19 조견표 1부-02·2부-17] 국세기본법 §5① — 신고·납부기한 끝날이 토요일·일요일, 공휴일·대체공휴일(임시공휴일·선거일 포함),
+  //  5월 1일(근로자의 날 → 2025.11.11.부터 노동절)이면 그다음 날이 기한. 토·일·5.1.은 늘 미루고, 공휴일은 화면(app)에 조견표 1부-02가
+  //  있을 때(연혁 스위치 켜짐)만 표로 미룬다 — 서버·시험 도구엔 표가 없어 토·일·5.1.만. 화면은 window.nxShiftTaxDeadline_로 같은 규칙을 쓴다.
+  let nxHolidaySet_ = null;
+  function nxHolidays_() {
+    if (nxHolidaySet_) return nxHolidaySet_;
+    const set = {};
+    const T = (typeof window !== 'undefined' && window && window.LSI_REF_TABLES_) || [];
+    const t = T.filter ? T.filter(function (x) { return x && x.번호 === '1부-02'; })[0] : null;
+    (t && t.행 || []).forEach(function (r) { if (r && r.시작) set[r.시작] = true; });
+    if (t) nxHolidaySet_ = set; // 표가 아직 안 실렸으면 다음에 다시 찾음
+    return set;
+  }
+  function shiftTaxDeadline_(ymd) {
+    let d = String(ymd || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+    const hol = refHistoryOn_() ? nxHolidays_() : {};
+    for (let i = 0; i < 15; i++) {
+      const wd = new Date(d + 'T00:00:00Z').getUTCDay();
+      if (wd === 0 || wd === 6 || d.slice(5) === '05-01' || hol[d]) d = addDaysStr_(d, 1); else break;
+    }
+    return d;
+  }
+  if (typeof window !== 'undefined' && window) window.nxShiftTaxDeadline_ = shiftTaxDeadline_;
   // [2026.10.19 조견표 2부-32] 이월과세(§97의2①)·증여 후 우회양도 부인(§101②) 기간 — 2023.1.1. 이후 증여받은 자산 10년, 그 전 5년
   //  (법률 제19196호 부칙 제18조 '이 법 시행 전에 증여받은 자산은 종전 규정'). 증여일을 모르면 지금 값 10년.
   function carryoverWindowYearsAt_(giftDate) {
