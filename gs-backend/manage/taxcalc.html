@@ -10826,9 +10826,10 @@ function buildIhTaxCalcRecord_(){
   let b = [];
   b = b.concat(ihPadChar_('03', 2));                    // 1 자료구분
   b = b.concat(ihPadChar_(IH_EFILE_FORM_CODE_, 7));      // 2 서식코드
-  b = b.concat(ihPadNum_(r.상속세과세가액_적용값, 14));   // 3 상속세과세가액
-  b = b.concat(ihPadNum_(r.상속공제_합계, 14));           // 4 상속공제액
-  b = b.concat(ihPadNum_(g_('ihAppraisalFee'), 14));      // 5 감정평가수수료
+  const fv_ = ihFormValues_(r);
+  b = b.concat(ihPadNum_(fv_.taxableEstate, 14));        // 3 상속세과세가액(⑱ = 부표1 ㉙, 장례비 뺀 금액)
+  b = b.concat(ihPadNum_(fv_.deductionTotal, 14));       // 4 상속공제액(⑲ = 부표3 ㉛, §24 한도 안)
+  b = b.concat(ihPadNum_(fv_.appraisalFee, 14));         // 5 감정평가수수료(⑳, 한도 적용 뒤)
   b = b.concat(ihPadNum_(taxBase, 14));                   // 6 과세표준
   b = b.concat(ihPadDec_(ihRateForBase_(taxBase) * 100, 5, 2)); // 7 세율
   b = b.concat(ihPadNum_(calcTaxBase, 14));               // 8 산출세액(세대생략 제외)
@@ -10959,6 +10960,29 @@ function ihParseFraction_(str){
   return { num: 0, den: 1 };
 }
 
+// [2026.10.19 세액·서식 고침] 별지 제9호서식 칸 정의(칸 지도 reftables/서식_상속9호*.json)대로 찍는 값 — 엔진 결과의 서식용 값을 쓴다.
+//  예전에는 ⑱·㉙ 과세가액을 장례비 빼기 전 값으로, ⑲·㉛을 장례비·감정평가수수료까지 더한 합계로, ⑳을 한도 적용 전 입력값으로,
+//  ㉚을 '과세가액 − 다른 공제들'(§24 정의 아님)로, ⑱ 기초공제를 비거주자 0원으로, ㉓ 일괄공제를 배우자 단독상속에도 5억으로 찍었다.
+//  과세표준·세액은 원래 같았고(엔진), 서식 칸별 금액만 서식과 달랐다. 엔진 값이 없으면(예전 저장 결과) 예전 값으로 돌아간다.
+function ihFormValues_(r){
+  r = r || {};
+  const has = function(k){ return r[k] !== undefined && r[k] !== null; };
+  const el = function(id){ const x = document.getElementById(id); return x ? numVal(x.value) : 0; };
+  const isNonResident = document.getElementById('ihDecedentResident') && document.getElementById('ihDecedentResident').value === 'nonresident';
+  const spouseOnly = typeof taxCalcHeirRegistryIsSpouseOnly !== 'undefined' && !!taxCalcHeirRegistryIsSpouseOnly;
+  const ded = r.공제적용한도_차감내역 || {};
+  return {
+    taxableEstate: numVal(has('상속세과세가액_서식') ? r.상속세과세가액_서식 : r.상속세과세가액_적용값) || 0,   // 본표 ⑱ = 부표1 ㉙
+    deductionTotal: numVal(has('상속공제_서식합계') ? r.상속공제_서식합계 : r.상속공제_합계) || 0,             // 본표 ⑲ = 부표3 ㉛
+    appraisalFee: numVal(has('감정평가수수료공제') ? r.감정평가수수료공제 : el('ihAppraisalFee')) || 0,          // 본표 ⑳(한도 적용 뒤)
+    limit: has('공제적용한도액') ? numVal(r.공제적용한도액) : null,                                              // 부표3 ㉚(§24)
+    bequest: numVal(ded.상속인아닌자유증등) || 0, disclaimed: numVal(ded.상속포기후다음순위상속분) || 0, priorGiftBase: numVal(ded.가산증여재산과세표준) || 0,
+    priorGiftAdded: el('ihPriorGiftedIncluded'),                                                                 // 부표1 ㉕(가산하는 증여재산가액)
+    basic: 200000000,                                                                                            // 부표3 ⑱ 기초공제 — 비거주자도 2억(§18①)
+    lumpSum: (isNonResident || spouseOnly) ? 0 : 500000000,                                                      // 부표3 ㉓ — 거주자만(§21①), 배우자 단독상속이면 0(§21②)
+    isNonResident: isNonResident, spouseOnly: spouseOnly
+  };
+}
 // 부표1 — 상속세과세가액계산명세서_상속세 과세가액계산(자료구분04, 500B)
 function ihGrossEstateTotal_(){
   const el = document.getElementById('ihGrossEstateGeneral');
@@ -10976,8 +11000,10 @@ function ihAttach1CalcRecord_(){
   const publicOrg = numVal(document.getElementById('ihPublicOrg') ? document.getElementById('ihPublicOrg').value : 0);
   const publicTrust = numVal(document.getElementById('ihPublicTrust') ? document.getElementById('ihPublicTrust').value : 0);
   const nonIncluded = publicOrg + publicTrust;
-  const priorGiftAdded = 0; // TODO: 상증법§13/조특법§30의5·6 가산 증여재산 — 이 앱이 상속세 쪽엔 별도 입력칸이 없어 0(주로 발생하지 않는 사례에 한정)
-  const taxableEstate = numVal(r.상속세과세가액_적용값) || 0;
+  const fv_ = ihFormValues_(r);
+  // ㉕ 가산하는 증여재산가액 — '과세가액에 가산된 사전증여재산 원본액' 칸 값. 조특법 §30의5·6 특례분을 나눠 받는 칸이 없어 전액 §13(㉖)으로 적는다
+  const priorGiftAdded = fv_.priorGiftAdded;
+  const taxableEstate = fv_.taxableEstate; // ㉙ = 장례비까지 뺀 과세가액
   const duesTotal = computeDuesTotal_(inheritanceDuesItems);
   const debtTotal = computeDebtTotal_(inheritanceDebtItems);
   const funeralTotal = numVal(r.장례비용공제) || 0;
@@ -11001,7 +11027,7 @@ function ihAttach1CalcRecord_(){
   b = b.concat(ihPadNum_(funeralTotal, 14));
   b = b.concat(ihPadNum_(debtTotal, 14));
   b = b.concat(ihPadNum_(priorGiftAdded, 14));
-  b = b.concat(ihPadNum_(0, 14)); // 가산하는증여재산가액_상증법13조
+  b = b.concat(ihPadNum_(priorGiftAdded, 14)); // 가산하는증여재산가액_상증법13조(특례분 구분 칸 없음 — 전액 여기)
   b = b.concat(ihPadNum_(0, 14)); // 가산하는증여재산가액_조특법30의5
   b = b.concat(ihPadNum_(0, 14)); // 가산하는증여재산가액_조특법30의6
   b = b.concat(ihPadNum_(taxableEstate, 14));
@@ -11164,20 +11190,21 @@ function ihAttach3DeductionRecord_(){
   const r = lastInheritanceResult || {};
   const g_ = function(id){ const el = document.getElementById(id); return el ? numVal(el.value) : 0; };
   const isNonResident = document.getElementById('ihDecedentResident') && document.getElementById('ihDecedentResident').value === 'nonresident';
-  const basic = isNonResident ? 0 : 200000000;
+  const fv_ = ihFormValues_(r);
+  const basic = fv_.basic; // 비거주자도 2억(§18①)
   const childD = isNonResident ? 0 : g_('ihChildCount') * 50000000;
   const minorD = isNonResident ? 0 : g_('ihMinorYears') * 10000000;
   const elderlyD = isNonResident ? 0 : g_('ihElderlyCount') * 50000000;
   const disabledD = isNonResident ? 0 : g_('ihDisabledYears') * 10000000;
-  const lumpSum = isNonResident ? 0 : 500000000;
+  const lumpSum = fv_.lumpSum; // 거주자만, 배우자 단독상속이면 0(§21②)
   const business = numVal(r.가업상속공제) || 0;
   const farming = numVal(r.영농상속공제) || 0;
   const spouse = numVal(r.배우자공제) || 0;
   const financial = numVal(r.금융재산상속공제) || 0;
   const disaster = numVal(r.재해손실공제) || 0;
   const cohabit = numVal(r.동거주택상속공제) || 0;
-  const limit = Math.max(0, numVal(r.상속세과세가액_적용값) - business - farming - spouse - financial - disaster - cohabit);
-  const total = numVal(r.상속공제_합계);
+  const limit = fv_.limit !== null ? fv_.limit : Math.max(0, numVal(r.상속세과세가액_적용값) - business - farming - spouse - financial - disaster - cohabit); // ㉚ §24
+  const total = fv_.deductionTotal; // ㉛
   let b = [];
   b = b.concat(ihPadChar_('11', 2));
   b = b.concat(ihPadChar_(IH_ATTACH3_FORM_CODE_, 7));
@@ -11195,9 +11222,9 @@ function ihAttach3DeductionRecord_(){
   b = b.concat(ihPadNum_(cohabit, 14));
   b = b.concat(ihPadNum_(limit, 14));
   b = b.concat(ihPadNum_(numVal(total) || 0, 14));
-  b = b.concat(ihPadNum_(0, 14)); // 상속인제외유증재산가액(미수집)
-  b = b.concat(ihPadNum_(0, 14)); // 상속포기이후상속재산가액(미수집)
-  b = b.concat(ihPadNum_(0, 14)); // 과세가액가산증여재산가액(미수집)
+  b = b.concat(ihPadNum_(fv_.bequest, 14)); // 상속인제외유증재산가액(§24 1호)
+  b = b.concat(ihPadNum_(fv_.disclaimed, 14)); // 상속포기이후상속재산가액(§24 2호)
+  b = b.concat(ihPadNum_(fv_.priorGiftBase, 14)); // 과세가액가산증여재산가액(§24 3호 — 과세가액 5억 초과 때만, 증여재산공제 뺀 과세표준)
   b = b.concat(ihPadChar_('', 253));
   return b;
 }
@@ -11278,9 +11305,9 @@ function ihPrintFormBodyHtml_(){
     taxAgentPrintRows_() +
     '<div class="pf-section-head">세액 계산</div>' +
     '<table class="pf-table">' +
-      pfRow_(++n, '상속세과세가액', won(r.상속세과세가액_적용값)) +
-      pfRow_(++n, '상속공제액', won(r.상속공제_합계)) +
-      pfRow_(++n, '감정평가수수료', won(numVal(g_('ihAppraisalFee')))) +
+      pfRow_(++n, '상속세과세가액', won(ihFormValues_(r).taxableEstate)) +
+      pfRow_(++n, '상속공제액', won(ihFormValues_(r).deductionTotal)) +
+      pfRow_(++n, '감정평가수수료', won(ihFormValues_(r).appraisalFee)) +
       pfRow_(++n, '과세표준', won(taxBase)) +
       pfRow_(++n, '세율', (ihRateForBase_(taxBase) * 100).toFixed(0) + '%') +
       pfRow_(++n, '산출세액(세대생략가산 제외)', won(calcTaxBase)) +
@@ -11376,11 +11403,11 @@ function ihAttachPrintPagesHtml_(){
         pfRow_(0, '(공과금)', won(duesTotal), { indent: true }) +
         pfRow_(0, '(장례비용)', won(funeralTotal), { indent: true }) +
         pfRow_(0, '(채무)', won(debtTotal), { indent: true }) +
-        pfRow_(++m, '가산하는 증여재산가액 계', won(0)) +
-        pfRow_(0, '(상속세및증여세법 제13조)', won(0), { indent: true }) +
+        pfRow_(++m, '가산하는 증여재산가액 계', won(ihFormValues_(r).priorGiftAdded)) +
+        pfRow_(0, '(상속세및증여세법 제13조)', won(ihFormValues_(r).priorGiftAdded), { indent: true }) +
         pfRow_(0, '(조세특례제한법 제30조의5)', won(0), { indent: true }) +
         pfRow_(0, '(조세특례제한법 제30조의6)', won(0), { indent: true }) +
-        pfRow_(++m, '상속세과세가액', won(r.상속세과세가액_적용값)) +
+        pfRow_(++m, '상속세과세가액', won(ihFormValues_(r).taxableEstate)) +
       '</table>';
     })() +
   '</div>';
@@ -11455,12 +11482,12 @@ function ihAttachPrintPagesHtml_(){
     '</table>' +
     '<div class="pf-section-head">라. 상속공제</div>' +
     '<table class="pf-table">' +
-      pfRow_(0, '기초공제', won(isNonResident ? 0 : 200000000)) +
+      pfRow_(0, '기초공제', won(ihFormValues_(r).basic)) +
       pfRow_(0, '자녀공제', won(isNonResident ? 0 : g_('ihChildCount') * 50000000)) +
       pfRow_(0, '미성년자공제', won(isNonResident ? 0 : g_('ihMinorYears') * 10000000)) +
       pfRow_(0, '연로자공제', won(isNonResident ? 0 : g_('ihElderlyCount') * 50000000)) +
       pfRow_(0, '장애인공제', won(isNonResident ? 0 : g_('ihDisabledYears') * 10000000)) +
-      pfRow_(0, '일괄공제(선택시)', won(isNonResident ? 0 : 500000000)) +
+      pfRow_(0, '일괄공제(선택시)', won(ihFormValues_(r).lumpSum)) +
       pfRow_(0, '가업상속공제', won(r.가업상속공제)) +
       pfRow_(0, '영농상속공제', won(r.영농상속공제)) +
       pfRow_(0, '배우자상속공제', won(r.배우자공제)) +
@@ -11471,8 +11498,8 @@ function ihAttachPrintPagesHtml_(){
       // 앞에 ㉚공제적용한도액(§24) 줄이 있는데 인쇄물에 빠져 있었다. e-file(ihAttach3DeductionRecord_)은
       // 이미 정확히 이 한도(과세가액-가업-영농-배우자-금융-재해-동거주택)를 계산해 필드에 담고
       // 있어서, 그 계산식을 그대로 재사용한다.
-      pfRow_(0, '공제적용한도액(§24)', won(Math.max(0, numVal(r.상속세과세가액_적용값) - (numVal(r.가업상속공제)||0) - (numVal(r.영농상속공제)||0) - (numVal(r.배우자공제)||0) - (numVal(r.금융재산상속공제)||0) - (numVal(r.재해손실공제)||0) - (numVal(r.동거주택상속공제)||0)))) +
-      pfRow_(0, '상속공제금액 합계', won(r.상속공제_합계)) +
+      pfRow_(0, '공제적용한도액(§24)', won(ihFormValues_(r).limit !== null ? ihFormValues_(r).limit : Math.max(0, numVal(r.상속세과세가액_적용값) - (numVal(r.가업상속공제)||0) - (numVal(r.영농상속공제)||0) - (numVal(r.배우자공제)||0) - (numVal(r.금융재산상속공제)||0) - (numVal(r.재해손실공제)||0) - (numVal(r.동거주택상속공제)||0)))) +
+      pfRow_(0, '상속공제금액 합계', won(ihFormValues_(r).deductionTotal)) +
     '</table>' +
     '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다.</div>' +
   '</div>';

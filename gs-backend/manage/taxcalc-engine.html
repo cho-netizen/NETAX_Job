@@ -2641,6 +2641,11 @@
         미충족요건목록: farmingInheritanceDetail.failedRequirements
       } : null,
       상속공제_합계: totalDeduction, 상속공제종합한도_적용여부: overallLimitApplied, 과세표준: taxBase,
+      // [2026.10.19 서식 칸] 별지 제9호서식 칸 정의대로 찍기 위한 값(계산은 위와 같음 — 과세표준 = 서식과세가액 − 서식공제합계 − 감정평가수수료공제)
+      //  본표 ⑱·부표1 ㉙ = 장례비까지 뺀 과세가액(§13①), 부표3 ㉚ = §24 공제적용한도액, ㉛·본표 ⑲ = 한도 안 상속공제(장례비·감정평가수수료 없음)
+      상속세과세가액_서식: estateTaxableAfterFuneral, 공제적용한도액: overallDeductionLimit, 상속공제_서식합계: limitedDeduction,
+      공제적용한도_차감내역: { 상속인아닌자유증등: Number(p.nonHeirBequestAmount) || 0, 상속포기후다음순위상속분: Number(p.disclaimedShareRedistributedAmount) || 0,
+        가산증여재산과세표준: estateTaxableAfterFuneral > 500000000 ? priorGiftTaxableBaseTotal : 0 },
       산출세액: calculatedTax, 세대생략가산액: generationSkipPremium,
       세대생략할증_미성년자여부확인필요: generationSkipMinorStatusUnverified,
       기납부증여세액공제: priorGiftTaxCredit, 증여세액공제_상속분입력필요: !!priorGiftCreditResult.needsActualValue, 기납부증여세액공제_상속인외: nonHeirPriorGiftTaxCredit, 기납부증여세액공제_상속인외한도: nonHeirPriorGiftCreditLimit, 증여세액공제_5억이하배제: giftCreditExcludedBySmallEstate, 증여세액공제_상속인별내역: priorGiftCreditResult.perHeir,
