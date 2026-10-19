@@ -9823,47 +9823,15 @@ function toolCalculateTransferRelatedPartyPriceAdjustment(p) {
   };
 }
 
-// 사후관리 위반 시 추징세액에 붙는 이자상당액 계산 (영농자녀 증여세 감면 위반 [별지 제52호의2서식], 창업자금 증여세 과세특례 위반
-// [별지 제11호의7서식], 가업승계 주식등 증여세 과세특례 추징 [별지 제11호의10서식] 등에 공통되는 계산식).
-// 이자 기산일부터 추징사유 발생일까지를 이율 변경일 기준으로 나눠, 각 구간에 그 시점 국세환급가산금
-// 이율(365분의1)을 적용해 합산한다. tax-calc.js calculateClawbackInterestJS와 동일 로직.
+// [2026.10.19 합치기] 사후관리 위반 이자상당액 — 계산은 화면 엔진(taxcalc-engine.html calculateClawbackInterestJS) 한 곳에서만 한다.
+//  조문별 이율(method: daily 1일 고정율 / assessment 부과 당시 율 / split 기간별·재유예 50%, provision 'gift_marriage' = daily 별칭).
+//  예전 서버 사본(환급가산금 이율 기간별 + 2번 gift_marriage 갈래)은 지웠다 — 두 벌이면 한쪽만 고쳐지는 일이 생긴다.
 function toolCalculateClawbackInterest(p) {
-  p = p || {};
-  const taxAmount = Number(p.clawedBackTaxAmount);
-  if (!taxAmount || taxAmount <= 0) return { error: '사후관리 위반으로 결정된 추징세액(clawedBackTaxAmount)이 필요합니다.' };
-  if (!p.startDate || !p.endDate) return { error: '이자 기산일(startDate)과 추징사유 발생일(endDate)이 필요합니다.' };
-  // [2026.10.19 fix3] 혼인·출산 증여재산공제 추징(상증법 §53의2⑥⑦ — 별지 제10호서식 부표4)은 이자상당액 계산이 다른 사후관리와 다르다.
-  //  시행령 §46④(법제처 원문 2026-10-19 확인): 기간 = 증여세 과세표준 신고기한의 다음날부터 §53의2⑥·⑦에 따라 수정신고·기한 후 신고를 한 날까지(양 끝 포함),
-  //  율 = 국세기본법 시행령 §27의4① "1일 10만분의 22". 예전엔 다른 사후관리처럼 환급가산금 이율(연 3.1% 등 ÷365)로, 끝날을 추징사유 발생일로 계산했다.
-  if (p.provision === 'gift_marriage') {
-    const s0 = new Date(p.startDate + 'T00:00:00'), e0 = new Date(p.endDate + 'T00:00:00');
-    const mDays = Math.round((e0.getTime() - s0.getTime()) / 86400000) + 1;
-    if (!(mDays > 0)) return { error: '수정신고·기한 후 신고일이 이자 기산일(신고기한 다음날)보다 빠릅니다.' };
-    const mInterest = Math.floor(taxAmount * mDays * 22 / 100000); // 원 미만 버림
-    return {
-      추징세액: taxAmount, 이자기산일: p.startDate, 추징사유발생일: p.endDate, 신고일: p.endDate, provision: 'gift_marriage',
-      구간별_이자상당액: [{ 시작일: p.startDate, 종료일: p.endDate, 일수: mDays, 연이율: null, 일이율: 0.00022, 이자상당액: mInterest }],
-      이자상당액_합계: mInterest,
-      납부할세액: taxAmount + mInterest,
-      안내: '혼인·출산 증여재산공제 추징(§53의2⑥⑦) — 이자상당액 = 증여세액 × 일수(신고기한 다음날 ~ 수정신고·기한 후 신고를 한 날, 양 끝 포함) × 1일 10만분의 22(시행령 §46④, 국세기본법 시행령 §27의4①). 가산세(과소·무신고·납부지연)는 부과하지 않습니다(시행령 §46③).'
-    };
-  }
-  const segments = splitDateRangeByRate_(p.startDate, p.endDate);
-  if (!segments.length) return { error: '추징사유 발생일이 이자 기산일보다 빠르거나 같습니다.' };
-  let totalInterest = 0;
-  const segmentDetail = segments.map(function (seg) {
-    const interest = Math.round(taxAmount * seg.days * seg.rate / 365);
-    totalInterest += interest;
-    return { 시작일: seg.from, 종료일: seg.to, 일수: seg.days, 연이율: seg.rate, 이자상당액: interest };
-  });
-
-  return {
-    추징세액: taxAmount, 이자기산일: p.startDate, 추징사유발생일: p.endDate,
-    구간별_이자상당액: segmentDetail,
-    이자상당액_합계: totalInterest,
-    납부할세액: taxAmount + totalInterest,
-    안내: '이자 기산일은 당초 감면·특례 적용받은 증여세(또는 상속세)의 과세표준 신고기한 다음 날, 추징사유 발생일은 사후관리 위반 사유가 발생한 날입니다. 이율은 국세기본법시행규칙§19조의3(국세환급가산금이율) 개정이력에 따라 구간별로 자동 적용됩니다.'
-  };
+  try {
+    const eng = getUiCalcEngine_();
+    if (!eng || typeof eng.calculateClawbackInterestJS !== 'function') return { error: '세액계산 엔진의 사후관리 이자 계산을 불러오지 못했습니다.' };
+    return eng.calculateClawbackInterestJS(JSON.parse(JSON.stringify(p || {})));
+  } catch (err) { return { error: '세액계산 엔진을 불러오지 못했습니다: ' + (err && err.message ? err.message : err) }; }
 }
 
 function formatDateStr_(d) {
