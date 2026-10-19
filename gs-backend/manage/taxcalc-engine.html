@@ -2601,6 +2601,9 @@
         ? marriageOrBirthGiftDeduction(netGiftAmount, p.priorMarriageOrBirthDeductionUsed) : 0;
       // [2026.10.19 세액 고침] 서식 부표3 ⑯ = ⑨ + ⑭(작성방법 4: 같은 증여자로부터 10년 내 이미 공제받은 금액 + 이번 공제) — 그 증여를 합산했으면
       //  그때 쓴 혼인·출산공제(priorMarriageOrBirthDeductionSameDonor10y, 누적액 안의 일부)도 이번 합산 계산에서 다시 공제한다.
+      // [2026.10.19] 시행령 §46①2호 — 같은 때 다른 증여자(합산 안 됨)에게서도 받아 공제를 나눠야 하면, 화면이 각 과세가액 비율로 나눈 몫을 상한으로 준다
+      if (p.relationDeductionCap != null && p.relationDeductionCap !== '') relationDeduction = Math.min(relationDeduction, Math.max(0, Number(p.relationDeductionCap) || 0));
+      if (p.marriageBirthDeductionCap != null && p.marriageBirthDeductionCap !== '') marriageBirthDeduction = Math.min(marriageBirthDeduction, Math.max(0, Number(p.marriageBirthDeductionCap) || 0));
       marriageBirthThisTime_ = marriageBirthDeduction;
       if (isDoneeResident && p.relation === '직계존속' && priorGiftAmount > 0) {
         marriageBirthSameDonorPrior_ = Math.min(Number(p.priorMarriageOrBirthDeductionSameDonor10y) || 0, Number(p.priorMarriageOrBirthDeductionUsed) || 0, priorGiftAmount);
@@ -2680,7 +2683,7 @@
       채무공제_배제여부: debtDeductionDenied,
       채무공제_배제사유: debtDeductionDenied ? '§47③ 배우자·직계존비속간 부담부증여는 채무 인수를 객관적으로 입증(국가·지자체 채무 등)하지 못하면 인수되지 않은 것으로 추정 — 채무액이 공제에서 제외됨' : '',
       비과세재산가액: nonTaxableAmount, 공익법인출연재산가액: publicInterestOrgAmount, 공익신탁재산가액: publicTrustAmount, 장애인신탁재산가액: disabledTrustAmount,
-      순수증여재산가액: netGiftAmount,
+      순수증여재산가액: netGiftAmount, 증여세과세가액: p.isExcludedFromAggregation ? netGiftAmount : netGiftAmount + priorGiftAmount,
       증여재산공제: relationDeduction, 혼인출산증여재산공제: marriageBirthDeduction, 혼인출산증여재산공제_이번분: marriageBirthThisTime_, 혼인출산증여재산공제_같은증여자기공제: marriageBirthSameDonorPrior_,
       합산배제증여재산공제: aggregationExclusionDeduction, 감정평가수수료공제: appraisalFeeDeduction, 재해손실공제: disasterLossDeduction,
       과세표준: taxBase, 산출세액_할증전: taxBeforePremium, 세대생략할증_적용비율: isGenerationSkip ? generationSkipRatio : null, 세대생략할증액: premiumAmount,

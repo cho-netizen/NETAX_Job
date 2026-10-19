@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 06:09 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 06:15 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -13266,6 +13266,9 @@
         ? marriageOrBirthGiftDeduction(netGiftAmount, p.priorMarriageOrBirthDeductionUsed) : 0;
       // [2026.10.19 세액 고침] 서식 부표3 ⑯ = ⑨ + ⑭(작성방법 4: 같은 증여자로부터 10년 내 이미 공제받은 금액 + 이번 공제) — 그 증여를 합산했으면
       //  그때 쓴 혼인·출산공제(priorMarriageOrBirthDeductionSameDonor10y, 누적액 안의 일부)도 이번 합산 계산에서 다시 공제한다.
+      // [2026.10.19] 시행령 §46①2호 — 같은 때 다른 증여자(합산 안 됨)에게서도 받아 공제를 나눠야 하면, 화면이 각 과세가액 비율로 나눈 몫을 상한으로 준다
+      if (p.relationDeductionCap != null && p.relationDeductionCap !== '') relationDeduction = Math.min(relationDeduction, Math.max(0, Number(p.relationDeductionCap) || 0));
+      if (p.marriageBirthDeductionCap != null && p.marriageBirthDeductionCap !== '') marriageBirthDeduction = Math.min(marriageBirthDeduction, Math.max(0, Number(p.marriageBirthDeductionCap) || 0));
       marriageBirthThisTime_ = marriageBirthDeduction;
       if (isDoneeResident && p.relation === '직계존속' && priorGiftAmount > 0) {
         marriageBirthSameDonorPrior_ = Math.min(Number(p.priorMarriageOrBirthDeductionSameDonor10y) || 0, Number(p.priorMarriageOrBirthDeductionUsed) || 0, priorGiftAmount);
@@ -13345,7 +13348,7 @@
       채무공제_배제여부: debtDeductionDenied,
       채무공제_배제사유: debtDeductionDenied ? '§47③ 배우자·직계존비속간 부담부증여는 채무 인수를 객관적으로 입증(국가·지자체 채무 등)하지 못하면 인수되지 않은 것으로 추정 — 채무액이 공제에서 제외됨' : '',
       비과세재산가액: nonTaxableAmount, 공익법인출연재산가액: publicInterestOrgAmount, 공익신탁재산가액: publicTrustAmount, 장애인신탁재산가액: disabledTrustAmount,
-      순수증여재산가액: netGiftAmount,
+      순수증여재산가액: netGiftAmount, 증여세과세가액: p.isExcludedFromAggregation ? netGiftAmount : netGiftAmount + priorGiftAmount,
       증여재산공제: relationDeduction, 혼인출산증여재산공제: marriageBirthDeduction, 혼인출산증여재산공제_이번분: marriageBirthThisTime_, 혼인출산증여재산공제_같은증여자기공제: marriageBirthSameDonorPrior_,
       합산배제증여재산공제: aggregationExclusionDeduction, 감정평가수수료공제: appraisalFeeDeduction, 재해손실공제: disasterLossDeduction,
       과세표준: taxBase, 산출세액_할증전: taxBeforePremium, 세대생략할증_적용비율: isGenerationSkip ? generationSkipRatio : null, 세대생략할증액: premiumAmount,
@@ -28086,7 +28089,7 @@ function renderGiftResult(results){
     }).join('·') + (donorIdxs.length > 1 ? ' [동일인그룹]' : '');
     const donee = giftDonees[item.doneeIdx || 0] || {};
     const label = donorLabel + (giftDonees.length > 1 ? ' → 수증인 ' + tcPad2_((item.doneeIdx || 0) + 1) + (donee.name ? '(' + escapeHtml(donee.name) + ')' : '') : '');
-    return (item.result && item.result.서식검산경고 ? '<div class="taxcalc-result-note" style="color:#b00020; font-weight:600; margin:8px 0 0;">' + escapeHtml(item.result.서식검산경고) + '</div>' : '') + (item.result && item.result.시점경고 ? '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600; margin:8px 0 0;">' + escapeHtml(item.result.시점경고) + '</div>' : '') + renderOneGiftResultHtml_(item.result, idx, label); // [2026.10.19] 증여일 연혁 경고
+    return (item.공제안분 ? '<div class="taxcalc-result-note" style="margin:8px 0 0;">공제 안분(시행령 §46①2호): 같은 때 다른 증여자에게서도 받아 증여재산공제' + (item.input && item.input.marriageBirthDeductionCap != null ? '·혼인출산공제' : '') + '를 증여세과세가액 비율로 나눴습니다 — 이 증여 몫 ' + won(item.input.relationDeductionCap != null ? item.input.relationDeductionCap : item.result.증여재산공제) + '.</div>' : '') + (item.result && item.result.서식검산경고 ? '<div class="taxcalc-result-note" style="color:#b00020; font-weight:600; margin:8px 0 0;">' + escapeHtml(item.result.서식검산경고) + '</div>' : '') + (item.result && item.result.시점경고 ? '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600; margin:8px 0 0;">' + escapeHtml(item.result.시점경고) + '</div>' : '') + renderOneGiftResultHtml_(item.result, idx, label); // [2026.10.19] 증여일 연혁 경고
   }).join('');
   if (list.length > 1 && list.every(function(item){ return !item.result.error; })){
     const totalTax = list.reduce(function(s, item){ return s + (numVal(item.result.납부세액) || 0); }, 0);
@@ -36443,6 +36446,34 @@ function handleTaxCalcClick_(e){
       tcReportFormCorrections_();
       return { donorIdxs: g.donorIdxs, doneeIdx: g.doneeIdx, amount: g.amount, priorGiftAmount: input.priorGiftAmount, input: input, result: calculateGiftTaxJS(input) };
     });
+    // [2026.10.19 세액 고침] 시행령 §46①2호 — 같은 때(이 화면은 증여일 하나) 합산 안 되는 2이상의 증여자에게서 같은 공제 묶음으로 받으면
+    //  증여재산공제(§53)·혼인출산공제(§53의2)를 각 증여세과세가액 비율로 안분한다(국세청 증여세 사례04: 부 2,800만·조부 4,200만 → 공제 2천만·3천만).
+    //  예전엔 증여자마다 한도를 통째로 줘서 공제가 많게(세액이 적게) 나왔다. 한도는 각 쌍 계산의 공제 중 작은 값(이미 쓴 공제를 뺀 남은 한도).
+    (function tcGiftApportionSimultaneous_(){
+      const cat = function(rel){ return rel === '직계존속' || rel === '직계비속' || rel === '기타친족' || rel === '배우자' ? rel : ''; };
+      const byKey = {};
+      results.forEach(function(x, i){
+        if (!x.result || x.result.error || x.input.isExcludedFromAggregation || x.input.isDoneeResident === false) return;
+        const c = cat(x.input.relation); if (!c) return;
+        (byKey[x.doneeIdx + '|' + c] = byKey[x.doneeIdx + '|' + c] || []).push(i);
+      });
+      const split = function(idxs, field, capField){
+        const items = idxs.filter(function(i){ return (Number(results[i].result[field]) || 0) > 0 || field === '증여재산공제'; });
+        if (items.length < 2) return false;
+        const limit = Math.min.apply(null, items.map(function(i){ return Number(field === '혼인출산증여재산공제' ? results[i].result.혼인출산증여재산공제_이번분 : results[i].result[field]) || 0; }));
+        const tv = items.map(function(i){ return Math.max(0, Number(results[i].result.증여세과세가액) || 0); });
+        const sum = tv.reduce(function(a, b){ return a + b; }, 0); if (!(sum > 0)) return false;
+        let given = 0;
+        items.forEach(function(i, k){ const share = k === items.length - 1 ? limit - given : Math.round(limit * tv[k] / sum); given += share; results[i].input[capField] = share; });
+        return true;
+      };
+      Object.keys(byKey).forEach(function(key){
+        const idxs = byKey[key]; if (idxs.length < 2) return;
+        const a = split(idxs, '증여재산공제', 'relationDeductionCap');
+        const b = key.split('|')[1] === '직계존속' ? split(idxs.filter(function(i){ return (Number(results[i].result.혼인출산증여재산공제_이번분) || 0) > 0; }), '혼인출산증여재산공제', 'marriageBirthDeductionCap') : false;
+        if (a || b) idxs.forEach(function(i){ results[i].result = calculateGiftTaxJS(results[i].input); results[i].공제안분 = true; });
+      });
+    })();
     // [2026.10.09 버그수정] 계산할 (증여자·수증인) 금액이 하나도 없으면 결과칸에 주석만 보이고 아무 설명이 없었다 —
     // 특히 수증인이 2명 이상이면(사건개요의 "공동수증인"을 채우면 자동으로 그렇게 됨) 증여재산가액 칸을 쓰지 않고
     // 재산평가 자산 배분으로만 금액을 나누는데, 그걸 몰라 "계산이 안 된다"로 보였다(실사용 점검 중 발견).
