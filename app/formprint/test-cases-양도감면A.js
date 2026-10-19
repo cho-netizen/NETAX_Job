@@ -54,5 +54,10 @@ module.exports = function (E, H) {
     compensationType: 'bond', compensationTransferMode: 'expropriation', publicNoticeDate: '2024-05-01' };
   L.push({ name: '13호_자경농지_수용_합산', forms: plan(trCtx([farm, expro])) });
 
+  // 5. 조특14호 — 개발제한구역 지정 전(1990) 취득 토지를 2025.10.2. 매수청구로 양도(§77의3①1호 40%)
+  var rz = { assetType: 'other', assetKind: 'land', transferPrice: 350000000, acquisitionPrice: 80000000, necessaryExpenses: 2000000,
+    transferDate: '2025-10-02', acquisitionDate: '1990-06-01', assetLocation: '경기도 ○○시 ○○동 산 5 (견본)', assetArea: 2000, compensationType: 'restricted_zone_40' };
+  L.push({ name: '14호_개발제한구역_매수청구', forms: plan(trCtx([rz])) });
+
   return L;
 };

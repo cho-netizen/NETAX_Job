@@ -77,6 +77,8 @@
     var c = { '1': '19', '2': '19', '5': '19', '6': '19', '3': '20', '4': '20', '7': '20', '8': '20', '9': '18', '0': '18' }[d[6]];
     return c + d.slice(0, 2) + '.' + d.slice(2, 4) + '.' + d.slice(4, 6);
   }
+  // 면적 → '3,300m²'(서식에 단위가 인쇄되지 않은 칸)
+  function areaText(v) { var x = n(v); var t = String(Math.round(x * 1000) / 1000).split('.'); return t[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (t[1] ? '.' + t[1] : '') + 'm²'; } // 글꼴(나눔고딕)에 ㎡ 글자가 없어 m²로
   // 엔진 취득가액(환산·감정 등이면 그 값) — 84호 부표1 ⑫와 같은 엔진 입력값(취득 부대비용을 더하기 전)
   function acqOf(it, a) {
     var ev = it.ev || H.evFromSingle(a, it.single);
@@ -111,7 +113,7 @@
     o.miss('⑥⑦ 양도인 상호·사업자등록번호', '계산기에 없음 — 양도인 카드에 상호·사업자등록번호 칸 없음');
     o.need('⑧', s.name, '⑧ 양도인 성명').need('⑨', s.regNo, '⑨ 양도인 주민등록번호').need('⑩', H.fullAddr(s), '⑩ 양도인 주소');
     o.need('⑪', a.assetLocation, '⑪ 소재지');
-    if (n(a.assetArea)) o.set('⑫', n(a.assetArea)); else o.miss('⑫ 면적', '화면 입력 없음(자산 카드 면적)');
+    if (n(a.assetArea)) o.set('⑫', areaText(a.assetArea)); else o.miss('⑫ 면적', '화면 입력 없음(자산 카드 면적)');
     o.set('⑬', acqOf(p.it, a));
     o.note('⑬ 취득가격·⑭ 취득일은 양도인이 그 토지를 취득한 값 — §77① "사업인정고시일부터 소급하여 2년 이전에 취득" 확인용(서식 ⑭에 상속·이월과세 증여 줄이 있음)');
     var carry = (notesOf(ctx, p.i) || []).some(function (x) { return x.구분 === '이월과세(§97의2)' && x.적용여부 === true; });
@@ -281,6 +283,30 @@
     return o.result();
   };
 
+  // ───────── 조특 별지 제14호서식(개발제한구역 지정에 따른 매수대상 토지 등 세액감면신청서) — 조특법 §77의3, 시행령 §74③ ─────────
+  //  예전 인쇄(trRestrictedZonePrintPageHtml_)와 같게 자산 카드 보상 방식이 개발제한구역(restricted_zone_40·25)인 자산마다 한 장.
+  //  ⑧ = 엔진 자산별 감면액(감면율 ①1호 40%·①2호 25%, §90①, §133② 한도 뒤). 엔진 감면 줄 이름은 '수용감면(안분)'(§77·§77의2·§77의3 같은 묶음).
+  var RZ = ['restricted_zone_40', 'restricted_zone_25'];
+  mappers['조특14호'] = function (ctx) {
+    var o = new Out(), s = ctx.seller || {}, p = pick(ctx), a = p.a;
+    o.need('①', s.name, '① 성명');
+    var b = birthOf(s.regNo); if (b) o.set('②', b); else o.miss('② 생년월일', '주민등록번호가 13자리가 아니라 못 셈');
+    o.need('③', H.fullAddr(s), '③ 주소').need('④', a.assetLocation, '④ 소재지');
+    if (n(a.assetArea)) o.set('⑤', areaText(a.assetArea)); else o.miss('⑤ 면적', '화면 입력 없음(자산 카드 면적)');
+    o.miss('⑥ 매수청구일 또는 협의매수일', '계산기에 없음 — 매수청구일·협의매수일 입력 칸 없음(양도일 ' + (a.transferDate || '') + '과 다른 날일 수 있어 안 찍음, 예전 인쇄는 양도일을 찍었음)');
+    o.miss('⑦ 거주기간', '계산기에 없음 — 거주 요건(시행령 §74①·④) 입력 없음');
+    var notes = notesOf(ctx, p.i), red = redNotes(notes, /^수용감면/)[0];
+    if (RZ.indexOf(a.compensationType) < 0) o.miss('⑧ 감면받을 세액', '자산 카드 보상 방식이 개발제한구역이 아님');
+    else if (!notes) o.miss('⑧ 감면받을 세액', '자산 목록과 엔진 거래 수가 달라(환지 증가분 등) 자산별 감면세액을 고를 수 없음');
+    else if (!red) o.miss('⑧ 감면받을 세액', '엔진에 이 자산의 감면 줄 없음(적용기한 2028.12.31. 지남·단기양도 등)');
+    else {
+      o.set('⑧', n(red.감면액)); var f = checkRed(o, '⑧', red);
+      if (f) o.note('감면율 ' + Math.round(f.E * 100) + '% — ' + (a.compensationType === 'restricted_zone_40' ? '§77의3①1호(지정일 전 취득·매수청구일까지 해당 토지 소재지 거주)' : '§77의3①2호(매수청구일부터 20년 이전 취득·거주)'));
+    }
+    signs(o, ctx, { sign: '신청인서명', office: '세무서' });
+    return o.result();
+  };
+
   // ───────── 어떤 자산에 어떤 신청서 — 예전 인쇄(trAttach1PrintPageHtml_ 뒤에 붙는 함수들)가 그 서식을 그리는 조건과 같게 ─────────
   //  조특54호는 넣지 않음 — 사업시행자 제출(시행령 §72④·⑦)
   var TESTS = {};
@@ -288,6 +314,7 @@
   register('조특62호', function (a) { return !!a.longTermRentalHouseProvision; });
   register('조특63호의32', function (a) { return n(a.pensionAccountContribution) > 0; });
   register('조특13호', function (a) { return s13Of(a).length > 0; });
+  register('조특14호', function (a) { return RZ.indexOf(a.compensationType) >= 0; });
 
   // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만) — 감면 대상 자산마다 한 장
   function plan(tax, ctx) {
