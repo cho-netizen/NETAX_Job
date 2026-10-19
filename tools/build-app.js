@@ -34,6 +34,17 @@ let html = assemble('manage/index', 0, seen);
 const leftover = html.match(/<\?[\s\S]{0,80}?\?>/);
 if (leftover) throw new Error('처리되지 않은 템플릿 태그가 남아 있습니다: ' + leftover[0]);
 
+// [2026.10.19 조견표 체계] 법령정보 탭의 "이 조문을 쓰는 계산" — EngineLawMap.js(자동 생성 지도)를 화면에 끼워 넣는다(서버 호출 없이).
+//  자리 표시 `/*@@ENGINE_LAW_MAP@@*/null`가 없으면(화면이 바뀌었으면) 그냥 넘어간다.
+const LAW_MAP_SLOT = '/*@@ENGINE_LAW_MAP@@*/null';
+if (html.indexOf(LAW_MAP_SLOT) !== -1) {
+  const lawMapSrc = fs.readFileSync(path.join(SRC, 'EngineLawMap.js'), 'utf8');
+  const m = lawMapSrc.match(/var ENGINE_LAW_MAP_ = (\{[\s\S]*\});?\s*$/);
+  if (!m) throw new Error('EngineLawMap.js에서 ENGINE_LAW_MAP_를 못 읽었습니다');
+  JSON.parse(m[1]); // 깨진 지도는 넣지 않는다
+  html = html.split(LAW_MAP_SLOT).join(m[1]);
+}
+
 const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16);
 html = html.replace('<head>', '<head>\n  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (' + stamp + ' UTC) -->');
 
