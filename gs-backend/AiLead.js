@@ -432,6 +432,8 @@ var CASEPROC_AI_REF_HEAD_RE_ = /판시사항|판결요지|결정요지|질의요
 function caseProcAiIsRefHead_(txt) { return CASEPROC_AI_REF_HEAD_RE_.test(String(txt || '').replace(/\s+/g, '').slice(0, 600)); }
 function caseProcAiDocKind_(name, txt) {
   if (caseProcAiIsRefHead_(txt)) return { kind: '참고(판례·심판례·해석례)', ref: true, by: '첫머리 글' };
+  // 2번 사실 목록과 같은 판별(제목 자리 사건번호·국세법령정보시스템 출력물·법제처 원문) — 2번이 참고자료로 뺀 서류가 여기서 '처음 보는 서류'로 남지 않게
+  try { if (typeof docIsReferenceText_ === 'function') { const rk = docIsReferenceText_(txt); if (rk) return { kind: '참고(' + rk + ')', ref: true, by: '첫머리 글' }; } } catch (e) {}
   // [밤샘 5번-7] 백슬래시가 빠져 있던 것 바로잡음 — 전엔 첫머리 글의 빈칸을 안 지우고(글자 s를 지움) 파일 이름 끝 아무 글자+영숫자를 잘랐다
   const n = String(name || '').replace(/\.[A-Za-z0-9]+$/, ''), head = String(txt || '').replace(/\s+/g, '').slice(0, 300);
   for (let i = 0; i < CASEPROC_AI_DOC_KINDS_.length; i++) { const k = CASEPROC_AI_DOC_KINDS_[i]; if (k[1].test(n) || (!k[2] && k[1].test(head))) return { kind: k[0], ref: !!k[2], by: k[1].test(head) ? '첫머리 글' : '이름' }; }
