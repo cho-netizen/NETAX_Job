@@ -2042,12 +2042,12 @@
   }
  },
  {
-  "이름": "[회장 결론 N3] 영농자녀 증여 감면 — 염전은 2021.1.1. 이후 증여분부터(법률 제17759호 부칙 제2조④): 2020.6. 증여는 감면 없음",
+  "이름": "[회장 결론 N3·연혁 재확인] 영농자녀 증여 감면 — 염전은 2020.1.1. 이후 증여분부터(법률 제16835호 부칙 제2조④): 2019.6. 증여는 감면 없음",
   "도구": "calculateFarmlandGiftTaxReductionJS",
   "고정": true,
   "입력": {
    "assetType": "salt_farm",
-   "giftDate": "2020-06-01",
+   "giftDate": "2019-06-01",
    "areaSqm": 50000,
    "giftValue": 200000000,
    "totalGiftCalculatedTax": 40000000,
@@ -2058,12 +2058,12 @@
   }
  },
  {
-  "이름": "[회장 결론 N3] 영농자녀 증여 감면 — 염전 2021.3. 증여 5만㎡(한도 6만㎡ 이내): 4천만 × 2억 ÷ 4억 = 20,000,000",
+  "이름": "[회장 결론 N3] 영농자녀 증여 감면 — 염전 2020.6. 증여(2020.1.1. 이후) 5만㎡(한도 6만㎡ 이내): 4천만 × 2억 ÷ 4억 = 20,000,000",
   "도구": "calculateFarmlandGiftTaxReductionJS",
   "고정": true,
   "입력": {
    "assetType": "salt_farm",
-   "giftDate": "2021-03-01",
+   "giftDate": "2020-06-01",
    "areaSqm": 50000,
    "giftValue": 200000000,
    "totalGiftCalculatedTax": 40000000,
@@ -2123,6 +2123,39 @@
   "정답": {
    "과세표준": 422000000,
    "산출세액_할증후": 74400000
+  }
+ },
+ {
+  "이름": "[연혁] 영농자녀 증여 감면 — 양식산업발전법 양식업권은 2025.1.1. 이후 증여분부터(법률 제20617호, §71①1호바목3)): 2024.6. 증여는 감면 없음",
+  "도구": "calculateFarmlandGiftTaxReductionJS",
+  "고정": true,
+  "입력": {
+   "assetType": "aquaculture_right",
+   "giftDate": "2024-06-01",
+   "giftValue": 200000000,
+   "totalGiftCalculatedTax": 40000000,
+   "totalGiftPropertyValue": 400000000,
+   "areaSqm": 50000
+  },
+  "정답": {
+   "적용여부": false
+  }
+ },
+ {
+  "이름": "[연혁] 영농자녀 증여 감면 — 양식업권 2025.3. 증여 5만㎡(한도 10만㎡): 4천만 × 2억 ÷ 4억 = 20,000,000",
+  "도구": "calculateFarmlandGiftTaxReductionJS",
+  "고정": true,
+  "입력": {
+   "assetType": "aquaculture_right",
+   "giftDate": "2025-03-01",
+   "giftValue": 200000000,
+   "totalGiftCalculatedTax": 40000000,
+   "totalGiftPropertyValue": 400000000,
+   "areaSqm": 50000
+  },
+  "정답": {
+   "적용여부": true,
+   "최종_감면세액": 20000000
   }
  }
 ]

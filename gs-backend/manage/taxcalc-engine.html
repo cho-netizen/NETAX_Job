@@ -4318,19 +4318,20 @@
 
   // 영농자녀등 증여 농지등 감면 (조특법§71) — Code.js toolCalculateFarmlandGiftTaxReduction와 1:1 대응.
   const FARMLAND_GIFT_AREA_CAP_SQM = {
-    farmland: 40000, pasture: 148500, fishing_right: 100000, fishing_land: 40000, salt_farm: 60000
+    farmland: 40000, pasture: 148500, fishing_right: 100000, aquaculture_right: 100000, fishing_land: 40000, salt_farm: 60000
   };
   window.calculateFarmlandGiftTaxReductionJS = function (p) {
     p = p || {};
     const assetType = p.assetType;
-    const validTypes = ['farmland', 'pasture', 'forest_land', 'livestock_land', 'fishing_boat', 'fishing_right', 'fishing_land', 'salt_farm'];
+    const validTypes = ['farmland', 'pasture', 'forest_land', 'livestock_land', 'fishing_boat', 'fishing_right', 'aquaculture_right', 'fishing_land', 'salt_farm'];
     if (validTypes.indexOf(assetType) === -1) {
       return { error: '농지등 유형을 선택하세요.' };
     }
     // [2026.10.20 회장 결론 N3 — 법제처 연혁판] §71① 대상 열거는 세 번 넓어졌고 부칙(각 제2조④)은 모두 "이 법 시행 이후 … 증여받는 경우부터":
-    //  축사용지 2016.1.1.(법률 제13560호), 어선·어업권·어업용 토지등 2018.1.1.(법률 제15227호), 염전 2021.1.1.(법률 제17759호). 현행 증여기한 2028.12.31.
-    const FARM_LABEL_ = { farmland: '농지', pasture: '초지', forest_land: '산림지', livestock_land: '축사용지', fishing_boat: '어선', fishing_right: '어업권·양식업권', fishing_land: '어업용 토지등', salt_farm: '염전' };
-    const FARM_FROM_ = { livestock_land: ['2016-01-01', '법률 제13560호'], fishing_boat: ['2018-01-01', '법률 제15227호'], fishing_right: ['2018-01-01', '법률 제15227호'], fishing_land: ['2018-01-01', '법률 제15227호'], salt_farm: ['2021-01-01', '법률 제17759호'] };
+    //  축사용지 2016.1.1.(법률 제13560호), 어선·어업권·어업용 토지등 2018.1.1.(법률 제15227호), 염전 2020.1.1.(법률 제16835호 — 회장 결론의 2021은 잘못, 2026-10-20 연혁 재확인),
+    //  「양식산업발전법」 양식업권 2025.1.1.(법률 제20617호가 바목을 "어업권 또는 양식업권"으로 — 적용례 없어 시행일 이후 증여분; 2020.8.28. 양식산업발전법 시행 전 양식어업 면허는 수산업법 어업권). 현행 증여기한 2028.12.31.
+    const FARM_LABEL_ = { farmland: '농지', pasture: '초지', forest_land: '산림지', livestock_land: '축사용지', fishing_boat: '어선', fishing_right: '어업권', aquaculture_right: '양식업권', fishing_land: '어업용 토지등', salt_farm: '염전' };
+    const FARM_FROM_ = { livestock_land: ['2016-01-01', '법률 제13560호'], fishing_boat: ['2018-01-01', '법률 제15227호'], fishing_right: ['2018-01-01', '법률 제15227호'], fishing_land: ['2018-01-01', '법률 제15227호'], salt_farm: ['2020-01-01', '법률 제16835호'], aquaculture_right: ['2025-01-01', '법률 제20617호'] };
     const farmGiftDate_ = String(p.giftDate || '').slice(0, 10);
     if (farmGiftDate_ && FARM_FROM_[assetType] && farmGiftDate_ < FARM_FROM_[assetType][0]) {
       return { 적용여부: false, 감면세액: 0, 농지등유형: assetType, 종류: FARM_LABEL_[assetType], 안내: '§71① — ' + FARM_LABEL_[assetType] + (((FARM_LABEL_[assetType].charCodeAt(FARM_LABEL_[assetType].length - 1) - 0xAC00) % 28) ? '은 ' : '는 ') + FARM_FROM_[assetType][0].replace(/-/g, '.') + '. 이후 증여받는 분부터 감면 대상입니다(' + FARM_FROM_[assetType][1] + ' 부칙 제2조④). 증여일 ' + farmGiftDate_ + '은 대상이 아닙니다.' };
