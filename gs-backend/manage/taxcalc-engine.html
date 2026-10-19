@@ -2232,18 +2232,6 @@
     // [2026.10.19 서식 감사] 83호의6 일반세율 체크는 지금 양도인 카드 값이라 그 해 양도 주택 모두에 들어간다 — 2채 이상이면 확인(판단 대기: 자산 카드로 옮길지)
     const mhRental_ = cores.filter(function (c) { return c.raw && c.raw.isMultiHouseRentalExemption && c.assetType === 'house' && !c.exempt; });
     if (mhRental_.length > 1) mhRental_.forEach(function (c) { assetNotes.push({ idx: c.idx, 구분: '83호의6 일반세율(중과 제외)', 안내: '⚠ 양도인 카드의 "일반세율 적용(별지 83호의6)" 체크가 이 해 양도 주택 ' + mhRental_.length + '채 모두에 적용됐습니다 — 신청서는 양도하는 주택 한 채(장기임대주택·일반주택)에 대한 것이니 해당 주택만인지 확인하세요.' }); });
-    pooled.forEach(function (c) {
-      let rate = 0; const notes = [];
-      if (c.isMultiHouseSurcharge) { rate += (c.multiAddRate != null ? c.multiAddRate : (c.multiHouseCount >= 3 ? 0.30 : 0.20)); notes.push('다주택중과'); } // [2026.10.19] 양도일별 가산율(2부-02)
-      if (c.isNonBusinessLand) { rate += 0.10; notes.push('비사업용토지'); }
-      if (rate > 0) {
-        const amt = Math.round(c.incomeAmount * rate);
-        poolSurchargeTotal += amt;
-        assetNotes.push({ idx: c.idx, 구분: '합산(장기)', 소득금액: Math.round(c.incomeAmount), 특례: notes.join('+'), 가산액: amt });
-      }
-    });
-
-    let poolTaxWithSurcharge = poolBaseTax + poolSurchargeTotal;
 
     // [2026.10.19 서식 감사 — 작업자 자] 합산(장기) 그룹의 세액감면 — reductions90_(위 주석): 소득세법 §90① A×(B−C)÷D×E,
     //  모든 감면이 같은 A(감면 전 합산 산출세액, 중과 가산 포함)에서, §103② 기본공제 순서, 소득령 §167의2② 통산 비율,
@@ -2255,7 +2243,6 @@
     //    미분양 §98계열(5년 이내 세액감면), §97 장기임대 기본형 50% — 단기양도인 경우는 자동화하지 않았으니 별도 확인.
     //    사후관리 추징(§97의10③ 등)은 나중 과세기간 일이라 반영하지 않는다.
     //  · 수용: §77①(율 연혁 compRateAt_), §77의2 대토 40%, §77의3 개발제한구역 40/25%. §77④ 특약 위반 징수.
-    const A90_ = poolTaxWithSurcharge;
     const COMPENSATION_REDUCTION_RATES_M = {
       cash: 0.15, bond: 0.20, bond_3y: 0.35, bond_5y: 0.45,
       land_replacement: 0.40,
@@ -2317,6 +2304,32 @@
       const ratio_ = (c.raw._장기임대감면_감면소득비율 != null && c.raw.longTermRentalHouseProvision === 'sect97_5') ? Number(c.raw._장기임대감면_감면소득비율) : null;
       return { idx: c.idx, date: String(c.raw.transferDate || ''), income: c.incomeAmount, reducedRatio: ratio_ != null ? ratio_ : undefined, reds: reds };
     });
+    // [2026.10.19] §103② 기본공제 배분(감면소득 외 소득에서 먼저, 그 안에서는 먼저 양도한 자산부터) — 중과 가산액의 바탕(그 자산 과세표준 몫)에 씀
+    const basicOf_ = {};
+    (function () {
+      let left = basicDeductionUsedInPool ? 2500000 : 0;
+      const redRatio_ = {};
+      red90Assets_.forEach(function (a) { if (a.reds && a.reds.length) redRatio_[a.idx] = a.reducedRatio != null ? Math.max(0, Math.min(1, Number(a.reducedRatio) || 0)) : 1; });
+      const ord_ = pooled.slice().sort(function (a, b) { return String((a.raw && a.raw.transferDate) || '').localeCompare(String((b.raw && b.raw.transferDate) || '')) || (a.idx - b.idx); });
+      ord_.forEach(function (c) { const inc = Math.max(0, c.incomeAmount); const other = inc * (1 - (redRatio_[c.idx] || 0)); const u = Math.min(left, other); basicOf_[c.idx] = u; left -= u; });
+      ord_.forEach(function (c) { if (!(c.idx in redRatio_)) return; const red = Math.max(0, c.incomeAmount) * redRatio_[c.idx]; const u = Math.min(left, red); basicOf_[c.idx] += u; left -= u; });
+    })();
+    pooled.forEach(function (c) {
+      let rate = 0; const notes = [];
+      if (c.isMultiHouseSurcharge) { rate += (c.multiAddRate != null ? c.multiAddRate : (c.multiHouseCount >= 3 ? 0.30 : 0.20)); notes.push('다주택중과'); } // [2026.10.19] 양도일별 가산율(2부-02)
+      if (c.isNonBusinessLand) { rate += 0.10; notes.push('비사업용토지'); }
+      if (rate > 0) {
+        // [2026.10.19 세액 고침] §104⑦(다주택 중과)·§104①8호(비사업용토지) — 기본세율에 가산율을 '더한 세율'을 과세표준에 적용한다.
+        //  그 자산의 과세표준 몫 = 소득금액 − §103② 순서(감면 아닌 소득 → 먼저 양도한 자산)로 배분된 기본공제. 예전엔 기본공제 전 소득금액에
+        //  가산율을 곱해 단건 계산(과세표준 × 가산율)보다 250만 × 가산율(최대 75만 원) 많았다.
+        const amt = Math.round(Math.max(0, c.incomeAmount - (basicOf_[c.idx] || 0)) * rate);
+        poolSurchargeTotal += amt;
+        assetNotes.push({ idx: c.idx, 구분: '합산(장기)', 소득금액: Math.round(c.incomeAmount), 특례: notes.join('+'), 가산액: amt });
+      }
+    });
+
+    let poolTaxWithSurcharge = poolBaseTax + poolSurchargeTotal;
+    const A90_ = poolTaxWithSurcharge;
     // 소득령 §167의2② — 통산으로 줄어든 비율만큼 감면소득금액도 줄인다(합산 그룹 통산 후 소득 ÷ 통산 전 양(+)소득 합계)
     const poolGainSum90_ = pooled.reduce(function (s, c) { return s + Math.max(0, c.incomeAmount); }, 0);
     const lossFactor90_ = poolGainSum90_ > 0 ? Math.min(1, Math.max(0, poolTaxBaseIncome_) / poolGainSum90_) : 0;
