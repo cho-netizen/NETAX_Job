@@ -1114,6 +1114,8 @@ const DRIVE_TOOLS = [
     input_schema: {
       type: 'object',
       properties: {
+        claimDate: { type: 'string', description: '경정청구일(YYYY-MM-DD, 없으면 오늘) — §45의2 기간은 청구일 기준 연혁(2015.1.1. 전 청구 3년, 후발적 사유 2016.1.1. 전 청구 2개월).' },
+        isLateFiling: { type: 'boolean', description: '기한후신고자인지 — 2020.1.1. 이후 청구분부터 통상 경정청구 가능(§45의2①).' },
         statutoryFilingDeadline: { type: 'string', description: '당초(또는 기한후) 신고의 법정신고기한(YYYY-MM-DD).' },
         today: { type: 'string', description: '기준일(YYYY-MM-DD). 생략하면 오늘 날짜.' },
         wasIncreasedByCorrection: { type: 'boolean', description: '과세관청의 결정·경정으로 과세표준·세액이 증가했는지(①단서 적용 여부).' },
