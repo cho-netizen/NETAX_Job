@@ -775,7 +775,7 @@
     if (t.saleContractDate > '2026-05-09') return false;
     return t.transferDate <= contractPlusMonths;
   }
-  // 연금계좌세액공제 요건 게이트(조특법§99의14①, 시행령§99의14①) — Code.js의
+  // 연금계좌세액공제 요건 게이트(조특법§99의14①, 시행령§99의13 — [2026.10.19] 예전 주석의 '시행령§99의14'는 조 번호 오기) — Code.js의
   // isPensionAccountCreditEligible_와 1:1 대응.
   function isPensionAccountCreditEligible(t, holdingYears) {
     if (!(Number(t.pensionAccountContribution) > 0)) return false;
@@ -791,6 +791,17 @@
       if (t.pensionContributionDate > deadlineStr) return false;
     }
     return true;
+  }
+  // [2026.10.19 세액 고침 — 서식 감사(작업자 바)] 조특법§99의14① "연금계좌 납입액" = 조특령§99의13②2호가 가리키는 소득령§40의2②1호 라목 금액
+  //  (연금부동산 양도차액 이내, 다목·라목 누적 납입 합계 1억원 이내). 서식 63호의32 ⑮ = min(⑫ 남은 한도(1억 − ⑪ 기납입), ⑬ 납입금액, ⑭ 양도차액).
+  //  ⑭는 시행령 라목 문언대로 "양도가액 − 취득가액"(서식 작성방법 6은 필요경비까지 뺀 양도차익 — 세무사님 판단 대기, 법령 우선).
+  //  예전엔 납입액 그대로 × 10%라 납입 4억이면 공제 4천만(법령대로 1천만)이었다.
+  function pensionCreditBase_(c, priorPaid) {
+    const paid = Math.max(0, Number(c.pensionAccountContribution) || 0);
+    if (!paid) return 0;
+    const remain = Math.max(0, 100000000 - Math.max(0, Number(priorPaid) || 0));
+    const diff = Math.max(0, (Number(c.transferPrice) || 0) - (Number(c.acquisitionPrice) || 0));
+    return Math.min(remain, paid, diff);
   }
   function transferAssetCore(t) {
     const transferPrice = Number(t.transferPrice);
@@ -1594,9 +1605,9 @@
       downContractClawback = Math.min(farmlandReduction + compensationReduction, downContractDiff2);
       calculatedTax += downContractClawback;
     }
-    // 조특법§99의14①(2024.12.31 신설) — "연금계좌 납입액의 100분의 10에 상당하는 금액을...공제하며,
-    // 공제세액은 산출세액을 한도로 한다." 양도차익이나 1억원 한도는 법 조문에 없다.
-    const pensionAccountCreditRaw = core.pensionAccountContribution > 0 ? Math.round(Number(core.pensionAccountContribution) * 0.1) : 0;
+    // 조특법§99의14① + 조특령§99의13② + 소득령§40의2②1호 라목 — 서식 63호의32 ⑰ = ⑮ × 10%(산출세액 한도). ⑮는 pensionCreditBase_ 주석 참고
+    const pensionCreditBaseAmt_ = pensionCreditBase_(core, t.pensionPriorContribution);
+    const pensionAccountCreditRaw = Math.round(pensionCreditBaseAmt_ * 0.1);
     const pensionEligible = isPensionAccountCreditEligible(t, core.holdingYears);
     const pensionAccountCredit = pensionEligible ? Math.min(pensionAccountCreditRaw, Math.max(0, calculatedTax)) : 0;
     const pensionAccountClawback = (t.isPensionWithdrawnWithin5Years && pensionAccountCredit > 0) ? pensionAccountCredit : 0;
@@ -2278,15 +2289,18 @@
 
     const conversionValuePenaltyTotal = active.reduce(function (s, c) { return s + (c.conversionValuePenalty || 0); }, 0);
 
-    // 조특법§99의14① — "연금계좌 납입액의 100분의 10에 상당하는 금액을...공제하며, 공제세액은
-    // 산출세액을 한도로 한다." 양도차익이나 1억원 한도는 법 조문에 없다 — 납입액×10%를 먼저 구하고,
-    // 그 합계를 (풀 전체) 산출세액으로 한 번만 캡한다(개별 거래별 산출세액이 따로 없는 합산 구조이므로).
+    // 조특법§99의14① + 조특령§99의13② + 소득령§40의2②1호 라목 — 자산마다 ⑮ = min(남은 1억 한도, 납입액, 양도차액) × 10%.
+    //  같은 해 두 번째 부동산은 앞 부동산이 쓴 한도를 뺀 나머지에서(누적 1억). 그 합계를 (풀 전체) 산출세액으로 한 번만 캡한다
+    //  (개별 거래별 산출세액이 따로 없는 합산 구조 — 법은 '해당 부동산의 산출세액' 한도, 판단 대기).
     let pensionAccountCreditRaw = 0;
     let pensionAccountClawbackTotal = 0;
+    let pensionUsed_ = Math.max(0, Number(filingParams.pensionPriorContribution) || 0, Math.max.apply(null, [0].concat(active.map(function (c) { return Number(c.raw && c.raw.pensionPriorContribution) || 0; }))));
     active.forEach(function (c) {
-      const raw = Math.round(Number(c.pensionAccountContribution) * 0.1) || 0;
+      const base = pensionCreditBase_(c, pensionUsed_);
+      const raw = Math.round(base * 0.1);
       if (raw <= 0) return;
       const eligible = isPensionAccountCreditEligible(c.raw || {}, c.holdingYears);
+      if (eligible) pensionUsed_ += base;
       const credit = eligible ? raw : 0;
       pensionAccountCreditRaw += credit;
       if (c.raw && c.raw.isPensionWithdrawnWithin5Years && credit > 0) pensionAccountClawbackTotal += credit;
@@ -7121,7 +7135,10 @@
   // 계속 5년 이상 국내에 주소·거소를 둔 거주자가 국외 토지·건물·부동산에관한권리·기타자산을 양도할 때
   // 적용된다. 세율은 §55①(국내양도세와 같은 기본누진세율표)을 그대로 쓰되 장기보유특별공제는 적용하지
   // 않는다(§118의8단서). 기본공제는 국내양도세와 별개로 연250만원(§118의7①). 외국납부세액공제 한도는
-  // §118의6①·시행령§178의7: 산출세액 × (국외자산양도소득금액 ÷ 해당 과세기간 양도소득금액 합계액) —
+  // [2026.10.19 세액 고침] §118의6①1호(법률 제16834호, 2020.1.1 이후 양도분 — 부칙 제2조① 일반 적용례): 한도 = A × B / C
+  //  A 국외자산 양도소득 산출세액, B 해당 국외자산 양도소득금액, C 그 과세기간 국외자산 양도소득금액 — 국내분은 넣지 않고 자산마다 비교한다.
+  //  아래 옛 설명(국내 양도소득금액을 분모에 넣음)은 2019.12.31까지 양도분 문언("그 과세기간의 양도소득금액")이라 그 경우에만 쓴다(판단 대기).
+  // (옛) §118의6①·시행령§178의7: 산출세액 × (국외자산양도소득금액 ÷ 해당 과세기간 양도소득금액 합계액) —
   // 같은 과세기간에 국내자산 양도소득금액이 함께 있으면 domesticTransferIncomeAmount로 입력하면 정확한
   // 비율로 한도를 계산하고, 입력하지 않으면(국외자산양도소득만 있는 경우) 비율이 1이 되어 한도=산출세액과
   // 같아진다. 또는 필요경비산입 방법을 선택할 수 있다(필요경비산입 방법을 쓰려면 이미 필요경비에 포함해
@@ -7144,7 +7161,9 @@
 
     const foreignTaxCreditMethod = p.foreignTaxCreditMethod === 'expense' ? 'expense' : 'credit';
     const foreignTaxPaidAmount = Number(p.foreignTaxPaidAmount) || 0;
-    const domesticTransferIncomeAmount = Math.max(0, Number(p.domesticTransferIncomeAmount) || 0);
+    // [2026.10.19] 2020.1.1 이후 양도분은 분모 C에 국내분을 넣지 않는다(단건은 B = C → 비율 1). 2019년 이전 양도분만 옛 문언대로 국내분 포함(판단 대기)
+    const oldFtcRule_ = !!(p.transferDate && String(p.transferDate) < '2020-01-01');
+    const domesticTransferIncomeAmount = oldFtcRule_ ? Math.max(0, Number(p.domesticTransferIncomeAmount) || 0) : 0;
     const totalIncomeAmountForRatio = Math.max(0, gain) + domesticTransferIncomeAmount;
     const creditRatio = totalIncomeAmountForRatio > 0 ? Math.max(0, gain) / totalIncomeAmountForRatio : 1;
     const foreignTaxCreditLimit = Math.round(calculatedTax * creditRatio);
@@ -7198,11 +7217,29 @@
     const taxBase = Math.max(0, totalGain - basicDeduction);
     const calculatedTax = progressiveTax(taxBase, TRANSFER_TAX_BRACKETS);
 
-    const domesticTransferIncomeAmount = Math.max(0, Number(filingParams.domesticTransferIncomeAmount) || 0);
-    const totalIncomeAmountForRatio = Math.max(0, totalGain) + domesticTransferIncomeAmount;
-    const creditRatio = totalIncomeAmountForRatio > 0 ? Math.max(0, totalGain) / totalIncomeAmountForRatio : 1;
-    const foreignTaxCreditLimit = Math.round(calculatedTax * creditRatio);
-    const foreignTaxCredit = Math.min(totalForeignTaxPaid, foreignTaxCreditLimit);
+    // [2026.10.19 세액 고침] §118의6①1호(2020.1.1 이후 양도분): 자산마다 한도 = A × (해당 국외자산 양도소득금액 B) ÷ (국외자산 양도소득금액 합계 C).
+    //  예전엔 국내 양도소득금액을 분모에 더하고(한도 과소) 외국납부세액 합계와 한도 합계를 한 번에 비교했다(자산별 초과분이 다른 자산 한도로 넘어감).
+    //  2019.12.31 이전 양도분(옛 문언 "그 과세기간의 양도소득금액")이 섞이면 예전 방식(판단 대기).
+    const oldFtcRuleM_ = transactions.some(function (t) { return t && t.transferDate && String(t.transferDate) < '2020-01-01'; });
+    let foreignTaxCreditLimit = 0, foreignTaxCredit = 0;
+    if (oldFtcRuleM_) {
+      const domesticTransferIncomeAmount = Math.max(0, Number(filingParams.domesticTransferIncomeAmount) || 0);
+      const totalIncomeAmountForRatio = Math.max(0, totalGain) + domesticTransferIncomeAmount;
+      const creditRatio = totalIncomeAmountForRatio > 0 ? Math.max(0, totalGain) / totalIncomeAmountForRatio : 1;
+      foreignTaxCreditLimit = Math.round(calculatedTax * creditRatio);
+      foreignTaxCredit = Math.min(totalForeignTaxPaid, foreignTaxCreditLimit);
+    } else {
+      const C_ = Math.max(0, totalGain);
+      perTxn.forEach(function (x) {
+        const lim = C_ > 0 ? Math.round(calculatedTax * Math.max(0, x.양도차익) / C_) : 0;
+        x.공제한도 = lim;
+        x.공제액 = Math.min(x.외국납부세액_공제신청액, lim);
+        foreignTaxCreditLimit += lim;
+        foreignTaxCredit += x.공제액;
+      });
+      foreignTaxCreditLimit = Math.min(foreignTaxCreditLimit, calculatedTax); // 손실 자산이 섞이면 B 합계가 C보다 클 수 있음 — 산출세액으로 한 번 더 막음
+      foreignTaxCredit = Math.min(foreignTaxCredit, calculatedTax);
+    }
     const taxAfterCredit = Math.max(0, calculatedTax - foreignTaxCredit);
 
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(filingParams.filingStatus) !== -1 ? filingParams.filingStatus : 'ontime';

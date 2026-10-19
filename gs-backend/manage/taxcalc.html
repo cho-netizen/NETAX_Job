@@ -3226,9 +3226,9 @@ function openOneHouseSpecialCaseModal_(idx){
           ip: { label: '상속받은 분양권(소득세법시행령§156의3④⑤)', formNo: '소득세법 시행규칙 [별지 제83호의5서식]', formTitle: '조합원입주권 또는 분양권 소유자 1세대1주택 특례적용신고서' },
           lr: { label: '장기임대주택·장기어린이집 보유자의 거주주택(소득세법시행령§155⑳)', formNo: '소득세법 시행규칙 [별지 제83호의2서식]', formTitle: '주택임대사업자의 거주주택 1세대1주택 특례적용신고서' },
           // [2026.10.01 신규, 재검토103] law.go.kr 조사로 확인 — 문화재주택·이농주택·귀농주택은
-          // 조특법§99의4(rh, 별지63호의4서식)와는 완전히 별개 조문이며 소득세법 시행규칙 별지
-          // 제83호서식(농어촌주택 소유자 1세대1주택 특례적용신고서)을 공유한다.
-          ch: { label: '문화재주택(소득세법시행령§155⑥)', formNo: '소득세법 시행규칙 [별지 제83호서식]', formTitle: '농어촌주택 소유자 1세대1주택 특례적용신고서' },
+          // 조특법§99의4(rh, 별지63호의4서식)와는 완전히 별개 조문이다. [2026.10.19 바로잡음] 별지
+          // 제83호서식(농어촌주택 소유자 1세대1주택 특례적용신고서)은 영 §155⑦(상속·이농·귀농 농어촌주택)만 — 영 §155⑬·시행규칙 §103①. 문화재주택(⑥)은 신고서 없음.
+          ch: { label: '문화재주택(소득세법시행령§155⑥)' }, // [2026.10.19 서식 선택 고침] ⑥항은 특례적용신고서 규정 없음 — 83호는 ⑦항(상속·이농·귀농 농어촌주택)만(영 §155⑬)
           ef: { label: '이농주택(소득세법시행령§155⑦2호)', formNo: '소득세법 시행규칙 [별지 제83호서식]', formTitle: '농어촌주택 소유자 1세대1주택 특례적용신고서' },
           rf: { label: '귀농주택(소득세법시행령§155⑦3호)', formNo: '소득세법 시행규칙 [별지 제83호서식]', formTitle: '농어촌주택 소유자 1세대1주택 특례적용신고서' },
           // [2026.10.01 신규, 재검토103] law.go.kr 조문 확인 — §155의2④은 "제2항(동거봉양 합가)의
@@ -3245,7 +3245,7 @@ function openOneHouseSpecialCaseModal_(idx){
             provisionLabel: pf.label || provision,
             formNo: pf.formNo || '', formTitle: pf.formTitle || '',
             acquisitionDate: document.getElementById(provision + 'AcquisitionDate') ? document.getElementById(provision + 'AcquisitionDate').value : '',
-            houseType: provision === 'rh' ? (document.getElementById('rhHouseType').value === 'hometown' ? '고향주택' : '농어촌주택') : '',
+            houseType: provision === 'rh' ? (document.getElementById('rhHouseType').value === 'hometown' ? '고향주택' : '농어촌주택') : provision === 'ef' ? '이농주택' : provision === 'rf' ? '귀농주택' : '', // [2026.10.19] 83호 ⑤ 주택구분 체크
             newHousingCompletionDate: provision === 'pr' ? document.getElementById('prCompletionDate').value : '',
             mgContractDate: provision === 'mg' ? document.getElementById('mgContractDate').value : '',
             mgLeasePeriod: provision === 'mg' ? (document.getElementById('mgLeaseStart').value + ' ~ ' + document.getElementById('mgLeaseEnd').value) : '',
@@ -5530,7 +5530,7 @@ function renderOverseasPropertyCardHtml_(idx){
 // (여러 건이어도 기본공제 1회만 적용)로 바꾼다.
 function renderOverseasSharedFilingSectionHtml_(){
   return '<div class="taxcalc-grid" style="margin-top:8px;">' +
-      '<div class="taxcalc-field"><label>같은 과세기간 국내자산 양도소득금액(있으면)</label><input type="number" id="oaSharedDomesticIncome" placeholder="원" value="' + (oaSharedFilingState.domesticIncome || '') + '"><span class="taxcalc-field-help">외국납부세액공제 한도(§118의6) 계산용 — 없으면 국외자산만 있다고 보아 공제한도=산출세액</span></div>' +
+      '<div class="taxcalc-field"><label>같은 과세기간 국내자산 양도소득금액(있으면)</label><input type="number" id="oaSharedDomesticIncome" placeholder="원" value="' + (oaSharedFilingState.domesticIncome || '') + '"><span class="taxcalc-field-help">2019년 이전 양도분만 씀 — 2020.1.1 이후 양도분은 법(§118의6①1호)대로 국외자산 양도소득금액만으로 자산별 한도를 계산해 이 값을 쓰지 않습니다</span></div>' +
       '<div class="taxcalc-field"><label>신고 상태</label><select id="oaSharedFilingStatus"><option value="ontime"' + (oaSharedFilingState.filingStatus !== 'unreported' && oaSharedFilingState.filingStatus !== 'underreported' ? ' selected' : '') + '>정상(기한내) 신고</option><option value="unreported"' + (oaSharedFilingState.filingStatus === 'unreported' ? ' selected' : '') + '>무신고</option><option value="underreported"' + (oaSharedFilingState.filingStatus === 'underreported' ? ' selected' : '') + '>과소신고</option></select></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" id="oaSharedFraudulent"' + (oaSharedFilingState.isFraudulent ? ' checked' : '') + '><label for="oaSharedFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
       '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="oaSharedUnderreportedTax" placeholder="원" value="' + (oaSharedFilingState.underreportedTax || '') + '"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
@@ -5763,6 +5763,7 @@ function renderPropertyCardHtml_(idx, opts){
         '</div>' +
         '<div class="taxcalc-asset-head" data-show-if="pensionAccountContribution" style="display:none; margin-top:4px;"><b>연금계좌공제 — 위 납입액 입력시만 요건 확인</b></div>' +
         '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field" data-show-if="pensionAccountContribution" style="display:none;"><label>이미 낸 부동산·주택차액 연금 납입 누적액</label><input type="number" data-field="pensionPriorContribution" placeholder="원"><span class="taxcalc-field-help">서식 63호의32 ⑪ — 공제 대상은 1억원에서 이 금액을 뺀 남은 한도·납입액·양도차액(양도가액 − 취득가액) 중 적은 금액(소득령 §40의2②1호)</span></div>' +
           '<div class="taxcalc-field" data-show-if="pensionAccountContribution" style="display:none;"><label>연금계좌 납입일</label><input type="date" data-field="pensionContributionDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">양도일로부터 6개월 이내</span></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="pensionAccountContribution" style="display:none;"><input type="checkbox" data-field="isBasicPensionRecipient" id="pensionRecipient-' + idx + '"><label for="pensionRecipient-' + idx + '">양도 당시 기초연금 수급자</label></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="pensionAccountContribution" style="display:none;"><input type="checkbox" data-field="isOneHouseOrNoHouseHousehold" id="pensionOneHouse-' + idx + '"><label for="pensionOneHouse-' + idx + '">양도 당시 1주택 또는 무주택 세대구성원</label></div>' +
@@ -5782,6 +5783,7 @@ function renderPropertyCardHtml_(idx, opts){
         '</div>' +
         '<div class="taxcalc-asset-head" data-show-if="compensationType" style="display:none; margin-top:4px;"><b>위 선택시만 — 수용감면 세부사항</b></div>' +
         '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field" data-show-if="compensationType" style="display:none;"><label>공익사업 양도 방식</label><select data-field="compensationTransferMode"><option value="">고르세요</option><option value="consult">협의매수·정비구역 양도(§77①1·2호 — 사업시행자가 54호로 신청)</option><option value="expropriation">수용(§77①3호 — 양도자가 13호로 신청)</option></select><span class="taxcalc-field-help">신청서가 갈립니다(시행령 §72⑦·⑧) — 세액엔 영향 없음</span></div>' +
           '<div class="taxcalc-field" data-show-if="compensationType" style="display:none;"><label>사업인정고시일</label><input type="date" data-field="publicNoticeDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">현금·채권·대토보상 선택시, 2년이전취득 요건(§77①·§77의2①) 판정용 — 모르면 비워두면 양도일 기준으로 판정</span></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="compensationType" style="display:none;"><input type="checkbox" data-field="isBondPledgeBreached" id="bondBreach-' + idx + '"><label for="bondBreach-' + idx + '">채권 만기보유 특약 위반(§77④, 3년·5년만기특약 선택시만 해당 — 즉시 차액 추징)</label></div>' +
           '<div class="taxcalc-field" data-show-if="compensationType" style="display:none;"><label>다운계약서 등 계약서·실거래 차액</label><input type="number" data-field="downContractPriceDifference" placeholder="원"><span class="taxcalc-field-help">소득세법§91② 비과세·감면 배제 추징용, 해당 시만</span></div>' +
@@ -6676,7 +6678,7 @@ var TR_MONEY_FIELDS_TO_SCALE_ = [
   'donorAcquisitionPrice', 'donorNecessaryExpenses', 'doneeOwnAcquisitionPrice', 'doneeOwnNecessaryExpenses',
   'giftTaxPaid', 'giftTaxableValue', 'nhFiveYearMarkValue', 'nhAcquisitionStandardPrice', 'nhFiveYearStandardPrice',
   'nhTransferStandardPrice', 'uhFiveYearMarkValue', 'uhAcquisitionStandardPrice', 'uhFiveYearStandardPrice',
-  'uhTransferStandardPrice', 'pensionAccountContribution',
+  'uhTransferStandardPrice', 'pensionAccountContribution', 'pensionPriorContribution',
   // [2026.09.24 버그수정] 구조조정대상 부동산(rp, §43)·장기임대주택 §97의5(lr) 감면도 nh/uh와
   // 완전히 같은 fiveYearMarkGain() 근사식(절대금액－취득가액)을 쓰는데, 처음 목록을 만들 때
   // 이 두 세목의 절대금액 필드가 빠져 있었다 — 공동양도인 지분만큼 취득가액은 줄어드는데 이
@@ -6779,11 +6781,13 @@ function collectTransferInput(vals){
     registrationStandardPrice: numVal(vals.registrationStandardPrice) || 0,
     transferStandardPrice: numVal(vals.transferStandardPrice) || 0,
     pensionAccountContribution: numVal(vals.pensionAccountContribution) || 0,
+    pensionPriorContribution: numVal(vals.pensionPriorContribution) || 0, // [2026.10.19] 서식 63호의32 ⑪ 기납입액(누적 1억 한도)
     pensionContributionDate: vals.pensionContributionDate || '',
     isBasicPensionRecipient: !!vals.isBasicPensionRecipient,
     isOneHouseOrNoHouseHousehold: !!vals.isOneHouseOrNoHouseHousehold,
     isPensionWithdrawnWithin5Years: !!vals.isPensionWithdrawnWithin5Years,
     compensationType: vals.compensationType || '',
+    compensationTransferMode: vals.compensationTransferMode || '', // [2026.10.19] 협의매수(54호, 사업시행자)·수용(13호, 양도자)
     publicNoticeDate: vals.publicNoticeDate || '',
     isBondPledgeBreached: !!vals.isBondPledgeBreached,
     downContractPriceDifference: numVal(vals.downContractPriceDifference) || 0,
@@ -9750,6 +9754,11 @@ function trAttach1PrintPageHtml_(asset, seq){
 // 세액감면(또는 과세이연)신청서 — 바로 이 별지13호서식의 "대토보상" 체크항목이다. 그래서
 // 별지55호서식 인쇄는 제거하고, land_replacement도 이 공용서식(SECT13_MAP_)에 합쳐 올바른
 // 신청서 하나로 통일한다.
+// [2026.10.19 서식 선택 고침] 법령이 신청 서식을 정하지 않은 감면 — 서식 대신 '제출서류 안내'(화면에만, 인쇄 안 함)
+function trFilingGuidePageHtml_(title, lines){
+  return '<div class="pf-page pf-guide"><div class="pf-title" style="font-size:15px;">📌 ' + escapeHtml(title) + ' — 제출서류 안내(서식 아님, 인쇄되지 않음)</div>' +
+    '<ul style="font-size:12.5px; margin:6px 0 0 18px;">' + lines.map(function(l){ return '<li>' + escapeHtml(l) + '</li>'; }).join('') + '</ul></div>';
+}
 function trSect13ReductionPrintPageHtml_(asset){
   const SECT13_MAP_ = [
     { flag: 'isEightYearFarmland', label: '8년 자경농지', article: '제66조제9항' },
@@ -9760,7 +9769,11 @@ function trSect13ReductionPrintPageHtml_(asset){
     { flag: 'isNationalForestLandReduction', label: '국가에 양도하는 산지', article: '제79조의11' }
   ];
   const isLandReplacement = asset.compensationType === 'land_replacement';
-  const matched = isLandReplacement ? { label: '대토보상(세액감면 또는 과세이연 신청)', article: '제73조제6항' } : SECT13_MAP_.filter(function(m){ return asset[m.flag]; })[0];
+  // [2026.10.19 서식 선택 고침] 조특법 §77①3호 수용 감면은 양도자가 별지 13호로 신청(영 §72⑧, 시행규칙 §61① 제14호) + 54호 부표(수용사실 확인서)
+  const isExpropriation = ['cash', 'bond', 'bond_3y', 'bond_5y'].indexOf(asset.compensationType) !== -1 && asset.compensationTransferMode === 'expropriation';
+  const matched = isLandReplacement ? { label: '대토보상(세액감면 또는 과세이연 신청)', article: '제73조제6항' }
+    : isExpropriation ? { label: '공익사업용 토지(수용)', article: '제72조제8항' }
+    : SECT13_MAP_.filter(function(m){ return asset[m.flag]; })[0];
   if (!matched) return '';
   return '<div class="pf-page">' +
     '<div class="pf-formno">조세특례제한법 시행규칙 [별지 제13호서식]</div>' +
@@ -9773,28 +9786,24 @@ function trSect13ReductionPrintPageHtml_(asset){
       pfRow_(0, '근거조항(조특법 시행령)', matched.article) +
     '</table>' +
     '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 신청인 성명·주민등록번호·주소 등 인적사항은 본 서식(별지84호) 상단을 참고해 직접 보완하세요.' +
+    (isExpropriation ? ' 첨부: 수용된 사실을 확인할 수 있는 서류 — 별지 제54호서식 부표(토지 등 수용사실 확인서, 사업시행자가 작성·직인), 특약체결자는 특약체결·보상채권 보유 사실 확인 서류(영 §72⑧).' : '') +
     (isLandReplacement ? ' 대토보상은 이 신청서에 "대토보상 신청서 및 대토보상 계약서 사본"을 첨부해야 합니다(시행령§73⑥) — 대토보상자의 보상명세서(별지55호서식)는 사업시행자가 세무서에 통보하는 서류라 납세자 본인이 작성·제출할 의무는 없습니다.' : '') +
     '</div>' +
   '</div>';
 }
 function trCompensationReductionPrintPageHtml_(asset){
+  // [2026.10.19 서식 선택 고침] 별지 54호는 사업시행자(매입자)가 내는 신청서(조특법 §77⑥, 영 §72④·⑦, 시행규칙 §61① 제55호) — 양도자 신고 묶음에 넣지 않는다.
+  //  수용(§77①3호)은 위 13호(trSect13ReductionPrintPageHtml_). 예전엔 보상 방식만 보고 늘 54호를 그렸다.
   if (['cash', 'bond', 'bond_3y', 'bond_5y'].indexOf(asset.compensationType) === -1) return '';
-  const typeLabel = { cash: '현금보상(조특법§77①)', bond: '채권보상(만기특약 없음)', bond_3y: '채권보상(3년만기특약)', bond_5y: '채권보상(5년만기특약)' }[asset.compensationType];
-  let n = 0;
-  return '<div class="pf-page">' +
-    '<div class="pf-formno">조세특례제한법 시행규칙 [별지 제54호서식]</div>' +
-    '<div class="pf-title">공익사업용토지 등에 대한 세액감면신청서</div>' +
-    '<table class="pf-table">' +
-      pfRow_(++n, '소재지', asset.assetLocation || '') +
-      pfRow_(++n, '면적', (numVal(asset.assetArea) || '') + '') +
-      pfRow_(++n, '취득가격', won(numVal(asset.acquisitionPrice) || 0)) +
-      pfRow_(++n, '취득일', asset.acquisitionDate) +
-      pfRow_(++n, '사업인정고시일', asset.publicNoticeDate || '') +
-      pfRow_(++n, '보상유형', typeLabel) +
-    '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다. 수용사실을 확인하는 부표(별지54호서식 부표, 토지 등 수용사실 확인서)는 보상금 지급내역 등을 사업시행자가 직접 작성·날인해야 하는 서류라 이 계산기가 대신 작성할 수 없습니다 — 사업시행자에게 받아 함께 제출하세요.</div>' +
-  '</div>';
+  if (asset.compensationTransferMode === 'expropriation') return '';
+  if (asset.compensationTransferMode === 'consult') return trFilingGuidePageHtml_('공익사업용 토지 협의매수·정비구역 양도(조특법 §77①1·2호)', [
+    '감면신청은 사업시행자가 별지 제54호서식으로 양도자의 납세지 관할세무서에 냅니다(조특법 §77⑥, 시행령 §72④·⑦) — 양도자가 낼 법정 신청서는 없습니다.',
+    '사업시행자가 신청했는지 확인하고, 토지 등 수용사실 확인서(별지 제54호서식 부표)를 받아 두세요.',
+    '소재지 ' + (asset.assetLocation || '(미입력)') + ' · 사업인정고시일 ' + (asset.publicNoticeDate || '(미입력)')]);
+  return trFilingGuidePageHtml_('공익사업용 토지 감면 — 양도 방식을 골라 주세요', [
+    '자산 카드의 "공익사업 양도 방식"에서 수용(§77①3호)이면 양도자가 별지 제13호서식(+ 54호 부표)을, 협의매수·정비구역(1·2호)이면 사업시행자가 별지 제54호서식을 냅니다.']);
 }
+
 function trRestrictedZonePrintPageHtml_(asset){
   if (['restricted_zone_40', 'restricted_zone_25'].indexOf(asset.compensationType) === -1) return '';
   let n = 0;
@@ -9810,19 +9819,23 @@ function trRestrictedZonePrintPageHtml_(asset){
   '</div>';
 }
 function trRestructuringPropertyPrintPageHtml_(asset){
-  if (!asset.isRestructuringPropertyReduction) return '';
+  // [2026.10.19 서식 선택 고침] 별지 37호는 영 §40②(구조조정대상부동산)과 영 §99④(신축주택 §99, §99의3도 영 §99의3⑥이 준용)의 세액감면신청서(시행규칙 §61① 제38호)
+  const isNewHouse_ = asset.newHouseReductionProvision === 'sect99' || asset.newHouseReductionProvision === 'sect99_3';
+  if (!asset.isRestructuringPropertyReduction && !isNewHouse_) return '';
   let n = 0;
   return '<div class="pf-page">' +
     '<div class="pf-formno">조세특례제한법 시행규칙 [별지 제37호서식]</div>' +
     '<div class="pf-title">구조조정대상부동산등세액감면신청서</div>' +
-    '<div class="pf-check">[√] 제40조제2항(구조조정대상부동산)</div>' +
+    '<div class="pf-check">' + (asset.isRestructuringPropertyReduction ? '[√] 제40조제2항(구조조정대상부동산)' : '[√] 제99조제4항(신축주택 — 조특법 ' + (asset.newHouseReductionProvision === 'sect99' ? '§99' : '§99의3, 영 §99의3⑥ 준용') + ')') + '</div>' +
     '<table class="pf-table">' +
+      pfRow_(++n, '소재지', asset.assetLocation || '') +
       pfRow_(++n, '취득일', asset.acquisitionDate) +
       pfRow_(++n, '양도일', asset.transferDate) +
     '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 기준시가 등 세부 산정근거는 위 본표(세액계산 결과)를 참고하세요.</div>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 기준시가 등 세부 산정근거는 위 본표(세액계산 결과)를 참고하세요(⑧~⑩은 취득일부터 5년이 지난 뒤 양도하는 경우에만 적음).</div>' +
   '</div>';
 }
+
 function trLongTermRentalHousePrintPageHtml_(asset){
   if (!asset.longTermRentalHouseProvision) return '';
   let n = 0;
@@ -9879,48 +9892,37 @@ function trRentalLongPrintPageHtml_(asset){
   '</div>';
 }
 function trNewHouseSect992PrintPageHtml_(asset){
+  // [2026.10.19 서식 선택 고침] 별지 63호의2(양도소득세특례세율적용신청서)는 옛 법 §99의2(기존주택 팔고 신축주택 취득, 세율 10% — 2006.1.1 삭제)의
+  //  영 §99의2④ 서식(시행규칙 §61① 제64의2호). 현행 §99의2(2013.4.1~12.31 취득 신축·미분양 주택 감면)는 신청서 없이
+  //  확인 날인 받은 매매계약서 사본만 낸다(영 §99의2⑧, 날인 양식 별지 63호의14). 예전엔 63호의2에 '특례세율 10%'를 찍었다.
   if (asset.newHouseReductionProvision !== 'sect99_2' || asset.nhIsHighPriceHouseExcluded) return '';
-  let n = 0;
-  return '<div class="pf-page">' +
-    '<div class="pf-formno">조세특례제한법 시행규칙 [별지 제63호의2서식]</div>' +
-    '<div class="pf-title">양도소득세특례세율적용신청서</div>' +
-    '<table class="pf-table">' +
-      pfRow_(++n, '양도주택 소재지', asset.assetLocation || '') +
-      pfRow_(++n, '취득일자', asset.acquisitionDate) +
-      pfRow_(++n, '양도일자', asset.transferDate) +
-      pfRow_(++n, '특례세율', '10%') +
-      pfRow_(++n, '요건(6억원 이하 또는 85㎡ 이하)', asset.nhIsPriceOrAreaQualified ? '충족' : '미확인') +
-    '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다(조특법 시행령§99의2④, 2013.4.1~2013.12.31 취득분) — 신축주택 취득명세(소재지·면적·취득일 또는 계약금지급일)는 직접 보완하세요. §99·§99의3(다른 취득기간)은 이 서식과 다른 적용조문이라 별도 서식이 공식 확인되지 않아 인쇄 대상에서 제외했습니다.</div>' +
-  '</div>';
+  return trFilingGuidePageHtml_('신축주택 등 감면(조특법 §99의2, 2013.4.1~12.31 취득)', [
+    '신축주택등(또는 감면대상기존주택)임을 확인하는 날인을 받아 교부받은 매매계약서 사본(영 §99의2⑧) — 법정 신청서는 없습니다.',
+    '요건(6억원 이하 또는 85㎡ 이하): ' + (asset.nhIsPriceOrAreaQualified ? '충족' : '미확인'),
+    '소재지 ' + (asset.assetLocation || '(미입력)') + ' · 취득일 ' + (asset.acquisitionDate || '') + ' · 양도일 ' + (asset.transferDate || '')]);
 }
+
 // [2026.10.06 신규, 재검토109] law.go.kr 법령정보센터 서식명 검색("미분양주택")으로 직접
 // 확인 — 조특법 시행규칙 별지 제63호서식(미분양주택과세특례적용신고서) 1개가 §98의3~8
 // 6개 조문을 전부 공유한다(J드라이브 파일목록엔 이 서식이 아예 없었음 — 다운로드 누락이
 // 실존했다는 세무사님 지적이 맞았다). unsoldHouseReductionProvision 필드로 계산은 이미 됨.
 function trUnsoldHouseSect63PrintPageHtml_(asset){
+  // [2026.10.19 서식 선택 고침] 별지 63호(미분양주택과세특례적용신고서)는 영 §98④ = 법 §98(1995.11.1~1997.12.31 취득, 세율 20%) 전용(시행규칙 §61① 제64호).
+  //  §98의3~§98의8 감면에는 법정 신고서가 없고 시장·군수·구청장 등의 확인 날인을 받은 매매계약서 사본 등만 낸다(영 §98의3⑤·§98의4⑤·§98의5⑥·§98의6⑤·§98의7⑧).
+  //  예전엔 이 감면들에 63호를 만들어 붙였다(법령에 없는 서식 — 세무사님 지적).
   if (!asset.unsoldHouseReductionProvision) return '';
-  const PROVISION_LABEL_ = {
-    sect98_3: '§98의3(100%, 수도권과밀억제권역은 60%)', sect98_4: '§98의4(비거주자, 세액 10% 감면)',
-    sect98_5: '§98의5(분양가인하율에 따라 60/80/100%)', sect98_6: '§98의6(50%)',
-    sect98_7: '§98의7(100%, 취득가액 9억원 초과시 배제)', sect98_8: '§98의8(50%, 5년이상 임대 요건)'
+  const P_ = asset.unsoldHouseReductionProvision;
+  const DOCS_ = {
+    sect98_3: ['미분양주택임을 확인하는 날인(시장·군수·구청장)을 받은 매매계약서 사본(영 §98의3⑤)'],
+    sect98_4: ['시행령에 제출서류 규정이 없습니다 — 신고서(별지 84호)의 감면세액 칸으로만 신고(확인 필요)'],
+    sect98_5: ['미분양주택임을 확인하는 날인을 받은 매매계약서 사본(영 §98의4⑤, 날인 양식 별지 63호의5)'],
+    sect98_6: ['준공후미분양주택 확인 날인을 받은 매매계약서 사본(영 §98의5⑥, 날인 양식 별지 63호의10)', '임대사업자등록증 등 사본', '임대차계약서 사본'],
+    sect98_7: ['사업주체등으로부터 교부받은 날인 매매계약서 사본(영 §98의6⑤, 날인 양식 별지 63호의5)'],
+    sect98_8: ['준공후미분양주택 확인 날인을 받은 매매계약서 사본(영 §98의7⑧, 날인 양식 별지 63호의24)', '임대사업자등록증(또는 공공주택사업자 증명) 사본', '임대차계약서 사본']
   };
-  let n = 0;
-  return '<div class="pf-page">' +
-    '<div class="pf-formno">조세특례제한법 시행규칙 [별지 제63호서식]</div>' +
-    '<div class="pf-title">미분양주택과세특례적용신고서</div>' +
-    '<div class="pf-check">[√] ' + escapeHtml(PROVISION_LABEL_[asset.unsoldHouseReductionProvision] || asset.unsoldHouseReductionProvision) + '</div>' +
-    '<table class="pf-table">' +
-      pfRow_(++n, '소재지', asset.assetLocation || '') +
-      pfRow_(++n, '취득일', asset.acquisitionDate) +
-      pfRow_(++n, '양도일', asset.transferDate) +
-      (asset.unsoldHouseReductionProvision === 'sect98_3' ? pfRow_(++n, '수도권과밀억제권역 여부', asset.uhIsOverconcentrationZone ? '해당(60%)' : '비해당(100%)') : '') +
-      (asset.unsoldHouseReductionProvision === 'sect98_5' ? pfRow_(++n, '분양가인하율', (asset.uhPriceDiscountRate || '') + '%') : '') +
-      (asset.unsoldHouseReductionProvision === 'sect98_8' ? pfRow_(++n, '전용면적', (asset.uhExclusiveAreaSqm || '') + '㎡') : '') +
-    '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 신청인 인적사항·주택 상세명세는 직접 보완하세요.</div>' +
-  '</div>';
+  return trFilingGuidePageHtml_('미분양주택 감면(조특법 ' + P_.replace('sect', '§').replace('_', '의') + ')', (DOCS_[P_] || ['제출서류를 확인하세요']).concat(['법정 신고서는 없습니다 — 별지 63호는 1995~1997년 취득 미분양주택(법 §98) 전용입니다.', '소재지 ' + (asset.assetLocation || '(미입력)') + ' · 취득일 ' + (asset.acquisitionDate || '') + ' · 양도일 ' + (asset.transferDate || '')]));
 }
+
 function trPensionAccountCreditPrintPageHtml_(asset){
   if (!numVal(asset.pensionAccountContribution)) return '';
   let n = 0;
@@ -9932,11 +9934,18 @@ function trPensionAccountCreditPrintPageHtml_(asset){
       pfRow_(++n, '취득일', asset.acquisitionDate) +
       pfRow_(++n, '양도일', asset.transferDate) +
       pfRow_(++n, '납입일', asset.pensionContributionDate || '') +
-      pfRow_(++n, '연금계좌 납입금액', won(numVal(asset.pensionAccountContribution) || 0)) +
-      pfRow_(++n, '생애 납입 한도액', won(100000000)) +
-      pfRow_(++n, '공제율', '10%') +
+      // [2026.10.19 서식 감사] 서식 63호의32 칸대로 ⑩~⑰ — ⑮ = min(⑫, ⑬, ⑭), ⑰ = ⑮ × 10%(엔진 pensionCreditBase_와 같은 식; ⑭는 시행령 라목 '양도가액 − 취득가액')
+      (function(){
+        const paid = numVal(asset.pensionAccountContribution) || 0, prior = numVal(asset.pensionPriorContribution) || 0;
+        const remain = Math.max(0, 100000000 - prior);
+        const diff = Math.max(0, (numVal(asset.totalPrice) || numVal(asset.transferPrice) || 0) - (numVal(asset.acquisitionPrice) || 0));
+        const base = Math.min(remain, paid, diff);
+        return pfRow_(10, '연금계좌 납입 한도액', won(100000000)) + pfRow_(11, '기납입액', won(prior)) + pfRow_(12, '잔여 납입한도(⑩ − ⑪)', won(remain)) +
+          pfRow_(13, '납입금액', won(paid)) + pfRow_(14, '양도차액(양도가액 − 취득가액)', won(diff)) + pfRow_(15, '공제대상 금액(⑫·⑬·⑭ 중 적은 금액)', won(base)) +
+          pfRow_(16, '공제율', '10%') + pfRow_(17, '공제세액(⑮ × ⑯, 산출세액 한도)', won(Math.round(base * 0.1)));
+      })() +
     '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다(조특법 시행령§99의14②) — 연금계좌 소유자·은행·계좌번호 등 연금계좌정보는 직접 보완하세요. 첨부서류: 납입확인서(소득세법 시행규칙 별지 제38호의2서식).</div>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다(조특법 시행령§99의13②) — 연금계좌 소유자·은행·계좌번호 등 연금계좌정보는 직접 보완하세요. 첨부서류: 납입확인서(소득세법 시행규칙 별지 제38호의2서식).</div>' +
   '</div>';
 }
 // [2026.10.06 버그수정, 재검토108] trAttach1PrintPageHtml_ 체인에 걸어뒀더니 국외자산은
@@ -10937,7 +10946,8 @@ function printFormDocHtml_(title, bodyHtml){
     '.pf-right{text-align:right;}' +
     '.pf-note{font-size:10px; color:#666; margin:2px 0 10px;}' +
     '.pf-sign{margin-top:18px; text-align:right; font-size:12px; line-height:2.1;}' +
-    '@media print{ body{background:#fff; padding:0;} .pf-toolbar{display:none;} .pf-page{box-shadow:none; margin:0 auto; width:auto; min-height:auto; page-break-after:always;} .pf-page:last-child{page-break-after:auto;} }' +
+    '.pf-guide{background:#fffbea; border:1px dashed #b26a00; min-height:auto !important;}' +
+    '@media print{ .pf-guide{display:none !important;} body{background:#fff; padding:0;} .pf-toolbar{display:none;} .pf-page{box-shadow:none; margin:0 auto; width:auto; min-height:auto; page-break-after:always;} .pf-page:last-child{page-break-after:auto;} }' +
     '</style></head><body>' +
     '<div class="pf-toolbar"><button onclick="window.print()">🖨 인쇄 / PDF로 저장</button></div>' +
     bodyHtml +
@@ -14766,15 +14776,15 @@ const PRINT_REGISTRY_ = [
       // 아예 안 보였다 — 7종 전부 올린다.
       { formNo: '조세특례제한법 시행규칙 [별지 제52호의3서식]', title: '1세대1주택 과세특례(인구감소지역주택·준공후미분양주택 취득자) 신고서', section: 'optional' },
       { formNo: '조세특례제한법 시행규칙 [별지 제63호의4서식]', title: '농어촌주택 등 취득자에 대한 과세특례신고서', section: 'optional' }, // [2026.10.19] 법 이름 고침(소득세법 → 조세특례제한법 시행규칙, 법제처 서식 목록·조특법 §99의4)
-      { formNo: '소득세법 시행규칙 [별지 제83호서식]', title: '농어촌주택 소유자 1세대1주택 특례적용신고서(문화재주택·이농주택·귀농주택)', section: 'optional' },
+      { formNo: '소득세법 시행규칙 [별지 제83호서식]', title: '농어촌주택 소유자 1세대1주택 특례적용신고서(상속주택·이농주택·귀농주택 — 영 §155⑦·⑬)', section: 'optional' },
       { formNo: '소득세법 시행규칙 [별지 제83호의2서식]', title: '주택임대사업자의 거주주택 1세대1주택 특례적용신고서', section: 'optional' },
       { formNo: '소득세법 시행규칙 [별지 제83호의3서식]', title: '장기저당담보주택에 대한 특례적용신고서(동거봉양 합가)', section: 'optional' },
       { formNo: '소득세법 시행규칙 [별지 제83호의4서식]', title: '상생임대주택에 대한 특례적용신고서', section: 'optional' },
       { formNo: '소득세법 시행규칙 [별지 제83호의5서식]', title: '조합원입주권 또는 분양권 소유자 1세대1주택 특례적용신고서', section: 'optional' },
-      { formNo: '조세특례제한법 시행규칙 [별지 제13호서식]', title: '현물출자 등에 대한 세액감면(면제)신청서 — 자경농지·축사용지·자영어업·자경산지·농지대토·국가양도산지·대토보상 공용', section: 'optional' },
-      { formNo: '조세특례제한법 시행규칙 [별지 제54호서식]', title: '공익사업용토지 등에 대한 세액감면신청서', section: 'optional' },
+      { formNo: '조세특례제한법 시행규칙 [별지 제13호서식]', title: '현물출자 등에 대한 세액감면(면제)신청서 — 공익사업용 토지(수용)·자경농지·축사용지·자영어업·자경산지·농지대토·국가양도산지·대토보상 공용', section: 'optional' },
+      { formNo: '조세특례제한법 시행규칙 [별지 제54호서식 부표]', title: '토지 등 수용사실 확인서(수용 감면 13호에 첨부 — 사업시행자 작성)', section: 'optional' }, // [2026.10.19] 54호 본표는 사업시행자 제출(영 §72⑦)이라 양도자 서식표에서 뺌
       { formNo: '조세특례제한법 시행규칙 [별지 제14호서식]', title: '개발제한구역 지정에 따른 매수대상 토지 등에 대한 세액감면신청서', section: 'optional' },
-      { formNo: '조세특례제한법 시행규칙 [별지 제37호서식]', title: '구조조정대상부동산등세액감면신청서', section: 'optional' },
+      { formNo: '조세특례제한법 시행규칙 [별지 제37호서식]', title: '구조조정대상부동산등세액감면신청서(구조조정대상부동산·신축주택 §99·§99의3)', section: 'optional' },
       { formNo: '조세특례제한법 시행규칙 [별지 제62호서식]', title: '장기임대주택에 대한 양도소득 세액감면신청서', section: 'optional' },
       // [2026.10.06 보강, 재검토108] J드라이브 공식서식 원본 전수대조로 추가 발견한 4종 —
       // 전부 "계산은 이미 되는데(rentalSpecialType/newHouseReductionProvision/
@@ -14782,11 +14792,10 @@ const PRINT_REGISTRY_ = [
       // 서식번호·조문 확인완료(trRentalGeneralPrintPageHtml_ 등 참고).
       { formNo: '조세특례제한법 시행규칙 [별지 제62호의2서식]', title: '장기일반민간임대주택등에 대한 과세특례적용신청서', section: 'optional' },
       { formNo: '조세특례제한법 시행규칙 [별지 제62호의3서식]', title: '장기임대주택에 대한 과세특례적용신청서', section: 'optional' },
-      { formNo: '조세특례제한법 시행규칙 [별지 제63호의2서식]', title: '양도소득세특례세율적용신청서', section: 'optional' },
       { formNo: '조세특례제한법 시행규칙 [별지 제63호의32서식]', title: '연금계좌 납입에 대한 양도소득세 세액공제신청서', section: 'optional' },
       { formNo: '소득세법 시행규칙 [별지 제11호서식]', title: '외국납부세액공제 신청서', section: 'optional' },
       // [2026.10.06 재검토109] law.go.kr 서식명 검색으로 추가발견 2종.
-      { formNo: '조세특례제한법 시행규칙 [별지 제63호서식]', title: '미분양주택과세특례적용신고서', section: 'optional' },
+      // [2026.10.19 서식 선택 고침] 별지 63호(미분양주택과세특례적용신고서)는 법 §98(1995~1997 취득) 전용 — §98의3~§98의8 감면은 법정 신고서 없음(날인 매매계약서 사본)이라 서식표에서 뺌
       { formNo: '소득세법 시행규칙 [별지 제83호의6서식]', title: '1세대 3주택 이상자의 장기임대주택 등 일반세율 적용신청서', section: 'optional' }
     ] },
   { key: 'exittax', group: '양도소득세', label: '국외전출자 양도소득세',
@@ -15955,6 +15964,7 @@ function handleTaxCalcClick_(e){
     const transactions = transferAssets.filter(function(a){ return a.isOverseasAsset; }).map(function(a){
       return {
         wasResidentFiveYearsContinuously: !!a.oaResident5yr,
+        transferDate: a.transferDate || '', // [2026.10.19] §118의6①1호 — 2020.1.1 이후 양도분은 국외자산만으로 한도(자산별)
         transferPrice: numVal(a.transferPrice) || 0,
         acquisitionPrice: numVal(a.acquisitionPrice) || 0,
         capitalExpenditure: numVal(a.oaCapitalExpenditure) || 0,
