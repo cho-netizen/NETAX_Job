@@ -50,6 +50,8 @@ function caseProcAiSpots_(body) {
   const caseId = String(body.caseId || '').trim();
   const c = akReadCase_(caseId);
   if (!c) return { error: '사건을 찾지 못했습니다.' };
+  // 끄는 스위치 — 스크립트 속성 AI_LEAD = "끄기"면 배포 없이 곧바로 예전 GAS 순서(AI 지휘·저비용 1차 모두 안 부름)
+  try { if (String(PropertiesService.getScriptProperties().getProperty('AI_LEAD') || '') === '끄기') return { ok: true, off: true, need: false, ai: 0, ask: 0, gas: 0, tiers: null, spots: [], why: 'AI 지휘 꺼짐(스크립트 속성 AI_LEAD = 끄기)' }; } catch (e) {}
   const ov = body.ov || {}, ev = body.ev || {}, items = ov.items || [];
   let spots = [];
   try { spots = caseProcAiVarSpots_('calc_fill', { items: items, needs: ov.needs || null, case: c }, caseId); } catch (e) { spots = []; }

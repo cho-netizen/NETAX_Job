@@ -49439,6 +49439,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     return callGas('case_proc_ai', { caseId: st.caseId, step: 'spots', ov: { items: items, needs: ov.needs || null }, ev: { docTypes: (ev.docTypes || []).slice(0, 80) } }).then(function(sp){
       if (!sp || sp.error) return fallback('AI 자리를 세지 못함(' + ((sp && sp.error) || '응답 없음') + ')');
       ai.spots = sp;
+      if (sp.off){ st.setStep('ai', '⏭', sp.why || 'AI 지휘 꺼짐'); return finish('off'); }
       ai.won = Math.round(((Number(sp.lightUsd) || 0) * 1400) * 10) / 10; // 저비용 1차 비용도 이 사건 비용에
       var tr = sp.tiers || {};
       line('🧭 길 나누기(세 겹) — GAS 확정 ' + (tr.GAS || 0) + ' · 저비용 확정 ' + (tr['저비용'] || 0) + ' · 올림 ' + (tr['올림'] || 0) + ' · 총괄 ' + (tr['총괄'] || 0) + ' · 질문 ' + (tr['질문'] || 0) + (sp.lightOff ? ' (저비용 자동 묻기 꺼짐 — 저비용 자리도 총괄로)' : '') + (sp.lightError ? ' · 저비용 오류: ' + sp.lightError : ''));
