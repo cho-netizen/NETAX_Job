@@ -449,5 +449,123 @@
                         "합산수용감면액": 0,
                         "납부세액_합계": 654758500
                 }
+        },
+        {
+                "이름": "양도 합산 — 2026년 8년 자경(3월) + 일반토지(6월): 감면 = A × (B − C) ÷ D(소득세법 §90①, 기본공제는 일반토지에서 먼저 §103②) (서식 감사 사 후보 6 재현①)",
+                "도구": "calculateTransferTaxMultiJS",
+                "고정": true,
+                "입력": [
+                        {
+                                "assetType": "land",
+                                "necessaryExpenses": 0,
+                                "acquisitionDate": "2010-01-01",
+                                "transferDate": "2026-03-01",
+                                "transferPrice": 300000000,
+                                "acquisitionPrice": 150000000,
+                                "isEightYearFarmland": true
+                        },
+                        {
+                                "assetType": "land",
+                                "necessaryExpenses": 0,
+                                "acquisitionDate": "2010-01-01",
+                                "transferDate": "2026-06-01",
+                                "transferPrice": 300000000,
+                                "acquisitionPrice": 150000000
+                        }
+                ],
+                "정답": {
+                        "합산자경감면액": 29809879,
+                        "합산그룹_산출세액": 29100121
+                }
+        },
+        {
+                "이름": "양도 합산 — 2022년 8년 자경 + 국가양도산지(§85의10): 둘 다 같은 A에서, §133①1호 1억 묶음에 §85의10 포함·양도 순서대로 → 산지 감면 0 (서식 감사 사 후보 6 재현②)",
+                "도구": "calculateTransferTaxMultiJS",
+                "고정": true,
+                "입력": [
+                        {
+                                "assetType": "land",
+                                "necessaryExpenses": 0,
+                                "acquisitionDate": "2010-01-01",
+                                "transferDate": "2022-03-01",
+                                "transferPrice": 500000000,
+                                "acquisitionPrice": 100000000,
+                                "isEightYearFarmland": true
+                        },
+                        {
+                                "assetType": "land",
+                                "necessaryExpenses": 0,
+                                "acquisitionDate": "2010-01-01",
+                                "transferDate": "2022-06-01",
+                                "transferPrice": 500000000,
+                                "acquisitionPrice": 100000000,
+                                "isNationalForestLandReduction": true,
+                                "nfIsUrbanArea": false
+                        }
+                ],
+                "정답": {
+                        "합산자경감면액": 100000000,
+                        "합산조특법세액감면액": 0,
+                        "합산그룹_산출세액": 118910000
+                }
+        },
+        {
+                "이름": "양도 — 2026년 농지대토(§70), 직전 4개 과세기간 §70 감면 8천만: §133①2호가목 5개 과세기간 1억 → 감면 2천만",
+                "도구": "calculate_transfer_tax",
+                "고정": true,
+                "입력": {
+                        "assetType": "land",
+                        "necessaryExpenses": 0,
+                        "acquisitionDate": "2010-01-01",
+                        "transferDate": "2026-03-01",
+                        "transferPrice": 300000000,
+                        "acquisitionPrice": 100000000,
+                        "isFarmlandSubstitutionExempt": true,
+                        "sect133PriorSect70": 80000000
+                },
+                "정답": {
+                        "자경농지감면액": 20000000,
+                        "산출세액": 12685000
+                }
+        },
+        {
+                "이름": "양도 합산 — 2026년 수용 현금, 직전 4개 과세기간 수용 감면 2.9억: §133②2호 5개 과세기간 3억 → 감면 1천만",
+                "도구": "calculateTransferTaxMultiJS",
+                "고정": true,
+                "입력": [
+                        {
+                                "assetType": "land",
+                                "necessaryExpenses": 0,
+                                "acquisitionDate": "2010-01-01",
+                                "transferDate": "2026-06-01",
+                                "transferPrice": 1000000000,
+                                "acquisitionPrice": 300000000,
+                                "compensationType": "cash",
+                                "publicNoticeDate": "2023-01-01",
+                                "sect133PriorComp": 290000000
+                        }
+                ],
+                "정답": {
+                        "합산수용감면액": 10000000,
+                        "납부세액_합계": 174966000
+                }
+        },
+        {
+                "이름": "양도 — 2015년 8년 자경 30억/3억: 2014~2015 양도분 §133①1호나목 과세기간 2억원(자경 포함 묶음)",
+                "도구": "calculate_transfer_tax",
+                "고정": true,
+                "입력": {
+                        "assetType": "land",
+                        "necessaryExpenses": 0,
+                        "acquisitionDate": "2000-01-01",
+                        "transferDate": "2015-06-01",
+                        "transferPrice": 3000000000,
+                        "acquisitionPrice": 300000000,
+                        "isEightYearFarmland": true
+                },
+                "정답": {
+                        "자경농지감면액": 200000000,
+                        "납부세액_합계": 547635000
+                }
         }
 ]

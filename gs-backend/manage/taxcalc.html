@@ -5722,6 +5722,9 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isFarmlandSubstitutionExempt" id="farmsub-' + idx + '"><label for="farmsub-' + idx + '">농지대토 감면(§70)</label></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="isFarmlandSubstitutionExempt" style="display:none;"><input type="checkbox" data-field="isFarmlandSubstitutionRequirementFailed" id="farmsubFail-' + idx + '"><label for="farmsubFail-' + idx + '">[§70만] 사후에 요건 미충족(§70④, 감면세액+이자상당액 추징)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isForestManagementExempt" id="forest-' + idx + '"><label for="forest-' + idx + '">자경산지 감면(§69의4, 10년 이상 직접경영 — 경영기간별 10~50%)</label></div>' +
+          // [2026.10.19 서식 감사] 조특법 §133①2호 — 5개 과세기간 한도는 직전 4개 과세기간에 감면받은 세액을 더해 본다(양도인 한 사람 값, 자산 아무 곳에 한 번)
+          '<div class="taxcalc-field" data-show-if="isEightYearFarmland|isLivestockLandExempt|isFisheryLandExempt|isFarmlandSubstitutionExempt|isForestManagementExempt|compensationType" style="display:none;"><label>직전 4개 과세기간 감면세액 — §66~§70 묶음</label><input type="number" data-field="sect133PriorFarm" placeholder="원"><span class="taxcalc-field-help">조특법 §133①2호나목 5개 과세기간 2억원 한도용. 자경·축사·어업·자경산지·대토로 감면받은 양도소득세 합계(2024년 이전 양도분이면 수용 §77·§77의2 감면도 더함). 양도인 한 사람 값 — 자산 하나에만 넣으세요</span></div>' +
+          '<div class="taxcalc-field" data-show-if="isFarmlandSubstitutionExempt" style="display:none;"><label>직전 4개 과세기간 §70 대토 감면세액</label><input type="number" data-field="sect133PriorSect70" placeholder="원"><span class="taxcalc-field-help">조특법 §133①2호가목 5개 과세기간 1억원 한도용</span></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isBankruptcyDisposal" id="bankruptcy-' + idx + '"><label for="bankruptcy-' + idx + '">파산선고에 의한 처분(§89①1호, 요건 없이 전액 비과세)</label></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isFarmlandExchange" id="farmex-' + idx + '"><label for="farmex-' + idx + '">농지의 교환·분합으로 발생한 소득(§89①2호·시행령§153, 비과세)</label></div>' +
         '</div>' +
@@ -5772,10 +5775,10 @@ function renderPropertyCardHtml_(idx, opts){
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field"><label>공익사업용토지 수용감면</label><select data-field="compensationType">' +
             '<option value="">해당없음</option>' +
-            '<option value="cash">현금보상(조특법§77①, 15%)</option>' +
-            '<option value="bond">채권보상 - 만기특약 없음(20%)</option>' +
-            '<option value="bond_3y">채권보상 - 3년만기특약(35%)</option>' +
-            '<option value="bond_5y">채권보상 - 5년만기특약(45%)</option>' +
+            '<option value="cash">현금보상(조특법§77①, 15% — 2016~2024 양도 10%)</option>' +
+            '<option value="bond">채권보상 - 만기특약 없음(20% — 2016~2024 양도 15%)</option>' +
+            '<option value="bond_3y">채권보상 - 3년만기특약(35% — 2014~2024 양도 30%)</option>' +
+            '<option value="bond_5y">채권보상 - 5년만기특약(45% — 2014~2024 양도 40%)</option>' +
             '<option value="land_replacement">대토보상(조특법§77의2, 40%)</option>' +
             '<option value="restricted_zone_40">개발제한구역 매수 - 지정일 이전 취득(조특법§77의3, 40%)</option>' +
             '<option value="restricted_zone_25">개발제한구역 매수 - 20년 이전 취득(조특법§77의3, 25%)</option>' +
@@ -5785,7 +5788,8 @@ function renderPropertyCardHtml_(idx, opts){
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field" data-show-if="compensationType" style="display:none;"><label>공익사업 양도 방식</label><select data-field="compensationTransferMode"><option value="">고르세요</option><option value="consult">협의매수·정비구역 양도(§77①1·2호 — 사업시행자가 54호로 신청)</option><option value="expropriation">수용(§77①3호 — 양도자가 13호로 신청)</option></select><span class="taxcalc-field-help">신청서가 갈립니다(시행령 §72⑦·⑧) — 세액엔 영향 없음</span></div>' +
           '<div class="taxcalc-field" data-show-if="compensationType" style="display:none;"><label>사업인정고시일</label><input type="date" data-field="publicNoticeDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">현금·채권·대토보상 선택시, 2년이전취득 요건(§77①·§77의2①) 판정용 — 모르면 비워두면 양도일 기준으로 판정</span></div>' +
-          '<div class="taxcalc-field checkbox" data-show-if="compensationType" style="display:none;"><input type="checkbox" data-field="isBondPledgeBreached" id="bondBreach-' + idx + '"><label for="bondBreach-' + idx + '">채권 만기보유 특약 위반(§77④, 3년·5년만기특약 선택시만 해당 — 즉시 차액 추징)</label></div>' +
+          '<div class="taxcalc-field checkbox" data-show-if="compensationType" style="display:none;"><input type="checkbox" data-field="isBondPledgeBreached" id="bondBreach-' + idx + '"><label for="bondBreach-' + idx + '">채권 만기보유 특약 위반(§77④, 3년·5년만기특약 선택시만 해당 — 양도소득세의 15%(5년 25%) 즉시 징수, 2014~2018 양도 10%(20%))</label></div>' +
+          '<div class="taxcalc-field" data-show-if="compensationType" style="display:none;"><label>직전 4개 과세기간 수용 등 감면세액</label><input type="number" data-field="sect133PriorComp" placeholder="원"><span class="taxcalc-field-help">2025년 이후 양도분 조특법 §133②2호 5개 과세기간 3억원 한도용 — §77·§77의2·§77의3으로 감면받은 양도소득세 합계(2025.3.14 전 §77의3 감면분은 빼고). 양도인 한 사람 값 — 자산 하나에만 넣으세요</span></div>' +
           '<div class="taxcalc-field" data-show-if="compensationType" style="display:none;"><label>다운계약서 등 계약서·실거래 차액</label><input type="number" data-field="downContractPriceDifference" placeholder="원"><span class="taxcalc-field-help">소득세법§91② 비과세·감면 배제 추징용, 해당 시만</span></div>' +
         '</div>' +
         '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>이월과세(§97의2)·우회양도 부인(§101②) — 특수관계인에게 증여받은 자산을 증여일로부터 10년(§101②) 이내에 양도할 때. 배우자·직계존속이면 이월과세(요건 미충족·비과세전환·세액비교로 배제시 자동으로 수증자 본인 기준), 그 밖의 특수관계인(형제자매 등)이면 우회양도 부인 여부를 안내로 판정합니다</b></div>' +
@@ -6658,7 +6662,8 @@ function updatePropertyCardConditionalVisibility_(card, idx){
   const a = transferAssets[idx];
   if (!a) return;
   card.querySelectorAll('[data-show-if]').forEach(function(field){
-    field.style.display = a[field.dataset.showIf] ? '' : 'none';
+    // [2026.10.19] "a|b"는 둘 중 하나라도 있으면 표시(조특법 §133 직전 감면세액 칸처럼 여러 감면에 걸친 칸용)
+    field.style.display = String(field.dataset.showIf).split('|').some(function(k){ return !!a[k]; }) ? '' : 'none';
   });
 }
 
@@ -6790,6 +6795,10 @@ function collectTransferInput(vals){
     compensationTransferMode: vals.compensationTransferMode || '', // [2026.10.19] 협의매수(54호, 사업시행자)·수용(13호, 양도자)
     publicNoticeDate: vals.publicNoticeDate || '',
     isBondPledgeBreached: !!vals.isBondPledgeBreached,
+    // [2026.10.19 서식 감사] 조특법 §133 5개 과세기간 한도 — 직전 4개 과세기간 감면세액(양도인 한 사람 값, 지분으로 나누지 않음)
+    sect133PriorFarm: numVal(vals.sect133PriorFarm) || 0,
+    sect133PriorSect70: numVal(vals.sect133PriorSect70) || 0,
+    sect133PriorComp: numVal(vals.sect133PriorComp) || 0,
     downContractPriceDifference: numVal(vals.downContractPriceDifference) || 0,
     isReconstructionRights: !!vals.isReconstructionRights,
     isCompletedNewHousing: !!vals.isCompletedNewHousing,
@@ -7004,6 +7013,9 @@ function renderOneTransferResultHtml_(r, label, sellerIdx){
   if (r.합산수용감면액) html += taxCalcResultRow('공익사업용토지 수용감면(조특법§77)', '-' + won(r.합산수용감면액));
   if (r.합산조특법세액감면액) html += taxCalcResultRow('조특법 세액감면(비거주자§98의4·공공매입임대§97의10·국가양도산지§85의10·구조조정§43·장기임대§97)', '-' + won(r.합산조특법세액감면액));
   if (r.합산채권만기특약위반_추징액) html += taxCalcResultRow('채권 만기특약 위반 추징(조특법§77④)', '+' + won(r.합산채권만기특약위반_추징액));
+  // [2026.10.19 서식 감사] 조특법 §133 한도로 감면하지 않은 금액(엔진 감면한도_조특법133)·그 시점 경고
+  (r.감면한도_조특법133 || []).forEach(function(x){ html += '<div class="taxcalc-result-note">' + escapeHtml(x.한도) + ' — 감면받을 세액 ' + won(x.감면받을세액_합계) + (x.직전4개과세기간_감면세액 ? ' + 직전 4개 과세기간 ' + won(x.직전4개과세기간_감면세액) : '') + ' 중 ' + won(x.감면하지않는금액) + '은 감면하지 않음(늦게 양도한 자산부터)</div>'; });
+  if (r.감면한도_시점경고) html += '<div class="taxcalc-result-note" style="color:#b26a00;">' + escapeHtml(r.감면한도_시점경고) + '</div>';
   if (r.다운계약서_감면배제_추징액) html += taxCalcResultRow('다운계약서 감면배제 추징액', '+' + won(r.다운계약서_감면배제_추징액));
   if (r.비과세거래_다운계약서_추징액) html += taxCalcResultRow('다운계약서 비과세배제 추징액(별건)', '+' + won(r.비과세거래_다운계약서_추징액));
   html += taxCalcResultRow('합산(장기) 그룹 산출세액', won(r.합산그룹_산출세액));
@@ -7033,6 +7045,8 @@ function renderOneTransferResultHtml_(r, label, sellerIdx){
     (r.합산조특법세액감면액 ? '<div class="taxcalc-calcbasis-line">조특법 세액감면(비거주자§98의4·공공매입임대§97의10·국가양도산지§85의10·구조조정§43·장기임대§97) = -' + won(r.합산조특법세액감면액) + '</div>' : '') +
     (r.합산채권만기특약위반_추징액 ? '<div class="taxcalc-calcbasis-line">채권 만기특약 위반 추징(§77④) = +' + won(r.합산채권만기특약위반_추징액) + '</div>' : '') +
     (r.다운계약서_감면배제_추징액 ? '<div class="taxcalc-calcbasis-line">다운계약서 감면배제 추징 = +' + won(r.다운계약서_감면배제_추징액) + '</div>' : '') +
+    // [2026.10.19 서식 감사] 감면액 산식(소득세법 §90① A×(B−C)÷D×E) — 자산마다
+    (r.자산별_내역 || []).filter(function(n){ return n && n.감면산식; }).map(function(n){ return '<div class="taxcalc-calcbasis-line">· ' + (n.idx + 1) + '번 자산 ' + escapeHtml(n.특례 || '') + ' = ' + escapeHtml(n.감면산식) + ' = ' + won(n.감면액 + (n.조특법133_한도로_감면안함 || 0)) + (n.조특법133_한도로_감면안함 ? ' → 조특법 §133 한도로 ' + won(n.조특법133_한도로_감면안함) + ' 빼고 ' + won(n.감면액) : '') + '</div>'; }).join('') +
     '<div class="taxcalc-calcbasis-line">합산(장기) 그룹 산출세액 = ' + won(r.합산그룹_산출세액) + '</div>' +
     (r.단기거래_산출세액_합계 ? '<div class="taxcalc-calcbasis-line">+ 단기양도 산출세액 합계(건별 계산) = ' + won(r.단기거래_산출세액_합계) + '</div>' : '') +
     (r.미등기거래_산출세액_합계 ? '<div class="taxcalc-calcbasis-line">+ 미등기양도 산출세액 합계(건별 계산) = ' + won(r.미등기거래_산출세액_합계) + '</div>' : '') +
