@@ -5929,7 +5929,10 @@
       periodStart.setMonth(periodStart.getMonth() - 3);
       periodEnd.setMonth(periodEnd.getMonth() + 3);
     } else {
-      periodStart.setMonth(periodStart.getMonth() - 6);
+      // [2026.10.20 조견표 2부-13 — 법령 세션 옛 판 대조] 증여의 "전 6개월부터 후 3개월까지"는 2019.2.12. 시행(대통령령 제29533호, 부칙 제2조 "이 영 시행 이후
+      //  증여받는 분부터") — 그 전 증여는 전후 3개월(2010.2.18. 전 문언 "전후 6월(증여재산의 경우에는 3월)"). 상속은 계속 전후 6개월. 판정일 = 평가기준일(증여일).
+      const giftOld_ = taxType === 'gift' && String(p.valuationBaseDate).slice(0, 10) < '2019-02-12';
+      periodStart.setMonth(periodStart.getMonth() - (giftOld_ ? 3 : 6));
       periodEnd.setMonth(periodEnd.getMonth() + (taxType === 'gift' ? 3 : 6));
     }
     const withinPeriod = evidDate >= periodStart && evidDate <= periodEnd;
