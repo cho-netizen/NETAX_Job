@@ -22811,6 +22811,13 @@ function renderTransferContractGroupHtml_(contract, idx){
 // 암산/외부계산해서 한 칸에 타이핑해야 했는데, 여기서 매출액만 넣으면 계산해준다.
 let relatedPartyRatioRows_ = [{}, {}];
 let jmRelatedPartyTotalSales_ = ''; // [2026.09.30, 재검토99] 수혜법인 총매출액 — 부표4 인쇄용으로 모달 밖에도 보존
+let jmRelatedPartyExcludedSales_ = ''; // [2026.10.19 서식감사 차] 과세제외매출액 합계(시행령 §34의3⑩) — 분모(총매출액)에서도 뺀다(부표4 ⑬)
+// [2026.10.19 서식감사 차] 특수관계법인거래비율 = 특수관계법인 매출(과세제외 뺀 값) ÷ (총매출액 − 과세제외매출액) — 법 §45의3④가 "제1항에 따른 매출액"에서
+//  과세제외매출액을 빼게 하므로 분자·분모 모두에서 뺀다([별지 제10호의3서식 부표4] ⑬ = (④ − ⑥) ÷ (⑫ − ⑥)). 전에는 분모에서 빼지 않아 비율이 작게 나왔다.
+function jmRelatedPartyTradeRatioPct_(sumRelated, totalSales, excludedSales){
+  const denom = (numVal(totalSales) || 0) - (numVal(excludedSales) || 0);
+  return denom > 0 ? (numVal(sumRelated) || 0) / denom * 100 : 0;
+}
 // [2026.09.30 신규, 재검토100] 특례세율(sr) 탭 — 창업자금(§30의5) 증여재산평가 및 과세가액
 // 계산명세서(별지10호의2 부표1)에 필요한 재산별 명세(재산구분·재산종류·소재지·평가가액·
 // 평가기준)를 받는다. 지금까지 sr탭은 "해당 증여재산가액" 합계 한 값만 입력받아 부표1 자체를
@@ -23271,7 +23278,8 @@ function openRelatedPartyRatioHelperModal_(){
       '<div class="modal-head"><span>특수관계법인거래비율 계산(다수 특수관계법인)</span><span class="modal-close" id="btnCloseRpr">✕</span></div>' +
       '<div class="modal-body">' +
         '<div class="taxcalc-result-note" style="margin-bottom:8px;">특수관계법인이 여러 곳이어도 회사별로 따로 계산해 더하면 안 됩니다(상증세법 시행령§34의3) — 모든 특수관계법인의 매출액을 먼저 합산한 뒤, 수혜법인 총매출액으로 한 번만 나눕니다. 여기 입력한 내역은 부표(지배주주등과 특수관계법인)를 인쇄할 때도 그대로 쓰입니다.</div>' +
-        '<div class="taxcalc-grid" style="margin-bottom:8px;"><div class="taxcalc-field"><label>수혜법인 총매출액</label><input type="number" id="rprTotalSales" placeholder="원" value="' + (jmRelatedPartyTotalSales_ || '') + '"></div></div>' +
+        '<div class="taxcalc-grid" style="margin-bottom:8px;"><div class="taxcalc-field"><label>수혜법인 총매출액</label><input type="number" id="rprTotalSales" placeholder="원" value="' + (jmRelatedPartyTotalSales_ || '') + '"></div>' +
+          '<div class="taxcalc-field"><label>그중 과세제외매출액 합계</label><input type="number" id="rprExcludedSales" placeholder="원" value="' + (jmRelatedPartyExcludedSales_ || '') + '"><span class="taxcalc-field-help">시행령 §34의3⑩ — 분모(총매출액)에서도 뺌(부표4 ⑬)</span></div></div>' +
         '<div id="rprRows">' + renderRelatedPartyRatioRows_() + '</div>' +
         '<button type="button" class="taxcalc-run-btn" id="rprRunBtn">비율 계산하기</button>' +
         '<div id="rprResult"></div>' +
@@ -23313,14 +23321,18 @@ function openRelatedPartyRatioHelperModal_(){
   wireRows();
   enhanceNumberInputs(overlay);
   overlay.querySelector('#rprTotalSales').addEventListener('input', function(){ jmRelatedPartyTotalSales_ = this.value; });
+  overlay.querySelector('#rprExcludedSales').addEventListener('input', function(){ jmRelatedPartyExcludedSales_ = this.value; });
   overlay.querySelector('#rprRunBtn').addEventListener('click', function(){
     const totalSales = numVal(document.getElementById('rprTotalSales').value);
     const sumRelated = relatedPartyRatioRows_.reduce(function(s, r){ return s + (numVal(r.sales) || 0); }, 0);
     const resultBox = document.getElementById('rprResult');
     if (!totalSales){ resultBox.innerHTML = '<div class="taxcalc-error">수혜법인 총매출액을 입력하세요.</div>'; return; }
-    const ratioPct = (sumRelated / totalSales) * 100;
+    const excludedSales = numVal(document.getElementById('rprExcludedSales').value) || 0;
+    if (excludedSales >= totalSales){ resultBox.innerHTML = '<div class="taxcalc-error">과세제외매출액이 총매출액보다 작아야 합니다.</div>'; return; }
+    const ratioPct = jmRelatedPartyTradeRatioPct_(sumRelated, totalSales, excludedSales);
     let html = '<div class="taxcalc-result" style="margin-top:10px;">';
     html += taxCalcResultRow('특수관계법인 매출 합계', won(sumRelated));
+    if (excludedSales) html += taxCalcResultRow('분모 = 총매출액 − 과세제외매출액', won(totalSales - excludedSales));
     html += taxCalcResultRow('특수관계법인거래비율(통합)', ratioPct.toFixed(4) + '%', { total: true });
     html += '<button type="button" class="taxcalc-run-btn" id="rprApplyBtn" style="margin-top:8px;">위 계산결과 반영하기</button>';
     html += '</div>';
@@ -34493,7 +34505,8 @@ function jmAttach4PrintPageHtml_(){
       rows.map(function(r){ return '<tr><td>' + escapeHtml(r.label || '') + '</td><td class="pf-right">' + won(numVal(r.sales)) + '</td></tr>'; }).join('') +
       pfRow_(0, '특수관계법인 매출 합계', won(rows.reduce(function(s,r){ return s + numVal(r.sales); }, 0))) +
       pfRow_(0, '수혜법인 총매출액', won(totalSales)) +
-      pfRow_(0, '특수관계법인거래비율', totalSales ? (rows.reduce(function(s,r){ return s + numVal(r.sales); }, 0) / totalSales * 100).toFixed(4) + '%' : '') +
+      (numVal(jmRelatedPartyExcludedSales_) ? pfRow_(0, '그중 과세제외매출액', won(numVal(jmRelatedPartyExcludedSales_))) : '') +
+      pfRow_(0, '특수관계법인거래비율((매출 − 과세제외) ÷ (총매출 − 과세제외))', totalSales ? jmRelatedPartyTradeRatioPct_(rows.reduce(function(s,r){ return s + numVal(r.sales); }, 0), totalSales, jmRelatedPartyExcludedSales_).toFixed(4) + '%' : '') +
     '</table>' +
     '<div class="pf-note">이 서식은 NETAX "특수관계법인 매출 합산" 도구의 입력값을 기준으로 자동 생성되었습니다.</div>' +
   '</div>';
