@@ -82,7 +82,7 @@ function __mockRun(caseId) {
     // 세무사님이 AI가 넣은 값을 다른 값으로 고침 → 다음 칸 채우기에서 2번 0) 단계가 cxLogUserFix_로 기록에 '수정'을 붙이는지
     if (__pick) {
       var a0 = app[__pick.id];
-      if (a0) { var alt = String(a0.v).replace(/d$/, function (d) { return String((+d + 1) % 10); }); st('apply', { target: a0.target, value: alt, src: '세무사님 직접 입력', label: a0.label }); st('overview'); }
+      if (a0) { var alt = String(a0.v).replace(/[0-9]$/, function (d) { return String((+d + 1) % 10); }); st('apply', { target: a0.target, value: alt, src: '세무사님 직접 입력', label: a0.label }); st('overview'); }
       var paid2 = []; try { paid2 = JSON.parse(ai_paidLogFile_().getBlob().getDataAsString('UTF-8') || '[]'); } catch (e) {}
       res.userFix = paid2.filter(function (r) { return r && r.kind === 'cx' && r.cx && /^cxl_/.test(r.cx.id || ''); }).map(function (r) { return r.cx.items.filter(function (it) { return it.user; }).map(function (it) { return it.iid + ' ' + it.user.act; }); });
     }

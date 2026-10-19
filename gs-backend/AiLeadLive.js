@@ -23,7 +23,9 @@ var CASEPROC_AI_KRW_ = 1400;
 var CASEPROC_AI_MAX_ROUNDS_ = 14;
 var CASEPROC_AI_TURN_BUDGET_MS_ = 150000; // 한 차례(서버 한 번)에 도구를 새로 시작할 수 있는 시간 — 화면 다리(gasbridge)는 같은 요청을 4분까지 기다린다
 // 세액이 크게 갈리는 칸 — AI가 근거를 대도 넣지 않고 세무사님 답으로만(질문 id·질문 글 기준)
-var CASEPROC_AI_USER_ONLY_RE_ = /relfmv|시가|특수관계|가족관계|관계인지|평가액|감정가/;
+var CASEPROC_AI_USER_ONLY_RE_ = /relfmv|시가|특수관계|가족관계|관계인지|평가액|감정가|buyerrel|donorRelation|giftRelation/;
+// 특수관계 질문(2번 relcheck) — 세무사님 원문 "특수관계 여부를 확인하는 절차만 있으면 된다": 총괄 AI도 값·의견을 붙이지 않고 질문 글의 정황 근거만 세무사님께
+var CASEPROC_AI_RELATION_RE_ = /^(tr:buyerrel|trc:a\d+\.donorRelation|ov:giftRelation(:.*)?|tr:relfmv)$/;
 var CASEPROC_AI_LOG_NAME_ = '_사건처리AI판단기록.json';
 var CASEPROC_AI_NO_TOOLS_ = ['docs_read', 'doc_text']; // [GAS 고도화 ④] 지휘 AI에게 주지 않는 도구
 
@@ -68,6 +70,8 @@ function caseProcAiSpots_(body) {
     if (tp.route === 'light') light.push(s); else { s.tier = '총괄'; lead.push(s); }
   });
   // [세 겹 ②] 저비용 1차 — 확실하고 모자란 정보가 없으면 끝(값 칸이면 후보 안의 값만 넣음), 아니면 총괄로 올림
+  const plan = { 저비용후보: light.length, 총괄직행: lead.length, 주제: {} };
+  light.concat(lead).forEach(function (s) { plan.주제[s.topic] = (plan.주제[s.topic] || 0) + 1; });
   const lp = caseProcAiLightPass_(c, light, items);
   let lightApplied = 0;
   lp.done.forEach(function (rec) { const r = caseProcAiLightApply_(c, rec, items); rec.applied = r.applied; rec.result = r.why; if (r.applied) lightApplied++; tiers.저비용++; });
@@ -88,7 +92,7 @@ function caseProcAiSpots_(body) {
     'GAS 몫(못 읽은 서류·재료 없음·상수) ' + gas.length + '개: ' + gas.slice(0, 8).map(function (s) { return s.자리 + '(' + s.이유 + ')'; }).join(', '),
     '비용 상한 ' + caseProcAiCap_(c).toLocaleString('ko-KR') + '원, 바퀴 상한 ' + CASEPROC_AI_MAX_ROUNDS_ + '. calc_fill부터 불러 지금 칸과 질문을 본 뒤 판단하라.'
   ].join('\n');
-  return { ok: true, ai: lead.length, ask: ask.length, gas: gas.length, byWhy: by, level: level, cap: caseProcAiCap_(c), need: lead.length > 0, tiers: tiers, lightApplied: lightApplied, lightOff: lp.off, lightUsd: lp.usd, lightError: lp.error || '',
+  return { ok: true, ai: lead.length, ask: ask.length, gas: gas.length, byWhy: by, level: level, cap: caseProcAiCap_(c), need: lead.length > 0, tiers: tiers, plan: plan, lightApplied: lightApplied, lightOff: lp.off, lightUsd: lp.usd, lightError: lp.error || '',
     lightDone: lp.done.map(function (r) { return { 자리: r.자리, topic: r.topic, answer: caseProcAiMask_(r.answer), why: caseProcAiMask_(r.why), applied: !!r.applied }; }),
     spots: lead.map(function (s) { return { 자리: s.자리, 이유: s.이유, 주제: s.topic || '', 겹: s.tier, 수준: caseProcAiSpotLevel_(s), 설명: caseProcAiCut_(s.설명 || '', 120) }; }), entry: caseProcAiMask_(entry) };
 }
@@ -243,6 +247,7 @@ function caseProcAiValueSetLive_(caseId, input, ctx) {
   CASEPROC_AI_LAST_ITEMS_[caseId] = items;
   CP_SECURED_LOG_ = (ctx.lookups || []).slice();
   const why = caseProcAiMask_(caseProcAiCut_(input.why || '', 120));
+  if (CASEPROC_AI_RELATION_RE_.test(String(input.itemId || ''))) { ctx.decisions.push({ at: new Date().toISOString(), itemId: input.itemId, 칸: caseProcAiCut_(it.text, 80), value: '', basis: '', why: '', sure: '', 결과: '특수관계 확인 절차 — 값·의견 없이 근거만 세무사님께' }); return { ok: false, 반영: '넣지 않음', 이유: '특수관계·시가 질문은 세무사님 확인 절차만 — 값도 의견도 붙이지 않는다. 필요하면 ask_user로 그 질문을 고르기만(정황 근거는 질문 글에 이미 있음)' }; }
   const userOnly = CASEPROC_AI_USER_ONLY_RE_.test(String(input.itemId || '') + ' ' + String(it.text || ''));
   const chk = caseProcAiCheckBasis_(c, input.value, input.basis, input.itemId, caseId);
   const bs = input.basis || {};

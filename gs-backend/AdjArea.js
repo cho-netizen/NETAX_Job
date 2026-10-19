@@ -85,8 +85,8 @@ var CASEPROC_ADJ_EVENTS_ = [
 ];
 // 공식 출처로 아직 못 찾은 것(표에 넣지 않음 — '확인 필요')
 var CASEPROC_ADJ_UNVERIFIED_ = [
-  '2016-11-03·2017-06-19 주택공급규칙상 청약조정대상지역(주택법 §63의2 이전) — 소득세법상 조정대상지역과 같은지, 2017-08-03~2017-11-09 취득분 처리',
-  '2017-1305호 예정지 공고의 효력일(법률 제14866호 부칙 §2 원문 미확인)',
+  // [풀림 2026.10.19 세무사님·조정 세션] 2016~2017 청약조정대상지역은 세법상 조정대상지역이 아님(쓰지 않음). 2017-08-03~11-09는 거주요건에 한해 소령 §154② 표 지역 = 조정
+  '2017-08-03~11-09 기간을 중과(§167의3 등)·장기보유특별공제에서 어떻게 보는지 — 각 조문 원문으로 확인',
   '2020-877호 정정공고로 추가된 화성시의 효력일(2020-06-19인지 06-29인지)',
   '택지개발지구·행복도시 예정지역 경계(동탄2·광교·고양 택지·다산·별내·세종) — 동 이름만으로 못 가름',
   '2026-07-01 이후 공고(법제처 연혁 최신: 2026-882호 — 그 뒤 변동은 다시 확인)'
@@ -132,7 +132,9 @@ function caseProcAdjMatch_(addr, m) {
   return 'yes';
 }
 // 주소·날짜(YYYY-MM-DD)에 조정대상지역이었는지 — { 판정: '조정'|'비조정'|'확인 필요', 이유, 근거: [공고번호…] }
-function caseProcAdjAreaAt_(addr, date) {
+// purpose '거주': 1세대1주택 거주요건(소득세법 시행령 §154①) — §154② "2017년 8월 3일부터 2017년 11월 9일까지의 기간에는 다음 표의 지역을 조정대상지역으로 한다"
+//  (표 = 2017-1305호 지역과 같음, 세무사님 해설서 479쪽 "2017.8.3.에 최초 조정대상지역으로 지정된 것으로 의제"). 중과·장기보유특별공제 쪽은 그 조문으로 따로 확인 — 그때는 purpose 없이 불러 '확인 필요'
+function caseProcAdjAreaAt_(addr, date, purpose) {
   const d = String(date || '').slice(0, 10);
   if (!addr || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return { 판정: '확인 필요', 이유: !addr ? '소재지 없음' : '날짜 없음', 근거: [] };
   let st = false, unk = '', basis = [];
@@ -146,7 +148,11 @@ function caseProcAdjAreaAt_(addr, date) {
     });
   });
   // 효력일 확인 필요 구간
-  if (d >= '2017-08-03' && d < '2017-11-10' && CASEPROC_ADJ_EVENTS_[0].areas.some(function (m) { return caseProcAdjMatch_(addr, m) !== 'no'; })) return { 판정: '확인 필요', 이유: CASEPROC_ADJ_EVENTS_[0].dateNote, 근거: ['2017-1305'] };
+  if (d >= '2017-08-03' && d < '2017-11-10') {
+    const ms = CASEPROC_ADJ_EVENTS_[0].areas.map(function (m) { return caseProcAdjMatch_(addr, m); });
+    if (purpose === '거주' && ms.indexOf('yes') !== -1) return { 판정: '조정', 이유: '소득세법 시행령 §154② — 2017-08-03~11-09는 2017-1305호 지역을 조정대상지역으로 봄(거주요건)', 근거: ['2017-1305', '소령§154②'] };
+    if (ms.some(function (x) { return x !== 'no'; })) return { 판정: '확인 필요', 이유: purpose === '거주' ? '§154② 지역 경계(택지지구·예정지역) 확인 필요' : CASEPROC_ADJ_EVENTS_[0].dateNote + ' — 거주요건은 §154②로 조정, 중과·장특공은 그 조문으로 확인', 근거: ['2017-1305'] };
+  }
   if (d >= '2020-06-19' && d < '2020-06-29' && caseProcAdjMatch_(addr, { sd: '경기', si: '화성시' }) !== 'no') return { 판정: '확인 필요', 이유: CASEPROC_ADJ_EVENTS_[8].dateNote, 근거: ['2020-877'] };
   if (unk) return { 판정: '확인 필요', 이유: unk, 근거: basis };
   return { 판정: st ? '조정' : '비조정', 이유: (st ? '지정' : basis.length ? '해제' : '지정된 적 없음') + (basis.length ? ' — 공고 ' + basis.join(', ') : '') + (d > '2026-07-01' ? ' (2026-882호 뒤 변동은 다시 확인)' : ''), 근거: basis };

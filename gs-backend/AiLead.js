@@ -319,7 +319,7 @@ function caseProcAiAdjSpot_(raw, caseId) {
   let ok = true, allNo = true;
   const parts = assets.map(function (a, i) {
     const loc = String(a.assetLocation || ''), acq = String(a.acquisitionDate || ''), tr = String((cts[i] || cts[0] || {}).transferDate || base || '');
-    const r1 = caseProcAdjAreaAt_(loc, acq), r2 = caseProcAdjAreaAt_(loc, tr);
+    const r1 = caseProcAdjAreaAt_(loc, acq, '거주'), r2 = caseProcAdjAreaAt_(loc, tr);
     if (r1.판정 === '확인 필요' || r2.판정 === '확인 필요') ok = false;
     // 거주요건(소득세법 시행령 §154① 단서)은 2017-08-03 이후 취득하면서 취득 당시 조정대상지역이었던 주택에만 붙는다
     if (!(acq && acq < '2017-08-03') && r1.판정 !== '비조정') allNo = false;
