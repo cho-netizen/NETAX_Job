@@ -16,6 +16,9 @@
  *
  * ── 언제 찍나(지금 인쇄 taxcalc.html의 조건) ──
  *   상속12호의2·부표1 : 결과 가업상속납부유예세액 > 0 이고 가업상속공제_계산내역이 있음(ihAttachPrintPagesHtml_ [별지 제12호의2서식] 쪽)
+ *   공통11호          : 증여·상속 공통 탭 "연부연납" 도구 결과(lastInstallmentResult_)가 있음(PRINT_REGISTRY_ installment.isReady와 같음).
+ *                       상속 묶음(plan)에는 그 도구가 상속세로 계산돼 있을 때만. 증여 묶음엔 붙이지 않음(지금 인쇄처럼 수증자 첫 번째 기준 — 서식표 줄로 찍음)
+ *   공통11호부표      : 연부연납 도구가 상속세이고 상속 결과에 가업 재산 계산 내역(가업상속공제_계산내역)이 있음(지금 인쇄엔 없는 부표)
  */
 (function (root, factory) {
   var NF = root.NxFormPrint;
@@ -187,28 +190,157 @@
     return o.result();
   };
 
+  // ───────── 연부연납(증여·상속 공통 탭 "연부연납" 도구) ─────────
+  //  ctx = { 세목: '상속'|'증여', inst: {input, result}(lastInstallmentInput_·lastInstallmentResult_), person(신청인), other(피상속인·증여자), office(세무서), taxAgent,
+  //          (상속이면 부표용) r: 상속 계산 결과, ihb }
+  //  신청인은 지금 인쇄 installmentPrintFormPageHtml_와 같이 상속 = 상속인 명부 첫 행, 증여 = 수증자 첫 번째.
+  /* global lastInstallmentInput_, lastInstallmentResult_, giftDonees, giftDonors, inheritanceHeirs, lastInheritanceResult */
+  function instFromApp() {
+    var inp = typeof lastInstallmentInput_ !== 'undefined' ? lastInstallmentInput_ : null;
+    var res = typeof lastInstallmentResult_ !== 'undefined' ? lastInstallmentResult_ : null;
+    return (inp && res && !res.error) ? { input: inp, result: res } : null;
+  }
+  // 상속 ctx(ctxFromApp.상속 모양)에서 연부연납 ctx로
+  function instCtxFromIh(c, inst) {
+    var h = firstHeir(c), dc = c.deceased || {};
+    return Object.assign({}, c, { 세목: '상속', inst: inst,
+      person: Object.assign({}, h, { phone: heirPhone(c, h), email: h.isReporter ? c.email : '' }),
+      other: { name: dc.name, regNo: dc.regNo }, office: dc.taxOffice });
+  }
+  function instCtx(extra) {
+    var inst = instFromApp(); if (!inst) return null;
+    if (inst.input.taxType === 'gift') {
+      var dn = (typeof giftDonees !== 'undefined' && giftDonees && giftDonees[0]) || {}, dr = (typeof giftDonors !== 'undefined' && giftDonors && giftDonors[0]) || {};
+      return Object.assign({ 세목: '증여', inst: inst, taxAgent: H.agent(),
+        person: { name: dn.name, regNo: dn.regNo, address: dn.address, addressDong: dn.addressDong, addressHo: dn.addressHo, phone: dn.phone, email: dn.email },
+        other: { name: dr.name, regNo: dr.regNo }, office: dn.taxOffice }, extra || {});
+    }
+    var base;
+    try { base = withIhb(H.ctxFromApp.상속(extra)); } catch (e) {
+      var hs = (typeof inheritanceHeirs !== 'undefined' && inheritanceHeirs) ? inheritanceHeirs : [];
+      base = Object.assign({ r: null, heirs: hs.map(function (h) { return { name: h.name || '', regNo: h.regNo || '', address: h.address || '', addressDong: h.addressDong || '', addressHo: h.addressHo || '', isReporter: !!h.isReporter }; }),
+        phone: H.el('ihReporterPhone'), email: H.el('ihReporterEmail'), taxAgent: H.agent(),
+        deceased: { name: H.el('ihDeceasedName'), regNo: H.el('ihDeceasedRegNo'), taxOffice: H.el('ihDeceasedTaxOffice') } }, extra || {});
+    }
+    return instCtxFromIh(base, inst);
+  }
+
+  // ───────── 상증 별지 제11호서식 — 상속세(증여세) 연부연납허가(변경, 철회) 신청서(법 §71, 시행령 §67·§68) ─────────
+  //  값 출처: 지금 인쇄 installmentPrintFormPageHtml_(신청인 성명·주민번호, 총 납부세액·최초 납부세액·연부연납대상금액, 회차표) +
+  //   엔진 calculateInstallmentPaymentScheduleJS 결과(회차별_납부예정세액). 피상속인(증여자)·주소·전화는 상속(증여) 탭의 같은 사람 칸.
+  //  예전 인쇄 번호와 다름: 예전 ③ 총 납부세액·④ 최초 납부세액·⑤ 연부연납대상금액·⑥ 연부연납기간 → 서식 ⑨·⑩·⑪(기간은 서식에 칸 없음).
+  mappers['공통11호'] = function (ctx) {
+    var o = new Out(), inst = ctx.inst || {}, inp = inst.input || {}, res = inst.result || {}, p = ctx.person || {}, ot = ctx.other || {}, ta = ctx.taxAgent || {};
+    var gift = ctx.세목 === '증여';
+    o.need('①', p.name, '① 신청인 성명').need('②', p.regNo, '② 주민등록번호').need('③', H.fullAddr(p), '③ 주소');
+    if (has(p.phone)) o.set('③@전화번호', p.phone);
+    else o.miss('③ 전화번호(☎)', gift ? '수증자 전화번호 입력 없음' : '상속인 명부에 전화번호 칸 없음(신고인 전화번호는 명부 첫 행이 신고인일 때만 씀)');
+    if (has(p.email)) o.set('④', p.email);
+    else o.miss('④ 전자우편주소', gift ? '수증자 전자우편 입력 없음' : '상속인 명부에 전자우편 칸 없음(신고인 전자우편은 명부 첫 행이 신고인일 때만 씀)');
+    o.note('⚠ 신청인 = ' + (gift ? '수증자 목록 첫 번째' : '상속인 명부 첫 행') + '(지금 인쇄와 같음). 공동 신청이면 다른 신청인을 서명란 2~4번째 줄에 적으세요');
+    o.miss('⑤ 재산별 구분', '계산기에 없음(연부연납 도구는 상속·증여만 고름 — 가업상속재산(법 §71②1호가목)·조특법 §30의6 증여재산 여부 칸 없음)');
+    o.need('⑥', ot.name, gift ? '⑥ 증여자 성명' : '⑥ 피상속인 성명').need('⑦', ot.regNo, gift ? '⑦ 증여자 주민등록번호' : '⑦ 피상속인 주민등록번호');
+    if (has(ta.name)) {
+      o.set('세무대리인@성명', ta.name);
+      if (has(ta.bizNo)) o.set('세무대리인@사업자등록번호', ta.bizNo); else o.miss('세무대리인 사업자등록번호', '세무대리인 사업자등록번호 입력 없음');
+      if (has(ta.phone)) o.set('세무대리인@연락처', ta.phone); else o.miss('세무대리인 연락처', '세무대리인 전화번호 입력 없음');
+      o.miss('세무대리인 생년월일', '계산기에 없음');
+    } else o.miss('세무대리인(성명·사업자등록번호·생년월일·연락처)', '세무대리인 입력 없음(본인 신청)');
+    o.miss('⑧ 신고(고지납부)기한', '계산기에 없음(연부연납 도구에 신고기한·고지 납부기한 칸 없음)');
+    var v9 = n(inp.totalTaxAmount), v10 = n(res.최초납부세액), v11 = n(res.연부연납대상금액);
+    o.set('⑨', v9).set('⑩', v10).set('⑪', v11);
+    o.check('⑪ = ⑨ − ⑩', v11, v9 - v10);
+    var rows = res.회차별_납부예정세액 || [];
+    rows.forEach(function (row) { o.set('납부예정세액@회' + row.회차, n(row.납부예정세액)); });
+    o.check('회차 원금 합 = ⑪', rows.reduce(function (s, row) { return s + n(row.원금); }, 0), v11);
+    o.miss('(회차) 납부예정일', '계산기에 없음(연부연납 도구는 회차만 셈 — 신고기한·허가일 칸 없음)');
+    if (rows.length > 20) o.note('회차가 ' + rows.length + '회 — 서식 표는 20회까지라 21회부터는 다음 장에 이어 찍음');
+    var yrs = n(inp.installmentPeriodYears), rate = inp.annualInterestRatePercent;
+    o.note('연부연납기간 ' + yrs + '년(서식엔 칸이 없음 — 작성방법 2). 1회 = 신고기한까지 내는 몫(시행령 §68①3호: 연부연납 대상금액 ÷ (기간 + 1)), 2회부터 가산금(법 §72)을 더한 납부예정 세액');
+    if (has(rate) && n(rate) === 0 && n(res.가산금_합계) === 0) o.note('⚠ 가산금 0원 — 화면 "연부연납 가산금 연이자율" 칸이 비어 0%로 계산됐을 수 있음(시행령 §69①: 각 회분 납부일 현재 국세기본법 시행령 §43의3② 이자율)');
+    else o.note('가산금 이율: ' + (has(rate) && rate !== '' ? '연 ' + rate + '%(화면 입력)' : '기준일 고시 이자율') + ' 하나로 전 회차를 계산함 — 시행령 §69①②는 각 회분 납부일 현재 이자율(바뀌면 기간별)');
+    if (res.각회분_1천만원미만_경고) o.note('⚠ 각 회 원금이 1천만원 미만 — 법 §71② 단서: 각 회분 분할납부 세액이 1천만원을 초과하도록 기간을 정해야 함');
+    if (gift ? yrs > 5 : yrs > 10) o.note('⚠ 연부연납기간 ' + yrs + '년 — ' + (gift ? '조특법 §30의6 증여재산만 15년까지(법 §71②2호), 그 밖의 증여재산은 5년' : '가업상속재산(법 §71②1호가목)만 20년까지, 그 밖의 상속재산은 10년') + ' — ⑤ 재산별 구분에 직접 √하세요');
+    o.miss('(변경·철회) 신청 구분([ ]최초 [ ]변경 [ ]철회)', '계산기에 없음(최초·변경·철회 선택 칸 없음)');
+    ymdSet(o, '신청일', ctx.신고일, '신청일', 'ctx.신고일 없음(계산기에 없음)');
+    o.need('신청인서명', p.name, '신청인(서명)');
+    o.miss('신청인(서명) 2~4번째 줄', '공동 신청인 — 계산기에 없음');
+    if (has(ta.name)) o.set('세무대리인서명', ta.name); else o.miss('세무대리인(서명)', '세무대리인 입력 없음(본인 신청)');
+    if (has(ctx.office)) o.set('세무서', H.officeName(ctx.office)); else o.miss('세무서', gift ? '수증자 관할 세무서 입력 없음' : '피상속인 관할 세무서 입력 없음');
+    o.miss('등기승낙서(납세담보제공서 일자·승낙일·신청인)', '계산기에 없음(납세담보 칸 없음 — 부동산을 납세담보로 낼 때만 직접 적음, 법 §71① 후단)');
+    return o.result();
+  };
+
+  // ───────── 상증 별지 제11호서식 부표 — 연부연납세액 계산명세(시행령 §68②~④: 가업상속재산 몫 연부연납 세액) ─────────
+  //  지금 인쇄에는 이 부표가 없음(installmentPrintFormPageHtml_의 "연부연납세액 계산명세" 표는 회차표). 상속 탭 가업 칸(ihBusiness*)·결과(가업상속공제_계산내역·가업상속공제)로 ①~⑩.
+  //  ⑪(가업상속재산 몫 연부연납세액)은 계산기에 없음 — 연부연납 도구는 총 납부세액 전체를 한 기간으로 나눔. 서식 산식 값은 알림으로만 보여 줌.
+  mappers['공통11호부표'] = function (ctx) {
+    var o = new Out(), r = ctx.r || {}, x = ihbOf(ctx), b = x.biz || {}, d = bizDetailOf(ctx);
+    if (ctx.세목 === '증여') { o.miss('부표 전체(①~⑪)', '해당 없음 — 상속 가업(법 §71②1호가목) 전용 부표'); return o.result(); }
+    if (!d) { o.miss('부표 전체(①~⑪)', '상속 계산 결과에 가업 재산 계산 내역 없음(상속 탭 가업 칸이 비어 있음)'); return o.result(); }
+    o.miss('가.㉮ 금액·㉯ 담보채무액·순익(토지·건축물·기계장치·기타 줄)', '계산기에 없음(자산 종류별 금액·담보채무를 따로 받지 않고 순액 합계 ①만 받음)');
+    o.miss('①@㉮·①@㉯ ① 계의 ㉮ 금액 계·㉯ 담보채무액 계', '계산기에 없음(순액 ①만 받음)');
+    var v1 = n(d.소득세법적용분);
+    if (v1 > 0) {
+      o.set('①', v1);
+      o.note('⚠ ① = 상속 탭 "사업용 자산 순액"(가업상속공제 기준, 시행령 §15⑤1호) — 연부연납 기업상속재산(시행령 §68④1호)은 타인에게 임대하고 있는 부동산을 뺌. 임대 부동산이 있으면 고치세요');
+    } else o.miss('① 계', '해당 없음 — 소득세법 적용 기업 금액 0(화면 사업용 자산 순액 비어 있음)');
+    var stock = n(b.stockValue), v7 = n(d.법인세법적용분);
+    if (stock > 0) {
+      var tot = n(b.totalAsset), nb = [n(b.nonBiz55), n(b.nonBiz49), n(b.nonBiz61), n(b.excessCash), n(b.nonBizStock)];
+      var v4 = nb.reduce(function (s, v) { return s + v; }, 0), v5 = Math.max(0, tot - v4), v6 = n(d.사업관련자산가액비율);
+      o.set('②', stock).set('③', tot).set('㉮', nb[0]).set('㉯', nb[1]).set('㉰', nb[2]).set('㉱', nb[3]).set('㉲', nb[4]).set('④', v4).set('⑤', v5).set('⑥', pct2(v6)).set('⑦', v7);
+      o.check('④ = ㉮ + ㉯ + ㉰ + ㉱ + ㉲', v4, nb[0] + nb[1] + nb[2] + nb[3] + nb[4]);
+      o.check('⑤ = ③ − ④', v5, tot - v4);
+      o.check('⑥ = ⑤ ÷ ③(엔진 비율, 만분율)', Math.round(v6 * 10000), tot > 0 ? Math.round(v5 / tot * 10000) : 0);
+      o.check('⑦ = ② × ⑥(엔진 반올림)', v7, Math.round(stock * v6));
+    } else o.miss('②~⑦ 나. 법인세법 적용 기업(②③㉮㉯㉰㉱㉲④⑤⑥⑦)', '해당 없음 — 상속개시일 현재 주식 등의 가액 0(법인 기업 아님)');
+    var v8 = ih9Line37(r), v9 = n(x.totalGross), v10 = n(r.가업상속공제);
+    o.set('⑧', v8);
+    if (v9 > 0) o.set('⑨', v9); else o.miss('⑨', '화면 입력 없음(상속 탭 "총 상속재산가액" 칸 — 가업상속납부유예 참고계산용과 같은 칸)');
+    o.set('⑩', v10);
+    if (v10 === 0 && !r.가업상속납부유예_선택) o.note('⑩ 가업상속공제 0원 — ' + (d.요건미충족으로_공제배제 ? '요건 미충족' : d.중견기업게이트_적용여부 ? '중견기업 적용 배제' : '공제 없음'));
+    if (v9 > 0 && v9 > v10) {
+      var ref = Math.floor(v8 * ((v1 + v7) - v10) / (v9 - v10));
+      o.miss('⑪ 연부연납세액', '계산기에 없음(연부연납 도구는 가업상속재산 몫을 따로 나누지 않음)');
+      o.note('(참고) 서식 산식대로면 ⑪ = ⑧ × {(① + ⑦) − ⑩} ÷ (⑨ − ⑩) = ' + ref + '원(원 미만 버림, 시행령 §68② 계산식) — 계산기 값이 아니라 비워 둠');
+    } else o.miss('⑪ 연부연납세액', '계산기에 없음(⑨ 총 상속재산가액 입력이 없어 서식 산식도 셀 수 없음)');
+    if (v1 > 0 && v7 > 0) o.note('⚠ 서식은 "(① 또는 ⑦)" — 개인 기업과 법인 기업이 둘 다 있음');
+    return o.result();
+  };
+
   // ───────── 언제 찍나 ─────────
+  function instIh(c) { var i = c.inst || instFromApp(); return i && i.input && i.input.taxType === 'inheritance' ? i : null; }
   var WHEN = {
     '상속12호의2': function (c) { var r = c.r || {}; return !!(c.r && n(r.가업상속납부유예세액) > 0 && r.가업상속공제_계산내역); },
-    '상속12호의2부표1': function (c) { var r = c.r || {}; return !!(c.r && n(r.가업상속납부유예세액) > 0 && r.가업상속공제_계산내역); }
+    '상속12호의2부표1': function (c) { var r = c.r || {}; return !!(c.r && n(r.가업상속납부유예세액) > 0 && r.가업상속공제_계산내역); },
+    // 연부연납: 상속 묶음엔 연부연납 도구가 상속세로 계산돼 있을 때만(증여는 세액인쇄 서식표의 그 줄로 — 첫 수증자 기준이라 사람별 묶음에 붙이지 않음)
+    '공통11호': function (c) { return !!(c.r && instIh(c)); },
+    '공통11호부표': function (c) { return !!(c.r && instIh(c) && bizDetailOf(c)); }
   };
-  var IH_ORDER = ['상속12호의2', '상속12호의2부표1'];
+  var IH_ORDER = ['상속12호의2', '상속12호의2부표1', '공통11호', '공통11호부표'];
+  function forIh(k, c) { return /^공통11호/.test(k) ? instCtxFromIh(c, instIh(c)) : c; }
 
   // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만)
   function plan(tax, ctx) {
     var L = [];
     if (tax === '상속') {
       var c = withIhb(ctx || {});
-      IH_ORDER.forEach(function (k) { if (typeof mappers[k] === 'function' && WHEN[k](c)) L.push({ formKey: k, ctx: c }); });
+      IH_ORDER.forEach(function (k) { if (typeof mappers[k] === 'function' && WHEN[k](c)) L.push({ formKey: k, ctx: forIh(k, c) }); });
     }
     return L;
   }
   // 세액인쇄 화면의 서식 한 줄 — 상속 계산 결과 하나
   function ihCtx(extra) { return withIhb(H.ctxFromApp.상속(extra)); }
-  IH_ORDER.forEach(function (k) {
+  ['상속12호의2', '상속12호의2부표1'].forEach(function (k) {
     ctxFor[k] = function (extra) { var c = ihCtx(extra); return WHEN[k](c) ? c : null; };
-    ready[k] = function () { try { return typeof lastInheritanceResult !== 'undefined' && !!lastInheritanceResult && !!ctxFor[k](); } catch (e) { return false; } }; // eslint-disable-line no-undef
+    ready[k] = function () { try { return typeof lastInheritanceResult !== 'undefined' && !!lastInheritanceResult && !!ctxFor[k](); } catch (e) { return false; } };
   });
+  // 연부연납 — 지금 인쇄처럼 연부연납 도구 결과만 있으면(상속·증여 계산과 따로)
+  ctxFor['공통11호'] = function (extra) { return instCtx(extra); };
+  ready['공통11호'] = function () { return !!instFromApp(); };
+  ctxFor['공통11호부표'] = function (extra) { var c = instCtx(extra); return (c && c.세목 === '상속' && bizDetailOf(c)) ? c : null; };
+  ready['공통11호부표'] = function () { try { return !!ctxFor['공통11호부표'](); } catch (e) { return false; } };
 
   return { 묶음: '상속부속B', forms: forms, mappers: mappers, plan: plan, ctxFor: ctxFor, ready: ready,
     ihbFromInput: ihbFromInput, ihbFromDom: ihbFromDom };

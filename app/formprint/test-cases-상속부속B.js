@@ -43,5 +43,24 @@ module.exports = function (E, H) {
   L.push({ name: '상속12호의2_가업상속납부유예', forms: X.plan('상속', cBiz).filter(function (it) { return it.formKey === '상속12호의2'; }), ctx: cBiz });
   L.push({ name: '상속12호의2부표1_가업상속재산명세', forms: X.plan('상속', cBiz).filter(function (it) { return it.formKey === '상속12호의2부표1'; }), ctx: cBiz });
 
+  // ② 공통11호·부표 — 상속세 연부연납(중소기업 상속, 법 §71②1호가목·시행령 §68③): 위 ①과 같은 법인 기업(주식 60억 × 90% = 54억)이지만 납부유예를 고르지 않음.
+  //   가업영위 8년 → 가업상속공제 한도 0(10년 미만, 법 §18의2①) → 가업상속공제 0. 과세표준 = 79.9억 − 5억 = 74.9억 → 산출세액 32.85억, 신고세액공제 3% 9,855만 → 납부세액 3,186,450,000
+  //   연부연납: 총 납부세액 3,186,450,000, 최초 납부 0, 15년, 이율 연 3.1%(화면 입력) → 16회, 회당 원금 199,153,125(나누어떨어짐),
+  //     2회 가산금 = (3,186,450,000 − 199,153,125) × 3.1% = 92,606,203(원 미만 버림)
+  //   부표 ⑪(계산기에 없음 — 참고 알림만) = 3,186,450,000 × (54억 − 0) ÷ (90억 − 0) = 1,911,870,000
+  var pIn = Object.assign({}, pBiz, { businessInheritanceDeferralElected: false, businessOwnershipYears: 8 });
+  var rIn = E.calculateInheritanceTaxJS(clone(pIn));
+  var instIn = { taxType: 'inheritance', totalTaxAmount: rIn.납부세액, initialPaymentAmount: 0, installmentPeriodYears: 15, annualInterestRatePercent: 3.1, referenceDate: '2026-09-30' };
+  var cIn = ihCtx(pIn, { inst: { input: instIn, result: E.calculateInstallmentPaymentScheduleJS(clone(instIn)) } });
+  L.push({ name: '공통11호_상속연부연납15년', forms: X.plan('상속', cIn).filter(function (it) { return it.formKey === '공통11호'; }), ctx: cIn });
+  L.push({ name: '공통11호부표_가업상속재산', forms: X.plan('상속', cIn).filter(function (it) { return it.formKey === '공통11호부표'; }), ctx: cIn });
+  // 증여세 연부연납 — 총 납부세액 1억2천만, 최초 납부 2천만, 5년, 이율 칸 비움(엔진이 기준일 고시 이자율을 씀)
+  //   손계산: ⑪ = 1억, 회당 원금 = 1억 ÷ 6 = 16,666,666원(끝수 4원은 1회에 — 16,666,670), 2회 가산금 = 83,333,330 × 3.1%(2026.9.30. 고시 이자율) = 2,583,333
+  var instG = { taxType: 'gift', totalTaxAmount: 120000000, initialPaymentAmount: 20000000, installmentPeriodYears: 5, referenceDate: '2026-09-30' };
+  var cG = { 세목: '증여', 신고일: '2026-09-30', taxAgent: AGENT, inst: { input: instG, result: E.calculateInstallmentPaymentScheduleJS(clone(instG)) },
+    person: { name: '견본수증자', regNo: '900101-1000000', address: '서울특별시 ○○구 견본로 9', phone: '010-0000-0000', email: 'donee@example.com' },
+    other: { name: '견본증여자', regNo: '600101-1000000' }, office: '서초세무서' };
+  L.push({ name: '공통11호_증여연부연납5년', forms: [{ formKey: '공통11호', ctx: cG }], ctx: cG });
+
   return L;
 };
