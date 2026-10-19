@@ -19,8 +19,8 @@
 // =========================================================
 var CASEPROC_AI_ROUTE_DEFAULT_ = [
   // 위에서부터 처음 맞는 줄. re는 쟁점 id·종류·칸 이름·질문 글에 대고 본다
+  { topic: '사건분류', route: 'lead', re: '^ov:사건분류|^cls:|사건분류|1세대1주택|일시적 ?2주택|비과세|중과|감면|특례' }, // 맨 위 — 사건분류 질문 글에 '가족관계' 같은 낱말이 있어도 사건분류로
   { topic: '특수관계', route: 'lead', re: '특수관계|관계인지|buyerrel|buyer\\.relation|donorRelation|giftRelation|양수인관계|이월과세관계|가족관계' },
-  { topic: '사건분류', route: 'lead', re: '사건분류|^cls:|1세대1주택|일시적 ?2주택|비과세|중과|감면|특례' },
   { topic: '돈흐름', route: 'lead', re: '무슨 돈|^money:|이체 성격|송금 성격|돈 흐름|대여|차용|자금출처' },
   { topic: '사전증여', route: 'lead', re: '사전증여|10년 ?(내|이내)|합산|재차증여' },
   { topic: '시가평가', route: 'lead', re: '시가|relfmv|평가액|감정가|매매사례|유사사례|보충적 평가' },
@@ -284,6 +284,14 @@ function caseProcAiFactMap_(c, items) {
   Object.keys(A).forEach(function (k) { tot.조각 += A[k].조각; tot.출처 += A[k].출처; tot.열쇠없음 += A[k].열쇠없음 || 0; });
   Object.keys(sum).forEach(function (k) { tot.묶음 += sum[k].묶음; tot.받침 += sum[k].받침; tot.어긋남 += sum[k].어긋남; });
   return { ok: true, 축: sum, 조각: A, 합: tot, 지표: { '②-1 출처 비율': tot.조각 ? Math.round(tot.출처 / tot.조각 * 100) : 0, '②-2 둘 이상 서류가 받치는 비율': tot.묶음 ? Math.round(tot.받침 / tot.묶음 * 100) : 0 }, 어긋남: conflicts, 한서류뿐: singles, 빈칸: gaps };
+}
+// 입구 요약 한 줄 — 사실 지도(GAS, 0원)를 미리 넣어 AI가 fact_map을 부르지 않아도 어긋남·빈칸과 찾을 서류를 본다
+function caseProcAiFactLine_(c, items) {
+  try {
+    const fm = caseProcAiFactMap_(c, items || []);
+    const g = fm.빈칸.filter(function (x) { return Array.isArray(x.이사건에있는파일); }).slice(0, 4).map(function (x) { return x.칸 + '→' + x.이사건에있는파일.slice(0, 2).join('·'); });
+    return '사실 지도(GAS): 받침 ' + fm.합.받침 + ' · 어긋남 ' + fm.합.어긋남 + (fm.어긋남.length ? '(' + fm.어긋남.slice(0, 2).map(function (x) { return caseProcAiCut_(x, 70); }).join(' / ') + ')' : '') + ' · 빈칸 ' + fm.빈칸.length + (g.length ? ' — 이 사건 서류로 다시 뒤질 수 있는 빈칸: ' + g.join(', ') + ' (doc_find로)' : '') + '. 자세히는 fact_map.';
+  } catch (e) { return ''; }
 }
 // 다시 뒤지기 — 저장된 판독만(새 판독·쓰기 없음). want: date | amount | keyword(+keyword) | name
 function caseProcAiDocFind_(c, input) {
