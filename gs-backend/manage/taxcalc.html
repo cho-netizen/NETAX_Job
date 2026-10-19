@@ -5677,6 +5677,7 @@ function renderPropertyCardHtml_(idx, opts){
         '<div class="taxcalc-asset-head" data-show-if="rentalSpecialType" style="display:none; margin-top:4px;"><b>위 특례 선택시만 — 안분용 기준시가</b></div>' +
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>임대기간</label><input type="number" data-field="rentalYears" placeholder="년" maxlength="2"></div>' +
+          '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>임대주택 등록일</label><input type="date" data-field="rentalRegistrationDate" min="1990-01-01" max="2099-12-31"><span class="taxcalc-field-help">2022-12-31 이전 등록이면 8년 이상 50%(조특법 부칙 제38조)</span></div>' +
           '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>취득 당시 기준시가</label><input type="number" data-field="acquisitionStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의3 선택시 필수 — 임대기간중 양도차익 안분용, 3종 모두 없으면 계산 불가</span></div>' +
           '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>등록일 당시 기준시가</label><input type="number" data-field="registrationStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의3 선택시 필수</span></div>' +
           '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>양도 당시 기준시가</label><input type="number" data-field="transferStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의3 선택시 필수</span></div>' +
@@ -6687,6 +6688,7 @@ function collectTransferInput(vals){
     convertedBuildingAcquisitionValueForPenalty: numVal(vals.convertedBuildingAcquisitionValueForPenalty) || 0,
     rentalSpecialType: vals.rentalSpecialType || '',
     rentalYears: numVal(vals.rentalYears) || 0,
+    rentalRegistrationDate: vals.rentalRegistrationDate || '', // §97의3 2022-12-31 이전 등록분 8년 50%
     acquisitionStandardPrice: numVal(vals.acquisitionStandardPrice) || 0,
     registrationStandardPrice: numVal(vals.registrationStandardPrice) || 0,
     transferStandardPrice: numVal(vals.transferStandardPrice) || 0,

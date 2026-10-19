@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 04:59 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 05:01 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -11020,9 +11020,13 @@
   }
 
   // 장기임대주택 등 장기보유특별공제 특례([별지 제84호서식] 코드04·05, 조특법 §97의3·§97의4)
-  function rentalLongTermRate(type, holdingYears, rentalYears) {
+  function rentalLongTermRate(type, holdingYears, rentalYears, registrationDate) {
     const ry = Number(rentalYears) || 0;
     if (type === 'rental_general') {
+      // [2026.10.19 세액 고침] 아래 '8년 50%는 근거 없음' 판단은 2023.1.1 개정(법률 제19199호)만 본 것이었다. 같은 법 부칙 제38조(법제처 원문):
+      //  "이 법 시행 전에 등록을 한 공공지원민간임대주택 또는 장기일반민간임대주택 … 종전의 규정에 따른다" — 2022-12-31 이전 등록분은 지금도
+      //  종전 §97의3①(8년 이상 50%, 10년 이상 70%, 2016.1.1 이후 양도). 등록일(registrationDate)이 그 전이면 8년 이상 50%를 준다.
+      if (ry >= 8 && ry < 10 && registrationDate && String(registrationDate).slice(0, 10) <= '2022-12-31') return 0.50;
       // §97의3①본문·1호(현행, 2024.12.31 최종개정) — "10년 이상 계속하여 임대한 후 양도하는 경우"에만
       // 70% 공제율을 적용한다. "8년 이상 50%"는 2018.1.16 개정본까지 있었던 구법(§2조제6호 단기민간
       // 임대주택 관련) 조항으로, 2020년 임대주택 등록제도 개편으로 삭제되어 현행법상 근거가 없다
@@ -11433,7 +11437,10 @@
     }
 
     if (!isReconstruction && !isPresaleRight) {
-      const rentalRate = rentalLongTermRate(t.rentalSpecialType, holdingYears, t.rentalYears);
+      const rentalRate = rentalLongTermRate(t.rentalSpecialType, holdingYears, t.rentalYears, t.rentalRegistrationDate);
+      // 등록일을 모르는데 임대 8~10년이면 2022-12-31 이전 등록 여부로 50%가 갈린다 — 알림
+      if (t.rentalSpecialType === 'rental_general' && !t.rentalRegistrationDate && Number(t.rentalYears) >= 8 && Number(t.rentalYears) < 10)
+        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '⚠ 장기일반민간임대 장특공 특례: 임대 ' + t.rentalYears + '년 — 임대주택 등록일이 2022-12-31 이전이면 50%(조특법 법률 제19199호 부칙 제38조), 그 뒤면 특례 없음. 등록일을 넣어 주세요(지금은 특례 없이 계산).';
       isRentalSpecial = rentalRate !== null;
       if (isRentalSpecial) ltRate = rentalRate;
 
@@ -25052,6 +25059,7 @@ function renderPropertyCardHtml_(idx, opts){
         '<div class="taxcalc-asset-head" data-show-if="rentalSpecialType" style="display:none; margin-top:4px;"><b>위 특례 선택시만 — 안분용 기준시가</b></div>' +
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>임대기간</label><input type="number" data-field="rentalYears" placeholder="년" maxlength="2"></div>' +
+          '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>임대주택 등록일</label><input type="date" data-field="rentalRegistrationDate" min="1990-01-01" max="2099-12-31"><span class="taxcalc-field-help">2022-12-31 이전 등록이면 8년 이상 50%(조특법 부칙 제38조)</span></div>' +
           '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>취득 당시 기준시가</label><input type="number" data-field="acquisitionStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의3 선택시 필수 — 임대기간중 양도차익 안분용, 3종 모두 없으면 계산 불가</span></div>' +
           '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>등록일 당시 기준시가</label><input type="number" data-field="registrationStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의3 선택시 필수</span></div>' +
           '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>양도 당시 기준시가</label><input type="number" data-field="transferStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의3 선택시 필수</span></div>' +
@@ -26062,6 +26070,7 @@ function collectTransferInput(vals){
     convertedBuildingAcquisitionValueForPenalty: numVal(vals.convertedBuildingAcquisitionValueForPenalty) || 0,
     rentalSpecialType: vals.rentalSpecialType || '',
     rentalYears: numVal(vals.rentalYears) || 0,
+    rentalRegistrationDate: vals.rentalRegistrationDate || '', // §97의3 2022-12-31 이전 등록분 8년 50%
     acquisitionStandardPrice: numVal(vals.acquisitionStandardPrice) || 0,
     registrationStandardPrice: numVal(vals.registrationStandardPrice) || 0,
     transferStandardPrice: numVal(vals.transferStandardPrice) || 0,
