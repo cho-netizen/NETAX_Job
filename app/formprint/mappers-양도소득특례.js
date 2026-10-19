@@ -317,7 +317,8 @@
   //    (2020.1.1. 이후 양도분: 자산마다 공제한도 = 산출세액 × 그 자산 양도차익 ÷ 국외 양도차익 합 — 거래별_내역[k].공제한도·공제액)
   //  계산기는 나라(국가명·코드)를 받지 않아 국외자산 한 건 = 총괄명세 한 줄 = 부표1 한 장으로 찍는다(같은 나라 자산이 여럿이면 합쳐 적어야 함).
   //  ※ 시행규칙 §100 11호는 이 서식을 영 §117③(종합소득) 신청서로만 지정 — 영 §178의7②의 국외자산 신청서 서식 지정은 찾지 못함(예전 인쇄와 같게 11호를 씀, 판단 대기)
-  function ovQualifies(a) { return !!a && !!a.isOverseasAsset && a.oaForeignTaxMethod === 'credit' && n(a.oaForeignTaxPaid) > 0; }
+  // [2026.10.20] 화면 기본값(세액공제)은 칸을 건드리지 않으면 카드에 저장되지 않는다 — 엔진처럼(taxcalc.html: a.oaForeignTaxMethod || 'credit') 빈 값도 세액공제로 본다
+  function ovQualifies(a) { return !!a && !!a.isOverseasAsset && (a.oaForeignTaxMethod || 'credit') === 'credit' && n(a.oaForeignTaxPaid) > 0; }
   mappers['소득11호'] = function (ctx) {
     var o = new Out(), s = ctx.seller || {}, r = ctx.overseas || null, cards = ctx.overseasAssets || [];
     var rows = [];

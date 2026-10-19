@@ -423,12 +423,12 @@
       return inp.isSmallMediumCompany ? '62' : '61';                                         // ② 중소기업 소액주주 10% / ③ 그 밖 소액주주 20%
     }
     if (cat === 'foreign_stock') return inp.isSmallMediumCompany ? '62' : '61';           // 국외주식 — 중소기업 10% / 그 밖 20%
-    if (cat === 'derivative') return '81';                                                 // 엔진은 10%(2018.4.1. 이후 코드 81)
+    if (cat === 'derivative') return String(inp.transferDate || '') && String(inp.transferDate) < '2018-04-01' ? '80' : '81'; // [2026.10.20] 엔진도 양도일로 5%(80)·10%(81) — 시행령 §167의9 연혁
     if (cat === 'other_asset') return inp.isMajorityNonBusinessLandCorp ? '11' : '10';
     if (cat === 'trust_beneficiary') return '95';
     return '';
   }
-  var STOCK_FLAT_RATE = { '61': '20%', '62': '10%', '70': '30%', '81': '10%' };
+  var STOCK_FLAT_RATE = { '61': '20%', '62': '10%', '70': '30%', '80': '5%', '81': '10%' };
   // 이월과세(§97의2①)가 적용된 결과는 엔진이 취득가액을 증여자 취득가액으로, 필요경비에 증여세 상당액을 더해 계산 — 서식 칸도 그 값으로
   //  (화면 입력값 input.acquisitionPrice는 수증자 자기 취득가액이라 그대로 찍으면 양도소득금액과 안 맞음)
   function stockAcqExp(inp, r) {
@@ -460,7 +460,6 @@
     putCol84(o, '국내분소계', V);
     putCol84(o, '합계', V);
     if (inp.assetCategory === 'foreign_stock') o.note('국외주식(§94①3호다목)은 세율표 "국내자산" 칸 코드(1-61·1-62)라 국내분 소계 열에 적음 — 국외분 소계는 §118의2 국외자산(2-10)용');
-    if (inp.assetCategory === 'derivative' && String(inp.transferDate || '') < '2018-04-01') o.note('⚠ 2018.3.31. 이전 양도 파생상품은 서식 세율표상 1-80(5%)인데 계산기는 10%(1-81)로 계산함 — 세액 확인 필요');
     if (n(inp.priorNetGainOrLoss)) o.note('④에 "같은 기간 다른 국내외주식 순손익" ' + n(inp.priorNetGainOrLoss) + '원(손익통산)이 들어 있음 — 부표에는 이번 종목만 찍히므로 다른 종목 줄을 부표에 직접 적어야 ④ = 부표 합계(작성방법 5)');
     if (n(inp.basicDeductionAlreadyUsed)) o.note('⑦은 연 250만원 중 이미 쓴 ' + n(inp.basicDeductionAlreadyUsed) + '원을 뺀 값');
     if (bt) o.note('법인전환 이월과세 사후관리 납부세액 ' + bt + '원은 화면 합계에는 더해졌지만 84호 칸 산식(⑱ = ⑩ − … + ⑯ − ⑰)에 들어갈 자리가 없어 ⑱에 넣지 않음(확인 필요)');
@@ -850,7 +849,7 @@
       if (!st.input || !st.result) { o.miss('부표2의2 전체', '주식등 계산 결과 없음'); return o.result(); }
       var m = String(inp.transferDate || '').match(/^(\d{4})-/), g = Math.round(n(sr.양도차익)), tp = n(inp.transferPrice), ap = n(inp.acquisitionPrice);
       if (m) o.set('①', m[1]); else o.miss('① 과세대상연도', '양도일 없음');
-      o.set('②', '81'); // 작성방법 3 — 2018.4.1. 이후 10%(엔진 세율과 같음)
+      o.set('②', String(inp.transferDate || '') && String(inp.transferDate) < '2018-04-01' ? '80' : '81'); // 작성방법 3 — 2018.3.31. 이전 5%(80)·4.1. 이후 10%(81), 엔진 세율과 같음
       o.miss('④ 파생상품 유형', '선물·옵션 등 유형 칸이 계산기에 없음');
       o.set('⑧', tp).set('⑪', ap).set('⑮', g).set('⑧@합계', tp).set('⑪@합계', ap).set('⑮@합계', g);
       o.miss('③⑤⑥⑦⑩ 국내/외·증권사·계좌·수량', '주식등 계산기에 없음');

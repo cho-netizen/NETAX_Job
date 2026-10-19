@@ -6365,8 +6365,11 @@
       calculatedTax = Math.round(taxBase * rate);
       rateNote = '국외주식등, ' + (p.isSmallMediumCompany ? '중소기업주식등 10%' : '그 밖의 주식등 20%');
     } else if (assetCategory === 'derivative') {
-      calculatedTax = Math.round(taxBase * 0.10);
-      rateNote = '파생상품등 — 10%(기본세율 20%에 대한 한시적 탄력세율)';
+      // [2026.10.20 세액 고침 — 84호 작업자 발견, 법제처 연혁판] 소득세법 시행령 §167의9 탄력세율: 2016.1.1.~2018.3.31. 양도분 5%(제26982호 부칙 제12조 "시행일이 속하는
+      //  과세기간에 양도하는 분부터" — 2016 과세기간 전체), 2018.4.1. 이후 양도분 10%(제28637호 부칙 제1조 단서 1호). 예전엔 양도일과 상관없이 10%.
+      const dvRate_ = derivativeRateAt_(p.transferDate);
+      calculatedTax = Math.round(taxBase * dvRate_);
+      rateNote = '파생상품등 — ' + (dvRate_ * 100) + '%(시행령 §167의9 탄력세율, ' + (dvRate_ < 0.1 ? '2018.3.31. 이전 양도분' : '2018.4.1. 이후 양도분') + ')';
     } else if (assetCategory === 'trust_beneficiary') {
       // 소득세법§104①14호(§94①6호 신탁 수익권) — 3억 이하 20%, 3억 초과분 25%. 대주주·중소기업 구분 없음.
       calculatedTax = progressiveTax(taxBase, DOMESTIC_STOCK_DAEJUJU_BRACKETS);
@@ -6545,6 +6548,7 @@
   // 소득과는 전혀 통산하지 않으며, 양도차손은 다음 과세기간으로 이월되지 않는다(그 해에
   // 소멸). 거래별 상세(종목·매도/매수가액 등, 별지84호서식 부표2의2)는 세액계산에는 불필요해
   // (순손익만 있으면 세액 계산 가능) 이 계산기는 국내/국외 합계 손익만 입력받는다.
+  function derivativeRateAt_(d) { d = String(d || '').slice(0, 10); return d && d < '2018-04-01' ? 0.05 : 0.10; } // [2026.10.20] 시행령 §167의9 연혁
   window.calculateDerivativeTransferTaxJS = function (p) {
     p = p || {};
     const domesticGain = Number(p.domesticGainLoss) || 0;
@@ -6553,7 +6557,10 @@
     const gainBeforeDeduction = Math.max(0, combinedGain);
     const basicDeduction = Math.min(2500000, gainBeforeDeduction);
     const taxBase = Math.max(0, gainBeforeDeduction - basicDeduction);
-    const RATE = 0.10; // 시행령상 탄력세율(법정 20%, §104⑥ 한도 내 인하)
+    // [2026.10.20 세액 고침] 시행령 §167의9 탄력세율 연혁 — 2016·2017 과세기간 5%, 2018은 3.31.까지 5%·4.1.부터 10%, 2019~ 10%. 과세연도(taxYear)를 받으면 그에 맞춤.
+    const dvYear_ = Number(p.taxYear) || 0;
+    const RATE = dvYear_ && dvYear_ <= 2017 ? 0.05 : 0.10; // 시행령상 탄력세율(법정 20%, §104⑥ 한도 내 인하)
+    const dvYearNote_ = dvYear_ === 2018 ? ' ⚠ 2018 과세연도는 2018.3.31. 이전 양도분 5%·4.1. 이후 10% — 이 계산은 10%로 했으니 3월까지 손익은 따로 나눠 계산하세요.' : '';
     const calculatedTax = Math.round(taxBase * RATE);
 
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
@@ -6568,7 +6575,7 @@
       통산손익: combinedGain,
       기본공제: basicDeduction,
       과세표준: taxBase,
-      적용세율_설명: '탄력세율 10%(법정세율 20%, 소득세법§104⑥ 범위 내 시행령 인하)',
+      적용세율_설명: '탄력세율 ' + (RATE * 100) + '%(법정세율 20%, 소득세법§104⑥ 범위 내 시행령 §167의9)' + dvYearNote_,
       산출세액: calculatedTax,
       무신고가산세: penalties.unreportedPenalty,
       과소신고가산세: penalties.underreportedPenalty,

@@ -6480,6 +6480,7 @@ function renderTransferPane(){
     '<div class="taxcalc-asset" style="margin-top:20px;">' +
       '<div class="taxcalc-asset-head"><b>파생상품등 양도소득세(소득세법§94①5호·§104①13호, 선물·옵션·ELW·CFD 등) — 부동산·주식등과 완전히 별도 세목입니다. 국내·국외 파생상품을 통산해 기본공제(연 250만원)를 1회만 적용하고, 손실은 다음 과세기간으로 이월되지 않습니다</b></div>' +
       '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>과세연도</label><input type="number" id="dvTaxYear" placeholder="예: 2025"><span class="taxcalc-field-help">2017년 이전 5%, 2018년은 3월까지 5%·4월부터 10%, 그 뒤 10%(시행령 §167의9)</span></div>' +
         '<div class="taxcalc-field"><label>국내 파생상품 양도손익 합계</label><input type="number" id="dvDomesticGain" placeholder="원(손실이면 음수)"></div>' +
         '<div class="taxcalc-field"><label>국외 파생상품 양도손익 합계</label><input type="number" id="dvOverseasGain" placeholder="원(손실이면 음수)"></div>' +
       '</div>' +
@@ -14745,6 +14746,7 @@ function handleTaxCalcClick_(e){
     openPrintFormWindow_('국외전출자 양도소득세', exitTaxPrintFormPageHtml_(lastExitTaxInput_, lastExitTaxResult_));
   } else if (action === 'run-derivative-transfer'){
     const input = {
+      taxYear: numVal((document.getElementById('dvTaxYear') || {}).value) || 0, // [2026.10.20] 탄력세율 연혁
       domesticGainLoss: numVal(document.getElementById('dvDomesticGain').value) || 0,
       overseasGainLoss: numVal(document.getElementById('dvOverseasGain').value) || 0,
       filingStatus: document.getElementById('dvFilingStatus').value,
