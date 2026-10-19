@@ -1,59 +1,84 @@
 #!/usr/bin/env node
-// [2026.10.20 밤샘 5번] AI 지휘 실제 호출 시험(시험 모드 — 사건에 값·첨부·작업일지를 쓰지 않음, 비용 기록은 [시험]).
-//  운영 서버에 열쇠(tools/nx-secret.js)로 "이 사건 처리하자"의 서버 단계만 차례로 부른다:
-//   case_proc basic → evidence(read …) → evidence → overview → case_proc_ai spots(dry) → turn(dry)… (화면의 사진 나누기·보정·계산·PDF는 안 함)
-//  사용: node tools/ailead-real-dry.js <사건id> [<사건id> …] [--max-won 300]
-//  결과(고객 정보 포함)는 C:/GitHub/netax-replay/results/ailead-live/real_<시각>.json 에만(커밋 안 함), 화면에는 숫자만.
+// [2026.10.20 밤샘 5번] AI 지휘 실제 호출 시험 — 운영 사건을 하나도 바꾸지 않는 길.
+//  사건 처리(사건파악·증빙·칸 채우기·AI 자리 세기·도구 실행)는 전부 이 PC 재현기(사건 자료 복사본·메모리, akSandbox_)에서 하고,
+//  운영 서버에는 "모델 한 번 부르기"(case_proc_ai step 'model', dry)만 맡긴다 — 서버는 사건을 읽지도 쓰지도 않고 비용·사용량 기록도 안 남긴다.
+//  재현기 쪽 쓰기(가짜 드라이브·시트·속성)도 세어서 보인다(메모리에만 일어나지만, 서버였다면 일어났을 쓰기를 확인).
+//  사용: node runlocked.js C:/GitHub/netax-replay-wt node --max-old-space-size=450 <이 파일> --replay C:/GitHub/netax-replay-wt --list <목록> [--max-won 300]
+//  결과(고객 정보 포함)는 C:/GitHub/netax-replay/results/ailead-live/real_<시각>.json 에만(커밋 안 함).
 'use strict';
-const fs = require('fs'), path = require('path');
-const { loadNxSecret } = require('./nx-secret');
-const { key: KEY, gas: GAS } = loadNxSecret();
-const argv = process.argv.slice(2);
-const maxWon = argv.indexOf('--max-won') >= 0 ? Number(argv[argv.indexOf('--max-won') + 1]) : 300;
-const ids = argv.filter((a, i) => !/^--/.test(a) && argv[i - 1] !== '--max-won');
+const fs = require('fs'), path = require('path'), cp = require('child_process');
+const argv = process.argv.slice(2), opt = (k) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : null; };
+const setup = require((opt('--replay') || 'C:/GitHub/netax-replay-wt') + '/lib/setup');
+setup.CFG.backendDir = path.join(__dirname, '..', 'gs-backend');
+const maxWon = Number(opt('--max-won') || 300);
+const list = fs.readFileSync(opt('--list'), 'utf8').split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
 const OUT = 'C:/GitHub/netax-replay/results/ailead-live';
-const call = async (action, body, tries) => {
-  for (let i = 0; i < (tries || 3); i++) {
-    try {
-      const r = await fetch(GAS, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ action, _key: KEY }, body)) });
-      const t = await r.text();
-      try { return JSON.parse(t); } catch (e) { if (i === (tries || 3) - 1) return { error: '응답이 JSON이 아님: ' + t.slice(0, 120) }; }
-    } catch (e) { if (i === (tries || 3) - 1) return { error: String(e.message || e) }; }
-    await new Promise((r) => setTimeout(r, 3000));
-  }
+// 동기 HTTP — 재현기 함수는 동기라, 작은 node 프로세스로 서버를 부르고 답을 받는다(열쇠는 tools/nx-secret.js)
+const HTTP = `const {loadNxSecret}=require(${JSON.stringify(path.join(__dirname, 'nx-secret.js'))});const {key,gas}=loadNxSecret();let b='';process.stdin.on('data',d=>b+=d).on('end',async()=>{const o=JSON.parse(b);o._key=key;for(let i=0;i<3;i++){try{const r=await fetch(gas,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(o)});const t=await r.text();JSON.parse(t);process.stdout.write(t);return;}catch(e){await new Promise(r=>setTimeout(r,3000));}}process.stdout.write(JSON.stringify({ok:false,error:'서버 응답 없음'}));});`;
+let serverCalls = 0;
+function post(o) {
+  serverCalls++;
+  const r = cp.spawnSync(process.execPath, ['-e', HTTP], { input: JSON.stringify(Object.assign({ action: 'case_proc_ai', caseId: 'dry', dry: true }, o)), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 280000 });
+  try { return JSON.parse(r.stdout); } catch (e) { return { ok: false, error: '응답을 읽지 못함: ' + String(r.stdout || r.stderr).slice(0, 200) }; }
+}
+const RUN = `
+var __won = 0, __writes = { 사건시트: 0, 사건처리저장: 0 };
+caseProcAiCall_ = function (model, system, tools, messages) {
+  var r = JSON.parse(__post(JSON.stringify({ step: 'model', kind: 'lead', cap: 1000, messages: messages })));
+  if (!r || r.ok === false) return { error: (r && r.error) || '서버 응답 없음' };
+  __won += r.won || 0; return { json: r.json, won: r.won || 0 };
 };
-(async () => {
-  const all = [];
-  for (const caseId of ids) {
-    const t0 = Date.now(), rec = { caseId, steps: [], turns: [], won: 0 };
-    const st = (step, x) => call('case_proc', Object.assign({ caseId, step }, x || {}));
-    const b = await st('basic'); rec.steps.push('basic ' + (b.error || 'ok'));
-    if (b.blocked || b.error) { all.push(rec); continue; }
-    let ev = await st('evidence', { phase: 'read' }), n = 0;
-    while (ev && ev.more && n++ < 8) ev = await st('evidence', { phase: 'read' });
-    ev = await st('evidence'); rec.steps.push('evidence ' + (ev.error || 'ok'));
-    const ov = await st('overview'); rec.steps.push('overview ' + (ov.error || ('질문 ' + (ov.items || []).length)));
-    const sp = await call('case_proc_ai', { caseId, step: 'spots', dry: true, ov: { items: ov.items || [], needs: ov.needs || null }, ev: { docTypes: (ev.docTypes || []).slice(0, 80) } });
-    rec.spots = sp && { ai: sp.ai, ask: sp.ask, gas: sp.gas, need: sp.need, tiers: sp.tiers, plan: sp.plan, lightOff: sp.lightOff, lightUsd: sp.lightUsd, error: sp.error };
-    rec.won += Math.round(((sp && sp.lightUsd) || 0) * 1400 * 10) / 10;
-    if (sp && sp.need) {
-      const msgs = [];
-      for (let round = 0; round < 14 && rec.won < maxWon; round++) {
-        const r = await call('case_proc_ai', { caseId, step: 'turn', dry: true, round, spent: rec.won, messages: msgs, entry: sp.entry, items: round === 0 ? ov.items : undefined }, 2);
-        if (!r || r.ok === false || r.error) { rec.turns.push({ round, error: (r && r.error) || '응답 없음' }); break; }
-        rec.won = Math.round((rec.won + (r.won || 0)) * 10) / 10;
-        rec.turns.push({ round, calls: r.calls, won: r.won, ms: r._ms, stop: r.stop });
-        if (r.assistant) msgs.push({ role: 'assistant', content: r.assistant });
-        if (r.done) { rec.report = r.report; rec.decisions = r.decisions; rec.opinions = r.opinions; rec.asks = r.asks; rec.gaps = r.gaps; rec.attaches = r.attaches; break; }
-        msgs.push({ role: 'user', content: r.toolResults || [] });
-      }
+caseProcAiSubJudge_ = function (model, input) {
+  var r = JSON.parse(__post(JSON.stringify({ step: 'model', kind: 'sub', model: model, input: input })));
+  if (!r || r.ok === false) return { text: JSON.stringify({ 오류: (r && r.error) || '서버 응답 없음' }), won: 0 };
+  return { text: r.text, won: r.won || 0 };
+};
+function __realDry(caseId, maxWon) {
+  var out = { turns: [] };
+  akSandbox_(caseId, function () {
+    // 재현기 안에서도 사건 쓰기 함수가 불리면 센다(akSandbox_가 메모리로 돌림)
+    var wu = work_updateCase, cpp = caseProcPatch_;
+    work_updateCase = function (p) { __writes.사건시트++; return wu(p); };
+    caseProcPatch_ = function (id, f) { __writes.사건처리저장++; return cpp(id, f); };
+    var st = function (k, x) { return caseProc_(Object.assign({ caseId: caseId, step: k }, x || {})) || {}; };
+    if (st('basic').blocked) { out.blocked = true; return; }
+    var ev = st('evidence', { phase: 'read' }), n = 0; while (ev.more && n++ < 8) ev = st('evidence', { phase: 'read' });
+    ev = st('evidence');
+    var ov = {}; for (var r0 = 0; r0 < 4; r0++) { ov = st('overview'); if (r0 < 3 && ov.loop && ov.loop.again) { ev = st('evidence'); continue; } break; }
+    CASEPROC_AI_DRY_ = true;
+    var sp = caseProcAiSpots_({ caseId: caseId, ov: { items: ov.items || [], needs: ov.needs || null }, ev: { docTypes: ev.docTypes || [] } });
+    out.spots = { ai: sp.ai, ask: sp.ask, gas: sp.gas, need: sp.need, tiers: sp.tiers, plan: sp.plan, inGap: sp.inGap, list: (sp.spots || []).map(function (s) { return s.자리 + '|' + s.주제 + '|' + s.겹; }) };
+    var msgs = [], round = 0, r = null;
+    while (sp.need && round < 14 && __won < maxWon) {
+      r = caseProcAiTurn_({ caseId: caseId, round: round, spent: __won, messages: msgs, entry: sp.entry, items: round === 0 ? ov.items : undefined });
+      if (!r || r.ok === false) { out.turns.push({ round: round, error: (r && r.error) || '응답 없음' }); break; }
+      out.turns.push({ round: round, calls: r.calls, won: r.won, stop: r.stop, note: r.note });
+      msgs.push({ role: 'assistant', content: r.assistant });
+      round++;
+      if (r.done) break;
+      msgs.push({ role: 'user', content: r.toolResults });
     }
-    rec.sec = Math.round((Date.now() - t0) / 1000);
-    all.push(rec);
-    const tools = {}; rec.turns.forEach((t) => (t.calls || []).forEach((c) => { tools[c] = (tools[c] || 0) + 1; }));
-    console.log(caseId.slice(0, 6) + '… ' + rec.sec + '초 · 자리 ' + (rec.spots && rec.spots.ai) + ' · 바퀴 ' + rec.turns.length + ' · ' + rec.won + '원 · 도구 ' + JSON.stringify(tools) + ' · 판단 ' + ((rec.decisions || []).length) + ' · 첨부 ' + ((rec.attaches || []).length) + (rec.turns.some((t) => t.error) ? ' · 오류 ' + rec.turns.filter((t) => t.error).map((t) => t.error).join('/').slice(0, 120) : ''));
-  }
-  const f = path.join(OUT, 'real_' + new Date().toISOString().replace(/[:.]/g, '').slice(0, 15) + '.json');
-  fs.writeFileSync(f, JSON.stringify(all, null, 1));
-  console.log('기록 → ' + f + ' · 합계 ' + Math.round(all.reduce((t, r) => t + r.won, 0) * 10) / 10 + '원');
-})();
+    if (r) { out.report = r.report; out.decisions = r.decisions; out.opinions = r.opinions; out.asks = r.asks; out.gaps = r.gaps; out.attaches = r.attaches; }
+    CASEPROC_AI_DRY_ = false;
+  }, null);
+  out.won = Math.round(__won * 10) / 10; out.writes = __writes;
+  return JSON.stringify(out);
+}`;
+const all = [];
+list.forEach((folder) => {
+  const t0 = Date.now(); serverCalls = 0;
+  try {
+    const P = setup.prepare(folder, {});
+    P.g.ctx.__post = (s) => JSON.stringify(post(JSON.parse(s)));
+    P.g.run(RUN);
+    const vfs = P.g.ctx.__vfs || null, w0 = vfs ? (vfs.writes || []).length : null;
+    const r = JSON.parse(P.g.ctx.__realDry(P.row.id, maxWon));
+    r.folder = folder; r.sec = Math.round((Date.now() - t0) / 1000); r.serverCalls = serverCalls;
+    all.push(r);
+    const tools = {}; (r.turns || []).forEach((t) => (t.calls || []).forEach((c) => { tools[c] = (tools[c] || 0) + 1; }));
+    console.log(folder.replace(/\(.*$/, '').slice(0, 2) + '* ' + r.sec + '초 · 자리 ' + (r.spots && r.spots.ai) + ' · 바퀴 ' + (r.turns || []).length + ' · ' + r.won + '원 · 서버 부르기 ' + serverCalls + '(모델만) · 도구 ' + JSON.stringify(tools) + ' · 판단 ' + (r.decisions || []).length + ' · 첨부 ' + (r.attaches || []).length + ' · 재현기 안 사건 쓰기(메모리) ' + JSON.stringify(r.writes) + ((r.turns || []).some((t) => t.error) ? ' · 오류 ' + r.turns.filter((t) => t.error).map((t) => t.error).join('/').slice(0, 160) : ''));
+  } catch (e) { all.push({ folder, err: String(e && e.stack || e).slice(0, 500) }); console.log(folder.slice(0, 3) + '* 오류 ' + String(e && e.message || e).slice(0, 200)); }
+});
+const f = path.join(OUT, 'real_' + new Date().toISOString().replace(/[:.]/g, '').slice(0, 15) + '.json');
+fs.writeFileSync(f, JSON.stringify(all, null, 1));
+console.log('기록 → ' + f + ' · 합계 ' + Math.round(all.reduce((t, r) => t + (r.won || 0), 0) * 10) / 10 + '원');

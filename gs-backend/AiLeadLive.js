@@ -188,6 +188,8 @@ function caseProcAiCall_(model, system, tools, messages, maxTokens, effort) {
   }
   if (!json || json.error) return { error: (json && json.error && json.error.message) || 'AI 응답 없음' };
   let won = 0;
+  // 시험 모드: 비용만 셈(buildClaudeUsageInfo_는 사용량 속성에 쓰고 ai_logPaid_는 기록 파일에 씀 — 둘 다 안 부름)
+  if (CASEPROC_AI_DRY_) { const u = json.usage || {}; won = Math.round((((u.input_tokens || 0) * cfg.input + (u.output_tokens || 0) * cfg.output + (u.cache_creation_input_tokens || 0) * cfg.input * 1.25 + (u.cache_read_input_tokens || 0) * (cfg.cacheRead != null ? cfg.cacheRead : cfg.input * 0.1)) / 1e6) * CASEPROC_AI_KRW_ * 10) / 10; return { json: json, won: won }; }
   try { const u = buildClaudeUsageInfo_(json, cfg, model, null); won = Math.round(u.costUsd * CASEPROC_AI_KRW_ * 10) / 10; ai_logPaid_({ entry: { kind: 'caseproc-ai', model: model, usd: u.costUsd, q: (CASEPROC_AI_DRY_ ? '[시험] ' : '') + '사건처리 AI 지휘' } }); } catch (e) {}
   return { json: json, won: won };
 }
@@ -428,11 +430,20 @@ function caseProcAiAttachSave_(c, ctx, entry, input) {
   return { ok: true, 첨부: 'AI 첨부(미확인) — 세무사님이 법령 탭에서 확정하거나 뺀다', id: entry.id, 제목: entry.제목, 판: entry.판 || '' };
 }
 
+// 시험 전용 모델 부르기 — kind 'lead'(지휘 AI: 서버가 지침·도구를 붙임, 화면이 준 messages만) / 'sub'(좁은 판단·상위 판단: 물음·재료만)
+function caseProcAiModelDry_(body) {
+  if (body.kind === 'sub') { const m = body.model === CASEPROC_AI_HIGH_MODEL_ ? CASEPROC_AI_HIGH_MODEL_ : CASEPROC_AI_LIGHT_MODEL_; const r = caseProcAiSubJudge_(m, body.input || {}, m === CASEPROC_AI_LIGHT_MODEL_ ? 'low' : 'medium'); return { ok: true, text: r.text, won: r.won }; }
+  const r = caseProcAiCall_(CASEPROC_AI_DIRECTOR_MODEL_, caseProcAiLiveSystem_(Number(body.cap) || 1000), caseProcAiLiveTools_(), caseProcAiCacheMark_(Array.isArray(body.messages) ? body.messages : []), 3000, 'medium');
+  if (r.error) return { ok: false, error: r.error };
+  return { ok: true, json: { content: r.json.content, stop_reason: r.json.stop_reason, usage: r.json.usage }, won: r.won };
+}
 // ---------- 입구 ----------
 function caseProcAi_(body) {
   if (!body || !body.caseId) return { error: '사건이 필요합니다.' };
+  // [2026.10.20 밤샘] 시험 모드(body.dry)는 서버에서 '모델 한 번 부르기'만 한다 — 사건을 읽지도 쓰지도 않고(사건 단계·도구는 PC 재현기가 사건 복사본으로),
+  //  비용 기록·사용량 속성도 쓰지 않는다. 그 밖의 단계를 dry로 부르면 거절(서버에서 사건 단계가 도는 일을 막음)
   CASEPROC_AI_DRY_ = !!body.dry;
-  if (CASEPROC_AI_DRY_ && body.step === 'finish') return { ok: true, dry: true };
+  if (CASEPROC_AI_DRY_) { try { return body.step === 'model' ? caseProcAiModelDry_(body) : { ok: false, error: '시험 모드는 모델 부르기(step model)만 — 사건 단계는 PC 재현기에서' }; } finally { CASEPROC_AI_DRY_ = false; } }
   try {
     if (body.step === 'spots') return caseProcAiSpots_(body);
     if (body.step === 'turn') return caseProcAiTurn_(body);
