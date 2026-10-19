@@ -6395,7 +6395,9 @@
     const combinedGain = gain + priorNetGainOrLoss;
 
     const basicDeductionAlreadyUsed = Number(p.basicDeductionAlreadyUsed) || 0;
-    const basicDeduction = Math.max(0, Math.min(2500000, Math.max(0, combinedGain)) - basicDeductionAlreadyUsed);
+    // [2026.10.20 세액 고침 — 양도 감사] §103① 연 250만원 중 이미 쓴 몫을 뺀 남은 한도와 소득금액 중 작은 금액 — 예전 식(min(250만, 소득) − 이미 쓴 것)은
+    //  소득이 한도보다 작을 때 공제를 덜 줬다(소득 200만·이미 100만: 100만 → 150만).
+    const basicDeduction = Math.min(Math.max(0, 2500000 - basicDeductionAlreadyUsed), Math.max(0, combinedGain));
     const taxBase = Math.max(0, combinedGain - basicDeduction);
 
     let calculatedTax, rateNote;
@@ -6434,10 +6436,10 @@
       // 소득세법§104①9호(시행령§167조의7) — §94①4호다목·라목 주식등 중, 그 법인 자산총액에서
       // 법인세법§55조의2②에 따른 비사업용토지가 차지하는 비율이 50% 이상인 법인의 주식등은
       // 8호(비사업용토지) 세율표와 동일하게 기본세율에 10%p를 가산한다.
-      calculatedTax = progressiveTax(taxBase, TRANSFER_TAX_BRACKETS) + Math.round(taxBase * 0.10);
+      calculatedTax = progressiveTax(taxBase, transferBracketsAt_(p.transferDate)) + Math.round(taxBase * 0.10); // [2026.10.20] 양도일 세율표(§104①)
       rateNote = '기타자산 중 비사업용토지 과다보유법인 주식등(§104①9호) — 기본세율(누진 6~45%)+10%p 가산';
     } else {
-      calculatedTax = progressiveTax(taxBase, TRANSFER_TAX_BRACKETS);
+      calculatedTax = progressiveTax(taxBase, transferBracketsAt_(p.transferDate)); // [2026.10.20] 양도일 세율표
       rateNote = '기타자산(특정주식·부동산과다보유법인 주식등) — 기본세율(누진 6~45%)';
     }
 
@@ -8176,7 +8178,7 @@
 
     const basicDeduction = Math.min(2500000, Math.max(0, gain));
     const taxBase = Math.max(0, gain - basicDeduction);
-    const calculatedTax = progressiveTax(taxBase, TRANSFER_TAX_BRACKETS);
+    const calculatedTax = progressiveTax(taxBase, transferBracketsAt_(p.transferDate)); // [2026.10.20 세액 고침 — 양도 감사] 국외자산도 양도일 세율표(§118의5 → §55①)
 
     const foreignTaxCreditMethod = p.foreignTaxCreditMethod === 'expense' ? 'expense' : 'credit';
     const foreignTaxPaidAmount = Number(p.foreignTaxPaidAmount) || 0;
@@ -8233,7 +8235,7 @@
 
     const basicDeduction = Math.min(2500000, Math.max(0, totalGain));
     const taxBase = Math.max(0, totalGain - basicDeduction);
-    const calculatedTax = progressiveTax(taxBase, TRANSFER_TAX_BRACKETS);
+    const calculatedTax = progressiveTax(taxBase, transferBracketsAt_(transactions.reduce(function (m, t) { const d = String((t && t.transferDate) || ''); return d > m ? d : m; }, ''))); // [2026.10.20 세액 고침] 그 과세기간 세율표
 
     // [2026.10.19 세액 고침] §118의6①1호(2020.1.1 이후 양도분): 자산마다 한도 = A × (해당 국외자산 양도소득금액 B) ÷ (국외자산 양도소득금액 합계 C).
     //  예전엔 국내 양도소득금액을 분모에 더하고(한도 과소) 외국납부세액 합계와 한도 합계를 한 번에 비교했다(자산별 초과분이 다른 자산 한도로 넘어감).

@@ -2425,5 +2425,37 @@
   "정답": {
    "산출세액_합계": 690000
   }
+ },
+ {
+  "이름": "[세액 고침 — 양도 감사] 국외자산 2022.6.30. 양도 과표 9,750만 — 그때 세율표(1.5억 이하 35%, 누진공제 1,490만): 19,225,000(예전 지금 표로 18,685,000)",
+  "도구": "calculateOverseasAssetTransferTaxJS",
+  "고정": true,
+  "입력": {
+   "wasResidentFiveYearsContinuously": true,
+   "transferDate": "2022-06-30",
+   "transferPrice": 200000000,
+   "acquisitionPrice": 100000000
+  },
+  "정답": {
+   "과세표준": 97500000,
+   "산출세액": 19225000
+  }
+ },
+ {
+  "이름": "[세액 고침 — 양도 감사, §103①] 주식 소득 200만·이미 쓴 기본공제 100만 — 남은 한도 150만과 소득 중 작은 150만 공제, 과표 50만(예전 min(250만, 200만) − 100만 = 100만)",
+  "도구": "calculateStockTransferTaxJS",
+  "고정": true,
+  "입력": {
+   "assetCategory": "domestic_stock",
+   "isDaejuju": false,
+   "isSmallMediumCompany": false,
+   "transferPrice": 12000000,
+   "acquisitionPrice": 10000000,
+   "basicDeductionAlreadyUsed": 1000000,
+   "transferDate": "2025-06-30"
+  },
+  "정답": {
+   "과세표준": 500000
+  }
  }
 ]
