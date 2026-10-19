@@ -76,6 +76,10 @@
     NF.FORMS_BY_TAX = api.FORMS_BY_TAX;
     NF.applicable = api.applicable;
     NF.plan = api.plan;
+    NF.registerExt = api.registerExt;
+    NF.EXT_FILES = api.EXT_FILES;
+    NF.exts = api.exts;
+    NF.helpers = api.helpers;
   }
 })(typeof window !== 'undefined' ? window : globalThis, function (root) {
   'use strict';
@@ -1126,6 +1130,8 @@
       if (cw.result && cw.formType === 'ih7') L.push('상속9호부표7');
       if ((ctx.valAssets || []).some(function (a) { return a.method === 'artwork'; })) L.push('상속9호부표8');
     }
+    // [2026.10.20] 묶음 파일(mappers-*.js)의 서식 — 같은 ctx로 그 사건에 해당하는 것만 더함(감면신청서·특례신고서 등)
+    EXTS.forEach(function (x) { if (typeof x.plan === 'function') { try { L = L.concat(x.plan(tax, ctx) || []); } catch (e) { /* 묶음 하나의 오류가 본표 인쇄를 막지 않게 */ } } });
     return L;
   }
   function applicable(tax, ctx) {
@@ -1274,6 +1280,31 @@
     }
   };
 
+  // ═════════ 서식 묶음 파일(2026-10-20) — 84호·9호·10호 계열 밖의 서식(칸 해설 78장 중 55장)은 묶음마다 따로 둔 파일에 ═════════
+  //  묶음 파일 app/formprint/mappers-<묶음>.js 는 NxFormPrint.registerExt(api)로 등록한다(node: require('./mappers.js').registerExt).
+  //  api = { 묶음: '양도감면A',
+  //          forms:   { formKey: 서식번호(칸 해설·세액인쇄 서식표와 같은 글자, 예 '조세특례제한법 시행규칙 [별지 제54호서식]') },
+  //          mappers: { formKey: function (ctx) → { values, missing, notes, checks } }  (모양은 위 M과 같음 — helpers.Out 사용),
+  //          plan:    function (세목, ctx) → [formKey | {formKey, ctx}]   (세목 원본 모양 출력 묶음에 더할 것 — 해당 사건만),
+  //          ctxFor:  { formKey: function (extra) → ctx 또는 [ctx…] }       (세액인쇄 화면의 서식 한 줄 출력용 — 화면 전역값에서 모음),
+  //          ready:   { formKey: function () → true/false }               (그 서식에 찍을 계산 결과가 화면에 있는지) }
+  //  파일 이름은 EXT_FILES에 미리 적어 둔다(세액인쇄 화면이 이 순서로 불러옴). 없는 묶음 파일은 빈 등록만 한다.
+  var EXT_FILES = ['mappers-양도감면A.js', 'mappers-양도감면B.js', 'mappers-양도소득특례.js', 'mappers-증여특례A.js', 'mappers-증여특례B.js', 'mappers-상속부속A.js', 'mappers-상속부속B.js'];
+  var EXTS = [];
+  function registerExt(x) {
+    if (!x || EXTS.indexOf(x) >= 0) return x;
+    EXTS.push(x);
+    Object.keys(x.mappers || {}).forEach(function (k) {
+      M[k] = x.mappers[k];
+      if (root.NxFormPrint && root.NxFormPrint.mappers && root.NxFormPrint.mappers !== M) root.NxFormPrint.mappers[k] = x.mappers[k];
+    });
+    return x;
+  }
+  var helpers = { n: n, has: has, Out: Out, ymd: ymd, dateParts: dateParts, officeName: officeName, isMobile: isMobile, fullAddr: fullAddr, nativeOf: nativeOf,
+    fracNum: fracNum, pct: pct, pct2: pct2, ratioText: ratioText, el: el, checked: checked, agent: agent,
+    evFromSingle: evFromSingle, acqNec: acqNec, giftInheritRate: giftInheritRate, expenseItemsOf: expenseItemsOf, ctxFromApp: ctxFromApp };
+
   return { mappers: M, ctxFromApp: ctxFromApp, FORMS_BY_TAX: FORMS_BY_TAX, applicable: applicable, plan: plan,
+    registerExt: registerExt, EXT_FILES: EXT_FILES, exts: EXTS, helpers: helpers,
     _helpers: { evFromSingle: evFromSingle, acqNec: acqNec, giftInheritRate: giftInheritRate, expenseItemsOf: expenseItemsOf, fullAddr: fullAddr } };
 });

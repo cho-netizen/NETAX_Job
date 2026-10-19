@@ -15179,9 +15179,12 @@ function tcTodayStr_(){ const d = new Date(); return d.getFullYear() + '-' + Str
 function tcLoadFormPrint_(){
   if (window.NxFormPrint && window.NxFormPrint.mappers) return Promise.resolve(window.NxFormPrint);
   const base = window.NX_FORMPRINT_BASE || (/^(job\.netax\.kr|localhost|127\.0\.0\.1)$/.test(location.hostname) ? 'formprint/' : 'https://job.netax.kr/app/formprint/');
-  const v = '?v=20261019';
+  const v = '?v=20261020';
   const load = function(f){ return new Promise(function(ok, no){ const sc = document.createElement('script'); sc.src = base + f + v; sc.onload = ok; sc.onerror = function(){ no(new Error('원본 서식 출력 모듈을 불러오지 못했습니다(' + base + f + ')')); }; document.head.appendChild(sc); }); };
-  return load('formprint.js').then(function(){ return load('mappers.js'); }).then(function(){ return window.NxFormPrint; });
+  // [2026.10.20] 84호·9호·10호 밖 서식은 묶음 파일(mappers-*.js, 목록은 mappers.js EXT_FILES)
+  return load('formprint.js').then(function(){ return load('mappers.js'); })
+    .then(function(){ return (window.NxFormPrint.EXT_FILES || []).reduce(function(p, f){ return p.then(function(){ return load(f); }); }, Promise.resolve()); })
+    .then(function(){ return window.NxFormPrint; });
 }
 function tcOfficialFormRun_(){
   const tax = TC_OFFICIAL_FORM_TAX_[printActiveGroup_];
