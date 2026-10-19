@@ -5973,6 +5973,8 @@ function renderPropertyCardHtml_(idx, opts){
         '</div>' +
         '<div class="taxcalc-grid" style="margin-top:8px;">' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isOneHouseOneFamily" id="oneHouse-' + idx + '"><label for="oneHouse-' + idx + '">1세대1주택 비과세 전제</label></div>' +
+          // [2026.10.20] 2005년 양도 고가주택 장특공 25%·50%(소득세법 §95②2호·3호 2005.1.1. 판, 시행령 §159의2 기준면적)
+          '<div class="taxcalc-field checkbox" data-show-if="isOneHouseOneFamily" style="display:none;"><input type="checkbox" data-field="isBelowStandardAreaHighValueHouse" id="bsaHv-' + idx + '"><label for="bsaHv-' + idx + '">(2005년 양도 고가주택만) 기준면적 미만 — 단독 연면적 264㎡·부수토지 495㎡ 미만 또는 공동주택 전용 149㎡ 미만(시행령 §159의2): 장특공 5년 이상 25%·10년 이상 50%</label></div>' +
           '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-one-house-special-modal" data-idx="' + idx + '" title="특정주택(수도권밖미분양·인구감소지역·농어촌주택)은 주택수에서 제외될 수 있습니다">🔍 특정주택 제외 판정</button></div>' +
           '<div class="taxcalc-field" data-show-if="isOneHouseOneFamily" style="display:none;"><label>거주연수</label><input type="number" data-field="residenceYears" placeholder="년" maxlength="2"></div>' +
           '<div class="taxcalc-field"><label>별지 83호의6 일반세율 적용(이 주택)</label><select data-field="mhRentalExemptionType"><option value="">해당 없음</option><option value="long_rental">장기임대주택</option><option value="reduced_rental">감면대상 장기임대주택</option><option value="daycare">장기어린이집</option><option value="general">일반주택(위 셋을 빼면 남는 1주택)</option></select><span class="taxcalc-field-help">2·3주택 이상이라도 이 주택이 넷 중 하나면 중과 대신 일반세율(시행령 §167의3①2·3·8의2·10호, ⑦ 신청서 — 주택마다)</span></div>' +
@@ -7101,6 +7103,7 @@ function collectTransferInput(vals){
     acquisitionDate: vals.acquisitionDate || '',
     transferDate: vals.transferDate || '',
     isOneHouseOneFamily: !!vals.isOneHouseOneFamily,
+    isBelowStandardAreaHighValueHouse: !!vals.isBelowStandardAreaHighValueHouse, // [2026.10.20] 2005년 양도 기준면적 미만 고가주택
     residenceYears: numVal(vals.residenceYears) || 0,
     isTransferorResident: vals.isTransferorResident !== false,
     isNonResidentTwoYearException: !!vals.isNonResidentTwoYearException,

@@ -6,6 +6,7 @@
 //    node tools/engine-regress.js --base <git ref>      기준 판을 main 말고 다른 가지·커밋으로
 //    node tools/engine-regress.js --no-history          지금 판에서 양도일별 세율·장특공·고가주택 연혁(조견표, 기본 켬)을 끄고 비교
 //    node tools/engine-regress.js --cases <파일.json>   경우를 더함(정답지 사건 입력은 저장소 밖 파일로만 — 이 저장소는 공개 서빙됨)
+//    node tools/regress-answer-audit.js [사례파일…]    고정 정답 독립 검산(엔진 안 씀 — 조견표 reftables로 그 날짜 세율·장특공·공제율을 셈, 기본 special·history). 회귀 전에 함께 돌려 "다름 0건" 확인
 //  경우 파일 모양: [{ "이름": "...", "도구": "calculate_inheritance_tax", "입력": {...}, "고정": true, "정답": { "과세표준": 123, ... } }]
 //   - 고정: 고쳐도 숫자가 바뀌면 안 되는 경우(바뀌면 끝에 ✗로 알리고 종료 코드 1)
 //   - 정답: 신고서·검산표처럼 맞아야 하는 값(지금 판이 다르면 ✗)

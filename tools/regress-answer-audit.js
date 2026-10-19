@@ -40,6 +40,8 @@ files.forEach((f) => {
       if (sr != null) cands.push(['단기 ' + Math.round(sr * 100) + '%(2부-02)', Math.floor(base * sr + 1e-6)]);
       [0.1, 0.2, 0.3].forEach((p) => { const r = rowAt(t201.행, d); if (r) { const g = r.값.구간.find((x) => x.이하 == null || base <= x.이하); cands.push(['기본+' + Math.round(p * 100) + '%p', Math.floor(base * (g.세율 + p) - g.누진공제 + 1e-6)]); } });
       cands.push(['조정지역 분양권 50%(2부-02)', Math.floor(base * 0.5 + 1e-6)]);
+      // 2005~2013 옛 단일세율(2부-02 '…(옛 단일세율)' 행 — 숫자 값만)
+      t202.행.filter((x) => /옛 단일세율/.test(x.구분) && typeof x.값 === 'number' && x.시작 <= d && (!x.끝 || d <= x.끝)).forEach((x) => cands.push([x.구분 + ' ' + x.값 + '%(2부-02)', Math.floor(base * x.값 / 100 + 1e-6)]));
       const red = (a.수용감면액 || 0) + (a.자경농지감면액 || 0);
       if (red) cands.slice().forEach((x) => cands.push([x[0] + ' − 감면 ' + red.toLocaleString('ko-KR'), x[1] - red]));
       const hit = cands.find((x) => x[1] === tax);
