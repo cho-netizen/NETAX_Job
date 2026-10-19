@@ -99,7 +99,7 @@
 
   // ═════════ 소득83호의4 — 상생임대주택에 대한 특례적용신고서(영 §155의3⑤) ═════════
   //  값 출처: 양도 자산(소재지·취득일·양도일) + 판정 창이 남긴 asset.oneHouseSpecialCase(mgContractDate, mgLeasePeriod '시작 ~ 끝')
-  //  예전 인쇄(oneHouseSpecialCasePrintPageHtml_)도 이 두 값만 찍음. 직전임대차 시작·종료일·보증금·월세는 판정 창에서만 쓰고 저장되지 않는다.
+  //  예전 인쇄(oneHouseSpecialCasePrintPageHtml_)도 이 두 값만 찍음. [2026.10.20] 직전임대차 시작·종료일·보증금·월세, 상생 보증금·월세도 판정 창이 저장(mgPrior*·mgLease*).
   mappers['소득83호의4'] = function (ctx) {
     var o = new Out(), s = ctx.seller || {};
     var it = pickAsset(ctx, '소득83호의4'), a = (it && it.asset) || {}, c = specialOf(a, '소득83호의4');
@@ -110,18 +110,28 @@
     o.need('⑤', a.acquisitionDate, '⑤ 취득일').need('⑥', a.transferDate, '⑥ 양도일');
     o.miss('⑦ 직전임대차계약체결일', '계산기에 없음(판정 창은 직전임대차 시작일·종료일만 받음, 체결일·취득 후 체결 여부 판정 없음)');
     dateKeys(o, '⑧', c.mgContractDate, '⑧ 상생임대차계약 체결일');
-    o.miss('⑩ 직전 임대차계약(임차인·보증금·월세·임대기간)', '계산기에 없음(직전임대차 시작·종료일·보증금·월세는 판정 창에서만 쓰고 저장되지 않음, 임차인 성명·생년월일 입력 없음)');
+    // [2026.10.20 서식 연결] ⑩ 직전·⑪ 상생 임대차 — 판정 창 입력(직전 시작·종료일·보증금·월세, 상생 보증금·월세)을 판정 창이 저장(taxcalc.html)
+    function money_(key, v, label) { if (v !== undefined && v !== null && v !== '') o.set(key, [n(v)]); else o.miss(label, '판정 창에 입력 없음(이 판정을 다시 적용하면 저장됨)'); }
+    function months_(s0, s1) { // 시행령 §155의3③ 월력 — 종료일 포함, 1개월 미만은 1개월(판정 엔진 monthsBetween_와 같은 규칙)
+      var a_ = new Date(s0 + 'T00:00:00Z'), e_ = new Date(s1 + 'T00:00:00Z'); e_.setUTCDate(e_.getUTCDate() + 1);
+      var m_ = (e_.getUTCFullYear() - a_.getUTCFullYear()) * 12 + (e_.getUTCMonth() - a_.getUTCMonth());
+      return (e_.getUTCDate() <= a_.getUTCDate() ? m_ : m_ + 1) + '개월';
+    }
+    if (H.ymd(c.mgPriorStart)) o.set('⑩@개시일', [c.mgPriorStart]); else o.miss('⑩ 직전 임대차 개시일', '판정 창에 입력 없음(이 판정을 다시 적용하면 저장됨)');
+    if (H.ymd(c.mgPriorEnd)) o.set('⑩@종료일', [c.mgPriorEnd]); else o.miss('⑩ 직전 임대차 종료일', '판정 창에 입력 없음(이 판정을 다시 적용하면 저장됨)');
+    if (H.ymd(c.mgPriorStart) && H.ymd(c.mgPriorEnd)) o.set('⑩@기간', [months_(c.mgPriorStart, c.mgPriorEnd)]);
+    money_('⑩@보증금', c.mgPriorDeposit, '⑩ 직전 임대차 보증금');
+    money_('⑩@월세', c.mgPriorRent, '⑩ 직전 임대차 월세');
+    o.miss('⑩ 직전 임대차 임차인 성명·생년월일', '계산기에 없음(임차인 입력 없음)');
     var per = String(c.mgLeasePeriod || '').split('~').map(function (x) { return x.trim(); });
     if (H.ymd(per[0])) o.set('⑪@개시일', [per[0]]); else o.miss('⑪ 개시일', '판정 창 상생임대차 시작일 없음');
     if (H.ymd(per[1])) o.set('⑪@종료일', [per[1]]); else o.miss('⑪ 종료일', '판정 창 상생임대차 종료일 없음');
     // [2026.10.20 서식 감사(양도)] ⑪ 기간 — 저장된 시작·종료일로 시행령 §155의3③("월력에 따라 계산하며, 1개월 미만인 경우에는 1개월로 본다")대로.
     //  판정 엔진(calculateMutualLeaseHouseSpecialJS의 monthsBetween_)과 같은 규칙: 종료일 포함, 남는 날은 1개월
-    if (H.ymd(per[0]) && H.ymd(per[1])) {
-      var a_ = new Date(per[0] + 'T00:00:00Z'), e_ = new Date(per[1] + 'T00:00:00Z'); e_.setUTCDate(e_.getUTCDate() + 1);
-      var m_ = (e_.getUTCFullYear() - a_.getUTCFullYear()) * 12 + (e_.getUTCMonth() - a_.getUTCMonth());
-      o.set('⑪@기간', [(e_.getUTCDate() <= a_.getUTCDate() ? m_ : m_ + 1) + '개월']);
-    }
-    o.miss('⑪ 임차인 성명·생년월일·보증금·월세', '계산기에 없음(상생임대차 보증금·월세는 판정 창에서만 쓰고 저장되지 않음, 임차인 입력 없음)');
+    if (H.ymd(per[0]) && H.ymd(per[1])) o.set('⑪@기간', [months_(per[0], per[1])]);
+    money_('⑪@보증금', c.mgLeaseDeposit, '⑪ 상생 임대차 보증금');
+    money_('⑪@월세', c.mgLeaseRent, '⑪ 상생 임대차 월세');
+    o.miss('⑪ 임차인 성명·생년월일', '계산기에 없음(임차인 입력 없음)');
     if (c.mgContractDate && (c.mgContractDate < '2021-12-20' || c.mgContractDate > '2026-12-31')) o.note('⑧ 체결일이 2021.12.20.~2026.12.31. 밖 — 영 §155의3①1호 체결기한 확인');
     if (c.안내) o.note('판정 안내: ' + c.안내);
     footer(o, ctx, s);
@@ -153,12 +163,17 @@
     // [2026.10.20 서식 감사(양도)] 판정 엔진에는 임대기간요건 충족 전 양도(시행령 §155㉑) 갈래도 있다(결과 임대기간충족전, 안내에
     //  "임대기간요건 충족 전 양도" 경고). 그때는 서식 작성방법 4대로 ⑫(미충족)에 체크. 판정 창이 안내 글을 저장하므로 그것으로 가른다
     //  (판정 창이 임대기간충족전 값을 따로 저장하게 되면 그 값을 먼저 봄 — 직전거주주택보유주택 갈래는 안내에 이 문구가 없어 저장이 필요, 확인 필요)
+    //  [2026.10.20] 판정 창이 결과의 임대기간충족전 값을 저장 — 직전거주주택보유주택 갈래(안내 글에 경고 없음)도 이 값으로 가름
     var before_ = c.임대기간충족전 === true || /임대기간요건 충족 전 양도/.test(String(c.안내 || ''));
     if (before_) { o.set('⑫|미충족', true).miss('⑪ 충족한 경우', '해당 없음 — 임대기간요건 충족 전 양도'); o.note('⑫ 임대기간요건 충족 전 양도(시행령 §155㉑) — 뒤에 요건을 채우지 못하면 §155㉒ 사후 신고·납부 대상'); }
     else o.set('⑪|충족', true).miss('⑫ 미충족한 경우', '해당 없음 — 판정 엔진이 임대기간요건 충족으로 판정(안내에 충족 전 양도 경고 없음)');
-    o.miss('⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕ 장기임대주택(㉖)·장기어린이집(㉗) 명세', '계산기에 없음(소유자·소재지·취득일·면적·임대개시일·기준시가·등록일·호수 입력 없음 — 판정 창의 기준시가·임대 연수는 저장되지 않음)');
+    // [2026.10.20 서식 연결] ㉑ 임대개시 당시 기준시가 — 판정 창 마목 자동판정의 "임대개시일 당시 기준시가 합계"(lrMaStandardPrice, 장기임대주택 첫 줄)
+    var lrSp_ = n(c.lrMaStandardPrice);
+    if (lrSp_) { o.set('㉑@장기임대주택', [lrSp_]); o.note('㉑ 장기임대주택 임대개시 당시 기준시가 = 판정 창 마목 입력값(한 채 — 여러 채면 줄마다 직접 적음)'); }
+    o.miss('⑬⑭⑮⑯⑰⑱⑲⑳' + (lrSp_ ? '' : '㉑') + '㉒㉓㉔㉕ 장기임대주택(㉖)·장기어린이집(㉗) 명세', '계산기에 없음(소유자·소재지·취득일·면적·임대개시일·등록일·호수 입력 없음' + (lrSp_ ? '' : ' — 기준시가는 판정 창 마목 자동판정을 쓸 때만 저장') + ')');
     o.miss('㉘ 임대내역', '계산기에 없음(임차인·보증금·월세·임대기간 입력 없음 — 판정 창의 임대료 증가율은 저장되지 않음)');
-    o.miss('㉙ 직전거주주택보유명세', '계산기에 없음(판정 창은 "직전거주주택 양도 이력 있음" 체크만 받고 저장하지 않음, 소재지·양도일 입력 없음)');
+    if (c.직전거주주택보유주택) o.note('판정 결과: 직전거주주택보유주택(시행령 §155⑳ 후단) — ㉙ 직전거주주택 소재지·양도일을 적어야 함');
+    o.miss('㉙ 직전거주주택보유명세', '계산기에 없음(소재지·양도일 입력 없음' + (c.직전거주주택보유주택 ? ' — 판정 결과 직전거주주택보유주택이라 적어야 함' : '') + ')');
     if (c.안내) o.note('판정 안내: ' + c.안내);
     footer(o, ctx, s);
     return o.result();
@@ -203,6 +218,9 @@
         o.note('적용 특례: ' + c.provisionLabel);
         if (pv.code === 'ci' || pv.code === 'pr') put('⑩', pv.col, c.acquisitionDate, '취득일(판정 창)');
         if (pv.code === 'pr') put('⑮', '분양권', c.newHousingCompletionDate, '완성(예정)일(판정 창)');
+        // [2026.10.20 서식 연결] ci·rp 판정 창의 신축주택 완성(예정)일·rp 사업시행인가일 — 서식상 ⑤ 조합원입주권 열에만 있는 칸
+        if ((pv.code === 'ci' || pv.code === 'rp') && has(c.newHousingCompletionDate)) put('⑮', '조합원입주권', c.newHousingCompletionDate, '');
+        if (pv.code === 'rp' && has(c.businessApprovalDate)) put('⑬', '조합원입주권', c.businessApprovalDate, '');
         if (pv.code === 'rp' && c.acquisitionDate && c.acquisitionDate !== a.acquisitionDate) o.note('판정 창의 대체주택 취득일(' + c.acquisitionDate + ')과 양도 자산 취득일(' + a.acquisitionDate + ')이 다름 — 확인');
       }
       if (c.안내) o.note('판정 안내: ' + c.안내);
@@ -248,7 +266,10 @@
     if (c.houseType === '귀농주택' && has(c.acquisitionDate)) o.set('⑨@농어촌주택', c.acquisitionDate);
     else o.miss('⑨ 농어촌주택 취득일', c.houseType === '귀농주택' ? '판정 창에 귀농주택 취득일 없음' : '계산기에 없음(이농주택 판정 창은 취득일을 받지 않음)');
     o.miss('⑥ 농어촌주택 소재지', '계산기에 없음(판정 창은 "수도권 밖 읍·면 소재" 체크만 받음)');
-    o.miss('⑦ 면적(토지·건물)', '계산기에 없음(귀농주택 대지 면적은 판정 창에서만 쓰고 저장되지 않음)');
+    // [2026.10.20 서식 연결] 귀농주택 대지면적 — 판정 창 입력(rfLandArea, 시행령 §155⑩ 대지 660㎡ 이내 요건)을 판정 창이 저장
+    var rfA_ = c.houseType === '귀농주택' ? n(c.rfLandArea) : 0;
+    if (rfA_) o.set('⑦@농어촌주택.토지', rfA_);
+    o.miss(rfA_ ? '⑦ 면적(일반주택 토지·건물, 농어촌주택 건물)' : '⑦ 면적(토지·건물)', '계산기에 없음' + (c.houseType === '귀농주택' && !rfA_ ? '(판정 창에 귀농주택 대지면적 입력 없음)' : ''));
     o.miss('⑧ 소유자(성명·주민등록번호·소득자와 관계)', '계산기에 없음');
     o.miss('⑩ 농어촌주택 양도일', '계산기에 없음(농어촌주택은 양도하지 않는 주택 — 양도했으면 그 자산 카드에)');
     o.miss('⑪ 거주기간', '계산기에 없음(이농주택 판정 창은 "취득 후 5년 이상 거주" 체크만 받고 날짜 입력 없음)');

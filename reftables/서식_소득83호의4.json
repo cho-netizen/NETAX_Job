@@ -170,7 +170,8 @@
    "조문개정": "①항 2026.9.30. / ③항 대통령령 제33267호 2023.2.28. / ④항 대통령령 제35947호 2025.12.30. 공포",
    "계산기칸": [
     "입력 priorLeaseStartDate(mgPriorStart)·priorLeaseEndDate(mgPriorEnd) → monthsBetween_ ≥ 18",
-    "④항 합산(임차인 사정 새 계약)은 계산기에 없음"
+    "④항 합산(임차인 사정 새 계약)은 계산기에 없음",
+    "[2026.10.20] 판정 창 mgPriorStart·mgPriorEnd·mgPriorDeposit·mgPriorRent → oneHouseSpecialCase에 저장 → ⑩ 개시일·종료일·기간(월력, 1개월 미만은 1개월)·보증금·월세 (임차인 성명·생년월일 입력 없음)"
    ],
    "조견표": [],
    "인쇄": "이 칸 없음",
@@ -186,7 +187,8 @@
    ],
    "조문개정": "①항 대통령령 제36737호 2026.9.30. 공포",
    "계산기칸": [
-    "입력 mutualLeaseStartDate(mgLeaseStart)·mutualLeaseEndDate(mgLeaseEnd) → monthsBetween_ ≥ 24 → oneHouseSpecialCase.mgLeasePeriod"
+    "입력 mutualLeaseStartDate(mgLeaseStart)·mutualLeaseEndDate(mgLeaseEnd) → monthsBetween_ ≥ 24 → oneHouseSpecialCase.mgLeasePeriod",
+    "[2026.10.20] 판정 창 mgLeaseDeposit·mgLeaseRent → oneHouseSpecialCase에 저장 → ⑪ 보증금·월세 (임차인 성명·생년월일 입력 없음)"
    ],
    "조견표": [],
    "인쇄": "oneHouseSpecialCasePrintPageHtml_ \"상생임대차 기간\" 줄",

@@ -29,7 +29,9 @@ module.exports = function (E, H) {
     assetLocation: '서울특별시 ○○구 ○○로 10, 101동 1001호 (견본아파트)', isOneHouseOneFamily: true,
     oneHouseSpecialCase: { provisionLabel: '상생임대주택(소득세법시행령§155의3)', formNo: '소득세법 시행규칙 [별지 제83호의4서식]', formTitle: '상생임대주택에 대한 특례적용신고서',
       acquisitionDate: '', houseType: '', newHousingCompletionDate: '', mgContractDate: mgIn.mutualLeaseContractDate,
-      mgLeasePeriod: mgIn.mutualLeaseStartDate + ' ~ ' + mgIn.mutualLeaseEndDate, 안내: mg.안내 } };
+      mgLeasePeriod: mgIn.mutualLeaseStartDate + ' ~ ' + mgIn.mutualLeaseEndDate,
+      mgPriorStart: mgIn.priorLeaseStartDate, mgPriorEnd: mgIn.priorLeaseEndDate, mgPriorDeposit: mgIn.priorLeaseDeposit, mgPriorRent: mgIn.priorLeaseRent,
+      mgLeaseDeposit: mgIn.mutualLeaseDeposit, mgLeaseRent: mgIn.mutualLeaseRent, 안내: mg.안내 } };
   var ctxMg = caseOf([mgAsset]);
 
   // ② 거주주택 특례(영 §155⑳) — 장기임대주택 보유자가 거주주택(2015.3.2. 취득 6억, 5년 거주) → 2026.3.31. 양도 11억(12억 이하 비과세)
@@ -66,7 +68,7 @@ module.exports = function (E, H) {
   var rfAsset = { assetType: 'house', transferPrice: 650000000, acquisitionPrice: 280000000, necessaryExpenses: 3000000, transferDate: rfIn.generalHouseTransferDate, acquisitionDate: '2010-09-01',
     assetLocation: '대전광역시 ○○구 ○○로 60, 7동 702호 (견본)', isOneHouseOneFamily: true,
     oneHouseSpecialCase: { provisionLabel: '귀농주택(소득세법시행령§155⑦3호)', formNo: '소득세법 시행규칙 [별지 제83호서식]', formTitle: '농어촌주택 소유자 1세대1주택 특례적용신고서',
-      acquisitionDate: rfIn.acquisitionDate, houseType: '귀농주택', newHousingCompletionDate: '', mgContractDate: '', mgLeasePeriod: '', 안내: rf.안내 } };
+      acquisitionDate: rfIn.acquisitionDate, houseType: '귀농주택', rfLandArea: rfIn.landAreaSqm, newHousingCompletionDate: '', mgContractDate: '', mgLeasePeriod: '', 안내: rf.안내 } };
 
   // ⑦ 장기저당담보주택 동거봉양 합가(영 §155의2②) — 먼저 양도하는 일반주택 2016.10.4. 취득 → 2026.7.15. 양도
   var mp = need(E.calculateLongTermMortgageHouseExclusionJS({ mortgagorAge60OrOlderAtContract: true, contractTermTenYearsOrMore: true, repayAtMaturityByDisposal: true,

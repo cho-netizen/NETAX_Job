@@ -222,7 +222,8 @@
    ],
    "조문개정": "대통령령 제35947호 2025.12.30. 공포",
    "계산기칸": [
-    "입력 businessApprovalDate"
+    "입력 businessApprovalDate",
+    "[2026.10.20] 판정 창 rp(대체주택) rpApprovalDate → oneHouseSpecialCase.businessApprovalDate → ⑬ 조합원입주권 열"
    ],
    "조견표": [],
    "인쇄": "reconstructionRightsPrintPageHtml_ 6번 줄 \"사업시행인가일\"",
@@ -257,7 +258,8 @@
    ],
    "조문개정": "§156의2④ 대통령령 제35947호 2025.12.30. 공포",
    "계산기칸": [
-    "입력 newHousingCompletionDate(양도 자산·판정 입력, pr은 prCompletionDate)"
+    "입력 newHousingCompletionDate(양도 자산·판정 입력, pr은 prCompletionDate)",
+    "[2026.10.20] 판정 창 ci·rp의 ciCompletionDate·rpCompletionDate도 oneHouseSpecialCase.newHousingCompletionDate로 저장 → ⑮ 조합원입주권 열(pr은 분양권 열)"
    ],
    "조견표": [],
    "인쇄": "reconstructionRightsPrintPageHtml_ 8번 줄 \"완성일(사용승인일)\" / oneHouseSpecialCasePrintPageHtml_ \"신축주택 완성(예정)일\"",

@@ -183,7 +183,8 @@
    ],
    "조문개정": "대통령령 제36127호 2026.2.27. 공포",
    "계산기칸": [
-    "meetsAreaAndPriceRequirements(체크만)"
+    "meetsAreaAndPriceRequirements(체크만)",
+    "[2026.10.20] 판정 창 입력 u9Area(전용면적, 미분양) → 판정 창이 oneHouseSpecialCase.u9Area로 저장 → ⑪ 미분양 줄"
    ],
    "조견표": [],
    "인쇄": "이 칸 없음",
@@ -214,7 +215,8 @@
    ],
    "조문개정": "대통령령 제36127호 2026.2.27. 공포·2026.2.27. 시행",
    "계산기칸": [
-    "meetsAreaAndPriceRequirements(체크 하나 — 금액 기준 판정 없음)"
+    "meetsAreaAndPriceRequirements(체크 하나 — 금액 기준 판정 없음)",
+    "[2026.10.20] 판정 창 입력 pdStdPrice(인구감소: 취득일 기준시가)·u9Price(미분양: 취득가액) → oneHouseSpecialCase에 저장 → ⑬ 그 구분 줄"
    ],
    "조견표": [],
    "인쇄": "이 칸 없음",
