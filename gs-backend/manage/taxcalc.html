@@ -10036,16 +10036,9 @@ function trEfileFileName_(){
   return ymd + TR_EFILE_FORM_CODE_ + '.01';
 }
 
-// [2026.10.20 옛인쇄정리] 부동산 등 84호·부표1~3·감면/특례 신청서·외국납부세액공제(11호)는 원본 모양(app/formprint)으로 바뀌어
-//  옛 모양에서 뺐다. 남은 옛 모양은 원본 모양 대응표가 아직 못 찍는 84호 요약 두 갈래뿐 — 주식등 결과(84호 대응표는 부동산 등 결과만 읽음)와
-//  국외자산 계산기 결과(84호 대응표에 국외자산 갈래 없음).
-function trPrintFormBodyHtml_(){
-  const seller = (transferSellers && transferSellers[0]) || {};
-  let html = '';
-  if (lastStockTransferResult_) html += trStockPrintPageHtml_(seller, lastStockTransferResult_);
-  if (lastOverseasTransferResult_) html += trOverseasPrintPageHtml_(seller, lastOverseasTransferResult_);
-  return html;
-}
+// [2026.10.20 옛인쇄정리] 양도 84호의 옛 모양(HTML 흉내)은 모두 지웠다 — 부동산 등·감면/특례 신청서에 이어 마지막 두 갈래(주식등 결과 trStockPrintPageHtml_,
+//  국외자산 결과 trOverseasPrintPageHtml_, 묶음 trPrintFormBodyHtml_)도 원본 모양 84호(app/formprint/mappers.js — 국외자산은 부동산 등과 같은 장의
+//  2-10 열·국외분 소계, 주식등은 84호 한 장 따로 + 부표2·부표1(신탁수익권)·부표2의2(파생상품))로 찍는다.
 // 법령이 신청 서식을 정하지 않은 감면의 제출서류 안내 — 세액인쇄 화면 서식표 아래에 보여 준다(서식이 아니라 인쇄 안 함)
 function trFilingGuidesHtml_(){
   return (lastTransferResults_ || []).filter(function(item){ return item.result && !item.result.error; }).map(function(item){
@@ -10053,51 +10046,6 @@ function trFilingGuidesHtml_(){
       return trCompensationReductionPrintPageHtml_(asset) + trNewHouseSect992PrintPageHtml_(asset) + trUnsoldHouseSect63PrintPageHtml_(asset);
     }).join('');
   }).join('');
-}
-// [2026.09.30 신규, 재검토85] 주식등·국외자산도 부동산과 같은 페이지 형식으로 인쇄에 포함한다.
-function trStockPrintPageHtml_(seller, stock){
-  const r = stock.result;
-  let n = 0;
-  return '<div class="pf-page">' +
-    '<div class="pf-formno">소득세법 시행규칙 [별지 제84호서식]</div>' +
-    '<div class="pf-title">양도소득세 과세표준신고 및 납부계산서 — 주식등</div>' +
-    '<div class="pf-section-head">신고인(양도인)</div>' +
-    '<table class="pf-table">' + pfRow_(0, '성명', seller.name) + pfRow_(0, '주민등록번호', seller.regNo) + '</table>' +
-    '<div class="pf-section-head">세액 계산(국세)</div>' +
-    '<table class="pf-table">' +
-      pfRow_(++n, '양도차익', won(r.양도차익)) +
-      pfRow_(++n, '손익통산 적용 후 소득금액', won(r.손익통산_적용후_소득금액)) +
-      pfRow_(++n, '기본공제', won(r.기본공제)) +
-      pfRow_(++n, '과세표준', won(r.과세표준)) +
-      pfRow_(++n, '적용세율', r.적용세율_설명 || '') +
-      pfRow_(++n, '산출세액', won(r.산출세액)) +
-      pfRow_(++n, '외국납부세액공제', won(r.외국납부세액공제)) +
-      pfRow_(++n, '가산세(신고불성실+납부지연+기장불성실)', won((r.무신고가산세 || 0) + (r.과소신고가산세 || 0) + (r.납부지연가산세 || 0) + (r.기장불성실가산세 || 0))) +
-      pfRow_(++n, '자진납부할 세액(국세, 지방소득세 제외)', won(Math.max(0, (r.납부세액_합계 || 0) - (r.지방소득세 || 0)))) +
-    '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 주식등양도소득금액계산명세서(부표2) 등 첨부서식은 별도로 작성해야 합니다.</div>' +
-  '</div>';
-}
-function trOverseasPrintPageHtml_(seller, r){
-  let n = 0;
-  return '<div class="pf-page">' +
-    '<div class="pf-formno">소득세법 시행규칙 [별지 제84호서식]</div>' +
-    '<div class="pf-title">양도소득세 과세표준신고 및 납부계산서 — 국외자산</div>' +
-    '<div class="pf-section-head">신고인(양도인)</div>' +
-    '<table class="pf-table">' + pfRow_(0, '성명', seller.name) + pfRow_(0, '주민등록번호', seller.regNo) + '</table>' +
-    '<div class="pf-section-head">세액 계산(국세)</div>' +
-    '<table class="pf-table">' +
-      pfRow_(++n, '거래건수', String(r.거래건수 || 0)) +
-      pfRow_(++n, '합산양도차익', won(r.합산양도차익)) +
-      pfRow_(++n, '기본공제', won(r.기본공제)) +
-      pfRow_(++n, '과세표준', won(r.과세표준)) +
-      pfRow_(++n, '산출세액', won(r.산출세액)) +
-      pfRow_(++n, '외국납부세액공제', won(r.외국납부세액공제)) +
-      pfRow_(++n, '가산세(신고불성실+납부지연)', won((r.무신고가산세 || 0) + (r.과소신고가산세 || 0) + (r.납부지연가산세 || 0))) +
-      pfRow_(++n, '자진납부할 세액(국세, 지방소득세 제외)', won(Math.max(0, (r.납부세액_합계 || 0) - (r.지방소득세 || 0)))) +
-    '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다.</div>' +
-  '</div>';
 }
 
 // [2026.09.29 신규, 재검토80] 위택스(개인지방소득세 양도소득분) — 세무사님 확인: "위택스도
@@ -13495,7 +13443,7 @@ const PRINT_REGISTRY_ = [
   { key: 'tr', group: '양도소득세', label: '양도소득세 과세표준신고서(부동산·주식등·국외자산)',
     formNo: '소득세법 시행규칙 [별지 제84호서식]',
     isReady: function(){ return !!((lastTransferResults_ && lastTransferResults_.length) || lastStockTransferResult_ || lastOverseasTransferResult_); },
-    title: '양도소득세 과세표준신고서', bodyFn: trPrintFormBodyHtml_,
+    title: '양도소득세 과세표준신고서', // [2026.10.20] 옛 모양 bodyFn 없음 — 서식표 줄은 모두 원본 모양(📄)
     efileAction: 'check-tr-efile', efileResultId: 'taxCalcTrEfileResult', efileLabel: '전자신고파일 작성하기(홈택스)',
     subForms: [
       { formNo: '소득세법 시행규칙 [별지 제84호서식]', title: '양도소득세 과세표준신고 및 납부계산서', section: 'required' },
@@ -13725,7 +13673,7 @@ const PRINT_REGISTRY_ = [
 // [2026.10.20 옛인쇄정리] 세무사님 말씀(원문): "현재 시스템의 서식인쇄기능을 보면 법정서식 인쇄라고 하면서 실제로 인쇄된 파일을 보면
 //  법정서식대로 인쇄되지 않고 있더라" → 원본 모양(app/formprint — 법제처 PDF 위에 값을 찍음)이 있는 서식은 그 줄의 "준비됨"을
 //  원본 모양 모듈(NxFormPrint.officialFor/officialReady)로 정하고, 단추도 📄 원본 모양이다. 옛 모양(HTML 흉내) bodyFn은
-//  원본 모양이 없는 서식(또는 원본 모양이 아직 못 찍는 경우 — 주식등·국외자산 84호 요약 등)의 쪽만 만든다. 그 쪽은
+//  원본 모양이 없는 서식(또는 원본 모양이 아직 못 찍는 경우 — 국외전출자 84호 등)의 쪽만 만든다. 그 쪽은
 //  "pf-page" 단위로 쪼개 "pf-formno"로 아직 준비 안 된 같은 서식번호 줄에 넣고, 맞는 줄이 없으면 줄을 더한다(self-healing).
 //  모듈을 아직 못 불러왔으면(fp 없음) 원본 모양 줄은 준비 안 됨으로 둔다 — renderPrintPane이 불러온 뒤 다시 그린다.
 function tcFormPrintLoaded_(){ const FP = window.NxFormPrint; return (FP && FP.mappers && FP.officialFor) ? FP : null; }
@@ -13764,7 +13712,7 @@ function printExtractPages_(item, fp){
     if (!match && pageTitle.indexOf(' — ') < 0 && rows.some(function(r){ return r.formNo === foundFormNo && r.official && r.ready; })) return;
     if (match){
       match.html = pageHtml; match.ready = true; match.official = false;
-      if (pageTitle && pageTitle.indexOf(' — ') >= 0) match.title = pageTitle; // "… — 주식등"처럼 갈래가 붙은 쪽은 그 이름으로
+      if (pageTitle && pageTitle.indexOf(' — ') >= 0) match.title = pageTitle; // "… — 갈래"처럼 갈래가 붙은 쪽은 그 이름으로
     } else {
       // 카탈로그에 없던 쪽이거나 같은 서식번호 줄이 이미 원본 모양으로 준비된 경우(예: 부동산 84호는 원본 모양, 주식등 84호 요약은 옛 모양)
       rows.push({ formNo: foundFormNo, title: pageTitle || item.label, html: pageHtml, section: foundFormNo === itemFormNo ? 'required' : 'optional', ready: true, official: false, sourceKey: item.key });

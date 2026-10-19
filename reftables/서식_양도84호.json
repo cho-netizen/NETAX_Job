@@ -249,7 +249,7 @@
     "부동산 본표: 계산기에 없음(전자신고 12번 0)"
    ],
    "조견표": [],
-   "인쇄": "주식 인쇄 trStockPrintPageHtml_ \"외국납부세액공제\"(지금 번호 ⑦)·국외 인쇄 trOverseasPrintPageHtml_(지금 번호 ⑥)",
+   "인쇄": "원본 모양(app/formprint/mappers.js 양도84호, 2026.10.20) — 국외자산은 국외분 소계·합계 열(calculateOverseasAssetTransferTaxMultiJS 외국납부세액공제), 주식등은 따로 한 장의 국내분 소계·합계 열(calculateStockTransferTaxJS 외국납부세액공제). 옛 흉내 인쇄(trStockPrintPageHtml_·trOverseasPrintPageHtml_)는 지움",
    "확인": "원문 대조됨(서식 그림·작성방법, 근거조문 법제처 DRF 원문(2026-10-19 시행 판) 조회로 조문 제목·내용 확인)"
   },
   {
