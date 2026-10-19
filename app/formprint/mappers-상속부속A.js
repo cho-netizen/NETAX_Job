@@ -270,6 +270,47 @@
     return o.result();
   };
 
+  // ───────── 상속 별지 제6호의2서식 — 동거주택상속공제신고서(법 §23의2, 시행령 §20의2) ─────────
+  //  값 출처: 지금 인쇄 ihAttachPrintPagesHtml_ [별지 제6호의2서식] 쪽(피상속인·상속개시일·신청인, 화면 ihCohabitValue·ihCohabitReq1~3, 결과 동거주택상속공제)
+  //   + 상속인 명부의 "동거주택 상속" 체크(isCohabitHouse)·그 사람 몫 가액(cohabitHouseValue − cohabitHouseDebt — 화면 ihCohabitValue는 이 합).
+  //  예전 인쇄와 다른 점: ① 신청인 = 명부에서 "동거주택 상속" 체크한 첫 사람(없으면 첫 행 — 예전은 늘 첫 행)
+  //   ② 화면 동거주택가액은 "요건 갖춘 상속인 몫의 합"이라 서식 ⑩(② × ⑨)에만 찍고 ② 주택 전체 가액은 비움(예전은 ②·⑩에 같은 값)
+  //   ③ 1세대 1주택 여부는 요건 체크 ihCohabitReq2 하나로(예전은 체크 셋이 모두 켜졌는지로)
+  mappers['상속6호의2'] = function (ctx) {
+    var o = new Out(), r = ctx.r || {}, dc = ctx.deceased || {}, x = ihxOf(ctx), co = x.cohabit || {}, heirs = ctx.heirs || [];
+    var coH = (co.heirs || []).filter(function (c) { return heirs[c.heirIdx]; });
+    o.need('1@피상속인성명', dc.name, '1.피상속인 성명').need('1@피상속인주민등록번호', dc.regNo, '1.피상속인 주민등록번호').need('1@상속개시일', dc.deathDate, '1.상속개시일');
+    var ap = coH.length ? heirs[coH[0].heirIdx] : firstHeir(ctx);
+    o.need('1@신청인성명', ap.name, '1.신청인(상속인) 성명').need('1@신청인주민등록번호', ap.regNo, '1.신청인(상속인) 주민등록번호').need('1@신청인주소', H.fullAddr(ap), '1.신청인(상속인) 주소');
+    if (!coH.length) o.note('⚠ 1. 신청인 = 상속인 명부 첫 행 — 명부에 "동거주택 상속" 체크한 사람이 없음');
+    o.miss('2.소재지·취득일 동거주택', '계산기에 없음');
+    o.miss('① 동거기간', '계산기에 없음(요건 체크 "10년 이상 동거" ' + (co.req1 === true ? '충족' : co.req1 === false ? '미충족' : '미확인') + '만 있음)');
+    o.miss('② 평가가액(주택가액 − 담보채무액)', '계산기에 없음 — 화면 동거주택가액은 요건 갖춘 상속인 몫의 합(⑩)이라 주택 전체 가액이 아님');
+    if (co.req2 === true) o.set('③', '해당'); else if (co.req2 === false) o.set('③', '해당안됨'); else o.miss('③ 10년 이상 계속 1세대 1주택 여부', '화면 요건 체크 없음');
+    o.miss('④ 예외유형', '계산기에 없음(시행령 §20의2① 각 호 — 일시적 2주택 등 선택 칸 없음)');
+    // 상속인 표 — 명부에서 "동거주택 상속" 체크한 사람
+    if (coH.length) {
+      o.set('상속인@성명', coH.map(function (c) { return heirs[c.heirIdx].name || ''; })).set('상속인@주민등록번호', coH.map(function (c) { return heirs[c.heirIdx].regNo || ''; }));
+      if (co.req1 === true) o.set('⑥', coH.map(function () { return '해당'; })); else o.miss('⑥ 10년 이상 동거(상속인별)', '화면 요건 체크 "10년 이상 동거"가 꺼져 있음');
+      if (co.req3 === true) o.set('⑦', coH.map(function () { return '해당'; })); else o.miss('⑦ 무주택자(상속인별)', '화면 요건 체크 "무주택자 등"이 꺼져 있음');
+      o.note('⑥·⑦ "해당" = 화면 요건 체크(전체 하나)가 켜져 있고 명부에서 "동거주택 상속"을 체크한 상속인 — 상속인별 판정 칸은 계산기에 없음');
+      o.note('상속인별 몫 가액(명부): ' + coH.map(function (c) { return (heirs[c.heirIdx].name || '') + ' ' + (n(c.value) - n(c.debt)) + '원'; }).join(', '));
+    } else o.miss('상속인 표 성명·주민등록번호·⑥⑦', '상속인 명부에 "동거주택 상속" 체크한 사람 없음');
+    o.miss('⑤⑧⑨ 동거주택지분·요건충족 지분·계', '계산기에 없음(지분 칸 없음 — 상속인별 몫 가액만 받음)');
+    var v = n(co.value), ded = n(r.동거주택상속공제);
+    if (v > 0) {
+      o.set('⑩', v).set('⑫', ded);
+      var sum = coH.reduce(function (s, c) { return s + Math.max(0, n(c.value) - n(c.debt)); }, 0);
+      if (coH.length) o.check('⑩ = 명부 "동거주택 상속" 상속인 몫(가액 − 담보채무) 합 = 화면 동거주택가액', v, sum);
+      var failed = (r.동거주택상속공제_미충족요건목록 || []).length > 0;
+      if (failed || ded === 0) o.note('⚠ ⑫ 0 — ' + (failed ? '요건 미충족(' + r.동거주택상속공제_미충족요건목록.join(', ') + ', 법 §23의2①)' : dc.resident === 'nonresident' ? '피상속인 비거주자(법 §23의2① "거주자의 사망")' : '엔진 공제 0'));
+      else if (String(dc.deathDate || '') >= '2020-01-01') o.check('⑫ = MIN(⑩, ⑪ 6억원)', ded, Math.min(v, 600000000));
+      else o.note('⚠ 상속개시일 ' + dc.deathDate + ' — 2020년 전 상속은 공제율·한도가 다름(엔진 ' + ded + '원, 서식 ⑪은 6억원 인쇄)');
+    } else o.miss('⑩⑫', '화면 동거주택가액 입력 없음');
+    signBlock(o, ctx, (ctx.reporter || {}).name);
+    return o.result();
+  };
+
   // ───────── 언제 찍나 ─────────
   var WHEN = {
     '상속1호': function (c) { var r = c.r || {}; return !!(r.가업상속공제_계산내역 && !r.가업상속납부유예_선택); },

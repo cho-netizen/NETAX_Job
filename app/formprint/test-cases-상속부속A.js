@@ -61,5 +61,13 @@ module.exports = function (E, H) {
   var cFin2 = ihCtx(Object.assign({}, pFin, { netFinancialAssets: 64000000 }));
   L.push({ name: '상속5호_한도2천만', forms: [{ formKey: '상속5호', ctx: cFin2 }], ctx: cFin2 });
 
+  // ④ 상속6호의2 — 동거주택상속공제: 명부 둘째 상속인(견본차남)이 "동거주택 상속", 몫 가액 7억5천만 − 담보채무 5천만 = 7억(화면 동거주택가액)
+  //   손계산: ⑫ = MIN(7억 × 100%, 6억) = 6억(법 §23의2①)
+  var coHeirs = [{ heirIdx: 1, value: 750000000, debt: 50000000 }];
+  var pCo = Object.assign({}, BASE, { taxableEstateAmount: 1500000000, cohabitingHouseValue: 700000000, hasCohabitingHouseDeduction: true,
+    tenYearCohabitationRequirementMet: true, tenYearOneHouseholdRequirementMet: true, noHouseOrJointHeirRequirementMet: true });
+  var cCo = ihCtx(pCo, null, coHeirs);
+  L.push({ name: '상속6호의2_동거주택상속공제', forms: X.plan('상속', cCo), ctx: cCo });
+
   return L;
 };
