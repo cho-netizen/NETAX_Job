@@ -5763,6 +5763,7 @@ function renderPropertyCardHtml_(idx, opts){
         '</div>' +
         '<div class="taxcalc-asset-head" data-show-if="pensionAccountContribution" style="display:none; margin-top:4px;"><b>연금계좌공제 — 위 납입액 입력시만 요건 확인</b></div>' +
         '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field" data-show-if="pensionAccountContribution" style="display:none;"><label>이미 낸 부동산·주택차액 연금 납입 누적액</label><input type="number" data-field="pensionPriorContribution" placeholder="원"><span class="taxcalc-field-help">서식 63호의32 ⑪ — 공제 대상은 1억원에서 이 금액을 뺀 남은 한도·납입액·양도차액(양도가액 − 취득가액) 중 적은 금액(소득령 §40의2②1호)</span></div>' +
           '<div class="taxcalc-field" data-show-if="pensionAccountContribution" style="display:none;"><label>연금계좌 납입일</label><input type="date" data-field="pensionContributionDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">양도일로부터 6개월 이내</span></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="pensionAccountContribution" style="display:none;"><input type="checkbox" data-field="isBasicPensionRecipient" id="pensionRecipient-' + idx + '"><label for="pensionRecipient-' + idx + '">양도 당시 기초연금 수급자</label></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="pensionAccountContribution" style="display:none;"><input type="checkbox" data-field="isOneHouseOrNoHouseHousehold" id="pensionOneHouse-' + idx + '"><label for="pensionOneHouse-' + idx + '">양도 당시 1주택 또는 무주택 세대구성원</label></div>' +
@@ -6676,7 +6677,7 @@ var TR_MONEY_FIELDS_TO_SCALE_ = [
   'donorAcquisitionPrice', 'donorNecessaryExpenses', 'doneeOwnAcquisitionPrice', 'doneeOwnNecessaryExpenses',
   'giftTaxPaid', 'giftTaxableValue', 'nhFiveYearMarkValue', 'nhAcquisitionStandardPrice', 'nhFiveYearStandardPrice',
   'nhTransferStandardPrice', 'uhFiveYearMarkValue', 'uhAcquisitionStandardPrice', 'uhFiveYearStandardPrice',
-  'uhTransferStandardPrice', 'pensionAccountContribution',
+  'uhTransferStandardPrice', 'pensionAccountContribution', 'pensionPriorContribution',
   // [2026.09.24 버그수정] 구조조정대상 부동산(rp, §43)·장기임대주택 §97의5(lr) 감면도 nh/uh와
   // 완전히 같은 fiveYearMarkGain() 근사식(절대금액－취득가액)을 쓰는데, 처음 목록을 만들 때
   // 이 두 세목의 절대금액 필드가 빠져 있었다 — 공동양도인 지분만큼 취득가액은 줄어드는데 이
@@ -6779,6 +6780,7 @@ function collectTransferInput(vals){
     registrationStandardPrice: numVal(vals.registrationStandardPrice) || 0,
     transferStandardPrice: numVal(vals.transferStandardPrice) || 0,
     pensionAccountContribution: numVal(vals.pensionAccountContribution) || 0,
+    pensionPriorContribution: numVal(vals.pensionPriorContribution) || 0, // [2026.10.19] 서식 63호의32 ⑪ 기납입액(누적 1억 한도)
     pensionContributionDate: vals.pensionContributionDate || '',
     isBasicPensionRecipient: !!vals.isBasicPensionRecipient,
     isOneHouseOrNoHouseHousehold: !!vals.isOneHouseOrNoHouseHousehold,
@@ -9932,11 +9934,18 @@ function trPensionAccountCreditPrintPageHtml_(asset){
       pfRow_(++n, '취득일', asset.acquisitionDate) +
       pfRow_(++n, '양도일', asset.transferDate) +
       pfRow_(++n, '납입일', asset.pensionContributionDate || '') +
-      pfRow_(++n, '연금계좌 납입금액', won(numVal(asset.pensionAccountContribution) || 0)) +
-      pfRow_(++n, '생애 납입 한도액', won(100000000)) +
-      pfRow_(++n, '공제율', '10%') +
+      // [2026.10.19 서식 감사] 서식 63호의32 칸대로 ⑩~⑰ — ⑮ = min(⑫, ⑬, ⑭), ⑰ = ⑮ × 10%(엔진 pensionCreditBase_와 같은 식; ⑭는 시행령 라목 '양도가액 − 취득가액')
+      (function(){
+        const paid = numVal(asset.pensionAccountContribution) || 0, prior = numVal(asset.pensionPriorContribution) || 0;
+        const remain = Math.max(0, 100000000 - prior);
+        const diff = Math.max(0, (numVal(asset.totalPrice) || numVal(asset.transferPrice) || 0) - (numVal(asset.acquisitionPrice) || 0));
+        const base = Math.min(remain, paid, diff);
+        return pfRow_(10, '연금계좌 납입 한도액', won(100000000)) + pfRow_(11, '기납입액', won(prior)) + pfRow_(12, '잔여 납입한도(⑩ − ⑪)', won(remain)) +
+          pfRow_(13, '납입금액', won(paid)) + pfRow_(14, '양도차액(양도가액 − 취득가액)', won(diff)) + pfRow_(15, '공제대상 금액(⑫·⑬·⑭ 중 적은 금액)', won(base)) +
+          pfRow_(16, '공제율', '10%') + pfRow_(17, '공제세액(⑮ × ⑯, 산출세액 한도)', won(Math.round(base * 0.1)));
+      })() +
     '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다(조특법 시행령§99의14②) — 연금계좌 소유자·은행·계좌번호 등 연금계좌정보는 직접 보완하세요. 첨부서류: 납입확인서(소득세법 시행규칙 별지 제38호의2서식).</div>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다(조특법 시행령§99의13②) — 연금계좌 소유자·은행·계좌번호 등 연금계좌정보는 직접 보완하세요. 첨부서류: 납입확인서(소득세법 시행규칙 별지 제38호의2서식).</div>' +
   '</div>';
 }
 // [2026.10.06 버그수정, 재검토108] trAttach1PrintPageHtml_ 체인에 걸어뒀더니 국외자산은
