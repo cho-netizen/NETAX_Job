@@ -4600,6 +4600,12 @@
       };
     }
 
+    // [2026.10.20 세액 고침 — 증여 감사 B, 서식 10호의4 본표 ⑳·부표1 다.㉒·부표3 ㉑·㉙] 30% 과세요건은 지배주주·친족 합계 비율(shareRatio)로 보고,
+    //  한 수증자의 증여의제이익은 그 수증자 본인의 직접 + 간접 주식보유비율로 계산한다(부표1 다.는 사람마다 ⑳+㉑=㉒, 계 줄로 30% 판정; 신고서는 수증자마다).
+    //  예전엔 합계 비율로 한 번에 계산해, 수증자가 여럿이면 각자 신고서에 모두의 몫이 들어가 누진세율로 세액이 커졌다. doneeOwnershipRatio가 없으면 합계 비율(경고).
+    const doneeRatioIn_ = Number(p.doneeOwnershipRatio);
+    const calcRatio_ = doneeRatioIn_ > 0 ? Math.min(doneeRatioIn_, shareRatio) : shareRatio;
+    const ratioNote_ = doneeRatioIn_ > 0 ? '' : '⚠ 수증자 본인 주식보유비율을 넣지 않아 지배주주·친족 합계 비율(' + shareRatio + '%)로 계산했습니다 — 수증자가 여럿이면 각자의 직접+간접 비율로 따로 계산하세요(서식 10호의4 본표 ⑳·부표1 다.㉒). ';
     let deemedGiftProfit;
     // 시행령§34의4⑤ — 개시사업연도분(§45의4①)도 정산분(⑥, §45의4③)과 별개로 "지배주주등이 배당받은
     // 소득이 있는 경우... 금액을 증여의제이익에서 공제(공제 후의 금액이 음수인 경우에는 영으로 본다)"가
@@ -4607,9 +4613,9 @@
     const dividendDeduction = Number(p.dividendDeduction) || 0;
     if (phase === 'initial') {
       const monthsInInitialYear = Number(p.monthsInInitialYear) || 12;
-      deemedGiftProfit = Math.max(0, Math.round(Math.max(0, (profitFromOpportunity * (shareRatio / 100) - corporateTaxPortion) / monthsInInitialYear * 12) * 3) - dividendDeduction);
+      deemedGiftProfit = Math.max(0, Math.round(Math.max(0, (profitFromOpportunity * (calcRatio_ / 100) - corporateTaxPortion) / monthsInInitialYear * 12) * 3) - dividendDeduction);
     } else {
-      deemedGiftProfit = Math.max(0, Math.round(profitFromOpportunity * (shareRatio / 100) - corporateTaxPortion) - dividendDeduction);
+      deemedGiftProfit = Math.max(0, Math.round(profitFromOpportunity * (calcRatio_ / 100) - corporateTaxPortion) - dividendDeduction);
     }
 
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
@@ -4629,7 +4635,8 @@
       과세표준: r.taxBase, 산출세액: r.calculatedTax, 개시사업연도_산출세액: initialPhaseCalculatedTax, 신고세액공제: r.reportCredit,
       무신고가산세: r.penalties.unreportedPenalty, 과소신고가산세: r.penalties.underreportedPenalty, 납부지연가산세: r.penalties.latePenalty,
       환급세액: refundTax,
-      안내: (phase === 'initial'
+      계산에쓴_주식보유비율: calcRatio_,
+      안내: ratioNote_ + (phase === 'initial'
         ? '개시사업연도 신고는 잠정치입니다 — 2년 경과 후 정산사업연도에 재계산·정산신고해야 합니다. '
         : '') + '증여재산공제는 적용되지 않습니다(증여의제이익 전액이 과세표준). 지배주주 판정은 다자간 지분구조 확인이 필요해 이 도구가 자동판정하지 않으니 별도로 확인하세요. 법인세 납부세액 중 상당액은 corporateTaxAfterCredit·corporateTaxableIncome을 넣으면 시행령§34의4④ 산식대로 자동계산되니(수혜법인의 실제 법인세 신고서상 값을 정확히 넣었는지만 확인하면 됩니다), corporateTaxPortion을 직접 계산해서 넣을 필요는 없습니다.',
       납부세액: r.finalTax

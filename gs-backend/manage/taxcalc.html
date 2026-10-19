@@ -11594,6 +11594,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>사업기회로 인한 수혜법인 이익</label><input type="number" id="jtProfit" placeholder="원"><span class="taxcalc-field-help">개시: 해당연도분 / 정산: 누적 합계</span></div>' +
         '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-jt-segment-helper">🧮 부문별 매출·비용 내역으로 계산(3개년)</button></div>' +
         '<div class="taxcalc-field"><label>지배주주+친족 주식보유비율</label><input type="number" step="0.01" id="jtShareRatio" placeholder="%"><span class="taxcalc-field-help">30% 이상이어야 과세</span></div>' +
+        '<div class="taxcalc-field"><label>수증자 본인 주식보유비율(직접+간접)</label><input type="number" step="0.01" id="jtDoneeRatio" placeholder="%"><span class="taxcalc-field-help">증여의제이익은 이 비율로(서식 본표 ⑳·부표1 다.㉒) — 수증자마다 따로 계산</span></div>' +
         '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-shareholding-helper" data-target="jt">🧮 주주별 직접·간접보유 내역으로 계산</button></div>' +
         '<div class="taxcalc-field"><label>법인세 납부세액 중 상당액</label><input type="number" id="jtCorporateTax" placeholder="원"><span class="taxcalc-field-help">직접 입력시 아래 자동계산값보다 우선 — 개시: 해당연도분 / 정산: 누적 합계, 비우면 자동계산</span></div>' +
         '<div class="taxcalc-field"><label>수혜법인의 법인세 산출세액(공제·감면 차감후)</label><input type="number" id="jtCorpTaxAfterCredit" placeholder="원"><span class="taxcalc-field-help">법인세 납부세액 중 상당액 자동계산용</span></div>' +
@@ -15931,6 +15932,7 @@ function handleTaxCalcClick_(e){
       phase: document.getElementById('jtPhase').value,
       profitFromOpportunity: numVal(document.getElementById('jtProfit').value) || 0,
       shareholderOwnershipRatio: numVal(document.getElementById('jtShareRatio').value) || 0,
+      doneeOwnershipRatio: numVal((document.getElementById('jtDoneeRatio') || {}).value) || 0, // [2026.10.20] 수증자 본인 비율
       corporateTaxPortion: numVal(document.getElementById('jtCorporateTax').value) || 0,
       corporateTaxAfterCredit: numVal(document.getElementById('jtCorpTaxAfterCredit').value) || 0,
       corporateTaxableIncome: numVal(document.getElementById('jtCorpTaxableIncome').value) || 0,

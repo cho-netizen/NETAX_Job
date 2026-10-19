@@ -1284,6 +1284,7 @@ const DRIVE_TOOLS = [
         isOffshoreTransaction: { type: 'boolean', description: '국세기본법§47의2·§47의3의 역외거래 부정행위(무신고·과소신고)에 해당하는지 — true면 가산세율이 40%(국내)가 아니라 60%로 적용된다.' },
         phase: { type: 'string', enum: ['initial', 'settlement'], description: 'initial=개시사업연도(사업기회를 제공받은 날이 속하는 사업연도 종료일 이후 신고), settlement=정산사업연도(사업기회제공일로부터 2년이 경과한 날이 속하는 사업연도 종료일 이후 신고, 반드시 필요).' },
         profitFromOpportunity: { type: 'number', description: 'initial이면 제공받은 사업기회로 인하여 발생한 개시사업연도 수혜법인의 이익(원), settlement이면 개시사업연도부터 정산사업연도까지 발생한 수혜법인의 이익 합계액(원).' },
+        doneeOwnershipRatio: { type: 'number', description: '[2026.10.20] 수증자 본인의 수혜법인 직접+간접 주식보유비율(%) — 증여의제이익은 이 비율로 계산(서식 10호의4 본표 ⑳·부표1 다.㉒). 없으면 합계 비율.' },
         shareholderOwnershipRatio: { type: 'number', description: '지배주주와 그 친족의 수혜법인에 대한 직·간접 주식보유비율(%, 0~100). 30% 이상이어야 과세대상이다.' },
         corporateTaxPortion: { type: 'number', description: 'initial이면 개시사업연도분의 법인세 납부세액 중 상당액(원), settlement이면 개시사업연도부터 정산사업연도분까지의 법인세 납부세액 중 상당액 합계(원). 생략하면 corporateTaxAfterCredit·corporateTaxableIncome으로 자동계산한다(시행령§34의4④).' },
         corporateTaxAfterCredit: { type: 'number', description: 'corporateTaxPortion 자동계산용 — 수혜법인의 해당 사업연도 법인세 산출세액(법인세법§55, 토지등양도소득에 대한 법인세 제외)에서 공제·감면세액을 뺀 금액(원). corporateTaxPortion을 직접 입력하면 이 값은 무시된다.' },

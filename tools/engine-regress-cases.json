@@ -2563,5 +2563,21 @@
    "과세표준": 7500000,
    "산출세액": 450000
   }
+ },
+ {
+  "이름": "[세액 고침 — 증여 감사 B, 서식 10호의4 본표 ⑳·부표1 다.㉒·부표3 ㉙] 일감떼어주기 정산 — 이익 10억, 지배주주·친족 합계 40%(과세요건), 수증자 A 본인 20%: 증여의제이익 2억, 산출 3,000만(예전 합계 비율로 4억·7,000만)",
+  "도구": "calculateBusinessOpportunityGiftTaxJS",
+  "고정": true,
+  "입력": {
+   "phase": "settlement",
+   "profitFromOpportunity": 1000000000,
+   "shareholderOwnershipRatio": 40,
+   "doneeOwnershipRatio": 20,
+   "corporateTaxPortion": 0
+  },
+  "정답": {
+   "증여의제이익": 200000000,
+   "산출세액": 30000000
+  }
  }
 ]
