@@ -2653,6 +2653,42 @@ function openFairMarketValueRecognitionModal_(onApplyAppraisal){
 // 취득당시/양도당시 기준시가"(순수 숫자 입력칸, transferStandardPriceForConversion 등) 2곳만은
 // 인라인 계산이 없어서 그 계산기의 "적용" 기능이 유일한 통로였다. 탭 자체는 삭제하고, 그 2곳
 // 바로 옆에 이 모달(같은 계산 엔진)을 붙여 "필요한 곳에서 바로 계산+적용"으로 대체한다.
+// [2026.10.20 J30] 최초 고시·공시 전에 취득한 자산의 취득 당시 기준시가 — 소득세법 시행령 §164⑤(건물)·⑥(오피스텔·상업용·국세청 공동주택)·⑦(개별·공동주택)
+//  엔진 calculatePreNoticeStandardPriceJS로 계산해 '취득 당시 기준시가' 칸에 넣는다.
+function openPreNoticeStdHelper_(onApply){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.display = 'flex';
+  const f = function(id, label, help){ return '<div class="taxcalc-field"><label>' + label + '</label><input type="number" id="' + id + '" placeholder="원">' + (help ? '<span class="taxcalc-field-help">' + help + '</span>' : '') + '</div>'; };
+  overlay.innerHTML =
+    '<div class="modal-panel" style="width:min(560px, 94vw);">' +
+      '<div class="modal-head"><span>취득 당시 기준시가 환산(소득세법 시행령 §164)</span><span class="modal-close" id="btnClosePns">✕</span></div>' +
+      '<div class="modal-body"><div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>자산 종류</label><select id="pnsKind"><option value="house">개별·공동주택(§164⑦)</option><option value="officetel">오피스텔·상업용 건물·국세청 고시 공동주택(§164⑥)</option><option value="building">그 밖의 건물(§164⑤)</option></select></div>' +
+        f('pnsFirst', '최초로 고시·공시된 기준시가(주택가격)', '그 자산에 처음 고시·공시된 값') +
+        f('pnsAcqLand', '취득 당시 토지 기준시가', '개별공시지가 × 면적(§164⑤⑥⑦ — 건물이면 비움)') +
+        f('pnsAcqBldg', '취득 당시 건물 기준시가', '국세청 건물 기준시가(조견표 2부-08)') +
+        f('pnsFirstLand', '최초 고시(공시) 당시 토지 기준시가', '') +
+        f('pnsFirstBldg', '최초 고시(공시) 당시 건물 기준시가', '') +
+        '<div class="taxcalc-field"><label>국세청 기준율(§164⑤ 건물만)</label><input type="number" id="pnsRate" step="0.001" placeholder="예: 0.973"><span class="taxcalc-field-help">취득·신축연도·구조별 — 조견표 2부-08 기준율 표</span></div>' +
+      '</div><div id="pnsOut" class="taxcalc-result-note" style="margin:8px 0;"></div>' +
+      '<button type="button" class="taxcalc-ai-btn" id="pnsApply">계산해 취득 당시 기준시가에 넣기</button></div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  function close(){ overlay.remove(); }
+  overlay.querySelector('#btnClosePns').onclick = close;
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+  overlay.querySelector('#pnsApply').onclick = function(){
+    const v = function(id){ return numVal(overlay.querySelector('#' + id).value) || 0; };
+    const r = calculatePreNoticeStandardPriceJS({ kind: overlay.querySelector('#pnsKind').value, firstNoticePrice: v('pnsFirst'), acqLandStd: v('pnsAcqLand'), acqBuildingStd: v('pnsAcqBldg'),
+      firstLandStd: v('pnsFirstLand'), firstBuildingStd: v('pnsFirstBldg'), baseRate: Number(overlay.querySelector('#pnsRate').value) || 0 });
+    const out = overlay.querySelector('#pnsOut');
+    if (r.error){ out.textContent = '⚠ ' + r.error; return; }
+    out.textContent = r.산식 + ' = ' + r.취득당시_기준시가.toLocaleString('ko-KR') + '원';
+    onApply(r.취득당시_기준시가);
+    setTimeout(close, 600);
+  };
+}
 function openBuildingStandardPriceModal_(onApply){
   let rows = [{}];
   let multi = false;
@@ -5976,8 +6012,8 @@ function renderPropertyCardHtml_(idx, opts){
         // 자체는 그대로 두고 표시·라벨만 정리.
         '<div class="taxcalc-asset-head" style="margin-top:8px;"><b>§97의5 해당시만 — 과세표준 계산용 기준시가</b></div>' +
         '<div class="taxcalc-grid">' +
-          '<div class="taxcalc-field" data-show-if="longTermRentalHouseProvision" style="display:none;"><label>등록일 현재 평가액</label><input type="number" data-field="lrRegistrationValue" placeholder="원"><span class="taxcalc-field-help">참고용 근사(법령 산식 아님) — 아래 기준시가가 없을 때만 사용</span></div>' +
-          '<div class="taxcalc-field" data-show-if="longTermRentalHouseProvision" style="display:none;"><label>취득 당시 기준시가</label><input type="number" data-field="lrAcquisitionStandardPrice" placeholder="원"></div>' +
+          // [2026.10.20 J30] '등록일 현재 평가액' 근사는 없앰(조특법 시행령 §97의5②는 기준시가 산식만) — 기준시가가 없으면 계산이 멈추고 안내, 고시 전 취득은 §164 환산 도우미
+          '<div class="taxcalc-field" data-show-if="longTermRentalHouseProvision" style="display:none;"><label>취득 당시 기준시가</label><input type="number" data-field="lrAcquisitionStandardPrice" placeholder="원"><span class="taxcalc-field-help">최초 고시·공시 전 취득이면 <button type="button" class="taxcalc-ai-btn" data-action="open-prenotice-std-helper" data-idx="' + idx + '">§164 환산 도우미</button></span></div>' +
           // [2026.10.19 서식 감사] 시행령 §97의5② — 감면소득 = 양도소득금액 × (임대기간 마지막 날 − 취득 당시) ÷ (양도 당시 − 취득 당시) 기준시가
           '<div class="taxcalc-field" data-show-if="longTermRentalHouseProvision" style="display:none;"><label>임대기간 마지막 날 기준시가</label><input type="number" data-field="lrRentalEndStandardPrice" placeholder="원"><span class="taxcalc-field-help">시행령 §97의5② — 양도일까지 계속 임대했으면 비우고 아래 체크</span></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="longTermRentalHouseProvision" style="display:none;"><input type="checkbox" data-field="lrRentedUntilTransfer" id="lrUntil-' + idx + '"><label for="lrUntil-' + idx + '">양도일까지 계속 임대(임대 마지막 날 기준시가 = 양도 당시 기준시가)</label></div>' +
@@ -16639,6 +16675,9 @@ function handleTaxCalcClick_(e){
       transferAssets[idx].transferStandardPriceForConversion = value;
       renderTransferPane();
     });
+  } else if (action === 'open-prenotice-std-helper'){
+    const idx = numVal(btn.dataset.idx);
+    openPreNoticeStdHelper_(function(value){ transferAssets[idx].lrAcquisitionStandardPrice = value; renderTransferPane(); });
   } else if (action === 'open-one-house-special-modal'){
     openOneHouseSpecialCaseModal_(numVal(btn.dataset.idx));
   } else if (action === 'open-non-business-land-modal'){
