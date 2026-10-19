@@ -50,6 +50,11 @@ const cdata = s => String(s || '').replace(/<!\[CDATA\[|\]\]>/g, '');
 const tag = (s, t) => { const m = s.match(new RegExp('<' + t + '(?:\\s[^>]*)?>([^]*?)</' + t + '>')); return m ? cdata(m[1]).trim() : ''; };
 const tagsAll = (s, t) => [...s.matchAll(new RegExp('<' + t + '(?:\\s[^>]*)?>([^]*?)</' + t + '>', 'g'))].map(m => m[1]);
 
+// [2026.10.20] 드라이브(J:)가 잠깐 사라지면(구글 드라이브 데스크톱이 다시 켜질 때 1분쯤) 붙을 때까지 5초마다 확인, 10분 넘으면 멈춤
+async function driveOk() {
+  for (let i = 0; i < 120; i++) { if (fs.existsSync(OUT)) { if (i) console.error('드라이브 다시 붙음 — ' + (i * 5) + '초 기다림'); return; } await new Promise(r => setTimeout(r, 5000)); }
+  throw new Error('드라이브(' + OUT + ')가 10분 넘게 없음 — 멈춤');
+}
 async function get(url) {
   for (let i = 0; i < 3; i++) {
     try { const r = await fetch(url); if (r.ok) return await r.text(); } catch (e) { }
@@ -327,6 +332,7 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
     if (HIST && scope === '정비') { try { hist = (await history(name, HIST)).filter(h => h.시행일 < v.현행.시행일 && !v.예정.some(e => e.시행일 === h.시행일)); } catch (e) { report.push(name + ' 연혁 목록 실패: ' + e.message); } }
     let curXml = null;
     for (const [ver, 상태] of [[v.현행, '현행']].concat(v.예정.map(x => [x, '시행예정'])).concat(hist.map(x => [x, '옛판']))) {
+      await driveOk(); // [2026.10.20] J: 일시 단절(구글 드라이브 다시 켜짐) 대비 — 붙을 때까지 기다림
       const vk = ver.시행일 + '_' + ver.공포번호;
       const file = path.join(OUT, '_본문', k, vk + '.json.gz');
       let arts;
@@ -424,7 +430,7 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
   }
   console.log('감시목록_법령', watch.length, '· 그림목록', pics.length, '(글자상자 없음 ' + pics.filter(p => !p.글자상자).length + ')');
   if (!DRY) {
-    fs.mkdirSync(path.dirname(idxPath), { recursive: true }); fs.writeFileSync(idxPath, JSON.stringify(idx, null, 1));
+    await driveOk(); fs.mkdirSync(path.dirname(idxPath), { recursive: true }); fs.writeFileSync(idxPath, JSON.stringify(idx, null, 1));
     fs.mkdirSync(path.dirname(corrPath), { recursive: true }); fs.writeFileSync(corrPath, JSON.stringify(corrDoc, null, 1));
   }
   report.forEach(r => console.log(r));
