@@ -8507,6 +8507,7 @@ function renderSpecialRateGiftResult(r){
   html += taxCalcResultRow('세율', r.세율);
   html += taxCalcResultRow('산출세액', won(r.산출세액));
   if (r.납부세액공제) html += taxCalcResultRow('납부세액공제(앞선 특례분 세액, §58)', '-' + won(r.납부세액공제));
+  if (r.납부세액공제_안내) html += '<div class="taxcalc-result-note">' + escapeHtml(r.납부세액공제_안내) + '</div>'; // [2026.10.20 J25]
   if (r.외국납부세액공제) html += taxCalcResultRow('외국납부세액공제(§59)', '-' + won(r.외국납부세액공제));
   if (r.무신고가산세) html += taxCalcResultRow('무신고가산세', '+' + won(r.무신고가산세));
   if (r.과소신고가산세) html += taxCalcResultRow('과소신고가산세', '+' + won(r.과소신고가산세));
@@ -12338,7 +12339,9 @@ function renderGiftPane(){
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="srDisasterLoss" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="srAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="srAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">500만원 한도</span></div>' +
-        '<div class="taxcalc-field"><label>이전 특례증여분 기납부세액(조특법§30의5①후단)</label><input type="number" id="srPriorPaidTax" placeholder="원"><span class="taxcalc-field-help">같은 특례를 2회 이상 받은 경우 그 이전분에 낸 산출세액 — 서식 ㉙ 납부세액공제(앞선 분은 위 칸으로 과세가액에 합산)</span></div>' +
+        '<div class="taxcalc-field"><label>앞선 특례 증여분의 당시 산출세액(조특법§30의5①후단)</label><input type="number" id="srPriorPaidTax" placeholder="원"><span class="taxcalc-field-help">같은 특례를 2회 이상 받은 경우 앞선 분 신고서의 산출세액(상증법 §58① — 납부세액 아님) — 서식 ㉙ 납부세액공제(앞선 분은 위 칸으로 과세가액에 합산)</span></div>' +
+        // [2026.10.20 J25] 상증법 §58② 비율 한도용 — 비우면 산출세액 한도로만 계산
+        '<div class="taxcalc-field"><label>앞선 특례 증여 당시 과세표준(선택)</label><input type="number" id="srPriorSpecialTaxBase" placeholder="원"><span class="taxcalc-field-help">앞선 분 신고서(10호의2) ㉕ — 넣으면 ㉙ = min(위 산출세액, 이번 ㉗ × 이 값 ÷ 이번 ㉕)(상증법 §58②). 앞선 증여가 지금과 다른 세율·공제로 과세됐을 때만 결과가 달라짐</span></div>' +
         '<div class="taxcalc-field"><label>외국납부세액공제(§59)</label><input type="number" id="srForeignTax" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>신고 상태</label><select id="srFilingStatus">' +
           '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
@@ -16985,6 +16988,7 @@ function handleTaxCalcClick_(e){
       disasterLossAmount: numVal(document.getElementById('srDisasterLoss').value) || 0,
       appraisalFeeAmount: numVal(document.getElementById('srAppraisalFee').value) || 0,
       priorPaidTax: numVal(document.getElementById('srPriorPaidTax').value) || 0,
+      priorSpecialTaxBase: numVal((document.getElementById('srPriorSpecialTaxBase') || {}).value) || 0, // [2026.10.20 J25]
       foreignTaxPaidAmount: numVal(document.getElementById('srForeignTax').value) || 0,
       filingStatus: document.getElementById('srFilingStatus').value,
       isFraudulent: document.getElementById('srFraudulent').checked,

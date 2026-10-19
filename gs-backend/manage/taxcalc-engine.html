@@ -3796,7 +3796,8 @@
     //  내고, 앞선 분에 낸 세액은 ㉙(납부세액공제)로 뺀다(조특법 §30의5① 후단 "각각의 증여세 과세가액을 합산하여
     //  적용", §30의6⑤→§30의5⑬→상증법 §47②·§58). 전에는 이번 분만으로 과세표준을 내면서 공제(5억·10억)를 또 하고
     //  앞선 세액까지 빼서 두 번째 이후 특례 증여 세액이 적게 나왔다(예: 창업자금 앞선 10억·이번 10억 → 0원, 바른 값 1억).
-    //  §58② 비율 한도는 앞선 특례분 과세표준 입력이 없어 산출세액 한도로만 둔다(10% 단일세율 구간이면 결과 같음).
+    //  [2026.10.20 J25] §58② 비율 한도 — 앞선 특례 증여 당시 과세표준(priorSpecialTaxBase, 당시 10호의2 ㉕)을 넣으면
+    //  ㉙ = min(앞선 분 당시 산출세액, ㉗ × 앞선 과세표준 ÷ ㉕). 비우면 산출세액 한도로만 두고, 앞선 세액이 있으면 확인 안내.
     const cumulativeSpecialBase = specialRateApplicableAmount + priorSpecialGiftAmount;
     const propertyDeductionLimit = specialType === 'startup' ? 500000000 : 1000000000;
     const propertyDeduction = Math.min(propertyDeductionLimit, cumulativeSpecialBase);
@@ -3808,7 +3809,17 @@
       ? Math.round(taxBase * 0.10)
       : Math.round(Math.min(taxBase, 12000000000) * 0.10 + Math.max(0, taxBase - 12000000000) * 0.20);
 
-    const priorPaidTax = Math.min(Number(p.priorPaidTax) || 0, calculatedTax);
+    // [2026.10.20 J25] 상증법 §58① 공제액 = 앞선 특례 증여분의 '증여 당시 산출세액'(조특법 §30의5⑬·§30의6⑤가 상증법을 따름),
+    //  §58② 한도 = 이번 산출세액 × (가산한 증여재산의 과세표준 ÷ 합친 과세표준). 예: 앞선 분이 옛 공제·세율로 과세돼 당시 산출세액 6천만,
+    //  당시 과세표준 5억, 이번 합산 과세표준 15억·산출세액 1.5억이면 한도 = 1.5억 × 5억 ÷ 15억 = 5천만 → ㉙ 5천만.
+    const priorSpecialTaxBase = Number(p.priorSpecialTaxBase) || 0;
+    const priorPaidInput_ = Number(p.priorPaidTax) || 0;
+    const priorRatioLimit_ = (priorSpecialTaxBase > 0 && taxBase > 0) ? Math.round(calculatedTax * Math.min(1, priorSpecialTaxBase / taxBase)) : null;
+    const priorPaidTax = Math.min(priorPaidInput_, calculatedTax, priorRatioLimit_ == null ? Infinity : priorRatioLimit_);
+    const c_ = function (n) { return Number(n).toLocaleString('ko-KR'); };
+    const priorCreditNote_ = priorPaidInput_ <= 0 ? '' : (priorRatioLimit_ == null
+      ? '납부세액공제(㉙) — 앞선 특례 증여 당시 과세표준을 넣지 않아 상증법 §58② 비율 한도를 확인하지 않았습니다. 앞선 증여가 지금과 다른 세율·공제로 과세됐다면 그 과세표준을 넣으세요(같은 세율·공제면 결과 같음).'
+      : ('납부세액공제(㉙) = min(앞선 분 당시 산출세액 ' + c_(priorPaidInput_) + '원, 상증법 §58② 한도 ' + c_(calculatedTax) + ' × ' + c_(priorSpecialTaxBase) + ' ÷ ' + c_(taxBase) + ' = ' + c_(priorRatioLimit_) + '원) = ' + c_(priorPaidTax) + '원'));
     // §59·시행령§48(§21 준용) — 외국납부세액공제 = 증여세산출세액×(외국법령에 따라 증여세가 부과된
     // 증여재산의 과세표준÷법§55①에 따른 증여세의 과세표준), 실제 납부한 외국증여세액 한도.
     // foreignGiftTaxBase를 입력하면 이 비례산식으로 자동계산하고, 없으면(구버전 호환) 실제 납부액을
@@ -3835,6 +3846,7 @@
       증여재산공제: propertyDeduction, 재해손실공제: disasterLossDeduction, 감정평가수수료공제: appraisalFeeDeduction,
       과세표준: taxBase, 세율: specialType === 'startup' ? '10%' : '10%(120억 초과분 20%)', 산출세액: calculatedTax,
       납부세액공제: priorPaidTax, 외국납부세액공제: foreignTaxCredit,
+      납부세액공제_한도: priorRatioLimit_, 납부세액공제_안내: priorCreditNote_ || undefined, // [2026.10.20 J25] §58②
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       창업자금사용명세미제출가산세: usageStatementPenalty,
       납부세액: finalTax

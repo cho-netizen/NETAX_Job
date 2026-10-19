@@ -802,5 +802,42 @@
   "정답": {
    "취득당시_기준시가": 77840000
   }
+ },
+ {
+  "이름": "[J25] 창업자금 두 번째 특례 증여 — 앞선 분 옛 과세로 당시 산출세액 6천만·당시 과세표준 5억 → §58② 한도 1.5억×5억÷15억 = 5천만",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "입력": {
+   "specialType": "startup",
+   "giftAmount": 1000000000,
+   "priorSpecialGiftAmount": 1000000000,
+   "priorPaidTax": 60000000,
+   "priorSpecialTaxBase": 500000000
+  },
+  "정답": {
+   "과세표준": 1500000000,
+   "산출세액": 150000000,
+   "납부세액공제": 50000000,
+   "납부세액공제_한도": 50000000,
+   "납부세액": 100000000
+  }
+ },
+ {
+  "이름": "[J25] 가업승계 두 번째 특례 증여 — 당시 과세표준 40억 → §58② 한도 16억×40억÷140억 = 457,142,857 > 앞선 세액 4억(한도 안 걸림)",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "입력": {
+   "specialType": "business_succession",
+   "giftAmount": 10000000000,
+   "priorSpecialGiftAmount": 5000000000,
+   "priorPaidTax": 400000000,
+   "priorSpecialTaxBase": 4000000000,
+   "businessOwnershipYearsOfParent": 15
+  },
+  "정답": {
+   "과세표준": 14000000000,
+   "산출세액": 1600000000,
+   "납부세액공제": 400000000,
+   "납부세액공제_한도": 457142857,
+   "납부세액": 1200000000
+  }
  }
 ]
