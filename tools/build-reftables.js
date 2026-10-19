@@ -10,6 +10,9 @@ const ROOT = path.join(__dirname, '..');
 const DIR = path.join(ROOT, 'reftables');
 const PAGE = path.join(ROOT, 'gs-backend', 'manage', 'lawsearch.html');
 const B = '/*@@REF_DATA_BEGIN@@*/', E = '/*@@REF_DATA_END@@*/';
+// [2026.10.19 서버 용량] 서버(GAS)는 10MB 한도라 화면 자료(약 1MB)를 gs-backend/manage/lawsearch.html에 넣지 않는다.
+//  lawsearch.html 자리 표시엔 빈 값만 두고, build-app.js가 app/index.html(job.netax.kr/app)을 만들 때 refBlock(collect())로 끼운다.
+function collect() {
 const tables = [], forms = {};
 fs.readdirSync(DIR).filter((f) => /\.json$/.test(f)).sort().forEach((f) => {
   const j = JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8'));
@@ -23,10 +26,17 @@ fs.readdirSync(DIR).filter((f) => /\.json$/.test(f)).sort().forEach((f) => {
   }
 });
 tables.sort((a, b) => a.번호.localeCompare(b.번호, 'ko', { numeric: true }));
+return { tables, forms };
+}
+// 화면 자료 묶음(BEGIN 자리 표시부터 END 바로 앞까지)
+function refBlock(data) { return B + '\n  var LSI_FORM_MAPS_ = ' + JSON.stringify(data.forms) + ';\n  var LSI_REF_TABLES_ = ' + JSON.stringify(data.tables) + ';\n  '; }
+module.exports = { collect, refBlock, B, E };
+if (require.main === module) {
+const { tables, forms } = collect();
 let s = fs.readFileSync(PAGE, 'utf8');
 const i = s.indexOf(B), k = s.indexOf(E);
 if (i < 0 || k < i) throw new Error('lawsearch.html에 자리 표시가 없습니다');
-const block = B + '\n  var LSI_FORM_MAPS_ = ' + JSON.stringify(forms) + ';\n  var LSI_REF_TABLES_ = ' + JSON.stringify(tables) + ';\n  ';
+const block = refBlock({ tables: [], forms: {} }); // 서버 사본은 빈 값(위 [서버 용량])
 s = s.slice(0, i) + block + s.slice(k);
 fs.writeFileSync(PAGE, s);
 
@@ -57,4 +67,5 @@ if (t201 && t203) {
   fs.writeFileSync(ENGINE, e);
   console.log('엔진: 기본세율 ' + br.length + '개 시기, 장특공 표1 ' + lt1.length + '·표2(2020 이전) ' + lt2.length + '개 시기, 고가주택 기준 주택 ' + hv.house.length + '·입주권 ' + hv.right.length + '개 시기 → taxcalc-engine.html');
 }
-console.log('조견표 ' + tables.length + '장(' + tables.map((t) => t.번호).join(', ') + '), 서식 칸 지도 ' + Object.keys(forms).length + '장 → lawsearch.html');
+console.log('조견표 ' + tables.length + '장(' + tables.map((t) => t.번호).join(', ') + '), 서식 칸 지도 ' + Object.keys(forms).length + '장 → app 만들 때 화면에 끼움(서버 lawsearch.html은 빈 값)');
+}
