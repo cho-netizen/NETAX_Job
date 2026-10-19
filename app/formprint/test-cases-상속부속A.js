@@ -53,5 +53,13 @@ module.exports = function (E, H) {
   var cFarm = ihCtx(pFarm);
   L.push({ name: '상속2호_영농상속공제', forms: X.plan('상속', cFarm), ctx: cFarm });
 
+  // ③ 상속5호 — 금융재산 상속공제: 순금융재산 3억4,567만8,901원 → ④ = ③ × 20% = 69,135,780.2 → 원 미만 버림 69,135,780(엔진과 같음, 예전 인쇄는 반올림)
+  var pFin = Object.assign({}, BASE, { taxableEstateAmount: 2000000000, netFinancialAssets: 345678901 });
+  var cFin = ihCtx(pFin);
+  L.push({ name: '상속5호_금융재산상속공제', forms: X.plan('상속', cFin), ctx: cFin });
+  // 2천만원 초과 1억원 이하 → 한도 2천만원
+  var cFin2 = ihCtx(Object.assign({}, pFin, { netFinancialAssets: 64000000 }));
+  L.push({ name: '상속5호_한도2천만', forms: [{ formKey: '상속5호', ctx: cFin2 }], ctx: cFin2 });
+
   return L;
 };

@@ -245,6 +245,31 @@
     return o.result();
   };
 
+  // ───────── 상속 별지 제5호서식 — 금융재산 상속공제 신고서(법 §22, 시행령 §19) ─────────
+  //  값 출처: 지금 인쇄 ihAttachPrintPagesHtml_ [별지 제5호서식] 쪽(피상속인·상속인 = 명부 첫 행, 화면 ihNetFinancial, 결과 금융재산상속공제).
+  //  ④ 한도액 = 뒷면 작성방법 표(법 §22①): ③ 2천만원 이하 ③ / 1억원 이하 2천만원 / 10억원 이하 ③ × 20% / 10억원 초과 2억원.
+  //   예전 인쇄는 ③ × 20%를 반올림했는데, 엔진(⑤)과 같게 원 미만 버림.
+  function finLimit(net) { return net <= 20000000 ? net : net <= 100000000 ? 20000000 : net <= 1000000000 ? Math.floor(net * 0.2) : 200000000; }
+  mappers['상속5호'] = function (ctx) {
+    var o = new Out(), r = ctx.r || {}, dc = ctx.deceased || {}, x = ihxOf(ctx), h = firstHeir(ctx);
+    o.need('1@피상속인성명', dc.name, '1.피상속인 성명').need('1@피상속인주민등록번호', dc.regNo, '1.피상속인 주민등록번호');
+    o.need('1@상속인성명', h.name, '1.상속인 성명').need('1@상속인주민등록번호', h.regNo, '1.상속인 주민등록번호');
+    o.note('1. 상속인 = 상속인 명부 첫 행(지금 인쇄와 같음 — 신고하는 상속인이 다르면 고치세요)');
+    o.miss('가-1.금융재산 명세(종류·계좌번호 등·상호·사업자등록번호·단가·가액 줄)', '계산기에 없음(순금융재산가액 ③ 하나만 받음)');
+    o.miss('가-2.금융채무 명세(종류·계좌번호 등·상호·사업자등록번호·단가·가액 줄)', '계산기에 없음');
+    o.miss('①② 금융재산 합계·금융채무 합계', '계산기에 없음(①·②를 따로 받지 않고 ③ = ① − ②를 직접 받음)');
+    var net = n(x.netFinancial);
+    if (net > 0) {
+      var lim = finLimit(net), ded = n(r.금융재산상속공제);
+      o.set('③', net).set('④', lim).set('⑤', ded);
+      if (dc.resident === 'nonresident' || r.피상속인_거주구분 === '비거주자') o.note('⚠ ⑤ 0 — 피상속인이 비거주자라 금융재산 상속공제 없음(법 §22① "거주자의 사망")');
+      else o.check('⑤ = MIN(③, ④) = 엔진 금융재산상속공제', ded, Math.min(net, lim));
+    } else o.miss('③④⑤', '화면 순금융재산가액 입력 없음');
+    o.note('법 §22② — 최대주주등 보유 주식과 신고기한까지 신고하지 않은 타인 명의 금융재산은 ③에서 빼고 넣어야 함');
+    signBlock(o, ctx, (ctx.reporter || {}).name);
+    return o.result();
+  };
+
   // ───────── 언제 찍나 ─────────
   var WHEN = {
     '상속1호': function (c) { var r = c.r || {}; return !!(r.가업상속공제_계산내역 && !r.가업상속납부유예_선택); },
