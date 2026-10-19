@@ -277,7 +277,7 @@ function caseProcAiFactMap_(c, items) {
   const gaps = (items || []).filter(function (it) { return it.kind === 'missing'; }).slice(0, 15).map(function (it) {
     const t = [it.id, it.text, it.ask && it.ask.label, it.ask && it.ask.target].join(' ');
     const m = CASEPROC_AI_GAP_SRC_.filter(function (x) { return x[0].test(t); })[0];
-    const have = m ? files.filter(function (fn) { return m[2].test(fileKinds[fn] + ' ' + fn); }).slice(0, 4) : [];
+    const have = m ? files.filter(function (fn) { if (!m[2].test(fileKinds[fn] + ' ' + fn)) return false; try { const f = caseProcAiFindFile_(c, fn); return !(f && caseProcAiIsRefHead_(String(tc_docText_(f) || '').slice(0, 800))); } catch (e) { return true; } }).slice(0, 4) : []; // 판례·심판례 같은 참고 자료는 다시 뒤질 서류로 권하지 않음
     return { 칸: it.id, 글: caseProcAiCut_(it.text, 60), 찾을서류: m ? m[1] : '(표에 없음 — 질문)', 이사건에있는파일: have.length ? have : (m ? '없음 — 서류 요청 질문' : '') };
   });
   const tot = { 조각: 0, 출처: 0, 열쇠없음: 0, 묶음: 0, 받침: 0, 어긋남: 0 };
