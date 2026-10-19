@@ -116,7 +116,15 @@ function parseLaw(x) {
     }));
     arts.push({ 조: n + (g && g !== '0' ? '의' + g : ''), 제목: tag(u, '조문제목'), 시행: tag(u, '조문시행일자'), 내용: T(tag(u, '조문내용')), 항, 참고: tag(u, '조문참고자료'), 그림: [...new Set(imgs)] });
   }
-  return { arts, 머리 };
+  // [2026.10.20] 별표 — 번호(가지)·구분(별표/서식)·제목·시행일·본문 글(법제처가 글로 준 것)·PDF/HWP 파일 번호
+  const bi = x.indexOf('<별표>');
+  const 별표 = bi < 0 ? [] : tagsAll(x.slice(bi), '별표단위').map(u => {
+    const n = String(+tag(u, '별표번호') || ''), g = +tag(u, '별표가지번호') || 0, fl = t => (tag(u, t).match(/flSeq=(\d+)/) || [])[1] || '';
+    return { 번호: n + (g ? '의' + g : ''), 구분: tag(u, '별표구분'), 제목: tag(u, '별표제목'), 시행: tag(u, '별표시행일자'),
+      내용: [...String((u.match(/<별표내용>([^]*?)<\/별표내용>/) || [])[1] || '').matchAll(/<!\[CDATA\[([^]*?)\]\]>/g)].map(m => m[1].replace(/\s+$/, '')).join('\n').replace(/\n{3,}/g, '\n\n').trim(),
+      pdf: fl('별표서식PDF파일링크'), hwp: fl('별표서식파일링크') };
+  });
+  return { arts, 머리, 별표 };
 }
 
 // ---------- 법령정보 모양 .md (세무사님 "법령파일을 md파일로 만들어서 문서작성할때 처럼 법령정보시스템 모양으로 보여주는 것이었다") ----------
@@ -160,6 +168,8 @@ function lawToMd(doc, corr, 법종, buchik) {
     if (warn.length) L.push('', '> ※ 이 조문 산식 보정 중 근거로 쓰지 않는 것: ' + warn.map(x => 'img' + x.그림[0] + ' ' + (x.그림.every(g => a.그림.includes(g)) ? x.상태 : '다시 확인 필요(이 판에는 그 그림이 없음)')).join(' / '));
     L.push('');
   }
+  // [2026.10.20] 별표 — 제목·시행일·원본(PDF) 주소, 본문 글
+  if ((doc.별표 || []).length) { L.push('## 별표', ''); doc.별표.forEach(b => { L.push('### [' + (b.구분 || '별표') + ' ' + b.번호 + '] ' + b.제목 + (b.시행 ? ' (' + ymd(b.시행) + ' 시행)' : ''), ''); if (b.pdf) L.push('원본 PDF: https://www.law.go.kr/LSW/flDownload.do?flSeq=' + b.pdf + '  ', ''); if (b.내용) L.push('```', b.내용, '```', ''); }); }
   // [2026.10.20] 부칙 — 이 판 공포일까지의 부칙을 최근 것부터(법제처 화면 순서)
   const bs = (buchik || []).filter(b => b.공포일 <= doc.공포일).sort((a, b) => b.공포일.localeCompare(a.공포일));
   if (bs.length) { L.push('## 부칙', ''); bs.forEach(b => { L.push('### 부칙 <제' + String(b.공포번호).replace(/^0+/, '') + '호, ' + ymd(b.공포일) + '>', ''); String(b.내용).split('\n').forEach(l => { if (l.trim() && !/^부칙\s*</.test(l.trim())) L.push(l.replace(/^\s+/, m => '　'.repeat(Math.min(3, Math.floor(m.length / 2)))) + '  '); }); L.push(''); }); }
@@ -266,13 +276,13 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
       let arts;
       // 이미 받은 판은 다시 받지 않는다 — 다만 편·장·절 제목(머리)이 없는 옛 형식이면 다시 받는다
       const have = fs.existsSync(file) ? JSON.parse(zlib.gunzipSync(fs.readFileSync(file)).toString('utf8')) : null;
-      if (have && have.머리) arts = have.조;
+      if (have && have.머리 && (상태 === '옛판' || have.별표)) arts = have.조;
       else {
         const x = await get('https://www.law.go.kr/DRF/lawService.do?OC=' + OC + '&target=eflaw&type=XML&MST=' + ver.MST + '&efYd=' + ver.시행일);
         if (상태 === '현행') curXml = x;
         const pl = parseLaw(x); arts = pl.arts;
         if (!arts.length) { report.push(name + ' ' + vk + ': 조문 0개(받기 이상)'); continue; }
-        const doc = { 법령: name, 법령ID: v.법령ID, MST: ver.MST, 시행일: ver.시행일, 공포일: ver.공포일, 공포번호: ver.공포번호, 구분: ver.구분, 받은날: today, 출처: 'law.go.kr eflaw', 머리: pl.머리, 조: arts };
+        const doc = { 법령: name, 법령ID: v.법령ID, MST: ver.MST, 시행일: ver.시행일, 공포일: ver.공포일, 공포번호: ver.공포번호, 구분: ver.구분, 받은날: today, 출처: 'law.go.kr eflaw', 머리: pl.머리, 조: arts, 별표: 상태 === '옛판' ? undefined : pl.별표 };
         if (!DRY) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, zlib.gzipSync(Buffer.from(JSON.stringify(doc), 'utf8'), { level: 9 })); }
         report.push(name + ' ' + vk + ' 새 판 저장(' + 상태 + ', 조문 ' + arts.length + ', 그림 ' + arts.reduce((s, a) => s + a.그림.length, 0) + ')');
       }

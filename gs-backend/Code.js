@@ -320,7 +320,7 @@ const DRIVE_TOOLS = [
   },
   {
     name: 'lookup_statute_article',
-    description: '법령 조문 원문을 가져온다(법령 정비본 우선 + 산식 보정, 법제처로 개정 확인). 조문 인용·원문 확인 때 써라. articleNo를 꼭 지정해라(생략하면 전체라 너무 길다). 옛 사건은 baseDate(양도·상속·증여일)로 그때 판을 본다. 검증필요_코드에서옮김 산식은 근거로 쓰지 마라.',
+    description: '법령 조문 원문을 가져온다(법령 정비본 우선 + 산식 보정, 법제처로 개정 확인). 조문 인용·원문 확인 때 써라. articleNo에 \'부칙\'을 주면 그 판까지의 부칙(적용례·경과조치). articleNo를 꼭 지정해라(생략하면 전체라 너무 길다). 옛 사건은 baseDate(양도·상속·증여일)로 그때 판을 본다. 검증필요_코드에서옮김 산식은 근거로 쓰지 마라.',
     input_schema: {
       type: 'object',
       properties: {
