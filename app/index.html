@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 17:57 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 17:58 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -11706,6 +11706,8 @@
   // §47② — 증여일 전 10년 이내 동일인(직계존속 증여는 그 배우자 포함)으로부터 받은 증여재산가액을
   // 합친 금액이 1천만원 "이상"인 경우에만 이번 증여세 과세가액에 가산한다. 1천만원 미만이면 합산 자체를
   // 하지 않으므로(단서에 합산배제증여재산은 애초에 적용 제외), 과세표준 계산에서 통째로 빠져야 한다.
+  // [2026.10.20 AI 회의 회장 결론 J09(가) 확정] 1천만원 판정 합계는 "해당 증여일 전 10년 이내에 … 받은" 앞선 증여만 — 이번 증여는 넣지 않는다
+  //  (§47② 문언, 집행기준 47-36-5①). 신고서 ㉓에는 이 함수가 실제 가산한 금액(증여세과세가액 − 순수증여재산가액)을 적는다(mappers.js 증여10호).
   function giftAggregationAmount(priorGiftAmount) {
     return priorGiftAmount >= 10000000 ? priorGiftAmount : 0;
   }

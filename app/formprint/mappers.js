@@ -424,7 +424,8 @@
       if (has(ta.phone)) o.set(isMobile(ta.phone) ? '⑯~전화번호(휴대전화) (세무대리인)' : '⑯~전화번호(사무실) (세무대리인)', ta.phone);
     }
     var giftAmount = has(it.amount) ? n(it.amount) : n(r.증여재산가액);
-    // [2026.10.19 서식 감사 B1] ㉓ = 엔진이 실제 가산한 금액(1천만 미만·합산배제면 0)
+    // [2026.10.19 서식 감사 B1 → 2026.10.20 AI 회의 회장 결론 J09(가) 확정] ㉓ = 엔진이 실제 가산한 금액(증여세과세가액 − 순수증여재산가액).
+    //  §47② 1천만원 판정은 앞선 증여만으로(이번 증여 제외) — 1천만 미만·합산배제면 0. 입력값(priorGiftAmount)은 엔진 결과가 없을 때만
     var prior = (has(r.증여세과세가액) && has(r.순수증여재산가액)) ? Math.max(0, n(r.증여세과세가액) - n(r.순수증여재산가액)) : n(it.priorGiftAmount);
     var taxable = n(r.순수증여재산가액) + prior;
     o.set('⑰', giftAmount).set('⑱', n(r.비과세재산가액)).set('⑲', n(r.공익법인출연재산가액)).set('⑳', n(r.공익신탁재산가액))
