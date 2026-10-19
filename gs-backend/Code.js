@@ -31592,6 +31592,25 @@ function caseProcMemoCands_(c, res) {
       if (!v || have.indexOf(v) !== -1 || add.some(function (y) { return y.v === v; })) return;
       add.push({ v: v, src: (x.chat ? x.file : '상담 메모(' + x.file + ')') + ': "' + x.l.slice(0, 50) + '"' });
     });
+    // [2026.10.20 2번 밤샘 2바퀴 — ③ 추론·소통] 상담·자문 사건은 사실이 "칸 이름: 값"이 아니라 문장으로 적힌다("2016년 2월11일 절반을 남편으로부터 증여받고",
+    //  "2006.11.27일 남편 명의로 구입(구입가 117백만원)"). 낱말 후보가 없을 때만 — 그 칸의 사건 동사(취득: 구입·매입·매수·분양·증여받·상속받·낙찰·경락·신축,
+    //  양도: 매도·양도·처분·팔)가 있는 문장의 날짜·금액을 후보로(문장째 출처로 보여 줌 — 어느 물건의 일인지는 세무사님이 고름, 확정하지 않음).
+    //  가정·예상·예정 문장은 빼고(위와 같은 원칙), 한 칸에 3개까지. 앞으로의 사건: 동사 기준이라 메모 양식·파일 이름과 무관, 못 찾으면 지금처럼 주관식
+    if (!add.length && (type === 'money' || type === 'date')) {
+      const evAcq = /(구\s*입|매\s*입|매\s*수|취\s*득|분\s*양|증\s*여\s*받|상\s*속\s*받|낙\s*찰|경\s*락|신\s*축)/, evSale = /(매\s*도|양\s*도|처\s*분|팔\s*았|판\s*매)/;
+      const ev = /취득/.test(core) ? evAcq : /양도/.test(core) ? evSale : null;
+      if (ev) memos.forEach(function (m) {
+        let fx = []; try { fx = caseProcMemoFactCands_(m.text); } catch (e) { fx = []; }
+        fx.forEach(function (f) {
+          if (add.length >= 3 || f.plan || !ev.test(f.line) || /가\s*정|추\s*정|예\s*상|할\s*까|할\s*경\s*우|하\s*려|예\s*정/.test(f.line)) return;
+          // "남편 ○○ 명의로 구입"·"딸 명의로" — 다른 사람 명의의 일은 그 사람 자산(납세자 자산의 취득·양도가 아님). 본인 명의·명의 말이 없으면 그대로
+          const nm = /([가-힣]{1,6})\s*(?:[가-힣]{2,4}\s*)?명\s*의/.exec(f.line);
+          if (nm && /(남편|아내|부인|배우자|딸|아들|자녀|부친|모친|아버지|어머니|시부|시모|장인|장모|형|동생|누나|언니|오빠|며느리|사위|손자|손녀)/.test(nm[0]) && !/본\s*인/.test(nm[0])) return;
+          const vs = type === 'date' ? (f.dates || []).filter(function (d) { return /^\d{4}-\d{2}-\d{2}$/.test(String(d)); }) : (f.amts || []).map(String);
+          vs.slice(0, 1).forEach(function (v) { if (have.indexOf(v) === -1 && !add.some(function (y) { return y.v === v; })) add.push({ v: v, src: (m.chat ? m.file : '상담 메모(' + m.file + ')') + ' 문장: "' + f.line.slice(0, 60) + '" — 어느 물건의 일인지 확인' }); });
+        });
+      });
+    }
     if (add.length) { it.ask.cands = (it.ask.cands || []).concat(add); if (it.ask.mode === 'input') it.ask.mode = 'choose'; }
   });
   return res;
