@@ -1084,7 +1084,7 @@
   }
  },
  {
-  "이름": "[농특세 옛 판] 2005년 양도 §70 대토 감면 — 2005년 판 농특세법 시행령 §4①1호는 §66~§69만이라 과세(감면세액 × 20%)",
+  "이름": "[농특세 옛 판 고침] 2005년 양도 농지대토 — 그때 조특법 §70이 없고(2001.12.29. 삭제~2006.1.1. 재신설) 소득세법 §89①4호 비과세라 §133 한도·농특세 없음: 과세표준 3.475억 × 36% − 1,170만 = 113,400,000 전액",
   "도구": "calculateTransferTaxMultiJS",
   "인자": [
    [
@@ -1101,9 +1101,9 @@
    {}
   ],
   "정답": {
-   "합산자경감면액": 100000000,
-   "농어촌특별세_과세표준": 100000000,
-   "농어촌특별세": 20000000
+   "합산자경감면액": 113400000,
+   "농어촌특별세_과세표준": 0,
+   "농어촌특별세": 0
   }
  },
  {
@@ -1269,7 +1269,7 @@
   }
  },
  {
-  "이름": "[농특세 옛 판] 2006년 양도 수용 현금 감면 무신고 — 2007년 전 농특세법 §11: 미납 농특세의 10%만(신고불성실·일수 없음) — 2006 표: 장특공 30%(10년)·과세표준 3.475억 × 36% − 1,170만 = 113,400,000 × 감면 10% = 11,340,000 × 20% = 2,268,000, 가산세 226,800",
+  "이름": "[농특세 옛 판] 2006년 양도 수용 채권 감면(2006년은 채권분만 10%) 무신고 — 2007년 전 농특세법 §11: 미납 농특세의 10%만(신고불성실·일수 없음) — 2006 표: 장특공 30%(10년)·과세표준 3.475억 × 36% − 1,170만 = 113,400,000 × 감면 10% = 11,340,000 × 20% = 2,268,000, 가산세 226,800",
   "도구": "calculateTransferTaxMultiJS",
   "인자": [
    [
@@ -1280,7 +1280,7 @@
      "transferDate": "2006-06-01",
      "transferPrice": 600000000,
      "acquisitionPrice": 100000000,
-     "compensationType": "cash",
+     "compensationType": "bond",
      "publicNoticeDate": "2004-01-01"
     }
    ],
@@ -1917,6 +1917,196 @@
    "신고세액공제": 3000000,
    "납부세액": 27000000,
    "산출세액_할증후": 30000000
+  }
+ },
+ {
+  "이름": "[2부-07 옛판] 2006 수용 현금 3억/1억(1995 취득, 장특공 30%) — 2006년까지는 채권분만 감면, 현금 감면 0(§77① 2004~2006 판)",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "1995-01-01",
+   "transferDate": "2006-06-30",
+   "publicNoticeDate": "2005-01-01",
+   "transferPrice": 300000000,
+   "acquisitionPrice": 100000000,
+   "compensationType": "cash"
+  },
+  "정답": {
+   "과세표준": 137500000,
+   "수용감면액": 0
+  }
+ },
+ {
+  "이름": "[2부-07 옛판] 같은 수용 채권 2006 — 10%: 산출세액 137,500,000×36%−1,170만 = 37,800,000 × 10% = 3,780,000",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "1995-01-01",
+   "transferDate": "2006-06-30",
+   "publicNoticeDate": "2005-01-01",
+   "transferPrice": 300000000,
+   "acquisitionPrice": 100000000,
+   "compensationType": "bond"
+  },
+  "정답": {
+   "과세표준": 137500000,
+   "수용감면액": 3780000
+  }
+ },
+ {
+  "이름": "[2부-07 옛판] 2007-03-01 수용 현금 — 10%(법률 제8146호): 37,800,000 × 10%",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "1995-01-01",
+   "transferDate": "2007-03-01",
+   "publicNoticeDate": "2005-01-01",
+   "transferPrice": 300000000,
+   "acquisitionPrice": 100000000,
+   "compensationType": "cash"
+  },
+  "정답": {
+   "과세표준": 137500000,
+   "수용감면액": 3780000
+  }
+ },
+ {
+  "이름": "[2부-07 옛판] 2007-03-01 수용 채권 3년 특약 — 특약 가산율은 2007.7.6.부터라 채권 15%: 5,670,000",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "1995-01-01",
+   "transferDate": "2007-03-01",
+   "publicNoticeDate": "2005-01-01",
+   "transferPrice": 300000000,
+   "acquisitionPrice": 100000000,
+   "compensationType": "bond_3y"
+  },
+  "정답": {
+   "과세표준": 137500000,
+   "수용감면액": 5670000
+  }
+ },
+ {
+  "이름": "[2부-07 옛판] 2005 농지대토 10억/1억(1990 취득) — 소득세법 §89①4호 비과세라 §133 1억 한도 없음: 627,500,000×36%−1,170만 = 214,200,000 전액",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "1990-01-01",
+   "transferDate": "2005-06-01",
+   "transferPrice": 1000000000,
+   "acquisitionPrice": 100000000,
+   "isFarmlandSubstitutionExempt": true
+  },
+  "정답": {
+   "과세표준": 627500000,
+   "자경농지감면액": 214200000
+  }
+ },
+ {
+  "이름": "[2부-07 대조] 2006 농지대토 같은 금액 — 조특법 §70 감면, §133① 과세기간 1억 한도",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "1990-01-01",
+   "transferDate": "2006-06-01",
+   "transferPrice": 1000000000,
+   "acquisitionPrice": 100000000,
+   "isFarmlandSubstitutionExempt": true
+  },
+  "정답": {
+   "과세표준": 627500000,
+   "자경농지감면액": 100000000
+  }
+ },
+ {
+  "이름": "[2부-07 옛판] 2010 축사용지 3억/1억(1990 취득) — §69의2는 2011.7.25. 이후 양도분부터라 감면 0",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "1990-01-01",
+   "transferDate": "2010-06-01",
+   "transferPrice": 300000000,
+   "acquisitionPrice": 100000000,
+   "isLivestockLandExempt": true
+  },
+  "정답": {
+   "과세표준": 137500000,
+   "자경농지감면액": 0
+  }
+ },
+ {
+  "이름": "[2부-07 대조] 2012 축사용지 같은 금액 — 감면 100%: 137,500,000×35%−1,490만 = 33,225,000",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "1990-01-01",
+   "transferDate": "2012-06-01",
+   "transferPrice": 300000000,
+   "acquisitionPrice": 100000000,
+   "isLivestockLandExempt": true
+  },
+  "정답": {
+   "과세표준": 137500000,
+   "자경농지감면액": 33225000
+  }
+ },
+ {
+  "이름": "[2부-07 옛판] 2017 어업용 토지 — §69의3은 2018.1.1. 신설이라 감면 0",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "1990-01-01",
+   "transferDate": "2017-06-01",
+   "transferPrice": 300000000,
+   "acquisitionPrice": 100000000,
+   "isFisheryLandExempt": true
+  },
+  "정답": {
+   "자경농지감면액": 0
+  }
+ },
+ {
+  "이름": "[2부-07 옛판] 2008 개발제한구역 매수 — §77의3은 2009.1.1. 신설이라 감면 0",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "1990-01-01",
+   "transferDate": "2008-06-01",
+   "transferPrice": 300000000,
+   "acquisitionPrice": 100000000,
+   "compensationType": "restricted_zone_40"
+  },
+  "정답": {
+   "수용감면액": 0
+  }
+ },
+ {
+  "이름": "[2부-07 옛판] 2012 국가양도산지 3억/1억(1990 취득) — §85의10 그때 20%: 33,225,000 × 20% = 6,645,000",
+  "도구": "calculateTransferTaxMultiJS",
+  "입력": [
+   {
+    "assetType": "land",
+    "necessaryExpenses": 0,
+    "acquisitionDate": "1990-01-01",
+    "transferDate": "2012-06-01",
+    "transferPrice": 300000000,
+    "acquisitionPrice": 100000000,
+    "isNationalForestLandReduction": true
+   }
+  ],
+  "정답": {
+   "합산조특법세액감면액": 6645000
   }
  }
 ]

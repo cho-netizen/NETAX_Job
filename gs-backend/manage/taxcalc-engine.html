@@ -750,9 +750,14 @@
     const d = String(transferDate || '').slice(0, 10);
     if (!refHistoryOn_() || !d) return NOW[type];
     if (type === 'land_replacement') return d < '2015-01-01' ? 0 : d < '2016-01-01' ? 0.20 : d < '2020-01-01' ? 0.15 : 0.40;
-    if (type === 'restricted_zone_40' || type === 'restricted_zone_25') return d < '2014-01-01' ? (type === 'restricted_zone_40' ? 0.50 : 0.30) : NOW[type];
+    // [2026.10.20 법령 세션 옛 판 원문] §77의3은 2009.1.1. 판(법률 제9272호)에 신설 — 그 전 양도는 감면 없음
+    if (type === 'restricted_zone_40' || type === 'restricted_zone_25') return d < '2009-01-01' ? 0 : d < '2014-01-01' ? (type === 'restricted_zone_40' ? 0.50 : 0.30) : NOW[type];
     if (d >= '2025-01-01') return NOW[type];
     const OLD15 = { cash: 0.15, bond: 0.20, bond_3y: 0.30, bond_5y: 0.40 };
+    // [2026.10.20 법령 세션 옛 판 원문] 2006.12.31. 이전 양도: "양도대금을 채권으로 지급받는 분에 한한다" 10%(현금분 감면 없음, 2004.1.1.~2006 판).
+    //  2007.1.1.~2007.7.5. 양도: 현금 10%·채권 15%(법률 제8146호, 부칙 제2조③ — 만기특약 율 없음). 2007.7.6.~2008: 10/15/20%(법률 제8827호 부칙 "2007.7.6. 이후 양도분")
+    if (d < '2007-01-01') return { cash: 0, bond: 0.10, bond_3y: 0.10, bond_5y: 0.10 }[type];
+    if (d < '2007-07-06') return { cash: 0.10, bond: 0.15, bond_3y: 0.15, bond_5y: 0.15 }[type];
     if (d < '2009-01-01') return { cash: 0.10, bond: 0.15, bond_3y: 0.20, bond_5y: 0.20 }[type];
     if (d < '2010-01-01') return { cash: 0.20, bond: 0.25, bond_3y: 0.30, bond_5y: 0.30 }[type];
     if (d < '2014-01-01') return { cash: 0.20, bond: 0.25, bond_3y: 0.40, bond_5y: 0.50 }[type];
@@ -764,9 +769,12 @@
     if (!refHistoryOn_()) return '';
     const d = String(transferDate || '').slice(0, 10);
     if (type === 'land_replacement') return (d && d < '2015-01-01') ? '2014.12.31. 이전 양도한 대토보상은 감면이 없고 과세이연만 받을 수 있습니다(조특법 §77의2 — 감면은 2015.1.1. 양도분부터).' : '';
+    if ((type === 'restricted_zone_40' || type === 'restricted_zone_25') && d && d < '2009-01-01') return '§77의3(개발제한구역 매수 토지 감면)은 2009.1.1. 이후 양도분부터 생긴 감면이라 그 전 양도는 감면이 없습니다(법률 제9272호).';
     if (!(type in { cash: 1, bond: 1, bond_3y: 1, bond_5y: 1 })) return '';
-    // [2026.10.20 J20] 10/15/20%는 2007.7.6.부터(법률 제8827호 부칙 제20조, 조심2008서3119) — 그 전은 연혁 확인 안 함
-    if (d && d < '2007-07-06') return '⚠ 2007.7.6. 전 양도 — 감면율은 2007.7.6.~2008년 판(10/15/20%)으로 계산했습니다. 그때는 채권으로 받은 분만 감면하는 등 요건이 달랐으니 양도일 판 원문을 확인하세요.';
+    // [2026.10.20 법령 세션 옛 판 원문] 2005~2007.7.5. 율은 compRateAt_에 넣음. 2005년 전은 연혁 확인 안 함
+    if (d && d < '2005-01-01') return '⚠ 2005.1.1. 전 양도 — 감면율은 2005~2006년 판(채권분만 10%)으로 계산했습니다. 양도일 판 원문을 확인하세요.';
+    if (d && d < '2007-01-01') return '2006.12.31. 이전 양도는 양도대금을 채권으로 받은 분만 10% 감면하고 현금으로 받은 분은 감면이 없습니다(조특법 §77① 2004~2006 판). 만기 보유 특약 가산율도 없습니다.';
+    if (d && d < '2007-07-06') return '2007.1.1.~2007.7.5. 양도는 현금 10%·채권 15%이고 만기 보유 특약 가산율(20%)은 없습니다(법률 제8146호 — 특약 20%는 2007.7.6. 이후 양도분, 법률 제8827호 부칙).';
     // 만기특약 고율(2010~2013 40·50%)은 "보금자리주택 건설 등에 관한 특별법 등 대통령령으로 정하는 법률에 따른 협의매수·수용"만(법률 제9921호 §77①)
     if ((type === 'bond_3y' || type === 'bond_5y') && d >= '2010-01-01' && d < '2016-01-01') return '만기 보유 특약 고율(' + (d < '2014-01-01' ? '40·50%' : '30·40%') + ')은 2010~2013년 판 문언상 "「보금자리주택 건설 등에 관한 특별법」 등 대통령령으로 정하는 법률에 따른 협의매수·수용"일 때만입니다(법률 제9921호 §77①) — 그 밖의 사업이면 일반채권율로 고르세요' + (d >= '2014-01-01' ? '(2014~2015년 판이 같은 문언인지는 확인 필요)' : '') + '.';
     if (d >= '2016-01-01' && d <= '2017-12-31' && !noticeDate) return '사업인정고시일이 2016.1.1. 전이면 2017.12.31.까지 양도분은 종전 감면율(15/20/30/40%)입니다(법률 제13560호 부칙 제53조) — 사업인정고시일을 넣어 주세요.';
@@ -774,6 +782,16 @@
   }
   // §133 한도 연혁 — 2025.1.1. 이후 양도: §77·§77의2·§77의3은 따로 과세기간 2억원(§133②, 법률 제20778호 부칙 제15조①).
   //  2024.12.31. 이전 양도: 자경 등(§33·§43·§66~§70·§85의10)과 합쳐 과세기간 1억원(옛 §133①1호).
+  // [2026.10.20 법령 세션 옛 판 원문 — 조견표 2부-07] 감면 조문이 생기기 전 양도면 그 이유 글(아니면 ''). 연혁 스위치가 꺼지면 늘 ''.
+  function reductionNotYet_(sec, transferDate) {
+    const d = String(transferDate || '').slice(0, 10);
+    if (!refHistoryOn_() || !d) return '';
+    if (sec === '69_2' && d < '2011-07-25') return '축사용지 감면(조특법 §69의2)은 2011.7.25. 이후 양도분부터 생긴 감면이라 그 전 양도는 감면이 없습니다(법률 제10901호 부칙 제3조).';
+    if (sec === '69_3' && d < '2018-01-01') return '어업용 토지 감면(조특법 §69의3)은 2018.1.1. 이후 양도분부터 생긴 감면이라 그 전 양도는 감면이 없습니다(법률 제15227호).';
+    if (sec === '70' && d < '2006-01-01') return '2005.12.31. 이전 농지대토는 조특법 §70 감면이 아니라 소득세법 §89①4호 비과세입니다(조특법 §70은 2006.1.1. 재신설) — 세액 0은 같고 §133 한도·농특세는 없습니다.';
+    if (sec === '69_4' && d < '2018-01-01') return '자경산지 감면(조특법 §69의4)은 2018.1.1. 이후 양도분부터 생긴 감면이라 그 전 양도는 감면이 없습니다(법률 제15227호).';
+    return '';
+  }
   function compCapSeparate_(transferDate) { const d = String(transferDate || '').slice(0, 10); return !refHistoryOn_() || !d || d >= '2025-01-01'; }
   // [2026.10.19 조견표 2부-02] 양도일별 특례세율 — 단기보유·분양권 세율(§104①1~4호), 다주택 중과 가산율(§104⑦), 비사업용토지 가산(§104①8호).
   //  값은 reftables/2부-02.json(법제처 연혁판·부칙 원문)에서 REF_SR_로 옮겨 적은 것. 2021-06-01 이후 양도(또는 연혁 스위치 꺼짐)는 지금 값 그대로.
@@ -1656,12 +1674,14 @@
       // 충족시 양도소득세 100%를 감면한다(다만 셋 다 §69와 달리 8년이 아니라 각각 별도 보유·종사기간
       // 요건이 있음 — 요건 자체는 이 도구가 검증하지 않는다). §133①1호·2호나목에 따라 §66~§70(§69의2~
       // 69의4 포함) 감면세액은 전부 합쳐 과세기간당 1억원·5개 과세기간 합산 2억원 한도를 공유한다.
-      isLivestockLandExempt: !!t.isLivestockLandExempt, isFisheryLandExempt: !!t.isFisheryLandExempt, isFarmlandSubstitutionExempt: !!t.isFarmlandSubstitutionExempt,
+      // [2026.10.20 법령 세션 옛 판 원문] §69의2 축사용지는 2011.7.25. 이후 양도분(법률 제10901호 부칙 제3조), §69의3 어업용·§69의4 자경산지는 2018.1.1. 판(법률 제15227호) 신설 — 그 전 양도는 감면 없음
+      isLivestockLandExempt: !!t.isLivestockLandExempt && !reductionNotYet_('69_2', t.transferDate), isFisheryLandExempt: !!t.isFisheryLandExempt && !reductionNotYet_('69_3', t.transferDate), isFarmlandSubstitutionExempt: !!t.isFarmlandSubstitutionExempt,
       // 조특법§69의4(자경산지) — 10년 이상 직접 경영해야 하고, 경영기간 구간별로 감면율이 다르다(10년↑20년↓10%,
       // 20~30년 20%, 30~40년 30%, 40~50년 40%, 50년↑ 50%). §69~§70과 달리 100% 정액감면이 아니다.
       // "직접 경영한 기간"은 양도차익 계산용 의제취득일(1985.1.1) 의제를 적용하지 않는 실제 취득일 기준
       // 기간이므로 holdingYears와 별도로 계산한다.
-      isForestManagementExempt: !!t.isForestManagementExempt,
+      isForestManagementExempt: !!t.isForestManagementExempt && !reductionNotYet_('69_4', t.transferDate),
+      reductionNotYetNote: ['69_2', '69_3', '69_4', '70'].filter(function (s) { return t[{ '69_2': 'isLivestockLandExempt', '69_3': 'isFisheryLandExempt', '69_4': 'isForestManagementExempt', '70': 'isFarmlandSubstitutionExempt' }[s]]; }).map(function (s) { return reductionNotYet_(s, t.transferDate); }).filter(Boolean).join(' '),
       forestManagementYears: t.acquisitionDate ? fullYearsElapsed(t.acquisitionDate, t.transferDate) : 0,
       conversionValuePenalty, pensionAccountContribution: Number(t.pensionAccountContribution) || 0,
       raw: t
@@ -1844,8 +1864,12 @@
       { 이름: '옛 §133①1호나목(과세기간 2억원)', 한도: 200000000, set: ['69', '70', '43', '77', '77_3'] },
       { 이름: '옛 §133①2호가목(5개 과세기간 §70 1억원)', 한도: 100000000, set: ['70'], prior: 'p70' },
       { 이름: '옛 §133①2호나목(5개 과세기간 §69·§70 3억원)', 한도: 300000000, set: ['69', '70'], prior: 'pFarm' }]] };
-    // 2007년 이전 양도(2008.1.1. 시행판 구조): §33·§43·§69·§70·§77 과세기간 1억 + §69·§70 5개 과세기간 1억
-    return { warn: d < '2007-01-01' ? '⚠ 2006년 이전 양도 — 조특법 §133 한도는 2008.1.1. 시행판 구조로 계산했습니다(그 전 연혁 확인 안 함).' : '', groups: [[
+    // [2026.10.20 법령 세션 옛 판 원문] 2005년 양도(2005.1.1. 판 §133①): §43·§69·§77 합계 과세기간 1억원뿐 — §70 대토는 한도 밖, 5개 과세기간 한도 없음
+    if (d < '2006-01-01') return { warn: d < '2005-01-01' ? '⚠ 2005년 전 양도 — 조특법 §133 한도는 2005년 판 구조로 계산했습니다(그 전 연혁 확인 안 함).' : '', groups: [[
+      { 이름: '옛 §133①(과세기간 1억원 — §43·§69·§77)', 한도: 100000000, set: ['69', '43', '77'] }]] };
+    // 2006.1.1.~2007.12.31. 양도(법률 제7839호): §33·§43·§69·§70·§77 과세기간 1억 + ② §69·§70 5개 과세기간 1억
+    //  (같은 법 부칙 제36조②: 2006.1.1. 전에 §69로 감면받은 세액은 5개 과세기간 합계에 넣지 않음 — 직전 감면세액 입력에서 빼야 함)
+    return { warn: '직전 4개 과세기간 감면세액에 2006.1.1. 전 §69 감면분은 넣지 마세요(법률 제7839호 부칙 제36조②).', groups: [[
       { 이름: '옛 §133①1호(과세기간 1억원)', 한도: 100000000, set: ['69', '70', '43', '77'] },
       { 이름: '옛 §133①2호(5개 과세기간 §69·§70 1억원)', 한도: 100000000, set: ['69', '70'], prior: 'pFarm' }]] };
   }
@@ -1867,6 +1891,8 @@
     raw = raw || {};
     const d_ = String(raw.transferDate || '').slice(0, 10);
     if (red.key === 'farm') {
+      // [2026.10.20 옛 판 원문] 2005.12.31. 이전 농지대토는 조특법 §70이 없고(2001.12.29. 삭제 ~ 2005.12.31. 재신설) 소득세법 §89①4호 비과세 — 감면세액이 없으니 농특세도 없음
+      if (d_ && d_ < '2006-01-01' && red.sec === '70') return '2005.12.31. 이전 농지대토는 소득세법 §89①4호 비과세(감면 아님)라 농특세가 없음';
       if (d_ && d_ < '2006-01-01' && red.sec !== '69') return '';
       return '조특법 §' + String(red.sec || '').replace('_', '의') + ' — 농특세법 시행령 §4①1호(' + (d_ && d_ < '2006-01-01' ? '2005년 판 §66~§69' : '§66~§70') + ') 비과세';
     }
@@ -2054,6 +2080,7 @@
     let farmlandReductionLabel = '';
     let farmlandGateNote = '';
     let farmlandClawback = 0;
+    if (core.reductionNotYetNote) farmlandGateNote = core.reductionNotYetNote; // [2026.10.20] 감면 조문이 생기기 전 양도(§69의2·§69의3·§69의4)
     const farmSecS_ = core.isEightYearFarmland ? '69' : core.isLivestockLandExempt ? '69_2' : core.isFisheryLandExempt ? '69_3' : core.isFarmlandSubstitutionExempt ? '70' : null;
     if (farmSecS_) {
       farmlandReductionLabel = core.isEightYearFarmland ? '8년 자경농지 감면(조특법§69)'
@@ -2671,6 +2698,7 @@
     };
     const red90Assets_ = pooled.map(function (c) {
       const reds = [];
+      if (c.reductionNotYetNote) assetNotes.push({ idx: c.idx, 구분: '감면 시작 전 양도', 적용여부: false, 사유: c.reductionNotYetNote }); // [2026.10.20]
       const farmSec = c.isEightYearFarmland ? '69' : c.isLivestockLandExempt ? '69_2' : c.isFisheryLandExempt ? '69_3' : c.isFarmlandSubstitutionExempt ? '70' : null;
       if (farmSec) {
         reds.push({ key: 'farm', sec: farmSec, rate: 1, notice: c.raw.sect133TransitNoticeDate || c.raw.publicNoticeDate || '', half: !!c.raw.sect133TransitHalfAcquired, label: c.isEightYearFarmland ? '8년자경농지감면(안분)' : c.isLivestockLandExempt ? '축사용지감면(안분)' : c.isFisheryLandExempt ? '어업용토지감면(안분)' : '농지대토감면(안분)' });
@@ -2687,7 +2715,7 @@
         const trfTime = new Date(c.raw.transferDate).getTime();
         const yearsHeld = (acqTime && trfTime && trfTime > acqTime) ? (trfTime - acqTime) / (365.25 * 24 * 3600 * 1000) : 0;
         const nfCheck = window.calculateNationalForestLandReductionJS({ transferDate: c.raw.transferDate, holdingYears: yearsHeld, isUrbanArea: !!c.raw.nfIsUrbanArea });
-        if (nfCheck && nfCheck.적용여부) { label = '국가양도산지 감면(조특법§85의10, 세액 10% 감면)'; rate = 0.10; sec = '85_10'; }
+        if (nfCheck && nfCheck.적용여부) { const nfr_ = Number(nfCheck.세액감면율) || 10; label = '국가양도산지 감면(조특법§85의10, 세액 ' + nfr_ + '% 감면)'; rate = nfr_ / 100; sec = '85_10'; }
         else { assetNotes.push({ idx: c.idx, 구분: '국가양도산지감면(§85의10)', 적용여부: false, 사유: (nfCheck && (nfCheck.error || nfCheck.안내)) || undefined }); }
       }
       else if (c.raw._구조조정감면_세액감면율) { label = '구조조정대상 부동산 감면(조특법§43, 세액 ' + c.raw._구조조정감면_세액감면율 + '% 감면)'; rate = c.raw._구조조정감면_세액감면율 / 100; sec = '43'; }
@@ -8874,6 +8902,10 @@
     if (new Date(transferDate).getTime() > new Date('2022-12-31').getTime()) {
       return { 적용여부: false, 안내: '양도일이 2022.12.31을 초과하여 조특법§85의10의 적용대상이 아닙니다(신청기한 만료).' };
     }
+    // [2026.10.20 법령 세션 옛 판 원문 — 조견표 2부-07] §85의10은 2010.1.1. 판(법률 제9924호) 신설, 감면율 2010~2013 20%·2014~2015 15%(법률 제12173호)·2016~ 10%(법률 제13560호)
+    const nfD_ = String(transferDate).slice(0, 10);
+    if (refHistoryOn_() && nfD_ < '2010-01-01') return { 적용여부: false, 안내: '조특법§85의10은 2010.1.1. 이후 양도분부터 생긴 감면이라 그 전 양도는 감면이 없습니다(법률 제9924호).' };
+    const nfRate_ = !refHistoryOn_() || nfD_ >= '2016-01-01' ? 10 : nfD_ >= '2014-01-01' ? 15 : 20;
     const holdingYears = Number(p.holdingYears) || 0;
     if (holdingYears < 2) {
       return { 적용여부: false, 안내: '2년 이상 보유한 산지가 아니어서 적용대상이 아닙니다.' };
@@ -8890,8 +8922,8 @@
     return {
       적용여부: true,
       전체양도차익: Math.round(totalGain),
-      세액감면율: 10,
-      안내: '조특법§85의10 — 2년 이상 보유한 산지(도시지역 소재 제외)를 국유림의 경영 및 관리에 관한 법률§18에 따라 국가에 양도할 때는 그 양도소득세 산출세액의 100분의 10을 감면합니다. 위 일반 양도세 계산기로 전체 양도차익 기준 세액을 계산한 뒤, 그 산출세액에서 10%를 차감하세요. 이 감면세액은 조특법§133①1호에 따라 같은 과세기간 중 §43·§69·§69의2~4·§70 감면세액과 합산해 1억원을 넘으면 그 초과분을 감면받지 못합니다.'
+      세액감면율: nfRate_,
+      안내: (nfRate_ !== 10 ? '그때 감면율 ' + nfRate_ + '%(' + (nfRate_ === 20 ? '2010~2013년 양도' : '2014~2015년 양도') + ') — ' : '') + '조특법§85의10 — 2년 이상 보유한 산지(도시지역 소재 제외)를 국유림의 경영 및 관리에 관한 법률§18에 따라 국가에 양도할 때는 그 양도소득세 산출세액의 100분의 10을 감면합니다. 위 일반 양도세 계산기로 전체 양도차익 기준 세액을 계산한 뒤, 그 산출세액에서 10%를 차감하세요. 이 감면세액은 조특법§133①1호에 따라 같은 과세기간 중 §43·§69·§69의2~4·§70 감면세액과 합산해 1억원을 넘으면 그 초과분을 감면받지 못합니다.'
     };
   };
 

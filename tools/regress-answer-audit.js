@@ -6,6 +6,8 @@
 //          ④ [2026.10.20] 단순 증여(관계·금액·날짜·미성년·세대생략) — 2부-11 증여재산공제 → 과세표준, §26 + 2부-15 할증, 2부-10 신고세액공제, 납부세액
 //          ⑤ [2026.10.20] 단순 상속(자녀 수·동거주택·가업·영농·금융재산·장례비 기본) — 2부-12 인적·동거주택·가업(공제율·최소 2억 포함)·영농 한도,
 //             일괄공제 5억·기초 2억·금융재산(§22, 2005~ 같음)·장례비(§14, 증빙 없으면 500만) → 과세표준, §26, 신고세액공제, 납부세액
+//          ⑥ [2026.10.20] 양도 감면액(자산 1건, 직전 과세기간 감면 입력 없음) — 과세표준 → 2부-01 산출세액 × 2부-07 감면율(수용 §77·국가양도산지 §85의10·
+//             자경 §69·대토 §70, 조문이 생기기 전 양도는 0) → §133 한도 후보(없음·1억·2억) 중 정답과 맞는 것
 const fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '..');
 const T = (n) => JSON.parse(fs.readFileSync(path.join(ROOT, 'reftables', n + '.json'), 'utf8'));
@@ -23,6 +25,19 @@ const lt1 = (d, y) => { const r = t203.행.filter((x) => /^표1/.test(x.구분))
 const shortRate = (d, kind, y) => { const name = kind === 'house' ? /^단기세율 주택/ : /^단기세율 그 밖/; const r = t202.행.filter((x) => name.test(x.구분)).find((x) => x.시작 <= d && (!x.끝 || d <= x.끝)); if (!r) return null; const v = y < 1 ? r.값['1년미만'] : (y < 2 ? r.값['1년이상2년미만'] : r.값['2년이상']); return typeof v === 'number' ? v / 100 : null; };
 const reportRate = (d) => { const r = rowAt(t210.행, d); return r ? r.값 / 100 : null; };
 const rowOf = (t, gu, d) => rowAt(t.행.filter((r) => r.구분 === gu), d);
+const t207 = T('2부-07');
+// ⑥ 양도 감면율(조견표 2부-07) — 돌려줌 { rate(0~1), why, noCap } 또는 null(검산 못 함)
+const COMP_COL = { cash: '현금', bond: '채권', bond_3y: '3년만기특약', bond_5y: '5년만기특약' };
+const startRow = (gu) => t207.행.find((r) => r.구분 === gu);
+const redRate = (inp, d) => {
+  if (inp.compensationType && COMP_COL[inp.compensationType]) { const r = rowOf(t207, '수용감면율(§77①)', d); if (!r) return null; return { rate: r.값[COMP_COL[inp.compensationType]] / 100, why: '§77 ' + COMP_COL[inp.compensationType] + ' ' + r.값[COMP_COL[inp.compensationType]] + '%' }; }
+  if (/^restricted_zone/.test(inp.compensationType || '')) { const st = startRow('감면 시작일 — 개발제한구역 매수(§77의3)'); return st && d < st.시작 ? { rate: 0, why: '§77의3 시작(' + st.시작 + ') 전' } : null; }
+  if (inp.isNationalForestLandReduction) { const r = rowOf(t207, '국가양도산지 감면율(§85의10)', d); return { rate: r ? r.값 / 100 : 0, why: '§85의10 ' + (r ? r.값 + '%' : '시작 전·기한 뒤 0') }; }
+  const farm = [['isEightYearFarmland', null], ['isLivestockLandExempt', '감면 시작일 — 축사용지(§69의2)'], ['isFisheryLandExempt', '감면 시작일 — 어업용 토지(§69의3)']].find((x) => inp[x[0]]);
+  if (farm) { const st = farm[1] && startRow(farm[1]); return st && d < st.시작 ? { rate: 0, why: farm[1].replace('감면 시작일 — ', '') + ' 시작(' + st.시작 + ') 전' } : { rate: 1, why: '100%' }; }
+  if (inp.isFarmlandSubstitutionExempt) { const r = rowOf(t207, '농지대토(§70)', d); if (!r) return null; return typeof r.값 === 'number' ? { rate: r.값 / 100, why: '§70 ' + r.값 + '%' } : { rate: 1, why: '2005년 비과세(소득세법 §89①4호)', noCap: true }; }
+  return null;
+};
 // ④ 단순 증여 — 조견표만으로 과세표준·할증 뒤 산출세액·신고세액공제·납부세액
 const GIFT_KEYS = ['filingStatus', 'relation', 'giftAmount', 'giftDate', 'isMinor', 'isGenerationSkip', 'generationSkipOver2Billion', 'unpaidDays', 'unpaidTaxForLatePenalty'];
 const giftCalc = (inp, d) => {
@@ -73,7 +88,7 @@ files.forEach((f) => {
   const L = JSON.parse(fs.readFileSync(path.join(ROOT, f), 'utf8'));
   L.forEach((c, i) => {
     const a = c.정답 || {}; if (!Object.keys(a).length) return;
-    const inp = c.입력 || (Array.isArray(c.인자) ? (Array.isArray(c.인자[0]) ? c.인자[0][0] : c.인자[0]) : {}) || {};
+    const inp = (Array.isArray(c.입력) ? (c.입력.length === 1 ? c.입력[0] : {}) : c.입력) || (Array.isArray(c.인자) ? (Array.isArray(c.인자[0]) ? c.인자[0][0] : c.인자[0]) : {}) || {};
     const fp = Array.isArray(c.인자) && c.인자[1] && typeof c.인자[1] === 'object' && !Array.isArray(c.인자[1]) ? c.인자[1] : {};
     const notes = []; let verdict = '검산 못 함(사람이 이름의 손계산 식 확인)';
     const isGift = /gift|Gift|inheritance|Inheritance|SpecialRate|RelatedParty/.test(c.도구);
@@ -126,9 +141,29 @@ files.forEach((f) => {
       const rr = reportRate(d);
       notes.push('신고세액공제율 ' + (rr != null ? Math.round(rr * 100) + '%(2부-10)' : '표 없음'));
     }
+    // ⑥ 양도 감면액 — 자산 1건·직전 감면 입력 없음일 때만
+    const RED_F = ['수용감면액', '자경농지감면액', '합산수용감면액', '합산자경감면액', '합산조특법세액감면액'];
+    const rf = RED_F.find((k) => a[k] != null);
+    const multi = Array.isArray(c.입력) ? c.입력.length : (Array.isArray(c.인자) && Array.isArray(c.인자[0]) ? c.인자[0].length : 1);
+    if (rf && !isGift && d && multi === 1 && !Object.keys(inp).some((k) => /^sect133|Transit|isForestManagementExempt|isCompensationOnSelfCultivatedLand|isBondPledgeBreached|carryover|spouse/.test(k)) && !Object.keys(fp).length) {
+      const rr = redRate(inp, d);
+      let base2 = a.과세표준;
+      if (base2 == null && inp.transferPrice && inp.acquisitionPrice != null && inp.acquisitionDate) {
+        const y2 = years(inp.acquisitionDate, d), gain2 = inp.transferPrice - inp.acquisitionPrice - (inp.necessaryExpenses || 0), lr = y2 >= 3 ? lt1(d, y2) : 0;
+        if (lr != null) { const inc2 = gain2 - Math.floor(gain2 * lr + 1e-6); base2 = inc2 - Math.min(2500000, Math.max(0, inc2)); }
+      }
+      const tax2 = base2 != null ? bracketTax(d, base2) : null;
+      if (rr && tax2 != null) {
+        const R = Math.floor(tax2 * rr.rate + 1e-6);
+        const cands = rr.noCap ? [['한도 없음', R]] : [['한도 안', R], ['§133 1억 한도', Math.min(R, 1e8)], ['§133 2억 한도', Math.min(R, 2e8)]];
+        const hit = cands.find((x) => x[1] === a[rf]);
+        if (hit) { if (!/^[⚠✗]/.test(verdict)) verdict = '감면액 맞음 — ' + rr.why + ' · ' + hit[0]; notes.push('산출세액 ' + tax2.toLocaleString('ko-KR') + ' × ' + Math.round(rr.rate * 100) + '%(2부-07)'); }
+        else { verdict = '⚠ 감면액이 조견표로 센 값과 다름'; notes.push(rf + ' 정답 ' + a[rf].toLocaleString('ko-KR') + ' ↔ ' + cands.map((x) => x[0] + ' ' + x[1].toLocaleString('ko-KR')).join(' / ') + ' (' + rr.why + ', 산출세액 ' + tax2.toLocaleString('ko-KR') + ')'); }
+      }
+    }
     out.push({ f: path.basename(f), i, 이름: c.이름.slice(0, 70), 날짜: d, verdict, notes: notes.join(' · ') });
   });
 });
 out.forEach((o) => console.log('[' + o.i + '] ' + o.verdict + ' | ' + o.날짜 + ' | ' + o.이름 + (o.notes ? '\n      ' + o.notes : '')));
 const bad = out.filter((o) => /^[⚠✗]/.test(o.verdict) || /✗/.test(o.notes));
-console.log('\n모두 ' + out.length + '건 · 조견표로 검산 ' + out.filter((o) => /맞음|⚠|✗/.test(o.verdict)).length + '건(그중 상속·증여 입력부터 끝까지 ' + out.filter((o) => /^입력부터 맞음|^⚠ 입력부터/.test(o.verdict)).length + '건) · 다름 ' + bad.length + '건');
+console.log('\n모두 ' + out.length + '건 · 조견표로 검산 ' + out.filter((o) => /맞음|⚠|✗/.test(o.verdict)).length + '건(그중 양도 감면액 ' + out.filter((o) => /^감면액 맞음|^⚠ 감면액/.test(o.verdict)).length + '건, 상속·증여 입력부터 끝까지 ' + out.filter((o) => /^입력부터 맞음|^⚠ 입력부터/.test(o.verdict)).length + '건) · 다름 ' + bad.length + '건');
