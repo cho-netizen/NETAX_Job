@@ -1,4 +1,4 @@
-// 법정서식 원본 모양 출력 — node 확인 스크립트 (작업자 파, 2026-10-19)
+// 법정서식 원본 모양 출력 — node 확인 스크립트 (작업자 파, 2026-10-19 / 부표 17장·plan 시험 더함: 작업자 하)
 // 앱과 같은 코드(app/formprint/formprint.js + mappers.js)를 node에서 돌려 견본 PDF 3장(양도·증여·상속)을 만든다.
 // 바탕 PDF는 가짜 callGas(listFolder·readFileBinary 흉내)로 로컬 법정서식 PDF를 넘긴다 — 앱의 서버 경로·md5 확인까지 같이 시험.
 // 사용: node tools/formprint-check.js [로컬 법정서식 폴더] [결과 폴더]
@@ -58,7 +58,8 @@ const baseOpts = {
 };
 
 // ───── 합성 사건 3건(app/formprint/test-cases.js — test.html과 같은 자료) ─────
-const CASES = require(path.join(ROOT, 'app/formprint/test-cases.js'))(E);
+const CASES0 = require(path.join(ROOT, 'app/formprint/test-cases.js'))(E);
+const CASES = CASES0.concat(CASES0.부표 || []); // 부표 사건(작업자 하)은 .부표에
 
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
@@ -66,11 +67,19 @@ const CASES = require(path.join(ROOT, 'app/formprint/test-cases.js'))(E);
   for (const cs of CASES) {
     // 대응표가 쓰는 키가 위치판에 다 있는지(오타 잡기)
     const jobs = [], mapped = [];
-    for (const k of cs.forms) {
-      const m = MP.mappers[k](cs.ctx);
-      const keys = new Set(FP.keysOfMap(baseOpts.loadMap(k)).map((x) => x.키));
-      const bases = new Set(FP.keysOfMap(baseOpts.loadMap(k)).map((x) => x.키.split('|')[0]));
-      const bad = Object.keys(m.values).filter((x) => !keys.has(x) && !bases.has(x));
+    // cs.tax가 있으면 NxFormPrint.plan(세목, ctx)으로 찍을 서식을 정함(같은 서식 여러 장은 {formKey, ctx}) — cs.only로 일부만
+    let list = cs.tax ? MP.plan(cs.tax, cs.ctx) : cs.forms;
+    if (cs.only) list = list.filter((it) => cs.only.indexOf(typeof it === 'string' ? it : it.formKey) >= 0);
+    cs.forms = list.map((it) => (typeof it === 'string' ? it : it.formKey));
+    if (cs.tax) console.log('□ ' + cs.name + ' applicable: ' + MP.applicable(cs.tax, cs.ctx).join(', '));
+    for (const it of list) {
+      const k = typeof it === 'string' ? it : it.formKey, cx = typeof it === 'string' ? cs.ctx : it.ctx;
+      const m = MP.mappers[k](cx);
+      // 키 검사 — 이어 찍기로 늘린 열·줄 번호(자산4·종목7·#9)는 1번 열 키로 바꿔 봄
+      const gen = (x) => x.replace(/#\d+$/, '').replace(/(@[^@.|~]*?)(\d+)(?=[.|]|$)/, '$11');
+      const all = FP.keysOfMap(baseOpts.loadMap(k)).map((x) => x.키);
+      const keys = new Set(all.concat(all.map((x) => x.split('|')[0])));
+      const bad = Object.keys(m.values).filter((x) => !keys.has(x) && !keys.has(gen(x)) && !keys.has(gen(x).split('|')[0]));
       mapped.push({ form: k, 채운키: Object.keys(m.values).length, 비운칸: m.missing.length, 위치판에없는키: bad, 검산틀림: m.checks.filter((c) => !c.맞음), notes: m.notes, missing: m.missing, checks: m.checks });
       jobs.push({ formKey: k, values: m.values });
     }
