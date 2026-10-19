@@ -205,7 +205,7 @@
    ],
    "조문개정": "㉑항 대통령령 제32420호 2022.2.15. 공포 / ㉒항 대통령령 제35947호 2025.12.30. 공포",
    "계산기칸": [
-    "계산기에 없음(미충족 양도 갈래 없음 — 충족 못하면 적용여부 false)"
+    "판정 엔진 결과 임대기간충족전(시행령 §155㉑ — lrBeforePeriod 체크 또는 마목 임대기간 10년 미만) → [2026.10.20] 판정 창이 oneHouseSpecialCase.임대기간충족전으로 저장 → ⑫ 체크(직전거주주택보유주택 갈래 포함)"
    ],
    "조견표": [],
    "인쇄": "oneHouseSpecialCasePrintPageHtml_ — 이 칸 없음",
@@ -347,7 +347,8 @@
    ],
    "조문개정": "확인 안 함",
    "계산기칸": [
-    "입력 standardPriceAtLeaseStart(lrMaStandardPrice)"
+    "입력 standardPriceAtLeaseStart(lrMaStandardPrice)",
+    "[2026.10.20] 판정 창(마목 자동판정)이 oneHouseSpecialCase.lrMaStandardPrice로 저장 → ㉑ 장기임대주택 첫 줄"
    ],
    "조견표": [],
    "인쇄": "없음",

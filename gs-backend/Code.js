@@ -1290,6 +1290,7 @@ const DRIVE_TOOLS = [
         corporateTaxPortion: { type: 'number', description: 'initial이면 개시사업연도분의 법인세 납부세액 중 상당액(원), settlement이면 개시사업연도부터 정산사업연도분까지의 법인세 납부세액 중 상당액 합계(원). 생략하면 corporateTaxAfterCredit·corporateTaxableIncome으로 자동계산한다(시행령§34의4④).' },
         corporateTaxAfterCredit: { type: 'number', description: 'corporateTaxPortion 자동계산용 — 수혜법인의 해당 사업연도 법인세 산출세액(법인세법§55, 토지등양도소득에 대한 법인세 제외)에서 공제·감면세액을 뺀 금액(원). corporateTaxPortion을 직접 입력하면 이 값은 무시된다.' },
         corporateTaxableIncome: { type: 'number', description: 'corporateTaxPortion 자동계산용 — 수혜법인의 해당 사업연도 각사업연도소득금액(원). corporateTaxPortion을 직접 입력하면 이 값은 무시된다.' },
+        yearlyCorporateTax: { type: 'array', description: '[2026.10.20] settlement일 때 연도별(1~3년차) 법인세 상당액 자료 — 해마다 법인세(공제·감면 후) × (그해 사업기회 이익 ÷ 그해 각사업연도소득금액, 1 한도)를 더함(서식 10호의4 부표3 ⑳·㉚). profitFromOpportunity가 없으면 이익 합계를 씀.', items: { type: 'object', properties: { profit: { type: 'number' }, corporateTaxAfterCredit: { type: 'number' }, corporateTaxableIncome: { type: 'number' } } } },
         monthsInInitialYear: { type: 'integer', description: 'phase가 initial일 때만 — 개시사업연도의 월수(보통 12, 사업연도가 짧으면 그 미만).' },
         dividendDeduction: { type: 'number', description: 'phase가 settlement일 때만 — 신고기한까지 수혜법인으로부터 받은 배당소득에 대한 공제액(원). 별도로 계산해서 입력한다. 없으면 생략.' },
         initialPhaseCalculatedTax: { type: 'number', description: 'phase가 settlement일 때만 — 개시사업연도 신고의 산출세액(원, [별지10호의4] ㉗). 정산 세액에서 빼고 남은 것에만 3% 공제(법 §45의4③). 적으면 환급세액.' },
@@ -1584,6 +1585,7 @@ const DRIVE_TOOLS = [
         shareholderOwnershipRatio: { type: 'number', description: '증여의제이익을 계산할 그 지배주주등의 주식보유비율(0~1).' },
         directGiftTaxEquivalent: { type: 'number', description: '§45의5② 한도 계산용 — 그 지배주주등이 특정법인의 이익 중 자기 지분에 해당하는 금액을 직접 증여받았다고 볼 경우의 증여세 상당액(원, 관계별 공제 반영해 별도 계산). 없으면 한도를 적용하지 않는다.' },
         priorBenefitsWithinOneYear: { type: 'array', items: { type: 'number' }, description: '§43②·시행령§32의4 — 이번 증여일부터 소급 1년 이내 같은 특정법인과의 동일한 거래등이 더 있었다면, 그 각각의 증여의제이익을 배열로 넣는다. 이 도구가 이번 거래 이익과 합산해 1억원 기준금액(게이트)을 다시 계산한다. 없으면 생략.' },
+        priorCorporateTaxEquivalentWithinOneYear: { type: 'number', description: '[2026.10.20] priorBenefitsWithinOneYear 거래들의 법인세상당액 중 이 지배주주등 몫 합계(원) — ㊲ 한도(시행령 §34의5⑨)에서 직접 증여 금액으로 되돌리고 한도에서 뺌. 없으면 생략.' },
         relationDeductionLimit: { type: 'number', description: '증여재산공제(§53) 한도액(10년 — 같은 증여자 앞선 증여를 priorGiftAmount로 합산하면 그 증여에 쓴 공제는 빼지 말고, 합산 안 되는 다른 증여자에게 쓴 공제만 뺀 값) — 서식 10호의6은 증여자(특수관계인)와의 관계별 공제 칸을 둠(확인 필요).' },
         priorGiftAmount: { type: 'number', description: '10년 이내 동일인 기증여재산가액(§47②). 그 합친 금액이 1천만원 미만이면 이 도구가 자동으로 합산에서 제외하므로 그대로 실제 금액을 넣으면 된다. 없으면 0.' },
         appraisalFeeAmount: { type: 'number', description: '증여재산 감정평가 수수료(500만원 한도). 없으면 생략.' },
@@ -2045,7 +2047,10 @@ const DRIVE_TOOLS = [
       type: 'object',
       properties: {
         wasRepurchasedWithinLeaseTerm: { type: 'boolean', description: '한국농어촌공사와의 임차기간 내에 해당 농지등을 환매했는지.' },
-        originalTaxPaid: { type: 'number', description: '한국농어촌공사에 양도할 당시 납부한 양도소득세(원, 환급대상액).' }
+        originalTaxPaid: { type: 'number', description: '한국농어촌공사에 양도할 당시 납부한 양도소득세(원, 서식 51호의3 ⑧).' },
+        originalPenaltyAmount: { type: 'number', description: '[2026.10.20] 위 납부세액에 섞인 가산세·가산금(원) — 환급에서 뺌(서식 51호의3 작성방법 4).' },
+        originalArea: { type: 'number', description: '[2026.10.20] 양도한 농지등 면적(㎡, ⑤) — 일부만 환매했을 때 환매면적과 함께.' },
+        repurchasedArea: { type: 'number', description: '[2026.10.20] 환매한 면적(㎡, ⑭) — 환급 = (납부세액 − 가산세) × 환매면적 ÷ 양도면적(조특령 §67의2④). 없으면 전부 환매.' }
       },
       required: ['wasRepurchasedWithinLeaseTerm']
     }

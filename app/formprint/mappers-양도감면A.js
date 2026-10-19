@@ -62,9 +62,11 @@
   // 엔진 감면산식 글 'A 70,310,000 × (B 240,000,000 − C 2,500,000) ÷ D 237,500,000 × E 15%' 읽기
   function formulaOf(note) {
     var m = String(note && note.감면산식 || '').match(/A ([\d,]+) × \(B ([\d,]+) − C ([\d,]+)\) ÷ D ([\d,]+)(?:\([^)]*\))? × E ([\d.]+)%/); // [2026.10.20] 세율 묶음이 둘 이상인 해(§104⑤2호 단서)는 엔진이 D 뒤에 "(그 세율 묶음 — §104⑤2호)"를 붙임
-    if (!m) return null;
     var g = function (s) { return Number(String(s).replace(/,/g, '')); };
-    return { A: g(m[1]), B: g(m[2]), C: g(m[3]), D: g(m[4]), E: Number(m[5]) / 100 };
+    var f = m ? { A: g(m[1]), B: g(m[2]), C: g(m[3]), D: g(m[4]), E: Number(m[5]) / 100 } : null;
+    // [2026.10.20 서식 연결] 엔진 감면 줄의 표시 필드(감면대상소득금액·감면율 숫자)가 있으면 B·E는 그 숫자를 씀(글 읽기는 예전 저장 결과용)
+    if (note && typeof note.감면대상소득금액 === 'number' && typeof note.감면율 === 'number') { f = f || {}; f.B = note.감면대상소득금액; f.E = note.감면율; }
+    return f;
   }
   // 감면세액 검산: 소득세법 §90① 감면세액 = A × (B − C) ÷ D × E (원 미만 버림), §133 한도로 깎인 몫은 더해서 비교
   function checkRed(o, 칸, note) {

@@ -248,9 +248,11 @@
   // 엔진 감면산식 글 'A … × (B … − C …) ÷ D …(그 세율 묶음 — §104⑤2호) × E 15%' 읽기(mappers-양도감면A.js formulaOf와 같은 식)
   function redFormula(note) {
     var m = String(note && note.감면산식 || '').match(/A ([\d,]+) × \(B ([\d,]+) − C ([\d,]+)\) ÷ D ([\d,]+)(?:\([^)]*\))? × E ([\d.]+)%/);
-    if (!m) return null;
     var g = function (s) { return Number(String(s).replace(/,/g, '')); };
-    return { A: g(m[1]), B: g(m[2]), C: g(m[3]), D: g(m[4]), E: Number(m[5]) };
+    var f = m ? { A: g(m[1]), B: g(m[2]), C: g(m[3]), D: g(m[4]), E: Number(m[5]) } : null;
+    // [2026.10.20 서식 연결] 엔진 감면 줄의 표시 필드(감면대상소득금액·감면율 숫자)가 있으면 B·E(%)는 그 숫자를 씀(글 읽기는 예전 저장 결과용)
+    if (note && typeof note.감면대상소득금액 === 'number' && typeof note.감면율 === 'number') { f = f || {}; f.B = note.감면대상소득금액; f.E = Math.round(note.감면율 * 1000) / 10; }
+    return f;
   }
   // 부표1 ④ 원인(작성방법 4: 매매·수용·협의매수·교환·공매·경매·부담부증여…) — 화면 양도원인 중 서식 낱말과 1:1인 것만
   var CAUSE_LABEL = { '': '매매', sale: '매매', exchange: '교환', burdened_gift: '부담부증여' };
@@ -354,6 +356,7 @@
     });
     codeOrder.sort(function (x, y) { return Number(x) - Number(y); });
     var use1_ = !!(r.비교과세_104조5항 && r.비교과세_104조5항.적용 === '1호');
+    var p5_ = n(r.기신고_양도소득금액_107조), p7_ = n(r.기신고_기본공제_107조), p17_ = n(r.기신고세액_107조); // [2026.10.20 §107②] 84호 ⑤·⑰
     var sumBy = function (k) { return codeOrder.reduce(function (t, c) { return t + byCode[c][k]; }, 0); };
     var poolAll = hasDom && has(r.합산대상_장기거래건수) && n(r.합산대상_장기거래건수) === n(r.거래건수) - n(r.비과세건수);
     var colUsed = 0;
@@ -365,13 +368,16 @@
         if (g.감면) o.set('⑥@' + col, g.감면);
         var rates = Object.keys(g.세율);
         if (!g.누진 && rates.length === 1) o.set('⑨@' + col, Math.round(Number(rates[0]) * 100) + '%');
-        if (!use1_) o.set('⑩@' + col, g.산출세액); // [2026.10.20 J15] 엔진이 §104⑤2호대로 세율 묶음마다 누진세액을 매김 — 열별 ⑩이 정해짐
+        // [2026.10.20 §107②] 2회째 예정신고 — 이미 신고한 기본세율 자산 소득금액은 기본세율(1-10) 열 ⑤, ⑦·⑧·⑩도 합산 기준(작성방법 14·§107②1호)
+        if (code === '10' && p5_ > 0) { o.set('⑤@' + col, p5_).set('⑦@' + col, g.기본공제 + p7_).set('⑧@' + col, g.과세표준 + p5_ - p7_); g.p107 = true; }
+        if (!use1_) o.set('⑩@' + col, g.산출세액 + (g.p107 ? n(r.기신고몫_산출세액_107조) : 0)); // [2026.10.20 J15] 엔진이 §104⑤2호대로 세율 묶음마다 누진세액을 매김 — 열별 ⑩이 정해짐
       });
       colUsed = Math.min(3, codeOrder.length);
       if (codeOrder.length > 3) o.note('세율구분이 ' + codeOrder.length + '가지 — 서식 세율 열이 3개라 앞 3개(' + codeOrder.slice(0, 3).join('·') + ')만 찍음, 나머지(' + codeOrder.slice(3).join('·') + ')는 별지 필요');
       if (use1_) o.miss('⑩ 세율 열별 산출세액', '§104⑤1호(과세표준 합계 × 기본세율) 적용 해 — 산출세액이 하나라 합계 열에만 적음(작성방법 8)');
-      o.check('⑧ 국내분 = 세율 열 ⑧ 합', sumBy('과세표준'), n(r.합산과세표준) + rows.filter(function (x) { return x.묶음 !== '누진'; }).reduce(function (t, x) { return t + n(x.과세표준); }, 0));
-      o.check('⑦ 국내분 = 세율 열 ⑦ 합', n(r.기본공제), sumBy('기본공제'));
+      if (p5_ > 0 && !byCode['10']) o.note('⑤ 이미 신고한 소득금액(' + p5_ + '원)은 기본세율(1-10) 열에 적어야 하는데 이번 신고에 그 열이 없음 — 직접 1-10 열을 만들어 ⑤·⑦·⑧·⑩을 적을 것');
+      o.check('⑧ 국내분 = 세율 열 ⑧ 합', sumBy('과세표준') + (p5_ - p7_), n(r.합산과세표준) + rows.filter(function (x) { return x.묶음 !== '누진'; }).reduce(function (t, x) { return t + n(x.과세표준); }, 0));
+      o.check('⑦ 국내분 = 세율 열 ⑦ 합', n(r.기본공제) + p7_, sumBy('기본공제') + p7_);
     } else if (hasDom) {
       o.miss('③④⑧ 세율 열', '엔진 자산별 세율 값(세율별_자산)과 자산 목록이 맞지 않음(환지 증가분 등) — 소계·합계 열만');
     }
@@ -382,16 +388,17 @@
       var reduction = n(r.합산자경감면액) + n(r.합산수용감면액) + n(r.합산조특법세액감면액);
       var 가산신고 = n(r.무신고가산세) + n(r.과소신고가산세), 가산납부 = n(r.납부지연가산세), 가산기장 = n(r.환산취득가액가산세_합계);
       var payable = Math.max(0, n(r.납부세액_합계) - n(r.지방소득세)); // trPrintFormPageHtml_ nationalPayable
-      D = { '④': rowsOk ? sumBy('소득금액') : (poolAll ? n(r.합산소득금액) : undefined), '⑥': rowsOk ? ex6Sum : undefined, '⑦': n(r.기본공제),
-        '⑧': rowsOk ? sumBy('과세표준') : (poolAll ? n(r.합산과세표준) : undefined),
+      D = { '④': rowsOk ? sumBy('소득금액') : (poolAll ? n(r.합산소득금액) : undefined), '⑥': rowsOk ? ex6Sum : undefined, '⑦': n(r.기본공제) + p7_,
+        '⑧': rowsOk ? sumBy('과세표준') + (p5_ - p7_) : (poolAll ? n(r.합산과세표준) : undefined),
         '⑩': n(r.산출세액_합계) + reduction, // 감면 전 금액(trRateDetailRecord_ 10번과 같은 식)
         '⑪': reduction, '⑭': n(r.연금계좌세액공제_합계), '⑮': n(r.전자신고세액공제),
         '⑯-무(과소)신고': 가산신고, '⑯-납부지연': 가산납부, '⑯-기장불성실 등': 가산기장, '⑯-계': 가산신고 + 가산납부 + 가산기장, '⑱': payable };
+      if (p5_ > 0) { D['⑤'] = p5_; D['⑰'] = p17_; }
       if (typeof ctx.splitAmt === 'number' && isFinite(ctx.splitAmt)) { D['⑲'] = ctx.splitAmt; D['⑳'] = Math.max(0, payable - ctx.splitAmt); }
-      // 검산: ⑱ = ⑩ − ⑪ − ⑫ − ⑬ − ⑭ − ⑮ + ⑯ − ⑰ (⑫⑬⑰은 0으로)
-      o.check('⑱ 국내분 = ⑩ − ⑪ − ⑭ − ⑮ + ⑯계 (⑫⑬⑰ 0)', payable,
-        Math.max(0, n(r.산출세액_합계) + reduction - reduction - n(r.연금계좌세액공제_합계) - n(r.전자신고세액공제) + 가산신고 + 가산납부 + 가산기장));
-      if (poolAll) o.check('⑧ 국내분 = ④ − ⑦', n(r.합산과세표준), n(r.합산소득금액) - n(r.기본공제));
+      // 검산: ⑱ = ⑩ − ⑪ − ⑫ − ⑬ − ⑭ − ⑮ + ⑯ − ⑰ (⑫⑬은 0으로, ⑰은 §107② 이미 신고한 세액)
+      o.check('⑱ 국내분 = ⑩ − ⑪ − ⑭ − ⑮ + ⑯계 − ⑰ (⑫⑬ 0)', payable,
+        Math.max(0, n(r.산출세액_합계) + reduction - reduction - n(r.연금계좌세액공제_합계) - n(r.전자신고세액공제) + 가산신고 + 가산납부 + 가산기장 - p17_));
+      if (poolAll) o.check('⑧ 국내분 = ④ + ⑤ − ⑦', n(r.합산과세표준), n(r.합산소득금액) + p5_ - (n(r.기본공제) + p7_));
     }
 
     // 국외분(국외자산) 값 — 전자신고 trOverseasRateDetailRecord_와 같은 값(감면·연금계좌·전자신고세액공제·기장불성실은 국외자산 계산에 없어 0)
@@ -425,20 +432,22 @@
         if (dv !== undefined && F[k] !== undefined) T[k] = dv + F[k];
       });
       putCol84(o, '합계', T);
+      if (D['⑤'] !== undefined) o.set('⑤@합계', D['⑤']).set('⑰@합계', D['⑰']); // [§107②] 국외분엔 없음
       if (D['④'] === undefined) o.miss('④⑧ 합계', '국내분 ④⑧을 정하지 못해 합계 열도 비움');
       if (n(ctx.splitAmt) > 0) o.note('⑲ 분납 — 분납 계산기는 국내분(부동산 등) 세액 기준이라 국내분 열에만 적음. 분납 한도(§112)는 신고서 전체 납부할 세액 기준이므로 국외분까지 합쳐 다시 확인(확인 필요)');
     } else if (D) putCol84(o, '합계', D);
+    if (D && D['⑤'] !== undefined) { o.set('⑤@국내분소계', D['⑤']).set('⑰@국내분소계', D['⑰']); if (!F) o.set('⑤@합계', D['⑤']).set('⑰@합계', D['⑰']); } // [2026.10.20 §107②]
     else if (F) putCol84(o, '합계', F);
     if (D || F) {
       if ((D && D['⑲'] === undefined) || (!D && F && F['⑲'] === undefined)) o.miss('⑲ 분납할 세액·⑳ 납부세액', '분납 계산 자료(ctx.splitAmt) 없음');
     }
-    o.miss('⑤ 기신고ㆍ결정ㆍ경정된 양도소득금액', '계산기에 없음');
+    if (!(D && D['⑤'] !== undefined)) o.miss('⑤ 기신고ㆍ결정ㆍ경정된 양도소득금액', '2회째 예정신고가 아니면 비움 — 그때는 양도인 카드 [2회째 예정신고] 칸(§107②)');
     if (D && !rowsOk) o.miss('⑥ 소득감면대상 소득금액', '엔진 세율별 자산 값과 자산 목록이 맞지 않아(환지 등) 자산별 감면소득을 짝지을 수 없음');
     if (ex6Sum) o.note('⑥ 소득감면대상 소득금액 ' + ex6Sum + '원 = 부표1 ⑳ 합계(엔진 제외소득금액 × (1 − 장기보유특별공제율)) — ④는 감면 빼기 전(부표1 ⑱ 합계), ⑧ = ④ − ⑥ − ⑦ 은 엔진 과세표준');
     o.miss('⑨ 누진세율 열의 세율', '누진세율(6~45%, 가산 포함)은 열 하나에 숫자 하나로 적기 어려워 비움 — 합계·소계 열은 서식대로 비움');
     if (hasDom) o.miss('⑫ 외국납부세액공제(국내분)', '부동산 본표 계산기에 없음(국외자산은 국외분 열)');
     o.miss('⑬ 원천징수세액공제', '계산기에 없음');
-    o.miss('⑰ 기신고ㆍ결정ㆍ경정세액, 조정공제', '계산기에 없음');
+    if (!(D && D['⑰'] !== undefined)) o.miss('⑰ 기신고ㆍ결정ㆍ경정세액, 조정공제', '2회째 예정신고가 아니면 비움(확정신고의 예정 납부분은 확인 필요)');
     o.miss('㉑ 환급세액', '계산기에 없음');
     // [2026.10.20 J21] 양도세 감면분 농어촌특별세 — 엔진 농어촌특별세_과세표준(과세 감면세액)·농어촌특별세(× 20%, 농특세법 §5①1호). 비과세 감면(§66~§70·직접 경작 수용·§98의3·§98의5)은 빠짐
     //  국외자산 계산에는 감면이 없어 농특세가 생기지 않음
@@ -935,7 +944,9 @@
     var r = ctx.derivative;
     if (!r) { o.miss('부표2의2 전체', '파생상품 계산 결과 없음'); return o.result(); }
     o.set('⑮@합계', Math.round(n(r.통산손익)));
-    o.miss('①~⑮ 종목별 줄', '계산기는 국내·국외 손익 합계 두 값만 받음 — 과세대상연도·세율구분·종목·증권사·계좌·수량·가액은 직접 적어야 함');
+    // [2026.10.20 서식 연결] ① 과세대상연도 = 엔진 결과 과세연도(화면 과세연도 입력, 탄력세율 연혁에 쓰는 값)
+    if (n(r.과세연도)) o.set('①', String(r.과세연도)); else o.miss('① 과세대상연도', '파생상품 계산기 과세연도 입력 없음(또는 예전 저장 결과)');
+    o.miss('②~⑮ 종목별 줄', '계산기는 국내·국외 손익 합계 두 값만 받음 — 세율구분·종목·증권사·계좌·수량·가액은 직접 적어야 함');
     o.note('⑮ 합계 = 국내 ' + Math.round(n(r.국내파생상품손익)) + ' + 국외 ' + Math.round(n(r.국외파생상품손익)) + ' (엔진 통산손익)');
     return o.result();
   };

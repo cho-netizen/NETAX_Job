@@ -667,7 +667,9 @@
       else if (ry >= 8) addRate = 0.06;
       else if (ry >= 7) addRate = 0.04;
       else if (ry >= 6) addRate = 0.02;
-      return longTermRate(holdingYears) + addRate;
+      // [2026.10.20 N24 회장 결론] 바탕 율 = 그 양도일의 소득세법 §95② 표1(longTermRateAt_ — 2018.12.31. 이전 양도는 옛 표1, 조견표 2부-03). 추가공제율 표는
+      //  2014.1.1.판(법률 제11989호)부터 지금까지 같다(6년 2%~10년 이상 10%, 법제처 연혁판 대조). 예전엔 늘 지금 표1(연 2%)이라 2014~2018 양도는 특례가 오히려 불리했다.
+      return longTermRateAt_(holdingYears, t && t.transferDate) + addRate;
     }
     return null;
   }
@@ -2654,7 +2656,7 @@
     //  아래 A·D는 합산 그룹만의 값이다(단기·미등기 자산이 같은 해에 섞일 때 §90①의 A·D를 과세기간 전체로 볼지는 판단 대기).
     //  · 자경농지(§69)·축사용지(§69의2)·어업용토지(§69의3)·농지대토(§70) 100%, 자경산지(§69의4) 경영기간별 10~50%
     //  · 조특 세액감면: §98의4 비거주자 특례 10%, §97의10 공공매입임대 10%, §85의10 국가양도산지 10%, §43 구조조정(5년 이내 50%),
-    //    미분양 §98계열(5년 이내 세액감면), §97 장기임대 기본형 50% — 단기양도인 경우는 자동화하지 않았으니 별도 확인.
+    //    미분양 §98계열(5년 이내 세액감면), §97 장기임대 기본형 50% — 단기(2년 미만) 자산은 아래 N22(shortRed_)에서 §97의10만(보유 요건 없는 유일한 감면).
     //    사후관리 추징(§97의10③ 등)은 나중 과세기간 일이라 반영하지 않는다.
     //  · 수용: §77①(율 연혁 compRateAt_), §77의2 대토 40%, §77의3 개발제한구역 40/25%. §77④ 특약 위반 징수.
     const COMPENSATION_REDUCTION_RATES_M = {
@@ -2721,9 +2723,17 @@
     // [2026.10.20 세액 고침] 소득세법 §103② — 기본공제(연 250만원, 미등기 제외)는 감면소득 외 양도소득금액에서 먼저, 그 안에서는 그 과세기간에
     //  먼저 양도한 자산부터 뺀다 — 장기(누진)·단기 묶음을 가리지 않는다. 예전엔 장기 자산이 있으면 늘 장기 묶음에서 빼, 단기 자산을 먼저 판 해는
     //  단기세율(40~70%) 쪽 과세표준이 250만원 크게 잡혀 세액이 많았다. basicOf_[idx]가 자산별 몫(중과 가산액·단기 과세표준·§90① C에 씀).
+    // [2026.10.20 §107② — 회장 지시] 같은 해 누진세율(기본세율, §104①1호) 자산을 2회 이상 예정신고하면서 이미 신고한 양도소득금액과 합산할 때:
+    //  예정신고 산출세액 = [(A 이미 신고한 소득금액 + B 이번 소득금액 − C 기본공제) × 기본세율] − E 이미 신고한 예정신고 산출세액(소득세법 §107②1호, 서식 84호 ⑤·⑰).
+    //  filingParams.priorFiledIncomeAmount(A), priorFiledBasicDeduction(그때 쓴 기본공제, 비우면 min(250만, A)), priorFiledTaxAmount(E). A는 누진 묶음의 일반(기본세율) 몫에
+    //  과세표준(A − 그때 쓴 기본공제)으로 더하고, E는 산출세액 뒤에 뺀다(⑰ — 가산세·지방소득세는 뺀 뒤 금액 기준). 비사업용 토지(8호)·중과(9호 등) 자산의 2회째 합산은 아직 입력 칸 없음.
+    const priorInc107_ = Math.max(0, Number(filingParams.priorFiledIncomeAmount) || 0);
+    const priorBasic107_ = priorInc107_ > 0 ? Math.min(priorInc107_, 2500000, (filingParams.priorFiledBasicDeduction !== undefined && filingParams.priorFiledBasicDeduction !== '' && filingParams.priorFiledBasicDeduction !== null) ? Math.max(0, Number(filingParams.priorFiledBasicDeduction) || 0) : 2500000) : 0;
+    const priorBase107_ = Math.max(0, priorInc107_ - priorBasic107_);
+    const priorTax107_ = priorInc107_ > 0 ? Math.max(0, Number(filingParams.priorFiledTaxAmount) || 0) : 0;
     const basicOf_ = {};
     (function () {
-      let left = (pooled.length || shortTerm.length) ? 2500000 : 0;
+      let left = (pooled.length || shortTerm.length) ? Math.max(0, 2500000 - priorBasic107_) : 0; // [§107②] 먼저 양도해 이미 신고한 자산이 쓴 기본공제는 뺀 나머지(§103②)
       const redRatio_ = {};
       red90Assets_.forEach(function (a) { if (a.reds && a.reds.length) redRatio_[a.idx] = a.reducedRatio != null ? Math.max(0, Math.min(1, Number(a.reducedRatio) || 0)) : 1; });
       // [2026.10.20 세액 고침 — 양도 감사] §103② 기본공제는 양도차손 통산 뒤 양도소득금액에서 뺀다 — 누진(합산) 묶음 자산도 그 묶음 순소득을 이익 자산에 금액 비율로
@@ -2740,7 +2750,7 @@
     const basicTotal_ = pooled.concat(shortTerm).reduce(function (t, c) { return t + (basicOf_[c.idx] || 0); }, 0);
     const poolIncomeSum = pooled.reduce(function (s, c) { return s + c.incomeAmount; }, 0);
     const basicDeductionUsedInPool = basicPool_ > 0;
-    const poolTaxBase = Math.max(0, poolTaxBaseIncome_ - basicPool_);
+    const poolTaxBase = Math.max(0, poolTaxBaseIncome_ - basicPool_) + priorBase107_; // [§107②] 이미 신고한 기본세율 자산 과세표준 포함(84호 ⑧ = ④ + ⑤ − ⑦)
     // 합산은 같은 과세기간(한 해) 양도 — 그 해의 표(이번 계산 거래 중 가장 늦은 양도일)
     const poolDate_ = cores.reduce(function (m, c) { const d = String((c.raw && c.raw.transferDate) || ''); return d > m ? d : m; }, '');
     const surOf_ = {}, rateOf_ = {};
@@ -2774,8 +2784,9 @@
       const pp = pooled.filter(function (c) { return c.incomeAmount > 0; });
       const split_ = !!yr_ && yr_ >= '2015-01-01';
       const keyOf_ = function (c) { const r = rateOf_[c.idx] || { rate: 0, kind: 'g' }; if (!split_) return 'all'; if (yr_ < '2019-01-01' && pp.length > 1) return 'a' + c.idx; return r.kind + Math.round(r.rate * 100); };
-      let incL = Math.max(0, poolTaxBaseIncome_), bdL = poolTaxBaseIncome_ - poolTaxBase;
+      let incL = Math.max(0, poolTaxBaseIncome_), bdL = poolTaxBaseIncome_ - (poolTaxBase - priorBase107_);
       const groups_ = {}, order_ = [];
+      if (priorBase107_ > 0) { const k0 = split_ ? 'g0' : 'all'; groups_[k0] = { base: priorBase107_, items: [{ c: { idx: -1 }, base: priorBase107_ }] }; order_.push(k0); } // [§107②] 이미 신고한 몫(가짜 자산 -1)
       pp.forEach(function (c, i) {
         const last = i === pp.length - 1;
         const inc = last ? incL : Math.round(c.incomeAmount * lf_), bd = last ? bdL : Math.min(Math.round(basicOf_[c.idx] || 0), inc, bdL);
@@ -2819,6 +2830,7 @@
       const note = { idx: x.idx, 구분: '합산(장기)', 소득금액: Math.round(c.incomeAmount), 특례: x.label, 감면액: x.allowed,
         감면산식: 'A ' + Math.round(classAD_[x.idx] && classAD_[x.idx].n > 1 ? classAD_[x.idx].A : A90_).toLocaleString('ko-KR') + ' × (B ' + Math.round(x.B).toLocaleString('ko-KR') + ' − C ' + Math.round(x.C).toLocaleString('ko-KR') + ') ÷ D ' + Math.round(classAD_[x.idx] && classAD_[x.idx].n > 1 ? classAD_[x.idx].D : poolTaxBase).toLocaleString('ko-KR') + (classAD_[x.idx] && classAD_[x.idx].n > 1 ? '(그 세율 묶음 — §104⑤2호)' : '') + ' × E ' + Math.round(x.rate * 1000) / 10 + '%' };
       if (x.cut) note.조특법133_한도로_감면안함 = x.cut;
+      note.감면대상소득금액 = Math.round(x.B); note.감면율 = x.rate; // [2026.10.20 서식 연결] 표시 필드(세액 영향 없음) — 부표1 ⑲·㉑, 조특62호 등이 감면산식 글 대신 읽음
       assetNotes.push(note);
       if (x.key === 'farm') {
         farmlandReductionTotal += x.allowed;
@@ -2924,6 +2936,22 @@
       return tax;
     });
     const shortTaxTotal = shortResults.reduce(function (s, v) { return s + v; }, 0);
+    // [2026.10.20 N22 회장 결론] 단기(2년 미만) 자산의 세액감면 — 감면마다 보유 요건 원문을 보면 자경(§69 8년)·축사(§69의2 8년)·어업(§69의3 8년)·
+    //  대토(§70 4년+)·자경산지(§69의4 10년)·국가양도산지(§85의10 10년)·수용(§77 사업인정고시일 2년 전 취득)·개발제한구역(§77의3 지정 전 취득)·
+    //  장기임대(§97 5년 임대)·구조조정(§43 1999.12.31. 전 취득)·§98의4·미분양 §98계열(2009~2015 취득)은 요건이나 취득 시기상 2년 미만 보유가 될 수 없다.
+    //  보유 요건이 없는 것은 조특법 §97의10(공공매입임대주택 건설용 토지를 주택건설사업자에게 2027.12.31.까지 양도, 세액 10%)뿐 — 예전엔 감면을 합산(장기)
+    //  묶음에서만 계산해, 이 토지를 2년 안에 팔면 감면이 빠졌다. §90① A×(B−C)÷D×E: 단기 자산은 그 자산(또는 같은 가산율 묶음)이 세율 묶음이라
+    //  A÷D = 그 자산 산출세액 ÷ 과세표준, B−C = 그 자산 과세표준 → 감면 = 그 자산 산출세액 × 10%. 비교과세 1호 채택 해는 아래 cmp104_에서 A·D를 그 해 전체로.
+    //  미등기 자산은 감면 배제(소득세법 §91①) — 넣지 않음.
+    let shortRed_ = [];
+    shortItems.forEach(function (it, i) {
+      const c = it.c;
+      if (!(c.raw && c.raw.isPublicRentalHousingLand)) return;
+      const amt = Math.floor(shortResults[i] * 0.10 + 1e-6);
+      if (amt > 0) shortRed_.push({ idx: c.idx, key: 'percent', sec: 'other', rate: 0.10, label: '공공매입임대주택 건설목적 토지양도 감면(조특법§97의10, 세액 10% 감면 — 단기 자산)', base: it.base, B: it.base + it.bd, C: it.bd, share: shortResults[i], raw: amt, allowed: amt, cut: 0, date: String(c.raw.transferDate || ''), A: shortResults[i], D: it.base });
+    });
+    let shortReductionTotal_ = shortRed_.reduce(function (t, x) { return t + x.allowed; }, 0);
+    percentTaxReductionTotal += shortReductionTotal_;
 
     const unregisteredResults = unregistered.map(function (c) {
       const nettedInc_ = (nettedIncomeByIdx_[c.idx] !== undefined) ? nettedIncomeByIdx_[c.idx] : c.gainBeforeDeduction;
@@ -2939,7 +2967,7 @@
     const rateRows_ = [];
     (function () {
       const pp = pooled.filter(function (c) { return c.incomeAmount > 0; });
-      let incL = Math.max(0, poolTaxBaseIncome_), bdL = poolTaxBaseIncome_ - poolTaxBase, taxL = poolBaseTax;
+      let incL = Math.max(0, poolTaxBaseIncome_), bdL = poolTaxBaseIncome_ - (poolTaxBase - priorBase107_), taxL = poolBaseTax - (progOf_[-1] || 0); // [§107②] 이미 신고한 몫 빼고 자산에
       pp.forEach(function (c, i) {
         const last = i === pp.length - 1;
         const inc = last ? incL : Math.round(c.incomeAmount * lossFactor90_), bd = last ? bdL : Math.min(Math.round(basicOf_[c.idx] || 0), inc, bdL);
@@ -2974,7 +3002,9 @@
       const T2 = A90_ + shortTaxTotal + unregisteredTaxTotal;
       if (d104_ < '2015-01-01') { if (T1 > T2) assetNotes.push({ 구분: '비교과세(소득세법 §104⑤)', 안내: '⚠ 2014년 이전 양도 — §104⑤ 비교과세(과세표준 합계 × 기본세율 ' + T1 + '원 > 자산별 합계 ' + T2 + '원)는 2015.1.1. 양도분부터 법률 규정 — 그 전 판은 원문 확인 필요, 자산별 합계로 계산했습니다.' }); return; }
       const red1 = red90Assets_.length ? reductions90_(red90Assets_, { A: T1, D: totalBase_, basic: basicPool_, lossFactor: lossFactor90_, yearDate: poolDate_, prior: prior133From_([filingParams].concat(transactions)) }) : { reds: [], cuts: [], dupIdx: [] };
-      const R1 = red1.reds.reduce(function (t, x) { return t + x.allowed; }, 0);
+      // [N22] 단기 §97의10 감면도 1호에서는 A = 1호 산출세액, D = 과세표준 합계
+      const shortRed1_ = shortRed_.map(function (x) { const sh = totalBase_ > 0 ? T1 * x.base / totalBase_ : 0; const a = Math.floor(sh * x.rate + 1e-6); return Object.assign({}, x, { share: sh, raw: a, allowed: a, A: T1, D: totalBase_ }); });
+      const R1 = red1.reds.reduce(function (t, x) { return t + x.allowed; }, 0) + shortRed1_.reduce(function (t, x) { return t + x.allowed; }, 0);
       const netRule_ = d104_ >= '2020-01-01';
       const use1 = netRule_ ? (T1 - R1 > T2 - R2) : (T1 > T2);
       cmp104_ = { 적용: use1 ? '1호' : '2호', 기준: netRule_ ? '감면세액을 뺀 세액이 큰 쪽(2020.1.1. 이후)' : '산출세액이 큰 쪽(2015~2019)',
@@ -2984,9 +3014,15 @@
       farmlandReductionTotal = 0; percentTaxReductionTotal = 0; compensationReductionTotal = 0;
       red1.reds.forEach(function (x) {
         if (x.key === 'farm') farmlandReductionTotal += x.allowed; else if (x.key === 'percent') percentTaxReductionTotal += x.allowed; else compensationReductionTotal += x.allowed;
-        assetNotes.push({ idx: x.idx, 구분: '비교과세 1호 감면(§90① A·D = 그 해 전체)', 특례: x.label, 감면액: x.allowed,
-          감면산식: 'A ' + Math.round(T1).toLocaleString('ko-KR') + ' × (B ' + Math.round(x.B).toLocaleString('ko-KR') + ' − C ' + Math.round(x.C).toLocaleString('ko-KR') + ') ÷ D ' + Math.round(totalBase_).toLocaleString('ko-KR') + ' × E ' + Math.round(x.rate * 1000) / 10 + '%' });
+        const note1_ = { idx: x.idx, 구분: '비교과세 1호 감면(§90① A·D = 그 해 전체)', 특례: x.label, 감면액: x.allowed,
+          감면산식: 'A ' + Math.round(T1).toLocaleString('ko-KR') + ' × (B ' + Math.round(x.B).toLocaleString('ko-KR') + ' − C ' + Math.round(x.C).toLocaleString('ko-KR') + ') ÷ D ' + Math.round(totalBase_).toLocaleString('ko-KR') + ' × E ' + Math.round(x.rate * 1000) / 10 + '%' };
+        // [2026.10.20 서식 연결] 표시 필드(세액 영향 없음) — 2호 줄과 같게 §133 한도로 깎인 몫·감면대상소득금액·감면율
+        if (x.cut) note1_.조특법133_한도로_감면안함 = x.cut;
+        note1_.감면대상소득금액 = Math.round(x.B); note1_.감면율 = x.rate;
+        assetNotes.push(note1_);
       });
+      shortRed1_.forEach(function (x) { percentTaxReductionTotal += x.allowed; });
+      shortRed_ = shortRed1_; shortReductionTotal_ = 0; // 1호는 아래 poolTaxWithSurcharge = T1 − R1(단기 감면 포함)로 이미 뺌
       red90_ = red1;
       const claws_ = farmlandClawbackTotal + bondBreachClawbackTotal + downContractClawbackTotal;
       if (claws_ > 0) cmp104_.알림 = '⚠ 감면 추징(' + claws_ + '원)은 자산별 합계(2호) 감면으로 잰 값 — 1호 채택 해에는 다시 확인하세요';
@@ -2995,6 +3031,12 @@
       assetNotes.push({ 구분: '비교과세(소득세법 §104⑤1호)', 안내: '그 해 과세표준 합계 ' + totalBase_.toLocaleString('ko-KR') + '원 × 기본세율 = ' + T1.toLocaleString('ko-KR') + '원(감면 ' + Math.round(R1).toLocaleString('ko-KR') + '원)이 자산별 산출세액 합계 ' + T2.toLocaleString('ko-KR') + '원(감면 ' + Math.round(R2).toLocaleString('ko-KR') + '원)보다 커서 1호로 계산했습니다.' });
     })();
 
+    // [N22] 단기 §97의10 감면 — 감면 목록(농특세·감면신청서가 읽음)과 자산별 안내에 넣는다
+    shortRed_.forEach(function (x) {
+      red90_.reds.push(x);
+      assetNotes.push({ idx: x.idx, 구분: '단기양도(개별)', 특례: x.label, 감면액: x.allowed,
+        감면산식: 'A ' + Math.round(x.A).toLocaleString('ko-KR') + ' × (B ' + Math.round(x.B).toLocaleString('ko-KR') + ' − C ' + Math.round(x.C).toLocaleString('ko-KR') + ') ÷ D ' + Math.round(x.D).toLocaleString('ko-KR') + ' × E 10%' });
+    });
     const conversionValuePenaltyTotal = active.reduce(function (s, c) { return s + (c.conversionValuePenalty || 0); }, 0);
 
     // 조특법§99의14① + 조특령§99의13② + 소득령§40의2②1호 라목 — 자산마다 ⑮ = min(남은 1억 한도, 납입액, 양도차액) × 10%.
@@ -3018,11 +3060,11 @@
     // exemptClawbackTotal(다운계약서 비과세배제 추징액)은 calculateTransferTaxSingleJS의 완전 계산 결과(지방소득세 포함)를
     // 상한으로 삼아 MIN한 값이라 이미 지방소득세가 녹아 있으므로, 아래 totalCalculatedTax에는 포함하지 않고
     // (그러면 다시 10% 지방소득세가 얹혀 이중계산된다) 최종 합계에만 그대로 더한다.
-    const totalCalculatedTax = poolTaxWithSurcharge + shortTaxTotal + unregisteredTaxTotal + exemptClawbackTotal;
+    const totalCalculatedTax = poolTaxWithSurcharge + shortTaxTotal + unregisteredTaxTotal + exemptClawbackTotal - shortReductionTotal_; // [N22] 2호면 단기 감면을 여기서 뺌
     const pensionAccountCreditTotal = Math.min(pensionAccountCreditRaw, Math.max(0, totalCalculatedTax));
     const eFilingCredit = filingParams.isSelfElectronicFiling ? Math.min(20000, Math.max(0, totalCalculatedTax - pensionAccountCreditTotal)) : 0;
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(filingParams.filingStatus) !== -1 ? filingParams.filingStatus : 'ontime';
-    const penalties = giftFilingPenalties(totalCalculatedTax, filingStatus, !!filingParams.isFraudulent, filingParams.underreportedTaxAmount, filingParams.unpaidDays, Number(filingParams.unpaidTaxForLatePenalty), !!filingParams.isOffshoreTransaction, lateCtx_(filingParams), Number(filingParams.unpaidTaxAtDesignatedDueDate), filingParams.fraudulentUnderreportedTaxAmount, filingParams.unpaidStartDate || unpaidStartAt_('transfer', poolDate_));
+    const penalties = giftFilingPenalties(Math.max(0, totalCalculatedTax - priorTax107_), filingStatus, !!filingParams.isFraudulent, filingParams.underreportedTaxAmount, filingParams.unpaidDays, Number(filingParams.unpaidTaxForLatePenalty), !!filingParams.isOffshoreTransaction, lateCtx_(filingParams), Number(filingParams.unpaidTaxAtDesignatedDueDate), filingParams.fraudulentUnderreportedTaxAmount, filingParams.unpaidStartDate || unpaidStartAt_('transfer', poolDate_));
     // [2026.10.20 옛 소득세법 §115] 2006.12.31. 이전 양도분 신고불성실가산세 — 합산 산출세액 기준
     { const inc115_ = cores.reduce(function (s, c) { return s + (c && !c.exempt && !c.error ? Math.max(0, Number(c.incomeAmount) || 0) : 0); }, 0);
       const old115m_ = oldTransferFilingPenalty_(poolDate_ || (transactions[0] || {}).transferDate, filingStatus, totalCalculatedTax, filingParams.underreportedTaxAmount, filingParams.preliminaryTaxPaid,
@@ -3140,8 +3182,8 @@
         합계: pn_.unreportedPenalty + pn_.underreportedPenalty + late_,
         안내: filingStatus === 'underreported' && !(ntUnderIn_ > 0) ? '과소신고한 농특세를 넣지 않아 본세 과소 비율로 추정(' + ntUnder_.toLocaleString('ko-KR') + '원)' : undefined };
     }
-    const localIncomeTax = Math.round(totalCalculatedTax * 0.1);
-    const grandTotal = Math.max(0, totalCalculatedTax - pensionAccountCreditTotal - eFilingCredit + conversionValuePenaltyTotal
+    const localIncomeTax = Math.round(Math.max(0, totalCalculatedTax - priorTax107_) * 0.1); // [§107②] 이미 신고한 세액(⑰)을 뺀 몫에
+    const grandTotal = Math.max(0, totalCalculatedTax - priorTax107_ - pensionAccountCreditTotal - eFilingCredit + conversionValuePenaltyTotal
       + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax + pensionAccountClawbackTotal);
 
     return {
@@ -3151,7 +3193,7 @@
       기본공제: Math.round(basicTotal_),
       세율별_자산: rateRows_, 합산과세표준: poolTaxBase, 합산기본세액: poolBaseTax, 합산가산액: poolSurchargeTotal, 합산자경감면액: farmlandReductionTotal, 합산자경감면_추징액: farmlandClawbackTotal,
       합산수용감면액: compensationReductionTotal, 합산채권만기특약위반_추징액: bondBreachClawbackTotal, 다운계약서_감면배제_추징액: downContractClawbackTotal, 비과세거래_다운계약서_추징액: exemptClawbackTotal,
-      합산감면전_산출세액: red90_.reds.length ? ((cmp104_ && cmp104_.적용 === '1호') ? cmp104_['1호_산출세액'] : A90_) : undefined, 비교과세_104조5항: cmp104_ || undefined, // [2026.10.19] §90① A — 감면은 모두 이 값에서(자산별 산식은 자산별 특례 내역의 감면산식)
+      합산감면전_산출세액: red90_.reds.some(function (x) { return shortRed_.indexOf(x) < 0 || (cmp104_ && cmp104_.적용 === '1호'); }) ? ((cmp104_ && cmp104_.적용 === '1호') ? cmp104_['1호_산출세액'] : A90_) : undefined, 비교과세_104조5항: cmp104_ || undefined, // [2026.10.19] §90① A — 감면은 모두 이 값에서(자산별 산식은 자산별 특례 내역의 감면산식)
       감면한도_조특법133: red90_.cuts.length ? red90_.cuts : undefined, 감면한도_시점경고: red90_.reds.length && red90_.warn ? red90_.warn : undefined,
       합산조특법세액감면액: percentTaxReductionTotal, // [2026.10.01 신규, 재검토102] 비거주자특례§98의4·공공매입임대주택§97의10·국가양도산지§85의10·구조조정대상부동산§43·장기임대주택§97 5개 합계 — 최종세액엔 이미 반영됐지만 이 필드가 없어 인쇄서식·전자신고파일의 "감면세액" 합계줄에서 누락되고 있었다.
       합산그룹_산출세액: poolTaxWithSurcharge,
@@ -3161,6 +3203,7 @@
       환산취득가액가산세_합계: conversionValuePenaltyTotal,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       신고불성실가산세_옛소득세법115: typeof penalties.옛소득세법115 === 'string' ? penalties.옛소득세법115 : undefined, // [2026.10.20] 2006년 이전 양도분 산식
+      기신고_양도소득금액_107조: priorInc107_ || undefined, 기신고_기본공제_107조: priorInc107_ ? priorBasic107_ : undefined, 기신고세액_107조: priorInc107_ ? priorTax107_ : undefined, 기신고몫_산출세액_107조: priorInc107_ ? (progOf_[-1] || 0) : undefined, // [§107②] 84호 ⑤·⑰ — 마지막은 합산 누진세액 중 이미 신고한 과세표준 몫(세율 열 ⑩용)
       지방소득세: localIncomeTax, 납부세액_합계: grandTotal,
       // [2026.10.20 J21] 84호 ㉒~㉚ 농어촌특별세 — 양도세 납부세액_합계(양도세+지방소득세)에는 넣지 않고 따로(서식도 칸이 따로)
       납부지연가산세_몫별: lateSplit_ ? lateSplit_.rows : undefined, // [2026.10.20 J23] 예정분·확정 추가분 기산일별
@@ -4701,7 +4744,12 @@
     if (['initial', 'settlement'].indexOf(phase) === -1) {
       return { error: '단계를 개시사업연도 또는 정산사업연도 중에서 선택하세요.' };
     }
-    const profitFromOpportunity = Number(p.profitFromOpportunity) || 0;
+    // [2026.10.20 N16 회장 결론] 정산 법인세 상당액은 서식 10호의4 부표3대로 해마다 ⑳ = ⑲ × (⑪ ÷ ⑫)를 셈해 더한다(㉚ = Σ⑳, 법 §45의4③ 산식도
+    //  "개시사업연도분부터 정산사업연도분까지의 법인세 납부세액 중 상당액" — 연도별 합계). yearlyCorporateTax = [{profit, corporateTaxAfterCredit, corporateTaxableIncome}] (1~3년차).
+    //  예전엔 정산 때도 누적 이익 ÷ 한 해 소득금액 한 번으로 셈해, 해마다 법인세·소득이 다르면 틀렸다. 이익 칸이 비면 연도별 이익 합계(⑪ 합)를 쓴다.
+    const yrs_ = (Array.isArray(p.yearlyCorporateTax) ? p.yearlyCorporateTax : []).filter(function (y) { return y && ((Number(y.profit) || 0) !== 0 || (Number(y.corporateTaxAfterCredit) || 0) > 0); });
+    const yrProfitSum_ = yrs_.reduce(function (s, y) { return s + (Number(y.profit) || 0); }, 0);
+    const profitFromOpportunity = Number(p.profitFromOpportunity) || (yrs_.length ? yrProfitSum_ : 0);
     const shareRatio = Number(p.shareholderOwnershipRatio) || 0;
     // 법인세 납부세액 중 상당액(시행령§34의4④) = [수혜법인 산출세액(법인세법§55, 토지등양도소득분 제외)에서
     // 공제·감면액을 뺀 세액] × [사업기회제공이익이 수혜법인 각사업연도소득금액에서 차지하는 비율(1초과시1)].
@@ -4709,9 +4757,14 @@
     // 있으면 그 값을 우선한다(§45의5 특정법인 거래 함수의 동일 산식과 일관).
     const corporateTaxAfterCredit = Number(p.corporateTaxAfterCredit) || 0;
     const corporateTaxableIncome = Number(p.corporateTaxableIncome) || 0;
+    const yearlyRows_ = yrs_.map(function (y, i) {
+      const pr = Number(y.profit) || 0, tx = Math.max(0, Number(y.corporateTaxAfterCredit) || 0), inc = Number(y.corporateTaxableIncome) || 0;
+      return { 연차: i + 1, 이익: pr, 법인세_공제감면후: tx, 소득금액: inc, 법인세상당액: Math.round(tx * (inc > 0 ? Math.min(1, Math.max(0, pr) / inc) : 0)) }; // 부표3 ⑳
+    });
     const corporateTaxPortion = Number(p.corporateTaxPortion) > 0
       ? Number(p.corporateTaxPortion)
-      : Math.round(corporateTaxAfterCredit * (corporateTaxableIncome > 0 ? Math.min(1, profitFromOpportunity / corporateTaxableIncome) : 0));
+      : (yearlyRows_.length ? yearlyRows_.reduce(function (s, y) { return s + y.법인세상당액; }, 0)
+      : Math.round(corporateTaxAfterCredit * (corporateTaxableIncome > 0 ? Math.min(1, profitFromOpportunity / corporateTaxableIncome) : 0)));
 
     const meetsGate = profitFromOpportunity > 0 && shareRatio >= 30;
     if (!meetsGate) {
@@ -4728,6 +4781,10 @@
     const doneeRatioIn_ = Number(p.doneeOwnershipRatio);
     const calcRatio_ = doneeRatioIn_ > 0 ? Math.min(doneeRatioIn_, shareRatio) : shareRatio;
     const ratioNote_ = doneeRatioIn_ > 0 ? '' : '⚠ 수증자 본인 주식보유비율을 넣지 않아 지배주주·친족 합계 비율(' + shareRatio + '%)로 계산했습니다 — 수증자가 여럿이면 각자의 직접+간접 비율로 따로 계산하세요(서식 10호의4 본표 ⑳·부표1 다.㉒). ';
+    // [2026.10.20 N15 회장 결론] 법 §45의4①·③ 산식은 (이익 × 지배주주등 주식보유비율) − 법인세 상당액(시행령 §34의4④ — 비율을 곱하지 않은 법인 전체 몫,
+    //  서식 부표3 ⑳도 같음)이다. 수증자마다 본인 비율로 나눠 계산하면 법인세 상당액도 그 수증자 몫(× 본인 비율 ÷ 합계 비율)만 빼야
+    //  수증자들 몫의 합이 법 산식 전체와 같다(전부 빼면 수증자 수만큼 여러 번 빠짐). 본인 비율이 없으면(합계 비율로 계산) 전체를 뺀다.
+    const corpTaxForDonee_ = (doneeRatioIn_ > 0 && shareRatio > 0) ? Math.round(corporateTaxPortion * calcRatio_ / shareRatio) : corporateTaxPortion;
     let deemedGiftProfit;
     // 시행령§34의4⑤ — 개시사업연도분(§45의4①)도 정산분(⑥, §45의4③)과 별개로 "지배주주등이 배당받은
     // 소득이 있는 경우... 금액을 증여의제이익에서 공제(공제 후의 금액이 음수인 경우에는 영으로 본다)"가
@@ -4735,9 +4792,9 @@
     const dividendDeduction = Number(p.dividendDeduction) || 0;
     if (phase === 'initial') {
       const monthsInInitialYear = Number(p.monthsInInitialYear) || 12;
-      deemedGiftProfit = Math.max(0, Math.round(Math.max(0, (profitFromOpportunity * (calcRatio_ / 100) - corporateTaxPortion) / monthsInInitialYear * 12) * 3) - dividendDeduction);
+      deemedGiftProfit = Math.max(0, Math.round(Math.max(0, (profitFromOpportunity * (calcRatio_ / 100) - corpTaxForDonee_) / monthsInInitialYear * 12) * 3) - dividendDeduction);
     } else {
-      deemedGiftProfit = Math.max(0, Math.round(profitFromOpportunity * (calcRatio_ / 100) - corporateTaxPortion) - dividendDeduction);
+      deemedGiftProfit = Math.max(0, Math.round(profitFromOpportunity * (calcRatio_ / 100) - corpTaxForDonee_) - dividendDeduction);
     }
 
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
@@ -4757,7 +4814,7 @@
       과세표준: r.taxBase, 산출세액: r.calculatedTax, 개시사업연도_산출세액: initialPhaseCalculatedTax, 신고세액공제: r.reportCredit,
       무신고가산세: r.penalties.unreportedPenalty, 과소신고가산세: r.penalties.underreportedPenalty, 납부지연가산세: r.penalties.latePenalty,
       환급세액: refundTax,
-      계산에쓴_주식보유비율: calcRatio_,
+      계산에쓴_주식보유비율: calcRatio_, 법인세상당액_법인전체: corporateTaxPortion, 법인세상당액_수증자몫: corpTaxForDonee_, 연도별_법인세상당액: yearlyRows_.length ? yearlyRows_ : undefined,
       안내: ratioNote_ + (phase === 'initial'
         ? '개시사업연도 신고는 잠정치입니다 — 2년 경과 후 정산사업연도에 재계산·정산신고해야 합니다. '
         : '') + '증여재산공제는 적용되지 않습니다(증여의제이익 전액이 과세표준). 지배주주 판정은 다자간 지분구조 확인이 필요해 이 도구가 자동판정하지 않으니 별도로 확인하세요. 법인세 납부세액 중 상당액은 corporateTaxAfterCredit·corporateTaxableIncome을 넣으면 시행령§34의4④ 산식대로 자동계산되니(수혜법인의 실제 법인세 신고서상 값을 정확히 넣었는지만 확인하면 됩니다), corporateTaxPortion을 직접 계산해서 넣을 필요는 없습니다.',
@@ -6772,6 +6829,7 @@
     const totalTax = Math.max(0, calculatedTax + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax);
 
     return {
+      과세연도: dvYear_ || undefined, // [2026.10.20 서식 연결] 표시 필드(세액 영향 없음) — 부표2의2 ① 과세대상연도
       국내파생상품손익: domesticGain,
       국외파생상품손익: overseasGain,
       통산손익: combinedGain,
@@ -8931,8 +8989,16 @@
       return { 환급가능여부: false, 안내: '한국농어촌공사와의 임차기간 내에 해당 농지등을 환매하지 않아 조특법§70의2①의 환급대상이 아닙니다.' };
     }
     const originalTaxPaid = Number(p.originalTaxPaid) || 0;
+    // [2026.10.20 N21 회장 결론] 서식 51호의3 작성방법 4: ⑮ 환급신청액 = "⑧ 납부세액 중 환매한 면적에 상당하는 세액(가산세·가산금 제외)", 조특령 §67의2④(일부 환매).
+    //  originalPenaltyAmount = 납부세액에 섞인 가산세·가산금, originalArea·repurchasedArea = 양도한 면적·환매한 면적(⑤·⑭). 면적을 안 넣으면 전부 환매로 본다.
+    //  예전엔 입력한 납부세액 전액을 돌려줘, 일부만 환매했거나 가산세가 섞이면 환급이 컸다.
+    const penalty_ = Math.min(originalTaxPaid, Math.max(0, Number(p.originalPenaltyAmount) || 0));
+    const area_ = Number(p.originalArea) || 0, rArea_ = Number(p.repurchasedArea) || 0;
+    const ratio_ = area_ > 0 && rArea_ > 0 ? Math.min(1, rArea_ / area_) : 1;
+    const refund_ = Math.floor((originalTaxPaid - penalty_) * ratio_ + 1e-6);
     return {
-      환급가능여부: true, 환급대상세액: originalTaxPaid,
+      환급가능여부: true, 환급대상세액: refund_, 당초납부세액: originalTaxPaid, 가산세가산금_제외액: penalty_ || undefined, 환매면적비율: ratio_ < 1 ? ratio_ : undefined,
+      환급산식: ratio_ < 1 || penalty_ > 0 ? '(' + originalTaxPaid.toLocaleString('ko-KR') + ' − 가산세·가산금 ' + penalty_.toLocaleString('ko-KR') + ') × 환매면적 ' + rArea_ + ' ÷ 양도면적 ' + (area_ || rArea_) + ' = ' + refund_.toLocaleString('ko-KR') + '원(서식 51호의3 작성방법 4)' : undefined,
       안내: '한국농어촌공사에 양도했던 농지등을 임차기간 내에 환매했으므로, 당초 그 농지등의 양도소득에 대해 납부한 양도소득세를 환급받을 수 있습니다(§70의2①, 환급신청 필요). 이후 이 환매농지를 다시 양도할 때는 한국농어촌공사에 양도하기 전 원래의 취득가액·취득시기를 그대로 적용해 양도세를 계산하세요(§70의2②) — 위 일반 양도세 계산기에 그 원래의 취득가액·취득일을 입력하면 됩니다.'
     };
   };
@@ -9965,15 +10031,18 @@
     //  같은 증여자 10년 내 증여 합산(§47②)·1년 내 같은 거래 합산(§43②)·증여재산공제 등이 실제 산출세액(서식 ㉞ 과세표준)과 똑같이 들어간다.
     //  예전엔 이번 거래 이익 × 비율에 세율만 매겨, 합산이 있으면 한도(합산 없음)가 산출세액(합산 있음)보다 훨씬 작아 늘 한도에 걸린 뒤
     //  기납부세액을 또 빼서 세액이 0 가까이 됐다(예: 이익 3억·법인세상당액 2천만·앞선 증여 2억(기납부 3천만) → 0원, 고친 뒤 4천만원).
-    //  그래서 과세표준과 같은 줄을 쓰되 이번 거래 몫만 법인세 차감 전 금액(4항1호 × 비율)으로 바꾼다. 1년 내 앞선 거래 합산액은 입력값 그대로(그 거래의 법인세상당액은 이 한도에서 따로 빼지 않음 — 입력 칸 없음).
+    //  그래서 과세표준과 같은 줄을 쓰되 이번 거래 몫만 법인세 차감 전 금액(4항1호 × 비율)으로 바꾼다. 1년 내 앞선 거래 합산액(증여의제이익 = 법인세 뺀 뒤)에는
+    //  [2026.10.20 지휘 요청] 그 거래들의 법인세상당액(지배주주 몫, priorCorporateTaxEquivalentWithinOneYear)을 되더해 직접 증여 금액으로 만들고, 한도에서 그만큼 뺀다
+    //  (㊲ = 직접 증여 시 증여세 − 법인세 상당액 — 1년 합산한 거래 모두의 몫). 비우면 0(예전과 같음).
+    const priorCorpTax1y_ = Math.max(0, Number(p.priorCorporateTaxEquivalentWithinOneYear) || 0);
     const directThis_ = Math.round(benefitToCorpAmount * shareholderOwnershipRatio);
-    const directBase_ = Math.max(0, directThis_ + priorBenefitSum + priorGiftAmount - relationDeductionFor_(p, directThis_ + priorBenefitSum, priorGiftAmount) - appraisalFeeAmount - disasterLossAmount);
+    const directBase_ = Math.max(0, directThis_ + priorBenefitSum + priorCorpTax1y_ + priorGiftAmount - relationDeductionFor_(p, directThis_ + priorBenefitSum + priorCorpTax1y_, priorGiftAmount) - appraisalFeeAmount - disasterLossAmount);
     const directGiftTaxEquivalent = Number(p.directGiftTaxEquivalent) > 0
       ? Number(p.directGiftTaxEquivalent)
       : progressiveGiftInheritTax(directBase_, GIFT_INHERIT_TAX_BRACKETS);
     let capApplied = false, capLimit_ = null;
     {
-      const capLimit = Math.max(0, directGiftTaxEquivalent - corporateTaxEquivalentForShareholder); capLimit_ = capLimit;
+      const capLimit = Math.max(0, directGiftTaxEquivalent - corporateTaxEquivalentForShareholder - priorCorpTax1y_); capLimit_ = capLimit;
       if (calculatedTax > capLimit) { calculatedTax = capLimit; capApplied = true; }
     }
 
@@ -10006,8 +10075,8 @@
       과세표준: taxBase, 산출세액: calculatedTax, 세대생략할증액: genSkip.amount, 산출세액_할증후: calculatedTaxTotal, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
-      직접증여시_증여세상당액: directGiftTaxEquivalent, 법인세상당액_지배주주몫: corporateTaxEquivalentForShareholder, 산출세액한도: capLimit_, // [2026.10.20] 서식 ㊲
-      안내: (capApplied ? '산출세액이 §45의5② 한도(직접증여시 증여세상당액-법인세상당액)를 초과해 그 한도로 낮췄습니다. ' : '') + '증여자가 지배주주의 친족이 아닌 특정법인 자체이므로 증여재산공제(§53)는 통상 적용되지 않습니다(위 관계별공제 한도는 0으로 입력하는 것이 원칙입니다). 증여세 과세표준 신고기한은 특정법인의 법인세 과세표준 신고기한이 속하는 달의 말일부터 3개월입니다(§68①).' + aggNote
+      직접증여시_증여세상당액: directGiftTaxEquivalent, 법인세상당액_지배주주몫: corporateTaxEquivalentForShareholder + priorCorpTax1y_, 법인세상당액_1년내앞선거래: priorCorpTax1y_ || undefined, 산출세액한도: capLimit_, // [2026.10.20] 서식 ㊲
+      안내: (capApplied ? '산출세액이 §45의5② 한도(직접증여시 증여세상당액-법인세상당액)를 초과해 그 한도로 낮췄습니다. ' : '') + '증여재산공제(§53)는 입력한 관계별 한도(서식 10호의6은 증여자 — 특정법인과 거래한 지배주주의 특수관계인 — 와의 관계별 공제 칸을 둠)를 과세표준과 ㊲ 한도(직접 증여 시 증여세)에 똑같이 적용했습니다(공제 관계를 어떻게 볼지는 확인 필요). 증여세 과세표준 신고기한은 특정법인의 법인세 과세표준 신고기한이 속하는 달의 말일부터 3개월입니다(§68①).' + aggNote
     };
   };
 
@@ -10813,6 +10882,42 @@
         try { const L = judgmentChecks_([t], function (alt) { return s1(alt[0]); }, r); if (L.length) { r.판단대기 = L.slice(); r.판단대기경고 = judgmentWarning_(L); } if (L.안내 && L.안내.length) r.판단대기안내 = L.안내; } catch (e2) {}
       }
       return r;
+    };
+  })();
+  // [2026.10.20 N19 회장 결론] 조특법 §97의3(장기일반민간임대 장특공 50·70%)은 "과세특례 적용의 신청을 하여야 한다"(§97의3③, 조특 62호의2) —
+  //  신청해야 받는 특례라, 1세대1주택 표2(최대 80%) 등이 더 유리하면 납세자는 신청하지 않는다. 그래서 특례를 넣은 세액과 뺀 세액(그 자산 rentalSpecialType 없음)을
+  //  둘 다 셈해 적은 쪽을 기본 결과로 하고, 결과에 '§97의3 신청 여부로 갈림'과 다른 쪽 세액을 적는다. 예전엔 무조건 특례를 써서 표2보다 불리해도 그대로였다
+  //  (감사 예: 1세대1주택 보유 14년·거주 12년 → 특례 66,662,000원 / 신청 안 함 28,485,000원). 자산이 여럿이면 하나씩 빼 보며 줄어들 때만 뺀다.
+  (function () {
+    const m2 = window.calculateTransferTaxMultiJS, s2 = window.calculateTransferTaxSingleJS;
+    const taxOfM_ = function (r) { return r && !r.error ? Number(r.산출세액_합계) : NaN; };
+    const taxOfS_ = function (r) { return r && !r.error ? Number(r.산출세액) : NaN; };
+    const choose_ = function (txs, run, taxOf) {
+      let cur = txs, best = run(txs);
+      const rows = [];
+      txs.forEach(function (t, i) {
+        if (!t || t.rentalSpecialType !== 'rental_general' || t._n19Alt) return;
+        const alt = cur.map(function (x, k) { return k === i ? Object.assign({}, x, { rentalSpecialType: '', _n19Alt: true }) : x; });
+        let r2 = null; try { r2 = run(alt); } catch (e) { return; }
+        const a = taxOf(best), b = taxOf(r2);
+        if (!isFinite(a) || !isFinite(b) || a === b) return;
+        const useAlt = b < a;
+        rows.push({ 자산: i, 채택: useAlt ? '신청 안 함(일반 장특공)' : '신청(§97의3 특례)', 신청시_산출세액: a, 신청안함_산출세액: b });
+        if (useAlt) { cur = alt; best = r2; }
+      });
+      if (best && !best.error && rows.length) {
+        best.특례신청비교_97의3 = rows;
+        best.특례신청안내_97의3 = '§97의3 신청 여부로 갈림 — ' + rows.map(function (x) { return (txs.length > 1 ? '거래 ' + (x.자산 + 1) + ': ' : '') + x.채택 + '이 유리해 기본으로 했습니다(신청 ' + x.신청시_산출세액.toLocaleString('ko-KR') + '원 / 신청 안 함 ' + x.신청안함_산출세액.toLocaleString('ko-KR') + '원, 조특법 §97의3③ 신청해야 적용)'; }).join(' · ');
+      }
+      return best;
+    };
+    if (typeof m2 === 'function') window.calculateTransferTaxMultiJS = function (transactions, filingParams) {
+      if (!Array.isArray(transactions) || !transactions.some(function (t) { return t && t.rentalSpecialType === 'rental_general' && !t._n19Alt; })) return m2(transactions, filingParams);
+      return choose_(transactions, function (alt) { return m2(alt, filingParams); }, taxOfM_);
+    };
+    if (typeof s2 === 'function') window.calculateTransferTaxSingleJS = function (t) {
+      if (!t || t.rentalSpecialType !== 'rental_general' || t._n19Alt) return s2(t);
+      return choose_([t], function (alt) { return s2(alt[0]); }, taxOfS_);
     };
   })();
   window.explainConditionalRightValuationFactorsJS = function (p) {
