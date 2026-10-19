@@ -1855,5 +1855,33 @@
   "정답": {
    "산출세액": 125060000
   }
+ },
+ {
+  "이름": "[연혁 2부-13] 2018년 증여 — 평가기간은 전후 3개월(상증령 §49① 2019.2.12. 개정 전, 부칙 제2조 증여받는 분부터): 증여일 5개월 반 전 매매는 평가기간 밖",
+  "도구": "checkFairMarketValueRecognitionJS",
+  "고정": true,
+  "입력": {
+   "taxType": "gift",
+   "valuationBaseDate": "2018-06-01",
+   "evidenceType": "sale",
+   "evidenceDate": "2017-12-15"
+  },
+  "정답": {
+   "평가기간이내여부": false
+  }
+ },
+ {
+  "이름": "[연혁 2부-13] 2020년 증여 — 평가기간은 전 6개월~후 3개월(2019.2.12. 이후 증여분): 같은 5개월 반 전 매매는 평가기간 안",
+  "도구": "checkFairMarketValueRecognitionJS",
+  "고정": true,
+  "입력": {
+   "taxType": "gift",
+   "valuationBaseDate": "2020-06-01",
+   "evidenceType": "sale",
+   "evidenceDate": "2019-12-15"
+  },
+  "정답": {
+   "평가기간이내여부": true
+  }
  }
 ]
