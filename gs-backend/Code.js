@@ -2046,7 +2046,10 @@ const DRIVE_TOOLS = [
       type: 'object',
       properties: {
         wasRepurchasedWithinLeaseTerm: { type: 'boolean', description: '한국농어촌공사와의 임차기간 내에 해당 농지등을 환매했는지.' },
-        originalTaxPaid: { type: 'number', description: '한국농어촌공사에 양도할 당시 납부한 양도소득세(원, 환급대상액).' }
+        originalTaxPaid: { type: 'number', description: '한국농어촌공사에 양도할 당시 납부한 양도소득세(원, 서식 51호의3 ⑧).' },
+        originalPenaltyAmount: { type: 'number', description: '[2026.10.20] 위 납부세액에 섞인 가산세·가산금(원) — 환급에서 뺌(서식 51호의3 작성방법 4).' },
+        originalArea: { type: 'number', description: '[2026.10.20] 양도한 농지등 면적(㎡, ⑤) — 일부만 환매했을 때 환매면적과 함께.' },
+        repurchasedArea: { type: 'number', description: '[2026.10.20] 환매한 면적(㎡, ⑭) — 환급 = (납부세액 − 가산세) × 환매면적 ÷ 양도면적(조특령 §67의2④). 없으면 전부 환매.' }
       },
       required: ['wasRepurchasedWithinLeaseTerm']
     }

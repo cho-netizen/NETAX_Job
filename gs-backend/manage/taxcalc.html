@@ -6652,7 +6652,10 @@ function renderTransferPane(){
         '<div class="taxcalc-result-note" style="margin:6px 0;">한국농어촌공사에 양도한 농지등을 임차기간 내 환매했을 때</div>' +
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" id="frWithinLeaseTerm"><label for="frWithinLeaseTerm">한국농어촌공사와의 임차기간 내에 환매함</label></div>' +
-          '<div class="taxcalc-field"><label>한국농어촌공사 양도 당시 납부한 양도소득세</label><input type="number" id="frOriginalTax" placeholder="원"><span class="taxcalc-field-help">환급대상액</span></div>' +
+          '<div class="taxcalc-field"><label>한국농어촌공사 양도 당시 납부한 양도소득세</label><input type="number" id="frOriginalTax" placeholder="원"><span class="taxcalc-field-help">서식 ⑧ — 가산세·가산금이 섞였으면 아래 칸에</span></div>' +
+          '<div class="taxcalc-field"><label>그중 가산세·가산금</label><input type="number" id="frOriginalPenalty" placeholder="원"><span class="taxcalc-field-help">환급에서 뺌(작성방법 4)</span></div>' +
+          '<div class="taxcalc-field"><label>양도한 면적</label><input type="number" step="0.01" id="frOriginalArea" placeholder="㎡"><span class="taxcalc-field-help">서식 ⑤ — 일부만 환매했을 때</span></div>' +
+          '<div class="taxcalc-field"><label>환매한 면적</label><input type="number" step="0.01" id="frRepurchasedArea" placeholder="㎡"><span class="taxcalc-field-help">서식 ⑭ — 비우면 전부 환매</span></div>' +
         '</div>' +
         '<button type="button" class="taxcalc-run-btn" data-action="run-farmland-repurchase">환급 가능 여부 확인하기</button>' +
         '<div id="taxCalcFarmlandRepurchaseResult"></div>' +
@@ -7642,6 +7645,7 @@ function renderFarmlandRepurchaseResult(r){
   let html = '<div class="taxcalc-result">';
   html += taxCalcResultRow('환급 가능 여부', r.환급가능여부 ? '환급 가능' : '환급 불가');
   if (r.환급대상세액 !== undefined) html += taxCalcResultRow('환급대상세액', won(r.환급대상세액), { total: true });
+  if (r.환급산식) html += '<div class="taxcalc-result-note">' + escapeHtml(r.환급산식) + '</div>'; // [2026.10.20 N21]
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   if (r.환급가능여부) html += '<button type="button" class="taxcalc-run-btn" data-action="print-farmland-repurchase" style="margin-top:8px;">🖨 환급신청서 인쇄용 서식 보기</button>' + tcToolSaveButtonHtml_('fr');
   html += '</div>';
@@ -15144,7 +15148,8 @@ function handleTaxCalcClick_(e){
   } else if (action === 'run-farmland-repurchase'){
     const input = {
       wasRepurchasedWithinLeaseTerm: document.getElementById('frWithinLeaseTerm').checked,
-      originalTaxPaid: numVal(document.getElementById('frOriginalTax').value) || 0
+      originalTaxPaid: numVal(document.getElementById('frOriginalTax').value) || 0,
+      originalPenaltyAmount: numVal((document.getElementById('frOriginalPenalty') || {}).value) || 0, originalArea: numVal((document.getElementById('frOriginalArea') || {}).value) || 0, repurchasedArea: numVal((document.getElementById('frRepurchasedArea') || {}).value) || 0 // [2026.10.20 N21]
     };
     renderFarmlandRepurchaseResult(calculateFarmlandRepurchaseRefundJS(input));
   } else if (action === 'run-stock-transfer'){

@@ -2663,5 +2663,159 @@
   "정답": {
    "증여의제이익": 252778000
   }
+ },
+ {
+  "이름": "[N22 회장 결론] 단기(1년 2개월) 공공매입임대 건설용 토지(조특 §97의10, 보유 요건 없음): 과세표준 1억9,750만 × 40% = 7,900만, 감면 10% 790만(예전 0) → 산출세액_합계 7,110만",
+  "도구": "calculateTransferTaxMultiJS",
+  "고정": true,
+  "인자": [
+   [
+    {
+     "assetType": "land",
+     "acquisitionDate": "2025-03-01",
+     "transferDate": "2026-05-10",
+     "transferPrice": 600000000,
+     "acquisitionPrice": 400000000,
+     "necessaryExpenses": 0,
+     "isPublicRentalHousingLand": true
+    }
+   ],
+   {}
+  ],
+  "정답": {
+   "단기거래_산출세액_합계": 79000000,
+   "합산조특법세액감면액": 7900000,
+   "산출세액_합계": 71100000
+  }
+ },
+ {
+  "이름": "[N22] 같은 해 장기 토지 25억 차익과 함께 — 비교과세 1호 채택: 감면 A·D = 그 해 전체, 810,435,000 × 1억9,750만 ÷ 19억4,750만 × 10% = 8,218,788",
+  "도구": "calculateTransferTaxMultiJS",
+  "고정": true,
+  "인자": [
+   [
+    {
+     "assetType": "land",
+     "acquisitionDate": "2025-03-01",
+     "transferDate": "2026-05-10",
+     "transferPrice": 600000000,
+     "acquisitionPrice": 400000000,
+     "necessaryExpenses": 0,
+     "isPublicRentalHousingLand": true
+    },
+    {
+     "assetType": "land",
+     "acquisitionDate": "2010-03-01",
+     "transferDate": "2026-08-10",
+     "transferPrice": 3000000000,
+     "acquisitionPrice": 500000000,
+     "necessaryExpenses": 0
+    }
+   ],
+   {}
+  ],
+  "정답": {
+   "합산조특법세액감면액": 8218788,
+   "산출세액_합계": 802216212
+  }
+ },
+ {
+  "이름": "[N24 회장 결론] 조특 §97의4 장기임대 8년 — 2018.6.30. 양도·보유 8년: 바탕 율은 그때 표1 24% + 추가 6% = 30%, 장특공 3억, 과표 6억9,750만 × 42% − 3,540만 = 257,550,000(예전 지금 표1 16% + 6% → 291,150,000)",
+  "도구": "calculateTransferTaxMultiJS",
+  "고정": true,
+  "인자": [
+   [
+    {
+     "assetType": "house",
+     "acquisitionDate": "2010-04-10",
+     "transferDate": "2018-06-30",
+     "transferPrice": 1500000000,
+     "acquisitionPrice": 500000000,
+     "necessaryExpenses": 0,
+     "rentalSpecialType": "rental_long",
+     "rentalYears": 8
+    }
+   ],
+   {}
+  ],
+  "정답": {
+   "합산과세표준": 697500000,
+   "산출세액_합계": 257550000
+  }
+ },
+ {
+  "이름": "[N19 회장 결론] 1세대1주택(보유 14년·거주 12년) + 장기일반민간임대 10년: §97의3은 신청해야 적용(§97의3③) — 특례 66,662,000원 / 신청 안 함(표2 80%) 28,485,000원 → 적은 쪽 기본",
+  "도구": "calculateTransferTaxMultiJS",
+  "고정": true,
+  "인자": [
+   [
+    {
+     "assetType": "house",
+     "acquisitionDate": "2012-04-10",
+     "transferDate": "2026-06-30",
+     "transferPrice": 2000000000,
+     "acquisitionPrice": 400000000,
+     "necessaryExpenses": 0,
+     "isOneHouseOneFamily": true,
+     "residenceYears": 12,
+     "rentalSpecialType": "rental_general",
+     "rentalYears": 10,
+     "rentalRegistrationDate": "2015-05-01",
+     "acquisitionStandardPrice": 250000000,
+     "registrationStandardPrice": 300000000,
+     "rentalStartStandardPrice": 300000000,
+     "transferStandardPrice": 600000000
+    }
+   ],
+   {}
+  ],
+  "정답": {
+   "산출세액_합계": 28485000
+  }
+ },
+ {
+  "이름": "[N19] 같은 주택이 1세대1주택이 아니면 특례 신청이 유리 — 204,930,000원(신청 안 함 451,335,000원)",
+  "도구": "calculateTransferTaxMultiJS",
+  "고정": true,
+  "인자": [
+   [
+    {
+     "assetType": "house",
+     "acquisitionDate": "2012-04-10",
+     "transferDate": "2026-06-30",
+     "transferPrice": 2000000000,
+     "acquisitionPrice": 400000000,
+     "necessaryExpenses": 0,
+     "isOneHouseOneFamily": false,
+     "residenceYears": 12,
+     "rentalSpecialType": "rental_general",
+     "rentalYears": 10,
+     "rentalRegistrationDate": "2015-05-01",
+     "acquisitionStandardPrice": 250000000,
+     "registrationStandardPrice": 300000000,
+     "rentalStartStandardPrice": 300000000,
+     "transferStandardPrice": 600000000
+    }
+   ],
+   {}
+  ],
+  "정답": {
+   "산출세액_합계": 204930000
+  }
+ },
+ {
+  "이름": "[N21 회장 결론] 농지 일부 환매(조특 §70의2, 서식 51호의3 작성방법 4·조특령 §67의2④): (12,340,000 − 가산세 340,000) × 1,000㎡ ÷ 3,000㎡ = 4,000,000(예전 전액 12,340,000)",
+  "도구": "calculateFarmlandRepurchaseRefundJS",
+  "고정": true,
+  "입력": {
+   "wasRepurchasedWithinLeaseTerm": true,
+   "originalTaxPaid": 12340000,
+   "originalPenaltyAmount": 340000,
+   "originalArea": 3000,
+   "repurchasedArea": 1000
+  },
+  "정답": {
+   "환급대상세액": 4000000
+  }
  }
 ]
