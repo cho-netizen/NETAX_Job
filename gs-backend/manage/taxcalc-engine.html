@@ -628,6 +628,7 @@
   const REF_TR_BRACKETS_ = [{"from":"2008-01-01","to":"2008-12-31","brackets":[{"max":10000000,"rate":0.09,"deduction":0},{"max":40000000,"rate":0.18,"deduction":900000},{"max":80000000,"rate":0.27,"deduction":4500000},{"max":Infinity,"rate":0.36,"deduction":11700000}]},{"from":"2009-01-01","to":"2009-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.16,"deduction":1200000},{"max":88000000,"rate":0.25,"deduction":5340000},{"max":Infinity,"rate":0.35,"deduction":14140000}]},{"from":"2010-01-01","to":"2011-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.15,"deduction":1080000},{"max":88000000,"rate":0.24,"deduction":5220000},{"max":Infinity,"rate":0.35,"deduction":14900000}]},{"from":"2012-01-01","to":"2013-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.15,"deduction":1080000},{"max":88000000,"rate":0.24,"deduction":5220000},{"max":300000000,"rate":0.35,"deduction":14900000},{"max":Infinity,"rate":0.38,"deduction":23900000}]},{"from":"2014-01-01","to":"2016-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.15,"deduction":1080000},{"max":88000000,"rate":0.24,"deduction":5220000},{"max":150000000,"rate":0.35,"deduction":14900000},{"max":Infinity,"rate":0.38,"deduction":19400000}]},{"from":"2017-01-01","to":"2017-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.15,"deduction":1080000},{"max":88000000,"rate":0.24,"deduction":5220000},{"max":150000000,"rate":0.35,"deduction":14900000},{"max":500000000,"rate":0.38,"deduction":19400000},{"max":Infinity,"rate":0.4,"deduction":29400000}]},{"from":"2018-01-01","to":"2020-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.15,"deduction":1080000},{"max":88000000,"rate":0.24,"deduction":5220000},{"max":150000000,"rate":0.35,"deduction":14900000},{"max":300000000,"rate":0.38,"deduction":19400000},{"max":500000000,"rate":0.4,"deduction":25400000},{"max":Infinity,"rate":0.42,"deduction":35400000}]},{"from":"2021-01-01","to":"2022-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.15,"deduction":1080000},{"max":88000000,"rate":0.24,"deduction":5220000},{"max":150000000,"rate":0.35,"deduction":14900000},{"max":300000000,"rate":0.38,"deduction":19400000},{"max":500000000,"rate":0.4,"deduction":25400000},{"max":1000000000,"rate":0.42,"deduction":35400000},{"max":Infinity,"rate":0.45,"deduction":65400000}]},{"from":"2023-01-01","to":null,"brackets":[{"max":14000000,"rate":0.06,"deduction":0},{"max":50000000,"rate":0.15,"deduction":1260000},{"max":88000000,"rate":0.24,"deduction":5760000},{"max":150000000,"rate":0.35,"deduction":15440000},{"max":300000000,"rate":0.38,"deduction":19940000},{"max":500000000,"rate":0.4,"deduction":25940000},{"max":1000000000,"rate":0.42,"deduction":35940000},{"max":Infinity,"rate":0.45,"deduction":65940000}]}];
   const REF_LT_ = { 표1: [{"from":"2008-01-01","to":"2008-03-20","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30}},{"from":"2008-03-21","to":"2018-12-31","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30}},{"from":"2019-01-01","to":null,"rates":{"3":6,"4":8,"5":10,"6":12,"7":14,"8":16,"9":18,"10":20,"11":22,"12":24,"13":26,"14":28,"15":30}}], 표2: [{"from":"2008-01-01","to":"2008-03-20","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30,"11":33,"12":36,"13":39,"14":42,"15":45}},{"from":"2008-03-21","to":"2008-12-31","rates":{"3":12,"4":16,"5":20,"6":24,"7":28,"8":32,"9":36,"10":40,"11":44,"12":48,"13":52,"14":56,"15":60,"16":64,"17":68,"18":72,"19":76,"20":80}},{"from":"2009-01-01","to":"2020-12-31","rates":{"3":24,"4":32,"5":40,"6":48,"7":56,"8":64,"9":72,"10":80}}] };
   const REF_HV_ = {"house":[{"from":"2005-02-19","to":"2008-10-06","amount":600000000},{"from":"2008-10-07","to":"2021-12-07","amount":900000000},{"from":"2021-12-08","to":null,"amount":1200000000}],"right":[{"from":"2017-02-03","to":"2021-12-07","amount":900000000},{"from":"2021-12-08","to":null,"amount":1200000000}]};
+  const REF_SR_ = {"house":[{"from":"2008-01-01","to":"2013-12-31","lt1":0.5,"lt2":0.4,"ge2":null},{"from":"2014-01-01","to":"2021-05-31","lt1":0.4,"lt2":null,"ge2":null},{"from":"2021-06-01","to":null,"lt1":0.7,"lt2":0.6,"ge2":null}],"other":[{"from":"2008-01-01","to":null,"lt1":0.5,"lt2":0.4,"ge2":null}],"presale":[{"from":"2008-01-01","to":"2017-12-31","lt1":0.5,"lt2":0.4,"ge2":null,"adj":null},{"from":"2018-01-01","to":"2021-05-31","lt1":0.5,"lt2":0.4,"ge2":null,"adj":0.5},{"from":"2021-06-01","to":null,"lt1":0.7,"lt2":0.6,"ge2":0.6,"adj":null}],"multi":[{"from":"2014-01-01","to":"2018-03-31","two":0,"three":0},{"from":"2018-04-01","to":"2021-05-31","two":0.1,"three":0.2},{"from":"2021-06-01","to":null,"two":0.2,"three":0.3}],"nonbiz":[{"from":"2014-01-01","to":"2014-12-31","add":0},{"from":"2015-01-01","to":null,"add":0.1}]};
   /*@@REF_ENGINE_END@@*/
   // [2026.10.19 켬] 세무사님 답(원문): "1. 켠다" — 기본으로 켠다. 끄려면 window.__NX_REF_HISTORY_ON = false(시험·비상용).
   function refHistoryOn_() { return !(typeof window !== 'undefined' && window && window.__NX_REF_HISTORY_ON === false); }
@@ -663,6 +664,54 @@
     const r = refRowAt_(REF_LT_.표2, d);
     return r ? refRateAt_(r.rates, ownYears) : longTermRate1House(ownYears, liveYears);
   }
+  // [2026.10.19 조견표 2부-02] 양도일별 특례세율 — 단기보유·분양권 세율(§104①1~4호), 다주택 중과 가산율(§104⑦), 비사업용토지 가산(§104①8호).
+  //  값은 reftables/2부-02.json(법제처 연혁판·부칙 원문)에서 REF_SR_로 옮겨 적은 것. 2021-06-01 이후 양도(또는 연혁 스위치 꺼짐)는 지금 값 그대로.
+  //  shortRateAt_: 단일세율(소수) 또는 null(= 기본세율 누진, 합산 대상). years = 세율 판정 보유기간(§104②).
+  function shortRateAt_(transferDate, assetType, years, isAdjustedArea) {
+    const d = String(transferDate || '').slice(0, 10);
+    const kind = assetType === 'house' ? 'house' : (assetType === 'presale_right' ? 'presale' : 'other');
+    const pick = function (r) { return years < 1 ? r.lt1 : (years < 2 ? r.lt2 : r.ge2); };
+    const now = { house: { lt1: 0.70, lt2: 0.60, ge2: null }, presale: { lt1: 0.70, lt2: 0.60, ge2: 0.60 }, other: { lt1: 0.50, lt2: 0.40, ge2: null } }[kind];
+    if (!refHistoryOn_() || !d || d >= '2021-06-01') return pick(now);
+    const r = refRowAt_(REF_SR_[kind], d);
+    if (!r) return pick(now);
+    if (kind === 'presale' && r.adj != null && isAdjustedArea) return r.adj; // 2018.1.1.~2021.5.31. 조정지역 분양권 50%(산출세액 큰 것 — 일반 권리 세율보다 늘 큼)
+    return pick(r);
+  }
+  // 다주택 중과 가산율(+%p, 소수) — 0이면 그 양도일엔 중과 없음(2014.1.1.~2018.3.31.)
+  function multiSurchargeRateAt_(transferDate, houseCount) {
+    const d = String(transferDate || '').slice(0, 10);
+    const now = houseCount >= 3 ? 0.30 : 0.20;
+    if (!refHistoryOn_() || !d || d >= '2021-06-01') return now;
+    const r = refRowAt_(REF_SR_.multi, d);
+    return r ? (houseCount >= 3 ? r.three : r.two) : now; // 2014년 전은 표에 없음 — 지금 값(경고는 rateHistoryWarning_)
+  }
+  // 비사업용토지 가산(+10%p) 여부 — 2014년 양도분은 가산 없음(법률 제12169호 부칙 제20조, 지정지역 부동산은 판단 대기로 손대지 않음)
+  function nonBusinessLandAddAt_(transferDate) {
+    const d = String(transferDate || '').slice(0, 10);
+    if (!refHistoryOn_() || !d || d >= '2015-01-01') return 0.10;
+    const r = refRowAt_(REF_SR_.nonbiz, d);
+    return r ? r.add : 0.10;
+  }
+  // [2026.10.19 조견표 2부-32] 환산취득가액(감정가액) 가산세(§114의2) — 'none'(2018.1.1. 전 양도) | 'conversion_new_only'(2018~2019 신축·환산가액만) | 'all'(2020.1.1.~)
+  function conversionPenaltyRuleAt_(transferDate) {
+    const d = String(transferDate || '').slice(0, 10);
+    if (!refHistoryOn_() || !d || d >= '2020-01-01') return 'all';
+    return d < '2018-01-01' ? 'none' : 'conversion_new_only';
+  }
+  // [2026.10.19 조견표 2부-32] 이월과세(§97의2①)·증여 후 우회양도 부인(§101②) 기간 — 2023.1.1. 이후 증여받은 자산 10년, 그 전 5년
+  //  (법률 제19196호 부칙 제18조 '이 법 시행 전에 증여받은 자산은 종전 규정'). 증여일을 모르면 지금 값 10년.
+  function carryoverWindowYearsAt_(giftDate) {
+    const d = String(giftDate || '').slice(0, 10);
+    if (!refHistoryOn_() || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return 10;
+    return d < '2023-01-01' ? 5 : 10;
+  }
+  // 주식등 이월과세(§97의2① 괄호) — 2025.1.1. 이후 증여받은 주식등만 1년(법률 제20615호 부칙 제8조), 그 전 증여 주식은 이월과세 없음
+  function stockCarryoverAppliesAt_(giftDate) {
+    const d = String(giftDate || '').slice(0, 10);
+    if (!refHistoryOn_() || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return true;
+    return d >= '2025-01-01';
+  }
 
   // §21① — 원칙은 max(기초공제+그밖의인적공제, 5억원)이나, "다만, 제67조 또는 국세기본법§45의3에
   // 따른 신고가 없는 경우에는 5억원을 공제한다"는 단서가 있다 — 무신고시 인적공제 합계가 3억원을
@@ -689,6 +738,9 @@
   // computeMultiHouseSurchargeExclusion_와 1:1 대응.
   function computeMultiHouseSurchargeExclusion(t, holdingYears) {
     if (!(holdingYears >= 2) || !t.transferDate) return false;
+    // [2026.10.19 조견표 2부-02] 한시배제는 2022-05-10 이후 양도분부터(대통령령 제32654호 부칙 제4조). 그 전 양도는 배제 없음 —
+    //  단 2019-12-17~2020-06-30 양도 & 보유 10년 이상(§95④)은 그때도 배제(시행령 §167의3①12호, 대통령령 제30395호). 예전엔 2022-05-10 전 양도도 배제해 중과가 빠졌다.
+    if (refHistoryOn_() && t.transferDate < '2022-05-10') return t.transferDate >= '2019-12-17' && t.transferDate <= '2020-06-30' && holdingYears >= 10;
     if (t.transferDate <= '2026-05-09') return true;
     if (!t.saleContractDate) return false;
     const months = t.isExtendedDeadlineRegion ? 6 : 4;
@@ -1139,7 +1191,9 @@
       //  예전엔 이 분기가 없어 한시배제가 끝난 2026-05-10 이후 양도분에 중과 가산과 장특공 0이 잘못 붙을 수 있었다(책자 부록 2부-26에서 발견). §98의4는 목록에 없어 그대로.
       const isReductionHouseExcluded_ = ["sect99", "sect99_2", "sect99_3"].indexOf(t.newHouseReductionProvision) !== -1
         || ["sect98_3", "sect98_5", "sect98_6", "sect98_7", "sect98_8"].indexOf(t.unsoldHouseReductionProvision) !== -1 || !!t.compensationType;
-      isMultiHouseSurcharge = !isOneHouse && !isRentalSpecial && !!t.isAdjustedArea && multiHouseCount >= 2 && !isMultiHouseSurchargeExcluded && !isReductionHouseExcluded_;
+      // [2026.10.19 조견표 2부-02] 그 양도일에 중과 가산율이 0(2014.1.1.~2018.3.31. 양도 — 중과 없던 때)이면 중과·장특공 배제 안 함
+      isMultiHouseSurcharge = !isOneHouse && !isRentalSpecial && !!t.isAdjustedArea && multiHouseCount >= 2 && !isMultiHouseSurchargeExcluded && !isReductionHouseExcluded_
+        && multiSurchargeRateAt_(t.transferDate, multiHouseCount) > 0;
       if (isMultiHouseSurcharge) ltRate = 0;
     }
 
@@ -1174,7 +1228,12 @@
     }
     // 분양권(§104①1호·2호·3호)은 보유기간과 무관하게 항상 60%(1년미만 70%) 단일세율이고 기본세율
     // 누진과세 대상이 될 수 없으므로(1호가 별도로 분양권 60%를 정함), 합산(pooling) 대상에서 제외한다.
-    const isPoolable = !isPresaleRight && rateHoldingYears >= 2; // 2년 이상 보유(세율 판정 보유기간 — 상속 자산은 피상속인 취득일부터) → 기본세율(누진) 대상, 합산 가능
+    // [2026.10.19 조견표 2부-02] 양도일별 단일세율(null = 기본세율 누진). 지금 법(2021.6.1.~)에선 예전 식(!분양권 && 2년 이상)과 같고,
+    //  2014.1.1.~2021.5.31. 양도 주택·입주권 1~2년은 기본세율(합산 대상), 2021.5.31. 전 비조정 분양권 2년 이상도 기본세율이 된다.
+    const shortRate = shortRateAt_(t.transferDate, assetType, rateHoldingYears, !!t.isAdjustedArea);
+    const isPoolable = shortRate === null; // 기본세율(누진) 대상, 합산 가능
+    const multiAddRate = isMultiHouseSurcharge ? multiSurchargeRateAt_(t.transferDate, multiHouseCount) : 0;
+    const nonBusinessLandAdd = t.isNonBusinessLand ? nonBusinessLandAddAt_(t.transferDate) : 0;
 
     // 소득세법§114의2① — 신축 또는 증축(바닥면적합계 85㎡ 초과분만)한 건물을 취득일·증축일로부터 5년
     // 이내에 양도하면서 그 취득가액을 §97①1호나목에 따른 "감정가액 또는 환산취득가액"으로 한 경우,
@@ -1187,15 +1246,21 @@
     // convertedBuildingAcquisitionValueForPenalty에 건물분만 직접 입력하세요).
     const convertedBuildingAcquisitionValueForPenalty = Number(t.convertedBuildingAcquisitionValueForPenalty) ||
       (acquisitionPriceUsedAppraisalOrConversion ? acquisitionPrice : 0);
-    const conversionValuePenalty = (t.isNewBuildingWithin5Years && convertedBuildingAcquisitionValueForPenalty > 0)
+    // [2026.10.19 조견표 2부-32] §114의2 연혁(법제처 원문): 2018.1.1. 전 양도는 가산세 없음(조문 없음), 2018.1.1.~2019.12.31. 양도는 '신축' 건물의
+    //  '환산가액'만(법률 제13558호), 2020.1.1. 이후 양도부터 감정가액·증축(85㎡ 초과)까지(법률 제16104호). 2018~2019에 감정가액으로 취득가액을 정했으면 0.
+    const cvpRule_ = conversionPenaltyRuleAt_(t.transferDate);
+    const cvpAppraisalOnly_ = !t.acquisitionPrice && !(Number(t.comparableTransactionPrice) > 0) && Number(t.appraisalValue) > 0;
+    const conversionValuePenalty = (t.isNewBuildingWithin5Years && convertedBuildingAcquisitionValueForPenalty > 0 && cvpRule_ !== 'none' && !(cvpRule_ === 'conversion_new_only' && cvpAppraisalOnly_))
       ? Math.round(convertedBuildingAcquisitionValueForPenalty * 0.05) : 0;
+    if (t.isNewBuildingWithin5Years && convertedBuildingAcquisitionValueForPenalty > 0 && cvpRule_ !== 'all') acquisitionPriceMethodNote = (acquisitionPriceMethodNote ? acquisitionPriceMethodNote + ' ' : '') + (cvpRule_ === 'none' ? '환산가액 가산세(§114의2)는 2018.1.1. 이후 양도분부터라 이 양도에는 없습니다.' : '이 양도일(2018~2019)의 §114의2는 신축 건물의 환산가액만 대상입니다' + (cvpAppraisalOnly_ ? '(감정가액이라 가산세 없음).' : ' — 증축 건물이면 가산세가 없으니 체크를 풀어 주세요.'));
 
     return {
       reconstructionDetail, rentalPeriodSplit, acquisitionPriceMethodNote,
-      holdingYears, rateHoldingYears, exempt: false, isUnregistered: false, isPoolable,
+      holdingYears, rateHoldingYears, exempt: false, isUnregistered: false, isPoolable, shortRate, multiAddRate,
       transferPrice, acquisitionPrice, necessaryExpenses, assetType, isOneHouse, isRentalSpecial,
       gainBeforeDeduction, taxableGain, longTermRate: ltRate, longTermDeductionAmount, incomeAmount,
-      isMultiHouseSurcharge, multiHouseCount, isNonBusinessLand: !!t.isNonBusinessLand, isEightYearFarmland: !!t.isEightYearFarmland,
+      // 비사업용토지 가산이 0인 양도일(2014년)은 가산 대상이 아닌 것으로 본다(세율·비교과세 모두 일반 자산과 같음)
+      isMultiHouseSurcharge, multiHouseCount, isNonBusinessLand: nonBusinessLandAdd > 0, isEightYearFarmland: !!t.isEightYearFarmland,
       // 조특법§69의2(축사용지)·§69의3(어업용토지)·§70(농지대토) — §69(자경농지)와 마찬가지로 요건
       // 충족시 양도소득세 100%를 감면한다(다만 셋 다 §69와 달리 8년이 아니라 각각 별도 보유·종사기간
       // 요건이 있음 — 요건 자체는 이 도구가 검증하지 않는다). §133①1호·2호나목에 따라 §66~§70(§69의2~
@@ -1232,13 +1297,15 @@
     // [2026.10.19 시점 점검 — maps/시점점검_2부.md의 경계 날짜] 아직 날짜로 갈라 계산하지 않는 규칙 — 해당하면 경고만(숫자 그대로)
     if (!core.exempt) {
       const r_ = core.raw || {}, hy_ = Number(core.rateHoldingYears != null ? core.rateHoldingYears : core.holdingYears);
-      if (d < '2021-06-01' && core.assetType === 'house' && hy_ < 2) miss.push('단기 보유 세율(그때 1년 미만 40%·1~2년 기본세율 — 법률 제17477호 부칙 제3조)');
-      if (d < '2021-06-01' && core.assetType === 'presale_right') miss.push('분양권 세율(그때 조정지역 50%·그 밖 일반 자산 세율)');
+      // [2026.10.19 조견표 2부-02 연결] 단기·분양권 세율과 2018.4.1.~2022.5.9. 다주택 중과는 연혁이 켜져 있으면 그때 법으로 계산 — 꺼졌을 때만 경고
+      if (!on && d < '2021-06-01' && core.assetType === 'house' && hy_ < 2) miss.push('단기 보유 세율(그때 1년 미만 40%·1~2년 기본세율 — 법률 제17477호 부칙 제3조)');
+      if (!on && d < '2021-06-01' && core.assetType === 'presale_right') miss.push('분양권 세율(그때 조정지역 50%·그 밖 일반 자산 세율)');
       // [2026.10.19] 2019.12.17.~2020.6.30. 양도 + 보유 10년 이상(§95④)은 그때도 중과 배제(시행령 §167의3①12호·§167의10①12호 등, 대통령령 제30395호 부칙 제18조) — 경고 안 냄(조견표 2부-27)
       const tenYearRelief_ = d >= '2019-12-17' && d <= '2020-06-30' && Number(core.holdingYears) >= 10;
-      if (d >= '2018-04-01' && d < '2022-05-10' && r_.isAdjustedArea && Number(r_.multiHouseCount) >= 2 && !core.isOneHouse && !tenYearRelief_) miss.push('다주택 중과(한시배제는 2022-05-10 이후 양도분부터 — 그때는 중과 대상, 2021-06-01 전은 +10%p·+20%p)');
-      if (d < '2020-01-01' && Number(core.conversionValuePenalty) > 0) miss.push('환산취득가액 가산세(2018년 전 양도는 없음·2018~2019는 신축 건물만)');
-      if (r_.giftReceivedDate && String(r_.giftReceivedDate).slice(0, 10) < '2023-01-01' && r_._이월과세_적용여부 !== undefined) miss.push('이월과세 기간(그 증여일은 5년)');
+      if (!on && d >= '2018-04-01' && d < '2022-05-10' && r_.isAdjustedArea && Number(r_.multiHouseCount) >= 2 && !core.isOneHouse && !tenYearRelief_) miss.push('다주택 중과(한시배제는 2022-05-10 이후 양도분부터 — 그때는 중과 대상, 2021-06-01 전은 +10%p·+20%p)');
+      if (on && d < '2014-01-01' && ((r_.isAdjustedArea && Number(r_.multiHouseCount) >= 2 && !core.isOneHouse) || r_.isNonBusinessLand)) miss.push('2013년 이전 양도의 다주택·비사업용토지 중과 유예 부칙(조견표 2부-02 확인 필요 — 지금 값으로 계산됨)');
+      if (!on && d < '2020-01-01' && Number(core.conversionValuePenalty) > 0) miss.push('환산취득가액 가산세(2018년 전 양도는 없음·2018~2019는 신축 건물만)');
+      if (!on && r_.giftReceivedDate && String(r_.giftReceivedDate).slice(0, 10) < '2023-01-01' && r_._이월과세_적용여부 !== undefined) miss.push('이월과세 기간(그 증여일은 5년)');
       if (d < '2025-01-01' && r_.compensationType) miss.push('수용감면율·감면 한도');
     }
     // [2026.10.19] 고가주택 기준 — 1세대1주택(·1조합원입주권)이 2021-12-08 전 양도이고 양도가액이 그때 기준(9억, 2008-10-07 전 6억)을 넘으면
@@ -1375,10 +1442,10 @@
       let tax = progressiveTax(taxBase, transferBracketsAt_(core.raw && core.raw.transferDate));
       const notes = [];
       if (core.isMultiHouseSurcharge) {
-        const rate = core.multiHouseCount >= 3 ? 0.30 : 0.20;
+        const rate = core.multiAddRate != null ? core.multiAddRate : (core.multiHouseCount >= 3 ? 0.30 : 0.20); // [2026.10.19] 양도일별 가산율(2부-02)
         const amt = Math.round(taxBase * rate);
         tax += amt;
-        notes.push('다주택자 중과(+' + (rate * 100) + '%p): +' + amt + '원');
+        notes.push('다주택자 중과(+' + Math.round(rate * 100) + '%p): +' + amt + '원');
       }
       if (core.isNonBusinessLand) {
         const amt = Math.round(taxBase * 0.10);
@@ -1388,36 +1455,35 @@
       return { tax: tax, notes: notes };
     }
     const rhy_ = core.rateHoldingYears != null ? core.rateHoldingYears : core.holdingYears; // 세율 판정 보유기간(§104②)
-    if (core.assetType === 'presale_right') {
-      // §104①1호·2호·3호 — 분양권은 보유기간 1년 미만 70%, 1년 이상은 무조건 60%(기본세율 누진 적용 없음).
-      const rate = rhy_ < 1 ? 0.70 : 0.60;
-      calculatedTax = Math.round(taxBase * rate);
-      appliedRateNote = '분양권 — ' + (rhy_ < 1 ? '보유기간 1년 미만 70%' : '60%') + ' 단일세율 적용(장기보유특별공제·기본세율누진 배제)';
-    } else if (rhy_ < 2 && (core.isMultiHouseSurcharge || core.isNonBusinessLand)) {
-      const rate = rhy_ < 1 ? (core.assetType === 'house' ? 0.70 : 0.50) : (core.assetType === 'house' ? 0.60 : 0.40);
+    // [2026.10.19 조견표 2부-02] 단일세율은 양도일별(core.shortRate — null이면 기본세율). 지금 법에선 예전 고정값(주택 70/60, 기타 50/40, 분양권 70/60)과 같다.
+    const sr_ = core.shortRate !== undefined ? core.shortRate
+      : (core.assetType === 'presale_right' ? (rhy_ < 1 ? 0.70 : 0.60) : (rhy_ < 1 ? (core.assetType === 'house' ? 0.70 : 0.50) : (rhy_ < 2 ? (core.assetType === 'house' ? 0.60 : 0.40) : null)));
+    const srLabel_ = (rhy_ < 1 ? '보유기간 1년 미만' : (rhy_ < 2 ? '보유기간 1년 이상 2년 미만' : '보유기간 2년 이상'));
+    if (core.assetType === 'presale_right' && sr_ !== null) {
+      // §104①1호·2호·3호 — 분양권은 2021.6.1. 이후 양도분 1년 미만 70%·그 이상 60%(기본세율 누진 없음), 2018.1.1.~2021.5.31. 조정지역 분양권 50%(§104①4호)
+      calculatedTax = Math.round(taxBase * sr_);
+      appliedRateNote = '분양권 — ' + srLabel_ + ' ' + Math.round(sr_ * 100) + '% 단일세율 적용(장기보유특별공제·기본세율누진 배제)';
+    } else if (sr_ !== null && (core.isMultiHouseSurcharge || core.isNonBusinessLand)) {
+      // §104④·⑦ 후단 — 보유가 짧아 단기세율이 있는 동안(2021.5.31. 이전 양도 주택은 1년 미만만) [기본세율+가산율]과 큰 세액
+      const rate = sr_;
       const shortTermTax = Math.round(taxBase * rate);
       const alt = surchargeBasedTax_();
       if (alt.tax > shortTermTax) {
         calculatedTax = alt.tax;
         surchargeNotes.push.apply(surchargeNotes, alt.notes);
-        appliedRateNote = '보유기간 2년 미만이나 다주택중과·비사업용토지 가산세율 적용시 세액이 더 커서(§104④·⑦후단) 기본세율+가산율 적용 — 단기세율(' + (rate * 100) + '%) 적용시: ' + shortTermTax + '원';
+        appliedRateNote = srLabel_ + '이나 다주택중과·비사업용토지 가산세율 적용시 세액이 더 커서(§104④·⑦후단) 기본세율+가산율 적용 — 단기세율(' + Math.round(rate * 100) + '%) 적용시: ' + shortTermTax + '원';
       } else {
         calculatedTax = shortTermTax;
-        appliedRateNote = '보유기간 ' + (rhy_ < 1 ? '1년 미만' : '1년 이상 2년 미만') + ' 단기세율 ' + (rate * 100) + '% 적용(§104④·⑦후단 비교 결과 기본세율+가산율보다 큼)';
+        appliedRateNote = srLabel_ + ' 단기세율 ' + Math.round(rate * 100) + '% 적용(§104④·⑦후단 비교 결과 기본세율+가산율보다 큼)';
       }
-    } else if (rhy_ < 1) {
-      const rate = core.assetType === 'house' ? 0.70 : 0.50;
-      calculatedTax = Math.round(taxBase * rate);
-      appliedRateNote = '보유기간 1년 미만 단기세율 ' + (rate * 100) + '% 적용';
-    } else if (rhy_ < 2) {
-      const rate = core.assetType === 'house' ? 0.60 : 0.40;
-      calculatedTax = Math.round(taxBase * rate);
-      appliedRateNote = '보유기간 1년 이상 2년 미만 단기세율 ' + (rate * 100) + '% 적용';
+    } else if (sr_ !== null) {
+      calculatedTax = Math.round(taxBase * sr_);
+      appliedRateNote = srLabel_ + ' 단기세율 ' + Math.round(sr_ * 100) + '% 적용';
     } else {
       const r = surchargeBasedTax_();
       calculatedTax = r.tax;
       surchargeNotes.push.apply(surchargeNotes, r.notes);
-      appliedRateNote = '보유기간 2년 이상 — 기본세율(누진 6~45%) 적용';
+      appliedRateNote = (rhy_ < 2 ? srLabel_ + ' — 그 양도일 법으로 기본세율(누진) 적용(2부-02)' : '보유기간 2년 이상 — 기본세율(누진 6~45%) 적용');
     }
     let farmlandReduction = 0;
     let farmlandReductionLabel = '';
@@ -1573,10 +1639,11 @@
       return Object.assign({ applied: false, reason: giftReceivedDate ? '배우자·직계존비속으로부터의 증여가 아님' : undefined }, withoutBasis);
     }
     const yearsSinceGift = t.transferDate ? fullYearsElapsed(giftReceivedDate, t.transferDate) : Infinity;
-    const isWithinWindow = yearsSinceGift < 10 || (yearsSinceGift === 10 && giftReceivedDate === t.transferDate);
+    const windowYears_ = carryoverWindowYearsAt_(giftReceivedDate); // [2026.10.19 조견표 2부-32] 2023.1.1. 전 증여받은 자산은 5년
+    const isWithinWindow = yearsSinceGift < windowYears_ || (yearsSinceGift === windowYears_ && giftReceivedDate === t.transferDate);
     const isEminentDomainExcluded = !!t.isEminentDomainExcludedFromCarryover; // §97의2②1호
     if (!isWithinWindow || isEminentDomainExcluded) {
-      return Object.assign({ applied: false, reason: !isWithinWindow ? '증여일로부터 10년 경과' : '수용 특례(§97의2②1호) 해당' }, withoutBasis);
+      return Object.assign({ applied: false, reason: !isWithinWindow ? '증여일로부터 ' + windowYears_ + '년 경과' + (windowYears_ === 5 ? '(2023.1.1. 전 증여는 5년 — 법률 제19196호 부칙 제18조)' : '') : '수용 특례(§97의2②1호) 해당' }, withoutBasis);
     }
 
     // 증여세 상당액(시행령§163의2②) = 증여세산출세액 × 해당자산 증여세과세가액/전체 증여세과세가액,
@@ -1626,7 +1693,7 @@
     const donorTax = (donorResult && typeof donorResult.납부세액_합계 === 'number') ? donorResult.납부세액_합계 : (donorResult && donorResult.비과세여부 ? 0 : null);
     if (doneeTax == null || donorTax == null) return Object.assign({}, t, doneeBasis);
     const dd = window.calculateDonorDirectTransferDeemedJS({
-      isSpouseOrLinealCarryoverApplies: false, yearsSinceGift: yearsSinceGift,
+      isSpouseOrLinealCarryoverApplies: false, yearsSinceGift: yearsSinceGift, giftReceivedDate: t.giftReceivedDate,
       isGainActuallyAttributedToDonee: !!t.dd_isGainAttributedToDonee,
       doneeGiftTax: Number(t.dd_doneeGiftTax) || 0, doneeTransferTax: doneeTax, donorDirectTransferTax: donorTax
     });
@@ -1873,8 +1940,9 @@
     function nettingBucketKey_(c) {
       if (c.isUnregistered) return 'unregistered';
       if (c.isPoolable) return 'progressive';
-      const r = (c.assetType === 'house' || c.assetType === 'presale_right')
-        ? ((c.rateHoldingYears != null ? c.rateHoldingYears : c.holdingYears) < 1 ? 0.70 : 0.60) : ((c.rateHoldingYears != null ? c.rateHoldingYears : c.holdingYears) < 1 ? 0.50 : 0.40);
+      // [2026.10.19 조견표 2부-02] 양도일별 단일세율(core.shortRate)로 버킷을 나눈다
+      const r = c.shortRate != null ? c.shortRate : ((c.assetType === 'house' || c.assetType === 'presale_right')
+        ? ((c.rateHoldingYears != null ? c.rateHoldingYears : c.holdingYears) < 1 ? 0.70 : 0.60) : ((c.rateHoldingYears != null ? c.rateHoldingYears : c.holdingYears) < 1 ? 0.50 : 0.40));
       return 'short_' + r;
     }
     const nettingBuckets_ = {};
@@ -1966,7 +2034,7 @@
     });
     pooled.forEach(function (c) {
       let rate = 0; const notes = [];
-      if (c.isMultiHouseSurcharge) { rate += (c.multiHouseCount >= 3 ? 0.30 : 0.20); notes.push('다주택중과'); }
+      if (c.isMultiHouseSurcharge) { rate += (c.multiAddRate != null ? c.multiAddRate : (c.multiHouseCount >= 3 ? 0.30 : 0.20)); notes.push('다주택중과'); } // [2026.10.19] 양도일별 가산율(2부-02)
       if (c.isNonBusinessLand) { rate += 0.10; notes.push('비사업용토지'); }
       if (rate > 0) {
         const amt = Math.round(c.incomeAmount * rate);
@@ -2137,12 +2205,12 @@
       if (bd) usedBasicOnShort = true;
       const nettedInc_ = (nettedIncomeByIdx_[c.idx] !== undefined) ? nettedIncomeByIdx_[c.idx] : c.incomeAmount;
       const base = Math.max(0, nettedInc_ - bd);
-      const rate = (c.assetType === 'house' || c.assetType === 'presale_right')
-        ? ((c.rateHoldingYears != null ? c.rateHoldingYears : c.holdingYears) < 1 ? 0.70 : 0.60) : ((c.rateHoldingYears != null ? c.rateHoldingYears : c.holdingYears) < 1 ? 0.50 : 0.40);
+      const rate = c.shortRate != null ? c.shortRate : ((c.assetType === 'house' || c.assetType === 'presale_right')
+        ? ((c.rateHoldingYears != null ? c.rateHoldingYears : c.holdingYears) < 1 ? 0.70 : 0.60) : ((c.rateHoldingYears != null ? c.rateHoldingYears : c.holdingYears) < 1 ? 0.50 : 0.40)); // [2026.10.19] 양도일별(2부-02)
       const shortTermTax = Math.round(base * rate);
       const dualRateEligible = c.assetType !== 'presale_right' && (c.isMultiHouseSurcharge || c.isNonBusinessLand);
       const surchargePct = dualRateEligible
-        ? ((c.isMultiHouseSurcharge ? (c.multiHouseCount >= 3 ? 30 : 20) : 0) + (c.isNonBusinessLand ? 10 : 0))
+        ? ((c.isMultiHouseSurcharge ? Math.round(100 * (c.multiAddRate != null ? c.multiAddRate : (c.multiHouseCount >= 3 ? 0.30 : 0.20))) : 0) + (c.isNonBusinessLand ? 10 : 0))
         : null;
       return { c: c, bd: bd, base: base, rate: rate, shortTermTax: shortTermTax, dualRateEligible: dualRateEligible, surchargePct: surchargePct };
     });
@@ -3942,10 +4010,11 @@
     }
     const yearsSinceGift = Number(p.yearsSinceGift);
     if (!(yearsSinceGift >= 0)) return { error: '증여일로부터 재양도일까지의 경과연수가 필요합니다.' };
-    if (yearsSinceGift > 10) {
+    const limit101_ = carryoverWindowYearsAt_(p.giftReceivedDate); // [2026.10.19 조견표 2부-32] 2023.1.1. 전 증여는 5년(법률 제19196호 부칙 제18조)
+    if (yearsSinceGift > limit101_) {
       return {
         적용여부: false,
-        안내: '증여일부터 10년을 초과하여 재양도하였으므로 §101② 요건(10년 이내 재양도)에 해당하지 않습니다.'
+        안내: '증여일부터 ' + limit101_ + '년을 초과하여 재양도하였으므로 §101② 요건(' + limit101_ + '년 이내 재양도)에 해당하지 않습니다.'
       };
     }
     if (p.isGainActuallyAttributedToDonee) {
@@ -5580,7 +5649,7 @@
     const donorRelation = p.donorRelation;
     const isEligibleRelation = donorRelation === 'spouse' || donorRelation === 'lineal';
     const yearsSinceGift = (giftReceivedDate && p.transferDate) ? fullYearsElapsed(giftReceivedDate, p.transferDate) : Infinity;
-    const isWithinWindow = yearsSinceGift < 1 || (yearsSinceGift === 1 && giftReceivedDate === p.transferDate);
+    const isWithinWindow = stockCarryoverAppliesAt_(giftReceivedDate) && (yearsSinceGift < 1 || (yearsSinceGift === 1 && giftReceivedDate === p.transferDate)); // [2026.10.19 2부-32] 2025.1.1. 전 증여 주식은 이월과세 없음
 
     const withoutCarryoverParams = Object.assign({}, p, {
       acquisitionPrice: Number(p.doneeOwnAcquisitionPrice) || 0
@@ -5590,7 +5659,7 @@
     if (!isEligibleRelation || !isWithinWindow) {
       if (withoutResult && !withoutResult.error) {
         withoutResult.이월과세_적용여부 = false;
-        withoutResult.이월과세_미적용사유 = !isEligibleRelation ? '배우자·직계존비속으로부터의 증여가 아님' : '증여일로부터 1년 경과(§94①3호 주식등, §97의2①)';
+        withoutResult.이월과세_미적용사유 = !isEligibleRelation ? '배우자·직계존비속으로부터의 증여가 아님' : (!stockCarryoverAppliesAt_(giftReceivedDate) ? '2025.1.1. 전에 증여받은 주식등은 이월과세 대상이 아님(법률 제20615호 부칙 제8조)' : '증여일로부터 1년 경과(§94①3호 주식등, §97의2①)');
       }
       return withoutResult;
     }

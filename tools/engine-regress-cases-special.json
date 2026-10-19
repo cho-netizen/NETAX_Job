@@ -1,0 +1,239 @@
+[
+ {
+  "이름": "[2부-02] 주택 1년 미만 2020-12-01 양도 — 그때 40%(§104①3호 2014판)",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "transferDate": "2020-12-01",
+   "acquisitionDate": "2020-03-01",
+   "transferPrice": 400000000,
+   "acquisitionPrice": 350000000
+  },
+  "정답": {
+   "과세표준": 47500000,
+   "산출세액": 19000000
+  }
+ },
+ {
+  "이름": "[2부-02] 주택 1~2년 2021-03-01 양도 — 그때 기본세율(2021 표)",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "transferDate": "2021-03-01",
+   "acquisitionDate": "2019-12-01",
+   "transferPrice": 400000000,
+   "acquisitionPrice": 300000000
+  },
+  "정답": {
+   "과세표준": 97500000,
+   "산출세액": 19225000
+  }
+ },
+ {
+  "이름": "[2부-02] 조정지역 분양권 1년4개월 2020-10-01 양도 — 50%(§104①4호)",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "presale_right",
+   "isAdjustedArea": true,
+   "transferDate": "2020-10-01",
+   "acquisitionDate": "2019-06-01",
+   "transferPrice": 500000000,
+   "acquisitionPrice": 400000000
+  },
+  "정답": {
+   "과세표준": 97500000,
+   "산출세액": 48750000
+  }
+ },
+ {
+  "이름": "[2부-02] 비조정 분양권 1년4개월 2020-10-01 양도 — 일반 권리 40%",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "presale_right",
+   "transferDate": "2020-10-01",
+   "acquisitionDate": "2019-06-01",
+   "transferPrice": 500000000,
+   "acquisitionPrice": 400000000
+  },
+  "정답": {
+   "과세표준": 97500000,
+   "산출세액": 39000000
+  }
+ },
+ {
+  "이름": "[2부-02] 조정 2주택 5년 2019-06-30 양도 — +10%p·장특공 배제(한시배제 없음)",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "isAdjustedArea": true,
+   "multiHouseCount": 2,
+   "transferDate": "2019-06-30",
+   "acquisitionDate": "2014-06-01",
+   "transferPrice": 800000000,
+   "acquisitionPrice": 500000000
+  },
+  "정답": {
+   "과세표준": 297500000,
+   "산출세액": 123400000
+  }
+ },
+ {
+  "이름": "[2부-02] 조정 3주택 5년 2019-06-30 양도 — +20%p",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "isAdjustedArea": true,
+   "multiHouseCount": 3,
+   "transferDate": "2019-06-30",
+   "acquisitionDate": "2014-06-01",
+   "transferPrice": 800000000,
+   "acquisitionPrice": 500000000
+  },
+  "정답": {
+   "과세표준": 297500000,
+   "산출세액": 153150000
+  }
+ },
+ {
+  "이름": "[2부-02] 조정 2주택 5년 2021-08-01 양도 — +20%p",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "isAdjustedArea": true,
+   "multiHouseCount": 2,
+   "transferDate": "2021-08-01",
+   "acquisitionDate": "2016-06-01",
+   "transferPrice": 800000000,
+   "acquisitionPrice": 500000000
+  },
+  "정답": {
+   "과세표준": 297500000,
+   "산출세액": 153150000
+  }
+ },
+ {
+  "이름": "[2부-02] 조정 2주택 3년 2022-03-01 양도 — 한시배제 전이라 +20%p",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "isAdjustedArea": true,
+   "multiHouseCount": 2,
+   "transferDate": "2022-03-01",
+   "acquisitionDate": "2019-01-01",
+   "transferPrice": 800000000,
+   "acquisitionPrice": 500000000
+  },
+  "정답": {
+   "과세표준": 297500000,
+   "산출세액": 153150000
+  }
+ },
+ {
+  "이름": "[2부-02] 조정 2주택 11년 2020-03-01 양도 — 10년 이상 보유 한시배제(§167의3①12호)",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "isAdjustedArea": true,
+   "multiHouseCount": 2,
+   "transferDate": "2020-03-01",
+   "acquisitionDate": "2009-01-01",
+   "transferPrice": 800000000,
+   "acquisitionPrice": 500000000
+  },
+  "정답": {
+   "과세표준": 231500000,
+   "산출세액": 68570000
+  }
+ },
+ {
+  "이름": "[2부-02] 조정 2주택 8개월 2019-06-30 양도 — 40%와 기본세율+10%p 중 큰 것",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "isAdjustedArea": true,
+   "multiHouseCount": 2,
+   "transferDate": "2019-06-30",
+   "acquisitionDate": "2018-11-01",
+   "transferPrice": 600000000,
+   "acquisitionPrice": 500000000
+  },
+  "정답": {
+   "과세표준": 97500000,
+   "산출세액": 39000000
+  }
+ },
+ {
+  "이름": "[2부-02] 2주택 5년 2015-06-30 양도 — 중과 없던 때(장특공 15%)",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "house",
+   "isAdjustedArea": true,
+   "multiHouseCount": 2,
+   "transferDate": "2015-06-30",
+   "acquisitionDate": "2010-06-01",
+   "transferPrice": 800000000,
+   "acquisitionPrice": 500000000
+  },
+  "정답": {
+   "과세표준": 252500000,
+   "산출세액": 76550000
+  }
+ },
+ {
+  "이름": "[2부-02] 비사업용토지 2년3개월 2014-06-30 양도 — 2014년 양도분 가산 없음(부칙 제20조)",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "isNonBusinessLand": true,
+   "transferDate": "2014-06-30",
+   "acquisitionDate": "2012-03-01",
+   "transferPrice": 300000000,
+   "acquisitionPrice": 100000000
+  },
+  "정답": {
+   "과세표준": 197500000,
+   "산출세액": 55650000
+  }
+ },
+ {
+  "이름": "[2부-32] 신축 환산가액 2017-06-30 양도 — §114의2 가산세 없음(2018 전)",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "transferDate": "2017-06-30",
+   "acquisitionDate": "2014-01-01",
+   "transferPrice": 500000000,
+   "acquisitionStandardPriceForConversion": 200000000,
+   "transferStandardPriceForConversion": 250000000,
+   "isNewBuildingWithin5Years": true,
+   "convertedBuildingAcquisitionValueForPenalty": 300000000
+  },
+  "정답": {
+   "과세표준": 82100000,
+   "산출세액": 14484000,
+   "환산취득가액가산세": 0
+  }
+ },
+ {
+  "이름": "[2부-32] 배우자 증여 2019-01-10 → 2025-06-30 양도 — 2023 전 증여는 5년, 이월과세 안 됨",
+  "도구": "calculateTransferTaxWithCarryoverJS",
+  "입력": {
+   "assetType": "land",
+   "transferDate": "2025-06-30",
+   "transferPrice": 600000000,
+   "giftReceivedDate": "2019-01-10",
+   "donorRelation": "spouse",
+   "doneeOwnAcquisitionPrice": 500000000,
+   "doneeOwnNecessaryExpenses": 0,
+   "donorAcquisitionPrice": 200000000,
+   "donorAcquisitionDate": "2010-01-01",
+   "donorNecessaryExpenses": 0,
+   "giftTaxPaid": 0,
+   "giftTaxableValue": 500000000
+  },
+  "정답": {
+   "과세표준": 85500000,
+   "산출세액": 14760000
+  }
+ }
+]

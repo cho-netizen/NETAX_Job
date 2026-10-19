@@ -66,9 +66,27 @@ if (t201 && t203) {
   const hvRow = (r) => { const m = String(r.값).match(/(\d+)억원/); if (!m) throw new Error('2부-04 금액을 못 읽음: ' + r.값); return { from: r.시작, to: r.끝 || null, amount: Number(m[1]) * 100000000 }; };
   const hv = { house: t204 ? t204.행.filter((r) => /^주택/.test(r.구분)).map(hvRow) : [], right: t204 ? t204.행.filter((r) => /^조합원입주권/.test(r.구분)).map(hvRow) : [] };
   if (t204 && (hv.house.filter((x) => x.from === '2021-12-08' && x.amount === 1200000000).length !== 1)) throw new Error('2부-04의 2021-12-08 이후 12억 행이 엔진 지금 값과 다릅니다');
-  e = e.slice(0, i2) + EB + nl + '  const REF_TR_BRACKETS_ = ' + js(br) + ';' + nl + '  const REF_LT_ = { 표1: ' + js(lt1) + ', 표2: ' + js(lt2) + ' };' + nl + '  const REF_HV_ = ' + js(hv) + ';' + nl + '  ' + e.slice(k2);
+  // [2026.10.19 조견표 2부-02] 단기·분양권 세율, 다주택 중과 가산율, 비사업용토지 가산 — 행 값의 %는 소수로, "기본세율"은 null(누진)
+  const t202 = tables.filter((t) => t.번호 === '2부-02')[0];
+  const pct = (v) => (v === '기본세율' ? null : (typeof v === 'number' ? Math.round(v * 100) / 10000 : (() => { throw new Error('2부-02 세율 값을 못 읽음: ' + v); })()));
+  const srRows = (gu) => (t202 ? t202.행.filter((r) => r.구분 === gu) : []);
+  const sr = {
+    house: srRows('단기세율 주택·조합원입주권').map((r) => ({ from: r.시작, to: r.끝 || null, lt1: pct(r.값['1년미만']), lt2: pct(r.값['1년이상2년미만']), ge2: pct(r.값['2년이상']) })),
+    other: srRows('단기세율 그 밖의 토지·건물·부동산권리').map((r) => ({ from: r.시작, to: r.끝 || null, lt1: pct(r.값['1년미만']), lt2: pct(r.값['1년이상2년미만']), ge2: pct(r.값['2년이상']) })),
+    presale: srRows('분양권').map((r) => ({ from: r.시작, to: r.끝 || null, lt1: pct(r.값['1년미만']), lt2: pct(r.값['1년이상2년미만']), ge2: pct(r.값['2년이상']), adj: r.값.조정대상지역 == null ? null : pct(r.값.조정대상지역) })),
+    multi: srRows('다주택 중과 가산율').map((r) => ({ from: r.시작, to: r.끝 || null, two: pct(r.값['2주택']), three: pct(r.값['3주택이상']) })),
+    nonbiz: srRows('비사업용토지 가산').map((r) => ({ from: r.시작, to: r.끝 || null, add: /가산 없음/.test(String(r.값)) ? 0 : 0.1 }))
+  };
+  if (t202) {
+    // 지금 값(2021-06-01 이후)이 엔진의 지금 세율과 같아야 한다 — 다르면 멈춤
+    const cur = (rows) => rows.filter((x) => !x.to)[0] || {};
+    const h = cur(sr.house), o = cur(sr.other), p = cur(sr.presale), m = cur(sr.multi), nb = cur(sr.nonbiz);
+    if (!(h.lt1 === 0.7 && h.lt2 === 0.6 && h.ge2 === null && o.lt1 === 0.5 && o.lt2 === 0.4 && o.ge2 === null && p.lt1 === 0.7 && p.lt2 === 0.6 && p.ge2 === 0.6 && m.two === 0.2 && m.three === 0.3 && nb.add === 0.1))
+      throw new Error('2부-02의 지금 세율 행이 엔진 지금 세율(주택 70/60, 기타 50/40, 분양권 70/60/60, 중과 +20/+30, 비사업용 +10)과 다릅니다 — 확인 필요');
+  }
+  e = e.slice(0, i2) + EB + nl + '  const REF_TR_BRACKETS_ = ' + js(br) + ';' + nl + '  const REF_LT_ = { 표1: ' + js(lt1) + ', 표2: ' + js(lt2) + ' };' + nl + '  const REF_HV_ = ' + js(hv) + ';' + nl + '  const REF_SR_ = ' + js(sr) + ';' + nl + '  ' + e.slice(k2);
   fs.writeFileSync(ENGINE, e);
-  console.log('엔진: 기본세율 ' + br.length + '개 시기, 장특공 표1 ' + lt1.length + '·표2(2020 이전) ' + lt2.length + '개 시기, 고가주택 기준 주택 ' + hv.house.length + '·입주권 ' + hv.right.length + '개 시기 → taxcalc-engine.html');
+  console.log('엔진: 기본세율 ' + br.length + '개 시기, 장특공 표1 ' + lt1.length + '·표2(2020 이전) ' + lt2.length + '개 시기, 고가주택 기준 주택 ' + hv.house.length + '·입주권 ' + hv.right.length + '개 시기, 특례세율(2부-02) ' + (sr.house.length + sr.other.length + sr.presale.length + sr.multi.length + sr.nonbiz.length) + '행 → taxcalc-engine.html');
 }
 // [2026.10.19 B-5] AI 지휘 form_needs 도구용 서식 색인 — 서버 코드에 넣지 않고(10MB 한도) 드라이브 자료 파일로 둔다.
 //  J:\내 드라이브\0 NETAX\업무관리자\세금계산\법정서식원본(법제처)\_서식색인.json (구글 드라이브 동기화로 올라감 → 서버 formNeeds_가 DriveApp으로 읽고 6시간 캐시).
@@ -99,7 +117,9 @@ if (t201 && t203) {
   });
   const txt = JSON.stringify(idx);
   const DRIVE = 'J:/내 드라이브/0 NETAX/업무관리자/세금계산/법정서식원본(법제처)';
-  if (fs.existsSync(DRIVE)) { fs.writeFileSync(path.join(DRIVE, '_서식색인.json'), txt); console.log('서식 색인 → 드라이브 _서식색인.json ' + Buffer.byteLength(txt) + '바이트(서식 ' + Object.keys(idx.서식).length + '장)'); }
+  // [2026.10.19] --no-drive: 드라이브 색인은 건드리지 않음(다른 세션 가지의 새 서식 색인을 옛 것으로 덮지 않게 — 조견표만 고칠 때)
+  if (process.argv.indexOf('--no-drive') !== -1) console.log('서식 색인: --no-drive라 드라이브에 안 씀(' + Buffer.byteLength(txt) + '바이트)');
+  else if (fs.existsSync(DRIVE)) { fs.writeFileSync(path.join(DRIVE, '_서식색인.json'), txt); console.log('서식 색인 → 드라이브 _서식색인.json ' + Buffer.byteLength(txt) + '바이트(서식 ' + Object.keys(idx.서식).length + '장)'); }
   else console.log('서식 색인: 드라이브 폴더가 없어 건너뜀(' + Buffer.byteLength(txt) + '바이트)');
 }
 console.log('조견표 ' + tables.length + '장(' + tables.map((t) => t.번호).join(', ') + '), 서식 칸 지도 ' + Object.keys(forms).length + '장 → app 만들 때 화면에 끼움(서버 lawsearch.html은 빈 값)');
