@@ -58,7 +58,7 @@
  *       seller.addressDong·addressHo(주소에 붙임), asset.isInheritedAsset·isGiftedAsset(부표1 ⑤ 취득원인)
  * 증여  giftAssets: [{method, typeCode, basisCode, location, area, unitPrice, value(배분 후), artwork:{code,artist,title,year,material,size}}] (부표1·5)
  *       bd: {totalAsset, nonBiz55, nonBiz49, nonBiz61, excessCash, nonBizStock, totalValue, businessValue, taxPayable, result} (부표2)
- *       mbDetail: {thisTime, cur:{marriage,birth}, prior, marriageDate, birthDate, giftDate, giftAmount} (부표3)
+ *       mbDetail: {thisTime, cur:{marriage,birth}, prior, priorParts:{w9,w10,w11,w12,sameMarriage,sameBirth,otherWithin10}, marriageDate, birthDate, giftDate, giftAmount} (부표3)
  *       clawback: {formType('gf_marriage'), reason, result(lastClawbackResult_)} (부표4) / publicOrgPenaltyItems: [{penaltyType, violationSubType, base, amount}] (부표6)
  * 상속  heirs: [{name, regNo, relation, address, addressDong, addressHo, statutoryShareRatio, actualValue}] (부표2, ctx.부표2상속인 = 상속인 번호)
  *       valAssets: [{…giftAssets와 같은 줄, alloc:[{heirIdx, ratio}]}] (부표1·2·8) / nonHeirBequest
@@ -767,7 +767,7 @@
 
   // ───── 증여 부표3(혼인 및 출산 증여재산 공제 명세서) — gfMarriageBirthPrintPageHtml_와 같은 값 ─────
   M['증여10부표3'] = function (ctx) {
-    var o = new Out(), mb = ctx.mbDetail;
+    var o = new Out(), mb = ctx.mbDetail, r = ctx.r || {};
     if (!mb || !n(mb.thisTime)) { o.miss('부표3 전체', '혼인·출산 증여재산공제 없음'); return o.result(); }
     var cur = mb.cur || { marriage: 0, birth: 0 }, prior = n(mb.prior), gift = n(mb.giftAmount);
     var m = n(cur.marriage), b = n(cur.birth);
@@ -777,12 +777,15 @@
     else if (b && !m) { o.set('⑦@1', gift); if (!prior) o.set('⑧', gift); }
     else o.miss('③④⑦⑧ 증여재산가액', '혼인·출산 둘 다 해당 — 이번 증여재산가액을 혼인분·출산분으로 나눈 값이 계산기에 없음(공제액만 나눔)');
     if (prior) o.miss('④⑧ 합계·2~5번째 증여 칸', '기존에 혼인·출산 공제를 받은 증여(' + prior + '원)가 있음 — 그 증여 건별 날짜·가액이 계산기에 없음');
-    if (!prior) o.set('⑨', 0).set('⑩', 0).set('⑪', 0).set('⑫', 0);
-    else o.miss('⑨~⑫ 기존 공제액', '계산기는 기존 공제 누적액 한 값(' + prior + '원)만 받음 — 혼인/출산·10년 이내/도과로 나눌 수 없음');
-    var room = Math.max(0, 100000000 - prior);
+    // [2026.10.20 AI 회의 회장 결론 J08(다)] ⑨⑩ = 10년 안 기존 공제(모든 증여자 — ⑬ 1억 한도용, §53의2), ⑪⑫ = 10년 넘은 것,
+    //  ⑬ = 1억 − (⑨+⑩+⑪+⑫), ⑯⑰ = 같은 증여자분(§47② 합산 대상, 엔진 혼인출산증여재산공제_같은증여자기공제) + ⑭⑮ — 본표 ㉙와 같게.
+    var pp = mb.priorParts || { w9: 0, w10: 0, w11: 0, w12: 0, total: prior, sameMarriage: 0, sameBirth: 0, otherWithin10: 0, room: Math.max(0, 100000000 - prior) };
+    o.set('⑨', n(pp.w9)).set('⑩', n(pp.w10)).set('⑪', n(pp.w11)).set('⑫', n(pp.w12));
+    var room = Math.max(0, 100000000 - (n(pp.w9) + n(pp.w10) + n(pp.w11) + n(pp.w12)));
     o.set('⑬', room).set('⑭', m).set('⑮', b);
-    if (!prior) o.set('⑯', m).set('⑰', b);
-    else o.miss('⑯⑰ 증여재산공제액', '⑨⑩(기존 공제액의 혼인·출산 나눔)을 몰라 더할 수 없음');
+    o.set('⑯', n(pp.sameMarriage) + m).set('⑰', n(pp.sameBirth) + b);
+    if (n(pp.otherWithin10) > 0) o.note('비고에 적을 것: ⑨⑩ 중 다른 증여자분 ' + n(pp.otherWithin10).toLocaleString('ko-KR') + '원은 §47② 합산 대상이 아님(⑯⑰에 더하지 않음)');
+    if (n(r.혼인출산증여재산공제)) o.check('⑯ + ⑰ = 본표 ㉙ 혼인·출산 공제(엔진)', n(pp.sameMarriage) + m + n(pp.sameBirth) + b, n(r.혼인출산증여재산공제));
     o.note('③·⑦ 증여재산가액은 이번 증여의 증여재산가액(지금 인쇄는 공제액을 찍었음 — 서식 칸 이름대로 고침)');
     o.check('⑭ + ⑮ ≤ ⑬', Math.min(m + b, room), m + b);
     o.check('⑭ + ⑮ = 이번 혼인·출산 공제액(엔진)', m + b, n(mb.thisTime));
@@ -1273,7 +1276,7 @@
       return Object.assign({ r: r, item: item ? { amount: item.amount, priorGiftAmount: item.priorGiftAmount } : {}, donee: giftDonees[doneeIdx] || {}, donor: donor,
         relation: item ? giftPairRelation_(donor, doneeIdx).relation : '', giftDate: el('giftDate'),
         marriageBirth: r && numVal(r.혼인출산증여재산공제) ? gfMarriageBirthSplit_(numVal(r.혼인출산증여재산공제) || 0) : { marriage: 0, birth: 0 },
-        mbDetail: mbThis ? { thisTime: mbThis, cur: gfMarriageBirthSplit_(mbThis), prior: numVal(el('giftPriorMarriageBirth')) || 0, marriageDate: el('giftMarriageDate'),
+        mbDetail: mbThis ? { thisTime: mbThis, cur: gfMarriageBirthSplit_(mbThis), prior: (typeof gfPriorMarriageBirthParts_ === 'function' ? gfPriorMarriageBirthParts_(r).total : 0), priorParts: (typeof gfPriorMarriageBirthParts_ === 'function' ? gfPriorMarriageBirthParts_(r) : null), marriageDate: el('giftMarriageDate'),
           birthDate: el('giftBirthDate'), giftDate: el('giftDate'), giftAmount: has(item.amount) ? numVal(item.amount) : numVal(r.증여재산가액) } : null,
         giftAssets: giftAssets, bd: bd, clawback: claw, publicOrgPenaltyItems: [],
         rate: r ? ihRateForBase_(r.과세표준) : null, installment: inst, split: split, taxAgent: agent() }, extra || {});

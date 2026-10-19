@@ -22808,6 +22808,21 @@ function taxCalcIsBirthGiftEligible_(giftDateStr, birthDateStr){
 // 값만 계산한다(법 자체가 통산 한도라 이게 맞음) — 실제로 신고서에 낼 때는 이 통산 한도로
 // 정해진 최종 금액을 두 칸에 배분해야 하므로, 혼인일·출생일 둘 다 해당되는(드문) 경우에만
 // 배분 비율을 직접 입력받고, 한쪽만 해당되면 자동으로 그 쪽에 전액 배분한다.
+// [2026.10.20 AI 회의 회장 결론 J08(다)] 기존 혼인·출산공제 6칸 → 서식 부표3 ⑨~⑬·⑯⑰과 엔진 입력.
+//  ⑨ = 혼인(같은+다른 증여자) 10년 안, ⑩ = 출산 10년 안, ⑪⑫ = 10년 넘음, ⑬ = 1억 − (⑨+⑩+⑪+⑫) — §53의2 1억 한도는 증여자를 가리지 않음.
+//  ⑯⑰에 더하는 기존분은 같은 증여자분만(§47② 합산 대상, 엔진 혼인출산증여재산공제_같은증여자기공제). r(엔진 결과)이 있으면 엔진이 실제로
+//  다시 공제한 금액(합산한 앞선 증여가액을 넘지 않게 줄었을 수 있음)을 혼인 먼저 나눠 쓴다.
+function gfPriorMarriageBirthParts_(r){
+  const v = function(id){ return Math.max(0, numVal((document.getElementById(id) || {}).value) || 0); };
+  const p = { mSame: v('giftPriorMbMarriageSame'), mOther: v('giftPriorMbMarriageOther'), mOver: v('giftPriorMbMarriageOver10'),
+    bSame: v('giftPriorMbBirthSame'), bOther: v('giftPriorMbBirthOther'), bOver: v('giftPriorMbBirthOver10') };
+  p.w9 = p.mSame + p.mOther; p.w10 = p.bSame + p.bOther; p.w11 = p.mOver; p.w12 = p.bOver;
+  p.total = p.w9 + p.w10 + p.w11 + p.w12; p.sameTotal = p.mSame + p.bSame; p.otherWithin10 = p.mOther + p.bOther;
+  p.room = Math.max(0, 100000000 - p.total);
+  const eng = (r && r.혼인출산증여재산공제_같은증여자기공제 != null) ? Math.max(0, numVal(r.혼인출산증여재산공제_같은증여자기공제) || 0) : p.sameTotal;
+  p.sameMarriage = Math.min(p.mSame, eng); p.sameBirth = Math.min(p.bSame, eng - p.sameMarriage);
+  return p;
+}
 function gfMarriageBirthSplit_(totalDeduction){
   const giftDate = (document.getElementById('giftDate') || {}).value;
   const marriageDate = (document.getElementById('giftMarriageDate') || {}).value;
@@ -34341,8 +34356,16 @@ function renderGiftPane(){
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>혼인일</label><input type="date" id="giftMarriageDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">비어있으면 미해당</span><span class="taxcalc-result-note" id="giftMarriageHint" style="margin:2px 0 0;"></span></div>' +
         '<div class="taxcalc-field"><label>출생일·입양일</label><input type="date" id="giftBirthDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">비어있으면 미해당</span><span class="taxcalc-result-note" id="giftBirthHint" style="margin:2px 0 0;"></span></div>' +
-        '<div class="taxcalc-field"><label>과거에 이미 받은 혼인·출산공제 누적액</label><input type="number" id="giftPriorMarriageBirth" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>그중 이번 증여자에게서 10년 안에 받은 증여로 쓴 혼인·출산공제</label><input type="number" id="giftPriorMarriageBirthSameDonor" placeholder="원"><span class="taxcalc-field-help">없으면 비움 — 그 증여를 합산하면 이번 계산에서 다시 공제(서식 부표3 ⑯ = ⑨ + ⑭)</span></div>' +
+        // [2026.10.20 AI 회의 회장 결론 J08(다)] 예전엔 "누적액" 한 칸 + "그중 같은 증여자분" 한 칸이었다 — 서식 부표3은 ⑨⑩(10년 이내)·⑪⑫(10년 넘음)를
+        //  혼인·출산으로 나눠 적고, ⑬(남은 1억 한도, §53의2 — 증여자 가리지 않음)과 ⑯⑰(같은 증여자분만, §47② 합산)이 서로 다른 값을 쓴다.
+        //  그래서 기존 공제를 혼인·출산 × (이번 증여자·10년 안 / 다른 증여자·10년 안 / 10년 넘음) 6칸으로 받는다. 엔진 입력은 예전과 같은 뜻(합계·같은 증여자분).
+        '<div class="taxcalc-result-note" style="flex-basis:100%; margin:4px 0 0;">예전에 이미 받은 혼인·출산공제가 있으면 나눠 넣으세요(없으면 모두 비움). "이번 증여자"는 직계존속이면 그 배우자도 같은 사람으로 봅니다(§47②).</div>' +
+        '<div class="taxcalc-field"><label>기존 혼인공제 — 이번 증여자에게서 10년 안</label><input type="number" id="giftPriorMbMarriageSame" placeholder="원"><span class="taxcalc-field-help">그 증여는 이번에 합산되어 다시 공제(부표3 ⑯ = 이 금액 + ⑭)</span></div>' +
+        '<div class="taxcalc-field"><label>기존 혼인공제 — 다른 증여자에게서 10년 안</label><input type="number" id="giftPriorMbMarriageOther" placeholder="원"><span class="taxcalc-field-help">1억 한도에서만 뺌(합산 대상 아님)</span></div>' +
+        '<div class="taxcalc-field"><label>기존 혼인공제 — 10년이 넘은 것</label><input type="number" id="giftPriorMbMarriageOver10" placeholder="원"><span class="taxcalc-field-help">1억 한도에서만 뺌(부표3 ⑪)</span></div>' +
+        '<div class="taxcalc-field"><label>기존 출산공제 — 이번 증여자에게서 10년 안</label><input type="number" id="giftPriorMbBirthSame" placeholder="원"><span class="taxcalc-field-help">부표3 ⑰ = 이 금액 + ⑮</span></div>' +
+        '<div class="taxcalc-field"><label>기존 출산공제 — 다른 증여자에게서 10년 안</label><input type="number" id="giftPriorMbBirthOther" placeholder="원"><span class="taxcalc-field-help">1억 한도에서만 뺌</span></div>' +
+        '<div class="taxcalc-field"><label>기존 출산공제 — 10년이 넘은 것</label><input type="number" id="giftPriorMbBirthOver10" placeholder="원"><span class="taxcalc-field-help">1억 한도에서만 뺌(부표3 ⑫)</span></div>' +
         // [2026.09.30 신규, 재검토91] 혼인일·출생일 둘 다 입력되어 둘 다 요건을 충족하는 드문
         // 경우에만 보인다 — 전자신고서(자료구분16)는 혼인분·출산분을 각 칸에 나눠 내야 하므로.
         '<div class="taxcalc-field" id="giftMarriageBirthSplitField" style="display:none;"><label>이 중 혼인분 해당 금액</label><input type="number" id="giftMarriageBirthSplit" placeholder="원"><span class="taxcalc-field-help">혼인·출산 둘 다 요건을 충족할 때만 — 나머지는 자동으로 출산분으로 처리됩니다(전자신고서 혼인/출산 칸 구분용)</span></div>' +
@@ -35167,26 +35190,25 @@ function gfAttach1AssetRecordsForPair_(donorIdx, doneeIdx){
 // +혼인출산증여재산내역(자료구분17, 100B) — 증여세전자신고파일설명서 42번 항목 각주에 "혼인
 // 증여재산공제액과 출산증여재산공제액은 합산하여 최대 1억원 한도, 혼인출산 증여재산공제액
 // 계산명세(16)·혼인출산 공제 증여재산내역(17) 레코드 필수"라고 명시 — 혼인·출산공제를 받을 때
-// 반드시 같이 내야 하는 부표인데 아예 구현이 안 돼 있었다. 과거 10년 이내 사용액은 이 항목
-// 자체가 혼인분/출산분을 나눠 받지 않으므로(giftPriorMarriageBirth는 합산 1개 값), 이번 건과
-// 같은 사유(혼인만/출산만/둘 다)로 이미 썼다고 가정해 배분한다 — 실제로 혼인분과 출산분을
-// 각각 다른 시점에 나눠 써온 경우는 이 배분이 근사치일 수 있음을 안내에 남긴다.
-function gfAttachMarriageBirthCalcRecord_(donor, currentSplit){
-  const priorTotal = numVal((document.getElementById('giftPriorMarriageBirth') || {}).value) || 0;
-  const priorSplit = gfMarriageBirthSplit_(priorTotal);
-  const remaining = Math.max(0, 100000000 - priorTotal);
+// 반드시 같이 내야 하는 부표인데 아예 구현이 안 돼 있었다. (예전엔 과거 사용액을 누적액 한 값으로만 받아 이번 건 사유로
+// 배분했다 — 2026.10.20 J08부터 혼인·출산 × 같은/다른 증여자 10년 안·10년 넘음 6칸으로 받는다, gfPriorMarriageBirthParts_)
+function gfAttachMarriageBirthCalcRecord_(donor, currentSplit, r){
+  // [2026.10.20 J08] 기존 공제를 혼인·출산 × 10년 안/넘음으로 나눠 받음 — 예전엔 누적액 한 값을 이번 건 사유로 배분하고 10년 도과는 0으로 냈다
+  const pp = gfPriorMarriageBirthParts_(r);
+  const priorSplit = { marriage: pp.w9, birth: pp.w10 };
+  const remaining = pp.room;
   let b = [];
   b = b.concat(ihPadChar_('16', 2));
   b = b.concat(ihPadChar_('G108400', 7));
   b = b.concat(ihPadNum_(priorSplit.marriage, 13)); // 3 10년이내혼인공제금액
-  b = b.concat(ihPadNum_(0, 13));                   // 4 10년도과혼인공제금액(구분 미수집, 0)
+  b = b.concat(ihPadNum_(pp.w11, 13));              // 4 10년도과혼인공제금액
   b = b.concat(ihPadNum_(priorSplit.birth, 13));    // 5 10년이내출산공제금액
-  b = b.concat(ihPadNum_(0, 13));                   // 6 10년도과출산공제금액(구분 미수집, 0)
+  b = b.concat(ihPadNum_(pp.w12, 13));              // 6 10년도과출산공제금액
   b = b.concat(ihPadNum_(remaining, 13));           // 7 공제받을수있는금액
   b = b.concat(ihPadNum_(currentSplit.marriage, 13)); // 8 혼인공제받을금액
   b = b.concat(ihPadNum_(currentSplit.birth, 13));    // 9 출산공제받을금액
-  b = b.concat(ihPadNum_(priorSplit.marriage + currentSplit.marriage, 13)); // 10 혼인증여재산공제액
-  b = b.concat(ihPadNum_(priorSplit.birth + currentSplit.birth, 13));       // 11 출산증여재산공제액
+  b = b.concat(ihPadNum_(pp.sameMarriage + currentSplit.marriage, 13)); // 10 혼인증여재산공제액 — 같은 증여자분 + 이번(서식 ⑯, 본표 ㉙와 같게)
+  b = b.concat(ihPadNum_(pp.sameBirth + currentSplit.birth, 13));       // 11 출산증여재산공제액 — 같은 증여자분 + 이번(서식 ⑰)
   b = b.concat(ihPadChar_('', 74));                 // 12 공란
   return b;
 }
@@ -35217,7 +35239,7 @@ function gfBuildEfileBytes_(){
     const marriageBirthTotal = numVal(item.result.혼인출산증여재산공제_이번분 != null ? item.result.혼인출산증여재산공제_이번분 : item.result.혼인출산증여재산공제) || 0;
     if (marriageBirthTotal > 0){
       const split = gfMarriageBirthSplit_(marriageBirthTotal);
-      all = all.concat(gfAttachMarriageBirthCalcRecord_(donor, split), CRLF);
+      all = all.concat(gfAttachMarriageBirthCalcRecord_(donor, split, item.result), CRLF);
       let detailSeq = 0;
       if (split.marriage > 0) all = all.concat(gfAttachMarriageBirthDetailRecord_(giftDate, ++detailSeq, '01', document.getElementById('giftMarriageDate').value, split.marriage), CRLF);
       if (split.birth > 0) all = all.concat(gfAttachMarriageBirthDetailRecord_(giftDate, ++detailSeq, '02', document.getElementById('giftBirthDate').value, split.birth), CRLF);
@@ -35350,9 +35372,8 @@ function gfAttach1PrintPageHtml_(donorIdx, doneeIdx){
 function gfMarriageBirthPrintPageHtml_(donee, donor, giftDate, item){
   const totalDeduction = numVal(item.result.혼인출산증여재산공제_이번분 != null ? item.result.혼인출산증여재산공제_이번분 : item.result.혼인출산증여재산공제) || 0; // [2026.10.19] ⑭⑮ = 이번 공제분
   if (!totalDeduction) return '';
-  const priorTotal = numVal((document.getElementById('giftPriorMarriageBirth') || {}).value) || 0;
-  const priorSplit = gfMarriageBirthSplit_(priorTotal);
-  const remaining = Math.max(0, 100000000 - priorTotal);
+  const pp = gfPriorMarriageBirthParts_(item.result); // [2026.10.20 J08] ⑨⑩ 10년 안(모든 증여자), ⑪⑫ 10년 넘음, ⑯⑰ = 같은 증여자분 + 이번
+  const remaining = pp.room;
   const currentSplit = gfMarriageBirthSplit_(totalDeduction);
   const marriageDate = (document.getElementById('giftMarriageDate') || {}).value;
   const birthDate = (document.getElementById('giftBirthDate') || {}).value;
@@ -35364,23 +35385,23 @@ function gfMarriageBirthPrintPageHtml_(donee, donor, giftDate, item){
     '<table class="pf-table">' +
       pfRow_(++n, '혼인신고(예정)일', marriageDate) + pfRow_(++n, '증여일자', giftDate) +
       pfRow_(++n, '증여재산가액', won(currentSplit.marriage)) +
-      pfRow_(++n, '10년 이내 기존 공제액', won(priorSplit.marriage)) +
-      pfRow_(++n, '10년 도과 기존 공제액', won(0)) +
+      pfRow_(++n, '10년 이내 기존 공제액', won(pp.w9)) +
+      pfRow_(++n, '10년 도과 기존 공제액', won(pp.w11)) +
       pfRow_(++n, '공제받을 수 있는 금액(1억원 한도)', won(remaining)) +
       pfRow_(++n, '이번에 받을 금액', won(currentSplit.marriage)) +
-      pfRow_(++n, '혼인 증여재산공제액(최종)', won(priorSplit.marriage + currentSplit.marriage)) +
+      pfRow_(++n, '혼인 증여재산공제액(최종)', won(pp.sameMarriage + currentSplit.marriage)) +
     '</table>' +
     '<div class="pf-section-head">2. 출산 증여재산공제</div>' +
     '<table class="pf-table">' +
       pfRow_(0, '출생일 또는 입양신고일', birthDate) + pfRow_(0, '증여일자', giftDate) +
       pfRow_(0, '증여재산가액', won(currentSplit.birth)) +
-      pfRow_(0, '10년 이내 기존 공제액', won(priorSplit.birth)) +
-      pfRow_(0, '10년 도과 기존 공제액', won(0)) +
+      pfRow_(0, '10년 이내 기존 공제액', won(pp.w10)) +
+      pfRow_(0, '10년 도과 기존 공제액', won(pp.w12)) +
       pfRow_(0, '공제받을 수 있는 금액(1억원 한도)', won(remaining)) +
       pfRow_(0, '이번에 받을 금액', won(currentSplit.birth)) +
-      pfRow_(0, '출산 증여재산공제액(최종)', won(priorSplit.birth + currentSplit.birth)) +
+      pfRow_(0, '출산 증여재산공제액(최종)', won(pp.sameBirth + currentSplit.birth)) +
     '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 혼인·출산 공제는 합산 1억원 한도이며, "10년 도과 기존 공제액" 구분은 미수집이라 0으로 표시됩니다(과거 사용액 전부를 10년 이내로 간주).</div>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 혼인·출산 공제는 합산 1억원 한도(10년 넘은 것·다른 증여자분 포함)이고, 최종 공제액에는 같은 증여자에게서 10년 안에 받은 기존 공제만 더합니다(§47② 합산 대상).' + (pp.otherWithin10 > 0 ? ' 비고: 10년 이내 기존 공제액 중 다른 증여자분 ' + won(pp.otherWithin10) + '은 §47② 합산 대상이 아닙니다.' : '') + '</div>' +
   '</div>';
 }
 function gfPrintFormBodyHtml_(){
@@ -38992,8 +39013,8 @@ function handleTaxCalcClick_(e){
       giftDate: (document.getElementById('giftDate') || {}).value || '', // [2026.10.19] 시점 경고용(계산엔 안 씀)
       isMarriageGift: taxCalcIsMarriageGiftEligible_(document.getElementById('giftDate').value, document.getElementById('giftMarriageDate').value),
       isBirthGift: taxCalcIsBirthGiftEligible_(document.getElementById('giftDate').value, document.getElementById('giftBirthDate').value),
-      priorMarriageOrBirthDeductionUsed: numVal(document.getElementById('giftPriorMarriageBirth').value) || 0,
-      priorMarriageOrBirthDeductionSameDonor10y: numVal((document.getElementById('giftPriorMarriageBirthSameDonor') || {}).value) || 0,
+      priorMarriageOrBirthDeductionUsed: gfPriorMarriageBirthParts_().total, // [2026.10.20 J08] 6칸 합 — §53의2 1억 한도(모든 증여자·기간)
+      priorMarriageOrBirthDeductionSameDonor10y: gfPriorMarriageBirthParts_().sameTotal, // 같은 증여자·10년 안(혼인+출산) — 합산하면 다시 공제
       isExcludedFromAggregation: document.getElementById('giftExcludedAgg').checked,
       appraisalFeeAmount: numVal(document.getElementById('giftAppraisalFee').value) || 0,
       disasterLossAmount: numVal(document.getElementById('giftDisasterLoss').value) || 0,
