@@ -8,6 +8,22 @@
  *   2. 연결표 mappers[formKey](ctx) — 칸 해설 reftables/서식_<formKey>.json 의 칸 번호·계산기칸 그대로.
  *      계산기에 값이 없는 칸은 o.miss(칸, '계산기에 없음') 로 남기고 비운다(추측으로 채우지 않음).
  *   3. 시험 사례 app/formprint/test-cases-양도감면B.js → node tools/formprint-check-ext.js 양도감면B
+ *
+ * ── 한 장 = 자산 하나 ── 여섯 서식 모두 양도 자산(주택) 한 건에 대한 신청서·신고서라, ctx는 mappers.js ctxFromApp.양도(i)가 만든 것에
+ *   ctx.특례자산 = ctx.assets 안의 자산 번호(0부터)를 더해 넘긴다. plan()·ctxFor가 해당 자산마다 장을 따로 만든다.
+ *   엔진 값(장기보유특별공제율·특례 적용 여부)은 ctx.assets[k].single(calculateTransferTaxSingleJS 결과)에서 읽고,
+ *   없으면 화면의 calculateTransferTaxSingleJS로 그 자산을 다시 계산한다(지금 인쇄 trAttach1EngineValues_와 같은 방법).
+ *
+ * ── 언제 찍나(지금 인쇄 taxcalc.html trAttach1PrintPageHtml_ 뒤에 붙는 서식 함수와 같은 조건) ──
+ *   조특62호의2 : asset.rentalSpecialType === 'rental_general' (trRentalGeneralPrintPageHtml_, 조특법 §97의3)
+ *   조특62호의3 : asset.rentalSpecialType === 'rental_long'    (trRentalLongPrintPageHtml_, 조특법 §97의4)
+ *   조특52호의3 : asset.oneHouseSpecialCase.formNo 가 [별지 제52호의3서식] ("특정주택 제외 판정" pd·u9 — 조특법 §71의2·§98의9)
+ *   조특63호의4 : asset.oneHouseSpecialCase.formNo 가 [별지 제63호의4서식] ("특정주택 제외 판정" rh — 조특법 §99의4)
+ *   조특63호의2 : 찍지 않음 — 옛 조특법 §99의2(2000.9.1.~2001.12.31. 기존주택 양도·신축주택 취득, 특례세율 10%) 전용 서식인데
+ *                 계산기에 그 제도가 없음. 현행 §99의2(2013년 신축주택 감면)는 날인 매매계약서 사본만 냄(지금 인쇄 trNewHouseSect992PrintPageHtml_).
+ *   조특63호    : 찍지 않음 — 법 §98(1995.11.1.~1997.12.31. 취득 미분양주택, 20% 세율·종합소득 선택) 전용 서식인데 계산기에 §98 갈래가 없음.
+ *                 §98의3~§98의8 감면은 날인 매매계약서 사본만 냄(지금 인쇄 trUnsoldHouseSect63PrintPageHtml_ — 세액인쇄 서식표에서도 뺌).
+ *   두 서식의 연결표·위치판은 만들어 둠(세무사님이 직접 고른 자산으로 찍을 때 쓰도록 — 계산기에 없는 칸은 비움).
  */
 (function (root, factory) {
   var NF = root.NxFormPrint;
@@ -31,9 +47,128 @@
   var ctxFor = {};
   var ready = {};
 
-  // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만)
+  // ───────── 공용 ─────────
+  // 서식에 해당하는 자산인지(지금 인쇄 함수의 조건 그대로)
+  var WHEN = {
+    '조특62호의2': function (a) { return a.rentalSpecialType === 'rental_general'; },
+    '조특62호의3': function (a) { return a.rentalSpecialType === 'rental_long'; },
+    '조특52호의3': function (a) { return !!(a.oneHouseSpecialCase && /제52호의3서식/.test(a.oneHouseSpecialCase.formNo || '')); },
+    '조특63호의4': function (a) { return !!(a.oneHouseSpecialCase && /제63호의4서식/.test(a.oneHouseSpecialCase.formNo || '')); },
+    '조특63호의2': function () { return false; },
+    '조특63호': function () { return false; }
+  };
+  function itemOf(ctx) { var k = n(ctx.특례자산); return (ctx.assets || [])[k] || {}; }
+  // 그 자산의 calculateTransferTaxSingleJS 결과(ctx에 있으면 그것, 없으면 화면 엔진으로 다시 계산 — trAttach1EngineValues_와 같은 방법)
+  function singleOf(it) {
+    if (it.single) return it.single;
+    var f = root.calculateTransferTaxSingleJS;
+    if (typeof f !== 'function' || !it.asset) return null;
+    try { return f(JSON.parse(JSON.stringify(it.asset))); } catch (e) { return null; }
+  }
+  // 주민등록번호 → 생년월일(뒤 첫 자리 1·2·5·6 = 1900년대, 3·4·7·8 = 2000년대, 9·0 = 1800년대). 13자리가 아니면 ''
+  function birthOf(regNo) {
+    var d = String(regNo || '').replace(/\D/g, '');
+    if (d.length !== 13) return '';
+    var c = d[6], cen = /[1256]/.test(c) ? '19' : /[3478]/.test(c) ? '20' : '18';
+    return cen + d.slice(0, 2) + '.' + d.slice(2, 4) + '.' + d.slice(4, 6);
+  }
+  // 신청인(양도자) 칸: k = {name, birth|regNo, addr, phone} 위치판 키, 칸 = 칸 이름
+  function applicant(o, s, k, 칸) {
+    o.need(k.name, s.name, 칸 + ' 성명');
+    if (k.birth) {
+      var b = birthOf(s.regNo);
+      if (b) o.set(k.birth, b); else o.miss(칸 + ' 생년월일', has(s.regNo) ? '주민등록번호가 13자리가 아니라 생년월일을 못 읽음' : '화면 입력 없음(주민등록번호)');
+    }
+    if (k.regNo) o.need(k.regNo, s.regNo, 칸 + ' 주민등록번호');
+    if (k.addr) o.need(k.addr, H.fullAddr(s), 칸 + ' 주소');
+    if (k.phone) o.need(k.phone, s.phone, 칸 + ' 전화번호');
+  }
+  // "년 월 일"이 인쇄된 칸
+  function ymdSet(o, key, d, 칸, why) {
+    var x = H.ymd(d);
+    if (x) o.set(key + '.연', x.y).set(key + '.월', x.m).set(key + '.일', x.d);
+    else o.miss(칸, why || '화면 입력 없음');
+  }
+  // 신청일·신청인 서명·(세무대리인)·세무서
+  function signBlock(o, ctx, s, opt) {
+    opt = opt || {};
+    var dk = opt.dateKey || '신청일';
+    var d = H.ymd(ctx.신고일);
+    if (d) o.set(dk + '.연', d.y).set(dk + '.월', d.m).set(dk + '.일', d.d); else o.miss(opt.dateLabel || dk, 'ctx.신고일 없음(계산기에 없음)');
+    o.need(opt.signKey || '신청인서명', s.name, opt.signLabel || '신청인(서명)');
+    if (opt.agent) {
+      var ta = ctx.taxAgent || {};
+      if (has(ta.name)) {
+        o.set('세무대리인서명', ta.name);
+        if (has(ta.mgmtNo)) o.set('세무대리인관리번호', ta.mgmtNo); else o.miss('세무대리인(관리번호)', '세무대리인 관리번호 입력 없음');
+      } else o.miss('세무대리인(서명)·세무대리인(관리번호)', '세무대리인 입력 없음(본인 신청)');
+    }
+    if (has(s.taxOffice)) o.set('세무서', H.officeName(s.taxOffice)); else o.miss('세무서', '양도인 관할 세무서 입력 없음');
+  }
+  function pct1(x) { return Math.round(n(x) * 1000) / 10; } // 0.7 → 70
+
+  // ───────── 조특 별지 제62호의2서식 — 장기일반민간임대주택등에 대한 과세특례적용신청서(조특법 §97의3, 시행령 §97의3⑥) ─────────
+  //  값 출처: 지금 인쇄 trRentalGeneralPrintPageHtml_(소재지·취득일·양도일·임대기간·공제율·기준시가) + 칸 해설 계산기칸.
+  //  ② 공제율은 엔진(calculateTransferTaxSingleJS)의 장기보유특별공제율 — 특례가 적용됐을 때만(장기임대주택특례_적용여부).
+  //  예전 인쇄는 rentalYears만 보고 8~10년이면 50%를 찍었는데(등록일 조건 없음), 여기선 엔진이 실제로 쓴 율을 찍는다.
+  mappers['조특62호의2'] = function (ctx) {
+    var o = new Out(), s = ctx.seller || {}, it = itemOf(ctx), a = it.asset || {};
+    applicant(o, s, { name: '신청인@성명', birth: '신청인@생년월일', addr: '신청인@주소', phone: '신청인@전화번호' }, '1. 신청인');
+    o.need('소재지', a.assetLocation, '2. 소재지');
+    o.miss('주택면적', '계산기에 없음');
+    var startStd = n(a.rentalStartStandardPrice), regStd = n(a.registrationStandardPrice);
+    if (startStd || regStd) {
+      o.set('임대개시당시기준시가', startStd || regStd);
+      if (!startStd) o.note('임대개시당시 기준시가 = 화면 "등록일 당시 기준시가"(실제 임대 개시일 기준시가 칸이 비어 있음 — 엔진도 이 값을 임대 개시일 기준시가로 씀, 시행령 §97의3④·⑤). 등록일과 임대 개시일이 다르면 고칠 것');
+    } else o.miss('임대개시당시 기준시가', '화면 입력 없음(실제 임대 개시일·등록일 당시 기준시가 둘 다 비어 있음)');
+    ymdSet(o, '취득일자', a.acquisitionDate, '취득일자');
+    ymdSet(o, '양도일자', a.transferDate, '양도일자');
+    o.miss('세법상 사업자등록일', '계산기에 없음');
+    if (has(a.rentalRegistrationDate)) o.set('민간임대주택법상사업자등록일', a.rentalRegistrationDate);
+    else o.miss('민간임대주택법상 사업자등록일', '화면 입력 없음(임대주택 등록일 — 2022.12.31. 이전 등록이면 8년 이상 50% 판정에 씀)');
+    o.miss('3. 임대내역', '계산기에 없음 — 회차별 임차인 성명·생년월일, 보증금·월세, 임대기간 개시일·종료일');
+    o.miss('① 기간(회차별 줄)', '계산기에 없음 — 임대 연수 한 값(rentalYears)만 있어 계 칸에만 찍음');
+    var ry = n(a.rentalYears);
+    if (has(a.rentalYears) && ry > 0) o.set('①@계', ry + '년'); else o.miss('① 기간 계', '화면 입력 없음(임대기간 연수)');
+    var r = singleOf(it);
+    if (!r || r.error) o.miss('②', '엔진 결과 없음' + (r && r.error ? '(' + r.error + ')' : ''));
+    else if (!r.장기임대주택특례_적용여부) o.miss('②', '엔진: 특례 요건 미충족으로 일반 공제율 적용(10년 미만이고 2022.12.31. 이후 등록이거나 등록일 없음 — 법률 제19199호 부칙 제38조)');
+    else {
+      var rate = pct1(r.장기보유특별공제율);
+      o.set('②', rate);
+      // 서식 작성방법 2 표: 8년 이상 10년 미만 50%, 10년 이상 70%
+      o.check('② = 작성방법 2 표(① 계 ' + ry + '년 → ' + (ry >= 10 ? '70' : '50') + '%)', rate, ry >= 10 ? 70 : (ry >= 8 ? 50 : 0));
+      var sp = r.장기임대주택특례_임대기간중분리상세;
+      if (sp) o.note('② 공제율은 임대기간 중 양도차익 ' + sp.임대기간중양도차익 + '원에만 적용, 임대 전 양도차익 ' + sp.임대전양도차익 + '원은 일반 공제율 ' + pct1(sp.임대전적용공제율) + '%(엔진 ' + sp.산식 + ')');
+    }
+    signBlock(o, ctx, s, { agent: true });
+    return o.result();
+  };
+
+  // ───────── 세액인쇄 화면용: 서식 한 장씩 ctx(양도인마다·자산마다) ─────────
+  /* global lastTransferResults_ */
+  function trItems() { return (typeof lastTransferResults_ !== 'undefined' && lastTransferResults_ ? lastTransferResults_ : []).filter(function (it) { return it.result && !it.result.error; }); }
+  Object.keys(WHEN).forEach(function (k) {
+    ctxFor[k] = function (extra) {
+      var out = [];
+      trItems().forEach(function (item, i) {
+        if (!(item.assets || []).some(WHEN[k])) return;
+        var c = H.ctxFromApp.양도(i, extra);
+        (c.assets || []).forEach(function (x, j) { if (WHEN[k](x.asset || {})) out.push(Object.assign({}, c, { 특례자산: j })); });
+      });
+      return out;
+    };
+    ready[k] = function () { return trItems().some(function (item) { return (item.assets || []).some(WHEN[k]); }); };
+  });
+
+  // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만) — 양도: 해당 자산마다 한 장
   function plan(tax, ctx) {
     var L = [];
+    if (tax !== '양도' || !ctx) return L;
+    ['조특62호의2', '조특62호의3', '조특52호의3', '조특63호의4', '조특63호의2', '조특63호'].forEach(function (k) {
+      if (typeof mappers[k] !== 'function') return;
+      (ctx.assets || []).forEach(function (x, j) { if (WHEN[k](x.asset || {})) L.push({ formKey: k, ctx: Object.assign({}, ctx, { 특례자산: j }) }); });
+    });
     return L;
   }
 
