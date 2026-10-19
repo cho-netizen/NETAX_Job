@@ -641,6 +641,22 @@
     let necessaryExpenses = Number(t.necessaryExpenses) || 0;
     if (!transferPrice || transferPrice <= 0) return { error: '양도가액이 필요합니다.' };
 
+    // [2026.10.19] 청산금 수령액(재건축·재개발 / 환지)은 화면의 "청산금 수령분을 별도 거래로 추가"
+    // 버튼이 권리가액·기존 취득가액·필요경비를 안분해 줄여야만 시행령§166 흐름도대로 계산된다
+    // (권리부분 = 양도가액-(평가액-지급받은청산금)-경비, 기존부분 = (평가액-취득가액-경비)×(평가액-청산금)/평가액).
+    // 수령액만 입력하고 버튼을 안 누르면 엔진은 수령액을 모른 채 계산해 양도차익이 과소·장특이 과대가
+    // 되므로, 버튼으로 반영한 금액(…Applied)과 지금 입력값이 다르면 계산을 멈춘다.
+    const settlementGuards = [
+      ['settlementReceived', 'settlementReceivedApplied', '재건축·재개발'],
+      ['replotmentSettlementReceived', 'replotmentSettlementReceivedApplied', '환지']
+    ];
+    for (const [recvKey, appliedKey, label] of settlementGuards) {
+      const recv = Number(t[recvKey]) || 0;
+      const applied = Number(t[appliedKey]) || 0;
+      if (recv > 0 && applied === 0) return { error: label + ' 청산금 수령액(' + recv.toLocaleString() + '원)이 아직 계산에 반영되지 않았습니다 — "청산금 수령분을 별도 거래로 추가" 버튼을 먼저 누르세요.' };
+      if (applied > 0 && recv !== applied) return { error: label + ' 청산금 수령액이 버튼으로 반영한 금액(' + applied.toLocaleString() + '원)과 다릅니다 — 수령액을 ' + applied.toLocaleString() + '원으로 되돌리거나, 추가된 청산금 거래를 지우고 이 자산을 새로 입력하세요.' };
+    }
+
     // 취득가액 결정 — 실지거래가액(acquisitionPrice 직접입력)이 최우선이다. 이를 확인할 수 없으면
     // 소득세법시행령§176의2③의 순차적용(1호 매매사례가액 → 2호 감정가액 → 3호 환산취득가액 → 4호
     // 취득당시 기준시가)에 따라 자동으로 결정한다. 환산취득가액(§176의2②2호, 토지·건물·부동산취득권리
@@ -1042,8 +1058,74 @@
     return ws.filter(function (w, i) { return ws.indexOf(w) === i; }).join(' / ');
   }
 
+  // [2026.10.19 신규] 환지 증가 면적 분리 — 시행령§162①9호 단서(law.go.kr 원문 확인): "교부받은 토지의 면적이
+  // 환지처분에 의한 권리면적보다 증가 또는 감소된 경우에는 그 증가 또는 감소된 면적의 토지에 대한 취득시기
+  // 또는 양도시기는 환지처분의 공고가 있은 날의 다음날". 그래서 분담금(청산금 납부)으로 늘어난 면적은 종전토지와
+  // 보유기간이 다른 별개 자산처럼 계산해야 한다(장특 보유연수·단기세율 판정이 각각 다름).
+  //   종전분: 양도가액·양도비용 × 권리면적/확정면적, 취득가액·취득비용 = 종전토지분, 취득일 = 종전 취득일
+  //   증가분: 양도가액·양도비용 × (확정면적-권리면적)/확정면적, 취득가액 = 분담금, 취득일 = 공고일 다음날
+  // 양도가액을 면적비율로 나누는 것은 같은 필지 안에서 ㎡당 가액이 같다는 전제다.
+  // 반환: [t] (분리 불필요) | [종전분, 증가분] | { error }
+  function addOneDay_(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }
+  function expandReplotmentIncrease_(t) {
+    const paid = Number(t.replotmentSettlementPaid) || 0;
+    if (!t.isLandReplotment || paid <= 0) return [t];
+    const rights = Number(t.rightsAreaSqm) || 0;
+    const final = Number(t.finalAreaSqm) || 0;
+    if (!(rights > 0 && final > rights) || !t.replotmentDisposalDate) {
+      return { error: '환지 분담금(' + paid.toLocaleString() + '원)이 있으면 증가 면적을 따로 계산해야 하므로 권리(예정)면적·확정면적(권리면적보다 큼)·환지처분 공고일이 모두 필요합니다(시행령§162①9호).' };
+    }
+    const increaseAcqDate = addOneDay_(t.replotmentDisposalDate);
+    if (t.transferDate && t.transferDate < increaseAcqDate) {
+      return { error: '양도일(' + t.transferDate + ')이 증가 면적 취득일(환지처분 공고일 다음날 ' + increaseAcqDate + ')보다 빠릅니다 — 환지처분 전 양도라면 분담금 납부액을 0으로 두고 계약 내용대로 입력하세요.' };
+    }
+    const r = (final - rights) / final;
+    const transferExp = Number(t.replotmentTransferExpenses) || 0;
+    const incTransferExp = Math.round(transferExp * r);
+    const incTransferPrice = Math.round((Number(t.transferPrice) || 0) * r);
+    const scaleKeep = function (v) { return v ? Math.round(Number(v) * (1 - r)) : v; };
+    const label = '환지 증가분 ' + Math.round(final - rights).toLocaleString() + '㎡(' + (Math.round(r * 10000) / 100) + '%)';
+    const original = Object.assign({}, t, {
+      transferPrice: (Number(t.transferPrice) || 0) - incTransferPrice,
+      necessaryExpenses: (Number(t.necessaryExpenses) || 0) - incTransferExp,
+      // 양도 쪽 기준시가·시가 등도 확정면적 전체 기준이라 종전분 몫만 남긴다(환산취득가액 등에 쓰임).
+      transferStandardPriceForConversion: scaleKeep(t.transferStandardPriceForConversion),
+      transferStandardPrice: scaleKeep(t.transferStandardPrice),
+      fairMarketValueForGiftCheck: scaleKeep(t.fairMarketValueForGiftCheck),
+      downContractPriceDifference: scaleKeep(t.downContractPriceDifference),
+      replotmentSettlementPaid: 0,
+      _환지분리: '종전분 ' + Math.round(rights).toLocaleString() + '㎡ (취득일 ' + (t.acquisitionDate || '') + ')'
+    });
+    // 증가분은 감면·이월과세 등 종전토지에 딸린 특례를 물려받지 않도록 기본 항목만 골라 새로 만든다
+    // (증가분에 감면이 될지는 별도 확인 — 안내에 남긴다).
+    const increase = {
+      assetType: t.assetType, transferDate: t.transferDate, acquisitionDate: increaseAcqDate,
+      transferPrice: incTransferPrice, acquisitionPrice: paid, necessaryExpenses: incTransferExp,
+      isTransferorResident: t.isTransferorResident, isNonResidentTwoYearException: t.isNonResidentTwoYearException,
+      isAdjustedArea: t.isAdjustedArea, multiHouseCount: t.multiHouseCount,
+      isNonBusinessLand: t.isNonBusinessLand, isUnregisteredTransfer: t.isUnregisteredTransfer,
+      _환지분리: label + ' (취득일 ' + increaseAcqDate + ' = 공고일 다음날, 취득가액 = 분담금 ' + paid.toLocaleString() + '원; 종전토지의 감면 특례는 넘기지 않음 — 해당되면 별도 확인)'
+    };
+    return [original, increase];
+  }
+
   // 단일 거래 양도소득세 — gs-backend toolCalculateTransferTax와 동일 로직(기본공제 1건 전액 적용).
   window.calculateTransferTaxSingleJS = function (t) {
+    // [2026.10.19] 환지 증가분이 있으면 종전분 결과를 본체로, 증가분 결과를 따로 붙인다(단독 계산근거용 —
+    // 실제 세액은 calculateTransferTaxMultiJS가 두 몫을 합산·통산해 낸다).
+    const replotParts = expandReplotmentIncrease_(t);
+    if (replotParts.error) return { error: replotParts.error };
+    if (replotParts.length === 2) {
+      const main = window.calculateTransferTaxSingleJS(replotParts[0]);
+      if (main.error) return main;
+      main.환지증가분_결과 = window.calculateTransferTaxSingleJS(replotParts[1]);
+      main.환지분리_안내 = [replotParts[0]._환지분리, replotParts[1]._환지분리];
+      return main;
+    }
     const core = transferAssetCore(t);
     if (core.error) return { error: core.error };
 
@@ -1508,6 +1590,21 @@
   window.calculateTransferTaxMultiJS = function (transactions, filingParams) {
     if (!Array.isArray(transactions) || !transactions.length) return { error: '거래를 1건 이상 입력하세요.' };
     filingParams = filingParams || {};
+    // [2026.10.19] 환지 증가분(시행령§162①9호 단서)은 보유기간이 다른 별도 거래로 나눈다 — 거래 번호(idx)가
+    // 화면의 자산 카드 순서와 어긋나지 않도록 종전분은 제자리에, 증가분은 맨 뒤에 붙이고, 번호→표시이름 표를 돌려준다.
+    const txLabels_ = transactions.map(function (_, i) { return (i + 1) + '번째 거래'; });
+    const replotAppend_ = [];
+    for (let i = 0; i < transactions.length; i++) {
+      const parts = expandReplotmentIncrease_(transactions[i]);
+      if (parts.error) return { error: (i + 1) + '번째 거래: ' + parts.error };
+      if (parts.length === 2) {
+        transactions = transactions.slice();
+        transactions[i] = parts[0];
+        txLabels_[i] = (i + 1) + '번째 거래(환지 종전분)';
+        replotAppend_.push({ t: parts[1], label: (i + 1) + '번째 거래(환지 증가분)' });
+      }
+    }
+    replotAppend_.forEach(function (p) { transactions = transactions.concat([p.t]); txLabels_.push(p.label); });
     // 이월과세(§97의2) — 거래 카드에 "배우자·직계존속에게 증여받음"을 체크해뒀으면, 합산 계산에
     // 넣기 전에 이 거래 단독 기준으로 적용여부를 먼저 판정해 취득가액·취득일·필요경비를 확정한다.
     // (예전엔 별도 계산기에서 계산한 결과를 손으로 옮겨 입력해야 했다 — 이제는 자동 반영된다.)
@@ -1543,7 +1640,7 @@
       return c;
     });
     const errorOne = cores.find(function (c) { return c.error; });
-    if (errorOne) return { error: (errorOne.idx + 1) + '번째 거래: ' + errorOne.error };
+    if (errorOne) return { error: txLabels_[errorOne.idx] + ': ' + errorOne.error };
 
     const exempt = cores.filter(function (c) { return c.exempt; });
     const unregistered = cores.filter(function (c) { return c.isUnregistered; });
@@ -1922,6 +2019,8 @@
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       지방소득세: localIncomeTax, 납부세액_합계: grandTotal,
       자산별_내역: assetNotes,
+      거래번호표시: txLabels_, // [2026.10.19] 자산별_내역의 idx → 표시이름(환지 증가분이 맨 뒤에 붙음)
+      환지분리_안내: replotAppend_.length ? transactions.filter(function (t) { return t._환지분리; }).map(function (t) { return t._환지분리; }) : undefined,
       양도차손_통산_적용여부: lossNettingApplied_,
       양도차손_통산_내역: lossNettingApplied_ ? lossNettingDetail_ : undefined,
       안내: '2년 이상 보유·특례 없는(또는 다주택중과·비사업용토지만 해당하는) 거래는 소득금액을 합산해 기본공제(250만원, 전체 1회)와 누진세율을 함께 적용했습니다. 단기양도(2년 미만)·미등기양도는 합산 누진세 대상이 아니라 건별로 따로 계산해 더했습니다. 다주택중과·비사업용토지 가산액과 8년자경농지 감면액은 자산별 소득금액 비중으로 계산한 근사치이니, 특례가 여러 건 섞인 복잡한 합산은 결과를 참고용으로만 쓰고 반드시 재검토하세요. 신고불성실·납부지연가산세는 전체 확정신고 기준(산출세액 합계)으로 한 번만 계산했습니다.' + (lossNettingApplied_ ? ' 일부 자산에서 발생한 양도차손은 소득세법§102②·시행령§167의2에 따라 같은 세율 자산의 소득금액에서 먼저, 남으면 다른 세율 자산들의 소득금액에 안분하여 공제했습니다(자산별_내역의 "양도차손통산후소득금액" 참고, 당해연도에 못 턴 손실은 이월되지 않고 소멸).' : '')
