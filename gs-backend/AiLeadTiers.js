@@ -249,7 +249,7 @@ var CASEPROC_AI_GAP_REFIND_ = [
   [/취득일|취득 ?원인|증여일/, 'date', /접수|등기원인|원인일자|잔금|증여일/, 'own'],
   [/양도일|잔금/, 'date', /접수|등기원인|원인일자|잔금/, 'next'],
   [/상속개시|사망/, 'date', /사망/], [/세대|거주|전입/, 'date', /전입/],
-  [/채무|부채|대출/, 'amount', /잔액|대출금|채무액|원금/], [/예금|금융재산|잔액/, 'amount', /잔액/],
+  [/채무|부채|대출/, 'amount', /잔액|채무액/], // [5번-11] 원리금납입증명서의 '상환원금'·'대출금' 머리줄은 채무액이 아님 — 서식의 잔액·채무액 칸만 [/예금|금융재산|잔액/, 'amount', /잔액/],
   [/경비|비용|수수료/, 'amount', /합계|공급가액|청구금액|결제금액/], [/주택|용도|assetType/, 'line', /주용도/]
 ];
 var CASEPROC_AI_DATE_RE_ = /(19|20)\d{2}\s*[.\-년\/]\s*\d{1,2}\s*[.\-월\/]\s*\d{1,2}(?:\s*일)?/g, CASEPROC_AI_AMT_RE_ = /\d{1,3}(,\d{3})+(?:\s*원)?/g;
@@ -302,6 +302,8 @@ function caseProcAiGapRefind_(c, gapText, files, cache, opt) {
       ms.forEach(function (m) { add(m, fn, caseProcAiMask_(caseProcAiCut_(line.trim(), 60))); });
     });
   });
+  // [5번-11] 다른 서류가 같은 값으로 받치는 후보를 앞으로
+  out.sort(function (a, b) { return b.같은값서류.length - a.같은값서류.length; });
   return { 찾는칸이름: String(r[2].source).replace(/\|/g, '·'), 후보: out };
 }
 function caseProcAiAxis_(f) { const k = String(f.kind || ''); for (let i = 0; i < CASEPROC_AI_AXES_.length; i++) if (CASEPROC_AI_AXES_[i][1].test(k)) return CASEPROC_AI_AXES_[i][0]; const ks = f.keys || {}; return ks.person ? '사람' : ks.asset ? '자산' : ks.date ? '시간' : ks.amount ? '돈' : '그 밖'; }
@@ -340,13 +342,23 @@ function caseProcAiFactMap_(c, items) {
   // 빈칸 — 계산기가 비었다고 한 칸(질문 중 빈 칸)마다 찾을 서류와 이 사건에 있는 그 종류 파일
   const files = Object.keys(fileKinds);
   const txtCache = {}, ownerRows = caseProcAiOwnerRows_(facts);
+  let trState = null; try { trState = ((caseProcLoad_(c.id) || {}).trCalc || {}).state || null; } catch (e) { trState = null; }
   const gaps = (items || []).filter(function (it) { return it.kind === 'missing'; }).slice(0, 15).map(function (it) {
     const t = [it.id, it.text, it.ask && it.ask.label, it.ask && it.ask.target].join(' ');
     // 기준일은 세목마다 뜻이 다름(CASEPROC_BASE_LABEL_: 양도일·증여일·상속개시일) — 그 낱말을 붙여 표에서 맞는 줄을 고름
     const t2 = /기준일/.test(t) && typeof CASEPROC_BASE_LABEL_ !== 'undefined' && CASEPROC_BASE_LABEL_[c.세목] ? CASEPROC_BASE_LABEL_[c.세목] + ' ' + t : t;
     const m = CASEPROC_AI_GAP_SRC_.filter(function (x) { return x[0].test(t2); })[0];
-    const have = m ? files.filter(function (fn) { if (!m[2].test(fileKinds[fn] + ' ' + fn)) return false; try { const f = caseProcAiFindFile_(c, fn); return !(f && caseProcAiIsRefHead_(String(tc_docText_(f) || '').slice(0, 800))); } catch (e) { return true; } }).slice(0, 4) : []; // 판례·심판례 같은 참고 자료는 다시 뒤질 서류로 권하지 않음
-    let again = null; try { again = have.length ? caseProcAiGapRefind_(c, t2, have, txtCache, { taxpayer: c.납세자 || c.고객명 || '', ownerRows: ownerRows }) : null; } catch (e) { again = null; }
+    // [5번-11] 취득·양도·증여의 '계약서'는 매매·분양·증여 계약서 — 임대차(전세·월세) 계약서의 잔금은 취득일이 아님
+    const have = m ? files.filter(function (fn) { if (!m[2].test(fileKinds[fn] + ' ' + fn)) return false; if (/계약서/.test(m[1]) && /전세|월세|임대차|임차/.test(fileKinds[fn] + ' ' + fn)) return false; try { const f = caseProcAiFindFile_(c, fn); return !(f && caseProcAiIsRefHead_(String(tc_docText_(f) || '').slice(0, 800))); } catch (e) { return true; } }).slice(0, 4) : []; // 판례·심판례 같은 참고 자료는 다시 뒤질 서류로 권하지 않음
+    // [5번-11 — 자산 열쇠] 칸이 자산 하나(trc:aN.)에 대한 것이면 계산기의 그 자산 소재지 낱말(동·단지·지번)이 든 서류만 다시 뒤짐 — 맞는 서류가 없으면 전부
+    let haveR = have;
+    try {
+      const am = /(?:^|:)a(\d+)\./.exec(String(it.id || '')), loc = am && trState && trState.transferAssets && trState.transferAssets[+am[1]] ? String(trState.transferAssets[+am[1]].assetLocation || '') : '';
+      const toks = loc.split(/[\s,()]+/).filter(function (w) { return w.length >= 2 && !/(특별시|광역시|시|도|구|군|읍|면)$/.test(w); });
+      const hit = toks.length ? have.filter(function (fn) { const n = String(fn).replace(/\s+/g, ''); return toks.some(function (w) { return n.indexOf(w) !== -1; }); }) : [];
+      if (hit.length) haveR = hit;
+    } catch (e) { haveR = have; }
+    let again = null; try { again = haveR.length ? caseProcAiGapRefind_(c, t2, haveR, txtCache, { taxpayer: c.납세자 || c.고객명 || '', ownerRows: ownerRows }) : null; } catch (e) { again = null; }
     return { 칸: it.id, 글: caseProcAiCut_(it.text, 60), 찾을서류: m ? m[1] : '(표에 없음 — 질문)', 이사건에있는파일: have.length ? have : (m ? '없음 — 서류 요청 질문' : ''), 다시뒤짐: again };
   });
   // [밤샘 5번-7 — 2번 cxRefind_] 한 서류뿐인 계산기 금액·날짜를 다른 서류의 저장된 판독 글에서 같은 값으로 되찾음 — '되찾아 받침'(우연히 같은 숫자일 수 있어 판정엔 안 씀, 근거·질문 출처 보강용)
