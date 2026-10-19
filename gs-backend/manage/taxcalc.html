@@ -5886,7 +5886,7 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>[형제자매 등만] 수증자가 부담한 증여세 산출세액</label><input type="number" data-field="dd_doneeGiftTax" placeholder="원"><span class="taxcalc-field-help">§101② 판정용 — 배우자·직계존속이면 비워두세요</span></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="donorRelation" style="display:none;"><input type="checkbox" data-field="dd_isGainAttributedToDonee" id="ddAttr-' + idx + '"><label for="ddAttr-' + idx + '">[형제자매 등만] 양도소득이 수증자에게 실질적으로 귀속됨이 명백함(§101②단서, 체크시 적용배제)</label></div>' +
           '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>증여받은 날</label><input type="date" data-field="giftReceivedDate" min="1900-01-01" max="2099-12-31"></div>' +
-          '<div class="taxcalc-field checkbox" data-show-if="donorRelation" style="display:none;"><input type="checkbox" data-field="donorDeceasedBeforeTransfer" id="coDonorDead-' + idx + '"><label for="coDonorDead-' + idx + '">증여자가 양도 전에 사망함(배우자 사망 또는 2026.1.1 이후 양도분의 직계존비속 사망이면 이월과세 안 함 — §97의2①)</label></div>' +
+          '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>증여자 사망일(사망했으면)</label><input type="date" data-field="donorDeathDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">양도일 이전 사망이면 배우자는 이월과세 안 함, 직계존비속은 2026.1.1. 이후 양도분만 안 함(§97의2①)</span></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="donorRelation" style="display:none;"><input type="checkbox" data-field="isEminentDomainExcludedFromCarryover" id="coEmDomain-' + idx + '"><label for="coEmDomain-' + idx + '">사업인정고시일로부터 소급 2년 이전 증여 + 수용·협의매수됨(이월과세 제외, §97의2②1호)</label></div>' +
         '</div>' +
         '<div class="taxcalc-asset-head" data-show-if="donorRelation" style="display:none; margin-top:10px;"><b>증여자(원소유자) 취득정보</b></div>' +
@@ -6951,6 +6951,7 @@ function collectTransferInput(vals){
     giftReceivedDate: vals.giftReceivedDate || '',
     isEminentDomainExcludedFromCarryover: !!vals.isEminentDomainExcludedFromCarryover,
     donorDeceasedBeforeTransfer: !!vals.donorDeceasedBeforeTransfer, // [2026.10.19] §97의2① 증여자 사망 배제
+    donorDeathDate: vals.donorDeathDate || '', // [2026.10.20 위원회 J11] 증여자 사망일 — 양도일 이전이면 양도 당시 사망
     donorAcquisitionPrice: numVal(vals.donorAcquisitionPrice) || 0,
     donorAcquisitionDate: vals.donorAcquisitionDate || '',
     donorNecessaryExpenses: numVal(vals.donorNecessaryExpenses) || 0,

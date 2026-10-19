@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 17:32 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 17:35 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -13505,10 +13505,15 @@
   // 이월과세 판정 정보를 입력하면 메인 "세액 계산하기"가 알아서 적용 여부를 판정해 반영한다.
   // [2026.10.19 서식 감사] §97의2① — 배우자는 "사망으로 혼인관계가 소멸된 경우는 제외", 직계존비속은 "양도 당시 사망한 경우는 제외"
   //  (2025.12.23 개정, 부칙 제7조: 2026.1.1 이후 양도분부터). 증여자가 양도 전에 사망했으면 이월과세를 하지 않는다.
+  // [2026.10.20 위원회 J11·J10] 증여자 사망일(donorDeathDate)을 받으면 양도일 이전(같은 날 포함)에 사망했을 때 '양도 당시 사망'으로 본다(예전 체크 donorDeceasedBeforeTransfer도 읽음).
+  //  직계존비속은 법률 제21221호 부칙 제7조 "이 법 시행 이후 자산을 양도하는 경우부터" — 양도일 2026.1.1. 이후만. 2025.12.31. 이전 양도는 사망해도 이월과세(조심 2017서0043).
   function carryoverDonorDeathExcluded_(t) {
-    if (!t || !t.donorDeceasedBeforeTransfer) return '';
+    if (!t) return '';
+    const dd_ = String(t.donorDeathDate || '').slice(0, 10), td_ = String(t.transferDate || '').slice(0, 10);
+    const dead_ = (dd_ && (!td_ || dd_ <= td_)) || (!dd_ && !!t.donorDeceasedBeforeTransfer);
+    if (!dead_) return '';
     if (t.donorRelation === 'spouse') return '증여자(배우자)가 양도 전 사망 — §97의2① "사망으로 혼인관계가 소멸된 경우는 제외"';
-    if (t.donorRelation === 'lineal' && String(t.transferDate || '') >= '2026-01-01') return '증여자(직계존비속)가 양도 당시 사망 — §97의2①(2026.1.1 이후 양도분, 부칙 제7조)';
+    if (t.donorRelation === 'lineal' && String(t.transferDate || '') >= '2026-01-01') return '증여자(직계존비속)가 양도 당시 사망 — §97의2①(2026.1.1 이후 양도분, 법률 제21221호 부칙 제7조). ⚠ 이 경우 §101②(특수관계인 증여 후 10년 안 양도의 부당행위) 괄호의 "§97의2①을 적용받는 직계존비속" 밖이 되어 §101②가 걸리는지는 따로 확인하세요(원문만으로 결론 못 냄 — 위원회 J11)';
     return '';
   }
   function resolveCarryoverAcquisitionBasis_(t) {
@@ -27581,7 +27586,7 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>[형제자매 등만] 수증자가 부담한 증여세 산출세액</label><input type="number" data-field="dd_doneeGiftTax" placeholder="원"><span class="taxcalc-field-help">§101② 판정용 — 배우자·직계존속이면 비워두세요</span></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="donorRelation" style="display:none;"><input type="checkbox" data-field="dd_isGainAttributedToDonee" id="ddAttr-' + idx + '"><label for="ddAttr-' + idx + '">[형제자매 등만] 양도소득이 수증자에게 실질적으로 귀속됨이 명백함(§101②단서, 체크시 적용배제)</label></div>' +
           '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>증여받은 날</label><input type="date" data-field="giftReceivedDate" min="1900-01-01" max="2099-12-31"></div>' +
-          '<div class="taxcalc-field checkbox" data-show-if="donorRelation" style="display:none;"><input type="checkbox" data-field="donorDeceasedBeforeTransfer" id="coDonorDead-' + idx + '"><label for="coDonorDead-' + idx + '">증여자가 양도 전에 사망함(배우자 사망 또는 2026.1.1 이후 양도분의 직계존비속 사망이면 이월과세 안 함 — §97의2①)</label></div>' +
+          '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>증여자 사망일(사망했으면)</label><input type="date" data-field="donorDeathDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">양도일 이전 사망이면 배우자는 이월과세 안 함, 직계존비속은 2026.1.1. 이후 양도분만 안 함(§97의2①)</span></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="donorRelation" style="display:none;"><input type="checkbox" data-field="isEminentDomainExcludedFromCarryover" id="coEmDomain-' + idx + '"><label for="coEmDomain-' + idx + '">사업인정고시일로부터 소급 2년 이전 증여 + 수용·협의매수됨(이월과세 제외, §97의2②1호)</label></div>' +
         '</div>' +
         '<div class="taxcalc-asset-head" data-show-if="donorRelation" style="display:none; margin-top:10px;"><b>증여자(원소유자) 취득정보</b></div>' +
@@ -28646,6 +28651,7 @@ function collectTransferInput(vals){
     giftReceivedDate: vals.giftReceivedDate || '',
     isEminentDomainExcludedFromCarryover: !!vals.isEminentDomainExcludedFromCarryover,
     donorDeceasedBeforeTransfer: !!vals.donorDeceasedBeforeTransfer, // [2026.10.19] §97의2① 증여자 사망 배제
+    donorDeathDate: vals.donorDeathDate || '', // [2026.10.20 위원회 J11] 증여자 사망일 — 양도일 이전이면 양도 당시 사망
     donorAcquisitionPrice: numVal(vals.donorAcquisitionPrice) || 0,
     donorAcquisitionDate: vals.donorAcquisitionDate || '',
     donorNecessaryExpenses: numVal(vals.donorNecessaryExpenses) || 0,
