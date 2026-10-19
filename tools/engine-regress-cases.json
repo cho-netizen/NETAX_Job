@@ -665,5 +665,32 @@
                         "합산그룹_산출세액": 0,
                         "납부세액_합계": 0
                 }
+        },
+        {
+                "이름": "양도 — 장기일반민간임대 장특공 70%(§97의3), 2026.9 양도·2026.4 임대 끝(그날 기준시가 6억): 시행령 §97의3⑤(2026.2.27~) A×(B−C)÷(D−E) (서식 감사 사 후보 4-2)",
+                "도구": "calculate_transfer_tax",
+                "고정": true,
+                "입력": {
+                        "assetType": "house",
+                        "transferPrice": 900000000,
+                        "acquisitionPrice": 400000000,
+                        "necessaryExpenses": 0,
+                        "acquisitionDate": "2016-03-01",
+                        "transferDate": "2026-09-01",
+                        "multiHouseCount": 2,
+                        "isAdjustedArea": false,
+                        "rentalSpecialType": "rental_general",
+                        "rentalYears": 10,
+                        "rentalRegistrationDate": "2016-04-01",
+                        "acquisitionStandardPrice": 300000000,
+                        "registrationStandardPrice": 300000000,
+                        "rentalEndStandardPrice": 600000000,
+                        "transferStandardPrice": 700000000
+                },
+                "정답": {
+                        "장기보유특별공제액": 287500000,
+                        "과세표준": 210000000,
+                        "산출세액": 59860000
+                }
         }
 ]

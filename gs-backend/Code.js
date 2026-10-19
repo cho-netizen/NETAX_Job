@@ -588,6 +588,9 @@ const DRIVE_TOOLS = [
         acquisitionStandardPrice: { type: 'number', description: 'rentalSpecialType=rental_general일 때 필수 — 취득 당시 기준시가(원). registrationStandardPrice·transferStandardPrice와 셋 다 있어야 조특법시행령§97의3⑤ 원문대로 "임대기간중 발생한 양도차익"을 기준시가 비율로 안분해 70%를 그 부분에만 적용한다(셋 중 하나라도 없으면 임대개시전 발생분까지 과다공제되므로 에러를 반환한다).' },
         registrationStandardPrice: { type: 'number', description: 'rentalSpecialType=rental_general일 때 필수 — 장기일반민간임대주택등 등록일 현재 기준시가(원).' },
         transferStandardPrice: { type: 'number', description: 'rentalSpecialType=rental_general일 때 필수 — 양도 당시 기준시가(원).' },
+        // [2026.10.19 서식 감사] 시행령§97의3⑤(2026.2.27~) 임대기간 중 양도차익 = 양도차익 × (임대 마지막 날 − 임대 개시일) ÷ (양도일 − 취득일) 기준시가
+        rentalStartStandardPrice: { type: 'number', description: 'rentalSpecialType=rental_general — 실제 임대 개시일 기준시가(원). 생략하면 registrationStandardPrice(등록일=임대 개시, 시행령§97의3④).' },
+        rentalEndStandardPrice: { type: 'number', description: 'rentalSpecialType=rental_general — 실제 임대 마지막 날 기준시가(원). 양도일까지 임대했으면 생략. 2026.2.26 전 양도분은 산식이 법령에 없어 판단대기로 비교만 한다.' },
         pensionPriorContribution: { type: 'number', description: '이미 연금계좌에 낸 부동산·주택차액 납입 누적액(원, 서식 63호의32 ⑪). 공제 대상 = min(1억원 − 이 값, 납입액, 양도가액 − 취득가액)(조특령 §99의13②, 소득령 §40의2②1호 라목). 없으면 0.' }, pensionAccountContribution: { type: 'number', description: '이번 양도대금 중 연금계좌에 납입한 금액(원) — 조특법§99의14① 연금계좌세액공제. 납입액×10%(산출세액 한도)를 세액공제한다. 요건: 국내 소재 토지·건물을 10년 이상 보유(holdingYears로 자동 판정), 2027.12.31까지 양도, isBasicPensionRecipient(기초연금 수급자)·isOneHouseOrNoHouseHousehold(1주택 또는 무주택 세대구성원) true, pensionContributionDate가 양도일로부터 6개월 이내. 이 요건 중 하나라도 명시적으로 false거나 기한을 벗어나면 공제를 적용하지 않는다. 없으면 생략.' },
         isBasicPensionRecipient: { type: 'boolean', description: 'pensionAccountContribution 사용시 — 양도 당시 기초연금법상 기초연금 수급자인지(§99의14①1호). false면 공제를 적용하지 않는다.' },
         isOneHouseOrNoHouseHousehold: { type: 'boolean', description: 'pensionAccountContribution 사용시 — 양도 당시 1주택 또는 무주택 세대의 구성원인지(§99의14①2호). false면 공제를 적용하지 않는다.' },

@@ -1274,8 +1274,17 @@
       const acqStd = Number(t.acquisitionStandardPrice) || 0;
       const regStd = Number(t.registrationStandardPrice) || 0;
       const trfStd = Number(t.transferStandardPrice) || 0;
-      const rentalGeneralNeedsSplit = isRentalSpecial && t.rentalSpecialType === 'rental_general' && ltRate > 0;
-      if (rentalGeneralNeedsSplit && !(acqStd > 0 && regStd > 0 && trfStd > 0 && trfStd !== acqStd)) {
+      // [2026.10.19 서식 감사 — 작업자 자] 시행령 §97의3⑤ 연혁(법제처 원문):
+      //  2026.2.27. 이후 양도(대통령령 제36127호, 공포일 시행·따로 정한 적용례 없음) — "다음 계산식" A × (B − C) ÷ (D − E):
+      //   A 양도차익, B 실제 임대기간 마지막 날 기준시가, C 임대 개시일 기준시가(§97의3④ 등록해 임대하는 날), D 양도일, E 취득일 기준시가.
+      //  2021.2.17.~2026.2.26. — "기준시가를 기준으로 산정"만(산식 없음) → 판단 대기: 지금 동작((양도일 − 등록일) 비율) 유지, 2026 산식과 세액이 다르면 판단대기 표시.
+      //  2020.12.31. 이전 양도 — 법에 "임대기간 중" 한정 문구 없음 → 판단 대기: 지금 동작(안분) 유지, 안분 안 할 때 세액을 판단대기로.
+      //  t._rental9703Mode: 판단대기 해석 B 계산용('formula2026' | 'nosplit').
+      const rStartStd_ = Number(t.rentalStartStandardPrice) || 0, rEndStd_ = Number(t.rentalEndStandardPrice) || 0;
+      const d9703_ = String(t.transferDate || '').slice(0, 10);
+      const mode9703_ = t._rental9703Mode || ((!refHistoryOn_() || !d9703_ || d9703_ >= '2026-02-27') ? 'formula2026' : 'regToTransfer');
+      const rentalGeneralNeedsSplit = isRentalSpecial && t.rentalSpecialType === 'rental_general' && ltRate > 0 && mode9703_ !== 'nosplit';
+      if (rentalGeneralNeedsSplit && !(acqStd > 0 && (regStd > 0 || rStartStd_ > 0) && trfStd > 0 && trfStd !== acqStd)) {
         // 기준시가 3종이 없거나 취득당시=양도당시(분모 0)이면 안분이 불가능하다. 이 경우 전체
         // 양도차익에 70%/50%(rentalRate)를 그대로 적용하면 "임대기간중 발생분"이 아닌 임대개시전
         // 발생분까지 특례공제를 받아 과다공제가 되므로, §97의5 자매함수와 마찬가지로 안분에 필요한
@@ -1283,12 +1292,16 @@
         return { error: '등록임대주택 장특공제 특례(§97의3, 10년이상 70%)는 임대기간중 발생한 양도차익에만 적용되므로, 취득당시·등록일당시·양도당시 기준시가(acquisitionStandardPrice·registrationStandardPrice·transferStandardPrice) 3종을 모두 입력해야 합니다(취득당시=양도당시 기준시가는 안분 불가).' };
       }
       if (rentalGeneralNeedsSplit) {
-        const rentalPeriodGain = taxableGain * (trfStd - regStd) / (trfStd - acqStd);
+        const endStd_ = mode9703_ === 'formula2026' ? (rEndStd_ || trfStd) : trfStd;          // B (비우면 양도일까지 임대)
+        const startStd_ = mode9703_ === 'formula2026' ? (rStartStd_ || regStd) : regStd;      // C (비우면 등록일 = 임대 개시일, §97의3④)
+        const rentalPeriodGain = Math.max(0, Math.min(taxableGain, taxableGain * (endStd_ - startStd_) / (trfStd - acqStd)));
         const beforeRentalGain = taxableGain - rentalPeriodGain;
         const normalRate = longTermRate(holdingYears);
         longTermDeductionAmount = Math.floor(Math.max(0, rentalPeriodGain) * ltRate + Math.max(0, beforeRentalGain) * normalRate + 1e-6);
         incomeAmount = taxableGain - longTermDeductionAmount;
-        rentalPeriodSplit = { 임대기간중양도차익: Math.round(rentalPeriodGain), 임대전양도차익: Math.round(beforeRentalGain), 임대전적용공제율: normalRate };
+        rentalPeriodSplit = { 임대기간중양도차익: Math.round(rentalPeriodGain), 임대전양도차익: Math.round(beforeRentalGain), 임대전적용공제율: normalRate,
+          산식: mode9703_ === 'formula2026' ? '시행령 §97의3⑤(2026.2.27~) 양도차익 × (임대 마지막 날 ' + endStd_ + ' − 임대 개시일 ' + startStd_ + ') ÷ (양도일 ' + trfStd + ' − 취득일 ' + acqStd + ') 기준시가'
+            : '양도차익 × (양도일 ' + trfStd + ' − 등록일 ' + regStd + ') ÷ (양도일 − 취득일 ' + acqStd + ') 기준시가(2026.2.26 전 양도분 — 산식이 법령에 없어 판단 대기)' };
       } else {
         longTermDeductionAmount = Math.floor(taxableGain * ltRate + 1e-6); // [2026.10.17] 장기보유특별공제 원 미만 버림(방영교: 200,593,166 × 30% = 60,177,949.8 → 60,177,949원, 양도코리아와 같게)
         incomeAmount = taxableGain - longTermDeductionAmount;
@@ -9591,7 +9604,10 @@
     speculative_zone_land: { 제목: '투기지역(지정지역) 비사업용토지 +10%p', 조견표: '1부-04', 근거: '소득세법 §104④3호·시행령 §168의3③', A: '가산 안 함(지금 지정은 주택 지정지역뿐)', B: '+10%p 가산' },
     apartment_deadline_155_20: { 제목: '아파트 매입임대 양도기한(2026.10.1 개정)의 거주주택 특례(§155⑳) 적용', 조견표: '2부-27', 근거: '소득세법 시행령 §155⑳·§167의3①2호(대통령령 제36737호)', A: '거주주택 특례에는 안 걸림(비과세 유지)', B: '걸림(특례 배제·과세)' },
     private_debt_15: { 제목: '상속개시 전 사인 간 채무(부담채무Ⅱ)의 추정상속재산', 조견표: '상속 서식 별지 제9호 부표4(갑)', 근거: '상증법 §15①2호·시행령 §11④ ↔ 서식 부표4(갑) 부담채무Ⅱ 줄(⑫·⑮ 칸 막힘) · §15②', A: '법문대로 1년 2억·2년 5억 기준, 미소명에서 MIN(20%, 2억) 차감', B: '서식대로 미소명 전액(기준·차감 없음)' },
-    rental_9703_vs_surcharge: { 제목: '장기일반민간임대 장특공 특례(조특법 §97의3)와 다주택 중과', 조견표: '2부-24', 근거: '조특법 §97의3·소득세법 §104⑦·시행령 §167의3', A: '특례 우선 — 중과 안 함', B: '중과 적용(가산세율·장특공 배제)' }
+    rental_9703_vs_surcharge: { 제목: '장기일반민간임대 장특공 특례(조특법 §97의3)와 다주택 중과', 조견표: '2부-24', 근거: '조특법 §97의3·소득세법 §104⑦·시행령 §167의3', A: '특례 우선 — 중과 안 함', B: '중과 적용(가산세율·장특공 배제)' },
+    // [2026.10.19 서식 감사 — 작업자 자] 시행령 §97의3⑤ 임대기간 중 양도차익 — 2026.2.27 전 양도분은 산식이 법령에 없음
+    rental_9703_split_pre2026: { 제목: '장기일반민간임대(§97의3) 임대기간 중 양도차익 — 2026.2.27 전 양도분 계산법', 조견표: '2부-24', 근거: '조특법 시행령 §97의3⑤(2021.2.17~2026.2.26 "기준시가를 기준으로 산정"만)', A: '(양도일 − 등록일) ÷ (양도일 − 취득일) 기준시가(지금 동작)', B: '2026.2.27 산식(임대 마지막 날 − 임대 개시일) ÷ (양도일 − 취득일)' },
+    rental_9703_nosplit_pre2021: { 제목: '장기일반민간임대(§97의3) 2020년 이전 양도분 안분 여부', 조견표: '2부-24', 근거: '조특법 §97의3①(2021.1.1 개정 전엔 "임대기간 중" 한정 문구 없음, 법률 제17759호 부칙 제2조③)', A: '임대기간 중분만 70%(지금 동작)', B: '양도차익 전체 70%(안분 안 함)' }
   };
   function judgmentChecks_(txs, run, resA) {
     const out = [];
@@ -9616,6 +9632,12 @@
       if (t.oneHouseSpecialFormNo === '소득세법 시행규칙 [별지 제83호의2서식]' && t.isOneHouseOneFamily && d >= '2026-10-01') {
         const alt = txs.map(function (x, k) { return k === i ? Object.assign({}, x, { isOneHouseOneFamily: false }) : x; });
         try { push('apartment_deadline_155_20', taxOf(run(alt)), '해석 B는 그 집을 1세대1주택 특례 없이 계산'); } catch (e) {}
+      }
+      // ④ §97의3 임대기간 중 양도차익 — 2026.2.27 전 양도분(산식 없음)·2020년 이전 양도분(한정 문구 없음)
+      if (t.rentalSpecialType === 'rental_general' && d && d < '2026-02-27') {
+        const mode = d < '2021-01-01' ? 'nosplit' : 'formula2026';
+        const alt = txs.map(function (x, k) { return k === i ? Object.assign({}, x, { _rental9703Mode: mode }) : x; });
+        try { push(mode === 'nosplit' ? 'rental_9703_nosplit_pre2021' : 'rental_9703_split_pre2026', taxOf(run(alt)), mode === 'nosplit' ? '해석 B는 안분 없이 양도차익 전체에 특례율' : '해석 B는 임대 마지막 날·임대 개시일 기준시가(입력 없으면 양도일·등록일)로 계산'); } catch (e) {}
       }
       // ③ §97의3 특례 + 조정지역 다주택
       if (t.rentalSpecialType === 'rental_general' && t.isAdjustedArea && Number(t.multiHouseCount) >= 2) {

@@ -5760,6 +5760,9 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>취득 당시 기준시가</label><input type="number" data-field="acquisitionStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의3 선택시 필수 — 임대기간중 양도차익 안분용, 3종 모두 없으면 계산 불가</span></div>' +
           '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>등록일 당시 기준시가</label><input type="number" data-field="registrationStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의3 선택시 필수</span></div>' +
           '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>양도 당시 기준시가</label><input type="number" data-field="transferStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의3 선택시 필수</span></div>' +
+          // [2026.10.19 서식 감사] 시행령 §97의3⑤(2026.2.27~) 양도차익 × (임대 마지막 날 − 임대 개시일) ÷ (양도일 − 취득일) 기준시가
+          '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>실제 임대 개시일 기준시가</label><input type="number" data-field="rentalStartStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의3 — 비우면 등록일 기준시가(등록해 임대하는 날부터 임대 개시, 시행령 §97의3④)</span></div>' +
+          '<div class="taxcalc-field" data-show-if="rentalSpecialType" style="display:none;"><label>실제 임대 마지막 날 기준시가</label><input type="number" data-field="rentalEndStandardPrice" placeholder="원"><span class="taxcalc-field-help">§97의3 — 양도일까지 임대했으면 비움(2026.2.27 이후 양도분 산식, 그 전 양도분은 판단 대기로 비교 표시)</span></div>' +
         '</div>' +
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field"><label>연금계좌 납입액(조특법§99의14)</label><input type="number" data-field="pensionAccountContribution" placeholder="원"><span class="taxcalc-field-help">세액공제, 해당시만 입력 — 10년이상보유+2027.12.31까지 양도만 해당, 입력하면 아래 요건 확인란이 뜹니다</span></div>' +
@@ -6681,6 +6684,7 @@ var TR_MONEY_FIELDS_TO_SCALE_ = [
   'appraisalValue', 'transferStandardPriceForConversion', 'depreciationDeductedAsBusinessExpense',
   'transferPrice', 'acquisitionPrice', 'necessaryExpenses', 'acquisitionStandardPrice',
   'registrationStandardPrice', 'transferStandardPrice', 'downContractPriceDifference',
+  'rentalStartStandardPrice', 'rentalEndStandardPrice', // [2026.10.19] §97의3⑤ 기준시가 — 다른 기준시가와 같이 나눠야 비율이 그대로
   'rightsValue', 'settlementPaid', 'originalAssetAcquisitionPrice', 'originalNecessaryExpenses',
   'originalAcquisitionStandardPrice', 'approvalDateStandardPrice', 'convertedBuildingAcquisitionValueForPenalty',
   'donorAcquisitionPrice', 'donorNecessaryExpenses', 'doneeOwnAcquisitionPrice', 'doneeOwnNecessaryExpenses',
@@ -6787,6 +6791,8 @@ function collectTransferInput(vals){
     oneHouseSpecialFormNo: vals.oneHouseSpecialCase ? (vals.oneHouseSpecialCase.formNo || '') : '', // [2026.10.19] 판단 대기 ②(§155⑳) 확인용 — 계산엔 안 씀
     acquisitionStandardPrice: numVal(vals.acquisitionStandardPrice) || 0,
     registrationStandardPrice: numVal(vals.registrationStandardPrice) || 0,
+    rentalStartStandardPrice: numVal(vals.rentalStartStandardPrice) || 0, // [2026.10.19] 시행령 §97의3⑤ C(임대 개시일)
+    rentalEndStandardPrice: numVal(vals.rentalEndStandardPrice) || 0,     // [2026.10.19] 시행령 §97의3⑤ B(임대 마지막 날)
     transferStandardPrice: numVal(vals.transferStandardPrice) || 0,
     pensionAccountContribution: numVal(vals.pensionAccountContribution) || 0,
     pensionPriorContribution: numVal(vals.pensionPriorContribution) || 0, // [2026.10.19] 서식 63호의32 ⑪ 기납입액(누적 1억 한도)
@@ -9889,6 +9895,8 @@ function trRentalGeneralPrintPageHtml_(asset){
       pfRow_(++n, '장기보유특별공제율', (Number(asset.rentalYears) >= 10 ? '70%(10년 이상)' : (Number(asset.rentalYears) >= 8 ? '50%(8년 이상 10년 미만)' : ''))) +
       pfRow_(++n, '취득 당시 기준시가', won(numVal(asset.acquisitionStandardPrice) || 0)) +
       pfRow_(++n, '등록일 당시 기준시가', won(numVal(asset.registrationStandardPrice) || 0)) +
+      (numVal(asset.rentalStartStandardPrice) ? pfRow_(++n, '실제 임대 개시일 기준시가', won(numVal(asset.rentalStartStandardPrice))) : '') +
+      (numVal(asset.rentalEndStandardPrice) ? pfRow_(++n, '실제 임대 마지막 날 기준시가', won(numVal(asset.rentalEndStandardPrice))) : '') +
       pfRow_(++n, '양도 당시 기준시가', won(numVal(asset.transferStandardPrice) || 0)) +
     '</table>' +
     '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 임차인·보증금·월세 등 임대내역과 사업자등록일은 별도 수집항목이 없어 직접 보완하세요.</div>' +
