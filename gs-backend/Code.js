@@ -5006,7 +5006,9 @@ function toolLookupStatuteArticle(lawName, articleNo, baseDate) {
   var out = { 법령명: lawName }, arts = null, idx = null, ent, c = CacheService.getScriptCache();
   try { idx = lawDbIdx_(); } catch (e) { }
   ent = idx && idx.법령[key];
-  var ver = ent && ent.판.filter(function (p) { return day ? p.시행일 <= day : p.판 === ent.현행; }).pop();
+  var ver = ent && ent.판.filter(function (p) { return day ? p.시행일 <= day : p.판 === ent.현행; }).pop(), stale = null;
+  // [2026.10.20] 낡은 연혁 글(law-build markStale — 먼저 공포된 판이라 뒤 개정을 반영하지 않은 글)이면 같은 날까지 시행된 판 중 가장 늦게 공포된 판을 쓴다
+  if (ver && ver.낡은글) { stale = ver; ver = ent.판.filter(function (p) { return p.시행일 <= ver.시행일 && !p.낡은글; }).reduce(function (b, p) { return !b || p.공포일 > b.공포일 || (p.공포일 === b.공포일 && p.시행일 > b.시행일) ? p : b; }, null) || stale; if (ver === stale) stale = null; }
   if (ent && /부칙/.test(String(articleNo))) return lawDbBuchik_(idx, key, ver, (String(articleNo).match(/\d+/) || [])[0]);
   var fid = ver && lawDbIds_(idx, key)[ver.판], bm = String(articleNo).match(/별표\s*(\d+(?:의\d+)?)/);
   if (fid && bm) { var bd = JSON.parse(Utilities.ungzip(DriveApp.getFileById(fid).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')), bb = (bd.별표 || []).filter(function (b) { return b.번호 === bm[1]; }); // [2026.10.20] 별표(현행·시행예정 판)
@@ -5017,6 +5019,7 @@ function toolLookupStatuteArticle(lawName, articleNo, baseDate) {
     if (jk && !hit && arts.length) try { c.put(ck, JSON.stringify(arts[0]), 21600); } catch (e) { }
     out = { 법령명: ent.이름, 시행일자: ver.시행일, 판: ver.판, 출처: '법령 정비본(법제처 ' + ver.시행일 + ' 시행판, 공포 ' + ver.공포일 + ' 제' + ver.공포번호 + '호)' };
     if (ent.범위 === '조회만') out.주의 = '지방세 — 조회만, 계산·신고서 근거로 쓰지 않음';
+    if (stale) out.판주의 = stale.시행일 + ' 시행판(제' + stale.공포번호 + '호, 공포 ' + stale.공포일 + ')은 그보다 늦게 공포된 개정(' + stale.낡은글.앞최신 + ')을 반영하지 않은 법제처 연혁 글이라(되돌린 조 ' + stale.낡은글.되돌림 + '·빠진 조 ' + stale.낡은글.빠진조 + ') 이 판 글을 씀 — 제' + stale.공포번호 + '호로 ' + stale.시행일 + '부터 시행된 개정분은 부칙·원문 보기로 확인';
     var fut = ent.판.filter(function (p) { return p.상태 === '시행예정' && p.시행일 > (day || ver.시행일); })[0];
     if (fut) out.시행예정개정 = fut.시행일 + ' 시행 예정 개정판 있음 — 그 뒤 양도·증여·상속분이면 baseDate로 확인';
   } catch (e) { arts = null; out.정비본오류 = String(e.message || e); }
@@ -5062,7 +5065,7 @@ function toolLookupStatuteArticle(lawName, articleNo, baseDate) {
 // [2026.10.19] [📜 법령] 탭 정비본 보기 — 법령·판 목록 + (lawName을 주면) 그 판의 차례(조 번호·제목, 편·장·절 머리). 본문은 law_lookup_article(baseDate=판 시행일)
 function lawDbToc_(lawName, ver) {
   var idx = lawDbIdx_(); if (!idx) return { error: '법령 정비본(드라이브 0 NETAX/업무관리자/법령/본문)을 찾지 못했습니다.' };
-  var laws = Object.keys(idx.법령).map(function (k) { var e = idx.법령[k]; return { 키: k, 이름: e.이름, 범위: e.범위, 현행: e.현행, 판: e.판.map(function (p) { return { 판: p.판, 시행일: p.시행일, 공포일: p.공포일, 공포번호: p.공포번호, 구분: p.구분, 법종: p.법종, 상태: p.상태 }; }) }; });
+  var laws = Object.keys(idx.법령).map(function (k) { var e = idx.법령[k]; return { 키: k, 이름: e.이름, 범위: e.범위, 현행: e.현행, 판: e.판.map(function (p) { return { 판: p.판, 시행일: p.시행일, 공포일: p.공포일, 공포번호: p.공포번호, 구분: p.구분, 법종: p.법종, 상태: p.상태, 낡은글: p.낡은글 ? 1 : undefined }; }) }; });
   if (!lawName) return { 법령: laws };
   var key = String(lawName).replace(/\s/g, ''), e = idx.법령[key], v = ver || (e && e.현행);
   var fid = e && lawDbIds_(idx, key)[v];
@@ -30033,7 +30036,7 @@ function caseProcParsed_(f, cache, canParse) {
 //   하17 기억 이름 cpf2_   하18 통장 줄 value에 공통 문서 칸(일시·적요·입금·출금·잔액·상대방)을 더함, keys.assetFull(시군구 포함)
 //  토큰 0. 기본은 글자인식 기억에 있는 글자만(opt.noNewOcr) — 새 글자인식은 증빙 단계·서버 일괄이 한다.
 // =========================================================
-var CPF_VER_ = 'cpf3_'; // [2026.10.19 1번 밤작업] cpf3_ — 한글 단위 금액·이름 거르기·서류 종류 확인·잇는 열쇠(동호·지분·줄인 날짜)·금액 열쇠는 짝 열쇠와 함께일 때만
+var CPF_VER_ = 'cpf4_'; // [2026.10.20 2번 밤샘 1바퀴] cpf4_ — 수용·보상 서류 종류·합계 사실.  [2026.10.19 1번 밤작업] cpf3_ — 한글 단위 금액·이름 거르기·서류 종류 확인·잇는 열쇠(동호·지분·줄인 날짜)·금액 열쇠는 짝 열쇠와 함께일 때만
 // 서류 정리 규칙의 칸 이름 → 사실 종류(낱말표). 여기 없는 칸은 "기타:<칸 이름>"으로 넘긴다(버리지 않음)
 var CPF_KIND_MAP_ = {
   소재지: '소재지', 대지위치: '소재지', 소재: '소재지', 소재지목록: '소재지', 부동산소재지: '소재지', 물건: '소재지', 지번: '지번', 동호: '동호', 건물번호: '동호', 호명칭: '동호',
@@ -30829,12 +30832,17 @@ function cpfFile_(c, f, cache, tbank, opt) {
   }
   let titleKind = '';
   if (!(p && p.type)) { const hd = String(text).slice(0, 300).replace(/\s+/g, ''); if (/국민주택채권.{0,8}?(?:매입|매출)?.{0,4}?(?:필증|영수증|확인서|내역)/.test(hd)) titleKind = '국민주택채권 매입 확인서'; } /* [2026.10.19 1번 밤작업 — 조정지시 04:10] 서식 제목만으로 정해지는 종류(개발용 두 사건 이상) */
+  // [2026.10.20 2번 밤샘 1바퀴 — 원시서류 종류별] 수용·보상 서류(이의재결서·보상금 내역서·손실보상 계약서·공탁 통지서)는 사건처리(trc 양도가액 후보)가 이미 읽지만
+  //  사실 목록에서는 "종류 미정"이라 AI 지휘가 처음 보는 서류로 다시 봤다(개발용 1사건 19장). 서식 제목으로 종류를 정하고, 같은 서식 규칙(trc와 같은 정규식)으로 합계 금액을 사실로
+  const compKind = (p && p.type) || titleKind ? '' : cpfCompKind_(text);
+  if (compKind) titleKind = compKind;
   const label = (p && (p.label || p.type)) || titleKind || '종류 미정';
   src.docType = label;
   const base = { src: src, how: how, trunc: trunc };
   const warn = p && p.result && !Array.isArray(p.result) ? (p.result.경고 || []).concat(p.result.docs ? [].concat.apply([], (p.result.docs || []).map(function (d) { return (d && (d.경고 || (d.r && d.r.경고))) || []; })) : []) : [];
   const facts = [docFact(exclude ? '제외 후보' : label, p && p.type ? '확실' : '불확실', '')];
   let ruled = [];
+  if (compKind) { try { ruled = cpfCompFacts_(text, base); } catch (e) {} } // [밤샘 1바퀴] 수용·보상 서류 합계 금액
   if (p && p.type && p.result) { try { ruled = cpfFromResult_(p.result, base, p.type); } catch (e) { trunc.push('칸 옮기기 오류: ' + String(e && e.message || e).slice(0, 60)); } }
   if (p && p.type && p.result) { try { ruled = ruled.concat(cpfPayerDeals_(p.result, base, [c && c.납세자, c && c.고객명])); } catch (e) {} } /* 납세자 역할로 양도가액·취득가액 */
   if (p && p.type && p.result) { try { ruled = ruled.concat(cpfCouples_(p.result, base)); } catch (e) {} } /* 부부 열쇠(§47② 합산 재료) */
@@ -31066,6 +31074,65 @@ function cpfSheetRows_(f, base) {
   return out;
 }
 // 사건 → 사실 목록. opt: { noNewOcr: 기억에 있는 글자만(기본), allowOcr: 새로 읽음, save: 사건별 사실 파일로 남김, budgetMs }
+// [2026.10.20 2번 밤샘 1바퀴] 수용·보상 서류 — 서식 제목(앞 600자)으로 종류. 정리 규칙(docParseText_)이 못 정한 서류만
+function cpfCompKind_(text) {
+  const hd = String(text || '').slice(0, 600).replace(/\s+/g, ''), all = String(text || '').replace(/\s+/g, '');
+  if (/성과보수/.test(hd.slice(0, 120))) return /청구/.test(hd.slice(0, 120)) ? '수용 대리 성과보수 청구서' : '수용 대리 성과보수 안내'; // 재결 대리인 보수 문서(재결 결과를 인용하지만 재결서가 아님)
+  if (/이의재결서|수용재결서|재결서\(?정본|이의신청에대한재결/.test(hd)) return /보상금내역/.test(all) ? '이의재결서·보상금 내역서' : '수용·이의재결서';
+  if (/이의재결.{0,6}(결과|안내)/.test(hd)) return '이의재결 결과 안내';
+  if (/보상금내역/.test(hd)) return '보상금 내역서';
+  if (/손실보상계약서/.test(hd)) return '손실보상 계약서';
+  if (/공탁통지서/.test(hd)) return '공탁 통지서';
+  return '';
+}
+// 같은 서식 규칙(사건처리 trc 양도가액 후보와 같은 정규식)으로 합계 금액만 사실로 — 어느 금액이 양도가액인지는 판단(정하지 않음)
+function cpfCompFacts_(text, base) {
+  // [밤샘 1바퀴 ②-1 잘게 쪼개기 — 세무사님 "정보분석은 잘게 쪼개기가 우선"] 합계만이 아니라 보상 항목 한 건(필지 한 줄 = 면적 × 단가(× 지분) = 금액,
+  //  지장물 일괄 묶음 한 건, 이의재결 개인별 세부내역 한 줄)마다 사실 하나 — 지번(parcel)·금액(amount) 열쇠와 출처 자리. 행이 합계와 검산되지 않으면 쪼개지 않고 합계만
+  const t = String(text || ''), out = [];
+  const mk = function (kind, v, raw, note, extra, where) { out.push(cpfKeysFinish_({ kind: kind, value: v, raw: raw, src: Object.assign({}, base.src, { where: where || '서식 합계 줄' }), keys: Object.assign({ amount: v }, extra || {}), role: '', read: { how: base.how, conf: '불확실', note: note || '수용·보상 서식 — 양도가액인지는 판단', ocrConf: cpfOcrConf_(base.how, null) } })); };
+  const num = function (x) { return Number(String(x).replace(/,/g, '')); };
+  const w = function (n) { return Number(n).toLocaleString('ko-KR'); };
+  // ① 토지 보상금 내역 — 합계 + 필지별 줄(면적 × 단가 × 지분 = 금액, 줄 합 = 토지합계일 때만)
+  const ctm = /토\s*지\s*합\s*계\s*(\d+)\s*필\s*지\s*(\d{1,3}(?:,\d{3}){2,})/.exec(t);
+  if (ctm) {
+    mk('보상금 합계(토지)', num(ctm[2]), ctm[0].replace(/\s+/g, ' '), ctm[1] + '필지 토지 보상금 합계');
+    try {
+      const ci = t.search(/보\s*상\s*금\s*내\s*역\s*\(?\s*토\s*지/), sl = ci >= 0 ? t.slice(ci) : t;
+      const CR = typeof tcAreaUnitRows_ === 'function' ? tcAreaUnitRows_(sl, { total: num(ctm[2]) }) : null;
+      if (CR && CR.ok) { const fl = sl.replace(/\s+/g, ' '); let prev = 0;
+        CR.rows.forEach(function (rw, i) { const win = fl.slice(prev, rw.at), jm = win.match(/\d{1,4}-\d{1,4}(?![\d,])|\b\d{2,4}\b(?=\s*[대전답임도잡하구유공철제창학주목과광염체종사묘천양원])/g); prev = rw.at + 1;
+          const jb = jm ? jm[jm.length - 1] : '';
+          mk('보상금(필지)', rw.v, (jb ? jb + ' ' : '') + rw.a + '㎡ × ' + w(rw.u) + (rw.f && rw.f !== 1 ? ' × ' + rw.f : '') + ' = ' + w(rw.v), '토지 보상금 내역 ' + (i + 1) + '번째 필지 줄(줄 합 = 토지합계 검산 일치)', jb ? { parcel: jb } : {}, '토지 보상금 내역 ' + (i + 1) + '번째 줄'); });
+      }
+    } catch (e) {}
+  }
+  // ② 지장물(물건) 보상금 내역 — 합계 + 일괄 묶음별(건물·구축물·수목·영업시설, 묶음 합 = 물건의 합계일 때만)
+  const com = /물\s*건\s*의?\s*합\s*계[\s\S]{0,400}?(\d{1,3}(?:,\d{3}){2,})/.exec(t);
+  if (com) {
+    mk('보상금 합계(지장물)', num(com[1]), '물건의 합계 ' + com[1]);
+    try {
+      const oi = t.search(/보\s*상\s*금\s*내\s*역\s*\(?\s*물\s*건/), osl = oi >= 0 ? t.slice(oi) : t;
+      let OG = typeof tcCompObjGroups_ === 'function' ? tcCompObjGroups_(osl) : null;
+      if (OG && !OG.ok) OG = tcCompObjGroups_(osl, { total: num(com[1]) });
+      if (OG && OG.ok) OG.groups.forEach(function (g, i) { mk('보상금(지장물)', g.v, g.cat + (g.jibun ? ' ' + g.jibun : '') + ' ' + w(g.v), '지장물 ' + (i + 1) + '번째 일괄 묶음(' + g.cat + (g.why ? ' — ' + g.why : '') + ', 묶음 합 = 물건의 합계)', Object.assign({ category: g.cat }, g.jibun ? { parcel: g.jibun } : {}), '지장물 내역 ' + (i + 1) + '번째 묶음'); });
+    } catch (e) {}
+  }
+  // ③ 공탁 통지서 — 공탁금(보상금의 일부)
+  if (/공\s*탁\s*통\s*지\s*서/.test(t)) { const dpm = /숫\s*자\s*금?\s*(\d{1,3}(?:,\d{3})+)\s*원/.exec(t) || /공\s*탁\s*금\s*액[\s\S]{0,80}?(\d{1,3}(?:,\d{3}){1,})\s*원/.exec(t); if (dpm) mk('공탁금', num(dpm[1]), '공탁금액 ' + dpm[1]); }
+  // ④ 이의재결 개인별 세부내역 — 합계 + 필지(물건)별 줄(수용재결 → 이의재결, 증액 ▲)
+  let od = null; try { od = typeof tcObjectionDetail_ === 'function' ? tcObjectionDetail_(t) : null; } catch (e) { od = null; }
+  if (od && od.rows && od.rows.length) {
+    const note = '이의재결 개인별 세부내역(' + od.kind + ', ' + od.rows.length + '줄' + (od.ok ? ', 소계와 검산 일치' : ', 소계 검산 안 됨') + ')';
+    mk('수용재결 보상금', od.sumA, '수용재결 ' + w(od.sumA), note); mk('이의재결 보상금', od.sumB, '이의재결 ' + w(od.sumB), note); mk('이의재결 증액', od.sumD, '▲' + w(od.sumD), note);
+    if (od.ok) od.rows.forEach(function (r, i) { const ex = r.jibun ? { parcel: r.jibun } : {}; const wh = '이의재결 세부내역 ' + (i + 1) + '번째 줄';
+      mk('이의재결 보상금(' + od.kind + ')', r.b, (r.jibun ? r.jibun + ' ' : '') + w(r.a) + ' → ' + w(r.b), note, ex, wh); mk('이의재결 증액(' + od.kind + ')', r.d, (r.jibun ? r.jibun + ' ' : '') + '▲' + w(r.d), note, ex, wh); });
+  }
+  // ⑤ 시점 — 재결일·공탁일(보상금 수령 시기·양도시기 판단 재료, 판정은 안 함)
+  const dre = /(재\s*결\s*일|공\s*탁\s*일|재\s*결\s*일\s*자)\s*[:：]?\s*(\d{4})\s*[.\-년]\s*(\d{1,2})\s*[.\-월]\s*(\d{1,2})/g; let dm, nD = 0;
+  while ((dm = dre.exec(t)) && nD < 4) { nD++; const d = dm[2] + '-' + ('0' + dm[3]).slice(-2) + '-' + ('0' + dm[4]).slice(-2); out.push(cpfKeysFinish_({ kind: /공/.test(dm[1]) ? '공탁일' : '재결일', value: d, raw: dm[0].replace(/\s+/g, ' '), src: Object.assign({}, base.src, { where: '서식 날짜 칸' }), keys: { date: d }, role: '', read: { how: base.how, conf: '불확실', note: '수용 시점 재료(양도시기 판정은 아님)', ocrConf: cpfOcrConf_(base.how, null) } })); }
+  return out;
+}
 function cpFacts_(c, opt) {
   opt = opt || {};
   const files = caseProcFiles_(c), cache = CacheService.getScriptCache(), started = Date.now();
@@ -31527,6 +31594,25 @@ function caseProcMemoCands_(c, res) {
       if (!v || have.indexOf(v) !== -1 || add.some(function (y) { return y.v === v; })) return;
       add.push({ v: v, src: (x.chat ? x.file : '상담 메모(' + x.file + ')') + ': "' + x.l.slice(0, 50) + '"' });
     });
+    // [2026.10.20 2번 밤샘 2바퀴 — ③ 추론·소통] 상담·자문 사건은 사실이 "칸 이름: 값"이 아니라 문장으로 적힌다("2016년 2월11일 절반을 남편으로부터 증여받고",
+    //  "2006.11.27일 남편 명의로 구입(구입가 117백만원)"). 낱말 후보가 없을 때만 — 그 칸의 사건 동사(취득: 구입·매입·매수·분양·증여받·상속받·낙찰·경락·신축,
+    //  양도: 매도·양도·처분·팔)가 있는 문장의 날짜·금액을 후보로(문장째 출처로 보여 줌 — 어느 물건의 일인지는 세무사님이 고름, 확정하지 않음).
+    //  가정·예상·예정 문장은 빼고(위와 같은 원칙), 한 칸에 3개까지. 앞으로의 사건: 동사 기준이라 메모 양식·파일 이름과 무관, 못 찾으면 지금처럼 주관식
+    if (!add.length && (type === 'money' || type === 'date')) {
+      const evAcq = /(구\s*입|매\s*입|매\s*수|취\s*득|분\s*양|증\s*여\s*받|상\s*속\s*받|낙\s*찰|경\s*락|신\s*축)/, evSale = /(매\s*도|양\s*도|처\s*분|팔\s*았|판\s*매)/;
+      const ev = /취득/.test(core) ? evAcq : /양도/.test(core) ? evSale : null;
+      if (ev) memos.forEach(function (m) {
+        let fx = []; try { fx = caseProcMemoFactCands_(m.text); } catch (e) { fx = []; }
+        fx.forEach(function (f) {
+          if (add.length >= 3 || f.plan || !ev.test(f.line) || /가\s*정|추\s*정|예\s*상|할\s*까|할\s*경\s*우|하\s*려|예\s*정/.test(f.line)) return;
+          // "남편 ○○ 명의로 구입"·"딸 명의로" — 다른 사람 명의의 일은 그 사람 자산(납세자 자산의 취득·양도가 아님). 본인 명의·명의 말이 없으면 그대로
+          const nm = /([가-힣]{1,6})\s*(?:[가-힣]{2,4}\s*)?명\s*의/.exec(f.line);
+          if (nm && /(남편|아내|부인|배우자|딸|아들|자녀|부친|모친|아버지|어머니|시부|시모|장인|장모|형|동생|누나|언니|오빠|며느리|사위|손자|손녀)/.test(nm[0]) && !/본\s*인/.test(nm[0])) return;
+          const vs = type === 'date' ? (f.dates || []).filter(function (d) { return /^\d{4}-\d{2}-\d{2}$/.test(String(d)); }) : (f.amts || []).map(String);
+          vs.slice(0, 1).forEach(function (v) { if (have.indexOf(v) === -1 && !add.some(function (y) { return y.v === v; })) add.push({ v: v, src: (m.chat ? m.file : '상담 메모(' + m.file + ')') + ' 문장: "' + f.line.slice(0, 60) + '" — 어느 물건의 일인지 확인' }); });
+        });
+      });
+    }
     if (add.length) { it.ask.cands = (it.ask.cands || []).concat(add); if (it.ask.mode === 'input') it.ask.mode = 'choose'; }
   });
   return res;
@@ -31931,7 +32017,7 @@ function caseProcOverview_(c) {
   if (r && r.ok) { r.lines = gl.concat(r.lines || []); r.items = gi.concat(r.items || []); if (gc.changed) r.loop = Object.assign({}, r.loop || {}, { again: '사건파악으로 작업관리 값을 고침 — 증빙 대조를 그 값으로 다시' }); }
   // 상속 — 감정가액이 이상한 감정서(검산 안 됨·감정서끼리 30% 넘게 차이)는 질문 전에 사이드바가 그 파일부터 보정·다시 읽기
   if (r && r.ok && c.세목 === 'inheritance') { try { const rr = (caseProcInhFacts_(c).reread || []); if (rr.length) r.loop = Object.assign({}, r.loop || {}, { scan: rr.map(function (z) { return z.id; }), why: '감정가액 다시 읽기 — ' + rr.map(function (z) { return z.name + '(' + z.why + ')'; }).join(', ') }); } catch (e) {} }
-  if (r && r.ok && c.세목 !== 'transfer' && CASEPROC_TAX_LABEL_[c.세목]) { try { const cc = r.case || c, nd = giNeeds_(cc), ns = trcNeedsSummary_(nd); r.needs = ns; r.lines.push('🎯 세액계산기 필수 칸 ' + ns.total + '개 — 채움 ' + ns.filled + '개(근거 있음 ' + ns.withSrc + ')' + (ns.missing.length ? ' · 남음: ' + ns.missing.join(', ') : ' · 모두 채움')); caseProcPatch_(c.id, function (sv) { sv.needs = { at: new Date().toISOString(), list: nd, sum: ns }; });
+  if (r && r.ok && c.세목 !== 'transfer' && CASEPROC_TAX_LABEL_[c.세목]) { try { const cc = r.case || c, nd = giNeeds_(cc), ns = trcNeedsSummary_(nd); r.needs = ns; if (ns.missing.length) { try { const fz = trcNeedScanFocus_(cc, nd); if (fz.length) r.loop = Object.assign({}, r.loop || {}, { scan: ((r.loop && r.loop.scan) || []).concat(fz.map(function (x) { return x.id; })).filter(function (v, i, arr) { return arr.indexOf(v) === i; }), why: '필수 칸(' + ns.missing.slice(0, 3).join('·') + ')의 근거가 될 서류 판독이 나쁨: ' + fz.map(function (x) { return x.name + '(' + x.why + ')'; }).join(', ') }); } catch (e) {} } /* [밤샘 3바퀴] 빈칸 → 다시 뒤지기(증여·상속) */ r.lines.push('🎯 세액계산기 필수 칸 ' + ns.total + '개 — 채움 ' + ns.filled + '개(근거 있음 ' + ns.withSrc + ')' + (ns.missing.length ? ' · 남음: ' + ns.missing.join(', ') : ' · 모두 채움')); caseProcPatch_(c.id, function (sv) { sv.needs = { at: new Date().toISOString(), list: nd, sum: ns }; });
     // [small0 — 세무사님 결정 (가)] 증여 10년 합산은 큰 질문 그대로(계산 막음 그대로) — 답하기 전 '확인 전' 표시와 신고서 출력 전 알림만
     if (cc.세목 === 'gift' && !String(((cc.사건개요 || {}).giftPriorAmount) == null ? '' : (cc.사건개요 || {}).giftPriorAmount).trim()) r.lines.push('⏳ 확인 전 칸 1개 — 10년 내 같은 증여자 증여 합산(답하기 전 계산하면 0원 — 합산할 증여가 있으면 세율 구간·공제가 달라지는 큰 질문, 신고서 출력 전에 다시 알림)'); } catch (e) {} }
   try { caseProcMemoCands_(c, r); } catch (e) {}
@@ -47857,6 +47943,17 @@ function trcNeedsSummary_(needs) {
 // 필요한데 빈 칸의 근거가 될 서류 중 판독이 나쁜 사진 — 질문하기 전에 원근보정·다시 읽기로 돌아간다(사이드바가 이 파일부터 보정)
 // [2026.10.18 정밀분석 07_1] 대장도 소재지(토지대장)·취득일(신축 사용승인일·대장 소유권 변동일) 근거 — 보유 자산 목록(tcHoldings_)이 쓴다
 const TRC_NEED_DOC_TYPES_ = { totalPrice: ['contract', 'dealreport'], date: ['contract', 'dealreport', 'registry'], assetLocation: ['registry', 'contract', 'bldledger', 'landledger'], acquisitionDate: ['contract', 'registry', 'acqtax', 'giftcontract', 'bldledger', 'landledger'], acquisitionPrice: ['contract', 'registry', 'acqtax'], donorAcquisitionDate: ['registry'], donorAcquisitionPrice: ['registry', 'contract'], residenceYears: ['resident'], name: ['contract', 'resident'] };
+// [2026.10.20 2번 밤샘 3바퀴 — 세무사님 "빈칸을 채우기 위해 다시 똥통을 뒤지게 되는 것"] 증여·상속 필수 칸(giNeeds_)도 같은 표로 — 그 칸 값이 적히는 서식 종류
+//  (증여: 증여계약서·등기부 증여 줄·가족관계증명서·이체내역, 상속: 사망 서류·가족관계증명서·상속재산분할협의서). 칸이 비면 이 종류 중 판독이 나쁜 사진·스캔부터 다시 읽는다
+Object.assign(TRC_NEED_DOC_TYPES_, { giftDoneeName: ['giftcontract', 'registry', 'family'], giftDonorName: ['giftcontract', 'registry', 'family', 'banktx'], giftRelation: ['family', 'resident', 'giftcontract'],
+  giftAmount: ['giftcontract', 'registry', 'banktx', 'appraisal', 'pubprice'], 기준일: ['giftcontract', 'registry', 'banktx', 'death'], ihDeceasedName: ['death', 'family', 'resident'], 상속인성명: ['family', 'inhdivision', 'death'], 상속인수: ['family', 'inhdivision'] });
+// 빈칸 목록(표준 모양) — 지휘 AI·사이드바가 "어느 빈칸을 어느 서류에서 다시 찾을지" 고를 때. 양도는 저장된 필요 칸(sv.needs), 증여·상속은 giNeeds_. 잠정값 칸·나중 칸은 뺌
+function caseProcBlanks_(c) {
+  const sv = caseProcLoad_(c.id) || {}, needs = c.세목 === 'transfer' ? ((sv.needs && sv.needs.list) || []) : giNeeds_(c);
+  const blanks = needs.filter(function (n) { return !n.ok && !n.later && !n.prov; });
+  let scan = []; try { scan = blanks.length ? trcNeedScanFocus_(c, needs) : []; } catch (e) {}
+  return blanks.map(function (n) { const k = String(n.p).split('.').pop(); return { p: n.p, label: n.l, why: n.why || '', look: (TRC_NEED_DOC_TYPES_[k] || []).map(function (t) { return CASEPROC_SCAN_TYPE_NAME_[t] || t; }) }; }).concat(scan.length ? [{ p: '_rescan', label: '다시 읽을 사진·스캔', look: scan.map(function (x) { return x.name + '(' + x.why + ')'; }), ids: scan.map(function (x) { return x.id; }) }] : []);
+}
 function trcNeedScanFocus_(c, needs) {
   const want = {};
   needs.filter(function (n) { return !n.ok && !n.later; }).forEach(function (n) { const k = String(n.p).split('.').pop(); (TRC_NEED_DOC_TYPES_[k] || []).forEach(function (t) { want[t] = true; }); });

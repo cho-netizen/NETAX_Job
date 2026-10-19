@@ -84,6 +84,29 @@ async function history(name, from) {
   const byEf = {}; rows.forEach(v => { const b = byEf[v.시행일]; if (!b || v.공포일 > b.공포일) byEf[v.시행일] = v; });
   return Object.keys(byEf).sort().map(k => byEf[k]);
 }
+// [2026.10.20] 낡은 연혁 글 표시 — 시행일 순으로 앞 판들보다 먼저 공포된 판(주로 타법개정)은 법제처가 그 법률 하나로 고친 글만 주어
+// 그 사이 공포된 개정을 반영하지 않는 일이 있다(조특법 20050423_07240 조 11개 빠짐, 20250401_20617 = 20778호로 바뀐 14개 조가 그 전 글).
+// 앞 최신 공포 판(M)이 그 직전 판(M0)에서 바꾼 조가 이 판(P)에서 M0 글로 되돌아갔거나 M의 조가 빠졌으면 p.낡은글 = { 앞최신, 되돌림, 빠진조 }.
+// 서버(Code.js toolLookupStatuteArticle)는 이런 판 대신 같은 날까지 시행된 판 중 가장 늦게 공포된 판을 쓴다.
+function markStale(k, ent) {
+  const load = v => { const f = path.join(OUT, '_본문', k, v + '.json.gz'); return fs.existsSync(f) ? JSON.parse(zlib.gunzipSync(fs.readFileSync(f)).toString('utf8')) : null; };
+  const body = a => JSON.stringify([a.내용, a.항]).replace(/<(개정|신설|본조신설|전문개정)[^>]*>/g, '').replace(/\s+/g, '');
+  const ps = ent.판; let maxP = null, prevOfMax = null;
+  ps.forEach(p => delete p.낡은글);
+  for (const p of ps) {
+    if (maxP && p.공포일 < maxP.공포일) {
+      const M = load(maxP.판), P = load(p.판), M0 = prevOfMax && load(prevOfMax.판);
+      if (M && P) {
+        const pm = new Map(P.조.map(a => [a.조, body(a)])), m0 = M0 ? new Map(M0.조.map(a => [a.조, body(a)])) : new Map();
+        let back = 0, gone = 0;
+        M.조.forEach(a => { const t = body(a), tp = pm.get(a.조); if (tp === undefined) gone++; else if (M0 && m0.get(a.조) !== t && tp === m0.get(a.조)) back++; });
+        if (back || gone) p.낡은글 = { 앞최신: maxP.판, 되돌림: back, 빠진조: gone };
+      }
+    }
+    // M0 = M보다 먼저 공포된 마지막 판(같은 법률로 시행일만 다른 판이 이어지면 M0는 그대로 둔다)
+    if (!maxP || p.공포일 > maxP.공포일) { prevOfMax = maxP; maxP = p; } else if (p.공포일 === maxP.공포일) maxP = p;
+  }
+}
 // [2026.10.20] 부칙 — <부칙단위>마다 공포일·공포번호·글(CDATA 줄을 이어 붙임)
 function parseBuchik(x) {
   const i = x.indexOf('<부칙>'); if (i < 0) return [];
@@ -320,6 +343,7 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
     ent.판.sort((a, b) => a.시행일.localeCompare(b.시행일) || a.공포일.localeCompare(b.공포일));
     ent.판.forEach(p => { p.상태 = p.판 === curKey ? '현행' : (p.시행일 > (v.현행.시행일) ? '시행예정' : '옛판'); });
     ent.현행 = curKey; ent.확인한날 = today;
+    if (!DRY) markStale(k, ent);
     if (curArts && REF_FILES[k] && fs.existsSync(path.join(REF, REF_FILES[k]))) corr.push(...extractCorrections(k, path.join(REF, REF_FILES[k]), curArts, curKey));
   }
   idx.만든때 = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 16).replace('T', ' ');

@@ -1267,5 +1267,130 @@
    "산출세액": 61190000,
    "납부지연가산세": 269236
   }
+ },
+ {
+  "이름": "[농특세 옛 판] 2006년 양도 수용 현금 감면 무신고 — 2007년 전 농특세법 §11: 미납 농특세의 10%만(신고불성실·일수 없음) — 2006 표: 장특공 30%(10년)·과세표준 3.475억 × 36% − 1,170만 = 113,400,000 × 감면 10% = 11,340,000 × 20% = 2,268,000, 가산세 226,800",
+  "도구": "calculateTransferTaxMultiJS",
+  "인자": [
+   [
+    {
+     "assetType": "land",
+     "necessaryExpenses": 0,
+     "acquisitionDate": "1995-01-01",
+     "transferDate": "2006-06-01",
+     "transferPrice": 600000000,
+     "acquisitionPrice": 100000000,
+     "compensationType": "cash",
+     "publicNoticeDate": "2004-01-01"
+    }
+   ],
+   {
+    "filingStatus": "unreported",
+    "paidDate": "2007-09-30"
+   }
+  ],
+  "정답": {
+   "농어촌특별세": 2268000,
+   "농어촌특별세_가산세": 226800
+  }
+ },
+ {
+  "이름": "[옛 §115] 2006년 양도 무신고·2007-09-30 납부 — 신고불성실 산출세액 × 10%(부정 가중 없음), 납부불성실 확정신고기한 다음 날부터 1일 1만분의 3 — 2006 표: 산출 113,400,000(3.475억 × 36% − 1,170만), 신고불성실 11,340,000, 122일 × 0.0003 = 4,150,440",
+  "도구": "calculateTransferTaxMultiJS",
+  "인자": [
+   [
+    {
+     "assetType": "land",
+     "necessaryExpenses": 0,
+     "acquisitionDate": "1995-01-01",
+     "transferDate": "2006-06-01",
+     "transferPrice": 600000000,
+     "acquisitionPrice": 100000000
+    }
+   ],
+   {
+    "filingStatus": "unreported",
+    "paidDate": "2007-09-30"
+   }
+  ],
+  "정답": {
+   "산출세액_합계": 113400000,
+   "무신고가산세": 11340000,
+   "과소신고가산세": 0,
+   "납부지연가산세": 4150440
+  }
+ },
+ {
+  "이름": "[옛 §115] 2005년 양도 과소신고(과소 세액 1,000만) — 신고불성실 1,000만 × 10% = 100만",
+  "도구": "calculateTransferTaxMultiJS",
+  "인자": [
+   [
+    {
+     "assetType": "land",
+     "necessaryExpenses": 0,
+     "acquisitionDate": "1995-01-01",
+     "transferDate": "2005-06-01",
+     "transferPrice": 600000000,
+     "acquisitionPrice": 100000000
+    }
+   ],
+   {
+    "filingStatus": "underreported",
+    "underreportedTaxAmount": 10000000
+   }
+  ],
+  "정답": {
+   "과소신고가산세": 1000000,
+   "무신고가산세": 0
+  }
+ },
+ {
+  "이름": "[옛 §115③] 2006년 양도 확정신고 무신고지만 예정신고로 세액을 다 냄 — 추가납부세액이 없어 신고불성실 0",
+  "도구": "calculateTransferTaxMultiJS",
+  "인자": [
+   [
+    {
+     "assetType": "land",
+     "necessaryExpenses": 0,
+     "acquisitionDate": "1995-01-01",
+     "transferDate": "2006-06-01",
+     "transferPrice": 600000000,
+     "acquisitionPrice": 100000000
+    }
+   ],
+   {
+    "filingStatus": "unreported",
+    "preliminaryTaxPaid": 999999999
+   }
+  ],
+  "정답": {
+   "무신고가산세": 0
+  }
+ },
+ {
+  "이름": "[옛 §115 소득금액 비율] 2005년 양도소득금액 3.5억(장특공 30%) 중 1억을 덜 신고(신고 2.5억) — 산출세액 113,400,000 × (1억 ÷ 3.5억) × 10% = 3,240,000 (과소 세액 3,600만 비율로 갈음하면 3,600,000 — 누진 구간이 걸쳐 다름)",
+  "도구": "calculateTransferTaxMultiJS",
+  "인자": [
+   [
+    {
+     "assetType": "land",
+     "necessaryExpenses": 0,
+     "acquisitionDate": "1995-01-01",
+     "transferDate": "2005-06-01",
+     "transferPrice": 600000000,
+     "acquisitionPrice": 100000000
+    }
+   ],
+   {
+    "filingStatus": "underreported",
+    "underreportedTaxAmount": 36000000,
+    "reportedIncomeAmount": 250000000
+   }
+  ],
+  "정답": {
+   "산출세액_합계": 113400000,
+   "과소신고가산세": 3240000,
+   "무신고가산세": 0
+  }
  }
 ]
