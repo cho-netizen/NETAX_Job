@@ -94,7 +94,7 @@ if (t201 && t203) {
     marriageFrom: (rowsOf('2부-11', '혼인·출산 증여재산공제')[0] || {}).시작 || null,
     personal: rowsOf('2부-12', '그 밖의 인적공제').map((r) => Object.assign(P(r), { child: r.값.자녀, minorPerYear: r.값.미성년_1년당, elderly: r.값.연로자, disabledPerYear: r.값.장애인_1년당 })),
     cohabit: rowsOf('2부-12', '동거주택 상속공제').map((r) => Object.assign(P(r), { rate: r.값.율 / 100, cap: r.값.한도 })),
-    business: rowsOf('2부-12', '가업상속공제 한도').map((r) => Object.assign(P(r), { tiers: Object.keys(r.값).map(Number).sort((a, b) => a - b).map((y) => [y, r.값[String(y)]]) })),
+    business: rowsOf('2부-12', '가업상속공제 한도').map((r) => Object.assign(P(r), { tiers: Object.keys(r.값).map((k) => [Number((k.match(/(\d+)년/) || [])[1]), r.값[k]]).sort((a, b) => a[0] - b[0]) })),
     farming: rowsOf('2부-12', '영농상속공제 한도').map((r) => Object.assign(P(r), { cap: r.값.한도 })),
     genSkip: rowsOf('2부-15', '세대생략 할증률').map((r) => Object.assign(P(r), { minor: r.값.미성년_20억초과 / 100 }))
   };

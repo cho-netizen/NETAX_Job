@@ -121,7 +121,9 @@
   {
    "곳": "계산기(엔진)",
    "이름": "reportCreditRateAt_ — calculateGiftTaxJS·calculateInheritanceTaxJS·증여의제 계산들(p.giftDate가 있을 때)",
-   "보는날": "상속개시일·증여일"
+   "보는날": "상속개시일·증여일",
+   "켜짐": true,
+   "켜짐설명": "연혁 스위치 켜짐(2026-10-19 세무사님 답 \"1. 켠다\" — 끄려면 window.__NX_REF_HISTORY_ON = false)"
   }
  ],
  "확인필요": [

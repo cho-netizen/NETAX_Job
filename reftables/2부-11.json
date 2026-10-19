@@ -176,8 +176,10 @@
  "쓰는곳": [
   {
    "곳": "계산기(엔진)",
-   "이름": "giftPropertyDeduction(relation, isMinor, giftDate), 혼인·출산 공제(calculateGiftTaxJS)",
-   "보는날": "증여일"
+   "이름": "giftPropertyDeduction(relation, isMinor, giftDate)·marriageBirthAllowedAt_ — giRowAt_(REF_GI_.giftDed)",
+   "보는날": "증여일(giftDate)",
+   "켜짐": true,
+   "켜짐설명": "연혁 스위치 켜짐(2026-10-19 세무사님 답 \"1. 켠다\" — 끄려면 window.__NX_REF_HISTORY_ON = false)"
   }
  ],
  "확인필요": [
