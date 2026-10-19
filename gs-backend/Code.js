@@ -6102,8 +6102,8 @@ const STRUCTURE_TABLE = [
 
 const USE_TABLE = [
   { no: 1, desc: '아파트', index: 110 }, { no: 2, desc: '단독주택(노인복지주택 제외)', index: 100 },
-  { no: 3, desc: '관광호텔(5성급·4성급)', index: 140 }, { no: 4, desc: '호텔(일반숙박시설)', index: 130 },
-  { no: 5, desc: '관광호텔(3성급이하)·생활숙박시설·외국인관광 도시민박·한옥체험시설', index: 120 },
+  { no: 3, desc: '관광호텔(5성급·4성급)', index: 140 }, { no: 4, desc: '호텔(일반숙박시설)·관광호텔(3성급이하)·생활숙박시설 등', index: 130 },
+  { no: 5, desc: '외국인관광 도시민박(홈스테이·게스트하우스)·한옥체험시설', index: 120 },
   { no: 6, desc: '여관(모텔 포함)', index: 112 }, { no: 7, desc: '다중생활시설', index: 105 }, { no: 8, desc: '여인숙', index: 100 },
   { no: 9, desc: '백화점', index: 135 }, { no: 10, desc: '대형점·쇼핑센터·복합쇼핑몰', index: 125 },
   { no: 11, desc: '일반상점(바닥 1,000~3,000㎡)', index: 95 }, { no: 12, desc: '도매시장·전통시장·경매장', index: 85 },
@@ -6156,7 +6156,7 @@ const ADJUSTMENT_TABLE = [
 ];
 
 const DEPRECIATION_TABLE = {
-  I:  { 2026:1.000,2025:0.982,2024:0.964,2023:0.946,2022:0.928,2021:0.910,2020:0.892,2019:0.874,2018:0.856,2017:0.838,2016:0.820,2015:0.802,2014:0.784,2013:0.766,2012:0.748,2011:0.730,2010:0.712,2009:0.694,2008:0.676,2007:0.658,2006:0.640,2005:0.622,2004:0.604,2003:0.586,2002:0.568,2001:0.550,2000:0.532,1999:0.514,1998:0.496,1997:0.478,1996:0.460,1995:0.442,1994:0.424,1993:0.406,1992:0.388,1991:0.370,1990:0.352,1989:0.334,1988:0.316,1987:0.298,1986:0.280,1985:0.262,1984:0.244,1983:0.226,1982:0.208,1981:0.190,1980:0.172,1979:0.154,1978:0.136,1977:0.118 },
+  I:  { 2026:1.000,2025:0.982,2024:0.964,2023:0.946,2022:0.928,2021:0.910,2020:0.892,2019:0.874,2018:0.856,2017:0.838,2016:0.820,2015:0.802,2014:0.784,2013:0.766,2012:0.748,2011:0.730,2010:0.712,2009:0.694,2008:0.676,2007:0.658,2006:0.640,2005:0.622,2004:0.604,2003:0.586,2002:0.568,2001:0.550,2000:0.532,1999:0.514,1998:0.496,1997:0.478,1996:0.460,1995:0.442,1994:0.424,1993:0.406,1992:0.388,1991:0.370,1990:0.352,1989:0.334,1988:0.316,1987:0.298,1986:0.280,1985:0.262,1984:0.244,1983:0.226,1982:0.208,1981:0.190,1980:0.172,1979:0.154,1978:0.136,1977:0.118, 1976:0.100 },
   II: { 2026:1.0000,2025:0.9775,2024:0.9550,2023:0.9325,2022:0.9100,2021:0.8875,2020:0.8650,2019:0.8425,2018:0.8200,2017:0.7975,2016:0.7750,2015:0.7525,2014:0.7300,2013:0.7075,2012:0.6850,2011:0.6625,2010:0.6400,2009:0.6175,2008:0.5950,2007:0.5725,2006:0.5500,2005:0.5275,2004:0.5050,2003:0.4825,2002:0.4600,2001:0.4375,2000:0.4150,1999:0.3925,1998:0.3700,1997:0.3475,1996:0.3250,1995:0.3025,1994:0.2800,1993:0.2575,1992:0.2350,1991:0.2125,1990:0.1900,1989:0.1675,1988:0.1450,1987:0.1225,1986:0.1000 },
   III:{ 2026:1.000,2025:0.970,2024:0.940,2023:0.910,2022:0.880,2021:0.850,2020:0.820,2019:0.790,2018:0.760,2017:0.730,2016:0.700,2015:0.670,2014:0.640,2013:0.610,2012:0.580,2011:0.550,2010:0.520,2009:0.490,2008:0.460,2007:0.430,2006:0.400,2005:0.370,2004:0.340,2003:0.310,2002:0.280,2001:0.250,2000:0.220,1999:0.190,1998:0.160,1997:0.130,1996:0.100 },
   IV: { 2026:1.000,2025:0.955,2024:0.910,2023:0.865,2022:0.820,2021:0.775,2020:0.730,2019:0.685,2018:0.640,2017:0.595,2016:0.550,2015:0.505,2014:0.460,2013:0.415,2012:0.370,2011:0.325,2010:0.280,2009:0.235,2008:0.190,2007:0.145,2006:0.100 }
@@ -6168,7 +6168,7 @@ const LOCATION_TABLE = [
   { max: 100000, index: 87 }, { max: 130000, index: 88 }, { max: 150000, index: 89 }, { max: 180000, index: 90 },
   { max: 200000, index: 91 }, { max: 300000, index: 92 }, { max: 350000, index: 93 }, { max: 500000, index: 94 },
   { max: 650000, index: 97 }, { max: 800000, index: 100 }, { max: 1000000, index: 102 }, { max: 1200000, index: 104 },
-  { max: 1600000, index: 106 }, { max: 2000000, index: 118 }, { max: 2500000, index: 114 }, { max: 3000000, index: 116 },
+  { max: 1600000, index: 106 }, { max: 2000000, index: 108 }, { max: 2500000, index: 114 }, { max: 3000000, index: 116 },
   { max: 3500000, index: 118 }, { max: 4000000, index: 120 }, { max: 4500000, index: 122 }, { max: 5000000, index: 124 },
   { max: 5500000, index: 126 }, { max: 6000000, index: 128 }, { max: 7000000, index: 130 }, { max: 8000000, index: 132 },
   { max: 9000000, index: 134 }, { max: 10000000, index: 137 }, { max: 15000000, index: 140 }, { max: 20000000, index: 143 },
@@ -15096,15 +15096,22 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(toolGetBuildingPriceIndexTables()) };
       }
 
-      if (block.name === 'calculate_building_standard_price') {
+      // [2026.10.20 계산 엔진 일원화] 건물 기준시가도 화면 엔진(calculateBuildingStandardPriceJS·…MultiJS)으로 — Code.js 표엔 2026.10.19 엔진 고침
+      //  (위치지수 18번 구간 108·잔가율 1976년 0.100·용도 4·5 설명)이 빠져 같은 입력에 다른 값/오류가 났다. 엔진을 못 읽을 때만 옛 함수.
+      if (block.name === 'calculate_building_standard_price' || block.name === 'calculate_building_standard_price_multi') {
         const input = block.input || {};
-        const resultObj = toolCalculateBuildingStandardPrice(input.structureName, input.useNo, input.officialLandPricePerSqm, input.builtYear, input.floorAreaSqm, input.taxType, input.adjustmentNos);
-        return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj) };
-      }
-
-      if (block.name === 'calculate_building_standard_price_multi') {
-        const input = block.input || {};
-        const resultObj = toolCalculateBuildingStandardPriceMulti(input.rows, input.officialLandPricePerSqm, input.taxType);
+        let resultObj;
+        try {
+          const eng_ = getUiCalcEngine_();
+          resultObj = block.name === 'calculate_building_standard_price'
+            ? eng_.calculateBuildingStandardPriceJS(input.structureName, input.useNo, input.officialLandPricePerSqm, input.builtYear, input.floorAreaSqm, input.taxType, input.adjustmentNos)
+            : eng_.calculateBuildingStandardPriceMultiJS(input.rows, input.officialLandPricePerSqm, input.taxType);
+          if (resultObj && resultObj.error && /구조명|용도번호/.test(resultObj.error)) resultObj.error += ' — get_building_price_index_tables로 정확한 구조명·용도번호를 먼저 확인하세요.';
+        } catch (e) {
+          resultObj = block.name === 'calculate_building_standard_price'
+            ? toolCalculateBuildingStandardPrice(input.structureName, input.useNo, input.officialLandPricePerSqm, input.builtYear, input.floorAreaSqm, input.taxType, input.adjustmentNos)
+            : toolCalculateBuildingStandardPriceMulti(input.rows, input.officialLandPricePerSqm, input.taxType);
+        }
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj) };
       }
 
@@ -46326,7 +46333,9 @@ function trcApplyAns_(S, ans) {
   //  양도계약 카드 양도가액을 시가로 바꾸고(시행령 §167④) 실제 거래가액은 근거로 남긴다. 넘지 않으면 칸은 그대로, 판정 결과만 남긴다
   if (ans.relFmv && st.transferContracts[0]) {
     const ct0 = st.transferContracts[0], actual = trcNum_(ct0.totalPrice), fmv = Number(ans.relFmv.v) || 0;
-    const r = toolCalculateTransferRelatedPartyPriceAdjustment({ isRelatedPartyTransaction: true, transactionRole: 'sale', actualPrice: actual, marketValue: fmv });
+    // [2026.10.20] 계산 엔진 일원화 — 화면 엔진(calculateTransferRelatedPartyPriceAdjustmentJS)으로, 엔진을 못 읽을 때만 옛 함수(같은 결과 6경우 확인)
+    const relIn_ = { isRelatedPartyTransaction: true, transactionRole: 'sale', actualPrice: actual, marketValue: fmv };
+    let r; try { r = getUiCalcEngine_().calculateTransferRelatedPartyPriceAdjustmentJS(relIn_); } catch (e) { r = toolCalculateTransferRelatedPartyPriceAdjustment(relIn_); }
     S.facts = S.facts || {}; S.facts.relAdj = r;
     if (r && r.시가재계산적용여부) {
       ct0.relatedPartyActualPrice = actual; ct0.totalPrice = fmv;
