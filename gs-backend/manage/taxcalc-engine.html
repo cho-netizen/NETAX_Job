@@ -1666,15 +1666,22 @@
   //  §77 중 §69①본문 거주자가 직접 경작한 토지(8년 요건 무관, 같은 호), §33·§98의3·§98의5(§4⑦1호). 그 밖의 양도세 감면(§77 그 밖의 수용·§77의2·§77의3·
   //  §43·§85의10·§97·§97의2·§97의5·§97의10·§98·§98의2·§98의4·§98의6~§98의8·§99·§99의2·§99의3)은 과세. 본세 가산세는 과세표준에 안 넣음(시행령 §5④).
   //  돌려주는 값: 비과세면 근거 글, 과세면 ''.
+  // [2026.10.20 옛 판 확정 — 법령 세션 옛 판(2005~) 원문] 시행령 §4①1호: 2005.12.31. 이전 판 "§66 내지 §69·§77(직접 경작 토지)" → §70 대토(그 사이 §69의2 등도)는 과세,
+  //  2006.1.1. 판(대통령령 제19257호)부터 "§66 내지 §70". §98의3은 2009.4.21. 판(제21433호), §98의5는 2010.6.8. 판(제22182호)부터 같은 조 비과세 목록.
+  //  §77 직접 경작 토지는 2010년 판까지 "농업소득세 과세대상 토지에 한한다"가 붙음(2011.1.1. 판에서 삭제 — 농업소득세 폐지). 판정일 = 양도일.
   function nongteukExemptReason_(red, raw) {
     raw = raw || {};
-    if (red.key === 'farm') return '조특법 §' + String(red.sec || '').replace('_', '의') + ' — 농특세법 시행령 §4①1호(§66~§70) 비과세';
+    const d_ = String(raw.transferDate || '').slice(0, 10);
+    if (red.key === 'farm') {
+      if (d_ && d_ < '2006-01-01' && red.sec !== '69') return '';
+      return '조특법 §' + String(red.sec || '').replace('_', '의') + ' — 농특세법 시행령 §4①1호(' + (d_ && d_ < '2006-01-01' ? '2005년 판 §66~§69' : '§66~§70') + ') 비과세';
+    }
     if (red.key === 'comp') {
       if (red.sec === '77' && raw.isCompensationOnSelfCultivatedLand) return '조특법 §77 중 거주자가 직접 경작한 토지 수용 — 농특세법 시행령 §4①1호 비과세';
       return '';
     }
     const up = String(raw.unsoldHouseReductionProvision || '');
-    if (up === 'sect98_3' || up === 'sect98_5') return '조특법 ' + up.replace('sect98_', '§98의') + ' — 농특세법 시행령 §4⑦1호 비과세';
+    if ((up === 'sect98_3' && !(d_ && d_ < '2009-04-21')) || (up === 'sect98_5' && !(d_ && d_ < '2010-06-08'))) return '조특법 ' + up.replace('sect98_', '§98의') + ' — 농특세법 시행령 §4⑦1호 비과세';
     return '';
   }
   function reductions90_(assets, o) {
@@ -2780,6 +2787,22 @@
       }
     }
     const nongteukTax_ = Math.floor(ntBase_ * 0.2);
+    // [2026.10.20 84호 ㉕] 농특세 가산세 — 농특세도 국세라 국세기본법 §47의2(무신고)·§47의3(과소신고)·§47의4(납부지연)가 그대로(농특세법 §8②1호
+    //  "본세의 결정·경정 및 징수의 예"). 과소신고한 농특세는 nongteukUnderreportedTaxAmount, 비우면 본세 과소 비율로 추정. 납부지연 1일분은 본세 몫별
+    //  기산일(J23)에 농특세가 같은 비율로 붙는다고 보고 같은 날수(농특세법 §7① — 예정신고 때도 함께 신고·납부).
+    let ntPen_ = null;
+    if (!filingParams._ntInner && nongteukTax_ > 0 && filingStatus !== 'ontime') {
+      const ntUnderIn_ = Number(filingParams.nongteukUnderreportedTaxAmount);
+      const ntUnder_ = filingStatus === 'underreported' ? (ntUnderIn_ > 0 ? Math.min(nongteukTax_, ntUnderIn_)
+        : (totalCalculatedTax > 0 ? Math.round(nongteukTax_ * Math.min(1, (Number(filingParams.underreportedTaxAmount) || 0) / totalCalculatedTax)) : 0)) : 0;
+      const ntUnpaid_ = filingStatus === 'unreported' ? nongteukTax_ : ntUnder_;
+      const pn_ = giftFilingPenalties(nongteukTax_, filingStatus, !!filingParams.isFraudulent, ntUnder_, filingParams.unpaidDays, ntUnpaid_, !!filingParams.isOffshoreTransaction, lateCtx_(filingParams), 0, 0);
+      let late_ = pn_.latePenalty;
+      if (lateSplit_) { const sb_ = lateSplit_.rows.reduce(function (s, x) { return s + (Number(x.세액) || 0); }, 0); late_ = sb_ > 0 ? Math.floor(ntUnpaid_ * lateSplit_.total / sb_) : 0; }
+      ntPen_ = { 무신고가산세: pn_.unreportedPenalty, 과소신고가산세: pn_.underreportedPenalty, 납부지연가산세: late_,
+        합계: pn_.unreportedPenalty + pn_.underreportedPenalty + late_,
+        안내: filingStatus === 'underreported' && !(ntUnderIn_ > 0) ? '과소신고한 농특세를 넣지 않아 본세 과소 비율로 추정(' + ntUnder_.toLocaleString('ko-KR') + '원)' : undefined };
+    }
     const localIncomeTax = Math.round(totalCalculatedTax * 0.1);
     const grandTotal = Math.max(0, totalCalculatedTax - pensionAccountCreditTotal - eFilingCredit + conversionValuePenaltyTotal
       + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax + exemptClawbackTotal + pensionAccountClawbackTotal);
@@ -2803,7 +2826,10 @@
       지방소득세: localIncomeTax, 납부세액_합계: grandTotal,
       // [2026.10.20 J21] 84호 ㉒~㉚ 농어촌특별세 — 양도세 납부세액_합계(양도세+지방소득세)에는 넣지 않고 따로(서식도 칸이 따로)
       납부지연가산세_몫별: lateSplit_ ? lateSplit_.rows : undefined, // [2026.10.20 J23] 예정분·확정 추가분 기산일별
-      농어촌특별세_과세표준: ntBase_, 농어촌특별세: nongteukTax_, 농어촌특별세_내역: ntRows_.length ? ntRows_ : undefined, 납부세액_합계_농특세포함: grandTotal + nongteukTax_,
+      농어촌특별세_과세표준: ntBase_, 농어촌특별세: nongteukTax_, 농어촌특별세_내역: ntRows_.length ? ntRows_ : undefined,
+      농어촌특별세_가산세: ntPen_ ? ntPen_.합계 : 0, 농어촌특별세_가산세_내역: ntPen_ || undefined, // [2026.10.20 84호 ㉕]
+      농어촌특별세_자진납부할세액: nongteukTax_ + (ntPen_ ? ntPen_.합계 : 0), // ㉗ = ㉔ + ㉕ − ㉖(기신고 0)
+      납부세액_합계_농특세포함: grandTotal + nongteukTax_ + (ntPen_ ? ntPen_.합계 : 0),
       자산별_내역: assetNotes,
       거래번호표시: txLabels_, // [2026.10.19] 자산별_내역의 idx → 표시이름(환지 증가분이 맨 뒤에 붙음)
       환지분리_안내: replotAppend_.length ? transactions.filter(function (t) { return t._환지분리; }).map(function (t) { return t._환지분리; }) : undefined,

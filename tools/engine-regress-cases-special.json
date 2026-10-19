@@ -1082,5 +1082,75 @@
   "정답": {
    "증여의제이익": 41600000
   }
+ },
+ {
+  "이름": "[농특세 옛 판] 2005년 양도 §70 대토 감면 — 2005년 판 농특세법 시행령 §4①1호는 §66~§69만이라 과세(감면세액 × 20%)",
+  "도구": "calculateTransferTaxMultiJS",
+  "인자": [
+   [
+    {
+     "assetType": "land",
+     "necessaryExpenses": 0,
+     "acquisitionDate": "1995-01-01",
+     "transferDate": "2005-06-01",
+     "transferPrice": 600000000,
+     "acquisitionPrice": 100000000,
+     "isFarmlandSubstitutionExempt": true
+    }
+   ],
+   {}
+  ],
+  "정답": {
+   "합산자경감면액": 100000000,
+   "농어촌특별세_과세표준": 100000000,
+   "농어촌특별세": 20000000
+  }
+ },
+ {
+  "이름": "[농특세 옛 판] 2006년 양도 §70 대토 감면 — 2006.1.1. 판부터 §66~§70 비과세 → 농특세 0",
+  "도구": "calculateTransferTaxMultiJS",
+  "인자": [
+   [
+    {
+     "assetType": "land",
+     "necessaryExpenses": 0,
+     "acquisitionDate": "1995-01-01",
+     "transferDate": "2006-06-01",
+     "transferPrice": 600000000,
+     "acquisitionPrice": 100000000,
+     "isFarmlandSubstitutionExempt": true
+    }
+   ],
+   {}
+  ],
+  "정답": {
+   "농어촌특별세": 0
+  }
+ },
+ {
+  "이름": "[84호 ㉕] 2025년 수용 현금 15% 감면 무신고 — 농특세(감면세액 × 20%)에도 무신고가산세 20%(국세기본법 §47의2), ㉗ = ㉔ + ㉕",
+  "도구": "calculateTransferTaxMultiJS",
+  "인자": [
+   [
+    {
+     "assetType": "land",
+     "necessaryExpenses": 0,
+     "acquisitionDate": "2010-01-01",
+     "transferDate": "2025-06-01",
+     "transferPrice": 1000000000,
+     "acquisitionPrice": 300000000,
+     "compensationType": "cash",
+     "publicNoticeDate": "2023-01-01"
+    }
+   ],
+   {
+    "filingStatus": "unreported"
+   }
+  ],
+  "정답": {
+   "농어촌특별세": 5071800,
+   "농어촌특별세_가산세": 1014360,
+   "농어촌특별세_자진납부할세액": 6086160
+  }
  }
 ]
