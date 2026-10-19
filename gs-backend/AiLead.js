@@ -273,8 +273,10 @@ function caseProcAiCheckBasis_(c, value, basis, itemId, caseId) {
   if (basis.kind === 'doc') {
     const f = caseProcAiFindFile_(c, basis.file);
     if (!f) return { ok: false, why: '근거 서류를 사건 폴더에서 찾지 못함' };
-    const t = String(tc_docText_(f) || '');
-    if (!t) return { ok: false, why: '근거 서류의 글자가 없음(아직 못 읽음)' };
+    let t = String(tc_docText_(f) || '');
+    try { if (typeof tcVisionText_ === 'function') t += ' ' + tcVisionText_(f); } catch (e) {}
+    try { const pp = typeof tcPdfPageTexts_ === 'function' && /pdf/.test(String(f.mimeType || '')) ? tcPdfPageTexts_(f, 0) : null; if (pp && pp.pages) t += ' ' + Object.keys(pp.pages).map(function (k) { return pp.pages[k] || ''; }).join(' '); } catch (e) {}
+    if (!t.trim()) return { ok: false, why: '근거 서류의 글자가 없음(아직 못 읽음)' };
     const flat = t.replace(/\s+/g, '');
     // 판단형(보기 고르기) 값은 서류에 그대로 안 나온다 — 근거 문구(quote)를 주면 그 문구가 원문에 있는지로 대조한다
     if (basis.quote) { const q = String(basis.quote).replace(/\s+/g, ''); return q.length >= 4 && flat.indexOf(q) !== -1 ? { ok: true, why: '근거 서류 원문에 그 문구', file: f.name } : { ok: false, why: '근거 서류 원문에 그 문구가 없음 — 지어낸 근거일 수 있어 넣지 않음' }; }

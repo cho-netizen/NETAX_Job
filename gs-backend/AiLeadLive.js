@@ -124,6 +124,10 @@ function caseProcAiLiveTools_() {
   });
   tools.push({ name: 'issue_bundle', description: '쟁점 묶음 보기 — 그 질문(itemId)에 GAS·교차검증이 모아 둔 재료: 사건 요약·물린 사실·출처 원문 앞뒤·후보·못 푼 이유·계산기 칸의 쓰임, 저비용 AI의 답과 모자란 정보. 원문이 필요하면 이것으로 본다(원문 파일을 직접 읽는 도구는 없다).',
     input_schema: { type: 'object', properties: { itemId: { type: 'string' } }, required: ['itemId'] } });
+  tools.push({ name: 'fact_map', description: '사실 지도(토큰 0) — 서류 조각을 사람·자산·시간·돈 네 축으로 맞물려 둘 이상 서류가 받치는 사실·한 서류뿐인 사실·어긋나는 사실, 그리고 빈칸마다 찾을 서류(법정 서류 기준)와 이 사건에 있는 그 종류 파일. 판단 전에 먼저 부르고, 빈칸을 메운 뒤 다시 부른다.',
+    input_schema: { type: 'object', properties: { caseId: { type: 'string' } } } });
+  tools.push({ name: 'doc_find', description: '다시 뒤지기(토큰 0, 저장된 판독만) — fact_map이 가리킨 서류를 GAS가 다시 훑어 날짜·금액·낱말 후보를 쪽 번호·판독 종류(Vision 줄·칸 / 쪽 단위 / 드라이브 글)와 함께 돌려준다. want: date | amount | keyword(+keyword). 찾은 값은 value_set basis {kind:"doc", file, page, find}로.',
+    input_schema: { type: 'object', properties: { file: { type: 'string' }, want: { type: 'string', enum: ['date', 'amount', 'keyword'] }, keyword: { type: 'string' } }, required: ['file', 'want'] } });
   tools.push({ name: 'quick_judge', description: '좁은 판단 맡기기(저가 AI Haiku 5.5) — 짧고 근거가 서류에 있는 판단: 후보 중 하나 고르기, 표기가 같은 사람·주소인지, 판독 고르기, 처음 보는 서류 종류. 재료(material)에 원문 줄·후보를 넣는다(개인정보는 이미 가려짐). 답·확실 여부·근거를 돌려준다. 불확실이면 네가 판단하거나 여쭙는다.',
     input_schema: { type: 'object', properties: { question: { type: 'string' }, material: { type: 'string' }, options: { type: 'array', items: { type: 'string' } } }, required: ['question', 'material'] } });
   tools.push({ name: 'ask_higher', description: '어려운 판단 올리기(상위 AI Opus 5.5) — 특례가 얽힌 사건분류(1세대1주택·일시적 2주택·상속주택·정비사업 감면), 시가·유사사례 다툼, 법령 해석이 갈리는 것. 재료를 정리해 넘긴다. 최고급(Fable 5.1)이 필요하면 부르지 말고 보고에 "최고급 검토 필요"로 적는다(세무사님이 쓰기 전에 정하심).',
@@ -148,6 +152,7 @@ function caseProcAiLiveSystem_(cap) {
     '- 서류는 GAS 도구로만 본다: issue_bundle(쟁점 묶음)·doc_facts(서류 정리 결과)·facts_find(사실 목록)·재료 도구. docs_read·doc_text(원문 직접 읽기)는 없다 — 위 지침의 doc_text 자리는 issue_bundle로.',
     '- 도구로 안 되는 일을 네가 직접 하게 되면(원문을 뒤지고 싶음·여러 값을 머릿속으로 더하거나 나눔·날짜를 세어 봄 등) 그 일을 하지 말고 report_tool_gap으로 "이런 도구가 있으면"을 남긴 뒤 질문으로 돌린다. 그것이 GAS가 자라는 재료다.',
     '- 되돌리기 어려운 일(PDF 묶기·폴더 이름·문자·사건 정보 수정)은 도구가 없다. 필요하면 보고에 "▶실행 카드로 여쭐 것"으로 적는다.',
+    '- 빈칸 메우기 고리(세무사님 "빈칸을 채우기 위해 다시 똥통을 뒤지게 되는 것"): ① fact_map으로 빈칸·어긋남을 본다 ② 빈칸마다 찾을서류 중 이 사건에 있는 파일을 고른다 ③ doc_find로 다시 뒤진다(읽기는 GAS) ④ 찾았으면 value_set(근거 doc·쪽), 못 찾았으면 다른 파일 ⑤ fact_map을 다시 불러 메워졌는지 본다 — 빈칸당 다시 뒤지기 2번까지, 더 안 메워지면 남은 빈칸만 추론(infer, 잠정)하거나 짧은 객관식 질문으로 모아 묻는다.',
     '- 법령 근거: 쟁점 판단에 쓴 조문·예규·판례는 law_lookup·law_search로 확인하고 law_attach로 사건에 첨부한 뒤(쓸 곳·이유 한 줄), value_set의 attach에 그 id를 넣는다. 입구 요약의 "첨부된 자료"(세무사님 직접 첨부)는 먼저 읽고 근거로 쓴다.',
     '- 보고는 세무사님이 읽는다 — 쉬운 말로, 표·기호 없이 짧게. 세액은 도구 값 그대로.'
   ].join('\n');
@@ -243,6 +248,8 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
     return { text: caseProcAiMask_(JSON.stringify({ ok: true, 질문: it.text, 자세히: it.detail || '', 후보: ((it.ask && it.ask.cands) || []).slice(0, 8), 쟁점묶음: aj && aj.q ? String(aj.q).slice(0, 2500) : '(묶음 없음 — doc_facts·facts_find로 재료를 찾고, 없으면 report_tool_gap)', 저비용답: aj ? { 값: aj.value, 확실: aj.sure, 근거: aj.why, 모자란정보: aj.need || [] } : null })).slice(0, 4000) };
   }
   if (name === 'value_set') return { text: JSON.stringify(caseProcAiValueSetLive_(caseId, input, ctx)) };
+  if (name === 'fact_map') { ctx.loop = ctx.loop || { maps: 0, finds: 0, hits: 0, gaps0: null, gapsN: null }; const fm = caseProcAiFactMap_(akReadCase_(caseId), ctx.lastItems || []); ctx.loop.maps++; if (ctx.loop.gaps0 == null) ctx.loop.gaps0 = fm.빈칸.length; ctx.loop.gapsN = fm.빈칸.length; return { text: caseProcAiMask_(JSON.stringify(fm)).slice(0, 5000) }; }
+  if (name === 'doc_find') { ctx.loop = ctx.loop || { maps: 0, finds: 0, hits: 0, gaps0: null, gapsN: null }; const df = caseProcAiDocFind_(akReadCase_(caseId), input); ctx.loop.finds++; if (df.찾음) ctx.loop.hits++; return { text: caseProcAiMask_(JSON.stringify(df)).slice(0, 4000) }; }
   if (name === 'law_lookup' || name === 'law_search' || name === 'law_attach') return { text: caseProcAiMask_(JSON.stringify(caseProcAiLaw_(caseId, name, input, ctx))).slice(0, 6000) };
   // 그 밖 도구 — 시제품 실행기 그대로(조회 결과·마지막 질문은 차례 사이에 기억)
   if (name === 'calc_fill' && ctx.lastItems) CASEPROC_AI_LAST_ITEMS_[caseId] = ctx.lastItems;
@@ -329,7 +336,7 @@ function caseProcAiTurn_(body) {
   const won = Math.round((r.won + (ctx.subWon || 0) - subBefore) * 10) / 10;
   const done = json.stop_reason !== 'tool_use' || !uses.length;
   return { ok: true, done: done, stop: json.stop_reason, assistant: content, toolResults: results, calls: calls, won: won, report: done ? caseProcAiMask_(caseProcAiText_(json)) : '', note: caseProcAiCut_(caseProcAiText_(json), 200),
-    decisions: ctx.decisions, asks: ctx.asks, opinions: ctx.opinions, gaps: ctx.gaps, attaches: ctx.attaches || [], model: CASEPROC_AI_DIRECTOR_MODEL_, _ms: Date.now() - t0 };
+    decisions: ctx.decisions, asks: ctx.asks, opinions: ctx.opinions, gaps: ctx.gaps, attaches: ctx.attaches || [], loop: ctx.loop || null, model: CASEPROC_AI_DIRECTOR_MODEL_, _ms: Date.now() - t0 };
 }
 
 // ---------- step 'finish' — 사건 기록(작업일지 한 줄 + 사건처리 저장) + 판단 기록(나중에 GAS로 옮길 재료, 개인정보 가림) ----------
@@ -339,7 +346,7 @@ function caseProcAiFinish_(body) {
   if (!c) return { error: '사건을 찾지 못했습니다.' };
   const ctx = caseProcAiCtxLoad_(caseId);
   const run = { at: new Date().toISOString(), 세목: c.세목, 업무유형: c.업무유형 || '', mode: String(body.mode || 'ai'), won: Number(body.won) || 0, rounds: Number(body.rounds) || 0, stop: String(body.stop || ''),
-    spots: (body.spots || []).slice(0, 30), tiers: body.tiers || null, tools: caseProcAiLiveTools_().map(function (t) { return t.name; }), decisions: (ctx.decisions || []).slice(0, 40), asks: (ctx.asks || []).slice(0, 20), opinions: (ctx.opinions || []).slice(0, 20), gaps: (ctx.gaps || []).slice(0, 20), attaches: (ctx.attaches || []).slice(0, 20), error: String(body.error || '').slice(0, 200) };
+    spots: (body.spots || []).slice(0, 30), tiers: body.tiers || null, tools: caseProcAiLiveTools_().map(function (t) { return t.name; }), decisions: (ctx.decisions || []).slice(0, 40), asks: (ctx.asks || []).slice(0, 20), opinions: (ctx.opinions || []).slice(0, 20), gaps: (ctx.gaps || []).slice(0, 20), attaches: (ctx.attaches || []).slice(0, 20), loop: ctx.loop || null, error: String(body.error || '').slice(0, 200) };
   try { caseProcPatch_(caseId, function (sv) { sv.aiLead = (Array.isArray(sv.aiLead) ? sv.aiLead : []).concat([run]).slice(-10); }); } catch (e) {}
   // [GAS 고도화 ①] 총괄 AI 판단을 2번 기록 모양(kind 'cx')으로 — 비용은 이번 지휘 비용을 판단 수로 나눠 붙임. 세무사님 수정은 다음 처리 때 2번 0) 단계가 붙인다
   if (run.mode === 'ai' && (ctx.cxItems || []).length) caseProcAiLogCx_(c, CASEPROC_AI_DIRECTOR_MODEL_, run.won / CASEPROC_AI_KRW_, ctx.cxItems, 1);
@@ -360,7 +367,7 @@ function caseProcAiFinish_(body) {
       if (!folder) return;
       const it = folder.getFilesByName(CASEPROC_AI_LOG_NAME_), f = it.hasNext() ? it.next() : folder.createFile(CASEPROC_AI_LOG_NAME_, '[]', 'application/json');
       let arr = []; try { arr = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '[]'); } catch (e) { arr = []; }
-      arr.push(JSON.parse(caseProcAiMask_(JSON.stringify({ at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), 세목: run.세목, 업무유형: run.업무유형, mode: run.mode, won: run.won, rounds: run.rounds, stop: run.stop, tiers: run.tiers, tools: run.tools,
+      arr.push(JSON.parse(caseProcAiMask_(JSON.stringify({ at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), 세목: run.세목, 업무유형: run.업무유형, mode: run.mode, won: run.won, rounds: run.rounds, stop: run.stop, tiers: run.tiers, tools: run.tools, loop: run.loop,
         spots: run.spots.map(function (s) { return (s.자리 || '') + '|' + (s.이유 || ''); }), decisions: run.decisions.map(function (d) { return { 칸: d.itemId, basis: d.basis, sure: d.sure, 근거첨부: d.근거첨부 || [], 결과: caseProcAiCut_(d.결과 || '', 40) }; }), attaches: run.attaches.map(function (a) { return a.제목; }), gaps: run.gaps }))));
       f.setContent(JSON.stringify(arr.slice(-3000)));
     });

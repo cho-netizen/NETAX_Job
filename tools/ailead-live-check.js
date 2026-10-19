@@ -37,6 +37,7 @@ function __lc(caseId) {
     res.missing = (ov.needs && ov.needs.missing) || [];
     if (typeof caseProcAiSpots_ === 'function') {
       var sp = caseProcAiSpots_({ caseId: caseId, ov: { items: ov.items || [], needs: ov.needs || null }, ev: { docTypes: ev.docTypes || [] } });
+      try { var fm = caseProcAiFactMap_(akReadCase_(caseId), ov.items || []); res.factmap = { 합: fm.합, 지표: fm.지표, 축: fm.축, 빈칸: fm.빈칸.length, 빈칸에서류있음: fm.빈칸.filter(function (g) { return Array.isArray(g.이사건에있는파일); }).length }; } catch (e) { res.factmapErr = String(e && e.message || e); }
       res.spots = { ai: sp.ai, ask: sp.ask, gas: sp.gas, level: sp.level, cap: sp.cap, need: sp.need, byWhy: sp.byWhy, tiers: sp.tiers, plan: sp.plan, inGap: sp.inGap, list: (sp.spots || []).map(function (s) { return s.자리 + '|' + s.이유 + '|' + s.수준 + '|' + (s.주제 || '') + '|' + String(s.설명 || '').slice(0, 80); }), entryLen: (sp.entry || '').length };
     }
   }, null);
