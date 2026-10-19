@@ -261,6 +261,42 @@
     return o.result();
   };
 
+
+  // ═════════ 소득83호의6 — 1세대 3주택 이상자의 장기임대주택 등 일반세율 적용신청서(영 §167의3⑦) ═════════
+  //  양도인 카드 체크 seller.isMultiHouseRentalExemption + "장기임대주택 등록정보" 세 칸(mhRentalLocation·mhRentalRegistrationDate·mhRentalStartDate)
+  //  — 예전 인쇄 trMultiHouseRentalExemptionPrintPageHtml_와 같은 값. 양도주택(⑤⑩⑪)은 그 양도인의 주택 자산(한 장 = 주택 한 채).
+  //  양도인 카드의 등록정보는 "장기임대주택 등록정보"라 ㉔ 장기임대주택 첫 줄에 적는다(감면대상·장기어린이집이면 ㉕·㉖으로 옮겨 적어야 함).
+  function isHouse(a) { return !!a && (a.assetType === 'house' || !!a.isReconstructionRights); }
+  function mhAssets(ctx) {
+    var L = [];
+    (ctx.assets || []).forEach(function (it, i) { if (isHouse(it.asset)) L.push(i); });
+    return L;
+  }
+  mappers['소득83호의6'] = function (ctx) {
+    var o = new Out(), s = ctx.seller || {};
+    if (!s.isMultiHouseRentalExemption) { o.miss('①~㉗ 전체', '양도인 카드 "장기임대주택 등 일반세율 적용" 체크 없음'); return o.result(); }
+    person(o, s, '①', '②', '③', '③@전화번호');
+    var list = ctx.assets || [], ai = has(ctx.특례자산) ? ctx.특례자산 : (mhAssets(ctx)[0] != null ? mhAssets(ctx)[0] : 0);
+    var it = list[ai], a = (it && it.asset) || {};
+    if (!isHouse(a)) o.note('양도 자산 중 주택이 없어 첫 자산을 양도주택 칸에 찍음 — 확인 필요');
+    o.miss('④ 구분(장기임대주택·감면대상 장기임대주택·장기어린이집·일반주택)', '계산기에 없음(양도인 카드는 체크 하나뿐 — 양도주택이 네 가지 중 무엇인지 고르는 칸 없음)');
+    o.need('⑤', a.assetLocation, '⑤ 소재지');
+    o.miss('⑥ 주택면적·⑦ 토지면적', '계산기에 없음');
+    o.miss('⑧ 임대개시일 당시 기준시가 합계액', '계산기에 없음');
+    o.miss('⑨ 국민주택 여부', '계산기에 없음');
+    o.need('⑩', a.acquisitionDate, '⑩ 취득일').need('⑪', a.transferDate, '⑪ 양도일');
+    o.miss('⑫ 충족·⑬ 미충족', '계산기에 없음(의무임대기간 충족 여부 입력 없음)');
+    var any = false;
+    if (has(s.mhRentalLocation)) { o.set('⑭@장기임대주택', [s.mhRentalLocation]); any = true; } else o.miss('⑭ 소재지(장기임대주택)', '양도인 카드 장기임대주택 소재지 비어 있음');
+    if (has(s.mhRentalStartDate)) { o.set('⑰@장기임대주택', [s.mhRentalStartDate]); any = true; } else o.miss('⑰ 임대 등 개시일', '양도인 카드 임대개시일 비어 있음');
+    if (has(s.mhRentalRegistrationDate)) { o.set('㉒@장기임대주택', [s.mhRentalRegistrationDate]); any = true; } else o.miss('㉒ 시군구청 임대등록일', '양도인 카드 임대등록일 비어 있음');
+    if (any) o.note('양도인 카드 "장기임대주택 등록정보"를 ㉔ 장기임대주택 첫 줄에 적음 — 감면대상 장기임대주택(㉕)·장기어린이집(㉖)이면 옮겨 적을 것');
+    o.miss('⑮⑯⑱⑲⑳㉑㉓ 장기임대주택 등 명세 나머지, ⑭⑰㉒의 ㉕·㉖ 줄', '계산기에 없음(취득일·기준호수 임대기간·공제기간·주택임대기간·사업자등록일·호수 입력 없음, 장기임대주택 한 채만 받음)');
+    o.miss('㉗ 임대내역', '계산기에 없음(임차인·보증금·월세·임대기간 입력 없음)');
+    footer(o, ctx, s, { agent: false });
+    return o.result();
+  };
+
   // ───────── 세액인쇄 화면용 ─────────
   function transferItems() {
     return (typeof lastTransferResults_ !== 'undefined' && lastTransferResults_ ? lastTransferResults_ : []).filter(function (it) { return it.result && !it.result.error; });
@@ -283,10 +319,25 @@
     ready[k] = function () { return specialReady(k); };
   });
 
+  // 83호의6 — 양도인 카드 체크가 있는 양도인마다, 그 양도인의 주택 자산마다 한 장(주택이 없으면 한 장)
+  function mhCtxList(ctx) {
+    if (!ctx || !ctx.seller || !ctx.seller.isMultiHouseRentalExemption) return [];
+    var idx = mhAssets(ctx);
+    if (!idx.length) idx = [0];
+    return idx.map(function (ai) { return Object.assign({}, ctx, { 특례자산: ai }); });
+  }
+  ctxFor['소득83호의6'] = function (extra) {
+    var out = [];
+    transferItems().forEach(function (item, i) { if (item.seller && item.seller.isMultiHouseRentalExemption) out = out.concat(mhCtxList(H.ctxFromApp.양도(i, extra))); });
+    return out;
+  };
+  ready['소득83호의6'] = function () { return transferItems().some(function (item) { return !!(item.seller && item.seller.isMultiHouseRentalExemption); }); };
+
   // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만)
   function plan(tax, ctx) {
     var L = [];
     if (tax !== '양도' || !ctx) return L;
+    mhCtxList(ctx).forEach(function (c) { L.push({ formKey: '소득83호의6', ctx: c }); });
     SPECIAL_KEYS.forEach(function (k) {
       (ctx.assets || []).forEach(function (it, ai) { if (assetWants(it.asset, k)) L.push({ formKey: k, ctx: Object.assign({}, ctx, { 특례자산: ai }) }); });
     });

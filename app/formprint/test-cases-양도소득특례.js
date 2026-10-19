@@ -76,12 +76,22 @@ module.exports = function (E, H) {
     oneHouseSpecialCase: { provisionLabel: '장기저당담보주택(동거봉양 합가, 소득세법시행령§155의2②)', formNo: '소득세법 시행규칙 [별지 제83호의3서식]', formTitle: '장기저당담보주택에 대한 특례적용신고서',
       acquisitionDate: '', houseType: '', newHousingCompletionDate: '', mgContractDate: '', mgLeasePeriod: '', 안내: mp.안내 } };
 
+  // ⑧ 1세대 3주택 이상 — 장기임대주택을 뺀 일반주택 양도(영 §167의3①2호·④, 중과 배제) — 양도인 카드 체크 + 장기임대주택 등록정보
+  var mhAsset = { assetType: 'house', transferPrice: 800000000, acquisitionPrice: 450000000, necessaryExpenses: 7000000, transferDate: '2026-08-20', acquisitionDate: '2017-02-10',
+    assetLocation: '서울특별시 ○○구 ○○로 80, 8동 801호 (견본, 조정대상지역)', multiHouseCount: '3', isAdjustedArea: true, isMultiHouseRentalExemption: true };
+  var ctxMh = caseOf([mhAsset], { seller: Object.assign(clone(SELLER), { multiHouseCount: '3', isMultiHouseRentalExemption: true,
+    mhRentalLocation: '○○시 ○○로 81, 2동 201호', mhRentalRegistrationDate: '2018-03-05', mhRentalStartDate: '2018-03-10' }) });
+  // 엔진이 중과를 빼고 기본세율(누진)로 계산했는지 — 체크를 뺀 계산과 비교(체크가 있으면 세액이 작아야 함)
+  var mhNo = E.calculateTransferTaxMultiJS([Object.assign(clone(mhAsset), { isMultiHouseRentalExemption: false })], {});
+  if (!(ctxMh.r.산출세액_합계 < mhNo.산출세액_합계)) throw new Error('83호의6 시험: 일반세율 적용 체크가 중과를 빼지 않음 ' + ctxMh.r.산출세액_합계 + ' / ' + mhNo.산출세액_합계);
+
   return [
     { name: '83호의4_상생임대주택', tax: '양도', ctx: ctxMg },
     { name: '83호의2_거주주택특례', tax: '양도', ctx: ctxLr },
     { name: '83호의5_조합원입주권_분양권_입주권양도', tax: '양도', ctx: caseOf([ciAsset, prAsset, urAsset]) },
     { name: '83호_귀농주택', tax: '양도', ctx: caseOf([rfAsset]) },
-    { name: '83호의3_장기저당담보주택', tax: '양도', ctx: caseOf([mpAsset]) }
+    { name: '83호의3_장기저당담보주택', tax: '양도', ctx: caseOf([mpAsset]) },
+    { name: '83호의6_장기임대주택_일반세율', tax: '양도', ctx: ctxMh }
   ].map(function (cs) {
     // tax만 준 사례는 plan으로 이 묶음 서식만 고름(84호 본표는 기존 23장 시험에서 봄)
     if (!cs.forms) cs.forms = H.ctxFromApp && cs.tax ? require('./mappers.js').plan(cs.tax, cs.ctx).filter(function (it) { return typeof it !== 'string' && /^소득/.test(it.formKey); }) : [];
