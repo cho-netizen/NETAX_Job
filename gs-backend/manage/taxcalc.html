@@ -9347,6 +9347,12 @@ function trBuyerRelationLabel_(relation){
 //  trLongTermDeductionRate_의 옛 표(표1 3년 10%~10년 30%, 표2 3년 24%~10년 80%)로 다시 계산해 2019년 이후 양도(표1 6~30%)·
 //  2021년 이후 1세대1주택(보유 4%+거주 4%, 12억 초과분 안분)이 본표 세액과 다르게 찍혔다(예: 2024 토지 10년 엔진 20% ↔ 부표1 30%).
 //  엔진이 값을 못 내면(오류) 예전 식으로 돌아가고 표시를 남긴다.
+// [2026.10.19] 환지 증가분(추가부담금 납부 = 새 취득, 시행령§162①9호)은 신고서 부표1·인쇄에서 별도 자산 줄로
+// 쓴다 — 세액 계산(calculateTransferTaxMultiJS)과 같은 엔진 분리 결과를 그대로 쓴다.
+function trExpandReplotmentAssets_(assets){
+  if (typeof window.expandReplotmentIncreaseJS !== 'function') return assets;
+  return (assets || []).reduce(function(acc, a){ return acc.concat(window.expandReplotmentIncreaseJS(a)); }, []);
+}
 function trAttach1EngineValues_(asset){
   const transferPrice = Number(asset.transferPrice) || 0, acquisitionPrice = Number(asset.acquisitionPrice) || 0, necessaryExpenses = Number(asset.necessaryExpenses) || 0;
   const grossFallback = transferPrice - acquisitionPrice - necessaryExpenses;
@@ -9544,6 +9550,7 @@ function trAttach1PrintPageHtml_(asset, seq){
   return '<div class="pf-page">' +
     '<div class="pf-formno">소득세법 시행규칙 [별지 제84호서식 부표1]</div>' +
     '<div class="pf-title">양도소득금액 계산명세서 — 자산 ' + seq + '</div>' +
+    (asset._환지분리 ? '<div class="pf-note">' + escapeHtml(asset._환지분리) + '</div>' : '') + // [2026.10.19] 환지 종전분·증가분 표시
     '<table class="pf-table">' +
       pfRow_(++n, '소재지', asset.assetLocation || '') +
       pfRow_(++n, '자산의 종류', trAssetTypeLabel_(trAssetTypeCode1_(asset))) +
@@ -15601,7 +15608,7 @@ function handleTaxCalcClick_(e){
       else document.getElementById('taxCalcTransferResult').innerHTML = '';
       // [2026.09.25 신규, 재검토78] 전자신고파일 생성용 — 단독 양도인도 배열 형태(세율구분별
       // 다건과 동일 모양)로 저장해 아래 trBuildEfileBytes_()가 단독/공동 구분 없이 동작하게 한다.
-      lastTransferResults_ = result ? [{ seller: transferSellers[0] || {}, result: result, assets: inputs }] : null;
+      lastTransferResults_ = result ? [{ seller: transferSellers[0] || {}, result: result, assets: trExpandReplotmentAssets_(inputs) }] : null; // [2026.10.19] 환지 증가분은 신고서에 별도 줄
     } else {
       // [2026.09.23 신규] 공동양도인 — 증여세 증여자와 같은 부류로, 양도인마다 완전히 독립적으로
       // calculateTransferTaxMultiJS를 호출한다(그래야 각자 기본공제 250만원·자기 세율구간이
@@ -15634,7 +15641,7 @@ function handleTaxCalcClick_(e){
           unpaidTaxAtDesignatedDueDate: numVal(seller.unpaidAtDesignated) || 0,
           isSelfElectronicFiling: !!seller.isSelfElectronicFiling
         };
-        return { seller: seller, result: calculateTransferTaxMultiJS(sellerAssets, filingParams), assets: sellerAssets };
+        return { seller: seller, result: calculateTransferTaxMultiJS(sellerAssets, filingParams), assets: trExpandReplotmentAssets_(sellerAssets) }; // [2026.10.19] 환지 증가분 별도 줄
       }).filter(Boolean);
       renderTransferResult(results);
       lastTransferResults_ = results.length ? results : null; // 전자신고파일 생성용(재검토78)

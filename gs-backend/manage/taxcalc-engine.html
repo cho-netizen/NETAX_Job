@@ -1112,6 +1112,13 @@
     };
     return [original, increase];
   }
+  // 화면의 신고서·전자신고(부표1)용 — 환지 증가분을 별도 자산 줄로 쓰기 위해 같은 분리 결과를 쓴다
+  // (세무사님 확인 2026.10.19: 추가부담금 납부는 새 취득, 청산금 수령은 새 양도 — 별도 거래).
+  // 분리 조건이 안 맞으면(오류) 원래 자산 그대로 한 줄 — 그 경우 세액 계산 자체가 오류로 멈춘다.
+  window.expandReplotmentIncreaseJS = function (t) {
+    const parts = expandReplotmentIncrease_(t);
+    return parts.error ? [t] : parts;
+  };
 
   // 단일 거래 양도소득세 — gs-backend toolCalculateTransferTax와 동일 로직(기본공제 1건 전액 적용).
   window.calculateTransferTaxSingleJS = function (t) {
