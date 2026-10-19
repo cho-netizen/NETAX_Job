@@ -17253,6 +17253,9 @@ function handleTaxCalcClick_(e){
       nonHeirBequestAmount: numVal(document.getElementById('ihNonHeirBequest').value) || 0,
       giftToHeirsWithin10Years: numVal(document.getElementById('ihGiftToHeirs').value) || 0,
       priorGiftedAmountIncludedInEstate: numVal(document.getElementById('ihPriorGiftedIncluded').value) || 0,
+      // [2026.10.19 세액 고침 A1] 채무·공과금이 총상속재산보다 크면 그 초과분(§13① 후단 "없는 것으로 본다") — 상속세과세가액 칸은 0 바닥을 친 값이라
+      //  엔진이 추정상속재산(§15)과 상계하고 장례비를 사전증여 가산 전에만 빼려면 잘린 초과분을 알아야 한다
+      debtExcessAmount: (function(){ const ge = numVal((document.getElementById('ihGrossEstateGeneral') || {}).value) || 0; const gross = ge > 0 ? ge : ihValuationAssetsGrossTotal_(); return gross > 0 ? Math.max(0, computeDebtTotal_(inheritanceDebtItems) + computeDuesTotal_(inheritanceDuesItems) - gross) : 0; })(),
       inheritanceDate: (document.getElementById('ihDeathDate') || {}).value || '', // [2026.10.19] 시점 경고용(계산엔 안 씀)
       spouseTaxableBaseOfPriorGift: numVal(document.getElementById('ihSpouseGiftBase').value) || 0,
       nonHeirPriorGiftAmountTotal: numVal(document.getElementById('ihNonHeirPriorGiftAmount').value) || 0,

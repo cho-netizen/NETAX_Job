@@ -510,7 +510,7 @@
     o.miss('㉗㉘ 조특법 §30의5·§30의6 가산액', '나눠 받는 칸 없음 — 전액 ㉖(§13)으로(전자신고와 같음)');
     o.set('㉙', fv.taxableEstate);
     o.check('⑨ = ⑦ 합', valTotal, rows.reduce(function (s, a) { return s + Math.round(n(a.value)); }, 0));
-    if (grossKnown && fv.priorGiftAdded !== null) o.check('㉙ = ⑫ − ⑬ − ⑰ − ㉑ + ㉕', fv.taxableEstate, gross + disp - nonTax - po - pt - (dues + fun + debt) + fv.priorGiftAdded);
+    if (grossKnown && fv.priorGiftAdded !== null) o.check('㉙ = max(0, ⑫ − ⑬ − ⑰ − ㉑) + ㉕', fv.taxableEstate, Math.max(0, gross + disp - nonTax - po - pt - (dues + fun + debt)) + fv.priorGiftAdded); // [2026.10.19] §13① 후단 — 사전증여 가산 전 0 바닥
     return o.result();
   };
 
