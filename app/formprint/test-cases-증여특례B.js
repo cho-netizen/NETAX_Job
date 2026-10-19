@@ -70,6 +70,7 @@ module.exports = function (E, H) {
   L.push({ name: '증여10호의4_개시사업연도', forms: [{ formKey: '증여10호의4', ctx: jtCtx1 }], ctx: jtCtx1 });
   L.push({ name: '증여10호의4부표1_주주표', forms: [{ formKey: '증여10호의4부표1', ctx: jtCtx1 }], ctx: jtCtx1 });
   L.push({ name: '증여10호의4부표2_출자고리', forms: [{ formKey: '증여10호의4부표2', ctx: jtCtx1 }], ctx: jtCtx1 });
+  L.push({ name: '증여10호의4부표3_개시', forms: [{ formKey: '증여10호의4부표3', ctx: jtCtx1 }], ctx: jtCtx1 });
   // ───── 일감떼어주기 — 정산사업연도(2년 경과) 신고: 직접만 50%, 누적 이익 36억, 법인세 상당액 누계 2억, 개시 산출세액 3억5천만 ─────
   //  손계산: 36억 × 50% − 2억 = 16억 → 40% − 1억6천만 = 4억8천만, ㉗ 3억5천만 빼면 1억3천만, 신고세액공제 3% 390만 → 납부 1억2,610만
   var jtIn2 = { phase: 'settlement', profit: 3600000000, shareRatio: 50, corporateTax: 200000000, corpTaxAfterCredit: 0, corpTaxableIncome: 0, months: 0, dividendDeduction: 0,
@@ -79,7 +80,7 @@ module.exports = function (E, H) {
   if (jt2.증여의제이익 !== 1600000000 || jt2.산출세액 !== 480000000 || jt2.납부세액 !== 126100000) throw new Error('일감떼어주기 정산 엔진 값이 손계산과 다름: ' + JSON.stringify(jt2));
   var jtCtx2 = { kind: 'jt', r: jt2, donee: DONEE, taxAgent: AGENT, in: jtIn2, segmentYears: [], 신고일: '2027-06-30',
     shareholders: [{ name: '김수증', relation: '본인(지배주주)', directRatio: 50, chain1Company: '', chain1Ratio: 0, chain2Company: '', chain2Ratio: 0, chain3Company: '', chain3Ratio: 0, chainQualified: true, indirectRaw: 0, indirect: 0 }] };
-  L.push({ name: '증여10호의4_정산사업연도', forms: [{ formKey: '증여10호의4', ctx: jtCtx2 }], ctx: jtCtx2 });
+  L.push({ name: '증여10호의4_정산사업연도', forms: [{ formKey: '증여10호의4', ctx: jtCtx2 }, { formKey: '증여10호의4부표3', ctx: jtCtx2 }], ctx: jtCtx2 });
 
   return L;
 };

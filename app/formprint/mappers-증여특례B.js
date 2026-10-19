@@ -525,6 +525,68 @@
   //  10호의3 부표2와 같은 모양·같은 작성방법(최대주주가 법인일 때 별지로) — 🧮 주주별 보유 내역(shareholdingRows_.jt, jtAttach2PrintPageHtml_와 같은 표)의 출자 고리를 같은 방법으로 옮김
   mappers['증여10호의4부표2'] = function (ctx) { return mappers['증여10호의3부표2'](ctx); };
 
+  // 법인세 납부세액 중 상당액 — 엔진 calculateBusinessOpportunityGiftTaxJS와 같은 식(직접 입력이 있으면 그 값, 없으면 시행령 §34의4④)
+  function jtCorpTax(I) {
+    if (n(I.corporateTax) > 0) return { v: n(I.corporateTax), how: '화면 직접 입력' };
+    var inc = n(I.corpTaxableIncome);
+    return { v: Math.round(n(I.corpTaxAfterCredit) * (inc > 0 ? Math.min(1, n(I.profit) / inc) : 0)), how: '⑲ × (이익 ÷ 각 사업연도소득) 자동계산(시행령 §34의4④)' };
+  }
+  var JT_DONEE_RATIO_NOTE = '⚠ ㉕·㉙ "수증자의 주식보유비율" 자리에 화면 주식보유비율을 적음 — 🧮 도구로 넣었으면 지배주주+친족 합계라 수증자 한 사람 비율과 다를 수 있음(엔진도 이 값으로 계산 — 보고서 계산 오류 의심)';
+  // ───────── 10호의4 부표3 — 수증자 등 및 과세가액 계산명세서(B) ─────────
+  //  값 출처: jt 입력칸 + lastBusinessOpportunityGiftResult_ + 🧮 부문별 매출·비용 내역(jtSegmentYears_)
+  //  지금 인쇄 jtAttach3PrintPageHtml_는 이 서식 칸이 아니라 연도별 부문 손익 요약을 찍었음(그 표는 부표4 B-1 성격)
+  //  개시 신고: 1년차 줄 + ㉑·㉗ / 정산 신고: 마.(㉘~㉜). 🧮 부문별 내역(부문 매출·원가·판관비를 직접 나눈 표)이 있으면 계산방법 "나-1"
+  mappers['증여10호의4부표3'] = function (ctx) {
+    var o = new Out(), r = ctx.r || {}, I = ctx.in || {}, initial = I.phase === 'initial';
+    o.miss('① 상호·② 사업자번호·③ 법인구분', '계산기에 없음');
+    var months = n(I.months) || 12;
+    if (initial) o.set('④', (has(I.fiscalYearEnd) ? fyText(I.fiscalYearEnd) + ' ' : '') + '(' + months + ')');
+    else o.miss('④ 사업연도(월수)', '계산기에 없음 — 정산 신고에는 개시사업연도 월수 입력이 없음');
+    var segs = (ctx.segmentYears || []), YR = ['1년차', '2년차', '3년차'];
+    var hasSeg = segs.some(function (y) { return n(y.segmentSales) || n(y.totalSales); });
+    o.miss('⑥⑦⑧⑨⑩⑪⑫ 나. 실제이익을 계산할 수 없는 경우', hasSeg ? '해당 없음 — 🧮 부문별 매출·비용 내역(부문 손익을 직접 나눔)이 있어 나-1 방법' : '계산기에 없음');
+    if (hasSeg) {
+      o.set('⑤', '나-1');
+      YR.forEach(function (y, i) {
+        var s = segs[i];
+        if (s && (n(s.segmentSales) || n(s.totalSales))) o.set('⑬@' + y, n(s.segmentSales) - sumSeg(s.costs) - sumSeg(s.expenses));
+        else o.miss('⑬ ' + y, '🧮 부문별 매출·비용 내역에 ' + y + ' 값 없음');
+      });
+      o.note('⑬ = 🧮 부문별 매출·비용 내역의 부문 매출액 − 부문 매출원가 − 부문 판관비(taxcalc.html jtSegmentYearOperatingProfit_와 같은 식)');
+    } else o.miss('⑤ 계산방법·⑬ 부문별영업이익', '계산기에 없음 — 🧮 부문별 매출·비용 내역이 비어 있어 나·나-1 어느 방법인지 알 수 없음');
+    o.miss('⑭ 세무조정(+)(−)', '계산기에 없음 — 화면 "사업기회로 인한 수혜법인 이익"은 세무조정 후 값을 바로 넣음');
+    var ct = jtCorpTax(I);
+    if (!r.과세대상여부) { o.miss('⑮⑯⑰⑱⑲⑳㉑㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜', '엔진: 과세대상 아님 — ' + (r.안내 || '계산 결과 없음')); return o.result(); }
+    o.miss('⑰ 법인세 산출세액·⑱ 공제·감면세액', '계산기에 없음 — 화면은 ⑲ 차감후세액만 받음');
+    var div = n(I.dividendDeduction), gift = n(r.증여의제이익), share = n(I.shareRatio);
+    if (initial) {
+      if (hasSeg) o.set('⑮@1년차', n(I.profit)); else o.miss('⑮ 세무조정 후 수혜법인의 이익', '나·나-1 어느 방법인지 알 수 없음 — 화면 이익 ' + n(I.profit) + '원은 본표 ⑲에');
+      if (n(I.corpTaxableIncome)) o.set('⑯@1년차', n(I.corpTaxableIncome)); else o.miss('⑯ 각 사업연도소득', '화면 입력 없음(수혜법인의 해당 사업연도 소득금액)');
+      if (n(I.corpTaxAfterCredit)) o.set('⑲@1년차', n(I.corpTaxAfterCredit)); else o.miss('⑲ 차감후세액', '화면 입력 없음(법인세 납부세액 중 상당액을 직접 넣음)');
+      o.set('⑳@1년차', ct.v);
+      o.note('⑳ = ' + ct.how);
+      if (!(n(I.corporateTax) > 0) && n(I.corpTaxableIncome)) o.check('⑳ = ⑲ × (⑮ ÷ ⑯) (1 넘으면 1)', ct.v, Math.round(n(I.corpTaxAfterCredit) * Math.min(1, n(I.profit) / n(I.corpTaxableIncome))));
+      o.miss('⑮⑯⑲⑳ 2년차·3년차 줄', '해당 없음 — 개시사업연도 신고(1년차만)');
+      var e21 = Math.round(Math.max(0, (n(I.profit) * share / 100 - ct.v) / months * 12) * 3);
+      o.set('㉑', e21);
+      o.check('㉗ = ㉑ − ㉖(엔진 증여의제이익)', gift, Math.max(0, e21 - div));
+      o.set('㉗', gift);
+      o.miss('㉘㉙㉚㉛㉜ 마. 실제정산 증여의제이익', '해당 없음 — 개시사업연도 신고');
+    } else {
+      o.miss('⑮⑯⑲⑳ 연도별 줄', '계산기에 없음 — 정산 신고 화면은 개시~정산 누적 합계(이익·법인세 상당액)만 받음');
+      o.miss('㉑ 3년(추정) 정산 증여의제이익·㉗ 차감 증여의제이익', '해당 없음 — 정산 신고(개시 신고 때 적은 값)');
+      o.set('㉘', n(I.profit)).set('㉙', r4(share)).set('㉚', ct.v);
+      var e31 = Math.round(n(I.profit) * share / 100 - ct.v);
+      o.set('㉛', e31).set('㉜', gift);
+      o.check('㉜ = ㉛ − ㉖(엔진 증여의제이익)', gift, Math.max(0, e31 - div));
+      o.note('㉚ = ' + ct.how + ' — 개시~정산 누계');
+    }
+    if (div) { o.set('㉖', div).set('㉕', r4(share)).miss('㉓ 배당소득·㉔ 배당가능이익', '계산기에 없음 — 화면에 공제대상금액을 바로 넣음'); }
+    else o.miss('㉓㉔㉕㉖ 라. 배당소득의 공제', '해당 없음 — 배당소득공제 0(화면 입력 없음)');
+    o.note(JT_DONEE_RATIO_NOTE);
+    return o.result();
+  };
+
   // ───────── 세액인쇄 화면용 ctx — 화면 전역값에서 모음(브라우저) ─────────
   /* global lastRelatedPartyGiftResult_, lastBusinessOpportunityGiftResult_, giftDonees, shareholdingRows_, relatedPartyRatioRows_,
      jmRelatedPartyTotalSales_, jmRelatedPartyExcludedSales_, jtSegmentYears_, shareholdingIndirectRatio_, shareholdingCountedIndirectRatio_ */
@@ -572,6 +634,7 @@
     '증여10호의3부표3': function () { var r = jmR(); return !!(r && r.과세대상여부 && chainGroups(shRows('jm')).a.length); },
     '증여10호의4': function () { return !!jtR(); },
     '증여10호의4부표1': function () { var r = jtR(); return !!(r && r.과세대상여부); },
+    '증여10호의4부표3': function () { var r = jtR(); return !!(r && r.과세대상여부); },
     '증여10호의4부표2': function () { var r = jtR(); return !!(r && r.과세대상여부 && shRows('jt').some(function (x) { return has(x.chain1Company) || n(x.chain1Ratio) > 0; })); },
     '증여10호의3부표5': function () { var r = jmR(); return !!(r && r.과세대상여부); },
     '증여10호의3부표4': function () { var r = jmR(); return !!(r && r.과세대상여부 && (typeof relatedPartyRatioRows_ !== 'undefined' ? relatedPartyRatioRows_ : []).some(function (x) { return has(x.label) || n(x.sales) > 0; })); }
