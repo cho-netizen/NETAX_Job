@@ -486,7 +486,7 @@ function envEnsureTrigger_() {
 }
 
 // ---------- [2026.10.19] 통합 개정 감시 — 법령·서식·조견표 (세무사님 "개정감시 기능은 법령,서식,조견표를 모두 관리해야 한다") ----------
-// 감시 목록은 드라이브 0 NETAX/업무관리자/법령정비본/감시/감시목록_{법령,서식,조견표}.json(주인: 법령·서식·조견표 세션, 서버 용량 때문에 코드 밖).
+// 감시 목록은 드라이브 0 NETAX/업무관리자/법령/_감시/감시목록_{법령,서식,조견표}.json(주인: 법령·서식·조견표 세션, 서버 용량 때문에 코드 밖).
 // 항목 {id, 종류, 이름, 확인:{방법, 주소, 관련법령, 별표번호, 찾을것}, 주기, 기준값, 기준일, 영향[], 담당}. 감시가 본 값은 _환경감시상태.json에.
 // 자동으로 고치지 않고 갱신할 것 목록과 차이만 알린다(세무사님 확인 뒤 갱신). 설계: netax-inventory/maps/설계_법령원본.md 4절
 function envLawDbDir_(n) {
@@ -566,7 +566,7 @@ function envWatchRefs_(state, deadline, lawItems) {
 }
 // 법령 그림 산식 Vision 판독(세무사님 "법령의 이미지 부분은 시간나는 대로 꾸준이 텍스트화해야 한다 … 구글비젼으로") — 밤마다 하루 LAWVIS_DAY(기본 20)개,
 // 월 쪽수는 일괄 글자인식과 같은 OCRB_VIS_<월>·상한을 함께 쓴다. 여기서는 판독 글·단어 위치만 쌓고(토큰 0), 산식 표기로 다듬기·검산(세무사님 타이핑·
-// 법제처 글자상자·서식 칸·엔진과 맞대기)은 PC 도구와 Claude가 한다. 대상: 법령정비본/산식보정/그림목록.json(tools/law-build.js), 결과: Vision판독.json
+// 법제처 글자상자·서식 칸·엔진과 맞대기)은 PC 도구와 Claude가 한다. 대상: 법령/_산식보정/그림목록.json(tools/law-build.js), 결과: Vision판독.json
 function lawVisionRun_(deadline) {
   if (!ocrbVisOn_()) return { 상태: 'Vision 꺼짐(VISION_API_KEY 없음 또는 OCRB_VIS_OFF)' };
   var list = envDbJson_('산식보정', '그림목록.json', null), items = list && (list.항목 || list);

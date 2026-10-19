@@ -117,7 +117,7 @@ if (t201 && t203) {
   console.log('엔진: 기본세율 ' + br.length + '개 시기, 장특공 표1 ' + lt1.length + '·표2(2020 이전) ' + lt2.length + '개 시기, 고가주택 기준 주택 ' + hv.house.length + '·입주권 ' + hv.right.length + '개 시기, 특례세율(2부-02) ' + (sr.house.length + sr.other.length + sr.presale.length + sr.multi.length + sr.nonbiz.length) + '행 → taxcalc-engine.html');
 }
 // [2026.10.19 B-5] AI 지휘 form_needs 도구용 서식 색인 — 서버 코드에 넣지 않고(10MB 한도) 드라이브 자료 파일로 둔다.
-//  J:\내 드라이브\0 NETAX\업무관리자\세금계산\법정서식원본(법제처)\_서식색인.json (구글 드라이브 동기화로 올라감 → 서버 formNeeds_가 DriveApp으로 읽고 6시간 캐시).
+//  J:\내 드라이브\0 NETAX\업무관리자\서식\법제처 원본(PDF)\_서식색인.json (구글 드라이브 동기화로 올라감 → 서버 formNeeds_가 DriveApp으로 읽고 6시간 캐시).
 //  칸마다 종류: input(계산기 입력 칸 — 필드 이름을 읽을 수 있으면 목표 calc:a0.필드/calc:c0.필드), result(엔진 결과), screen(화면에서만 넣는 칸), none(계산기에 없음)
 {
   const SEMOK = { 양도: 'transfer', 상속: 'inheritance', 증여: 'gift', 공통: 'common' };
@@ -144,7 +144,7 @@ if (t201 && t203) {
     }) };
   });
   const txt = JSON.stringify(idx);
-  const DRIVE = 'J:/내 드라이브/0 NETAX/업무관리자/서식/법제처 원본(PDF)'; // [2026.10.19] 폴더 정리(옛 위치 세금계산/법정서식원본(법제처))
+  const DRIVE = 'J:/내 드라이브/0 NETAX/업무관리자/서식/법제처 원본(PDF)'; // [2026.10.19] 폴더 정리(옛 위치 세금계산/법제처 원본(PDF))
   // [2026.10.19] --no-drive: 드라이브 색인은 건드리지 않음(다른 세션 가지의 새 서식 색인을 옛 것으로 덮지 않게 — 조견표만 고칠 때)
   if (process.argv.indexOf('--no-drive') !== -1) console.log('서식 색인: --no-drive라 드라이브에 안 씀(' + Buffer.byteLength(txt) + '바이트)');
   else if (fs.existsSync(DRIVE)) { fs.writeFileSync(path.join(DRIVE, '_서식색인.json'), txt); console.log('서식 색인 → 드라이브 _서식색인.json ' + Buffer.byteLength(txt) + '바이트(서식 ' + Object.keys(idx.서식).length + '장)'); }
