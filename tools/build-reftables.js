@@ -112,6 +112,14 @@ if (t201 && t203) {
     if (!/DAILY_FIXED_RATE_HISTORY_ = \[\{ from: '1900-01-01', rate: 0\.0003 \}, \{ from: '2019-02-12', rate: 0\.00025 \}, \{ from: '2022-02-15', rate: 0\.00022 \}\]/.test(e) || starts !== '2019-02-12,2022-02-15')
       throw new Error('2부-16 납부지연 이자율 행과 엔진 DAILY_FIXED_RATE_HISTORY_가 다릅니다 — 확인 필요');
   }
+  // [2026.10.19 조견표 2부-19] 국세환급가산금 이율 — 엔진 REFUND_INTEREST_RATE_HISTORY의 (시작일, 율)이 표 행과 같은지 확인(엔진의 2026-01-02 같은 율 줄은 무시)
+  if (tb('2부-19')) {
+    const m = e.match(/const REFUND_INTEREST_RATE_HISTORY = \[([\s\S]*?)\];/);
+    const eng = m ? (m[1].match(/from: '(\d{4}-\d{2}-\d{2})', rate: ([0-9.]+)/g) || []).map((x) => { const q = x.match(/'(.+)', rate: ([0-9.]+)/); return q[1] + '=' + Number(q[2]); }) : [];
+    const tbl = tb('2부-19').행.map((r) => r.시작 + '=' + Number(String(r.값).match(/1천분의 (\d+)/)[1]) / 1000);
+    const engKeep = eng.filter((x, i) => i === 0 || x.split('=')[1] !== eng[i - 1].split('=')[1]);
+    if (JSON.stringify(engKeep) !== JSON.stringify(tbl)) throw new Error('2부-19 국세환급가산금 이율 행과 엔진 REFUND_INTEREST_RATE_HISTORY가 다릅니다 — 엔진: ' + engKeep.join(', '));
+  }
   e = e.slice(0, i2) + EB + nl + '  const REF_TR_BRACKETS_ = ' + js(br) + ';' + nl + '  const REF_LT_ = { 표1: ' + js(lt1) + ', 표2: ' + js(lt2) + ' };' + nl + '  const REF_HV_ = ' + js(hv) + ';' + nl + '  const REF_SR_ = ' + js(sr) + ';' + nl + '  const REF_GI_ = ' + js(gi) + ';' + nl + '  ' + e.slice(k2);
   fs.writeFileSync(ENGINE, e);
   console.log('엔진: 기본세율 ' + br.length + '개 시기, 장특공 표1 ' + lt1.length + '·표2(2020 이전) ' + lt2.length + '개 시기, 고가주택 기준 주택 ' + hv.house.length + '·입주권 ' + hv.right.length + '개 시기, 특례세율(2부-02) ' + (sr.house.length + sr.other.length + sr.presale.length + sr.multi.length + sr.nonbiz.length) + '행 → taxcalc-engine.html');
