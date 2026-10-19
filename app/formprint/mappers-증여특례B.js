@@ -77,13 +77,13 @@
       var top = rp.slice().sort(function (a, b) { return n(b.sales) - n(a.sales); })[0];
       o.set('⑥', (top.label || '(이름 없음)') + (rp.length > 1 ? ' 외 ' + (rp.length - 1) : ''));
       o.note('⑥ = 🧮 특수관계법인 매출 합산 표에서 매출액이 가장 큰 법인을 대표법인으로 "대표법인 외 ○"(작성방법 2)');
-    } else o.miss('⑥ 증여자(특수관계법인) 법인명', '계산기에 없음 — 🧮 특수관계법인 매출 합산 표가 비어 있음');
+    } else o.miss('⑥ 증여자(특수관계법인) 법인명', ctx.kind === 'jt' ? '계산기에 없음 — 일감떼어주기 탭에 사업기회 제공 법인 칸이 없음' : '계산기에 없음 — 🧮 특수관계법인 매출 합산 표가 비어 있음');
     o.miss('⑦ 증여자 사업자등록번호', '계산기에 없음').miss('⑧ 증여자 소재지·전화번호', '계산기에 없음');
     o.miss('⑨ 수혜법인 법인명', '계산기에 없음').miss('⑩ 수혜법인 사업자등록번호', '계산기에 없음');
     if (SIZE[I.companySize]) {
       o.set('⑪', SIZE[I.companySize]);
       if (I.companySize === 'general') o.note('⑪ 법인구분: 화면 기업규모 "일반" — 상호출자제한기업집단이면 "상호"에 표시해야 함(계산기에 그 구분 없음, 계산은 일반과 같음)');
-    } else o.miss('⑪ 법인구분', '화면 입력 없음(기업규모)');
+    } else o.miss('⑪ 법인구분', ctx.kind === 'jt' ? '계산기에 없음 — 일감떼어주기 탭에 기업규모 칸이 없음' : '화면 입력 없음(기업규모)');
     if (has(ta.name)) {
       o.set('⑫', ta.name);
       if (has(ta.bizNo)) o.set('⑬', ta.bizNo); else o.miss('⑬ 세무대리인 사업자등록번호', '화면 입력 없음');
@@ -413,6 +413,62 @@
     return o.result();
   };
 
+  // ───────── 일감떼어주기(법 §45의4) 공용 ─────────
+  // 지배주주등(🧮 도구에 넣은 지배주주·친족 전부)의 직접·간접 합 — 도구 합계(직접 + 간접, 일감떼어주기는 고리를 모두 곱해 더함)가 화면 주식보유비율과 같을 때만
+  function jtSplit(ctx) {
+    var I = ctx.in || {}, sh = ctx.shareholders || [];
+    if (!sh.length) return { why: '🧮 주주별 직접·간접보유 내역이 비어 있음' };
+    var d = sh.reduce(function (a, s) { return a + n(s.directRatio); }, 0), i = sh.reduce(function (a, s) { return a + n(s.indirectRaw); }, 0);
+    if (Math.abs(r4(d + i) - r4(n(I.shareRatio))) > 0.0001) return { why: '주주별 보유 내역의 합(' + r4(d + i) + '%)이 화면 주식보유비율(' + n(I.shareRatio) + '%)과 다름' };
+    return { direct: d, indirect: i };
+  }
+  var JT_GROUP_NOTE = '⚠ 계산기는 화면 주식보유비율(🧮 도구 "지배주주+친족 합계")로 지배주주등 전체의 증여의제이익을 한 번에 계산함 — 서식은 수증자별로 작성(작성방법 ※·13: "신고하는 수증자 1인에 대한 비율과 금액"). 수증자가 여럿이면 금액을 나눠야 하는지 확인할 것(보고서 판단 대기)';
+
+  // ───────── 상증 별지 제10호의4서식 본표 — 사업기회 제공 증여의제이익(법 §45의4) ─────────
+  //  값 출처: lastBusinessOpportunityGiftResult_ + jt 입력칸(지금 인쇄 jtPrintFormPageHtml_와 같은 값)
+  //  ⑰ 증여일 = 개시사업연도 종료일(작성방법 8, 법 §45의4①) — 화면 "해당 사업연도 종료일"은 개시 신고일 때만 개시사업연도 종료일
+  mappers['증여10호의4'] = function (ctx) {
+    var o = new Out(), r = ctx.r || {}, I = ctx.in || {};
+    filing(o, ctx);
+    head(o, ctx);
+    var initial = I.phase === 'initial';
+    if (initial && has(I.fiscalYearEnd)) o.set('⑰', I.fiscalYearEnd);
+    else if (initial) o.miss('⑰ 증여일', '화면 입력 없음(해당 사업연도 종료일)');
+    else o.miss('⑰ 증여일(개시사업연도 종료일)', '계산기에 없음 — 정산 신고 화면의 "해당 사업연도 종료일"은 정산사업연도 종료일');
+    if (I.phase === 'initial' || I.phase === 'settlement') o.set('⑱', initial ? '개시사업연도' : '2년경과연도'); else o.miss('⑱ 사업연도 구분', '화면 입력 없음(신고 단계)');
+    if (!r.과세대상여부) {
+      o.miss('⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞ 증여재산가액·세액', '엔진: 과세대상 아님 — ' + (r.안내 || '계산 결과 없음'));
+      sign(o, ctx);
+      return o.result();
+    }
+    o.set('⑲', n(I.profit));
+    var sp = jtSplit(ctx), gift = n(r.증여의제이익);
+    if (sp.why) {
+      o.miss('⑳ 주식보유비율 직접·간접 줄', '직접·간접 나눈 값이 계산기에 없음 — ' + sp.why + ' (화면 주식보유비율 ' + n(I.shareRatio) + '%는 합)');
+      o.miss('㉒ 증여재산가액 직접·간접 줄', '직접·간접 나눈 값이 계산기에 없음 — 엔진 증여의제이익 ' + gift + '원은 ㉓에');
+    } else {
+      o.set('⑳@직접', r4(sp.direct));
+      if (sp.indirect) o.set('⑳@간접', r4(sp.indirect)); else o.miss('⑳ 간접 줄', '해당 없음 — 간접보유비율 0%');
+      if (!sp.indirect) { o.set('㉒@직접', gift).miss('㉒ 간접 줄', '해당 없음 — 간접보유비율 0%'); }
+      else o.miss('㉒ 증여재산가액 직접·간접 줄', '계산기에 없음 — 엔진은 직접+간접 합친 비율로 법인세 상당액·배당공제까지 한 번에 계산(나눌 식 없음). 합계 ' + gift + '원은 ㉓에');
+    }
+    o.set('㉑', n(I.dividendDeduction));
+    if (n(I.dividendDeduction)) o.note('㉑ 배당소득공제 = 화면 입력 금액(시행령 §34의4⑤·⑥ 식은 계산기 밖에서 계산)');
+    o.note(JT_GROUP_NOTE);
+    var base = n(r.과세표준), calc = n(r.산출세액), prior = n(r.개시사업연도_산출세액), credit = n(r.신고세액공제),
+      pen = n(r.무신고가산세) + n(r.과소신고가산세), late = n(r.납부지연가산세), pay = n(r.납부세액), refund = n(r.환급세액);
+    o.set('㉓', gift).set('㉔', base).set('㉕', H.giftInheritRate(base)).set('㉖', calc).set('㉗', prior).set('㉘', credit).set('㉙', pen).set('㉚', late).set('㉛', pay);
+    o.check('㉖ = ㉔ × ㉕ − 누진공제', calc, Math.floor(progressive(base)));
+    if (calc >= prior) o.check('㉛ = ㉖ − ㉗ − ㉘ + ㉙ + ㉚', pay, calc - prior - credit + pen + late);
+    else o.note('㉖ < ㉗ — 환급받을 세액 ' + refund + '원(법 §45의4③ 단서, 개시 때 낸 세액 한도). 서식에 환급 칸이 없어 ㉛은 0');
+    if (initial) o.note('개시사업연도 신고 — ⑲ = 개시사업연도 이익, ㉒ = [{(⑲ × ⑳) − 법인세 상당액(' + n(I.corporateTax || 0) + '원 또는 자동계산)} ÷ 월수(' + (n(I.months) || 12) + ') × 12] × 3 − ㉑ (법 §45의4①)');
+    o.miss('㉜ 연부연납·㉝ 분납(금액·납부 및 신청일자)', '계산기에 없음(일감떼어주기 탭에 연부연납·분납 계산 없음)');
+    o.set('㉞@금액', pay).miss('㉞ 납부 및 신청일자', '계산기에 없음');
+    o.note('㉞ 신고납부 = ㉛(연부연납·분납 없음으로 봄 — 신청하면 ㉞ = ㉛ − ㉜ − ㉝로 고칠 것)');
+    sign(o, ctx);
+    return o.result();
+  };
+
   // ───────── 세액인쇄 화면용 ctx — 화면 전역값에서 모음(브라우저) ─────────
   /* global lastRelatedPartyGiftResult_, lastBusinessOpportunityGiftResult_, giftDonees, shareholdingRows_, relatedPartyRatioRows_,
      jmRelatedPartyTotalSales_, jmRelatedPartyExcludedSales_, jtSegmentYears_, shareholdingIndirectRatio_, shareholdingCountedIndirectRatio_ */
@@ -458,6 +514,7 @@
     '증여10호의3부표1': function () { var r = jmR(); return !!(r && r.과세대상여부); },
     '증여10호의3부표2': function () { var r = jmR(); return !!(r && r.과세대상여부 && shRows('jm').some(function (x) { return has(x.chain1Company) || n(x.chain1Ratio) > 0; })); },
     '증여10호의3부표3': function () { var r = jmR(); return !!(r && r.과세대상여부 && chainGroups(shRows('jm')).a.length); },
+    '증여10호의4': function () { return !!jtR(); },
     '증여10호의3부표5': function () { var r = jmR(); return !!(r && r.과세대상여부); },
     '증여10호의3부표4': function () { var r = jmR(); return !!(r && r.과세대상여부 && (typeof relatedPartyRatioRows_ !== 'undefined' ? relatedPartyRatioRows_ : []).some(function (x) { return has(x.label) || n(x.sales) > 0; })); }
   };

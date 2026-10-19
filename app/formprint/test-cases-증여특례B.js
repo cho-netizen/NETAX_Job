@@ -51,5 +51,30 @@ module.exports = function (E, H) {
     shareholders: [], relatedParties: [], 신고일: '2026-03-31' };
   L.push({ name: '증여10호의3_과세대상아님', forms: [{ formKey: '증여10호의3', ctx: jmCtx3 }], ctx: jmCtx3 });
 
+  // ───── 일감떼어주기(법 §45의4) — 개시사업연도 신고 ─────
+  //  이익 10억, 지배주주등 주식보유비율 50%(김지배 직접 40 + 김수증 간접 10), 법인세 산출세액(공제후) 1.5억·각사업연도소득 20억 → 상당액 = 1.5억 × 10억/20억 = 7,500만
+  //  손계산: [(10억 × 50% − 7,500만) ÷ 12 × 12] × 3 = 12억7,500만 → 40% − 1억6천만 = 3억5천만, 신고세액공제 1,050만, 납부 3억3,950만
+  var jtSH = [
+    { name: '김지배', relation: '본인(지배주주)', directRatio: 40, chain1Company: '', chain1Ratio: 0, chain2Company: '', chain2Ratio: 0, chain3Company: '', chain3Ratio: 0, chainQualified: true, indirectRaw: 0, indirect: 0 },
+    { name: '김수증', relation: '자녀', directRatio: 0, chain1Company: '□□지주(견본)', chain1Ratio: 40, chain2Company: '', chain2Ratio: 0, chain3Company: '□□지주(견본)', chain3Ratio: 25, chainQualified: true, indirectRaw: 10, indirect: 10 }
+  ];
+  var jtIn1 = { phase: 'initial', profit: 1000000000, shareRatio: 50, corporateTax: 0, corpTaxAfterCredit: 150000000, corpTaxableIncome: 2000000000, months: 12, dividendDeduction: 0,
+    initialTax: 0, initialPaidTax: 0, fiscalYearEnd: '2024-12-31', filingStatus: 'ontime' };
+  var jt1 = E.calculateBusinessOpportunityGiftTaxJS({ phase: 'initial', profitFromOpportunity: 1000000000, shareholderOwnershipRatio: 50, corporateTaxAfterCredit: 150000000,
+    corporateTaxableIncome: 2000000000, monthsInInitialYear: 12, filingStatus: 'ontime', reportedInTime: true });
+  if (jt1.증여의제이익 !== 1275000000 || jt1.산출세액 !== 350000000 || jt1.납부세액 !== 339500000) throw new Error('일감떼어주기 개시 엔진 값이 손계산과 다름: ' + JSON.stringify(jt1));
+  var jtCtx1 = { kind: 'jt', r: jt1, donee: DONEE, taxAgent: AGENT, in: jtIn1, shareholders: jtSH, segmentYears: [], 신고일: '2025-06-30' };
+  L.push({ name: '증여10호의4_개시사업연도', forms: [{ formKey: '증여10호의4', ctx: jtCtx1 }], ctx: jtCtx1 });
+  // ───── 일감떼어주기 — 정산사업연도(2년 경과) 신고: 직접만 50%, 누적 이익 36억, 법인세 상당액 누계 2억, 개시 산출세액 3억5천만 ─────
+  //  손계산: 36억 × 50% − 2억 = 16억 → 40% − 1억6천만 = 4억8천만, ㉗ 3억5천만 빼면 1억3천만, 신고세액공제 3% 390만 → 납부 1억2,610만
+  var jtIn2 = { phase: 'settlement', profit: 3600000000, shareRatio: 50, corporateTax: 200000000, corpTaxAfterCredit: 0, corpTaxableIncome: 0, months: 0, dividendDeduction: 0,
+    initialTax: 350000000, initialPaidTax: 339500000, fiscalYearEnd: '2026-12-31', filingStatus: 'ontime' };
+  var jt2 = E.calculateBusinessOpportunityGiftTaxJS({ phase: 'settlement', profitFromOpportunity: 3600000000, shareholderOwnershipRatio: 50, corporateTaxPortion: 200000000,
+    initialPhaseCalculatedTax: 350000000, initialPhasePaidTax: 339500000, filingStatus: 'ontime', reportedInTime: true });
+  if (jt2.증여의제이익 !== 1600000000 || jt2.산출세액 !== 480000000 || jt2.납부세액 !== 126100000) throw new Error('일감떼어주기 정산 엔진 값이 손계산과 다름: ' + JSON.stringify(jt2));
+  var jtCtx2 = { kind: 'jt', r: jt2, donee: DONEE, taxAgent: AGENT, in: jtIn2, segmentYears: [], 신고일: '2027-06-30',
+    shareholders: [{ name: '김수증', relation: '본인(지배주주)', directRatio: 50, chain1Company: '', chain1Ratio: 0, chain2Company: '', chain2Ratio: 0, chain3Company: '', chain3Ratio: 0, chainQualified: true, indirectRaw: 0, indirect: 0 }] };
+  L.push({ name: '증여10호의4_정산사업연도', forms: [{ formKey: '증여10호의4', ctx: jtCtx2 }], ctx: jtCtx2 });
+
   return L;
 };
