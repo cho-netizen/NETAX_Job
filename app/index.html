@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 21:20 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 21:24 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -14267,9 +14267,17 @@
     // [2026.10.20 세액 고침] 소득세법 §103② — 기본공제(연 250만원, 미등기 제외)는 감면소득 외 양도소득금액에서 먼저, 그 안에서는 그 과세기간에
     //  먼저 양도한 자산부터 뺀다 — 장기(누진)·단기 묶음을 가리지 않는다. 예전엔 장기 자산이 있으면 늘 장기 묶음에서 빼, 단기 자산을 먼저 판 해는
     //  단기세율(40~70%) 쪽 과세표준이 250만원 크게 잡혀 세액이 많았다. basicOf_[idx]가 자산별 몫(중과 가산액·단기 과세표준·§90① C에 씀).
+    // [2026.10.20 §107② — 회장 지시] 같은 해 누진세율(기본세율, §104①1호) 자산을 2회 이상 예정신고하면서 이미 신고한 양도소득금액과 합산할 때:
+    //  예정신고 산출세액 = [(A 이미 신고한 소득금액 + B 이번 소득금액 − C 기본공제) × 기본세율] − E 이미 신고한 예정신고 산출세액(소득세법 §107②1호, 서식 84호 ⑤·⑰).
+    //  filingParams.priorFiledIncomeAmount(A), priorFiledBasicDeduction(그때 쓴 기본공제, 비우면 min(250만, A)), priorFiledTaxAmount(E). A는 누진 묶음의 일반(기본세율) 몫에
+    //  과세표준(A − 그때 쓴 기본공제)으로 더하고, E는 산출세액 뒤에 뺀다(⑰ — 가산세·지방소득세는 뺀 뒤 금액 기준). 비사업용 토지(8호)·중과(9호 등) 자산의 2회째 합산은 아직 입력 칸 없음.
+    const priorInc107_ = Math.max(0, Number(filingParams.priorFiledIncomeAmount) || 0);
+    const priorBasic107_ = priorInc107_ > 0 ? Math.min(priorInc107_, 2500000, (filingParams.priorFiledBasicDeduction !== undefined && filingParams.priorFiledBasicDeduction !== '' && filingParams.priorFiledBasicDeduction !== null) ? Math.max(0, Number(filingParams.priorFiledBasicDeduction) || 0) : 2500000) : 0;
+    const priorBase107_ = Math.max(0, priorInc107_ - priorBasic107_);
+    const priorTax107_ = priorInc107_ > 0 ? Math.max(0, Number(filingParams.priorFiledTaxAmount) || 0) : 0;
     const basicOf_ = {};
     (function () {
-      let left = (pooled.length || shortTerm.length) ? 2500000 : 0;
+      let left = (pooled.length || shortTerm.length) ? Math.max(0, 2500000 - priorBasic107_) : 0; // [§107②] 먼저 양도해 이미 신고한 자산이 쓴 기본공제는 뺀 나머지(§103②)
       const redRatio_ = {};
       red90Assets_.forEach(function (a) { if (a.reds && a.reds.length) redRatio_[a.idx] = a.reducedRatio != null ? Math.max(0, Math.min(1, Number(a.reducedRatio) || 0)) : 1; });
       // [2026.10.20 세액 고침 — 양도 감사] §103② 기본공제는 양도차손 통산 뒤 양도소득금액에서 뺀다 — 누진(합산) 묶음 자산도 그 묶음 순소득을 이익 자산에 금액 비율로
@@ -14286,7 +14294,7 @@
     const basicTotal_ = pooled.concat(shortTerm).reduce(function (t, c) { return t + (basicOf_[c.idx] || 0); }, 0);
     const poolIncomeSum = pooled.reduce(function (s, c) { return s + c.incomeAmount; }, 0);
     const basicDeductionUsedInPool = basicPool_ > 0;
-    const poolTaxBase = Math.max(0, poolTaxBaseIncome_ - basicPool_);
+    const poolTaxBase = Math.max(0, poolTaxBaseIncome_ - basicPool_) + priorBase107_; // [§107②] 이미 신고한 기본세율 자산 과세표준 포함(84호 ⑧ = ④ + ⑤ − ⑦)
     // 합산은 같은 과세기간(한 해) 양도 — 그 해의 표(이번 계산 거래 중 가장 늦은 양도일)
     const poolDate_ = cores.reduce(function (m, c) { const d = String((c.raw && c.raw.transferDate) || ''); return d > m ? d : m; }, '');
     const surOf_ = {}, rateOf_ = {};
@@ -14320,8 +14328,9 @@
       const pp = pooled.filter(function (c) { return c.incomeAmount > 0; });
       const split_ = !!yr_ && yr_ >= '2015-01-01';
       const keyOf_ = function (c) { const r = rateOf_[c.idx] || { rate: 0, kind: 'g' }; if (!split_) return 'all'; if (yr_ < '2019-01-01' && pp.length > 1) return 'a' + c.idx; return r.kind + Math.round(r.rate * 100); };
-      let incL = Math.max(0, poolTaxBaseIncome_), bdL = poolTaxBaseIncome_ - poolTaxBase;
+      let incL = Math.max(0, poolTaxBaseIncome_), bdL = poolTaxBaseIncome_ - (poolTaxBase - priorBase107_);
       const groups_ = {}, order_ = [];
+      if (priorBase107_ > 0) { const k0 = split_ ? 'g0' : 'all'; groups_[k0] = { base: priorBase107_, items: [{ c: { idx: -1 }, base: priorBase107_ }] }; order_.push(k0); } // [§107②] 이미 신고한 몫(가짜 자산 -1)
       pp.forEach(function (c, i) {
         const last = i === pp.length - 1;
         const inc = last ? incL : Math.round(c.incomeAmount * lf_), bd = last ? bdL : Math.min(Math.round(basicOf_[c.idx] || 0), inc, bdL);
@@ -14501,7 +14510,7 @@
     const rateRows_ = [];
     (function () {
       const pp = pooled.filter(function (c) { return c.incomeAmount > 0; });
-      let incL = Math.max(0, poolTaxBaseIncome_), bdL = poolTaxBaseIncome_ - poolTaxBase, taxL = poolBaseTax;
+      let incL = Math.max(0, poolTaxBaseIncome_), bdL = poolTaxBaseIncome_ - (poolTaxBase - priorBase107_), taxL = poolBaseTax - (progOf_[-1] || 0); // [§107②] 이미 신고한 몫 빼고 자산에
       pp.forEach(function (c, i) {
         const last = i === pp.length - 1;
         const inc = last ? incL : Math.round(c.incomeAmount * lossFactor90_), bd = last ? bdL : Math.min(Math.round(basicOf_[c.idx] || 0), inc, bdL);
@@ -14594,7 +14603,7 @@
     const pensionAccountCreditTotal = Math.min(pensionAccountCreditRaw, Math.max(0, totalCalculatedTax));
     const eFilingCredit = filingParams.isSelfElectronicFiling ? Math.min(20000, Math.max(0, totalCalculatedTax - pensionAccountCreditTotal)) : 0;
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(filingParams.filingStatus) !== -1 ? filingParams.filingStatus : 'ontime';
-    const penalties = giftFilingPenalties(totalCalculatedTax, filingStatus, !!filingParams.isFraudulent, filingParams.underreportedTaxAmount, filingParams.unpaidDays, Number(filingParams.unpaidTaxForLatePenalty), !!filingParams.isOffshoreTransaction, lateCtx_(filingParams), Number(filingParams.unpaidTaxAtDesignatedDueDate), filingParams.fraudulentUnderreportedTaxAmount, filingParams.unpaidStartDate || unpaidStartAt_('transfer', poolDate_));
+    const penalties = giftFilingPenalties(Math.max(0, totalCalculatedTax - priorTax107_), filingStatus, !!filingParams.isFraudulent, filingParams.underreportedTaxAmount, filingParams.unpaidDays, Number(filingParams.unpaidTaxForLatePenalty), !!filingParams.isOffshoreTransaction, lateCtx_(filingParams), Number(filingParams.unpaidTaxAtDesignatedDueDate), filingParams.fraudulentUnderreportedTaxAmount, filingParams.unpaidStartDate || unpaidStartAt_('transfer', poolDate_));
     // [2026.10.20 옛 소득세법 §115] 2006.12.31. 이전 양도분 신고불성실가산세 — 합산 산출세액 기준
     { const inc115_ = cores.reduce(function (s, c) { return s + (c && !c.exempt && !c.error ? Math.max(0, Number(c.incomeAmount) || 0) : 0); }, 0);
       const old115m_ = oldTransferFilingPenalty_(poolDate_ || (transactions[0] || {}).transferDate, filingStatus, totalCalculatedTax, filingParams.underreportedTaxAmount, filingParams.preliminaryTaxPaid,
@@ -14712,8 +14721,8 @@
         합계: pn_.unreportedPenalty + pn_.underreportedPenalty + late_,
         안내: filingStatus === 'underreported' && !(ntUnderIn_ > 0) ? '과소신고한 농특세를 넣지 않아 본세 과소 비율로 추정(' + ntUnder_.toLocaleString('ko-KR') + '원)' : undefined };
     }
-    const localIncomeTax = Math.round(totalCalculatedTax * 0.1);
-    const grandTotal = Math.max(0, totalCalculatedTax - pensionAccountCreditTotal - eFilingCredit + conversionValuePenaltyTotal
+    const localIncomeTax = Math.round(Math.max(0, totalCalculatedTax - priorTax107_) * 0.1); // [§107②] 이미 신고한 세액(⑰)을 뺀 몫에
+    const grandTotal = Math.max(0, totalCalculatedTax - priorTax107_ - pensionAccountCreditTotal - eFilingCredit + conversionValuePenaltyTotal
       + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax + pensionAccountClawbackTotal);
 
     return {
@@ -14733,6 +14742,7 @@
       환산취득가액가산세_합계: conversionValuePenaltyTotal,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       신고불성실가산세_옛소득세법115: typeof penalties.옛소득세법115 === 'string' ? penalties.옛소득세법115 : undefined, // [2026.10.20] 2006년 이전 양도분 산식
+      기신고_양도소득금액_107조: priorInc107_ || undefined, 기신고_기본공제_107조: priorInc107_ ? priorBasic107_ : undefined, 기신고세액_107조: priorInc107_ ? priorTax107_ : undefined, // [§107②] 84호 ⑤·⑰
       지방소득세: localIncomeTax, 납부세액_합계: grandTotal,
       // [2026.10.20 J21] 84호 ㉒~㉚ 농어촌특별세 — 양도세 납부세액_합계(양도세+지방소득세)에는 넣지 않고 따로(서식도 칸이 따로)
       납부지연가산세_몫별: lateSplit_ ? lateSplit_.rows : undefined, // [2026.10.20 J23] 예정분·확정 추가분 기산일별
@@ -28778,6 +28788,10 @@ function renderSellerRegistry(){
         '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="trUnpaidDays' + suf + '" placeholder="0" value="' + (s.unpaidDays || '') + '" readonly><span class="taxcalc-field-help">확정신고기한 다음해 5.31 대비(참고) — 실제 납부일이 있으면 계산은 예정신고분·확정 추가분으로 나눠 함(결과의 몫별 표)</span></div>' +
         // [2026.10.20 J23] 예정신고분 납부지연 기산일(국세기본법 §47의4①·⑤, 소득세법 §105·§106) — 예정 때 낸 세액·예외용 기산일 직접 입력
         '<div class="taxcalc-field"><label>예정신고 때 낸 세액(원)</label><input type="number" data-slfield="preliminaryTaxPaid" placeholder="비우면 신고상태로 판단" value="' + (s.preliminaryTaxPaid != null ? s.preliminaryTaxPaid : '') + '"><span class="taxcalc-field-help">이 양도인의 예정신고 때 실제 낸 양도세 합계. 비우면 정상 신고 = 예정분은 냄, 무신고 = 안 냄, 과소신고 = 과소분만큼 덜 냄으로 봄. 안 낸 예정분은 그 자산의 예정신고기한(양도월 말일+2개월) 다음 날부터 가산세(2010년 이후 양도)</span></div>' +
+        // [2026.10.20 §107②] 같은 해 2회째 예정신고 — 이미 신고한 기본세율 자산과 합산(서식 84호 ⑤·⑰)
+        '<div class="taxcalc-field"><label>[2회째 예정신고] 이미 신고한 양도소득금액(원)</label><input type="number" data-slfield="priorFiledIncomeAmount" placeholder="없으면 비움" value="' + (s.priorFiledIncomeAmount != null ? s.priorFiledIncomeAmount : '') + '"><span class="taxcalc-field-help">같은 해 앞서 예정신고한 기본세율(누진) 자산의 소득금액 — 합산해 셈(소득세법 §107②, 84호 ⑤)</span></div>' +
+        '<div class="taxcalc-field"><label>[2회째] 그때 쓴 기본공제(원)</label><input type="number" data-slfield="priorFiledBasicDeduction" placeholder="비우면 250만 한도" value="' + (s.priorFiledBasicDeduction != null ? s.priorFiledBasicDeduction : '') + '"></div>' +
+        '<div class="taxcalc-field"><label>[2회째] 이미 신고한 예정신고 산출세액(원)</label><input type="number" data-slfield="priorFiledTaxAmount" placeholder="원" value="' + (s.priorFiledTaxAmount != null ? s.priorFiledTaxAmount : '') + '"><span class="taxcalc-field-help">합산 세액에서 뺌(§107② E, 84호 ⑰)</span></div>' +
         '<div class="taxcalc-field"><label>납부지연 기산일 직접 입력(예외)</label><input type="date" data-slfield="lateStartOverride" value="' + (s.lateStartOverride || '') + '" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">수정신고 뒤 등 몫별 자동 기산일이 맞지 않을 때만 — 넣으면 전체 세액을 이 날부터 셈</span></div>' +
         '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" data-slfield="monthsAfterDesignated"' + idOf('trMonthsAfterDesignated') + ' placeholder="0" value="' + (s.monthsAfterDesignated || '') + '"></div>' +
         tcDesigDueField_('data-slfield="designatedDueDate"' + idOf('trDesignatedDueDate'), s.designatedDueDate) +
@@ -29866,6 +29880,7 @@ function renderOneTransferResultHtml_(r, label, sellerIdx){
   html += taxCalcResultRow('합산(장기) 그룹 산출세액', won(r.합산그룹_산출세액));
   if (r.단기거래_산출세액_합계) html += taxCalcResultRow('단기양도 산출세액 합계', won(r.단기거래_산출세액_합계));
   if (r.미등기거래_산출세액_합계) html += taxCalcResultRow('미등기양도 산출세액 합계', won(r.미등기거래_산출세액_합계));
+  if (r.기신고_양도소득금액_107조) { html += taxCalcResultRow('이미 신고한 양도소득금액 합산(§107②, 84호 ⑤)', won(r.기신고_양도소득금액_107조) + ' (그때 기본공제 ' + won(r.기신고_기본공제_107조 || 0) + ')'); html += taxCalcResultRow('이미 신고한 예정신고 산출세액(84호 ⑰)', '-' + won(r.기신고세액_107조 || 0)); } // [2026.10.20 §107②]
   if (r.연금계좌세액공제_합계) html += taxCalcResultRow('연금계좌세액공제(조특법§99의14)', '-' + won(r.연금계좌세액공제_합계));
   if (r.연금계좌세액공제_추징액) html += taxCalcResultRow('연금계좌세액공제 추징(§99의14②)', '+' + won(r.연금계좌세액공제_추징액));
   if (r.전자신고세액공제) html += taxCalcResultRow('전자신고세액공제', '-' + won(r.전자신고세액공제));
@@ -37152,6 +37167,7 @@ function handleTaxCalcClick_(e){
         unpaidDays: numVal(document.getElementById('trUnpaidDays').value) || 0,
         monthsAfterDesignatedDueDate: numVal(document.getElementById('trMonthsAfterDesignated').value) || 0, designatedDueDate: (transferSellers[0] || {}).designatedDueDate || '', paidDate: (transferSellers[0] || {}).paidDate || '',
         preliminaryTaxPaid: tcPrelimPaid_((transferSellers[0] || {}).preliminaryTaxPaid), lateStartOverride: (transferSellers[0] || {}).lateStartOverride || '', // [2026.10.20 J23]
+        priorFiledIncomeAmount: numVal((transferSellers[0] || {}).priorFiledIncomeAmount) || 0, priorFiledBasicDeduction: tcPrelimPaid_((transferSellers[0] || {}).priorFiledBasicDeduction), priorFiledTaxAmount: numVal((transferSellers[0] || {}).priorFiledTaxAmount) || 0, // [2026.10.20 §107②]
         unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('trUnpaidAtDesignated').value) || 0,
         isSelfElectronicFiling: document.getElementById('trSelfEfiling').checked
       };
@@ -37212,6 +37228,7 @@ function handleTaxCalcClick_(e){
           reportedIncomeAmount: tcPrelimPaid_(seller.reportedIncomeAmount), // [2026.10.20] 옛 §115① 비율(비우면 '')
           monthsAfterDesignatedDueDate: numVal(seller.monthsAfterDesignated) || 0, designatedDueDate: seller.designatedDueDate || '', paidDate: seller.paidDate || '',
           preliminaryTaxPaid: tcPrelimPaid_(seller.preliminaryTaxPaid), lateStartOverride: seller.lateStartOverride || '', // [2026.10.20 J23]
+          priorFiledIncomeAmount: numVal(seller.priorFiledIncomeAmount) || 0, priorFiledBasicDeduction: tcPrelimPaid_(seller.priorFiledBasicDeduction), priorFiledTaxAmount: numVal(seller.priorFiledTaxAmount) || 0, // [2026.10.20 §107②]
           unpaidTaxAtDesignatedDueDate: numVal(seller.unpaidAtDesignated) || 0,
           isSelfElectronicFiling: !!seller.isSelfElectronicFiling
         };
