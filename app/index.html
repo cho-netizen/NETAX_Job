@@ -33322,8 +33322,8 @@ function gfPrintFormBodyHtml_(){
   const first = validItems[0];
   if (first){
     const r = first.result;
-    html += foreignTaxCreditPrintPageHtml_('증여세', numVal(r.과세표준), numVal(r.산출세액_할증전) + numVal(r.세대생략할증액), taxAgentField_('giftForeignBase'), taxAgentField_('giftForeignTax'), numVal(r.외국납부세액공제));
-    html += farmlandExemptionPrintPageHtml_(giftDonees[first.doneeIdx] || {}, taxAgentField_('giftFarmlandExemption'));
+    html += foreignTaxCreditPrintPageHtml_('증여세', numVal(r.과세표준), numVal(r.산출세액_할증전) + numVal(r.세대생략할증액), numVal((document.getElementById('giftForeignBase') || {}).value) || 0, numVal((document.getElementById('giftForeignTax') || {}).value) || 0, numVal(r.외국납부세액공제)); // [2026.10.19 서식 감사] 예전엔 세무대리인 설정값(taxAgentField_)에서 읽어 늘 빈 값이었다
+    html += farmlandExemptionPrintPageHtml_(giftDonees[first.doneeIdx] || {}, numVal(r.영농자녀증여농지세액감면) || numVal((document.getElementById('giftFarmlandExemption') || {}).value) || 0); // [2026.10.19 서식 감사] 계산 결과의 감면세액(예전엔 세무대리인 설정값에서 읽어 52호가 안 나옴)
   }
   return html;
 }
