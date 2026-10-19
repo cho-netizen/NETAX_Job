@@ -40,9 +40,29 @@ module.exports = function (E, H) {
       formTitle: '주택임대사업자의 거주주택 1세대1주택 특례적용신고서', acquisitionDate: '', houseType: '', newHousingCompletionDate: '', mgContractDate: '', mgLeasePeriod: '', 안내: lr.안내 } };
   var ctxLr = caseOf([lrAsset]);
 
+  // ③ 1주택+1조합원입주권(영 §156의2③) — 종전주택 2018.5.1. 취득 5억 → 2025.11.20. 양도 9억, 조합원입주권 2023.3.10. 취득(3년 이내 양도)
+  var ciIn = { formerHouseAcquisitionDate: '2018-05-01', unionMembershipRightAcquisitionDate: '2023-03-10', formerHouseTransferDate: '2025-11-20' };
+  var ci = need(E.calculateReconstructionRightsOneHouseExclusionJS(ciIn), '1주택+1조합원입주권');
+  var ciAsset = { assetType: 'house', transferPrice: 900000000, acquisitionPrice: 500000000, necessaryExpenses: 6000000, transferDate: ciIn.formerHouseTransferDate, acquisitionDate: ciIn.formerHouseAcquisitionDate,
+    assetLocation: '부산광역시 ○○구 ○○로 30, 5동 301호 (견본)', isOneHouseOneFamily: true,
+    oneHouseSpecialCase: { provisionLabel: '1주택+1조합원입주권 보유(소득세법시행령§156의2③④)', formNo: '소득세법 시행규칙 [별지 제83호의5서식]', formTitle: '조합원입주권 또는 분양권 소유자 1세대1주택 특례적용신고서',
+      acquisitionDate: ciIn.unionMembershipRightAcquisitionDate, houseType: '', newHousingCompletionDate: '', mgContractDate: '', mgLeasePeriod: '', 안내: ci.안내 } };
+  // ④ 1주택+1분양권(영 §156의3②) — 종전주택 2019.6.1. 취득 → 2026.2.15. 양도, 분양권 2023.8.1. 취득, 완성 예정 2026.9.30.
+  var prIn = { formerHouseAcquisitionDate: '2019-06-01', presaleRightAcquisitionDate: '2023-08-01', formerHouseTransferDate: '2026-02-15' };
+  var pr = need(E.calculatePresaleRightOneHouseExclusionJS(prIn), '1주택+1분양권');
+  var prAsset = { assetType: 'house', transferPrice: 700000000, acquisitionPrice: 420000000, necessaryExpenses: 5000000, transferDate: prIn.formerHouseTransferDate, acquisitionDate: prIn.formerHouseAcquisitionDate,
+    assetLocation: '대구광역시 ○○구 ○○로 40 (견본빌라 2층)', isOneHouseOneFamily: true,
+    oneHouseSpecialCase: { provisionLabel: '1주택+1분양권 보유(소득세법시행령§156의3)', formNo: '소득세법 시행규칙 [별지 제83호의5서식]', formTitle: '조합원입주권 또는 분양권 소유자 1세대1주택 특례적용신고서',
+      acquisitionDate: prIn.presaleRightAcquisitionDate, houseType: '', newHousingCompletionDate: '2026-09-30', mgContractDate: '', mgLeasePeriod: '', 안내: pr.안내 } };
+  // ⑤ 조합원입주권 자체 양도(준공 전) — 예전 인쇄 reconstructionRightsPrintPageHtml_ 조건(asset.isReconstructionRights)
+  var urAsset = { assetType: 'house', isReconstructionRights: true, isCompletedNewHousing: false, transferPrice: 800000000, acquisitionPrice: 300000000, necessaryExpenses: 4000000,
+    transferDate: '2026-01-15', acquisitionDate: '2012-07-01', assetLocation: '서울특별시 ○○구 ○○동 50 (○○재건축정비사업조합, 견본)',
+    formerResidencePeriod: '2012.07.01 ~ 2021.06.30', businessApprovalDate: '2019-04-12', managementDispositionDate: '2021-06-30', newHousingCompletionDate: '' };
+
   return [
     { name: '83호의4_상생임대주택', tax: '양도', ctx: ctxMg },
-    { name: '83호의2_거주주택특례', tax: '양도', ctx: ctxLr }
+    { name: '83호의2_거주주택특례', tax: '양도', ctx: ctxLr },
+    { name: '83호의5_조합원입주권_분양권_입주권양도', tax: '양도', ctx: caseOf([ciAsset, prAsset, urAsset]) }
   ].map(function (cs) {
     // tax만 준 사례는 plan으로 이 묶음 서식만 고름(84호 본표는 기존 23장 시험에서 봄)
     if (!cs.forms) cs.forms = H.ctxFromApp && cs.tax ? require('./mappers.js').plan(cs.tax, cs.ctx).filter(function (it) { return typeof it !== 'string' && /^소득/.test(it.formKey); }) : [];

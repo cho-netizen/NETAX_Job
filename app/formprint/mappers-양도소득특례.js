@@ -51,7 +51,7 @@
 
   // ───────── 공용 ─────────
   // 1세대1주택 특례 신고서 — oneHouseSpecialCase.formNo 끝의 "[별지 제83호의4서식]"으로 서식을 고름
-  var SPECIAL_KEYS = ['소득83호의4', '소득83호의2'];
+  var SPECIAL_KEYS = ['소득83호의4', '소득83호의2', '소득83호의5'];
   var SPECIAL_FORM = { '소득83호': '[별지 제83호서식]', '소득83호의2': '[별지 제83호의2서식]', '소득83호의3': '[별지 제83호의3서식]', '소득83호의4': '[별지 제83호의4서식]', '소득83호의5': '[별지 제83호의5서식]' };
   function specialOf(asset, formKey) {
     var c = asset && asset.oneHouseSpecialCase;
@@ -142,6 +142,71 @@
     o.miss('㉘ 임대내역', '계산기에 없음(임차인·보증금·월세·임대기간 입력 없음 — 판정 창의 임대료 증가율은 저장되지 않음)');
     o.miss('㉙ 직전거주주택보유명세', '계산기에 없음(판정 창은 "직전거주주택 양도 이력 있음" 체크만 받고 저장하지 않음, 소재지·양도일 입력 없음)');
     if (c.안내) o.note('판정 안내: ' + c.안내);
+    footer(o, ctx, s);
+    return o.result();
+  };
+
+
+  // ═════════ 소득83호의5 — 조합원입주권 또는 분양권 소유자 1세대 1주택 특례적용신고서(영 §156의2⑫·§156의3⑨) ═════════
+  //  두 갈래(예전 인쇄와 같은 조건):
+  //   가) 판정 창(ci·rp·iu·pr·ip)이 양도 주택에 남긴 oneHouseSpecialCase — ④ 양도주택 열 = 양도 자산, ⑤ 조합원입주권 / ⑥ 분양권 열 = 판정 창이 남긴 취득일·완성일
+  //       판정 창이 남기는 값: acquisitionDate(ci 조합원입주권 취득일, pr 분양권 취득일, rp 대체주택 취득일), newHousingCompletionDate(pr만)
+  //   나) 조합원입주권 자체(asset.isReconstructionRights)를 양도 — 예전 인쇄 reconstructionRightsPrintPageHtml_.
+  //       준공 전이면 ⑤ 조합원입주권 열, 준공 후 신축주택(isCompletedNewHousing)이면 ④ 양도주택 열 + ⑬⑭⑮(서식상 ⑤ 열에만 있는 칸)는 ⑤ 열에
+  var PROV_5 = [['1주택+1분양권 보유', 'pr', '분양권'], ['1주택+1조합원입주권 보유', 'ci', '조합원입주권'], ['재건축 등 사업기간 중 대체주택', 'rp', '조합원입주권'],
+    ['상속받은 조합원입주권', 'iu', '조합원입주권'], ['상속받은 분양권', 'ip', '분양권']];
+  function prov5(c) {
+    var t = String((c && c.provisionLabel) || '');
+    for (var i = 0; i < PROV_5.length; i++) if (t.indexOf(PROV_5[i][0]) === 0) return { code: PROV_5[i][1], col: PROV_5[i][2] };
+    return null;
+  }
+  mappers['소득83호의5'] = function (ctx) {
+    var o = new Out(), s = ctx.seller || {};
+    var it = pickAsset(ctx, '소득83호의5'), a = (it && it.asset) || {}, c = specialOf(a, '소득83호의5');
+    if (!c && !a.isReconstructionRights) { o.miss('①~⑯ 전체', '조합원입주권·분양권 특례 판정(ci·rp·iu·pr·ip)을 적용했거나 조합원입주권을 양도하는 자산 없음'); return o.result(); }
+    o.need('①', s.name, '① 성명').need('②', s.regNo, '② 주민등록번호').need('③', H.fullAddr(s), '③ 주소');
+    var filled = {}; // 열마다 채운 칸
+    function put(no, col, v, label) { if (has(v)) { o.set(no + '@' + col, v); filled[no + '@' + col] = 1; } else if (label) o.miss(no + ' ' + col + ' ' + label, '화면 입력 없음'); }
+    var tp = n(a.transferPrice), sg = it && it.single;
+    var houseCol = !c && a.isReconstructionRights && !a.isCompletedNewHousing ? '조합원입주권' : '양도주택';
+    // 양도 자산 열
+    put('⑦', houseCol, a.assetLocation, '소재지');
+    put('⑩', houseCol, a.acquisitionDate, '취득일');
+    put('⑪', houseCol, a.transferDate, '양도일');
+    if (houseCol === '양도주택') {
+      if (tp) { o.set('⑯@양도주택', tp); filled['⑯@양도주택'] = 1; if (sg && sg.입력값 && has(sg.입력값.양도가액)) o.check('⑯ 양도가액 = 엔진 입력 양도가액(84호 부표1 ⑪)', tp, n(sg.입력값.양도가액)); }
+      else o.miss('⑯ 양도가액', '양도 자산에 양도가액 없음');
+    } else o.miss('⑯ 양도가액', '조합원입주권 자체를 양도 — 서식 ⑯은 ④ 양도주택 열에만 적는 칸(⑤ 열은 음영)이라 비움(양도가액 ' + tp + '원은 84호 부표1에)');
+    var pv = c ? prov5(c) : null;
+    if (c) {
+      if (!pv) o.note('판정 이름 "' + (c.provisionLabel || '') + '"을 알 수 없어 ⑤·⑥ 열을 정하지 못함');
+      else {
+        o.note('적용 특례: ' + c.provisionLabel);
+        if (pv.code === 'ci' || pv.code === 'pr') put('⑩', pv.col, c.acquisitionDate, '취득일(판정 창)');
+        if (pv.code === 'pr') put('⑮', '분양권', c.newHousingCompletionDate, '완성(예정)일(판정 창)');
+        if (pv.code === 'rp' && c.acquisitionDate && c.acquisitionDate !== a.acquisitionDate) o.note('판정 창의 대체주택 취득일(' + c.acquisitionDate + ')과 양도 자산 취득일(' + a.acquisitionDate + ')이 다름 — 확인');
+      }
+      if (c.안내) o.note('판정 안내: ' + c.안내);
+    } else {
+      // 나) 조합원입주권(또는 준공 후 신축주택) 자체 양도 — 예전 인쇄가 찍던 값
+      o.note(a.isCompletedNewHousing ? '주택구분: 신축주택(준공 후 양도) — ④ 양도주택 열' : '주택구분: 조합원입주권(준공 전 양도) — ⑤ 조합원입주권 열');
+      put('⑫', houseCol, a.formerResidencePeriod, '');
+      put('⑬', '조합원입주권', a.businessApprovalDate, '');
+      put('⑭', '조합원입주권', a.managementDispositionDate, '');
+      put('⑮', '조합원입주권', a.newHousingCompletionDate, '');
+      if (a.isCompletedNewHousing) o.note('⑬⑭⑮(사업시행인가일·관리처분계획인가일·완성일)는 서식상 ⑤ 조합원입주권 열에만 있는 칸이라 그 열에 적음');
+      o.note('판단 대기: 조합원입주권 자체 양도(법 §89①4호)는 영 §156의2⑫(③~⑪항 적용자)의 신고서 대상이 아닐 수 있음 — 예전 인쇄와 같게 찍음');
+    }
+    // 채우지 못한 칸 설명
+    var rest = [];
+    ['양도주택', '조합원입주권', '분양권'].forEach(function (col) {
+      ['⑦', '⑩', '⑪', '⑫'].forEach(function (no) { if (!filled[no + '@' + col]) rest.push(no + ' ' + col); });
+    });
+    if (!filled['⑬@조합원입주권']) rest.push('⑬'); if (!filled['⑭@조합원입주권']) rest.push('⑭');
+    if (!filled['⑮@조합원입주권']) rest.push('⑮ 조합원입주권'); if (!filled['⑮@분양권']) rest.push('⑮ 분양권');
+    if (rest.length) o.miss(rest.join('·'), '계산기에 없음(판정 창·자산 카드에 그 열의 값 입력 없음 또는 저장 안 됨)');
+    o.miss('⑧ 면적(토지·건물)', '계산기에 없음');
+    o.miss('⑨ 소유자(성명·주민등록번호·소득자와 관계)', '계산기에 없음(열마다 소유자 입력 없음)');
     footer(o, ctx, s);
     return o.result();
   };
