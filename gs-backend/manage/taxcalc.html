@@ -12754,7 +12754,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>특정법인의 법인세 산출세액(공제·감면 차감후)</label><input type="number" id="scCorpTax" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>특정법인의 해당 사업연도 소득금액</label><input type="number" id="scCorpIncome" placeholder="원"><span class="taxcalc-field-help">법인세법§14</span></div>' +
         '<div class="taxcalc-field"><label>지배주주등의 주식보유비율</label><input type="number" step="0.01" min="0" max="1" id="scShareRatio" placeholder="0~1"></div>' +
-        '<div class="taxcalc-field"><label>직접증여시 증여세상당액(§45의5② 한도용)</label><input type="number" id="scDirectGiftTax" placeholder="원"><span class="taxcalc-field-help">관계별공제 반영해 별도 계산, 없으면 한도 미적용</span></div>' +
+        '<div class="taxcalc-field"><label>직접증여시 증여세상당액(§45의5② 한도용)</label><input type="number" id="scDirectGiftTax" placeholder="원"><span class="taxcalc-field-help">세대생략 할증 전 금액(서식 10호의6 ㊲ "산출세액 한도" — 할증 ㊳은 한도 뒤에 더함). 비우면 (특정법인 이익 × 지분율)에 누진세율로 자동 계산</span></div>' +
         '<div class="taxcalc-field"><label>1년 이내 같은 특정법인과의 이전거래 이익 합계(§43②)</label><input type="number" id="scPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="scRelationDeduction" placeholder="원"><span class="taxcalc-field-help">증여자가 법인이므로 통상 0</span></div>' +
         '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="scAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +

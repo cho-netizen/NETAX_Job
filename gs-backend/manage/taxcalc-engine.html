@@ -9418,6 +9418,8 @@
     // 초과하면 그 초과액은 없는 것으로 본다. "직접 증여받은 경우의 증여세 상당액"은 시행령이 별도 공제 없이
     // [특정법인의 이익(법인세공제전, 4항1호금액)×지분율]에 누진세율만 적용한 금액으로 정의하므로, 이미 갖고
     // 있는 값(benefitToCorpAmount·shareholderOwnershipRatio)으로 자동계산한다(직접입력하면 그 값이 우선).
+    // [2026.10.20 ㊲ 확정] 이 한도엔 세대생략 할증(§57)을 넣지 않는다 — [별지 제10호의6서식](2025.7.4. 개정) ㊲ 이름이 "산출세액 한도", 작성방법 9 ㊱ = min(㉞×㉟−누진공제, ㊲),
+    //  그 뒤 ㊳ 세대생략가산액을 더해 ㊴ = ㊱ + ㊳. 산출세액(§56 — 할증 전)과 비교하는 한도라 "직접 증여 시 증여세 상당액"도 할증 전 기준.
     const corporateTaxEquivalentForShareholder = Math.round(corporateTaxEquivalentTotal * shareholderOwnershipRatio);
     const directGiftTaxEquivalent = Number(p.directGiftTaxEquivalent) > 0
       ? Number(p.directGiftTaxEquivalent)
