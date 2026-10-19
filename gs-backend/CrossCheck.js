@@ -228,6 +228,38 @@ function cxValVariants_(v, input) {
   if (m) { out.push(m[1] + '.' + m[2] + '.' + m[3], m[1] + '. ' + Number(m[2]) + '. ' + Number(m[3]), m[1] + '년 ' + Number(m[2]) + '월 ' + Number(m[3]) + '일', m[1].slice(2) + '.' + m[2] + '.' + m[3]); }
   return out.filter(function (x) { return x && x.length >= 4; });
 }
+// [2026.10.20 2번 밤샘 5바퀴 — ②-2 입체 재구성: 한 서류뿐인 사실 되찾기] 계산기에 쓰이는 금액(100만원 이상)·날짜 사실 중 사건 안 서류 하나에만 있는 것을,
+//  다른 서류의 저장된 판독 글 전체에서 같은 값(쉼표·날짜 꼴 바꿔, cxValVariants_)으로 찾아 '되찾아 받침'으로 돌려준다. 결정(cxSupport_·cxJudge_)에는 쓰지 않는다 —
+//  우연히 같은 숫자(다른 뜻)일 수 있어 근거 표시·AI 지휘(fact_map)·질문 출처 보강용. 앞으로의 사건: 서류 종류·양식과 무관(값 꼴만), 못 찾으면 한 서류 사실 그대로
+const CX_REFIND_MONEY_ = /매매대금|거래가액|취득가액|양도가액|보상금|증여재산가액|증여가액|공시가격|기준시가|감정가액|채무|채권최고액|보증금|잔액|계약금|중도금|잔금|대금|공탁금|합계/;
+const CX_REFIND_DATE_ = /^(계약일|잔금일|접수일|등기일|취득일|양도일|증여일|사망일|상속개시일|재결일|공탁일|사용승인일|전입일)$/;
+function cxRefind_(c, facts, opt) {
+  opt = opt || {};
+  const key = function (x) { const d = CX_REFIND_DATE_.test(x.kind); return (d ? 'D|' : 'M|') + cxNormV_(x.value, d ? 'date' : 'money'); };
+  const cand = (facts || []).filter(function (x) {
+    if (!x || !x.src || x._copy || x.kind === '서류' || typeof x.value === 'object') return false;
+    if (CX_REFIND_DATE_.test(x.kind)) return /^d{4}-d{2}-d{2}$/.test(cxNormV_(x.value, 'date'));
+    return CX_REFIND_MONEY_.test(x.kind) && Number(cxNormV_(x.value, 'money')) >= 1000000;
+  });
+  const files = {}; cand.forEach(function (x) { const k = key(x); (files[k] = files[k] || {})[x.src.file] = 1; });
+  const single = cand.filter(function (x) { return Object.keys(files[key(x)]).length === 1; });
+  const seen = {}, uniq = single.filter(function (x) { const k = key(x); if (seen[k]) return false; seen[k] = 1; return true; });
+  let texts = [];
+  const prevNo = typeof TC_NO_NEW_OCR_ !== 'undefined' ? TC_NO_NEW_OCR_ : false; try { TC_NO_NEW_OCR_ = true; } catch (e) {} // 저장된 판독만(새 글자인식 안 함)
+  try { texts = caseProcFiles_(c).filter(function (f) { return !/^_|^~\$/.test(f.name) && !caseProcIsOutputDocFor_(c, f.name, f.dir); }).map(function (f) { let t = ''; try { t = String(tc_docText_(f) || ''); } catch (e) {} return { name: f.name, flat: t.replace(/s+/g, ' ') }; }).filter(function (x) { return x.flat.length > 20; }); } catch (e) { texts = []; } try { TC_NO_NEW_OCR_ = prevNo; } catch (e) {}
+  const out = [];
+  uniq.slice(0, opt.max || 300).forEach(function (x) {
+    const d = CX_REFIND_DATE_.test(x.kind), n = cxNormV_(x.value, d ? 'date' : 'money');
+    const vars = cxValVariants_(n, d ? 'date' : 'money').filter(function (v) { return d || /,/.test(v) || v.length >= 7; });
+    const hits = [];
+    texts.forEach(function (t) {
+      if (t.name === x.src.file || hits.length >= 3) return;
+      for (let i = 0; i < vars.length; i++) { const at = t.flat.indexOf(vars[i]); if (at >= 0 && !/d/.test(t.flat.charAt(at + vars[i].length)) && !/d/.test(t.flat.charAt(at - 1))) { hits.push({ file: t.name, near: t.flat.slice(Math.max(0, at - 40), at + vars[i].length + 40) }); break; } }
+    });
+    if (hits.length) out.push({ kind: x.kind, value: n, file: x.src.file, also: hits });
+  });
+  return { candidates: cand.length, single: uniq.length, refound: out.length, list: out };
+}
 // 출처 서류 원문에서 그 값 앞뒤 몇 줄(없으면 서류 앞부분 조금)
 function cxSnippets_(c, iss, files, extraWords) {
   const out = [];
