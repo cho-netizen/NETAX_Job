@@ -99,7 +99,7 @@
   ];
   var LS_CATEGORY_LABELS_ = {
     precedent: '판례', interpretation: '법령해석례', administrative_rule: '행정규칙',
-    tax_tribunal: '조세심판원', constitutional: '헌재결정례', law: '법령', form: '별표·서식'
+    tax_tribunal: '조세심판원', constitutional: '헌재결정례', law: '법령', form: '별표·서식', statute: '법령 조문'
   };
   var LS_NO_DETAIL_ = { law: true, form: true }; // 상세조회 없이 검색결과만으로 첨부하는 카테고리
 
@@ -371,6 +371,9 @@
   function attachSelected_(){
     var checked = Array.prototype.map.call(document.querySelectorAll('.lsResultChk:checked'), function(el){ return Number(el.dataset.idx); });
     if (!checked.length){ showToast('첨부할 항목을 체크해주세요.', 'warning'); return; }
+    // [2026.10.19] 어디에 쓸지 한 줄 — 관련법령 파일·검토서 근거·AI 지휘가 이것으로 쓴다(비워도 됨, 취소하면 첨부 안 함)
+    var use = window.prompt('어디에 쓸 자료인가요? 쟁점이나 계산 칸을 적어 주세요(비워도 됩니다).', '');
+    if (use === null) return;
     var btn = document.getElementById('lsAttachSelectedBtn');
     btn.disabled = true;
     btn.textContent = '조회 중…';
@@ -391,7 +394,7 @@
     })).then(function(picked_results){
       var today = new Date().toISOString().slice(0, 10);
       var newEntries = picked.map(function(ri, i){
-        var entry = { category: ri.category, id: ri.item.id, 제목: ri.title, 요약: picked_results[i].요약, 첨부일: today };
+        var entry = { category: ri.category, id: ri.item.id, 제목: ri.title, 요약: picked_results[i].요약, 번호: ri.sub || '', 첨부일: today, 첨부: '직접', 쓸곳: String(use || '').trim() };
         if (picked_results[i].결과) entry.결과 = picked_results[i].결과;
         return entry;
       }).filter(function(entry){
@@ -427,8 +430,15 @@
         '<div class="log-date">' + escapeHtml(LS_CATEGORY_LABELS_[entry.category] || entry.category) +
         (entry.결과 ? '<br><span title="판결문 문장에서 자동으로 찾은 참고용 표시 — 정확한 분류 아님" style="background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:1px 6px; font-size:11px; color:var(--navy); display:inline-block; margin-top:3px;">' + escapeHtml(entry.결과) + '</span>' : '') + '</div>' +
         '<div class="log-text"><b>' + escapeHtml(entry.제목 || '') + '</b>' +
+        ' <span style="font-size:11.5px;color:var(--sub);">' + (entry.첨부 === 'AI' ? (entry.확인 ? '🤖 AI 첨부(확정)' : '🤖 AI 첨부(미확인)') : '직접 첨부') + (entry.판 ? ' · ' + escapeHtml(String(entry.판)) + ' 시행판' : '') + (entry.쓸곳 ? ' · 쓸 곳: ' + escapeHtml(entry.쓸곳) : '') + (entry.이유 ? ' · ' + escapeHtml(entry.이유) : '') + '</span>' +
+        (entry.첨부 === 'AI' && !entry.확인 ? ' <button type="button" class="ghost-btn ls-ai-ok" style="font-size:11.5px;padding:1px 6px;">✔ 확정</button>' : '') +
         (entry.요약 ? '<br><span style="color:var(--sub); font-size:12.5px; white-space:pre-wrap;">' + escapeHtml(entry.요약) + '</span>' : '') + '</div>' +
         '<span class="log-del" title="첨부 해제">✕</span>';
+      var okBtn = row.querySelector('.ls-ai-ok');
+      if (okBtn) okBtn.addEventListener('click', function(){
+        var newList = list.map(function(e){ return (e.category === entry.category && e.id === entry.id) ? Object.assign({}, e, { 확인: true, 확인일: new Date().toISOString().slice(0, 10) }) : e; });
+        lsSaveAttachments_(newList).then(function(ok){ if (ok) renderLsResults_(); });
+      });
       row.querySelector('.log-del').addEventListener('click', function(){
         var newList = list.filter(function(e){ return !(e.category === entry.category && e.id === entry.id); });
         lsSaveAttachments_(newList).then(function(ok){ if (ok) renderLsResults_(); });

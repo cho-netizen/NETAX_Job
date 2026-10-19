@@ -268,7 +268,8 @@
       var head = '<div class="lsidb-head"><b>' + lsiEsc_(r.법령명) + '</b> [시행 ' + lsiEsc_(lsiDbYmd_(r.시행일자)) + ']' + (p ? ' [' + lsiEsc_((p.법종 ? p.법종 + ' ' : '') + '제' + String(p.공포번호).replace(/^0+/, '')) + '호, ' + lsiEsc_(lsiDbYmd_(p.공포일)) + ', ' + lsiEsc_(p.구분 || '') + ']' : '') +
         (r.주의 ? '<br>⚠ ' + lsiEsc_(r.주의) : '') + (r.개정확인 ? '<br>' + lsiEsc_(r.개정확인) : '') + (r.시행예정개정 ? '<br>⏳ ' + lsiEsc_(r.시행예정개정) : '') +
         '<br><span class="lsi-note">' + lsiEsc_(r.출처 || '') + (r.원문링크 ? ' · <a href="' + lsiEsc_(r.원문링크) + '" target="_blank" rel="noopener">법제처에서 보기 ↗</a>' : '') + '</span></div>';
-      var cites = [], btn = function(a, h, o, label, title){ var k = cites.push({ a: a, h: h, o: o }) - 1; return '<button type="button" class="lsidb-copy" data-lsidbcite="' + k + '" title="' + lsiEsc_(title) + '">' + label + '</button>'; };
+      var cites = [], btn = function(a, h, o, label, title){ var k = cites.push({ a: a, h: h, o: o }) - 1; return '<button type="button" class="lsidb-copy" data-lsidbcite="' + k + '" title="' + lsiEsc_(title) + '">' + label + '</button>' +
+        (o < 0 ? '<button type="button" class="lsidb-copy" data-lsidbatt="' + k + '" title="위에서 고른 사건에 이 ' + (h < 0 ? '조문' : '항') + '을 첨부(사건 기준일 판 원문·쓸 곳 함께 저장 — 관련법령·검토서 근거·AI 지휘가 씀)">📎 첨부</button>' : ''); };
       var body = r.조문.map(function(u){
         var a = lsiCiteArt_(u), parts = '';
         parts += lsiDbSegsHtml_(lsiCiteSegs_(a.rest, 0));
@@ -285,7 +286,30 @@
       }).join('');
       doc.innerHTML = head + body;
       doc.querySelectorAll('[data-lsidbcite]').forEach(function(b){ b.addEventListener('click', function(e){ e.stopPropagation(); var c = cites[+b.dataset.lsidbcite]; lsiCiteCopy_(lsiCiteBuild_(c.a, { h: c.h, o: c.o }, meta, lsiCiteOpts_())); }); });
+      doc.querySelectorAll('[data-lsidbatt]').forEach(function(b){ b.addEventListener('click', function(e){ e.stopPropagation(); var c = cites[+b.dataset.lsidbatt]; lsiDbAttach_(c.a, c.h, meta); }); });
     }).catch(function(e){ doc.innerHTML = '<div class="lsi-note">조문을 읽지 못했습니다: ' + lsiEsc_(e && e.message || e) + '</div>'; });
+  }
+  // [2026.10.19] 📎 사건에 첨부 — 세무사님 "사건에 연결한 상태에서 법령검색을 하여 저장하기를 하면 그 이후에 어떻게 활용하는지에 대한 대책이 별로 없어"
+  //  위 "사건을 선택하세요"에서 고른 사건에, 그 사건 기준일 판의 그 조(또는 항) 원문·판·쓸 곳을 저장한다(category 'statute').
+  //  관련법령 파일(→ 쓰인 곳 "직접 첨부"), 검토서 근거, AI 지휘가 이 항목을 읽는다.
+  function lsiDbAttach_(a, h, meta){
+    var c = typeof lsCurrentCase !== 'undefined' ? lsCurrentCase : null;
+    if (!c){ alert('위 "사건을 선택하세요"에서 사건을 먼저 고르세요.'); return; }
+    var hang = h >= 0 ? (a.hangs[h].n || 0) : 0, art = a.label.replace(/^제/, '').replace('조', ''), law = meta.law;
+    var ref = '「' + law + '」 ' + a.label + (hang ? '제' + hang + '항' : '');
+    var use = window.prompt(ref + ' — 어디에 쓸 자료인가요? 쟁점이나 계산 칸을 적어 주세요(비워도 됩니다).', '');
+    if (use === null) return;
+    var base = String(c.기준일 || '').replace(/\D/g, '').slice(0, 8), target = c;
+    callGas('law_lookup_article', { lawName: law, articleNo: art, baseDate: base }).then(function(r){
+      if (!r || r.error || !r.조문 || !r.조문.length){ showToast('조문을 읽지 못했습니다: ' + ((r && r.error) || ''), 'error'); return; }
+      var a2 = lsiCiteArt_(r.조문[0]);
+      var md = typeof lsiRelArtMd_ === 'function' ? lsiRelArtMd_(a2, hang ? [hang] : []).join('\n') : lsiCiteBuild_(a2, { h: h, o: -1 }, meta, { style: 'plain', src: false, rev: false }).plain;
+      var id = law + '|' + art + '|' + (hang || '');
+      var entry = { category: 'statute', id: id, 제목: ref + (a2.title ? '(' + a2.title + ')' : ''), 요약: md.replace(/\s+/g, ' ').slice(0, 300), 법령명: law, 조: art, 항: hang || '',
+        판: r.시행일자 ? lsiDbYmd_(r.시행일자) : '', 기준일판: !!base, 원문: md.slice(0, 6000), 쓸곳: String(use || '').trim(), 첨부: '직접', 첨부일: new Date().toISOString().slice(0, 10) };
+      var list = (target.법령예규판례 || []).filter(function(e){ return !(e.category === 'statute' && e.id === id); }).concat([entry]);
+      lsSaveAttachments_(list, target).then(function(ok){ if (ok) showToast(ref + ' 첨부했습니다' + (base ? ' (' + entry.판 + ' 시행판)' : ' — 사건 기준일이 없어 현행판'), 'success'); });
+    });
   }
   // 다른 곳(조문으로 찾아보기 등)에서 "이 조문 원문"으로 열기
   function lsiDbJump_(lawName, art){

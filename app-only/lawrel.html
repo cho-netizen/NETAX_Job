@@ -139,7 +139,7 @@
       L = L.concat(['- 조문 ' + o.got.length + '개' + (subst ? ' · 현행판으로 대신함 ' + subst + '건' : '') + (fail ? ' · 찾지 못함 ' + fail + '건' : '') + ' · 예규·판례 ' + precs.length + '건'], body);
       if (precs.length){
         L.push('', '## 관련 예규·판례', '');
-        precs.forEach(function(p){ var e = p.e; L.push('- **[' + ((typeof LS_CATEGORY_LABELS_ !== 'undefined' && LS_CATEGORY_LABELS_[e.category]) || e.category) + '] ' + String(e.제목 || '').replace(/\n/g, ' ') + '**' + (e.결과 ? ' — ' + e.결과 : '')); if (e.요약) L.push('  ' + String(e.요약).replace(/\s+/g, ' ').slice(0, 300)); L.push('  → ' + p.use, ''); });
+        precs.forEach(function(p){ var e = p.e; L.push('- **[' + ((typeof LS_CATEGORY_LABELS_ !== 'undefined' && LS_CATEGORY_LABELS_[e.category]) || e.category) + '] ' + String(e.제목 || '').replace(/\n/g, ' ') + '**' + (e.번호 ? ' (' + e.번호 + ')' : '') + (e.결과 ? ' — ' + e.결과 : '')); if (e.요약) L.push('  ' + String(e.요약).replace(/\s+/g, ' ').slice(0, 300)); L.push('  → ' + p.use, ''); });
       }
       if (!o.got.length && !precs.length) L.push('', '(모은 조문이 없습니다 — 검토서·보고서에 「법령」 제N조나 소득세법 §95 꼴로 인용하거나, 법령 탭에서 조문을 사건에 첨부하세요.)');
       var md = L.join('\n').replace(/\n{3,}/g, '\n\n') + '\n';

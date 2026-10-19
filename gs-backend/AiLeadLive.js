@@ -93,6 +93,7 @@ function caseProcAiSpots_(body) {
     '저비용·GAS가 이미 정한 것 ' + (tiers.GAS + tiers.저비용) + '개(네가 다시 보지 않는다).',
     '서류에 없어 세무사님께 바로 묻는 빈 칸 ' + ask.length + '개(네가 찾지 않는다): ' + ask.slice(0, 12).map(function (s) { return s.자리; }).join(', '),
     'GAS 몫(못 읽은 서류·재료 없음·상수) ' + gas.length + '개: ' + gas.slice(0, 8).map(function (s) { return s.자리 + '(' + s.이유 + ')'; }).join(', '),
+    caseProcAiAttachLine_(c),
     '비용 상한 ' + caseProcAiCap_(c).toLocaleString('ko-KR') + '원, 바퀴 상한 ' + CASEPROC_AI_MAX_ROUNDS_ + '. calc_fill부터 불러 지금 칸과 질문을 본 뒤 판단하라.'
   ].join('\n');
   return { ok: true, ai: lead.length, ask: ask.length, gas: gas.length, byWhy: by, level: level, cap: caseProcAiCap_(c), need: lead.length > 0, tiers: tiers, plan: plan, lightApplied: lightApplied, lightOff: lp.off, lightUsd: lp.usd, lightError: lp.error || '',
@@ -121,6 +122,14 @@ function caseProcAiLiveTools_() {
     input_schema: { type: 'object', properties: { question: { type: 'string' }, material: { type: 'string' }, options: { type: 'array', items: { type: 'string' } } }, required: ['question', 'material'] } });
   tools.push({ name: 'ask_higher', description: '어려운 판단 올리기(상위 AI Opus 5.5) — 특례가 얽힌 사건분류(1세대1주택·일시적 2주택·상속주택·정비사업 감면), 시가·유사사례 다툼, 법령 해석이 갈리는 것. 재료를 정리해 넘긴다. 최고급(Fable 5.1)이 필요하면 부르지 말고 보고에 "최고급 검토 필요"로 적는다(세무사님이 쓰기 전에 정하심).',
     input_schema: { type: 'object', properties: { question: { type: 'string' }, material: { type: 'string' } }, required: ['question', 'material'] } });
+  // [2026.10.19 법령] 세무사님 "ai가 위임을 받아 사건을 처리할때도 이 과정을 거쳐야 하는 거 아닌가?" — 쟁점마다 법령·예규·판례를 GAS 도구로 찾아(토큰 0) 근거로 쓰면 첨부
+  tools.push({ name: 'law_lookup', description: '조문 원문 보기(토큰 0) — 사건 기준일에 시행된 판(법령 정비본, 산식 보정 포함). 쟁점 판단에 필요한 조문을 확인할 때. 근거로 쓰면 law_attach로 사건에 첨부한다.',
+    input_schema: { type: 'object', properties: { lawName: { type: 'string', description: '예: 소득세법 시행령' }, articleNo: { type: 'string', description: '예: 155, 97의2' } }, required: ['lawName', 'articleNo'] } });
+  tools.push({ name: 'law_search', description: '예규·해석례·판례·심판례 찾기(토큰 0, 국가법령정보센터) — category: precedent(판례)·interpretation(법령해석례)·administrative_rule(행정규칙)·tax_tribunal(조세심판원). 목록의 id로 law_attach 한다.',
+    input_schema: { type: 'object', properties: { category: { type: 'string' }, query: { type: 'string' } }, required: ['category', 'query'] } });
+  tools.push({ name: 'law_attach', description: '근거 자료를 사건에 첨부("AI 첨부(미확인)" — 세무사님이 법령 탭에서 확정하거나 뺀다). 관련법령 파일·검토서 근거에 들어간다. 조문은 kind="statute"+lawName+articleNo(+hang 항 번호), 예규·판례는 kind=그 category+id. use=어느 쟁점·계산 칸에 쓰는지, why=왜(한 줄). 돌려준 id를 value_set의 attach에 넣는다.',
+    input_schema: { type: 'object', properties: { kind: { type: 'string' }, lawName: { type: 'string' }, articleNo: { type: 'string' }, hang: { type: 'number' }, id: { type: 'string' }, title: { type: 'string' }, use: { type: 'string' }, why: { type: 'string' } }, required: ['kind', 'use', 'why'] } });
+  tools.forEach(function (t) { if (t.name === 'value_set') t.input_schema.properties.attach = { type: 'array', items: { type: 'string' }, description: '이 판단의 근거로 쓴 첨부 자료 id(law_attach가 돌려준 id 또는 입구 요약의 첨부 목록 id)' }; });
   tools[tools.length - 1].cache_control = { type: 'ephemeral' };
   return tools;
 }
@@ -133,6 +142,7 @@ function caseProcAiLiveSystem_(cap) {
     '- 서류는 GAS 도구로만 본다: issue_bundle(쟁점 묶음)·doc_facts(서류 정리 결과)·facts_find(사실 목록)·재료 도구. docs_read·doc_text(원문 직접 읽기)는 없다 — 위 지침의 doc_text 자리는 issue_bundle로.',
     '- 도구로 안 되는 일을 네가 직접 하게 되면(원문을 뒤지고 싶음·여러 값을 머릿속으로 더하거나 나눔·날짜를 세어 봄 등) 그 일을 하지 말고 report_tool_gap으로 "이런 도구가 있으면"을 남긴 뒤 질문으로 돌린다. 그것이 GAS가 자라는 재료다.',
     '- 되돌리기 어려운 일(PDF 묶기·폴더 이름·문자·사건 정보 수정)은 도구가 없다. 필요하면 보고에 "▶실행 카드로 여쭐 것"으로 적는다.',
+    '- 법령 근거: 쟁점 판단에 쓴 조문·예규·판례는 law_lookup·law_search로 확인하고 law_attach로 사건에 첨부한 뒤(쓸 곳·이유 한 줄), value_set의 attach에 그 id를 넣는다. 입구 요약의 "첨부된 자료"(세무사님 직접 첨부)는 먼저 읽고 근거로 쓴다.',
     '- 보고는 세무사님이 읽는다 — 쉬운 말로, 표·기호 없이 짧게. 세액은 도구 값 그대로.'
   ].join('\n');
 }
@@ -141,7 +151,7 @@ function caseProcAiLiveSystem_(cap) {
 function caseProcAiCtxKey_(caseId) { return 'aiLead:' + caseId; }
 function caseProcAiCtxLoad_(caseId) {
   try { const s = CacheService.getScriptCache().get(caseProcAiCtxKey_(caseId)); if (s) return JSON.parse(s); } catch (e) {}
-  return { lastItems: null, lookups: [], decisions: [], asks: [], opinions: [], gaps: [], subWon: 0 };
+  return { lastItems: null, lookups: [], decisions: [], asks: [], opinions: [], gaps: [], attaches: [], subWon: 0 };
 }
 function caseProcAiCtxSave_(caseId, ctx) {
   try {
@@ -225,6 +235,7 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
     return { text: caseProcAiMask_(JSON.stringify({ ok: true, 질문: it.text, 자세히: it.detail || '', 후보: ((it.ask && it.ask.cands) || []).slice(0, 8), 쟁점묶음: aj && aj.q ? String(aj.q).slice(0, 2500) : '(묶음 없음 — doc_facts·facts_find로 재료를 찾고, 없으면 report_tool_gap)', 저비용답: aj ? { 값: aj.value, 확실: aj.sure, 근거: aj.why, 모자란정보: aj.need || [] } : null })).slice(0, 4000) };
   }
   if (name === 'value_set') return { text: JSON.stringify(caseProcAiValueSetLive_(caseId, input, ctx)) };
+  if (name === 'law_lookup' || name === 'law_search' || name === 'law_attach') return { text: caseProcAiMask_(JSON.stringify(caseProcAiLaw_(caseId, name, input, ctx))).slice(0, 6000) };
   // 그 밖 도구 — 시제품 실행기 그대로(조회 결과·마지막 질문은 차례 사이에 기억)
   if (name === 'calc_fill' && ctx.lastItems) CASEPROC_AI_LAST_ITEMS_[caseId] = ctx.lastItems;
   const before = (CP_SECURED_LOG_ || []).length;
@@ -259,7 +270,7 @@ function caseProcAiValueSetLive_(caseId, input, ctx) {
   ctx.cxItems.push({ iid: input.itemId, topic: caseProcAiTopic_([input.itemId, it.text, (it.ask || {}).label, (it.ask || {}).target].join(' ')).topic, shape: '총괄|' + (bs.kind || '') + '|' + String((it.ask || {}).target || '').split(':')[0], target: (it.ask || {}).target || '', label: (it.ask || {}).label || caseProcAiCut_(it.text, 60),
     facts: '근거 ' + (bs.kind || '') + (bs.file ? ' · ' + bs.file : '') + (bs.page ? ' · ' + bs.page + '쪽' : '') + (bs.find ? ' · "' + bs.find + '"' : '') + (bs.quote ? ' · "' + String(bs.quote).slice(0, 120) + '"' : '') + (bs.id ? ' · 조회 ' + bs.id : ''),
     cands: ((it.ask && it.ask.cands) || []).slice(0, 6).map(function (q) { return { v: q.v, src: String(q.src || '').slice(0, 100) }; }), answer: String(input.value), why: input.why || '', sure: input.sure || '', need: [] });
-  const rec = { at: new Date().toISOString(), itemId: input.itemId, 칸: caseProcAiCut_(it.text, 80), value: caseProcAiMask_(String(input.value).slice(0, 80)), basis: (input.basis || {}).kind || '', why: why, sure: input.sure || '' };
+  const rec = { at: new Date().toISOString(), itemId: input.itemId, 칸: caseProcAiCut_(it.text, 80), value: caseProcAiMask_(String(input.value).slice(0, 80)), basis: (input.basis || {}).kind || '', why: why, sure: input.sure || '', 근거첨부: (Array.isArray(input.attach) ? input.attach : []).map(String).slice(0, 6) };
   if (!chk.ok) { rec.결과 = '거절 — ' + chk.why; ctx.decisions.push(rec); return { ok: false, 반영: '거절', 이유: chk.why }; }
   if (userOnly || input.sure !== '확실' || chk.provisional || input.dryRun) {
     rec.결과 = userOnly ? '세무사님 답으로만 — AI 의견으로 붙임' : '불확실·추론 — AI 의견으로 붙임';
@@ -288,7 +299,7 @@ function caseProcAiTurn_(body) {
   const cap = caseProcAiCap_(c), spent = Number(body.spent) || 0, round = Number(body.round) || 0;
   if (spent >= cap) return { ok: true, done: true, stop: 'cap', report: '비용 상한(' + cap.toLocaleString('ko-KR') + '원)에 닿아 여기서 멈춥니다. 남은 것은 지금 GAS 순서로 이어갑니다.', won: 0 };
   if (round >= CASEPROC_AI_MAX_ROUNDS_) return { ok: true, done: true, stop: 'rounds', report: '바퀴 상한(' + CASEPROC_AI_MAX_ROUNDS_ + ')에 닿아 여기서 멈춥니다.', won: 0 };
-  let ctx = round === 0 ? { lastItems: null, lookups: [], decisions: [], asks: [], opinions: [], gaps: [], subWon: 0 } : caseProcAiCtxLoad_(caseId);
+  let ctx = round === 0 ? { lastItems: null, lookups: [], decisions: [], asks: [], opinions: [], gaps: [], attaches: [], subWon: 0 } : caseProcAiCtxLoad_(caseId);
   if (round === 0 && Array.isArray(body.items)) ctx.lastItems = caseProcAiSlimItems_(body.items);
   let messages = Array.isArray(body.messages) ? body.messages.slice() : [];
   if (!messages.length) messages = [{ role: 'user', content: caseProcAiMask_(String(body.entry || '사건 ' + caseId + ' — 입구 요약 없음. calc_fill부터.')) }];
@@ -309,7 +320,7 @@ function caseProcAiTurn_(body) {
   const won = Math.round((r.won + (ctx.subWon || 0) - subBefore) * 10) / 10;
   const done = json.stop_reason !== 'tool_use' || !uses.length;
   return { ok: true, done: done, stop: json.stop_reason, assistant: content, toolResults: results, calls: calls, won: won, report: done ? caseProcAiMask_(caseProcAiText_(json)) : '', note: caseProcAiCut_(caseProcAiText_(json), 200),
-    decisions: ctx.decisions, asks: ctx.asks, opinions: ctx.opinions, gaps: ctx.gaps, model: CASEPROC_AI_DIRECTOR_MODEL_, _ms: Date.now() - t0 };
+    decisions: ctx.decisions, asks: ctx.asks, opinions: ctx.opinions, gaps: ctx.gaps, attaches: ctx.attaches || [], model: CASEPROC_AI_DIRECTOR_MODEL_, _ms: Date.now() - t0 };
 }
 
 // ---------- step 'finish' — 사건 기록(작업일지 한 줄 + 사건처리 저장) + 판단 기록(나중에 GAS로 옮길 재료, 개인정보 가림) ----------
@@ -319,7 +330,7 @@ function caseProcAiFinish_(body) {
   if (!c) return { error: '사건을 찾지 못했습니다.' };
   const ctx = caseProcAiCtxLoad_(caseId);
   const run = { at: new Date().toISOString(), 세목: c.세목, 업무유형: c.업무유형 || '', mode: String(body.mode || 'ai'), won: Number(body.won) || 0, rounds: Number(body.rounds) || 0, stop: String(body.stop || ''),
-    spots: (body.spots || []).slice(0, 30), tiers: body.tiers || null, tools: caseProcAiLiveTools_().map(function (t) { return t.name; }), decisions: (ctx.decisions || []).slice(0, 40), asks: (ctx.asks || []).slice(0, 20), opinions: (ctx.opinions || []).slice(0, 20), gaps: (ctx.gaps || []).slice(0, 20), error: String(body.error || '').slice(0, 200) };
+    spots: (body.spots || []).slice(0, 30), tiers: body.tiers || null, tools: caseProcAiLiveTools_().map(function (t) { return t.name; }), decisions: (ctx.decisions || []).slice(0, 40), asks: (ctx.asks || []).slice(0, 20), opinions: (ctx.opinions || []).slice(0, 20), gaps: (ctx.gaps || []).slice(0, 20), attaches: (ctx.attaches || []).slice(0, 20), error: String(body.error || '').slice(0, 200) };
   try { caseProcPatch_(caseId, function (sv) { sv.aiLead = (Array.isArray(sv.aiLead) ? sv.aiLead : []).concat([run]).slice(-10); }); } catch (e) {}
   // [GAS 고도화 ①] 총괄 AI 판단을 2번 기록 모양(kind 'cx')으로 — 비용은 이번 지휘 비용을 판단 수로 나눠 붙임. 세무사님 수정은 다음 처리 때 2번 0) 단계가 붙인다
   if (run.mode === 'ai' && (ctx.cxItems || []).length) caseProcAiLogCx_(c, CASEPROC_AI_DIRECTOR_MODEL_, run.won / CASEPROC_AI_KRW_, ctx.cxItems, 1);
@@ -328,7 +339,7 @@ function caseProcAiFinish_(body) {
   try { CacheService.getScriptCache().remove(caseProcAiCtxKey_(caseId)); } catch (e) {}
   const applied = run.decisions.filter(function (d) { return /^반영 —/.test(d.결과 || ''); }).length;
   try {
-    const line = run.mode === 'gas0' ? '[사건처리] AI 자리 없음 — AI 없이 끝(0원)' : '[사건처리 🤖 AI 지휘] 판단 ' + run.decisions.length + '개(넣음 ' + applied + ' · AI 의견 ' + run.opinions.length + ') · 질문 고름 ' + run.asks.length + ' · 비용 ' + run.won + '원 · ' + run.rounds + '바퀴' + (run.stop && run.stop !== 'end_turn' ? ' · 멈춤: ' + run.stop : '');
+    const line = run.mode === 'gas0' ? '[사건처리] AI 자리 없음 — AI 없이 끝(0원)' : '[사건처리 🤖 AI 지휘] 판단 ' + run.decisions.length + '개(넣음 ' + applied + ' · AI 의견 ' + run.opinions.length + ') · 질문 고름 ' + run.asks.length + (run.attaches.length ? ' · 법령·판례 첨부 ' + run.attaches.length + '건(미확인)' : '') + ' · 비용 ' + run.won + '원 · ' + run.rounds + '바퀴' + (run.stop && run.stop !== 'end_turn' ? ' · 멈춤: ' + run.stop : '');
     work_updateCase({ id: c.id, 작업일지: (Array.isArray(c.작업일지) ? c.작업일지 : []).concat([{ id: 'log_' + Date.now(), date: caseProcToday_(), text: line, dueDate: '' }]) });
   } catch (e) {}
   // 판단 기록 — 사건 이름 없이(세목·업무유형·칸·근거 종류·결과만) 모아 둔다. 되풀이되는 판단은 처음 보는 사건 2건 이상 확인 뒤 GAS 규칙 후보로
@@ -339,11 +350,72 @@ function caseProcAiFinish_(body) {
       const it = folder.getFilesByName(CASEPROC_AI_LOG_NAME_), f = it.hasNext() ? it.next() : folder.createFile(CASEPROC_AI_LOG_NAME_, '[]', 'application/json');
       let arr = []; try { arr = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '[]'); } catch (e) { arr = []; }
       arr.push(JSON.parse(caseProcAiMask_(JSON.stringify({ at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), 세목: run.세목, 업무유형: run.업무유형, mode: run.mode, won: run.won, rounds: run.rounds, stop: run.stop, tiers: run.tiers, tools: run.tools,
-        spots: run.spots.map(function (s) { return (s.자리 || '') + '|' + (s.이유 || ''); }), decisions: run.decisions.map(function (d) { return { 칸: d.itemId, basis: d.basis, sure: d.sure, 결과: caseProcAiCut_(d.결과 || '', 40) }; }), gaps: run.gaps }))));
+        spots: run.spots.map(function (s) { return (s.자리 || '') + '|' + (s.이유 || ''); }), decisions: run.decisions.map(function (d) { return { 칸: d.itemId, basis: d.basis, sure: d.sure, 근거첨부: d.근거첨부 || [], 결과: caseProcAiCut_(d.결과 || '', 40) }; }), attaches: run.attaches.map(function (a) { return a.제목; }), gaps: run.gaps }))));
       f.setContent(JSON.stringify(arr.slice(-3000)));
     });
   } catch (e) {}
   return { ok: true, applied: applied, decisions: run.decisions.length };
+}
+
+// ---------- [2026.10.19 법령] 첨부 자료 — 입구 요약 한 줄, 조문 보기·예규판례 찾기·첨부(토큰 0) ----------
+function caseProcAiAttachLine_(c) {
+  const a = (c.법령예규판례 || []).filter(function (e) { return e && e.category !== 'form'; }).slice(-12);
+  return a.length ? '첨부된 자료 ' + a.length + '개(먼저 읽고 근거로 쓴다 — 조문 원문은 law_lookup): ' + a.map(function (e) { return '[' + e.category + '|' + e.id + '] ' + caseProcAiCut_(e.제목 || '', 50) + (e.쓸곳 ? ' · 쓸 곳 ' + caseProcAiCut_(e.쓸곳, 30) : '') + ' · ' + (e.첨부 === 'AI' ? 'AI 첨부' : '직접 첨부'); }).join(' / ')
+    : '첨부된 자료 없음 — 쟁점 판단에 쓴 조문·예규는 law_lookup·law_search로 찾아 law_attach로 첨부한다.';
+}
+// 조문 결과(toolLookupStatuteArticle) → 관계법령 모양 글(<개정> 꼬리표 뺌, 줄 끝 두 칸 = 마크다운 줄바꿈 — 화면 📎 첨부와 같은 모양), hang을 주면 그 항만·나머지는 (생략)
+function caseProcAiLawText_(r, hang) {
+  const u = (r.조문 || [])[0]; if (!u) return '';
+  const strip = function (s) { return String(s || '').replace(/\s*<\s*(개정|신설|전문개정|타법개정|본조신설)[^>]*>/g, '').trim(); };
+  const hs = u.항 || [], num = function (h) { const m = String(h.항내용 || '').match(/^\s*([①-⑳])/); return m ? m[1].charCodeAt(0) - 0x2460 + 1 : 0; };
+  const L = hs.length ? [] : [strip(u.조문내용)], ci = function (k) { return String.fromCharCode(0x2460 + k - 1); };
+  const last = hs.length ? num(hs[hs.length - 1]) : 0, h0 = Number(hang) || 0;
+  if (h0 > 1) L.push((h0 > 2 ? '①~' + ci(h0 - 1) : '①') + ' (생략)');
+  hs.forEach(function (h) {
+    if (h0 && num(h) && num(h) !== h0) return;
+    if (h.항내용) L.push(strip(h.항내용));
+    (h.호 || []).forEach(function (o) { String(o).split('\n').forEach(function (x, j) { if (x.trim()) L.push((j && /^\s*[가-하]\./.test(x) ? '　　' : '　') + strip(x)); }); });
+  });
+  if (h0 && last > h0) L.push((last > h0 + 1 ? ci(h0 + 1) + '~' + ci(last) : ci(last)) + ' (생략)');
+  return L.filter(Boolean).join('  \n') + '  ';
+}
+function caseProcAiYmd_(s) { const d = String(s || '').replace(/\D/g, ''); return d.length === 8 ? d.slice(0, 4) + '. ' + Number(d.slice(4, 6)) + '. ' + Number(d.slice(6, 8)) + '.' : String(s || ''); }
+function caseProcAiLaw_(caseId, name, input, ctx) {
+  const c = akReadCase_(caseId); if (!c) return { 오류: '사건을 찾지 못했습니다.' };
+  const base = String(c.기준일 || '').replace(/\D/g, '').slice(0, 8);
+  if (name === 'law_search') {
+    const r = toolSearchTaxPrecedent(input.category, input.query);
+    if (!r || r.error) return { 오류: (r && r.error) || '검색 실패' };
+    // 첨부할 때 사건번호·일자를 붙이려고 찾은 목록을 기억해 둔다(토큰 0 — AI에게 다시 묻지 않음)
+    const subOf = { precedent: ['사건번호', '선고일자', '법원명'], interpretation: ['안건번호', '회신일자', '질의기관'], administrative_rule: ['행정규칙종류', '발령일자', '소관부처'], tax_tribunal: ['청구번호', '의결일자', '재결구분명'], constitutional: ['사건번호', '종국일자'] }[input.category] || [];
+    ctx.found = ctx.found || {};
+    (r.results || []).forEach(function (it) { if (it && it.id) ctx.found[input.category + '|' + it.id] = subOf.map(function (k) { return it[k]; }).filter(Boolean).join(' · '); });
+    return { 건수: r.totalCount || (r.results || []).length, 목록: (r.results || []).slice(0, 8) };
+  }
+  if (name === 'law_lookup' || (name === 'law_attach' && input.kind === 'statute')) {
+    const r = toolLookupStatuteArticle(input.lawName, input.articleNo, base);
+    if (!r || r.error) return { 오류: (r && r.error) || '조문 없음' };
+    const text = caseProcAiLawText_(r, name === 'law_attach' ? input.hang : 0), u = r.조문[0];
+    if (name === 'law_lookup') return { 법령: r.법령명, 조: '제' + u.조문번호 + '조' + (u.조문제목 ? '(' + u.조문제목 + ')' : ''), 시행: r.시행일자, 출처: r.출처, 기준일: base || '없음(현행판)', 개정확인: r.개정확인 || '', 조문: caseProcAiCut_(text, 4500), 산식보정: u.산식보정 || [], 근거아님: u['검증필요_코드에서옮김(근거 아님)'] ? '이 조문 산식 중 코드에서 옮긴 것은 근거 아님' : '' };
+    return caseProcAiAttachSave_(c, ctx, { category: 'statute', id: r.법령명 + '|' + u.조문번호 + '|' + (input.hang || ''), 제목: '「' + r.법령명 + '」 제' + String(u.조문번호).replace(/의/, '조의').replace(/^(\d+)$/, '$1조') + (input.hang ? '제' + input.hang + '항' : '') + (u.조문제목 ? '(' + u.조문제목 + ')' : ''),
+      요약: caseProcAiCut_(text.replace(/\s+/g, ' '), 300), 법령명: r.법령명, 조: String(u.조문번호), 항: input.hang || '', 판: caseProcAiYmd_(r.시행일자), 기준일판: !!base, 원문: text.slice(0, 6000) }, input);
+  }
+  if (name === 'law_attach') {
+    if (!input.id) return { 오류: '예규·판례는 law_search 목록의 id가 필요합니다.' };
+    let d = null; try { d = toolGetTaxPrecedentDetail(input.kind, input.id); } catch (e) { d = null; }
+    const pickTxt = function (o) { const k = ['판결요지', '판시사항', '결정요지', '회답', '질의요지', '요지']; for (let i = 0; i < k.length; i++) if (o && o[k[i]]) return String(o[k[i]]); return ''; };
+    return caseProcAiAttachSave_(c, ctx, { category: input.kind, id: String(input.id), 제목: caseProcAiCut_(input.title || (d && (d.사건명 || d.안건명 || d.행정규칙명 || d.제목)) || String(input.id), 120), 번호: ((ctx.found || {})[input.kind + '|' + input.id]) || (d && (d.사건번호 || d.안건번호 || d.청구번호)) || '', 요약: caseProcAiCut_(pickTxt(d).replace(/\s+/g, ' '), 400) }, input);
+  }
+  return { 오류: '모르는 도구' };
+}
+function caseProcAiAttachSave_(c, ctx, entry, input) {
+  entry = Object.assign(entry, { 첨부: 'AI', 확인: false, 쓸곳: caseProcAiMask_(caseProcAiCut_(input.use || '', 60)), 이유: caseProcAiMask_(caseProcAiCut_(input.why || '', 120)), 첨부일: caseProcToday_() });
+  const list = (c.법령예규판례 || []).filter(function (e) { return !(e.category === entry.category && e.id === entry.id); });
+  const keep = (c.법령예규판례 || []).filter(function (e) { return e.category === entry.category && e.id === entry.id && e.첨부 !== 'AI'; })[0];
+  if (keep) return { ok: true, 첨부: '이미 세무사님이 직접 첨부한 자료 — 그대로 둠', id: entry.id };
+  try { work_updateCase({ id: c.id, 법령예규판례: list.concat([entry]) }); } catch (e) { return { 오류: '첨부 저장 실패: ' + (e && e.message || e) }; }
+  ctx.attaches = (ctx.attaches || []).concat([{ id: entry.id, 제목: entry.제목, 쓸곳: entry.쓸곳 }]);
+  return { ok: true, 첨부: 'AI 첨부(미확인) — 세무사님이 법령 탭에서 확정하거나 뺀다', id: entry.id, 제목: entry.제목, 판: entry.판 || '' };
 }
 
 // ---------- 입구 ----------

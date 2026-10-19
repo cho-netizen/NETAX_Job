@@ -36363,6 +36363,21 @@ function caseProcDraft_(c) {
         .replace(/\{([가-힣A-Za-z0-9_]+)\}/g, function (_, k) { return (vars[k] != null && String(vars[k]).trim()) ? String(vars[k]) : '⚠[확인필요: ' + k + ']'; }), '');
     });
   }
+  // [2026.10.19 법령] 근거 — 법령 탭에서 사건에 붙인 조문·예규·판례(직접·AI)를 쓸 곳(쟁점)별로. 조문은 첨부 때 저장한 사건 기준일 판 원문(관계법령 모양) — 서버는 정비본을 다시 읽지 않는다
+  const att = (c.법령예규판례 || []).filter(function (e) { return e && e.category !== 'law' && e.category !== 'form' && (e.category !== 'statute' || e.원문); });
+  if (att.length) {
+    const cat = { precedent: '판례', interpretation: '법령해석례', administrative_rule: '행정규칙', tax_tribunal: '조세심판원', constitutional: '헌재결정례' }, by = {};
+    L.push((paras.length ? '### ' : '## ') + '근거 — 첨부한 법령·예규·판례(' + att.length + '건)', '');
+    att.forEach(function (e) { const k = String(e.쓸곳 || '').trim() || '쓸 곳 미지정'; (by[k] = by[k] || []).push(e); });
+    Object.keys(by).forEach(function (k) {
+      L.push('**▸ ' + k + '**', '');
+      by[k].forEach(function (e) {
+        const who = e.첨부 === 'AI' ? (e.확인 ? '🤖 AI 첨부' : '🤖 AI 첨부(미확인)') + (e.이유 ? ' — ' + e.이유 : '') : '직접 첨부';
+        if (e.category === 'statute') L.push('**' + e.제목 + '**' + (e.판 ? ' (' + e.판 + ' 시행)' : '') + ' — ' + who, '', String(e.원문).slice(0, 3000), '');
+        else L.push('- [' + (cat[e.category] || e.category) + '] ' + String(e.제목 || '').replace(/\s+/g, ' ') + (e.번호 ? ' (' + e.번호 + ')' : '') + (e.결과 ? ' — ' + e.결과 : '') + ' — ' + who + (e.요약 ? '  \n  ' + String(e.요약).replace(/\s+/g, ' ').slice(0, 160) : ''), '');
+      });
+    });
+  }
   // [2026.10.18 교차검증 2번] AI 판단 값은 서류 값·세무사님 확인 값과 섞지 않고 따로 모은다(세무사님 원칙 4 — 무엇을 AI가 정했는지 알 수 있게)
   let aiList = []; try { aiList = typeof cxAiJudgedList_ === 'function' ? cxAiJudgedList_(c.id) : []; } catch (e) { aiList = []; }
   if (aiList.length) {

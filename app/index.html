@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 10:36 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 10:44 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -5113,7 +5113,7 @@
   ];
   var LS_CATEGORY_LABELS_ = {
     precedent: '판례', interpretation: '법령해석례', administrative_rule: '행정규칙',
-    tax_tribunal: '조세심판원', constitutional: '헌재결정례', law: '법령', form: '별표·서식'
+    tax_tribunal: '조세심판원', constitutional: '헌재결정례', law: '법령', form: '별표·서식', statute: '법령 조문'
   };
   var LS_NO_DETAIL_ = { law: true, form: true }; // 상세조회 없이 검색결과만으로 첨부하는 카테고리
 
@@ -5385,6 +5385,9 @@
   function attachSelected_(){
     var checked = Array.prototype.map.call(document.querySelectorAll('.lsResultChk:checked'), function(el){ return Number(el.dataset.idx); });
     if (!checked.length){ showToast('첨부할 항목을 체크해주세요.', 'warning'); return; }
+    // [2026.10.19] 어디에 쓸지 한 줄 — 관련법령 파일·검토서 근거·AI 지휘가 이것으로 쓴다(비워도 됨, 취소하면 첨부 안 함)
+    var use = window.prompt('어디에 쓸 자료인가요? 쟁점이나 계산 칸을 적어 주세요(비워도 됩니다).', '');
+    if (use === null) return;
     var btn = document.getElementById('lsAttachSelectedBtn');
     btn.disabled = true;
     btn.textContent = '조회 중…';
@@ -5405,7 +5408,7 @@
     })).then(function(picked_results){
       var today = new Date().toISOString().slice(0, 10);
       var newEntries = picked.map(function(ri, i){
-        var entry = { category: ri.category, id: ri.item.id, 제목: ri.title, 요약: picked_results[i].요약, 첨부일: today };
+        var entry = { category: ri.category, id: ri.item.id, 제목: ri.title, 요약: picked_results[i].요약, 번호: ri.sub || '', 첨부일: today, 첨부: '직접', 쓸곳: String(use || '').trim() };
         if (picked_results[i].결과) entry.결과 = picked_results[i].결과;
         return entry;
       }).filter(function(entry){
@@ -5441,8 +5444,15 @@
         '<div class="log-date">' + escapeHtml(LS_CATEGORY_LABELS_[entry.category] || entry.category) +
         (entry.결과 ? '<br><span title="판결문 문장에서 자동으로 찾은 참고용 표시 — 정확한 분류 아님" style="background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:1px 6px; font-size:11px; color:var(--navy); display:inline-block; margin-top:3px;">' + escapeHtml(entry.결과) + '</span>' : '') + '</div>' +
         '<div class="log-text"><b>' + escapeHtml(entry.제목 || '') + '</b>' +
+        ' <span style="font-size:11.5px;color:var(--sub);">' + (entry.첨부 === 'AI' ? (entry.확인 ? '🤖 AI 첨부(확정)' : '🤖 AI 첨부(미확인)') : '직접 첨부') + (entry.판 ? ' · ' + escapeHtml(String(entry.판)) + ' 시행판' : '') + (entry.쓸곳 ? ' · 쓸 곳: ' + escapeHtml(entry.쓸곳) : '') + (entry.이유 ? ' · ' + escapeHtml(entry.이유) : '') + '</span>' +
+        (entry.첨부 === 'AI' && !entry.확인 ? ' <button type="button" class="ghost-btn ls-ai-ok" style="font-size:11.5px;padding:1px 6px;">✔ 확정</button>' : '') +
         (entry.요약 ? '<br><span style="color:var(--sub); font-size:12.5px; white-space:pre-wrap;">' + escapeHtml(entry.요약) + '</span>' : '') + '</div>' +
         '<span class="log-del" title="첨부 해제">✕</span>';
+      var okBtn = row.querySelector('.ls-ai-ok');
+      if (okBtn) okBtn.addEventListener('click', function(){
+        var newList = list.map(function(e){ return (e.category === entry.category && e.id === entry.id) ? Object.assign({}, e, { 확인: true, 확인일: new Date().toISOString().slice(0, 10) }) : e; });
+        lsSaveAttachments_(newList).then(function(ok){ if (ok) renderLsResults_(); });
+      });
       row.querySelector('.log-del').addEventListener('click', function(){
         var newList = list.filter(function(e){ return !(e.category === entry.category && e.id === entry.id); });
         lsSaveAttachments_(newList).then(function(ok){ if (ok) renderLsResults_(); });
@@ -6410,7 +6420,8 @@
       var head = '<div class="lsidb-head"><b>' + lsiEsc_(r.법령명) + '</b> [시행 ' + lsiEsc_(lsiDbYmd_(r.시행일자)) + ']' + (p ? ' [' + lsiEsc_((p.법종 ? p.법종 + ' ' : '') + '제' + String(p.공포번호).replace(/^0+/, '')) + '호, ' + lsiEsc_(lsiDbYmd_(p.공포일)) + ', ' + lsiEsc_(p.구분 || '') + ']' : '') +
         (r.주의 ? '<br>⚠ ' + lsiEsc_(r.주의) : '') + (r.개정확인 ? '<br>' + lsiEsc_(r.개정확인) : '') + (r.시행예정개정 ? '<br>⏳ ' + lsiEsc_(r.시행예정개정) : '') +
         '<br><span class="lsi-note">' + lsiEsc_(r.출처 || '') + (r.원문링크 ? ' · <a href="' + lsiEsc_(r.원문링크) + '" target="_blank" rel="noopener">법제처에서 보기 ↗</a>' : '') + '</span></div>';
-      var cites = [], btn = function(a, h, o, label, title){ var k = cites.push({ a: a, h: h, o: o }) - 1; return '<button type="button" class="lsidb-copy" data-lsidbcite="' + k + '" title="' + lsiEsc_(title) + '">' + label + '</button>'; };
+      var cites = [], btn = function(a, h, o, label, title){ var k = cites.push({ a: a, h: h, o: o }) - 1; return '<button type="button" class="lsidb-copy" data-lsidbcite="' + k + '" title="' + lsiEsc_(title) + '">' + label + '</button>' +
+        (o < 0 ? '<button type="button" class="lsidb-copy" data-lsidbatt="' + k + '" title="위에서 고른 사건에 이 ' + (h < 0 ? '조문' : '항') + '을 첨부(사건 기준일 판 원문·쓸 곳 함께 저장 — 관련법령·검토서 근거·AI 지휘가 씀)">📎 첨부</button>' : ''); };
       var body = r.조문.map(function(u){
         var a = lsiCiteArt_(u), parts = '';
         parts += lsiDbSegsHtml_(lsiCiteSegs_(a.rest, 0));
@@ -6427,7 +6438,30 @@
       }).join('');
       doc.innerHTML = head + body;
       doc.querySelectorAll('[data-lsidbcite]').forEach(function(b){ b.addEventListener('click', function(e){ e.stopPropagation(); var c = cites[+b.dataset.lsidbcite]; lsiCiteCopy_(lsiCiteBuild_(c.a, { h: c.h, o: c.o }, meta, lsiCiteOpts_())); }); });
+      doc.querySelectorAll('[data-lsidbatt]').forEach(function(b){ b.addEventListener('click', function(e){ e.stopPropagation(); var c = cites[+b.dataset.lsidbatt]; lsiDbAttach_(c.a, c.h, meta); }); });
     }).catch(function(e){ doc.innerHTML = '<div class="lsi-note">조문을 읽지 못했습니다: ' + lsiEsc_(e && e.message || e) + '</div>'; });
+  }
+  // [2026.10.19] 📎 사건에 첨부 — 세무사님 "사건에 연결한 상태에서 법령검색을 하여 저장하기를 하면 그 이후에 어떻게 활용하는지에 대한 대책이 별로 없어"
+  //  위 "사건을 선택하세요"에서 고른 사건에, 그 사건 기준일 판의 그 조(또는 항) 원문·판·쓸 곳을 저장한다(category 'statute').
+  //  관련법령 파일(→ 쓰인 곳 "직접 첨부"), 검토서 근거, AI 지휘가 이 항목을 읽는다.
+  function lsiDbAttach_(a, h, meta){
+    var c = typeof lsCurrentCase !== 'undefined' ? lsCurrentCase : null;
+    if (!c){ alert('위 "사건을 선택하세요"에서 사건을 먼저 고르세요.'); return; }
+    var hang = h >= 0 ? (a.hangs[h].n || 0) : 0, art = a.label.replace(/^제/, '').replace('조', ''), law = meta.law;
+    var ref = '「' + law + '」 ' + a.label + (hang ? '제' + hang + '항' : '');
+    var use = window.prompt(ref + ' — 어디에 쓸 자료인가요? 쟁점이나 계산 칸을 적어 주세요(비워도 됩니다).', '');
+    if (use === null) return;
+    var base = String(c.기준일 || '').replace(/\D/g, '').slice(0, 8), target = c;
+    callGas('law_lookup_article', { lawName: law, articleNo: art, baseDate: base }).then(function(r){
+      if (!r || r.error || !r.조문 || !r.조문.length){ showToast('조문을 읽지 못했습니다: ' + ((r && r.error) || ''), 'error'); return; }
+      var a2 = lsiCiteArt_(r.조문[0]);
+      var md = typeof lsiRelArtMd_ === 'function' ? lsiRelArtMd_(a2, hang ? [hang] : []).join('\n') : lsiCiteBuild_(a2, { h: h, o: -1 }, meta, { style: 'plain', src: false, rev: false }).plain;
+      var id = law + '|' + art + '|' + (hang || '');
+      var entry = { category: 'statute', id: id, 제목: ref + (a2.title ? '(' + a2.title + ')' : ''), 요약: md.replace(/\s+/g, ' ').slice(0, 300), 법령명: law, 조: art, 항: hang || '',
+        판: r.시행일자 ? lsiDbYmd_(r.시행일자) : '', 기준일판: !!base, 원문: md.slice(0, 6000), 쓸곳: String(use || '').trim(), 첨부: '직접', 첨부일: new Date().toISOString().slice(0, 10) };
+      var list = (target.법령예규판례 || []).filter(function(e){ return !(e.category === 'statute' && e.id === id); }).concat([entry]);
+      lsSaveAttachments_(list, target).then(function(ok){ if (ok) showToast(ref + ' 첨부했습니다' + (base ? ' (' + entry.판 + ' 시행판)' : ' — 사건 기준일이 없어 현행판'), 'success'); });
+    });
   }
   // 다른 곳(조문으로 찾아보기 등)에서 "이 조문 원문"으로 열기
   function lsiDbJump_(lawName, art){
@@ -43721,7 +43755,7 @@ function goToReportWriter_(caseId, opts){
       L = L.concat(['- 조문 ' + o.got.length + '개' + (subst ? ' · 현행판으로 대신함 ' + subst + '건' : '') + (fail ? ' · 찾지 못함 ' + fail + '건' : '') + ' · 예규·판례 ' + precs.length + '건'], body);
       if (precs.length){
         L.push('', '## 관련 예규·판례', '');
-        precs.forEach(function(p){ var e = p.e; L.push('- **[' + ((typeof LS_CATEGORY_LABELS_ !== 'undefined' && LS_CATEGORY_LABELS_[e.category]) || e.category) + '] ' + String(e.제목 || '').replace(/\n/g, ' ') + '**' + (e.결과 ? ' — ' + e.결과 : '')); if (e.요약) L.push('  ' + String(e.요약).replace(/\s+/g, ' ').slice(0, 300)); L.push('  → ' + p.use, ''); });
+        precs.forEach(function(p){ var e = p.e; L.push('- **[' + ((typeof LS_CATEGORY_LABELS_ !== 'undefined' && LS_CATEGORY_LABELS_[e.category]) || e.category) + '] ' + String(e.제목 || '').replace(/\n/g, ' ') + '**' + (e.번호 ? ' (' + e.번호 + ')' : '') + (e.결과 ? ' — ' + e.결과 : '')); if (e.요약) L.push('  ' + String(e.요약).replace(/\s+/g, ' ').slice(0, 300)); L.push('  → ' + p.use, ''); });
       }
       if (!o.got.length && !precs.length) L.push('', '(모은 조문이 없습니다 — 검토서·보고서에 「법령」 제N조나 소득세법 §95 꼴로 인용하거나, 법령 탭에서 조문을 사건에 첨부하세요.)');
       var md = L.join('\n').replace(/\n{3,}/g, '\n\n') + '\n';
