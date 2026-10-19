@@ -1585,6 +1585,7 @@ const DRIVE_TOOLS = [
         shareholderOwnershipRatio: { type: 'number', description: '증여의제이익을 계산할 그 지배주주등의 주식보유비율(0~1).' },
         directGiftTaxEquivalent: { type: 'number', description: '§45의5② 한도 계산용 — 그 지배주주등이 특정법인의 이익 중 자기 지분에 해당하는 금액을 직접 증여받았다고 볼 경우의 증여세 상당액(원, 관계별 공제 반영해 별도 계산). 없으면 한도를 적용하지 않는다.' },
         priorBenefitsWithinOneYear: { type: 'array', items: { type: 'number' }, description: '§43②·시행령§32의4 — 이번 증여일부터 소급 1년 이내 같은 특정법인과의 동일한 거래등이 더 있었다면, 그 각각의 증여의제이익을 배열로 넣는다. 이 도구가 이번 거래 이익과 합산해 1억원 기준금액(게이트)을 다시 계산한다. 없으면 생략.' },
+        priorCorporateTaxEquivalentWithinOneYear: { type: 'number', description: '[2026.10.20] priorBenefitsWithinOneYear 거래들의 법인세상당액 중 이 지배주주등 몫 합계(원) — ㊲ 한도(시행령 §34의5⑨)에서 직접 증여 금액으로 되돌리고 한도에서 뺌. 없으면 생략.' },
         relationDeductionLimit: { type: 'number', description: '증여재산공제(§53) 한도액(10년 — 같은 증여자 앞선 증여를 priorGiftAmount로 합산하면 그 증여에 쓴 공제는 빼지 말고, 합산 안 되는 다른 증여자에게 쓴 공제만 뺀 값) — 서식 10호의6은 증여자(특수관계인)와의 관계별 공제 칸을 둠(확인 필요).' },
         priorGiftAmount: { type: 'number', description: '10년 이내 동일인 기증여재산가액(§47②). 그 합친 금액이 1천만원 미만이면 이 도구가 자동으로 합산에서 제외하므로 그대로 실제 금액을 넣으면 된다. 없으면 0.' },
         appraisalFeeAmount: { type: 'number', description: '증여재산 감정평가 수수료(500만원 한도). 없으면 생략.' },

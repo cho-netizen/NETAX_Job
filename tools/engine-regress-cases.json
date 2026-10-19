@@ -2844,5 +2844,25 @@
    "지방소득세": 3414500,
    "납부세액_합계": 37559500
   }
+ },
+ {
+  "이름": "[㊲ 한도 — 1년 내 앞선 거래 법인세상당액] 이번 이익 1억(법인세상당액 1천만)·앞선 거래 증여의제이익 9천만(그 거래 법인세상당액 1천만): 직접 증여 2억 → 3천만 − 2천만 = 한도 1천만(칸 비우면 1,800만), 산출 1천만",
+  "도구": "calculateSpecificCorporationGiftTaxJS",
+  "고정": true,
+  "입력": {
+   "benefitToCorpAmount": 100000000,
+   "corporateTaxAfterCredit": 20000000,
+   "corporateTaxableIncome": 200000000,
+   "shareholderOwnershipRatio": 1,
+   "priorBenefitsWithinOneYear": [
+    90000000
+   ],
+   "priorCorporateTaxEquivalentWithinOneYear": 10000000
+  },
+  "정답": {
+   "과세표준": 180000000,
+   "산출세액": 10000000,
+   "납부세액": 9700000
+  }
  }
 ]
