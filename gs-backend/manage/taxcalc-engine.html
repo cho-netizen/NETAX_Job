@@ -105,12 +105,14 @@
   }
 
   // 증여재산공제 (상증세법 §53, 10년간 합산 한도액 기준)
-  function giftPropertyDeduction(relation, isMinor) {
+  // [2026.10.19 조견표 2부-11] giftDate(증여일)를 주면 그날의 금액(2016년 전 직계비속 3천만·기타친족 500만, 2014년 전 직계존속 3천만·미성년 1,500만, 2008년 전 배우자 3억)
+  function giftPropertyDeduction(relation, isMinor, giftDate) {
+    const r = giRowAt_(REF_GI_.giftDed, giftDate);
     switch (relation) {
-      case '배우자': return 600000000;
-      case '직계존속': return isMinor ? 20000000 : 50000000;
-      case '직계비속': return 50000000;
-      case '기타친족': return 10000000;
+      case '배우자': return r ? r.spouse : 600000000;
+      case '직계존속': return isMinor ? (r ? r.ascMinor : 20000000) : (r ? r.asc : 50000000);
+      case '직계비속': return r ? r.desc : 50000000;
+      case '기타친족': return r ? r.other : 10000000;
       default: return 0;
     }
   }
@@ -373,7 +375,10 @@
     const targetCorporate = ratioInfo ? Math.round(stockValue * ratioInfo.ratio) : 0;
     const targetAmount = targetIndividual + targetCorporate;
 
-    const limitAmount = years < 10 ? 0 : (years < 20 ? 30000000000 : (years < 30 ? 40000000000 : 60000000000));
+    // [2026.10.19 조견표 2부-12] 상속개시일별 한도 — 2018~2022 200·300·500억(10·20·30년), 2014~2017 200·300·500억(10·15·20년)
+    const bz_ = giRowAt_(REF_GI_.business, p.dateOfDeath || p.inheritanceDate);
+    const limitAmount = bz_ ? bz_.tiers.reduce(function (m, t) { return years >= t[0] ? t[1] : m; }, 0)
+      : (years < 10 ? 0 : (years < 20 ? 30000000000 : (years < 30 ? 40000000000 : 60000000000)));
     let deductionAmount = Math.min(targetAmount, limitAmount);
 
     const eligibilityFlags = {
@@ -437,7 +442,8 @@
     const targetCorporate = ratioInfo ? Math.round(stockValue * ratioInfo.ratio) : 0;
     const targetAmount = individualTotal + targetCorporate;
 
-    const limitAmount = 3000000000;
+    const fm_ = giRowAt_(REF_GI_.farming, p.dateOfDeath || p.inheritanceDate); // [2026.10.19 2부-12] 2023년 전 20억·15억·5억
+    const limitAmount = fm_ ? fm_.cap : 3000000000;
     let deductionAmount = Math.min(targetAmount, limitAmount);
 
     const eligibilityFlags = {
@@ -629,6 +635,7 @@
   const REF_LT_ = { 표1: [{"from":"2008-01-01","to":"2008-03-20","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30}},{"from":"2008-03-21","to":"2018-12-31","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30}},{"from":"2019-01-01","to":null,"rates":{"3":6,"4":8,"5":10,"6":12,"7":14,"8":16,"9":18,"10":20,"11":22,"12":24,"13":26,"14":28,"15":30}}], 표2: [{"from":"2008-01-01","to":"2008-03-20","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30,"11":33,"12":36,"13":39,"14":42,"15":45}},{"from":"2008-03-21","to":"2008-12-31","rates":{"3":12,"4":16,"5":20,"6":24,"7":28,"8":32,"9":36,"10":40,"11":44,"12":48,"13":52,"14":56,"15":60,"16":64,"17":68,"18":72,"19":76,"20":80}},{"from":"2009-01-01","to":"2020-12-31","rates":{"3":24,"4":32,"5":40,"6":48,"7":56,"8":64,"9":72,"10":80}}] };
   const REF_HV_ = {"house":[{"from":"2005-02-19","to":"2008-10-06","amount":600000000},{"from":"2008-10-07","to":"2021-12-07","amount":900000000},{"from":"2021-12-08","to":null,"amount":1200000000}],"right":[{"from":"2017-02-03","to":"2021-12-07","amount":900000000},{"from":"2021-12-08","to":null,"amount":1200000000}]};
   const REF_SR_ = {"house":[{"from":"2008-01-01","to":"2013-12-31","lt1":0.5,"lt2":0.4,"ge2":null},{"from":"2014-01-01","to":"2021-05-31","lt1":0.4,"lt2":null,"ge2":null},{"from":"2021-06-01","to":null,"lt1":0.7,"lt2":0.6,"ge2":null}],"other":[{"from":"2008-01-01","to":null,"lt1":0.5,"lt2":0.4,"ge2":null}],"presale":[{"from":"2008-01-01","to":"2017-12-31","lt1":0.5,"lt2":0.4,"ge2":null,"adj":null},{"from":"2018-01-01","to":"2021-05-31","lt1":0.5,"lt2":0.4,"ge2":null,"adj":0.5},{"from":"2021-06-01","to":null,"lt1":0.7,"lt2":0.6,"ge2":0.6,"adj":null}],"multi":[{"from":"2014-01-01","to":"2018-03-31","two":0,"three":0},{"from":"2018-04-01","to":"2021-05-31","two":0.1,"three":0.2},{"from":"2021-06-01","to":null,"two":0.2,"three":0.3}],"nonbiz":[{"from":"2014-01-01","to":"2014-12-31","add":0},{"from":"2015-01-01","to":null,"add":0.1}]};
+  const REF_GI_ = {"credit":[{"from":"2005-07-13","to":"2016-12-31","rate":0.1},{"from":"2017-01-01","to":"2017-12-31","rate":0.07},{"from":"2018-01-01","to":"2018-12-31","rate":0.05},{"from":"2019-01-01","to":null,"rate":0.03}],"giftDed":[{"from":"2007-04-11","to":"2007-12-31","spouse":300000000,"asc":30000000,"ascMinor":15000000,"desc":30000000,"other":5000000},{"from":"2008-01-01","to":"2013-12-31","spouse":600000000,"asc":30000000,"ascMinor":15000000,"desc":30000000,"other":5000000},{"from":"2014-01-01","to":"2015-12-31","spouse":600000000,"asc":50000000,"ascMinor":20000000,"desc":30000000,"other":5000000},{"from":"2016-01-01","to":null,"spouse":600000000,"asc":50000000,"ascMinor":20000000,"desc":50000000,"other":10000000}],"marriageFrom":"2024-01-01","personal":[{"from":"2012-01-01","to":"2015-12-31","child":30000000,"minorPerYear":5000000,"elderly":30000000,"disabledPerYear":5000000},{"from":"2016-01-01","to":null,"child":50000000,"minorPerYear":10000000,"elderly":50000000,"disabledPerYear":10000000}],"cohabit":[{"from":"2012-01-01","to":"2015-12-31","rate":0.4,"cap":500000000},{"from":"2016-01-01","to":"2019-12-31","rate":0.8,"cap":500000000},{"from":"2020-01-01","to":null,"rate":1,"cap":600000000}],"business":[{"from":"2014-01-01","to":"2017-12-31","tiers":[[10,20000000000],[15,30000000000],[20,50000000000]]},{"from":"2018-01-01","to":"2022-12-31","tiers":[[10,20000000000],[20,30000000000],[30,50000000000]]},{"from":"2023-01-01","to":null,"tiers":[[10,30000000000],[20,40000000000],[30,60000000000]]}],"farming":[{"from":"2014-01-01","to":"2015-12-31","cap":500000000},{"from":"2016-01-01","to":"2021-12-31","cap":1500000000},{"from":"2022-01-01","to":"2022-12-31","cap":2000000000},{"from":"2023-01-01","to":null,"cap":3000000000}],"genSkip":[{"from":"2008-01-01","to":"2015-12-31","minor":0.3},{"from":"2016-01-01","to":null,"minor":0.4}]};
   /*@@REF_ENGINE_END@@*/
   // [2026.10.19 켬] 세무사님 답(원문): "1. 켠다" — 기본으로 켠다. 끄려면 window.__NX_REF_HISTORY_ON = false(시험·비상용).
   function refHistoryOn_() { return !(typeof window !== 'undefined' && window && window.__NX_REF_HISTORY_ON === false); }
@@ -699,6 +706,18 @@
     if (!refHistoryOn_() || !d || d >= '2020-01-01') return 'all';
     return d < '2018-01-01' ? 'none' : 'conversion_new_only';
   }
+  // [2026.10.19 조견표 2부-10·11·12·15] 상속개시일·증여일별 값(REF_GI_ — reftables 원문 대조 행). 날짜가 없거나 연혁 스위치가 꺼졌거나
+  //  지금 행(끝 날짜 없음)이면 null을 돌려 각 자리의 지금 값을 그대로 쓴다(지금 사건은 0원도 안 바뀜). 표보다 옛날이면 null + 경고(아래 HistoryWarning).
+  function giRowAt_(rows, date) {
+    const d = String(date || '').slice(0, 10);
+    if (!refHistoryOn_() || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+    const r = refRowAt_(rows || [], d);
+    return r && r.to ? r : null;
+  }
+  function giBeforeTable_(rows, date) { const d = String(date || '').slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(d) && !!(rows && rows.length) && d < rows[0].from; }
+  function reportCreditRateAt_(date) { const r = giRowAt_(REF_GI_.credit, date); return r ? r.rate : 0.03; } // 신고세액공제율(§69)
+  function genSkipMinorRateAt_(date) { const r = giRowAt_(REF_GI_.genSkip, date); return r ? r.minor : 0.4; } // 미성년·20억 초과 할증률(2016년 전 30%)
+  function marriageBirthAllowedAt_(date) { const d = String(date || '').slice(0, 10); return !(refHistoryOn_() && /^\d{4}-\d{2}-\d{2}$/.test(d) && REF_GI_.marriageFrom && d < REF_GI_.marriageFrom); }
   // [2026.10.19 조견표 2부-32] 이월과세(§97의2①)·증여 후 우회양도 부인(§101②) 기간 — 2023.1.1. 이후 증여받은 자산 10년, 그 전 5년
   //  (법률 제19196호 부칙 제18조 '이 법 시행 전에 증여받은 자산은 종전 규정'). 증여일을 모르면 지금 값 10년.
   function carryoverWindowYearsAt_(giftDate) {
@@ -2710,10 +2729,10 @@
       //  합산 안 되는 다른 증여자(같은 공제 묶음, 예: 조부)에게서 받은 증여에 쓴 공제는 priorRelationDeductionUsedOther로 따로 받아 늘 뺀다.
       const priorGiftAggregated_ = priorGiftAmount > 0;
       relationDeduction = isDoneeResident
-        ? Math.max(0, giftPropertyDeduction(p.relation, !!p.isMinor) - (Number(p.priorRelationDeductionUsedOther) || 0) - (priorGiftAggregated_ ? 0 : (Number(p.priorRelationDeductionUsed) || 0))) : 0;
+        ? Math.max(0, giftPropertyDeduction(p.relation, !!p.isMinor, p.giftDate || p.giftReceivedDate) - (Number(p.priorRelationDeductionUsedOther) || 0) - (priorGiftAggregated_ ? 0 : (Number(p.priorRelationDeductionUsed) || 0))) : 0;
       // §53의2①② — "거주자가 직계존속으로부터... 증여를 받는 경우"에만 적용되는 공제다. 배우자·직계비속·
       // 기타친족으로부터의 증여에는 적용되지 않는다.
-      marriageBirthDeduction = (isDoneeResident && p.relation === '직계존속' && (p.isMarriageGift || p.isBirthGift))
+      marriageBirthDeduction = (isDoneeResident && p.relation === '직계존속' && (p.isMarriageGift || p.isBirthGift) && marriageBirthAllowedAt_(p.giftDate || p.giftReceivedDate)) // [2026.10.19 2부-11] 2024.1.1. 이후 증여분부터
         ? marriageOrBirthGiftDeduction(netGiftAmount, p.priorMarriageOrBirthDeductionUsed) : 0;
       // [2026.10.19 세액 고침] 서식 부표3 ⑯ = ⑨ + ⑭(작성방법 4: 같은 증여자로부터 10년 내 이미 공제받은 금액 + 이번 공제) — 그 증여를 합산했으면
       //  그때 쓴 혼인·출산공제(priorMarriageOrBirthDeductionSameDonor10y, 누적액 안의 일부)도 이번 합산 계산에서 다시 공제한다.
@@ -2744,7 +2763,7 @@
     // 미성년 요건 없이 20억 초과만으로 40%를 적용하면 과다할증이므로 반드시 isMinor를 함께 확인한다.
     // §57① 단서 — "증여자의 최근친인 직계비속이 사망하여 그 사망자의 최근친인 직계비속이 증여받은
     // 경우"(대습증여에 준하는 경우)는 할증을 적용하지 않는다.
-    const premiumRate = (isGenerationSkip && !p.isSubstituteGiftDueToDeath) ? ((p.generationSkipOver2Billion && p.isMinor) ? 0.4 : 0.3) : 0;
+    const premiumRate = (isGenerationSkip && !p.isSubstituteGiftDueToDeath) ? ((p.generationSkipOver2Billion && p.isMinor) ? genSkipMinorRateAt_(p.giftDate || p.giftReceivedDate) : 0.3) : 0; // [2026.10.19 2부-15] 40%는 2016.1.1. 이후
     const priorPaidGenerationSkipPremium = Number(p.priorPaidGenerationSkipPremium) || 0;
     const premiumAmount = Math.max(0, Math.round(taxBeforePremium * generationSkipRatio * premiumRate) - priorPaidGenerationSkipPremium);
     const taxAfterPremium = taxBeforePremium + premiumAmount;
@@ -2781,7 +2800,7 @@
     const museumDeferredTaxAmount = Number(p.museumDeferredTaxAmount) || 0;
     const farmlandGiftTaxExemptionAmount = Number(p.farmlandGiftTaxExemptionAmount) || 0;
     const taxAfterPriorCredit = Math.max(0, taxAfterPremium - priorGiftTaxCredit - foreignTaxCredit - otherCreditsAmount - museumDeferredTaxAmount - farmlandGiftTaxExemptionAmount);
-    const reportCredit = reportedInTime ? Math.round(taxAfterPriorCredit * 0.03) : 0;
+    const reportCredit = reportedInTime ? Math.round(taxAfterPriorCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일별 율
     const taxAfterCredit = taxAfterPriorCredit - reportCredit;
 
     const penalties = giftFilingPenalties(taxAfterCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
@@ -2863,8 +2882,10 @@
     // 항목이라 비거주자도 그대로 적용한다.
     const isDecedentResident = p.isDecedentResident !== false;
 
+    const inhDate_ = p.dateOfDeath || p.inheritanceDate; // [2026.10.19 조견표 2부-10·12·15] 상속개시일별 공제·율
+    const pr_ = giRowAt_(REF_GI_.personal, inhDate_); // 2016년 전: 자녀 3천만, 미성년 500만×연수, 연로자 3천만, 장애인 500만×기대여명
     const personalDeduction = isDecedentResident
-      ? (childCount * 50000000 + minorHeirRemainingYears * 10000000 + elderlyHeirCount * 50000000 + disabledHeirRemainingYears * 10000000)
+      ? (childCount * (pr_ ? pr_.child : 50000000) + minorHeirRemainingYears * (pr_ ? pr_.minorPerYear : 10000000) + elderlyHeirCount * (pr_ ? pr_.elderly : 50000000) + disabledHeirRemainingYears * (pr_ ? pr_.disabledPerYear : 10000000))
       : 0;
     const basicOrLumpSum = isDecedentResident ? basicOrLumpSumDeduction(personalDeduction, filingStatus === 'unreported', !!p.isSpouseOnlyHeir) : 200000000;
 
@@ -2891,7 +2912,8 @@
     } else {
       cohabitEligible = !!p.hasCohabitingHouseDeduction;
     }
-    const cohabitingHouseDeduction = (isDecedentResident && cohabitEligible) ? Math.min(Number(p.cohabitingHouseValue) || 0, 600000000) : 0;
+    const co_ = giRowAt_(REF_GI_.cohabit, inhDate_); // [2026.10.19 2부-12] 2020년 전 80%·5억, 2016년 전 40%·5억
+    const cohabitingHouseDeduction = (isDecedentResident && cohabitEligible) ? (co_ ? Math.min(Math.floor((Number(p.cohabitingHouseValue) || 0) * co_.rate), co_.cap) : Math.min(Number(p.cohabitingHouseValue) || 0, 600000000)) : 0;
     // 시행령§20의3③ — 일반 감정평가법인·유형재산 감정수수료(1호·3호)는 500만원 한도이나, 비상장주식
     // 신용평가전문기관 평가수수료(2호, §49의2⑨)는 평가대상 법인수×의뢰기관수별로 각각 1천만원 한도로
     // 별개 규정된다(단일 500만원 한도에 합산하면 안 됨). unlistedStockAppraisalFeeAmount는 그 합계액을
@@ -2964,7 +2986,7 @@
     // §27① 단서 — "「민법」제1001조에 따른 대습상속의 경우에는 그러하지 아니하다"(할증 배제).
     const generationSkipMinorStatusUnverified = generationSkipHeirRatio > 0 && !p.isSubstituteInheritance
       && !!p.generationSkipOver2Billion && p.generationSkipMinorHeir == null;
-    const generationSkipPremiumRate = p.isSubstituteInheritance ? 0 : ((p.generationSkipOver2Billion && p.generationSkipMinorHeir) ? 0.4 : 0.3);
+    const generationSkipPremiumRate = p.isSubstituteInheritance ? 0 : ((p.generationSkipOver2Billion && p.generationSkipMinorHeir) ? genSkipMinorRateAt_(inhDate_) : 0.3);
     const generationSkipPremium = Math.round(calculatedTax * generationSkipHeirRatio * generationSkipPremiumRate);
     calculatedTax += generationSkipPremium;
 
@@ -3013,7 +3035,8 @@
     const culturalPropertyDeferredTaxAmount = Number(p.culturalPropertyDeferredTaxAmount) || 0;
     const businessInheritanceDeferredTaxAmount = Number(p.businessInheritanceDeferredTaxAmount) || 0;
     const taxAfterCredits = Math.max(0, calculatedTax - priorGiftTaxCredit - specialGiftTaxCredit - foreignTaxCredit - shortTermCredit - otherCreditsAmount - culturalPropertyDeferredTaxAmount);
-    const reportCredit = reportedInTime ? Math.round(taxAfterCredits * 0.03) : 0;
+    const reportCreditRate_ = reportCreditRateAt_(inhDate_); // [2026.10.19 2부-10] 2019년 전 상속은 10%·7%·5%
+    const reportCredit = reportedInTime ? Math.round(taxAfterCredits * reportCreditRate_) : 0;
     const taxAfterReportCredit = taxAfterCredits - reportCredit;
 
     const penalties = giftFilingPenalties(taxAfterReportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
@@ -3046,7 +3069,7 @@
       상속세과세가액_장례비차감후: estateTaxableAfterFuneral, // §13 과세가액(신고서 상속세과세가액 칸과 같은 금액)
       인적공제: personalDeduction, '기초인적공제_또는_일괄공제': basicOrLumpSum,
       배우자공제: spouseDeduction, 배우자공제한도액: Number.isFinite(spouseLimit) ? spouseLimit : null,
-      금융재산상속공제: financialDeduction, 동거주택상속공제: cohabitingHouseDeduction,
+      금융재산상속공제: financialDeduction, 동거주택상속공제: cohabitingHouseDeduction, 신고세액공제율: reportCreditRate_,
       동거주택상속공제_요건미확인: cohabitRequirementsUnverified, 동거주택상속공제_미충족요건목록: cohabitFailedRequirements,
       감정평가수수료공제: appraisalFeeDeduction, 재해손실공제: disasterLossDeduction,
       장례비용공제: funeralDeduction, 장례비용공제_일반분: funeralGeneralDeduction, 장례비용공제_봉안시설분: funeralNicheDeduction,
@@ -3169,7 +3192,7 @@
       const otherCreditTotal = (aggregateResult.특례증여세액공제 || 0) + (aggregateResult.외국납부세액공제 || 0) + (aggregateResult.단기재상속세액공제 || 0) + (aggregateResult.그밖의공제 || 0);
       const otherP = heirs.map(function (h, i) { return Math.floor(otherCreditTotal * ratioP[i]); });
       const reportTotal = aggregateResult.신고세액공제 || 0;
-      const reportP = heirs.map(function (h, i) { return reportTotal > 0 ? Math.floor(Math.max(0, taxP[i] - giftP[i] - otherP[i]) * 0.03) : 0; });
+      const reportP = heirs.map(function (h, i) { return reportTotal > 0 ? Math.floor(Math.max(0, taxP[i] - giftP[i] - otherP[i]) * (aggregateResult && aggregateResult.신고세액공제율 != null ? aggregateResult.신고세액공제율 : 0.03)) : 0; });
       const forProfitP = heirs.map(function (h, i) { return Math.floor((aggregateResult.영리법인면제분납부세액 || 0) * ratioP[i]); });
       const penaltyP = heirs.map(function (h, i) { return Math.floor(totalPenaltyAmount * ratioP[i]); });
       const big = taxP.map(function (t, i) { return t - giftP[i]; });
@@ -3835,7 +3858,7 @@
     const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
-    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * 0.03) : 0;
+    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
     const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
     const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
     return {
@@ -3908,7 +3931,7 @@
     const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
-    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * 0.03) : 0;
+    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
     const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
     const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
     return Object.assign({
@@ -3979,7 +4002,7 @@
     const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
-    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * 0.03) : 0;
+    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
     const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
     const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
     return {
@@ -4070,7 +4093,7 @@
     const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
-    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * 0.03) : 0;
+    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
     const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
     const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
     return {
@@ -4120,7 +4143,7 @@
     const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
-    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * 0.03) : 0;
+    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
     const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
     const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
     return {
@@ -6003,7 +6026,7 @@
     const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
-    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * 0.03) : 0;
+    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
     const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
     const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
     return {
@@ -6080,7 +6103,7 @@
     const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
-    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * 0.03) : 0;
+    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
     const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
     const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
     return {
@@ -6986,7 +7009,7 @@
       : foreignTaxPaidAmount;
     const foreignTaxCredit = Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, calculatedTax - priorPaidTax));
     const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
-    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * 0.03) : 0;
+    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
     const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
     const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
 
@@ -7068,7 +7091,7 @@
     const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
-    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * 0.03) : 0;
+    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
     const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
     const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
     return {
@@ -7262,7 +7285,7 @@
     const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
-    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * 0.03) : 0;
+    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
     const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
     const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
     return {
@@ -7884,7 +7907,7 @@
     const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
-    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * 0.03) : 0;
+    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
     const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
     const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
     return {
@@ -8366,7 +8389,7 @@
     const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
-    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * 0.03) : 0;
+    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
     const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
     const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
     return {
@@ -8434,7 +8457,7 @@
     const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
-    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * 0.03) : 0;
+    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
     const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
     const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
     return {
@@ -8501,7 +8524,7 @@
     const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
-    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * 0.03) : 0;
+    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
     const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
     const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
     return {
@@ -8550,7 +8573,7 @@
     const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
-    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * 0.03) : 0;
+    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
     const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
     const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
     return {
@@ -8664,7 +8687,7 @@
     const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
-    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * 0.03) : 0;
+    const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
     const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
     const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
     return {
@@ -9257,22 +9280,27 @@
     const d = String((p && (p.giftDate || p.giftReceivedDate)) || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';
     const miss = [];
-    if (d < '2019-01-01' && Number(r.신고세액공제) > 0) miss.push('신고세액공제율(그때 7%·5% 등)');
-    if (d < '2016-01-01') miss.push('증여재산공제 한도(그때 기타친족 500만원' + (d < '2014-01-01' ? '·직계존속 3천만원·미성년 1,500만원' : '') + ')');
-    if (d < '2024-01-01' && (p.isMarriageGift || p.isBirthGift)) miss.push('혼인·출산 증여재산공제(2024-01-01 이후 증여분부터)');
-    if (d < '2016-01-01' && Number(r.세대생략할증률 || r.할증률 || 0) >= 0.4) miss.push('세대생략 40% 할증(2016년 전 없음)');
-    return miss.length ? '⚠ 이 증여일(' + d + ')의 ' + miss.join('·') + ' 연혁이 아직 계산기에 없습니다 — 현행 기준으로 계산됨, 확인 필요' : '';
+    // [2026.10.19 조견표 2부-10·11·15 연결] 연혁이 켜져 있으면 표 안의 날짜는 그때 값으로 계산됨 — 꺼졌거나 표보다 옛날일 때만 경고
+    const off = !refHistoryOn_();
+    if ((off || giBeforeTable_(REF_GI_.credit, d)) && d < '2019-01-01' && Number(r.신고세액공제) > 0) miss.push('신고세액공제율(그때 10%·7%·5%)');
+    if ((off || giBeforeTable_(REF_GI_.giftDed, d)) && d < '2016-01-01') miss.push('증여재산공제 한도(그때 기타친족 500만원' + (d < '2014-01-01' ? '·직계존속 3천만원·미성년 1,500만원' : '') + ')');
+    if (off && d < '2024-01-01' && (p.isMarriageGift || p.isBirthGift)) miss.push('혼인·출산 증여재산공제(2024-01-01 이후 증여분부터)');
+    if ((off || giBeforeTable_(REF_GI_.genSkip, d)) && d < '2016-01-01' && p.generationSkipOver2Billion && p.isMinor) miss.push('세대생략 40% 할증(2016년 전 없음)');
+    return miss.length ? '⚠ 이 증여일(' + d + ')의 ' + miss.join('·') + ' 연혁이 계산기에 없습니다 — 현행 기준으로 계산됨, 확인 필요' : '';
   }
   function inheritanceHistoryWarning_(p, r) {
-    const d = String((p && (p.inheritanceDate || p.deathDate)) || '').slice(0, 10);
+    const d = String((p && (p.dateOfDeath || p.inheritanceDate || p.deathDate)) || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';
     const miss = [];
-    if (d < '2019-01-01' && Number(r.신고세액공제) > 0) miss.push('신고세액공제율(그때 7%·5% 등)');
-    if (d < '2016-01-01' && Number(r.인적공제) > 0) miss.push('그 밖의 인적공제(자녀·미성년·연로자·장애인 금액)');
-    if (d < '2020-01-01' && Number(r.동거주택상속공제) > 0) miss.push('동거주택 상속공제(그때 80%·5억' + (d < '2016-01-01' ? ', 2016년 전 40%' : '') + ')');
-    if (d < '2016-01-01' && Number(r.세대생략가산액) > 0 && p.generationSkipOver2Billion && p.generationSkipMinorHeir) miss.push('세대생략 40% 할증(2016년 전 없음)');
-    if (d < '2023-01-01' && (Number(r.가업상속공제) > 0 || Number(r.영농상속공제) > 0)) miss.push('가업·영농상속공제 한도');
-    return miss.length ? '⚠ 이 상속개시일(' + d + ')의 ' + miss.join('·') + ' 연혁이 아직 계산기에 없습니다 — 현행 기준으로 계산됨, 확인 필요' : '';
+    // [2026.10.19 조견표 2부-10·12·15 연결] 연혁이 켜져 있으면 표 안의 날짜는 그때 값으로 계산됨 — 꺼졌거나 표보다 옛날일 때만 경고
+    const off = !refHistoryOn_();
+    if ((off || giBeforeTable_(REF_GI_.credit, d)) && d < '2019-01-01' && Number(r.신고세액공제) > 0) miss.push('신고세액공제율(그때 10%·7%·5%)');
+    if ((off || giBeforeTable_(REF_GI_.personal, d)) && d < '2016-01-01' && Number(r.인적공제) > 0) miss.push('그 밖의 인적공제(자녀·미성년·연로자·장애인 금액)');
+    const age = (!off && d >= '2012-01-01' && d < '2016-01-01' && Number(r.인적공제) > 0) ? '⚠ 이 상속개시일의 그 밖의 인적공제는 미성년 20세까지 연수·연로자 60세 이상 기준입니다(금액은 그때 값으로 계산함) — 입력 칸은 지금 기준(19세·65세)이니 그 나이대 상속인이 있으면 연수·인원을 고쳐 넣으세요' : '';
+    if ((off || giBeforeTable_(REF_GI_.cohabit, d)) && d < '2020-01-01' && Number(r.동거주택상속공제) > 0) miss.push('동거주택 상속공제(그때 80%·5억' + (d < '2016-01-01' ? ', 2016년 전 40%' : '') + ')');
+    if ((off || giBeforeTable_(REF_GI_.genSkip, d)) && d < '2016-01-01' && Number(r.세대생략가산액) > 0 && p.generationSkipOver2Billion && p.generationSkipMinorHeir) miss.push('세대생략 40% 할증(2016년 전 없음)');
+    if ((off || giBeforeTable_(REF_GI_.business, d)) && d < '2023-01-01' && (Number(r.가업상속공제) > 0 || Number(r.영농상속공제) > 0)) miss.push('가업·영농상속공제 한도');
+    return [miss.length ? '⚠ 이 상속개시일(' + d + ')의 ' + miss.join('·') + ' 연혁이 계산기에 없습니다 — 현행 기준으로 계산됨, 확인 필요' : '', age].filter(Boolean).join(' / ');
   }
   (function () {
     const g0 = window.calculateGiftTaxJS, i0 = window.calculateInheritanceTaxJS;
