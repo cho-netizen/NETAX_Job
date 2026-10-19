@@ -5004,7 +5004,9 @@ function toolLookupStatuteArticle(lawName, articleNo, baseDate) {
   var out = { 법령명: lawName }, arts = null, idx = null, ent, c = CacheService.getScriptCache();
   try { idx = lawDbIdx_(); } catch (e) { }
   ent = idx && idx.법령[key];
-  var ver = ent && ent.판.filter(function (p) { return day ? p.시행일 <= day : p.판 === ent.현행; }).pop();
+  var ver = ent && ent.판.filter(function (p) { return day ? p.시행일 <= day : p.판 === ent.현행; }).pop(), stale = null;
+  // [2026.10.20] 낡은 연혁 글(law-build markStale — 먼저 공포된 판이라 뒤 개정을 반영하지 않은 글)이면 같은 날까지 시행된 판 중 가장 늦게 공포된 판을 쓴다
+  if (ver && ver.낡은글) { stale = ver; ver = ent.판.filter(function (p) { return p.시행일 <= ver.시행일 && !p.낡은글; }).reduce(function (b, p) { return !b || p.공포일 > b.공포일 || (p.공포일 === b.공포일 && p.시행일 > b.시행일) ? p : b; }, null) || stale; if (ver === stale) stale = null; }
   if (ent && /부칙/.test(String(articleNo))) return lawDbBuchik_(idx, key, ver, (String(articleNo).match(/\d+/) || [])[0]);
   var fid = ver && lawDbIds_(idx, key)[ver.판], bm = String(articleNo).match(/별표\s*(\d+(?:의\d+)?)/);
   if (fid && bm) { var bd = JSON.parse(Utilities.ungzip(DriveApp.getFileById(fid).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')), bb = (bd.별표 || []).filter(function (b) { return b.번호 === bm[1]; }); // [2026.10.20] 별표(현행·시행예정 판)
@@ -5015,6 +5017,7 @@ function toolLookupStatuteArticle(lawName, articleNo, baseDate) {
     if (jk && !hit && arts.length) try { c.put(ck, JSON.stringify(arts[0]), 21600); } catch (e) { }
     out = { 법령명: ent.이름, 시행일자: ver.시행일, 판: ver.판, 출처: '법령 정비본(법제처 ' + ver.시행일 + ' 시행판, 공포 ' + ver.공포일 + ' 제' + ver.공포번호 + '호)' };
     if (ent.범위 === '조회만') out.주의 = '지방세 — 조회만, 계산·신고서 근거로 쓰지 않음';
+    if (stale) out.판주의 = stale.시행일 + ' 시행판(제' + stale.공포번호 + '호, 공포 ' + stale.공포일 + ')은 그보다 늦게 공포된 개정(' + stale.낡은글.앞최신 + ')을 반영하지 않은 법제처 연혁 글이라(되돌린 조 ' + stale.낡은글.되돌림 + '·빠진 조 ' + stale.낡은글.빠진조 + ') 이 판 글을 씀 — 제' + stale.공포번호 + '호로 ' + stale.시행일 + '부터 시행된 개정분은 부칙·원문 보기로 확인';
     var fut = ent.판.filter(function (p) { return p.상태 === '시행예정' && p.시행일 > (day || ver.시행일); })[0];
     if (fut) out.시행예정개정 = fut.시행일 + ' 시행 예정 개정판 있음 — 그 뒤 양도·증여·상속분이면 baseDate로 확인';
   } catch (e) { arts = null; out.정비본오류 = String(e.message || e); }
@@ -5060,7 +5063,7 @@ function toolLookupStatuteArticle(lawName, articleNo, baseDate) {
 // [2026.10.19] [📜 법령] 탭 정비본 보기 — 법령·판 목록 + (lawName을 주면) 그 판의 차례(조 번호·제목, 편·장·절 머리). 본문은 law_lookup_article(baseDate=판 시행일)
 function lawDbToc_(lawName, ver) {
   var idx = lawDbIdx_(); if (!idx) return { error: '법령 정비본(드라이브 0 NETAX/업무관리자/법령/본문)을 찾지 못했습니다.' };
-  var laws = Object.keys(idx.법령).map(function (k) { var e = idx.법령[k]; return { 키: k, 이름: e.이름, 범위: e.범위, 현행: e.현행, 판: e.판.map(function (p) { return { 판: p.판, 시행일: p.시행일, 공포일: p.공포일, 공포번호: p.공포번호, 구분: p.구분, 법종: p.법종, 상태: p.상태 }; }) }; });
+  var laws = Object.keys(idx.법령).map(function (k) { var e = idx.법령[k]; return { 키: k, 이름: e.이름, 범위: e.범위, 현행: e.현행, 판: e.판.map(function (p) { return { 판: p.판, 시행일: p.시행일, 공포일: p.공포일, 공포번호: p.공포번호, 구분: p.구분, 법종: p.법종, 상태: p.상태, 낡은글: p.낡은글 ? 1 : undefined }; }) }; });
   if (!lawName) return { 법령: laws };
   var key = String(lawName).replace(/\s/g, ''), e = idx.법령[key], v = ver || (e && e.현행);
   var fid = e && lawDbIds_(idx, key)[v];
