@@ -917,6 +917,25 @@
   }
  },
  {
+  "이름": "[증여 감사 C] 특정법인 ㊲ 한도 — 앞선 증여 2억(기납부 3천만) 합산: 직접 증여 시 증여세 tax(3억+2억)=9천만 − 법인세상당액 2천만 = 7천만 한도, − 기납부 3천만 = 4천만, 신고공제 120만 (시행령 §34의5⑨; 예전 0원)",
+  "도구": "calculateSpecificCorporationGiftTaxJS",
+  "고정": true,
+  "입력": {
+   "benefitToCorpAmount": 300000000,
+   "corporateTaxAfterCredit": 20000000,
+   "corporateTaxableIncome": 300000000,
+   "shareholderOwnershipRatio": 1,
+   "priorGiftAmount": 200000000,
+   "priorPaidTax": 30000000
+  },
+  "정답": {
+   "과세표준": 480000000,
+   "산출세액": 70000000,
+   "신고세액공제": 1200000,
+   "납부세액": 38800000
+  }
+ },
+ {
   "이름": "[서식감사 차] 가업상속공제 30억 받고 납부유예 5억도 넣음 — 유예는 빼지 않음 (§72의2①2호)",
   "도구": "calculate_inheritance_tax",
   "고정": true,

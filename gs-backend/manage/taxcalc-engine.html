@@ -9843,12 +9843,19 @@
     // [2026.10.20 ㊲ 확정] 이 한도엔 세대생략 할증(§57)을 넣지 않는다 — [별지 제10호의6서식](2025.7.4. 개정) ㊲ 이름이 "산출세액 한도", 작성방법 9 ㊱ = min(㉞×㉟−누진공제, ㊲),
     //  그 뒤 ㊳ 세대생략가산액을 더해 ㊴ = ㊱ + ㊳. 산출세액(§56 — 할증 전)과 비교하는 한도라 "직접 증여 시 증여세 상당액"도 할증 전 기준.
     const corporateTaxEquivalentForShareholder = Math.round(corporateTaxEquivalentTotal * shareholderOwnershipRatio);
+    // [2026.10.20 세액 고침 — 증여 감사 C] 시행령 §34의5⑨ "증여일에 [4항1호 금액 × 보유비율]을 직접 증여받은 것으로 볼 때의 증여세" — 직접 증여였다면
+    //  같은 증여자 10년 내 증여 합산(§47②)·1년 내 같은 거래 합산(§43②)·증여재산공제 등이 실제 산출세액(서식 ㉞ 과세표준)과 똑같이 들어간다.
+    //  예전엔 이번 거래 이익 × 비율에 세율만 매겨, 합산이 있으면 한도(합산 없음)가 산출세액(합산 있음)보다 훨씬 작아 늘 한도에 걸린 뒤
+    //  기납부세액을 또 빼서 세액이 0 가까이 됐다(예: 이익 3억·법인세상당액 2천만·앞선 증여 2억(기납부 3천만) → 0원, 고친 뒤 4천만원).
+    //  그래서 과세표준과 같은 줄을 쓰되 이번 거래 몫만 법인세 차감 전 금액(4항1호 × 비율)으로 바꾼다. 1년 내 앞선 거래 합산액은 입력값 그대로(그 거래의 법인세상당액은 이 한도에서 따로 빼지 않음 — 입력 칸 없음).
+    const directThis_ = Math.round(benefitToCorpAmount * shareholderOwnershipRatio);
+    const directBase_ = Math.max(0, directThis_ + priorBenefitSum + priorGiftAmount - relationDeductionFor_(p, directThis_ + priorBenefitSum, priorGiftAmount) - appraisalFeeAmount - disasterLossAmount);
     const directGiftTaxEquivalent = Number(p.directGiftTaxEquivalent) > 0
       ? Number(p.directGiftTaxEquivalent)
-      : progressiveGiftInheritTax(Math.round(benefitToCorpAmount * shareholderOwnershipRatio), GIFT_INHERIT_TAX_BRACKETS);
-    let capApplied = false;
+      : progressiveGiftInheritTax(directBase_, GIFT_INHERIT_TAX_BRACKETS);
+    let capApplied = false, capLimit_ = null;
     {
-      const capLimit = Math.max(0, directGiftTaxEquivalent - corporateTaxEquivalentForShareholder);
+      const capLimit = Math.max(0, directGiftTaxEquivalent - corporateTaxEquivalentForShareholder); capLimit_ = capLimit;
       if (calculatedTax > capLimit) { calculatedTax = capLimit; capApplied = true; }
     }
 
@@ -9881,6 +9888,7 @@
       과세표준: taxBase, 산출세액: calculatedTax, 세대생략할증액: genSkip.amount, 산출세액_할증후: calculatedTaxTotal, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
+      직접증여시_증여세상당액: directGiftTaxEquivalent, 법인세상당액_지배주주몫: corporateTaxEquivalentForShareholder, 산출세액한도: capLimit_, // [2026.10.20] 서식 ㊲
       안내: (capApplied ? '산출세액이 §45의5② 한도(직접증여시 증여세상당액-법인세상당액)를 초과해 그 한도로 낮췄습니다. ' : '') + '증여자가 지배주주의 친족이 아닌 특정법인 자체이므로 증여재산공제(§53)는 통상 적용되지 않습니다(위 관계별공제 한도는 0으로 입력하는 것이 원칙입니다). 증여세 과세표준 신고기한은 특정법인의 법인세 과세표준 신고기한이 속하는 달의 말일부터 3개월입니다(§68①).' + aggNote
     };
   };
