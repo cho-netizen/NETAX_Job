@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 22:00 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 22:13 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -24616,7 +24616,7 @@ let jtSegmentYears_ = [{ costs: [{}], expenses: [{}] }, { costs: [{}], expenses:
 function jtSegmentYearInput_(year){
   const sum = function(list, k){ return (list || []).reduce(function(s, r){ return s + numVal(r[k]); }, 0); };
   return { totalSales: numVal(year.totalSales), segmentSales: numVal(year.segmentSales), costTotal: sum(year.costs, 'total'), costSegment: sum(year.costs, 'segment'),
-    expenseTotal: sum(year.expenses, 'total'), expenseSegment: sum(year.expenses, 'segment'), taxAdjustment: numVal(year.taxAdjustment), method: year.method || '' };
+    expenseTotal: sum(year.expenses, 'total'), expenseSegment: sum(year.expenses, 'segment'), taxAdjustment: numVal(year.taxAdjustmentPlus) - numVal(year.taxAdjustmentMinus) + numVal(year.taxAdjustment), method: year.method || '' };
 }
 function jtSegmentYearResult_(year){ const r = calculateOpportunitySegmentProfitJS({ years: [jtSegmentYearInput_(year)] }); return (r.연도별 || [])[0] || null; }
 function jtSegmentYearOperatingProfit_(year){ const r = jtSegmentYearResult_(year); return r ? r.이익 : 0; }
@@ -24648,7 +24648,9 @@ function renderJtSegmentYear_(yearIdx){
     '<div class="taxcalc-grid" data-jtseg-sales-year="' + yearIdx + '">' +
       '<div class="taxcalc-field"><label>총매출액</label><input type="number" data-jtsegsales="totalSales" placeholder="원" value="' + (year.totalSales || '') + '"></div>' +
       '<div class="taxcalc-field"><label>부문(사업기회 제공분) 매출액</label><input type="number" data-jtsegsales="segmentSales" placeholder="원" value="' + (year.segmentSales || '') + '"></div>' +
-      '<div class="taxcalc-field"><label>세무조정 반영액(가산 +, 차감 −)</label><input type="number" data-jtsegsales="taxAdjustment" placeholder="원" value="' + (year.taxAdjustment || '') + '"><span class="taxcalc-field-help">법인세법 §23·§33·§34·§40·§41, 시행령 §44의2·§74 — 부문을 나눴으면 그 부문 몫, 못 나눴으면 법인 전체 몫</span></div>' +
+      // [2026.10.20] 금액 칸은 쉼표 표시가 −를 지워 보여 주므로 서식 ⑦·⑭처럼 (+)·(−) 두 칸으로
+      '<div class="taxcalc-field"><label>세무조정 (+) 더할 금액</label><input type="number" data-jtsegsales="taxAdjustmentPlus" placeholder="원" value="' + (year.taxAdjustmentPlus || '') + '"><span class="taxcalc-field-help">법인세법 §23·§33·§34·§40·§41, 시행령 §44의2·§74 — 부문을 나눴으면 그 부문 몫, 못 나눴으면 법인 전체 몫</span></div>' +
+      '<div class="taxcalc-field"><label>세무조정 (−) 뺄 금액</label><input type="number" data-jtsegsales="taxAdjustmentMinus" placeholder="원" value="' + (year.taxAdjustmentMinus || '') + '"></div>' +
       '<div class="taxcalc-field"><label>계산 방법</label><select data-jtsegsales="method"><option value=""' + (!year.method ? ' selected' : '') + '>자동(부문 원가·판관비를 나눠 넣으면 가, 아니면 나)</option><option value="a"' + (year.method === 'a' ? ' selected' : '') + '>가 — 부문 영업이익(시행령 §34의4③ 본문)</option><option value="b"' + (year.method === 'b' ? ' selected' : '') + '>나 — 부문을 못 나눔: 전체 영업이익 × 부문 매출 ÷ 전체 매출(시행규칙 §10의9②)</option></select></div>' +
     '</div>' +
     renderJtSegmentRowGroup_(yearIdx, 'costs', '매출원가 항목') +
