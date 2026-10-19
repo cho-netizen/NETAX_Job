@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 06:21 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 06:25 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -20683,6 +20683,11 @@ function recomputeHeirDerivedFields(){
   setReadonlyField_('ihChildCount', childCount);
   setReadonlyField_('ihMinorYears', minorYears);
   setReadonlyField_('ihElderlyCount', elderlyCount);
+  // [2026.10.19 세액 고침] 서식 부표3의2 ④ "배우자가 실제 상속받은 금액" = ① 배우자 상속재산가액 − ② 승계 채무·공과금 − ③ 배우자가 상속받은 비과세 재산가액.
+  //  재산 목록에 비과세 표시가 없어 ③은 따로 받는다(ihSpouseNonTaxable, 상속재산 비과세 합계 ihNonTaxable을 넘지 않게). 예전엔 ③을 빼지 않아
+  //  배우자가 금양임야 등 비과세 재산을 받으면 실제 상속액이 그만큼 커져 배우자공제가 많게(세액이 적게) 나올 수 있었다.
+  const spouseNonTaxable_ = Math.min(numVal((document.getElementById('ihSpouseNonTaxable') || {}).value) || 0, numVal((document.getElementById('ihNonTaxable') || {}).value) || 0);
+  if (spouseActual > 0 && spouseNonTaxable_ > 0) spouseActual = Math.max(0, spouseActual - spouseNonTaxable_);
   setReadonlyField_('ihSpouseActual', spouseActual);
   setReadonlyField_('ihOtherHeirsCount', otherHeirsCount);
   setReadonlyField_('ihGenSkipAmount', genSkipAmount);
@@ -30524,7 +30529,8 @@ function renderInheritancePane(){
       '<button type="button" class="taxcalc-run-btn" data-action="apply-ih-estate-auto" style="margin-top:8px;">위 내역으로 상속세과세가액 자동계산해서 반영</button>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>배우자상속공제 (부표3의2 한도액 계산)</b></div>' +
       '<div class="taxcalc-grid">' +
-        '<div class="taxcalc-field"><label>배우자 실제 상속액(자동, 배우자 몫 재산 − 배우자가 부담한 채무·공과금)</label><input type="number" id="ihSpouseActual" placeholder="0" readonly><span class="taxcalc-field-help">5억 미만/미입력이면 최소 5억 자동 적용</span></div>' +
+        '<div class="taxcalc-field"><label>배우자 실제 상속액(자동, 배우자 몫 재산 − 배우자가 부담한 채무·공과금 − 배우자가 받은 비과세 재산)</label><input type="number" id="ihSpouseActual" placeholder="0" readonly><span class="taxcalc-field-help">5억 미만/미입력이면 최소 5억 자동 적용</span></div>' +
+        '<div class="taxcalc-field"><label>배우자가 상속받은 비과세 재산가액(부표3의2 ③)</label><input type="number" id="ihSpouseNonTaxable" placeholder="원"><span class="taxcalc-field-help">없으면 비움 — 위 비과세재산가액(§12) 중 배우자 몫(금양임야 등). 실제 상속액에서 뺌</span></div>' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isSpousePropertyDivided" id="ihSpouseDivided" checked><label for="ihSpouseDivided">배우자상속재산분할기한(신고기한 다음날부터 9개월)까지 배우자 상속재산을 분할·등기하고 신고함 (§19②③ — 체크 해제시 실제상속액과 무관하게 최소 5억원만 공제)</label></div>' +
         '<div class="taxcalc-field"><label>배우자 외 같은 순위 공동상속인 수</label><input type="number" id="ihOtherHeirsCount" placeholder="0" readonly><span class="taxcalc-field-help">자동, 명부에 자녀·손자녀가 있으면 그 수, 없으면 부모 수</span></div>' +
         '<div class="taxcalc-field"><label>배우자 법정상속분 비율</label><input type="number" step="0.0001" id="ihSpouseRatio" placeholder="0" readonly><span class="taxcalc-field-help">자동계산: 위 공동상속인 수 기준, 민법§1009②</span><span class="taxcalc-result-note" id="ihSpouseRatioHint" style="margin:2px 0 0;"></span></div>' +
@@ -30708,6 +30714,7 @@ function renderInheritancePane(){
   const ihTotalGrossEstateEl = document.getElementById('ihTotalGrossEstate');
   const ihEstateEl = document.getElementById('ihEstate');
   if (ihTotalGrossEstateEl) ihTotalGrossEstateEl.addEventListener('input', recomputeGenSkipRatio);
+  ['ihSpouseNonTaxable', 'ihNonTaxable'].forEach(function(id){ const el = document.getElementById(id); if (el) el.addEventListener('input', function(){ recomputeHeirDerivedFields(); }); });
   if (ihEstateEl) ihEstateEl.addEventListener('input', function(){
     recomputeGenSkipRatio();
     updateHeirActualValueHints();
