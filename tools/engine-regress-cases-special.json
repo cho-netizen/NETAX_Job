@@ -775,5 +775,32 @@
     "paidDate": "2026-06-30"
    }
   ]
+ },
+ {
+  "이름": "[J30] §164⑦ 환산 — 최초 공시 주택가격 3억 × 취득 당시 1.8억 ÷ 최초 공시 당시 2억",
+  "도구": "calculatePreNoticeStandardPriceJS",
+  "입력": {
+   "kind": "house",
+   "firstNoticePrice": 300000000,
+   "acqLandStd": 120000000,
+   "acqBuildingStd": 60000000,
+   "firstLandStd": 150000000,
+   "firstBuildingStd": 50000000
+  },
+  "정답": {
+   "취득당시_기준시가": 270000000
+  }
+ },
+ {
+  "이름": "[J30] §164⑤ 환산 — 최초 고시 건물 기준시가 8천만 × 기준율 0.973",
+  "도구": "calculatePreNoticeStandardPriceJS",
+  "입력": {
+   "kind": "building",
+   "firstNoticePrice": 80000000,
+   "baseRate": 0.973
+  },
+  "정답": {
+   "취득당시_기준시가": 77840000
+  }
  }
 ]

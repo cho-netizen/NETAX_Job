@@ -2160,6 +2160,8 @@
       transferStandardPrice: Number(t.lrTransferStandardPrice) || 0,
       rentalEndStandardPrice: Number(t.lrRentalEndStandardPrice) || 0, rentedUntilTransfer: !!t.lrRentedUntilTransfer // [2026.10.19] §97의5② 임대 마지막 날
     });
+    // [2026.10.20 J30] §97의5 기준시가가 모자라면 근사하지 않고 계산을 멈춘다(합산 계산이 이 오류를 돌려줌)
+    if (reduction && reduction.error && t.longTermRentalHouseProvision === 'sect97_5') return Object.assign({}, t, { _장기임대감면_오류: reduction.error });
     if (!reduction || reduction.error || !reduction.적용여부) {
       return Object.assign({}, t, { _장기임대감면_적용여부: false, _장기임대감면_사유: (reduction && (reduction.error || reduction.안내)) || undefined });
     }
@@ -2235,6 +2237,8 @@
     });
     const errorOne = cores.find(function (c) { return c.error; });
     if (errorOne) return { error: txLabels_[errorOne.idx] + ': ' + errorOne.error };
+    const lrErr_ = transactionsResolved.findIndex(function (t) { return t && t._장기임대감면_오류; }); // [2026.10.20 J30]
+    if (lrErr_ !== -1) return { error: txLabels_[lrErr_] + ': ' + transactionsResolved[lrErr_]._장기임대감면_오류 };
 
     const exempt = cores.filter(function (c) { return c.exempt; });
     const unregistered = cores.filter(function (c) { return c.isUnregistered; });
@@ -8269,6 +8273,10 @@
           안내: note + ' 감면소득 = 양도소득금액(장특공 뒤) × (임대기간 마지막 날 ' + endStd + ' − 취득 당시 ' + acqStd + ') ÷ (양도 당시 ' + trfStd + ' − 취득 당시 ' + acqStd + ') = 양도소득금액의 ' + (Math.round(ratio * 10000) / 100) + '%, 감면세액은 소득세법 §90①(산출세액 × (감면소득 − 그 몫 기본공제) ÷ 과세표준) — 세액 계산(합산)이 자동 반영합니다.'
         };
       }
+      // [2026.10.20 J30 — AI 회의 회장 결론] '등록일 평가액' 근사를 없앤다: 조특법 시행령 §97의5②는 기준시가 비율 산식만 정하고(고시 전이면 직전 기준시가),
+      //  기준시가는 소득세법 §99·시행령 §164로 언제나 정할 수 있다 — 기준시가가 모자라면 멈추고 구하는 방법을 안내(환산은 calculatePreNoticeStandardPriceJS).
+      if (acqStd > 0 && trfStd > 0 && trfStd === acqStd) return { error: '§97의5 감면소득: 취득·양도 당시 기준시가가 같습니다 — 보유기간 중 새 기준시가가 고시되지 않았다면 소득세법 시행령 §164⑧(재정경제부령 방법)으로 양도 당시 기준시가를 다시 계산해 넣으세요.' };
+      return { error: '§97의5 감면소득 계산에 기준시가 세 가지(취득 당시·임대기간 마지막 날·양도 당시)가 필요합니다(조특법 시행령 §97의5②) — 홈택스 기준시가 조회로 구하고, 새 기준시가 고시 전 날짜면 직전 기준시가(소득세법 시행령 §164③), 최초 고시·공시 전 취득이면 §164⑤(건물: 최초 고시 기준시가 × 국세청 기준율)·⑥(오피스텔·상업용·공동주택)·⑦(개별·공동주택: 최초 공시가격 × 취득 당시 토지+건물 기준시가 ÷ 최초 공시 당시 토지+건물 기준시가) 환산 도우미를, 공시가격 없는 주택은 §164⑪ 세무서장 평가액을 쓰세요.' };
       let rentalPeriodGain, gainNote;
       {
         const registrationDateValue = Number(p.registrationDateValue) || 0;
@@ -8291,6 +8299,27 @@
       과세대상양도소득금액: taxableGain,
       안내: note + ' 이 결과의 "과세대상양도소득금액"을 위 일반 양도세 계산기에 그 자산의 양도차익으로 대신 넣어 나머지 세액을 계산하세요(장기보유특별공제·기본공제 등은 그 계산기에서 별도 적용됩니다).'
     };
+  };
+
+  // [2026.10.20 J30] 최초 고시·공시 전에 취득한 자산의 취득 당시 기준시가 환산(소득세법 시행령 §164⑤·⑥·⑦ — 현행 원문)
+  //  kind 'house'(§164⑦ 개별·공동주택): 최초 공시 주택가격 × 취득 당시 (토지 기준시가 + 건물 기준시가) ÷ 최초 공시 당시 (토지 + 건물)
+  //  kind 'officetel'(§164⑥ 오피스텔·상업용 건물·국세청 고시 공동주택): 최초 고시 기준시가 × 같은 비율
+  //  kind 'building'(§164⑤ 건물): 최초 고시 기준시가 × 국세청 기준율(취득·신축연도·구조·내용연수 — 조견표 2부-08 기준율 표)
+  //  분모·분자가 같으면(§164⑥⑦ 괄호) §164⑧ 준용 안내.
+  window.calculatePreNoticeStandardPriceJS = function (p) {
+    p = p || {};
+    const first = Number(p.firstNoticePrice) || 0;
+    if (!(first > 0)) return { error: '최초로 고시·공시된 기준시가(주택가격)가 필요합니다.' };
+    if (p.kind === 'building') {
+      const rate = Number(p.baseRate) || 0;
+      if (!(rate > 0)) return { error: '국세청 기준율이 필요합니다(소득세법 시행령 §164⑤ — 조견표 2부-08 기준율 표).' };
+      return { 취득당시_기준시가: Math.floor(first * rate), 산식: '최초 고시 기준시가 ' + first + ' × 기준율 ' + rate + ' (소득세법 시행령 §164⑤)' };
+    }
+    const acq = (Number(p.acqLandStd) || 0) + (Number(p.acqBuildingStd) || 0);
+    const atFirst = (Number(p.firstLandStd) || 0) + (Number(p.firstBuildingStd) || 0);
+    if (!(acq > 0 && atFirst > 0)) return { error: '취득 당시와 최초 고시(공시) 당시의 토지 기준시가(개별공시지가 × 면적)·건물 기준시가가 필요합니다(소득세법 시행령 §164' + (p.kind === 'officetel' ? '⑥' : '⑦') + ').' };
+    if (acq === atFirst) return { error: '취득 당시와 최초 고시(공시) 당시의 토지+건물 기준시가가 같습니다 — §164' + (p.kind === 'officetel' ? '⑥' : '⑦') + ' 괄호에 따라 §164⑧(재정경제부령 방법)을 준용하세요.' };
+    return { 취득당시_기준시가: Math.floor(first * acq / atFirst), 산식: (p.kind === 'officetel' ? '최초 고시 기준시가 ' : '최초 공시 주택가격 ') + first + ' × ' + acq + ' ÷ ' + atFirst + ' (소득세법 시행령 §164' + (p.kind === 'officetel' ? '⑥' : '⑦') + ')' };
   };
 
   // 증자에 따른 이익의 증여 (상증세법§39, 시행령§29②) — 신주를 시가보다 낮거나 높은 가액으로 발행할 때
