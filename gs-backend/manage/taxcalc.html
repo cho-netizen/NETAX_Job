@@ -9128,7 +9128,10 @@ function trRateDetailRecord_(rateClass, r, splitAmt){ // rateClass: '00'(국세 
   const 국세가산세_납부 = r.납부지연가산세 || 0;
   const 가산세_신고 = isLocal ? Math.round(국세가산세_신고 * 0.1) : 국세가산세_신고;
   const 가산세_납부 = isLocal ? Math.round(국세가산세_납부 * 0.1) : 국세가산세_납부;
-  const 가산세_계 = 가산세_신고 + 가산세_납부;
+  // [2026.10.19 서식 고침] 서식 84호 작성방법 13 — 감정가액·환산취득가액 적용 가산세(§114의2, 5%)는 ⑯ '기장불성실 등'에 적는다.
+  //  예전엔 35번(가산세-기장불성실)을 0으로 두고 17번(계)에서도 빠져, 엔진 납부세액(19번, 이 가산세 포함)과 산출−감면+가산세가 안 맞았다.
+  const 가산세_기장 = isLocal ? 0 : (r.환산취득가액가산세_합계 || 0);
+  const 가산세_계 = 가산세_신고 + 가산세_납부 + 가산세_기장;
   const 자진납부할세액 = isLocal ? localTax : Math.max(0, (r.납부세액_합계 || 0) - localTax);
 
   let b = [];
@@ -9169,7 +9172,7 @@ function trRateDetailRecord_(rateClass, r, splitAmt){ // rateClass: '00'(국세 
   b = b.concat(ihPadNum_(0, 13));                       // 32 주민세_산출세액
   b = b.concat(ihPadNum_(0, 13));                       // 33 주민세_자진납부세액
   b = b.concat(ihPadNum_(0, 13));                       // 34 소득감면대상 소득금액(해당 감면코드 미지원)
-  b = b.concat(ihPadNum_(0, 13));                       // 35 가산세-기장불성실
+  b = b.concat(ihPadNum_(가산세_기장, 13));             // 35 가산세-기장불성실 등(감정가액·환산취득가액 가산세 — 서식 작성방법 13)
   b = b.concat(ihPadChar_('', 9));                      // 36 공란
   return b;
 }
@@ -10160,6 +10163,7 @@ function trPrintFormPageHtml_(seller, r, buyers, assets){
       pfRow_(++n, '감면세액', won(nationalReduction)) +
       pfRow_(++n, '신고불성실가산세', won(r.무신고가산세 || r.과소신고가산세 ? reportPenalty : 0)) +
       pfRow_(++n, '납부지연가산세', won(latePenalty)) +
+      ((r.환산취득가액가산세_합계 || 0) ? pfRow_(++n, '기장불성실 등 가산세(감정가액·환산취득가액 적용, §114의2)', won(r.환산취득가액가산세_합계)) : '') +
       pfRow_(++n, '자진납부할 세액(국세)', won(nationalPayable)) +
     '</table>' +
     '<div class="pf-section-head">개인지방소득세(참고, 세율구분 98)</div>' +
