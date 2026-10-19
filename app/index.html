@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 21:24 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 21:27 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -14742,7 +14742,7 @@
       환산취득가액가산세_합계: conversionValuePenaltyTotal,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       신고불성실가산세_옛소득세법115: typeof penalties.옛소득세법115 === 'string' ? penalties.옛소득세법115 : undefined, // [2026.10.20] 2006년 이전 양도분 산식
-      기신고_양도소득금액_107조: priorInc107_ || undefined, 기신고_기본공제_107조: priorInc107_ ? priorBasic107_ : undefined, 기신고세액_107조: priorInc107_ ? priorTax107_ : undefined, // [§107②] 84호 ⑤·⑰
+      기신고_양도소득금액_107조: priorInc107_ || undefined, 기신고_기본공제_107조: priorInc107_ ? priorBasic107_ : undefined, 기신고세액_107조: priorInc107_ ? priorTax107_ : undefined, 기신고몫_산출세액_107조: priorInc107_ ? (progOf_[-1] || 0) : undefined, // [§107②] 84호 ⑤·⑰ — 마지막은 합산 누진세액 중 이미 신고한 과세표준 몫(세율 열 ⑩용)
       지방소득세: localIncomeTax, 납부세액_합계: grandTotal,
       // [2026.10.20 J21] 84호 ㉒~㉚ 농어촌특별세 — 양도세 납부세액_합계(양도세+지방소득세)에는 넣지 않고 따로(서식도 칸이 따로)
       납부지연가산세_몫별: lateSplit_ ? lateSplit_.rows : undefined, // [2026.10.20 J23] 예정분·확정 추가분 기산일별
