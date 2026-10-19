@@ -4919,7 +4919,7 @@ function lawDbToc_(lawName, ver) {
   var idx = lawDbIdx_(); if (!idx) return { error: '법령 정비본(드라이브 0 NETAX/업무관리자/법령정비본)을 찾지 못했습니다.' };
   var laws = Object.keys(idx.법령).map(function (k) { var e = idx.법령[k]; return { 키: k, 이름: e.이름, 범위: e.범위, 현행: e.현행, 판: e.판.map(function (p) { return { 판: p.판, 시행일: p.시행일, 공포일: p.공포일, 공포번호: p.공포번호, 구분: p.구분, 법종: p.법종, 상태: p.상태 }; }) }; });
   if (!lawName) return { 법령: laws };
-  var key = String(lawName).replace(/s/g, ''), e = idx.법령[key], v = ver || (e && e.현행);
+  var key = String(lawName).replace(/\s/g, ''), e = idx.법령[key], v = ver || (e && e.현행);
   if (!e || !e.ids[v]) return { 법령: laws, error: '그 판이 정비본에 없습니다.' };
   var c = CacheService.getScriptCache(), ck = 'lwtoc|' + key + '|' + v, s = c.get(ck);
   if (!s) { var d = JSON.parse(Utilities.ungzip(DriveApp.getFileById(e.ids[v]).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')); s = JSON.stringify({ 머리: d.머리 || [], 조: d.조.map(function (a) { return [a.조, a.제목]; }) }); try { c.put(ck, s, 21600); } catch (x) { } }
