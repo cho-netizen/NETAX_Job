@@ -549,5 +549,37 @@
   "정답": {
    "이자상당액_합계": 3291780
   }
+ },
+ {
+  "이름": "[2부-02 고침] 비사업용토지 2년4개월 2015-06-30 양도 — 2015년 양도분도 유예(법률 제12852호 부칙), 가산 없음",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "isNonBusinessLand": true,
+   "transferDate": "2015-06-30",
+   "acquisitionDate": "2013-03-01",
+   "transferPrice": 300000000,
+   "acquisitionPrice": 100000000
+  },
+  "정답": {
+   "과세표준": 197500000,
+   "산출세액": 55650000
+  }
+ },
+ {
+  "이름": "[2부-02] 비사업용토지 2년4개월 2016-06-30 양도 — 유예 끝, 기본세율+10%p",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "isNonBusinessLand": true,
+   "transferDate": "2016-06-30",
+   "acquisitionDate": "2014-03-01",
+   "transferPrice": 300000000,
+   "acquisitionPrice": 100000000
+  },
+  "정답": {
+   "과세표준": 197500000,
+   "산출세액": 75400000
+  }
  }
 ]
