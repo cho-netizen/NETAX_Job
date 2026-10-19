@@ -535,7 +535,9 @@
       o.set('세무대리인서명', ta.name);
     } else o.miss('⑫⑬⑭⑮ 세무대리인·세무대리인(서명)', '세무대리인 입력 없음(본인 제출)');
     // 명세 — 도구는 재산 종류 하나·가액 합계 하나만 받음
-    if (CH_ITEM[ci.itemType]) o.set('⑯', [CH_ITEM[ci.itemType]]); else o.miss('⑯ 구분', '화면 입력 없음(재산 종류)');
+    // ⑯ 칸이 좁아(약 45pt) 한 낱말이면 글자 중간에서 끊김 — 띄어쓰기 자리를 넣어 두 줄로 나뉘게(눈검사 2026-10-20)
+    var CH_ITEM_PRINT = { cultural_property: '문화유산 자료등', museum_material: '박물관 자료등', national_heritage: '국가지정 문화유산등', natural_monument: '천연기념물등' };
+    if (CH_ITEM[ci.itemType]) o.set('⑯', [CH_ITEM_PRINT[ci.itemType]]); else o.miss('⑯ 구분', '화면 입력 없음(재산 종류)');
     o.miss('⑰⑱⑲⑳㉑ 작품명·작가명·규격·평가기준일·신고액(작품별)', '계산기에 없음(징수유예 도구는 재산 종류 하나와 대상 재산가액 합계만 받음)');
     if (cr.상태 === '징수유예_적용중') { o.set('㉒', ['보유']); o.note('㉒ 보유 여부 "보유" = 징수유예 도구의 사후관리 사유 "없음(계속 유예)" — 양도 예정이면 양도 예정일을 적으세요(작성방법)'); }
     else o.miss('㉒ 보유 여부', '징수유예 도구 상태가 ' + (cr.상태 || '없음') + ' — 양도 예정일은 계산기에 없음');
