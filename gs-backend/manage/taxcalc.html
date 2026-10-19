@@ -833,6 +833,21 @@ function taxCalcIsBirthGiftEligible_(giftDateStr, birthDateStr){
 // 값만 계산한다(법 자체가 통산 한도라 이게 맞음) — 실제로 신고서에 낼 때는 이 통산 한도로
 // 정해진 최종 금액을 두 칸에 배분해야 하므로, 혼인일·출생일 둘 다 해당되는(드문) 경우에만
 // 배분 비율을 직접 입력받고, 한쪽만 해당되면 자동으로 그 쪽에 전액 배분한다.
+// [2026.10.20 AI 회의 회장 결론 J08(다)] 기존 혼인·출산공제 6칸 → 서식 부표3 ⑨~⑬·⑯⑰과 엔진 입력.
+//  ⑨ = 혼인(같은+다른 증여자) 10년 안, ⑩ = 출산 10년 안, ⑪⑫ = 10년 넘음, ⑬ = 1억 − (⑨+⑩+⑪+⑫) — §53의2 1억 한도는 증여자를 가리지 않음.
+//  ⑯⑰에 더하는 기존분은 같은 증여자분만(§47② 합산 대상, 엔진 혼인출산증여재산공제_같은증여자기공제). r(엔진 결과)이 있으면 엔진이 실제로
+//  다시 공제한 금액(합산한 앞선 증여가액을 넘지 않게 줄었을 수 있음)을 혼인 먼저 나눠 쓴다.
+function gfPriorMarriageBirthParts_(r){
+  const v = function(id){ return Math.max(0, numVal((document.getElementById(id) || {}).value) || 0); };
+  const p = { mSame: v('giftPriorMbMarriageSame'), mOther: v('giftPriorMbMarriageOther'), mOver: v('giftPriorMbMarriageOver10'),
+    bSame: v('giftPriorMbBirthSame'), bOther: v('giftPriorMbBirthOther'), bOver: v('giftPriorMbBirthOver10') };
+  p.w9 = p.mSame + p.mOther; p.w10 = p.bSame + p.bOther; p.w11 = p.mOver; p.w12 = p.bOver;
+  p.total = p.w9 + p.w10 + p.w11 + p.w12; p.sameTotal = p.mSame + p.bSame; p.otherWithin10 = p.mOther + p.bOther;
+  p.room = Math.max(0, 100000000 - p.total);
+  const eng = (r && r.혼인출산증여재산공제_같은증여자기공제 != null) ? Math.max(0, numVal(r.혼인출산증여재산공제_같은증여자기공제) || 0) : p.sameTotal;
+  p.sameMarriage = Math.min(p.mSame, eng); p.sameBirth = Math.min(p.bSame, eng - p.sameMarriage);
+  return p;
+}
 function gfMarriageBirthSplit_(totalDeduction){
   const giftDate = (document.getElementById('giftDate') || {}).value;
   const marriageDate = (document.getElementById('giftMarriageDate') || {}).value;
@@ -3412,6 +3427,7 @@ function openOneHouseSpecialCaseModal_(idx){
     if (applyBtn){
       applyBtn.addEventListener('click', function(){
         transferAssets[idx].isOneHouseOneFamily = true;
+        transferAssets[idx].isResidenceHouseSpecial = (provision === 'lr'); // [2026.10.20 J03] 거주주택 특례면 카드에 임대주택 양도기한 입력칸을 보임
         // [2026.09.30 정정, 재검토98] 재검토97에서 "별지83호서식 계열"이라고 적었던 게 틀렸다 —
         // law.go.kr 원문 대조 결과 별지83호는 완전히 다른 조항(§155⑬ 상속·이농·귀농주택)용이고,
         // 이 판정모달(u9/pd/rh/pr)이 실제로 쓰는 서식은 (1) 농어촌주택등(rh, 고향주택 포함) →
@@ -5927,6 +5943,13 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isOneHouseOneFamily" id="oneHouse-' + idx + '"><label for="oneHouse-' + idx + '">1세대1주택 비과세 전제</label></div>' +
           '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-one-house-special-modal" data-idx="' + idx + '" title="특정주택(수도권밖미분양·인구감소지역·농어촌주택)은 주택수에서 제외될 수 있습니다">🔍 특정주택 제외 판정</button></div>' +
           '<div class="taxcalc-field" data-show-if="isOneHouseOneFamily" style="display:none;"><label>거주연수</label><input type="number" data-field="residenceYears" placeholder="년" maxlength="2"></div>' +
+          '<div class="taxcalc-field"><label>별지 83호의6 일반세율 적용(이 주택)</label><select data-field="mhRentalExemptionType"><option value="">해당 없음</option><option value="long_rental">장기임대주택</option><option value="reduced_rental">감면대상 장기임대주택</option><option value="daycare">장기어린이집</option><option value="general">일반주택(위 셋을 빼면 남는 1주택)</option></select><span class="taxcalc-field-help">2·3주택 이상이라도 이 주택이 넷 중 하나면 중과 대신 일반세율(시행령 §167의3①2·3·8의2·10호, ⑦ 신청서 — 주택마다)</span></div>' +
+          // [2026.10.20 AI 회의 회장 결론 J03] 거주주택 특례(시행령 §155⑳)를 고른 자산만 — 2026.10.1. 이후 양도면 임대주택이 아파트 매입임대 양도기한
+          //  (시행령 §167의3⑪)을 넘겼는지 판정하는 데 쓴다(세액 기본값은 특례 유지, 기한이 지났으면 판단 대기로 두 세액을 나란히).
+          '<div class="taxcalc-field" data-show-if="isResidenceHouseSpecial" style="display:none;"><label>임대주택 유형(거주주택 특례)</label><select data-field="resRentalKind"><option value="">모름 — 고르세요</option><option value="apt_old">종전 장기일반·단기 민간임대 중 아파트 매입임대</option><option value="other">그 밖의 임대주택(아파트 아님·건설임대 등)</option></select><span class="taxcalc-field-help">도시형 생활주택인 아파트는 "그 밖". 아파트 매입임대는 양도기한(2027.12.31. 등)이 있음 — 시행령 §167의3①2호</span></div>' +
+          '<div class="taxcalc-field" data-show-if="isResidenceHouseSpecial" style="display:none;"><label>임대주택 등록 말소일</label><input type="date" data-field="resRentalDeregDate" min="1990-01-01" max="2099-12-31"><span class="taxcalc-field-help">말소 안 됐으면 비움. 말소 뒤 5년 안에 거주주택을 팔면 양도기한을 따지지 않음(§155㉓)</span></div>' +
+          '<div class="taxcalc-field" data-show-if="isResidenceHouseSpecial" style="display:none;"><label>임대의무기간 종료일</label><input type="date" data-field="resRentalObligationEndDate" min="1990-01-01" max="2099-12-31"><span class="taxcalc-field-help">아파트 매입임대는 이날 등록이 자동 말소됨. 2027.1.1. 이후 끝나면 양도기한 = 이날부터 1년(§167의3⑪1호)</span></div>' +
+          '<div class="taxcalc-field" data-show-if="isResidenceHouseSpecial" style="display:none;"><label>그 밖의 늦은 양도기한</label><input type="date" data-field="resRentalDeadlineLater" min="2027-01-01" max="2099-12-31"><span class="taxcalc-field-help">해당할 때만 — 2027년 뒤 새로 조정대상지역이 된 곳은 공고일부터 1년, 재건축·재개발 대상은 이전고시일부터 1년(§167의3⑪2·3호)</span></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isAdjustedArea" id="adj-' + idx + '"><label for="adj-' + idx + '">조정대상지역(2026.5.9까지 양도분은 시행령§167조의3①12호의2 등에 따라 중과 한시배제 자동 적용, 이후 재연장 여부는 별도 확인)</label></div>' +
           '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-industrial-complex-lot-modal" data-idx="' + idx + '" title="산업단지 조성으로 이주한 이주택지를 분양받아 양도하는 경우, 다주택중과 배제 대상인지 판정합니다(조특법§104의20, 2012.12.31까지 양도분만)">🔍 산업단지 이주택지 중과배제 판정</button></div>' +
           (transferAssets[idx].transferContractId ? '<div class="taxcalc-field"><span class="taxcalc-field-help">매매계약체결일·토지거래허가 관련 항목은 양도계약에서 가져옵니다 — 계약 카드에서 수정하세요</span></div>' :
@@ -6066,6 +6089,7 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>[형제자매 등만] 수증자가 부담한 증여세 산출세액</label><input type="number" data-field="dd_doneeGiftTax" placeholder="원"><span class="taxcalc-field-help">§101② 판정용 — 배우자·직계존속이면 비워두세요</span></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="donorRelation" style="display:none;"><input type="checkbox" data-field="dd_isGainAttributedToDonee" id="ddAttr-' + idx + '"><label for="ddAttr-' + idx + '">[형제자매 등만] 양도소득이 수증자에게 실질적으로 귀속됨이 명백함(§101②단서, 체크시 적용배제)</label></div>' +
           '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>증여받은 날</label><input type="date" data-field="giftReceivedDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>증여자 사망일(사망했으면)</label><input type="date" data-field="donorDeathDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">양도일 이전 사망이면 배우자는 이월과세 안 함, 직계존비속은 2026.1.1. 이후 양도분만 안 함(§97의2①)</span></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="donorRelation" style="display:none;"><input type="checkbox" data-field="isEminentDomainExcludedFromCarryover" id="coEmDomain-' + idx + '"><label for="coEmDomain-' + idx + '">사업인정고시일로부터 소급 2년 이전 증여 + 수용·협의매수됨(이월과세 제외, §97의2②1호)</label></div>' +
         '</div>' +
         '<div class="taxcalc-asset-head" data-show-if="donorRelation" style="display:none; margin-top:10px;"><b>증여자(원소유자) 취득정보</b></div>' +
@@ -6095,6 +6119,7 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field" data-show-if="newHouseReductionProvision" style="display:none;"><label>취득 당시 기준시가</label><input type="number" data-field="nhAcquisitionStandardPrice" placeholder="원"><span class="taxcalc-field-help">5년 초과보유시 정확한 계산용</span></div>' +
           '<div class="taxcalc-field" data-show-if="newHouseReductionProvision" style="display:none;"><label>5년 시점 기준시가</label><input type="number" data-field="nhFiveYearStandardPrice" placeholder="원"></div>' +
           '<div class="taxcalc-field" data-show-if="newHouseReductionProvision" style="display:none;"><label>양도 당시 기준시가</label><input type="number" data-field="nhTransferStandardPrice" placeholder="원"></div>' +
+          '<div class="taxcalc-field" data-show-if="newHouseReductionProvision" style="display:none;"><label>[재개발·재건축 신축주택만] 종전주택 취득 당시 기준시가</label><input type="number" data-field="nhFormerHouseAcquisitionStandardPrice" placeholder="원"><span class="taxcalc-field-help">종전주택을 재개발·재건축해 받은 신축주택이면 감면소득 분모가 이 값(조특령 §99①·§99의3① 단서)</span></div>' +
         '</div>' +
         '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>미분양주택 취득자 특례(조특법§98의3·§98의4·§98의5·§98의6·§98의7·§98의8) — 위 양도가액·취득가액·취득일·양도일을 그대로 쓰며, 해당하면 자동으로 감면분을 반영합니다(§98의4는 소득금액이 아니라 세액 10%를 감면 — 장기보유(2년 이상) 거래에만 자동 반영됩니다)</b></div>' +
         '<div class="taxcalc-grid">' +
@@ -6937,6 +6962,8 @@ function renderTransferPane(){
 function updatePropertyCardConditionalVisibility_(card, idx){
   const a = transferAssets[idx];
   if (!a) return;
+  // [2026.10.20 J03] 예전에 저장된 거주주택 특례(별지 제83호의2) 자산도 임대주택 양도기한 입력칸이 보이게
+  if (a.isResidenceHouseSpecial === undefined && a.oneHouseSpecialCase && a.oneHouseSpecialCase.formNo === '소득세법 시행규칙 [별지 제83호의2서식]') a.isResidenceHouseSpecial = true;
   card.querySelectorAll('[data-show-if]').forEach(function(field){
     // [2026.10.19] "a|b"는 둘 중 하나라도 있으면 표시(조특법 §133 직전 감면세액 칸처럼 여러 감면에 걸친 칸용)
     field.style.display = String(field.dataset.showIf).split('|').some(function(k){ return !!a[k]; }) ? '' : 'none';
@@ -6959,7 +6986,7 @@ var TR_MONEY_FIELDS_TO_SCALE_ = [
   'originalAcquisitionStandardPrice', 'approvalDateStandardPrice', 'convertedBuildingAcquisitionValueForPenalty',
   'donorAcquisitionPrice', 'donorNecessaryExpenses', 'doneeOwnAcquisitionPrice', 'doneeOwnNecessaryExpenses',
   'giftTaxPaid', 'giftTaxableValue', 'nhFiveYearMarkValue', 'nhAcquisitionStandardPrice', 'nhFiveYearStandardPrice',
-  'nhTransferStandardPrice', 'uhFiveYearMarkValue', 'uhAcquisitionStandardPrice', 'uhFiveYearStandardPrice',
+  'nhTransferStandardPrice', 'nhFormerHouseAcquisitionStandardPrice', 'uhFiveYearMarkValue', 'uhAcquisitionStandardPrice', 'uhFiveYearStandardPrice',
   'uhTransferStandardPrice', 'pensionAccountContribution', 'pensionPriorContribution',
   // [2026.09.24 버그수정] 구조조정대상 부동산(rp, §43)·장기임대주택 §97의5(lr) 감면도 nh/uh와
   // 완전히 같은 fiveYearMarkGain() 근사식(절대금액－취득가액)을 쓰는데, 처음 목록을 만들 때
@@ -7030,6 +7057,7 @@ function collectTransferInput(vals){
     isAdjustedArea: !!vals.isAdjustedArea,
     multiHouseCount: numVal(vals.multiHouseCount) || 0,
     isMultiHouseRentalExemption: !!vals.isMultiHouseRentalExemption, // [2026.10.19] 별지 83호의6 일반세율 적용 — 시행령 §167의3①2·3·8의2·10호 중과 제외
+    mhRentalExemptionType: vals.mhRentalExemptionType || '', // [2026.10.20 J17] ④ 구분(주택마다)
     saleContractDate: vals.saleContractDate || '',
     isLandTransactionPermitArea: !!vals.isLandTransactionPermitArea,
     isPermitApplicationFiledByDeadline: !!vals.isPermitApplicationFiledByDeadline,
@@ -7060,6 +7088,9 @@ function collectTransferInput(vals){
     rentalYears: numVal(vals.rentalYears) || 0,
     rentalRegistrationDate: vals.rentalRegistrationDate || '', // §97의3 2022-12-31 이전 등록분 8년 50%
     oneHouseSpecialFormNo: vals.oneHouseSpecialCase ? (vals.oneHouseSpecialCase.formNo || '') : '', // [2026.10.19] 판단 대기 ②(§155⑳) 확인용 — 계산엔 안 씀
+    // [2026.10.20 회장 결론 J03] 거주주택 특례 — 임대주택 유형·말소일·의무기간 종료일·⑪2·3호 기한(판단 대기 ② 판정용, 계산엔 안 씀)
+    isResidenceHouseSpecial: !!vals.isResidenceHouseSpecial, resRentalKind: vals.resRentalKind || '', resRentalDeregDate: vals.resRentalDeregDate || '',
+    resRentalObligationEndDate: vals.resRentalObligationEndDate || '', resRentalDeadlineLater: vals.resRentalDeadlineLater || '',
     acquisitionStandardPrice: numVal(vals.acquisitionStandardPrice) || 0,
     registrationStandardPrice: numVal(vals.registrationStandardPrice) || 0,
     rentalStartStandardPrice: numVal(vals.rentalStartStandardPrice) || 0, // [2026.10.19] 시행령 §97의3⑤ C(임대 개시일)
@@ -7134,6 +7165,8 @@ function collectTransferInput(vals){
     donorRelation: vals.donorRelation || '',
     giftReceivedDate: vals.giftReceivedDate || '',
     isEminentDomainExcludedFromCarryover: !!vals.isEminentDomainExcludedFromCarryover,
+    donorDeceasedBeforeTransfer: !!vals.donorDeceasedBeforeTransfer, // [2026.10.19] §97의2① 증여자 사망 배제
+    donorDeathDate: vals.donorDeathDate || '', // [2026.10.20 위원회 J11] 증여자 사망일 — 양도일 이전이면 양도 당시 사망
     donorAcquisitionPrice: numVal(vals.donorAcquisitionPrice) || 0,
     donorAcquisitionDate: vals.donorAcquisitionDate || '',
     donorNecessaryExpenses: numVal(vals.donorNecessaryExpenses) || 0,
@@ -7154,6 +7187,7 @@ function collectTransferInput(vals){
     nhAcquisitionStandardPrice: numVal(vals.nhAcquisitionStandardPrice) || 0,
     nhFiveYearStandardPrice: numVal(vals.nhFiveYearStandardPrice) || 0,
     nhTransferStandardPrice: numVal(vals.nhTransferStandardPrice) || 0,
+    nhFormerHouseAcquisitionStandardPrice: numVal(vals.nhFormerHouseAcquisitionStandardPrice) || 0, // [2026.10.20] 조특령 §99①·§99의3① 단서
     // [2026.09 신규] 미분양주택 취득자 특례(조특법§98의3~8)
     unsoldHouseReductionProvision: vals.unsoldHouseReductionProvision || '',
     uhIsOverconcentrationZone: !!vals.uhIsOverconcentrationZone,
@@ -7293,6 +7327,7 @@ function renderOneTransferResultHtml_(r, label, sellerIdx){
   if (r.시점경고) html += '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.시점경고) + '</div>';
   if (r.서식검산경고) html += '<div class="taxcalc-result-note" style="color:#b00020; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.서식검산경고) + '</div>'; // [2026.10.19] 서식 칸 산식 검산
   if (r.판단대기 && r.판단대기.length) html += tcJudgmentPendingHtml_(r.판단대기); // [2026.10.19] 세무사님 판단 대기 — 해석 A/B 세액, 고르면 기록
+  if (r.판단대기안내 && r.판단대기안내.length) html += '<div class="taxcalc-result-note" style="color:#6a1b9a; margin:0 0 6px;">' + r.판단대기안내.map(function(x){ return '⚠ ' + escapeHtml(x); }).join('<br>') + '</div>'; // [2026.10.20 J03] 입력을 더 넣어야 판정되는 안내
   html += taxCalcResultRow('거래건수 / 비과세', r.거래건수 + '건 / ' + r.비과세건수 + '건');
   html += taxCalcResultRow('합산대상(장기) 소득금액', won(r.합산소득금액));
   html += taxCalcResultRow('기본공제', won(r.기본공제));
@@ -8515,7 +8550,7 @@ function renderGiftResult(results){
     }).join('·') + (donorIdxs.length > 1 ? ' [동일인그룹]' : '');
     const donee = giftDonees[item.doneeIdx || 0] || {};
     const label = donorLabel + (giftDonees.length > 1 ? ' → 수증인 ' + tcPad2_((item.doneeIdx || 0) + 1) + (donee.name ? '(' + escapeHtml(donee.name) + ')' : '') : '');
-    return (item.공제안분 ? '<div class="taxcalc-result-note" style="margin:8px 0 0;">공제 안분(시행령 §46①2호): 같은 때 다른 증여자에게서도 받아 증여재산공제' + (item.input && item.input.marriageBirthDeductionCap != null ? '·혼인출산공제' : '') + '를 증여세과세가액 비율로 나눴습니다 — 이 증여 몫 ' + won(item.input.relationDeductionCap != null ? item.input.relationDeductionCap : item.result.증여재산공제) + '.</div>' : '') + (item.result && item.result.서식검산경고 ? '<div class="taxcalc-result-note" style="color:#b00020; font-weight:600; margin:8px 0 0;">' + escapeHtml(item.result.서식검산경고) + '</div>' : '') + (item.result && item.result.시점경고 ? '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600; margin:8px 0 0;">' + escapeHtml(item.result.시점경고) + '</div>' : '') + renderOneGiftResultHtml_(item.result, idx, label); // [2026.10.19] 증여일 연혁 경고
+    return (item.공동입력안분 ? '<div class="taxcalc-result-note" style="margin:8px 0 0;">⚠ 증여 쌍이 둘 이상이라 화면 공동 입력 금액(재해손실·감정평가수수료·비과세·외국납부 등)을 각 쌍의 증여재산가액 비율로 나눠 넣었습니다 — 그 금액이 특정 재산에 딸린 것이면 그 쌍에만 들어가야 합니다(상증법 §54·§55·§59). 이 쌍: ' + escapeHtml(Object.keys(item.공동입력안분).map(function(k){ return (GIFT_AI_FIELD_LABELS[k] || ({ museumDeferredTaxAmount: '박물관자료 징수유예', businessSuccessionDeferredTaxAmount: '가업승계 납부유예' })[k] || k) + ' ' + won(item.공동입력안분[k]); }).join(', ')) + '</div>' : '') + (item.공제안분 ? '<div class="taxcalc-result-note" style="margin:8px 0 0;">공제 안분(시행령 §46①2호): 같은 때 다른 증여자에게서도 받아 증여재산공제' + (item.input && item.input.marriageBirthDeductionCap != null ? '·혼인출산공제' : '') + '를 증여세과세가액 비율로 나눴습니다 — 이 증여 몫 ' + won(item.input.relationDeductionCap != null ? item.input.relationDeductionCap : item.result.증여재산공제) + '.</div>' : '') + (item.result && item.result.서식검산경고 ? '<div class="taxcalc-result-note" style="color:#b00020; font-weight:600; margin:8px 0 0;">' + escapeHtml(item.result.서식검산경고) + '</div>' : '') + (item.result && item.result.시점경고 ? '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600; margin:8px 0 0;">' + escapeHtml(item.result.시점경고) + '</div>' : '') + renderOneGiftResultHtml_(item.result, idx, label); // [2026.10.19] 증여일 연혁 경고
   }).join('');
   if (list.length > 1 && list.every(function(item){ return !item.result.error; })){
     const totalTax = list.reduce(function(s, item){ return s + (numVal(item.result.납부세액) || 0); }, 0);
@@ -10927,8 +10962,10 @@ function renderInheritancePane(){
     '<div class="taxcalc-asset-head"><b>재산평가 자산 배분 — 자산 등록·평가는 "재산평가" 탭에서 하고, 여기서는 배분만 합니다</b></div>' +
     '<div id="inheritanceAssetAllocationList">' + renderInheritanceAssetAllocationListHtml_() + '</div>' +
     '<div class="taxcalc-asset-head"><b>[부표4] 상속개시전 처분재산 등 산입액(§15) — 상속개시 전 1년 이내 재산종류별 2억원 이상(2년 이내 5억원 이상) 처분·인출·채무부담인데 용도가 불분명하면 자동으로 과세가액에 가산됩니다. 해당 없으면 비워두세요.</b></div>' +
-    '<div class="taxcalc-result-note" style="margin:2px 0 6px;">같은 채무를 두 곳에 넣지 마세요 — 2년 안에 국가·금융기관이 아닌 사람에게 진 채무(사인 채무)의 용도 소명은 여기 "부담채무Ⅱ" 줄에, 상속인이 갚을 의무가 없는 것으로 보이는 가공채무(§15②)는 상속재산 채무에서 빼는 쪽으로 넣습니다. 부담채무Ⅱ가 있으면 결과에 "세무사님 판단 대기"(법문 A / 서식 B 세액)가 나옵니다.</div>' +
+    // [2026.10.20 AI 회의 회장 결론 J05] 사인 채무는 두 길로 나눠 받는다 — 판단 대기(법문 A / 서식 B)는 A로 확정해 내림
+    '<div class="taxcalc-result-note" style="margin:2px 0 6px;">국가·금융기관이 아닌 사람에게 진 채무(사인 채무)는 한 곳에만 넣으세요 — ① 채무는 실제로 있는데 빌린 돈을 어디에 썼는지 밝히지 못한 금액 → 아래 "부담채무Ⅱ" 줄(1년 2억·2년 5억 이상일 때, 못 밝힌 금액에서 20%·2억 중 작은 금액을 뺌 — 상증법 §15①2호) ② 상속인이 갚아야 한다는 서류가 없는 채무 → 아래 "갚을 의무가 입증 안 된 사인 채무" 칸(기준·차감 없이 전액 — §15②).</div>' +
     '<div id="ihDisposalItems"></div>' +
+    '<div class="taxcalc-grid" style="margin-top:6px;"><div class="taxcalc-field"><label>갚을 의무가 입증 안 된 사인 채무(§15②)</label><input type="number" id="ihPresumedFictitiousDebt" placeholder="원"><span class="taxcalc-field-help">채무 목록에 넣은 개인 채무 중 상속인이 실제로 갚아야 한다는 서류(채무부담계약서·이자 지급 증빙 등, 시행령 §10①2호)가 없는 금액 — 전액 과세가액에 다시 더합니다. 없으면 비움</span></div></div>' +
     '<div class="taxcalc-asset">' +
       '<div class="taxcalc-asset-head"><b>과세가액 · 인적공제(자녀 수·미성년·65세이상은 위 상속인 명부에서 자동 산출)</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -11068,7 +11105,10 @@ function renderInheritancePane(){
         '<div class="taxcalc-field"><label>이자상당액</label><input type="number" id="ihInterest" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>영리법인 유증재산가액</label><input type="number" id="ihForProfitBequest" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>영리법인 면제세액</label><input type="number" id="ihForProfitExempted" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>상속인 등의 지분 상당 비율</label><input type="number" step="0.01" id="ihForProfitRatio" placeholder="0~1"><span class="taxcalc-field-help">없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>상속인 등의 지분 상당 비율</label><input type="number" step="0.01" id="ihForProfitRatio" placeholder="0~1"><span class="taxcalc-field-help">없으면 0 — 아래 납부의무자를 넣으면 그 지분율 합계로 자동 채움</span></div>' +
+        // [2026.10.20 AI 회의 회장 결론 J07] 상증법 §3의2②(2025.12.23. 개정)는 상속인·상속인의 배우자·직계비속·직계비속의 배우자 "각자"에게
+        //  지분상당액 납부의무 — 서식 부표5 ⑦~⑪을 사람마다 한 줄씩 적는다(⑦ 구분에 "상속인의 배우자"처럼). 세액은 지분율 합계로 계산(엔진 그대로).
+        '<div class="taxcalc-field" style="flex-basis:100%;"><label>영리법인 면제분 납부의무자(부표5 사람별 줄)</label><div id="ihForProfitPayers"></div></div>' +
         '<div class="taxcalc-field"><label>문화재등 징수유예세액</label><input type="number" id="ihCulturalDeferred" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>가업상속 납부유예세액</label><input type="number" id="ihBizInheritDeferred" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihBizInheritDeferralElected"><label for="ihBizInheritDeferralElected">가업상속공제 대신 납부유예 선택(§72의2①2호 — 켜면 가업상속공제 0, 유예세액을 비우면 가능세액 전부)</label></div>' +
@@ -11129,6 +11169,7 @@ function renderInheritancePane(){
     // 끝난 모든 서식을 거기 한곳에서 확인·인쇄·전자신고하게 한다.
     '';
   renderDisposalItemsList();
+  renderForProfitPayersList(); // [2026.10.20 J07]
   renderDebtItemsList();
   renderDuesItemsList();
   renderFuneralItemsList();
@@ -11578,7 +11619,7 @@ function ihGrossEstateTotal_(){
 function ihAttach1CalcRecord_(){
   const r = lastInheritanceResult || {};
   const grossEstate = ihGrossEstateTotal_();
-  const disposalIncluded = numVal(r.상속개시전처분재산_추정합계) || 0;
+  const disposalIncluded = (numVal(r.상속개시전처분재산_추정합계) || 0) + (numVal(r.가공채무추정_재산입액) || 0); // [2026.10.20 J05] 부표1 ⑪ = 부표4(갑) 다(§15①·② 합)
   const grossTotal = grossEstate + disposalIncluded;
   const nonTaxable = numVal(r.비과세재산가액) || 0;
   const publicOrg = numVal(document.getElementById('ihPublicOrg') ? document.getElementById('ihPublicOrg').value : 0);
@@ -11697,7 +11738,7 @@ function ihLegalShareBase_(){
   const g_ = function(id){ const el = document.getElementById(id); return el ? (numVal(el.value) || 0) : 0; };
   const ge = g_('ihGrossEstateGeneral');
   const gross = ge > 0 ? ge : ihValuationAssetsGrossTotal_();
-  const presumed = (typeof lastInheritanceResult !== 'undefined' && lastInheritanceResult) ? (numVal(lastInheritanceResult.상속개시전처분재산_추정합계) || 0) : 0;
+  const presumed = (typeof lastInheritanceResult !== 'undefined' && lastInheritanceResult) ? ((numVal(lastInheritanceResult.상속개시전처분재산_추정합계) || 0) + (numVal(lastInheritanceResult.가공채무추정_재산입액) || 0)) : 0; // [2026.10.20 J05] §15② 포함
   return gross + presumed + g_('ihPriorGiftedIncluded') - g_('ihNonHeirBequest') - g_('ihNonTaxable') - computeDuesTotal_(inheritanceDuesItems) - computeDebtTotal_(inheritanceDebtItems);
 }
 // 부표2 — 상속인별 상속재산 및 평가명세서_상속현황(자료구분06, 600B) × 상속인 1명
@@ -11968,7 +12009,7 @@ function ihAttachPrintPagesHtml_(){
       // 소계·세부내역 구조임을 확인 — 예전엔 8개 요약줄로 뭉개져 있었다. e-file
       // (ihAttach1CalcRecord_)이 이미 이 구조 그대로 값을 갖고 있어서 그대로 옮긴다(세부미수집
       // 항목은 0으로 정직하게 표시 — 지어내지 않음).
-      const disposalIncluded = numVal(r.상속개시전처분재산_추정합계) || 0;
+      const disposalIncluded = (numVal(r.상속개시전처분재산_추정합계) || 0) + (numVal(r.가공채무추정_재산입액) || 0); // [2026.10.20 J05] §15② 포함
       const grossTotal = grossEstate + disposalIncluded;
       const nonTaxable = numVal(r.비과세재산가액) || 0;
       const publicOrg = numVal(g_('ihPublicOrg'));
@@ -12115,6 +12156,7 @@ function ihAttachPrintPagesHtml_(){
       '<div class="pf-title">배우자 상속공제 명세서</div>' +
       '<table class="pf-table">' +
         pfRow_(0, '① 상속재산의 가액', won(estateBase)) +
+        pfRow_(0, '　(①에서 뺀 공과금 및 채무 — 장례비용 제외)', won(computeDuesTotal_(inheritanceDuesItems) + computeDebtTotal_(inheritanceDebtItems))) + // [2026.10.20 회장 결론 J06] 서식 부표3의2 ⑦
         pfRow_(0, '② 배우자 외의 자에게 유증 등을 한 재산가액', won(nonHeirBequest)) +
         pfRow_(0, '③ 상속인의 상속개시전 10년 이내 증여재산가액', won(giftToHeirs)) +
         pfRow_(0, '④ 배우자의 법정상속분 비율', (legalShareRatio * 100).toFixed(2) + '%') +
@@ -12124,7 +12166,7 @@ function ihAttachPrintPagesHtml_(){
         pfRow_(0, '배우자상속재산 분할기한까지 분할·신고 여부', isDivided ? '분할·신고함' : '미분할(§19②③ — 최소보장액 5억원만 인정)') +
         pfRow_(0, '배우자 상속공제액', won(numVal(r.배우자공제))) +
       '</table>' +
-      '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 배우자 상속공제액은 최소 5억원, (실제 상속재산가액·공제한도액) 중 작은 값입니다.</div>' +
+      '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 배우자 상속공제액은 최소 5억원, (실제 상속재산가액·공제한도액) 중 작은 값입니다. 상속재산의 가액에서는 공과금·채무만 빼고 장례비용은 빼지 않습니다(상증법 시행령 §17①2호, 집행기준 19-17-2 — 서식 작성방법 3의 "부표1 ㉑ 전체"보다 법령 우선).</div>' +
     '</div>';
   }
   // [2026.09.30 신규, 재검토99] 부표8(서화·골동품 등 상속재산 명세서, 신설 2025.3.21) — "서화·
@@ -12423,8 +12465,16 @@ function renderGiftPane(){
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>혼인일</label><input type="date" id="giftMarriageDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">비어있으면 미해당</span><span class="taxcalc-result-note" id="giftMarriageHint" style="margin:2px 0 0;"></span></div>' +
         '<div class="taxcalc-field"><label>출생일·입양일</label><input type="date" id="giftBirthDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">비어있으면 미해당</span><span class="taxcalc-result-note" id="giftBirthHint" style="margin:2px 0 0;"></span></div>' +
-        '<div class="taxcalc-field"><label>과거에 이미 받은 혼인·출산공제 누적액</label><input type="number" id="giftPriorMarriageBirth" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>그중 이번 증여자에게서 10년 안에 받은 증여로 쓴 혼인·출산공제</label><input type="number" id="giftPriorMarriageBirthSameDonor" placeholder="원"><span class="taxcalc-field-help">없으면 비움 — 그 증여를 합산하면 이번 계산에서 다시 공제(서식 부표3 ⑯ = ⑨ + ⑭)</span></div>' +
+        // [2026.10.20 AI 회의 회장 결론 J08(다)] 예전엔 "누적액" 한 칸 + "그중 같은 증여자분" 한 칸이었다 — 서식 부표3은 ⑨⑩(10년 이내)·⑪⑫(10년 넘음)를
+        //  혼인·출산으로 나눠 적고, ⑬(남은 1억 한도, §53의2 — 증여자 가리지 않음)과 ⑯⑰(같은 증여자분만, §47② 합산)이 서로 다른 값을 쓴다.
+        //  그래서 기존 공제를 혼인·출산 × (이번 증여자·10년 안 / 다른 증여자·10년 안 / 10년 넘음) 6칸으로 받는다. 엔진 입력은 예전과 같은 뜻(합계·같은 증여자분).
+        '<div class="taxcalc-result-note" style="flex-basis:100%; margin:4px 0 0;">예전에 이미 받은 혼인·출산공제가 있으면 나눠 넣으세요(없으면 모두 비움). "이번 증여자"는 직계존속이면 그 배우자도 같은 사람으로 봅니다(§47②).</div>' +
+        '<div class="taxcalc-field"><label>기존 혼인공제 — 이번 증여자에게서 10년 안</label><input type="number" id="giftPriorMbMarriageSame" placeholder="원"><span class="taxcalc-field-help">그 증여는 이번에 합산되어 다시 공제(부표3 ⑯ = 이 금액 + ⑭)</span></div>' +
+        '<div class="taxcalc-field"><label>기존 혼인공제 — 다른 증여자에게서 10년 안</label><input type="number" id="giftPriorMbMarriageOther" placeholder="원"><span class="taxcalc-field-help">1억 한도에서만 뺌(합산 대상 아님)</span></div>' +
+        '<div class="taxcalc-field"><label>기존 혼인공제 — 10년이 넘은 것</label><input type="number" id="giftPriorMbMarriageOver10" placeholder="원"><span class="taxcalc-field-help">1억 한도에서만 뺌(부표3 ⑪)</span></div>' +
+        '<div class="taxcalc-field"><label>기존 출산공제 — 이번 증여자에게서 10년 안</label><input type="number" id="giftPriorMbBirthSame" placeholder="원"><span class="taxcalc-field-help">부표3 ⑰ = 이 금액 + ⑮</span></div>' +
+        '<div class="taxcalc-field"><label>기존 출산공제 — 다른 증여자에게서 10년 안</label><input type="number" id="giftPriorMbBirthOther" placeholder="원"><span class="taxcalc-field-help">1억 한도에서만 뺌</span></div>' +
+        '<div class="taxcalc-field"><label>기존 출산공제 — 10년이 넘은 것</label><input type="number" id="giftPriorMbBirthOver10" placeholder="원"><span class="taxcalc-field-help">1억 한도에서만 뺌(부표3 ⑫)</span></div>' +
         // [2026.09.30 신규, 재검토91] 혼인일·출생일 둘 다 입력되어 둘 다 요건을 충족하는 드문
         // 경우에만 보인다 — 전자신고서(자료구분16)는 혼인분·출산분을 각 칸에 나눠 내야 하므로.
         '<div class="taxcalc-field" id="giftMarriageBirthSplitField" style="display:none;"><label>이 중 혼인분 해당 금액</label><input type="number" id="giftMarriageBirthSplit" placeholder="원"><span class="taxcalc-field-help">혼인·출산 둘 다 요건을 충족할 때만 — 나머지는 자동으로 출산분으로 처리됩니다(전자신고서 혼인/출산 칸 구분용)</span></div>' +
@@ -13250,26 +13300,25 @@ function gfAttach1AssetRecordsForPair_(donorIdx, doneeIdx){
 // +혼인출산증여재산내역(자료구분17, 100B) — 증여세전자신고파일설명서 42번 항목 각주에 "혼인
 // 증여재산공제액과 출산증여재산공제액은 합산하여 최대 1억원 한도, 혼인출산 증여재산공제액
 // 계산명세(16)·혼인출산 공제 증여재산내역(17) 레코드 필수"라고 명시 — 혼인·출산공제를 받을 때
-// 반드시 같이 내야 하는 부표인데 아예 구현이 안 돼 있었다. 과거 10년 이내 사용액은 이 항목
-// 자체가 혼인분/출산분을 나눠 받지 않으므로(giftPriorMarriageBirth는 합산 1개 값), 이번 건과
-// 같은 사유(혼인만/출산만/둘 다)로 이미 썼다고 가정해 배분한다 — 실제로 혼인분과 출산분을
-// 각각 다른 시점에 나눠 써온 경우는 이 배분이 근사치일 수 있음을 안내에 남긴다.
-function gfAttachMarriageBirthCalcRecord_(donor, currentSplit){
-  const priorTotal = numVal((document.getElementById('giftPriorMarriageBirth') || {}).value) || 0;
-  const priorSplit = gfMarriageBirthSplit_(priorTotal);
-  const remaining = Math.max(0, 100000000 - priorTotal);
+// 반드시 같이 내야 하는 부표인데 아예 구현이 안 돼 있었다. (예전엔 과거 사용액을 누적액 한 값으로만 받아 이번 건 사유로
+// 배분했다 — 2026.10.20 J08부터 혼인·출산 × 같은/다른 증여자 10년 안·10년 넘음 6칸으로 받는다, gfPriorMarriageBirthParts_)
+function gfAttachMarriageBirthCalcRecord_(donor, currentSplit, r){
+  // [2026.10.20 J08] 기존 공제를 혼인·출산 × 10년 안/넘음으로 나눠 받음 — 예전엔 누적액 한 값을 이번 건 사유로 배분하고 10년 도과는 0으로 냈다
+  const pp = gfPriorMarriageBirthParts_(r);
+  const priorSplit = { marriage: pp.w9, birth: pp.w10 };
+  const remaining = pp.room;
   let b = [];
   b = b.concat(ihPadChar_('16', 2));
   b = b.concat(ihPadChar_('G108400', 7));
   b = b.concat(ihPadNum_(priorSplit.marriage, 13)); // 3 10년이내혼인공제금액
-  b = b.concat(ihPadNum_(0, 13));                   // 4 10년도과혼인공제금액(구분 미수집, 0)
+  b = b.concat(ihPadNum_(pp.w11, 13));              // 4 10년도과혼인공제금액
   b = b.concat(ihPadNum_(priorSplit.birth, 13));    // 5 10년이내출산공제금액
-  b = b.concat(ihPadNum_(0, 13));                   // 6 10년도과출산공제금액(구분 미수집, 0)
+  b = b.concat(ihPadNum_(pp.w12, 13));              // 6 10년도과출산공제금액
   b = b.concat(ihPadNum_(remaining, 13));           // 7 공제받을수있는금액
   b = b.concat(ihPadNum_(currentSplit.marriage, 13)); // 8 혼인공제받을금액
   b = b.concat(ihPadNum_(currentSplit.birth, 13));    // 9 출산공제받을금액
-  b = b.concat(ihPadNum_(priorSplit.marriage + currentSplit.marriage, 13)); // 10 혼인증여재산공제액
-  b = b.concat(ihPadNum_(priorSplit.birth + currentSplit.birth, 13));       // 11 출산증여재산공제액
+  b = b.concat(ihPadNum_(pp.sameMarriage + currentSplit.marriage, 13)); // 10 혼인증여재산공제액 — 같은 증여자분 + 이번(서식 ⑯, 본표 ㉙와 같게)
+  b = b.concat(ihPadNum_(pp.sameBirth + currentSplit.birth, 13));       // 11 출산증여재산공제액 — 같은 증여자분 + 이번(서식 ⑰)
   b = b.concat(ihPadChar_('', 74));                 // 12 공란
   return b;
 }
@@ -13300,7 +13349,7 @@ function gfBuildEfileBytes_(){
     const marriageBirthTotal = numVal(item.result.혼인출산증여재산공제_이번분 != null ? item.result.혼인출산증여재산공제_이번분 : item.result.혼인출산증여재산공제) || 0;
     if (marriageBirthTotal > 0){
       const split = gfMarriageBirthSplit_(marriageBirthTotal);
-      all = all.concat(gfAttachMarriageBirthCalcRecord_(donor, split), CRLF);
+      all = all.concat(gfAttachMarriageBirthCalcRecord_(donor, split, item.result), CRLF);
       let detailSeq = 0;
       if (split.marriage > 0) all = all.concat(gfAttachMarriageBirthDetailRecord_(giftDate, ++detailSeq, '01', document.getElementById('giftMarriageDate').value, split.marriage), CRLF);
       if (split.birth > 0) all = all.concat(gfAttachMarriageBirthDetailRecord_(giftDate, ++detailSeq, '02', document.getElementById('giftBirthDate').value, split.birth), CRLF);
@@ -13433,9 +13482,8 @@ function gfAttach1PrintPageHtml_(donorIdx, doneeIdx){
 function gfMarriageBirthPrintPageHtml_(donee, donor, giftDate, item){
   const totalDeduction = numVal(item.result.혼인출산증여재산공제_이번분 != null ? item.result.혼인출산증여재산공제_이번분 : item.result.혼인출산증여재산공제) || 0; // [2026.10.19] ⑭⑮ = 이번 공제분
   if (!totalDeduction) return '';
-  const priorTotal = numVal((document.getElementById('giftPriorMarriageBirth') || {}).value) || 0;
-  const priorSplit = gfMarriageBirthSplit_(priorTotal);
-  const remaining = Math.max(0, 100000000 - priorTotal);
+  const pp = gfPriorMarriageBirthParts_(item.result); // [2026.10.20 J08] ⑨⑩ 10년 안(모든 증여자), ⑪⑫ 10년 넘음, ⑯⑰ = 같은 증여자분 + 이번
+  const remaining = pp.room;
   const currentSplit = gfMarriageBirthSplit_(totalDeduction);
   const marriageDate = (document.getElementById('giftMarriageDate') || {}).value;
   const birthDate = (document.getElementById('giftBirthDate') || {}).value;
@@ -13447,23 +13495,23 @@ function gfMarriageBirthPrintPageHtml_(donee, donor, giftDate, item){
     '<table class="pf-table">' +
       pfRow_(++n, '혼인신고(예정)일', marriageDate) + pfRow_(++n, '증여일자', giftDate) +
       pfRow_(++n, '증여재산가액', won(currentSplit.marriage)) +
-      pfRow_(++n, '10년 이내 기존 공제액', won(priorSplit.marriage)) +
-      pfRow_(++n, '10년 도과 기존 공제액', won(0)) +
+      pfRow_(++n, '10년 이내 기존 공제액', won(pp.w9)) +
+      pfRow_(++n, '10년 도과 기존 공제액', won(pp.w11)) +
       pfRow_(++n, '공제받을 수 있는 금액(1억원 한도)', won(remaining)) +
       pfRow_(++n, '이번에 받을 금액', won(currentSplit.marriage)) +
-      pfRow_(++n, '혼인 증여재산공제액(최종)', won(priorSplit.marriage + currentSplit.marriage)) +
+      pfRow_(++n, '혼인 증여재산공제액(최종)', won(pp.sameMarriage + currentSplit.marriage)) +
     '</table>' +
     '<div class="pf-section-head">2. 출산 증여재산공제</div>' +
     '<table class="pf-table">' +
       pfRow_(0, '출생일 또는 입양신고일', birthDate) + pfRow_(0, '증여일자', giftDate) +
       pfRow_(0, '증여재산가액', won(currentSplit.birth)) +
-      pfRow_(0, '10년 이내 기존 공제액', won(priorSplit.birth)) +
-      pfRow_(0, '10년 도과 기존 공제액', won(0)) +
+      pfRow_(0, '10년 이내 기존 공제액', won(pp.w10)) +
+      pfRow_(0, '10년 도과 기존 공제액', won(pp.w12)) +
       pfRow_(0, '공제받을 수 있는 금액(1억원 한도)', won(remaining)) +
       pfRow_(0, '이번에 받을 금액', won(currentSplit.birth)) +
-      pfRow_(0, '출산 증여재산공제액(최종)', won(priorSplit.birth + currentSplit.birth)) +
+      pfRow_(0, '출산 증여재산공제액(최종)', won(pp.sameBirth + currentSplit.birth)) +
     '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 혼인·출산 공제는 합산 1억원 한도이며, "10년 도과 기존 공제액" 구분은 미수집이라 0으로 표시됩니다(과거 사용액 전부를 10년 이내로 간주).</div>' +
+    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 혼인·출산 공제는 합산 1억원 한도(10년 넘은 것·다른 증여자분 포함)이고, 최종 공제액에는 같은 증여자에게서 10년 안에 받은 기존 공제만 더합니다(§47② 합산 대상).' + (pp.otherWithin10 > 0 ? ' 비고: 10년 이내 기존 공제액 중 다른 증여자분 ' + won(pp.otherWithin10) + '은 §47② 합산 대상이 아닙니다.' : '') + '</div>' +
   '</div>';
 }
 function gfPrintFormBodyHtml_(){
@@ -14381,6 +14429,44 @@ function renderDisposalItemsList(){
   enhanceNumberInputs(container);
 }
 
+// [2026.10.20 AI 회의 회장 결론 J07] 영리법인 면제분(§3의2②) 납부의무자 — 부표5 ⑦ 구분·⑧ 성명·⑨ 주민등록번호·⑩ 지분율을 사람마다 받는다.
+//  지분율(0~1)을 넣으면 "상속인 등의 지분 상당 비율" 칸을 그 합계로 채운다(엔진은 합계 하나로 계산 — 세액 영향 없음).
+let inheritanceForProfitPayers = [];
+const FOR_PROFIT_PAYER_KINDS_ = ['상속인', '상속인의 배우자', '직계비속', '직계비속의 배우자'];
+function syncForProfitRatioFromPayers_(){
+  const rows = inheritanceForProfitPayers.filter(function(p){ return String(p.ratio || '').trim() !== ''; });
+  const sumEl = document.getElementById('ihForProfitPayersSum');
+  if (!rows.length){ if (sumEl) sumEl.textContent = ''; return; }
+  const sum = Math.round(rows.reduce(function(s, p){ return s + (numVal(p.ratio) || 0); }, 0) * 1e6) / 1e6;
+  const ratioEl = document.getElementById('ihForProfitRatio');
+  if (ratioEl) ratioEl.value = String(sum);
+  if (sumEl) sumEl.textContent = '지분율 합계 ' + sum + (sum > 1 ? ' — 1을 넘습니다. 지분율을 확인하세요' : ' → 위 "상속인 등의 지분 상당 비율"에 넣었습니다');
+}
+function renderForProfitPayersList(){
+  const container = document.getElementById('ihForProfitPayers');
+  if (!container) return;
+  container.innerHTML = inheritanceForProfitPayers.map(function(p, idx){
+    return '<div class="taxcalc-grid" data-fpp-idx="' + idx + '" style="margin-top:4px;">' +
+      '<div class="taxcalc-field"><label>구분</label><select data-fpfield="kind">' + FOR_PROFIT_PAYER_KINDS_.map(function(k){ return '<option value="' + k + '"' + ((p.kind || '상속인') === k ? ' selected' : '') + '>' + k + '</option>'; }).join('') + '</select></div>' +
+      '<div class="taxcalc-field"><label>성명</label><input type="text" data-fpfield="name" value="' + escapeHtml(p.name || '') + '"></div>' +
+      '<div class="taxcalc-field"><label>주민등록번호</label><input type="text" data-fpfield="regNo" data-regno value="' + escapeHtml(p.regNo || '') + '"></div>' +
+      '<div class="taxcalc-field"><label>지분율(0~1)</label><input type="number" step="0.0001" data-fpfield="ratio" value="' + escapeHtml(String(p.ratio == null ? '' : p.ratio)) + '" placeholder="예: 0.3"></div>' +
+      '<button type="button" class="taxcalc-del-asset" data-action="del-forprofit-payer" data-idx="' + idx + '">✕ 삭제</button>' +
+    '</div>';
+  }).join('') +
+    '<button type="button" class="taxcalc-add-asset" data-action="add-forprofit-payer" style="margin-top:6px;">+ 납부의무자 추가</button>' +
+    '<span class="taxcalc-result-note" id="ihForProfitPayersSum" style="margin-left:8px;"></span>';
+  container.querySelectorAll('[data-fpfield]').forEach(function(el){
+    el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', function(){
+      const idx = numVal(el.closest('[data-fpp-idx]').dataset.fppIdx);
+      inheritanceForProfitPayers[idx][el.dataset.fpfield] = el.value;
+      if (el.dataset.fpfield === 'ratio') syncForProfitRatioFromPayers_();
+    });
+  });
+  enhanceRegNoInputs(container);
+  syncForProfitRatioFromPayers_();
+}
+
 function renderFuneralItemsList(){
   const container = document.getElementById('ihFuneralItemsList');
   if (!container) return;
@@ -14426,6 +14512,7 @@ function buildInheritanceCalcBasisLines(r){
   if (r.공익법인출연재산가액) lines.push('공익법인출연재산가액(§16) = -' + won(r.공익법인출연재산가액));
   if (r.공익신탁재산가액) lines.push('공익신탁재산가액(§17) = -' + won(r.공익신탁재산가액));
   if (r.상속개시전처분재산_추정합계) lines.push('상속개시전 처분재산 등 산입액(§15) = +' + won(r.상속개시전처분재산_추정합계));
+  if (r.가공채무추정_재산입액) lines.push('갚을 의무가 입증 안 된 사인 채무(§15②) = +' + won(r.가공채무추정_재산입액)); // [2026.10.20 J05]
   lines.push('적용된 상속세과세가액 = ' + won(r.상속세과세가액_적용값));
   lines.push('기초공제+인적공제(' + won(r.인적공제) + ') vs 일괄공제(5억) 중 큰 값 = -' + won(r['기초인적공제_또는_일괄공제']));
   if (r.배우자공제) lines.push('배우자상속공제(§19) = -' + won(r.배우자공제));
@@ -14481,9 +14568,10 @@ function renderInheritanceResult(r){
   if (r.비과세재산가액) html += taxCalcResultRow('비과세재산가액', '-' + won(r.비과세재산가액));
   if (r.공익법인출연재산가액) html += taxCalcResultRow('공익법인출연재산가액', '-' + won(r.공익법인출연재산가액));
   if (r.공익신탁재산가액) html += taxCalcResultRow('공익신탁재산가액', '-' + won(r.공익신탁재산가액));
-  if (r.상속개시전처분재산_추정합계 || r.비과세재산가액 || r.공익법인출연재산가액 || r.공익신탁재산가액) {
+  if (r.상속개시전처분재산_추정합계 || r.가공채무추정_재산입액 || r.비과세재산가액 || r.공익법인출연재산가액 || r.공익신탁재산가액) {
     html += taxCalcResultRow('상속세과세가액(입력값)', won(r.상속세과세가액_입력값));
     if (r.상속개시전처분재산_추정합계) html += taxCalcResultRow('상속개시전 처분재산 추정 가산액(§15)', '+' + won(r.상속개시전처분재산_추정합계));
+    if (r.가공채무추정_재산입액) html += taxCalcResultRow('갚을 의무가 입증 안 된 사인 채무(§15②)', '+' + won(r.가공채무추정_재산입액)); // [2026.10.20 J05]
     html += taxCalcResultRow('적용된 상속세과세가액', won(r.상속세과세가액_적용값));
   }
   html += taxCalcResultRow('인적공제', won(r.인적공제));
@@ -15573,7 +15661,10 @@ function renderPrintPane(){
   });
   // [2026.10.20] 예전 인쇄가 만들지 않은 장이라도 원본 모양으로 찍을 계산 결과가 있으면 그 줄을 보여 준다(모듈을 한 번 불러온 뒤부터)
   const FPx_ = window.NxFormPrint;
-  if (FPx_ && FPx_.officialReady) printCurrentRows_.forEach(function(r){ if (!r.ready && r.formNo && FPx_.officialFor(r.formNo) && FPx_.officialReady(r.formNo)) r.ready = true; });
+  if (FPx_ && FPx_.officialReady){
+    const shown_ = {}; printCurrentRows_.forEach(function(r){ if (r.ready && r.formNo) shown_[r.formNo.replace(/\s+/g, '')] = true; });
+    printCurrentRows_.forEach(function(r){ const f_ = r.formNo ? r.formNo.replace(/\s+/g, '') : ''; if (!r.ready && f_ && !shown_[f_] && FPx_.officialFor(r.formNo) && FPx_.officialReady(r.formNo)){ r.ready = true; shown_[f_] = true; } }); // 같은 서식번호 줄이 이미 보이면 켜지 않음(국외전출자 84호 등)
+  }
   const requiredRows = printCurrentRows_.filter(function(r){ return r.section === 'required'; });
   const optionalRows = printCurrentRows_.filter(function(r){ return r.section === 'optional'; });
   const anyReady = printCurrentRows_.some(function(r){ return r.ready; });
@@ -16302,9 +16393,11 @@ function handleTaxCalcClick_(e){
       const sharedNonResidentException = !!(document.getElementById('trNonResidentTwoYearException') && document.getElementById('trNonResidentTwoYearException').checked);
       // [2026.10.19 서식 감사] 별지 83호의6 일반세율 적용(중과 제외) 체크도 양도인 값 — 엔진 중과 판정에 넘긴다(예전엔 인쇄에만 쓰임)
       const sharedMultiHouseRentalExemption = !!(document.getElementById('trMultiHouseRentalExemption') && document.getElementById('trMultiHouseRentalExemption').checked);
+      // [2026.10.20 위원회 J17] 83호의6 일반세율은 주택마다(자산 카드 mhRentalExemptionType). 양도인 체크는 옛 자료 호환용 — 자산 카드 값이 하나도 없을 때만 읽음
+      const anyAssetMh_ = domesticAssets.some(function(a){ return !!a.mhRentalExemptionType; });
       domesticAssets.forEach(function(a){
         a.multiHouseCount = sharedMultiHouseCount;
-        a.isMultiHouseRentalExemption = sharedMultiHouseRentalExemption;
+        a.isMultiHouseRentalExemption = anyAssetMh_ ? !!a.mhRentalExemptionType : sharedMultiHouseRentalExemption;
         a.isTransferorResident = sharedIsResident;
         a.isNonResidentTwoYearException = sharedNonResidentException;
       });
@@ -16359,7 +16452,7 @@ function handleTaxCalcClick_(e){
           if (!ratio) return null;
           const resolved = collectTransferInput(Object.assign({}, a, {
             multiHouseCount: seller.multiHouseCount || '0',
-            isMultiHouseRentalExemption: !!seller.isMultiHouseRentalExemption, // [2026.10.19] 별지 83호의6 — 엔진 중과 판정
+            isMultiHouseRentalExemption: domesticAssets.some(function(x){ return !!x.mhRentalExemptionType; }) ? !!a.mhRentalExemptionType : !!seller.isMultiHouseRentalExemption, // [2026.10.20 J17] 주택마다(옛 양도인 체크는 호환용)
             isTransferorResident: seller.isTransferorResident !== false,
             isNonResidentTwoYearException: !!seller.isNonResidentTwoYearException
           }));
@@ -17035,8 +17128,8 @@ function handleTaxCalcClick_(e){
       giftDate: (document.getElementById('giftDate') || {}).value || '', // [2026.10.19] 시점 경고용(계산엔 안 씀)
       isMarriageGift: taxCalcIsMarriageGiftEligible_(document.getElementById('giftDate').value, document.getElementById('giftMarriageDate').value),
       isBirthGift: taxCalcIsBirthGiftEligible_(document.getElementById('giftDate').value, document.getElementById('giftBirthDate').value),
-      priorMarriageOrBirthDeductionUsed: numVal(document.getElementById('giftPriorMarriageBirth').value) || 0,
-      priorMarriageOrBirthDeductionSameDonor10y: numVal((document.getElementById('giftPriorMarriageBirthSameDonor') || {}).value) || 0,
+      priorMarriageOrBirthDeductionUsed: gfPriorMarriageBirthParts_().total, // [2026.10.20 J08] 6칸 합 — §53의2 1억 한도(모든 증여자·기간)
+      priorMarriageOrBirthDeductionSameDonor10y: gfPriorMarriageBirthParts_().sameTotal, // 같은 증여자·10년 안(혼인+출산) — 합산하면 다시 공제
       isExcludedFromAggregation: document.getElementById('giftExcludedAgg').checked,
       appraisalFeeAmount: numVal(document.getElementById('giftAppraisalFee').value) || 0,
       disasterLossAmount: numVal(document.getElementById('giftDisasterLoss').value) || 0,
@@ -17074,11 +17167,19 @@ function handleTaxCalcClick_(e){
         groupByKey[key].amount += amount;
       });
     });
-    const results = groups.map(function(g){
+    // [2026.10.20 세액 고침] 화면 공동 입력 금액(재해손실·감정평가수수료·비과세·공익법인 출연·외국납부 등)은 그 증여재산에 딸린 금액이라(상증법 §54·§55·§59 등)
+    //  증여 쌍이 둘 이상이면 쌍마다 통째로 빼면 겹친다(원본 인쇄 작업자 상속부속A 발견 — 둘째 쌍도 재해 3천만·외국 200만을 또 빼 납부 0원). 재산별 입력 칸이 생기기 전까지
+    //  각 쌍의 증여재산가액 비율로 나눠 합계가 입력값을 넘지 않게 한다(쌍이 하나면 예전과 같음).
+    const SHARED_SPLIT_ = ['appraisalFeeAmount', 'disasterLossAmount', 'nonTaxableAmount', 'publicInterestOrgAmount', 'publicTrustAmount', 'disabledTrustAmount', 'foreignTaxPaidAmount', 'foreignGiftTaxBase', 'otherCreditsAmount', 'museumDeferredTaxAmount', 'businessSuccessionDeferredTaxAmount', 'farmlandGiftTaxExemptionAmount'];
+    const groupTotal_ = groups.reduce(function(t, g){ return t + (Number(g.amount) || 0); }, 0);
+    const splitShared_ = groups.length > 1 && groupTotal_ > 0 && SHARED_SPLIT_.some(function(k){ return Number(sharedInput[k]) > 0; });
+    const results = groups.map(function(g, gi){
       const repDonorIdx = g.donorIdxs[0]; // 동일인그룹 대표 = 목록에서 가장 먼저 나오는 카드
+      const shareOf_ = {};
+      if (splitShared_) SHARED_SPLIT_.forEach(function(k){ const v = Number(sharedInput[k]) || 0; if (!v) return; let part = Math.floor(v * (Number(g.amount) || 0) / groupTotal_); if (gi === groups.length - 1) part = v - groups.slice(0, gi).reduce(function(t, gg){ return t + Math.floor(v * (Number(gg.amount) || 0) / groupTotal_); }, 0); shareOf_[k] = part; });
       const d = giftDonors[repDonorIdx];
       const donee = giftDonees[g.doneeIdx] || {};
-      const input = Object.assign({}, sharedInput, {
+      const input = Object.assign({}, sharedInput, shareOf_, {
         isMinor: taxCalcGiftDoneeIsMinor(g.doneeIdx),
         isDoneeResident: (donee.resident || 'resident') !== 'nonresident',
         doneeName: donee.name || '',
@@ -17115,7 +17216,7 @@ function handleTaxCalcClick_(e){
         reportedInTime: d.reportedInTime !== false
       });
       tcReportFormCorrections_();
-      return { donorIdxs: g.donorIdxs, doneeIdx: g.doneeIdx, amount: g.amount, priorGiftAmount: input.priorGiftAmount, input: input, result: calculateGiftTaxJS(input) };
+      return { donorIdxs: g.donorIdxs, doneeIdx: g.doneeIdx, amount: g.amount, priorGiftAmount: input.priorGiftAmount, input: input, result: calculateGiftTaxJS(input), 공동입력안분: splitShared_ ? shareOf_ : undefined };
     });
     // [2026.10.19 세액 고침] 시행령 §46①2호 — 같은 때(이 화면은 증여일 하나) 합산 안 되는 2이상의 증여자에게서 같은 공제 묶음으로 받으면
     //  증여재산공제(§53)·혼인출산공제(§53의2)를 각 증여세과세가액 비율로 안분한다(국세청 증여세 사례04: 부 2,800만·조부 4,200만 → 공제 2천만·3천만).
@@ -17755,6 +17856,7 @@ function handleTaxCalcClick_(e){
       totalGrossEstateValue: numVal(document.getElementById('ihTotalGrossEstate').value) || 0,
       grossEstateValue: (function(){ const ge = numVal((document.getElementById('ihGrossEstateGeneral') || {}).value) || 0; return ge > 0 ? ge : ihValuationAssetsGrossTotal_(); })(), // [2026.10.20 J28] 부표1 ⑨ 자동
       disposalPresumptionItems: disposalPresumptionItems,
+      presumedFictitiousDebtAmount: numVal((document.getElementById('ihPresumedFictitiousDebt') || {}).value) || 0, // [2026.10.20 J05] §15② — 기준·차감 없이 전액
       isDecedentResident: document.getElementById('ihDecedentResident').value !== 'nonresident',
       hasSpouse: taxCalcHeirRegistryHasSpouse,
       isSpouseOnlyHeir: taxCalcHeirRegistryIsSpouseOnly,
@@ -17871,6 +17973,12 @@ function handleTaxCalcClick_(e){
   } else if (action === 'del-disposal-item'){
     inheritanceDisposalItems.splice(numVal(btn.dataset.idx), 1);
     renderDisposalItemsList();
+  } else if (action === 'add-forprofit-payer'){ // [2026.10.20 J07]
+    inheritanceForProfitPayers.push({ kind: '상속인' });
+    renderForProfitPayersList();
+  } else if (action === 'del-forprofit-payer'){
+    inheritanceForProfitPayers.splice(numVal(btn.dataset.idx), 1);
+    renderForProfitPayersList();
   } else if (action === 'add-funeral-item'){
     inheritanceFuneralItems.push({});
     renderFuneralItemsList();
@@ -18187,6 +18295,10 @@ function tcResetOverviewInputsForNewCase_(){
   if (typeof inheritanceDisposalItems !== 'undefined') {
     inheritanceDisposalItems = [{}];
     if (typeof renderDisposalItemsList === 'function') renderDisposalItemsList();
+  }
+  if (typeof inheritanceForProfitPayers !== 'undefined') { // [2026.10.20 J07] 사건을 바꾸면 납부의무자 줄도 비움
+    inheritanceForProfitPayers = [];
+    if (typeof renderForProfitPayersList === 'function') renderForProfitPayersList();
   }
   if (typeof inheritanceFuneralItems !== 'undefined') {
     inheritanceFuneralItems = [{}];

@@ -58,12 +58,12 @@
  *       seller.addressDong·addressHo(주소에 붙임), asset.isInheritedAsset·isGiftedAsset(부표1 ⑤ 취득원인)
  * 증여  giftAssets: [{method, typeCode, basisCode, location, area, unitPrice, value(배분 후), artwork:{code,artist,title,year,material,size}}] (부표1·5)
  *       bd: {totalAsset, nonBiz55, nonBiz49, nonBiz61, excessCash, nonBizStock, totalValue, businessValue, taxPayable, result} (부표2)
- *       mbDetail: {thisTime, cur:{marriage,birth}, prior, marriageDate, birthDate, giftDate, giftAmount} (부표3)
+ *       mbDetail: {thisTime, cur:{marriage,birth}, prior, priorParts:{w9,w10,w11,w12,sameMarriage,sameBirth,otherWithin10}, marriageDate, birthDate, giftDate, giftAmount} (부표3)
  *       clawback: {formType('gf_marriage'), reason, result(lastClawbackResult_)} (부표4) / publicOrgPenaltyItems: [{penaltyType, violationSubType, base, amount}] (부표6)
  * 상속  heirs: [{name, regNo, relation, address, addressDong, addressHo, statutoryShareRatio, actualValue}] (부표2, ctx.부표2상속인 = 상속인 번호)
  *       valAssets: [{…giftAssets와 같은 줄, alloc:[{heirIdx, ratio}]}] (부표1·2·8) / nonHeirBequest
  *       spouse: {estateValue, assumedDebt, nonTaxable, actual, nonHeirBequest, giftToHeirs, ratio, giftBase, priorGiftedIncluded, divided} (부표3의2)
- *       disposalItems: inheritanceDisposalItems (부표4갑) / forProfitRatio (부표5)
+ *       disposalItems: inheritanceDisposalItems (부표4갑) / forProfitRatio · forProfitPayers: [{kind, name, regNo, ratio}] (부표5)
  *       clawback: {formType('ih6'|'ih7'), result} (부표6·7) / bc: {provision, deferredTax, triggerEvent, disposalRatio, equityDecreaseRatio, equityRatioAtBase, currentEquityRatio} (부표7)
  */
 (function (root, factory) {
@@ -273,6 +273,7 @@
     var progCodes = codeOrder.filter(function (c) { return byCode[c].누진; });
     var cols = ['합계', '국내분소계'];
     function put(no, v) { cols.forEach(function (c) { o.set(no + '@' + c, v); }); }
+    var use1_ = !!(r.비교과세_104조5항 && r.비교과세_104조5항.적용 === '1호');
     if (rowsOk && !overseas) {
       codeOrder.slice(0, 3).forEach(function (code, k) {
         var col = '세율' + (k + 1), g = byCode[code];
@@ -280,10 +281,10 @@
         o.set('④@' + col, g.소득금액).set('⑦@' + col, g.기본공제).set('⑧@' + col, g.과세표준);
         var rates = Object.keys(g.세율);
         if (!g.누진 && rates.length === 1) o.set('⑨@' + col, Math.round(Number(rates[0]) * 100) + '%');
-        if (!g.누진 || progCodes.length === 1) o.set('⑩@' + col, g.산출세액);
+        if (!use1_) o.set('⑩@' + col, g.산출세액); // [2026.10.20 J15] 엔진이 §104⑤2호대로 세율 묶음마다 누진세액을 매김 — 열별 ⑩이 정해짐
       });
       if (codeOrder.length > 3) o.note('세율구분이 ' + codeOrder.length + '가지 — 서식 세율 열이 3개라 앞 3개(' + codeOrder.slice(0, 3).join('·') + ')만 찍음, 나머지(' + codeOrder.slice(3).join('·') + ')는 별지 필요');
-      if (progCodes.length > 1) o.miss('⑩ 누진세율 열별 산출세액', '누진세율 열이 ' + progCodes.length + '개 — 열별 배분은 작성방법 8(§104⑤ 비교과세)이라 합계 열에만 적음(판단 대기)');
+      if (use1_) o.miss('⑩ 세율 열별 산출세액', '§104⑤1호(과세표준 합계 × 기본세율) 적용 해 — 산출세액이 하나라 합계 열에만 적음(작성방법 8)');
       o.miss('⑨ 누진세율 열의 세율', '누진세율(6~45%, 가산 포함)은 열 하나에 숫자 하나로 적기 어려워 비움');
       var sumBy = function (k) { return codeOrder.reduce(function (t, c) { return t + byCode[c][k]; }, 0); };
       put('④', sumBy('소득금액')); put('⑧', sumBy('과세표준'));
@@ -360,7 +361,13 @@
       else o.miss(tag + '④ 양도원인', '화면 양도원인 "' + cause + '"은 서식 낱말과 1:1이 아님(수용·협의매수, 공매·경매 구분 없음 등)');
       o.need('⑤@' + col + '.날짜', a.acquisitionDate, tag + '⑤ 취득일');
       if (a.isInheritedAsset) o.set('⑤@' + col + '.원인', '상속');
-      else if (a.isGiftedAsset) o.set('⑤@' + col + '.원인', '증여');
+      else if (a.isGiftedAsset) {
+        // [2026.10.20 위원회 J10] 이월과세(§97의2)가 실제로 적용된 자산은 그 뜻을 알림으로(원인 칸이 좁음)(엔진 자산별 내역 — 자산 수가 엔진 거래 수와 같을 때만)
+        var r_ = ctx.r || {}, co_ = (list.length === n(r_.거래건수)) ? (r_.자산별_내역 || []).filter(function (x) { return x.idx === i && x.구분 === '이월과세(§97의2)'; })[0] : null;
+        o.set('⑤@' + col + '.원인', '증여'); // 칸 너비 21pt라 '증여(§97의2 이월과세)'는 안 들어감(두 줄로도 넘침) — 이월과세 적용은 알림으로
+        if (co_ && co_.적용여부 === true) o.note(tag + '⑤ 원인은 증여 — 이월과세(§97의2) 적용 자산(취득가액은 증여자 취득가액). 칸이 좁아 원인 칸에는 "증여"만 적음(위원회 J10 권고: 괄호에 이월과세 표기)');
+        if (co_ && co_.적용여부 === false && /사망/.test(String(co_.사유 || ''))) o.note(tag + '증여자 사망으로 이월과세를 하지 않음 — 사망 사실 증빙(기본증명서 등)을 첨부(위원회 J10)');
+      }
       else o.miss(tag + '⑤ 취득원인', '계산기에 취득원인 칸 없음(상속·증여받은 자산 표시만 있음 — 둘 다 아니면 매매인지 알 수 없음)');
       o.miss(tag + '⑥⑦⑧ 면적·지분', '계산기에 없음(미수집)');
       o.miss(tag + '⑨⑩⑰ 보유·거주기간(1세대1주택)', '"○년 이상 ○년 미만" 칸 쓰는 법 확정 전 — 비워 둠');
@@ -419,7 +426,8 @@
       if (has(ta.phone)) o.set(isMobile(ta.phone) ? '⑯~전화번호(휴대전화) (세무대리인)' : '⑯~전화번호(사무실) (세무대리인)', ta.phone);
     }
     var giftAmount = has(it.amount) ? n(it.amount) : n(r.증여재산가액);
-    // [2026.10.19 서식 감사 B1] ㉓ = 엔진이 실제 가산한 금액(1천만 미만·합산배제면 0)
+    // [2026.10.19 서식 감사 B1 → 2026.10.20 AI 회의 회장 결론 J09(가) 확정] ㉓ = 엔진이 실제 가산한 금액(증여세과세가액 − 순수증여재산가액).
+    //  §47② 1천만원 판정은 앞선 증여만으로(이번 증여 제외) — 1천만 미만·합산배제면 0. 입력값(priorGiftAmount)은 엔진 결과가 없을 때만
     var prior = (has(r.증여세과세가액) && has(r.순수증여재산가액)) ? Math.max(0, n(r.증여세과세가액) - n(r.순수증여재산가액)) : n(it.priorGiftAmount);
     var taxable = n(r.순수증여재산가액) + prior;
     o.set('⑰', giftAmount).set('⑱', n(r.비과세재산가액)).set('⑲', n(r.공익법인출연재산가액)).set('⑳', n(r.공익신탁재산가액))
@@ -541,7 +549,7 @@
     var grossKnown = n(ctx.grossEstate) > 0 || assets.length > 0 || n(ctx.valuationTotal) > 0;
     if (grossKnown) o.set('⑨', Math.round(valTotal)); else o.miss('⑨⑩⑫ 재산가액 합계', '재산평가 목록이 없음(계산기에 과세가액만 입력) — 출력물에 직접 적으세요');
     var gross = has(ctx.grossEstate) ? n(ctx.grossEstate) : valTotal;
-    var disp = n(r.상속개시전처분재산_추정합계), nonTax = n(r.비과세재산가액);
+    var disp = presumedAll(r), nonTax = n(r.비과세재산가액); // [2026.10.20 J05] ⑪ = 부표4(갑) 다 — §15①(처분·인출·채무부담) + §15②(변제의무 미입증 채무)
     var po = n(ctx.publicOrg), pt = n(ctx.publicTrust), dues = n(ctx.duesTotal), debt = n(ctx.debtTotal), fun = n(r.장례비용공제);
     if (grossKnown) o.set('⑩', gross).set('⑫', gross + disp);
     o.set('⑪', disp).set('⑬', nonTax).set('⑯', nonTax);
@@ -761,7 +769,7 @@
 
   // ───── 증여 부표3(혼인 및 출산 증여재산 공제 명세서) — gfMarriageBirthPrintPageHtml_와 같은 값 ─────
   M['증여10부표3'] = function (ctx) {
-    var o = new Out(), mb = ctx.mbDetail;
+    var o = new Out(), mb = ctx.mbDetail, r = ctx.r || {};
     if (!mb || !n(mb.thisTime)) { o.miss('부표3 전체', '혼인·출산 증여재산공제 없음'); return o.result(); }
     var cur = mb.cur || { marriage: 0, birth: 0 }, prior = n(mb.prior), gift = n(mb.giftAmount);
     var m = n(cur.marriage), b = n(cur.birth);
@@ -771,12 +779,15 @@
     else if (b && !m) { o.set('⑦@1', gift); if (!prior) o.set('⑧', gift); }
     else o.miss('③④⑦⑧ 증여재산가액', '혼인·출산 둘 다 해당 — 이번 증여재산가액을 혼인분·출산분으로 나눈 값이 계산기에 없음(공제액만 나눔)');
     if (prior) o.miss('④⑧ 합계·2~5번째 증여 칸', '기존에 혼인·출산 공제를 받은 증여(' + prior + '원)가 있음 — 그 증여 건별 날짜·가액이 계산기에 없음');
-    if (!prior) o.set('⑨', 0).set('⑩', 0).set('⑪', 0).set('⑫', 0);
-    else o.miss('⑨~⑫ 기존 공제액', '계산기는 기존 공제 누적액 한 값(' + prior + '원)만 받음 — 혼인/출산·10년 이내/도과로 나눌 수 없음');
-    var room = Math.max(0, 100000000 - prior);
+    // [2026.10.20 AI 회의 회장 결론 J08(다)] ⑨⑩ = 10년 안 기존 공제(모든 증여자 — ⑬ 1억 한도용, §53의2), ⑪⑫ = 10년 넘은 것,
+    //  ⑬ = 1억 − (⑨+⑩+⑪+⑫), ⑯⑰ = 같은 증여자분(§47② 합산 대상, 엔진 혼인출산증여재산공제_같은증여자기공제) + ⑭⑮ — 본표 ㉙와 같게.
+    var pp = mb.priorParts || { w9: 0, w10: 0, w11: 0, w12: 0, total: prior, sameMarriage: 0, sameBirth: 0, otherWithin10: 0, room: Math.max(0, 100000000 - prior) };
+    o.set('⑨', n(pp.w9)).set('⑩', n(pp.w10)).set('⑪', n(pp.w11)).set('⑫', n(pp.w12));
+    var room = Math.max(0, 100000000 - (n(pp.w9) + n(pp.w10) + n(pp.w11) + n(pp.w12)));
     o.set('⑬', room).set('⑭', m).set('⑮', b);
-    if (!prior) o.set('⑯', m).set('⑰', b);
-    else o.miss('⑯⑰ 증여재산공제액', '⑨⑩(기존 공제액의 혼인·출산 나눔)을 몰라 더할 수 없음');
+    o.set('⑯', n(pp.sameMarriage) + m).set('⑰', n(pp.sameBirth) + b);
+    if (n(pp.otherWithin10) > 0) o.note('비고에 적을 것: ⑨⑩ 중 다른 증여자분 ' + n(pp.otherWithin10).toLocaleString('ko-KR') + '원은 §47② 합산 대상이 아님(⑯⑰에 더하지 않음)');
+    if (n(r.혼인출산증여재산공제)) o.check('⑯ + ⑰ = 본표 ㉙ 혼인·출산 공제(엔진)', n(pp.sameMarriage) + m + n(pp.sameBirth) + b, n(r.혼인출산증여재산공제));
     o.note('③·⑦ 증여재산가액은 이번 증여의 증여재산가액(지금 인쇄는 공제액을 찍었음 — 서식 칸 이름대로 고침)');
     o.check('⑭ + ⑮ ≤ ⑬', Math.min(m + b, room), m + b);
     o.check('⑭ + ⑮ = 이번 혼인·출산 공제액(엔진)', m + b, n(mb.thisTime));
@@ -882,7 +893,7 @@
     var legal = fracNum(h.statutoryShareRatio);
     // 작성방법 3: ⑥ = (부표1 ⑫ + ㉕ − 상속인 아닌 수유자 유증 등 − ⑬ − ㉒ − ㉔) × ⑤
     var gross = has(ctx.grossEstate) ? n(ctx.grossEstate) : n(ctx.valuationTotal);
-    var b12 = gross + n(r.상속개시전처분재산_추정합계), b25 = fv.priorGiftAdded !== null ? fv.priorGiftAdded : null;
+    var b12 = gross + presumedAll(r), b25 = fv.priorGiftAdded !== null ? fv.priorGiftAdded : null;
     if (legal !== null) {
       o.set('⑤', pct2(legal));
       if (b25 !== null) {
@@ -911,7 +922,7 @@
     // ⑱~㉗ 상속인별 나눔은 계산기에 없음(전자신고 0) — 전체 금액이 0이면 누구 몫이든 0이 확실하므로 0, 아니면 비움
     var zero = true;
     function zeroIf(keys, total, why) { if (!total) keys.forEach(function (k) { o.set(k, 0); }); else { zero = false; o.miss(keys.join(''), why + '(전체 ' + total + '원) — 상속인별 나눔이 계산기에 없음'); } }
-    zeroIf(['⑱'], n(r.상속개시전처분재산_추정합계), '상속개시전 처분재산 산입액');
+    zeroIf(['⑱'], presumedAll(r), '상속개시전 처분재산 산입액');
     zeroIf(['⑲', '⑳', '㉑'], n(r.비과세재산가액), '비과세 재산가액');
     zeroIf(['㉒'], n(ctx.publicOrg), '공익법인 출연재산');
     zeroIf(['㉓'], n(ctx.publicTrust), '공익신탁 재산');
@@ -932,15 +943,16 @@
     o.check('④ = ① − ② − ③', v4, Math.max(0, v1 - v2 - v3));
     var grossKnown = n(ctx.grossEstate) > 0 || n(ctx.valuationTotal) > 0 || (ctx.assets || []).length > 0; // [2026.10.19] 재산 목록 없으면 ⑤⑨ 비움
     var gross = has(ctx.grossEstate) ? n(ctx.grossEstate) : n(ctx.valuationTotal);
-    var v5 = gross + n(r.상속개시전처분재산_추정합계), v6 = n(r.비과세재산가액);
-    // [2026.10.19 법령 우선] 서식 작성방법 3은 ⑦에 부표1 ㉑(공과금+장례비용+채무)을 옮기라 하지만, 시행령 §17①2호는 "법 제14조의 규정에 의한 공과금 및 채무"만
-    //  뺀다(장례비용은 §14①2호로 따로) — 엔진(배우자공제 한도)도 법령대로 장례비를 빼지 않으므로 ⑦은 공과금+채무로 찍어 ⑨·⑭가 엔진과 맞게 한다. 세무사님 판단 대기.
+    var v5 = gross + presumedAll(r), v6 = n(r.비과세재산가액);
+    // [2026.10.19 법령 우선 → 2026.10.20 AI 회의 회장 결론 J06(가)로 확정, 판단 대기 J1 내림] 서식 작성방법 3은 ⑦에 부표1 ㉑(공과금+장례비용+채무)을
+    //  옮기라 하지만, 시행령 §17①2호는 "법 제14조의 규정에 의한 공과금 및 채무"만 뺀다(§14①이 공과금·장례비용·채무를 따로 열거, 집행기준 19-17-2
+    //  "장례비는 차감하지 않음") — 엔진(배우자공제 한도)도 장례비를 빼지 않으므로 ⑦은 공과금+채무로 찍어 ⑨·⑭가 엔진과 맞게 한다.
     var funeral = n(r.장례비용공제);
     var v7 = n(ctx.duesTotal) + n(ctx.debtTotal), v8 = n(ctx.publicOrg) + n(ctx.publicTrust);
     var v9 = v5 - v6 - v7 - v8, v10 = n(sp.nonHeirBequest), v11 = n(sp.giftToHeirs), ratio = n(sp.ratio), v13 = n(sp.giftBase);
     if (grossKnown) o.set('⑤', v5).set('⑨', v9); else o.miss('⑤⑨ 상속재산 가액', '재산평가 목록이 없음(계산기에 과세가액만 입력) — 출력물에 직접 적으세요');
     o.set('⑥', v6).set('⑦', v7).set('⑧', v8).set('⑩', v10).set('⑪', v11).set('⑫', pct2(ratio)).set('⑬', v13);
-    if (funeral > 0) o.note('⚠ 부표3의2 ⑦: 서식 작성방법은 부표1 ㉑(장례비용 ' + funeral.toLocaleString('ko-KR') + '원 포함)을 적으라 하나, 시행령 §17①2호(공과금 및 채무)대로 장례비용을 빼지 않고 찍었습니다(법령 우선 — 계산기 배우자공제 한도와 같은 기준). 세무사님 판단 대기');
+    if (funeral > 0) o.note('부표3의2 ⑦: 공과금·채무만 적고 장례비용(' + funeral.toLocaleString('ko-KR') + '원)은 넣지 않았습니다 — 비고에 "상증법 시행령 §17①2호·집행기준 19-17-2"를 적으세요(서식 작성방법 3의 부표1 ㉑ 전체보다 법령 우선)');
     var limitCalc = Math.max(0, Math.floor((v9 - v10 + v11) * ratio - v13));
     var lim = (has(r.배우자공제한도액) ? n(r.배우자공제한도액) : limitCalc);
     o.set('⑭', Math.min(lim, 3000000000)).set('⑮', n(r.배우자공제));
@@ -958,10 +970,13 @@
     var un = Math.max(0, net - n(ex)), cut = Math.min(net * 0.2, 200000000);
     return { net: net, ex: n(ex), un: un, cut: Math.round(cut), met: net >= th, pres: net >= th && un >= cut ? Math.round(un - cut) : 0 };
   }
+  // [2026.10.20 AI 회의 회장 결론 J05] 상증법 §15 추정상속재산 전체 = ①(처분·인출·채무부담, 엔진 상속개시전처분재산_추정합계) + ②(변제의무 미입증 채무, 가공채무추정_재산입액)
+  function presumedAll(r) { return n(r.상속개시전처분재산_추정합계) + n(r.가공채무추정_재산입액); }
   M['상속9호부표4갑'] = function (ctx) {
     var o = new Out(), r = ctx.r || {};
     var items = (ctx.disposalItems || []).filter(function (d) { return n(d.oneYearAmount) > 0 || n(d.twoYearAmount) > 0; });
-    if (!items.length) { o.miss('부표4(갑) 전체', '상속개시전 처분재산·채무부담 입력 없음'); return o.result(); }
+    var fict = Math.round(n(r.가공채무추정_재산입액)); // §15② — 기준·차감 없이 전액
+    if (!items.length && !fict) { o.miss('부표4(갑) 전체', '상속개시전 처분재산·채무부담 입력 없음'); return o.result(); }
     var detail = r.상속개시전처분재산_추정내역 || [];
     var T = { 재산: { k: ['②', '③', '④', '⑤', '⑥', '⑦', '⑧'], rows: 3 }, 채무: { k: ['⑪', '⑫', '⑬', '⑭', '⑮', '⑯', '⑰'], rows: 2 } };
     var V = {}, used = {};
@@ -986,13 +1001,21 @@
       if (!isII) {
         if (c.met && c.un === c.cut) o.note(d.category + ' — 미소명금액 = 차감가액: 서식 "⑤ > ⑥"이면 부, 시행령 §11④ "이상"이면 여(추정액 0) — 서식대로 부로 적음');
         o.check(d.category + ' 추정상속재산가액 = 미소명 − 차감가액(추정일 때)', est, Math.max(c1.pres, c2.pres));
-      } else if (est !== c.un) o.note('부담채무Ⅱ — 엔진은 금액 기준·20% 차감을 적용(법문 해석 A), 서식은 ⑰ = ⑭(미소명 전액) — 판단 대기 ④');
+      } else {
+        // [2026.10.20 회장 결론 J05] Ⅱ 줄 ⑰ = 법 기준 추정액(§15①2호분 + 아래 §15②분). 회색 칸 ⑫·⑮는 비우고 §15①2호 산식은 별지(명세)에 적는다.
+        o.note('부담채무Ⅱ ⑰ 별지(명세)에 적을 산식 — 상증법 §15①2호·시행령 §11④: ' + p + '년 이내 채무부담액 ' + c.net.toLocaleString('ko-KR') + '원(기준 ' + (p === 1 ? '2억' : '5억') + '원 ' + (c.met ? '이상' : '미만') + ') − 용도 소명 ' + c.ex.toLocaleString('ko-KR') + '원 = 미소명 ' + c.un.toLocaleString('ko-KR') + '원' + (c.met ? ' − MIN(채무부담액 × 20%, 2억원) ' + c.cut.toLocaleString('ko-KR') + '원' : '') + ' = 추정 ' + est.toLocaleString('ko-KR') + '원');
+        o.check(d.category + ' 추정상속재산가액 = 미소명 − 차감가액(추정일 때)', est, Math.max(c1.pres, c2.pres));
+      }
     });
+    if (fict > 0) {
+      V['⑰'][1] = (V['⑰'][1] === '' ? 0 : n(V['⑰'][1])) + fict; V['⑯'][1] = '여'; sumP.채무 += fict;
+      o.note('부담채무Ⅱ ⑰에 상속인이 갚을 의무가 입증되지 않은 채무(상증법 §15②·시행령 §11③, 기준·차감 없이 전액) ' + fict.toLocaleString('ko-KR') + '원을 더해 적음 — §15①2호분과 나눠 별지(명세)에 적으세요');
+    }
     // 부담채무Ⅱ 줄은 ⑫·⑮가 서식에서 막혀 있음 → ⑫는 1줄, ⑮는 한 칸
     V['⑫'] = V['⑫'].slice(0, 1); V['⑮'] = V['⑮'][0];
     Object.keys(V).forEach(function (k) { var v = V[k]; if (Array.isArray(v) ? v.some(function (x) { return x !== ''; }) : v !== '') o.set(k, v); });
     o.set('⑨', sumP.재산).set('⑱', sumP.채무).set('다', sumP.재산 + sumP.채무);
-    o.check('다 = ⑨ + ⑱ = 부표1 ⑪(엔진 상속개시전처분재산_추정합계)', sumP.재산 + sumP.채무, n(r.상속개시전처분재산_추정합계));
+    o.check('다 = ⑨ + ⑱ = 부표1 ⑪(엔진 상속개시전처분재산_추정합계 + 가공채무추정_재산입액)', sumP.재산 + sumP.채무, presumedAll(r));
     return o.result();
   };
 
@@ -1011,8 +1034,23 @@
     o.miss('①②③ 영리법인 법인명·사업자등록번호·사업장 소재지', '계산기에 없음');
     o.set('④', beq).set('⑤', ex).set('⑥', Math.round(beq * 0.1));
     o.note('⑤ 면제세액은 화면에 직접 입력한 값(계산기가 계산하지 않음)');
-    o.miss('⑦~⑪ 사람별 줄', '계산기는 상속인 등의 지분 비율을 합계 한 칸으로만 받음 — 계 줄에만 찍음');
-    o.set('계~계 — ⑩ 지분율 합', pct2(ratio)).set('계~계 — ⑪ 면제분 납부세액 합(= 본표 ㊱)', n(r.영리법인면제분납부세액));
+    // [2026.10.20 AI 회의 회장 결론 J07] 상증법 §3의2②(2025.12.23. 개정, 2026.1.1. 시행)·시행령 §3② — 상속인·상속인의 배우자·직계비속·
+    //  직계비속의 배우자가 "각자의" 지분상당액을 낸다. 서식(2020.3.13.판) ⑦ 구분엔 상속인·직계비속만 있지만, 같은 줄 형식을 사람마다 써서 ⑦에
+    //  "상속인의 배우자"처럼 적고 ⑩·⑪을 따로 적는다(합쳐 적기는 남의 납부의무를 상속인 몫으로 적는 셈이라 안 씀). 5줄이 넘으면 이어지는 장.
+    var payers = (ctx.forProfitPayers || []).filter(function (p) { return p && (has(p.name) || n(p.ratio) > 0); });
+    var total = n(r.영리법인면제분납부세액), base = ex - beq * 0.1;
+    if (payers.length) {
+      var amts = payers.map(function (p) { return Math.max(0, Math.round(base * n(p.ratio))); });
+      var sumR = payers.reduce(function (s, p) { return s + n(p.ratio); }, 0);
+      // 사람별 원 미만 반올림 합이 본표 ㊱(엔진 합계)과 1~2원 다르면 마지막 줄에서 맞춘다
+      var diff = total - amts.reduce(function (s, a) { return s + a; }, 0);
+      if (diff && Math.abs(diff) <= payers.length && Math.abs(sumR - ratio) < 1e-6) { amts[amts.length - 1] += diff; o.note('⑪ 사람별 원 미만 반올림 차이 ' + diff + '원을 마지막 줄에서 맞춤(계 = 본표 ㊱)'); }
+      o.set('⑦', payers.map(function (p) { return p.kind || '상속인'; })).set('⑧', payers.map(function (p) { return p.name || ''; }))
+        .set('⑨', payers.map(function (p) { return p.regNo || ''; })).set('⑩', payers.map(function (p) { return pct2(n(p.ratio)); })).set('⑪', amts);
+      o.check('계 ⑩ = 사람별 ⑩ 합(화면 지분 상당 비율과 같음)', pct2(ratio), pct2(sumR));
+      if (payers.some(function (p) { return /배우자/.test(p.kind || ''); })) o.note('⑦ 구분에 "상속인의 배우자"·"직계비속의 배우자"를 적은 줄은 상증법 §3의2②(2025.12.23. 개정)로 더해진 납부의무자 — 서식(2020.3.13.판)에 그 구분이 아직 없어 같은 줄 형식으로 적음');
+    } else o.miss('⑦~⑪ 사람별 줄', '화면 "영리법인 면제분 납부의무자"에 사람을 넣지 않음 — 계 줄에만 찍음');
+    o.set('계~계 — ⑩ 지분율 합', pct2(ratio)).set('계~계 — ⑪ 면제분 납부세액 합(= 본표 ㊱)', total);
     o.check('계 ⑪ = (⑤ − ⑥) × 계 ⑩', n(r.영리법인면제분납부세액), Math.max(0, Math.round((ex - beq * 0.1) * ratio)));
     return o.result();
   };
@@ -1240,7 +1278,7 @@
       return Object.assign({ r: r, item: item ? { amount: item.amount, priorGiftAmount: item.priorGiftAmount } : {}, donee: giftDonees[doneeIdx] || {}, donor: donor,
         relation: item ? giftPairRelation_(donor, doneeIdx).relation : '', giftDate: el('giftDate'),
         marriageBirth: r && numVal(r.혼인출산증여재산공제) ? gfMarriageBirthSplit_(numVal(r.혼인출산증여재산공제) || 0) : { marriage: 0, birth: 0 },
-        mbDetail: mbThis ? { thisTime: mbThis, cur: gfMarriageBirthSplit_(mbThis), prior: numVal(el('giftPriorMarriageBirth')) || 0, marriageDate: el('giftMarriageDate'),
+        mbDetail: mbThis ? { thisTime: mbThis, cur: gfMarriageBirthSplit_(mbThis), prior: (typeof gfPriorMarriageBirthParts_ === 'function' ? gfPriorMarriageBirthParts_(r).total : 0), priorParts: (typeof gfPriorMarriageBirthParts_ === 'function' ? gfPriorMarriageBirthParts_(r) : null), marriageDate: el('giftMarriageDate'),
           birthDate: el('giftBirthDate'), giftDate: el('giftDate'), giftAmount: has(item.amount) ? numVal(item.amount) : numVal(r.증여재산가액) } : null,
         giftAssets: giftAssets, bd: bd, clawback: claw, publicOrgPenaltyItems: [],
         rate: r ? ihRateForBase_(r.과세표준) : null, installment: inst, split: split, taxAgent: agent() }, extra || {});
@@ -1279,7 +1317,7 @@
       });
       return Object.assign({ r: r, fv: r ? ihFormValues_(r) : {}, reporter: reporter, phone: el('ihReporterPhone'), email: el('ihReporterEmail'),
         deceased: { name: el('ihDeceasedName'), regNo: el('ihDeceasedRegNo'), address: el('ihDeceasedAddress'), deathDate: el('ihDeathDate'), resident: nonRes ? 'nonresident' : 'resident', taxOffice: el('ihDeceasedTaxOffice') },
-        taxAgent: agent(), rate: r ? ihRateForBase_(r.과세표준) : null, forProfitBequest: gn('ihForProfitBequest'), forProfitExempted: gn('ihForProfitExempted'), forProfitRatio: numVal(el('ihForProfitRatio')) || 0,
+        taxAgent: agent(), rate: r ? ihRateForBase_(r.과세표준) : null, forProfitBequest: gn('ihForProfitBequest'), forProfitExempted: gn('ihForProfitExempted'), forProfitRatio: numVal(el('ihForProfitRatio')) || 0, forProfitPayers: (typeof inheritanceForProfitPayers !== 'undefined' ? inheritanceForProfitPayers : []), // [2026.10.20 J07] 부표5 사람별 줄
         bizDeferred: gn('ihBizInheritDeferred'), installment: inst, split: split,
         assets: valAssets, valAssets: valAssets, heirs: heirs, spouse: spouse, nonHeirBequest: gn('ihNonHeirBequest'), disposalItems: disposal,
         valuationTotal: Math.round(ihValuationAssetsGrossTotal_()), grossEstate: ihGrossEstateTotal_(), publicOrg: gn('ihPublicOrg'), publicTrust: gn('ihPublicTrust'),
