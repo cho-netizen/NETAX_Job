@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 05:30 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 05:36 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -5633,31 +5633,30 @@
     var rows = lsiRegistryRows_(lsiFormGroup_);
     var allCount = groups.reduce(function(n, g){ return n + lsiRegistryRows_(g).length; }, 0);
     var html = '<div class="card">' +
-      '<div class="lsi-note" style="margin-bottom:8px;">서식은 세법을 가장 먼저 정밀하게 해석한 기준입니다. 서식마다 <b>칸 지도</b>(칸 → 근거 조문 → 계산기 칸 → 쓰이는 조견표)를 쌓아 갑니다. ' +
-      '목록은 <b>세액인쇄</b>의 서식 목록(모두 ' + allCount + '개)을 그대로 읽어 오고, 원본은 드라이브 서식 폴더(업무관리자\\세금계산)에서 서식번호로 찾습니다. 찍기·전자신고는 세액인쇄에서 합니다.</div>' +
+      '<div class="lsi-note" style="margin-bottom:8px;">서식은 세법을 가장 먼저 정밀하게 해석한 기준입니다. 서식마다 <b>칸 해설</b>(칸 → 근거 조문 → 계산기 칸 → 쓰이는 조견표)을 쌓아 갑니다. ' +
+      '목록은 <b>세액인쇄</b>의 서식 목록(모두 ' + allCount + '개)을 그대로 읽어 오고, 원본은 드라이브 서식 폴더(업무관리자\\세금계산)에서 서식번호로 찾습니다. 이 탭은 서식 사전입니다 — 어떤 서식을 낼지·인쇄·전자신고는 🖨 세액인쇄에서 합니다.</div>' +
       '<div class="lsi-chips">' + groups.map(function(g){ return '<button type="button" class="lsi-chip' + (g === lsiFormGroup_ ? ' active' : '') + '" data-lsigroup="' + lsiEsc_(g) + '">' + lsiEsc_(g) + ' (' + lsiRegistryRows_(g).length + ')</button>'; }).join('') + '</div>';
     var noFile = 0;
     var body = rows.map(function(r){
       var files = lsiFolderFiles_ ? lsiMatchFiles_(r.formNo, r.title) : null;
       if (files && !files.length) noFile++;
-      var efile = typeof printEfileStatusLabel_ === 'function' ? printEfileStatusLabel_(r.formNo) : { label: '', cls: '' };
       var fm = LSI_FORM_MAPS_[r.formNo];
       var fileHtml = files === null ? '<span class="lsi-note">불러오는 중…</span>'
         : files.length ? '<span class="lsi-files">' + files.map(function(x){ return '<a href="' + lsiEsc_(x.f.url) + '" target="_blank" rel="noopener" title="' + lsiEsc_(x.f.folder + ' 폴더 · ' + x.f.name + ' · ' + x.how) + '">' + (/\.pdf$/i.test(x.f.name) ? 'PDF' : /\.hwpx?$/i.test(x.f.name) ? '한글' : '파일') + (x.how === '번호·법 같음' ? '' : '?') + '</a>'; }).join('') + '</span>'
         : '<span class="lsi-badge warn">원본 없음</span>';
       var mapHtml = fm ? '<button type="button" class="lsi-link" data-lsiformmap="' + lsiEsc_(r.formNo) + '">칸 ' + (fm.칸 || []).length + '개</button> <span class="lsi-badge' + (lsiState_(r.formNo, fm) === '세무사님 확인' ? ' ok' : ' warn') + '">' + lsiEsc_(lsiState_(r.formNo, fm)) + '</span>' : '<span class="lsi-note">아직 없음</span>';
-      return '<tr><td class="nw">' + (r.section === 'required' ? '필수' : '해당 시') + '</td><td style="white-space:nowrap;">' + lsiEsc_(typeof printShortFormNo_ === 'function' ? printShortFormNo_(r.formNo) : r.formNo) + '</td>' +
-        '<td>' + lsiEsc_(r.title) + '<div class="lsi-note">' + lsiEsc_(r.formNo.split('[')[0].trim()) + '</div></td><td class="nw">' + lsiEsc_(efile.label === '전자' ? '전자신고' : '서면') + '</td>' +
-        '<td class="nw">' + fileHtml + '</td><td class="nw">' + mapHtml + '</td><td class="nw"><button type="button" class="lsi-link" data-lsiprint="1">세액인쇄로</button></td></tr>';
+      // [2026.10.19 세무사님] 서식 탭은 서식 사전 — 필수/해당 시·전자/서면·찍기(세액인쇄로) 같은 신고·출력 표시는 세액인쇄에만 둔다
+      return '<tr><td style="white-space:nowrap;">' + lsiEsc_(typeof printShortFormNo_ === 'function' ? printShortFormNo_(r.formNo) : r.formNo) + '</td>' +
+        '<td>' + lsiEsc_(r.title) + '<div class="lsi-note">' + lsiEsc_(r.formNo.split('[')[0].trim()) + '</div></td>' +
+        '<td class="nw">' + fileHtml + '</td><td class="nw">' + mapHtml + '</td></tr>';
     }).join('');
-    html += '<div class="lsi-table-wrap"><table class="lsi-table"><thead><tr><th>구분</th><th>서식번호</th><th>서식 이름</th><th>신고</th><th>원본</th><th>칸 지도</th><th>찍기</th></tr></thead><tbody>' + body + '</tbody></table></div>';
+    html += '<div class="lsi-table-wrap"><table class="lsi-table"><thead><tr><th>서식번호</th><th>서식 이름</th><th>원본</th><th>칸 해설</th></tr></thead><tbody>' + body + '</tbody></table></div>';
     html += '<div class="lsi-note" style="margin-top:6px;">원본 옆 "?"는 서식번호만 같거나 제목으로 짝지은 것입니다(마우스를 올리면 이유가 보입니다).' + (lsiFolderFiles_ ? ' 이 세목에서 원본을 못 찾은 서식 ' + noFile + '개.' : '') + '</div></div>';
     html += '<div id="lsiFormMapBox"></div>';
     if (lsiFolderFiles_) html += lsiUnmatchedHtml_();
     pane.innerHTML = html;
     if (lsiOpenFormMap_ && LSI_FORM_MAPS_[lsiOpenFormMap_]) setTimeout(function(){ lsiShowFormMap_(lsiOpenFormMap_, true); }, 0);
     pane.querySelectorAll('[data-lsigroup]').forEach(function(b){ b.addEventListener('click', function(){ lsiFormGroup_ = b.dataset.lsigroup; lsiRenderForms_(); }); });
-    pane.querySelectorAll('[data-lsiprint]').forEach(function(b){ b.addEventListener('click', function(){ if (typeof goToView_ === 'function') goToView_('print'); }); });
     pane.querySelectorAll('[data-lsiformmap]').forEach(function(b){ b.addEventListener('click', function(){ lsiShowFormMap_(b.dataset.lsiformmap); }); });
   }
 
@@ -5740,7 +5739,7 @@
     var artLabel = '제' + art.replace(/^(\d+)의(\d+)$/, '$1조의$2').replace(/^(\d+)$/, '$1조');
     box.innerHTML =
       '<div style="margin-bottom:6px;"><b>' + lsiEsc_(law + ' ' + artLabel) + '</b> <a href="' + lsiEsc_(lsiLawUrl_(law, art)) + '" target="_blank" rel="noopener">법제처 원문 ↗</a></div>' +
-      '<div style="margin-bottom:6px;">📄 <b>이 조문을 해석한 서식 칸</b>: ' + (cells.length ? cells.map(function(c){ return '<button type="button" class="lsi-link" data-lsigoform="' + lsiEsc_(c.fno) + '">' + lsiEsc_((typeof printShortFormNo_ === 'function' ? printShortFormNo_(c.fno) : c.fno) + ' ' + (c.k.칸 || '') + ' ' + (c.k.이름 || '')) + '</button>'; }).join(', ') : '<span class="lsi-note">아직 없음(칸 지도를 만든 서식만 나옵니다)</span>') + '</div>' +
+      '<div style="margin-bottom:6px;">📄 <b>이 조문을 해석한 서식 칸</b>: ' + (cells.length ? cells.map(function(c){ return '<button type="button" class="lsi-link" data-lsigoform="' + lsiEsc_(c.fno) + '">' + lsiEsc_((typeof printShortFormNo_ === 'function' ? printShortFormNo_(c.fno) : c.fno) + ' ' + (c.k.칸 || '') + ' ' + (c.k.이름 || '')) + '</button>'; }).join(', ') : '<span class="lsi-note">아직 없음(칸 해설을 만든 서식만 나옵니다)</span>') + '</div>' +
       '<div style="margin-bottom:6px;">📋 <b>이 조문을 쓰는 조견표</b>: ' + (refs.length ? refs.map(function(t){ return '<button type="button" class="lsi-link" data-lsigoref="' + lsiEsc_(t.번호) + '">' + lsiEsc_(t.번호 + ' ' + t.이름) + '</button>'; }).join(', ') : '<span class="lsi-note">아직 없음</span>') + '</div>' +
       '<div>🧮 <b>이 조문을 쓰는 계산</b>: ' + (fns === null ? '<span class="lsi-note">이 목록은 job.netax.kr/app 화면에서 보입니다.</span>'
         : fns.length ? Object.keys(byPlace).map(function(p){ return p + ' ' + byPlace[p].length + '곳'; }).join(' · ') + ' <details style="display:inline;"><summary class="lsi-note" style="display:inline; cursor:pointer;">(만드는 사람용 이름 보기)</summary><div class="lsi-note">' + Object.keys(byPlace).map(function(p){ return p + ': ' + byPlace[p].map(lsiEsc_).join(', '); }).join('<br>') + '<br>주석·문구에 이 조문이 적힌 함수입니다(추정 포함).</div></details>'
@@ -5783,7 +5782,7 @@
     var box = document.getElementById('lsiFormMapBox');
     if (!box){ lsiRenderForms_(); box = document.getElementById('lsiFormMapBox'); }
     if (!fm || !box) return;
-    box.innerHTML = '<div class="card"><h3 style="margin-top:0;">칸 지도 — ' + lsiEsc_(fm.이름 || '') + '</h3>' +
+    box.innerHTML = '<div class="card"><h3 style="margin-top:0;">칸 해설 — ' + lsiEsc_(fm.이름 || '') + '</h3>' +
       '<div class="lsi-note" style="margin-bottom:6px;">' + lsiEsc_(formNo) + (fm.서식판 ? ' · 서식판 ' + lsiEsc_(fm.서식판) : '') + ' · 상태: <b>' + lsiEsc_(lsiState_(formNo, fm)) + '</b>(세무사님 확인 전에는 계산·판정에 쓰지 않습니다)' +
       (fm.출처 || []).map(function(o){ return ' · <a href="' + lsiEsc_(o.주소) + '" target="_blank" rel="noopener">' + lsiEsc_(o.이름) + ' ↗</a>'; }).join('') + '</div>' +
       (fm.설명 ? '<div class="lsi-note" style="margin-bottom:6px;">' + lsiEsc_(fm.설명) + '</div>' : '') +
@@ -5796,7 +5795,7 @@
       }).join('') + '</tbody></table></div>' +
       ((fm.검산 || []).length ? '<div style="margin-top:8px;"><b>칸 산식 검산</b> <span class="lsi-note">(계산 결과를 서식 칸 계산대로 다시 맞춰 봄)</span><ul style="margin:4px 0 0 18px; font-size:12.5px;">' + fm.검산.map(function(x){ return '<li>' + lsiEsc_(x) + '</li>'; }).join('') + '</ul></div>' : '') +
       (fm.핵심연결 ? '<div style="margin-top:8px;"><b>조견표와 잇는 곳</b><ul style="margin:4px 0 0 18px; font-size:12.5px;">' + Object.keys(fm.핵심연결).map(function(k){ return '<li><b>' + lsiEsc_(k) + '</b>: ' + lsiEsc_(fm.핵심연결[k]) + '</li>'; }).join('') + '</ul></div>' : '') +
-      ((fm.발견 || []).length ? '<div style="margin-top:8px;"><b>칸 지도를 만들며 드러난 것</b> <span class="lsi-note">(계산기·인쇄와 서식이 다른 곳 — 고칠지 따로 정함)</span><ul style="margin:4px 0 0 18px; font-size:12.5px;">' + fm.발견.map(function(x){ return '<li>' + lsiEsc_(x) + '</li>'; }).join('') + '</ul></div>' : '') +
+      ((fm.발견 || []).length ? '<div style="margin-top:8px;"><b>칸 해설을 만들며 드러난 것</b> <span class="lsi-note">(계산기·인쇄와 서식이 다른 곳 — 고칠지 따로 정함)</span><ul style="margin:4px 0 0 18px; font-size:12.5px;">' + fm.발견.map(function(x){ return '<li>' + lsiEsc_(x) + '</li>'; }).join('') + '</ul></div>' : '') +
       ((fm.확인필요 || []).length ? '<div style="margin-top:8px;"><b>확인 필요</b><ul style="margin:4px 0 0 18px; font-size:12.5px;">' + fm.확인필요.map(function(x){ return '<li>' + lsiEsc_(x) + '</li>'; }).join('') + '</ul></div>' : '') +
       '</div>';
     lsiWireLinks_(box);
@@ -34856,7 +34855,7 @@ function renderPrintPane(){
           maybe.map(function(m){ return '<tr><td>' + escapeHtml(m.title) + '</td><td class="print-hub-formno">' + escapeHtml(printShortFormNo_(m.formNo)) + '</td><td>' + escapeHtml(m.why) + '</td></tr>'; }).join('') +
           '</table>';
       })() +
-      '<div class="taxcalc-result-note" style="margin-top:8px;">이 세목의 전체 서식 목록(' + printCurrentRows_.length + '개)·원본·칸 지도는 <button type="button" class="lsi-link" data-action="print-open-form-catalog" style="background:none;border:none;color:var(--navy);text-decoration:underline;cursor:pointer;padding:0;">법령정보 › 서식</button>에서 봅니다.</div>' +
+      '<div class="taxcalc-result-note" style="margin-top:8px;">이 세목의 전체 서식 목록(' + printCurrentRows_.length + '개)·원본·칸 해설은 <button type="button" class="lsi-link" data-action="print-open-form-catalog" style="background:none;border:none;color:var(--navy);text-decoration:underline;cursor:pointer;padding:0;">법령정보 › 서식</button>에서 봅니다.</div>' +
       (efileItems.length ? efileItems.map(function(item){
         return '<div id="' + item.efileResultId + '" style="margin-top:6px;"></div>';
       }).join('') : '') +
@@ -46857,11 +46856,11 @@ function goToReportWriter_(caseId, opts){
 
     <section class="card" id="help-lawsearch">
       <h3>⚖️ 법령정보</h3>
-      <p>위에 하위 탭이 셋 있습니다 — <b>📜 법령</b>(법령·해석례·판례를 검색해 사건에 근거자료로 첨부, 조문으로 찾아보기), <b>📄 서식</b>(세목별 신고 서식 목록·원본·칸 지도), <b>📋 조견표</b>(세법 밖 사실 이력과 세법 안 조견표). 셋은 서로 이어져 있어, 조문에서 그 조문을 해석한 서식 칸으로, 서식 칸에서 조견표로, 조견표에서 근거 조문으로 바로 넘어갑니다.</p>
+      <p>위에 하위 탭이 셋 있습니다 — <b>📜 법령</b>(법령·해석례·판례를 검색해 사건에 근거자료로 첨부, 조문으로 찾아보기), <b>📄 서식</b>(세목별 서식 사전 — 무슨 서식인지·원본·칸 해설), <b>📋 조견표</b>(세법 밖 사실 이력과 세법 안 조견표). 셋은 서로 이어져 있어, 조문에서 그 조문을 해석한 서식 칸으로, 서식 칸에서 조견표로, 조견표에서 근거 조문으로 바로 넘어갑니다.</p>
       <ul>
         <li><b>조문 하나에 걸린 서식 칸·조견표·계산을 보려면</b>: 📜 법령 탭의 "조문으로 찾아보기"에서 법령을 고르고 조문 번호(예: 24, 97의2)를 넣은 뒤 [보기]를 누릅니다.</li>
-        <li><b>서식 원본·칸 지도를 보려면</b>: 📄 서식 탭에서 세목을 고르고, 서식 줄의 [PDF]·[한글](원본) 또는 [칸 N개](칸 지도)를 누릅니다. 서식을 찍거나 전자신고 파일을 만드는 것은 지금처럼 🖨 세액인쇄에서 합니다.</li>
-        <li><b>조견표와 칸 지도는 세무사님 확인 전에는 계산·판정에 쓰지 않습니다</b>(화면에 "초안"·"확인 필요"로 보입니다).</li>
+        <li><b>서식 원본·칸 해설을 보려면</b>: 📄 서식 탭에서 세목을 고르고, 서식 줄의 [PDF]·[한글](원본) 또는 [칸 N개](칸 해설)를 누릅니다. 서식 탭은 서식 사전입니다 — 어떤 서식을 낼지, 인쇄, 전자신고 파일 만들기는 🖨 세액인쇄에서 합니다.</li>
+        <li><b>조견표와 칸 해설은 세무사님 확인 전에는 계산·판정에 쓰지 않습니다</b>(화면에 "초안"·"확인 필요"로 보입니다).</li>
         <li><b>법령·판례를 검색하려면</b>: ① 상단에서 사건을 선택합니다 → ② 찾을 대상(법령/법령해석례/행정규칙/법원판례/조세심판원/헌법재판소/별표·서식)을 체크합니다 → ③ 검색어를 입력하고 검색합니다.</li>
         <li><b>검색 결과를 사건에 근거자료로 남기려면</b>: 원하는 항목의 체크박스를 선택하고 첨부합니다(이미 첨부된 건 "✅ 첨부됨"으로 표시됩니다).</li>
       </ul>

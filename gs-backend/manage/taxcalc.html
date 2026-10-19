@@ -15002,7 +15002,7 @@ function renderPrintPane(){
           maybe.map(function(m){ return '<tr><td>' + escapeHtml(m.title) + '</td><td class="print-hub-formno">' + escapeHtml(printShortFormNo_(m.formNo)) + '</td><td>' + escapeHtml(m.why) + '</td></tr>'; }).join('') +
           '</table>';
       })() +
-      '<div class="taxcalc-result-note" style="margin-top:8px;">이 세목의 전체 서식 목록(' + printCurrentRows_.length + '개)·원본·칸 지도는 <button type="button" class="lsi-link" data-action="print-open-form-catalog" style="background:none;border:none;color:var(--navy);text-decoration:underline;cursor:pointer;padding:0;">법령정보 › 서식</button>에서 봅니다.</div>' +
+      '<div class="taxcalc-result-note" style="margin-top:8px;">이 세목의 전체 서식 목록(' + printCurrentRows_.length + '개)·원본·칸 해설은 <button type="button" class="lsi-link" data-action="print-open-form-catalog" style="background:none;border:none;color:var(--navy);text-decoration:underline;cursor:pointer;padding:0;">법령정보 › 서식</button>에서 봅니다.</div>' +
       (efileItems.length ? efileItems.map(function(item){
         return '<div id="' + item.efileResultId + '" style="margin-top:6px;"></div>';
       }).join('') : '') +
