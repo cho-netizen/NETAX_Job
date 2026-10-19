@@ -16,7 +16,7 @@ var AI_REGISTRY_ = [
   { id: 'claude-opus', tier: 'C', name: 'Claude Opus(API)', provider: 'claude', model: 'claude-opus-4-8', keyProp: 'ANTHROPIC_API_KEY', clientData: true, specialties: ['전략', '세법판단'], speed: '느림', cost: '고' },
   // ---- 위원(무료 등급 — 고객 자료 금지: 입력이 서비스 개선에 쓰일 수 있음) ----
   // id는 'gemini-paid' 그대로(회의 기록 _판단대기.json의 답 키·조정 세션 호출이 이 이름을 씀) — 표시만 바로잡음
-  { id: 'gemini-paid', tier: 'A', name: 'Gemini API(무료 등급)', provider: 'gemini', model: 'gemini-3.6-flash', keyProp: 'GEMINI_API_KEY', clientData: false, member: true, specialties: ['세법판단', '요약', '긴문서', '코딩·기술'], speed: '빠름', cost: '0', note: '세무사님이 Google AI Studio에서 무료로 받은 키' },
+  { id: 'gemini-paid', tier: 'A', name: 'Gemini API(무료 등급 — 고객 자료 금지)', provider: 'gemini', model: 'gemini-3.6-flash', keyProp: 'GEMINI_API_KEY', clientData: false, member: true, specialties: ['세법판단', '요약', '긴문서', '코딩·기술'], speed: '빠름', cost: '0', note: '세무사님이 Google AI Studio에서 무료로 받은 키 — 무료 등급은 구글이 입력을 서비스 개선에 쓰고 사람이 볼 수 있어 고객 자료는 보내지 않음' },
   { id: 'openrouter', tier: 'A', name: 'OpenRouter(키를 넣으면 위원 추가)', provider: 'openai', endpoint: 'https://openrouter.ai/api/v1/chat/completions', model: 'deepseek/deepseek-chat-v3-0324:free', keyProp: 'OPENROUTER_API_KEY', clientData: false, member: true, dailyFree: 50, specialties: ['일반지식', '코딩·기술', '요약'], speed: '보통', cost: '0' }
 ];
 // 배차표 — 작업 종류 → 쓰는 AI 순서(앞이 우선), 예산 상한(원, 한 번), 고객자료 여부. 설명·통제용(실제로 도는 줄만 — 2026-10-19 정리)
