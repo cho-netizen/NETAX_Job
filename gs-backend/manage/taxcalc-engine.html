@@ -617,6 +617,7 @@
   /*@@REF_ENGINE_BEGIN@@*/
   const REF_TR_BRACKETS_ = [{"from":"2008-01-01","to":"2008-12-31","brackets":[{"max":10000000,"rate":0.09,"deduction":0},{"max":40000000,"rate":0.18,"deduction":900000},{"max":80000000,"rate":0.27,"deduction":4500000},{"max":Infinity,"rate":0.36,"deduction":11700000}]},{"from":"2009-01-01","to":"2009-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.16,"deduction":1200000},{"max":88000000,"rate":0.25,"deduction":5340000},{"max":Infinity,"rate":0.35,"deduction":14140000}]},{"from":"2010-01-01","to":"2011-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.15,"deduction":1080000},{"max":88000000,"rate":0.24,"deduction":5220000},{"max":Infinity,"rate":0.35,"deduction":14900000}]},{"from":"2012-01-01","to":"2013-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.15,"deduction":1080000},{"max":88000000,"rate":0.24,"deduction":5220000},{"max":300000000,"rate":0.35,"deduction":14900000},{"max":Infinity,"rate":0.38,"deduction":23900000}]},{"from":"2014-01-01","to":"2016-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.15,"deduction":1080000},{"max":88000000,"rate":0.24,"deduction":5220000},{"max":150000000,"rate":0.35,"deduction":14900000},{"max":Infinity,"rate":0.38,"deduction":19400000}]},{"from":"2017-01-01","to":"2017-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.15,"deduction":1080000},{"max":88000000,"rate":0.24,"deduction":5220000},{"max":150000000,"rate":0.35,"deduction":14900000},{"max":500000000,"rate":0.38,"deduction":19400000},{"max":Infinity,"rate":0.4,"deduction":29400000}]},{"from":"2018-01-01","to":"2020-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.15,"deduction":1080000},{"max":88000000,"rate":0.24,"deduction":5220000},{"max":150000000,"rate":0.35,"deduction":14900000},{"max":300000000,"rate":0.38,"deduction":19400000},{"max":500000000,"rate":0.4,"deduction":25400000},{"max":Infinity,"rate":0.42,"deduction":35400000}]},{"from":"2021-01-01","to":"2022-12-31","brackets":[{"max":12000000,"rate":0.06,"deduction":0},{"max":46000000,"rate":0.15,"deduction":1080000},{"max":88000000,"rate":0.24,"deduction":5220000},{"max":150000000,"rate":0.35,"deduction":14900000},{"max":300000000,"rate":0.38,"deduction":19400000},{"max":500000000,"rate":0.4,"deduction":25400000},{"max":1000000000,"rate":0.42,"deduction":35400000},{"max":Infinity,"rate":0.45,"deduction":65400000}]},{"from":"2023-01-01","to":null,"brackets":[{"max":14000000,"rate":0.06,"deduction":0},{"max":50000000,"rate":0.15,"deduction":1260000},{"max":88000000,"rate":0.24,"deduction":5760000},{"max":150000000,"rate":0.35,"deduction":15440000},{"max":300000000,"rate":0.38,"deduction":19940000},{"max":500000000,"rate":0.4,"deduction":25940000},{"max":1000000000,"rate":0.42,"deduction":35940000},{"max":Infinity,"rate":0.45,"deduction":65940000}]}];
   const REF_LT_ = { 표1: [{"from":"2008-01-01","to":"2008-03-20","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30}},{"from":"2008-03-21","to":"2018-12-31","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30}},{"from":"2019-01-01","to":null,"rates":{"3":6,"4":8,"5":10,"6":12,"7":14,"8":16,"9":18,"10":20,"11":22,"12":24,"13":26,"14":28,"15":30}}], 표2: [{"from":"2008-01-01","to":"2008-03-20","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30,"11":33,"12":36,"13":39,"14":42,"15":45}},{"from":"2008-03-21","to":"2008-12-31","rates":{"3":12,"4":16,"5":20,"6":24,"7":28,"8":32,"9":36,"10":40,"11":44,"12":48,"13":52,"14":56,"15":60,"16":64,"17":68,"18":72,"19":76,"20":80}},{"from":"2009-01-01","to":"2020-12-31","rates":{"3":24,"4":32,"5":40,"6":48,"7":56,"8":64,"9":72,"10":80}}] };
+  const REF_HV_ = {"house":[{"from":"2005-02-19","to":"2008-10-06","amount":600000000},{"from":"2008-10-07","to":"2021-12-07","amount":900000000},{"from":"2021-12-08","to":null,"amount":1200000000}],"right":[{"from":"2017-02-03","to":"2021-12-07","amount":900000000},{"from":"2021-12-08","to":null,"amount":1200000000}]};
   /*@@REF_ENGINE_END@@*/
   function refHistoryOn_() { return !!(typeof window !== 'undefined' && window && window.__NX_REF_HISTORY_ON === true); }
   function refRowAt_(rows, d) { for (let i = 0; i < rows.length; i++) { if (rows[i].from <= d && (!rows[i].to || d <= rows[i].to)) return rows[i]; } return null; }
@@ -627,6 +628,15 @@
     if (!refHistoryOn_() || !d || d >= '2023-01-01') return TRANSFER_TAX_BRACKETS;
     const r = refRowAt_(REF_TR_BRACKETS_, d);
     return r ? r.brackets : TRANSFER_TAX_BRACKETS;
+  }
+  // [2026.10.19 조견표 2부-04] 고가주택 기준금액(1세대1주택 비과세 한도·고가 안분) — 주택: ~2008-10-06 6억, 2008-10-07~2021-12-07 9억,
+  //  2021-12-08~ 12억(법 §89①3호, 법률 제18578호 부칙 제7조④ 양도분). 조합원입주권: 2017-02-03~2021-12-07 9억(시행령 §155⑰), 2021-12-08~ 12억.
+  //  기준일은 양도일. 연혁 스위치가 꺼져 있거나 2021-12-08 이후 양도면 지금 값 12억 그대로.
+  function highValueAt_(transferDate, kind) {
+    const d = String(transferDate || '').slice(0, 10);
+    if (!refHistoryOn_() || !d || d >= '2021-12-08') return 1200000000;
+    const r = refRowAt_(REF_HV_[kind] || [], d);
+    return r ? r.amount : 1200000000;
   }
   function longTermRateAt_(years, transferDate) {
     const d = String(transferDate || '').slice(0, 10);
@@ -861,10 +871,11 @@
       return { holdingYears, isUnregistered: true, gainBeforeDeduction, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t };
     }
 
-    if (isOneHouse && transferPrice <= 1200000000) {
+    const HV_HOUSE_ = highValueAt_(t.transferDate, 'house'), HV_RIGHT_ = highValueAt_(t.transferDate, 'right'); // 고가주택 기준(그 양도일 — 연혁 꺼짐이면 12억)
+    if (isOneHouse && transferPrice <= HV_HOUSE_) {
       return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t };
     }
-    if (isOneMemberRightOnly && transferPrice <= 1200000000) {
+    if (isOneMemberRightOnly && transferPrice <= HV_RIGHT_) {
       return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t };
     }
     // [2026.09 버그수정] 세무사님 "완전무결" 지시로 재점검 중 발견 — 준공된 신축주택(재건축·재개발
@@ -873,7 +884,7 @@
     // 이하인데도 전액 과세되고 있었다. 일반 주택과 같은 기준(isOneHouseOneFamily 체크·거주자
     // 요건)으로 게이트해서 exempt 처리한다.
     const isCompletedHouseOneFamily = isReconstruction && !!t.isCompletedNewHousing && !!t.isOneHouseOneFamily && isResidentBenefitEligible;
-    if (isCompletedHouseOneFamily && transferPrice <= 1200000000) {
+    if (isCompletedHouseOneFamily && transferPrice <= HV_HOUSE_) {
       return { holdingYears, exempt: true, transferPrice, acquisitionPrice, necessaryExpenses, assetType, acquisitionPriceMethodNote, raw: t };
     }
 
@@ -926,8 +937,8 @@
         // 소득세법§95③ 후단(고가조합원입주권) — 시행령§160①②의 12억초과 비율안분을 유추적용한다(시행령이
         // 조합원입주권 몫을 명시하지 않은 입법미비로 보아, isOneMemberRightOnly 정의부의 근거 주석 참조).
         // 1세대1조합원입주권 비과세 요건 충족을 전제로 했을 때만 적용한다.
-        if (isOneMemberRightOnly && transferPrice > 1200000000) {
-          const highValueRatio = (transferPrice - 1200000000) / transferPrice;
+        if (isOneMemberRightOnly && transferPrice > HV_RIGHT_) {
+          const highValueRatio = (transferPrice - HV_RIGHT_) / transferPrice;
           taxableGain = taxableGain * highValueRatio;
           longTermDeductionAmount = Math.round(longTermDeductionAmount * highValueRatio);
           incomeAmount = taxableGain - longTermDeductionAmount;
@@ -955,8 +966,8 @@
         // "제89조제1항제3호... 단서에 해당하는 고가주택"에 한정되므로, 이 12억 안분도 원래
         // 1세대1주택 비과세 요건(및 거주자 요건)을 충족할 때만 적용해야 한다 — 무조건 적용이면
         // 다주택자·비거주자의 신축주택도 부당하게 12억 이하분 혜택을 받게 된다.
-        if (isCompletedHouseOneFamily && transferPrice > 1200000000) {
-          const highValueRatio = (transferPrice - 1200000000) / transferPrice;
+        if (isCompletedHouseOneFamily && transferPrice > HV_HOUSE_) {
+          const highValueRatio = (transferPrice - HV_HOUSE_) / transferPrice;
           taxableGain = taxableGain * highValueRatio;
           longTermDeductionAmount = Math.round(longTermDeductionAmount * highValueRatio);
           incomeAmount = taxableGain - longTermDeductionAmount;
@@ -969,7 +980,7 @@
       // 분양권은 열거하지 않으므로, 분양권은 보유기간과 무관하게 장특공제를 전혀 받지 못한다.
       ltRate = 0;
     } else if (isOneHouse) {
-      taxableGain = gainBeforeDeduction * (transferPrice - 1200000000) / transferPrice;
+      taxableGain = gainBeforeDeduction * (transferPrice - HV_HOUSE_) / transferPrice;
       ltRate = longTermRate1HouseAt_(holdingYears, Number(t.residenceYears) || 0, t.transferDate);
     } else if (bizSuccessionRatio > 0 && t.decedentAcquisitionDate) {
       // §95④단서 — 가업상속공제가 적용된 비율에 해당하는 자산은 장기보유특별공제의 보유기간 기산일이
@@ -1075,11 +1086,29 @@
     const d = core && core.raw && String(core.raw.transferDate || '');
     if (!d || !/^\d{4}-\d{2}-\d{2}/.test(d)) return '';
     const miss = [];
-    const covered = refHistoryOn_() && !!refRowAt_(REF_TR_BRACKETS_, d) && !!refRowAt_(REF_LT_.표1, d); // 연혁이 켜져 있고 그 날짜 표가 있으면 경고 안 함
-    if (covered) return '';
-    if (d < RATE_TABLE_FROM_.기본세율) miss.push('세율');
-    const lt = Number(core.longTermRate) > 0;
-    if (lt && (d < RATE_TABLE_FROM_.장특공_일반 || (core.isOneHouse && d < RATE_TABLE_FROM_.장특공_1세대1주택))) miss.push('장기보유특별공제율');
+    const on = refHistoryOn_();
+    const rateCovered = on && !!refRowAt_(REF_TR_BRACKETS_, d) && !!refRowAt_(REF_LT_.표1, d); // 연혁이 켜져 있고 그 날짜 표가 있으면 세율·장특공 경고 안 함
+    if (!core.exempt && !rateCovered) {
+      if (d < RATE_TABLE_FROM_.기본세율) miss.push('세율');
+      const lt = Number(core.longTermRate) > 0;
+      if (lt && (d < RATE_TABLE_FROM_.장특공_일반 || (core.isOneHouse && d < RATE_TABLE_FROM_.장특공_1세대1주택))) miss.push('장기보유특별공제율');
+    }
+    // [2026.10.19 시점 점검 — maps/시점점검_2부.md의 경계 날짜] 아직 날짜로 갈라 계산하지 않는 규칙 — 해당하면 경고만(숫자 그대로)
+    if (!core.exempt) {
+      const r_ = core.raw || {}, hy_ = Number(core.holdingYears);
+      if (d < '2021-06-01' && core.assetType === 'house' && hy_ < 2) miss.push('단기 보유 세율(그때 1년 미만 40%·1~2년 기본세율 — 법률 제17477호 부칙 제3조)');
+      if (d < '2021-06-01' && core.assetType === 'presale_right') miss.push('분양권 세율(그때 조정지역 50%·그 밖 일반 자산 세율)');
+      if (d >= '2018-04-01' && d < '2022-05-10' && r_.isAdjustedArea && Number(r_.multiHouseCount) >= 2 && !core.isOneHouse) miss.push('다주택 중과(한시배제는 2022-05-10 이후 양도분부터 — 그때는 중과 대상, 2021-06-01 전은 +10%p·+20%p)');
+      if (d < '2020-01-01' && Number(core.conversionValuePenalty) > 0) miss.push('환산취득가액 가산세(2018년 전 양도는 없음·2018~2019는 신축 건물만)');
+      if (r_.giftReceivedDate && String(r_.giftReceivedDate).slice(0, 10) < '2023-01-01' && r_._이월과세_적용여부 !== undefined) miss.push('이월과세 기간(그 증여일은 5년)');
+      if (d < '2025-01-01' && r_.compensationType) miss.push('수용감면율·감면 한도');
+    }
+    // [2026.10.19] 고가주택 기준 — 1세대1주택(·1조합원입주권)이 2021-12-08 전 양도이고 양도가액이 그때 기준(9억, 2008-10-07 전 6억)을 넘으면
+    //  비과세로 끝나는 경우에도 알린다(예: 2020년 11억 1주택 — 지금 기준 12억이면 비과세, 그때 기준 9억이면 과세)
+    const raw_ = core.raw || {};
+    const oneHouse_ = !!(core.isOneHouse || raw_.isOneHouseOneFamily || raw_.isOneMemberRightOneFamily);
+    const hvOld_ = d < '2008-10-07' ? 600000000 : 900000000;
+    if (oneHouse_ && d < '2021-12-08' && Number(core.transferPrice) > hvOld_ && !(on && refRowAt_(REF_HV_.house, d))) miss.push('고가주택 기준(그때 ' + (hvOld_ / 100000000) + '억)');
     return miss.length ? '⚠ 이 양도일(' + d.slice(0, 10) + ')의 ' + miss.join('·') + ' 연혁이 아직 계산기에 없습니다 — 현행 기준으로 계산됨, 확인 필요' : '';
   }
   function rateHistoryWarningMulti_(cores) {
@@ -1120,7 +1149,7 @@
       return {
         입력값: { 양도가액: core.transferPrice, 취득가액: core.acquisitionPrice, 필요경비: core.necessaryExpenses, 보유기간_년: core.holdingYears },
         취득가액_산정방법: core.acquisitionPriceMethodNote || undefined,
-        비과세여부: true, 납부세액: 0
+        비과세여부: true, 납부세액: 0, 시점경고: rateHistoryWarning_(core) || undefined
       };
     }
 
@@ -2718,6 +2747,11 @@
         미충족요건목록: farmingInheritanceDetail.failedRequirements
       } : null,
       상속공제_합계: totalDeduction, 상속공제종합한도_적용여부: overallLimitApplied, 과세표준: taxBase,
+      // [2026.10.19 서식 칸] 별지 제9호서식 칸 정의대로 찍기 위한 값(계산은 위와 같음 — 과세표준 = 서식과세가액 − 서식공제합계 − 감정평가수수료공제)
+      //  본표 ⑱·부표1 ㉙ = 장례비까지 뺀 과세가액(§13①), 부표3 ㉚ = §24 공제적용한도액, ㉛·본표 ⑲ = 한도 안 상속공제(장례비·감정평가수수료 없음)
+      상속세과세가액_서식: estateTaxableAfterFuneral, 공제적용한도액: overallDeductionLimit, 상속공제_서식합계: limitedDeduction,
+      공제적용한도_차감내역: { 상속인아닌자유증등: Number(p.nonHeirBequestAmount) || 0, 상속포기후다음순위상속분: Number(p.disclaimedShareRedistributedAmount) || 0,
+        가산증여재산과세표준: estateTaxableAfterFuneral > 500000000 ? priorGiftTaxableBaseTotal : 0 },
       산출세액: calculatedTax, 세대생략가산액: generationSkipPremium,
       세대생략할증_미성년자여부확인필요: generationSkipMinorStatusUnverified,
       기납부증여세액공제: priorGiftTaxCredit, 증여세액공제_상속분입력필요: !!priorGiftCreditResult.needsActualValue, 기납부증여세액공제_상속인외: nonHeirPriorGiftTaxCredit, 기납부증여세액공제_상속인외한도: nonHeirPriorGiftCreditLimit, 증여세액공제_5억이하배제: giftCreditExcludedBySmallEstate, 증여세액공제_상속인별내역: priorGiftCreditResult.perHeir, 증여세액공제_상속인별과세가액_정밀: !!priorGiftCreditResult.precise,
@@ -6334,10 +6368,19 @@
       return { 적용여부: false, 안내: '종전주택을 취득한 날부터 1년이 지나기 전에 신규주택을 취득해 시행령§155①의 요건을 충족하지 못합니다(시행령§154①1호·2호가목·3호의 예외사유, 또는 법인·공공기관 지방이전(§155⑯)에 해당하면 이 요건 자체가 면제되니, 해당되면 체크하세요).' };
     }
     let deadlineYears = 3;
-    if (p.isFormerHouseAdjustedArea && p.isNewHouseAdjustedArea) {
+    // [2026.10.19 세액 고침] 2년 규정(§155①1호, 대통령령 제36737호 2026.9.30 공포·10.1 시행)은 부칙 제2조대로만 — ①조정대상지역에
+    //  종전주택을 둔 1세대가 2026-08-04 이후 조정대상지역 신규주택을 취득하고 2026-10-01 이후 종전주택을 양도하는 경우부터,
+    //  ②2026-08-03 이전 신규주택(취득할 권리 포함) 취득 또는 매매계약·계약금 지급(증명서류)은 종전 규정(3년). 예전에는 날짜를 안 보고
+    //  조정→조정이면 무조건 2년이라, 2023-01-12~2026-09-30 양도(전부 3년 — 대통령령 제33267호 부칙 제8조)나 2026-08-03 이전 취득분을
+    //  2년으로 잘라 비과세를 놓쳤다(예: 신규 2022-01-15 취득·종전 2024-06-30 양도 2년5개월 → 엔진 미적용, 법은 비과세).
+    const tdStr_ = String(formerTransfer).slice(0, 10), naStr_ = String(newAcq).slice(0, 10), ncStr_ = p.newHouseContractDate ? String(p.newHouseContractDate).slice(0, 10) : '';
+    const twoYearRuleInForce_ = tdStr_ >= '2026-10-01' && naStr_ >= '2026-08-04' && !(ncStr_ && ncStr_ <= '2026-08-03' && p.hasDownPaymentProof);
+    if (p.isFormerHouseAdjustedArea && p.isNewHouseAdjustedArea && twoYearRuleInForce_) {
       const preNoticeContract = p.newHouseContractDate && p.adjustedAreaPublicNoticeDate && new Date(p.newHouseContractDate).getTime() < new Date(p.adjustedAreaPublicNoticeDate).getTime() && p.hasDownPaymentProof;
       deadlineYears = preNoticeContract ? 3 : 2;
     }
+    // 2023-01-12 전 양도는 처분기한이 시기마다 달랐다(1년+전입·2년·3년 — 조견표 시점 점검). 아직 그 연혁을 계산하지 않으므로 경고만 붙인다
+    const periodWarning_ = tdStr_ && tdStr_ < '2023-01-12' ? '⚠ 이 양도일(' + tdStr_ + ')의 일시적 2주택 처분기한 연혁(2018~2022년 조정지역 1년·2년, 전입 요건 등)이 아직 계산기에 없습니다 — 현행 기준(3년)으로 판정됨, 확인 필요' : '';
     if (p.isCorporateOrPublicRelocation) deadlineYears = 5;
     let withinDeadline = formerTransferTime <= addYears_(newAcq, deadlineYears);
     if (!withinDeadline && p.isExpropriated && p.expropriationDate) {
@@ -6345,11 +6388,12 @@
     }
     if (!withinDeadline && p.hasDisposalDelayException) withinDeadline = true;
     if (!withinDeadline) {
-      return { 적용여부: false, 안내: '신규주택 취득일부터 ' + deadlineYears + '년 이내에 종전주택을 양도해야 하는데(시행령§155①' + (deadlineYears === 2 ? '1호' : (deadlineYears === 5 ? '⑯(법인·공공기관 지방이전)' : '2호')) + '), 기한을 넘겨 적용대상이 아닙니다(경매·공매·소송 등 §155⑱ 부득이한 사유에 해당하면 구제되니 해당되면 체크하세요).' };
+      return { 적용여부: false, 시점경고: periodWarning_ || undefined, 안내: '신규주택 취득일부터 ' + deadlineYears + '년 이내에 종전주택을 양도해야 하는데(시행령§155①' + (deadlineYears === 2 ? '1호' : (deadlineYears === 5 ? '⑯(법인·공공기관 지방이전)' : '2호')) + '), 기한을 넘겨 적용대상이 아닙니다(경매·공매·소송 등 §155⑱ 부득이한 사유에 해당하면 구제되니 해당되면 체크하세요).' };
     }
     return {
       적용여부: true,
       처분기한년수: deadlineYears,
+      시점경고: periodWarning_ || undefined,
       안내: '신규주택 취득일부터 ' + deadlineYears + '년 이내에 종전주택을 양도하여, 시행령§155①에 따라 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다' + (deadlineYears === 2 ? '(신규주택 취득 당시 종전·신규주택 모두 조정대상지역 소재)' : (deadlineYears === 5 ? '(법인·공공기관 지방이전에 따른 §155⑯ 특례로 처분기한이 5년으로 연장됨)' : '')) + '.'
     };
   };
@@ -8837,6 +8881,105 @@
     undetermined_duration: { 근거: '시행령§60①2호', 유형: '존속기간이 확정되지 않은 권리', 고려요소: '평가기준일 현재의 권리의 성질, 목적물의 내용연수, 그 밖의 모든 사정' },
     litigation: { 근거: '시행령§60①3호', 유형: '소송 중인 권리', 고려요소: '평가기준일 현재의 분쟁관계의 진상, 소송진행의 상황' }
   };
+  // [2026.10.19 시점 점검] 상속·증여 계산은 상속개시일·증여일을 받지 않아 날짜를 따라가지 않는다. 화면이 넘겨 주는 날짜(giftDate·
+  //  inheritanceDate, 없으면 경고 없음)로 '그때 법과 다를 수 있는 항목'만 알린다(숫자는 그대로). 경계 날짜는 maps/시점점검_2부.md(법제처 원문).
+  function giftHistoryWarning_(p, r) {
+    const d = String((p && (p.giftDate || p.giftReceivedDate)) || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';
+    const miss = [];
+    if (d < '2019-01-01' && Number(r.신고세액공제) > 0) miss.push('신고세액공제율(그때 7%·5% 등)');
+    if (d < '2016-01-01') miss.push('증여재산공제 한도(그때 기타친족 500만원' + (d < '2014-01-01' ? '·직계존속 3천만원·미성년 1,500만원' : '') + ')');
+    if (d < '2024-01-01' && (p.isMarriageGift || p.isBirthGift)) miss.push('혼인·출산 증여재산공제(2024-01-01 이후 증여분부터)');
+    if (d < '2016-01-01' && Number(r.세대생략할증률 || r.할증률 || 0) >= 0.4) miss.push('세대생략 40% 할증(2016년 전 없음)');
+    return miss.length ? '⚠ 이 증여일(' + d + ')의 ' + miss.join('·') + ' 연혁이 아직 계산기에 없습니다 — 현행 기준으로 계산됨, 확인 필요' : '';
+  }
+  function inheritanceHistoryWarning_(p, r) {
+    const d = String((p && (p.inheritanceDate || p.deathDate)) || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';
+    const miss = [];
+    if (d < '2019-01-01' && Number(r.신고세액공제) > 0) miss.push('신고세액공제율(그때 7%·5% 등)');
+    if (d < '2016-01-01' && Number(r.인적공제) > 0) miss.push('그 밖의 인적공제(자녀·미성년·연로자·장애인 금액)');
+    if (d < '2020-01-01' && Number(r.동거주택상속공제) > 0) miss.push('동거주택 상속공제(그때 80%·5억' + (d < '2016-01-01' ? ', 2016년 전 40%' : '') + ')');
+    if (d < '2016-01-01' && Number(r.세대생략가산액) > 0 && p.generationSkipOver2Billion && p.generationSkipMinorHeir) miss.push('세대생략 40% 할증(2016년 전 없음)');
+    if (d < '2023-01-01' && (Number(r.가업상속공제) > 0 || Number(r.영농상속공제) > 0)) miss.push('가업·영농상속공제 한도');
+    return miss.length ? '⚠ 이 상속개시일(' + d + ')의 ' + miss.join('·') + ' 연혁이 아직 계산기에 없습니다 — 현행 기준으로 계산됨, 확인 필요' : '';
+  }
+  (function () {
+    const g0 = window.calculateGiftTaxJS, i0 = window.calculateInheritanceTaxJS;
+    if (typeof g0 === 'function') window.calculateGiftTaxJS = function (p) { const r = g0(p); if (r && !r.error) { const w = giftHistoryWarning_(p || {}, r); if (w) r.시점경고 = w; } return r; };
+    if (typeof i0 === 'function') window.calculateInheritanceTaxJS = function (p) { const r = i0(p); if (r && !r.error) { const w = inheritanceHistoryWarning_(p || {}, r); if (w) r.시점경고 = w; } return r; };
+  })();
+  // [2026.10.19 서식 연동 B-2] 서식 칸 산식 검산 — 칸 지도(reftables/서식_상속9호*.json·서식_양도84부표1.json의 '검산' 식)의 칸끼리 산식으로
+  //  엔진 결과를 따로 다시 계산해 맞춰 본다(토큰 0). 다르면 결과에 서식검산(칸별 표)과 서식검산경고를 붙인다 — 숫자는 바꾸지 않는다.
+  //  오늘 장례비 사례(§24 한도의 기준이 장례비를 뺀 과세가액인데 엔진이 빼기 전 금액을 썼던 것)처럼 서식 정의와 엔진이 어긋나면 여기서 잡힌다.
+  function formCheckPush_(list, 서식, 칸, 내용, 계산기, 서식식) {
+    const a = Math.round(Number(계산기) || 0), b = Math.round(Number(서식식) || 0);
+    list.push({ 서식: 서식, 칸: 칸, 내용: 내용, 계산기: a, 서식산식: b, 맞음: Math.abs(a - b) <= 1 });
+  }
+  function formCheckWarning_(list) {
+    const bad = list.filter(function (x) { return !x.맞음; });
+    return bad.length ? '⚠ 서식 칸 검산: ' + bad.map(function (x) { return x.서식 + ' ' + x.칸 + '(' + x.내용 + ') 계산기 ' + x.계산기.toLocaleString('ko-KR') + '원 ↔ 서식 산식 ' + x.서식산식.toLocaleString('ko-KR') + '원'; }).join(' / ') + ' — 계산기와 서식 정의가 다름, 확인 필요' : '';
+  }
+  function inheritanceFormChecks_(p, r) {
+    const L = [], F = '별지 제9호';
+    if (r.상속세과세가액_서식 === undefined) return L;
+    // 본표 ㉑ 과세표준 = ⑱ 과세가액 − ⑲ 상속공제 − ⑳ 감정평가수수료(음수면 0)
+    formCheckPush_(L, F, '㉑', '과세표준 = ⑱ − ⑲ − ⑳', r.과세표준, Math.max(0, Math.floor(Number(r.상속세과세가액_서식) - Number(r.상속공제_서식합계) - Number(r.감정평가수수료공제))));
+    // 부표3 ㉚ 공제적용한도액(§24) = 장례비까지 뺀 과세가액(입력에서 따로) − 유증 등 − 상속포기분 − (과세가액 5억 초과 때) 가산 증여재산 과세표준
+    const est = Math.max(0, (Number(p.taxableEstateAmount) || 0) - (Number(p.nonTaxableAmount) || 0) - (Number(p.publicInterestOrgAmount) || 0) - (Number(p.publicTrustAmount) || 0))
+      + (Number(r.상속개시전처분재산_추정합계) || 0) + (Number(p.presumedFictitiousDebtAmount) || 0) - (Number(r.장례비용공제) || 0);
+    const giftBase = (Array.isArray(p.priorGiftHeirs) ? p.priorGiftHeirs : []).reduce(function (s, h) { return s + (Number(h && h.priorGiftTaxableBase) || 0); }, 0) + (Number(p.nonHeirPriorGiftTaxableBaseTotal) || 0);
+    formCheckPush_(L, F + ' 부표3', '㉚', '공제적용한도액 = 장례비 뺀 과세가액 − 유증 − 포기 − (5억 초과 때) 가산증여 과세표준', r.공제적용한도액,
+      Math.max(0, est - (Number(p.nonHeirBequestAmount) || 0) - (Number(p.disclaimedShareRedistributedAmount) || 0) - (est > 500000000 ? giftBase : 0)));
+    formCheckPush_(L, F, '⑱', '과세가액 = 적용 과세가액 − 장례비(§13①·부표1 ㉙)', r.상속세과세가액_서식, Math.max(0, Number(r.상속세과세가액_적용값) - Number(r.장례비용공제)));
+    // 부표3 ㉛ ≤ ㉚
+    formCheckPush_(L, F + ' 부표3', '㉛', '상속공제 합계는 공제적용한도액을 넘지 않음', Math.min(Number(r.상속공제_서식합계), Number(r.공제적용한도액)), r.상속공제_서식합계);
+    // 산출세액 = 누진세율(과세표준) + 세대생략 가산액
+    formCheckPush_(L, F, '㉒~㉔', '산출세액 = 세율(과세표준) + 세대생략가산액', r.산출세액, progressiveTax(Number(r.과세표준), GIFT_INHERIT_TAX_BRACKETS) + (Number(r.세대생략가산액) || 0));
+    return L;
+  }
+  function giftFormChecks_(p, r) {
+    const L = [], F = '별지 제10호';
+    if (r.과세표준 === undefined || r.산출세액_할증전 === undefined) return L;
+    formCheckPush_(L, F, '산출세액', '산출세액(할증 전) = 세율(과세표준)', r.산출세액_할증전, progressiveTax(Number(r.과세표준), GIFT_INHERIT_TAX_BRACKETS));
+    formCheckPush_(L, F, '할증 뒤', '산출세액(할증 뒤) = 할증 전 + 세대생략 할증액', r.산출세액_할증후, (Number(r.산출세액_할증전) || 0) + (Number(r.세대생략할증액) || 0));
+    return L;
+  }
+  function transferFormChecks_(p, r) {
+    const L = [], F = '별지 제84호 부표1';
+    if (r.과세대상양도차익 === undefined || r.장기보유특별공제액 === undefined) return L;
+    const special = r.장기임대주택특례_임대기간중분리상세 || r.조합원입주권_재건축상세 || p.hasRelocationRight || p._externalGainOverride != null;
+    if (!special) {
+      const iv = r.입력값 || {};
+      formCheckPush_(L, F, '⑭', '양도차익 = 양도가액 − 취득가액 − 필요경비', r.양도차익, (Number(iv.양도가액) || 0) - (Number(iv.취득가액) || 0) - (Number(iv.필요경비) || 0));
+      formCheckPush_(L, F, '⑯', '장기보유특별공제 = 과세대상 양도차익 × 공제율', r.장기보유특별공제액, Math.floor(Number(r.과세대상양도차익) * Number(r.장기보유특별공제율) + 1e-6));
+    }
+    formCheckPush_(L, F, '⑱', '양도소득금액 = 과세대상 양도차익 − 장기보유특별공제', r.양도소득금액, Number(r.과세대상양도차익) - Number(r.장기보유특별공제액));
+    formCheckPush_(L, '별지 제84호', '과세표준', '과세표준 = 양도소득금액 − 기본공제', r.과세표준, Math.max(0, Number(r.양도소득금액) - Number(r.기본공제)));
+    return L;
+  }
+  (function () {
+    const wrap = function (name, checks) {
+      const f0 = window[name]; if (typeof f0 !== 'function') return;
+      window[name] = function (p) { const r = f0(p); if (r && !r.error) { try { const L = checks(p || {}, r); if (L.length) { r.서식검산 = L; const w = formCheckWarning_(L); if (w) r.서식검산경고 = w; } } catch (e) { r.서식검산_오류 = String(e && e.message || e); } } return r; };
+    };
+    wrap('calculateInheritanceTaxJS', inheritanceFormChecks_);
+    wrap('calculateGiftTaxJS', giftFormChecks_);
+    wrap('calculateTransferTaxSingleJS', transferFormChecks_);
+    // 여러 건(화면 양도 계산): 자산마다 단건 계산으로 부표1 칸 검산을 모은다(자산별 값은 합산 계산과 같은 transferAssetCore)
+    const m0 = window.calculateTransferTaxMultiJS;
+    if (typeof m0 === 'function') window.calculateTransferTaxMultiJS = function (transactions, filingParams) {
+      const r = m0(transactions, filingParams);
+      if (r && !r.error && Array.isArray(transactions)) {
+        try {
+          const L = [];
+          transactions.forEach(function (t, i) { const s1 = window.calculateTransferTaxSingleJS(JSON.parse(JSON.stringify(t))); (s1 && s1.서식검산 || []).forEach(function (x) { L.push(Object.assign({}, x, { 서식: x.서식 + (transactions.length > 1 ? '(자산 ' + (i + 1) + ')' : '') })); }); });
+          if (L.length) { r.서식검산 = L; const w = formCheckWarning_(L); if (w) r.서식검산경고 = w; }
+        } catch (e2) { r.서식검산_오류 = String(e2 && e2.message || e2); }
+      }
+      return r;
+    };
+  })();
   window.explainConditionalRightValuationFactorsJS = function (p) {
     p = p || {};
     const meta = CONDITIONAL_RIGHT_VALUATION_FACTORS_JS_[p.rightType];
