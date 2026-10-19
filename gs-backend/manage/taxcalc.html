@@ -6019,6 +6019,7 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field" data-show-if="newHouseReductionProvision" style="display:none;"><label>취득 당시 기준시가</label><input type="number" data-field="nhAcquisitionStandardPrice" placeholder="원"><span class="taxcalc-field-help">5년 초과보유시 정확한 계산용</span></div>' +
           '<div class="taxcalc-field" data-show-if="newHouseReductionProvision" style="display:none;"><label>5년 시점 기준시가</label><input type="number" data-field="nhFiveYearStandardPrice" placeholder="원"></div>' +
           '<div class="taxcalc-field" data-show-if="newHouseReductionProvision" style="display:none;"><label>양도 당시 기준시가</label><input type="number" data-field="nhTransferStandardPrice" placeholder="원"></div>' +
+          '<div class="taxcalc-field" data-show-if="newHouseReductionProvision" style="display:none;"><label>[재개발·재건축 신축주택만] 종전주택 취득 당시 기준시가</label><input type="number" data-field="nhFormerHouseAcquisitionStandardPrice" placeholder="원"><span class="taxcalc-field-help">종전주택을 재개발·재건축해 받은 신축주택이면 감면소득 분모가 이 값(조특령 §99①·§99의3① 단서)</span></div>' +
         '</div>' +
         '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>미분양주택 취득자 특례(조특법§98의3·§98의4·§98의5·§98의6·§98의7·§98의8) — 위 양도가액·취득가액·취득일·양도일을 그대로 쓰며, 해당하면 자동으로 감면분을 반영합니다(§98의4는 소득금액이 아니라 세액 10%를 감면 — 장기보유(2년 이상) 거래에만 자동 반영됩니다)</b></div>' +
         '<div class="taxcalc-grid">' +
@@ -6883,7 +6884,7 @@ var TR_MONEY_FIELDS_TO_SCALE_ = [
   'originalAcquisitionStandardPrice', 'approvalDateStandardPrice', 'convertedBuildingAcquisitionValueForPenalty',
   'donorAcquisitionPrice', 'donorNecessaryExpenses', 'doneeOwnAcquisitionPrice', 'doneeOwnNecessaryExpenses',
   'giftTaxPaid', 'giftTaxableValue', 'nhFiveYearMarkValue', 'nhAcquisitionStandardPrice', 'nhFiveYearStandardPrice',
-  'nhTransferStandardPrice', 'uhFiveYearMarkValue', 'uhAcquisitionStandardPrice', 'uhFiveYearStandardPrice',
+  'nhTransferStandardPrice', 'nhFormerHouseAcquisitionStandardPrice', 'uhFiveYearMarkValue', 'uhAcquisitionStandardPrice', 'uhFiveYearStandardPrice',
   'uhTransferStandardPrice', 'pensionAccountContribution', 'pensionPriorContribution',
   // [2026.09.24 버그수정] 구조조정대상 부동산(rp, §43)·장기임대주택 §97의5(lr) 감면도 nh/uh와
   // 완전히 같은 fiveYearMarkGain() 근사식(절대금액－취득가액)을 쓰는데, 처음 목록을 만들 때
@@ -7081,6 +7082,7 @@ function collectTransferInput(vals){
     nhAcquisitionStandardPrice: numVal(vals.nhAcquisitionStandardPrice) || 0,
     nhFiveYearStandardPrice: numVal(vals.nhFiveYearStandardPrice) || 0,
     nhTransferStandardPrice: numVal(vals.nhTransferStandardPrice) || 0,
+    nhFormerHouseAcquisitionStandardPrice: numVal(vals.nhFormerHouseAcquisitionStandardPrice) || 0, // [2026.10.20] 조특령 §99①·§99의3① 단서
     // [2026.09 신규] 미분양주택 취득자 특례(조특법§98의3~8)
     unsoldHouseReductionProvision: vals.unsoldHouseReductionProvision || '',
     uhIsOverconcentrationZone: !!vals.uhIsOverconcentrationZone,

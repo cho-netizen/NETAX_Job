@@ -1713,5 +1713,24 @@
   "정답": {
    "이월과세_적용여부": false
   }
+ },
+ {
+  "이름": "신축주택 감면(조특 §99의3, 조특령 §99의3① 단서) — 종전주택 재건축 신축주택 5년 안 양도: 감면소득 = 차익 5억 × (양도 6억 − 신축 2억) ÷ (양도 6억 − 종전 1억) = 4억(예전 전액 5억)",
+  "도구": "calculateNewHouseAcquisitionReductionJS",
+  "고정": true,
+  "입력": {
+   "provision": "sect99_3",
+   "acquisitionDate": "2002-03-01",
+   "transferDate": "2006-01-01",
+   "transferPrice": 800000000,
+   "acquisitionPrice": 300000000,
+   "necessaryExpenses": 0,
+   "acquisitionStandardPrice": 200000000,
+   "transferStandardPrice": 600000000,
+   "formerHouseAcquisitionStandardPrice": 100000000
+  },
+  "정답": {
+   "감면_비과세대상_양도소득금액": 400000000
+  }
  }
 ]

@@ -2142,7 +2142,8 @@
       fiveYearMarkValue: Number(t.nhFiveYearMarkValue) || 0,
       acquisitionStandardPrice: Number(t.nhAcquisitionStandardPrice) || 0,
       fiveYearStandardPrice: Number(t.nhFiveYearStandardPrice) || 0,
-      transferStandardPrice: Number(t.nhTransferStandardPrice) || 0
+      transferStandardPrice: Number(t.nhTransferStandardPrice) || 0,
+      formerHouseAcquisitionStandardPrice: Number(t.nhFormerHouseAcquisitionStandardPrice) || 0 // [2026.10.20] 재개발·재건축 신축주택 단서
     });
     if (!reduction || reduction.error || !reduction.적용여부) {
       return Object.assign({}, t, {
@@ -6440,7 +6441,23 @@
     const totalGain = transferPrice - acquisitionPrice - necessaryExpenses;
 
     let exemptGain, note;
-    if (yearsHeld <= 5) {
+    // [2026.10.20 세액 고침 — 법령 세션 원문 대조] 조특령 §99①·§99의3①(법제처 원문 그림 산식) 단서: 종전주택을 재개발·재건축해 취득한 신축주택
+    //  (법 §98의3② 각 호)은 감면소득 = 양도소득금액 × (양도 당시 − 신축주택 취득 당시 기준시가) ÷ (양도 당시 − 종전주택 취득 당시 기준시가) — 5년 안 양도(1호)도
+    //  전액이 아니라 이 비율, 5년 뒤(2호)는 분모가 종전주택 취득 당시 기준시가. formerHouseAcquisitionStandardPrice가 있으면 적용(§99의2는 해당 없음).
+    const formerStd_ = provision !== 'sect99_2' ? (Number(p.formerHouseAcquisitionStandardPrice) || 0) : 0;
+    const acqStd_ = Number(p.acquisitionStandardPrice) || 0, trfStd_ = Number(p.transferStandardPrice) || 0;
+    if (formerStd_ > 0 && yearsHeld <= 5) {
+      if (!(acqStd_ > 0 && trfStd_ > formerStd_)) return { error: '재개발·재건축 신축주택 감면(조특령 §99①1호 단서): 신축주택 취득 당시·양도 당시 기준시가가 필요합니다(양도 당시가 종전주택 취득 당시보다 커야 함).' };
+      const ratio_ = Math.max(0, Math.min(1, (trfStd_ - acqStd_) / (trfStd_ - formerStd_)));
+      exemptGain = Math.round(totalGain * ratio_);
+      note = '종전주택을 재개발·재건축해 취득한 신축주택 — 5년 안 양도: 감면소득 = 양도소득금액 × (양도 당시 ' + trfStd_ + ' − 신축 취득 당시 ' + acqStd_ + ') ÷ (양도 당시 ' + trfStd_ + ' − 종전주택 취득 당시 ' + formerStd_ + ')(조특령 §99①1호 단서).';
+    } else if (formerStd_ > 0) {
+      const fyStd_ = Number(p.fiveYearStandardPrice) || 0;
+      if (!(acqStd_ > 0 && fyStd_ > 0 && trfStd_ > formerStd_)) return { error: '재개발·재건축 신축주택 감면(조특령 §99①2호 단서): 신축 취득 당시·5년 되는 날·양도 당시 기준시가가 필요합니다.' };
+      const ratio_ = Math.max(0, Math.min(1, (fyStd_ - acqStd_) / (trfStd_ - formerStd_)));
+      exemptGain = Math.round(totalGain * ratio_);
+      note = '종전주택을 재개발·재건축해 취득한 신축주택 — 5년 뒤 양도: 감면소득 = 양도소득금액 × (5년 되는 날 ' + fyStd_ + ' − 신축 취득 당시 ' + acqStd_ + ') ÷ (양도 당시 ' + trfStd_ + ' − 종전주택 취득 당시 ' + formerStd_ + ')(조특령 §99①2호 단서).';
+    } else if (yearsHeld <= 5) {
       exemptGain = totalGain;
       note = provision === 'sect99_2'
         ? '취득일로부터 5년 이내 양도이므로 그 양도소득세 전액(100%)을 감면합니다(조특법§99의2①).'
