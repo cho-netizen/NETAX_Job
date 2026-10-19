@@ -121,8 +121,11 @@
     o.set('㉝', due);
     if (usage && !r.창업자금사용명세미제출가산세_별도부과) o.note('⚠ 엔진 납부세액 ' + n(r.납부세액) + '원에는 창업자금 사용명세서 미제출 가산세 ' + usage + '원(조특법 §30의5⑤)이 들어 있으나 서식 ㉝(㉗−㉘+㉛+㉜)에는 그 칸이 없어 뺀 ' + due + '원을 찍음 — 사용명세는 창업한 뒤 내는 것이라 이 신고서에 넣을지 세무사님 확인');
     // 납부방법 — 특례세율 탭엔 연부연납·분납 계산이 없음 → 전액 신고납부로(mappers.js 증여10호 53과 같은 식: ㉝ − ㉞ − ㉟)
-    o.miss('㉞ 연부연납 ㉟ 분납', '계산기에 없음 — 특례세율 탭에 연부연납·분납 칸이 없음(나눠 내면 직접 적고 ㊱을 고칠 것)');
-    o.set('㊱@금액', due);
+    // [2026.10.20 서식 감사] ㉞ 연부연납(상증법 §71)·㉟ 분납(§70②) = 공통 연부연납·분납 도구 값(세목 증여세·총 납부세액이 ㉝와 같을 때만 — payToolsFor), ㊱ = ㉝ − ㉞ − ㉟(작성방법 12)
+    var inst = n(ctx.installment), split = n(ctx.split);
+    if (inst) o.set('㉞@금액', inst); else o.miss('㉞ 연부연납', '연부연납 도구 결과 없음(세목 증여세·총 납부세액이 ㉝와 같을 때만 씀)');
+    if (split) o.set('㉟@금액', split); else o.miss('㉟ 분납', '분납 도구 결과 없음(세목 증여세·총 납부세액이 ㉝와 같을 때만 씀)');
+    o.set('㊱@금액', Math.max(0, due - inst - split));
     o.miss('㉞㉟㊱ 납부 및 신청일', '계산기에 없음');
     signBlock(o, ctx);
     // 검산(서식 산식·작성방법)
@@ -145,8 +148,9 @@
       return { method: row.method || '', typeCode: row.method && typeof tc === 'function' ? tc(row.method) : '', location: row.assetLocation || '', value: numv(row.value) };
     });
     var iv = function (id) { return numv(H.el(id)); };
-    return Object.assign(peopleFromApp(), { r: r, filingStatus: H.el('srFilingStatus') || 'ontime', srRows: rows,
-      srInput: { totalAsset: iv('srTotalAsset'), nonBiz55: iv('srNonBiz55'), nonBiz49: iv('srNonBiz49'), nonBiz61: iv('srNonBiz61'), excessCash: iv('srExcessCash'), nonBizStock: iv('srNonBizStock') } }, extra || {});
+    // [2026.10.20 서식 감사] ⑩ 증여일자 = 특례세율 탭 증여일자(srGiftDate — 이 증여의 신고기한 기준일, 상증법 §68①). 10호의5·10호의6·조특11호의8이 자기 탭 날짜를 쓰는 것과 같게
+    return Object.assign(peopleFromApp(), { r: r, filingStatus: H.el('srFilingStatus') || 'ontime', srRows: rows, giftDate: H.el('srGiftDate') || H.el('giftDate'),
+      srInput: { totalAsset: iv('srTotalAsset'), nonBiz55: iv('srNonBiz55'), nonBiz49: iv('srNonBiz49'), nonBiz61: iv('srNonBiz61'), excessCash: iv('srExcessCash'), nonBizStock: iv('srNonBizStock') } }, payToolsFor(r.납부세액), extra || {});
   }
   ctxFor['증여10호의2'] = srCtx;
   ready['증여10호의2'] = function () { return !!g('lastSpecialRateGiftResult_'); };
@@ -315,6 +319,16 @@
     var drs = g('giftDonors') || [], f = g('giftPairRelation_');
     return drs[0] && typeof f === 'function' ? f(drs[0], 0).relation : (drs[0] && drs[0].relation) || '';
   }
+  // [2026.10.20 서식 감사] 공통 연부연납·분납 도구(세액계산 공통 탭, taxType gift) — 도구에 넣은 총 납부세액이 이 신고서 납부세액과 같을 때만 씀
+  //  (일반 증여 10호 몫과 섞이지 않게 — mappers.js ctxFromApp.증여의 mine_와 같은 원칙)
+  function payToolsFor(total) {
+    var ii = g('lastInstallmentInput_'), ir = g('lastInstallmentResult_'), si = g('lastSplitPaymentInput_'), sr = g('lastSplitPaymentResult_');
+    var same = function (inp) { return !!inp && inp.taxType === 'gift' && n(total) > 0 && Math.round(n(inp.totalTaxAmount)) === Math.round(n(total)); };
+    return {
+      installment: (same(ii) && ir) ? n(ir.연부연납대상금액) : 0,
+      split: (same(si) && sr && sr.분납가능여부) ? n(sr.분납신청금액 != null ? sr.분납신청금액 : sr.분납가능_최대금액) : 0
+    };
+  }
   // 특례 탭 공통 입력(10년 합산·기납부·외국납부 — taxCalcGiftAggregationInput_와 같은 칸)
   function aggInputOf(prefix) {
     var v = function (id) { var s = H.el(prefix + id); return s === '' ? undefined : numv(s); };
@@ -330,7 +344,10 @@
     filing(o, ctx);
     people(o, ctx);
     o.set('최초정산', ctx.finalSettlement ? '정산 신고' : '최초 신고');
-    o.miss('성실신고확인대상사업자 여·부', '계산기에 없음 — 화면에 이 값을 고르는 칸이 없음(엔진의 7월 1일 기준 분기에 쓰는 값)');
+    // [2026.10.20 서식 감사] 정산 신고(성실신고확인대상사업자 여·부) — 화면 초과배당 탭 edSincere(엔진 isSincereFilingTarget, 정산 신고기한 기준일 시행령 §31의2③)
+    if (!ctx.finalSettlement) o.miss('성실신고확인대상사업자 여·부', '해당 없음 — 최초 신고(서식에서 정산 신고 칸에 붙은 표시)');
+    else if (ctx.sincere === true || ctx.sincere === false) o.set('성실신고확인', ctx.sincere ? '여' : '부');
+    else o.miss('성실신고확인대상사업자 여·부', '화면 값 없음(초과배당 탭 "받은 사람이 성실신고확인대상사업자" edSincere)');
     var ex = n(r.초과배당금액), it = n(r.소득세상당액), gv = n(r.증여의제이익);
     var agg = aggOf(r, inp, gv), sum = gv + agg;
     o.set('⑰', ex).set('⑱', it).set('⑲', gv).set('⑳', agg).set('㉑', sum);
@@ -350,8 +367,11 @@
     var due = n(r.환급세액) > 0 ? -n(r.환급세액) : n(r.납부세액);
     o.set('㊴', due);
     if (due < 0) o.note('㊴ 환급받을 세액 ' + n(r.환급세액) + '원(음수로 찍음) — 정산 신고에서 최초 신고 세액이 더 많음');
-    o.miss('㊵ 연부연납 ㊶ 분납', '계산기에 없음 — 초과배당 탭에 연부연납·분납 칸이 없음(나눠 내면 직접 적고 ㊷를 고칠 것)');
-    o.set('㊷@금액', Math.max(0, due));
+    // [2026.10.20 서식 감사] ㊵ 연부연납(작성방법 12, §71)·㊶ 분납(작성방법 13, §70②) = 공통 도구 값(총 납부세액이 ㊴와 같을 때만), ㊷ = ㊴ − ㊵ − ㊶(작성방법 14)
+    var inst = due > 0 ? n(ctx.installment) : 0, split = due > 0 ? n(ctx.split) : 0;
+    if (inst) o.set('㊵@금액', inst); else o.miss('㊵ 연부연납', '연부연납 도구 결과 없음(세목 증여세·총 납부세액이 ㊴와 같을 때만 씀)');
+    if (split) o.set('㊶@금액', split); else o.miss('㊶ 분납', '분납 도구 결과 없음(세목 증여세·총 납부세액이 ㊴와 같을 때만 씀)');
+    o.set('㊷@금액', Math.max(0, due - inst - split));
     o.miss('㊵㊶㊷ 납부 및 신청일', '계산기에 없음');
     signBlock(o, ctx);
     o.check('⑲ = ⑰ − ⑱', gv, Math.max(0, ex - it));
@@ -372,7 +392,7 @@
     var r = g('lastExcessDividendGiftResult_'); if (!r) return null;
     var fin = H.checked('edFinalSettlement');
     return Object.assign(peopleFromApp(), { r: r, filingStatus: H.el('edFilingStatus') || 'ontime', finalSettlement: !!fin, edInput: aggInputOf('ed'),
-      relation: relationOfFirstDonor(), giftDate: H.el('edGiftDate') || H.el('giftDate') }, extra || {});
+      relation: relationOfFirstDonor(), giftDate: H.el('edGiftDate') || H.el('giftDate'), sincere: !!H.checked('edSincere') }, payToolsFor(n(r.환급세액) > 0 ? 0 : r.납부세액), extra || {});
   };
   ready['증여10호의5'] = function () { return !!g('lastExcessDividendGiftResult_'); };
 
@@ -420,8 +440,11 @@
     var pen = n(r.무신고가산세) + n(r.과소신고가산세), late = n(r.납부지연가산세), due = n(r.납부세액);
     o.set('㊼', pen).set('㊽', late).set('㊿', due);
     o.miss('㊾ 공익법인 등 관련 가산세', '계산기에 없음 — 특정법인 탭에 입력 칸이 없음');
-    o.miss('51 연부연납 52 분납', '계산기에 없음 — 특정법인 탭에 연부연납·분납 칸이 없음(나눠 내면 직접 적고 53을 고칠 것)');
-    o.set('53@금액', due);
+    // [2026.10.20 서식 감사] 51 연부연납(작성방법 13, §71)·52 분납(작성방법 14, §70②) = 공통 도구 값(총 납부세액이 ㊿와 같을 때만), 53 = ㊿ − 51 − 52(작성방법 15)
+    var inst = n(ctx.installment), split = n(ctx.split);
+    if (inst) o.set('51@금액', inst); else o.miss('51 연부연납', '연부연납 도구 결과 없음(세목 증여세·총 납부세액이 ㊿와 같을 때만 씀)');
+    if (split) o.set('52@금액', split); else o.miss('52 분납', '분납 도구 결과 없음(세목 증여세·총 납부세액이 ㊿와 같을 때만 씀)');
+    o.set('53@금액', Math.max(0, due - inst - split));
     o.miss('51·52·53 납부 및 신청일', '계산기에 없음');
     signBlock(o, ctx);
     o.check('㉗ = ⑳ − ㉑ − ㉒ − ㉓ − ㉔ − ㉕ + ㉖', sum, gv + agg);
@@ -437,7 +460,7 @@
     return Object.assign(peopleFromApp(), { r: r, filingStatus: H.el('scFilingStatus') || 'ontime', fiscalYearEnd: H.el('scFiscalYearEnd'),
       scInput: { benefitToCorpAmount: numv(H.el('scBenefitToCorp')), shareholderOwnershipRatio: numv(H.el('scShareRatio')), directGiftTaxEquivalent: numv(H.el('scDirectGiftTax')),
         priorGiftAmount: a.priorGiftAmount, priorPaidTax: a.priorPaidTax },
-      relation: relationOfFirstDonor(), giftDate: H.el('scTransactionDate') }, extra || {});
+      relation: relationOfFirstDonor(), giftDate: H.el('scTransactionDate') }, payToolsFor(r.납부세액), extra || {});
   };
   ready['증여10호의6'] = function () { return !!g('lastSpecificCorpGiftResult_'); };
 

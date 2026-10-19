@@ -858,9 +858,13 @@
     o.set('⑰', n(r.장례비용공제)); // 공제 인정액(지금 인쇄·전자신고와 같음 — 실제 지출 합계와 다를 수 있음)
     var nr = !!ctx.isNonResident;
     var lump = fv.lumpSum !== null ? fv.lumpSum : null;
-    o.set('⑱', fv.basic)
-      .set('⑲', nr ? 0 : n(ctx.childCount) * 50000000).set('⑳', nr ? 0 : n(ctx.minorYears) * 10000000)
-      .set('㉑', nr ? 0 : n(ctx.elderlyCount) * 50000000).set('㉒', nr ? 0 : n(ctx.disabledYears) * 10000000);
+    // [2026.10.20 서식 감사] ⑲~㉒ 1인당 금액은 상속개시일의 법(상증법 §20① — 2015.12.15. 개정 전: 자녀·연로자 3천만, 미성년자·장애인 연 500만)으로 —
+    //  엔진(calculateInheritanceTaxJS REF_GI_.personal)과 같은 표. 예전엔 지금 금액(5천만·1천만)으로 고정해 2016년 전 상속이면 ⑲~㉒ 합이 엔진 인적공제·㉛과 달랐음
+    var dd_ = String((ctx.deceased || {}).deathDate || ''), U_ = (dd_ && dd_ < '2016-01-01') ? { c: 30000000, m: 5000000, e: 30000000, d: 5000000 } : { c: 50000000, m: 10000000, e: 50000000, d: 10000000 };
+    var p19 = nr ? 0 : n(ctx.childCount) * U_.c, p20 = nr ? 0 : n(ctx.minorYears) * U_.m, p21 = nr ? 0 : n(ctx.elderlyCount) * U_.e, p22 = nr ? 0 : n(ctx.disabledYears) * U_.d;
+    o.set('⑱', fv.basic).set('⑲', p19).set('⑳', p20).set('㉑', p21).set('㉒', p22);
+    if (has(r.인적공제)) o.check('⑲ + ⑳ + ㉑ + ㉒ = 엔진 인적공제', p19 + p20 + p21 + p22, n(r.인적공제));
+    if (dd_ && dd_ < '2012-01-01') o.note('⚠ 상속개시일 ' + dd_ + ' — 2012년 전 인적공제 금액은 계산기 표에 없음(2012~2015 금액으로 찍음), 확인');
     if (lump !== null) o.set('㉓', lump); else o.miss('㉓ 일괄공제', 'fv.lumpSum 없음(ihFormValues_)');
     o.note('⑱~㉒(기초·인적공제)와 ㉓ 일괄공제를 함께 적음 — 기본값 5, 세무사님 확인(2026-10-19)(㉛은 엔진 한도 적용 합계)');
     var biz = n(r.가업상속공제), farm = n(r.영농상속공제), sp = n(r.배우자공제), fin = n(r.금융재산상속공제), dis = n(r.재해손실공제), co = n(r.동거주택상속공제);
@@ -1232,7 +1236,11 @@
     zeroIf(['㉓'], n(ctx.publicTrust), '공익신탁 재산');
     o.set('㉔', 0);
     if (b25 === null) { zero = false; o.miss('㉕㉖㉗', '가산하는 증여재산가액(fv.priorGiftAdded) 없음'); }
-    else zeroIf(['㉕', '㉖', '㉗'], b25, '가산하는 증여재산가액');
+    else if (b25 && has(h.priorGiftAmount)) {
+      // [2026.10.20 서식 감사] ㉕ = 이 상속인의 §13 가산 증여재산 — 상속인 명부 "10년 이내 사전증여"(엔진 priorGiftHeirs[].priorGiftAmount와 같은 값, 화면 buildInheritanceHeirInputs_)
+      o.set('㉕', n(h.priorGiftAmount)); zero = false;
+      o.miss('㉖㉗', '조특법 §30의5·§30의6 특례분을 상속인별로 나눠 받는 칸이 없음 — 특례분이 섞여 있으면 ㉕에서 옮겨 적을 것');
+    } else zeroIf(['㉕', '㉖', '㉗'], b25, '가산하는 증여재산가액');
     o.note('㉔ 기타 불산입은 계산기 과세가액 계산에 없는 항목이라 0(있으면 세액부터 다시 계산해야 함)');
     if (zero) o.set('㉘', actual); else o.miss('㉘ 합계', '⑱~㉗ 중 비운 칸이 있고 합계 식이 서식에 없음');
     return o.result();
@@ -1386,7 +1394,11 @@
     o.miss('⑲ 사후관리 위반유형코드', '계산기에 없음');
     if (biz) o.set('⑳', biz);
     if (farm) o.set('㉓', farm);
-    if (biz) o.miss('㉑㉒ 추징율·금액', '기간별 추징율이 계산기에 없음');
+    // [2026.10.20 서식 감사] ㉑ 추징율 = 작성방법 3 "시행령 §15⑮의 추징율(100%)", ㉒ = ⑳ × ㉑
+    if (biz) {
+      o.set('㉑', 100).set('㉒', biz);
+      o.note('㉑ 추징율 100%(서식 작성방법 3, 시행령 §15⑮) — 가업용 자산 처분(§18의2⑤1호)이면 처분비율을 곱한 금액인지, 2022.12.31. 이전 상속개시분(기간별 추징율 경과규정)인지 확인');
+    }
     if (farm) o.miss('㉔㉕㉖', '영농상속재산 중 처분재산가액·영농상속재산가액이 계산기에 없음');
     if (kind) {
       var K = kind === '가업' ? { tax: '㉗', days: '㉙', rate: '㉚', int: '㉛', pay: '㉟' } : { tax: '㉘', days: '㉜', rate: '㉝', int: '㉞', pay: '㊱' };
@@ -1409,12 +1421,17 @@
     if (!cr || cw.formType !== 'ih7') { o.miss('부표7 전체', '사후관리 추징이자 계산(서식 구분: 가업상속 납부유예 사후관리추징) 결과 없음'); return o.result(); }
     ihClawHead(o, ctx, '⑦');
     o.miss('⑧~⑰ 가업상속 재산명세', '계산기에 재산명세 칸 없음');
-    o.miss('⑱ 추징사유 유형 코드', '도구의 사유 값(' + (bc.triggerEvent || '') + ')과 서식 코드 01~05의 짝이 확인 전');
+    // [2026.10.20 서식 감사] ⑱ 작성방법 2: 01~05 = 상증법 §72의2③ 1~5호 — 엔진 calculateBusinessSuccessionDeferralClawbackJS 위 주석의 호 순서
+    //  (1호 가업용자산 40% 이상 처분, 2호 가업 미종사, 3호 지분 감소, 4호 고용유지 미달, 5호 상속인 사망)
+    var EV7 = { asset_disposed_40pct: '01', not_engaged: '02', equity_decreased: '03', employment_failed: '04', heir_death: '05' };
+    if (bc.provision === 'inheritance' && EV7[bc.triggerEvent]) o.set('⑱', EV7[bc.triggerEvent]);
+    else o.miss('⑱ 추징사유 유형 코드', '가업상속 납부유예 사후관리 도구(§72의2)의 사유가 없음(' + (bc.triggerEvent || '') + ')');
     var tax = n(cr.추징세액), ratio = null;
     if (bc.provision === 'inheritance' && n(bc.deferredTax)) {
       o.set('⑲', n(bc.deferredTax));
       if (bc.triggerEvent === 'asset_disposed_40pct' && n(bc.disposalRatio)) ratio = n(bc.disposalRatio);
-      else if (bc.triggerEvent === 'equity_decreased') {
+      // [2026.10.20 서식 감사] 지분 감소가 상속개시일부터 5년 이내면 전부 추징(비율 없음) — 엔진 calculateBusinessSuccessionDeferralClawbackJS(yearsSinceBase ≤ 5)·시행령 §69의3⑥
+      else if (bc.triggerEvent === 'equity_decreased' && !(has(bc.yearsSinceBase) && n(bc.yearsSinceBase) <= 5)) {
         ratio = n(bc.equityDecreaseRatio) || (n(bc.equityRatioAtBase) ? (n(bc.equityRatioAtBase) - n(bc.currentEquityRatio)) / n(bc.equityRatioAtBase) : null);
       }
       if (ratio !== null && ratio > 0) { o.set('⑳', pct2(ratio)); o.check('㉑ = ⑲ × ⑳', tax, Math.round(n(bc.deferredTax) * ratio)); }
@@ -1624,7 +1641,8 @@
       });
       var heirs = inheritanceHeirs.map(function (h, hi) {
         return { name: h.name || '', regNo: h.regNo || '', relation: h.relation || '', address: h.address || '', addressDong: h.addressDong || '', addressHo: h.addressHo || '',
-          statutoryShareRatio: h.statutoryShareRatio, actualValue: computeHeirActualValue_(hi), isReporter: !!h.isReporter };
+          statutoryShareRatio: h.statutoryShareRatio, actualValue: computeHeirActualValue_(hi), isReporter: !!h.isReporter,
+          priorGiftAmount: h.hasPriorGift ? (numVal(h.priorGiftAmount) || 0) : 0 }; // 부표2 ㉕ — 엔진 priorGiftHeirs와 같은 값
       });
       var spIdx = -1;
       inheritanceHeirs.some(function (h, hi) { if (h.relation === '배우자') { spIdx = hi; return true; } return false; });
@@ -1650,7 +1668,8 @@
         debts: inheritanceDebtItems, dues: inheritanceDuesItems, funerals: inheritanceFuneralItems,
         childCount: gn('ihChildCount'), minorYears: gn('ihMinorYears'), elderlyCount: gn('ihElderlyCount'), disabledYears: gn('ihDisabledYears'), isNonResident: nonRes,
         clawback: claw, bc: { provision: el('bcProvision'), deferredTax: gn('bcDeferredTax'), triggerEvent: el('bcTriggerEvent'), disposalRatio: numVal(el('bcDisposalRatio')) || 0,
-          equityDecreaseRatio: numVal(el('bcEquityDecreaseRatio')) || 0, equityRatioAtBase: numVal(el('bcEquityRatioAtBase')) || 0, currentEquityRatio: numVal(el('bcCurrentEquityRatio')) || 0 } }, extra || {});
+          equityDecreaseRatio: numVal(el('bcEquityDecreaseRatio')) || 0, equityRatioAtBase: numVal(el('bcEquityRatioAtBase')) || 0, currentEquityRatio: numVal(el('bcCurrentEquityRatio')) || 0,
+          yearsSinceBase: el('bcYearsSinceBase') === '' ? '' : numVal(el('bcYearsSinceBase')) } }, extra || {});
     }
   };
 

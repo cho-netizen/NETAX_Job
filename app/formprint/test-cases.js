@@ -115,6 +115,7 @@
     var ihR = E.calculateInheritanceTaxJS(clone(ihIn));
     var ctx상속부표 = Object.assign({}, ctx상속, {
       r: ihR, fv: { priorGiftAdded: 0, lumpSum: 500000000, basic: 200000000 },
+      childCount: ihIn.childCount, // [2026.10.20 서식 감사] 엔진 입력과 같은 자녀 수(예전엔 ctx상속의 2명이 그대로 남아 부표3 ⑲가 엔진 인적공제와 달랐음 — 새 검산이 잡음)
       reporter: Object.assign({}, ctx상속.reporter, { addressDong: '101', addressHo: '1001' }),
       assets: vA, valAssets: vA, valuationTotal: gross, grossEstate: gross,
       heirs: [

@@ -33,6 +33,19 @@ module.exports = function (E, H) {
   L.push({ name: '증여10호의3부표4_특수관계법인', forms: [{ formKey: '증여10호의3부표4', ctx: jmCtx }], ctx: jmCtx });
   L.push({ name: '증여10호의3부표5_계산명세2', forms: [{ formKey: '증여10호의3부표5', ctx: jmCtx }], ctx: jmCtx });
 
+  // ───── 일감몰아주기 — 위와 같은 사건에 화면 출자관계별 표(시행령 §34의3⑬·⑮, 부표5)를 넣은 경우(2026.10.20 서식 감사) ─────
+  //  직접 30%(배당 5천만, 수혜법인 배당가능이익 10억), 간접 10% ○○홀딩스(배당 1천만, 홀딩스 배당가능이익 2억, 수혜법인 배당가능이익 10억, ㉝ 20%, ㉞ 50%)
+  //  손계산: 한계 5%p를 간접에서 → 직접 30·간접 5 → ㉒ 20억×40%×30% = 2억4천만, ㉓ 20억×40%×5% = 4천만
+  //          ㉘ = 5천만 × 2억4천만 ÷ (10억 × 30%) = 4천만 → ㊲ 2억 / ㉟ = 1천만 × 4천만 ÷ {(2억 + 10억×20%) × 50%} = 2백만 → ㊳ 3,800만
+  //          ㊴ = 2억3,800만 → 20% − 1천만 = 3,760만
+  var REL = [{ kind: 'direct', ratio: 30, corp: '', dividend: 50000000, distributable: 1000000000 },
+    { kind: 'indirect', ratio: 10, corp: '○○홀딩스(견본)', dividend: 10000000, distributable: 200000000, beneficiaryDistributable: 1000000000, corpShareInBeneficiary: 20, ownRatioInCorp: 50 }];
+  var jm1r = E.calculateRelatedPartyTransactionGiftTaxJS({ companySize: 'medium', afterTaxOperatingIncome: 2000000000, relatedPartyTransactionRatio: 60, shareholderOwnershipRatio: 40,
+    shareRelations: REL, filingStatus: 'ontime', reportedInTime: true });
+  if (jm1r.증여의제이익 !== 238000000 || jm1r.산출세액 !== 37600000) throw new Error('일감몰아주기 출자관계별 엔진 값이 손계산과 다름: ' + JSON.stringify(jm1r));
+  var jmCtxR = Object.assign({}, jmCtx, { r: jm1r, relations: REL });
+  L.push({ name: '증여10호의3_출자관계별_배당공제', forms: [{ formKey: '증여10호의3', ctx: jmCtxR }, { formKey: '증여10호의3부표5', ctx: jmCtxR }], ctx: jmCtxR });
+
   // ───── 일감몰아주기 둘째 — 일반기업, 수증자 직접 20%만, 배당소득공제 3천만, 무신고 ─────
   //  손계산: (45 − 5)% × 20% × 50억 = 4억 − 3천만 = 3억7천만 → 20% − 1천만 = 6,400만, 무신고(기한후) 신고세액공제 없음
   var jmIn2 = { companySize: 'general', operatingIncome: 5000000000, netIncome: 0, tradeRatio: 45, relatedPartySales: 0, shareRatio: 20, dividendDeduction: 30000000,
