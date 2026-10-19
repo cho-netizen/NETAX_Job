@@ -1447,5 +1447,39 @@
   "정답": {
    "적용여부": true
   }
+ },
+ {
+  "이름": "창업자금 특례(조특 §30의5) 30억 — 사용명세 미제출 가산세(§30의5⑤, 10억 × 0.3% = 300만)는 사용명세 낼 때 따로 부과: 증여세 신고 납부세액(10호의2 ㉝)에 넣지 않음",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "고정": true,
+  "입력": {
+   "specialType": "startup",
+   "giftAmount": 3000000000,
+   "filingStatus": "ontime",
+   "unclearOrUnsubmittedUsageAmount": 1000000000
+  },
+  "정답": {
+   "납부세액": 250000000,
+   "창업자금사용명세미제출가산세": 3000000
+  }
+ },
+ {
+  "이름": "초과배당 증여(상증 §41의2) — 증여일 2026.4.30.·발생 2025년: 신고기한 2026.7.31.이 다음 해 6.1. 이후라 처음부터 실제 소득세액(9천만)으로(시행령 §31의2③1호)",
+  "도구": "calculateExcessDividendGiftTaxJS",
+  "고정": true,
+  "입력": {
+   "excessDividendBaseAmount": 500000000,
+   "disproportionateShortfallRatio": 0.6,
+   "relationDeductionLimit": 50000000,
+   "priorGiftAmount": 20000000,
+   "priorPaidTax": 0,
+   "filingStatus": "ontime",
+   "giftDate": "2026-04-30",
+   "excessDividendYear": 2025,
+   "actualIncomeTax": 90000000
+  },
+  "정답": {
+   "납부세액": 25220000
+  }
  }
 ]

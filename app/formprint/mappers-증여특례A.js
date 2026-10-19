@@ -46,7 +46,12 @@
   // ───────── 공용 ─────────
   var FILING_LABEL = { ontime: '기한 내 신고', underreported: '수정신고', unreported: '기한 후 신고' }; // mappers.js 증여10호와 같은 기본값 4
   var STARTUP = '창업자금(조특법 §30의5)', SUCCESSION = '가업승계주식등(조특법 §30의6)';
-  function g(name) { return typeof root[name] !== 'undefined' ? root[name] : undefined; }
+  // [2026.10.20] 세액계산 화면의 결과 변수(let lastSpecialRateGiftResult_ 등)는 window 속성이 아니라 전역 이름이라 root[name]으로는 안 보인다 — 전역 범위에서 이름으로 읽음
+  function g(name) {
+    if (!/^[A-Za-z_$][\w$]*$/.test(name)) return undefined;
+    if (typeof root[name] !== 'undefined') return root[name];
+    try { return (new Function('return typeof ' + name + " !== 'undefined' ? " + name + ' : undefined;'))(); } catch (e) { return undefined; }
+  }
   function numv(x) { var f = g('numVal'); return typeof f === 'function' ? (f(x) || 0) : n(x); }
   // 신고구분 체크: 화면에서 고른 ctx.신고구분, 없으면 그 탭의 신고 상태(filingStatus)
   function filing(o, ctx, fsKey) {
@@ -112,9 +117,9 @@
     var calc = n(r.산출세액), paid = n(r.납부세액공제), fx = n(r.외국납부세액공제);
     var pen = n(r.무신고가산세) + n(r.과소신고가산세), late = n(r.납부지연가산세), usage = n(r.창업자금사용명세미제출가산세);
     o.set('㉗', calc).set('㉘', paid + fx).set('㉙', paid).set('㉚', fx).set('㉛', pen).set('㉜', late);
-    var due = Math.max(0, n(r.납부세액) - usage); // 서식 ㉝ = ㉗ − ㉘ + ㉛ + ㉜ (사용명세 미제출가산세 칸 없음)
+    var due = Math.max(0, n(r.납부세액) - (r.창업자금사용명세미제출가산세_별도부과 ? 0 : usage)); // 서식 ㉝ = ㉗ − ㉘ + ㉛ + ㉜ (사용명세 미제출가산세 칸 없음 — 2026.10.20부터 엔진도 납부세액에 안 넣음)
     o.set('㉝', due);
-    if (usage) o.note('⚠ 엔진 납부세액 ' + n(r.납부세액) + '원에는 창업자금 사용명세서 미제출 가산세 ' + usage + '원(조특법 §30의5⑤)이 들어 있으나 서식 ㉝(㉗−㉘+㉛+㉜)에는 그 칸이 없어 뺀 ' + due + '원을 찍음 — 사용명세는 창업한 뒤 내는 것이라 이 신고서에 넣을지 세무사님 확인');
+    if (usage && !r.창업자금사용명세미제출가산세_별도부과) o.note('⚠ 엔진 납부세액 ' + n(r.납부세액) + '원에는 창업자금 사용명세서 미제출 가산세 ' + usage + '원(조특법 §30의5⑤)이 들어 있으나 서식 ㉝(㉗−㉘+㉛+㉜)에는 그 칸이 없어 뺀 ' + due + '원을 찍음 — 사용명세는 창업한 뒤 내는 것이라 이 신고서에 넣을지 세무사님 확인');
     // 납부방법 — 특례세율 탭엔 연부연납·분납 계산이 없음 → 전액 신고납부로(mappers.js 증여10호 53과 같은 식: ㉝ − ㉞ − ㉟)
     o.miss('㉞ 연부연납 ㉟ 분납', '계산기에 없음 — 특례세율 탭에 연부연납·분납 칸이 없음(나눠 내면 직접 적고 ㊱을 고칠 것)');
     o.set('㊱@금액', due);
