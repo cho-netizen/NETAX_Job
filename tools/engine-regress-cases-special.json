@@ -802,5 +802,93 @@
   "정답": {
    "취득당시_기준시가": 77840000
   }
+ },
+ {
+  "이름": "[J20] 2015년 8년 자경 — 직전 4개 과세기간 옛 3억 묶음 감면 2억: 옛 §133①2호다목 5개 과세기간 3억 → 감면 1억(2억 + 산출세액 − 3억을 깎음)",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2000-01-01",
+   "transferDate": "2015-06-01",
+   "transferPrice": 800000000,
+   "acquisitionPrice": 100000000,
+   "isEightYearFarmland": true,
+   "sect133PriorWide": 200000000
+  },
+  "정답": {
+   "자경농지감면액": 100000000
+  }
+ },
+ {
+  "이름": "[J20] 2015년 8년 자경 — 옛 3억 묶음 칸을 비우고 §66~§70 묶음 칸 2억만 넣어도 같은 값(비우면 그 값)",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2000-01-01",
+   "transferDate": "2015-06-01",
+   "transferPrice": 800000000,
+   "acquisitionPrice": 100000000,
+   "isEightYearFarmland": true,
+   "sect133PriorFarm": 200000000
+  },
+  "정답": {
+   "자경농지감면액": 100000000
+  }
+ },
+ {
+  "이름": "[J20] 2017년 8년 자경, 2015년 고시·시행자 1/2 이상 취득 — 법률 제13560호 부칙 제63조 종전 §133①1호나목 2억 → 산출세액 4.875억×38%−1,940만 = 165,850,000 전액 감면(결과 산출세액은 감면 뒤라 0)(경과조치 없으면 1억)",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2000-01-01",
+   "transferDate": "2017-06-01",
+   "transferPrice": 800000000,
+   "acquisitionPrice": 100000000,
+   "isEightYearFarmland": true,
+   "sect133TransitNoticeDate": "2015-01-01",
+   "sect133TransitHalfAcquired": true
+  },
+  "정답": {
+   "자경농지감면액": 165850000
+  }
+ },
+ {
+  "이름": "[J20] 2017년 8년 자경, 경과조치 요건 없음 — 옛 §133①1호 과세기간 1억",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "land",
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2000-01-01",
+   "transferDate": "2017-06-01",
+   "transferPrice": 800000000,
+   "acquisitionPrice": 100000000,
+   "isEightYearFarmland": true
+  },
+  "정답": {
+   "자경농지감면액": 100000000
+  }
+ },
+ {
+  "이름": "[J20] 2010년 수용 5년 만기특약(50%) — 1호(§77은 20·25%만)에서 빠지고 옛 2호나목 3억(§69·§70·§77 40·50%)만: 직전 2억이면 감면 1억",
+  "도구": "calculateTransferTaxMultiJS",
+  "입력": [
+   {
+    "assetType": "land",
+    "necessaryExpenses": 0,
+    "acquisitionDate": "2000-01-01",
+    "transferDate": "2010-06-01",
+    "transferPrice": 1500000000,
+    "acquisitionPrice": 300000000,
+    "compensationType": "bond_5y",
+    "publicNoticeDate": "2008-01-01",
+    "sect133PriorWide": 200000000
+   }
+  ],
+  "정답": {
+   "합산수용감면액": 100000000
+  }
  }
 ]
