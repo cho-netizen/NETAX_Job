@@ -6442,38 +6442,71 @@
 
     const departureMarketValue = Math.max(0, Number(p.departureMarketValue) || 0);
     const necessaryExpenses = Math.max(0, Number(p.acquisitionPrice) || 0) + Math.max(0, Number(p.otherNecessaryExpenses) || 0);
-    const gainAmount = Math.max(0, departureMarketValue - necessaryExpenses);
-    const basicDeduction = Math.min(2500000, gainAmount);
-    const taxBase = Math.max(0, gainAmount - basicDeduction);
-    const calculatedTax = progressiveTax(taxBase, DOMESTIC_STOCK_DAEJUJU_BRACKETS);
-    const marginalRate = taxBase > 300000000 ? 0.25 : 0.20;
+    // [2026.10.20 법령 세션 — 2027.1.1. 시행예정 판 원문] 법률 제21221호: §118의9① 대상에 §94①3호다목(국외주식등)이 들어오고 §118의11이 1호(국내주식등 20%·25%)와
+    //  2호(국외주식등 — 가. 중소기업 10%, 나. 그 밖 20%)로 나뉜다. 부칙 제8조 "2027년 1월 1일 이후 거주자가 출국하는 경우부터". 시행령 §178의8②(2027.1.1. 판):
+    //  출국 당시 국외주식등 시가 합계 5억원 이하, 외국인근로자(국내 거주기간의 80% 이상 국내 근로)·그 배우자·20세 이하 직계비속의 근로 시작 전 취득분은 제외.
+    //  기본공제 250만원(§118의10④)·손실은 과세표준이 하나라 합쳐 빼는데 호별로 나누는 규정이 법령에 없다 — 세율이 높은 것부터 뺀다(1호 → 2호나 → 2호가, 확인 필요).
+    const dep_ = String(p.departureDate || '').slice(0, 10);
+    const law2027_ = dep_ >= '2027-01-01';
+    const fSmeV_ = Math.max(0, Number(p.foreignSmeMarketValue) || 0), fSmeC_ = Math.max(0, Number(p.foreignSmeAcquisitionPrice) || 0) + Math.max(0, Number(p.foreignSmeOtherExpenses) || 0);
+    const fOthV_ = Math.max(0, Number(p.foreignOtherMarketValue) || 0), fOthC_ = Math.max(0, Number(p.foreignOtherAcquisitionPrice) || 0) + Math.max(0, Number(p.foreignOtherOtherExpenses) || 0);
+    const notes_ = [];
+    let foreignIn_ = (fSmeV_ + fOthV_) > 0;
+    if (foreignIn_ && !law2027_) { foreignIn_ = false; notes_.push('국외주식등은 2027.1.1. 이후 출국분부터 과세(법률 제21221호 부칙 제8조) — 출국일 ' + (dep_ || '없음') + '이라 넣지 않았습니다.'); }
+    else if (foreignIn_ && (fSmeV_ + fOthV_) <= 500000000) { foreignIn_ = false; notes_.push('출국 당시 국외주식등 시가 합계 ' + (fSmeV_ + fOthV_) + '원 — 5억원 이하라 과세 대상에서 제외(소득세법 시행령 §178의8②1호).'); }
+    else if (foreignIn_ && p.isForeignWorkerHolding) { foreignIn_ = false; notes_.push('외국인근로자(또는 그 배우자·20세 이하 직계비속의 근로 시작 전 취득분) 보유 국외주식등 — 과세 대상에서 제외(시행령 §178의8②2·3호).'); }
+    // 호별 소득금액(손익) → 손실·기본공제는 세율 높은 호부터
+    const grp_ = [
+      { k: 'dom', label: '국내주식등(§118의11 1호)', v: departureMarketValue, c: necessaryExpenses, actual: p.actualTransferPrice },
+      { k: 'fOth', label: '국외주식등 — 그 밖(§118의11 2호나 20%)', v: foreignIn_ ? fOthV_ : 0, c: foreignIn_ ? fOthC_ : 0, actual: p.actualTransferPriceForeignOther, rate: 0.20 },
+      { k: 'fSme', label: '국외주식등 — 중소기업(§118의11 2호가 10%)', v: foreignIn_ ? fSmeV_ : 0, c: foreignIn_ ? fSmeC_ : 0, actual: p.actualTransferPriceForeignSme, rate: 0.10 }
+    ];
+    grp_.forEach(function (g) { g.gain = g.v - g.c; g.base = Math.max(0, g.gain); });
+    let loss_ = grp_.reduce(function (t, g) { return t + Math.max(0, -g.gain); }, 0);
+    if (!foreignIn_) { grp_[1].base = 0; grp_[2].base = 0; loss_ = 0; grp_[0].base = Math.max(0, grp_[0].gain); }
+    grp_.forEach(function (g) { const off = Math.min(g.base, loss_); g.base -= off; loss_ -= off; });
+    const gainAmount = grp_.reduce(function (t, g) { return t + g.base; }, 0);
+    let ded_ = Math.min(2500000, gainAmount);
+    const basicDeduction = ded_;
+    grp_.forEach(function (g) { const off = Math.min(g.base, ded_); g.base -= off; ded_ -= off; });
+    const taxBase = grp_.reduce(function (t, g) { return t + g.base; }, 0);
+    const domBase_ = grp_[0].base;
+    const domTax_ = progressiveTax(domBase_, DOMESTIC_STOCK_DAEJUJU_BRACKETS);
+    grp_[0].tax = domTax_; grp_[1].tax = Math.round(grp_[1].base * 0.20); grp_[2].tax = Math.round(grp_[2].base * 0.10);
+    const calculatedTax = grp_.reduce(function (t, g) { return t + g.tax; }, 0);
+    const marginalRate = domBase_ > 300000000 ? 0.25 : 0.20;
+    grp_[0].rate = marginalRate;
 
-    // 조정공제(§118의12) — 출국 후 실제 양도가액이 출국일 시가보다 낮을 때만.
+    // 조정공제(§118의12) — 출국 후 실제 양도가액이 출국일 시가보다 낮을 때만, (출국일 시가 − 실제 양도가액) × §118의11 세율(호별).
+    //  1호는 누진 구간 적용 방식이 법문에 없어 출국 때 한계세율을 곱한다(확인 필요).
     let adjustmentCredit = 0;
-    const actualTransferPrice = p.actualTransferPrice === '' || p.actualTransferPrice == null ? null : Number(p.actualTransferPrice);
-    if (actualTransferPrice != null && actualTransferPrice < departureMarketValue) {
-      adjustmentCredit = Math.min(calculatedTax, Math.round((departureMarketValue - actualTransferPrice) * marginalRate));
-    }
+    grp_.forEach(function (g) {
+      const ap = g.actual === '' || g.actual == null ? null : Number(g.actual);
+      g.actualPrice = ap;
+      if (ap != null && g.v > 0 && ap < g.v) g.adj = Math.round((g.v - ap) * g.rate); else g.adj = 0;
+      adjustmentCredit += g.adj;
+    });
+    adjustmentCredit = Math.min(calculatedTax, adjustmentCredit);
+    const actualTransferPrice = grp_[0].actualPrice;
     const taxAfterAdjustment = Math.max(0, calculatedTax - adjustmentCredit);
 
-    // 외국납부세액공제(§118의13) 또는 비거주자 국내원천소득 세액공제(§118의14) — 택1, 실제
-    // 양도가 있었을 때만 의미가 있다. 둘 다 입력됐으면 외국납부세액공제를 우선 적용한다(법문상
-    // §118의14②가 "제1항에 따른 공제를 하는 경우 제118조의13의 공제를 적용하지 아니한다"고
-    // 반대 순서로 규정하지만, 실무상 외국에 실제 낸 세금이 있으면 그것부터 쓰는 쪽이 유리하고
-    // 자연스럽다 — 둘 다 입력하는 경우는 드물 것).
+    // [2026.10.20 세액 고침] 비거주자 국내원천소득 세액공제(§118의14) — 그 공제를 하면 외국납부세액공제(§118의13)를 적용하지 않는다(§118의14②).
+    //  예전엔 둘 다 있으면 외국납부를 먼저 적용했다(법과 반대, 2단계 서식 작업자 103호 대조에서 발견). 외국납부는 1호(국내주식등) 실제 양도분 산식만 —
+    //  국외주식등(2027~)의 외국납부는 자산별로 따로 계산해야 해 알림만.
     let foreignTaxCredit = 0, nonresidentSourceCredit = 0, creditNote = '';
     const foreignTaxPaid = Math.max(0, Number(p.foreignTaxPaid) || 0);
     const nonresidentSourceTaxEquivalent = Math.max(0, Number(p.nonresidentSourceTaxEquivalent) || 0);
-    if (foreignTaxPaid > 0 && actualTransferPrice != null && actualTransferPrice > necessaryExpenses){
-      const basisPrice = adjustmentCredit > 0 ? actualTransferPrice : departureMarketValue;
+    if (nonresidentSourceTaxEquivalent > 0) {
+      nonresidentSourceCredit = Math.min(taxAfterAdjustment, nonresidentSourceTaxEquivalent);
+      creditNote = '비거주자 국내원천소득 세액공제(§118의14) 적용' + (foreignTaxPaid > 0 ? ' — 이 공제를 하면 외국납부세액공제는 적용하지 않습니다(§118의14②)' : '');
+    } else if (foreignTaxPaid > 0 && actualTransferPrice != null && actualTransferPrice > necessaryExpenses) {
+      const basisPrice = grp_[0].adj > 0 ? actualTransferPrice : departureMarketValue;
       foreignTaxCredit = Math.min(taxAfterAdjustment, Math.round(foreignTaxPaid * (basisPrice - necessaryExpenses) / (actualTransferPrice - necessaryExpenses)));
       creditNote = '외국납부세액공제(§118의13) 적용';
-    } else if (nonresidentSourceTaxEquivalent > 0){
-      nonresidentSourceCredit = Math.min(taxAfterAdjustment, nonresidentSourceTaxEquivalent);
-      creditNote = '비거주자 국내원천소득 세액공제(§118의14) 적용';
+      if (foreignIn_) notes_.push('외국납부세액공제는 국내주식등 실제 양도분 산식(§118의13①)으로만 계산했습니다 — 국외주식등에 대한 외국납부세액은 자산별로 따로 확인하세요.');
     }
     const taxAfterCredit = Math.max(0, taxAfterAdjustment - foreignTaxCredit - nonresidentSourceCredit);
-
+    if (foreignIn_) notes_.push('기본공제·손실은 세율 높은 호부터 뺐습니다(1호 → 2호나 → 2호가) — 호별 배분 규정이 법령에 없어 확인 필요.');
     // 보유현황 미신고·누락가산세(§118의15④) — 출국일 전날까지 보유현황(납세관리인 포함)을
     // 신고하지 않았거나 누락했을 때, 그 주식의 액면금액(또는 출자가액)의 2%.
     let holdingReportPenalty = 0;
@@ -6489,7 +6522,9 @@
       양도소득금액: gainAmount,
       기본공제: basicDeduction,
       과세표준: taxBase,
-      적용세율_설명: (taxBase > 300000000 ? '3억원 초과분 25%(누진공제 1500만원)' : '3억원 이하 20%'),
+      적용세율_설명: (domBase_ > 300000000 ? '국내주식등 3억원 초과분 25%(누진공제 1500만원)' : '국내주식등 3억원 이하 20%') + (foreignIn_ ? ' · 국외주식등 중소기업 10%·그 밖 20%(§118의11 2호)' : ''),
+      국내주식등_과세표준: domBase_, 국외주식등_과세표준_그밖: grp_[1].base, 국외주식등_과세표준_중소기업: grp_[2].base, // [2026.10.20] 2027.1.1. 이후 출국분 호별
+      국내주식등_산출세액: grp_[0].tax, 국외주식등_산출세액: grp_[1].tax + grp_[2].tax, 국외주식등_과세여부: foreignIn_,
       산출세액: calculatedTax,
       조정공제액: adjustmentCredit,
       외국납부세액공제: foreignTaxCredit,
@@ -6498,7 +6533,7 @@
       보유현황미신고가산세: holdingReportPenalty,
       지방소득세: localIncomeTax,
       납부세액_합계: totalTax,
-      안내: '신고납부기한: 출국일 전날까지 납세관리인·보유현황 신고(§118의15①), 출국일이 속하는 달의 말일부터 3개월 이내 과세표준 신고·납부(납세관리인을 신고했으면 다음해 5.31까지 확정신고기간 내, §118의15②). 담보제공+납세관리인 지정시 실제 양도할 때까지(최장 5년, 국외유학 등 사유는 10년) 납부유예 가능(§118의16). 5년 이내 미양도하고 재입국해 거주자가 되거나, 거주자에게 증여하거나, 상속인이 상속받으면 그 사유발생일부터 1년 이내 환급(납부유예 취소) 신청 가능(§118의17) — 단 가산세분은 환급 제외, 증여·상속에 의한 환급은 환급가산금 미가산. [2025.12.23 개정으로 해외주식등도 과세대상에 추가되지만 시행일이 2027.1.1이라 현재는 적용되지 않습니다 — 그 시점 이후 재검토 필요.]'
+      안내: '신고납부기한: 출국일 전날까지 납세관리인·보유현황 신고(§118의15①), 출국일이 속하는 달의 말일부터 3개월 이내 과세표준 신고·납부(납세관리인을 신고했으면 다음해 5.31까지 확정신고기간 내, §118의15②). 담보제공+납세관리인 지정시 실제 양도할 때까지(최장 5년, 국외유학 등 사유는 10년) 납부유예 가능(§118의16). 5년 이내 미양도하고 재입국해 거주자가 되거나, 거주자에게 증여하거나, 상속인이 상속받으면 그 사유발생일부터 1년 이내 환급(납부유예 취소) 신청 가능(§118의17) — 단 가산세분은 환급 제외, 증여·상속에 의한 환급은 환급가산금 미가산. [2027.1.1. 이후 출국분은 국외주식등도 과세 — 법률 제21221호 부칙 제8조, 대주주 판정(§118의9①2호)엔 국외주식등을 넣지 않음.]' + (notes_.length ? ' ' + notes_.join(' ') : '')
     };
   };
 

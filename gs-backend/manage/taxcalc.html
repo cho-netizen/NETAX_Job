@@ -6436,11 +6436,21 @@ function renderTransferPane(){
         '<div class="taxcalc-field"><label>취득가액</label><input type="number" id="etAcquisitionPrice" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>기타 필요경비</label><input type="number" id="etOtherExpenses" placeholder="원"><span class="taxcalc-field-help">없으면 0</span></div>' +
       '</div>' +
+      '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>[2027.1.1. 이후 출국분만] 국외주식등(§94①3호다목) — 소득세법 §118의9①·§118의11 2호(법률 제21221호), 시가 합계 5억원 이하면 제외(시행령 §178의8②)</b></div>' +
+      '<div class="taxcalc-grid">' +
+        '<div class="taxcalc-field"><label>국외 중소기업 주식등 출국일 시가</label><input type="number" id="etFSmeValue" placeholder="원"><span class="taxcalc-field-help">세율 10%</span></div>' +
+        '<div class="taxcalc-field"><label>국외 중소기업 주식등 취득가액·필요경비</label><input type="number" id="etFSmeCost" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>[실제 양도했으면] 국외 중소기업 주식등 실제 양도가액</label><input type="number" id="etFSmeActual" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>그 밖의 국외주식등 출국일 시가</label><input type="number" id="etFOthValue" placeholder="원"><span class="taxcalc-field-help">세율 20%</span></div>' +
+        '<div class="taxcalc-field"><label>그 밖의 국외주식등 취득가액·필요경비</label><input type="number" id="etFOthCost" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>[실제 양도했으면] 그 밖의 국외주식등 실제 양도가액</label><input type="number" id="etFOthActual" placeholder="원"></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="etForeignWorker"><label for="etForeignWorker">외국인근로자(국내 거주기간 80% 이상 국내 근로)·그 배우자·20세 이하 직계비속의 근로 시작 전 취득분 — 국외주식등 제외</label></div>' +
+      '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>출국 후 실제 양도했다면(조정공제·외국납부세액공제용, §118의12·13·14) — 아직 양도 전이면 비워두세요</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>실제 양도가액</label><input type="number" id="etActualTransferPrice" placeholder="원"><span class="taxcalc-field-help">출국일 시가보다 낮으면 차액만큼 조정공제</span></div>' +
         '<div class="taxcalc-field"><label>외국정부에 납부(예정)한 세액</label><input type="number" id="etForeignTaxPaid" placeholder="원"></div>' +
-        '<div class="taxcalc-field"><label>[외국납부세액 없을 때만] 비거주자 국내원천소득 세액상당액</label><input type="number" id="etNonresidentSourceTax" placeholder="원"><span class="taxcalc-field-help">제119조11호로 국내 재과세되는 경우(§118의14)</span></div>' +
+        '<div class="taxcalc-field"><label>비거주자 국내원천소득 세액상당액(있으면 외국납부세액공제 대신 — §118의14②)</label><input type="number" id="etNonresidentSourceTax" placeholder="원"><span class="taxcalc-field-help">제119조11호로 국내 재과세되는 경우(§118의14)</span></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>보유현황 신고(§118의15①④) — 출국일 전날까지 납세관리인·보유현황을 신고하지 않았거나 누락했으면 가산세 2%</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -7694,6 +7704,7 @@ function renderExitTaxResult(r){
   html += taxCalcResultRow('양도소득금액', won(r.양도소득금액));
   html += taxCalcResultRow('기본공제', '-' + won(r.기본공제));
   html += taxCalcResultRow('과세표준', won(r.과세표준));
+  if (r.국외주식등_과세여부) { html += taxCalcResultRow('· 국내주식등(1호)', won(r.국내주식등_과세표준)); html += taxCalcResultRow('· 국외주식등 그 밖(2호나 20%)', won(r.국외주식등_과세표준_그밖)); html += taxCalcResultRow('· 국외주식등 중소기업(2호가 10%)', won(r.국외주식등_과세표준_중소기업)); }
   html += taxCalcResultRow('적용세율', r.적용세율_설명);
   html += taxCalcResultRow('산출세액', won(r.산출세액));
   if (r.조정공제액) html += taxCalcResultRow('조정공제액(§118의12)', '-' + won(r.조정공제액));
@@ -14995,7 +15006,11 @@ function handleTaxCalcClick_(e){
       taxManagerName: document.getElementById('etTaxManagerName').value,
       taxManagerAddress: document.getElementById('etTaxManagerAddress').value,
       deferralRequested: document.getElementById('etDeferralRequested').checked,
-      collateralProvided: document.getElementById('etCollateralProvided').checked
+      collateralProvided: document.getElementById('etCollateralProvided').checked,
+      // [2026.10.20] 2027.1.1. 이후 출국분 국외주식등(법률 제21221호) — 중소기업 10%·그 밖 20%
+      foreignSmeMarketValue: numVal(document.getElementById('etFSmeValue') ? document.getElementById('etFSmeValue').value : '') || 0, foreignSmeAcquisitionPrice: numVal(document.getElementById('etFSmeCost') ? document.getElementById('etFSmeCost').value : '') || 0, actualTransferPriceForeignSme: document.getElementById('etFSmeActual') ? document.getElementById('etFSmeActual').value : '',
+      foreignOtherMarketValue: numVal(document.getElementById('etFOthValue') ? document.getElementById('etFOthValue').value : '') || 0, foreignOtherAcquisitionPrice: numVal(document.getElementById('etFOthCost') ? document.getElementById('etFOthCost').value : '') || 0, actualTransferPriceForeignOther: document.getElementById('etFOthActual') ? document.getElementById('etFOthActual').value : '',
+      isForeignWorkerHolding: !!(document.getElementById('etForeignWorker') && document.getElementById('etForeignWorker').checked)
     };
     lastExitTaxInput_ = input;
     renderExitTaxResult(calculateExitTaxJS(input));

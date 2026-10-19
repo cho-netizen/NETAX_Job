@@ -2157,5 +2157,63 @@
    "적용여부": true,
    "최종_감면세액": 20000000
   }
+ },
+ {
+  "이름": "[법령 세션 2027.1.1. 시행예정] 국외전출세 — 2027.3. 출국, 국내주식 시가 10억·취득 4억 + 국외주식 그 밖 6억·2억, 중소기업 3억·1억(법률 제21221호 §118의11 2호, 부칙 제8조): 국내 과표 5.975억 → 6천만 + 2.975억 × 25% = 1억3,437.5만, 국외 4억 × 20% + 2억 × 10% = 1억 → 234,375,000",
+  "도구": "calculateExitTaxJS",
+  "고정": true,
+  "입력": {
+   "departureDate": "2027-03-01",
+   "residenceYearsIn10": 8,
+   "isMajorShareholder": true,
+   "departureMarketValue": 1000000000,
+   "acquisitionPrice": 400000000,
+   "foreignOtherMarketValue": 600000000,
+   "foreignOtherAcquisitionPrice": 200000000,
+   "foreignSmeMarketValue": 300000000,
+   "foreignSmeAcquisitionPrice": 100000000
+  },
+  "정답": {
+   "과세표준": 1197500000,
+   "산출세액": 234375000
+  }
+ },
+ {
+  "이름": "[법령 세션] 국외전출세 — 2026.8. 출국은 국외주식 넣어도 과세 안 함(부칙 제8조 2027.1.1. 이후 출국분): 134,375,000",
+  "도구": "calculateExitTaxJS",
+  "고정": true,
+  "입력": {
+   "departureDate": "2026-08-01",
+   "residenceYearsIn10": 8,
+   "isMajorShareholder": true,
+   "departureMarketValue": 1000000000,
+   "acquisitionPrice": 400000000,
+   "foreignOtherMarketValue": 800000000,
+   "foreignOtherAcquisitionPrice": 300000000
+  },
+  "정답": {
+   "과세표준": 597500000,
+   "산출세액": 134375000
+  }
+ },
+ {
+  "이름": "[세액 고침 §118의14②] 국외전출세 — 비거주자 국내원천소득 세액공제(3천만)를 하면 외국납부세액공제(5천만)는 적용 안 함: 산출 234,375,000 − 3천만 = 204,375,000 + 지방 10% = 224,812,500",
+  "도구": "calculateExitTaxJS",
+  "고정": true,
+  "입력": {
+   "departureDate": "2026-08-01",
+   "residenceYearsIn10": 8,
+   "isMajorShareholder": true,
+   "departureMarketValue": 2000000000,
+   "acquisitionPrice": 1000000000,
+   "actualTransferPrice": 2200000000,
+   "foreignTaxPaid": 50000000,
+   "nonresidentSourceTaxEquivalent": 30000000
+  },
+  "정답": {
+   "비거주자국내원천세액공제": 30000000,
+   "외국납부세액공제": 0,
+   "납부세액_합계": 224812500
+  }
  }
 ]
