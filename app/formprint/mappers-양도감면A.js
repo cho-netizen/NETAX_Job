@@ -242,12 +242,52 @@
     function finish() { signs(o, ctx, { sign: '신청인서명', office: '세무서' }); return o.result(); }
   };
 
+  // ───────── 조특 별지 제13호서식(현물출자 등에 대한 세액감면(면제)신청서) — 자경농지·축사·어업·자경산지·농지대토·수용·대토보상·국가양도산지·공공매입임대 공용 ─────────
+  //  예전 인쇄(trSect13ReductionPrintPageHtml_ SECT13_MAP_)의 조건 + 공공매입임대주택 건설용 토지(§97의10 — 엔진이 계산하는데 예전 인쇄엔 빠졌던 것, 서식 구분·근거조항에 있음).
+  //  ⑧ = 작성방법 1 "감면종합한도(§133)를 적용한 후의 순수 감면액" = 엔진 자산별 감면액(한도로 깎인 뒤).
+  //  kind: [구분 보기, 근거조항 보기, 엔진 감면 줄 이름]
+  var S13 = [
+    { test: function (a) { return a.compensationType === 'land_replacement'; }, 구분: '대토보상', 조항: '제73조제6항', re: /^수용감면/ },
+    { test: function (a) { return COMP_CASH.indexOf(a.compensationType) >= 0 && a.compensationTransferMode === 'expropriation'; }, 구분: '공익사업용 토지', 조항: '제72조제8항', re: /^수용감면/ },
+    { test: function (a) { return !!a.isEightYearFarmland; }, 구분: '8년 자경농지', 조항: '제66조제9항', re: /^8년자경농지감면/ },
+    { test: function (a) { return !!a.isLivestockLandExempt; }, 구분: '8년 축사용지', 조항: '제66조의2제12항', re: /^축사용지감면/ },
+    { test: function (a) { return !!a.isFisheryLandExempt; }, 구분: '8년 자영어업용지', 조항: '제66조의3제9항', re: /^어업용토지감면/ },
+    { test: function (a) { return !!a.isForestManagementExempt; }, 구분: '10년이상 자경산지', 조항: '제66조의4제9항', re: /^자경산지감면/ },
+    { test: function (a) { return !!a.isFarmlandSubstitutionExempt; }, 구분: '농지대토', 조항: '제67조제9항', re: /^농지대토감면/ },
+    { test: function (a) { return !!a.isNationalForestLandReduction; }, 구분: '국가에 양도하는 산지', 조항: '제79조의11', re: /^국가양도산지 감면/ },
+    { test: function (a) { return !!a.isPublicRentalHousingLand; }, 구분: '공공매입임대주택 건설사업자에게 양도하는 토지', 조항: '제97조의10제3항', re: /^공공매입임대주택/ }
+  ];
+  function s13Of(a) { return S13.filter(function (k) { return k.test(a); }); }
+  mappers['조특13호'] = function (ctx) {
+    var o = new Out(), s = ctx.seller || {}, p = pick(ctx), a = p.a, kinds = s13Of(a);
+    var k = kinds[0];
+    if (kinds.length > 1) o.note('한 자산에 감면이 ' + kinds.length + '가지(' + kinds.map(function (x) { return x.구분; }).join('·') + ') — 조특법 §127⑦은 하나만 적용, 첫 번째(' + k.구분 + ')로 찍음');
+    if (k) o.set('구분', k.구분).set('근거조항', k.조항); else o.miss('구분·근거조항', '자산 카드에 이 서식의 감면 표시가 없음');
+    o.miss('① 상호 또는 법인명·② 사업자등록번호', '계산기에 없음 — 개인 양도인(양도인 카드에 상호·사업자등록번호 칸 없음)');
+    o.need('③', s.name, '③ 대표자 성명');
+    var b = birthOf(s.regNo); if (b) o.set('④', b); else o.miss('④ 생년월일', '주민등록번호가 13자리가 아니라 못 셈');
+    o.need('⑤@주소', H.fullAddr(s), '⑤ 주소').need('⑤@전화번호', s.phone, '⑤ 전화번호');
+    var y = String(a.transferDate || '').slice(0, 4);
+    if (/^\d{4}$/.test(y)) { o.set('⑥@부터.연', y).set('⑥@부터.월', '1').set('⑥@부터.일', '1').set('⑥@까지.연', y).set('⑥@까지.월', '12').set('⑥@까지.일', '31'); o.note('⑥ 과세연도 = 양도일이 속하는 해 1.1.~12.31.(소득세법 §5 과세기간)'); }
+    else o.miss('⑥ 과세연도', '양도일 없음');
+    o.miss('⑦ 법인세', '개인 양도소득세 신청 — 법인세 없음');
+    var notes = notesOf(ctx, p.i), red = k ? redNotes(notes, k.re)[0] : null;
+    if (!k) o.miss('⑧ 양도소득세', '감면 종류 없음');
+    else if (!notes) o.miss('⑧ 양도소득세', '자산 목록과 엔진 거래 수가 달라(환지 증가분 등) 자산별 감면세액을 고를 수 없음');
+    else if (!red) o.miss('⑧ 양도소득세', '엔진에 이 자산의 ' + k.구분 + ' 감면 줄 없음(요건 미충족·단기양도·적용기한 등)');
+    else { o.set('⑧', n(red.감면액)); checkRed(o, '⑧', red); if (/자경산지/.test(red.특례)) o.note('자경산지 감면율: ' + red.특례); }
+    signs(o, ctx, { sign: '신청인서명', office: '세무서' });
+    o.miss('양수인 서명란', '현물출자 등 양수인이 함께 신청하는 감면이 아니면 비움 — 계산기에 양수인 서명 필요 여부 없음');
+    return o.result();
+  };
+
   // ───────── 어떤 자산에 어떤 신청서 — 예전 인쇄(trAttach1PrintPageHtml_ 뒤에 붙는 함수들)가 그 서식을 그리는 조건과 같게 ─────────
   //  조특54호는 넣지 않음 — 사업시행자 제출(시행령 §72④·⑦)
   var TESTS = {};
   function register(k, test) { TESTS[k] = test; ctxFor[k] = perAsset(test); ready[k] = readyOf(ctxFor[k]); }
   register('조특62호', function (a) { return !!a.longTermRentalHouseProvision; });
   register('조특63호의32', function (a) { return n(a.pensionAccountContribution) > 0; });
+  register('조특13호', function (a) { return s13Of(a).length > 0; });
 
   // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만) — 감면 대상 자산마다 한 장
   function plan(tax, ctx) {

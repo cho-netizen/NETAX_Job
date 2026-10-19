@@ -46,5 +46,13 @@ module.exports = function (E, H) {
   // 3-2. 납입 4억(⑫ 남은 한도 7천만이 가장 적음)
   L.push({ name: '63호의32_연금계좌_한도', forms: ['조특63호의32'], ctx: trCtx([Object.assign({}, pen, { pensionAccountContribution: 400000000 })], { 감면자산: 0 }) });
 
+  // 4. 조특13호 — 같은 해 8년 자경농지(2005 취득 1.5억 → 2025.6.10. 8억)와 수용(§77①3호, 일반채권, 2025.11.20.) 토지 — §133① 1억 한도로 자경 감면이 깎임
+  var farm = { assetType: 'other', assetKind: 'land', transferPrice: 800000000, acquisitionPrice: 150000000, necessaryExpenses: 5000000,
+    transferDate: '2025-06-10', acquisitionDate: '2005-03-01', assetLocation: '충청남도 ○○군 ○○면 ○○리 123 (견본)', assetArea: 3300, isEightYearFarmland: true };
+  var expro = { assetType: 'other', assetKind: 'land', transferPrice: 300000000, acquisitionPrice: 100000000, necessaryExpenses: 0,
+    transferDate: '2025-11-20', acquisitionDate: '2012-03-01', assetLocation: '경기도 ○○시 ○○동 200 (견본)', assetArea: 500,
+    compensationType: 'bond', compensationTransferMode: 'expropriation', publicNoticeDate: '2024-05-01' };
+  L.push({ name: '13호_자경농지_수용_합산', forms: plan(trCtx([farm, expro])) });
+
   return L;
 };
