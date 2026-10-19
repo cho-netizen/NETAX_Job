@@ -2467,5 +2467,118 @@
   "정답": {
    "최대주주할증액": 0
   }
+ },
+ {
+  "이름": "[2부-21 옛판] 수정신고 8개월 뒤, 2008-06-01 신고 — 2008년까지는 6개월 이내 50%만: 감면 0",
+  "도구": "calculateFilingPenaltyReductionJS",
+  "입력": {
+   "originalPenaltyAmount": 1000000,
+   "filingType": "revised",
+   "monthsAfterDeadline": 8,
+   "filingDate": "2008-06-01"
+  },
+  "정답": {
+   "감면세액": 0,
+   "최종가산세액": 1000000
+  }
+ },
+ {
+  "이름": "[2부-21 옛판] 수정신고 8개월 뒤, 2015-06-01 신고 — 1년 이내 20%: 200,000",
+  "도구": "calculateFilingPenaltyReductionJS",
+  "입력": {
+   "originalPenaltyAmount": 1000000,
+   "filingType": "revised",
+   "monthsAfterDeadline": 8,
+   "filingDate": "2015-06-01"
+  },
+  "정답": {
+   "감면세액": 200000,
+   "최종가산세액": 800000
+  }
+ },
+ {
+  "이름": "[2부-21 대조] 수정신고 8개월 뒤, 2021-06-01 신고 — 지금 단계 1년 이내 30%: 300,000",
+  "도구": "calculateFilingPenaltyReductionJS",
+  "입력": {
+   "originalPenaltyAmount": 1000000,
+   "filingType": "revised",
+   "monthsAfterDeadline": 8,
+   "filingDate": "2021-06-01"
+  },
+  "정답": {
+   "감면세액": 300000,
+   "최종가산세액": 700000
+  }
+ },
+ {
+  "이름": "[2부-21 옛판] 기한후신고 3개월 뒤, 2010-06-01 신고 — 2011.8.2.까지는 1개월 이내 50%만: 0",
+  "도구": "calculateFilingPenaltyReductionJS",
+  "입력": {
+   "originalPenaltyAmount": 1000000,
+   "filingType": "late_filing",
+   "monthsAfterDeadline": 3,
+   "filingDate": "2010-06-01"
+  },
+  "정답": {
+   "감면세액": 0
+  }
+ },
+ {
+  "이름": "[2부-21 옛판] 기한후신고 3개월 뒤, 2015-06-01 신고 — 6개월 이내 20%: 200,000",
+  "도구": "calculateFilingPenaltyReductionJS",
+  "입력": {
+   "originalPenaltyAmount": 1000000,
+   "filingType": "late_filing",
+   "monthsAfterDeadline": 3,
+   "filingDate": "2015-06-01"
+  },
+  "정답": {
+   "감면세액": 200000
+  }
+ },
+ {
+  "이름": "[2부-21 대조] 기한후신고 3개월 뒤, 2021-06-01 신고 — 3개월 이내 30%: 300,000",
+  "도구": "calculateFilingPenaltyReductionJS",
+  "입력": {
+   "originalPenaltyAmount": 1000000,
+   "filingType": "late_filing",
+   "monthsAfterDeadline": 3,
+   "filingDate": "2021-06-01"
+  },
+  "정답": {
+   "감면세액": 300000
+  }
+ },
+ {
+  "이름": "[2부-21 옛판] 역외거래 부정 무신고 증여 2014-06-01 — 60%는 2015.7.1. 이후 증여분이라 40%: 8천만 × 40% = 32,000,000",
+  "도구": "calculate_gift_tax",
+  "입력": {
+   "relation": "직계존속",
+   "giftAmount": 500000000,
+   "filingStatus": "unreported",
+   "isFraudulent": true,
+   "isOffshoreTransaction": true,
+   "giftDate": "2014-06-01"
+  },
+  "정답": {
+   "과세표준": 450000000,
+   "무신고가산세": 32000000
+  }
+ },
+ {
+  "이름": "[2부-21 대조] 같은 증여 2016-06-01 — 60%: 48,000,000",
+  "도구": "calculate_gift_tax",
+  "입력": {
+   "relation": "직계존속",
+   "giftAmount": 500000000,
+   "filingStatus": "unreported",
+   "isFraudulent": true,
+   "isOffshoreTransaction": true,
+   "giftDate": "2016-06-01"
+  },
+  "정답": {
+   "과세표준": 450000000,
+   "무신고가산세": 48000000
+  }
  }
 ]

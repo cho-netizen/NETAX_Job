@@ -1112,6 +1112,7 @@ const DRIVE_TOOLS = [
         hasDeadlineExtensionReason: { type: 'boolean', description: '국세기본법§6(천재지변 등으로 인한 기한연장) 사유에 해당하는지(§48①1호). true면 originalPenaltyAmount 전액을 면제한다.' },
         filingType: { type: 'string', enum: ['revised', 'late_filing'], description: "revised=법정신고기한까지 신고했으나 나중에 수정신고(§48②1호, 과소신고가산세만 대상), late_filing=법정신고기한까지 무신고했다가 나중에 기한후신고(§48②2호, 무신고가산세만 대상)." },
         monthsAfterDeadline: { type: 'number', description: '법정신고기한이 지난 후 수정신고(또는 기한후신고)까지 경과한 개월 수.' },
+        filingDate: { type: 'string', description: '수정신고·기한후신고를 한 날(YYYY-MM-DD). 넣으면 그때 감면 단계 — 수정신고: 2008년까지 6개월 50%만, 2009~2019 50·20·10%, 2020~ 90~10%. 기한후신고: 2011.8.2.까지 1개월 50%만, 2011.8.3.~2019 50·20%, 2020~ 50·30·20%. 비우면 지금 단계.' },
         isAmendedAfterAuditNotice: { type: 'boolean', description: '과세표준과 세액을 경정(또는 결정)할 것을 미리 알고 수정신고(또는 기한후신고)를 한 경우인지. true면 §48②의 감면이 적용되지 않는다.' }
       },
       required: ['originalPenaltyAmount']
