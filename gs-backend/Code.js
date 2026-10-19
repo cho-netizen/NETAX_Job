@@ -33593,6 +33593,12 @@ function caseProcGiftInhFacts_(c, lines, items) {
       items.push(caseProcItem_('ov:' + key + ':est:' + digits(cur), 'check', '「' + sp[1] + '」 ' + Number(digits(cur)).toLocaleString('ko-KR') + '원은 의뢰서·처리개요의 추정값입니다(증빙으로 확인 안 됨) — 이 값으로 확정할까요?', ask));
     }
   });
+  // [2026.10.19 relcheck] 증여 「관계」 질문에 특수관계 정황 점검(가족관계 서류·등본 같은 세대·주소 같음·통장 거래) — 근거만 보여 주고 관계는 세무사님이 고른다
+  if (c.세목 === 'gift' && typeof cxRelEvidenceText_ === 'function') {
+    const relQs = items.filter(function (it) { return /^ov:giftRelation(:|$)/.test(String(it.id || '')); });
+    const dn = String(ov.giftDonorName || '').trim() || String(((facts.giftDonorName || [])[0] || {}).v || '').trim(), de = String(ov.giftDoneeName || c.납세자 || '').trim();
+    if (relQs.length && dn && de) { let t = ''; try { t = cxRelEvidenceText_(cxFacts_(c), { name: de }, { name: dn }); } catch (e) {} if (t) relQs.forEach(function (it) { it.text += t; }); }
+  }
   // [2026.10.18 3차 수정 N] 상속인 명부 — 상속인 수가 정해지면(서류로 확정 또는 세무사님 답) 그 수의 후보 명단(이름·관계·주민번호·대습 그룹)을 처리개요 「상속인목록」으로.
   //  세액계산기는 명부가 비어 있을 때 이 목록으로 상속인 카드를 만들고, 자녀 수(§20①1)·65세 이상(§20①3)·미성년(§20①2)을 관계·주민번호로 센다
   //  (예전엔 인적공제 근거가 처리개요 참고 줄에만 있고 계산기 칸으로는 안 갔다). 계산기에서 고친 명부(지난번에 넣은 것과 다름)는 건드리지 않는다
@@ -46065,7 +46071,12 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
       { mode: 'choose', target: 'calc:c0.buyer.name', input: 'text', label: '양수인 법인명', cands: rf.parties.buyer.corpName ? [{ v: rf.parties.buyer.corpName, src: '계약서 서명란 글자(원문 확인)' }] : [] });
     if (k === 0 && rf.parties && rf.parties.buyer && rf.parties.seller && !has(b.relation)) {
       const bn = String(rf.parties.buyer.name || ''), sn = String(rf.parties.seller.name || '');
-      if (bn.length >= 2 && sn.length >= 2 && bn.charAt(0) === sn.charAt(0) && bn !== sn) q('tr:buyerrel', 'check', '양수인 ' + bn + (rf.parties.buyer.regNo ? '(' + rf.parties.buyer.regNo.slice(0, 6) + '-…)' : '') + '이(가) 양도인 ' + sn + '과(와) 성이 같습니다 — 특수관계인지 확인해 주세요(양도계약 카드 양수인 「관계」, 근거: ' + rf.parties.file + ' 서명란).',
+      // [2026.10.19 relcheck] 특수관계 정황 점검(cxRelEvidence_) — 가족관계 서류·등본 같은 세대·주소 같음·통장 거래 상대방을 근거와 함께 보여 준다(관계는 세무사님이 정함).
+      //  성씨가 같다는 것은 근거가 아니다(묻는 계기로만 남김). 성씨가 달라도 서류에 정황이 있으면 묻는다
+      let relEv = null;
+      try { if (typeof cxRelEvidence_ === 'function' && typeof cxFacts_ === 'function' && bn.length >= 2 && sn.length >= 2 && bn !== sn) relEv = cxRelEvidence_(cxFacts_(c), { name: sn, birth: String(rf.parties.seller.regNo || '').replace(/\D/g, '').slice(0, 6) }, { name: bn, birth: String(rf.parties.buyer.regNo || '').replace(/\D/g, '').slice(0, 6) }); } catch (e) {}
+      const relTxt = relEv ? cxRelEvidenceText_(cxFacts_(c), { name: sn, birth: String(rf.parties.seller.regNo || '').replace(/\D/g, '').slice(0, 6) }, { name: bn, birth: String(rf.parties.buyer.regNo || '').replace(/\D/g, '').slice(0, 6) }) : '';
+      if (bn.length >= 2 && sn.length >= 2 && bn !== sn && (bn.charAt(0) === sn.charAt(0) || (relEv && !relEv.none))) q('tr:buyerrel', 'check', '양수인 ' + bn + (rf.parties.buyer.regNo ? '(' + rf.parties.buyer.regNo.slice(0, 6) + '-…)' : '') + '이(가) 양도인 ' + sn + '과(와) 특수관계인지 확인해 주세요 — 특수관계인이면 소득세법 §101①(부당행위계산) 판정에 시가를 묻습니다. 범위는 시행령 §98① = 국세기본법 시행령 §1조의2 친족(4촌 혈족·3촌 인척·배우자)·경제적 연관(임원·사용인, 생계를 같이함)·경영지배(30% 이상 출자 법인 등)입니다(양도계약 카드 양수인 「관계」, 근거: ' + rf.parties.file + ' 서명란).' + relTxt,
         { mode: 'options', target: 'calc:c0.buyer.relation', options: [{ label: '특수관계 없음', value: 'none' }, { label: '형제자매', value: 'sibling' }, { label: '직계존비속', value: 'lineal' }, { label: '배우자', value: 'spouse' }, { label: '기타 친족', value: 'relative' }], label: '양수인과의 관계' });
     }
   });
@@ -46192,7 +46203,8 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
   // 증여 취득 — 계산기 이월과세(§97의2)·우회양도(§101②) 칸: 증여받은 날·증여자와의 관계(계산기가 10년·관계로 스스로 판정)
   (splitPending ? [] : S.facts.gift || []).filter(function (g, k, arr) { return !S.facts.splitGroup || k === 0; }).forEach(function (g) { // 일괄 필지는 자산1에만 묻고 나머지는 같게
     const a = st.transferAssets[Number(g.p.slice(1))];
-    if (a && !has(a.donorRelation) && !ans[g.p + '.donorRelation']) q('trc:' + g.p + '.donorRelation', 'judge', '증여로 받은 자산입니다 — 계산기 「이월과세·우회양도」 칸의 「증여자와의 관계」를 골라 주세요' + (g.info.donor ? '(증여자: ' + g.info.donor + ', 근거: ' + g.info.src + ')' : '') + '. 계산기가 증여받은 날(= 취득일 ' + (a.acquisitionDate || '?') + ')과 관계로 적용 여부를 판정합니다.',
+    if (a && !has(a.donorRelation) && !ans[g.p + '.donorRelation']) q('trc:' + g.p + '.donorRelation', 'judge', '증여로 받은 자산입니다 — 계산기 「이월과세·우회양도」 칸의 「증여자와의 관계」를 골라 주세요' + (g.info.donor ? '(증여자: ' + g.info.donor + ', 근거: ' + g.info.src + ')' : '') + '. 계산기가 증여받은 날(= 취득일 ' + (a.acquisitionDate || '?') + ')과 관계로 적용 여부를 판정합니다.' +
+      (function () { try { return g.info.donor && typeof cxRelEvidenceText_ === 'function' ? cxRelEvidenceText_(cxFacts_(c), { name: String(c.납세자 || '') }, { name: String(g.info.donor) }) : ''; } catch (e) { return ''; } })(), // [2026.10.19 relcheck] 특수관계 정황 점검
       { mode: 'options', target: 'calc:' + g.p + '.donorRelation', options: [{ label: '배우자', value: 'spouse' }, { label: '직계존비속', value: 'lineal' }, { label: '그 밖의 특수관계인(형제자매 등)', value: 'other_related' }, { label: '특수관계 없음', value: 'none' }], label: '증여자와의 관계' });
   });
   // 증여자(원소유자) 취득정보 — 배우자·직계존비속이고 증여받은 날부터 10년 안에 판 경우에만 계산기가 이 칸을 쓴다(이월과세 비교)

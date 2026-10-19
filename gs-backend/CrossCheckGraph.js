@@ -596,3 +596,91 @@ function cxLawChecks_(c, facts) {
   });
   return out;
 }
+
+// [2026.10.19 relcheck — 세무사님 지시(원문): "이종식 사건에서 특수관계자 거래를 검토한 것은 매우 잘했다. 하지만 이 거래에서 양도자와 양수자는 특수관계자가 아니다.
+//  따라서 특수관계 여부를 확인하는 절차만 있으면 된다" · "가족관계증명원이나 주민등록등초본 등 나아가 여타 증빙에서 특수관계로 보이는 정황이 있는지 세밀하게 검토하는 것은 매우 좋은 것이다"]
+//  특수관계 정황 점검 — 두 사람(양도인↔양수인, 수증자↔증여자)이 서류에 함께 나오는 정황만 근거와 함께 모은다. GAS·AI가 관계를 정하지 않는다(답은 세무사님).
+//  범위: 소득세법 시행령 §98① = 국세기본법 시행령 §1조의2 ①친족(4촌 혈족·3촌 인척·배우자(사실혼)·친양자 입양 전 친생·인지한 생부모) ②경제적 연관(임원·사용인, 생계를
+//  유지·함께하는 자) ③1호 경영지배(30% 이상 출자·사실상 영향력 법인). 서류로 볼 수 있는 정황 중 개발용 두 사건 이상에서 나온 것만 규칙으로 둔다:
+//  가족관계 서류에 상대 이름 · 주민등록등본 같은 세대 · 주소가 같음(계약서·초본 주소이력·등본, 기간 포함) · 통장 거래 상대방 이름.
+//  성씨가 같다는 것은 근거가 아니다(이름 전체가 같아야 하고, 생년이 둘 다 있으면 생년도 같아야 같은 사람으로 본다). 법인 임원·주주 서류는 개발용에 없어 아직 규칙 없음.
+//  facts = cpFacts_ 사실 배열, me·other = { name, birth(생년 6자리, 없으면 '') } — 반환 { lines: [근거 줄], none: 정황 없음, seen: 본 서류 수 }
+function cxRelEvidence_(facts, me, other) {
+  const nm = function (v) { return String(v || '').replace(/[^가-힣A-Za-z]/g, ''); };
+  const A = { name: nm(me && me.name), birth: String((me && me.birth) || '').slice(0, 6) }, B = { name: nm(other && other.name), birth: String((other && other.birth) || '').slice(0, 6) };
+  const out = { lines: [], none: true, seen: { 가족관계: 0, 등본: 0, 초본: 0, 통장: 0, 계약서: 0 } };
+  if (A.name.length < 2 || B.name.length < 2 || A.name === B.name) return out;
+  const pk = function (f) { return String((f.keys && (f.keys.person || f.keys.personGuess)) || ''); };
+  const isP = function (f, P, nameV) { // 이름 전체가 같고, 생년이 둘 다 있으면 생년도 같을 때만
+    if (nm(nameV) !== P.name) return false;
+    const b = (/\|(\d{6})/.exec(pk(f)) || [])[1] || '';
+    return !(b && P.birth && b !== P.birth);
+  };
+  const subjName = function (f) { return String((f.keys && f.keys.subject) || '').split('|')[0]; };
+  const dt = function (f) { return String((f.src && f.src.docType) || ''); };
+  const file = function (f) { return String((f.src && f.src.file) || '서류'); };
+  const files = {};
+  const ok = (facts || []).filter(function (f) { return f && f.src && !f._copy; });
+  ok.forEach(function (f) { const d = dt(f), k = file(f); if (files[k]) return;
+    if (/가족관계|제적|기본증명|혼인관계|입양관계/.test(d)) { files[k] = 1; out.seen.가족관계++; } else if (/등본/.test(d)) { files[k] = 1; out.seen.등본++; } else if (/초본/.test(d)) { files[k] = 1; out.seen.초본++; }
+    else if (f.kind === '통장 거래') { files[k] = 1; out.seen.통장++; } else if (/계약서/.test(d)) { files[k] = 1; out.seen.계약서++; } });
+  // ① 가족관계·등본 — 같은 증명서(등본은 같은 세대)에 두 사람 이름
+  const fam = {};
+  ok.forEach(function (f) {
+    if (f.kind !== '성명' || /신청인|발급|담당/.test(String(f.role || ''))) return;
+    const d = dt(f), g = /가족관계|제적|기본증명|혼인관계|입양관계/.test(d) ? '가족관계' : /등본/.test(d) ? '등본' : ''; if (!g) return;
+    const x = fam[file(f)] = fam[file(f)] || { g: g, file: file(f), subj: '', a: '', b: '' };
+    x.subj = x.subj || subjName(f);
+    if (isP(f, A, f.value)) x.a = x.a || String(f.role || '이름'); if (isP(f, B, f.value)) x.b = x.b || String(f.role || '이름');
+  });
+  const famSeen = {};
+  Object.keys(fam).forEach(function (k) { const x = fam[k]; if (!x.a || !x.b) return; // 두 사람이 한 증명서에 함께 있어야 정황(상대 혼자 적힌 자기 서류는 근거 아님)
+    const key = x.g + '|' + x.subj + '|' + x.a + '|' + x.b; if (famSeen[key]) { famSeen[key].n++; return; } // 같은 내용의 사본은 한 줄
+    const who = x.subj ? x.subj + ' 기준 ' : '';
+    famSeen[key] = { n: 1, i: out.lines.length };
+    out.lines.push(x.g === '등본' ? '주민등록등본(' + x.file + ') — ' + who + A.name + '(' + x.a + ')와 ' + B.name + '(' + x.b + ')가 같은 세대'
+      : '가족관계 서류(' + x.file + ') — ' + who + A.name + '은(는) ' + x.a + ', ' + B.name + '은(는) ' + x.b + '로 적힘'); });
+  Object.keys(famSeen).forEach(function (k) { const s = famSeen[k]; if (s.n > 1) out.lines[s.i] += ' 외 같은 내용 ' + (s.n - 1) + '장'; });
+  // ② 주소가 같음 — 사람별 주소(계약서 등 이름 묶인 주소·초본 주소이력·등본 주소). 동·호까지 같아야 같은 주소로 본다
+  const ak = function (s) { return String(s || '').replace(/\([^)]*\)/g, '').replace(/^\s*주\s*소\s*:?/, '').replace(/[\s,.·]/g, '').replace(/제(?=\d)/g, '').replace(/^서울특별시|^서울시/, '서울').replace(/^경기도/, '경기'); };
+  const addr = { a: [], b: [] };
+  const put = function (P, side, s, src, from) { const k = ak(s); if (k.length >= 8 && /\d/.test(k)) addr[side].push({ k: k, s: String(s).replace(/\s+/g, ' ').slice(0, 60), src: src, from: from || '' }); };
+  ok.forEach(function (f) {
+    if (/견적서|영수증|세금계산서|카드|지출증빙/.test(dt(f))) return; // 공급자(업체) 주소
+    if (f.kind === '주소이력' && f.value && typeof f.value === 'object') {
+      const s = subjName(f), v = f.value;
+      if (s === A.name) put(A, 'a', v.주소, '초본 ' + file(f), v.발생일 || v.신고일); else if (s === B.name) put(B, 'b', v.주소, '초본 ' + file(f), v.발생일 || v.신고일);
+      return;
+    }
+    if (f.kind !== '주소' || typeof f.value === 'object') return;
+    const g = String((f.keys && f.keys.personGuess) || '').split('|')[0], s = /등본/.test(dt(f)) ? subjName(f) : '';
+    const who = nm(g || s);
+    if (who === A.name && isP(f, A, who)) put(A, 'a', f.value, dt(f) + ' ' + file(f)); else if (who === B.name && isP(f, B, who)) put(B, 'b', f.value, dt(f) + ' ' + file(f));
+  });
+  const shown = {};
+  addr.a.forEach(function (x) { addr.b.forEach(function (y) {
+    if (x.k !== y.k || shown[x.k]) return; shown[x.k] = 1;
+    out.lines.push('주소가 같음 — ' + A.name + ' ' + x.s + '(' + x.src + (x.from ? ', ' + x.from + '부터' : '') + ') = ' + B.name + '(' + y.src + (y.from ? ', ' + y.from + '부터' : '') + ')');
+  }); });
+  // ③ 통장 거래 상대방 — 이름 전체(두 글자 이름은 상대방 칸이 이름과 똑같을 때만)
+  const tx = ok.filter(function (f) { if (f.kind !== '통장 거래' || !f.value || typeof f.value !== 'object' || !(Number(f.value.금액 || f.value.입금액 || f.value.출금액) > 0)) return false;
+    const who = nm(f.value.상대방), memo = nm(f.value.적요 || f.value.내용);
+    return who === B.name || (B.name.length >= 3 && (who.indexOf(B.name) !== -1 || memo.indexOf(B.name) !== -1)); });
+  if (tx.length) {
+    const w = function (n) { return Number(n || 0).toLocaleString('ko-KR'); };
+    out.lines.push('통장 거래에 ' + B.name + ' ' + tx.length + '건 — ' + tx.slice(0, 3).map(function (f) { const v = f.value, amt = w(v.금액 || v.입금액 || v.출금액);
+      const dir = v.보낸이 && nm(v.보낸이) === B.name ? B.name + '이(가) ' + (v.받는이 || '?') + '에게 ' + amt : v.받는이 && nm(v.받는이) === B.name ? (v.보낸이 || '?') + '이(가) ' + B.name + '에게 ' + amt
+        : (Number(v.입금액) > 0 ? '입금 ' + w(v.입금액) : '출금 ' + w(v.출금액 || v.금액)); // 이체확인증은 보낸이·받는이로
+      return (v.날짜 || v.일시 || '?') + ' ' + dir + '(' + file(f) + ')'; }).join(', ') + (tx.length > 3 ? ' 외' : ''));
+  }
+  out.none = !out.lines.length;
+  return out;
+}
+// 질문 글에 붙일 한 덩어리 — 정황이 있으면 근거 줄, 없으면 무엇을 봤는지와 함께 "정황 없음"
+function cxRelEvidenceText_(facts, me, other) {
+  let r; try { r = cxRelEvidence_(facts, me, other); } catch (e) { return ''; }
+  if (!r || !me || !other || !String(me.name || '').trim() || !String(other.name || '').trim()) return '';
+  const seen = Object.keys(r.seen).filter(function (k) { return r.seen[k]; }).map(function (k) { return k + ' ' + r.seen[k]; }).join('·');
+  return r.none ? ' · 특수관계 정황 점검: 서류에서 특수관계 정황 없음(성씨만 같음 등은 근거 아님' + (seen ? ' — 본 서류: ' + seen : ' — 가족관계증명서·주민등록등초본이 폴더에 없음') + ')'
+    : ' · 특수관계 정황 점검(관계를 정한 것 아님 — 근거를 보고 골라 주세요): ' + r.lines.join(' / ');
+}
