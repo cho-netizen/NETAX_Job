@@ -36795,7 +36795,7 @@ function caseProcDraft_(c) {
       L.push('**▸ ' + k + '**', '');
       by[k].forEach(function (e) {
         const who = e.첨부 === 'AI' ? (e.확인 ? '🤖 AI 첨부' : '🤖 AI 첨부(미확인)') + (e.이유 ? ' — ' + e.이유 : '') : '직접 첨부';
-        if (e.category === 'statute') L.push('**' + e.제목 + '**' + (e.판 ? ' (' + e.판 + ' 시행)' : '') + ' — ' + who, '', String(e.원문).slice(0, 3000), '');
+        if (e.category === 'statute') L.push('**' + e.제목 + '**' + (e.판 ? ' (' + e.판 + ' 시행)' : '') + ' — ' + who, '', (e.주의 ? '> ' + String(e.주의) + '\n\n' : '') + String(e.원문).slice(0, 3000), ''); // [2026.10.20] 낡은 연혁 글 판 경고·판주의
         else L.push('- [' + (cat[e.category] || e.category) + '] ' + String(e.제목 || '').replace(/\s+/g, ' ') + (e.번호 ? ' (' + e.번호 + ')' : '') + (e.결과 ? ' — ' + e.결과 : '') + ' — ' + who + (e.요약 ? '  \n  ' + String(e.요약).replace(/\s+/g, ' ').slice(0, 160) : ''), '');
       });
     });

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 21:42 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 21:45 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -44596,6 +44596,9 @@ function goToReportWriter_(caseId, opts){
         var a = lsiCiteArt_(r.조문[0]), cur = !base || !r.시행일자;
         if (cur) subst++;
         body.push('### 「' + (r.법령명 || e.law) + '」 ' + a.label + (a.title ? '(' + a.title + ')' : '') + ' — ' + (r.시행일자 ? lsiDbYmd_(r.시행일자) + ' 시행' : '') + (cur ? ' **(현행판으로 대신함 — 확인 필요)**' : ''));
+        // [2026.10.20 위원회 N14] 기준일 판이 낡은 연혁 글이면 서버가 대신 쓴 판과 경고를 같이 적는다
+        if (r.경고) body.push('> ' + r.경고);
+        if (r.판주의) body.push('> ※ ' + r.판주의);
         body.push('> → ' + e.uses.join(' / '), '');
         body = body.concat(lsiRelArtMd_(a, e.whole ? [] : e.hangs));
         if ((r.조문[0]['검증필요_코드에서옮김(근거 아님)'] || []).length) body.push('', '> ※ 이 조문의 산식 중 근거로 쓰지 않는 것이 있습니다(계산기 코드에서 옮김 — 법령 근거 아님).');
