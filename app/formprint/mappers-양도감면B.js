@@ -247,6 +247,44 @@
     return o.result();
   };
 
+  // ───────── 조특 별지 제63호의2서식 — 양도소득세특례세율적용신청서(옛 조특법 §99의2, 옛 시행령 §99의2④) ─────────
+  //  옛 §99의2(2000.9.1.~2001.12.31. 1년 이상 보유 기존주택 양도 + 신축주택 취득 → 특례세율 10%)는 2005.12.31. 삭제됐고 계산기에 없다.
+  //  지금 인쇄는 이 서식을 만들지 않는다(현행 §99의2 감면은 날인 매매계약서 사본 — trNewHouseSect992PrintPageHtml_).
+  //  세무사님이 그 시절 사건에 직접 고른 자산으로 찍을 때를 위해 양도인·양도주택 칸만 채우고, 특례세율 계산·신축주택 칸은 비운다.
+  mappers['조특63호의2'] = function (ctx) {
+    var o = new Out(), s = ctx.seller || {}, it = itemOf(ctx), a = it.asset || {};
+    applicant(o, s, { name: '①', regNo: '②', addr: '③@주소', phone: '③@전화번호' }, '①~③ 신청인');
+    o.need('④', a.assetLocation, '④ 소재지(양도주택)');
+    o.miss('⑤ 토지면적·⑥ 건물면적', '계산기에 없음');
+    if (has(a.acquisitionDate)) o.set('⑦', a.acquisitionDate); else o.miss('⑦ 취득일자', '화면 입력 없음');
+    if (has(a.transferDate)) o.set('⑧', a.transferDate); else o.miss('⑧ 양도일자', '화면 입력 없음');
+    o.miss('⑨ 과세표준·⑪ 산출세액', '계산기에 없음 — 옛 조특법 §99의2 특례세율(10%) 계산이 계산기에 없음(일반 계산의 과세표준과 같은 값이 아님)');
+    o.miss('⑫·⑬·⑭·⑮·⑯ 신축주택 취득명세', '계산기에 없음');
+    o.note('⚠ 옛 조특법 §99의2(2000.9.1.~2001.12.31. 기존주택 양도·신축주택 취득, 2005.12.31. 삭제) 전용 서식 — 현행 §99의2(2013년 신축주택 감면)에는 쓰지 않음(시행령 §99의2⑧ 날인 매매계약서 사본)');
+    signBlock(o, ctx, s, {});
+    return o.result();
+  };
+
+  // ───────── 조특 별지 제63호서식 — 미분양주택과세특례적용신고서(조특법 §98, 시행령 §98④) ─────────
+  //  법 §98(1995.11.1.~1997.12.31. 취득 미분양 국민주택을 5년 이상 보유·임대 후 양도 — 양도소득세 20% 또는 종합소득세 선택) 전용.
+  //  계산기에 §98 갈래가 없고, §98의3~§98의8 감면에는 이 서식을 쓰지 않는다(날인 매매계약서 사본 — trUnsoldHouseSect63PrintPageHtml_).
+  //  세무사님이 직접 고른 자산으로 찍을 때를 위해 신고인·양도명세 칸만 채우고, 과세특례 계산 칸(⑨~⑭)은 비운다.
+  mappers['조특63호'] = function (ctx) {
+    var o = new Out(), s = ctx.seller || {}, it = itemOf(ctx), a = it.asset || {};
+    applicant(o, s, { name: '①', regNo: '②', addr: '③' }, '①~③ 신고인');
+    if (has(a.assetLocation)) o.set('④', [a.assetLocation]); else o.miss('④ 소재지', '화면 입력 없음');
+    o.miss('⑤ 토지면적·⑥ 건물면적', '계산기에 없음');
+    if (has(a.acquisitionDate)) o.set('⑦', [a.acquisitionDate]); else o.miss('⑦ 취득(계약)일자', '화면 입력 없음');
+    if (has(a.transferDate)) o.set('⑧', [a.transferDate]); else o.miss('⑧ 양도일자', '화면 입력 없음');
+    o.miss('⑨ 과세표준·⑪ 산출세액(양도소득세)', '계산기에 없음 — 조특법 §98① 20% 특례세율 계산이 계산기에 없음');
+    o.miss('⑫ 총수입금액·⑬ 필요경비·⑭ 차감소득금액(종합소득세)', '계산기에 없음 — 종합소득세 선택 계산 없음');
+    var ad = String(a.acquisitionDate || '');
+    if (ad && (ad < '1995-11-01' || ad > '1997-12-31')) o.note('⚠ 취득일 ' + ad + ' — 법 §98①의 취득기간(1995.11.1.~1997.12.31.) 밖');
+    o.note('⚠ 법 §98(1995~1997 취득 미분양주택) 전용 서식 — §98의3~§98의8 감면에는 쓰지 않음(각 시행령의 날인 매매계약서 사본 제출)');
+    signBlock(o, ctx, s, { dateKey: '신고일', dateLabel: '신고일', signKey: '신고인서명', signLabel: '신고인(서명)' });
+    return o.result();
+  };
+
   // ───────── 세액인쇄 화면용: 서식 한 장씩 ctx(양도인마다·자산마다) ─────────
   /* global lastTransferResults_ */
   function trItems() { return (typeof lastTransferResults_ !== 'undefined' && lastTransferResults_ ? lastTransferResults_ : []).filter(function (it) { return it.result && !it.result.error; }); }

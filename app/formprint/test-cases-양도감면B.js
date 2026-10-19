@@ -63,5 +63,19 @@ module.exports = function (E, H) {
   var c4 = trCtx([h4]);
   L.push({ name: '조특63호의4_농어촌주택', forms: require('./mappers-양도감면B.js').plan('양도', c4), ctx: c4 });
 
+  // ⑤ 조특63호의2 — 옛 §99의2 시절 사건(1999.3.2. 취득 기존주택 2001.6.29. 양도) — plan엔 안 들어가므로 직접 고른 자산으로
+  var h5 = { assetType: 'house', assetKind: 'building', transferPrice: 180000000, acquisitionPrice: 120000000, necessaryExpenses: 0,
+    acquisitionDate: '1999-03-02', transferDate: '2001-06-29', assetLocation: '경기도 ○○시 견본로 3, 101동 202호 (견본)' };
+  var c5 = trCtx([h5], { 신고일: '2001-08-31' });
+  L.push({ name: '조특63호의2_옛99조의2', forms: [{ formKey: '조특63호의2', ctx: Object.assign({}, c5, { 특례자산: 0 }) }], ctx: c5 });
+  // ⑥ 조특63호 — 법 §98 미분양 국민주택(1996.5.10. 취득) 2026.3.31. 양도 — plan엔 안 들어가므로 직접 고른 자산으로
+  var h6 = { assetType: 'house', assetKind: 'building', transferPrice: 450000000, acquisitionPrice: 90000000, necessaryExpenses: 0,
+    acquisitionDate: '1996-05-10', transferDate: '2026-03-31', assetLocation: '인천광역시 ○○구 견본로 6, 3동 105호 (견본)' };
+  var c6 = trCtx([h6], { 신고일: '2026-05-31' });
+  L.push({ name: '조특63호_법98조', forms: [{ formKey: '조특63호', ctx: Object.assign({}, c6, { 특례자산: 0 }) }], ctx: c6 });
+  // plan이 63호의2·63호를 고르지 않는지(계산기에 제도 없음) — 위 두 사건의 plan 결과는 비어 있어야 함
+  var pl = require('./mappers-양도감면B.js').plan('양도', c5).concat(require('./mappers-양도감면B.js').plan('양도', c6));
+  if (pl.length) throw new Error('63호의2·63호가 plan에 들어감: ' + JSON.stringify(pl.map(function (x) { return x.formKey; })));
+
   return L;
 };
