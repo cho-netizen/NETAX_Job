@@ -273,8 +273,10 @@ function caseProcAiCheckBasis_(c, value, basis, itemId, caseId) {
   if (basis.kind === 'doc') {
     const f = caseProcAiFindFile_(c, basis.file);
     if (!f) return { ok: false, why: '근거 서류를 사건 폴더에서 찾지 못함' };
-    const t = String(tc_docText_(f) || '');
-    if (!t) return { ok: false, why: '근거 서류의 글자가 없음(아직 못 읽음)' };
+    let t = String(tc_docText_(f) || '');
+    try { if (typeof tcVisionText_ === 'function') t += ' ' + tcVisionText_(f); } catch (e) {}
+    try { const pp = typeof tcPdfPageTexts_ === 'function' && /pdf/.test(String(f.mimeType || '')) ? tcPdfPageTexts_(f, 0) : null; if (pp && pp.pages) t += ' ' + Object.keys(pp.pages).map(function (k) { return pp.pages[k] || ''; }).join(' '); } catch (e) {}
+    if (!t.trim()) return { ok: false, why: '근거 서류의 글자가 없음(아직 못 읽음)' };
     const flat = t.replace(/\s+/g, '');
     // 판단형(보기 고르기) 값은 서류에 그대로 안 나온다 — 근거 문구(quote)를 주면 그 문구가 원문에 있는지로 대조한다
     if (basis.quote) { const q = String(basis.quote).replace(/\s+/g, ''); return q.length >= 4 && flat.indexOf(q) !== -1 ? { ok: true, why: '근거 서류 원문에 그 문구', file: f.name } : { ok: false, why: '근거 서류 원문에 그 문구가 없음 — 지어낸 근거일 수 있어 넣지 않음' }; }
@@ -309,7 +311,7 @@ var CASEPROC_AI_TOOL_ROLES_ = {
 };
 // 도구 결과에서 "AI가 판단할 자리(변수)"를 센다 — 재현기가 그물 기록·AI 없이 끝날 수 있는지에 쓴다
 // '못 읽은 서류'는 AI 자리가 아니다 — 사진 보정·OCR은 GAS(상수) 몫이라 AI 없이 끝날 수 있는지 셀 때 빼고 따로 센다
-var CASEPROC_AI_GAS_SPOTS_ = { '못 읽은 서류': true, '재료 없음': true, '상수': true, 'GAS 표 필요': true };
+var CASEPROC_AI_GAS_SPOTS_ = { '못 읽은 서류': true, '재료 없음': true, '상수': true, 'GAS 표 필요': true, '이름으로 종류 앎': true, '참고자료': true };
 // [2026.10.19 5번] 조정지역 이력표 재기 스위치 — 세무사님 확인 전에는 false(운영 판정에 쓰지 않음). 재현기 재기에서만 true로 바꾼다
 var CASEPROC_AI_ADJ_TRIAL_ = false;
 // 계산기 상태의 자산 소재지·취득일·양도일로 이력표를 찾는다 — { ok: 모두 가려졌나, text, noResidence: 거주요건이 없다고 볼 근거(없으면 '') }
@@ -388,12 +390,29 @@ function caseProcAiVarSpots_(name, raw, caseId) {
     var txt = '';
     try { if (caseId) { cc = cc || akReadCase_(caseId); var f = caseProcAiFindFile_(cc, d.name || d.file || ''); txt = f ? String(tc_docText_(f) || '') : ''; } else txt = 'x'; } catch (e) { txt = 'x'; }
     const flat = txt.replace(/\s+/g, '');
-    out.push({ 자리: 'doc:' + (d.name || d.file || ''), 이유: flat.length >= 20 ? '처음 보는 서류' : '못 읽은 서류', 설명: caseProcAiMask_(caseProcAiCut_(txt, 90)) });
+    // [2026.10.20 밤샘 1바퀴 — 원시서류 종류별] 이름·첫머리 글로 종류가 분명한 서류는 GAS가 정한다(AI 자리 아님) — 값을 뽑는 규칙이 없으면 '입수 구멍'으로 따로
+    const kn = flat.length >= 20 ? caseProcAiDocKind_(d.name || d.file || '', txt) : null;
+    out.push({ 자리: 'doc:' + (d.name || d.file || ''), 이유: kn ? (kn.ref ? '참고자료' : '이름으로 종류 앎') : (flat.length >= 20 ? '처음 보는 서류' : '못 읽은 서류'), 종류: kn ? kn.kind : undefined, 설명: caseProcAiMask_(caseProcAiCut_(txt, 90)) });
   });
   if (name === 'money_links' && raw.짝없는돈 && raw.짝없는돈.length && raw.통장줄 === 0) out.push({ 자리: 'money:no-bank', 이유: '재료 없음', 설명: '통장 서류가 없어 계약 대금 ' + raw.짝없는돈.length + '회차의 흐름을 확인 못 함 — 필요하면 통장 요청 질문 하나' });
   else if (name === 'money_links' && raw.짝없는돈) raw.짝없는돈.forEach(function (u, i) { out.push({ 자리: 'money:' + i, 이유: '무슨 돈인가', 설명: caseProcAiMask_(caseProcAiCut_(typeof u === 'string' ? u : JSON.stringify(u), 140)) }); });
   if (name === 'contract_list' && /역할 판독 의심/.test(String(raw.목록 || ''))) out.push({ 자리: 'contract:role', 이유: '판독 갈림' });
   return out;
+}
+// 서류 이름·첫머리 글 → 종류(GAS 규칙). [세무사님 원칙 — 목표는 앞으로 처리할 사건] 낱말은 법정·발급기관 서식의 공식 명칭만(가족관계등록법·주민등록법 증명서, 등기사항증명서·대장, 토지보상법 재결서·손실보상, 금융기관 증명서, 세법 서식) — 이 사무소 파일 이름 버릇은 쓰지 않는다.
+//  이름이 다르게 붙은 서류(예: 사진 파일 번호)는 안 맞아 그대로 '처음 보는 서류'(저비용 AI·질문)로 간다 — 잘못 정하지 않고 묻는 쪽으로 넘어감. 위에서부터 처음 맞는 것. ref=참고자료·발생문서(입력 아님). 이름만 맞고 첫머리 글에 그 종류 낱말이 없으면 '이름'으로만 표시
+var CASEPROC_AI_DOC_KINDS_ = [
+  ['수용·보상', /재결서|보상금|손실보상|협의취득|지장물/], ['계약서', /계약서/], ['가족·주민 서류', /가족관계|기본증명|혼인관계|제적|주민등록|등본|초본/],
+  ['등기·대장', /등기|건축물대장|토지대장|공시지가|공시가격/], ['금융 서류', /거래내역|통장|입출금|납입증명|잔액증명|부채증명/],
+  ['세금 서류', /세금계산서|합계표|부가가치세|부가세|신고서|납부서|고지서/], ['영수증·비용', /영수증|견적서|청구서|계산서/],
+  // 참고자료는 법령·해석 문서의 공식 명칭만(이름으로만 — 본문에 나오는 낱말로는 안 정함). 사무소 파일 이름 버릇(요구자료·메모·상담·세무사님께 등)은 쓰지 않는다 —
+  //  고객이 보낸 편지·상담 메모는 사실이 든 서류라 참고로 빼면 안 되고, 사무소가 만든 결과물은 기존 발생문서 판정(caseProcIsOutputDocFor_)이 맡는다
+  ['참고(법령·해석)', /시행령|시행규칙|법률|예규|판례|해석례|질의회신|심판례|결정례/, 1]
+];
+function caseProcAiDocKind_(name, txt) {
+  const n = String(name || '').replace(/.[A-Za-z0-9]+$/, ''), head = String(txt || '').replace(/s+/g, '').slice(0, 300);
+  for (let i = 0; i < CASEPROC_AI_DOC_KINDS_.length; i++) { const k = CASEPROC_AI_DOC_KINDS_[i]; if (k[1].test(n) || (!k[2] && k[1].test(head))) return { kind: k[0], ref: !!k[2], by: k[1].test(head) ? '첫머리 글' : '이름' }; }
+  return null;
 }
 // 1번 사실 목록·2번 교차검증 재료 도구 — 결과는 짧게(근거 파일·위치 포함), 판정은 하지 않는다
 function caseProcAiFactTool_(caseId, name, input) {

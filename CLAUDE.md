@@ -26,7 +26,10 @@
 만들고, 깃허브 페이지가 그것을 `job.netax.kr/app/`로 서빙한다. 서버 호출은 `manage/gasbridge.html`이
 google.script.run 대신 doPost의 `__manage` 입구(Code.js `manageApp_dispatchHttpOnce_`)로 보낸다 —
 요청번호(rid)로 같은 요청이 두 번 실행되지 않게 한다(구글 응답 2단계 중 결과 받아가기가 자주 실패하기 때문).
-예전 구글 주소(`.../exec?app=manage`)도 그대로 동작한다(gasbridge는 그 안에서는 아무 일도 안 함).
+~~예전 구글 주소(`.../exec?app=manage`)도 그대로 동작한다~~ → [2026.10.19 보안·10.20 용량] 구글 주소는 이제 "job.netax.kr/app/에서
+여세요" 글자만 돌려준다(그 화면의 google.script.run으로 누구나 서버 함수를 부를 수 있었음). 그래서 **화면 원본 `manage/*.html`은
+서버에 올리지 않는다** — `gs-backend/.claspignore`에 들어 있고, 서버에 남는 화면 파일은 서버 세액 엔진 `manage/taxcalc-engine.html`
+하나뿐이다(약 3.85MB 절약). 새 화면 파일을 만들면 `.claspignore`에 한 줄 더하고 `node tools/check-clasp-trim.js`로 확인한다.
 
 **화면(`manage/*.html`)을 고쳤으면** 아래 GS 절차(clasp push/deploy)에 더해:
 1. `node tools/build-app.js` — `app/index.html` 다시 만들기 (직접 고치지 말 것, 자동 생성 파일)

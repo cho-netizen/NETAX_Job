@@ -621,6 +621,9 @@
       return null;
     }
     if (type === 'rental_long') {
+      // [2026.10.20 세액 고침] 조특법 §97의4①(법제처 원문) — "6년 이상 임대한 후 양도하는 경우"만 추가공제 특례. 6년 미만은 특례가 아니다(null —
+      //  예전엔 표1 율을 특례로 돌려줘 조정지역 다주택 중과·장특공 배제를 건너뛰었다. 중과 배제는 시행령 §167의3① 장기임대주택(83호의6 체크)으로 따로).
+      if (ry < 6) return null;
       let addRate = 0;
       if (ry >= 10) addRate = 0.10;
       else if (ry >= 9) addRate = 0.08;
@@ -693,23 +696,35 @@
   //   2025.1.1. 이후 양도 15/20/35/45% — 법률 제20778호(2025.3.14) 부칙 제10조 "시행일이 속하는 과세연도에 양도하는 경우부터"
   //   2016.1.1.~2024.12.31. 양도 10/15/30/40% — 법률 제13560호. 단 2016.1.1. 전 사업인정고시 사업지역을 2017.12.31.까지 양도하면 종전 15/20/30/40%(같은 법 부칙 제53조)
   //   2014.1.1.~2015.12.31. 양도 15/20/30/40% — 법률 제12173호(부칙 제2조③ 시행 후 양도분)
-  //   2013.12.31. 이전 양도 20/25/40/50% — 2013.10.31. 시행판 원문(그 전 연혁은 확인 안 함 → 경고)
-  //  §77의2(대토)·§77의3(개발제한구역) 율은 이 도우미 밖(연혁 확인 필요 — 지금 값 그대로). null이면 부르는 쪽이 지금 표를 쓴다.
+  //   2010.1.1.~2013.12.31. 양도 20/25/40/50% — 법률 제9921호(부칙 제35조 시행 후 최초 양도분)
+  //   2009.1.1.~2009.12.31. 양도 20/25/30% — 법률 제9272호(만기 보유 특약은 3년·5년 구분 없이 30%)
+  //   2008.1.1.~2008.12.31. 양도 10/15/20% — 법률 제8827호(특약 20%). 2007.12.31. 이전은 채권분만 10%·현금 없음 등 — 계산은 2008년 표, 경고
+  // [2026.10.20 서식 감사 — 서식이 법령보다 늦은 칸 확정] §77의2(대토)·§77의3(개발제한구역) 율도 연혁대로 — 법제처 원문·부칙:
+  //   §77의2 대토: 2014.12.31. 이전 양도는 감면 없음(과세이연만) / 2015년 양도 20%(법률 제12853호, 부칙 제2조③) /
+  //     2016.1.1.~2019.12.31. 양도 15%(법률 제13560호, 부칙 제54조 시행 전 양도는 종전) / 2020.1.1. 이후 양도 40%(법률 제16835호 부칙 제21조)
+  //   §77의3 개발제한구역: 2013.12.31. 이전 양도 50%·30% / 2014.1.1. 이후 양도 40%·25%(법률 제12173호 부칙 제2조③)
   function compRateAt_(type, transferDate, noticeDate) {
-    const NOW = { cash: 0.15, bond: 0.20, bond_3y: 0.35, bond_5y: 0.45 };
+    const NOW = { cash: 0.15, bond: 0.20, bond_3y: 0.35, bond_5y: 0.45, land_replacement: 0.40, restricted_zone_40: 0.40, restricted_zone_25: 0.25 };
     if (!(type in NOW)) return null;
     const d = String(transferDate || '').slice(0, 10);
-    if (!refHistoryOn_() || !d || d >= '2025-01-01') return NOW[type];
+    if (!refHistoryOn_() || !d) return NOW[type];
+    if (type === 'land_replacement') return d < '2015-01-01' ? 0 : d < '2016-01-01' ? 0.20 : d < '2020-01-01' ? 0.15 : 0.40;
+    if (type === 'restricted_zone_40' || type === 'restricted_zone_25') return d < '2014-01-01' ? (type === 'restricted_zone_40' ? 0.50 : 0.30) : NOW[type];
+    if (d >= '2025-01-01') return NOW[type];
     const OLD15 = { cash: 0.15, bond: 0.20, bond_3y: 0.30, bond_5y: 0.40 };
+    if (d < '2009-01-01') return { cash: 0.10, bond: 0.15, bond_3y: 0.20, bond_5y: 0.20 }[type];
+    if (d < '2010-01-01') return { cash: 0.20, bond: 0.25, bond_3y: 0.30, bond_5y: 0.30 }[type];
     if (d < '2014-01-01') return { cash: 0.20, bond: 0.25, bond_3y: 0.40, bond_5y: 0.50 }[type];
     if (d < '2016-01-01') return OLD15[type];
     if (d <= '2017-12-31' && noticeDate && String(noticeDate).slice(0, 10) < '2016-01-01') return OLD15[type];
     return { cash: 0.10, bond: 0.15, bond_3y: 0.30, bond_5y: 0.40 }[type];
   }
   function compRateNote_(type, transferDate, noticeDate) {
-    if (!(type in { cash: 1, bond: 1, bond_3y: 1, bond_5y: 1 }) || !refHistoryOn_()) return '';
+    if (!refHistoryOn_()) return '';
     const d = String(transferDate || '').slice(0, 10);
-    if (d && d < '2014-01-01') return '⚠ 2013년 이전 양도 — 감면율은 2013.10.31. 시행판(20/25/40/50%)으로 계산했습니다. 그 전 연혁은 확인하지 않았으니 양도일 판 원문을 확인하세요.';
+    if (type === 'land_replacement') return (d && d < '2015-01-01') ? '2014.12.31. 이전 양도한 대토보상은 감면이 없고 과세이연만 받을 수 있습니다(조특법 §77의2 — 감면은 2015.1.1. 양도분부터).' : '';
+    if (!(type in { cash: 1, bond: 1, bond_3y: 1, bond_5y: 1 })) return '';
+    if (d && d < '2008-01-01') return '⚠ 2007년 이전 양도 — 감면율은 2008년 판(10/15/20%)으로 계산했습니다. 그때는 채권으로 받은 분만 감면하는 등 요건이 달랐으니 양도일 판 원문을 확인하세요.';
     if (d >= '2016-01-01' && d <= '2017-12-31' && !noticeDate) return '사업인정고시일이 2016.1.1. 전이면 2017.12.31.까지 양도분은 종전 감면율(15/20/30/40%)입니다(법률 제13560호 부칙 제53조) — 사업인정고시일을 넣어 주세요.';
     return '';
   }
@@ -1332,6 +1347,12 @@
       if (t.rentalSpecialType === 'rental_general' && !t.rentalRegistrationDate && Number(t.rentalYears) >= 8 && Number(t.rentalYears) < 10)
         acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '⚠ 장기일반민간임대 장특공 특례: 임대 ' + t.rentalYears + '년 — 임대주택 등록일이 2022-12-31 이전이면 50%(조특법 법률 제19199호 부칙 제38조), 그 뒤면 특례 없음. 등록일을 넣어 주세요(지금은 특례 없이 계산).';
       isRentalSpecial = rentalRate !== null;
+      // [2026.10.20 세액 고침] 조특법 §97의4① 단서 — 소득세법 §95② 단서(1세대1주택 표2)에 해당하면 장기임대 추가공제를 적용하지 않는다(표2 그대로).
+      //  예전엔 1세대1주택 표2(최대 80%)를 표1+추가공제로 바꿔 장특공이 줄었다.
+      if (isRentalSpecial && isOneHouse && t.rentalSpecialType === 'rental_long') {
+        isRentalSpecial = false;
+        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '장기임대주택 추가공제(조특법 §97의4)는 1세대1주택(소득세법 §95② 단서 표2)에는 적용하지 않습니다(§97의4① 단서) — 표2 공제율로 계산했습니다.';
+      }
       if (isRentalSpecial) ltRate = rentalRate;
 
       // 소득세법시행령§167조의3①12호의2(및 §167조의4③6의2·§167조의10①12호의2·§167조의11①12호,
@@ -1478,8 +1499,8 @@
       if (!on && d < '2020-01-01' && Number(core.conversionValuePenalty) > 0) miss.push('환산취득가액 가산세(2018년 전 양도는 없음·2018~2019는 신축 건물만)');
       if (!on && r_.giftReceivedDate && String(r_.giftReceivedDate).slice(0, 10) < '2023-01-01' && r_._이월과세_적용여부 !== undefined) miss.push('이월과세 기간(그 증여일은 5년)');
       // [2026.10.19] §77 수용(현금·채권) 감면율·§133 한도는 연혁대로 계산하게 됨(compRateAt_ 등) — 연혁이 꺼졌을 때만 경고.
-      //  §77의2 대토·§77의3 개발제한구역 감면율 연혁은 아직 확인 전이라 경고를 남긴다
-      if (d < '2025-01-01' && r_.compensationType && (!on || ['cash', 'bond', 'bond_3y', 'bond_5y'].indexOf(r_.compensationType) === -1)) miss.push(['cash', 'bond', 'bond_3y', 'bond_5y'].indexOf(r_.compensationType) === -1 ? '대토·개발제한구역 감면율(§77의2·§77의3)' : '수용감면율·감면 한도');
+      //  [2026.10.20] §77의2 대토·§77의3 개발제한구역 감면율도 연혁대로(compRateAt_) — 연혁이 꺼졌을 때만 경고
+      if (d < '2025-01-01' && r_.compensationType && !on) miss.push(['cash', 'bond', 'bond_3y', 'bond_5y'].indexOf(r_.compensationType) === -1 ? '대토·개발제한구역 감면율(§77의2·§77의3)' : '수용감면율·감면 한도');
     }
     // [2026.10.19] 고가주택 기준 — 1세대1주택(·1조합원입주권)이 2021-12-08 전 양도이고 양도가액이 그때 기준(9억, 2008-10-07 전 6억)을 넘으면
     //  비과세로 끝나는 경우에도 알린다(예: 2020년 11억 1주택 — 지금 기준 12억이면 비과세, 그때 기준 9억이면 과세)
@@ -1830,7 +1851,7 @@
       } else if (failsTwoYearGate) {
         compensationGateNote = '사업인정고시일(또는 고시 전 양도시 양도일)로부터 소급 2년 이전에 취득한 토지등만 감면 대상인데(§77①·§77의2①), 보유기간이 이에 못 미쳐 감면 대상이 아닙니다. 사업인정고시일을 아신다면 publicNoticeDate로 입력해 다시 확인하세요.';
       } else {
-        // [2026.10.19 서식 감사] 감면율은 양도일별(compRateAt_ — §77만, §77의2·§77의3은 지금 표)
+        // [2026.10.19 서식 감사] 감면율은 양도일별(compRateAt_ — §77·§77의2·§77의3 모두, 2026.10.20)
         const compRate_ = compRateAt_(t.compensationType, t.transferDate, t.publicNoticeDate);
         compensationReductionLabel = (t.compensationType === 'land_replacement') ? '대토보상 감면(조특법§77의2)'
           : (t.compensationType === 'restricted_zone_40' || t.compensationType === 'restricted_zone_25') ? '개발제한구역 매수 감면(조특법§77의3)'
@@ -2407,7 +2428,7 @@
           if (fullYearsElapsed(c.raw.acquisitionDate, referenceDate) < 2) twoYearOk = false;
         }
         if (twoYearOk) {
-          // [2026.10.19 서식 감사] §77 감면율은 양도일별(compRateAt_ — §77의2·§77의3은 지금 표)
+          // [2026.10.19 서식 감사] §77·§77의2·§77의3 감면율은 양도일별(compRateAt_, 2026.10.20)
           const rateAt_ = compRateAt_(c.raw.compensationType, c.raw.transferDate, c.raw.publicNoticeDate);
           const rateNote_ = compRateNote_(c.raw.compensationType, c.raw.transferDate, c.raw.publicNoticeDate);
           if (rateNote_) assetNotes.push({ idx: c.idx, 구분: '수용감면(§77) 감면율 연혁', 안내: rateNote_ });
@@ -6391,8 +6412,14 @@
     if (!p.wasOneHouseBeforeAcquisition) {
       return { 적용여부: false, 안내: '준공후미분양주택 취득 전 1주택을 보유한 1세대가 아니어서 적용대상이 아닙니다.' };
     }
+    // [2026.10.20 서식 감사 — 서식이 법령보다 늦은 칸 확정] 시행령 §98의8①1·2호(법제처 원문): 전용면적 85㎡ 이하, 취득가액 6억원 이하 —
+    //  2026.2.27. 이후 취득분은 7억원(대통령령 제36127호 부칙 제21조). 면적·취득가액을 주면 엔진이 판정하고, 체크는 나머지 요건(양도자·최초 계약·선착순 공급)만.
+    const limitU9_ = String(acquisitionDate).slice(0, 10) >= '2026-02-27' ? 700000000 : 600000000;
+    const areaU9_ = Number(p.exclusiveArea), priceU9_ = Number(p.acquisitionPrice);
+    if (areaU9_ > 85) return { 적용여부: false, 안내: '전용면적이 85㎡를 넘어 적용대상이 아닙니다(시행령 §98의8①1호).' };
+    if (priceU9_ > limitU9_) return { 적용여부: false, 안내: '취득가액이 ' + (limitU9_ / 1e8) + '억원을 넘어 적용대상이 아닙니다(시행령 §98의8①2호 — 2026.2.27. 이후 취득은 7억원, 그 전은 6억원).' };
     if (!p.meetsAreaAndPriceRequirements) {
-      return { 적용여부: false, 안내: '전용면적·취득가액 등 대통령령으로 정하는 요건(시행령에서 확인 필요)을 충족하지 못해 적용대상이 아닙니다.' };
+      return { 적용여부: false, 안내: '양도자(사업주체·분양사업자·공사대금으로 받은 시공자)·최초 매매계약·선착순 공급 등 시행령 §98의8① 요건(전용 85㎡ 이하, 취득가액 ' + (limitU9_ / 1e8) + '억원 이하 포함)을 충족하지 못해 적용대상이 아닙니다.' };
     }
     return {
       적용여부: true,
@@ -6649,8 +6676,16 @@
     if (!(acqTime >= windowStart && acqTime <= windowEnd)) {
       return { 적용여부: false, 안내: '취득일이 취득기간(농어촌주택 2003.8.1~2028.12.31, 고향주택 2009.1.1~2028.12.31)을 벗어나 조특법§99의4의 적용대상이 아닙니다.' };
     }
+    // [2026.10.20 서식 감사 — 서식이 법령보다 늦은 칸 확정] §99의4①1호나목·2호다목(법제처 원문): 주택+딸린 토지 가액(취득 당시 기준시가) 한도 —
+    //  2023.1.1. 이후 양도 3억원(법률 제19199호, 부칙 제39조 시행 전 양도는 종전 2억원), 한옥은 2014.1.1. 이후 구입분 4억원(법률 제12173호 부칙 제32조).
+    //  대지 660㎡ 요건은 2021.1.1. 이후 양도분부터 없음(법률 제17759호 부칙 제21조②). transferDate는 일반주택 양도일.
+    const trRh_ = String(p.transferDate || '').slice(0, 10);
+    const limitRh_ = (p.isHanok && String(acquisitionDate).slice(0, 10) >= '2014-01-01') ? 400000000 : (!trRh_ || trRh_ >= '2023-01-01') ? 300000000 : 200000000;
+    const priceRh_ = Number(p.housePrice), landRh_ = Number(p.landArea);
+    if (priceRh_ > limitRh_) return { 적용여부: false, 안내: '주택과 딸린 토지의 가액(취득 당시 기준시가)이 ' + (limitRh_ / 1e8) + '억원을 넘어 적용대상이 아닙니다(§99의4① — 2023.1.1. 이후 양도 3억원·그 전 2억원, 2014.1.1. 이후 구입 한옥 4억원).' };
+    if (trRh_ && trRh_ < '2021-01-01' && landRh_ > 660) return { 적용여부: false, 안내: '2020.12.31. 이전 양도는 대지면적 660㎡ 이하여야 합니다(옛 §99의4①1호나목).' };
     if (!p.meetsLocationAndPriceRequirements) {
-      return { 적용여부: false, 안내: '소재지·가액(3억원, 한옥은 4억원) 등 시행령이 정하는 농어촌주택·고향주택 요건을 충족하지 못해 적용대상이 아닙니다.' };
+      return { 적용여부: false, 안내: '소재지·가액(' + (limitRh_ / 1e8) + '억원' + (p.isHanok ? '' : ', 한옥은 4억원') + ') 등 §99의4① 농어촌주택·고향주택 요건을 충족하지 못해 적용대상이 아닙니다.' };
     }
     if (p.isSameOrAdjacentDistrict) {
       return { 적용여부: false, 안내: '취득한 농어촌주택등과 보유하던 일반주택이 행정구역상 같은(또는 연접한) ' + (houseType === 'hometown' ? '시' : '읍·면·동') + '에 있어 적용배제됩니다(§99의4③).' };
@@ -8534,8 +8569,18 @@
     if (!p.wasOneOrFewerBeforeAcquisition) {
       return { 적용여부: false, 안내: '취득 전 주택·조합원입주권·분양권 중 1채(1개)를 보유한 1세대가 아니어서 적용대상이 아닙니다.' };
     }
+    // [2026.10.20 서식 감사 — 서식이 법령보다 늦은 칸 확정] 시행령 §68의2①(법제처 원문): 주택+딸린 토지 기준시가 합계(취득일 현재) 한도 —
+    //  인구감소지역 4억원(대통령령 제35347호), 2025.8.14. 이후 취득은 수도권 밖 9억원·수도권(접경지역) 4억원(제35877호 부칙 제3조),
+    //  수도권 밖 인구감소관심지역은 2025.11.28. 이후 취득분부터 대상·4억원(법률 제21223호 부칙 제14조, 대통령령 제36127호).
+    //  areaKind('decline'|'interest')·isCapitalArea·standardPrice를 주면 엔진이 판정하고, 체크는 소재지 제외 요건(광역시·종전주택과 같은 시군구)만.
+    const acqPd_ = String(acquisitionDate).slice(0, 10), interestPd_ = p.areaKind === 'interest';
+    if (interestPd_ && acqPd_ < '2025-11-28') return { 적용여부: false, 안내: '인구감소관심지역 주택은 2025.11.28. 이후 취득분부터 대상입니다(조특법 §71의2①2호, 법률 제21223호 부칙 제14조).' };
+    if (interestPd_ && p.isCapitalArea) return { 적용여부: false, 안내: '인구감소관심지역은 수도권 밖에 있어야 대상입니다(조특법 §71의2①2호).' };
+    const limitPd_ = interestPd_ ? 400000000 : (acqPd_ >= '2025-08-14' && !p.isCapitalArea ? 900000000 : 400000000);
+    const pricePd_ = Number(p.standardPrice);
+    if (pricePd_ > limitPd_) return { 적용여부: false, 안내: '주택과 딸린 토지의 기준시가 합계가 ' + (limitPd_ / 1e8) + '억원을 넘어 적용대상이 아닙니다(시행령 §68의2① — 이 취득일 기준 한도).' };
     if (!p.meetsAreaAndPriceRequirements) {
-      return { 적용여부: false, 안내: '주택 소재지·가액 등 대통령령으로 정하는 요건(시행령에서 확인 필요)을 충족하지 못해 적용대상이 아닙니다.' };
+      return { 적용여부: false, 안내: '소재지 요건(광역시(군 제외)·종전주택과 같은 시군구가 아닐 것, 인구감소지역은 수도권이면 접경지역만)과 가액 한도(기준시가 ' + (limitPd_ / 1e8) + '억원 이하) 등 시행령 §68의2① 요건을 충족하지 못해 적용대상이 아닙니다.' };
     }
     return {
       적용여부: true,

@@ -1535,7 +1535,9 @@ const DRIVE_TOOLS = [
         acquisitionDate: { type: 'string', description: '준공후미분양주택의 취득일(YYYY-MM-DD).' },
         isOutsideMetropolitanArea: { type: 'boolean', description: '수도권 밖의 지역에 소재하는지.' },
         wasOneHouseBeforeAcquisition: { type: 'boolean', description: '이 준공후미분양주택 취득 전 1주택을 보유한 1세대였는지.' },
-        meetsAreaAndPriceRequirements: { type: 'boolean', description: '전용면적·취득가액 등 시행령이 정하는 요건을 충족하는지.' }
+        meetsAreaAndPriceRequirements: { type: 'boolean', description: '양도자(사업주체·분양사업자·시공자)·최초 계약·선착순 공급 요건(시행령 §98의8①3~5호)을 충족하는지.' },
+        exclusiveArea: { type: 'number', description: '전용면적(㎡) — 85㎡ 초과면 제외.' },
+        acquisitionPrice: { type: 'number', description: '취득가액(원) — 6억원(2026.2.27. 이후 취득 7억원) 초과면 제외.' }
       },
       required: ['acquisitionDate']
     }
@@ -1676,7 +1678,11 @@ const DRIVE_TOOLS = [
       properties: {
         acquisitionDate: { type: 'string', description: '농어촌주택등의 취득일(YYYY-MM-DD).' },
         houseType: { type: 'string', enum: ['rural', 'hometown'], description: 'rural=농어촌주택(2003.8.1~), hometown=고향주택(2009.1.1~). 기본값 rural.' },
-        meetsLocationAndPriceRequirements: { type: 'boolean', description: '소재지·가액(3억원, 한옥은 4억원) 등 시행령이 정하는 농어촌주택·고향주택 요건을 충족하는지.' },
+        meetsLocationAndPriceRequirements: { type: 'boolean', description: '가액 밖의 소재지 요건(§99의4①)을 충족하는지.' },
+        housePrice: { type: 'number', description: '주택+딸린 토지 가액(취득 당시 기준시가, 원) — 2023.1.1. 이후 양도 3억원·그 전 2억원, 2014.1.1. 이후 구입 한옥 4억원 초과면 제외.' },
+        isHanok: { type: 'boolean', description: '한옥인지.' },
+        transferDate: { type: 'string', description: '일반주택 양도일(YYYY-MM-DD) — 가액 한도·대지 660㎡ 요건(2020년 이전 양도) 판정용.' },
+        landArea: { type: 'number', description: '대지면적(㎡).' },
         isSameOrAdjacentDistrict: { type: 'boolean', description: '취득한 농어촌주택등과 보유하던 일반주택이 행정구역상 같은(또는 연접한) 읍·면·동(고향주택은 시)에 있는지(true면 적용배제).' },
         holdingYears: { type: 'number', description: '농어촌주택등의 보유기간(년). 3년 미만이고 isPendingHoldingPeriod가 아니면 적용대상 아님.' },
         isPendingHoldingPeriod: { type: 'boolean', description: '아직 3년 보유요건을 채우지 못한 상태에서 일반주택을 먼저 양도하는 경우인지(§99의4④, 이 경우도 특례 적용 가능하나 이후 사후관리 대상).' },
@@ -2104,7 +2110,10 @@ const DRIVE_TOOLS = [
         acquisitionDate: { type: 'string', description: '인구감소지역주택의 취득일(YYYY-MM-DD).' },
         isPopulationDeclineArea: { type: 'boolean', description: '인구감소지역 또는 수도권 밖 인구감소관심지역에 소재하는지.' },
         wasOneOrFewerBeforeAcquisition: { type: 'boolean', description: '이 주택 취득 전 주택·조합원입주권·분양권 중 1채(1개)를 보유한 1세대였는지.' },
-        meetsAreaAndPriceRequirements: { type: 'boolean', description: '주택 소재지·가액 등 시행령이 정하는 요건을 충족하는지.' }
+        meetsAreaAndPriceRequirements: { type: 'boolean', description: '광역시(군 제외)·종전주택과 같은 시군구가 아닌지(시행령 §68의2①).' },
+        areaKind: { type: 'string', enum: ['decline', 'interest'], description: '인구감소지역(decline) 또는 수도권 밖 인구감소관심지역(interest, 2025.11.28. 이후 취득분).' },
+        isCapitalArea: { type: 'boolean', description: '수도권(접경지역)에 있는지.' },
+        standardPrice: { type: 'number', description: '주택+딸린 토지 기준시가 합계(취득일 현재, 원) — 한도 4억원, 2025.8.14. 이후 취득한 수도권 밖 인구감소지역은 9억원.' }
       },
       required: ['acquisitionDate']
     }
@@ -17008,25 +17017,12 @@ function doGet(e) {
     // google.script.run으로, 이름이 _로 끝나지 않는 서버 함수 전부(주민번호 풀기 client_getRRN·메일 발송·파일 공개 공유 등)를
     // 비밀번호·키 없이 누구나 부를 수 있었다(로그인 화면은 겉모습일 뿐 막지 못함). job은 job.netax.kr/app/(__manage 입구 —
     // 허용 함수만, 세션 토큰 검사)으로 옮겼으므로 이 화면은 기본으로 닫는다. 꼭 필요할 때만 세무사님이 스크립트 속성
-    // MANAGE_GOOGLE_PAGE=켜기로 잠깐 다시 열 수 있다(그동안은 위 구멍이 다시 열림 — 쓰고 나면 지울 것).
-    if (PropertiesService.getScriptProperties().getProperty('MANAGE_GOOGLE_PAGE') !== '켜기') {
-      return ContentService.createTextOutput('NETAX job은 https://job.netax.kr/app/ 에서 여세요. (구글 주소 화면은 보안 때문에 닫았습니다)')
-        .setMimeType(ContentService.MimeType.TEXT);
-    }
-    // [2026.09 버그수정] 실사용 지적 — "홈 화면에 추가" 아이콘이 계속 구글 기본 대체
-    // 아이콘("G")으로만 떴다. 원인은 앱스크립트 웹앱이 실제 화면을 별도의 숨겨진
-    // iframe(sandboxFrame, googleusercontent.com) 안에 띄우는 구조라서, manage/index.html
-    // <head>에 넣은 <link rel="manifest">/<link rel="icon"> 태그는 전부 그 iframe 안에만
-    // 적용되고, 정작 휴대폰이 "홈 화면 추가" 아이콘을 결정할 때 보는 바깥쪽 껍데기 문서에는
-    // 전혀 반영되지 않았다. 그 바깥쪽 문서는 구글이 통제하고, HtmlOutput이 공식으로 허용하는
-    // 건 제목·파비콘 정도뿐이라 setFaviconUrl로 대신 지정한다(매니페스트 자체는 이 구조에서
-    // 지정할 방법이 없음).
-    return HtmlService.createTemplateFromFile('manage/index')
-      .evaluate()
-      .setTitle('NETAX 관리')
-      .setFaviconUrl('https://job.netax.kr/icon-512.png')
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    // MANAGE_GOOGLE_PAGE=켜기로 잠깐 다시 열 수 있었다.
+    // [2026.10.20 서버 용량] 화면 원본(manage/*.html)은 이제 서버에 올리지 않는다(.claspignore — 서버 세액 엔진 taxcalc-engine만 남김).
+    // 세무사님 "2번게이트로만 들어가도록 하겠다" — 화면은 job.netax.kr/app/(깃허브)에서만 연다. 그래서 비상 스위치도 없앴고,
+    // 이 주소는 언제나 앱 주소 안내 글자만 돌려준다(약 3.8MB를 서버에서 덜어 냄 — 서버 크기 한도 약 10.29MB).
+    return ContentService.createTextOutput('NETAX job은 https://job.netax.kr/app/ 에서 여세요. (구글 주소 화면은 닫았습니다)')
+      .setMimeType(ContentService.MimeType.TEXT);
   }
 
   // [2026.08] booking 모듈의 GET 액션(예약가능시간 조회, 신청목록 조회) — netax.kr 랜딩페이지와
@@ -17056,10 +17052,8 @@ function doGet(e) {
 // manage 모듈 — my.netax.kr 신규 관리 앱 (2026.09)
 // =========================================================
 
-// manage/index.html에서 <?!= include_('manage/xxx') ?>로 부분 HTML을 끼워넣기 위한 헬퍼.
-function include_(filename) {
-  return HtmlService.createHtmlOutputFromFile(filename).getContent();
-}
+// [2026.10.20] 예전 include_(manage/index.html이 부분 HTML을 끼워 넣던 헬퍼)는 없앴다 — 서버가 더는 화면을 내주지 않는다(위 doGet).
+// manage/*.html은 tools/build-app.js가 job.netax.kr/app/index.html로 조립하는 원본으로만 저장소에 남는다.
 
 // [2026.09 보안수정] 이전에는 클라이언트가 sessionStorage에 "로그인했다"는 표시만 남기고,
 // 그 뒤 모든 데이터 호출(manageApp_call)이 그 표시를 서버에 전혀 보내지 않았다 — 즉 이

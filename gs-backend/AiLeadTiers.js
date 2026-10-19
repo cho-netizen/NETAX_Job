@@ -221,3 +221,79 @@ function caseProcAiWeekly_(opt) {
   let dev = []; try { dev = String(PropertiesService.getScriptProperties().getProperty('AI_DEV_CASE_IDS') || '').split(/[,\s]+/).filter(Boolean); } catch (e) {}
   return caseProcAiWeeklyFrom_(caseProcAiReadJson_(CASEPROC_AI_LOG_NAME_), paid, caseProcAiReadJson_(CASEPROC_AI_GAP_LOG_), caseProcAiReadJson_(CASEPROC_AI_PROMOTE_LOG_), { dev: dev, weeks: +opt.weeks || 12 });
 }
+
+// =========================================================
+// [2026.10.20 밤샘 — 세무사님] "정보분석은 잘게 쪼개기가 우선이고 그 다음에는 입체적으로 사실관계를 재구성하는 것이 중요하다"
+//  "조각정보를 입체적으로 재구성하다보면 빈칸이 발생하고 빈칸을 채우기 위해 다시 똥통을 뒤지게 되는 것이 데이타확보와 정보분석에서 흔히 있는 일이다."
+//  ②-2 입체 재구성(fact_map): 사실 조각(1번 사실 목록 cxFacts_)을 사람·자산·시간·돈 네 축으로 묶어 — 둘 이상 서류가 받침 / 한 서류뿐 / 어긋남,
+//   빈칸(계산기가 아직 비었다고 한 칸)마다 "어느 서류에서 찾을 수 있나"(법정·발급 서류 기준 표)와 이 사건에 그 서류가 있는지.
+//  다시 뒤지기(doc_find): AI가 고른 서류를 GAS가 다시 훑어(저장된 판독만 — Vision 줄·칸 글, 쪽 단위 글, 드라이브 글, 새 판독·쓰기 없음)
+//   날짜·금액·낱말 후보를 쪽 번호와 함께 돌려준다(원문 통째가 아님). AI는 "무엇을 어디서 다시 찾을지"만 고른다.
+// =========================================================
+var CASEPROC_AI_AXES_ = [['돈', /금액|가액|대금|잔액|보증금|채무|비용|세액|공시|기준시가|매매가|보상/], ['시간', /일$|일자|날짜|기간|접수|개시|사망/], ['사람', /성명|이름|관계|생년|주민|주소|상속인|당사자|매도인|매수인|수증자|증여자/], ['자산', /소재지|지번|면적|지목|용도|구조|물건|토지|건물|주택/]];
+// 빈칸 → 찾을 서류(법정·발급 서류 기준 — 이 사무소 파일 이름과 무관)
+var CASEPROC_AI_GAP_SRC_ = [
+  [/취득일|취득 ?원인/, '등기사항증명서(갑구 접수일·원인)·취득 계약서(잔금일)', /등기|계약/], [/취득가액|취득 ?금액/, '취득 계약서·분양계약서', /계약/],
+  [/양도가액|양도일|잔금/, '양도 계약서·등기사항증명서(이전 접수일)', /계약|등기/], [/소재지|면적|지번/, '등기사항증명서·건축물대장·토지대장', /등기|대장/],
+  [/주택|용도|assetType/, '건축물대장(주용도)', /대장/], [/세대|거주|전입/, '주민등록 등본·초본', /주민|등본|초본/], [/관계/, '가족관계증명서', /가족/],
+  [/증여일|증여재산|증여가액/, '증여계약서·등기사항증명서(증여 원인)', /계약|등기/], [/상속개시|사망|상속인/, '기본증명서·가족관계증명서·제적등본', /기본|가족|제적/],
+  [/채무|부채|대출/, '부채증명서·대출 잔액증명서', /부채|대출|잔액/], [/예금|금융재산|잔액/, '잔액증명서·거래내역', /잔액|거래내역|통장/], [/경비|비용|수수료/, '영수증·세금계산서·견적서', /영수증|세금계산서|견적/]
+];
+function caseProcAiAxis_(f) { const k = String(f.kind || ''); for (let i = 0; i < CASEPROC_AI_AXES_.length; i++) if (CASEPROC_AI_AXES_[i][1].test(k)) return CASEPROC_AI_AXES_[i][0]; const ks = f.keys || {}; return ks.person ? '사람' : ks.asset ? '자산' : ks.date ? '시간' : ks.amount ? '돈' : '그 밖'; }
+function caseProcAiFactMap_(c, items) {
+  let facts = []; try { facts = (typeof cxFacts_ === 'function' ? cxFacts_(c) : []) || []; } catch (e) { facts = []; }
+  const G = {}, A = {}, fileKinds = {};
+  facts.forEach(function (f) {
+    if (!f || f.kind === '서류') { if (f && f.src && f.src.file) fileKinds[f.src.file] = String(f.value || ''); return; }
+    const ax = caseProcAiAxis_(f), ks = f.keys || {}, file = (f.src && f.src.file) || '';
+    if (file && f.src.docType && !fileKinds[file]) fileKinds[file] = f.src.docType;
+    const gk = ax + '|' + f.kind + '|' + (ks.asset || ks.person || ks.account || ks.docNo || '');
+    const g = G[gk] || (G[gk] = { ax: ax, kind: f.kind, key: ks.asset || ks.person || ks.account || '', vals: {}, files: {} });
+    const v = typeof f.value === 'object' ? JSON.stringify(f.value) : String(f.value == null ? '' : f.value).replace(/[\s,원]/g, '');
+    if (!v) return;
+    (g.vals[v] = g.vals[v] || {})[file + (f._copy ? '#사본' : '')] = (f.src && f.src.page) || 1;
+    if (file && !f._copy) g.files[file] = 1;
+    const a = A[ax] || (A[ax] = { 조각: 0, 출처: 0 }); a.조각++; if (file) a.출처++;
+  });
+  const sum = {}, conflicts = [], singles = [];
+  Object.keys(G).forEach(function (k) {
+    const g = G[k], nv = Object.keys(g.vals).length, nf = Object.keys(g.files).length, s = sum[g.ax] || (sum[g.ax] = { 묶음: 0, 받침: 0, 한서류: 0, 어긋남: 0 });
+    if (!nv) return; s.묶음++;
+    if (nv > 1) { s.어긋남++; if (conflicts.length < 12) conflicts.push(g.ax + ' · ' + g.kind + (g.key ? '(' + caseProcAiCut_(g.key, 24) + ')' : '') + ': ' + Object.keys(g.vals).slice(0, 3).map(function (v) { return caseProcAiCut_(v, 24) + '←' + Object.keys(g.vals[v]).slice(0, 2).map(function (f) { return caseProcAiCut_(f, 30); }).join('·'); }).join(' / ')); }
+    else if (nf >= 2) s.받침++; else { s.한서류++; if (singles.length < 8) singles.push(g.ax + ' · ' + g.kind + ' ← ' + caseProcAiCut_(Object.keys(g.files)[0] || '', 30)); }
+  });
+  // 빈칸 — 계산기가 비었다고 한 칸(질문 중 빈 칸)마다 찾을 서류와 이 사건에 있는 그 종류 파일
+  const files = Object.keys(fileKinds);
+  const gaps = (items || []).filter(function (it) { return it.kind === 'missing'; }).slice(0, 15).map(function (it) {
+    const t = [it.id, it.text, it.ask && it.ask.label, it.ask && it.ask.target].join(' ');
+    const m = CASEPROC_AI_GAP_SRC_.filter(function (x) { return x[0].test(t); })[0];
+    const have = m ? files.filter(function (fn) { return m[2].test(fileKinds[fn] + ' ' + fn); }).slice(0, 4) : [];
+    return { 칸: it.id, 글: caseProcAiCut_(it.text, 60), 찾을서류: m ? m[1] : '(표에 없음 — 질문)', 이사건에있는파일: have.length ? have : (m ? '없음 — 서류 요청 질문' : '') };
+  });
+  const tot = { 조각: 0, 출처: 0, 묶음: 0, 받침: 0, 어긋남: 0 };
+  Object.keys(A).forEach(function (k) { tot.조각 += A[k].조각; tot.출처 += A[k].출처; });
+  Object.keys(sum).forEach(function (k) { tot.묶음 += sum[k].묶음; tot.받침 += sum[k].받침; tot.어긋남 += sum[k].어긋남; });
+  return { ok: true, 축: sum, 조각: A, 합: tot, 지표: { '②-1 출처 비율': tot.조각 ? Math.round(tot.출처 / tot.조각 * 100) : 0, '②-2 둘 이상 서류가 받치는 비율': tot.묶음 ? Math.round(tot.받침 / tot.묶음 * 100) : 0 }, 어긋남: conflicts, 한서류뿐: singles, 빈칸: gaps };
+}
+// 다시 뒤지기 — 저장된 판독만(새 판독·쓰기 없음). want: date | amount | keyword(+keyword) | name
+function caseProcAiDocFind_(c, input) {
+  const f = caseProcAiFindFile_(c, input.file);
+  if (!f) return { 오류: '서류를 찾지 못함' };
+  const srcs = [];
+  try { const v = typeof tcVisionText_ === 'function' ? tcVisionText_(f) : ''; if (v) srcs.push(['Vision 줄·칸', v]); } catch (e) {}
+  try { const p = typeof tcPdfPageTexts_ === 'function' && /pdf/.test(String(f.mimeType || '')) ? tcPdfPageTexts_(f, 0) : null; if (p && p.pages) srcs.push(['쪽 단위', Object.keys(p.pages).sort(function (a, b) { return a - b; }).filter(function (k) { return p.pages[k]; }).map(function (k) { return '[' + k + '쪽]\n' + p.pages[k]; }).join('\n')]); } catch (e) {}
+  try { srcs.push(['드라이브 글', String(tc_docText_(f) || '')]); } catch (e) {}
+  const want = String(input.want || 'keyword'), kw = String(input.keyword || '').replace(/\s+/g, '');
+  const re = want === 'date' ? /(19|20)\d{2}\s*[.\-년\/]\s*\d{1,2}\s*[.\-월\/]\s*\d{1,2}/g : want === 'amount' ? /\d{1,3}(,\d{3})+(?:\s*원)?|\d+\s*(억|천만|백만)\s*\d*[천백십]?만?\s*원?/g : null;
+  const hits = [], seen = {};
+  srcs.forEach(function (s) {
+    let page = 1;
+    String(s[1]).split('\n').forEach(function (line, i, ls) {
+      const pm = /^\[(\d+)쪽\]/.exec(line); if (pm) { page = +pm[1]; return; }
+      const flat = line.replace(/\s+/g, '');
+      const ms = re ? (line.match(re) || []) : (kw && flat.indexOf(kw) !== -1 ? [kw] : []);
+      ms.forEach(function (m) { const k = m.replace(/\s+/g, '') + '|' + page; if (seen[k] || hits.length >= 14) return; seen[k] = 1; hits.push({ 값: m.trim(), 쪽: page, 판독: s[0], 앞뒤: caseProcAiMask_(caseProcAiCut_((ls[i - 1] || '') + ' ⟨' + line.trim() + '⟩ ' + (ls[i + 1] || ''), 140)) }); });
+    });
+  });
+  return { ok: true, 파일: f.name, 읽은판독: srcs.map(function (s) { return s[0]; }), 찾음: hits.length, 후보: hits, 안내: hits.length ? '값을 넣으려면 value_set basis {kind:"doc", file, page, find:값}' : '이 서류의 저장된 판독에서 못 찾음 — 다른 서류(fact_map 빈칸의 찾을서류)나 질문으로' };
+}
