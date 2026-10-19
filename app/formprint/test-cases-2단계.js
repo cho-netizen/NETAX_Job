@@ -3,6 +3,7 @@
 //   E = 계산 엔진(taxcalc-engine.html을 불러온 것 — 값은 엔진으로 계산해 넣음), H = mappers.js helpers
 //   값은 모두 합성 값(신고용 아님).
 module.exports = function (E, H) {
+  var X = require('./mappers-2단계.js');
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   var AGENT = { name: '조종호(견본)', bizNo: '000-00-00000', mgmtNo: 'A00000', phone: '02-000-0000' };
   var DONEE = { name: '견본영농자녀', regNo: '900101-1000000', address: '전라남도 ○○군 견본면 들길 3', phone: '010-0000-0000', email: 'donee@example.com', taxOffice: '목포세무서', resident: 'resident' };
@@ -94,6 +95,28 @@ module.exports = function (E, H) {
   var cArt = { arts: ARTS, donee: DONEE };
   L.push({ name: '증여10호의5부표2_서화골동품', forms: [{ formKey: '증여10호의5부표2', ctx: cArt }], ctx: cArt });
   L.push({ name: '증여10호의6부표2_서화골동품', forms: [{ formKey: '증여10호의6부표2', ctx: cArt }], ctx: cArt });
+
+  // ⑨ 상속1호부표2 — 가업상속공제(개인 가업, 상증법 §18의2): 사업용 자산 순액 25억, 가업영위 20년, 과세가액 50억(엔진으로 계산 — plan 조건 확인용)
+  //   명세(재산평가 탭 "사업용자산" 체크 4건 — 값은 화면 평가액): 토지 12억(①), 일반건물 6억(②), 기계장비 2억(③), 아파트 1억(토지·건물 일괄 → 구분 비움)
+  var IH = { dateOfDeath: '2026-03-15', isDecedentResident: true, childCount: 2, hasSpouse: false, funeralCostAmount: 10000000, filingStatus: 'ontime', reportedInTime: true };
+  var pIh1 = Object.assign({}, IH, { taxableEstateAmount: 5000000000, businessOwnershipYears: 20, businessInheritanceIndividualNetAssetValue: 2500000000,
+    decedentOwnershipRequirementMet: true, decedentCeoTenureRequirementMet: true, heirAge18OrOlder: true, heirEngagedInBusiness2YearsOrExempt: true,
+    heirBecameOfficerByFilingDeadline: true, heirBecameCeoWithin2Years: true });
+  var rIh1 = E.calculateInheritanceTaxJS(clone(pIh1));
+  if (!rIh1 || rIh1.error || !rIh1.가업상속공제_계산내역) throw new Error('가업상속공제 시험 사례 엔진 오류: ' + (rIh1 && rIh1.error));
+  var BIZ = [{ method: 'land', location: '경기도 ○○시 견본동 100(공장 부지)', value: 1200000000 }, { method: 'building', location: '경기도 ○○시 견본동 100(공장 건물)', value: 600000000 },
+    { method: 'otherTangible', location: '공장 생산설비(견본 기계장치 일체)', value: 200000000 }, { method: 'apartment', location: '경기도 ○○시 견본로 5, 101동 101호(직원 숙소)', value: 100000000 }];
+  var cIh1 = { r: rIh1, bizAssets: BIZ };
+  L.push({ name: '상속1호부표2_가업용자산', forms: X.plan('상속', cIh1), ctx: cIh1 });
+  // ⑨-2 상속12호의2부표2 — 가업상속 납부유예(상증법 §72의2): 상속부속B 시험과 같은 법인 가업(주식 60억 × 90%) + 납부유예 선택, 명세는 위 4건
+  var pIh2 = Object.assign({}, IH, { taxableEstateAmount: 8000000000, totalGrossEstateValue: 9000000000, businessOwnershipYears: 15, businessInheritanceStockValue: 6000000000,
+    businessInheritanceTotalAssetValue: 10000000000, businessInheritanceNonBizAsset55: 200000000, businessInheritanceNonBizAsset49: 300000000, businessInheritanceNonBizAsset61: 100000000,
+    businessInheritanceExcessCash: 250000000, businessInheritanceNonBizStock: 150000000, decedentOwnershipRequirementMet: true, decedentCeoTenureRequirementMet: true, heirAge18OrOlder: true,
+    heirEngagedInBusiness2YearsOrExempt: true, heirBecameOfficerByFilingDeadline: true, heirBecameCeoWithin2Years: true, businessInheritanceDeferralElected: true });
+  var rIh2 = E.calculateInheritanceTaxJS(clone(pIh2));
+  if (!rIh2 || rIh2.error || !(rIh2.가업상속납부유예세액 > 0)) throw new Error('납부유예 시험 사례 엔진 오류: ' + (rIh2 && rIh2.error));
+  var cIh2 = { r: rIh2, bizAssets: BIZ.slice(0, 3) };
+  L.push({ name: '상속12호의2부표2_가업용자산_납부유예', forms: X.plan('상속', cIh2), ctx: cIh2 });
 
   return L;
 };

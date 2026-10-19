@@ -34,7 +34,9 @@
     '증여10호의5부표1': '상속세 및 증여세법 시행규칙 [별지 제10호의5서식 부표1]', // 증여재산 및 평가명세서(초과배당)
     '증여10호의5부표2': '상속세 및 증여세법 시행규칙 [별지 제10호의5서식 부표2]', // 서화·골동품 등 증여재산 명세서(초과배당)
     '증여10호의6부표1': '상속세 및 증여세법 시행규칙 [별지 제10호의6서식 부표1]', // 증여재산 및 평가명세서(특정법인)
-    '증여10호의6부표2': '상속세 및 증여세법 시행규칙 [별지 제10호의6서식 부표2]' // 서화·골동품 등 증여재산 명세서(특정법인)
+    '증여10호의6부표2': '상속세 및 증여세법 시행규칙 [별지 제10호의6서식 부표2]', // 서화·골동품 등 증여재산 명세서(특정법인)
+    '상속1호부표2': '상속세 및 증여세법 시행규칙 [별지 제1호서식 부표2]', // 가업용 자산 명세
+    '상속12호의2부표2': '상속세 및 증여세법 시행규칙 [별지 제12호의2서식 부표2]' // 가업용 자산 명세(납부유예)
   };
   var mappers = {};
   var ctxFor = {};
@@ -429,7 +431,64 @@
     ready[k2] = function () { try { return !!(g(D.res) && artsFromApp().length); } catch (e) { return false; } };
   });
 
-  // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만) — 추징 신고서는 신고 뒤 따로 내는 서류라 넣지 않음
-  function plan(tax, ctx) { var L = []; return L; }
+  // ═════════ 상증 별지 제1호서식 부표2·제12호의2서식 부표2 — 가업용 자산 명세(시행령 §15⑨, 법 §18의2⑤⑥·§72의2③) ═════════
+  //  ctx = mappers.js ctxFromApp.상속()이 만든 것 + bizAssets: [{method, location, value}] (재산평가 탭에서 "사업용자산" 체크한 자산 — 지금 인쇄 ihBizAssetListPrintPageHtml_와 같은 목록)
+  //  언제: 1호부표2 = 가업상속공제 계산 내역이 있고 납부유예를 고르지 않음(1호 본표와 같은 조건), 12호의2부표2 = 가업상속 납부유예세액 > 0(12호의2 본표와 같은 조건)
+  //  구분코드: land → 1(①토지), building(일반건물) → 2(②건축물), otherTangible(선박·차량·기계장비 등) → 3(③기계장치 등). 주택·오피스텔(토지·건물 일괄 고시가격)·직접입력 등은 비움
+  //    (예전 인쇄는 토지·일반건물 밖을 모두 ③으로 찍었음). 글꼴에 동그라미 숫자가 없어 1·2·3으로 찍음.
+  var BIZ_CODE = { land: '1', building: '2', otherTangible: '3' };
+  function bizAssetMapper(is12) {
+    return function (ctx) {
+      var o = new Out(), r = ctx.r || {}, d = r.가업상속공제_계산내역 || null, list = ctx.bizAssets || [];
+      if (!list.length) {
+        o.miss('일련번호·구분코드·소재지, 지목, 명칭 등·평가액 가업용 자산 명세', '재산평가 탭에 "사업용자산"으로 체크한 자산이 없음(지금 인쇄도 같은 안내 — 체크하거나 직접 적을 것)');
+        return o.result();
+      }
+      o.set('일련번호', list.map(function (x, i) { return String(i + 1); }));
+      var codes = list.map(function (x) { return BIZ_CODE[x.method] || ''; });
+      o.set('구분코드', codes);
+      if (codes.some(function (c) { return !c; })) o.miss('구분코드(일부 줄)', '평가 방법이 토지·일반건물·기계장비 등이 아닌 자산(주택·오피스텔은 토지·건물 일괄 고시가격, 직접입력 등은 종류 불명)이라 ①토지·②건축물·③기계장치 등 중 하나로 정할 수 없음 — 직접 적을 것');
+      o.set('소재지', list.map(function (x) { return x.location || ''; }));
+      if (list.some(function (x) { return !x.location; })) o.miss('소재지(일부 줄)', '화면 입력 없음(재산평가 자산 소재지)');
+      o.note('소재지, 지목, 명칭 등 — 계산기에 지목·명칭 칸이 없어 소재지만 찍음');
+      var vals = list.map(function (x) { return Math.round(n(x.value)); }), sum = vals.reduce(function (s, v) { return s + v; }, 0);
+      o.set('평가액', vals);
+      if (d && n(d.소득세법적용분) > 0) o.note('평가액 합 ' + sum + '원(담보채무 빼기 전) — 부표1 ① 사업용 자산 순액 ' + n(d.소득세법적용분) + '원(화면 따로 입력, 담보채무 뺀 값)과 다를 수 있음');
+      if (d && n(d.법인세법적용분) > 0) o.note('법인세법 적용 가업 — 작성방법 1의 "법인의 사업에 직접 사용되는 사업용 고정자산(사업무관자산 제외)" 명세는 계산기에 없음(재산평가 탭은 피상속인 재산만 받음)');
+      if (list.length > (is12 ? 15 : 18)) o.note('자산 ' + list.length + '건 — ' + (is12 ? 15 : 18) + '줄을 넘는 만큼 모듈이 다음 장에 이어 찍음(작성방법 2: 별지 작성 가능)');
+      return o.result();
+    };
+  }
+  mappers['상속1호부표2'] = bizAssetMapper(false);
+  mappers['상속12호의2부표2'] = bizAssetMapper(true);
+  var IH_WHEN = {
+    '상속1호부표2': function (c) { var r = c.r || {}; return !!(c.r && r.가업상속공제_계산내역 && !r.가업상속납부유예_선택); },
+    '상속12호의2부표2': function (c) { var r = c.r || {}; return !!(c.r && n(r.가업상속납부유예세액) > 0 && r.가업상속공제_계산내역); }
+  };
+  function bizAssetsFromApp() {
+    var f = g('inheritanceValuationAssets_'), cv = g('computeValuationAssetValue');
+    var list = typeof f === 'function' ? (f() || []) : [];
+    return list.filter(function (a) { return a.isBusinessAsset; }).map(function (a) {
+      return { method: a.method || '', location: a.assetLocation || '', value: typeof cv === 'function' ? Math.round(cv(a)) : 0 };
+    });
+  }
+  function withBiz(c) { return (!c || c.bizAssets || typeof document === 'undefined') ? c : Object.assign({}, c, { bizAssets: bizAssetsFromApp() }); }
+  Object.keys(IH_WHEN).forEach(function (k) {
+    ctxFor[k] = function (extra) { var c = withBiz(H.ctxFromApp.상속(extra)); return IH_WHEN[k](c) ? c : null; };
+    // 지금 인쇄(ihAttachPrintPagesHtml_ — 1호·12호의2 본표 뒤 ihBizAssetListPrintPageHtml_)와 같은 조건
+    ready[k] = function () { try { return typeof lastInheritanceResult !== 'undefined' && !!lastInheritanceResult && !!ctxFor[k](); } catch (e) { return false; } };
+  });
+
+  // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만)
+  //  상속: 1호부표2·12호의2부표2(가업상속공제·납부유예 신고서에 붙는 명세 — 지금 인쇄처럼 본표와 같은 조건)
+  //  추징 신고서(52호의2·11호의10·11호의13)·국외전출자(103~105호)·초과배당/특정법인 부표·가업승계 특례신청(11호의8)은 따로 내는 신고서라 넣지 않음(세액인쇄 서식표 줄로 찍음)
+  function plan(tax, ctx) {
+    var L = [];
+    if (tax === '상속') {
+      var c = withBiz(ctx || {});
+      ['상속1호부표2', '상속12호의2부표2'].forEach(function (k) { if (IH_WHEN[k](c)) L.push({ formKey: k, ctx: c }); });
+    }
+    return L;
+  }
   return { 묶음: '2단계', forms: forms, mappers: mappers, plan: plan, ctxFor: ctxFor, ready: ready };
 });
