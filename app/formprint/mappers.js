@@ -76,6 +76,14 @@
     NF.FORMS_BY_TAX = api.FORMS_BY_TAX;
     NF.applicable = api.applicable;
     NF.plan = api.plan;
+    NF.registerExt = api.registerExt;
+    NF.EXT_FILES = api.EXT_FILES;
+    NF.exts = api.exts;
+    NF.helpers = api.helpers;
+    NF.officialFor = api.officialFor;
+    NF.officialReady = api.officialReady;
+    NF.officialJobs = api.officialJobs;
+    NF.ctxsFor = api.ctxsFor;
   }
 })(typeof window !== 'undefined' ? window : globalThis, function (root) {
   'use strict';
@@ -1126,6 +1134,8 @@
       if (cw.result && cw.formType === 'ih7') L.push('상속9호부표7');
       if ((ctx.valAssets || []).some(function (a) { return a.method === 'artwork'; })) L.push('상속9호부표8');
     }
+    // [2026.10.20] 묶음 파일(mappers-*.js)의 서식 — 같은 ctx로 그 사건에 해당하는 것만 더함(감면신청서·특례신고서 등)
+    EXTS.forEach(function (x) { if (typeof x.plan === 'function') { try { L = L.concat(x.plan(tax, ctx) || []); } catch (e) { /* 묶음 하나의 오류가 본표 인쇄를 막지 않게 */ } } });
     return L;
   }
   function applicable(tax, ctx) {
@@ -1274,6 +1284,89 @@
     }
   };
 
+  // ═════════ 서식 묶음 파일(2026-10-20) — 84호·9호·10호 계열 밖의 서식(칸 해설 78장 중 55장)은 묶음마다 따로 둔 파일에 ═════════
+  //  묶음 파일 app/formprint/mappers-<묶음>.js 는 NxFormPrint.registerExt(api)로 등록한다(node: require('./mappers.js').registerExt).
+  //  api = { 묶음: '양도감면A',
+  //          forms:   { formKey: 서식번호(칸 해설·세액인쇄 서식표와 같은 글자, 예 '조세특례제한법 시행규칙 [별지 제54호서식]') },
+  //          mappers: { formKey: function (ctx) → { values, missing, notes, checks } }  (모양은 위 M과 같음 — helpers.Out 사용),
+  //          plan:    function (세목, ctx) → [formKey | {formKey, ctx}]   (세목 원본 모양 출력 묶음에 더할 것 — 해당 사건만),
+  //          ctxFor:  { formKey: function (extra) → ctx 또는 [ctx…] }       (세액인쇄 화면의 서식 한 줄 출력용 — 화면 전역값에서 모음),
+  //          ready:   { formKey: function () → true/false }               (그 서식에 찍을 계산 결과가 화면에 있는지) }
+  //  파일 이름은 EXT_FILES에 미리 적어 둔다(세액인쇄 화면이 이 순서로 불러옴). 없는 묶음 파일은 빈 등록만 한다.
+  var EXT_FILES = ['mappers-양도감면A.js', 'mappers-양도감면B.js', 'mappers-양도소득특례.js', 'mappers-증여특례A.js', 'mappers-증여특례B.js', 'mappers-상속부속A.js', 'mappers-상속부속B.js'];
+  var EXTS = [];
+  function registerExt(x) {
+    if (!x || EXTS.indexOf(x) >= 0) return x;
+    EXTS.push(x);
+    Object.keys(x.mappers || {}).forEach(function (k) {
+      M[k] = x.mappers[k];
+      if (root.NxFormPrint && root.NxFormPrint.mappers && root.NxFormPrint.mappers !== M) root.NxFormPrint.mappers[k] = x.mappers[k];
+    });
+    return x;
+  }
+  // ═════════ 세액인쇄 화면의 서식 한 줄 → 원본 모양(2026-10-20) ═════════
+  //  화면 서식표(PRINT_REGISTRY_ subForms)의 서식번호로 찾는다. 띄어쓰기는 무시('부표 1' = '부표1').
+  var BUILTIN_FORMNO = {
+    '양도84호': '소득세법 시행규칙 [별지 제84호서식]', '양도84부표1': '소득세법 시행규칙 [별지 제84호서식 부표1]', '양도84부표2': '소득세법 시행규칙 [별지 제84호서식 부표2]',
+    '양도84부표2의2': '소득세법 시행규칙 [별지 제84호서식 부표2의2]', '양도84부표3': '소득세법 시행규칙 [별지 제84호서식 부표3]',
+    '증여10호': '상속세 및 증여세법 시행규칙 [별지 제10호서식]', '증여10부표1': '상속세 및 증여세법 시행규칙 [별지 제10호서식 부표1]', '증여10부표2': '상속세 및 증여세법 시행규칙 [별지 제10호서식 부표2]',
+    '증여10부표3': '상속세 및 증여세법 시행규칙 [별지 제10호서식 부표3]', '증여10부표4': '상속세 및 증여세법 시행규칙 [별지 제10호서식 부표4]', '증여10부표5': '상속세 및 증여세법 시행규칙 [별지 제10호서식 부표5]',
+    '증여10부표6': '상속세 및 증여세법 시행규칙 [별지 제10호서식 부표6]',
+    '상속9호': '상속세 및 증여세법 시행규칙 [별지 제9호서식]', '상속9호부표1': '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표1]', '상속9호부표2': '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표2]',
+    '상속9호부표3': '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표3]', '상속9호부표3의2': '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표3의2]',
+    '상속9호부표4갑': '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표4(갑)]', '상속9호부표4을': '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표4(을)]',
+    '상속9호부표5': '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표5]', '상속9호부표6': '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표6]',
+    '상속9호부표7': '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표7]', '상속9호부표8': '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표8]'
+  };
+  function fno(s) { return String(s || '').replace(/\s+/g, ''); }
+  function taxOfKey(k) { return /^양도/.test(k) ? '양도' : /^증여/.test(k) ? '증여' : /^상속/.test(k) ? '상속' : ''; }
+  // → { formKey, tax } (84·10·9호 계열) 또는 { formKey, ext } (묶음 파일) 또는 null
+  function officialFor(formNo) {
+    var f = fno(formNo); if (!f) return null;
+    var k;
+    for (k in BUILTIN_FORMNO) if (fno(BUILTIN_FORMNO[k]) === f && typeof M[k] === 'function') return { formKey: k, tax: taxOfKey(k) };
+    for (var i = 0; i < EXTS.length; i++) for (k in (EXTS[i].forms || {})) if (fno(EXTS[i].forms[k]) === f && typeof EXTS[i].mappers[k] === 'function') return { formKey: k, ext: EXTS[i] };
+    return null;
+  }
+  // 세목 원본 모양 출력의 사람별 ctx — 양도·증여는 계산된 사람(양도인·증여 쌍)마다, 상속은 하나
+  function ctxsFor(tax, extra) {
+    var out = [];
+    if (tax === '상속') { out.push({ label: '상속', ctx: ctxFromApp.상속(extra) }); return out; }
+    var list = tax === '양도' ? (typeof lastTransferResults_ !== 'undefined' && lastTransferResults_ ? lastTransferResults_ : []) : (typeof lastGiftResults_ !== 'undefined' && lastGiftResults_ ? lastGiftResults_ : []);
+    var cnt = list.filter(function (it) { return it && it.result && !it.result.error; }).length;
+    for (var i = 0; i < Math.max(1, cnt); i++) out.push({ label: tax + (cnt > 1 ? ' ' + (i + 1) : ''), ctx: ctxFromApp[tax](i, extra) });
+    return out;
+  }
+  // 서식 한 줄을 찍을 묶음 목록 → [{ label, list: [{formKey, ctx}] }] (찍을 것이 없으면 [])
+  function officialJobs(formNo, extra) {
+    var o = officialFor(formNo); if (!o) return [];
+    var short = String(formNo).replace(/^[^\[]*\[|\]\s*$/g, ''); // '별지 제84호서식 부표1'
+    if (o.ext) {
+      var fn = o.ext.ctxFor && o.ext.ctxFor[o.formKey]; if (typeof fn !== 'function') return [];
+      var c = fn(extra); if (!c) return [];
+      var arr = Array.isArray(c) ? c : [c];
+      return arr.map(function (cx, i) { return { label: short + (arr.length > 1 ? ' ' + (i + 1) : ''), list: [{ formKey: o.formKey, ctx: Object.assign({}, cx, extra || {}) }] }; });
+    }
+    return ctxsFor(o.tax, extra).map(function (c) {
+      var list = plan(o.tax, c.ctx).filter(function (it) { return (typeof it === 'string' ? it : it.formKey) === o.formKey; })
+        .map(function (it) { return typeof it === 'string' ? { formKey: it, ctx: c.ctx } : it; });
+      return { label: c.label + ' ' + short, list: list };
+    }).filter(function (j) { return j.list.length; });
+  }
+  // 그 서식에 찍을 계산 결과가 화면에 있는지
+  function officialReady(formNo) {
+    var o = officialFor(formNo); if (!o) return false;
+    try {
+      if (o.ext) return !!(o.ext.ready && typeof o.ext.ready[o.formKey] === 'function' && o.ext.ready[o.formKey]());
+      return officialJobs(formNo).length > 0;
+    } catch (e) { return false; }
+  }
+  var helpers = { n: n, has: has, Out: Out, ymd: ymd, dateParts: dateParts, officeName: officeName, isMobile: isMobile, fullAddr: fullAddr, nativeOf: nativeOf,
+    fracNum: fracNum, pct: pct, pct2: pct2, ratioText: ratioText, el: el, checked: checked, agent: agent,
+    evFromSingle: evFromSingle, acqNec: acqNec, giftInheritRate: giftInheritRate, expenseItemsOf: expenseItemsOf, ctxFromApp: ctxFromApp };
+
   return { mappers: M, ctxFromApp: ctxFromApp, FORMS_BY_TAX: FORMS_BY_TAX, applicable: applicable, plan: plan,
+    registerExt: registerExt, EXT_FILES: EXT_FILES, exts: EXTS, helpers: helpers,
+    officialFor: officialFor, officialReady: officialReady, officialJobs: officialJobs, ctxsFor: ctxsFor,
     _helpers: { evFromSingle: evFromSingle, acqNec: acqNec, giftInheritRate: giftInheritRate, expenseItemsOf: expenseItemsOf, fullAddr: fullAddr } };
 });
