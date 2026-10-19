@@ -2014,6 +2014,19 @@
   // 증여받은 자산이라고 체크만 하면" 자동으로 재사용하기 위함 — 예전엔 이 특례를 별도 계산기에서
   // 계산해 그 결과 금액을 메인 계산기에 손으로 옮겨 입력해야 했는데, 이제는 거래 카드 자체에
   // 이월과세 판정 정보를 입력하면 메인 "세액 계산하기"가 알아서 적용 여부를 판정해 반영한다.
+  // [2026.10.19 서식 감사] §97의2① — 배우자는 "사망으로 혼인관계가 소멸된 경우는 제외", 직계존비속은 "양도 당시 사망한 경우는 제외"
+  //  (2025.12.23 개정, 부칙 제7조: 2026.1.1 이후 양도분부터). 증여자가 양도 전에 사망했으면 이월과세를 하지 않는다.
+  // [2026.10.20 위원회 J11·J10] 증여자 사망일(donorDeathDate)을 받으면 양도일 이전(같은 날 포함)에 사망했을 때 '양도 당시 사망'으로 본다(예전 체크 donorDeceasedBeforeTransfer도 읽음).
+  //  직계존비속은 법률 제21221호 부칙 제7조 "이 법 시행 이후 자산을 양도하는 경우부터" — 양도일 2026.1.1. 이후만. 2025.12.31. 이전 양도는 사망해도 이월과세(조심 2017서0043).
+  function carryoverDonorDeathExcluded_(t) {
+    if (!t) return '';
+    const dd_ = String(t.donorDeathDate || '').slice(0, 10), td_ = String(t.transferDate || '').slice(0, 10);
+    const dead_ = (dd_ && (!td_ || dd_ <= td_)) || (!dd_ && !!t.donorDeceasedBeforeTransfer);
+    if (!dead_) return '';
+    if (t.donorRelation === 'spouse') return '증여자(배우자)가 양도 전 사망 — §97의2① "사망으로 혼인관계가 소멸된 경우는 제외"';
+    if (t.donorRelation === 'lineal' && String(t.transferDate || '') >= '2026-01-01') return '증여자(직계존비속)가 양도 당시 사망 — §97의2①(2026.1.1 이후 양도분, 법률 제21221호 부칙 제7조). ⚠ 이 경우 §101②(특수관계인 증여 후 10년 안 양도의 부당행위) 괄호의 "§97의2①을 적용받는 직계존비속" 밖이 되어 §101②가 걸리는지는 따로 확인하세요(원문만으로 결론 못 냄 — 위원회 J11)';
+    return '';
+  }
   function resolveCarryoverAcquisitionBasis_(t) {
     const giftReceivedDate = t.giftReceivedDate;
     const donorRelation = t.donorRelation; // 'spouse' | 'lineal'
@@ -2034,6 +2047,8 @@
     if (!isWithinWindow || isEminentDomainExcluded) {
       return Object.assign({ applied: false, reason: !isWithinWindow ? '증여일로부터 ' + windowYears_ + '년 경과' + (windowYears_ === 5 ? '(2023.1.1. 전 증여는 5년 — 법률 제19196호 부칙 제18조)' : '') : '수용 특례(§97의2②1호) 해당' }, withoutBasis);
     }
+    const deathExcluded_ = carryoverDonorDeathExcluded_(t);
+    if (deathExcluded_) return Object.assign({ applied: false, reason: deathExcluded_ }, withoutBasis);
 
     // 증여세 상당액(시행령§163의2②) = 증여세산출세액 × 해당자산 증여세과세가액/전체 증여세과세가액,
     // 필요경비 산입 한도 = 양도가액 - (증여자 취득가액 + 증여자 필요경비)(§97①②금액).
@@ -2422,7 +2437,7 @@
     });
     // [2026.10.19 서식 감사] 83호의6 일반세율 체크는 지금 양도인 카드 값이라 그 해 양도 주택 모두에 들어간다 — 2채 이상이면 확인(판단 대기: 자산 카드로 옮길지)
     const mhRental_ = cores.filter(function (c) { return c.raw && c.raw.isMultiHouseRentalExemption && c.assetType === 'house' && !c.exempt; });
-    if (mhRental_.length > 1) mhRental_.forEach(function (c) { assetNotes.push({ idx: c.idx, 구분: '83호의6 일반세율(중과 제외)', 안내: '⚠ 양도인 카드의 "일반세율 적용(별지 83호의6)" 체크가 이 해 양도 주택 ' + mhRental_.length + '채 모두에 적용됐습니다 — 신청서는 양도하는 주택 한 채(장기임대주택·일반주택)에 대한 것이니 해당 주택만인지 확인하세요.' }); });
+    if (mhRental_.length > 1 && !mhRental_.some(function (c) { return !!c.raw.mhRentalExemptionType; })) mhRental_.forEach(function (c) { assetNotes.push({ idx: c.idx, 구분: '83호의6 일반세율(중과 제외)', 안내: '⚠ 양도인 카드의 "일반세율 적용(별지 83호의6)" 체크가 이 해 양도 주택 ' + mhRental_.length + '채 모두에 적용됐습니다 — 신청서는 양도하는 주택 한 채(장기임대주택·일반주택)에 대한 것이니 해당 주택만인지 확인하세요.' }); });
 
     // [2026.10.19 서식 감사 — 작업자 자] 합산(장기) 그룹의 세액감면 — reductions90_(위 주석): 소득세법 §90① A×(B−C)÷D×E,
     //  모든 감면이 같은 A(감면 전 합산 산출세액, 중과 가산 포함)에서, §103② 기본공제 순서, 소득령 §167의2② 통산 비율,
@@ -6351,10 +6366,11 @@
     });
     const withoutResult = window.calculateStockTransferTaxJS(withoutCarryoverParams);
 
-    if (!isEligibleRelation || !isWithinWindow) {
+    const deathExcludedStock_ = isEligibleRelation && isWithinWindow ? carryoverDonorDeathExcluded_(p) : '';
+    if (!isEligibleRelation || !isWithinWindow || deathExcludedStock_) {
       if (withoutResult && !withoutResult.error) {
         withoutResult.이월과세_적용여부 = false;
-        withoutResult.이월과세_미적용사유 = !isEligibleRelation ? '배우자·직계존비속으로부터의 증여가 아님' : (!stockCarryoverAppliesAt_(giftReceivedDate) ? '2025.1.1. 전에 증여받은 주식등은 이월과세 대상이 아님(법률 제20615호 부칙 제8조)' : '증여일로부터 1년 경과(§94①3호 주식등, §97의2①)');
+        withoutResult.이월과세_미적용사유 = deathExcludedStock_ || (!isEligibleRelation ? '배우자·직계존비속으로부터의 증여가 아님' : (!stockCarryoverAppliesAt_(giftReceivedDate) ? '2025.1.1. 전에 증여받은 주식등은 이월과세 대상이 아님(법률 제20615호 부칙 제8조)' : '증여일로부터 1년 경과(§94①3호 주식등, §97의2①)'));
       }
       return withoutResult;
     }

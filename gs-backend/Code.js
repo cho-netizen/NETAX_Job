@@ -568,6 +568,7 @@ const DRIVE_TOOLS = [
         isOneHouseOneFamily: { type: 'boolean', description: '1세대1주택 비과세 요건을 충족한다고 전제할지 여부(요건 자체는 이 도구가 검증하지 않음)' },
         residenceYears: { type: 'number', description: '1세대1주택(고가주택) 장기보유특별공제 계산용 거주기간(년). isOneHouseOneFamily일 때만 사용.' },
         multiHouseCount: { type: 'integer', description: '조정대상지역 다주택 중과 판정용 소유 주택 수(2 또는 3 이상). isOneHouseOneFamily가 아닐 때만 의미가 있다.' },
+        mhRentalExemptionType: { type: 'string', enum: ['', 'long_rental', 'reduced_rental', 'daycare', 'general'], description: '[2026.10.20] 별지 83호의6 ④ 구분 — 이 주택이 장기임대주택·감면대상 장기임대주택·장기어린이집이거나 그것들을 빼면 남는 일반주택이면 일반세율(시행령 §167의3①2·3·8의2·10호). 값이 있으면 isMultiHouseRentalExemption도 true로.' },
         isMultiHouseRentalExemption: { type: 'boolean', description: '[2026.10.19] 이번에 양도하는 주택이 장기임대주택(감면대상·장기어린이집 포함)이거나 그것들을 빼면 남는 1주택(일반주택)이라 중과 대상이 아님(소득령 §167의3①2·3·8의2·10호, §167의10①2·10호, 별지 83호의6 신청) — true면 중과 가산·장특공 배제를 하지 않는다.' },
         isAdjustedArea: { type: 'boolean', description: '양도 주택이 조정대상지역에 있는지 — true이고 multiHouseCount>=2이면 중과세율(+20%p/+30%p)이 적용되고 장기보유특별공제가 배제된다. 2년 이상 보유하고 2026.5.9까지 양도하면 자동으로 중과가 배제되며(시행령§167조의3①12의2호가목), 그 이후 양도라도 saleContractDate 등을 넣으면 토지거래허가구역 특례(나목·다목)로 배제되는지까지 판정한다. 조정대상지역 지정 현황은 수시로 바뀌므로 반드시 최신 여부를 확인하고 넣어라.' },
         saleContractDate: { type: 'string', description: '다주택중과 한시배제 나목·다목 판정용(시행령§167조의3①12의2호) — 매매계약체결일(YYYY-MM-DD). 양도일이 2026.5.9를 넘겨도, 2년 이상 보유한 주택을 이 날짜에 매매계약(계약금 지급 포함)했다면 계약체결일로부터 4개월(isExtendedDeadlineRegion이면 6개월, 단 2026.5.10 이후 계약시에는 각각 2026.9.9·11.9까지) 이내 양도시 중과가 배제될 수 있다. 해당 없으면 생략.' },
@@ -681,6 +682,8 @@ const DRIVE_TOOLS = [
         doneeOwnNecessaryExpenses: { type: 'number', description: '수증자가 증여받은 후 지출한 필요경비(원). 이월과세 미적용 시나리오에서만 쓰인다.' },
         giftTaxPaid: { type: 'number', description: '수증자가 이 자산에 대해 납부했거나 납부할 증여세 산출세액(원, 상증세법§56에 따른 금액) — 시행령§163의2②1호. 증여세상당액 계산에 쓰인다.' },
         giftTaxableValue: { type: 'number', description: '수증자의 전체 증여세 과세가액(상증세법§47, 원) — 시행령§163의2②3호. 이 자산 외에 함께 증여받은 재산이 있으면 그 합계까지 포함한 전체 금액이다(이 자산만 증여받았다면 doneeOwnAcquisitionPrice와 같은 값).' },
+        donorDeathDate: { type: 'string', description: '증여자 사망일(YYYY-MM-DD) — 양도일 이전이면 양도 당시 사망으로 판정(§97의2①: 배우자는 사망으로 혼인관계 소멸, 직계존비속은 2026.1.1. 이후 양도분부터 이월과세 안 함).' },
+        donorDeceasedBeforeTransfer: { type: 'boolean', description: '증여자가 양도 전에 사망했으면 true — §97의2①: 배우자는 사망으로 혼인관계가 소멸되면, 직계존비속은 2026.1.1 이후 양도분부터 양도 당시 사망했으면 이월과세를 하지 않는다(부칙 제7조).' },
         isEminentDomainExcludedFromCarryover: { type: 'boolean', description: '§97의2②1호 — 사업인정고시일로부터 소급 2년 이전에 증여받은 자산이 수용·협의매수된 경우인지. true면 이월과세를 적용하지 않는다.' },
         filingStatus: { type: 'string', enum: ['ontime', 'unreported', 'underreported'], description: 'calculate_transfer_tax와 동일.' }
       },

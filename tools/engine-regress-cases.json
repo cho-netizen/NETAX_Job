@@ -1587,5 +1587,131 @@
    "과세표준": 177500000,
    "산출세액": 48050000
   }
+ },
+ {
+  "이름": "상속 — 채무 초과 + 처분재산 추정(재산 13억·채무 14억·1년 내 인출 10억 미소명·사전증여 1억): §13① 후단 사전증여 가산 전 0 바닥(서식 감사 A1, I08)",
+  "도구": "calculate_inheritance_tax",
+  "고정": true,
+  "입력": {
+   "taxableEstateAmount": 100000000,
+   "priorGiftedAmountIncludedInEstate": 100000000,
+   "debtExcessAmount": 100000000,
+   "childCount": 1,
+   "hasSpouse": false,
+   "funeralCostAmount": 5000000,
+   "disposalPresumptionItems": [
+    {
+     "category": "예금",
+     "oneYearAmount": 1000000000,
+     "oneYearExplained": 0
+    }
+   ],
+   "priorGiftHeirs": [
+    {
+     "name": "자녀",
+     "priorGiftAmount": 100000000,
+     "priorGiftTaxableBase": 50000000,
+     "priorGiftTaxPaid": 0,
+     "actualInheritedValue": 0
+    }
+   ]
+  },
+  "정답": {
+   "상속세과세가액_서식": 795000000,
+   "과세표준": 295000000,
+   "납부세액": 47530000
+  }
+ },
+ {
+  "이름": "상속 — 채무 초과 + 사전증여 8억·장례비 1천만(재산 3억·채무 4억): 장례비는 바닥 안에서만 뺌(서식 감사 A1, I07b)",
+  "도구": "calculate_inheritance_tax",
+  "고정": true,
+  "입력": {
+   "taxableEstateAmount": 800000000,
+   "priorGiftedAmountIncludedInEstate": 800000000,
+   "debtExcessAmount": 100000000,
+   "childCount": 1,
+   "hasSpouse": false,
+   "funeralCostAmount": 10000000,
+   "priorGiftHeirs": [
+    {
+     "name": "자녀",
+     "priorGiftAmount": 800000000,
+     "priorGiftTaxableBase": 100000000,
+     "priorGiftTaxPaid": 0,
+     "actualInheritedValue": 0
+    }
+   ]
+  },
+  "정답": {
+   "상속세과세가액_서식": 800000000,
+   "과세표준": 300000000,
+   "납부세액": 48500000
+  }
+ },
+ {
+  "이름": "양도 이월과세(위원회 J11) — 2023.5.1. 증여·2026.3.2. 양도, 직계존속 증여자 2025.11.1. 사망: §97의2①(법률 제21221호 부칙 제7조, 2026.1.1. 이후 양도분) 이월과세 안 함",
+  "도구": "calculateTransferTaxWithCarryoverJS",
+  "고정": true,
+  "입력": {
+   "assetCategory": "land",
+   "transferPrice": 1000000000,
+   "giftReceivedDate": "2023-05-01",
+   "donorRelation": "lineal",
+   "doneeOwnAcquisitionPrice": 800000000,
+   "donorAcquisitionPrice": 200000000,
+   "donorAcquisitionDate": "2005-01-01",
+   "giftTaxPaid": 100000000,
+   "isRegistered": true,
+   "transferDate": "2026-03-02",
+   "donorDeathDate": "2025-11-01"
+  },
+  "정답": {
+   "이월과세_적용여부": false,
+   "산출세액": 55110000
+  }
+ },
+ {
+  "이름": "양도 이월과세(위원회 J11) — 같은 사례 2025.10.2. 양도(직계존속 2025.6.1. 사망): 2025.12.31. 이전 양도는 사망해도 이월과세(조심 2017서0043)",
+  "도구": "calculateTransferTaxWithCarryoverJS",
+  "고정": true,
+  "입력": {
+   "assetCategory": "land",
+   "transferPrice": 1000000000,
+   "giftReceivedDate": "2023-05-01",
+   "donorRelation": "lineal",
+   "doneeOwnAcquisitionPrice": 800000000,
+   "donorAcquisitionPrice": 200000000,
+   "donorAcquisitionDate": "2005-01-01",
+   "giftTaxPaid": 100000000,
+   "isRegistered": true,
+   "transferDate": "2025-10-02",
+   "donorDeathDate": "2025-06-01"
+  },
+  "정답": {
+   "이월과세_적용여부": true,
+   "산출세액": 198210000
+  }
+ },
+ {
+  "이름": "양도 이월과세(위원회 J10) — 배우자 증여자 2025.6.1. 사망 뒤 2025.10.2. 양도: 사망으로 혼인관계 소멸 — 이월과세 안 함(§97의2①)",
+  "도구": "calculateTransferTaxWithCarryoverJS",
+  "고정": true,
+  "입력": {
+   "assetCategory": "land",
+   "transferPrice": 1000000000,
+   "giftReceivedDate": "2023-05-01",
+   "donorRelation": "spouse",
+   "doneeOwnAcquisitionPrice": 800000000,
+   "donorAcquisitionPrice": 200000000,
+   "donorAcquisitionDate": "2005-01-01",
+   "giftTaxPaid": 100000000,
+   "isRegistered": true,
+   "transferDate": "2025-10-02",
+   "donorDeathDate": "2025-06-01"
+  },
+  "정답": {
+   "이월과세_적용여부": false
+  }
  }
 ]
