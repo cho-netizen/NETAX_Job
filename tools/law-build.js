@@ -14,8 +14,8 @@ const fs = require('fs'), path = require('path'), zlib = require('zlib');
 
 const args = process.argv.slice(2);
 const opt = n => { const i = args.indexOf('--' + n); return i >= 0 ? args[i + 1] : null; };
-const OUT = opt('out') || 'J:/내 드라이브/0 NETAX/업무관리자/법령정비본';
-const REF = opt('ref') || 'J:/내 드라이브/0 NETAX/법령';
+const OUT = opt('out') || 'J:/내 드라이브/0 NETAX/업무관리자/법령'; // [2026.10.19] 폴더 정리(옛 이름 법령정비본)
+const REF = opt('ref') || 'J:/내 드라이브/0 NETAX/업무관리자/법령/세무사님 원본(2026.8)'; // 세무사님 원본 — 참고용, 내용은 손대지 않음
 const ONLY = opt('only') ? opt('only').split(',').map(s => s.replace(/\s/g, '')) : null;
 const DRY = args.includes('--dry');
 const OC = process.env.LAW_OC || 'netax';
@@ -274,7 +274,7 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
     for (const p of e.판) {
       const f = path.join(OUT, '본문', k, p.판 + '.json.gz'); if (!fs.existsSync(f)) continue;
       const md = lawToMd(JSON.parse(zlib.gunzipSync(fs.readFileSync(f)).toString('utf8')), items.filter(x => x.법령 === k), p.법종);
-      if (!DRY) { fs.mkdirSync(path.join(OUT, 'md', k), { recursive: true }); fs.writeFileSync(path.join(OUT, 'md', k, k + '_' + p.판 + '.md'), md); }
+      if (!DRY) { fs.mkdirSync(path.join(OUT, '읽기용(md)', k), { recursive: true }); fs.writeFileSync(path.join(OUT, '읽기용(md)', k, k + '_' + p.판 + '.md'), md); }
       mdN++;
     }
   }

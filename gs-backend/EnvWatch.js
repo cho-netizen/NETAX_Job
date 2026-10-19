@@ -491,8 +491,9 @@ function envEnsureTrigger_() {
 // 자동으로 고치지 않고 갱신할 것 목록과 차이만 알린다(세무사님 확인 뒤 갱신). 설계: netax-inventory/maps/설계_법령원본.md 4절
 function envLawDbDir_(n) {
   var f = getNetaxRootFolder_();
-  ['업무관리자', '법령정비본', n].forEach(function (x) { var it = f && f.getFoldersByName(x); f = it && it.hasNext() ? it.next() : null; });
-  return f;
+  var g = function (p, x) { var it = p && p.getFoldersByName(x); return it && it.hasNext() ? it.next() : null; }, m = g(f, '업무관리자');
+  // [2026.10.19] 폴더 정리 — 업무관리자\법령정비본 → 업무관리자\법령(옛 이름도 찾음)
+  return g(g(m, '법령'), n) || g(g(m, '법령정비본'), n);
 }
 function envDbJson_(dir, name, dflt) {
   try { var d = envLawDbDir_(dir), it = d && d.getFilesByName(name); if (it && it.hasNext()) return JSON.parse(it.next().getBlob().getDataAsString('UTF-8')); } catch (e) { }

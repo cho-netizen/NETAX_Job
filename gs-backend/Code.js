@@ -4831,7 +4831,7 @@ function lawDbIdx_() {
   var c = CacheService.getScriptCache(), s = c.get('lawdb_idx2');
   if (s) return JSON.parse(s);
   var sub = function (f, n) { var it = f && f.getFoldersByName(n); return it && it.hasNext() ? it.next() : null; };
-  var b = sub(sub(sub(getNetaxRootFolder_(), '업무관리자'), '법령정비본'), '본문'), it = b && b.getFilesByName('색인.json');
+  var mg = sub(getNetaxRootFolder_(), '업무관리자'), b = sub(sub(mg, '법령'), '본문') || sub(sub(mg, '법령정비본'), '본문') /* [2026.10.19] 폴더 정리 — 업무관리자/법령정비본 → 업무관리자/법령(옛 이름도 찾음) */, it = b && b.getFilesByName('색인.json');
   if (!it || !it.hasNext()) return null;
   var idx = JSON.parse(it.next().getBlob().getDataAsString('UTF-8'));
   Object.keys(idx.법령).forEach(function (k) {
@@ -4927,7 +4927,7 @@ function toolLookupStatuteArticle(lawName, articleNo, baseDate) {
 
 // [2026.10.19] [📜 법령] 탭 정비본 보기 — 법령·판 목록 + (lawName을 주면) 그 판의 차례(조 번호·제목, 편·장·절 머리). 본문은 law_lookup_article(baseDate=판 시행일)
 function lawDbToc_(lawName, ver) {
-  var idx = lawDbIdx_(); if (!idx) return { error: '법령 정비본(드라이브 0 NETAX/업무관리자/법령정비본)을 찾지 못했습니다.' };
+  var idx = lawDbIdx_(); if (!idx) return { error: '법령 정비본(드라이브 0 NETAX/업무관리자/법령/본문)을 찾지 못했습니다.' };
   var laws = Object.keys(idx.법령).map(function (k) { var e = idx.법령[k]; return { 키: k, 이름: e.이름, 범위: e.범위, 현행: e.현행, 판: e.판.map(function (p) { return { 판: p.판, 시행일: p.시행일, 공포일: p.공포일, 공포번호: p.공포번호, 구분: p.구분, 법종: p.법종, 상태: p.상태 }; }) }; });
   if (!lawName) return { 법령: laws };
   var key = String(lawName).replace(/\s/g, ''), e = idx.법령[key], v = ver || (e && e.현행);
