@@ -13165,6 +13165,9 @@ function tcLoadTaxAgentSettings_(){
     if (res) TC_TAX_AGENT_CACHE_ = res;
   }).catch(function(){ /* 설정을 못 불러와도 계산 자체는 계속 쓸 수 있어야 하므로 조용히 무시 */ });
 }
+// [2026.10.19 서식 감사(작업자 러)] 화면 입력칸 값 — 증여 특례 인쇄(10호의2 부표2·10호의3·10호의4)가 입력칸 값을 세무대리인 설정값(taxAgentField_)에서 읽어
+//  늘 빈 값·0으로 찍혔다(엔진 계산은 정상). 화면 칸에서 읽는다
+function tcInputVal_(id){ const el = document.getElementById(id); return el ? el.value : ''; }
 function taxAgentField_(id){
   return TC_TAX_AGENT_CACHE_[id] || '';
 }
@@ -13286,12 +13289,12 @@ function srAttach1PrintPageHtml_(r){
 }
 function srAttach2PrintPageHtml_(r){
   if (r.특례종류 !== '가업승계주식등(조특법 §30의6)') return '';
-  const totalAsset = numVal(taxAgentField_('srTotalAsset'));
-  const nonBiz55 = numVal(taxAgentField_('srNonBiz55'));
-  const nonBiz49 = numVal(taxAgentField_('srNonBiz49'));
-  const nonBiz61 = numVal(taxAgentField_('srNonBiz61'));
-  const excessCash = numVal(taxAgentField_('srExcessCash'));
-  const nonBizStock = numVal(taxAgentField_('srNonBizStock'));
+  const totalAsset = numVal(tcInputVal_('srTotalAsset'));
+  const nonBiz55 = numVal(tcInputVal_('srNonBiz55'));
+  const nonBiz49 = numVal(tcInputVal_('srNonBiz49'));
+  const nonBiz61 = numVal(tcInputVal_('srNonBiz61'));
+  const excessCash = numVal(tcInputVal_('srExcessCash'));
+  const nonBizStock = numVal(tcInputVal_('srNonBizStock'));
   const nonBizTotal = nonBiz55 + nonBiz49 + nonBiz61 + excessCash + nonBizStock;
   const businessRelated = Math.max(0, totalAsset - nonBizTotal);
   let n = 0;
@@ -13351,9 +13354,9 @@ function jmPrintFormPageHtml_(){
       pfRow_(0, '수혜법인 기업규모', jmCompanySizeLabel) +
       pfRow_(0, '적용소득기준', r.적용소득기준) +
       pfRow_(0, '적용소득금액', won(r.적용소득금액)) +
-      pfRow_(0, '특수관계법인거래비율(과세제외매출 반영)', taxAgentField_('jmTradeRatio') + '%') +
+      pfRow_(0, '특수관계법인거래비율(과세제외매출 반영)', tcInputVal_('jmTradeRatio') + '%') +
       pfRow_(0, '과세요건 거래비율기준', r.과세요건_거래비율기준 + '%') +
-      pfRow_(0, '지배주주+친족 주식보유비율', taxAgentField_('jmShareRatio') + '%') +
+      pfRow_(0, '지배주주+친족 주식보유비율', tcInputVal_('jmShareRatio') + '%') +
       pfRow_(0, '과세요건 지분율기준', r.과세요건_지분율기준 + '%') +
       pfRow_(0, '계산식 차감비율(거래)', r.증여의제이익_계산식차감비율_거래 + '%p') +
       pfRow_(0, '계산식 차감비율(지분)', r.증여의제이익_계산식차감비율_지분 + '%p') +
@@ -13480,10 +13483,10 @@ function jtPrintFormPageHtml_(){
     '<div class="pf-section-head">증여의제이익 계산명세(산출근거)</div>' +
     '<table class="pf-table">' +
       pfRow_(0, '신고 단계', jtPhaseLabel) +
-      pfRow_(0, '사업기회로 인한 수혜법인 이익', won(numVal(taxAgentField_('jtProfit')))) +
-      pfRow_(0, '지배주주+친족 주식보유비율', taxAgentField_('jtShareRatio') + '%') +
-      pfRow_(0, '법인세 납부세액 중 상당액', won(numVal(taxAgentField_('jtCorporateTax')))) +
-      (jtPhaseLabel === '개시사업연도' ? pfRow_(0, '개시사업연도 월수', taxAgentField_('jtMonths')) : '') +
+      pfRow_(0, '사업기회로 인한 수혜법인 이익', won(numVal(tcInputVal_('jtProfit')))) +
+      pfRow_(0, '지배주주+친족 주식보유비율', tcInputVal_('jtShareRatio') + '%') +
+      pfRow_(0, '법인세 납부세액 중 상당액', won(numVal(tcInputVal_('jtCorporateTax')))) +
+      (jtPhaseLabel === '개시사업연도' ? pfRow_(0, '개시사업연도 월수', tcInputVal_('jtMonths')) : '') +
     '</table>' +
     '<div class="pf-section-head">세액 계산</div>' +
     '<table class="pf-table">' +
