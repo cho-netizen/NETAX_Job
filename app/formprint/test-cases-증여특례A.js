@@ -52,5 +52,17 @@ module.exports = function (E, H) {
     marriageBirth: { marriage: 0, birth: 0 }, installment: 0, split: 0, taxAgent: AGENT };
   L.push({ name: '조특52호_영농자녀_plan', forms: require('./mappers-증여특례A.js').plan('증여', c4), ctx: c4 });
 
+  // ⑤ 증여10호의5 — 초과배당(상증법 §41의2): 실제 받은 배당 5억 × 과소배당 비율 60% = 초과배당 3억, 최초 신고(추정율표)
+  //   10년 안 같은 증여자 증여 2천만 합산, 증여재산공제 남은 한도 5천만(직계존속)
+  var edIn1 = { excessDividendBaseAmount: 500000000, disproportionateShortfallRatio: 0.6, relationDeductionLimit: 50000000, priorGiftAmount: 20000000, priorPaidTax: 0,
+    filingStatus: 'ontime', giftDate: '2026-04-30' };
+  var e1 = E.calculateExcessDividendGiftTaxJS(edIn1);
+  var c5 = base({ r: e1, filingStatus: 'ontime', finalSettlement: false, edInput: { priorGiftAmount: 20000000, priorPaidTax: 0 }, relation: '직계존속', giftDate: '2026-04-30' });
+  L.push({ name: '증여10호의5_초과배당_최초', forms: [{ formKey: '증여10호의5', ctx: c5 }], ctx: c5 });
+  // 같은 건 정산 신고 — 실제 소득세액이 추정보다 커서 증여재산가액이 줄고 최초 신고 세액(㊱)을 빼면 환급
+  var edIn2 = Object.assign({}, edIn1, { isFinalSettlement: true, actualIncomeTax: 110000000, initialGiftTaxAmount: e1.납부세액 });
+  var c5b = base({ r: E.calculateExcessDividendGiftTaxJS(edIn2), filingStatus: 'ontime', finalSettlement: true, edInput: { priorGiftAmount: 20000000, priorPaidTax: 0 }, relation: '직계존속', giftDate: '2026-04-30' });
+  L.push({ name: '증여10호의5_초과배당_정산환급', forms: [{ formKey: '증여10호의5', ctx: c5b }], ctx: c5b });
+
   return L;
 };

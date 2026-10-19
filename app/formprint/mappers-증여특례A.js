@@ -268,6 +268,94 @@
     return !!(items.length && (items.some(function (it) { return n(it.result.영농자녀증여농지세액감면) > 0; }) || farmField() > 0));
   };
 
+  // ───────── 증여의제 신고서(10호의5·10호의6) 공용 ─────────
+  // 엔진 결과에 따로 없는 값을 결과·입력에서 엔진과 같은 식으로 되살린다(엔진은 고치지 않음)
+  //  가산액: 엔진 giftAggregationAmount(1천만원 미만이면 0) — 입력이 없으면 과세표준에서 거꾸로
+  function aggOf(r, inp, giftAmt) {
+    if (has(inp.priorGiftAmount)) { var v = n(inp.priorGiftAmount); return v >= 10000000 ? v : 0; }
+    if (n(r.과세표준) > 0) return Math.max(0, n(r.과세표준) + n(r.증여재산공제) + n(r.감정평가수수료공제) + n(r.재해손실공제) - giftAmt);
+    return 0;
+  }
+  //  기납부세액·외국납부세액공제: 엔진 taxAfterCredit = 산출세액 계 − min(기납부, 산출세액) − 외국납부 → 결과 납부세액·신고세액공제·가산세에서 되살림
+  function creditsOf(r, inp) {
+    var pen = n(r.무신고가산세) + n(r.과소신고가산세) + n(r.납부지연가산세);
+    var after = n(r.환급세액) > 0 ? n(r.최초신고_증여세액) + n(r.신고세액공제) - n(r.환급세액) : n(r.납부세액) - pen + n(r.신고세액공제) + n(r.최초신고_증여세액);
+    var both = Math.max(0, n(r.산출세액_할증후) - after); // 기납부 + 외국납부
+    var paid = Math.min(has(inp.priorPaidTax) ? n(inp.priorPaidTax) : both, n(r.산출세액), both);
+    return { paid: paid, foreign: both - paid, after: after, pen: pen };
+  }
+  // 증여재산공제 합계를 관계 칸 하나에(특례 탭엔 관계 칸이 없어 일반 탭 첫 증여자 카드의 관계 — 지금 인쇄처럼 같은 사건의 같은 증여자)
+  function deductCells(o, r, ctx, cells) {
+    var REL = { '배우자': cells[0], '직계존속': cells[1], '직계비속': cells[2], '기타친족': cells[3] };
+    var d = n(r.증여재산공제), c = REL[ctx.relation];
+    if (c) { cells.forEach(function (k) { o.set(k, k === c ? d : 0); }); o.note(c + ' 증여재산공제 = 화면 "증여재산공제 남은 한도액"으로 엔진이 뺀 금액. 관계(' + ctx.relation + ')는 일반 탭 첫 증여자 카드에서 옮김 — 다르면 고칠 것'); }
+    else if (!d) cells.forEach(function (k) { o.set(k, 0); });
+    else o.miss(cells.join('') + ' 증여재산공제', '관계 값이 배우자·직계존속·직계비속·기타친족이 아님(' + ctx.relation + ') — 공제 ' + d + '원을 어느 칸에 적을지 정할 수 없음');
+  }
+  function relationOfFirstDonor() {
+    var drs = g('giftDonors') || [], f = g('giftPairRelation_');
+    return drs[0] && typeof f === 'function' ? f(drs[0], 0).relation : (drs[0] && drs[0].relation) || '';
+  }
+  // 특례 탭 공통 입력(10년 합산·기납부·외국납부 — taxCalcGiftAggregationInput_와 같은 칸)
+  function aggInputOf(prefix) {
+    var v = function (id) { var s = H.el(prefix + id); return s === '' ? undefined : numv(s); };
+    return { priorGiftAmount: v('PriorAmount'), priorPaidTax: v('PriorPaidTax') };
+  }
+
+  // ═════════ 상증 별지 제10호의5서식 — 초과배당에 따른 이익의 증여재산 신고(상증법 §41의2) ═════════
+  //  ctx: { r: lastExcessDividendGiftResult_, filingStatus(edFilingStatus), finalSettlement(edFinalSettlement 체크), edInput: {priorGiftAmount, priorPaidTax},
+  //         donee, donor, relation, giftDate(edGiftDate 배당지급일), taxAgent, 신고일 }
+  //  예전 인쇄(edPrintFormPageHtml_ → gfDeemedGiftPrintRows_)는 순번으로 초과배당금액·소득세상당액·증여의제이익과 세액 줄만 찍었음.
+  mappers['증여10호의5'] = function (ctx) {
+    var o = new Out(), r = ctx.r || {}, inp = ctx.edInput || {};
+    filing(o, ctx);
+    people(o, ctx);
+    o.set('최초정산', ctx.finalSettlement ? '정산 신고' : '최초 신고');
+    o.miss('성실신고확인대상사업자 여·부', '계산기에 없음 — 화면에 이 값을 고르는 칸이 없음(엔진의 7월 1일 기준 분기에 쓰는 값)');
+    var ex = n(r.초과배당금액), it = n(r.소득세상당액), gv = n(r.증여의제이익);
+    var agg = aggOf(r, inp, gv), sum = gv + agg;
+    o.set('⑰', ex).set('⑱', it).set('⑲', gv).set('⑳', agg).set('㉑', sum);
+    deductCells(o, r, ctx, ['㉒', '㉓', '㉔', '㉕']);
+    var base = n(r.과세표준), extra = n(r.감정평가수수료공제) + n(r.재해손실공제);
+    o.set('㉖', base).set('㉗', H.giftInheritRate(base));
+    if (extra) o.note('⚠ 엔진 과세표준은 감정평가수수료 ' + n(r.감정평가수수료공제) + '원·재해손실공제 ' + n(r.재해손실공제) + '원도 뺀 값 — 서식 ㉖ 산식(㉑−㉒~㉕)에는 그 칸이 없음(상증법 §55①은 감정평가수수료를 뺌)');
+    var calc = n(r.산출세액), gen = n(r.세대생략할증액), tot = has(r.산출세액_할증후) ? n(r.산출세액_할증후) : calc + gen;
+    o.set('㉘', calc).set('㉙', gen).set('㉚', tot);
+    var cr = creditsOf(r, inp), rep = n(r.신고세액공제);
+    o.set('㉜', cr.paid).set('㉝', cr.foreign).set('㉞', rep).set('㉟', 0).set('㉛', cr.paid + cr.foreign + rep);
+    var init = n(r.최초신고_증여세액);
+    if (ctx.finalSettlement) o.set('㊱', init); else o.miss('㊱ 증여재산가액 기준 증여세액', '해당 없음 — 최초 신고(정산 신고 때만 최초 신고 세액을 적음)');
+    var pen = n(r.무신고가산세) + n(r.과소신고가산세), late = n(r.납부지연가산세);
+    o.set('㊲', pen).set('㊳', late);
+    var due = n(r.환급세액) > 0 ? -n(r.환급세액) : n(r.납부세액);
+    o.set('㊴', due);
+    if (due < 0) o.note('㊴ 환급받을 세액 ' + n(r.환급세액) + '원(음수로 찍음) — 정산 신고에서 최초 신고 세액이 더 많음');
+    o.miss('㊵ 연부연납 ㊶ 분납', '계산기에 없음 — 초과배당 탭에 연부연납·분납 칸이 없음(나눠 내면 직접 적고 ㊷를 고칠 것)');
+    o.set('㊷@금액', Math.max(0, due));
+    o.miss('㊵㊶㊷ 납부 및 신청일', '계산기에 없음');
+    signBlock(o, ctx);
+    o.check('⑲ = ⑰ − ⑱', gv, Math.max(0, ex - it));
+    o.check('㉑ = ⑲ + ⑳', sum, gv + agg);
+    o.check('㉖ = ㉑ − ㉒ − ㉓ − ㉔ − ㉕' + (extra ? ' − 감정평가수수료·재해손실공제(서식 칸 없음)' : ''), base, Math.max(0, sum - n(r.증여재산공제) - extra));
+    o.check('㉘ = ㉖ × ㉗(누진)', calc, progressive(base));
+    o.check('㉚ = ㉘ + ㉙', tot, calc + gen);
+    o.check('㊴ = ㉚ − ㉛ − ㊱ + ㊲ + ㊳', due, tot - (cr.paid + cr.foreign + rep) - (ctx.finalSettlement ? init : 0) + pen + late);
+    return o.result();
+  };
+  // 상증법 §26 세율(증여세 §56 준용) — 검산용(엔진 GIFT_INHERIT_TAX_BRACKETS와 같은 표)
+  function progressive(b) {
+    var T = [[1e8, 0.1, 0], [5e8, 0.2, 1e7], [1e9, 0.3, 6e7], [3e9, 0.4, 1.6e8], [Infinity, 0.5, 4.6e8]];
+    for (var i = 0; i < T.length; i++) if (b <= T[i][0]) return Math.round(b * T[i][1] - T[i][2]);
+    return 0;
+  }
+  ctxFor['증여10호의5'] = function (extra) {
+    var r = g('lastExcessDividendGiftResult_'); if (!r) return null;
+    var fin = H.checked('edFinalSettlement');
+    return Object.assign(peopleFromApp(), { r: r, filingStatus: H.el('edFilingStatus') || 'ontime', finalSettlement: !!fin, edInput: aggInputOf('ed'),
+      relation: relationOfFirstDonor(), giftDate: H.el('edGiftDate') || H.el('giftDate') }, extra || {});
+  };
+  ready['증여10호의5'] = function () { return !!g('lastExcessDividendGiftResult_'); };
+
   // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만)
   //  증여: 조특52호 = 그 증여 쌍의 계산 결과에 영농자녀 증여농지 세액감면이 있을 때(지금 인쇄가 일반 증여 신고서 뒤에 붙이는 것과 같음)
   //  10호의2·10호의5·10호의6은 일반 증여(10호)와 따로 내는 신고서라 이 묶음에 넣지 않음(서식 줄에서 찍음)
