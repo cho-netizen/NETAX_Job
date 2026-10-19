@@ -173,12 +173,29 @@ function caseProcAiCtxSave_(caseId, ctx) {
   } catch (e) {}
 }
 
+// 보낼 메시지 가리기 — 글 조각마다(생각·생각 가림 블록은 그대로), 도구 입력은 JSON 글로 가린 뒤 되돌림
+function caseProcAiMaskMsgs_(messages) {
+  const mk = typeof cxMask_ === 'function' ? cxMask_ : caseProcAiMask_;
+  const one = function (b) {
+    if (typeof b === 'string') return mk(b);
+    if (!b || typeof b !== 'object' || b.type === 'thinking' || b.type === 'redacted_thinking') return b;
+    const o = Object.assign({}, b);
+    if (typeof o.text === 'string') o.text = mk(o.text);
+    if (o.type === 'tool_result') o.content = Array.isArray(o.content) ? o.content.map(one) : (typeof o.content === 'string' ? mk(o.content) : o.content);
+    if (o.type === 'tool_use' && o.input) { try { o.input = JSON.parse(mk(JSON.stringify(o.input))); } catch (e) {} }
+    return o;
+  };
+  return (Array.isArray(messages) ? messages : []).map(function (m) { return Object.assign({}, m, { content: Array.isArray(m.content) ? m.content.map(one) : one(m.content) }); });
+}
 // ---------- 모델 한 번 부르기 ----------
 function caseProcAiCall_(model, system, tools, messages, maxTokens, effort) {
   const apiKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
   if (!apiKey) return { error: 'AI 열쇠(ANTHROPIC_API_KEY)가 설정되지 않았습니다.' };
   const cfg = MODEL_CONFIG[model];
   if (!cfg) return { error: '모델 표에 없는 모델: ' + model };
+  // [2026.10.20 보안 — 세무사님 조건 "AI로 보낼 때 주민·전화·계좌 가림"] 보내기 직전 한 곳에서 한 번 더 가린다(화면·PC가 이미 가렸어도).
+  //  모든 글(사용자 글·본문·도구 결과·도구 입력)에 cxMask_(없으면 caseProcAiMask_). 생각 블록은 서명이 있어 그대로 둔다
+  messages = caseProcAiMaskMsgs_(messages);
   const payload = { model: model, max_tokens: maxTokens || 3000, system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }], messages: messages };
   if (tools && tools.length) payload.tools = tools;
   if (cfg.thinkingMode === 'adaptive') { payload.thinking = { type: 'adaptive' }; payload.output_config = { effort: effort || 'medium' }; }
