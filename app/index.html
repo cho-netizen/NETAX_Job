@@ -11587,7 +11587,14 @@
   //      부득이한 사유 사망시 면제)+거주요건, 또는 ③2호: 2년전부터 계속 종사+신고기한까지 임원취임+
   //      2년내 대표이사등 취임(법인세법 적용영농), 또는 영농·영어·임업후계자
   function farmingInheritanceDeductionDetailed(p) {
-    const individualTotal = Number(p.farmingIndividualAssetValue) || 0;
+    // [2026.10.19 서식감사 차] 시행령 §16⑤1호(2026.2.27. 개정, 부칙 제5조: 그날 이후 상속개시분) — 소득세법 적용 영농상속 재산가액 =
+    //  영농에 사용한 자산의 가액 "에서 해당 자산에 담보된 채무액을 뺀 가액". 그 전 상속개시분은 빼지 않는다(연혁 스위치·상속개시일).
+    //  [별지 제2호서식](2025.3.21.)에는 아직 담보채무 칸이 없어 ①에 순액을 적는다. farmingIndividualSecuredDebt가 없으면 예전과 같다.
+    const farmingGross = Number(p.farmingIndividualAssetValue) || 0;
+    const fmDate_ = String(p.dateOfDeath || p.inheritanceDate || '').slice(0, 10);
+    const farmingDebtApplies = !refHistoryOn_() || !/^\d{4}-\d{2}-\d{2}$/.test(fmDate_) || fmDate_ >= '2026-02-27';
+    const farmingSecuredDebt = farmingDebtApplies ? Math.min(farmingGross, Math.max(0, Number(p.farmingIndividualSecuredDebt) || 0)) : 0;
+    const individualTotal = farmingGross - farmingSecuredDebt;
     const stockValue = Number(p.farmingStockValue) || 0;
     if (individualTotal <= 0 && stockValue <= 0) return null;
 
@@ -11615,7 +11622,7 @@
       eligibilityGateApplied = true;
       deductionAmount = 0;
     }
-    return { targetAmount, limitAmount, deductionAmount, individualTotal, targetCorporate, ratioInfo, requirementsUnverified, eligibilityGateApplied, failedRequirements };
+    return { targetAmount, limitAmount, deductionAmount, individualTotal, farmingSecuredDebt, targetCorporate, ratioInfo, requirementsUnverified, eligibilityGateApplied, failedRequirements };
   }
 
   const TAX_FUNCS = {
@@ -14480,7 +14487,7 @@
       가업영농상속공제_동일자산중복적용주의: businessAndFarmingSameAssetWarning,
       영농상속공제_계산내역: farmingInheritanceDetail ? {
         대상금액: farmingInheritanceDetail.targetAmount, 한도액: farmingInheritanceDetail.limitAmount,
-        소득세법적용분: farmingInheritanceDetail.individualTotal, 법인세법적용분: farmingInheritanceDetail.targetCorporate,
+        소득세법적용분: farmingInheritanceDetail.individualTotal, 소득세법적용분_담보채무차감: farmingInheritanceDetail.farmingSecuredDebt, 법인세법적용분: farmingInheritanceDetail.targetCorporate,
         사업관련자산가액비율: farmingInheritanceDetail.ratioInfo ? farmingInheritanceDetail.ratioInfo.ratio : null,
         요건미확인: farmingInheritanceDetail.requirementsUnverified,
         요건미충족으로_공제배제: farmingInheritanceDetail.eligibilityGateApplied,
@@ -28897,7 +28904,7 @@ function renderGiftInheritanceSharedPane_(){
         '<div class="taxcalc-field"><label>사업무관자산 - §55의2</label><input type="number" id="bdNonBiz55" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>사업무관자산 - 시행령§49</label><input type="number" id="bdNonBiz49" placeholder="원"><span class="taxcalc-field-help">임대용부동산 포함</span></div>' +
         '<div class="taxcalc-field"><label>사업무관자산 - 시행령§61①2호</label><input type="number" id="bdNonBiz61" placeholder="원"><span class="taxcalc-field-help">대여금</span></div>' +
-        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="bdExcessCash" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="bdExcessCash" placeholder="원"><span class="taxcalc-field-help">평균 현금의 200%(2025.2.28. 이후 상속개시·증여, 그 전 150%) 초과분 — 시행령 §15⑤2호라목</span></div>' +
         '<div class="taxcalc-field"><label>영업무관 주식·채권·금융상품</label><input type="number" id="bdNonBizStock" placeholder="원"></div>' +
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-business-succession-deferral-amount">납부유예금액 계산하기</button>' +
@@ -31730,7 +31737,7 @@ function renderInheritancePane(){
         '<div class="taxcalc-field"><label>사업무관자산 - §55의2</label><input type="number" id="ihBusinessNonBiz55" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
         '<div class="taxcalc-field"><label>사업무관자산 - 시행령§49</label><input type="number" id="ihBusinessNonBiz49" placeholder="원"><span class="taxcalc-field-help">임대용부동산 포함, 법인</span></div>' +
         '<div class="taxcalc-field"><label>사업무관자산 - 시행령§61①2호</label><input type="number" id="ihBusinessNonBiz61" placeholder="원"><span class="taxcalc-field-help">대여금, 법인</span></div>' +
-        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="ihBusinessExcessCash" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
+        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="ihBusinessExcessCash" placeholder="원"><span class="taxcalc-field-help">법인, 평균 현금의 200%(2025.2.28. 이후 상속개시·증여, 그 전 150%) 초과분 — 시행령 §15⑤2호라목</span></div>' +
         '<div class="taxcalc-field"><label>영업무관 주식·채권·금융상품</label><input type="number" id="ihBusinessNonBizStock" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
         '<div class="taxcalc-field"><label>총 상속재산가액(가업상속납부유예 참고계산용)</label><input type="number" id="ihTotalGrossEstate" placeholder="원"><span class="taxcalc-field-help">§72의2 납부유예 가능세액을 참고로 보려면 입력</span></div>' +
       '</div>' +
@@ -31753,12 +31760,13 @@ function renderInheritancePane(){
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>최종 공제액(직접 입력, 상세내역 없을 때만)</label><input type="number" id="ihFarmingDeduction" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>영농재산가액 합계</label><input type="number" id="ihFarmingIndividualAsset" placeholder="원"><span class="taxcalc-field-help">농지·초지·산림지·어선 등, 별지2호 ①합계, 개인</span></div>' +
+        '<div class="taxcalc-field"><label>위 영농재산에 담보된 피상속인 채무액</label><input type="number" id="ihFarmingIndividualDebt" placeholder="원"><span class="taxcalc-field-help">2026.2.27. 이후 상속개시분만 뺌(시행령 §16⑤1호), 없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>상속개시일 현재 주식등 가액</label><input type="number" id="ihFarmingStockValue" placeholder="원"><span class="taxcalc-field-help">영농법인 주식가액, 법인</span></div>' +
         '<div class="taxcalc-field"><label>총자산가액</label><input type="number" id="ihFarmingTotalAsset" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
         '<div class="taxcalc-field"><label>사업무관자산 - §55의2</label><input type="number" id="ihFarmingNonBiz55" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
         '<div class="taxcalc-field"><label>사업무관자산 - 시행령§49</label><input type="number" id="ihFarmingNonBiz49" placeholder="원"><span class="taxcalc-field-help">임대용부동산 포함, 법인</span></div>' +
         '<div class="taxcalc-field"><label>사업무관자산 - 시행령§61①2호</label><input type="number" id="ihFarmingNonBiz61" placeholder="원"><span class="taxcalc-field-help">대여금, 법인</span></div>' +
-        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="ihFarmingExcessCash" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
+        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="ihFarmingExcessCash" placeholder="원"><span class="taxcalc-field-help">법인, 평균 현금의 200%(2025.2.28. 이후 상속개시·증여, 그 전 150%) 초과분 — 시행령 §15⑤2호라목</span></div>' +
         '<div class="taxcalc-field"><label>영업무관 주식·채권·금융상품</label><input type="number" id="ihFarmingNonBizStock" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>영농상속공제 자격요건(시행령§16②③) — ※ 아래 항목은 모두 기본적으로 충족(체크)된 상태로 시작합니다. 실제와 달라 하나라도 체크 해제하면 영농상속공제가 전액 배제됩니다.</b></div>' +
@@ -32923,7 +32931,7 @@ function ihAttachPrintPagesHtml_(){
       '<table class="pf-table">' + pfRow_(0, '피상속인 성명', g_('ihDeceasedName')) + pfRow_(0, '피상속인 주민등록번호', g_('ihDeceasedRegNo')) + pfRow_(0, '상속인 성명', heir.name || '') + pfRow_(0, '상속인 주민등록번호', heir.regNo || '') + '</table>' +
       '<div class="pf-section-head">2. 영농상속재산명세</div>' +
       '<table class="pf-table">' +
-        pfRow_(0, '가-1. 소득세법 적용 영농(① 합계)', won(farmingDetail.소득세법적용분)) +
+        pfRow_(0, '가-1. 소득세법 적용 영농(① 합계' + (farmingDetail.소득세법적용분_담보채무차감 ? ' — 담보채무 ' + won(farmingDetail.소득세법적용분_담보채무차감) + ' 뺀 순액, 시행령 §16⑤1호' : '') + ')', won(farmingDetail.소득세법적용분)) +
         pfRow_(0, '가-2. 법인세법 적용 영농(② 상속개시일 현재 주식등의 가액)', won(ihDomNum_('ihFarmingStockValue'))) +
       '</table>' +
       '<div class="pf-section-head">3. 영농상속공제액</div>' +
@@ -33213,7 +33221,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>사업무관자산 - §55의2</label><input type="number" id="srNonBiz55" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>사업무관자산 - 시행령§49</label><input type="number" id="srNonBiz49" placeholder="원"><span class="taxcalc-field-help">임대용부동산 포함</span></div>' +
         '<div class="taxcalc-field"><label>사업무관자산 - 시행령§61①2호</label><input type="number" id="srNonBiz61" placeholder="원"><span class="taxcalc-field-help">대여금</span></div>' +
-        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="srExcessCash" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="srExcessCash" placeholder="원"><span class="taxcalc-field-help">평균 현금의 200%(2025.2.28. 이후 상속개시·증여, 그 전 150%) 초과분 — 시행령 §15⑤2호라목</span></div>' +
         '<div class="taxcalc-field"><label>영업무관 주식·채권·금융상품</label><input type="number" id="srNonBizStock" placeholder="원"></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>공제 · 세액공제 · 신고 상태</b></div>' +
@@ -38433,6 +38441,7 @@ function handleTaxCalcClick_(e){
       businessHeirTaxWithoutDeduction: numVal(document.getElementById('ihBusinessHeirTaxWithoutDeduction').value) || 0,
       farmingInheritanceDeduction: numVal(document.getElementById('ihFarmingDeduction').value) || 0,
       farmingIndividualAssetValue: numVal(document.getElementById('ihFarmingIndividualAsset').value) || 0,
+      farmingIndividualSecuredDebt: numVal((document.getElementById('ihFarmingIndividualDebt') || {}).value) || 0,
       farmingStockValue: numVal(document.getElementById('ihFarmingStockValue').value) || 0,
       farmingTotalAssetValue: numVal(document.getElementById('ihFarmingTotalAsset').value) || 0,
       farmingNonBizAsset55: numVal(document.getElementById('ihFarmingNonBiz55').value) || 0,

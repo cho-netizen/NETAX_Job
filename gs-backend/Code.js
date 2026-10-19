@@ -829,6 +829,7 @@ const DRIVE_TOOLS = [
         heirFarmingRequirementMet: { type: 'boolean', description: '영농상속공제용 — 시행령§16③: 상속인이 2년전부터 계속 직접 영농종사(+거주요건, 피상속인 65세이전사망 등이면 종사기간 요건 면제)하거나, 법인영농이면 2년 종사+신고기한까지 임원취임+2년내 대표이사취임 요건을, 또는 영농·영어·임업후계자에 해당하는지. false면 공제 전액 배제.' },
         farmingInheritanceDeduction: { type: 'number', description: '영농상속공제 최종 공제액(§18의3, 원, 30억한도) — 아래 상세 자산내역([별지 제2호서식] 기준) 파라미터를 채우면 이 도구가 직접 계산하므로 이 값은 생략해도 된다.' },
         farmingIndividualAssetValue: { type: 'number', description: '영농상속공제용 — 소득세법을 적용받는 영농재산(농지·초지·산림지·어선·어업권 등)가액 합계([별지 제2호서식] ①합계).' },
+        farmingIndividualSecuredDebt: { type: 'number', description: '영농상속공제용 — 위 영농재산에 담보된 피상속인 채무액(원). 2026.2.27. 이후 상속개시분만 재산가액에서 뺌(시행령 §16⑤1호). 없으면 생략.' },
         farmingStockValue: { type: 'number', description: '영농상속공제용 — 법인세법을 적용받는 영농(영농법인)인 경우, 상속재산 중 해당 법인 주식등 가액([별지 제2호서식] ③=②합계).' },
         farmingTotalAssetValue: { type: 'number', description: '영농상속공제용(법인) — 상속개시일 현재 해당 법인의 총자산가액.' },
         farmingNonBizAsset55: { type: 'number', description: '영농상속공제용(법인) — 사업무관자산 중 법인세법§55의2 해당자산가액.' },

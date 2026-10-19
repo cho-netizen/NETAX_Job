@@ -431,7 +431,14 @@
   //      부득이한 사유 사망시 면제)+거주요건, 또는 ③2호: 2년전부터 계속 종사+신고기한까지 임원취임+
   //      2년내 대표이사등 취임(법인세법 적용영농), 또는 영농·영어·임업후계자
   function farmingInheritanceDeductionDetailed(p) {
-    const individualTotal = Number(p.farmingIndividualAssetValue) || 0;
+    // [2026.10.19 서식감사 차] 시행령 §16⑤1호(2026.2.27. 개정, 부칙 제5조: 그날 이후 상속개시분) — 소득세법 적용 영농상속 재산가액 =
+    //  영농에 사용한 자산의 가액 "에서 해당 자산에 담보된 채무액을 뺀 가액". 그 전 상속개시분은 빼지 않는다(연혁 스위치·상속개시일).
+    //  [별지 제2호서식](2025.3.21.)에는 아직 담보채무 칸이 없어 ①에 순액을 적는다. farmingIndividualSecuredDebt가 없으면 예전과 같다.
+    const farmingGross = Number(p.farmingIndividualAssetValue) || 0;
+    const fmDate_ = String(p.dateOfDeath || p.inheritanceDate || '').slice(0, 10);
+    const farmingDebtApplies = !refHistoryOn_() || !/^\d{4}-\d{2}-\d{2}$/.test(fmDate_) || fmDate_ >= '2026-02-27';
+    const farmingSecuredDebt = farmingDebtApplies ? Math.min(farmingGross, Math.max(0, Number(p.farmingIndividualSecuredDebt) || 0)) : 0;
+    const individualTotal = farmingGross - farmingSecuredDebt;
     const stockValue = Number(p.farmingStockValue) || 0;
     if (individualTotal <= 0 && stockValue <= 0) return null;
 
@@ -459,7 +466,7 @@
       eligibilityGateApplied = true;
       deductionAmount = 0;
     }
-    return { targetAmount, limitAmount, deductionAmount, individualTotal, targetCorporate, ratioInfo, requirementsUnverified, eligibilityGateApplied, failedRequirements };
+    return { targetAmount, limitAmount, deductionAmount, individualTotal, farmingSecuredDebt, targetCorporate, ratioInfo, requirementsUnverified, eligibilityGateApplied, failedRequirements };
   }
 
   const TAX_FUNCS = {
@@ -3324,7 +3331,7 @@
       가업영농상속공제_동일자산중복적용주의: businessAndFarmingSameAssetWarning,
       영농상속공제_계산내역: farmingInheritanceDetail ? {
         대상금액: farmingInheritanceDetail.targetAmount, 한도액: farmingInheritanceDetail.limitAmount,
-        소득세법적용분: farmingInheritanceDetail.individualTotal, 법인세법적용분: farmingInheritanceDetail.targetCorporate,
+        소득세법적용분: farmingInheritanceDetail.individualTotal, 소득세법적용분_담보채무차감: farmingInheritanceDetail.farmingSecuredDebt, 법인세법적용분: farmingInheritanceDetail.targetCorporate,
         사업관련자산가액비율: farmingInheritanceDetail.ratioInfo ? farmingInheritanceDetail.ratioInfo.ratio : null,
         요건미확인: farmingInheritanceDetail.requirementsUnverified,
         요건미충족으로_공제배제: farmingInheritanceDetail.eligibilityGateApplied,

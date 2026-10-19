@@ -975,5 +975,41 @@
                               "과세표준": 1095000000,
                               "납부세액": 269660000
                     }
+          },
+          {
+                    "이름": "[서식감사 차] 영농상속 2026.5.1. 상속 — 영농재산 10억에서 담보채무 3억 빼고 공제 7억 (시행령 §16⑤1호 2026.2.27. 개정)",
+                    "도구": "calculate_inheritance_tax",
+                    "고정": true,
+                    "입력": {
+                              "taxableEstateAmount": 3000000000,
+                              "hasSpouse": false,
+                              "childCount": 1,
+                              "farmingIndividualAssetValue": 1000000000,
+                              "farmingIndividualSecuredDebt": 300000000,
+                              "dateOfDeath": "2026-05-01"
+                    },
+                    "정답": {
+                              "영농상속공제": 700000000,
+                              "과세표준": 1795000000,
+                              "납부세액": 541260000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 영농상속 2026.1.10. 상속 — 개정 전이라 담보채무 안 뺌(부칙 제5조)",
+                    "도구": "calculate_inheritance_tax",
+                    "고정": true,
+                    "입력": {
+                              "taxableEstateAmount": 3000000000,
+                              "hasSpouse": false,
+                              "childCount": 1,
+                              "farmingIndividualAssetValue": 1000000000,
+                              "farmingIndividualSecuredDebt": 300000000,
+                              "dateOfDeath": "2026-01-10"
+                    },
+                    "정답": {
+                              "영농상속공제": 1000000000,
+                              "과세표준": 1495000000,
+                              "납부세액": 424860000
+                    }
           }
 ]
