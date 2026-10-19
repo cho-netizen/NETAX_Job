@@ -31,6 +31,25 @@ module.exports = function (E, H) {
   L.push({ name: '증여10호의3부표2_출자고리', forms: [{ formKey: '증여10호의3부표2', ctx: jmCtx }], ctx: jmCtx });
   L.push({ name: '증여10호의3부표3_수증자간접', forms: [{ formKey: '증여10호의3부표3', ctx: Object.assign({}, jmCtx, { 부표3법인: 0 }) }], ctx: jmCtx });
   L.push({ name: '증여10호의3부표4_특수관계법인', forms: [{ formKey: '증여10호의3부표4', ctx: jmCtx }], ctx: jmCtx });
+  L.push({ name: '증여10호의3부표5_계산명세2', forms: [{ formKey: '증여10호의3부표5', ctx: jmCtx }], ctx: jmCtx });
+
+  // ───── 일감몰아주기 둘째 — 일반기업, 수증자 직접 20%만, 배당소득공제 3천만, 무신고 ─────
+  //  손계산: (45 − 5)% × 20% × 50억 = 4억 − 3천만 = 3억7천만 → 20% − 1천만 = 6,400만, 무신고(기한후) 신고세액공제 없음
+  var jmIn2 = { companySize: 'general', operatingIncome: 5000000000, netIncome: 0, tradeRatio: 45, relatedPartySales: 0, shareRatio: 20, dividendDeduction: 30000000,
+    fiscalYearEnd: '2025-06-30', filingStatus: 'unreported' };
+  var jm2 = E.calculateRelatedPartyTransactionGiftTaxJS({ companySize: 'general', afterTaxOperatingIncome: 5000000000, relatedPartyTransactionRatio: 45, shareholderOwnershipRatio: 20,
+    dividendDeduction: 30000000, filingStatus: 'unreported', unpaidDays: 30 });
+  if (jm2.증여의제이익 !== 370000000 || jm2.산출세액 !== 64000000) throw new Error('일감몰아주기 둘째 엔진 값이 손계산과 다름: ' + JSON.stringify(jm2));
+  var jmCtx2 = { kind: 'jm', r: jm2, donee: DONEE, taxAgent: AGENT, in: jmIn2, relatedParties: [],
+    shareholders: [{ name: '김수증', relation: '본인(지배주주)', directRatio: 20, chain1Company: '', chain1Ratio: 0, chain2Company: '', chain2Ratio: 0, chain3Company: '', chain3Ratio: 0, chainQualified: true, indirectRaw: 0, indirect: 0 }],
+    totalSales: 0, excludedSales: 0, 신고일: '2026-11-15' };
+  L.push({ name: '증여10호의3_일반_배당공제_무신고', forms: [{ formKey: '증여10호의3', ctx: jmCtx2 }, { formKey: '증여10호의3부표5', ctx: jmCtx2 }], ctx: jmCtx2 });
+  // ───── 일감몰아주기 셋째 — 중소기업 거래비율 40%(정상거래비율 50% 이하) → 과세대상 아님: 머리만 찍힘 ─────
+  var jm3 = E.calculateRelatedPartyTransactionGiftTaxJS({ companySize: 'small', afterTaxOperatingIncome: 800000000, relatedPartyTransactionRatio: 40, shareholderOwnershipRatio: 60, filingStatus: 'ontime' });
+  if (jm3.과세대상여부 !== false) throw new Error('일감몰아주기 셋째는 과세대상이 아니어야 함');
+  var jmCtx3 = { kind: 'jm', r: jm3, donee: DONEE, taxAgent: {}, in: { companySize: 'small', operatingIncome: 800000000, tradeRatio: 40, shareRatio: 60, fiscalYearEnd: '2025-12-31', filingStatus: 'ontime' },
+    shareholders: [], relatedParties: [], 신고일: '2026-03-31' };
+  L.push({ name: '증여10호의3_과세대상아님', forms: [{ formKey: '증여10호의3', ctx: jmCtx3 }], ctx: jmCtx3 });
 
   return L;
 };

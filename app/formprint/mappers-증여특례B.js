@@ -133,7 +133,7 @@
     head(o, ctx);
     if (has(I.fiscalYearEnd)) o.set('⑰', I.fiscalYearEnd); else o.miss('⑰ 증여일', '화면 입력 없음(수혜법인 사업연도 종료일)');
     if (!r.과세대상여부) {
-      o.miss('⑱~㉝ 증여재산가액·세액', '엔진: 과세대상 아님 — ' + (r.안내 || '계산 결과 없음'));
+      o.miss('⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝ 증여재산가액·세액', '엔진: 과세대상 아님 — ' + (r.안내 || '계산 결과 없음'));
       sign(o, ctx);
       return o.result();
     }
@@ -373,6 +373,46 @@
     return o.result();
   };
 
+  // ───────── 10호의3 부표5 — 수증자 등 및 과세가액 계산명세서(Ⅱ) ─────────
+  //  지금 인쇄에는 없던 부표(본표 "산출근거" 표가 대신했음). 값 출처: lastRelatedPartyGiftResult_ + jm 입력칸 + 🧮 주주별 보유 내역
+  //  계산기는 ⑨ 세후영업이익·⑭ 거래비율·주식보유비율 합·배당소득공제 합을 결과값으로 받으므로 ①~⑧, ⑪~⑬, ㉕·㉖·㉚~㉞는 계산기에 없음
+  mappers['증여10호의3부표5'] = function (ctx) {
+    var o = new Out(), r = ctx.r || {}, I = ctx.in || {}, dn = ctx.donee || {};
+    o.miss('①②③④⑤⑥⑦⑧ 세후 영업이익 계산', '계산기에 없음 — 화면에 ⑨ 세후영업이익을 바로 넣음');
+    if (!r.과세대상여부) { o.miss('⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑳㉑㉒㉓㉕㉖㉗㉘㉚㉛㉜㉝㉞㉟㊲㊳㊴ 전부', '엔진: 과세대상 아님 — ' + (r.안내 || '계산 결과 없음')); return o.result(); }
+    var sub = JM_SUB[I.companySize] || { trade: 0, share: 0 };
+    var income = n(r.적용소득금액), trade = Math.max(0, n(I.tradeRatio) - sub.trade), div = n(r.배당소득공제), gift = n(r.증여의제이익);
+    o.set('⑨', income);
+    if (n(ctx.totalSales) > 0) o.set('⑩', n(ctx.totalSales)); else o.miss('⑩ 수혜법인 매출액', '화면 입력 없음(🧮 특수관계법인 매출 합산 — 수혜법인 총매출액)');
+    o.miss('⑪ 특수관계법인 매출액·⑫ 제외매출액·⑬ 과세제외매출액(⑥+⑦)', '계산기에 없음 — 매출 합산 도구는 과세제외 차감 후 매출액과 과세제외(⑥) 합계만 받음(부표4)');
+    o.set('⑭', r4(n(I.tradeRatio))).set('⑮', r4(trade));
+    o.note('⑭ = 화면 특수관계법인거래비율(엔진 입력, 과세요건 판정에도 같은 값을 씀), ⑮ = ⑭ − ' + sub.trade + '%(' + (SIZE[I.companySize] || '') + ', 법 §45의3①2호)');
+    o.check('⑮ = ⑭ − 정상거래비율 차감(엔진 증여의제이익_계산식차감비율_거래)', Math.round(trade * 1e4), Math.round(Math.max(0, n(I.tradeRatio) - n(r.증여의제이익_계산식차감비율_거래)) * 1e4));
+    o.need('⑯', dn.name, '⑯ 주주명(수증자)');
+    var sp = jmSplit(ctx);
+    var pre = Math.round(income * trade / 100 * Math.max(0, n(I.shareRatio) - sub.share) / 100);
+    if (sp.why) {
+      o.miss('⑰⑱⑳㉑ 직접·간접 보유비율·㉒㉓·㊲㊳', '직접·간접 나눈 값이 계산기에 없음 — ' + sp.why + ' (화면 주식보유비율 ' + n(I.shareRatio) + '%는 직접+간접 합)');
+    } else {
+      o.set('⑰', r4(sp.direct)).set('⑱', r4(sp.indirect)).set('⑱@계', r4(sp.indirect)).set('⑳', r4(sp.d20)).set('㉑', r4(sp.i21)).set('㉑@계', r4(sp.i21));
+      var gD = Math.round(income * trade / 100 * sp.d20 / 100), gI = Math.round(income * trade / 100 * sp.i21 / 100);
+      o.set('㉒', gD).set('㉓', gI);
+      o.check('㉒ + ㉓ = ⑨ × ⑮ × (주식보유비율 − 한계보유비율 차감) — 엔진 배당공제 전 증여의제이익', gD + gI, pre);
+      o.note('⑳·㉑: 한계보유비율 차감 ' + sp.sub + '%p를 ⑱ 간접보유비율에서 먼저 빼고 남으면 ⑰에서(⑲ 작성방법)');
+      if (!div) {
+        o.miss('㉕㉖㉗㉘ ㉚㉛㉜㉝㉞㉟ 배당소득의 공제', '해당 없음 — 배당소득공제 0(화면 입력 없음)');
+        o.set('㊲', gD).set('㊳', gI);
+      } else if (!sp.indirect) {
+        o.set('㉗', r4(sp.direct)).set('㉘', div).miss('㉕ 배당소득·㉖ 배당가능이익', '계산기에 없음 — 화면에 공제대상금액(배당소득공제)을 바로 넣음')
+          .miss('㉚㉛㉜㉝㉞㉟ 간접출자법인의 배당 시', '해당 없음 — 간접보유비율 0');
+        o.set('㊲', Math.max(0, gD - div)).set('㊳', 0);
+      } else o.miss('㉕~㉟ 배당소득의 공제·㊲㊳', '배당소득공제(' + div + '원)를 직접·간접보유분으로 나눈 값이 계산기에 없음');
+    }
+    o.set('㊴', gift);
+    o.check('㊴ = ⑨ × ⑮ × 보유비율 − 배당소득공제(엔진 증여의제이익)', gift, Math.max(0, pre - div));
+    return o.result();
+  };
+
   // ───────── 세액인쇄 화면용 ctx — 화면 전역값에서 모음(브라우저) ─────────
   /* global lastRelatedPartyGiftResult_, lastBusinessOpportunityGiftResult_, giftDonees, shareholdingRows_, relatedPartyRatioRows_,
      jmRelatedPartyTotalSales_, jmRelatedPartyExcludedSales_, jtSegmentYears_, shareholdingIndirectRatio_, shareholdingCountedIndirectRatio_ */
@@ -418,6 +458,7 @@
     '증여10호의3부표1': function () { var r = jmR(); return !!(r && r.과세대상여부); },
     '증여10호의3부표2': function () { var r = jmR(); return !!(r && r.과세대상여부 && shRows('jm').some(function (x) { return has(x.chain1Company) || n(x.chain1Ratio) > 0; })); },
     '증여10호의3부표3': function () { var r = jmR(); return !!(r && r.과세대상여부 && chainGroups(shRows('jm')).a.length); },
+    '증여10호의3부표5': function () { var r = jmR(); return !!(r && r.과세대상여부); },
     '증여10호의3부표4': function () { var r = jmR(); return !!(r && r.과세대상여부 && (typeof relatedPartyRatioRows_ !== 'undefined' ? relatedPartyRatioRows_ : []).some(function (x) { return has(x.label) || n(x.sales) > 0; })); }
   };
   // 한 사건에 여러 장인 서식 — 수혜법인의 법인주주(ⓐ)마다 한 장
