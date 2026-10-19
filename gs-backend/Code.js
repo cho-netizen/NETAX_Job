@@ -957,7 +957,7 @@ const DRIVE_TOOLS = [
         nonBizStock: { type: 'number', description: '영업활동과 직접 관련없이 보유하는 주식·채권 및 금융상품 가액.' },
         disasterLossAmount: { type: 'number', description: '신고기한 이내 재난으로 멸실·훼손된 증여재산가액(원, 재해손실공제 §54). 없으면 생략.' },
         appraisalFeeAmount: { type: 'number', description: '증여재산 감정평가수수료(원). 500만원 한도로 공제.' },
-        priorPaidTax: { type: 'number', description: '조특법§30의5①후단(§30의6도 동일하게 적용)에 따라 priorSpecialGiftAmount로 합산한 이전 특례증여분에 대해 그 당시 실제 납부한 산출세액(원). 상증세법§58 납부세액공제와는 무관하다 — §58은 §47조②(10년 내 일반 증여재산 합산)에 따라 합산된 경우에만 적용되는데, §30의5⑪(§30의6⑤이 준용)이 일반 증여재산의 §47조② 합산 자체를 배제하므로 §58이 적용될 여지가 없다. 없으면 생략.' },
+        priorPaidTax: { type: 'number', description: '조특법§30의5①후단(§30의6도 동일하게 적용)에 따라 priorSpecialGiftAmount로 합산한 이전 특례증여분에 대해 그 당시 실제 납부한 산출세액(원). 화면 엔진은 [별지10호의2] ㉑(앞선 특례분 합산)으로 세액을 낸 뒤 이 값을 ㉙ 납부세액공제로 뺀다. 없으면 생략.' },
         unclearOrUnsubmittedUsageAmount: { type: 'number', description: 'specialType이 startup일 때만 — 조특법§30의5⑤. 창업자금 사용명세(50억 초과시 고용명세 포함)를 세무서에 제출하지 않았거나 제출한 명세가 분명하지 않은 부분의 금액(원). 이 금액의 1천분의3을 가산세로 부과한다. 없으면 생략(0).' },
         foreignTaxPaidAmount: { type: 'number', description: '국외재산에 대해 외국에서 이미 납부한 증여세액(원, 외국납부세액공제 §59). 없으면 생략.' },
         foreignGiftTaxBase: { type: 'number', description: '외국의 법령에 따라 증여세가 부과된 증여재산의 과세표준(해당 외국 법령 기준, 원, 시행령§48이 §21을 준용). 입력하면 공제액 = 증여세산출세액×(이 값÷전체 증여세과세표준)으로 정확히 자동계산한다(단 foreignTaxPaidAmount가 한도). 없으면 foreignTaxPaidAmount를 잔여세액 한도로 그대로 공제한다.' },

@@ -8342,13 +8342,16 @@ function renderSpecialRateGiftResult(r){
   html += taxCalcResultRow('총한도액', won(r.총한도액));
   html += taxCalcResultRow('과세특례 적용대상 과세가액', won(r.과세특례적용대상_증여세과세가액));
   if (r.기본세율적용대상_증여재산가액) html += taxCalcResultRow('기본세율 적용대상 증여재산가액(한도초과분)', won(r.기본세율적용대상_증여재산가액));
+  // [2026.10.19 서식감사 차] 서식 ⑱·⑳(앞선 같은 특례분 가산)·㉑(합계) — 앞선 특례분이 있을 때만
+  if (r.가산_과세특례증여재산) html += taxCalcResultRow('가산 증여재산(앞서 같은 특례 받은 분)', '+' + won(r.가산_과세특례증여재산));
+  if (r.가산_과세특례증여재산) html += taxCalcResultRow('과세가액 합계', won(r.과세특례_과세가액_합계));
   html += taxCalcResultRow('증여재산공제', won(r.증여재산공제));
   if (r.재해손실공제) html += taxCalcResultRow('재해손실공제', won(r.재해손실공제));
   if (r.감정평가수수료공제) html += taxCalcResultRow('감정평가수수료공제', won(r.감정평가수수료공제));
   html += taxCalcResultRow('과세표준', won(r.과세표준));
   html += taxCalcResultRow('세율', r.세율);
   html += taxCalcResultRow('산출세액', won(r.산출세액));
-  if (r.납부세액공제) html += taxCalcResultRow('이전 특례증여분 기납부세액(조특법§30의5①후단)', '-' + won(r.납부세액공제));
+  if (r.납부세액공제) html += taxCalcResultRow('납부세액공제(앞선 특례분 세액, §58)', '-' + won(r.납부세액공제));
   if (r.외국납부세액공제) html += taxCalcResultRow('외국납부세액공제(§59)', '-' + won(r.외국납부세액공제));
   if (r.무신고가산세) html += taxCalcResultRow('무신고가산세', '+' + won(r.무신고가산세));
   if (r.과소신고가산세) html += taxCalcResultRow('과소신고가산세', '+' + won(r.과소신고가산세));
@@ -12169,7 +12172,7 @@ function renderGiftPane(){
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="srDisasterLoss" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="srAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="srAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">500만원 한도</span></div>' +
-        '<div class="taxcalc-field"><label>이전 특례증여분 기납부세액(조특법§30의5①후단)</label><input type="number" id="srPriorPaidTax" placeholder="원"><span class="taxcalc-field-help">같은 특례를 2회 이상 받은 경우 그 이전분에 낸 산출세액 — 상증세법§58과 무관</span></div>' +
+        '<div class="taxcalc-field"><label>이전 특례증여분 기납부세액(조특법§30의5①후단)</label><input type="number" id="srPriorPaidTax" placeholder="원"><span class="taxcalc-field-help">같은 특례를 2회 이상 받은 경우 그 이전분에 낸 산출세액 — 서식 ㉙ 납부세액공제(앞선 분은 위 칸으로 과세가액에 합산)</span></div>' +
         '<div class="taxcalc-field"><label>외국납부세액공제(§59)</label><input type="number" id="srForeignTax" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>신고 상태</label><select id="srFilingStatus">' +
           '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
@@ -13247,13 +13250,15 @@ function srPrintFormPageHtml_(){
       pfRow_(++n, '총한도액', won(r.총한도액)) +
       pfRow_(++n, '과세특례 적용대상 과세가액', won(r.과세특례적용대상_증여세과세가액)) +
       (r.기본세율적용대상_증여재산가액 ? pfRow_(++n, '기본세율 적용대상 증여재산가액(한도초과분)', won(r.기본세율적용대상_증여재산가액)) : '') +
+      (r.가산_과세특례증여재산 ? pfRow_(++n, '가산 증여재산(서식 ⑱·⑳ — 앞서 같은 특례 받은 분)', won(r.가산_과세특례증여재산)) : '') +
+      (r.가산_과세특례증여재산 ? pfRow_(++n, '합계(서식 ㉑)', won(r.과세특례_과세가액_합계)) : '') +
       pfRow_(++n, '증여재산공제', won(r.증여재산공제)) +
       (r.재해손실공제 ? pfRow_(++n, '재해손실공제', won(r.재해손실공제)) : '') +
       (r.감정평가수수료공제 ? pfRow_(++n, '감정평가수수료공제', won(r.감정평가수수료공제)) : '') +
       pfRow_(++n, '과세표준', won(r.과세표준)) +
       pfRow_(++n, '세율', r.세율) +
       pfRow_(++n, '산출세액', won(r.산출세액)) +
-      (r.납부세액공제 ? pfRow_(++n, '이전 특례증여분 기납부세액공제', won(r.납부세액공제)) : '') +
+      (r.납부세액공제 ? pfRow_(++n, '납부세액공제(서식 ㉙, §58 — 앞선 특례분 세액)', won(r.납부세액공제)) : '') +
       (r.외국납부세액공제 ? pfRow_(++n, '외국납부세액공제', won(r.외국납부세액공제)) : '') +
       (r.무신고가산세 ? pfRow_(++n, '무신고가산세', won(r.무신고가산세)) : '') +
       (r.과소신고가산세 ? pfRow_(++n, '과소신고가산세', won(r.과소신고가산세)) : '') +

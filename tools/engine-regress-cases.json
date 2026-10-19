@@ -736,5 +736,52 @@
                               "산출세액_합계": 466260000,
                               "합산가산액": 209250000
                     }
+          },
+          {
+                    "이름": "[서식감사 차] 창업자금 두 번째 특례 증여 — 앞선 10억 가산(㉑ 20억)·공제 5억·㉙ 앞선 세액 5천만 (조특법 §30의5① 후단)",
+                    "도구": "calculateSpecialRateGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "specialType": "startup",
+                              "giftAmount": 1000000000,
+                              "priorSpecialGiftAmount": 1000000000,
+                              "priorPaidTax": 50000000
+                    },
+                    "정답": {
+                              "과세표준": 1500000000,
+                              "산출세액": 150000000,
+                              "납부세액": 100000000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 가업승계 두 번째 특례 증여 — 앞선 50억 가산(㉑ 150억)·공제 10억·120억 초과 20%·㉙ 4억",
+                    "도구": "calculateSpecialRateGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "specialType": "business_succession",
+                              "giftAmount": 10000000000,
+                              "priorSpecialGiftAmount": 5000000000,
+                              "priorPaidTax": 400000000,
+                              "businessOwnershipYearsOfParent": 15
+                    },
+                    "정답": {
+                              "과세표준": 14000000000,
+                              "산출세액": 1600000000,
+                              "납부세액": 1200000000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 창업자금 첫 특례 증여 — 앞선 분 없음(전후 같아야 함)",
+                    "도구": "calculateSpecialRateGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "specialType": "startup",
+                              "giftAmount": 3000000000
+                    },
+                    "정답": {
+                              "과세표준": 2500000000,
+                              "산출세액": 250000000,
+                              "납부세액": 250000000
+                    }
           }
 ]

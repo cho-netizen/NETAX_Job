@@ -3487,9 +3487,9 @@
     }
 
     // 조특법§30의5①후단·§30의6 — 같은 특례를 2회 이상(또는 부모 각각으로부터) 받으면 과세가액을
-    // 합산한다(priorSpecialGiftAmount). priorPaidTax는 그 이전 특례증여분에 대해 이미 낸 산출세액을
-    // 그대로 차감하는 것으로, 상증세법§58(§47②합산에 대한 기납부세액공제)과는 별개다 — §30의5⑪이
-    // 일반 증여재산의 §47② 합산 자체를 이 특례 과세가액에서 배제하므로 §58이 적용될 여지가 없다.
+    // 합산한다(priorSpecialGiftAmount). priorPaidTax는 그 이전 특례증여분에 대해 이미 낸 산출세액으로,
+    // 서식 ㉙(납부세액공제, 상증법 §58)에 들어간다 — §30의5⑪은 특례 외 "다른 증여재산"의 합산만 막을 뿐,
+    // 같은 특례분끼리는 ㉑에서 합산하고 ㉙로 앞선 세액을 뺀다(아래 [2026.10.19 서식감사 차] 참고).
     const priorSpecialGiftAmount = Number(p.priorSpecialGiftAmount) || 0;
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
 
@@ -3526,17 +3526,24 @@
       : Math.min(grossBase, remainingLimit);
     const baseRateApplicableAmount = Math.max(0, giftAmount - specialRateApplicableAmount);
 
+    // [2026.10.19 서식감사 차] [별지 제10호의2서식] ㉑ = ⑰ + ⑱(창업자금) 또는 ⑲ + ⑳(가업승계) — 앞서 같은 특례를
+    //  받은 증여분(priorSpecialGiftAmount)을 이번 분에 더한 누적 과세가액으로 ㉒ 공제·㉕ 과세표준·㉗ 산출세액을
+    //  내고, 앞선 분에 낸 세액은 ㉙(납부세액공제)로 뺀다(조특법 §30의5① 후단 "각각의 증여세 과세가액을 합산하여
+    //  적용", §30의6⑤→§30의5⑬→상증법 §47②·§58). 전에는 이번 분만으로 과세표준을 내면서 공제(5억·10억)를 또 하고
+    //  앞선 세액까지 빼서 두 번째 이후 특례 증여 세액이 적게 나왔다(예: 창업자금 앞선 10억·이번 10억 → 0원, 바른 값 1억).
+    //  §58② 비율 한도는 앞선 특례분 과세표준 입력이 없어 산출세액 한도로만 둔다(10% 단일세율 구간이면 결과 같음).
+    const cumulativeSpecialBase = specialRateApplicableAmount + priorSpecialGiftAmount;
     const propertyDeductionLimit = specialType === 'startup' ? 500000000 : 1000000000;
-    const propertyDeduction = Math.min(propertyDeductionLimit, specialRateApplicableAmount);
+    const propertyDeduction = Math.min(propertyDeductionLimit, cumulativeSpecialBase);
     const disasterLossDeduction = Number(p.disasterLossAmount) || 0;
     const appraisalFeeDeduction = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000);
-    const taxBase = Math.max(0, specialRateApplicableAmount - propertyDeduction - disasterLossDeduction - appraisalFeeDeduction);
+    const taxBase = Math.max(0, cumulativeSpecialBase - propertyDeduction - disasterLossDeduction - appraisalFeeDeduction);
 
     const calculatedTax = specialType === 'startup'
       ? Math.round(taxBase * 0.10)
       : Math.round(Math.min(taxBase, 12000000000) * 0.10 + Math.max(0, taxBase - 12000000000) * 0.20);
 
-    const priorPaidTax = Number(p.priorPaidTax) || 0;
+    const priorPaidTax = Math.min(Number(p.priorPaidTax) || 0, calculatedTax);
     // §59·시행령§48(§21 준용) — 외국납부세액공제 = 증여세산출세액×(외국법령에 따라 증여세가 부과된
     // 증여재산의 과세표준÷법§55①에 따른 증여세의 과세표준), 실제 납부한 외국증여세액 한도.
     // foreignGiftTaxBase를 입력하면 이 비례산식으로 자동계산하고, 없으면(구버전 호환) 실제 납부액을
@@ -3559,6 +3566,7 @@
       인수채무액: debtAssumedAmount, 가업자산상당액: businessAssetAmount, 사업관련자산가액비율: ratioInfo ? ratioInfo.ratio : null,
       과세특례적용전_증여세과세가액_계: grossBase, 총한도액: totalLimit,
       과세특례적용대상_증여세과세가액: specialRateApplicableAmount, 기본세율적용대상_증여재산가액: baseRateApplicableAmount,
+      가산_과세특례증여재산: priorSpecialGiftAmount, 과세특례_과세가액_합계: cumulativeSpecialBase, // 서식 ⑱·⑳ / ㉑
       증여재산공제: propertyDeduction, 재해손실공제: disasterLossDeduction, 감정평가수수료공제: appraisalFeeDeduction,
       과세표준: taxBase, 세율: specialType === 'startup' ? '10%' : '10%(120억 초과분 20%)', 산출세액: calculatedTax,
       납부세액공제: priorPaidTax, 외국납부세액공제: foreignTaxCredit,
