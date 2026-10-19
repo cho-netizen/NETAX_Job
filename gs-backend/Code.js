@@ -769,7 +769,7 @@ const DRIVE_TOOLS = [
         isDecedentResident: { type: 'boolean', description: '피상속인이 상속개시 당시 거주자(국내에 주소를 두거나 183일 이상 거소를 둔 사람)였는지 — 기본값 true(거주자). false(비거주자)로 넣으면 §18 기초공제(2억원)만 적용되고, §18의2 가업상속공제·§18의3 영농상속공제·§19 배우자공제·§20 그 밖의 인적공제·§21 일괄공제·§22 금융재산상속공제·§23 재해손실공제·§23의2 동거주택상속공제·장례비용공제는 모두 "거주자의 사망" 요건이라 자동으로 0원 처리된다(감정평가수수료공제만 예외로 그대로 적용).' },
         hasSpouse: { type: 'boolean', description: '배우자가 상속인에 포함되는지' },
         isSpouseOnlyHeir: { type: 'boolean', description: '배우자가 단독으로 상속받는지(§21②) — true면 5억원 일괄공제(및 무신고시 5억원 고정)를 적용하지 않고 기초공제(2억원)+그 밖의 인적공제 실액만 공제한다.' },
-        spouseActualInheritedAmount: { type: 'number', description: '배우자가 실제 상속받은 금액(원). 생략하거나 5억 미만이면 자동으로 최소 5억이 공제된다.' },
+        spouseActualInheritedAmount: { type: 'number', description: '배우자가 실제 상속받은 금액(원) = 배우자 몫 상속재산 − 배우자가 승계한 채무·공과금(추정상속재산·사전증여 제외, 상속세책자 사례). 생략하거나 5억 미만이면 자동으로 최소 5억이 공제된다.' },
         isSpousePropertyDivided: { type: 'boolean', description: '§19②③ — 배우자상속재산분할기한(신고기한 다음날부터 9개월, 부득이한 사유시 연장)까지 배우자의 상속재산을 실제로 분할(등기·등록·명의개서 포함)하고 신고했는지. false로 명시하면 실제상속액과 무관하게 최소보장액 5억원으로 제한한다(§19④). 생략하면 분할된 것으로 간주(기존 동작 유지) — 실제로는 분할 여부를 반드시 확인해서 넣어야 한다.' },
         spouseLegalShareRatio: { type: 'number', description: '배우자의 법정상속분 비율(0~1, 예: 배우자+자녀2명이면 1.5/3.5≈0.4286). 이 값과 taxableEstateAmount 등으로 배우자공제 한도액을 정밀 계산한다. 생략하면 30억 한도만 적용된다.' },
         nonHeirBequestAmount: { type: 'number', description: '상속인이 아닌 자(수유자)가 유증 등으로 받은 재산가액(원). 배우자공제 한도액과 상속공제 종합한도 계산에 쓰인다.' },
@@ -841,10 +841,16 @@ const DRIVE_TOOLS = [
           actualInheritedValue: { type: 'number', description: '그 상속인이 실제 받는(받을) 상속재산가액(원, 채무 차감 전) — §28② 상속인별 안분 비율. 모든 상속인 합이 0이면 증여세액공제가 0이 되고 결과에 증여세액공제_상속분입력필요=true가 뜬다' },
           priorGiftAmount: { type: 'number', description: '그 상속인이 받은 사전증여 재산가액 합계(원, 과세가액에 가산한 금액)' },
           priorGiftTaxableBase: { type: 'number', description: '그 사전증여의 증여세 과세표준(원) = 증여재산가액 − 증여재산공제(§53·§53의2·§54) — §24 3호 공제한도 차감액' },
-          priorGiftTaxPaid: { type: 'number', description: '증여 당시 그 증여재산에 대한 증여세 산출세액(원, §28① — 실제 낸 금액이 아니라 산출세액)' } } } },
+          priorGiftTaxPaid: { type: 'number', description: '증여 당시 그 증여재산에 대한 증여세 산출세액(원, §28① — 실제 낸 금액이 아니라 산출세액)' },
+          priorGiftGenSkipPremium: { type: 'number', description: '[2026.10.19] 위 증여세 중 세대생략 할증액(§57, 원). 할증분은 증여세액공제에서 뺀다(상속세책자 사례해설) — 다만 isSubstituteHeir=true(대습상속인)이면 공제한다(대법원 2016두54275). 없으면 생략' },
+          isSubstituteHeir: { type: 'boolean', description: '[2026.10.19] 이 상속인이 대습상속인(부모가 먼저 사망해 대신 상속)인지' },
+          assumedDebtAmount: { type: 'number', description: '[2026.10.19] 이 상속인이 승계(부담)한 채무·공과금(원). 이 값·assumedFuneralAmount·legalShareRatio 중 하나라도 넣으면 상속인별 과세가액을 책 방식(받은 재산 − 부담 채무·장례비 + 사전증여 + 추정상속재산×법정상속분)으로 정밀 계산한다' },
+          assumedFuneralAmount: { type: 'number', description: '[2026.10.19] 이 상속인이 부담한 장례비용 공제액(원)' },
+          legalShareRatio: { type: 'number', description: '[2026.10.19] 이 상속인의 법정상속분(0~1) — 추정상속재산(§15)을 법정상속분으로 나눌 때 씀' } } } },
         nonHeirPriorGiftTaxableBaseTotal: { type: 'number', description: '수유자가 아닌 자에게 한 사전증여(§13①2호)로 상속재산에 가산된 증여재산의 과세표준 합계(원, 있으면). §28② 증여세액공제 정밀계산(시행령§3①1호 가목)에 반영된다 — 없으면 상속인분(1호)만 반영되어 공제액이 부정확할 수 있다.' },
         nonHeirPriorGiftAmountTotal: { type: 'number', description: '수유자가 아닌 자에게 한 사전증여(§13①2호) 재산가액 합계(원, 있으면). §28② 증여세액공제 정밀계산(시행령§3①1호 나목)에 반영된다.' },
         nonHeirPriorGiftTaxPaidTotal: { type: 'number', description: '위 상속인 아닌 자에 대한 사전증여(§13①2호) 당시의 증여세 산출세액 합계(원). §28②에 따라 상속세산출세액×(그 증여재산 과세표준÷상속세 과세표준)을 한도로 공제된다. 없으면 생략.' },
+        nonHeirPriorGiftGenSkipPremiumTotal: { type: 'number', description: '[2026.10.19] 위 증여세 중 세대생략 할증액 합계(§57, 원) — 증여세액공제에서 뺀다(상속세책자 사례: 손자 3,900만원 중 할증 900만원 제외, 3,000만원 공제). 없으면 생략.' },
         disclaimedShareRedistributedAmount: { type: 'number', description: '상속공제 종합한도(§24) 계산용 — 선순위 상속인의 상속포기로 다음 순위 상속인이 받은 재산가액(원). 없으면 생략.' },
         specialGiftTaxCredit: { type: 'number', description: '조특법§30의5·6(창업자금·가업승계 증여세 과세특례)에 따라 이미 납부한 증여세액공제(원). 세액 자체는 이 도구가 계산하지 않으므로 별도로 계산해서 입력한다. 없으면 생략.' },
         foreignTaxPaidAmount: { type: 'number', description: '국외재산에 대해 외국에서 이미 납부한 상속세액(원, 외국납부세액공제 §29) — 공제 한도(실제 납부액 초과 불가).' },
@@ -31584,7 +31590,9 @@ function caseProcOverview_(c) {
   if (r && r.ok) { r.lines = gl.concat(r.lines || []); r.items = gi.concat(r.items || []); if (gc.changed) r.loop = Object.assign({}, r.loop || {}, { again: '사건파악으로 작업관리 값을 고침 — 증빙 대조를 그 값으로 다시' }); }
   // 상속 — 감정가액이 이상한 감정서(검산 안 됨·감정서끼리 30% 넘게 차이)는 질문 전에 사이드바가 그 파일부터 보정·다시 읽기
   if (r && r.ok && c.세목 === 'inheritance') { try { const rr = (caseProcInhFacts_(c).reread || []); if (rr.length) r.loop = Object.assign({}, r.loop || {}, { scan: rr.map(function (z) { return z.id; }), why: '감정가액 다시 읽기 — ' + rr.map(function (z) { return z.name + '(' + z.why + ')'; }).join(', ') }); } catch (e) {} }
-  if (r && r.ok && c.세목 !== 'transfer' && CASEPROC_TAX_LABEL_[c.세목]) { try { const cc = r.case || c, nd = giNeeds_(cc), ns = trcNeedsSummary_(nd); r.needs = ns; r.lines.push('🎯 세액계산기 필수 칸 ' + ns.total + '개 — 채움 ' + ns.filled + '개(근거 있음 ' + ns.withSrc + ')' + (ns.missing.length ? ' · 남음: ' + ns.missing.join(', ') : ' · 모두 채움')); caseProcPatch_(c.id, function (sv) { sv.needs = { at: new Date().toISOString(), list: nd, sum: ns }; }); } catch (e) {} }
+  if (r && r.ok && c.세목 !== 'transfer' && CASEPROC_TAX_LABEL_[c.세목]) { try { const cc = r.case || c, nd = giNeeds_(cc), ns = trcNeedsSummary_(nd); r.needs = ns; r.lines.push('🎯 세액계산기 필수 칸 ' + ns.total + '개 — 채움 ' + ns.filled + '개(근거 있음 ' + ns.withSrc + ')' + (ns.missing.length ? ' · 남음: ' + ns.missing.join(', ') : ' · 모두 채움')); caseProcPatch_(c.id, function (sv) { sv.needs = { at: new Date().toISOString(), list: nd, sum: ns }; });
+    // [small0 — 세무사님 결정 (가)] 증여 10년 합산은 큰 질문 그대로(계산 막음 그대로) — 답하기 전 '확인 전' 표시와 신고서 출력 전 알림만
+    if (cc.세목 === 'gift' && !String(((cc.사건개요 || {}).giftPriorAmount) == null ? '' : (cc.사건개요 || {}).giftPriorAmount).trim()) r.lines.push('⏳ 확인 전 칸 1개 — 10년 내 같은 증여자 증여 합산(답하기 전 계산하면 0원 — 합산할 증여가 있으면 세율 구간·공제가 달라지는 큰 질문, 신고서 출력 전에 다시 알림)'); } catch (e) {} }
   try { caseProcMemoCands_(c, r); } catch (e) {}
   try { caseProcMemoCross_(c, r); } catch (e) {}
   try { caseProcNoteUsed_(c, r); } catch (e) {} // [2026.10.15 1단계 ②] 사실장부 "쓰인 곳"
@@ -46295,8 +46303,8 @@ function trcQuestions_(c, rf, txs, S, ans, lines, items) {
       });
       if (diffs.length) q('tr:expenses:recheck:' + diffs.length + ':' + cands.map(function (y) { return y.amount; }).join('-'), 'check', '확정해 둔 비용이 지금 서류에서 읽은 값과 다릅니다(판독이 고쳐짐) — 다시 확정해 주세요: ' + diffs.join(' / '), { mode: 'expenses', target: 'expenses', label: '필요경비', cands: cands }, list(cands));
     }
-    if (!ans.taxfee && !cands.some(function (x) { return /이 사무소 수수료/.test(x.label); })) q('tr:taxfee', 'missing', '양도소득세 신고 세무비용(이 사무소 신고 수수료 등) 영수증이 폴더에 없습니다 — 금액을 넣어 주세요(없으면 "없음"). 양도계약 카드 양도비용으로 넣습니다(시행령 §163⑤1호).',
-      { mode: 'options', target: 'trTaxFee', options: [{ label: '없음(0원)', value: '0' }], input: 'money', label: '신고 세무비용', withInput: true });
+    if (!ans.taxfee && !cands.some(function (x) { return /이 사무소 수수료/.test(x.label); })) q('tr:taxfee', 'missing', '양도소득세 신고 세무비용(이 사무소 신고 수수료 등) 영수증이 폴더에 없습니다 — 금액을 넣어 주세요(없으면 "없음"). 양도계약 카드 양도비용으로 넣습니다(시행령 §163⑤1호). 답하기 전에는 잠정 0원(확인 전)으로 먼저 계산합니다 — 세액 영향이 작은 칸(상한 100만원 × 세율)이라 계산을 막지 않습니다.',
+      { mode: 'options', target: 'trTaxFee', options: [{ label: '없음(0원)', value: '0' }], input: 'money', label: '신고 세무비용', withInput: true, provisional: { v: '0', why: '잠정 0원 — 확인 전' } });
   }
   // 1세대1주택이면 거주연수 — 초본으로 못 정했으면 묻는다(근거: 읽은 초본 이력)
   st.transferAssets.forEach(function (a, i) {
@@ -46459,8 +46467,14 @@ function trcOverview_(c, ov, rf, lines, items) {
   S.needs = needs;
   if (S.facts.costsEarly && !ans.costs) lines.push('비용(취득비용·양도비용)은 취득가액을 정하기 전이지만 지금 묻습니다 — ' + S.facts.costsEarly + '(실지거래가액 갈래의 필요경비, §97①2호·시행령 §163)');
   trcQuestions_(c, rf, txs, S, ans, lines, items);
+  // [small0] 잠정값 칸 — 계산기 양도계약 카드에 '확인 전' 표시(값은 0이라 비용 목록에 줄을 넣지 않음 — 신고서 필요경비 명세에 0원 줄이 생기지 않게)
+  // 세무비용은 질문(tr:taxfee)을 실제로 물을 때만 잠정 — 사무소 영수증이 있어 묻지 않으면(비용 확정에서 들어감) 잠정이 아니다(개발용 노오섭·이우석)
+  if (!items.some(function (it) { return it.id === 'tr:taxfee'; })) needs.forEach(function (n) { if (n.p === 'taxfee') n.prov = ''; });
+  const provL = needs.filter(function (n) { return !n.ok && n.prov; });
+  if (S.state.transferContracts[0]) { if (provL.length) S.state.transferContracts[0].provisional = provL.map(function (n) { return { key: n.p, label: n.l, v: 0, why: n.prov }; }); else delete S.state.transferContracts[0].provisional; }
   const h = trcStore_(c, S);
   const ns = trcNeedsSummary_(needs);
+  if (ns.pending.length) lines.push('⏳ 확인 전 칸 ' + ns.pending.length + '개 — ' + ns.pending.join(', ') + ' · 잠정값으로 먼저 계산합니다(답하면 다시 계산, 신고서 출력 전에 다시 알림)');
   lines.push('🎯 세액계산기가 지금 원하는 칸 ' + ns.total + '개 — 증빙·답으로 채움 ' + ns.filled + '개(근거 있음 ' + ns.withSrc + ')' + (ns.missing.length ? ' · 남음: ' + ns.missing.join(', ') : ' · 모두 채움') + (ns.later.length ? ' · 지금은 필요 없음: ' + ns.later.join(' / ') : ''));
   lines.push('세액계산기 입력: 양도인 ' + S.state.transferSellers.length + ' · 양도계약 ' + S.state.transferContracts.length + ' · 양도자산 ' + S.state.transferAssets.length + ' — 채운 칸 ' + Object.keys(S.src).length + '개(증빙·답), 남은 질문 ' + items.filter(function (x) { return x.kind !== 'check' || x.ask; }).length + '개');
   trcSummaryToOv_(c, S, lines);
@@ -47442,7 +47456,9 @@ function trcNeeds_(c, S, ans) {
       const later = real || gAcq || rc.length ? '' : '취득가액(실지거래가액)이 아직 없음 — 추계면 계산기가 개산공제를 씀, 실지거래가액이 정해지면 다시 봄';
       if (!real && !later) S.facts.costsEarly = gAcq ? '증여로 받은 자산 — 취득가액은 증여 당시 평가액(실지거래가액 의제, 시행령 §163⑨)이라 개산공제가 아님' : '취득가액 후보 ' + rc.length + '건이 실지거래가액 종류(' + String(rc[0].src).split(' — ')[0].slice(0, 40) + ' 등)';
       out.push({ p: 'costs', l: '취득비용·양도비용', ok: !later && !!ans.costs, src: ans.costs ? ans.costs.src : '', why: '실지거래가액 갈래의 필요경비', later: later });
-      out.push({ p: 'taxfee', l: '신고 세무비용', ok: !later && !!ans.taxfee, src: ans.taxfee ? ans.taxfee.src : '', why: '양도비용(시행령 §163⑤1호)', later: later });
+      // [2026.10.19 small0 — 세무사님 결정 "그렇게 바꾸자"] 세액 영향이 작은 사용자 사실(산출세액 영향 50만원 이하 또는 1% 이하, 상한 100만원)은
+      //  '잠정 0 — 확인 전'으로 두고 먼저 계산한다. 질문은 남기고, 답하면 다시 계산, 신고서 출력 전에 다시 알린다(maps/작은질문_잠정0_목록.md)
+      out.push({ p: 'taxfee', l: '신고 세무비용', ok: !later && !!ans.taxfee, src: ans.taxfee ? ans.taxfee.src : '', why: '양도비용(시행령 §163⑤1호)', later: later, prov: !later && !ans.taxfee ? '잠정 0원 — 확인 전' : '' });
     }
     if (a.isOneHouseOneFamily) need(p + '.residenceYears', lab + '거주연수', a.residenceYears, '1세대1주택 장기보유특별공제 표2');
   });
@@ -47459,8 +47475,9 @@ function trcNeeds_(c, S, ans) {
   return out;
 }
 function trcNeedsSummary_(needs) {
-  const now = needs.filter(function (n) { return !n.later; }), ok = now.filter(function (n) { return n.ok; }), miss = now.filter(function (n) { return !n.ok; }), later = needs.filter(function (n) { return n.later; });
-  return { total: now.length, filled: ok.length, withSrc: ok.filter(function (n) { return n.src; }).length, missing: miss.map(function (n) { return n.l; }), later: (function () { const g = {}; later.forEach(function (n) { (g[n.later] = g[n.later] || []).push(n.l); }); return Object.keys(g).map(function (k) { return g[k].join('·') + ' — ' + k; }); })() }; // 같은 이유는 한 번만
+  const now = needs.filter(function (n) { return !n.later; }), ok = now.filter(function (n) { return n.ok; }), miss = now.filter(function (n) { return !n.ok && !n.prov; }), later = needs.filter(function (n) { return n.later; });
+  const prov = now.filter(function (n) { return !n.ok && n.prov; }); // [small0] 잠정값으로 먼저 계산하는 칸 — 남은 칸(계산 전 필수)에서 빼고 따로
+  return { total: now.length, filled: ok.length, withSrc: ok.filter(function (n) { return n.src; }).length, missing: miss.map(function (n) { return n.l; }), pending: prov.map(function (n) { return n.l + '(' + n.prov + ')'; }), later: (function () { const g = {}; later.forEach(function (n) { (g[n.later] = g[n.later] || []).push(n.l); }); return Object.keys(g).map(function (k) { return g[k].join('·') + ' — ' + k; }); })() }; // 같은 이유는 한 번만
 }
 // 필요한데 빈 칸의 근거가 될 서류 중 판독이 나쁜 사진 — 질문하기 전에 원근보정·다시 읽기로 돌아간다(사이드바가 이 파일부터 보정)
 // [2026.10.18 정밀분석 07_1] 대장도 소재지(토지대장)·취득일(신축 사용승인일·대장 소유권 변동일) 근거 — 보유 자산 목록(tcHoldings_)이 쓴다
