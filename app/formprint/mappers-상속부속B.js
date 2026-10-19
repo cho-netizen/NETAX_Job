@@ -462,6 +462,37 @@
     return o.result();
   };
 
+  // ───────── 상증 별지 제14호의2서식 — 문화재 등 상속세 물납 (철회)신청서(법 §73의2, 시행령 §75의2~§75의4) ─────────
+  //  값 출처: 지금 인쇄 propertyInKindPaymentPrintFormPageHtml_(provision = cultural_heritage) — 신청인(명부 첫 행)·상속세 납부세액·물납신청가능세액 한도.
+  //  예전 인쇄 번호와 다름: 예전 ③ 납부세액 → 서식 ⑤, 예전 ④ "물납신청가능세액 한도" → 서식 ⑥은 물납"신청"세액이라 비우고 한도는 알림으로.
+  mappers['상속14호의2'] = function (ctx) {
+    var o = new Out(), pk = ctx.pk || {}, inp = pk.input || {}, res = pk.result || {}, ta = ctx.taxAgent || {};
+    pkHead(o, ctx, true);
+    if (has(res.물납신청가능세액_한도)) {
+      o.miss('⑥ 물납신청세액', '계산기에 없음(신청할 세액을 받는 칸 없음 — 한도 이하로 직접 적음)');
+      var ex = Math.min(n(inp.culturalHeritageValue), n(inp.excludedDamagedCulturalHeritageValue));
+      o.note('⑥ 물납신청세액 한도(법 §73의2⑤, 엔진) = 납부세액 ' + n(inp.inheritanceTaxPayable) + '원 × (문화유산 등 가액 ' + n(inp.culturalHeritageValue) + '원' + (ex ? ' − 훼손 등 제외 ' + ex + '원(시행령 §75의2⑤)' : '') +
+        ') ÷ 상속재산가액 ' + n(inp.totalInheritanceValue) + '원 = ' + n(res.물납신청가능세액_한도) + '원(반올림)');
+      o.check('⑥ 한도 = ⑤ × (문화유산 등 가액 − 제외) ÷ 상속재산가액(엔진 반올림)', n(res.물납신청가능세액_한도),
+        n(inp.totalInheritanceValue) > 0 ? Math.round(n(inp.inheritanceTaxPayable) * (n(inp.culturalHeritageValue) - ex) / n(inp.totalInheritanceValue)) : 0);
+    } else o.miss('⑥ 물납신청세액', '계산기에 없음(물납 도구에 문화유산 등 가액·상속재산가액이 없어 한도도 못 셈)');
+    if (has(ta.name)) {
+      o.set('세무대리인@성명', ta.name);
+      if (has(ta.bizNo)) o.set('세무대리인@사업자등록번호', ta.bizNo); else o.miss('세무대리인 사업자등록번호', '세무대리인 사업자등록번호 입력 없음');
+      if (has(ta.phone)) o.set('세무대리인@연락처', ta.phone); else o.miss('세무대리인 연락처', '세무대리인 전화번호 입력 없음');
+      o.miss('세무대리인 생년월일', '계산기에 없음');
+      o.set('세무대리인서명', ta.name);
+    } else o.miss('세무대리인(성명·사업자등록번호·생년월일·연락처·서명)', '세무대리인 입력 없음(본인 신청)');
+    o.miss('⑨⑩⑪⑫⑬⑭ 문화재 등 물납대상 재산명세(구분·작품명·작가명·규격·평가기준일·시가/감정가액 평균)', '계산기에 없음(물납 도구는 문화유산 등 가액 합계 하나만 받음)');
+    if (n(inp.culturalHeritageValue) > 0) {
+      o.set('⑰', n(inp.culturalHeritageValue));
+      o.note('⑰ 계 = 물납 도구의 문화유산 등 가액 합계(작품별 ⑭ 명세는 직접 적고 합이 맞는지 확인하세요)');
+    } else o.miss('⑰ 계', '물납 도구 입력 없음(문화유산 등 가액)');
+    o.note('⚠ 판단 대기: 서식 작성방법 3의 ⑨ 구분은 「문화재보호법」 기준(가.-1~나.-5)인데, 현행 시행령 §75의2①(2024.5.17. 개정)은 「문화유산의 보존 및 활용에 관한 법률」에 따라 지정된 유형·민속문화유산(1호)과 「근현대문화유산의 보존 및 활용에 관한 법률」에 따라 등록된 문화유산(1의2호)·미술품(2호) — 서식대로 적되 대상인지 확인하세요');
+    o.miss('(신청·철회) 신청 구분([ ]물납을 신청 [ ]물납 신청을 철회)', '계산기에 없음');
+    return o.result();
+  };
+
   // ───────── 상증 별지 제13호의2서식 — 물납 재산 재평가 신청서(시행령 §70⑧·§75①3호, 시행규칙 §19의4②) ─────────
   //  값 출처: 지금 인쇄 svPrintFormPageHtml_(신청인 성명·주민번호 = 명부 첫 행, 증자·감자 구분, 구주 1주당 과세가액, 재평가 후 구주 1주당 수납가액).
   //  ⚠ 이 서식은 시행령 §75①3호(물납기간 중 합병·분할·주요 재산 처분·배당 증가로 30% 이상 하락) 재평가 신청서(시행규칙 §19의4②)인데,
@@ -535,6 +566,8 @@
   // 물납 — 지금 인쇄처럼 물납 도구가 "적용 가능"으로 판정했을 때(PRINT_REGISTRY_ propertyinkind.isReady). 일반 = 13호, 문화유산 등 = 14호의2
   ctxFor['상속13호'] = function (extra) { var c = pkCtx(extra); return (c && c.pk.input.provision !== 'cultural_heritage') ? c : null; };
   ready['상속13호'] = function () { var pk = pkFromApp(); return !!(pk && pk.input.provision !== 'cultural_heritage'); };
+  ctxFor['상속14호의2'] = function (extra) { var c = pkCtx(extra); return (c && c.pk.input.provision === 'cultural_heritage') ? c : null; };
+  ready['상속14호의2'] = function () { var pk = pkFromApp(); return !!(pk && pk.input.provision === 'cultural_heritage'); };
   // 물납 재산 재평가 — 지금 인쇄처럼 수납가액 도구(sv) 결과가 있으면(PRINT_REGISTRY_ sv.isReady). 물납 도구 결과가 있으면 ⑤에 씀
   ctxFor['상속13호의2'] = function (extra) { var sv = svFromApp(); return sv ? Object.assign(heirsCtx(extra), { sv: sv, pk: pkFromApp() }) : null; };
   ready['상속13호의2'] = function () { return !!svFromApp(); };

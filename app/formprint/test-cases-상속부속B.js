@@ -86,6 +86,14 @@ module.exports = function (E, H) {
   var c13 = ihCtx(pIn, { pk: { input: pkIn, result: pkRes } });
   L.push({ name: '상속13호_일반물납', forms: [{ formKey: '상속13호', ctx: c13 }], ctx: c13 });
 
+  // ⑤-2 상속14호의2 — 문화유산 등 물납(법 §73의2): 납부세액 3,186,450,000, 금융재산 5억, 상속재산가액 90억, 문화유산 등(회화 등) 6억 중 1억은 상속개시 뒤 정당한 사유 없이 훼손(시행령 §75의2⑤)
+  //   손계산: 한도 = 3,186,450,000 × (6억 − 1억) ÷ 90억 = 177,025,000(엔진 반올림, 나누어떨어짐)
+  var pkC = { provision: 'cultural_heritage', inheritanceTaxPayable: rIn.납부세액, financialAssetValue: 500000000, totalInheritanceValue: 9000000000, culturalHeritageValue: 600000000, excludedDamagedCulturalHeritageValue: 100000000 };
+  var pkCRes = E.calculatePropertyInKindPaymentEligibilityJS(clone(pkC));
+  if (!pkCRes.적용가능여부) throw new Error('문화유산 물납 시험 사례가 적용 불가로 나옴');
+  var c142 = ihCtx(pIn, { pk: { input: pkC, result: pkCRes } });
+  L.push({ name: '상속14호의2_문화유산물납', forms: [{ formKey: '상속14호의2', ctx: c142 }], ctx: c142 });
+
   // ⑥ 상속13호의2 — 물납 재산 재평가 신청서: 수납가액 도구(무상증자, 구주 1주당 과세가액 30,000원, 1주당 신주 0.5주) + ⑤의 물납 도구 결과
   //   손계산: 30,000 ÷ (1 + 0.5) = 20,000원(시행규칙 §20의2①1호가목) — 이 서식(§75①3호)에 쓰는 값이 아니라 알림으로만
   var svIn = { changeType: 'free_increase', oldSharePreChangeValue: 30000, newSharesPerOldShare: 0.5 };
