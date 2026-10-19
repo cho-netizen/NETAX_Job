@@ -1814,5 +1814,74 @@
   "정답": {
    "가산금_합계": 9300000
   }
+ },
+ {
+  "이름": "[회장 결정 N9] 조정지역 2주택 + 장기임대(§97의4) 임대 7년 — 중과는 시행령 §167의3대로, 중과 주택은 장특공 대상 아님(§95② 괄호): 4.975억 × 40% − 2,594만 + 4.975억 × 20% = 272,560,000(예전 중과를 건너뛰어 125,060,000)",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "acquisitionDate": "2016-06-30",
+   "transferDate": "2026-06-30",
+   "transferPrice": 900000000,
+   "acquisitionPrice": 400000000,
+   "necessaryExpenses": 0,
+   "isAdjustedArea": true,
+   "multiHouseCount": 2,
+   "rentalSpecialType": "rental_long",
+   "rentalYears": 7
+  },
+  "정답": {
+   "산출세액": 272560000
+  }
+ },
+ {
+  "이름": "[회장 결정 N9] 같은 주택이 83호의6 일반세율 적용(시행령 §167의3①2호 장기임대주택)이면 중과 없이 표1 20% + 추가 4% = 125,060,000",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "acquisitionDate": "2016-06-30",
+   "transferDate": "2026-06-30",
+   "transferPrice": 900000000,
+   "acquisitionPrice": 400000000,
+   "necessaryExpenses": 0,
+   "isAdjustedArea": true,
+   "multiHouseCount": 2,
+   "rentalSpecialType": "rental_long",
+   "rentalYears": 7,
+   "isMultiHouseRentalExemption": true
+  },
+  "정답": {
+   "산출세액": 125060000
+  }
+ },
+ {
+  "이름": "[연혁 2부-13] 2018년 증여 — 평가기간은 전후 3개월(상증령 §49① 2019.2.12. 개정 전, 부칙 제2조 증여받는 분부터): 증여일 5개월 반 전 매매는 평가기간 밖",
+  "도구": "checkFairMarketValueRecognitionJS",
+  "고정": true,
+  "입력": {
+   "taxType": "gift",
+   "valuationBaseDate": "2018-06-01",
+   "evidenceType": "sale",
+   "evidenceDate": "2017-12-15"
+  },
+  "정답": {
+   "평가기간이내여부": false
+  }
+ },
+ {
+  "이름": "[연혁 2부-13] 2020년 증여 — 평가기간은 전 6개월~후 3개월(2019.2.12. 이후 증여분): 같은 5개월 반 전 매매는 평가기간 안",
+  "도구": "checkFairMarketValueRecognitionJS",
+  "고정": true,
+  "입력": {
+   "taxType": "gift",
+   "valuationBaseDate": "2020-06-01",
+   "evidenceType": "sale",
+   "evidenceDate": "2019-12-15"
+  },
+  "정답": {
+   "평가기간이내여부": true
+  }
  }
 ]
