@@ -158,3 +158,60 @@ function caseProcAdjAreaAt_(addr, date, purpose) {
   if (unk) return { 판정: '확인 필요', 이유: unk, 근거: basis };
   return { 판정: st ? '조정' : '비조정', 이유: (st ? '지정' : basis.length ? '해제' : '지정된 적 없음') + (basis.length ? ' — 공고 ' + basis.join(', ') : '') + (d > '2026-07-01' ? ' (2026-882호 뒤 변동은 다시 확인)' : ''), 근거: basis };
 }
+
+// ============================================================
+// [2026.10.19 B-5 조견표 세션] AI 지휘 도구 form_needs — 이 사건에 필요한 서식과 서식을 막는 빈 칸(토큰 0, GAS만)
+//  색인은 서버 코드가 아니라 드라이브 자료 파일(업무관리자\세금계산\법정서식원본(법제처)\_서식색인.json, tools/build-reftables.js가 씀)에서 읽고 6시간 캐시.
+//  칸 종류: input(계산기 입력 — 양도는 calc:a0.필드/calc:c0.필드로 값 유무 확인), result(엔진 결과 — 세액 계산 저장이 있으면 값 있음),
+//           screen(화면에서만 넣는 칸 — 서버에서 확인 불가로 따로 셈), none(계산기에 없음 — 서식엔 있지만 계산기가 만들지 않는 칸)
+var FORM_INDEX_FOLDER_ = '1bXA_yLVb1Mc6-nGC7nPZXUqKe5ZCAe7M'; // 법정서식원본(법제처)
+function formIndexLoad_() {
+  const cache = CacheService.getScriptCache();
+  const hit = cache.get('NX_FORM_INDEX_V1');
+  if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+  const it = DriveApp.getFolderById(FORM_INDEX_FOLDER_).getFilesByName('_서식색인.json');
+  if (!it.hasNext()) return null;
+  const txt = it.next().getBlob().getDataAsString('UTF-8');
+  if (txt.length < 95000) { try { cache.put('NX_FORM_INDEX_V1', txt, 21600); } catch (e) {} } // 캐시 한 칸 100KB 한도
+  return JSON.parse(txt);
+}
+function formNeeds_(caseId, input) {
+  const idx = formIndexLoad_();
+  if (!idx) return { error: '서식 색인(_서식색인.json)을 드라이브에서 못 찾음 — node tools/build-reftables.js 실행 필요' };
+  const c = akReadCase_(caseId);
+  if (!c) return { error: '사건을 찾지 못함' };
+  const sm = c.세목 === 'transfer' || c.세목 === 'gift' || c.세목 === 'inheritance' ? c.세목 : '';
+  if (!sm) return { ok: true, 세목: c.세목 || '', 서식: [], 빈칸: [], 안내: '이 세목은 서식 칸 해설이 아직 없음' };
+  // 값 출처: 양도 계산기 입력(사건 저장 trCalc), 세액계산 저장 여부
+  let st = {};
+  try { st = ((caseProcLoad_(caseId) || {}).trCalc || {}).state || {}; } catch (e) { st = {}; }
+  const a0 = (st.transferAssets || [])[0] || {}, c0 = (st.transferContracts || [])[0] || {};
+  const hasVal = function (t) { const m = /^calc:(a0|c0)\.(.+)$/.exec(t || ''); if (!m) return null; const o = m[1] === 'a0' ? a0 : c0, alt = m[1] === 'a0' ? c0 : a0; const v = o[m[2]] != null && o[m[2]] !== '' ? o[m[2]] : alt[m[2]]; return v != null && v !== '' && v !== false; };
+  // 사안에 따라서만 필요한 입력 — 해당 없으면 빈 칸으로 세지 않음(환산 기준시가는 취득가액이 없을 때만, 거주기간은 1세대1주택·주택일 때만)
+  const notApplicable = function (t) { const f = String(t || '').replace(/^calc:(a0|c0)./, ''); if (/StandardPriceForConversion$/.test(f)) return !!(a0.acquisitionPrice); if (f === 'residenceYears') return !(a0.isOneHouseOneFamily || a0.assetType === 'house'); return false; };
+  const semokName = { transfer: '양도', gift: '증여', inheritance: '상속' }[sm];
+  const saved = (c.세액계산결과 || []).some(function (e) { return e && String(e.세목 || '').indexOf(semokName) !== -1; }) || !!(st.transferAssets && st.transferAssets.length && sm === 'transfer' && (caseProcLoad_(caseId) || {}).trCalc);
+  const forms = Object.keys(idx.서식).filter(function (no) { return idx.서식[no].세목 === sm; });
+  const main = { transfer: /제84호서식(\]| 부표1)/, gift: /제10호서식\]/, inheritance: /제9호서식(\]| 부표1\]| 부표3\])/ }[sm];
+  const out = { ok: true, 세목: sm, 세액계산저장: saved, 서식: [], 빈칸: [], 계산기에없음: [], 안내: '' };
+  const blanks = [];
+  forms.forEach(function (no) {
+    const f = idx.서식[no], short = no.replace(/^.*\[/, '').replace(/\]$/, '');
+    const n = { 전체: f.칸.length, 값있음: 0, 빈칸: 0, 화면입력확인불가: 0, 계산기에없음: 0 };
+    f.칸.forEach(function (k) {
+      const kind = k[2], target = k[3];
+      const isMain = main.test(no); // 빈 칸·계산기에 없음 목록은 필수 서식(본표·주요 부표)만 — 주식·파생 부표 등은 개수만
+      if (kind === 'none') { n.계산기에없음++; if (isMain && out.계산기에없음.length < 15) out.계산기에없음.push({ 서식: short, 칸: k[0] + ' ' + k[1], 이유: k[4] || '계산기에 없음' }); return; }
+      if (kind === 'result') { if (saved) n.값있음++; else { n.빈칸++; if (isMain) blanks.push({ 서식: short, 칸: k[0] + ' ' + k[1], 계산기칸: '', 질문id: '', 채울입력: '세액 계산(tax_calc) 뒤에 채워짐' }); } return; }
+      if (kind === 'input' && target && notApplicable(target)) { n.해당없음 = (n.해당없음 || 0) + 1; return; }
+      if (kind === 'input' && target) { const hv = hasVal(target); if (hv) n.값있음++; else { n.빈칸++; if (isMain) blanks.unshift({ 서식: short, 칸: k[0] + ' ' + k[1], 계산기칸: target, 질문id: target, 채울입력: k[4] || '' }); } return; }
+      n.화면입력확인불가++;
+    });
+    out.서식.push({ 번호: short, 이름: f.이름, 필수: main.test(no), 칸: n });
+  });
+  out.서식.sort(function (x, y) { return (y.필수 ? 1 : 0) - (x.필수 ? 1 : 0); });
+  out.빈칸 = blanks.slice(0, 20); out.빈칸개수 = blanks.length;
+  out.안내 = '필수 = 본표·주요 부표(그 밖은 사안에 따라). 빈칸 = 계산기 입력이 비었거나 세액 계산 전. 화면입력확인불가 = 화면에서만 넣는 칸(서버에서 값을 못 봄). 계산기에없음 = 서식엔 있지만 계산기가 만들지 않는 칸(직접 적어야 함).';
+  return out;
+}
+

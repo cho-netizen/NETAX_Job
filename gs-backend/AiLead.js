@@ -29,6 +29,9 @@ var CASEPROC_AI_TOOLS_ = [
     input_schema: { type: 'object', properties: { caseId: { type: 'string' }, provisional: { type: 'boolean' } }, required: ['caseId'] } },
   { name: 'forms_check', description: '서식 대조 — 세액인쇄 서식 PDF 유무, 참고자료(기신고서)와 차이(참고만).',
     input_schema: { type: 'object', properties: { caseId: { type: 'string' } }, required: ['caseId'] } },
+  // [2026.10.19 B-5 조견표 세션] 서식을 막는 빈 칸 — calc_fill 다음, ask_user 전에(질문 고르기·urgent 표시에)
+  { name: 'form_needs', description: '필요 서식·빈 칸 — 이 사건 세목의 법정서식(본표·부표)마다 칸 수와 값 있음/빈 칸/화면 입력(확인 불가)/계산기에 없음, 서식을 막는 빈 칸 목록(계산기칸·질문id = calc_fill 질문 target과 같은 꼴, 20개까지). 토큰 0.',
+    input_schema: { type: 'object', properties: { caseId: { type: 'string' } }, required: ['caseId'] } },
   { name: 'ask_user', description: '세무사님께 질문 올리기 — 서류로는 알 수 없는 것만. 후보+출처가 있으면 객관식, 없으면 주관식. 답은 다음 차례에 대화로 온다.',
     input_schema: { type: 'object', properties: { caseId: { type: 'string' }, itemIds: { type: 'array', items: { type: 'string' } }, note: { type: 'string' } }, required: ['caseId'] } },
   { name: 'save_draft', description: '저장·초안 — 작업일지 한 줄, 종합검토서 초안, 반영 현황표.',
@@ -298,6 +301,7 @@ var CASEPROC_AI_TOOL_ROLES_ = {
   public_lookup: { 상수: '공시가격·매매사례·건축물대장 조회', 변수: '유사사례 고르기·시가 판단(중간~고급)' },
   value_set: { 상수: '근거 대조(서류 원문·조회 결과에 그 값이 있나)', 변수: '—(AI가 정한 값을 받음)' },
   tax_calc: { 상수: '세액 엔진', 변수: '잠정 계산할지(최상위)' },
+  form_needs: { 상수: '서식 칸 해설 색인·칸 값 유무 대조', 변수: '—(재료)' },
   forms_check: { 상수: '서식 유무·기신고서 차이', 변수: '—' },
   ask_user: { 상수: '질문 카드 정리', 변수: '무엇을 여쭐지(최상위)' },
   save_draft: { 상수: '저장·초안·현황표', 변수: '—' },
@@ -460,6 +464,7 @@ function caseProcAiExec_(caseId, name, input) {
     else if (name === 'calc_fill') { r = step('overview'); if (r && r.items) CASEPROC_AI_LAST_ITEMS_[caseId] = r.items; }
     else if (name === 'tax_calc') r = step('calc');
     else if (name === 'forms_check') r = step('output');
+    else if (name === 'form_needs') r = typeof formNeeds_ === 'function' ? formNeeds_(caseId, input) : { error: '서식 도구가 이 판에 없음' }; // [2026.10.19 B-5]
     else if (name === 'save_draft') r = step('status');
     else if (name === 'ask_user') r = { ok: true, 올린질문: (input.itemIds || []).length };
     else if (name === 'report_tool_gap') r = { ok: true, 기록: caseProcAiCut_(input.want, 80) };
@@ -504,7 +509,7 @@ function caseProcAiExec_(caseId, name, input) {
   } catch (e) { r = { error: '도구 실행 오류: ' + (e && e.message || e) }; }
   const raw = JSON.parse(JSON.stringify(r || {}));
   const text = (name === 'doc_text' || name === 'value_set' || name === 'ask_user' || name === 'report_tool_gap') ? caseProcAiMask_(JSON.stringify(raw)).slice(0, CASEPROC_AI_SUM_MAX_)
-    : /^(doc_facts|facts_find|owner_assets|contract_list|money_links|time_order|people_roster|law_checks|public_lookup)$/.test(name) ? caseProcAiMask_(JSON.stringify(raw)).slice(0, CASEPROC_AI_SUM_MAX_ * 2) // 판단 재료 표 — 요약 두 배까지
+    : /^(doc_facts|facts_find|owner_assets|contract_list|money_links|time_order|people_roster|law_checks|public_lookup|form_needs)$/.test(name) ? caseProcAiMask_(JSON.stringify(raw)).slice(0, CASEPROC_AI_SUM_MAX_ * 2) // 판단 재료 표 — 요약 두 배까지
     : caseProcAiSummarize_(name, raw);
   return { name: name, text: text, raw: raw, chars: JSON.stringify(raw).length, more: !!(raw && raw.more), roles: CASEPROC_AI_TOOL_ROLES_[name] || null, varSpots: caseProcAiVarSpots_(name, raw, caseId) };
 }

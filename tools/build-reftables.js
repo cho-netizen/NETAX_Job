@@ -35,7 +35,7 @@ return { tables, forms, catalog };
 function refBlock(data) { return B + '\n  var LSI_FORM_MAPS_ = ' + JSON.stringify(data.forms) + ';\n  var LSI_REF_TABLES_ = ' + JSON.stringify(data.tables) + ';\n  var LSI_FORM_CATALOG_ = ' + JSON.stringify(data.catalog || { 서식: [] }) + ';\n  '; }
 module.exports = { collect, refBlock, B, E };
 if (require.main === module) {
-const { tables, forms } = collect();
+const { tables, forms, catalog } = collect();
 let s = fs.readFileSync(PAGE, 'utf8');
 const i = s.indexOf(B), k = s.indexOf(E);
 if (i < 0 || k < i) throw new Error('lawsearch.html에 자리 표시가 없습니다');
@@ -69,6 +69,38 @@ if (t201 && t203) {
   e = e.slice(0, i2) + EB + nl + '  const REF_TR_BRACKETS_ = ' + js(br) + ';' + nl + '  const REF_LT_ = { 표1: ' + js(lt1) + ', 표2: ' + js(lt2) + ' };' + nl + '  const REF_HV_ = ' + js(hv) + ';' + nl + '  ' + e.slice(k2);
   fs.writeFileSync(ENGINE, e);
   console.log('엔진: 기본세율 ' + br.length + '개 시기, 장특공 표1 ' + lt1.length + '·표2(2020 이전) ' + lt2.length + '개 시기, 고가주택 기준 주택 ' + hv.house.length + '·입주권 ' + hv.right.length + '개 시기 → taxcalc-engine.html');
+}
+// [2026.10.19 B-5] AI 지휘 form_needs 도구용 서식 색인 — 서버 코드에 넣지 않고(10MB 한도) 드라이브 자료 파일로 둔다.
+//  J:\내 드라이브\0 NETAX\업무관리자\세금계산\법정서식원본(법제처)\_서식색인.json (구글 드라이브 동기화로 올라감 → 서버 formNeeds_가 DriveApp으로 읽고 6시간 캐시).
+//  칸마다 종류: input(계산기 입력 칸 — 필드 이름을 읽을 수 있으면 목표 calc:a0.필드/calc:c0.필드), result(엔진 결과), screen(화면에서만 넣는 칸), none(계산기에 없음)
+{
+  const SEMOK = { 양도: 'transfer', 상속: 'inheritance', 증여: 'gift', 공통: 'common' };
+  const semokOf = (no) => { const r = (catalog.서식 || []).find((x) => x.서식번호 === no); return r ? (SEMOK[r.세목] || r.세목) : (/소득세법/.test(no) ? 'transfer' : /제9호/.test(no) ? 'inheritance' : 'gift'); };
+  const CONTRACT_FIELDS = ['totalPrice', 'contractDate', 'balanceDate', 'transferDate', 'downPayment', 'middlePayment'];
+  const kindOf = (k) => {
+    const t = (k.계산기칸 || []).join(' ');
+    const first = String((k.계산기칸 || [])[0] || '').trim();
+    // 첫 설명이 '계산기에 없음'이면 뒤에 입력 이름이 나와도 없음(예: 신고구분 — 전자신고만 만들고 계산기 입력 칸은 없음)
+    if (!first || /^(계산기에 (따로 )?없음|엔진 키 없음|없음)/.test(first) || (/계산기에 (따로 )?없음|엔진 키 없음/.test(t) && !/결과|입력 [a-zA-Z]/.test(t))) return { 종류: 'none' };
+    if (/^(결과|엔진)/.test(first)) return { 종류: 'result' }; // 첫 설명이 엔진 결과면 결과 칸(입력 이름은 그 결과의 재료)
+    const m = /입력 ([a-zA-Z][a-zA-Z0-9]*)(?:\.([a-zA-Z][a-zA-Z0-9]*))?/.exec(t);
+    if (m) return { 종류: 'input', 필드: (m[2] && /^(asset|contract|seller|t)$/.test(m[1])) ? m[2] : m[1] };
+    if (/결과|엔진/.test(t)) return { 종류: 'result' };
+    return { 종류: 'screen' };
+  };
+  const idx = { 만든때: new Date().toISOString(), 설명: '서식 사전(reftables) → AI 지휘 form_needs 색인. 칸: [칸, 이름, 종류(input/result/screen/none), 목표(calc:a0.필드 등 또는 빈 값), 채울 입력 안내]', 서식: {}, 목록: (catalog.서식 || []).map((x) => [x.서식번호, x.이름, SEMOK[x.세목] || x.세목]) };
+  Object.keys(forms).forEach((no) => {
+    const f = forms[no], sm = semokOf(no);
+    idx.서식[no] = { 이름: f.이름, 세목: sm, 칸: (f.칸 || []).map((k) => {
+      const kk = kindOf(k);
+      const target = kk.종류 === 'input' && sm === 'transfer' ? 'calc:' + (CONTRACT_FIELDS.indexOf(kk.필드) !== -1 ? 'c0.' : 'a0.') + kk.필드 : '';
+      return [k.칸, String(k.이름 || '').slice(0, 40), kk.종류, target, String((k.계산기칸 || [])[0] || '').slice(0, 60)];
+    }) };
+  });
+  const txt = JSON.stringify(idx);
+  const DRIVE = 'J:/내 드라이브/0 NETAX/업무관리자/세금계산/법정서식원본(법제처)';
+  if (fs.existsSync(DRIVE)) { fs.writeFileSync(path.join(DRIVE, '_서식색인.json'), txt); console.log('서식 색인 → 드라이브 _서식색인.json ' + Buffer.byteLength(txt) + '바이트(서식 ' + Object.keys(idx.서식).length + '장)'); }
+  else console.log('서식 색인: 드라이브 폴더가 없어 건너뜀(' + Buffer.byteLength(txt) + '바이트)');
 }
 console.log('조견표 ' + tables.length + '장(' + tables.map((t) => t.번호).join(', ') + '), 서식 칸 지도 ' + Object.keys(forms).length + '장 → app 만들 때 화면에 끼움(서버 lawsearch.html은 빈 값)');
 }
