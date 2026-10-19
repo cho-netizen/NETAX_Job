@@ -6841,6 +6841,8 @@ function renderOneTransferResultHtml_(r, label, sellerIdx){
   if (r.error) return '<div class="taxcalc-error">' + (label ? label + ': ' : '') + r.error + '</div>';
   let html = '<div class="taxcalc-result" style="margin-top:10px;">';
   if (label) html += '<div class="taxcalc-calcbasis-title" style="margin-bottom:4px;">' + label + '</div>';
+  // [2026.10.19 조견표 0단계] 양도일이 2023 전이면 세율·장특공률 연혁이 아직 없어 현행 기준으로 계산됐다는 경고(엔진 시점경고) — 맨 위에
+  if (r.시점경고) html += '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.시점경고) + '</div>';
   html += taxCalcResultRow('거래건수 / 비과세', r.거래건수 + '건 / ' + r.비과세건수 + '건');
   html += taxCalcResultRow('합산대상(장기) 소득금액', won(r.합산소득금액));
   html += taxCalcResultRow('기본공제', won(r.기본공제));

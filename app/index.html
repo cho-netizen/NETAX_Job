@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 03:41 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 03:51 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -4389,6 +4389,9 @@
       var isLatest = !seenSemok_[entry.세목];
       seenSemok_[entry.세목] = true;
       var amountHtml = Number.isFinite(entry.최종세액) ? ' <b style="color:#2a7a4f;">' + Number(entry.최종세액).toLocaleString('ko-KR') + '원</b>' : '';
+      // [2026.10.19 조견표 0단계] 계산 결과에 "⚠ 이 양도일(…)의 … 연혁이 아직 계산기에 없습니다" 경고가 있으면 줄에도 바로 보이게
+      var warnM = /⚠ 이 양도일\([^)]*\)의 [^\n]*?확인 필요/.exec(String(entry.요약 || ''));
+      if (warnM) amountHtml += ' <span style="color:#b26a00; font-weight:600; font-size:12px;">' + escapeHtml(warnM[0]) + '</span>';
       return '<div class="log-entry" style="flex-direction:column; align-items:stretch;">' +
         '<div class="ch-taxcalc-toggle" style="display:flex; align-items:center; gap:8px; cursor:pointer;">' +
         '<span class="ch-taxcalc-toggle-arrow" style="color:var(--sub); font-size:11px; flex-shrink:0; width:14px;">▾</span>' +
@@ -11454,6 +11457,26 @@
     };
   }
 
+  // [2026.10.19 조견표 0단계 — 임시 안전장치] 세율·장기보유특별공제율의 날짜별 연혁(조견표 2부-01·2부-03)이 계산기에 들어오기 전까지,
+  //  양도일이 지금 표가 맞는 기간보다 앞이면 결과에 경고(시점경고)를 붙인다 — 숫자는 바꾸지 않는다(현행 기준 그대로).
+  //  지금 표가 맞는 기간: 기본세율 구간(TRANSFER_TAX_BRACKETS) 2023-01-01 이후 양도, 장특공 표1(longTermRate) 2019-01-01 이후,
+  //  표2(longTermRate1House — 보유 4%+거주 4%) 2021-01-01 이후(국세청 세율 변동 연혁표·장기보유특별공제율 기간표 기준).
+  //  장특공은 실제로 공제율을 쓴 자산(공제율 > 0)만 본다. 연혁이 들어오면 이 경고 대신 그때 표로 계산한다.
+  const RATE_TABLE_FROM_ = { 기본세율: '2023-01-01', 장특공_일반: '2019-01-01', 장특공_1세대1주택: '2021-01-01' };
+  function rateHistoryWarning_(core) {
+    const d = core && core.raw && String(core.raw.transferDate || '');
+    if (!d || !/^\d{4}-\d{2}-\d{2}/.test(d)) return '';
+    const miss = [];
+    if (d < RATE_TABLE_FROM_.기본세율) miss.push('세율');
+    const lt = Number(core.longTermRate) > 0;
+    if (lt && (d < RATE_TABLE_FROM_.장특공_일반 || (core.isOneHouse && d < RATE_TABLE_FROM_.장특공_1세대1주택))) miss.push('장기보유특별공제율');
+    return miss.length ? '⚠ 이 양도일(' + d.slice(0, 10) + ')의 ' + miss.join('·') + ' 연혁이 아직 계산기에 없습니다 — 현행 기준으로 계산됨, 확인 필요' : '';
+  }
+  function rateHistoryWarningMulti_(cores) {
+    const ws = (cores || []).map(rateHistoryWarning_).filter(Boolean);
+    return ws.filter(function (w, i) { return ws.indexOf(w) === i; }).join(' / ');
+  }
+
   // 단일 거래 양도소득세 — gs-backend toolCalculateTransferTax와 동일 로직(기본공제 1건 전액 적용).
   window.calculateTransferTaxSingleJS = function (t) {
     const core = transferAssetCore(t);
@@ -11656,6 +11679,7 @@
       장기보유특별공제율: core.longTermRate, 장기보유특별공제액: core.longTermDeductionAmount,
       양도소득금액: Math.round(core.incomeAmount), 기본공제: basicDeduction, 과세표준: taxBase,
       적용세율_설명: appliedRateNote, 세율가산_내역: surchargeNotes, 자경농지감면액: farmlandReduction,
+      시점경고: rateHistoryWarning_(core) || undefined, // [2026.10.19] 2023 전 양도 임시 경고(위 RATE_TABLE_FROM_)
       자경농지감면_구분: farmlandReductionLabel, 자경농지감면_요건안내: farmlandGateNote || undefined, 자경농지감면_추징액: farmlandClawback,
       수용감면액: compensationReduction, 수용감면_구분: compensationReductionLabel, 수용감면_요건안내: compensationGateNote || undefined,
       채권만기특약위반_추징액: bondBreachClawback, 다운계약서_감면배제_추징액: downContractClawback,
@@ -12317,6 +12341,7 @@
 
     return {
       거래건수: transactions.length, 비과세건수: exempt.length,
+      시점경고: rateHistoryWarningMulti_(cores) || undefined, // [2026.10.19] 2023 전 양도 임시 경고
       합산대상_장기거래건수: pooled.length, 합산소득금액: Math.round(poolIncomeSum),
       기본공제: basicDeductionUsedInPool ? 2500000 : (usedBasicOnShort && shortTerm.length ? 2500000 : 0),
       합산과세표준: poolTaxBase, 합산기본세액: poolBaseTax, 합산가산액: poolSurchargeTotal, 합산자경감면액: farmlandReductionTotal, 합산자경감면_추징액: farmlandClawbackTotal,
@@ -25995,6 +26020,8 @@ function renderOneTransferResultHtml_(r, label, sellerIdx){
   if (r.error) return '<div class="taxcalc-error">' + (label ? label + ': ' : '') + r.error + '</div>';
   let html = '<div class="taxcalc-result" style="margin-top:10px;">';
   if (label) html += '<div class="taxcalc-calcbasis-title" style="margin-bottom:4px;">' + label + '</div>';
+  // [2026.10.19 조견표 0단계] 양도일이 2023 전이면 세율·장특공률 연혁이 아직 없어 현행 기준으로 계산됐다는 경고(엔진 시점경고) — 맨 위에
+  if (r.시점경고) html += '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.시점경고) + '</div>';
   html += taxCalcResultRow('거래건수 / 비과세', r.거래건수 + '건 / ' + r.비과세건수 + '건');
   html += taxCalcResultRow('합산대상(장기) 소득금액', won(r.합산소득금액));
   html += taxCalcResultRow('기본공제', won(r.기본공제));

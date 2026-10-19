@@ -811,6 +811,9 @@
       var isLatest = !seenSemok_[entry.세목];
       seenSemok_[entry.세목] = true;
       var amountHtml = Number.isFinite(entry.최종세액) ? ' <b style="color:#2a7a4f;">' + Number(entry.최종세액).toLocaleString('ko-KR') + '원</b>' : '';
+      // [2026.10.19 조견표 0단계] 계산 결과에 "⚠ 이 양도일(…)의 … 연혁이 아직 계산기에 없습니다" 경고가 있으면 줄에도 바로 보이게
+      var warnM = /⚠ 이 양도일\([^)]*\)의 [^\n]*?확인 필요/.exec(String(entry.요약 || ''));
+      if (warnM) amountHtml += ' <span style="color:#b26a00; font-weight:600; font-size:12px;">' + escapeHtml(warnM[0]) + '</span>';
       return '<div class="log-entry" style="flex-direction:column; align-items:stretch;">' +
         '<div class="ch-taxcalc-toggle" style="display:flex; align-items:center; gap:8px; cursor:pointer;">' +
         '<span class="ch-taxcalc-toggle-arrow" style="color:var(--sub); font-size:11px; flex-shrink:0; width:14px;">▾</span>' +

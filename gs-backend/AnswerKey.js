@@ -331,7 +331,7 @@ function akRunCase0_(caseId, key) {
     out.rows.push({ field: field, expected: exp, tool: t.v === undefined || t.v === null ? '' : t.v, src: t.src, ok: akSame_(exp, t.v, kind || t.kind || AK_FIELD_KIND_[field]) });
   };
   Object.keys(key).forEach(function (k) {
-    if (/^(상태|출처|세목|남은항목|근거|메모|재산|초안판|오류|납세자)$/.test(k) || /^답_/.test(k)) return; // 답_ = 질문의 답으로만 쓰는 신고서 입력값(대조 칸 아님)
+    if (/^(상태|출처|세목|남은항목|근거|메모|재산|초안판|오류|납세자|검산보류)$/.test(k) || /^답_/.test(k)) return; // 답_ = 질문의 답으로만 쓰는 신고서 입력값(대조 칸 아님)
     if (k === '상속인수') { row('상속인수', key[k], tool.상속인수, 'number'); row('처리개요 상속인수', key[k], tool['처리개요 상속인수'], 'number'); return; }
     row(k, key[k], tool[k] || tool['처리개요 ' + k], AK_FIELD_KIND_[k]);
   });
@@ -456,7 +456,7 @@ function answerKeyRun_(body) {
     if (st.tries[q] > 3) r = { caseId: id, 사건명: c && c.사건명 || '', error: '서버 실행 시간 한도(6분)를 3번 넘겨 이 사건은 건너뜀 — 서류가 너무 많거나 한 서류 읽기가 오래 걸림(사건처리 화면에서 따로 처리하세요)' };
     else if (!c) r = { caseId: id, error: '사건 없음' };
     else if (!k || !k.key) r = { caseId: id, 사건명: c.사건명 || '', error: (k && k.error) || '이 사건 폴더에 ' + keyName + '이 없습니다.' };
-    else if (!Object.keys(k.key).some(function (f) { return !/^(상태|출처|세목|근거|메모|초안판|오류|납세자)$/.test(f); })) r = { caseId: id, 사건명: c.사건명 || '', skipped: true, error: '정답지에 대조할 숫자가 없음' + (k.key.오류 ? ' — ' + k.key.오류 : '') };
+    else if (!Object.keys(k.key).some(function (f) { return !/^(상태|출처|세목|근거|메모|초안판|오류|납세자|검산보류)$/.test(f); })) r = { caseId: id, 사건명: c.사건명 || '', skipped: true, error: '정답지에 대조할 숫자가 없음' + (k.key.오류 ? ' — ' + k.key.오류 : '') };
     else { try { r = akRunCase_(id, k.key); } catch (e) { r = { caseId: id, 사건명: c.사건명 || '', error: '점검 중 오류: ' + (e && e.message || e) }; } }
     if (r && keyName !== AK_KEY_NAME_) { r.keyName = keyName; r.수증자 = r.수증자 || k && k.key && k.key.납세자; }
     if (r.more) { st.tries[q] = 0; akSaveSt_(props, st); return { ok: true, more: true, caseId: id, progress: r.progress, done: st.results.length, total: st.results.length + st.queue.length }; } // 진행이 있었으니 시도 횟수는 처음부터
@@ -543,9 +543,19 @@ const AK_BR_GI_ = [[1e8, 0.1, 0], [5e8, 0.2, 1e7], [1e9, 0.3, 6e7], [3e9, 0.4, 1
 const AK_BR_TR_ = [[1.4e7, 0.06, 0], [5e7, 0.15, 1.26e6], [8.8e7, 0.24, 5.76e6], [1.5e8, 0.35, 1.544e7], [3e8, 0.38, 1.994e7], [5e8, 0.4, 2.594e7], [1e9, 0.42, 3.594e7], [Infinity, 0.45, 6.594e7]];
 function akProg_(b, br) { for (let i = 0; i < br.length; i++) if (b <= br[i][0]) return Math.floor(b * br[i][1] - br[i][2]); return 0; }
 const AK_FORM_TITLE_ = { inheritance: /상\s*속\s*세\s*과\s*세\s*표\s*준/, gift: /증\s*여\s*세\s*과\s*세\s*표\s*준/, transfer: /양\s*도\s*소\s*득[^\n]{0,20}?과\s*세\s*표\s*준|양\s*도\s*소\s*득\s*세\s*(?:간\s*편\s*)?신\s*고/ };
+function akOldTransferDate_(t) {
+  const re = /양\s*도\s*(?:연\s*월\s*일|일\s*자|일)[^\d]{0,30}((?:19|20)\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})/g;
+  let m, old = '';
+  while ((m = re.exec(t))) { const d = m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2); if (d < '2023-01-01' && (!old || d > old)) old = d; }
+  return old;
+}
 function akParseFormResult_(text, seMok) {
   const t = String(text || '').replace(/(\d)\.(\d{3})(?=[^\d]|$)/g, '$1,$2');
   if (!AK_FORM_TITLE_[seMok] || !AK_FORM_TITLE_[seMok].test(t)) return {}; // 다른 세목 서식(예: 양도 사건 폴더의 증여세 신고서)은 쓰지 않음
+  // [2026.10.19 조견표 0단계] 아래 세율 검산(AK_BR_TR_)은 2023-01-01 이후 양도분 구간이다. 신고서의 양도일이 그보다 앞이면 그때 세율과 달라
+  //  검산이 어긋나거나 우연히 맞을 수 있으므로 "검산 보류" 표시를 붙인다(초안 숫자는 그대로 — 세율 연혁 조견표 2부-01 확인 뒤 풀기).
+  const akHold = seMok === 'transfer' ? akOldTransferDate_(t) : '';
+  const akHoldWhy = akHold ? '양도일 ' + akHold + ' — 2023년 전 양도라 지금 세율 구간으로 한 검산이 맞지 않을 수 있음(세율 연혁 확인 전 검산 보류)' : '';
   const nums = [], seen = {};
   (t.match(/\d{1,3}(?:,\d{3})+/g) || []).forEach(function (x) { const v = Number(x.replace(/,/g, '')); if (v >= 1000 && !seen[v]) { seen[v] = true; nums.push(v); } });
   const has = function (v) { return !!seen[v]; };
@@ -557,7 +567,7 @@ function akParseFormResult_(text, seMok) {
     return out;
   };
   nums.forEach(function (b) { if (b < 1000000) return; taxes(b).forEach(function (tx) { if (tx >= 1000 && has(tx) && !pairs.some(function (p) { return p.b === b && p.t === tx; })) pairs.push({ b: b, t: tx }); }); });
-  if (!pairs.length) return {};
+  if (!pairs.length) return akHoldWhy ? { _검산보류: akHoldWhy } : {};
   // 세액공제 3%·납부세액까지 맞는 짝을 먼저(우연히 맞는 짝 — 예: 증여재산가액 1억 ↔ 공제액 1천만 — 을 거름), 같으면 큰 과세표준(합계 칸)
   const score = function (p) { if (seMok === 'transfer') return 0; const cr = Math.floor(p.t * 0.03); return (has(cr) ? 1 : 0) + (has(p.t - cr) ? 1 : 0); };
   pairs.forEach(function (p) { p.s = score(p); });
@@ -588,6 +598,7 @@ function akParseFormResult_(text, seMok) {
     //  여러 묶음이 맞으면 양도가액이 가장 큰 것, 같으면 취득가액이 큰 것(취득가액과 필요경비가 서로 바뀌어 맞는 경우). 안 맞으면 넣지 않음(지어내지 않음). 대조 칸이 아니라 실사용 판정 ③에서 질문에 답할 때만 쓴다.
     Object.assign(out, akTransferInputs_(nums, out.과세표준));
     const pm = /(?:자\s*진\s*)?납\s*부\s*할\s*세\s*액/.exec(t);
+    if (akHoldWhy) out._검산보류 = akHoldWhy;
     if (pm) { const p = (t.slice(pm.index, pm.index + 300).match(/\d{1,3}(?:,\d{3})+/g) || []).map(function (x) { return Number(x.replace(/,/g, '')); }).filter(function (v) { return v <= out.산출세액 * 1.5 && v >= 1000; })[0]; if (p) out.납부세액 = p; }
   }
   return out;
@@ -645,9 +656,11 @@ function answerKeyDraft_(body) {
     // 3판 초안에 숫자가 있고 신고서가 하나뿐이면 다시 읽지 않는다(세율 검산 규칙은 그대로) — 4판 표시만
     if (!ids && ek && ek.key && ek.key.초안판 >= 3 && !ek.key.오류 && files.length <= 1 && c.세목 !== 'transfer' && !(c.세목 === 'gift' && all.some(function (f) { return /납부서/.test(f.name); }) && files.length > 1)) { ek.key.초안판 = 7; answerKeySave_({ caseId: c.id, key: ek.key }); continue; }
     const found = []; // {owner, res, src, why}
+    let holdWhy = ''; // [2026.10.19] 2023 전 양도 — 검산 보류 표시
     files.slice(0, 8).forEach(function (f) {
       const txt = tc_docText_(f) || '';
       let r = akParseFormResult_(txt, c.세목), why = '';
+      if (r._검산보류) { holdWhy = holdWhy || r._검산보류; delete r._검산보류; }
       if (!(r.과세표준 && r.산출세액)) { const z = akZeroReturn_(txt, c.세목); if (!z) return; why = z._why; delete z._why; r = z; }
       const owner = c.세목 === 'gift' && files.length > 1 ? akReturnOwner_(f, all) : '';
       if (found.some(function (x) { return x.owner === owner && x.res.과세표준 === r.과세표준 && x.res.산출세액 === r.산출세액; })) return;
@@ -659,7 +672,7 @@ function answerKeyDraft_(body) {
       pays.forEach(function (f) { if (found.length) return; const v = akPaySlipAmount_(tc_docText_(f) || '', c.세목); if (v) found.push({ owner: '', res: { 납부세액: v }, src: f.name, why: '신고서가 폴더에 없어 국세 납부서의 ' + CASEPROC_TAX_LABEL_[c.세목] + ' 납부금액만(분납이면 1회차만일 수 있음)' }); });
     }
     if (!found.length) {
-      if (ek && ek.key && ek.key.상태 !== '확정') answerKeySave_({ caseId: c.id, key: { 세목: c.세목, 상태: '초안', 초안판: 7, 오류: files.length ? '신고서에서 세율 계산이 맞는 숫자를 찾지 못함' : '신고서·국세 납부서가 폴더에 없음 — 신고서 PDF를 사건 폴더에 저장해 주세요' } });
+      if (ek && ek.key && ek.key.상태 !== '확정') answerKeySave_({ caseId: c.id, key: { 세목: c.세목, 상태: '초안', 초안판: 7, 오류: files.length ? '신고서에서 세율 계산이 맞는 숫자를 찾지 못함' + (holdWhy ? ' — ' + holdWhy : '') : '신고서·국세 납부서가 폴더에 없음 — 신고서 PDF를 사건 폴더에 저장해 주세요' } });
       if (ids || files.length) made.push({ caseId: c.id, 사건명: c.사건명, error: files.length ? '신고서 PDF ' + files.length + '개(' + files.slice(0, 3).map(function (f) { return f.name; }).join(', ') + ')에서 세율 계산이 맞는 과세표준·산출세액 짝을 찾지 못함(다른 세목 서식이거나 글자인식 불량)' : '신고서 PDF(홈택스·양도코리아)가 사건 폴더에 없음' });
       continue;
     }
@@ -679,6 +692,7 @@ function answerKeyDraft_(body) {
       const confirmed = cur.상태 === '확정';
       const key = confirmed ? Object.assign({}, cur) : { 세목: c.세목, 상태: '초안', 초안판: 7, 출처: x.src };
       if (own) key.납세자 = own;
+      if (holdWhy && !confirmed) key.검산보류 = holdWhy;
       Object.keys(x.res).forEach(function (f) { if (!(confirmed && key[f] !== undefined)) key[f] = x.res[f]; });
       key.근거 = Object.assign({}, confirmed ? (key.근거 || {}) : {}, Object.keys(x.res).reduce(function (o, f) { o[f] = (x.why ? x.why + ' — ' : '') + '신고서(' + x.src + ')' + (x.why ? '' : ' — 글자인식 + 세율 검산(과세표준↔산출세액' + (f === '신고세액공제' || f === '납부세액' ? '↔세액공제↔납부' : '') + ')으로 맞는 숫자') + ', 세무사님 확인 전'; return o; }, {}));
       answerKeySave_({ caseId: c.id, key: key, name: name });
