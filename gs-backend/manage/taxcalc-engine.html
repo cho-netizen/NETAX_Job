@@ -1260,7 +1260,11 @@
       const isReductionHouseExcluded_ = ["sect99", "sect99_2", "sect99_3"].indexOf(t.newHouseReductionProvision) !== -1
         || ["sect98_3", "sect98_5", "sect98_6", "sect98_7", "sect98_8"].indexOf(t.unsoldHouseReductionProvision) !== -1 || !!t.compensationType;
       // [2026.10.19 조견표 2부-02] 그 양도일에 중과 가산율이 0(2014.1.1.~2018.3.31. 양도 — 중과 없던 때)이면 중과·장특공 배제 안 함
+      // [2026.10.19 서식 감사 — 작업자 자] 소득 별지 83호의6 "일반세율 적용" 체크(isMultiHouseRentalExemption) — 시행령 §167의3①2·3·8호의2·10호,
+      //  §167의10①2·10호: 장기임대주택·감면대상 장기임대주택·장기어린이집이거나 그것들을 빼면 남는 1주택(일반주택)은 중과 대상이 아니다(§167의3⑦ 신청서).
+      //  예전엔 화면 체크가 인쇄에만 쓰이고 엔진에 안 들어가 중과 가산·장특공 배제가 그대로 붙었다.
       isMultiHouseSurcharge = !isOneHouse && !isRentalSpecial && !!t.isAdjustedArea && multiHouseCount >= 2 && !isMultiHouseSurchargeExcluded && !isReductionHouseExcluded_
+        && !t.isMultiHouseRentalExemption
         && multiSurchargeRateAt_(t.transferDate, multiHouseCount) > 0;
       if (isMultiHouseSurcharge) ltRate = 0;
     }
@@ -2223,6 +2227,9 @@
         assetNotes.push({ idx: c.idx, 구분: '우회양도부인(§101②)', 판정: c.raw._우회양도부인_판정 });
       }
     });
+    // [2026.10.19 서식 감사] 83호의6 일반세율 체크는 지금 양도인 카드 값이라 그 해 양도 주택 모두에 들어간다 — 2채 이상이면 확인(판단 대기: 자산 카드로 옮길지)
+    const mhRental_ = cores.filter(function (c) { return c.raw && c.raw.isMultiHouseRentalExemption && c.assetType === 'house' && !c.exempt; });
+    if (mhRental_.length > 1) mhRental_.forEach(function (c) { assetNotes.push({ idx: c.idx, 구분: '83호의6 일반세율(중과 제외)', 안내: '⚠ 양도인 카드의 "일반세율 적용(별지 83호의6)" 체크가 이 해 양도 주택 ' + mhRental_.length + '채 모두에 적용됐습니다 — 신청서는 양도하는 주택 한 채(장기임대주택·일반주택)에 대한 것이니 해당 주택만인지 확인하세요.' }); });
     pooled.forEach(function (c) {
       let rate = 0; const notes = [];
       if (c.isMultiHouseSurcharge) { rate += (c.multiAddRate != null ? c.multiAddRate : (c.multiHouseCount >= 3 ? 0.30 : 0.20)); notes.push('다주택중과'); } // [2026.10.19] 양도일별 가산율(2부-02)

@@ -565,6 +565,7 @@ const DRIVE_TOOLS = [
         isOneHouseOneFamily: { type: 'boolean', description: '1세대1주택 비과세 요건을 충족한다고 전제할지 여부(요건 자체는 이 도구가 검증하지 않음)' },
         residenceYears: { type: 'number', description: '1세대1주택(고가주택) 장기보유특별공제 계산용 거주기간(년). isOneHouseOneFamily일 때만 사용.' },
         multiHouseCount: { type: 'integer', description: '조정대상지역 다주택 중과 판정용 소유 주택 수(2 또는 3 이상). isOneHouseOneFamily가 아닐 때만 의미가 있다.' },
+        isMultiHouseRentalExemption: { type: 'boolean', description: '[2026.10.19] 이번에 양도하는 주택이 장기임대주택(감면대상·장기어린이집 포함)이거나 그것들을 빼면 남는 1주택(일반주택)이라 중과 대상이 아님(소득령 §167의3①2·3·8의2·10호, §167의10①2·10호, 별지 83호의6 신청) — true면 중과 가산·장특공 배제를 하지 않는다.' },
         isAdjustedArea: { type: 'boolean', description: '양도 주택이 조정대상지역에 있는지 — true이고 multiHouseCount>=2이면 중과세율(+20%p/+30%p)이 적용되고 장기보유특별공제가 배제된다. 2년 이상 보유하고 2026.5.9까지 양도하면 자동으로 중과가 배제되며(시행령§167조의3①12의2호가목), 그 이후 양도라도 saleContractDate 등을 넣으면 토지거래허가구역 특례(나목·다목)로 배제되는지까지 판정한다. 조정대상지역 지정 현황은 수시로 바뀌므로 반드시 최신 여부를 확인하고 넣어라.' },
         saleContractDate: { type: 'string', description: '다주택중과 한시배제 나목·다목 판정용(시행령§167조의3①12의2호) — 매매계약체결일(YYYY-MM-DD). 양도일이 2026.5.9를 넘겨도, 2년 이상 보유한 주택을 이 날짜에 매매계약(계약금 지급 포함)했다면 계약체결일로부터 4개월(isExtendedDeadlineRegion이면 6개월, 단 2026.5.10 이후 계약시에는 각각 2026.9.9·11.9까지) 이내 양도시 중과가 배제될 수 있다. 해당 없으면 생략.' },
         isLandTransactionPermitArea: { type: 'boolean', description: '위 saleContractDate를 넣을 때만 — 토지거래허가구역 내 주택부수토지인지(나목). true면 isPermitApplicationFiledByDeadline·isPermitObtained도 함께 충족해야 하고, false면(다목) saleContractDate 자체가 2026.5.9까지여야 한다.' },

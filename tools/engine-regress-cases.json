@@ -692,5 +692,29 @@
                         "과세표준": 210000000,
                         "산출세액": 59860000
                 }
+        },
+        {
+                "이름": "양도 — 조정지역 3주택, 별지 83호의6 일반세율 적용 체크(장기임대주택·일반주택): 시행령 §167의3①2·3·8의2·10호 중과 제외 (서식 감사 사 후보 7)",
+                "도구": "calculateTransferTaxMultiJS",
+                "고정": true,
+                "입력": [
+                        {
+                                "assetType": "house",
+                                "transferPrice": 900000000,
+                                "acquisitionPrice": 500000000,
+                                "necessaryExpenses": 0,
+                                "acquisitionDate": "2016-03-01",
+                                "transferDate": "2026-09-01",
+                                "saleContractDate": "2026-06-01",
+                                "isAdjustedArea": true,
+                                "multiHouseCount": 3,
+                                "isMultiHouseRentalExemption": true
+                        }
+                ],
+                "정답": {
+                        "합산가산액": 0,
+                        "산출세액_합계": 101060000,
+                        "납부세액_합계": 111166000
+                }
         }
 ]

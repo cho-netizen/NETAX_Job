@@ -5971,7 +5971,7 @@ function renderSellerRegistry(){
         '<div class="taxcalc-field"><label>전화번호</label><input type="text" data-slfield="phone"' + idOf('trTransferorPhone') + ' value="' + (s.phone || '').replace(/"/g, '&quot;') + '" placeholder="숫자만, 예: 0212341234"></div>' +
         '<div class="taxcalc-field"><label style="visibility:hidden;">관할세무서</label><input type="hidden" data-slfield="taxOffice" id="trTransferorTaxOffice' + suf + '" value="' + (s.taxOffice || '').replace(/"/g, '&quot;') + '"><button type="button" class="taxcalc-ai-btn" data-action="open-tax-office-guide" data-address-input="trTransferorAddress' + suf + '" data-office-input="trTransferorTaxOffice' + suf + '">관할세무서</button></div>' +
         '<div class="taxcalc-field"><label>다주택중과 판정용 주택수</label><select data-slfield="multiHouseCount"' + idOf('trMultiHouseCount') + '><option value="0"' + (s.multiHouseCount === '0' || !s.multiHouseCount ? ' selected' : '') + '>해당없음/1주택</option><option value="2"' + (s.multiHouseCount === '2' ? ' selected' : '') + '>2주택</option><option value="3"' + (s.multiHouseCount === '3' ? ' selected' : '') + '>3주택 이상</option></select></div>' +
-        '<div class="taxcalc-field checkbox"><input type="checkbox" data-slfield="isMultiHouseRentalExemption"' + idOf('trMultiHouseRentalExemption') + (s.isMultiHouseRentalExemption ? ' checked' : '') + '><label>[2·3주택일 때만] 다른 보유주택이 등록 장기임대주택이라 이번 양도에 일반세율 적용(시행령§167의3①2·3·8호의2, 중과배제) — 별지83호의6 신청서 인쇄</label></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" data-slfield="isMultiHouseRentalExemption"' + idOf('trMultiHouseRentalExemption') + (s.isMultiHouseRentalExemption ? ' checked' : '') + '><label>[2·3주택일 때만] 이번에 양도하는 주택이 장기임대주택(감면대상·장기어린이집 포함)이거나, 그것들을 빼면 남는 1주택(일반주택)이라 일반세율 적용(시행령§167의3①2·3·8호의2·10호, 중과배제) — 별지83호의6 신청서 인쇄</label></div>' +
       '</div>' +
       // [2026.10.08, 재검토125] 세무사님 지적 — "[위 체크시]"가 소재지·임대등록일·임대개시일
       // 3칸 모두 반복돼 라벨만 길어지고 칸 사이가 벌어졌다. 소제목 하나로 묶고 각 라벨은
@@ -6759,6 +6759,7 @@ function collectTransferInput(vals){
     isNonResidentTwoYearException: !!vals.isNonResidentTwoYearException,
     isAdjustedArea: !!vals.isAdjustedArea,
     multiHouseCount: numVal(vals.multiHouseCount) || 0,
+    isMultiHouseRentalExemption: !!vals.isMultiHouseRentalExemption, // [2026.10.19] 별지 83호의6 일반세율 적용 — 시행령 §167의3①2·3·8의2·10호 중과 제외
     saleContractDate: vals.saleContractDate || '',
     isLandTransactionPermitArea: !!vals.isLandTransactionPermitArea,
     isPermitApplicationFiledByDeadline: !!vals.isPermitApplicationFiledByDeadline,
@@ -15865,8 +15866,11 @@ function handleTaxCalcClick_(e){
       const sharedMultiHouseCount = document.getElementById('trMultiHouseCount').value;
       const sharedIsResident = document.getElementById('trResident').value !== 'nonresident';
       const sharedNonResidentException = !!(document.getElementById('trNonResidentTwoYearException') && document.getElementById('trNonResidentTwoYearException').checked);
+      // [2026.10.19 서식 감사] 별지 83호의6 일반세율 적용(중과 제외) 체크도 양도인 값 — 엔진 중과 판정에 넘긴다(예전엔 인쇄에만 쓰임)
+      const sharedMultiHouseRentalExemption = !!(document.getElementById('trMultiHouseRentalExemption') && document.getElementById('trMultiHouseRentalExemption').checked);
       domesticAssets.forEach(function(a){
         a.multiHouseCount = sharedMultiHouseCount;
+        a.isMultiHouseRentalExemption = sharedMultiHouseRentalExemption;
         a.isTransferorResident = sharedIsResident;
         a.isNonResidentTwoYearException = sharedNonResidentException;
       });
@@ -15920,6 +15924,7 @@ function handleTaxCalcClick_(e){
           if (!ratio) return null;
           const resolved = collectTransferInput(Object.assign({}, a, {
             multiHouseCount: seller.multiHouseCount || '0',
+            isMultiHouseRentalExemption: !!seller.isMultiHouseRentalExemption, // [2026.10.19] 별지 83호의6 — 엔진 중과 판정
             isTransferorResident: seller.isTransferorResident !== false,
             isNonResidentTwoYearException: !!seller.isNonResidentTwoYearException
           }));
