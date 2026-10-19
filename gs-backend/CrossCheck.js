@@ -248,7 +248,8 @@ function cxRefind_(c, facts, opt) {
   const prevNo = typeof TC_NO_NEW_OCR_ !== 'undefined' ? TC_NO_NEW_OCR_ : false; try { TC_NO_NEW_OCR_ = true; } catch (e) {} // 저장된 판독만(새 글자인식 안 함)
   // 독립 근거만 — 사실 목록이 입력으로 받은 서류(사무소 계산표·검토메모·결과물·참고자료는 cxFacts_가 이미 뺌)에서만 찾는다(같은 서류를 보고 만든 계산표는 받침이 아님)
   const inputFiles = {}; (facts || []).forEach(function (x) { if (x && x.src && x.src.file && !x._copy) inputFiles[x.src.file] = 1; });
-  try { texts = caseProcFiles_(c).filter(function (f) { return inputFiles[f.name] && !/^_|^~\$/.test(f.name) && !caseProcIsOutputDocFor_(c, f.name, f.dir); }).map(function (f) { let t = ''; try { t = String(tc_docText_(f) || ''); } catch (e) {} return { name: f.name, flat: t.replace(/s+/g, ' ') }; }).filter(function (x) { return x.flat.length > 20; }); } catch (e) { texts = []; } try { TC_NO_NEW_OCR_ = prevNo; } catch (e) {}
+  try { texts = caseProcFiles_(c).filter(function (f) { return inputFiles[f.name] && !/^_|^~\$/.test(f.name) && !caseProcIsOutputDocFor_(c, f.name, f.dir) && !/\.md$/i.test(f.name) && !/검\s*토|절\s*세|간\s*편\s*계\s*산|예\s*상\s*세|세\s*액\s*계\s*산/.test(f.name); }).map(function (f) { let t = ''; try { t = String(tc_docText_(f) || ''); } catch (e) {} return { name: f.name, text: t, flat: t.replace(/\s+/g, ' ') }; }).filter(function (x) { // 사무소가 만든 계산표·검토메모(사실 구획만 입력으로 받는 것 포함)는 같은 서류를 보고 만든 것 — 독립 받침 아님
+    if (x.flat.length <= 20) return false; let oc = ''; try { oc = typeof caseProcOfficeCalcWhy_ === 'function' ? caseProcOfficeCalcWhy_(x.name, x.text) : ''; } catch (e) {} return !oc; }); } catch (e) { texts = []; } try { TC_NO_NEW_OCR_ = prevNo; } catch (e) {}
   const out = [];
   uniq.slice(0, opt.max || 300).forEach(function (x) {
     const d = CX_REFIND_DATE_.test(x.kind), n = cxNormV_(x.value, d ? 'date' : 'money');
