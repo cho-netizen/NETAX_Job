@@ -27,7 +27,10 @@
     '조특52호의2': '조세특례제한법 시행규칙 [별지 제52호의2서식]', // 영농자녀 증여세 감면 위반사유 신고 및 자진납부 계산서
     '조특11호의10': '조세특례제한법 시행규칙 [별지 제11호의10서식]', // 가업승계 증여세 과세특례 추징사유 신고 및 자진납부 계산서
     '조특11호의13': '조세특례제한법 시행규칙 [별지 제11호의13서식]', // 납부유예 사후관리추징사유 신고 및 자진납부 계산서
-    '조특11호의8': '조세특례제한법 시행규칙 [별지 제11호의8서식]' // 가업승계 주식 등 증여세 과세특례 적용신청서
+    '조특11호의8': '조세특례제한법 시행규칙 [별지 제11호의8서식]', // 가업승계 주식 등 증여세 과세특례 적용신청서
+    '소득103호': '소득세법 시행규칙 [별지 제103호서식]', // 국외전출자 양도소득세 세액공제신청서, 국외전출자 국내주식등 양도내역서
+    '소득104호': '소득세법 시행규칙 [별지 제104호서식]', // 국외전출자국내주식등 보유현황 신고서
+    '소득105호': '소득세법 시행규칙 [별지 제105호서식]' // 국외전출자 납부유예신청서
   };
   var mappers = {};
   var ctxFor = {};
@@ -219,6 +222,129 @@
   };
   // 지금 인쇄(srPrintFormPageHtml_ → srBusinessSuccessionApplicationPrintPageHtml_)와 같은 조건 — 특례세율 결과가 가업승계주식등
   ready['조특11호의8'] = function () { var r = g('lastSpecialRateGiftResult_'); return !!(r && r.특례종류 === SUCCESSION); };
+
+  // ═════════ 소득 별지 제103호·제104호·제105호서식 — 국외전출자(소득세법 §118의9~§118의16, 시행령 §178의9~§178의12) ═════════
+  //  ctx: { et: { input: lastExitTaxInput_, result: lastExitTaxResult_ (calculateExitTaxJS) }, 신고일 }
+  //  국외전출자 계산 카드(양도 탭 "국외전출자")에는 사람 칸이 없다 — 인적사항 ①~⑦은 비우고 이유를 남김(지금 인쇄도 "직접 보완" 안내).
+  //  예전 인쇄(exitTaxPrintFormPageHtml_)는 84호 쪽 뒤에 103호(실제 양도가액·외국납부세액·원천세액·공제구분 4줄), 104호(출국일·납세관리인·시가 4줄),
+  //  105호(납부유예 신청 때만 — 납세관리인·담보·신청세액·기간 4줄)를 붙였음.
+  var NOPERSON = '계산기에 없음 — 국외전출자 계산 카드에 사람 칸이 없음(지금 인쇄도 "인적사항은 직접 보완" 안내)';
+  function etOf(ctx) { var et = ctx.et || {}; return { inp: et.input || {}, r: et.result || null }; }
+  function exitPersonMiss(o, signKey, signLabel) {
+    o.miss('①②③④⑤⑥⑦ 국외전출자 인적사항(성명·주민등록번호·국내 주소·거주할 국가명·코드·외국 주소·전화·전자우편)', NOPERSON);
+    o.miss(signLabel, NOPERSON);
+    o.miss('세무서', '계산기에 없음 — 국외전출자 관할 세무서 칸 없음');
+  }
+  mappers['소득103호'] = function (ctx) {
+    var o = new Out(), e = etOf(ctx), inp = e.inp, r = e.r;
+    if (!r) { o.miss('소득103호 전체', '국외전출자 계산 결과 없음'); return o.result(); }
+    exitPersonMiss(o, '신청인서명', '신청인(서명)');
+    if (has(inp.departureDate)) o.set('⑧', inp.departureDate); else o.miss('⑧ 국외전출일', '화면 입력 없음(출국일)');
+    o.miss('⑨ 양도세 신고일', '계산기에 없음(출국 때 국외전출세를 신고한 날)');
+    var tax = n(r.산출세액);
+    o.set('⑩', tax).set('⑭', tax);
+    o.note('⑩ 신고 납부세액 = 엔진 산출세액(출국일 시가로 계산한 국외전출세) — 실제로 신고한 세액과 다르면 고칠 것');
+    o.miss('⑪⑫⑬ 세액공제 기 공제분 누계액', '계산기에 없음 — 앞서 받은 조정공제·외국납부·원천납부 공제를 받지 않음(엔진은 0으로 보고 ⑭ = ⑩)');
+    var dv = n(r.출국일시가), ne = n(r.필요경비), inc = n(r.양도소득금액);
+    o.set('⑮', dv).set('⑯', ne).set('⑰', inc);
+    o.check('⑰ = ⑮ − ⑯', inc, Math.max(0, dv - ne));
+    o.set('부표합계@출국양도가액', dv).set('부표합계@출국필요경비', ne);
+    o.miss('부표 종목별 줄(양도일·사업자번호·법인명·금액)', '계산기에 없음 — 국외전출자 카드는 종목별 명세를 받지 않음(합계 줄만 찍음)');
+    var hasActual = has(inp.actualTransferPrice);
+    if (!hasActual) {
+      o.note('⚠ 실제 양도가액이 없음 — 세액공제신청서는 출국 뒤 실제 양도했을 때 내는 서식(시행령 §178의10: 실제 양도한 날부터 2년 이내)');
+      o.miss('⑱⑲⑳㉑㉒ 실제 양도내용·㉓ 세율 ㉔㉕㉖ 조정공제·㉗㉘㉙ 외국납부·㉚㉛㉜ 원천납부·㉝㉞㉟㊱ 합계·부표 합계 실제 양도 칸', '해당 없음 — 실제 양도가액 입력 없음(아직 양도 전)');
+      ymdSet(o, '신청일', ctx.신고일, '신청일', 'ctx.신고일 없음(계산기에 없음)');
+      return o.result();
+    }
+    var ap = n(inp.actualTransferPrice), ai = ap - ne;
+    o.set('⑱', ap).set('⑲', ne).set('⑳', ai).set('부표합계@실제양도가액', ap).set('부표합계@실제필요경비', ne);
+    o.note('⑲ 실제 필요경비 = 출국시 필요경비와 같은 값(법 §118의13①은 양쪽 모두 §118의10② 필요경비 — 엔진도 같은 값)');
+    var ft = n(inp.foreignTaxPaid), ns = n(inp.nonresidentSourceTaxEquivalent);
+    if (ft > 0) o.set('㉑', ft).set('부표합계@외국납부세액', ft); else o.miss('㉑ 외국납부세액·부표 합계 외국납부세액', '해당 없음 — 입력 없음');
+    if (ns > 0) o.set('㉒', ns).set('부표합계@원천납부세액', ns); else o.miss('㉒ 원천납부세액·부표 합계 원천납부세액', '해당 없음 — 입력 없음');
+    // 4. 조정공제(법 §118의12①) — 실제 양도가액이 출국시 양도가액보다 낮을 때
+    var adj = n(r.조정공제액);
+    if (ap < dv) {
+      var dec = dv - ap, rate = n(r.과세표준) > 300000000 ? 25 : 20, t24 = Math.round(dec * rate / 100), t25 = Math.min(tax, t24);
+      o.set('㉓', dec).set('세율', rate + '%').set('㉔', t24).set('㉕', t25).set('㉖', adj);
+      o.check('㉓ = ⑮ − ⑱', dec, dv - ap);
+      o.check('㉕ = Min(⑭, ㉔)', t25, Math.min(tax, t24));
+      o.check('㉖ = ㉕(엔진 조정공제액)', adj, t25);
+      o.note('세율 = 출국 때 과세표준이 3억원을 넘으면 25%, 아니면 20%(엔진이 쓴 한계세율 — 법 §118의12①은 "제118조의11에 따른 세율"이라고만 함, 확인 필요)');
+    } else o.miss('㉓ 세율 ㉔ ㉕ ㉖ 조정공제', '해당 없음 — 실제 양도가액이 출국시 양도가액보다 낮지 않음(법 §118의12①)');
+    var after = Math.max(0, tax - adj), fc = n(r.외국납부세액공제), nc = n(r.비거주자국내원천세액공제);
+    // 5. 외국납부세액공제(법 §118의13①) — 엔진(법문) 식으로 ㉘, 서식 식(㉑×⑰/⑳)과 다르면 알림
+    if (fc > 0) {
+      var basis = adj > 0 ? ap : dv, t28 = ai > 0 ? Math.round(ft * (basis - ne) / ai) : 0, form28 = ai > 0 ? Math.round(ft * inc / ai) : 0;
+      o.set('㉗', after).set('㉘', t28).set('㉙', fc);
+      o.check('㉗ = ⑭ − ㉖', after, Math.max(0, tax - adj));
+      o.check('㉙ = Min(㉗, ㉘)', fc, Math.min(after, t28));
+      if (form28 !== t28) o.note('⚠ 판단 대기: ㉘ 서식 식(㉑ × ⑰ ÷ ⑳) = ' + form28 + '원 ↔ 법 §118의13①(조정공제에 해당하면 분자에 실제 양도가액) = ' + t28 + '원 — 법(엔진)대로 찍음');
+    } else o.miss('㉗㉘㉙ 외국납부세액공제', ft > 0 ? '엔진이 적용하지 않음(실제 양도소득금액이 0 이하이거나 비거주자 공제를 적용)' : '해당 없음 — 외국납부세액 입력 없음');
+    // 6. 비거주자의 국내원천소득 세액공제(법 §118의14①) — §156①7호 금액 그대로(엔진), 서식 식(㉒×⑰/⑳)과 다르면 알림
+    if (nc > 0) {
+      var form31 = ai > 0 ? Math.round(ns * inc / ai) : 0;
+      o.set('㉚', after).set('㉛', ns).set('㉜', nc);
+      o.check('㉚ = ⑭ − ㉖', after, Math.max(0, tax - adj));
+      o.check('㉜ = Min(㉚, ㉛)', nc, Math.min(after, ns));
+      if (form31 !== ns) o.note('⚠ 판단 대기: ㉛ 서식 식(㉒ × ⑰ ÷ ⑳) = ' + form31 + '원 ↔ 법 §118의14①(§156①7호 금액을 그대로) = ' + ns + '원 — 법(엔진)대로 찍음');
+    } else o.miss('㉚㉛㉜ 원천납부세액공제', ns > 0 ? '엔진이 적용하지 않음(외국납부세액공제를 먼저 적용)' : '해당 없음 — 원천납부세액 입력 없음');
+    if (ft > 0 && ns > 0) o.note('⚠ 계산 오류 의심: 외국납부세액과 원천납부세액이 둘 다 있음 — 법 §118의14②는 비거주자 국내원천소득 세액공제를 하면 외국납부세액공제를 적용하지 않는다고 정함. 엔진은 외국납부세액공제를 먼저 적용함');
+    // 7. 합계
+    o.set('㉝', adj);
+    if (fc > 0) o.set('㉞', fc); else o.miss('㉞ 외국납부세액 공제액', '해당 없음');
+    if (nc > 0) o.set('㉟', nc); else o.miss('㉟ 원천납부세액 공제액', '해당 없음');
+    o.set('㊱', adj + fc + nc);
+    o.check('㊱ = ㉝ + ㉞ 또는 ㉝ + ㉟', adj + fc + nc, adj + (fc > 0 ? fc : nc));
+    ymdSet(o, '신청일', ctx.신고일, '신청일', 'ctx.신고일 없음(계산기에 없음)');
+    return o.result();
+  };
+  mappers['소득104호'] = function (ctx) {
+    var o = new Out(), e = etOf(ctx), inp = e.inp, r = e.r;
+    if (!r) { o.miss('소득104호 전체', '국외전출자 계산 결과 없음'); return o.result(); }
+    exitPersonMiss(o, '신고인서명', '신고인(서명)');
+    if (has(inp.departureDate)) o.set('⑧', inp.departureDate); else o.miss('⑧ 국외전출(예정)일', '화면 입력 없음(출국일)');
+    o.miss('⑨⑩⑪⑫⑬ 국내주식 등 보유 현황(법인명·사업자등록번호·주식수·액면총액·지분율)', '계산기에 없음 — 국외전출자 카드는 출국일 시가 합계(' + n(r.출국일시가) + '원)만 받음(종목별 명세 칸 없음)');
+    if (inp.holdingReportNotFiled) o.note('보유현황 미신고·누락 가산세(법 §118의15④) ' + n(r.보유현황미신고가산세) + '원 = 화면 액면금액 ' + n(inp.faceValueForPenalty) + '원 × 2% — 이 신고서를 늦게 내는 경우');
+    if (has(inp.taxManagerName)) o.note('납세관리인(' + inp.taxManagerName + ')은 이 서식 칸이 아님 — 국세기본법 시행규칙 별지 제43호서식 납세관리인 신고서로 함께 냄(시행령 §178의11①)');
+    ymdSet(o, '신고일', ctx.신고일, '신고일', 'ctx.신고일 없음(계산기에 없음)');
+    var d0 = H.ymd(inp.departureDate), d1 = H.ymd(ctx.신고일);
+    if (d0 && d1 && String(ctx.신고일).slice(0, 10) >= String(inp.departureDate).slice(0, 10)) o.note('⚠ 신고일이 출국일과 같거나 뒤 — 보유현황은 출국일 전날까지 신고(법 §118의15①)');
+    return o.result();
+  };
+  mappers['소득105호'] = function (ctx) {
+    var o = new Out(), e = etOf(ctx), inp = e.inp, r = e.r;
+    if (!r) { o.miss('소득105호 전체', '국외전출자 계산 결과 없음'); return o.result(); }
+    exitPersonMiss(o, '신청인서명', '신청인(서명)');
+    if (!inp.deferralRequested) o.note('⚠ 화면 "납부유예를 신청함"이 꺼져 있음 — 지금 인쇄는 이때 이 서식을 만들지 않음');
+    if (has(inp.departureDate)) o.set('⑧', inp.departureDate); else o.miss('⑧ 국외전출(예정)일', '화면 입력 없음(출국일)');
+    o.miss('⑨ 신고일', '계산기에 없음(국외전출세 신고일 — 이 신청서는 신고서와 함께 냄, 시행령 §178의12④)');
+    var due = Math.max(0, n(r.납부세액_합계) - n(r.지방소득세));
+    o.set('⑩', n(r.출국일시가)).set('⑪', n(inp.acquisitionPrice)).set('⑫', due).set('⑬', due);
+    o.note('⑫ 납부할 세액 = 엔진 납부세액 합계 − 지방소득세(국세분, 보유현황 미신고가산세 포함 — 법 §118의15④는 산출세액에 더함). ⑬ = ⑫ 전액(법 §118의16① "양도소득세 납부의 유예", 지금 인쇄와 같음 — 일부만 신청하면 고칠 것)');
+    if (n(inp.otherNecessaryExpenses) > 0) o.note('⑪ 취득가액 = 화면 취득가액만(기타 필요경비 ' + n(inp.otherNecessaryExpenses) + '원은 넣지 않음)');
+    if (has(inp.actualTransferPrice)) o.note('⚠ 실제 양도가액이 입력돼 있어 ⑫에 조정공제·외국납부 공제가 반영됨 — 납부유예신청서는 출국 때(실제 양도 전) 신고와 함께 내는 서식');
+    o.miss('가 국외전출세를 신고할 것(충족·미충족)', '계산기에 없음(신고 여부 칸 없음)');
+    if (inp.collateralProvided) o.set('나@요건', '충족'); else o.miss('나 납세담보를 제공할 것(충족·미충족)', '화면 "납세담보를 제공함"이 꺼져 있어 알 수 없음(지금 인쇄는 "미확인")');
+    o.miss('다 납세관리인을 신고할 것(충족·미충족)', '계산기에 없음 — 납세관리인 성명' + (has(inp.taxManagerName) ? '(' + inp.taxManagerName + ')' : '') + '은 있으나 신고했는지는 받지 않음');
+    o.miss('사유 납부유예를 받으려는 사유([ ]유학·[ ]그 밖의 사유)', '계산기에 없음(유학 여부 칸 없음 — 유학이면 10년, 법 §118의16②)');
+    var d0 = H.ymd(inp.departureDate);
+    if (d0) o.set('기간@시작.연', d0.y).set('기간@시작.월', d0.m).set('기간@시작.일', d0.d); else o.miss('기간 시작', '화면 입력 없음(출국일)');
+    o.miss('기간 끝(년 월 일까지)', '계산기에 없음 — 실제 양도할 때까지, 출국일부터 5년(유학 10년) 안(법 §118의16①②)');
+    o.miss('⑭⑮⑯⑰ 유학 명세(교육기관·시작일·예상 종료일·비고)', '계산기에 없음');
+    ymdSet(o, '신청일', ctx.신고일, '신청일', 'ctx.신고일 없음(계산기에 없음)');
+    return o.result();
+  };
+  function etFromApp() {
+    var inp = g('lastExitTaxInput_'), r = g('lastExitTaxResult_');
+    return (inp && r) ? { input: inp, result: r } : null;
+  }
+  ['소득103호', '소득104호', '소득105호'].forEach(function (k) {
+    ctxFor[k] = function (extra) { var et = etFromApp(); if (!et || (k === '소득105호' && !et.input.deferralRequested)) return null; return Object.assign({ et: et }, extra || {}); };
+    // 지금 인쇄(exitTaxPrintFormPageHtml_)와 같은 조건 — 103·104호는 국외전출자 결과가 있으면, 105호는 "납부유예를 신청함"일 때만
+    ready[k] = function () { var et = etFromApp(); return !!(et && (k !== '소득105호' || et.input.deferralRequested)); };
+  });
 
   // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만) — 추징 신고서는 신고 뒤 따로 내는 서류라 넣지 않음
   function plan(tax, ctx) { var L = []; return L; }

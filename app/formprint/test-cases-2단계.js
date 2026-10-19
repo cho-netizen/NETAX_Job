@@ -52,5 +52,27 @@ module.exports = function (E, H) {
   var c118 = Object.assign({ r: rSr, sr: { giftDate: '2026-05-20', businessYears: 25 }, taxAgent: AGENT, 신고일: '2026-08-31' }, GP);
   L.push({ name: '조특11호의8_가업승계특례신청', forms: [{ formKey: '조특11호의8', ctx: c118 }], ctx: c118 });
 
+  // ⑤ 소득103호 — 국외전출자 세액공제신청(조정공제 + 외국납부세액공제): 출국일 2026.3.10. 시가 20억, 취득가액 5억 + 기타 1천만, 출국 뒤 16억에 실제 양도, 외국 납부세액 5천만
+  //   손계산: 양도소득금액 14.9억 − 기본공제 250만 = 과세표준 14억8,750만 → 산출세액 = 6천만 + (14억8,750만 − 3억) × 25% = 356,875,000
+  //           조정공제 = (20억 − 16억) × 25% = 1억(⑭ 한도 안) → ㉗ = 256,875,000
+  //           외국납부 = 5천만 × (16억 − 5.1억) ÷ (16억 − 5.1억) = 5천만(법 §118의13① 괄호 — 조정공제 해당이라 실제 양도가액) → 공제 합계 1억5천만
+  //           (서식 식 ㉑×⑰/⑳ = 5천만 × 14.9억 ÷ 10.9억 = 68,348,624 — 판단 대기 알림)
+  function exitCase(p) { var r = E.calculateExitTaxJS(clone(p)); if (!r || r.error) throw new Error('국외전출자 엔진 오류: ' + (r && r.error)); return { input: p, result: r }; }
+  var ET0 = { departureDate: '2026-03-10', residenceYearsIn10: 8, isMajorShareholder: true, acquisitionPrice: 500000000, otherNecessaryExpenses: 10000000, taxManagerName: '견본납세관리인', taxManagerAddress: '서울특별시 ○○구 견본로 7' };
+  var et1 = exitCase(Object.assign({}, ET0, { departureMarketValue: 2000000000, actualTransferPrice: '1600000000', foreignTaxPaid: 50000000 }));
+  var c103 = { et: et1, 신고일: '2027-05-31' };
+  L.push({ name: '소득103호_조정공제_외국납부', forms: [{ formKey: '소득103호', ctx: c103 }], ctx: c103 });
+  // ⑤-2 소득103호 — 비거주자 국내원천소득 세액공제(실제 양도가액 22억 > 출국 시가라 조정공제 없음, 원천징수세액 3천만)
+  //   손계산: ㉜ = min(356,875,000, 30,000,000) = 30,000,000(법 §118의14① — §156①7호 금액 그대로). 서식 식 ㉒×⑰/⑳ = 3천만 × 14.9억 ÷ 16.9억 = 26,449,704(알림)
+  var et2 = exitCase(Object.assign({}, ET0, { departureMarketValue: 2000000000, actualTransferPrice: '2200000000', nonresidentSourceTaxEquivalent: 30000000 }));
+  var c103b = { et: et2, 신고일: '2027-05-31' };
+  L.push({ name: '소득103호_비거주자원천공제', forms: [{ formKey: '소득103호', ctx: c103b }], ctx: c103b });
+  // ⑥ 소득104호·105호 — 출국 전 보유현황 신고 + 납부유예 신청(담보 제공): 출국 시가 8억, 취득가액 3억(기타 0)
+  //   손계산: 과세표준 = 5억 − 250만 = 4억9,750만 → 산출세액 = 6천만 + 1억9,750만 × 25% = 109,375,000 → ⑫ = ⑬ = 109,375,000
+  var et3 = exitCase(Object.assign({}, ET0, { departureMarketValue: 800000000, acquisitionPrice: 300000000, otherNecessaryExpenses: 0, actualTransferPrice: '', deferralRequested: true, collateralProvided: true }));
+  var c104 = { et: et3, 신고일: '2026-03-05' };
+  L.push({ name: '소득104호_출국전보유현황', forms: [{ formKey: '소득104호', ctx: c104 }], ctx: c104 });
+  L.push({ name: '소득105호_납부유예_담보제공', forms: [{ formKey: '소득105호', ctx: c104 }], ctx: c104 });
+
   return L;
 };
