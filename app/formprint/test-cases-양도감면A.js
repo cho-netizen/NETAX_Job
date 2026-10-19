@@ -59,5 +59,16 @@ module.exports = function (E, H) {
     transferDate: '2025-10-02', acquisitionDate: '1990-06-01', assetLocation: '경기도 ○○시 ○○동 산 5 (견본)', assetArea: 2000, compensationType: 'restricted_zone_40' };
   L.push({ name: '14호_개발제한구역_매수청구', forms: plan(trCtx([rz])) });
 
+  // 6. 조특37호 — 구조조정대상부동산(§43, 1998 취득 → 2025.4.15. 양도, 5년 뒤 양도라 5년간 발생분 50%를 소득에서 뺌)
+  var rp = { assetType: 'other', assetKind: 'land', transferPrice: 900000000, acquisitionPrice: 300000000, necessaryExpenses: 10000000,
+    transferDate: '2025-04-15', acquisitionDate: '1998-10-01', assetLocation: '서울특별시 ○○구 ○○동 50 (견본)', isRestructuringPropertyReduction: true,
+    rpAcquisitionStandardPrice: 200000000, rpFiveYearStandardPrice: 320000000, rpTransferStandardPrice: 700000000 };
+  L.push({ name: '37호_구조조정대상부동산_5년뒤', forms: plan(trCtx([rp])) });
+  // 6-2. 신축주택(§99, 1999 취득 주택, 5년 뒤 양도 — 5년간 발생분 100%)
+  var nh = { assetType: 'house', assetKind: 'building', transferPrice: 700000000, acquisitionPrice: 150000000, necessaryExpenses: 0,
+    transferDate: '2025-05-20', acquisitionDate: '1999-03-02', assetLocation: '서울특별시 ○○구 ○○동 9, 101호 (견본)', newHouseReductionProvision: 'sect99',
+    nhAcquisitionStandardPrice: 120000000, nhFiveYearStandardPrice: 220000000, nhTransferStandardPrice: 620000000 };
+  L.push({ name: '37호_신축주택_99조', forms: ['조특37호'], ctx: trCtx([nh], { 감면자산: 0 }) });
+
   return L;
 };

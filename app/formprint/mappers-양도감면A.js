@@ -307,6 +307,68 @@
     return o.result();
   };
 
+  // ───────── 조특 별지 제37호서식(구조조정대상부동산등세액감면신청서) — 구조조정대상부동산(법 §43, 영 §40②)·신축주택(법 §99, 영 §99④ / §99의3, 영 §99의3⑥ 준용) ─────────
+  //  예전 인쇄(trRestructuringPropertyPrintPageHtml_)와 같은 조건. 작성요령: ⑦ = 소득세법 §95① 양도소득금액, ⑧~⑩은 취득 5년 뒤 양도만,
+  //  ⑪ = 5년 이내 양도면 ⑦, 5년 뒤면 ⑦ × (⑩ − ⑨) ÷ (⑧ − ⑨), ⑫ = 구조조정 50%·신축주택 100%, ⑬ = ⑪ × ⑫, ⑭ = ⑬ × 세율(2000년판 서식).
+  //  엔진: 5년 뒤(신축은 5년 이내도) — 장기보유특별공제 전 양도차익에서 "양도차익 × 기준시가 비율 × 감면율"(제외소득금액)을 빼고 장특공을 적용.
+  //   장특공이 양도차익에 비례하므로 소득에서 빠지는 몫 = 제외소득금액 × (1 − 장특공율) = 서식 ⑬ — 이것으로 검산한다. 감면세액(⑭)은 엔진에 없다.
+  //  구조조정 5년 이내(1999년까지 취득이라 지금은 거의 없음)는 세액감면(§90①) — 엔진 자산별 감면액이 ⑭.
+  function rpKind(a) {
+    if (a.isRestructuringPropertyReduction) return { 구조조정: true, 조항: '제40조제2항', rate: 0.5, std: ['rpTransferStandardPrice', 'rpAcquisitionStandardPrice', 'rpFiveYearStandardPrice'], note: '구조조정대상부동산감면(조특법§43)', law: '조특법 §43' };
+    if (a.newHouseReductionProvision === 'sect99' || a.newHouseReductionProvision === 'sect99_3')
+      return { 구조조정: false, 조항: '제99조제4항', rate: 1, std: ['nhTransferStandardPrice', 'nhAcquisitionStandardPrice', 'nhFiveYearStandardPrice'], note: '신축주택등감면(조특법§99계열)', law: a.newHouseReductionProvision === 'sect99' ? '조특법 §99' : '조특법 §99의3(영 §99의3⑥이 §99④ 준용)' };
+    return null;
+  }
+  mappers['조특37호'] = function (ctx) {
+    var o = new Out(), s = ctx.seller || {}, p = pick(ctx), a = p.a, k = rpKind(a);
+    o.miss('① 상호 또는 법인명·② 사업자등록번호', '계산기에 없음 — 개인 양도인(상호·사업자등록번호 칸 없음)');
+    o.need('③', s.name, '③ 대표자 성명').need('④', s.regNo, '④ 주민등록번호').need('⑤', H.fullAddr(s), '⑤ 주소');
+    var y = String(a.transferDate || '').slice(0, 4);
+    if (/^\d{4}$/.test(y)) o.set('⑥@부터.연', y).set('⑥@부터.월', '1').set('⑥@부터.일', '1').set('⑥@까지.연', y).set('⑥@까지.월', '12').set('⑥@까지.일', '31');
+    else o.miss('⑥ 과세연도', '양도일 없음');
+    if (!k) { o.miss('⑦~⑭·근거조항', '자산 카드에 구조조정대상부동산·신축주택(§99·§99의3) 감면 표시 없음'); signs(o, ctx, { sign: '신청인서명', office: '세무서' }); return o.result(); }
+    o.set('근거조항', k.조항).note('적용 조문: ' + k.law);
+    var ev = p.it.ev || H.evFromSingle(a, p.it.single);
+    var five = (function () { var d = H.ymd(a.acquisitionDate); if (!d) return null; return (Number(d.y) + 5) + '-' + ('0' + d.m).slice(-2) + '-' + ('0' + d.d).slice(-2); })();
+    var after5 = five && String(a.transferDate || '') > five;
+    o.set('⑫', k.rate * 100);
+    var notes = notesOf(ctx, p.i);
+    if (!ev || !ev.ok) { o.miss('⑦⑪⑬⑭', '엔진 자산 값 없음(' + ((ev && ev.why) || '') + ')'); signs(o, ctx, { sign: '신청인서명', office: '세무서' }); return o.result(); }
+    // ⑦ = 그 자산 §95① 양도소득금액(감면으로 빼기 전 — 84호 부표1 ⑱과 같은 엔진 단건 값)
+    o.set('⑦', ev.income);
+    o.check('⑦ = 양도차익 − 장기보유특별공제', ev.income, ev.taxable - ev.ltDeduction);
+    var red = k.구조조정 ? redNotes(notes, /^구조조정대상 부동산 감면/)[0] : null;
+    var excl = (notes || []).filter(function (x) { return x.구분 === k.note; })[0];
+    if (red) { // 구조조정 5년 이내 — 세액감면
+      o.set('⑪', ev.income).set('⑬', Math.round(ev.income * k.rate)).set('⑭', n(red.감면액));
+      o.miss('⑧⑨⑩ 기준시가', '취득일부터 5년 이내 양도 — 작성요령 3에 따라 적지 않음');
+      checkRed(o, '⑭', red);
+      o.note('⑭: 법 §43①("양도소득세의 100분의 50에 상당하는 세액")·소득세법 §90①대로 엔진 감면액 — 서식(2000년판) 산식 "⑬ × 세율"과 다름(판단 대기)');
+    } else if (excl && excl.적용여부 === true) {
+      var sv = k.std.map(function (f) { return n(a[f]); }); // ⑧ 양도 당시, ⑨ 취득 당시, ⑩ 5년 되는 날
+      var 제외 = n(excl.제외소득금액), 빠짐 = Math.round(제외 * (1 - n(ev.ltRate)));
+      if (after5) {
+        if (sv[0] && sv[1] && sv[2] && sv[0] !== sv[1]) {
+          o.set('⑧', sv[0]).set('⑨', sv[1]).set('⑩', sv[2]);
+          var v11 = Math.round(ev.income * (sv[2] - sv[1]) / (sv[0] - sv[1]));
+          o.set('⑪', v11).set('⑬', Math.round(v11 * k.rate));
+          o.check('⑬ = ⑪ × ⑫ = 엔진 제외소득금액 ' + 제외 + ' × (1 − 장기보유특별공제율 ' + n(ev.ltRate) + ')', Math.round(v11 * k.rate), 빠짐);
+        } else {
+          o.miss('⑧⑨⑩ 기준시가·⑪', '자산 카드에 기준시가 3개(양도·취득·5년 되는 날)가 다 있지 않음 — 엔진은 법령에 없는 근사(5년 시점 평가액·보유기간 비율)로 계산(시행령 §40①·§99① 산식 아님)');
+          o.set('⑬', 빠짐).note('⑬: 엔진 제외소득금액 × (1 − 장기보유특별공제율) — 근사 계산 값');
+        }
+      } else {
+        o.miss('⑧⑨⑩ 기준시가', '취득일부터 5년 이내 양도 — 작성요령 3에 따라 적지 않음');
+        o.set('⑪', ev.income).set('⑬', Math.round(ev.income * k.rate));
+        o.check('⑬ = ⑪ × ⑫ = 엔진 제외소득금액 × (1 − 장기보유특별공제율)', Math.round(ev.income * k.rate), 빠짐);
+      }
+      o.miss('⑭ 감면받을 세액', '엔진은 ⑬을 과세대상 소득에서 빼는 방식(법 §43①·§99① "과세대상 소득금액에서 뺀다")이라 감면세액 값이 없음 — 서식(2000년판)은 ⑬ × 세율(판단 대기)');
+    } else if (!notes) o.miss('⑦~⑭', '자산 목록과 엔진 거래 수가 달라(환지 증가분 등) 자산별 감면 값을 고를 수 없음');
+    else o.miss('⑪⑬⑭', '엔진에서 감면이 적용되지 않음' + (excl && excl.사유 ? '(' + String(excl.사유).slice(0, 80) + ')' : ''));
+    signs(o, ctx, { sign: '신청인서명', office: '세무서' });
+    return o.result();
+  };
+
   // ───────── 어떤 자산에 어떤 신청서 — 예전 인쇄(trAttach1PrintPageHtml_ 뒤에 붙는 함수들)가 그 서식을 그리는 조건과 같게 ─────────
   //  조특54호는 넣지 않음 — 사업시행자 제출(시행령 §72④·⑦)
   var TESTS = {};
@@ -315,6 +377,7 @@
   register('조특63호의32', function (a) { return n(a.pensionAccountContribution) > 0; });
   register('조특13호', function (a) { return s13Of(a).length > 0; });
   register('조특14호', function (a) { return RZ.indexOf(a.compensationType) >= 0; });
+  register('조특37호', function (a) { return !!rpKind(a); });
 
   // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만) — 감면 대상 자산마다 한 장
   function plan(tax, ctx) {
