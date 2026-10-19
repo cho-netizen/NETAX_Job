@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 10:25 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 10:30 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -5056,12 +5056,13 @@
           <button type="button" id="lsBackToCaseBtn" class="ghost-btn" style="margin-left:auto;"><span class="btn-ic">↩</span><span class="btn-tx"> 처리개요</span></button>
         </div>
       </div>
-      <div class="card" id="lsiDbCard">
+            <div class="card" id="lsiDbCard">
         <h3 style="margin-top:0;">📖 법령 원문 (법령 정비본)</h3>
         <div class="lsi-note" style="margin-bottom:8px;">법제처 원문을 법령정보 모양으로 봅니다. 조문 전체나 항 하나를 [복사]로 그대로 인용할 수 있고, 판(시행일)을 고르면 그때 법령을 봅니다. 그림 산식은 글로 옮긴 것(세무사님 타이핑·판독)이나 법제처 글자상자로 보여 줍니다.</div>
         <div id="lsiDbBar" class="lsidb-bar"><button type="button" class="btn" id="lsiDbOpen">법령 원문 열기</button></div>
         <div id="lsiDbBody"></div>
       </div>
+
       <div class="card">
         <h3 style="margin-top:0;">조문으로 찾아보기</h3>
         <div class="lsi-note" style="margin-bottom:8px;">조문 하나를 고르면 그 조문을 해석한 서식 칸, 그 조문을 쓰는 조견표, 그 조문을 쓰는 계산을 함께 보여 줍니다. 사건을 고르지 않아도 됩니다.</div>
@@ -6139,6 +6140,7 @@
     if (box.scrollIntoView) box.scrollIntoView({ block: 'start' });
   }
 </script>
+<!-- [2026.10.19] 법령 정비본 원문 보기·인용 복사 — 앱(job.netax.kr/app)에만 들어간다(tools/build-app.js가 lawsearch.html의 자리 표시에 끼움). 서버(구글) 화면 사본에는 없다 — 서버 10MB 한도. -->
 <style>
   .lsidb-bar{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
   .lsidb-toc{ max-height:260px; overflow:auto; border:1px solid var(--line); border-radius:6px; padding:6px 10px; margin-top:8px; font-size:12.5px; }
@@ -6450,6 +6452,7 @@
     var d = document.createElement('div'); d.style.marginTop = '6px'; d.appendChild(b); box.appendChild(d);
   });
 </script>
+
 
       <div class="view" id="view-clientmanage">
   <div class="editor-toolbar">

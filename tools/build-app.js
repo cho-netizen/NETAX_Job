@@ -54,6 +54,14 @@ if (html.indexOf(LAW_MAP_SLOT) !== -1) {
   html = html.slice(0, i) + ref.refBlock(ref.collect()) + html.slice(k);
 }
 
+// [2026.10.19 서버 용량] 앱에만 들어가는 화면 코드 — 저장소 app-only/<이름>.html을 화면의 자리 표시 `<!--@@APP_ONLY:이름@@-->`에 끼운다.
+//  gs-backend 밖이라 clasp push(서버 10MB 한도)에 안 올라간다. 예전 구글 주소 화면에서는 이 기능이 비어 보인다.
+html = html.replace(/<!--@@APP_ONLY:([\w-]+)@@-->/g, (_, name) => {
+  const f = path.join(ROOT, 'app-only', name + '.html');
+  if (!fs.existsSync(f)) throw new Error('앱 전용 파일이 없습니다: ' + f);
+  return fs.readFileSync(f, 'utf8');
+});
+
 const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16);
 html = html.replace('<head>', '<head>\n  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (' + stamp + ' UTC) -->');
 
