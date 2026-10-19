@@ -3373,6 +3373,7 @@ function openOneHouseSpecialCaseModal_(idx){
     if (applyBtn){
       applyBtn.addEventListener('click', function(){
         transferAssets[idx].isOneHouseOneFamily = true;
+        transferAssets[idx].isResidenceHouseSpecial = (provision === 'lr'); // [2026.10.20 J03] 거주주택 특례면 카드에 임대주택 양도기한 입력칸을 보임
         // [2026.09.30 정정, 재검토98] 재검토97에서 "별지83호서식 계열"이라고 적었던 게 틀렸다 —
         // law.go.kr 원문 대조 결과 별지83호는 완전히 다른 조항(§155⑬ 상속·이농·귀농주택)용이고,
         // 이 판정모달(u9/pd/rh/pr)이 실제로 쓰는 서식은 (1) 농어촌주택등(rh, 고향주택 포함) →
@@ -5850,6 +5851,12 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-one-house-special-modal" data-idx="' + idx + '" title="특정주택(수도권밖미분양·인구감소지역·농어촌주택)은 주택수에서 제외될 수 있습니다">🔍 특정주택 제외 판정</button></div>' +
           '<div class="taxcalc-field" data-show-if="isOneHouseOneFamily" style="display:none;"><label>거주연수</label><input type="number" data-field="residenceYears" placeholder="년" maxlength="2"></div>' +
           '<div class="taxcalc-field"><label>별지 83호의6 일반세율 적용(이 주택)</label><select data-field="mhRentalExemptionType"><option value="">해당 없음</option><option value="long_rental">장기임대주택</option><option value="reduced_rental">감면대상 장기임대주택</option><option value="daycare">장기어린이집</option><option value="general">일반주택(위 셋을 빼면 남는 1주택)</option></select><span class="taxcalc-field-help">2·3주택 이상이라도 이 주택이 넷 중 하나면 중과 대신 일반세율(시행령 §167의3①2·3·8의2·10호, ⑦ 신청서 — 주택마다)</span></div>' +
+          // [2026.10.20 AI 회의 회장 결론 J03] 거주주택 특례(시행령 §155⑳)를 고른 자산만 — 2026.10.1. 이후 양도면 임대주택이 아파트 매입임대 양도기한
+          //  (시행령 §167의3⑪)을 넘겼는지 판정하는 데 쓴다(세액 기본값은 특례 유지, 기한이 지났으면 판단 대기로 두 세액을 나란히).
+          '<div class="taxcalc-field" data-show-if="isResidenceHouseSpecial" style="display:none;"><label>임대주택 유형(거주주택 특례)</label><select data-field="resRentalKind"><option value="">모름 — 고르세요</option><option value="apt_old">종전 장기일반·단기 민간임대 중 아파트 매입임대</option><option value="other">그 밖의 임대주택(아파트 아님·건설임대 등)</option></select><span class="taxcalc-field-help">도시형 생활주택인 아파트는 "그 밖". 아파트 매입임대는 양도기한(2027.12.31. 등)이 있음 — 시행령 §167의3①2호</span></div>' +
+          '<div class="taxcalc-field" data-show-if="isResidenceHouseSpecial" style="display:none;"><label>임대주택 등록 말소일</label><input type="date" data-field="resRentalDeregDate" min="1990-01-01" max="2099-12-31"><span class="taxcalc-field-help">말소 안 됐으면 비움. 말소 뒤 5년 안에 거주주택을 팔면 양도기한을 따지지 않음(§155㉓)</span></div>' +
+          '<div class="taxcalc-field" data-show-if="isResidenceHouseSpecial" style="display:none;"><label>임대의무기간 종료일</label><input type="date" data-field="resRentalObligationEndDate" min="1990-01-01" max="2099-12-31"><span class="taxcalc-field-help">아파트 매입임대는 이날 등록이 자동 말소됨. 2027.1.1. 이후 끝나면 양도기한 = 이날부터 1년(§167의3⑪1호)</span></div>' +
+          '<div class="taxcalc-field" data-show-if="isResidenceHouseSpecial" style="display:none;"><label>그 밖의 늦은 양도기한</label><input type="date" data-field="resRentalDeadlineLater" min="2027-01-01" max="2099-12-31"><span class="taxcalc-field-help">해당할 때만 — 2027년 뒤 새로 조정대상지역이 된 곳은 공고일부터 1년, 재건축·재개발 대상은 이전고시일부터 1년(§167의3⑪2·3호)</span></div>' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isAdjustedArea" id="adj-' + idx + '"><label for="adj-' + idx + '">조정대상지역(2026.5.9까지 양도분은 시행령§167조의3①12호의2 등에 따라 중과 한시배제 자동 적용, 이후 재연장 여부는 별도 확인)</label></div>' +
           '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-industrial-complex-lot-modal" data-idx="' + idx + '" title="산업단지 조성으로 이주한 이주택지를 분양받아 양도하는 경우, 다주택중과 배제 대상인지 판정합니다(조특법§104의20, 2012.12.31까지 양도분만)">🔍 산업단지 이주택지 중과배제 판정</button></div>' +
           (transferAssets[idx].transferContractId ? '<div class="taxcalc-field"><span class="taxcalc-field-help">매매계약체결일·토지거래허가 관련 항목은 양도계약에서 가져옵니다 — 계약 카드에서 수정하세요</span></div>' :
@@ -6862,6 +6869,8 @@ function renderTransferPane(){
 function updatePropertyCardConditionalVisibility_(card, idx){
   const a = transferAssets[idx];
   if (!a) return;
+  // [2026.10.20 J03] 예전에 저장된 거주주택 특례(별지 제83호의2) 자산도 임대주택 양도기한 입력칸이 보이게
+  if (a.isResidenceHouseSpecial === undefined && a.oneHouseSpecialCase && a.oneHouseSpecialCase.formNo === '소득세법 시행규칙 [별지 제83호의2서식]') a.isResidenceHouseSpecial = true;
   card.querySelectorAll('[data-show-if]').forEach(function(field){
     // [2026.10.19] "a|b"는 둘 중 하나라도 있으면 표시(조특법 §133 직전 감면세액 칸처럼 여러 감면에 걸친 칸용)
     field.style.display = String(field.dataset.showIf).split('|').some(function(k){ return !!a[k]; }) ? '' : 'none';
@@ -6986,6 +6995,9 @@ function collectTransferInput(vals){
     rentalYears: numVal(vals.rentalYears) || 0,
     rentalRegistrationDate: vals.rentalRegistrationDate || '', // §97의3 2022-12-31 이전 등록분 8년 50%
     oneHouseSpecialFormNo: vals.oneHouseSpecialCase ? (vals.oneHouseSpecialCase.formNo || '') : '', // [2026.10.19] 판단 대기 ②(§155⑳) 확인용 — 계산엔 안 씀
+    // [2026.10.20 회장 결론 J03] 거주주택 특례 — 임대주택 유형·말소일·의무기간 종료일·⑪2·3호 기한(판단 대기 ② 판정용, 계산엔 안 씀)
+    isResidenceHouseSpecial: !!vals.isResidenceHouseSpecial, resRentalKind: vals.resRentalKind || '', resRentalDeregDate: vals.resRentalDeregDate || '',
+    resRentalObligationEndDate: vals.resRentalObligationEndDate || '', resRentalDeadlineLater: vals.resRentalDeadlineLater || '',
     acquisitionStandardPrice: numVal(vals.acquisitionStandardPrice) || 0,
     registrationStandardPrice: numVal(vals.registrationStandardPrice) || 0,
     rentalStartStandardPrice: numVal(vals.rentalStartStandardPrice) || 0, // [2026.10.19] 시행령 §97의3⑤ C(임대 개시일)
@@ -7222,6 +7234,7 @@ function renderOneTransferResultHtml_(r, label, sellerIdx){
   if (r.시점경고) html += '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.시점경고) + '</div>';
   if (r.서식검산경고) html += '<div class="taxcalc-result-note" style="color:#b00020; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.서식검산경고) + '</div>'; // [2026.10.19] 서식 칸 산식 검산
   if (r.판단대기 && r.판단대기.length) html += tcJudgmentPendingHtml_(r.판단대기); // [2026.10.19] 세무사님 판단 대기 — 해석 A/B 세액, 고르면 기록
+  if (r.판단대기안내 && r.판단대기안내.length) html += '<div class="taxcalc-result-note" style="color:#6a1b9a; margin:0 0 6px;">' + r.판단대기안내.map(function(x){ return '⚠ ' + escapeHtml(x); }).join('<br>') + '</div>'; // [2026.10.20 J03] 입력을 더 넣어야 판정되는 안내
   html += taxCalcResultRow('거래건수 / 비과세', r.거래건수 + '건 / ' + r.비과세건수 + '건');
   html += taxCalcResultRow('합산대상(장기) 소득금액', won(r.합산소득금액));
   html += taxCalcResultRow('기본공제', won(r.기본공제));
