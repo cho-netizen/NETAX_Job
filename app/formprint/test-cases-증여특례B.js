@@ -69,6 +69,7 @@ module.exports = function (E, H) {
   var jtCtx1 = { kind: 'jt', r: jt1, donee: DONEE, taxAgent: AGENT, in: jtIn1, shareholders: jtSH, segmentYears: SEG, 신고일: '2025-06-30' };
   L.push({ name: '증여10호의4_개시사업연도', forms: [{ formKey: '증여10호의4', ctx: jtCtx1 }], ctx: jtCtx1 });
   L.push({ name: '증여10호의4부표1_주주표', forms: [{ formKey: '증여10호의4부표1', ctx: jtCtx1 }], ctx: jtCtx1 });
+  L.push({ name: '증여10호의4부표2_출자고리', forms: [{ formKey: '증여10호의4부표2', ctx: jtCtx1 }], ctx: jtCtx1 });
   // ───── 일감떼어주기 — 정산사업연도(2년 경과) 신고: 직접만 50%, 누적 이익 36억, 법인세 상당액 누계 2억, 개시 산출세액 3억5천만 ─────
   //  손계산: 36억 × 50% − 2억 = 16억 → 40% − 1억6천만 = 4억8천만, ㉗ 3억5천만 빼면 1억3천만, 신고세액공제 3% 390만 → 납부 1억2,610만
   var jtIn2 = { phase: 'settlement', profit: 3600000000, shareRatio: 50, corporateTax: 200000000, corpTaxAfterCredit: 0, corpTaxableIncome: 0, months: 0, dividendDeduction: 0,

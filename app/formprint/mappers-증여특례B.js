@@ -521,6 +521,10 @@
     return o.result();
   };
 
+  // ───────── 10호의4 부표2 — 수증자 등 및 과세가액 계산명세서(A-1)(수증자 간접보유비율) ─────────
+  //  10호의3 부표2와 같은 모양·같은 작성방법(최대주주가 법인일 때 별지로) — 🧮 주주별 보유 내역(shareholdingRows_.jt, jtAttach2PrintPageHtml_와 같은 표)의 출자 고리를 같은 방법으로 옮김
+  mappers['증여10호의4부표2'] = function (ctx) { return mappers['증여10호의3부표2'](ctx); };
+
   // ───────── 세액인쇄 화면용 ctx — 화면 전역값에서 모음(브라우저) ─────────
   /* global lastRelatedPartyGiftResult_, lastBusinessOpportunityGiftResult_, giftDonees, shareholdingRows_, relatedPartyRatioRows_,
      jmRelatedPartyTotalSales_, jmRelatedPartyExcludedSales_, jtSegmentYears_, shareholdingIndirectRatio_, shareholdingCountedIndirectRatio_ */
@@ -568,6 +572,7 @@
     '증여10호의3부표3': function () { var r = jmR(); return !!(r && r.과세대상여부 && chainGroups(shRows('jm')).a.length); },
     '증여10호의4': function () { return !!jtR(); },
     '증여10호의4부표1': function () { var r = jtR(); return !!(r && r.과세대상여부); },
+    '증여10호의4부표2': function () { var r = jtR(); return !!(r && r.과세대상여부 && shRows('jt').some(function (x) { return has(x.chain1Company) || n(x.chain1Ratio) > 0; })); },
     '증여10호의3부표5': function () { var r = jmR(); return !!(r && r.과세대상여부); },
     '증여10호의3부표4': function () { var r = jmR(); return !!(r && r.과세대상여부 && (typeof relatedPartyRatioRows_ !== 'undefined' ? relatedPartyRatioRows_ : []).some(function (x) { return has(x.label) || n(x.sales) > 0; })); }
   };
