@@ -230,6 +230,8 @@ function toolBrowseTaxCalculators(category) {
   };
 }
 
+// [2026.10.19] 국세기본법 §47의4 고지 후 체납 — 날짜를 주면 엔진이 법률 제21212호 부칙 제3조로 종전(2026.6.30 이전 기한 경과: 1일 10만분의 22)/개정(월 1만분의 67) 판정
+const LATE_DESIG_PROPS_ = { designatedDueDate: { type: 'string', description: '지정납부기한 날짜(YYYY-MM-DD, 고지 후 체납일 때). paidDate와 함께 주면 monthsAfterDesignatedDueDate 대신 날짜로 계산' }, paidDate: { type: 'string', description: '실제 납부일(YYYY-MM-DD)' } };
 const DRIVE_TOOLS = [
   {
     name: 'browse_tax_calculators',
@@ -625,7 +627,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '법정납부기한 다음날부터 실제 납부일까지의 미납일수. 없으면 생략(0).' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준이 되는 미납세액(원). 생략하면 이번 계산의 산출세액(가산세 제외분)을 그대로 쓴다.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' }
       },
       required: ['transferPrice', 'acquisitionPrice', 'acquisitionDate', 'transferDate']
@@ -648,7 +650,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'number', description: '납부지연일수' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준액을 산출세액 합계 대신 다른 값으로 쓰고 싶을 때만 입력(보통 생략)' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         isSelfElectronicFiling: { type: 'boolean', description: '납세자 본인이 직접 전자신고했는지(2만원 세액공제)' }
       },
@@ -743,7 +745,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '법정납부기한 다음날부터 실제 납부일까지의 미납일수. 납부지연가산세(1일 10만분의22) 계산에 사용, 없으면 생략(0).' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준이 되는 미납세액(원). 생략하면 이번 계산의 최종세액(가산세 제외분)을 그대로 쓴다.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '(filingStatus가 ontime일 때만 적용) 법정신고기한 내 신고를 가정할지 — 기본 true, 신고세액공제 3% 적용' }
       },
@@ -902,7 +904,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '법정납부기한 다음날부터 실제 납부일까지의 미납일수. 납부지연가산세(1일 10만분의22) 계산에 사용, 없으면 생략(0).' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준이 되는 미납세액(원). 생략하면 이번 계산의 최종세액(가산세 제외분)을 그대로 쓴다.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '(filingStatus가 ontime일 때만 적용) 법정신고기한 내 신고를 가정할지 — 기본 true, 신고세액공제 3% 적용' }
       },
@@ -971,7 +973,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '법정납부기한 다음날부터 실제 납부일까지의 미납일수. 납부지연가산세(1일 10만분의22) 계산에 사용, 없으면 생략(0).' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준이 되는 미납세액(원). 생략하면 이번 계산의 최종세액(가산세 제외분)을 그대로 쓴다.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         doneeName: { type: 'string', description: '수증자 성명. list_drive_folder/read_drive_file로 사건 폴더의 가족관계증명서·신분증 사본 등을 먼저 찾아보고, 없으면 사용자에게 직접 물어봐라.' },
         doneeRegNo: { type: 'string', description: '수증자 주민등록번호. 위와 같은 방식으로 확인.' },
@@ -1245,7 +1247,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '법정납부기한 다음날부터 실제 납부일까지의 미납일수. 없으면 생략(0).' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준이 되는 미납세액(원). 생략하면 이번 계산의 최종세액(가산세 제외분)을 그대로 쓴다.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '(filingStatus가 ontime일 때만 적용) 법정신고기한 내 신고를 가정할지 — 기본 true, 신고세액공제 3% 적용' }
       },
@@ -1279,7 +1281,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '법정납부기한 다음날부터 실제 납부일까지의 미납일수. 없으면 생략(0).' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준이 되는 미납세액(원). 생략하면 이번 계산의 최종세액(가산세 제외분)을 그대로 쓴다.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '(filingStatus가 ontime일 때만 적용) 법정신고기한 내 신고를 가정할지 — 기본 true, 신고세액공제 3% 적용' }
       },
@@ -1308,7 +1310,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '법정납부기한 다음날부터 실제 납부일까지의 미납일수. 없으면 생략(0).' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준이 되는 미납세액(원). 생략하면 이번 계산의 최종세액(가산세 제외분)을 그대로 쓴다.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '(filingStatus가 ontime일 때만 적용) 법정신고기한 내 신고를 가정할지 — 기본 true, 신고세액공제 3% 적용' }
       },
@@ -1331,7 +1333,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '법정납부기한 다음날부터 실제 납부일까지의 미납일수. 없으면 생략(0).' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준이 되는 미납세액(원). 생략하면 이번 계산의 최종세액(가산세 제외분)을 그대로 쓴다.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '(filingStatus가 ontime일 때만 적용) 법정신고기한 내 신고를 가정할지 — 기본 true, 신고세액공제 3% 적용' }
       },
@@ -1360,7 +1362,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '납부지연일수. 없으면 생략(0).' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준 미납세액. 생략하면 이번 계산의 최종세액을 그대로 쓴다.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '(ontime일 때만) 법정신고기한 내 신고 가정 여부 — 기본 true, 신고세액공제 3% 적용.' }
       },
@@ -1392,7 +1394,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '납부지연일수. 없으면 0.' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준 미납세액.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '법정신고기한 내 신고 가정 여부 — 기본 true.' }
       },
@@ -1424,7 +1426,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '납부지연일수. 없으면 0.' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준 미납세액.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '법정신고기한 내 신고 가정 여부 — 기본 true.' }
       },
@@ -1455,7 +1457,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '납부지연일수. 없으면 0.' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준 미납세액.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '법정신고기한 내 신고 가정 여부 — 기본 true.' }
       },
@@ -1571,7 +1573,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '납부지연일수. 없으면 0.' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준 미납세액.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '법정신고기한 내 신고 가정 여부 — 기본 true.' }
       },
@@ -1626,7 +1628,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '납부지연일수. 없으면 0.' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준 미납세액.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '법정신고기한 내 신고 가정 여부 — 기본 true.' }
       },
@@ -1659,7 +1661,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '납부지연일수. 없으면 0.' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준 미납세액.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '법정신고기한 내 신고 가정 여부 — 기본 true.' }
       },
@@ -1722,7 +1724,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '납부지연일수. 없으면 0.' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준 미납세액.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '법정신고기한 내 신고 가정 여부 — 기본 true.' }
       },
@@ -1758,7 +1760,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '납부지연일수. 없으면 0.' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준 미납세액.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '법정신고기한 내 신고 가정 여부 — 기본 true.' }
       },
@@ -1786,7 +1788,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '납부지연일수. 없으면 0.' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준 미납세액.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' }
       },
       required: ['wasResidentFiveYearsContinuously', 'transferPrice']
@@ -1822,7 +1824,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: 'underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). 생략하면 전액 부정행위분으로 계산된다.' },
         unpaidDays: { type: 'integer', description: '납부지연일수. 없으면 0.' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준 미납세액.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우 경과 개월 수(국세기본법§47의4①1의2호). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우 경과 개월 수(국세기본법§47의4①1의2호). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원). monthsAfterDesignatedDueDate와 함께 입력.' }
       },
       required: ['transactions']
@@ -1857,7 +1859,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '납부지연일수. 없으면 0.' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준 미납세액.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '법정신고기한 내 신고 가정 여부 — 기본 true.' }
       },
@@ -2067,7 +2069,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '납부지연일수. 없으면 0.' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준 미납세액.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '법정신고기한 내 신고 가정 여부 — 기본 true.' }
       },
@@ -2244,7 +2246,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '납부지연일수. 없으면 0.' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준 미납세액.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '법정신고기한 내 신고 가정 여부 — 기본 true.' }
       },
@@ -2279,7 +2281,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '납부지연일수. 없으면 0.' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준 미납세액.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '법정신고기한 내 신고 가정 여부 — 기본 true.' }
       },
@@ -2314,7 +2316,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '납부지연일수. 없으면 0.' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준 미납세액.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '법정신고기한 내 신고 가정 여부 — 기본 true.' }
       },
@@ -2342,7 +2344,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '납부지연일수. 없으면 0.' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준 미납세액.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '법정신고기한 내 신고 가정 여부 — 기본 true.' }
       },
@@ -2398,7 +2400,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '납부지연일수. 없으면 0.' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준 미납세액.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         reportedInTime: { type: 'boolean', description: '법정신고기한 내 신고 가정 여부 — 기본 true.' }
       },
@@ -2561,7 +2563,7 @@ const DRIVE_TOOLS = [
         fraudulentUnderreportedTaxAmount: { type: 'number', description: '국세기본법§47의3①1호가목 — 위 underreportedTaxAmount 중 부정행위로 인한 과소신고분만의 금액(원). isFraudulent가 true이면서 과소신고분 중 일부만 부정행위인 경우에만 넣는다(생략하면 underreportedTaxAmount 전액이 부정행위분인 것으로 계산됨). 나머지(비부정행위분)는 10%로 별도 계산되어 합산된다.' },
         unpaidDays: { type: 'integer', description: '법정납부기한 다음날부터 실제 납부일까지의 미납일수. 없으면 생략(0).' },
         unpaidTaxForLatePenalty: { type: 'number', description: '납부지연가산세 계산 기준이 되는 미납세액(원). 생략하면 이번 계산의 산출세액(가산세 제외분)을 그대로 쓴다.' },
-        monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
+        ...LATE_DESIG_PROPS_, monthsAfterDesignatedDueDate: { type: 'number', description: '세무서 고지 후에도 계속 체납된 경우, 지정납부기한 다음날부터 실제 납부일까지 경과한 개월 수(국세기본법§47의4①1의2호, 2026.7.1 시행). 고지 전 자진납부만 하는 경우는 생략.' },
         unpaidTaxAtDesignatedDueDate: { type: 'number', description: '지정납부기한까지 납부하지 않은 세액(원, 국세기본법§47의4①1의2호·3호 계산 기준). monthsAfterDesignatedDueDate와 함께 입력. 고지 전 자진납부만 하는 경우는 생략.' },
         unrecordedIncomeAmount: { type: 'number', description: '주식등에 대한 장부의 비치·기록의무 및 기장불성실가산세(소득세법§115) — assetCategory가 domestic_stock이고 isDaejuju가 true일 때만 의미가 있다. 법인의 대주주가 양도하는 주식등에 대해 거래명세 등을 기장하지 않았거나 누락한 소득금액(원). 없으면 생략.' },
         transactionAmountForBookkeepingPenalty: { type: 'number', description: '§115 기장불성실가산세 계산용 — 산출세액이 0원일 때만 쓰인다. 그 거래금액(원)에 1만분의 7을 곱해 가산세로 한다. 없으면 생략.' }

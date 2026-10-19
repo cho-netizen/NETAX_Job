@@ -1040,5 +1040,106 @@
                               "산출세액": 90000000,
                               "납부세액": 87300000
                     }
+          },
+          {
+                    "이름": "[국기법 §47의4 부칙 제3조] 지정납부기한 2026.3.31(2026.6.30 이전 경과) → 종전: 1억 × 183일(4.1~9.30) × 10만분의 22 = 4,026,000 + 3% 3,000,000",
+                    "도구": "calculate_gift_tax",
+                    "고정": true,
+                    "입력": {
+                              "giftAmount": 600000000,
+                              "relation": "직계존속",
+                              "giftDate": "2025-06-01",
+                              "filingStatus": "ontime",
+                              "unpaidTaxAtDesignatedDueDate": 100000000,
+                              "designatedDueDate": "2026-03-31",
+                              "paidDate": "2026-09-30"
+                    },
+                    "정답": {
+                              "납부지연가산세": 7026000
+                    }
+          },
+          {
+                    "이름": "[국기법 §47의4 부칙 제3조] 지정납부기한 2026.7.31(그 뒤 경과) → 개정 1의2호: 1억 × 5개월(8.1~1.14) × 월 1만분의 67 = 3,350,000 + 3,000,000",
+                    "도구": "calculate_gift_tax",
+                    "고정": true,
+                    "입력": {
+                              "giftAmount": 600000000,
+                              "relation": "직계존속",
+                              "giftDate": "2025-06-01",
+                              "filingStatus": "ontime",
+                              "unpaidTaxAtDesignatedDueDate": 100000000,
+                              "designatedDueDate": "2026-07-31",
+                              "paidDate": "2027-01-15"
+                    },
+                    "정답": {
+                              "납부지연가산세": 6350000
+                    }
+          },
+          {
+                    "이름": "[국기법 §47의4 부칙 제3조] 종전·1일 율 바뀐 기간 걸침: 2천만, 2022.1.1~2.14 45일 × 10만분의 25 + 2.15~3.31 45일 × 10만분의 22 = 423,000 + 600,000",
+                    "도구": "calculate_gift_tax",
+                    "고정": true,
+                    "입력": {
+                              "giftAmount": 600000000,
+                              "relation": "직계존속",
+                              "giftDate": "2025-06-01",
+                              "filingStatus": "ontime",
+                              "unpaidTaxAtDesignatedDueDate": 20000000,
+                              "designatedDueDate": "2021-12-31",
+                              "paidDate": "2022-03-31"
+                    },
+                    "정답": {
+                              "납부지연가산세": 1023000
+                    }
+          },
+          {
+                    "이름": "[국기법 §47의4 부칙 제3조] 종전·150만 원 미만(⑧): 100만 → 월할·일할 0 + 3% 30,000",
+                    "도구": "calculate_gift_tax",
+                    "고정": true,
+                    "입력": {
+                              "giftAmount": 600000000,
+                              "relation": "직계존속",
+                              "giftDate": "2025-06-01",
+                              "filingStatus": "ontime",
+                              "unpaidTaxAtDesignatedDueDate": 1000000,
+                              "designatedDueDate": "2026-03-31",
+                              "paidDate": "2026-09-30"
+                    },
+                    "정답": {
+                              "납부지연가산세": 30000
+                    }
+          },
+          {
+                    "이름": "[국기법 §47의4 부칙 제3조] 종전·5년 상한(⑦): 1천만, 2020.2.1~2025.1.31만 (745일 × 10만분의 25 + 1,082일 × 10만분의 22) = 4,242,900 + 300,000",
+                    "도구": "calculate_gift_tax",
+                    "고정": true,
+                    "입력": {
+                              "giftAmount": 600000000,
+                              "relation": "직계존속",
+                              "giftDate": "2025-06-01",
+                              "filingStatus": "ontime",
+                              "unpaidTaxAtDesignatedDueDate": 10000000,
+                              "designatedDueDate": "2020-01-31",
+                              "paidDate": "2026-05-31"
+                    },
+                    "정답": {
+                              "납부지연가산세": 4542900
+                    }
+          },
+          {
+                    "이름": "[국기법 §47의4 부칙 제3조] 날짜 없이 개월 수 12 → 예전 입력 그대로: 8,040,000 + 3,000,000",
+                    "도구": "calculate_gift_tax",
+                    "고정": true,
+                    "입력": {
+                              "giftAmount": 600000000,
+                              "relation": "직계존속",
+                              "giftDate": "2025-06-01",
+                              "filingStatus": "ontime",
+                              "unpaidTaxAtDesignatedDueDate": 100000000,
+                              "monthsAfterDesignatedDueDate": 12
+                    },
+                    "정답": {
+                              "납부지연가산세": 11040000
+                    }
           }
 ]
