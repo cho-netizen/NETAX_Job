@@ -37,6 +37,12 @@
           <button type="button" id="lsBackToCaseBtn" class="ghost-btn" style="margin-left:auto;"><span class="btn-ic">↩</span><span class="btn-tx"> 처리개요</span></button>
         </div>
       </div>
+      <div class="card" id="lsiDbCard">
+        <h3 style="margin-top:0;">📖 법령 원문 (법령 정비본)</h3>
+        <div class="lsi-note" style="margin-bottom:8px;">법제처 원문을 법령정보 모양으로 봅니다. 조문 전체나 항 하나를 [복사]로 그대로 인용할 수 있고, 판(시행일)을 고르면 그때 법령을 봅니다. 그림 산식은 글로 옮긴 것(세무사님 타이핑·판독)이나 법제처 글자상자로 보여 줍니다.</div>
+        <div id="lsiDbBar" class="lsidb-bar"><button type="button" class="btn" id="lsiDbOpen">법령 원문 열기</button></div>
+        <div id="lsiDbBody"></div>
+      </div>
       <div class="card">
         <h3 style="margin-top:0;">조문으로 찾아보기</h3>
         <div class="lsi-note" style="margin-bottom:8px;">조문 하나를 고르면 그 조문을 해석한 서식 칸, 그 조문을 쓰는 조견표, 그 조문을 쓰는 계산을 함께 보여 줍니다. 사건을 고르지 않아도 됩니다.</div>
@@ -1083,4 +1089,168 @@
     }
     if (box.scrollIntoView) box.scrollIntoView({ block: 'start' });
   }
+</script>
+<style>
+  .lsidb-bar{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .lsidb-toc{ max-height:260px; overflow:auto; border:1px solid var(--line); border-radius:6px; padding:6px 10px; margin-top:8px; font-size:12.5px; }
+  .lsidb-toc .h{ font-weight:600; color:var(--navy); margin-top:6px; }
+  .lsidb-toc button{ background:none; border:none; padding:1px 0; color:var(--text, #222); cursor:pointer; text-align:left; display:block; }
+  .lsidb-toc button.on{ color:var(--navy); font-weight:600; }
+  .lsidb-doc{ margin-top:10px; font-size:14px; line-height:1.75; }
+  .lsidb-head{ font-size:13px; color:var(--sub); margin-bottom:8px; }
+  .lsidb-art{ border-top:1px solid var(--line); padding-top:8px; margin-top:8px; }
+  .lsidb-t{ font-weight:700; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .lsidb-g{ position:relative; padding-right:44px; }
+  .lsidb-g:hover{ background:rgba(0,0,0,.03); }
+  .lsidb-l1{ padding-left:1.2em; } .lsidb-l2{ padding-left:2.4em; } .lsidb-l3{ padding-left:3.6em; }
+  .lsidb-copy{ font-size:11px; padding:1px 6px; border:1px solid var(--line); border-radius:4px; background:#fff; cursor:pointer; color:var(--sub); }
+  .lsidb-g > .lsidb-copy{ position:absolute; right:0; top:2px; visibility:hidden; }
+  .lsidb-g:hover > .lsidb-copy{ visibility:visible; }
+  .lsidb-box{ font-family:'D2Coding','Consolas','맑은 고딕',monospace; font-size:12px; line-height:1.35; white-space:pre; overflow-x:auto; background:#fafafa; border:1px solid var(--line); border-radius:4px; padding:6px; margin:4px 0; }
+  .lsidb-img{ max-width:100%; border:1px solid var(--line); margin:4px 0; }
+  .lsidb-fx{ background:#fff8e1; border-left:3px solid var(--gold); padding:2px 8px; margin:3px 0; }
+  .lsidb-wait{ color:#a15c00; }
+  .lsidb-ref{ color:var(--sub); font-size:12.5px; }
+</style>
+<script>
+  // ============================================================
+  // [2026.10.19 법령 정비본] [📜 법령] 탭 — 법령 원문을 법령정보시스템 모양으로 보기·복사.
+  //  세무사님 말씀(원문): "내가 처음에 구상했던 것은 법령파일을 md파일로 만들어서 문서작성할때 처럼 법령정보시스템 모양으로 보여주는 것이었다.
+  //  그렇게 하면 원본문서를 다른 곳으로 복사하여 인용하기도 좋고, 보기도 좋겠다는 생각이었지."
+  //  자료: 드라이브 법령정비본(서버 law_db_toc·law_lookup_article이 읽음 — 본문은 서버 코드에 없음). 판(시행일)을 고르면 그때 법령.
+  //  [복사]는 조문 전체 또는 항 하나를 법령정보 모양 그대로(들여쓰기는 전각 공백) 클립보드에 넣는다. 로그인 전에는 서버를 부르지 않는다(열기 단추를 눌러야 읽음).
+  // ============================================================
+  var lsiDb_ = { laws: null, law: null, ver: null, toc: null, art: null };
+  function lsiDbYmd_(s){ var m = String(s || '').match(/^(\d{4})(\d{2})(\d{2})$/); return m ? m[1] + '. ' + (+m[2]) + '. ' + (+m[3]) + '.' : String(s || ''); }
+  function lsiDbCopy_(text){
+    var done = function(){ if (typeof toast === 'function') toast('복사했습니다'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, function(){ lsiDbCopyOld_(text); done(); });
+    else { lsiDbCopyOld_(text); done(); }
+  }
+  function lsiDbCopyOld_(text){ var t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); } catch (e) {} document.body.removeChild(t); }
+  function lsiDbOpen_(then){
+    if (lsiDb_.laws){ if (then) then(); return; }
+    document.getElementById('lsiDbBody').innerHTML = '<div class="lsi-note">법령 목록을 읽는 중…</div>';
+    callGas('law_db_toc', {}).then(function(r){
+      if (!r || r.error || !r.법령){ document.getElementById('lsiDbBody').innerHTML = '<div class="lsi-note">' + lsiEsc_((r && r.error) || '법령 정비본을 읽지 못했습니다.') + '</div>'; return; }
+      lsiDb_.laws = r.법령;
+      document.getElementById('lsiDbBar').innerHTML =
+        '<select id="lsiDbLaw" aria-label="법령 고르기">' + r.법령.map(function(l){ return '<option value="' + lsiEsc_(l.키) + '">' + lsiEsc_(l.이름 + (l.범위 === '조회만' ? ' (지방세 — 조회만)' : '')) + '</option>'; }).join('') + '</select>' +
+        '<select id="lsiDbVer" aria-label="판(시행일) 고르기"></select>' +
+        '<span>제</span><input type="text" id="lsiDbNo" style="width:80px;" placeholder="예: 95, 97의2" aria-label="조문 번호"><span>조</span>' +
+        '<button type="button" class="btn" id="lsiDbGo">보기</button>' +
+        '<button type="button" class="ghost-btn" id="lsiDbPrev">◀ 앞 조</button><button type="button" class="ghost-btn" id="lsiDbNext">뒤 조 ▶</button>';
+      document.getElementById('lsiDbLaw').addEventListener('change', function(){ lsiDbPickLaw_(this.value); });
+      document.getElementById('lsiDbVer').addEventListener('change', function(){ lsiDb_.ver = this.value; lsiDbToc_(); });
+      document.getElementById('lsiDbGo').addEventListener('click', function(){ lsiDbShow_(document.getElementById('lsiDbNo').value); });
+      document.getElementById('lsiDbNo').addEventListener('keydown', function(e){ if (e.key === 'Enter') lsiDbShow_(this.value); });
+      document.getElementById('lsiDbPrev').addEventListener('click', function(){ lsiDbStep_(-1); });
+      document.getElementById('lsiDbNext').addEventListener('click', function(){ lsiDbStep_(1); });
+      document.getElementById('lsiDbBody').innerHTML = '<div id="lsiDbTocBox"></div><div id="lsiDbDoc" class="lsidb-doc"></div>';
+      lsiDbPickLaw_(r.법령[0].키, then);
+    }).catch(function(e){ document.getElementById('lsiDbBody').innerHTML = '<div class="lsi-note">법령 목록을 읽지 못했습니다: ' + lsiEsc_(e && e.message || e) + '</div>'; });
+  }
+  function lsiDbPickLaw_(key, then){
+    var l = lsiDb_.laws.filter(function(x){ return x.키 === key; })[0]; if (!l) return;
+    lsiDb_.law = l; lsiDb_.ver = l.현행;
+    document.getElementById('lsiDbLaw').value = key;
+    document.getElementById('lsiDbVer').innerHTML = l.판.slice().reverse().map(function(p){
+      return '<option value="' + lsiEsc_(p.판) + '"' + (p.판 === l.현행 ? ' selected' : '') + '>' + lsiEsc_(lsiDbYmd_(p.시행일) + ' 시행 (' + (p.상태 || '') + ', 제' + String(p.공포번호).replace(/^0+/, '') + '호)') + '</option>';
+    }).join('');
+    lsiDbToc_(then);
+  }
+  function lsiDbToc_(then){
+    var box = document.getElementById('lsiDbTocBox'); box.innerHTML = '<div class="lsi-note">차례를 읽는 중…</div>';
+    callGas('law_db_toc', { lawName: lsiDb_.law.키, ver: lsiDb_.ver }).then(function(r){
+      if (!r || r.error || !r.조){ box.innerHTML = '<div class="lsi-note">' + lsiEsc_((r && r.error) || '차례를 읽지 못했습니다.') + '</div>'; return; }
+      lsiDb_.toc = r.조;
+      var heads = {}; (r.머리 || []).forEach(function(h){ heads[h.앞] = h.글; });
+      box.innerHTML = '<details' + (lsiDb_.art ? '' : ' open') + '><summary class="lsi-note" style="cursor:pointer;">차례 (' + r.조.length + '개 조) — 누르면 그 조를 봅니다</summary><div class="lsidb-toc">' +
+        r.조.map(function(a){ return (heads[a[0]] || []).map(function(h){ return '<div class="h">' + lsiEsc_(h) + '</div>'; }).join('') +
+          '<button type="button" data-lsidbart="' + lsiEsc_(a[0]) + '">제' + lsiEsc_(a[0].replace(/^(\d+)의(\d+)$/, '$1조의$2').replace(/^(\d+)$/, '$1조')) + ' ' + lsiEsc_(a[1] || '') + '</button>'; }).join('') + '</div></details>';
+      box.querySelectorAll('[data-lsidbart]').forEach(function(b){ b.addEventListener('click', function(){ lsiDbShow_(b.dataset.lsidbart); }); });
+      if (then) then(); else if (lsiDb_.art) lsiDbShow_(lsiDb_.art);
+    }).catch(function(e){ box.innerHTML = '<div class="lsi-note">차례를 읽지 못했습니다: ' + lsiEsc_(e && e.message || e) + '</div>'; });
+  }
+  function lsiDbStep_(d){
+    if (!lsiDb_.toc || !lsiDb_.art) return;
+    var i = lsiDb_.toc.map(function(a){ return a[0]; }).indexOf(lsiDb_.art), n = lsiDb_.toc[i + d];
+    if (n) lsiDbShow_(n[0]);
+  }
+  // 한 줄의 들여쓰기 단계: 항(①)·본문 0, 호(1.) 1, 목(가.) 2, 세목(1)) 3
+  function lsiDbLevel_(s, inHo){ return /^\s*\d+\)/.test(s) ? 3 : /^\s*[가-하]\.\s?/.test(s) ? 2 : inHo ? 1 : 0; }
+  // 글 덩어리(항내용·호) → HTML + 복사용 글. 산식 그림 표시·법제처 글자상자·산식 보정을 법령정보 모양으로.
+  function lsiDbBlock_(text, inHo){
+    var lines = String(text || '').split('\n'), html = '', plain = [], i, lvl0 = inHo ? 1 : 0;
+    for (i = 0; i < lines.length; i++){
+      var l = lines[i], m = l.match(/^\s*〔산식 그림 img(\d+)〕\s*$/);
+      if (!m){ if (!l.trim()) continue; var lv = i === 0 ? lvl0 : lsiDbLevel_(l, inHo); html += '<div class="lsidb-l' + lv + '">' + lsiEsc_(l.trim()) + '</div>'; plain.push(new Array(lv + 1).join('　') + l.trim()); continue; }
+      var id = m[1], fx = [], box = [], isBox = function(s){ return s !== undefined && /^[│┌└├┬┴┼─┐┘┤\s]/.test(s) && /[│┌└─]/.test(s); };
+      if (/^〔산식 보정/.test(lines[i + 1] || '')){ fx.push(lines[++i]); while (i + 1 < lines.length && lines[i + 1].trim() && !isBox(lines[i + 1]) && !/^\s*〔산식 그림/.test(lines[i + 1]) && !(lines[i + 1].trim().length <= 20 && isBox(lines[i + 2]))) fx.push(lines[++i]); }
+      while (i + 1 < lines.length && (isBox(lines[i + 1]) || (lines[i + 1].trim().length <= 20 && isBox(lines[i + 2])))) box.push(lines[++i]);
+      var url = 'https://www.law.go.kr/LSW/flDownload.do?flSeq=' + id;
+      if (fx.length){ html += '<div class="lsidb-fx"><div class="lsi-note">' + lsiEsc_(fx[0].replace(/^〔|〕$/g, '')) + '</div>' + fx.slice(1).map(function(s){ return '<div>' + lsiEsc_(s.trim()) + '</div>'; }).join('') + '</div>'; plain.push.apply(plain, fx.slice(1).map(function(s){ return s.trim(); })); }
+      // 화면에는 법제처 원본 그림을 그대로(글자상자는 글꼴 따라 줄이 어긋남), 글자상자는 접어 두고 복사에는 글을 넣는다
+      html += '<div><img class="lsidb-img" loading="lazy" src="' + lsiEsc_(url) + '" alt="산식 그림 img' + id + '"></div>';
+      if (box.length){ html += '<details class="lsi-note"><summary style="cursor:pointer;">글로 보기(법제처 글자상자 — 복사에 들어감)</summary><div class="lsidb-box">' + lsiEsc_(box.join('\n')) + '</div></details>'; plain.push.apply(plain, box); }
+      else if (!fx.length){ html += '<div class="lsidb-wait">[그림 산식 — 판독 대기] 글로 옮긴 산식이 아직 없습니다.</div>'; plain.push('[그림 산식 — 판독 대기] ' + url); }
+    }
+    return { html: html, plain: plain.join('\n') };
+  }
+  function lsiDbShow_(no){
+    var art = String(no || '').replace(/^제\s*/, '').replace(/\s*조\s*/, '').replace(/\s/g, '');
+    var doc = document.getElementById('lsiDbDoc');
+    if (!/^\d+(의\d+)?$/.test(art)){ doc.innerHTML = '<div class="lsi-note">조문 번호를 숫자로 넣어 주세요(예: 95, 97의2).</div>'; return; }
+    lsiDb_.art = art; document.getElementById('lsiDbNo').value = art;
+    document.querySelectorAll('#lsiDbTocBox [data-lsidbart]').forEach(function(b){ b.classList.toggle('on', b.dataset.lsidbart === art); });
+    var l = lsiDb_.law, p = l.판.filter(function(x){ return x.판 === lsiDb_.ver; })[0];
+    doc.innerHTML = '<div class="lsi-note">조문을 읽는 중…</div>';
+    callGas('law_lookup_article', { lawName: l.이름, articleNo: art, baseDate: p && p.판 !== l.현행 ? p.시행일 : '' }).then(function(r){
+      if (!r || r.error || !r.조문){ doc.innerHTML = '<div class="lsi-note">' + lsiEsc_((r && r.error) || '조문을 읽지 못했습니다.') + '</div>'; return; }
+      var head = '<div class="lsidb-head"><b>' + lsiEsc_(r.법령명) + '</b> [시행 ' + lsiEsc_(lsiDbYmd_(r.시행일자)) + ']' + (p ? ' [제' + lsiEsc_(String(p.공포번호).replace(/^0+/, '')) + '호, ' + lsiEsc_(lsiDbYmd_(p.공포일)) + ', ' + lsiEsc_(p.구분 || '') + ']' : '') +
+        (r.주의 ? '<br>⚠ ' + lsiEsc_(r.주의) : '') + (r.개정확인 ? '<br>' + lsiEsc_(r.개정확인) : '') + (r.시행예정개정 ? '<br>⏳ ' + lsiEsc_(r.시행예정개정) : '') +
+        '<br><span class="lsi-note">' + lsiEsc_(r.출처 || '') + (r.원문링크 ? ' · <a href="' + lsiEsc_(r.원문링크) + '" target="_blank" rel="noopener">법제처에서 보기 ↗</a>' : '') + '</span></div>';
+      var copies = [];
+      var body = r.조문.map(function(u){
+        var lines0 = String(u.조문내용 || '').split('\n'), tm = lines0[0].match(/^(제\d+조(?:의\d+)?\([^)]*\))\s*(.*)$/);
+        var title = tm ? tm[1] : lines0[0], rest = (tm ? [tm[2]] : []).concat(lines0.slice(1)).join('\n');
+        var parts = [], all = [title];
+        var add = function(b){ if (!b.html) return; var k = copies.push(b.plain) - 1; parts.push('<div class="lsidb-g">' + b.html + '<button type="button" class="lsidb-copy" data-lsidbcopy="' + k + '" title="이 부분만 복사">복사</button></div>'); all.push(b.plain); };
+        add(lsiDbBlock_(rest, false));
+        (u.항 || []).forEach(function(h){
+          var b = lsiDbBlock_(h.항내용, false), hos = (h.호 || []).map(function(o){ return lsiDbBlock_(o, true); });
+          add({ html: b.html + hos.map(function(x){ return x.html; }).join(''), plain: [b.plain].concat(hos.map(function(x){ return x.plain; })).filter(Boolean).join('\n') });
+        });
+        if (u.참고){ parts.push('<div class="lsidb-ref">' + lsiEsc_(u.참고).replace(/\n/g, '<br>') + '</div>'); all.push(u.참고); }
+        var bad = u['검증필요_코드에서옮김(근거 아님)'] || [], again = (u.산식보정 || []).filter(function(x){ return /^다시/.test(x.상태 || ''); });
+        if (bad.length || again.length) parts.push('<div class="lsi-note">※ 근거로 쓰지 않는 산식: ' + bad.concat(again).map(function(x){ return 'img' + lsiEsc_(x.그림[0]) + ' — ' + lsiEsc_(x.상태); }).join(' / ') + '</div>');
+        var k = copies.push(all.join('\n')) - 1;
+        return '<div class="lsidb-art"><div class="lsidb-t">' + lsiEsc_(title) + ' <button type="button" class="lsidb-copy" data-lsidbcopy="' + k + '" title="조문 전체 복사">조문 복사</button></div>' + parts.join('') + '</div>';
+      }).join('');
+      doc.innerHTML = head + body;
+      doc.querySelectorAll('[data-lsidbcopy]').forEach(function(b){ b.addEventListener('click', function(){ lsiDbCopy_(copies[+b.dataset.lsidbcopy]); }); });
+    }).catch(function(e){ doc.innerHTML = '<div class="lsi-note">조문을 읽지 못했습니다: ' + lsiEsc_(e && e.message || e) + '</div>'; });
+  }
+  // 다른 곳(조문으로 찾아보기 등)에서 "이 조문 원문"으로 열기
+  function lsiDbJump_(lawName, art){
+    var key = String(lawName || '').replace(/\s/g, '');
+    lsiDbOpen_(function(){
+      var has = lsiDb_.laws.some(function(l){ return l.키 === key; });
+      if (!has){ document.getElementById('lsiDbDoc').innerHTML = '<div class="lsi-note">' + lsiEsc_(lawName) + '은(는) 법령 정비본에 없습니다(법제처 원문 링크를 이용해 주세요).</div>'; return; }
+      lsiDb_.art = art;
+      // 다른 곳에서 넘어오면 늘 현행판으로(앞서 골라 둔 옛 판·예정판이 남지 않게)
+      if (lsiDb_.law && lsiDb_.law.키 === key && lsiDb_.toc && lsiDb_.ver === lsiDb_.law.현행) lsiDbShow_(art); else lsiDbPickLaw_(key, function(){ lsiDbShow_(art); });
+    });
+    var c = document.getElementById('lsiDbCard'); if (c && c.scrollIntoView) c.scrollIntoView({ block: 'start' });
+  }
+  document.getElementById('lsiDbOpen').addEventListener('click', function(){ lsiDbOpen_(); });
+  // "조문으로 찾아보기" 결과 아래에 원문 보기 단추를 붙인다(그쪽 코드는 건드리지 않음 — 그쪽 보기가 먼저 그린 뒤에 덧붙임)
+  document.getElementById('lsiArtGo').addEventListener('click', function(){
+    var law = document.getElementById('lsiArtLaw').value, art = String(document.getElementById('lsiArtNo').value || '').replace(/^제\s*/, '').replace(/\s*조\s*/, '').replace(/\s/g, '');
+    var box = document.getElementById('lsiArtResult');
+    if (!/^\d+(의\d+)?$/.test(art) || !box) return;
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'lsi-link'; b.textContent = '📖 이 조문 원문 보기(법령정보 모양·복사)';
+    b.addEventListener('click', function(){ lsiDbJump_(law, art); });
+    var d = document.createElement('div'); d.style.marginTop = '6px'; d.appendChild(b); box.appendChild(d);
+  });
 </script>

@@ -77,10 +77,13 @@ function cleanText(s) {
 function parseLaw(x) {
   const a0 = x.indexOf('<조문>'), a1 = x.indexOf('<부칙>');
   const body = x.slice(a0, a1 > 0 ? a1 : x.length);
-  const arts = [];
+  const arts = [], 머리 = []; let wait = [];
   for (const m of body.matchAll(/<조문단위[^>]*>([^]*?)<\/조문단위>/g)) {
     const u = m[1];
+    // 편·장·절·관 제목(조문여부=전문) — 바로 다음 조문 앞에 붙인다(법령정보 모양 .md·화면 차례용)
+    if (tag(u, '조문여부') === '전문') { const t = cleanText(tag(u, '조문내용')).t; if (t) wait.push(t); continue; }
     if (tag(u, '조문여부') !== '조문') continue;
+    if (wait.length) { const g0 = tag(u, '조문가지번호'); 머리.push({ 앞: tag(u, '조문번호') + (g0 && g0 !== '0' ? '의' + g0 : ''), 글: wait }); wait = []; }
     const n = tag(u, '조문번호'), g = tag(u, '조문가지번호');
     const imgs = [];
     const T = s => { const c = cleanText(s); imgs.push(...c.imgs); return c.t; };
@@ -90,7 +93,51 @@ function parseLaw(x) {
     }));
     arts.push({ 조: n + (g && g !== '0' ? '의' + g : ''), 제목: tag(u, '조문제목'), 시행: tag(u, '조문시행일자'), 내용: T(tag(u, '조문내용')), 항, 참고: tag(u, '조문참고자료'), 그림: [...new Set(imgs)] });
   }
-  return arts;
+  return { arts, 머리 };
+}
+
+// ---------- 법령정보 모양 .md (세무사님 "법령파일을 md파일로 만들어서 문서작성할때 처럼 법령정보시스템 모양으로 보여주는 것이었다") ----------
+// .json.gz(시스템용)와 같은 원자료에서 만든다. 들여쓰기는 전각 공백(　) — 복사해 붙여도 모양이 남는다. 산식 그림: 산식 보정(덧입힐 수 있는 것) →
+// 법제처 글자상자 → 둘 다 없으면 "[그림 산식 — 판독 대기]". 검증 필요(코드에서 옮김)·다시 확인 필요 보정은 본문에 넣지 않고 조문 끝에 알림만.
+const ymd = s => String(s || '').replace(/^(\d{4})(\d{2})(\d{2})$/, (m, y, mo, d) => y + '. ' + (+mo) + '. ' + (+d) + '.');
+function mdText(t, ind, corrOf) {
+  const out = [], lines = String(t || '').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i], mm = l.match(/^\s*〔산식 그림 img(\d+)〕\s*$/);
+    if (!mm) { if (l.trim()) out.push(ind + l.trim() + '  '); continue; }
+    const id = mm[1], box = [];
+    const isBox = s => s !== undefined && /^[│┌└├┬┴┼─┐┘┤\s]/.test(s) && /[│┌└─]/.test(s);
+    // 상자 앞의 짧은 제목 줄("표 1")도 상자에 넣는다
+    while (i + 1 < lines.length && (isBox(lines[i + 1]) || (lines[i + 1].trim().length <= 20 && isBox(lines[i + 2])))) box.push(lines[++i]);
+    const c = corrOf(id);
+    if (c) out.push(ind + '〔산식 — ' + c.출처 + ' · ' + c.상태 + '〕  ', ...c.산식.split('\n').map(s => ind + s.trim() + '  '));
+    if (box.length) out.push('', '```', '[법제처 글자상자 img' + id + ']', ...box, '```', '');
+    else if (!c) out.push(ind + '[그림 산식 — 판독 대기] (원본 그림: https://www.law.go.kr/LSW/flDownload.do?flSeq=' + id + ')  ');
+  }
+  return out;
+}
+function lawToMd(doc, corr) {
+  const L = ['# ' + doc.법령, '', '[시행 ' + ymd(doc.시행일) + '] [' + (/시행규칙/.test(doc.법령) ? '' : /시행령/.test(doc.법령) ? '대통령령 ' : '법률 ') + '제' + String(doc.공포번호).replace(/^0+/, '') + '호, ' + ymd(doc.공포일) + ', ' + doc.구분 + ']', '',
+    '> 법령 정비본 — 법제처(law.go.kr) 이 시행일 판 원문 그대로(' + doc.받은날 + ' 받음). 시스템용 같은 내용: ' + doc.법령.replace(/\s/g, '') + '/' + doc.시행일 + '_' + doc.공포번호 + '.json.gz', ''];
+  const 머리 = {}; (doc.머리 || []).forEach(h => { 머리[h.앞] = h.글; });
+  for (const a of doc.조) {
+    (머리[a.조] || []).forEach(h => L.push('## ' + h, ''));
+    const cs = corr.filter(x => x.조 === a.조);
+    const use = id => cs.find(x => x.그림[0] === id && x.그림.every(g => a.그림.includes(g)) && !/^(검증|다시)/.test(x.상태));
+    const head = String(a.내용 || '').split('\n')[0], m = head.match(/^(제\d+조(?:의\d+)?\([^)]*\))\s*(.*)$/);
+    L.push('### ' + (m ? m[1] : head));
+    const first = m ? [m[2]].concat(String(a.내용).split('\n').slice(1)).join('\n') : String(a.내용).split('\n').slice(1).join('\n');
+    L.push(...mdText(first, '', use));
+    for (const h of a.항) {
+      L.push(...mdText(h.내용, '', use));
+      for (const o of h.호) { L.push(...mdText(o.내용, '　', use)); for (const mk of o.목) L.push(...mdText(mk, '　　', use)); }
+    }
+    if (a.참고) L.push(...a.참고.split('\n').map(s => s.trim() + '  '));
+    const warn = cs.filter(x => /^(검증|다시)/.test(x.상태) || !x.그림.every(g => a.그림.includes(g)));
+    if (warn.length) L.push('', '> ※ 이 조문 산식 보정 중 근거로 쓰지 않는 것: ' + warn.map(x => 'img' + x.그림[0] + ' ' + (x.그림.every(g => a.그림.includes(g)) ? x.상태 : '다시 확인 필요(이 판에는 그 그림이 없음)')).join(' / '));
+    L.push('');
+  }
+  return L.join('\n');
 }
 
 // ---------- 산식 보정(세무사님 폴더에서) ----------
@@ -105,7 +152,8 @@ const NORM = s => String(s).replace(/<[^>]+>/g, '').replace(/[\s=＝×÷\-－−
 // 보정 산식을 법제처 글자상자(있으면)와 맞대 본다 — 영문 기호(A·B·C…) 집합이 같고 한글 낱말이 대부분(80%) 상자에 있으면 "낱말 일치".
 // 연산 기호(×÷−)까지의 확인은 Vision 검산 단계에서 한다. 예: 국세기본법 §24 세무사님 타이핑 "(A - B) × (C / D)" ↔ 현행 상자 "A × B / C"(2025.3.14 개정) → 다름.
 function boxOf(art, id) {
-  const m = JSON.stringify(art).match(new RegExp('〔산식 그림 img' + id + '〕\\\\n(┌[^〔]*?┘)'));
+  // 상자 앞에 공백·"표 1" 같은 제목 줄이 올 수 있다
+  const m = JSON.stringify(art).match(new RegExp('〔산식 그림 img' + id + '〕\\\\n([^〔"]*?┌[^〔"]*?┘)'));
   return m ? JSON.parse('"' + m[1] + '"') : '';
 }
 function agree(formula, box) {
@@ -187,12 +235,14 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
       const vk = ver.시행일 + '_' + ver.공포번호;
       const file = path.join(OUT, '본문', k, vk + '.json.gz');
       let arts;
-      if (fs.existsSync(file)) arts = JSON.parse(zlib.gunzipSync(fs.readFileSync(file)).toString('utf8')).조;
+      // 이미 받은 판은 다시 받지 않는다 — 다만 편·장·절 제목(머리)이 없는 옛 형식이면 다시 받는다
+      const have = fs.existsSync(file) ? JSON.parse(zlib.gunzipSync(fs.readFileSync(file)).toString('utf8')) : null;
+      if (have && have.머리) arts = have.조;
       else {
         const x = await get('https://www.law.go.kr/DRF/lawService.do?OC=' + OC + '&target=eflaw&type=XML&MST=' + ver.MST + '&efYd=' + ver.시행일);
-        arts = parseLaw(x);
+        const pl = parseLaw(x); arts = pl.arts;
         if (!arts.length) { report.push(name + ' ' + vk + ': 조문 0개(받기 이상)'); continue; }
-        const doc = { 법령: name, 법령ID: v.법령ID, MST: ver.MST, 시행일: ver.시행일, 공포일: ver.공포일, 공포번호: ver.공포번호, 구분: ver.구분, 받은날: today, 출처: 'law.go.kr eflaw', 조: arts };
+        const doc = { 법령: name, 법령ID: v.법령ID, MST: ver.MST, 시행일: ver.시행일, 공포일: ver.공포일, 공포번호: ver.공포번호, 구분: ver.구분, 받은날: today, 출처: 'law.go.kr eflaw', 머리: pl.머리, 조: arts };
         if (!DRY) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, zlib.gzipSync(Buffer.from(JSON.stringify(doc), 'utf8'), { level: 9 })); }
         report.push(name + ' ' + vk + ' 새 판 저장(' + 상태 + ', 조문 ' + arts.length + ', 그림 ' + arts.reduce((s, a) => s + a.그림.length, 0) + ')');
       }
@@ -217,6 +267,18 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
   const items = keep.concat(corr);
   const cnt = {}; items.forEach(c => { cnt[c.상태] = (cnt[c.상태] || 0) + 1; });
   const corrDoc = { 설명: '산식 보정 — 법제처 원문에서 그림뿐인 산식을 글로. 세무사님 법령 폴더(참고용)에서 뽑은 것(구분 ref) + Vision 판독(구분 vision). 그림 번호가 그 판 조문에 없으면 덧입히지 않고 "다시 확인 필요".', 만든때: idx.만든때, 상태별: cnt, 항목: items };
+  // 판마다 법령정보 모양 .md 사본 — 법령정비본/md/<법령>/<법령>_<시행일>_<공포번호>.md (같은 원자료라 .json.gz와 내용이 같다)
+  let mdN = 0;
+  for (const [n] of LAWS) {
+    const k = key(n), e = idx.법령[k]; if (!e || (ONLY && !ONLY.includes(k))) continue;
+    for (const p of e.판) {
+      const f = path.join(OUT, '본문', k, p.판 + '.json.gz'); if (!fs.existsSync(f)) continue;
+      const md = lawToMd(JSON.parse(zlib.gunzipSync(fs.readFileSync(f)).toString('utf8')), items.filter(x => x.법령 === k));
+      if (!DRY) { fs.mkdirSync(path.join(OUT, 'md', k), { recursive: true }); fs.writeFileSync(path.join(OUT, 'md', k, k + '_' + p.판 + '.md'), md); }
+      mdN++;
+    }
+  }
+  console.log('.md 사본', mdN);
   // 감시목록_법령.json(법령 세션 몫) — EnvWatch가 읽는다. 정비·조회만 + 목록만(종합부동산세법 — 계산기에 없음, 개정 날짜만)
   const watch = LAWS.concat(LIST_ONLY.map(n => [n, '목록만'])).map(([n, scope]) => ({ id: '법령:' + key(n), 종류: '법령', 이름: n, 범위: scope,
     확인: { 방법: '법제처법령', 관련법령: n }, 주기: '매일', 기준값: (idx.법령[key(n)] || {}).현행 || '', 기준일: today.replace(/(\d{4})(\d\d)(\d\d)/, '$1-$2-$3'),
@@ -233,7 +295,7 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
   }
   pics.sort((p, q) => (p.글자상자 - q.글자상자) || p.법령.localeCompare(q.법령));
   if (!DRY) {
-    fs.mkdirSync(path.join(OUT, '감시'), { recursive: true });
+    fs.mkdirSync(path.join(OUT, '감시'), { recursive: true }); fs.mkdirSync(path.join(OUT, '산식보정'), { recursive: true });
     fs.writeFileSync(path.join(OUT, '감시', '감시목록_법령.json'), JSON.stringify({ 설명: '법령 개정 감시 목록 — 주인 법령 세션(tools/law-build.js가 만듦). EnvWatch가 밤마다 읽는다.', 항목: watch }, null, 1));
     fs.writeFileSync(path.join(OUT, '산식보정', '그림목록.json'), JSON.stringify({ 설명: 'Vision 판독 대상 법령 그림 산식(글자상자 없는 것 먼저). 판독 결과는 같은 폴더 Vision판독.json', 만든때: idx.만든때, 항목: pics }, null, 1));
   }
