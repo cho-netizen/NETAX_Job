@@ -4945,7 +4945,7 @@ function lawDbBuchik_(idx, key, ver, no) {
 function lawUnit_(u) { // 법제처 조문단위 → 정비본 모양(law-build.js parseLaw와 같은 규칙)
   var imgs = [], T = function (e, n) {
     return String(e.getChildText(n) || '').replace(/<img[^>]*?flSeq=(\d+)[^>]*>(?:([^<]*)<\/img>)?/g, function (m, id, b) {
-      imgs.push(id); b = String(b || '').replace(/^\s*\n|\s+$/g, ''); return '〔산식 그림 img' + id + '〕' + (/[│┌]/.test(b) || /[가-힣]/.test(b) ? '\n' + b : ''); // [2026.10.20] │┌ 없이 띄어쓰기로만 그린 글자상자도 둠(조특칙 §45의10⑦)
+      imgs.push(id); b = String(b || '').replace(/^\s*\n|\s+$/g, ''); return '〔산식 그림 img' + id + '〕' + (/[│┌]/.test(b) || /[가-힣]/.test(b) ? '\n' + (/[│┌─━┐┘]/.test(b) ? '' : '(법제처 글 — 표 기호 없는 글자상자는 분수(1/2 등)가 빠질 수 있음, 원본 그림 확인: https://www.law.go.kr/LSW/flDownload.do?flSeq=' + id + ')\n') + b : ''); // [2026.10.20] │┌ 없이 띄어쓰기로만 그린 글자상자도 둠(조특칙 §45의10⑦)
     }).replace(/<\/?[a-z][^>]*>/gi, '').trim();
   }, g = u.getChildText('조문가지번호');
   return { 조: u.getChildText('조문번호') + (g && g !== '0' ? '의' + g : ''), 제목: T(u, '조문제목'), 내용: T(u, '조문내용'), 참고: T(u, '조문참고자료'), 그림: imgs,
