@@ -62,9 +62,10 @@
     var l = lsiDb_.laws.filter(function(x){ return x.키 === key; })[0]; if (!l) return;
     lsiDb_.law = l; lsiDb_.ver = l.현행;
     document.getElementById('lsiDbLaw').value = key;
-    document.getElementById('lsiDbVer').innerHTML = l.판.slice().reverse().map(function(p){
-      return '<option value="' + lsiEsc_(p.판) + '"' + (p.판 === l.현행 ? ' selected' : '') + '>' + lsiEsc_(lsiDbYmd_(p.시행일) + ' 시행 (' + (p.상태 || '') + ', 제' + String(p.공포번호).replace(/^0+/, '') + '호)') + '</option>';
-    }).join('');
+    // [2026.10.20] 옛 판(2014~ 연혁)이 법령마다 수십~백여 개 — 현행·시행예정과 옛판을 나눠 묶는다
+    var opt = function(p){ return '<option value="' + lsiEsc_(p.판) + '"' + (p.판 === l.현행 ? ' selected' : '') + '>' + lsiEsc_(lsiDbYmd_(p.시행일) + ' 시행 (' + (p.상태 || '') + ', 제' + String(p.공포번호).replace(/^0+/, '') + '호)') + '</option>'; };
+    var vs = l.판.slice().reverse(), now = vs.filter(function(p){ return p.상태 !== '옛판'; }), old = vs.filter(function(p){ return p.상태 === '옛판'; });
+    document.getElementById('lsiDbVer').innerHTML = '<optgroup label="현행·시행예정">' + now.map(opt).join('') + '</optgroup>' + (old.length ? '<optgroup label="옛 판 ' + old.length + '개(연혁 — 양도일·증여일 당시 법)">' + old.map(opt).join('') + '</optgroup>' : '');
     lsiDbToc_(then);
   }
   function lsiDbToc_(then){
@@ -75,10 +76,22 @@
       var heads = {}; (r.머리 || []).forEach(function(h){ heads[h.앞] = h.글; });
       box.innerHTML = '<details' + (lsiDb_.art ? '' : ' open') + '><summary class="lsi-note" style="cursor:pointer;">차례 (' + r.조.length + '개 조) — 누르면 그 조를 봅니다</summary><div class="lsidb-toc">' +
         r.조.map(function(a){ return (heads[a[0]] || []).map(function(h){ return '<div class="h">' + lsiEsc_(h) + '</div>'; }).join('') +
-          '<button type="button" data-lsidbart="' + lsiEsc_(a[0]) + '">제' + lsiEsc_(a[0].replace(/^(\d+)의(\d+)$/, '$1조의$2').replace(/^(\d+)$/, '$1조')) + ' ' + lsiEsc_(a[1] || '') + '</button>'; }).join('') + '</div></details>';
+          '<button type="button" data-lsidbart="' + lsiEsc_(a[0]) + '">제' + lsiEsc_(a[0].replace(/^(\d+)의(\d+)$/, '$1조의$2').replace(/^(\d+)$/, '$1조')) + ' ' + lsiEsc_(a[1] || '') + '</button>'; }).join('') + '<div class="h">부칙</div><button type="button" data-lsidbbu="1">📜 부칙 — 적용례·경과조치(이 판 공포일까지, 최근 것부터)</button></div></details>';
+      var bu = box.querySelector('[data-lsidbbu]'); if (bu) bu.addEventListener('click', lsiDbBuchik_);
       box.querySelectorAll('[data-lsidbart]').forEach(function(b){ b.addEventListener('click', function(){ lsiDbShow_(b.dataset.lsidbart); }); });
       if (then) then(); else if (lsiDb_.art) lsiDbShow_(lsiDb_.art);
     }).catch(function(e){ box.innerHTML = '<div class="lsi-note">차례를 읽지 못했습니다: ' + lsiEsc_(e && e.message || e) + '</div>'; });
+  }
+  // [2026.10.20] 📜 부칙 — 서버 law_lookup_article(articleNo '부칙', 그 판 시행일). 이월과세 증여자 사망처럼 "언제부터 적용하는가"를 보는 곳
+  function lsiDbBuchik_(){
+    var doc = document.getElementById('lsiDbDoc'), l = lsiDb_.law, p = l.판.filter(function(x){ return x.판 === lsiDb_.ver; })[0];
+    doc.innerHTML = '<div class="lsi-note">부칙을 읽는 중…</div>';
+    callGas('law_lookup_article', { lawName: l.이름, articleNo: '부칙', baseDate: p ? p.시행일 : '' }).then(function(r){
+      if (!r || r.error || !r.부칙){ doc.innerHTML = '<div class="lsi-note">' + lsiEsc_((r && r.error) || '부칙을 읽지 못했습니다.') + '</div>'; return; }
+      doc.innerHTML = '<div class="lsidb-head"><b>' + lsiEsc_(r.법령명) + '</b> 부칙 — ' + (p ? lsiEsc_(lsiDbYmd_(p.시행일)) + ' 시행판 공포일까지 ' : '') + r.전체 + '개 중 최근 ' + r.부칙.length + '개</div>' +
+        r.부칙.map(function(b){ return '<div class="lsidb-art" style="margin:8px 0;"><b>부칙 &lt;제' + lsiEsc_(String(b.공포번호).replace(/^0+/, '')) + '호, ' + lsiEsc_(lsiDbYmd_(b.공포일)) + '&gt;</b><div style="white-space:pre-wrap;">' + lsiEsc_(String(b.내용 || '').replace(/^부칙\s*<[^>]*>\s*/, '')) + '</div></div>'; }).join('') +
+        (r.전체 > r.부칙.length ? '<div class="lsi-note">더 옛 부칙은 위 판 고르기에서 옛 판을 고르면 그 판 공포일까지 다시 보입니다.</div>' : '');
+    }).catch(function(e){ doc.innerHTML = '<div class="lsi-note">부칙을 읽지 못했습니다: ' + lsiEsc_(e && e.message || e) + '</div>'; });
   }
   function lsiDbStep_(d){
     if (!lsiDb_.toc || !lsiDb_.art) return;

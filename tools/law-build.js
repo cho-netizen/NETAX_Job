@@ -10,7 +10,9 @@
 //   _감시/감시목록_법령.json, 읽기용(md)/<법령>/<법령>_<판>.md
 // 서버(Code.js toolLookupStatuteArticle)가 이 파일들을 읽는다. 서버 코드에는 본문을 넣지 않는다(용량 10MB 한도).
 //
-// 사용: node tools/law-build.js [--out <정비본 폴더>] [--ref <세무사님 법령 폴더>] [--only 소득세법,…] [--dry]
+//   _본문/<법령>/_부칙.json.gz              [2026.10.20] 그 법령의 부칙 전부(적용례·경과조치 — 법제처 판마다 모든 부칙이 들어 있어 법령마다 하나로)
+// 사용: node tools/law-build.js [--out <정비본 폴더>] [--ref <세무사님 법령 폴더>] [--only 소득세법,…] [--history 20140101] [--dry]
+//   --history: 그 날 이후 시행된 옛 판(연혁)도 모두 받는다 — 연혁 계산(양도일·증여일 당시 법) 근거. 옛 판은 .md를 만들지 않는다(원문 보기는 .json.gz로)
 const fs = require('fs'), path = require('path'), zlib = require('zlib');
 
 const args = process.argv.slice(2);
@@ -19,6 +21,7 @@ const OUT = opt('out') || 'J:/내 드라이브/0 NETAX/업무관리자/법령'; 
 const REF = opt('ref') || 'J:/내 드라이브/0 NETAX/업무관리자/법령/세무사님 원본(2026.8)'; // 세무사님 원본 — 참고용, 내용은 손대지 않음
 const ONLY = opt('only') ? opt('only').split(',').map(s => s.replace(/\s/g, '')) : null;
 const DRY = args.includes('--dry');
+const HIST = opt('history'); // 예: 20140101
 const OC = process.env.LAW_OC || 'netax';
 
 // 정비 대상(계산·신고서·감사에 씀) / 조회만(지방세 — 세무사님이 범위 밖으로 정하심, 계산·신고서에 안 씀)
@@ -65,6 +68,25 @@ async function versions(name) {
   return { 법령ID: cur.법령ID, 현행: cur, 예정: Object.keys(byEf).sort().map(k => byEf[k]) };
 }
 
+// [2026.10.20] 연혁 판 목록 — 같은 이름 법령의 판 전부(여러 쪽), 시행일마다 가장 늦게 공포된 판 하나
+async function history(name, from) {
+  const rows = [];
+  for (let page = 1; page <= 15; page++) {
+    const x = await get('https://www.law.go.kr/DRF/lawSearch.do?OC=' + OC + '&target=eflaw&type=XML&display=100&page=' + page + '&query=' + encodeURIComponent(name));
+    const laws = tagsAll(x, 'law'); if (!laws.length) break;
+    laws.map(s => ({ 이름: tag(s, '법령명한글'), MST: tag(s, '법령일련번호'), 시행일: tag(s, '시행일자'), 공포일: tag(s, '공포일자'), 공포번호: tag(s, '공포번호'), 구분: tag(s, '제개정구분명'), 법종: tag(s, '법령구분명'), 코드: tag(s, '현행연혁코드') }))
+      .filter(v => key(v.이름) === key(name) && v.시행일 >= from).forEach(v => rows.push(v));
+  }
+  const byEf = {}; rows.forEach(v => { const b = byEf[v.시행일]; if (!b || v.공포일 > b.공포일) byEf[v.시행일] = v; });
+  return Object.keys(byEf).sort().map(k => byEf[k]);
+}
+// [2026.10.20] 부칙 — <부칙단위>마다 공포일·공포번호·글(CDATA 줄을 이어 붙임)
+function parseBuchik(x) {
+  const i = x.indexOf('<부칙>'); if (i < 0) return [];
+  return tagsAll(x.slice(i), '부칙단위').map(u => ({ 공포일: tag(u, '부칙공포일자'), 공포번호: tag(u, '부칙공포번호'),
+    내용: [...String((u.match(/<부칙내용>([^]*?)<\/부칙내용>/) || [])[1] || '').matchAll(/<!\[CDATA\[([^]*?)\]\]>/g)].map(m => m[1]).join('\n').replace(/\n{3,}/g, '\n\n').trim() }))
+    .filter(b => b.공포일);
+}
 // 조문 글 정리 — 산식 그림은 〔산식 그림 imgN〕 표시 + (있으면) 법제처 글자상자. 서버(Code.js lawUnit_)와 같은 규칙.
 function cleanText(s) {
   const imgs = [];
@@ -117,7 +139,7 @@ function mdText(t, ind, corrOf) {
   }
   return out;
 }
-function lawToMd(doc, corr, 법종) {
+function lawToMd(doc, corr, 법종, buchik) {
   const L = ['# ' + doc.법령, '', '[시행 ' + ymd(doc.시행일) + '] [' + (법종 ? 법종 + ' ' : '') + '제' + String(doc.공포번호).replace(/^0+/, '') + '호, ' + ymd(doc.공포일) + ', ' + doc.구분 + ']', '',
     '> 법령 정비본 — 법제처(law.go.kr) 이 시행일 판 원문 그대로(' + doc.받은날 + ' 받음). 시스템용 같은 내용: ' + doc.법령.replace(/\s/g, '') + '/' + doc.시행일 + '_' + doc.공포번호 + '.json.gz', ''];
   const 머리 = {}; (doc.머리 || []).forEach(h => { 머리[h.앞] = h.글; });
@@ -138,6 +160,9 @@ function lawToMd(doc, corr, 법종) {
     if (warn.length) L.push('', '> ※ 이 조문 산식 보정 중 근거로 쓰지 않는 것: ' + warn.map(x => 'img' + x.그림[0] + ' ' + (x.그림.every(g => a.그림.includes(g)) ? x.상태 : '다시 확인 필요(이 판에는 그 그림이 없음)')).join(' / '));
     L.push('');
   }
+  // [2026.10.20] 부칙 — 이 판 공포일까지의 부칙을 최근 것부터(법제처 화면 순서)
+  const bs = (buchik || []).filter(b => b.공포일 <= doc.공포일).sort((a, b) => b.공포일.localeCompare(a.공포일));
+  if (bs.length) { L.push('## 부칙', ''); bs.forEach(b => { L.push('### 부칙 <제' + String(b.공포번호).replace(/^0+/, '') + '호, ' + ymd(b.공포일) + '>', ''); String(b.내용).split('\n').forEach(l => { if (l.trim() && !/^부칙\s*</.test(l.trim())) L.push(l.replace(/^\s+/, m => '　'.repeat(Math.min(3, Math.floor(m.length / 2)))) + '  '); }); L.push(''); }); }
   return L.join('\n');
 }
 
@@ -232,7 +257,10 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
     const ent = idx.법령[k] || (idx.법령[k] = { 이름: name, 범위: scope, 법령ID: v.법령ID, 판: [] });
     ent.범위 = scope; ent.법령ID = v.법령ID;
     let curArts = null, curKey = null;
-    for (const [ver, 상태] of [[v.현행, '현행']].concat(v.예정.map(x => [x, '시행예정']))) {
+    let hist = [];
+    if (HIST) { try { hist = (await history(name, HIST)).filter(h => h.시행일 < v.현행.시행일 && !v.예정.some(e => e.시행일 === h.시행일)); } catch (e) { report.push(name + ' 연혁 목록 실패: ' + e.message); } }
+    let curXml = null;
+    for (const [ver, 상태] of [[v.현행, '현행']].concat(v.예정.map(x => [x, '시행예정'])).concat(hist.map(x => [x, '옛판']))) {
       const vk = ver.시행일 + '_' + ver.공포번호;
       const file = path.join(OUT, '_본문', k, vk + '.json.gz');
       let arts;
@@ -241,6 +269,7 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
       if (have && have.머리) arts = have.조;
       else {
         const x = await get('https://www.law.go.kr/DRF/lawService.do?OC=' + OC + '&target=eflaw&type=XML&MST=' + ver.MST + '&efYd=' + ver.시행일);
+        if (상태 === '현행') curXml = x;
         const pl = parseLaw(x); arts = pl.arts;
         if (!arts.length) { report.push(name + ' ' + vk + ': 조문 0개(받기 이상)'); continue; }
         const doc = { 법령: name, 법령ID: v.법령ID, MST: ver.MST, 시행일: ver.시행일, 공포일: ver.공포일, 공포번호: ver.공포번호, 구분: ver.구분, 받은날: today, 출처: 'law.go.kr eflaw', 머리: pl.머리, 조: arts };
@@ -251,7 +280,19 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
       if (!p) ent.판.push(p = { 판: vk });
       Object.assign(p, { 시행일: ver.시행일, 공포일: ver.공포일, 공포번호: ver.공포번호, 구분: ver.구분, 법종: ver.법종, MST: ver.MST, 조문수: arts.length });
       if (상태 === '현행') { curArts = arts; curKey = vk; }
+      if (상태 === '옛판') await new Promise(r => setTimeout(r, 300)); // 법제처에 몰아서 묻지 않게
     }
+    // 부칙 — 현행판 XML에 그 법령의 부칙이 모두 들어 있다(없으면 한 번 받음)
+    try {
+      if (!curXml) curXml = await get('https://www.law.go.kr/DRF/lawService.do?OC=' + OC + '&target=eflaw&type=XML&MST=' + v.현행.MST + '&efYd=' + v.현행.시행일);
+      const bu = parseBuchik(curXml);
+      // 시행예정 판의 부칙(현행 XML에 아직 없을 수 있음)은 그 판 XML에서 더한다 — 공포번호로 겹침 제거
+      for (const e of v.예정) { if (bu.some(b => +b.공포번호 === +e.공포번호)) continue; try { parseBuchik(await get('https://www.law.go.kr/DRF/lawService.do?OC=' + OC + '&target=eflaw&type=XML&MST=' + e.MST + '&efYd=' + e.시행일)).forEach(b => { if (!bu.some(c => +c.공포번호 === +b.공포번호)) bu.push(b); }); } catch (x) {} }
+      if (!DRY) fs.writeFileSync(path.join(OUT, '_본문', k, '_부칙.json.gz'), zlib.gzipSync(Buffer.from(JSON.stringify({ 법령: name, 받은날: today, 기준판: v.현행.시행일 + '_' + v.현행.공포번호, 부칙: bu }), 'utf8'), { level: 9 }));
+      ent.부칙수 = bu.length;
+      report.push(name + ' 부칙 ' + bu.length + '개');
+    } catch (e) { report.push(name + ' 부칙 실패: ' + e.message); }
+    curXml = null;
     // 판 상태 다시 매김: 현행 1개, 그보다 늦은 시행일 = 시행예정, 이른 = 옛판(지우지 않음)
     ent.판.sort((a, b) => a.시행일.localeCompare(b.시행일) || a.공포일.localeCompare(b.공포일));
     ent.판.forEach(p => { p.상태 = p.판 === curKey ? '현행' : (p.시행일 > (v.현행.시행일) ? '시행예정' : '옛판'); });
@@ -266,15 +307,19 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
   const doneLaws = new Set(corr.map(c => c.법령).concat(ONLY || []));
   const keep = (old.항목 || []).filter(c => c.구분 !== 'ref' || (ONLY && !doneLaws.has(c.법령)));
   const items = keep.concat(corr);
+  // [2026.10.20] 원본 그림을 직접 읽은 판독(구분 claude판독 — maps/법령도구/그림판독_합치기.js)이 있는 그림은 다른 보정을 '다시 확인 필요(대체)'로(서버·.md가 덧입히지 않음)
+  items.forEach(x => { if (x.구분 !== 'claude판독' && x.그림.length === 1 && items.some(v => v.구분 === 'claude판독' && v.그림[0] === x.그림[0]) && !/^다시 확인 필요\(원본 그림 판독으로 대체/.test(x.상태)) x.상태 = '다시 확인 필요(원본 그림 판독으로 대체 — 전: ' + x.상태 + ')'; });
   const cnt = {}; items.forEach(c => { cnt[c.상태] = (cnt[c.상태] || 0) + 1; });
   const corrDoc = { 설명: '산식 보정 — 법제처 원문에서 그림뿐인 산식을 글로. 세무사님 법령 폴더(참고용)에서 뽑은 것(구분 ref) + Vision 판독(구분 vision). 그림 번호가 그 판 조문에 없으면 덧입히지 않고 "다시 확인 필요".', 만든때: idx.만든때, 상태별: cnt, 항목: items };
   // 판마다 법령정보 모양 .md 사본 — 법령/읽기용(md)/<법령>/<법령>_<시행일>_<공포번호>.md (같은 원자료라 .json.gz와 내용이 같다)
   let mdN = 0;
   for (const [n] of LAWS) {
     const k = key(n), e = idx.법령[k]; if (!e || (ONLY && !ONLY.includes(k))) continue;
+    const bf = path.join(OUT, '_본문', k, '_부칙.json.gz'), buchik = fs.existsSync(bf) ? JSON.parse(zlib.gunzipSync(fs.readFileSync(bf)).toString('utf8')).부칙 : [];
     for (const p of e.판) {
+      if (p.상태 === '옛판') continue; // 옛 판은 .md 없이 .json.gz만(드라이브 용량·동기화 — 원문 보기는 판을 골라 .json.gz로)
       const f = path.join(OUT, '_본문', k, p.판 + '.json.gz'); if (!fs.existsSync(f)) continue;
-      const md = lawToMd(JSON.parse(zlib.gunzipSync(fs.readFileSync(f)).toString('utf8')), items.filter(x => x.법령 === k), p.법종);
+      const md = lawToMd(JSON.parse(zlib.gunzipSync(fs.readFileSync(f)).toString('utf8')), items.filter(x => x.법령 === k), p.법종, buchik);
       if (!DRY) { fs.mkdirSync(path.join(OUT, '읽기용(md)', k), { recursive: true }); fs.writeFileSync(path.join(OUT, '읽기용(md)', k, k + '_' + p.판 + '.md'), md); }
       mdN++;
     }
