@@ -1506,7 +1506,8 @@
           산식: mode9703_ === 'formula2026' ? '시행령 §97의3⑤(2026.2.27~) 양도차익 × (임대 마지막 날 ' + endStd_ + ' − 임대 개시일 ' + startStd_ + ') ÷ (양도일 ' + trfStd + ' − 취득일 ' + acqStd + ') 기준시가'
             : '양도차익 × (양도일 ' + trfStd + ' − 등록일 ' + regStd + ') ÷ (양도일 − 취득일 ' + acqStd + ') 기준시가(2026.2.26 전 양도분 — 산식이 법령에 없어 판단 대기)' };
       } else {
-        longTermDeductionAmount = Math.floor(taxableGain * ltRate + 1e-6); // [2026.10.17] 장기보유특별공제 원 미만 버림(고객X: 200,593,166 × 30% = 60,177,949.8 → 60,177,949원, 양도코리아와 같게)
+        // [2026.10.20 세액 고침 — 양도 감사] §95②은 '양도차익'에 공제율을 곱함 — 양도차손(음수)에는 장특공이 없다(예전엔 음수 공제가 붙어 손실이 줄었음)
+        longTermDeductionAmount = taxableGain > 0 ? Math.floor(taxableGain * ltRate + 1e-6) : 0; // [2026.10.17] 장기보유특별공제 원 미만 버림(고객X: 200,593,166 × 30% = 60,177,949.8 → 60,177,949원, 양도코리아와 같게)
         incomeAmount = taxableGain - longTermDeductionAmount;
       }
     }
@@ -2612,7 +2613,12 @@
       let left = (pooled.length || shortTerm.length) ? 2500000 : 0;
       const redRatio_ = {};
       red90Assets_.forEach(function (a) { if (a.reds && a.reds.length) redRatio_[a.idx] = a.reducedRatio != null ? Math.max(0, Math.min(1, Number(a.reducedRatio) || 0)) : 1; });
-      const incOf_ = function (c) { return Math.max(0, c.isPoolable ? c.incomeAmount : (nettedIncomeByIdx_[c.idx] !== undefined ? nettedIncomeByIdx_[c.idx] : c.incomeAmount)); };
+      // [2026.10.20 세액 고침 — 양도 감사] §103② 기본공제는 양도차손 통산 뒤 양도소득금액에서 뺀다 — 누진(합산) 묶음 자산도 그 묶음 순소득을 이익 자산에 금액 비율로
+      //  나눈 몫으로 본다. 예전엔 통산 전 소득으로 나눠, 묶음 안 손실이 있으면 그 묶음에 기본공제가 순소득보다 크게 배정되고 남는 몫이 버려졌다(단기 자산 쪽으로 못 감).
+      const poolNet_ = {};
+      if (poolBucket_) { const pg_ = poolBucket_.items.filter(function (it) { return it.inc > 0; }); const pgs_ = pg_.reduce(function (t, it) { return t + it.inc; }, 0);
+        pg_.forEach(function (it) { poolNet_[it.c.idx] = pgs_ > 0 ? (poolBucket_.netSum || 0) * it.inc / pgs_ : 0; }); }
+      const incOf_ = function (c) { return Math.max(0, c.isPoolable ? (poolBucket_ ? (poolNet_[c.idx] || 0) : c.incomeAmount) : (nettedIncomeByIdx_[c.idx] !== undefined ? nettedIncomeByIdx_[c.idx] : c.incomeAmount)); };
       const ord_ = pooled.concat(shortTerm).sort(function (a, b) { return String((a.raw && a.raw.transferDate) || '').localeCompare(String((b.raw && b.raw.transferDate) || '')) || (a.idx - b.idx); });
       ord_.forEach(function (c) { const other = incOf_(c) * (1 - (redRatio_[c.idx] || 0)); const u = Math.min(left, other); basicOf_[c.idx] = u; left -= u; });
       ord_.forEach(function (c) { if (!(c.idx in redRatio_)) return; const red = incOf_(c) * redRatio_[c.idx]; const u = Math.min(left, red); basicOf_[c.idx] += u; left -= u; });

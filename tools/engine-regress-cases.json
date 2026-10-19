@@ -2388,5 +2388,42 @@
    "산출세액": 133060000,
    "납부세액_합계": 146366000
   }
+ },
+ {
+  "이름": "[세액 고침 — 양도 감사, §95②·§103②] 토지 A(3년, +200만 → 장특 6% 188만)·B(3년, −100만 — 차손엔 장특 없음)·C(1년 미만 단기 50%, +300만): 누진 묶음 순소득 88만 → 기본공제 88만, 남은 162만은 C → C 과표 138만 × 50% = 690,000(예전 차손에 장특 −6만이 붙고 기본공제를 통산 전 188만으로 나눠 C 과표 238만 → 1,190,000)",
+  "도구": "calculateTransferTaxMultiJS",
+  "고정": true,
+  "인자": [
+   [
+    {
+     "assetType": "land",
+     "transferPrice": 52000000,
+     "acquisitionPrice": 50000000,
+     "necessaryExpenses": 0,
+     "acquisitionDate": "2023-01-10",
+     "transferDate": "2026-03-10"
+    },
+    {
+     "assetType": "land",
+     "transferPrice": 49000000,
+     "acquisitionPrice": 50000000,
+     "necessaryExpenses": 0,
+     "acquisitionDate": "2023-01-10",
+     "transferDate": "2026-04-10"
+    },
+    {
+     "assetType": "land",
+     "transferPrice": 53000000,
+     "acquisitionPrice": 50000000,
+     "necessaryExpenses": 0,
+     "acquisitionDate": "2025-09-10",
+     "transferDate": "2026-05-10"
+    }
+   ],
+   {}
+  ],
+  "정답": {
+   "산출세액_합계": 690000
+  }
  }
 ]
