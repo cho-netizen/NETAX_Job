@@ -7243,7 +7243,13 @@
     if (!(contractTime >= new Date('2021-12-20').getTime() && contractTime <= new Date('2026-12-31').getTime())) {
       return { 적용여부: false, 안내: '상생임대차계약 체결일이 체결기한(2021.12.20~2026.12.31)을 벗어나 시행령§155의3의 적용대상이 아닙니다.' };
     }
-    const monthsBetween_ = function (d1, d2) { const a = new Date(d1), b = new Date(d2); return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()); };
+    // [2026.10.20 세액 고침] 시행령 §155의3③(법제처 원문) — 임대기간은 "월력에 따라 계산하며, 1개월 미만인 경우에는 1개월로 본다".
+    //  시작일부터 종료일까지(종료일 포함) 월력으로 세고 남는 날은 1개월로. 예전엔 날짜를 버려 2022.4.1.~2024.3.31.(만 2년)을 23개월로 봤다.
+    const monthsBetween_ = function (d1, d2) {
+      const a = new Date(String(d1).slice(0, 10) + 'T00:00:00Z'), e = new Date(String(d2).slice(0, 10) + 'T00:00:00Z'); e.setUTCDate(e.getUTCDate() + 1);
+      const m = (e.getUTCFullYear() - a.getUTCFullYear()) * 12 + (e.getUTCMonth() - a.getUTCMonth());
+      return e.getUTCDate() === a.getUTCDate() ? m : (e.getUTCDate() < a.getUTCDate() ? m : m + 1);
+    };
     if (monthsBetween_(p.priorLeaseStartDate, p.priorLeaseEndDate) < 18) {
       return { 적용여부: false, 안내: '직전임대차계약에 따라 임대한 기간이 1년 6개월 이상이어야 하는데(시행령§155의3①2호), 이를 충족하지 못해 적용대상이 아닙니다.' };
     }

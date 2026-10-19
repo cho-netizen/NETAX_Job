@@ -1382,5 +1382,23 @@
    "과세표준": 497500000,
    "산출세액": 272560000
   }
+ },
+ {
+  "이름": "상생임대(영 §155의3③ 월력·1개월 미만은 1개월) — 상생임대 2022.4.1.~2024.3.31.(만 2년)은 24개월 → 적용(예전엔 23개월로 봐 미적용)",
+  "도구": "calculateMutualGrowthLeaseExclusionJS",
+  "고정": true,
+  "입력": {
+   "mutualLeaseContractDate": "2022-03-01",
+   "priorLeaseStartDate": "2020-03-01",
+   "priorLeaseEndDate": "2022-03-31",
+   "mutualLeaseStartDate": "2022-04-01",
+   "mutualLeaseEndDate": "2024-03-31",
+   "transferDate": "2024-10-01",
+   "priorLeaseDeposit": 300000000,
+   "mutualLeaseDeposit": 310000000
+  },
+  "정답": {
+   "적용여부": true
+  }
  }
 ]
