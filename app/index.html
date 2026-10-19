@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 19:45 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 19:49 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -19795,7 +19795,7 @@
     //  예전엔 국내 양도소득금액을 분모에 더하고(한도 과소) 외국납부세액 합계와 한도 합계를 한 번에 비교했다(자산별 초과분이 다른 자산 한도로 넘어감).
     //  2019.12.31 이전 양도분(옛 문언 "그 과세기간의 양도소득금액")이 섞이면 예전 방식(판단 대기).
     const oldFtcRuleM_ = transactions.some(function (t) { return t && t.transferDate && String(t.transferDate) < '2020-01-01'; });
-    let foreignTaxCreditLimit = 0, foreignTaxCredit = 0;
+    let foreignTaxCreditLimit = 0, foreignTaxCredit = 0, lossAllocNote_ = '';
     const ftcOldM_ = oldFtcRuleParts_(oldFtcRuleM_, filingParams); // [2026.10.20 J14] 국내분 넣지 않음, 그해 국외 주식등은 A·분모에
     if (oldFtcRuleM_) {
       const totalIncomeAmountForRatio = Math.max(0, totalGain) + ftcOldM_.stockIncome;
@@ -19810,6 +19810,7 @@
       perTxn.forEach(function (x) {
         const B_ = G_ > 0 ? Math.round(Math.max(0, x.양도차익) * C_ / G_) : 0;
         x.기준양도소득금액_B = B_;
+        if (x.양도차익 < 0) lossAllocNote_ = '[회장 결정 N13·확인 필요] 차손 자산이 있어 자산별 공제한도의 B는 차손 합계를 이익 자산에 양도소득금액 비율로 나눠 뺀 값(차손 자산 B = 0, 서식 11호 부표1 작성방법 9·10 ⑩) — 자산별 한도 합 = 산출세액(소득세법 §118의6①1호 A×B÷C).';
         const lim = C_ > 0 ? Math.round(calculatedTax * B_ / C_) : 0;
         x.공제한도 = lim;
         x.공제액 = Math.min(x.외국납부세액_공제신청액, lim);
@@ -19830,7 +19831,7 @@
       거래건수: transactions.length,
       거래별_내역: perTxn,
       합산양도차익: Math.round(totalGain), 기본공제: basicDeduction, 과세표준: taxBase,
-      산출세액: calculatedTax, 외국납부세액공제한도: foreignTaxCreditLimit, 외국납부세액공제: foreignTaxCredit, 외국납부세액공제_안내: ftcOldM_.note || undefined,
+      산출세액: calculatedTax, 외국납부세액공제한도: foreignTaxCreditLimit, 외국납부세액공제: foreignTaxCredit, 외국납부세액공제_안내: [ftcOldM_.note, lossAllocNote_].filter(Boolean).join(' ') || undefined,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       지방소득세: localIncomeTax, 납부세액_합계: totalTax,
       안내: '국외자산은 §118의7①에 따라 여러 건을 양도해도 기본공제(연250만원)를 통틀어 1회만 적용합니다(국내자산처럼 자산 종류별로 나누지 않음). 장기보유특별공제는 국외자산에 적용되지 않습니다. foreignTaxCreditMethod가 expense인 거래는 이미 필요경비에 포함해 입력했다고 보아 세액공제 대상에서 제외했습니다.'

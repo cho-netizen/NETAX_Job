@@ -2281,5 +2281,35 @@
    "산출세액": 93110000,
    "외국납부세액공제": 79832500
   }
+ },
+ {
+  "이름": "[회장 결정 N13 대조] 국외자산 2건 모두 이익(3억·1억, 차손 없음) — B = 양도차익 그대로라 예전과 같음: 과세표준 3.975억, 산출 = 3.975억 × 40% − 2,594만 = 13,306만, 한도 = 13,306만 × 3/4 = 99,795,000·33,265,000 → 공제 8천만 + 1천만 = 90,000,000",
+  "도구": "calculateOverseasAssetTransferTaxMultiJS",
+  "고정": true,
+  "인자": [
+   [
+    {
+     "wasResidentFiveYearsContinuously": true,
+     "transferDate": "2025-07-01",
+     "transferPrice": 800000000,
+     "acquisitionPrice": 500000000,
+     "foreignTaxCreditMethod": "credit",
+     "foreignTaxPaidAmount": 80000000
+    },
+    {
+     "wasResidentFiveYearsContinuously": true,
+     "transferDate": "2025-08-01",
+     "transferPrice": 300000000,
+     "acquisitionPrice": 200000000,
+     "foreignTaxCreditMethod": "credit",
+     "foreignTaxPaidAmount": 10000000
+    }
+   ],
+   {}
+  ],
+  "정답": {
+   "산출세액": 133060000,
+   "외국납부세액공제": 90000000
+  }
  }
 ]
