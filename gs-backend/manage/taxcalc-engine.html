@@ -887,6 +887,7 @@
     // (감정가액을 확인할 수 있으면 실제 필요경비도 확인 가능한 게 보통) — 환산취득가액·취득당시
     // 기준시가 방법일 때만 자동 적용해야 하므로 별도 플래그로 나눈다.
     let acquisitionPriceUsedConversionOrStandardOnly = false;
+    let acquisitionPriceUsedComparableOrAppraisal_ = false; // [2026.10.19] 매매사례가액·감정가액(§97①1호나목) — 아래 필요경비 판정용
     // acquisitionStandardPriceForConversion/transferStandardPriceForConversion은 이 환산취득가액 계산
     // 전용 필드다 — rentalSpecialType=rental_general에서 쓰는 acquisitionStandardPrice·transferStandardPrice
     // (임대기간중 양도차익 안분용, 아래 별도 분기)와 이름이 겹치지 않도록 의도적으로 구분했다.
@@ -897,10 +898,12 @@
       const transferStandardPriceForConversion = Number(t.transferStandardPriceForConversion) || 0;
       if (comparableTransactionPrice > 0) {
         acquisitionPrice = comparableTransactionPrice;
+        acquisitionPriceUsedComparableOrAppraisal_ = true;
         acquisitionPriceMethodNote = '취득가액은 매매사례가액(' + comparableTransactionPrice + '원, 시행령§176의2③1호)을 적용했습니다.';
       } else if (appraisalValue > 0) {
         acquisitionPrice = appraisalValue;
         acquisitionPriceUsedAppraisalOrConversion = true;
+        acquisitionPriceUsedComparableOrAppraisal_ = true;
         acquisitionPriceMethodNote = '취득가액은 감정가액(' + appraisalValue + '원, 시행령§176의2③2호)을 적용했습니다.';
       } else if (acquisitionStandardPriceForConversion > 0 && transferStandardPriceForConversion > 0) {
         acquisitionPriceUsedAppraisalOrConversion = true;
@@ -959,6 +962,17 @@
     if (!t.necessaryExpenses && (t.useEstimatedNecessaryExpense || acquisitionPriceUsedConversionOrStandardOnly) && acquisitionStandardPriceForConversion > 0) {
       const estimatedExpenseRate = estimatedRateFor_();
       necessaryExpenses = Math.floor(acquisitionStandardPriceForConversion * estimatedExpenseRate + 1e-6); // [2026.10.17] 원 미만 버림(방영교: 663,275.94원 → 663,275원, 양도코리아 계산과 같게)
+    }
+    // [2026.10.19 세액 고침] 매매사례가액·감정가액(§97①1호나목, 시행령 §176의2③)으로 추계하면 §97②2호 본문대로 필요경비는 "그 가액 + 개산공제(§163⑥)"다 —
+    //  단서(실제 비용이 더 크면 그것)는 환산취득가액에만 있다. 다만 상속·증여받은 자산(isInheritedAsset·isGiftedAsset)은 시행령 §163⑨대로 상속개시일·증여일
+    //  상증법 평가액(감정가액·매매사례가액 포함)이 '실지거래가액'(가목)이라 실제 비용을 그대로 뺀다. 예전엔 매매사례·감정이면 늘 실제 비용을 빼고 개산공제를 안 붙였다.
+    if (acquisitionPriceUsedComparableOrAppraisal_ && !t.isInheritedAsset && !t.isGiftedAsset && !t.giftReceivedDate) { // 이월과세 증여일이 있으면 증여받은 자산
+      const estC_ = acquisitionStandardPriceForConversion > 0 ? Math.floor(acquisitionStandardPriceForConversion * estimatedRateFor_() + 1e-6) : 0;
+      const enteredC_ = Number(t.necessaryExpenses) || 0;
+      necessaryExpenses = estC_;
+      acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + (estC_ > 0
+        ? '매매사례가액·감정가액이면 필요경비는 개산공제(' + estC_ + '원, 시행령 §163⑥)입니다(§97②2호 본문)' + (enteredC_ ? ' — 입력한 비용 ' + enteredC_ + '원은 빼지 않았습니다.' : '.')
+        : '⚠ 매매사례가액·감정가액이면 필요경비는 개산공제(취득당시 기준시가 × 3%, 시행령 §163⑥)입니다 — 취득당시 기준시가를 넣어 주세요(지금은 필요경비 0' + (enteredC_ ? ', 입력한 비용 ' + enteredC_ + '원은 빼지 않음' : '') + '). 상속·증여받은 자산이면 그 칸을 체크하세요(평가액이 실지거래가액, 실제 비용 공제).');
     }
     // [2026.10.19 세액 고침] 소득세법 §97②2호 — 취득가액을 환산취득가액으로 하면 필요경비는 "환산취득가액 + 개산공제(시행령 §163⑥)"다.
     //  실제 자본적지출·양도비는 더하지 않고, 단서로 (자본적지출 + 양도비)가 (환산취득가액 + 개산공제)보다 클 때만 그 금액을 필요경비로 할 수 있다.

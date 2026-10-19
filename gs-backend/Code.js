@@ -550,6 +550,7 @@ const DRIVE_TOOLS = [
         decedentAcquisitionValue: { type: 'number', description: 'businessSuccessionDeductionRatio와 함께 — 피상속인이 이 자산을 취득할 당시의 취득가액(원, §97①1호 기준). 취득가액 가중평균 계산에 쓰인다.' },
         rentalRegistrationDate: { type: 'string', description: 'rentalSpecialType이 rental_general(장기일반민간임대 §97의3)일 때 — 임대주택 등록일(YYYY-MM-DD). 2022-12-31 이전 등록이면 임대 8년 이상 50%·10년 이상 70%(법률 제19199호 부칙 제38조), 그 뒤 등록은 10년 이상 70%만.' },
         isInheritedAsset: { type: 'boolean', description: '상속받은 자산이면 true — 세율(단기 1년·2년) 판정 보유기간을 피상속인 취득일(inheritedDecedentAcquisitionDate)부터 센다(소득세법 §104②1호). acquisitionDate에는 상속개시일을 그대로 넣는다(장특공·취득가액 기준).' },
+        isGiftedAsset: { type: 'boolean', description: '증여받은 자산이면 true — 시행령 §163⑨: 증여일 현재 상증법 평가액(감정가액·매매사례가액 포함)이 실지거래가액이라 실제 필요경비를 뺀다. 아니면(일반 취득인데 취득가를 몰라 매매사례가액·감정가액으로 추계) 필요경비는 개산공제(§97②2호 본문). 상속받은 자산은 isInheritedAsset.' },
         inheritedDecedentAcquisitionDate: { type: 'string', description: 'isInheritedAsset일 때 — 피상속인이 그 자산을 취득한 날(YYYY-MM-DD).' },
         decedentAcquisitionDate: { type: 'string', description: 'businessSuccessionDeductionRatio와 함께 — 피상속인이 이 자산을 취득한 날(YYYY-MM-DD). 장기보유특별공제 보유기간의 가중평균 계산에 쓰인다(생략하면 장특공제 보유기간은 일반 상속재산과 동일하게 상속개시일부터 계산).' },
         comparableTransactionPrice: { type: 'number', description: 'acquisitionPrice를 모를 때 — 양도일 또는 취득일 전후 3개월 이내 매매사례가액(원, §176의2③1호). 취득가액 결정에서 최우선으로 쓰인다.' },
