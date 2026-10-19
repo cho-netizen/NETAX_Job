@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 21:04 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 21:09 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -16241,7 +16241,12 @@
     if (['initial', 'settlement'].indexOf(phase) === -1) {
       return { error: '단계를 개시사업연도 또는 정산사업연도 중에서 선택하세요.' };
     }
-    const profitFromOpportunity = Number(p.profitFromOpportunity) || 0;
+    // [2026.10.20 N16 회장 결론] 정산 법인세 상당액은 서식 10호의4 부표3대로 해마다 ⑳ = ⑲ × (⑪ ÷ ⑫)를 셈해 더한다(㉚ = Σ⑳, 법 §45의4③ 산식도
+    //  "개시사업연도분부터 정산사업연도분까지의 법인세 납부세액 중 상당액" — 연도별 합계). yearlyCorporateTax = [{profit, corporateTaxAfterCredit, corporateTaxableIncome}] (1~3년차).
+    //  예전엔 정산 때도 누적 이익 ÷ 한 해 소득금액 한 번으로 셈해, 해마다 법인세·소득이 다르면 틀렸다. 이익 칸이 비면 연도별 이익 합계(⑪ 합)를 쓴다.
+    const yrs_ = (Array.isArray(p.yearlyCorporateTax) ? p.yearlyCorporateTax : []).filter(function (y) { return y && ((Number(y.profit) || 0) !== 0 || (Number(y.corporateTaxAfterCredit) || 0) > 0); });
+    const yrProfitSum_ = yrs_.reduce(function (s, y) { return s + (Number(y.profit) || 0); }, 0);
+    const profitFromOpportunity = Number(p.profitFromOpportunity) || (yrs_.length ? yrProfitSum_ : 0);
     const shareRatio = Number(p.shareholderOwnershipRatio) || 0;
     // 법인세 납부세액 중 상당액(시행령§34의4④) = [수혜법인 산출세액(법인세법§55, 토지등양도소득분 제외)에서
     // 공제·감면액을 뺀 세액] × [사업기회제공이익이 수혜법인 각사업연도소득금액에서 차지하는 비율(1초과시1)].
@@ -16249,9 +16254,14 @@
     // 있으면 그 값을 우선한다(§45의5 특정법인 거래 함수의 동일 산식과 일관).
     const corporateTaxAfterCredit = Number(p.corporateTaxAfterCredit) || 0;
     const corporateTaxableIncome = Number(p.corporateTaxableIncome) || 0;
+    const yearlyRows_ = yrs_.map(function (y, i) {
+      const pr = Number(y.profit) || 0, tx = Math.max(0, Number(y.corporateTaxAfterCredit) || 0), inc = Number(y.corporateTaxableIncome) || 0;
+      return { 연차: i + 1, 이익: pr, 법인세_공제감면후: tx, 소득금액: inc, 법인세상당액: Math.round(tx * (inc > 0 ? Math.min(1, Math.max(0, pr) / inc) : 0)) }; // 부표3 ⑳
+    });
     const corporateTaxPortion = Number(p.corporateTaxPortion) > 0
       ? Number(p.corporateTaxPortion)
-      : Math.round(corporateTaxAfterCredit * (corporateTaxableIncome > 0 ? Math.min(1, profitFromOpportunity / corporateTaxableIncome) : 0));
+      : (yearlyRows_.length ? yearlyRows_.reduce(function (s, y) { return s + y.법인세상당액; }, 0)
+      : Math.round(corporateTaxAfterCredit * (corporateTaxableIncome > 0 ? Math.min(1, profitFromOpportunity / corporateTaxableIncome) : 0)));
 
     const meetsGate = profitFromOpportunity > 0 && shareRatio >= 30;
     if (!meetsGate) {
@@ -16268,6 +16278,10 @@
     const doneeRatioIn_ = Number(p.doneeOwnershipRatio);
     const calcRatio_ = doneeRatioIn_ > 0 ? Math.min(doneeRatioIn_, shareRatio) : shareRatio;
     const ratioNote_ = doneeRatioIn_ > 0 ? '' : '⚠ 수증자 본인 주식보유비율을 넣지 않아 지배주주·친족 합계 비율(' + shareRatio + '%)로 계산했습니다 — 수증자가 여럿이면 각자의 직접+간접 비율로 따로 계산하세요(서식 10호의4 본표 ⑳·부표1 다.㉒). ';
+    // [2026.10.20 N15 회장 결론] 법 §45의4①·③ 산식은 (이익 × 지배주주등 주식보유비율) − 법인세 상당액(시행령 §34의4④ — 비율을 곱하지 않은 법인 전체 몫,
+    //  서식 부표3 ⑳도 같음)이다. 수증자마다 본인 비율로 나눠 계산하면 법인세 상당액도 그 수증자 몫(× 본인 비율 ÷ 합계 비율)만 빼야
+    //  수증자들 몫의 합이 법 산식 전체와 같다(전부 빼면 수증자 수만큼 여러 번 빠짐). 본인 비율이 없으면(합계 비율로 계산) 전체를 뺀다.
+    const corpTaxForDonee_ = (doneeRatioIn_ > 0 && shareRatio > 0) ? Math.round(corporateTaxPortion * calcRatio_ / shareRatio) : corporateTaxPortion;
     let deemedGiftProfit;
     // 시행령§34의4⑤ — 개시사업연도분(§45의4①)도 정산분(⑥, §45의4③)과 별개로 "지배주주등이 배당받은
     // 소득이 있는 경우... 금액을 증여의제이익에서 공제(공제 후의 금액이 음수인 경우에는 영으로 본다)"가
@@ -16275,9 +16289,9 @@
     const dividendDeduction = Number(p.dividendDeduction) || 0;
     if (phase === 'initial') {
       const monthsInInitialYear = Number(p.monthsInInitialYear) || 12;
-      deemedGiftProfit = Math.max(0, Math.round(Math.max(0, (profitFromOpportunity * (calcRatio_ / 100) - corporateTaxPortion) / monthsInInitialYear * 12) * 3) - dividendDeduction);
+      deemedGiftProfit = Math.max(0, Math.round(Math.max(0, (profitFromOpportunity * (calcRatio_ / 100) - corpTaxForDonee_) / monthsInInitialYear * 12) * 3) - dividendDeduction);
     } else {
-      deemedGiftProfit = Math.max(0, Math.round(profitFromOpportunity * (calcRatio_ / 100) - corporateTaxPortion) - dividendDeduction);
+      deemedGiftProfit = Math.max(0, Math.round(profitFromOpportunity * (calcRatio_ / 100) - corpTaxForDonee_) - dividendDeduction);
     }
 
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
@@ -16297,7 +16311,7 @@
       과세표준: r.taxBase, 산출세액: r.calculatedTax, 개시사업연도_산출세액: initialPhaseCalculatedTax, 신고세액공제: r.reportCredit,
       무신고가산세: r.penalties.unreportedPenalty, 과소신고가산세: r.penalties.underreportedPenalty, 납부지연가산세: r.penalties.latePenalty,
       환급세액: refundTax,
-      계산에쓴_주식보유비율: calcRatio_,
+      계산에쓴_주식보유비율: calcRatio_, 법인세상당액_법인전체: corporateTaxPortion, 법인세상당액_수증자몫: corpTaxForDonee_, 연도별_법인세상당액: yearlyRows_.length ? yearlyRows_ : undefined,
       안내: ratioNote_ + (phase === 'initial'
         ? '개시사업연도 신고는 잠정치입니다 — 2년 경과 후 정산사업연도에 재계산·정산신고해야 합니다. '
         : '') + '증여재산공제는 적용되지 않습니다(증여의제이익 전액이 과세표준). 지배주주 판정은 다자간 지분구조 확인이 필요해 이 도구가 자동판정하지 않으니 별도로 확인하세요. 법인세 납부세액 중 상당액은 corporateTaxAfterCredit·corporateTaxableIncome을 넣으면 시행령§34의4④ 산식대로 자동계산되니(수혜법인의 실제 법인세 신고서상 값을 정확히 넣었는지만 확인하면 됩니다), corporateTaxPortion을 직접 계산해서 넣을 필요는 없습니다.',
@@ -24450,6 +24464,7 @@ function openJtSegmentHelperModal_(){
     resultBox.querySelector('#jtSegApplyBtn').addEventListener('click', function(){
       const el = document.getElementById('jtProfit');
       if (el){ el.value = total; if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(el); }
+      [0, 1, 2].forEach(function(i){ const y_ = document.getElementById('jtY' + (i + 1) + 'Profit'); if (y_) y_.value = jtSegmentYearOperatingProfit_(jtSegmentYears_[i]) || ''; }); // [2026.10.20 N16] 연도별 이익 칸(부표3 ⑪)에도
       close();
       showToast('사업기회로 인한 수혜법인 이익(' + won(total) + ')을 반영했습니다.', 'success');
     });
@@ -33971,6 +33986,9 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>법인세 납부세액 중 상당액</label><input type="number" id="jtCorporateTax" placeholder="원"><span class="taxcalc-field-help">직접 입력시 아래 자동계산값보다 우선 — 개시: 해당연도분 / 정산: 누적 합계, 비우면 자동계산</span></div>' +
         '<div class="taxcalc-field"><label>수혜법인의 법인세 산출세액(공제·감면 차감후)</label><input type="number" id="jtCorpTaxAfterCredit" placeholder="원"><span class="taxcalc-field-help">법인세 납부세액 중 상당액 자동계산용</span></div>' +
         '<div class="taxcalc-field"><label>수혜법인의 해당 사업연도 소득금액</label><input type="number" id="jtCorpTaxableIncome" placeholder="원"><span class="taxcalc-field-help">법인세법§14, 자동계산용</span></div>' +
+        '<div class="taxcalc-field" style="grid-column:1/-1;"><label>(정산사업연도만) 연도별 법인세 상당액 — 서식 부표3 ⑪·⑲·⑫, 해마다 ⑲×(⑪÷⑫)를 더함(㉚)</label>' +
+          [1, 2, 3].map(function (k) { return '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;"><span style="min-width:42px;">' + k + '년차</span><input type="number" id="jtY' + k + 'Profit" placeholder="사업기회 이익" style="width:140px;"><input type="number" id="jtY' + k + 'Tax" placeholder="법인세(공제·감면 후)" style="width:160px;"><input type="number" id="jtY' + k + 'Income" placeholder="각 사업연도 소득금액" style="width:160px;"></div>'; }).join('') +
+          '<span class="taxcalc-field-help">넣으면 위 "법인세 산출세액·소득금액" 대신 이것으로 셈함(위 "법인세 납부세액 중 상당액"을 직접 넣으면 그 값이 우선). 이익 칸이 비면 연도별 이익 합계</span></div>' +
         '<div class="taxcalc-field"><label>(개시사업연도만) 개시사업연도 월수</label><input type="number" id="jtMonths" placeholder="보통 12" maxlength="2"></div>' +
         '<div class="taxcalc-field"><label>(정산사업연도만) 배당소득공제액</label><input type="number" id="jtDividendDeduction" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>(정산사업연도만) 개시사업연도 산출세액</label><input type="number" id="jtInitialTax" placeholder="원"><span class="taxcalc-field-help">서식 ㉗ — 정산 세액에서 뺌(법 §45의4③)</span></div>' +
@@ -38311,6 +38329,7 @@ function handleTaxCalcClick_(e){
       corporateTaxPortion: numVal(document.getElementById('jtCorporateTax').value) || 0,
       corporateTaxAfterCredit: numVal(document.getElementById('jtCorpTaxAfterCredit').value) || 0,
       corporateTaxableIncome: numVal(document.getElementById('jtCorpTaxableIncome').value) || 0,
+      yearlyCorporateTax: document.getElementById('jtPhase').value === 'settlement' ? [1, 2, 3].map(function (k) { const v = function (id) { const e = document.getElementById(id); return e ? (numVal(e.value) || 0) : 0; }; return { profit: v('jtY' + k + 'Profit'), corporateTaxAfterCredit: v('jtY' + k + 'Tax'), corporateTaxableIncome: v('jtY' + k + 'Income') }; }) : [], // [2026.10.20 N16] 부표3 연도별
       monthsInInitialYear: numVal(document.getElementById('jtMonths').value) || 0,
       dividendDeduction: numVal(document.getElementById('jtDividendDeduction').value) || 0,
       initialPhaseCalculatedTax: numVal(document.getElementById('jtInitialTax').value) || 0,

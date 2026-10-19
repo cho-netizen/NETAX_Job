@@ -2600,6 +2600,55 @@
   }
  },
  {
+  "이름": "[N15 회장 결론] 일감떼어주기 개시 — 이익 10억, 합계 40%·수증자 20%, 법인세 상당액 1억(법인 전체, 시행령 §34의4④): 수증자 몫 1억×20/40 = 5천만, (2억 − 5천만)÷12×12×3 = 4.5억, 산출 8천만",
+  "도구": "calculateBusinessOpportunityGiftTaxJS",
+  "고정": true,
+  "입력": {
+   "phase": "initial",
+   "profitFromOpportunity": 1000000000,
+   "shareholderOwnershipRatio": 40,
+   "doneeOwnershipRatio": 20,
+   "corporateTaxPortion": 100000000
+  },
+  "정답": {
+   "증여의제이익": 450000000,
+   "산출세액": 80000000,
+   "납부세액": 77600000
+  }
+ },
+ {
+  "이름": "[N16 회장 결론] 일감떼어주기 정산 — 연도별 ⑳ = ⑲×(⑪÷⑫): 6천만×3/6 + 3천만×min(1,4/2) + 5천만×3/5 = 9천만(㉚), 수증자 몫 4,500만, 10억×20% − 4,500만 = 1.55억, 산출 2,100만",
+  "도구": "calculateBusinessOpportunityGiftTaxJS",
+  "고정": true,
+  "입력": {
+   "phase": "settlement",
+   "shareholderOwnershipRatio": 40,
+   "doneeOwnershipRatio": 20,
+   "yearlyCorporateTax": [
+    {
+     "profit": 300000000,
+     "corporateTaxAfterCredit": 60000000,
+     "corporateTaxableIncome": 600000000
+    },
+    {
+     "profit": 400000000,
+     "corporateTaxAfterCredit": 30000000,
+     "corporateTaxableIncome": 200000000
+    },
+    {
+     "profit": 300000000,
+     "corporateTaxAfterCredit": 50000000,
+     "corporateTaxableIncome": 500000000
+    }
+   ]
+  },
+  "정답": {
+   "증여의제이익": 155000000,
+   "산출세액": 21000000,
+   "납부세액": 20370000
+  }
+ },
+ {
   "이름": "[세액 고침 — 증여 감사 B, 서식 10호의3 부표4 작성방법 7·9] 일감몰아주기 — 과세요건 ⑬ 60%, 계산용 ⑯ = 50/90 = 55.5556%(⑦ 추가 과세제외 10억): 세후영업이익 10억 × (55.5556 − 5)% × 50% = 252,778,000(예전 ⑬ 하나로 2.75억)",
   "도구": "calculateRelatedPartyTransactionGiftTaxJS",
   "고정": true,

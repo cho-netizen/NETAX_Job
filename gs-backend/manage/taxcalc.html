@@ -2082,6 +2082,7 @@ function openJtSegmentHelperModal_(){
     resultBox.querySelector('#jtSegApplyBtn').addEventListener('click', function(){
       const el = document.getElementById('jtProfit');
       if (el){ el.value = total; if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(el); }
+      [0, 1, 2].forEach(function(i){ const y_ = document.getElementById('jtY' + (i + 1) + 'Profit'); if (y_) y_.value = jtSegmentYearOperatingProfit_(jtSegmentYears_[i]) || ''; }); // [2026.10.20 N16] 연도별 이익 칸(부표3 ⑪)에도
       close();
       showToast('사업기회로 인한 수혜법인 이익(' + won(total) + ')을 반영했습니다.', 'success');
     });
@@ -11603,6 +11604,9 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>법인세 납부세액 중 상당액</label><input type="number" id="jtCorporateTax" placeholder="원"><span class="taxcalc-field-help">직접 입력시 아래 자동계산값보다 우선 — 개시: 해당연도분 / 정산: 누적 합계, 비우면 자동계산</span></div>' +
         '<div class="taxcalc-field"><label>수혜법인의 법인세 산출세액(공제·감면 차감후)</label><input type="number" id="jtCorpTaxAfterCredit" placeholder="원"><span class="taxcalc-field-help">법인세 납부세액 중 상당액 자동계산용</span></div>' +
         '<div class="taxcalc-field"><label>수혜법인의 해당 사업연도 소득금액</label><input type="number" id="jtCorpTaxableIncome" placeholder="원"><span class="taxcalc-field-help">법인세법§14, 자동계산용</span></div>' +
+        '<div class="taxcalc-field" style="grid-column:1/-1;"><label>(정산사업연도만) 연도별 법인세 상당액 — 서식 부표3 ⑪·⑲·⑫, 해마다 ⑲×(⑪÷⑫)를 더함(㉚)</label>' +
+          [1, 2, 3].map(function (k) { return '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;"><span style="min-width:42px;">' + k + '년차</span><input type="number" id="jtY' + k + 'Profit" placeholder="사업기회 이익" style="width:140px;"><input type="number" id="jtY' + k + 'Tax" placeholder="법인세(공제·감면 후)" style="width:160px;"><input type="number" id="jtY' + k + 'Income" placeholder="각 사업연도 소득금액" style="width:160px;"></div>'; }).join('') +
+          '<span class="taxcalc-field-help">넣으면 위 "법인세 산출세액·소득금액" 대신 이것으로 셈함(위 "법인세 납부세액 중 상당액"을 직접 넣으면 그 값이 우선). 이익 칸이 비면 연도별 이익 합계</span></div>' +
         '<div class="taxcalc-field"><label>(개시사업연도만) 개시사업연도 월수</label><input type="number" id="jtMonths" placeholder="보통 12" maxlength="2"></div>' +
         '<div class="taxcalc-field"><label>(정산사업연도만) 배당소득공제액</label><input type="number" id="jtDividendDeduction" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>(정산사업연도만) 개시사업연도 산출세액</label><input type="number" id="jtInitialTax" placeholder="원"><span class="taxcalc-field-help">서식 ㉗ — 정산 세액에서 뺌(법 §45의4③)</span></div>' +
@@ -15943,6 +15947,7 @@ function handleTaxCalcClick_(e){
       corporateTaxPortion: numVal(document.getElementById('jtCorporateTax').value) || 0,
       corporateTaxAfterCredit: numVal(document.getElementById('jtCorpTaxAfterCredit').value) || 0,
       corporateTaxableIncome: numVal(document.getElementById('jtCorpTaxableIncome').value) || 0,
+      yearlyCorporateTax: document.getElementById('jtPhase').value === 'settlement' ? [1, 2, 3].map(function (k) { const v = function (id) { const e = document.getElementById(id); return e ? (numVal(e.value) || 0) : 0; }; return { profit: v('jtY' + k + 'Profit'), corporateTaxAfterCredit: v('jtY' + k + 'Tax'), corporateTaxableIncome: v('jtY' + k + 'Income') }; }) : [], // [2026.10.20 N16] 부표3 연도별
       monthsInInitialYear: numVal(document.getElementById('jtMonths').value) || 0,
       dividendDeduction: numVal(document.getElementById('jtDividendDeduction').value) || 0,
       initialPhaseCalculatedTax: numVal(document.getElementById('jtInitialTax').value) || 0,

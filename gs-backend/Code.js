@@ -1290,6 +1290,7 @@ const DRIVE_TOOLS = [
         corporateTaxPortion: { type: 'number', description: 'initial이면 개시사업연도분의 법인세 납부세액 중 상당액(원), settlement이면 개시사업연도부터 정산사업연도분까지의 법인세 납부세액 중 상당액 합계(원). 생략하면 corporateTaxAfterCredit·corporateTaxableIncome으로 자동계산한다(시행령§34의4④).' },
         corporateTaxAfterCredit: { type: 'number', description: 'corporateTaxPortion 자동계산용 — 수혜법인의 해당 사업연도 법인세 산출세액(법인세법§55, 토지등양도소득에 대한 법인세 제외)에서 공제·감면세액을 뺀 금액(원). corporateTaxPortion을 직접 입력하면 이 값은 무시된다.' },
         corporateTaxableIncome: { type: 'number', description: 'corporateTaxPortion 자동계산용 — 수혜법인의 해당 사업연도 각사업연도소득금액(원). corporateTaxPortion을 직접 입력하면 이 값은 무시된다.' },
+        yearlyCorporateTax: { type: 'array', description: '[2026.10.20] settlement일 때 연도별(1~3년차) 법인세 상당액 자료 — 해마다 법인세(공제·감면 후) × (그해 사업기회 이익 ÷ 그해 각사업연도소득금액, 1 한도)를 더함(서식 10호의4 부표3 ⑳·㉚). profitFromOpportunity가 없으면 이익 합계를 씀.', items: { type: 'object', properties: { profit: { type: 'number' }, corporateTaxAfterCredit: { type: 'number' }, corporateTaxableIncome: { type: 'number' } } } },
         monthsInInitialYear: { type: 'integer', description: 'phase가 initial일 때만 — 개시사업연도의 월수(보통 12, 사업연도가 짧으면 그 미만).' },
         dividendDeduction: { type: 'number', description: 'phase가 settlement일 때만 — 신고기한까지 수혜법인으로부터 받은 배당소득에 대한 공제액(원). 별도로 계산해서 입력한다. 없으면 생략.' },
         initialPhaseCalculatedTax: { type: 'number', description: 'phase가 settlement일 때만 — 개시사업연도 신고의 산출세액(원, [별지10호의4] ㉗). 정산 세액에서 빼고 남은 것에만 3% 공제(법 §45의4③). 적으면 환급세액.' },
