@@ -1732,5 +1732,21 @@
   "정답": {
    "감면_비과세대상_양도소득금액": 400000000
   }
+ },
+ {
+  "이름": "상속 외국납부세액공제(상증법 §29 \"거주자의 사망으로\") — 비거주자 피상속인은 공제 없음: 과세가액 50억·외국 상속세 5천만 → 공제 0, 납부 1,881,800,000",
+  "도구": "calculate_inheritance_tax",
+  "고정": true,
+  "입력": {
+   "taxableEstateAmount": 5000000000,
+   "childCount": 1,
+   "hasSpouse": false,
+   "foreignTaxPaidAmount": 50000000,
+   "isDecedentResident": false
+  },
+  "정답": {
+   "외국납부세액공제": 0,
+   "납부세액": 1881800000
+  }
  }
 ]

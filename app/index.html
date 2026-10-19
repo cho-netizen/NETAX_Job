@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 17:45 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 17:49 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -15095,7 +15095,8 @@
     const foreignTaxCreditByFormula = (foreignEstateTaxBase > 0 && taxBase > 0)
       ? Math.round(taxBeforePremium * Math.min(1, foreignEstateTaxBase / taxBase))
       : foreignTaxPaidAmount;
-    const foreignTaxCredit = Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, taxBeforePremium - priorGiftTaxCredit - specialGiftTaxCredit));
+    // [2026.10.20 세액 고침] §29(법제처 원문) "거주자의 사망으로 상속세를 부과하는 경우"만 — 비거주자 피상속인은 외국납부세액공제 없음(원본 인쇄 작업자 상속부속A 발견)
+    const foreignTaxCredit = !isDecedentResident ? 0 : Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, taxBeforePremium - priorGiftTaxCredit - specialGiftTaxCredit));
     const shortTermCredit = Math.min(
       shortTermReinheritanceCredit(p.priorInheritanceTax, p.reinheritedPropertyValue, p.priorInheritanceTotalPropertyValue, p.priorInheritanceTaxableBase, p.yearsSincePriorInheritance),
       Math.max(0, taxBeforePremium - priorGiftTaxCredit - specialGiftTaxCredit - foreignTaxCredit)
@@ -15185,7 +15186,7 @@
       산출세액: calculatedTax, 세대생략가산액: generationSkipPremium,
       세대생략할증_미성년자여부확인필요: generationSkipMinorStatusUnverified,
       기납부증여세액공제: priorGiftTaxCredit, 증여세액공제_상속분입력필요: !!priorGiftCreditResult.needsActualValue, 기납부증여세액공제_상속인외: nonHeirPriorGiftTaxCredit, 기납부증여세액공제_상속인외한도: nonHeirPriorGiftCreditLimit, 증여세액공제_5억이하배제: giftCreditExcludedBySmallEstate, 증여세액공제_상속인별내역: priorGiftCreditResult.perHeir, 증여세액공제_상속인별과세가액_정밀: !!priorGiftCreditResult.precise,
-      특례증여세액공제: specialGiftTaxCredit, 외국납부세액공제: foreignTaxCredit, 외국납부세액공제_비율한도: foreignTaxCreditByFormula, 단기재상속세액공제: shortTermCredit, 그밖의공제: otherCreditsAmount, // [2026.10.19 서식감사 차] 비율한도 = [별지 제7호서식] ④
+      특례증여세액공제: specialGiftTaxCredit, 외국납부세액공제: foreignTaxCredit, 외국납부세액공제_비율한도: foreignTaxCreditByFormula, 외국납부세액공제_안내: (!isDecedentResident && foreignTaxPaidAmount > 0) ? '비거주자 피상속인은 외국납부세액공제를 받지 못합니다(상증법 §29 "거주자의 사망으로" 한정).' : undefined, 단기재상속세액공제: shortTermCredit, 그밖의공제: otherCreditsAmount, // [2026.10.19 서식감사 차] 비율한도 = [별지 제7호서식] ④
       신고세액공제: reportCredit, 이자상당액: interestAmount, 영리법인면제분납부세액: forProfitPayableByHeirs,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty,
       납부지연가산세: penalties.latePenalty,
@@ -30049,7 +30050,7 @@ function renderGiftResult(results){
     }).join('·') + (donorIdxs.length > 1 ? ' [동일인그룹]' : '');
     const donee = giftDonees[item.doneeIdx || 0] || {};
     const label = donorLabel + (giftDonees.length > 1 ? ' → 수증인 ' + tcPad2_((item.doneeIdx || 0) + 1) + (donee.name ? '(' + escapeHtml(donee.name) + ')' : '') : '');
-    return (item.공제안분 ? '<div class="taxcalc-result-note" style="margin:8px 0 0;">공제 안분(시행령 §46①2호): 같은 때 다른 증여자에게서도 받아 증여재산공제' + (item.input && item.input.marriageBirthDeductionCap != null ? '·혼인출산공제' : '') + '를 증여세과세가액 비율로 나눴습니다 — 이 증여 몫 ' + won(item.input.relationDeductionCap != null ? item.input.relationDeductionCap : item.result.증여재산공제) + '.</div>' : '') + (item.result && item.result.서식검산경고 ? '<div class="taxcalc-result-note" style="color:#b00020; font-weight:600; margin:8px 0 0;">' + escapeHtml(item.result.서식검산경고) + '</div>' : '') + (item.result && item.result.시점경고 ? '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600; margin:8px 0 0;">' + escapeHtml(item.result.시점경고) + '</div>' : '') + renderOneGiftResultHtml_(item.result, idx, label); // [2026.10.19] 증여일 연혁 경고
+    return (item.공동입력안분 ? '<div class="taxcalc-result-note" style="margin:8px 0 0;">⚠ 증여 쌍이 둘 이상이라 화면 공동 입력 금액(재해손실·감정평가수수료·비과세·외국납부 등)을 각 쌍의 증여재산가액 비율로 나눠 넣었습니다 — 그 금액이 특정 재산에 딸린 것이면 그 쌍에만 들어가야 합니다(상증법 §54·§55·§59). 이 쌍: ' + escapeHtml(Object.keys(item.공동입력안분).map(function(k){ return (GIFT_AI_FIELD_LABELS[k] || ({ museumDeferredTaxAmount: '박물관자료 징수유예', businessSuccessionDeferredTaxAmount: '가업승계 납부유예' })[k] || k) + ' ' + won(item.공동입력안분[k]); }).join(', ')) + '</div>' : '') + (item.공제안분 ? '<div class="taxcalc-result-note" style="margin:8px 0 0;">공제 안분(시행령 §46①2호): 같은 때 다른 증여자에게서도 받아 증여재산공제' + (item.input && item.input.marriageBirthDeductionCap != null ? '·혼인출산공제' : '') + '를 증여세과세가액 비율로 나눴습니다 — 이 증여 몫 ' + won(item.input.relationDeductionCap != null ? item.input.relationDeductionCap : item.result.증여재산공제) + '.</div>' : '') + (item.result && item.result.서식검산경고 ? '<div class="taxcalc-result-note" style="color:#b00020; font-weight:600; margin:8px 0 0;">' + escapeHtml(item.result.서식검산경고) + '</div>' : '') + (item.result && item.result.시점경고 ? '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600; margin:8px 0 0;">' + escapeHtml(item.result.시점경고) + '</div>' : '') + renderOneGiftResultHtml_(item.result, idx, label); // [2026.10.19] 증여일 연혁 경고
   }).join('');
   if (list.length > 1 && list.every(function(item){ return !item.result.error; })){
     const totalTax = list.reduce(function(s, item){ return s + (numVal(item.result.납부세액) || 0); }, 0);
@@ -38594,11 +38595,19 @@ function handleTaxCalcClick_(e){
         groupByKey[key].amount += amount;
       });
     });
-    const results = groups.map(function(g){
+    // [2026.10.20 세액 고침] 화면 공동 입력 금액(재해손실·감정평가수수료·비과세·공익법인 출연·외국납부 등)은 그 증여재산에 딸린 금액이라(상증법 §54·§55·§59 등)
+    //  증여 쌍이 둘 이상이면 쌍마다 통째로 빼면 겹친다(원본 인쇄 작업자 상속부속A 발견 — 둘째 쌍도 재해 3천만·외국 200만을 또 빼 납부 0원). 재산별 입력 칸이 생기기 전까지
+    //  각 쌍의 증여재산가액 비율로 나눠 합계가 입력값을 넘지 않게 한다(쌍이 하나면 예전과 같음).
+    const SHARED_SPLIT_ = ['appraisalFeeAmount', 'disasterLossAmount', 'nonTaxableAmount', 'publicInterestOrgAmount', 'publicTrustAmount', 'disabledTrustAmount', 'foreignTaxPaidAmount', 'foreignGiftTaxBase', 'otherCreditsAmount', 'museumDeferredTaxAmount', 'businessSuccessionDeferredTaxAmount', 'farmlandGiftTaxExemptionAmount'];
+    const groupTotal_ = groups.reduce(function(t, g){ return t + (Number(g.amount) || 0); }, 0);
+    const splitShared_ = groups.length > 1 && groupTotal_ > 0 && SHARED_SPLIT_.some(function(k){ return Number(sharedInput[k]) > 0; });
+    const results = groups.map(function(g, gi){
       const repDonorIdx = g.donorIdxs[0]; // 동일인그룹 대표 = 목록에서 가장 먼저 나오는 카드
+      const shareOf_ = {};
+      if (splitShared_) SHARED_SPLIT_.forEach(function(k){ const v = Number(sharedInput[k]) || 0; if (!v) return; let part = Math.floor(v * (Number(g.amount) || 0) / groupTotal_); if (gi === groups.length - 1) part = v - groups.slice(0, gi).reduce(function(t, gg){ return t + Math.floor(v * (Number(gg.amount) || 0) / groupTotal_); }, 0); shareOf_[k] = part; });
       const d = giftDonors[repDonorIdx];
       const donee = giftDonees[g.doneeIdx] || {};
-      const input = Object.assign({}, sharedInput, {
+      const input = Object.assign({}, sharedInput, shareOf_, {
         isMinor: taxCalcGiftDoneeIsMinor(g.doneeIdx),
         isDoneeResident: (donee.resident || 'resident') !== 'nonresident',
         doneeName: donee.name || '',
@@ -38635,7 +38644,7 @@ function handleTaxCalcClick_(e){
         reportedInTime: d.reportedInTime !== false
       });
       tcReportFormCorrections_();
-      return { donorIdxs: g.donorIdxs, doneeIdx: g.doneeIdx, amount: g.amount, priorGiftAmount: input.priorGiftAmount, input: input, result: calculateGiftTaxJS(input) };
+      return { donorIdxs: g.donorIdxs, doneeIdx: g.doneeIdx, amount: g.amount, priorGiftAmount: input.priorGiftAmount, input: input, result: calculateGiftTaxJS(input), 공동입력안분: splitShared_ ? shareOf_ : undefined };
     });
     // [2026.10.19 세액 고침] 시행령 §46①2호 — 같은 때(이 화면은 증여일 하나) 합산 안 되는 2이상의 증여자에게서 같은 공제 묶음으로 받으면
     //  증여재산공제(§53)·혼인출산공제(§53의2)를 각 증여세과세가액 비율로 안분한다(국세청 증여세 사례04: 부 2,800만·조부 4,200만 → 공제 2천만·3천만).

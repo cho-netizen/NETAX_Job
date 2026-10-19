@@ -3644,7 +3644,8 @@
     const foreignTaxCreditByFormula = (foreignEstateTaxBase > 0 && taxBase > 0)
       ? Math.round(taxBeforePremium * Math.min(1, foreignEstateTaxBase / taxBase))
       : foreignTaxPaidAmount;
-    const foreignTaxCredit = Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, taxBeforePremium - priorGiftTaxCredit - specialGiftTaxCredit));
+    // [2026.10.20 세액 고침] §29(법제처 원문) "거주자의 사망으로 상속세를 부과하는 경우"만 — 비거주자 피상속인은 외국납부세액공제 없음(원본 인쇄 작업자 상속부속A 발견)
+    const foreignTaxCredit = !isDecedentResident ? 0 : Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, taxBeforePremium - priorGiftTaxCredit - specialGiftTaxCredit));
     const shortTermCredit = Math.min(
       shortTermReinheritanceCredit(p.priorInheritanceTax, p.reinheritedPropertyValue, p.priorInheritanceTotalPropertyValue, p.priorInheritanceTaxableBase, p.yearsSincePriorInheritance),
       Math.max(0, taxBeforePremium - priorGiftTaxCredit - specialGiftTaxCredit - foreignTaxCredit)
@@ -3748,7 +3749,7 @@
       산출세액: calculatedTax, 세대생략가산액: generationSkipPremium,
       세대생략할증_미성년자여부확인필요: generationSkipMinorStatusUnverified,
       기납부증여세액공제: priorGiftTaxCredit, 증여세액공제_상속분입력필요: !!priorGiftCreditResult.needsActualValue, 기납부증여세액공제_상속인외: nonHeirPriorGiftTaxCredit, 기납부증여세액공제_상속인외한도: nonHeirPriorGiftCreditLimit, 증여세액공제_5억이하배제: giftCreditExcludedBySmallEstate, 증여세액공제_상속인별내역: priorGiftCreditResult.perHeir, 증여세액공제_상속인별과세가액_정밀: !!priorGiftCreditResult.precise,
-      특례증여세액공제: specialGiftTaxCredit, 외국납부세액공제: foreignTaxCredit, 외국납부세액공제_비율한도: foreignTaxCreditByFormula, 단기재상속세액공제: shortTermCredit, 그밖의공제: otherCreditsAmount, // [2026.10.19 서식감사 차] 비율한도 = [별지 제7호서식] ④
+      특례증여세액공제: specialGiftTaxCredit, 외국납부세액공제: foreignTaxCredit, 외국납부세액공제_비율한도: foreignTaxCreditByFormula, 외국납부세액공제_안내: (!isDecedentResident && foreignTaxPaidAmount > 0) ? '비거주자 피상속인은 외국납부세액공제를 받지 못합니다(상증법 §29 "거주자의 사망으로" 한정).' : undefined, 단기재상속세액공제: shortTermCredit, 그밖의공제: otherCreditsAmount, // [2026.10.19 서식감사 차] 비율한도 = [별지 제7호서식] ④
       신고세액공제: reportCredit, 이자상당액: interestAmount, 영리법인면제분납부세액: forProfitPayableByHeirs,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty,
       납부지연가산세: penalties.latePenalty,
