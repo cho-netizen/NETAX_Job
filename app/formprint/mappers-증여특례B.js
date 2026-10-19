@@ -148,7 +148,10 @@
       return o.result();
     }
     var sub = JM_SUB[I.companySize] || { trade: 0, share: 0 };
-    var income = n(r.적용소득금액), trade = Math.max(0, n(I.tradeRatio) - sub.trade), div = n(r.배당소득공제), gift = n(r.증여의제이익);
+    // [2026.10.20 B#5·N17] ⑲ = 계산용 거래비율(부표4 ⑯) − 차감률 — 사업부문별 구분경리면 엔진이 합친 부문 비율(시행령 §34의3④), 아니면 ⑯ 입력, 없으면 ⑬
+    var segR_ = r.사업부문별_구분경리, tP_ = segR_ && segR_.합친부문수 ? n(segR_.합친_계산거래비율) : (n(I.tradeRatioForProfit) > 0 ? n(I.tradeRatioForProfit) : n(I.tradeRatio));
+    if (segR_ && segR_.합친부문수) o.note('사업부문별 구분경리(시행령 §34의3③④) — 과세요건 해당 부문 ' + segR_.합친부문수 + '개를 합쳐 ⑱ 세후영업이익 ' + n(segR_.합친_세후영업이익) + '원·거래비율 ' + n(segR_.합친_계산거래비율) + '%');
+    var income = n(r.적용소득금액), trade = Math.max(0, tP_ - sub.trade), div = n(r.배당소득공제), gift = n(r.증여의제이익);
     var sp = jmSplit(ctx), RR = relRowsOf(r);
     if (RR) {
       // [2026.10.20 서식 감사] 화면 출자관계별 표가 있으면 엔진이 관계마다 한계보유비율 차감·배당소득 공제·0 바닥을 계산(결과 출자관계별) — 그 값을 그대로.
@@ -274,6 +277,13 @@
       .miss('㉗ 수혜법인의 매출액(라-1 ④ 소계)', '계산기에 없음 — 매출 합산 도구는 과세제외를 뺀 뒤 매출액만 받음(④ 아님)')
       .miss('㉘ 제외매출액', '계산기에 없음');
     if (n(ctx.totalSales) > 0) o.set('㉙', n(ctx.excludedSales)); else o.miss('㉙ 과세제외매출액', '계산기에 없음 — 🧮 특수관계법인 매출 합산을 쓰지 않음');
+    // [2026.10.20 B#5] 사업부문별 구분경리면 ㉚ = 과세요건 해당 부문을 합친 비율, ㉛ = 부문마다 판정(대체요건 1천억 × 부문 매출 ÷ 전체 매출, 시행령 §34의3⑰ — 작성방법 14)
+    var segR1_ = r && r.사업부문별_구분경리;
+    if (segR1_) {
+      (segR1_.부문 || []).forEach(function (x) { o.note('㉛ 부문 ' + x.부문 + ': 거래비율 ' + x.과세요건_거래비율 + '% → ' + (x.과세요건_해당 ? '해당' : '해당 없음') + (x.대체요건_매출액기준 ? ' (대체요건 매출 기준 ' + x.대체요건_매출액기준 + '원)' : '')); });
+      if (segR1_.합친부문수) { o.set('㉚', r4(n(segR1_.합친_과세요건거래비율))).set('㉛', '○'); } else { o.set('㉚', r4(n(segR1_.합친_과세요건거래비율))); o.miss('㉛ 과세요건 해당 여부', '해당 부문 없음(사업부문별 판정)'); }
+      return o.result();
+    }
     if (has(I.tradeRatio)) o.set('㉚', r4(n(I.tradeRatio))); else o.miss('㉚ 특수관계법인거래비율', '화면 입력 없음');
     var gate = jmTradeGate(I.companySize);
     var alt = I.companySize === 'general' && n(I.tradeRatio) > gate * 2 / 3 && n(I.relatedPartySales) > 1e11;
@@ -436,7 +446,10 @@
     o.miss('①②③④⑤⑥⑦⑧ 세후 영업이익 계산', '계산기에 없음 — 화면에 ⑨ 세후영업이익을 바로 넣음');
     if (!r.과세대상여부) { o.miss('⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑳㉑㉒㉓㉕㉖㉗㉘㉚㉛㉜㉝㉞㉟㊲㊳㊴ 전부', '엔진: 과세대상 아님 — ' + (r.안내 || '계산 결과 없음')); return o.result(); }
     var sub = JM_SUB[I.companySize] || { trade: 0, share: 0 };
-    var income = n(r.적용소득금액), trade = Math.max(0, n(I.tradeRatio) - sub.trade), div = n(r.배당소득공제), gift = n(r.증여의제이익);
+    // [2026.10.20 B#5·N17] ⑲ = 계산용 거래비율(부표4 ⑯) − 차감률 — 사업부문별 구분경리면 엔진이 합친 부문 비율(시행령 §34의3④), 아니면 ⑯ 입력, 없으면 ⑬
+    var segR_ = r.사업부문별_구분경리, tP_ = segR_ && segR_.합친부문수 ? n(segR_.합친_계산거래비율) : (n(I.tradeRatioForProfit) > 0 ? n(I.tradeRatioForProfit) : n(I.tradeRatio));
+    if (segR_ && segR_.합친부문수) o.note('사업부문별 구분경리(시행령 §34의3③④) — 과세요건 해당 부문 ' + segR_.합친부문수 + '개를 합쳐 ⑱ 세후영업이익 ' + n(segR_.합친_세후영업이익) + '원·거래비율 ' + n(segR_.합친_계산거래비율) + '%');
+    var income = n(r.적용소득금액), trade = Math.max(0, tP_ - sub.trade), div = n(r.배당소득공제), gift = n(r.증여의제이익);
     o.set('⑨', income);
     if (n(ctx.totalSales) > 0) o.set('⑩', n(ctx.totalSales)); else o.miss('⑩ 수혜법인 매출액', '화면 입력 없음(🧮 특수관계법인 매출 합산 — 수혜법인 총매출액)');
     o.miss('⑪ 특수관계법인 매출액·⑫ 제외매출액', '계산기에 없음 — 매출 합산 도구는 과세제외 차감 후 매출액과 과세제외(⑥) 합계만 받음(부표4)');
@@ -619,17 +632,24 @@
     // [2026.10.20 서식 감사] 부문 원가·판관비를 하나도 나누지 않았으면(부문 열이 모두 0) 부문 손익을 직접 계산할 수 없으므로 "나"(전체 영업이익을 매출액 비율로 안분,
     //  시행령 §34의4③ · ⑪ = ⑧ × (⑨ ÷ ⑩)). 예전엔 이때도 "나-1"로 보고 ⑬ = 부문 매출액(원가 0)으로 찍었음
     var split = segs.some(function (y) { return (y.costs || []).concat(y.expenses || []).some(function (x) { return n(x.segment); }); });
+    // [2026.10.20 B#4] 도구에서 계산 방법을 골랐으면 그대로(가 = 나-1 부문 영업이익, 나 = 시행규칙 §10의9② 안분) — 자동이면 위 판정
+    var mPick_ = segs.map(function (y) { return y.method; }).filter(function (m) { return m === 'a' || m === 'b'; })[0];
+    if (mPick_) split = mPick_ === 'a';
     var hasSeg = anySeg && split;
     if (anySeg && !split) {
       o.set('⑤', '나');
       YR.forEach(function (yy, i) {
         var s = segs[i]; if (!s || !(n(s.segmentSales) || n(s.totalSales))) return;
         var whole = n(s.totalSales) - (s.costs || []).reduce(function (a, x) { return a + n(x.total); }, 0) - (s.expenses || []).reduce(function (a, x) { return a + n(x.total); }, 0);
-        o.set('⑥@' + yy, whole).set('⑨@' + yy, n(s.segmentSales)).set('⑩@' + yy, n(s.totalSales));
+        // [2026.10.20 B#4] ⑦ 세무조정(도구 입력), ⑧ = ⑥ ± ⑦, ⑪ = ⑧ × (⑨ ÷ ⑩) — 시행규칙 §10의9②(엔진 calculateOpportunitySegmentProfitJS와 같은 식, 원 미만 버림)
+        var adj7 = n(s.taxAdjustment), w8 = whole + adj7;
+        o.set('⑥@' + yy, whole).set('⑨@' + yy, n(s.segmentSales)).set('⑩@' + yy, n(s.totalSales)).set('⑧@' + yy, w8);
+        if (adj7) o.set('⑦@' + yy + '.' + (adj7 > 0 ? '더하기' : '빼기'), Math.abs(adj7));
+        if (n(s.totalSales) > 0) o.set('⑪@' + yy, Math.trunc(w8 * n(s.segmentSales) / n(s.totalSales)));
       });
       if (initial && n(I.corpTaxableIncome)) o.set('⑫@1년차', n(I.corpTaxableIncome));
-      o.miss('⑦⑧⑪ 세무조정·세무조정 후 이익', '계산기에 없음 — 세무조정 금액이 없음(⑪ = ⑧ × (⑨ ÷ ⑩)은 직접)');
-      o.note('⚠ 🧮 부문별 내역에 부문 원가·판관비가 없어 "나"(전체 영업이익을 매출액 비율로 안분)로 봄 — ⑥ = 전체 매출액 − 전체 매출원가 − 전체 판관비');
+      if (!segs.some(function (y) { return n(y.taxAdjustment); })) o.miss('⑦ 세무조정', '도구에 세무조정 반영액 입력 없음(0으로 봄)');
+      o.note('나 방법(시행령 §34의4③ 단서·시행규칙 §10의9②) — ⑥ = 전체 매출액 − 전체 매출원가 − 전체 판관비, ⑪ = (⑥ ± ⑦) × 부문 매출 ÷ 전체 매출');
     } else o.miss('⑥⑦⑧⑨⑩⑪⑫ 나. 실제이익을 계산할 수 없는 경우', hasSeg ? '해당 없음 — 🧮 부문별 매출·비용 내역(부문 손익을 직접 나눔)이 있어 나-1 방법' : '계산기에 없음');
     if (hasSeg) {
       o.set('⑤', '나-1');
@@ -641,9 +661,9 @@
       o.note('⑬ = 🧮 부문별 매출·비용 내역의 부문 매출액 − 부문 매출원가 − 부문 판관비(taxcalc.html jtSegmentYearOperatingProfit_와 같은 식)');
     } else if (!anySeg) o.miss('⑤ 계산방법·⑬ 부문별영업이익', '계산기에 없음 — 🧮 부문별 매출·비용 내역이 비어 있어 나·나-1 어느 방법인지 알 수 없음');
     // [2026.10.20 서식 감사] ⑭ 세무조정 = ⑮(화면 이익 — 세무조정 후) − ⑬(🧮 부문 영업이익) — 서식 ⑮ = ⑬ ± ⑭(개시 신고 1년차, 나-1일 때)
-    var s0 = segs[0], p13 = (hasSeg && s0 && (n(s0.segmentSales) || n(s0.totalSales))) ? n(s0.segmentSales) - sumSeg(s0.costs) - sumSeg(s0.expenses) : null;
+    var s0 = segs[0], p13 = (split && anySeg && s0 && (n(s0.segmentSales) || n(s0.totalSales))) ? n(s0.segmentSales) - sumSeg(s0.costs) - sumSeg(s0.expenses) : null;
     if (initial && p13 !== null && r.과세대상여부) {
-      var adj = n(I.profit) - p13;
+      var adj = n(s0.taxAdjustment) || (n(I.profit) - p13); // [B#4] 도구 세무조정 입력이 있으면 그 값(⑮ = ⑬ ± ⑭)
       if (adj) { o.set('⑭@1년차.' + (adj > 0 ? '더하기' : '빼기'), Math.abs(adj)).miss('⑭ ' + (adj > 0 ? '(−)' : '(+)') + ' 칸·2년차·3년차', '해당 없음 — 1년차 세무조정 ' + (adj > 0 ? '더하기' : '빼기') + '만'); o.note('⑭ = ⑮(화면 이익 ' + n(I.profit) + '원) − ⑬(🧮 부문 영업이익 ' + p13 + '원) — 세무조정 금액(⑮ = ⑬ ± ⑭)'); }
       else o.miss('⑭ 세무조정(+)(−)', '해당 없음 — ⑮(화면 이익)와 ⑬(🧮 부문 영업이익)이 같음');
     } else o.miss('⑭ 세무조정(+)(−)', initial ? '계산기에 없음 — 🧮 부문별 내역(나-1)이 없어 ⑬과 비교 못 함' : '계산기에 없음 — 정산 신고 화면은 이익 누계만 받아 연도별로 나눌 수 없음');
@@ -739,7 +759,7 @@
     var rp = (typeof relatedPartyRatioRows_ !== 'undefined' && relatedPartyRatioRows_ ? relatedPartyRatioRows_ : []).filter(function (x) { return has(x.label) || n(x.sales) > 0; })
       .map(function (x) { return { label: x.label || '', sales: n(x.sales) }; });
     return Object.assign({ kind: 'jm', r: jmR(), donee: donee0(), taxAgent: H.agent(),
-      in: { companySize: el('jmCompanySize'), operatingIncome: n(el('jmOperatingIncome')), netIncome: n(el('jmNetIncome')), tradeRatio: n(el('jmTradeRatio')),
+      in: { companySize: el('jmCompanySize'), operatingIncome: n(el('jmOperatingIncome')), netIncome: n(el('jmNetIncome')), tradeRatio: n(el('jmTradeRatio')), tradeRatioForProfit: n(el('jmTradeRatioForProfit')),
         relatedPartySales: n(el('jmRelatedPartySales')), shareRatio: n(el('jmShareRatio')), dividendDeduction: n(el('jmDividendDeduction')),
         fiscalYearEnd: el('jmFiscalYearEnd'), filingStatus: el('jmFilingStatus') },
       shareholders: shRows('jm'), relatedParties: rp,
@@ -751,7 +771,7 @@
     var el = H.el;
     var years = (typeof jtSegmentYears_ !== 'undefined' && jtSegmentYears_ ? jtSegmentYears_ : []).map(function (y) {
       var m = function (L) { return (L || []).filter(function (x) { return has(x.label) || n(x.total) || n(x.segment); }).map(function (x) { return { label: x.label || '', total: n(x.total), segment: n(x.segment) }; }); };
-      return { totalSales: n(y.totalSales), segmentSales: n(y.segmentSales), costs: m(y.costs), expenses: m(y.expenses) };
+      return { totalSales: n(y.totalSales), segmentSales: n(y.segmentSales), costs: m(y.costs), expenses: m(y.expenses), taxAdjustment: n(y.taxAdjustment), method: y.method || '' }; // [B#4]
     });
     return Object.assign({ kind: 'jt', r: jtR(), donee: donee0(), taxAgent: H.agent(),
       in: { phase: el('jtPhase'), profit: n(el('jtProfit')), shareRatio: n(el('jtShareRatio')), corporateTax: n(el('jtCorporateTax')), corpTaxAfterCredit: n(el('jtCorpTaxAfterCredit')),
