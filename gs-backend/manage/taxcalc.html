@@ -6135,7 +6135,7 @@ function renderPropertyCardHtml_(idx, opts){
         '<div class="taxcalc-asset-head" data-show-if="donorRelation" style="display:none; margin-top:10px;"><b>수증자 본인 기준 정보</b></div>' +
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>증여 당시 평가액(수증자의 취득가액)</label><input type="number" data-field="doneeOwnAcquisitionPrice" placeholder="원"><span class="taxcalc-field-help">이 자산의 증여세 과세가액 — 이월과세 배제시 대신 취득가액으로 씀</span></div>' +
-          '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>증여받은 후 지출한 필요경비</label><input type="number" data-field="doneeOwnNecessaryExpenses" placeholder="원"><span class="taxcalc-field-help">이월과세 배제시만, 없으면 0</span></div>' +
+          '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>증여받은 후 지출한 필요경비</label><input type="number" data-field="doneeOwnNecessaryExpenses" placeholder="원"><span class="taxcalc-field-help">카드 비용 내역에 없는 것만(카드의 취득비용·자본적지출·양도비는 자동으로 들어감), 없으면 0</span></div>' +
           '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>낸 이 자산분 증여세 산출세액</label><input type="number" data-field="giftTaxPaid" placeholder="원"><span class="taxcalc-field-help">이월과세 적용시 필요경비에 가산(시행령§163의2②)</span></div>' +
           '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>전체 증여세 과세가액</label><input type="number" data-field="giftTaxableValue" placeholder="원"><span class="taxcalc-field-help">이 자산만 증여받았으면 위 평가액과 동일</span></div>' +
         '</div>' +
@@ -7221,6 +7221,10 @@ function collectTransferInput(vals){
     donorNecessaryExpenses: numVal(vals.donorNecessaryExpenses) || 0,
     doneeOwnAcquisitionPrice: numVal(vals.doneeOwnAcquisitionPrice) || 0,
     doneeOwnNecessaryExpenses: numVal(vals.doneeOwnNecessaryExpenses) || 0,
+    // [2026.10.20 세액 고침] 이월과세 판정용 — 카드 비용을 증여 취득 때(1xx)·취득 뒤(2xx 자본적지출 등)·양도비로 나눠 넘김(엔진이 두 시나리오에 법대로 넣음)
+    doneeAcqCosts: vals.donorRelation ? (Array.isArray(vals.acquisitionExpenseItems) ? vals.acquisitionExpenseItems : []).reduce(function(s, it){ return String(it.expenseCode || '').charAt(0) === '2' ? s : s + (numVal(it.amount) || 0); }, 0) : undefined,
+    doneePostAcqExpenses: vals.donorRelation ? (Array.isArray(vals.acquisitionExpenseItems) ? vals.acquisitionExpenseItems : []).reduce(function(s, it){ return String(it.expenseCode || '').charAt(0) === '2' ? s + (numVal(it.amount) || 0) : s; }, 0) : undefined,
+    doneeTransferExpenses: vals.donorRelation ? computeCostItemsTotal_(vals.transferExpenseItems) : undefined,
     giftTaxPaid: numVal(vals.giftTaxPaid) || 0,
     giftTaxableValue: numVal(vals.giftTaxableValue) || 0,
     // [2026.09.23 신규] 우회양도 부인(§101②) — 예전 별도 계산기(dd) 흡수. donorRelation이

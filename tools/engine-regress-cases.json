@@ -2457,5 +2457,32 @@
   "정답": {
    "과세표준": 500000
   }
+ },
+ {
+  "이름": "[세액 고침 — 양도 감사, §97의2①] 직계존속에게 증여받은 토지 이월과세 — 수증자가 쓴 자본적지출 2천만·양도비 5백만도 필요경비: 차익 = 5억 − 1억 − (증여세 상당액 4천만 + 2천만 + 5백만) = 3.35억, 장특 30%, 과표 2.32억, 산출 68,220,000(예전 이 비용이 빠져 74,870,000)",
+  "도구": "calculateTransferTaxWithCarryoverJS",
+  "고정": true,
+  "입력": {
+   "assetType": "land",
+   "transferPrice": 500000000,
+   "acquisitionPrice": 300000000,
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2023-06-30",
+   "transferDate": "2026-06-30",
+   "giftReceivedDate": "2023-06-30",
+   "donorRelation": "lineal",
+   "doneeOwnAcquisitionPrice": 300000000,
+   "donorAcquisitionPrice": 100000000,
+   "donorAcquisitionDate": "2010-01-01",
+   "giftTaxPaid": 40000000,
+   "giftTaxableValue": 300000000,
+   "doneePostAcqExpenses": 20000000,
+   "doneeTransferExpenses": 5000000,
+   "doneeAcqCosts": 12000000
+  },
+  "정답": {
+   "과세표준": 232000000,
+   "산출세액": 68220000
+  }
  }
 ]
