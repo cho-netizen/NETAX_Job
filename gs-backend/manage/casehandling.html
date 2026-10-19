@@ -816,6 +816,8 @@
       var warnM = /⚠ 이 (?:양도일|상속개시일|증여일)\([^)]*\)의 [^\n]*?확인 필요/.exec(String(entry.요약 || ''));
       if (warnM) amountHtml += ' <span style="color:#b26a00; font-weight:600; font-size:12px;">' + escapeHtml(warnM[0]) + '</span>';
       var formM = /⚠ 서식 칸 검산[^\n]*?확인 필요/.exec(String(entry.요약 || ''));
+      var judgeM = /⚠ 세무사님 판단 대기 — [^\n]*/.exec(String(entry.요약 || '')); // [2026.10.19] 해석 A/B — 세액계산 결과에서 고르기
+      if (judgeM) amountHtml += ' <span style="color:#4a148c; font-weight:600; font-size:12px;">' + escapeHtml(judgeM[0].slice(0, 120)) + (judgeM[0].length > 120 ? '…' : '') + ' (세액계산에서 해석 A/B 고르기)</span>';
       if (formM) amountHtml += ' <span style="color:#b00020; font-weight:600; font-size:12px;">' + escapeHtml(formM[0]) + '</span>';
       return '<div class="log-entry" style="flex-direction:column; align-items:stretch;">' +
         '<div class="ch-taxcalc-toggle" style="display:flex; align-items:center; gap:8px; cursor:pointer;">' +
