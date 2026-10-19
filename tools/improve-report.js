@@ -2,7 +2,7 @@
 // job이 매일 밤 토큰 0으로 만든 보고서(_개선후보.json)를 가져온다. 비밀키는 화면에 찍지 않는다.
 //   node tools/improve-report.js         → 저장된 최신 보고서
 //   node tools/improve-report.js --run   → 지금 새로 만들어서 가져오기
-// 열쇠: 세무사님 PC는 NETAX_Work/config.js, 웹 Claude Code(클라우드)는 작업환경 변수 NX_GAS_URL·NX_API_SECRET.
+// 열쇠: 세무사님 PC는 %USERPROFILE%\.netax\secret.json(tools/nx-secret.js), 웹 Claude Code(클라우드)는 작업환경 변수 NX_GAS_URL·NX_API_SECRET.
 const fs = require('fs');
 // 웹 Claude Code(클라우드): 보고서 전용 출입증만 쓴다 — node tools/improve-report.js --token=<출입증> [--run 은 안 됨, 저장된 최신 보고서만]
 const tokArg = (process.argv.find(a => a.indexOf('--token=') === 0) || '').slice(8) || process.env.NX_REPORT_TOKEN;
@@ -16,14 +16,8 @@ if (tokArg) {
     }).catch(e => { console.log('job 서버에 연결하지 못했습니다: ' + e.message + ' — 웹 Claude Code 작업환경의 네트워크 접근에 script.google.com, script.googleusercontent.com 허용 필요'); process.exit(1); });
   return;
 }
-let KEY = process.env.NX_API_SECRET, GAS = process.env.NX_GAS_URL;
-if (!KEY || !GAS) {
-  let cfg = '';
-  try { cfg = fs.readFileSync('C:/GitHub/NETAX_Work/config.js', 'utf8'); } catch (e) {}
-  KEY = KEY || (cfg.match(/API_SECRET:\s*'([^']+)'/) || [])[1];
-  GAS = GAS || (cfg.match(/GAS_URL:\s*'([^']+)'/) || [])[1];
-}
-if (!KEY || !GAS) { console.log('job 서버 열쇠가 없습니다 — 웹 Claude Code 작업환경에 NX_GAS_URL, NX_API_SECRET 를 넣어 주세요.'); process.exit(1); }
+// [2026.10.19 보안] 열쇠: 작업환경 변수 NX_API_SECRET → 없으면 저장소 밖 개인 파일(tools/nx-secret.js 설명). 공개 저장소의 NETAX_Work/config.js는 더 이상 안 읽는다
+const { key: KEY, gas: GAS } = require('./nx-secret.js').loadNxSecret();
 const action = process.argv.includes('--run') ? 'improve_report_run' : 'improve_report_get';
 fetch(GAS, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action, _key: KEY }) })
   .then(r => r.text()).then(t => {
