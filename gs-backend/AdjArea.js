@@ -161,10 +161,10 @@ function caseProcAdjAreaAt_(addr, date, purpose) {
 
 // ============================================================
 // [2026.10.19 B-5 조견표 세션] AI 지휘 도구 form_needs — 이 사건에 필요한 서식과 서식을 막는 빈 칸(토큰 0, GAS만)
-//  색인은 서버 코드가 아니라 드라이브 자료 파일(업무관리자\세금계산\법정서식원본(법제처)\_서식색인.json, tools/build-reftables.js가 씀)에서 읽고 6시간 캐시.
+//  색인은 서버 코드가 아니라 드라이브 자료 파일(업무관리자\서식\법제처 원본(PDF)\_서식색인.json, tools/build-reftables.js가 씀)에서 읽고 6시간 캐시.
 //  칸 종류: input(계산기 입력 — 양도는 calc:a0.필드/calc:c0.필드로 값 유무 확인), result(엔진 결과 — 세액 계산 저장이 있으면 값 있음),
 //           screen(화면에서만 넣는 칸 — 서버에서 확인 불가로 따로 셈), none(계산기에 없음 — 서식엔 있지만 계산기가 만들지 않는 칸)
-var FORM_INDEX_FOLDER_ = '1bXA_yLVb1Mc6-nGC7nPZXUqKe5ZCAe7M'; // 법정서식원본(법제처)
+var FORM_INDEX_FOLDER_ = '1bXA_yLVb1Mc6-nGC7nPZXUqKe5ZCAe7M'; // 법제처 원본(PDF)
 function formIndexLoad_() {
   const cache = CacheService.getScriptCache();
   const hit = cache.get('NX_FORM_INDEX_V1');
