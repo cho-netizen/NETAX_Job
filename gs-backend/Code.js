@@ -4955,8 +4955,9 @@ function reftableReviewSet_(body) {
 
 // [2026.10.19] 조문 조회 — 1순위 법령 정비본(드라이브 0 NETAX/업무관리자/법령/_본문, tools/law-build.js) + 산식 보정, 법제처는 개정 확인·정비본에 없는 법령/옛 판. 설계 netax-inventory/maps/설계_법령원본.md
 function lawDbIdx_() {
-  var c = CacheService.getScriptCache(), s = c.get('lawdb_idx3');
-  if (s) return JSON.parse(s);
+  // [2026.10.20] 색인이 옛 판(1995~)까지 400KB를 넘어 캐시 한 칸(100KB)에 안 들어감 — 여러 칸으로 나눠 넣고 모아 읽는다
+  var c = CacheService.getScriptCache(), n = +(c.get('lawdb_idx4|n') || 0);
+  if (n) { var keys = []; for (var q = 0; q < n; q++) keys.push('lawdb_idx4|' + q); var got = c.getAll(keys), parts = keys.map(function (k) { return got[k]; }); if (parts.every(function (x) { return x != null; })) try { return JSON.parse(parts.join('')); } catch (e) { } }
   var sub = function (f, n) { var it = f && f.getFoldersByName(n); return it && it.hasNext() ? it.next() : null; };
   var mg = sub(getNetaxRootFolder_(), '업무관리자'), lw = sub(mg, '법령'), b = sub(lw, '_본문') || sub(lw, '본문') || sub(sub(mg, '법령정비본'), '본문') /* [2026.10.19] 폴더 정리 — 업무관리자/법령정비본 → 업무관리자/법령(옛 이름도 찾음) */, it = b && b.getFilesByName('색인.json');
   if (!it || !it.hasNext()) return null;
@@ -4965,7 +4966,7 @@ function lawDbIdx_() {
   var ci = sub(b.getParents().next(), '_산식보정') || sub(b.getParents().next(), '산식보정'); // [2026.10.19] 시스템 전용 폴더는 이름 앞 _(세무사님 지시) — 옛 이름도 찾음
   ci = ci && ci.getFilesByName('산식보정.json');
   idx.보정ID = ci && ci.hasNext() ? ci.next().getId() : '';
-  try { c.put('lawdb_idx3', JSON.stringify(idx), 21600); } catch (e) { }
+  try { var js = JSON.stringify(idx), CH = 30000, put = {}, m = Math.ceil(js.length / CH); for (var r = 0; r < m; r++) put['lawdb_idx4|' + r] = js.slice(r * CH, (r + 1) * CH); c.putAll(put, 21600); c.put('lawdb_idx4|n', String(m), 21600); } catch (e) { } // 한 칸 3만 자(한글 3바이트 → 90KB 안)
   return idx;
 }
 function lawDbIds_(idx, k) {
