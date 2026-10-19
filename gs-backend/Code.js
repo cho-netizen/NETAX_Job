@@ -33240,7 +33240,9 @@ function caseProcGiftInhFacts_(c, lines, items) {
       }
       gifts.forEach(function (g) { add('giftDonorName', g.from, '등기부 현재 소유자(' + g.file + ') — 증여 등기 전', false); });
       // [2026.10.16] 수증자 — 서류에 없으면 사건 납세자(폴더 규칙 "고객명(납세자)"의 납세자 = 수증자)를 후보로(하영애: 수증자 칸이 후보 없이 비어 있었다)
-      if (!(facts.giftDoneeName || []).length && String(c.납세자 || '').trim()) add('giftDoneeName', norm(c.납세자), '사건 납세자(수증자) — 증여계약서·증여 등기가 없어 서류로는 확인 못 함', false);
+      // [2026.10.19 5번 — 2번 30바퀴와 같은 규칙] 증여계약서·증여 등기가 없어도 수증자는 사건 납세자다(폴더 이름 "고객명(납세자)", 증여세 납세의무자 = 수증자 — 상증법 §4의2).
+      //  예전엔 확실하지 않은 후보로 두고 물었다(시험 묶음 13건 — 대조할 서류가 없어 답은 늘 사건 납세자). 증여자처럼 상대 쪽은 폴더 이름으로 정해지지 않아 그대로 질문
+      if (!(facts.giftDoneeName || []).length && String(c.납세자 || '').trim()) add('giftDoneeName', norm(c.납세자), '폴더 이름(납세자) — 증여세 납세의무자 = 수증자, 증여계약서·증여 등기에서는 아직 확인 안 됨', true);
       if (gifts.length) lines.push('증여재산(증여 등기 전 등기부 — 후보): ' + gifts.map(function (g) { return (g.kind ? g.kind + ' ' : '') + (g.loc || '소재지 미확인') + ' — 현재 소유자 ' + g.from; }).join(' / ') + (gc ? ' · 증여계약서 ' + gc.file : ''));
       else lines.push('증여재산: 증여 등기가 있는 등기부가 폴더에 없습니다(현금·예금 증여면 증여계약서·이체내역으로 확인).');
     }
@@ -33480,6 +33482,9 @@ function caseProcGiftInhFacts_(c, lines, items) {
       const m = /피\s*상\s*속\s*인[\s\S]{0,40}?성\s*명\s*[:：]?\s*([가-힣]{2,4})(?![가-힣])/.exec(tx);
       if (m && !/주민|생년|성명|주소/.test(m[1])) add('ihDeceasedName', m[1], '이미 낸 상속세 ' + (x.p.result.서류 || '신고서') + '(' + x.f.name + ')', false);
     });
+    // [2026.10.19 5번 — 같은 규칙] 사망 서류·가족관계증명서·분할협의서·이미 낸 신고서 어디서도 피상속인을 못 찾았으면 폴더 이름의 납세자로 채운다
+    //  (상속 사건의 괄호 속 납세자 = 피상속인 — WORK_TAXPAYER_FIELD_BY_SEMOK_). 서류마다 이름이 다르면(예/례) 그대로 질문으로 둔다
+    if (!(facts.ihDeceasedName || []).length && String(c.납세자 || '').trim()) add('ihDeceasedName', norm(c.납세자), '폴더 이름(납세자) — 상속 사건의 납세자 칸 = 피상속인, 사망 서류에서는 아직 확인 안 됨', true);
     const decs = (facts.ihDeceasedName || []).filter(function (x) { return x.sure; }).map(function (x) { return norm(x.v); }).filter(function (v, i, a) { return a.indexOf(v) === i; });
     const dec = ov.ihDeceasedName || (decs.length === 1 ? decs[0] : '') || (facts.ihDeceasedName && facts.ihDeceasedName[0].v) || c.납세자 || '';
     // [2026.10.18 정밀분석 원인10 ②] 상속인 — 사망 서류 묶음 안의 가족관계증명서까지(fams에 들어 있음), 먼저 사망한 자녀는 대습상속(민법 §1001) 후보를 다른 증명서에서 찾는다.
@@ -47768,6 +47773,10 @@ function trcClassOptions_(S, tpl, ans) {
     else if (/경매|공매/.test(k) && cause && cause !== 'auction') why = '양도원인이 경매 아님';
     else if (/^교환/.test(k) && cause && cause !== 'exchange') why = '양도원인이 교환 아님';
     else if (/이월과세/.test(k) && !gift) why = '증여로 받은 자산 아님(취득 원인)';
+    // [2026.10.19 5번 사건분류 쪼개기 — 상수] 국내 자산도 이월과세(§97의2①) 기간이 지났으면 뺀다(국외자산에만 있던 규칙 — 개발용 박미영·이종식 2건 되풀이)
+    else if (/이월과세/.test(k) && gift && (function () { const td = String(S.baseDate || (S.state.transferAssets[0] || {}).transferDate || ''); return (S.facts.gift || []).every(function (g) { const gd = String((g.info && (g.info.date || g.info.giftDate)) || ((S.state.transferAssets[Number(String(g.p || 'a0').slice(1))] || {}).giftReceivedDate) || ((S.state.transferAssets[Number(String(g.p || 'a0').slice(1))] || {}).acquisitionDate) || ''); if (!gd || !td) return false; const yrs = Number(td.slice(0, 4)) - Number(gd.slice(0, 4)) - (td.slice(5) < gd.slice(5) ? 1 : 0); return yrs >= (gd < '2023-01-01' ? 5 : 10); }); })()) why = '증여받은 날부터 이월과세 기간(2022년 이전 증여 5년·이후 10년, §97의2①) 지나 양도';
+    // [2026.10.19 5번 — 상수] 양도가액(실지거래가액)이 12억원 이하로 정해졌으면 1세대1주택 고가주택(§89①3호 단서)이 아니다(개발용 4건 되풀이)
+    else if (/고가주택/.test(k) && (function () { const tp = (S.state.transferContracts || []).reduce(function (t, x) { return t + (Number(x.totalPrice) || 0); }, 0); return tp > 0 && tp <= 1200000000; })()) why = '양도가액이 12억원 이하(고가주택 아님, §89①3호)';
     else if (/특수관계자/.test(k) && rel === 'none') why = '양수인과 특수관계 없음(세무사님 답)';
     if (why) cut.push(k + '(' + why + ')'); else out.push(k);
   });
