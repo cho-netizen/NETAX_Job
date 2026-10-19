@@ -92,7 +92,7 @@ function caseProcAiLightApply_(c, rec, items) {
   const it = (items || []).filter(function (x) { return x.id === rec.자리; })[0];
   if (!it || !it.ask || !it.ask.target) return { applied: false, why: /^doc:/.test(rec.자리) ? '서류 종류 — 기록만' : '넣을 칸 없음' };
   const a = it.ask, cs = caseProcAiOpts_(a).map(function (q) { return caseProcAiNorm_(q.v != null ? q.v : q.value); });
-  if (!CASEPROC_AI_SCALAR_TARGET_RE_.test(a.target) || CASEPROC_AI_USER_ONLY_RE_.test(it.id + ' ' + it.text) || cs.indexOf(caseProcAiNorm_(rec.answer)) === -1) return { applied: false, why: '후보 밖 값·여러 값 칸·세무사님 답 칸 — 넣지 않음' };
+  if (!CASEPROC_AI_SCALAR_TARGET_RE_.test(a.target) || CASEPROC_AI_USER_ONLY_RE_.test([it.id, it.text, a.target, a.label].join(' ')) || cs.indexOf(caseProcAiNorm_(rec.answer)) === -1) return { applied: false, why: '후보 밖 값·여러 값 칸·세무사님 답 칸 — 넣지 않음' };
   let r;
   try { r = caseProc0_({ caseId: c.id, step: 'apply', target: a.target, value: rec.answer, src: ('🤖 AI 판단(저비용): ' + rec.why).slice(0, 80), label: a.label || '', ans: { qid: it.id, how: 'AI 판단(저비용)' } }); } catch (e) { r = { ok: false, error: String(e && e.message || e) }; }
   if (r && r.ok !== false) caseProcAiMarkApplied_(c.id, { iid: it.id, target: a.target, label: a.label || caseProcAiCut_(it.text, 60), v: rec.answer, by: 'ai', model: LIGHT_MODEL, why: rec.why, sure: '확실', tier: '저비용', cands: caseProcAiOpts_(a).slice(0, 6).map(function (q) { return { v: q.v != null ? q.v : q.value, src: String(q.src || '').slice(0, 160) }; }) });

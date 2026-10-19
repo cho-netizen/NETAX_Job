@@ -251,7 +251,7 @@ function caseProcAiValueSetLive_(caseId, input, ctx) {
   CP_SECURED_LOG_ = (ctx.lookups || []).slice();
   const why = caseProcAiMask_(caseProcAiCut_(input.why || '', 120));
   if (CASEPROC_AI_RELATION_RE_.test(String(input.itemId || ''))) { ctx.decisions.push({ at: new Date().toISOString(), itemId: input.itemId, 칸: caseProcAiCut_(it.text, 80), value: '', basis: '', why: '', sure: '', 결과: '특수관계 확인 절차 — 값·의견 없이 근거만 세무사님께' }); return { ok: false, 반영: '넣지 않음', 이유: '특수관계·시가 질문은 세무사님 확인 절차만 — 값도 의견도 붙이지 않는다. 필요하면 ask_user로 그 질문을 고르기만(정황 근거는 질문 글에 이미 있음)' }; }
-  const userOnly = CASEPROC_AI_USER_ONLY_RE_.test(String(input.itemId || '') + ' ' + String(it.text || ''));
+  const userOnly = CASEPROC_AI_USER_ONLY_RE_.test([input.itemId, it.text, (it.ask || {}).target, (it.ask || {}).label].join(' ')); // 칸 이름(target·라벨)까지 — 질문 글에 낱말이 없어도 막게
   const chk = caseProcAiCheckBasis_(c, input.value, input.basis, input.itemId, caseId);
   const bs = input.basis || {};
   if (bs.kind === 'infer') ctx.gaps.push({ want: '사실 목록·후보로 안 나오는 값을 추론함 — ' + caseProcAiCut_(it.text, 60), kind: '값을 안 돌려줌', tool: 'facts_find', auto: true });
