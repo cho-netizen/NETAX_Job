@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 17:29 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 17:32 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -13503,6 +13503,14 @@
   // 증여받은 자산이라고 체크만 하면" 자동으로 재사용하기 위함 — 예전엔 이 특례를 별도 계산기에서
   // 계산해 그 결과 금액을 메인 계산기에 손으로 옮겨 입력해야 했는데, 이제는 거래 카드 자체에
   // 이월과세 판정 정보를 입력하면 메인 "세액 계산하기"가 알아서 적용 여부를 판정해 반영한다.
+  // [2026.10.19 서식 감사] §97의2① — 배우자는 "사망으로 혼인관계가 소멸된 경우는 제외", 직계존비속은 "양도 당시 사망한 경우는 제외"
+  //  (2025.12.23 개정, 부칙 제7조: 2026.1.1 이후 양도분부터). 증여자가 양도 전에 사망했으면 이월과세를 하지 않는다.
+  function carryoverDonorDeathExcluded_(t) {
+    if (!t || !t.donorDeceasedBeforeTransfer) return '';
+    if (t.donorRelation === 'spouse') return '증여자(배우자)가 양도 전 사망 — §97의2① "사망으로 혼인관계가 소멸된 경우는 제외"';
+    if (t.donorRelation === 'lineal' && String(t.transferDate || '') >= '2026-01-01') return '증여자(직계존비속)가 양도 당시 사망 — §97의2①(2026.1.1 이후 양도분, 부칙 제7조)';
+    return '';
+  }
   function resolveCarryoverAcquisitionBasis_(t) {
     const giftReceivedDate = t.giftReceivedDate;
     const donorRelation = t.donorRelation; // 'spouse' | 'lineal'
@@ -13523,6 +13531,8 @@
     if (!isWithinWindow || isEminentDomainExcluded) {
       return Object.assign({ applied: false, reason: !isWithinWindow ? '증여일로부터 ' + windowYears_ + '년 경과' + (windowYears_ === 5 ? '(2023.1.1. 전 증여는 5년 — 법률 제19196호 부칙 제18조)' : '') : '수용 특례(§97의2②1호) 해당' }, withoutBasis);
     }
+    const deathExcluded_ = carryoverDonorDeathExcluded_(t);
+    if (deathExcluded_) return Object.assign({ applied: false, reason: deathExcluded_ }, withoutBasis);
 
     // 증여세 상당액(시행령§163의2②) = 증여세산출세액 × 해당자산 증여세과세가액/전체 증여세과세가액,
     // 필요경비 산입 한도 = 양도가액 - (증여자 취득가액 + 증여자 필요경비)(§97①②금액).
@@ -17774,10 +17784,11 @@
     });
     const withoutResult = window.calculateStockTransferTaxJS(withoutCarryoverParams);
 
-    if (!isEligibleRelation || !isWithinWindow) {
+    const deathExcludedStock_ = isEligibleRelation && isWithinWindow ? carryoverDonorDeathExcluded_(p) : '';
+    if (!isEligibleRelation || !isWithinWindow || deathExcludedStock_) {
       if (withoutResult && !withoutResult.error) {
         withoutResult.이월과세_적용여부 = false;
-        withoutResult.이월과세_미적용사유 = !isEligibleRelation ? '배우자·직계존비속으로부터의 증여가 아님' : (!stockCarryoverAppliesAt_(giftReceivedDate) ? '2025.1.1. 전에 증여받은 주식등은 이월과세 대상이 아님(법률 제20615호 부칙 제8조)' : '증여일로부터 1년 경과(§94①3호 주식등, §97의2①)');
+        withoutResult.이월과세_미적용사유 = deathExcludedStock_ || (!isEligibleRelation ? '배우자·직계존비속으로부터의 증여가 아님' : (!stockCarryoverAppliesAt_(giftReceivedDate) ? '2025.1.1. 전에 증여받은 주식등은 이월과세 대상이 아님(법률 제20615호 부칙 제8조)' : '증여일로부터 1년 경과(§94①3호 주식등, §97의2①)'));
       }
       return withoutResult;
     }
@@ -27570,6 +27581,7 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>[형제자매 등만] 수증자가 부담한 증여세 산출세액</label><input type="number" data-field="dd_doneeGiftTax" placeholder="원"><span class="taxcalc-field-help">§101② 판정용 — 배우자·직계존속이면 비워두세요</span></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="donorRelation" style="display:none;"><input type="checkbox" data-field="dd_isGainAttributedToDonee" id="ddAttr-' + idx + '"><label for="ddAttr-' + idx + '">[형제자매 등만] 양도소득이 수증자에게 실질적으로 귀속됨이 명백함(§101②단서, 체크시 적용배제)</label></div>' +
           '<div class="taxcalc-field" data-show-if="donorRelation" style="display:none;"><label>증여받은 날</label><input type="date" data-field="giftReceivedDate" min="1900-01-01" max="2099-12-31"></div>' +
+          '<div class="taxcalc-field checkbox" data-show-if="donorRelation" style="display:none;"><input type="checkbox" data-field="donorDeceasedBeforeTransfer" id="coDonorDead-' + idx + '"><label for="coDonorDead-' + idx + '">증여자가 양도 전에 사망함(배우자 사망 또는 2026.1.1 이후 양도분의 직계존비속 사망이면 이월과세 안 함 — §97의2①)</label></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="donorRelation" style="display:none;"><input type="checkbox" data-field="isEminentDomainExcludedFromCarryover" id="coEmDomain-' + idx + '"><label for="coEmDomain-' + idx + '">사업인정고시일로부터 소급 2년 이전 증여 + 수용·협의매수됨(이월과세 제외, §97의2②1호)</label></div>' +
         '</div>' +
         '<div class="taxcalc-asset-head" data-show-if="donorRelation" style="display:none; margin-top:10px;"><b>증여자(원소유자) 취득정보</b></div>' +
@@ -28633,6 +28645,7 @@ function collectTransferInput(vals){
     donorRelation: vals.donorRelation || '',
     giftReceivedDate: vals.giftReceivedDate || '',
     isEminentDomainExcludedFromCarryover: !!vals.isEminentDomainExcludedFromCarryover,
+    donorDeceasedBeforeTransfer: !!vals.donorDeceasedBeforeTransfer, // [2026.10.19] §97의2① 증여자 사망 배제
     donorAcquisitionPrice: numVal(vals.donorAcquisitionPrice) || 0,
     donorAcquisitionDate: vals.donorAcquisitionDate || '',
     donorNecessaryExpenses: numVal(vals.donorNecessaryExpenses) || 0,

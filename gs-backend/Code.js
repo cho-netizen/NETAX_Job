@@ -681,6 +681,7 @@ const DRIVE_TOOLS = [
         doneeOwnNecessaryExpenses: { type: 'number', description: '수증자가 증여받은 후 지출한 필요경비(원). 이월과세 미적용 시나리오에서만 쓰인다.' },
         giftTaxPaid: { type: 'number', description: '수증자가 이 자산에 대해 납부했거나 납부할 증여세 산출세액(원, 상증세법§56에 따른 금액) — 시행령§163의2②1호. 증여세상당액 계산에 쓰인다.' },
         giftTaxableValue: { type: 'number', description: '수증자의 전체 증여세 과세가액(상증세법§47, 원) — 시행령§163의2②3호. 이 자산 외에 함께 증여받은 재산이 있으면 그 합계까지 포함한 전체 금액이다(이 자산만 증여받았다면 doneeOwnAcquisitionPrice와 같은 값).' },
+        donorDeceasedBeforeTransfer: { type: 'boolean', description: '증여자가 양도 전에 사망했으면 true — §97의2①: 배우자는 사망으로 혼인관계가 소멸되면, 직계존비속은 2026.1.1 이후 양도분부터 양도 당시 사망했으면 이월과세를 하지 않는다(부칙 제7조).' },
         isEminentDomainExcludedFromCarryover: { type: 'boolean', description: '§97의2②1호 — 사업인정고시일로부터 소급 2년 이전에 증여받은 자산이 수용·협의매수된 경우인지. true면 이월과세를 적용하지 않는다.' },
         filingStatus: { type: 'string', enum: ['ontime', 'unreported', 'underreported'], description: 'calculate_transfer_tax와 동일.' }
       },
