@@ -5585,7 +5585,7 @@ function renderPropertyCardHtml_(idx, opts){
           '<div class="taxcalc-field" data-show-if="isLandReplotment" style="display:none;"><label>계약 안분용 — 취득시점 면적 기준</label><select data-field="replotmentAcquisitionAreaBasis"><option value="original">종전면적(환지 전 취득)</option><option value="rights">권리(예정)면적(환지예정지 지정 후 취득)</option></select></div>' +
           '<div class="taxcalc-field" data-show-if="isLandReplotment" style="display:none;"><label>계약 안분용 — 양도시점 면적 기준</label><select data-field="replotmentTransferAreaBasis"><option value="final">확정면적(환지처분 확정 후 양도)</option><option value="rights">권리(예정)면적(확정 전 양도)</option></select></div>' +
           (transferAssets[idx].isLandReplotment ?
-            '<div class="taxcalc-field"><span class="taxcalc-result-note">취득가액 = 종전토지 취득가액 + 분담금 납부액으로 자동 대체됩니다(취득일은 환지 전 취득일 그대로 승계). 청산금 수령액이 있으면 그 부분(면적 감소분)은 환지처분공고일에 별도로 양도한 것으로 과세되니 아래 버튼으로 별도 거래를 추가하세요.</span></div>' +
+            '<div class="taxcalc-field"><span class="taxcalc-result-note">취득가액 = 종전토지 취득가액으로 자동 대체됩니다(취득일은 환지 전 취득일 그대로 승계). 분담금 납부액이 있으면 늘어난 면적은 환지처분 공고일 다음날 분담금으로 취득한 별도 몫으로 나눠(양도가액·양도비용은 면적비율) 계산합니다(시행령§162①9호). 청산금 수령액이 있으면 그 부분(면적 감소분)은 환지처분 공고일의 다음날에 별도로 양도한 것으로 과세되니 아래 버튼으로 별도 거래를 추가하세요.</span></div>' +
             '<div class="taxcalc-field"><button type="button" class="taxcalc-run-btn" data-action="send-settlement-to-new-transfer" data-idx="' + idx + '" data-kind="replotment">청산금 수령분을 별도 거래로 추가</button></div>' : '') +
         '</div>' +
         '<div class="taxcalc-grid" style="margin-top:8px;">' +
@@ -6605,7 +6605,9 @@ var TR_MONEY_FIELDS_TO_SCALE_ = [
   // 완전히 같은 fiveYearMarkGain() 근사식(절대금액－취득가액)을 쓰는데, 처음 목록을 만들 때
   // 이 두 세목의 절대금액 필드가 빠져 있었다 — 공동양도인 지분만큼 취득가액은 줄어드는데 이
   // 절대금액은 그대로라 지분율이 큰 사람일수록 감면대상소득이 부풀려지는 오류였다.
-  'rpFiveYearMarkValue', 'lrRegistrationValue'
+  'rpFiveYearMarkValue', 'lrRegistrationValue',
+  // [2026.10.19] 환지 증가분 분리용 금액(분담금·양도비용)도 지분만큼 나눈다.
+  'replotmentSettlementPaid', 'replotmentTransferExpenses'
 ];
 function collectTransferInput(vals){
   const transferPrice = numVal(vals.transferPrice) || 0;
@@ -6630,10 +6632,14 @@ function collectTransferInput(vals){
   // 환지처분 — 취득가액은 환지 전 종전토지 취득가액에 환지청산금 납부액(면적 증가분 추가취득)을
   // 더한 금액으로 대체된다(청산금 환급분은 별도 거래로 환지처분공고일에 과세). 취득일은 환지 전
   // 종전토지 취득일을 그대로 승계한다(취득시기 의제 없음).
+  // [2026.10.19 버그수정] 시행령§162①9호 단서 — 증가 면적(분담금 납부분)의 취득시기는 "환지처분 공고일의
+  // 다음날"이라 종전토지와 보유기간이 다르다. 예전엔 분담금을 종전 취득가액에 합쳐 종전 취득일로 일괄
+  // 계산해 증가분의 장특이 과대·단기세율이 누락됐다. 이제 취득가액엔 종전토지분만 넣고, 분담금·면적·
+  // 공고일은 원본 그대로 엔진에 넘겨 엔진(expandReplotmentIncrease_)이 증가분을 별도 거래로 나눈다.
   if (vals.isLandReplotment){
     const origPrice = numVal(vals.originalAssetAcquisitionPrice) || 0;
     const replotPaid = numVal(vals.replotmentSettlementPaid) || 0;
-    if (origPrice > 0 || replotPaid > 0) acquisitionPrice = origPrice + replotPaid;
+    if (origPrice > 0 || replotPaid > 0) acquisitionPrice = origPrice;
   }
   return {
     assetType: vals.assetType || 'other',
@@ -6708,6 +6714,18 @@ function collectTransferInput(vals){
     managementDispositionDate: vals.managementDispositionDate || '',
     rightsValue: numVal(vals.rightsValue) || 0,
     settlementPaid: numVal(vals.settlementPaid) || 0,
+    // [2026.10.19] 청산금 수령액 미반영 검사용(엔진 transferAssetCore 참고) — 계산 자체엔 안 쓴다.
+    settlementReceived: vals.isReconstructionRights ? (numVal(vals.settlementReceived) || 0) : 0,
+    settlementReceivedApplied: vals.isReconstructionRights ? (numVal(vals.settlementReceivedApplied) || 0) : 0,
+    replotmentSettlementReceived: vals.isLandReplotment ? (numVal(vals.replotmentSettlementReceived) || 0) : 0,
+    replotmentSettlementReceivedApplied: vals.isLandReplotment ? (numVal(vals.replotmentSettlementReceivedApplied) || 0) : 0,
+    // [2026.10.19] 환지 증가분 분리용(엔진 expandReplotmentIncrease_) — 분담금이 있을 때만 쓰인다.
+    isLandReplotment: !!vals.isLandReplotment,
+    replotmentSettlementPaid: vals.isLandReplotment ? (numVal(vals.replotmentSettlementPaid) || 0) : 0,
+    rightsAreaSqm: vals.isLandReplotment ? (numVal(vals.rightsAreaSqm) || 0) : 0,
+    finalAreaSqm: vals.isLandReplotment ? (numVal(vals.finalAreaSqm) || 0) : 0,
+    replotmentDisposalDate: vals.isLandReplotment ? (vals.replotmentDisposalDate || '') : '',
+    replotmentTransferExpenses: vals.isLandReplotment ? computeCostItemsTotal_(vals.transferExpenseItems) : 0,
     originalAssetAcquisitionPrice: numVal(vals.originalAssetAcquisitionPrice) || 0,
     originalNecessaryExpenses: numVal(vals.originalNecessaryExpenses) || 0,
     useConvertedRightsBaseAcquisitionPrice: !!vals.useConvertedRightsBaseAcquisitionPrice,
@@ -6782,6 +6800,14 @@ function collectTransferInput(vals){
 function buildTransferCalcBasisLines(r){
   const lines = [];
   if (r.error) { lines.push('오류: ' + r.error); return lines; }
+  // [2026.10.19] 환지 증가분(시행령§162①9호 단서) — 엔진이 종전분·증가분으로 나눠 계산한 경우 두 몫을 차례로 보여준다.
+  if (r.환지증가분_결과){
+    const main = Object.assign({}, r); delete main.환지증가분_결과; delete main.환지분리_안내;
+    const notes = r.환지분리_안내 || [];
+    return ['■ ' + (notes[0] || '환지 종전분')].concat(buildTransferCalcBasisLines(main))
+      .concat(['■ ' + (notes[1] || '환지 증가분')]).concat(buildTransferCalcBasisLines(r.환지증가분_결과))
+      .concat(['※ 위 두 몫은 실제 세액 계산(세액 계산하기)에서 다른 거래와 함께 합산·통산됩니다.']);
+  }
   if (r.미등기양도 || (r.입력값 && r.입력값.미등기양도)) {
     lines.push('미등기양도자산 — 장기보유특별공제·기본공제 배제');
     lines.push('양도차익 = 양도가액 - 취득가액 - 필요경비 = ' + won(r.입력값.양도가액) + ' - ' + won(r.입력값.취득가액) + ' - ' + won(r.입력값.필요경비) + ' = ' + won(r.양도차익));
@@ -6908,7 +6934,7 @@ function renderOneTransferResultHtml_(r, label, sellerIdx){
   if (Array.isArray(r.자산별_내역) && r.자산별_내역.length){
     html += '<div class="taxcalc-result-note" style="margin-top:6px;">';
     r.자산별_내역.forEach(function(n){
-      const label = (n.idx + 1) + '번째 거래';
+      const label = (Array.isArray(r.거래번호표시) && r.거래번호표시[n.idx]) || ((n.idx + 1) + '번째 거래'); // [2026.10.19] 환지 증가분은 맨 뒤 번호
       if (n.구분 === '이월과세(§97의2)'){
         html += '<div>' + label + ' — 이월과세(§97의2) ' + (n.적용여부 ? '<b>적용됨</b>' : '미적용(' + (n.사유 || '') + ')')
           + (n.비교 ? ' [적용시 ' + won(n.비교.적용시_세액) + ' / 미적용시 ' + won(n.비교.미적용시_세액) + ']' : '') + '</div>';
@@ -9330,6 +9356,12 @@ function trBuyerRelationLabel_(relation){
 //  trLongTermDeductionRate_의 옛 표(표1 3년 10%~10년 30%, 표2 3년 24%~10년 80%)로 다시 계산해 2019년 이후 양도(표1 6~30%)·
 //  2021년 이후 1세대1주택(보유 4%+거주 4%, 12억 초과분 안분)이 본표 세액과 다르게 찍혔다(예: 2024 토지 10년 엔진 20% ↔ 부표1 30%).
 //  엔진이 값을 못 내면(오류) 예전 식으로 돌아가고 표시를 남긴다.
+// [2026.10.19] 환지 증가분(추가부담금 납부 = 새 취득, 시행령§162①9호)은 신고서 부표1·인쇄에서 별도 자산 줄로
+// 쓴다 — 세액 계산(calculateTransferTaxMultiJS)과 같은 엔진 분리 결과를 그대로 쓴다.
+function trExpandReplotmentAssets_(assets){
+  if (typeof window.expandReplotmentIncreaseJS !== 'function') return assets;
+  return (assets || []).reduce(function(acc, a){ return acc.concat(window.expandReplotmentIncreaseJS(a)); }, []);
+}
 function trAttach1EngineValues_(asset){
   const transferPrice = Number(asset.transferPrice) || 0, acquisitionPrice = Number(asset.acquisitionPrice) || 0, necessaryExpenses = Number(asset.necessaryExpenses) || 0;
   const grossFallback = transferPrice - acquisitionPrice - necessaryExpenses;
@@ -9527,6 +9559,7 @@ function trAttach1PrintPageHtml_(asset, seq){
   return '<div class="pf-page">' +
     '<div class="pf-formno">소득세법 시행규칙 [별지 제84호서식 부표1]</div>' +
     '<div class="pf-title">양도소득금액 계산명세서 — 자산 ' + seq + '</div>' +
+    (asset._환지분리 ? '<div class="pf-note">' + escapeHtml(asset._환지분리) + '</div>' : '') + // [2026.10.19] 환지 종전분·증가분 표시
     '<table class="pf-table">' +
       pfRow_(++n, '소재지', asset.assetLocation || '') +
       pfRow_(++n, '자산의 종류', trAssetTypeLabel_(trAssetTypeCode1_(asset))) +
@@ -15584,7 +15617,7 @@ function handleTaxCalcClick_(e){
       else document.getElementById('taxCalcTransferResult').innerHTML = '';
       // [2026.09.25 신규, 재검토78] 전자신고파일 생성용 — 단독 양도인도 배열 형태(세율구분별
       // 다건과 동일 모양)로 저장해 아래 trBuildEfileBytes_()가 단독/공동 구분 없이 동작하게 한다.
-      lastTransferResults_ = result ? [{ seller: transferSellers[0] || {}, result: result, assets: inputs }] : null;
+      lastTransferResults_ = result ? [{ seller: transferSellers[0] || {}, result: result, assets: trExpandReplotmentAssets_(inputs) }] : null; // [2026.10.19] 환지 증가분은 신고서에 별도 줄
     } else {
       // [2026.09.23 신규] 공동양도인 — 증여세 증여자와 같은 부류로, 양도인마다 완전히 독립적으로
       // calculateTransferTaxMultiJS를 호출한다(그래야 각자 기본공제 250만원·자기 세율구간이
@@ -15617,7 +15650,7 @@ function handleTaxCalcClick_(e){
           unpaidTaxAtDesignatedDueDate: numVal(seller.unpaidAtDesignated) || 0,
           isSelfElectronicFiling: !!seller.isSelfElectronicFiling
         };
-        return { seller: seller, result: calculateTransferTaxMultiJS(sellerAssets, filingParams), assets: sellerAssets };
+        return { seller: seller, result: calculateTransferTaxMultiJS(sellerAssets, filingParams), assets: trExpandReplotmentAssets_(sellerAssets) }; // [2026.10.19] 환지 증가분 별도 줄
       }).filter(Boolean);
       renderTransferResult(results);
       lastTransferResults_ = results.length ? results : null; // 전자신고파일 생성용(재검토78)
@@ -16201,10 +16234,19 @@ function handleTaxCalcClick_(e){
     const origPrice = numVal(vals.originalAssetAcquisitionPrice) || 0;
     const origExpense = numVal(vals.originalNecessaryExpenses) || 0;
     const newAsset = { acquisitionDate: vals.acquisitionDate || '' };
+    // [2026.10.19] 두 번 누르기 방지 — 버튼은 원본 자산의 권리가액·취득가액·필요경비를 직접 줄이므로
+    // 다시 누르면 한 번 더 차감된다. 반영한 금액을 …Applied에 남겨 두고, 있으면 거절한다
+    // (엔진도 이 값으로 "수령액 입력했는데 버튼 안 누름"을 잡아 계산을 멈춘다).
+    const appliedKey = kind === 'reconstruction' ? 'settlementReceivedApplied' : 'replotmentSettlementReceivedApplied';
+    if (numVal(vals[appliedKey]) > 0){
+      showToast('이 자산의 청산금 수령분(' + numVal(vals[appliedKey]).toLocaleString() + '원)은 이미 별도 거래로 나눴습니다 — 다시 누르면 권리가액·취득가액이 한 번 더 줄어들어 막았습니다.', 'error');
+      return;
+    }
     if (kind === 'reconstruction'){
       const received = numVal(vals.settlementReceived) || 0;
       const rightsValue = numVal(vals.rightsValue) || 0;
       if (!received || !rightsValue) return;
+      vals.settlementReceivedApplied = String(received);
       const ratio = Math.min(1, received / rightsValue);
       const splitPrice = Math.round(origPrice * ratio);
       const splitExpense = Math.round(origExpense * ratio);
@@ -16221,11 +16263,20 @@ function handleTaxCalcClick_(e){
       const rightsArea = numVal(vals.rightsAreaSqm) || 0;
       const finalArea = numVal(vals.finalAreaSqm) || 0;
       if (!received || !rightsArea) return;
+      vals.replotmentSettlementReceivedApplied = String(received);
       const reducedRatio = Math.min(1, Math.max(0, (rightsArea - finalArea)) / rightsArea);
       const splitPrice = Math.round(origPrice * reducedRatio);
       const splitExpense = Math.round(origExpense * reducedRatio);
       newAsset.transferPrice = received;
-      newAsset.transferDate = vals.replotmentDisposalDate || '';
+      // [2026.10.19 버그수정] 시행령§162①9호 단서(law.go.kr 원문 확인) — 감소 면적의 양도시기는
+      // "환지처분의 공고가 있은 날의 다음날"이다. 예전엔 공고일 그대로 넣어 하루 빨랐다(보유기간 경계·
+      // 월말 공고시 신고기한·12.31 공고시 귀속연도가 틀어짐).
+      newAsset.transferDate = '';
+      if (vals.replotmentDisposalDate){
+        const nd = new Date(vals.replotmentDisposalDate + 'T00:00:00Z');
+        nd.setUTCDate(nd.getUTCDate() + 1);
+        newAsset.transferDate = nd.toISOString().slice(0, 10);
+      }
       newAsset.acquisitionPrice = splitPrice;
       newAsset.acquisitionExpenseItems = splitExpense ? [{ label: '청산금 수령분 필요경비 안분', amount: splitExpense }] : [];
       vals.originalAssetAcquisitionPrice = String(Math.max(0, origPrice - splitPrice));
