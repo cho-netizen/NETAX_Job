@@ -11556,7 +11556,8 @@ function renderGiftPane(){
         '</select></div>' +
         '<div class="taxcalc-field"><label>수혜법인 세후영업이익(중견·일반기업용, §45의3①2호나·다목)</label><input type="number" id="jmOperatingIncome" placeholder="원"><span class="taxcalc-field-help">중소기업이면 비워도 됨</span></div>' +
         '<div class="taxcalc-field"><label>수혜법인 세후순이익(중소기업용, §45의3①2호가목)</label><input type="number" id="jmNetIncome" placeholder="원"><span class="taxcalc-field-help">중소기업일 때만 사용</span></div>' +
-        '<div class="taxcalc-field"><label>특수관계법인거래비율</label><input type="number" step="0.01" id="jmTradeRatio" placeholder="%"><span class="taxcalc-field-help">과세제외매출액 반영한 최종비율</span></div>' +
+        '<div class="taxcalc-field"><label>특수관계법인거래비율</label><input type="number" step="0.01" id="jmTradeRatio" placeholder="%"><span class="taxcalc-field-help">과세요건 판정용 ⑬ = (④−⑥)÷(⑫−⑥) — 서식 10호의3 부표4 작성방법 7</span></div>' +
+        '<div class="taxcalc-field"><label>[⑤·⑦이 있으면] 증여의제이익 계산용 거래비율 ⑯</label><input type="number" step="0.01" id="jmTradeRatioForProfit" placeholder="%"><span class="taxcalc-field-help">⑯ = (④−⑤−⑥−⑦)÷(⑫−⑥−⑦), 작성방법 9 — 비우면 위 비율</span></div>' +
         '<div class="taxcalc-field"><button type="button" class="taxcalc-ai-btn" data-action="open-related-party-ratio-helper">🧮 특수관계법인 여러 곳이면 매출 합산해서 계산</button></div>' +
         '<div class="taxcalc-field"><label>특수관계법인 매출액(일반기업 대체과세요건용)</label><input type="number" id="jmRelatedPartySales" placeholder="원"><span class="taxcalc-field-help">일반기업이고 거래비율 20~30%일 때만 — §45의3①1호나목2</span></div>' +
         '<div class="taxcalc-field"><label>지배주주+친족 주식보유비율</label><input type="number" step="0.01" id="jmShareRatio" placeholder="%"><span class="taxcalc-field-help">직접 또는 간접, 출자관계별로 따로 계산</span></div>' +
@@ -15912,6 +15913,7 @@ function handleTaxCalcClick_(e){
       afterTaxOperatingIncome: numVal(document.getElementById('jmOperatingIncome').value) || 0,
       afterTaxNetIncome: numVal(document.getElementById('jmNetIncome').value) || 0,
       relatedPartyTransactionRatio: numVal(document.getElementById('jmTradeRatio').value) || 0,
+      relatedPartyTransactionRatioForProfit: numVal((document.getElementById('jmTradeRatioForProfit') || {}).value) || 0, // [2026.10.20] 부표4 ⑯
       relatedPartySalesAmount: numVal(document.getElementById('jmRelatedPartySales').value) || 0,
       shareholderOwnershipRatio: numVal(document.getElementById('jmShareRatio').value) || 0,
       dividendDeduction: numVal(document.getElementById('jmDividendDeduction').value) || 0,

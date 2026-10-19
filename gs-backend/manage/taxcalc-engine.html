@@ -4525,7 +4525,11 @@
 
     const formulaTradeSubtract = companySize === 'general' ? 5 : (companySize === 'medium' ? 20 : 50);
     const formulaShareSubtract = companySize === 'general' ? 0 : (companySize === 'medium' ? 5 : 10);
-    const netTradeRatio = Math.max(0, (tradeRatio - formulaTradeSubtract) / 100);
+    // [2026.10.20 세액 고침 — 증여 감사 B, 서식 10호의3 부표4 작성방법 7·9] 과세요건 비율 ⑬ = (④−⑥)÷(⑫−⑥)과 증여의제이익 계산 비율 ⑯ = (④−⑤−⑥−⑦)÷(⑫−⑥−⑦)은
+    //  다르다(⑤ 부칙 제외·⑦ 추가 과세제외 매출). relatedPartyTransactionRatioForProfit(⑯)를 받으면 계산식에 그 값을 쓰고, 과세요건은 relatedPartyTransactionRatio(⑬)로.
+    //  예전엔 한 비율로 둘 다 계산해 ⑤·⑦이 있으면 이익이 과다(또는 요건 판정이 틀림). 없으면 예전과 같음.
+    const tradeRatioForProfit_ = Number(p.relatedPartyTransactionRatioForProfit) > 0 ? Number(p.relatedPartyTransactionRatioForProfit) : tradeRatio;
+    const netTradeRatio = Math.max(0, (tradeRatioForProfit_ - formulaTradeSubtract) / 100);
     const netShareRatio = Math.max(0, (shareRatio - formulaShareSubtract) / 100);
     let dividendDeduction = Number(p.dividendDeduction) || 0;
     let deemedGiftProfit = Math.max(0, Math.round(incomeBase * netTradeRatio * netShareRatio) - dividendDeduction);

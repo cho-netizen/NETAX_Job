@@ -2579,5 +2579,21 @@
    "증여의제이익": 200000000,
    "산출세액": 30000000
   }
+ },
+ {
+  "이름": "[세액 고침 — 증여 감사 B, 서식 10호의3 부표4 작성방법 7·9] 일감몰아주기 — 과세요건 ⑬ 60%, 계산용 ⑯ = 50/90 = 55.5556%(⑦ 추가 과세제외 10억): 세후영업이익 10억 × (55.5556 − 5)% × 50% = 252,778,000(예전 ⑬ 하나로 2.75억)",
+  "도구": "calculateRelatedPartyTransactionGiftTaxJS",
+  "고정": true,
+  "입력": {
+   "companySize": "general",
+   "relatedPartyTransactionRatio": 60,
+   "relatedPartyTransactionRatioForProfit": 55.5556,
+   "shareholderOwnershipRatio": 50,
+   "afterTaxOperatingIncome": 1000000000,
+   "relatedPartySalesAmount": 6000000000
+  },
+  "정답": {
+   "증여의제이익": 252778000
+  }
  }
 ]
