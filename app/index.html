@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 05:38 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 06:01 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -5477,6 +5477,9 @@
   var lsiOpenFormMap_ = null;   // 열어 둔 칸 지도(폴더 목록이 늦게 와서 다시 그릴 때 그대로 다시 연다)
   var LSI_FOLDER_NAMES_ = { 5: '상속세', 6: '증여세', 7: '양도소득세' };
   var LSI_FALLBACK_FOLDERS_ = { 5: '1jz3BITVNVs2Wv90Nof0sDMSLFaMrcemc', 6: '1r9WMIy2ZzFE6nJZM-eUAaAUNvn4JAgyw', 7: '1qRmfUCM2vdA5rtQqxxenkhbv_zbD7Pyp' };
+  // [2026.10.19 세무사님 "그 폴더에 넣어라"] 법제처 공식 서식 PDF 144종 — 업무관리자\세금계산\법정서식원본(법제처)\<세목>, 이름 = 법제처 서식 이름 + _개정YYYY.M.D(목록: 그 폴더 _목록.md)
+  //  원본 열기는 이 PDF를 먼저 보여 주고, 예전부터 있던 hwp/pdf(위 세목 폴더)는 그 옆에 둔다.
+  var LSI_OFFICIAL_FOLDERS_ = { '상속': '11qD8IugSmXnNlI2RueaSrTCYrL74F937', '증여': '1wqtL3uPhNCuAwM8O3uHM1F-tt8QQLJ-3', '양도': '126zwjK9dcE8-ZgMYGdgj3FZiei78DsK7', '공통': '1L9OQq6HWSn_Jk0ap5IwbUYbU_NrdP90y' };
   var LSI_BASE_LAWS_ = ['소득세법', '소득세법 시행령', '소득세법 시행규칙', '상속세 및 증여세법', '상속세 및 증여세법 시행령', '상속세 및 증여세법 시행규칙',
     '조세특례제한법', '조세특례제한법 시행령', '조세특례제한법 시행규칙', '국세기본법', '국세기본법 시행령', '주택법', '부동산 거래신고 등에 관한 법률'];
 
@@ -5560,9 +5563,9 @@
     [/국세기본법/, '국세기본법 시행규칙'], [/법인세법/, '법인세법 시행규칙'], [/지방세법/, '지방세법 시행규칙'], [/소득세법/, '소득세법 시행규칙']
   ];
   function lsiFormKey_(s){
-    var m = String(s || '').match(/별지\s*제\s*(\d+)\s*호\s*(의\s*\d+)?\s*서식(?:\s*부표\s*(\d+(?:\s*의\s*\d+)?))?/);
+    var m = String(s || '').match(/별지\s*제\s*(\d+)\s*호\s*(의\s*\d+)?\s*서식(?:\s*부표\s*(\d+(?:\s*의\s*\d+)?)?\s*(?:\(\s*([갑을병정])\s*\))?)?/);
     if (!m) return null;
-    return m[1] + (m[2] ? m[2].replace(/\s/g, '') : '') + (m[3] ? '부표' + m[3].replace(/\s/g, '') : '');
+    return m[1] + (m[2] ? m[2].replace(/\s/g, '') : '') + (m[3] ? '부표' + m[3].replace(/\s/g, '') : (/부표/.test(m[0]) ? '부표' : '')) + (m[4] ? '(' + m[4] + ')' : '');
   }
   function lsiLawOf_(s){
     s = String(s || '');
@@ -5575,11 +5578,12 @@
     if (lsiFolderFiles_ || lsiFolderLoading_) return;
     lsiFolderLoading_ = true;
     var folders = (typeof REP_LAWREF_FOLDERS_ !== 'undefined' && REP_LAWREF_FOLDERS_) ? REP_LAWREF_FOLDERS_ : LSI_FALLBACK_FOLDERS_;
-    var keys = Object.keys(folders);
-    Promise.all(keys.map(function(k){
-      return callGas('listFolder', { folderId: folders[k] }).then(function(res){
-        return (res && res.files || []).map(function(f){ return { name: f.name, url: f.url, mimeType: f.mimeType, folder: LSI_FOLDER_NAMES_[k] || k }; });
-      }).catch(function(){ return [{ error: true, folder: LSI_FOLDER_NAMES_[k] || k }]; });
+    var list = Object.keys(folders).map(function(k){ return { id: folders[k], label: LSI_FOLDER_NAMES_[k] || k, official: false }; })
+      .concat(Object.keys(LSI_OFFICIAL_FOLDERS_).map(function(k){ return { id: LSI_OFFICIAL_FOLDERS_[k], label: '법제처 원본·' + k, official: true }; }));
+    Promise.all(list.map(function(d){
+      return callGas('listFolder', { folderId: d.id }).then(function(res){
+        return (res && res.files || []).filter(function(f){ return !d.official || /\.pdf$/i.test(f.name); }).map(function(f){ return { name: f.name, url: f.url, mimeType: f.mimeType, folder: d.label, official: d.official }; });
+      }).catch(function(){ return [{ error: true, folder: d.label }]; });
     })).then(function(lists){
       lsiFolderFiles_ = [].concat.apply([], lists);
       lsiFolderLoading_ = false;
@@ -5590,7 +5594,13 @@
   // 서식 한 줄에 맞는 원본 파일 찾기 — ①번호+법 이름 같음 ②번호만 같음(파일 이름에 법 이름이 없음) ③본 서식 파일(부표가 본 서식 hwp 안에 같이 있는 경우)
   //  ④제목이 파일 이름에 그대로 들어 있음. 짝을 어떻게 지었는지 그대로 보여 준다(지어내지 않음).
   function lsiMatchFiles_(formNo, title){
-    var files = (lsiFolderFiles_ || []).filter(function(f){ return !f.error; });
+    // 법제처 원본 PDF는 번호·법이 같은 것만(이름 규칙이 정해져 있음), 맨 앞에. 나머지는 예전 방식대로 그 옆에.
+    var key0 = lsiFormKey_(formNo), law0 = lsiLawOf_(formNo);
+    var official = (lsiFolderFiles_ || []).filter(function(f){ return !f.error && f.official && key0 && lsiFormKey_(f.name) === key0 && lsiLawOf_(f.name) === law0; }).map(function(f){ return { f: f, how: '법제처 공식 서식(번호·법 같음)' }; });
+    return official.concat(lsiMatchOldFiles_(formNo, title));
+  }
+  function lsiMatchOldFiles_(formNo, title){
+    var files = (lsiFolderFiles_ || []).filter(function(f){ return !f.error && !f.official; });
     var key = lsiFormKey_(formNo), law = lsiLawOf_(formNo);
     var out = [];
     files.forEach(function(f){
@@ -5634,7 +5644,7 @@
     var allCount = groups.reduce(function(n, g){ return n + lsiRegistryRows_(g).length; }, 0);
     var html = '<div class="card">' +
       '<div class="lsi-note" style="margin-bottom:8px;">서식은 세법을 가장 먼저 정밀하게 해석한 기준입니다. 서식마다 <b>칸 해설</b>(칸 → 근거 조문 → 계산기 칸 → 쓰이는 조견표)을 쌓아 갑니다. ' +
-      '목록은 <b>세액인쇄</b>의 서식 목록(모두 ' + allCount + '개)을 그대로 읽어 오고, 원본은 드라이브 서식 폴더(업무관리자\\세금계산)에서 서식번호로 찾습니다. 이 탭은 서식 사전입니다 — 어떤 서식을 낼지·인쇄·전자신고는 🖨 세액인쇄에서 합니다.</div>' +
+      '목록은 <b>세액인쇄</b>의 서식 목록(모두 ' + allCount + '개)을 그대로 읽어 오고, 원본은 드라이브에서 서식번호로 찾습니다 — <b>법제처 PDF</b>(업무관리자\\세금계산\\법정서식원본(법제처)의 법제처 공식 서식)를 먼저, 예전부터 있던 한글·PDF 파일은 그 옆에 둡니다. 이 탭은 서식 사전입니다 — 어떤 서식을 낼지·인쇄·전자신고는 🖨 세액인쇄에서 합니다.</div>' +
       '<div class="lsi-chips">' + groups.map(function(g){ return '<button type="button" class="lsi-chip' + (g === lsiFormGroup_ ? ' active' : '') + '" data-lsigroup="' + lsiEsc_(g) + '">' + lsiEsc_(g) + ' (' + lsiRegistryRows_(g).length + ')</button>'; }).join('') + '</div>';
     var noFile = 0;
     var body = rows.map(function(r){
@@ -5642,7 +5652,7 @@
       if (files && !files.length) noFile++;
       var fm = LSI_FORM_MAPS_[r.formNo];
       var fileHtml = files === null ? '<span class="lsi-note">불러오는 중…</span>'
-        : files.length ? '<span class="lsi-files">' + files.map(function(x){ return '<a href="' + lsiEsc_(x.f.url) + '" target="_blank" rel="noopener" title="' + lsiEsc_(x.f.folder + ' 폴더 · ' + x.f.name + ' · ' + x.how) + '">' + (/\.pdf$/i.test(x.f.name) ? 'PDF' : /\.hwpx?$/i.test(x.f.name) ? '한글' : '파일') + (x.how === '번호·법 같음' ? '' : '?') + '</a>'; }).join('') + '</span>'
+        : files.length ? '<span class="lsi-files">' + files.map(function(x){ return '<a href="' + lsiEsc_(x.f.url) + '" target="_blank" rel="noopener" title="' + lsiEsc_(x.f.folder + ' 폴더 · ' + x.f.name + ' · ' + x.how) + '">' + (x.f.official ? '법제처 PDF' : /\.pdf$/i.test(x.f.name) ? 'PDF' : /\.hwpx?$/i.test(x.f.name) ? '한글' : '파일') + (x.how === '번호·법 같음' || x.f.official ? '' : '?') + '</a>'; }).join('') + '</span>'
         : '<span class="lsi-badge warn">원본 없음</span>';
       var mapHtml = fm ? '<button type="button" class="lsi-link" data-lsiformmap="' + lsiEsc_(r.formNo) + '">칸 ' + (fm.칸 || []).length + '개</button> <span class="lsi-badge' + (lsiState_(r.formNo, fm) === '세무사님 확인' ? ' ok' : ' warn') + '">' + lsiEsc_(lsiState_(r.formNo, fm)) + '</span>' : '<span class="lsi-note">아직 없음</span>';
       // [2026.10.19 세무사님] 서식 탭은 서식 사전 — 필수/해당 시·전자/서면·찍기(세액인쇄로) 같은 신고·출력 표시는 세액인쇄에만 둔다
@@ -5667,7 +5677,7 @@
       lsiRegistryRows_(g).forEach(function(r){ lsiMatchFiles_(r.formNo, r.title).forEach(function(x){ used[x.f.url] = true; }); });
     });
     var errs = lsiFolderFiles_.filter(function(f){ return f.error; });
-    var rest = lsiFolderFiles_.filter(function(f){ return !f.error && !used[f.url]; });
+    var rest = lsiFolderFiles_.filter(function(f){ return !f.error && !f.official && !used[f.url]; }); // 법제처 원본 폴더는 서식 망라 목록 그대로라 여기서 뺌
     var formLike = rest.filter(function(f){ return lsiFormKey_(f.name) || /서식|신청서|신고서|명세서|계산서/.test(f.name); });
     var guides = rest.filter(function(f){ return formLike.indexOf(f) === -1; });
     var li = function(f){ return '<li><a href="' + lsiEsc_(f.url) + '" target="_blank" rel="noopener">' + lsiEsc_(f.name) + '</a> <span class="lsi-note">(' + lsiEsc_(f.folder) + ')</span></li>'; };
