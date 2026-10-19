@@ -2347,5 +2347,46 @@
    "연부연납대상금액": 3186450000,
    "특례몫_연부연납대상": 1911870000
   }
+ },
+ {
+  "이름": "[세액 고침 — 양도 감사] 1세대1주택 고가주택(20억, 보유 10년) + 장기임대(§97의4) 10년, 거주 1년 — §95② 단서(표2)는 거주 2년 이상만이라 표1 20% + 추가 10% = 30%: 과세대상 4억 × 30% → 과표 2.775억, 산출 85,510,000(예전 1세대1주택이면 무조건 추가공제 배제해 101,060,000)",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "transferPrice": 2000000000,
+   "acquisitionPrice": 1000000000,
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2016-06-30",
+   "transferDate": "2026-06-30",
+   "isOneHouseOneFamily": true,
+   "multiHouseCount": 1,
+   "rentalSpecialType": "rental_long",
+   "rentalYears": 10,
+   "residenceYears": 1
+  },
+  "정답": {
+   "산출세액": 85510000
+  }
+ },
+ {
+  "이름": "[세액 고침 — 양도 감사, 소득세법 §91②1호] 1세대1주택 비과세 대상(8억/3억)인데 다운계약서 차액 1.4억 — 추징 = MIN(비과세 미적용 산출세액 133,060,000, 차액 1.4억) = 133,060,000(국세) + 지방소득세 13,306,000(예전엔 지방세 든 납부세액 146,366,000과 차액을 비교해 국세 140,000,000)",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "transferPrice": 800000000,
+   "acquisitionPrice": 300000000,
+   "necessaryExpenses": 0,
+   "acquisitionDate": "2016-06-30",
+   "transferDate": "2026-06-30",
+   "isOneHouseOneFamily": true,
+   "residenceYears": 3,
+   "downContractPriceDifference": 140000000
+  },
+  "정답": {
+   "산출세액": 133060000,
+   "납부세액_합계": 146366000
+  }
  }
 ]
