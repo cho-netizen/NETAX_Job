@@ -45,7 +45,8 @@ caseFiles.forEach((f) => {
   L.push('## ' + path.basename(f) + ' (' + cases.length + '건)', '', '| 경우 | 칸 | 기준 판 | 지금 판 | 정답 | 판정 |', '|---|---|---|---|---|---|');
   cases.forEach((c) => {
     total++;
-    const b = run(base, c), n = run(cur, c);
+    let b = run(base, c); const n = run(cur, c);
+    if (b.오류 && /^엔진에 함수 없음/.test(b.오류) && !n.오류) b = {}; /* [2026.10.20] 기준 판에 아직 없는 새 함수 — 지금 판만 정답과 대조 */
     const keys = (KEYS[c.도구] || ['과세표준', '산출세액', '납부세액']).concat(Object.keys(Object.assign({}, c.참고 || {}, c.정답 || {})).filter((k) => (KEYS[c.도구] || []).indexOf(k) === -1));
     let caseChanged = false, caseBad = false;
     if (b.오류 || n.오류) { L.push('| ' + c.이름 + ' | 오류 | ' + (b.오류 || '') + ' | ' + (n.오류 || '') + ' | | ✗ |'); bad++; return; }
