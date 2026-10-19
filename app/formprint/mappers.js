@@ -314,7 +314,12 @@
     if (typeof ctx.splitAmt === 'number' && isFinite(ctx.splitAmt)) { put('⑲', ctx.splitAmt); put('⑳', Math.max(0, payable - ctx.splitAmt)); }
     else o.miss('⑲ 분납할 세액·⑳ 납부세액', '분납 계산 자료(ctx.splitAmt) 없음');
     o.miss('㉑ 환급세액', '계산기에 없음');
-    o.miss('㉒~㉚ 농어촌특별세', '계산기에 없음(엔진의 농어촌특별세는 취득세용)' + (reduction ? ' — 감면세액 ' + reduction + '원이 있어 농특세 대상일 수 있음' : ''));
+    // [2026.10.20 J21] 양도세 감면분 농어촌특별세 — 엔진 농어촌특별세_과세표준(과세 감면세액)·농어촌특별세(× 20%, 농특세법 §5①1호). 비과세 감면(§66~§70·직접 경작 수용·§98의3·§98의5)은 빠짐
+    if (has(r.농어촌특별세_과세표준)) {
+      var ntB = n(r.농어촌특별세_과세표준), ntT = n(r.농어촌특별세);
+      if (ntB > 0) { o.set('㉒', ntB).set('㉓', '20%').set('㉔', ntT).set('㉗', ntT).set('㉙', ntT); o.miss('㉕ 수정신고가산세등·㉖ 기신고세액·㉘ 분납', '계산기에 없음(농특세 가산세·분납은 따로 계산 안 함)'); }
+      else if (reduction) o.note('감면세액 ' + reduction + '원은 모두 농특세 비과세 감면(농특세법 시행령 §4)이라 ㉒~㉙ 비움');
+    } else o.miss('㉒~㉚ 농어촌특별세', '엔진 결과에 농어촌특별세 없음(옛 결과)');
     o.miss('㉛㉜ 환급금 계좌', '계산기에 없음');
     var d = ymd(ctx.신고일);
     if (d) o.set('신고일.연', d.y).set('신고일.월', d.m).set('신고일.일', d.d); else o.miss('신고일', 'ctx.신고일 없음');

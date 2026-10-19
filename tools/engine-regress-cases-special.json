@@ -581,5 +581,109 @@
    "과세표준": 197500000,
    "산출세액": 75400000
   }
+ },
+ {
+  "이름": "[J21 2부-33] 수용 현금 2025 — 감면 16,959,000 × 20% = 농특세 3,391,800",
+  "도구": "calculateTransferTaxMultiJS",
+  "입력": [
+   {
+    "assetType": "land",
+    "transferDate": "2025-06-30",
+    "acquisitionDate": "2010-01-01",
+    "publicNoticeDate": "2023-01-01",
+    "transferPrice": 800000000,
+    "acquisitionPrice": 300000000,
+    "compensationType": "cash"
+   }
+  ],
+  "정답": {
+   "농어촌특별세_과세표준": 16959000,
+   "농어촌특별세": 3391800
+  }
+ },
+ {
+  "이름": "[J21] 같은 수용이 거주자 직접 경작 토지 — 농특세 비과세(시행령 §4①1호)",
+  "도구": "calculateTransferTaxMultiJS",
+  "입력": [
+   {
+    "assetType": "land",
+    "transferDate": "2025-06-30",
+    "acquisitionDate": "2010-01-01",
+    "publicNoticeDate": "2023-01-01",
+    "transferPrice": 800000000,
+    "acquisitionPrice": 300000000,
+    "compensationType": "cash",
+    "isCompensationOnSelfCultivatedLand": true
+   }
+  ],
+  "정답": {
+   "농어촌특별세": 0
+  }
+ },
+ {
+  "이름": "[J21] 8년 자경 감면 — 농특세 비과세(§66~§70)",
+  "도구": "calculateTransferTaxMultiJS",
+  "입력": [
+   {
+    "assetType": "land",
+    "transferDate": "2025-06-30",
+    "acquisitionDate": "2010-01-01",
+    "transferPrice": 800000000,
+    "acquisitionPrice": 300000000,
+    "isEightYearFarmland": true
+   }
+  ],
+  "정답": {
+   "농어촌특별세": 0
+  }
+ },
+ {
+  "이름": "[J21] §97의5 장기일반민간임대 전액 감면 133,060,000 → 농특세 26,612,000",
+  "도구": "calculateTransferTaxMultiJS",
+  "입력": [
+   {
+    "assetType": "house",
+    "transferPrice": 900000000,
+    "acquisitionPrice": 400000000,
+    "necessaryExpenses": 0,
+    "acquisitionDate": "2016-03-01",
+    "transferDate": "2026-09-01",
+    "multiHouseCount": 2,
+    "isAdjustedArea": false,
+    "longTermRentalHouseProvision": "sect97_5",
+    "lrAcquisitionStandardPrice": 300000000,
+    "lrRegistrationStandardPrice": 350000000,
+    "lrRentedUntilTransfer": true,
+    "lrTransferStandardPrice": 700000000
+   }
+  ],
+  "정답": {
+   "농어촌특별세_과세표준": 133060000,
+   "농어촌특별세": 26612000
+  }
+ },
+ {
+  "이름": "[J21] §99의3 신축주택(소득금액 방식) — 감면 없이 다시 계산 141,060,000 − 78,860,000 = 62,200,000 → 농특세 12,440,000(시행령 §5②)",
+  "도구": "calculateTransferTaxMultiJS",
+  "입력": [
+   {
+    "assetType": "house",
+    "transferPrice": 900000000,
+    "acquisitionPrice": 300000000,
+    "acquisitionDate": "2001-06-01",
+    "transferDate": "2025-06-30",
+    "newHouseReductionProvision": "sect99_3",
+    "nhIsPriceOrAreaQualified": true,
+    "nhFiveYearMarkValue": 500000000,
+    "nhAcquisitionStandardPrice": 200000000,
+    "nhFiveYearStandardPrice": 350000000,
+    "nhTransferStandardPrice": 600000000
+   }
+  ],
+  "정답": {
+   "산출세액_합계": 78860000,
+   "농어촌특별세_과세표준": 62200000,
+   "농어촌특별세": 12440000
+  }
  }
 ]
