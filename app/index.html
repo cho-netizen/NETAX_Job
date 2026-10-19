@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 20:52 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 20:54 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -34302,8 +34302,10 @@ function gfDoneeRelationCode_(donor, donee){
   const gender = ihGenderFromRegNo_(donee.regNo);
   const rel = donor.relation;
   if (rel === '배우자') return gender === 'M' ? '07' : '02'; // 07 남편, 02 처
-  if (rel === '직계존속') return donor.genSkip === '1' ? (gender === 'M' ? '50' : '51') : (gender === 'M' ? '03' : '04'); // 조부/조모, 부/모
-  if (rel === '직계비속') return donor.genSkip === '1' ? '40' : '05'; // 손, 자
+  // [2026.10.20 바로잡음 — 증여세 전자신고 설명서(2025.10) 22번 '증여자와의 관계'·별첨 8 코드표 + 서식 10호 ⑦ '증여자의 (   )' 작성방법 3(수증자 기준, 부모→자녀면 "자")]
+  //  코드는 수증자가 증여자의 누구인지로 통일 — 예전엔 배우자만 수증자 기준이고 직계는 증여자 기준(직계존속 증여에 부/모를 수증자 성별로)이라 섞여 있었다.
+  if (rel === '직계존속') return donor.genSkip === '1' ? '40' : '05'; // 증여자가 직계존속 → 수증자는 손(40)·자(05)
+  if (rel === '직계비속') return donor.genSkip === '1' ? (gender === 'M' ? '50' : '51') : (gender === 'M' ? '03' : '04'); // 증여자가 직계비속 → 수증자는 조부·조모(50·51)·부·모(03·04)
   if (rel === '기타친족') return 'ZB'; // 기타(세부 친족 미수집)
   if (rel === '기타') return 'ZA'; // 무관계
   return 'ZZ'; // 해당없음(관계 미선택)
