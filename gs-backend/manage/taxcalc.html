@@ -13125,7 +13125,7 @@ function farmlandExemptionPrintPageHtml_(donee, exemptionAmount){
   let n = 0;
   return '<div class="pf-page">' +
     '<div class="pf-formno">조세특례제한법 시행규칙 [별지 제52호서식]</div>' +
-    '<div class="pf-title">영농자녀 등이 증여받는 농지등에 대한 증여세 감면신청서</div>' +
+    '<div class="pf-title">영농자녀 증여농지등의 세액감면신청서</div>' +
     '<div class="pf-section-head">신청인(수증자)</div>' +
     '<table class="pf-table">' +
       pfRow_(++n, '성명', donee.name) + pfRow_(++n, '주민등록번호', donee.regNo) +
@@ -14832,7 +14832,7 @@ const PRINT_REGISTRY_ = [
       { formNo: '상속세 및 증여세법 시행규칙 [별지 제10호서식 부표1]', title: '증여재산 및 평가명세서', section: 'required' },
       { formNo: '상속세 및 증여세법 시행규칙 [별지 제10호서식 부표3]', title: '혼인 및 출산 증여재산공제명세서', section: 'optional' },
       { formNo: '상속세 및 증여세법 시행규칙 [별지 제7호서식]', title: '외국납부세액공제신청서', section: 'optional' },
-      { formNo: '조세특례제한법 시행규칙 [별지 제52호서식]', title: '영농자녀 등이 증여받는 농지등에 대한 증여세 감면신청서', section: 'optional' }
+      { formNo: '조세특례제한법 시행규칙 [별지 제52호서식]', title: '영농자녀 증여농지등의 세액감면신청서, 증여받은 농지등의 명세서', section: 'optional' } // [2026.10.19] 현행 제목으로(법제처 조특 시행규칙 2026-09-18)
     ] },
   { key: 'sr', group: '증여세', label: '증여세 과세표준신고서(특례세율: 창업자금·가업승계)',
     formNo: '상속세 및 증여세법 시행규칙 [별지 제10호의2서식]',
