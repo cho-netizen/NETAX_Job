@@ -171,6 +171,73 @@
     return o.result();
   };
 
+  // 한계보유비율(수증자 요건 — 부표1 ㉓, 엔진 gateShareThreshold) · 정상거래비율(과세요건 — 부표1 ㉛, 엔진 gateTradeThreshold)
+  function jmShareLimit(size) { return size === 'general' ? 3 : 10; }
+  function jmTradeGate(size) { return size === 'general' ? 30 : size === 'medium' ? 40 : 50; }
+  // 지배주주를 첫 줄로(관계 칸에 "지배주주"·"본인"이 있는 주주) — 없으면 입력 순서 그대로
+  function ownerFirst(list) {
+    var i = -1;
+    list.some(function (s, k) { if (/지배주주/.test(s.relation || '')) { i = k; return true; } return false; });
+    if (i < 0) list.some(function (s, k) { if (/^\s*본인/.test(s.relation || '')) { i = k; return true; } return false; });
+    if (i <= 0) return { list: list, found: i === 0 };
+    return { list: [list[i]].concat(list.slice(0, i), list.slice(i + 1)), found: true };
+  }
+  function fyText(d) { var x = H.ymd(d); return x ? '~ ' + x.y + '.' + ('0' + x.m).slice(-2) + '.' + ('0' + x.d).slice(-2) : ''; }
+
+  // ───────── 10호의3 부표1 — 수증자 등 및 과세가액 계산명세서(Ⅰ) ─────────
+  //  값 출처: 🧮 주주별 직접·간접보유 내역(shareholdingRows_.jm — jmAttach1PrintPageHtml_와 같은 표), 🧮 특수관계법인 매출 합산, jm 입력칸
+  //  ㉡·㉢(최대주주가 법인일 때의 지배주주 판정)은 계산기가 하지 않음(엔진 안내 "지배주주 판정 … 별도로 확인").
+  mappers['증여10호의3부표1'] = function (ctx) {
+    var o = new Out(), r = ctx.r || {}, I = ctx.in || {};
+    o.miss('① 수혜법인 법인명', '계산기에 없음').miss('② 수혜법인 사업자등록번호', '계산기에 없음').miss('③ 수혜법인 소재지', '계산기에 없음');
+    if (has(I.fiscalYearEnd)) { o.set('④', fyText(I.fiscalYearEnd)); o.note('④ 사업연도는 종료일만(화면 "수혜법인 사업연도 종료일") — 시작일은 계산기에 없어 비움'); }
+    else o.miss('④ 사업연도', '화면 입력 없음(수혜법인 사업연도 종료일)');
+    if (SIZE[I.companySize]) o.set('⑤', SIZE[I.companySize]); else o.miss('⑤ 법인구분', '화면 입력 없음(기업규모)');
+    var sh = ctx.shareholders || [];
+    var dir = sh.filter(function (s) { return n(s.directRatio) > 0; });
+    if (dir.length) {
+      o.set('⑥', dir.map(function (s) { return s.name; })).set('⑧', dir.map(function (s) { return s.relation; })).set('⑨', dir.map(function (s) { return r4(n(s.directRatio)); }));
+      var mx = Math.max.apply(null, dir.map(function (s) { return n(s.directRatio); }));
+      o.set('⑩', dir.map(function (s) { return n(s.directRatio) === mx ? '○' : ''; }));
+      o.set('⑨@계', r4(dir.reduce(function (a, s) { return a + n(s.directRatio); }, 0)));
+      o.note('㉠ ⑥~⑩은 🧮 주주별 직접·간접보유 내역에 넣은 주주만(직접보유비율이 있는 줄) — 최대주주등의 다른 주주는 계산기에 없음. ⑩은 그 가운데 ⑨가 가장 큰 주주(작성방법 3)');
+    } else o.miss('⑥⑧⑨⑩ ㉠ 최대주주등', '계산기에 없음 — 🧮 주주별 직접·간접보유 내역에 직접보유비율이 있는 주주가 없음');
+    o.miss('⑦ 주민등록번호(사업자등록번호)', '계산기에 없음').miss('㉠비고', '계산기에 없음');
+    o.miss('⑪⑫⑬⑭⑮⑯ ㉡ 간접보유비율(최대주주가 법인일 때)', '계산기에 없음 — 지배주주 판정(작성방법 4·8)을 계산기가 하지 않음')
+      .miss('㉢ 지배주주', '계산기에 없음 — 지배주주 판정을 계산기가 하지 않음(엔진 안내)');
+    // 다. 지배주주와 그 친족(수증자 요건)
+    var lim = jmShareLimit(I.companySize);
+    if (sh.length) {
+      var of = ownerFirst(sh.slice()), L2 = of.list;
+      if (!of.found) o.note('⚠ 다. 첫 줄은 지배주주 자리 — 🧮 주주별 보유 내역의 관계 칸에 "지배주주"·"본인"이 없어 입력 순서대로 적음(첫 주주가 지배주주가 아니면 고칠 것)');
+      o.set('⑰', L2.map(function (s) { return s.name; }));
+      o.set('⑲', L2.map(function (s, k) { return k === 0 ? '' : s.relation; }));
+      o.set('⑳', L2.map(function (s) { return r4(n(s.directRatio)); })).set('㉑', L2.map(function (s) { return r4(n(s.indirect)); }))
+        .set('㉒', L2.map(function (s) { return r4(n(s.directRatio) + n(s.indirect)); }))
+        .set('㉓', L2.map(function (s) { return n(s.directRatio) + n(s.indirect) > lim ? '○' : ''; }));
+      o.note('다. ㉑ 간접 지분율 = 🧮 도구가 셈하는 간접보유비율(간접출자법인 요건·0.1% 미만 제외 반영 — 부표3 ㉕와 같음), ㉓ = ㉒가 한계보유비율 ' + lim + '% 초과');
+      var dn = (ctx.donee || {}).name, me = L2.filter(function (s) { return s.name === dn; })[0];
+      if (me) o.check('수증자 ㉒ 지분율 합계 = 화면 주식보유비율(엔진 입력)', Math.round((n(me.directRatio) + n(me.indirect)) * 10000), Math.round(n(I.shareRatio) * 10000));
+    } else o.miss('⑰⑲⑳㉑㉒㉓ 다. 지배주주와 친족', '계산기에 없음 — 🧮 주주별 직접·간접보유 내역이 비어 있음');
+    o.miss('⑱ 주민등록번호', '계산기에 없음');
+    // 라. 특수관계법인
+    var rp = ctx.relatedParties || [];
+    if (rp.length) o.set('㉔', rp.slice().sort(function (a, b) { return n(b.sales) - n(a.sales); })[0].label);
+    else o.miss('㉔ 대표 증여자 법인명', '계산기에 없음 — 🧮 특수관계법인 매출 합산 표가 비어 있음');
+    o.miss('㉕ 대표 증여자 사업자등록번호', '계산기에 없음').miss('㉖ 유형', '계산기에 없음')
+      .miss('㉗ 수혜법인의 매출액(라-1 ④ 소계)', '계산기에 없음 — 매출 합산 도구는 과세제외를 뺀 뒤 매출액만 받음(④ 아님)')
+      .miss('㉘ 제외매출액', '계산기에 없음');
+    if (n(ctx.totalSales) > 0) o.set('㉙', n(ctx.excludedSales)); else o.miss('㉙ 과세제외매출액', '계산기에 없음 — 🧮 특수관계법인 매출 합산을 쓰지 않음');
+    if (has(I.tradeRatio)) o.set('㉚', r4(n(I.tradeRatio))); else o.miss('㉚ 특수관계법인거래비율', '화면 입력 없음');
+    var gate = jmTradeGate(I.companySize);
+    var alt = I.companySize === 'general' && n(I.tradeRatio) > gate * 2 / 3 && n(I.relatedPartySales) > 1e11;
+    if (n(I.tradeRatio) > gate || alt) o.set('㉛', '○');
+    else o.miss('㉛ 과세요건 해당 여부', '해당 안 됨 — 거래비율 ' + n(I.tradeRatio) + '% ≤ ' + gate + '%');
+    if (alt && n(I.tradeRatio) <= gate) o.note('㉛: 일반기업 대체요건(거래비율 > 20%이고 특수관계법인 매출액 1천억원 초과 — 법 §45의3①1호나목2)으로 해당');
+    if (r && has(r.과세대상여부) && !!r.과세대상여부 !== (n(I.tradeRatio) > gate || alt) && r.과세대상여부) o.note('⚠ 엔진 과세대상 판정과 ㉛이 다름 — 확인할 것');
+    return o.result();
+  };
+
   // ───────── 세액인쇄 화면용 ctx — 화면 전역값에서 모음(브라우저) ─────────
   /* global lastRelatedPartyGiftResult_, lastBusinessOpportunityGiftResult_, giftDonees, shareholdingRows_, relatedPartyRatioRows_,
      jmRelatedPartyTotalSales_, jmRelatedPartyExcludedSales_, jtSegmentYears_, shareholdingIndirectRatio_, shareholdingCountedIndirectRatio_ */
@@ -212,7 +279,8 @@
   }
   // 준비 조건 — 지금 인쇄와 같음: 본표는 결과가 있으면(isReady), 부표는 과세대상일 때 그 부표의 입력 표가 있으면
   var READY = {
-    '증여10호의3': function () { return !!jmR(); }
+    '증여10호의3': function () { return !!jmR(); },
+    '증여10호의3부표1': function () { var r = jmR(); return !!(r && r.과세대상여부); }
   };
   Object.keys(READY).forEach(function (k) {
     var isJm = /^증여10호의3/.test(k);

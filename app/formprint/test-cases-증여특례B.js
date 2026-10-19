@@ -25,5 +25,7 @@ module.exports = function (E, H) {
   var jmCtx = { kind: 'jm', r: jm1, donee: DONEE, taxAgent: AGENT, in: jmIn, shareholders: SH, relatedParties: RP, totalSales: 10000000000, excludedSales: 0, 신고일: '2026-03-31' };
   L.push({ name: '증여10호의3_중견_직접간접', forms: [{ formKey: '증여10호의3', ctx: jmCtx }], ctx: jmCtx });
 
+  L.push({ name: '증여10호의3부표1_주주표', forms: [{ formKey: '증여10호의3부표1', ctx: jmCtx }], ctx: jmCtx });
+
   return L;
 };
