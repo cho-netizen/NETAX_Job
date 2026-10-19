@@ -4831,14 +4831,14 @@ function lawDbIdx_() {
   var c = CacheService.getScriptCache(), s = c.get('lawdb_idx2');
   if (s) return JSON.parse(s);
   var sub = function (f, n) { var it = f && f.getFoldersByName(n); return it && it.hasNext() ? it.next() : null; };
-  var mg = sub(getNetaxRootFolder_(), '업무관리자'), b = sub(sub(mg, '법령'), '본문') || sub(sub(mg, '법령정비본'), '본문') /* [2026.10.19] 폴더 정리 — 업무관리자/법령정비본 → 업무관리자/법령(옛 이름도 찾음) */, it = b && b.getFilesByName('색인.json');
+  var mg = sub(getNetaxRootFolder_(), '업무관리자'), lw = sub(mg, '법령'), b = sub(lw, '_본문') || sub(lw, '본문') || sub(sub(mg, '법령정비본'), '본문') /* [2026.10.19] 폴더 정리 — 업무관리자/법령정비본 → 업무관리자/법령(옛 이름도 찾음) */, it = b && b.getFilesByName('색인.json');
   if (!it || !it.hasNext()) return null;
   var idx = JSON.parse(it.next().getBlob().getDataAsString('UTF-8'));
   Object.keys(idx.법령).forEach(function (k) {
     var f = sub(b, k), fi = f && f.getFiles(), ids = idx.법령[k].ids = {};
     while (fi && fi.hasNext()) { var x = fi.next(); ids[x.getName().replace('.json.gz', '')] = x.getId(); }
   });
-  var ci = sub(b.getParents().next(), '산식보정');
+  var ci = sub(b.getParents().next(), '_산식보정') || sub(b.getParents().next(), '산식보정'); // [2026.10.19] 시스템 전용 폴더는 이름 앞 _(세무사님 지시) — 옛 이름도 찾음
   ci = ci && ci.getFilesByName('산식보정.json');
   idx.보정ID = ci && ci.hasNext() ? ci.next().getId() : '';
   try { c.put('lawdb_idx2', JSON.stringify(idx), 21600); } catch (e) { }

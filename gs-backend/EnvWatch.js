@@ -493,7 +493,9 @@ function envLawDbDir_(n) {
   var f = getNetaxRootFolder_();
   var g = function (p, x) { var it = p && p.getFoldersByName(x); return it && it.hasNext() ? it.next() : null; }, m = g(f, '업무관리자');
   // [2026.10.19] 폴더 정리 — 업무관리자\법령정비본 → 업무관리자\법령(옛 이름도 찾음)
-  return g(g(m, '법령'), n) || g(g(m, '법령정비본'), n);
+  // 시스템 전용 폴더는 이름 앞에 _(세무사님 지시 — 사람이 열어 볼 폴더와 구분), 옛 이름도 찾음
+  var lw = g(m, '법령');
+  return g(lw, '_' + n) || g(lw, n) || g(g(m, '법령정비본'), n);
 }
 function envDbJson_(dir, name, dflt) {
   try { var d = envLawDbDir_(dir), it = d && d.getFilesByName(name); if (it && it.hasNext()) return JSON.parse(it.next().getBlob().getDataAsString('UTF-8')); } catch (e) { }
