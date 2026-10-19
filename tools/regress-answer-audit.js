@@ -153,7 +153,14 @@ files.forEach((f) => {
         else notes.push('과세표준도 맞음(장특공 ' + Math.round(rate * 100) + '%, ' + y + '년)');
       }
     }
-    if (/SpecialRate/.test(c.도구) && base != null && a.산출세액 != null) { const st = Math.floor(Math.min(base, 12e9) * 0.1 + Math.max(0, base - 12e9) * (/business|가업/.test(JSON.stringify(inp) + c.이름) ? 0.2 : 0.1) + 1e-6); verdict = st === a.산출세액 ? '산출세액 맞음 — 조특법 §30의5·§30의6 특례세율' : '⚠ 특례세율로 ' + st.toLocaleString('ko-KR'); }
+    // [2026.10.20] 조특법 §30의5·§30의6 특례세율 — 증여일의 2부-11 행(가업승계 10% 구간 끝: 2014까지 없음·2015~2022 30억·2023 60억·2024~ 120억)
+    if (/SpecialRate/.test(c.도구) && base != null && a.산출세액 != null) {
+      const biz = inp.specialType === 'business_succession' || (!inp.specialType && /business|가업/.test(JSON.stringify(inp) + c.이름));
+      const sr = rowOf(t211, biz ? '가업승계 과세특례(조특 §30의6)' : '창업자금 과세특례(조특 §30의5)', String(inp.giftDate || '9999-12-31').slice(0, 10));
+      if (!sr) verdict = '✗ 그 증여일 특례 표 없음(2부-11)';
+      else { const end = biz && sr.값.세율10_구간끝 != null ? sr.값.세율10_구간끝 : Infinity; const st = Math.floor(Math.min(base, end) * 0.1 + Math.max(0, base - end) * 0.2 + 1e-6);
+        verdict = st === a.산출세액 ? '산출세액 맞음 — ' + sr.구분 + ' ' + sr.시작 + '~ 행(' + (end === Infinity ? '10%' : (end / 1e8) + '억 초과 20%') + ')' : '⚠ 특례세율(2부-11 ' + sr.시작 + '~ 행)로 ' + st.toLocaleString('ko-KR'); }
+    }
     else if (/SpecificCorporation/.test(c.도구) && base != null && a.산출세액 != null) {
       const gt = giftTax(base);
       verdict = a.산출세액 <= gt ? '산출세액 상한 맞음 — §26 세율 값 ' + gt.toLocaleString('ko-KR') + ' 이하(㊲ 한도·기납부 차감 뒤라 상한만 검산)' : '⚠ 산출세액이 §26 세율 값보다 큼 — ' + gt.toLocaleString('ko-KR');

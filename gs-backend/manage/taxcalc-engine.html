@@ -4281,6 +4281,15 @@
     if (Number.isFinite(donorAge) && donorAge < 60) {
       return { error: '증여자(부모)가 60세 미만이면 이 특례(조특법§30의5·§30의6)를 적용받을 수 없습니다.' };
     }
+    // [2026.10.20 법령 세션 옛 판 원문 — 조견표 2부-11] 증여일별 한도·공제·세율(조특법 §30의5·§30의6, 부칙마다 "시행 후(전) 증여받은 분"):
+    //  §30의5 창업자금(2006.1.1. 신설, 법률 제7839호): 2015년까지 한도 30억 · 2016~2022 30억(10명 이상 신규 고용 50억, 법률 제13560호) ·
+    //   2023~ 50억(100억, 법률 제19199호). 공제 5억·세율 10%는 그대로.
+    //  §30의6 가업승계(2008.1.1. 신설, 법률 제8827호): 2008~2014 한도 30억·공제 5억·10% · 2015~2022 한도 100억·공제 5억·과표 30억 초과분 20%(법률 제12853호) ·
+    //   2023 한도 300·400·600억(경영 10·20·30년)·공제 10억·60억 초과분 20%(법률 제19199호) · 2024~ 120억 초과분 20%(법률 제19936호 부칙 제38조①)
+    const srD_ = String(p.giftDate || p.giftReceivedDate || '').slice(0, 10);
+    const srOld_ = refHistoryOn_() && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(srD_) && srD_ < '2024-01-01' ? srD_ : '';
+    if (srOld_ && specialType === 'startup' && srOld_ < '2006-01-01') return { error: '창업자금 증여세 과세특례(조특법 §30의5)는 2006.1.1. 이후 증여분부터 생긴 제도라 그 전 증여에는 적용할 수 없습니다(법률 제7839호).' };
+    if (srOld_ && specialType === 'business_succession' && srOld_ < '2008-01-01') return { error: '가업승계 증여세 과세특례(조특법 §30의6)는 2008.1.1. 이후 증여분부터 생긴 제도라 그 전 증여에는 적용할 수 없습니다(법률 제8827호).' };
     if (specialType === 'business_succession' && p.isReceivedFromMajorShareholderAfterSuccession) {
       return { error: '조특법§30의6①단서 — 가업 승계 후 그 승계 당시 최대주주등에 해당하는 자(당초 증여자·수증자 제외)로부터 증여받는 경우에는 이 특례를 적용받을 수 없습니다.' };
     }
@@ -4308,7 +4317,7 @@
 
     let totalLimit;
     if (specialType === 'startup') {
-      totalLimit = p.jobsCreated10Plus ? 10000000000 : 5000000000;
+      totalLimit = srOld_ && srOld_ < '2016-01-01' ? 3000000000 : srOld_ && srOld_ < '2023-01-01' ? (p.jobsCreated10Plus ? 5000000000 : 3000000000) : (p.jobsCreated10Plus ? 10000000000 : 5000000000);
     } else {
       // 조특법§30의6①본문 — "가업"의 정의 자체가 "부모가 10년 이상 계속하여 경영한 기업"이다.
       // 10년 미만이면 애초에 "가업"에 해당하지 않아 이 특례를 전혀 적용받을 수 없다(1~3호도
@@ -4317,7 +4326,7 @@
       if (years < 10) {
         return { error: '부모의 가업 계속경영기간이 10년 미만이면 조특법§30의6상 "가업"에 해당하지 않아 이 특례를 적용받을 수 없습니다(businessOwnershipYearsOfParent를 10년 이상으로 입력하거나, 요건을 다시 확인하세요).' };
       }
-      totalLimit = years < 20 ? 30000000000 : (years < 30 ? 40000000000 : 60000000000);
+      totalLimit = srOld_ && srOld_ < '2015-01-01' ? 3000000000 : srOld_ && srOld_ < '2023-01-01' ? 10000000000 : (years < 20 ? 30000000000 : (years < 30 ? 40000000000 : 60000000000));
     }
     const remainingLimit = Math.max(0, totalLimit - priorSpecialGiftAmount);
     const specialRateApplicableAmount = grossBase < totalLimit
@@ -4333,15 +4342,17 @@
     //  [2026.10.20 J25] §58② 비율 한도 — 앞선 특례 증여 당시 과세표준(priorSpecialTaxBase, 당시 10호의2 ㉕)을 넣으면
     //  ㉙ = min(앞선 분 당시 산출세액, ㉗ × 앞선 과세표준 ÷ ㉕). 비우면 산출세액 한도로만 두고, 앞선 세액이 있으면 확인 안내.
     const cumulativeSpecialBase = specialRateApplicableAmount + priorSpecialGiftAmount;
-    const propertyDeductionLimit = specialType === 'startup' ? 500000000 : 1000000000;
+    const propertyDeductionLimit = specialType === 'startup' || (srOld_ && srOld_ < '2023-01-01') ? 500000000 : 1000000000;
     const propertyDeduction = Math.min(propertyDeductionLimit, cumulativeSpecialBase);
     const disasterLossDeduction = Number(p.disasterLossAmount) || 0;
     const appraisalFeeDeduction = appraisalFeeDeduction_(p);
     const taxBase = Math.max(0, cumulativeSpecialBase - propertyDeduction - disasterLossDeduction - appraisalFeeDeduction);
 
-    const calculatedTax = specialType === 'startup'
-      ? Math.round(taxBase * 0.10)
-      : Math.round(Math.min(taxBase, 12000000000) * 0.10 + Math.max(0, taxBase - 12000000000) * 0.20);
+    const srTier_ = specialType === 'startup' ? Infinity : srOld_ && srOld_ < '2015-01-01' ? Infinity : srOld_ && srOld_ < '2023-01-01' ? 3000000000 : srOld_ ? 6000000000 : 12000000000; // 10% 구간 끝
+    const calculatedTax = Math.round(Math.min(taxBase, srTier_) * 0.10 + Math.max(0, taxBase - srTier_) * 0.20);
+    const srOldNote_ = srOld_ ? '그때 법(' + srOld_ + ' 증여): ' + (specialType === 'startup'
+      ? '한도 ' + (totalLimit / 1e8) + '억·공제 5억·10%'
+      : '한도 ' + (totalLimit / 1e8) + '억·공제 ' + (propertyDeductionLimit / 1e8) + '억·' + (srTier_ === Infinity ? '10% 단일' : '과세표준 ' + (srTier_ / 1e8) + '억 초과분 20%')) : '';
 
     // [2026.10.20 J25] 상증법 §58① 공제액 = 앞선 특례 증여분의 '증여 당시 산출세액'(조특법 §30의5⑬·§30의6⑤가 상증법을 따름),
     //  §58② 한도 = 이번 산출세액 × (가산한 증여재산의 과세표준 ÷ 합친 과세표준). 예: 앞선 분이 옛 공제·세율로 과세돼 당시 산출세액 6천만,
@@ -4380,7 +4391,7 @@
       과세특례적용대상_증여세과세가액: specialRateApplicableAmount, 기본세율적용대상_증여재산가액: baseRateApplicableAmount,
       가산_과세특례증여재산: priorSpecialGiftAmount, 과세특례_과세가액_합계: cumulativeSpecialBase, // 서식 ⑱·⑳ / ㉑
       증여재산공제: propertyDeduction, 재해손실공제: disasterLossDeduction, 감정평가수수료공제: appraisalFeeDeduction,
-      과세표준: taxBase, 세율: specialType === 'startup' ? '10%' : '10%(120억 초과분 20%)', 산출세액: calculatedTax,
+      과세표준: taxBase, 세율: specialType === 'startup' ? '10%' : (srTier_ === Infinity ? '10%' : '10%(' + (srTier_ / 1e8) + '억 초과분 20%)'), 산출세액: calculatedTax, 그때법_안내: srOldNote_ || undefined, // [2026.10.20] 증여일별 한도·공제·세율
       납부세액공제: priorPaidTax, 외국납부세액공제: foreignTaxCredit,
       납부세액공제_한도: priorRatioLimit_, 납부세액공제_안내: priorCreditNote_ || undefined, // [2026.10.20 J25] §58②
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,

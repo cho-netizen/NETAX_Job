@@ -8775,6 +8775,7 @@ function renderSpecialRateGiftResult(r){
   html += taxCalcResultRow('산출세액', won(r.산출세액));
   if (r.납부세액공제) html += taxCalcResultRow('납부세액공제(앞선 특례분 세액, §58)', '-' + won(r.납부세액공제));
   if (r.납부세액공제_안내) html += '<div class="taxcalc-result-note">' + escapeHtml(r.납부세액공제_안내) + '</div>'; // [2026.10.20 J25]
+  if (r.그때법_안내) html += '<div class="taxcalc-result-note">' + escapeHtml(r.그때법_안내) + '</div>'; // [2026.10.20] 증여일별 한도·공제·세율
   if (r.외국납부세액공제) html += taxCalcResultRow('외국납부세액공제(§59)', '-' + won(r.외국납부세액공제));
   if (r.무신고가산세) html += taxCalcResultRow('무신고가산세', '+' + won(r.무신고가산세));
   if (r.과소신고가산세) html += taxCalcResultRow('과소신고가산세', '+' + won(r.과소신고가산세));
@@ -15627,6 +15628,7 @@ function handleTaxCalcClick_(e){
   } else if (action === 'run-special-rate-gift'){
     const input = {
       specialType: document.getElementById('srGiftType').value,
+      giftDate: tcInputVal_('srGiftDate'), // [2026.10.20] 증여일별 한도·공제·세율(조특법 §30의5·§30의6 연혁)
       giftAmount: numVal(document.getElementById('srGiftAmount').value) || 0,
       doneeAge: numVal(document.getElementById('srDoneeAge').value) || undefined,
       donorAge: numVal(document.getElementById('srDonorAge').value) || undefined,

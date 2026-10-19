@@ -2208,5 +2208,138 @@
    "과세표준": 7500000,
    "산출세액": 0
   }
+ },
+ {
+  "이름": "[2부-11 옛판] 창업자금 40억 2015-06-01 — 한도 30억(2015년까지): (30억 − 5억) × 10% = 250,000,000",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "입력": {
+   "doneeAge": 30,
+   "donorAge": 65,
+   "specialType": "startup",
+   "giftAmount": 4000000000,
+   "giftDate": "2015-06-01"
+  },
+  "정답": {
+   "총한도액": 3000000000,
+   "과세표준": 2500000000,
+   "산출세액": 250000000
+  }
+ },
+ {
+  "이름": "[2부-11 옛판] 창업자금 40억·10명 이상 고용 2020-06-01 — 한도 50억(2016~2022): 35억 × 10% = 350,000,000",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "입력": {
+   "doneeAge": 30,
+   "donorAge": 65,
+   "specialType": "startup",
+   "giftAmount": 4000000000,
+   "giftDate": "2020-06-01",
+   "jobsCreated10Plus": true
+  },
+  "정답": {
+   "총한도액": 5000000000,
+   "과세표준": 3500000000,
+   "산출세액": 350000000
+  }
+ },
+ {
+  "이름": "[2부-11 옛판] 창업자금 40억·고용 없음 2020-06-01 — 한도 30억: 250,000,000",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "입력": {
+   "doneeAge": 30,
+   "donorAge": 65,
+   "specialType": "startup",
+   "giftAmount": 4000000000,
+   "giftDate": "2020-06-01"
+  },
+  "정답": {
+   "총한도액": 3000000000,
+   "과세표준": 2500000000,
+   "산출세액": 250000000
+  }
+ },
+ {
+  "이름": "[2부-11 대조] 창업자금 40억 2026-03-01 — 지금 한도 50억: 350,000,000",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "입력": {
+   "doneeAge": 30,
+   "donorAge": 65,
+   "specialType": "startup",
+   "giftAmount": 4000000000,
+   "giftDate": "2026-03-01"
+  },
+  "정답": {
+   "총한도액": 5000000000,
+   "과세표준": 3500000000,
+   "산출세액": 350000000
+  }
+ },
+ {
+  "이름": "[2부-11 옛판] 가업승계 50억(경영 15년) 2012-06-01 — 한도 30억·공제 5억·10% 단일: 250,000,000",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "입력": {
+   "doneeAge": 30,
+   "donorAge": 65,
+   "specialType": "business_succession",
+   "giftAmount": 5000000000,
+   "giftDate": "2012-06-01",
+   "businessOwnershipYearsOfParent": 15
+  },
+  "정답": {
+   "총한도액": 3000000000,
+   "과세표준": 2500000000,
+   "산출세액": 250000000
+  }
+ },
+ {
+  "이름": "[2부-11 옛판] 가업승계 150억(15년) 2020-06-01 — 한도 100억·공제 5억·30억 초과 20%: 3억 + 65억 × 20% = 1,600,000,000",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "입력": {
+   "doneeAge": 30,
+   "donorAge": 65,
+   "specialType": "business_succession",
+   "giftAmount": 15000000000,
+   "giftDate": "2020-06-01",
+   "businessOwnershipYearsOfParent": 15
+  },
+  "정답": {
+   "총한도액": 10000000000,
+   "과세표준": 9500000000,
+   "산출세액": 1600000000
+  }
+ },
+ {
+  "이름": "[2부-11 옛판] 가업승계 100억(15년) 2023-06-01 — 공제 10억·60억 초과 20%: 6억 + 30억 × 20% = 1,200,000,000",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "입력": {
+   "doneeAge": 30,
+   "donorAge": 65,
+   "specialType": "business_succession",
+   "giftAmount": 10000000000,
+   "giftDate": "2023-06-01",
+   "businessOwnershipYearsOfParent": 15
+  },
+  "정답": {
+   "총한도액": 30000000000,
+   "과세표준": 9000000000,
+   "산출세액": 1200000000
+  }
+ },
+ {
+  "이름": "[2부-11 대조] 가업승계 100억(15년) 2024-06-01 — 120억까지 10%: 900,000,000",
+  "도구": "calculateSpecialRateGiftTaxJS",
+  "입력": {
+   "doneeAge": 30,
+   "donorAge": 65,
+   "specialType": "business_succession",
+   "giftAmount": 10000000000,
+   "giftDate": "2024-06-01",
+   "businessOwnershipYearsOfParent": 15
+  },
+  "정답": {
+   "총한도액": 30000000000,
+   "과세표준": 9000000000,
+   "산출세액": 900000000
+  }
  }
 ]
