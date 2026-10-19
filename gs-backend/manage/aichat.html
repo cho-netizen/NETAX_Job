@@ -4307,7 +4307,8 @@
     // 양도 필요경비·사건분류(비과세·중과 판단)도 정해지기 전엔 계산하지 않는다(필요경비 0원·사건분류 미정으로 계산하던 문제 — 노오섭)
     var blockers = { 'gift:deal': '「증여 내용 확인」', 'tr:expenses': '「필요경비 확정」', 'ov:사건분류': '「사건분류」', 'ih:debts': '「상속 채무 확정」' };
     // [2026.10.15 일괄점검 ③] 위 셋만이 아니라 — 계산 입력 칸(처리개요 값·기준일)을 묻는 질문에 아직 답하지 않았으면 자동 계산하지 않는다(보류는 "진행"이라 막지 않음)
-    var isInputQ = function(it){ var a = it.ask || {}; return (it.step === 'overview' || it.step === 'basic') && (it.kind === 'missing' || a.mode === 'base' || /^(ov:|ovAsset:|calc:)/.test(String(a.target || ''))); };
+    // [2026.10.19 small0] 세액 영향이 작은 칸(ask.provisional — 신고 세무비용)은 잠정값으로 먼저 계산한다(질문은 남김, 답하면 다시 계산, 출력 전 알림)
+    var isInputQ = function(it){ var a = it.ask || {}; if (a.provisional) return false; return (it.step === 'overview' || it.step === 'basic') && (it.kind === 'missing' || a.mode === 'base' || /^(ov:|ovAsset:|calc:)/.test(String(a.target || ''))); };
     var open = (st.items || []).filter(function(it){ var d = nxAiCaseProcDec_(st, it); return blockers[it.id] ? (d !== 'done' && d !== '무시') : (isInputQ(it) && !d); });
     var qName = function(it){ return blockers[it.id] || ('「' + String((it.ask && it.ask.label) || it.text || '').slice(0, 24) + '」'); };
     if (open.length && !manual){ st.setStep('calc', '⏸', open.slice(0, 4).map(qName).join('·') + (open.length > 4 ? ' 외 ' + (open.length - 4) + '건' : '') + '을(를) 먼저 정해 주세요 — 정해지면 계산합니다(지금 계산하려면 [▶ 지금 계산]).'); return; }

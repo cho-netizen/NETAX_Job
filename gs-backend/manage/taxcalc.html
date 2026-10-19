@@ -1719,6 +1719,8 @@ function renderContractCardHtml_(contract, kind, idx){
     '</div>' +
     (kind === 'transfer' ? renderContractBuyersHtml_(contract) : '') +
     renderCostItemsSectionHtml_(contract, 'totalExpenseItems', expenseTitle, kind === 'acquisition' ? '예: 취득세' : '예: 중개보수', kind) +
+    // [2026.10.19 small0] 사건처리가 잠정값으로 먼저 계산한 칸(신고 세무비용 등) — '잠정 0 — 확인 전', 답하면 사건처리가 다시 계산
+    (kind === 'transfer' && Array.isArray(contract.provisional) && contract.provisional.length ? '<div class="taxcalc-result-note" data-provisional="1">⏳ 확인 전(잠정): ' + contract.provisional.map(function(p){ return escapeHtml(String(p.label || '') + ' ' + won(Number(p.v) || 0) + ' — ' + String(p.why || '확인 전')); }).join(' · ') + ' — 사건처리 질문에 답하면 다시 계산합니다</div>' : '') +
     (kind === 'transfer' && contract.hasBuildingVat ? '<div class="taxcalc-result-note">건물분 부가세 자동 제외 합계: ' + won(contract._lastVatTotal || 0) + '(10/110, 자산구분=건물인 자산에만 적용됩니다)</div>' : '') +
     (contract._lastError ? '<div class="taxcalc-error">' + escapeHtml(contract._lastError) + '</div>' : '') +
     // [2026.09.20 중복제거] 세무사님 지적 — "이 계약에 속한 자산" 한 줄 요약 목록은 양도계약
@@ -7495,7 +7497,7 @@ function renderGiftDonorRegistry(){
             '<div class="taxcalc-field" style="flex-basis:100%; max-width:none;"><span class="taxcalc-result-note" data-donor-computed="actual" style="margin:0;">위 재산평가 자산의 배분 합계 = ' + won(actualValue) + '</span> <button type="button" class="taxcalc-add-asset-inline" data-action="apply-donor-allocation" data-idx="' + idx + '">위 배분 합계 반영</button></div>') +
         '<div class="taxcalc-field"><label>인수채무액</label><input type="number" data-dfield="debtAssumed"' + idOf('giftDebtAssumed') + ' placeholder="원" value="' + (d.debtAssumed || '') + '"><span class="taxcalc-field-help">부담부증여, 없으면 0</span></div>' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" data-dfield="debtObjProven"' + (d.debtObjProven ? ' checked' : '') + '><label>배우자·직계존비속간 증여일 때만 — 위 채무가 객관적으로 인수 사실이 인정됨(§47③ 단서)</label></div>' +
-        '<div class="taxcalc-field"><label>10년내 동일인 기증여합산액</label><input type="number" data-dfield="priorAmount"' + idOf('giftPriorAmount') + ' placeholder="원" value="' + (d.priorAmount || '') + '"><span class="taxcalc-field-help">없으면 비움 — 동일인에는 직계존속 증여시 그 배우자도 포함됩니다</span></div>' +
+        '<div class="taxcalc-field"><label>10년내 동일인 기증여합산액</label><input type="number" data-dfield="priorAmount"' + idOf('giftPriorAmount') + ' placeholder="' + (tcGiftPriorPending_() && !d.priorAmount ? '확인 전 — 비우면 0원' : '원') + '" value="' + (d.priorAmount || '') + '"><span class="taxcalc-field-help">' + (tcGiftPriorPending_() && !d.priorAmount ? '⏳ 확인 전(사건처리 질문에 아직 답하지 않음) — ' : '') + '없으면 비움 — 동일인에는 직계존속 증여시 그 배우자도 포함됩니다</span></div>' +
         '<div class="taxcalc-field"><label>위 기증여분 기납부세액</label><input type="number" data-dfield="priorPaidTax" placeholder="원" value="' + (d.priorPaidTax || '') + '"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>기증여분 증여재산공제(§53) 사용액</label><input type="number" data-dfield="priorRelationDeductionUsed" placeholder="원" value="' + (d.priorRelationDeductionUsed || '') + '"><span class="taxcalc-field-help">없으면 비움 — 관계별 공제도 10년 합산 한도</span></div>' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" data-dfield="genSkipOver2B"' + (d.genSkipOver2B ? ' checked' : '') + '><label>세대생략증여재산가액 20억 초과(수증자 미성년 여부는 위 주민등록번호로 자동판정)</label></div>' +
@@ -10794,7 +10796,26 @@ function pfTaxOfficeGreeting_(taxOffice){
   return escapeHtml(t.endsWith('세무서') ? (t + '장 귀하') : (t + ' 귀하'));
 }
 // [2026.10.14] 서식 문서 HTML 만들기를 따로 뺐다 — 사건처리(사이드바)가 같은 서식을 PDF로 사건 폴더에 저장할 때 그대로 쓴다
+// [2026.10.19 small0 — 세무사님 결정] 확인 전 칸(잠정값으로 먼저 계산한 신고 세무비용, 답하지 않은 증여 10년 합산)이 남아 있으면 신고서 출력·전자신고 파일 전에 다시 알린다
+function tcGiftPriorPending_(){
+  try { var ov = (typeof tcCurrentCase !== 'undefined' && tcCurrentCase && tcCurrentCase.세목 === 'gift') ? (tcCurrentCase.사건개요 || {}) : null; return !!ov && String(ov.giftPriorAmount == null ? '' : ov.giftPriorAmount).trim() === ''; } catch (e) { return false; }
+}
+function tcPendingConfirmList_(){
+  var out = [];
+  try {
+    var act = document.querySelector('.taxcalc-tab.active'), tab = act ? act.getAttribute('data-tab') : '';
+    if (tab === 'transfer' && typeof transferContracts !== 'undefined') (transferContracts || []).forEach(function(ct){ (ct && Array.isArray(ct.provisional) ? ct.provisional : []).forEach(function(p){ out.push(String(p.label || '') + ' ' + won(Number(p.v) || 0) + '(잠정 — 확인 전)'); }); });
+    if (tab === 'gift' && tcGiftPriorPending_()) { var el = document.getElementById('giftPriorAmount'); if (!el || String(el.value || '').trim() === '') out.push('10년 내 같은 증여자 증여 합산(확인 전 — 0원으로 계산됨)'); }
+  } catch (e) {}
+  return out;
+}
+function tcPendingConfirmOk_(what){
+  var L = tcPendingConfirmList_();
+  if (!L.length) return true;
+  return window.confirm('확인 전 칸이 ' + L.length + '개 남아 있습니다 — ' + L.join(' / ') + '\n\n사건처리 질문에 아직 답하지 않은 잠정값입니다. 그래도 ' + (what || '출력할') + '까요?');
+}
 function openPrintFormWindow_(title, bodyHtml){
+  if (!tcPendingConfirmOk_('신고서를 출력할')) return;
   const win = window.open('', '_blank');
   if (!win){ nxAlert_('팝업이 차단되었습니다. 브라우저의 팝업 차단을 해제한 뒤 다시 시도하세요.'); return; }
   win.document.write(printFormDocHtml_(title, bodyHtml));
@@ -16672,6 +16693,7 @@ function handleTaxCalcClick_(e){
   } else if (action === 'download-gf-efile'){
     const errs = gfValidateEfileInputs_();
     if (errs.length){ renderGfEfileResult_(); return; }
+    if (!tcPendingConfirmOk_('전자신고 파일을 만들')) return; // [small0] 확인 전 칸 알림
     const bytes = gfBuildEfileBytes_();
     const blob = new Blob([bytes], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
@@ -16724,6 +16746,7 @@ function handleTaxCalcClick_(e){
   } else if (action === 'download-tr-efile'){
     const errs = trValidateEfileInputs_();
     if (errs.length){ renderTrEfileResult_(); return; }
+    if (!tcPendingConfirmOk_('전자신고 파일을 만들')) return; // [small0] 확인 전 칸 알림
     const bytes = trBuildEfileBytes_();
     const blob = new Blob([bytes], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
