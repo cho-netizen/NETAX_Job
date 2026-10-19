@@ -70,6 +70,8 @@ function caseProcAiSpots_(body) {
   spots.filter(function (s) { return !CASEPROC_AI_GAS_SPOTS_[s.이유] && s.이유 !== '빈 칸'; }).forEach(function (s) {
     const it = byId[s.자리], a = (it && it.ask) || {}, aj = a.aiJudge;
     if (/^cxai:/.test(s.자리) || (aj && aj.sure === '확실' && aj.value !== '' && aj.value != null)) { tiers[aj && aj.by === 'gas' ? 'GAS' : '저비용']++; return; } // 교차검증(GAS)·저비용이 이미 정함 — 세무사님 확인만
+    // [밤샘 2바퀴] 특수관계·§101 시가 질문은 AI가 값도 의견도 못 붙이는 칸(세무사님 확인 절차) — AI를 거치지 않고 바로 질문으로
+    if (CASEPROC_AI_RELATION_RE_.test(String(s.자리))) { tiers.질문++; return; }
     const tp = caseProcAiTopic_([s.자리, s.이유, it && it.text, a.label, a.target].join(' '));
     s.topic = tp.topic;
     if (a.route === 'lead') { s.tier = '총괄'; lead.push(s); return; }                       // 2번 교차검증이 표대로 총괄로 보냄
@@ -340,6 +342,8 @@ function caseProcAiFinish_(body) {
   // [GAS 고도화 ①] 총괄 AI 판단을 2번 기록 모양(kind 'cx')으로 — 비용은 이번 지휘 비용을 판단 수로 나눠 붙임. 세무사님 수정은 다음 처리 때 2번 0) 단계가 붙인다
   if (run.mode === 'ai' && (ctx.cxItems || []).length) caseProcAiLogCx_(c, CASEPROC_AI_DIRECTOR_MODEL_, run.won / CASEPROC_AI_KRW_, ctx.cxItems, 1);
   // [GAS 고도화 ③] 빠진 도구 — AI가 남긴 것 + 자동으로 잡은 것(없는 도구를 부르려 함·추론 값)
+  // [밤샘 1바퀴] 입수 구멍도 빠진 도구로 — 종류는 아는데 서류 규칙이 값을 못 뽑은 서류(사건 이름·파일 이름 없이 종류·장 수만)
+  Object.keys(body.inGap || {}).forEach(function (k) { if (k.indexOf('(참고') !== 0) run.gaps.push({ want: '서류 규칙 보완 — ' + caseProcAiCut_(k, 30) + ' ' + (Number(body.inGap[k]) || 0) + '장: 종류는 아는데 값을 못 뽑음', kind: '값을 안 돌려줌', tool: '서류 규칙', auto: true }); });
   caseProcAiLogGaps_(c, run.gaps);
   try { CacheService.getScriptCache().remove(caseProcAiCtxKey_(caseId)); } catch (e) {}
   const applied = run.decisions.filter(function (d) { return /^반영 —/.test(d.결과 || ''); }).length;

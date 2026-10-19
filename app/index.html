@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 15:45 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 16:13 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -51690,7 +51690,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     st.setStep('ai', '🔄', 'AI가 판단할 자리 세는 중…');
     var ai = { won: 0, round: 0, messages: [], stop: '', calls: 0 };
     var finish = function(mode, extra){
-      return callGas('case_proc_ai', Object.assign({ caseId: st.caseId, step: 'finish', mode: mode, won: ai.won, rounds: ai.round, stop: ai.stop, spots: (ai.spots && ai.spots.spots) || [], tiers: (ai.spots && ai.spots.tiers) || null }, extra || {})).catch(function(){ return null; });
+      return callGas('case_proc_ai', Object.assign({ caseId: st.caseId, step: 'finish', mode: mode, won: ai.won, rounds: ai.round, stop: ai.stop, spots: (ai.spots && ai.spots.spots) || [], tiers: (ai.spots && ai.spots.tiers) || null, inGap: (ai.spots && ai.spots.inGap) || null }, extra || {})).catch(function(){ return null; });
     };
     var fallback = function(why){
       st.setStep('ai', '⚠', why + ' — 지금 GAS 순서로 이어갑니다');
