@@ -411,6 +411,57 @@
     return o.result();
   };
 
+  // ───────── 물납(증여·상속 공통 탭 "물납 적격판정" 도구) ─────────
+  //  ctx = { pk: {input, result}(lastPropertyInKindInput_·lastPropertyInKindResult_ — 적용 가능일 때만 결과가 남음), person(신청인 = 상속인 명부 첫 행 — 지금 인쇄와 같음),
+  //          phone·email(신고인 칸 — 명부 첫 행이 신고인일 때만), office(피상속인 관할 세무서), taxAgent }
+  /* global lastPropertyInKindInput_, lastPropertyInKindResult_ */
+  function pkFromApp() {
+    var inp = typeof lastPropertyInKindInput_ !== 'undefined' ? lastPropertyInKindInput_ : null;
+    var res = typeof lastPropertyInKindResult_ !== 'undefined' ? lastPropertyInKindResult_ : null;
+    return (inp && res) ? { input: inp, result: res } : null;
+  }
+  function heirsCtx(extra) {
+    try { return withIhb(H.ctxFromApp.상속(extra)); } catch (e) {
+      var hs = (typeof inheritanceHeirs !== 'undefined' && inheritanceHeirs) ? inheritanceHeirs : [];
+      return Object.assign({ r: null, heirs: hs.map(function (h) { return { name: h.name || '', regNo: h.regNo || '', relation: h.relation || '', address: h.address || '', addressDong: h.addressDong || '', addressHo: h.addressHo || '', isReporter: !!h.isReporter }; }),
+        phone: H.el('ihReporterPhone'), email: H.el('ihReporterEmail'), taxAgent: H.agent(),
+        deceased: { name: H.el('ihDeceasedName'), regNo: H.el('ihDeceasedRegNo'), deathDate: H.el('ihDeathDate'), taxOffice: H.el('ihDeceasedTaxOffice') } }, extra || {});
+    }
+  }
+  function pkCtx(extra) {
+    var pk = pkFromApp(); if (!pk) return null;
+    return Object.assign(heirsCtx(extra), { pk: pk });
+  }
+  // 물납 신청서 공통 머리(①~⑤, ⑦⑧, 신청인 서명·세무서) — 13호·14호의2
+  function pkHead(o, ctx, cultural) {
+    var inp = (ctx.pk || {}).input || {}, h = firstHeir(ctx), dc = ctx.deceased || {};
+    o.need('①', h.name, '① 신청인 성명').need('②', h.regNo, '② 주민등록번호').need('③', H.fullAddr(h), '③ 주소');
+    var ph = heirPhone(ctx, h);
+    if (ph) o.set('③@전화번호', ph); else o.miss('③ 전화번호(☎)', '상속인 명부에 전화번호 칸 없음(신고인 전화번호는 명부 첫 행이 신고인일 때만 씀)');
+    if (h.isReporter && has(ctx.email)) o.set('④', ctx.email); else o.miss('④ 전자우편주소', '상속인 명부에 전자우편 칸 없음(신고인 전자우편은 명부 첫 행이 신고인일 때만 씀)');
+    o.note('⚠ 신청인 = 상속인 명부 첫 행(지금 인쇄와 같음). 다른 상속인도 신청하면 직접 적으세요');
+    if (n(inp.inheritanceTaxPayable) > 0) o.set('⑤', n(inp.inheritanceTaxPayable)); else o.miss('⑤ 납부세액', '물납 도구 입력 없음(상속세 납부세액)');
+    o.miss('⑦ 유형([ ]신고분 [ ]고지분' + (cultural ? '' : ' [ ]연부연납분') + ')', '계산기에 없음');
+    o.miss('⑧ 납부기한', '계산기에 없음');
+    ymdSet(o, '신청일', ctx.신고일, '신청일', 'ctx.신고일 없음(계산기에 없음)');
+    o.need('신청인서명', h.name, '신청인(서명)');
+    if (has(dc.taxOffice)) o.set('세무서', H.officeName(dc.taxOffice)); else o.miss('세무서', '피상속인 관할 세무서 입력 없음');
+  }
+
+  // ───────── 상증 별지 제13호서식 — 상속세 물납(변경, 철회)신청서(법 §73, 시행령 §70·§72~§75) ─────────
+  //  값 출처: 지금 인쇄 propertyInKindPaymentPrintFormPageHtml_(provision = general) — 신청인 성명·주민번호(명부 첫 행), 상속세 납부세액(화면 ikTaxPayable).
+  //  예전 인쇄 번호와 다름: 예전 ③ 상속세 납부세액 → 서식 ⑤, 예전 ④ "물납신청가능세액 한도"(일반 물납은 엔진이 한도를 안 세어 늘 0원) → 서식 ⑥은 비움(계산기에 없음).
+  mappers['상속13호'] = function (ctx) {
+    var o = new Out(), pk = ctx.pk || {}, inp = pk.input || {}, res = pk.result || {};
+    pkHead(o, ctx, false);
+    o.miss('⑥ 물납신청세액', '계산기에 없음(일반 물납 한도 — 시행령 §73①: 물납 충당 부동산·유가증권 가액에 대한 납부세액과 납부세액 − (금융재산 − 금융채무 + 상장유가증권) 중 적은 금액 — 를 엔진이 세지 않음)');
+    o.miss('⑨⑩⑪⑫⑬⑭⑮⑯⑰ 물납대상 재산명세(종류·소재지·평가기준일·평가기준·단위당가액·수량·총액·비고·계)', '계산기에 없음(물납 도구는 요건 판정용 합계만 받음 — 작성방법 3의 순서대로 직접 적음)');
+    o.miss('(변경·철회) 신청 구분([ ]최초 [ ]변경 [ ]철회)', '계산기에 없음');
+    if (has(res.부동산유가증권비율)) o.note('물납 요건(법 §73①, 엔진 판정 "적용 가능"): 부동산·유가증권 ' + n(inp.realEstateSecuritiesValue) + '원 ÷ 상속재산가액 ' + n(inp.totalInheritanceValue) + '원 = ' + pct2(res.부동산유가증권비율) + '%(1/2 초과), 납부세액 2천만원 초과, 납부세액 > 금융재산 ' + n(inp.financialAssetValue) + '원');
+    o.note('⚠ 법 §73①1호의 상속재산가액에 더하는 증여재산은 "상속인·수유자가 받은 것"만, 3호 금융재산엔 가산 증여재산을 넣지 않음 — 물납 도구는 입력한 값 그대로 비교함');
+    return o.result();
+  };
+
   // ───────── 언제 찍나 ─────────
   function instIh(c) { var i = c.inst || instFromApp(); return i && i.input && i.input.taxType === 'inheritance' ? i : null; }
   var WHEN = {
@@ -448,6 +499,9 @@
   // 결정(경정)청구 — 지금 인쇄처럼 경정청구 도구 계산이 있으면(PRINT_REGISTRY_ cr.isReady). 신고 묶음(plan)엔 넣지 않음(신고 뒤 따로 내는 청구서)
   ctxFor['공통16호'] = function (extra) { return crCtx(extra); };
   ready['공통16호'] = function () { return typeof lastCorrectionClaimInput_ !== 'undefined' && !!lastCorrectionClaimInput_; };
+  // 물납 — 지금 인쇄처럼 물납 도구가 "적용 가능"으로 판정했을 때(PRINT_REGISTRY_ propertyinkind.isReady). 일반 = 13호, 문화유산 등 = 14호의2
+  ctxFor['상속13호'] = function (extra) { var c = pkCtx(extra); return (c && c.pk.input.provision !== 'cultural_heritage') ? c : null; };
+  ready['상속13호'] = function () { var pk = pkFromApp(); return !!(pk && pk.input.provision !== 'cultural_heritage'); };
 
   return { 묶음: '상속부속B', forms: forms, mappers: mappers, plan: plan, ctxFor: ctxFor, ready: ready,
     ihbFromInput: ihbFromInput, ihbFromDom: ihbFromDom };

@@ -79,5 +79,12 @@ module.exports = function (E, H) {
   var c8 = ihCtx(Object.assign({}, BASE, { taxableEstateAmount: 2000000000, hasSpouse: true }), { heirs: HEIRS3, 신고일: '2026-04-10' });
   L.push({ name: '국기8호_상속인3명', forms: X.plan('상속', c8).filter(function (it) { return it.formKey === '국기8호'; }), ctx: c8 });
 
+  // ⑤ 상속13호 — 일반 물납(법 §73): ②의 상속(납부세액 3,186,450,000), 부동산·유가증권 70억 ÷ 상속재산가액 90억 = 77.8%(1/2 초과), 금융재산 5억 < 납부세액 → 엔진 "적용 가능"
+  var pkIn = { provision: 'general', inheritanceTaxPayable: rIn.납부세액, financialAssetValue: 500000000, realEstateSecuritiesValue: 7000000000, totalInheritanceValue: 9000000000 };
+  var pkRes = E.calculatePropertyInKindPaymentEligibilityJS(clone(pkIn));
+  if (!pkRes.적용가능여부) throw new Error('물납 시험 사례가 적용 불가로 나옴');
+  var c13 = ihCtx(pIn, { pk: { input: pkIn, result: pkRes } });
+  L.push({ name: '상속13호_일반물납', forms: [{ formKey: '상속13호', ctx: c13 }], ctx: c13 });
+
   return L;
 };
