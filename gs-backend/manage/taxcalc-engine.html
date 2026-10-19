@@ -4163,6 +4163,7 @@
     };
   };
 
+  // [2026.10.19 근거 정정] 이 이율은 상증령 §15·§16(부과 당시 율 하나)·§69의3·조특령 §27의7(기간별)에서 쓴다 — 1일 고정율 조문은 DAILY_FIXED_RATE_HISTORY_(아래 사후관리 이자 계산 참고)
   // 국세기본법시행규칙§19조의3(국세환급가산금의 이율, 영§43조의3② 위임) 개정이력 — 상증세법시행령
   // §18조의2⑯3호(가업상속공제)·§18조의3⑧⑩(영농상속공제)·§72조의2⑦⑨(납부유예) 등 사후관리위반
   // 추징세액의 이자상당액은 모두 "부과 당시의 이 이율을 365로 나눈 율"을 일수만큼 곱해서 계산한다.
@@ -4203,29 +4204,68 @@
     return segments;
   }
 
-  // 사후관리 위반 시 추징세액에 붙는 이자상당액 계산 — Code.js toolCalculateClawbackInterest와 동일 로직.
-  // 이자 기산일부터 추징사유 발생일까지를 이율 변경일 기준으로 나눠, 각 구간에 그 시점 국세환급가산금
-  // 이율(365분의1)을 적용해 합산한다.
+  // [2026.10.19 세액 고침] 사후관리 위반 이자상당액 — 조문마다 율이 다르다(법제처 원문, maps/사후관리이자율_조사.md).
+  //  예전엔 모든 경우에 "국세환급가산금 이율을 기간별로 나눠 365로 나눈 율"을 써서, 조특법 §30의5·§30의6·§71 등(1일 10만분의 22 고정율)은
+  //  크게 적게(예: 1억·2020.4.1~2025.6.30 → 11,406,302원 ↔ 원문 44,229,000원), 상증법 §18의2·§18의3(부과 당시 율 하나)은 다르게 나왔다.
+  //  갈래 A 'assessment' — 상증법 §18의2·§18의3(시행령 §15·§16): 상속세 부과(신고) 당시 국세기본법 시행령 §43의3② 이자율 하나 × 일수 ÷ 365 (서식 부표6)
+  //  갈래 B 'split'      — 상증법 §72의2·조특법 §30의7(시행령 §69의3·조특령 §27의7): 이율이 바뀐 날마다 나눠 그때 율 ÷ 365, 재차 납부유예(⑥)면 × 50% (부표7·별지11호의13)
+  //  갈래 C 'daily'      — 상증법 §53의2(혼인·출산), 조특법 §30의5·§30의6·§71·§70·§63 준용: 1일 고정율 — 2019.2.11까지 1만분의 3, 2022.2.14까지 10만분의 25,
+  //                        그 뒤 10만분의 22(국세기본법 시행령 §27의4·조특령 §11의2, 부칙 "시행 전 기간분은 종전 율") (부표4·별지11호의7·11호의10·52호의2)
+  //  일수는 기산일(신고기한 다음 날)부터 끝날까지 양끝 포함("다음 날부터 ~까지"), 이자상당액은 원 미만 버림.
+  const DAILY_FIXED_RATE_HISTORY_ = [{ from: '1900-01-01', rate: 0.0003 }, { from: '2019-02-12', rate: 0.00025 }, { from: '2022-02-15', rate: 0.00022 }];
+  function nextDayStr_(d) { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() + 1); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); }
+  function splitByHistory_(startStr, endInclusiveStr, hist) {
+    const endEx = nextDayStr_(endInclusiveStr);
+    if (!(endEx > startStr)) return [];
+    const cuts = [startStr].concat(hist.map(function (h) { return h.from; }).filter(function (d) { return d > startStr && d < endEx; })).concat([endEx]);
+    const rateAt = function (d) { let r = hist[0].rate; hist.forEach(function (h) { if (d >= h.from) r = h.rate; }); return r; };
+    const out = [];
+    for (let i = 0; i < cuts.length - 1; i++) {
+      const days = Math.round((new Date(cuts[i + 1] + 'T00:00:00') - new Date(cuts[i] + 'T00:00:00')) / 86400000);
+      if (days > 0) out.push({ from: cuts[i], to: nextDayStr_(cuts[i + 1]) === cuts[i + 1] ? cuts[i + 1] : addDaysStr_(cuts[i + 1], -1), days: days, rate: rateAt(cuts[i]) });
+    }
+    return out;
+  }
+  function addDaysStr_(d, n) { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() + n); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); }
+  const CLAWBACK_METHOD_LABEL_ = { assessment: '부과(신고) 당시 이자율 하나 ÷ 365 — 상증법 §18의2·§18의3', split: '이율 바뀐 날마다 나눈 이자율 ÷ 365 — 상증법 §72의2·조특법 §30의7', daily: '1일 고정율(1만분의 3 → 10만분의 25 → 10만분의 22) — 상증법 §53의2, 조특법 §30의5·§30의6·§71·§70 등' };
   window.calculateClawbackInterestJS = function (p) {
     p = p || {};
     const taxAmount = Number(p.clawedBackTaxAmount);
     if (!taxAmount || taxAmount <= 0) return { error: '사후관리 위반으로 결정된 추징세액이 필요합니다.' };
-    if (!p.startDate || !p.endDate) return { error: '이자 기산일과 추징사유 발생일이 필요합니다.' };
-    const segments = splitDateRangeByRate_(p.startDate, p.endDate);
-    if (!segments.length) return { error: '추징사유 발생일이 이자 기산일보다 빠르거나 같습니다.' };
-    let totalInterest = 0;
-    const segmentDetail = segments.map(function (seg) {
-      const interest = Math.round(taxAmount * seg.days * seg.rate / 365);
-      totalInterest += interest;
-      return { 시작일: seg.from, 종료일: seg.to, 일수: seg.days, 연이율: seg.rate, 이자상당액: interest };
+    if (!p.startDate || !p.endDate) return { error: '이자 기산일과 끝나는 날(추징사유 발생일·신고한 날)이 필요합니다.' };
+    const method = ['assessment', 'split', 'daily'].indexOf(p.method) !== -1 ? p.method : '';
+    if (!method) return { error: '이자율 방식(조문)을 고르세요 — 상증법 §18의2·§18의3은 "부과 당시 율", §72의2·조특법 §30의7은 "기간별 율", 상증법 §53의2·조특법 §30의5·§30의6·§71 등은 "1일 고정율"입니다.' };
+    const endEx = nextDayStr_(p.endDate);
+    if (!(endEx > p.startDate)) return { error: '끝나는 날이 이자 기산일보다 빠릅니다.' };
+    let segs;
+    if (method === 'daily') segs = splitByHistory_(p.startDate, p.endDate, DAILY_FIXED_RATE_HISTORY_).map(function (s) { return Object.assign(s, { 일율: s.rate }); });
+    else if (method === 'split') segs = splitByHistory_(p.startDate, p.endDate, REFUND_INTEREST_RATE_HISTORY);
+    else {
+      const asOf = String(p.assessmentDate || '').slice(0, 10) || formatDateStr_(new Date());
+      const days = Math.round((new Date(endEx + 'T00:00:00') - new Date(p.startDate + 'T00:00:00')) / 86400000);
+      segs = [{ from: p.startDate, to: p.endDate, days: days, rate: refundInterestRateAt_(asOf), asOf: asOf }];
+    }
+    const half = method === 'split' && !!p.isReDeferral;
+    let raw = 0;
+    const segmentDetail = segs.map(function (seg) {
+      const v = method === 'daily' ? taxAmount * seg.days * seg.rate : taxAmount * seg.days * seg.rate * (half ? 0.5 : 1) / 365;
+      raw += v;
+      return method === 'daily'
+        ? { 시작일: seg.from, 종료일: seg.to, 일수: seg.days, 일이율: seg.rate, 이자상당액: Math.floor(v + 1e-6) }
+        : { 시작일: seg.from, 종료일: seg.to, 일수: seg.days, 연이율: seg.rate * (half ? 0.5 : 1), 이자상당액: Math.floor(v + 1e-6) };
     });
-
+    const totalInterest = Math.floor(raw + 1e-6);
     return {
-      추징세액: taxAmount, 이자기산일: p.startDate, 추징사유발생일: p.endDate,
+      추징세액: taxAmount, 이자기산일: p.startDate, 끝나는날: p.endDate, 추징사유발생일: p.endDate,
+      이자율방식: method, 이자율방식_설명: CLAWBACK_METHOD_LABEL_[method] + (half ? ' (재차 납부유예 — 율 × 50%)' : ''),
+      부과당시기준일: method === 'assessment' ? segs[0].asOf : undefined,
       구간별_이자상당액: segmentDetail,
       이자상당액_합계: totalInterest,
       납부할세액: taxAmount + totalInterest,
-      안내: '이자 기산일은 당초 감면·특례 적용받은 증여세(또는 상속세)의 과세표준 신고기한 다음 날, 추징사유 발생일은 사후관리 위반 사유가 발생한 날입니다. 이율은 국세기본법시행규칙§19조의3(국세환급가산금이율) 개정이력에 따라 구간별로 자동 적용됩니다.'
+      안내: '일수는 이자 기산일(당초 신고기한 다음 날)부터 끝나는 날까지 양끝을 넣어 셉니다. 끝나는 날: 대부분 추징사유 발생일, 상증법 §53의2(혼인·출산 공제 추징)는 수정신고·기한후신고를 한 날(시행령 §46④), 조특법 §70(농지대토)은 납부일. ' +
+        (method === 'assessment' ? '율은 상속세 부과(신고) 당시 국세환급가산금 이율(' + (segs[0].rate * 100).toFixed(1) + '%, ' + segs[0].asOf + ' 기준) 하나입니다(상증법 시행령 §15·§16). '
+          : method === 'split' ? '율은 국세환급가산금 이율이 바뀐 날마다 나눠 적용합니다(상증법 시행령 §69의3·조특령 §27의7)' + (half ? ', 재차 납부유예라 50%를 곱했습니다. ' : '. ')
+            : '율은 1일 고정율입니다(2019.2.11까지 1만분의 3, 2022.2.14까지 10만분의 25, 그 뒤 10만분의 22 — 부칙대로 기간을 나눔). ') + '원 미만은 버립니다.'
     };
   };
 

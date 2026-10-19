@@ -2404,15 +2404,18 @@ const DRIVE_TOOLS = [
   },
   {
     name: 'calculate_clawback_interest',
-    description: '증여세·상속세 각종 특례(영농자녀 증여농지 감면 §71, 창업자금 증여세 과세특례 §30의5, 가업승계 주식등 증여세 과세특례 §30의6 등)의 사후관리 요건을 위반해 추징되는 경우, 추징세액에 붙는 이자상당액을 계산한다([별지 제52호의2서식]/[별지 제11호의7서식]/[별지 제11호의10서식] 등 공통 계산식). 이자상당액 = 추징세액 × 일수 × 국세환급가산금이율(국세기본법시행규칙§19조의3, 구간별로 자동 적용).',
+    description: '증여세·상속세 각종 특례(영농자녀 증여농지 감면 §71, 창업자금 증여세 과세특례 §30의5, 가업승계 주식등 증여세 과세특례 §30의6, 혼인·출산 공제 추징 §53의2, 가업·영농상속 §18의2·§18의3, 납부유예 §72의2·조특법 §30의7 등)의 사후관리 요건을 위반해 추징되는 경우, 추징세액에 붙는 이자상당액을 계산한다. 이자율은 조문마다 다르므로 method를 꼭 고른다: daily(1일 고정율 — 2019.2.11까지 1만분의 3, 2022.2.14까지 10만분의 25, 그 뒤 10만분의 22: 상증법 §53의2, 조특법 §30의5·§30의6·§71·§70, 서식 부표4·별지11호의7·11호의10·52호의2), assessment(상속세 부과 당시 국세환급가산금 이율 하나 ÷ 365: 상증법 §18의2·§18의3, 부표6), split(이율 바뀐 날마다 나눔 ÷ 365, 재차 납부유예면 × 50%: 상증법 §72의2·조특법 §30의7, 부표7·별지11호의13). 일수는 양끝 포함, 원 미만 버림.',
     input_schema: {
       type: 'object',
       properties: {
         clawedBackTaxAmount: { type: 'number', description: '사후관리 위반으로 결정된 추징세액(원) — 당초 감면·특례로 줄어들었던 세액. 세액 자체의 산정은 이 도구가 하지 않으므로 별도로 계산해서 입력한다.' },
         startDate: { type: 'string', description: '이자 기산일(YYYY-MM-DD) — 당초 감면·특례 적용받은 증여세(또는 상속세)의 과세표준 신고기한 다음 날.' },
-        endDate: { type: 'string', description: '추징사유 발생일(YYYY-MM-DD) — 사후관리 위반 사유가 발생한 날.' }
+        endDate: { type: 'string', description: '끝나는 날(YYYY-MM-DD) — 대부분 추징사유 발생일, 상증법 §53의2는 수정신고·기한후신고를 한 날, 조특법 §70은 납부일.' },
+        method: { type: 'string', enum: ['daily', 'assessment', 'split'], description: '이자율 방식(조문별) — 위 설명 참고. 반드시 넣는다.' },
+        assessmentDate: { type: 'string', description: 'method=assessment일 때 상속세 부과(신고) 당시 날짜(YYYY-MM-DD). 비우면 오늘.' },
+        isReDeferral: { type: 'boolean', description: 'method=split이고 재차 납부유예 허가(§72의2⑥·조특법 §30의7)를 받았으면 true — 율 × 50%.' }
       },
-      required: ['clawedBackTaxAmount', 'startDate', 'endDate']
+      required: ['clawedBackTaxAmount', 'startDate', 'endDate', 'method']
     }
   },
   {
