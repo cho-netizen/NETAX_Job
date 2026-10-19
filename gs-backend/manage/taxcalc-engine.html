@@ -1380,13 +1380,19 @@
       //  예전엔 §97의3 특례 주택이면 중과 판정 자체를 건너뛰었다(근거 없음). §97의4(rental_long)는 범위 밖이라 그대로 둔다(따로 확인 과제).
       //  중과가 붙을 때 장특공은 §97의3①이 "같은 조(§95) 제2항에도 불구하고" 특례율을 주므로 70%·50%를 그대로 둔다(해석 A, 기본) —
       //  §95② 본문 괄호(§104⑦ 자산 제외)로 장특공을 빼는 해석 B는 확실성 보통이라 판단 대기로 나란히 보인다(t._rental9703SurchargeNoLt).
-      const rentalSpecialSkipsSurcharge_ = isRentalSpecial && t.rentalSpecialType !== 'rental_general';
+      // [2026.10.20 회장 결정 N9] §97의4(rental_long)도 같은 원리 — 장특공 추가공제일 뿐 중과를 빼 주는 문구가 없다. 중과 여부는 시행령 §167의3으로만.
+      //  §97의4①은 "§95②에 따른 보유기간별 공제율에 추가공제율을 더한"이라 §97의3의 "§95②에도 불구하고"가 없고, 중과 주택은 §95② 본문 괄호(§104⑦ 자산 제외)로
+      //  장특공 대상이 아니다 — 중과가 붙으면 장특공 0을 기본(해석 A), 표1 + 추가공제 유지는 판단 대기 해석 B(t._rental9704SurchargeKeepLt)로 나란히.
+      const rentalSpecialSkipsSurcharge_ = isRentalSpecial && ['rental_general', 'rental_long'].indexOf(t.rentalSpecialType) === -1;
       isMultiHouseSurcharge = !isOneHouse && !rentalSpecialSkipsSurcharge_ && !!t.isAdjustedArea && multiHouseCount >= 2 && !isMultiHouseSurchargeExcluded && !isReductionHouseExcluded_
         && !t.isMultiHouseRentalExemption
         && multiSurchargeRateAt_(t.transferDate, multiHouseCount) > 0;
       if (isMultiHouseSurcharge && isRentalSpecial && t.rentalSpecialType === 'rental_general') {
         if (t._rental9703SurchargeNoLt) { isRentalSpecial = false; ltRate = 0; }
         else acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '조정대상지역 다주택 중과 대상입니다(소득세법 §104⑦·시행령 §167의3) — 장기일반민간임대 특례(조특법 §97의3)에는 중과를 빼 주는 규정이 없어 중과 세율을 더하고, 장특공은 §97의3① "§95②에도 불구하고"대로 특례율을 그대로 적용했습니다. 이 주택이 시행령 §167의3①2호 장기임대주택 요건(등록·기준시가·임대료 5% 증액 제한 등)을 갖추면 양도인 카드의 "장기임대주택 등 일반세율 적용(별지 83호의6)"을 체크하세요.';
+      } else if (isMultiHouseSurcharge && isRentalSpecial && t.rentalSpecialType === 'rental_long') {
+        if (!t._rental9704SurchargeKeepLt) { isRentalSpecial = false; ltRate = 0; }
+        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '조정대상지역 다주택 중과 대상입니다(소득세법 §104⑦·시행령 §167의3) — 장기임대주택 추가공제(조특법 §97의4)에는 중과를 빼 주는 규정이 없습니다. 장기임대주택으로 중과 제외를 받으려면 주택 카드의 "별지 83호의6 일반세율 적용"을 고르세요.';
       } else if (isMultiHouseSurcharge) ltRate = 0;
     }
 
@@ -5202,14 +5208,19 @@
   window.checkCorrectionClaimEligibilityJS = function (p) {
     p = p || {};
     if (!p.statutoryFilingDeadline) return { error: '법정신고기한(YYYY-MM-DD)이 필요합니다.' };
-    const ordinaryDeadline = addYearsToDateStr_(p.statutoryFilingDeadline, 5);
-    if (!ordinaryDeadline) return { error: '법정신고기한 형식이 올바르지 않습니다.' };
     const today = p.today || formatDateStr_(new Date());
+    // [2026.10.20 법령 세션 연혁 대조] 국세기본법 §45의2 기간은 "청구하는 분부터"(부칙) — 청구일(claimDate, 없으면 오늘) 기준:
+    //  ① 통상 5년은 2015.1.1. 이후 청구(법률 제12848호 부칙 제7조①), 그 전 청구는 3년. ② 후발적 사유 3개월은 2016.1.1. 이후 청구(법률 제13552호 부칙 제2조①),
+    //  그 전은 2개월 — 종전 2개월이 2016.1.1. 전에 이미 지난 분은 종전대로(같은 부칙 제2조②). 기한후신고자는 2020.1.1. 이후 청구분부터(법률 제16841호, 부칙 제5조).
+    const claimDate_ = String(p.claimDate || today).slice(0, 10);
+    const ordinaryYears_ = claimDate_ < '2015-01-01' ? 3 : 5;
+    const ordinaryDeadline = addYearsToDateStr_(p.statutoryFilingDeadline, ordinaryYears_);
+    if (!ordinaryDeadline) return { error: '법정신고기한 형식이 올바르지 않습니다.' };
 
     const result = {
       법정신고기한: p.statutoryFilingDeadline,
       통상경정청구기한_5년: ordinaryDeadline,
-      통상청구가능여부: today <= ordinaryDeadline,
+      통상청구가능여부: today <= ordinaryDeadline && !(p.isLateFiling && claimDate_ < '2020-01-01'), 통상경정청구기간_년: ordinaryYears_,
       안내: ['§45의2①본문 — 당초 신고(또는 수정신고)한 과세표준·세액이 과다하거나 결손금·세액공제·환급세액이 과소한 경우, ' + ordinaryDeadline + '까지 관할 세무서장에게 경정청구할 수 있습니다.']
     };
 
@@ -5233,7 +5244,8 @@
       if (!subsequentEventLabels[p.subsequentEventType]) {
         result.안내.push('subsequentEventType 값이 올바르지 않습니다: ' + Object.keys(subsequentEventLabels).join(', ') + ' 중 하나여야 합니다.');
       } else {
-        const eventWindow = addMonthsToDateStr_(p.subsequentEventKnownDate, 3);
+        const two_ = addMonthsToDateStr_(p.subsequentEventKnownDate, 2);
+        const eventWindow = (claimDate_ < '2016-01-01' || (two_ && two_ < '2016-01-01')) ? two_ : addMonthsToDateStr_(p.subsequentEventKnownDate, 3); // 2016.1.1. 전 청구·그 전에 2개월이 지난 분은 2개월
         result.후발적사유_유형 = subsequentEventLabels[p.subsequentEventType];
         result.후발적사유_안날 = p.subsequentEventKnownDate;
         result.후발적사유_청구기한_3개월 = eventWindow;
@@ -10310,6 +10322,7 @@
     speculative_zone_land: { 제목: '세종 지정지역(2017.8.3.~2022.9.25.) 비사업용토지 +10%p', 조견표: '1부-04', 근거: '소득세법 §104④3호·§104의2②·시행령 §168의3①·③, 기획재정부공고 제2017-114호', A: '가산 안 함(공고 본문의 "주택" 지정 — 시행령 §168의3①1호)', B: '+10%p 가산(예정지구형 ①4호면 ③3호로 주택 외 부동산 가산)' },
     apartment_deadline_155_20: { 제목: '아파트 매입임대 양도기한(2026.10.1 개정)이 지난 뒤의 거주주택 특례(§155⑳)', 조견표: '2부-27', 근거: '소득세법 시행령 §155⑳·㉓·§167의3①2호 가목2)·나목2)·라목8)·마목4)·⑪(대통령령 제36737호)', A: '거주주택 특례에는 안 걸림(비과세 유지)', B: '걸림(특례 배제·과세) — 임대주택이 말소되지 않은 채 기한이 지난 경우' },
     // [2026.10.20 회장 결론 J05] private_debt_15(부담채무Ⅱ 추정상속재산)는 해석 A(§15①2호 기준·차감)로 확정해 내림
+    rental_9704_vs_surcharge: { 제목: '장기임대주택(조특법 §97의4) 추가공제 주택이 다주택 중과 대상일 때 장특공', 조견표: '2부-24', 근거: '조특법 §97의4①("§95②에 따른 보유기간별 공제율에" — §97의3의 "불구하고" 없음)·소득세법 §95② 본문 괄호·§104⑦·시행령 §167의3', A: '중과 세율 + 장특공 배제', B: '중과 세율 + 표1 공제율 + 추가공제율' },
     rental_9703_vs_surcharge: { 제목: '장기일반민간임대(조특법 §97의3) 주택이 다주택 중과 대상일 때 장특공 특례율', 조견표: '2부-24', 근거: '조특법 §97의3①("§95②에도 불구하고")·소득세법 §95② 본문 괄호·§104⑦·시행령 §167의3', A: '중과 세율 + 특례 공제율(70%·50%) 함께', B: '중과 세율 + 장특공 배제' },
     // [2026.10.19 서식 감사 — 작업자 자] 시행령 §97의3⑤ 임대기간 중 양도차익 — 2026.2.27 전 양도분은 산식이 법령에 없음
     rental_9703_split_pre2026: { 제목: '장기일반민간임대(§97의3) 임대기간 중 양도차익 — 2026.2.27 전 양도분 계산법', 조견표: '2부-24', 근거: '조특법 시행령 §97의3⑤(2021.2.17~2026.2.26 "기준시가를 기준으로 산정"만)', A: '(양도일 − 등록일) ÷ (양도일 − 취득일) 기준시가(지금 동작)', B: '2026.2.27 산식(임대 마지막 날 − 임대 개시일) ÷ (양도일 − 취득일)' },
@@ -10373,6 +10386,11 @@
       if (t.rentalSpecialType === 'rental_general' && t.isAdjustedArea && Number(t.multiHouseCount) >= 2) {
         const alt = txs.map(function (x, k) { return k === i ? Object.assign({}, x, { _rental9703SurchargeNoLt: true }) : x; });
         try { push('rental_9703_vs_surcharge', taxOf(run(alt)), '해석 B는 중과 세율에 장기보유특별공제 없이 계산'); } catch (e) {}
+      }
+      // [2026.10.20 N9] §97의4 + 조정지역 다주택 — 중과가 붙은 자산만 해석 B(표1 + 추가공제 유지)를 나란히
+      if (t.rentalSpecialType === 'rental_long' && t.isAdjustedArea && Number(t.multiHouseCount) >= 2) {
+        const alt = txs.map(function (x, k) { return k === i ? Object.assign({}, x, { _rental9704SurchargeKeepLt: true }) : x; });
+        try { push('rental_9704_vs_surcharge', taxOf(run(alt)), '해석 B는 중과 세율에 표1 공제율 + 추가공제율'); } catch (e) {}
       }
     });
     out.안내 = notes;
