@@ -547,6 +547,8 @@ const DRIVE_TOOLS = [
         depreciationDeductedAsBusinessExpense: { type: 'number', description: '사업용자산(예: 부동산임대업 건물)을 양도하는 경우 — 보유기간 중 사업소득금액 계산시 감가상각비로 필요경비에 산입했거나 산입할 금액(원, §97③). 있으면 취득가액에서 이 금액을 차감한다(이중공제 방지). 사업용이 아니면 생략.' },
         businessSuccessionDeductionRatio: { type: 'number', description: '상속받은 이 자산 중 가업상속공제(상증세법§18의2)가 적용된 비율(0~1). 이 값이 있고 decedentAcquisitionValue도 입력하면, 취득가액을 "피상속인 취득가액×이 비율+상속개시일현재가액×(1-이 비율)"로 조정한다(§97의2④). decedentAcquisitionDate도 함께 입력하면 장기보유특별공제의 보유기간도 그 비율만큼 피상속인 취득일부터 기산해 가중평균한다(§95④단서) — 세율판정용 보유기간(단기양도 여부)은 이 예외가 없어 상속개시일(acquisitionDate) 기준 그대로 적용된다. 일반 상속재산(가업상속공제 미적용)이면 이 필드들을 전부 생략하면 된다.' },
         decedentAcquisitionValue: { type: 'number', description: 'businessSuccessionDeductionRatio와 함께 — 피상속인이 이 자산을 취득할 당시의 취득가액(원, §97①1호 기준). 취득가액 가중평균 계산에 쓰인다.' },
+        isInheritedAsset: { type: 'boolean', description: '상속받은 자산이면 true — 세율(단기 1년·2년) 판정 보유기간을 피상속인 취득일(inheritedDecedentAcquisitionDate)부터 센다(소득세법 §104②1호). acquisitionDate에는 상속개시일을 그대로 넣는다(장특공·취득가액 기준).' },
+        inheritedDecedentAcquisitionDate: { type: 'string', description: 'isInheritedAsset일 때 — 피상속인이 그 자산을 취득한 날(YYYY-MM-DD).' },
         decedentAcquisitionDate: { type: 'string', description: 'businessSuccessionDeductionRatio와 함께 — 피상속인이 이 자산을 취득한 날(YYYY-MM-DD). 장기보유특별공제 보유기간의 가중평균 계산에 쓰인다(생략하면 장특공제 보유기간은 일반 상속재산과 동일하게 상속개시일부터 계산).' },
         comparableTransactionPrice: { type: 'number', description: 'acquisitionPrice를 모를 때 — 양도일 또는 취득일 전후 3개월 이내 매매사례가액(원, §176의2③1호). 취득가액 결정에서 최우선으로 쓰인다.' },
         appraisalValue: { type: 'number', description: 'acquisitionPrice·comparableTransactionPrice를 모두 모를 때 — 감정가액(원, §176의2③2호).' },

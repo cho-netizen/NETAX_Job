@@ -710,6 +710,10 @@
 
     const holdingYears = fullYearsElapsed(deemedAcquisitionDate(t.acquisitionDate), t.transferDate);
     if (holdingYears < 0) return { error: '양도일이 취득일보다 빠릅니다.' };
+    // [2026.10.19 세액 고침] §104②1호 — 세율(단기·분양권 등 1년·2년 판정)의 보유기간은 상속받은 자산이면 "피상속인이 그 자산을 취득한 날"부터.
+    //  예전엔 상속개시일부터 세어 상속 뒤 2년 안 양도에 단기세율(40~70%)이 잘못 붙을 수 있었다. 장특공 보유기간은 §95④대로 상속개시일부터(위 holdingYears 그대로).
+    const decedentAcqForRate_ = (t.isInheritedAsset || bizSuccessionRatio > 0) ? (t.inheritedDecedentAcquisitionDate || t.decedentAcquisitionDate || '') : '';
+    const rateHoldingYears = decedentAcqForRate_ ? Math.max(holdingYears, fullYearsElapsed(deemedAcquisitionDate(decedentAcqForRate_), t.transferDate)) : holdingYears;
 
     // 개산공제율(시행령§163⑥1호·2호) — 원칙 3/100(3%)이나, 미등기양도자산은 3/1000(0.3%)로 10분의 1이다.
     // [2026.09 버그수정] 환산취득가액·취득당시기준시가로 취득가액을 대체한 경우는 실제 필요경비
@@ -911,7 +915,7 @@
     } else if (bizSuccessionRatio > 0 && t.decedentAcquisitionDate) {
       // §95④단서 — 가업상속공제가 적용된 비율에 해당하는 자산은 장기보유특별공제의 보유기간 기산일이
       // "피상속인이 해당 자산을 취득한 날"이다(나머지 비율은 상속개시일 기산인 일반 상속재산과 동일).
-      // §104(세율판정용 holdingYears)에는 이런 예외가 없으므로 holdingYears는 상속개시일 기준 그대로 쓴다.
+      // (세율 판정 보유기간은 §104②1호대로 피상속인 취득일부터 — rateHoldingYears. 여기 장특공은 위 §95④단서의 비율 안분)
       const decedentHoldingYears = fullYearsElapsed(deemedAcquisitionDate(t.decedentAcquisitionDate), t.transferDate);
       ltRate = longTermRateAt_(decedentHoldingYears, t.transferDate) * bizSuccessionRatio + longTermRateAt_(holdingYears, t.transferDate) * (1 - bizSuccessionRatio);
     } else {
@@ -964,7 +968,7 @@
     }
     // 분양권(§104①1호·2호·3호)은 보유기간과 무관하게 항상 60%(1년미만 70%) 단일세율이고 기본세율
     // 누진과세 대상이 될 수 없으므로(1호가 별도로 분양권 60%를 정함), 합산(pooling) 대상에서 제외한다.
-    const isPoolable = !isPresaleRight && holdingYears >= 2; // 2년 이상 보유 → 기본세율(누진) 대상, 합산 가능
+    const isPoolable = !isPresaleRight && rateHoldingYears >= 2; // 2년 이상 보유(세율 판정 보유기간 — 상속 자산은 피상속인 취득일부터) → 기본세율(누진) 대상, 합산 가능
 
     // 소득세법§114의2① — 신축 또는 증축(바닥면적합계 85㎡ 초과분만)한 건물을 취득일·증축일로부터 5년
     // 이내에 양도하면서 그 취득가액을 §97①1호나목에 따른 "감정가액 또는 환산취득가액"으로 한 경우,
@@ -982,7 +986,7 @@
 
     return {
       reconstructionDetail, rentalPeriodSplit, acquisitionPriceMethodNote,
-      holdingYears, exempt: false, isUnregistered: false, isPoolable,
+      holdingYears, rateHoldingYears, exempt: false, isUnregistered: false, isPoolable,
       transferPrice, acquisitionPrice, necessaryExpenses, assetType, isOneHouse, isRentalSpecial,
       gainBeforeDeduction, taxableGain, longTermRate: ltRate, longTermDeductionAmount, incomeAmount,
       isMultiHouseSurcharge, multiHouseCount, isNonBusinessLand: !!t.isNonBusinessLand, isEightYearFarmland: !!t.isEightYearFarmland,
@@ -1021,7 +1025,7 @@
     }
     // [2026.10.19 시점 점검 — maps/시점점검_2부.md의 경계 날짜] 아직 날짜로 갈라 계산하지 않는 규칙 — 해당하면 경고만(숫자 그대로)
     if (!core.exempt) {
-      const r_ = core.raw || {}, hy_ = Number(core.holdingYears);
+      const r_ = core.raw || {}, hy_ = Number(core.rateHoldingYears != null ? core.rateHoldingYears : core.holdingYears);
       if (d < '2021-06-01' && core.assetType === 'house' && hy_ < 2) miss.push('단기 보유 세율(그때 1년 미만 40%·1~2년 기본세율 — 법률 제17477호 부칙 제3조)');
       if (d < '2021-06-01' && core.assetType === 'presale_right') miss.push('분양권 세율(그때 조정지역 50%·그 밖 일반 자산 세율)');
       if (d >= '2018-04-01' && d < '2022-05-10' && r_.isAdjustedArea && Number(r_.multiHouseCount) >= 2 && !core.isOneHouse) miss.push('다주택 중과(한시배제는 2022-05-10 이후 양도분부터 — 그때는 중과 대상, 2021-06-01 전은 +10%p·+20%p)');
@@ -1102,13 +1106,14 @@
       }
       return { tax: tax, notes: notes };
     }
+    const rhy_ = core.rateHoldingYears != null ? core.rateHoldingYears : core.holdingYears; // 세율 판정 보유기간(§104②)
     if (core.assetType === 'presale_right') {
       // §104①1호·2호·3호 — 분양권은 보유기간 1년 미만 70%, 1년 이상은 무조건 60%(기본세율 누진 적용 없음).
-      const rate = core.holdingYears < 1 ? 0.70 : 0.60;
+      const rate = rhy_ < 1 ? 0.70 : 0.60;
       calculatedTax = Math.round(taxBase * rate);
-      appliedRateNote = '분양권 — ' + (core.holdingYears < 1 ? '보유기간 1년 미만 70%' : '60%') + ' 단일세율 적용(장기보유특별공제·기본세율누진 배제)';
-    } else if (core.holdingYears < 2 && (core.isMultiHouseSurcharge || core.isNonBusinessLand)) {
-      const rate = core.holdingYears < 1 ? (core.assetType === 'house' ? 0.70 : 0.50) : (core.assetType === 'house' ? 0.60 : 0.40);
+      appliedRateNote = '분양권 — ' + (rhy_ < 1 ? '보유기간 1년 미만 70%' : '60%') + ' 단일세율 적용(장기보유특별공제·기본세율누진 배제)';
+    } else if (rhy_ < 2 && (core.isMultiHouseSurcharge || core.isNonBusinessLand)) {
+      const rate = rhy_ < 1 ? (core.assetType === 'house' ? 0.70 : 0.50) : (core.assetType === 'house' ? 0.60 : 0.40);
       const shortTermTax = Math.round(taxBase * rate);
       const alt = surchargeBasedTax_();
       if (alt.tax > shortTermTax) {
@@ -1117,13 +1122,13 @@
         appliedRateNote = '보유기간 2년 미만이나 다주택중과·비사업용토지 가산세율 적용시 세액이 더 커서(§104④·⑦후단) 기본세율+가산율 적용 — 단기세율(' + (rate * 100) + '%) 적용시: ' + shortTermTax + '원';
       } else {
         calculatedTax = shortTermTax;
-        appliedRateNote = '보유기간 ' + (core.holdingYears < 1 ? '1년 미만' : '1년 이상 2년 미만') + ' 단기세율 ' + (rate * 100) + '% 적용(§104④·⑦후단 비교 결과 기본세율+가산율보다 큼)';
+        appliedRateNote = '보유기간 ' + (rhy_ < 1 ? '1년 미만' : '1년 이상 2년 미만') + ' 단기세율 ' + (rate * 100) + '% 적용(§104④·⑦후단 비교 결과 기본세율+가산율보다 큼)';
       }
-    } else if (core.holdingYears < 1) {
+    } else if (rhy_ < 1) {
       const rate = core.assetType === 'house' ? 0.70 : 0.50;
       calculatedTax = Math.round(taxBase * rate);
       appliedRateNote = '보유기간 1년 미만 단기세율 ' + (rate * 100) + '% 적용';
-    } else if (core.holdingYears < 2) {
+    } else if (rhy_ < 2) {
       const rate = core.assetType === 'house' ? 0.60 : 0.40;
       calculatedTax = Math.round(taxBase * rate);
       appliedRateNote = '보유기간 1년 이상 2년 미만 단기세율 ' + (rate * 100) + '% 적용';
@@ -1564,7 +1569,7 @@
       if (c.isUnregistered) return 'unregistered';
       if (c.isPoolable) return 'progressive';
       const r = (c.assetType === 'house' || c.assetType === 'presale_right')
-        ? (c.holdingYears < 1 ? 0.70 : 0.60) : (c.holdingYears < 1 ? 0.50 : 0.40);
+        ? ((c.rateHoldingYears != null ? c.rateHoldingYears : c.holdingYears) < 1 ? 0.70 : 0.60) : ((c.rateHoldingYears != null ? c.rateHoldingYears : c.holdingYears) < 1 ? 0.50 : 0.40);
       return 'short_' + r;
     }
     const nettingBuckets_ = {};
@@ -1827,7 +1832,7 @@
       const nettedInc_ = (nettedIncomeByIdx_[c.idx] !== undefined) ? nettedIncomeByIdx_[c.idx] : c.incomeAmount;
       const base = Math.max(0, nettedInc_ - bd);
       const rate = (c.assetType === 'house' || c.assetType === 'presale_right')
-        ? (c.holdingYears < 1 ? 0.70 : 0.60) : (c.holdingYears < 1 ? 0.50 : 0.40);
+        ? ((c.rateHoldingYears != null ? c.rateHoldingYears : c.holdingYears) < 1 ? 0.70 : 0.60) : ((c.rateHoldingYears != null ? c.rateHoldingYears : c.holdingYears) < 1 ? 0.50 : 0.40);
       const shortTermTax = Math.round(base * rate);
       const dualRateEligible = c.assetType !== 'presale_right' && (c.isMultiHouseSurcharge || c.isNonBusinessLand);
       const surchargePct = dualRateEligible

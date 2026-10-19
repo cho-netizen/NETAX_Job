@@ -5626,6 +5626,11 @@ function renderPropertyCardHtml_(idx, opts){
           // 읽지 않으므로, 화면 표시만 담당하는 순수 UI 게이트다).
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isBusinessSuccessionAsset" id="bizSucc-' + idx + '"><label for="bizSucc-' + idx + '">가업상속공제 대상으로 상속받은 자산(피상속인 취득가액을 안분 반영, §97의2④·§95④단서)</label></div>' +
         '</div>' +
+        // [2026.10.19 세액 고침] §104②1호 — 상속받은 자산은 세율(단기 1년·2년) 판정 보유기간을 피상속인 취득일부터 센다(장특공은 상속개시일부터 그대로)
+        '<div class="taxcalc-grid">' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isInheritedAsset" id="inh-' + idx + '"><label for="inh-' + idx + '">상속받은 자산(세율 판정 보유기간은 피상속인 취득일부터, §104②1호)</label></div>' +
+          '<div class="taxcalc-field" data-show-if="isInheritedAsset" style="display:none;"><label>피상속인 취득일</label><input type="date" data-field="inheritedDecedentAcquisitionDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">위 "취득일"에는 상속개시일을 그대로 두세요(장특공·취득가액 기준)</span></div>' +
+        '</div>' +
         '<div class="taxcalc-asset-head" data-show-if="isBusinessSuccessionAsset" style="display:none; margin-top:4px;"><b>위 체크시만 — 피상속인 취득정보</b></div>' +
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field" data-show-if="isBusinessSuccessionAsset" style="display:none;"><label>가업상속공제 적용률(0~1)</label><input type="number" step="0.01" min="0" max="1" data-field="businessSuccessionDeductionRatio" placeholder="예: 0.5"></div>' +
@@ -6709,6 +6714,8 @@ function collectTransferInput(vals){
     businessSuccessionDeductionRatio: numVal(vals.businessSuccessionDeductionRatio) || 0,
     decedentAcquisitionValue: vals.decedentAcquisitionValue !== '' && vals.decedentAcquisitionValue != null ? numVal(vals.decedentAcquisitionValue) : null,
     decedentAcquisitionDate: vals.decedentAcquisitionDate || '',
+    isInheritedAsset: !!vals.isInheritedAsset, // §104②1호
+    inheritedDecedentAcquisitionDate: vals.isInheritedAsset ? (vals.inheritedDecedentAcquisitionDate || '') : '',
     // [2026.09 신규] 이월과세(§97의2) — 예전엔 별도 계산기에서 결과를 손으로 옮겨 입력해야
     // 했는데, 이제 이 필드들을 채워두면 calculateTransferTaxMultiJS가 합산 계산 전에 이 거래
     // 단독 기준으로 적용여부를 자동 판정해 취득가액·취득일·필요경비에 반영한다.
