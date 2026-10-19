@@ -38,5 +38,13 @@ module.exports = function (E, H) {
   // 2-3. §97 단서 10년 이상 임대(100%) — 엔진이 소득에서 빼는 방식이라 감면세액 칸은 비움
   L.push({ name: '62호_장기임대_97조_10년_100', forms: ['조특62호'], ctx: trCtx([Object.assign({}, lr97, { lrSubType: 'rental_10yr' })], { 감면자산: 0 }) });
 
+  // 3. 조특63호의32 — 기초연금 수급자 1주택 세대, 2010 취득 토지 2억 → 2025.7.15. 6억 양도, 9.1. 연금계좌 5천만 납입(기납입 3천만)
+  var pen = { assetType: 'other', assetKind: 'land', transferPrice: 600000000, acquisitionPrice: 200000000, necessaryExpenses: 10000000,
+    transferDate: '2025-07-15', acquisitionDate: '2010-02-01', assetLocation: '경기도 ○○시 ○○동 300 (견본)',
+    pensionAccountContribution: 50000000, pensionPriorContribution: 30000000, pensionContributionDate: '2025-09-01', isBasicPensionRecipient: true, isOneHouseOrNoHouseHousehold: true };
+  L.push({ name: '63호의32_연금계좌_납입', forms: plan(trCtx([pen])) });
+  // 3-2. 납입 4억(⑫ 남은 한도 7천만이 가장 적음)
+  L.push({ name: '63호의32_연금계좌_한도', forms: ['조특63호의32'], ctx: trCtx([Object.assign({}, pen, { pensionAccountContribution: 400000000 })], { 감면자산: 0 }) });
+
   return L;
 };

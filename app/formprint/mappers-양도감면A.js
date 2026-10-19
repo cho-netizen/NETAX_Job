@@ -207,11 +207,47 @@
     return o.result();
   };
 
+  // ───────── 조특 별지 제63호의32서식(연금계좌 납입에 대한 양도소득세 세액공제신청서) — 조특법 §99의14, 시행령 §99의13② ─────────
+  //  예전 인쇄(trPensionAccountCreditPrintPageHtml_)와 같게 연금계좌 납입액이 있는 자산마다 한 장.
+  //  엔진(pensionCreditBase_): ⑮ = min(⑫ 1억 − 기납입 누적, ⑬ 납입액, ⑭ 양도가액 − 취득가액(소득세법 시행령 §40의2②1호 라목)), 공제 = ⑮ × 10%,
+  //  합산이면 자산별 공제 합을 전체 산출세액으로 한 번 캡(연금계좌세액공제_합계). 같은 해 연금 납입 부동산이 둘 이상이면 자산별 값이 엔진에 없다.
+  mappers['조특63호의32'] = function (ctx) {
+    var o = new Out(), s = ctx.seller || {}, r = ctx.r || {}, p = pick(ctx), a = p.a;
+    o.need('①', s.name, '① 성명').need('②', s.regNo, '② 주민등록번호').need('③@주소', H.fullAddr(s), '③ 주소').need('③@전화번호', s.phone, '③ 전화번호');
+    o.need('④', a.assetLocation, '④ 소재지').need('⑤', a.acquisitionDate, '⑤ 취득일').need('⑥', a.transferDate, '⑥ 양도일').need('⑦', a.pensionContributionDate, '⑦ 납입일');
+    o.miss('⑧ 계좌주(성명·주민등록번호)·⑨ 연금계좌(은행 등·계좌번호 등)', '계산기에 없음');
+    var paid = Math.max(0, n(a.pensionAccountContribution));
+    var pensionAssets = (ctx.assets || []).filter(function (x) { return n((x.asset || {}).pensionAccountContribution) > 0; });
+    var prior = Math.max.apply(null, [0].concat((ctx.assets || []).map(function (x) { return Math.max(0, n((x.asset || {}).pensionPriorContribution)); })));
+    var diff = Math.max(0, n(a.transferPrice) - n(a.acquisitionPrice));
+    o.set('⑬', paid).set('⑭', diff);
+    o.note('⑭ 양도차익: 엔진은 소득세법 시행령 §40의2②1호 라목 문언대로 "양도가액 − 취득가액"(' + diff + '원) — 서식 작성방법 6은 필요경비까지 뺀 금액(판단 대기, 법령 우선)');
+    o.miss('⑪ 기납입액 — 주택차액 납입액·부동산 양도대금 납입액 칸 나눔', '계산기는 기납입 누적액 합계 하나만 받음(' + prior + '원 — 다목·라목 구분 없음)');
+    if (pensionAssets.length > 1) {
+      o.miss('⑫⑮⑰ 잔여 한도·공제대상 금액·세액공제', '같은 해 연금계좌 납입 부동산이 ' + pensionAssets.length + '개 — 엔진은 앞 자산이 쓴 한도를 빼며 합계(연금계좌세액공제_합계 ' + n(r.연금계좌세액공제_합계) + '원)만 냄, 자산별 값 없음');
+      return finish();
+    }
+    var remain = Math.max(0, 100000000 - prior), base = Math.min(remain, paid, diff);
+    o.set('⑫', remain).set('⑮', base);
+    o.check('⑫ = ⑩(1억원) − ⑪', remain, 100000000 - prior);
+    o.check('⑮ = ⑫·⑬·⑭ 중 적은 금액', base, Math.min(remain, paid, diff));
+    if (!has(r.연금계좌세액공제_합계)) { o.miss('⑰ 세액공제', '엔진 결과 없음'); return finish(); }
+    var credit = n(r.연금계좌세액공제_합계), raw = Math.round(base * 0.1);
+    o.set('⑰', credit);
+    if (credit === raw) o.check('⑰ = ⑮ × ⑯(10%)', credit, raw);
+    else if (credit > 0 && credit === Math.max(0, n(r.산출세액_합계))) { o.check('⑰ = 산출세액 한도(조특법 §99의14①)', credit, n(r.산출세액_합계)); o.note('⑰: ⑮ × 10%(' + raw + '원)가 산출세액보다 커서 산출세액까지만 공제'); }
+    else o.note('⑰: 엔진 공제액 ' + credit + '원 ≠ ⑮ × 10%(' + raw + '원) — 요건(기초연금 수급자·1주택 이하 세대·10년 이상 보유·2027.12.31.까지 양도·양도일부터 6개월 안 납입) 미충족이면 0');
+    if (n(r.연금계좌세액공제_추징액)) o.note('5년 안 연금 수령(인출)으로 추징 ' + n(r.연금계좌세액공제_추징액) + '원(84호 본표에서)');
+    return finish();
+    function finish() { signs(o, ctx, { sign: '신청인서명', office: '세무서' }); return o.result(); }
+  };
+
   // ───────── 어떤 자산에 어떤 신청서 — 예전 인쇄(trAttach1PrintPageHtml_ 뒤에 붙는 함수들)가 그 서식을 그리는 조건과 같게 ─────────
   //  조특54호는 넣지 않음 — 사업시행자 제출(시행령 §72④·⑦)
   var TESTS = {};
   function register(k, test) { TESTS[k] = test; ctxFor[k] = perAsset(test); ready[k] = readyOf(ctxFor[k]); }
   register('조특62호', function (a) { return !!a.longTermRentalHouseProvision; });
+  register('조특63호의32', function (a) { return n(a.pensionAccountContribution) > 0; });
 
   // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만) — 감면 대상 자산마다 한 장
   function plan(tax, ctx) {
