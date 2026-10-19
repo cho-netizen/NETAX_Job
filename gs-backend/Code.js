@@ -3876,7 +3876,8 @@ function dispatchClientAction0_(body) {
   if (body.action === 'tc_rule_transfer_facts') return jsonResponse(tc_ruleTransferFacts_(body)); // 양도세 자동채우기 규칙 먼저(토큰 0)
   if (body.action === 'tc_rule_inheritance_facts') return jsonResponse(tc_ruleInheritanceFacts_(body)); // 상속세 자동채우기 규칙 먼저(토큰 0)
   if (body.action === 'case_proc') return jsonResponse(caseProcTimed_(body)); // '이 사건 처리하자' — 처리탭 도구로 단계별 점검(토큰 0)
-  if (body.action === 'case_proc_ai') return jsonResponse(caseProcAi_(body)); // [2026.10.19 5번] '이 사건 처리하자' AI 지휘 — AI 자리 세기·지휘 AI 한 차례·끝 기록(AiLeadLive.js)
+  if (body.action === 'case_proc_ai') return jsonResponse(caseProcAi_(body));
+  if (body.action === 'ai_lead_weekly') return jsonResponse(caseProcAiWeekly_(body)); // [2026.10.19 5번] AI 지휘 주간 점검표(토큰 0) — 규칙 후보·길 나누기·빠진 도구·매주 숫자 // [2026.10.19 5번] '이 사건 처리하자' AI 지휘 — AI 자리 세기·지휘 AI 한 차례·끝 기록(AiLeadLive.js)
   if (body.action === 'ocr_batch_run') return jsonResponse(cpOcrBatch_(body)); // [2026.10.18] 서버 글자인식 일괄 — 기억에 없는 서류만 글자를 읽어 기억에 쌓음(사건 저장 없음, 토큰 0)
   if (body.action === 'ocr_batch_status') return jsonResponse(cpOcrBatchStatus_());
   if (body.action === 'ocr_batch_trigger') return jsonResponse(ocrbTrigger_(body)); // 10분마다 자동 이어 읽기 켜기/끄기
@@ -36714,6 +36715,21 @@ function buildImprovementReport_() {
       report.guide.push('cxAi(🧩·↩ 사건처리 AI 판단): ruleCands는 서로 다른 사건 2건 이상에서 같은 쟁점종류(kind)+입력모양(shape)에 AI(LIGHT_MODEL)가 늘 같은 방식(pattern: src=같은 출처 종류 후보 / max·min=숫자 후보 중 큰·작은 값 / pos=같은 자리 후보 / const=같은 값)으로 답했고 세무사님이 고친 적 없는 묶음이다. 그 쟁점을 AI에 묻기 전에 GAS 규칙으로 먼저 풀도록 사건처리 규칙에 옮기는 PR(규칙이 답하면 AI 호출을 건너뜀) — 단 pattern이 const이거나 uncertain>0이면 법령·서류 근거를 먼저 확인하고, 근거가 없으면 건너뛰고 이유만 적는다. revertWarn은 세무사님이 AI 답을 자주 고친 쟁점 종류 — fixedShapes 모양의 AI 지시문·넘기는 사실(facts)을 고치거나 그 쟁점은 AI 대신 세무사님께 묻도록 바꾼다. trend는 주별 사건당 호출 수(줄어드는 게 목표). 고객 정보는 PR에 쓰지 말 것.');
     }
   } catch (e) { report.cxAiError = String(e && e.message || e).slice(0, 200); }
+  // [2026.10.19 5번] AI 지휘 주간 점검표(토큰 0, AiLeadTiers.js) — 세무사님 조건: "gas를 고도화했고 계속하여 고도화하는 방안이 가미된다면"
+  //  ② 되풀이되는 AI 판단 → GAS 규칙 후보(처음 보는 사건 2건 이상에서 세무사님이 맞다고 한 것만) ③ 빠진 도구 ⑤ 매주 숫자(AI 없이 끝 비율·사건당 판단·비용·승격·새 도구, 두 주 연속 멈춤 경고)
+  //  세 겹 ③ 주제별 세무사님이 고친 비율·총괄 답이 늘 같은 비율 → 내리기·올리기 후보(사람이 승인)
+  try {
+    var alw = caseProcAiWeekly_({ weeks: 12 });
+    if (alw && alw.ok) {
+      report.aiLead = { lines: alw.lines, weeks: alw.weeks, stall: alw.stall, ruleCands: alw.ruleCands, topics: alw.topics, gaps: alw.gaps };
+      if (alw.stall) headline.unshift('⚠ AI 지휘 두 주 연속 멈춤 — AI 없이 끝 비율·비용이 그대로이고 규칙 승격·새 도구 없음');
+      alw.ruleCands.slice(0, 5).forEach(function (c) { headline.push('🧩 AI 지휘 규칙 후보 — ' + c.kind + ': 처음 보는 사건 ' + c.okCases + '건에서 맞음'); });
+      alw.gaps.slice(0, 3).forEach(function (g) { headline.push('🧰 AI 지휘 빠진 도구 — ' + g.want + ' (' + g.n + '번)'); });
+      alw.topics.filter(function (t) { return t.move; }).slice(0, 3).forEach(function (t) { headline.push('🔀 ' + t.topic + ' — ' + t.move); });
+      report.candidateCount += alw.ruleCands.length + alw.gaps.length + alw.topics.filter(function (t) { return t.move; }).length + (alw.stall ? 1 : 0);
+      report.guide.push('aiLead(🤖 AI 지휘 — 세무사님 조건 "gas를 계속 고도화"): ruleCands는 총괄·저비용 AI가 처음 보는 사건 2건 이상에서 같은 주제(kind)+모양(shape)에 같은 방식으로 답했고 세무사님이 확인했으며 고친 적 없는 판단 — 그 판단을 AI에 넘기기 전에 GAS 규칙(사건처리 단계·교차검증 규칙)으로 먼저 풀게 하는 PR. pattern이 없거나 const면 법령·서류 근거부터 확인하고 근거가 없으면 건너뛴다. 옮겼으면 업무관리자 폴더 _사건처리규칙승격기록.json에 {at, kind, shape, pr} 한 줄을 더하는 코드도 함께(승격 수 세기). gaps(빠진 도구)는 AI가 도구가 없어 못 한 일 — 되풀이되는 것부터 AiLead.js 도구(GAS, 토큰 0)로 만든다(새 도구는 CASEPROC_AI_TOOLS_에 더함 — 새 도구 수로 셈). topics의 move(내리기·올리기 후보)는 AI_ROUTE_TABLE(스크립트 속성) 또는 CASEPROC_AI_ROUTE_DEFAULT_를 고치는 PR — 사람이 승인. weeks는 매주 숫자(aiFree↑·perCaseDecisions↓·perCaseWon↓·promoted·newTools), stall이면 최우선. 고객 정보는 PR에 쓰지 말 것.');
+    }
+  } catch (e) { report.aiLeadError = String(e && e.message || e).slice(0, 200); }
   // [2026.10.13] 개발자↔사용자 소통·AI 자문단(Federation.js, 토큰 0) — 요청 번호·상태, 기능 부족 신고, 개발자 질문 답, AI 자문 공통 제안
   try {
     var st = commRequestsLoad_(), byAt = {};

@@ -25,6 +25,7 @@ var CASEPROC_AI_TURN_BUDGET_MS_ = 150000; // 한 차례(서버 한 번)에 도�
 // 세액이 크게 갈리는 칸 — AI가 근거를 대도 넣지 않고 세무사님 답으로만(질문 id·질문 글 기준)
 var CASEPROC_AI_USER_ONLY_RE_ = /relfmv|시가|특수관계|가족관계|관계인지|평가액|감정가/;
 var CASEPROC_AI_LOG_NAME_ = '_사건처리AI판단기록.json';
+var CASEPROC_AI_NO_TOOLS_ = ['docs_read', 'doc_text']; // [GAS 고도화 ④] 지휘 AI에게 주지 않는 도구
 
 // 사건당 비용 상한(원) — 업무유형으로
 function caseProcAiCap_(c) {
@@ -47,32 +48,58 @@ function caseProcAiSpots_(body) {
   const caseId = String(body.caseId || '').trim();
   const c = akReadCase_(caseId);
   if (!c) return { error: '사건을 찾지 못했습니다.' };
-  const ov = body.ov || {}, ev = body.ev || {};
+  const ov = body.ov || {}, ev = body.ev || {}, items = ov.items || [];
   let spots = [];
-  try { spots = caseProcAiVarSpots_('calc_fill', { items: ov.items || [], needs: ov.needs || null, case: c }, caseId); } catch (e) { spots = []; }
+  try { spots = caseProcAiVarSpots_('calc_fill', { items: items, needs: ov.needs || null, case: c }, caseId); } catch (e) { spots = []; }
   try { spots = spots.concat(caseProcAiVarSpots_('docs_read', { docTypes: ev.docTypes || [] }, caseId)); } catch (e) {}
+  const byId = {}; items.forEach(function (it) { byId[it.id] = it; });
   const gas = spots.filter(function (s) { return CASEPROC_AI_GAS_SPOTS_[s.이유]; });
   const ask = spots.filter(function (s) { return s.이유 === '빈 칸'; });
-  const ai = spots.filter(function (s) { return !CASEPROC_AI_GAS_SPOTS_[s.이유] && s.이유 !== '빈 칸'; });
-  const level = ai.reduce(function (m, s) { return Math.max(m, caseProcAiSpotLevel_(s)); }, 0);
-  const by = {}; ai.forEach(function (s) { by[s.이유] = (by[s.이유] || 0) + 1; });
+  // [세 겹 ①] 길 나누기 — GAS·2번 교차검증이 이미 정한 것은 빼고, 남은 판단 자리를 주제 표로 저비용/총괄에
+  const tiers = { GAS: 0, 저비용: 0, 올림: 0, 총괄: 0, 질문: ask.length };
+  const light = [], lead = [];
+  spots.filter(function (s) { return !CASEPROC_AI_GAS_SPOTS_[s.이유] && s.이유 !== '빈 칸'; }).forEach(function (s) {
+    const it = byId[s.자리], a = (it && it.ask) || {}, aj = a.aiJudge;
+    if (/^cxai:/.test(s.자리) || (aj && aj.sure === '확실' && aj.value !== '' && aj.value != null)) { tiers[aj && aj.by === 'gas' ? 'GAS' : '저비용']++; return; } // 교차검증(GAS)·저비용이 이미 정함 — 세무사님 확인만
+    const tp = caseProcAiTopic_([s.자리, s.이유, it && it.text, a.label, a.target].join(' '));
+    s.topic = tp.topic;
+    if (a.route === 'lead') { s.tier = '총괄'; lead.push(s); return; }                       // 2번 교차검증이 표대로 총괄로 보냄
+    if (aj) { s.tier = '올림'; s.light = { answer: aj.value, sure: aj.sure, why: aj.why, need: aj.need || [], model: aj.model }; lead.push(s); return; } // 저비용(2번)이 불확실 → 올림
+    if (tp.route === 'light') light.push(s); else { s.tier = '총괄'; lead.push(s); }
+  });
+  // [세 겹 ②] 저비용 1차 — 확실하고 모자란 정보가 없으면 끝(값 칸이면 후보 안의 값만 넣음), 아니면 총괄로 올림
+  const lp = caseProcAiLightPass_(c, light, items);
+  let lightApplied = 0;
+  lp.done.forEach(function (rec) { const r = caseProcAiLightApply_(c, rec, items); rec.applied = r.applied; rec.result = r.why; if (r.applied) lightApplied++; tiers.저비용++; });
+  lp.up.forEach(function (s) { s.tier = lp.off ? '총괄' : '올림'; lead.push(s); });
+  if (!lp.off) caseProcAiLogCx_(c, LIGHT_MODEL, lp.usd, lp.done.concat(lp.up.map(function (s) { return s.light ? Object.assign({ 자리: s.자리, topic: s.topic }, s.light) : null; }).filter(Boolean)).map(function (r) {
+    const it = byId[r.자리] || {}, a = it.ask || {};
+    return { iid: r.자리, topic: r.topic || caseProcAiTopic_(r.자리).topic, shape: '저비용|' + (/^doc:/.test(r.자리) ? '서류' : String(a.target || '').split(':')[0]), target: a.target || '', label: a.label || caseProcAiCut_(it.text || r.자리, 60), facts: r.quote || '', cands: caseProcAiOpts_(a).slice(0, 6).map(function (q) { return { v: q.v != null ? q.v : q.value, src: String(q.src || '').slice(0, 100) }; }), answer: r.answer, why: r.why, sure: r.sure, need: r.need || [] };
+  }));
+  lead.forEach(function (s) { tiers[s.tier] = (tiers[s.tier] || 0) + 1; });
+  const level = lead.reduce(function (m, s) { return Math.max(m, caseProcAiSpotLevel_(s)); }, 0);
+  const by = {}; lead.forEach(function (s) { by[s.topic || s.이유] = (by[s.topic || s.이유] || 0) + 1; });
   const entry = [
     '사건 ' + caseId + ' — ' + (CASEPROC_TAX_LABEL_[c.세목] || c.세목 || '') + ' · ' + (c.업무유형 || '') + ' · 기준일 ' + (c.기준일 || '?'),
-    '입구(GAS)가 상수 한 바퀴를 돌았습니다(서류 읽기·칸 채우기·교차검증). 아래 AI 자리만 네가 판단한다.',
-    'AI 자리 ' + ai.length + '개: ' + ai.map(function (s) { return '[' + s.자리 + ' · ' + s.이유 + ' · 수준' + caseProcAiSpotLevel_(s) + '] ' + caseProcAiCut_(s.설명 || '', 90); }).join(' / '),
+    '입구(GAS)가 상수 한 바퀴를 돌았고(서류 읽기·칸 채우기·교차검증), 저비용 AI가 좁은 판단을 먼저 봤습니다. 아래 자리만 네가 판단한다.',
+    '네 자리 ' + lead.length + '개: ' + lead.map(function (s) { return '[' + s.자리 + ' · ' + (s.topic || '') + ' · ' + s.이유 + ' · ' + s.tier + (s.light ? ' — 저비용 답 "' + caseProcAiCut_(s.light.answer || '', 40) + '"(' + (s.light.sure || '') + ')' + (s.light.need && s.light.need.length ? ' 모자란 정보: ' + s.light.need.join(', ') : '') : '') + '] ' + caseProcAiCut_(s.설명 || '', 80); }).join(' / '),
+    '저비용·GAS가 이미 정한 것 ' + (tiers.GAS + tiers.저비용) + '개(네가 다시 보지 않는다).',
     '서류에 없어 세무사님께 바로 묻는 빈 칸 ' + ask.length + '개(네가 찾지 않는다): ' + ask.slice(0, 12).map(function (s) { return s.자리; }).join(', '),
     'GAS 몫(못 읽은 서류·재료 없음·상수) ' + gas.length + '개: ' + gas.slice(0, 8).map(function (s) { return s.자리 + '(' + s.이유 + ')'; }).join(', '),
     '비용 상한 ' + caseProcAiCap_(c).toLocaleString('ko-KR') + '원, 바퀴 상한 ' + CASEPROC_AI_MAX_ROUNDS_ + '. calc_fill부터 불러 지금 칸과 질문을 본 뒤 판단하라.'
   ].join('\n');
-  return { ok: true, ai: ai.length, ask: ask.length, gas: gas.length, byWhy: by, level: level, cap: caseProcAiCap_(c), need: ai.length > 0,
-    spots: ai.map(function (s) { return { 자리: s.자리, 이유: s.이유, 수준: caseProcAiSpotLevel_(s), 설명: caseProcAiCut_(s.설명 || '', 120) }; }), entry: caseProcAiMask_(entry) };
+  return { ok: true, ai: lead.length, ask: ask.length, gas: gas.length, byWhy: by, level: level, cap: caseProcAiCap_(c), need: lead.length > 0, tiers: tiers, lightApplied: lightApplied, lightOff: lp.off, lightUsd: lp.usd, lightError: lp.error || '',
+    lightDone: lp.done.map(function (r) { return { 자리: r.자리, topic: r.topic, answer: caseProcAiMask_(r.answer), why: caseProcAiMask_(r.why), applied: !!r.applied }; }),
+    spots: lead.map(function (s) { return { 자리: s.자리, 이유: s.이유, 주제: s.topic || '', 겹: s.tier, 수준: caseProcAiSpotLevel_(s), 설명: caseProcAiCut_(s.설명 || '', 120) }; }), entry: caseProcAiMask_(entry) };
 }
 
 // ---------- 지휘 AI에게 주는 도구 — AiLead.js 도구 + 좁은 판단 둘. 운영에서 바뀌는 설명만 고친다 ----------
 function caseProcAiLiveTools_() {
-  const tools = JSON.parse(JSON.stringify(CASEPROC_AI_TOOLS_));
+  // [GAS 고도화 ④] 서류 접근은 GAS 도구로만 — 폴더 통째 읽기(docs_read)·원문 직접 읽기(doc_text)는 주지 않는다(쟁점 묶음·사실 목록·서류 정리 결과로)
+  const tools = JSON.parse(JSON.stringify(CASEPROC_AI_TOOLS_)).filter(function (t) { return CASEPROC_AI_NO_TOOLS_.indexOf(t.name) === -1; });
   tools.forEach(function (t) {
     if (t.name === 'value_set') {
+      t.input_schema.properties.basis.description = 'doc: {kind:"doc", file, page(쪽, 알면), find 또는 quote} — file은 facts_find·doc_facts·issue_bundle이 준 출처 파일 이름';
       t.description = t.description + ' [운영] sure="확실"이고 근거 대조를 통과하면 그 질문의 답으로 실제로 넣는다(출처 칸에 "🤖 AI 판단: why"). sure="불확실"·infer는 넣지 않고 그 질문에 "🤖 AI 의견"으로 붙는다. 시가·특수관계·평가처럼 세액이 크게 갈리는 칸은 넣지 않는다(세무사님 답으로만 — ask_user). itemId는 calc_fill 질문목록의 id.';
     }
     if (t.name === 'ask_user') {
@@ -81,6 +108,8 @@ function caseProcAiLiveTools_() {
     }
     if (t.name === 'save_draft') t.description = '저장·초안 — 운영에서는 처리 끝에 화면이 저장·종합검토서 초안·현황표를 만든다. 부르지 않아도 된다(부르면 현황표만 본다).';
   });
+  tools.push({ name: 'issue_bundle', description: '쟁점 묶음 보기 — 그 질문(itemId)에 GAS·교차검증이 모아 둔 재료: 사건 요약·물린 사실·출처 원문 앞뒤·후보·못 푼 이유·계산기 칸의 쓰임, 저비용 AI의 답과 모자란 정보. 원문이 필요하면 이것으로 본다(원문 파일을 직접 읽는 도구는 없다).',
+    input_schema: { type: 'object', properties: { itemId: { type: 'string' } }, required: ['itemId'] } });
   tools.push({ name: 'quick_judge', description: '좁은 판단 맡기기(저가 AI Haiku 5.5) — 짧고 근거가 서류에 있는 판단: 후보 중 하나 고르기, 표기가 같은 사람·주소인지, 판독 고르기, 처음 보는 서류 종류. 재료(material)에 원문 줄·후보를 넣는다(개인정보는 이미 가려짐). 답·확실 여부·근거를 돌려준다. 불확실이면 네가 판단하거나 여쭙는다.',
     input_schema: { type: 'object', properties: { question: { type: 'string' }, material: { type: 'string' }, options: { type: 'array', items: { type: 'string' } } }, required: ['question', 'material'] } });
   tools.push({ name: 'ask_higher', description: '어려운 판단 올리기(상위 AI Opus 5.5) — 특례가 얽힌 사건분류(1세대1주택·일시적 2주택·상속주택·정비사업 감면), 시가·유사사례 다툼, 법령 해석이 갈리는 것. 재료를 정리해 넘긴다. 최고급(Fable 5.1)이 필요하면 부르지 말고 보고에 "최고급 검토 필요"로 적는다(세무사님이 쓰기 전에 정하심).',
@@ -94,6 +123,8 @@ function caseProcAiLiveSystem_(cap) {
     '- 너는 입구(GAS)가 상수 한 바퀴를 끝낸 뒤 넘긴 AI 자리만 맡는다. 서류 읽기·나누기·사진 보정·화면 계산·서식 PDF·저장·검토서는 화면이 끝에 지금 순서대로 한다.',
     '- 이번 사건 비용 상한 ' + Number(cap).toLocaleString('ko-KR') + '원(너와 quick_judge·ask_higher 합계). 상한에 가까우면 하던 판단까지만 하고 보고한다.',
     '- 좁은 판단은 quick_judge(저가)로, 특례·시가·법령 해석은 ask_higher(상위)로. 최고급은 쓰지 않는다(필요하면 보고에 적음).',
+    '- 서류는 GAS 도구로만 본다: issue_bundle(쟁점 묶음)·doc_facts(서류 정리 결과)·facts_find(사실 목록)·재료 도구. docs_read·doc_text(원문 직접 읽기)는 없다 — 위 지침의 doc_text 자리는 issue_bundle로.',
+    '- 도구로 안 되는 일을 네가 직접 하게 되면(원문을 뒤지고 싶음·여러 값을 머릿속으로 더하거나 나눔·날짜를 세어 봄 등) 그 일을 하지 말고 report_tool_gap으로 "이런 도구가 있으면"을 남긴 뒤 질문으로 돌린다. 그것이 GAS가 자라는 재료다.',
     '- 되돌리기 어려운 일(PDF 묶기·폴더 이름·문자·사건 정보 수정)은 도구가 없다. 필요하면 보고에 "▶실행 카드로 여쭐 것"으로 적는다.',
     '- 보고는 세무사님이 읽는다 — 쉬운 말로, 표·기호 없이 짧게. 세액은 도구 값 그대로.'
   ].join('\n');
@@ -179,6 +210,13 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
     return { text: JSON.stringify({ ok: true, 기록: '도구 부족으로 남김' }) };
   }
   if (name === 'save_draft') return { text: JSON.stringify({ ok: true, 안내: '처리 끝에 화면이 저장·검토서 초안·현황표를 만든다' }) };
+  if (CASEPROC_AI_NO_TOOLS_.indexOf(name) !== -1) { ctx.gaps.push({ want: name + '를 부르려 함 — ' + caseProcAiCut_(JSON.stringify(input.find || input.file || input.phase || ''), 80), kind: '없음', tool: name, auto: true }); return { text: JSON.stringify({ 오류: '이 도구는 없습니다 — issue_bundle·doc_facts·facts_find로 보거나, 안 되면 report_tool_gap 후 질문으로' }) }; }
+  if (name === 'issue_bundle') {
+    const it = (ctx.lastItems || []).filter(function (x) { return x.id === input.itemId; })[0];
+    if (!it) return { text: JSON.stringify({ 오류: '그 질문이 마지막 칸 채우기에 없음 — calc_fill 먼저' }) };
+    const aj = (it.ask && it.ask.aiJudge) || null;
+    return { text: caseProcAiMask_(JSON.stringify({ ok: true, 질문: it.text, 자세히: it.detail || '', 후보: ((it.ask && it.ask.cands) || []).slice(0, 8), 쟁점묶음: aj && aj.q ? String(aj.q).slice(0, 2500) : '(묶음 없음 — doc_facts·facts_find로 재료를 찾고, 없으면 report_tool_gap)', 저비용답: aj ? { 값: aj.value, 확실: aj.sure, 근거: aj.why, 모자란정보: aj.need || [] } : null })).slice(0, 4000) };
+  }
   if (name === 'value_set') return { text: JSON.stringify(caseProcAiValueSetLive_(caseId, input, ctx)) };
   // 그 밖 도구 — 시제품 실행기 그대로(조회 결과·마지막 질문은 차례 사이에 기억)
   if (name === 'calc_fill' && ctx.lastItems) CASEPROC_AI_LAST_ITEMS_[caseId] = ctx.lastItems;
@@ -188,9 +226,13 @@ function caseProcAiLiveExec_(caseId, name, input, ctx) {
   try { (CP_SECURED_LOG_ || []).slice(before).forEach(function (l) { ctx.lookups.push({ key: l.key, name: l.name, rows: (l.rows || []).slice(0, 30) }); }); } catch (e) {}
   return { text: x.text };
 }
+function caseProcAiArr_(x) { return Array.isArray(x) ? x : []; }
+// AI가 값을 넣어도 되는 칸 — 값 하나로 끝나는 칸만(세액계산기 칸·기준일·처리개요·상속 금액·분할 귀속 번호).
+//  사건 정보 수정(case:)·증빙 표시·폴더 만들기는 되돌리기 어려운 일, 상속 채무 목록·증여 내용은 여러 값이 묶인 칸이라 AI 의견으로만
+var CASEPROC_AI_SCALAR_TARGET_RE_ = /^(base|calc:.+|ov:.+|ih:.+|ihdiv:div:.+)$/;
 // 질문을 차례 사이에 기억할 만큼만(값 넣을 칸·후보) 줄인다
 function caseProcAiSlimItems_(items) {
-  return (items || []).slice(0, 60).map(function (it) { const a = it.ask; return { id: it.id, kind: it.kind, text: caseProcAiCut_(it.text, 160), ask: a ? { target: a.target, label: a.label, mode: a.mode, cands: ((a.cands || a.options || []).slice(0, 12)).map(function (q) { return { v: q.v != null ? q.v : (q.value != null ? q.value : q.amount), label: q.label, src: caseProcAiCut_(q.src || '', 80) }; }) } : null }; });
+  return (items || []).slice(0, 60).map(function (it) { const a = it.ask; return { id: it.id, kind: it.kind, text: caseProcAiCut_(it.text, 160), detail: caseProcAiCut_(it.detail || '', 400), ask: a ? { target: a.target, label: a.label, mode: a.mode, input: a.input, route: a.route, aiJudge: a.aiJudge ? { by: a.aiJudge.by, value: a.aiJudge.value, sure: a.aiJudge.sure, why: caseProcAiCut_(a.aiJudge.why || '', 200), need: a.aiJudge.need || [], q: String(a.aiJudge.q || '').slice(0, 1500) } : null, cands: (caseProcAiArr_(a.cands).length ? caseProcAiArr_(a.cands) : caseProcAiArr_(a.options)).slice(0, 12).map(function (q) { return { v: q.v != null ? q.v : (q.value != null ? q.value : q.amount), label: q.label, src: caseProcAiCut_(q.src || '', 80) }; }) } : null }; });
 }
 // 값 넣기 — 근거 대조 → 확실하면 그 질문의 답으로 실제 반영(caseProc0_ apply — 사이드바 답 기록에는 안 남김), 아니면 🤖 AI 의견으로
 function caseProcAiValueSetLive_(caseId, input, ctx) {
@@ -203,6 +245,12 @@ function caseProcAiValueSetLive_(caseId, input, ctx) {
   const why = caseProcAiMask_(caseProcAiCut_(input.why || '', 120));
   const userOnly = CASEPROC_AI_USER_ONLY_RE_.test(String(input.itemId || '') + ' ' + String(it.text || ''));
   const chk = caseProcAiCheckBasis_(c, input.value, input.basis, input.itemId, caseId);
+  const bs = input.basis || {};
+  if (bs.kind === 'infer') ctx.gaps.push({ want: '사실 목록·후보로 안 나오는 값을 추론함 — ' + caseProcAiCut_(it.text, 60), kind: '값을 안 돌려줌', tool: 'facts_find', auto: true });
+  ctx.cxItems = ctx.cxItems || [];
+  ctx.cxItems.push({ iid: input.itemId, topic: caseProcAiTopic_([input.itemId, it.text, (it.ask || {}).label, (it.ask || {}).target].join(' ')).topic, shape: '총괄|' + (bs.kind || '') + '|' + String((it.ask || {}).target || '').split(':')[0], target: (it.ask || {}).target || '', label: (it.ask || {}).label || caseProcAiCut_(it.text, 60),
+    facts: '근거 ' + (bs.kind || '') + (bs.file ? ' · ' + bs.file : '') + (bs.page ? ' · ' + bs.page + '쪽' : '') + (bs.find ? ' · "' + bs.find + '"' : '') + (bs.quote ? ' · "' + String(bs.quote).slice(0, 120) + '"' : '') + (bs.id ? ' · 조회 ' + bs.id : ''),
+    cands: ((it.ask && it.ask.cands) || []).slice(0, 6).map(function (q) { return { v: q.v, src: String(q.src || '').slice(0, 100) }; }), answer: String(input.value), why: input.why || '', sure: input.sure || '', need: [] });
   const rec = { at: new Date().toISOString(), itemId: input.itemId, 칸: caseProcAiCut_(it.text, 80), value: caseProcAiMask_(String(input.value).slice(0, 80)), basis: (input.basis || {}).kind || '', why: why, sure: input.sure || '' };
   if (!chk.ok) { rec.결과 = '거절 — ' + chk.why; ctx.decisions.push(rec); return { ok: false, 반영: '거절', 이유: chk.why }; }
   if (userOnly || input.sure !== '확실' || chk.provisional || input.dryRun) {
@@ -212,10 +260,12 @@ function caseProcAiValueSetLive_(caseId, input, ctx) {
     return { ok: true, 반영: 'AI 의견(넣지 않음)', 이유: rec.결과 };
   }
   const a = it.ask || {};
+  if (a.target && (!CASEPROC_AI_SCALAR_TARGET_RE_.test(a.target) || (/^ih(div)?:/.test(a.target) && !/^\d+$/.test(String(input.value).replace(/[,\s원]/g, ''))))) { rec.결과 = '값 하나로 넣을 수 없는 칸(' + a.target.split(':')[0] + ') — AI 의견으로'; ctx.opinions.push({ itemId: input.itemId, value: rec.value, why: why, sure: input.sure || '' }); ctx.decisions.push(rec); return { ok: true, 반영: 'AI 의견(이 칸은 AI가 직접 못 넣음)', 이유: rec.결과 }; }
   if (!a.target) { rec.결과 = '넣을 칸 정보가 없음 — AI 의견으로'; ctx.opinions.push({ itemId: input.itemId, value: rec.value, why: why, sure: '확실' }); ctx.decisions.push(rec); return { ok: true, 반영: 'AI 의견(넣을 칸 없음)', 이유: rec.결과 }; }
   let r;
   try { r = caseProc0_(Object.assign({ caseId: caseId, step: 'apply', target: a.target, value: input.value, src: ('🤖 AI 판단: ' + why).slice(0, 80), label: a.label || '', ans: { qid: it.id, how: 'AI 판단' } })); } catch (e) { r = { ok: false, error: String(e && e.message || e) }; }
   rec.결과 = r && r.ok !== false ? '반영 — ' + caseProcAiCut_(r.message || '', 80) : '반영 실패 — ' + caseProcAiCut_((r && r.error) || '', 80);
+  if (r && r.ok !== false) caseProcAiMarkApplied_(caseId, { iid: input.itemId, target: a.target, label: a.label || caseProcAiCut_(it.text, 60), v: String(input.value), by: 'ai', model: CASEPROC_AI_DIRECTOR_MODEL_, why: why, sure: '확실', tier: '총괄', cands: ((it.ask && it.ask.cands) || []).slice(0, 6) });
   ctx.decisions.push(rec);
   return { ok: !!(r && r.ok !== false), 반영: r && r.ok !== false ? '넣음(🤖 AI 판단)' : '실패', 이유: (r && (r.message || r.error)) || '', 근거대조: chk.why };
 }
@@ -261,8 +311,13 @@ function caseProcAiFinish_(body) {
   if (!c) return { error: '사건을 찾지 못했습니다.' };
   const ctx = caseProcAiCtxLoad_(caseId);
   const run = { at: new Date().toISOString(), 세목: c.세목, 업무유형: c.업무유형 || '', mode: String(body.mode || 'ai'), won: Number(body.won) || 0, rounds: Number(body.rounds) || 0, stop: String(body.stop || ''),
-    spots: (body.spots || []).slice(0, 30), decisions: (ctx.decisions || []).slice(0, 40), asks: (ctx.asks || []).slice(0, 20), opinions: (ctx.opinions || []).slice(0, 20), gaps: (ctx.gaps || []).slice(0, 20), error: String(body.error || '').slice(0, 200) };
+    spots: (body.spots || []).slice(0, 30), tiers: body.tiers || null, tools: caseProcAiLiveTools_().map(function (t) { return t.name; }), decisions: (ctx.decisions || []).slice(0, 40), asks: (ctx.asks || []).slice(0, 20), opinions: (ctx.opinions || []).slice(0, 20), gaps: (ctx.gaps || []).slice(0, 20), error: String(body.error || '').slice(0, 200) };
   try { caseProcPatch_(caseId, function (sv) { sv.aiLead = (Array.isArray(sv.aiLead) ? sv.aiLead : []).concat([run]).slice(-10); }); } catch (e) {}
+  // [GAS 고도화 ①] 총괄 AI 판단을 2번 기록 모양(kind 'cx')으로 — 비용은 이번 지휘 비용을 판단 수로 나눠 붙임. 세무사님 수정은 다음 처리 때 2번 0) 단계가 붙인다
+  if (run.mode === 'ai' && (ctx.cxItems || []).length) caseProcAiLogCx_(c, CASEPROC_AI_DIRECTOR_MODEL_, run.won / CASEPROC_AI_KRW_, ctx.cxItems, 1);
+  // [GAS 고도화 ③] 빠진 도구 — AI가 남긴 것 + 자동으로 잡은 것(없는 도구를 부르려 함·추론 값)
+  caseProcAiLogGaps_(c, run.gaps);
+  try { CacheService.getScriptCache().remove(caseProcAiCtxKey_(caseId)); } catch (e) {}
   const applied = run.decisions.filter(function (d) { return /^반영 —/.test(d.결과 || ''); }).length;
   try {
     const line = run.mode === 'gas0' ? '[사건처리] AI 자리 없음 — AI 없이 끝(0원)' : '[사건처리 🤖 AI 지휘] 판단 ' + run.decisions.length + '개(넣음 ' + applied + ' · AI 의견 ' + run.opinions.length + ') · 질문 고름 ' + run.asks.length + ' · 비용 ' + run.won + '원 · ' + run.rounds + '바퀴' + (run.stop && run.stop !== 'end_turn' ? ' · 멈춤: ' + run.stop : '');
@@ -275,7 +330,7 @@ function caseProcAiFinish_(body) {
       if (!folder) return;
       const it = folder.getFilesByName(CASEPROC_AI_LOG_NAME_), f = it.hasNext() ? it.next() : folder.createFile(CASEPROC_AI_LOG_NAME_, '[]', 'application/json');
       let arr = []; try { arr = JSON.parse(f.getBlob().getDataAsString('UTF-8') || '[]'); } catch (e) { arr = []; }
-      arr.push(JSON.parse(caseProcAiMask_(JSON.stringify({ at: run.at, 세목: run.세목, 업무유형: run.업무유형, mode: run.mode, won: run.won, rounds: run.rounds, stop: run.stop,
+      arr.push(JSON.parse(caseProcAiMask_(JSON.stringify({ at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm'), 세목: run.세목, 업무유형: run.업무유형, mode: run.mode, won: run.won, rounds: run.rounds, stop: run.stop, tiers: run.tiers, tools: run.tools,
         spots: run.spots.map(function (s) { return (s.자리 || '') + '|' + (s.이유 || ''); }), decisions: run.decisions.map(function (d) { return { 칸: d.itemId, basis: d.basis, sure: d.sure, 결과: caseProcAiCut_(d.결과 || '', 40) }; }), gaps: run.gaps }))));
       f.setContent(JSON.stringify(arr.slice(-3000)));
     });

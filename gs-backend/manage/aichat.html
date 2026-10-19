@@ -2423,7 +2423,7 @@
   function nxAiCpSlim_(it){
     var a = it.ask || null;
     return { id: it.id, kind: it.kind, text: String(it.text || '').slice(0, 400), detail: String(it.detail || '').slice(0, 1500),
-      ask: a ? { mode: a.mode, target: a.target, label: a.label, input: a.input, cands: (a.cands || a.options || []).slice(0, 12).map(function(q){ return { v: q.v != null ? q.v : (q.value != null ? q.value : q.amount), label: q.label, src: q.src }; }) } : null };
+      ask: a ? { mode: a.mode, target: a.target, label: a.label, input: a.input, cands: ((Array.isArray(a.cands) && a.cands.length) ? a.cands : (Array.isArray(a.options) ? a.options : [])).slice(0, 12).map(function(q){ return { v: q.v != null ? q.v : (q.value != null ? q.value : q.amount), label: q.label, src: q.src }; }) } : null };
   }
   function nxAiCaseProcAi_(st){
     var row = st.steps.ai;
@@ -2437,7 +2437,7 @@
     st.setStep('ai', '🔄', 'AI가 판단할 자리 세는 중…');
     var ai = { won: 0, round: 0, messages: [], stop: '', calls: 0 };
     var finish = function(mode, extra){
-      return callGas('case_proc_ai', Object.assign({ caseId: st.caseId, step: 'finish', mode: mode, won: ai.won, rounds: ai.round, stop: ai.stop, spots: (ai.spots && ai.spots.spots) || [] }, extra || {})).catch(function(){ return null; });
+      return callGas('case_proc_ai', Object.assign({ caseId: st.caseId, step: 'finish', mode: mode, won: ai.won, rounds: ai.round, stop: ai.stop, spots: (ai.spots && ai.spots.spots) || [], tiers: (ai.spots && ai.spots.tiers) || null }, extra || {})).catch(function(){ return null; });
     };
     var fallback = function(why){
       st.setStep('ai', '⚠', why + ' — 지금 GAS 순서로 이어갑니다');
@@ -2447,10 +2447,14 @@
     return callGas('case_proc_ai', { caseId: st.caseId, step: 'spots', ov: { items: items, needs: ov.needs || null }, ev: { docTypes: (ev.docTypes || []).slice(0, 80) } }).then(function(sp){
       if (!sp || sp.error) return fallback('AI 자리를 세지 못함(' + ((sp && sp.error) || '응답 없음') + ')');
       ai.spots = sp;
+      ai.won = Math.round(((Number(sp.lightUsd) || 0) * 1400) * 10) / 10; // 저비용 1차 비용도 이 사건 비용에
+      var tr = sp.tiers || {};
+      line('🧭 길 나누기(세 겹) — GAS 확정 ' + (tr.GAS || 0) + ' · 저비용 확정 ' + (tr['저비용'] || 0) + ' · 올림 ' + (tr['올림'] || 0) + ' · 총괄 ' + (tr['총괄'] || 0) + ' · 질문 ' + (tr['질문'] || 0) + (sp.lightOff ? ' (저비용 자동 묻기 꺼짐 — 저비용 자리도 총괄로)' : '') + (sp.lightError ? ' · 저비용 오류: ' + sp.lightError : ''));
+      (sp.lightDone || []).forEach(function(d){ line('🤖 저비용 확정: ' + d.자리 + ' = ' + d.answer + (d.applied ? ' (넣음)' : '') + ' — ' + d.why); });
       if (!sp.need){
-        st.setStep('ai', '✅', 'AI가 판단할 자리 없음 — AI 없이 끝(0원)');
+        st.setStep('ai', '✅', sp.lightApplied || (sp.tiers && sp.tiers['저비용']) ? '총괄 AI가 판단할 자리 없음 — 저비용 AI만(' + ai.won + '원)' : 'AI가 판단할 자리 없음 — AI 없이 끝(0원)');
         line('질문 ' + sp.ask + '개는 서류에 없는 칸이라 세무사님께 바로 여쭙니다' + (sp.gas ? ' · GAS 몫(못 읽은 서류 등) ' + sp.gas + '개' : '') + '.');
-        return finish('gas0');
+        return (sp.lightApplied ? nxAiCaseProcLoop_(st, 0) : Promise.resolve()).then(function(){ return finish(sp.lightApplied ? 'light' : 'gas0'); });
       }
       line('AI가 판단할 자리 ' + sp.ai + '개 — ' + Object.keys(sp.byWhy || {}).map(function(k){ return k + ' ' + sp.byWhy[k]; }).join(' · ') + ' · 바로 여쭐 빈 칸 ' + sp.ask + '개 · 비용 상한 ' + Number(sp.cap).toLocaleString('ko-KR') + '원');
       var prog = line('🔄 지휘 AI(Sonnet 5.5)가 도구를 고르는 중…');
@@ -2477,7 +2481,9 @@
   // AI가 끝난 뒤 — 보고·넣은 값·AI 의견을 보이고, 값을 넣었으면 칸 채우기를 한 번 더 돌려 화면에 반영
   function nxAiCaseProcAiDone_(st, ai, r, line){
     var dec = r.decisions || [], ops = r.opinions || [], asks = r.asks || [];
-    st.aiOpin = {}; ops.forEach(function(o){ st.aiOpin[o.itemId] = Object.assign({ model: 'Sonnet 5.5' }, o); });
+    st.aiOpin = {}; ops.forEach(function(o){ st.aiOpin[o.itemId] = Object.assign({ model: 'Sonnet 5.5' }, o, { sure: (o.sure || '불확실') + ' — 넣지 않음' }); });
+    // 넣은 값도 그 질문에 🤖 AI 판단 상자로(맞으면 그대로, 다르면 세무사님이 고침 — 고친 것은 다음 처리 때 기록에 붙음)
+    dec.filter(function(d){ return /^반영 —/.test(d.결과 || ''); }).forEach(function(d){ st.aiOpin[d.itemId] = { model: 'Sonnet 5.5', value: d.value, why: d.why, sure: '확실 — 넣음' }; });
     st.aiUrgent = {}; asks.forEach(function(a){ (a.ids || []).forEach(function(id){ if (a.urgent) st.aiUrgent[id] = { note: a.note }; }); });
     var applied = dec.filter(function(d){ return /^반영 —/.test(d.결과 || ''); });
     var stopTxt = { cap: '비용 상한에 닿아 멈춤', rounds: '바퀴 상한에 닿아 멈춤', max_tokens: '답이 길어 잘림' }[ai.stop] || '';
@@ -2488,7 +2494,7 @@
     dec.filter(function(d){ return /^거절/.test(d.결과 || ''); }).forEach(function(d){ line('근거 대조에서 거절: ' + d.칸 + ' = ' + d.value + ' — ' + d.결과, 'nxai-cp-line nxai-muted'); });
     if (r.gaps && r.gaps.length) line('모자랐던 도구(기록함): ' + r.gaps.map(function(g){ return g.want; }).join(' / '), 'nxai-cp-line nxai-muted');
     // 값을 넣었으면 칸 채우기를 다시(넣은 값으로 남은 칸·질문이 바뀜). AI 의견·계산을 막는 질문 표시는 nxAiCpAiMark_가 붙인다
-    if (applied.length) return nxAiCaseProcLoop_(st, 0);
+    if (applied.length || (ai.spots && ai.spots.lightApplied)) return nxAiCaseProcLoop_(st, 0);
     st.items.forEach(function(it){ if (it.step === 'overview') nxAiCpAiMark_(st, it); });
     nxAiCaseProcItems_(st, 'overview');
     return Promise.resolve();

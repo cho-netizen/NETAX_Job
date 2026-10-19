@@ -152,6 +152,8 @@ function caseProcAiMask_(s) {
     // 계좌번호: 하이픈으로 끊긴 숫자 묶음 중 숫자가 10자리 이상인 것(날짜 8자리·금액(하이픈 없음)은 그대로) — 끝 4자리만 남김
     .replace(/\b\d{2,6}(?:-\d{2,8}){2,3}\b/g, function (m) { const d = m.replace(/\D/g, ''); if (d.length < 10) return m; let k = 0; const keep = d.length - 4; return m.replace(/\d/g, function (x) { return (k++ < keep) ? '*' : x; }); });
 }
+// 질문의 후보·선택지 목록 — 배열이 아닌 모양(묶음 객체 등)으로 오는 질문이 있어 늘 배열로
+function caseProcAiOpts_(a) { a = a || {}; return Array.isArray(a.cands) && a.cands.length ? a.cands : (Array.isArray(a.options) ? a.options : (Array.isArray(a.cands) ? a.cands : [])); }
 function caseProcAiCut_(s, n) { s = String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
 
 // ---------- 요약 ----------
@@ -161,7 +163,7 @@ function caseProcAiSumItems_(items, max) {
     const o = { id: it.id, 종류: it.kind, 글: caseProcAiCut_(it.text, 110) };
     if (it.card) o.카드 = it.card; // 2번 cxAskOrder_ — 세액계산기 카드 순서
     if (a.mode) o.묻는방식 = a.mode;
-    const cands = a.cands || a.options || [];
+    const cands = caseProcAiOpts_(a);
     if (cands.length) o.후보 = cands.slice(0, 3).map(function (x) { return caseProcAiCut_((x.v != null ? x.v : x.label) + (x.src ? ' ← ' + x.src : ''), 80); });
     if (cands.length > 3) o.후보수 = cands.length;
     return o;
@@ -201,7 +203,7 @@ function caseProcAiSummarize_(name, r) {
     if (r.lines) o.줄 = caseProcAiSumLines_(r.lines, nl);
     if (name === 'calc_fill') { const fl = caseProcAiFilled_(r); if (fl.length) o.채운칸 = fl.slice(0, 16); }
     // [지침 모의로 고침] 질문은 줄여도 목록은 전부(id·종류·짧은 글·후보 수) — 판단 대상 질문이 잘려 안 보이던 문제
-    if (r.items) { o.질문수 = r.items.length; o.질문목록 = r.items.map(function (it) { const n = ((it.ask || {}).cands || (it.ask || {}).options || []).length; return it.id + ' | ' + it.kind + ' | ' + caseProcAiCut_(it.text, 46) + (n ? ' | 후보 ' + n : ''); }); o.질문 = caseProcAiSumItems_(r.items, ni); }
+    if (r.items) { o.질문수 = r.items.length; o.질문목록 = r.items.map(function (it) { const n = caseProcAiOpts_(it.ask).length; return it.id + ' | ' + it.kind + ' | ' + caseProcAiCut_(it.text, 46) + (n ? ' | 후보 ' + n : ''); }); o.질문 = caseProcAiSumItems_(r.items, ni); }
     ['needCalc', 'needPdf', 'blocked', 'readOnly', 'ok'].forEach(function (k) { if (r[k] !== undefined) o[k] = r[k]; });
     return o;
   };
@@ -252,7 +254,7 @@ function caseProcAiCheckBasis_(c, value, basis, itemId, caseId) {
   if (basis.kind === 'cand') {
     const it = (CASEPROC_AI_LAST_ITEMS_[caseId || (c && c.id)] || []).filter(function (x) { return x.id === itemId; })[0];
     if (!it) return { ok: false, why: '그 질문이 마지막 칸 채우기에 없음(' + itemId + ') — calc_fill을 먼저' };
-    const cs = ((it.ask || {}).cands || (it.ask || {}).options || []).map(function (q) { return caseProcAiNorm_(q.v != null ? q.v : q.value != null ? q.value : q.amount); });
+    const cs = caseProcAiOpts_(it.ask).map(function (q) { return caseProcAiNorm_(q.v != null ? q.v : q.value != null ? q.value : q.amount); });
     return cs.indexOf(caseProcAiNorm_(value)) !== -1 ? { ok: true, why: 'GAS가 낸 후보 중 하나(계산값) — 고른 이유는 근거 줄로 남김' } : { ok: false, why: 'GAS가 낸 후보에 없는 값 — 지어낸 값일 수 있어 넣지 않음' };
   }
   if (basis.kind === 'user') return { ok: true, why: '세무사님 답' };
@@ -329,14 +331,14 @@ function caseProcAiVarSpots_(name, raw, caseId) {
   const out = [];
   if (!raw || raw.error) return out;
   (raw.items || []).forEach(function (it) {
-    const a = it.ask || {}, n = (a.cands || a.options || []).length;
+    const a = it.ask || {}, n = caseProcAiOpts_(a).length;
     const why = /^cxt:|모순/.test(it.id + it.text) ? '판독 갈림' : it.kind === 'missing' ? '빈 칸' : (it.kind === 'judge' || a.mode === 'options') ? '판단 갈림길' : n >= 2 ? '어긋남' : it.kind === 'check' ? '어긋남' : '빈 칸';
     // [2026.10.19 시험33 조사] 납세의무자 칸(수증자·양도인)의 후보가 '사건 납세자' 하나뿐이고 서류에서 그 이름을 못 찾은 경우 — 대조할 서류가 없어
     //  AI가 판단할 재료도 없다. AI 자리가 아니라 서류 요청 질문(빈 칸)으로 센다(개발용 5건·시험 23건 되풀이). 이름 대조로 확실히 정하는 GAS 규칙은 아님
     // [2026.10.19 5번 사건분류 쪼개기] 양도 사건분류 질문은 통째로 AI 자리로 세지 않고, 남은 선택지가 기대는 작은 판단으로 나눠 센다:
     //  사용자 사실(세대 주택 수·관계 등 — 서류에 없어 질문) / 변수(오피스텔 실사용·재촌자경·정비사업 감면·상속주택 정황 — AI 해석) / 상수(GAS 몫 — 표·날짜)
-    if (it.id === 'ov:사건분류' && /주택|토지|양도|수용|이월과세/.test(JSON.stringify(a.options || a.cands || []))) {
-      const opts = (a.options || a.cands || []).map(function (o) { return String(o.label || o.v || o.value || ''); }).join(' | '), det = (String(it.detail || '') + ' ' + String(it.text || '')).split('서류로 해당 없어 뺀 선택지')[0]; // 뺀 선택지 목록(재건축·재개발 등 낱말)을 신호로 읽지 않게
+    if (it.id === 'ov:사건분류' && /주택|토지|양도|수용|이월과세/.test(JSON.stringifycaseProcAiOpts_(a))) {
+      const opts = caseProcAiOpts_(a).map(function (o) { return String(o.label || o.v || o.value || ''); }).join(' | '), det = (String(it.detail || '') + ' ' + String(it.text || '')).split('서류로 해당 없어 뺀 선택지')[0]; // 뺀 선택지 목록(재건축·재개발 등 낱말)을 신호로 읽지 않게
       const subs = [];
       if (/1세대1주택|일시적2주택|2주택 중과|3주택/.test(opts)) {
         // [2026.10.19 5번 조정지역 이력표 — 재기 전용] CASEPROC_AI_ADJ_TRIAL_가 켜졌을 때만 AdjArea.js 이력표로 취득·양도 당시 조정대상지역을 가른다(운영 판정에 안 씀)
@@ -358,7 +360,7 @@ function caseProcAiVarSpots_(name, raw, caseId) {
       subs.forEach(function (x) { out.push(x); });
       return;
     }
-    const c0 = (a.cands || a.options || [])[0] || {};
+    const c0 = caseProcAiOpts_(a)[0] || {};
     const noDoc = n === 1 && /사건 납세자/.test(String(c0.src || '')) && (it.kind === 'missing' || /서류로는 확인 못|확인 못 함/.test(String(c0.src || '')));
     out.push({ 자리: it.id, 이유: noDoc ? '빈 칸' : why, 설명: (noDoc ? '[서류 없음 → 서류 요청 질문] ' : '') + caseProcAiMask_(caseProcAiCut_(it.text, 110)), 후보수: n, noDoc: noDoc || undefined });
   });
