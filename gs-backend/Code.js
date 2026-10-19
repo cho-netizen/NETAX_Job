@@ -779,6 +779,7 @@ const DRIVE_TOOLS = [
         spouseLegalShareRatio: { type: 'number', description: '배우자의 법정상속분 비율(0~1, 예: 배우자+자녀2명이면 1.5/3.5≈0.4286). 이 값과 taxableEstateAmount 등으로 배우자공제 한도액을 정밀 계산한다. 생략하면 30억 한도만 적용된다.' },
         nonHeirBequestAmount: { type: 'number', description: '상속인이 아닌 자(수유자)가 유증 등으로 받은 재산가액(원). 배우자공제 한도액과 상속공제 종합한도 계산에 쓰인다.' },
         giftToHeirsWithin10Years: { type: 'number', description: '상속개시일 전 10년 이내에 피상속인이 상속인에게 증여한 재산가액 합계(원). 배우자공제 한도액 계산에 쓰인다.' },
+        debtExcessAmount: { type: 'number', description: '채무·공과금 합계가 총상속재산가액(추정상속재산 제외)보다 커서 taxableEstateAmount를 만들 때 0으로 잘라 버린 초과분(원). §13① 후단대로 엔진이 추정상속재산과 상계하고, 장례비는 사전증여 가산 전에만 뺀다(서식 부표1 ㉙ = max(0, ⑫ − ⑬ − ⑰ − ㉑) + ㉕). 채무가 재산보다 작으면 0 또는 생략.' },
         priorGiftedAmountIncludedInEstate: { type: 'number', description: 'taxableEstateAmount에 가산된 10년 이내 사전증여재산가액의 원본(재산가액 자체, 과세표준 아님). 배우자공제 한도액 계산의 "상속재산의 가액" 산출에 쓰인다.' },
         spouseTaxableBaseOfPriorGift: { type: 'number', description: '상속재산에 가산한 증여재산 중 배우자가 사전증여받은 부분의 증여세 과세표준(원). 배우자공제 한도액에서 차감된다.' },
         childCount: { type: 'integer', description: '자녀 수 (1인당 5천만원 공제)' },
