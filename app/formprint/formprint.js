@@ -426,8 +426,8 @@
                     .then(function (src) {
                       var pageNos = [];
                       map.서식.forEach(function (e) {
-                        (e.쪽 || []).forEach(function (p) { if (pageNos.indexOf(p) < 0) pageNos.push(p); });
-                        if (opts.backPages !== false) (e.뒷면쪽 || []).forEach(function (p) { if (pageNos.indexOf(p) < 0) pageNos.push(p); });
+                        [].concat(e.쪽 == null ? [] : e.쪽).forEach(function (p) { if (pageNos.indexOf(p) < 0) pageNos.push(p); });
+                        if (opts.backPages !== false) [].concat(e.뒷면쪽 == null ? [] : e.뒷면쪽).forEach( /* [2026.10.19 고침] 위치판의 쪽·뒷면쪽은 숫자 하나·배열·null이 섞여 있음(증여10호·상속9호는 숫자 2) */ function (p) { if (pageNos.indexOf(p) < 0) pageNos.push(p); });
                       });
                       pageNos.sort(function (a, b) { return a - b; });
                       return doc.copyPages(src, pageNos.map(function (n) { return n - 1; })).then(function (copied) {

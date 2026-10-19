@@ -15013,7 +15013,7 @@ function tcOfficialFormRun_(){
   }).then(function(done){
     say(done.map(function(d){
       const miss = [], bad = [];
-      (d.r.mapped || []).forEach(function(m){ (m.missing || []).forEach(function(x){ miss.push(m.formKey + ' ' + (x.칸 || x.key || x)); }); (m.checks || []).filter(function(c){ return c.맞음 === false; }).forEach(function(c){ bad.push(m.formKey + ' ' + (c.칸 || '') + ' ' + (c.내용 || '')); }); });
+      (d.r.mapped || []).forEach(function(m){ (m.missing || []).forEach(function(x){ miss.push(m.formKey + ' ' + (x.칸 || x.key || x)); }); (m.checks || []).filter(function(c){ return c.맞음 === false; }).forEach(function(c){ bad.push(m.formKey + ' ' + [c.칸, c.내용 || c.식].filter(Boolean).join(' ') + (c.서식값 != null ? ' (서식 ' + Number(c.서식값).toLocaleString('ko-KR') + ' ↔ 계산 ' + Number(c.계산값).toLocaleString('ko-KR') + ')' : '')); }); });
       const over = (d.r.report && d.r.report.overflow) || [];
       return '✅ ' + escapeHtml(d.label) + ' — 새 창으로 열었습니다.' +
         (bad.length ? '<br><span style="color:#b00020;">⚠ 서식 산식 검산 틀림: ' + escapeHtml(bad.join(', ')) + '</span>' : '') +
@@ -15121,7 +15121,7 @@ function renderPrintPane(){
       // [2026.10.19 원본 모양 출력] 법정서식 원본 PDF(드라이브 법정서식원본(법제처)) 위에 위치판대로 값을 찍는다 — 모듈은 깃허브 페이지 app/formprint(서버 용량 밖)
       ((anyReady && TC_OFFICIAL_FORM_TAX_[printActiveGroup_]) ? '<div class="taxcalc-result-note" style="margin:10px 0 4px; padding:8px 10px; border:1px solid #2a7a4f; border-radius:6px;">' +
         '<b>📄 법정서식 원본 모양으로 출력</b> <span style="font-size:12px;">(' + escapeHtml(TC_OFFICIAL_FORM_LABEL_[printActiveGroup_]) + ' — 국세청 공식 서식 PDF 위에 계산 값을 찍습니다)</span><br>' +
-        (printActiveGroup_ === '증여세' ? '' : '<label style="font-size:12.5px;">신고구분 <select id="printOfficialKind"><option>확정신고</option><option>예정신고</option><option>수정신고</option><option>기한 후 신고</option></select></label> ') +
+        (printActiveGroup_ === '증여세' ? '' : '<label style="font-size:12.5px;">신고구분 <select id="printOfficialKind">' + (printActiveGroup_ === '상속세' ? ['기한 내 신고', '수정신고', '기한 후 신고'] : ['확정신고', '예정신고', '수정신고', '기한 후 신고']).map(function(o){ return '<option>' + o + '</option>'; }).join('') + '</select></label> ' /* 서식 보기 글자와 같게 — 상속 9호는 기한 내·수정·기한 후, 양도 84호는 예정·확정·수정·기한 후 */) +
         '<label style="font-size:12.5px;">신고일 <input type="date" id="printOfficialDate" value="' + escapeHtml(tcTodayStr_()) + '"></label> ' +
         '<button type="button" class="save-btn" data-action="print-official-form">📄 원본 모양 출력</button>' +
         '<div id="printOfficialNote" style="margin-top:6px; font-size:12.5px;"></div></div>' : '') +
