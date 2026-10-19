@@ -236,9 +236,26 @@ function caseProcAiValueForms_(v) {
   const s = String(v == null ? '' : v).trim(), out = [s];
   const n = s.replace(/[,\s원]/g, '');
   if (/^\d{4,}$/.test(n)) { out.push(n, Number(n).toLocaleString('ko-KR')); }
-  const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (d) { out.push(d[1] + '.' + d[2] + '.' + d[3], d[1] + '. ' + Number(d[2]) + '. ' + Number(d[3]), d[1] + '년 ' + Number(d[2]) + '월 ' + Number(d[3]) + '일', d[1] + d[2] + d[3], d[1] + '/' + d[2] + '/' + d[3]); }
+  // [밤샘 5번-10] 날짜는 어떤 꼴로 와도(2015-3-2·2015.3.2·2015년 3월 2일) 연·월·일로 풀어, 서류에 흔한 꼴(0 붙임·안 붙임) 모두와 맞댄다
+  const d = /^(\d{4})\s*[.\-\/년]\s*(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})\s*[.일]?$/.exec(s);
+  if (d) {
+    const y = d[1], m = Number(d[2]), dd = Number(d[3]), m2 = (m < 10 ? '0' : '') + m, d2 = (dd < 10 ? '0' : '') + dd;
+    out.push(y + '-' + m2 + '-' + d2, y + '.' + m2 + '.' + d2, y + '.' + m + '.' + dd, y + '-' + m + '-' + dd, y + '년' + m + '월' + dd + '일', y + '년' + m2 + '월' + d2 + '일', y + m2 + d2, y + '/' + m2 + '/' + d2, y + '/' + m + '/' + dd);
+  }
   return out.filter(String);
+}
+// [밤샘 5번-10] 원문에 그 값이 "있다"는 것은 앞뒤가 숫자가 아닌 온전한 값으로 있을 때 — 전엔 1,000,000이 11,000,000 안에서,
+//  2015.3.2가 2015.3.21 안에서 맞았다(빈칸을 지운 글에서 찾으므로 앞뒤 한 글자로 판정)
+function caseProcAiHasWhole_(flat, x) {
+  const k = String(x).replace(/\s+/g, ''); if (!k) return false;
+  for (let i = flat.indexOf(k); i !== -1; i = flat.indexOf(k, i + 1)) {
+    const a = flat.charAt(i - 1), a2 = flat.charAt(i - 2), b = flat.charAt(i + k.length), b2 = flat.charAt(i + k.length + 1);
+    // 앞이 숫자(또는 '숫자,'·'숫자.')면 더 큰 수의 일부, 뒤가 숫자(또는 ',숫자'·'.숫자')면 더 긴 수·날짜의 일부
+    const prevBad = /\d/.test(k.charAt(0)) && (/\d/.test(a) || (/[,.]/.test(a) && /\d/.test(a2)));
+    const nextBad = /\d/.test(k.charAt(k.length - 1)) && (/\d/.test(b) || (/[,.]/.test(b) && /\d/.test(b2)));
+    if (!prevBad && !nextBad) return true;
+  }
+  return false;
 }
 function caseProcAiFindFile_(c, ref, filed) {
   // filed: 이미 낸 신고서(양도코리아 등) 폴더까지 — 해명·경정·불복 사건은 당초 신고서가 입력(지침 0)
@@ -280,7 +297,7 @@ function caseProcAiCheckBasis_(c, value, basis, itemId, caseId) {
     const flat = t.replace(/\s+/g, '');
     // 판단형(보기 고르기) 값은 서류에 그대로 안 나온다 — 근거 문구(quote)를 주면 그 문구가 원문에 있는지로 대조한다
     if (basis.quote) { const q = String(basis.quote).replace(/\s+/g, ''); return q.length >= 4 && flat.indexOf(q) !== -1 ? { ok: true, why: '근거 서류 원문에 그 문구', file: f.name } : { ok: false, why: '근거 서류 원문에 그 문구가 없음 — 지어낸 근거일 수 있어 넣지 않음' }; }
-    const hit =caseProcAiValueForms_(value).some(function (x) { return x && flat.indexOf(String(x).replace(/\s+/g, '')) !== -1; });
+    const hit = caseProcAiValueForms_(value).some(function (x) { return x && caseProcAiHasWhole_(flat, x); });
     return hit ? { ok: true, why: '근거 서류 원문에 같은 값', file: f.name } : { ok: false, why: '근거 서류 원문에 그 값이 없음 — 지어낸 값일 수 있어 넣지 않음', file: f.name };
   }
   return { ok: false, why: '근거 종류가 없음(doc·lookup·user 중 하나)' };
