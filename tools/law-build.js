@@ -31,6 +31,7 @@ const LAWS = [
   ['지방세법', '조회만'], ['지방세법 시행령', '조회만'], ['지방세법 시행규칙', '조회만'],
   ['지방세특례제한법', '조회만'], ['지방세특례제한법 시행령', '조회만'], ['지방세특례제한법 시행규칙', '조회만']
 ];
+const LIST_ONLY = ['종합부동산세법', '종합부동산세법 시행령', '종합부동산세법 시행규칙']; // 감시만(정비본 안 만듦)
 // 세무사님 법령 폴더 파일(참고용) — 산식 보정을 뽑는 곳
 const REF_FILES = { '국세기본법': '국세기본법.md', '국세기본법시행령': '국세기본법시행령.md', '국세기본법시행규칙': '국세기본법시행규칙.md',
   '소득세법': '소득세법.md', '소득세법시행령': '소득세법시행령.md', '소득세법시행규칙': '소득세법시행규칙.md',
@@ -216,6 +217,27 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
   const items = keep.concat(corr);
   const cnt = {}; items.forEach(c => { cnt[c.상태] = (cnt[c.상태] || 0) + 1; });
   const corrDoc = { 설명: '산식 보정 — 법제처 원문에서 그림뿐인 산식을 글로. 세무사님 법령 폴더(참고용)에서 뽑은 것(구분 ref) + Vision 판독(구분 vision). 그림 번호가 그 판 조문에 없으면 덧입히지 않고 "다시 확인 필요".', 만든때: idx.만든때, 상태별: cnt, 항목: items };
+  // 감시목록_법령.json(법령 세션 몫) — EnvWatch가 읽는다. 정비·조회만 + 목록만(종합부동산세법 — 계산기에 없음, 개정 날짜만)
+  const watch = LAWS.concat(LIST_ONLY.map(n => [n, '목록만'])).map(([n, scope]) => ({ id: '법령:' + key(n), 종류: '법령', 이름: n, 범위: scope,
+    확인: { 방법: '법제처법령', 관련법령: n }, 주기: '매일', 기준값: (idx.법령[key(n)] || {}).현행 || '', 기준일: today.replace(/(\d{4})(\d\d)(\d\d)/, '$1-$2-$3'),
+    영향: scope === '목록만' ? ['개정 날짜만 알림'] : ['법령 정비본 새 판(node tools/law-build.js)', '산식 보정·Vision 판독 다시 확인(바뀐 조문)'], 담당: '법령 세션' }));
+  // 그림목록.json — Vision 판독 대상(정비 대상 현행판 조문 속 산식 그림). 법제처 글자상자도 없는 그림을 먼저.
+  const pics = [];
+  for (const [n, scope] of LAWS) {
+    const e = idx.법령[key(n)]; if (scope !== '정비' || !e || !e.현행) continue;
+    const f = path.join(OUT, '본문', key(n), e.현행 + '.json.gz'); if (!fs.existsSync(f)) continue;
+    for (const a of JSON.parse(zlib.gunzipSync(fs.readFileSync(f)).toString('utf8')).조) for (const id of a.그림) {
+      const c = items.filter(x => x.법령 === key(n) && x.조 === a.조 && x.그림.includes(id));
+      pics.push({ id, 법령: key(n), 판: e.현행, 조: a.조, url: 'https://www.law.go.kr/LSW/flDownload.do?flSeq=' + id, 글자상자: !!boxOf(a, id), 보정: c.map(x => x.상태) });
+    }
+  }
+  pics.sort((p, q) => (p.글자상자 - q.글자상자) || p.법령.localeCompare(q.법령));
+  if (!DRY) {
+    fs.mkdirSync(path.join(OUT, '감시'), { recursive: true });
+    fs.writeFileSync(path.join(OUT, '감시', '감시목록_법령.json'), JSON.stringify({ 설명: '법령 개정 감시 목록 — 주인 법령 세션(tools/law-build.js가 만듦). EnvWatch가 밤마다 읽는다.', 항목: watch }, null, 1));
+    fs.writeFileSync(path.join(OUT, '산식보정', '그림목록.json'), JSON.stringify({ 설명: 'Vision 판독 대상 법령 그림 산식(글자상자 없는 것 먼저). 판독 결과는 같은 폴더 Vision판독.json', 만든때: idx.만든때, 항목: pics }, null, 1));
+  }
+  console.log('감시목록_법령', watch.length, '· 그림목록', pics.length, '(글자상자 없음 ' + pics.filter(p => !p.글자상자).length + ')');
   if (!DRY) {
     fs.mkdirSync(path.dirname(idxPath), { recursive: true }); fs.writeFileSync(idxPath, JSON.stringify(idx, null, 1));
     fs.mkdirSync(path.dirname(corrPath), { recursive: true }); fs.writeFileSync(corrPath, JSON.stringify(corrDoc, null, 1));
