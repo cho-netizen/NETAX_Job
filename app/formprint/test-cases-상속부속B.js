@@ -94,6 +94,12 @@ module.exports = function (E, H) {
   var c142 = ihCtx(pIn, { pk: { input: pkC, result: pkCRes } });
   L.push({ name: '상속14호의2_문화유산물납', forms: [{ formKey: '상속14호의2', ctx: c142 }], ctx: c142 });
 
+  // ⑤-3 상속14호의3 — 징수유예 국가지정문화유산등(담보 없이 유예, 법 §74⑤): ②의 상속 산출세액 3,285,000,000, 상속재산 90억 중 국가지정문화유산 3억, 계속 보유
+  //   손계산: 징수유예세액 = 3,285,000,000 × 3억 ÷ 90억 = 109,500,000(시행령 §76①)
+  var chIn = { taxType: 'inheritance', itemType: 'national_heritage', totalTaxPayable: rIn.산출세액, totalPropertyValue: 9000000000, eligiblePropertyValue: 300000000, triggerEvent: 'none' };
+  var c143 = ihCtx(pIn, { ch: { input: chIn, result: E.calculateCulturalHeritageTaxDeferralJS(clone(chIn)) } });
+  L.push({ name: '상속14호의3_국가지정문화유산보유', forms: [{ formKey: '상속14호의3', ctx: c143 }], ctx: c143 });
+
   // ⑥ 상속13호의2 — 물납 재산 재평가 신청서: 수납가액 도구(무상증자, 구주 1주당 과세가액 30,000원, 1주당 신주 0.5주) + ⑤의 물납 도구 결과
   //   손계산: 30,000 ÷ (1 + 0.5) = 20,000원(시행규칙 §20의2①1호가목) — 이 서식(§75①3호)에 쓰는 값이 아니라 알림으로만
   var svIn = { changeType: 'free_increase', oldSharePreChangeValue: 30000, newSharesPerOldShare: 0.5 };

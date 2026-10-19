@@ -19,6 +19,11 @@
  *   공통11호          : 증여·상속 공통 탭 "연부연납" 도구 결과(lastInstallmentResult_)가 있음(PRINT_REGISTRY_ installment.isReady와 같음).
  *                       상속 묶음(plan)에는 그 도구가 상속세로 계산돼 있을 때만. 증여 묶음엔 붙이지 않음(지금 인쇄처럼 수증자 첫 번째 기준 — 서식표 줄로 찍음)
  *   공통11호부표      : 연부연납 도구가 상속세이고 상속 결과에 가업 재산 계산 내역(가업상속공제_계산내역)이 있음(지금 인쇄엔 없는 부표)
+ *   공통16호          : 경정청구 도구 계산(lastCorrectionClaimInput_)이 있음(cr.isReady) — 신고 묶음(plan)엔 넣지 않음
+ *   국기8호           : 상속 결과가 있고 상속인 명부에 2명 이상(PRINT_MAYBE_RULES_와 같은 조건 — 지금 인쇄엔 없는 서식) — 상속 묶음(plan)에 붙임
+ *   상속13호·14호의2  : 물납 도구가 "적용 가능"(lastPropertyInKindResult_) — 일반 물납이면 13호, 문화유산 등 물납이면 14호의2(propertyinkind.isReady)
+ *   상속13호의2       : 물납 주식 수납가액 도구 결과(lastSvResult_)가 있음(sv.isReady) — ⚠ 서식(§75①3호 재평가)과 도구(§75①1호)가 다른 제도
+ *   상속14호의3       : 징수유예 도구 결과의 징수유예세액이 있음(ch.isReady) — ⚠ 담보 없이 유예받은 국가지정문화유산등·천연기념물등만 내는 서식
  */
 (function (root, factory) {
   var NF = root.NxFormPrint;
@@ -425,7 +430,8 @@
       var hs = (typeof inheritanceHeirs !== 'undefined' && inheritanceHeirs) ? inheritanceHeirs : [];
       return Object.assign({ r: null, heirs: hs.map(function (h) { return { name: h.name || '', regNo: h.regNo || '', relation: h.relation || '', address: h.address || '', addressDong: h.addressDong || '', addressHo: h.addressHo || '', isReporter: !!h.isReporter }; }),
         phone: H.el('ihReporterPhone'), email: H.el('ihReporterEmail'), taxAgent: H.agent(),
-        deceased: { name: H.el('ihDeceasedName'), regNo: H.el('ihDeceasedRegNo'), deathDate: H.el('ihDeathDate'), taxOffice: H.el('ihDeceasedTaxOffice') } }, extra || {});
+        deceased: { name: H.el('ihDeceasedName'), regNo: H.el('ihDeceasedRegNo'), address: H.el('ihDeceasedAddress'), deathDate: H.el('ihDeathDate'), taxOffice: H.el('ihDeceasedTaxOffice'),
+          resident: H.el('ihDecedentResident') === 'nonresident' ? 'nonresident' : (H.el('ihDecedentResident') ? 'resident' : '') } }, extra || {});
     }
   }
   function pkCtx(extra) {
@@ -490,6 +496,59 @@
     } else o.miss('⑰ 계', '물납 도구 입력 없음(문화유산 등 가액)');
     o.note('⚠ 판단 대기: 서식 작성방법 3의 ⑨ 구분은 「문화재보호법」 기준(가.-1~나.-5)인데, 현행 시행령 §75의2①(2024.5.17. 개정)은 「문화유산의 보존 및 활용에 관한 법률」에 따라 지정된 유형·민속문화유산(1호)과 「근현대문화유산의 보존 및 활용에 관한 법률」에 따라 등록된 문화유산(1의2호)·미술품(2호) — 서식대로 적되 대상인지 확인하세요');
     o.miss('(신청·철회) 신청 구분([ ]물납을 신청 [ ]물납 신청을 철회)', '계산기에 없음');
+    return o.result();
+  };
+
+  // ───────── 상증 별지 제14호의3서식 — 징수유예 국가지정문화재등([ ]보유현황명세서, [ ]양도거래신고서)(법 §74⑤~⑦, 시행령 §76⑥⑦) ─────────
+  //  값 출처: 지금 인쇄 chPrintFormPageHtml_(신청인 = 상속: 명부 첫 행 / 증여: 수증자 첫 번째, 재산 종류, 징수유예세액, 현재 상태) — 화면 ch 도구(chTaxType·chItemType·chEligibleProperty·chTriggerEvent).
+  //  예전 인쇄 번호와 다름: 예전 ③ 재산 종류 → 서식 ⑯(1줄), ④ 징수유예세액 → 서식에 칸 없음(알림), ⑤ 현재 상태 → ㉒ 보유 여부.
+  //  ctx = 상속 ctx(heirsCtx) 또는 증여(person·other) + ch: {input, result}(lastChInput_·lastChResult_)
+  /* global lastChInput_, lastChResult_ */
+  function chFromApp() {
+    var inp = typeof lastChInput_ !== 'undefined' ? lastChInput_ : null, res = typeof lastChResult_ !== 'undefined' ? lastChResult_ : null;
+    return (inp && res && res.징수유예세액) ? { input: inp, result: res } : null;
+  }
+  var CH_ITEM = { cultural_property: '문화유산자료등', museum_material: '박물관자료등', national_heritage: '국가지정문화유산등', natural_monument: '천연기념물등' };
+  mappers['상속14호의3'] = function (ctx) {
+    var o = new Out(), ch = ctx.ch || {}, ci = ch.input || {}, cr = ch.result || {}, gift = ci.taxType === 'gift', ta = ctx.taxAgent || {};
+    var p = gift ? (ctx.person || {}) : firstHeir(ctx), dc = gift ? (ctx.other || {}) : (ctx.deceased || {});
+    o.miss('구분([ ]보유현황명세서 [ ]양도거래신고서 — 제목·본문)', '계산기에 없음(매년 말 보유현황(법 §74⑥)인지 양도 7일 전 신고(§74⑦)인지 고르는 칸 없음)');
+    o.need('①', p.name, '① 제출인 성명').need('②', p.regNo, '② 제출인 주민등록번호');
+    var em = gift ? p.email : (p.isReporter ? ctx.email : '');
+    if (has(em)) o.set('③', em); else o.miss('③ 전자우편 주소', gift ? '수증자 전자우편 입력 없음' : '상속인 명부에 전자우편 칸 없음(신고인 전자우편은 명부 첫 행이 신고인일 때만 씀)');
+    o.need('④', H.fullAddr(p), '④ 주소');
+    if (!gift && has(p.relation)) o.set('⑤', p.relation); else o.miss('⑤ 피상속인과의 관계', gift ? '해당 없음 — 증여세' : '상속인 명부에 관계 입력 없음');
+    var ph = gift ? p.phone : heirPhone(ctx, p);
+    if (has(ph)) o.set(H.isMobile(ph) ? '⑥@휴대전화' : '⑥@사무실', ph);
+    o.miss('⑥ 전화번호' + (has(ph) ? '(' + (H.isMobile(ph) ? '사무실' : '휴대전화') + ')' : ''), gift ? '수증자 전화번호가 한 칸뿐(01x면 휴대전화)' : '상속인 명부에 전화번호 칸 없음(신고인 전화번호만 한 칸 — 01x면 휴대전화)');
+    o.note('⚠ 제출인 = ' + (gift ? '수증자 목록 첫 번째' : '상속인 명부 첫 행') + '(지금 인쇄와 같음)');
+    o.need('⑦', dc.name, gift ? '⑦ 증여자 성명' : '⑦ 피상속인 성명').need('⑧', dc.regNo, gift ? '⑧ 증여자 주민등록번호' : '⑧ 피상속인 주민등록번호');
+    if (!gift && dc.resident) o.set('⑨', dc.resident === 'nonresident' ? '비거주자' : '거주자'); else o.miss('⑨ 거주 구분', gift ? '해당 없음 — 증여세' : '화면 입력 없음');
+    if (!gift) o.need('⑩', dc.address, '⑩ 피상속인 주소').need('⑪', dc.deathDate, '⑪ 상속개시일');
+    else o.miss('⑩ 피상속인 주소·⑪ 상속개시일', '해당 없음 — 증여세');
+    if (has(ta.name)) {
+      o.set('⑫', ta.name);
+      if (has(ta.bizNo)) o.set('⑬', ta.bizNo); else o.miss('⑬ 세무대리인 사업자등록번호', '세무대리인 사업자등록번호 입력 없음');
+      o.miss('⑭ 세무대리인 생년월일', '계산기에 없음');
+      if (has(ta.phone)) o.set(H.isMobile(ta.phone) ? '⑮@휴대전화' : '⑮@사무실', ta.phone);
+      o.miss('⑮ 세무대리인 전화번호 나머지 칸', '세무대리인 전화번호가 한 칸뿐');
+      o.set('세무대리인서명', ta.name);
+    } else o.miss('⑫⑬⑭⑮ 세무대리인·세무대리인(서명)', '세무대리인 입력 없음(본인 제출)');
+    // 명세 — 도구는 재산 종류 하나·가액 합계 하나만 받음
+    if (CH_ITEM[ci.itemType]) o.set('⑯', [CH_ITEM[ci.itemType]]); else o.miss('⑯ 구분', '화면 입력 없음(재산 종류)');
+    o.miss('⑰⑱⑲⑳㉑ 작품명·작가명·규격·평가기준일·신고액(작품별)', '계산기에 없음(징수유예 도구는 재산 종류 하나와 대상 재산가액 합계만 받음)');
+    if (cr.상태 === '징수유예_적용중') { o.set('㉒', ['보유']); o.note('㉒ 보유 여부 "보유" = 징수유예 도구의 사후관리 사유 "없음(계속 유예)" — 양도 예정이면 양도 예정일을 적으세요(작성방법)'); }
+    else o.miss('㉒ 보유 여부', '징수유예 도구 상태가 ' + (cr.상태 || '없음') + ' — 양도 예정일은 계산기에 없음');
+    if (n(ci.eligiblePropertyValue) > 0) { o.set('㉓', n(ci.eligiblePropertyValue)); o.note('㉓ 계 = 징수유예 도구의 징수유예 대상 재산가액 합계(작품별 ㉑ 신고액을 적고 합이 맞는지 확인하세요)'); }
+    else o.miss('㉓ 계', '화면 입력 없음(징수유예 대상 재산가액)');
+    o.note('징수유예세액(서식에 칸 없음) = 산출세액 ' + n(ci.totalTaxPayable) + '원 × 대상 재산가액 ' + n(ci.eligiblePropertyValue) + '원 ÷ 전체 재산가액 ' + n(ci.totalPropertyValue) + '원 = ' + n(cr.징수유예세액) + '원(시행령 §76①, 엔진 반올림)');
+    if (gift || (ci.itemType !== 'national_heritage' && ci.itemType !== 'natural_monument'))
+      o.note('⚠ 이 서식은 담보 없이 징수유예 받은 국가지정문화유산등·천연기념물등(법 §74①3호·4호, ⑤)만 냄(§74⑥ 매년 말 보유현황, ⑦ 양도 7일 전 신고) — 지금 고른 ' + (gift ? '증여세(§75, 박물관자료등)' : (CH_ITEM[ci.itemType] || '재산')) + '은 대상이 아님(예전 인쇄도 같은 조건으로 만들었음)');
+    o.note('⚠ 판단 대기: 서식(2023.3.20.)은 "국가지정문화재등"만 적었으나 현행 법 §74①4호·⑤~⑦은 「자연유산의 보존 및 활용에 관한 법률」의 천연기념물등도 같은 의무 — 서식 근거 문구 "시행령 제76조제5항·제6항"은 지금 §76⑥⑦');
+    ymdSet(o, '제출일', ctx.신고일, '제출일', 'ctx.신고일 없음(계산기에 없음)');
+    o.need('제출인서명', p.name, '제출인(서명)');
+    var off = gift ? ctx.office : dc.taxOffice;
+    if (has(off)) o.set('세무서', H.officeName(off)); else o.miss('세무서', gift ? '수증자 관할 세무서 입력 없음' : '피상속인 관할 세무서 입력 없음');
     return o.result();
   };
 
@@ -568,6 +627,16 @@
   ready['상속13호'] = function () { var pk = pkFromApp(); return !!(pk && pk.input.provision !== 'cultural_heritage'); };
   ctxFor['상속14호의2'] = function (extra) { var c = pkCtx(extra); return (c && c.pk.input.provision === 'cultural_heritage') ? c : null; };
   ready['상속14호의2'] = function () { var pk = pkFromApp(); return !!(pk && pk.input.provision === 'cultural_heritage'); };
+  // 징수유예 보유현황·양도거래 — 지금 인쇄처럼 징수유예 도구 결과(징수유예세액 > 0)가 있으면(PRINT_REGISTRY_ ch.isReady)
+  ctxFor['상속14호의3'] = function (extra) {
+    var ch = chFromApp(); if (!ch) return null;
+    if (ch.input.taxType === 'gift') {
+      var dn = (typeof giftDonees !== 'undefined' && giftDonees && giftDonees[0]) || {}, dr = (typeof giftDonors !== 'undefined' && giftDonors && giftDonors[0]) || {};
+      return Object.assign({ ch: ch, taxAgent: H.agent(), person: dn, other: { name: dr.name, regNo: dr.regNo }, office: dn.taxOffice }, extra || {});
+    }
+    return Object.assign(heirsCtx(extra), { ch: ch });
+  };
+  ready['상속14호의3'] = function () { return !!chFromApp(); };
   // 물납 재산 재평가 — 지금 인쇄처럼 수납가액 도구(sv) 결과가 있으면(PRINT_REGISTRY_ sv.isReady). 물납 도구 결과가 있으면 ⑤에 씀
   ctxFor['상속13호의2'] = function (extra) { var sv = svFromApp(); return sv ? Object.assign(heirsCtx(extra), { sv: sv, pk: pkFromApp() }) : null; };
   ready['상속13호의2'] = function () { return !!svFromApp(); };
