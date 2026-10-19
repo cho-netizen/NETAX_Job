@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 06:33 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 06:35 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -19876,7 +19876,7 @@
     if (typeof g0 === 'function') window.calculateGiftTaxJS = function (p) { const r = g0(p); if (r && !r.error) { const w = giftHistoryWarning_(p || {}, r); if (w) r.시점경고 = w; } return r; };
     if (typeof i0 === 'function') window.calculateInheritanceTaxJS = function (p) { const r = i0(p); if (r && !r.error) { const w = inheritanceHistoryWarning_(p || {}, r); if (w) r.시점경고 = w; } return r; };
   })();
-  // [2026.10.19 서식 연동 B-2] 서식 칸 산식 검산 — 칸 지도(reftables/서식_상속9호*.json·서식_양도84부표1.json의 '검산' 식)의 칸끼리 산식으로
+  // [2026.10.19 서식 연동 B-2] 서식 칸 산식 검산(칸 번호는 칸 해설 reftables/서식_*.json 기준, 번호 없는 칸은 이름으로) — 칸 지도(reftables/서식_상속9호*.json·서식_양도84부표1.json의 '검산' 식)의 칸끼리 산식으로
   //  엔진 결과를 따로 다시 계산해 맞춰 본다(토큰 0). 다르면 결과에 서식검산(칸별 표)과 서식검산경고를 붙인다 — 숫자는 바꾸지 않는다.
   //  오늘 장례비 사례(§24 한도의 기준이 장례비를 뺀 과세가액인데 엔진이 빼기 전 금액을 썼던 것)처럼 서식 정의와 엔진이 어긋나면 여기서 잡힌다.
   function formCheckPush_(list, 서식, 칸, 내용, 계산기, 서식식) {
@@ -19902,14 +19902,14 @@
     // 부표3 ㉛ ≤ ㉚
     formCheckPush_(L, F + ' 부표3', '㉛', '상속공제 합계는 공제적용한도액을 넘지 않음', Math.min(Number(r.상속공제_서식합계), Number(r.공제적용한도액)), r.상속공제_서식합계);
     // 산출세액 = 누진세율(과세표준) + 세대생략 가산액
-    formCheckPush_(L, F, '㉒~㉔', '산출세액 = 세율(과세표준) + 세대생략가산액', r.산출세액, progressiveTax(Number(r.과세표준), GIFT_INHERIT_TAX_BRACKETS) + (Number(r.세대생략가산액) || 0));
+    formCheckPush_(L, F, '㉕', '산출세액 = ㉓ 세율(㉑ 과세표준) + ㉔ 세대생략가산액', r.산출세액, progressiveTax(Number(r.과세표준), GIFT_INHERIT_TAX_BRACKETS) + (Number(r.세대생략가산액) || 0));
     return L;
   }
   function giftFormChecks_(p, r) {
     const L = [], F = '별지 제10호';
     if (r.과세표준 === undefined || r.산출세액_할증전 === undefined) return L;
-    formCheckPush_(L, F, '산출세액', '산출세액(할증 전) = 세율(과세표준)', r.산출세액_할증전, progressiveTax(Number(r.과세표준), GIFT_INHERIT_TAX_BRACKETS));
-    formCheckPush_(L, F, '할증 뒤', '산출세액(할증 뒤) = 할증 전 + 세대생략 할증액', r.산출세액_할증후, (Number(r.산출세액_할증전) || 0) + (Number(r.세대생략할증액) || 0));
+    formCheckPush_(L, F, '㊱', '산출세액 = 세율(㉞ 과세표준)', r.산출세액_할증전, progressiveTax(Number(r.과세표준), GIFT_INHERIT_TAX_BRACKETS));
+    formCheckPush_(L, F, '㊳', '산출세액 계 = ㊱ + ㊲ 세대생략 할증세액', r.산출세액_할증후, (Number(r.산출세액_할증전) || 0) + (Number(r.세대생략할증액) || 0));
     return L;
   }
   function transferFormChecks_(p, r) {
@@ -19918,11 +19918,11 @@
     const special = r.장기임대주택특례_임대기간중분리상세 || r.조합원입주권_재건축상세 || p.hasRelocationRight || p._externalGainOverride != null;
     if (!special) {
       const iv = r.입력값 || {};
-      formCheckPush_(L, F, '⑭', '양도차익 = 양도가액 − 취득가액 − 필요경비', r.양도차익, (Number(iv.양도가액) || 0) - (Number(iv.취득가액) || 0) - (Number(iv.필요경비) || 0));
-      formCheckPush_(L, F, '⑯', '장기보유특별공제 = 과세대상 양도차익 × 공제율', r.장기보유특별공제액, Math.floor(Number(r.과세대상양도차익) * Number(r.장기보유특별공제율) + 1e-6));
+      formCheckPush_(L, F, '전체 양도차익', '전체 양도차익 = ⑪ 양도가액 − ⑫ 취득가액 − ⑬ 토지초과이득세 − ⑭ 기타 필요경비', r.양도차익, (Number(iv.양도가액) || 0) - (Number(iv.취득가액) || 0) - (Number(iv.필요경비) || 0));
+      formCheckPush_(L, F, '⑯', '장기보유특별공제 = ⑮ 과세대상 양도차익 × 공제율', r.장기보유특별공제액, Math.floor(Number(r.과세대상양도차익) * Number(r.장기보유특별공제율) + 1e-6));
     }
-    formCheckPush_(L, F, '⑱', '양도소득금액 = 과세대상 양도차익 − 장기보유특별공제', r.양도소득금액, Number(r.과세대상양도차익) - Number(r.장기보유특별공제액));
-    formCheckPush_(L, '별지 제84호', '과세표준', '과세표준 = 양도소득금액 − 기본공제', r.과세표준, Math.max(0, Number(r.양도소득금액) - Number(r.기본공제)));
+    formCheckPush_(L, F, '⑱', '양도소득금액 = ⑮ − ⑯', r.양도소득금액, Number(r.과세대상양도차익) - Number(r.장기보유특별공제액));
+    formCheckPush_(L, '별지 제84호', '⑧', '과세표준 = ④ 양도소득금액 − ⑦ 기본공제(⑤⑥ 없을 때)', r.과세표준, Math.max(0, Number(r.양도소득금액) - Number(r.기본공제)));
     return L;
   }
   (function () {
@@ -34741,7 +34741,7 @@ const PRINT_REGISTRY_ = [
       // 전부 다른데, 기존엔 그중 하나(별지83호의5)만 카탈로그에 올려서 나머지 6종은 계산 전엔
       // 아예 안 보였다 — 7종 전부 올린다.
       { formNo: '조세특례제한법 시행규칙 [별지 제52호의3서식]', title: '1세대1주택 과세특례(인구감소지역주택·준공후미분양주택 취득자) 신고서', section: 'optional' },
-      { formNo: '소득세법 시행규칙 [별지 제63호의4서식]', title: '농어촌주택 등 취득자에 대한 과세특례신고서', section: 'optional' },
+      { formNo: '조세특례제한법 시행규칙 [별지 제63호의4서식]', title: '농어촌주택 등 취득자에 대한 과세특례신고서', section: 'optional' }, // [2026.10.19] 법 이름 고침(소득세법 → 조세특례제한법 시행규칙, 법제처 서식 목록·조특법 §99의4)
       { formNo: '소득세법 시행규칙 [별지 제83호서식]', title: '농어촌주택 소유자 1세대1주택 특례적용신고서(문화재주택·이농주택·귀농주택)', section: 'optional' },
       { formNo: '소득세법 시행규칙 [별지 제83호의2서식]', title: '주택임대사업자의 거주주택 1세대1주택 특례적용신고서', section: 'optional' },
       { formNo: '소득세법 시행규칙 [별지 제83호의3서식]', title: '장기저당담보주택에 대한 특례적용신고서(동거봉양 합가)', section: 'optional' },
