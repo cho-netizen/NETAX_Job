@@ -145,6 +145,45 @@
     return o.result();
   };
 
+  // ───────── 조특 별지 제62호의3서식 — 장기임대주택에 대한 과세특례적용신청서(조특법 §97의4, 시행령 §97의4③) ─────────
+  //  값 출처: 지금 인쇄 trRentalLongPrintPageHtml_(소재지·취득일·양도일·임대기간·등록일 당시 기준시가) + 칸 해설 계산기칸.
+  //  ⑰ 추가공제율 = 서식 작성방법 3 표(= 법 §97의4① 표)로 ⑮ 기간 계에서 — 예전 인쇄엔 이 줄이 없었음.
+  //  엔진(rentalLongTermRate 'rental_long')은 장기보유특별공제율 = 소득세법 §95② 표1 공제율 + 추가공제율로 계산 → 그 합을 검산.
+  function addRate97_4(ry) { return ry >= 10 ? 10 : ry >= 9 ? 8 : ry >= 8 ? 6 : ry >= 7 ? 4 : ry >= 6 ? 2 : 0; }
+  function table1(h) { return h >= 3 ? Math.min(30, 2 * Math.floor(h)) : 0; } // 소득세법 §95② 표1(3년 6% … 15년 이상 30%)
+  mappers['조특62호의3'] = function (ctx) {
+    var o = new Out(), s = ctx.seller || {}, it = itemOf(ctx), a = it.asset || {};
+    applicant(o, s, { name: '①', birth: '②', addr: '③@주소', phone: '③@전화번호' }, '①~③ 신청인');
+    o.need('④', a.assetLocation, '④ 소재지');
+    o.miss('⑤ 주택면적', '계산기에 없음').miss('⑥ 토지면적', '계산기에 없음');
+    ymdSet(o, '⑦', a.acquisitionDate, '⑦ 취득일자');
+    ymdSet(o, '⑧', a.transferDate, '⑧ 양도일자');
+    o.miss('⑨ 세법상 사업자등록일', '계산기에 없음');
+    if (has(a.rentalRegistrationDate)) o.set('⑩', a.rentalRegistrationDate); else o.miss('⑩ 민간임대주택법상 사업자등록일', '화면 입력 없음(임대주택 등록일)');
+    o.miss('⑪·⑫·⑬·⑭ 임대내역(임차인 성명·생년월일, 임대기간 개시일·종료일)', '계산기에 없음');
+    o.miss('⑮ 기간(회차별 줄)', '계산기에 없음 — 임대 연수 한 값(rentalYears)만 있어 계 칸에만 찍음');
+    var ry = n(a.rentalYears);
+    if (has(a.rentalYears) && ry > 0) o.set('⑮@계', ry + '년'); else o.miss('⑮ 기간 계', '화면 입력 없음(임대기간 연수)');
+    var startStd = n(a.rentalStartStandardPrice), regStd = n(a.registrationStandardPrice);
+    if (startStd || regStd) {
+      o.set('⑯', startStd || regStd);
+      if (!startStd) o.note('⑯ 임대개시일 당시 기준시가 = 화면 "등록일 당시 기준시가"(작성방법 2는 임대를 개시한 날 당시 주택+부수토지 기준시가 합계) — 등록일과 임대 개시일이 다르면 고칠 것');
+    } else o.miss('⑯ 임대개시일 당시 기준시가 합계액', '화면 입력 없음(등록일 당시 기준시가)');
+    var r = singleOf(it);
+    if (ry < 6) o.miss('⑰', has(a.rentalYears) ? '임대기간 ' + ry + '년 — 6년 미만이라 추가공제 대상 아님(조특법 §97의4①)' : '화면 입력 없음(임대기간 연수)');
+    else {
+      var add = addRate97_4(ry);
+      o.set('⑰', add);
+      if (r && !r.error && r.장기임대주택특례_적용여부) {
+        var h = n(r.입력값 && r.입력값.보유기간_년);
+        o.check('엔진 장기보유특별공제율 = 소득세법 §95② 표1(보유 ' + h + '년) + ⑰ 추가공제율', pct1(r.장기보유특별공제율), table1(h) + add);
+      } else o.note('엔진 결과에 장기임대주택 특례가 적용되지 않음' + (r && r.error ? '(' + r.error + ')' : '') + ' — ⑰은 작성방법 3 표로만 찍음');
+    }
+    if (a.isOneHouseOneFamily) o.note('⚠ 1세대 1주택(소득세법 §95② 단서 표2) 자산 — 조특법 §97의4① 단서는 이 경우 추가공제를 적용하지 않는다고 함. 엔진은 표1+추가공제율로 바꿔 계산하므로 확인 필요');
+    signBlock(o, ctx, s, { agent: true });
+    return o.result();
+  };
+
   // ───────── 세액인쇄 화면용: 서식 한 장씩 ctx(양도인마다·자산마다) ─────────
   /* global lastTransferResults_ */
   function trItems() { return (typeof lastTransferResults_ !== 'undefined' && lastTransferResults_ ? lastTransferResults_ : []).filter(function (it) { return it.result && !it.result.error; }); }

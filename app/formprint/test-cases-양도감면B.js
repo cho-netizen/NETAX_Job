@@ -32,5 +32,14 @@ module.exports = function (E, H) {
   var c1b = trCtx([other, g1]);
   L.push({ name: '조특62호의2_plan_두자산', forms: require('./mappers-양도감면B.js').plan('양도', c1b), ctx: c1b });
 
+  // ② 조특62호의3 — 장기임대주택(§97의4): 2012.4.10. 취득 5억, 2016.3.2. 등록, 8년 임대, 2026.6.30. 양도 15억(1세대1주택 아님)
+  //   손계산: 보유 14년 → 표1 28% + 추가공제율 6%(8년 이상 9년 미만) = 34% → 장기보유특별공제 = 10억 × 34% = 3억4천만
+  var g2 = { assetType: 'house', assetKind: 'building', transferPrice: 1500000000, acquisitionPrice: 500000000, necessaryExpenses: 0,
+    acquisitionDate: '2012-04-10', transferDate: '2026-06-30', assetLocation: '부산광역시 ○○구 견본로 7, 2동 201호 (견본)',
+    rentalSpecialType: 'rental_long', rentalYears: 8, rentalRegistrationDate: '2016-03-02',
+    acquisitionStandardPrice: 300000000, registrationStandardPrice: 350000000, transferStandardPrice: 900000000 };
+  var c2 = trCtx([g2]);
+  L.push({ name: '조특62호의3_장기임대8년', forms: [{ formKey: '조특62호의3', ctx: Object.assign({}, c2, { 특례자산: 0 }) }], ctx: c2 });
+
   return L;
 };
