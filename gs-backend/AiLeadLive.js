@@ -27,6 +27,8 @@ var CASEPROC_AI_USER_ONLY_RE_ = /relfmv|시가|특수관계|가족관계|관계�
 // 특수관계 질문(2번 relcheck) — 세무사님 원문 "특수관계 여부를 확인하는 절차만 있으면 된다": 총괄 AI도 값·의견을 붙이지 않고 질문 글의 정황 근거만 세무사님께
 var CASEPROC_AI_RELATION_RE_ = /^(tr:buyerrel|trc:a\d+\.donorRelation|ov:giftRelation(:.*)?|tr:relfmv)$/;
 var CASEPROC_AI_LOG_NAME_ = '_사건처리AI판단기록.json';
+// [2026.10.20 밤샘] 시험 모드(body.dry) — 실제 AI는 부르되 사건에 쓰지 않음(값 넣기·첨부 저장·작업일지·판단 기록 없음, 비용 기록은 [시험])
+var CASEPROC_AI_DRY_ = false;
 var CASEPROC_AI_NO_TOOLS_ = ['docs_read', 'doc_text']; // [GAS 고도화 ④] 지휘 AI에게 주지 않는 도구
 
 // 사건당 비용 상한(원) — 업무유형으로
@@ -77,9 +79,9 @@ function caseProcAiSpots_(body) {
   light.concat(lead).forEach(function (s) { plan.주제[s.topic] = (plan.주제[s.topic] || 0) + 1; });
   const lp = caseProcAiLightPass_(c, light, items);
   let lightApplied = 0;
-  lp.done.forEach(function (rec) { const r = caseProcAiLightApply_(c, rec, items); rec.applied = r.applied; rec.result = r.why; if (r.applied) lightApplied++; tiers.저비용++; });
+  lp.done.forEach(function (rec) { const r = CASEPROC_AI_DRY_ ? { applied: false, why: '시험 — 넣지 않음' } : caseProcAiLightApply_(c, rec, items); rec.applied = r.applied; rec.result = r.why; if (r.applied) lightApplied++; tiers.저비용++; });
   lp.up.forEach(function (s) { s.tier = lp.off ? '총괄' : '올림'; lead.push(s); });
-  if (!lp.off) caseProcAiLogCx_(c, LIGHT_MODEL, lp.usd, lp.done.concat(lp.up.map(function (s) { return s.light ? Object.assign({ 자리: s.자리, topic: s.topic }, s.light) : null; }).filter(Boolean)).map(function (r) {
+  if (!lp.off && !CASEPROC_AI_DRY_) caseProcAiLogCx_(c, LIGHT_MODEL, lp.usd, lp.done.concat(lp.up.map(function (s) { return s.light ? Object.assign({ 자리: s.자리, topic: s.topic }, s.light) : null; }).filter(Boolean)).map(function (r) {
     const it = byId[r.자리] || {}, a = it.ask || {};
     return { iid: r.자리, topic: r.topic || caseProcAiTopic_(r.자리).topic, shape: '저비용|' + (/^doc:/.test(r.자리) ? '서류' : String(a.target || '').split(':')[0]), target: a.target || '', label: a.label || caseProcAiCut_(it.text || r.자리, 60), facts: r.quote || '', cands: caseProcAiOpts_(a).slice(0, 6).map(function (q) { return { v: q.v != null ? q.v : q.value, src: String(q.src || '').slice(0, 100) }; }), answer: r.answer, why: r.why, sure: r.sure, need: r.need || [] };
   }));
@@ -182,7 +184,7 @@ function caseProcAiCall_(model, system, tools, messages, maxTokens, effort) {
   }
   if (!json || json.error) return { error: (json && json.error && json.error.message) || 'AI 응답 없음' };
   let won = 0;
-  try { const u = buildClaudeUsageInfo_(json, cfg, model, null); won = Math.round(u.costUsd * CASEPROC_AI_KRW_ * 10) / 10; ai_logPaid_({ entry: { kind: 'caseproc-ai', model: model, usd: u.costUsd, q: '사건처리 AI 지휘' } }); } catch (e) {}
+  try { const u = buildClaudeUsageInfo_(json, cfg, model, null); won = Math.round(u.costUsd * CASEPROC_AI_KRW_ * 10) / 10; ai_logPaid_({ entry: { kind: 'caseproc-ai', model: model, usd: u.costUsd, q: (CASEPROC_AI_DRY_ ? '[시험] ' : '') + '사건처리 AI 지휘' } }); } catch (e) {}
   return { json: json, won: won };
 }
 // 마지막 메시지 끝에 캐시 경계(지난 차례까지 다시 읽기를 싸게)
@@ -279,6 +281,7 @@ function caseProcAiValueSetLive_(caseId, input, ctx) {
     return { ok: true, 반영: 'AI 의견(넣지 않음)', 이유: rec.결과 };
   }
   const a = it.ask || {};
+  if (CASEPROC_AI_DRY_) { rec.결과 = '시험 — 근거 통과(넣었을 값, 실제로는 안 넣음)'; ctx.decisions.push(rec); return { ok: true, 반영: '시험 — 넣지 않음', 이유: rec.결과 }; }
   if (a.target && (!CASEPROC_AI_SCALAR_TARGET_RE_.test(a.target) || (/^ih(div)?:/.test(a.target) && !/^\d+$/.test(String(input.value).replace(/[,\s원]/g, ''))))) { rec.결과 = '값 하나로 넣을 수 없는 칸(' + a.target.split(':')[0] + ') — AI 의견으로'; ctx.opinions.push({ itemId: input.itemId, value: rec.value, why: why, sure: input.sure || '' }); ctx.decisions.push(rec); return { ok: true, 반영: 'AI 의견(이 칸은 AI가 직접 못 넣음)', 이유: rec.결과 }; }
   if (!a.target) { rec.결과 = '넣을 칸 정보가 없음 — AI 의견으로'; ctx.opinions.push({ itemId: input.itemId, value: rec.value, why: why, sure: '확실' }); ctx.decisions.push(rec); return { ok: true, 반영: 'AI 의견(넣을 칸 없음)', 이유: rec.결과 }; }
   let r;
@@ -413,6 +416,7 @@ function caseProcAiAttachSave_(c, ctx, entry, input) {
   const list = (c.법령예규판례 || []).filter(function (e) { return !(e.category === entry.category && e.id === entry.id); });
   const keep = (c.법령예규판례 || []).filter(function (e) { return e.category === entry.category && e.id === entry.id && e.첨부 !== 'AI'; })[0];
   if (keep) return { ok: true, 첨부: '이미 세무사님이 직접 첨부한 자료 — 그대로 둠', id: entry.id };
+  if (CASEPROC_AI_DRY_) { ctx.attaches = (ctx.attaches || []).concat([{ id: entry.id, 제목: entry.제목, 쓸곳: entry.쓸곳 }]); return { ok: true, 첨부: '시험 — 저장 안 함', id: entry.id, 제목: entry.제목 }; }
   try { work_updateCase({ id: c.id, 법령예규판례: list.concat([entry]) }); } catch (e) { return { 오류: '첨부 저장 실패: ' + (e && e.message || e) }; }
   ctx.attaches = (ctx.attaches || []).concat([{ id: entry.id, 제목: entry.제목, 쓸곳: entry.쓸곳 }]);
   return { ok: true, 첨부: 'AI 첨부(미확인) — 세무사님이 법령 탭에서 확정하거나 뺀다', id: entry.id, 제목: entry.제목, 판: entry.판 || '' };
@@ -421,6 +425,8 @@ function caseProcAiAttachSave_(c, ctx, entry, input) {
 // ---------- 입구 ----------
 function caseProcAi_(body) {
   if (!body || !body.caseId) return { error: '사건이 필요합니다.' };
+  CASEPROC_AI_DRY_ = !!body.dry;
+  if (CASEPROC_AI_DRY_ && body.step === 'finish') return { ok: true, dry: true };
   try {
     if (body.step === 'spots') return caseProcAiSpots_(body);
     if (body.step === 'turn') return caseProcAiTurn_(body);
