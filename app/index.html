@@ -18227,7 +18227,10 @@
   // 계속 5년 이상 국내에 주소·거소를 둔 거주자가 국외 토지·건물·부동산에관한권리·기타자산을 양도할 때
   // 적용된다. 세율은 §55①(국내양도세와 같은 기본누진세율표)을 그대로 쓰되 장기보유특별공제는 적용하지
   // 않는다(§118의8단서). 기본공제는 국내양도세와 별개로 연250만원(§118의7①). 외국납부세액공제 한도는
-  // §118의6①·시행령§178의7: 산출세액 × (국외자산양도소득금액 ÷ 해당 과세기간 양도소득금액 합계액) —
+  // [2026.10.19 세액 고침] §118의6①1호(법률 제16834호, 2020.1.1 이후 양도분 — 부칙 제2조① 일반 적용례): 한도 = A × B / C
+  //  A 국외자산 양도소득 산출세액, B 해당 국외자산 양도소득금액, C 그 과세기간 국외자산 양도소득금액 — 국내분은 넣지 않고 자산마다 비교한다.
+  //  아래 옛 설명(국내 양도소득금액을 분모에 넣음)은 2019.12.31까지 양도분 문언("그 과세기간의 양도소득금액")이라 그 경우에만 쓴다(판단 대기).
+  // (옛) §118의6①·시행령§178의7: 산출세액 × (국외자산양도소득금액 ÷ 해당 과세기간 양도소득금액 합계액) —
   // 같은 과세기간에 국내자산 양도소득금액이 함께 있으면 domesticTransferIncomeAmount로 입력하면 정확한
   // 비율로 한도를 계산하고, 입력하지 않으면(국외자산양도소득만 있는 경우) 비율이 1이 되어 한도=산출세액과
   // 같아진다. 또는 필요경비산입 방법을 선택할 수 있다(필요경비산입 방법을 쓰려면 이미 필요경비에 포함해
@@ -18250,7 +18253,9 @@
 
     const foreignTaxCreditMethod = p.foreignTaxCreditMethod === 'expense' ? 'expense' : 'credit';
     const foreignTaxPaidAmount = Number(p.foreignTaxPaidAmount) || 0;
-    const domesticTransferIncomeAmount = Math.max(0, Number(p.domesticTransferIncomeAmount) || 0);
+    // [2026.10.19] 2020.1.1 이후 양도분은 분모 C에 국내분을 넣지 않는다(단건은 B = C → 비율 1). 2019년 이전 양도분만 옛 문언대로 국내분 포함(판단 대기)
+    const oldFtcRule_ = !!(p.transferDate && String(p.transferDate) < '2020-01-01');
+    const domesticTransferIncomeAmount = oldFtcRule_ ? Math.max(0, Number(p.domesticTransferIncomeAmount) || 0) : 0;
     const totalIncomeAmountForRatio = Math.max(0, gain) + domesticTransferIncomeAmount;
     const creditRatio = totalIncomeAmountForRatio > 0 ? Math.max(0, gain) / totalIncomeAmountForRatio : 1;
     const foreignTaxCreditLimit = Math.round(calculatedTax * creditRatio);
@@ -18304,11 +18309,29 @@
     const taxBase = Math.max(0, totalGain - basicDeduction);
     const calculatedTax = progressiveTax(taxBase, TRANSFER_TAX_BRACKETS);
 
-    const domesticTransferIncomeAmount = Math.max(0, Number(filingParams.domesticTransferIncomeAmount) || 0);
-    const totalIncomeAmountForRatio = Math.max(0, totalGain) + domesticTransferIncomeAmount;
-    const creditRatio = totalIncomeAmountForRatio > 0 ? Math.max(0, totalGain) / totalIncomeAmountForRatio : 1;
-    const foreignTaxCreditLimit = Math.round(calculatedTax * creditRatio);
-    const foreignTaxCredit = Math.min(totalForeignTaxPaid, foreignTaxCreditLimit);
+    // [2026.10.19 세액 고침] §118의6①1호(2020.1.1 이후 양도분): 자산마다 한도 = A × (해당 국외자산 양도소득금액 B) ÷ (국외자산 양도소득금액 합계 C).
+    //  예전엔 국내 양도소득금액을 분모에 더하고(한도 과소) 외국납부세액 합계와 한도 합계를 한 번에 비교했다(자산별 초과분이 다른 자산 한도로 넘어감).
+    //  2019.12.31 이전 양도분(옛 문언 "그 과세기간의 양도소득금액")이 섞이면 예전 방식(판단 대기).
+    const oldFtcRuleM_ = transactions.some(function (t) { return t && t.transferDate && String(t.transferDate) < '2020-01-01'; });
+    let foreignTaxCreditLimit = 0, foreignTaxCredit = 0;
+    if (oldFtcRuleM_) {
+      const domesticTransferIncomeAmount = Math.max(0, Number(filingParams.domesticTransferIncomeAmount) || 0);
+      const totalIncomeAmountForRatio = Math.max(0, totalGain) + domesticTransferIncomeAmount;
+      const creditRatio = totalIncomeAmountForRatio > 0 ? Math.max(0, totalGain) / totalIncomeAmountForRatio : 1;
+      foreignTaxCreditLimit = Math.round(calculatedTax * creditRatio);
+      foreignTaxCredit = Math.min(totalForeignTaxPaid, foreignTaxCreditLimit);
+    } else {
+      const C_ = Math.max(0, totalGain);
+      perTxn.forEach(function (x) {
+        const lim = C_ > 0 ? Math.round(calculatedTax * Math.max(0, x.양도차익) / C_) : 0;
+        x.공제한도 = lim;
+        x.공제액 = Math.min(x.외국납부세액_공제신청액, lim);
+        foreignTaxCreditLimit += lim;
+        foreignTaxCredit += x.공제액;
+      });
+      foreignTaxCreditLimit = Math.min(foreignTaxCreditLimit, calculatedTax); // 손실 자산이 섞이면 B 합계가 C보다 클 수 있음 — 산출세액으로 한 번 더 막음
+      foreignTaxCredit = Math.min(foreignTaxCredit, calculatedTax);
+    }
     const taxAfterCredit = Math.max(0, calculatedTax - foreignTaxCredit);
 
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(filingParams.filingStatus) !== -1 ? filingParams.filingStatus : 'ontime';
@@ -26136,7 +26159,7 @@ function renderOverseasPropertyCardHtml_(idx){
 // (여러 건이어도 기본공제 1회만 적용)로 바꾼다.
 function renderOverseasSharedFilingSectionHtml_(){
   return '<div class="taxcalc-grid" style="margin-top:8px;">' +
-      '<div class="taxcalc-field"><label>같은 과세기간 국내자산 양도소득금액(있으면)</label><input type="number" id="oaSharedDomesticIncome" placeholder="원" value="' + (oaSharedFilingState.domesticIncome || '') + '"><span class="taxcalc-field-help">외국납부세액공제 한도(§118의6) 계산용 — 없으면 국외자산만 있다고 보아 공제한도=산출세액</span></div>' +
+      '<div class="taxcalc-field"><label>같은 과세기간 국내자산 양도소득금액(있으면)</label><input type="number" id="oaSharedDomesticIncome" placeholder="원" value="' + (oaSharedFilingState.domesticIncome || '') + '"><span class="taxcalc-field-help">2019년 이전 양도분만 씀 — 2020.1.1 이후 양도분은 법(§118의6①1호)대로 국외자산 양도소득금액만으로 자산별 한도를 계산해 이 값을 쓰지 않습니다</span></div>' +
       '<div class="taxcalc-field"><label>신고 상태</label><select id="oaSharedFilingStatus"><option value="ontime"' + (oaSharedFilingState.filingStatus !== 'unreported' && oaSharedFilingState.filingStatus !== 'underreported' ? ' selected' : '') + '>정상(기한내) 신고</option><option value="unreported"' + (oaSharedFilingState.filingStatus === 'unreported' ? ' selected' : '') + '>무신고</option><option value="underreported"' + (oaSharedFilingState.filingStatus === 'underreported' ? ' selected' : '') + '>과소신고</option></select></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" id="oaSharedFraudulent"' + (oaSharedFilingState.isFraudulent ? ' checked' : '') + '><label for="oaSharedFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
       '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="oaSharedUnderreportedTax" placeholder="원" value="' + (oaSharedFilingState.underreportedTax || '') + '"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
@@ -36570,6 +36593,7 @@ function handleTaxCalcClick_(e){
     const transactions = transferAssets.filter(function(a){ return a.isOverseasAsset; }).map(function(a){
       return {
         wasResidentFiveYearsContinuously: !!a.oaResident5yr,
+        transferDate: a.transferDate || '', // [2026.10.19] §118의6①1호 — 2020.1.1 이후 양도분은 국외자산만으로 한도(자산별)
         transferPrice: numVal(a.transferPrice) || 0,
         acquisitionPrice: numVal(a.acquisitionPrice) || 0,
         capitalExpenditure: numVal(a.oaCapitalExpenditure) || 0,

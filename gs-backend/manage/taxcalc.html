@@ -5530,7 +5530,7 @@ function renderOverseasPropertyCardHtml_(idx){
 // (여러 건이어도 기본공제 1회만 적용)로 바꾼다.
 function renderOverseasSharedFilingSectionHtml_(){
   return '<div class="taxcalc-grid" style="margin-top:8px;">' +
-      '<div class="taxcalc-field"><label>같은 과세기간 국내자산 양도소득금액(있으면)</label><input type="number" id="oaSharedDomesticIncome" placeholder="원" value="' + (oaSharedFilingState.domesticIncome || '') + '"><span class="taxcalc-field-help">외국납부세액공제 한도(§118의6) 계산용 — 없으면 국외자산만 있다고 보아 공제한도=산출세액</span></div>' +
+      '<div class="taxcalc-field"><label>같은 과세기간 국내자산 양도소득금액(있으면)</label><input type="number" id="oaSharedDomesticIncome" placeholder="원" value="' + (oaSharedFilingState.domesticIncome || '') + '"><span class="taxcalc-field-help">2019년 이전 양도분만 씀 — 2020.1.1 이후 양도분은 법(§118의6①1호)대로 국외자산 양도소득금액만으로 자산별 한도를 계산해 이 값을 쓰지 않습니다</span></div>' +
       '<div class="taxcalc-field"><label>신고 상태</label><select id="oaSharedFilingStatus"><option value="ontime"' + (oaSharedFilingState.filingStatus !== 'unreported' && oaSharedFilingState.filingStatus !== 'underreported' ? ' selected' : '') + '>정상(기한내) 신고</option><option value="unreported"' + (oaSharedFilingState.filingStatus === 'unreported' ? ' selected' : '') + '>무신고</option><option value="underreported"' + (oaSharedFilingState.filingStatus === 'underreported' ? ' selected' : '') + '>과소신고</option></select></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" id="oaSharedFraudulent"' + (oaSharedFilingState.isFraudulent ? ' checked' : '') + '><label for="oaSharedFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
       '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="oaSharedUnderreportedTax" placeholder="원" value="' + (oaSharedFilingState.underreportedTax || '') + '"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
@@ -15964,6 +15964,7 @@ function handleTaxCalcClick_(e){
     const transactions = transferAssets.filter(function(a){ return a.isOverseasAsset; }).map(function(a){
       return {
         wasResidentFiveYearsContinuously: !!a.oaResident5yr,
+        transferDate: a.transferDate || '', // [2026.10.19] §118의6①1호 — 2020.1.1 이후 양도분은 국외자산만으로 한도(자산별)
         transferPrice: numVal(a.transferPrice) || 0,
         acquisitionPrice: numVal(a.acquisitionPrice) || 0,
         capitalExpenditure: numVal(a.oaCapitalExpenditure) || 0,
