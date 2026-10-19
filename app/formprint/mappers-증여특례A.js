@@ -218,9 +218,62 @@
   ready['증여10호의2부표2'] = function () { var r = g('lastSpecialRateGiftResult_'); return !!(r && r.특례종류 === SUCCESSION); };
 
 
+  // ═════════ 조특 별지 제52호서식(+부표) — 영농자녀 증여농지등의 세액감면신청서(조특법 §71, 시행령 §68⑫) ═════════
+  //  ctx = mappers.js ctxFromApp.증여(i)가 만든 것(r·donee·donor·relation·giftDate·taxAgent) + 신고일.
+  //  계산기는 감면세액(증여세 탭 "영농자녀 증여농지 세액감면" 칸 → 엔진 영농자녀증여농지세액감면)만 받는다.
+  //  농지 소재지·면적·영농 종사기간·부표 명세(④~⑫)는 계산기에 없어 비운다(지금 인쇄도 같은 안내 — 있지도 않은 농지 내역을 지어내지 않음).
+  function farmAmount(ctx) { return has(ctx.farmlandExemption) ? n(ctx.farmlandExemption) : n((ctx.r || {}).영농자녀증여농지세액감면); }
+  mappers['조특52호'] = function (ctx) {
+    var o = new Out(), dn = ctx.donee || {}, dr = ctx.donor || {};
+    var addr = H.fullAddr(dn);
+    // 신청인 = 영농자녀(수증자)
+    o.need('신청인@성명', dn.name, '신청인 성명').need('신청인@주민등록번호', dn.regNo, '신청인 주민등록번호').need('신청인@주소', addr, '신청인 주소');
+    if (has(dn.phone)) o.set('신청인@전화번호', dn.phone); else o.miss('신청인 전화번호', '화면 입력 없음');
+    o.need('증여자@성명', dr.name, '증여자 성명').need('증여자@주민등록번호', dr.regNo, '증여자 주민등록번호').need('증여자@주소', H.fullAddr(dr), '증여자 주소');
+    o.miss('증여자 영농 종사기간', '계산기에 없음(자경농민 요건 — 시행령 §68①)');
+    o.need('영농자녀@성명', dn.name, '영농자녀 성명').need('영농자녀@주민등록번호', dn.regNo, '영농자녀 주민등록번호').need('영농자녀@주소', addr, '영농자녀 주소');
+    o.miss('영농자녀 증여자와의 관계', '계산기 값은 공제 구분(' + (ctx.relation || '없음') + ')이라 관계 낱말(자·손자 등)이 아님');
+    o.miss('영농자녀 영농 종사기간', '계산기에 없음');
+    o.miss('증여물건 소재지', '계산기에 없음 — 증여세 탭은 감면세액만 받음(농지별 소재지·면적은 수집 안 함)');
+    if (has(ctx.giftDate)) o.set('증여물건@증여일자', ctx.giftDate); else o.miss('증여물건 증여일자', '화면 입력 없음(증여일자)');
+    o.miss('면적(농지·초지·산림지)', '계산기에 없음');
+    o.miss('증여재산가액(농지등)', '계산기에 없음 — 감면 대상 농지등의 가액을 따로 받지 않음(증여재산 전체 가액과 다름)');
+    var amt = farmAmount(ctx);
+    if (amt > 0) o.set('감면세액', amt); else o.miss('감면세액', '감면세액 없음(증여세 탭 "영농자녀 증여농지 세액감면" 칸)');
+    var d = H.ymd(ctx.신고일);
+    if (d) o.set('신청일.연', d.y).set('신청일.월', d.m).set('신청일.일', d.d); else o.miss('신청일', 'ctx.신고일 없음(계산기에 없음)');
+    o.need('신청인서명', dn.name, '신청인(서명)');
+    if (has(dn.taxOffice)) o.set('세무서', H.officeName(dn.taxOffice)); else o.miss('세무서', '수증자 관할 세무서 입력 없음');
+    // 부표 — 증여받은 농지등의 명세서
+    o.need('①', dn.name, '① 성명').need('②', dn.regNo, '② 주민등록번호').need('③@주소', addr, '③ 주소');
+    if (has(dn.phone)) o.set('③@전화번호', dn.phone); else o.miss('③ 전화번호', '화면 입력 없음');
+    o.miss('④⑤⑥⑦⑧⑨⑩⑪⑫ 농지등 명세(필지별)', '계산기에 없음 — 필지별 소재지·지목·면적·취득일·취득원인·증여자 취득가액을 받는 칸이 없음(직접 적을 것)');
+    var r = ctx.r || {};
+    if (amt > 0 && has(r.산출세액_할증전)) o.check('감면세액 ≤ 산출세액(할증 포함)', Math.min(amt, n(r.산출세액_할증전) + n(r.세대생략할증액)), amt);
+    o.note('감면 요건(자경농민·영농자녀 요건, 농지 소재지·면적 한도)과 감면세액 계산은 계산기 밖에서 확인해 넣은 값 — 이 서식은 그 값을 옮겨 적을 뿐');
+    return o.result();
+  };
+  // 세액인쇄 서식 줄 — 감면세액이 있는 증여 쌍마다 한 장(예전 인쇄는 첫 쌍에만 붙였음)
+  function giftItems() { return (g('lastGiftResults_') || []).filter(function (it) { return it && it.result && !it.result.error; }); }
+  function farmField() { return numv(H.el('giftFarmlandExemption')); }
+  ctxFor['조특52호'] = function (extra) {
+    var items = giftItems(), out = [];
+    items.forEach(function (it, i) { if (n(it.result.영농자녀증여농지세액감면) > 0) out.push(H.ctxFromApp.증여(i, extra)); });
+    if (!out.length && items.length && farmField() > 0) out.push(H.ctxFromApp.증여(0, Object.assign({ farmlandExemption: farmField() }, extra || {}))); // 지금 인쇄의 화면 칸 대체값
+    return out.length ? out : null;
+  };
+  // 지금 인쇄(gfPrintFormBodyHtml_ → farmlandExemptionPrintPageHtml_)와 같은 조건 — 첫 결과의 감면세액 또는 화면 칸 값이 있을 때
+  ready['조특52호'] = function () {
+    var items = giftItems();
+    return !!(items.length && (items.some(function (it) { return n(it.result.영농자녀증여농지세액감면) > 0; }) || farmField() > 0));
+  };
+
   // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만)
+  //  증여: 조특52호 = 그 증여 쌍의 계산 결과에 영농자녀 증여농지 세액감면이 있을 때(지금 인쇄가 일반 증여 신고서 뒤에 붙이는 것과 같음)
+  //  10호의2·10호의5·10호의6은 일반 증여(10호)와 따로 내는 신고서라 이 묶음에 넣지 않음(서식 줄에서 찍음)
   function plan(tax, ctx) {
     var L = [];
+    if (tax === '증여' && ctx && ctx.r && farmAmount(ctx) > 0) L.push('조특52호');
     return L;
   }
 

@@ -40,5 +40,17 @@ module.exports = function (E, H) {
   var c3 = base({ r: E.calculateSpecialRateGiftTaxJS(srIn3), filingStatus: 'ontime', srRows: [], srInput: bsIn });
   L.push({ name: '증여10호의2부표2_가업승계_120억초과', forms: [{ formKey: '증여10호의2', ctx: c3 }, { formKey: '증여10호의2부표2', ctx: c3 }], ctx: c3 });
 
+  // ④ 조특52호 — 영농자녀 증여농지 감면(조특법 §71): 자경농민 부모에게서 5억(그중 농지 3억, 2만m²) 증여, 직계존속
+  //   손계산: 과세가액 5억 − 공제 5천만 = 과세표준 4.5억 → 산출세액 1천만 + 3.5억 × 20% = 8천만
+  //           감면세액 = 8천만 × 3억 ÷ 5억 = 4,800만(면적 한도 4만m² 안, 5년 1억 한도 안) → 증여세 계산기에 넣어 다시 계산
+  var gIn = { giftAmount: 500000000, relation: '직계존속', giftDate: '2026-04-20', filingStatus: 'ontime' };
+  var g0 = E.calculateGiftTaxJS(gIn);
+  var farm = E.calculateFarmlandGiftTaxReductionJS({ assetType: 'farmland', giftValue: 300000000, areaSqm: 20000, totalGiftCalculatedTax: g0.산출세액_할증전, totalGiftPropertyValue: 500000000 });
+  var g1 = E.calculateGiftTaxJS(Object.assign({}, gIn, { farmlandGiftTaxExemptionAmount: farm.최종_감면세액 }));
+  var c4 = { r: g1, item: { amount: 500000000, priorGiftAmount: 0 }, relation: '직계존속', giftDate: '2026-04-20', 신고일: '2026-07-31',
+    donee: Object.assign({}, DONEE, { name: '김영농', taxOffice: '공주세무서' }), donor: { name: '김자경', regNo: '550303-1000000', address: '충청남도 ○○군 ○○면 견본길 3', filingStatus: 'ontime' },
+    marriageBirth: { marriage: 0, birth: 0 }, installment: 0, split: 0, taxAgent: AGENT };
+  L.push({ name: '조특52호_영농자녀_plan', forms: require('./mappers-증여특례A.js').plan('증여', c4), ctx: c4 });
+
   return L;
 };
