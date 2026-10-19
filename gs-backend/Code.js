@@ -31837,7 +31837,7 @@ function caseProcOverview_(c) {
   if (r && r.ok) { r.lines = gl.concat(r.lines || []); r.items = gi.concat(r.items || []); if (gc.changed) r.loop = Object.assign({}, r.loop || {}, { again: '사건파악으로 작업관리 값을 고침 — 증빙 대조를 그 값으로 다시' }); }
   // 상속 — 감정가액이 이상한 감정서(검산 안 됨·감정서끼리 30% 넘게 차이)는 질문 전에 사이드바가 그 파일부터 보정·다시 읽기
   if (r && r.ok && c.세목 === 'inheritance') { try { const rr = (caseProcInhFacts_(c).reread || []); if (rr.length) r.loop = Object.assign({}, r.loop || {}, { scan: rr.map(function (z) { return z.id; }), why: '감정가액 다시 읽기 — ' + rr.map(function (z) { return z.name + '(' + z.why + ')'; }).join(', ') }); } catch (e) {} }
-  if (r && r.ok && c.세목 !== 'transfer' && CASEPROC_TAX_LABEL_[c.세목]) { try { const cc = r.case || c, nd = giNeeds_(cc), ns = trcNeedsSummary_(nd); r.needs = ns; r.lines.push('🎯 세액계산기 필수 칸 ' + ns.total + '개 — 채움 ' + ns.filled + '개(근거 있음 ' + ns.withSrc + ')' + (ns.missing.length ? ' · 남음: ' + ns.missing.join(', ') : ' · 모두 채움')); caseProcPatch_(c.id, function (sv) { sv.needs = { at: new Date().toISOString(), list: nd, sum: ns }; });
+  if (r && r.ok && c.세목 !== 'transfer' && CASEPROC_TAX_LABEL_[c.세목]) { try { const cc = r.case || c, nd = giNeeds_(cc), ns = trcNeedsSummary_(nd); r.needs = ns; if (ns.missing.length) { try { const fz = trcNeedScanFocus_(cc, nd); if (fz.length) r.loop = Object.assign({}, r.loop || {}, { scan: ((r.loop && r.loop.scan) || []).concat(fz.map(function (x) { return x.id; })).filter(function (v, i, arr) { return arr.indexOf(v) === i; }), why: '필수 칸(' + ns.missing.slice(0, 3).join('·') + ')의 근거가 될 서류 판독이 나쁨: ' + fz.map(function (x) { return x.name + '(' + x.why + ')'; }).join(', ') }); } catch (e) {} } /* [밤샘 3바퀴] 빈칸 → 다시 뒤지기(증여·상속) */ r.lines.push('🎯 세액계산기 필수 칸 ' + ns.total + '개 — 채움 ' + ns.filled + '개(근거 있음 ' + ns.withSrc + ')' + (ns.missing.length ? ' · 남음: ' + ns.missing.join(', ') : ' · 모두 채움')); caseProcPatch_(c.id, function (sv) { sv.needs = { at: new Date().toISOString(), list: nd, sum: ns }; });
     // [small0 — 세무사님 결정 (가)] 증여 10년 합산은 큰 질문 그대로(계산 막음 그대로) — 답하기 전 '확인 전' 표시와 신고서 출력 전 알림만
     if (cc.세목 === 'gift' && !String(((cc.사건개요 || {}).giftPriorAmount) == null ? '' : (cc.사건개요 || {}).giftPriorAmount).trim()) r.lines.push('⏳ 확인 전 칸 1개 — 10년 내 같은 증여자 증여 합산(답하기 전 계산하면 0원 — 합산할 증여가 있으면 세율 구간·공제가 달라지는 큰 질문, 신고서 출력 전에 다시 알림)'); } catch (e) {} }
   try { caseProcMemoCands_(c, r); } catch (e) {}
@@ -47761,6 +47761,17 @@ function trcNeedsSummary_(needs) {
 // 필요한데 빈 칸의 근거가 될 서류 중 판독이 나쁜 사진 — 질문하기 전에 원근보정·다시 읽기로 돌아간다(사이드바가 이 파일부터 보정)
 // [2026.10.18 정밀분석 07_1] 대장도 소재지(토지대장)·취득일(신축 사용승인일·대장 소유권 변동일) 근거 — 보유 자산 목록(tcHoldings_)이 쓴다
 const TRC_NEED_DOC_TYPES_ = { totalPrice: ['contract', 'dealreport'], date: ['contract', 'dealreport', 'registry'], assetLocation: ['registry', 'contract', 'bldledger', 'landledger'], acquisitionDate: ['contract', 'registry', 'acqtax', 'giftcontract', 'bldledger', 'landledger'], acquisitionPrice: ['contract', 'registry', 'acqtax'], donorAcquisitionDate: ['registry'], donorAcquisitionPrice: ['registry', 'contract'], residenceYears: ['resident'], name: ['contract', 'resident'] };
+// [2026.10.20 2번 밤샘 3바퀴 — 세무사님 "빈칸을 채우기 위해 다시 똥통을 뒤지게 되는 것"] 증여·상속 필수 칸(giNeeds_)도 같은 표로 — 그 칸 값이 적히는 서식 종류
+//  (증여: 증여계약서·등기부 증여 줄·가족관계증명서·이체내역, 상속: 사망 서류·가족관계증명서·상속재산분할협의서). 칸이 비면 이 종류 중 판독이 나쁜 사진·스캔부터 다시 읽는다
+Object.assign(TRC_NEED_DOC_TYPES_, { giftDoneeName: ['giftcontract', 'registry', 'family'], giftDonorName: ['giftcontract', 'registry', 'family', 'banktx'], giftRelation: ['family', 'resident', 'giftcontract'],
+  giftAmount: ['giftcontract', 'registry', 'banktx', 'appraisal', 'pubprice'], 기준일: ['giftcontract', 'registry', 'banktx', 'death'], ihDeceasedName: ['death', 'family', 'resident'], 상속인성명: ['family', 'inhdivision', 'death'], 상속인수: ['family', 'inhdivision'] });
+// 빈칸 목록(표준 모양) — 지휘 AI·사이드바가 "어느 빈칸을 어느 서류에서 다시 찾을지" 고를 때. 양도는 저장된 필요 칸(sv.needs), 증여·상속은 giNeeds_. 잠정값 칸·나중 칸은 뺌
+function caseProcBlanks_(c) {
+  const sv = caseProcLoad_(c.id) || {}, needs = c.세목 === 'transfer' ? ((sv.needs && sv.needs.list) || []) : giNeeds_(c);
+  const blanks = needs.filter(function (n) { return !n.ok && !n.later && !n.prov; });
+  let scan = []; try { scan = blanks.length ? trcNeedScanFocus_(c, needs) : []; } catch (e) {}
+  return blanks.map(function (n) { const k = String(n.p).split('.').pop(); return { p: n.p, label: n.l, why: n.why || '', look: (TRC_NEED_DOC_TYPES_[k] || []).map(function (t) { return CASEPROC_SCAN_TYPE_NAME_[t] || t; }) }; }).concat(scan.length ? [{ p: '_rescan', label: '다시 읽을 사진·스캔', look: scan.map(function (x) { return x.name + '(' + x.why + ')'; }), ids: scan.map(function (x) { return x.id; }) }] : []);
+}
 function trcNeedScanFocus_(c, needs) {
   const want = {};
   needs.filter(function (n) { return !n.ok && !n.later; }).forEach(function (n) { const k = String(n.p).split('.').pop(); (TRC_NEED_DOC_TYPES_[k] || []).forEach(function (t) { want[t] = true; }); });
