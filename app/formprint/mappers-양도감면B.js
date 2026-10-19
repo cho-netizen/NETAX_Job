@@ -184,6 +184,40 @@
     return o.result();
   };
 
+  // ───────── 조특 별지 제52호의3서식 — 1세대 1주택 과세특례(인구감소지역주택·준공후미분양주택 취득자) 신고서 ─────────
+  //  (조특법 §71의2·시행령 §68의2 / 조특법 §98의9·시행령 §98의8)
+  //  값 출처: "특정주택 제외 판정"(pd·u9)이 양도 주택 카드에 남긴 asset.oneHouseSpecialCase{provisionLabel, formNo, acquisitionDate, 안내}
+  //   (지금 인쇄 oneHouseSpecialCasePrintPageHtml_와 같은 값) + 양도 주택 카드(소재지·취득일·양도일·거주연수).
+  //  판정 도구는 특례 주택의 소재지·면적·소유자·가격을 체크로만 받아 ⑨·⑪·⑫·⑬은 계산기에 없음.
+  function specialKind52(c) { var t = String((c && c.provisionLabel) || ''); return /인구감소/.test(t) ? '인구감소' : /미분양/.test(t) ? '미분양' : null; }
+  mappers['조특52호의3'] = function (ctx) {
+    var o = new Out(), s = ctx.seller || {}, it = itemOf(ctx), a = it.asset || {}, c = a.oneHouseSpecialCase || {};
+    applicant(o, s, { name: '①', regNo: '②', addr: '③@주소', phone: '③@전화번호' }, '①~③ 신청인');
+    o.need('④', a.assetLocation, '④ 소재지');
+    if (has(a.acquisitionDate)) o.set('⑤', a.acquisitionDate); else o.miss('⑤ 취득일', '화면 입력 없음');
+    if (has(a.transferDate)) o.set('⑥', a.transferDate); else o.miss('⑥ 양도일', '화면 입력 없음');
+    var ly = n(a.residenceYears);
+    if (a.isOneHouseOneFamily && has(a.residenceYears)) {
+      o.set('⑦.이상', String(Math.floor(ly))).set('⑦.미만', String(Math.floor(ly) + 1));
+      o.note('⑦ 거주기간 = 양도 주택 카드의 거주연수 ' + ly + '년(만 연수)을 "' + Math.floor(ly) + '년 이상 ' + (Math.floor(ly) + 1) + '년 미만"으로');
+    } else o.miss('⑦ 거주기간', '화면 입력 없음(1세대1주택 거주연수)');
+    var kind = specialKind52(c);
+    if (kind === '인구감소') o.set('⑧', '인구감소지역 주택').set('시행령', '제68조의2');
+    else if (kind === '미분양') o.set('⑧', '비수도권 준공 후 미분양주택').set('시행령', '제98조의8');
+    else o.miss('⑧ 구분·시행령 조문', '특정주택 제외 판정 결과(pd·u9)가 없음');
+    var col = kind || '인구감소';
+    if (has(c.acquisitionDate)) o.set(kind === '미분양' ? '⑩@미분양' : '⑩@인구감소', kind === '미분양' ? [c.acquisitionDate] : c.acquisitionDate);
+    else o.miss('⑩ 취득일(특례 주택)', '판정 도구에 특례 주택 취득일 입력 없음');
+    if (kind) o.miss('⑩ 취득일(' + (kind === '미분양' ? '인구감소지역 주택' : '비수도권 준공 후 미분양주택') + ' 줄)', '해당 없음 — ⑧에서 고른 구분 줄에만 적음');
+    o.miss('⑨ 소재지(특례 주택)', '계산기에 없음 — 판정 도구는 인구감소지역·수도권 밖 여부를 체크로만 받음');
+    o.miss('⑪ 면적(전용면적)', '계산기에 없음 — 판정 도구는 면적·가격 요건 충족 여부를 체크로만 받음');
+    o.miss('⑫ 소유자(성명·주민등록번호·양도자와 관계)', '계산기에 없음');
+    o.miss('⑬ 주택가격 구분', '계산기에 없음 — ' + (col === '미분양' ? '취득가액' : '취득일 기준시가') + '(작성방법 6)이 판정 도구에 체크로만 있음');
+    if (c.안내) o.note('판정 도구 안내: ' + c.안내);
+    signBlock(o, ctx, s, { dateKey: '신고일', dateLabel: '신고일' });
+    return o.result();
+  };
+
   // ───────── 세액인쇄 화면용: 서식 한 장씩 ctx(양도인마다·자산마다) ─────────
   /* global lastTransferResults_ */
   function trItems() { return (typeof lastTransferResults_ !== 'undefined' && lastTransferResults_ ? lastTransferResults_ : []).filter(function (it) { return it.result && !it.result.error; }); }
