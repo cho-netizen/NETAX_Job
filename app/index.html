@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 22:24 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 22:47 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -32046,10 +32046,12 @@ function renderFmvRecognitionResult(r){
 // 세무사님께도 안내했듯 실제 홈택스 업로드로 최종 검증 필요). 이 파일은 국내 부동산·
 // 부동산에관한권리·기타자산(주식 제외) 확정신고만 다룬다(주식등·국외자산은 별도 서식이라
 // Phase 1 범위 밖 — 상속세의 26개 첨부서식을 뒤로 미룬 것과 같은 판단).
+// [2026.10.20 전자신고 대조] 위 V4.7 기준은 낡았다 — 파일설명서 V5.17(2026.4.28.)과 1:1 대조해 01 HEADER(350B)·02 국적코드·03 세율별내역(450B, 줄 구성)·
+//  05 62~65·06 레이아웃·07 구분코드 5자리를 고쳤다. 대조표: netax-inventory/maps/전자신고대조_양도_20261020.md, 길이 점검: node tools/efile-check-transfer.js
 const TR_EFILE_FORM_CODE_ = 'C116300';
 
-function trLatestTransferDate_(){
-  const dates = transferAssets.filter(function(a){ return !a.isOverseasAsset && a.transferDate; }).map(function(a){ return a.transferDate; });
+function trLatestTransferDate_(withOverseas){ // [2026.10.20] withOverseas: 국외자산도 함께 신고하는 서식이면 국외자산 양도일까지(HEADER 8·25)
+  const dates = transferAssets.filter(function(a){ return (withOverseas || !a.isOverseasAsset) && a.transferDate; }).map(function(a){ return a.transferDate; });
   return dates.length ? dates.sort().pop() : '';
 }
 
@@ -32094,8 +32096,12 @@ function trRelationCode_(relation, regNo){
   return 'ZB'; // 직계존비속·형제자매·기타친족·경제적연관·경영지배 — 방향/촌수 불명확이라 기타로 처리
 }
 
-function trHeadRecord_(seller, filingType){
-  const latest = trLatestTransferDate_();
+function trHeadRecord_(seller, filingType, latestDate){
+  // [2026.10.20 전자신고 대조] latestDate: 그 신고서 계산명세의 가장 큰 양도일(주식등은 주식 양도일, 국외자산이 들면 국외자산 양도일 포함) — 예전엔 늘 국내 부동산만 봐서
+  //  주식만·국외자산만 있는 신고서는 8 과세기간·25 양도일자(둘 다 Not Null)가 비었다.
+  const latest = latestDate || trLatestTransferDate_();
+  // 6·7·10: §107② 2회째 예정신고(양도인 카드에 이미 신고한 양도소득금액이 있음)면 예정신고('03'·신고유형 1·D03). 그 밖엔 확정(1회째 예정신고는 계산기에 구분 칸이 없음 — 확인필요)
+  const isPrelim2_ = (numVal(seller.priorFiledIncomeAmount) || 0) > 0 && (!filingType || filingType === '5');
   const year = latest ? latest.slice(0, 4) : '';
   const now = new Date();
   const todayYmd = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
@@ -32105,11 +32111,11 @@ function trHeadRecord_(seller, filingType){
   b = b.concat(ihPadChar_(ihOnlyDigits_(seller.regNo), 13));  // 3 납세자ID(양도인 주민등록번호)
   b = b.concat(ihPadChar_('01', 2));                          // 4 납세자구분(01 정상)
   b = b.concat(ihPadChar_('22', 2));                          // 5 세목코드(양도소득세)
-  b = b.concat(ihPadChar_('01', 2));                          // 6 신고구분코드(01 확정신고)
-  b = b.concat(ihPadChar_(filingType || '5', 1));             // 7 신고유형(5=국내/국외 주식이외자산, 6=국내주식, 7=국외주식, 8=파생상품)
+  b = b.concat(ihPadChar_(isPrelim2_ ? '03' : '01', 2));      // 6 신고구분코드(01 확정신고, 03 예정신고)
+  b = b.concat(ihPadChar_(isPrelim2_ ? '1' : (filingType || '5'), 1));             // 7 신고유형(5=국내/국외 주식이외자산, 6=국내주식, 7=국외주식, 8=파생상품)
   b = b.concat(ihPadChar_(year ? year + '01' : '', 6));       // 8 과세기간(양도년도+'01')
-  b = b.concat(ihPadChar_('01', 2));                          // 9 신고구분상세코드
-  b = b.concat(ihPadChar_('D01', 3));                         // 10 신고서종류코드(D01 확정신고서)
+  b = b.concat(ihPadChar_(seller.filingStatus === 'unreported' ? '03' : '01', 2)); // 9 신고구분상세코드(01 정기, 03 기한후 — 양도인 카드 '신고 상태'가 무신고면 기한후신고)
+  b = b.concat(ihPadChar_(isPrelim2_ ? 'D03' : 'D01', 3));    // 10 신고서종류코드(D01 확정신고서, D03 예정신고서)
   b = b.concat(ihPadChar_('FD001', 5));                       // 11 민원종류코드
   b = b.concat(ihPadChar_('', 20));                           // 12 사용자ID
   b = b.concat(ihPadChar_(todayYmd.slice(0, 6), 6));          // 13 제출년월
@@ -32125,7 +32131,11 @@ function trHeadRecord_(seller, filingType){
   b = b.concat(ihPadChar_('9000', 4));                        // 23 세무프로그램코드(9000 기타)
   b = b.concat(ihPadChar_(todayYmd, 8));                      // 24 작성일자
   b = b.concat(ihDateField_(latest));                         // 25 양도일자(계산명세 중 가장 큰 양도일)
-  b = b.concat(ihPadChar_('', 65));                           // 26 공란
+  // [2026.10.20 전자신고 대조 V5.17] 2023.4.27 개정 — 26 세무대리인성명(60)·27 세무대리인생년월일(8) 신설, 공란 47(레코드 350B).
+  //  예전엔 V4.7대로 26 공란 65(300B)라 26·27이 없었다. 27 생년월일은 계산기에 칸이 없어 비움(22 관리번호와 둘 중 하나 필수).
+  b = b.concat(ihPadChar_(taxAgentField_('taxAgentName'), 60)); // 26 세무대리인성명
+  b = b.concat(ihPadChar_('', 8));                            // 27 세무대리인생년월일(계산기에 없음)
+  b = b.concat(ihPadChar_('', 47));                           // 28 공란
   return b;
 }
 
@@ -32137,7 +32147,7 @@ function trBasicRecord_(seller){
   b = b.concat(ihPadChar_(seller.admCd || '', 10));           // 3 주소_법정동코드
   b = b.concat(ihPadChar_(seller.mtYn || '0', 1));            // 4 주소_특수지코드
   b = b.concat(ihPadChar_(seller.lnbrMnnm || '', 4));         // 5 주소_번지
-  b = b.concat(ihPadChar_(seller.lnbrSlno || '', 4));         // 6 주소_호
+  b = b.concat(ihPadChar_(seller.lnbrSlno || '0', 4));        // 6 주소_호(설명서: 호가 없으면 0)
   b = b.concat(ihPadChar_('', 40));                           // 7 주소_아파트명
   b = b.concat(ihPadChar_(seller.addressDong || '', 12));     // 8 주소_아파트동
   b = b.concat(ihPadChar_(seller.addressHo || '', 12));       // 9 주소_아파트호
@@ -32149,206 +32159,146 @@ function trBasicRecord_(seller){
   b = b.concat(ihPadChar_(isNonResident ? 'Y' : 'N', 1));     // 15 거주구분(스펙 원문 그대로: Y=비거주자, N=거주자)
   b = b.concat(ihPadChar_('KR', 3));                          // 16 거주지국코드(2자리+SPACE) — 비거주자 실제국가 미수집, 근사치
   b = b.concat(ihPadChar_('대한민국', 40));                    // 17 거주지국명
-  b = b.concat(ihPadChar_('', 193));                          // 18~26 도로명계열+공란(도로명 주소 미수집 — 법정동코드로 대체)
+  // [2026.10.20 전자신고 대조 V5.17] 18~25 도로명 계열(12+80+1+5+5+22+12+2 = 139, 법정동 주소로 적으므로 비움) 뒤 26 국적코드(Not Null, 2022.3.18 신설)·27 공란 51.
+  //  예전엔 18~ 전체를 공란 193으로 채워 국적코드가 비어 있었다(필수 칸 누락).
+  b = b.concat(ihPadChar_('', 139));                          // 18~25 도로명 계열(미수집 — 3~11 법정동 주소로 적음)
+  b = b.concat(ihPadChar_('KR', 3));                          // 26 국적코드(14 내외국인 Y이면 KR, 코드 두 자리 + SPACE)
+  b = b.concat(ihPadChar_('', 51));                           // 27 공란
   return b;
 }
 
-function trRateDetailRecord_(rateClass, r, splitAmt, seller){ // rateClass: '00'(국세 합계) 또는 '98'(지방소득세, 10% 근사)
-  // splitAmt: 분납(§77) 신청금액(국세 기준, 대표 양도인 1인) — trBuildEfileBytes_가 대표
-  // 양도인 레코드에만 넘긴다. 지방소득세(98)는 지방세 영역(위택스)이라 범위 밖 — 적용 안 함.
-  splitAmt = (!splitAmt || rateClass === '98') ? 0 : splitAmt;
-  const isLocal = rateClass === '98';
-  const localTax = r.지방소득세 || 0;
-  // [주의] 아래 소득금액·과세표준은 장기보유(합산그룹) 거래만 반영된 근사치다 — 엔진
-  // (calculateTransferTaxMultiJS)이 단기양도·미등기양도의 소득금액/과세표준을 별도로
-  // 노출하지 않아(세액만 노출) 정확한 전체 합계를 재구성할 수 없다. 반면 산출세액·
-  // 자진납부할세액(10·19번)은 엔진의 최종 합계값을 그대로 써서 항상 정확하다.
-  const 양도소득금액 = isLocal ? 0 : (r.합산소득금액 || 0);
-  // [2026.10.20 84호 ⑤·⑰] 6번 = 2회째 예정신고 이미 신고한 양도소득금액(§107②), 7번 기본공제는 그때 쓴 몫 포함(8번 과세표준은 엔진이 이미 합산),
-  //  18번 = 기신고세액 — 2회째 예정신고면 엔진 E(엔진 납부세액에서 이미 뺌), 확정·수정신고면 양도인 카드 기신고세액 누계(작성방법 14, 19번에서 뺌). 지방소득세(98)는 그대로.
-  const 기신고소득_ = isLocal ? 0 : (r.기신고_양도소득금액_107조 || 0);
-  const 기신고세액_ = isLocal ? 0 : (기신고소득_ > 0 ? (r.기신고세액_107조 || 0) : ((seller && seller.filedTaxCumulative !== undefined && seller.filedTaxCumulative !== '') ? (numVal(seller.filedTaxCumulative) || 0) : 0));
-  const 기신고세액빼기_ = 기신고소득_ > 0 ? 0 : 기신고세액_;
-  const 기본공제 = isLocal ? 0 : (r.기본공제 || 0) + (기신고소득_ > 0 ? (r.기신고_기본공제_107조 || 0) : 0);
-  const 과세표준 = r.합산과세표준 || 0;
-  // [2026.10.01 정정, 재검토102] 조특법 세액감면 5종(합산조특법세액감면액)도 산출세액에 이미
-  // 반영돼 있는데 이 합계에서 빠져있었다 — (옛 84호 인쇄 함수 — 2026.10.20 원본 모양으로 바뀌어 지움)과 동일 수정.
-  const 국세감면세액 = (r.합산자경감면액 || 0) + (r.합산수용감면액 || 0) + (r.합산조특법세액감면액 || 0);
-  const 감면세액 = isLocal ? Math.round(국세감면세액 * 0.1) : 국세감면세액;
-  // [2026.10.09 버그수정] 엔진의 산출세액_합계·지방소득세는 감면(자경·수용·조특법)을 이미 뺀 순액이다. 서식·전자신고의
-  // "산출세액" 칸에 그 순액을 넣고 바로 아래 "감면세액"을 또 적으면 산출−감면≠납부세액이 된다(8년 자경 9억 양도 예:
-  // 산출 98,210,000 − 감면 100,000,000 = 음수, 자진납부 98,210,000) — 홈택스 검증 불일치. 산출세액 칸은 감면 전 금액으로 적는다.
-  const 산출세액 = (isLocal ? localTax : (r.산출세액_합계 || 0)) + 감면세액;
-  const 국세가산세_신고 = (r.무신고가산세 || 0) + (r.과소신고가산세 || 0);
-  const 국세가산세_납부 = r.납부지연가산세 || 0;
-  const 가산세_신고 = isLocal ? Math.round(국세가산세_신고 * 0.1) : 국세가산세_신고;
-  const 가산세_납부 = isLocal ? Math.round(국세가산세_납부 * 0.1) : 국세가산세_납부;
-  // [2026.10.19 서식 고침] 서식 84호 작성방법 13 — 감정가액·환산취득가액 적용 가산세(§114의2, 5%)는 ⑯ '기장불성실 등'에 적는다.
-  //  예전엔 35번(가산세-기장불성실)을 0으로 두고 17번(계)에서도 빠져, 엔진 납부세액(19번, 이 가산세 포함)과 산출−감면+가산세가 안 맞았다.
-  const 가산세_기장 = isLocal ? 0 : (r.환산취득가액가산세_합계 || 0);
-  const 가산세_계 = 가산세_신고 + 가산세_납부 + 가산세_기장;
-  const 자진납부할세액 = isLocal ? localTax : Math.max(0, (r.납부세액_합계 || 0) - localTax - 기신고세액빼기_);
-
+// [2026.10.20 전자신고 대조 V5.17] 03 세율별내역 — 국세청 양도소득세 전자신고 파일설명서 V5.17(2026.4.28.) 기준으로 다시 짰다.
+//  · 레코드 길이 450B(2020.12.29 개정: 36 전자신고세액공제·37 연금계좌세액공제 신설, 공란 33) — 예전엔 V4.7(400B)대로 35번 뒤 공란 9라 50바이트가 모자랐다.
+//  · 줄 구성(설명서 항목 3·4): 세율구분별 줄(국내 '1'+자산 세율구분, 국외 '9'+'10') → 소계(국내 '1'/'00', 국외 '9'/'00') → 합계('Z'/'00') → 지방소득세('Z'/'98').
+//    예전엔 합계('Z'/'00', 국내분만)·지방소득세·국외('9'/'00')만 있어 세율구분별 줄이 없었고, 국내·국외가 함께면 합계에 국외분이 빠졌다.
+//  · 지방소득세('Z'/'98') 줄 금액은 2020.1.1. 이후 신고분부터 0(설명서 항목 4) — 예전엔 지방소득세 근사값을 적었다.
+//  · 30 주민세_소득세자진납부할세액 = 합계 줄의 19(설명서 항목 30) — 예전엔 지방소득세 금액을 적었다. 20·21·28·29·30은 합계 줄에만(소계·세율구분 줄은 0).
+//  · 9·23 세율은 합계·소계 줄에 00000(설명서 항목 9·23) — 예전엔 합계 줄 23에 02000을 적었다.
+function trRateRowBytes_(dom, cls, f){
+  f = f || {};
+  const v = function(k){ return Math.round(Number(f[k]) || 0); };
   let b = [];
-  b = b.concat(ihPadChar_('03', 2));                    // 1 자료구분(세율별내역)
-  b = b.concat(ihPadChar_(TR_EFILE_FORM_CODE_, 7));     // 2 서식코드
-  b = b.concat(ihPadChar_('Z', 1));                     // 3 국내외분(합계·지방소득세 모두 'Z')
-  b = b.concat(ihPadChar_(rateClass, 2));               // 4 세율구분
-  b = b.concat(ihPadNum_(양도소득금액, 13));            // 5 양도소득금액
-  b = b.concat(ihPadNum_(기신고소득_, 13));             // 6 기신고,결정,경정된양도소득금액 합계(§107② 2회째 예정신고)
-  b = b.concat(ihPadNum_(기본공제, 13));                // 7 양도소득기본공제
-  b = b.concat(ihPadNum_(과세표준, 13));                // 8 과세표준
-  b = b.concat(ihPadNum_(0, 5));                        // 9 세율(합계·소계는 00000 고정)
-  b = b.concat(ihPadNum_(산출세액, 13));                // 10 산출세액
-  b = b.concat(ihPadNum_(감면세액, 13));                // 11 감면세액
-  b = b.concat(ihPadNum_(0, 13));                       // 12 외국납부세액공제(미수집)
-  b = b.concat(ihPadNum_(0, 13));                       // 13 예정신고납부세액공제(미수집)
-  b = b.concat(ihPadNum_(0, 13));                       // 14 원천신고납부세액공제(미수집)
-  b = b.concat(ihPadNum_(가산세_신고, 13));             // 15 가산세-신고불성실
-  b = b.concat(ihPadNum_(가산세_납부, 13));             // 16 가산세-납부불성실
-  b = b.concat(ihPadNum_(가산세_계, 13));               // 17 가산세-계
-  b = b.concat(ihPadNum_(기신고세액_, 13));             // 18 기신고,결정,경정세액(84호 ⑰, 작성방법 14)
-  // [2026.10.06 수정, 재검토113] 분납(sp/trsp) 계산기가 'transfer' 기준으로 계산한 분납
-  // 신청금액이 있으면(대표 양도인만) 20·21번에 반영한다 — 이전엔 항상 "분납 미지원" 0 고정.
-  const 즉시납부세액 = Math.max(0, 자진납부할세액 - splitAmt);
-  b = b.concat(ihPadNum_(자진납부할세액, 13));          // 19 자진납부할 세액
-  b = b.concat(ihPadNum_(splitAmt, 13));                // 20 분납할 세액
-  b = b.concat(ihPadNum_(즉시납부세액, 13));            // 21 자진납부세액(분납신청액 제외한 나머지, 분납 없으면 19와 동일)
-  // [2026.10.20 J21] 농어촌특별세(84호 ㉒~㉙) — 국세 줄(00)에만. 엔진 농어촌특별세_과세표준(과세 감면세액) × 20%(농특세법 §5①1호). 세율은 다른 세율 칸처럼 ×100(20% → 02000)
-  const ntBase = isLocal ? 0 : (r.농어촌특별세_과세표준 || 0), ntTax = isLocal ? 0 : (r.농어촌특별세 || 0);
-  const ntPen = isLocal ? 0 : (r.농어촌특별세_가산세 || 0), ntDue = ntTax + ntPen; // [2026.10.20] 25 가산세(국세기본법 §47의2~§47의4), 27·29 = 24 + 25
-  b = b.concat(ihPadNum_(ntBase, 13));                  // 22 농어촌특별세_소득세감면세액
-  b = b.concat(ihPadNum_(ntBase > 0 ? 2000 : 0, 5));    // 23 농어촌특별세_세율
-  b = b.concat(ihPadNum_(ntTax, 13));                   // 24 농어촌특별세_산출세액
-  b = b.concat(ihPadNum_(ntPen, 13));                   // 25 농어촌특별세_수정신고가산세등
-  b = b.concat(ihPadNum_(0, 13));                       // 26 농어촌특별세_기신고,결정,경정세액
-  b = b.concat(ihPadNum_(ntDue, 13));                   // 27 농어촌특별세_자진납부할세액
-  b = b.concat(ihPadNum_(0, 13));                       // 28 농어촌특별세_분납할세액
-  b = b.concat(ihPadNum_(ntDue, 13));                   // 29 농어촌특별세_자진납부세액
-  b = b.concat(ihPadNum_(isLocal ? 0 : localTax, 13));  // 30 주민세_소득세자진납부할세액(00행에 지방소득세 요약 기재)
-  b = b.concat(ihPadNum_(0, 5));                        // 31 주민세_세율(스펙상 "사용안함")
-  b = b.concat(ihPadNum_(0, 13));                       // 32 주민세_산출세액
-  b = b.concat(ihPadNum_(0, 13));                       // 33 주민세_자진납부세액
-  b = b.concat(ihPadNum_(0, 13));                       // 34 소득감면대상 소득금액(해당 감면코드 미지원)
-  b = b.concat(ihPadNum_(가산세_기장, 13));             // 35 가산세-기장불성실 등(감정가액·환산취득가액 가산세 — 서식 작성방법 13)
-  b = b.concat(ihPadChar_('', 9));                      // 36 공란
+  b = b.concat(ihPadChar_('03', 2));                 // 1 자료구분(세율별내역)
+  b = b.concat(ihPadChar_(TR_EFILE_FORM_CODE_, 7));  // 2 서식코드
+  b = b.concat(ihPadChar_(dom, 1));                  // 3 국내외분(1 국내·9 국외·Z 합계와 지방소득세)
+  b = b.concat(ihPadChar_(cls, 2));                  // 4 세율구분(세율구분 줄은 자산 코드, 소계·합계 00, 지방소득세 98)
+  [5, 6, 7, 8].forEach(function(k){ b = b.concat(ihPadNum_(v(k), 13)); }); // 5 양도소득금액 6 기신고·결정·경정된 양도소득금액 7 기본공제 8 과세표준
+  b = b.concat(ihPadNum_(v(9), 5));                  // 9 세율(NUMBER 5,2 — 40% → 04000)
+  for (let k = 10; k <= 22; k++) b = b.concat(ihPadNum_(v(k), 13)); // 10 산출세액 11 감면세액 12 외국납부세액공제 13 예정신고납부세액공제 14 원천징수세액공제 15 가산세-신고불성실 16 가산세-납부불성실 17 가산세-계 18 기신고·결정·경정세액 19 자진납부할 세액 20 분납할 세액 21 자진납부세액 22 농특세_소득세감면세액
+  b = b.concat(ihPadNum_(v(23), 5));                 // 23 농특세_세율
+  for (let k = 24; k <= 30; k++) b = b.concat(ihPadNum_(v(k), 13)); // 24 농특세_산출세액 25 수정신고가산세등 26 기신고·결정·경정세액 27 자진납부할세액 28 분납할세액 29 자진납부세액 30 주민세_소득세자진납부할세액
+  b = b.concat(ihPadNum_(v(31), 5));                 // 31 주민세_세율(사용안함 — 0)
+  for (let k = 32; k <= 37; k++) b = b.concat(ihPadNum_(v(k), 13)); // 32·33 주민세(0) 34 소득감면대상 소득금액 35 가산세-기장불성실 등 36 전자신고세액공제 37 연금계좌세액공제
+  b = b.concat(ihPadChar_('', 33));                  // 38 공란
   return b;
 }
-
-// [2026.09.30 신규, 재검토85] 주식등 양도세(신고유형 6/7/8) — calculateStockTransferTaxJS의
-// 단건 결과를 같은 세율별내역 레코드 구조(36필드, 400B)에 담는다. 부동산과 필드 의미가 조금
-// 다르므로(엔진이 소득금액/기본공제/과세표준/산출세액/외국납부세액공제/가산세를 이미
-// 다 노출) 부동산처럼 근사할 필요 없이 실제 값을 그대로 쓴다.
-function trStockRateDetailRecord_(rateClass, r){
-  const isLocal = rateClass === '98';
+// 국내분(부동산 등) 소계 값 — 84호 국내분 소계 열(app/formprint/mappers.js realty84의 D)과 같은 식.
+function trRateFieldsDomestic_(r, seller){
+  // [2026.10.20 84호 ⑤·⑰] 6번 = 2회째 예정신고 이미 신고한 양도소득금액(§107②), 7번 기본공제는 그때 쓴 몫 포함,
+  //  18번 = 기신고세액 — 2회째 예정신고면 엔진 E(엔진 납부세액에서 이미 뺌), 확정·수정신고면 양도인 카드 기신고세액 누계(작성방법 14, 19번에서 뺌).
+  const p5 = r.기신고_양도소득금액_107조 || 0, p7 = p5 > 0 ? (r.기신고_기본공제_107조 || 0) : 0;
+  const 기신고세액 = p5 > 0 ? (r.기신고세액_107조 || 0) : ((seller && seller.filedTaxCumulative !== undefined && seller.filedTaxCumulative !== '') ? (numVal(seller.filedTaxCumulative) || 0) : 0);
+  const 기신고세액빼기 = p5 > 0 ? 0 : 기신고세액;
+  // [2026.10.20 전자신고 대조] 5·8번은 엔진 자산별 세율 값(세율별_자산) 합 — 예전엔 장기 합산 묶음(합산소득금액·합산과세표준)만 적어 단기·미등기 자산이 빠졌다.
+  const rows = Array.isArray(r.세율별_자산) ? r.세율별_자산 : [];
+  const sumInc = rows.reduce(function(t, x){ return t + (Number(x.소득금액) || 0); }, 0), sumBase = rows.reduce(function(t, x){ return t + (Number(x.과세표준) || 0); }, 0);
+  // [2026.10.01 정정, 재검토102] 조특법 세액감면 5종(합산조특법세액감면액)도 산출세액에 이미 반영돼 있어 감면세액 합계에 넣는다.
+  const 감면세액 = (r.합산자경감면액 || 0) + (r.합산수용감면액 || 0) + (r.합산조특법세액감면액 || 0);
+  const 가산세_신고 = (r.무신고가산세 || 0) + (r.과소신고가산세 || 0), 가산세_납부 = r.납부지연가산세 || 0;
+  // [2026.10.19 서식 고침] 서식 84호 작성방법 13 — 감정가액·환산취득가액 적용 가산세(§114의2, 5%)는 ⑯ '기장불성실 등'(35번)에 적고 17번(계)에 넣는다.
+  const 가산세_기장 = r.환산취득가액가산세_합계 || 0;
   const localTax = r.지방소득세 || 0;
-  const 양도소득금액 = isLocal ? 0 : (r.손익통산_적용후_소득금액 || 0);
-  const 기본공제 = isLocal ? 0 : (r.기본공제 || 0);
-  const 과세표준 = r.과세표준 || 0;
-  const 산출세액 = isLocal ? localTax : (r.산출세액 || 0);
-  const 국세감면세액 = 0;
-  const 감면세액 = isLocal ? 0 : 국세감면세액;
-  const 국세외국납부 = r.외국납부세액공제 || 0;
-  const 외국납부세액공제 = isLocal ? Math.round(국세외국납부 * 0.1) : 국세외국납부;
-  const 국세가산세_신고 = (r.무신고가산세 || 0) + (r.과소신고가산세 || 0);
-  const 국세가산세_납부 = r.납부지연가산세 || 0;
-  const 가산세_신고 = isLocal ? Math.round(국세가산세_신고 * 0.1) : 국세가산세_신고;
-  const 가산세_납부 = isLocal ? Math.round(국세가산세_납부 * 0.1) : 국세가산세_납부;
-  const 가산세_계 = 가산세_신고 + 가산세_납부;
-  const 기장불성실 = r.기장불성실가산세 || 0;
-  const 자진납부할세액 = isLocal ? localTax : Math.max(0, (r.납부세액_합계 || 0) - localTax);
-  let b = [];
-  b = b.concat(ihPadChar_('03', 2));
-  b = b.concat(ihPadChar_(TR_EFILE_FORM_CODE_, 7));
-  b = b.concat(ihPadChar_('Z', 1));
-  b = b.concat(ihPadChar_(rateClass, 2));
-  b = b.concat(ihPadNum_(양도소득금액, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(기본공제, 13));
-  b = b.concat(ihPadNum_(과세표준, 13));
-  b = b.concat(ihPadNum_(0, 5));
-  b = b.concat(ihPadNum_(산출세액, 13));
-  b = b.concat(ihPadNum_(감면세액, 13));
-  b = b.concat(ihPadNum_(외국납부세액공제, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(가산세_신고, 13));
-  b = b.concat(ihPadNum_(가산세_납부, 13));
-  b = b.concat(ihPadNum_(가산세_계, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(자진납부할세액, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(자진납부할세액, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(0, 5));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(isLocal ? 0 : localTax, 13));
-  b = b.concat(ihPadNum_(0, 5));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(isLocal ? 0 : 기장불성실, 13));
-  b = b.concat(ihPadChar_('', 9));
-  return b;
+  // [2026.10.20 J21] 농어촌특별세(84호 ㉒~㉙) — 엔진 농어촌특별세_과세표준(과세 감면세액) × 20%(농특세법 §5①1호), 25 가산세(국세기본법 §47의2~§47의4)
+  const ntBase = r.농어촌특별세_과세표준 || 0, ntTax = r.농어촌특별세 || 0, ntPen = r.농어촌특별세_가산세 || 0;
+  const f = {};
+  f[5] = rows.length ? sumInc : (r.합산소득금액 || 0);
+  f[6] = p5;
+  f[7] = (r.기본공제 || 0) + p7;
+  f[8] = rows.length ? sumBase + p5 - p7 : (r.합산과세표준 || 0);
+  // [2026.10.09 버그수정] 엔진 산출세액_합계는 감면을 뺀 순액 — 산출세액 칸은 감면 전 금액(산출 − 감면 = 납부 쪽이 맞게)
+  f[10] = (r.산출세액_합계 || 0) + 감면세액;
+  f[11] = 감면세액;
+  f[15] = 가산세_신고; f[16] = 가산세_납부; f[35] = 가산세_기장; f[17] = 가산세_신고 + 가산세_납부 + 가산세_기장;
+  f[18] = 기신고세액;
+  f[19] = Math.max(0, (r.납부세액_합계 || 0) - localTax - 기신고세액빼기);
+  f[22] = ntBase; f[24] = ntTax; f[25] = ntPen; f[27] = ntTax + ntPen;
+  f[36] = r.전자신고세액공제 || 0;          // [2026.10.20] 엔진 납부세액에서 이미 뺀 값 — 예전엔 칸이 없어 10~18과 19가 안 맞았다
+  f[37] = r.연금계좌세액공제_합계 || 0;     // 같은 이유(84호 ⑭)
+  return f;
 }
-// [2026.09.30 신규, 재검토85] 국외자산 양도세 — 신고유형은 부동산과 같은 '5'(국내/국외
-// 주식이외자산)를 쓰되, 세율별내역에서 국내외분을 '9'(국외)로 구분한 별도 행을 추가한다
-// (양도세 스펙 자체가 "지방소득세의 경우는 'Z'"라고만 예외를 두고, 국내='1'/국외='9'로
-// 명시). calculateOverseasAssetTransferTaxMultiJS 결과를 그대로 사용.
-function trOverseasRateDetailRecord_(r){
-  const 소득금액 = r.합산양도차익 || 0;
-  const 기본공제 = r.기본공제 || 0;
-  const 과세표준 = r.과세표준 || 0;
-  const 산출세액 = r.산출세액 || 0;
-  const 외국납부세액공제 = r.외국납부세액공제 || 0;
-  const 가산세_신고 = (r.무신고가산세 || 0) + (r.과소신고가산세 || 0);
-  const 가산세_납부 = r.납부지연가산세 || 0;
-  const 가산세_계 = 가산세_신고 + 가산세_납부;
-  const localTax = r.지방소득세 || 0;
-  const 자진납부할세액 = Math.max(0, (r.납부세액_합계 || 0) - localTax);
-  let b = [];
-  b = b.concat(ihPadChar_('03', 2));
-  b = b.concat(ihPadChar_(TR_EFILE_FORM_CODE_, 7));
-  b = b.concat(ihPadChar_('9', 1));                     // 국내외분: 국외
-  b = b.concat(ihPadChar_('00', 2));
-  b = b.concat(ihPadNum_(소득금액, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(기본공제, 13));
-  b = b.concat(ihPadNum_(과세표준, 13));
-  b = b.concat(ihPadNum_(0, 5));
-  b = b.concat(ihPadNum_(산출세액, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(외국납부세액공제, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(가산세_신고, 13));
-  b = b.concat(ihPadNum_(가산세_납부, 13));
-  b = b.concat(ihPadNum_(가산세_계, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(자진납부할세액, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(자진납부할세액, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(0, 5));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(localTax, 13));                // 주민세_소득세자진납부할세액(참고표기)
-  b = b.concat(ihPadNum_(0, 5));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadNum_(0, 13));
-  b = b.concat(ihPadChar_('', 9));
-  return b;
+// 국내분 세율구분별 줄 — 엔진 세율별_자산을 자산의 세율구분 코드(trRateClassCode1_, 부표1 6번과 같은 코드)별로 모은다(84호 ③~⑩ 세율 열과 같은 식).
+//  자산 목록과 엔진 거래 수가 다르면(환지 증가분 등) 짝을 지을 수 없어 세율구분별 줄을 만들지 않는다.
+function trRateDetailRowsDomestic_(r, assets){
+  const rows = Array.isArray(r.세율별_자산) ? r.세율별_자산 : [];
+  if (!rows.length || !Array.isArray(assets) || assets.length !== (Number(r.거래건수) || 0)) return [];
+  const byCode = {}, order = [];
+  rows.forEach(function(row){
+    const a = assets[row.idx]; if (!a) return;
+    const code = trRateClassCode1_(a);
+    if (!byCode[code]){ byCode[code] = { inc: 0, bd: 0, base: 0, tax: 0, prog: false, klass: '', rates: {} }; order.push(code); }
+    const g = byCode[code];
+    g.inc += Number(row.소득금액) || 0; g.bd += Number(row.기본공제) || 0; g.base += Number(row.과세표준) || 0; g.tax += Number(row.산출세액) || 0;
+    if (row.묶음 === '누진'){ g.prog = true; if (row.세율묶음) g.klass = row.세율묶음; } else g.rates[String(row.세율)] = true;
+  });
+  order.sort(function(x, y){ return Number(x) - Number(y); });
+  const use1 = !!(r.비교과세_104조5항 && r.비교과세_104조5항.적용 === '1호'); // §104⑤1호 채택 해 — 산출세액이 하나라 합계에만(84호 작성방법 8)
+  return order.map(function(code){
+    const g = byCode[code];
+    // [§107②] 2회째 예정신고 — 이미 신고한 몫은 같은 세율 묶음 줄의 6번에, 7·8·10도 합산 기준
+    const pr = (r.기신고_세율별_107조 || []).filter(function(x){ return x.세율묶음 === (g.prog ? (g.klass || 'g0') : '-'); });
+    const pr5 = pr.reduce(function(t, x){ return t + (Number(x.소득금액) || 0); }, 0), pr7 = pr.reduce(function(t, x){ return t + (Number(x.기본공제) || 0); }, 0), pr10 = pr.reduce(function(t, x){ return t + (Number(x.산출세액몫) || 0); }, 0);
+    const rates = Object.keys(g.rates);
+    const f = {};
+    f[5] = g.inc; f[6] = pr5; f[7] = g.bd + pr7; f[8] = g.base + pr5 - pr7;
+    f[9] = (!g.prog && rates.length === 1) ? Math.round(Number(rates[0]) * 10000) : 0; // 단일세율(40%·50%·70% 등)만 — 누진세율 줄은 확인필요
+    f[10] = use1 ? 0 : g.tax + pr10;
+    return { cls: code, f: f };
+  });
+}
+// 국외분 소계·세율구분(2-10) 값 — calculateOverseasAssetTransferTaxMultiJS 결과(84호 국외분 소계 열 F와 같은 값)
+function trRateFieldsOverseas_(ov){
+  const f = {};
+  f[5] = Math.round(ov.합산양도차익 || 0); f[7] = ov.기본공제 || 0; f[8] = ov.과세표준 || 0; f[10] = ov.산출세액 || 0;
+  f[12] = ov.외국납부세액공제 || 0;
+  f[15] = (ov.무신고가산세 || 0) + (ov.과소신고가산세 || 0); f[16] = ov.납부지연가산세 || 0; f[17] = f[15] + f[16];
+  f[19] = Math.max(0, (ov.납부세액_합계 || 0) - (ov.지방소득세 || 0));
+  return f;
+}
+// 03 줄 묶음 — r: 부동산 등 엔진 결과(없으면 null), assets: 그 양도인 자산 목록, ov: 국외자산 결과(대표 양도인만), splitAmt: 분납 신청액(§112, 대표 양도인 국세)
+function trRateRecords_(r, assets, seller, ov, splitAmt){
+  const out = [];
+  const D = r ? trRateFieldsDomestic_(r, seller) : null, F = ov ? trRateFieldsOverseas_(ov) : null;
+  if (D){
+    trRateDetailRowsDomestic_(r, assets).forEach(function(x){ out.push(trRateRowBytes_('1', x.cls, x.f)); });
+    out.push(trRateRowBytes_('1', '00', D));
+  }
+  if (F){
+    out.push(trRateRowBytes_('9', '10', F)); // 2-10 국외부동산 등(설명서 세율구분표 — 국외자산은 10만 유효)
+    out.push(trRateRowBytes_('9', '00', F));
+  }
+  const T = {};
+  for (let k = 5; k <= 37; k++) T[k] = (D ? (D[k] || 0) : 0) + (F ? (F[k] || 0) : 0);
+  T[9] = 0; T[23] = 0; T[31] = 0;
+  const sp = Math.max(0, Math.min(Number(splitAmt) || 0, T[19]));
+  T[20] = sp; T[21] = T[19] - sp;  // [2026.10.06 재검토113] 분납 신청액(대표 양도인) — 합계 줄에만
+  T[28] = 0; T[29] = T[27];        // 농특세 분납은 계산기에 없음(확인필요)
+  T[30] = T[19];                   // 설명서 항목 30: 합계 줄 19와 일치
+  out.push(trRateRowBytes_('Z', '00', T));
+  out.push(trRateRowBytes_('Z', '98', {})); // 지방소득세 — 2020.1.1. 이후 신고분은 금액 0(설명서 항목 4)
+  return out;
+}
+
+// [2026.09.30 신규, 재검토85] 주식등 양도세(신고유형 6/7/8) — calculateStockTransferTaxJS 단건 결과. 엔진이 소득금액·기본공제·과세표준·산출세액·
+//  외국납부세액공제·가산세를 다 노출하므로 그대로 쓴다. [2026.10.20 V5.17] 450B 줄·지방소득세 0·30 = 19·17에 기장불성실(35) 포함.
+//  세율구분별 줄(1-61·62·63·70 등)은 주식종류코드를 계산기가 받지 않아 만들지 못한다(확인필요).
+function trStockRateRecords_(r){
+  const f = {};
+  f[5] = r.손익통산_적용후_소득금액 || 0; f[7] = r.기본공제 || 0; f[8] = r.과세표준 || 0; f[10] = r.산출세액 || 0;
+  f[12] = r.외국납부세액공제 || 0;
+  f[15] = (r.무신고가산세 || 0) + (r.과소신고가산세 || 0); f[16] = r.납부지연가산세 || 0; f[35] = r.기장불성실가산세 || 0;
+  f[17] = f[15] + f[16] + f[35];
+  f[19] = Math.max(0, (r.납부세액_합계 || 0) - (r.지방소득세 || 0)); f[21] = f[19]; f[30] = f[19];
+  return [trRateRowBytes_('Z', '00', f), trRateRowBytes_('Z', '98', {})];
 }
 
 function trBuyerRecord_(buyer, seq){
@@ -32357,7 +32307,8 @@ function trBuyerRecord_(buyer, seq){
   b = b.concat(ihPadChar_('04', 2));                              // 1 자료구분(양수인내역)
   b = b.concat(ihPadChar_(TR_EFILE_FORM_CODE_, 7));               // 2 서식코드
   b = b.concat(ihPadNum_(seq, 6));                                 // 3 일련번호
-  b = b.concat(ihPadChar_('1', 1));                                // 4 양수인_주민사업자구분(1 주민등록번호)
+  const isBiz_ = ihOnlyDigits_(buyer.regNo).length === 10; // [2026.10.20] 10자리면 법인 사업자등록번호 — 4번 '2'(예전엔 늘 '1')
+  b = b.concat(ihPadChar_(isBiz_ ? '2' : '1', 1));                 // 4 양수인_주민사업자구분(1 주민등록번호, 2 법인사업자등록번호·법인등록번호)
   b = b.concat(ihPadChar_('1', 1));                                // 5 양수인_내외국인_구분코드(1 내국인)
   b = b.concat(ihPadChar_(ihOnlyDigits_(buyer.regNo), 13));        // 6 양수인_주민등록번호
   b = b.concat(ihPadChar_(buyer.name || '', 60));                  // 7 양수인_성명
@@ -32536,6 +32487,12 @@ function trExpenseCategoryCode_(item, kind){
   if (item.expenseCode) return item.expenseCode;
   return kind === 'transfer' ? '290' : '116';
 }
+// [2026.10.20 전자신고 대조 V5.17] 07 구분코드는 5자리(11201 취득세 … 29001 양도 중개수수료). 화면 선택값(TR_EXPENSE_CODE_OPTIONS_)은 앞 3자리라
+//  예전엔 '112'처럼 3자리를 그대로 적어 코드표에 없는 값이 됐다. 화면이 한 칸으로 묶은 자본적지출(260 → 26001~26005·26009)과
+//  기타비용(280 → 28001~28003·28009)은 세부를 고를 수 없어 첫 세부 코드(26001·28001, 둘 다 사업자번호·지급일·증빙 필수)로 적는다(확인필요).
+const TR_EXPENSE_CODE5_ = { '112': '11201', '113': '11301', '114': '11401', '115': '11501', '116': '11601', '120': '12001', '131': '13101', '132': '13201', '133': '13301', '134': '13401',
+  '260': '26001', '261': '26101', '271': '27101', '272': '27201', '280': '28001', '281': '28101', '290': '29001', '291': '29101' };
+function trExpenseCode5_(code){ const c = String(code || ''); return /^\d{5}$/.test(c) ? c : (TR_EXPENSE_CODE5_[c] || c); }
 function trReceiptTypeCode_(receiptType){
   return { cashreceipt: '01', card: '02', taxinvoice: '03', invoice: '04' }[receiptType] || '10';
 }
@@ -32555,15 +32512,16 @@ function trAttach3ExpenseRecords_(asset, feeSeq){
     groups[code] = groups[code] || [];
     groups[code].push(it);
   });
+  let detailNo_ = 0; // [2026.10.20 V5.17] 5 상세일련번호 = 필요경비신고자료일련번호별 순차 번호(설명서 항목 5) — 예전엔 구분코드마다 1부터 다시 매겨 같은 자산에 번호가 겹쳤다
   Object.keys(groups).forEach(function(code){
-    groups[code].forEach(function(it, detailIdx){
+    groups[code].forEach(function(it){
       const needsDetail = !!TR_EXPENSE_CODE_NEEDS_DETAIL_[code];
       let b = [];
       b = b.concat(ihPadChar_('07', 2));                                       // 1 자료구분
       b = b.concat(ihPadChar_('C116600', 7));                                  // 2 서식코드
       b = b.concat(ihPadNum_(feeSeq, 6));                                      // 3 필요경비신고자료일련번호
-      b = b.concat(ihPadChar_(code, 5));                                       // 4 구분코드
-      b = b.concat(ihPadNum_(detailIdx + 1, 6));                               // 5 상세일련번호
+      b = b.concat(ihPadChar_(trExpenseCode5_(code), 5));                      // 4 구분코드(5자리 — 설명서 구분코드표)
+      b = b.concat(ihPadNum_(++detailNo_, 6));                                 // 5 상세일련번호
       b = b.concat(ihPadChar_(it.payee || '', 60));                            // 6 상호
       b = b.concat(needsDetail ? ihPadChar_(ihOnlyDigits_(it.payeeBizRegNo), 10) : ihPadChar_('', 10)); // 7 사업자등록번호
       b = b.concat(needsDetail ? ihDateField_(it.payDate) : ihPadChar_('', 8)); // 8 지급일자
@@ -32595,7 +32553,8 @@ function trAttach1AssetRecord_(asset, seq){
   b = b.concat(ihPadChar_('05', 2));                          // 1 자료구분
   b = b.concat(ihPadChar_('C116400', 7));                     // 2 서식코드
   b = b.concat(ihPadNum_(seq, 6));                            // 3 일련번호
-  b = b.concat(ihPadChar_('ZZ', 2));                          // 4 과세구분(해당없음=일반과세)
+  // [2026.10.20 V5.17] 4 과세구분: '01' 비과세·'05' 과세제외·'ZZ' 해당없음 — 엔진이 전액 비과세(과세대상 양도차익 0, 비과세 양도차익 있음)로 낸 자산은 '01'(예전엔 늘 'ZZ')
+  b = b.concat(ihPadChar_((ev.ok && gainTaxable === 0 && gainNonTaxable > 0) ? '01' : 'ZZ', 2)); // 4 과세구분
   b = b.concat(ihPadChar_('1', 1));                           // 5 국내외분(소재지) — 국내
   b = b.concat(ihPadChar_(rateClass, 2));                     // 6 세율구분
   b = b.concat(ihPadChar_(trAssetTypeCode1_(asset), 2));      // 7 자산의종류
@@ -32610,10 +32569,11 @@ function trAttach1AssetRecord_(asset, seq){
   b = b.concat(ihPadChar_('', 4));                            // 16 소재지_반
   b = b.concat(ihDateField_(asset.transferDate));             // 17 거래일자_양도일자
   b = b.concat(ihPadChar_('A1ZZCZ', 6));                      // 18 거래일자_양도등기목적(소유권이전, 기본값)
-  b = b.concat(ihPadChar_('0055', 4));                        // 19 거래일자_양도등기원인(매매, 기본값)
+  // [2026.10.20 전자신고 대조] 19·22 등기원인(별첨 등기목적·원인 목록): 자산 카드에 있는 값으로 — 공익사업 수용 0183·협의매수 0020, 상속 0090·증여 0155, 그 밖엔 매매 0055(예전엔 늘 0055)
+  b = b.concat(ihPadChar_(asset.compensationTransferMode === 'expropriation' ? '0183' : (asset.compensationTransferMode === 'consult' ? '0020' : '0055'), 4)); // 19 거래일자_양도등기원인
   b = b.concat(ihDateField_(asset.acquisitionDate));          // 20 거래일자_취득일자
   b = b.concat(ihPadChar_('A1ZZCZ', 6));                      // 21 거래일자_취득등기목적(소유권이전, 기본값)
-  b = b.concat(ihPadChar_('0055', 4));                        // 22 거래일자_취득등기원인(매매, 기본값)
+  b = b.concat(ihPadChar_(asset.isInheritedAsset ? '0090' : (asset.isGiftedAsset ? '0155' : '0055'), 4)); // 22 거래일자_취득등기원인
   b = b.concat(ihPadDec_(0, 11, 3));                          // 23 거래자산면적_총면적_토지_면적(미수집)
   b = b.concat(ihPadDec_(0, 11, 3));                          // 24 거래자산면적_총면적_토지_지분(분자)
   b = b.concat(ihPadDec_(0, 11, 3));                          // 25 거래자산면적_총면적_토지_지분(분모)
@@ -32652,7 +32612,19 @@ function trAttach1AssetRecord_(asset, seq){
   b = b.concat(ihPadNum_(0, 13));                             // 60 소득금액감면대상
   const hasItemizedExpense_ = trAttach3ExpenseRecords_(asset, seq).length > 0;
   b = b.concat(ihPadNum_(hasItemizedExpense_ ? seq : 0, 6));  // 61 필요경비신고자료일련번호(항목별 상세가 있을 때만 자산 일련번호와 동일)
-  b = b.concat(ihPadChar_('', 48));                           // 62 공란
+  // [2026.10.20 전자신고 대조 V5.17] 62~65 신설(2020.12.29·2021.4.26 개정) — 예전엔 V4.7대로 62 공란 48이라 NotNull 칸(기본값 'ZZ')이 비어 있었다.
+  //  62 장기보유특별공제적용구분코드: 설명서에 코드표가 없어(그림으로만 실린 듯) 기본값 'ZZ'(확인필요).
+  //  63 주택거주기간년수: 1세대1주택 카드의 거주연수(residenceYears) — 그 밖엔 0.
+  //  64·65 1세대1주택 비과세 보유·거주기간 코드('00' 1년 미만 ~ '10' 10년 이상, 'ZZ' 해당없음, 65는 'Z1' 2017.8.2. 이전 취득).
+  const isOne_ = !!asset.isOneHouseOneFamily && asset.assetType === 'house';
+  const resY_ = isOne_ ? Math.max(0, Math.floor(numVal(asset.residenceYears) || 0)) : 0;
+  const yCode_ = function(y){ return String(Math.min(10, Math.max(0, y))).padStart(2, '0'); };
+  const code65_ = !isOne_ ? 'ZZ' : ((asset.acquisitionDate || '') < '2017-08-03' ? 'Z1' : (asset.isAdjustedArea ? yCode_(resY_) : 'ZZ'));
+  b = b.concat(ihPadChar_('ZZ', 2));                          // 62 장기보유특별공제적용구분코드(코드표 미확인 — 기본값)
+  b = b.concat(ihPadNum_(resY_, 4));                          // 63 주택거주기간년수
+  b = b.concat(ihPadChar_(isOne_ ? yCode_(years) : 'ZZ', 2)); // 64 1세대1주택 비과세 보유기간 코드
+  b = b.concat(ihPadChar_(code65_, 2));                       // 65 1세대1주택 비과세 거주기간 코드
+  b = b.concat(ihPadChar_('', 38));                           // 66 공란
   return b;
 }
 // 부표2(주식양도소득금액계산명세서, 자료구분06, C116500, 300B) — lastStockTransferResult_ 1건.
@@ -32672,7 +32644,9 @@ function trAttach2StockRecord_(stock, seq){
   b = b.concat(ihPadChar_(input.assetCategory === 'other_asset' ? '14' : '62', 2)); // 7 자산의종류(특정주식=14, 그 외=중소기업 일반주식62 근사)
   b = b.concat(ihPadChar_('62', 2));                          // 8 주식종류코드(상장 중소기업 일반, 근사치)
   b = b.concat(ihPadChar_(input.acquisitionType || '01', 2)); // 9 취득유형
-  b = b.concat(ihPadNum_(0, 13));                             // 10 취득유형별양도주식수(미수집)
+  // [2026.10.20 전자신고 대조 V5.17] 10 취득유형별양도주식수는 NUMBER 23,10(2023.4.27 개정, 예전 13) — 뒤 칸이 모두 10바이트씩 밀려 있었다.
+  //  29 과세이연 여부·30 전체양도소득금액·31 비과세양도소득금액 신설(2019.3.25·2020.2.24), 공란 2(300B). 24·25는 국내도 'KR '·'한국'(설명서 24·25).
+  b = b.concat(ihPadDec_(0, 23, 10));                         // 10 취득유형별양도주식수(계산기에 주식 수 칸 없음)
   b = b.concat(ihDateField_(input.transferDate));             // 11 양도일자
   b = b.concat(ihPadNum_(0, 13));                             // 12 주당양도가액(미수집 — 총액만 수집)
   b = b.concat(ihPadNum_(transferPrice, 13));                 // 13 양도가액
@@ -32680,18 +32654,22 @@ function trAttach2StockRecord_(stock, seq){
   b = b.concat(ihPadNum_(0, 13));                             // 15 주당취득가액(미수집)
   b = b.concat(ihPadNum_(acquisitionPrice, 13));              // 16 취득가액
   b = b.concat(ihPadNum_(necessaryExpenses, 13));             // 17 필요경비
-  b = b.concat(ihPadNum_(Math.round(gain), 13));              // 18 양도소득금액
+  b = b.concat(ihPadNum_(Math.round(gain), 13));              // 18 과세대상양도소득금액
   b = b.concat(ihPadNum_(0, 13));                             // 19 감면소득금액
   b = b.concat(ihPadChar_('ZZZ', 3));                         // 20 감면종류
   b = b.concat(ihPadNum_(0, 5));                              // 21 감면율
   b = b.concat(ihPadChar_('1', 1));                           // 22 자동계산불러오기구분값(1 수기)
-  b = b.concat(ihPadChar_(input.assetCategory === 'foreign_stock' ? '2' : '1', 1)); // 23 국내외구분
-  b = b.concat(ihPadChar_(input.assetCategory === 'foreign_stock' ? 'US ' : '', 3)); // 24 소재지국(국외만, 미수집이라 미국 임시값)
-  b = b.concat(ihPadChar_(input.assetCategory === 'foreign_stock' ? '미국' : '', 40)); // 25 소재지국명
-  b = b.concat(ihPadChar_('', 15));                           // 26 ISIN코드
-  b = b.concat(ihPadChar_(input.assetCategory === 'foreign_stock' ? 'C' : '', 3)); // 27 ISIN코드구분
+  const isForeign_ = input.assetCategory === 'foreign_stock';
+  b = b.concat(ihPadChar_(isForeign_ ? '2' : '1', 1));       // 23 국내외구분
+  b = b.concat(ihPadChar_(isForeign_ ? 'US' : 'KR', 3));     // 24 소재지국(국외는 계산기에 칸 없음 — 미국 임시값, 확인필요)
+  b = b.concat(ihPadChar_(isForeign_ ? '미국' : '한국', 40)); // 25 소재지국명
+  b = b.concat(ihPadChar_('', 15));                           // 26 ISIN코드(국외 필수 — 계산기에 없음)
+  b = b.concat(ihPadChar_(isForeign_ ? 'C' : '', 3));         // 27 ISIN코드구분
   b = b.concat(ihPadNum_(0, 6));                              // 28 필요경비신고자료일련번호(항목별 상세 미수집)
-  b = b.concat(ihPadChar_('', 40));                           // 29 공란
+  b = b.concat(ihPadChar_('ZZ', 2));                          // 29 과세이연 여부(ZZ 과세이연 아님 — 국외주식은 늘 ZZ)
+  b = b.concat(ihPadNum_(Math.round(gain), 13));              // 30 전체양도소득금액(비과세분 없음 → 18과 같음)
+  b = b.concat(ihPadNum_(0, 13));                             // 31 비과세양도소득금액
+  b = b.concat(ihPadChar_('', 2));                            // 32 공란
   return b;
 }
 // [2026.10.20 옛인쇄정리] 조특 감면 신청서(13호·14호·37호·62호 등)는 원본 모양(app/formprint/mappers-양도감면A·B.js)으로 바뀌어 옛 모양을 지웠다.
@@ -32787,37 +32765,34 @@ function trBuildEfileBytes_(){
   const rows = [];
   (lastTransferResults_ || []).forEach(function(item, idx){
     if (!item.result || item.result.error) return;
-    rows.push(trHeadRecord_(item.seller));
+    // [2026.10.20 V5.17] 세율구분별 줄 → 국내 소계 → (대표 양도인만) 국외 2-10·국외 소계 → 합계(국내+국외) → 지방소득세
+    const ov_ = (idx === 0 && lastOverseasTransferResult_ && !lastOverseasTransferResult_.error) ? lastOverseasTransferResult_ : null;
+    rows.push(trHeadRecord_(item.seller, '', trLatestTransferDate_(!!ov_)));
     rows.push(trBasicRecord_(item.seller));
-    rows.push(trRateDetailRecord_('00', item.result, idx === 0 ? trSplitAmt : 0, item.seller));
-    rows.push(trRateDetailRecord_('98', item.result));
-    if (idx === 0 && lastOverseasTransferResult_) rows.push(trOverseasRateDetailRecord_(lastOverseasTransferResult_)); // 대표 양도인의 신고서에 국외분 행 추가
+    trRateRecords_(item.result, item.assets, item.seller, ov_, idx === 0 ? trSplitAmt : 0).forEach(function(r){ rows.push(r); });
     buyers.forEach(function(buyer, i){ rows.push(trBuyerRecord_(buyer, i + 1)); });
     // [2026.09.30 신규, 재검토88] 부표1(양도소득금액계산명세서)+부표3(취득가액및필요경비상세) —
     // 이 양도인의 자산별 명세.
-    (item.assets || []).forEach(function(asset, aIdx){
-      const seq = aIdx + 1;
-      rows.push(trAttach1AssetRecord_(asset, seq));
-      trAttach3ExpenseRecords_(asset, seq).forEach(function(r){ rows.push(r); });
-    });
+    // [2026.10.20 V5.17] 자료구분 순서(설명서 '나. 서식코드 및 자료구분' — 05 다음 07)대로 부표1을 모두 적은 뒤 부표3 — 예전엔 자산마다 05·07을 번갈아 적었다
+    (item.assets || []).forEach(function(asset, aIdx){ rows.push(trAttach1AssetRecord_(asset, aIdx + 1)); });
+    (item.assets || []).forEach(function(asset, aIdx){ trAttach3ExpenseRecords_(asset, aIdx + 1).forEach(function(r){ rows.push(r); }); });
   });
   // 주식등 양도세(신고유형 6/7/8) — 부동산과 완전히 별도 세목이라 그 자체로 독립된 HEAD+기본정보+세율별내역
   // 세트를 만든다. 부동산 신고서가 하나도 없어도(주식만 있는 사건) 독립적으로 생성된다.
   if (lastStockTransferResult_){
     const filingType = TR_STOCK_FILING_TYPE_[lastStockTransferResult_.assetCategory] || '5';
-    rows.push(trHeadRecord_(primarySeller, filingType));
+    rows.push(trHeadRecord_(primarySeller, filingType, (lastStockTransferResult_.input || {}).transferDate || ''));
     rows.push(trBasicRecord_(primarySeller));
-    rows.push(trStockRateDetailRecord_('00', lastStockTransferResult_.result));
-    rows.push(trStockRateDetailRecord_('98', lastStockTransferResult_.result));
+    trStockRateRecords_(lastStockTransferResult_.result).forEach(function(r){ rows.push(r); });
     // 부표2(주식양도소득금액계산명세서) — 계산기가 단일 거래만 다루므로 1건.
     rows.push(trAttach2StockRecord_(lastStockTransferResult_, 1));
   }
   // 부동산·주식 어느 쪽도 없이 국외자산만 있는 경우를 대비해, 대표 양도인의 신고서가 하나도
   // 없으면 국외자산 전용 신고서 세트를 별도로 만든다(위에서 이미 부동산 신고서에 얹었으면 중복 생성 안 함).
   if (lastOverseasTransferResult_ && !(lastTransferResults_ && lastTransferResults_.some(function(i){ return i.result && !i.result.error; }))){
-    rows.push(trHeadRecord_(primarySeller));
+    rows.push(trHeadRecord_(primarySeller, '', trLatestTransferDate_(true)));
     rows.push(trBasicRecord_(primarySeller));
-    rows.push(trOverseasRateDetailRecord_(lastOverseasTransferResult_));
+    trRateRecords_(null, [], primarySeller, lastOverseasTransferResult_, 0).forEach(function(r){ rows.push(r); });
   }
   const CRLF = [0x0D, 0x0A];
   let all = [];
