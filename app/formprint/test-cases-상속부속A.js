@@ -86,5 +86,32 @@ module.exports = function (E, H) {
   if (cSp.r.배우자공제 !== 500000000) throw new Error('시험 전제: 미분할이면 배우자공제 5억 — 엔진 ' + cSp.r.배우자공제);
   L.push({ name: '상속3호_배우자미분할', forms: X.plan('상속', cSp), ctx: cSp });
 
+  // ⑥ 상속6호 — 재해손실공제(상속): 화면 재해손실공제 8천만 → 엔진 재해손실공제 8천만(거주자)
+  var pDis = Object.assign({}, BASE, { taxableEstateAmount: 2500000000, disasterLossAmount: 80000000 });
+  var cDis = ihCtx(pDis);
+  L.push({ name: '상속6호_재해손실_상속', forms: X.plan('상속', cDis), ctx: cDis });
+
+  // 증여 사건 ctx — 앱에서는 NxFormPrint.ctxFromApp.증여(i)가 만드는 모양 + ihx(화면 증여세 탭 giftForeignBase·giftForeignTax·giftDisasterLoss)
+  function gfCtx(p) {
+    var r = E.calculateGiftTaxJS(clone(p));
+    if (!r || r.error) throw new Error('엔진 오류: ' + (r && r.error));
+    return { r: r, item: { amount: p.giftAmount, priorGiftAmount: 0 }, relation: p.relation, giftDate: p.giftDate, 신고일: '2026-08-31',
+      donee: { name: '견본수증자', regNo: '900101-1000000', resident: 'resident', phone: '010-1111-2222', address: '세종특별자치시 국세청로 8-14 (견본)', taxOffice: '세종세무서' },
+      donor: { name: '견본증여자', regNo: '600101-1000000', address: '세종특별자치시 국세청로 8-14 (견본)', filingStatus: 'ontime' },
+      taxAgent: AGENT, ihx: { foreign: { base: n0(p.foreignGiftTaxBase), paid: n0(p.foreignTaxPaidAmount) }, disasterLoss: n0(p.disasterLossAmount) } };
+  }
+  function n0(v) { return Number(v) || 0; }
+  // 증여 — 직계존속에게서 5억(그중 외국 재산 2억에 외국 증여세 1천만 납부), 재해손실공제 3천만
+  //   손계산: 과세표준 = 5억 − 5천만(증여재산공제) − 3천만 = 4.2억 → 산출세액 = 4.2억 × 20% − 1천만 = 7,400만
+  //   ④ = 7,400만 × 2억 ÷ 4.2억 = 35,238,095.2 → 반올림 35,238,095, ⑥ = MIN(④, 1천만) = 1천만
+  var pGf = { giftAmount: 500000000, relation: '직계존속', giftDate: '2026-05-10', filingStatus: 'ontime', disasterLossAmount: 30000000, foreignTaxPaidAmount: 10000000, foreignGiftTaxBase: 200000000 };
+  var cGf = gfCtx(pGf);
+  L.push({ name: '상속6호7호_증여', forms: X.plan('증여', cGf), ctx: cGf });
+
+  // ⑦ 상속7호 — 외국납부세액공제(상속): 과세가액 50억, 외국 재산 과세표준 10억에 외국 상속세 5천만, 손자녀 상속분 30%(세대생략 할증)
+  var pFo = Object.assign({}, BASE, { taxableEstateAmount: 5000000000, foreignTaxPaidAmount: 50000000, foreignEstateTaxBase: 1000000000, generationSkipHeirRatio: 0.3 });
+  var cFo = ihCtx(pFo);
+  L.push({ name: '상속7호_외국납부_상속', forms: X.plan('상속', cFo), ctx: cFo });
+
   return L;
 };

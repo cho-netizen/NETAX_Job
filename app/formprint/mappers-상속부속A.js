@@ -350,6 +350,73 @@
     return o.result();
   };
 
+  // ───────── 상속세·증여세 공용 서식(6호·7호)의 신고인 칸 ─────────
+  //  상속: 피상속인 = 화면 피상속인, 신고인 = 상속세 신고인(명부의 신고인 — 전화번호는 화면 신고인 전화번호), 세무서 = 피상속인 관할
+  //  증여: 증여자 = ctx.donor, 신고인 = 수증자 ctx.donee(전화번호·관할 세무서도 수증자)
+  function isGift(ctx) { return ctx.세목 === '증여'; }
+  function partyOf(ctx) {
+    if (isGift(ctx)) { var dn = ctx.donee || {}, dr = ctx.donor || {}; return { from: { name: dr.name, regNo: dr.regNo }, to: dn, phone: dn.phone, office: dn.taxOffice, fromLabel: '증여자', toLabel: '신고인(수증자)' }; }
+    var dc = ctx.deceased || {}, rp = ctx.reporter || {};
+    return { from: { name: dc.name, regNo: dc.regNo }, to: rp, phone: ctx.phone, office: dc.taxOffice, fromLabel: '피상속인', toLabel: '신고인(상속인)' };
+  }
+
+  // ───────── 상속 별지 제6호서식 — 재해손실 공제신고서(상속세, 증여세)(법 §23·§54, 시행령 §20·§47) ─────────
+  //  값 출처: 지금 인쇄 ihAttachPrintPagesHtml_ [별지 제6호서식] 쪽(상속, 화면 ihDisasterLoss > 0 — [√]상속세 고정, 신고인 = 명부 첫 행) +
+  //   증여는 지금 인쇄가 없음 — 증여 계산 결과의 재해손실공제(화면 giftDisasterLoss)로 같은 서식을 찍는다.
+  //  예전 인쇄와 다른 점: 신고인 = 상속세 신고인(서명하는 사람 — 예전은 명부 첫 행), 주소·전화번호도 찍음.
+  mappers['상속6호'] = function (ctx) {
+    var o = new Out(), r = ctx.r || {}, x = ihxOf(ctx), g = isGift(ctx), p = partyOf(ctx);
+    o.set('세목', g ? '증여세' : '상속세');
+    o.need('1@피상속인성명', p.from.name, '1.' + p.fromLabel + ' 성명').need('1@피상속인주민등록번호', p.from.regNo, '1.' + p.fromLabel + ' 주민등록번호');
+    o.need('1@신고인성명', p.to.name, '1.' + p.toLabel + ' 성명').need('1@신고인주민등록번호', p.to.regNo, '1.' + p.toLabel + ' 주민등록번호')
+      .need('1@신고인주소', H.fullAddr(p.to), '1.' + p.toLabel + ' 주소').need('1@신고인전화번호', p.phone, '1.' + p.toLabel + ' 전화번호');
+    o.miss('2.재난의 종류·재난발생일', '계산기에 없음(재난 종류·발생일 칸 없음 — 신고기한 안의 재난인지(법 §23①) 직접 확인)');
+    o.miss('3.재산종류·소재지·①②③ 재산별 손실가액·보상금 등·차감액', '계산기에 없음(재해손실공제액 ④ 합계 하나만 받음)');
+    var amt = g ? n(r.재해손실공제) : n(x.disasterLoss);
+    if (amt > 0) {
+      o.set('④', amt);
+      if (!g) {
+        if ((ctx.deceased || {}).resident === 'nonresident' || r.피상속인_거주구분 === '비거주자') o.note('⚠ 엔진 재해손실공제 0 — 피상속인 비거주자(법 §23① "거주자의 사망")');
+        else o.check('④ = 엔진 재해손실공제', n(r.재해손실공제), amt);
+      }
+    } else o.miss('④ 합계', '재해손실공제액 입력 없음');
+    signBlock(o, ctx, p.to.name, { office: p.office });
+    if (!g) o.note('신고인 = 상속세 신고인(서명하는 사람). 예전 인쇄는 상속인 명부 첫 행을 찍었음');
+    return o.result();
+  };
+
+  // ───────── 상속 별지 제7호서식 — 외국납부세액공제신청서(상속세, 증여세)(법 §29·§59, 시행령 §21·§48) ─────────
+  //  값 출처: 지금 인쇄 foreignTaxCreditPrintPageHtml_(상속: ihPrintFormBodyHtml_가 호출 — 할증 전 산출세액·과세표준·화면 ihForeignBase·ihForeignTax,
+  //   증여: 첫 증여 결과 — 산출세액_할증전·과세표준·화면 giftForeignBase·giftForeignTax) + 엔진 외국납부세액공제·외국납부세액공제_비율한도.
+  //  예전 인쇄는 줄 번호 1~6(서식 ①~⑥과 같은 차례)만 있고 1. 신청인 인적사항이 없었음 — 여기서는 인적사항도 찍음.
+  mappers['상속7호'] = function (ctx) {
+    var o = new Out(), r = ctx.r || {}, x = ihxOf(ctx), fx = x.foreign || {}, g = isGift(ctx), p = partyOf(ctx);
+    o.set('세목', g ? '증여세' : '상속세');
+    o.need('1@피상속인성명', p.from.name, '1.' + p.fromLabel + ' 성명').need('1@피상속인주민등록번호', p.from.regNo, '1.' + p.fromLabel + ' 주민등록번호');
+    o.need('1@신청인성명', p.to.name, '1.' + p.toLabel + ' 성명').need('1@신청인주민등록번호', p.to.regNo, '1.' + p.toLabel + ' 주민등록번호').need('1@신청인주소', H.fullAddr(p.to), '1.' + p.toLabel + ' 주소');
+    o.miss('2.과세물건(종류·소재지)', '계산기에 없음(외국 재산의 종류·소재지 칸 없음)');
+    // ① 할증 전 산출세액 — 엔진이 공제 계산에 쓴 값(상속: 산출세액 − 세대생략가산액, 증여: 산출세액_할증전)
+    var v1 = g ? n(r.산출세액_할증전) : Math.max(0, n(r.산출세액) - n(r.세대생략가산액)), v2 = n(r.과세표준), v3 = n(fx.base), v5 = n(fx.paid);
+    var v4 = has(r.외국납부세액공제_비율한도) ? n(r.외국납부세액공제_비율한도) : (v3 > 0 && v2 > 0 ? Math.round(v1 * Math.min(1, v3 / v2)) : v5);
+    var v6 = n(r.외국납부세액공제);
+    o.set('①', v1).set('②', v2).set('⑤', v5).set('⑥', v6).set('④', v4);
+    var gen = g ? n(r.세대생략할증액) : n(r.세대생략가산액);
+    if (gen > 0) o.note('⚠ ① 산출세액 = 세대생략 할증 전 ' + v1 + '원(엔진이 공제 계산에 쓴 값). 할증 ' + gen + '원을 포함할지는 판단 대기 — 법 §' + (g ? '59' : '29') + '·시행령 §' + (g ? '48' : '21') + '①은 "' + (g ? '증여' : '상속') + '세산출세액"이라고만 함');
+    if (v3 > 0) {
+      o.set('③', v3);
+      o.check('④ = ① × ③ ÷ ②(엔진 반올림, ③ ÷ ②는 1 한도)', v4, v2 > 0 ? Math.round(v1 * Math.min(1, v3 / v2)) : 0);
+      if (v3 > v2) o.note('⚠ ③이 ②보다 큼 — 엔진은 ③ ÷ ②를 1로 둠');
+    } else {
+      o.miss('③ 외국납부세액이 부과된 재산의 과세표준', '화면 입력 없음(비우면 엔진은 비율 한도 없이 ④ = ⑤로 계산)');
+      o.note('⚠ ③ 입력 없음 — ④를 ⑤(외국납부세액)와 같게 찍음(엔진과 같음). 서식 ④ = ① × ③ ÷ ②를 쓰려면 화면에 ③을 넣고 다시 계산하세요');
+    }
+    if (v6 < Math.min(v4, v5)) o.note('⑥ = ' + v6 + '원 — ④·⑤ 중 적은 금액(' + Math.min(v4, v5) + '원)보다 작음: 엔진은 앞선 세액공제를 뺀 남은 산출세액도 한도로 둠');
+    else o.check('⑥ = MIN(④, ⑤)', v6, Math.min(v4, v5));
+    if (!g && ((ctx.deceased || {}).resident === 'nonresident' || r.피상속인_거주구분 === '비거주자')) o.note('⚠ 피상속인 비거주자 — 법 §29는 "거주자의 사망으로 상속세를 부과하는 경우"만 외국납부세액공제(엔진은 거주 구분 없이 공제함)');
+    signBlock(o, ctx, p.to.name, { office: p.office });
+    return o.result();
+  };
+
   // ───────── 언제 찍나 ─────────
   var WHEN = {
     '상속1호': function (c) { var r = c.r || {}; return !!(r.가업상속공제_계산내역 && !r.가업상속납부유예_선택); },
@@ -363,22 +430,58 @@
   };
   var ORDER = ['상속1호', '상속1호부표1', '상속2호', '상속3호', '상속5호', '상속6호', '상속6호의2', '상속7호'];
 
+  // 증여 계산 결과(ctxFromApp.증여(i))로 찍는 공용 서식 — 6호(재해손실공제)·7호(외국납부세액공제)
+  //  화면 증여세 탭의 재해손실공제·외국납부세액·외국 과세표준은 증여 건 전체에 한 칸씩이라(쌍마다 같은 값이 들어감) 7호는 지금 인쇄처럼 첫 증여 결과에만 찍는다.
+  function withGiftIhx(ctx) {
+    if (!ctx || ctx.ihx || typeof document === 'undefined') return ctx;
+    return Object.assign({}, ctx, { ihx: { foreign: { base: dnum('giftForeignBase'), paid: dnum('giftForeignTax') }, disasterLoss: dnum('giftDisasterLoss') } });
+  }
+  function firstGiftResult() {
+    var L = (typeof lastGiftResults_ !== 'undefined' && lastGiftResults_) ? lastGiftResults_ : null; // eslint-disable-line no-undef
+    if (!L) return undefined;
+    var f = L.filter(function (it) { return it && it.result && !it.result.error; })[0];
+    return f ? f.result : null;
+  }
+  function isFirstGift(ctx) { var f = firstGiftResult(); return f === undefined ? true : f === ctx.r; }
+  var GIFT_WHEN = {
+    '상속6호': function (c) { return !!(c.r && n(c.r.재해손실공제) > 0); },
+    '상속7호': function (c) { return !!(c.r && n(c.r.외국납부세액공제) > 0 && isFirstGift(c)); }
+  };
+
   // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만)
   function plan(tax, ctx) {
-    var L = [];
+    var L = [], c;
     if (tax === '상속') {
-      var c = withIhx(ctx || {});
+      c = withIhx(ctx || {});
       ORDER.forEach(function (k) { if (typeof mappers[k] === 'function' && WHEN[k](c)) L.push({ formKey: k, ctx: Object.assign({}, c, { 세목: '상속' }) }); });
+    } else if (tax === '증여') {
+      c = withGiftIhx(ctx || {});
+      ['상속6호', '상속7호'].forEach(function (k) { if (GIFT_WHEN[k](c)) L.push({ formKey: k, ctx: Object.assign({}, c, { 세목: '증여' }) }); });
     }
     return L;
   }
   // 세액인쇄 화면의 서식 한 줄 — 상속 계산 결과 하나
   function ihCtx(extra) { return withIhx(H.ctxFromApp.상속(extra)); }
+  function hasIh() { return typeof lastInheritanceResult !== 'undefined' && !!lastInheritanceResult; } // eslint-disable-line no-undef
   ORDER.forEach(function (k) {
     if (k === '상속7호') return;
     ctxFor[k] = function (extra) { var c = ihCtx(extra); return WHEN[k](c) ? Object.assign(c, { 세목: '상속' }) : null; };
-    ready[k] = function () { try { return typeof lastInheritanceResult !== 'undefined' && !!lastInheritanceResult && !!ctxFor[k](); } catch (e) { return false; } }; // eslint-disable-line no-undef
+    ready[k] = function () { try { return hasIh() && !!ctxFor[k](); } catch (e) { return false; } };
   });
+  // 상속7호는 세액인쇄 서식표의 상속세·증여세 두 묶음에 같은 서식번호로 있음 — 지금 보고 있는 묶음(printActiveGroup_)의 세목으로 찍는다
+  function activeGroup() { return typeof printActiveGroup_ !== 'undefined' ? printActiveGroup_ : null; } // eslint-disable-line no-undef
+  function ih7(extra) { if (!hasIh()) return null; var c = ihCtx(extra); return WHEN['상속7호'](c) ? Object.assign(c, { 세목: '상속' }) : null; }
+  function gf7(extra) {
+    var f = firstGiftResult(); if (!f) return null;
+    var c = withGiftIhx(H.ctxFromApp.증여(0, extra)); return GIFT_WHEN['상속7호'](c) ? Object.assign(c, { 세목: '증여' }) : null;
+  }
+  ctxFor['상속7호'] = function (extra) {
+    var g = activeGroup();
+    if (g === '증여세') return gf7(extra);
+    if (g === '상속세') return ih7(extra);
+    return ih7(extra) || gf7(extra);
+  };
+  ready['상속7호'] = function () { try { return !!ctxFor['상속7호'](); } catch (e) { return false; } };
 
   return { 묶음: '상속부속A', forms: forms, mappers: mappers, plan: plan, ctxFor: ctxFor, ready: ready,
     ihxFromInput: ihxFromInput, ihxFromDom: ihxFromDom };
