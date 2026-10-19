@@ -25061,7 +25061,9 @@ function toolDeleteWorkCase(input, contextPath) {
 // 딱 1세트만 존재) 설정값이라 별도 시트 없이 스크립트 속성에 저장한다(API 키 등 기존 전역
 // 설정값과 같은 방식). taxcalc.html의 모든 인쇄서식·전자신고파일 생성, settings.html의
 // "세무대리인 정보" 입력화면 양쪽에서 이 두 함수만 호출한다.
-const TAX_AGENT_SETTINGS_KEYS_ = ['taxAgentName', 'taxAgentBizNo', 'taxAgentMgmtNo', 'taxAgentPhone'];
+// [2026.10.20 전자신고 대조] taxAgentBirth(세무대리인 생년월일 — 양도 HEADER 27, 관리번호와 둘 중 하나 필수)·hometaxUserId(홈택스 사용자ID — 세 세목 HEADER 10·12) 추가.
+//  세무대리 대표자 주민등록번호는 민감 정보라 저장하지 않는다(화면이 파일 만들 때만 받고 지움).
+const TAX_AGENT_SETTINGS_KEYS_ = ['taxAgentName', 'taxAgentBizNo', 'taxAgentMgmtNo', 'taxAgentPhone', 'taxAgentBirth', 'hometaxUserId'];
 function getTaxAgentSettings_() {
   const props = PropertiesService.getScriptProperties();
   const result = {};

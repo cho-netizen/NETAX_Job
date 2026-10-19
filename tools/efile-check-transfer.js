@@ -35,7 +35,7 @@ function cut(name) {
 const NAMES = ['numVal', 'ihGetEucKrEncodeTable_', 'ihEncodeEucKrBytes_', 'ihPadChar_', 'ihPadNum_', 'ihPadDec_', 'ihDateField_', 'ihOnlyDigits_', 'ihGenderFromRegNo_',
   'TR_EFILE_FORM_CODE_', 'TR_EXPENSE_CODE_NEEDS_DETAIL_', 'TR_EXPENSE_CODE5_', 'TR_STOCK_FILING_TYPE_', 'TR_BUYER_RELATION_LABELS_'];
 const TR_FUNCS = (UI.match(/^function (tr[A-Za-z0-9]*_)\(/gm) || []).map((s) => s.slice(9, -1));
-let src = 'let _ihEucKrEncodeTable_ = null; const TC_TAX_AGENT_CACHE_ = { taxAgentName: "시험세무사", taxAgentPhone: "0200000000", taxAgentBizNo: "0000000000", taxAgentMgmtNo: "T00000" };\n' +
+let src = 'let _ihEucKrEncodeTable_ = null; const TC_TAX_AGENT_CACHE_ = { taxAgentName: "시험세무사", taxAgentPhone: "0200000000", taxAgentBizNo: "0000000000", taxAgentMgmtNo: "T00000", taxAgentBirth: "19700101", hometaxUserId: "testuser" }; let TR_EF_REP_REGNO_ = "";\n' +
   'function taxAgentField_(id){ return TC_TAX_AGENT_CACHE_[id] || ""; }\n';
 NAMES.concat(TR_FUNCS).forEach((n) => { try { src += cut(n) + '\n'; } catch (e) { if (/^TR_/.test(n)) src += 'const ' + n + ' = {};\n'; else throw e; } }); // 옛 판에 없는 표는 빈 표로
 src += 'return { ' + TR_FUNCS.concat(['ihPadChar_']).map((n) => n + ': ' + n).join(', ') + ', set: function(k, v){ eval(k + " = v"); } };';
@@ -73,6 +73,11 @@ function checkFile(label, setup) {
     const k = txt(r, 1, 2); kinds[k] = (kinds[k] || 0) + 1;
     if (!LEN[k]) return bad('알 수 없는 자료구분 ' + k + ' (' + (i + 1) + '째 줄)');
     if (r.length !== LEN[k]) bad('자료구분 ' + k + ' ' + (i + 1) + '째 줄 길이 ' + r.length + ' ≠ 규격 ' + LEN[k]); else ok(k + ' 길이 ' + r.length);
+    // [2026.10.20] 설정 고정값 — 12 사용자ID(46~65), 27 세무대리인생년월일(296~303)
+    if (k === '01') {
+      if (txt(r, 46, 20).trim() !== 'testuser') bad('01 12 사용자ID(46~65)에 설정 홈택스 ID 없음: "' + txt(r, 46, 20) + '"'); else ok('01 사용자ID');
+      if (txt(r, 296, 8) !== '19700101') bad('01 27 생년월일(296~303) 다름: "' + txt(r, 296, 8) + '"'); else ok('01 생년월일');
+    }
     if (k === '01' && (!/^\d{6}$/.test(txt(r, 30, 6)) || !/^\d{8}$/.test(txt(r, 228, 8)))) bad('01 과세기간(30~35)·양도일자(228~235) 비어 있음: "' + txt(r, 30, 6) + '" "' + txt(r, 228, 8) + '"'); else if (k === '01') ok('01 과세기간 ' + txt(r, 30, 6) + ' 양도일자 ' + txt(r, 228, 8));
     if (k === '02' && txt(r, 347, 3) !== 'KR ') bad('02 국적코드(347~349) = "' + txt(r, 347, 3) + '"');
     if (k === '05') { const c62 = txt(r, 653, 2), c64 = txt(r, 659, 2), c65 = txt(r, 661, 2); if (!/^(ZZ|\d\d)$/.test(c62) || !/^(ZZ|\d\d)$/.test(c64) || !/^(ZZ|Z1|Z2|\d\d)$/.test(c65)) bad('05 62·64·65 코드 = ' + c62 + '·' + c64 + '·' + c65); else ok('05 62~65 ' + c62 + '·' + txt(r, 655, 4) + '·' + c64 + '·' + c65); }
@@ -137,5 +142,15 @@ checkFile('주식등(국내 비상장 중소기업, 1건)', () => {
   const input = { assetCategory: 'domestic_stock', transferDate: '2025-05-01', acquisitionDate: '2020-01-01', transferPrice: 200000000, acquisitionPrice: 100000000, transferExpenses: 1000000, companyName: '시험주식회사', bizRegNo: '0000000000' };
   T.set('lastStockTransferResult_', { assetCategory: 'domestic_stock', input: input, result: win.calculateStockTransferTaxJS(JSON.parse(JSON.stringify(input))) });
 });
+// [2026.10.20] 1회째 예정신고(양도인 카드 '전자신고 신고 종류' = 예정) — HEADER 6 '03'(27~28)·7 신고유형 '1'(29)·10 'D03'(38~40), 확정은 01·5·D01
+{
+  T.set('transferAssets', []);
+  const hp = T.trHeadRecord_(Object.assign({}, seller, { filingKind: 'prelim' }), '5', '2026-03-10');
+  const hf = T.trHeadRecord_(Object.assign({}, seller, { filingKind: '' }), '5', '2026-03-10');
+  if (txt(hp, 27, 2) + txt(hp, 29, 1) + txt(hp, 38, 3) !== '031D03') bad('예정신고 HEADER 6·7·10 다름: ' + txt(hp, 27, 2) + '/' + txt(hp, 29, 1) + '/' + txt(hp, 38, 3)); else ok('예정신고 HEADER 03·1·D03');
+  if (txt(hf, 27, 2) + txt(hf, 29, 1) + txt(hf, 38, 3) !== '015D01') bad('확정신고 HEADER 6·7·10 다름: ' + txt(hf, 27, 2) + '/' + txt(hf, 29, 1) + '/' + txt(hf, 38, 3)); else ok('확정신고 HEADER 01·5·D01');
+  const hs = T.trHeadRecord_(Object.assign({}, seller, { filingKind: 'prelim' }), '6', '2026-03-10');
+  if (txt(hs, 29, 1) !== '2') bad('예정신고 국내주식 신고유형 2 아님: ' + txt(hs, 29, 1)); else ok('예정신고 국내주식 신고유형 2');
+}
 console.log(fail ? '\n결과: 문제 ' + fail + '건' : '\n결과: 통과(확인 ' + okCount + '건)');
 process.exit(fail ? 1 : 0);
