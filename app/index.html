@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 19:02 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 19:04 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -29941,41 +29941,8 @@ function exitTaxPrintFormPageHtml_(input, r){
     '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 신청인 인적사항·납세관리인 정보는 직접 보완하세요.</div>' +
   '</div>';
   let m = 0;
-  const page2 = '<div class="pf-page">' +
-    '<div class="pf-formno">소득세법 시행규칙 [별지 제103호서식]</div>' +
-    '<div class="pf-title">국외전출자 양도소득세 세액공제신청서, 국외전출자 국내주식등 양도내역서</div>' +
-    '<table class="pf-table">' +
-      pfRow_(++m, '실제 양도가액', input.actualTransferPrice ? won(numVal(input.actualTransferPrice)) : '(미양도)') +
-      pfRow_(++m, '외국정부 납부세액', won(numVal(input.foreignTaxPaid) || 0)) +
-      pfRow_(++m, '비거주자 국내원천소득 세액상당액', won(numVal(input.nonresidentSourceTaxEquivalent) || 0)) +
-      pfRow_(++m, '공제 적용구분', r.공제구분 || '(해당없음)') +
-    '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 국외전출자 국내주식등의 종목·수량 등 양도내역은 직접 보완하세요.</div>' +
-  '</div>';
-  let k = 0;
-  const page3 = '<div class="pf-page">' +
-    '<div class="pf-formno">소득세법 시행규칙 [별지 제104호서식]</div>' +
-    '<div class="pf-title">국외전출자 국내주식등 보유현황 신고서</div>' +
-    '<table class="pf-table">' +
-      pfRow_(++k, '출국일', input.departureDate) +
-      pfRow_(++k, '납세관리인 성명', input.taxManagerName || '') +
-      pfRow_(++k, '납세관리인 주소', input.taxManagerAddress || '') +
-      pfRow_(++k, '보유 국내주식등 시가(출국일 기준)', won(numVal(input.departureMarketValue) || 0)) +
-    '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다(§118의15①, 출국일 전날까지 신고) — 종목별 수량·취득일 등 상세 보유명세는 직접 보완하세요.</div>' +
-  '</div>';
-  const page4 = input.deferralRequested ? ('<div class="pf-page">' +
-    '<div class="pf-formno">소득세법 시행규칙 [별지 제105호서식]</div>' +
-    '<div class="pf-title">국외전출자 납부유예신청서</div>' +
-    '<table class="pf-table">' +
-      pfRow_(0, '납세관리인 성명', input.taxManagerName || '') +
-      pfRow_(0, '납세담보 제공 여부', input.collateralProvided ? '제공함' : '미확인') +
-      pfRow_(0, '유예 신청세액', won(Math.max(0, (r.납부세액_합계 || 0) - (r.지방소득세 || 0)))) +
-      pfRow_(0, '유예기간', '출국일부터 5년(국외유학 등 사유는 10년) 이내 실제 양도시까지') +
-    '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다(§118의16) — 납세담보 제공방법·담보목적물 명세는 직접 보완하세요.</div>' +
-  '</div>') : '';
-  return page1 + page2 + page3 + page4;
+  // [2026.10.20 2단계 서식] 103호(세액공제신청서)·104호(보유현황 신고서)·105호(납부유예신청서)는 원본 모양(app/formprint/mappers-2단계.js)으로 바뀌어 옛 흉내 쪽을 지웠다 — 84호 요약만 남음
+  return page1;
 }
 // [2026.10.06 신규, 재검토110] 파생상품등 양도소득세(§94①5호·§104①13호) 결과 렌더링+인쇄.
 let lastDerivativeResult_ = null;
