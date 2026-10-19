@@ -1748,5 +1748,56 @@
    "외국납부세액공제": 0,
    "납부세액": 1881800000
   }
+ },
+ {
+  "이름": "[위원회 J04] 양도 조정지역 2주택 + 장기일반민간임대(§97의3) 10년 70% — 중과는 시행령 §167의3대로 붙고 장특공 특례율 유지: 양도차익 5억 × 70% = 3.5억 공제, 과표 1.475억 × 35% − 1,544만 = 36,185,000 + 1.475억 × 20% = 65,685,000(예전엔 중과를 건너뛰어 36,185,000)",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "acquisitionDate": "2016-06-30",
+   "transferDate": "2026-06-30",
+   "transferPrice": 900000000,
+   "acquisitionPrice": 400000000,
+   "necessaryExpenses": 0,
+   "isAdjustedArea": true,
+   "multiHouseCount": 2,
+   "rentalSpecialType": "rental_general",
+   "rentalYears": 10,
+   "rentalRegistrationDate": "2016-06-30",
+   "acquisitionStandardPrice": 300000000,
+   "registrationStandardPrice": 300000000,
+   "transferStandardPrice": 600000000
+  },
+  "정답": {
+   "과세표준": 147500000,
+   "산출세액": 65685000
+  }
+ },
+ {
+  "이름": "[위원회 J04] 위와 같은 주택이 시행령 §167의3①2호 장기임대주택(별지 83호의6 일반세율 적용 체크) — 중과 없음: 36,185,000",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "acquisitionDate": "2016-06-30",
+   "transferDate": "2026-06-30",
+   "transferPrice": 900000000,
+   "acquisitionPrice": 400000000,
+   "necessaryExpenses": 0,
+   "isAdjustedArea": true,
+   "multiHouseCount": 2,
+   "rentalSpecialType": "rental_general",
+   "rentalYears": 10,
+   "rentalRegistrationDate": "2016-06-30",
+   "acquisitionStandardPrice": 300000000,
+   "registrationStandardPrice": 300000000,
+   "transferStandardPrice": 600000000,
+   "isMultiHouseRentalExemption": true
+  },
+  "정답": {
+   "과세표준": 147500000,
+   "산출세액": 36185000
+  }
  }
 ]
