@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 06:01 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 06:09 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -13243,7 +13243,8 @@
     // 관계별공제(§53)도 혼인출산공제(§53의2)도 받을 수 없다(과거 신고분 대량 케이스가 대부분 거주자라
     // 기본값은 거주자로 두되, 비거주자임을 명시하면 두 공제 모두 0으로 게이트한다).
     const isDoneeResident = p.isDoneeResident !== false;
-    let relationDeduction = 0, marriageBirthDeduction = 0, disasterLossDeduction = 0, aggregationExclusionDeduction = 0, taxBase;
+    let marriageBirthThisTime_ = 0, marriageBirthSameDonorPrior_ = 0;
+      let relationDeduction = 0, marriageBirthDeduction = 0, disasterLossDeduction = 0, aggregationExclusionDeduction = 0, taxBase;
     if (p.isExcludedFromAggregation) {
       aggregationExclusionDeduction = 30000000;
       taxBase = Math.max(0, netGiftAmount - aggregationExclusionDeduction - appraisalFeeDeduction);
@@ -13251,12 +13252,25 @@
       // §53 본문 — "그 증여세 과세가액에서 공제받을 금액과 수증자가 증여받기 전 10년 이내에 공제받은
       // 금액을 합한 금액이 [한도]를 초과하면 초과분은 공제하지 아니한다" — 관계별 한도는 "이번 한 번"이
       // 아니라 "10년 합산" 기준이므로, 그 기간 중 이미 쓴 공제액을 이번 한도에서 미리 차감해야 한다.
+      // [2026.10.19 세액 고침] 단, 같은 증여자(직계존속은 그 배우자 포함)의 10년 내 증여를 이번에 합산(§47②, priorGiftAmount)하면
+      //  그 증여에 썼던 공제는 빼지 않는다 — 합산한 과세가액 전체에 한도를 다시 적용하고 그때 낸 세금은 기납부세액으로 뺀다
+      //  (국세청 증여세 신고 사례03 "모로부터 증여받은 후 부로부터 증여받은 경우": 앞서 3천만 공제 → 이번 합산 계산 공제 5천만).
+      //  예전엔 그 공제를 한도에서 빼서 공제가 적게(세액이 많게) 나왔다(사례03: 산출 4,600만 ↔ 국세청 4,000만).
+      //  합산 안 되는 다른 증여자(같은 공제 묶음, 예: 조부)에게서 받은 증여에 쓴 공제는 priorRelationDeductionUsedOther로 따로 받아 늘 뺀다.
+      const priorGiftAggregated_ = priorGiftAmount > 0;
       relationDeduction = isDoneeResident
-        ? Math.max(0, giftPropertyDeduction(p.relation, !!p.isMinor) - (Number(p.priorRelationDeductionUsed) || 0)) : 0;
+        ? Math.max(0, giftPropertyDeduction(p.relation, !!p.isMinor) - (Number(p.priorRelationDeductionUsedOther) || 0) - (priorGiftAggregated_ ? 0 : (Number(p.priorRelationDeductionUsed) || 0))) : 0;
       // §53의2①② — "거주자가 직계존속으로부터... 증여를 받는 경우"에만 적용되는 공제다. 배우자·직계비속·
       // 기타친족으로부터의 증여에는 적용되지 않는다.
       marriageBirthDeduction = (isDoneeResident && p.relation === '직계존속' && (p.isMarriageGift || p.isBirthGift))
         ? marriageOrBirthGiftDeduction(netGiftAmount, p.priorMarriageOrBirthDeductionUsed) : 0;
+      // [2026.10.19 세액 고침] 서식 부표3 ⑯ = ⑨ + ⑭(작성방법 4: 같은 증여자로부터 10년 내 이미 공제받은 금액 + 이번 공제) — 그 증여를 합산했으면
+      //  그때 쓴 혼인·출산공제(priorMarriageOrBirthDeductionSameDonor10y, 누적액 안의 일부)도 이번 합산 계산에서 다시 공제한다.
+      marriageBirthThisTime_ = marriageBirthDeduction;
+      if (isDoneeResident && p.relation === '직계존속' && priorGiftAmount > 0) {
+        marriageBirthSameDonorPrior_ = Math.min(Number(p.priorMarriageOrBirthDeductionSameDonor10y) || 0, Number(p.priorMarriageOrBirthDeductionUsed) || 0, priorGiftAmount);
+        marriageBirthDeduction += marriageBirthSameDonorPrior_;
+      }
       disasterLossDeduction = Number(p.disasterLossAmount) || 0;
       const totalDeduction = relationDeduction + marriageBirthDeduction + appraisalFeeDeduction + disasterLossDeduction;
       taxBase = Math.max(0, netGiftAmount + priorGiftAmount - totalDeduction);
@@ -13332,7 +13346,7 @@
       채무공제_배제사유: debtDeductionDenied ? '§47③ 배우자·직계존비속간 부담부증여는 채무 인수를 객관적으로 입증(국가·지자체 채무 등)하지 못하면 인수되지 않은 것으로 추정 — 채무액이 공제에서 제외됨' : '',
       비과세재산가액: nonTaxableAmount, 공익법인출연재산가액: publicInterestOrgAmount, 공익신탁재산가액: publicTrustAmount, 장애인신탁재산가액: disabledTrustAmount,
       순수증여재산가액: netGiftAmount,
-      증여재산공제: relationDeduction, 혼인출산증여재산공제: marriageBirthDeduction,
+      증여재산공제: relationDeduction, 혼인출산증여재산공제: marriageBirthDeduction, 혼인출산증여재산공제_이번분: marriageBirthThisTime_, 혼인출산증여재산공제_같은증여자기공제: marriageBirthSameDonorPrior_,
       합산배제증여재산공제: aggregationExclusionDeduction, 감정평가수수료공제: appraisalFeeDeduction, 재해손실공제: disasterLossDeduction,
       과세표준: taxBase, 산출세액_할증전: taxBeforePremium, 세대생략할증_적용비율: isGenerationSkip ? generationSkipRatio : null, 세대생략할증액: premiumAmount,
       산출세액_할증후: taxAfterPremium, 기납부세액공제: priorGiftTaxCredit, 기납부세액공제_비율한도: priorGiftCreditLimit,
@@ -27459,7 +27473,8 @@ function renderGiftDonorRegistry(){
         '<div class="taxcalc-field checkbox"><input type="checkbox" data-dfield="debtObjProven"' + (d.debtObjProven ? ' checked' : '') + '><label>배우자·직계존비속간 증여일 때만 — 위 채무가 객관적으로 인수 사실이 인정됨(§47③ 단서)</label></div>' +
         '<div class="taxcalc-field"><label>10년내 동일인 기증여합산액</label><input type="number" data-dfield="priorAmount"' + idOf('giftPriorAmount') + ' placeholder="' + (tcGiftPriorPending_() && !d.priorAmount ? '확인 전 — 비우면 0원' : '원') + '" value="' + (d.priorAmount || '') + '"><span class="taxcalc-field-help">' + (tcGiftPriorPending_() && !d.priorAmount ? '⏳ 확인 전(사건처리 질문에 아직 답하지 않음) — ' : '') + '없으면 비움 — 동일인에는 직계존속 증여시 그 배우자도 포함됩니다</span></div>' +
         '<div class="taxcalc-field"><label>위 기증여분 기납부세액</label><input type="number" data-dfield="priorPaidTax" placeholder="원" value="' + (d.priorPaidTax || '') + '"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>기증여분 증여재산공제(§53) 사용액</label><input type="number" data-dfield="priorRelationDeductionUsed" placeholder="원" value="' + (d.priorRelationDeductionUsed || '') + '"><span class="taxcalc-field-help">없으면 비움 — 관계별 공제도 10년 합산 한도</span></div>' +
+        '<div class="taxcalc-field"><label>기증여분 증여재산공제(§53) 사용액</label><input type="number" data-dfield="priorRelationDeductionUsed" placeholder="원" value="' + (d.priorRelationDeductionUsed || '') + '"><span class="taxcalc-field-help">없으면 비움 — 위 기증여분을 합산하면 공제 한도는 합산 전체에 다시 적용(국세청 사례: 이 값을 빼지 않음)</span></div>' +
+        '<div class="taxcalc-field"><label>다른 증여자 증여로 쓴 증여재산공제(§53)</label><input type="number" data-dfield="priorRelationDeductionUsedOther" placeholder="원" value="' + (d.priorRelationDeductionUsedOther || '') + '"><span class="taxcalc-field-help">없으면 비움 — 합산 안 되는 다른 증여자(예: 부에게 받는데 조부에게 받은 것)로 10년 안에 쓴 같은 묶음 공제. 이번 한도에서 뺌</span></div>' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" data-dfield="genSkipOver2B"' + (d.genSkipOver2B ? ' checked' : '') + '><label>세대생략증여재산가액 20억 초과(수증자 미성년 여부는 위 주민등록번호로 자동판정)</label></div>' +
         '<div class="taxcalc-field"><label>세대생략(조부모 등)분 증여재산가액</label><input type="number" data-dfield="genSkipAmount" placeholder="원" value="' + (d.genSkipAmount || '') + '"><span class="taxcalc-field-help">전액이면 비움</span></div>' +
         '<div class="taxcalc-field"><label>기증여분 중 이미 납부한 세대생략 할증과세액</label><input type="number" data-dfield="genSkipPriorPaid" placeholder="원" value="' + (d.genSkipPriorPaid || '') + '"><span class="taxcalc-field-help">없으면 비움</span></div>' +
@@ -31913,6 +31928,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>혼인일</label><input type="date" id="giftMarriageDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">비어있으면 미해당</span><span class="taxcalc-result-note" id="giftMarriageHint" style="margin:2px 0 0;"></span></div>' +
         '<div class="taxcalc-field"><label>출생일·입양일</label><input type="date" id="giftBirthDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">비어있으면 미해당</span><span class="taxcalc-result-note" id="giftBirthHint" style="margin:2px 0 0;"></span></div>' +
         '<div class="taxcalc-field"><label>과거에 이미 받은 혼인·출산공제 누적액</label><input type="number" id="giftPriorMarriageBirth" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>그중 이번 증여자에게서 10년 안에 받은 증여로 쓴 혼인·출산공제</label><input type="number" id="giftPriorMarriageBirthSameDonor" placeholder="원"><span class="taxcalc-field-help">없으면 비움 — 그 증여를 합산하면 이번 계산에서 다시 공제(서식 부표3 ⑯ = ⑨ + ⑭)</span></div>' +
         // [2026.09.30 신규, 재검토91] 혼인일·출생일 둘 다 입력되어 둘 다 요건을 충족하는 드문
         // 경우에만 보인다 — 전자신고서(자료구분16)는 혼인분·출산분을 각 칸에 나눠 내야 하므로.
         '<div class="taxcalc-field" id="giftMarriageBirthSplitField" style="display:none;"><label>이 중 혼인분 해당 금액</label><input type="number" id="giftMarriageBirthSplit" placeholder="원"><span class="taxcalc-field-help">혼인·출산 둘 다 요건을 충족할 때만 — 나머지는 자동으로 출산분으로 처리됩니다(전자신고서 혼인/출산 칸 구분용)</span></div>' +
@@ -32761,7 +32777,8 @@ function gfBuildEfileBytes_(){
     const donor = Object.assign({}, donorRaw, giftPairRelation_(donorRaw, item.doneeIdx)); // 쌍별 관계(2026.10.09)
     all = all.concat(gfHeadRecord_(donee.regNo, giftDate), CRLF, gfBasicRecord_(donee, donor, giftDate, item.doneeIdx), CRLF, gfTaxCalcRecord_(item, donor), CRLF);
     gfAttach1AssetRecordsForPair_(item.donorIdxs[0], item.doneeIdx).forEach(function(r){ all = all.concat(r, CRLF); });
-    const marriageBirthTotal = numVal(item.result.혼인출산증여재산공제) || 0;
+    // [2026.10.19] 부표3 ⑭⑮(이번 공제)는 엔진의 _이번분 — 합계(혼인출산증여재산공제)엔 같은 증여자 기공제(⑨⑩)가 들어갈 수 있음
+    const marriageBirthTotal = numVal(item.result.혼인출산증여재산공제_이번분 != null ? item.result.혼인출산증여재산공제_이번분 : item.result.혼인출산증여재산공제) || 0;
     if (marriageBirthTotal > 0){
       const split = gfMarriageBirthSplit_(marriageBirthTotal);
       all = all.concat(gfAttachMarriageBirthCalcRecord_(donor, split), CRLF);
@@ -32895,7 +32912,7 @@ function gfAttach1PrintPageHtml_(donorIdx, doneeIdx){
 // (gfAttachMarriageBirthCalcRecord_/DetailRecord_)은 이미 이 구조를 정확히 구현해놨는데
 // 인쇄서식엔 이 부표 자체가 없었다(본문에 합계 한 줄만 나옴). 같은 계산을 재사용해 인쇄한다.
 function gfMarriageBirthPrintPageHtml_(donee, donor, giftDate, item){
-  const totalDeduction = numVal(item.result.혼인출산증여재산공제) || 0;
+  const totalDeduction = numVal(item.result.혼인출산증여재산공제_이번분 != null ? item.result.혼인출산증여재산공제_이번분 : item.result.혼인출산증여재산공제) || 0; // [2026.10.19] ⑭⑮ = 이번 공제분
   if (!totalDeduction) return '';
   const priorTotal = numVal((document.getElementById('giftPriorMarriageBirth') || {}).value) || 0;
   const priorSplit = gfMarriageBirthSplit_(priorTotal);
@@ -36345,6 +36362,7 @@ function handleTaxCalcClick_(e){
       isMarriageGift: taxCalcIsMarriageGiftEligible_(document.getElementById('giftDate').value, document.getElementById('giftMarriageDate').value),
       isBirthGift: taxCalcIsBirthGiftEligible_(document.getElementById('giftDate').value, document.getElementById('giftBirthDate').value),
       priorMarriageOrBirthDeductionUsed: numVal(document.getElementById('giftPriorMarriageBirth').value) || 0,
+      priorMarriageOrBirthDeductionSameDonor10y: numVal((document.getElementById('giftPriorMarriageBirthSameDonor') || {}).value) || 0,
       isExcludedFromAggregation: document.getElementById('giftExcludedAgg').checked,
       appraisalFeeAmount: numVal(document.getElementById('giftAppraisalFee').value) || 0,
       disasterLossAmount: numVal(document.getElementById('giftDisasterLoss').value) || 0,
@@ -36404,6 +36422,7 @@ function handleTaxCalcClick_(e){
         priorGiftAmount: numVal(d.priorAmount) || 0,
         priorPaidTax: numVal(d.priorPaidTax) || 0,
         priorRelationDeductionUsed: numVal(d.priorRelationDeductionUsed) || 0,
+        priorRelationDeductionUsedOther: numVal(d.priorRelationDeductionUsedOther) || 0,
         // 세대생략 할증(§57)은 증여자가 수증자의 직계존속(조부모 등)일 때만 — 손자녀→조부모(직계비속 2촌)는 할증 없음
         isGenerationSkip: giftPairRelation_(d, g.doneeIdx).genSkip === '1' && giftPairRelation_(d, g.doneeIdx).relation === '직계존속',
         generationSkipOver2Billion: !!d.genSkipOver2B,

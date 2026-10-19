@@ -699,7 +699,9 @@ const DRIVE_TOOLS = [
         isMarriageGift: { type: 'boolean', description: '혼인일 전후 2년 이내의 증여(혼인증여재산공제 대상)인지' },
         isBirthGift: { type: 'boolean', description: '자녀 출생일·입양일부터 2년 이내의 증여(출산증여재산공제 대상)인지' },
         priorMarriageOrBirthDeductionUsed: { type: 'number', description: '이 수증자가 과거에 이미 받은 혼인·출산증여재산공제 누적액(원). 혼인+출산 합쳐 평생통산 1억원 한도이므로, 이미 쓴 만큼 이번 공제 한도가 줄어든다.' },
-        priorRelationDeductionUsed: { type: 'number', description: '동일인(직계존속 증여는 그 배우자 포함)으로부터 증여받기 전 10년 이내에 이미 받은 증여재산공제(§53, 배우자6억/직계존속·직계비속5천만·기타친족1천만) 누적액(원). 관계별 한도도 10년 합산 기준이라 이미 쓴 만큼 이번 공제 한도가 줄어든다. 없으면 생략.' },
+        priorRelationDeductionUsed: { type: 'number', description: '동일인(직계존속 증여는 그 배우자 포함)으로부터 증여받기 전 10년 이내에 이미 받은 증여재산공제(§53, 배우자6억/직계존속·직계비속5천만·기타친족1천만) 누적액(원). 그 증여를 priorGiftAmount로 합산하면 한도는 합산 전체에 다시 적용되므로 빼지 않고(국세청 사례03), 합산 안 될 때(1천만원 미만)만 이번 한도에서 뺀다. 없으면 생략.' },
+        priorRelationDeductionUsedOther: { type: 'number', description: '합산 안 되는 다른 증여자(같은 공제 묶음 — 예: 부에게서 받는데 조부에게서 받은 증여)로 10년 이내 이미 받은 증여재산공제(§53) 누적액(원). 이번 한도에서 늘 뺀다. 없으면 생략.' },
+        priorMarriageOrBirthDeductionSameDonor10y: { type: 'number', description: 'priorMarriageOrBirthDeductionUsed 중 이번 증여자(직계존속은 그 배우자 포함)에게서 10년 이내 받은 증여에 쓴 혼인·출산공제(원, 서식 부표3 ⑨+⑩). 그 증여를 합산하면 이번 계산에서 다시 공제한다. 없으면 생략.' },
         isExcludedFromAggregation: { type: 'boolean', description: '상증세법 §55①3호에 따른 합산배제증여재산(명의신탁·일감몰아주기 등 의제이익 제외)인지 — 해당하면 §53·§53의2·§54을 전혀 적용하지 않고 "증여재산가액-3천만원"만으로 과세표준을 계산하는 별개 산식이 적용되며(10년 합산도 하지 않는다), priorGiftAmount·relationDeduction 등 다른 공제 입력은 모두 무시된다.' },
         appraisalFeeAmount: { type: 'number', description: '증여재산 감정평가수수료(원, 일반 감정평가법인·유형재산). 500만원 한도로 공제.' },
         unlistedStockAppraisalFeeAmount: { type: 'number', description: '비상장주식 신용평가전문기관 평가수수료(원, §49의2⑨). 위 appraisalFeeAmount의 500만원 한도와 별개로 1천만원 한도로 공제된다(시행령§46의2·§20의3③).' },
@@ -8008,7 +8010,8 @@ function toolCalculateGiftTax(p) {
   // 관계별공제(§53)도 혼인출산공제(§53의2)도 받을 수 없다(기본값은 거주자로 두되, 비거주자임을
   // 명시하면 두 공제 모두 0으로 게이트한다).
   const isDoneeResident = p.isDoneeResident !== false;
-  let relationDeduction = 0, marriageBirthDeduction = 0, disasterLossDeduction = 0, aggregationExclusionDeduction = 0, taxBase;
+  let marriageBirthThisTime_ = 0, marriageBirthSameDonorPrior_ = 0;
+    let relationDeduction = 0, marriageBirthDeduction = 0, disasterLossDeduction = 0, aggregationExclusionDeduction = 0, taxBase;
   if (p.isExcludedFromAggregation) {
     aggregationExclusionDeduction = 30000000;
     taxBase = Math.max(0, netGiftAmount - aggregationExclusionDeduction - appraisalFeeDeduction);
@@ -8016,12 +8019,25 @@ function toolCalculateGiftTax(p) {
     // §53 본문 — "그 증여세 과세가액에서 공제받을 금액과 수증자가 증여받기 전 10년 이내에 공제받은
     // 금액을 합한 금액이 [한도]를 초과하면 초과분은 공제하지 아니한다" — 관계별 한도는 "이번 한 번"이
     // 아니라 "10년 합산" 기준이므로, 그 기간 중 이미 쓴 공제액을 이번 한도에서 미리 차감해야 한다.
+    // [2026.10.19 세액 고침] 단, 같은 증여자(직계존속은 그 배우자 포함)의 10년 내 증여를 이번에 합산(§47②, priorGiftAmount)하면
+    //  그 증여에 썼던 공제는 빼지 않는다 — 합산한 과세가액 전체에 한도를 다시 적용하고 그때 낸 세금은 기납부세액으로 뺀다
+    //  (국세청 증여세 신고 사례03 "모로부터 증여받은 후 부로부터 증여받은 경우": 앞서 3천만 공제 → 이번 합산 계산 공제 5천만).
+    //  예전엔 그 공제를 한도에서 빼서 공제가 적게(세액이 많게) 나왔다(사례03: 산출 4,600만 ↔ 국세청 4,000만).
+    //  합산 안 되는 다른 증여자(같은 공제 묶음, 예: 조부)에게서 받은 증여에 쓴 공제는 priorRelationDeductionUsedOther로 따로 받아 늘 뺀다.
+    const priorGiftAggregated_ = priorGiftAmount > 0;
     relationDeduction = isDoneeResident
-      ? Math.max(0, giftPropertyDeduction_(relation, !!p.isMinor) - (Number(p.priorRelationDeductionUsed) || 0)) : 0;
+      ? Math.max(0, giftPropertyDeduction_(relation, !!p.isMinor) - (Number(p.priorRelationDeductionUsedOther) || 0) - (priorGiftAggregated_ ? 0 : (Number(p.priorRelationDeductionUsed) || 0))) : 0;
     // §53의2①② — "거주자가 직계존속으로부터... 증여를 받는 경우"에만 적용되는 공제다. 배우자·직계비속·
     // 기타친족으로부터의 증여에는 적용되지 않는다.
     marriageBirthDeduction = (isDoneeResident && relation === '직계존속' && (p.isMarriageGift || p.isBirthGift))
       ? marriageOrBirthGiftDeduction_(netGiftAmount, p.priorMarriageOrBirthDeductionUsed) : 0;
+    // [2026.10.19 세액 고침] 서식 부표3 ⑯ = ⑨ + ⑭(작성방법 4: 같은 증여자로부터 10년 내 이미 공제받은 금액 + 이번 공제) — 그 증여를 합산했으면
+    //  그때 쓴 혼인·출산공제(priorMarriageOrBirthDeductionSameDonor10y, 누적액 안의 일부)도 이번 합산 계산에서 다시 공제한다.
+    marriageBirthThisTime_ = marriageBirthDeduction;
+    if (isDoneeResident && relation === '직계존속' && priorGiftAmount > 0) {
+      marriageBirthSameDonorPrior_ = Math.min(Number(p.priorMarriageOrBirthDeductionSameDonor10y) || 0, Number(p.priorMarriageOrBirthDeductionUsed) || 0, priorGiftAmount);
+      marriageBirthDeduction += marriageBirthSameDonorPrior_;
+    }
     disasterLossDeduction = Number(p.disasterLossAmount) || 0;
     const totalDeduction = relationDeduction + marriageBirthDeduction + appraisalFeeDeduction + disasterLossDeduction;
     taxBase = Math.max(0, netGiftAmount + priorGiftAmount - totalDeduction);
@@ -8111,7 +8127,7 @@ function toolCalculateGiftTax(p) {
     장애인신탁재산가액: disabledTrustAmount,
     순수증여재산가액: netGiftAmount,
     증여재산공제: relationDeduction,
-    혼인출산증여재산공제: marriageBirthDeduction,
+    혼인출산증여재산공제: marriageBirthDeduction, 혼인출산증여재산공제_이번분: marriageBirthThisTime_, 혼인출산증여재산공제_같은증여자기공제: marriageBirthSameDonorPrior_,
     합산배제증여재산공제: aggregationExclusionDeduction,
     감정평가수수료공제: appraisalFeeDeduction,
     재해손실공제: disasterLossDeduction,
