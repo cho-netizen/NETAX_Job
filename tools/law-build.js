@@ -298,6 +298,12 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
       const bu = parseBuchik(curXml);
       // 시행예정 판의 부칙(현행 XML에 아직 없을 수 있음)은 그 판 XML에서 더한다 — 공포번호로 겹침 제거
       for (const e of v.예정) { if (bu.some(b => +b.공포번호 === +e.공포번호)) continue; try { parseBuchik(await get('https://www.law.go.kr/DRF/lawService.do?OC=' + OC + '&target=eflaw&type=XML&MST=' + e.MST + '&efYd=' + e.시행일)).forEach(b => { if (!bu.some(c => +c.공포번호 === +b.공포번호)) bu.push(b); }); } catch (x) {} }
+      // [2026.10.20] 전부개정(예: 국세징수법 2020.12.29.) 전 옛 판의 부칙은 현행 XML에 없다 — 부칙이 빠진 판은 그 판 XML에서(최근 판부터, 한 번 받으면 그 전 부칙이 함께 들어옴)
+      for (const p of ent.판.slice().sort((a, b) => b.판.localeCompare(a.판))) {
+        if (!p.MST || bu.some(b => +b.공포번호 === +p.공포번호 && b.공포일 === p.공포일)) continue;
+        try { parseBuchik(await get('https://www.law.go.kr/DRF/lawService.do?OC=' + OC + '&target=eflaw&type=XML&MST=' + p.MST + '&efYd=' + p.시행일)).forEach(b => { if (!bu.some(c => +c.공포번호 === +b.공포번호 && c.공포일 === b.공포일)) bu.push(b); }); } catch (x) { }
+        await new Promise(r => setTimeout(r, 300));
+      }
       if (!DRY) fs.writeFileSync(path.join(OUT, '_본문', k, '_부칙.json.gz'), zlib.gzipSync(Buffer.from(JSON.stringify({ 법령: name, 받은날: today, 기준판: v.현행.시행일 + '_' + v.현행.공포번호, 부칙: bu }), 'utf8'), { level: 9 }));
       ent.부칙수 = bu.length;
       report.push(name + ' 부칙 ' + bu.length + '개');

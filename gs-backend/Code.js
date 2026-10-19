@@ -2452,7 +2452,7 @@ const DRIVE_TOOLS = [
         annualInterestRatePercent: { type: 'number', description: '연부연납 가산금 연이자율(%, 예: 3.5). 생략하면 referenceDate(또는 오늘) 기준 국세기본법시행령§43의3② 고시 이자율로 자동계산한다.' },
         referenceDate: { type: 'string', description: 'annualInterestRatePercent 자동계산 기준일(YYYY-MM-DD, 보통 연부연납 허가일·신고일). 생략하면 오늘.' }
       },
-      required: ['taxType', 'totalTaxAmount', 'installmentPeriodYears', 'annualInterestRatePercent']
+      required: ['taxType', 'totalTaxAmount', 'installmentPeriodYears']
     }
   },
   {
