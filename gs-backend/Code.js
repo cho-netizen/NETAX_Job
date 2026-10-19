@@ -1605,6 +1605,8 @@ const DRIVE_TOOLS = [
         isOffshoreTransaction: { type: 'boolean', description: '국세기본법§47의2·§47의3의 역외거래 부정행위(무신고·과소신고)에 해당하는지 — true면 가산세율이 40%(국내)가 아니라 60%로 적용된다.' },
         isFinalSettlement: { type: 'boolean', description: 'false=최초 신고(추정 소득세상당액 사용), true=정산 신고(실제 소득세액 사용).' },
         giftTaxDeadlineOnOrAfterJune1: { type: 'boolean', description: '시행령§31의2③1호(2026.2.27 개정) — 증여세 과세표준 신고기한이 초과배당금액 발생연도의 다음 연도 6월 1일(성실신고확인대상사업자는 7월 1일) 이후라면 true. true면 최초신고부터 실제소득세액 산정법을 적용하고 이후 정산신고가 불필요해진다.' },
+        excessDividendYear: { type: 'number', description: '초과배당금액 발생 연도 — giftDate와 함께 주면 신고기한이 다음 해 6월 1일(성실신고확인대상 7월 1일) 이후인지 엔진이 판정(시행령 §31의2③1호).' },
+        isSincereFilingTarget: { type: 'boolean', description: '받은 사람이 성실신고확인대상사업자인지(기준일 7월 1일).' },
         excessDividendBaseAmount: { type: 'number', description: '최대주주등의 특수관계인이 실제 받은 배당등의 금액(원, 초과배당금액 산정의 기초).' },
         disproportionateShortfallRatio: { type: 'number', description: '과소배당금액 중 최대주주등의 과소배당금액이 차지하는 비율(0~1) — 시행령§31의2②2호.' },
         estimatedIncomeTaxEquivalent: { type: 'number', description: 'isFinalSettlement가 false일 때 — 초과배당금액에 대한 소득세상당액 추정치(원). 비워두면 시행규칙§10의3①의 추정율표로 자동계산하며, 입력하면 그 값을 그대로 우선 사용한다.' },
