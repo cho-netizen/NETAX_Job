@@ -460,6 +460,7 @@
   /*@@REF_DATA_BEGIN@@*/
   var LSI_FORM_MAPS_ = {};
   var LSI_REF_TABLES_ = [];
+  var LSI_FORM_CATALOG_ = {"서식":[]};
   /*@@REF_DATA_END@@*/
   var lsiActiveTab_ = 'law';
   var lsiFolderFiles_ = null;      // [{name,url,mimeType,folder}] — 드라이브 서식 폴더 3곳
@@ -611,6 +612,20 @@
     return out;
   }
 
+  // [2026.10.19 서식 사전 전체] 서식 탭 목록은 법령 별지 기준 전체 목록(LSI_FORM_CATALOG_, 144종)을 쓴다 — 세액인쇄 목록(신고에 내는 서식)보다 넓다.
+  //  예전 구글 주소 화면처럼 목록 자료가 없으면 세액인쇄 목록으로 대신한다.
+  function lsiCatalogOn_(){ return typeof LSI_FORM_CATALOG_ !== 'undefined' && LSI_FORM_CATALOG_ && (LSI_FORM_CATALOG_.서식 || []).length > 0; }
+  function lsiFormGroups_(){ return lsiCatalogOn_() ? (LSI_FORM_CATALOG_.세목순서 || ['양도', '상속', '증여', '공통']) : (typeof PRINT_GROUP_ORDER_ !== 'undefined' ? PRINT_GROUP_ORDER_ : ['양도소득세', '상속세', '증여세', '증여·상속 공통']); }
+  function lsiGroupOfForm_(formNo){
+    if (lsiCatalogOn_()){ var c = LSI_FORM_CATALOG_.서식.filter(function(x){ return x.서식번호 === formNo; })[0]; return c ? c.세목 : null; }
+    return (typeof PRINT_REGISTRY_ !== 'undefined') ? (PRINT_REGISTRY_.filter(function(it){ return (it.subForms || []).some(function(sf){ return sf.formNo === formNo; }) || it.formNo === formNo; })[0] || {}).group : null;
+  }
+  // 세액인쇄 세목 이름 → 서식 사전 세목(세액인쇄의 '전체 서식 목록' 단추에서 넘어올 때)
+  function lsiGroupFromPrint_(g){ if (!lsiCatalogOn_()) return g; return ({ '양도소득세': '양도', '상속세': '상속', '증여세': '증여', '증여·상속 공통': '공통' })[g] || g; }
+  function lsiFormRows_(group){
+    if (!lsiCatalogOn_()) return lsiRegistryRows_(group);
+    return LSI_FORM_CATALOG_.서식.filter(function(x){ return x.세목 === group; }).map(function(x){ return { formNo: x.서식번호, title: x.이름, 개정일: x.개정일, 쓰임: x.쓰임, 법제처: x.법제처 }; });
+  }
   function lsiRegistryRows_(group){
     if (typeof PRINT_REGISTRY_ === 'undefined') return [];
     var rows = [], seen = {};
@@ -628,16 +643,16 @@
 
   function lsiRenderForms_(){
     var pane = document.getElementById('lsiPane-form');
-    if (typeof PRINT_REGISTRY_ === 'undefined'){ pane.innerHTML = '<div class="card">서식 목록(세액인쇄)을 아직 불러오지 못했습니다. 잠시 뒤 다시 눌러 주세요.</div>'; return; }
+    if (!lsiCatalogOn_() && typeof PRINT_REGISTRY_ === 'undefined'){ pane.innerHTML = '<div class="card">서식 목록(세액인쇄)을 아직 불러오지 못했습니다. 잠시 뒤 다시 눌러 주세요.</div>'; return; }
     lsiLoadFolderFiles_();
-    var groups = (typeof PRINT_GROUP_ORDER_ !== 'undefined' ? PRINT_GROUP_ORDER_ : ['양도소득세', '상속세', '증여세', '증여·상속 공통']);
-    if (!lsiFormGroup_) lsiFormGroup_ = groups[0];
-    var rows = lsiRegistryRows_(lsiFormGroup_);
-    var allCount = groups.reduce(function(n, g){ return n + lsiRegistryRows_(g).length; }, 0);
+    var groups = lsiFormGroups_();
+    if (!lsiFormGroup_ || groups.indexOf(lsiFormGroup_) === -1) lsiFormGroup_ = lsiGroupFromPrint_(lsiFormGroup_) && groups.indexOf(lsiGroupFromPrint_(lsiFormGroup_)) !== -1 ? lsiGroupFromPrint_(lsiFormGroup_) : groups[0];
+    var rows = lsiFormRows_(lsiFormGroup_);
+    var allCount = groups.reduce(function(n, g){ return n + lsiFormRows_(g).length; }, 0);
     var html = '<div class="card">' +
       '<div class="lsi-note" style="margin-bottom:8px;">서식은 세법을 가장 먼저 정밀하게 해석한 기준입니다. 서식마다 <b>칸 해설</b>(칸 → 근거 조문 → 계산기 칸 → 쓰이는 조견표)을 쌓아 갑니다. ' +
-      '목록은 <b>세액인쇄</b>의 서식 목록(모두 ' + allCount + '개)을 그대로 읽어 오고, 원본은 드라이브에서 서식번호로 찾습니다 — <b>법제처 PDF</b>(업무관리자\\세금계산\\법정서식원본(법제처)의 법제처 공식 서식)를 먼저, 예전부터 있던 한글·PDF 파일은 그 옆에 둡니다. 이 탭은 서식 사전입니다 — 어떤 서식을 낼지·인쇄·전자신고는 🖨 세액인쇄에서 합니다.</div>' +
-      '<div class="lsi-chips">' + groups.map(function(g){ return '<button type="button" class="lsi-chip' + (g === lsiFormGroup_ ? ' active' : '') + '" data-lsigroup="' + lsiEsc_(g) + '">' + lsiEsc_(g) + ' (' + lsiRegistryRows_(g).length + ')</button>'; }).join('') + '</div>';
+      (lsiCatalogOn_() ? '목록은 법령 시행규칙 별지 기준 전체 서식(모두 ' + allCount + '개, 지방세 신고서 제외 — 신고에 내는 서식은 세액인쇄가 고릅니다)이고, 원본은' : '목록은 <b>세액인쇄</b>의 서식 목록(모두 ' + allCount + '개)을 그대로 읽어 오고, 원본은') + ' 드라이브에서 서식번호로 찾습니다 — <b>법제처 PDF</b>(업무관리자\\세금계산\\법정서식원본(법제처)의 법제처 공식 서식)를 먼저, 예전부터 있던 한글·PDF 파일은 그 옆에 둡니다. 이 탭은 서식 사전입니다 — 어떤 서식을 낼지·인쇄·전자신고는 🖨 세액인쇄에서 합니다.</div>' +
+      '<div class="lsi-chips">' + groups.map(function(g){ return '<button type="button" class="lsi-chip' + (g === lsiFormGroup_ ? ' active' : '') + '" data-lsigroup="' + lsiEsc_(g) + '">' + lsiEsc_(g) + ' (' + lsiFormRows_(g).length + ')</button>'; }).join('') + '</div>';
     var noFile = 0;
     var body = rows.map(function(r){
       var files = lsiFolderFiles_ ? lsiMatchFiles_(r.formNo, r.title) : null;
@@ -649,7 +664,7 @@
       var mapHtml = fm ? '<button type="button" class="lsi-link" data-lsiformmap="' + lsiEsc_(r.formNo) + '">칸 ' + (fm.칸 || []).length + '개</button> <span class="lsi-badge' + (lsiState_(r.formNo, fm) === '세무사님 확인' ? ' ok' : ' warn') + '">' + lsiEsc_(lsiState_(r.formNo, fm)) + '</span>' : '<span class="lsi-note">아직 없음</span>';
       // [2026.10.19 세무사님] 서식 탭은 서식 사전 — 필수/해당 시·전자/서면·찍기(세액인쇄로) 같은 신고·출력 표시는 세액인쇄에만 둔다
       return '<tr><td style="white-space:nowrap;">' + lsiEsc_(typeof printShortFormNo_ === 'function' ? printShortFormNo_(r.formNo) : r.formNo) + '</td>' +
-        '<td>' + lsiEsc_(r.title) + '<div class="lsi-note">' + lsiEsc_(r.formNo.split('[')[0].trim()) + '</div></td>' +
+        '<td>' + lsiEsc_(r.title) + '<div class="lsi-note">' + lsiEsc_(r.formNo.split('[')[0].trim()) + (r.개정일 ? ' · 개정 ' + lsiEsc_(r.개정일) : '') + (r.법제처 ? ' · <a href="' + lsiEsc_(r.법제처) + '" target="_blank" rel="noopener">법제처 화면 ↗</a>' : '') + '</div></td>' +
         '<td class="nw">' + fileHtml + '</td><td class="nw">' + mapHtml + '</td></tr>';
     }).join('');
     html += '<div class="lsi-table-wrap"><table class="lsi-table"><thead><tr><th>서식번호</th><th>서식 이름</th><th>원본</th><th>칸 해설</th></tr></thead><tbody>' + body + '</tbody></table></div>';
@@ -665,8 +680,8 @@
   // 드라이브 서식 폴더에 있는데 세액인쇄 목록의 어느 서식과도 짝이 안 된 파일 — 목록에 빠진 서식을 찾는 데 쓴다
   function lsiUnmatchedHtml_(){
     var used = {};
-    (typeof PRINT_GROUP_ORDER_ !== 'undefined' ? PRINT_GROUP_ORDER_ : []).forEach(function(g){
-      lsiRegistryRows_(g).forEach(function(r){ lsiMatchFiles_(r.formNo, r.title).forEach(function(x){ used[x.f.url] = true; }); });
+    lsiFormGroups_().forEach(function(g){
+      lsiFormRows_(g).forEach(function(r){ lsiMatchFiles_(r.formNo, r.title).forEach(function(x){ used[x.f.url] = true; }); });
     });
     var errs = lsiFolderFiles_.filter(function(f){ return f.error; });
     var rest = lsiFolderFiles_.filter(function(f){ return !f.error && !f.official && !used[f.url]; }); // 법제처 원본 폴더는 서식 망라 목록 그대로라 여기서 뺌
@@ -675,7 +690,7 @@
     var li = function(f){ return '<li><a href="' + lsiEsc_(f.url) + '" target="_blank" rel="noopener">' + lsiEsc_(f.name) + '</a> <span class="lsi-note">(' + lsiEsc_(f.folder) + ')</span></li>'; };
     return '<div class="card"><h3 style="margin-top:0;">서식 폴더에 있지만 목록과 짝이 안 된 파일</h3>' +
       (errs.length ? '<div class="lsi-note">폴더를 못 읽음: ' + errs.map(function(e){ return lsiEsc_(e.folder); }).join(', ') + '</div>' : '') +
-      '<div class="lsi-note" style="margin-bottom:6px;">서식처럼 보이는 파일 ' + formLike.length + '개 — 세액인쇄 서식 목록에 빠진 서식이거나 이 화면이 번호를 못 읽은 파일입니다.</div>' +
+      '<div class="lsi-note" style="margin-bottom:6px;">서식처럼 보이는 파일 ' + formLike.length + '개 — ' + (lsiCatalogOn_() ? '법령 별지 목록 밖의 서식(사무처리규정·지방세 등)이거나 예전 번호, 또는 이 화면이 번호를 못 읽은 파일입니다.' : '세액인쇄 서식 목록에 빠진 서식이거나 이 화면이 번호를 못 읽은 파일입니다.') + '</div>' +
       '<ul style="margin:0 0 8px 18px; font-size:12.5px;">' + formLike.map(li).join('') + '</ul>' +
       '<details><summary class="lsi-note" style="cursor:pointer;">안내·사례 자료 ' + guides.length + '개 보기</summary><ul style="margin:6px 0 0 18px; font-size:12.5px;">' + guides.map(li).join('') + '</ul></details></div>';
   }
@@ -773,7 +788,7 @@
   function lsiWireLinks_(root){
     root.querySelectorAll('[data-lsiart]').forEach(function(b){ b.addEventListener('click', function(){ var p = b.dataset.lsiart.split('|'); lsiOpenArticle_(p[0], p[1]); }); });
     root.querySelectorAll('[data-lsigoref]').forEach(function(b){ b.addEventListener('click', function(){ lsiOpenRef_ = b.dataset.lsigoref; if (lsiActiveTab_ === 'ref') lsiShowRef_(lsiOpenRef_); else lsiShowTab_('ref'); }); });
-    root.querySelectorAll('[data-lsigoform]').forEach(function(b){ b.addEventListener('click', function(){ var f = b.dataset.lsigoform; var g = (typeof PRINT_REGISTRY_ !== 'undefined') ? (PRINT_REGISTRY_.filter(function(it){ return (it.subForms || []).some(function(sf){ return sf.formNo === f; }) || it.formNo === f; })[0] || {}).group : null; if (g) lsiFormGroup_ = g; lsiShowTab_('form'); lsiShowFormMap_(f); }); });
+    root.querySelectorAll('[data-lsigoform]').forEach(function(b){ b.addEventListener('click', function(){ var f = b.dataset.lsigoform; var g = lsiGroupOfForm_(f); if (g) lsiFormGroup_ = g; lsiShowTab_('form'); lsiShowFormMap_(f); }); });
     root.querySelectorAll('[data-lsicalc]').forEach(function(b){ b.addEventListener('click', function(){ if (typeof goToView_ === 'function') goToView_('taxcalc'); }); });
   }
 
