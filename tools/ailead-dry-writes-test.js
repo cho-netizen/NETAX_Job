@@ -15,6 +15,8 @@ const countFiles = () => Object.keys(vfs.byId || {}).length;
 P.g.ctx.UrlFetchApp = { fetch: (url, o) => ({ getResponseCode: () => 200, getContentText: () => JSON.stringify({ content: [{ type: 'text', text: '{"답":"후보 1","확실":"불확실","근거":"가짜"}' }], stop_reason: 'end_turn', usage: { input_tokens: 1000, output_tokens: 100 } }) }) };
 P.g.run(`var __wc = { work_updateCase: 0, caseProcPatch_: 0, caseProcStore_: 0, ai_logPaid_: 0, ai_recordUsage_: 0, cxLogUserAnswer_: 0, cpSecuredFlush_: 0 };
   Object.keys(__wc).forEach(function (k) { if (typeof this[k] !== 'function') return; var f = this[k]; this[k] = function () { __wc[k]++; return f.apply(null, arguments); }; }, this);`);
+// 앞 상태를 읽는 것 자체가 가짜 드라이브에 빈 점검 폴더를 만들 수 있어(caseProcLoad_ → 폴더 찾기·만들기) 한 번 먼저 읽고 센다
+P.g.run('caseProcLoad_(' + JSON.stringify(P.row.id) + ')');
 const before = { files: countFiles(), writes: (vfs.writes || []).length, log: (vfs.log || []).length, props: JSON.stringify(props), case: P.g.run('JSON.stringify(akReadCase_(' + JSON.stringify(P.row.id) + '))'), saved: P.g.run('JSON.stringify(caseProcLoad_(' + JSON.stringify(P.row.id) + '))') };
 const calls = [
   { step: 'model', kind: 'lead', messages: [{ role: 'user', content: '시험' }] },
