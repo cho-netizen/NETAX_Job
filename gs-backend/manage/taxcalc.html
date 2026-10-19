@@ -10550,6 +10550,7 @@ function renderInheritancePane(){
     '<div class="taxcalc-asset-head"><b>재산평가 자산 배분 — 자산 등록·평가는 "재산평가" 탭에서 하고, 여기서는 배분만 합니다</b></div>' +
     '<div id="inheritanceAssetAllocationList">' + renderInheritanceAssetAllocationListHtml_() + '</div>' +
     '<div class="taxcalc-asset-head"><b>[부표4] 상속개시전 처분재산 등 산입액(§15) — 상속개시 전 1년 이내 재산종류별 2억원 이상(2년 이내 5억원 이상) 처분·인출·채무부담인데 용도가 불분명하면 자동으로 과세가액에 가산됩니다. 해당 없으면 비워두세요.</b></div>' +
+    '<div class="taxcalc-result-note" style="margin:2px 0 6px;">같은 채무를 두 곳에 넣지 마세요 — 2년 안에 국가·금융기관이 아닌 사람에게 진 채무(사인 채무)의 용도 소명은 여기 "부담채무Ⅱ" 줄에, 상속인이 갚을 의무가 없는 것으로 보이는 가공채무(§15②)는 상속재산 채무에서 빼는 쪽으로 넣습니다. 부담채무Ⅱ가 있으면 결과에 "세무사님 판단 대기"(법문 A / 서식 B 세액)가 나옵니다.</div>' +
     '<div id="ihDisposalItems"></div>' +
     '<div class="taxcalc-asset">' +
       '<div class="taxcalc-asset-head"><b>과세가액 · 인적공제(자녀 수·미성년·65세이상은 위 상속인 명부에서 자동 산출)</b></div>' +
@@ -14038,6 +14039,8 @@ function renderInheritanceResult(r){
   let html = '<div class="taxcalc-result">';
   if (r.시점경고) html += '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.시점경고) + '</div>'; // [2026.10.19] 상속개시일 연혁 경고
   if (r.서식검산경고) html += '<div class="taxcalc-result-note" style="color:#b00020; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.서식검산경고) + '</div>'; // [2026.10.19] 서식 칸 산식 검산
+  if (r.판단대기 && r.판단대기.length) html += tcJudgmentPendingHtml_(r.판단대기); // [2026.10.19] 세무사님 판단 대기 ④ 부담채무Ⅱ — 해석 A/B 세액, 고르면 기록
+  if (r.채무겹침주의) html += '<div class="taxcalc-result-note" style="color:#a83232;">' + escapeHtml(r.채무겹침주의) + '</div>';
   // [2026.10.09] 실사용 점검에서 발견 — 처리개요의 상속인 이름은 이름만 넘어오고 관계(배우자·자녀…)는 비어 있어,
   // 배우자가 있는데도 배우자공제(최소 5억)가 0원으로 계산되는데 아무 경고가 없었다. 관계가 빈 상속인이 있으면 알린다.
   const ihNoRelation_ = (inheritanceHeirs || []).filter(function(h){ return h && String(h.name || '').trim() && !h.relation; }).map(function(h){ return h.name; });

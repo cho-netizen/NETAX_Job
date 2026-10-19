@@ -311,6 +311,12 @@
   }
   function presumedInheritedFromDisposal(item) {
     item = item || {};
+    // [2026.10.19 판단 대기 ④ 해석 B 계산용] 서식 별지 제9호 부표4(갑) 부담채무Ⅱ 줄은 ⑫(금액 기준)·⑮(차감)이 막혀 있어 ⑰ = ⑭ 미소명 전액 —
+    //  _fullUnexplained가 켜진 항목만 그렇게 계산한다(기본 계산은 법문대로 — 해석 A).
+    if (item._fullUnexplained) {
+      const un = function (amt, dep, exp) { return Math.max(0, Math.max(0, (Number(amt) || 0) - (Number(dep) || 0)) - (Number(exp) || 0)); };
+      return Math.max(un(item.oneYearAmount, item.oneYearSelfDeposit, item.oneYearExplained), un(item.twoYearAmount, item.twoYearSelfDeposit, item.twoYearExplained));
+    }
     const oneYear = computeDisposalBasisPresumed_(item.oneYearAmount, item.oneYearSelfDeposit, item.oneYearExplained, 200000000);
     const twoYear = computeDisposalBasisPresumed_(item.twoYearAmount, item.twoYearSelfDeposit, item.twoYearExplained, 500000000);
     return Math.max(oneYear, twoYear);
@@ -9259,6 +9265,7 @@
   const JUDGMENT_PENDING_ = {
     speculative_zone_land: { 제목: '투기지역(지정지역) 비사업용토지 +10%p', 조견표: '1부-04', 근거: '소득세법 §104④3호·시행령 §168의3③', A: '가산 안 함(지금 지정은 주택 지정지역뿐)', B: '+10%p 가산' },
     apartment_deadline_155_20: { 제목: '아파트 매입임대 양도기한(2026.10.1 개정)의 거주주택 특례(§155⑳) 적용', 조견표: '2부-27', 근거: '소득세법 시행령 §155⑳·§167의3①2호(대통령령 제36737호)', A: '거주주택 특례에는 안 걸림(비과세 유지)', B: '걸림(특례 배제·과세)' },
+    private_debt_15: { 제목: '상속개시 전 사인 간 채무(부담채무Ⅱ)의 추정상속재산', 조견표: '상속 서식 별지 제9호 부표4(갑)', 근거: '상증법 §15①2호·시행령 §11④ ↔ 서식 부표4(갑) 부담채무Ⅱ 줄(⑫·⑮ 칸 막힘) · §15②', A: '법문대로 1년 2억·2년 5억 기준, 미소명에서 MIN(20%, 2억) 차감', B: '서식대로 미소명 전액(기준·차감 없음)' },
     rental_9703_vs_surcharge: { 제목: '장기일반민간임대 장특공 특례(조특법 §97의3)와 다주택 중과', 조견표: '2부-24', 근거: '조특법 §97의3·소득세법 §104⑦·시행령 §167의3', A: '특례 우선 — 중과 안 함', B: '중과 적용(가산세율·장특공 배제)' }
   };
   function judgmentChecks_(txs, run, resA) {
@@ -9297,6 +9304,35 @@
   function judgmentWarning_(list) {
     return list.length ? '⚠ 세무사님 판단 대기 — ' + list.map(function (j) { return j.제목 + ': 해석 A(' + j.해석A + ') 산출세액 ' + j.세액A.toLocaleString('ko-KR') + '원 / 해석 B(' + j.해석B + ') ' + j.세액B.toLocaleString('ko-KR') + '원'; }).join(' · ') + ' — 계산은 해석 A(지금 기본)로 했음' : '';
   }
+  // [2026.10.19 판단 대기 ④] 상속 — 부담채무Ⅱ(국가·지자체·금융기관이 아닌 자에게 진 채무) 항목이 있을 때만 해석 B(미소명 전액)로 다시 계산해 나란히
+  (function () {
+    const i0 = window.calculateInheritanceTaxJS;
+    if (typeof i0 !== 'function') return;
+    window.calculateInheritanceTaxJS = function (p) {
+      const r = i0(p);
+      if (r && !r.error && p && Array.isArray(p.disposalPresumptionItems)) {
+        try {
+          const isII = function (it) { return it && /부담채무\s*(Ⅱ|II|2)/.test(String(it.category || '')) && ((Number(it.oneYearAmount) || 0) > 0 || (Number(it.twoYearAmount) || 0) > 0); };
+          // 같은 사인 채무를 §15①2호(부담채무Ⅱ 줄)와 §15②(presumedFictitiousDebtAmount) 두 길로 넣었을 수 있음 — 둘 다 있으면 주의 한 줄
+          if (p.disposalPresumptionItems.some(isII) && (Number(p.presumedFictitiousDebtAmount) || 0) > 0)
+            r.채무겹침주의 = '⚠ 같은 채무를 두 번 넣었는지 확인하세요 — 부담채무Ⅱ(2년 안 사인 채무, 부표4 줄)와 변제의무 없는 가공채무(§15②, ' + (Number(p.presumedFictitiousDebtAmount) || 0).toLocaleString('ko-KR') + '원)가 둘 다 있습니다. 한 채무는 한 곳에만 넣습니다.';
+          if (p.disposalPresumptionItems.some(isII)) {
+            const alt = JSON.parse(JSON.stringify(p));
+            alt.disposalPresumptionItems = alt.disposalPresumptionItems.map(function (it) { return isII(it) ? Object.assign({}, it, { _fullUnexplained: true }) : it; });
+            const rb = i0(alt);
+            const tA = Number(r.산출세액) || 0, tB = Number(rb && rb.산출세액) || 0;
+            if (rb && !rb.error && Math.abs(tB - tA) >= 1) {
+              const m = JUDGMENT_PENDING_.private_debt_15;
+              const L = [{ id: 'private_debt_15', 자산: 0, 제목: m.제목, 근거: m.근거, 조견표: m.조견표, 해석A: m.A, 해석B: m.B, 세액A: tA, 세액B: Math.round(tB),
+                비고: '추정상속재산 A ' + (Number(r.상속개시전처분재산_추정합계) || 0).toLocaleString('ko-KR') + '원 / B ' + (Number(rb.상속개시전처분재산_추정합계) || 0).toLocaleString('ko-KR') + '원' }];
+              r.판단대기 = (r.판단대기 || []).concat(L); r.판단대기경고 = judgmentWarning_(r.판단대기);
+            }
+          }
+        } catch (e2) {}
+      }
+      return r;
+    };
+  })();
   (function () {
     const m1 = window.calculateTransferTaxMultiJS, s1 = window.calculateTransferTaxSingleJS;
     if (typeof m1 === 'function') window.calculateTransferTaxMultiJS = function (transactions, filingParams) {
