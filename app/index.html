@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 18:33 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 18:37 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -15022,6 +15022,16 @@
   }
 
   // 증여세 — gs-backend toolCalculateGiftTax와 동일 로직([별지 제10호서식] 기준).
+  // [2026.10.20 회장 결론 N2 — 상증령 §20의3①③(법제처 원문), 증여는 §46의2로 준용] 감정평가 수수료 공제 한도는 종류마다 따로다:
+  //  1호 감정평가법인등 수수료(appraisalFeeAmount) 500만원, 3호 §52②2호 유형재산(서화·골동품 등) 감정수수료(artAppraisalFeeAmount) 500만원,
+  //  2호 §49의2⑨ 신용평가전문기관 평가수수료(unlistedStockAppraisalFeeAmount)는 평가대상 법인 수 및 의뢰한 기관 수별로 각각 1천만원
+  //  (unlistedStockAppraisalFeeCount = 그 한도 단위 수, 없으면 1). 예전엔 대부분의 증여 함수가 한 값을 500만원으로만 잘라 2호·3호 수수료가 덜 빠졌다.
+  function appraisalFeeDeduction_(p) {
+    p = p || {};
+    const cnt_ = Math.max(1, Math.floor(Number(p.unlistedStockAppraisalFeeCount) || 1));
+    return Math.min(Number(p.appraisalFeeAmount) || 0, 5000000) + Math.min(Number(p.artAppraisalFeeAmount) || 0, 5000000)
+      + Math.min(Number(p.unlistedStockAppraisalFeeAmount) || 0, 10000000 * cnt_);
+  }
   window.calculateGiftTaxJS = function (p) {
     p = p || {};
     const giftAmount = Number(p.giftAmount);
@@ -15048,8 +15058,7 @@
 
     // 시행령§46의2·§20의3③ — 비상장주식 신용평가전문기관 평가수수료(2호)는 일반 감정수수료(1호·3호,
     // 500만원 한도)와 별개로 평가대상 법인수×의뢰기관수별 1천만원 한도가 적용된다.
-    const appraisalFeeDeduction = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000)
-      + Math.min(Number(p.unlistedStockAppraisalFeeAmount) || 0, 10000000);
+    const appraisalFeeDeduction = appraisalFeeDeduction_(p);
 
     // §55①3호 — 명의신탁재산 증여의제(1호)·일감몰아주기등 이익의 증여의제(2호)를 제외한
     // "합산배제증여재산"은 §53(관계별공제)·§53의2(혼인출산공제)·§54(재해손실공제)를 적용하지 않고
@@ -15276,10 +15285,8 @@
     // 시행령§20의3③ — 일반 감정평가법인·유형재산 감정수수료(1호·3호)는 500만원 한도이나, 비상장주식
     // 신용평가전문기관 평가수수료(2호, §49의2⑨)는 평가대상 법인수×의뢰기관수별로 각각 1천만원 한도로
     // 별개 규정된다(단일 500만원 한도에 합산하면 안 됨). unlistedStockAppraisalFeeAmount는 그 합계액을
-    // 1천만원 한도로 별도 공제한다(법인·기관이 여럿이면 한도도 그만큼 늘어나지만, 이 계산기는 가장
-    // 흔한 단일 한도로 근사한다 — 법인·기관이 다수면 직접 합산해서 한도 초과분을 조정하세요).
-    const appraisalFeeDeduction = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000)
-      + Math.min(Number(p.unlistedStockAppraisalFeeAmount) || 0, 10000000);
+    // 1천만원 한도로 별도 공제한다 — 법인·기관이 여럿이면 unlistedStockAppraisalFeeCount(법인 수 × 기관 수)만큼 한도가 늘어난다(appraisalFeeDeduction_, 2026.10.20).
+    const appraisalFeeDeduction = appraisalFeeDeduction_(p);
     const disasterLossDeduction = isDecedentResident ? (Number(p.disasterLossAmount) || 0) : 0;
     // 장례비용공제(§14①3호) — 실제 지출액 증빙이 없으면 500만원, 있으면 500만~1000만원 범위에서 인정.
     // 봉안시설·자연장지 사용금액은 별도로 500만원 한도까지 추가 공제. (비거주자는 위 안내대로 전액 불가)
@@ -15709,7 +15716,7 @@
     const propertyDeductionLimit = specialType === 'startup' ? 500000000 : 1000000000;
     const propertyDeduction = Math.min(propertyDeductionLimit, cumulativeSpecialBase);
     const disasterLossDeduction = Number(p.disasterLossAmount) || 0;
-    const appraisalFeeDeduction = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000);
+    const appraisalFeeDeduction = appraisalFeeDeduction_(p);
     const taxBase = Math.max(0, cumulativeSpecialBase - propertyDeduction - disasterLossDeduction - appraisalFeeDeduction);
 
     const calculatedTax = specialType === 'startup'
@@ -16255,7 +16262,7 @@
 
     return {
       과세대상여부: true,
-      명의신탁재산가액: propertyValue, 감정평가수수료공제: Math.min(Number(p.appraisalFeeAmount) || 0, 5000000) + Math.min(Number(p.unlistedStockAppraisalFeeAmount) || 0, 10000000),
+      명의신탁재산가액: propertyValue, 감정평가수수료공제: appraisalFeeDeduction_(p),
       과세표준: r.taxBase, 산출세액: r.calculatedTax, 신고세액공제: r.reportCredit,
       무신고가산세: r.penalties.unreportedPenalty, 과소신고가산세: r.penalties.underreportedPenalty, 납부지연가산세: r.penalties.latePenalty,
       납부세액: r.finalTax,
@@ -16310,7 +16317,7 @@
     if (debtAmount <= 0) return { error: '면제·인수·변제받은 채무액이 필요합니다.' };
     const compensationPaid = Number(p.compensationPaid) || 0;
     const giftAmount = Math.max(0, debtAmount - compensationPaid);
-    const appraisalFeeAmount = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000);
+    const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
     const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
@@ -16383,7 +16390,7 @@
         };
       }
     }
-    const appraisalFeeAmount = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000);
+    const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
     const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
@@ -16438,7 +16445,7 @@
     if (assetValue <= 0) return { error: '증여추정 대상 재산가액이 필요합니다.' };
 
     const giftAmount = assetValue;
-    const appraisalFeeAmount = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000);
+    const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
     const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
@@ -16545,7 +16552,7 @@
     p = p || {};
     const giftAmount = Number(p.giftAmount) || 0;
     if (giftAmount <= 0) return { error: '신탁이익(원본 또는 수익의 가액 — 여러 차례 나눠 받는 경우 재산평가 화면의 §61 신탁수익권 평가액)이 필요합니다.' };
-    const appraisalFeeAmount = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000);
+    const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
     const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
@@ -16595,7 +16602,7 @@
     const proceedsShare = Math.round(insuranceProceeds * attributedPremium / totalPremiumPaid);
     const giftAmount = Math.max(0, proceedsShare - premiumPaidFromGiftedAssets);
 
-    const appraisalFeeAmount = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000);
+    const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
     const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
@@ -18537,7 +18544,7 @@
     }
     const giftAmount = Math.max(0, excessDividendAmount - incomeTaxEquivalent);
 
-    const appraisalFeeAmount = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000);
+    const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
     const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
@@ -18627,7 +18634,7 @@
     // §53(관계별공제)·§53의2(혼인출산공제)·§54(재해손실공제)를 적용하지 않고 10년내 재차증여 합산(§47②단서로
     // 배제)도 하지 않는다 — "그 증여재산가액에서 3천만원을 공제한 금액"만이 과세표준이다(감정평가수수료는
     // §55①본문에 따라 모든 호에 공통 적용).
-    const appraisalFeeAmount = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000);
+    const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const taxBase = Math.max(0, giftAmount - 30000000 - appraisalFeeAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -19516,7 +19523,7 @@
       return { 과세대상여부: false, 이번거래이익: thisTransactionGiftAmount, 직전1년합산액: priorBenefitSum, 증여의제이익: giftAmount, 납부세액: 0, 안내: '이익(' + giftAmount + '원' + aggNote + ')이 기준금액(' + gateThreshold + '원) 미만이어서 과세하지 않습니다(시행령§30②).' };
     }
 
-    const appraisalFeeAmount = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000);
+    const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
     const foreignTaxPaidAmount = Number(p.foreignTaxPaidAmount) || 0;
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
@@ -19604,7 +19611,7 @@
       }
     }
 
-    const appraisalFeeAmount = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000);
+    const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
     const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
@@ -19836,7 +19843,7 @@
       };
     }
 
-    const appraisalFeeAmount = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000);
+    const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
     const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
@@ -20496,7 +20503,7 @@
       }
     }
 
-    const appraisalFeeAmount = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000);
+    const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
     const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
@@ -20991,7 +20998,7 @@
     if (giftAmount < gateThreshold) {
       return { 과세대상여부: false, 이번거래합병이익: thisTransactionGiftAmount, 직전1년합산액: priorBenefitSum, 합병이익: giftAmount, 납부세액: 0, 안내: '합병이익(' + giftAmount + '원' + aggNote + ')이 기준금액(합병후 교부받은 주식가액의 30%와 3억원 중 적은 금액, ' + Math.round(gateThreshold) + '원) 미만이어서 과세하지 않습니다(§38①단서, 시행령§28④1호).' };
     }
-    const appraisalFeeAmount = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000);
+    const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
     const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
@@ -21059,7 +21066,7 @@
     if (giftAmount < gateThreshold) {
       return { 과세대상여부: false, 이번거래이익: thisTransactionGiftAmount, 직전1년합산액: priorBenefitSum, 이익: giftAmount, 납부세액: 0, 안내: '이익(' + giftAmount + '원' + aggNote + ')이 ' + gateNote + ' 미만이어서 과세하지 않습니다(§42①단서, 시행령§32②).' };
     }
-    const appraisalFeeAmount = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000);
+    const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
     const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
@@ -21126,7 +21133,7 @@
     if (giftAmount < gateThreshold) {
       return { 과세대상여부: false, 이익: giftAmount, 납부세액: 0, 안내: '이익(' + giftAmount + '원)이 기준금액(변동전 재산가액의 30%와 3억원 중 적은 금액, ' + Math.round(gateThreshold) + '원) 미만이어서 과세하지 않습니다(§42의2①단서, 시행령§32의2②).' };
     }
-    const appraisalFeeAmount = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000);
+    const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
     const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
@@ -21178,7 +21185,7 @@
     if (giftAmount < gateThreshold) {
       return { 과세대상여부: false, 재산가치증가이익: giftAmount, 납부세액: 0, 안내: '이익(' + giftAmount + '원)이 기준금액((취득가액+통상적가치상승분+가치상승기여분)의 30%와 3억원 중 적은 금액, ' + Math.round(gateThreshold) + '원) 미만이어서 과세하지 않습니다(§42의3①단서, 시행령§32의3②).' };
     }
-    const appraisalFeeAmount = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000);
+    const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const taxBase = Math.max(0, giftAmount - 30000000 - appraisalFeeAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -21285,7 +21292,7 @@
       };
     }
 
-    const appraisalFeeAmount = Math.min(Number(p.appraisalFeeAmount) || 0, 5000000);
+    const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
     const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftDeemedAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
@@ -30622,6 +30629,12 @@ function renderGiftInheritanceSharedPane_(){
   recomputeJtUnpaidDays();
   wireMoneyCapHint_('giftAppraisalFee', 'giftAppraisalFeeHint', 5000000);
   wireMoneyCapHint_('srAppraisalFee', 'srAppraisalFeeHint', 5000000);
+  (function(){ // [2026.10.20 회장 결론 N2] 초과배당은 현금이라 감정평가수수료가 보통 0 — 값이 있으면 경고(서식 10호의5 ㉖ 산식엔 없는 공제, 상증법 §55①4호로는 뺌)
+    const el = document.getElementById('edAppraisalFee'), hint = document.getElementById('edAppraisalFeeHint');
+    if (!el || !hint) return;
+    const upd = function(){ hint.textContent = numVal(el.value) > 0 ? '⚠ 초과배당(현금)에 감정평가수수료가 든 경우는 드뭅니다 — 실제 수수료인지 확인하세요(서식 10호의5 ㉖ 산식엔 칸이 없어 인쇄에 알림이 붙음)' : ''; };
+    el.addEventListener('input', upd); upd();
+  })();
   wireRangeClamp_('jmTradeRatio', 0, 100);
   wireRangeClamp_('jmShareRatio', 0, 100);
   wireRangeClamp_('jtShareRatio', 0, 100);
@@ -33196,7 +33209,10 @@ function renderInheritancePane(){
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>순금융재산가액(금융재산-금융채무)</label><input type="number" id="ihNetFinancial" placeholder="원"><span class="taxcalc-field-help">예금·상장주식·보험금(의제상속) 포함, 최대주주 보유 비상장주식·추정상속재산·사전증여 제외. 없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>동거주택가액</label><input type="number" id="ihCohabitValue" placeholder="0" readonly><span class="taxcalc-field-help">자동, 명부에서 "동거주택 상속" 체크된 행 합계, 6억 한도</span><span class="taxcalc-result-note" id="ihCohabitValueHint" style="margin:2px 0 0;"></span></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="ihAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="ihAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">500만원 한도</span></div>' +
+        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="ihAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="ihAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">감정평가법인 수수료 500만원 한도</span></div>' +
+        '<div class="taxcalc-field"><label>서화·골동품 등 감정수수료</label><input type="number" id="ihArtAppraisalFee" placeholder="원"><span class="taxcalc-field-help">따로 500만원 한도(상증령 §20의3①3호)</span></div>' +
+        '<div class="taxcalc-field"><label>비상장주식 신용평가 수수료</label><input type="number" id="ihStockAppraisalFee" placeholder="원"><span class="taxcalc-field-help">법인 수 × 신용평가기관 수마다 1천만원 한도(§20의3①2호·③)</span></div>' +
+        '<div class="taxcalc-field"><label>신용평가 한도 개수(법인 수 × 기관 수)</label><input type="number" id="ihStockAppraisalCount" placeholder="1"></div>' +
         '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="ihDisasterLoss" placeholder="원"><span class="taxcalc-field-help">신고기한 내 재난 멸실분</span></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>동거주택상속공제 자격요건(§23의2①) — ※ 아래 항목은 모두 기본적으로 충족(체크)된 상태로 시작합니다. 동거주택가액을 입력했다면, 실제와 달라 하나라도 체크 해제하면 이 공제가 전액 배제됩니다.</b></div>' +
@@ -34658,7 +34674,10 @@ function renderGiftPane(){
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>㉜㉝ 그 밖의 공제</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" id="giftExcludedAgg"><label for="giftExcludedAgg">상증세법 §55①3호 합산배제증여재산(3천만원 고정공제)</label></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="giftAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="giftAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">500만원 한도</span></div>' +
+        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="giftAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="giftAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">감정평가법인 수수료 500만원 한도</span></div>' +
+        '<div class="taxcalc-field"><label>서화·골동품 등 감정수수료</label><input type="number" id="giftArtAppraisalFee" placeholder="원"><span class="taxcalc-field-help">따로 500만원 한도(상증령 §20의3①3호)</span></div>' +
+        '<div class="taxcalc-field"><label>비상장주식 신용평가 수수료</label><input type="number" id="giftStockAppraisalFee" placeholder="원"><span class="taxcalc-field-help">법인 수 × 신용평가기관 수마다 1천만원 한도(§20의3①2호·③)</span></div>' +
+        '<div class="taxcalc-field"><label>신용평가 한도 개수(법인 수 × 기관 수)</label><input type="number" id="giftStockAppraisalCount" placeholder="1"></div>' +
         '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="giftDisasterLoss" placeholder="원"><span class="taxcalc-field-help">신고기한 내 재난 멸실분</span></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>비과세·과세가액 불산입(§46·§48·§52·§52의2)</b></div>' +
@@ -35076,7 +35095,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>(정산 신고만) 최초 신고 증여세액</label><input type="number" id="edInitialTax" placeholder="원"><span class="taxcalc-field-help">서식 ㊱ — 최초 신고의 산출세액 계 − 세액공제, 정산 세액에서 뺌(§41의2②)</span></div>' +
         '<div class="taxcalc-field"><label>1년 이내 동일 최대주주등의 이전 초과배당금액 합계(§43②)</label><input type="number" id="edPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="edRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="edAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="edAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="edAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">현금 배당이라 보통 0 — 시행령 §46의2·§20의3 수수료(감정평가법인·신용평가기관·서화골동품 감정)가 실제로 든 경우만</span></div>' +
       '</div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>신고 상태</label><select id="edFilingStatus">' +
@@ -39343,6 +39362,7 @@ function handleTaxCalcClick_(e){
       priorMarriageOrBirthDeductionSameDonor10y: gfPriorMarriageBirthParts_().sameTotal, // 같은 증여자·10년 안(혼인+출산) — 합산하면 다시 공제
       isExcludedFromAggregation: document.getElementById('giftExcludedAgg').checked,
       appraisalFeeAmount: numVal(document.getElementById('giftAppraisalFee').value) || 0,
+      artAppraisalFeeAmount: numVal((document.getElementById('giftArtAppraisalFee') || {}).value) || 0, unlistedStockAppraisalFeeAmount: numVal((document.getElementById('giftStockAppraisalFee') || {}).value) || 0, unlistedStockAppraisalFeeCount: numVal((document.getElementById('giftStockAppraisalCount') || {}).value) || 1, // [2026.10.20 N2] §20의3③
       disasterLossAmount: numVal(document.getElementById('giftDisasterLoss').value) || 0,
       nonTaxableAmount: numVal(document.getElementById('giftNonTaxable').value) || 0,
       publicInterestOrgAmount: numVal(document.getElementById('giftPublicOrg').value) || 0,
@@ -39381,7 +39401,7 @@ function handleTaxCalcClick_(e){
     // [2026.10.20 세액 고침] 화면 공동 입력 금액(재해손실·감정평가수수료·비과세·공익법인 출연·외국납부 등)은 그 증여재산에 딸린 금액이라(상증법 §54·§55·§59 등)
     //  증여 쌍이 둘 이상이면 쌍마다 통째로 빼면 겹친다(원본 인쇄 작업자 상속부속A 발견 — 둘째 쌍도 재해 3천만·외국 200만을 또 빼 납부 0원). 재산별 입력 칸이 생기기 전까지
     //  각 쌍의 증여재산가액 비율로 나눠 합계가 입력값을 넘지 않게 한다(쌍이 하나면 예전과 같음).
-    const SHARED_SPLIT_ = ['appraisalFeeAmount', 'disasterLossAmount', 'nonTaxableAmount', 'publicInterestOrgAmount', 'publicTrustAmount', 'disabledTrustAmount', 'foreignTaxPaidAmount', 'foreignGiftTaxBase', 'otherCreditsAmount', 'museumDeferredTaxAmount', 'businessSuccessionDeferredTaxAmount', 'farmlandGiftTaxExemptionAmount'];
+    const SHARED_SPLIT_ = ['appraisalFeeAmount', 'artAppraisalFeeAmount', 'unlistedStockAppraisalFeeAmount', 'disasterLossAmount', 'nonTaxableAmount', 'publicInterestOrgAmount', 'publicTrustAmount', 'disabledTrustAmount', 'foreignTaxPaidAmount', 'foreignGiftTaxBase', 'otherCreditsAmount', 'museumDeferredTaxAmount', 'businessSuccessionDeferredTaxAmount', 'farmlandGiftTaxExemptionAmount'];
     const groupTotal_ = groups.reduce(function(t, g){ return t + (Number(g.amount) || 0); }, 0);
     const splitShared_ = groups.length > 1 && groupTotal_ > 0 && SHARED_SPLIT_.some(function(k){ return Number(sharedInput[k]) > 0; });
     const results = groups.map(function(g, gi){
@@ -40097,6 +40117,7 @@ function handleTaxCalcClick_(e){
       noHouseOrJointHeirRequirementMet: document.getElementById('ihCohabitReq3').checked,
       cohabitingHouseValue: numVal(document.getElementById('ihCohabitValue').value) || 0,
       appraisalFeeAmount: numVal(document.getElementById('ihAppraisalFee').value) || 0,
+      artAppraisalFeeAmount: numVal((document.getElementById('ihArtAppraisalFee') || {}).value) || 0, unlistedStockAppraisalFeeAmount: numVal((document.getElementById('ihStockAppraisalFee') || {}).value) || 0, unlistedStockAppraisalFeeCount: numVal((document.getElementById('ihStockAppraisalCount') || {}).value) || 1, // [2026.10.20 N2] §20의3③
       disasterLossAmount: numVal(document.getElementById('ihDisasterLoss').value) || 0,
       funeralCostAmount: computeFuneralTotals_(inheritanceFuneralItems).general,
       funeralNicheCostAmount: computeFuneralTotals_(inheritanceFuneralItems).niche,

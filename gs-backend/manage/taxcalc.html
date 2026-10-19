@@ -8464,6 +8464,12 @@ function renderGiftInheritanceSharedPane_(){
   recomputeJtUnpaidDays();
   wireMoneyCapHint_('giftAppraisalFee', 'giftAppraisalFeeHint', 5000000);
   wireMoneyCapHint_('srAppraisalFee', 'srAppraisalFeeHint', 5000000);
+  (function(){ // [2026.10.20 회장 결론 N2] 초과배당은 현금이라 감정평가수수료가 보통 0 — 값이 있으면 경고(서식 10호의5 ㉖ 산식엔 없는 공제, 상증법 §55①4호로는 뺌)
+    const el = document.getElementById('edAppraisalFee'), hint = document.getElementById('edAppraisalFeeHint');
+    if (!el || !hint) return;
+    const upd = function(){ hint.textContent = numVal(el.value) > 0 ? '⚠ 초과배당(현금)에 감정평가수수료가 든 경우는 드뭅니다 — 실제 수수료인지 확인하세요(서식 10호의5 ㉖ 산식엔 칸이 없어 인쇄에 알림이 붙음)' : ''; };
+    el.addEventListener('input', upd); upd();
+  })();
   wireRangeClamp_('jmTradeRatio', 0, 100);
   wireRangeClamp_('jmShareRatio', 0, 100);
   wireRangeClamp_('jtShareRatio', 0, 100);
@@ -11038,7 +11044,10 @@ function renderInheritancePane(){
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>순금융재산가액(금융재산-금융채무)</label><input type="number" id="ihNetFinancial" placeholder="원"><span class="taxcalc-field-help">예금·상장주식·보험금(의제상속) 포함, 최대주주 보유 비상장주식·추정상속재산·사전증여 제외. 없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>동거주택가액</label><input type="number" id="ihCohabitValue" placeholder="0" readonly><span class="taxcalc-field-help">자동, 명부에서 "동거주택 상속" 체크된 행 합계, 6억 한도</span><span class="taxcalc-result-note" id="ihCohabitValueHint" style="margin:2px 0 0;"></span></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="ihAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="ihAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">500만원 한도</span></div>' +
+        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="ihAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="ihAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">감정평가법인 수수료 500만원 한도</span></div>' +
+        '<div class="taxcalc-field"><label>서화·골동품 등 감정수수료</label><input type="number" id="ihArtAppraisalFee" placeholder="원"><span class="taxcalc-field-help">따로 500만원 한도(상증령 §20의3①3호)</span></div>' +
+        '<div class="taxcalc-field"><label>비상장주식 신용평가 수수료</label><input type="number" id="ihStockAppraisalFee" placeholder="원"><span class="taxcalc-field-help">법인 수 × 신용평가기관 수마다 1천만원 한도(§20의3①2호·③)</span></div>' +
+        '<div class="taxcalc-field"><label>신용평가 한도 개수(법인 수 × 기관 수)</label><input type="number" id="ihStockAppraisalCount" placeholder="1"></div>' +
         '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="ihDisasterLoss" placeholder="원"><span class="taxcalc-field-help">신고기한 내 재난 멸실분</span></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>동거주택상속공제 자격요건(§23의2①) — ※ 아래 항목은 모두 기본적으로 충족(체크)된 상태로 시작합니다. 동거주택가액을 입력했다면, 실제와 달라 하나라도 체크 해제하면 이 공제가 전액 배제됩니다.</b></div>' +
@@ -12500,7 +12509,10 @@ function renderGiftPane(){
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>㉜㉝ 그 밖의 공제</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field checkbox"><input type="checkbox" id="giftExcludedAgg"><label for="giftExcludedAgg">상증세법 §55①3호 합산배제증여재산(3천만원 고정공제)</label></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="giftAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="giftAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">500만원 한도</span></div>' +
+        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="giftAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="giftAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">감정평가법인 수수료 500만원 한도</span></div>' +
+        '<div class="taxcalc-field"><label>서화·골동품 등 감정수수료</label><input type="number" id="giftArtAppraisalFee" placeholder="원"><span class="taxcalc-field-help">따로 500만원 한도(상증령 §20의3①3호)</span></div>' +
+        '<div class="taxcalc-field"><label>비상장주식 신용평가 수수료</label><input type="number" id="giftStockAppraisalFee" placeholder="원"><span class="taxcalc-field-help">법인 수 × 신용평가기관 수마다 1천만원 한도(§20의3①2호·③)</span></div>' +
+        '<div class="taxcalc-field"><label>신용평가 한도 개수(법인 수 × 기관 수)</label><input type="number" id="giftStockAppraisalCount" placeholder="1"></div>' +
         '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="giftDisasterLoss" placeholder="원"><span class="taxcalc-field-help">신고기한 내 재난 멸실분</span></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>비과세·과세가액 불산입(§46·§48·§52·§52의2)</b></div>' +
@@ -12918,7 +12930,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>(정산 신고만) 최초 신고 증여세액</label><input type="number" id="edInitialTax" placeholder="원"><span class="taxcalc-field-help">서식 ㊱ — 최초 신고의 산출세액 계 − 세액공제, 정산 세액에서 뺌(§41의2②)</span></div>' +
         '<div class="taxcalc-field"><label>1년 이내 동일 최대주주등의 이전 초과배당금액 합계(§43②)</label><input type="number" id="edPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="edRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
-        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="edAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="edAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="edAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">현금 배당이라 보통 0 — 시행령 §46의2·§20의3 수수료(감정평가법인·신용평가기관·서화골동품 감정)가 실제로 든 경우만</span></div>' +
       '</div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>신고 상태</label><select id="edFilingStatus">' +
@@ -17185,6 +17197,7 @@ function handleTaxCalcClick_(e){
       priorMarriageOrBirthDeductionSameDonor10y: gfPriorMarriageBirthParts_().sameTotal, // 같은 증여자·10년 안(혼인+출산) — 합산하면 다시 공제
       isExcludedFromAggregation: document.getElementById('giftExcludedAgg').checked,
       appraisalFeeAmount: numVal(document.getElementById('giftAppraisalFee').value) || 0,
+      artAppraisalFeeAmount: numVal((document.getElementById('giftArtAppraisalFee') || {}).value) || 0, unlistedStockAppraisalFeeAmount: numVal((document.getElementById('giftStockAppraisalFee') || {}).value) || 0, unlistedStockAppraisalFeeCount: numVal((document.getElementById('giftStockAppraisalCount') || {}).value) || 1, // [2026.10.20 N2] §20의3③
       disasterLossAmount: numVal(document.getElementById('giftDisasterLoss').value) || 0,
       nonTaxableAmount: numVal(document.getElementById('giftNonTaxable').value) || 0,
       publicInterestOrgAmount: numVal(document.getElementById('giftPublicOrg').value) || 0,
@@ -17223,7 +17236,7 @@ function handleTaxCalcClick_(e){
     // [2026.10.20 세액 고침] 화면 공동 입력 금액(재해손실·감정평가수수료·비과세·공익법인 출연·외국납부 등)은 그 증여재산에 딸린 금액이라(상증법 §54·§55·§59 등)
     //  증여 쌍이 둘 이상이면 쌍마다 통째로 빼면 겹친다(원본 인쇄 작업자 상속부속A 발견 — 둘째 쌍도 재해 3천만·외국 200만을 또 빼 납부 0원). 재산별 입력 칸이 생기기 전까지
     //  각 쌍의 증여재산가액 비율로 나눠 합계가 입력값을 넘지 않게 한다(쌍이 하나면 예전과 같음).
-    const SHARED_SPLIT_ = ['appraisalFeeAmount', 'disasterLossAmount', 'nonTaxableAmount', 'publicInterestOrgAmount', 'publicTrustAmount', 'disabledTrustAmount', 'foreignTaxPaidAmount', 'foreignGiftTaxBase', 'otherCreditsAmount', 'museumDeferredTaxAmount', 'businessSuccessionDeferredTaxAmount', 'farmlandGiftTaxExemptionAmount'];
+    const SHARED_SPLIT_ = ['appraisalFeeAmount', 'artAppraisalFeeAmount', 'unlistedStockAppraisalFeeAmount', 'disasterLossAmount', 'nonTaxableAmount', 'publicInterestOrgAmount', 'publicTrustAmount', 'disabledTrustAmount', 'foreignTaxPaidAmount', 'foreignGiftTaxBase', 'otherCreditsAmount', 'museumDeferredTaxAmount', 'businessSuccessionDeferredTaxAmount', 'farmlandGiftTaxExemptionAmount'];
     const groupTotal_ = groups.reduce(function(t, g){ return t + (Number(g.amount) || 0); }, 0);
     const splitShared_ = groups.length > 1 && groupTotal_ > 0 && SHARED_SPLIT_.some(function(k){ return Number(sharedInput[k]) > 0; });
     const results = groups.map(function(g, gi){
@@ -17939,6 +17952,7 @@ function handleTaxCalcClick_(e){
       noHouseOrJointHeirRequirementMet: document.getElementById('ihCohabitReq3').checked,
       cohabitingHouseValue: numVal(document.getElementById('ihCohabitValue').value) || 0,
       appraisalFeeAmount: numVal(document.getElementById('ihAppraisalFee').value) || 0,
+      artAppraisalFeeAmount: numVal((document.getElementById('ihArtAppraisalFee') || {}).value) || 0, unlistedStockAppraisalFeeAmount: numVal((document.getElementById('ihStockAppraisalFee') || {}).value) || 0, unlistedStockAppraisalFeeCount: numVal((document.getElementById('ihStockAppraisalCount') || {}).value) || 1, // [2026.10.20 N2] §20의3③
       disasterLossAmount: numVal(document.getElementById('ihDisasterLoss').value) || 0,
       funeralCostAmount: computeFuneralTotals_(inheritanceFuneralItems).general,
       funeralNicheCostAmount: computeFuneralTotals_(inheritanceFuneralItems).niche,
