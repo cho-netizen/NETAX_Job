@@ -1128,14 +1128,40 @@
   }
  },
  {
-  "이름": "[84호 ㉕] 2025년 수용 현금 15% 감면 무신고 — 농특세(감면세액 × 20%)에도 무신고가산세 20%(국세기본법 §47의2), ㉗ = ㉔ + ㉕",
+  "이름": "[84호 ㉕] 2011년 수용 현금 감면 무신고 — 2011.12.31. 이전 양도분은 농특세에도 무신고가산세 20%(조심2013전4195)",
   "도구": "calculateTransferTaxMultiJS",
   "인자": [
    [
     {
      "assetType": "land",
      "necessaryExpenses": 0,
-     "acquisitionDate": "2010-01-01",
+     "acquisitionDate": "2000-01-01",
+     "transferDate": "2011-06-01",
+     "transferPrice": 1000000000,
+     "acquisitionPrice": 300000000,
+     "compensationType": "cash",
+     "publicNoticeDate": "2009-01-01"
+    }
+   ],
+   {
+    "filingStatus": "unreported"
+   }
+  ],
+  "정답": {
+   "농어촌특별세": 6229000,
+   "농어촌특별세_가산세": 1245800,
+   "농어촌특별세_자진납부할세액": 7474800
+  }
+ },
+ {
+  "이름": "[84호 ㉕] 2025년 수용 현금 감면 무신고·2026-06-30 납부 — 2012.1.1. 이후 양도분은 농특세 무신고가산세 없음(국기법 부칙 제5조②), 납부지연만",
+  "도구": "calculateTransferTaxMultiJS",
+  "인자": [
+   [
+    {
+     "assetType": "land",
+     "necessaryExpenses": 0,
+     "acquisitionDate": "2000-01-01",
      "transferDate": "2025-06-01",
      "transferPrice": 1000000000,
      "acquisitionPrice": 300000000,
@@ -1144,13 +1170,14 @@
     }
    ],
    {
-    "filingStatus": "unreported"
+    "filingStatus": "unreported",
+    "paidDate": "2026-06-30"
    }
   ],
   "정답": {
    "농어촌특별세": 5071800,
-   "농어촌특별세_가산세": 1014360,
-   "농어촌특별세_자진납부할세액": 6086160
+   "농어촌특별세_가산세": 336970,
+   "농어촌특별세_자진납부할세액": 5408770
   }
  },
  {
@@ -1177,6 +1204,30 @@
   },
   "정답": {
    "평가기간이내여부": true
+  }
+ },
+ {
+  "이름": "[N6(나)] 장기임대주택 §97의4 10년 임대(추가 10%p) — 장특공 특례분 농특세를 과세로 계산(확인 필요): 특례 대신 §95② 일반율로 다시 계산한 산출세액 차액 × 20%",
+  "도구": "calculateTransferTaxMultiJS",
+  "인자": [
+   [
+    {
+     "assetType": "house",
+     "necessaryExpenses": 0,
+     "acquisitionDate": "2008-01-01",
+     "transferDate": "2025-06-01",
+     "transferPrice": 900000000,
+     "acquisitionPrice": 300000000,
+     "rentalSpecialType": "rental_long",
+     "rentalYears": 10
+    }
+   ],
+   {}
+  ],
+  "정답": {
+   "산출세액_합계": 117060000,
+   "농어촌특별세_과세표준": 24000000,
+   "농어촌특별세": 4800000
   }
  }
 ]
