@@ -69,5 +69,22 @@ module.exports = function (E, H) {
   var cCo = ihCtx(pCo, null, coHeirs);
   L.push({ name: '상속6호의2_동거주택상속공제', forms: X.plan('상속', cCo), ctx: cCo });
 
+  // ⑤ 상속3호 — 배우자 상속재산 미분할: 배우자·자녀 2, 분할기한까지 분할 못 함(체크 꺼짐) → 엔진 배우자공제 5억(법 §19④)
+  //   재산평가 목록 3건 중 예금 1건만 받는 상속인 배분이 있음 → 나머지 2건(아파트·토지)이 "분할하지 못한 재산"
+  var HEIRS3 = [
+    { name: '견본배우자', regNo: '450303-2000000', relation: '배우자', address: '서울특별시 ○○구 견본로 2', addressDong: '101', addressHo: '1001', statutoryShareRatio: '3/7', isReporter: false },
+    HEIRS[0], HEIRS[1]
+  ];
+  var vA3 = [
+    { method: 'apartment', typeCode: '05', basisCode: '08', location: '서울특별시 ○○구 견본로 2, 101동 1001호', area: 84.97, value: 1200000000, alloc: [] },
+    { method: 'land', typeCode: '02', basisCode: '08', location: '경기도 ○○군 ○○면 ○○리 123', area: 1650, value: 300000000, alloc: [] },
+    { method: 'direct', typeCode: '12', basisCode: '06', location: '○○은행 예금', area: 0, value: 200000000, alloc: [{ heirIdx: 1, ratio: 1 }] }
+  ];
+  var pSp = Object.assign({}, BASE, { taxableEstateAmount: 1700000000, hasSpouse: true, spouseActualInheritedAmount: 0, spouseLegalShareRatio: 3 / 7, isSpousePropertyDivided: false });
+  var cSp = ihCtx(pSp, { heirs: HEIRS3, valAssets: vA3, assets: vA3,
+    spouse: { estateValue: 0, assumedDebt: 0, nonTaxable: 0, actual: 0, nonHeirBequest: 0, giftToHeirs: 0, ratio: 3 / 7, giftBase: 0, priorGiftedIncluded: 0, divided: false } });
+  if (cSp.r.배우자공제 !== 500000000) throw new Error('시험 전제: 미분할이면 배우자공제 5억 — 엔진 ' + cSp.r.배우자공제);
+  L.push({ name: '상속3호_배우자미분할', forms: X.plan('상속', cSp), ctx: cSp });
+
   return L;
 };

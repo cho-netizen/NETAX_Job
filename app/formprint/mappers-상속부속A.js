@@ -311,6 +311,45 @@
     return o.result();
   };
 
+  // ───────── 상속 별지 제3호서식 — 배우자 상속재산 미분할 신고서(법 §19③, 시행령 §17②③) ─────────
+  //  값 출처: 지금 인쇄 ihAttachPrintPagesHtml_ [별지 제3호서식] 쪽(피상속인, 신고인 = 명부의 "배우자", 재산평가 목록).
+  //  예전 인쇄와 다른 점: 2. 상속재산 — 서식은 "배우자 상속재산분할기한까지 분할하지 못한 배우자의 상속재산"(작성방법 1)만 적는데
+  //   예전 인쇄는 재산평가 목록 전부를 찍었음. 여기서는 받는 상속인 배분(heirAllocations)이 없는 재산 = 아직 나누지 못한 재산만 찍는다.
+  var METHOD_SHORT = { direct: '직접입력 재산', land: '토지', house: '단독주택', apartment: '공동주택', officetel: '오피스텔·상업용건물', building: '일반건물',
+    listedStock: '상장주식', unlistedStock: '비상장주식', goodwill: '영업권', trustBenefit: '신탁수익권', periodicPayment: '정기금 수급권', conditionalRight: '조건부권리 등',
+    otherTangible: '선박·차량 등', groundRight: '지상권', patentRight: '특허권 등', miningRight: '광업권 등', memberRight: '조합원입주권', artwork: '서화·골동품' };
+  function methodLabel(m) {
+    if (METHOD_SHORT[m]) return METHOD_SHORT[m];
+    var g = (typeof VALUATION_METHOD_LABELS !== 'undefined' && VALUATION_METHOD_LABELS) ? VALUATION_METHOD_LABELS[m] : ''; // eslint-disable-line no-undef
+    return g ? String(g).split('(')[0] : (m || '');
+  }
+  function spouseHeir(ctx) { var hs = ctx.heirs || []; for (var i = 0; i < hs.length; i++) if (hs[i].relation === '배우자') return hs[i]; return null; }
+  mappers['상속3호'] = function (ctx) {
+    var o = new Out(), dc = ctx.deceased || {}, sp = spouseHeir(ctx);
+    o.need('1@피상속인성명', dc.name, '1.피상속인 성명').need('1@피상속인주민등록번호', dc.regNo, '1.피상속인 주민등록번호');
+    if (sp) {
+      o.need('1@신고인성명', sp.name, '1.신고인(상속인) 성명').need('1@신고인주민등록번호', sp.regNo, '1.신고인(상속인) 주민등록번호').need('1@신고인주소', H.fullAddr(sp), '1.신고인(상속인) 주소');
+      var ph = heirPhone(ctx, sp);
+      if (ph) o.set('1@신고인전화번호', ph); else o.miss('1.신고인(상속인) 전화번호', '상속인 명부에 전화번호 칸 없음(배우자가 상속세 신고인일 때만 신고인 전화번호를 씀)');
+      o.note('1. 신고인 = 상속인 명부의 "배우자"(지금 인쇄와 같음)');
+    } else o.miss('1.신고인(상속인) 성명·주민등록번호·주소·전화번호', '상속인 명부에 배우자 없음');
+    var all = ctx.valAssets || ctx.assets || [];
+    var und = all.filter(function (a) { return !(a.alloc && a.alloc.length); });
+    if (!all.length) o.miss('2.상속재산(재산종류·소재지·수량·평가액)', '재산평가 목록 없음 — 분할하지 못한 재산을 직접 적으세요');
+    else if (!und.length) o.miss('2.상속재산(재산종류·소재지·수량·평가액)', '재산평가 목록의 모든 재산에 받는 상속인 배분이 있음 — 분할하지 못한 재산을 알 수 없어 비움(직접 적으세요)');
+    else {
+      o.set('2@재산종류', und.map(function (a) { return methodLabel(a.method); })).set('2@소재지', und.map(function (a) { return a.location || ''; }))
+        .set('2@수량', und.map(function (a) { return n(a.area) || ''; })).set('2@평가액', und.map(function (a) { return Math.round(n(a.value)); }));
+      if (und.some(function (a) { return !n(a.area); })) o.miss('2.상속재산 수량(면적) 일부 줄', '재산평가 목록에 수량(면적)이 없는 재산');
+      o.note('⚠ 2. 상속재산 = 재산평가 목록 중 받는 상속인 배분이 없는 재산 ' + und.length + '건(전체 ' + all.length + '건) — 배우자 상속재산분할기한까지 분할하지 못한 재산만 적는 칸(작성방법 1)이니 확인하세요');
+      if (und.length > 10) o.note('분할하지 못한 재산이 ' + und.length + '건 — 표가 10줄이라 다음 장에 이어 찍음');
+    }
+    o.miss('3.미분할 사유(상속회복청구의 소·상속재산 분할 심판·상속인 미확정) 체크·세부내용', '계산기에 없음(사유 선택 칸 없음 — 시행령 §17② 사유에 직접 √하고 입증서류 첨부)');
+    o.note('법 §19③: 배우자상속재산분할기한(신고기한 다음날부터 9개월, §19②)까지 이 신고를 하고, 기한(소·심판이면 그 종료일) 다음날부터 6개월 안에 분할·신고하면 기한 안에 분할한 것으로 봄 — 계산기는 "분할·신고" 체크가 꺼져 있으면 배우자공제를 5억원(§19④)만 인정함');
+    signBlock(o, ctx, sp ? sp.name : '', { signLabel: '신고인(서명) — 배우자' });
+    return o.result();
+  };
+
   // ───────── 언제 찍나 ─────────
   var WHEN = {
     '상속1호': function (c) { var r = c.r || {}; return !!(r.가업상속공제_계산내역 && !r.가업상속납부유예_선택); },
