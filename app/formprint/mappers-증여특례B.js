@@ -238,6 +238,71 @@
     return o.result();
   };
 
+  // ───────── 출자 고리 → 서식 단계(ⓐ 수혜법인에 출자한 법인 → ⓑ 그 법인에 출자한 2차법인) ─────────
+  //  🧮 도구의 한 줄 = 주주 → 1차 출자법인(chain1Ratio) → [2차 출자법인(chain2Ratio)] → 수혜법인(chain3Ratio, "수혜법인 직전 출자법인")
+  //  간접보유비율 = 입력한 단계 지분율을 모두 곱함(taxcalc.html shareholdingIndirectRatio_와 같은 식)
+  //  1단계(2차 없음): ⓐ = 직전 출자법인(없으면 1차), ⓐ의 주주 = 그 사람(지분율 chain1Ratio)
+  //  2단계: ⓐ = 직전 출자법인(없으면 2차), ⓐ의 주주 = 1차 출자법인(지분율 chain2Ratio) / ⓑ = 1차 출자법인, ⓑ의 주주 = 그 사람(chain1Ratio)
+  function chainGroups(list) {
+    var A = [], Bk = [], idx = {};
+    function grp(arr, tag, name, ratio) {
+      var key = tag + '|' + name;
+      if (!idx[key]) { idx[key] = { name: name, ratio: ratio, holders: [] }; arr.push(idx[key]); }
+      return idx[key];
+    }
+    list.forEach(function (s) {
+      if (!(n(s.chain1Ratio) > 0 || has(s.chain1Company))) return;
+      var two = n(s.chain2Ratio) > 0 || has(s.chain2Company);
+      var r3 = n(s.chain3Ratio);
+      if (!two) {
+        var a = grp(A, 'a', s.chain3Company || s.chain1Company || '(법인명 없음)', r3);
+        a.holders.push({ name: s.name, ratio: n(s.chain1Ratio), ind: r3 ? r4(r3 * n(s.chain1Ratio) / 100) : null });
+      } else {
+        var a2 = grp(A, 'a', s.chain3Company || s.chain2Company || '(법인명 없음)', r3);
+        var c1 = s.chain1Company || '(법인명 없음)';
+        if (!a2.holders.some(function (h) { return h.name === c1; })) a2.holders.push({ name: c1, ratio: n(s.chain2Ratio), ind: r3 ? r4(r3 * n(s.chain2Ratio) / 100) : null });
+        var b = grp(Bk, 'b|' + a2.name, c1, n(s.chain2Ratio));
+        b.parentRatio = r3;
+        b.holders.push({ name: s.name, ratio: n(s.chain1Ratio), ind: r3 ? r4(r3 * n(s.chain2Ratio) / 100 * n(s.chain1Ratio) / 100) : null });
+      }
+    });
+    return { a: A, b: Bk };
+  }
+  // 단계 표에 찍기: k = [법인칸, 지분율칸, 주주명칸, 주민칸, 지분율칸, 간접칸], cap = 법인마다 줄 수
+  function chainCells(o, k, groups, cap, 단계) {
+    for (var j = groups.length; j < cap.length; j++) o.miss(k.join('') + ' ' + 단계 + ' ' + (j + 1) + '번째 법인', '해당 없음(출자 고리의 법인 ' + groups.length + '개)');
+    groups.forEach(function (g, i) {
+      var c = '@법인' + (i + 1);
+      o.set(k[0] + c + '.법인명', g.name);
+      if (g.ratio) o.set(k[1] + c, r4(g.ratio)); else o.miss(k[1] + ' ' + 단계 + ' 지분율', '화면 입력 없음(🧮 도구 "수혜법인 출자비율")');
+      if (g.holders.length > cap[i % cap.length]) o.note('⚠ ' + 단계 + ' ' + g.name + '의 주주가 ' + g.holders.length + '명 — 서식 줄(' + cap[i % cap.length] + ')을 넘는 주주는 이어 찍은 쪽에 나옴');
+      o.set(k[2] + c, g.holders.map(function (h) { return h.name; })).set(k[4] + c, g.holders.map(function (h) { return r4(h.ratio); }));
+      o.set(k[5] + c, g.holders.map(function (h) { return h.ind === null ? '' : h.ind; }));
+    });
+  }
+
+  // ───────── 10호의3 부표2 — 나-1. 수혜법인 지배주주 판정을 위한 간접보유비율 산정 ─────────
+  //  값 출처: 🧮 주주별 직접·간접보유 내역의 출자 고리(jmAttach2PrintPageHtml_와 같은 표 — 지금 인쇄는 한 줄에 단계를 이어 적음)
+  //  이 부표는 지배주주 판정(최대주주가 법인일 때)용이라 간접출자법인의 다른 주주(작성방법 1·3)는 계산기에 없음
+  mappers['증여10호의3부표2'] = function (ctx) {
+    var o = new Out();
+    var G = chainGroups(ctx.shareholders || []);
+    if (!G.a.length) { o.miss('⑪~⑯ ㉠~㉫ 부표2 전체', '계산기에 없음 — 🧮 주주별 보유 내역에 출자 고리(1차 출자법인·지분율)가 없음'); return o.result(); }
+    chainCells(o, ['⑪', '⑫', '⑬', '⑭', '⑮', '⑯'], G.a, [7, 7], 'ⓐ');
+    if (G.b.length) {
+      chainCells(o, ['㉠', '㉡', '㉢', '㉣', '㉤', '㉥'], G.b, [6, 6], 'ⓑ');
+      o.note('ⓑ ㉡ = 2차법인(ⓑ)이 ⓐ에 가진 지분율(🧮 도구 "2차 지분율"), ㉥ = ⑫ × ㉡ × ㉤');
+    } else o.miss('㉠㉡㉢㉣㉤㉥ ⓑ 2차법인', '해당 없음 — 출자 고리가 1단계뿐');
+    o.miss('⑪ 사업자등록번호·⑭ 주민등록번호(ⓐ)', '계산기에 없음').miss('㉣ 주민등록번호(ⓑ)·㉠ 사업자등록번호', '계산기에 없음')
+      .miss('㉦㉧㉨㉩㉪㉫ ⓒ 3차법인', '계산기에 없음 — 🧮 도구는 출자법인 2단계까지만 받음');
+    if (G.a.length > 2 || G.b.length > 2) o.note('⚠ 법인이 2개를 넘음 — 셋째 법인부터는 이어 찍은 쪽에 나옴');
+    o.note('⚠ 지배주주 판정용 부표(최대주주가 법인일 때 — 작성방법 ※) — 계산기는 지배주주를 판정하지 않아 🧮 주주별 보유 내역에 넣은 지배주주·친족의 출자 고리만 옮김. 간접출자법인의 다른 주주는 직접 적을 것');
+    o.check('ⓐ ⑯ 합 + ⓑ ㉥ 합 = 🧮 도구 간접보유비율 합(요건 반영 전)', Math.round(G.a.reduce(function (s, g) { return s + g.holders.reduce(function (t, h) { return t + (G.b.some(function (b) { return b.name === h.name; }) ? 0 : n(h.ind)); }, 0); }, 0) * 1e4 +
+      G.b.reduce(function (s, g) { return s + g.holders.reduce(function (t, h) { return t + n(h.ind); }, 0); }, 0) * 1e4),
+      Math.round((ctx.shareholders || []).reduce(function (s, x) { return s + n(x.indirectRaw); }, 0) * 1e4));
+    return o.result();
+  };
+
   // ───────── 세액인쇄 화면용 ctx — 화면 전역값에서 모음(브라우저) ─────────
   /* global lastRelatedPartyGiftResult_, lastBusinessOpportunityGiftResult_, giftDonees, shareholdingRows_, relatedPartyRatioRows_,
      jmRelatedPartyTotalSales_, jmRelatedPartyExcludedSales_, jtSegmentYears_, shareholdingIndirectRatio_, shareholdingCountedIndirectRatio_ */
@@ -280,7 +345,8 @@
   // 준비 조건 — 지금 인쇄와 같음: 본표는 결과가 있으면(isReady), 부표는 과세대상일 때 그 부표의 입력 표가 있으면
   var READY = {
     '증여10호의3': function () { return !!jmR(); },
-    '증여10호의3부표1': function () { var r = jmR(); return !!(r && r.과세대상여부); }
+    '증여10호의3부표1': function () { var r = jmR(); return !!(r && r.과세대상여부); },
+    '증여10호의3부표2': function () { var r = jmR(); return !!(r && r.과세대상여부 && shRows('jm').some(function (x) { return has(x.chain1Company) || n(x.chain1Ratio) > 0; })); }
   };
   Object.keys(READY).forEach(function (k) {
     var isJm = /^증여10호의3/.test(k);

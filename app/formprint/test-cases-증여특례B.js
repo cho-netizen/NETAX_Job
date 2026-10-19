@@ -19,13 +19,16 @@ module.exports = function (E, H) {
   // 주주별 보유 내역(🧮 도구) — 간접: 수증자 → ○○홀딩스 50% → 수혜법인 20% = 10%
   var SH = [
     { name: '김지배', relation: '본인(지배주주)', directRatio: 45, chain1Company: '', chain1Ratio: 0, chain2Company: '', chain2Ratio: 0, chain3Company: '', chain3Ratio: 0, chainQualified: true, indirectRaw: 0, indirect: 0 },
-    { name: '김수증', relation: '자녀', directRatio: 30, chain1Company: '○○홀딩스(견본)', chain1Ratio: 50, chain2Company: '', chain2Ratio: 0, chain3Company: '○○홀딩스(견본)', chain3Ratio: 20, chainQualified: true, indirectRaw: 10, indirect: 10 }
+    { name: '김수증', relation: '자녀', directRatio: 30, chain1Company: '○○홀딩스(견본)', chain1Ratio: 50, chain2Company: '', chain2Ratio: 0, chain3Company: '○○홀딩스(견본)', chain3Ratio: 20, chainQualified: true, indirectRaw: 10, indirect: 10 },
+    // 2단계 고리: 김친족 → △△투자 60% → ○○홀딩스 50% → 수혜법인 20% = 6%
+    { name: '김친족', relation: '배우자', directRatio: 5, chain1Company: '△△투자(견본)', chain1Ratio: 60, chain2Company: '○○홀딩스(견본)', chain2Ratio: 50, chain3Company: '○○홀딩스(견본)', chain3Ratio: 20, chainQualified: true, indirectRaw: 6, indirect: 6 }
   ];
   var RP = [{ label: '가나물산(견본)', sales: 4000000000 }, { label: '다라상사(견본)', sales: 2000000000 }];
   var jmCtx = { kind: 'jm', r: jm1, donee: DONEE, taxAgent: AGENT, in: jmIn, shareholders: SH, relatedParties: RP, totalSales: 10000000000, excludedSales: 0, 신고일: '2026-03-31' };
   L.push({ name: '증여10호의3_중견_직접간접', forms: [{ formKey: '증여10호의3', ctx: jmCtx }], ctx: jmCtx });
 
   L.push({ name: '증여10호의3부표1_주주표', forms: [{ formKey: '증여10호의3부표1', ctx: jmCtx }], ctx: jmCtx });
+  L.push({ name: '증여10호의3부표2_출자고리', forms: [{ formKey: '증여10호의3부표2', ctx: jmCtx }], ctx: jmCtx });
 
   return L;
 };
