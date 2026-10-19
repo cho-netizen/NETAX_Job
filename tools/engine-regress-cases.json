@@ -1,49 +1,740 @@
 [
-  { "이름": "상속 — 사전증여 없음(과세가액 8억, 자녀 6·연로자 1)", "도구": "calculate_inheritance_tax", "고정": true,
-    "입력": { "taxableEstateAmount": 800000000, "childCount": 6, "elderlyHeirCount": 1, "hasSpouse": false, "funeralCostAmount": 10000000, "funeralNicheCostAmount": 4000000, "netFinancialAssets": 0 },
-    "정답": { "과세표준": 236000000, "산출세액": 37200000 } },
-  { "이름": "상속 — 일괄공제 5억(과세가액 6억·장례비 1,400만·자녀 1)", "도구": "calculate_inheritance_tax", "고정": true,
-    "입력": { "taxableEstateAmount": 600000000, "childCount": 1, "elderlyHeirCount": 0, "hasSpouse": false, "funeralCostAmount": 10000000, "funeralNicheCostAmount": 4000000, "netFinancialAssets": 0 },
-    "정답": { "과세표준": 86000000, "산출세액": 8600000, "신고세액공제": 258000, "납부세액": 8342000 } },
-  { "이름": "상속 — §24 공제한도 걸림(장례비 뺀 과세가액 5.56억 − 사전증여 과세표준 3억)", "도구": "calculate_inheritance_tax",
-    "입력": { "taxableEstateAmount": 570000000, "childCount": 6, "elderlyHeirCount": 1, "hasSpouse": false, "funeralCostAmount": 10000000, "funeralNicheCostAmount": 4000000, "priorGiftedAmountIncludedInEstate": 300000000, "netFinancialAssets": 0,
-      "priorGiftHeirs": [{ "name": "상속인1", "priorGiftAmount": 300000000, "priorGiftTaxableBase": 300000000, "priorGiftTaxPaid": 0 }] },
-    "정답": { "과세표준": 300000000, "산출세액": 50000000 } },
-  { "이름": "상속 — 경계(장례비 빼기 전 5.08억·뺀 뒤 4.94억 → §24 3호·§28 적용 안 함)", "도구": "calculate_inheritance_tax",
-    "입력": { "taxableEstateAmount": 508000000, "childCount": 6, "elderlyHeirCount": 1, "hasSpouse": false, "funeralCostAmount": 10000000, "funeralNicheCostAmount": 4000000, "priorGiftedAmountIncludedInEstate": 200000000, "netFinancialAssets": 0,
-      "priorGiftHeirs": [{ "name": "상속인1", "priorGiftAmount": 200000000, "priorGiftTaxableBase": 150000000, "priorGiftTaxPaid": 20000000, "actualInheritedValue": 100000000 }, { "name": "상속인2", "priorGiftAmount": 0, "priorGiftTaxableBase": 0, "priorGiftTaxPaid": 0, "actualInheritedValue": 208000000 }] },
-    "정답": { "과세표준": 0, "납부세액": 0 } },
-  { "이름": "상속 — 증여세 냈는데 상속분 없음(공제 0 + 입력 필요 표시)", "도구": "calculate_inheritance_tax",
-    "입력": { "taxableEstateAmount": 900000000, "childCount": 2, "elderlyHeirCount": 0, "hasSpouse": false, "funeralCostAmount": 10000000, "priorGiftedAmountIncludedInEstate": 200000000, "netFinancialAssets": 0,
-      "priorGiftHeirs": [{ "name": "상속인1", "priorGiftAmount": 200000000, "priorGiftTaxableBase": 150000000, "priorGiftTaxPaid": 20000000 }] } },
-  { "이름": "상속 — 금융재산공제 끝수(순금융재산 123,456,789 × 20%)", "도구": "calculate_inheritance_tax",
-    "입력": { "taxableEstateAmount": 3000000000, "childCount": 3, "elderlyHeirCount": 0, "hasSpouse": false, "funeralCostAmount": 10000000, "netFinancialAssets": 123456789 } },
-  { "이름": "증여 — 직계존속 8천만", "도구": "calculate_gift_tax", "고정": true,
-    "입력": { "giftAmount": 80000000, "relation": "직계존속" },
-    "정답": { "과세표준": 30000000, "산출세액_할증후": 3000000, "신고세액공제": 90000, "납부세액": 2910000 } },
-  { "이름": "증여 — 기타친족 8천만", "도구": "calculate_gift_tax", "고정": true,
-    "입력": { "giftAmount": 80000000, "relation": "기타친족" },
-    "정답": { "과세표준": 70000000, "산출세액_할증후": 7000000 } },
-  { "이름": "증여 — 국세청 증여세 신고 사례03(모→부 동일인 10년 합산, 앞서 공제 3천만 사용 — 합산 계산 공제는 5천만 그대로)", "도구": "calculate_gift_tax", "고정": true,
-    "입력": { "giftAmount": 200000000, "relation": "직계존속", "priorGiftAmount": 100000000, "priorPaidTax": 7000000, "priorRelationDeductionUsed": 30000000, "giftDate": "2021-02-15" },
-    "정답": { "과세표준": 250000000, "산출세액_할증후": 40000000, "신고세액공제": 990000, "납부세액": 32010000 } },
-  { "이름": "증여 — 국세청 증여세 신고 사례04 부(같은 날 조부에게도 받음, 공제 5천만을 과세가액 비율로 안분 → 2천만)", "도구": "calculate_gift_tax", "고정": true,
-    "입력": { "giftAmount": 28000000, "relation": "직계존속", "relationDeductionCap": 20000000, "giftDate": "2021-02-15" },
-    "정답": { "과세표준": 8000000, "산출세액_할증후": 800000, "신고세액공제": 24000, "납부세액": 776000 } },
-  { "이름": "증여 — 국세청 증여세 신고 사례04 조부(세대생략 30%, 안분 몫 3천만)", "도구": "calculate_gift_tax", "고정": true,
-    "입력": { "giftAmount": 42000000, "relation": "직계존속", "relationDeductionCap": 30000000, "isGenerationSkip": true, "giftDate": "2021-02-15" },
-    "정답": { "과세표준": 12000000, "산출세액_할증후": 1560000, "신고세액공제": 46800, "납부세액": 1513200 } },
-  { "이름": "양도 — 환산취득가액인데 비용 1억 입력(§97②2호: 필요경비는 개산공제 180만, 비용은 안 뺌 — 환산+개산 1억5,180만 > 비용 1억)", "도구": "calculate_transfer_tax", "고정": true,
-    "입력": { "assetType": "other", "acquisitionDate": "2005-03-01", "transferDate": "2025-06-30", "transferPrice": 500000000, "acquisitionStandardPriceForConversion": 60000000, "transferStandardPriceForConversion": 200000000, "necessaryExpenses": 100000000 },
-    "정답": { "과세표준": 241240000, "산출세액": 71731200 } },
-  { "이름": "상속 — 상속세책자 제7장 제5절 신고서 작성 사례(배우자·자녀2·손자 사전증여, 추정상속·가업·동거주택·할증분 제외)", "도구": "calculate_inheritance_tax",
-    "입력": { "taxableEstateAmount": 4325000000, "nonTaxableAmount": 30000000, "publicInterestOrgAmount": 300000000, "disposalPresumptionItems": [{ "category": "예금", "oneYearAmount": 275000000, "oneYearExplained": 45000000 }],
-      "hasSpouse": true, "childCount": 2, "spouseActualInheritedAmount": 1624000000, "spouseLegalShareRatio": 0.42857142857142855, "priorGiftedAmountIncludedInEstate": 650000000, "giftToHeirsWithin10Years": 400000000,
-      "netFinancialAssets": 630000000, "hasCohabitingHouseDeduction": true, "cohabitingHouseValue": 500000000, "businessOwnershipYears": 18, "businessInheritanceStockValue": 600000000, "businessInheritanceTotalAssetValue": 600000, "businessInheritanceNonBizAsset55": 220000,
-      "appraisalFeeAmount": 500000, "funeralCostAmount": 12700000, "funeralNicheCostAmount": 9650000,
-      "nonHeirPriorGiftTaxableBaseTotal": 200000000, "nonHeirPriorGiftAmountTotal": 250000000, "nonHeirPriorGiftTaxPaidTotal": 39000000, "nonHeirPriorGiftGenSkipPremiumTotal": 9000000,
-      "priorGiftHeirs": [{ "name": "배우자", "actualInheritedValue": 1924000000, "assumedDebtAmount": 300000000, "assumedFuneralAmount": 0, "legalShareRatio": 0.42857142857142855 },
-        { "name": "자녀1", "actualInheritedValue": 1100000000, "assumedDebtAmount": 0, "assumedFuneralAmount": 15000000, "legalShareRatio": 0.2857142857142857, "priorGiftAmount": 400000000, "priorGiftTaxableBase": 350000000, "priorGiftTaxPaid": 60000000 },
-        { "name": "자녀2", "actualInheritedValue": 821000000, "assumedDebtAmount": 200000000, "assumedFuneralAmount": 0, "legalShareRatio": 0.2857142857142857 }] },
-    "정답": { "과세표준": 1024500000, "산출세액": 249800000, "기납부증여세액공제": 90000000, "신고세액공제": 4794000, "납부세액": 155006000 } }
+          {
+                    "이름": "상속 — 사전증여 없음(과세가액 8억, 자녀 6·연로자 1)",
+                    "도구": "calculate_inheritance_tax",
+                    "고정": true,
+                    "입력": {
+                              "taxableEstateAmount": 800000000,
+                              "childCount": 6,
+                              "elderlyHeirCount": 1,
+                              "hasSpouse": false,
+                              "funeralCostAmount": 10000000,
+                              "funeralNicheCostAmount": 4000000,
+                              "netFinancialAssets": 0
+                    },
+                    "정답": {
+                              "과세표준": 236000000,
+                              "산출세액": 37200000
+                    }
+          },
+          {
+                    "이름": "상속 — 일괄공제 5억(과세가액 6억·장례비 1,400만·자녀 1)",
+                    "도구": "calculate_inheritance_tax",
+                    "고정": true,
+                    "입력": {
+                              "taxableEstateAmount": 600000000,
+                              "childCount": 1,
+                              "elderlyHeirCount": 0,
+                              "hasSpouse": false,
+                              "funeralCostAmount": 10000000,
+                              "funeralNicheCostAmount": 4000000,
+                              "netFinancialAssets": 0
+                    },
+                    "정답": {
+                              "과세표준": 86000000,
+                              "산출세액": 8600000,
+                              "신고세액공제": 258000,
+                              "납부세액": 8342000
+                    }
+          },
+          {
+                    "이름": "상속 — §24 공제한도 걸림(장례비 뺀 과세가액 5.56억 − 사전증여 과세표준 3억)",
+                    "도구": "calculate_inheritance_tax",
+                    "입력": {
+                              "taxableEstateAmount": 570000000,
+                              "childCount": 6,
+                              "elderlyHeirCount": 1,
+                              "hasSpouse": false,
+                              "funeralCostAmount": 10000000,
+                              "funeralNicheCostAmount": 4000000,
+                              "priorGiftedAmountIncludedInEstate": 300000000,
+                              "netFinancialAssets": 0,
+                              "priorGiftHeirs": [
+                                        {
+                                                  "name": "상속인1",
+                                                  "priorGiftAmount": 300000000,
+                                                  "priorGiftTaxableBase": 300000000,
+                                                  "priorGiftTaxPaid": 0
+                                        }
+                              ]
+                    },
+                    "정답": {
+                              "과세표준": 300000000,
+                              "산출세액": 50000000
+                    }
+          },
+          {
+                    "이름": "상속 — 경계(장례비 빼기 전 5.08억·뺀 뒤 4.94억 → §24 3호·§28 적용 안 함)",
+                    "도구": "calculate_inheritance_tax",
+                    "입력": {
+                              "taxableEstateAmount": 508000000,
+                              "childCount": 6,
+                              "elderlyHeirCount": 1,
+                              "hasSpouse": false,
+                              "funeralCostAmount": 10000000,
+                              "funeralNicheCostAmount": 4000000,
+                              "priorGiftedAmountIncludedInEstate": 200000000,
+                              "netFinancialAssets": 0,
+                              "priorGiftHeirs": [
+                                        {
+                                                  "name": "상속인1",
+                                                  "priorGiftAmount": 200000000,
+                                                  "priorGiftTaxableBase": 150000000,
+                                                  "priorGiftTaxPaid": 20000000,
+                                                  "actualInheritedValue": 100000000
+                                        },
+                                        {
+                                                  "name": "상속인2",
+                                                  "priorGiftAmount": 0,
+                                                  "priorGiftTaxableBase": 0,
+                                                  "priorGiftTaxPaid": 0,
+                                                  "actualInheritedValue": 208000000
+                                        }
+                              ]
+                    },
+                    "정답": {
+                              "과세표준": 0,
+                              "납부세액": 0
+                    }
+          },
+          {
+                    "이름": "상속 — 증여세 냈는데 상속분 없음(공제 0 + 입력 필요 표시)",
+                    "도구": "calculate_inheritance_tax",
+                    "입력": {
+                              "taxableEstateAmount": 900000000,
+                              "childCount": 2,
+                              "elderlyHeirCount": 0,
+                              "hasSpouse": false,
+                              "funeralCostAmount": 10000000,
+                              "priorGiftedAmountIncludedInEstate": 200000000,
+                              "netFinancialAssets": 0,
+                              "priorGiftHeirs": [
+                                        {
+                                                  "name": "상속인1",
+                                                  "priorGiftAmount": 200000000,
+                                                  "priorGiftTaxableBase": 150000000,
+                                                  "priorGiftTaxPaid": 20000000
+                                        }
+                              ]
+                    }
+          },
+          {
+                    "이름": "상속 — 금융재산공제 끝수(순금융재산 123,456,789 × 20%)",
+                    "도구": "calculate_inheritance_tax",
+                    "입력": {
+                              "taxableEstateAmount": 3000000000,
+                              "childCount": 3,
+                              "elderlyHeirCount": 0,
+                              "hasSpouse": false,
+                              "funeralCostAmount": 10000000,
+                              "netFinancialAssets": 123456789
+                    }
+          },
+          {
+                    "이름": "증여 — 직계존속 8천만",
+                    "도구": "calculate_gift_tax",
+                    "고정": true,
+                    "입력": {
+                              "giftAmount": 80000000,
+                              "relation": "직계존속"
+                    },
+                    "정답": {
+                              "과세표준": 30000000,
+                              "산출세액_할증후": 3000000,
+                              "신고세액공제": 90000,
+                              "납부세액": 2910000
+                    }
+          },
+          {
+                    "이름": "증여 — 기타친족 8천만",
+                    "도구": "calculate_gift_tax",
+                    "고정": true,
+                    "입력": {
+                              "giftAmount": 80000000,
+                              "relation": "기타친족"
+                    },
+                    "정답": {
+                              "과세표준": 70000000,
+                              "산출세액_할증후": 7000000
+                    }
+          },
+          {
+                    "이름": "증여 — 국세청 증여세 신고 사례03(모→부 동일인 10년 합산, 앞서 공제 3천만 사용 — 합산 계산 공제는 5천만 그대로)",
+                    "도구": "calculate_gift_tax",
+                    "고정": true,
+                    "입력": {
+                              "giftAmount": 200000000,
+                              "relation": "직계존속",
+                              "priorGiftAmount": 100000000,
+                              "priorPaidTax": 7000000,
+                              "priorRelationDeductionUsed": 30000000,
+                              "giftDate": "2021-02-15"
+                    },
+                    "정답": {
+                              "과세표준": 250000000,
+                              "산출세액_할증후": 40000000,
+                              "신고세액공제": 990000,
+                              "납부세액": 32010000
+                    }
+          },
+          {
+                    "이름": "증여 — 국세청 증여세 신고 사례04 부(같은 날 조부에게도 받음, 공제 5천만을 과세가액 비율로 안분 → 2천만)",
+                    "도구": "calculate_gift_tax",
+                    "고정": true,
+                    "입력": {
+                              "giftAmount": 28000000,
+                              "relation": "직계존속",
+                              "relationDeductionCap": 20000000,
+                              "giftDate": "2021-02-15"
+                    },
+                    "정답": {
+                              "과세표준": 8000000,
+                              "산출세액_할증후": 800000,
+                              "신고세액공제": 24000,
+                              "납부세액": 776000
+                    }
+          },
+          {
+                    "이름": "증여 — 국세청 증여세 신고 사례04 조부(세대생략 30%, 안분 몫 3천만)",
+                    "도구": "calculate_gift_tax",
+                    "고정": true,
+                    "입력": {
+                              "giftAmount": 42000000,
+                              "relation": "직계존속",
+                              "relationDeductionCap": 30000000,
+                              "isGenerationSkip": true,
+                              "giftDate": "2021-02-15"
+                    },
+                    "정답": {
+                              "과세표준": 12000000,
+                              "산출세액_할증후": 1560000,
+                              "신고세액공제": 46800,
+                              "납부세액": 1513200
+                    }
+          },
+          {
+                    "이름": "양도 — 환산취득가액인데 비용 1억 입력(§97②2호: 필요경비는 개산공제 180만, 비용은 안 뺌 — 환산+개산 1억5,180만 > 비용 1억)",
+                    "도구": "calculate_transfer_tax",
+                    "고정": true,
+                    "입력": {
+                              "assetType": "other",
+                              "acquisitionDate": "2005-03-01",
+                              "transferDate": "2025-06-30",
+                              "transferPrice": 500000000,
+                              "acquisitionStandardPriceForConversion": 60000000,
+                              "transferStandardPriceForConversion": 200000000,
+                              "necessaryExpenses": 100000000
+                    },
+                    "정답": {
+                              "과세표준": 241240000,
+                              "산출세액": 71731200
+                    }
+          },
+          {
+                    "이름": "상속 — 상속세책자 제7장 제5절 신고서 작성 사례(배우자·자녀2·손자 사전증여, 추정상속·가업·동거주택·할증분 제외)",
+                    "도구": "calculate_inheritance_tax",
+                    "입력": {
+                              "taxableEstateAmount": 4325000000,
+                              "nonTaxableAmount": 30000000,
+                              "publicInterestOrgAmount": 300000000,
+                              "disposalPresumptionItems": [
+                                        {
+                                                  "category": "예금",
+                                                  "oneYearAmount": 275000000,
+                                                  "oneYearExplained": 45000000
+                                        }
+                              ],
+                              "hasSpouse": true,
+                              "childCount": 2,
+                              "spouseActualInheritedAmount": 1624000000,
+                              "spouseLegalShareRatio": 0.42857142857142855,
+                              "priorGiftedAmountIncludedInEstate": 650000000,
+                              "giftToHeirsWithin10Years": 400000000,
+                              "netFinancialAssets": 630000000,
+                              "hasCohabitingHouseDeduction": true,
+                              "cohabitingHouseValue": 500000000,
+                              "businessOwnershipYears": 18,
+                              "businessInheritanceStockValue": 600000000,
+                              "businessInheritanceTotalAssetValue": 600000,
+                              "businessInheritanceNonBizAsset55": 220000,
+                              "appraisalFeeAmount": 500000,
+                              "funeralCostAmount": 12700000,
+                              "funeralNicheCostAmount": 9650000,
+                              "nonHeirPriorGiftTaxableBaseTotal": 200000000,
+                              "nonHeirPriorGiftAmountTotal": 250000000,
+                              "nonHeirPriorGiftTaxPaidTotal": 39000000,
+                              "nonHeirPriorGiftGenSkipPremiumTotal": 9000000,
+                              "priorGiftHeirs": [
+                                        {
+                                                  "name": "배우자",
+                                                  "actualInheritedValue": 1924000000,
+                                                  "assumedDebtAmount": 300000000,
+                                                  "assumedFuneralAmount": 0,
+                                                  "legalShareRatio": 0.42857142857142855
+                                        },
+                                        {
+                                                  "name": "자녀1",
+                                                  "actualInheritedValue": 1100000000,
+                                                  "assumedDebtAmount": 0,
+                                                  "assumedFuneralAmount": 15000000,
+                                                  "legalShareRatio": 0.2857142857142857,
+                                                  "priorGiftAmount": 400000000,
+                                                  "priorGiftTaxableBase": 350000000,
+                                                  "priorGiftTaxPaid": 60000000
+                                        },
+                                        {
+                                                  "name": "자녀2",
+                                                  "actualInheritedValue": 821000000,
+                                                  "assumedDebtAmount": 200000000,
+                                                  "assumedFuneralAmount": 0,
+                                                  "legalShareRatio": 0.2857142857142857
+                                        }
+                              ]
+                    },
+                    "정답": {
+                              "과세표준": 1024500000,
+                              "산출세액": 249800000,
+                              "기납부증여세액공제": 90000000,
+                              "신고세액공제": 4794000,
+                              "납부세액": 155006000
+                    }
+          },
+          {
+                    "이름": "양도 수용 — 2025.6.30 양도, 채권 3년 만기특약 위반: §77④ 징수 = 양도소득세 169,060,000 × 15% (서식 감사 바 E5)",
+                    "도구": "calculate_transfer_tax",
+                    "고정": true,
+                    "입력": {
+                              "assetType": "other",
+                              "acquisitionDate": "2010-01-01",
+                              "publicNoticeDate": "2023-01-01",
+                              "transferDate": "2025-06-30",
+                              "transferPrice": 1000000000,
+                              "acquisitionPrice": 300000000,
+                              "necessaryExpenses": 0,
+                              "compensationType": "bond_3y",
+                              "isBondPledgeBreached": true
+                    },
+                    "정답": {
+                              "채권만기특약위반_추징액": 25359000,
+                              "납부세액_합계": 148772800
+                    }
+          },
+          {
+                    "이름": "양도 수용(합산) — 2025.6.30 양도, 채권 5년 만기특약 위반: §77④ 징수 = 양도소득세 × 25% (서식 감사 바 E6)",
+                    "도구": "calculateTransferTaxMultiJS",
+                    "고정": true,
+                    "입력": [
+                              {
+                                        "assetType": "other",
+                                        "acquisitionDate": "2010-01-01",
+                                        "publicNoticeDate": "2023-01-01",
+                                        "transferDate": "2025-06-30",
+                                        "transferPrice": 1000000000,
+                                        "acquisitionPrice": 300000000,
+                                        "necessaryExpenses": 0,
+                                        "compensationType": "bond_5y",
+                                        "isBondPledgeBreached": true
+                              }
+                    ],
+                    "정답": {
+                              "합산채권만기특약위반_추징액": 42265000,
+                              "납부세액_합계": 148772800
+                    }
+          },
+          {
+                    "이름": "양도 수용 — 2024.6.30 양도 현금보상: 2024년 이전 양도분 감면율 10%(조특법 §77①, 법률 제20778호 부칙 제10조) (서식 감사 바 E1)",
+                    "도구": "calculate_transfer_tax",
+                    "고정": true,
+                    "입력": {
+                              "assetType": "other",
+                              "acquisitionDate": "2010-01-01",
+                              "publicNoticeDate": "2023-01-01",
+                              "transferDate": "2024-06-30",
+                              "transferPrice": 1000000000,
+                              "acquisitionPrice": 300000000,
+                              "necessaryExpenses": 0,
+                              "compensationType": "cash"
+                    },
+                    "정답": {
+                              "수용감면액": 17469000,
+                              "납부세액_합계": 172943100
+                    }
+          },
+          {
+                    "이름": "양도 수용 — 2025.2.1 양도 현금보상: 2025.3.14 개정 전이라도 2025년 양도분은 15%(부칙 제10조 과세연도 기준) (서식 감사 바 E2)",
+                    "도구": "calculate_transfer_tax",
+                    "고정": true,
+                    "입력": {
+                              "assetType": "other",
+                              "acquisitionDate": "2010-01-01",
+                              "publicNoticeDate": "2023-01-01",
+                              "transferDate": "2025-02-01",
+                              "transferPrice": 1000000000,
+                              "acquisitionPrice": 300000000,
+                              "necessaryExpenses": 0,
+                              "compensationType": "cash"
+                    },
+                    "정답": {
+                              "수용감면액": 25359000,
+                              "납부세액_합계": 158071100
+                    }
+          },
+          {
+                    "이름": "양도 수용 — 2024.6.30 양도 50억/10억 현금: 옛 §133①1호 과세기간 1억원 한도 (서식 감사 바 E3)",
+                    "도구": "calculate_transfer_tax",
+                    "고정": true,
+                    "입력": {
+                              "assetType": "other",
+                              "acquisitionDate": "2010-01-01",
+                              "publicNoticeDate": "2023-01-01",
+                              "transferDate": "2024-06-30",
+                              "transferPrice": 5000000000,
+                              "acquisitionPrice": 1000000000,
+                              "necessaryExpenses": 0,
+                              "compensationType": "cash"
+                    },
+                    "정답": {
+                              "수용감면액": 100000000,
+                              "납부세액_합계": 1241828500
+                    }
+          },
+          {
+                    "이름": "양도 수용 — 2024.6.30 양도 채권 5년 특약 위반: 감면율 40%·징수 25% (서식 감사 바 E7)",
+                    "도구": "calculate_transfer_tax",
+                    "고정": true,
+                    "입력": {
+                              "assetType": "other",
+                              "acquisitionDate": "2010-01-01",
+                              "publicNoticeDate": "2023-01-01",
+                              "transferDate": "2024-06-30",
+                              "transferPrice": 1000000000,
+                              "acquisitionPrice": 300000000,
+                              "necessaryExpenses": 0,
+                              "compensationType": "bond_5y",
+                              "isBondPledgeBreached": true
+                    },
+                    "정답": {
+                              "수용감면액": 69876000,
+                              "채권만기특약위반_추징액": 43672500,
+                              "납부세액_합계": 163335150
+                    }
+          },
+          {
+                    "이름": "양도 합산 — 2024년 8년 자경농지(자경 감면 1억) + 수용 현금: 옛 §133①1호 합산 1억이라 수용 감면 0 (서식 감사 바 M-F+E1)",
+                    "도구": "calculateTransferTaxMultiJS",
+                    "고정": true,
+                    "입력": [
+                              {
+                                        "assetType": "other",
+                                        "acquisitionDate": "2000-01-01",
+                                        "transferDate": "2024-03-31",
+                                        "transferPrice": 2000000000,
+                                        "acquisitionPrice": 300000000,
+                                        "necessaryExpenses": 0,
+                                        "isEightYearFarmland": true
+                              },
+                              {
+                                        "assetType": "other",
+                                        "acquisitionDate": "2010-01-01",
+                                        "publicNoticeDate": "2023-01-01",
+                                        "transferDate": "2024-06-30",
+                                        "transferPrice": 1000000000,
+                                        "acquisitionPrice": 300000000,
+                                        "necessaryExpenses": 0,
+                                        "compensationType": "cash"
+                              }
+                    ],
+                    "정답": {
+                              "합산자경감면액": 100000000,
+                              "합산수용감면액": 0,
+                              "납부세액_합계": 654758500
+                    }
+          },
+          {
+                    "이름": "양도 합산 — 2026년 8년 자경(3월) + 일반토지(6월): 감면 = A × (B − C) ÷ D(소득세법 §90①, 기본공제는 일반토지에서 먼저 §103②) (서식 감사 사 후보 6 재현①)",
+                    "도구": "calculateTransferTaxMultiJS",
+                    "고정": true,
+                    "입력": [
+                              {
+                                        "assetType": "land",
+                                        "necessaryExpenses": 0,
+                                        "acquisitionDate": "2010-01-01",
+                                        "transferDate": "2026-03-01",
+                                        "transferPrice": 300000000,
+                                        "acquisitionPrice": 150000000,
+                                        "isEightYearFarmland": true
+                              },
+                              {
+                                        "assetType": "land",
+                                        "necessaryExpenses": 0,
+                                        "acquisitionDate": "2010-01-01",
+                                        "transferDate": "2026-06-01",
+                                        "transferPrice": 300000000,
+                                        "acquisitionPrice": 150000000
+                              }
+                    ],
+                    "정답": {
+                              "합산자경감면액": 29809879,
+                              "합산그룹_산출세액": 29100121
+                    }
+          },
+          {
+                    "이름": "양도 합산 — 2022년 8년 자경 + 국가양도산지(§85의10): 둘 다 같은 A에서, §133①1호 1억 묶음에 §85의10 포함·양도 순서대로 → 산지 감면 0 (서식 감사 사 후보 6 재현②)",
+                    "도구": "calculateTransferTaxMultiJS",
+                    "고정": true,
+                    "입력": [
+                              {
+                                        "assetType": "land",
+                                        "necessaryExpenses": 0,
+                                        "acquisitionDate": "2010-01-01",
+                                        "transferDate": "2022-03-01",
+                                        "transferPrice": 500000000,
+                                        "acquisitionPrice": 100000000,
+                                        "isEightYearFarmland": true
+                              },
+                              {
+                                        "assetType": "land",
+                                        "necessaryExpenses": 0,
+                                        "acquisitionDate": "2010-01-01",
+                                        "transferDate": "2022-06-01",
+                                        "transferPrice": 500000000,
+                                        "acquisitionPrice": 100000000,
+                                        "isNationalForestLandReduction": true,
+                                        "nfIsUrbanArea": false
+                              }
+                    ],
+                    "정답": {
+                              "합산자경감면액": 100000000,
+                              "합산조특법세액감면액": 0,
+                              "합산그룹_산출세액": 118910000
+                    }
+          },
+          {
+                    "이름": "양도 — 2026년 농지대토(§70), 직전 4개 과세기간 §70 감면 8천만: §133①2호가목 5개 과세기간 1억 → 감면 2천만",
+                    "도구": "calculate_transfer_tax",
+                    "고정": true,
+                    "입력": {
+                              "assetType": "land",
+                              "necessaryExpenses": 0,
+                              "acquisitionDate": "2010-01-01",
+                              "transferDate": "2026-03-01",
+                              "transferPrice": 300000000,
+                              "acquisitionPrice": 100000000,
+                              "isFarmlandSubstitutionExempt": true,
+                              "sect133PriorSect70": 80000000
+                    },
+                    "정답": {
+                              "자경농지감면액": 20000000,
+                              "산출세액": 12685000
+                    }
+          },
+          {
+                    "이름": "양도 합산 — 2026년 수용 현금, 직전 4개 과세기간 수용 감면 2.9억: §133②2호 5개 과세기간 3억 → 감면 1천만",
+                    "도구": "calculateTransferTaxMultiJS",
+                    "고정": true,
+                    "입력": [
+                              {
+                                        "assetType": "land",
+                                        "necessaryExpenses": 0,
+                                        "acquisitionDate": "2010-01-01",
+                                        "transferDate": "2026-06-01",
+                                        "transferPrice": 1000000000,
+                                        "acquisitionPrice": 300000000,
+                                        "compensationType": "cash",
+                                        "publicNoticeDate": "2023-01-01",
+                                        "sect133PriorComp": 290000000
+                              }
+                    ],
+                    "정답": {
+                              "합산수용감면액": 10000000,
+                              "납부세액_합계": 174966000
+                    }
+          },
+          {
+                    "이름": "양도 — 2015년 8년 자경 30억/3억: 2014~2015 양도분 §133①1호나목 과세기간 2억원(자경 포함 묶음)",
+                    "도구": "calculate_transfer_tax",
+                    "고정": true,
+                    "입력": {
+                              "assetType": "land",
+                              "necessaryExpenses": 0,
+                              "acquisitionDate": "2000-01-01",
+                              "transferDate": "2015-06-01",
+                              "transferPrice": 3000000000,
+                              "acquisitionPrice": 300000000,
+                              "isEightYearFarmland": true
+                    },
+                    "정답": {
+                              "자경농지감면액": 200000000,
+                              "납부세액_합계": 547635000
+                    }
+          },
+          {
+                    "이름": "양도 — 구조조정대상부동산(§43)인데 2015.1.1 취득: §43①은 1999.12.31 이전 취득만 → 감면 없음 (서식 감사 사 후보 5)",
+                    "도구": "calculateTransferTaxMultiJS",
+                    "고정": true,
+                    "입력": [
+                              {
+                                        "assetType": "land",
+                                        "transferPrice": 1000000000,
+                                        "acquisitionPrice": 200000000,
+                                        "necessaryExpenses": 0,
+                                        "acquisitionDate": "2015-01-01",
+                                        "transferDate": "2026-09-01",
+                                        "isRestructuringPropertyReduction": true,
+                                        "rpAcquisitionStandardPrice": 100000000,
+                                        "rpFiveYearStandardPrice": 150000000,
+                                        "rpTransferStandardPrice": 500000000
+                              }
+                    ],
+                    "정답": {
+                              "합산소득금액": 624000000,
+                              "산출세액_합계": 225090000
+                    }
+          },
+          {
+                    "이름": "양도 — 구조조정대상부동산(§43) 1998.5.1 취득, 5년 경과 양도: 5년간 소득금액의 50% 뺌(엔진이 맞았음, 사 후보 5 확인)",
+                    "도구": "calculateTransferTaxMultiJS",
+                    "고정": true,
+                    "입력": [
+                              {
+                                        "assetType": "land",
+                                        "transferPrice": 1000000000,
+                                        "acquisitionPrice": 200000000,
+                                        "necessaryExpenses": 0,
+                                        "acquisitionDate": "1998-05-01",
+                                        "transferDate": "2026-09-01",
+                                        "isRestructuringPropertyReduction": true,
+                                        "rpAcquisitionStandardPrice": 100000000,
+                                        "rpFiveYearStandardPrice": 150000000,
+                                        "rpTransferStandardPrice": 500000000
+                              }
+                    ],
+                    "정답": {
+                              "합산소득금액": 525000000,
+                              "산출세액_합계": 183510000
+                    }
+          },
+          {
+                    "이름": "양도 — 장기일반민간임대(§97의5), 2026.4 임대 끝(그날 기준시가 6억): 감면소득 = 양도소득금액 × (6억−3억)÷(7억−3억), 소득세법 §90① 세액감면 (서식 감사 사 후보 4-1 ㉠)",
+                    "도구": "calculateTransferTaxMultiJS",
+                    "고정": true,
+                    "입력": [
+                              {
+                                        "assetType": "house",
+                                        "transferPrice": 900000000,
+                                        "acquisitionPrice": 400000000,
+                                        "necessaryExpenses": 0,
+                                        "acquisitionDate": "2016-03-01",
+                                        "transferDate": "2026-09-01",
+                                        "multiHouseCount": 2,
+                                        "isAdjustedArea": false,
+                                        "longTermRentalHouseProvision": "sect97_5",
+                                        "lrAcquisitionStandardPrice": 300000000,
+                                        "lrRegistrationStandardPrice": 300000000,
+                                        "lrRentalEndStandardPrice": 600000000,
+                                        "lrTransferStandardPrice": 700000000
+                              }
+                    ],
+                    "정답": {
+                              "합산조특법세액감면액": 100422641,
+                              "합산그룹_산출세액": 32637359
+                    }
+          },
+          {
+                    "이름": "양도 — 장기일반민간임대(§97의5), 양도일까지 임대·등록일 기준시가 3.5억: 등록일은 산식에 안 씀 → 전액 감면 (서식 감사 사 후보 4-1 ㉡)",
+                    "도구": "calculateTransferTaxMultiJS",
+                    "고정": true,
+                    "입력": [
+                              {
+                                        "assetType": "house",
+                                        "transferPrice": 900000000,
+                                        "acquisitionPrice": 400000000,
+                                        "necessaryExpenses": 0,
+                                        "acquisitionDate": "2016-03-01",
+                                        "transferDate": "2026-09-01",
+                                        "multiHouseCount": 2,
+                                        "isAdjustedArea": false,
+                                        "longTermRentalHouseProvision": "sect97_5",
+                                        "lrAcquisitionStandardPrice": 300000000,
+                                        "lrRegistrationStandardPrice": 350000000,
+                                        "lrRentedUntilTransfer": true,
+                                        "lrTransferStandardPrice": 700000000
+                              }
+                    ],
+                    "정답": {
+                              "합산그룹_산출세액": 0,
+                              "납부세액_합계": 0
+                    }
+          },
+          {
+                    "이름": "양도 — 장기일반민간임대 장특공 70%(§97의3), 2026.9 양도·2026.4 임대 끝(그날 기준시가 6억): 시행령 §97의3⑤(2026.2.27~) A×(B−C)÷(D−E) (서식 감사 사 후보 4-2)",
+                    "도구": "calculate_transfer_tax",
+                    "고정": true,
+                    "입력": {
+                              "assetType": "house",
+                              "transferPrice": 900000000,
+                              "acquisitionPrice": 400000000,
+                              "necessaryExpenses": 0,
+                              "acquisitionDate": "2016-03-01",
+                              "transferDate": "2026-09-01",
+                              "multiHouseCount": 2,
+                              "isAdjustedArea": false,
+                              "rentalSpecialType": "rental_general",
+                              "rentalYears": 10,
+                              "rentalRegistrationDate": "2016-04-01",
+                              "acquisitionStandardPrice": 300000000,
+                              "registrationStandardPrice": 300000000,
+                              "rentalEndStandardPrice": 600000000,
+                              "transferStandardPrice": 700000000
+                    },
+                    "정답": {
+                              "장기보유특별공제액": 287500000,
+                              "과세표준": 210000000,
+                              "산출세액": 59860000
+                    }
+          },
+          {
+                    "이름": "양도 — 조정지역 3주택, 별지 83호의6 일반세율 적용 체크(장기임대주택·일반주택): 시행령 §167의3①2·3·8의2·10호 중과 제외 (서식 감사 사 후보 7)",
+                    "도구": "calculateTransferTaxMultiJS",
+                    "고정": true,
+                    "입력": [
+                              {
+                                        "assetType": "house",
+                                        "transferPrice": 900000000,
+                                        "acquisitionPrice": 500000000,
+                                        "necessaryExpenses": 0,
+                                        "acquisitionDate": "2016-03-01",
+                                        "transferDate": "2026-09-01",
+                                        "saleContractDate": "2026-06-01",
+                                        "isAdjustedArea": true,
+                                        "multiHouseCount": 3,
+                                        "isMultiHouseRentalExemption": true
+                              }
+                    ],
+                    "정답": {
+                              "합산가산액": 0,
+                              "산출세액_합계": 101060000,
+                              "납부세액_합계": 111166000
+                    }
+          },
+          {
+                    "이름": "양도 합산 — 조정지역 3주택 중과 주택 1건: 가산액 바탕은 과세표준(기본공제 뒤, §104⑦·§103②) — 단건 계산과 같아야 함",
+                    "도구": "calculateTransferTaxMultiJS",
+                    "고정": true,
+                    "입력": [
+                              {
+                                        "assetType": "house",
+                                        "transferPrice": 1500000000,
+                                        "transferDate": "2026-09-01",
+                                        "acquisitionDate": "2015-01-01",
+                                        "acquisitionPrice": 800000000,
+                                        "isAdjustedArea": true,
+                                        "multiHouseCount": 3
+                              }
+                    ],
+                    "정답": {
+                              "산출세액_합계": 466260000,
+                              "합산가산액": 209250000
+                    }
+          }
 ]

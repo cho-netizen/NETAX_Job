@@ -318,12 +318,13 @@ const DRIVE_TOOLS = [
   },
   {
     name: 'lookup_statute_article',
-    description: '국가법령정보센터에서 특정 법령의 특정 조문 원문을 실시간으로 가져온다. "상증세법 §45", "소득세법 제94조" 같은 조문을 인용하거나 정확한 원문 확인이 필요할 때 써라. articleNo를 생략하면 그 법령의 조문 전체를 가져오니, 특정 조문만 필요하면 반드시 articleNo를 지정해라(전체를 가져오면 응답이 너무 길어질 수 있음).',
+    description: '법령 조문 원문을 가져온다(법령 정비본 우선 + 산식 보정, 법제처로 개정 확인). 조문 인용·원문 확인 때 써라. articleNo를 꼭 지정해라(생략하면 전체라 너무 길다). 옛 사건은 baseDate(양도·상속·증여일)로 그때 판을 본다. 검증필요_코드에서옮김 산식은 근거로 쓰지 마라.',
     input_schema: {
       type: 'object',
       properties: {
         lawName: { type: 'string', description: '법령명(정식 명칭에 가깝게, 예: "상속세및증여세법", "소득세법")' },
-        articleNo: { type: 'string', description: '조번호. 예: "45", "45조의2". 생략하면 조문 전체를 가져온다.' }
+        articleNo: { type: 'string', description: '조번호. 예: "45", "45조의2"' },
+        baseDate: { type: 'string', description: '기준일 YYYYMMDD(생략하면 현행)' }
       },
       required: ['lawName']
     }
@@ -564,6 +565,7 @@ const DRIVE_TOOLS = [
         isOneHouseOneFamily: { type: 'boolean', description: '1세대1주택 비과세 요건을 충족한다고 전제할지 여부(요건 자체는 이 도구가 검증하지 않음)' },
         residenceYears: { type: 'number', description: '1세대1주택(고가주택) 장기보유특별공제 계산용 거주기간(년). isOneHouseOneFamily일 때만 사용.' },
         multiHouseCount: { type: 'integer', description: '조정대상지역 다주택 중과 판정용 소유 주택 수(2 또는 3 이상). isOneHouseOneFamily가 아닐 때만 의미가 있다.' },
+        isMultiHouseRentalExemption: { type: 'boolean', description: '[2026.10.19] 이번에 양도하는 주택이 장기임대주택(감면대상·장기어린이집 포함)이거나 그것들을 빼면 남는 1주택(일반주택)이라 중과 대상이 아님(소득령 §167의3①2·3·8의2·10호, §167의10①2·10호, 별지 83호의6 신청) — true면 중과 가산·장특공 배제를 하지 않는다.' },
         isAdjustedArea: { type: 'boolean', description: '양도 주택이 조정대상지역에 있는지 — true이고 multiHouseCount>=2이면 중과세율(+20%p/+30%p)이 적용되고 장기보유특별공제가 배제된다. 2년 이상 보유하고 2026.5.9까지 양도하면 자동으로 중과가 배제되며(시행령§167조의3①12의2호가목), 그 이후 양도라도 saleContractDate 등을 넣으면 토지거래허가구역 특례(나목·다목)로 배제되는지까지 판정한다. 조정대상지역 지정 현황은 수시로 바뀌므로 반드시 최신 여부를 확인하고 넣어라.' },
         saleContractDate: { type: 'string', description: '다주택중과 한시배제 나목·다목 판정용(시행령§167조의3①12의2호) — 매매계약체결일(YYYY-MM-DD). 양도일이 2026.5.9를 넘겨도, 2년 이상 보유한 주택을 이 날짜에 매매계약(계약금 지급 포함)했다면 계약체결일로부터 4개월(isExtendedDeadlineRegion이면 6개월, 단 2026.5.10 이후 계약시에는 각각 2026.9.9·11.9까지) 이내 양도시 중과가 배제될 수 있다. 해당 없으면 생략.' },
         isLandTransactionPermitArea: { type: 'boolean', description: '위 saleContractDate를 넣을 때만 — 토지거래허가구역 내 주택부수토지인지(나목). true면 isPermitApplicationFiledByDeadline·isPermitObtained도 함께 충족해야 하고, false면(다목) saleContractDate 자체가 2026.5.9까지여야 한다.' },
@@ -587,15 +589,22 @@ const DRIVE_TOOLS = [
         acquisitionStandardPrice: { type: 'number', description: 'rentalSpecialType=rental_general일 때 필수 — 취득 당시 기준시가(원). registrationStandardPrice·transferStandardPrice와 셋 다 있어야 조특법시행령§97의3⑤ 원문대로 "임대기간중 발생한 양도차익"을 기준시가 비율로 안분해 70%를 그 부분에만 적용한다(셋 중 하나라도 없으면 임대개시전 발생분까지 과다공제되므로 에러를 반환한다).' },
         registrationStandardPrice: { type: 'number', description: 'rentalSpecialType=rental_general일 때 필수 — 장기일반민간임대주택등 등록일 현재 기준시가(원).' },
         transferStandardPrice: { type: 'number', description: 'rentalSpecialType=rental_general일 때 필수 — 양도 당시 기준시가(원).' },
-        pensionAccountContribution: { type: 'number', description: '이번 양도대금 중 연금계좌에 납입한 금액(원) — 조특법§99의14① 연금계좌세액공제. 납입액×10%(산출세액 한도)를 세액공제한다. 요건: 국내 소재 토지·건물을 10년 이상 보유(holdingYears로 자동 판정), 2027.12.31까지 양도, isBasicPensionRecipient(기초연금 수급자)·isOneHouseOrNoHouseHousehold(1주택 또는 무주택 세대구성원) true, pensionContributionDate가 양도일로부터 6개월 이내. 이 요건 중 하나라도 명시적으로 false거나 기한을 벗어나면 공제를 적용하지 않는다. 없으면 생략.' },
+        // [2026.10.19 서식 감사] 시행령§97의3⑤(2026.2.27~) 임대기간 중 양도차익 = 양도차익 × (임대 마지막 날 − 임대 개시일) ÷ (양도일 − 취득일) 기준시가
+        rentalStartStandardPrice: { type: 'number', description: 'rentalSpecialType=rental_general — 실제 임대 개시일 기준시가(원). 생략하면 registrationStandardPrice(등록일=임대 개시, 시행령§97의3④).' },
+        rentalEndStandardPrice: { type: 'number', description: 'rentalSpecialType=rental_general — 실제 임대 마지막 날 기준시가(원). 양도일까지 임대했으면 생략. 2026.2.26 전 양도분은 산식이 법령에 없어 판단대기로 비교만 한다.' },
+        pensionPriorContribution: { type: 'number', description: '이미 연금계좌에 낸 부동산·주택차액 납입 누적액(원, 서식 63호의32 ⑪). 공제 대상 = min(1억원 − 이 값, 납입액, 양도가액 − 취득가액)(조특령 §99의13②, 소득령 §40의2②1호 라목). 없으면 0.' }, pensionAccountContribution: { type: 'number', description: '이번 양도대금 중 연금계좌에 납입한 금액(원) — 조특법§99의14① 연금계좌세액공제. 납입액×10%(산출세액 한도)를 세액공제한다. 요건: 국내 소재 토지·건물을 10년 이상 보유(holdingYears로 자동 판정), 2027.12.31까지 양도, isBasicPensionRecipient(기초연금 수급자)·isOneHouseOrNoHouseHousehold(1주택 또는 무주택 세대구성원) true, pensionContributionDate가 양도일로부터 6개월 이내. 이 요건 중 하나라도 명시적으로 false거나 기한을 벗어나면 공제를 적용하지 않는다. 없으면 생략.' },
         isBasicPensionRecipient: { type: 'boolean', description: 'pensionAccountContribution 사용시 — 양도 당시 기초연금법상 기초연금 수급자인지(§99의14①1호). false면 공제를 적용하지 않는다.' },
         isOneHouseOrNoHouseHousehold: { type: 'boolean', description: 'pensionAccountContribution 사용시 — 양도 당시 1주택 또는 무주택 세대의 구성원인지(§99의14①2호). false면 공제를 적용하지 않는다.' },
         pensionContributionDate: { type: 'string', description: '연금계좌 납입일(YYYY-MM-DD) — 양도일로부터 6개월 이내여야 한다(§99의14①). 생략하면 이 기한 요건은 판정하지 않는다.' },
         isPensionWithdrawnWithin5Years: { type: 'boolean', description: '이미 이 공제를 받은 뒤, 납입일부터 5년 이내에 그 연금계좌에서 연금수령 외의 방식으로 인출했는지(§99의14②·시행령§99의14③). true면 공제받은 세액 상당액을 양도소득세로 추징한다(과거 신고분을 재계산할 때만 사용).' },
         isSelfElectronicFiling: { type: 'boolean', description: '납세자 본인이 직접 전자신고했는지 — true면 전자신고세액공제 2만원(조특법§104의8) 적용. 세무대리인이 대리신고하면 적용되지 않으므로 false/생략.' },
-        compensationType: { type: 'string', enum: ['cash', 'bond', 'bond_3y', 'bond_5y', 'land_replacement', 'restricted_zone_40', 'restricted_zone_25'], description: '공익사업용 토지 등 수용감면 — cash=현금보상(조특법§77①, 15%), bond=채권보상 만기특약 없음(20%), bond_3y=3년만기특약(35%), bond_5y=5년만기특약(45%), land_replacement=대토보상(조특법§77의2, 40% — 과세이연 선택지는 별도 구조라 계산하지 않음), restricted_zone_40=개발제한구역 매수·지정일 이전 취득분(조특법§77의3, 40%), restricted_zone_25=개발제한구역 매수·매수청구일(또는 사업인정고시일)로부터 20년 이전 취득분(조특법§77의3, 25%). 산출세액에서 이 비율만큼 감면하되, cash·bond·bond_3y·bond_5y·land_replacement는 양도일이 2026.12.31, restricted_zone_40/25는 2028.12.31을 넘으면 감면하지 않으며(일몰기한), cash·bond·bond_3y·bond_5y·land_replacement는 추가로 사업인정고시일(publicNoticeDate 미입력시 양도일)로부터 소급 2년 이전 취득분이 아니면 감면하지 않는다(§77①·§77의2①). 조특법§133②(2025.3.14 신설)에 따라 §77·§77의2·§77의3 감면세액 합계가 과세기간별 2억원을 넘는 부분은 감면하지 않는다(5개 과세기간 합산 3억원 한도는 이 도구가 추적하지 않는다). 해당 없으면 생략.' },
+        compensationType: { type: 'string', enum: ['cash', 'bond', 'bond_3y', 'bond_5y', 'land_replacement', 'restricted_zone_40', 'restricted_zone_25'], description: '공익사업용 토지 등 수용감면 — cash=현금보상(조특법§77①, 15%), bond=채권보상 만기특약 없음(20%), bond_3y=3년만기특약(35%), bond_5y=5년만기특약(45%) [§77 율은 양도일별: 2016~2024 양도 10/15/30/40%, 2014~2015 15/20/30/40% — 엔진이 자동 적용], land_replacement=대토보상(조특법§77의2, 40% — 과세이연 선택지는 별도 구조라 계산하지 않음), restricted_zone_40=개발제한구역 매수·지정일 이전 취득분(조특법§77의3, 40%), restricted_zone_25=개발제한구역 매수·매수청구일(또는 사업인정고시일)로부터 20년 이전 취득분(조특법§77의3, 25%). 산출세액에서 이 비율만큼 감면하되, cash·bond·bond_3y·bond_5y·land_replacement는 양도일이 2026.12.31, restricted_zone_40/25는 2028.12.31을 넘으면 감면하지 않으며(일몰기한), cash·bond·bond_3y·bond_5y·land_replacement는 추가로 사업인정고시일(publicNoticeDate 미입력시 양도일)로부터 소급 2년 이전 취득분이 아니면 감면하지 않는다(§77①·§77의2①). 조특법§133②(2025.3.14 신설)에 따라 §77·§77의2·§77의3 감면세액 합계가 과세기간별 2억원을 넘는 부분은 감면하지 않는다(5개 과세기간 합산 3억원 한도는 이 도구가 추적하지 않는다). 해당 없으면 생략.' },
         publicNoticeDate: { type: 'string', description: '사업인정고시일(YYYY-MM-DD) — compensationType이 cash·bond·bond_3y·bond_5y·land_replacement일 때 2년 이전 취득 요건(§77①·§77의2①) 판정 기준일. 모르면 생략(양도일을 기준일로 대신 판정하되, 실제 고시일과 다를 수 있음을 안내한다).' },
-        isBondPledgeBreached: { type: 'boolean', description: 'compensationType이 bond_3y 또는 bond_5y일 때, 만기까지 채권을 보유하기로 한 특약을 위반했는지(§77④). true면 즉시 특약 없는 세율(15%, 5년만기특약이었으면 25%)과의 차액을 추징세액에 더한다.' },
+        isBondPledgeBreached: { type: 'boolean', description: 'compensationType이 bond_3y 또는 bond_5y일 때, 만기까지 채권을 보유하기로 한 특약을 위반했는지(§77④). true면 감면받은 세액 중 양도소득세의 15%(5년만기특약 25%, 2014~2018 양도분 10%·20%)를 징수한다.' },
+        // [2026.10.19 서식 감사] 조특법 §133 5개 과세기간 한도(직전 4개 과세기간 감면세액) — 계산은 화면 엔진 reductions90_
+        sect133PriorFarm: { type: 'number', description: '직전 4개 과세기간에 자경·축사·어업·자경산지·대토(§66~§70)로 감면받은 양도소득세 합계(원, 2024년 이전 양도분이면 수용 §77·§77의2 감면도 더함) — §133①2호나목 5개 과세기간 2억원 한도. 양도인 한 사람 값.' },
+        sect133PriorSect70: { type: 'number', description: '직전 4개 과세기간에 농지대토(§70)로 감면받은 양도소득세(원) — §133①2호가목 5개 과세기간 1억원 한도.' },
+        sect133PriorComp: { type: 'number', description: '직전 4개 과세기간에 §77·§77의2·§77의3으로 감면받은 양도소득세 합계(원) — 2025년 이후 양도분 §133②2호 5개 과세기간 3억원 한도(2025.3.14 전 §77의3 감면분은 빼고).' },
         downContractPriceDifference: { type: 'number', description: '다운계약서(업계약서) 등 거짓 계약으로 비과세·감면을 적용받은 경우(소득세법§91②), 계약서상 거래가액과 실지거래가액의 차액(원). 1세대1주택 비과세라면 MIN(비과세 미적용시 산출세액, 이 차액)을, 8년자경농지·수용감면 등을 받았다면 MIN(감면세액, 이 차액)을 배제·추징한다. 정상신고 사안이면 생략.' },
         isReconstructionRights: { type: 'boolean', description: '재개발·재건축 조합원이 기존건물과 그 부수토지를 제공하고 취득한 조합원입주권 또는 신축주택을 청산금 납부하고 양도하는 경우(소득세법시행령§166①②③)인지. true면 acquisitionPrice는 무시되고, rightsValue·settlementPaid·managementDispositionDate·originalAssetAcquisitionPrice로 별도 산정한다(acquisitionDate는 기존건물 취득일 그대로, acquisitionPrice는 생략 가능).' },
         isCompletedNewHousing: { type: 'boolean', description: 'isReconstructionRights가 true일 때만 의미 있음 — false(기본값)면 조합원입주권 자체를 준공 전에 양도(§166①1호, 인가전양도차익에만 장특공제), true면 준공된 신축주택을 양도(§166②1호, 인가후양도차익을 청산금납부분·기존건물분으로 재분배해 각각 다른 보유기간으로 장특공제).' },
@@ -778,6 +787,7 @@ const DRIVE_TOOLS = [
         spouseLegalShareRatio: { type: 'number', description: '배우자의 법정상속분 비율(0~1, 예: 배우자+자녀2명이면 1.5/3.5≈0.4286). 이 값과 taxableEstateAmount 등으로 배우자공제 한도액을 정밀 계산한다. 생략하면 30억 한도만 적용된다.' },
         nonHeirBequestAmount: { type: 'number', description: '상속인이 아닌 자(수유자)가 유증 등으로 받은 재산가액(원). 배우자공제 한도액과 상속공제 종합한도 계산에 쓰인다.' },
         giftToHeirsWithin10Years: { type: 'number', description: '상속개시일 전 10년 이내에 피상속인이 상속인에게 증여한 재산가액 합계(원). 배우자공제 한도액 계산에 쓰인다.' },
+        debtExcessAmount: { type: 'number', description: '채무·공과금 합계가 총상속재산가액(추정상속재산 제외)보다 커서 taxableEstateAmount를 만들 때 0으로 잘라 버린 초과분(원). §13① 후단대로 엔진이 추정상속재산과 상계하고, 장례비는 사전증여 가산 전에만 뺀다(서식 부표1 ㉙ = max(0, ⑫ − ⑬ − ⑰ − ㉑) + ㉕). 채무가 재산보다 작으면 0 또는 생략.' },
         priorGiftedAmountIncludedInEstate: { type: 'number', description: 'taxableEstateAmount에 가산된 10년 이내 사전증여재산가액의 원본(재산가액 자체, 과세표준 아님). 배우자공제 한도액 계산의 "상속재산의 가액" 산출에 쓰인다.' },
         spouseTaxableBaseOfPriorGift: { type: 'number', description: '상속재산에 가산한 증여재산 중 배우자가 사전증여받은 부분의 증여세 과세표준(원). 배우자공제 한도액에서 차감된다.' },
         childCount: { type: 'integer', description: '자녀 수 (1인당 5천만원 공제)' },
@@ -1995,8 +2005,11 @@ const DRIVE_TOOLS = [
         necessaryExpenses: { type: 'number', description: '필요경비(원). 없으면 생략.' },
         registrationDateValue: { type: 'number', description: 'provision이 sect97_5일 때 — 장기일반민간임대주택등 등록일 현재의 평가액(원). acquisitionStandardPrice·registrationStandardPrice·transferStandardPrice가 없을 때의 근사치 계산에만 쓰인다.' },
         acquisitionStandardPrice: { type: 'number', description: 'provision이 sect97_5일 때만 — 취득 당시 기준시가(원). registrationStandardPrice·transferStandardPrice와 함께 셋 다 입력하면 시행령§97의5② 원문대로 "임대기간중 발생한 양도소득금액"을 기준시가 비율로 정확히 계산한다(없으면 registrationDateValue로 근사치 계산).' },
-        registrationStandardPrice: { type: 'number', description: 'provision이 sect97_5일 때만 — 장기일반민간임대주택등 등록일 현재 기준시가(원).' },
-        transferStandardPrice: { type: 'number', description: 'provision이 sect97_5일 때만 — 양도 당시 기준시가(원).' }
+        registrationStandardPrice: { type: 'number', description: 'provision이 sect97_5일 때 참고만 — 등록일 기준시가(시행령§97의5② 산식에는 안 씀).' },
+        transferStandardPrice: { type: 'number', description: 'provision이 sect97_5일 때만 — 양도 당시 기준시가(원).' },
+        // [2026.10.19 서식 감사] 시행령§97의5② — 감면소득 = 양도소득금액(장특공 뒤) × (임대 마지막 날 − 취득 당시) ÷ (양도 당시 − 취득 당시) 기준시가, 소득세법§90① 세액감면
+        rentalEndStandardPrice: { type: 'number', description: 'provision이 sect97_5일 때 필수 — 임대기간 마지막 날 기준시가(원). 결과는 감면소득비율(세액감면, 감면액은 calculate_transfer_tax_multi에서 lrRentalEndStandardPrice로 계산).' },
+        rentedUntilTransfer: { type: 'boolean', description: 'provision이 sect97_5일 때 — 양도일까지 계속 임대했으면 true(임대 마지막 날 기준시가 = 양도 당시 기준시가).' }
       },
       required: ['provision']
     }
@@ -3937,8 +3950,9 @@ function dispatchClientAction0_(body) {
   if (body.action === 'law_get_precedent_detail') {
     return jsonResponse(toolGetTaxPrecedentDetail(body.category, body.id));
   }
+  if (body.action === 'law_db_toc') return jsonResponse(lawDbToc_(body.lawName, body.ver)); // [📜 법령] 탭 정비본 보기 — 법령·판 목록, 판의 차례
   if (body.action === 'law_lookup_article') {
-    return jsonResponse(toolLookupStatuteArticle(body.lawName, body.articleNo));
+    return jsonResponse(toolLookupStatuteArticle(body.lawName, body.articleNo, body.baseDate));
   }
   // [2026.10.19 조견표 체계] 법령정보 탭 — 조견표·서식 칸 지도에 세무사님이 남긴 확인·메모·보류(표 내용은 화면 파일, 여기는 기록만)
   if (body.action === 'reftable_review_get') return jsonResponse(reftableReviewGet_());
@@ -4812,113 +4826,115 @@ function reftableReviewSet_(body) {
   } finally { lock.releaseLock(); }
 }
 
-/**
- * 국가법령정보센터(law.go.kr) Open API로 조문 원문을 실시간 조회한다.
- * 1단계: lawSearch.do(target=eflaw)로 법령명을 검색해서 법령일련번호(MST)·시행일자(efYd)를 찾는다.
- * 2단계: lawService.do(target=eflaw)에 MST·efYd·JO(조번호)를 넣어 그 조문 원문만 가져온다.
- *   JO는 "조번호 4자리 + 조가지번호 2자리"인 6자리 숫자다(예: 45조 → 004500, 10조의2 → 001002).
- * OC(인증키)는 스크립트 속성 LAW_OC에 저장해둔 값을 쓴다.
- */
-function toolLookupStatuteArticle(lawName, articleNo) {
+// [2026.10.19] 조문 조회 — 1순위 법령 정비본(드라이브 0 NETAX/업무관리자/법령정비본, tools/law-build.js) + 산식 보정, 법제처는 개정 확인·정비본에 없는 법령/옛 판. 설계 netax-inventory/maps/설계_법령원본.md
+function lawDbIdx_() {
+  var c = CacheService.getScriptCache(), s = c.get('lawdb_idx2');
+  if (s) return JSON.parse(s);
+  var sub = function (f, n) { var it = f && f.getFoldersByName(n); return it && it.hasNext() ? it.next() : null; };
+  var mg = sub(getNetaxRootFolder_(), '업무관리자'), lw = sub(mg, '법령'), b = sub(lw, '_본문') || sub(lw, '본문') || sub(sub(mg, '법령정비본'), '본문') /* [2026.10.19] 폴더 정리 — 업무관리자/법령정비본 → 업무관리자/법령(옛 이름도 찾음) */, it = b && b.getFilesByName('색인.json');
+  if (!it || !it.hasNext()) return null;
+  var idx = JSON.parse(it.next().getBlob().getDataAsString('UTF-8'));
+  Object.keys(idx.법령).forEach(function (k) {
+    var f = sub(b, k), fi = f && f.getFiles(), ids = idx.법령[k].ids = {};
+    while (fi && fi.hasNext()) { var x = fi.next(); ids[x.getName().replace('.json.gz', '')] = x.getId(); }
+  });
+  var ci = sub(b.getParents().next(), '_산식보정') || sub(b.getParents().next(), '산식보정'); // [2026.10.19] 시스템 전용 폴더는 이름 앞 _(세무사님 지시) — 옛 이름도 찾음
+  ci = ci && ci.getFilesByName('산식보정.json');
+  idx.보정ID = ci && ci.hasNext() ? ci.next().getId() : '';
+  try { c.put('lawdb_idx2', JSON.stringify(idx), 21600); } catch (e) { }
+  return idx;
+}
+function lawUnit_(u) { // 법제처 조문단위 → 정비본 모양(law-build.js parseLaw와 같은 규칙)
+  var imgs = [], T = function (e, n) {
+    return String(e.getChildText(n) || '').replace(/<img[^>]*?flSeq=(\d+)[^>]*>(?:([^<]*)<\/img>)?/g, function (m, id, b) {
+      imgs.push(id); b = String(b || '').replace(/^\s*\n|\s+$/g, ''); return '〔산식 그림 img' + id + '〕' + (/[│┌]/.test(b) ? '\n' + b : '');
+    }).replace(/<\/?[a-z][^>]*>/gi, '').trim();
+  }, g = u.getChildText('조문가지번호');
+  return { 조: u.getChildText('조문번호') + (g && g !== '0' ? '의' + g : ''), 제목: T(u, '조문제목'), 내용: T(u, '조문내용'), 참고: T(u, '조문참고자료'), 그림: imgs,
+    항: u.getChildren('항').map(function (h) { return { 내용: T(h, '항내용'), 호: h.getChildren('호').map(function (o) { return { 내용: T(o, '호내용'), 목: o.getChildren('목').map(function (m) { return T(m, '목내용'); }) }; }) }; }) };
+}
+function lawGo_(oc, q, jo) { // q=법령명이면 판 목록(하루 기억), q=[mst,ef]면 조문들
+  var u = 'https://www.law.go.kr/DRF/' + (jo === undefined ? 'lawSearch.do?OC=' + encodeURIComponent(oc) + '&target=eflaw&type=XML&display=100&query=' + encodeURIComponent(q) : 'lawService.do?OC=' + encodeURIComponent(oc) + '&target=eflaw&type=XML&MST=' + q[0] + '&efYd=' + q[1] + (jo ? '&JO=' + jo : ''));
+  var c = CacheService.getScriptCache(), ck = jo === undefined && 'lawgo_v|' + q.replace(/\s/g, ''), s = ck && c.get(ck);
+  if (s) return JSON.parse(s);
+  var r = UrlFetchApp.fetch(u, { muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) return { error: '법제처 응답 오류(' + r.getResponseCode() + ')' };
+  var root = XmlService.parse(r.getContentText('UTF-8')).getRootElement();
+  if (!ck) { var jm = root.getChild('조문'); return (jm ? jm.getChildren('조문단위') : []).filter(function (x) { return x.getChildText('조문여부') === '조문'; }).map(lawUnit_); }
+  var ls = root.getChildren('law'); if (!ls.length) return { error: '"' + q + '"으로 검색된 법령이 없습니다(정식 법령명 확인).' };
+  var nm = ls[0].getChildText('법령명한글'), v = { 이름: nm, 판: ls.filter(function (x) { return x.getChildText('법령명한글') === nm; }).map(function (x) {
+    return { mst: x.getChildText('법령일련번호'), ef: x.getChildText('시행일자'), no: x.getChildText('공포번호'), cur: x.getChildText('현행연혁코드') === '현행' }; }) };
+  try { c.put(ck, JSON.stringify(v), 86400); } catch (e) { }
+  return v;
+}
+function toolLookupStatuteArticle(lawName, articleNo, baseDate) {
   if (!lawName || !String(lawName).trim()) return { error: '법령명이 없습니다.' };
-
-  const ocKey = PropertiesService.getScriptProperties().getProperty('LAW_OC');
-  if (!ocKey) return { error: 'LAW_OC(국가법령정보센터 인증키)가 스크립트 속성에 설정되어 있지 않습니다.' };
-
-  // 1단계: 법령명 검색
-  let mst, efYd, matchedName, futureEfYd = '';
-  try {
-    const searchUrl = 'https://www.law.go.kr/DRF/lawSearch.do?OC=' + encodeURIComponent(ocKey)
-      + '&target=eflaw&type=XML&query=' + encodeURIComponent(String(lawName).trim());
-    const res = UrlFetchApp.fetch(searchUrl, { muteHttpExceptions: true });
-    if (res.getResponseCode() !== 200) {
-      return { error: '법령 검색 API 호출 실패 (status ' + res.getResponseCode() + ')' };
+  var oc = PropertiesService.getScriptProperties().getProperty('LAW_OC'), key = String(lawName).replace(/\s/g, '');
+  [[/상증세?법/, '상속세및증여세법'], [/조특법/, '조세특례제한법'], [/국기법/, '국세기본법'], [/국징법/, '국세징수법'], [/농특세?법/, '농어촌특별세법']].forEach(function (a) { key = key.replace(a[0], a[1]); });
+  var m = String(articleNo || '').match(/(\d+)\s*(?:조)?\s*(?:의\s*(\d+))?/), jk = m ? m[1] + (m[2] ? '의' + m[2] : '') : '';
+  var jo = m ? ('0000' + m[1]).slice(-4) + ('00' + (m[2] || 0)).slice(-2) : '', day = String(baseDate || '').replace(/\D/g, '').slice(0, 8);
+  var out = { 법령명: lawName }, arts = null, idx = null, ent, c = CacheService.getScriptCache();
+  try { idx = lawDbIdx_(); } catch (e) { }
+  ent = idx && idx.법령[key];
+  var ver = ent && ent.판.filter(function (p) { return day ? p.시행일 <= day : p.판 === ent.현행; }).pop();
+  if (ver && ent.ids[ver.판]) try {
+    var ck = 'lwa|' + key + '|' + ver.판 + '|' + jk, hit = jk && c.get(ck);
+    arts = hit ? [JSON.parse(hit)] : JSON.parse(Utilities.ungzip(DriveApp.getFileById(ent.ids[ver.판]).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')).조.filter(function (a) { return !jk || a.조 === jk; });
+    if (jk && !hit && arts.length) try { c.put(ck, JSON.stringify(arts[0]), 21600); } catch (e) { }
+    out = { 법령명: ent.이름, 시행일자: ver.시행일, 판: ver.판, 출처: '법령 정비본(법제처 ' + ver.시행일 + ' 시행판, 공포 ' + ver.공포일 + ' 제' + ver.공포번호 + '호)' };
+    if (ent.범위 === '조회만') out.주의 = '지방세 — 조회만, 계산·신고서 근거로 쓰지 않음';
+    var fut = ent.판.filter(function (p) { return p.상태 === '시행예정' && p.시행일 > (day || ver.시행일); })[0];
+    if (fut) out.시행예정개정 = fut.시행일 + ' 시행 예정 개정판 있음 — 그 뒤 양도·증여·상속분이면 baseDate로 확인';
+  } catch (e) { arts = null; out.정비본오류 = String(e.message || e); }
+  if (oc) { // 법제처: 개정 확인, 또는 정비본에 없는 법령·판
+    var vs = lawGo_(oc, ent ? ent.이름 : lawName), ps = vs.판 || [], cur = ps.filter(function (p) { return p.cur; })[0];
+    if (vs.error && !arts) return vs;
+    var pick = day ? ps.filter(function (p) { return p.ef <= day; }).sort(function (a, b) { return b.ef.localeCompare(a.ef); })[0] : cur;
+    if (!arts && pick) { arts = lawGo_(oc, [pick.mst, pick.ef], jo); out = { 법령명: vs.이름, 시행일자: pick.ef, 출처: '법제처 ' + pick.ef + ' 시행판(정비본에 없음)' }; }
+    else if (arts && !day && cur && ent) {
+      if (cur.ef + '_' + cur.no === ent.현행) out.개정확인 = '정비본 = 법제처 현행판';
+      else {
+        var nw = jo ? lawGo_(oc, [cur.mst, cur.ef], jo) : [], f = function (a) { return a ? JSON.stringify([a.내용, a.항]).replace(/\s/g, '') : ''; }, same = f(nw[0]) === f(arts[0]);
+        out.개정확인 = '🆕 법제처에 새 현행판(' + cur.ef + ' 시행) — 정비본 갱신 대상' + (nw[0] ? (same ? ', 이 조문은 같음' : ', 이 조문 바뀜(법제처현행 참고)') : '');
+        if (nw[0] && !same) out.법제처현행 = nw[0];
+      }
     }
-    const doc = XmlService.parse(res.getContentText('UTF-8'));
-    const root = doc.getRootElement();
-    const laws = root.getChildren('law');
-    if (!laws.length) {
-      return { error: '"' + lawName + '"으로 검색된 법령이 없습니다. 정확한 법령명(정식 명칭)인지 확인해주세요.' };
-    }
-    // [2026.10.11 버그수정] 첫 검색결과가 "시행 예정"(미래 시행일) 판일 때가 있어(예: 소득세법 시행령 2028.1.1 시행판),
-    // 아직 시행되지 않은 조문을 현행처럼 인용하는 문제가 있었다 — 같은 법령명 중 "현행" 판(없으면 오늘 이전 시행일 중
-    // 가장 최근 판)을 고르고, 시행 예정 판이 있으면 그 시행일을 함께 알려준다.
-    const first = laws[0];
-    const firstName = first.getChildText('법령명한글');
-    const todayYmd = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMdd');
-    const same = laws.filter(function (x) { return x.getChildText('법령명한글') === firstName; });
-    let pick = same.filter(function (x) { return /현행/.test(x.getChildText('현행연혁코드') || ''); })[0];
-    if (!pick) {
-      const past = same.filter(function (x) { return String(x.getChildText('시행일자') || '') <= todayYmd; })
-        .sort(function (a, b) { return String(b.getChildText('시행일자')).localeCompare(String(a.getChildText('시행일자'))); });
-      pick = past[0] || first;
-    }
-    const future = same.filter(function (x) { return String(x.getChildText('시행일자') || '') > todayYmd; })
-      .map(function (x) { return x.getChildText('시행일자'); }).sort();
-    futureEfYd = future.length ? future[0] : '';
-    mst = pick.getChildText('법령일련번호');
-    efYd = pick.getChildText('시행일자');
-    matchedName = pick.getChildText('법령명한글');
-  } catch (err) {
-    return { error: '법령 검색 중 오류: ' + err.message };
+    out.원문링크 = 'https://www.law.go.kr/법령/' + encodeURIComponent(String(vs.이름 || lawName).replace(/\s/g, '')) + (jk ? '/' + encodeURIComponent('제' + jk.replace(/^(\d+)/, '$1조')) : '');
   }
-
-  // 조번호를 "4자리+2자리" 6자리 코드로 변환 (예: "45" → 004500, "10조의2" → 001002)
-  let jo = null;
-  if (articleNo) {
-    const m = String(articleNo).match(/(\d+)\s*(?:조)?\s*(?:의\s*(\d+))?/);
-    if (m) {
-      const num = ('0000' + m[1]).slice(-4);
-      const sub = ('00' + (m[2] || '0')).slice(-2);
-      jo = num + sub;
-    }
-  }
-
-  // 2단계: 조문 본문 조회
+  if (!arts || !arts.length || arts.error) return { error: '해당 조문을 찾을 수 없습니다(법령명·조번호 확인).', 법령명: out.법령명 };
+  var corr = []; // 산식 보정 — 그 판 조문에 같은 산식 그림이 있을 때만 덧입힘. "검증 필요"(코드에서 옮김)는 덧입히지 않고 따로
   try {
-    let bodyUrl = 'https://www.law.go.kr/DRF/lawService.do?OC=' + encodeURIComponent(ocKey)
-      + '&target=eflaw&MST=' + encodeURIComponent(mst) + '&efYd=' + encodeURIComponent(efYd) + '&type=XML';
-    if (jo) bodyUrl += '&JO=' + jo;
-
-    const res2 = UrlFetchApp.fetch(bodyUrl, { muteHttpExceptions: true });
-    if (res2.getResponseCode() !== 200) {
-      return { error: '조문 조회 API 호출 실패 (status ' + res2.getResponseCode() + ')' };
-    }
-    const doc2 = XmlService.parse(res2.getContentText('UTF-8'));
-    const root2 = doc2.getRootElement();
-    const joMok = root2.getChild('조문');
-    const articleUnits = joMok ? joMok.getChildren('조문단위') : [];
-
-    if (!articleUnits.length) {
-      return { error: '해당 조문을 찾을 수 없습니다(법령명 또는 조번호를 다시 확인해주세요).', 법령명: matchedName };
-    }
-
-    const items = articleUnits.map(function (unit) {
-      const hangList = unit.getChildren('항').map(function (hang) {
-        const hoList = hang.getChildren('호').map(function (ho) {
-          return (ho.getChildText('호내용') || '').trim();
-        });
-        return { 항내용: (hang.getChildText('항내용') || '').trim(), 호: hoList };
-      });
-      return {
-        조문번호: unit.getChildText('조문번호'),
-        조문제목: unit.getChildText('조문제목'),
-        조문내용: (unit.getChildText('조문내용') || '').trim(),
-        항: hangList
-      };
+    var cs = c.get('lawdb_corr');
+    if (!cs && idx && idx.보정ID) { cs = JSON.stringify(JSON.parse(DriveApp.getFileById(idx.보정ID).getBlob().getDataAsString('UTF-8')).항목.map(function (x) { return [x.법령, x.조, x.그림, x.산식, x.출처, x.상태]; })); try { c.put('lawdb_corr', cs, 21600); } catch (e) { } }
+    corr = JSON.parse(cs || '[]').filter(function (x) { return x[0] === key; });
+  } catch (e) { }
+  out.조문 = arts.map(function (a) {
+    var 보정 = [], 검증 = [], s = JSON.stringify(a);
+    corr.forEach(function (x) {
+      if (x[1] !== a.조) return;
+      var r = { 그림: x[2], 산식: x[3], 출처: x[4], 상태: x[5] };
+      if (/^검증/.test(x[5])) return 검증.push(r);
+      if (!x[2].every(function (id) { return a.그림.indexOf(id) >= 0; })) r.상태 = '다시 확인 필요(이 판에는 그 산식 그림이 없음 — 개정됨)';
+      else if (!/^다시/.test(x[5])) s = s.replace('〔산식 그림 img' + x[2][0] + '〕', '$&\\n' + JSON.stringify('〔산식 보정 — ' + x[4] + ' · ' + x[5] + '〕\n' + x[3]).slice(1, -1).replace(/\$/g, '$$$$'));
+      보정.push(r);
     });
+    a = JSON.parse(s);
+    return { 조문번호: a.조, 조문제목: a.제목, 조문내용: a.내용, 참고: a.참고, 산식보정: 보정.length ? 보정 : undefined, '검증필요_코드에서옮김(근거 아님)': 검증.length ? 검증 : undefined,
+      항: a.항.map(function (h) { return { 항내용: h.내용, 호: h.호.map(function (o) { return [o.내용].concat(o.목 || []).join('\n'); }) }; }) };
+  });
+  return out;
+}
 
-    return {
-      법령명: matchedName,
-      시행일자: efYd,
-      시행예정개정: futureEfYd ? (futureEfYd + ' 시행 예정 개정판 있음 — 시행일 이후 양도·증여·상속분이면 그 판을 확인') : '',
-      조문: items,
-      원문링크: 'https://www.law.go.kr/DRF/lawService.do?OC=' + ocKey + '&target=eflaw&MST=' + mst
-        + '&efYd=' + efYd + (jo ? '&JO=' + jo : '') + '&type=HTML'
-    };
-  } catch (err) {
-    return { error: '조문 조회 중 오류: ' + err.message };
-  }
+// [2026.10.19] [📜 법령] 탭 정비본 보기 — 법령·판 목록 + (lawName을 주면) 그 판의 차례(조 번호·제목, 편·장·절 머리). 본문은 law_lookup_article(baseDate=판 시행일)
+function lawDbToc_(lawName, ver) {
+  var idx = lawDbIdx_(); if (!idx) return { error: '법령 정비본(드라이브 0 NETAX/업무관리자/법령/본문)을 찾지 못했습니다.' };
+  var laws = Object.keys(idx.법령).map(function (k) { var e = idx.법령[k]; return { 키: k, 이름: e.이름, 범위: e.범위, 현행: e.현행, 판: e.판.map(function (p) { return { 판: p.판, 시행일: p.시행일, 공포일: p.공포일, 공포번호: p.공포번호, 구분: p.구분, 법종: p.법종, 상태: p.상태 }; }) }; });
+  if (!lawName) return { 법령: laws };
+  var key = String(lawName).replace(/\s/g, ''), e = idx.법령[key], v = ver || (e && e.현행);
+  if (!e || !e.ids[v]) return { 법령: laws, error: '그 판이 정비본에 없습니다.' };
+  var c = CacheService.getScriptCache(), ck = 'lwtoc|' + key + '|' + v, s = c.get(ck);
+  if (!s) { var d = JSON.parse(Utilities.ungzip(DriveApp.getFileById(e.ids[v]).getBlob().setContentType('application/x-gzip')).getDataAsString('UTF-8')); s = JSON.stringify({ 머리: d.머리 || [], 조: d.조.map(function (a) { return [a.조, a.제목]; }) }); try { c.put(ck, s, 21600); } catch (x) { } }
+  var t = JSON.parse(s); return { 법령: laws, 키: key, 판: v, 머리: t.머리, 조: t.조 };
 }
 
 /**
@@ -14883,7 +14899,7 @@ function callClaude(body, model, cfg, effort, maxTokens, systemPrompt, apiKey) {
 
       if (block.name === 'lookup_statute_article') {
         const input = block.input || {};
-        const resultObj = toolLookupStatuteArticle(input.lawName, input.articleNo);
+        const resultObj = toolLookupStatuteArticle(input.lawName, input.articleNo, input.baseDate);
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(resultObj) };
       }
 
@@ -36356,6 +36372,21 @@ function caseProcDraft_(c) {
     paras.forEach(function (p) {
       L.push('### ' + p.제목, '', String(p.body || '').replace(/\{AI:\s*([^}]*)\}/g, function (_, w) { return '✍️[AI 작성: ' + w.trim() + ']'; })
         .replace(/\{([가-힣A-Za-z0-9_]+)\}/g, function (_, k) { return (vars[k] != null && String(vars[k]).trim()) ? String(vars[k]) : '⚠[확인필요: ' + k + ']'; }), '');
+    });
+  }
+  // [2026.10.19 법령] 근거 — 법령 탭에서 사건에 붙인 조문·예규·판례(직접·AI)를 쓸 곳(쟁점)별로. 조문은 첨부 때 저장한 사건 기준일 판 원문(관계법령 모양) — 서버는 정비본을 다시 읽지 않는다
+  const att = (c.법령예규판례 || []).filter(function (e) { return e && e.category !== 'law' && e.category !== 'form' && (e.category !== 'statute' || e.원문); });
+  if (att.length) {
+    const cat = { precedent: '판례', interpretation: '법령해석례', administrative_rule: '행정규칙', tax_tribunal: '조세심판원', constitutional: '헌재결정례' }, by = {};
+    L.push((paras.length ? '### ' : '## ') + '근거 — 첨부한 법령·예규·판례(' + att.length + '건)', '');
+    att.forEach(function (e) { const k = String(e.쓸곳 || '').trim() || '쓸 곳 미지정'; (by[k] = by[k] || []).push(e); });
+    Object.keys(by).forEach(function (k) {
+      L.push('**▸ ' + k + '**', '');
+      by[k].forEach(function (e) {
+        const who = e.첨부 === 'AI' ? (e.확인 ? '🤖 AI 첨부' : '🤖 AI 첨부(미확인)') + (e.이유 ? ' — ' + e.이유 : '') : '직접 첨부';
+        if (e.category === 'statute') L.push('**' + e.제목 + '**' + (e.판 ? ' (' + e.판 + ' 시행)' : '') + ' — ' + who, '', String(e.원문).slice(0, 3000), '');
+        else L.push('- [' + (cat[e.category] || e.category) + '] ' + String(e.제목 || '').replace(/\s+/g, ' ') + (e.번호 ? ' (' + e.번호 + ')' : '') + (e.결과 ? ' — ' + e.결과 : '') + ' — ' + who + (e.요약 ? '  \n  ' + String(e.요약).replace(/\s+/g, ' ').slice(0, 160) : ''), '');
+      });
     });
   }
   // [2026.10.18 교차검증 2번] AI 판단 값은 서류 값·세무사님 확인 값과 섞지 않고 따로 모은다(세무사님 원칙 4 — 무엇을 AI가 정했는지 알 수 있게)

@@ -177,8 +177,16 @@
   function evFromSingle(asset, r) {
     var tp = n(asset.transferPrice), ap = n(asset.acquisitionPrice), ne = n(asset.necessaryExpenses);
     var grossFallback = tp - ap - ne;
+    // [2026.10.19 서식 감사 B4] 비과세 자산도 ⑫ 취득가액·⑭ 기타 필요경비를 찍도록 엔진 입력값·산정방법을 넘긴다(예전엔 빠져 빈칸)
+    var inAcq = r && r.입력값 && has(r.입력값.취득가액) ? n(r.입력값.취득가액) : ap, inNec = r && r.입력값 && has(r.입력값.필요경비) ? n(r.입력값.필요경비) : ne;
     if (r && r.비과세여부 && r.과세대상양도차익 === undefined)
-      return { ok: true, gross: Math.round(grossFallback), nonTaxable: Math.round(Math.max(0, grossFallback)), taxable: 0, ltRate: 0, ltDeduction: 0, income: 0 };
+      return { ok: true, gross: Math.round(grossFallback), nonTaxable: Math.round(Math.max(0, grossFallback)), taxable: 0, ltRate: 0, ltDeduction: 0, income: 0, acq: inAcq, nec: inNec, kind: acqKindCode(r.취득가액_산정방법) };
+    // [2026.10.19 서식 감사 B5] 미등기양도자산 — 엔진은 짧은 결과(양도차익·과세표준·산출세액)만 준다. 장기보유특별공제·기본공제 배제(§95②·§103①)라
+    //  과세대상 양도차익 = 양도소득금액 = 양도차익, 장기보유특별공제 0
+    if (r && !r.error && r.입력값 && r.입력값.미등기양도 && r.과세대상양도차익 === undefined) {
+      var gU = Math.round(n(r.양도차익));
+      return { ok: true, gross: gU, nonTaxable: 0, taxable: gU, ltRate: 0, ltDeduction: 0, income: gU, acq: inAcq, nec: inNec, kind: acqKindCode(r.취득가액_산정방법) };
+    }
     if (!r || r.error || r.과세대상양도차익 === undefined) return { ok: false, why: r && r.error ? r.error : '엔진 값 없음' };
     var gross = Math.round(n(r.양도차익)), taxable = Math.round(n(r.과세대상양도차익));
     return { ok: true, gross: gross, nonTaxable: Math.max(0, gross - taxable), taxable: taxable, ltRate: n(r.장기보유특별공제율),
@@ -376,7 +384,8 @@
       if (has(ta.phone)) o.set(isMobile(ta.phone) ? '⑯~전화번호(휴대전화) (세무대리인)' : '⑯~전화번호(사무실) (세무대리인)', ta.phone);
     }
     var giftAmount = has(it.amount) ? n(it.amount) : n(r.증여재산가액);
-    var prior = n(it.priorGiftAmount);
+    // [2026.10.19 서식 감사 B1] ㉓ = 엔진이 실제 가산한 금액(1천만 미만·합산배제면 0)
+    var prior = (has(r.증여세과세가액) && has(r.순수증여재산가액)) ? Math.max(0, n(r.증여세과세가액) - n(r.순수증여재산가액)) : n(it.priorGiftAmount);
     var taxable = n(r.순수증여재산가액) + prior;
     o.set('⑰', giftAmount).set('⑱', n(r.비과세재산가액)).set('⑲', n(r.공익법인출연재산가액)).set('⑳', n(r.공익신탁재산가액))
       .set('㉑', n(r.장애인신탁재산가액)).set('㉒', n(r.인수채무액)).set('㉓', prior).set('㉔', taxable);
@@ -510,7 +519,7 @@
     o.miss('㉗㉘ 조특법 §30의5·§30의6 가산액', '나눠 받는 칸 없음 — 전액 ㉖(§13)으로(전자신고와 같음)');
     o.set('㉙', fv.taxableEstate);
     o.check('⑨ = ⑦ 합', valTotal, rows.reduce(function (s, a) { return s + Math.round(n(a.value)); }, 0));
-    if (grossKnown && fv.priorGiftAdded !== null) o.check('㉙ = ⑫ − ⑬ − ⑰ − ㉑ + ㉕', fv.taxableEstate, gross + disp - nonTax - po - pt - (dues + fun + debt) + fv.priorGiftAdded);
+    if (grossKnown && fv.priorGiftAdded !== null) o.check('㉙ = max(0, ⑫ − ⑬ − ⑰ − ㉑) + ㉕', fv.taxableEstate, Math.max(0, gross + disp - nonTax - po - pt - (dues + fun + debt)) + fv.priorGiftAdded); // [2026.10.19] §13① 후단 — 사전증여 가산 전 0 바닥
     return o.result();
   };
 
@@ -691,7 +700,7 @@
     } else o.note('재산평가 목록에 이 수증자·증여자에게 배분된 재산이 없음 — 표는 비움(⑨는 증여재산가액)');
     var giftAmount = has(it.amount) ? n(it.amount) : n(r.증여재산가액);
     o.set('⑨', giftAmount).set('⑩', n(r.비과세재산가액)).set('⑪', n(r.공익법인출연재산가액)).set('⑫', n(r.공익신탁재산가액))
-      .set('⑬', n(r.장애인신탁재산가액)).set('⑭', n(it.priorGiftAmount));
+      .set('⑬', n(r.장애인신탁재산가액)).set('⑭', (has(r.증여세과세가액) && has(r.순수증여재산가액)) ? Math.max(0, n(r.증여세과세가액) - n(r.순수증여재산가액)) : n(it.priorGiftAmount)); // [2026.10.19 B1]
     o.miss('⑮ 합계', '⑨~⑭를 더하고 빼는 식이 서식·작성방법에 없음');
     if (rows.length) o.check('⑨ 증여재산가액 = ⑦ 평가가액 합', giftAmount, rows.reduce(function (s, a) { return s + Math.round(n(a.value)); }, 0));
     return o.result();
@@ -703,13 +712,14 @@
     if (!b) { o.miss('부표2 전체', '가업승계 납부유예(증여, 조특법 §30의7) 계산 결과 없음'); return o.result(); }
     var nb = n(b.nonBiz55) + n(b.nonBiz49) + n(b.nonBiz61) + n(b.excessCash) + n(b.nonBizStock);
     var tot = n(b.totalAsset), rel = Math.max(0, tot - nb), defer = n(b.result && b.result.납부유예금액);
-    o.miss('① 증여일 현재 주식 등의 가액', '계산기에 따로 없음(지금 인쇄는 ⑦ 총 증여재산가액을 같이 찍음 — 같은 값인지 확인 전 비움)');
+    if (n(b.stockValue)) o.set('①', n(b.stockValue)); else o.miss('① 증여일 현재 주식 등의 가액', '화면 "가업 주식등의 가액" 칸이 비어 있음');
     o.set('②', tot).set('㉮', n(b.nonBiz55)).set('㉯', n(b.nonBiz49)).set('㉰', n(b.nonBiz61)).set('㉱', n(b.excessCash)).set('㉲', n(b.nonBizStock))
       .set('③', nb).set('④', rel);
     if (tot) o.set('⑤', pct2(rel / tot)); else o.miss('⑤ 사업관련 자산가액 비율', '② 총자산가액 0');
     o.set('⑥', n(b.businessValue)).set('⑦', n(b.totalValue)).set('⑧', n(b.taxPayable)).set('⑨', defer);
     o.note('⑧은 화면 칸(bdTaxPayable, 이름 "산출세액") 값 — 엔진이 ⑨ 계산에 쓴 값과 같음(서식 이름은 "증여세 납부세액")');
     o.check('④ = ② − ③', rel, tot - nb);
+    if (n(b.stockValue) && tot) o.check('⑥ = ① × ⑤', n(b.businessValue), Math.round(n(b.stockValue) * rel / tot)); // [2026.10.19 A2]
     if (n(b.totalValue)) o.check('⑨ = ⑧ × ⑥ ÷ ⑦', defer, Math.round(n(b.taxPayable) * n(b.businessValue) / n(b.totalValue)));
     return o.result();
   };
@@ -842,7 +852,7 @@
       o.set('⑤', pct2(legal));
       if (b25 !== null) {
         o.set('⑥', Math.round((b12 + b25 - n(ctx.nonHeirBequest) - n(r.비과세재산가액) - n(ctx.duesTotal) - n(ctx.debtTotal)) * legal));
-        o.note('⑥은 작성방법 3의 식대로(재산 + 처분재산 + 가산 증여 − 수유자 유증 − 비과세 − 공과금 − 채무) × 법정지분 — 지금 인쇄·전자신고(재산평가 합계 × 지분)와 다를 수 있음');
+        // [2026.10.19 B2] 예전 인쇄·전자신고도 같은 식으로 고침(ihLegalShareBase_)
       } else o.miss('⑥ 법정상속재산가액', '가산하는 증여재산가액(fv.priorGiftAdded) 없음');
     } else o.miss('⑤⑥ 법정상속지분율·재산가액', '상속인 명부 법정지분 없음');
     var actual = Math.round(n(h.actualValue));
@@ -1189,7 +1199,7 @@
       var bdRes = i === 0 ? (typeof lastBdDeferralResult_ !== 'undefined' ? lastBdDeferralResult_ : null) : null;
       var bd = (bdRes && el('bdProvision') === 'gift') ? { totalAsset: numVal(el('bdTotalAsset')) || 0, nonBiz55: numVal(el('bdNonBiz55')) || 0, nonBiz49: numVal(el('bdNonBiz49')) || 0,
         nonBiz61: numVal(el('bdNonBiz61')) || 0, excessCash: numVal(el('bdExcessCash')) || 0, nonBizStock: numVal(el('bdNonBizStock')) || 0,
-        totalValue: numVal(el('bdTotalValue')) || 0, businessValue: numVal(el('bdBusinessValue')) || 0, taxPayable: numVal(el('bdTaxPayable')) || 0, result: bdRes } : null;
+        totalValue: numVal(el('bdTotalValue')) || 0, stockValue: numVal(el('bdStockValue')) || 0, businessValue: numVal(el('bdBusinessValue')) || 0, taxPayable: numVal(el('bdTaxPayable')) || 0, result: bdRes } : null;
       return Object.assign({ r: r, item: item ? { amount: item.amount, priorGiftAmount: item.priorGiftAmount } : {}, donee: giftDonees[doneeIdx] || {}, donor: donor,
         relation: item ? giftPairRelation_(donor, doneeIdx).relation : '', giftDate: el('giftDate'),
         marriageBirth: r && numVal(r.혼인출산증여재산공제) ? gfMarriageBirthSplit_(numVal(r.혼인출산증여재산공제) || 0) : { marriage: 0, birth: 0 },

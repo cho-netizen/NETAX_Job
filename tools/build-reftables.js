@@ -144,7 +144,7 @@ if (t201 && t203) {
     }) };
   });
   const txt = JSON.stringify(idx);
-  const DRIVE = 'J:/내 드라이브/0 NETAX/업무관리자/세금계산/법정서식원본(법제처)';
+  const DRIVE = 'J:/내 드라이브/0 NETAX/업무관리자/서식/법제처 원본(PDF)'; // [2026.10.19] 폴더 정리(옛 위치 세금계산/법정서식원본(법제처))
   // [2026.10.19] --no-drive: 드라이브 색인은 건드리지 않음(다른 세션 가지의 새 서식 색인을 옛 것으로 덮지 않게 — 조견표만 고칠 때)
   if (process.argv.indexOf('--no-drive') !== -1) console.log('서식 색인: --no-drive라 드라이브에 안 씀(' + Buffer.byteLength(txt) + '바이트)');
   else if (fs.existsSync(DRIVE)) { fs.writeFileSync(path.join(DRIVE, '_서식색인.json'), txt); console.log('서식 색인 → 드라이브 _서식색인.json ' + Buffer.byteLength(txt) + '바이트(서식 ' + Object.keys(idx.서식).length + '장)'); }
