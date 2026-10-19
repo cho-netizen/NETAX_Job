@@ -177,8 +177,16 @@
   function evFromSingle(asset, r) {
     var tp = n(asset.transferPrice), ap = n(asset.acquisitionPrice), ne = n(asset.necessaryExpenses);
     var grossFallback = tp - ap - ne;
+    // [2026.10.19 서식 감사 B4] 비과세 자산도 ⑫ 취득가액·⑭ 기타 필요경비를 찍도록 엔진 입력값·산정방법을 넘긴다(예전엔 빠져 빈칸)
+    var inAcq = r && r.입력값 && has(r.입력값.취득가액) ? n(r.입력값.취득가액) : ap, inNec = r && r.입력값 && has(r.입력값.필요경비) ? n(r.입력값.필요경비) : ne;
     if (r && r.비과세여부 && r.과세대상양도차익 === undefined)
-      return { ok: true, gross: Math.round(grossFallback), nonTaxable: Math.round(Math.max(0, grossFallback)), taxable: 0, ltRate: 0, ltDeduction: 0, income: 0 };
+      return { ok: true, gross: Math.round(grossFallback), nonTaxable: Math.round(Math.max(0, grossFallback)), taxable: 0, ltRate: 0, ltDeduction: 0, income: 0, acq: inAcq, nec: inNec, kind: acqKindCode(r.취득가액_산정방법) };
+    // [2026.10.19 서식 감사 B5] 미등기양도자산 — 엔진은 짧은 결과(양도차익·과세표준·산출세액)만 준다. 장기보유특별공제·기본공제 배제(§95②·§103①)라
+    //  과세대상 양도차익 = 양도소득금액 = 양도차익, 장기보유특별공제 0
+    if (r && !r.error && r.입력값 && r.입력값.미등기양도 && r.과세대상양도차익 === undefined) {
+      var gU = Math.round(n(r.양도차익));
+      return { ok: true, gross: gU, nonTaxable: 0, taxable: gU, ltRate: 0, ltDeduction: 0, income: gU, acq: inAcq, nec: inNec, kind: acqKindCode(r.취득가액_산정방법) };
+    }
     if (!r || r.error || r.과세대상양도차익 === undefined) return { ok: false, why: r && r.error ? r.error : '엔진 값 없음' };
     var gross = Math.round(n(r.양도차익)), taxable = Math.round(n(r.과세대상양도차익));
     return { ok: true, gross: gross, nonTaxable: Math.max(0, gross - taxable), taxable: taxable, ltRate: n(r.장기보유특별공제율),
