@@ -3420,6 +3420,13 @@
     return Math.min(Number(p.appraisalFeeAmount) || 0, 5000000) + Math.min(Number(p.artAppraisalFeeAmount) || 0, 5000000)
       + Math.min(Number(p.unlistedStockAppraisalFeeAmount) || 0, 10000000 * cnt_);
   }
+  // [2026.10.20 세액 고침 — 서식↔엔진 감사 C 발견] 증여의제·추정 계산의 증여재산공제(상증법 §53): 같은 증여자 10년 내 증여를 합산(§47②, priorGiftAmount)하면
+  //  공제 한도를 합산한 과세가액 전체에 다시 적용한다(일반 증여 calculateGiftTaxJS·국세청 증여세 신고 사례03과 같음 — 그때 낸 세금은 기납부세액으로 뺌).
+  //  예전엔 한도를 이번 증여분하고만 비교해, 이번 분이 한도보다 작고 합산이 있으면 공제가 적게(세액이 많게) 나왔다. 한도 입력(relationDeductionLimit)은
+  //  합산하는 그 증여에 쓴 공제를 빼지 않은 값이어야 한다(합산 안 되는 다른 증여자에게 쓴 공제만 뺌).
+  function relationDeductionFor_(p, amt, prior) {
+    return Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, (Number(amt) || 0) + (Number(prior) || 0)));
+  }
   window.calculateGiftTaxJS = function (p) {
     p = p || {};
     const giftAmount = Number(p.giftAmount);
@@ -4708,8 +4715,8 @@
     const giftAmount = Math.max(0, debtAmount - compensationPaid);
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -4781,8 +4788,8 @@
     }
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -4836,8 +4843,8 @@
     const giftAmount = assetValue;
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
 
@@ -4943,8 +4950,8 @@
     if (giftAmount <= 0) return { error: '신탁이익(원본 또는 수익의 가액 — 여러 차례 나눠 받는 경우 재산평가 화면의 §61 신탁수익권 평가액)이 필요합니다.' };
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -4993,8 +5000,8 @@
 
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -6977,8 +6984,8 @@
 
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -7964,8 +7971,8 @@
     if (caseType === 'acquisition') {
       isAggregationExcluded = false;
       const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-      const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
       const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+      const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
       taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
       var relationDeductionOut = relationDeduction, disasterLossAmountOut = disasterLossAmount;
     } else {
@@ -8044,8 +8051,8 @@
 
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -8282,8 +8289,8 @@
 
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -8942,8 +8949,8 @@
 
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -9437,8 +9444,8 @@
     }
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -9505,8 +9512,8 @@
     }
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -9572,8 +9579,8 @@
     }
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -9731,8 +9738,8 @@
 
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftDeemedAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftDeemedAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftDeemedAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     let calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
 

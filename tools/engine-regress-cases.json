@@ -2311,5 +2311,22 @@
    "산출세액": 133060000,
    "외국납부세액공제": 90000000
   }
+ },
+ {
+  "이름": "[세액 고침 — 감사 C] 초과배당 증여의제 + 같은 증여자 10년 내 앞선 증여 5천만 합산: 증여재산공제 한도(5천만)를 합산 과세가액(3천만 + 5천만)과 비교 → 공제 5천만, 과세표준 3천만, 산출 300만(예전 이번 분 3천만하고만 비교해 공제 3천만·산출 500만)",
+  "도구": "calculateExcessDividendGiftTaxJS",
+  "고정": true,
+  "입력": {
+   "excessDividendBaseAmount": 40000000,
+   "disproportionateShortfallRatio": 1,
+   "estimatedIncomeTaxEquivalent": 10000000,
+   "relationDeductionLimit": 50000000,
+   "giftDate": "2026-05-01",
+   "priorGiftAmount": 50000000
+  },
+  "정답": {
+   "과세표준": 30000000,
+   "산출세액": 3000000
+  }
  }
 ]

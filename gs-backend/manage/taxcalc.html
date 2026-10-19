@@ -11616,7 +11616,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>1주당 기업가치의 실질적인 증가로 인한 이익</label><input type="number" id="slRealIncrease" placeholder="원"><span class="taxcalc-field-help">시행령§31의3⑤, 없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>당초 납부한 증여세액</label><input type="number" id="slOriginalGiftTaxPaid" placeholder="원"><span class="taxcalc-field-help">정산기준일 가액이 당초보다 기준금액 이상 낮아졌을 때 환급액 계산용, 가액 하락시만</span></div>' +
         '<div class="taxcalc-field"><label>증여받거나 유상취득한 주식수</label><input type="number" id="slShares" placeholder="주"></div>' +
-        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="slRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="slRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도(10년) — 같은 증여자 앞선 증여를 합산하면 그 증여에 쓴 공제는 빼지 말고, 합산 안 되는 다른 증여자에게 쓴 공제만 뺌. 없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="slAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
       '</div>' +
       '<div class="taxcalc-grid">' +
@@ -11694,7 +11694,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>기과세된 취득시 이익</label><input type="number" id="cbPriorAcquisitionGift" placeholder="원"><span class="taxcalc-field-help">같은 건 법1호로 이미 과세된 금액, 없으면 0, 전환시(정방향)만</span></div>' +
         '<div class="taxcalc-field"><label>그 특수관계인의 전환등전 보유지분비율</label><input type="number" step="0.01" min="0" max="1" id="cbRelatedRatio" placeholder="0~1"><span class="taxcalc-field-help">전환시 반대편만</span></div>' +
         '<div class="taxcalc-field"><label>1년 이내 동일유형(케이스) 이전거래 이익 합계(§43②)</label><input type="number" id="cbPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액(취득시만)</label><input type="number" id="cbRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액(취득시만)</label><input type="number" id="cbRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도(10년) — 같은 증여자 앞선 증여를 합산하면 그 증여에 쓴 공제는 빼지 말고, 합산 안 되는 다른 증여자에게 쓴 공제만 뺌. 없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="cbAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
       '</div>' +
       '<div class="taxcalc-grid">' +
@@ -11742,7 +11742,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>지배주주등의 주식보유비율</label><input type="number" step="0.01" min="0" max="1" id="scShareRatio" placeholder="0~1"></div>' +
         '<div class="taxcalc-field"><label>직접증여시 증여세상당액(§45의5② 한도용)</label><input type="number" id="scDirectGiftTax" placeholder="원"><span class="taxcalc-field-help">세대생략 할증 전 금액(서식 10호의6 ㊲ "산출세액 한도" — 할증 ㊳은 한도 뒤에 더함). 비우면 (특정법인 이익 × 지분율)에 누진세율로 자동 계산</span></div>' +
         '<div class="taxcalc-field"><label>1년 이내 같은 특정법인과의 이전거래 이익 합계(§43②)</label><input type="number" id="scPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="scRelationDeduction" placeholder="원"><span class="taxcalc-field-help">증여자가 법인이므로 통상 0</span></div>' +
+        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="scRelationDeduction" placeholder="원"><span class="taxcalc-field-help">서식 10호의6은 증여자(특수관계인)와의 관계별 공제 칸을 둠 — 그 관계의 §53 한도(합산 기준은 왼쪽 칸들과 같음, 확인 필요)</span></div>' +
         '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="scAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
       '</div>' +
       '<div class="taxcalc-grid">' +
@@ -11779,7 +11779,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>실제 소득세액 직접입력</label><input type="number" id="edActualTax" placeholder="원"><span class="taxcalc-field-help">종합과세면 위 종합소득과세표준을 입력하세요, 정산신고·비과세/분리과세만</span></div>' +
         '<div class="taxcalc-field"><label>(정산 신고만) 최초 신고 증여세액</label><input type="number" id="edInitialTax" placeholder="원"><span class="taxcalc-field-help">서식 ㊱ — 최초 신고의 산출세액 계 − 세액공제, 정산 세액에서 뺌(§41의2②)</span></div>' +
         '<div class="taxcalc-field"><label>1년 이내 동일 최대주주등의 이전 초과배당금액 합계(§43②)</label><input type="number" id="edPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="edRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="edRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도(10년) — 같은 증여자 앞선 증여를 합산하면 그 증여에 쓴 공제는 빼지 말고, 합산 안 되는 다른 증여자에게 쓴 공제만 뺌. 없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="edAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="edAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">현금 배당이라 보통 0 — 시행령 §46의2·§20의3 수수료(감정평가법인·신용평가기관·서화골동품 감정)가 실제로 든 경우만</span></div>' +
       '</div>' +
       '<div class="taxcalc-grid">' +
