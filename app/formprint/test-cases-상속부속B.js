@@ -70,5 +70,14 @@ module.exports = function (E, H) {
     claimant: Object.assign({ phone: '010-0000-0000', email: 'sample@example.com' }, HEIRS[0]), other: { name: DECEASED.name, regNo: DECEASED.regNo, deathDate: pIn.dateOfDeath }, office: DECEASED.taxOffice };
   L.push({ name: '공통16호_상속경정청구', forms: [{ formKey: '공통16호', ctx: cCr }], ctx: cCr });
 
+  // ④ 국기8호 — 상속인대표자신고서: 상속인 3명(배우자·자녀 2), 신고인(대표자) = 견본장남. 상속개시 2026.3.15. → 신고기한 2026.4.14.(30일 이내)
+  //   세액과는 관계없는 서식이라 엔진은 상속 결과가 있는지(plan 조건)만 씀
+  var HEIRS3 = [
+    { name: '견본배우자', regNo: '450303-2000000', relation: '배우자', address: '서울특별시 ○○구 견본로 2', addressDong: '101', addressHo: '1001', isReporter: false },
+    HEIRS[0], HEIRS[1]
+  ];
+  var c8 = ihCtx(Object.assign({}, BASE, { taxableEstateAmount: 2000000000, hasSpouse: true }), { heirs: HEIRS3, 신고일: '2026-04-10' });
+  L.push({ name: '국기8호_상속인3명', forms: X.plan('상속', c8).filter(function (it) { return it.formKey === '국기8호'; }), ctx: c8 });
+
   return L;
 };

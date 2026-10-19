@@ -377,6 +377,40 @@
     return o.result();
   };
 
+  // ───────── 국기 별지 제8호서식 — 상속인대표자신고서(국세기본법 §24③ 후단, 시행령 §12①) ─────────
+  //  지금 인쇄엔 이 서식이 없음(세액인쇄 "필요할 수 있음" 목록 PRINT_MAYBE_RULES_에 상속인 2명 이상일 때 이름만). 값은 상속 탭 상속인 명부.
+  function namedHeirs(ctx) { return (ctx.heirs || []).filter(function (h) { return h && (has(h.name) || has(h.relation)); }); }
+  mappers['국기8호'] = function (ctx) {
+    var o = new Out(), hs = namedHeirs(ctx), dc = ctx.deceased || {};
+    if (!hs.length) o.miss('①②③④ 상속인(성명·주민등록번호·주소·전화번호)', '상속인 명부 비어 있음');
+    else {
+      o.set('①', hs.map(function (h) { return h.name || ''; })).set('②', hs.map(function (h) { return h.regNo || ''; })).set('③', hs.map(function (h) { return H.fullAddr(h); }));
+      var ph = hs.map(function (h) { return heirPhone(ctx, h); });
+      if (ph.some(function (x) { return has(x); })) o.set('④', ph);
+      o.miss('④ 상속인 전화번호', '계산기에 없음(상속인 명부에 전화번호 칸 없음 — 상속세 신고인 줄에만 신고인 전화번호를 찍음)');
+      if (hs.some(function (h) { return !has(h.name); })) o.miss('① 성명 일부 줄', '상속인 명부에 이름이 없는 줄(관계만 있음)');
+      if (hs.some(function (h) { return !has(h.regNo); })) o.miss('② 주민등록번호 일부 줄', '화면 입력 없음');
+      if (hs.some(function (h) { return !has(H.fullAddr(h)); })) o.miss('③ 주소 일부 줄', '화면 입력 없음');
+      if (hs.length > 5) o.note('상속인이 ' + hs.length + '명 — 서식 표는 5줄이라 6번째부터 다음 장에 이어 찍음');
+      if (hs.length < 2) o.note('⚠ 상속인이 1명 — 대표자 신고는 상속인이 2명 이상일 때 함(국세기본법 §24③ 후단)');
+    }
+    var rp = hs.filter(function (h) { return h.isReporter; })[0];
+    if (rp) {
+      o.set('⑤', rp.name);
+      o.note('⚠ ⑤ 대표자 = 상속인 명부에서 "신고인"으로 표시한 사람(계산기에 납세 대표자 칸이 따로 없음) — 다르면 고치세요');
+    } else o.miss('⑤ 대표자 성명', '상속인 명부에 신고인 표시가 없음(계산기에 대표자 칸 없음)');
+    o.miss('⑥ 대표자로 정한 사유', '계산기에 없음');
+    ymdSet(o, '신고일', ctx.신고일, '신고일', 'ctx.신고일 없음(계산기에 없음)');
+    var dd = H.ymd(dc.deathDate);
+    if (dd) {
+      var due = new Date(Date.UTC(Number(dd.y), Number(dd.m) - 1, Number(dd.d) + 30));
+      o.note('신고기한: 상속개시일(' + dc.deathDate + ')부터 30일 이내(국세기본법 시행령 §12①) — ' + due.toISOString().slice(0, 10) + '까지(첫날 빼고 셈, 기한이 공휴일·토요일이면 다음 날)');
+    }
+    if (rp) o.set('신고인서명', rp.name); else o.miss('신고인(서명)', '상속인 명부에 신고인 표시가 없음');
+    if (has(dc.taxOffice)) o.set('세무서', H.officeName(dc.taxOffice)); else o.miss('세무서', '피상속인 관할 세무서 입력 없음');
+    return o.result();
+  };
+
   // ───────── 언제 찍나 ─────────
   function instIh(c) { var i = c.inst || instFromApp(); return i && i.input && i.input.taxType === 'inheritance' ? i : null; }
   var WHEN = {
@@ -384,9 +418,11 @@
     '상속12호의2부표1': function (c) { var r = c.r || {}; return !!(c.r && n(r.가업상속납부유예세액) > 0 && r.가업상속공제_계산내역); },
     // 연부연납: 상속 묶음엔 연부연납 도구가 상속세로 계산돼 있을 때만(증여는 세액인쇄 서식표의 그 줄로 — 첫 수증자 기준이라 사람별 묶음에 붙이지 않음)
     '공통11호': function (c) { return !!(c.r && instIh(c)); },
-    '공통11호부표': function (c) { return !!(c.r && instIh(c) && bizDetailOf(c)); }
+    '공통11호부표': function (c) { return !!(c.r && instIh(c) && bizDetailOf(c)); },
+    // 상속인대표자신고서: 상속인이 2명 이상(국세기본법 §24③ 후단 — 지금 세액인쇄 '필요할 수 있음' 규칙과 같은 조건)
+    '국기8호': function (c) { return !!(c.r && namedHeirs(c).length >= 2); }
   };
-  var IH_ORDER = ['상속12호의2', '상속12호의2부표1', '공통11호', '공통11호부표'];
+  var IH_ORDER = ['상속12호의2', '상속12호의2부표1', '공통11호', '공통11호부표', '국기8호'];
   function forIh(k, c) { return /^공통11호/.test(k) ? instCtxFromIh(c, instIh(c)) : c; }
 
   // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만)
@@ -400,7 +436,7 @@
   }
   // 세액인쇄 화면의 서식 한 줄 — 상속 계산 결과 하나
   function ihCtx(extra) { return withIhb(H.ctxFromApp.상속(extra)); }
-  ['상속12호의2', '상속12호의2부표1'].forEach(function (k) {
+  ['상속12호의2', '상속12호의2부표1', '국기8호'].forEach(function (k) {
     ctxFor[k] = function (extra) { var c = ihCtx(extra); return WHEN[k](c) ? c : null; };
     ready[k] = function () { try { return typeof lastInheritanceResult !== 'undefined' && !!lastInheritanceResult && !!ctxFor[k](); } catch (e) { return false; } };
   });
