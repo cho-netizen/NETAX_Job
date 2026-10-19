@@ -1429,5 +1429,23 @@
    "납부세액_합계": 91747823,
    "농어촌특별세": 14242577
   }
+ },
+ {
+  "이름": "거주주택 특례(영 §155㉑) — 마목 임대 6년(10년 요건 충족 전) 양도도 적용, 뒤에 못 채우면 §155㉒ 추징 안내",
+  "도구": "calculateRentalHousingResidenceExclusionJS",
+  "고정": true,
+  "입력": {
+   "residencePeriodMonths": 36,
+   "beforeRentalPeriodMet": true,
+   "rentalItemMa": {
+    "rentalYears": 6,
+    "standardPriceAtLeaseStart": 500000000,
+    "isOutsideMetro": false,
+    "rentIncreaseRate": 3
+   }
+  },
+  "정답": {
+   "적용여부": true
+  }
  }
 ]

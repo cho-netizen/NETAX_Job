@@ -6924,7 +6924,9 @@
   // 방대해(각 목마다 다른 기준시가·등록기한) 기존처럼 "요건충족 별도확인" 체크로 남긴다.
   function rentalHousingItemMaCheckJS_(m) {
     const rentalYears = Number(m.rentalYears) || 0;
-    if (rentalYears < 10) {
+    // [2026.10.20 세액 고침] 시행령 §155㉑(법제처 원문) — 임대기간요건을 충족하기 전에 거주주택을 양도해도 장기임대주택으로 보아 ⑳을 적용한다
+    //  (나머지 요건은 그대로 봄). m.beforeRentalPeriodMet이면 10년 미달을 떨어뜨리지 않는다 — 뒤에 못 채우면 ㉒ 추징.
+    if (rentalYears < 10 && !m.beforeRentalPeriodMet) {
       return { 충족: false, 사유: '10년 이상 임대해야 하는데(마목 본문), 임대기간이 ' + rentalYears + '년으로 미달합니다.' };
     }
     const priceLimit = m.isOutsideMetro ? 300000000 : 600000000;
@@ -6948,6 +6950,7 @@
     if (m.isPastTransferDeadline) {
       return { 충족: false, 사유: '아파트 민간매입임대주택으로서 양도기한(시행령§167조의3⑪)이 지난 후 양도하는 주택이라 제외됩니다(마목 단서 4호).' };
     }
+    if (rentalYears < 10) return { 충족: true, 임대기간충족전: true, 사유: '임대기간 ' + rentalYears + '년 — 임대기간요건(10년) 충족 전 양도로 시행령 §155㉑에 따라 장기임대주택으로 봅니다(기준시가·임대료·단서 요건은 충족).' };
     return { 충족: true, 사유: '10년 이상 임대, 기준시가 한도 이내, 임대료 5%이내 증가, 단서 제외사유 없음 — 마목 요건을 충족합니다.' };
   }
   window.calculateRentalHousingResidenceExclusionJS = function (p) {
@@ -6957,11 +6960,15 @@
     }
     let meetsRental = !!p.meetsLongTermRentalRequirements;
     let rentalCheckNote = '';
+    let beforePeriod_ = !!p.beforeRentalPeriodMet;
     if (p.rentalItemMa) {
-      const check = rentalHousingItemMaCheckJS_(p.rentalItemMa);
+      const check = rentalHousingItemMaCheckJS_(Object.assign({}, p.rentalItemMa, { beforeRentalPeriodMet: !!p.beforeRentalPeriodMet || !!p.rentalItemMa.beforeRentalPeriodMet }));
       meetsRental = check.충족;
       rentalCheckNote = check.사유 + ' ';
+      beforePeriod_ = !!check.임대기간충족전;
     }
+    // 시행령 §155㉒ — ㉑로 적용받은 뒤 임대기간요건을 못 채우면 그 사유가 생긴 달 말일부터 2개월 안에 (특례 없을 때 세액 − 낸 세액)을 신고·납부
+    const clawNote_ = beforePeriod_ ? ' ⚠ 임대기간요건 충족 전 양도(시행령 §155㉑) — 뒤에 임대기간요건을 채우지 못하면 그 사유가 생긴 달 말일부터 2개월 안에 "특례가 없었을 때 세액 − 낸 세액"을 신고·납부해야 합니다(§155㉒, 수용 등 부득이한 사유는 계속 임대로 봄).' : '';
     if (!meetsRental) {
       return { 적용여부: false, 안내: rentalCheckNote + '장기임대주택(소득세법시행령§167조의3①2호 가목~자목 중 하나, 또는 장기어린이집)이 양도일 현재 사업자등록(법§168)+민간임대주택 등록을 유지하고 임대보증금·임대료 증가율이 5%를 초과하지 않아야 하는데(시행령§155⑳2호·3호), 이 요건을 충족하지 못해(또는 목별 기준시가·임대기간 요건을 아직 확인하지 못해) 적용대상이 아닙니다.' };
     }
@@ -6972,13 +6979,13 @@
     if (p.hasPriorQualifyingResidence) {
       return {
         적용여부: true,
-        직전거주주택보유주택: true,
+        직전거주주택보유주택: true, 임대기간충족전: beforePeriod_ || undefined, 사후관리안내: clawNote_ || undefined,
         안내: '이 거주주택이 "직전거주주택보유주택"에 해당해(민간임대주택 등록 또는 어린이집 운영 이력이 있는 거주주택을 과거에 이미 양도한 적이 있음), 그 직전거주주택 양도일 이후의 기간분에 대해서만 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다(시행령§155⑳ 후단) — 전체 양도차익이 아니라 안분된 부분만 비과세되니 신고시 유의하세요.'
       };
     }
     return {
-      적용여부: true,
-      안내: '장기임대주택(또는 장기어린이집)을 보유한 1세대가 거주주택을 보유기간 중 2년 이상 거주 후 양도하여 시행령§155⑳에 따라 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다.'
+      적용여부: true, 임대기간충족전: beforePeriod_ || undefined, 사후관리안내: clawNote_ || undefined,
+      안내: (beforePeriod_ ? clawNote_.trim() + ' ' : '') + '장기임대주택(또는 장기어린이집)을 보유한 1세대가 거주주택을 보유기간 중 2년 이상 거주 후 양도하여 시행령§155⑳에 따라 1세대1주택으로 보아 비과세(§89①3호) 판정을 적용합니다.'
     };
   };
 
