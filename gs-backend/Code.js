@@ -3880,6 +3880,8 @@ function dispatchClientAction0_(body) {
   if (body.action === 'tc_rule_transfer_facts') return jsonResponse(tc_ruleTransferFacts_(body)); // 양도세 자동채우기 규칙 먼저(토큰 0)
   if (body.action === 'tc_rule_inheritance_facts') return jsonResponse(tc_ruleInheritanceFacts_(body)); // 상속세 자동채우기 규칙 먼저(토큰 0)
   if (body.action === 'case_proc') return jsonResponse(caseProcTimed_(body)); // '이 사건 처리하자' — 처리탭 도구로 단계별 점검(토큰 0)
+  if (body.action === 'case_proc_ai') return jsonResponse(caseProcAi_(body));
+  if (body.action === 'ai_lead_weekly') return jsonResponse(caseProcAiWeekly_(body)); // [2026.10.19 5번] AI 지휘 주간 점검표(토큰 0) — 규칙 후보·길 나누기·빠진 도구·매주 숫자 // [2026.10.19 5번] '이 사건 처리하자' AI 지휘 — AI 자리 세기·지휘 AI 한 차례·끝 기록(AiLeadLive.js)
   if (body.action === 'ocr_batch_run') return jsonResponse(cpOcrBatch_(body)); // [2026.10.18] 서버 글자인식 일괄 — 기억에 없는 서류만 글자를 읽어 기억에 쌓음(사건 저장 없음, 토큰 0)
   if (body.action === 'ocr_batch_status') return jsonResponse(cpOcrBatchStatus_());
   if (body.action === 'ocr_batch_trigger') return jsonResponse(ocrbTrigger_(body)); // 10분마다 자동 이어 읽기 켜기/끄기
@@ -33288,7 +33290,9 @@ function caseProcGiftInhFacts_(c, lines, items) {
       }
       gifts.forEach(function (g) { add('giftDonorName', g.from, '등기부 현재 소유자(' + g.file + ') — 증여 등기 전', false); });
       // [2026.10.16] 수증자 — 서류에 없으면 사건 납세자(폴더 규칙 "고객명(납세자)"의 납세자 = 수증자)를 후보로(하영애: 수증자 칸이 후보 없이 비어 있었다)
-      if (!(facts.giftDoneeName || []).length && String(c.납세자 || '').trim()) add('giftDoneeName', norm(c.납세자), '사건 납세자(수증자) — 증여계약서·증여 등기가 없어 서류로는 확인 못 함', false);
+      // [2026.10.19 5번 — 2번 30바퀴와 같은 규칙] 증여계약서·증여 등기가 없어도 수증자는 사건 납세자다(폴더 이름 "고객명(납세자)", 증여세 납세의무자 = 수증자 — 상증법 §4의2).
+      //  예전엔 확실하지 않은 후보로 두고 물었다(시험 묶음 13건 — 대조할 서류가 없어 답은 늘 사건 납세자). 증여자처럼 상대 쪽은 폴더 이름으로 정해지지 않아 그대로 질문
+      if (!(facts.giftDoneeName || []).length && String(c.납세자 || '').trim()) add('giftDoneeName', norm(c.납세자), '폴더 이름(납세자) — 증여세 납세의무자 = 수증자, 증여계약서·증여 등기에서는 아직 확인 안 됨', true);
       if (gifts.length) lines.push('증여재산(증여 등기 전 등기부 — 후보): ' + gifts.map(function (g) { return (g.kind ? g.kind + ' ' : '') + (g.loc || '소재지 미확인') + ' — 현재 소유자 ' + g.from; }).join(' / ') + (gc ? ' · 증여계약서 ' + gc.file : ''));
       else lines.push('증여재산: 증여 등기가 있는 등기부가 폴더에 없습니다(현금·예금 증여면 증여계약서·이체내역으로 확인).');
     }
@@ -33528,6 +33532,9 @@ function caseProcGiftInhFacts_(c, lines, items) {
       const m = /피\s*상\s*속\s*인[\s\S]{0,40}?성\s*명\s*[:：]?\s*([가-힣]{2,4})(?![가-힣])/.exec(tx);
       if (m && !/주민|생년|성명|주소/.test(m[1])) add('ihDeceasedName', m[1], '이미 낸 상속세 ' + (x.p.result.서류 || '신고서') + '(' + x.f.name + ')', false);
     });
+    // [2026.10.19 5번 — 같은 규칙] 사망 서류·가족관계증명서·분할협의서·이미 낸 신고서 어디서도 피상속인을 못 찾았으면 폴더 이름의 납세자로 채운다
+    //  (상속 사건의 괄호 속 납세자 = 피상속인 — WORK_TAXPAYER_FIELD_BY_SEMOK_). 서류마다 이름이 다르면(예/례) 그대로 질문으로 둔다
+    if (!(facts.ihDeceasedName || []).length && String(c.납세자 || '').trim()) add('ihDeceasedName', norm(c.납세자), '폴더 이름(납세자) — 상속 사건의 납세자 칸 = 피상속인, 사망 서류에서는 아직 확인 안 됨', true);
     const decs = (facts.ihDeceasedName || []).filter(function (x) { return x.sure; }).map(function (x) { return norm(x.v); }).filter(function (v, i, a) { return a.indexOf(v) === i; });
     const dec = ov.ihDeceasedName || (decs.length === 1 ? decs[0] : '') || (facts.ihDeceasedName && facts.ihDeceasedName[0].v) || c.납세자 || '';
     // [2026.10.18 정밀분석 원인10 ②] 상속인 — 사망 서류 묶음 안의 가족관계증명서까지(fams에 들어 있음), 먼저 사망한 자녀는 대습상속(민법 §1001) 후보를 다른 증명서에서 찾는다.
@@ -36756,6 +36763,21 @@ function buildImprovementReport_() {
       report.guide.push('cxAi(🧩·↩ 사건처리 AI 판단): ruleCands는 서로 다른 사건 2건 이상에서 같은 쟁점종류(kind)+입력모양(shape)에 AI(LIGHT_MODEL)가 늘 같은 방식(pattern: src=같은 출처 종류 후보 / max·min=숫자 후보 중 큰·작은 값 / pos=같은 자리 후보 / const=같은 값)으로 답했고 세무사님이 고친 적 없는 묶음이다. 그 쟁점을 AI에 묻기 전에 GAS 규칙으로 먼저 풀도록 사건처리 규칙에 옮기는 PR(규칙이 답하면 AI 호출을 건너뜀) — 단 pattern이 const이거나 uncertain>0이면 법령·서류 근거를 먼저 확인하고, 근거가 없으면 건너뛰고 이유만 적는다. revertWarn은 세무사님이 AI 답을 자주 고친 쟁점 종류 — fixedShapes 모양의 AI 지시문·넘기는 사실(facts)을 고치거나 그 쟁점은 AI 대신 세무사님께 묻도록 바꾼다. trend는 주별 사건당 호출 수(줄어드는 게 목표). 고객 정보는 PR에 쓰지 말 것.');
     }
   } catch (e) { report.cxAiError = String(e && e.message || e).slice(0, 200); }
+  // [2026.10.19 5번] AI 지휘 주간 점검표(토큰 0, AiLeadTiers.js) — 세무사님 조건: "gas를 고도화했고 계속하여 고도화하는 방안이 가미된다면"
+  //  ② 되풀이되는 AI 판단 → GAS 규칙 후보(처음 보는 사건 2건 이상에서 세무사님이 맞다고 한 것만) ③ 빠진 도구 ⑤ 매주 숫자(AI 없이 끝 비율·사건당 판단·비용·승격·새 도구, 두 주 연속 멈춤 경고)
+  //  세 겹 ③ 주제별 세무사님이 고친 비율·총괄 답이 늘 같은 비율 → 내리기·올리기 후보(사람이 승인)
+  try {
+    var alw = caseProcAiWeekly_({ weeks: 12 });
+    if (alw && alw.ok) {
+      report.aiLead = { lines: alw.lines, weeks: alw.weeks, stall: alw.stall, ruleCands: alw.ruleCands, topics: alw.topics, gaps: alw.gaps };
+      if (alw.stall) headline.unshift('⚠ AI 지휘 두 주 연속 멈춤 — AI 없이 끝 비율·비용이 그대로이고 규칙 승격·새 도구 없음');
+      alw.ruleCands.slice(0, 5).forEach(function (c) { headline.push('🧩 AI 지휘 규칙 후보 — ' + c.kind + ': 처음 보는 사건 ' + c.okCases + '건에서 맞음'); });
+      alw.gaps.slice(0, 3).forEach(function (g) { headline.push('🧰 AI 지휘 빠진 도구 — ' + g.want + ' (' + g.n + '번)'); });
+      alw.topics.filter(function (t) { return t.move; }).slice(0, 3).forEach(function (t) { headline.push('🔀 ' + t.topic + ' — ' + t.move); });
+      report.candidateCount += alw.ruleCands.length + alw.gaps.length + alw.topics.filter(function (t) { return t.move; }).length + (alw.stall ? 1 : 0);
+      report.guide.push('aiLead(🤖 AI 지휘 — 세무사님 조건 "gas를 계속 고도화"): ruleCands는 총괄·저비용 AI가 처음 보는 사건 2건 이상에서 같은 주제(kind)+모양(shape)에 같은 방식으로 답했고 세무사님이 확인했으며 고친 적 없는 판단 — 그 판단을 AI에 넘기기 전에 GAS 규칙(사건처리 단계·교차검증 규칙)으로 먼저 풀게 하는 PR. pattern이 없거나 const면 법령·서류 근거부터 확인하고 근거가 없으면 건너뛴다. 옮겼으면 업무관리자 폴더 _사건처리규칙승격기록.json에 {at, kind, shape, pr} 한 줄을 더하는 코드도 함께(승격 수 세기). gaps(빠진 도구)는 AI가 도구가 없어 못 한 일 — 되풀이되는 것부터 AiLead.js 도구(GAS, 토큰 0)로 만든다(새 도구는 CASEPROC_AI_TOOLS_에 더함 — 새 도구 수로 셈). topics의 move(내리기·올리기 후보)는 AI_ROUTE_TABLE(스크립트 속성) 또는 CASEPROC_AI_ROUTE_DEFAULT_를 고치는 PR — 사람이 승인. weeks는 매주 숫자(aiFree↑·perCaseDecisions↓·perCaseWon↓·promoted·newTools), stall이면 최우선. 고객 정보는 PR에 쓰지 말 것.');
+    }
+  } catch (e) { report.aiLeadError = String(e && e.message || e).slice(0, 200); }
   // [2026.10.13] 개발자↔사용자 소통·AI 자문단(Federation.js, 토큰 0) — 요청 번호·상태, 기능 부족 신고, 개발자 질문 답, AI 자문 공통 제안
   try {
     var st = commRequestsLoad_(), byAt = {};
@@ -47816,6 +47838,10 @@ function trcClassOptions_(S, tpl, ans) {
     else if (/경매|공매/.test(k) && cause && cause !== 'auction') why = '양도원인이 경매 아님';
     else if (/^교환/.test(k) && cause && cause !== 'exchange') why = '양도원인이 교환 아님';
     else if (/이월과세/.test(k) && !gift) why = '증여로 받은 자산 아님(취득 원인)';
+    // [2026.10.19 5번 사건분류 쪼개기 — 상수] 국내 자산도 이월과세(§97의2①) 기간이 지났으면 뺀다(국외자산에만 있던 규칙 — 개발용 박미영·이종식 2건 되풀이)
+    else if (/이월과세/.test(k) && gift && (function () { const td = String(S.baseDate || (S.state.transferAssets[0] || {}).transferDate || ''); return (S.facts.gift || []).every(function (g) { const gd = String((g.info && (g.info.date || g.info.giftDate)) || ((S.state.transferAssets[Number(String(g.p || 'a0').slice(1))] || {}).giftReceivedDate) || ((S.state.transferAssets[Number(String(g.p || 'a0').slice(1))] || {}).acquisitionDate) || ''); if (!gd || !td) return false; const yrs = Number(td.slice(0, 4)) - Number(gd.slice(0, 4)) - (td.slice(5) < gd.slice(5) ? 1 : 0); return yrs >= (gd < '2023-01-01' ? 5 : 10); }); })()) why = '증여받은 날부터 이월과세 기간(2022년 이전 증여 5년·이후 10년, §97의2①) 지나 양도';
+    // [2026.10.19 5번 — 상수] 양도가액(실지거래가액)이 12억원 이하로 정해졌으면 1세대1주택 고가주택(§89①3호 단서)이 아니다(개발용 4건 되풀이)
+    else if (/고가주택/.test(k) && (function () { const tp = (S.state.transferContracts || []).reduce(function (t, x) { return t + (Number(x.totalPrice) || 0); }, 0); return tp > 0 && tp <= 1200000000; })()) why = '양도가액이 12억원 이하(고가주택 아님, §89①3호)';
     else if (/특수관계자/.test(k) && rel === 'none') why = '양수인과 특수관계 없음(세무사님 답)';
     if (why) cut.push(k + '(' + why + ')'); else out.push(k);
   });

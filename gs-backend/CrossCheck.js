@@ -646,8 +646,13 @@ function cxResolve0_(c, r) {
     //  '관련 사실'(그 종류의 다른 값들)만으로는 빈 칸 값을 AI가 지어낼 수밖에 없다(방영교 취득일 — 등기부·취득 계약서 없음)
     const texts = texts0.filter(function (x) { const ok = x.iss.kind === '판단' || (x.iss.kind === '빈칸' ? !!x.iss._srcSnip : (/\n원문\(앞뒤\):|\n관련 사실/.test(x.text) || x.iss.cands.length > 0)); if (!ok) rec.user.push({ iid: x.iss.iid, label: x.iss.label, why: x.iss.kind === '빈칸' ? '서류에 없는 빈 칸 — 바로 사용자에게' : '근거 원문 없음 — 바로 사용자에게' }); return ok; });
     open.splice(0, open.length).forEach(function (iss) { if (texts.some(function (x) { return x.iss === iss; })) open.push(iss); });
-    const fresh = texts.filter(function (x) { const h = cxHash_(x.text); x.h = h; const old = store.asked[x.iss.iid]; return !(old && old.h === h); });
-    const reuse = texts.filter(function (x) { return fresh.indexOf(x) === -1; });
+    // [2026.10.19 5번 세겹 ①] 쟁점 종류 표(AiLeadTiers.js caseProcAiRoute_ — 스크립트 속성 AI_ROUTE_TABLE로 바꿈)에서 총괄 AI 몫(사건분류·특수관계·돈 흐름·사전증여·시가·주택 여부)은
+    //  저비용에 보내지 않는다 — 그 질문에 ask.route='lead'를 붙여 AI 지휘(총괄)가 받는다. 표가 없는 판(함수 없음)은 예전 그대로
+    const leadIds = {};
+    if (typeof caseProcAiRoute_ === 'function') texts.forEach(function (x) { try { if (caseProcAiRoute_(x.iss) === 'lead') leadIds[x.iss.iid] = 1; } catch (e) {} });
+    rec.lead = Object.keys(leadIds);
+    const fresh = texts.filter(function (x) { if (leadIds[x.iss.iid]) return false; const h = cxHash_(x.text); x.h = h; const old = store.asked[x.iss.iid]; return !(old && old.h === h); });
+    const reuse = texts.filter(function (x) { return fresh.indexOf(x) === -1 && !leadIds[x.iss.iid]; });
     const byModel = {};
     fresh.forEach(function (x) { const m = cxModelFor_(x.iss.kind); (byModel[m] = byModel[m] || []).push(x); });
     rec.bundleChars = summary.length + fresh.reduce(function (s, x) { return s + x.text.length; }, 0);
@@ -689,13 +694,14 @@ function cxResolve0_(c, r) {
     }
     // 4) 확실한 AI 답 → 계산기 칸, 아니면 사용자 질문(AI가 본 근거를 붙여)
     open.forEach(function (iss) {
+      if (leadIds[iss.iid]) { const itL = items.filter(function (x) { return x.id === iss.iid; })[0]; if (itL) itL.ask = Object.assign({}, itL.ask, { route: 'lead' }); return; } // [5번 세겹] 총괄로
       const a = answers[iss.iid];
       if (!aiOn || !a) { rec.user.push({ iid: iss.iid, label: iss.label, why: !aiOn ? 'AI 묻기 예정(' + rec.why + ')' : 'AI 답 없음' }); return; }
       const v = a.sure === '확실' ? cxValidAnswer_(iss, a, cxIssueText_(cc, iss, facts)) : null;
       if (v != null && applyOne(iss, v, '🤖 AI 판단(' + a.model + '): ' + a.why, 'ai', { why: a.why, model: a.model, sure: a.sure, q: cxIssueText_(cc, iss, facts).slice(0, 1500) })) return;
       rec.user.push({ iid: iss.iid, label: iss.label, why: 'AI 불확실' });
       const it = items.filter(function (x) { return x.id === iss.iid; })[0];
-      if (it) { it.text = '🤖 AI도 확실히 정하지 못함(' + a.model + (a.value ? ', AI가 기운 값 ' + a.value : '') + ') — ' + a.why.slice(0, 160) + ' · ' + it.text; it.ask = Object.assign({}, it.ask, { aiJudge: { model: a.model, sure: a.sure || '불확실', value: a.value == null ? '' : String(a.value), why: a.why, q: cxIssueText_(cc, iss, facts).slice(0, 1500) } }); }
+      if (it) { it.text = '🤖 AI도 확실히 정하지 못함(' + a.model + (a.value ? ', AI가 기운 값 ' + a.value : '') + ') — ' + a.why.slice(0, 160) + ' · ' + it.text; it.ask = Object.assign({}, it.ask, { aiJudge: { model: a.model, sure: a.sure || '불확실', value: a.value == null ? '' : String(a.value), why: a.why, need: a.need || [], q: cxIssueText_(cc, iss, facts).slice(0, 1500) } }); } // [5번 세겹 ②] need(모자란 정보)도 — 총괄로 올릴 때 함께
     });
   }
   // 5) 정한 칸은 질문에서 빼고, AI·교차검증이 정한 값은 "🤖 AI 판단" 줄로 남긴다(누르면 물은 것·답·근거, "다른 값으로" 고치기)
