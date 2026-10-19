@@ -14,7 +14,10 @@ const B = '/*@@REF_DATA_BEGIN@@*/', E = '/*@@REF_DATA_END@@*/';
 //  lawsearch.html 자리 표시엔 빈 값만 두고, build-app.js가 app/index.html(job.netax.kr/app)을 만들 때 refBlock(collect())로 끼운다.
 function collect() {
 const tables = [], forms = {};
-fs.readdirSync(DIR).filter((f) => /\.json$/.test(f)).sort().forEach((f) => {
+// [2026.10.19] '_'로 시작하는 파일은 조견표·칸 해설이 아님 — _서식목록.json = 서식 사전 전체 목록(LSI_FORM_CATALOG_)
+const catFile = path.join(DIR, '_서식목록.json');
+const catalog = fs.existsSync(catFile) ? JSON.parse(fs.readFileSync(catFile, 'utf8')) : { 서식: [] };
+fs.readdirSync(DIR).filter((f) => /\.json$/.test(f) && !/^_/.test(f)).sort().forEach((f) => {
   const j = JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8'));
   if (/^서식_/.test(f)) {
     if (!j.서식번호 || !Array.isArray(j.칸)) throw new Error(f + ': 서식번호·칸이 없습니다');
@@ -26,17 +29,17 @@ fs.readdirSync(DIR).filter((f) => /\.json$/.test(f)).sort().forEach((f) => {
   }
 });
 tables.sort((a, b) => a.번호.localeCompare(b.번호, 'ko', { numeric: true }));
-return { tables, forms };
+return { tables, forms, catalog };
 }
 // 화면 자료 묶음(BEGIN 자리 표시부터 END 바로 앞까지)
-function refBlock(data) { return B + '\n  var LSI_FORM_MAPS_ = ' + JSON.stringify(data.forms) + ';\n  var LSI_REF_TABLES_ = ' + JSON.stringify(data.tables) + ';\n  '; }
+function refBlock(data) { return B + '\n  var LSI_FORM_MAPS_ = ' + JSON.stringify(data.forms) + ';\n  var LSI_REF_TABLES_ = ' + JSON.stringify(data.tables) + ';\n  var LSI_FORM_CATALOG_ = ' + JSON.stringify(data.catalog || { 서식: [] }) + ';\n  '; }
 module.exports = { collect, refBlock, B, E };
 if (require.main === module) {
 const { tables, forms } = collect();
 let s = fs.readFileSync(PAGE, 'utf8');
 const i = s.indexOf(B), k = s.indexOf(E);
 if (i < 0 || k < i) throw new Error('lawsearch.html에 자리 표시가 없습니다');
-const block = refBlock({ tables: [], forms: {} }); // 서버 사본은 빈 값(위 [서버 용량])
+const block = refBlock({ tables: [], forms: {}, catalog: { 서식: [] } }); // 서버 사본은 빈 값(위 [서버 용량])
 s = s.slice(0, i) + block + s.slice(k);
 fs.writeFileSync(PAGE, s);
 
