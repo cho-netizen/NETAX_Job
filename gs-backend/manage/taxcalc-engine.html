@@ -6269,14 +6269,20 @@
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
     const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
-    const penalties = giftFilingPenalties(taxAfterCredit - reportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
-    const finalTax = Math.max(0, taxAfterCredit - reportCredit + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
+    // [2026.10.19 서식감사 차] 정산 신고 — 법 §41의2② "정산증여재산가액 기준 증여세액에서 제1항 증여재산가액 기준 증여세액을
+    //  뺀 금액을 납부, 넘으면 환급". [별지 제10호의5서식] ㊱ = 최초 신고의 (㉚ − ㉛), ㊴ = ㉚ − ㉛ − ㊱ + ㊲ + ㊳(음수면 환급).
+    //  전에는 ㊱이 없어 정산 세액이 최초 세액만큼 많았고 환급도 0이었다. initialGiftTaxAmount가 없으면(0) 예전과 같다.
+    const initialGiftTaxAmount = isFinalSettlement ? Math.max(0, Number(p.initialGiftTaxAmount) || 0) : 0;
+    const settlementDiff = taxAfterCredit - reportCredit - initialGiftTaxAmount;
+    const penalties = giftFilingPenalties(Math.max(0, settlementDiff), filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, p.monthsAfterDesignatedDueDate, Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount);
+    const finalTax = Math.max(0, Math.max(0, settlementDiff) + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty);
     return {
       과세대상여부: true, 이번거래초과배당금액: thisTransactionExcessDividendAmount, 직전1년합산액: priorBenefitSum, 초과배당금액: excessDividendAmount, 소득세상당액: incomeTaxEquivalent, 증여의제이익: giftAmount,
       증여재산공제: relationDeduction, 감정평가수수료공제: appraisalFeeAmount, 재해손실공제: disasterLossAmount,
       과세표준: taxBase, 산출세액: calculatedTax, 신고세액공제: reportCredit,
+      최초신고_증여세액: initialGiftTaxAmount,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
-      납부세액: finalTax,
+      납부세액: finalTax, 환급세액: settlementDiff < 0 ? -settlementDiff : 0,
       안내: note + aggNote
     };
   };

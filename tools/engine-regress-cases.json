@@ -834,5 +834,40 @@
                               "신고세액공제": 600000,
                               "납부세액": 19400000
                     }
+          },
+          {
+                    "이름": "[서식감사 차] 초과배당 정산 — 정산 세액 6,790만에서 최초 신고 세액(㊱) 5천만 뺌 (§41의2②)",
+                    "도구": "calculateExcessDividendGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "isFinalSettlement": true,
+                              "excessDividendBaseAmount": 500000000,
+                              "disproportionateShortfallRatio": 1,
+                              "actualIncomeTax": 100000000,
+                              "initialGiftTaxAmount": 50000000
+                    },
+                    "정답": {
+                              "과세표준": 400000000,
+                              "산출세액": 70000000,
+                              "신고세액공제": 2100000,
+                              "납부세액": 17900000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 초과배당 정산 — 정산 세액이 최초보다 적으면 환급 (§41의2② 단서)",
+                    "도구": "calculateExcessDividendGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "isFinalSettlement": true,
+                              "excessDividendBaseAmount": 500000000,
+                              "disproportionateShortfallRatio": 1,
+                              "actualIncomeTax": 250000000,
+                              "initialGiftTaxAmount": 50000000
+                    },
+                    "정답": {
+                              "산출세액": 40000000,
+                              "납부세액": 0,
+                              "환급세액": 11200000
+                    }
           }
 ]

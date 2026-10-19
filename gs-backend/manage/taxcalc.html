@@ -8292,10 +8292,12 @@ function renderDeemedGiftGenericResult_(box, r, fields, toolKey){
   if (r.과세표준 !== undefined) html += taxCalcResultRow('과세표준', won(r.과세표준));
   if (r.산출세액 !== undefined) html += taxCalcResultRow('산출세액', won(r.산출세액));
   if (r.신고세액공제) html += taxCalcResultRow('신고세액공제', '-' + won(r.신고세액공제));
+  if (r.최초신고_증여세액) html += taxCalcResultRow('최초 신고 증여세액(정산 때 뺌)', '-' + won(r.최초신고_증여세액)); // [2026.10.19 서식감사 차] 10호의5 ㊱
   if (r.무신고가산세) html += taxCalcResultRow('무신고가산세', '+' + won(r.무신고가산세));
   if (r.과소신고가산세) html += taxCalcResultRow('과소신고가산세', '+' + won(r.과소신고가산세));
   if (r.납부지연가산세) html += taxCalcResultRow('납부지연가산세', '+' + won(r.납부지연가산세));
   html += taxCalcResultRow('납부세액', won(r.납부세액), { total: true });
+  if (r.환급세액) html += taxCalcResultRow('환급받을 세액', won(r.환급세액), { total: true });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   if (toolKey) html += tcToolSaveButtonHtml_(toolKey);
   html += '</div>';
@@ -12498,6 +12500,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>추정 소득세상당액(선택)</label><input type="number" id="edEstimatedTax" placeholder="원"><span class="taxcalc-field-help">비워두면 시행규칙§10의3① 추정율표로 자동계산, 최초신고만</span></div>' +
         '<div class="taxcalc-field"><label>종합소득과세표준</label><input type="number" id="edComprehensiveBase" placeholder="원"><span class="taxcalc-field-help">초과배당금액발생연도, 초과배당금액 포함된 값 — 입력시 자동계산, 정산신고·종합과세만</span></div>' +
         '<div class="taxcalc-field"><label>실제 소득세액 직접입력</label><input type="number" id="edActualTax" placeholder="원"><span class="taxcalc-field-help">종합과세면 위 종합소득과세표준을 입력하세요, 정산신고·비과세/분리과세만</span></div>' +
+        '<div class="taxcalc-field"><label>(정산 신고만) 최초 신고 증여세액</label><input type="number" id="edInitialTax" placeholder="원"><span class="taxcalc-field-help">서식 ㊱ — 최초 신고의 산출세액 계 − 세액공제, 정산 세액에서 뺌(§41의2②)</span></div>' +
         '<div class="taxcalc-field"><label>1년 이내 동일 최대주주등의 이전 초과배당금액 합계(§43②)</label><input type="number" id="edPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="edRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="edAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
@@ -13656,10 +13659,12 @@ function gfDeemedGiftPrintRows_(r, extraFields){
   if (r.과세표준 !== undefined) rows += pfRow_(++n, '과세표준', won(r.과세표준));
   if (r.산출세액 !== undefined) rows += pfRow_(++n, '산출세액', won(r.산출세액));
   if (r.신고세액공제) rows += pfRow_(++n, '신고세액공제', won(r.신고세액공제));
+  if (r.최초신고_증여세액) rows += pfRow_(++n, '증여재산가액 기준 증여세액(최초 신고, §41의2②)', won(r.최초신고_증여세액)); // [2026.10.19 서식감사 차] 10호의5 ㊱
   if (r.무신고가산세) rows += pfRow_(++n, '무신고가산세', won(r.무신고가산세));
   if (r.과소신고가산세) rows += pfRow_(++n, '과소신고가산세', won(r.과소신고가산세));
   if (r.납부지연가산세) rows += pfRow_(++n, '납부지연가산세', won(r.납부지연가산세));
   rows += pfRow_(++n, '자진납부할 세액(합계액)', won(r.납부세액));
+  if (r.환급세액) rows += pfRow_(++n, '환급받을 세액', won(r.환급세액));
   return rows;
 }
 // [2026.09.30 신규, 재검토99] 서화·골동품 등 증여재산명세서(10-5·10-6용) — 상속세 부표8과 같은
@@ -16836,6 +16841,7 @@ function handleTaxCalcClick_(e){
       estimatedIncomeTaxEquivalent: numVal(document.getElementById('edEstimatedTax').value) || 0,
       actualIncomeTax: numVal(document.getElementById('edActualTax').value) || 0,
       comprehensiveIncomeTaxBase: numVal(document.getElementById('edComprehensiveBase').value) || 0,
+      initialGiftTaxAmount: numVal(document.getElementById('edInitialTax').value) || 0,
       priorBenefitsWithinOneYear: priorBenefitsArray_('edPriorBenefitsSum'),
       relationDeductionLimit: numVal(document.getElementById('edRelationDeduction').value) || 0,
       appraisalFeeAmount: numVal(document.getElementById('edAppraisalFee').value) || 0,
