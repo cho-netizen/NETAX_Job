@@ -9345,13 +9345,13 @@
     // 부표3 ㉛ ≤ ㉚
     formCheckPush_(L, F + ' 부표3', '㉛', '상속공제 합계는 공제적용한도액을 넘지 않음', Math.min(Number(r.상속공제_서식합계), Number(r.공제적용한도액)), r.상속공제_서식합계);
     // 산출세액 = 누진세율(과세표준) + 세대생략 가산액
-    formCheckPush_(L, F, '㉕', '산출세액 = ㉓ 세율(㉑ 과세표준) + ㉔ 세대생략가산액', r.산출세액, progressiveTax(Number(r.과세표준), GIFT_INHERIT_TAX_BRACKETS) + (Number(r.세대생략가산액) || 0));
+    formCheckPush_(L, F, '㉕', '산출세액 = ㉓ 세율(㉑ 과세표준) + ㉔ 세대생략가산액', r.산출세액, (Number(r.과세표준) < 500000 ? 0 : progressiveTax(Number(r.과세표준), GIFT_INHERIT_TAX_BRACKETS) + (Number(r.세대생략가산액) || 0))); // [2026.10.19] §25② 과세최저한(50만원 미만 부과 안 함) — 빼먹어 거짓 경고가 났음
     return L;
   }
   function giftFormChecks_(p, r) {
     const L = [], F = '별지 제10호';
     if (r.과세표준 === undefined || r.산출세액_할증전 === undefined) return L;
-    formCheckPush_(L, F, '㊱', '산출세액 = 세율(㉞ 과세표준)', r.산출세액_할증전, progressiveTax(Number(r.과세표준), GIFT_INHERIT_TAX_BRACKETS));
+    formCheckPush_(L, F, '㊱', '산출세액 = 세율(㉞ 과세표준)', r.산출세액_할증전, Number(r.과세표준) < 500000 ? 0 : progressiveTax(Number(r.과세표준), GIFT_INHERIT_TAX_BRACKETS)); // [2026.10.19] §55② 과세최저한 50만원 미만
     formCheckPush_(L, F, '㊳', '산출세액 계 = ㊱ + ㊲ 세대생략 할증세액', r.산출세액_할증후, (Number(r.산출세액_할증전) || 0) + (Number(r.세대생략할증액) || 0));
     return L;
   }
