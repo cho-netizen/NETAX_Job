@@ -1030,5 +1030,57 @@
    "외국납부세액공제한도": 19342500,
    "외국납부세액공제": 18685000
   }
+ },
+ {
+  "이름": "[⑮] 일감몰아주기 출자관계별(시행령 §34의3⑬·⑮, 부표5) — 중견 5%p를 간접 작은 것부터(Y 2→0, X 6→3), 직접 배당 공제 500만×3,200만÷(10억×8%)=200만, X 300만×1,200만÷((2억+10억×40%)×15%)=40만 → 증여의제이익 4,160만 → 산출세액 4,160,000(1억 이하 10%)·신고세액공제 뒤 4,035,200",
+  "도구": "calculateRelatedPartyTransactionGiftTaxJS",
+  "입력": {
+   "companySize": "medium",
+   "afterTaxOperatingIncome": 1000000000,
+   "relatedPartyTransactionRatio": 60,
+   "shareRelations": [
+    {
+     "kind": "direct",
+     "ratio": 8,
+     "dividend": 5000000,
+     "distributable": 1000000000
+    },
+    {
+     "kind": "indirect",
+     "corp": "X",
+     "ratio": 6,
+     "dividend": 3000000,
+     "distributable": 200000000,
+     "beneficiaryDistributable": 1000000000,
+     "corpShareInBeneficiary": 40,
+     "ownRatioInCorp": 15
+    },
+    {
+     "kind": "indirect",
+     "corp": "Y",
+     "ratio": 2
+    }
+   ]
+  },
+  "정답": {
+   "배당소득공제": 2400000,
+   "증여의제이익": 41600000,
+   "산출세액": 4160000,
+   "납부세액": 4035200
+  }
+ },
+ {
+  "이름": "[⑮] 출자관계별 입력 없이 배당 공제 합계만 — 예전처럼 합친 값에서 한 번(10억×40%×11% − 240만 = 4,160만)",
+  "도구": "calculateRelatedPartyTransactionGiftTaxJS",
+  "입력": {
+   "companySize": "medium",
+   "afterTaxOperatingIncome": 1000000000,
+   "relatedPartyTransactionRatio": 60,
+   "shareholderOwnershipRatio": 16,
+   "dividendDeduction": 2400000
+  },
+  "정답": {
+   "증여의제이익": 41600000
+  }
  }
 ]

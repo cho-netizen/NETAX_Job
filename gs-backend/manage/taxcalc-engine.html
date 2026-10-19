@@ -4212,7 +4212,15 @@
     const afterTaxOperatingIncome = Number(p.afterTaxOperatingIncome) || 0;
     const incomeBase = afterTaxOperatingIncome;
     const tradeRatio = Number(p.relatedPartyTransactionRatio) || 0;
-    const shareRatio = Number(p.shareholderOwnershipRatio) || 0;
+    // [2026.10.20 ⑮] 출자관계별 계산(시행령 §34의3⑬·⑮, [별지 제10호의3서식 부표5]) — shareRelations가 있으면 출자관계마다 증여의제이익을 내고
+    //  배당소득 공제·0 바닥을 출자관계마다 한다. [{ kind: 'direct'|'indirect', ratio(그 관계의 직접·간접보유비율 %), corp, dividend(배당소득),
+    //  distributable(배당가능이익 — 직접: 수혜법인 ㉖, 간접: 간접출자법인 ㉛), beneficiaryDistributable(간접: 수혜법인 배당가능이익 ㉜),
+    //  corpShareInBeneficiary(간접: 간접출자법인의 수혜법인 주식보유비율 % ㉝), ownRatioInCorp(간접: 지배주주등의 간접출자법인 직접보유비율 % ㉞) }]
+    //  간접보유비율 1천분의 1 미만 관계는 뺀다(⑬). 주식보유비율 칸이 비면 관계 비율의 합.
+    const rels_ = (Array.isArray(p.shareRelations) ? p.shareRelations : []).map(function (x) {
+      return Object.assign({}, x, { kind: x && x.kind === 'indirect' ? 'indirect' : 'direct', ratio: Math.max(0, Number(x && x.ratio) || 0) });
+    }).filter(function (x) { return x.ratio > 0 && !(x.kind === 'indirect' && x.ratio < 0.1); });
+    const shareRatio = (Number(p.shareholderOwnershipRatio) || 0) || rels_.reduce(function (s, x) { return s + x.ratio; }, 0);
 
     const gateTradeThreshold = companySize === 'general' ? 30 : (companySize === 'medium' ? 40 : 50);
     const gateShareThreshold = companySize === 'general' ? 3 : 10;
@@ -4241,8 +4249,32 @@
     const formulaShareSubtract = companySize === 'general' ? 0 : (companySize === 'medium' ? 5 : 10);
     const netTradeRatio = Math.max(0, (tradeRatio - formulaTradeSubtract) / 100);
     const netShareRatio = Math.max(0, (shareRatio - formulaShareSubtract) / 100);
-    const dividendDeduction = Number(p.dividendDeduction) || 0;
-    const deemedGiftProfit = Math.max(0, Math.round(incomeBase * netTradeRatio * netShareRatio) - dividendDeduction);
+    let dividendDeduction = Number(p.dividendDeduction) || 0;
+    let deemedGiftProfit = Math.max(0, Math.round(incomeBase * netTradeRatio * netShareRatio) - dividendDeduction);
+    let relRows_ = null;
+    if (rels_.length) {
+      // ⑬ "간접보유비율에서 한계보유비율(중견은 그 50%)을 먼저 빼고 간접출자관계가 둘 이상이면 작은 것부터" — 남으면 직접에서
+      let left_ = formulaShareSubtract;
+      const ord_ = rels_.map(function (x, i) { return { x: x, i: i }; }).sort(function (a, b) {
+        if (a.x.kind !== b.x.kind) return a.x.kind === 'indirect' ? -1 : 1;
+        return a.x.ratio - b.x.ratio;
+      });
+      const net_ = {};
+      ord_.forEach(function (o) { const cut = Math.min(left_, o.x.ratio); left_ -= cut; net_[o.i] = o.x.ratio - cut; });
+      relRows_ = rels_.map(function (x, i) {
+        const profit = Math.round(incomeBase * netTradeRatio * net_[i] / 100); // 부표5 ㉒(직접)·㉓(간접)
+        const dv = Math.max(0, Number(x.dividend) || 0);
+        let den = 0;
+        if (x.kind === 'direct') den = (Number(x.distributable) || 0) * x.ratio / 100; // ㉖ × ㉗
+        else den = ((Number(x.distributable) || 0) + (Number(x.beneficiaryDistributable) || 0) * (Number(x.corpShareInBeneficiary) || 0) / 100) * (Number(x.ownRatioInCorp) || 0) / 100; // (㉛ + ㉜ × ㉝) × ㉞
+        const ded = dv > 0 && den > 0 ? Math.round(dv * profit / den) : 0; // ㉘ = ㉕ × ㉒ ÷ (㉖ × ㉗) / ㉟ = ㉚ × ㉓ ÷ {(㉛ + ㉜ × ㉝) × ㉞}
+        return { 출자관계: x.kind === 'direct' ? '직접' : '간접(' + (x.corp || '간접출자법인') + ')', 보유비율: x.ratio, 한계보유비율_차감후: Math.round(net_[i] * 10000) / 10000,
+          증여의제이익: profit, 배당소득: dv, 배당소득공제: ded, 배당가능이익_분모: den > 0 ? Math.round(den) : null,
+          과세가액: Math.max(0, profit - ded), 안내: dv > 0 && !(den > 0) ? '배당가능이익·보유비율이 없어 배당소득 공제를 계산하지 못했습니다(시행령 §34의3⑮)' : undefined }; // ㊲·㊳ 0 바닥
+      });
+      dividendDeduction = relRows_.reduce(function (s, x) { return s + Math.min(x.배당소득공제, x.증여의제이익); }, 0);
+      deemedGiftProfit = relRows_.reduce(function (s, x) { return s + x.과세가액; }, 0); // 부표5 ㊴
+    }
 
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
@@ -4253,6 +4285,7 @@
       적용소득기준: '세후영업이익', 적용소득금액: incomeBase,
       증여의제이익_계산식차감비율_거래: formulaTradeSubtract, 증여의제이익_계산식차감비율_지분: formulaShareSubtract,
       배당소득공제: dividendDeduction,
+      출자관계별: relRows_ || undefined, // [2026.10.20 ⑮] 부표5 출자관계별 계산
       증여의제이익: deemedGiftProfit,
       과세표준: r.taxBase, 산출세액: r.calculatedTax, 신고세액공제: r.reportCredit,
       무신고가산세: r.penalties.unreportedPenalty, 과소신고가산세: r.penalties.underreportedPenalty, 납부지연가산세: r.penalties.latePenalty,
