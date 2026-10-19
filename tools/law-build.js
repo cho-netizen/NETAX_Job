@@ -55,7 +55,7 @@ async function get(url) {
 // 법령의 판 목록(현행 1 + 시행예정) — 시행예정은 시행일마다 가장 늦게 공포된 판 하나
 async function versions(name) {
   const x = await get('https://www.law.go.kr/DRF/lawSearch.do?OC=' + OC + '&target=eflaw&type=XML&display=100&query=' + encodeURIComponent(name));
-  const all = tagsAll(x, 'law').map(s => ({ 이름: tag(s, '법령명한글'), 법령ID: tag(s, '법령ID'), MST: tag(s, '법령일련번호'), 시행일: tag(s, '시행일자'), 공포일: tag(s, '공포일자'), 공포번호: tag(s, '공포번호'), 구분: tag(s, '제개정구분명'), 코드: tag(s, '현행연혁코드') }))
+  const all = tagsAll(x, 'law').map(s => ({ 이름: tag(s, '법령명한글'), 법령ID: tag(s, '법령ID'), MST: tag(s, '법령일련번호'), 시행일: tag(s, '시행일자'), 공포일: tag(s, '공포일자'), 공포번호: tag(s, '공포번호'), 구분: tag(s, '제개정구분명'), 법종: tag(s, '법령구분명'), 코드: tag(s, '현행연혁코드') }))
     .filter(v => key(v.이름) === key(name));
   const cur = all.find(v => v.코드 === '현행');
   if (!cur) return { error: '법제처 검색에 현행판 없음' };
@@ -116,8 +116,8 @@ function mdText(t, ind, corrOf) {
   }
   return out;
 }
-function lawToMd(doc, corr) {
-  const L = ['# ' + doc.법령, '', '[시행 ' + ymd(doc.시행일) + '] [' + (/시행규칙/.test(doc.법령) ? '' : /시행령/.test(doc.법령) ? '대통령령 ' : '법률 ') + '제' + String(doc.공포번호).replace(/^0+/, '') + '호, ' + ymd(doc.공포일) + ', ' + doc.구분 + ']', '',
+function lawToMd(doc, corr, 법종) {
+  const L = ['# ' + doc.법령, '', '[시행 ' + ymd(doc.시행일) + '] [' + (법종 ? 법종 + ' ' : '') + '제' + String(doc.공포번호).replace(/^0+/, '') + '호, ' + ymd(doc.공포일) + ', ' + doc.구분 + ']', '',
     '> 법령 정비본 — 법제처(law.go.kr) 이 시행일 판 원문 그대로(' + doc.받은날 + ' 받음). 시스템용 같은 내용: ' + doc.법령.replace(/\s/g, '') + '/' + doc.시행일 + '_' + doc.공포번호 + '.json.gz', ''];
   const 머리 = {}; (doc.머리 || []).forEach(h => { 머리[h.앞] = h.글; });
   for (const a of doc.조) {
@@ -248,7 +248,7 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
       }
       let p = ent.판.find(x => x.판 === vk);
       if (!p) ent.판.push(p = { 판: vk });
-      Object.assign(p, { 시행일: ver.시행일, 공포일: ver.공포일, 공포번호: ver.공포번호, 구분: ver.구분, MST: ver.MST, 조문수: arts.length });
+      Object.assign(p, { 시행일: ver.시행일, 공포일: ver.공포일, 공포번호: ver.공포번호, 구분: ver.구분, 법종: ver.법종, MST: ver.MST, 조문수: arts.length });
       if (상태 === '현행') { curArts = arts; curKey = vk; }
     }
     // 판 상태 다시 매김: 현행 1개, 그보다 늦은 시행일 = 시행예정, 이른 = 옛판(지우지 않음)
@@ -273,7 +273,7 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
     const k = key(n), e = idx.법령[k]; if (!e || (ONLY && !ONLY.includes(k))) continue;
     for (const p of e.판) {
       const f = path.join(OUT, '본문', k, p.판 + '.json.gz'); if (!fs.existsSync(f)) continue;
-      const md = lawToMd(JSON.parse(zlib.gunzipSync(fs.readFileSync(f)).toString('utf8')), items.filter(x => x.법령 === k));
+      const md = lawToMd(JSON.parse(zlib.gunzipSync(fs.readFileSync(f)).toString('utf8')), items.filter(x => x.법령 === k), p.법종);
       if (!DRY) { fs.mkdirSync(path.join(OUT, 'md', k), { recursive: true }); fs.writeFileSync(path.join(OUT, 'md', k, k + '_' + p.판 + '.md'), md); }
       mdN++;
     }
