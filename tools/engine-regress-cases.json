@@ -869,5 +869,51 @@
                               "납부세액": 0,
                               "환급세액": 11200000
                     }
+          },
+          {
+                    "이름": "[서식감사 차] 초과배당 세대생략 — ㉙ = ㉘ × 30%, 신고세액공제는 ㉚ 기준 (§57·§69②)",
+                    "도구": "calculateExcessDividendGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "excessDividendBaseAmount": 500000000,
+                              "disproportionateShortfallRatio": 1,
+                              "isGenerationSkip": true
+                    },
+                    "정답": {
+                              "산출세액": 55188000,
+                              "세대생략할증액": 16556400,
+                              "신고세액공제": 2152332,
+                              "납부세액": 69592068
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 특정법인 세대생략 — ㊳ = ㊱ × 30% (§57)",
+                    "도구": "calculateSpecificCorporationGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "benefitToCorpAmount": 1000000000,
+                              "shareholderOwnershipRatio": 0.5,
+                              "isGenerationSkip": true
+                    },
+                    "정답": {
+                              "산출세액": 90000000,
+                              "세대생략할증액": 27000000,
+                              "신고세액공제": 3510000,
+                              "납부세액": 113490000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 특정법인 세대생략 아님 — 전후 같아야 함",
+                    "도구": "calculateSpecificCorporationGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "benefitToCorpAmount": 1000000000,
+                              "shareholderOwnershipRatio": 0.5
+                    },
+                    "정답": {
+                              "산출세액": 90000000,
+                              "신고세액공제": 2700000,
+                              "납부세액": 87300000
+                    }
           }
 ]

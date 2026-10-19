@@ -17354,6 +17354,19 @@
   // 직접 입력하면 그 값을 그대로 우선 사용한다. 정산시(isFinalSettlement) 종합과세되는 경우의 실제소득세액은
   // 시행규칙§10의3②3호(comprehensiveIncomeTaxBase 입력시 자동계산)로, 비과세·분리과세인 경우는
   // actualIncomeTax 직접 입력으로 처리한다.
+  // [2026.10.19 서식감사 차] 세대생략 할증(법 §57) — 일반 증여세 함수(calculateGiftTaxJS)와 같은 규칙을 초과배당([별지 제10호의5서식] ㉙)·
+  //  특정법인([별지 제10호의6서식] ㊳) 계산에 쓰려고 뺀 도우미. 수증자가 증여자의 자녀가 아닌 직계비속이면 산출세액의 30%,
+  //  미성년자이면서 증여재산가액이 20억원 초과면 40%(2016.1.1. 전 증여는 30% — genSkipMinorRateAt_), 최근친 직계비속이 사망해
+  //  그 최근친 직계비속이 받은 경우(§57① 단서)는 0. 앞선 합산분에 이미 낸 할증세액(priorPaidGenerationSkipPremium)은 뺀다.
+  //  isGenerationSkip을 넣지 않으면 0 — 예전 결과와 같다.
+  function genSkipPremium_(taxBeforePremium, p, giftValue) {
+    if (!p.isGenerationSkip || p.isSubstituteGiftDueToDeath) return { rate: 0, amount: 0 };
+    const over2Billion = !!p.generationSkipOver2Billion || (Number(giftValue) || 0) > 2000000000;
+    const rate = (over2Billion && p.isMinor) ? genSkipMinorRateAt_(p.giftDate || p.giftReceivedDate) : 0.3;
+    const amount = Math.max(0, Math.round(taxBeforePremium * rate) - (Number(p.priorPaidGenerationSkipPremium) || 0));
+    return { rate: rate, amount: amount };
+  }
+
   window.calculateExcessDividendGiftTaxJS = function (p) {
     p = p || {};
     const isFinalSettlement = !!p.isFinalSettlement;
@@ -17421,7 +17434,11 @@
       ? Math.round(calculatedTax * Math.min(1, foreignGiftTaxBase / taxBase))
       : foreignTaxPaidAmount;
     const foreignTaxCredit = Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, calculatedTax - priorPaidTax));
-    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
+    // [2026.10.19 서식감사 차] ㉙ 세대생략가산액(법 §57) → ㉚ = ㉘ + ㉙. 기납부세액(㉜)·외국납부세액(㉝)은 할증 전 산출세액
+    //  기준(일반 증여세 함수와 같음), 신고세액공제(㉞)는 ㉚에서 공제액을 뺀 금액의 3%(법 §69②).
+    const genSkip = genSkipPremium_(calculatedTax, p, giftAmount);
+    const calculatedTaxTotal = calculatedTax + genSkip.amount;
+    const taxAfterCredit = Math.max(0, calculatedTaxTotal - Math.min(priorPaidTax, calculatedTax) - foreignTaxCredit);
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
     const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
@@ -17435,7 +17452,7 @@
     return {
       과세대상여부: true, 이번거래초과배당금액: thisTransactionExcessDividendAmount, 직전1년합산액: priorBenefitSum, 초과배당금액: excessDividendAmount, 소득세상당액: incomeTaxEquivalent, 증여의제이익: giftAmount,
       증여재산공제: relationDeduction, 감정평가수수료공제: appraisalFeeAmount, 재해손실공제: disasterLossAmount,
-      과세표준: taxBase, 산출세액: calculatedTax, 신고세액공제: reportCredit,
+      과세표준: taxBase, 산출세액: calculatedTax, 세대생략할증액: genSkip.amount, 산출세액_할증후: calculatedTaxTotal, 신고세액공제: reportCredit,
       최초신고_증여세액: initialGiftTaxAmount,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax, 환급세액: settlementDiff < 0 ? -settlementDiff : 0,
@@ -20120,7 +20137,11 @@
       ? Math.round(calculatedTax * Math.min(1, foreignGiftTaxBase / taxBase))
       : foreignTaxPaidAmount;
     const foreignTaxCredit = Math.min(foreignTaxPaidAmount, foreignTaxCreditByFormula, Math.max(0, calculatedTax - priorPaidTax));
-    const taxAfterCredit = Math.max(0, calculatedTax - priorPaidTax - foreignTaxCredit);
+    // [2026.10.19 서식감사 차] [별지 제10호의6서식] ㊳ 세대생략가산액(법 §57)은 ㊱(㊲ 한도 적용 뒤 산출세액)에 붙이고 ㊴ = ㊱ + ㊳.
+    //  기납부·외국납부세액은 할증 전 ㊱ 기준, 신고세액공제(㊺)는 ㊴에서 공제액을 뺀 금액의 3%. 넣지 않으면 예전과 같다.
+    const genSkip = genSkipPremium_(calculatedTax, p, giftDeemedAmount);
+    const calculatedTaxTotal = calculatedTax + genSkip.amount;
+    const taxAfterCredit = Math.max(0, calculatedTaxTotal - Math.min(priorPaidTax, calculatedTax) - foreignTaxCredit);
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
     const reportedInTime = filingStatus === 'ontime' && p.reportedInTime !== false;
     const reportCredit = reportedInTime ? Math.round(taxAfterCredit * reportCreditRateAt_(p.giftDate || p.giftReceivedDate)) : 0; // [2026.10.19 2부-10] 증여일 있으면 그날 율
@@ -20131,7 +20152,7 @@
       특정법인의이익: specificCorpNetBenefit, 법인세상당액_전체: corporateTaxEquivalentTotal,
       이번거래증여의제이익: thisTransactionGiftDeemedAmount, 직전1년합산액: priorBenefitSum, 증여의제이익: giftDeemedAmount,
       증여재산공제: relationDeduction, 감정평가수수료공제: appraisalFeeAmount, 재해손실공제: disasterLossAmount,
-      과세표준: taxBase, 산출세액: calculatedTax, 신고세액공제: reportCredit,
+      과세표준: taxBase, 산출세액: calculatedTax, 세대생략할증액: genSkip.amount, 산출세액_할증후: calculatedTaxTotal, 신고세액공제: reportCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       납부세액: finalTax,
       안내: (capApplied ? '산출세액이 §45의5② 한도(직접증여시 증여세상당액-법인세상당액)를 초과해 그 한도로 낮췄습니다. ' : '') + '증여자가 지배주주의 친족이 아닌 특정법인 자체이므로 증여재산공제(§53)는 통상 적용되지 않습니다(위 관계별공제 한도는 0으로 입력하는 것이 원칙입니다). 증여세 과세표준 신고기한은 특정법인의 법인세 과세표준 신고기한이 속하는 달의 말일부터 3개월입니다(§68①).' + aggNote
@@ -28433,6 +28454,23 @@ function taxCalcGiftAggregationFieldsHtml_(prefix){
     '<div class="taxcalc-field"><label>외국납부세액공제</label><input type="number" id="' + prefix + 'ForeignTax" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
     '<div class="taxcalc-field"><label>외국법령상 증여세 과세표준</label><input type="number" id="' + prefix + 'ForeignBase" placeholder="원"><span class="taxcalc-field-help">비우면 위 납부액을 잔여세액 한도로 그대로 공제, 정밀계산, 선택</span></div>';
 }
+// [2026.10.19 서식감사 차] 세대생략 할증(법 §57) 입력 — 초과배당([별지 제10호의5서식] ㉙)·특정법인([별지 제10호의6서식] ㊳)용.
+//  미성년자·증여재산가액 20억원 초과면 40%(20억 초과는 엔진이 증여재산가액으로 판정), 대습(최근친 사망)은 할증 없음.
+function taxCalcGenSkipFieldsHtml_(prefix){
+  return '' +
+    '<div class="taxcalc-field checkbox"><input type="checkbox" id="' + prefix + 'GenSkip"><label for="' + prefix + 'GenSkip">수증자가 증여자의 자녀가 아닌 직계비속(세대생략 할증 30%, §57)</label></div>' +
+    '<div class="taxcalc-field checkbox"><input type="checkbox" id="' + prefix + 'GenSkipMinor"><label for="' + prefix + 'GenSkipMinor">수증자가 미성년자(증여재산가액 20억 초과면 40%)</label></div>' +
+    '<div class="taxcalc-field checkbox"><input type="checkbox" id="' + prefix + 'GenSkipSubstitute"><label for="' + prefix + 'GenSkipSubstitute">최근친 직계비속이 사망해 그 자녀가 받음(할증 없음, §57① 단서)</label></div>' +
+    '<div class="taxcalc-field"><label>위 합산 증여분에 이미 낸 세대생략 할증세액</label><input type="number" id="' + prefix + 'GenSkipPriorPremium" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>';
+}
+function taxCalcGenSkipInput_(prefix){
+  const ck_ = function(id){ const el = document.getElementById(prefix + id); return !!(el && el.checked); };
+  const el_ = document.getElementById(prefix + 'GenSkipPriorPremium');
+  return {
+    isGenerationSkip: ck_('GenSkip'), isMinor: ck_('GenSkipMinor'), isSubstituteGiftDueToDeath: ck_('GenSkipSubstitute'),
+    priorPaidGenerationSkipPremium: el_ ? (numVal(el_.value) || 0) : 0
+  };
+}
 function taxCalcGiftAggregationInput_(prefix){
   return {
     priorGiftAmount: numVal(document.getElementById(prefix + 'PriorAmount').value) || 0,
@@ -29226,6 +29264,8 @@ function renderDeemedGiftGenericResult_(box, r, fields, toolKey){
   if (r.재해손실공제) html += taxCalcResultRow('재해손실공제', '-' + won(r.재해손실공제));
   if (r.과세표준 !== undefined) html += taxCalcResultRow('과세표준', won(r.과세표준));
   if (r.산출세액 !== undefined) html += taxCalcResultRow('산출세액', won(r.산출세액));
+  if (r.세대생략할증액) html += taxCalcResultRow('세대생략 할증액(§57)', '+' + won(r.세대생략할증액)); // [2026.10.19 서식감사 차] 10호의5 ㉙·10호의6 ㊳
+  if (r.세대생략할증액) html += taxCalcResultRow('산출세액 계', won(r.산출세액_할증후));
   if (r.신고세액공제) html += taxCalcResultRow('신고세액공제', '-' + won(r.신고세액공제));
   if (r.최초신고_증여세액) html += taxCalcResultRow('최초 신고 증여세액(정산 때 뺌)', '-' + won(r.최초신고_증여세액)); // [2026.10.19 서식감사 차] 10호의5 ㊱
   if (r.무신고가산세) html += taxCalcResultRow('무신고가산세', '+' + won(r.무신고가산세));
@@ -33420,6 +33460,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="scUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
       '</div>' +
       '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('sc') + '</div>' +
+      '<div class="taxcalc-grid">' + taxCalcGenSkipFieldsHtml_('sc') + '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-specific-corp-gift">증여세 계산하기</button>' +
       '<div id="taxCalcSpecificCorpGiftResult"></div>' +
       '<div class="taxcalc-result-note">이 서식은 홈택스 "파일변환신고"(전자신고) 대상이 아닙니다(국세청은 기본세율 증여세신고서만 파일변환신고를 지원) — 인쇄해서 홈택스 화면입력으로 직접 신고하세요.</div>' +
@@ -33453,6 +33494,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="edUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
       '</div>' +
       '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('ed') + '</div>' +
+      '<div class="taxcalc-grid">' + taxCalcGenSkipFieldsHtml_('ed') + '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-excess-dividend-gift">증여세 계산하기</button>' +
       '<div id="taxCalcExcessDividendGiftResult"></div>' +
       '<div class="taxcalc-result-note">이 서식은 홈택스 "파일변환신고"(전자신고) 대상이 아닙니다(국세청은 기본세율 증여세신고서만 파일변환신고를 지원) — 인쇄해서 홈택스 화면입력으로 직접 신고하세요.</div>' +
@@ -34593,6 +34635,8 @@ function gfDeemedGiftPrintRows_(r, extraFields){
   if (r.재해손실공제) rows += pfRow_(++n, '재해손실공제', won(r.재해손실공제));
   if (r.과세표준 !== undefined) rows += pfRow_(++n, '과세표준', won(r.과세표준));
   if (r.산출세액 !== undefined) rows += pfRow_(++n, '산출세액', won(r.산출세액));
+  if (r.세대생략할증액) rows += pfRow_(++n, '세대생략가산액(§57)', won(r.세대생략할증액)); // [2026.10.19 서식감사 차] 10호의5 ㉙·10호의6 ㊳
+  if (r.세대생략할증액) rows += pfRow_(++n, '산출세액 계', won(r.산출세액_할증후));
   if (r.신고세액공제) rows += pfRow_(++n, '신고세액공제', won(r.신고세액공제));
   if (r.최초신고_증여세액) rows += pfRow_(++n, '증여재산가액 기준 증여세액(최초 신고, §41의2②)', won(r.최초신고_증여세액)); // [2026.10.19 서식감사 차] 10호의5 ㊱
   if (r.무신고가산세) rows += pfRow_(++n, '무신고가산세', won(r.무신고가산세));
@@ -37787,7 +37831,7 @@ function handleTaxCalcClick_(e){
       monthsAfterDesignatedDueDate: numVal(document.getElementById('edMonthsAfterDesignated').value) || 0,
       unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('edUnpaidAtDesignated').value) || 0
     };
-    Object.assign(input, taxCalcGiftAggregationInput_('ed'));
+    Object.assign(input, taxCalcGiftAggregationInput_('ed'), taxCalcGenSkipInput_('ed'), { giftDate: (document.getElementById('edGiftDate') || {}).value || '' });
     const edResult = calculateExcessDividendGiftTaxJS(input);
     renderExcessDividendGiftResult(edResult);
     lastExcessDividendGiftResult_ = (edResult && !edResult.error) ? edResult : null;
@@ -37978,7 +38022,7 @@ function handleTaxCalcClick_(e){
       monthsAfterDesignatedDueDate: numVal(document.getElementById('scMonthsAfterDesignated').value) || 0,
       unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('scUnpaidAtDesignated').value) || 0
     };
-    Object.assign(input, taxCalcGiftAggregationInput_('sc'));
+    Object.assign(input, taxCalcGiftAggregationInput_('sc'), taxCalcGenSkipInput_('sc'), { giftDate: (document.getElementById('scFiscalYearEnd') || {}).value || '' });
     const scResult = calculateSpecificCorporationGiftTaxJS(input);
     renderSpecificCorpGiftResult(scResult);
     lastSpecificCorpGiftResult_ = (scResult && !scResult.error) ? scResult : null;
