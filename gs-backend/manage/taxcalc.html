@@ -8990,147 +8990,6 @@ function renderClawbackResult(r){
 // (위 "사후관리 추징이자" 도구)가 하고 있으므로, 그 결과를 공식 서식 레이아웃으로 인쇄만 새로
 // 만든다 — 피상속인·신고인 인적사항은 상속세 탭에 입력해둔 값을 그대로 가져와 쓴다.
 var lastClawbackResult_ = null;
-function ihClawbackPrintPageHtml_(formType, r){
-  const g_ = function(id){ const el = document.getElementById(id); return el ? el.value : ''; };
-  const reporter = (typeof inheritanceHeirs !== 'undefined' ? inheritanceHeirs.find(function(h){ return h.isReporter; }) : null) || {};
-  const isForm6 = formType === 'ih6';
-  let n = 0;
-  return '<div class="pf-page">' +
-    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제9호서식 ' + (isForm6 ? '부표6' : '부표7') + ']</div>' +
-    '<div class="pf-title">' + (isForm6 ? '가업상속공제·영농상속공제 사후관리 위반 신고 및 자진납부계산서' : '가업상속 납부유예 사후관리 위반 신고 및 자진납부계산서') + '</div>' +
-    '<div class="pf-section-head">신고인</div>' +
-    '<table class="pf-table">' +
-      pfRow_(++n, '성명', reporter.name) + pfRow_(++n, '주민등록번호', reporter.regNo) +
-    '</table>' +
-    '<div class="pf-section-head">피상속인</div>' +
-    '<table class="pf-table">' +
-      pfRow_(++n, '성명', g_('ihDeceasedName')) + pfRow_(++n, '주민등록번호', g_('ihDeceasedRegNo')) +
-      pfRow_(++n, '상속개시일', g_('ihDeathDate')) +
-    '</table>' +
-    '<div class="pf-section-head">사후관리 위반 및 추징세액 계산</div>' +
-    '<table class="pf-table">' +
-      pfRow_(++n, '이자 기산일(당초 신고기한 다음날)', r.이자기산일) +
-      pfRow_(++n, '추징사유 발생일', r.추징사유발생일) +
-      pfRow_(++n, '당초 감면·공제받은 세액(추징대상)', won(r.추징세액)) +
-      (r.구간별_이자상당액 || []).map(function(seg){
-        return pfRow_(0, '이자상당액(' + seg.시작일 + '~' + seg.종료일 + ', ' + seg.일수 + '일, ' + ckRateLabel_(seg) + ')', won(seg.이자상당액), { indent: true });
-      }).join('') +
-      pfRow_(++n, '이자상당액 합계', won(r.이자상당액_합계)) +
-      pfRow_(++n, '자진납부할 세액(합계액)', won(r.납부할세액)) +
-    '</table>' +
-    '<div class="pf-note">이 서식은 NETAX "사후관리 추징이자" 계산 결과를 기준으로 자동 생성되었습니다 — 사유발생일이 속하는 달의 말일부터 3개월 이내 신고·납부해야 합니다(상증세법§18의2⑯·§18의3⑧⑩·§72의2⑦⑨).</div>' +
-    '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
-      new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
-      '신고인 &nbsp;' + escapeHtml(reporter.name || '') + ' &nbsp;(서명 또는 인)<br>' + pfTaxOfficeGreeting_(g_('ihDeceasedTaxOffice')) + '</div>' +
-  '</div>';
-}
-// [2026.09.30 신규, 재검토99] 혼인출산 증여재산공제 추징사유 신고 및 자진납부계산서(별지10호
-// 부표4) — 계산 로직 자체가 없었던 항목. 이미 있는 계산명세(calculateClawbackInterestJS,
-// 위 "사후관리 추징이자" 도구)를 그대로 재사용해 신고인(수증자) 정보·증여재산 내역(부표1과
-// 같은 8컬럼 표 재사용)·추징사유·이자상당액을 묶어 인쇄한다.
-// [2026.10.06 신규, 재검토110] 영농자녀 증여세 감면 위반사유 신고 및 자진납부계산서(조특법§71②
-// ·시행령§68⑮, 별지52호의2서식) — law.go.kr 공식PDF 확인. 기존 사후관리추징이자(ck) 카드가
-// "영농자녀 증여농지 감면... 등 사후관리 위반"을 계산대상이라고 이미 설명해놓고도 실제
-// 인쇄서식 3종(ih6/ih7/gf_marriage)에는 빠져있던 누락.
-function farmlandGiftClawbackPrintPageHtml_(r){
-  const donee = giftDonees[0] || {};
-  const donor = giftDonors[0] || {};
-  const reasonCode = document.getElementById('ckFarmlandReason') ? document.getElementById('ckFarmlandReason').value : '01';
-  const reasonLabel = reasonCode === '02' ? '5년 이내 정당한 사유없이 직접 영농에 종사하지 않게 된 경우' : '5년 이내 정당한 사유없이 양도하는 경우';
-  let n = 0;
-  return '<div class="pf-page">' +
-    '<div class="pf-formno">조세특례제한법 시행규칙 [별지 제52호의2서식]</div>' +
-    '<div class="pf-title">영농자녀 증여세 감면 위반사유 신고 및 자진납부계산서</div>' +
-    '<div class="pf-section-head">수증자·증여자</div>' +
-    '<table class="pf-table">' +
-      pfRow_(++n, '수증자 성명', donee.name) + pfRow_(++n, '수증자 주민등록번호', donee.regNo) +
-      pfRow_(++n, '증여자 성명', donor.name) + pfRow_(++n, '증여자 주민등록번호', donor.regNo) +
-    '</table>' +
-    '<div class="pf-section-head">과세특례 위반 및 세액 계산</div>' +
-    '<table class="pf-table">' +
-      pfRow_(++n, '과세특례 위반코드', reasonCode + ' — ' + reasonLabel) +
-      pfRow_(++n, '증여세액(과세특례 위반으로 결정)', won(r.추징세액)) +
-      pfRow_(++n, '이자 기산일', r.이자기산일) + pfRow_(++n, '추징사유 발생일', r.추징사유발생일) +
-      (r.구간별_이자상당액 || []).map(function(seg){
-        return pfRow_(0, '이자상당액(' + seg.시작일 + '~' + seg.종료일 + ', ' + seg.일수 + '일, ' + ckRateLabel_(seg) + ')', won(seg.이자상당액), { indent: true });
-      }).join('') +
-      pfRow_(++n, '이자상당액 합계', won(r.이자상당액_합계)) +
-      pfRow_(++n, '납부할 세액(합계액)', won(r.납부할세액)) +
-    '</table>' +
-    '<div class="pf-note">이 서식은 NETAX "사후관리 추징이자" 계산 결과를 기준으로 자동 생성되었습니다(조특법§71②, 시행령§68⑮).</div>' +
-    '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
-      new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
-      '신고인 &nbsp;' + escapeHtml(donee.name || '') + ' &nbsp;(서명 또는 인)<br>' + pfTaxOfficeGreeting_(donee.taxOffice) + '</div>' +
-  '</div>';
-}
-// [2026.10.06 신규, 재검토111] 가업승계 증여세 과세특례 추징사유 신고서(조특법§30의6③,
-// 별지11호의10서식) 및 그 납부유예 버전(별지11호의13서식) — law.go.kr 서식원본 PDF로 4개
-// 위반코드까지 확인. sr(특례세율) 계산기가 세무사님 지적("완벽하게 구현하라")으로 추가 발견된
-// 누락 — 기존 ck(사후관리추징) 카드가 이미 이 용도까지 커버한다고 설명해놓고도 실제
-// ckFormType 목록엔 빠져있었다.
-function srSuccessionClawbackPrintPageHtml_(r, isDeferred){
-  const donee = giftDonees[0] || {};
-  const donor = giftDonors[0] || {};
-  const reasonCode = document.getElementById('ckSuccessionReason') ? document.getElementById('ckSuccessionReason').value : '01';
-  const REASON_LABEL_ = {
-    '01': '가업을 승계하지 않은 경우', '02': '가업을 승계한 후 가업에 종사하지 않은 경우',
-    '03': '가업을 승계한 후 가업을 휴업하거나 폐업한 경우', '04': '가업을 승계한 후 증여받은 주식등의 지분이 줄어드는 경우'
-  };
-  let n = 0;
-  return '<div class="pf-page">' +
-    '<div class="pf-formno">조세특례제한법 시행규칙 [' + (isDeferred ? '별지 제11호의13서식' : '별지 제11호의10서식') + ']</div>' +
-    '<div class="pf-title">가업승계 ' + (isDeferred ? '납부유예 사후관리추징사유' : '증여세 과세특례 추징사유') + ' 신고 및 자진납부 계산서</div>' +
-    '<div class="pf-section-head">수증자·증여자</div>' +
-    '<table class="pf-table">' +
-      pfRow_(++n, '수증자 성명', donee.name) + pfRow_(++n, '수증자 주민등록번호', donee.regNo) +
-      pfRow_(++n, '증여자 성명', donor.name) + pfRow_(++n, '증여자 주민등록번호', donor.regNo) +
-    '</table>' +
-    '<div class="pf-section-head">사후관리 위반 및 세액 계산</div>' +
-    '<table class="pf-table">' +
-      pfRow_(++n, '사후관리 위반코드', reasonCode + ' — ' + (REASON_LABEL_[reasonCode] || '')) +
-      pfRow_(++n, '증여세액(추징대상)', won(r.추징세액)) +
-      pfRow_(++n, '이자 기산일', r.이자기산일) + pfRow_(++n, '추징사유 발생일', r.추징사유발생일) +
-      (r.구간별_이자상당액 || []).map(function(seg){
-        return pfRow_(0, '이자상당액(' + seg.시작일 + '~' + seg.종료일 + ', ' + seg.일수 + '일, ' + ckRateLabel_(seg) + ')', won(seg.이자상당액), { indent: true });
-      }).join('') +
-      pfRow_(++n, '이자상당액 합계', won(r.이자상당액_합계)) +
-      pfRow_(++n, '납부할 세액(합계액)', won(r.납부할세액)) +
-    '</table>' +
-    '<div class="pf-note">이 서식은 NETAX "사후관리 추징이자" 계산 결과를 기준으로 자동 생성되었습니다(조특법§30의6' + (isDeferred ? '⑧·시행령§27의6⑬' : '③') + ').</div>' +
-    '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
-      new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
-      '신고인 &nbsp;' + escapeHtml(donee.name || '') + ' &nbsp;(서명 또는 인)<br>' + pfTaxOfficeGreeting_(donee.taxOffice) + '</div>' +
-  '</div>';
-}
-function gfMarriageClawbackPrintPageHtml_(r){
-  const donee = giftDonees[0] || {};
-  const reasonCode = document.getElementById('ckMarriageReason') ? document.getElementById('ckMarriageReason').value : '01';
-  const reasonLabel = reasonCode === '02' ? '혼인 후 공제받았으나 혼인이 무효로 됨' : '혼인 전 공제받고 2년 이내 혼인하지 않음';
-  let n = 0;
-  return '<div class="pf-page">' +
-    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [별지 제10호서식 부표4]</div>' +
-    '<div class="pf-title">혼인출산 증여재산공제 추징사유 신고 및 자진납부계산서</div>' +
-    '<div class="pf-section-head">신고인(수증자)</div>' +
-    '<table class="pf-table">' +
-      pfRow_(++n, '성명', donee.name) + pfRow_(++n, '주민등록번호', donee.regNo) +
-    '</table>' +
-    '<div class="pf-section-head">추징사유 및 세액 계산</div>' +
-    '<table class="pf-table">' +
-      pfRow_(++n, '수정신고·기한후신고 코드', reasonCode + ' — ' + reasonLabel) +
-      pfRow_(++n, '결정된 증여세액(추징대상)', won(r.추징세액)) +
-      pfRow_(++n, '이자 기산일', r.이자기산일) + pfRow_(++n, r.provision === 'gift_marriage' ? '수정신고·기한 후 신고를 한 날(㉒ 끝날)' : '추징사유 발생일', r.추징사유발생일) +
-      (r.구간별_이자상당액 || []).map(function(seg){
-        return pfRow_(0, '이자상당액(' + seg.시작일 + '~' + seg.종료일 + ', ' + seg.일수 + '일, ' + ckRateLabel_(seg) + ')', won(seg.이자상당액), { indent: true });
-      }).join('') +
-      pfRow_(++n, '이자상당액 합계', won(r.이자상당액_합계)) +
-      pfRow_(++n, '납부할 세액(합계액)', won(r.납부할세액)) +
-    '</table>' +
-    '<div class="pf-note">이 서식은 NETAX "사후관리 추징이자" 계산 결과를 기준으로 자동 생성되었습니다 — 추징사유 발생일이 속하는 달의 말일부터 3개월 이내 신고·납부해야 합니다(상증세법§53의2⑤).</div>' +
-    '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
-      new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
-      '신고인 &nbsp;' + escapeHtml(donee.name || '') + ' &nbsp;(서명 또는 인)<br>' + pfTaxOfficeGreeting_(donee.taxOffice) + '</div>' +
-  '</div>';
-}
 
 let lastBdDeferralResult_ = null;
 function renderBusinessSuccessionDeferralAmountResult(r){
@@ -11458,32 +11317,6 @@ function ihEfileFileName_(){
 }
 
 
-function ihBizAssetListPrintPageHtml_(formNo){
-  const bizAssets = (inheritanceValuationAssets_() || []).filter(function(a){ return a.isBusinessAsset; });
-  return '<div class="pf-page">' +
-    '<div class="pf-formno">상속세 및 증여세법 시행규칙 [' + formNo + ']</div>' +
-    '<div class="pf-title">가업용 자산 명세</div>' +
-    '<table class="pf-table">' +
-      '<tr><th>일련번호</th><th>구분코드</th><th>소재지</th><th>지목·명칭등</th><th>평가액</th></tr>' +
-      (bizAssets.length ? bizAssets.map(function(a, i){
-        return '<tr><td>' + (i + 1) + '</td><td>' + (a.method === 'land' ? '① 토지' : (a.method === 'building' ? '② 건축물' : '③ 기계장치등')) + '</td>' +
-          '<td>' + escapeHtml(a.assetLocation || '') + '</td><td>' + escapeHtml(VALUATION_METHOD_LABELS[a.method] || '') + '</td>' +
-          '<td class="pf-right">' + won(Math.round(computeValuationAssetValue(a))) + '</td></tr>';
-      }).join('') : '<tr><td colspan="5">사업용자산으로 표시된 개별 자산이 없습니다 — "재산평가" 탭에서 해당 자산에 "사업용자산" 체크를 했는지 확인하세요.</td></tr>') +
-    '</table>' +
-    '<div class="pf-note">구분코드는 ①토지·②건축물·③기계장치등 입니다 — 기계장치는 개별 입력항목이 없어 "③기계장치등"으로 표시되니, 실제 종류가 다르면 직접 수정하세요.</div>' +
-  '</div>';
-}
-// [2026.10.20 옛인쇄정리] 상속세 9호·부표·부속 신고서(1·2·3·5·6·6의2·7·12의2호)는 원본 모양으로 바뀌어 옛 모양을 지웠다.
-//  남은 옛 모양은 원본 모양이 없는 가업용 자산 명세(별지 1호·12호의2 부표 2)뿐 — 예전과 같은 조건(가업상속공제 / 납부유예)일 때만.
-function ihNoOfficialPagesHtml_(){
-  const r = lastInheritanceResult || {};
-  const bizDetail = r.가업상속공제_계산내역;
-  let html = '';
-  if (bizDetail && !r.가업상속납부유예_선택) html += ihBizAssetListPrintPageHtml_('별지 제1호서식 부표 2');
-  if ((numVal(r.가업상속납부유예세액) || 0) > 0 && bizDetail) html += ihBizAssetListPrintPageHtml_('별지 제12호의2서식 부표 2');
-  return html;
-}
 function ihDomNum_(id){ const el = document.getElementById(id); return el ? numVal(el.value) : 0; }
 
 function renderIhEfileResult_(){
@@ -12510,24 +12343,6 @@ function gfPrintIdentityRows_(){
       pfRow_(++n, '주소', donor.address) +
     '</table>' +
     taxAgentPrintRows_();
-}
-// [2026.10.06 신규, 재검토110] 가업승계 주식 등 증여세 과세특례 적용신청서(조특법§30의6⑤,
-// 별지11호의8서식) — law.go.kr 공식PDF 확인. 가업승계 특례세율(sr) 계산은 이미 되는데 이
-// 신청서(가업현황·증여자 가업영위기간·수증자 임원취임일 등 자격요건 확인용)가 없던 누락 —
-// 세액 자체는 위 본표와 동일하므로 과세특례 적용대상 과세가액만 교차표기하고, 가업현황·
-// 재직기간 등 정성적 요건은 자산자료가 아니라 직접 보완 대상으로 남긴다.
-function srBusinessSuccessionApplicationPrintPageHtml_(r){
-  if (!r || r.특례종류 !== '가업승계주식등(조특법 §30의6)') return '';
-  let n = 0;
-  return '<div class="pf-page">' +
-    '<div class="pf-formno">조세특례제한법 시행규칙 [별지 제11호의8서식]</div>' +
-    '<div class="pf-title">가업승계 주식 등 증여세 과세특례 적용신청서</div>' +
-    '<table class="pf-table">' +
-      pfRow_(++n, '과세특례 적용대상 증여세 과세가액', won(r.과세특례적용대상_증여세과세가액)) +
-      pfRow_(++n, '가업자산상당액', won(r.가업자산상당액 || 0)) +
-    '</table>' +
-    '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 가업현황(상호·사업자등록번호·업종)·중소기업(중견기업) 해당여부·증여자 가업영위기간 및 대표이사 재직기간·수증자 임원(대표이사) 취임일 등 자격요건 사항은 직접 보완하세요. 첨부서류: 가업법인의 중소기업기준검토표(법인세법 시행규칙 별지 제51호서식), 증여일 현재·직전 10년간 주주현황.</div>' +
-  '</div>';
 }
 function gfDeemedGiftPrintRows_(r, extraFields){
   let n = 0;
@@ -13746,7 +13561,7 @@ const PRINT_REGISTRY_ = [
     ] },
   { key: 'ih', group: '상속세', label: '상속세 과세표준신고서',
     formNo: '상속세 및 증여세법 시행규칙 [별지 제9호서식]',
-    isReady: function(){ return !!lastInheritanceResult; }, title: '상속세 과세표준신고서', bodyFn: ihNoOfficialPagesHtml_, // [2026.10.20] 본표·부표·부속 신고서는 원본 모양 — 옛 모양은 원본 모양이 없는 가업용 자산 명세(부표 2)만
+    isReady: function(){ return !!lastInheritanceResult; }, title: '상속세 과세표준신고서', // [2026.10.20] 본표·부표·부속 신고서는 원본 모양 — 옛 모양은 원본 모양이 없는 가업용 자산 명세(부표 2)만
     efileAction: 'check-ih-efile', efileResultId: 'taxCalcIhEfileResult', efileLabel: '전자신고파일 작성하기',
     subForms: [
       { formNo: '상속세 및 증여세법 시행규칙 [별지 제9호서식]', title: '상속세 과세표준신고 및 자진납부계산서', section: 'required' },
@@ -13769,9 +13584,9 @@ const PRINT_REGISTRY_ = [
       { formNo: '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표4(갑)]', title: '상속개시 전 1(2)년 이내 처분재산·채무부담 내역', section: 'optional' },
       { formNo: '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표4(을)]', title: '사용처 소명명세서', section: 'optional' },
       { formNo: '상속세 및 증여세법 시행규칙 [별지 제9호서식 부표5]', title: '영리법인 상속세 면제 및 납부 명세서', section: 'optional' },
-      // 원본 모양이 없는 서식 — 옛 모양(ihNoOfficialPagesHtml_)
-      { formNo: '상속세 및 증여세법 시행규칙 [별지 제1호서식 부표 2]', title: '가업용 자산 명세(가업상속공제)', section: 'optional' },
-      { formNo: '상속세 및 증여세법 시행규칙 [별지 제12호의2서식 부표 2]', title: '가업용 자산 명세(납부유예)', section: 'optional' }
+      // [2026.10.20 2단계 서식] 가업용 자산 명세도 원본 모양(app/formprint/mappers-2단계.js) — 서식번호를 원본 모양과 같게 '부표2'(띄어쓰기 없음)
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제1호서식 부표2]', title: '가업용 자산 명세(가업상속공제)', section: 'optional' },
+      { formNo: '상속세 및 증여세법 시행규칙 [별지 제12호의2서식 부표2]', title: '가업용 자산 명세(납부유예)', section: 'optional' }
     ] },
   { key: 'gf', group: '증여세', label: '증여세 과세표준신고서(일반)',
     formNo: '상속세 및 증여세법 시행규칙 [별지 제10호서식]',
@@ -13790,7 +13605,7 @@ const PRINT_REGISTRY_ = [
   { key: 'sr', group: '증여세', label: '증여세 과세표준신고서(특례세율: 창업자금·가업승계)',
     formNo: '상속세 및 증여세법 시행규칙 [별지 제10호의2서식]',
     isReady: function(){ return !!lastSpecialRateGiftResult_; }, title: '증여세 과세표준신고서(특례세율)',
-    bodyFn: function(){ return srBusinessSuccessionApplicationPrintPageHtml_(lastSpecialRateGiftResult_); }, // [2026.10.20] 본표·부표는 원본 모양 — 옛 모양은 원본 모양이 없는 과세특례 적용신청서(조특 11호의8)만
+    // [2026.10.20 2단계 서식] 11호의8(과세특례 적용신청서)도 원본 모양 — 옛 모양 bodyFn 삭제
     subForms: [ // [2026.10.20] 부표도 서식표 한 줄씩 — 원본 모양 출력이 줄마다 찍게(묶음 파일 forms의 서식번호와 같게)
       { formNo: '상속세 및 증여세법 시행규칙 [별지 제10호의2서식]', title: '증여세 과세표준신고 및 자진납부계산서(창업자금·가업승계주식 특례세율)', section: 'required' },
       { formNo: '상속세 및 증여세법 시행규칙 [별지 제10호의2서식 부표1]', title: '창업자금 증여재산평가 및 과세가액 계산명세서', section: 'optional' },
@@ -13872,15 +13687,9 @@ const PRINT_REGISTRY_ = [
       if (formType === 'farmland_gift') return '영농자녀 증여세 감면 위반사유 신고 및 자진납부계산서';
       if (formType === 'sr_succession' || formType === 'sr_succession_deferred') return '가업승계 증여세 과세특례 추징사유 신고 및 자진납부계산서';
       return '사후관리 위반 신고 및 자진납부계산서';
-    },
-    bodyFn: function(){
-      const formType = document.getElementById('ckFormType') ? document.getElementById('ckFormType').value : '';
-      if (formType === 'gf_marriage') return gfMarriageClawbackPrintPageHtml_(lastClawbackResult_);
-      if (formType === 'farmland_gift') return farmlandGiftClawbackPrintPageHtml_(lastClawbackResult_);
-      if (formType === 'sr_succession') return srSuccessionClawbackPrintPageHtml_(lastClawbackResult_, false);
-      if (formType === 'sr_succession_deferred') return srSuccessionClawbackPrintPageHtml_(lastClawbackResult_, true);
-      return ihClawbackPrintPageHtml_(formType, lastClawbackResult_);
-    } },
+    }
+    // [2026.10.20] 옛 흉내 bodyFn 삭제 — 5종 모두 원본 모양
+  },
   { key: 'propertyinkind', group: '증여·상속 공통', label: '상속세 물납신청서',
     formNo: function(){ // [2026.10.20 옛인쇄정리] 실제 서식번호 — 원본 모양(13호·14호의2)과 짝이 맞게. 계산 전엔 예전 글자 그대로
       if (!lastPropertyInKindInput_) return '상속세 및 증여세법 시행규칙 [별지 제13호서식 또는 별지 제14호의2서식]';
@@ -13951,6 +13760,8 @@ function printExtractPages_(item, fp){
     const foundFormNo = formNoMatch ? formNoMatch[1] : '';
     const pageTitle = titleMatch ? titleMatch[1] : '';
     const match = rows.find(function(r){ return r.formNo === foundFormNo && !r.ready; });
+    // [2026.10.20] 같은 서식번호가 원본 모양으로 이미 준비돼 있고 갈래 이름(" — 주식등" 등)도 없으면 옛 흉내 쪽은 겹침이라 버린다
+    if (!match && pageTitle.indexOf(' — ') < 0 && rows.some(function(r){ return r.formNo === foundFormNo && r.official && r.ready; })) return;
     if (match){
       match.html = pageHtml; match.ready = true; match.official = false;
       if (pageTitle && pageTitle.indexOf(' — ') >= 0) match.title = pageTitle; // "… — 주식등"처럼 갈래가 붙은 쪽은 그 이름으로
@@ -15919,11 +15730,9 @@ function handleTaxCalcClick_(e){
   } else if (action === 'print-clawback-form'){
     const formType = document.getElementById('ckFormType') ? document.getElementById('ckFormType').value : '';
     if (!formType || !lastClawbackResult_){ nxAlert_('먼저 위에서 서식 구분을 고르고 "이자상당액 계산하기"를 눌러 계산을 완료하세요.'); return; }
-    if (formType === 'gf_marriage') openPrintFormWindow_('혼인출산 증여재산공제 추징사유 신고 및 자진납부계산서', gfMarriageClawbackPrintPageHtml_(lastClawbackResult_));
-    else if (formType === 'farmland_gift') openPrintFormWindow_('영농자녀 증여세 감면 위반사유 신고 및 자진납부계산서', farmlandGiftClawbackPrintPageHtml_(lastClawbackResult_));
-    else if (formType === 'sr_succession') openPrintFormWindow_('가업승계 증여세 과세특례 추징사유 신고 및 자진납부계산서', srSuccessionClawbackPrintPageHtml_(lastClawbackResult_, false));
-    else if (formType === 'sr_succession_deferred') openPrintFormWindow_('가업승계 납부유예 사후관리추징사유 신고 및 자진납부계산서', srSuccessionClawbackPrintPageHtml_(lastClawbackResult_, true));
-    else openPrintFormWindow_('사후관리 위반 신고 및 자진납부계산서', ihClawbackPrintPageHtml_(formType, lastClawbackResult_));
+    // [2026.10.20] 추징 서식 5종(9호 부표6·7, 10호 부표4, 조특 52호의2·11호의10·11호의13)이 모두 원본 모양이라 옛 흉내 창 대신 원본 모양 PDF로 연다
+    const ckItem_ = PRINT_REGISTRY_.find(function(it){ return it.key === 'clawback'; });
+    tcOfficialOneRun_(ckItem_.formNo());
   } else if (action === 'download-ih-efile'){
     const errs = ihValidateEfileInputs_();
     if (errs.length){ renderIhEfileResult_(); return; }
