@@ -280,10 +280,13 @@ function caseProcAiFactMap_(c, items) {
     const have = m ? files.filter(function (fn) { if (!m[2].test(fileKinds[fn] + ' ' + fn)) return false; try { const f = caseProcAiFindFile_(c, fn); return !(f && caseProcAiIsRefHead_(String(tc_docText_(f) || '').slice(0, 800))); } catch (e) { return true; } }).slice(0, 4) : []; // 판례·심판례 같은 참고 자료는 다시 뒤질 서류로 권하지 않음
     return { 칸: it.id, 글: caseProcAiCut_(it.text, 60), 찾을서류: m ? m[1] : '(표에 없음 — 질문)', 이사건에있는파일: have.length ? have : (m ? '없음 — 서류 요청 질문' : '') };
   });
+  // [밤샘 5번-7 — 2번 cxRefind_] 한 서류뿐인 계산기 금액·날짜를 다른 서류의 저장된 판독 글에서 같은 값으로 되찾음 — '되찾아 받침'(우연히 같은 숫자일 수 있어 판정엔 안 씀, 근거·질문 출처 보강용)
+  let refind = null;
+  try { if (typeof cxRefind_ === 'function') { const rf = cxRefind_(c, facts, { max: 40 }) || {}; refind = { 대상: rf.candidates || 0, 한서류뿐: rf.single || 0, 되찾음: rf.refound || 0, 보기: (rf.list || []).filter(function (x) { return x.also && x.also.length; }).slice(0, 6).map(function (x) { return x.kind + ' ' + caseProcAiCut_(String(x.value), 24) + ' ← ' + caseProcAiCut_(x.file || '', 26) + ' + ' + x.also.slice(0, 2).map(function (a) { return caseProcAiCut_(a.file || '', 26); }).join('·'); }) }; } } catch (e) { refind = { 오류: caseProcAiCut_(e && e.message || e, 60) }; }
   const tot = { 조각: 0, 출처: 0, 열쇠없음: 0, 묶음: 0, 받침: 0, 어긋남: 0 };
   Object.keys(A).forEach(function (k) { tot.조각 += A[k].조각; tot.출처 += A[k].출처; tot.열쇠없음 += A[k].열쇠없음 || 0; });
   Object.keys(sum).forEach(function (k) { tot.묶음 += sum[k].묶음; tot.받침 += sum[k].받침; tot.어긋남 += sum[k].어긋남; });
-  return { ok: true, 축: sum, 조각: A, 합: tot, 지표: { '②-1 출처 비율': tot.조각 ? Math.round(tot.출처 / tot.조각 * 100) : 0, '②-2 둘 이상 서류가 받치는 비율': tot.묶음 ? Math.round(tot.받침 / tot.묶음 * 100) : 0 }, 어긋남: conflicts, 한서류뿐: singles, 빈칸: gaps };
+  return { ok: true, 축: sum, 조각: A, 합: tot, 지표: { '②-1 출처 비율': tot.조각 ? Math.round(tot.출처 / tot.조각 * 100) : 0, '②-2 둘 이상 서류가 받치는 비율': tot.묶음 ? Math.round(tot.받침 / tot.묶음 * 100) : 0 }, 어긋남: conflicts, 한서류뿐: singles, 되찾아받침: refind, 빈칸: gaps };
 }
 // 입구 요약 한 줄 — 사실 지도(GAS, 0원)를 미리 넣어 AI가 fact_map을 부르지 않아도 어긋남·빈칸과 찾을 서류를 본다
 function caseProcAiFactLine_(c, items) {
