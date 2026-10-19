@@ -22,6 +22,7 @@ const REF = opt('ref') || 'J:/내 드라이브/0 NETAX/업무관리자/법령/�
 const ONLY = opt('only') ? opt('only').split(',').map(s => s.replace(/\s/g, '')) : null;
 const DRY = args.includes('--dry');
 const HIST = opt('history'); // 예: 20140101
+const REFETCH_BYUL = args.includes('--refetch-byul');
 const REFETCH_BOX = args.includes('--refetch-box') ? (opt('refetch-box') === 'all' ? 'all' : 'cur') : null;
 const OC = process.env.LAW_OC || 'netax';
 
@@ -105,6 +106,34 @@ function markStale(k, ent) {
     }
     // M0 = M보다 먼저 공포된 마지막 판(같은 법률로 시행일만 다른 판이 이어지면 M0는 그대로 둔다)
     if (!maxP || p.공포일 > maxP.공포일) { prevOfMax = maxP; maxP = p; } else if (p.공포일 === maxP.공포일) maxP = p;
+  }
+  // [2026.10.20 위원회 N14] "이 날 그 판 법률로 바뀐 조" — 같은 법률의 앞 판(같은 공포번호, 이른 시행일)이 있으면 그 판과 글이 다른 조,
+  //  없으면(타법개정 등) 그 판 XML 개정문에서 이 법령을 고친 부분의 조 번호. 서버가 판주의에 목록을 넣고, 조회한 조가 들면 맨 앞에 경고.
+  for (const p of ps.filter(x => x.낡은글)) {
+    const same = ps.filter(q => +q.공포번호 === +p.공포번호 && q.공포일 === p.공포일 && q.시행일 < p.시행일).pop();
+    if (same) {
+      const A = load(same.판), P = load(p.판);
+      if (A && P) { const am = new Map(A.조.map(a => [a.조, body(a)])); p.낡은글.바뀐조 = P.조.filter(a => am.get(a.조) !== body(a)).map(a => a.조); p.낡은글.바뀐조근거 = '같은 법률 앞 판(' + same.판 + ') 대비'; }
+    } else {
+      p.낡은글.바뀐조 = null; p.낡은글.바뀐조근거 = '개정문'; // 개정문은 XML을 받아야 해서 아래 fillStaleChanges가 채움
+    }
+  }
+}
+// 개정문에서 이 법령을 고친 조 번호 — "○○법 일부를 다음과 같이 개정한다." 다음부터, 다른 법률 개정(⑬부터 …·다음 번호 ⑭ ○○법 일부를) 앞까지
+async function fillStaleChanges(name, ent) {
+  for (const p of ent.판.filter(x => x.낡은글 && x.낡은글.바뀐조 === null)) {
+    try {
+      const x = await get('https://www.law.go.kr/DRF/lawService.do?OC=' + OC + '&target=eflaw&type=XML&MST=' + p.MST + '&efYd=' + p.시행일);
+      const g = ((x.match(/<개정문>([\s\S]*?)<\/개정문>/) || [])[1] || '').replace(/<!\[CDATA\[|\]\]>|<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      const nm = name.replace(/\s/g, '\\s*'), i = g.search(new RegExp(nm + '\\s*일부를\\s*다음과\\s*같이\\s*개정한다'));
+      let seg = i >= 0 ? g.slice(i) : g;
+      const end = seg.slice(10).search(/[⑪-⑳]부터|[①-⑳]\s*[가-힣·ㆍ\s]+(?:법|령|규칙)\s*일부를\s*다음과|<\d+>\s*[가-힣·ㆍ\s]+(?:법|령|규칙)\s*일부를|생략|부칙\s*제\d+조/);
+      if (end > 0) seg = seg.slice(0, end + 10);
+      // 그 판에 실제로 있는 조만(개정문 둘레의 다른 법률 조 번호 걸러냄)
+      const f = path.join(OUT, '_본문', key(name), p.판 + '.json.gz'), have = fs.existsSync(f) ? new Set(JSON.parse(zlib.gunzipSync(fs.readFileSync(f)).toString('utf8')).조.map(a => a.조)) : null;
+      p.낡은글.바뀐조 = [...new Set([...seg.matchAll(/제(\d+)조(?:의(\d+))?/g)].map(m => m[1] + (m[2] ? '의' + m[2] : '')))].filter(j => !have || have.has(j));
+    } catch (e) { p.낡은글.바뀐조 = []; p.낡은글.바뀐조근거 = '개정문 받기 실패'; }
+    await new Promise(r => setTimeout(r, 300));
   }
 }
 // [2026.10.20] 부칙 — <부칙단위>마다 공포일·공포번호·글(CDATA 줄을 이어 붙임)
@@ -306,13 +335,14 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
       // [2026.10.20] --refetch-box: 글자상자 빈 그림이 있는 판은 다시 받는다(│┌ 없이 그린 상자를 예전 규칙이 버렸음). 값 all이면 옛 판까지
       const emptyBox = h => /〔산식 그림 img\d+〕(?!\\n)/.test(JSON.stringify(h.조));
       const refBox = REFETCH_BOX && (REFETCH_BOX === 'all' || 상태 !== '옛판') && have && emptyBox(have);
-      if (have && have.머리 && (상태 === '옛판' || have.별표) && !refBox) arts = have.조;
+      const refByul = REFETCH_BYUL && 상태 === '옛판' && have && !have.별표; // [2026.10.20] --refetch-byul: 별표 없이 받은 옛 판을 다시 받아 별표까지(가업상속 업종 등 그 시점 별표)
+      if (have && have.머리 && (상태 === '옛판' || have.별표) && !refBox && !refByul) arts = have.조;
       else {
         const x = await get('https://www.law.go.kr/DRF/lawService.do?OC=' + OC + '&target=eflaw&type=XML&MST=' + ver.MST + '&efYd=' + ver.시행일);
         if (상태 === '현행') curXml = x;
         const pl = parseLaw(x); arts = pl.arts;
         if (!arts.length) { report.push(name + ' ' + vk + ': 조문 0개(받기 이상)'); continue; }
-        const doc = { 법령: name, 법령ID: v.법령ID, MST: ver.MST, 시행일: ver.시행일, 공포일: ver.공포일, 공포번호: ver.공포번호, 구분: ver.구분, 받은날: today, 출처: 'law.go.kr eflaw', 머리: pl.머리, 조: arts, 별표: 상태 === '옛판' ? undefined : pl.별표 };
+        const doc = { 법령: name, 법령ID: v.법령ID, MST: ver.MST, 시행일: ver.시행일, 공포일: ver.공포일, 공포번호: ver.공포번호, 구분: ver.구분, 받은날: today, 출처: 'law.go.kr eflaw', 머리: pl.머리, 조: arts, 별표: pl.별표 };
         if (!DRY) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, zlib.gzipSync(Buffer.from(JSON.stringify(doc), 'utf8'), { level: 9 })); }
         report.push(name + ' ' + vk + ' 새 판 저장(' + 상태 + ', 조문 ' + arts.length + ', 그림 ' + arts.reduce((s, a) => s + a.그림.length, 0) + ')');
       }
@@ -343,7 +373,7 @@ function extractCorrections(lawKey, refFile, arts, verKey) {
     ent.판.sort((a, b) => a.시행일.localeCompare(b.시행일) || a.공포일.localeCompare(b.공포일));
     ent.판.forEach(p => { p.상태 = p.판 === curKey ? '현행' : (p.시행일 > (v.현행.시행일) ? '시행예정' : '옛판'); });
     ent.현행 = curKey; ent.확인한날 = today;
-    if (!DRY) markStale(k, ent);
+    if (!DRY) { markStale(k, ent); await fillStaleChanges(name, ent); }
     if (curArts && REF_FILES[k] && fs.existsSync(path.join(REF, REF_FILES[k]))) corr.push(...extractCorrections(k, path.join(REF, REF_FILES[k]), curArts, curKey));
   }
   idx.만든때 = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 16).replace('T', ' ');
