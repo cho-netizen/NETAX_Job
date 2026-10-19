@@ -2108,5 +2108,105 @@
   "정답": {
    "합산조특법세액감면액": 6645000
   }
+ },
+ {
+  "이름": "[2부-23 옛판] 중소기업 대주주 주식 2015-06-30 — 2015년까지는 중소기업 주식이면 대주주도 10%: (4억 − 250만) × 10% = 39,750,000",
+  "도구": "calculateStockTransferTaxJS",
+  "입력": {
+   "assetCategory": "domestic_stock",
+   "transferPrice": 500000000,
+   "acquisitionPrice": 100000000,
+   "holdingMonths": 36,
+   "isDaejuju": true,
+   "isSmallMediumCompany": true,
+   "transferDate": "2015-06-30"
+  },
+  "정답": {
+   "과세표준": 397500000,
+   "산출세액": 39750000
+  }
+ },
+ {
+  "이름": "[2부-23 옛판] 같은 주식 2017-06-30 — 2016~2017 대주주 20% 단일: 79,500,000",
+  "도구": "calculateStockTransferTaxJS",
+  "입력": {
+   "assetCategory": "domestic_stock",
+   "transferPrice": 500000000,
+   "acquisitionPrice": 100000000,
+   "holdingMonths": 36,
+   "isDaejuju": true,
+   "isSmallMediumCompany": true,
+   "transferDate": "2017-06-30"
+  },
+  "정답": {
+   "과세표준": 397500000,
+   "산출세액": 79500000
+  }
+ },
+ {
+  "이름": "[2부-23 옛판] 같은 주식 2019-06-30 — 중소기업 대주주 25%는 2020.1.1.부터(법률 제15225호 부칙 제1조 4호)라 20% 단일: 79,500,000",
+  "도구": "calculateStockTransferTaxJS",
+  "입력": {
+   "assetCategory": "domestic_stock",
+   "transferPrice": 500000000,
+   "acquisitionPrice": 100000000,
+   "holdingMonths": 36,
+   "isDaejuju": true,
+   "isSmallMediumCompany": true,
+   "transferDate": "2019-06-30"
+  },
+  "정답": {
+   "과세표준": 397500000,
+   "산출세액": 79500000
+  }
+ },
+ {
+  "이름": "[2부-23 대조] 같은 주식 2020-06-30 — 3억 이하 20%·초과 25%: 6천만 + 9,750만 × 25% = 84,375,000",
+  "도구": "calculateStockTransferTaxJS",
+  "입력": {
+   "assetCategory": "domestic_stock",
+   "transferPrice": 500000000,
+   "acquisitionPrice": 100000000,
+   "holdingMonths": 36,
+   "isDaejuju": true,
+   "isSmallMediumCompany": true,
+   "transferDate": "2020-06-30"
+  },
+  "정답": {
+   "과세표준": 397500000,
+   "산출세액": 84375000
+  }
+ },
+ {
+  "이름": "[2부-23 옛판] 중소기업 외 대주주 1년 이상 2017-06-30 — 3억 초과 25%는 2018년부터라 20% 단일: 79,500,000",
+  "도구": "calculateStockTransferTaxJS",
+  "입력": {
+   "assetCategory": "domestic_stock",
+   "transferPrice": 500000000,
+   "acquisitionPrice": 100000000,
+   "holdingMonths": 36,
+   "isDaejuju": true,
+   "isSmallMediumCompany": false,
+   "transferDate": "2017-06-30"
+  },
+  "정답": {
+   "과세표준": 397500000,
+   "산출세액": 79500000
+  }
+ },
+ {
+  "이름": "[2부-23 옛판] 파생상품 2015-06-30 양도 — 2016.1.1. 전 파생상품등은 양도소득 아님: 0",
+  "도구": "calculateStockTransferTaxJS",
+  "입력": {
+   "assetCategory": "derivative",
+   "transferPrice": 110000000,
+   "acquisitionPrice": 100000000,
+   "holdingMonths": 36,
+   "transferDate": "2015-06-30"
+  },
+  "정답": {
+   "과세표준": 7500000,
+   "산출세액": 0
+  }
  }
 ]

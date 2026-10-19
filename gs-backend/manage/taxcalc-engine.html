@@ -6641,7 +6641,20 @@
     const taxBase = Math.max(0, combinedGain - basicDeduction);
 
     let calculatedTax, rateNote;
-    if (assetCategory === 'domestic_stock') {
+    // [2026.10.20 조견표 2부-23 — 법령 세션 옛 판 원문] 국내 주식 세율 연혁(소득세법 §104①4호·11호):
+    //  · 2015.12.31. 이전 양도: 중소기업 외 법인 대주주 1년 미만 30%, 중소기업 주식 10%(대주주도), 그 밖 20%
+    //  · 2016.1.1.~2017.12.31.(법률 제13558호): 중소기업 주식 10%는 대주주가 아닌 자만 — 대주주는 20%(1년 미만·중소기업 외 30%), 3억 초과 25% 없음
+    //  · 2018.1.1. 이후(법률 제15225호): 대주주 3억 이하 20%·초과 25% — 단 중소기업 대주주의 25%는 2020.1.1. 시행(부칙 제1조 4호)이라 2018~2019는 20%
+    const stD_ = String(p.transferDate || '').slice(0, 10);
+    const stOld_ = refHistoryOn_() && /^\d{4}-\d{2}-\d{2}$/.test(stD_) && stD_ < '2020-01-01' ? stD_ : '';
+    if (assetCategory === 'domestic_stock' && stOld_ && (stOld_ < '2018-01-01' || (p.isDaejuju && p.isSmallMediumCompany))) {
+      const hm_ = Number(p.holdingMonths);
+      const r_ = (p.isDaejuju && !p.isSmallMediumCompany && Number.isFinite(hm_) && hm_ < 12) ? 0.30
+        : (p.isSmallMediumCompany && (stOld_ < '2016-01-01' || !p.isDaejuju)) ? 0.10 : 0.20;
+      calculatedTax = Math.round(taxBase * r_);
+      rateNote = '그때 법(' + stOld_ + ' 양도) — ' + (r_ === 0.30 ? '대주주, 중소기업 외 법인, 1년 미만 30%' : r_ === 0.10 ? (stOld_ < '2016-01-01' ? '중소기업 주식 10%(2015년까지는 대주주도 10%)' : '중소기업 소액주주 10%')
+        : (p.isDaejuju ? (stOld_ < '2018-01-01' ? '대주주 20% 단일(3억 초과 25%는 2018년부터)' : '중소기업 대주주 20% 단일(3억 초과 25%는 2020.1.1.부터, 법률 제15225호 부칙 제1조 4호)') : '그 밖의 주식 20%'));
+    } else if (assetCategory === 'domestic_stock') {
       const isDaejuju = !!p.isDaejuju;
       const isSmallMediumCompany = !!p.isSmallMediumCompany;
       const holdingMonths = Number(p.holdingMonths);
@@ -6662,6 +6675,10 @@
       const rate = p.isSmallMediumCompany ? 0.10 : 0.20;
       calculatedTax = Math.round(taxBase * rate);
       rateNote = '국외주식등, ' + (p.isSmallMediumCompany ? '중소기업주식등 10%' : '그 밖의 주식등 20%');
+    } else if (assetCategory === 'derivative' && stOld_ && stOld_ < '2016-01-01') {
+      // [2026.10.20 법령 세션 옛 판 원문] 파생상품등은 2016.1.1. 판(법률 제13558호)에 양도소득(§94①5호)으로 들어옴 — 그 전 양도는 양도소득세 과세 대상 아님
+      calculatedTax = 0;
+      rateNote = '2016.1.1. 전 양도한 파생상품등은 양도소득세 과세 대상이 아닙니다(소득세법 §94①5호는 2016.1.1. 시행) — 세액 0';
     } else if (assetCategory === 'derivative') {
       // [2026.10.20 세액 고침 — 84호 작업자 발견, 법제처 연혁판] 소득세법 시행령 §167의9 탄력세율: 2016.1.1.~2018.3.31. 양도분 5%(제26982호 부칙 제12조 "시행일이 속하는
       //  과세기간에 양도하는 분부터" — 2016 과세기간 전체), 2018.4.1. 이후 양도분 10%(제28637호 부칙 제1조 단서 1호). 예전엔 양도일과 상관없이 10%.
@@ -6857,8 +6874,9 @@
     const taxBase = Math.max(0, gainBeforeDeduction - basicDeduction);
     // [2026.10.20 세액 고침] 시행령 §167의9 탄력세율 연혁 — 2016·2017 과세기간 5%, 2018은 3.31.까지 5%·4.1.부터 10%, 2019~ 10%. 과세연도(taxYear)를 받으면 그에 맞춤.
     const dvYear_ = Number(p.taxYear) || 0;
-    const RATE = dvYear_ && dvYear_ <= 2017 ? 0.05 : 0.10; // 시행령상 탄력세율(법정 20%, §104⑥ 한도 내 인하)
-    const dvYearNote_ = dvYear_ === 2018 ? ' ⚠ 2018 과세연도는 2018.3.31. 이전 양도분 5%·4.1. 이후 10% — 이 계산은 10%로 했으니 3월까지 손익은 따로 나눠 계산하세요.' : '';
+    // [2026.10.20 법령 세션 옛 판 원문 — 2부-23] 2015 과세연도까지는 파생상품등이 양도소득이 아님(§94①5호 2016.1.1. 시행) — 0
+    const RATE = dvYear_ && dvYear_ < 2016 && refHistoryOn_() ? 0 : dvYear_ && dvYear_ <= 2017 ? 0.05 : 0.10; // 시행령상 탄력세율(법정 20%, §104⑥ 한도 내 인하)
+    const dvYearNote_ = (dvYear_ && dvYear_ < 2016 && refHistoryOn_()) ? ' 2015 과세연도까지 파생상품등은 양도소득세 과세 대상이 아닙니다(소득세법 §94①5호 2016.1.1. 시행) — 세액 0' : dvYear_ === 2018 ? ' ⚠ 2018 과세연도는 2018.3.31. 이전 양도분 5%·4.1. 이후 10% — 이 계산은 10%로 했으니 3월까지 손익은 따로 나눠 계산하세요.' : '';
     const calculatedTax = Math.round(taxBase * RATE);
 
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';

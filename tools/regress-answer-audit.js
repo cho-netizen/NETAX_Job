@@ -8,6 +8,8 @@
 //             일괄공제 5억·기초 2억·금융재산(§22, 2005~ 같음)·장례비(§14, 증빙 없으면 500만) → 과세표준, §26, 신고세액공제, 납부세액
 //          ⑥ [2026.10.20] 양도 감면액(자산 1건, 직전 과세기간 감면 입력 없음) — 과세표준 → 2부-01 산출세액 × 2부-07 감면율(수용 §77·국가양도산지 §85의10·
 //             자경 §69·대토 §70, 조문이 생기기 전 양도는 0) → §133 한도 후보(없음·1억·2억) 중 정답과 맞는 것
+//          ⑦ [2026.10.20] 주식(국내)·파생상품 산출세액 — 2부-23 세율(양도일 판: 2015까지·2016~2017·2018~, 중소기업 대주주 2018~2019 20%), 파생 탄력세율
+//          ⑧ [2026.10.20] 특정법인 증여(§45의5) — ㊲ 한도·기납부세액을 뺀 값이라 다시 셀 수 없어 "산출세액 ≤ §26 세율 값" 상한만 확인
 const fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '..');
 const T = (n) => JSON.parse(fs.readFileSync(path.join(ROOT, 'reftables', n + '.json'), 'utf8'));
@@ -25,7 +27,29 @@ const lt1 = (d, y) => { const r = t203.행.filter((x) => /^표1/.test(x.구분))
 const shortRate = (d, kind, y) => { const name = kind === 'house' ? /^단기세율 주택/ : /^단기세율 그 밖/; const r = t202.행.filter((x) => name.test(x.구분)).find((x) => x.시작 <= d && (!x.끝 || d <= x.끝)); if (!r) return null; const v = y < 1 ? r.값['1년미만'] : (y < 2 ? r.값['1년이상2년미만'] : r.값['2년이상']); return typeof v === 'number' ? v / 100 : null; };
 const reportRate = (d) => { const r = rowAt(t210.행, d); return r ? r.값 / 100 : null; };
 const rowOf = (t, gu, d) => rowAt(t.행.filter((r) => r.구분 === gu), d);
-const t207 = T('2부-07');
+const t207 = T('2부-07'), t223 = T('2부-23');
+// ⑦ 국내 주식·파생 세율 — 돌려줌 { tax, why } 또는 null(검산 못 함)
+const stockTax = (inp, d, base) => {
+  const pct = (v) => Number(String(v).replace('%', ''));
+  if (inp.assetCategory === 'derivative' || /^deriv/.test(inp._tool || '')) {
+    if (d && d < '2016-01-01') return { tax: 0, why: '2016.1.1. 전 파생상품등 비과세' };
+    const r = rowOf(t223, '파생상품등 세율', d || '9999-12-31'); return r ? { tax: Math.round(base * r.값 / 100), why: '파생상품등 ' + r.값 + '%(2부-23)' } : null;
+  }
+  if (inp.assetCategory !== 'domestic_stock' || !d) return null;
+  const hm = Number(inp.holdingMonths), dj = !!inp.isDaejuju, sme = !!inp.isSmallMediumCompany;
+  if (d < '2018-01-01') {
+    const r = rowOf(t223, '국내 주식 옛 세율(2015년까지)', d) || rowOf(t223, '국내 주식 옛 세율(2016~2017)', d); if (!r) return null;
+    const v = r.값, rate = (dj && !sme && Number.isFinite(hm) && hm < 12) ? v.대주주_1년미만_중소기업외 : (sme && (v.중소기업 != null || !dj)) ? (v.중소기업 != null ? v.중소기업 : v.중소기업_대주주아님) : v.그밖;
+    return { tax: Math.round(base * rate / 100), why: r.구분 + ' ' + rate + '%(2부-23)' };
+  }
+  const row = (gu) => rowOf(t223, gu, d);
+  if (dj && !sme && Number.isFinite(hm) && hm < 12) { const r = row('중소기업 외 — 대주주 — 1년 미만'); return r ? { tax: Math.round(base * pct(r.값) / 100), why: '대주주 1년 미만 ' + r.값 } : null; }
+  if (dj) {
+    if (sme && row('중소기업 — 대주주 — 과표 전체(유예기간)')) return { tax: Math.round(base * 0.2), why: '중소기업 대주주 20%(2018~2019 유예, 2부-23)' };
+    return { tax: base <= 3e8 ? Math.round(base * 0.2) : Math.round(6e7 + (base - 3e8) * 0.25), why: '대주주 3억 이하 20%·초과 25%(2부-23)' };
+  }
+  const r = row(sme ? '중소기업 — 기타주주(대주주 아님)' : '중소기업 외 — 기타주주'); return r ? { tax: Math.round(base * pct(r.값) / 100), why: (sme ? '중소기업 소액주주 ' : '소액주주 ') + r.값 + '(2부-23)' } : null;
+};
 // ⑥ 양도 감면율(조견표 2부-07) — 돌려줌 { rate(0~1), why, noCap } 또는 null(검산 못 함)
 const COMP_COL = { cash: '현금', bond: '채권', bond_3y: '3년만기특약', bond_5y: '5년만기특약' };
 const startRow = (gu) => t207.행.find((r) => r.구분 === gu);
@@ -94,7 +118,13 @@ files.forEach((f) => {
     const isGift = /gift|Gift|inheritance|Inheritance|SpecialRate|RelatedParty/.test(c.도구);
     const d = String(inp.transferDate || inp.giftDate || inp.dateOfDeath || inp.inheritanceDate || '').slice(0, 10);
     const base = a.과세표준, tax = a.산출세액 != null ? a.산출세액 : a.산출세액_합계;
-    if (!isGift && base != null && tax != null && d) {
+    const isStock = /StockTransfer|DerivativeTransfer/.test(c.도구);
+    if (isStock && base != null && tax != null) {
+      const st = stockTax(Object.assign({ _tool: /Derivative/.test(c.도구) ? 'deriv' : '' }, inp), d || (inp.taxYear ? (inp.taxYear < 2016 ? '2015-12-31' : inp.taxYear === 2018 ? '2018-12-31' : inp.taxYear + '-06-30') : ''), base);
+      if (st) verdict = st.tax === tax ? '산출세액 맞음 — ' + st.why : '⚠ 산출세액이 주식 세율표(2부-23)로 센 값과 다름 — ' + st.why + ' ' + st.tax.toLocaleString('ko-KR');
+      else verdict = '검산 못 함(국외주식·기타자산 주식 등 2부-23 밖)';
+    }
+    if (!isStock && !isGift && base != null && tax != null && d) {
       const y = inp.acquisitionDate ? years(inp.acquisitionDate, d) : null;
       const kind = inp.assetType === 'house' ? 'house' : 'other';
       const sr = y != null ? shortRate(d, kind, y) : null;
@@ -124,6 +154,10 @@ files.forEach((f) => {
       }
     }
     if (/SpecialRate/.test(c.도구) && base != null && a.산출세액 != null) { const st = Math.floor(Math.min(base, 12e9) * 0.1 + Math.max(0, base - 12e9) * (/business|가업/.test(JSON.stringify(inp) + c.이름) ? 0.2 : 0.1) + 1e-6); verdict = st === a.산출세액 ? '산출세액 맞음 — 조특법 §30의5·§30의6 특례세율' : '⚠ 특례세율로 ' + st.toLocaleString('ko-KR'); }
+    else if (/SpecificCorporation/.test(c.도구) && base != null && a.산출세액 != null) {
+      const gt = giftTax(base);
+      verdict = a.산출세액 <= gt ? '산출세액 상한 맞음 — §26 세율 값 ' + gt.toLocaleString('ko-KR') + ' 이하(㊲ 한도·기납부 차감 뒤라 상한만 검산)' : '⚠ 산출세액이 §26 세율 값보다 큼 — ' + gt.toLocaleString('ko-KR');
+    }
     else if (isGift && base != null && (a.산출세액 != null) && !/할증/.test(c.이름)) {
       const gt = giftTax(base);
       verdict = gt === a.산출세액 ? '산출세액 맞음 — 상증법 §26 세율' : '⚠ 산출세액 다름 — §26 세율로 ' + gt.toLocaleString('ko-KR');
