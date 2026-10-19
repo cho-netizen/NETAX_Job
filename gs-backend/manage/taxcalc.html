@@ -15034,6 +15034,8 @@ function renderPrintPane(){
           return '<button type="button" class="save-btn" data-action="' + item.efileAction + '" data-registry-key="' + item.key + '"' + (item.isReady() ? '' : ' disabled') + '>' + item.efileLabel + '</button>';
         }).join('') +
       '</div>' +
+      // [2026.10.19] 지금 인쇄는 법정서식 원본 모양이 아니라 칸 번호를 화면이 스스로 매긴다 — 원본 모양 출력(위치판)으로 바꿀 때까지 화면에서만 알림(종이에는 안 찍음)
+      (anyReady ? '<div class="taxcalc-result-note" style="color:#8a5a00; margin:8px 0;">⚠ 지금 인쇄물은 법정서식 원본 모양이 아닙니다 — 칸 배치와 동그라미 번호가 원본과 다를 수 있습니다(예: 양도 본표 ⑱ 납부할 세액이 ⑫로 찍힘). 세무서에 내기 전에 칸 이름으로 원본과 맞춰 보세요. 원본 모양 출력을 준비하고 있습니다.</div>' : '') +
       (anyReady
         ? printRenderTable_(requiredRows.filter(function(r){ return r.ready; }), '이 사건에 필요한 서식 — 신고서 본문') +
           printRenderTable_(optionalRows.filter(function(r){ return r.ready; }), '이 사건에 필요한 서식 — 사안에 따라 붙는 첨부·특례 서식')
