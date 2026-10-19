@@ -5108,6 +5108,39 @@
     const initialPaymentAmount = Math.min(Number(p.initialPaymentAmount) || 0, totalTaxAmount);
 
     const installmentTaxAmount = totalTaxAmount - initialPaymentAmount;
+    // [2026.10.20 세액 고침 — 서식↔엔진 감사 E] §71②은 재산별로 기간이 다르다: 상속 가목(가업상속재산 몫, 시행령 §68② = 상속세 × 기업상속재산가액 ÷ 총상속재산가액) 20년·
+    //  나목(그 밖) 10년, 증여 가목(조특 §30의6 증여재산 몫) 15년·나목 5년. specialPortionAmount(특례 몫 연부연납 대상)와 specialPeriodYears를 받으면
+    //  두 몫을 각자의 기간으로 나눠(각 몫 ÷ (기간 + 1), 시행령 §68①3호) 회차별로 더한다. installmentPeriodYears는 그 밖의 몫 기간.
+    //  예전엔 전체를 한 기간으로 나눠, 가업 몫이 일부뿐인데 15년을 넣으면 그 밖의 몫도 15년으로 늘었다. 몫을 안 넣고 일반 한도를 넘기면 경고.
+    //  (가업 몫의 '허가 후 10년이 되는 날부터 10년'(거치) 방식은 이 계산기가 다루지 않음)
+    const generalMax_ = taxType === 'inheritance' ? 10 : 5, specialMax_ = absoluteMaxYears;
+    const specialPortion_ = Math.min(installmentTaxAmount, Math.max(0, Number(p.specialPortionAmount) || 0));
+    let periodWarning_ = '';
+    if (specialPortion_ > 0) {
+      const sY_ = Number(p.specialPeriodYears) || 0;
+      if (!(sY_ > 0)) return { error: (taxType === 'inheritance' ? '가업상속재산' : '조특법 §30의6 증여재산') + ' 몫의 연부연납기간(년)이 필요합니다.' };
+      if (sY_ > specialMax_) return { error: '특례 몫 연부연납기간(' + sY_ + '년)이 상한 ' + specialMax_ + '년(§71②' + (taxType === 'inheritance' ? '1호가목' : '2호가목') + ')을 넘습니다.' };
+      if (installmentPeriodYears > generalMax_ && installmentTaxAmount - specialPortion_ > 0) return { error: '그 밖의 재산 몫 연부연납기간(' + installmentPeriodYears + '년)이 상한 ' + generalMax_ + '년(§71②' + (taxType === 'inheritance' ? '1호나목' : '2호나목') + ')을 넘습니다.' };
+      const mk_ = function (amt, years) {
+        const c = years + 1, b = Math.floor(amt / c);
+        const rows = []; let rem = amt;
+        for (let i = 1; i <= c; i++) { const pr = i === 1 ? amt - b * (c - 1) : b; const it = i === 1 ? 0 : Math.floor(rem * annualInterestRatePercent / 100 + 1e-9); rows.push({ 원금: pr, 가산금: it }); rem -= pr; }
+        return { rows: rows, base: b };
+      };
+      const A_ = mk_(specialPortion_, sY_), B_ = installmentTaxAmount - specialPortion_ > 0 ? mk_(installmentTaxAmount - specialPortion_, installmentPeriodYears) : { rows: [], base: 0 };
+      const n_ = Math.max(A_.rows.length, B_.rows.length), sched_ = [];
+      for (let i = 0; i < n_; i++) { const a = A_.rows[i] || { 원금: 0, 가산금: 0 }, b = B_.rows[i] || { 원금: 0, 가산금: 0 }; sched_.push({ 회차: i + 1, 원금: a.원금 + b.원금, 가산금: a.가산금 + b.가산금, 납부예정세액: a.원금 + b.원금 + a.가산금 + b.가산금, 특례몫_원금: a.원금, 그밖몫_원금: b.원금 }); }
+      const tI_ = sched_.reduce(function (s, r) { return s + r.가산금; }, 0);
+      const minRow_ = sched_.slice(1).reduce(function (m, r) { return Math.min(m, r.원금); }, Infinity);
+      return {
+        세목: taxType === 'inheritance' ? '상속세' : '증여세', 총납부세액: totalTaxAmount, 최초납부세액: initialPaymentAmount,
+        연부연납대상금액: installmentTaxAmount, 특례몫_연부연납대상: specialPortion_, 특례몫_기간: sY_, 그밖몫_연부연납대상: installmentTaxAmount - specialPortion_, 그밖몫_기간: installmentPeriodYears,
+        회차별_납부예정세액: sched_, 가산금_합계: tI_, 총납부액_최초포함: initialPaymentAmount + installmentTaxAmount + tI_,
+        각회분_1천만원미만_경고: isFinite(minRow_) && minRow_ <= 10000000,
+        안내: '§71②·시행령 §68① — ' + (taxType === 'inheritance' ? '가업상속재산' : '조특법 §30의6 증여재산') + ' 몫 ' + specialPortion_ + '원은 ' + sY_ + '년, 그 밖의 몫 ' + (installmentTaxAmount - specialPortion_) + '원은 ' + installmentPeriodYears + '년으로 나눠 회차별로 더함'
+      };
+    }
+    if (installmentPeriodYears > generalMax_) periodWarning_ = '⚠ 연부연납기간 ' + installmentPeriodYears + '년 — 그 밖의 재산은 ' + generalMax_ + '년까지(§71②' + (taxType === 'inheritance' ? '1호나목' : '2호나목') + '). 전체가 ' + (taxType === 'inheritance' ? '가업상속재산' : '조특법 §30의6 증여재산') + ' 몫일 때만 맞음 — 일부면 "특례 몫" 칸에 그 몫을 넣으세요.';
     const count = installmentPeriodYears + 1;
     const basePrincipal = Math.floor(installmentTaxAmount / count);
     // [2026.10.19 상속세책자 사례] 나누고 남은 끝수는 첫 회(신고 때 내는 몫)에 붙인다(책: 155,006,000원 ÷ 6 → 신고 때 25,834,335원,
@@ -5134,7 +5167,8 @@
       회차별_납부예정세액: schedule,
       가산금_합계: totalInterest,
       총납부액_최초포함: initialPaymentAmount + installmentTaxAmount + totalInterest,
-      각회분_1천만원미만_경고: belowMinimumWarning
+      각회분_1천만원미만_경고: belowMinimumWarning,
+      기간경고: periodWarning_ || undefined
     };
   };
 

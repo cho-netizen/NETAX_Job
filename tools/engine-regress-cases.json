@@ -2328,5 +2328,24 @@
    "과세표준": 30000000,
    "산출세액": 3000000
   }
+ },
+ {
+  "이름": "[세액 고침 — 감사 E, 상증법 §71②·시행령 §68①②] 상속세 연부연납 31.86억 중 가업상속재산 몫 19.1187억은 15년, 그 밖 12.7458억은 10년: 2회 원금 = 119,491,875 + 115,870,909 = 235,362,784, 2회 가산금 = 몫별 원 미만 버림 합 91,483,702, 회차 16(예전엔 전체를 15년으로 나눠 그 밖의 몫도 15년)",
+  "도구": "calculateInstallmentPaymentScheduleJS",
+  "고정": true,
+  "입력": {
+   "taxType": "inheritance",
+   "totalTaxAmount": 3186450000,
+   "initialPaymentAmount": 0,
+   "annualInterestRatePercent": 3.1,
+   "referenceDate": "2026-09-30",
+   "installmentPeriodYears": 10,
+   "specialPortionAmount": 1911870000,
+   "specialPeriodYears": 15
+  },
+  "정답": {
+   "연부연납대상금액": 3186450000,
+   "특례몫_연부연납대상": 1911870000
+  }
  }
 ]
