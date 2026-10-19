@@ -50,12 +50,18 @@
     return r.자산별_내역.filter(function (x) { return x.idx === i; });
   }
   // 합산(장기) 감면 줄 — 특례 이름(label)이 re에 맞는 것(추징 줄은 감면액이 음수라 뺌)
+  // [2026.10.20 서식 감사(양도)] 소득세법 §104⑤1호(비교과세)가 채택된 해는 엔진이 감면을 그 해 전체 A·D로 다시 계산해
+  //  '비교과세 1호 감면' 줄에 두고 84호 ⑪ 감면세액·납부세액도 그 값으로 낸다. 감면신청서 감면세액은 신고서에 실제 반영된 감면세액과
+  //  같아야 하므로(13호 작성방법 1 "감면종합한도를 적용한 후의 순수 감면액") 그 줄이 있으면 그것을, 없으면 '합산(장기)'(2호) 줄을 읽는다.
+  var RED_1HO_ = '비교과세 1호 감면(§90① A·D = 그 해 전체)';
   function redNotes(notes, re) {
-    return (notes || []).filter(function (x) { return x.구분 === '합산(장기)' && typeof x.감면액 === 'number' && x.감면액 >= 0 && re.test(String(x.특례 || '')); });
+    var pick_ = function (g) { return (notes || []).filter(function (x) { return x.구분 === g && typeof x.감면액 === 'number' && x.감면액 >= 0 && re.test(String(x.특례 || '')); }); };
+    var one = pick_(RED_1HO_);
+    return one.length ? one : pick_('합산(장기)');
   }
   // 엔진 감면산식 글 'A 70,310,000 × (B 240,000,000 − C 2,500,000) ÷ D 237,500,000 × E 15%' 읽기
   function formulaOf(note) {
-    var m = String(note && note.감면산식 || '').match(/A ([\d,]+) × \(B ([\d,]+) − C ([\d,]+)\) ÷ D ([\d,]+) × E ([\d.]+)%/);
+    var m = String(note && note.감면산식 || '').match(/A ([\d,]+) × \(B ([\d,]+) − C ([\d,]+)\) ÷ D ([\d,]+)(?:\([^)]*\))? × E ([\d.]+)%/); // [2026.10.20] 세율 묶음이 둘 이상인 해(§104⑤2호 단서)는 엔진이 D 뒤에 "(그 세율 묶음 — §104⑤2호)"를 붙임
     if (!m) return null;
     var g = function (s) { return Number(String(s).replace(/,/g, '')); };
     return { A: g(m[1]), B: g(m[2]), C: g(m[3]), D: g(m[4]), E: Number(m[5]) / 100 };
@@ -221,7 +227,9 @@
     var paid = Math.max(0, n(a.pensionAccountContribution));
     var pensionAssets = (ctx.assets || []).filter(function (x) { return n((x.asset || {}).pensionAccountContribution) > 0; });
     var prior = Math.max.apply(null, [0].concat((ctx.assets || []).map(function (x) { return Math.max(0, n((x.asset || {}).pensionPriorContribution)); })));
-    var diff = Math.max(0, n(a.transferPrice) - n(a.acquisitionPrice));
+    // [2026.10.20 서식 감사(양도)] ⑭는 엔진 pensionCreditBase_와 같은 취득가액(엔진이 정한 값 — 환산·감정·매매사례면 그 값, 84호 부표1 ⑫와 같은
+    //  엔진 입력값)으로. 예전엔 화면 취득가액을 그대로 빼 환산 사건이면 ⑭·⑮가 엔진과 달랐다(시행령 §40의2②1호 라목 "양도가액 − 취득가액")
+    var diff = Math.max(0, n(a.transferPrice) - acqOf(p.it, a));
     o.set('⑬', paid).set('⑭', diff);
     o.note('⑭ 양도차익: 엔진은 소득세법 시행령 §40의2②1호 라목 문언대로 "양도가액 − 취득가액"(' + diff + '원) — 서식 작성방법 6은 필요경비까지 뺀 금액(판단 대기, 법령 우선)');
     o.miss('⑪ 기납입액 — 주택차액 납입액·부동산 양도대금 납입액 칸 나눔', '계산기는 기납입 누적액 합계 하나만 받음(' + prior + '원 — 다목·라목 구분 없음)');
