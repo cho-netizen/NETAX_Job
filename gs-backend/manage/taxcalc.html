@@ -8022,7 +8022,7 @@ function renderGiftResult(results){
     }).join('·') + (donorIdxs.length > 1 ? ' [동일인그룹]' : '');
     const donee = giftDonees[item.doneeIdx || 0] || {};
     const label = donorLabel + (giftDonees.length > 1 ? ' → 수증인 ' + tcPad2_((item.doneeIdx || 0) + 1) + (donee.name ? '(' + escapeHtml(donee.name) + ')' : '') : '');
-    return renderOneGiftResultHtml_(item.result, idx, label);
+    return (item.result && item.result.시점경고 ? '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600; margin:8px 0 0;">' + escapeHtml(item.result.시점경고) + '</div>' : '') + renderOneGiftResultHtml_(item.result, idx, label); // [2026.10.19] 증여일 연혁 경고
   }).join('');
   if (list.length > 1 && list.every(function(item){ return !item.result.error; })){
     const totalTax = list.reduce(function(s, item){ return s + (numVal(item.result.납부세액) || 0); }, 0);
@@ -13829,6 +13829,7 @@ function renderInheritanceResult(r){
   lastInheritanceResult = r.error ? null : r;
   if (r.error){ box.innerHTML = '<div class="taxcalc-error">' + r.error + '</div>'; renderHeirTool(); return; }
   let html = '<div class="taxcalc-result">';
+  if (r.시점경고) html += '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.시점경고) + '</div>'; // [2026.10.19] 상속개시일 연혁 경고
   // [2026.10.09] 실사용 점검에서 발견 — 처리개요의 상속인 이름은 이름만 넘어오고 관계(배우자·자녀…)는 비어 있어,
   // 배우자가 있는데도 배우자공제(최소 5억)가 0원으로 계산되는데 아무 경고가 없었다. 관계가 빈 상속인이 있으면 알린다.
   const ihNoRelation_ = (inheritanceHeirs || []).filter(function(h){ return h && String(h.name || '').trim() && !h.relation; }).map(function(h){ return h.name; });
@@ -16204,6 +16205,7 @@ function handleTaxCalcClick_(e){
     // 적용되지 않는다). 수증일·혼인출산공제·비과세·기타공제(외국납부세액공제 등)는 이 증여
     // 건 전체에 공통이라 한 번만 읽어 모든 계산에 그대로 얹는다.
     const sharedInput = {
+      giftDate: (document.getElementById('giftDate') || {}).value || '', // [2026.10.19] 시점 경고용(계산엔 안 씀)
       isMarriageGift: taxCalcIsMarriageGiftEligible_(document.getElementById('giftDate').value, document.getElementById('giftMarriageDate').value),
       isBirthGift: taxCalcIsBirthGiftEligible_(document.getElementById('giftDate').value, document.getElementById('giftBirthDate').value),
       priorMarriageOrBirthDeductionUsed: numVal(document.getElementById('giftPriorMarriageBirth').value) || 0,
@@ -16866,6 +16868,7 @@ function handleTaxCalcClick_(e){
       nonHeirBequestAmount: numVal(document.getElementById('ihNonHeirBequest').value) || 0,
       giftToHeirsWithin10Years: numVal(document.getElementById('ihGiftToHeirs').value) || 0,
       priorGiftedAmountIncludedInEstate: numVal(document.getElementById('ihPriorGiftedIncluded').value) || 0,
+      inheritanceDate: (document.getElementById('ihDeathDate') || {}).value || '', // [2026.10.19] 시점 경고용(계산엔 안 씀)
       spouseTaxableBaseOfPriorGift: numVal(document.getElementById('ihSpouseGiftBase').value) || 0,
       nonHeirPriorGiftAmountTotal: numVal(document.getElementById('ihNonHeirPriorGiftAmount').value) || 0,
       nonHeirPriorGiftTaxableBaseTotal: numVal(document.getElementById('ihNonHeirPriorGiftBase').value) || 0,
