@@ -5650,7 +5650,9 @@ function renderOverseasPropertyCardHtml_(idx){
 // (여러 건이어도 기본공제 1회만 적용)로 바꾼다.
 function renderOverseasSharedFilingSectionHtml_(){
   return '<div class="taxcalc-grid" style="margin-top:8px;">' +
-      '<div class="taxcalc-field"><label>같은 과세기간 국내자산 양도소득금액(있으면)</label><input type="number" id="oaSharedDomesticIncome" placeholder="원" value="' + (oaSharedFilingState.domesticIncome || '') + '"><span class="taxcalc-field-help">2019년 이전 양도분만 씀 — 2020.1.1 이후 양도분은 법(§118의6①1호)대로 국외자산 양도소득금액만으로 자산별 한도를 계산해 이 값을 쓰지 않습니다</span></div>' +
+      // [2026.10.20 J14] 옛 §118의6①(2019.12.31. 이전 양도분)도 분모에 국내 양도소득금액을 넣지 않음 — 대신 그해 국외 주식등(옛 국외자산) 몫
+      '<div class="taxcalc-field"><label>(2019년 이전 양도분만) 그해 국외 주식등 양도소득금액</label><input type="number" id="oaSharedOverseasStockIncome" placeholder="없으면 비움" value="' + (oaSharedFilingState.overseasStockIncome || '') + '"><span class="taxcalc-field-help">옛 소득세법 §118의2제3호 — 그때는 국외 주식도 국외자산이라 외국납부세액공제 한도(옛 §118의6①1호)의 분모에 들어감. 국내 양도소득금액은 넣지 않습니다(AI 회의 J14)</span></div>' +
+      '<div class="taxcalc-field"><label>(2019년 이전 양도분만) 그 국외 주식등 산출세액</label><input type="number" id="oaSharedOverseasStockTax" placeholder="없으면 비움" value="' + (oaSharedFilingState.overseasStockTax || '') + '"><span class="taxcalc-field-help">한도 산식의 A(국외자산 산출세액)에 더함</span></div>' +
       '<div class="taxcalc-field"><label>신고 상태</label><select id="oaSharedFilingStatus"><option value="ontime"' + (oaSharedFilingState.filingStatus !== 'unreported' && oaSharedFilingState.filingStatus !== 'underreported' ? ' selected' : '') + '>정상(기한내) 신고</option><option value="unreported"' + (oaSharedFilingState.filingStatus === 'unreported' ? ' selected' : '') + '>무신고</option><option value="underreported"' + (oaSharedFilingState.filingStatus === 'underreported' ? ' selected' : '') + '>과소신고</option></select></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" id="oaSharedFraudulent"' + (oaSharedFilingState.isFraudulent ? ' checked' : '') + '><label for="oaSharedFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
       '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="oaSharedUnderreportedTax" placeholder="원" value="' + (oaSharedFilingState.underreportedTax || '') + '"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
@@ -6763,7 +6765,7 @@ function renderTransferPane(){
   // [2026.09.24 재구성] 국외자산 신고상태는 이제 자산별이 아니라 공유칸 하나다(과세기간당
   // 확정신고 1번 — 재검토60 참고). 공유칸들이 실제로 렌더됐을 때만(국외자산이 1건 이상일
   // 때만) 배선한다.
-  ['oaSharedDomesticIncome', 'oaSharedFilingStatus', 'oaSharedFraudulent', 'oaSharedUnderreportedTax', 'oaSharedMonthsAfterDesignated', 'oaSharedUnpaidAtDesignated', 'oaSharedDesignatedDueDate'].forEach(function(id){
+  ['oaSharedOverseasStockIncome', 'oaSharedOverseasStockTax', 'oaSharedFilingStatus', 'oaSharedFraudulent', 'oaSharedUnderreportedTax', 'oaSharedMonthsAfterDesignated', 'oaSharedUnpaidAtDesignated', 'oaSharedDesignatedDueDate'].forEach(function(id){
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener(el.type === 'checkbox' || el.tagName === 'SELECT' ? 'change' : 'input', function(){
@@ -7474,6 +7476,7 @@ function renderOneOverseasResultHtml_(r, label){
   html += taxCalcResultRow('과세표준', won(r.과세표준));
   html += taxCalcResultRow('산출세액', won(r.산출세액));
   if (r.외국납부세액공제한도 !== undefined) html += taxCalcResultRow('외국납부세액공제 한도', won(r.외국납부세액공제한도));
+  if (r.외국납부세액공제_안내) html += '<div class="taxcalc-result-note">' + escapeHtml(r.외국납부세액공제_안내) + '</div>'; // [2026.10.20 J14]
   if (r.외국납부세액공제) html += taxCalcResultRow('외국납부세액공제', '-' + won(r.외국납부세액공제));
   if (r.무신고가산세) html += taxCalcResultRow('무신고가산세', '+' + won(r.무신고가산세));
   if (r.과소신고가산세) html += taxCalcResultRow('과소신고가산세', '+' + won(r.과소신고가산세));
@@ -16293,7 +16296,8 @@ function handleTaxCalcClick_(e){
       };
     });
     const oaFilingParams = {
-      domesticTransferIncomeAmount: numVal(document.getElementById('oaSharedDomesticIncome').value) || 0,
+      overseasStockIncomeOldRule: numVal((document.getElementById('oaSharedOverseasStockIncome') || {}).value) || 0, // [2026.10.20 J14]
+      overseasStockTaxOldRule: numVal((document.getElementById('oaSharedOverseasStockTax') || {}).value) || 0,
       filingStatus: document.getElementById('oaSharedFilingStatus').value,
       isFraudulent: document.getElementById('oaSharedFraudulent').checked,
       underreportedTaxAmount: numVal(document.getElementById('oaSharedUnderreportedTax').value) || 0,

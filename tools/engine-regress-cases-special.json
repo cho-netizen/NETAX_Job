@@ -890,5 +890,45 @@
   "정답": {
    "합산수용감면액": 100000000
   }
+ },
+ {
+  "이름": "[J14] 2019년 국외자산 양도 — 국내 양도소득금액 1억을 넣어도 한도 분모에 안 넣음(옛 §118의6①1호 = 국외자산만): 한도 = 산출세액(9,750만×35%−1,544만 = 18,685,000)",
+  "도구": "calculateOverseasAssetTransferTaxJS",
+  "입력": {
+   "wasResidentFiveYearsContinuously": true,
+   "transferDate": "2019-06-01",
+   "transferPrice": 300000000,
+   "acquisitionPrice": 200000000,
+   "foreignTaxPaidAmount": 30000000,
+   "domesticTransferIncomeAmount": 100000000
+  },
+  "정답": {
+   "산출세액": 18685000,
+   "외국납부세액공제한도": 18685000,
+   "외국납부세액공제": 18685000
+  }
+ },
+ {
+  "이름": "[J14] 2019년 국외자산 + 그해 국외 주식등 소득 1억·산출세액 2천만(옛 §118의2제3호) — 한도 = (18,685,000 + 20,000,000) × 1억 ÷ 2억 = 19,342,500, 공제는 이 계산 세액까지",
+  "도구": "calculateOverseasAssetTransferTaxMultiJS",
+  "인자": [
+   [
+    {
+     "wasResidentFiveYearsContinuously": true,
+     "transferDate": "2019-06-01",
+     "transferPrice": 300000000,
+     "acquisitionPrice": 200000000,
+     "foreignTaxPaidAmount": 30000000
+    }
+   ],
+   {
+    "overseasStockIncomeOldRule": 100000000,
+    "overseasStockTaxOldRule": 20000000
+   }
+  ],
+  "정답": {
+   "외국납부세액공제한도": 19342500,
+   "외국납부세액공제": 18685000
+  }
  }
 ]

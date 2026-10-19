@@ -7707,12 +7707,28 @@
   // 않는다(§118의8단서). 기본공제는 국내양도세와 별개로 연250만원(§118의7①). 외국납부세액공제 한도는
   // [2026.10.19 세액 고침] §118의6①1호(법률 제16834호, 2020.1.1 이후 양도분 — 부칙 제2조① 일반 적용례): 한도 = A × B / C
   //  A 국외자산 양도소득 산출세액, B 해당 국외자산 양도소득금액, C 그 과세기간 국외자산 양도소득금액 — 국내분은 넣지 않고 자산마다 비교한다.
-  //  아래 옛 설명(국내 양도소득금액을 분모에 넣음)은 2019.12.31까지 양도분 문언("그 과세기간의 양도소득금액")이라 그 경우에만 쓴다(판단 대기).
+  //  [2026.10.20 J14 — AI 회의 회장 결론] 2019.12.31. 이전 양도분(법률 제16834호 부칙 제2조②로 옛 문언)도 분모에 국내 양도소득금액을 넣지 않는다:
+  //   옛 §118의6①1호 "제118조의5에 따라 계산한 해당 과세기간의 양도소득 산출세액(A — 국외자산 과세표준에 매긴 세액)에 국외자산 양도소득금액이
+  //   그 과세기간의 양도소득금액에서 차지하는 비율" — 같은 절 옛 §118의7①의 같은 말("해당 과세기간의 양도소득금액")도 국외자산 소득만 뜻한다.
+  //   다만 옛 판은 국외 주식등(옛 §118의2제3호)도 국외자산이라, 그해 국외 주식등 양도가 있었으면 그 소득금액·산출세액을 A와 분모에 더한다
+  //   (overseasStockIncomeOldRule·overseasStockTaxOldRule — 없으면 비율 1). 옛 판은 한도를 국외자산 전체로 한 번 비교(자산별 아님).
+  //  아래 (옛) 설명은 2026.10.20 전 계산기 방식 — domesticTransferIncomeAmount는 이제 쓰지 않는다(넣으면 안내만).
   // (옛) §118의6①·시행령§178의7: 산출세액 × (국외자산양도소득금액 ÷ 해당 과세기간 양도소득금액 합계액) —
   // 같은 과세기간에 국내자산 양도소득금액이 함께 있으면 domesticTransferIncomeAmount로 입력하면 정확한
   // 비율로 한도를 계산하고, 입력하지 않으면(국외자산양도소득만 있는 경우) 비율이 1이 되어 한도=산출세액과
   // 같아진다. 또는 필요경비산입 방법을 선택할 수 있다(필요경비산입 방법을 쓰려면 이미 필요경비에 포함해
   // 입력하고 세액공제는 0으로 둔다).
+  // [2026.10.20 J14] 옛 §118의6①(2019.12.31. 이전 양도분) 한도의 국외 주식등 몫과 안내
+  function oldFtcRuleParts_(isOld, src) {
+    src = src || {};
+    const dom = Math.max(0, Number(src.domesticTransferIncomeAmount) || 0);
+    if (!isOld) return { stockIncome: 0, stockTax: 0, note: '' };
+    const si = Math.max(0, Number(src.overseasStockIncomeOldRule) || 0), st = Math.max(0, Number(src.overseasStockTaxOldRule) || 0);
+    let note = '2019.12.31. 이전 양도분 외국납부세액공제 한도 = 국외자산 산출세액 × 해당 국외자산 양도소득금액 ÷ 그해 국외자산 양도소득금액(옛 소득세법 §118의6①1호 — 국내 양도소득금액은 넣지 않음, AI 회의 J14)';
+    if (si > 0 || st > 0) note += ' · 그해 국외 주식등(옛 §118의2제3호) 소득금액 ' + si.toLocaleString('ko-KR') + '원·산출세액 ' + st.toLocaleString('ko-KR') + '원을 A와 분모에 더함';
+    if (dom > 0) note += ' · 넣은 국내 양도소득금액(' + dom.toLocaleString('ko-KR') + '원)은 쓰지 않았습니다';
+    return { stockIncome: si, stockTax: st, note: note };
+  }
   window.calculateOverseasAssetTransferTaxJS = function (p) {
     p = p || {};
     if (!p.wasResidentFiveYearsContinuously) {
@@ -7731,13 +7747,12 @@
 
     const foreignTaxCreditMethod = p.foreignTaxCreditMethod === 'expense' ? 'expense' : 'credit';
     const foreignTaxPaidAmount = Number(p.foreignTaxPaidAmount) || 0;
-    // [2026.10.19] 2020.1.1 이후 양도분은 분모 C에 국내분을 넣지 않는다(단건은 B = C → 비율 1). 2019년 이전 양도분만 옛 문언대로 국내분 포함(판단 대기)
+    // [2026.10.19] 2020.1.1 이후 양도분은 분모 C에 국내분을 넣지 않는다(단건은 B = C → 비율 1).
+    // [2026.10.20 J14] 2019년 이전 양도분도 국내분은 넣지 않고, 그해 국외 주식등(옛 국외자산)이 있으면 A·분모에 더한다
     const oldFtcRule_ = !!(p.transferDate && String(p.transferDate) < '2020-01-01');
-    const domesticTransferIncomeAmount = oldFtcRule_ ? Math.max(0, Number(p.domesticTransferIncomeAmount) || 0) : 0;
-    const totalIncomeAmountForRatio = Math.max(0, gain) + domesticTransferIncomeAmount;
-    const creditRatio = totalIncomeAmountForRatio > 0 ? Math.max(0, gain) / totalIncomeAmountForRatio : 1;
-    const foreignTaxCreditLimit = Math.round(calculatedTax * creditRatio);
-    const foreignTaxCredit = foreignTaxCreditMethod === 'credit' ? Math.min(foreignTaxPaidAmount, foreignTaxCreditLimit) : 0;
+    const ftcOld_ = oldFtcRuleParts_(oldFtcRule_, p);
+    const foreignTaxCreditLimit = Math.round((calculatedTax + ftcOld_.stockTax) * (Math.max(0, gain) + ftcOld_.stockIncome > 0 ? Math.max(0, gain) / (Math.max(0, gain) + ftcOld_.stockIncome) : 1));
+    const foreignTaxCredit = foreignTaxCreditMethod === 'credit' ? Math.min(foreignTaxPaidAmount, foreignTaxCreditLimit, calculatedTax) : 0;
     const taxAfterCredit = Math.max(0, calculatedTax - foreignTaxCredit);
 
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(p.filingStatus) !== -1 ? p.filingStatus : 'ontime';
@@ -7750,7 +7765,7 @@
       양도차익: Math.round(gain), 기본공제: basicDeduction, 과세표준: taxBase,
       산출세액: calculatedTax, 외국납부세액공제한도: foreignTaxCreditLimit, 외국납부세액공제: foreignTaxCredit,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
-      지방소득세: localIncomeTax, 납부세액_합계: totalTax,
+      지방소득세: localIncomeTax, 납부세액_합계: totalTax, 외국납부세액공제_안내: ftcOld_.note || undefined,
       안내: '장기보유특별공제는 국외자산에는 적용되지 않습니다(§118의8단서). 기본공제(연250만원)는 국내자산 양도소득과 별도로 적용됩니다(§118의7). 양도가액·취득가액은 원칙적으로 실지거래가액이며, 확인 안 되면 소재국 시가(그래도 안되면 대통령령이 정하는 방법)를 씁니다. 국외전출자 국내주식등 출국세(§118의9~118의18)는 2027.1.1 시행 예정이라 아직 시행 전이며 핵심 세율표도 확인되지 않아 이 계산기가 다루지 않습니다. 같은 과세기간에 국외자산을 2건 이상 양도했다면 이 함수 대신 calculateOverseasAssetTransferTaxMultiJS로 합산 계산해야 기본공제(§118의7①) 중복적용을 막을 수 있습니다.'
     };
   };
@@ -7792,12 +7807,12 @@
     //  2019.12.31 이전 양도분(옛 문언 "그 과세기간의 양도소득금액")이 섞이면 예전 방식(판단 대기).
     const oldFtcRuleM_ = transactions.some(function (t) { return t && t.transferDate && String(t.transferDate) < '2020-01-01'; });
     let foreignTaxCreditLimit = 0, foreignTaxCredit = 0;
+    const ftcOldM_ = oldFtcRuleParts_(oldFtcRuleM_, filingParams); // [2026.10.20 J14] 국내분 넣지 않음, 그해 국외 주식등은 A·분모에
     if (oldFtcRuleM_) {
-      const domesticTransferIncomeAmount = Math.max(0, Number(filingParams.domesticTransferIncomeAmount) || 0);
-      const totalIncomeAmountForRatio = Math.max(0, totalGain) + domesticTransferIncomeAmount;
+      const totalIncomeAmountForRatio = Math.max(0, totalGain) + ftcOldM_.stockIncome;
       const creditRatio = totalIncomeAmountForRatio > 0 ? Math.max(0, totalGain) / totalIncomeAmountForRatio : 1;
-      foreignTaxCreditLimit = Math.round(calculatedTax * creditRatio);
-      foreignTaxCredit = Math.min(totalForeignTaxPaid, foreignTaxCreditLimit);
+      foreignTaxCreditLimit = Math.round((calculatedTax + ftcOldM_.stockTax) * creditRatio);
+      foreignTaxCredit = Math.min(totalForeignTaxPaid, foreignTaxCreditLimit, calculatedTax);
     } else {
       const C_ = Math.max(0, totalGain);
       perTxn.forEach(function (x) {
@@ -7821,7 +7836,7 @@
       거래건수: transactions.length,
       거래별_내역: perTxn,
       합산양도차익: Math.round(totalGain), 기본공제: basicDeduction, 과세표준: taxBase,
-      산출세액: calculatedTax, 외국납부세액공제한도: foreignTaxCreditLimit, 외국납부세액공제: foreignTaxCredit,
+      산출세액: calculatedTax, 외국납부세액공제한도: foreignTaxCreditLimit, 외국납부세액공제: foreignTaxCredit, 외국납부세액공제_안내: ftcOldM_.note || undefined,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       지방소득세: localIncomeTax, 납부세액_합계: totalTax,
       안내: '국외자산은 §118의7①에 따라 여러 건을 양도해도 기본공제(연250만원)를 통틀어 1회만 적용합니다(국내자산처럼 자산 종류별로 나누지 않음). 장기보유특별공제는 국외자산에 적용되지 않습니다. foreignTaxCreditMethod가 expense인 거래는 이미 필요경비에 포함해 입력했다고 보아 세액공제 대상에서 제외했습니다.'
