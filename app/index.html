@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 07:03 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 07:28 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -35103,6 +35103,49 @@ const PRINT_EFILE_INCLUDED_FORMNO_ = [
   '상속세 및 증여세법 시행규칙 [별지 제10호서식]', '상속세 및 증여세법 시행규칙 [별지 제10호서식 부표1]'
 ];
 const PRINT_EFILE_LOCAL_TAX_FORMNO_ = ['지방세법 시행규칙 [별지 제40호의11서식]'];
+// [2026.10.19 원본 모양 출력] 세목 → 모듈 서식 묶음(app/formprint/mappers.js FORMS_BY_TAX)
+const TC_OFFICIAL_FORM_TAX_ = { '양도소득세': '양도', '증여세': '증여', '상속세': '상속' };
+const TC_OFFICIAL_FORM_LABEL_ = { '양도소득세': '별지 제84호서식 본표·부표1', '증여세': '별지 제10호서식 본표', '상속세': '별지 제9호서식 본표·부표1·부표3' };
+function tcTodayStr_(){ const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+// 모듈은 처음 누를 때 불러온다 — job.netax.kr/app 화면이면 같은 곳(formprint/), 예전 구글 주소 화면이면 깃허브 페이지 주소
+function tcLoadFormPrint_(){
+  if (window.NxFormPrint && window.NxFormPrint.mappers) return Promise.resolve(window.NxFormPrint);
+  const base = window.NX_FORMPRINT_BASE || (/^(job\.netax\.kr|localhost|127\.0\.0\.1)$/.test(location.hostname) ? 'formprint/' : 'https://job.netax.kr/app/formprint/');
+  const v = '?v=20261019';
+  const load = function(f){ return new Promise(function(ok, no){ const sc = document.createElement('script'); sc.src = base + f + v; sc.onload = ok; sc.onerror = function(){ no(new Error('원본 서식 출력 모듈을 불러오지 못했습니다(' + base + f + ')')); }; document.head.appendChild(sc); }); };
+  return load('formprint.js').then(function(){ return load('mappers.js'); }).then(function(){ return window.NxFormPrint; });
+}
+function tcOfficialFormRun_(){
+  const tax = TC_OFFICIAL_FORM_TAX_[printActiveGroup_];
+  const note = document.getElementById('printOfficialNote');
+  const say = function(h){ if (note) note.innerHTML = h; };
+  if (!tax){ say('이 세목은 아직 원본 모양 출력이 없습니다.'); return; }
+  const kindEl = document.getElementById('printOfficialKind'), dateEl = document.getElementById('printOfficialDate');
+  const extra = { 신고구분: kindEl ? kindEl.value : undefined, 신고일: dateEl ? dateEl.value : undefined };
+  say('⏳ 공식 서식 PDF를 받아 값을 찍는 중… (처음엔 글꼴 2MB를 받아 몇 초 걸립니다)');
+  tcLoadFormPrint_().then(function(FP){
+    const forms = FP.FORMS_BY_TAX[tax];
+    // 양도·증여는 사람(양도인·증여 쌍)마다 한 벌, 상속은 한 벌
+    const ctxs = [];
+    if (tax === '상속') ctxs.push({ label: '상속', ctx: FP.ctxFromApp.상속(extra) });
+    else {
+      const list = tax === '양도' ? (typeof lastTransferResults_ !== 'undefined' && lastTransferResults_ ? lastTransferResults_ : []) : (typeof lastGiftResults_ !== 'undefined' && lastGiftResults_ ? lastGiftResults_ : []);
+      const n = list.filter(function(it){ return it && it.result && !it.result.error; }).length;
+      for (let i = 0; i < Math.max(1, n); i++) ctxs.push({ label: tax + (n > 1 ? ' ' + (i + 1) : ''), ctx: FP.ctxFromApp[tax](i, extra) });
+    }
+    return ctxs.reduce(function(p, c){ return p.then(function(acc){ return FP.renderWithMappers(forms, c.ctx).then(function(r){ FP.open(r.blob, c.label + '_법정서식.pdf'); acc.push({ label: c.label, r: r }); return acc; }); }); }, Promise.resolve([]));
+  }).then(function(done){
+    say(done.map(function(d){
+      const miss = [], bad = [];
+      (d.r.mapped || []).forEach(function(m){ (m.missing || []).forEach(function(x){ miss.push(m.formKey + ' ' + (x.칸 || x.key || x)); }); (m.checks || []).filter(function(c){ return c.맞음 === false; }).forEach(function(c){ bad.push(m.formKey + ' ' + (c.칸 || '') + ' ' + (c.내용 || '')); }); });
+      const over = (d.r.report && d.r.report.overflow) || [];
+      return '✅ ' + escapeHtml(d.label) + ' — 새 창으로 열었습니다.' +
+        (bad.length ? '<br><span style="color:#b00020;">⚠ 서식 산식 검산 틀림: ' + escapeHtml(bad.join(', ')) + '</span>' : '') +
+        (over.length ? '<br><span style="color:#b26a00;">⚠ 칸을 넘친 값 ' + over.length + '개 — 출력물을 확인하세요</span>' : '') +
+        (miss.length ? '<details><summary style="cursor:pointer;">비운 칸 ' + miss.length + '개(계산기에 없거나 화면에 입력이 없음 — 출력물에 직접 적으세요)</summary>' + escapeHtml(miss.join(' · ')) + '</details>' : '');
+    }).join('<br>'));
+  }).catch(function(e){ say('<span style="color:#b00020;">⚠ 원본 모양 출력 실패: ' + escapeHtml(e && e.message ? e.message : String(e)) + '</span>'); });
+}
 function printEfileStatusLabel_(formNo){
   if (PRINT_EFILE_INCLUDED_FORMNO_.indexOf(formNo) !== -1) return { label: '전자', cls: 'ok' };
   if (PRINT_EFILE_LOCAL_TAX_FORMNO_.indexOf(formNo) !== -1) return { label: '전자', cls: 'ok' };
@@ -35199,8 +35242,14 @@ function renderPrintPane(){
           return '<button type="button" class="save-btn" data-action="' + item.efileAction + '" data-registry-key="' + item.key + '"' + (item.isReady() ? '' : ' disabled') + '>' + item.efileLabel + '</button>';
         }).join('') +
       '</div>' +
-      // [2026.10.19] 지금 인쇄는 법정서식 원본 모양이 아니라 칸 번호를 화면이 스스로 매긴다 — 원본 모양 출력(위치판)으로 바꿀 때까지 화면에서만 알림(종이에는 안 찍음)
-      (anyReady ? '<div class="taxcalc-result-note" style="color:#8a5a00; margin:8px 0;">⚠ 지금 인쇄물은 법정서식 원본 모양이 아닙니다 — 칸 배치와 동그라미 번호가 원본과 다를 수 있습니다(예: 양도 본표 ⑱ 납부할 세액이 ⑫로 찍힘). 세무서에 내기 전에 칸 이름으로 원본과 맞춰 보세요. 원본 모양 출력을 준비하고 있습니다.</div>' : '') +
+      // [2026.10.19 원본 모양 출력] 법정서식 원본 PDF(드라이브 법정서식원본(법제처)) 위에 위치판대로 값을 찍는다 — 모듈은 깃허브 페이지 app/formprint(서버 용량 밖)
+      ((anyReady && TC_OFFICIAL_FORM_TAX_[printActiveGroup_]) ? '<div class="taxcalc-result-note" style="margin:10px 0 4px; padding:8px 10px; border:1px solid #2a7a4f; border-radius:6px;">' +
+        '<b>📄 법정서식 원본 모양으로 출력</b> <span style="font-size:12px;">(' + escapeHtml(TC_OFFICIAL_FORM_LABEL_[printActiveGroup_]) + ' — 국세청 공식 서식 PDF 위에 계산 값을 찍습니다)</span><br>' +
+        (printActiveGroup_ === '증여세' ? '' : '<label style="font-size:12.5px;">신고구분 <select id="printOfficialKind"><option>확정신고</option><option>예정신고</option><option>수정신고</option><option>기한 후 신고</option></select></label> ') +
+        '<label style="font-size:12.5px;">신고일 <input type="date" id="printOfficialDate" value="' + escapeHtml(tcTodayStr_()) + '"></label> ' +
+        '<button type="button" class="save-btn" data-action="print-official-form">📄 원본 모양 출력</button>' +
+        '<div id="printOfficialNote" style="margin-top:6px; font-size:12.5px;"></div></div>' : '') +
+      (anyReady ? '<div class="taxcalc-result-note" style="color:#8a5a00; margin:4px 0 8px;">⚠ 아래 "인쇄"는 예전 모양(칸 번호를 화면이 매김 — 원본과 다를 수 있음)입니다. 세무서에 낼 서식은 위 "원본 모양 출력"을 쓰세요(지금은 양도 84호·부표1, 증여 10호, 상속 9호·부표1·부표3).</div>' : '') +
       (anyReady
         ? printRenderTable_(requiredRows.filter(function(r){ return r.ready; }), '이 사건에 필요한 서식 — 신고서 본문') +
           printRenderTable_(optionalRows.filter(function(r){ return r.ready; }), '이 사건에 필요한 서식 — 사안에 따라 붙는 첨부·특례 서식')
@@ -36989,6 +37038,8 @@ function handleTaxCalcClick_(e){
   } else if (action === 'print-open-form-catalog'){
     if (typeof goToView_ === 'function') goToView_('lawsearch');
     if (typeof lsiShowTab_ === 'function'){ if (typeof lsiFormGroup_ !== 'undefined') lsiFormGroup_ = printActiveGroup_; lsiShowTab_('form'); }
+  } else if (action === 'print-official-form'){
+    tcOfficialFormRun_(); // [2026.10.19] 법정서식 원본 모양 출력
   } else if (action === 'print-group-batch'){
     const readyRows = printCurrentRows_.filter(function(r){ return r.ready; });
     if (!readyRows.length){ nxAlert_('먼저 이 세목 탭에서 "세액 계산하기"를 눌러 계산을 완료하세요.'); return; }
