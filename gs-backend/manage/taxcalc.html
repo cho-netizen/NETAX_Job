@@ -5617,6 +5617,10 @@ function renderPropertyCardHtml_(idx, opts){
             '<div class="taxcalc-field"><label>기존건물 취득당시 기준시가</label><input type="number" data-field="originalAcquisitionStandardPrice" placeholder="원"></div>' +
             '<div class="taxcalc-field"><label>관리처분계획인가일 현재 기존건물 기준시가</label><input type="number" data-field="approvalDateStandardPrice" placeholder="원"></div>' +
             '<div class="taxcalc-field"><span class="taxcalc-result-note">종전자산 취득가액 = 권리가액 × (취득당시기준시가 ÷ 인가일현재기준시가)로 자동 환산됩니다.</span></div>' : '') +
+          // [2026.10.19] 1세대1주택 고가 신축주택 장특(표2) — 덩어리별 거주기간(세무사님 확인: 기존분=종전+신축, 청산금분=신축만)
+          (transferAssets[idx].isReconstructionRights && transferAssets[idx].isCompletedNewHousing ?
+            '<div class="taxcalc-field"><label>종전주택 거주연수(장특용)</label><input type="number" data-field="formerHouseResidenceYears" placeholder="년(없으면 0)"><span class="taxcalc-field-help">1세대1주택 12억 초과일 때 — 공사기간 제외</span></div>' +
+            '<div class="taxcalc-field"><label>신축 입주 후 거주연수(장특용)</label><input type="number" data-field="newHouseResidenceYears" placeholder="년(없으면 0)"><span class="taxcalc-field-help">기존건물분 = 종전+신축, 청산금 납부분 = 신축만</span></div>' : '') +
           // [2026.10.19 신규] 시행령§166⑦ — 신축건물(준공 후) 양도를 기준시가로 계산하는 경우의 3구간 양도차익.
           (transferAssets[idx].isReconstructionRights && transferAssets[idx].isCompletedNewHousing ?
             '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="useReconstructionStandardPriceMethod" id="rrStd-' + idx + '"><label for="rrStd-' + idx + '">기준시가로 계산(실지거래가액 확인 불가 — 시행령§166⑦ 3구간)</label></div>' +
@@ -6779,6 +6783,9 @@ function collectTransferInput(vals){
     isReconstructionRights: !!vals.isReconstructionRights,
     isCompletedNewHousing: !!vals.isCompletedNewHousing,
     // [2026.10.19 신규] 시행령§166⑦ 기준시가 3구간 계산(엔진 transferAssetCore 재건축 분기 참고)
+    // [2026.10.19] 1세대1주택 고가 신축주택 장특(표2) 덩어리별 거주연수 — 비우면 null(엔진이 입력 요청)
+    formerHouseResidenceYears: (vals.formerHouseResidenceYears === '' || vals.formerHouseResidenceYears == null) ? null : (numVal(vals.formerHouseResidenceYears) || 0),
+    newHouseResidenceYears: (vals.newHouseResidenceYears === '' || vals.newHouseResidenceYears == null) ? null : (numVal(vals.newHouseResidenceYears) || 0),
     useReconstructionStandardPriceMethod: !!(vals.isReconstructionRights && vals.isCompletedNewHousing && vals.useReconstructionStandardPriceMethod),
     newHousingCompletionDate: vals.newHousingCompletionDate || '',
     rsOldStdAtAcquisition: numVal(vals.rsOldStdAtAcquisition) || 0,
