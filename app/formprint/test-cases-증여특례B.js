@@ -29,6 +29,7 @@ module.exports = function (E, H) {
 
   L.push({ name: '증여10호의3부표1_주주표', forms: [{ formKey: '증여10호의3부표1', ctx: jmCtx }], ctx: jmCtx });
   L.push({ name: '증여10호의3부표2_출자고리', forms: [{ formKey: '증여10호의3부표2', ctx: jmCtx }], ctx: jmCtx });
+  L.push({ name: '증여10호의3부표3_수증자간접', forms: [{ formKey: '증여10호의3부표3', ctx: Object.assign({}, jmCtx, { 부표3법인: 0 }) }], ctx: jmCtx });
 
   return L;
 };

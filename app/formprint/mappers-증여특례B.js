@@ -303,6 +303,49 @@
     return o.result();
   };
 
+  // ───────── 10호의3 부표3 — 다-1. 수증자 간접보유비율(간접출자법인 해당여부 및 간접보유비율) ─────────
+  //  수혜법인의 법인주주(ⓐ)별로 한 장(작성방법 ※) — ctx.부표3법인 = 몇 번째 ⓐ 법인(0부터, ctxFor가 법인마다 장을 만듦)
+  //  값 출처: 🧮 주주별 직접·간접보유 내역(jmAttach3PrintPageHtml_는 수증자 한 줄만 찍었음 — 서식 1.·2.는 지배주주·친족 모두)
+  //  3. 판단은 🧮 도구의 "간접출자법인 요건 충족" 체크 하나뿐이라 ㉒(① 열)만, ⑲·⑳·㉑ 어느 요건인지는 계산기에 없음
+  mappers['증여10호의3부표3'] = function (ctx) {
+    var o = new Out(), sh = ctx.shareholders || [];
+    var G = chainGroups(sh), k = n(ctx.부표3법인), a = G.a[k];
+    if (!a) { o.miss('①~㉕ 부표3 전체', '계산기에 없음 — 🧮 주주별 보유 내역에 출자 고리가 없음'); return o.result(); }
+    o.set('①@법인명', a.name).miss('① 사업자등록번호', '계산기에 없음');
+    if (a.ratio) o.set('②', r4(a.ratio)); else o.miss('② 수혜법인 지분율', '화면 입력 없음(🧮 도구 "수혜법인 출자비율")');
+    o.set('③', a.holders.map(function (h) { return h.name; })).set('⑤', a.holders.map(function (h) { return r4(h.ratio); }))
+      .set('⑥', a.holders.map(function (h) { return h.ind === null ? '' : h.ind; })).miss('④ 주민등록번호(사업자등록번호)', '계산기에 없음');
+    var b = G.b.filter(function (x) { return a.holders.some(function (h) { return h.name === x.name; }); });
+    if (b.length) {
+      o.set('⑦@법인명', b[0].name).set('⑧', r4(b[0].ratio)).miss('⑦ 사업자등록번호', '계산기에 없음')
+        .set('⑨', b[0].holders.map(function (h) { return h.name; })).set('⑪', b[0].holders.map(function (h) { return r4(h.ratio); }))
+        .set('⑫', b[0].holders.map(function (h) { return h.ind === null ? '' : h.ind; })).miss('⑩ 주민등록번호(사업자등록번호)', '계산기에 없음');
+      if (b.length > 1) o.note('⚠ ①의 법인주주 가운데 2차 법인주주가 ' + b.length + '개 — 첫째(' + b[0].name + ')만 찍음, 나머지는 별지로 적을 것');
+    } else o.miss('⑦⑧⑨⑩⑪⑫ 2차 법인주주', '해당 없음 — 출자 고리가 1단계뿐');
+    o.miss('⑬⑭⑮⑯⑰⑱ 3차 법인주주', '계산기에 없음 — 🧮 도구는 출자법인 2단계까지만 받음');
+    // 3. 간접출자법인 해당 여부
+    var thru = sh.filter(function (s) { var g = chainGroups([s]); return g.a.length && g.a[0].name === a.name; });
+    var q = thru.map(function (s) { return s.chainQualified !== false; });
+    if (q.length && q.every(Boolean)) o.set('㉒@①', '○');
+    else if (q.length && !q.some(Boolean)) o.set('㉒@①', '×');
+    else o.miss('㉒ ① 열 판단', '🧮 도구의 "간접출자법인 요건 충족" 체크가 이 법인을 지나는 고리마다 다름');
+    o.miss('⑲⑳㉑ 판단 근거(○·×)', '계산기에 없음 — 🧮 도구는 요건 충족 여부(시행령 §34의3 간접출자법인) 하나만 받음')
+      .miss('㉒ ⑦·⑬·4차 열 판단', '계산기에 없음 — 요건 체크는 고리 하나에 하나');
+    // 4. 지배주주 및 친족의 간접보유비율 합계(이 법인을 지나는 셈하는 간접보유비율)
+    var per = {};
+    thru.forEach(function (s) { per[s.name] = (per[s.name] || 0) + n(s.indirect); });
+    var of = ownerFirst(sh.slice());
+    var list = of.list.filter(function (s, i) { return (i === 0 && of.found) || per[s.name] !== undefined; });
+    var seen = {}; list = list.filter(function (s) { if (seen[s.name]) return false; seen[s.name] = 1; return true; });
+    if (!of.found) o.note('⚠ 4. 첫 줄은 지배주주 자리 — 🧮 주주별 보유 내역의 관계 칸에 "지배주주"·"본인"이 없어 고리가 있는 주주만 적음(지배주주를 첫 줄에 직접 적을 것)');
+    o.set('㉓', list.map(function (s) { return s.name; })).set('㉔', list.map(function (s, i) { return i === 0 && of.found ? '' : s.relation; }))
+      .set('㉕', list.map(function (s) { return r4(per[s.name] || 0); }));
+    o.miss('㉓비고', '계산기에 없음');
+    o.note('㉕ = 이 법인(' + a.name + ')을 지나는 셈하는 간접보유비율(🧮 도구 — 요건 미충족 고리·0.1% 미만은 0, 시행령 §34의3). 부표1 ㉑과 같음(법인주주가 하나일 때)');
+    if (G.a.length > 1) o.note('수혜법인의 법인주주가 ' + G.a.length + '개 — 법인마다 한 장(이 장은 ' + (k + 1) + '번째: ' + a.name + ')');
+    return o.result();
+  };
+
   // ───────── 세액인쇄 화면용 ctx — 화면 전역값에서 모음(브라우저) ─────────
   /* global lastRelatedPartyGiftResult_, lastBusinessOpportunityGiftResult_, giftDonees, shareholdingRows_, relatedPartyRatioRows_,
      jmRelatedPartyTotalSales_, jmRelatedPartyExcludedSales_, jtSegmentYears_, shareholdingIndirectRatio_, shareholdingCountedIndirectRatio_ */
@@ -346,12 +389,21 @@
   var READY = {
     '증여10호의3': function () { return !!jmR(); },
     '증여10호의3부표1': function () { var r = jmR(); return !!(r && r.과세대상여부); },
-    '증여10호의3부표2': function () { var r = jmR(); return !!(r && r.과세대상여부 && shRows('jm').some(function (x) { return has(x.chain1Company) || n(x.chain1Ratio) > 0; })); }
+    '증여10호의3부표2': function () { var r = jmR(); return !!(r && r.과세대상여부 && shRows('jm').some(function (x) { return has(x.chain1Company) || n(x.chain1Ratio) > 0; })); },
+    '증여10호의3부표3': function () { var r = jmR(); return !!(r && r.과세대상여부 && chainGroups(shRows('jm')).a.length); }
+  };
+  // 한 사건에 여러 장인 서식 — 수혜법인의 법인주주(ⓐ)마다 한 장
+  var SPLIT = {
+    '증여10호의3부표3': function (c) { return chainGroups(c.shareholders || []).a.map(function (x, i) { return Object.assign({}, c, { 부표3법인: i }); }); }
   };
   Object.keys(READY).forEach(function (k) {
     var isJm = /^증여10호의3/.test(k);
     ready[k] = function () { try { return !!READY[k](); } catch (e) { return false; } };
-    ctxFor[k] = function (extra) { return ready[k]() ? [isJm ? jmCtx(extra) : jtCtx(extra)] : []; };
+    ctxFor[k] = function (extra) {
+      if (!ready[k]()) return [];
+      var c = isJm ? jmCtx(extra) : jtCtx(extra);
+      return SPLIT[k] ? SPLIT[k](c) : [c];
+    };
   });
 
   // 세목 원본 모양 출력 묶음에는 넣지 않음 — 일반 증여(10호)와 따로 내는 신고서(위 "어디서 찍나")
