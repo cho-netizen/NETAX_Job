@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 19:57 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 21:06 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -6611,7 +6611,7 @@
     callGas('law_lookup_article', { lawName: l.이름, articleNo: art, baseDate: p && p.판 !== l.현행 ? p.시행일 : '' }).then(function(r){
       if (!r || r.error || !r.조문){ doc.innerHTML = '<div class="lsi-note">' + lsiEsc_((r && r.error) || '조문을 읽지 못했습니다.') + '</div>'; return; }
       var meta = { law: r.법령명, 시행일: r.시행일자, 법종: p && p.법종, 공포번호: p && p.공포번호 };
-      var head = '<div class="lsidb-head"><b>' + lsiEsc_(r.법령명) + '</b> [시행 ' + lsiEsc_(lsiDbYmd_(r.시행일자)) + ']' + (p ? ' [' + lsiEsc_((p.법종 ? p.법종 + ' ' : '') + '제' + String(p.공포번호).replace(/^0+/, '')) + '호, ' + lsiEsc_(lsiDbYmd_(p.공포일)) + ', ' + lsiEsc_(p.구분 || '') + ']' : '') +
+      var head = (r.경고 ? '<div class="lsi-note" style="font-weight:600;">' + lsiEsc_(r.경고) + '</div>' : '') + '<div class="lsidb-head"><b>' + lsiEsc_(r.법령명) + '</b> [시행 ' + lsiEsc_(lsiDbYmd_(r.시행일자)) + ']' + (p ? ' [' + lsiEsc_((p.법종 ? p.법종 + ' ' : '') + '제' + String(p.공포번호).replace(/^0+/, '')) + '호, ' + lsiEsc_(lsiDbYmd_(p.공포일)) + ', ' + lsiEsc_(p.구분 || '') + ']' : '') +
         (r.주의 ? '<br>⚠ ' + lsiEsc_(r.주의) : '') + (r.판주의 ? '<br>⚠ ' + lsiEsc_(r.판주의) : '') + (r.개정확인 ? '<br>' + lsiEsc_(r.개정확인) : '') + (r.시행예정개정 ? '<br>⏳ ' + lsiEsc_(r.시행예정개정) : '') +
         '<br><span class="lsi-note">' + lsiEsc_(r.출처 || '') + (r.원문링크 ? ' · <a href="' + lsiEsc_(r.원문링크) + '" target="_blank" rel="noopener">법제처에서 보기 ↗</a>' : '') + '</span></div>';
       var cites = [], btn = function(a, h, o, label, title){ var k = cites.push({ a: a, h: h, o: o }) - 1; return '<button type="button" class="lsidb-copy" data-lsidbcite="' + k + '" title="' + lsiEsc_(title) + '">' + label + '</button>' +
