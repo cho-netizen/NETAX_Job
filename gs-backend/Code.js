@@ -3876,6 +3876,7 @@ function dispatchClientAction0_(body) {
   if (body.action === 'tc_rule_transfer_facts') return jsonResponse(tc_ruleTransferFacts_(body)); // 양도세 자동채우기 규칙 먼저(토큰 0)
   if (body.action === 'tc_rule_inheritance_facts') return jsonResponse(tc_ruleInheritanceFacts_(body)); // 상속세 자동채우기 규칙 먼저(토큰 0)
   if (body.action === 'case_proc') return jsonResponse(caseProcTimed_(body)); // '이 사건 처리하자' — 처리탭 도구로 단계별 점검(토큰 0)
+  if (body.action === 'case_proc_ai') return jsonResponse(caseProcAi_(body)); // [2026.10.19 5번] '이 사건 처리하자' AI 지휘 — AI 자리 세기·지휘 AI 한 차례·끝 기록(AiLeadLive.js)
   if (body.action === 'ocr_batch_run') return jsonResponse(cpOcrBatch_(body)); // [2026.10.18] 서버 글자인식 일괄 — 기억에 없는 서류만 글자를 읽어 기억에 쌓음(사건 저장 없음, 토큰 0)
   if (body.action === 'ocr_batch_status') return jsonResponse(cpOcrBatchStatus_());
   if (body.action === 'ocr_batch_trigger') return jsonResponse(ocrbTrigger_(body)); // 10분마다 자동 이어 읽기 켜기/끄기
