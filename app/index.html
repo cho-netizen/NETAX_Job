@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 05:33 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 05:36 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -11576,7 +11576,62 @@
     const multiHouseCount = Number(t.multiHouseCount) || 0;
     let incomeAmount, longTermDeductionAmount, reconstructionDetail = null;
 
-    if (isReconstruction) {
+    if (isReconstruction && t.isCompletedNewHousing && t.useReconstructionStandardPriceMethod) {
+      // [2026.10.19 신규] 소득세법시행령§166⑦(law.go.kr 원문 확인) — 조합원이 기존건물과 부수토지를 제공하고
+      // 취득한 신축건물을 양도할 때 "기준시가에 의한 양도차익"은 다음 3구간의 합계(청산금을 수령했으면 그에
+      // 상당하는 양도차익을 차감):
+      //  1호 취득일~인가일 전일: 인가일 전일 기존건물+부수토지 기준시가 - 취득일 기존건물+부수토지 기준시가 - 필요경비(§163⑥)
+      //  2호 인가일~준공일 전일: 준공일 전일 기존 부수토지 기준시가 - 인가일 기존 부수토지 기준시가
+      //  3호 준공일~양도일: 양도일 신축건물+부수토지 기준시가 - 준공일 신축건물+부수토지 기준시가
+      //       - 신축건물과 부수토지(기존 부수토지보다 증가된 부분에 한함)의 필요경비
+      // 장기보유특별공제 보유기간(세무사님 제공 해설서 1425쪽 흐름표): 1·2호는 기존부동산 취득일~양도일,
+      // 3호는 기존토지 취득일~양도일 — 단, 3호를 공동주택가격으로 산정하면 납부한 청산금에 상당하는
+      // 양도차익은 준공일~양도일(청산금 상당분 = 3호 × 청산금/(권리가액+청산금)으로 안분).
+      const completionDate = t.newHousingCompletionDate;
+      const sOldAcq = Number(t.rsOldStdAtAcquisition) || 0, sOldBefore = Number(t.rsOldStdBeforeApproval) || 0;
+      const sLandAppr = Number(t.rsOldLandStdAtApproval) || 0, sLandBeforeComp = Number(t.rsOldLandStdBeforeCompletion) || 0;
+      const sNewComp = Number(t.rsNewStdAtCompletion) || 0, sNewTransfer = Number(t.rsNewStdAtTransfer) || 0;
+      if (!completionDate) return { error: '재건축 기준시가 계산(§166⑦): 신축주택 완성일(준공일)이 필요합니다.' };
+      if (!(sOldAcq > 0 && sOldBefore > 0 && sLandAppr > 0 && sLandBeforeComp > 0 && sNewComp > 0 && sNewTransfer > 0)) {
+        return { error: '재건축 기준시가 계산(§166⑦): 기준시가 6개(취득일·인가일 전일 기존부동산, 인가일·준공일 전일 기존 부수토지, 준공일·양도일 신축)가 모두 필요합니다.' };
+      }
+      const settlementPaidS = Number(t.settlementPaid) || 0, rightsValueS = Number(t.rightsValue) || 0;
+      if (settlementPaidS > 0 && !(rightsValueS > 0)) return { error: '재건축 기준시가 계산(§166⑦): 납부한 청산금 상당 양도차익을 나누려면 권리가액(종전자산평가액)이 필요합니다.' };
+      const receivedGain = Number(t.rsSettlementReceivedGain) || 0;
+      if ((Number(t.settlementReceived) || 0) > 0 && !receivedGain) return { error: '재건축 기준시가 계산(§166⑦): 청산금을 수령했으면 그에 상당하는 양도차익(차감액)을 입력하세요(§166⑦ 괄호).' };
+      const oldExp = (t.rsOldNecessaryExpenses != null) ? (Number(t.rsOldNecessaryExpenses) || 0) : Math.floor(sOldAcq * 0.03);
+      const newExp = Number(t.rsNewNecessaryExpenses) || 0;
+      const g1 = sOldBefore - sOldAcq - oldExp;
+      const g2 = sLandBeforeComp - sLandAppr;
+      const g3 = sNewTransfer - sNewComp - newExp;
+      const g12 = g1 + g2 - receivedGain;
+      const settleRatio = (settlementPaidS > 0 && t.assetType === 'house') ? settlementPaidS / (rightsValueS + settlementPaidS) : 0;
+      const g3Settle = g3 * settleRatio, g3Rest = g3 - g3Settle;
+      const holdingYearsSinceCompletion = fullYearsElapsed(completionDate, t.transferDate);
+      const ltRateOld = longTermRate(holdingYears), ltRateSettleS = longTermRate(holdingYearsSinceCompletion);
+      taxableGain = g12 + g3;
+      longTermDeductionAmount = Math.floor(Math.max(0, g12 + g3Rest) * ltRateOld + 1e-6) + Math.floor(Math.max(0, g3Settle) * ltRateSettleS + 1e-6);
+      incomeAmount = taxableGain - longTermDeductionAmount;
+      reconstructionDetail = {
+        구분: '신축건물(준공후) 기준시가 계산 — 시행령§166⑦',
+        구간1_취득일_인가전일_양도차익: Math.round(g1), 구간1_필요경비: Math.round(oldExp),
+        구간2_인가일_준공전일_양도차익: Math.round(g2),
+        구간3_준공일_양도일_양도차익: Math.round(g3),
+        청산금수령분_차감: receivedGain ? Math.round(receivedGain) : undefined,
+        구간3_청산금상당분: settleRatio ? Math.round(g3Settle) : undefined,
+        기존분_보유기간_년: holdingYears, 기존분_장특공제율: ltRateOld,
+        청산금상당분_보유기간_년: settleRatio ? holdingYearsSinceCompletion : undefined, 청산금상당분_장특공제율: settleRatio ? ltRateSettleS : undefined,
+        환산_취득가액: Math.round(sNewTransfer - taxableGain - oldExp - newExp)
+      };
+      if (isCompletedHouseOneFamily && transferPrice > HV_HOUSE_) {
+        const highValueRatio = (transferPrice - HV_HOUSE_) / transferPrice;
+        taxableGain = taxableGain * highValueRatio;
+        longTermDeductionAmount = Math.round(longTermDeductionAmount * highValueRatio);
+        incomeAmount = taxableGain - longTermDeductionAmount;
+        reconstructionDetail.고가주택_12억초과비율 = highValueRatio;
+      }
+      ltRate = taxableGain !== 0 ? longTermDeductionAmount / taxableGain : 0;
+    } else if (isReconstruction) {
       // 소득세법시행령§166①②③ — 재개발·재건축 조합원이 기존건물과 그 부수토지를 제공하고 취득한
       // 조합원입주권(준공 전) 또는 신축주택(준공 후)을 청산금 납부하고 양도하는 경우의 양도차익 계산.
       const rightsValue = Number(t.rightsValue) || 0;
@@ -25471,6 +25526,20 @@ function renderPropertyCardHtml_(idx, opts){
             '<div class="taxcalc-field"><label>기존건물 취득당시 기준시가</label><input type="number" data-field="originalAcquisitionStandardPrice" placeholder="원"></div>' +
             '<div class="taxcalc-field"><label>관리처분계획인가일 현재 기존건물 기준시가</label><input type="number" data-field="approvalDateStandardPrice" placeholder="원"></div>' +
             '<div class="taxcalc-field"><span class="taxcalc-result-note">종전자산 취득가액 = 권리가액 × (취득당시기준시가 ÷ 인가일현재기준시가)로 자동 환산됩니다.</span></div>' : '') +
+          // [2026.10.19 신규] 시행령§166⑦ — 신축건물(준공 후) 양도를 기준시가로 계산하는 경우의 3구간 양도차익.
+          (transferAssets[idx].isReconstructionRights && transferAssets[idx].isCompletedNewHousing ?
+            '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="useReconstructionStandardPriceMethod" id="rrStd-' + idx + '"><label for="rrStd-' + idx + '">기준시가로 계산(실지거래가액 확인 불가 — 시행령§166⑦ 3구간)</label></div>' +
+            (transferAssets[idx].useReconstructionStandardPriceMethod ?
+              '<div class="taxcalc-field"><label>① 취득일 현재 기존건물+부수토지 기준시가</label><input type="number" data-field="rsOldStdAtAcquisition" placeholder="원"></div>' +
+              '<div class="taxcalc-field"><label>① 관리처분인가일 전일 현재 기존건물+부수토지 기준시가</label><input type="number" data-field="rsOldStdBeforeApproval" placeholder="원"></div>' +
+              '<div class="taxcalc-field"><label>① 기존건물분 필요경비</label><input type="number" data-field="rsOldNecessaryExpenses" placeholder="비우면 취득일 기준시가×3% 개산공제"><span class="taxcalc-field-help">시행령§163⑥</span></div>' +
+              '<div class="taxcalc-field"><label>② 관리처분인가일 현재 기존 부수토지 기준시가</label><input type="number" data-field="rsOldLandStdAtApproval" placeholder="원"></div>' +
+              '<div class="taxcalc-field"><label>② 준공일 전일 현재 기존 부수토지 기준시가</label><input type="number" data-field="rsOldLandStdBeforeCompletion" placeholder="원"></div>' +
+              '<div class="taxcalc-field"><label>③ 준공일 현재 신축건물+부수토지 기준시가</label><input type="number" data-field="rsNewStdAtCompletion" placeholder="원"></div>' +
+              '<div class="taxcalc-field"><label>③ 양도일 현재 신축건물+부수토지 기준시가</label><input type="number" data-field="rsNewStdAtTransfer" placeholder="원"><span class="taxcalc-field-help">= 양도가액</span></div>' +
+              '<div class="taxcalc-field"><label>③ 신축건물·증가된 부수토지 필요경비</label><input type="number" data-field="rsNewNecessaryExpenses" placeholder="원(없으면 0)"><span class="taxcalc-field-help">기존 부수토지보다 증가된 부분에 한함</span></div>' +
+              '<div class="taxcalc-field"><label>청산금 수령분 양도차익(차감액)</label><input type="number" data-field="rsSettlementReceivedGain" placeholder="수령액이 있을 때만"><span class="taxcalc-field-help">§166⑦ 괄호 — 별도 거래로 계산한 청산금분 양도차익</span></div>' +
+              '<div class="taxcalc-field"><span class="taxcalc-result-note">양도가액 = 양도일 신축 기준시가. 양도차익 = ①+②+③. 장기보유특별공제 보유기간은 ①②가 기존부동산 취득일~양도일, ③이 기존토지 취득일~양도일이고, ③ 중 납부한 청산금 상당분(분담금÷(권리가액+분담금))은 준공일~양도일입니다. 신축주택 완성일(사용승인일)을 준공일로 씁니다.</span></div>' : '') : '') +
           (transferAssets[idx].isReconstructionRights ?
             '<div class="taxcalc-field"><span class="taxcalc-result-note">양도차익은 관리처분계획등인가전·인가후로 나눠 각각 다른 장기보유특별공제를 적용합니다(시행령§166①②③). 청산금 수령액이 있으면 그 부분은 관리처분인가일에 별도로 양도한 것으로 과세되니(소득세법 기본통칙 참조) 아래 버튼으로 별도 거래를 추가하세요.</span></div>' +
             '<div class="taxcalc-field"><button type="button" class="taxcalc-run-btn" data-action="send-settlement-to-new-transfer" data-idx="' + idx + '" data-kind="reconstruction">청산금 수령분을 별도 거래로 추가</button></div>' : '') +
@@ -26343,7 +26412,7 @@ function renderTransferPane(){
         if (key === 'assetKind' || key === 'hasMultipleBuildingSections') renderTransferPane(); // 지목(토지)↔층수·용도(건물), 단일↔층별입력으로 입력요소 자체가 바뀌므로 다시 그림
         if (key === 'isOverseasAsset') renderTransferPane(); // 국내↔국외 카드 전체가 완전히 다른 템플릿이라 다시 그림
         if (key === 'buyerRelation') renderTransferPane(); // 특수관계 여부에 따라 시가 입력란·§35 연결버튼 표시가 바뀌므로 다시 그림
-        if (key === 'isReconstructionRights' || key === 'isLandReplotment' || key === 'useConvertedRightsBaseAcquisitionPrice' || key === 'isCompletedNewHousing') renderTransferPane(); // 청산금 안내·버튼·환산가액 입력란·1세대1조합원입주권 체크박스 표시 여부가 바뀌므로 다시 그림
+        if (key === 'isReconstructionRights' || key === 'isLandReplotment' || key === 'useConvertedRightsBaseAcquisitionPrice' || key === 'isCompletedNewHousing' || key === 'useReconstructionStandardPriceMethod') renderTransferPane(); // 청산금 안내·버튼·환산가액 입력란·1세대1조합원입주권 체크박스 표시 여부가 바뀌므로 다시 그림
         // [2026.09 재설계] 계약 연결·계약 안분용 기준시가가 바뀌면 이 계약에 속한 "다른" 자산
         // 카드들의 몫도 같이 바뀌므로(안분 비율 재계산), 그 자산들 화면까지 갱신하려면 다시
         // 그리는 수밖에 없다 — renderTransferPane() 맨 앞에서 항상 recomputeAllContracts_()를
@@ -26562,7 +26631,8 @@ function collectTransferInput(vals){
     appraisalValue: numVal(vals.appraisalValue) || 0,
     transferStandardPriceForConversion: numVal(vals.transferStandardPriceForConversion) || 0,
     depreciationDeductedAsBusinessExpense: numVal(vals.depreciationDeductedAsBusinessExpense) || 0,
-    transferPrice: transferPrice,
+    // [2026.10.19] 시행령§166⑦ 기준시가 계산이면 양도가액 = 양도일 현재 신축건물+부수토지 기준시가
+    transferPrice: (vals.isReconstructionRights && vals.isCompletedNewHousing && vals.useReconstructionStandardPriceMethod && numVal(vals.rsNewStdAtTransfer)) ? numVal(vals.rsNewStdAtTransfer) : transferPrice,
     acquisitionPrice: acquisitionPrice,
     necessaryExpenses: necessaryExpenses,
     acquisitionDate: vals.acquisitionDate || '',
@@ -26617,6 +26687,18 @@ function collectTransferInput(vals){
     downContractPriceDifference: numVal(vals.downContractPriceDifference) || 0,
     isReconstructionRights: !!vals.isReconstructionRights,
     isCompletedNewHousing: !!vals.isCompletedNewHousing,
+    // [2026.10.19 신규] 시행령§166⑦ 기준시가 3구간 계산(엔진 transferAssetCore 재건축 분기 참고)
+    useReconstructionStandardPriceMethod: !!(vals.isReconstructionRights && vals.isCompletedNewHousing && vals.useReconstructionStandardPriceMethod),
+    newHousingCompletionDate: vals.newHousingCompletionDate || '',
+    rsOldStdAtAcquisition: numVal(vals.rsOldStdAtAcquisition) || 0,
+    rsOldStdBeforeApproval: numVal(vals.rsOldStdBeforeApproval) || 0,
+    rsOldNecessaryExpenses: (vals.rsOldNecessaryExpenses === '' || vals.rsOldNecessaryExpenses == null) ? null : (numVal(vals.rsOldNecessaryExpenses) || 0),
+    rsOldLandStdAtApproval: numVal(vals.rsOldLandStdAtApproval) || 0,
+    rsOldLandStdBeforeCompletion: numVal(vals.rsOldLandStdBeforeCompletion) || 0,
+    rsNewStdAtCompletion: numVal(vals.rsNewStdAtCompletion) || 0,
+    rsNewStdAtTransfer: numVal(vals.rsNewStdAtTransfer) || 0,
+    rsNewNecessaryExpenses: numVal(vals.rsNewNecessaryExpenses) || 0,
+    rsSettlementReceivedGain: numVal(vals.rsSettlementReceivedGain) || 0,
     isOneMemberRightOneFamily: !!vals.isOneMemberRightOneFamily,
     isOriginalMember: !vals.isSuccessorMember,
     managementDispositionDate: vals.managementDispositionDate || '',
