@@ -70,5 +70,9 @@ module.exports = function (E, H) {
     nhAcquisitionStandardPrice: 120000000, nhFiveYearStandardPrice: 220000000, nhTransferStandardPrice: 620000000 };
   L.push({ name: '37호_신축주택_99조', forms: ['조특37호'], ctx: trCtx([nh], { 감면자산: 0 }) });
 
+  // 7. 조특51호의3 — 한국농어촌공사에 양도했던 농지를 임차기간 안에 환매, 당초 납부세액 1,234만원 환급(환급 도구 calculateFarmlandRepurchaseRefundJS)
+  var fr = E.calculateFarmlandRepurchaseRefundJS({ wasRepurchasedWithinLeaseTerm: true, originalTaxPaid: 12340000 });
+  L.push({ name: '51호의3_농지환매_환급', forms: plan(trCtx([land2], { frResult: fr })) });
+
   return L;
 };

@@ -369,6 +369,38 @@
     return o.result();
   };
 
+  // ───────── 조특 별지 제51호의3서식(경영회생 지원 농지 매매 양도소득세 환급신청서) — 조특법 §70의2, 시행령 §67의2① ─────────
+  //  예전 인쇄(frPrintFormPageHtml_)와 같게 "경영회생 농지 환매 환급" 도구 결과(lastFarmlandRepurchaseResult_)가 환급 가능일 때 한 장.
+  //  도구 입력은 둘뿐(임차기간 내 환매 체크·한국농어촌공사 양도 당시 납부한 양도소득세) — 줄별 소재지·면적·날짜는 계산기에 없다.
+  //  ctx.frResult = 도구 결과 {환급가능여부, 환급대상세액}, 신청인은 양도 ctx의 양도인(seller — 양도인 카드 첫 사람).
+  // 사건에 한 장 — 양도인이 여럿이면 첫 양도인(ctxFromApp.양도(0))의 묶음에만
+  function firstSeller(ctx) {
+    var items = (typeof lastTransferResults_ !== 'undefined' && lastTransferResults_ ? lastTransferResults_ : []).filter(function (it) { return it.result && !it.result.error; }); // eslint-disable-line no-undef
+    return !items.length || !ctx.seller || items[0].seller === ctx.seller;
+  }
+  function frGlobal() { return typeof lastFarmlandRepurchaseResult_ !== 'undefined' ? lastFarmlandRepurchaseResult_ : null; } // eslint-disable-line no-undef
+  mappers['조특51호의3'] = function (ctx) {
+    var o = new Out(), s = ctx.seller || {}, fr = ctx.frResult || {};
+    o.need('①', s.name, '① 성명').need('②', s.regNo, '② 주민등록번호').need('③@주소', H.fullAddr(s), '③ 주소').need('③@전화번호', s.phone, '③ 전화번호');
+    if (has(s.name)) o.note('신청인은 양도인 카드 값 — 한국농어촌공사에 양도한 농업인 본인인지 확인(법 §70의2⑤ 상속인 환매면 상속인이 신청, 서식엔 상속인 칸 없음)');
+    o.miss('④⑤⑥⑦⑧ 신고내용 줄(소재지·면적·양도일·납부연월일·납부세액)·⑨⑩ 소계', '계산기에 없음 — 환급 도구는 납부세액 합계 하나만 받음(농지·농업시설물 구분 없음)');
+    o.miss('⑫⑬⑭⑮ 환매 내용 줄(소재지·임차기간·환매면적·환급신청액)', '계산기에 없음 — 임차기간 내 환매 여부만 체크로 받음');
+    if (fr.환급가능여부 && has(fr.환급대상세액)) {
+      var t = n(fr.환급대상세액);
+      o.set('⑪', t).set('⑯', t);
+      o.note('⑪·⑯: 도구 입력 "한국농어촌공사 양도 당시 납부한 양도소득세"(환급대상액) — 일부만 환매했으면 ⑯은 환매한 농지등에 대해 납부한 세액(시행령 §67의2④), 그때 ⑪은 전체 납부세액으로 고칠 것');
+    } else o.miss('⑪ 납부세액 합계·⑯ 환급신청액 합계', fr.환급가능여부 === false ? '환급 대상 아님(임차기간 내 환매 안 함)' : '환급 도구 결과 없음');
+    signs(o, ctx, { sign: '신청인서명', agent: '세무대리인서명', mgmt: '세무대리인@관리번호', office: '세무서' });
+    return o.result();
+  };
+  ctxFor['조특51호의3'] = function (extra) {
+    var fr = frGlobal(); if (!fr || !fr.환급가능여부) return [];
+    var base = sellerCtxs(extra)[0];
+    if (!base) base = Object.assign({ seller: (typeof transferSellers !== 'undefined' && transferSellers && transferSellers[0]) || {}, taxAgent: H.agent() }, extra || {}); // eslint-disable-line no-undef
+    return [Object.assign({}, base, { frResult: fr })];
+  };
+  ready['조특51호의3'] = function () { var fr = frGlobal(); return !!(fr && fr.환급가능여부); };
+
   // ───────── 어떤 자산에 어떤 신청서 — 예전 인쇄(trAttach1PrintPageHtml_ 뒤에 붙는 함수들)가 그 서식을 그리는 조건과 같게 ─────────
   //  조특54호는 넣지 않음 — 사업시행자 제출(시행령 §72④·⑦)
   var TESTS = {};
@@ -379,13 +411,15 @@
   register('조특14호', function (a) { return RZ.indexOf(a.compensationType) >= 0; });
   register('조특37호', function (a) { return !!rpKind(a); });
 
-  // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만) — 감면 대상 자산마다 한 장
+  // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만) — 감면 대상 자산마다 한 장 + 농지 환매 환급(도구 결과가 환급 가능이면)
   function plan(tax, ctx) {
     var L = [];
-    if (tax !== '양도' || !ctx || !ctx.r) return L;
-    Object.keys(TESTS).forEach(function (k) {
+    if (tax !== '양도' || !ctx) return L;
+    if (ctx.r) Object.keys(TESTS).forEach(function (k) {
       (ctx.assets || []).forEach(function (it, j) { if (TESTS[k](it.asset || {}, ctx, j)) L.push({ formKey: k, ctx: Object.assign({}, ctx, { 감면자산: j }) }); });
     });
+    var fr = ctx.frResult || frGlobal();
+    if (fr && fr.환급가능여부 && firstSeller(ctx)) L.push({ formKey: '조특51호의3', ctx: Object.assign({}, ctx, { frResult: fr }) });
     return L;
   }
 
