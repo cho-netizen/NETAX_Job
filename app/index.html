@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 20:14 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 20:24 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -12431,12 +12431,13 @@
   // [2026.10.19 조견표 2부-16] 미납 첫날(납부기한 다음 날) — 화면의 납부지연일수 계산(taxcalc.html recompute…UnpaidDays)과 같은 기한:
   //  양도 = 양도일이 속한 해의 다음해 5.31.(확정신고), 증여 = 증여일이 속한 달 말일부터 3개월, 상속 = 상속개시일이 속한 달 말일부터 6개월.
   //  (기한 끝날이 공휴일이면 미뤄지는 것 — 1부-02 — 은 화면 날수 계산도 안 하므로 여기서도 같게 둠)
-  function unpaidStartAt_(kind, date) {
+  function unpaidStartAt_(kind, date, monthsOverride) {
     const d = String(date || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';
     const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7));
     if (kind === 'transfer') return addDaysStr_(shiftTaxDeadline_((y + 1) + '-05-31'), 1);
-    const add = kind === 'gift' ? 3 : 6;
+    // [2026.10.20 세액 고침 — 감사 D] 상속세는 피상속인이나 상속인이 외국에 주소를 둔 경우 9개월(상증법 §67④) — 호출부가 monthsOverride로 줌
+    const add = monthsOverride || (kind === 'gift' ? 3 : 6);
     const end = new Date(Date.UTC(y, m + add, 0)); // 그 달 말일 + add개월의 말일
     return addDaysStr_(shiftTaxDeadline_(end.toISOString().slice(0, 10)), 1);
   }
@@ -15032,6 +15033,13 @@
     return Math.min(Number(p.appraisalFeeAmount) || 0, 5000000) + Math.min(Number(p.artAppraisalFeeAmount) || 0, 5000000)
       + Math.min(Number(p.unlistedStockAppraisalFeeAmount) || 0, 10000000 * cnt_);
   }
+  // [2026.10.20 세액 고침 — 서식↔엔진 감사 C 발견] 증여의제·추정 계산의 증여재산공제(상증법 §53): 같은 증여자 10년 내 증여를 합산(§47②, priorGiftAmount)하면
+  //  공제 한도를 합산한 과세가액 전체에 다시 적용한다(일반 증여 calculateGiftTaxJS·국세청 증여세 신고 사례03과 같음 — 그때 낸 세금은 기납부세액으로 뺌).
+  //  예전엔 한도를 이번 증여분하고만 비교해, 이번 분이 한도보다 작고 합산이 있으면 공제가 적게(세액이 많게) 나왔다. 한도 입력(relationDeductionLimit)은
+  //  합산하는 그 증여에 쓴 공제를 빼지 않은 값이어야 한다(합산 안 되는 다른 증여자에게 쓴 공제만 뺌).
+  function relationDeductionFor_(p, amt, prior) {
+    return Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, (Number(amt) || 0) + (Number(prior) || 0)));
+  }
   window.calculateGiftTaxJS = function (p) {
     p = p || {};
     const giftAmount = Number(p.giftAmount);
@@ -15415,7 +15423,7 @@
     const reportCredit = reportedInTime ? Math.round(taxAfterCredits * reportCreditRate_) : 0;
     const taxAfterReportCredit = taxAfterCredits - reportCredit;
 
-    const penalties = giftFilingPenalties(taxAfterReportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, lateCtx_(p), Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount, p.unpaidStartDate || unpaidStartAt_('inheritance', inhDate_));
+    const penalties = giftFilingPenalties(taxAfterReportCredit, filingStatus, !!p.isFraudulent, p.underreportedTaxAmount, p.unpaidDays, Number(p.unpaidTaxForLatePenalty), !!p.isOffshoreTransaction, lateCtx_(p), Number(p.unpaidTaxAtDesignatedDueDate), p.fraudulentUnderreportedTaxAmount, p.unpaidStartDate || unpaidStartAt_('inheritance', inhDate_, (p.isDecedentResident === false || p.hasForeignAddressHeir) ? 9 : 0));
 
     const interestAmount = Number(p.interestAmount) || 0;
     const forProfitBequestAmount = Number(p.forProfitBequestAmount) || 0;
@@ -16320,8 +16328,8 @@
     const giftAmount = Math.max(0, debtAmount - compensationPaid);
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -16393,8 +16401,8 @@
     }
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -16448,8 +16456,8 @@
     const giftAmount = assetValue;
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
 
@@ -16555,8 +16563,8 @@
     if (giftAmount <= 0) return { error: '신탁이익(원본 또는 수익의 가액 — 여러 차례 나눠 받는 경우 재산평가 화면의 §61 신탁수익권 평가액)이 필요합니다.' };
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -16605,8 +16613,8 @@
 
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -18589,8 +18597,8 @@
 
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -19576,8 +19584,8 @@
     if (caseType === 'acquisition') {
       isAggregationExcluded = false;
       const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-      const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
       const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+      const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
       taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
       var relationDeductionOut = relationDeduction, disasterLossAmountOut = disasterLossAmount;
     } else {
@@ -19656,8 +19664,8 @@
 
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -19894,8 +19902,8 @@
 
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -20554,8 +20562,8 @@
 
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -21049,8 +21057,8 @@
     }
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -21117,8 +21125,8 @@
     }
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -21184,8 +21192,8 @@
     }
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     const calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
     const priorPaidTax = Number(p.priorPaidTax) || 0;
@@ -21343,8 +21351,8 @@
 
     const appraisalFeeAmount = appraisalFeeDeduction_(p);
     const disasterLossAmount = Number(p.disasterLossAmount) || 0;
-    const relationDeduction = Math.min(Number(p.relationDeductionLimit) || 0, Math.max(0, giftDeemedAmount));
     const priorGiftAmount = giftAggregationAmount(Number(p.priorGiftAmount) || 0);
+    const relationDeduction = relationDeductionFor_(p, giftDeemedAmount, priorGiftAmount); // [2026.10.20 세액 고침] 합산하면 합산 과세가액 전체와 비교
     const taxBase = Math.max(0, giftDeemedAmount + priorGiftAmount - relationDeduction - appraisalFeeAmount - disasterLossAmount);
     let calculatedTax = progressiveGiftInheritTax(taxBase, GIFT_INHERIT_TAX_BRACKETS);
 
@@ -22490,13 +22498,19 @@ function recomputeGiftUnpaidDays(idx){
   const hint = document.getElementById('giftDateDeadlineHint');
   if (hint) hint.textContent = deadline ? '법정신고기한: ' + formatDateYmd_(deadline) + '까지(증여일+3개월)' : '';
 }
+// [2026.10.20 세액 고침 — 감사 D] 상증법 §67④ — 피상속인이나 상속인이 외국에 주소를 둔 경우 신고기한(납부기한 §70①도 같음)은 9개월
+function ihFilingMonths_(){
+  const nr = document.getElementById('ihDecedentResident'), fa = document.getElementById('ihHeirForeignAddress');
+  return ((nr && nr.value === 'nonresident') || (fa && fa.checked)) ? 9 : 6;
+}
 function recomputeInheritanceUnpaidDays(){
   const deathDate = document.getElementById('ihDeathDate');
   const paidDate = document.getElementById('ihPaidDate');
-  const deadline = taxCalcDeadlineFromMonthEnd_(deathDate ? deathDate.value : '', 6);
+  const ihMonths_ = ihFilingMonths_();
+  const deadline = taxCalcDeadlineFromMonthEnd_(deathDate ? deathDate.value : '', ihMonths_);
   setUnpaidDaysField_('ihUnpaidDays', taxCalcDaysLate_(deadline, paidDate ? paidDate.value : ''));
   const hint = document.getElementById('ihDeathDateDeadlineHint');
-  if (hint) hint.textContent = deadline ? '법정신고기한: ' + formatDateYmd_(deadline) + '까지(상속개시일+6개월)' : '';
+  if (hint) hint.textContent = deadline ? '법정신고기한: ' + formatDateYmd_(deadline) + '까지(상속개시일이 속한 달 말일+' + ihMonths_ + '개월' + (ihMonths_ === 9 ? ', 외국 주소 §67④' : '') + ')' : '';
 }
 
 // 배우자 법정상속분 비율(민법§1009②) — 배우자는 다른 공동상속인 1인당 지분의 1.5배를 받는다.
@@ -32543,6 +32557,7 @@ function renderInheritancePane(){
         '<div class="taxcalc-field"><label>호</label><input type="text" id="ihDeceasedHo" list="ihDeceasedHoList" placeholder="예: 1502호"><datalist id="ihDeceasedHoList"></datalist><span class="taxcalc-field-help">동을 고르면 호 목록이 자동으로 뜹니다 — 목록에 없으면 직접 입력하세요</span></div>' +
         '<div class="taxcalc-field"><label style="visibility:hidden;">관할세무서</label><input type="hidden" id="ihDeceasedTaxOffice" value=""><button type="button" class="taxcalc-ai-btn" data-action="open-tax-office-guide" data-address-input="ihDeceasedAddress" data-office-input="ihDeceasedTaxOffice" id="ihDeceasedTaxOfficeBtn">관할세무서</button></div>' +
         '<div class="taxcalc-field"><label>거주구분</label><select id="ihDecedentResident"><option value="resident" selected>거주자</option><option value="nonresident">비거주자</option></select><span class="taxcalc-field-help">국내에 주소를 두거나 183일 이상 거소를 둔 사람=거주자</span><span class="taxcalc-result-note" style="margin:2px 0 0;">비거주자면 기초공제(2억원)만 적용되고 배우자공제·일괄공제·인적공제·금융재산공제·동거주택공제·장례비용공제·가업/영농상속공제는 적용되지 않습니다(§14②·§18~§23의2).</span></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihHeirForeignAddress"><label for="ihHeirForeignAddress">상속인 중 외국에 주소를 둔 사람 있음 — 신고·납부기한 9개월(상증법 §67④, 신고서 ⑦)</label></div>' +
       '</div>' +
       '<div class="taxcalc-grid" style="margin-top:10px;">' +
         '<div class="taxcalc-field"><label>상속개시일</label><input type="date" id="ihDeathDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-result-note" id="ihDeathDateDeadlineHint" style="margin:2px 0 0;"></span></div>' +
@@ -32774,6 +32789,7 @@ function renderInheritancePane(){
   const ihPaidDateEl = document.getElementById('ihPaidDate');
   if (ihDeathDateEl) ihDeathDateEl.addEventListener('input', recomputeInheritanceUnpaidDays);
   if (ihPaidDateEl) ihPaidDateEl.addEventListener('input', recomputeInheritanceUnpaidDays);
+  ['ihDecedentResident', 'ihHeirForeignAddress'].forEach(function(id){ const e_ = document.getElementById(id); if (e_) e_.addEventListener('change', recomputeInheritanceUnpaidDays); }); // [2026.10.20] §67④ 9개월
   recomputeInheritanceUnpaidDays();
   wireMoneyCapHint_('ihAppraisalFee', 'ihAppraisalFeeHint', 5000000);
   wireMoneyCapHint_('ihCohabitValue', 'ihCohabitValueHint', 600000000);
@@ -33830,7 +33846,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>1주당 기업가치의 실질적인 증가로 인한 이익</label><input type="number" id="slRealIncrease" placeholder="원"><span class="taxcalc-field-help">시행령§31의3⑤, 없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>당초 납부한 증여세액</label><input type="number" id="slOriginalGiftTaxPaid" placeholder="원"><span class="taxcalc-field-help">정산기준일 가액이 당초보다 기준금액 이상 낮아졌을 때 환급액 계산용, 가액 하락시만</span></div>' +
         '<div class="taxcalc-field"><label>증여받거나 유상취득한 주식수</label><input type="number" id="slShares" placeholder="주"></div>' +
-        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="slRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="slRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도(10년) — 같은 증여자 앞선 증여를 합산하면 그 증여에 쓴 공제는 빼지 말고, 합산 안 되는 다른 증여자에게 쓴 공제만 뺌. 없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="slAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
       '</div>' +
       '<div class="taxcalc-grid">' +
@@ -33908,7 +33924,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>기과세된 취득시 이익</label><input type="number" id="cbPriorAcquisitionGift" placeholder="원"><span class="taxcalc-field-help">같은 건 법1호로 이미 과세된 금액, 없으면 0, 전환시(정방향)만</span></div>' +
         '<div class="taxcalc-field"><label>그 특수관계인의 전환등전 보유지분비율</label><input type="number" step="0.01" min="0" max="1" id="cbRelatedRatio" placeholder="0~1"><span class="taxcalc-field-help">전환시 반대편만</span></div>' +
         '<div class="taxcalc-field"><label>1년 이내 동일유형(케이스) 이전거래 이익 합계(§43②)</label><input type="number" id="cbPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액(취득시만)</label><input type="number" id="cbRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액(취득시만)</label><input type="number" id="cbRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도(10년) — 같은 증여자 앞선 증여를 합산하면 그 증여에 쓴 공제는 빼지 말고, 합산 안 되는 다른 증여자에게 쓴 공제만 뺌. 없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="cbAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
       '</div>' +
       '<div class="taxcalc-grid">' +
@@ -33956,7 +33972,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>지배주주등의 주식보유비율</label><input type="number" step="0.01" min="0" max="1" id="scShareRatio" placeholder="0~1"></div>' +
         '<div class="taxcalc-field"><label>직접증여시 증여세상당액(§45의5② 한도용)</label><input type="number" id="scDirectGiftTax" placeholder="원"><span class="taxcalc-field-help">세대생략 할증 전 금액(서식 10호의6 ㊲ "산출세액 한도" — 할증 ㊳은 한도 뒤에 더함). 비우면 (특정법인 이익 × 지분율)에 누진세율로 자동 계산</span></div>' +
         '<div class="taxcalc-field"><label>1년 이내 같은 특정법인과의 이전거래 이익 합계(§43②)</label><input type="number" id="scPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="scRelationDeduction" placeholder="원"><span class="taxcalc-field-help">증여자가 법인이므로 통상 0</span></div>' +
+        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="scRelationDeduction" placeholder="원"><span class="taxcalc-field-help">서식 10호의6은 증여자(특수관계인)와의 관계별 공제 칸을 둠 — 그 관계의 §53 한도(합산 기준은 왼쪽 칸들과 같음, 확인 필요)</span></div>' +
         '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="scAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
       '</div>' +
       '<div class="taxcalc-grid">' +
@@ -33993,7 +34009,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>실제 소득세액 직접입력</label><input type="number" id="edActualTax" placeholder="원"><span class="taxcalc-field-help">종합과세면 위 종합소득과세표준을 입력하세요, 정산신고·비과세/분리과세만</span></div>' +
         '<div class="taxcalc-field"><label>(정산 신고만) 최초 신고 증여세액</label><input type="number" id="edInitialTax" placeholder="원"><span class="taxcalc-field-help">서식 ㊱ — 최초 신고의 산출세액 계 − 세액공제, 정산 세액에서 뺌(§41의2②)</span></div>' +
         '<div class="taxcalc-field"><label>1년 이내 동일 최대주주등의 이전 초과배당금액 합계(§43②)</label><input type="number" id="edPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
-        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="edRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
+        '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="edRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도(10년) — 같은 증여자 앞선 증여를 합산하면 그 증여에 쓴 공제는 빼지 말고, 합산 안 되는 다른 증여자에게 쓴 공제만 뺌. 없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="edAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="edAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">현금 배당이라 보통 0 — 시행령 §46의2·§20의3 수수료(감정평가법인·신용평가기관·서화골동품 감정)가 실제로 든 경우만</span></div>' +
       '</div>' +
       '<div class="taxcalc-grid">' +
@@ -37599,12 +37615,13 @@ function handleTaxCalcClick_(e){
     const fr_ = calculateFarmlandGiftTaxReductionJS({
       assetType: (document.getElementById('gfFarmType') || {}).value || '', giftValue: fv_('gfFarmValue'), giftDate: document.getElementById('giftDate').value,
       areaSqm: fv_('gfFarmArea') || undefined, tonnage: fv_('gfFarmTonnage'), buildingArea: fv_('gfFarmBuildingArea'), buildingCoverageRatio: fv_('gfFarmCoverage'), afforestationYears: fv_('gfFarmAfforest'),
-      totalGiftCalculatedTax: Number(gr_.산출세액_할증전) || 0, totalGiftPropertyValue: (Number(gr_.증여재산가액) || 0) + (Number(res_[0].priorGiftAmount) || 0), priorReductionWithinFiveYears: fv_('gfFarmPrior5y')
+      totalGiftCalculatedTax: Number(gr_.산출세액_할증전) || 0, totalGiftPropertyValue: Number(gr_.증여세과세가액) || Number(gr_.증여재산가액) || 0, // [2026.10.20 세액 고침 — 감사 발견] 분모는 그 산출세액을 낸 증여세과세가액(합산은 1천만원 이상만, 상증법 §47②) — 예전 '증여재산가액 + 앞선 증여 입력값'은 합산 안 된 소액까지 넣어 덜 감면
+      priorReductionWithinFiveYears: fv_('gfFarmPrior5y')
     });
     if (fr_.error) { if (outEl_) outEl_.textContent = fr_.error; return; }
     const amt_ = fr_.적용여부 ? (Number(fr_.최종_감면세액) || 0) : 0;
     document.getElementById('giftFarmlandExemption').value = amt_ || '';
-    if (outEl_) outEl_.textContent = (fr_.적용여부 ? '감면세액 ' + amt_.toLocaleString('ko-KR') + '원 — ' + (fr_.면적한도_안내 || '') + ', 감면 대상 가액 ' + (Number(fr_.감면대상_농지등가액) || 0).toLocaleString('ko-KR') + '원. ' : '감면 없음. ') + String(fr_.안내 || '').replace('이 감면세액을 증여세 계산기의 농지등 감면(farmlandGiftTaxExemptionAmount)에 넣어 최종 증여세를 계산하세요.', '위 감면 칸에 넣고 다시 계산했습니다.') + (Number(res_[0].priorGiftAmount) > 0 ? ' (10년 합산 증여가 있어 분모에 합산액 포함 — 확인 필요)' : '');
+    if (outEl_) outEl_.textContent = (fr_.적용여부 ? '감면세액 ' + amt_.toLocaleString('ko-KR') + '원 — ' + (fr_.면적한도_안내 || '') + ', 감면 대상 가액 ' + (Number(fr_.감면대상_농지등가액) || 0).toLocaleString('ko-KR') + '원. ' : '감면 없음. ') + String(fr_.안내 || '').replace('이 감면세액을 증여세 계산기의 농지등 감면(farmlandGiftTaxExemptionAmount)에 넣어 최종 증여세를 계산하세요.', '위 감면 칸에 넣고 다시 계산했습니다.') + (Number(gr_.증여세과세가액) > Number(gr_.순수증여재산가액) ? ' (분모 = 증여세과세가액 — 10년 합산 증여 포함)' : '');
     window.__gfFarmHelper = Object.assign({}, fr_, { 면적: fv_('gfFarmArea') || undefined, 가액: fv_('gfFarmValue') || undefined }); // 52호 부표 ⑥⑦
     if (amt_ !== prevEx_) { const runBtn_ = document.querySelector('[data-action="run-gift"]'); if (runBtn_) runBtn_.click(); }
   } else if (action === 'run-gift'){
@@ -38306,6 +38323,7 @@ function handleTaxCalcClick_(e){
       disposalPresumptionItems: disposalPresumptionItems,
       presumedFictitiousDebtAmount: numVal((document.getElementById('ihPresumedFictitiousDebt') || {}).value) || 0, // [2026.10.20 J05] §15② — 기준·차감 없이 전액
       isDecedentResident: document.getElementById('ihDecedentResident').value !== 'nonresident',
+      hasForeignAddressHeir: !!(document.getElementById('ihHeirForeignAddress') && document.getElementById('ihHeirForeignAddress').checked), // [2026.10.20] §67④ 9개월·9호 ⑦
       hasSpouse: taxCalcHeirRegistryHasSpouse,
       isSpouseOnlyHeir: taxCalcHeirRegistryIsSpouseOnly,
       spouseActualInheritedAmount: numVal(document.getElementById('ihSpouseActual').value) || 0,

@@ -612,7 +612,8 @@
     o.set('⑤', dn.email);
     if (has(dn.phone)) o.set(isMobile(dn.phone) ? '⑥~전화번호(휴대전화) (수증자)' : '⑥~전화번호(자택) (수증자)', dn.phone);
     else o.miss('⑥ 수증자 전화번호', '화면 입력 없음');
-    o.miss('⑦ 증여자와의 관계', '계산기 값은 공제 구분(직계존속 등)이라 "증여자의 (  )"에 맞는 낱말(자·손자 등)이 아님');
+    var rw7_ = relWord(ctx.relation, ctx.genSkip, dn.regNo);
+    if (rw7_) o.set('⑦', rw7_); else o.miss('⑦ 증여자와의 관계', '관계가 기타친족·그 밖의 자이거나 수증자 주민번호로 성별을 알 수 없음 — 직접 적을 것(작성방법 3: 수증자 기준)');
     o.need('⑧', dr.name, '⑧ 증여자 성명').need('⑨', dr.regNo, '⑨ 증여자 주민등록번호');
     o.need('⑩', ctx.giftDate, '⑩ 증여일자').need('⑪', fullAddr(dr), '⑪ 증여자 주소');
     o.miss('⑫ 증여자 전화번호', '증여자 카드에 전화 입력 칸 없음');
@@ -630,8 +631,11 @@
     var REL = { '배우자': '㉕', '직계존속': '㉖', '직계비속': '㉗', '기타친족': '㉘' };
     var relCell = REL[ctx.relation];
     ['㉕', '㉖', '㉗', '㉘'].forEach(function (k) { o.set(k, k === relCell ? n(r.증여재산공제) : 0); });
-    if (!relCell) { o.miss('㉕~㉘ 증여재산공제', '관계 값(ctx.relation)이 배우자·직계존속·직계비속·기타친족이 아님: ' + ctx.relation); ['㉕', '㉖', '㉗', '㉘'].forEach(function (k) { delete o.values[k]; }); }
-    var mb = ctx.marriageBirth || { marriage: 0, birth: 0 };
+    if (!relCell && ctx.relation !== '기타') { o.miss('㉕~㉘ 증여재산공제', '관계 값(ctx.relation)이 배우자·직계존속·직계비속·기타친족이 아님: ' + ctx.relation); ['㉕', '㉖', '㉗', '㉘'].forEach(function (k) { delete o.values[k]; }); }
+    // [2026.10.20 서식↔엔진 감사 A] 작성방법 8·9: ㉙ = 부표3 ⑯(같은 증여자 기존 혼인공제 + 이번 혼인공제), ㉚ = 부표3 ⑰ — 부표3과 같은 나누기
+    //  (예전엔 기존+이번 합계를 이번 증여의 혼인/출산 여부로만 나눠, 같은 증여자의 기존 출산공제가 혼인 칸으로 몰렸음)
+    var mbd_ = ctx.mbDetail, pp0_ = mbd_ && mbd_.priorParts, cur0_ = (mbd_ && mbd_.cur) || { marriage: 0, birth: 0 };
+    var mb = pp0_ ? { marriage: n(pp0_.sameMarriage) + n(cur0_.marriage), birth: n(pp0_.sameBirth) + n(cur0_.birth) } : (ctx.marriageBirth || { marriage: 0, birth: 0 });
     if (n(r.혼인출산증여재산공제) && !n(mb.marriage) && !n(mb.birth)) o.miss('㉙㉚ 혼인·출산 공제', '혼인·출산 나누기 자료(ctx.marriageBirth) 없음');
     else o.set('㉙', n(mb.marriage)).set('㉚', n(mb.birth));
     o.set('㉛', n(r.재해손실공제)).set('㉜', n(r.합산배제증여재산공제)).set('㉝', n(r.감정평가수수료공제)).set('㉞', n(r.과세표준));
@@ -683,7 +687,9 @@
     o.need('①', rp.name, '① 신고인 성명').need('②', rp.regNo, '② 신고인 주민등록번호').set('③', ctx.email)
       .need('④', fullAddr(rp), '④ 신고인 주소').need('⑤', rp.relation, '⑤ 피상속인과의 관계');
     if (has(ctx.phone)) o.set(isMobile(ctx.phone) ? '⑥~전화번호(휴대전화)' : '⑥~전화번호(자택)', ctx.phone); else o.miss('⑥ 전화번호', '화면 입력 없음');
-    o.miss('⑦ 외국에 주소를 둔 상속인 여부', '계산기에 없음');
+    // [2026.10.20 감사 D] 작성방법 3 — 상속 탭 '상속인 중 외국에 주소를 둔 사람 있음' 체크(§67④ 9개월 기한과 같은 값)
+    var fa9_ = checked('ihHeirForeignAddress');
+    if (fa9_ === null) o.miss('⑦ 외국에 주소를 둔 상속인 여부', '화면 칸 없음(시험)'); else o.set('⑦', fa9_ ? '있음' : '없음');
     o.need('⑧', dc.name, '⑧ 피상속인 성명').need('⑨', dc.regNo, '⑨ 피상속인 주민등록번호');
     o.set('⑩', dc.resident === 'nonresident' ? '비거주자' : '거주자');
     o.need('⑪', dc.address, '⑪ 피상속인 주소');
@@ -946,7 +952,9 @@
   M['증여10부표1'] = function (ctx) {
     var o = new Out(), r = ctx.r || {}, it = ctx.item || {}, rows = ctx.giftAssets || [];
     if (rows.length > 9) o.note('재산 ' + rows.length + '건 — 9줄을 넘는 만큼 모듈이 다음 장에 이어 찍음');
-    o.miss('① 재산구분코드', '계산기에 재산구분 칸 없음(전자신고는 A11 고정)');
+    // [2026.10.20 서식↔엔진 감사 A] 작성방법 1: 이 표의 줄 = 이번 증여재산 → A11(전자신고 gfAttach1AssetRecord_와 같음), 영농 감면 농지는 A14
+    if (rows.length) o.set('①', rows.map(function () { return 'A11'; }));
+    if (n(r.영농자녀증여농지세액감면) > 0) o.note('① 영농자녀 감면 농지 줄은 A14로 고칠 것(부표1 작성방법 1)');
     o.miss('국외자산 여부·국가명', '계산기에 없음(전자신고 N·ZZ 고정)');
     o.miss('④ 사업자등록번호(지분율)', '사업자등록번호 칸 없음 — 지분율은 배분 비율로 볼지 확인 전(지금 인쇄·전자신고는 100% 고정)');
     if (rows.length) {
@@ -984,13 +992,14 @@
   // ───── 증여 부표3(혼인 및 출산 증여재산 공제 명세서) — gfMarriageBirthPrintPageHtml_와 같은 값 ─────
   M['증여10부표3'] = function (ctx) {
     var o = new Out(), mb = ctx.mbDetail, r = ctx.r || {};
-    if (!mb || !n(mb.thisTime)) { o.miss('부표3 전체', '혼인·출산 증여재산공제 없음'); return o.result(); }
+    if (!mb || !(n(mb.thisTime) || n(r.혼인출산증여재산공제))) { o.miss('부표3 전체', '혼인·출산 증여재산공제 없음'); return o.result(); }
     var cur = mb.cur || { marriage: 0, birth: 0 }, prior = n(mb.prior), gift = n(mb.giftAmount);
     var m = n(cur.marriage), b = n(cur.birth);
     if (m) o.need('①@1', mb.marriageDate, '① 혼인신고(예정)일').need('②@1', mb.giftDate, '② 증여일자');
     if (b) o.need('⑤@1', mb.birthDate, '⑤ 출생일·입양신고일').need('⑥@1', mb.giftDate, '⑥ 증여일자');
     if (m && !b) { o.set('③@1', gift); if (!prior) o.set('④', gift); }
     else if (b && !m) { o.set('⑦@1', gift); if (!prior) o.set('⑧', gift); }
+    else if (!m && !b) o.miss('③④⑦⑧ 이번 증여', '이번 증여는 혼인·출산 공제 없음 — 같은 증여자 기존 공제만 다시 공제(⑯⑰, §47② 합산)');
     else o.miss('③④⑦⑧ 증여재산가액', '혼인·출산 둘 다 해당 — 이번 증여재산가액을 혼인분·출산분으로 나눈 값이 계산기에 없음(공제액만 나눔)');
     if (prior) o.miss('④⑧ 합계·2~5번째 증여 칸', '기존에 혼인·출산 공제를 받은 증여(' + prior + '원)가 있음 — 그 증여 건별 날짜·가액이 계산기에 없음');
     // [2026.10.20 AI 회의 회장 결론 J08(다)] ⑨⑩ = 10년 안 기존 공제(모든 증여자 — ⑬ 1억 한도용, §53의2), ⑪⑫ = 10년 넘은 것,
@@ -1016,7 +1025,8 @@
       .need('④', fullAddr(dn), '④ 수증자 주소').set('⑤', dn.email);
     if (has(dn.phone)) o.set(isMobile(dn.phone) ? '⑥~전화번호(휴대전화) (수증자)' : '⑥~전화번호(자택) (수증자)', dn.phone);
     else o.miss('⑥ 수증자 전화번호', '화면 입력 없음');
-    o.miss('⑦ 증여자와의 관계', '계산기 값은 공제 구분(직계존속 등)이라 "증여자의 (  )"에 맞는 낱말이 아님');
+    var rw4_ = relWord(ctx.relation, ctx.genSkip, dn.regNo);
+    if (rw4_) o.set('⑦', rw4_); else o.miss('⑦ 증여자와의 관계', '관계가 기타친족·그 밖의 자이거나 증여 계산 결과 없음 — 직접 적을 것(부표4 작성방법 3: 수증자 기준)');
     o.need('⑧', dr.name, '⑧ 증여자 성명').need('⑨', dr.regNo, '⑨ 증여자 주민등록번호').need('⑩', ctx.giftDate, '⑩ 증여일자').need('⑪', fullAddr(dr), '⑪ 증여자 주소');
     o.miss('⑫ 증여자 전화번호', '증여자 카드에 전화 칸 없음');
     o.miss('⑬~⑲ 추징 대상 증여재산 명세', '계산기에 부표4용 재산 입력 없음(추징 대상은 혼인·출산 공제를 받은 지난 증여분)');
@@ -1384,7 +1394,7 @@
       var r = ctx.r;
       if (r) L.push('증여10호', '증여10부표1');
       if (ctx.bd) L.push('증여10부표2');
-      if (ctx.mbDetail && n(ctx.mbDetail.thisTime)) L.push('증여10부표3');
+      if (ctx.mbDetail && (n(ctx.mbDetail.thisTime) || (ctx.r && n(ctx.r.혼인출산증여재산공제)))) L.push('증여10부표3');
       if (ctx.clawback && ctx.clawback.result && ctx.clawback.formType === 'gf_marriage') L.push('증여10부표4');
       if ((ctx.giftAssets || []).some(function (a) { return a.method === 'artwork'; })) L.push('증여10부표5');
       if ((r && n(r.공익법인등관련가산세) > 0) || (ctx.publicOrgPenaltyItems || []).length) L.push('증여10부표6');
@@ -1487,8 +1497,10 @@
       var r = item ? (item.result || {}) : null;
       var doneeIdx = item ? item.doneeIdx : 0, donorIdx = item ? item.donorIdxs[0] : 0;
       var donor = giftDonors[donorIdx] || {};
-      var inst = (typeof lastInstallmentInput_ !== 'undefined' && lastInstallmentInput_ && lastInstallmentInput_.taxType === 'gift' && lastInstallmentResult_) ? (numVal(lastInstallmentResult_.연부연납대상금액) || 0) : 0;
-      var split = (typeof lastSplitPaymentInput_ !== 'undefined' && lastSplitPaymentInput_ && lastSplitPaymentInput_.taxType === 'gift' && lastSplitPaymentResult_ && lastSplitPaymentResult_.분납가능여부) ? (numVal(lastSplitPaymentResult_.분납신청금액 != null ? lastSplitPaymentResult_.분납신청금액 : lastSplitPaymentResult_.분납가능_최대금액) || 0) : 0;
+      // [2026.10.20 서식↔엔진 감사 A] 연부연납·분납 계산은 사건에 하나 — 증여 쌍이 여럿이면 그 계산의 총 납부세액이 이 쌍 납부세액과 같은 쌍에만(예전엔 모든 쌍 51·52에 같은 금액)
+      var mine_ = function (inp) { return items.length <= 1 || !!(r && inp && Math.round(numVal(inp.totalTaxAmount) || 0) === Math.round(numVal(r.납부세액) || 0)); };
+      var inst = (typeof lastInstallmentInput_ !== 'undefined' && lastInstallmentInput_ && lastInstallmentInput_.taxType === 'gift' && lastInstallmentResult_ && mine_(lastInstallmentInput_)) ? (numVal(lastInstallmentResult_.연부연납대상금액) || 0) : 0;
+      var split = (typeof lastSplitPaymentInput_ !== 'undefined' && lastSplitPaymentInput_ && lastSplitPaymentInput_.taxType === 'gift' && lastSplitPaymentResult_ && lastSplitPaymentResult_.분납가능여부 && mine_(lastSplitPaymentInput_)) ? (numVal(lastSplitPaymentResult_.분납신청금액 != null ? lastSplitPaymentResult_.분납신청금액 : lastSplitPaymentResult_.분납가능_최대금액) || 0) : 0;
       // 부표1·5 — gfAttach1PrintPageHtml_와 같은 배분(이 증여자·수증자 몫 비율 × 평가액)
       var giftAssets = (typeof giftValuationAssets_ === 'function' ? giftValuationAssets_() : []).map(function (a) {
         var ratio = (Array.isArray(a.donorAllocations) ? a.donorAllocations : []).reduce(function (s, al) {
@@ -1506,9 +1518,9 @@
         nonBiz61: numVal(el('bdNonBiz61')) || 0, excessCash: numVal(el('bdExcessCash')) || 0, nonBizStock: numVal(el('bdNonBizStock')) || 0,
         totalValue: numVal(el('bdTotalValue')) || 0, stockValue: numVal(el('bdStockValue')) || 0, businessValue: numVal(el('bdBusinessValue')) || 0, taxPayable: numVal(el('bdTaxPayable')) || 0, result: bdRes } : null;
       return Object.assign({ r: r, item: item ? { amount: item.amount, priorGiftAmount: item.priorGiftAmount } : {}, donee: giftDonees[doneeIdx] || {}, donor: donor,
-        relation: item ? giftPairRelation_(donor, doneeIdx).relation : '', giftDate: el('giftDate'),
+        relation: item ? giftPairRelation_(donor, doneeIdx).relation : '', genSkip: item ? giftPairRelation_(donor, doneeIdx).genSkip : '', giftDate: el('giftDate'),
         marriageBirth: r && numVal(r.혼인출산증여재산공제) ? gfMarriageBirthSplit_(numVal(r.혼인출산증여재산공제) || 0) : { marriage: 0, birth: 0 },
-        mbDetail: mbThis ? { thisTime: mbThis, cur: gfMarriageBirthSplit_(mbThis), prior: (typeof gfPriorMarriageBirthParts_ === 'function' ? gfPriorMarriageBirthParts_(r).total : 0), priorParts: (typeof gfPriorMarriageBirthParts_ === 'function' ? gfPriorMarriageBirthParts_(r) : null), marriageDate: el('giftMarriageDate'),
+        mbDetail: (mbThis || (r && numVal(r.혼인출산증여재산공제))) ? { thisTime: mbThis, cur: gfMarriageBirthSplit_(mbThis), prior: (typeof gfPriorMarriageBirthParts_ === 'function' ? gfPriorMarriageBirthParts_(r).total : 0), priorParts: (typeof gfPriorMarriageBirthParts_ === 'function' ? gfPriorMarriageBirthParts_(r) : null), marriageDate: el('giftMarriageDate'),
           birthDate: el('giftBirthDate'), giftDate: el('giftDate'), giftAmount: has(item.amount) ? numVal(item.amount) : numVal(r.증여재산가액) } : null,
         giftAssets: giftAssets, bd: bd, clawback: claw, publicOrgPenaltyItems: [],
         rate: r ? ihRateForBase_(r.과세표준) : null, installment: inst, split: split, taxAgent: agent() }, extra || {});
@@ -1636,7 +1648,16 @@
       return officialJobs(formNo).length > 0;
     } catch (e) { return false; }
   }
-  var helpers = { n: n, has: has, Out: Out, ymd: ymd, dateParts: dateParts, officeName: officeName, isMobile: isMobile, fullAddr: fullAddr, nativeOf: nativeOf,
+  // [2026.10.20 서식↔엔진 감사 A] 서식 "증여자의 (   )" — 수증자를 기준으로 적음(증여10호 작성방법 3: 부모가 자녀에게 증여하면 "자").
+  //  rel = 화면 관계(증여자가 수증자의 직계존속·직계비속·배우자…), genSkip '1' = 세대를 건넘. 기타친족·그 밖의 자는 낱말을 정할 수 없어 ''.
+  function relWord(rel, genSkip, doneeRegNo) {
+    var d = String(doneeRegNo || '').replace(/\D/g, ''), g = d.length === 13 ? (/[13579]/.test(d[6]) ? 'M' : 'F') : '';
+    if (rel === '직계존속') return genSkip === '1' ? '손' : '자';
+    if (rel === '직계비속') return g ? (genSkip === '1' ? (g === 'M' ? '조부' : '조모') : (g === 'M' ? '부' : '모')) : '';
+    if (rel === '배우자') return g === 'M' ? '남편' : g === 'F' ? '처' : '';
+    return '';
+  }
+  var helpers = { relWord: relWord, n: n, has: has, Out: Out, ymd: ymd, dateParts: dateParts, officeName: officeName, isMobile: isMobile, fullAddr: fullAddr, nativeOf: nativeOf,
     fracNum: fracNum, pct: pct, pct2: pct2, ratioText: ratioText, el: el, checked: checked, agent: agent,
     evFromSingle: evFromSingle, acqNec: acqNec, giftInheritRate: giftInheritRate, expenseItemsOf: expenseItemsOf, ctxFromApp: ctxFromApp };
 

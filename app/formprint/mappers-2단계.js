@@ -132,7 +132,9 @@
     o.note('⚠ 수증자·증여자 = 일반 증여 탭의 첫 번째 사람(지금 인쇄와 같음 — 추징이자 도구에는 사람 칸이 없음). 감면받은 영농자녀·자경농민과 다르면 고치세요');
     personCells(o, dn, { name: '①', nameL: '① 수증자 성명', reg: '②', regL: '② 수증자 주민등록번호', addr: '③', addrL: '③ 수증자 주소',
       phone: '③@전화번호', phoneL: '③ 수증자 전화번호', email: '⑤', emailL: '⑤ 전자우편주소' });
-    o.miss('④ 증여자와의 관계', '계산기에 없음 — 계산기 관계 값은 공제 구분(직계존속 등)이라 "증여자와의 관계"에 맞는 낱말(자·손자 등)이 아님');
+    var pr0_ = (typeof g('giftPairRelation_') === 'function') ? g('giftPairRelation_')(dr, 0) : { relation: dr.relation, genSkip: dr.genSkip };
+    var rw_ = H.relWord ? H.relWord(pr0_.relation, pr0_.genSkip, dn.regNo) : ''; // [2026.10.20 감사 A] 수증자 기준 낱말(10호 ⑦과 같음)
+    if (rw_) o.set('④', rw_); else o.miss('④ 증여자와의 관계', '관계가 기타친족 등이라 낱말을 정할 수 없음 — 직접 적을 것');
     personCells(o, dr, { name: '⑥', nameL: '⑥ 증여자 성명', reg: '⑦', regL: '⑦ 증여자 주민등록번호', addr: '⑧', addrL: '⑧ 증여자 주소',
       phone: '⑧@전화번호', phoneL: '⑧ 증여자 전화번호', phoneWhy: '계산기에 없음(증여자 카드에 전화 칸 없음)' });
     o.miss('⑨⑩⑪⑫ 신고내용(수증일·재산종류·증여재산가액·비고)', '계산기에 없음 — 추징이자 도구는 감면받은 증여(재산)를 따로 받지 않음(지금 화면의 증여일은 이번 증여 계산의 날이라 당초 감면 증여와 같다고 볼 수 없음)');
