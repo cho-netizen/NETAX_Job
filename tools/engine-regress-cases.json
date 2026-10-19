@@ -1564,5 +1564,28 @@
    "합산수용감면액": 14109000,
    "산출세액_합계": 204011000
   }
+ },
+ {
+  "이름": "장기일반민간임대 §97의3 70%(위원회 J16) — 2020.6.30. 양도: 그때 법은 양도소득 전체 → 안분 없이 차익 6억 × 70% = 4.2억, 과표 1억7,750만, 산출 48,050,000(예전 안분 74,270,000)",
+  "도구": "calculate_transfer_tax",
+  "고정": true,
+  "입력": {
+   "assetType": "house",
+   "acquisitionDate": "2008-03-01",
+   "transferDate": "2020-06-30",
+   "transferPrice": 900000000,
+   "acquisitionPrice": 300000000,
+   "necessaryExpenses": 0,
+   "rentalSpecialType": "rental_general",
+   "rentalYears": 10,
+   "rentalRegistrationDate": "2010-03-01",
+   "acquisitionStandardPrice": 200000000,
+   "registrationStandardPrice": 300000000,
+   "transferStandardPrice": 600000000
+  },
+  "정답": {
+   "과세표준": 177500000,
+   "산출세액": 48050000
+  }
  }
 ]

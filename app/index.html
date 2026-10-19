@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 17:25 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 17:27 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -12944,12 +12944,14 @@
       // [2026.10.19 서식 감사 — 작업자 자] 시행령 §97의3⑤ 연혁(법제처 원문):
       //  2026.2.27. 이후 양도(대통령령 제36127호, 공포일 시행·따로 정한 적용례 없음) — "다음 계산식" A × (B − C) ÷ (D − E):
       //   A 양도차익, B 실제 임대기간 마지막 날 기준시가, C 임대 개시일 기준시가(§97의3④ 등록해 임대하는 날), D 양도일, E 취득일 기준시가.
-      //  2021.2.17.~2026.2.26. — "기준시가를 기준으로 산정"만(산식 없음) → 판단 대기: 지금 동작((양도일 − 등록일) 비율) 유지, 2026 산식과 세액이 다르면 판단대기 표시.
-      //  2020.12.31. 이전 양도 — 법에 "임대기간 중" 한정 문구 없음 → 판단 대기: 지금 동작(안분) 유지, 안분 안 할 때 세액을 판단대기로.
+      //  2021.1.1.~2026.2.26. — 법·시행령(2021.2.17.)이 "임대기간 중 양도차익, 기준시가로 산정"만 정함 → 위원회 J16: 2026 산식(B 임대 마지막 날)이 문언에 가장 가까워 같은 산식.
+      //  2020.12.31. 이전 양도 — 법에 "임대기간 중" 한정 문구 없음 → 위원회 J16: 안분하지 않음(양도차익 전체에 특례율).
       //  t._rental9703Mode: 판단대기 해석 B 계산용('formula2026' | 'nosplit').
       const rStartStd_ = Number(t.rentalStartStandardPrice) || 0, rEndStd_ = Number(t.rentalEndStandardPrice) || 0;
       const d9703_ = String(t.transferDate || '').slice(0, 10);
-      const mode9703_ = t._rental9703Mode || ((!refHistoryOn_() || !d9703_ || d9703_ >= '2026-02-27') ? 'formula2026' : 'regToTransfer');
+      // [2026.10.20 세액 고침 — 위원회 J16 확정] 2020.12.31. 이전 양도 = 안분 없음(그때 법 §97의3①은 "양도함으로써 발생하는 소득" 전체, 법률 제17759호 부칙 제2조③
+      //  시행 후 양도분부터 한정), 2021.1.1. 이후 양도 = 임대기간 중 양도차익만 — 시행령 산식(B 실제 임대 마지막 날, 비우면 양도일)으로 통일.
+      const mode9703_ = t._rental9703Mode || ((refHistoryOn_() && d9703_ && d9703_ < '2021-01-01') ? 'nosplit' : 'formula2026');
       const rentalGeneralNeedsSplit = isRentalSpecial && t.rentalSpecialType === 'rental_general' && ltRate > 0 && mode9703_ !== 'nosplit';
       if (rentalGeneralNeedsSplit && !(acqStd > 0 && (regStd > 0 || rStartStd_ > 0) && trfStd > 0 && trfStd !== acqStd)) {
         // 기준시가 3종이 없거나 취득당시=양도당시(분모 0)이면 안분이 불가능하다. 이 경우 전체
@@ -21609,12 +21611,7 @@
         const alt = txs.map(function (x, k) { return k === i ? Object.assign({}, x, { isOneHouseOneFamily: false }) : x; });
         try { push('apartment_deadline_155_20', taxOf(run(alt)), '해석 B는 그 집을 1세대1주택 특례 없이 계산'); } catch (e) {}
       }
-      // ④ §97의3 임대기간 중 양도차익 — 2026.2.27 전 양도분(산식 없음)·2020년 이전 양도분(한정 문구 없음)
-      if (t.rentalSpecialType === 'rental_general' && d && d < '2026-02-27') {
-        const mode = d < '2021-01-01' ? 'nosplit' : 'formula2026';
-        const alt = txs.map(function (x, k) { return k === i ? Object.assign({}, x, { _rental9703Mode: mode }) : x; });
-        try { push(mode === 'nosplit' ? 'rental_9703_nosplit_pre2021' : 'rental_9703_split_pre2026', taxOf(run(alt)), mode === 'nosplit' ? '해석 B는 안분 없이 양도차익 전체에 특례율' : '해석 B는 임대 마지막 날·임대 개시일 기준시가(입력 없으면 양도일·등록일)로 계산'); } catch (e) {}
-      }
+      // ④ §97의3 임대기간 중 양도차익 — [2026.10.20] 위원회 J16으로 확정(2020년 이전 안분 없음·2021년부터 시행령 산식), 판단 대기에서 내림
       // ③ §97의3 특례 + 조정지역 다주택
       if (t.rentalSpecialType === 'rental_general' && t.isAdjustedArea && Number(t.multiHouseCount) >= 2) {
         const alt = txs.map(function (x, k) { return k === i ? Object.assign({}, x, { rentalSpecialType: '' }) : x; });
