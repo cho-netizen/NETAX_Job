@@ -54,5 +54,14 @@ module.exports = function (E, H) {
   var c3b = trCtx([h3b]);
   L.push({ name: '조특52호의3_준공후미분양', forms: require('./mappers-양도감면B.js').plan('양도', c3b), ctx: c3b });
 
+  // ④ 조특63호의4 — 일반주택(2016.9.1. 취득 7억, 거주 8년) 2026.9.30. 11억 양도, 2024.4.15. 농어촌주택 취득("특정주택 제외 판정" rh 적용)
+  //   손계산: 1세대1주택 양도가액 12억 이하 → 전액 비과세, 산출세액 0
+  var h4 = { assetType: 'house', assetKind: 'building', transferPrice: 1100000000, acquisitionPrice: 700000000, necessaryExpenses: 0,
+    acquisitionDate: '2016-09-01', transferDate: '2026-09-30', assetLocation: '대전광역시 ○○구 견본로 4, 7동 705호 (견본)', isOneHouseOneFamily: true, residenceYears: 8,
+    oneHouseSpecialCase: { provisionLabel: '농어촌주택등(조특법§99의4)', formNo: '조세특례제한법 시행규칙 [별지 제63호의4서식]', formTitle: '농어촌주택 등 취득자에 대한 과세특례신고서',
+      acquisitionDate: '2024-04-15', houseType: '농어촌주택', 안내: '(견본) 농어촌주택은 3년 이상 보유하면 일반주택 1세대1주택 판정 때 주택 수에서 뺌' } };
+  var c4 = trCtx([h4]);
+  L.push({ name: '조특63호의4_농어촌주택', forms: require('./mappers-양도감면B.js').plan('양도', c4), ctx: c4 });
+
   return L;
 };

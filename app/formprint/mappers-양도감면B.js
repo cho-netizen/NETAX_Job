@@ -218,6 +218,35 @@
     return o.result();
   };
 
+  // ───────── 조특 별지 제63호의4서식 — 농어촌주택 등 취득자에 대한 과세특례신고서(조특법 §99의4, 시행령 §99의4⑩) ─────────
+  //  값 출처: "특정주택 제외 판정"(rh)이 양도(일반)주택 카드에 남긴 asset.oneHouseSpecialCase{houseType 농어촌주택/고향주택, acquisitionDate, 안내}
+  //   (지금 인쇄 oneHouseSpecialCasePrintPageHtml_와 같은 값) + 양도(일반)주택 카드(소재지·취득일·양도일).
+  //  ④ 보유주택 열은 옛 법 §99의4⑤(수도권 조정대상지역 2주택 중 하나 양도 뒤 농어촌주택 취득) 때만 쓰는데 ⑤항이 삭제됨
+  //   (법률 제21223호 2025.12.23. 공포·2026.1.1. 시행) — 비움.
+  mappers['조특63호의4'] = function (ctx) {
+    var o = new Out(), s = ctx.seller || {}, it = itemOf(ctx), a = it.asset || {}, c = a.oneHouseSpecialCase || {};
+    applicant(o, s, { name: '①', birth: '②', addr: '③@주소', phone: '③@전화번호' }, '①~③ 신청인');
+    o.miss('④ 보유주택(⑦~⑩ 보유주택 열)', '해당 없음 — 조특법 §99의4⑤ 적용 때만 쓰는 열인데 ⑤항 삭제(법률 제21223호, 2026.1.1. 시행)');
+    // ⑤ 양도(일반)주택
+    o.need('⑦@양도일반주택', a.assetLocation, '⑦ 소재지(⑤ 양도(일반)주택)');
+    o.miss('⑦ 소재지(⑥ 농어촌주택 등)', '계산기에 없음 — 판정 도구는 소재지 요건을 체크로만 받음');
+    o.miss('⑧ 주택의 종류(단독주택·공동주택, ⑤·⑥ 열)', '계산기에 없음');
+    o.miss('⑨ 면적(토지·건물, ⑤·⑥ 열)', '계산기에 없음');
+    o.miss('⑩ 기준시가(토지·건물·합계, ⑤·⑥ 열)', '계산기에 없음 — 농어촌주택 등 가액 요건(취득 당시 3억원, 한옥 4억원 — 조특법 §99의4①1호나목)은 판정 도구에 체크로만 있음');
+    ymdSet(o, '⑪@일반주택', a.acquisitionDate, '⑪ 취득일(일반주택)');
+    ymdSet(o, '⑪@농어촌주택등', c.acquisitionDate, '⑪ 취득일(농어촌주택 등)', '판정 도구에 농어촌주택 등 취득일 입력 없음');
+    o.miss('⑫ 계약금 납부일(일반주택·농어촌주택 등)', '계산기에 없음');
+    if (has(a.transferDate)) o.set('⑬@일반주택', a.transferDate); else o.miss('⑬ 양도일(일반주택)', '화면 입력 없음');
+    o.miss('⑬ 양도일(농어촌주택 등)', '계산기에 없음(농어촌주택 등은 보통 계속 보유 — 양도했으면 직접 적음)');
+    var x = H.ymd(c.acquisitionDate);
+    if (x) o.set('⑭@농어촌주택등.시작.연', x.y).set('⑭@농어촌주택등.시작.월', x.m).set('⑭@농어촌주택등.시작.일', x.d);
+    o.miss('⑭ 보유기간 끝(농어촌주택 등)·④⑤ 합친 칸', '확인 필요 — 작성방법 5 "취득일부터 양도일까지"의 양도일이 일반주택 양도일인지 농어촌주택 등 양도일인지 서식에 없음(시작은 ⑪ 농어촌주택 등 취득일). ④·⑤ 합친 칸의 쓰임도 서식에 설명 없음');
+    if (c.houseType) o.note('판정 도구 구분: ' + c.houseType + ' — 서식에는 이 구분 칸이 없음(⑧은 단독·공동주택 구분)');
+    if (c.안내) o.note('판정 도구 안내: ' + c.안내);
+    signBlock(o, ctx, s, { dateKey: '신고일', dateLabel: '신고일', signKey: '제출인서명', signLabel: '제출인(서명)' });
+    return o.result();
+  };
+
   // ───────── 세액인쇄 화면용: 서식 한 장씩 ctx(양도인마다·자산마다) ─────────
   /* global lastTransferResults_ */
   function trItems() { return (typeof lastTransferResults_ !== 'undefined' && lastTransferResults_ ? lastTransferResults_ : []).filter(function (it) { return it.result && !it.result.error; }); }
