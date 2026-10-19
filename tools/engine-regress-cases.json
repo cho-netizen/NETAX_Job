@@ -736,5 +736,309 @@
                               "산출세액_합계": 466260000,
                               "합산가산액": 209250000
                     }
+          },
+          {
+                    "이름": "[서식감사 차] 창업자금 두 번째 특례 증여 — 앞선 10억 가산(㉑ 20억)·공제 5억·㉙ 앞선 세액 5천만 (조특법 §30의5① 후단)",
+                    "도구": "calculateSpecialRateGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "specialType": "startup",
+                              "giftAmount": 1000000000,
+                              "priorSpecialGiftAmount": 1000000000,
+                              "priorPaidTax": 50000000
+                    },
+                    "정답": {
+                              "과세표준": 1500000000,
+                              "산출세액": 150000000,
+                              "납부세액": 100000000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 가업승계 두 번째 특례 증여 — 앞선 50억 가산(㉑ 150억)·공제 10억·120억 초과 20%·㉙ 4억",
+                    "도구": "calculateSpecialRateGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "specialType": "business_succession",
+                              "giftAmount": 10000000000,
+                              "priorSpecialGiftAmount": 5000000000,
+                              "priorPaidTax": 400000000,
+                              "businessOwnershipYearsOfParent": 15
+                    },
+                    "정답": {
+                              "과세표준": 14000000000,
+                              "산출세액": 1600000000,
+                              "납부세액": 1200000000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 창업자금 첫 특례 증여 — 앞선 분 없음(전후 같아야 함)",
+                    "도구": "calculateSpecialRateGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "specialType": "startup",
+                              "giftAmount": 3000000000
+                    },
+                    "정답": {
+                              "과세표준": 2500000000,
+                              "산출세액": 250000000,
+                              "납부세액": 250000000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 사업기회 정산 — 정산 산출세액 9천만에서 개시사업연도 산출세액(㉗) 6천만 빼고 3% (법 §45의4③)",
+                    "도구": "calculateBusinessOpportunityGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "phase": "settlement",
+                              "profitFromOpportunity": 1000000000,
+                              "shareholderOwnershipRatio": 50,
+                              "initialPhaseCalculatedTax": 60000000
+                    },
+                    "정답": {
+                              "과세표준": 500000000,
+                              "산출세액": 90000000,
+                              "신고세액공제": 900000,
+                              "납부세액": 29100000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 사업기회 정산 — 정산 세액이 적으면 환급(개시 때 낸 세액 한도, 법 §45의4③ 단서)",
+                    "도구": "calculateBusinessOpportunityGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "phase": "settlement",
+                              "profitFromOpportunity": 200000000,
+                              "shareholderOwnershipRatio": 50,
+                              "initialPhaseCalculatedTax": 60000000,
+                              "initialPhasePaidTax": 58200000
+                    },
+                    "정답": {
+                              "산출세액": 10000000,
+                              "납부세액": 0,
+                              "환급세액": 50000000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 사업기회 개시사업연도 — ㉗ 없음(전후 같아야 함)",
+                    "도구": "calculateBusinessOpportunityGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "phase": "initial",
+                              "profitFromOpportunity": 100000000,
+                              "shareholderOwnershipRatio": 50,
+                              "monthsInInitialYear": 12
+                    },
+                    "정답": {
+                              "과세표준": 150000000,
+                              "산출세액": 20000000,
+                              "신고세액공제": 600000,
+                              "납부세액": 19400000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 초과배당 정산 — 정산 세액 6,790만에서 최초 신고 세액(㊱) 5천만 뺌 (§41의2②)",
+                    "도구": "calculateExcessDividendGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "isFinalSettlement": true,
+                              "excessDividendBaseAmount": 500000000,
+                              "disproportionateShortfallRatio": 1,
+                              "actualIncomeTax": 100000000,
+                              "initialGiftTaxAmount": 50000000
+                    },
+                    "정답": {
+                              "과세표준": 400000000,
+                              "산출세액": 70000000,
+                              "신고세액공제": 2100000,
+                              "납부세액": 17900000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 초과배당 정산 — 정산 세액이 최초보다 적으면 환급 (§41의2② 단서)",
+                    "도구": "calculateExcessDividendGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "isFinalSettlement": true,
+                              "excessDividendBaseAmount": 500000000,
+                              "disproportionateShortfallRatio": 1,
+                              "actualIncomeTax": 250000000,
+                              "initialGiftTaxAmount": 50000000
+                    },
+                    "정답": {
+                              "산출세액": 40000000,
+                              "납부세액": 0,
+                              "환급세액": 11200000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 초과배당 세대생략 — ㉙ = ㉘ × 30%, 신고세액공제는 ㉚ 기준 (§57·§69②)",
+                    "도구": "calculateExcessDividendGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "excessDividendBaseAmount": 500000000,
+                              "disproportionateShortfallRatio": 1,
+                              "isGenerationSkip": true
+                    },
+                    "정답": {
+                              "산출세액": 55188000,
+                              "세대생략할증액": 16556400,
+                              "신고세액공제": 2152332,
+                              "납부세액": 69592068
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 특정법인 세대생략 — ㊳ = ㊱ × 30% (§57)",
+                    "도구": "calculateSpecificCorporationGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "benefitToCorpAmount": 1000000000,
+                              "shareholderOwnershipRatio": 0.5,
+                              "isGenerationSkip": true
+                    },
+                    "정답": {
+                              "산출세액": 90000000,
+                              "세대생략할증액": 27000000,
+                              "신고세액공제": 3510000,
+                              "납부세액": 113490000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 특정법인 세대생략 아님 — 전후 같아야 함",
+                    "도구": "calculateSpecificCorporationGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "benefitToCorpAmount": 1000000000,
+                              "shareholderOwnershipRatio": 0.5
+                    },
+                    "정답": {
+                              "산출세액": 90000000,
+                              "신고세액공제": 2700000,
+                              "납부세액": 87300000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 가업상속공제 30억 받고 납부유예 5억도 넣음 — 유예는 빼지 않음 (§72의2①2호)",
+                    "도구": "calculate_inheritance_tax",
+                    "고정": true,
+                    "입력": {
+                              "taxableEstateAmount": 10000000000,
+                              "hasSpouse": false,
+                              "childCount": 1,
+                              "businessOwnershipYears": 15,
+                              "businessInheritanceIndividualNetAssetValue": 3000000000,
+                              "businessInheritanceDeferredTaxAmount": 500000000,
+                              "totalGrossEstateValue": 10000000000,
+                              "dateOfDeath": "2026-03-01"
+                    },
+                    "정답": {
+                              "과세표준": 6495000000,
+                              "산출세액": 2787500000,
+                              "납부세액": 2703875000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 가업상속공제 대신 납부유예 선택 — 공제 0, 유예 = 가능세액(납부세액×30억÷100억)",
+                    "도구": "calculate_inheritance_tax",
+                    "고정": true,
+                    "입력": {
+                              "taxableEstateAmount": 10000000000,
+                              "hasSpouse": false,
+                              "childCount": 1,
+                              "businessOwnershipYears": 15,
+                              "businessInheritanceIndividualNetAssetValue": 3000000000,
+                              "businessInheritanceDeferralElected": true,
+                              "totalGrossEstateValue": 10000000000,
+                              "dateOfDeath": "2026-03-01"
+                    },
+                    "정답": {
+                              "과세표준": 9495000000,
+                              "산출세액": 4287500000,
+                              "가업상속납부유예세액": 1247662500,
+                              "납부세액": 2911212500
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 동거주택 8억 중 요건 갖춘 상속인 지분 50% — ⑩ = ② × ⑨ = 4억 공제 ([별지6호의2], §23의2①3호)",
+                    "도구": "calculate_inheritance_tax",
+                    "고정": true,
+                    "입력": {
+                              "taxableEstateAmount": 2000000000,
+                              "hasSpouse": false,
+                              "childCount": 2,
+                              "hasCohabitingHouseDeduction": true,
+                              "cohabitingHouseValue": 800000000,
+                              "cohabitingHouseShareRatio": 0.5,
+                              "dateOfDeath": "2026-03-01"
+                    },
+                    "정답": {
+                              "동거주택상속공제": 400000000,
+                              "과세표준": 1095000000,
+                              "납부세액": 269660000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 영농상속 2026.5.1. 상속 — 영농재산 10억에서 담보채무 3억 빼고 공제 7억 (시행령 §16⑤1호 2026.2.27. 개정)",
+                    "도구": "calculate_inheritance_tax",
+                    "고정": true,
+                    "입력": {
+                              "taxableEstateAmount": 3000000000,
+                              "hasSpouse": false,
+                              "childCount": 1,
+                              "farmingIndividualAssetValue": 1000000000,
+                              "farmingIndividualSecuredDebt": 300000000,
+                              "dateOfDeath": "2026-05-01"
+                    },
+                    "정답": {
+                              "영농상속공제": 700000000,
+                              "과세표준": 1795000000,
+                              "납부세액": 541260000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 영농상속 2026.1.10. 상속 — 개정 전이라 담보채무 안 뺌(부칙 제5조)",
+                    "도구": "calculate_inheritance_tax",
+                    "고정": true,
+                    "입력": {
+                              "taxableEstateAmount": 3000000000,
+                              "hasSpouse": false,
+                              "childCount": 1,
+                              "farmingIndividualAssetValue": 1000000000,
+                              "farmingIndividualSecuredDebt": 300000000,
+                              "dateOfDeath": "2026-01-10"
+                    },
+                    "정답": {
+                              "영농상속공제": 1000000000,
+                              "과세표준": 1495000000,
+                              "납부세액": 424860000
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 특정법인 — 지배주주 본인과 2025.11.1. 거래: 개정 전이라 과세 안 됨 (§45의5① 2026.1.1. 개정)",
+                    "도구": "calculateSpecificCorporationGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "benefitToCorpAmount": 1000000000,
+                              "shareholderOwnershipRatio": 0.5,
+                              "isTransactionWithControllingShareholderHimself": true,
+                              "transactionDate": "2025-11-01"
+                    },
+                    "정답": {
+                              "납부세액": 0
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 특정법인 — 지배주주 본인과 2026.3.1. 거래: 과세",
+                    "도구": "calculateSpecificCorporationGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "benefitToCorpAmount": 1000000000,
+                              "shareholderOwnershipRatio": 0.5,
+                              "isTransactionWithControllingShareholderHimself": true,
+                              "transactionDate": "2026-03-01"
+                    },
+                    "정답": {
+                              "산출세액": 90000000,
+                              "납부세액": 87300000
+                    }
           }
 ]

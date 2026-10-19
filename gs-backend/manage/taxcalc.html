@@ -1848,6 +1848,13 @@ function renderTransferContractGroupHtml_(contract, idx){
 // 암산/외부계산해서 한 칸에 타이핑해야 했는데, 여기서 매출액만 넣으면 계산해준다.
 let relatedPartyRatioRows_ = [{}, {}];
 let jmRelatedPartyTotalSales_ = ''; // [2026.09.30, 재검토99] 수혜법인 총매출액 — 부표4 인쇄용으로 모달 밖에도 보존
+let jmRelatedPartyExcludedSales_ = ''; // [2026.10.19 서식감사 차] 과세제외매출액 합계(시행령 §34의3⑩) — 분모(총매출액)에서도 뺀다(부표4 ⑬)
+// [2026.10.19 서식감사 차] 특수관계법인거래비율 = 특수관계법인 매출(과세제외 뺀 값) ÷ (총매출액 − 과세제외매출액) — 법 §45의3④가 "제1항에 따른 매출액"에서
+//  과세제외매출액을 빼게 하므로 분자·분모 모두에서 뺀다([별지 제10호의3서식 부표4] ⑬ = (④ − ⑥) ÷ (⑫ − ⑥)). 전에는 분모에서 빼지 않아 비율이 작게 나왔다.
+function jmRelatedPartyTradeRatioPct_(sumRelated, totalSales, excludedSales){
+  const denom = (numVal(totalSales) || 0) - (numVal(excludedSales) || 0);
+  return denom > 0 ? (numVal(sumRelated) || 0) / denom * 100 : 0;
+}
 // [2026.09.30 신규, 재검토100] 특례세율(sr) 탭 — 창업자금(§30의5) 증여재산평가 및 과세가액
 // 계산명세서(별지10호의2 부표1)에 필요한 재산별 명세(재산구분·재산종류·소재지·평가가액·
 // 평가기준)를 받는다. 지금까지 sr탭은 "해당 증여재산가액" 합계 한 값만 입력받아 부표1 자체를
@@ -2187,10 +2194,20 @@ function shareholdingIndirectRatio_(row){
   if (l3) ratio = ratio * (l3 / 100);
   return ratio * 100;
 }
+// [2026.10.19 서식감사 차] 일감몰아주기(jm)에서 실제로 세는 간접보유비율 — 시행령 §34의3⑧·⑱: 간접출자법인이 "지배주주등이 30% 이상
+//  출자한 법인" 또는 "지배주주등과 그런 법인이 50% 이상 출자한 법인"일 때만 간접보유비율에 넣고(chainQualified — 화면에서 확인, 기본 충족),
+//  ⑬: 간접보유비율이 1천분의 1(0.1%) 미만인 출자관계는 뺀다. 일감떼어주기(jt)는 예전 그대로(입력 고리를 모두 곱해 더함).
+function shareholdingCountedIndirectRatio_(row, target){
+  const r = shareholdingIndirectRatio_(row);
+  if (target !== 'jm') return r;
+  if (row.chainQualified === false) return 0;
+  if (r > 0 && r < 0.1) return 0;
+  return r;
+}
 function renderShareholdingRows_(target){
   const rows = shareholdingRows_[target];
   return rows.map(function(row, i){
-    const indirect = shareholdingIndirectRatio_(row);
+    const indirect = shareholdingCountedIndirectRatio_(row, target);
     return '<div class="taxcalc-asset-head" style="margin-top:6px;"><span style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
         '<b>주주 ' + tcPad2_(i + 1) + '</b>' +
         (i > 0 ? '<button type="button" class="taxcalc-del-asset" data-action="del-sh-row" data-idx="' + i + '">✕ 주주 삭제</button>' : '') +
@@ -2206,6 +2223,7 @@ function renderShareholdingRows_(target){
       '<div class="taxcalc-field"><label>2차 지분율(%)</label><input type="number" step="0.01" data-shfield="chain2Ratio" value="' + (row.chain2Ratio || '') + '" placeholder="1차법인→2차법인"></div>' +
       '<div class="taxcalc-field"><label>수혜법인 직전 출자법인명</label><input type="text" data-shfield="chain3Company" value="' + (row.chain3Company || '').replace(/"/g, '&quot;') + '"></div>' +
       '<div class="taxcalc-field"><label>수혜법인 출자비율(%)</label><input type="number" step="0.01" data-shfield="chain3Ratio" value="' + (row.chain3Ratio || '') + '" placeholder="마지막법인→수혜법인"></div>' +
+      (target === 'jm' ? '<div class="taxcalc-field checkbox"><input type="checkbox" data-shfield="chainQualified" id="shChainQ-' + i + '"' + (row.chainQualified === false ? '' : ' checked') + '><label for="shChainQ-' + i + '">간접출자법인 요건 충족(시행령 §34의3⑱ — 지배주주등이 30% 이상 출자, 또는 지배주주등+그 법인이 50% 이상 출자한 법인). 끄면 간접보유비율 0, 0.1% 미만도 0(⑬)</label></div>' : '') +
       '<div class="taxcalc-field"><span class="taxcalc-result-note" style="margin:0;">간접보유비율(자동계산): ' + indirect.toFixed(4) + '% · 합계(직접+간접): ' + (numVal(row.directRatio) + indirect).toFixed(4) + '%</span></div>' +
     '</div>';
   }).join('');
@@ -2238,11 +2256,11 @@ function openShareholdingHelperModal_(target){
     overlay.querySelectorAll('[data-shfield]').forEach(function(el){
       el.addEventListener('input', function(){
         const i = numVal(el.closest('[data-sh-idx]').dataset.shIdx);
-        shareholdingRows_[target][i][el.dataset.shfield] = el.value;
+        shareholdingRows_[target][i][el.dataset.shfield] = el.type === 'checkbox' ? el.checked : el.value;
         const noteEl = el.closest('[data-sh-idx]').querySelector('.taxcalc-result-note');
         if (noteEl){
           const row = shareholdingRows_[target][i];
-          const indirect = shareholdingIndirectRatio_(row);
+          const indirect = shareholdingCountedIndirectRatio_(row, target);
           noteEl.textContent = '간접보유비율(자동계산): ' + indirect.toFixed(4) + '% · 합계(직접+간접): ' + (numVal(row.directRatio) + indirect).toFixed(4) + '%';
         }
       });
@@ -2261,20 +2279,46 @@ function openShareholdingHelperModal_(target){
   enhanceNumberInputs(overlay);
   overlay.querySelector('#shRunBtn').addEventListener('click', function(){
     const total = shareholdingRows_[target].reduce(function(s, row){
-      return s + numVal(row.directRatio) + shareholdingIndirectRatio_(row);
+      return s + numVal(row.directRatio) + shareholdingCountedIndirectRatio_(row, target);
     }, 0);
     const resultBox = document.getElementById('shResult');
     let html = '<div class="taxcalc-result" style="margin-top:10px;">';
-    html += taxCalcResultRow('지배주주+친족 주식보유비율(합계)', total.toFixed(4) + '%', { total: true });
-    html += '<button type="button" class="taxcalc-run-btn" id="shApplyBtn" style="margin-top:8px;">위 계산결과 반영하기</button>';
+    // [2026.10.19 서식감사 차] 일감몰아주기는 주주(수증자)마다 따로 판정·계산한다 — 법 §45의3① "지배주주와 그 친족[주식보유비율이
+    //  한계보유비율을 초과하는 주주에 한정]이 ... 각각 증여받은 것으로 본다", 부표1 ㉓도 주주별. 전에는 주주 전체 합계를 jmShareRatio에
+    //  넣어 한 사람처럼 과세요건(3%·10%)을 보고 세액도 합계로 냈다. 이제 주주별 비율을 보여 주고 이번 신고의 수증자 한 명을 골라 넣는다.
+    let pick = -1;
+    if (target === 'jm'){
+      const sizeEl = document.getElementById('jmCompanySize');
+      const limit = (sizeEl && sizeEl.value !== 'general') ? 10 : 3; // 한계보유비율(시행령 §34의3⑨) — 엔진 gateShareThreshold와 같음
+      const doneeName = ((typeof giftDonees !== 'undefined' && giftDonees[0]) ? giftDonees[0].name : '') || '';
+      html += '<div class="taxcalc-result-note">주주별 주식보유비율(직접+간접) — 한계보유비율 ' + limit + '%를 넘는 주주만 과세대상. 이번 신고의 수증자를 고르세요.</div>';
+      shareholdingRows_[target].forEach(function(row, i){
+        const t = numVal(row.directRatio) + shareholdingCountedIndirectRatio_(row, target);
+        if (pick < 0 && doneeName && row.name === doneeName) pick = i;
+        html += '<div class="taxcalc-field checkbox"><input type="radio" name="shPick" value="' + i + '" id="shPick-' + i + '"><label for="shPick-' + i + '">' + escapeHtml(row.name || ('주주 ' + (i + 1))) + ' — ' + t.toFixed(4) + '% ' + (t > limit ? '(과세대상)' : '(한계보유비율 이하 — 과세 안 됨)') + '</label></div>';
+      });
+      if (pick < 0) shareholdingRows_[target].forEach(function(row, i){ if (pick < 0 && numVal(row.directRatio) + shareholdingCountedIndirectRatio_(row, target) > limit) pick = i; });
+      if (pick < 0) pick = 0;
+      html += taxCalcResultRow('(참고) 지배주주+친족 합계', total.toFixed(4) + '%');
+    } else {
+      html += taxCalcResultRow('지배주주+친족 주식보유비율(합계)', total.toFixed(4) + '%', { total: true });
+    }
+    html += '<button type="button" class="taxcalc-run-btn" id="shApplyBtn" style="margin-top:8px;">' + (target === 'jm' ? '고른 수증자의 비율 반영하기' : '위 계산결과 반영하기') + '</button>';
     html += '</div>';
     resultBox.innerHTML = html;
+    if (pick >= 0){ const r0 = resultBox.querySelector('#shPick-' + pick); if (r0) r0.checked = true; }
     resultBox.querySelector('#shApplyBtn').addEventListener('click', function(){
       const fieldId = target === 'jt' ? 'jtShareRatio' : 'jmShareRatio';
+      let value = total;
+      if (target === 'jm'){
+        const chosen = resultBox.querySelector('input[name="shPick"]:checked');
+        const row = shareholdingRows_[target][chosen ? numVal(chosen.value) : 0] || {};
+        value = numVal(row.directRatio) + shareholdingCountedIndirectRatio_(row, target);
+      }
       const el = document.getElementById(fieldId);
-      if (el){ el.value = total.toFixed(4); if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(el); }
+      if (el){ el.value = value.toFixed(4); if (typeof tcResizeAutoWidthInput_ === 'function') tcResizeAutoWidthInput_(el); }
       close();
-      showToast('지배주주+친족 주식보유비율을 반영했습니다.', 'success');
+      showToast(target === 'jm' ? '고른 수증자의 주식보유비율을 반영했습니다.' : '지배주주+친족 주식보유비율을 반영했습니다.', 'success');
     });
   });
 }
@@ -2308,7 +2352,8 @@ function openRelatedPartyRatioHelperModal_(){
       '<div class="modal-head"><span>특수관계법인거래비율 계산(다수 특수관계법인)</span><span class="modal-close" id="btnCloseRpr">✕</span></div>' +
       '<div class="modal-body">' +
         '<div class="taxcalc-result-note" style="margin-bottom:8px;">특수관계법인이 여러 곳이어도 회사별로 따로 계산해 더하면 안 됩니다(상증세법 시행령§34의3) — 모든 특수관계법인의 매출액을 먼저 합산한 뒤, 수혜법인 총매출액으로 한 번만 나눕니다. 여기 입력한 내역은 부표(지배주주등과 특수관계법인)를 인쇄할 때도 그대로 쓰입니다.</div>' +
-        '<div class="taxcalc-grid" style="margin-bottom:8px;"><div class="taxcalc-field"><label>수혜법인 총매출액</label><input type="number" id="rprTotalSales" placeholder="원" value="' + (jmRelatedPartyTotalSales_ || '') + '"></div></div>' +
+        '<div class="taxcalc-grid" style="margin-bottom:8px;"><div class="taxcalc-field"><label>수혜법인 총매출액</label><input type="number" id="rprTotalSales" placeholder="원" value="' + (jmRelatedPartyTotalSales_ || '') + '"></div>' +
+          '<div class="taxcalc-field"><label>그중 과세제외매출액 합계</label><input type="number" id="rprExcludedSales" placeholder="원" value="' + (jmRelatedPartyExcludedSales_ || '') + '"><span class="taxcalc-field-help">시행령 §34의3⑩ — 분모(총매출액)에서도 뺌(부표4 ⑬)</span></div></div>' +
         '<div id="rprRows">' + renderRelatedPartyRatioRows_() + '</div>' +
         '<button type="button" class="taxcalc-run-btn" id="rprRunBtn">비율 계산하기</button>' +
         '<div id="rprResult"></div>' +
@@ -2350,14 +2395,18 @@ function openRelatedPartyRatioHelperModal_(){
   wireRows();
   enhanceNumberInputs(overlay);
   overlay.querySelector('#rprTotalSales').addEventListener('input', function(){ jmRelatedPartyTotalSales_ = this.value; });
+  overlay.querySelector('#rprExcludedSales').addEventListener('input', function(){ jmRelatedPartyExcludedSales_ = this.value; });
   overlay.querySelector('#rprRunBtn').addEventListener('click', function(){
     const totalSales = numVal(document.getElementById('rprTotalSales').value);
     const sumRelated = relatedPartyRatioRows_.reduce(function(s, r){ return s + (numVal(r.sales) || 0); }, 0);
     const resultBox = document.getElementById('rprResult');
     if (!totalSales){ resultBox.innerHTML = '<div class="taxcalc-error">수혜법인 총매출액을 입력하세요.</div>'; return; }
-    const ratioPct = (sumRelated / totalSales) * 100;
+    const excludedSales = numVal(document.getElementById('rprExcludedSales').value) || 0;
+    if (excludedSales >= totalSales){ resultBox.innerHTML = '<div class="taxcalc-error">과세제외매출액이 총매출액보다 작아야 합니다.</div>'; return; }
+    const ratioPct = jmRelatedPartyTradeRatioPct_(sumRelated, totalSales, excludedSales);
     let html = '<div class="taxcalc-result" style="margin-top:10px;">';
     html += taxCalcResultRow('특수관계법인 매출 합계', won(sumRelated));
+    if (excludedSales) html += taxCalcResultRow('분모 = 총매출액 − 과세제외매출액', won(totalSales - excludedSales));
     html += taxCalcResultRow('특수관계법인거래비율(통합)', ratioPct.toFixed(4) + '%', { total: true });
     html += '<button type="button" class="taxcalc-run-btn" id="rprApplyBtn" style="margin-top:8px;">위 계산결과 반영하기</button>';
     html += '</div>';
@@ -5717,6 +5766,7 @@ function renderPropertyCardHtml_(idx, opts){
         // [2026.10.19 세액 고침] §104②1호 — 상속받은 자산은 세율(단기 1년·2년) 판정 보유기간을 피상속인 취득일부터 센다(장특공은 상속개시일부터 그대로)
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isInheritedAsset" id="inh-' + idx + '"><label for="inh-' + idx + '">상속받은 자산(세율 판정 보유기간은 피상속인 취득일부터, §104②1호)</label></div>' +
+          '<div class="taxcalc-field checkbox"><input type="checkbox" data-field="isGiftedAsset" id="gifted-' + idx + '"><label for="gifted-' + idx + '">증여받은 자산(증여일 현재 상증법 평가액이 실지거래가액 — 시행령 §163⑨, 매매사례·감정가액이어도 실제 비용 공제)</label></div>' +
           '<div class="taxcalc-field" data-show-if="isInheritedAsset" style="display:none;"><label>피상속인 취득일</label><input type="date" data-field="inheritedDecedentAcquisitionDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">위 "취득일"에는 상속개시일을 그대로 두세요(장특공·취득가액 기준)</span></div>' +
         '</div>' +
         '<div class="taxcalc-asset-head" data-show-if="isBusinessSuccessionAsset" style="display:none; margin-top:4px;"><b>위 체크시만 — 피상속인 취득정보</b></div>' +
@@ -6865,6 +6915,7 @@ function collectTransferInput(vals){
     decedentAcquisitionValue: vals.decedentAcquisitionValue !== '' && vals.decedentAcquisitionValue != null ? numVal(vals.decedentAcquisitionValue) : null,
     decedentAcquisitionDate: vals.decedentAcquisitionDate || '',
     isInheritedAsset: !!vals.isInheritedAsset, // §104②1호
+    isGiftedAsset: !!vals.isGiftedAsset, // [2026.10.19] 시행령 §163⑨ — 증여받은 자산의 평가액은 실지거래가액(실제 비용 공제)
     inheritedDecedentAcquisitionDate: vals.isInheritedAsset ? (vals.inheritedDecedentAcquisitionDate || '') : '',
     // [2026.09 신규] 이월과세(§97의2) — 예전엔 별도 계산기에서 결과를 손으로 옮겨 입력해야
     // 했는데, 이제 이 필드들을 채워두면 calculateTransferTaxMultiJS가 합산 계산 전에 이 거래
@@ -7510,6 +7561,23 @@ function taxCalcGiftAggregationFieldsHtml_(prefix){
     '<div class="taxcalc-field"><label>외국납부세액공제</label><input type="number" id="' + prefix + 'ForeignTax" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
     '<div class="taxcalc-field"><label>외국법령상 증여세 과세표준</label><input type="number" id="' + prefix + 'ForeignBase" placeholder="원"><span class="taxcalc-field-help">비우면 위 납부액을 잔여세액 한도로 그대로 공제, 정밀계산, 선택</span></div>';
 }
+// [2026.10.19 서식감사 차] 세대생략 할증(법 §57) 입력 — 초과배당([별지 제10호의5서식] ㉙)·특정법인([별지 제10호의6서식] ㊳)용.
+//  미성년자·증여재산가액 20억원 초과면 40%(20억 초과는 엔진이 증여재산가액으로 판정), 대습(최근친 사망)은 할증 없음.
+function taxCalcGenSkipFieldsHtml_(prefix){
+  return '' +
+    '<div class="taxcalc-field checkbox"><input type="checkbox" id="' + prefix + 'GenSkip"><label for="' + prefix + 'GenSkip">수증자가 증여자의 자녀가 아닌 직계비속(세대생략 할증 30%, §57)</label></div>' +
+    '<div class="taxcalc-field checkbox"><input type="checkbox" id="' + prefix + 'GenSkipMinor"><label for="' + prefix + 'GenSkipMinor">수증자가 미성년자(증여재산가액 20억 초과면 40%)</label></div>' +
+    '<div class="taxcalc-field checkbox"><input type="checkbox" id="' + prefix + 'GenSkipSubstitute"><label for="' + prefix + 'GenSkipSubstitute">최근친 직계비속이 사망해 그 자녀가 받음(할증 없음, §57① 단서)</label></div>' +
+    '<div class="taxcalc-field"><label>위 합산 증여분에 이미 낸 세대생략 할증세액</label><input type="number" id="' + prefix + 'GenSkipPriorPremium" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>';
+}
+function taxCalcGenSkipInput_(prefix){
+  const ck_ = function(id){ const el = document.getElementById(prefix + id); return !!(el && el.checked); };
+  const el_ = document.getElementById(prefix + 'GenSkipPriorPremium');
+  return {
+    isGenerationSkip: ck_('GenSkip'), isMinor: ck_('GenSkipMinor'), isSubstituteGiftDueToDeath: ck_('GenSkipSubstitute'),
+    priorPaidGenerationSkipPremium: el_ ? (numVal(el_.value) || 0) : 0
+  };
+}
 function taxCalcGiftAggregationInput_(prefix){
   return {
     priorGiftAmount: numVal(document.getElementById(prefix + 'PriorAmount').value) || 0,
@@ -7868,7 +7936,7 @@ function renderGiftInheritanceSharedPane_(){
         '<div class="taxcalc-field"><label>사업무관자산 - §55의2</label><input type="number" id="bdNonBiz55" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>사업무관자산 - 시행령§49</label><input type="number" id="bdNonBiz49" placeholder="원"><span class="taxcalc-field-help">임대용부동산 포함</span></div>' +
         '<div class="taxcalc-field"><label>사업무관자산 - 시행령§61①2호</label><input type="number" id="bdNonBiz61" placeholder="원"><span class="taxcalc-field-help">대여금</span></div>' +
-        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="bdExcessCash" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="bdExcessCash" placeholder="원"><span class="taxcalc-field-help">평균 현금의 200%(2025.2.28. 이후 상속개시·증여, 그 전 150%) 초과분 — 시행령 §15⑤2호라목</span></div>' +
         '<div class="taxcalc-field"><label>영업무관 주식·채권·금융상품</label><input type="number" id="bdNonBizStock" placeholder="원"></div>' +
       '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-business-succession-deferral-amount">납부유예금액 계산하기</button>' +
@@ -8303,11 +8371,15 @@ function renderDeemedGiftGenericResult_(box, r, fields, toolKey){
   if (r.재해손실공제) html += taxCalcResultRow('재해손실공제', '-' + won(r.재해손실공제));
   if (r.과세표준 !== undefined) html += taxCalcResultRow('과세표준', won(r.과세표준));
   if (r.산출세액 !== undefined) html += taxCalcResultRow('산출세액', won(r.산출세액));
+  if (r.세대생략할증액) html += taxCalcResultRow('세대생략 할증액(§57)', '+' + won(r.세대생략할증액)); // [2026.10.19 서식감사 차] 10호의5 ㉙·10호의6 ㊳
+  if (r.세대생략할증액) html += taxCalcResultRow('산출세액 계', won(r.산출세액_할증후));
   if (r.신고세액공제) html += taxCalcResultRow('신고세액공제', '-' + won(r.신고세액공제));
+  if (r.최초신고_증여세액) html += taxCalcResultRow('최초 신고 증여세액(정산 때 뺌)', '-' + won(r.최초신고_증여세액)); // [2026.10.19 서식감사 차] 10호의5 ㊱
   if (r.무신고가산세) html += taxCalcResultRow('무신고가산세', '+' + won(r.무신고가산세));
   if (r.과소신고가산세) html += taxCalcResultRow('과소신고가산세', '+' + won(r.과소신고가산세));
   if (r.납부지연가산세) html += taxCalcResultRow('납부지연가산세', '+' + won(r.납부지연가산세));
   html += taxCalcResultRow('납부세액', won(r.납부세액), { total: true });
+  if (r.환급세액) html += taxCalcResultRow('환급받을 세액', won(r.환급세액), { total: true });
   if (r.안내) html += '<div class="taxcalc-result-note">' + r.안내 + '</div>';
   if (toolKey) html += tcToolSaveButtonHtml_(toolKey);
   html += '</div>';
@@ -8354,13 +8426,16 @@ function renderSpecialRateGiftResult(r){
   html += taxCalcResultRow('총한도액', won(r.총한도액));
   html += taxCalcResultRow('과세특례 적용대상 과세가액', won(r.과세특례적용대상_증여세과세가액));
   if (r.기본세율적용대상_증여재산가액) html += taxCalcResultRow('기본세율 적용대상 증여재산가액(한도초과분)', won(r.기본세율적용대상_증여재산가액));
+  // [2026.10.19 서식감사 차] 서식 ⑱·⑳(앞선 같은 특례분 가산)·㉑(합계) — 앞선 특례분이 있을 때만
+  if (r.가산_과세특례증여재산) html += taxCalcResultRow('가산 증여재산(앞서 같은 특례 받은 분)', '+' + won(r.가산_과세특례증여재산));
+  if (r.가산_과세특례증여재산) html += taxCalcResultRow('과세가액 합계', won(r.과세특례_과세가액_합계));
   html += taxCalcResultRow('증여재산공제', won(r.증여재산공제));
   if (r.재해손실공제) html += taxCalcResultRow('재해손실공제', won(r.재해손실공제));
   if (r.감정평가수수료공제) html += taxCalcResultRow('감정평가수수료공제', won(r.감정평가수수료공제));
   html += taxCalcResultRow('과세표준', won(r.과세표준));
   html += taxCalcResultRow('세율', r.세율);
   html += taxCalcResultRow('산출세액', won(r.산출세액));
-  if (r.납부세액공제) html += taxCalcResultRow('이전 특례증여분 기납부세액(조특법§30의5①후단)', '-' + won(r.납부세액공제));
+  if (r.납부세액공제) html += taxCalcResultRow('납부세액공제(앞선 특례분 세액, §58)', '-' + won(r.납부세액공제));
   if (r.외국납부세액공제) html += taxCalcResultRow('외국납부세액공제(§59)', '-' + won(r.외국납부세액공제));
   if (r.무신고가산세) html += taxCalcResultRow('무신고가산세', '+' + won(r.무신고가산세));
   if (r.과소신고가산세) html += taxCalcResultRow('과소신고가산세', '+' + won(r.과소신고가산세));
@@ -8514,11 +8589,13 @@ function renderBusinessOpportunityGiftResult(r){
   html += taxCalcResultRow('증여의제이익', won(r.증여의제이익));
   html += taxCalcResultRow('과세표준(증여재산공제 없음)', won(r.과세표준));
   html += taxCalcResultRow('산출세액', won(r.산출세액));
+  if (r.개시사업연도_산출세액) html += taxCalcResultRow('개시사업연도 산출세액(서식 ㉗)', '-' + won(r.개시사업연도_산출세액));
   html += taxCalcResultRow('신고세액공제(3%)', '-' + won(r.신고세액공제));
   if (r.무신고가산세) html += taxCalcResultRow('무신고가산세', '+' + won(r.무신고가산세));
   if (r.과소신고가산세) html += taxCalcResultRow('과소신고가산세', '+' + won(r.과소신고가산세));
   if (r.납부지연가산세) html += taxCalcResultRow('납부지연가산세', '+' + won(r.납부지연가산세));
   html += taxCalcResultRow('납부세액', won(r.납부세액), { total: true });
+  if (r.환급세액) html += taxCalcResultRow('환급세액(법 §45의4③ 단서)', won(r.환급세액), { total: true });
   html += '<div class="taxcalc-result-note">' + (r.안내 || '') + '</div>';
   html += tcToolSaveButtonHtml_('jt');
   html += '</div>';
@@ -10692,7 +10769,7 @@ function renderInheritancePane(){
         '<div class="taxcalc-field"><label>사업무관자산 - §55의2</label><input type="number" id="ihBusinessNonBiz55" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
         '<div class="taxcalc-field"><label>사업무관자산 - 시행령§49</label><input type="number" id="ihBusinessNonBiz49" placeholder="원"><span class="taxcalc-field-help">임대용부동산 포함, 법인</span></div>' +
         '<div class="taxcalc-field"><label>사업무관자산 - 시행령§61①2호</label><input type="number" id="ihBusinessNonBiz61" placeholder="원"><span class="taxcalc-field-help">대여금, 법인</span></div>' +
-        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="ihBusinessExcessCash" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
+        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="ihBusinessExcessCash" placeholder="원"><span class="taxcalc-field-help">법인, 평균 현금의 200%(2025.2.28. 이후 상속개시·증여, 그 전 150%) 초과분 — 시행령 §15⑤2호라목</span></div>' +
         '<div class="taxcalc-field"><label>영업무관 주식·채권·금융상품</label><input type="number" id="ihBusinessNonBizStock" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
         '<div class="taxcalc-field"><label>총 상속재산가액(가업상속납부유예 참고계산용)</label><input type="number" id="ihTotalGrossEstate" placeholder="원"><span class="taxcalc-field-help">§72의2 납부유예 가능세액을 참고로 보려면 입력</span></div>' +
       '</div>' +
@@ -10715,12 +10792,13 @@ function renderInheritancePane(){
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>최종 공제액(직접 입력, 상세내역 없을 때만)</label><input type="number" id="ihFarmingDeduction" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>영농재산가액 합계</label><input type="number" id="ihFarmingIndividualAsset" placeholder="원"><span class="taxcalc-field-help">농지·초지·산림지·어선 등, 별지2호 ①합계, 개인</span></div>' +
+        '<div class="taxcalc-field"><label>위 영농재산에 담보된 피상속인 채무액</label><input type="number" id="ihFarmingIndividualDebt" placeholder="원"><span class="taxcalc-field-help">2026.2.27. 이후 상속개시분만 뺌(시행령 §16⑤1호), 없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>상속개시일 현재 주식등 가액</label><input type="number" id="ihFarmingStockValue" placeholder="원"><span class="taxcalc-field-help">영농법인 주식가액, 법인</span></div>' +
         '<div class="taxcalc-field"><label>총자산가액</label><input type="number" id="ihFarmingTotalAsset" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
         '<div class="taxcalc-field"><label>사업무관자산 - §55의2</label><input type="number" id="ihFarmingNonBiz55" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
         '<div class="taxcalc-field"><label>사업무관자산 - 시행령§49</label><input type="number" id="ihFarmingNonBiz49" placeholder="원"><span class="taxcalc-field-help">임대용부동산 포함, 법인</span></div>' +
         '<div class="taxcalc-field"><label>사업무관자산 - 시행령§61①2호</label><input type="number" id="ihFarmingNonBiz61" placeholder="원"><span class="taxcalc-field-help">대여금, 법인</span></div>' +
-        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="ihFarmingExcessCash" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
+        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="ihFarmingExcessCash" placeholder="원"><span class="taxcalc-field-help">법인, 평균 현금의 200%(2025.2.28. 이후 상속개시·증여, 그 전 150%) 초과분 — 시행령 §15⑤2호라목</span></div>' +
         '<div class="taxcalc-field"><label>영업무관 주식·채권·금융상품</label><input type="number" id="ihFarmingNonBizStock" placeholder="원"><span class="taxcalc-field-help">법인</span></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>영농상속공제 자격요건(시행령§16②③) — ※ 아래 항목은 모두 기본적으로 충족(체크)된 상태로 시작합니다. 실제와 달라 하나라도 체크 해제하면 영농상속공제가 전액 배제됩니다.</b></div>' +
@@ -10758,6 +10836,7 @@ function renderInheritancePane(){
         '<div class="taxcalc-field"><label>상속인 등의 지분 상당 비율</label><input type="number" step="0.01" id="ihForProfitRatio" placeholder="0~1"><span class="taxcalc-field-help">없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>문화재등 징수유예세액</label><input type="number" id="ihCulturalDeferred" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>가업상속 납부유예세액</label><input type="number" id="ihBizInheritDeferred" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="ihBizInheritDeferralElected"><label for="ihBizInheritDeferralElected">가업상속공제 대신 납부유예 선택(§72의2①2호 — 켜면 가업상속공제 0, 유예세액을 비우면 가능세액 전부)</label></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>신고인 정보(위 상속인 명부에서 "신고인" 체크된 행 기준 자동 표시)</b></div>' +
       '<div class="taxcalc-grid">' +
@@ -11136,7 +11215,7 @@ function buildIhTaxCalcRecord_(){
   b = b.concat(ihPadNum_(ihSplitAmt, 14));                // 32 현금_분납_금액
   b = b.concat(ihPadChar_('', 8));                        // 33 현금_신고납부_일자
   b = b.concat(ihPadNum_(ihCashPaid, 14));                // 34 현금_신고납부_금액(연부연납·분납 신청액 제외한 나머지)
-  b = b.concat(ihPadNum_(g_('ihBizInheritDeferred'), 14)); // 35 가업상속 납부유예 세액
+  b = b.concat(ihPadNum_(numVal(r.가업상속납부유예세액) || 0, 14)); // 35 가업상속 납부유예 세액 — [2026.10.19 서식감사 차] 엔진 값(§72의2①2호로 0일 수 있음)
   b = b.concat(ihPadChar_('', 262));                      // 36 공란
   return b;
 }
@@ -11599,7 +11678,7 @@ function ihPrintFormBodyHtml_(){
       pfRow_(++n, '단기재상속세액공제', won(r.단기재상속세액공제)) +
       pfRow_(++n, '신고세액공제', won(r.신고세액공제)) +
       pfRow_(++n, '그 밖의 공제', won(r.그밖의공제)) +
-      pfRow_(++n, '가업상속 납부유예세액', won(numVal(g_('ihBizInheritDeferred')))) +
+      pfRow_(++n, '가업상속 납부유예세액', won(numVal(r.가업상속납부유예세액) || 0)) +
       pfRow_(++n, '유증 등 재산가액(영리법인)', won(numVal(g_('ihForProfitBequest')))) +
       pfRow_(++n, '영리법인 면제세액', won(numVal(g_('ihForProfitExempted')))) +
       pfRow_(++n, '면제분 납부세액(합계액)', won(r.영리법인면제분납부세액)) +
@@ -11615,7 +11694,7 @@ function ihPrintFormBodyHtml_(){
       new Date().getFullYear() + '년 &nbsp;월 &nbsp;일<br>' +
       '신고인 &nbsp;' + escapeHtml(reporter.name || '') + ' &nbsp;(서명 또는 인)<br>' + pfTaxOfficeGreeting_(g_('ihDeceasedTaxOffice')) + '</div>' +
   '</div>' +
-  foreignTaxCreditPrintPageHtml_('상속세', taxBase, calcTaxTotal, numVal(g_('ihForeignBase')), numVal(g_('ihForeignTax')), numVal(r.외국납부세액공제)) +
+  foreignTaxCreditPrintPageHtml_('상속세', taxBase, calcTaxBase, numVal(g_('ihForeignBase')), numVal(g_('ihForeignTax')), numVal(r.외국납부세액공제), r.외국납부세액공제_비율한도) + // [2026.10.19 서식감사 차] 엔진과 같은 할증 전 산출세액·엔진 한도값
   ihAttachPrintPagesHtml_();
 }
 
@@ -11837,7 +11916,7 @@ function ihAttachPrintPagesHtml_(){
   // 동거주택상속공제) + 배우자상속재산 미분할 신고서, law.go.kr 원문(별지1·2·3·5·6·6의2·12의2호
   // 서식, 2025.3.21 개정판까지)을 글자단위로 복원해 정확한 항목 그대로 구현한다.
   const bizDetail = r.가업상속공제_계산내역;
-  if (bizDetail){
+  if (bizDetail && !r.가업상속납부유예_선택){ // [2026.10.19 서식감사 차] 납부유예를 고르면 가업상속공제 신고서는 내지 않음(§72의2①2호)
     const nonBizTotal = ihDomNum_('ihBusinessNonBiz55') + ihDomNum_('ihBusinessNonBiz49') + ihDomNum_('ihBusinessNonBiz61') + ihDomNum_('ihBusinessExcessCash') + ihDomNum_('ihBusinessNonBizStock');
     const totalAsset = ihDomNum_('ihBusinessTotalAsset');
     const bizRelatedAssetValue = Math.max(0, totalAsset - nonBizTotal);
@@ -11884,7 +11963,7 @@ function ihAttachPrintPagesHtml_(){
       '<table class="pf-table">' + pfRow_(0, '피상속인 성명', g_('ihDeceasedName')) + pfRow_(0, '피상속인 주민등록번호', g_('ihDeceasedRegNo')) + pfRow_(0, '상속인 성명', heir.name || '') + pfRow_(0, '상속인 주민등록번호', heir.regNo || '') + '</table>' +
       '<div class="pf-section-head">2. 영농상속재산명세</div>' +
       '<table class="pf-table">' +
-        pfRow_(0, '가-1. 소득세법 적용 영농(① 합계)', won(farmingDetail.소득세법적용분)) +
+        pfRow_(0, '가-1. 소득세법 적용 영농(① 합계' + (farmingDetail.소득세법적용분_담보채무차감 ? ' — 담보채무 ' + won(farmingDetail.소득세법적용분_담보채무차감) + ' 뺀 순액, 시행령 §16⑤1호' : '') + ')', won(farmingDetail.소득세법적용분)) +
         pfRow_(0, '가-2. 법인세법 적용 영농(② 상속개시일 현재 주식등의 가액)', won(ihDomNum_('ihFarmingStockValue'))) +
       '</table>' +
       '<div class="pf-section-head">3. 영농상속공제액</div>' +
@@ -11976,7 +12055,7 @@ function ihAttachPrintPagesHtml_(){
       '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 동거기간(연·월)·예외유형 등 세부내역은 직접 보완하세요.</div>' +
     '</div>';
   }
-  if (ihDomNum_('ihBizInheritDeferred') > 0 && bizDetail){
+  if ((numVal(r.가업상속납부유예세액) || 0) > 0 && bizDetail){ // [2026.10.19 서식감사 차] 엔진이 실제로 뺀 유예세액 기준
     const nonBizTotal = ihDomNum_('ihBusinessNonBiz55') + ihDomNum_('ihBusinessNonBiz49') + ihDomNum_('ihBusinessNonBiz61') + ihDomNum_('ihBusinessExcessCash') + ihDomNum_('ihBusinessNonBizStock');
     const totalAsset = ihDomNum_('ihBusinessTotalAsset');
     const bizRelatedAssetValue = Math.max(0, totalAsset - nonBizTotal);
@@ -11992,7 +12071,7 @@ function ihAttachPrintPagesHtml_(){
       '<div class="pf-section-head">라. 피상속인</div>' +
       '<table class="pf-table">' + pfRow_(0, '성명', g_('ihDeceasedName')) + pfRow_(0, '주민등록번호', g_('ihDeceasedRegNo')) + pfRow_(0, '가업영위기간', ihDomNum_('ihBusinessYears') + '년') + '</table>' +
       '<div class="pf-section-head">바. 가업상속 납부유예를 신청하는 상속세</div>' +
-      '<table class="pf-table">' + pfRow_(0, '신청세액', won(ihDomNum_('ihBizInheritDeferred'))) + '</table>' +
+      '<table class="pf-table">' + pfRow_(0, '신청세액', won(numVal(r.가업상속납부유예세액) || 0)) + '</table>' +
       '<div class="pf-note">가업상속인은 상속인 명부 첫 번째 행을 기본값으로 표시합니다 — 실제와 다르면 직접 수정하세요. "나.가업 현황"·"다.중소기업 여부"는 상호·사업자등록번호 등 별도 수집항목이 없어 직접 보완하세요.</div>' +
     '</div>' +
     '<div class="pf-page">' +
@@ -12174,14 +12253,14 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>사업무관자산 - §55의2</label><input type="number" id="srNonBiz55" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>사업무관자산 - 시행령§49</label><input type="number" id="srNonBiz49" placeholder="원"><span class="taxcalc-field-help">임대용부동산 포함</span></div>' +
         '<div class="taxcalc-field"><label>사업무관자산 - 시행령§61①2호</label><input type="number" id="srNonBiz61" placeholder="원"><span class="taxcalc-field-help">대여금</span></div>' +
-        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="srExcessCash" placeholder="원"></div>' +
+        '<div class="taxcalc-field"><label>과다보유현금</label><input type="number" id="srExcessCash" placeholder="원"><span class="taxcalc-field-help">평균 현금의 200%(2025.2.28. 이후 상속개시·증여, 그 전 150%) 초과분 — 시행령 §15⑤2호라목</span></div>' +
         '<div class="taxcalc-field"><label>영업무관 주식·채권·금융상품</label><input type="number" id="srNonBizStock" placeholder="원"></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>공제 · 세액공제 · 신고 상태</b></div>' +
       '<div class="taxcalc-grid">' +
         '<div class="taxcalc-field"><label>재해손실공제액</label><input type="number" id="srDisasterLoss" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="srAppraisalFee" placeholder="원"><span class="taxcalc-result-note" id="srAppraisalFeeHint" style="margin:2px 0 0;"></span><span class="taxcalc-field-help">500만원 한도</span></div>' +
-        '<div class="taxcalc-field"><label>이전 특례증여분 기납부세액(조특법§30의5①후단)</label><input type="number" id="srPriorPaidTax" placeholder="원"><span class="taxcalc-field-help">같은 특례를 2회 이상 받은 경우 그 이전분에 낸 산출세액 — 상증세법§58과 무관</span></div>' +
+        '<div class="taxcalc-field"><label>이전 특례증여분 기납부세액(조특법§30의5①후단)</label><input type="number" id="srPriorPaidTax" placeholder="원"><span class="taxcalc-field-help">같은 특례를 2회 이상 받은 경우 그 이전분에 낸 산출세액 — 서식 ㉙ 납부세액공제(앞선 분은 위 칸으로 과세가액에 합산)</span></div>' +
         '<div class="taxcalc-field"><label>외국납부세액공제(§59)</label><input type="number" id="srForeignTax" placeholder="원"></div>' +
         '<div class="taxcalc-field"><label>신고 상태</label><select id="srFilingStatus">' +
           '<option value="ontime">정상(기한내) 신고</option><option value="unreported">무신고</option><option value="underreported">과소신고</option>' +
@@ -12317,6 +12396,8 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>수혜법인의 해당 사업연도 소득금액</label><input type="number" id="jtCorpTaxableIncome" placeholder="원"><span class="taxcalc-field-help">법인세법§14, 자동계산용</span></div>' +
         '<div class="taxcalc-field"><label>(개시사업연도만) 개시사업연도 월수</label><input type="number" id="jtMonths" placeholder="보통 12" maxlength="2"></div>' +
         '<div class="taxcalc-field"><label>(정산사업연도만) 배당소득공제액</label><input type="number" id="jtDividendDeduction" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+        '<div class="taxcalc-field"><label>(정산사업연도만) 개시사업연도 산출세액</label><input type="number" id="jtInitialTax" placeholder="원"><span class="taxcalc-field-help">서식 ㉗ — 정산 세액에서 뺌(법 §45의4③)</span></div>' +
+        '<div class="taxcalc-field"><label>(정산사업연도만) 개시사업연도에 실제 낸 세액</label><input type="number" id="jtInitialPaidTax" placeholder="원"><span class="taxcalc-field-help">환급 한도, 비우면 위 산출세액</span></div>' +
         '<div class="taxcalc-field"><label>해당 사업연도 종료일</label><input type="date" id="jtFiscalYearEnd" min="1900-01-01" max="2099-12-31"></div>' +
       '</div>' +
       '<div class="taxcalc-asset-head" style="margin-top:14px;"><b>신고 상태 · 가산세</b></div>' +
@@ -12482,12 +12563,15 @@ function renderGiftPane(){
         '<div class="taxcalc-field checkbox"><input type="checkbox" id="scFraudulent"><label for="scFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
         '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="scUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
         '<div class="taxcalc-field"><label>특정법인 사업연도 종료일</label><input type="date" id="scFiscalYearEnd" min="1900-01-01" max="2099-12-31"></div>' +
+        '<div class="taxcalc-field"><label>거래한 날(증여일, §45의5①)</label><input type="date" id="scTransactionDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">비우면 사업연도 종료일로 봄</span></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="scCounterpartySelf"><label for="scCounterpartySelf">거래 상대방이 지배주주 본인(2026.1.1. 전 거래는 과세 안 됨 — 법 §45의5① 개정)</label></div>' +
         '<div class="taxcalc-field"><label>실제 납부일</label><input type="text" class="taxcalc-date" id="scPaidDate" placeholder="YYYY-MM-DD"></div>' +
         '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="scUnpaidDays" placeholder="0" readonly><span class="taxcalc-field-help">사업연도종료일+3개월 신고기한 대비</span></div>' +
         '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="scMonthsAfterDesignated" placeholder="0"></div>' +
         '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="scUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
       '</div>' +
       '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('sc') + '</div>' +
+      '<div class="taxcalc-grid">' + taxCalcGenSkipFieldsHtml_('sc') + '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-specific-corp-gift">증여세 계산하기</button>' +
       '<div id="taxCalcSpecificCorpGiftResult"></div>' +
       '<div class="taxcalc-result-note">이 서식은 홈택스 "파일변환신고"(전자신고) 대상이 아닙니다(국세청은 기본세율 증여세신고서만 파일변환신고를 지원) — 인쇄해서 홈택스 화면입력으로 직접 신고하세요.</div>' +
@@ -12503,6 +12587,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>추정 소득세상당액(선택)</label><input type="number" id="edEstimatedTax" placeholder="원"><span class="taxcalc-field-help">비워두면 시행규칙§10의3① 추정율표로 자동계산, 최초신고만</span></div>' +
         '<div class="taxcalc-field"><label>종합소득과세표준</label><input type="number" id="edComprehensiveBase" placeholder="원"><span class="taxcalc-field-help">초과배당금액발생연도, 초과배당금액 포함된 값 — 입력시 자동계산, 정산신고·종합과세만</span></div>' +
         '<div class="taxcalc-field"><label>실제 소득세액 직접입력</label><input type="number" id="edActualTax" placeholder="원"><span class="taxcalc-field-help">종합과세면 위 종합소득과세표준을 입력하세요, 정산신고·비과세/분리과세만</span></div>' +
+        '<div class="taxcalc-field"><label>(정산 신고만) 최초 신고 증여세액</label><input type="number" id="edInitialTax" placeholder="원"><span class="taxcalc-field-help">서식 ㊱ — 최초 신고의 산출세액 계 − 세액공제, 정산 세액에서 뺌(§41의2②)</span></div>' +
         '<div class="taxcalc-field"><label>1년 이내 동일 최대주주등의 이전 초과배당금액 합계(§43②)</label><input type="number" id="edPriorBenefitsSum" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
         '<div class="taxcalc-field"><label>증여재산공제 남은 한도액</label><input type="number" id="edRelationDeduction" placeholder="원"><span class="taxcalc-field-help">관계별 §53 한도, 없으면 0</span></div>' +
         '<div class="taxcalc-field"><label>감정평가수수료</label><input type="number" id="edAppraisalFee" placeholder="원"><span class="taxcalc-field-help">없으면 비움</span></div>' +
@@ -12520,6 +12605,7 @@ function renderGiftPane(){
         '<div class="taxcalc-field"><label>지정납부기한까지 미납세액(원)</label><input type="number" id="edUnpaidAtDesignated" placeholder="0"><span class="taxcalc-field-help">위와 함께 입력</span></div>' +
       '</div>' +
       '<div class="taxcalc-grid">' + taxCalcGiftAggregationFieldsHtml_('ed') + '</div>' +
+      '<div class="taxcalc-grid">' + taxCalcGenSkipFieldsHtml_('ed') + '</div>' +
       '<button type="button" class="taxcalc-run-btn" data-action="run-excess-dividend-gift">증여세 계산하기</button>' +
       '<div id="taxCalcExcessDividendGiftResult"></div>' +
       '<div class="taxcalc-result-note">이 서식은 홈택스 "파일변환신고"(전자신고) 대상이 아닙니다(국세청은 기본세율 증여세신고서만 파일변환신고를 지원) — 인쇄해서 홈택스 화면입력으로 직접 신고하세요.</div>' +
@@ -13140,7 +13226,7 @@ function gfPrintFormBodyHtml_(){
   const first = validItems[0];
   if (first){
     const r = first.result;
-    html += foreignTaxCreditPrintPageHtml_('증여세', numVal(r.과세표준), numVal(r.산출세액_할증전) + numVal(r.세대생략할증액), numVal((document.getElementById('giftForeignBase') || {}).value) || 0, numVal((document.getElementById('giftForeignTax') || {}).value) || 0, numVal(r.외국납부세액공제)); // [2026.10.19 서식 감사] 예전엔 세무대리인 설정값(taxAgentField_)에서 읽어 늘 빈 값이었다
+    html += foreignTaxCreditPrintPageHtml_('증여세', numVal(r.과세표준), numVal(r.산출세액_할증전), numVal((document.getElementById('giftForeignBase') || {}).value) || 0, numVal((document.getElementById('giftForeignTax') || {}).value) || 0, numVal(r.외국납부세액공제), r.외국납부세액공제_비율한도); // [2026.10.19 서식 감사] 예전엔 세무대리인 설정값(taxAgentField_)에서 읽어 늘 빈 값이었다
     html += farmlandExemptionPrintPageHtml_(giftDonees[first.doneeIdx] || {}, numVal(r.영농자녀증여농지세액감면) || numVal((document.getElementById('giftFarmlandExemption') || {}).value) || 0); // [2026.10.19 서식 감사] 계산 결과의 감면세액(예전엔 세무대리인 설정값에서 읽어 52호가 안 나옴)
   }
   return html;
@@ -13157,9 +13243,12 @@ function gfPrintFormBodyHtml_(){
 // 전체과세표준), 외국납부세액 한도)을 그대로 따라 하되, 상속세 결과객체는 이 비율한도값을
 // 안 돌려주므로(증여세는 돌려줌) 여기서 같은 공식으로 다시 계산한다 — 공식이 아주 단순해서
 // (엔진과 중복되더라도) 별도 필드 추가보다 이 편이 더 간단하고 안전하다.
-function foreignTaxCreditPrintPageHtml_(formLabel, taxBase, calculatedTax, foreignBase, foreignPaid, creditAmount){
+// [2026.10.19 서식감사 차] ① 산출세액은 엔진이 쓴 값(세대생략 할증 전 — 시행령 §21①·§48 "상속(증여)세산출세액")을 받고, ④는 엔진 결과
+//  외국납부세액공제_비율한도(engineLimit)가 있으면 그것을 그대로 찍는다. 전에는 ①에 할증 포함 값을 찍고 ④를 따로 계산해 할증이 있으면
+//  ④와 ⑥(엔진 공제액)이 서로 맞지 않았다. ①을 할증 전·후 어느 쪽으로 볼지는 법령 원문으로 판정이 안 돼 "판단 대기"(엔진 기준을 따름).
+function foreignTaxCreditPrintPageHtml_(formLabel, taxBase, calculatedTax, foreignBase, foreignPaid, creditAmount, engineLimit){
   if (!numVal(creditAmount)) return '';
-  const creditLimit = (numVal(foreignBase) > 0 && numVal(taxBase) > 0)
+  const creditLimit = (engineLimit != null && engineLimit !== '') ? numVal(engineLimit) : (numVal(foreignBase) > 0 && numVal(taxBase) > 0)
     ? Math.round(numVal(calculatedTax) * Math.min(1, numVal(foreignBase) / numVal(taxBase)))
     : numVal(foreignPaid);
   let n = 0;
@@ -13259,13 +13348,15 @@ function srPrintFormPageHtml_(){
       pfRow_(++n, '총한도액', won(r.총한도액)) +
       pfRow_(++n, '과세특례 적용대상 과세가액', won(r.과세특례적용대상_증여세과세가액)) +
       (r.기본세율적용대상_증여재산가액 ? pfRow_(++n, '기본세율 적용대상 증여재산가액(한도초과분)', won(r.기본세율적용대상_증여재산가액)) : '') +
+      (r.가산_과세특례증여재산 ? pfRow_(++n, '가산 증여재산(서식 ⑱·⑳ — 앞서 같은 특례 받은 분)', won(r.가산_과세특례증여재산)) : '') +
+      (r.가산_과세특례증여재산 ? pfRow_(++n, '합계(서식 ㉑)', won(r.과세특례_과세가액_합계)) : '') +
       pfRow_(++n, '증여재산공제', won(r.증여재산공제)) +
       (r.재해손실공제 ? pfRow_(++n, '재해손실공제', won(r.재해손실공제)) : '') +
       (r.감정평가수수료공제 ? pfRow_(++n, '감정평가수수료공제', won(r.감정평가수수료공제)) : '') +
       pfRow_(++n, '과세표준', won(r.과세표준)) +
       pfRow_(++n, '세율', r.세율) +
       pfRow_(++n, '산출세액', won(r.산출세액)) +
-      (r.납부세액공제 ? pfRow_(++n, '이전 특례증여분 기납부세액공제', won(r.납부세액공제)) : '') +
+      (r.납부세액공제 ? pfRow_(++n, '납부세액공제(서식 ㉙, §58 — 앞선 특례분 세액)', won(r.납부세액공제)) : '') +
       (r.외국납부세액공제 ? pfRow_(++n, '외국납부세액공제', won(r.외국납부세액공제)) : '') +
       (r.무신고가산세 ? pfRow_(++n, '무신고가산세', won(r.무신고가산세)) : '') +
       (r.과소신고가산세 ? pfRow_(++n, '과소신고가산세', won(r.과소신고가산세)) : '') +
@@ -13496,7 +13587,8 @@ function jmAttach4PrintPageHtml_(){
       rows.map(function(r){ return '<tr><td>' + escapeHtml(r.label || '') + '</td><td class="pf-right">' + won(numVal(r.sales)) + '</td></tr>'; }).join('') +
       pfRow_(0, '특수관계법인 매출 합계', won(rows.reduce(function(s,r){ return s + numVal(r.sales); }, 0))) +
       pfRow_(0, '수혜법인 총매출액', won(totalSales)) +
-      pfRow_(0, '특수관계법인거래비율', totalSales ? (rows.reduce(function(s,r){ return s + numVal(r.sales); }, 0) / totalSales * 100).toFixed(4) + '%' : '') +
+      (numVal(jmRelatedPartyExcludedSales_) ? pfRow_(0, '그중 과세제외매출액', won(numVal(jmRelatedPartyExcludedSales_))) : '') +
+      pfRow_(0, '특수관계법인거래비율((매출 − 과세제외) ÷ (총매출 − 과세제외))', totalSales ? jmRelatedPartyTradeRatioPct_(rows.reduce(function(s,r){ return s + numVal(r.sales); }, 0), totalSales, jmRelatedPartyExcludedSales_).toFixed(4) + '%' : '') +
     '</table>' +
     '<div class="pf-note">이 서식은 NETAX "특수관계법인 매출 합산" 도구의 입력값을 기준으로 자동 생성되었습니다.</div>' +
   '</div>';
@@ -13535,11 +13627,13 @@ function jtPrintFormPageHtml_(){
       pfRow_(++n, '증여의제이익', won(r.증여의제이익)) +
       pfRow_(++n, '과세표준(증여재산공제 없음)', won(r.과세표준)) +
       pfRow_(++n, '산출세액', won(r.산출세액)) +
+      (r.개시사업연도_산출세액 ? pfRow_(++n, '개시사업연도 산출세액(서식 ㉗)', won(r.개시사업연도_산출세액)) : '') +
       pfRow_(++n, '신고세액공제(3%)', won(r.신고세액공제)) +
       (r.무신고가산세 ? pfRow_(++n, '무신고가산세', won(r.무신고가산세)) : '') +
       (r.과소신고가산세 ? pfRow_(++n, '과소신고가산세', won(r.과소신고가산세)) : '') +
       (r.납부지연가산세 ? pfRow_(++n, '납부지연가산세', won(r.납부지연가산세)) : '') +
       pfRow_(++n, '자진납부할 세액(합계액)', won(r.납부세액)) +
+      (r.환급세액 ? pfRow_(++n, '환급받을 세액(법 §45의4③ 단서)', won(r.환급세액)) : '') +
     '</table>' +
     gfPrintFormNote_() +
     '<div class="pf-sign">위 내용을 충분히 검토하였고 신고인이 알고 있는 사실을 그대로 적었음을 확인합니다.<br>' +
@@ -13656,11 +13750,15 @@ function gfDeemedGiftPrintRows_(r, extraFields){
   if (r.재해손실공제) rows += pfRow_(++n, '재해손실공제', won(r.재해손실공제));
   if (r.과세표준 !== undefined) rows += pfRow_(++n, '과세표준', won(r.과세표준));
   if (r.산출세액 !== undefined) rows += pfRow_(++n, '산출세액', won(r.산출세액));
+  if (r.세대생략할증액) rows += pfRow_(++n, '세대생략가산액(§57)', won(r.세대생략할증액)); // [2026.10.19 서식감사 차] 10호의5 ㉙·10호의6 ㊳
+  if (r.세대생략할증액) rows += pfRow_(++n, '산출세액 계', won(r.산출세액_할증후));
   if (r.신고세액공제) rows += pfRow_(++n, '신고세액공제', won(r.신고세액공제));
+  if (r.최초신고_증여세액) rows += pfRow_(++n, '증여재산가액 기준 증여세액(최초 신고, §41의2②)', won(r.최초신고_증여세액)); // [2026.10.19 서식감사 차] 10호의5 ㊱
   if (r.무신고가산세) rows += pfRow_(++n, '무신고가산세', won(r.무신고가산세));
   if (r.과소신고가산세) rows += pfRow_(++n, '과소신고가산세', won(r.과소신고가산세));
   if (r.납부지연가산세) rows += pfRow_(++n, '납부지연가산세', won(r.납부지연가산세));
   rows += pfRow_(++n, '자진납부할 세액(합계액)', won(r.납부세액));
+  if (r.환급세액) rows += pfRow_(++n, '환급받을 세액', won(r.환급세액));
   return rows;
 }
 // [2026.09.30 신규, 재검토99] 서화·골동품 등 증여재산명세서(10-5·10-6용) — 상속세 부표8과 같은
@@ -14169,8 +14267,9 @@ function renderInheritanceResult(r){
   if (r.납부지연가산세) html += taxCalcResultRow('납부지연가산세', '+' + won(r.납부지연가산세));
   if (r.문화재등징수유예세액) html += taxCalcResultRow('문화재등 징수유예세액', '-' + won(r.문화재등징수유예세액));
   if (r.가업상속납부유예세액) html += taxCalcResultRow('가업상속 납부유예세액', '-' + won(r.가업상속납부유예세액));
+  if (r.가업상속납부유예_불가안내) html += '<div class="taxcalc-error">' + r.가업상속납부유예_불가안내 + '</div>';
   html += taxCalcResultRow('납부세액', won(r.납부세액), { total: true });
-  if (r.가업상속납부유예_가능세액 != null) html += '<div class="taxcalc-result-note">참고: §72의2에 따라 가업상속 납부유예를 신청할 경우 최대 ' + won(r.가업상속납부유예_가능세액) + '까지 유예 가능합니다(가업상속공제와 별개로 선택 가능 — 실제 유예받으려면 위 "가업상속 납부유예세액" 입력란에 이 금액을 넣고 다시 계산하세요).</div>';
+  if (r.가업상속납부유예_가능세액 != null) html += '<div class="taxcalc-result-note">참고: §72의2에 따라 가업상속 납부유예를 신청할 경우 최대 ' + won(r.가업상속납부유예_가능세액) + '까지 유예 가능합니다(가업상속공제를 받지 않아야 함, §72의2①2호 — 실제 유예받으려면 위 "가업상속공제 대신 납부유예 선택"을 켜고 다시 계산하세요. 공제를 끄면 이 가능세액도 커집니다).</div>';
   html += '<div class="taxcalc-result-note">배우자가 단독상속인이면 일괄공제(5억) 대신 기초공제+인적공제만 적용되도록 위 상속인 명부 기준으로 자동 판정됩니다(§18의2). 가업상속공제·영농상속공제·특례증여세액공제·영리법인 면제세액은 자격요건 판정과 세액 자체를 이 계산기가 산출하지 않으므로 별도로 계산한 값을 직접 입력해야 합니다. 납부지연가산세율(1일 10만분의22)은 시행령 개정으로 바뀔 수 있습니다. 실제 신고 전 홈택스 모의계산으로 재검증하세요.</div>';
   html += '<button type="button" class="taxcalc-calcbasis-btn" data-action="toggle-inheritance-calc-basis" style="margin-top:8px;">🧮 계산근거 접기/펴기</button>';
   html += '<div class="taxcalc-calcbasis" id="inheritanceCalcBasis">' +
@@ -14229,12 +14328,12 @@ function renderHeirRegistry(){
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="isReporter" id="hReporter-' + idx + '"' + (h.isReporter ? ' checked' : '') + '><label for="hReporter-' + idx + '">신고인</label></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="hasRenounced" id="hRenounced-' + idx + '"' + (h.hasRenounced ? ' checked' : '') + '><label for="hRenounced-' + idx + '">상속포기(민법§1043 — 처음부터 상속인 아니었던 것으로 봄)</label></div>' +
       '<div class="taxcalc-field checkbox"><input type="checkbox" data-hfield="isCohabitHouse" id="hCohabit-' + idx + '"' + (h.isCohabitHouse ? ' checked' : '') + '><label for="hCohabit-' + idx + '">동거주택 상속(10년이상 동거·무주택 등)</label></div>' +
-      '<div class="taxcalc-field" data-show-if-heir="isCohabitHouse" style="' + (h.isCohabitHouse ? '' : 'display:none;') + '"><label>동거주택가액</label><input type="number" data-hfield="cohabitHouseValue" placeholder="원" value="' + (h.cohabitHouseValue || '') + '"></div>' +
+      '<div class="taxcalc-field" data-show-if-heir="isCohabitHouse" style="' + (h.isCohabitHouse ? '' : 'display:none;') + '"><label>동거주택 중 이 상속인이 받은 몫의 가액</label><input type="number" data-hfield="cohabitHouseValue" placeholder="원" value="' + (h.cohabitHouseValue || '') + '"><span class="taxcalc-field-help">주택가액 × 이 상속인 지분(서식 6호의2 ⑨) — 요건 갖춘 상속인 몫만 공제</span></div>' +
       // [2026.09 버그수정] 상증세법§23의2는 "상속개시일 현재 그 주택에 담보된 피상속인의
       // 채무액을 뺀 가액"을 공제 기준액으로 삼는데, 이 화면은 여태 담보채무를 뺄 방법 없이
       // 동거주택가액 총액을 그대로 공제액 계산에 넣고 있었다(6억 한도에 걸리는 사건은 결과에
       // 영향 없지만, 그 미만인 사건은 공제가 과다계산될 수 있었다).
-      '<div class="taxcalc-field" data-show-if-heir="isCohabitHouse" style="' + (h.isCohabitHouse ? '' : 'display:none;') + '"><label>위 주택에 담보된 피상속인 채무액</label><input type="number" data-hfield="cohabitHouseDebt" placeholder="원" value="' + (h.cohabitHouseDebt || '') + '"><span class="taxcalc-field-help">없으면 비움</span></div>' +
+      '<div class="taxcalc-field" data-show-if-heir="isCohabitHouse" style="' + (h.isCohabitHouse ? '' : 'display:none;') + '"><label>위 주택에 담보된 피상속인 채무액 중 이 상속인 몫</label><input type="number" data-hfield="cohabitHouseDebt" placeholder="원" value="' + (h.cohabitHouseDebt || '') + '"><span class="taxcalc-field-help">없으면 비움</span></div>' +
       // [2026.09.24 신규] 세무사님 지시 — 법정상속지분·실제상속지분을 분수로 먼저 받아두면,
       // 재산평가 자산목록에서 이 상속인을 배분할 때마다 이 값이 우선 채워진다(협의분할로 특정
       // 자산만 다르게 나눴으면 그 자산의 배분 행에서 직접 고치면 된다). 법정상속지분(민법§1009,
@@ -16837,6 +16936,7 @@ function handleTaxCalcClick_(e){
       estimatedIncomeTaxEquivalent: numVal(document.getElementById('edEstimatedTax').value) || 0,
       actualIncomeTax: numVal(document.getElementById('edActualTax').value) || 0,
       comprehensiveIncomeTaxBase: numVal(document.getElementById('edComprehensiveBase').value) || 0,
+      initialGiftTaxAmount: numVal(document.getElementById('edInitialTax').value) || 0,
       priorBenefitsWithinOneYear: priorBenefitsArray_('edPriorBenefitsSum'),
       relationDeductionLimit: numVal(document.getElementById('edRelationDeduction').value) || 0,
       appraisalFeeAmount: numVal(document.getElementById('edAppraisalFee').value) || 0,
@@ -16847,7 +16947,7 @@ function handleTaxCalcClick_(e){
       monthsAfterDesignatedDueDate: numVal(document.getElementById('edMonthsAfterDesignated').value) || 0,
       unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('edUnpaidAtDesignated').value) || 0
     };
-    Object.assign(input, taxCalcGiftAggregationInput_('ed'));
+    Object.assign(input, taxCalcGiftAggregationInput_('ed'), taxCalcGenSkipInput_('ed'), { giftDate: (document.getElementById('edGiftDate') || {}).value || '' });
     const edResult = calculateExcessDividendGiftTaxJS(input);
     renderExcessDividendGiftResult(edResult);
     lastExcessDividendGiftResult_ = (edResult && !edResult.error) ? edResult : null;
@@ -17038,7 +17138,7 @@ function handleTaxCalcClick_(e){
       monthsAfterDesignatedDueDate: numVal(document.getElementById('scMonthsAfterDesignated').value) || 0,
       unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('scUnpaidAtDesignated').value) || 0
     };
-    Object.assign(input, taxCalcGiftAggregationInput_('sc'));
+    Object.assign(input, taxCalcGiftAggregationInput_('sc'), taxCalcGenSkipInput_('sc'), { giftDate: (document.getElementById('scTransactionDate') || {}).value || (document.getElementById('scFiscalYearEnd') || {}).value || '', transactionDate: (document.getElementById('scTransactionDate') || {}).value || '', isTransactionWithControllingShareholderHimself: !!(document.getElementById('scCounterpartySelf') || {}).checked });
     const scResult = calculateSpecificCorporationGiftTaxJS(input);
     renderSpecificCorpGiftResult(scResult);
     lastSpecificCorpGiftResult_ = (scResult && !scResult.error) ? scResult : null;
@@ -17147,6 +17247,8 @@ function handleTaxCalcClick_(e){
       corporateTaxableIncome: numVal(document.getElementById('jtCorpTaxableIncome').value) || 0,
       monthsInInitialYear: numVal(document.getElementById('jtMonths').value) || 0,
       dividendDeduction: numVal(document.getElementById('jtDividendDeduction').value) || 0,
+      initialPhaseCalculatedTax: numVal(document.getElementById('jtInitialTax').value) || 0,
+      initialPhasePaidTax: numVal(document.getElementById('jtInitialPaidTax').value) || 0,
       filingStatus: document.getElementById('jtFilingStatus').value,
       isFraudulent: document.getElementById('jtFraudulent').checked,
       underreportedTaxAmount: numVal(document.getElementById('jtUnderreportedTax').value) || 0,
@@ -17373,6 +17475,7 @@ function handleTaxCalcClick_(e){
       businessHeirTaxWithoutDeduction: numVal(document.getElementById('ihBusinessHeirTaxWithoutDeduction').value) || 0,
       farmingInheritanceDeduction: numVal(document.getElementById('ihFarmingDeduction').value) || 0,
       farmingIndividualAssetValue: numVal(document.getElementById('ihFarmingIndividualAsset').value) || 0,
+      farmingIndividualSecuredDebt: numVal((document.getElementById('ihFarmingIndividualDebt') || {}).value) || 0,
       farmingStockValue: numVal(document.getElementById('ihFarmingStockValue').value) || 0,
       farmingTotalAssetValue: numVal(document.getElementById('ihFarmingTotalAsset').value) || 0,
       farmingNonBizAsset55: numVal(document.getElementById('ihFarmingNonBiz55').value) || 0,
@@ -17402,6 +17505,7 @@ function handleTaxCalcClick_(e){
       forProfitHeirShareRatio: numVal(document.getElementById('ihForProfitRatio').value) || 0,
       culturalPropertyDeferredTaxAmount: numVal(document.getElementById('ihCulturalDeferred').value) || 0,
       businessInheritanceDeferredTaxAmount: numVal(document.getElementById('ihBizInheritDeferred').value) || 0,
+      businessInheritanceDeferralElected: !!(document.getElementById('ihBizInheritDeferralElected') || {}).checked,
       reporterName: document.getElementById('ihReporterName').value,
       reporterRegNo: document.getElementById('ihReporterRegNo').value,
       reporterRelationToDeceased: document.getElementById('ihReporterRelation').value,
