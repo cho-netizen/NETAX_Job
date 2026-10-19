@@ -1152,5 +1152,31 @@
    "농어촌특별세_가산세": 1014360,
    "농어촌특별세_자진납부할세액": 6086160
   }
+ },
+ {
+  "이름": "[2부-13] 2018-05-01 증여, 매매 2018-01-05(전 4개월) — 2019.2.11. 전 증여는 전후 3개월이라 평가기간 밖",
+  "도구": "checkFairMarketValueRecognitionJS",
+  "입력": {
+   "taxType": "gift",
+   "evidenceType": "sale",
+   "evidenceDate": "2018-01-05",
+   "valuationBaseDate": "2018-05-01"
+  },
+  "정답": {
+   "평가기간이내여부": false
+  }
+ },
+ {
+  "이름": "[2부-13] 2019-05-01 증여, 매매 2019-01-05(전 4개월) — 2019.2.12. 이후 증여는 전 6개월부터라 평가기간 안",
+  "도구": "checkFairMarketValueRecognitionJS",
+  "입력": {
+   "taxType": "gift",
+   "evidenceType": "sale",
+   "evidenceDate": "2019-01-05",
+   "valuationBaseDate": "2019-05-01"
+  },
+  "정답": {
+   "평가기간이내여부": true
+  }
  }
 ]
