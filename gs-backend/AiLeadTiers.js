@@ -245,22 +245,32 @@ function caseProcAiFactMap_(c, items) {
   const G = {}, A = {}, fileKinds = {};
   facts.forEach(function (f) {
     if (!f || f.kind === '서류') { if (f && f.src && f.src.file) fileKinds[f.src.file] = String(f.value || ''); return; }
+    // [밤샘 5번-4] 원문 줄(글자 줄·표 줄 등 찾기용 재료)은 사실이 아니라 지도에서 뺀다
+    if (/글자 ?줄|표 ?줄|^text$|^binary$/.test(String(f.kind || ''))) return;
     const ax = caseProcAiAxis_(f), ks = f.keys || {}, file = (f.src && f.src.file) || '';
     if (file && f.src.docType && !fileKinds[file]) fileKinds[file] = f.src.docType;
+    const a0 = A[ax] || (A[ax] = { 조각: 0, 출처: 0, 열쇠없음: 0 }); a0.조각++; if (file) a0.출처++;
+    // "같은 사실"은 무엇에 대한 사실인지(자산·사람·계좌·서류번호)가 있어야 맞댈 수 있다 — 열쇠 없는 조각은 세기만
+    if (!(ks.asset || ks.person || ks.account || ks.docNo)) { a0.열쇠없음++; return; }
     const gk = ax + '|' + f.kind + '|' + (ks.asset || ks.person || ks.account || ks.docNo || '');
     const g = G[gk] || (G[gk] = { ax: ax, kind: f.kind, key: ks.asset || ks.person || ks.account || '', vals: {}, files: {} });
     const v = typeof f.value === 'object' ? JSON.stringify(f.value) : String(f.value == null ? '' : f.value).replace(/[\s,원]/g, '');
     if (!v) return;
     (g.vals[v] = g.vals[v] || {})[file + (f._copy ? '#사본' : '')] = (f.src && f.src.page) || 1;
-    if (file && !f._copy) g.files[file] = 1;
-    const a = A[ax] || (A[ax] = { 조각: 0, 출처: 0 }); a.조각++; if (file) a.출처++;
+    if (file && !f._copy) (g.files[file] = g.files[file] || {})[v] = 1;
   });
   const sum = {}, conflicts = [], singles = [];
   Object.keys(G).forEach(function (k) {
-    const g = G[k], nv = Object.keys(g.vals).length, nf = Object.keys(g.files).length, s = sum[g.ax] || (sum[g.ax] = { 묶음: 0, 받침: 0, 한서류: 0, 어긋남: 0 });
+    const g = G[k], nv = Object.keys(g.vals).length, nf = Object.keys(g.files).length, s = sum[g.ax] || (sum[g.ax] = { 묶음: 0, 받침: 0, 한서류: 0, 어긋남: 0, 여러값: 0 });
     if (!nv) return; s.묶음++;
-    if (nv > 1) { s.어긋남++; if (conflicts.length < 12) conflicts.push(g.ax + ' · ' + g.kind + (g.key ? '(' + caseProcAiCut_(g.key, 24) + ')' : '') + ': ' + Object.keys(g.vals).slice(0, 3).map(function (v) { return caseProcAiCut_(v, 24) + '←' + Object.keys(g.vals[v]).slice(0, 2).map(function (f) { return caseProcAiCut_(f, 30); }).join('·'); }).join(' / ')); }
-    else if (nf >= 2) s.받침++; else { s.한서류++; if (singles.length < 8) singles.push(g.ax + ' · ' + g.kind + ' ← ' + caseProcAiCut_(Object.keys(g.files)[0] || '', 30)); }
+    // 받침 = 서로 다른 서류 둘 이상이 같은 값 / 어긋남 = 값을 하나만 말하는 서류끼리 값이 다름(통장 거래처럼 한 서류에 값이 여럿인 것은 어긋남 아님)
+    const fv = Object.keys(g.files).map(function (fn) { return Object.keys(g.files[fn]); });
+    const shared = Object.keys(g.vals).some(function (v) { return fv.filter(function (vs) { return vs.indexOf(v) !== -1; }).length >= 2; });
+    const singleVals = fv.filter(function (vs) { return vs.length === 1; }).map(function (vs) { return vs[0]; });
+    const clash = !shared && singleVals.length >= 2 && singleVals.some(function (v) { return v !== singleVals[0]; });
+    if (shared) s.받침++;
+    else if (clash) { s.어긋남++; if (conflicts.length < 12) conflicts.push(g.ax + ' · ' + g.kind + (g.key ? '(' + caseProcAiCut_(g.key, 24) + ')' : '') + ': ' + Object.keys(g.vals).slice(0, 3).map(function (v) { return caseProcAiCut_(v, 24) + '←' + Object.keys(g.vals[v]).slice(0, 2).map(function (f) { return caseProcAiCut_(f, 30); }).join('·'); }).join(' / ')); }
+    else if (nf >= 2) s.여러값++; /* 여러 서류에 값이 여럿(거래 줄 등) — 같은 값이 없으면 맞댈 수 없음 */ else { s.한서류++; if (singles.length < 8) singles.push(g.ax + ' · ' + g.kind + ' ← ' + caseProcAiCut_(Object.keys(g.files)[0] || '', 30)); }
   });
   // 빈칸 — 계산기가 비었다고 한 칸(질문 중 빈 칸)마다 찾을 서류와 이 사건에 있는 그 종류 파일
   const files = Object.keys(fileKinds);
@@ -270,8 +280,8 @@ function caseProcAiFactMap_(c, items) {
     const have = m ? files.filter(function (fn) { return m[2].test(fileKinds[fn] + ' ' + fn); }).slice(0, 4) : [];
     return { 칸: it.id, 글: caseProcAiCut_(it.text, 60), 찾을서류: m ? m[1] : '(표에 없음 — 질문)', 이사건에있는파일: have.length ? have : (m ? '없음 — 서류 요청 질문' : '') };
   });
-  const tot = { 조각: 0, 출처: 0, 묶음: 0, 받침: 0, 어긋남: 0 };
-  Object.keys(A).forEach(function (k) { tot.조각 += A[k].조각; tot.출처 += A[k].출처; });
+  const tot = { 조각: 0, 출처: 0, 열쇠없음: 0, 묶음: 0, 받침: 0, 어긋남: 0 };
+  Object.keys(A).forEach(function (k) { tot.조각 += A[k].조각; tot.출처 += A[k].출처; tot.열쇠없음 += A[k].열쇠없음 || 0; });
   Object.keys(sum).forEach(function (k) { tot.묶음 += sum[k].묶음; tot.받침 += sum[k].받침; tot.어긋남 += sum[k].어긋남; });
   return { ok: true, 축: sum, 조각: A, 합: tot, 지표: { '②-1 출처 비율': tot.조각 ? Math.round(tot.출처 / tot.조각 * 100) : 0, '②-2 둘 이상 서류가 받치는 비율': tot.묶음 ? Math.round(tot.받침 / tot.묶음 * 100) : 0 }, 어긋남: conflicts, 한서류뿐: singles, 빈칸: gaps };
 }
