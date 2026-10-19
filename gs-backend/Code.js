@@ -27959,15 +27959,23 @@ function tcRoleInFileName_(name) {
 //  비운 가액은 ⚠ 질문으로 남긴다(지어내지 않음). 채운 것이 있으면 true.
 //  [2026.10.18 정밀분석 5 지분별] part = { ratio, share } — 이 기재 거래가액 중 납세자 몫(공유로 함께 산 기재는 거래가액이 공유자 전원 합계라 × 납세자 지분).
 //  원인이 소유권 취득 원인이 아니면(해제·해지 등 — 칸이 섞여 잘못 짝지어진 경우) 예전엔 말없이 false였다 — 버린 이유를 ⚠로 남긴다.
+// [2026.10.19 보류 고침 7b07ad0과 짝] 등기 원인이 상속·증여면 계산기 자산에 표시한다 — 매매사례가액·감정가액 추계라도 상속·증여받은 자산은
+//  §163⑨대로 그 평가액이 실지거래가액이라 개산공제가 아니라 실제 비용을 뺀다(엔진 isInheritedAsset·isGiftedAsset). 사건처리가 이 표시를 안 넘겨 보류했던 것
+function tcMarkAcqCause_(a, cause, srcTxt, src, p) {
+  if (/상속|유증/.test(String(cause || ''))) { a.isInheritedAsset = true; src[p + '.isInheritedAsset'] = srcTxt; }
+  else if (/증여/.test(String(cause || ''))) { a.isGiftedAsset = true; src[p + '.isGiftedAsset'] = srcTxt; }
+}
 function tcRegAcqFill_(tx, x, evidence, prev, part) {
   if (!x) return false;
   var cause = String(x.원인 || ''), src = '등기부' + (x._file ? '(' + x._file + ')' : '');
   if (x.원인확인) { evidence.push('⚠ ' + src + ' 순위 ' + (x.순위 || '?') + ' 납세자 취득 기재 ' + x.원인확인 + ' — 취득일·취득가액에 쓰지 않음(원문의 접수일·원인으로 확인)'); return false; }
   if (/상속|유증/.test(cause)) {
+    tx._acqCause = '상속'; // [2026.10.19] 계산기 자산 칸 "상속받은 자산"(isInheritedAsset)으로 — §163⑨·§104②1호
     tx.acquisitionDate = x.원인일 || x.접수일 || null;
     evidence.push('취득: ' + src + ' ' + cause + ' — 취득일 = 상속개시일 ' + (tx.acquisitionDate || '?') + '(시행령§162①5호)');
     evidence.push('⚠ 상속 취득 — 취득가액은 상속 당시 평가액(§163⑨: 상속세 신고·결정가액, 감정가액, 기준시가 등) 확인 필요');
   } else if (/증여/.test(cause)) {
+    tx._acqCause = '증여'; // [2026.10.19] 계산기 자산 칸 "증여받은 자산"(isGiftedAsset) — §163⑨
     // [2026.10.16 1:1 이종식 — 세무사님: "취득일을 증여계약서에서 찾아야 하는데"] 증여 취득일은 증여계약일(= 등기부 등기원인일)을 1번 후보로,
     //  등기 접수일을 2번 후보로 묻는다(예전: 접수일을 바로 칸에 넣음). 원인일이 없으면 접수일을 그대로 쓴다
     if (x.원인일 && x.접수일 && x.원인일 !== x.접수일 && Array.isArray(tx._acqDateCands)) {
@@ -45861,6 +45869,7 @@ function trcShareAssets_(c, rf, t, st, src, cands, facts) {
     const sc = t.stdConv;
     if (sc && sc.transfer && sc.transfer.v) { a.transferStandardPriceForConversion = Math.round(sc.transfer.v * s.ratio); src[p + '.transferStandardPriceForConversion'] = sc.transfer.src + ' × 지분 ' + s.share; }
     if (s.giftInfo) facts.gift.push({ p: p, info: s.giftInfo });
+    tcMarkAcqCause_(a, s.cause, '등기부 취득 원인 "' + s.cause + '" — 지분 ' + s.share, src, p);
     const inh = /증여|상속|유증/.test(s.cause);
     if (!s.acquisitionDate) {
       const dc = [];
@@ -45934,6 +45943,7 @@ function trcFromEvidence_(c, rf, txs, ans) {
         const p = 'a' + (ai0 + i);
         src[p + '.assetLocation'] = '일괄 계약서 필지'; if (pc.acq) src[p + '.acquisitionPrice'] = '증여세 신고서 필지별 평가액';
         if (t.giftInfo) facts.gift.push({ p: p, info: t.giftInfo });
+        tcMarkAcqCause_(a, t._acqCause, '등기부 취득 원인(' + t._acqCause + ')', src, p);
       });
       facts.splitGroup = sp.map(function (_, i) { return ai0 + i; });
     } else {
@@ -45953,6 +45963,7 @@ function trcFromEvidence_(c, rf, txs, ans) {
       // 환산용 기준시가 — 양도당시는 그 날짜에 공시돼 있던 가격(증빙 공시가격표)이면 칸에 넣고, 취득당시는 후보로만(근거와 함께 묻는다)
       const sc = t.stdConv;
       if (sc && sc.transfer && sc.transfer.v) { a.transferStandardPriceForConversion = sc.transfer.v; src[p + '.transferStandardPriceForConversion'] = sc.transfer.src; }
+      tcMarkAcqCause_(a, t._acqCause, '등기부 취득 원인(' + t._acqCause + ')', src, p);
       if (t.giftInfo) facts.gift.push({ p: p, info: t.giftInfo }); // 증여 취득 — 이월과세 칸은 증여자와의 관계를 정한 뒤에(trcApplyAns_)
       if (k === 0 && t.parcels && t.parcels.length >= 2) facts.parcels = { t: t, list: t.parcels };
     }
