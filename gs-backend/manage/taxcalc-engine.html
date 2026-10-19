@@ -8192,8 +8192,13 @@
       foreignTaxCredit = Math.min(totalForeignTaxPaid, foreignTaxCreditLimit, calculatedTax);
     } else {
       const C_ = Math.max(0, totalGain);
+      // [2026.10.20 세액 고침 — 서식 11호 부표1 작성방법 9·10] 손실 자산(결손)이 섞이면 B(해당 국외자산 양도소득금액)는 결손 합계를 이익 자산에 그 금액 비율로 나눠 뺀 값:
+      //  ⑩ = ⑨ − 결손 합 × ⑨ ÷ 이익 ⑨ 합 → ΣB = C(국외자산 양도소득금액). 예전엔 B를 손실 빼기 전 양도차익으로 써서 자산별 한도 합이 산출세액보다 컸다(84호 작업자 발견).
+      const G_ = perTxn.reduce(function (t, x) { return t + Math.max(0, x.양도차익); }, 0);
       perTxn.forEach(function (x) {
-        const lim = C_ > 0 ? Math.round(calculatedTax * Math.max(0, x.양도차익) / C_) : 0;
+        const B_ = G_ > 0 ? Math.round(Math.max(0, x.양도차익) * C_ / G_) : 0;
+        x.기준양도소득금액_B = B_;
+        const lim = C_ > 0 ? Math.round(calculatedTax * B_ / C_) : 0;
         x.공제한도 = lim;
         x.공제액 = Math.min(x.외국납부세액_공제신청액, lim);
         foreignTaxCreditLimit += lim;

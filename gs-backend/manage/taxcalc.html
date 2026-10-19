@@ -870,6 +870,18 @@ function gfMarriageBirthSplit_(totalDeduction){
 // 법정 한도가 있는 금액 필드(감정평가수수료 500만원, 동거주택공제 6억, 주식양도 기본공제 250만원 등) —
 // tax-calc.js/Code.js가 이미 Math.min(입력값, 한도)로 캡을 적용하므로, 입력칸 옆에 실제 반영될 금액을
 // 바로 보여줘서 한도가 실제로 걸리는지 눈으로 확인할 수 있게 한다.
+// [2026.10.20 일반 규칙] 카드의 선택 칸(select[data-field])은 사용자가 건드리지 않으면 change가 안 떠서 화면 기본값이 데이터에 없었다
+//  (국외자산 '외국납부세액 처리방법' 기본 세액공제가 저장되지 않아 소득11호 서식 줄이 안 나온 사건). 빈 값('') 선택지가 없는 칸은 보이는 값이 유일한 뜻이므로
+//  데이터가 비어 있으면 그 값을 넣는다. 빈 선택지(모름·해당없음)가 있는 칸과 계약 연결 칸(…ContractId)은 그대로 둔다.
+function tcFillSelectDefaults_(root, obj){
+  if (!root || !obj) return;
+  root.querySelectorAll('select[data-field]').forEach(function(el){
+    const k = el.dataset.field;
+    if (!k || /ContractId$/.test(k) || (obj[k] !== undefined && obj[k] !== null && obj[k] !== '')) return;
+    if ([].some.call(el.options, function(o){ return o.value === ''; })) return;
+    if (el.value && el.value !== '__new__') obj[k] = el.value;
+  });
+}
 function wireMoneyCapHint_(fieldId, hintId, capAmount){
   const el = document.getElementById(fieldId);
   const hint = document.getElementById(hintId);
@@ -5333,6 +5345,7 @@ function renderValuationAssetList(containerId, assets){
       (containerId === 'giftValuationList' && giftDonors.length > 1 ? '' :
         '<button type="button" class="taxcalc-run-btn" data-action="apply-valuation-total" data-target="' + containerId + '">이 합계를 위 금액란에 반영</button>') : '');
 
+  container.querySelectorAll('.taxcalc-asset[data-idx]').forEach(function (row) { tcFillSelectDefaults_(row, assets[numVal(row.dataset.idx)]); }); // [2026.10.20] 선택 칸 기본값 저장
   container.querySelectorAll('[data-field]').forEach(function (el) {
     el.addEventListener((el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input', function () {
       const idx = numVal(el.closest('.taxcalc-asset').dataset.idx);
@@ -6795,6 +6808,7 @@ function renderTransferPane(){
     card.querySelectorAll('input[type="checkbox"][data-field]').forEach(function(el){
       el.checked = !!vals[el.dataset.field];
     });
+    tcFillSelectDefaults_(card, vals); // [2026.10.20] 화면에 보이는 선택 칸 기본값을 데이터에도(국외자산 외국납부 처리방법 등)
     updatePropertyCardConditionalVisibility_(card, idx);
   });
 

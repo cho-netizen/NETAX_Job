@@ -360,12 +360,13 @@
       var gain = x.t ? n(x.t.양도차익) : null;
       if (gain !== null) {
         o.set(K('③'), gain).set(K('⑨'), gain);
-        if (gain >= 0) o.set(K('⑩'), gain); // 결손 국가가 없으면 ⑩ = ⑨(작성방법 9)
+        // [2026.10.20] ⑩ = 결손 반영 뒤 금액(작성방법 9·10: ⑨ − 결손 합 × ⑨ ÷ 이익 ⑨ 합) — 엔진 기준양도소득금액_B, 결손 자산은 0
+        if (x.t && has(x.t.기준양도소득금액_B)) o.set(K('⑩'), n(x.t.기준양도소득금액_B)); else if (gain >= 0) o.set(K('⑩'), gain);
       }
       o.set(K('⑮'), paid[i]).set(K('㉒', '당기'), paid[i]);
       if (perAsset) {
         o.set(K('⑪'), A).set(K('⑫'), C).set(K('⑬'), n(x.t.공제한도));
-        o.check('부표1 국가' + (i + 1) + ' ⑬ = ⑪ × ⑩ ÷ ⑫', n(x.t.공제한도), C > 0 ? Math.round(A * Math.max(0, gain) / C) : 0);
+        o.check('부표1 국가' + (i + 1) + ' ⑬ = ⑪ × ⑩ ÷ ⑫', n(x.t.공제한도), C > 0 ? Math.round(A * (has(x.t.기준양도소득금액_B) ? n(x.t.기준양도소득금액_B) : Math.max(0, gain)) / C) : 0);
         var over = Math.max(0, paid[i] - n(x.t.공제한도));
         o.set(K('⑰'), over);
         o.set(K('㉖', '당기'), n(x.t.공제액)).set(K('㉖', '합계'), n(x.t.공제액));

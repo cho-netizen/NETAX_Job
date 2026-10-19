@@ -2243,5 +2243,43 @@
    "과세표준": 7500000,
    "산출세액": 375000
   }
+ },
+ {
+  "이름": "[세액 고침 — 서식 11호 부표1 작성방법 9·10] 국외자산 3건(이익 3억·1억, 손실 1억) 외국납부 8천만·1천만: B = 결손을 이익 비율로 나눈 뒤 2.25억·0.75억, 한도 = 9,311만 × B ÷ 3억 = 69,832,500·23,277,500 → 공제 69,832,500 + 1천만 = 79,832,500(예전 90,000,000)",
+  "도구": "calculateOverseasAssetTransferTaxMultiJS",
+  "고정": true,
+  "인자": [
+   [
+    {
+     "wasResidentFiveYearsContinuously": true,
+     "transferDate": "2025-07-01",
+     "transferPrice": 800000000,
+     "acquisitionPrice": 500000000,
+     "foreignTaxCreditMethod": "credit",
+     "foreignTaxPaidAmount": 80000000
+    },
+    {
+     "wasResidentFiveYearsContinuously": true,
+     "transferDate": "2025-08-01",
+     "transferPrice": 300000000,
+     "acquisitionPrice": 200000000,
+     "foreignTaxCreditMethod": "credit",
+     "foreignTaxPaidAmount": 10000000
+    },
+    {
+     "wasResidentFiveYearsContinuously": true,
+     "transferDate": "2025-09-01",
+     "transferPrice": 200000000,
+     "acquisitionPrice": 300000000,
+     "foreignTaxCreditMethod": "credit",
+     "foreignTaxPaidAmount": 0
+    }
+   ],
+   {}
+  ],
+  "정답": {
+   "산출세액": 93110000,
+   "외국납부세액공제": 79832500
+  }
  }
 ]
