@@ -6748,6 +6748,7 @@ function collectTransferInput(vals){
     rentalSpecialType: vals.rentalSpecialType || '',
     rentalYears: numVal(vals.rentalYears) || 0,
     rentalRegistrationDate: vals.rentalRegistrationDate || '', // §97의3 2022-12-31 이전 등록분 8년 50%
+    oneHouseSpecialFormNo: vals.oneHouseSpecialCase ? (vals.oneHouseSpecialCase.formNo || '') : '', // [2026.10.19] 판단 대기 ②(§155⑳) 확인용 — 계산엔 안 씀
     acquisitionStandardPrice: numVal(vals.acquisitionStandardPrice) || 0,
     registrationStandardPrice: numVal(vals.registrationStandardPrice) || 0,
     transferStandardPrice: numVal(vals.transferStandardPrice) || 0,
@@ -6927,6 +6928,19 @@ function populateTransferCalcBasis_(idx){
   box.style.display = 'block';
 }
 
+// [2026.10.19] 세무사님 판단 대기(엔진 판단대기) — 두 해석 세액을 나란히, 이 사건에서 고른 답을 기록(reftable_judgment_set). 계산은 해석 A 그대로.
+function tcJudgmentPendingHtml_(list){
+  return '<div class="taxcalc-result-note" style="border:1px solid #6a1b9a; border-radius:6px; padding:8px 10px; margin:0 0 8px; color:#4a148c;">' +
+    list.map(function(j){
+      return '<div style="margin-bottom:6px;"><b>⚠ 세무사님 판단 대기 — ' + escapeHtml(j.제목) + '</b> <span style="font-size:11.5px;">(' + escapeHtml(j.근거) + ', 조견표 ' + escapeHtml(j.조견표) + ')</span><br>' +
+        '해석 A(지금 기본 — ' + escapeHtml(j.해석A) + '): 산출세액 <b>' + won(j.세액A) + '</b> / 해석 B(' + escapeHtml(j.해석B) + '): <b>' + won(j.세액B) + '</b>' + (j.비고 ? ' <span style="font-size:11.5px;">— ' + escapeHtml(j.비고) + '</span>' : '') + '<br>' +
+        '<span style="font-size:12px;">이 사건은 어느 해석으로? </span>' +
+        '<button type="button" class="ghost-btn" data-action="judgment-pick" data-jid="' + escapeHtml(j.id) + '" data-pick="A" style="padding:2px 8px;">해석 A</button> ' +
+        '<button type="button" class="ghost-btn" data-action="judgment-pick" data-jid="' + escapeHtml(j.id) + '" data-pick="B" style="padding:2px 8px;">해석 B</button>' +
+        '<span class="tc-judgment-picked" data-jid="' + escapeHtml(j.id) + '" style="font-size:12px; margin-left:6px;"></span></div>';
+    }).join('') +
+    '<div style="font-size:11.5px;">고른 답은 기록만 됩니다(계산은 해석 A 그대로). 같은 답이 되풀이되면 기본값 후보로 올립니다 — 세무사님 확인 목록(_확인조치사항.md)에 올라 있습니다.</div></div>';
+}
 function renderOneTransferResultHtml_(r, label, sellerIdx){
   if (r.error) return '<div class="taxcalc-error">' + (label ? label + ': ' : '') + r.error + '</div>';
   let html = '<div class="taxcalc-result" style="margin-top:10px;">';
@@ -6934,6 +6948,7 @@ function renderOneTransferResultHtml_(r, label, sellerIdx){
   // [2026.10.19 조견표 0단계] 양도일이 2023 전이면 세율·장특공률 연혁이 아직 없어 현행 기준으로 계산됐다는 경고(엔진 시점경고) — 맨 위에
   if (r.시점경고) html += '<div class="taxcalc-result-note" style="color:#b26a00; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.시점경고) + '</div>';
   if (r.서식검산경고) html += '<div class="taxcalc-result-note" style="color:#b00020; font-weight:600; margin:0 0 6px;">' + escapeHtml(r.서식검산경고) + '</div>'; // [2026.10.19] 서식 칸 산식 검산
+  if (r.판단대기 && r.판단대기.length) html += tcJudgmentPendingHtml_(r.판단대기); // [2026.10.19] 세무사님 판단 대기 — 해석 A/B 세액, 고르면 기록
   html += taxCalcResultRow('거래건수 / 비과세', r.거래건수 + '건 / ' + r.비과세건수 + '건');
   html += taxCalcResultRow('합산대상(장기) 소득금액', won(r.합산소득금액));
   html += taxCalcResultRow('기본공제', won(r.기본공제));
@@ -16721,6 +16736,15 @@ function handleTaxCalcClick_(e){
     const row = printCurrentRows_[numVal(btn.dataset.rowIdx)];
     if (!row || !row.ready){ nxAlert_('이 서식은 아직 계산된 데이터가 없습니다.'); return; }
     openPrintFormWindow_(row.title || '인쇄', row.html);
+  } else if (action === 'judgment-pick'){
+    const jid = btn.dataset.jid, pick = btn.dataset.pick;
+    const caseId = (typeof tcSelectedId !== 'undefined' && tcSelectedId) ? tcSelectedId : '';
+    const caseName = (typeof tcCurrentCase !== 'undefined' && tcCurrentCase) ? String(tcCurrentCase.사건명 || '') : '';
+    callGas('reftable_judgment_set', { id: jid, pick: pick, caseId: caseId, caseName: caseName }).then(function(res){
+      if (!res || res.error) throw new Error((res && res.error) || '저장 실패');
+      document.querySelectorAll('.tc-judgment-picked[data-jid="' + jid + '"]').forEach(function(el){ el.textContent = '✔ 이 사건: 해석 ' + pick + ' 기록(지금까지 A ' + (res.count.A || 0) + '건 · B ' + (res.count.B || 0) + '건)'; });
+      showToast('판단을 기록했습니다. 계산은 해석 A 그대로입니다.', 'success');
+    }).catch(function(err){ showToast('기록하지 못했습니다: ' + (err && err.message || err), 'warning'); });
   } else if (action === 'print-open-form-catalog'){
     if (typeof goToView_ === 'function') goToView_('lawsearch');
     if (typeof lsiShowTab_ === 'function'){ if (typeof lsiFormGroup_ !== 'undefined') lsiFormGroup_ = printActiveGroup_; lsiShowTab_('form'); }

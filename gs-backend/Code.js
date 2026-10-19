@@ -3933,6 +3933,8 @@ function dispatchClientAction0_(body) {
   // [2026.10.19 조견표 체계] 법령정보 탭 — 조견표·서식 칸 지도에 세무사님이 남긴 확인·메모·보류(표 내용은 화면 파일, 여기는 기록만)
   if (body.action === 'reftable_review_get') return jsonResponse(reftableReviewGet_());
   if (body.action === 'reftable_review_set') return jsonResponse(reftableReviewSet_(body));
+  if (body.action === 'reftable_judgment_set') return jsonResponse(reftableJudgmentSet_(body)); // [2026.10.19] 세무사님 판단 대기 — 사건에서 고른 해석 기록
+  if (body.action === 'reftable_judgment_get') return jsonResponse(reftableJudgmentGet_());
 
   // [2026.09 버그수정] 실사용 감사 지적 — 종전 챗봇(work.netax.kr)에서는 "이거 메일로 보내줘",
   // "이번주 일정 뭐있어", "안읽은 메일 있어?", "할일 뭐있어" 처럼 자연어로 자유롭게 쓰던
@@ -4751,6 +4753,31 @@ function toolSendEmail(to, subject, body) {
 //  열쇠 = 조견표 번호("1부-01") 또는 서식번호. 판 = 화면이 표 내용으로 만든 짧은 지문(확인 뒤 표가 바뀌면 화면이 "확인 뒤 바뀜"으로 알림).
 //  기록만 한다 — 확인을 눌러도 계산·판정에 바로 쓰이지 않는다(쓰는 곳을 켜는 것은 확인된 표만 개발 반영으로).
 const REFTABLE_REVIEW_PROP_ = 'NX_REFTABLE_REVIEW';
+// [2026.10.19] 세무사님 판단 대기(투기지역 +10%p·아파트 양도기한의 §155⑳·§97의3과 중과) — 사건마다 고른 해석(A/B)을 기록만 한다.
+//  계산은 해석 A(기본) 그대로. 같은 답이 되풀이되면 법령정보 › 조견표 화면에 '기본값 후보'로 보인다. 스크립트 속성 한 칸(JSON, 판단마다 최근 40건).
+const REFTABLE_JUDGMENT_PROP_ = 'NX_REFTABLE_JUDGMENT';
+function reftableJudgmentGet_() {
+  let all = {};
+  try { all = JSON.parse(PropertiesService.getScriptProperties().getProperty(REFTABLE_JUDGMENT_PROP_) || '{}'); } catch (e) { all = {}; }
+  return { success: true, judgments: all };
+}
+function reftableJudgmentSet_(body) {
+  const id = String(body.id || '').slice(0, 60), pick = String(body.pick || '');
+  if (!id || ['A', 'B'].indexOf(pick) === -1) return { error: '잘못된 요청입니다(판단·해석).' };
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return { error: '다른 저장이 진행 중입니다. 잠시 뒤 다시 눌러 주세요.' };
+  try {
+    const props = PropertiesService.getScriptProperties();
+    let all = {};
+    try { all = JSON.parse(props.getProperty(REFTABLE_JUDGMENT_PROP_) || '{}'); } catch (e) { all = {}; }
+    const list = (all[id] || []).filter(function (x) { return !(body.caseId && x.caseId === body.caseId); }); // 같은 사건은 마지막 답만
+    list.push({ pick: pick, caseId: String(body.caseId || '').slice(0, 60), caseName: String(body.caseName || '').slice(0, 60), at: Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm') });
+    all[id] = list.slice(-40);
+    props.setProperty(REFTABLE_JUDGMENT_PROP_, JSON.stringify(all));
+    const count = all[id].reduce(function (o, x) { o[x.pick] = (o[x.pick] || 0) + 1; return o; }, {});
+    return { success: true, count: count };
+  } finally { lock.releaseLock(); }
+}
 function reftableReviewGet_() {
   let all = {};
   try { all = JSON.parse(PropertiesService.getScriptProperties().getProperty(REFTABLE_REVIEW_PROP_) || '{}'); } catch (e) { all = {}; }
