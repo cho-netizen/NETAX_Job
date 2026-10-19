@@ -45,6 +45,15 @@ if (html.indexOf(LAW_MAP_SLOT) !== -1) {
   html = html.split(LAW_MAP_SLOT).join(m[1]);
 }
 
+// [2026.10.19 서버 용량] 조견표·서식 칸 해설 자료(reftables/*.json, 약 1MB)는 서버 lawsearch.html엔 빈 값으로 두고 여기서 끼운다.
+{
+  const ref = require('./build-reftables.js');
+  const i = html.indexOf(ref.B), k = html.indexOf(ref.E);
+  if (i < 0 || k < i) throw new Error('lawsearch 자료 자리 표시(REF_DATA)를 못 찾았습니다');
+  if (html.indexOf(ref.B, i + 1) !== -1) throw new Error('REF_DATA 자리 표시가 두 군데입니다');
+  html = html.slice(0, i) + ref.refBlock(ref.collect()) + html.slice(k);
+}
+
 const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16);
 html = html.replace('<head>', '<head>\n  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (' + stamp + ' UTC) -->');
 

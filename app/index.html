@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 05:23 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-19 05:30 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -5962,6 +5962,8 @@
     };
     pane.innerHTML = '<div class="card"><div class="lsi-note" style="margin-bottom:8px;">조견표는 판정 순서(절차)와 요건·수치·기간(내용)을 한 장에 담은 표입니다. 행마다 공식 원문 근거가 있고, <b>세무사님 확인 전에는 계산·판정에 쓰지 않습니다.</b> ' +
       '자료는 드라이브 "0 NETAX\\참고자료조견표" 폴더에 넣어 주시면 읽어서 초안을 만듭니다.</div>' +
+      // [2026.10.19 서버 용량] 조견표 자료는 job.netax.kr/app 화면에만 들어 있다(예전 구글 주소 화면은 빈 값)
+      (LSI_REF_TABLES_.length ? '' : '<div class="lsi-note" style="color:#b26a00; margin-bottom:8px;">이 화면(예전 구글 주소)에는 조견표 자료가 없습니다. <a href="https://job.netax.kr/app/" target="_blank" rel="noopener">job.netax.kr/app</a> 화면에서 보세요.</div>') +
       '<div style="display:flex; gap:16px; flex-wrap:wrap;">' +
       '<div style="flex:1; min-width:260px;"><b>1부 세법 외 사실 이력</b><ul style="margin:6px 0 0 18px;">' + (part('1부').map(item).join('') || '<li class="lsi-note">아직 없음</li>') + '</ul></div>' +
       '<div style="flex:1; min-width:260px;"><b>2부 세법 안 조견표</b><ul style="margin:6px 0 0 18px;">' + (part('2부').map(item).join('') || '<li class="lsi-note">아직 없음</li>') + '</ul></div>' +
