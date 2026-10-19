@@ -1239,5 +1239,30 @@
                     "정답": {
                               "비사업용여부": false
                     }
+          },
+          {
+                    "이름": "[§103② 기본공제 순서] 단기 토지 먼저(2025.3.31) 양도·장기 토지 나중(9.30): 250만은 먼저 판 단기에서 — 단기 (5천만−250만)×50% 2,375만 + 장기 누진 1.17억 2,551만",
+                    "도구": "calculateTransferTaxMultiJS",
+                    "고정": true,
+                    "입력": [
+                              {
+                                        "assetType": "other",
+                                        "transferPrice": 300000000,
+                                        "acquisitionPrice": 150000000,
+                                        "transferDate": "2025-09-30",
+                                        "acquisitionDate": "2014-03-01"
+                              },
+                              {
+                                        "assetType": "other",
+                                        "transferPrice": 200000000,
+                                        "acquisitionPrice": 150000000,
+                                        "transferDate": "2025-03-31",
+                                        "acquisitionDate": "2024-12-01"
+                              }
+                    ],
+                    "정답": {
+                              "산출세액_합계": 49260000,
+                              "기본공제": 2500000
+                    }
           }
 ]
