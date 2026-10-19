@@ -1572,6 +1572,22 @@
     const pick = function (k) { return Math.max.apply(null, [0].concat(srcs.map(function (s) { return Math.max(0, Number(s && s[k]) || 0); }))); };
     return { p70: pick('sect133PriorSect70'), pFarm: pick('sect133PriorFarm'), pComp: pick('sect133PriorComp') };
   }
+  // [2026.10.20 J21 — 조견표 2부-33] 양도소득세 감면분 농어촌특별세 — 농특세법 §3·§5①1호: 조특법으로 감면받는 소득세 감면세액 × 100분의 20.
+  //  비과세는 농특세법 §4·시행령 §4에 열거된 것만(2026.5.12. 법·2026.1.2. 시행령 원문): 조특법 §66~§70(자경·축사·어업·자경산지·대토 — 시행령 §4①1호),
+  //  §77 중 §69①본문 거주자가 직접 경작한 토지(8년 요건 무관, 같은 호), §33·§98의3·§98의5(§4⑦1호). 그 밖의 양도세 감면(§77 그 밖의 수용·§77의2·§77의3·
+  //  §43·§85의10·§97·§97의2·§97의5·§97의10·§98·§98의2·§98의4·§98의6~§98의8·§99·§99의2·§99의3)은 과세. 본세 가산세는 과세표준에 안 넣음(시행령 §5④).
+  //  돌려주는 값: 비과세면 근거 글, 과세면 ''.
+  function nongteukExemptReason_(red, raw) {
+    raw = raw || {};
+    if (red.key === 'farm') return '조특법 §' + String(red.sec || '').replace('_', '의') + ' — 농특세법 시행령 §4①1호(§66~§70) 비과세';
+    if (red.key === 'comp') {
+      if (red.sec === '77' && raw.isCompensationOnSelfCultivatedLand) return '조특법 §77 중 거주자가 직접 경작한 토지 수용 — 농특세법 시행령 §4①1호 비과세';
+      return '';
+    }
+    const up = String(raw.unsoldHouseReductionProvision || '');
+    if (up === 'sect98_3' || up === 'sect98_5') return '조특법 ' + up.replace('sect98_', '§98의') + ' — 농특세법 시행령 §4⑦1호 비과세';
+    return '';
+  }
   function reductions90_(assets, o) {
     const A = Math.max(0, Number(o.A) || 0), D = Math.max(0, Number(o.D) || 0);
     const f = o.lossFactor != null ? Math.max(0, Math.min(1, Number(o.lossFactor) || 0)) : 1;
@@ -2574,6 +2590,42 @@
     const eFilingCredit = filingParams.isSelfElectronicFiling ? Math.min(20000, Math.max(0, totalCalculatedTax - pensionAccountCreditTotal)) : 0;
     const filingStatus = ['ontime', 'unreported', 'underreported'].indexOf(filingParams.filingStatus) !== -1 ? filingParams.filingStatus : 'ontime';
     const penalties = giftFilingPenalties(totalCalculatedTax, filingStatus, !!filingParams.isFraudulent, filingParams.underreportedTaxAmount, filingParams.unpaidDays, Number(filingParams.unpaidTaxForLatePenalty), !!filingParams.isOffshoreTransaction, lateCtx_(filingParams), Number(filingParams.unpaidTaxAtDesignatedDueDate), filingParams.fraudulentUnderreportedTaxAmount, filingParams.unpaidStartDate || unpaidStartAt_('transfer', poolDate_));
+    // [2026.10.20 J21] 농어촌특별세 — ① 세액감면(§90①) 분: 감면마다 nongteukExemptReason_로 가르고 과세분 감면세액(만기특약 위반 추징은 뺌)을 더함
+    //  ② 소득금액에서 빼는 감면(§99 신축주택 계열·§98 미분양 중 §98의3·§98의5 아닌 것·§43·§97 소득금액 방식): 농특세법 시행령 §5② —
+    //     "비과세소득·소득공제액을 과세표준에 산입하여 계산한 세액 − 제외하고 계산한 세액" → 그 감면을 빼고 다시 계산한 산출세액과의 차이.
+    const ntRows_ = [];
+    let ntBase_ = 0;
+    red90_.reds.forEach(function (x) {
+      if (!(x.allowed > 0)) return;
+      const c = cores[x.idx] || {};
+      const ex = nongteukExemptReason_(x, c.raw);
+      let amt = x.allowed;
+      if (x.key === 'comp' && c.raw && c.raw.isBondPledgeBreached && (x.type === 'bond_3y' || x.type === 'bond_5y')) amt = Math.max(0, amt - Math.min(x.allowed, Math.floor(x.share * compClawRateAt_(x.type, c.raw.transferDate) + 1e-6)));
+      ntRows_.push({ idx: x.idx, 감면: x.label, 감면세액: amt, 농특세: ex ? '비과세' : '과세', 근거: ex || '농특세법 §4·시행령 §4 비과세 목록에 없음 — 감면세액 × 20%' });
+      if (!ex) ntBase_ += amt;
+    });
+    if (!filingParams._ntInner) {
+      const drop_ = {};
+      cores.forEach(function (c, k) {
+        const raw = c && c.raw;
+        if (!raw || k >= transactions.length) return;
+        const d = {};
+        if (Number(raw._신축주택감면_제외소득금액) > 0) d.newHouseReductionProvision = '';
+        if (Number(raw._미분양주택감면_제외소득금액) > 0 && ['sect98_3', 'sect98_5'].indexOf(raw.unsoldHouseReductionProvision) === -1) d.unsoldHouseReductionProvision = '';
+        if (Number(raw._구조조정감면_제외소득금액) > 0) d.isRestructuringPropertyReduction = false;
+        if (Number(raw._장기임대감면_제외소득금액) > 0 && raw._장기임대감면_세액감면율 === undefined) d.longTermRentalHouseProvision = '';
+        if (Object.keys(d).length) drop_[k] = d;
+      });
+      const ks_ = Object.keys(drop_);
+      if (ks_.length) {
+        const re_ = window.calculateTransferTaxMultiJS(transactions.map(function (t0, k) { return drop_[k] ? Object.assign({}, t0, drop_[k]) : t0; }), Object.assign({}, filingParams, { _ntInner: true }));
+        if (re_ && !re_.error) {
+          const diff_ = Math.max(0, (Number(re_.산출세액_합계) || 0) - totalCalculatedTax);
+          if (diff_ > 0) { ntBase_ += diff_; ntRows_.push({ idx: ks_.map(Number), 감면: '양도소득금액에서 빼는 감면(신축주택·미분양·구조조정·장기임대 소득금액 방식)', 감면세액: diff_, 농특세: '과세', 근거: '농특세법 시행령 §5② — 그 감면을 넣지 않고 다시 계산한 산출세액 ' + Math.round(re_.산출세액_합계).toLocaleString('ko-KR') + '원 − 실제 산출세액' }); }
+        }
+      }
+    }
+    const nongteukTax_ = Math.floor(ntBase_ * 0.2);
     const localIncomeTax = Math.round(totalCalculatedTax * 0.1);
     const grandTotal = Math.max(0, totalCalculatedTax - pensionAccountCreditTotal - eFilingCredit + conversionValuePenaltyTotal
       + penalties.unreportedPenalty + penalties.underreportedPenalty + penalties.latePenalty + localIncomeTax + exemptClawbackTotal + pensionAccountClawbackTotal);
@@ -2595,6 +2647,8 @@
       환산취득가액가산세_합계: conversionValuePenaltyTotal,
       무신고가산세: penalties.unreportedPenalty, 과소신고가산세: penalties.underreportedPenalty, 납부지연가산세: penalties.latePenalty,
       지방소득세: localIncomeTax, 납부세액_합계: grandTotal,
+      // [2026.10.20 J21] 84호 ㉒~㉚ 농어촌특별세 — 양도세 납부세액_합계(양도세+지방소득세)에는 넣지 않고 따로(서식도 칸이 따로)
+      농어촌특별세_과세표준: ntBase_, 농어촌특별세: nongteukTax_, 농어촌특별세_내역: ntRows_.length ? ntRows_ : undefined, 납부세액_합계_농특세포함: grandTotal + nongteukTax_,
       자산별_내역: assetNotes,
       거래번호표시: txLabels_, // [2026.10.19] 자산별_내역의 idx → 표시이름(환지 증가분이 맨 뒤에 붙음)
       환지분리_안내: replotAppend_.length ? transactions.filter(function (t) { return t._환지분리; }).map(function (t) { return t._환지분리; }) : undefined,

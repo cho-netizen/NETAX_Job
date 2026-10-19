@@ -5861,6 +5861,7 @@ function renderPropertyCardHtml_(idx, opts){
         '<div class="taxcalc-grid">' +
           '<div class="taxcalc-field" data-show-if="compensationType" style="display:none;"><label>공익사업 양도 방식</label><select data-field="compensationTransferMode"><option value="">고르세요</option><option value="consult">협의매수·정비구역 양도(§77①1·2호 — 사업시행자가 54호로 신청)</option><option value="expropriation">수용(§77①3호 — 양도자가 13호로 신청)</option></select><span class="taxcalc-field-help">신청서가 갈립니다(시행령 §72⑦·⑧) — 세액엔 영향 없음</span></div>' +
           '<div class="taxcalc-field" data-show-if="compensationType" style="display:none;"><label>사업인정고시일</label><input type="date" data-field="publicNoticeDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">현금·채권·대토보상 선택시, 2년이전취득 요건(§77①·§77의2①) 판정용 — 모르면 비워두면 양도일 기준으로 판정</span></div>' +
+          '<div class="taxcalc-field checkbox" data-show-if="compensationType" style="display:none;"><input type="checkbox" data-field="isCompensationOnSelfCultivatedLand" id="compSelfFarm-' + idx + '"><label for="compSelfFarm-' + idx + '">거주자가 직접 경작한 농지가 수용됨(농어촌특별세 비과세 — 농특세법 시행령 §4①1호, 8년 요건은 안 봄)</label></div>' +
           '<div class="taxcalc-field checkbox" data-show-if="compensationType" style="display:none;"><input type="checkbox" data-field="isBondPledgeBreached" id="bondBreach-' + idx + '"><label for="bondBreach-' + idx + '">채권 만기보유 특약 위반(§77④, 3년·5년만기특약 선택시만 해당 — 양도소득세의 15%(5년 25%) 즉시 징수, 2014~2018 양도 10%(20%))</label></div>' +
           '<div class="taxcalc-field" data-show-if="compensationType" style="display:none;"><label>직전 4개 과세기간 수용 등 감면세액</label><input type="number" data-field="sect133PriorComp" placeholder="원"><span class="taxcalc-field-help">2025년 이후 양도분 조특법 §133②2호 5개 과세기간 3억원 한도용 — §77·§77의2·§77의3으로 감면받은 양도소득세 합계(2025.3.14 전 §77의3 감면분은 빼고). 양도인 한 사람 값 — 자산 하나에만 넣으세요</span></div>' +
           '<div class="taxcalc-field" data-show-if="compensationType" style="display:none;"><label>다운계약서 등 계약서·실거래 차액</label><input type="number" data-field="downContractPriceDifference" placeholder="원"><span class="taxcalc-field-help">소득세법§91② 비과세·감면 배제 추징용, 해당 시만</span></div>' +
@@ -6877,6 +6878,7 @@ function collectTransferInput(vals){
     compensationTransferMode: vals.compensationTransferMode || '', // [2026.10.19] 협의매수(54호, 사업시행자)·수용(13호, 양도자)
     publicNoticeDate: vals.publicNoticeDate || '',
     isBondPledgeBreached: !!vals.isBondPledgeBreached,
+    isCompensationOnSelfCultivatedLand: !!vals.isCompensationOnSelfCultivatedLand, // [2026.10.20 J21] 농특세 비과세 판정(농특세법 시행령 §4①1호)
     // [2026.10.19 서식 감사] 조특법 §133 5개 과세기간 한도 — 직전 4개 과세기간 감면세액(양도인 한 사람 값, 지분으로 나누지 않음)
     sect133PriorFarm: numVal(vals.sect133PriorFarm) || 0,
     sect133PriorSect70: numVal(vals.sect133PriorSect70) || 0,
@@ -7098,6 +7100,9 @@ function renderOneTransferResultHtml_(r, label, sellerIdx){
   if (r.합산수용감면액) html += taxCalcResultRow('공익사업용토지 수용감면(조특법§77)', '-' + won(r.합산수용감면액));
   if (r.합산조특법세액감면액) html += taxCalcResultRow('조특법 세액감면(비거주자§98의4·공공매입임대§97의10·국가양도산지§85의10·구조조정§43·장기임대§97)', '-' + won(r.합산조특법세액감면액));
   if (r.합산채권만기특약위반_추징액) html += taxCalcResultRow('채권 만기특약 위반 추징(조특법§77④)', '+' + won(r.합산채권만기특약위반_추징액));
+  // [2026.10.20 J21] 양도세 감면분 농어촌특별세(84호 ㉒~㉙ — 양도세와 따로 납부)
+  if (r.농어촌특별세 > 0) html += taxCalcResultRow('농어촌특별세(과세 감면세액 ' + won(r.농어촌특별세_과세표준) + ' × 20%, 따로 납부)', won(r.농어촌특별세));
+  (r.농어촌특별세_내역 || []).forEach(function(x){ html += '<div class="taxcalc-result-note">농특세 ' + escapeHtml(x.농특세) + ' — ' + escapeHtml(String(x.감면)) + ' ' + won(x.감면세액) + ': ' + escapeHtml(x.근거) + '</div>'; });
   // [2026.10.19 서식 감사] 조특법 §133 한도로 감면하지 않은 금액(엔진 감면한도_조특법133)·그 시점 경고
   (r.감면한도_조특법133 || []).forEach(function(x){ html += '<div class="taxcalc-result-note">' + escapeHtml(x.한도) + ' — 감면받을 세액 ' + won(x.감면받을세액_합계) + (x.직전4개과세기간_감면세액 ? ' + 직전 4개 과세기간 ' + won(x.직전4개과세기간_감면세액) : '') + ' 중 ' + won(x.감면하지않는금액) + '은 감면하지 않음(늦게 양도한 자산부터)</div>'; });
   if (r.감면한도_시점경고) html += '<div class="taxcalc-result-note" style="color:#b26a00;">' + escapeHtml(r.감면한도_시점경고) + '</div>';
@@ -9307,14 +9312,16 @@ function trRateDetailRecord_(rateClass, r, splitAmt){ // rateClass: '00'(국세 
   b = b.concat(ihPadNum_(자진납부할세액, 13));          // 19 자진납부할 세액
   b = b.concat(ihPadNum_(splitAmt, 13));                // 20 분납할 세액
   b = b.concat(ihPadNum_(즉시납부세액, 13));            // 21 자진납부세액(분납신청액 제외한 나머지, 분납 없으면 19와 동일)
-  b = b.concat(ihPadNum_(0, 13));                       // 22 농어촌특별세_소득세감면세액(엔진 미노출)
-  b = b.concat(ihPadNum_(0, 5));                        // 23 농어촌특별세_세율
-  b = b.concat(ihPadNum_(0, 13));                       // 24 농어촌특별세_산출세액
-  b = b.concat(ihPadNum_(0, 13));                       // 25 농어촌특별세_수정신고가산세등
+  // [2026.10.20 J21] 농어촌특별세(84호 ㉒~㉙) — 국세 줄(00)에만. 엔진 농어촌특별세_과세표준(과세 감면세액) × 20%(농특세법 §5①1호). 세율은 다른 세율 칸처럼 ×100(20% → 02000)
+  const ntBase = isLocal ? 0 : (r.농어촌특별세_과세표준 || 0), ntTax = isLocal ? 0 : (r.농어촌특별세 || 0);
+  b = b.concat(ihPadNum_(ntBase, 13));                  // 22 농어촌특별세_소득세감면세액
+  b = b.concat(ihPadNum_(ntBase > 0 ? 2000 : 0, 5));    // 23 농어촌특별세_세율
+  b = b.concat(ihPadNum_(ntTax, 13));                   // 24 농어촌특별세_산출세액
+  b = b.concat(ihPadNum_(0, 13));                       // 25 농어촌특별세_수정신고가산세등(계산 안 함)
   b = b.concat(ihPadNum_(0, 13));                       // 26 농어촌특별세_기신고,결정,경정세액
-  b = b.concat(ihPadNum_(0, 13));                       // 27 농어촌특별세_자진납부할세액
+  b = b.concat(ihPadNum_(ntTax, 13));                   // 27 농어촌특별세_자진납부할세액
   b = b.concat(ihPadNum_(0, 13));                       // 28 농어촌특별세_분납할세액
-  b = b.concat(ihPadNum_(0, 13));                       // 29 농어촌특별세_자진납부세액
+  b = b.concat(ihPadNum_(ntTax, 13));                   // 29 농어촌특별세_자진납부세액
   b = b.concat(ihPadNum_(isLocal ? 0 : localTax, 13));  // 30 주민세_소득세자진납부할세액(00행에 지방소득세 요약 기재)
   b = b.concat(ihPadNum_(0, 5));                        // 31 주민세_세율(스펙상 "사용안함")
   b = b.concat(ihPadNum_(0, 13));                       // 32 주민세_산출세액
@@ -10341,6 +10348,10 @@ function trPrintFormPageHtml_(seller, r, buyers, assets){
       ((r.환산취득가액가산세_합계 || 0) ? pfRow_(++n, '기장불성실 등 가산세(감정가액·환산취득가액 적용, §114의2)', won(r.환산취득가액가산세_합계)) : '') +
       pfRow_(++n, '자진납부할 세액(국세)', won(nationalPayable)) +
     '</table>' +
+    // [2026.10.20 J21] 농어촌특별세 납부계산서(84호 ㉒~㉙) — 과세 감면세액 × 20%(농특세법 §5①1호), 비과세 감면(시행령 §4)은 빠짐
+    (r.농어촌특별세_과세표준 > 0 ? '<div class="pf-section-head">농어촌특별세 납부계산서</div><table class="pf-table">' +
+      pfRow_(0, '㉒ 소득세 감면세액(농특세 과세분)', won(r.농어촌특별세_과세표준)) + pfRow_(0, '㉓ 세율', '20%') +
+      pfRow_(0, '㉔ 산출세액', won(r.농어촌특별세)) + pfRow_(0, '㉗ 납부할 세액', won(r.농어촌특별세)) + '</table>' : '') +
     '<div class="pf-section-head">개인지방소득세(참고, 세율구분 98)</div>' +
     '<table class="pf-table">' + pfRow_(0, '지방소득세(국세의 10% 근사)', won(localTax)) + '</table>' +
     '<div class="pf-note">이 서식은 NETAX 계산 결과를 기준으로 자동 생성되었습니다 — 지방소득세는 위택스 별도신고 필요 여부를 실무로 확인하세요. 양도소득금액계산명세서(부표1)·취득가액및필요경비계산상세명세서(부표3)는 뒤에 이어집니다.</div>' +
