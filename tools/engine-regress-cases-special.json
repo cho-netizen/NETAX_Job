@@ -2580,5 +2580,39 @@
    "과세표준": 450000000,
    "무신고가산세": 48000000
   }
+ },
+ {
+  "이름": "[2부-09 옛판] 환산 1.5억 + 개산 180만 < 비용 3억, 2009-06-30 양도 — §97②2호 단서는 2011.1.1. 이후 신고분이라 환산 + 개산만: 차익 348,200,000 × 70% − 250만 = 241,240,000, × 35% − 1,414만 = 70,294,000",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "other",
+   "acquisitionDate": "1995-03-01",
+   "transferPrice": 500000000,
+   "acquisitionStandardPriceForConversion": 60000000,
+   "transferStandardPriceForConversion": 200000000,
+   "necessaryExpenses": 300000000,
+   "transferDate": "2009-06-30"
+  },
+  "정답": {
+   "과세표준": 241240000,
+   "산출세액": 70294000
+  }
+ },
+ {
+  "이름": "[2부-09 대조] 같은 자산 2012-06-30 양도 — 단서로 비용 3억: 차익 2억 × 70% − 250만 = 137,500,000, × 35% − 1,490만 = 33,225,000",
+  "도구": "calculate_transfer_tax",
+  "입력": {
+   "assetType": "other",
+   "acquisitionDate": "1995-03-01",
+   "transferPrice": 500000000,
+   "acquisitionStandardPriceForConversion": 60000000,
+   "transferStandardPriceForConversion": 200000000,
+   "necessaryExpenses": 300000000,
+   "transferDate": "2012-06-30"
+  },
+  "정답": {
+   "과세표준": 137500000,
+   "산출세액": 33225000
+  }
  }
 ]

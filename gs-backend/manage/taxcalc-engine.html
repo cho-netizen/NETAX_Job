@@ -1213,7 +1213,15 @@
       const est_ = Math.floor(acquisitionStandardPriceForConversion * estimatedRateFor_() + 1e-6);
       // 단서 금액은 자본적지출 + 양도비만 — 화면이 취득 부대비용(취득세·법무사비 등, 부표3 코드 1xx)을 acquisitionIncidentalExpenses로 따로 넘긴다
       const actual_ = Math.max(0, (Number(t.necessaryExpenses) || 0) - (Number(t.acquisitionIncidentalExpenses) || 0));
-      if (actual_ > acquisitionPrice + est_) {
+      // [2026.10.20 법령 세션 옛 판 원문 — 조견표 2부-09] §97②2호 단서는 2011.1.1. 판(법률 제10408호) 신설, 부칙 제10조 "이 법 시행 후 최초로 신고하는 분부터" —
+      //  신고일을 받지 않으므로 그 자산 예정신고기한(양도월 말일 + 2개월)이 2010.12.31. 이전인 양도(2010.10.31.까지)는 단서 없이 환산 + 개산공제만.
+      //  그런 자산을 2011.1.1. 이후 처음 신고(기한후 등)했다면 단서가 적용되니 안내로 알림.
+      const d97_ = String(t.transferDate || '').slice(0, 10);
+      const noProviso97_ = refHistoryOn_() && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(d97_) && d97_ < '2010-11-01';
+      if (noProviso97_ && actual_ > acquisitionPrice + est_) {
+        necessaryExpenses = est_;
+        acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '§97②2호 단서(자본적지출 + 양도비가 더 크면 그 금액)는 2011.1.1. 이후 신고분부터라(법률 제10408호 부칙 제10조) 이 양도는 환산 + 개산공제(' + est_ + '원)만 — 2011.1.1. 이후 처음 신고했다면 단서 적용(확인 필요)';
+      } else if (actual_ > acquisitionPrice + est_) {
         necessaryExpenses = actual_ - acquisitionPrice; // 합계(취득가액 + 필요경비) = 자본적지출 + 양도비
         acquisitionPriceMethodNote += (acquisitionPriceMethodNote ? ' ' : '') + '§97②2호 단서: 입력한 필요경비 ' + actual_ + '원(자본적지출 + 양도비)이 (환산취득가액 + 개산공제 ' + est_ + '원)보다 커서 그 금액 전부를 필요경비로 했습니다(환산취득가액 대신).';
       } else {
