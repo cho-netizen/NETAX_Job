@@ -74,5 +74,26 @@ module.exports = function (E, H) {
   L.push({ name: '소득104호_출국전보유현황', forms: [{ formKey: '소득104호', ctx: c104 }], ctx: c104 });
   L.push({ name: '소득105호_납부유예_담보제공', forms: [{ formKey: '소득105호', ctx: c104 }], ctx: c104 });
 
+  // ⑦ 증여10호의5부표1 — 초과배당(상증법 §41의2): 실제 받은 배당 5억 × 과소배당 비율 60% = 초과배당 3억, 10년 안 같은 증여자 증여 2천만(증여특례A 시험과 같은 입력)
+  //   ⑨ = 엔진 증여의제이익(초과배당 3억 − 추정 소득세상당액), ⑭ = 2천만(1천만원 이상이라 가산)
+  var edIn = { excessDividendBaseAmount: 500000000, disproportionateShortfallRatio: 0.6, relationDeductionLimit: 50000000, priorGiftAmount: 20000000, priorPaidTax: 0, filingStatus: 'ontime', giftDate: '2026-04-30' };
+  var rEd = E.calculateExcessDividendGiftTaxJS(clone(edIn));
+  if (!rEd || rEd.error) throw new Error('초과배당 엔진 오류: ' + (rEd && rEd.error));
+  var cEd1 = { r: rEd, input: { priorGiftAmount: 20000000 } };
+  L.push({ name: '증여10호의5부표1_초과배당', forms: [{ formKey: '증여10호의5부표1', ctx: cEd1 }], ctx: cEd1 });
+  // ⑦-2 증여10호의6부표1 — 특정법인 거래이익(상증법 §45의5): 증여특례A 시험과 같은 입력(⑨ = 4.95억), 가산액 입력 없음 → 과세표준에서 되살림(0)
+  var scIn = { benefitToCorpAmount: 1000000000, corporateTaxAfterCredit: 350000000, corporateTaxableIncome: 2000000000, shareholderOwnershipRatio: 0.6,
+    relationDeductionLimit: 0, priorGiftAmount: 0, priorPaidTax: 0, filingStatus: 'ontime', giftDate: '2026-03-15', transactionDate: '2026-03-15' };
+  var rSc = E.calculateSpecificCorporationGiftTaxJS(clone(scIn));
+  if (!rSc || rSc.error) throw new Error('특정법인 엔진 오류: ' + (rSc && rSc.error));
+  var cSc1 = { r: rSc, input: {} };
+  L.push({ name: '증여10호의6부표1_특정법인', forms: [{ formKey: '증여10호의6부표1', ctx: cSc1 }], ctx: cSc1 });
+  // ⑧ 증여10호의5부표2·10호의6부표2 — 서화·골동품(값은 화면에 넣는 감정가액 평균 — 엔진 계산값이 아니라 입력값, 시행령 §52②2호)
+  var ARTS = [{ code: '02', artist: '견본작가', title: '견본 산수도', year: '1975', material: '한지에 수묵', size: '60×90', value: 150000000 },
+    { code: '13', artist: '미상', title: '견본 백자 항아리', year: '', material: '백자', size: '높이 40', value: 80000000 }];
+  var cArt = { arts: ARTS, donee: DONEE };
+  L.push({ name: '증여10호의5부표2_서화골동품', forms: [{ formKey: '증여10호의5부표2', ctx: cArt }], ctx: cArt });
+  L.push({ name: '증여10호의6부표2_서화골동품', forms: [{ formKey: '증여10호의6부표2', ctx: cArt }], ctx: cArt });
+
   return L;
 };

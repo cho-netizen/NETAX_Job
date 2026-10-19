@@ -30,7 +30,11 @@
     '조특11호의8': '조세특례제한법 시행규칙 [별지 제11호의8서식]', // 가업승계 주식 등 증여세 과세특례 적용신청서
     '소득103호': '소득세법 시행규칙 [별지 제103호서식]', // 국외전출자 양도소득세 세액공제신청서, 국외전출자 국내주식등 양도내역서
     '소득104호': '소득세법 시행규칙 [별지 제104호서식]', // 국외전출자국내주식등 보유현황 신고서
-    '소득105호': '소득세법 시행규칙 [별지 제105호서식]' // 국외전출자 납부유예신청서
+    '소득105호': '소득세법 시행규칙 [별지 제105호서식]', // 국외전출자 납부유예신청서
+    '증여10호의5부표1': '상속세 및 증여세법 시행규칙 [별지 제10호의5서식 부표1]', // 증여재산 및 평가명세서(초과배당)
+    '증여10호의5부표2': '상속세 및 증여세법 시행규칙 [별지 제10호의5서식 부표2]', // 서화·골동품 등 증여재산 명세서(초과배당)
+    '증여10호의6부표1': '상속세 및 증여세법 시행규칙 [별지 제10호의6서식 부표1]', // 증여재산 및 평가명세서(특정법인)
+    '증여10호의6부표2': '상속세 및 증여세법 시행규칙 [별지 제10호의6서식 부표2]' // 서화·골동품 등 증여재산 명세서(특정법인)
   };
   var mappers = {};
   var ctxFor = {};
@@ -344,6 +348,85 @@
     ctxFor[k] = function (extra) { var et = etFromApp(); if (!et || (k === '소득105호' && !et.input.deferralRequested)) return null; return Object.assign({ et: et }, extra || {}); };
     // 지금 인쇄(exitTaxPrintFormPageHtml_)와 같은 조건 — 103·104호는 국외전출자 결과가 있으면, 105호는 "납부유예를 신청함"일 때만
     ready[k] = function () { var et = etFromApp(); return !!(et && (k !== '소득105호' || et.input.deferralRequested)); };
+  });
+
+  // ═════════ 상증 별지 제10호의5서식·제10호의6서식 부표1(증여재산 및 평가명세서)·부표2(서화·골동품 등 증여재산 명세서) ═════════
+  //  부표1 ctx: { r: lastExcessDividendGiftResult_ | lastSpecificCorpGiftResult_, input: {priorGiftAmount} } — 계 ⑨ = 본표 ⑲(10호의5)·⑳(10호의6), ⑭ = 본표 ⑳·㉖ 가산액
+  //    (예전 인쇄는 부표1을 만들지 않았음. 초과배당·특정법인 탭은 재산 명세를 받지 않아 ①~⑧ 줄은 비움)
+  //  부표2 ctx: { arts: [{code, artist, title, year, material, size, value}], donee } — 지금 인쇄 gfArtworkPrintPageHtml_와 같은 값
+  //    (일반 증여 탭 재산평가의 서화·골동품 전부, 배분 전 전액, 수증자 = giftDonees[0]) — 10호의5·10호의6 본표 뒤에 붙던 "[별지 제10호의5·10호의6서식 부표]" 한 장
+  //  세 신고서(10호의5·10호의6)는 일반 증여(10호)와 따로 내는 신고서라 세목 묶음(plan)에 넣지 않음(증여특례A 본표와 같은 판단).
+  var G10 = {
+    '10호의5': { res: 'lastExcessDividendGiftResult_', prior: 'edPriorAmount', tab: '초과배당', gift: '⑲', agg: '⑳' },
+    '10호의6': { res: 'lastSpecificCorpGiftResult_', prior: 'scPriorAmount', tab: '특정법인', gift: '⑳', agg: '㉖' }
+  };
+  // 증여재산가산액 — 증여특례A aggOf와 같은 식(엔진 giftAggregationAmount: 1천만원 미만이면 0, 입력이 없으면 과세표준에서 되살림)
+  function aggOf(r, inp, giftAmt) {
+    if (has(inp.priorGiftAmount)) { var v = n(inp.priorGiftAmount); return v >= 10000000 ? v : 0; }
+    if (n(r.과세표준) > 0) return Math.max(0, n(r.과세표준) + n(r.증여재산공제) + n(r.감정평가수수료공제) + n(r.재해손실공제) - giftAmt);
+    return 0;
+  }
+  function g10Bupyo1(h) {
+    var D = G10[h];
+    return function (ctx) {
+      var o = new Out(), r = ctx.r;
+      if (!r) { o.miss('부표1 전체', D.tab + ' 증여세 계산 결과 없음'); return o.result(); }
+      o.miss('①②③④⑤⑥⑦⑧·국외자산여부·국외재산국가명 재산 명세(9줄)', '계산기에 없음 — ' + D.tab + ' 탭은 증여재산 명세(재산구분·재산종류·소재지·법인명·수량·평가기준)를 받지 않음(계 ⑨만 본표 값으로)');
+      var gv = n(r.증여의제이익);
+      if (r.과세대상여부 === false) o.note('⚠ 엔진: 과세대상 아님 — ' + (r.안내 || '') + ' (⑨에 0을 찍음)');
+      o.set('⑨', gv);
+      o.miss('⑩⑪⑫⑬ 비과세·과세가액불산입', h === '10호의5' ? '해당 없음 — 초과배당 신고서(본표)에 비과세·과세가액불산입 칸이 없음(엔진 0)' : '계산기에 없음 — 특정법인 탭에 입력 칸 없음(엔진 0, 본표 ㉑~㉔도 비움)');
+      o.set('⑭', aggOf(r, ctx.input || {}, gv));
+      o.miss('⑮ 합계', '⑨~⑭를 더하고 빼는 식이 서식·작성방법에 없음(별지 제10호서식 부표1과 같은 판단)');
+      if (h === '10호의5') o.check('⑨ = 본표 ⑲ = ⑰ 초과배당금액 − ⑱ 소득세상당액', gv, Math.max(0, n(r.초과배당금액) - n(r.소득세상당액)));
+      o.note('⑨ = 본표 ' + D.gift + ' 증여재산가액, ⑭ = 본표 ' + D.agg + ' 증여재산가산액(같은 증여자 10년 안 증여 — 1천만원 미만이면 0, 상증법 §47②)');
+      return o.result();
+    };
+  }
+  function g10Bupyo2(h) {
+    return function (ctx) {
+      var o = new Out(), arts = ctx.arts || [], dn = ctx.donee || {};
+      if (!arts.length) { o.miss('부표2 전체', '서화·골동품 재산 없음'); return o.result(); }
+      o.set('①', arts.map(function (x, i) { return String(i + 1); }))
+        .set('②', arts.map(function () { return dn.name || ''; })).set('③', arts.map(function () { return dn.regNo || ''; }))
+        .set('④', arts.map(function (x) { return x.code || ''; })).set('⑤', arts.map(function (x) { return x.artist || ''; }))
+        .set('⑥', arts.map(function (x) { return x.title || ''; })).set('⑦', arts.map(function (x) { return x.year ? String(x.year) : ''; }))
+        .set('⑧', arts.map(function (x) { return x.material || ''; })).set('⑨', arts.map(function (x) { return x.size || ''; }))
+        .set('⑩', arts.map(function (x) { return Math.round(n(x.value)); }));
+      if (!has(dn.name) || !has(dn.regNo)) o.miss('②③ 수증자 성명·주민등록번호', '화면 입력 없음(일반 증여 탭 수증자 첫 번째)');
+      if (arts.some(function (x) { return !x.code; })) o.miss('④ 작품코드(일부 줄)', '화면 입력 없음(재산평가 작품코드)');
+      o.note('⚠ 지금 인쇄와 같이 일반 증여 탭 재산평가의 서화·골동품을 모두(배분 전 전액) 찍음 — ' + G10[h].tab + ' 신고의 증여재산과 같은 재산인지 확인(' + G10[h].tab + ' 탭은 재산 명세를 받지 않음)');
+      if (arts.length > 20) o.note('작품 ' + arts.length + '점 — 20줄을 넘는 만큼 모듈이 다음 장에 이어 찍음');
+      return o.result();
+    };
+  }
+  // 지금 인쇄 gfArtworkPrintPageHtml_와 같은 목록(일반 증여 탭 재산평가 중 method = artwork)
+  function artsFromApp() {
+    var f = g('giftValuationAssets_'), cv = g('computeValuationAssetValue');
+    var list = typeof f === 'function' ? (f() || []) : [];
+    return list.filter(function (a) { return a.method === 'artwork'; }).map(function (a) {
+      return { code: a.artworkCode || '', artist: a.artworkArtist || '', title: a.artworkTitle || '', year: a.artworkYear || '', material: a.artworkMaterial || '', size: a.artworkSize || '',
+        value: typeof cv === 'function' ? Math.round(cv(a)) : 0 };
+    });
+  }
+  Object.keys(G10).forEach(function (h) {
+    var D = G10[h], k1 = '증여' + h + '부표1', k2 = '증여' + h + '부표2';
+    mappers[k1] = g10Bupyo1(h);
+    mappers[k2] = g10Bupyo2(h);
+    ctxFor[k1] = function (extra) {
+      var r = g(D.res); if (!r) return null;
+      var pv = H.el(D.prior);
+      return Object.assign({ r: r, input: { priorGiftAmount: pv === '' ? undefined : n(pv) } }, extra || {});
+    };
+    // 예전 인쇄는 부표1을 만들지 않았음 — 본표(증여특례A)와 같은 조건(그 탭 계산 결과가 있을 때)
+    ready[k1] = function () { return !!g(D.res); };
+    ctxFor[k2] = function (extra) {
+      if (!g(D.res)) return null;
+      var arts = artsFromApp(); if (!arts.length) return null;
+      return Object.assign({ arts: arts, donee: giftPeople().donee }, extra || {});
+    };
+    // 지금 인쇄(edPrintFormPageHtml_·scPrintFormPageHtml_ 뒤 gfArtworkPrintPageHtml_)와 같은 조건 — 그 탭 결과가 있고 서화·골동품 재산이 있을 때
+    ready[k2] = function () { try { return !!(g(D.res) && artsFromApp().length); } catch (e) { return false; } };
   });
 
   // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만) — 추징 신고서는 신고 뒤 따로 내는 서류라 넣지 않음
