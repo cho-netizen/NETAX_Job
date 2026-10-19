@@ -1041,7 +1041,9 @@
       const r_ = core.raw || {}, hy_ = Number(core.rateHoldingYears != null ? core.rateHoldingYears : core.holdingYears);
       if (d < '2021-06-01' && core.assetType === 'house' && hy_ < 2) miss.push('단기 보유 세율(그때 1년 미만 40%·1~2년 기본세율 — 법률 제17477호 부칙 제3조)');
       if (d < '2021-06-01' && core.assetType === 'presale_right') miss.push('분양권 세율(그때 조정지역 50%·그 밖 일반 자산 세율)');
-      if (d >= '2018-04-01' && d < '2022-05-10' && r_.isAdjustedArea && Number(r_.multiHouseCount) >= 2 && !core.isOneHouse) miss.push('다주택 중과(한시배제는 2022-05-10 이후 양도분부터 — 그때는 중과 대상, 2021-06-01 전은 +10%p·+20%p)');
+      // [2026.10.19] 2019.12.17.~2020.6.30. 양도 + 보유 10년 이상(§95④)은 그때도 중과 배제(시행령 §167의3①12호·§167의10①12호 등, 대통령령 제30395호 부칙 제18조) — 경고 안 냄(조견표 2부-27)
+      const tenYearRelief_ = d >= '2019-12-17' && d <= '2020-06-30' && Number(core.holdingYears) >= 10;
+      if (d >= '2018-04-01' && d < '2022-05-10' && r_.isAdjustedArea && Number(r_.multiHouseCount) >= 2 && !core.isOneHouse && !tenYearRelief_) miss.push('다주택 중과(한시배제는 2022-05-10 이후 양도분부터 — 그때는 중과 대상, 2021-06-01 전은 +10%p·+20%p)');
       if (d < '2020-01-01' && Number(core.conversionValuePenalty) > 0) miss.push('환산취득가액 가산세(2018년 전 양도는 없음·2018~2019는 신축 건물만)');
       if (r_.giftReceivedDate && String(r_.giftReceivedDate).slice(0, 10) < '2023-01-01' && r_._이월과세_적용여부 !== undefined) miss.push('이월과세 기간(그 증여일은 5년)');
       if (d < '2025-01-01' && r_.compensationType) miss.push('수용감면율·감면 한도');
