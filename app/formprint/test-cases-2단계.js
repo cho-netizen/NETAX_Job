@@ -23,5 +23,25 @@ module.exports = function (E, H) {
   var c52b = { clawback: { formType: 'farmland_gift', result: cr52b, reason: '02' }, donee: DONEE, donor: DONOR, taxAgent: AGENT, 신고일: '2023-09-30' };
   L.push({ name: '조특52호의2_영농자녀_영농중단_구간', forms: [{ formKey: '조특52호의2', ctx: c52b }], ctx: c52b });
 
+  // ② 조특11호의10 — 가업승계 증여세 과세특례 추징(코드 03 휴업·폐업, 조특법 §30의6③1호): 일반 세율로 다시 낸 증여세 200,000,000원
+  //   당초 증여 2023.3.15. → 신고기한 2023.6.30. → 기산일 2023.7.1., 휴업일(추징사유 발생일) 2026.5.31.
+  //   손계산: 일수 = 366(2023.7.1.~2024.6.30.) + 365 + 335(2025.7.1.~2026.5.31.) = 1,066일, 이자 = 200,000,000 × 1,066 × 22/100,000 = 46,904,000원
+  var GP = { donee: Object.assign({}, DONEE, { name: '견본승계자녀', address: '서울특별시 ○○구 견본로 5', taxOffice: '역삼세무서' }), donor: Object.assign({}, DONOR, { name: '견본창업주', address: '서울특별시 ○○구 견본로 1' }) };
+  var cr1110 = claw({ clawedBackTaxAmount: 200000000, startDate: '2023-07-01', endDate: '2026-05-31', method: 'daily' });
+  var c1110 = Object.assign({ clawback: { formType: 'sr_succession', result: cr1110, reason: '03' }, taxAgent: AGENT, 신고일: '2026-08-31' }, GP);
+  L.push({ name: '조특11호의10_가업승계_휴업', forms: [{ formKey: '조특11호의10', ctx: c1110 }], ctx: c1110 });
+
+  // ③ 조특11호의13 — 가업승계 증여세 납부유예 사후관리 추징(코드 04 지분 감소, 조특법 §30의7③2호가목): 납부유예 세액 300,000,000원
+  //   당초 증여 2023.9.10. → 신고기한 2023.12.31. → 기산일 2024.1.1., 지분 감소일 2026.3.31. — 이율이 바뀐 날마다 나눔(시행령 §27의7⑭3호 단서)
+  //   손계산: 81일 × 2.9%(~2024.3.21.) + 364일 × 3.5%(~2025.3.20.) + 287일 × 3.1%(~2026.1.1.) + 89일 × 3.1%(~2026.3.31.)
+  //           = 300,000,000 × 26.745 ÷ 365 = 21,982,191원(원 미만 버림) → 납부할 세액 321,982,191원
+  var cr1113 = claw({ clawedBackTaxAmount: 300000000, startDate: '2024-01-01', endDate: '2026-03-31', method: 'split' });
+  var c1113 = Object.assign({ clawback: { formType: 'sr_succession_deferred', result: cr1113, reason: '04' }, taxAgent: AGENT, 신고일: '2026-06-30' }, GP);
+  L.push({ name: '조특11호의13_납부유예_지분감소', forms: [{ formKey: '조특11호의13', ctx: c1113 }], ctx: c1113 });
+  // ③-2 같은 서식 — 재차 납부유예(법 §30의7⑥)를 받은 경우: 율 × 50% → 21,982,191의 절반 근처(구간별 원 미만 버림 전 합계를 버림) = 10,991,095원
+  var cr1113b = claw({ clawedBackTaxAmount: 300000000, startDate: '2024-01-01', endDate: '2026-03-31', method: 'split', isReDeferral: true });
+  var c1113b = Object.assign({ clawback: { formType: 'sr_succession_deferred', result: cr1113b, reason: '02' }, taxAgent: {}, 신고일: '2026-06-30' }, GP);
+  L.push({ name: '조특11호의13_재차납부유예_본인신고', forms: [{ formKey: '조특11호의13', ctx: c1113b }], ctx: c1113b });
+
   return L;
 };

@@ -24,7 +24,9 @@
   'use strict';
   var n = H.n, has = H.has, Out = H.Out;
   var forms = {
-    '조특52호의2': '조세특례제한법 시행규칙 [별지 제52호의2서식]' // 영농자녀 증여세 감면 위반사유 신고 및 자진납부 계산서
+    '조특52호의2': '조세특례제한법 시행규칙 [별지 제52호의2서식]', // 영농자녀 증여세 감면 위반사유 신고 및 자진납부 계산서
+    '조특11호의10': '조세특례제한법 시행규칙 [별지 제11호의10서식]', // 가업승계 증여세 과세특례 추징사유 신고 및 자진납부 계산서
+    '조특11호의13': '조세특례제한법 시행규칙 [별지 제11호의13서식]' // 납부유예 사후관리추징사유 신고 및 자진납부 계산서
   };
   var mappers = {};
   var ctxFor = {};
@@ -68,6 +70,7 @@
     if (segs.length === 1) return { single: true, days: n(segs[0].일수), rate: rateText(segs[0], style), seg: segs[0], total: total };
     return { single: false, days: segs.map(function (x) { return n(x.일수); }).join('+') + '=' + total, rate: segs.map(function (x) { return rateText(x, style); }).join(' · '), total: total };
   }
+  function comma(v) { return String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
   function interestRecalc(tax, seg) {
     if (seg.일이율 != null) return Math.floor(tax * n(seg.일수) * seg.일이율 + 1e-6);
     return Math.floor(tax * n(seg.일수) * seg.연이율 / 365 + 1e-6);
@@ -88,7 +91,7 @@
   function clawTaxCells(o, cr, k, style, want) {
     var tax = n(cr.추징세액), ic = interestCells(cr, style);
     o.set(k.tax, tax);
-    if (ic) { o.set(k.days, ic.single ? ic.days : ic.days).set(k.rate, ic.rate); if (!ic.single) o.note(k.days + '·' + k.rate + ' 이자율이 바뀐 기간이 있어 구간별로 적음(일수 합 ' + ic.total + '일)'); }
+    if (ic) { o.set(k.days, ic.single ? comma(ic.days) : ic.days).set(k.rate, ic.rate); if (!ic.single) o.note(k.days + '·' + k.rate + ' 이자율이 바뀐 기간이 있어 구간별로 적음(일수 합 ' + ic.total + '일)'); }
     else o.miss(k.days + k.rate + ' 일수·이자율', '이자 구간 없음');
     o.set(k.int, n(cr.이자상당액_합계)).set(k.due, n(cr.납부할세액));
     if (ic && ic.single) o.check(k.int + ' = ' + k.tax + ' × ' + k.days + ' × ' + k.rate, n(cr.이자상당액_합계), interestRecalc(tax, ic.seg));
@@ -130,6 +133,51 @@
     return Object.assign(giftPeople(), { clawback: { formType: 'farmland_gift', result: cr, reason: H.el('ckFarmlandReason') }, taxAgent: H.agent() }, extra || {});
   };
   ready['조특52호의2'] = function () { return !!clawFromApp('farmland_gift'); };
+
+  // ═════════ 조특 별지 제11호의10서식(가업승계 증여세 과세특례 추징, 법 §30의6③⑧·시행령 §27의6⑤⑬)
+  //          ·제11호의13서식(가업승계 증여세 납부유예 사후관리 추징, 법 §30의7③④·시행령 §27의7⑭) ═════════
+  //  ctx: { clawback: {formType:'sr_succession'|'sr_succession_deferred', result, reason: ckSuccessionReason, reDeferral}, donee, donor, taxAgent, 신고일 }
+  //  예전 인쇄(srSuccessionClawbackPrintPageHtml_)는 순번으로 수증자·증여자 성명·주민번호, 위반코드, 증여세액, 기산일·사유발생일, 구간별 이자, 합계를 찍었음.
+  var SR_REASON = { '01': '가업을 승계하지 않은 경우', '02': '가업을 승계한 후 가업에 종사하지 않은 경우', '03': '가업을 승계한 후 가업을 휴업하거나 폐업한 경우',
+    '04': '가업을 승계한 후 증여받은 주식등의 지분이 줄어드는 경우', '05': '가업을 승계한 후 고용유지 요건을 위반한 경우' };
+  function srClawMapper(is13) {
+    var type = is13 ? 'sr_succession_deferred' : 'sr_succession';
+    return function (ctx) {
+      var o = new Out(), cw = ctx.clawback || {}, cr = cw.result, dn = ctx.donee || {}, dr = ctx.donor || {};
+      if (!cr || cw.formType !== type) { o.miss((is13 ? '조특11호의13' : '조특11호의10') + ' 전체', '사후관리 추징이자 계산(서식 구분: ' + (is13 ? '가업승계 납부유예 사후관리추징' : '가업승계 주식등 과세특례 추징') + ') 결과 없음'); return o.result(); }
+      o.note('⚠ 수증자·증여자 = 일반 증여 탭의 첫 번째 사람(지금 인쇄와 같음 — 추징이자 도구에는 사람 칸이 없음). 가업승계 주식등을 받은 사람과 다르면 고치세요');
+      personCells(o, dn, { name: '①', nameL: '① 수증자 성명', reg: '②', regL: '② 수증자 주민등록번호', addr: '④', addrL: '④ 수증자 주소', email: '⑤', emailL: '⑤ 전자우편주소' });
+      o.set('③', dn.resident === 'nonresident' ? '비거주자' : '거주자');
+      if (has(dn.phone)) { var mob = H.isMobile(dn.phone); o.set(mob ? '⑥@휴대전화' : '⑥@자택', dn.phone).miss('⑥ 수증자 전화번호(' + (mob ? '자택' : '휴대전화') + ')', '화면에 수증자 전화번호 칸이 하나뿐(01x로 시작하면 휴대전화 칸, 아니면 자택 칸 — 기본값 2)'); }
+      else o.miss('⑥ 수증자 전화번호', '화면 입력 없음');
+      o.miss('⑦ 증여자와의 관계', '계산기에 없음 — 계산기 관계 값은 공제 구분(직계존속 등)이라 작성방법 3의 낱말(자 등)이 아님');
+      personCells(o, dr, { name: '⑧', nameL: '⑧ 증여자 성명', reg: '⑨', regL: '⑨ 증여자 주민등록번호', addr: '⑪', addrL: '⑪ 증여자 주소' });
+      o.miss('⑩ 증여일자', '계산기에 없음 — 추징이자 도구는 당초 ' + (is13 ? '납부유예' : '특례') + ' 증여의 날을 받지 않음(화면 증여일은 이번 증여 계산의 날)');
+      o.miss('⑫ 증여자 전화번호', '계산기에 없음(증여자 카드에 전화 칸 없음)');
+      o.miss('⑬⑭⑮⑯⑰⑱⑲·계 1. 증여재산', '계산기에 없음 — 추징이자 도구는 당초 증여받은 주식등(재산)을 받지 않음');
+      var code = String(cw.reason || '');
+      if (SR_REASON[code] && (is13 || code !== '05')) o.set('⑳', code + ' (' + SR_REASON[code] + ')');
+      else o.miss('⑳ 사후관리 위반코드', '화면 입력 없음(위반유형 ckSuccessionReason)');
+      if (is13) o.note('⑳ 코드표에는 법 §30의7③4호(거주자 사망으로 상속 개시) 사유가 없고, 계산기 위반유형에는 05(고용유지 요건 위반, ③3호)가 없음 — 그 사유면 코드를 직접 확인(판단 대기)');
+      else o.note('⑳ 코드표에는 법 §30의6④2호(가업 경영 관련 조세포탈·회계부정 형 확정, 2024.1.1. 시행) 사유가 없음 — 그 사유면 코드를 직접 확인(판단 대기)');
+      clawTaxCells(o, cr, { tax: '㉑', days: '㉒', rate: '㉓', int: '㉔', due: '㉕' }, is13 ? 'perDay' : 'daily', is13 ? 'split' : 'daily');
+      if (is13 && cr.이자율방식 === 'split') {
+        o.note('㉓ 이자율 = 국세환급가산금 이율(국세기본법 시행령 §43의3②) ÷ 365 — 서식 작성방법 11은 "취소·변경 당시 율"만 적었으나 시행령 §27의7⑭3호 단서대로 율이 바뀐 날마다 나눠 찍음');
+        if ((cr.이자율방식_설명 || '').indexOf('50%') >= 0) o.note('㉓ 재차 납부유예(법 §30의7⑥) — 율 × 50%');
+      }
+      signCells(o, ctx, dn.name, dn.taxOffice);
+      return o.result();
+    };
+  }
+  mappers['조특11호의10'] = srClawMapper(false);
+  mappers['조특11호의13'] = srClawMapper(true);
+  [['조특11호의10', 'sr_succession'], ['조특11호의13', 'sr_succession_deferred']].forEach(function (p) {
+    ctxFor[p[0]] = function (extra) {
+      var cr = clawFromApp(p[1]); if (!cr) return null;
+      return Object.assign(giftPeople(), { clawback: { formType: p[1], result: cr, reason: H.el('ckSuccessionReason') }, taxAgent: H.agent() }, extra || {});
+    };
+    ready[p[0]] = function () { return !!clawFromApp(p[1]); };
+  });
 
   // 세목 원본 모양 출력 묶음에 더할 서식(그 사건에 해당하는 것만) — 추징 신고서는 신고 뒤 따로 내는 서류라 넣지 않음
   function plan(tax, ctx) { var L = []; return L; }
