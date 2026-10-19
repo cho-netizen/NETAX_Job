@@ -3,10 +3,13 @@
 //  사용: node tools/regress-answer-audit.js [사례파일…] (기본: special·history)
 //  보는 것: ① 정답 과세표준 → 산출세액(양도 2부-01 기본세율·2부-02 단기·중과, 상증 §26 세율) ② 단순 양도는 입력 → 과세표준(2부-03 장특공, 기본공제)
 //          ③ 증여·상속 신고세액공제율(2부-10). 감면·가산세 등은 사례 이름의 손계산 식을 사람이 본다(이 도구는 "검산 못 함"으로 표시).
+//          ④ [2026.10.20] 단순 증여(관계·금액·날짜·미성년·세대생략) — 2부-11 증여재산공제 → 과세표준, §26 + 2부-15 할증, 2부-10 신고세액공제, 납부세액
+//          ⑤ [2026.10.20] 단순 상속(자녀 수·동거주택·가업·영농·금융재산·장례비 기본) — 2부-12 인적·동거주택·가업(공제율·최소 2억 포함)·영농 한도,
+//             일괄공제 5억·기초 2억·금융재산(§22, 2005~ 같음)·장례비(§14, 증빙 없으면 500만) → 과세표준, §26, 신고세액공제, 납부세액
 const fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '..');
 const T = (n) => JSON.parse(fs.readFileSync(path.join(ROOT, 'reftables', n + '.json'), 'utf8'));
-const t201 = T('2부-01'), t202 = T('2부-02'), t203 = T('2부-03'), t210 = T('2부-10');
+const t201 = T('2부-01'), t202 = T('2부-02'), t203 = T('2부-03'), t210 = T('2부-10'), t211 = T('2부-11'), t212 = T('2부-12'), t215 = T('2부-15');
 const rowAt = (rows, d) => rows.find((r) => r.시작 <= d && (!r.끝 || d <= r.끝));
 const bracketTax = (d, base) => {
   const r = rowAt(t201.행, d); if (!r) return null;
@@ -19,6 +22,51 @@ const years = (a, b) => { const A = new Date(a + 'T00:00:00Z'), B = new Date(b +
 const lt1 = (d, y) => { const r = t203.행.filter((x) => /^표1/.test(x.구분)).find((x) => x.시작 <= d && (!x.끝 || d <= x.끝)); if (!r) return null; let best = -1; Object.keys(r.값).forEach((k) => { if (y >= +k && +k > best) best = +k; }); return best < 0 ? 0 : r.값[best] / 100; };
 const shortRate = (d, kind, y) => { const name = kind === 'house' ? /^단기세율 주택/ : /^단기세율 그 밖/; const r = t202.행.filter((x) => name.test(x.구분)).find((x) => x.시작 <= d && (!x.끝 || d <= x.끝)); if (!r) return null; const v = y < 1 ? r.값['1년미만'] : (y < 2 ? r.값['1년이상2년미만'] : r.값['2년이상']); return typeof v === 'number' ? v / 100 : null; };
 const reportRate = (d) => { const r = rowAt(t210.행, d); return r ? r.값 / 100 : null; };
+const rowOf = (t, gu, d) => rowAt(t.행.filter((r) => r.구분 === gu), d);
+// ④ 단순 증여 — 조견표만으로 과세표준·할증 뒤 산출세액·신고세액공제·납부세액
+const GIFT_KEYS = ['filingStatus', 'relation', 'giftAmount', 'giftDate', 'isMinor', 'isGenerationSkip', 'generationSkipOver2Billion', 'unpaidDays', 'unpaidTaxForLatePenalty'];
+const giftCalc = (inp, d) => {
+  if (!Object.keys(inp).every((k) => GIFT_KEYS.includes(k))) return null;
+  const r = rowOf(t211, '증여재산공제', d); if (!r) return { err: '그 날짜 증여재산공제 표 없음(2부-11)' };
+  const v = r.값, rel = inp.relation;
+  const ded = rel === '배우자' ? v.배우자 : rel === '직계존속' ? (inp.isMinor ? v.직계존속_미성년 : v.직계존속) : rel === '직계비속' ? v.직계비속 : rel === '기타친족' ? v.기타친족 : 0;
+  const base = Math.max(0, inp.giftAmount - Math.min(ded, inp.giftAmount));
+  const t0 = giftTax(base);
+  let prem = 0;
+  if (inp.isGenerationSkip) { const g = rowOf(t215, '세대생략 할증률', d); if (!g) return { err: '그 날짜 할증률 표 없음(2부-15)' }; prem = Math.floor(t0 * ((inp.isMinor && inp.generationSkipOver2Billion) ? g.값.미성년_20억초과 : g.값.기본) / 100 + 1e-6); }
+  const after = t0 + prem, rr = reportRate(d);
+  const credit = inp.filingStatus === 'reported' && rr != null ? Math.floor(after * rr + 1e-6) : 0;
+  return { 과세표준: base, 산출세액_할증후: after, 신고세액공제: credit, 납부세액: inp.unpaidDays ? undefined : after - credit, how: '증여재산공제 ' + ded.toLocaleString('ko-KR') + '(2부-11)' + (prem ? ' · 할증 ' + prem.toLocaleString('ko-KR') + '(2부-15)' : '') + ' · 신고세액공제 ' + Math.round((rr || 0) * 100) + '%(2부-10)' };
+};
+// ⑤ 단순 상속 — 거주자, 배우자 없음, 사전증여·유증 없음
+const INH_KEYS = ['hasSpouse', 'funeralCostAmount', 'netFinancialAssets', 'filingStatus', 'taxableEstateAmount', 'childCount', 'dateOfDeath', 'hasCohabitingHouseDeduction', 'cohabitingHouseValue', 'businessOwnershipYears', 'businessInheritanceIndividualNetAssetValue', 'farmingIndividualAssetValue', 'unpaidDays', 'unpaidTaxForLatePenalty'];
+const inhCalc = (inp, d) => {
+  if (inp.hasSpouse || !Object.keys(inp).every((k) => INH_KEYS.includes(k))) return null;
+  const pr = rowOf(t212, '그 밖의 인적공제', d); if (!pr) return { err: '그 날짜 인적공제 표 없음(2부-12)' };
+  const est = inp.taxableEstateAmount, how = [];
+  const lump = inp.filingStatus === 'unreported' ? 5e8 : Math.max(2e8 + (inp.childCount || 0) * pr.값.자녀, 5e8);
+  let cohabit = 0;
+  if (inp.hasCohabitingHouseDeduction && inp.cohabitingHouseValue > 0) { const c = rowOf(t212, '동거주택 상속공제', d); if (!c) return { err: '그 날짜 동거주택 표 없음(2부-12)' }; cohabit = Math.min(Math.floor(inp.cohabitingHouseValue * c.값.율 / 100 + 1e-6), c.값.한도); how.push('동거주택 ' + c.값.율 + '%·한도 ' + c.값.한도.toLocaleString('ko-KR')); }
+  let biz = 0;
+  if (inp.businessInheritanceIndividualNetAssetValue > 0 && inp.businessOwnershipYears > 0) {
+    const b = rowOf(t212, '가업상속공제 한도', d); if (!b) return { err: '그 날짜 가업 표 없음(2부-12)' };
+    const v = inp.businessInheritanceIndividualNetAssetValue, y = inp.businessOwnershipYears;
+    const cap = Object.keys(b.값).filter((k) => /[0-9]+년/.test(k)).reduce((m, k) => (y >= +k.match(/([0-9]+)년/)[1] ? Math.max(m, b.값[k]) : m), 0);
+    biz = Math.min(Math.floor(v * (b.값.공제율 != null ? b.값.공제율 : 100) / 100 + 1e-6), cap);
+    if (b.값.최소 && cap > 0) biz = Math.max(biz, Math.min(v, b.값.최소));
+    how.push('가업 ' + biz.toLocaleString('ko-KR'));
+  }
+  let farm = 0;
+  if (inp.farmingIndividualAssetValue > 0) { const f = rowOf(t212, '영농상속공제 한도', d); if (!f) return { err: '그 날짜 영농 표 없음(2부-12)' }; farm = Math.min(inp.farmingIndividualAssetValue, f.값.한도); how.push('영농 한도 ' + f.값.한도.toLocaleString('ko-KR')); }
+  const n = inp.netFinancialAssets || 0, fin = n <= 0 ? 0 : n <= 2e7 ? n : Math.floor(Math.min(2e8, Math.max(n * 0.2, 2e7)));
+  const fc = inp.funeralCostAmount || 0, funeral = fc > 0 ? Math.min(Math.max(fc, 5e6), 1e7) : 5e6;
+  const funeralApplied = Math.min(funeral, Math.max(0, est));
+  const ded = Math.min(lump + cohabit + biz + farm + fin, Math.max(0, est - funeralApplied));
+  const base = Math.max(0, Math.floor(est - ded - funeralApplied));
+  const t0 = giftTax(base), rr = reportRate(d);
+  const credit = inp.filingStatus === 'reported' && rr != null ? Math.floor(t0 * rr + 1e-6) : 0;
+  return { 과세표준: base, 산출세액: t0, 신고세액공제: credit, 납부세액: inp.unpaidDays ? undefined : t0 - credit, how: '일괄·기초+인적 ' + lump.toLocaleString('ko-KR') + (how.length ? ' · ' + how.join(' · ') : '') + ' · 신고세액공제 ' + Math.round((rr || 0) * 100) + '%' };
+};
 const files = process.argv.slice(2).length ? process.argv.slice(2) : ['tools/engine-regress-cases-special.json', 'tools/engine-regress-cases-history.json'];
 const out = [];
 files.forEach((f) => {
@@ -65,6 +113,15 @@ files.forEach((f) => {
       const gt = giftTax(base);
       verdict = gt === a.산출세액 ? '산출세액 맞음 — 상증법 §26 세율' : '⚠ 산출세액 다름 — §26 세율로 ' + gt.toLocaleString('ko-KR');
     }
+    // ④·⑤ 단순 증여·상속 — 입력에서 조견표로 끝까지 셈(정답 칸이 있는 것만 맞댐)
+    const sc = d && /^calculate_gift_tax$/.test(c.도구) ? giftCalc(inp, d) : d && /^calculate_inheritance_tax$/.test(c.도구) ? inhCalc(inp, d) : null;
+    if (sc && sc.err) { verdict = '✗ ' + sc.err; }
+    else if (sc) {
+      const diff = Object.keys(sc).filter((k) => k !== 'how' && sc[k] !== undefined && a[k] != null && a[k] !== sc[k]);
+      const seen = Object.keys(sc).filter((k) => k !== 'how' && sc[k] !== undefined && a[k] != null);
+      if (diff.length) { verdict = '⚠ 입력부터 조견표로 센 값과 다름'; notes.push(diff.map((k) => k + ' 정답 ' + a[k].toLocaleString('ko-KR') + ' ↔ 조견표 ' + sc[k].toLocaleString('ko-KR')).join(' / ') + ' (' + sc.how + ')'); }
+      else if (seen.length) { verdict = '입력부터 맞음 — ' + seen.join('·'); notes.push(sc.how); }
+    }
     if (isGift && a.신고세액공제 != null && d) {
       const rr = reportRate(d);
       notes.push('신고세액공제율 ' + (rr != null ? Math.round(rr * 100) + '%(2부-10)' : '표 없음'));
@@ -74,4 +131,4 @@ files.forEach((f) => {
 });
 out.forEach((o) => console.log('[' + o.i + '] ' + o.verdict + ' | ' + o.날짜 + ' | ' + o.이름 + (o.notes ? '\n      ' + o.notes : '')));
 const bad = out.filter((o) => /^[⚠✗]/.test(o.verdict) || /✗/.test(o.notes));
-console.log('\n모두 ' + out.length + '건 · 조견표로 검산 ' + out.filter((o) => /맞음|⚠|✗/.test(o.verdict)).length + '건 · 다름 ' + bad.length + '건');
+console.log('\n모두 ' + out.length + '건 · 조견표로 검산 ' + out.filter((o) => /맞음|⚠|✗/.test(o.verdict)).length + '건(그중 상속·증여 입력부터 끝까지 ' + out.filter((o) => /^입력부터 맞음|^⚠ 입력부터/.test(o.verdict)).length + '건) · 다름 ' + bad.length + '건');

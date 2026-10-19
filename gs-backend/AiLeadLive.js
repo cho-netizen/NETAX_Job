@@ -434,7 +434,7 @@ function caseProcAiLaw_(caseId, name, input, ctx) {
     const text = caseProcAiLawText_(r, name === 'law_attach' ? input.hang : 0), u = r.조문[0];
     if (name === 'law_lookup') return { 경고: r.경고 || undefined, 법령: r.법령명, 조: '제' + u.조문번호 + '조' + (u.조문제목 ? '(' + u.조문제목 + ')' : ''), 시행: r.시행일자, 출처: r.출처, 기준일: base || '없음(현행판)', 개정확인: r.개정확인 || '', 판주의: r.판주의 || undefined, 조문: caseProcAiCut_(text, 4500), 산식보정: u.산식보정 || [], 근거아님: u['검증필요_코드에서옮김(근거 아님)'] ? '이 조문 산식 중 코드에서 옮긴 것은 근거 아님' : '' };
     return caseProcAiAttachSave_(c, ctx, { category: 'statute', id: r.법령명 + '|' + u.조문번호 + '|' + (input.hang || ''), 제목: '「' + r.법령명 + '」 제' + String(u.조문번호).replace(/의/, '조의').replace(/^(\d+)$/, '$1조') + (input.hang ? '제' + input.hang + '항' : '') + (u.조문제목 ? '(' + u.조문제목 + ')' : ''),
-      요약: caseProcAiCut_(text.replace(/\s+/g, ' '), 300), 법령명: r.법령명, 조: String(u.조문번호), 항: input.hang || '', 판: caseProcAiYmd_(r.시행일자), 기준일판: !!base, 원문: text.slice(0, 6000) }, input);
+      요약: caseProcAiCut_(text.replace(/\s+/g, ' '), 300), 법령명: r.법령명, 조: String(u.조문번호), 항: input.hang || '', 판: caseProcAiYmd_(r.시행일자), 기준일판: !!base, 주의: r.경고 || r.판주의 || undefined, 원문: text.slice(0, 6000) }, input); // [2026.10.20] 낡은 연혁 글 판이면 경고·판주의도 첨부에
   }
   if (name === 'law_attach') {
     if (!input.id) return { 오류: '예규·판례는 law_search 목록의 id가 필요합니다.' };

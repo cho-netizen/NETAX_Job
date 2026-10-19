@@ -242,9 +242,10 @@
     if (isSubstituteHeir) return p;
     return Math.max(0, p - (Number(genSkipPremium) || 0));
   }
-  function priorGiftTaxCreditPrecise(overallCalculatedTax, overallTaxBase, overallTaxableAmount, heirs, nonHeirPriorGiftTaxableBaseTotal, nonHeirPriorGiftAmountTotal, presumedTotal, nonHeirCredit) {
+  // smallMax: §28① 단서 "상속세 과세가액이 5억원 이하이면 공제 안 함"의 기준(2016.1.1. 상속분부터 5억, 그 전은 0 — 조견표 2부-12)
+  function priorGiftTaxCreditPrecise(overallCalculatedTax, overallTaxBase, overallTaxableAmount, heirs, nonHeirPriorGiftTaxableBaseTotal, nonHeirPriorGiftAmountTotal, presumedTotal, nonHeirCredit, smallMax) {
     heirs = Array.isArray(heirs) ? heirs : [];
-    if (overallTaxableAmount <= 500000000) {
+    if (overallTaxableAmount <= (smallMax == null ? 500000000 : smallMax)) {
       return { totalCredit: 0, excludedBySmallEstate: true, perHeir: [] };
     }
     const eq = heirTaxableEquivalents_(heirs, overallTaxBase, overallTaxableAmount, nonHeirPriorGiftTaxableBaseTotal, nonHeirPriorGiftAmountTotal, presumedTotal);
@@ -379,7 +380,10 @@
     const bz_ = giRowAt_(REF_GI_.business, p.dateOfDeath || p.inheritanceDate);
     const limitAmount = bz_ ? bz_.tiers.reduce(function (m, t) { return years >= t[0] ? t[1] : m; }, 0)
       : (years < 10 ? 0 : (years < 20 ? 30000000000 : (years < 30 ? 40000000000 : 60000000000)));
-    let deductionAmount = Math.min(targetAmount, limitAmount);
+    // [2026.10.20 법령 세션 옛 판 원문 — 2부-12] 2014년 전 §18②1호: 2005~2007 전액(1억 한도, 5년 이상 영위 — 시행령 §15),
+    //  2008 가목 20%(30억)·2009~2011 40%(60·80·100억)·2012~2013 70%(100·150·300억)와 나목 2억(가액이 2억 미만이면 그 가액) 중 큰 것.
+    let deductionAmount = (bz_ && bz_.rate != null) ? Math.min(Math.floor(targetAmount * bz_.rate), limitAmount) : Math.min(targetAmount, limitAmount);
+    if (bz_ && bz_.floor && limitAmount > 0) deductionAmount = Math.max(deductionAmount, Math.min(targetAmount, bz_.floor));
 
     const eligibilityFlags = {
       decedentOwnershipRequirementMet: p.decedentOwnershipRequirementMet,
@@ -680,7 +684,7 @@
   const REF_LT_ = { 표1: [{"from":"2005-01-01","to":"2007-12-31","rates":{"3":10,"5":15,"10":30}},{"from":"2008-01-01","to":"2008-03-20","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30}},{"from":"2008-03-21","to":"2018-12-31","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30}},{"from":"2019-01-01","to":null,"rates":{"3":6,"4":8,"5":10,"6":12,"7":14,"8":16,"9":18,"10":20,"11":22,"12":24,"13":26,"14":28,"15":30}}], 표2: [{"from":"2005-01-01","to":"2005-12-31","rates":{"3":10,"5":15,"10":30}},{"from":"2006-01-01","to":"2007-12-31","rates":{"3":10,"5":15,"10":30,"15":45}},{"from":"2008-01-01","to":"2008-03-20","rates":{"3":10,"4":12,"5":15,"6":18,"7":21,"8":24,"9":27,"10":30,"11":33,"12":36,"13":39,"14":42,"15":45}},{"from":"2008-03-21","to":"2008-12-31","rates":{"3":12,"4":16,"5":20,"6":24,"7":28,"8":32,"9":36,"10":40,"11":44,"12":48,"13":52,"14":56,"15":60,"16":64,"17":68,"18":72,"19":76,"20":80}},{"from":"2009-01-01","to":"2020-12-31","rates":{"3":24,"4":32,"5":40,"6":48,"7":56,"8":64,"9":72,"10":80}}] };
   const REF_HV_ = {"house":[{"from":"2005-02-19","to":"2008-10-06","amount":600000000},{"from":"2008-10-07","to":"2021-12-07","amount":900000000},{"from":"2021-12-08","to":null,"amount":1200000000}],"right":[{"from":"2017-02-03","to":"2021-12-07","amount":900000000},{"from":"2021-12-08","to":null,"amount":1200000000}]};
   const REF_SR_ = {"house":[{"from":"2005-01-01","to":"2013-12-31","lt1":0.5,"lt2":0.4,"ge2":null},{"from":"2014-01-01","to":"2021-05-31","lt1":0.4,"lt2":null,"ge2":null},{"from":"2021-06-01","to":null,"lt1":0.7,"lt2":0.6,"ge2":null}],"other":[{"from":"2005-01-01","to":null,"lt1":0.5,"lt2":0.4,"ge2":null}],"presale":[{"from":"2005-01-01","to":"2017-12-31","lt1":0.5,"lt2":0.4,"ge2":null,"adj":null},{"from":"2018-01-01","to":"2021-05-31","lt1":0.5,"lt2":0.4,"ge2":null,"adj":0.5},{"from":"2021-06-01","to":null,"lt1":0.7,"lt2":0.6,"ge2":0.6,"adj":null}],"multi":[{"from":"2014-01-01","to":"2018-03-31","two":0,"three":0},{"from":"2018-04-01","to":"2021-05-31","two":0.1,"three":0.2},{"from":"2021-06-01","to":null,"two":0.2,"three":0.3}],"nonbiz":[{"from":"2014-01-01","to":"2015-12-31","add":0},{"from":"2016-01-01","to":null,"add":0.1}]};
-  const REF_GI_ = {"credit":[{"from":"2005-07-13","to":"2016-12-31","rate":0.1},{"from":"2017-01-01","to":"2017-12-31","rate":0.07},{"from":"2018-01-01","to":"2018-12-31","rate":0.05},{"from":"2019-01-01","to":null,"rate":0.03}],"giftDed":[{"from":"2007-04-11","to":"2007-12-31","spouse":300000000,"asc":30000000,"ascMinor":15000000,"desc":30000000,"other":5000000},{"from":"2008-01-01","to":"2013-12-31","spouse":600000000,"asc":30000000,"ascMinor":15000000,"desc":30000000,"other":5000000},{"from":"2014-01-01","to":"2015-12-31","spouse":600000000,"asc":50000000,"ascMinor":20000000,"desc":30000000,"other":5000000},{"from":"2016-01-01","to":null,"spouse":600000000,"asc":50000000,"ascMinor":20000000,"desc":50000000,"other":10000000}],"marriageFrom":"2024-01-01","personal":[{"from":"2012-01-01","to":"2015-12-31","child":30000000,"minorPerYear":5000000,"elderly":30000000,"disabledPerYear":5000000},{"from":"2016-01-01","to":null,"child":50000000,"minorPerYear":10000000,"elderly":50000000,"disabledPerYear":10000000}],"cohabit":[{"from":"2012-01-01","to":"2015-12-31","rate":0.4,"cap":500000000},{"from":"2016-01-01","to":"2019-12-31","rate":0.8,"cap":500000000},{"from":"2020-01-01","to":null,"rate":1,"cap":600000000}],"business":[{"from":"2014-01-01","to":"2017-12-31","tiers":[[10,20000000000],[15,30000000000],[20,50000000000]]},{"from":"2018-01-01","to":"2022-12-31","tiers":[[10,20000000000],[20,30000000000],[30,50000000000]]},{"from":"2023-01-01","to":null,"tiers":[[10,30000000000],[20,40000000000],[30,60000000000]]}],"farming":[{"from":"2014-01-01","to":"2015-12-31","cap":500000000},{"from":"2016-01-01","to":"2021-12-31","cap":1500000000},{"from":"2022-01-01","to":"2022-12-31","cap":2000000000},{"from":"2023-01-01","to":null,"cap":3000000000}],"genSkip":[{"from":"2008-01-01","to":"2015-12-31","minor":0.3},{"from":"2016-01-01","to":null,"minor":0.4}]};
+  const REF_GI_ = {"credit":[{"from":"2005-01-01","to":"2016-12-31","rate":0.1},{"from":"2017-01-01","to":"2017-12-31","rate":0.07},{"from":"2018-01-01","to":"2018-12-31","rate":0.05},{"from":"2019-01-01","to":null,"rate":0.03}],"giftDed":[{"from":"2005-01-01","to":"2007-12-31","spouse":300000000,"asc":30000000,"ascMinor":15000000,"desc":30000000,"other":5000000},{"from":"2008-01-01","to":"2013-12-31","spouse":600000000,"asc":30000000,"ascMinor":15000000,"desc":30000000,"other":5000000},{"from":"2014-01-01","to":"2015-12-31","spouse":600000000,"asc":50000000,"ascMinor":20000000,"desc":30000000,"other":5000000},{"from":"2016-01-01","to":null,"spouse":600000000,"asc":50000000,"ascMinor":20000000,"desc":50000000,"other":10000000}],"marriageFrom":"2024-01-01","personal":[{"from":"2005-01-01","to":"2010-12-31","child":30000000,"minorPerYear":5000000,"elderly":30000000,"disabledPerYear":5000000},{"from":"2011-01-01","to":"2015-12-31","child":30000000,"minorPerYear":5000000,"elderly":30000000,"disabledPerYear":5000000},{"from":"2016-01-01","to":null,"child":50000000,"minorPerYear":10000000,"elderly":50000000,"disabledPerYear":10000000}],"cohabit":[{"from":"2005-01-01","to":"2008-12-31","rate":0,"cap":0},{"from":"2009-01-01","to":"2015-12-31","rate":0.4,"cap":500000000},{"from":"2016-01-01","to":"2019-12-31","rate":0.8,"cap":500000000},{"from":"2020-01-01","to":null,"rate":1,"cap":600000000}],"business":[{"from":"2005-01-01","to":"2007-12-31","tiers":[[5,100000000]]},{"from":"2008-01-01","to":"2008-12-31","tiers":[[15,3000000000]],"rate":0.2,"floor":200000000},{"from":"2009-01-01","to":"2011-12-31","tiers":[[10,6000000000],[15,8000000000],[20,10000000000]],"rate":0.4,"floor":200000000},{"from":"2012-01-01","to":"2013-12-31","tiers":[[10,10000000000],[15,15000000000],[20,30000000000]],"rate":0.7,"floor":200000000},{"from":"2014-01-01","to":"2017-12-31","tiers":[[10,20000000000],[15,30000000000],[20,50000000000]]},{"from":"2018-01-01","to":"2022-12-31","tiers":[[10,20000000000],[20,30000000000],[30,50000000000]]},{"from":"2023-01-01","to":null,"tiers":[[10,30000000000],[20,40000000000],[30,60000000000]]}],"s24":[{"from":"2005-01-01","to":"2015-12-31","over":0},{"from":"2016-01-01","to":null,"over":500000000}],"farming":[{"from":"2005-01-01","to":"2011-12-31","cap":200000000},{"from":"2012-01-01","to":"2015-12-31","cap":500000000},{"from":"2016-01-01","to":"2021-12-31","cap":1500000000},{"from":"2022-01-01","to":"2022-12-31","cap":2000000000},{"from":"2023-01-01","to":null,"cap":3000000000}],"genSkip":[{"from":"2005-01-01","to":"2015-12-31","minor":0.3},{"from":"2016-01-01","to":null,"minor":0.4}]};
   /*@@REF_ENGINE_END@@*/
   // [2026.10.19 켬] 세무사님 답(원문): "1. 켠다" — 기본으로 켠다. 끄려면 window.__NX_REF_HISTORY_ON = false(시험·비상용).
   function refHistoryOn_() { return !(typeof window !== 'undefined' && window && window.__NX_REF_HISTORY_ON === false); }
@@ -3917,9 +3921,13 @@
     // [2026.10.19 A1] 장례비도 §14 금액이라 사전증여 가산 전 바닥 안에서만 뺀다(상속재산보다 큰 부분은 없는 것으로 봄)
     const funeralAppliedToEstate_ = Math.min(funeralDeduction, Math.max(0, estateBeforeGift_));
     const estateTaxableAfterFuneral = effectiveEstateAmount - funeralAppliedToEstate_;
+    // [2026.10.20 조견표 2부-12] §24 단서·§28① 단서의 "과세가액 5억원" 기준은 2016.1.1. 상속분부터(법률 제13557호, 개정 2015.12.15.).
+    //  그 전 상속은 사전증여 과세표준을 공제 한도에서 늘 빼고, 증여세액공제도 과세가액과 관계없이 한다.
+    const s24Row_ = giRowAt_(REF_GI_.s24, inhDate_);
+    const smallEstateMax_ = s24Row_ ? s24Row_.over : 500000000;
     const overallDeductionLimit = Math.max(0, estateTaxableAfterFuneral
       - (Number(p.nonHeirBequestAmount) || 0)
-      - (estateTaxableAfterFuneral > 500000000 ? priorGiftTaxableBaseTotal : 0)
+      - (estateTaxableAfterFuneral > smallEstateMax_ ? priorGiftTaxableBaseTotal : 0)
       - (Number(p.disclaimedShareRedistributedAmount) || 0));
     const overallLimitApplied = limitedDeduction > overallDeductionLimit;
     if (overallLimitApplied) limitedDeduction = overallDeductionLimit;
@@ -3954,14 +3962,14 @@
     //  §13①의 과세가액(장례비까지 뺀 금액) — 위 §24와 같은 이유로 estateTaxableAfterFuneral을 넘긴다.
     // [2026.10.19 상속세책자 사례] 상속인 외 수증자 공제액을 먼저 구해 상속인별 정밀 계산에 넘긴다(책: 그 공제액을 산출세액에서
     //  뺀 나머지를 상속인별로 배분). §28① 단서 5억 이하 배제는 상속인분과 같은 조건(estateTaxableAfterFuneral)으로 판정한다.
-    const giftCreditExcludedBySmallEstate = estateTaxableAfterFuneral <= 500000000;
+    const giftCreditExcludedBySmallEstate = estateTaxableAfterFuneral <= smallEstateMax_;
     const nonHeirPriorGiftTaxPaid = creditableGiftTaxPaid_(p.nonHeirPriorGiftTaxPaidTotal, p.nonHeirPriorGiftGenSkipPremiumTotal, false);
     const nonHeirPriorGiftBaseForCredit = Number(p.nonHeirPriorGiftTaxableBaseTotal) || 0;
     const nonHeirPriorGiftCreditLimit = (taxBase > 0 && nonHeirPriorGiftBaseForCredit > 0)
       ? Math.round(taxBeforePremium * Math.min(1, nonHeirPriorGiftBaseForCredit / taxBase)) : 0;
     const nonHeirPriorGiftTaxCredit = giftCreditExcludedBySmallEstate ? 0 : Math.min(nonHeirPriorGiftTaxPaid, nonHeirPriorGiftCreditLimit);
     const priorGiftCreditResult = priorGiftTaxCreditPrecise(taxBeforePremium, taxBase, estateTaxableAfterFuneral, priorGiftHeirs,
-      Number(p.nonHeirPriorGiftTaxableBaseTotal) || 0, Number(p.nonHeirPriorGiftAmountTotal) || 0, disposalPresumptionTotal, nonHeirPriorGiftTaxCredit);
+      Number(p.nonHeirPriorGiftTaxableBaseTotal) || 0, Number(p.nonHeirPriorGiftAmountTotal) || 0, disposalPresumptionTotal, nonHeirPriorGiftTaxCredit, smallEstateMax_);
     // [2026.10.09 법령보완] §28② — 수증자가 상속인·수유자가 아닌 사전증여(§13①2호, 5년 이내)의 증여세액도 공제한다.
     // 한도 = 상속세산출세액 × (가산한 그 증여재산의 과세표준 ÷ 상속세 과세표준). 예전엔 상속인분만 공제해(priorGiftHeirs)
     // 사위·손자녀 등에게 한 사전증여의 증여세가 빠져 상속세가 그만큼 많게 나왔다(복잡 시나리오 점검에서 발견).
@@ -4077,7 +4085,7 @@
       //  본표 ⑱·부표1 ㉙ = 장례비까지 뺀 과세가액(§13①), 부표3 ㉚ = §24 공제적용한도액, ㉛·본표 ⑲ = 한도 안 상속공제(장례비·감정평가수수료 없음)
       상속세과세가액_서식: estateTaxableAfterFuneral, 공제적용한도액: overallDeductionLimit, 상속공제_서식합계: limitedDeduction,
       공제적용한도_차감내역: { 상속인아닌자유증등: Number(p.nonHeirBequestAmount) || 0, 상속포기후다음순위상속분: Number(p.disclaimedShareRedistributedAmount) || 0,
-        가산증여재산과세표준: estateTaxableAfterFuneral > 500000000 ? priorGiftTaxableBaseTotal : 0 },
+        가산증여재산과세표준: estateTaxableAfterFuneral > smallEstateMax_ ? priorGiftTaxableBaseTotal : 0 },
       산출세액: calculatedTax, 세대생략가산액: generationSkipPremium,
       세대생략할증_미성년자여부확인필요: generationSkipMinorStatusUnverified,
       기납부증여세액공제: priorGiftTaxCredit, 증여세액공제_상속분입력필요: !!priorGiftCreditResult.needsActualValue, 기납부증여세액공제_상속인외: nonHeirPriorGiftTaxCredit, 기납부증여세액공제_상속인외한도: nonHeirPriorGiftCreditLimit, 증여세액공제_5억이하배제: giftCreditExcludedBySmallEstate, 증여세액공제_상속인별내역: priorGiftCreditResult.perHeir, 증여세액공제_상속인별과세가액_정밀: !!priorGiftCreditResult.precise,
@@ -10677,7 +10685,8 @@
     const off = !refHistoryOn_();
     if ((off || giBeforeTable_(REF_GI_.credit, d)) && d < '2019-01-01' && Number(r.신고세액공제) > 0) miss.push('신고세액공제율(그때 10%·7%·5%)');
     if ((off || giBeforeTable_(REF_GI_.personal, d)) && d < '2016-01-01' && Number(r.인적공제) > 0) miss.push('그 밖의 인적공제(자녀·미성년·연로자·장애인 금액)');
-    const age = (!off && d >= '2012-01-01' && d < '2016-01-01' && Number(r.인적공제) > 0) ? '⚠ 이 상속개시일의 그 밖의 인적공제는 미성년 20세까지 연수·연로자 60세 이상 기준입니다(금액은 그때 값으로 계산함) — 입력 칸은 지금 기준(19세·65세)이니 그 나이대 상속인이 있으면 연수·인원을 고쳐 넣으세요' : '';
+    const age = (!off && d >= '2005-01-01' && d < '2016-01-01' && Number(r.인적공제) > 0) ? '⚠ 이 상속개시일의 그 밖의 인적공제는 미성년 20세까지 연수·연로자 60세 이상' + (d < '2011-01-01' ? '·장애인 75세까지 연수(기대여명 아님, 2011년 전)' : '') + ' 기준입니다(금액은 그때 값으로 계산함) — 입력 칸은 지금 기준(19세·65세)이니 그 나이대 상속인이 있으면 연수·인원을 고쳐 넣으세요' : '';
+    if (!off && d < '2009-01-01' && Number(p.cohabitingHouseValue) > 0) miss.push('동거주택 상속공제(2009.1.1. 상속분부터 생긴 제도 — 그 전 상속이라 0으로 계산함)');
     if ((off || giBeforeTable_(REF_GI_.cohabit, d)) && d < '2020-01-01' && Number(r.동거주택상속공제) > 0) miss.push('동거주택 상속공제(그때 80%·5억' + (d < '2016-01-01' ? ', 2016년 전 40%' : '') + ')');
     if ((off || giBeforeTable_(REF_GI_.genSkip, d)) && d < '2016-01-01' && Number(r.세대생략가산액) > 0 && p.generationSkipOver2Billion && p.generationSkipMinorHeir) miss.push('세대생략 40% 할증(2016년 전 없음)');
     if ((off || giBeforeTable_(REF_GI_.business, d)) && d < '2023-01-01' && (Number(r.가업상속공제) > 0 || Number(r.영농상속공제) > 0)) miss.push('가업·영농상속공제 한도');
