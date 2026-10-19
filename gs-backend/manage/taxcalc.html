@@ -12549,6 +12549,8 @@ function renderGiftPane(){
         '<div class="taxcalc-field checkbox"><input type="checkbox" id="scFraudulent"><label for="scFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
         '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="scUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
         '<div class="taxcalc-field"><label>특정법인 사업연도 종료일</label><input type="date" id="scFiscalYearEnd" min="1900-01-01" max="2099-12-31"></div>' +
+        '<div class="taxcalc-field"><label>거래한 날(증여일, §45의5①)</label><input type="date" id="scTransactionDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">비우면 사업연도 종료일로 봄</span></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="scCounterpartySelf"><label for="scCounterpartySelf">거래 상대방이 지배주주 본인(2026.1.1. 전 거래는 과세 안 됨 — 법 §45의5① 개정)</label></div>' +
         '<div class="taxcalc-field"><label>실제 납부일</label><input type="text" class="taxcalc-date" id="scPaidDate" placeholder="YYYY-MM-DD"></div>' +
         '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="scUnpaidDays" placeholder="0" readonly><span class="taxcalc-field-help">사업연도종료일+3개월 신고기한 대비</span></div>' +
         '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="scMonthsAfterDesignated" placeholder="0"></div>' +
@@ -17122,7 +17124,7 @@ function handleTaxCalcClick_(e){
       monthsAfterDesignatedDueDate: numVal(document.getElementById('scMonthsAfterDesignated').value) || 0,
       unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('scUnpaidAtDesignated').value) || 0
     };
-    Object.assign(input, taxCalcGiftAggregationInput_('sc'), taxCalcGenSkipInput_('sc'), { giftDate: (document.getElementById('scFiscalYearEnd') || {}).value || '' });
+    Object.assign(input, taxCalcGiftAggregationInput_('sc'), taxCalcGenSkipInput_('sc'), { giftDate: (document.getElementById('scTransactionDate') || {}).value || (document.getElementById('scFiscalYearEnd') || {}).value || '', transactionDate: (document.getElementById('scTransactionDate') || {}).value || '', isTransactionWithControllingShareholderHimself: !!(document.getElementById('scCounterpartySelf') || {}).checked });
     const scResult = calculateSpecificCorporationGiftTaxJS(input);
     renderSpecificCorpGiftResult(scResult);
     lastSpecificCorpGiftResult_ = (scResult && !scResult.error) ? scResult : null;

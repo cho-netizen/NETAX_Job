@@ -20106,6 +20106,17 @@
     const corporateTaxableIncome = Number(p.corporateTaxableIncome) || 0;
     const shareholderOwnershipRatio = Math.min(1, Math.max(0, Number(p.shareholderOwnershipRatio) || 0));
     if (shareholderOwnershipRatio <= 0) return { error: '지배주주등의 주식보유비율이 필요합니다.' };
+    // [2026.10.19 서식감사 차] 법 §45의5① 거래 상대방 — 2026.1.1. 시행 개정(법률 제21219호, 따로 적용례 없음 → 증여일 = 거래한 날 기준)으로
+    //  "지배주주의 특수관계인" → "지배주주 및 그 특수관계인". 그 전 거래는 지배주주 본인과의 거래가 과세대상이 아니다.
+    //  isTransactionWithControllingShareholderHimself(상대방이 지배주주 본인)이고 거래일(transactionDate, 없으면 giftDate)이 2026.1.1. 전이면
+    //  과세하지 않는다. 날짜가 없거나 연혁 스위치를 끄면 현행(과세)대로. [별지 제10호의6서식](2025.7.4.)은 개정 전 글이다.
+    const scTxDate_ = String(p.transactionDate || p.giftDate || '').slice(0, 10);
+    if (p.isTransactionWithControllingShareholderHimself && refHistoryOn_() && /^\d{4}-\d{2}-\d{2}$/.test(scTxDate_) && scTxDate_ < '2026-01-01') {
+      return {
+        과세대상여부: false, 지배주주등주식보유비율: shareholderOwnershipRatio, 증여의제이익: 0, 납부세액: 0,
+        안내: '거래 상대방이 지배주주 본인이고 거래일(' + scTxDate_ + ')이 2026.1.1. 전이어서 과세대상이 아닙니다 — 그때 법 §45의5①은 "지배주주의 특수관계인"과의 거래만 과세했습니다(2026.1.1. 시행 개정으로 지배주주 본인 거래도 과세).'
+      };
+    }
     // §45의5① — 지배주주등의 주식보유비율이 100분의 30 이상인 법인만 "특정법인"에 해당해 과세대상이 된다.
     // 30% 미만이면 애초에 이 조문의 적용대상 법인이 아니므로 이하 계산을 진행하지 않는다.
     if (shareholderOwnershipRatio < 0.3) {
@@ -33531,6 +33542,8 @@ function renderGiftPane(){
         '<div class="taxcalc-field checkbox"><input type="checkbox" id="scFraudulent"><label for="scFraudulent">부정행위(가산세율 40%로 상향)</label></div>' +
         '<div class="taxcalc-field"><label>과소신고분 세액</label><input type="number" id="scUnderreportedTax" placeholder="원"><span class="taxcalc-field-help">과소신고일 때만</span></div>' +
         '<div class="taxcalc-field"><label>특정법인 사업연도 종료일</label><input type="date" id="scFiscalYearEnd" min="1900-01-01" max="2099-12-31"></div>' +
+        '<div class="taxcalc-field"><label>거래한 날(증여일, §45의5①)</label><input type="date" id="scTransactionDate" min="1900-01-01" max="2099-12-31"><span class="taxcalc-field-help">비우면 사업연도 종료일로 봄</span></div>' +
+        '<div class="taxcalc-field checkbox"><input type="checkbox" id="scCounterpartySelf"><label for="scCounterpartySelf">거래 상대방이 지배주주 본인(2026.1.1. 전 거래는 과세 안 됨 — 법 §45의5① 개정)</label></div>' +
         '<div class="taxcalc-field"><label>실제 납부일</label><input type="text" class="taxcalc-date" id="scPaidDate" placeholder="YYYY-MM-DD"></div>' +
         '<div class="taxcalc-field"><label>납부지연일수(자동계산)</label><input type="number" id="scUnpaidDays" placeholder="0" readonly><span class="taxcalc-field-help">사업연도종료일+3개월 신고기한 대비</span></div>' +
         '<div class="taxcalc-field"><label>세무서 고지 후 체납 — 지정납부기한 경과 개월수(있으면)</label><input type="number" id="scMonthsAfterDesignated" placeholder="0"></div>' +
@@ -38104,7 +38117,7 @@ function handleTaxCalcClick_(e){
       monthsAfterDesignatedDueDate: numVal(document.getElementById('scMonthsAfterDesignated').value) || 0,
       unpaidTaxAtDesignatedDueDate: numVal(document.getElementById('scUnpaidAtDesignated').value) || 0
     };
-    Object.assign(input, taxCalcGiftAggregationInput_('sc'), taxCalcGenSkipInput_('sc'), { giftDate: (document.getElementById('scFiscalYearEnd') || {}).value || '' });
+    Object.assign(input, taxCalcGiftAggregationInput_('sc'), taxCalcGenSkipInput_('sc'), { giftDate: (document.getElementById('scTransactionDate') || {}).value || (document.getElementById('scFiscalYearEnd') || {}).value || '', transactionDate: (document.getElementById('scTransactionDate') || {}).value || '', isTransactionWithControllingShareholderHimself: !!(document.getElementById('scCounterpartySelf') || {}).checked });
     const scResult = calculateSpecificCorporationGiftTaxJS(input);
     renderSpecificCorpGiftResult(scResult);
     lastSpecificCorpGiftResult_ = (scResult && !scResult.error) ? scResult : null;

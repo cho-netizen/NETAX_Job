@@ -1560,6 +1560,8 @@ const DRIVE_TOOLS = [
         isSubstituteGiftDueToDeath: { type: 'boolean', description: '최근친 직계비속이 사망해 그 자녀가 받은 경우 true — 할증 없음(§57① 단서).' },
         priorPaidGenerationSkipPremium: { type: 'number', description: '합산한 앞선 증여분에 이미 낸 세대생략 할증세액(원). 없으면 생략.' },
         giftDate: { type: 'string', description: '증여일 YYYY-MM-DD(할증 40% 연혁·신고세액공제율 시점 판정). 없으면 생략.' },
+        transactionDate: { type: 'string', description: '거래한 날 YYYY-MM-DD(§45의5① 증여일). 없으면 giftDate.' },
+        isTransactionWithControllingShareholderHimself: { type: 'boolean', description: '거래 상대방이 지배주주 본인이면 true — 거래일이 2026.1.1. 전이면 과세대상 아님(§45의5① 2026.1.1. 개정 전엔 "지배주주의 특수관계인"만).' },
         foreignTaxPaidAmount: { type: 'number', description: '외국납부세액공제(§59). 없으면 생략.' },
         foreignGiftTaxBase: { type: 'number', description: '외국의 법령에 따라 증여세가 부과된 증여재산의 과세표준(해당 외국 법령 기준, 원, 시행령§48이 §21을 준용). 입력하면 공제액 = 증여세산출세액×(이 값÷전체 증여세과세표준)으로 정확히 자동계산한다(단 foreignTaxPaidAmount가 한도). 없으면 foreignTaxPaidAmount를 잔여세액 한도로 그대로 공제한다.' },
         filingStatus: { type: 'string', enum: ['ontime', 'unreported', 'underreported'], description: 'ontime=정상신고, unreported=무신고, underreported=과소신고. 기본값 ontime.' },

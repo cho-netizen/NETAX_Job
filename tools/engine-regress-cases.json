@@ -1011,5 +1011,34 @@
                               "과세표준": 1495000000,
                               "납부세액": 424860000
                     }
+          },
+          {
+                    "이름": "[서식감사 차] 특정법인 — 지배주주 본인과 2025.11.1. 거래: 개정 전이라 과세 안 됨 (§45의5① 2026.1.1. 개정)",
+                    "도구": "calculateSpecificCorporationGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "benefitToCorpAmount": 1000000000,
+                              "shareholderOwnershipRatio": 0.5,
+                              "isTransactionWithControllingShareholderHimself": true,
+                              "transactionDate": "2025-11-01"
+                    },
+                    "정답": {
+                              "납부세액": 0
+                    }
+          },
+          {
+                    "이름": "[서식감사 차] 특정법인 — 지배주주 본인과 2026.3.1. 거래: 과세",
+                    "도구": "calculateSpecificCorporationGiftTaxJS",
+                    "고정": true,
+                    "입력": {
+                              "benefitToCorpAmount": 1000000000,
+                              "shareholderOwnershipRatio": 0.5,
+                              "isTransactionWithControllingShareholderHimself": true,
+                              "transactionDate": "2026-03-01"
+                    },
+                    "정답": {
+                              "산출세액": 90000000,
+                              "납부세액": 87300000
+                    }
           }
 ]
