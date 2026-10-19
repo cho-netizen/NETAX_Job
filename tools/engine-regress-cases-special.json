@@ -1366,5 +1366,31 @@
   "정답": {
    "무신고가산세": 0
   }
+ },
+ {
+  "이름": "[옛 §115 소득금액 비율] 2005년 양도소득금액 4억 중 1억을 덜 신고(신고 3억) — 산출세액 133,060,000 × (1억 ÷ 4억) × 10% = 3,326,500 (누진 구간이 걸쳐 과소 세액 비율 갈음 3,200,000과 다름)",
+  "도구": "calculateTransferTaxMultiJS",
+  "인자": [
+   [
+    {
+     "assetType": "land",
+     "necessaryExpenses": 0,
+     "acquisitionDate": "1995-01-01",
+     "transferDate": "2005-06-01",
+     "transferPrice": 600000000,
+     "acquisitionPrice": 100000000
+    }
+   ],
+   {
+    "filingStatus": "underreported",
+    "underreportedTaxAmount": 32000000,
+    "reportedIncomeAmount": 300000000
+   }
+  ],
+  "정답": {
+   "산출세액_합계": 133060000,
+   "과소신고가산세": 3326500,
+   "무신고가산세": 0
+  }
  }
 ]
