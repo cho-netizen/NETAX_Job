@@ -48,8 +48,13 @@ if (t201 && t203) {
   const i2 = e.indexOf(EB), k2 = e.indexOf(EE);
   if (i2 < 0 || k2 < i2) throw new Error('taxcalc-engine.html에 엔진 자리 표시가 없습니다');
   const nl = e.indexOf('\r\n') >= 0 ? '\r\n' : '\n';
-  e = e.slice(0, i2) + EB + nl + '  const REF_TR_BRACKETS_ = ' + js(br) + ';' + nl + '  const REF_LT_ = { 표1: ' + js(lt1) + ', 표2: ' + js(lt2) + ' };' + nl + '  ' + e.slice(k2);
+  // 2부-04 고가주택 기준(행 값 "6억원 초과" 같은 글에서 금액) — 주택·조합원입주권
+  const t204 = tables.filter((t) => t.번호 === '2부-04')[0];
+  const hvRow = (r) => { const m = String(r.값).match(/(\d+)억원/); if (!m) throw new Error('2부-04 금액을 못 읽음: ' + r.값); return { from: r.시작, to: r.끝 || null, amount: Number(m[1]) * 100000000 }; };
+  const hv = { house: t204 ? t204.행.filter((r) => /^주택/.test(r.구분)).map(hvRow) : [], right: t204 ? t204.행.filter((r) => /^조합원입주권/.test(r.구분)).map(hvRow) : [] };
+  if (t204 && (hv.house.filter((x) => x.from === '2021-12-08' && x.amount === 1200000000).length !== 1)) throw new Error('2부-04의 2021-12-08 이후 12억 행이 엔진 지금 값과 다릅니다');
+  e = e.slice(0, i2) + EB + nl + '  const REF_TR_BRACKETS_ = ' + js(br) + ';' + nl + '  const REF_LT_ = { 표1: ' + js(lt1) + ', 표2: ' + js(lt2) + ' };' + nl + '  const REF_HV_ = ' + js(hv) + ';' + nl + '  ' + e.slice(k2);
   fs.writeFileSync(ENGINE, e);
-  console.log('엔진: 기본세율 ' + br.length + '개 시기, 장특공 표1 ' + lt1.length + '·표2(2020 이전) ' + lt2.length + '개 시기 → taxcalc-engine.html');
+  console.log('엔진: 기본세율 ' + br.length + '개 시기, 장특공 표1 ' + lt1.length + '·표2(2020 이전) ' + lt2.length + '개 시기, 고가주택 기준 주택 ' + hv.house.length + '·입주권 ' + hv.right.length + '개 시기 → taxcalc-engine.html');
 }
 console.log('조견표 ' + tables.length + '장(' + tables.map((t) => t.번호).join(', ') + '), 서식 칸 지도 ' + Object.keys(forms).length + '장 → lawsearch.html');
