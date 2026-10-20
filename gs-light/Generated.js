@@ -1,6 +1,6 @@
 // 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/*.js, 생성: tools/build-light.js
 // 조회 시작점: work_getCases, client_getClients, client_getConsultLogs, booking_getBookings, jsonResponse
-// 포함한 최상위 선언 30개 (시트 쓰기가 들어 있는 것: client_ensureSheet_, work_getSheet_)
+// 포함한 최상위 선언 32개 (시트 쓰기가 들어 있는 것: client_ensureSheet_, work_getSheet_)
 
 const BOOKING_SHEET_ID = '1HMMKMd0bp7kjK7Z8oSMJy2TSXFKB0EUC1XCIjSsfrmQ';
 
@@ -173,6 +173,30 @@ function client_getConsultLogs(params) {
   }
   logs.sort(function (a, b) { return String(b.날짜 || '').localeCompare(String(a.날짜 || '')); });
   return { success: true, logs: logs };
+}
+
+// [2026.10.09] 고객사건 폴더 바로 밑의 특수폴더(사건이 아님) — 사건 흡수·미연결/미등록 폴더 점검이 사건으로 잘못 잡지 않게 한곳에서 관리.
+// 예전엔 0_NX_0만 이름으로 빼고 있어 '1 상담사건'이 정비 버튼에 사건으로 잡힐 수 있었다. 새 특수폴더를 고객사건 밑에 만들면 여기에 추가할 것.
+// (후속확인 과제 목록은 고객사건이 아니라 상위 '0 NETAX/_확인조치사항.md'에 둔다 — 세무사님 지정 2026-10-10)
+const WORK_SPECIAL_ROOT_FOLDERS_ = ['0_NX_0', '1 상담사건'];
+
+// [2026.10.20] "개별 사건" 판정은 이 함수 하나로 — 세무사님 "최근기록에 개별사건이 아닌 사건들이 나타나는데, 이것은 채팅목록이나
+// 사건목록에서도 공통된 사안". 예전엔 위 이름 2개만 빼서 '1 양도코리아'·'1 자문 예정, 보류, 취소'·'_AI대화기록'이 미등록 사건 점검에
+// 잡히고, work 대화기록·사건 경과(전체일지)에는 0_NX_0이 사건처럼 떴다. 사건 목록(work_getCases)·미등록/미연결 점검·흡수·
+// AI 대화 목록(work 대화기록)·AI 사건 경과가 모두 이 기준을 쓴다. 이름만 보고 판정한다(시트만 읽는 gs-light에서도 그대로 돌게).
+//  · 이름 앞 "_" — 시스템 전용(_AI대화기록 등, 세무사님 규칙 2026-10-19)
+//  · 숫자 + 공백/밑줄로 시작 — 사건 위로 정렬되게 붙인 보관함(0_NX_0·1 상담사건·1 양도코리아·1 자문 예정…·0 NETAX 맨위).
+//    "1520(1520)_"·"3733(3733)_양도"처럼 숫자 바로 뒤가 괄호인 사건명은 사건이다.
+//  · 고객사건 폴더 자체 이름(고객명·납세자 자리에 "고객사건"이 잘못 들어간 사건 모양 폴더 포함)
+// 사건이면 '', 아니면 그 이유를 돌려준다.
+function work_nonCaseReason_(name) {
+  const n = String(name || '').trim();
+  if (!n) return '이름 없음';
+  if (WORK_SPECIAL_ROOT_FOLDERS_.indexOf(n) !== -1) return '특수폴더';
+  if (n.charAt(0) === '_') return '시스템 폴더';
+  if (/^\d+[ _]/.test(n)) return '보관함 폴더';
+  if (/^고객사건(?:$|[(_ ])/.test(n)) return '고객사건 폴더 이름'; // 고객사건 자체, 또는 고객명 자리에 "고객사건"이 들어간 폴더
+  return '';
 }
 
 // =========================================================
@@ -411,6 +435,7 @@ function work_getCases(params) {
   const cases = [];
   for (let i = 1; i < data.length; i++) {
     if (!data[i][col.id]) continue;
+    if (String(data[i][col.사건명] || '').trim() && work_nonCaseReason_(data[i][col.사건명])) continue; // 개별 사건이 아닌 행(0_NX_0 등 보관함을 잘못 등록한 것) — 판정은 work_nonCaseReason_ 하나
     cases.push(work_readRow_(col, data[i]));
   }
   return { success: true, cases: cases, evidenceClassificationOptions: work_getEvidenceClassificationOptions_() };

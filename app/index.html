@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-20 12:09 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-20 13:03 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -51384,10 +51384,11 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
         var w = it.w;
         row.className = 'nxai-conv work';
         row.title = 'work.netax.kr에서 하던 대화 — 누르면 불러와서 이어갑니다(원본은 그대로 둡니다)';
+        // [2026.10.20] 사건이 아닌 폴더(0_NX_0 등 — 서버 work_nonCaseReason_ 판정, w.notCase)의 대화는 사건 연결 없이 "일반"으로 불러온다.
         row.innerHTML = '<span class="t"><span class="nxai-badge">work</span>' + nxAiEsc_(w.caseName || w.folderName) + '</span>'
-          + '<span class="m"><span>' + nxAiEsc_(nxAiFmtTime_(w.updatedAt)) + '</span><span>' + w.sizeKb + 'KB</span></span>';
+          + '<span class="m">' + (w.notCase ? '<span title="' + nxAiEsc_(w.notCase) + '">일반(사건 아님)</span>' : '') + '<span>' + nxAiEsc_(nxAiFmtTime_(w.updatedAt)) + '</span><span>' + w.sizeKb + 'KB</span></span>';
         row.addEventListener('click', function(){
-          nxAiImportWorkHistory_({ id: w.fileId, name: '_대화기록.json' }, {
+          nxAiImportWorkHistory_({ id: w.fileId, name: '_대화기록.json' }, w.notCase ? { caseId: '', caseName: '', caseFolderId: '', folderName: w.folderName } : {
             caseId: w.caseId, caseName: w.caseName || w.folderName, caseFolderId: w.folderId
           });
         });
@@ -51880,7 +51881,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     var ci = caseInfo || { caseId: nxAiConv.caseId, caseName: nxAiConv.caseName, caseFolderId: nxAiConv.caseFolderId };
     var loadingEl = nxAiAppendBubble_('assistant', 'work 대화를 불러오는 중…');
     nxAiFlushSave_().then(function(){
-      return callGas('ai_conv_import_work', { fileId: file.id, caseId: ci.caseId || '', caseName: ci.caseName || '', caseFolderId: ci.caseFolderId || '' });
+      return callGas('ai_conv_import_work', { fileId: file.id, caseId: ci.caseId || '', caseName: ci.caseName || '', caseFolderId: ci.caseFolderId || '', folderName: ci.folderName || '' });
     }).then(function(res){
       loadingEl.remove();
       if (!res || res.error){ nxAiToast_('work 대화를 불러오지 못했습니다: ' + (res && res.error)); return; }

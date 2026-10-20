@@ -3373,7 +3373,7 @@ function ai_convList() {
 // 검색 결과는 5분간 캐시하고, 이미 불러온 파일을 빼는 건 매번 현재 목록 기준으로 한다.
 function ai_workHistories(body) {
   const cache = CacheService.getScriptCache();
-  const CACHE_KEY = 'ai_work_histories_v1';
+  const CACHE_KEY = 'ai_work_histories_v2'; // v2: notCase 칸 추가(2026.10.20)
   let raw = null;
   if (!(body && body.refresh)) {
     try { raw = JSON.parse(cache.get(CACHE_KEY) || 'null'); } catch (err) { raw = null; }
@@ -3428,7 +3428,7 @@ function ai_convImportWork(body) {
   const w = ai_readWorkHistory_(body.fileId);
   if (!w.msgs.length) return { error: '불러올 대화가 없습니다.' };
   const saved = ai_convSave({ conversation: {
-    title: 'work 대화 — ' + (body.caseName || ''), sourceFileId: body.fileId, sourceSyncedAt: w.syncedAt,
+    title: 'work 대화 — ' + (body.caseName || body.folderName || ''), sourceFileId: body.fileId, sourceSyncedAt: w.syncedAt,
     caseId: body.caseId || '', caseName: body.caseName || '', caseFolderId: body.caseFolderId || '', messages: w.msgs
   } });
   if (saved.error) return saved;
@@ -3475,6 +3475,8 @@ function ai_listWorkHistories_(convList) {
   } catch (err) { caseByFolder = {}; }
   const out = [];
   const tz = Session.getScriptTimeZone();
+  let rootId = '';
+  try { rootId = getDefaultFolder().getId(); } catch (err) { rootId = ''; }
   const it = DriveApp.searchFiles("title = '_대화기록.json' and trashed = false");
   while (it.hasNext() && out.length < 300) {
     const f = it.next();
@@ -3482,11 +3484,22 @@ function ai_listWorkHistories_(convList) {
     const parents = f.getParents();
     if (!parents.hasNext()) continue;
     const parent = parents.next();
-    const c = caseByFolder[parent.getId()];
+    let c = caseByFolder[parent.getId()];
+    // [2026.10.20] 개별 사건이 아닌 폴더(0_NX_0·1 상담사건·업무관리자 폴더 등)의 대화를 사건 대화처럼 띄우지 않는다 — 판정은 work_nonCaseReason_.
+    //  등록 사건 폴더면 사건, 그 하위폴더면 그 사건, 고객사건 바로 밑의 미등록 폴더는 이름이 사건 모양일 때만 사건(폴더 이름 그대로 표시).
+    let notCase = '';
+    if (!c) {
+      const gp = parent.getParents();
+      const gpId = gp.hasNext() ? gp.next().getId() : '';
+      if (caseByFolder[gpId]) c = caseByFolder[gpId];
+      else if (!rootId || gpId !== rootId) notCase = '고객사건 밖의 폴더';
+      else notCase = work_nonCaseReason_(parent.getName());
+    }
     out.push({
       fileId: f.getId(),
       folderId: parent.getId(),
       folderName: parent.getName(),
+      notCase: notCase, // ''이면 사건(또는 사건 모양의 미등록 폴더), 아니면 사건이 아닌 이유 — 화면은 사건 연결 없이 불러온다
       caseId: c ? c.id : '',
       caseName: c ? (c.사건명 || c.고객명 || '') : '',
       updatedAt: Utilities.formatDate(f.getLastUpdated(), tz, "yyyy-MM-dd'T'HH:mm:ss"),
@@ -3696,7 +3709,11 @@ function job_lookup_(input) {
     return job_execAction_('admin_get_case', { report_id: c.my_report_id });
   }
   if (kind === 'memos') return job_trimList_(job_execAction_('listGeneralMemos', {}), 60);
-  if (kind === 'case_log') return job_trimList_(job_execAction_('getGlobalLog', {}), 80);
+  if (kind === 'case_log') {
+    const g = job_execAction_('getGlobalLog', {});
+    const entries = (g && Array.isArray(g.entries)) ? g.entries.filter(function (e) { return !e.notCase; }) : g; // 개별 사건 것만(globalLog_markCases_)
+    return job_trimList_(entries, 80);
+  }
   if (kind === 'reports') return job_trimList_(job_execAction_('list_all_reports', {}), 80);
   if (kind === 'bug_log') return ai_listBugs();
   return { error: '알 수 없는 kind: ' + kind };
@@ -5988,9 +6005,22 @@ function handleSyncGlobalLog(body) {
   });
 }
 
+// [2026.10.20] 전체일지 항목에 사건 여부 표시(notCase) — 경로의 사건 자리(고객사건 바로 밑 폴더 이름)를 work_nonCaseReason_으로 판정.
+// "고객사건 / 0_NX_0"처럼 보관함 폴더의 처리일지가 사건 경과로 섞이지 않게(예전 대시보드 최근 기록 "고객사건 / 0_NX_0 — 완료").
+// 항목은 지우지 않고 표시만 붙인다(work 현황판도 같은 응답을 쓴다 — 칸만 늘어남). AI 사건 경과(case_log)는 사건 항목만 쓴다.
+function globalLog_markCases_(entries) {
+  let rootName = '고객사건';
+  try { rootName = getDefaultFolder().getName(); } catch (err) { }
+  return (entries || []).map(function (e) {
+    const p = Array.isArray(e.path) ? e.path : String(e.pathKey || '').split(' / ');
+    const reason = String(p[0] || '').trim() !== rootName ? '고객사건 밖의 폴더' : work_nonCaseReason_(p[1]);
+    return reason ? Object.assign({}, e, { notCase: reason }) : e;
+  });
+}
+
 function handleGetGlobalLog(body) {
   try {
-    return { entries: readGlobalLogEntries_() };
+    return { entries: globalLog_markCases_(readGlobalLogEntries_()) };
   } catch (err) {
     return { error: '전체일지 조회 중 오류: ' + err.message };
   }
@@ -20464,7 +20494,25 @@ const WORK_CONSULT_SHARED_FOLDER_NAME_ = '1 상담사건';
 // 예전엔 0_NX_0만 이름으로 빼고 있어 '1 상담사건'이 정비 버튼에 사건으로 잡힐 수 있었다. 새 특수폴더를 고객사건 밑에 만들면 여기에 추가할 것.
 // (후속확인 과제 목록은 고객사건이 아니라 상위 '0 NETAX/_확인조치사항.md'에 둔다 — 세무사님 지정 2026-10-10)
 const WORK_SPECIAL_ROOT_FOLDERS_ = ['0_NX_0', '1 상담사건'];
-function work_isSpecialRootFolder_(name) { return WORK_SPECIAL_ROOT_FOLDERS_.indexOf(String(name || '').trim()) !== -1; }
+// [2026.10.20] "개별 사건" 판정은 이 함수 하나로 — 세무사님 "최근기록에 개별사건이 아닌 사건들이 나타나는데, 이것은 채팅목록이나
+// 사건목록에서도 공통된 사안". 예전엔 위 이름 2개만 빼서 '1 양도코리아'·'1 자문 예정, 보류, 취소'·'_AI대화기록'이 미등록 사건 점검에
+// 잡히고, work 대화기록·사건 경과(전체일지)에는 0_NX_0이 사건처럼 떴다. 사건 목록(work_getCases)·미등록/미연결 점검·흡수·
+// AI 대화 목록(work 대화기록)·AI 사건 경과가 모두 이 기준을 쓴다. 이름만 보고 판정한다(시트만 읽는 gs-light에서도 그대로 돌게).
+//  · 이름 앞 "_" — 시스템 전용(_AI대화기록 등, 세무사님 규칙 2026-10-19)
+//  · 숫자 + 공백/밑줄로 시작 — 사건 위로 정렬되게 붙인 보관함(0_NX_0·1 상담사건·1 양도코리아·1 자문 예정…·0 NETAX 맨위).
+//    "1520(1520)_"·"3733(3733)_양도"처럼 숫자 바로 뒤가 괄호인 사건명은 사건이다.
+//  · 고객사건 폴더 자체 이름(고객명·납세자 자리에 "고객사건"이 잘못 들어간 사건 모양 폴더 포함)
+// 사건이면 '', 아니면 그 이유를 돌려준다.
+function work_nonCaseReason_(name) {
+  const n = String(name || '').trim();
+  if (!n) return '이름 없음';
+  if (WORK_SPECIAL_ROOT_FOLDERS_.indexOf(n) !== -1) return '특수폴더';
+  if (n.charAt(0) === '_') return '시스템 폴더';
+  if (/^\d+[ _]/.test(n)) return '보관함 폴더';
+  if (/^고객사건(?:$|[(_ ])/.test(n)) return '고객사건 폴더 이름'; // 고객사건 자체, 또는 고객명 자리에 "고객사건"이 들어간 폴더
+  return '';
+}
+function work_isSpecialRootFolder_(name) { return !!work_nonCaseReason_(name); }
 function getConsultSharedFolder_() {
   const root = getDefaultFolder();
   if (!root) return null;
@@ -23614,6 +23662,7 @@ function work_getCases(params) {
   const cases = [];
   for (let i = 1; i < data.length; i++) {
     if (!data[i][col.id]) continue;
+    if (String(data[i][col.사건명] || '').trim() && work_nonCaseReason_(data[i][col.사건명])) continue; // 개별 사건이 아닌 행(0_NX_0 등 보관함을 잘못 등록한 것) — 판정은 work_nonCaseReason_ 하나
     cases.push(work_readRow_(col, data[i]));
   }
   return { success: true, cases: cases, evidenceClassificationOptions: work_getEvidenceClassificationOptions_() };
