@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-20 13:57 UTC) -->
+  <!-- 자동 생성 파일 — 직접 고치지 말 것. 원본: gs-backend/manage/*.html, 생성: tools/build-app.js (2026-10-20 15:25 UTC) -->
   <base target="_top">
   <meta charset="utf-8">
   <!-- [2026.10.08] 위 base target="_top" 때문에, 주소가 "#"·빈칸인 링크나 처리 안 된 폼이 눌리면 창 전체가
@@ -987,6 +987,7 @@
         <div class="menu-item" data-view="docs">📁 증빙확보</div>
         <div class="menu-item" data-view="taxcalc">🧮 세액계산</div>
         <div class="menu-item" data-view="print">🖨 세액인쇄</div>
+        <div class="menu-item" data-view="taxplan">💡 절세플랜</div>
         <div class="menu-item" data-view="reportwriter">✍ 문서작성</div>
         <div class="menu-item" data-view="reports">📖 열람관리</div>
 
@@ -39402,6 +39403,7 @@ function handleTaxCalcClick_(e){
         isSelfElectronicFiling: document.getElementById('trSelfEfiling').checked
       };
       const result = inputs.length ? calculateTransferTaxMultiJS(inputs, filingParams) : null;
+      window.tcLastTransferInputs_ = { inputs: inputs, filingParams: filingParams }; // [2026.10.21] 💡 절세플랜이 이 사건 값으로 비교 계산할 수 있게 보관(taxplan.html)
       // [2026.09.24 재구성] 법인전환 이월과세 사후관리(§31·§32) — 부동산·주식 어느 쪽이든
       // 같은 조문·같은 엔진함수라 입력칸을 "사후관리·특수사안 확인" 카드 하나로 합쳤다(재검토56).
       // "적용 대상"이 "주식등 양도소득세"면 이 부동산 계산에는 반영하지 않는다(아래
@@ -40264,6 +40266,7 @@ function handleTaxCalcClick_(e){
         if (a || b) idxs.forEach(function(i){ results[i].result = calculateGiftTaxJS(results[i].input); results[i].공제안분 = true; });
       });
     })();
+    window.tcLastGiftInputs_ = results.map(function(x){ return x.input; }); // [2026.10.21] 💡 절세플랜이 이 사건 값으로 비교 계산할 수 있게 보관(taxplan.html)
     // [2026.10.09 버그수정] 계산할 (증여자·수증인) 금액이 하나도 없으면 결과칸에 주석만 보이고 아무 설명이 없었다 —
     // 특히 수증인이 2명 이상이면(사건개요의 "공동수증인"을 채우면 자동으로 그렇게 됨) 증여재산가액 칸을 쓰지 않고
     // 재산평가 자산 배분으로만 금액을 나누는데, 그걸 몰라 "계산이 안 된다"로 보였다(실사용 점검 중 발견).
@@ -42268,6 +42271,600 @@ function goToTaxCalc_(caseId){
   if (typeof goToView_ === 'function') goToView_('taxcalc');
   else loadTcCases_(caseId);
 }
+</script>
+
+      <style>
+  /* [2026.10.21 신규] 💡 절세플랜 — 세무사님 원문: "2~5번은 케이스별 절세플랜이나 서비스기능인데, 우리시스템도 탭을 하나 만들어서
+     반영할 필요가 있다. 즉 많이 찾는 유형을 정형화하기, 복잡할 수 있는 사안을 미리 명료하게 정리해 두기 등등의 목적으로 구현해두면
+     좋을 것 같다." / 배치: "별도 메뉴 안으로 확정"(세액계산 세목 탭 줄에 넣으니 어색하다고 하셔서 왼쪽 메뉴로).
+     설계: netax-inventory/maps/절세플랜탭_설계_20261020.md. 새 계산 로직 없음 — 세액계산 엔진(taxcalc-engine.html)을 입력만 바꿔
+     여러 번 돌려 나란히 놓는다. 서버를 부르지 않는다(토큰 0). 결정은 세무사님 — 화면은 비교표만, "권장"을 단정하지 않는다. */
+  #view-taxplan .tp-casebar{ display:flex; flex-wrap:wrap; gap:4px 12px; align-items:center; padding:8px 0 10px; border-bottom:1px solid var(--line); margin-bottom:10px; font-size:13px; }
+  #view-taxplan .tp-casebar .tp-hint{ color:var(--taxcalc-info, #2b5c8a); font-size:12px; }
+  #view-taxplan .tp-kinds{ display:flex; flex-wrap:wrap; gap:6px; margin:0 0 12px; }
+  #view-taxplan .tp-chip{ border:1px solid var(--taxcalc-border, #a9b0bd); border-radius:14px; padding:4px 11px; background:var(--panel); color:var(--ink); font:inherit; font-size:12px; cursor:pointer; }
+  #view-taxplan .tp-chip.on{ background:var(--navy); color:#fff; border-color:var(--navy); }
+  #view-taxplan .tp-card{ border:1px solid var(--taxcalc-border, #a9b0bd); border-radius:8px; padding:12px; margin-bottom:12px; background:var(--panel); }
+  #view-taxplan .tp-card h3{ margin:0 0 8px; font-size:14px; color:var(--navy); display:flex; flex-wrap:wrap; gap:4px 10px; align-items:baseline; }
+  #view-taxplan .tp-card h3 small{ font-weight:400; font-size:12px; opacity:.8; }
+  #view-taxplan .tp-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:8px 14px; }
+  #view-taxplan .tp-grid label{ display:flex; flex-direction:column; gap:3px; font-size:12px; }
+  #view-taxplan .tp-grid label.tp-check{ flex-direction:row; align-items:center; gap:6px; }
+  #view-taxplan .tp-grid input[type=text], #view-taxplan .tp-grid select{ border:1px solid var(--taxcalc-border, #a9b0bd); border-radius:4px; padding:5px 7px; font:inherit; background:var(--panel); color:var(--ink); }
+  #view-taxplan .tp-grid input.tp-num{ text-align:right; }
+  #view-taxplan .tp-sub{ margin:10px 0 4px; font-size:12px; font-weight:700; color:var(--navy); }
+  #view-taxplan .tp-src{ display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; background:var(--taxcalc-info-bg, #e7eef6); color:var(--taxcalc-info, #2b5c8a); border-radius:4px; padding:6px 10px; margin-bottom:10px; font-size:12px; }
+  #view-taxplan .tp-btn{ background:var(--navy); color:#fff; border:none; border-radius:4px; padding:7px 16px; font:inherit; font-weight:700; cursor:pointer; }
+  #view-taxplan .tp-btn.ghost{ background:var(--panel); color:var(--navy); border:1px solid var(--navy); padding:4px 10px; font-weight:400; font-size:12px; }
+  #view-taxplan .tp-actions{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; align-items:center; }
+  #view-taxplan .tp-assume{ background:var(--taxcalc-warning-bg, #fbeedf); color:var(--taxcalc-warning, #b45309); border-radius:4px; padding:6px 10px; margin-bottom:8px; font-size:12px; }
+  #view-taxplan .tp-err{ background:var(--taxcalc-danger-bg, #fbe7e5); color:var(--taxcalc-danger, #b3261e); border-radius:4px; padding:6px 10px; font-size:12px; }
+  #view-taxplan .tp-tblwrap{ overflow-x:auto; }
+  #view-taxplan table.tp-tbl{ border-collapse:collapse; table-layout:fixed; }
+  #view-taxplan table.tp-tbl th, #view-taxplan table.tp-tbl td{ border:1px solid var(--line); padding:6px 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:12px; }
+  #view-taxplan table.tp-tbl th{ background:var(--bg); font-weight:700; }
+  #view-taxplan table.tp-tbl td.n{ text-align:right; font-variant-numeric:tabular-nums; }
+  #view-taxplan table.tp-tbl tr.tp-low td.tp-total{ text-decoration:underline; text-decoration-color:var(--gold); text-decoration-thickness:2px; }
+  #view-taxplan .tp-notes{ margin:8px 0 0; padding-left:18px; font-size:12px; }
+  #view-taxplan .tp-law{ margin-top:8px; font-size:12px; opacity:.85; }
+</style>
+
+<div class="view" id="view-taxplan">
+  <div class="view-head"><h2>💡 절세플랜</h2></div>
+  <div class="view-body">
+    <div class="tp-casebar" id="tpCaseBar"></div>
+    <div class="taxcalc-tabs" id="tpGroupTabs" style="padding:0; margin-bottom:10px;">
+      <button type="button" class="taxcalc-tab active" data-tp-group="inh">상속</button>
+      <button type="button" class="taxcalc-tab" data-tp-group="tr">양도</button>
+      <button type="button" class="taxcalc-tab" data-tp-group="gift">증여</button>
+    </div>
+    <div class="tp-kinds" id="tpKinds"></div>
+    <div id="tpForm"></div>
+    <div id="tpResult"></div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// [2026.10.21 신규] 절세플랜 — 계산 부분(nxTaxPlanCalc_)은 화면과 떨어진 순수 함수라 node로 엔진과 함께 불러 시험한다.
+//  모든 세액은 엔진 함수(calculateInheritanceTaxJS·calculateGiftTaxJS·calculateTransferTaxMultiJS·calculateBurdenedGiftTransferJS·
+//  allocateInheritanceTaxByHeirJS)가 낸다. 여기서 하는 일은 시나리오별로 입력 한두 칸만 바꿔 넣는 것뿐이다.
+// ============================================================
+(function(){
+  var W = window;
+  var n_ = function(v){ var x = Number(v); return isFinite(x) ? x : 0; };
+  var copy_ = function(o){ return JSON.parse(JSON.stringify(o || {})); };
+  var assign_ = function(){ var t = {}; for (var i = 0; i < arguments.length; i++){ var s = arguments[i] || {}; for (var k in s) if (Object.prototype.hasOwnProperty.call(s, k)) t[k] = s[k]; } return t; };
+  var C = W.nxTaxPlanCalc_ = {};
+
+  // 날짜 문자열(YYYY-MM-DD)에 해를 더한다 — 2차 상속 가정일용
+  C.addYears_ = function(d, y){
+    var s = String(d || ''); if (s.length < 10) return '';
+    return String(Number(s.slice(0, 4)) + Math.round(n_(y))) + s.slice(4, 10);
+  };
+
+  // ① 배우자 상속분 배분 — 배우자 몫(실제 상속받은 금액)만 바꿔 1차 상속세, 그 몫이 배우자 고유재산과 함께 다시 상속될 때(2차, 가정)의 상속세를 나란히.
+  //   o: { custom: 직접 입력 배우자 몫, spouseOwn: 배우자 고유재산, years: 배우자 사망까지 햇수, childCount2: 2차 상속 자녀 수 }
+  //   근거: 상증법 §19①(실제 상속받은 금액, 법정상속분 등 한도)·④(5억 미만이면 5억), §30(10년 안 재상속 단기재상속 세액공제).
+  C.spouse = function(base, o){
+    o = o || {};
+    if (!base || !(n_(base.taxableEstateAmount) > 0)) return { error: '상속세 과세가액을 넣어 주세요.' };
+    if (!(n_(base.spouseLegalShareRatio) > 0)) return { error: '배우자 법정상속분 비율을 넣어 주세요(예: 배우자와 자녀 2명이면 3/7).' };
+    var calc = W.calculateInheritanceTaxJS;
+    var b = assign_(copy_(base), { hasSpouse: true, isSpouseOnlyHeir: false, isSpousePropertyDivided: true });
+    var r0 = calc(assign_(b, { spouseActualInheritedAmount: 0 }));
+    if (!r0 || r0.error) return { error: (r0 && r0.error) || '상속세 계산이 되지 않았습니다.' };
+    var limit = n_(r0.배우자공제한도액);
+    var estate = n_(b.taxableEstateAmount);
+    var cand = [
+      { label: '0원 (배우자 몫 없음 — 최소 5억 공제)', a: 0 },
+      { label: '5억', a: 500000000 },
+      { label: '법정상속분 한도까지', a: Math.min(limit, 3000000000, estate) }
+    ];
+    if (n_(o.custom) > 0) cand.push({ label: '직접 입력', a: Math.min(n_(o.custom), estate) });
+    var seen = {}, rows = [];
+    var years = Math.max(0, n_(o.years));
+    var date1 = String(b.dateOfDeath || b.inheritanceDate || '');
+    var date2 = C.addYears_(date1, years);
+    var kids2 = o.childCount2 != null && o.childCount2 !== '' ? n_(o.childCount2) : n_(b.childCount);
+    cand.forEach(function(c){
+      var a = Math.round(c.a);
+      if (seen[a]) return; seen[a] = 1;
+      var r1 = calc(assign_(b, { spouseActualInheritedAmount: a }));
+      if (!r1 || r1.error) { rows.push({ label: c.label, a: a, error: (r1 && r1.error) || '계산 안 됨' }); return; }
+      var estate2 = n_(o.spouseOwn) + a, r2 = null, t2 = 0;
+      if (estate2 > 0){
+        var p2 = { dateOfDeath: date2, inheritanceDate: date2, taxableEstateAmount: estate2, hasSpouse: false, childCount: kids2, filingStatus: 'ontime' };
+        if (years < 10 && a > 0){
+          // §30② — 전의 상속세 산출세액 × 재상속분 ÷ 전의 상속재산가액 × 공제율. 전의 상속재산가액은 사건 칸(총상속재산가액)이 있으면 그 값, 없으면 과세가액으로 근사.
+          p2.priorInheritanceTax = n_(r1.산출세액);
+          p2.reinheritedPropertyValue = a;
+          p2.priorInheritanceTotalPropertyValue = n_(b.totalGrossEstateValue) || n_(r1.상속세과세가액_적용값) || estate;
+          p2.priorInheritanceTaxableBase = n_(r1.상속세과세가액_적용값) || estate;
+          p2.yearsSincePriorInheritance = Math.max(1, years);
+        }
+        r2 = calc(p2);
+        t2 = r2 && !r2.error ? n_(r2.납부세액) : 0;
+      }
+      var alloc = null, kids1 = n_(b.childCount);
+      if (kids1 > 0 && W.allocateInheritanceTaxByHeirJS){
+        var each = Math.max(0, (estate - a) / kids1);
+        var heirs = [{ actualInheritedValue: a }];
+        for (var i = 0; i < kids1; i++) heirs.push({ actualInheritedValue: each });
+        var al = W.allocateInheritanceTaxByHeirJS(r1, heirs);
+        if (al && !al.error) alloc = al;
+      }
+      rows.push({ label: c.label, a: a, ded: n_(r1.배우자공제), t1: n_(r1.납부세액), t2: t2, total: n_(r1.납부세액) + t2, r1: r1, r2: r2, alloc: alloc,
+        credit2: r2 && !r2.error ? n_(r2.단기재상속세액공제) : 0, err2: r2 && r2.error ? r2.error : '' });
+    });
+    return { rows: rows, limit: limit, date2: date2, years: years, kids2: kids2 };
+  };
+
+  // ② 토지보상 방식 비교 + 감면 하나 고르기 — 같은 거래에 감면 방식만 바꿔 calculateTransferTaxMultiJS로(한 과세기간 합산·§133 한도·농특세까지 엔진이 계산).
+  //   o: { split: {cash, bond, bond_3y, bond_5y, land_replacement} 실제 받은 금액, farm: 8년 자경 요건을 갖춤 }
+  //   실제 나눔대로 = 같은 자산을 받은 금액 비율로 나눠 방식별 거래로 넣음 — [확인 필요] 서식 감면소득금액 계산과 같은 숫자인지 서식 칸 대조 전.
+  var COMP_KINDS_ = [
+    { key: 'cash', label: '전액 현금보상' }, { key: 'bond', label: '전액 채권보상' },
+    { key: 'bond_3y', label: '채권 3년 만기 특약' }, { key: 'bond_5y', label: '채권 5년 만기 특약' },
+    { key: 'land_replacement', label: '대토보상(감면 선택)' }
+  ];
+  C.COMP_KINDS_ = COMP_KINDS_;
+  var PRICE_KEYS_ = ['transferPrice', 'acquisitionPrice', 'necessaryExpenses', 'appraisalValue', 'comparableTransactionPrice', 'transferStandardPriceForConversion', 'acquisitionStandardPriceForConversion', 'acquisitionStandardPriceForExpense'];
+  C.comp = function(base, o, filingParams){
+    o = o || {};
+    if (!base || !(n_(base.transferPrice) > 0)) return { error: '보상금(양도가액)을 넣어 주세요.' };
+    if (!base.transferDate || !base.acquisitionDate) return { error: '취득일과 양도(수용)일을 넣어 주세요.' };
+    var fp = assign_({ filingStatus: 'ontime' }, filingParams || {});
+    var b = assign_(copy_(base), { compensationType: '', isEightYearFarmland: false });
+    var run = function(pieces){ return W.calculateTransferTaxMultiJS(pieces, fp); };
+    var pick = function(label, r, note){
+      if (!r || r.error) return { label: label, error: (r && r.error) || '계산 안 됨' };
+      var gate = [];
+      (r.자산별_내역 || []).forEach(function(x){ var rr = (x && x.결과) || x || {}; ['수용감면_요건안내', '자경농지감면_요건안내'].forEach(function(k){ if (rr[k] && gate.indexOf(rr[k]) === -1) gate.push(rr[k]); }); });
+      var total = n_(r.납부세액_합계_농특세포함) || (n_(r.납부세액_합계) + n_(r.농어촌특별세));
+      var red = n_(r.합산조특법세액감면액) || (n_(r.합산수용감면액) + n_(r.합산자경감면액));
+      // 감면이 없으면 엔진이 "감면 전 산출세액" 칸을 따로 내지 않는다 — 그때는 양도소득세 그대로가 감면 전 세액
+      return { label: label, note: note || '', before: n_(r.합산감면전_산출세액) || (n_(r.산출세액_합계) + red), red: red,
+        tax: n_(r.산출세액_합계),rural: n_(r.농어촌특별세), local: n_(r.지방소득세), total: total, net: n_(base.transferPrice) - total, gate: gate, r: r };
+    };
+    var rows = [pick('감면 없음(비교 기준)', run([assign_(b)]))];
+    COMP_KINDS_.forEach(function(k){ rows.push(pick(k.label, run([assign_(b, { compensationType: k.key })]))); });
+    var sp = o.split || {}, keys = COMP_KINDS_.map(function(k){ return k.key; }).filter(function(k){ return n_(sp[k]) > 0; });
+    var sum = keys.reduce(function(s, k){ return s + n_(sp[k]); }, 0);
+    if (keys.length > 1 && sum > 0){
+      var given = {}, pieces = keys.map(function(k, i){
+        var f = n_(sp[k]) / sum, piece = assign_(b, { compensationType: k });
+        PRICE_KEYS_.forEach(function(pk){
+          if (!(n_(b[pk]) > 0)) return;
+          var v = i === keys.length - 1 ? n_(b[pk]) - (given[pk] || 0) : Math.round(n_(b[pk]) * f);
+          given[pk] = (given[pk] || 0) + v; piece[pk] = v;
+        });
+        return piece;
+      });
+      rows.push(pick('실제 받은 대로 나눔', run(pieces), keys.map(function(k){ return COMP_KINDS_.filter(function(x){ return x.key === k; })[0].label.replace('전액 ', '') + ' ' + Math.round(n_(sp[k]) / sum * 100) + '%'; }).join(' · ')));
+    }
+    if (o.farm) rows.push(pick('8년 자경농지 감면(수용 감면 대신)', run([assign_(b, { isEightYearFarmland: true })])));
+    return { rows: rows };
+  };
+
+  // ④ 10년 안 같은 증여자 증여의 기납부세액 추정 — 실제 낸 세액을 모를 때만, 과거 증여를 그 증여일 기준으로 다시 계산한 "증여 당시 산출세액"을 추정값으로 쓴다.
+  //   근거: 상증법 §47②(10년 합산), §58①·②(가산한 증여재산에 대해 납부하였거나 납부할 증여세액 공제, 한도 산식). 앞 증여를 차례로 합산하며 계산(앞 증여의 산출세액은
+  //   그 앞 증여까지 합산한 값이라, 마지막 과거 증여의 합산 결과를 이번 계산에 넘긴다 — 엔진 증여세 대납 재계산과 같은 방식).
+  //   cur: { giftAmount, giftDate, relation, isMinor }, rows: [{ date, amount }], actualPaid: 실제 낸 세액 합계(알면)
+  C.prior = function(base, cur, rows, actualPaid){
+    cur = cur || {};
+    if (!(n_(cur.giftAmount) > 0) || !cur.giftDate) return { error: '이번 증여의 날짜와 금액을 넣어 주세요.' };
+    var calc = W.calculateGiftTaxJS;
+    var d = String(cur.giftDate), from = C.addYears_(d, -10);
+    var list = (rows || []).filter(function(x){ return x && n_(x.amount) > 0 && x.date; }).map(function(x){ return { date: String(x.date), amount: Math.round(n_(x.amount)) }; });
+    list.sort(function(a, b){ return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    var used = [], out = [];
+    list.forEach(function(x){
+      if (x.date >= d) { out.push({ date: x.date, amount: x.amount, skip: '이번 증여일 이후라 합산하지 않음' }); return; }
+      if (x.date < from) { out.push({ date: x.date, amount: x.amount, skip: '10년 밖이라 합산하지 않음(§47②)' }); return; }
+      used.push(x);
+    });
+    var acc = null;
+    used.forEach(function(x){
+      var p = { giftAmount: x.amount, giftDate: x.date, relation: cur.relation, isMinor: !!cur.isMinor, filingStatus: 'ontime' };
+      if (acc) { p.priorGiftAmount = n_(acc.증여세과세가액); p.priorPaidTax = n_(acc.산출세액_할증전); p.priorGiftTaxableBase = n_(acc.과세표준); p.priorRelationDeductionUsed = n_(acc.증여재산공제); }
+      var r = calc(p);
+      if (!r || r.error) { out.push({ date: x.date, amount: x.amount, error: (r && r.error) || '계산 안 됨' }); return; }
+      out.push({ date: x.date, amount: x.amount, aggTax: n_(r.산출세액_할증전), ownTax: n_(r.산출세액_할증전) - (acc ? n_(acc.산출세액_할증전) : 0), ded: n_(r.증여재산공제) });
+      acc = r;
+    });
+    out.sort(function(a, b){ return a.date < b.date ? -1 : 1; });
+    var useActual = n_(actualPaid) > 0;
+    var p = assign_(copy_(base), { giftAmount: Math.round(n_(cur.giftAmount)), giftDate: d, relation: cur.relation, isMinor: !!cur.isMinor });
+    if (acc) {
+      p.priorGiftAmount = n_(acc.증여세과세가액);
+      p.priorPaidTax = useActual ? Math.round(n_(actualPaid)) : n_(acc.산출세액_할증전);
+      p.priorGiftTaxableBase = n_(acc.과세표준);
+      p.priorRelationDeductionUsed = n_(acc.증여재산공제);
+    } else {
+      ['priorGiftAmount', 'priorPaidTax', 'priorGiftTaxableBase', 'priorRelationDeductionUsed'].forEach(function(k){ delete p[k]; });
+    }
+    var r = calc(p);
+    if (!r || r.error) return { error: (r && r.error) || '이번 증여세가 계산되지 않았습니다.', rows: out };
+    return { rows: out, result: r, estimated: !!acc && !useActual, priorPaid: acc ? p.priorPaidTax : 0, priorAmount: acc ? p.priorGiftAmount : 0 };
+  };
+
+  // ⑤ 부담부증여 vs 단순증여 — 증여세(받는 사람)와 채무 인수분 양도세(주는 사람)를 합쳐 비교.
+  //   근거: 상증법 §47①(인수 채무 차감)·③(배우자·직계존비속 간 채무 인수는 객관적 입증 없으면 인수 안 한 것으로 추정), 소득세법 §88①(채무 인수분은 양도),
+  //   소득세법 시행령 §159(양도로 보는 부분의 양도가액·취득가액 = 채무액 비율). 세액계산 증여세 탭 "채무를 양도세로 보내기"와 같은 경로(필요경비도 채무 비율로).
+  //   o: { giftDate, value, relation, isMinor, debt, proven, customDebt, acqDate, acqPrice, acqExpense, assetType, transferExempt }
+  C.burden = function(o){
+    o = o || {};
+    if (!(n_(o.value) > 0) || !o.giftDate) return { error: '증여일과 증여재산 평가액을 넣어 주세요.' };
+    var gcalc = W.calculateGiftTaxJS, gbase = { giftAmount: Math.round(n_(o.value)), giftDate: o.giftDate, relation: o.relation, isMinor: !!o.isMinor, filingStatus: 'ontime' };
+    var rows = [];
+    var g0 = gcalc(gbase);
+    rows.push({ label: '단순증여(채무 안 넘김)', debt: 0, gift: g0 && !g0.error ? n_(g0.납부세액) : 0, tr: 0, err: g0 && g0.error ? g0.error : '', notes: [] });
+    var debts = [];
+    if (n_(o.debt) > 0) debts.push({ label: '부담부증여(채무 전부 넘김)', d: Math.round(n_(o.debt)) });
+    if (n_(o.customDebt) > 0 && Math.round(n_(o.customDebt)) !== Math.round(n_(o.debt))) debts.push({ label: '채무 일부만 넘김(직접 입력)', d: Math.round(n_(o.customDebt)) });
+    debts.forEach(function(x){
+      var d = Math.min(x.d, Math.round(n_(o.value))), notes = [];
+      var g = gcalc(assign_(gbase, { debtAssumedAmount: d, isDebtObjectivelyProven: !!o.proven }));
+      if (!g || g.error) { rows.push({ label: x.label, debt: d, err: (g && g.error) || '증여세 계산 안 됨' }); return; }
+      var tr = 0;
+      if (g.채무공제_배제여부){
+        notes.push('채무를 증여재산에서 빼지 않았습니다 — ' + (g.채무공제_배제사유 || '배우자·직계존비속 간 채무 인수는 객관적으로 입증돼야 뺍니다(상증법 §47③)') + '. 이 경우 양도로 보는 부분도 없습니다.');
+      } else if (o.transferExempt){
+        notes.push('채무 인수분 양도세는 비과세(1세대1주택 등)로 가정해 0원입니다 — 요건은 세액계산 양도세 탭에서 확인하세요.');
+      } else {
+        var bg = W.calculateBurdenedGiftTransferJS({ assetAcquisitionPrice: Math.round(n_(o.acqPrice)), assetGiftValue: Math.round(n_(o.value)), totalDebtAmount: d, necessaryExpenses: 0 });
+        if (!bg || bg.error) { rows.push({ label: x.label, debt: d, err: (bg && bg.error) || '양도분 계산 안 됨' }); return; }
+        if (!o.acqDate) { rows.push({ label: x.label, debt: d, gift: n_(g.납부세액), err: '양도세를 계산하려면 주는 사람의 취득일을 넣어 주세요.' }); return; }
+        var t = { assetType: o.assetType || 'other', acquisitionDate: o.acqDate, transferDate: o.giftDate,
+          transferPrice: bg.양도로보는부분_양도가액, acquisitionPrice: bg.양도로보는부분_취득가액, isBurdenedGiftDebtPortion: true,
+          necessaryExpenses: n_(o.acqExpense) > 0 ? Math.round(n_(o.acqExpense) * n_(bg.채무액비율)) : 0 };
+        var tr_ = W.calculateTransferTaxMultiJS([t], { filingStatus: 'ontime' });
+        if (!tr_ || tr_.error) { rows.push({ label: x.label, debt: d, gift: n_(g.납부세액), err: (tr_ && tr_.error) || '양도세 계산 안 됨' }); return; }
+        tr = n_(tr_.납부세액_합계_농특세포함) || n_(tr_.납부세액_합계);
+        notes.push('양도로 보는 부분: 양도가액 ' + n_(bg.양도로보는부분_양도가액).toLocaleString('ko-KR') + '원 · 취득가액 ' + n_(bg.양도로보는부분_취득가액).toLocaleString('ko-KR') + '원(채무 비율 ' + (Math.round(n_(bg.채무액비율) * 10000) / 100) + '%, 소득세법 시행령 §159)');
+      }
+      rows.push({ label: x.label, debt: d, gift: n_(g.납부세액), tr: tr, notes: notes });
+    });
+    rows.forEach(function(x){ if (!x.err) x.total = n_(x.gift) + n_(x.tr); });
+    return { rows: rows };
+  };
+
+  // ⑦ 상속재산 평가액(기준시가 vs 감정가) → 상속세 + 이후 양도세. 상속받은 자산의 취득가액은 상속세 평가액(소득세법 시행령 §163⑨ — 지침 상속_평가액과_이후양도),
+  //   감정평가수수료는 상속세에서 공제(엔진 한도대로). 양도는 상속개시일 취득으로 본다.
+  //   o: { stdValue, apprValue, fee, sellPrice, sellDate, sellExpense, assetType, exempt }
+  C.valuation = function(base, o){
+    o = o || {};
+    if (!base || !(n_(base.taxableEstateAmount) > 0)) return { error: '상속세 과세가액을 넣어 주세요.' };
+    if (!(n_(o.stdValue) > 0) || !(n_(o.apprValue) > 0)) return { error: '이 부동산의 기준시가와 감정가를 넣어 주세요.' };
+    var date = String(base.dateOfDeath || base.inheritanceDate || '');
+    if (!date) return { error: '상속개시일을 넣어 주세요.' };
+    var diff = Math.round(n_(o.apprValue) - n_(o.stdValue));
+    var mk = function(label, val, extra){
+      var p = assign_(copy_(base), extra || {});
+      var r = W.calculateInheritanceTaxJS(p);
+      if (!r || r.error) return { label: label, err: (r && r.error) || '상속세 계산 안 됨' };
+      var tr = 0, trErr = '';
+      if (o.exempt) tr = 0;
+      else if (n_(o.sellPrice) > 0 && o.sellDate){
+        var t = W.calculateTransferTaxMultiJS([{ assetType: o.assetType || 'other', acquisitionDate: date, transferDate: o.sellDate, transferPrice: Math.round(n_(o.sellPrice)), acquisitionPrice: Math.round(val), necessaryExpenses: Math.round(n_(o.sellExpense)), acquisitionCause: 'inheritance' }], { filingStatus: 'ontime' });
+        if (!t || t.error) trErr = (t && t.error) || '양도세 계산 안 됨'; else tr = n_(t.납부세액_합계_농특세포함) || n_(t.납부세액_합계);
+      } else trErr = '이후 양도가액·양도일을 넣으면 양도세까지 계산합니다';
+      return { label: label, val: val, inh: n_(r.납부세액), tr: tr, trErr: trErr, total: n_(r.납부세액) + tr, r: r };
+    };
+    var rows = [mk('기준시가로 신고', n_(o.stdValue))];
+    var ex = { taxableEstateAmount: n_(base.taxableEstateAmount) + diff, appraisalFeeAmount: n_(base.appraisalFeeAmount) + Math.round(n_(o.fee)) };
+    ['totalGrossEstateValue', 'grossEstateValue'].forEach(function(k){ if (n_(base[k]) > 0) ex[k] = n_(base[k]) + diff; });
+    rows.push(mk('감정가로 신고', n_(o.apprValue), ex));
+    return { rows: rows };
+  };
+})();
+
+// ============================================================
+// 화면 — 서버 호출 없음. 세액계산 화면에서 마지막으로 계산한 입력(tcLastInheritanceInput_·tcLastTransferInputs_·tcLastGiftInputs_)이 있으면
+// 그 사건의 모든 칸을 바탕으로 쓰고, 이 화면의 칸만 바꿔 넣는다. 없으면 이 화면 칸만으로(상담용) 계산한다.
+// ============================================================
+(function(){
+  var C = window.nxTaxPlanCalc_;
+  var KINDS_ = {
+    inh: [{ key: 'spouse', label: '배우자 상속분 배분' }, { key: 'valuation', label: '평가액(기준시가·감정가)과 이후 양도' }],
+    tr: [{ key: 'comp', label: '토지보상 방식 비교·감면 고르기' }],
+    gift: [{ key: 'prior', label: '10년 내 기납부세액 추정' }, { key: 'burden', label: '부담부증여 vs 단순증여' }]
+  };
+  var group_ = 'inh', kind_ = 'spouse';
+  var vals_ = {};      // 칸 값(유형을 바꿔도 남게)
+  var base_ = {};      // 불러온 세액계산 입력 { inh, tr, gift }
+  var priorRows_ = [{ date: '', amount: '' }];
+  var root_ = function(){ return document.getElementById('view-taxplan'); };
+  var esc_ = function(s){ return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+  var won_ = function(v){ return (Math.round(Number(v) || 0)).toLocaleString('ko-KR'); };
+  var num_ = function(v){ var s = String(v == null ? '' : v).replace(/[^0-9.]/g, ''); return s ? Number(s) : 0; };
+  var ratio_ = function(v){ var s = String(v || '').trim(); if (s.indexOf('/') !== -1){ var p = s.split('/'); var a = Number(p[0]), b = Number(p[1]); return b > 0 ? a / b : 0; } return Number(s) || 0; };
+  var v_ = function(id, dflt){ return Object.prototype.hasOwnProperty.call(vals_, id) ? vals_[id] : (dflt == null ? '' : dflt); };
+  var caseName_ = function(){ try { return (typeof tcCurrentCase !== 'undefined' && tcCurrentCase) ? String(tcCurrentCase.사건명 || tcCurrentCase.고객명 || '') : ''; } catch (e) { return ''; } };
+
+  var field_ = function(id, label, opt){
+    opt = opt || {};
+    var val = v_(id, opt.dflt);
+    if (opt.type === 'check') return '<label class="tp-check"><input type="checkbox" data-tp-field="' + id + '"' + (val === true || val === 'true' ? ' checked' : '') + '>' + esc_(label) + '</label>';
+    if (opt.type === 'select') return '<label>' + esc_(label) + '<select data-tp-field="' + id + '">' + opt.options.map(function(o){ return '<option value="' + esc_(o[0]) + '"' + (String(val) === String(o[0]) ? ' selected' : '') + '>' + esc_(o[1]) + '</option>'; }).join('') + '</select>' + (opt.from ? '<span class="tp-hint">' + esc_(opt.from) + '</span>' : '') + '</label>';
+    var isNum = opt.type === 'num';
+    var shown = isNum && val !== '' && !isNaN(num_(val)) && num_(val) > 0 ? won_(num_(val)) : val;
+    return '<label>' + esc_(label) + '<input type="text" data-tp-field="' + id + '"' + (isNum ? ' class="tp-num" inputmode="numeric"' : '') + ' value="' + esc_(shown) + '"' + (opt.ph ? ' placeholder="' + esc_(opt.ph) + '"' : '') + '>' + (opt.from ? '<span class="tp-hint" style="font-size:11px;">' + esc_(opt.from) + '</span>' : '') + '</label>';
+  };
+  var RELATION_OPTS_ = [['직계존속', '부모·조부모가 줌'], ['배우자', '배우자가 줌'], ['직계비속', '자녀·손자녀가 줌'], ['기타친족', '그 밖의 친족(4촌 혈족·3촌 인척)이 줌'], ['', '친족 아님']];
+  var ASSET_OPTS_ = [['other', '토지·건물(주택 아님)'], ['house', '주택']];
+
+  function sourceBar_(which, tabLabel){
+    var b = base_[which];
+    if (b) return '<div class="tp-src"><span>세액계산 ' + esc_(tabLabel) + ' 탭에서 마지막으로 계산한 값을 바탕으로 합니다 — 그 탭의 다른 칸(공제·사전증여·감면 요건 등)은 그대로 쓰고 아래 칸만 바꿔 넣습니다.</span><button type="button" class="tp-btn ghost" data-tp-action="unload" data-tp-which="' + which + '">불러온 값 빼고 이 칸만으로</button></div>';
+    var has = which === 'inh' ? !!window.tcLastInheritanceInput_ : which === 'tr' ? !!(window.tcLastTransferInputs_ && window.tcLastTransferInputs_.inputs && window.tcLastTransferInputs_.inputs.length) : !!(window.tcLastGiftInputs_ && window.tcLastGiftInputs_.length);
+    return '<div class="tp-src"><span>' + (has ? '세액계산 ' + esc_(tabLabel) + ' 탭에서 계산한 값이 있습니다.' : '사건 없이 이 칸만으로 계산합니다(상담용). 사건 값으로 하려면 세액계산 ' + esc_(tabLabel) + ' 탭에서 [계산]을 한 번 누른 뒤 불러오세요.') + '</span>' +
+      (has ? '<button type="button" class="tp-btn ghost" data-tp-action="load" data-tp-which="' + which + '">그 값 불러오기</button>' : '<button type="button" class="tp-btn ghost" data-tp-action="goto" data-tp-tab="' + (which === 'inh' ? 'inheritance' : which === 'tr' ? 'transfer' : 'gift') + '">세액계산 ' + esc_(tabLabel) + ' 탭 열기</button>') + '</div>';
+  }
+  var fromTag_ = function(which){ return base_[which] ? '세액계산에서 불러옴' : ''; };
+
+  function renderForm_(){
+    var h = '';
+    if (kind_ === 'spouse' || kind_ === 'valuation'){
+      var f = fromTag_('inh');
+      h += sourceBar_('inh', '상속세');
+      h += '<div class="tp-card"><h3>' + (kind_ === 'spouse' ? '배우자 상속분 배분 비교 <small>배우자 몫을 바꿔 1차 상속세와 2차 상속세(가정) 합계를 나란히 봅니다</small>' : '평가액과 이후 양도 <small>부동산을 기준시가로 신고할 때와 감정가로 신고할 때, 상속세와 나중 양도세 합계를 봅니다</small>') + '</h3><div class="tp-grid">' +
+        field_('ihDate', '상속개시일', { ph: '2026-09-01', from: f }) +
+        field_('ihEstate', '상속세 과세가액(원)', { type: 'num', from: f || '총상속재산에서 공과금·채무를 빼고 10년 내 사전증여를 더한 값(장례비는 빼지 않음)' }) +
+        (f ? '' : field_('ihFuneral', '장례비용(원)', { type: 'num', from: '비우면 최소 500만원 공제' })) +
+        field_('ihChild', '자녀 수', { type: 'num', from: f }) +
+        (kind_ === 'spouse' ? field_('ihRatio', '배우자 법정상속분', { ph: '3/7', from: '배우자 1.5 : 자녀 1씩(자녀 2명이면 3/7)' }) : field_('ihSpouseActual', '배우자 실제 상속받는 금액(원)', { type: 'num', from: f }) + field_('ihRatio', '배우자 법정상속분', { ph: '3/7', from: f })) +
+        '</div>';
+      if (kind_ === 'spouse'){
+        h += '<div class="tp-sub">2차 상속 가정(배우자가 나중에 돌아가실 때)</div><div class="tp-grid">' +
+          field_('spOwn', '배우자 고유재산(원)', { type: 'num' }) +
+          field_('spYears', '배우자 사망까지 햇수', { type: 'num', dflt: '10', from: '10년 안이면 단기재상속 세액공제(§30)' }) +
+          field_('spKids2', '2차 상속 자녀 수', { type: 'num', from: '비우면 1차와 같음' }) +
+          field_('spCustom', '비교할 배우자 몫 — 직접 입력(원)', { type: 'num' }) + '</div>';
+      } else {
+        h += '<div class="tp-sub">비교할 부동산</div><div class="tp-grid">' +
+          field_('vaStd', '기준시가(원) — 지금 과세가액에 들어간 값', { type: 'num' }) +
+          field_('vaAppr', '감정가(원)', { type: 'num' }) +
+          field_('vaFee', '감정평가수수료(원)', { type: 'num' }) +
+          field_('vaAsset', '종류', { type: 'select', options: ASSET_OPTS_, dflt: 'other' }) +
+          field_('vaSellPrice', '나중 예상 양도가액(원)', { type: 'num' }) +
+          field_('vaSellDate', '예상 양도일', { ph: '2028-09-01' }) +
+          field_('vaSellExp', '양도 때 필요경비(원)', { type: 'num' }) +
+          field_('vaExempt', '양도세 비과세로 가정(1세대1주택 등)', { type: 'check' }) + '</div>';
+      }
+      h += '<div class="tp-actions"><button type="button" class="tp-btn" data-tp-action="run">비교 계산</button></div></div>';
+    } else if (kind_ === 'comp'){
+      var ft = fromTag_('tr');
+      h += sourceBar_('tr', '양도세');
+      h += '<div class="tp-card"><h3>토지보상 방식 비교·감면 고르기 <small>보상 방식(현금·채권·만기 특약·대토)과 자경 감면을 하나씩 넣어 세금을 나란히 봅니다</small></h3><div class="tp-grid">' +
+        field_('cpAcqDate', '취득일', { ph: '2010-01-01', from: ft }) +
+        field_('cpNotice', '사업인정고시일', { ph: '2023-01-01', from: ft || '고시일 2년 전보다 먼저 취득해야 감면(§77①)' }) +
+        field_('cpDate', '양도(수용)일', { ph: '2026-06-30', from: ft }) +
+        field_('cpPrice', '보상금 총액(원)', { type: 'num', from: ft }) +
+        field_('cpAcqPrice', '취득가액(원)', { type: 'num', from: ft }) +
+        field_('cpExp', '필요경비(원)', { type: 'num', from: ft }) + '</div>' +
+        '<div class="tp-sub">실제 받은 방식별 금액(두 가지 이상이면 "실제 받은 대로" 줄이 생김)</div><div class="tp-grid">' +
+        C.COMP_KINDS_.map(function(k){ return field_('cpS_' + k.key, k.label.replace('전액 ', '') + '(원)', { type: 'num' }); }).join('') +
+        field_('cpFarm', '8년 자경 요건도 갖춤(감면 하나만 고름 — 조특법 §127⑦)', { type: 'check' }) + '</div>' +
+        '<div class="tp-actions"><button type="button" class="tp-btn" data-tp-action="run">비교 계산</button></div></div>';
+    } else if (kind_ === 'prior'){
+      var fg = fromTag_('gift');
+      h += sourceBar_('gift', '증여세');
+      h += '<div class="tp-card"><h3>10년 내 기납부세액 추정 <small>과거 증여의 실제 낸 세액을 모를 때, 그 증여일 기준으로 다시 계산한 산출세액으로 추정합니다</small></h3><div class="tp-grid">' +
+        field_('pgDate', '이번 증여일', { ph: '2026-09-01', from: fg }) +
+        field_('pgAmount', '이번 증여재산가액(원)', { type: 'num', from: fg }) +
+        field_('pgRel', '주는 사람', { type: 'select', options: RELATION_OPTS_, from: fg, dflt: '직계존속' }) +
+        field_('pgMinor', '받는 사람이 미성년', { type: 'check' }) + '</div>' +
+        '<div class="tp-sub">같은 증여자에게 받은 과거 증여(한 줄에 한 번)</div><div class="tp-grid">' +
+        priorRows_.map(function(r, i){ return '<label>증여일 ' + (i + 1) + '<input type="text" data-tp-prior="' + i + '" data-tp-k="date" value="' + esc_(r.date) + '" placeholder="2020-05-01"></label><label>금액(원)<input type="text" class="tp-num" inputmode="numeric" data-tp-prior="' + i + '" data-tp-k="amount" value="' + esc_(r.amount ? won_(num_(r.amount)) : '') + '"></label>'; }).join('') + '</div>' +
+        '<div class="tp-actions"><button type="button" class="tp-btn ghost" data-tp-action="prior-add">줄 더하기</button></div>' +
+        '<div class="tp-grid" style="margin-top:8px;">' + field_('pgActual', '실제 낸 세액 합계(알면 — 넣으면 추정 대신 씀)', { type: 'num', from: '홈택스 증여세 결정·신고내역' }) + '</div>' +
+        '<div class="tp-actions"><button type="button" class="tp-btn" data-tp-action="run">계산</button></div></div>';
+    } else if (kind_ === 'burden'){
+      var fb = fromTag_('gift');
+      h += sourceBar_('gift', '증여세');
+      h += '<div class="tp-card"><h3>부담부증여 vs 단순증여 <small>받는 사람 증여세와 주는 사람 양도세(채무 인수분)를 합쳐 봅니다</small></h3><div class="tp-grid">' +
+        field_('bgDate', '증여일', { ph: '2026-09-01', from: fb }) +
+        field_('bgValue', '증여재산 평가액(원)', { type: 'num', from: fb }) +
+        field_('bgRel', '주는 사람', { type: 'select', options: RELATION_OPTS_, from: fb, dflt: '직계존속' }) +
+        field_('bgMinor', '받는 사람이 미성년', { type: 'check' }) +
+        field_('bgDebt', '넘길 채무(전세보증금·대출 등, 원)', { type: 'num', from: fb }) +
+        field_('bgProven', '채무 인수가 객관적으로 입증됨(§47③)', { type: 'check' }) +
+        field_('bgCustom', '일부만 넘기는 안 — 채무(원)', { type: 'num' }) + '</div>' +
+        '<div class="tp-sub">주는 사람이 이 재산을 취득한 내용(양도세용)</div><div class="tp-grid">' +
+        field_('bgAcqDate', '취득일', { ph: '2015-03-01' }) +
+        field_('bgAcqPrice', '취득가액(원)', { type: 'num', from: '증여재산을 기준시가로 평가했으면 취득가액도 취득 당시 기준시가로 [확인 필요]' }) +
+        field_('bgAcqExp', '필요경비(원)', { type: 'num' }) +
+        field_('bgAsset', '종류', { type: 'select', options: ASSET_OPTS_, dflt: 'other' }) +
+        field_('bgExempt', '채무 인수분 양도세 비과세로 가정(1세대1주택 등)', { type: 'check' }) + '</div>' +
+        '<div class="tp-actions"><button type="button" class="tp-btn" data-tp-action="run">비교 계산</button></div></div>';
+    }
+    document.getElementById('tpForm').innerHTML = h;
+  }
+
+  function lowIdx_(rows){ var best = -1, bv = Infinity; rows.forEach(function(r, i){ if (!r.err && !r.error && typeof r.total === 'number' && r.total < bv){ bv = r.total; best = i; } }); return best; }
+  function table_(cols, rows, cells){
+    var low = lowIdx_(rows);
+    return '<div class="tp-tblwrap"><table class="tp-tbl"><colgroup>' + cols.map(function(c){ return '<col style="width:' + c[1] + 'px">'; }).join('') + '</colgroup><tr>' + cols.map(function(c){ return '<th>' + esc_(c[0]) + '</th>'; }).join('') + '</tr>' +
+      rows.map(function(r, i){ return '<tr' + (i === low ? ' class="tp-low"' : '') + '>' + cells(r).map(function(c){ return c; }).join('') + '</tr>'; }).join('') + '</table></div>';
+  }
+  var td_ = function(v, cls){ return '<td class="' + (cls || 'n') + '" title="' + esc_(typeof v === 'number' ? won_(v) : v) + '">' + (typeof v === 'number' ? won_(v) : esc_(v)) + '</td>'; };
+  var tdTotal_ = function(v){ return '<td class="n tp-total" title="' + esc_(won_(v)) + '">' + won_(v) + '</td>'; };
+  var tdErr_ = function(msg, span){ return '<td colspan="' + span + '" style="color:var(--taxcalc-danger, #b3261e);" title="' + esc_(msg) + '">' + esc_(msg) + '</td>'; };
+  var LOW_NOTE_ = '합계가 가장 적은 줄에만 밑줄 — 권장이 아니라 비교일 뿐이며, 결정은 세무사님·고객이 하십니다.';
+
+  // ---- 칸 → 엔진 입력 ----
+  function inhBase_(){
+    var b = base_.inh ? JSON.parse(JSON.stringify(base_.inh)) : { filingStatus: 'ontime', hasSpouse: true };
+    var d = String(v_('ihDate')).trim(); if (d) { b.dateOfDeath = d; b.inheritanceDate = d; }
+    if (num_(v_('ihEstate')) > 0) b.taxableEstateAmount = num_(v_('ihEstate'));
+    if (String(v_('ihChild')) !== '') b.childCount = num_(v_('ihChild'));
+    if (String(v_('ihRatio')).trim()) b.spouseLegalShareRatio = ratio_(v_('ihRatio'));
+    if (String(v_('ihSpouseActual')) !== '') b.spouseActualInheritedAmount = num_(v_('ihSpouseActual'));
+    if (!base_.inh && num_(v_('ihFuneral')) > 0) b.funeralCostAmount = num_(v_('ihFuneral')); // 사건 값을 불러왔으면 그 장례비 칸(봉안 포함)을 그대로 씀
+    return b;
+  }
+  function trBase_(){
+    var src = base_.tr && base_.tr.inputs && base_.tr.inputs[0];
+    var b = src ? JSON.parse(JSON.stringify(src)) : { assetType: 'other' };
+    [['cpAcqDate', 'acquisitionDate'], ['cpNotice', 'publicNoticeDate'], ['cpDate', 'transferDate']].forEach(function(m){ var s = String(v_(m[0])).trim(); if (s) b[m[1]] = s; });
+    [['cpPrice', 'transferPrice'], ['cpAcqPrice', 'acquisitionPrice'], ['cpExp', 'necessaryExpenses']].forEach(function(m){ if (String(v_(m[0])) !== '') b[m[1]] = num_(v_(m[0])); });
+    return b;
+  }
+  function giftBase_(){ var g = base_.gift && base_.gift[0]; return g ? JSON.parse(JSON.stringify(g)) : {}; }
+
+  function run_(){
+    var out = document.getElementById('tpResult'), h = '';
+    try {
+      if (kind_ === 'spouse'){
+        var r = C.spouse(inhBase_(), { custom: num_(v_('spCustom')), spouseOwn: num_(v_('spOwn')), years: String(v_('spYears', '10')) === '' ? 10 : num_(v_('spYears', '10')), childCount2: String(v_('spKids2')) === '' ? null : num_(v_('spKids2')) });
+        if (r.error) { out.innerHTML = '<div class="tp-err">' + esc_(r.error) + '</div>'; return; }
+        if (base_.inh && base_.inh.hasSpouse === false) h += '<div class="tp-err" style="margin-bottom:8px;">세액계산 상속인 명부에 배우자가 없습니다 — 아래 표는 배우자가 있다고 보고 계산한 것입니다.</div>';
+        h += '<div class="tp-card"><div class="tp-assume">가정: 배우자가 ' + r.years + '년 뒤(' + esc_(r.date2) + ') 돌아가시고, 그때 재산 가치·세율이 지금과 같으며, 2차 상속인은 자녀 ' + r.kids2 + '명(배우자 없음)이라고 본 계산입니다.' + (r.years < 10 ? ' 10년 안이라 단기재상속 세액공제(§30)를 넣었습니다(전의 상속재산가액은 사건 값이 없으면 과세가액으로 근사).' : '') + '</div>';
+        h += table_([['배우자 몫', 230], ['배우자공제', 130], ['1차 상속세', 130], ['2차 상속세(가정)', 140], ['합계', 130], ['1차 중 배우자 부담', 140], ['1차 중 자녀 부담 합계', 150]], r.rows, function(x){
+          if (x.error) return ['<td title="' + esc_(x.label) + '">' + esc_(x.label) + '</td>', tdErr_(x.error, 6)];
+          var shares = x.alloc && x.alloc.상속인별_내역; // allocateInheritanceTaxByHeirJS — [0]이 배우자, 나머지가 자녀(넣은 순서)
+          var spouseTax = '', kidsTax = '';
+          if (Array.isArray(shares) && shares.length){
+            spouseTax = Number(shares[0].납부세액) || 0;
+            kidsTax = shares.slice(1).reduce(function(s, y){ return s + (Number(y.납부세액) || 0); }, 0);
+          }
+          return ['<td title="' + esc_(x.label + ' — ' + won_(x.a) + '원') + '">' + esc_(x.label) + (x.a ? ' (' + won_(x.a) + ')' : '') + '</td>', td_(x.ded), td_(x.t1), td_(x.t2), tdTotal_(x.total), spouseTax === '' ? td_('—', '') : td_(spouseTax), kidsTax === '' ? td_('—', '') : td_(kidsTax)];
+        });
+        var notes = [];
+        notes.push('법정상속분 한도: ' + won_(r.limit) + '원(최대 30억, §19①). 배우자 몫이 5억보다 적거나 없어도 5억은 공제합니다(§19④).');
+        notes.push('배우자 몫을 실제 공제받으려면 배우자상속재산분할기한까지 분할(등기 등)하고 신고해야 합니다(§19②) — 이 계산은 분할한 것으로 봅니다.');
+        r.rows.forEach(function(x){ if (x.credit2 > 0) notes.push(x.label + ': 2차 상속에서 단기재상속 세액공제 ' + won_(x.credit2) + '원'); if (x.err2) notes.push(x.label + ' 2차: ' + x.err2); });
+        h += '<ul class="tp-notes">' + notes.map(function(s){ return '<li>' + esc_(s) + '</li>'; }).join('') + '</ul><div class="tp-law">근거: 상증법 §19①②④, §30 · ' + LOW_NOTE_ + '</div></div>';
+      } else if (kind_ === 'valuation'){
+        var rv = C.valuation(inhBase_(), { stdValue: num_(v_('vaStd')), apprValue: num_(v_('vaAppr')), fee: num_(v_('vaFee')), sellPrice: num_(v_('vaSellPrice')), sellDate: String(v_('vaSellDate')).trim(), sellExpense: num_(v_('vaSellExp')), assetType: v_('vaAsset', 'other'), exempt: v_('vaExempt') === true });
+        if (rv.error) { out.innerHTML = '<div class="tp-err">' + esc_(rv.error) + '</div>'; return; }
+        h += '<div class="tp-card"><div class="tp-assume">가정: 나중 양도는 상속개시일에 취득한 것으로, 취득가액은 상속세 평가액으로 봅니다(소득세법 시행령 §163⑨). 양도가액·양도일은 예상값입니다.' + (v_('vaExempt') === true ? ' 양도세는 비과세로 가정해 0원입니다.' : '') + '</div>';
+        h += table_([['신고 방식', 170], ['평가액(=나중 취득가액)', 170], ['상속세', 130], ['나중 양도세(가정)', 150], ['합계', 130]], rv.rows, function(x){
+          if (x.err) return ['<td>' + esc_(x.label) + '</td>', tdErr_(x.err, 4)];
+          return ['<td>' + esc_(x.label) + '</td>', td_(x.val), td_(x.inh), x.trErr ? td_(x.trErr, '') : td_(x.tr), tdTotal_(x.total)];
+        });
+        h += '<ul class="tp-notes"><li>감정가로 신고하면 상속세는 늘지만 나중 양도차익이 줄어듭니다. 기준시가로 신고한 뒤 시가가 다시 정해질 위험(업무관리자 지침 상속_평가액과_이후양도 "시가 재결정 위험")은 숫자에 넣지 않았습니다 — 세무사님 판단.</li><li>감정평가수수료는 상속세 계산에서 공제 한도(500만원)까지 뺍니다(상증법 §25①2호 — 한도는 엔진 값, 근거 시행령 조문 [확인 필요]).</li></ul><div class="tp-law">' + LOW_NOTE_ + '</div></div>';
+      } else if (kind_ === 'comp'){
+        var split = {}; C.COMP_KINDS_.forEach(function(k){ split[k.key] = num_(v_('cpS_' + k.key)); });
+        var rc = C.comp(trBase_(), { split: split, farm: v_('cpFarm') === true }, base_.tr ? base_.tr.filingParams : null);
+        if (rc.error) { out.innerHTML = '<div class="tp-err">' + esc_(rc.error) + '</div>'; return; }
+        h += '<div class="tp-card"><div class="tp-assume">채권·만기 특약·대토는 돈을 받는 때와 조건(만기까지 보유 등)이 달라 세금만으로 고를 수 없습니다. 감면율·적용기한·감면 한도(§133)·농어촌특별세는 엔진이 양도일 기준으로 계산합니다.</div>';
+        h += table_([['방식', 230], ['감면 전 세액', 120], ['감면세액', 120], ['양도소득세', 120], ['농어촌특별세', 110], ['지방소득세', 110], ['합계', 130], ['세금 뺀 보상금', 140]], rc.rows, function(x){
+          if (x.error) return ['<td>' + esc_(x.label) + '</td>', tdErr_(x.error, 7)];
+          return ['<td title="' + esc_(x.label + (x.note ? ' — ' + x.note : '')) + '">' + esc_(x.label) + (x.note ? ' <small>(' + esc_(x.note) + ')</small>' : '') + '</td>', td_(x.before), td_(x.red), td_(x.tax), td_(x.rural), td_(x.local), tdTotal_(x.total), td_(x.net)];
+        });
+        var cn = [];
+        rc.rows.forEach(function(x){ (x.gate || []).forEach(function(g){ if (cn.indexOf(g) === -1) cn.push(g); }); });
+        cn.push('대토보상은 감면(40%) 대신 과세이연을 고를 수도 있는데(§77의2), 과세이연은 이 계산기가 계산하지 않습니다 — 세무사님 판단.');
+        if (rc.rows.some(function(x){ return /나눔/.test(x.label); })) cn.push('"실제 받은 대로 나눔"은 같은 자산을 받은 금액 비율로 나눠 방식별로 계산한 값입니다 [서식 감면소득금액 계산과 같은지 확인 필요].');
+        h += '<ul class="tp-notes">' + cn.map(function(s){ return '<li>' + esc_(s) + '</li>'; }).join('') + '</ul><div class="tp-law">근거: 조특법 §77①(현금·채권·만기 특약), §77의2(대토), §69(자경), §127⑦(둘 이상 감면이면 하나만), §133(한도) · ' + LOW_NOTE_ + '</div></div>';
+      } else if (kind_ === 'prior'){
+        var rp = C.prior(giftBase_(), { giftAmount: num_(v_('pgAmount')), giftDate: String(v_('pgDate')).trim(), relation: v_('pgRel', '직계존속'), isMinor: v_('pgMinor') === true }, priorRows_.map(function(x){ return { date: String(x.date).trim(), amount: num_(x.amount) }; }), num_(v_('pgActual')));
+        if (rp.error) { out.innerHTML = '<div class="tp-err">' + esc_(rp.error) + '</div>'; return; }
+        h += '<div class="tp-card">' + (rp.estimated ? '<div class="tp-assume">기납부세액 ' + won_(rp.priorPaid) + '원은 <b>추정</b>입니다(과거 증여를 그 증여일 기준으로 다시 계산한 산출세액). 신고 전에 홈택스 증여세 결정·신고내역의 실제 세액으로 바꿔 넣으세요.</div>' : '') +
+          '<div class="tp-sub">과거 증여</div>' + (rp.rows.length ? table_([['증여일', 110], ['금액', 130], ['그때 산출세액(합산)', 150], ['이 증여 몫', 130], ['비고', 260]], rp.rows, function(x){
+            if (x.skip) return [td_(x.date, ''), td_(x.amount), td_('—', ''), td_('—', ''), td_(x.skip, '')];
+            if (x.error) return [td_(x.date, ''), td_(x.amount), tdErr_(x.error, 3)];
+            return [td_(x.date, ''), td_(x.amount), td_(x.aggTax), td_(x.ownTax), td_(rp.estimated ? '추정' : '실제 세액 합계를 씀', '')];
+          }) : '<div style="font-size:12px;">과거 증여가 없습니다.</div>');
+        var g = rp.result;
+        h += '<div class="tp-sub" style="margin-top:12px;">이번 증여세</div>' + table_([['합산한 과거 증여', 140], ['증여세 과세가액', 140], ['과세표준', 130], ['산출세액', 130], ['기납부세액공제', 130], ['신고세액공제', 120], ['납부세액', 130]], [{ total: 0 }], function(){
+          return [td_(rp.priorAmount), td_(Number(g.증여세과세가액) || 0), td_(Number(g.과세표준) || 0), td_(Number(g.산출세액_할증후) || Number(g.산출세액_할증전) || 0), td_(Number(g.기납부세액공제) || 0), td_(Number(g.신고세액공제) || 0), td_(Number(g.납부세액) || 0)];
+        }).replace(' class="tp-low"', '');
+        h += '<ul class="tp-notes"><li>기납부세액공제는 가산한 과거 증여에 대해 낸(낼) 증여세를 빼되, 이번 산출세액 × 과거분 과세표준 ÷ 합친 과세표준을 넘지 못합니다(상증법 §58②). 과거 증여가 제척기간이 지나 과세되지 않았으면 공제하지 않습니다(§58① 단서).</li></ul><div class="tp-law">근거: 상증법 §47②, §58①②</div></div>';
+      } else if (kind_ === 'burden'){
+        var gb = giftBase_();
+        var rb = C.burden({ giftDate: String(v_('bgDate')).trim() || gb.giftDate, value: num_(v_('bgValue')) || Number(gb.giftAmount) || 0, relation: v_('bgRel', gb.relation || '직계존속'), isMinor: v_('bgMinor') === true,
+          debt: String(v_('bgDebt')) !== '' ? num_(v_('bgDebt')) : (Number(gb.debtAssumedAmount) || 0), proven: v_('bgProven') === true, customDebt: num_(v_('bgCustom')),
+          acqDate: String(v_('bgAcqDate')).trim(), acqPrice: num_(v_('bgAcqPrice')), acqExpense: num_(v_('bgAcqExp')), assetType: v_('bgAsset', 'other'), transferExempt: v_('bgExempt') === true });
+        if (rb.error) { out.innerHTML = '<div class="tp-err">' + esc_(rb.error) + '</div>'; return; }
+        h += '<div class="tp-card"><div class="tp-assume">증여세는 받는 사람이, 채무 인수분 양도세는 주는 사람이 냅니다. 주택이면 다주택 중과 여부는 이 화면이 판정하지 않으니(주택 수 없음) 세액계산 양도세 탭에서 확인하세요.</div>';
+        h += table_([['안', 200], ['넘긴 채무', 130], ['증여세(받는 사람)', 140], ['양도세(주는 사람)', 140], ['합계', 130]], rb.rows, function(x){
+          if (x.err) return ['<td>' + esc_(x.label) + '</td>', td_(x.debt), tdErr_(x.err, 3)];
+          return ['<td>' + esc_(x.label) + '</td>', td_(x.debt), td_(x.gift), td_(x.tr), tdTotal_(x.total)];
+        });
+        var bn = []; rb.rows.forEach(function(x){ (x.notes || []).forEach(function(s){ bn.push(x.label + ': ' + s); }); });
+        h += (bn.length ? '<ul class="tp-notes">' + bn.map(function(s){ return '<li>' + esc_(s) + '</li>'; }).join('') + '</ul>' : '') + '<div class="tp-law">근거: 상증법 §47①③, 소득세법 §88①, 소득세법 시행령 §159 · ' + LOW_NOTE_ + '</div></div>';
+      }
+    } catch (e) {
+      h = '<div class="tp-err">계산 중 오류: ' + esc_(e && e.message ? e.message : e) + '</div>';
+    }
+    out.innerHTML = h;
+  }
+
+  function renderKinds_(){
+    var tabs = root_().querySelectorAll('[data-tp-group]');
+    for (var i = 0; i < tabs.length; i++) tabs[i].classList.toggle('active', tabs[i].getAttribute('data-tp-group') === group_);
+    document.getElementById('tpKinds').innerHTML = KINDS_[group_].map(function(k){ return '<button type="button" class="tp-chip' + (k.key === kind_ ? ' on' : '') + '" data-tp-kind="' + k.key + '">' + esc_(k.label) + '</button>'; }).join('');
+  }
+  function renderCaseBar_(){
+    var nm = caseName_();
+    document.getElementById('tpCaseBar').innerHTML = '<span>세액계산에 열린 사건: <b>' + esc_(nm || '없음') + '</b></span><span class="tp-hint">사건 없이도 상담용으로 계산할 수 있습니다. 결과는 비교만 하고 사건에 저장하지 않습니다 — 고른 안은 세액계산에 직접 넣으세요.</span>';
+  }
+  function render_(){ renderCaseBar_(); renderKinds_(); renderForm_(); document.getElementById('tpResult').innerHTML = ''; }
+
+  // 불러온 입력의 값을 칸에 채운다
+  function load_(which){
+    if (which === 'inh' && window.tcLastInheritanceInput_){
+      var b = JSON.parse(JSON.stringify(window.tcLastInheritanceInput_)); base_.inh = b;
+      vals_.ihDate = b.dateOfDeath || b.inheritanceDate || ''; vals_.ihEstate = b.taxableEstateAmount || ''; vals_.ihChild = b.childCount != null ? String(b.childCount) : '';
+      vals_.ihRatio = b.spouseLegalShareRatio ? String(Math.round(b.spouseLegalShareRatio * 10000) / 10000) : ''; vals_.ihSpouseActual = b.spouseActualInheritedAmount || '';
+    } else if (which === 'tr' && window.tcLastTransferInputs_ && window.tcLastTransferInputs_.inputs && window.tcLastTransferInputs_.inputs.length){
+      var t = JSON.parse(JSON.stringify(window.tcLastTransferInputs_)); base_.tr = t; var a = t.inputs[0];
+      vals_.cpAcqDate = a.acquisitionDate || ''; vals_.cpNotice = a.publicNoticeDate || ''; vals_.cpDate = a.transferDate || '';
+      vals_.cpPrice = a.transferPrice || ''; vals_.cpAcqPrice = a.acquisitionPrice || ''; vals_.cpExp = a.necessaryExpenses || '';
+      if (a.isEightYearFarmland) vals_.cpFarm = true;
+    } else if (which === 'gift' && window.tcLastGiftInputs_ && window.tcLastGiftInputs_.length){
+      var g = JSON.parse(JSON.stringify(window.tcLastGiftInputs_)); base_.gift = g; var x = g[0];
+      vals_.pgDate = vals_.bgDate = x.giftDate || ''; vals_.pgAmount = vals_.bgValue = x.giftAmount || '';
+      vals_.pgRel = vals_.bgRel = x.relation || ''; vals_.pgMinor = vals_.bgMinor = !!x.isMinor;
+      if (x.debtAssumedAmount) vals_.bgDebt = x.debtAssumedAmount; vals_.bgProven = !!x.isDebtObjectivelyProven;
+    }
+    renderForm_(); document.getElementById('tpResult').innerHTML = '';
+  }
+
+  var bound_ = false;
+  function bind_(){
+    if (bound_) return; bound_ = true;
+    var root = root_();
+    root.addEventListener('click', function(e){
+      var t = e.target.closest ? e.target.closest('[data-tp-group],[data-tp-kind],[data-tp-action]') : null;
+      if (!t || !root.contains(t)) return;
+      if (t.hasAttribute('data-tp-group')){ group_ = t.getAttribute('data-tp-group'); kind_ = KINDS_[group_][0].key; renderKinds_(); renderForm_(); document.getElementById('tpResult').innerHTML = ''; return; }
+      if (t.hasAttribute('data-tp-kind')){ kind_ = t.getAttribute('data-tp-kind'); renderKinds_(); renderForm_(); document.getElementById('tpResult').innerHTML = ''; return; }
+      var act = t.getAttribute('data-tp-action');
+      if (act === 'run') run_();
+      else if (act === 'load') load_(t.getAttribute('data-tp-which'));
+      else if (act === 'unload'){ delete base_[t.getAttribute('data-tp-which')]; renderForm_(); document.getElementById('tpResult').innerHTML = ''; }
+      else if (act === 'prior-add'){ priorRows_.push({ date: '', amount: '' }); renderForm_(); }
+      else if (act === 'goto'){
+        var tab = t.getAttribute('data-tp-tab');
+        if (typeof goToView_ === 'function') goToView_('taxcalc');
+        var tb = document.querySelector('.taxcalc-tab[data-tab="' + tab + '"]'); if (tb) tb.click();
+      }
+    });
+    var save = function(e){
+      var el = e.target;
+      if (el.hasAttribute && el.hasAttribute('data-tp-field')){
+        vals_[el.getAttribute('data-tp-field')] = el.type === 'checkbox' ? el.checked : el.value;
+      } else if (el.hasAttribute && el.hasAttribute('data-tp-prior')){
+        var i = Number(el.getAttribute('data-tp-prior')); if (priorRows_[i]) priorRows_[i][el.getAttribute('data-tp-k')] = el.value;
+      }
+    };
+    root.addEventListener('input', save);
+    root.addEventListener('change', save);
+    root.addEventListener('focusout', function(e){
+      var el = e.target;
+      if (el.classList && el.classList.contains('tp-num') && el.value){ var v = num_(el.value); if (v > 0) el.value = won_(v); }
+    });
+    // Enter로 계산 — 폼 submit이 아니라 칸 안 Enter(이 화면에 form이 없고 저장도 없어 계산만 다시 함)
+    root.addEventListener('keydown', function(e){ if (e.key === 'Enter' && e.target && e.target.matches && e.target.matches('#tpForm input[type=text]')) { e.preventDefault(); save(e); run_(); } });
+  }
+
+  window.initTaxPlan = function(){ bind_(); render_(); };
+})();
 </script>
 
 
@@ -50326,6 +50923,7 @@ function rwAiApplyEdit_(id, content){
         <li><a href="#help-lawsearch">⚖️ 법령정보</a></li>
         <li><a href="#help-docs">📁 증빙확보</a></li>
         <li><a href="#help-taxcalc">🧮 세액계산</a></li>
+        <li><a href="#help-taxplan">💡 절세플랜</a></li>
         <li><a href="#help-reportwriter">✍ 문서작성</a></li>
         <li><a href="#help-reports">📖 열람관리</a></li>
         <li><a href="#help-memo-text">📝 일반메모</a></li>
@@ -50498,6 +51096,18 @@ function rwAiApplyEdit_(id, content){
         <li>저장되는 건 <b>지금 활성 탭의 메인 계산 결과</b>뿐입니다(특례 계산기 결과는 따로 저장되지 않으니, 필요하면 본 계산기에 옮겨 입력한 뒤 저장하세요).</li>
         <li>예전 계산 결과를 다시 보려면 사건 선택 바 아래 <b>저장된 계산 목록</b>에서 원하는 건을 누릅니다.</li>
       </ul>
+    </section>
+
+    <section class="card" id="help-taxplan">
+      <h3>💡 절세플랜</h3>
+      <p>자주 묻는 유형을 몇 가지 안으로 나란히 계산해 비교하는 화면입니다. 세액은 모두 세액계산과 같은 계산 엔진이 내고, 이 화면은 입력 한두 칸만 바꿔 여러 번 돌려 표로 놓습니다. <b>사건에 저장하지 않습니다</b> — 고른 안은 세액계산에 직접 넣으세요.</p>
+      <ul>
+        <li><b>상속</b> — 배우자 상속분 배분(1차 상속세 + 배우자가 나중에 돌아가실 때 2차 상속세 가정), 평가액(기준시가·감정가)과 나중 양도세 합계</li>
+        <li><b>양도</b> — 토지보상 방식(현금·채권·3년·5년 만기 특약·대토) 비교와 자경 감면 중 하나 고르기, 실제 받은 방식대로 나눈 계산</li>
+        <li><b>증여</b> — 10년 내 같은 증여자 증여의 기납부세액 추정(실제 세액을 모를 때만), 부담부증여와 단순증여 비교(증여세 + 채무 인수분 양도세)</li>
+      </ul>
+      <p><b>사건 값으로 계산하기</b>: 세액계산의 해당 탭(상속세·양도세·증여세)에서 "세액 계산하기"를 한 번 누른 뒤 이 화면에서 <b>"그 값 불러오기"</b>를 누르면, 그 탭의 다른 칸(공제·사전증여·감면 요건 등)은 그대로 쓰고 이 화면의 칸만 바꿔 계산합니다. 불러오지 않으면 이 화면 칸만으로(상담용) 계산합니다.</p>
+      <p>표에서 합계가 가장 적은 줄에 밑줄이 그어지지만 권장이 아니라 비교일 뿐입니다. 가정(2차 상속 시점, 나중 양도가액 등)은 표 위 주황 띠에 적혀 있습니다.</p>
     </section>
 
     <section class="card" id="help-reportwriter">
@@ -57259,7 +57869,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
   var VIEW_LABELS_ = {
     ai: 'AI', dashboard: '대시보드', consult: '상담 녹음', clientcard: '고객 카드', booking: '예약관리', workmanage: '작업관리', casehandling: '처리개요', lawsearch: '법령정보', clientmanage: '고객관리',
     collections: '수금관리',
-    docs: '증빙확보', taxcalc: '세액계산', print: '세액인쇄', reportwriter: '문서작성', reports: '열람관리',
+    docs: '증빙확보', taxcalc: '세액계산', print: '세액인쇄', taxplan: '절세플랜', reportwriter: '문서작성', reports: '열람관리',
     'memo-text': '일반메모', 'memo-hand': '필기메모', reporthub: '보고서 모음', settings: '설정', manual: '사용자메뉴얼'
   };
 
@@ -57521,6 +58131,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
       if (name === 'reporthub' && typeof initReportHub === 'function') initReportHub();
       if (name === 'taxcalc' && typeof initTaxCalc === 'function') initTaxCalc();
       if (name === 'print' && typeof initPrintHub === 'function') initPrintHub();
+      if (name === 'taxplan' && typeof initTaxPlan === 'function') initTaxPlan(); // [2026.10.21] 💡 절세플랜(taxplan.html) — 서버 호출 없음
       if (name === 'reportwriter' && typeof initReportWriter === 'function') initReportWriter();
       if (name === 'reports' && typeof initReports === 'function') initReports();
       if (name === 'settings' && typeof initSettings === 'function') initSettings();
@@ -57765,7 +58376,7 @@ document.getElementById('manualExportBtn').addEventListener('click', function(){
     dashboard: 'help-dashboard', booking: 'help-booking', workmanage: 'help-workmanage',
     casehandling: 'help-casehandling', lawsearch: 'help-lawsearch', clientmanage: 'help-clientmanage',
     collections: 'help-collections',
-    docs: 'help-docs', taxcalc: 'help-taxcalc', reportwriter: 'help-reportwriter', reports: 'help-reports',
+    docs: 'help-docs', taxcalc: 'help-taxcalc', taxplan: 'help-taxplan', reportwriter: 'help-reportwriter', reports: 'help-reports',
     'memo-text': 'help-memo-text', 'memo-hand': 'help-memo-hand', settings: 'help-settings', manual: 'help-toc'
   };
   function goToHelp_(sectionId){
