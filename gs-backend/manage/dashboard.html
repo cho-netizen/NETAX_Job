@@ -54,6 +54,10 @@
       <h3 style="margin-bottom:0;"><button type="button" id="dashImproveHead" style="all:unset; cursor:pointer; display:block; width:100%;">🛠 개선요구 <span id="dashImproveSum" style="font-size:12.5px; font-weight:600; color:var(--sub);">불러오는 중…</span> <span id="dashImproveArrow" style="float:right; font-size:12px; color:var(--sub);">▾</span></button></h3>
       <div id="dashImproveList" style="display:none; margin-top:8px;"></div>
     </div>
+    <!-- [2026.10.20] 📚 지침·템플릿 제안 — 주간 루틴이 만든 신규·수정 초안·폐기 제안 중 세무사님 승인 대기 수와 밤 판정 요약 한 줄. 누르면 설정 🧭 📚 제안 대기로(manage/knowhow.html). -->
+    <div class="card dash-cover" id="dashKnhCard">
+      <h3 style="margin-bottom:0;"><button type="button" id="dashKnhHead" style="all:unset; cursor:pointer; display:block; width:100%;">📚 지침·템플릿 제안 <span id="dashKnhSum" style="font-size:12.5px; font-weight:600; color:var(--sub);">불러오는 중…</span> <span style="float:right; font-size:12px; color:var(--sub);">›</span></button></h3>
+    </div>
     <!-- [2026.09.16] 세무사님 요청 — 할일 바로 다음으로 순서 이동, 타이틀 "오늘~7일 일정"을
          그냥 "일정"으로 줄이고, 구글캘린더로 바로 가는 링크와 조회기간(전/후 며칠)을
          직접 지정하는 기능을 추가한다. 기본값은 전 0일·후 7일(기존과 동일한 범위). -->
@@ -130,6 +134,7 @@
     loadDashSubtasks_();
     loadDashFollow_();
     loadDashImprove_();
+    if (window.nxKnhDashLoad_) window.nxKnhDashLoad_();
     loadDashNightlyStatus_();
     loadDashDeployLine_();
     loadDashFed_();

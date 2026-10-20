@@ -124,7 +124,7 @@ function sysAdminNewBm_(body) {
   });
 }
 
-// 이 파일이 시스템 관리 목록의 파일인가 — 'master'|'plan'|'checklist'|'improve'|'bm'|'followup'|''
+// 이 파일이 시스템 관리 목록의 파일인가 — 'master'|'plan'|'checklist'|'improve'|'bm'|'followup'|'proposal'|''
 function sysAdminKindOf_(file) {
   var id = file.getId();
   if (id === MASTER_PROFILE_FILE_ID) return 'master';
@@ -134,6 +134,8 @@ function sysAdminKindOf_(file) {
   if (!ps.hasNext()) return '';
   var parent = ps.next();
   var pid = parent.getId();
+  // [2026.10.20] 지침·템플릿 정비 제안(KnowHow.js) — 각 폴더 "_제안함" 안의 초안을 ✏ 작성관리에서 고칠 때도 직전 판을 보관하고 사건 보고서 목록에 올리지 않는다
+  if (parent.getName() === '_제안함') return 'proposal';
   var props = PropertiesService.getScriptProperties();
   var chiefId = sanitizeDriveId_(props.getProperty(CHIEF_MANAGER_FOLDER_ID_PROPERTY));
   if (chiefId && pid === chiefId) {
